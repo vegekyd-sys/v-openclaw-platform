@@ -96,7 +96,7 @@ install -d -o "$LAB_USER" -g "$LAB_USER" -m 0700 \
   "$LAB_ROOT/logs"
 
 if [[ ! -f "$SEED_MARKER" ]]; then
-  for state_dir in agents/makaron memory identity credentials extensions skills plugin-skills plugins plugin-state state; do
+  for state_dir in agents/makaron memory identity credentials skills; do
     if [[ -e "${SOURCE_STATE}/${state_dir}" ]]; then
       install -d -o "$LAB_USER" -g "$LAB_USER" -m 0700 "${LAB_ROOT}/state/${state_dir}"
       rsync -a --delete "${SOURCE_STATE}/${state_dir}/" "${LAB_ROOT}/state/${state_dir}/"
@@ -168,6 +168,19 @@ if [[ ! -f "$SEED_MARKER" ]]; then
   touch "$SEED_MARKER"
 fi
 
+legacy_plugin_backup="${LAB_ROOT}/backups/legacy-plugin-state-seed"
+install -d -o "$LAB_USER" -g "$LAB_USER" -m 0700 \
+  "${LAB_ROOT}/backups" \
+  "$legacy_plugin_backup"
+for legacy_plugin_dir in extensions plugins plugin-state plugin-skills state; do
+  if [[ -e "${LAB_ROOT}/state/${legacy_plugin_dir}" ]] \
+    && [[ ! -e "${legacy_plugin_backup}/${legacy_plugin_dir}" ]]; then
+    mv \
+      "${LAB_ROOT}/state/${legacy_plugin_dir}" \
+      "${legacy_plugin_backup}/${legacy_plugin_dir}"
+  fi
+done
+
 if [[ -s "${LAB_ROOT}/state/gateway-token" ]]; then
   gateway_token="$(cat "${LAB_ROOT}/state/gateway-token")"
 else
@@ -197,6 +210,13 @@ jq \
     })
     | .channels = {}
     | del(.hooks)
+    | .plugins.load.paths = []
+    | .plugins.entries = ((.plugins.entries // {}) | with_entries(
+        select(.key | test("^(browser|deepseek|duckduckgo|google|memory-core|openai|openrouter)$"))
+      ))
+    | .models.providers = ((.models.providers // {}) | with_entries(
+        select(.key == "deepseek")
+      ))
     | .agents.defaults.workspace = $workspace
     | .agents.list = ((.agents.list // []) | map(
         if .id == "makaron" then
@@ -236,6 +256,19 @@ fi
 
 chown -R "$LAB_USER:$LAB_USER" "$LAB_ROOT"
 chmod 0700 "$LAB_ROOT" "$LAB_ROOT/state" "$LAB_ROOT/workspace"
+
+if [[ ! -d "${LAB_ROOT}/state/extensions/deepseek" ]]; then
+  sudo -u "$LAB_USER" env \
+    HOME="$LAB_ROOT" \
+    PATH="/opt/vlab/node/bin:/usr/bin:/bin" \
+    OPENCLAW_HOME="$LAB_ROOT" \
+    OPENCLAW_STATE_DIR="${LAB_ROOT}/state" \
+    OPENCLAW_CONFIG_PATH="${LAB_ROOT}/state/openclaw.json" \
+    OPENCLAW_WORKSPACE_DIR="${LAB_ROOT}/workspace" \
+    /opt/vlab/node/bin/node \
+    /opt/vlab/current/node_modules/openclaw/openclaw.mjs \
+    plugins install "@openclaw/deepseek-provider@${OPENCLAW_VERSION}"
+fi
 
 install -m 0644 "$UNIT_SOURCE" "$UNIT_TARGET"
 systemctl daemon-reload
