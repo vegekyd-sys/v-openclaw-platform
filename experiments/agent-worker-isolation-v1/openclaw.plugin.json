@@ -1,0 +1,24 @@
+{
+  "id": "vlab-agent-worker-isolation",
+  "activation": {
+    "onStartup": true
+  },
+  "name": "vLab Agent Worker Isolation",
+  "description": "Routes vLab experiment requests from Gateway RPC to sticky child-process workers.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "maxWorkers": {
+        "type": "integer",
+        "minimum": 2,
+        "maximum": 4
+      },
+      "requestTimeoutMs": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 1800000
+      }
+    }
+  }
+}

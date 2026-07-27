@@ -5,6 +5,10 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 bash -n "${REPO_ROOT}/scripts/bootstrap-vlab.sh"
 bash -n "${REPO_ROOT}/scripts/deploy-vlab-bootstrap.sh"
+bash -n "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
+bash -n "${REPO_ROOT}/scripts/rollback-agent-worker-experiment.sh"
+bash -n "${REPO_ROOT}/scripts/deploy-agent-worker-experiment.sh"
+"${REPO_ROOT}/tests/vlab-agent-worker-static.sh"
 
 grep -q 'User=vlab' "${REPO_ROOT}/systemd/openclaw-vlab-gateway.service"
 grep -q 'OPENCLAW_STATE_DIR=/srv/vlab/state' "${REPO_ROOT}/systemd/openclaw-vlab-gateway.service"

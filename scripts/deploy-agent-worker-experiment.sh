@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+TARGET="${VLAB_SSH_TARGET:-root@43.133.80.6}"
+IDENTITY_FILE="${VLAB_SSH_IDENTITY:-$HOME/.ssh/id_rsa}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+EXPERIMENT_DIR="${REPO_ROOT}/experiments/agent-worker-isolation-v1"
+PLATFORM_COMMIT="$(
+  git -C "$REPO_ROOT" rev-parse HEAD
+)"
+TEMP_DIR="$(mktemp -d)"
+ARCHIVE="${TEMP_DIR}/vlab-agent-worker-isolation-v1.tar.gz"
+
+cleanup() {
+  rm -rf "$TEMP_DIR"
+}
+trap cleanup EXIT
+
+if [[ -n "$(git -C "$REPO_ROOT" status --porcelain)" ]]; then
+  echo "commit the experiment before deployment" >&2
+  exit 1
+fi
+
+tar -czf "$ARCHIVE" -C "$EXPERIMENT_DIR" .
+
+scp \
+  -i "$IDENTITY_FILE" \
+  -o IdentitiesOnly=yes \
+  -o StrictHostKeyChecking=yes \
+  "$ARCHIVE" \
+  "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh" \
+  "${REPO_ROOT}/scripts/rollback-agent-worker-experiment.sh" \
+  "${REPO_ROOT}/tests/vlab-agent-worker-remote.sh" \
+  "${TARGET}:/tmp/"
+
+ssh \
+  -i "$IDENTITY_FILE" \
+  -o IdentitiesOnly=yes \
+  -o StrictHostKeyChecking=yes \
+  "$TARGET" \
+  "chmod 0700 /tmp/activate-agent-worker-experiment.sh /tmp/rollback-agent-worker-experiment.sh /tmp/vlab-agent-worker-remote.sh && PLATFORM_COMMIT=${PLATFORM_COMMIT} /tmp/activate-agent-worker-experiment.sh"
