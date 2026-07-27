@@ -8,13 +8,17 @@ Workers scale out only when simultaneous session work requires them and return
 to one warm process after the configured idle timeout.
 
 This experiment does not change private V and does not route production
-channels. It adds five vLab-only Gateway methods:
+channels. It adds vLab-only Gateway methods:
 
 - `vlab.workers.status`
 - `vlab.workers.ping`
 - `vlab.workers.cpu`
 - `vlab.workers.hold`
 - `vlab.workers.agent`
+- `vlab.workers.start`
+- `vlab.workers.operation`
+- `vlab.workers.cancel`
+- `vlab.workers.kill`
 
 Only synthetic session keys beginning with
 `agent:makaron:explicit:vlab-worker-` are accepted.
@@ -30,9 +34,15 @@ introducing a separate worker registry.
 ## Candidate
 
 - OpenClaw: `2026.7.1`
-- Worker count: elastic from `minWorkers` to `maxWorkers`
-- Defaults: `minWorkers=1`, `maxWorkers=2`, `idleTimeoutMs=180000`
-- vLab concurrency acceptance: `minWorkers=1`, `maxWorkers=8`
+- Worker count: elastic from one warm worker to three workers
+- Sessions per worker: at most three active, distinct sessions
+- Total active-session capacity: `3 workers x 3 sessions = 9`
+- Same-session turns: sticky and serialized inside one worker
+- Defaults: `minWorkers=1`, `maxWorkers=3`,
+  `sessionsPerWorker=3`, `idleTimeoutMs=180000`
+- OpenClaw process concurrency: `agents.defaults.maxConcurrent=3`
+- Subagent fan-out guard:
+  `agents.defaults.subagents.maxConcurrent=1`
 - vLab host capacity: 4 vCPUs, `CPUQuota=400%`, `MemoryHigh=5G`,
   `MemoryMax=6G`
 - Integration: OpenClaw plugin API plus the stable
@@ -45,9 +55,10 @@ The plugin does not patch OpenClaw's compiled files.
 ## Acceptance
 
 1. One warm worker is ready behind the running vLab Gateway.
-2. Simultaneous sessions create additional workers up to `maxWorkers`.
+2. Nine simultaneous sessions create three workers, with exactly three active
+   sessions in each worker.
 3. Work for the same active session stays on one worker and is serialized.
-4. Work above `maxWorkers` waits without creating extra processes.
+4. A tenth simultaneous session waits without creating a fourth process.
 5. Idle workers exit safely until only `minWorkers` remain.
 6. Gateway health remains non-degraded during overlapping jobs.
 7. Two synthetic agent sessions can run real model calls without sharing
@@ -61,24 +72,40 @@ The plugin does not patch OpenClaw's compiled files.
 12. Restoring the saved config removes the plugin RPC methods while base
    Gateway health, model execution, tools, memory, and copied sessions remain
    valid.
-13. With eight workers, eight synthetic sessions run
-   continuously without a worker queue while Gateway event-loop health remains
-   materially better than the same workload on the core Gateway path.
+13. Nine synthetic sessions run continuously on three workers without a queue
+   while Gateway event-loop health remains non-degraded.
+14. Samples record Gateway `MemoryCurrent`, `MemoryPeak`, CPU core ratio,
+   Event Loop utilization/P99/max delay, worker RSS/CPU, active sessions,
+   pending sessions, and restart count.
+15. Killing a worker with an active Agent turn fails the in-flight operation;
+   the same idempotency key returns that terminal failure and does not
+   automatically replay the turn.
+16. Cancelling an active Agent turn propagates an `AbortSignal` into
+   `agentCommand` and reaches a terminal `cancelled` state.
+17. Recovery requires an explicit new idempotency key and succeeds on a
+   replacement worker.
 
 The production-shaped soak is executable on vLab:
 
 ```bash
-VLAB_SOAK_SESSION_COUNT=8 \
+VLAB_SOAK_SESSION_COUNT=9 \
 VLAB_SOAK_ROUNDS=3 \
 VLAB_SOAK_TOOL_HOLD_SECONDS=30 \
 /tmp/vlab-agent-worker-soak.sh
 ```
 
-It runs 24 real OpenClaw Agent turns across eight native sessions for roughly
-three to four minutes. Every turn must perform a real read-only `exec` tool
-call, session IDs must remain stable across rounds, all eight sessions must be
+It runs 27 real OpenClaw Agent turns across nine native sessions for roughly
+three to five minutes. Every turn must perform a real read-only `exec` tool
+call, session IDs must remain stable across rounds, all nine sessions must be
 visible through native `sessions.list` and `chat.history`, Gateway event-loop
 health must remain non-degraded, and the Gateway restart count must not change.
+The report also includes sampled resource and queue maxima.
+
+Fault acceptance uses real Agent turns:
+
+```bash
+/tmp/vlab-agent-worker-faults.sh
+```
 
 ## Deploy and rollback
 
@@ -86,7 +113,8 @@ Deploy only a clean committed candidate:
 
 ```bash
 VLAB_WORKER_MIN_COUNT=1 \
-VLAB_WORKER_COUNT=8 \
+VLAB_WORKER_COUNT=3 \
+VLAB_WORKER_SESSIONS_PER_WORKER=3 \
 VLAB_WORKER_IDLE_TIMEOUT_MS=180000 \
 scripts/deploy-agent-worker-experiment.sh
 ```
@@ -122,5 +150,9 @@ Runtime plugin keeps the child event loop alive. A retiring process therefore
 cannot occupy a worker slot forever and block queued sessions from scaling out.
 
 The custom `vlab.workers.*` methods are vLab experiment probes. Production
-promotion must attach execution isolation to OpenClaw's native dispatch/runtime
-seam instead of exposing a second user-facing agent/session API.
+promotion remains blocked while `vlab.workers.status` reports
+`integration.nativeAgentHarnessDispatchAttached=false`. Before production,
+worker admission must be attached to OpenClaw's native Agent Harness/dispatch
+seam instead of exposing a second user-facing agent/session API. The current
+RPC uses the stable `agentCommand` entry point and is valid for vLab
+experiments, but it is not presented as the production dispatch integration.

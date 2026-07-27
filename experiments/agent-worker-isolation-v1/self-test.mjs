@@ -17,11 +17,18 @@ async function waitFor(predicate, options = {}) {
   throw new Error(options.message ?? `condition was not met within ${timeoutMs}ms`);
 }
 
-const durationMs = Number(process.env.VLAB_WORKER_TEST_DURATION_MS ?? 1_000);
+function sessionKey(suffix) {
+  return `agent:makaron:explicit:vlab-worker-selftest-${suffix}`;
+}
+
+const holdDurationMs = Number(
+  process.env.VLAB_WORKER_TEST_DURATION_MS ?? 300,
+);
 const pool = new WorkerPool({
   minWorkers: 1,
-  maxWorkers: 4,
-  idleTimeoutMs: durationMs + 500,
+  maxWorkers: 3,
+  sessionsPerWorker: 3,
+  idleTimeoutMs: holdDurationMs + 300,
   idleSweepIntervalMs: 25,
   requestTimeoutMs: 30_000,
 });
@@ -30,59 +37,101 @@ try {
   await pool.start();
   const initialStatus = pool.status();
   assert.equal(initialStatus.minWorkers, 1);
-  assert.equal(initialStatus.maxWorkers, 4);
+  assert.equal(initialStatus.maxWorkers, 3);
+  assert.equal(initialStatus.sessionsPerWorker, 3);
+  assert.equal(initialStatus.maxActiveSessions, 9);
   assert.equal(initialStatus.workers.length, 1);
-  assert.equal(initialStatus.pending, 0);
 
-  const sessions = Array.from(
-    { length: 4 },
-    (_, index) => `agent:makaron:explicit:vlab-worker-selftest-${index}`,
+  const nineSessions = Array.from({ length: 9 }, (_, index) =>
+    sessionKey(`capacity-${index + 1}`),
   );
-  const parallelStartedAt = performance.now();
-  const parallel = await Promise.all(
-    sessions.map((sessionKey) =>
-      pool.dispatch(sessionKey, { kind: "cpu", durationMs }),
-    ),
+  const nineStartedAt = performance.now();
+  const ninePromises = nineSessions.map((key) =>
+    pool.dispatch(key, { kind: "hold", durationMs: holdDurationMs }),
   );
-  const parallelWallMs = performance.now() - parallelStartedAt;
-  const parallelWorkerPids = new Set(parallel.map((result) => result.workerPid));
-
-  assert.equal(parallelWorkerPids.size, 4);
+  const saturatedStatus = await waitFor(
+    () => {
+      const status = pool.status();
+      const activeCount = status.workers.reduce(
+        (sum, worker) => sum + worker.activeCount,
+        0,
+      );
+      return status.workers.length === 3 && activeCount === 9
+        ? status
+        : undefined;
+    },
+    { message: "3 workers x 3 sessions did not saturate" },
+  );
+  assert.equal(saturatedStatus.pending, 0);
+  assert.deepEqual(
+    saturatedStatus.workers.map((worker) => worker.activeCount),
+    [3, 3, 3],
+  );
+  const nineResults = await Promise.all(ninePromises);
+  const nineWallMs = performance.now() - nineStartedAt;
+  const pidCounts = new Map();
+  for (const result of nineResults) {
+    pidCounts.set(result.workerPid, (pidCounts.get(result.workerPid) ?? 0) + 1);
+  }
+  assert.equal(pidCounts.size, 3);
+  assert.deepEqual([...pidCounts.values()].sort(), [3, 3, 3]);
   assert.ok(
-    parallelWallMs < durationMs * 2.75,
-    `elastic parallel wall ${parallelWallMs.toFixed(1)}ms was too high`,
+    nineWallMs < holdDurationMs * 2.5,
+    `nine-session wall ${nineWallMs.toFixed(1)}ms was too high`,
   );
-  assert.equal(pool.status().workers.length, 4);
 
-  const stickySession =
-    "agent:makaron:explicit:vlab-worker-selftest-sticky-session";
+  const sticky = sessionKey("sticky");
   const stickyStartedAt = performance.now();
-  const [stickyBusy, stickyPing] = await Promise.all([
-    pool.dispatch(stickySession, {
-      kind: "cpu",
-      durationMs: Math.max(durationMs, 250),
-    }),
-    pool.dispatch(stickySession, { kind: "ping" }),
+  const [stickyFirst, stickySecond] = await Promise.all([
+    pool.dispatch(sticky, { kind: "hold", durationMs: holdDurationMs }),
+    pool.dispatch(sticky, { kind: "hold", durationMs: holdDurationMs }),
   ]);
   const stickyWallMs = performance.now() - stickyStartedAt;
-
-  assert.equal(stickyBusy.workerPid, stickyPing.workerPid);
+  assert.equal(stickyFirst.workerPid, stickySecond.workerPid);
   assert.ok(
-    stickyWallMs >= Math.max(durationMs, 250) * 0.9,
+    stickyWallMs >= holdDurationMs * 1.8,
     `same-session work was not serialized: ${stickyWallMs.toFixed(1)}ms`,
   );
 
-  const cappedSessions = Array.from(
-    { length: 5 },
-    (_, index) => `agent:makaron:explicit:vlab-worker-selftest-capped-${index}`,
+  const tenPromises = Array.from({ length: 10 }, (_, index) =>
+    pool.dispatch(sessionKey(`queue-${index + 1}`), {
+      kind: "hold",
+      durationMs: holdDurationMs,
+    }),
   );
-  const capped = await Promise.all(
-    cappedSessions.map((sessionKey) =>
-      pool.dispatch(sessionKey, { kind: "cpu", durationMs: 150 }),
-    ),
+  const queuedStatus = await waitFor(
+    () => {
+      const status = pool.status();
+      const activeCount = status.workers.reduce(
+        (sum, worker) => sum + worker.activeCount,
+        0,
+      );
+      return activeCount === 9 && status.pending === 1 ? status : undefined;
+    },
+    { message: "the tenth session did not queue behind capacity nine" },
   );
-  assert.equal(pool.status().workers.length, 4);
-  assert.equal(new Set(capped.map((result) => result.workerPid)).size, 4);
+  assert.equal(queuedStatus.workers.length, 3);
+  await Promise.all(tenPromises);
+
+  const cancellable = await pool.submit(sessionKey("cancel"), {
+    kind: "hold",
+    durationMs: 5_000,
+  });
+  await waitFor(() =>
+    pool
+      .status()
+      .workers.some((worker) =>
+        worker.active.some(
+          (active) => active.requestId === cancellable.requestId,
+        ),
+      ),
+  );
+  const cancellation = pool.cancel(cancellable.requestId);
+  assert.equal(cancellation.cancelled, true);
+  assert.equal(cancellation.state, "active");
+  await assert.rejects(cancellable.promise, {
+    name: "AbortError",
+  });
 
   const scaledDownStatus = await waitFor(
     () => {
@@ -90,39 +139,36 @@ try {
       return status.workers.length === 1 ? status : undefined;
     },
     {
-      timeoutMs: 3_000,
-      message: "elastic pool did not return to minWorkers",
+      timeoutMs: 4_000,
+      message: "elastic pool did not return to one warm worker",
     },
   );
   assert.equal(scaledDownStatus.pending, 0);
-  assert.equal(scaledDownStatus.workers[0].active, null);
+  assert.equal(scaledDownStatus.workers[0].activeCount, 0);
   assert.equal(scaledDownStatus.workers[0].queued, 0);
-
-  const resumed = await pool.dispatch(stickySession, { kind: "ping" });
-  assert.equal(resumed.kind, "ping");
-  assert.equal(pool.status().workers.length, 1);
-  const held = await pool.dispatch(stickySession, {
-    kind: "hold",
-    durationMs: 25,
-  });
-  assert.equal(held.kind, "hold");
-  assert.ok(held.wallMs >= 20);
 
   console.log(
     JSON.stringify(
       {
         ok: true,
-        minWorkers: initialStatus.workers.length,
-        peakWorkers: parallelWorkerPids.size,
-        maxWorkers: initialStatus.maxWorkers,
-        parallelWorkerPids: [...parallelWorkerPids],
-        parallelWallMs,
-        stickyWorkerPid: stickyBusy.workerPid,
-        stickyWallMs,
-        cappedRequests: capped.length,
+        topology: {
+          minWorkers: initialStatus.minWorkers,
+          maxWorkers: initialStatus.maxWorkers,
+          sessionsPerWorker: initialStatus.sessionsPerWorker,
+          maxActiveSessions: initialStatus.maxActiveSessions,
+        },
+        saturation: {
+          workerPidCounts: Object.fromEntries(pidCounts),
+          wallMs: nineWallMs,
+          pending: saturatedStatus.pending,
+        },
+        sameSessionSerialized: {
+          workerPid: stickyFirst.workerPid,
+          wallMs: stickyWallMs,
+        },
+        tenthSessionQueued: queuedStatus.pending === 1,
+        activeCancellation: true,
         scaledDownWorkers: scaledDownStatus.workers.length,
-        resumedWorkerPid: resumed.workerPid,
-        holdWallMs: held.wallMs,
       },
       null,
       2,
@@ -132,12 +178,51 @@ try {
   await pool.close();
 }
 
+const crashPool = new WorkerPool({
+  minWorkers: 1,
+  maxWorkers: 1,
+  sessionsPerWorker: 3,
+  idleTimeoutMs: 5_000,
+  idleSweepIntervalMs: 25,
+});
+
+try {
+  await crashPool.start();
+  const active = await Promise.all(
+    Array.from({ length: 3 }, async (_, index) =>
+      await crashPool.submit(sessionKey(`crash-${index + 1}`), {
+        kind: "hold",
+        durationMs: 5_000,
+      }),
+    ),
+  );
+  const activeStatus = await waitFor(() => {
+    const status = crashPool.status();
+    return status.workers[0]?.activeCount === 3 ? status : undefined;
+  });
+  const killed = crashPool.terminateWorker(activeStatus.workers[0].slot);
+  assert.equal(killed.terminated, true);
+  assert.equal(killed.activeRequestIds.length, 3);
+  const failures = await Promise.allSettled(active.map((item) => item.promise));
+  assert.ok(failures.every((result) => result.status === "rejected"));
+  await waitFor(() => crashPool.status().workers[0]?.ready === true, {
+    message: "minimum worker was not restored after active crash",
+  });
+  const recovered = await crashPool.dispatch(sessionKey("after-crash"), {
+    kind: "ping",
+  });
+  assert.equal(recovered.kind, "ping");
+} finally {
+  await crashPool.close();
+}
+
 const stubbornWorkerPath = fileURLToPath(
   new URL("./stubborn-worker.mjs", import.meta.url),
 );
 const stubbornPool = new WorkerPool({
   minWorkers: 1,
   maxWorkers: 2,
+  sessionsPerWorker: 1,
   idleTimeoutMs: 100,
   idleSweepIntervalMs: 25,
   retireGraceMs: 100,
@@ -147,14 +232,8 @@ const stubbornPool = new WorkerPool({
 try {
   await stubbornPool.start();
   const stubbornResults = await Promise.all([
-    stubbornPool.dispatch(
-      "agent:makaron:explicit:vlab-worker-selftest-stubborn-1",
-      { kind: "ping" },
-    ),
-    stubbornPool.dispatch(
-      "agent:makaron:explicit:vlab-worker-selftest-stubborn-2",
-      { kind: "ping" },
-    ),
+    stubbornPool.dispatch(sessionKey("stubborn-1"), { kind: "ping" }),
+    stubbornPool.dispatch(sessionKey("stubborn-2"), { kind: "ping" }),
   ]);
   assert.equal(new Set(stubbornResults.map((result) => result.workerPid)).size, 2);
   const forcedScaleDown = await waitFor(

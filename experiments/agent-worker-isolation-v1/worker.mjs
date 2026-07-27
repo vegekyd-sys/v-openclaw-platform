@@ -2,11 +2,17 @@ import { performance } from "node:perf_hooks";
 import { pathToFileURL } from "node:url";
 
 let agentRuntimePromise;
+const activeControllers = new Map();
 
 function serializeError(error) {
   return {
     message: error instanceof Error ? error.message : String(error),
     stack: error instanceof Error ? error.stack : undefined,
+    name: error instanceof Error ? error.name : undefined,
+    code:
+      error && typeof error === "object" && "code" in error
+        ? error.code
+        : undefined,
   };
 }
 
@@ -42,16 +48,32 @@ function runCpu(durationMs) {
   };
 }
 
-async function runHold(durationMs) {
+async function runHold(durationMs, abortSignal) {
   const startedAt = performance.now();
-  await new Promise((resolve) => setTimeout(resolve, durationMs));
+  await new Promise((resolve, reject) => {
+    const finish = () => {
+      abortSignal.removeEventListener("abort", onAbort);
+      resolve();
+    };
+    const timer = setTimeout(finish, durationMs);
+    const onAbort = () => {
+      clearTimeout(timer);
+      abortSignal.removeEventListener("abort", onAbort);
+      reject(abortSignal.reason ?? new Error("worker request was cancelled"));
+    };
+    if (abortSignal.aborted) {
+      onAbort();
+      return;
+    }
+    abortSignal.addEventListener("abort", onAbort, { once: true });
+  });
   return {
     kind: "hold",
     wallMs: performance.now() - startedAt,
   };
 }
 
-async function runAgent(message) {
+async function runAgent(message, abortSignal) {
   const { agentCommand } = await loadAgentRuntime();
   const startedAt = performance.now();
   const result = await agentCommand({
@@ -71,7 +93,11 @@ async function runAgent(message) {
     cleanupCliLiveSessionOnRunEnd: true,
     oneShotCliRun: true,
     allowGatewaySubagentBinding: false,
+    abortSignal,
   });
+  if (abortSignal.aborted) {
+    throw abortSignal.reason ?? new Error("worker Agent request was cancelled");
+  }
   const agentMeta = result.meta?.agentMeta ?? result.meta ?? {};
   return {
     kind: "agent",
@@ -89,9 +115,20 @@ async function runAgent(message) {
 }
 
 process.on("message", async (message) => {
+  if (message?.type === "cancel" && message.requestId) {
+    const controller = activeControllers.get(message.requestId);
+    if (controller && !controller.signal.aborted) {
+      const error = new Error(`worker request ${message.requestId} was cancelled`);
+      error.name = "AbortError";
+      controller.abort(error);
+    }
+    return;
+  }
   if (!message?.id) {
     return;
   }
+  const controller = new AbortController();
+  activeControllers.set(message.id, controller);
   try {
     let result;
     if (message.kind === "ping") {
@@ -107,9 +144,9 @@ process.on("message", async (message) => {
       if (!Number.isFinite(durationMs) || durationMs < 1 || durationMs > 60_000) {
         throw new Error("durationMs must be between 1 and 60000");
       }
-      result = await runHold(durationMs);
+      result = await runHold(durationMs, controller.signal);
     } else if (message.kind === "agent") {
-      result = await runAgent(message);
+      result = await runAgent(message, controller.signal);
     } else {
       throw new Error(`unsupported worker request kind: ${String(message.kind)}`);
     }
@@ -126,6 +163,8 @@ process.on("message", async (message) => {
       ok: false,
       error: serializeError(error),
     });
+  } finally {
+    activeControllers.delete(message.id);
   }
 });
 

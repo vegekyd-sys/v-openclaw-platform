@@ -34,9 +34,27 @@ function requireLabSessionKey(params) {
 
 function respondError(respond, error) {
   respond(false, undefined, {
-    code: "vlab_worker_error",
+    code:
+      error && typeof error === "object" && error.code
+        ? String(error.code)
+        : "vlab_worker_error",
     message: error instanceof Error ? error.message : String(error),
   });
+}
+
+function operationSnapshot(operation) {
+  return {
+    operationId: operation.operationId,
+    idempotencyKey: operation.idempotencyKey,
+    requestId: operation.requestId,
+    sessionKey: operation.sessionKey,
+    kind: operation.kind,
+    state: operation.state,
+    createdAt: operation.createdAt,
+    updatedAt: operation.updatedAt,
+    result: operation.result,
+    error: operation.error,
+  };
 }
 
 const plugin = {
@@ -45,16 +63,23 @@ const plugin = {
   description: "Runs vLab experiment workloads in sticky child-process workers.",
   register(api) {
     const minWorkers = Number(api.pluginConfig?.minWorkers ?? 1);
-    const maxWorkers = Number(api.pluginConfig?.maxWorkers ?? 2);
+    const maxWorkers = Number(api.pluginConfig?.maxWorkers ?? 3);
+    const sessionsPerWorker = Number(
+      api.pluginConfig?.sessionsPerWorker ?? 3,
+    );
     const idleTimeoutMs = Number(api.pluginConfig?.idleTimeoutMs ?? 180_000);
     const requestTimeoutMs = Number(api.pluginConfig?.requestTimeoutMs ?? 600_000);
     const pool = new WorkerPool({
       minWorkers,
       maxWorkers,
+      sessionsPerWorker,
       idleTimeoutMs,
       requestTimeoutMs,
     });
     const nativeSessionSnapshots = new Map();
+    const operationsById = new Map();
+    const operationsByIdempotencyKey = new Map();
+    let nextOperationId = 1;
     let nativeSessionWriteTail = Promise.resolve();
 
     function readNativeSession(agentId, sessionKey) {
@@ -144,12 +169,146 @@ const plugin = {
       await pendingWrite;
     }
 
+    function trimOperations() {
+      if (operationsById.size <= 1024) {
+        return;
+      }
+      for (const [operationId, operation] of operationsById) {
+        if (
+          operationsById.size <= 1024 ||
+          operation.state === "pending" ||
+          operation.state === "running" ||
+          operation.state === "cancelling"
+        ) {
+          continue;
+        }
+        operationsById.delete(operationId);
+        if (
+          operationsByIdempotencyKey.get(operation.idempotencyKey) ===
+          operation
+        ) {
+          operationsByIdempotencyKey.delete(operation.idempotencyKey);
+        }
+      }
+    }
+
+    function finishOperation(operation, state, fields = {}) {
+      operation.state = state;
+      operation.updatedAt = Date.now();
+      Object.assign(operation, fields);
+      trimOperations();
+    }
+
+    async function startOperation(params) {
+      const idempotencyKey = readString(params, "idempotencyKey", {
+        required: true,
+      });
+      const existing = operationsByIdempotencyKey.get(idempotencyKey);
+      if (existing) {
+        return {
+          deduplicated: true,
+          operation: operationSnapshot(existing),
+        };
+      }
+
+      const sessionKey = requireLabSessionKey(params);
+      const kind = readString(params, "kind", { required: true });
+      if (kind !== "hold" && kind !== "agent") {
+        throw new Error("kind must be hold or agent");
+      }
+      const createdAt = Date.now();
+      const operation = {
+        operationId: `operation-${nextOperationId}`,
+        idempotencyKey,
+        sessionKey,
+        kind,
+        state: "pending",
+        createdAt,
+        updatedAt: createdAt,
+      };
+      nextOperationId += 1;
+      operationsById.set(operation.operationId, operation);
+      operationsByIdempotencyKey.set(idempotencyKey, operation);
+
+      let request;
+      let afterSuccess = async () => {};
+      if (kind === "hold") {
+        request = {
+          kind,
+          durationMs: readNumber(params, "durationMs", 5_000),
+        };
+      } else {
+        const agentId = readString(params, "agentId") ?? "makaron";
+        request = {
+          kind,
+          message: readString(params, "message", { required: true }),
+          agentId,
+          timeoutSeconds: readNumber(params, "timeoutSeconds", 300),
+          modelRun: params?.modelRun === true,
+          toolsAllow: Array.isArray(params?.toolsAllow)
+            ? params.toolsAllow.filter((item) => typeof item === "string")
+            : undefined,
+        };
+        afterSuccess = async (result) => {
+          await reconcileNativeSessions(agentId, sessionKey, result);
+        };
+      }
+
+      try {
+        const submitted = await pool.submit(sessionKey, request);
+        operation.requestId = submitted.requestId;
+        operation.state = "running";
+        operation.updatedAt = Date.now();
+        void submitted.promise.then(
+          async (result) => {
+            try {
+              await afterSuccess(result);
+              finishOperation(operation, "succeeded", { result });
+            } catch (error) {
+              finishOperation(operation, "failed", {
+                error: {
+                  code: "vlab_worker_reconcile_error",
+                  message: error instanceof Error ? error.message : String(error),
+                },
+              });
+            }
+          },
+          (error) => {
+            const cancelled =
+              error?.name === "AbortError" ||
+              error?.code === "VLAB_WORKER_CANCELLED" ||
+              operation.state === "cancelling";
+            finishOperation(operation, cancelled ? "cancelled" : "failed", {
+              error: {
+                code: cancelled
+                  ? "VLAB_WORKER_CANCELLED"
+                  : "vlab_worker_operation_failed",
+                message: error instanceof Error ? error.message : String(error),
+              },
+            });
+          },
+        );
+      } catch (error) {
+        finishOperation(operation, "failed", {
+          error: {
+            code: "vlab_worker_submit_failed",
+            message: error instanceof Error ? error.message : String(error),
+          },
+        });
+      }
+
+      return {
+        deduplicated: false,
+        operation: operationSnapshot(operation),
+      };
+    }
+
     api.registerService({
       id: "vlab-agent-worker-isolation",
       async start() {
         await pool.start();
         api.logger.info(
-          `vLab Agent Worker Isolation started with ${minWorkers}-${maxWorkers} elastic workers`,
+          `vLab Agent Worker Isolation started with ${minWorkers}-${maxWorkers} elastic workers and ${sessionsPerWorker} sessions per worker`,
         );
       },
       async stop() {
@@ -160,9 +319,109 @@ const plugin = {
     api.registerGatewayMethod(
       "vlab.workers.status",
       async ({ respond }) => {
-        respond(true, pool.status());
+        respond(true, {
+          ...pool.status(),
+          openClawConcurrency: {
+            maxConcurrent: api.config.agents?.defaults?.maxConcurrent,
+            subagentsMaxConcurrent:
+              api.config.agents?.defaults?.subagents?.maxConcurrent,
+          },
+          integration: {
+            currentEntry: "vlab RPC -> agentCommand",
+            nativeAgentHarnessDispatchAttached: false,
+            productionPromotionBlocked: true,
+            blocker:
+              "attach worker admission to OpenClaw native Agent Harness/dispatch before production",
+          },
+        });
       },
       { scope: "operator.read" },
+    );
+
+    api.registerGatewayMethod(
+      "vlab.workers.start",
+      async ({ params, respond }) => {
+        try {
+          respond(true, await startOperation(params));
+        } catch (error) {
+          respondError(respond, error);
+        }
+      },
+      { scope: "operator.write" },
+    );
+
+    api.registerGatewayMethod(
+      "vlab.workers.operation",
+      async ({ params, respond }) => {
+        try {
+          const operationId = readString(params, "operationId", {
+            required: true,
+          });
+          const operation = operationsById.get(operationId);
+          if (!operation) {
+            throw new Error(`unknown operationId: ${operationId}`);
+          }
+          respond(true, operationSnapshot(operation));
+        } catch (error) {
+          respondError(respond, error);
+        }
+      },
+      { scope: "operator.read" },
+    );
+
+    api.registerGatewayMethod(
+      "vlab.workers.cancel",
+      async ({ params, respond }) => {
+        try {
+          const operationId = readString(params, "operationId", {
+            required: true,
+          });
+          const operation = operationsById.get(operationId);
+          if (!operation) {
+            throw new Error(`unknown operationId: ${operationId}`);
+          }
+          if (
+            operation.state !== "pending" &&
+            operation.state !== "running" &&
+            operation.state !== "cancelling"
+          ) {
+            respond(true, {
+              cancelled: false,
+              reason: "already_terminal",
+              operation: operationSnapshot(operation),
+            });
+            return;
+          }
+          const cancellation = pool.cancel(operation.requestId);
+          if (cancellation.cancelled) {
+            operation.state = "cancelling";
+            operation.updatedAt = Date.now();
+          }
+          respond(true, {
+            ...cancellation,
+            operation: operationSnapshot(operation),
+          });
+        } catch (error) {
+          respondError(respond, error);
+        }
+      },
+      { scope: "operator.write" },
+    );
+
+    api.registerGatewayMethod(
+      "vlab.workers.kill",
+      async ({ params, respond }) => {
+        try {
+          const slot = readNumber(params, "slot");
+          if (!Number.isInteger(slot)) {
+            throw new Error("slot must be an integer");
+          }
+          respond(true, pool.terminateWorker(slot));
+        } catch (error) {
+          respondError(respond, error);
+        }
+      },
+      { scope: "operator.write" },
     );
 
     api.registerGatewayMethod(

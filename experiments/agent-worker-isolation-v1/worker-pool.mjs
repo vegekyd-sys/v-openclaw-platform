@@ -7,10 +7,18 @@ function toError(value) {
   return value instanceof Error ? value : new Error(String(value));
 }
 
+function cancellationError(requestId) {
+  const error = new Error(`worker request ${requestId} was cancelled`);
+  error.name = "AbortError";
+  error.code = "VLAB_WORKER_CANCELLED";
+  return error;
+}
+
 export class WorkerPool {
   constructor(options = {}) {
     this.minWorkers = options.minWorkers ?? 1;
     this.maxWorkers = options.maxWorkers ?? 2;
+    this.sessionsPerWorker = options.sessionsPerWorker ?? 1;
     this.idleTimeoutMs = options.idleTimeoutMs ?? 180_000;
     this.idleSweepIntervalMs =
       options.idleSweepIntervalMs ??
@@ -37,6 +45,12 @@ export class WorkerPool {
       this.maxWorkers < this.minWorkers
     ) {
       throw new Error("maxWorkers must be an integer >= minWorkers");
+    }
+    if (
+      !Number.isInteger(this.sessionsPerWorker) ||
+      this.sessionsPerWorker < 1
+    ) {
+      throw new Error("sessionsPerWorker must be an integer >= 1");
     }
     if (!Number.isFinite(this.idleTimeoutMs) || this.idleTimeoutMs < 100) {
       throw new Error("idleTimeoutMs must be >= 100");
@@ -100,8 +114,8 @@ export class WorkerPool {
       pid: child.pid,
       ready: false,
       retiring: false,
-      ownerSessionKey: null,
-      active: null,
+      ownerSessionKeys: new Set(),
+      active: new Map(),
       queue: [],
       lastIdleAt: Date.now(),
       startupPromise: null,
@@ -136,7 +150,7 @@ export class WorkerPool {
     return handle.startupPromise;
   }
 
-  async dispatch(sessionKey, request) {
+  async submit(sessionKey, request) {
     if (!this.started) {
       await this.start();
     }
@@ -147,17 +161,83 @@ export class WorkerPool {
       throw new Error("sessionKey is required");
     }
 
-    return await new Promise((resolve, reject) => {
+    const requestId = `request-${this.nextRequestId}`;
+    this.nextRequestId += 1;
+    const promise = new Promise((resolve, reject) => {
       this.pending.push({
-        id: `request-${this.nextRequestId}`,
+        id: requestId,
         sessionKey,
         request,
         resolve,
         reject,
       });
-      this.nextRequestId += 1;
       this.requestPump();
     });
+    return { requestId, promise };
+  }
+
+  async dispatch(sessionKey, request) {
+    const submitted = await this.submit(sessionKey, request);
+    return await submitted.promise;
+  }
+
+  cancel(requestId) {
+    const pendingIndex = this.pending.findIndex((job) => job.id === requestId);
+    if (pendingIndex >= 0) {
+      const [job] = this.pending.splice(pendingIndex, 1);
+      job.reject(cancellationError(requestId));
+      return { cancelled: true, state: "pending", requestId };
+    }
+
+    for (const worker of this.workers.values()) {
+      const queuedIndex = worker.queue.findIndex((job) => job.id === requestId);
+      if (queuedIndex >= 0) {
+        const [job] = worker.queue.splice(queuedIndex, 1);
+        job.reject(cancellationError(requestId));
+        this.releaseSessionOwner(worker, job.sessionKey);
+        this.requestPump();
+        return {
+          cancelled: true,
+          state: "queued",
+          requestId,
+          slot: worker.slot,
+          workerPid: worker.pid,
+        };
+      }
+      if (worker.active.has(requestId)) {
+        worker.child.send({ type: "cancel", requestId });
+        return {
+          cancelled: true,
+          state: "active",
+          requestId,
+          slot: worker.slot,
+          workerPid: worker.pid,
+        };
+      }
+    }
+    return { cancelled: false, state: "not_found", requestId };
+  }
+
+  terminateWorker(slot, signal = "SIGKILL") {
+    if (!Number.isInteger(slot)) {
+      throw new Error("slot must be an integer");
+    }
+    const worker = this.workers.get(slot);
+    if (!worker) {
+      return { terminated: false, slot };
+    }
+    const activeRequestIds = [...worker.active.keys()];
+    const sessionKeys = [...worker.ownerSessionKeys];
+    const workerPid = worker.pid;
+    worker.child.kill(signal);
+    return {
+      terminated: true,
+      slot,
+      workerPid,
+      signal,
+      activeRequestIds,
+      sessionKeys,
+    };
   }
 
   requestPump() {
@@ -192,9 +272,7 @@ export class WorkerPool {
             (candidate) =>
               candidate.ready &&
               !candidate.retiring &&
-              candidate.ownerSessionKey === null &&
-              candidate.active === null &&
-              candidate.queue.length === 0,
+              candidate.ownerSessionKeys.size < this.sessionsPerWorker,
           );
         }
 
@@ -206,8 +284,8 @@ export class WorkerPool {
         }
 
         this.pending.shift();
-        if (worker.ownerSessionKey === null) {
-          worker.ownerSessionKey = job.sessionKey;
+        if (!worker.ownerSessionKeys.has(job.sessionKey)) {
+          worker.ownerSessionKeys.add(job.sessionKey);
           this.sessionOwners.set(job.sessionKey, worker);
         }
         worker.queue.push(job);
@@ -222,41 +300,58 @@ export class WorkerPool {
     if (
       !worker.ready ||
       worker.retiring ||
-      worker.active ||
       worker.queue.length === 0
     ) {
       return;
     }
 
-    const job = worker.queue.shift();
-    const timer = setTimeout(() => {
-      if (worker.active?.id !== job.id) {
-        return;
+    while (worker.active.size < this.sessionsPerWorker) {
+      const activeSessions = new Set(
+        [...worker.active.values()].map((job) => job.sessionKey),
+      );
+      const jobIndex = worker.queue.findIndex(
+        (candidate) => !activeSessions.has(candidate.sessionKey),
+      );
+      if (jobIndex < 0) {
+        break;
       }
-      worker.active = null;
-      job.reject(new Error(`worker request ${job.id} timed out`));
-      worker.child.kill("SIGKILL");
-    }, this.requestTimeoutMs);
+      const [job] = worker.queue.splice(jobIndex, 1);
+      const timer = setTimeout(() => {
+        if (worker.active.get(job.id)?.id !== job.id) {
+          return;
+        }
+        worker.active.delete(job.id);
+        job.reject(new Error(`worker request ${job.id} timed out`));
+        worker.child.kill("SIGKILL");
+      }, this.requestTimeoutMs);
 
-    worker.active = { ...job, timer };
-    worker.child.send({
-      id: job.id,
-      sessionKey: job.sessionKey,
-      ...job.request,
-    });
+      worker.active.set(job.id, { ...job, timer });
+      worker.child.send({
+        id: job.id,
+        sessionKey: job.sessionKey,
+        ...job.request,
+      });
+    }
   }
 
-  releaseSessionOwner(worker) {
-    const sessionKey = worker.ownerSessionKey;
+  releaseSessionOwner(worker, sessionKey) {
     if (
       sessionKey &&
       this.sessionOwners.get(sessionKey) === worker &&
-      worker.active === null &&
-      worker.queue.length === 0
+      ![...worker.active.values()].some(
+        (active) => active.sessionKey === sessionKey,
+      ) &&
+      !worker.queue.some((queued) => queued.sessionKey === sessionKey)
     ) {
       this.sessionOwners.delete(sessionKey);
-      worker.ownerSessionKey = null;
-      worker.lastIdleAt = Date.now();
+      worker.ownerSessionKeys.delete(sessionKey);
+      if (
+        worker.active.size === 0 &&
+        worker.queue.length === 0 &&
+        worker.ownerSessionKeys.size === 0
+      ) {
+        worker.lastIdleAt = Date.now();
+      }
     }
   }
 
@@ -266,15 +361,15 @@ export class WorkerPool {
       this.requestPump();
       return;
     }
-    if (message?.type !== "response" || !worker.active) {
+    if (message?.type !== "response") {
       return;
     }
-    if (message.id !== worker.active.id) {
+    const active = worker.active.get(message.id);
+    if (!active) {
       return;
     }
 
-    const active = worker.active;
-    worker.active = null;
+    worker.active.delete(message.id);
     clearTimeout(active.timer);
     if (message.ok) {
       active.resolve({
@@ -285,14 +380,15 @@ export class WorkerPool {
     } else {
       const error = new Error(message.error?.message ?? "worker request failed");
       error.stack = message.error?.stack ?? error.stack;
+      error.name = message.error?.name ?? error.name;
+      if (message.error?.code) {
+        error.code = message.error.code;
+      }
       active.reject(error);
     }
 
-    if (worker.queue.length > 0) {
-      this.drain(worker);
-      return;
-    }
-    this.releaseSessionOwner(worker);
+    this.releaseSessionOwner(worker, active.sessionKey);
+    this.drain(worker);
     this.requestPump();
   }
 
@@ -304,21 +400,21 @@ export class WorkerPool {
     if (this.workers.get(worker.slot) === worker) {
       this.workers.delete(worker.slot);
     }
-    if (
-      worker.ownerSessionKey &&
-      this.sessionOwners.get(worker.ownerSessionKey) === worker
-    ) {
-      this.sessionOwners.delete(worker.ownerSessionKey);
+    for (const sessionKey of worker.ownerSessionKeys) {
+      if (this.sessionOwners.get(sessionKey) === worker) {
+        this.sessionOwners.delete(sessionKey);
+      }
     }
 
     const error = new Error(
       `worker ${worker.slot} exited code=${String(code)} signal=${String(signal)}`,
     );
     worker.rejectStartup?.(error);
-    if (worker.active) {
-      clearTimeout(worker.active.timer);
-      worker.active.reject(error);
+    for (const active of worker.active.values()) {
+      clearTimeout(active.timer);
+      active.reject(error);
     }
+    worker.active.clear();
     if (!this.closing && worker.queue.length > 0) {
       this.pending.unshift(...worker.queue);
     } else {
@@ -356,8 +452,8 @@ export class WorkerPool {
         (worker) =>
           worker.ready &&
           !worker.retiring &&
-          worker.ownerSessionKey === null &&
-          worker.active === null &&
+          worker.ownerSessionKeys.size === 0 &&
+          worker.active.size === 0 &&
           worker.queue.length === 0 &&
           now - worker.lastIdleAt >= this.idleTimeoutMs,
       )
@@ -400,6 +496,8 @@ export class WorkerPool {
       started: this.started,
       minWorkers: this.minWorkers,
       maxWorkers: this.maxWorkers,
+      sessionsPerWorker: this.sessionsPerWorker,
+      maxActiveSessions: this.maxWorkers * this.sessionsPerWorker,
       idleTimeoutMs: this.idleTimeoutMs,
       pending: this.pending.length,
       workers: [...this.workers.values()]
@@ -409,11 +507,17 @@ export class WorkerPool {
           pid: worker.pid,
           ready: worker.ready,
           retiring: worker.retiring,
-          sessionKey: worker.ownerSessionKey,
-          active: worker.active?.id ?? null,
+          sessionKeys: [...worker.ownerSessionKeys],
+          assignedSessions: worker.ownerSessionKeys.size,
+          active: [...worker.active.values()].map((job) => ({
+            requestId: job.id,
+            sessionKey: job.sessionKey,
+            kind: job.request?.kind,
+          })),
+          activeCount: worker.active.size,
           queued: worker.queue.length,
           idleMs:
-            worker.active === null && worker.ownerSessionKey === null
+            worker.active.size === 0 && worker.ownerSessionKeys.size === 0
               ? Math.max(0, Date.now() - worker.lastIdleAt)
               : 0,
         })),

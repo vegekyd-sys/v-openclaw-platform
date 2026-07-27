@@ -4,7 +4,8 @@ set -euo pipefail
 TARGET="${VLAB_SSH_TARGET:-root@43.133.80.6}"
 IDENTITY_FILE="${VLAB_SSH_IDENTITY:-$HOME/.ssh/id_rsa}"
 MIN_WORKERS="${VLAB_WORKER_MIN_COUNT:-1}"
-WORKER_COUNT="${VLAB_WORKER_COUNT:-2}"
+WORKER_COUNT="${VLAB_WORKER_COUNT:-3}"
+SESSIONS_PER_WORKER="${VLAB_WORKER_SESSIONS_PER_WORKER:-3}"
 IDLE_TIMEOUT_MS="${VLAB_WORKER_IDLE_TIMEOUT_MS:-180000}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EXPERIMENT_DIR="${REPO_ROOT}/experiments/agent-worker-isolation-v1"
@@ -35,6 +36,7 @@ scp \
   "${REPO_ROOT}/scripts/rollback-agent-worker-experiment.sh" \
   "${REPO_ROOT}/tests/vlab-agent-worker-remote.sh" \
   "${REPO_ROOT}/tests/vlab-agent-worker-soak.sh" \
+  "${REPO_ROOT}/tests/vlab-agent-worker-faults.sh" \
   "${TARGET}:/tmp/"
 
 ssh \
@@ -42,4 +44,4 @@ ssh \
   -o IdentitiesOnly=yes \
   -o StrictHostKeyChecking=yes \
   "$TARGET" \
-  "chmod 0700 /tmp/activate-agent-worker-experiment.sh /tmp/rollback-agent-worker-experiment.sh /tmp/vlab-agent-worker-remote.sh /tmp/vlab-agent-worker-soak.sh && PLATFORM_COMMIT=${PLATFORM_COMMIT} VLAB_WORKER_MIN_COUNT=${MIN_WORKERS} VLAB_WORKER_COUNT=${WORKER_COUNT} VLAB_WORKER_IDLE_TIMEOUT_MS=${IDLE_TIMEOUT_MS} /tmp/activate-agent-worker-experiment.sh"
+  "chmod 0700 /tmp/activate-agent-worker-experiment.sh /tmp/rollback-agent-worker-experiment.sh /tmp/vlab-agent-worker-remote.sh /tmp/vlab-agent-worker-soak.sh /tmp/vlab-agent-worker-faults.sh && PLATFORM_COMMIT=${PLATFORM_COMMIT} VLAB_WORKER_MIN_COUNT=${MIN_WORKERS} VLAB_WORKER_COUNT=${WORKER_COUNT} VLAB_WORKER_SESSIONS_PER_WORKER=${SESSIONS_PER_WORKER} VLAB_WORKER_IDLE_TIMEOUT_MS=${IDLE_TIMEOUT_MS} /tmp/activate-agent-worker-experiment.sh"

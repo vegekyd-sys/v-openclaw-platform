@@ -5,7 +5,7 @@ LAB_ROOT="${LAB_ROOT:-/srv/vlab}"
 CONFIG_PATH="${LAB_ROOT}/state/openclaw.json"
 OPENCLAW="/opt/vlab/current/node_modules/openclaw/openclaw.mjs"
 NODE="/opt/vlab/node/bin/node"
-SESSION_COUNT="${VLAB_SOAK_SESSION_COUNT:-8}"
+SESSION_COUNT="${VLAB_SOAK_SESSION_COUNT:-9}"
 ROUNDS="${VLAB_SOAK_ROUNDS:-3}"
 TOOL_HOLD_SECONDS="${VLAB_SOAK_TOOL_HOLD_SECONDS:-30}"
 GATEWAY_TIMEOUT_MS="${VLAB_SOAK_GATEWAY_TIMEOUT_MS:-240000}"
@@ -15,6 +15,10 @@ TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 SESSION_TOKEN="$(printf '%s' "$TIMESTAMP" | tr '[:upper:]' '[:lower:]')"
 SESSION_PREFIX="agent:makaron:explicit:vlab-worker-soak-${SESSION_TOKEN}"
 REPORT_DIR="${LAB_ROOT}/logs/agent-worker-soak-${TIMESTAMP}"
+METRICS_PATH="${REPORT_DIR}/metrics.jsonl"
+MONITOR_STOP="${REPORT_DIR}/monitor.stop"
+MONITOR_INTERVAL_SECONDS="${VLAB_SOAK_MONITOR_INTERVAL_SECONDS:-5}"
+MONITOR_PID=""
 
 call_gateway() {
   sudo -u vlab env \
@@ -63,6 +67,93 @@ record_service_sample() {
     --value > "$output_path"
 }
 
+monitor_metrics() {
+  local sample_index=0
+  while [[ ! -f "$MONITOR_STOP" ]]; do
+    sample_index=$((sample_index + 1))
+    local health_path="${REPORT_DIR}/.monitor-health-${sample_index}.json"
+    local status_path="${REPORT_DIR}/.monitor-status-${sample_index}.json"
+    if call_gateway_to_file health '{}' "$health_path" \
+      && call_gateway_to_file vlab.workers.status '{}' "$status_path"; then
+      local memory_current
+      local memory_peak
+      local cpu_usage_nsec
+      local restarts
+      local worker_pids
+      local worker_rss_kb=0
+      local worker_cpu_percent=0
+      memory_current="$(
+        systemctl show openclaw-vlab-gateway.service -p MemoryCurrent --value
+      )"
+      memory_peak="$(
+        systemctl show openclaw-vlab-gateway.service -p MemoryPeak --value
+      )"
+      cpu_usage_nsec="$(
+        systemctl show openclaw-vlab-gateway.service -p CPUUsageNSec --value
+      )"
+      restarts="$(
+        systemctl show openclaw-vlab-gateway.service -p NRestarts --value
+      )"
+      worker_pids="$(
+        payload "$status_path" | jq -r '[.workers[].pid] | join(",")'
+      )"
+      if [[ -n "$worker_pids" ]]; then
+        worker_rss_kb="$(
+          ps -o rss= -p "$worker_pids" 2>/dev/null \
+            | awk '{sum += $1} END {print sum + 0}'
+        )"
+        worker_cpu_percent="$(
+          ps -o %cpu= -p "$worker_pids" 2>/dev/null \
+            | awk '{sum += $1} END {printf "%.3f", sum + 0}'
+        )"
+      fi
+      jq -cn \
+        --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        --slurpfile health "$health_path" \
+        --slurpfile status "$status_path" \
+        --argjson memory_current "${memory_current:-0}" \
+        --argjson memory_peak "${memory_peak:-0}" \
+        --argjson cpu_usage_nsec "${cpu_usage_nsec:-0}" \
+        --argjson restarts "${restarts:-0}" \
+        --argjson worker_rss_kb "$worker_rss_kb" \
+        --argjson worker_cpu_percent "$worker_cpu_percent" \
+        '{
+          timestamp: $timestamp,
+          gateway: {
+            eventLoop: (($health[0].result // $health[0]).eventLoop),
+            memoryCurrentBytes: $memory_current,
+            memoryPeakBytes: $memory_peak,
+            cpuUsageNSec: $cpu_usage_nsec,
+            restarts: $restarts
+          },
+          pool: (
+            ($status[0].result // $status[0])
+            | {
+                workers: (.workers | length),
+                activeSessions: ([.workers[].activeCount] | add // 0),
+                pending,
+                capacity: .maxActiveSessions
+              }
+          ),
+          workers: {
+            rssKb: $worker_rss_kb,
+            cpuPercent: $worker_cpu_percent
+          }
+        }' >> "$METRICS_PATH"
+    fi
+    rm -f "$health_path" "$status_path"
+    sleep "$MONITOR_INTERVAL_SECONDS"
+  done
+}
+
+stop_monitor() {
+  if [[ -n "$MONITOR_PID" ]]; then
+    touch "$MONITOR_STOP"
+    wait "$MONITOR_PID" || true
+    MONITOR_PID=""
+  fi
+}
+
 if [[ "$(id -u)" -ne 0 ]]; then
   echo "vlab-agent-worker-soak.sh must run as root" >&2
   exit 1
@@ -94,6 +185,7 @@ if ! [[ "$MIN_DURATION_SECONDS" =~ ^[0-9]+$ ]] \
 fi
 
 install -d -o vlab -g vlab -m 0700 "$REPORT_DIR"
+trap stop_monitor EXIT
 started_epoch="$(date +%s)"
 baseline_restarts="$(
   systemctl show openclaw-vlab-gateway.service -p NRestarts --value
@@ -105,8 +197,19 @@ call_gateway_to_file \
 max_workers="$(
   payload "${REPORT_DIR}/status-before.json" | jq -r '.maxWorkers'
 )"
-(( SESSION_COUNT <= max_workers ))
+sessions_per_worker="$(
+  payload "${REPORT_DIR}/status-before.json" | jq -r '.sessionsPerWorker'
+)"
+max_active_sessions="$(
+  payload "${REPORT_DIR}/status-before.json" | jq -r '.maxActiveSessions'
+)"
+[[ "$max_workers" == "3" ]]
+[[ "$sessions_per_worker" == "3" ]]
+[[ "$max_active_sessions" == "9" ]]
+(( SESSION_COUNT <= max_active_sessions ))
 record_service_sample "${REPORT_DIR}/service-before.txt"
+monitor_metrics &
+MONITOR_PID=$!
 
 declare -a session_ids=()
 for index in $(seq 1 "$SESSION_COUNT"); do
@@ -153,7 +256,12 @@ for round in $(seq 1 "$ROUNDS"); do
       payload "${REPORT_DIR}/status-r${round}-during.json" \
         | jq -r '.pending'
     )"
-    if [[ "$scaled_workers" == "$SESSION_COUNT" ]] \
+    active_requests="$(
+      payload "${REPORT_DIR}/status-r${round}-during.json" \
+        | jq -r '[.workers[].activeCount] | add // 0'
+    )"
+    if [[ "$scaled_workers" == "$max_workers" ]] \
+      && [[ "$active_requests" == "$SESSION_COUNT" ]] \
       && [[ "$pending_requests" == "0" ]]; then
       break
     fi
@@ -190,7 +298,8 @@ for round in $(seq 1 "$ROUNDS"); do
     fi
   done
 
-  [[ "$scaled_workers" == "$SESSION_COUNT" ]]
+  [[ "$scaled_workers" == "$max_workers" ]]
+  [[ "$active_requests" == "$SESSION_COUNT" ]]
   [[ "$pending_requests" == "0" ]]
   jq -e \
     '(.result // .).eventLoop.degraded == false' \
@@ -247,6 +356,7 @@ record_service_sample "${REPORT_DIR}/service-after.txt"
 final_restarts="$(
   systemctl show openclaw-vlab-gateway.service -p NRestarts --value
 )"
+stop_monitor
 [[ "$baseline_restarts" == "$final_restarts" ]]
 jq -e \
   '(.result // .).eventLoop.degraded == false' \
@@ -267,6 +377,26 @@ unique_worker_pids="$(
     '[.[] | (.result // .).workerPid] | unique | length' \
     "${REPORT_DIR}"/agent-s*-r*.json
 )"
+metrics_summary="$(
+  jq -s '{
+    samples: length,
+    degradedSamples: ([.[] | select(.gateway.eventLoop.degraded == true)] | length),
+    maxEventLoopUtilization: ([.[].gateway.eventLoop.utilization] | max // 0),
+    maxEventLoopDelayP99Ms: ([.[].gateway.eventLoop.delayP99Ms] | max // 0),
+    maxEventLoopDelayMaxMs: ([.[].gateway.eventLoop.delayMaxMs] | max // 0),
+    maxGatewayCpuCoreRatio: ([.[].gateway.eventLoop.cpuCoreRatio] | max // 0),
+    maxGatewayMemoryCurrentBytes: ([.[].gateway.memoryCurrentBytes] | max // 0),
+    maxGatewayMemoryPeakBytes: ([.[].gateway.memoryPeakBytes] | max // 0),
+    maxWorkerRssKb: ([.[].workers.rssKb] | max // 0),
+    maxWorkerCpuPercent: ([.[].workers.cpuPercent] | max // 0),
+    peakWorkers: ([.[].pool.workers] | max // 0),
+    peakActiveSessions: ([.[].pool.activeSessions] | max // 0),
+    maxPending: ([.[].pool.pending] | max // 0)
+  }' "$METRICS_PATH"
+)"
+[[ "$(jq -r '.samples > 0' <<< "$metrics_summary")" == "true" ]]
+[[ "$(jq -r '.degradedSamples' <<< "$metrics_summary")" == "0" ]]
+[[ "$(jq -r '.peakActiveSessions' <<< "$metrics_summary")" == "$SESSION_COUNT" ]]
 
 jq -n \
   --arg timestamp "$TIMESTAMP" \
@@ -278,6 +408,9 @@ jq -n \
   --argjson native_session_count "$native_session_count" \
   --argjson peak_worker_count "$peak_worker_count" \
   --argjson unique_worker_pids "$unique_worker_pids" \
+  --argjson sessions_per_worker "$sessions_per_worker" \
+  --argjson max_active_sessions "$max_active_sessions" \
+  --argjson metrics "$metrics_summary" \
   --arg baseline_restarts "$baseline_restarts" \
   --arg final_restarts "$final_restarts" \
   '{
@@ -298,6 +431,8 @@ jq -n \
     },
     workers: {
       peak: $peak_worker_count,
+      sessionsPerWorker: $sessions_per_worker,
+      maxActiveSessions: $max_active_sessions,
       uniquePidsAcrossRun: $unique_worker_pids,
       pendingDuringSamples: 0
     },
@@ -305,7 +440,8 @@ jq -n \
       eventLoopDegraded: false,
       restartsBefore: $baseline_restarts,
       restartsAfter: $final_restarts
-    }
+    },
+    metrics: $metrics
   }' > "${REPORT_DIR}/summary.json"
 chown vlab:vlab "${REPORT_DIR}/summary.json"
 chmod 0600 "${REPORT_DIR}/summary.json"

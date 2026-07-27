@@ -3,7 +3,8 @@ set -Eeuo pipefail
 
 LAB_ROOT="${LAB_ROOT:-/srv/vlab}"
 MIN_WORKERS="${VLAB_WORKER_MIN_COUNT:-1}"
-WORKER_COUNT="${VLAB_WORKER_COUNT:-2}"
+WORKER_COUNT="${VLAB_WORKER_COUNT:-3}"
+SESSIONS_PER_WORKER="${VLAB_WORKER_SESSIONS_PER_WORKER:-3}"
 IDLE_TIMEOUT_MS="${VLAB_WORKER_IDLE_TIMEOUT_MS:-180000}"
 ARCHIVE_PATH="${ARCHIVE_PATH:-/tmp/vlab-agent-worker-isolation-v1.tar.gz}"
 PLATFORM_COMMIT="${PLATFORM_COMMIT:?PLATFORM_COMMIT is required}"
@@ -51,8 +52,13 @@ if ! [[ "$MIN_WORKERS" =~ ^[0-9]+$ ]] \
   exit 1
 fi
 if ! [[ "$WORKER_COUNT" =~ ^[0-9]+$ ]] \
-  || (( WORKER_COUNT < MIN_WORKERS || WORKER_COUNT > 16 )); then
-  echo "VLAB_WORKER_COUNT must be an integer between VLAB_WORKER_MIN_COUNT and 16" >&2
+  || (( WORKER_COUNT < MIN_WORKERS || WORKER_COUNT > 3 )); then
+  echo "VLAB_WORKER_COUNT must be an integer between VLAB_WORKER_MIN_COUNT and 3" >&2
+  exit 1
+fi
+if ! [[ "$SESSIONS_PER_WORKER" =~ ^[0-9]+$ ]] \
+  || (( SESSIONS_PER_WORKER < 1 || SESSIONS_PER_WORKER > 3 )); then
+  echo "VLAB_WORKER_SESSIONS_PER_WORKER must be an integer between 1 and 3" >&2
   exit 1
 fi
 if ! [[ "$IDLE_TIMEOUT_MS" =~ ^[0-9]+$ ]] \
@@ -134,11 +140,17 @@ jq \
   --arg experiment_root "$EXPERIMENT_ROOT" \
   --argjson min_workers "$MIN_WORKERS" \
   --argjson worker_count "$WORKER_COUNT" \
+  --argjson sessions_per_worker "$SESSIONS_PER_WORKER" \
   --argjson idle_timeout_ms "$IDLE_TIMEOUT_MS" \
   '
     .tools = (.tools // {})
     | .tools.sessions = (.tools.sessions // {})
     | .tools.sessions.visibility = "agent"
+    | .agents = (.agents // {})
+    | .agents.defaults = (.agents.defaults // {})
+    | .agents.defaults.maxConcurrent = $sessions_per_worker
+    | .agents.defaults.subagents = (.agents.defaults.subagents // {})
+    | .agents.defaults.subagents.maxConcurrent = 1
     | .plugins = (.plugins // {})
     | .plugins.load = (.plugins.load // {})
     | .plugins.load.paths = (
@@ -155,6 +167,7 @@ jq \
         config: {
           minWorkers: $min_workers,
           maxWorkers: $worker_count,
+          sessionsPerWorker: $sessions_per_worker,
           idleTimeoutMs: $idle_timeout_ms,
           requestTimeoutMs: 600000
         }
@@ -214,5 +227,5 @@ rollback_armed=false
 trap - ERR
 
 echo "vLab Agent Worker Isolation activated"
-jq '{ok, result: ((.result // .) | {started, minWorkers, maxWorkers, idleTimeoutMs, pending, workers})}' \
+jq '{ok, result: ((.result // .) | {started, minWorkers, maxWorkers, sessionsPerWorker, maxActiveSessions, idleTimeoutMs, pending, workers})}' \
   "${LAB_ROOT}/logs/agent-worker-status-${TIMESTAMP}.json"

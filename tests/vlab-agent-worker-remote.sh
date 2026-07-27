@@ -7,7 +7,7 @@ OPENCLAW="/opt/vlab/current/node_modules/openclaw/openclaw.mjs"
 NODE="/opt/vlab/node/bin/node"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 REPORT_DIR="${LAB_ROOT}/logs/agent-worker-elastic-acceptance-${TIMESTAMP}"
-HOLD_DURATION_MS="${VLAB_ELASTIC_HOLD_DURATION_MS:-5000}"
+HOLD_DURATION_MS="${VLAB_ELASTIC_HOLD_DURATION_MS:-3000}"
 
 call_gateway() {
   sudo -u vlab env \
@@ -18,6 +18,7 @@ call_gateway() {
     OPENCLAW_WORKSPACE_DIR="${LAB_ROOT}/workspace" \
     "$NODE" "$OPENCLAW" gateway call "$1" \
     --params "$2" \
+    --timeout 30000 \
     --json
 }
 
@@ -26,25 +27,30 @@ call_gateway_to_file() {
   local params="$2"
   local output_path="$3"
   local temp_path="${output_path}.tmp"
-  local call_exit
-
-  set +e
   call_gateway "$method" "$params" > "$temp_path"
-  call_exit=$?
-  set -e
-  if jq -e '.' "$temp_path" >/dev/null 2>&1; then
-    mv "$temp_path" "$output_path"
-    return 0
-  fi
-  rm -f "$temp_path"
-  if (( call_exit == 0 )); then
-    return 1
-  fi
-  return "$call_exit"
+  jq -e '.' "$temp_path" >/dev/null
+  mv "$temp_path" "$output_path"
 }
 
 payload() {
   jq -c '.result // .' "$1"
+}
+
+wait_for_operation() {
+  local operation_id="$1"
+  local expected_state="$2"
+  local output_path="$3"
+  for _ in $(seq 1 100); do
+    call_gateway_to_file \
+      vlab.workers.operation \
+      "$(jq -cn --arg operation_id "$operation_id" '{operationId: $operation_id}')" \
+      "$output_path"
+    if [[ "$(payload "$output_path" | jq -r '.state')" == "$expected_state" ]]; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  return 1
 }
 
 if [[ "$(id -u)" -ne 0 ]]; then
@@ -56,161 +62,234 @@ install -d -o vlab -g vlab -m 0700 "$REPORT_DIR"
 baseline_restarts="$(
   systemctl show openclaw-vlab-gateway.service -p NRestarts --value
 )"
-call_gateway_to_file \
-  vlab.workers.status \
-  '{}' \
-  "${REPORT_DIR}/status-before.json"
-min_workers="$(
-  payload "${REPORT_DIR}/status-before.json" | jq -r '.minWorkers'
-)"
-max_workers="$(
-  payload "${REPORT_DIR}/status-before.json" | jq -r '.maxWorkers'
-)"
-idle_timeout_ms="$(
-  payload "${REPORT_DIR}/status-before.json" | jq -r '.idleTimeoutMs'
-)"
-initial_workers="$(
-  payload "${REPORT_DIR}/status-before.json" | jq -r '.workers | length'
-)"
-if [[ "$initial_workers" != "$min_workers" ]]; then
-  initial_quiesce_seconds="$((idle_timeout_ms / 1000 + 35))"
-  sleep "$initial_quiesce_seconds"
-  call_gateway_to_file \
-    vlab.workers.status \
-    '{}' \
-    "${REPORT_DIR}/status-before.json"
-  initial_workers="$(
-    payload "${REPORT_DIR}/status-before.json" | jq -r '.workers | length'
-  )"
+call_gateway_to_file vlab.workers.status '{}' "${REPORT_DIR}/status-before.json"
+status_before="$(payload "${REPORT_DIR}/status-before.json")"
+min_workers="$(jq -r '.minWorkers' <<< "$status_before")"
+max_workers="$(jq -r '.maxWorkers' <<< "$status_before")"
+sessions_per_worker="$(jq -r '.sessionsPerWorker' <<< "$status_before")"
+max_active_sessions="$(jq -r '.maxActiveSessions' <<< "$status_before")"
+idle_timeout_ms="$(jq -r '.idleTimeoutMs' <<< "$status_before")"
+[[ "$max_workers" == "3" ]]
+[[ "$sessions_per_worker" == "3" ]]
+[[ "$max_active_sessions" == "9" ]]
+jq -e \
+  '.openClawConcurrency.maxConcurrent == 3
+   and .openClawConcurrency.subagentsMaxConcurrent == 1
+   and .integration.nativeAgentHarnessDispatchAttached == false
+   and .integration.productionPromotionBlocked == true' \
+  <<< "$status_before" >/dev/null
+
+if [[ "$(jq -r '.workers | length' <<< "$status_before")" != "$min_workers" ]]; then
+  sleep "$((idle_timeout_ms / 1000 + 35))"
 fi
-[[ "$initial_workers" == "$min_workers" ]]
 
 declare -a request_pids=()
-for index in $(seq 1 "$max_workers"); do
-  session_key="agent:makaron:explicit:vlab-worker-elastic-${index}"
+for index in $(seq 1 "$max_active_sessions"); do
   call_gateway_to_file \
     vlab.workers.hold \
-    "{\"sessionKey\":\"${session_key}\",\"durationMs\":${HOLD_DURATION_MS}}" \
+    "{\"sessionKey\":\"agent:makaron:explicit:vlab-worker-elastic-${index}\",\"durationMs\":${HOLD_DURATION_MS}}" \
     "${REPORT_DIR}/hold-${index}.json" &
   request_pids+=("$!")
 done
 
-scaled_workers=0
 for _ in $(seq 1 100); do
-  if ! call_gateway_to_file \
+  call_gateway_to_file \
     vlab.workers.status \
     '{}' \
-    "${REPORT_DIR}/status-during.json"; then
-    sleep 0.1
-    continue
-  fi
-  scaled_workers="$(
-    payload "${REPORT_DIR}/status-during.json" | jq -r '.workers | length'
+    "${REPORT_DIR}/status-saturated.json"
+  saturated="$(
+    payload "${REPORT_DIR}/status-saturated.json" \
+      | jq -r '(.workers | length) == 3
+        and ([.workers[].activeCount] | add) == 9
+        and ([.workers[].activeCount] | sort) == [3,3,3]
+        and .pending == 0'
   )"
-  if [[ "$scaled_workers" == "$max_workers" ]]; then
-    break
-  fi
+  [[ "$saturated" == "true" ]] && break
   sleep 0.1
 done
-[[ "$scaled_workers" == "$max_workers" ]]
-call_gateway_to_file health '{}' "${REPORT_DIR}/health-during.json"
+[[ "$saturated" == "true" ]]
+call_gateway_to_file health '{}' "${REPORT_DIR}/health-saturated.json"
 
 for request_pid in "${request_pids[@]}"; do
   wait "$request_pid"
 done
 
-worker_pids="$(
-  for index in $(seq 1 "$max_workers"); do
+worker_distribution="$(
+  for index in $(seq 1 "$max_active_sessions"); do
     payload "${REPORT_DIR}/hold-${index}.json" | jq -r '.workerPid'
-  done | sort -u
+  done | sort | uniq -c | awk '{print $1}' | sort -n | tr '\n' ' '
 )"
-unique_worker_count="$(printf '%s\n' "$worker_pids" | sed '/^$/d' | wc -l | tr -d ' ')"
-[[ "$unique_worker_count" == "$max_workers" ]]
+[[ "$worker_distribution" == "3 3 3 " ]]
 
-sticky_session="agent:makaron:explicit:vlab-worker-elastic-sticky"
-call_gateway_to_file \
-  vlab.workers.hold \
-  "{\"sessionKey\":\"${sticky_session}\",\"durationMs\":1000}" \
-  "${REPORT_DIR}/sticky-hold.json" &
-sticky_hold_pid=$!
-sleep 0.1
-call_gateway_to_file \
-  vlab.workers.ping \
-  "{\"sessionKey\":\"${sticky_session}\"}" \
-  "${REPORT_DIR}/sticky-ping.json" &
-sticky_ping_pid=$!
-wait "$sticky_hold_pid"
-wait "$sticky_ping_pid"
-sticky_hold_worker="$(
-  payload "${REPORT_DIR}/sticky-hold.json" | jq -r '.workerPid'
-)"
-sticky_ping_worker="$(
-  payload "${REPORT_DIR}/sticky-ping.json" | jq -r '.workerPid'
-)"
-[[ "$sticky_hold_worker" == "$sticky_ping_worker" ]]
-
-scale_down_wait_seconds="$((idle_timeout_ms / 1000 + 35))"
-sleep "$scale_down_wait_seconds"
-final_workers="$max_workers"
-for _ in $(seq 1 5); do
-  if ! call_gateway_to_file \
+declare -a capped_pids=()
+for index in $(seq 1 10); do
+  call_gateway_to_file \
+    vlab.workers.hold \
+    "{\"sessionKey\":\"agent:makaron:explicit:vlab-worker-capped-${index}\",\"durationMs\":${HOLD_DURATION_MS}}" \
+    "${REPORT_DIR}/capped-${index}.json" &
+  capped_pids+=("$!")
+done
+for _ in $(seq 1 100); do
+  call_gateway_to_file \
     vlab.workers.status \
     '{}' \
-    "${REPORT_DIR}/status-after.json"; then
-    sleep 1
-    continue
-  fi
-  final_workers="$(
-    payload "${REPORT_DIR}/status-after.json" | jq -r '.workers | length'
+    "${REPORT_DIR}/status-capped.json"
+  pending="$(
+    payload "${REPORT_DIR}/status-capped.json" | jq -r '.pending'
   )"
-  if [[ "$final_workers" == "$min_workers" ]]; then
-    break
-  fi
-  sleep 1
+  [[ "$pending" == "1" ]] && break
+  sleep 0.1
 done
-[[ "$final_workers" == "$min_workers" ]]
+[[ "$pending" == "1" ]]
+for request_pid in "${capped_pids[@]}"; do
+  wait "$request_pid"
+done
+
+crash_key="crash-${TIMESTAMP}"
+call_gateway_to_file \
+  vlab.workers.start \
+  "$(jq -cn --arg key "$crash_key" '{
+    idempotencyKey: $key,
+    kind: "hold",
+    sessionKey: "agent:makaron:explicit:vlab-worker-crash",
+    durationMs: 10000
+  }')" \
+  "${REPORT_DIR}/crash-start.json"
+crash_operation="$(
+  payload "${REPORT_DIR}/crash-start.json" | jq -r '.operation.operationId'
+)"
+crash_request="$(
+  payload "${REPORT_DIR}/crash-start.json" | jq -r '.operation.requestId'
+)"
+for _ in $(seq 1 100); do
+  call_gateway_to_file \
+    vlab.workers.status \
+    '{}' \
+    "${REPORT_DIR}/status-before-crash.json"
+  crash_slot="$(
+    payload "${REPORT_DIR}/status-before-crash.json" \
+      | jq -r --arg request_id "$crash_request" \
+        '.workers[]
+         | select(any(.active[]; .requestId == $request_id))
+         | .slot' \
+      | head -n 1
+  )"
+  [[ -n "$crash_slot" ]] && break
+  sleep 0.1
+done
+[[ -n "$crash_slot" ]]
+call_gateway_to_file \
+  vlab.workers.kill \
+  "$(jq -cn --argjson slot "$crash_slot" '{slot: $slot}')" \
+  "${REPORT_DIR}/crash-kill.json"
+jq -e '(.result // .).terminated == true' \
+  "${REPORT_DIR}/crash-kill.json" >/dev/null
+wait_for_operation \
+  "$crash_operation" \
+  failed \
+  "${REPORT_DIR}/crash-operation.json"
+
+call_gateway_to_file \
+  vlab.workers.start \
+  "$(jq -cn --arg key "$crash_key" '{
+    idempotencyKey: $key,
+    kind: "hold",
+    sessionKey: "agent:makaron:explicit:vlab-worker-crash",
+    durationMs: 10000
+  }')" \
+  "${REPORT_DIR}/crash-deduplicated.json"
+jq -e \
+  --arg operation_id "$crash_operation" \
+  '(.result // .).deduplicated == true
+   and (.result // .).operation.operationId == $operation_id
+   and (.result // .).operation.state == "failed"' \
+  "${REPORT_DIR}/crash-deduplicated.json" >/dev/null
+
+cancel_key="cancel-${TIMESTAMP}"
+call_gateway_to_file \
+  vlab.workers.start \
+  "$(jq -cn --arg key "$cancel_key" '{
+    idempotencyKey: $key,
+    kind: "hold",
+    sessionKey: "agent:makaron:explicit:vlab-worker-cancel",
+    durationMs: 10000
+  }')" \
+  "${REPORT_DIR}/cancel-start.json"
+cancel_operation="$(
+  payload "${REPORT_DIR}/cancel-start.json" | jq -r '.operation.operationId'
+)"
+call_gateway_to_file \
+  vlab.workers.cancel \
+  "$(jq -cn --arg operation_id "$cancel_operation" '{operationId: $operation_id}')" \
+  "${REPORT_DIR}/cancel-request.json"
+jq -e '(.result // .).cancelled == true' \
+  "${REPORT_DIR}/cancel-request.json" >/dev/null
+wait_for_operation \
+  "$cancel_operation" \
+  cancelled \
+  "${REPORT_DIR}/cancel-operation.json"
+
+recovery_key="recovery-${TIMESTAMP}"
+call_gateway_to_file \
+  vlab.workers.start \
+  "$(jq -cn --arg key "$recovery_key" '{
+    idempotencyKey: $key,
+    kind: "hold",
+    sessionKey: "agent:makaron:explicit:vlab-worker-recovery",
+    durationMs: 50
+  }')" \
+  "${REPORT_DIR}/recovery-start.json"
+recovery_operation="$(
+  payload "${REPORT_DIR}/recovery-start.json" | jq -r '.operation.operationId'
+)"
+wait_for_operation \
+  "$recovery_operation" \
+  succeeded \
+  "${REPORT_DIR}/recovery-operation.json"
 
 final_restarts="$(
   systemctl show openclaw-vlab-gateway.service -p NRestarts --value
 )"
 [[ "$baseline_restarts" == "$final_restarts" ]]
 jq -e '(.result // .).eventLoop.degraded == false' \
-  "${REPORT_DIR}/health-during.json" >/dev/null
+  "${REPORT_DIR}/health-saturated.json" >/dev/null
 
 jq -n \
   --arg timestamp "$TIMESTAMP" \
-  --argjson min_workers "$min_workers" \
-  --argjson max_workers "$max_workers" \
-  --argjson scaled_workers "$scaled_workers" \
-  --argjson final_workers "$final_workers" \
-  --argjson idle_timeout_ms "$idle_timeout_ms" \
-  --argjson unique_worker_count "$unique_worker_count" \
-  --arg sticky_session "$sticky_session" \
-  --arg sticky_worker "$sticky_hold_worker" \
+  --argjson workers "$max_workers" \
+  --argjson sessions_per_worker "$sessions_per_worker" \
+  --argjson capacity "$max_active_sessions" \
+  --arg distribution "$worker_distribution" \
+  --arg crash_operation "$crash_operation" \
+  --arg cancel_operation "$cancel_operation" \
+  --arg recovery_operation "$recovery_operation" \
   --arg baseline_restarts "$baseline_restarts" \
   --arg final_restarts "$final_restarts" \
   '{
     ok: true,
     timestamp: $timestamp,
-    workers: {
-      min: $min_workers,
-      max: $max_workers,
-      scaled: $scaled_workers,
-      final: $final_workers,
-      uniquePids: $unique_worker_count,
-      idleTimeoutMs: $idle_timeout_ms
+    topology: {
+      maxWorkers: $workers,
+      sessionsPerWorker: $sessions_per_worker,
+      capacity: $capacity,
+      pidDistribution: $distribution,
+      tenthSessionQueued: true
     },
-    stickySession: {
-      sessionKey: $sticky_session,
-      workerPid: $sticky_worker
+    recovery: {
+      activeWorkerCrashFailedInFlight: true,
+      idempotencyReusedTerminalResult: true,
+      activeCancellation: true,
+      newIdempotencyKeyRecovered: true,
+      crashOperation: $crash_operation,
+      cancelOperation: $cancel_operation,
+      recoveryOperation: $recovery_operation
     },
-    gatewayRestarts: {
-      before: $baseline_restarts,
-      after: $final_restarts
+    gateway: {
+      eventLoopDegraded: false,
+      restartsBefore: $baseline_restarts,
+      restartsAfter: $final_restarts
     }
-  }' \
-  > "${REPORT_DIR}/summary.json"
+  }' > "${REPORT_DIR}/summary.json"
 chown vlab:vlab "${REPORT_DIR}/summary.json"
 chmod 0600 "${REPORT_DIR}/summary.json"
-
 cat "${REPORT_DIR}/summary.json"
