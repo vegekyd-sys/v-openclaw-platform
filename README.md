@@ -45,3 +45,10 @@ ssh -N -L 23793:127.0.0.1:23793 root@<v-from-versa-host>
 
 Gateway authentication remains enabled; the token is stored only on the host.
 
+## Release protocol
+
+The shared V/Codex experiment, acceptance, production-promotion, and rollback
+contract is documented in
+[`docs/v-release-protocol.md`](docs/v-release-protocol.md).
+Each candidate is evaluated with
+[`docs/vlab-acceptance-checklist.md`](docs/vlab-acceptance-checklist.md).
