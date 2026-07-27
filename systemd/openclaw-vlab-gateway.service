@@ -27,9 +27,9 @@ ProtectHome=true
 ReadWritePaths=/srv/vlab
 RestrictSUIDSGID=true
 LockPersonality=true
-MemoryHigh=3G
-MemoryMax=4G
-CPUQuota=200%
+MemoryHigh=5G
+MemoryMax=6G
+CPUQuota=400%
 
 [Install]
 WantedBy=multi-user.target

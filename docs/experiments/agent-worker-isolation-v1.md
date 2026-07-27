@@ -27,6 +27,8 @@ dispatch, matching OpenClaw's canonical session-key format.
 - Worker count: elastic from `minWorkers` to `maxWorkers`
 - Defaults: `minWorkers=1`, `maxWorkers=2`, `idleTimeoutMs=180000`
 - vLab concurrency acceptance: `minWorkers=1`, `maxWorkers=8`
+- vLab host capacity: 4 vCPUs, `CPUQuota=400%`, `MemoryHigh=5G`,
+  `MemoryMax=6G`
 - Integration: OpenClaw plugin API plus the stable
   `dist/plugin-sdk/agent-runtime.js` entrypoint
 - Feature switch: enable or disable the

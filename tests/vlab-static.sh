@@ -15,6 +15,9 @@ grep -q 'OPENCLAW_STATE_DIR=/srv/vlab/state' "${REPO_ROOT}/systemd/openclaw-vlab
 grep -q 'OPENCLAW_GATEWAY_PORT=23793' "${REPO_ROOT}/systemd/openclaw-vlab-gateway.service"
 grep -q 'ProtectHome=true' "${REPO_ROOT}/systemd/openclaw-vlab-gateway.service"
 grep -q 'NoNewPrivileges=true' "${REPO_ROOT}/systemd/openclaw-vlab-gateway.service"
+grep -q 'CPUQuota=400%' "${REPO_ROOT}/systemd/openclaw-vlab-gateway.service"
+grep -q 'MemoryHigh=5G' "${REPO_ROOT}/systemd/openclaw-vlab-gateway.service"
+grep -q 'MemoryMax=6G' "${REPO_ROOT}/systemd/openclaw-vlab-gateway.service"
 
 if rg -n \
   '(gho_|github_pat_|AKID|secret(id|key)?[[:space:]]*[:=]|app_secret[[:space:]]*[:=])' \
@@ -26,4 +29,3 @@ if rg -n \
 fi
 
 echo "vLab static checks passed"
-
