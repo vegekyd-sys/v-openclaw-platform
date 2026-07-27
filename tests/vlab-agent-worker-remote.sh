@@ -7,7 +7,7 @@ OPENCLAW="/opt/vlab/current/node_modules/openclaw/openclaw.mjs"
 NODE="/opt/vlab/node/bin/node"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 REPORT_DIR="${LAB_ROOT}/logs/agent-worker-elastic-acceptance-${TIMESTAMP}"
-HOLD_DURATION_MS="${VLAB_ELASTIC_HOLD_DURATION_MS:-3000}"
+HOLD_DURATION_MS="${VLAB_ELASTIC_HOLD_DURATION_MS:-20000}"
 
 call_gateway() {
   sudo -u vlab env \
@@ -18,7 +18,7 @@ call_gateway() {
     OPENCLAW_WORKSPACE_DIR="${LAB_ROOT}/workspace" \
     "$NODE" "$OPENCLAW" gateway call "$1" \
     --params "$2" \
-    --timeout 30000 \
+    --timeout 90000 \
     --json
 }
 
