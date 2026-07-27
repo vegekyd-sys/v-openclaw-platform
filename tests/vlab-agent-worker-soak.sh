@@ -8,6 +8,7 @@ NODE="/opt/vlab/node/bin/node"
 SESSION_COUNT="${VLAB_SOAK_SESSION_COUNT:-8}"
 ROUNDS="${VLAB_SOAK_ROUNDS:-4}"
 TOOL_HOLD_SECONDS="${VLAB_SOAK_TOOL_HOLD_SECONDS:-40}"
+GATEWAY_TIMEOUT_MS="${VLAB_SOAK_GATEWAY_TIMEOUT_MS:-240000}"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 SESSION_PREFIX="agent:makaron:explicit:vlab-worker-soak-${TIMESTAMP}"
 REPORT_DIR="${LAB_ROOT}/logs/agent-worker-soak-${TIMESTAMP}"
@@ -21,6 +22,7 @@ call_gateway() {
     OPENCLAW_WORKSPACE_DIR="${LAB_ROOT}/workspace" \
     "$NODE" "$OPENCLAW" gateway call "$1" \
     --params "$2" \
+    --timeout "$GATEWAY_TIMEOUT_MS" \
     --json
 }
 
@@ -74,6 +76,11 @@ fi
 if ! [[ "$TOOL_HOLD_SECONDS" =~ ^[0-9]+$ ]] \
   || (( TOOL_HOLD_SECONDS < 1 || TOOL_HOLD_SECONDS > 50 )); then
   echo "VLAB_SOAK_TOOL_HOLD_SECONDS must be an integer between 1 and 50" >&2
+  exit 1
+fi
+if ! [[ "$GATEWAY_TIMEOUT_MS" =~ ^[0-9]+$ ]] \
+  || (( GATEWAY_TIMEOUT_MS < 10000 || GATEWAY_TIMEOUT_MS > 600000 )); then
+  echo "VLAB_SOAK_GATEWAY_TIMEOUT_MS must be an integer between 10000 and 600000" >&2
   exit 1
 fi
 
