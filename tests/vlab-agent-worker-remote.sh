@@ -115,12 +115,16 @@ sticky_ping_worker="$(
 )"
 [[ "$sticky_hold_worker" == "$sticky_ping_worker" ]]
 
-scale_down_timeout_seconds="$((idle_timeout_ms / 1000 + 45))"
-scale_down_deadline="$((SECONDS + scale_down_timeout_seconds))"
+scale_down_wait_seconds="$((idle_timeout_ms / 1000 + 35))"
+sleep "$scale_down_wait_seconds"
 final_workers="$max_workers"
-while (( SECONDS < scale_down_deadline )); do
-  if ! call_gateway vlab.workers.status '{}' \
-    > "${REPORT_DIR}/status-after.json.tmp"; then
+for _ in $(seq 1 5); do
+  set +e
+  call_gateway vlab.workers.status '{}' \
+    > "${REPORT_DIR}/status-after.json.tmp"
+  status_call_exit=$?
+  set -e
+  if (( status_call_exit != 0 )); then
     rm -f "${REPORT_DIR}/status-after.json.tmp"
     sleep 1
     continue
