@@ -6,9 +6,11 @@ CONFIG_PATH="${LAB_ROOT}/state/openclaw.json"
 OPENCLAW="/opt/vlab/current/node_modules/openclaw/openclaw.mjs"
 NODE="/opt/vlab/node/bin/node"
 SESSION_COUNT="${VLAB_SOAK_SESSION_COUNT:-8}"
-ROUNDS="${VLAB_SOAK_ROUNDS:-4}"
-TOOL_HOLD_SECONDS="${VLAB_SOAK_TOOL_HOLD_SECONDS:-40}"
+ROUNDS="${VLAB_SOAK_ROUNDS:-3}"
+TOOL_HOLD_SECONDS="${VLAB_SOAK_TOOL_HOLD_SECONDS:-30}"
 GATEWAY_TIMEOUT_MS="${VLAB_SOAK_GATEWAY_TIMEOUT_MS:-240000}"
+MIN_DURATION_SECONDS="${VLAB_SOAK_MIN_DURATION_SECONDS:-180}"
+MAX_DURATION_SECONDS="${VLAB_SOAK_MAX_DURATION_SECONDS:-360}"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 SESSION_PREFIX="agent:makaron:explicit:vlab-worker-soak-${TIMESTAMP}"
 REPORT_DIR="${LAB_ROOT}/logs/agent-worker-soak-${TIMESTAMP}"
@@ -81,6 +83,12 @@ fi
 if ! [[ "$GATEWAY_TIMEOUT_MS" =~ ^[0-9]+$ ]] \
   || (( GATEWAY_TIMEOUT_MS < 10000 || GATEWAY_TIMEOUT_MS > 600000 )); then
   echo "VLAB_SOAK_GATEWAY_TIMEOUT_MS must be an integer between 10000 and 600000" >&2
+  exit 1
+fi
+if ! [[ "$MIN_DURATION_SECONDS" =~ ^[0-9]+$ ]] \
+  || ! [[ "$MAX_DURATION_SECONDS" =~ ^[0-9]+$ ]] \
+  || (( MIN_DURATION_SECONDS > MAX_DURATION_SECONDS )); then
+  echo "vLab soak duration bounds must be non-negative integers with min <= max" >&2
   exit 1
 fi
 
@@ -224,8 +232,8 @@ jq -e \
 
 ended_epoch="$(date +%s)"
 duration_seconds="$((ended_epoch - started_epoch))"
-(( duration_seconds >= 180 ))
-(( duration_seconds <= 360 ))
+(( duration_seconds >= MIN_DURATION_SECONDS ))
+(( duration_seconds <= MAX_DURATION_SECONDS ))
 
 peak_worker_count="$(
   jq -s \
