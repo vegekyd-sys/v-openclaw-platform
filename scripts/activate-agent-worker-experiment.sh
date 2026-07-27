@@ -160,13 +160,13 @@ run_openclaw gateway call health --params '{}' --json \
 run_openclaw gateway call vlab.workers.status --params '{}' --json \
   > "${LAB_ROOT}/logs/agent-worker-status-${TIMESTAMP}.json"
 
-worker_count="$(
+ready_worker_count="$(
   jq -r '(.result // .).workers | length' \
     "${LAB_ROOT}/logs/agent-worker-status-${TIMESTAMP}.json"
 )"
-[[ "$worker_count" == "2" ]] || {
-  echo "expected two ready workers, got ${worker_count}" >&2
-  exit 1
+[[ "$ready_worker_count" == "$WORKER_COUNT" ]] || {
+  echo "expected ${WORKER_COUNT} ready workers, got ${ready_worker_count}" >&2
+  false
 }
 
 jq -n \
