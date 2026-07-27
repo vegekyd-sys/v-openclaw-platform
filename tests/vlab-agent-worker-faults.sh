@@ -32,7 +32,7 @@ call_gateway_to_file() {
 }
 
 payload() {
-  jq -c '.result // .' "$1"
+  jq -c 'if has("ok") and has("result") then .result else . end' "$1"
 }
 
 wait_for_operation() {
@@ -207,7 +207,7 @@ wait_for_operation \
   succeeded \
   "${REPORT_DIR}/recovery-operation.json"
 jq -e \
-  '(.result // .).result.payloads
+  '(if has("ok") and has("result") then .result else . end).result.payloads
    | any(.text? | contains("VLAB_AGENT_RECOVERY_OK"))' \
   "${REPORT_DIR}/recovery-operation.json" >/dev/null
 

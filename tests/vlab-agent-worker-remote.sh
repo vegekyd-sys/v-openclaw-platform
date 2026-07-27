@@ -33,7 +33,7 @@ call_gateway_to_file() {
 }
 
 payload() {
-  jq -c '.result // .' "$1"
+  jq -c 'if has("ok") and has("result") then .result else . end' "$1"
 }
 
 wait_for_operation() {
