@@ -1,0 +1,36 @@
+[Unit]
+Description=OpenClaw vLab isolated Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=vlab
+Group=vlab
+WorkingDirectory=/srv/vlab/workspace
+Environment=HOME=/srv/vlab
+Environment=OPENCLAW_HOME=/srv/vlab
+Environment=OPENCLAW_STATE_DIR=/srv/vlab/state
+Environment=OPENCLAW_CONFIG_PATH=/srv/vlab/state/openclaw.json
+Environment=OPENCLAW_WORKSPACE_DIR=/srv/vlab/workspace
+Environment=OPENCLAW_GATEWAY_PORT=23793
+Environment=NODE_ENV=production
+ExecStart=/opt/vlab/bin/node /opt/vlab/current/node_modules/openclaw/openclaw.mjs gateway --port 23793
+Restart=on-failure
+RestartSec=5
+KillMode=control-group
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/vlab
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryHigh=3G
+MemoryMax=4G
+CPUQuota=200%
+
+[Install]
+WantedBy=multi-user.target
+
