@@ -172,12 +172,22 @@ else
   gateway_token="$(openssl rand -hex 32)"
 fi
 jq \
+  --arg source_state "$SOURCE_STATE" \
+  --arg lab_state "${LAB_ROOT}/state" \
+  --arg source_workspace "$SOURCE_WORKSPACE" \
   --arg workspace "${LAB_ROOT}/workspace" \
   --arg agent_dir "${LAB_ROOT}/state/agents/makaron/agent" \
   --arg token "$gateway_token" \
   --argjson port "$LAB_PORT" \
   '
-    .gateway = ((.gateway // {}) + {
+    walk(
+      if type == "string" then
+        gsub("^" + $source_state; $lab_state)
+        | gsub("^" + $source_workspace; $workspace)
+      else .
+      end
+    )
+    | .gateway = ((.gateway // {}) + {
       port: $port,
       bind: "loopback",
       auth: {mode: "token", token: $token},
@@ -228,6 +238,12 @@ chmod 0700 "$LAB_ROOT" "$LAB_ROOT/state" "$LAB_ROOT/workspace"
 install -m 0644 "$UNIT_SOURCE" "$UNIT_TARGET"
 systemctl daemon-reload
 systemctl enable openclaw-vlab-gateway.service
+find "${LAB_ROOT}/state/logs/stability" \
+  -maxdepth 1 \
+  -type f \
+  \( -name '*gateway.startup_failed.json' -o -name '*gateway.crash_loop_breaker.json' \) \
+  -delete 2>/dev/null || true
+systemctl reset-failed openclaw-vlab-gateway.service 2>/dev/null || true
 systemctl restart openclaw-vlab-gateway.service
 
 echo "vLab bootstrap completed"

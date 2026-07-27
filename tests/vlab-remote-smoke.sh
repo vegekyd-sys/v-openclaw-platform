@@ -15,6 +15,16 @@ ssh \
    systemctl is-active --quiet --user openclaw-gateway.service
    test "$(systemctl show openclaw-vlab-gateway.service -p SubState --value)" = "running"
    test "$(systemctl show openclaw-vlab-gateway.service -p MainPID --value)" -gt 0
+   gateway_token="$(cat /srv/vlab/state/gateway-token)"
+   sudo -u vlab env \
+     HOME=/srv/vlab \
+     OPENCLAW_HOME=/srv/vlab \
+     OPENCLAW_STATE_DIR=/srv/vlab/state \
+     OPENCLAW_CONFIG_PATH=/srv/vlab/state/openclaw.json \
+     OPENCLAW_WORKSPACE_DIR=/srv/vlab/workspace \
+     /opt/vlab/node/bin/node \
+     /opt/vlab/current/node_modules/openclaw/openclaw.mjs \
+     gateway status --json --require-rpc --token "$gateway_token" >/dev/null
    test "$(stat -c %U /srv/vlab/state)" = "vlab"
    test "$(stat -c %U /srv/vlab/workspace)" = "vlab"
    test -s /srv/vlab/state/gateway-token
