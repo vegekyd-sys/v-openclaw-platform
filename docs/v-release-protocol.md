@@ -88,6 +88,21 @@ replace the running release or mutate the same state until ownership is
 released. Parallel destructive experiments require separate vLab cells, not
 shared mutable state.
 
+Access is also separated:
+
+- Codex uses the authenticated administration path and Gateway CLI for
+  deployment and engineering verification.
+- V may use a dedicated lab-only interaction surface once it has been
+  provisioned and verified. It must not reuse private V's production Feishu app
+  credentials or take production channel ownership.
+- Until that dedicated surface exists, V supplies acceptance prompts through
+  the V/Codex Feishu collaboration group; Codex runs them unchanged against
+  vLab and returns the raw vLab transcript and release ID. This is a review
+  relay, not independent direct access, and must not be described otherwise.
+
+Provisioning a persistent direct-access credential or a new Feishu app is a
+separate security change that requires Tianyi's explicit approval.
+
 ## Phase A: deploy to vLab
 
 1. Confirm the live host, agent, service, ports, and current release.
@@ -110,6 +125,9 @@ shared mutable state.
    - V from Versa and private V remain unchanged.
 8. V reviews agent behavior and user-visible semantics. Codex reviews
    implementation, isolation, tests, and operational evidence.
+9. Complete the versioned
+   [`vLab acceptance checklist`](vlab-acceptance-checklist.md) with measured
+   baseline and candidate results.
 
 The candidate becomes `LAB_ACCEPTED` only after both V and Codex explicitly
 accept it.
@@ -123,7 +141,10 @@ the accepted release may be promoted.
 2. Capture the current release pointer, config checksum, service definition,
    and a consistent server-side state backup.
 3. Stage the exact artifact and checksum already accepted in vLab.
-4. Validate the staged config and migration without taking Feishu ownership.
+4. Run a channel-free smoke instance on an unused loopback port with a copied
+   state snapshot. Validate the staged config, model/tool path, memory
+   integrity, and environment-specific endpoints without taking Feishu
+   ownership.
 5. Announce a short cutover window.
 6. Stop the current private-V Gateway, take the final consistent mutable-state
    checkpoint, atomically switch release/config, and start the new Gateway.
@@ -144,6 +165,10 @@ Rollback targets are recorded before deployment:
 - rollback command/procedure;
 - state compatibility decision.
 
+vLab itself always retains a separate `last-known-good` release, config, and
+state snapshot. A failed vLab deployment rolls back to that vLab baseline; it
+does not depend on a private-V production backup.
+
 Rollback is triggered when any of these occur:
 
 - Gateway RPC or startup fails;
@@ -158,7 +183,9 @@ Rollback order:
 
 1. Stop the candidate Gateway.
 2. Restore the previous release and config atomically.
-3. Restore mutable state only when the migration changed it incompatibly.
+3. Run state integrity checks. Restore mutable state when a migration is
+   incompatible *or* when memory/session integrity differs materially from the
+   recorded baseline.
 4. Start the previous Gateway.
 5. Verify Gateway RPC and a visible Feishu reply.
 6. Preserve failed-release logs and evidence; do not overwrite the accepted
@@ -190,3 +217,7 @@ Tomorrow is Phase A only. Before starting, V and Codex will restate:
 - acceptance checklist.
 
 No private-V production cutover is included in tomorrow's vLab work.
+
+V's first acceptance pass may use the Feishu review relay described above.
+Independent direct V access is considered complete only after a dedicated,
+lab-only surface has been separately approved, provisioned, and tested.
