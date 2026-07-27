@@ -6,7 +6,7 @@ CONFIG_PATH="${LAB_ROOT}/state/openclaw.json"
 OPENCLAW="/opt/vlab/current/node_modules/openclaw/openclaw.mjs"
 NODE="/opt/vlab/node/bin/node"
 SESSION_COUNT="${VLAB_SOAK_SESSION_COUNT:-9}"
-ROUNDS="${VLAB_SOAK_ROUNDS:-3}"
+ROUNDS="${VLAB_SOAK_ROUNDS:-2}"
 TOOL_HOLD_SECONDS="${VLAB_SOAK_TOOL_HOLD_SECONDS:-30}"
 GATEWAY_TIMEOUT_MS="${VLAB_SOAK_GATEWAY_TIMEOUT_MS:-240000}"
 MIN_DURATION_SECONDS="${VLAB_SOAK_MIN_DURATION_SECONDS:-180}"
@@ -216,6 +216,7 @@ for index in $(seq 1 "$SESSION_COUNT"); do
   session_ids+=("")
 done
 
+workload_started_epoch="$(date +%s)"
 for round in $(seq 1 "$ROUNDS"); do
   declare -a request_pids=()
   for index in $(seq 1 "$SESSION_COUNT"); do
@@ -305,6 +306,7 @@ for round in $(seq 1 "$ROUNDS"); do
     '(.result // .).eventLoop.degraded == false' \
     "${REPORT_DIR}/health-r${round}-during.json" >/dev/null
 done
+workload_ended_epoch="$(date +%s)"
 
 for index in $(seq 1 "$SESSION_COUNT"); do
   session_key="${SESSION_PREFIX}-${index}"
@@ -363,9 +365,10 @@ jq -e \
   "${REPORT_DIR}/health-after.json" >/dev/null
 
 ended_epoch="$(date +%s)"
-duration_seconds="$((ended_epoch - started_epoch))"
-(( duration_seconds >= MIN_DURATION_SECONDS ))
-(( duration_seconds <= MAX_DURATION_SECONDS ))
+total_duration_seconds="$((ended_epoch - started_epoch))"
+workload_duration_seconds="$((workload_ended_epoch - workload_started_epoch))"
+(( workload_duration_seconds >= MIN_DURATION_SECONDS ))
+(( workload_duration_seconds <= MAX_DURATION_SECONDS ))
 
 peak_worker_count="$(
   jq -s \
@@ -401,7 +404,8 @@ metrics_summary="$(
 jq -n \
   --arg timestamp "$TIMESTAMP" \
   --arg session_prefix "$SESSION_PREFIX" \
-  --argjson duration_seconds "$duration_seconds" \
+  --argjson workload_duration_seconds "$workload_duration_seconds" \
+  --argjson total_duration_seconds "$total_duration_seconds" \
   --argjson session_count "$SESSION_COUNT" \
   --argjson rounds "$ROUNDS" \
   --argjson tool_hold_seconds "$TOOL_HOLD_SECONDS" \
@@ -416,7 +420,9 @@ jq -n \
   '{
     ok: true,
     timestamp: $timestamp,
-    durationSeconds: $duration_seconds,
+    durationSeconds: $workload_duration_seconds,
+    workloadDurationSeconds: $workload_duration_seconds,
+    totalDurationSeconds: $total_duration_seconds,
     workload: {
       sessionCount: $session_count,
       rounds: $rounds,

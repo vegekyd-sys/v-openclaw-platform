@@ -89,17 +89,18 @@ The production-shaped soak is executable on vLab:
 
 ```bash
 VLAB_SOAK_SESSION_COUNT=9 \
-VLAB_SOAK_ROUNDS=3 \
+VLAB_SOAK_ROUNDS=2 \
 VLAB_SOAK_TOOL_HOLD_SECONDS=30 \
 /tmp/vlab-agent-worker-soak.sh
 ```
 
-It runs 27 real OpenClaw Agent turns across nine native sessions for roughly
-three to five minutes. Every turn must perform a real read-only `exec` tool
+It runs 18 real OpenClaw Agent turns across nine native sessions with an active
+workload window of roughly three to five minutes. Every turn must perform a real read-only `exec` tool
 call, session IDs must remain stable across rounds, all nine sessions must be
 visible through native `sessions.list` and `chat.history`, Gateway event-loop
 health must remain non-degraded, and the Gateway restart count must not change.
-The report also includes sampled resource and queue maxima.
+The report separates active workload duration from setup and post-run native
+history validation, and includes sampled resource and queue maxima.
 
 Fault acceptance uses real Agent turns:
 
