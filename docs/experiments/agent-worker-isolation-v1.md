@@ -2,7 +2,7 @@
 
 ## Goal
 
-Prove in vLab that one Gateway can keep control-plane RPC responsive while two
+Prove in vLab that one Gateway can keep control-plane RPC responsive while
 sticky child-process workers run agent workloads on separate CPU cores.
 
 This experiment does not change private V and does not route production
@@ -19,7 +19,7 @@ Only synthetic session keys beginning with
 ## Candidate
 
 - OpenClaw: `2026.7.1`
-- Worker count: `2`
+- Worker count: configurable from `2` to `16`; deploys default to `2`
 - Integration: OpenClaw plugin API plus the stable
   `dist/plugin-sdk/agent-runtime.js` entrypoint
 - Feature switch: enable or disable the
@@ -42,13 +42,16 @@ The plugin does not patch OpenClaw's compiled files.
 8. Restoring the saved config removes the plugin RPC methods while base
    Gateway health, model execution, tools, memory, and copied sessions remain
    valid.
+9. With eight workers, eight synthetic sessions mapped to distinct slots run
+   continuously without a worker queue while Gateway event-loop health remains
+   materially better than the same workload on the core Gateway path.
 
 ## Deploy and rollback
 
 Deploy only a clean committed candidate:
 
 ```bash
-scripts/deploy-agent-worker-experiment.sh
+VLAB_WORKER_COUNT=8 scripts/deploy-agent-worker-experiment.sh
 ```
 
 Rollback on the vLab host:

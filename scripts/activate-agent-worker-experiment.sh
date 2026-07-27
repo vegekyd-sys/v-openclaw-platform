@@ -2,6 +2,7 @@
 set -Eeuo pipefail
 
 LAB_ROOT="${LAB_ROOT:-/srv/vlab}"
+WORKER_COUNT="${VLAB_WORKER_COUNT:-2}"
 ARCHIVE_PATH="${ARCHIVE_PATH:-/tmp/vlab-agent-worker-isolation-v1.tar.gz}"
 PLATFORM_COMMIT="${PLATFORM_COMMIT:?PLATFORM_COMMIT is required}"
 PLUGIN_ID="vlab-agent-worker-isolation"
@@ -40,6 +41,11 @@ trap restore_on_error ERR
 
 if [[ "$(id -u)" -ne 0 ]]; then
   echo "activate-agent-worker-experiment.sh must run as root" >&2
+  exit 1
+fi
+if ! [[ "$WORKER_COUNT" =~ ^[0-9]+$ ]] \
+  || (( WORKER_COUNT < 2 || WORKER_COUNT > 16 )); then
+  echo "VLAB_WORKER_COUNT must be an integer between 2 and 16" >&2
   exit 1
 fi
 [[ -f "$ARCHIVE_PATH" ]] || {
@@ -113,6 +119,7 @@ jq \
   --arg plugin_id "$PLUGIN_ID" \
   --arg release_dir "$RELEASE_DIR" \
   --arg experiment_root "$EXPERIMENT_ROOT" \
+  --argjson worker_count "$WORKER_COUNT" \
   '
     .plugins = (.plugins // {})
     | .plugins.load = (.plugins.load // {})
@@ -128,7 +135,7 @@ jq \
     | .plugins.entries[$plugin_id] = {
         enabled: true,
         config: {
-          maxWorkers: 2,
+          maxWorkers: $worker_count,
           requestTimeoutMs: 600000
         }
       }

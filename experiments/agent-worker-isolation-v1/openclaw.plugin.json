@@ -12,7 +12,7 @@
       "maxWorkers": {
         "type": "integer",
         "minimum": 2,
-        "maximum": 4
+        "maximum": 16
       },
       "requestTimeoutMs": {
         "type": "integer",

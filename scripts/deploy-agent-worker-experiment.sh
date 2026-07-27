@@ -3,6 +3,7 @@ set -euo pipefail
 
 TARGET="${VLAB_SSH_TARGET:-root@43.133.80.6}"
 IDENTITY_FILE="${VLAB_SSH_IDENTITY:-$HOME/.ssh/id_rsa}"
+WORKER_COUNT="${VLAB_WORKER_COUNT:-2}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EXPERIMENT_DIR="${REPO_ROOT}/experiments/agent-worker-isolation-v1"
 PLATFORM_COMMIT="$(
@@ -38,4 +39,4 @@ ssh \
   -o IdentitiesOnly=yes \
   -o StrictHostKeyChecking=yes \
   "$TARGET" \
-  "chmod 0700 /tmp/activate-agent-worker-experiment.sh /tmp/rollback-agent-worker-experiment.sh /tmp/vlab-agent-worker-remote.sh && PLATFORM_COMMIT=${PLATFORM_COMMIT} /tmp/activate-agent-worker-experiment.sh"
+  "chmod 0700 /tmp/activate-agent-worker-experiment.sh /tmp/rollback-agent-worker-experiment.sh /tmp/vlab-agent-worker-remote.sh && PLATFORM_COMMIT=${PLATFORM_COMMIT} VLAB_WORKER_COUNT=${WORKER_COUNT} /tmp/activate-agent-worker-experiment.sh"
