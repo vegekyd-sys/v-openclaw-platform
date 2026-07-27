@@ -5,28 +5,22 @@ LAB_ROOT="${LAB_ROOT:-/srv/vlab}"
 LAB_USER="${LAB_USER:-vlab}"
 LAB_PORT="${LAB_PORT:-23793}"
 OPENCLAW_VERSION="${OPENCLAW_VERSION:-2026.7.1}"
+NODE_VERSION="${NODE_VERSION:-22.22.3}"
 SOURCE_STATE="${SOURCE_STATE:-/root/.openclaw}"
 SOURCE_WORKSPACE="${SOURCE_WORKSPACE:-/root/makaron-openclaw/.openclaw-local/workspace}"
-NODE_BIN="${NODE_BIN:-/root/.nvm/versions/node/v22.22.1/bin/node}"
-NPM_BIN="${NPM_BIN:-/root/.nvm/versions/node/v22.22.1/bin/npm}"
 UNIT_SOURCE="${UNIT_SOURCE:-/tmp/openclaw-vlab-gateway.service}"
 UNIT_TARGET="/etc/systemd/system/openclaw-vlab-gateway.service"
 RELEASE_ROOT="/opt/vlab/releases/${OPENCLAW_VERSION}"
+NODE_ROOT="/opt/vlab/node-v${NODE_VERSION}-linux-x64"
 SEED_MARKER="${LAB_ROOT}/state/.seeded-from-v-from-versa"
-
-export PATH="$(dirname "$NODE_BIN"):${PATH}"
 
 if [[ "$(id -u)" -ne 0 ]]; then
   echo "bootstrap-vlab.sh must run as root" >&2
   exit 1
 fi
 
-for required in jq rsync openssl "$NODE_BIN" "$NPM_BIN"; do
-  if [[ "$required" == /* ]]; then
-    [[ -x "$required" ]] || { echo "missing executable: $required" >&2; exit 1; }
-  else
-    command -v "$required" >/dev/null || { echo "missing command: $required" >&2; exit 1; }
-  fi
+for required in curl jq rsync openssl sha256sum tar xz; do
+  command -v "$required" >/dev/null || { echo "missing command: $required" >&2; exit 1; }
 done
 
 [[ -f "${SOURCE_STATE}/openclaw.json" ]] || {
@@ -59,12 +53,31 @@ if ! id "$LAB_USER" >/dev/null 2>&1; then
   useradd --system --create-home --home-dir "$LAB_ROOT" --shell /usr/sbin/nologin "$LAB_USER"
 fi
 
-install -d -m 0755 /opt/vlab/bin /opt/vlab/releases
-install -m 0755 "$NODE_BIN" /opt/vlab/bin/node
+install -d -m 0755 /opt/vlab /opt/vlab/releases
+
+if [[ ! -x "${NODE_ROOT}/bin/node" ]]; then
+  node_archive="node-v${NODE_VERSION}-linux-x64.tar.xz"
+  node_download_dir="$(mktemp -d)"
+  trap 'rm -rf "$node_download_dir"' EXIT
+
+  curl -fsSLo "${node_download_dir}/${node_archive}" \
+    "https://nodejs.org/dist/v${NODE_VERSION}/${node_archive}"
+  curl -fsSLo "${node_download_dir}/SHASUMS256.txt" \
+    "https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt"
+
+  (
+    cd "$node_download_dir"
+    grep "  ${node_archive}$" SHASUMS256.txt | sha256sum -c -
+  )
+  tar -xJf "${node_download_dir}/${node_archive}" -C /opt/vlab
+fi
+
+ln -sfn "$NODE_ROOT" /opt/vlab/node
+export PATH="/opt/vlab/node/bin:${PATH}"
 
 if [[ ! -f "${RELEASE_ROOT}/node_modules/openclaw/openclaw.mjs" ]]; then
   install -d -m 0755 "$RELEASE_ROOT"
-  "$NPM_BIN" install \
+  /opt/vlab/node/bin/npm install \
     --prefix "$RELEASE_ROOT" \
     --omit=dev \
     --no-audit \
@@ -153,7 +166,11 @@ if [[ ! -f "$SEED_MARKER" ]]; then
   touch "$SEED_MARKER"
 fi
 
-gateway_token="$(openssl rand -hex 32)"
+if [[ -s "${LAB_ROOT}/state/gateway-token" ]]; then
+  gateway_token="$(cat "${LAB_ROOT}/state/gateway-token")"
+else
+  gateway_token="$(openssl rand -hex 32)"
+fi
 jq \
   --arg workspace "${LAB_ROOT}/workspace" \
   --arg agent_dir "${LAB_ROOT}/state/agents/makaron/agent" \
