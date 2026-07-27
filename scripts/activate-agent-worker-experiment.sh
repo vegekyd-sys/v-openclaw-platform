@@ -112,10 +112,18 @@ candidate_config="$(mktemp)"
 jq \
   --arg plugin_id "$PLUGIN_ID" \
   --arg release_dir "$RELEASE_DIR" \
+  --arg experiment_root "$EXPERIMENT_ROOT" \
   '
     .plugins = (.plugins // {})
     | .plugins.load = (.plugins.load // {})
-    | .plugins.load.paths = (((.plugins.load.paths // []) + [$release_dir]) | unique)
+    | .plugins.load.paths = (
+        (
+          (.plugins.load.paths // [])
+          | map(select((startswith($experiment_root + "/")) | not))
+        )
+        + [$release_dir]
+        | unique
+      )
     | .plugins.entries = (.plugins.entries // {})
     | .plugins.entries[$plugin_id] = {
         enabled: true,
