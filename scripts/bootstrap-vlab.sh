@@ -192,6 +192,7 @@ jq \
   --arg source_workspace "$SOURCE_WORKSPACE" \
   --arg workspace "${LAB_ROOT}/workspace" \
   --arg agent_dir "${LAB_ROOT}/state/agents/makaron/agent" \
+  --arg sqlite_vec_path "${RELEASE_ROOT}/node_modules/openclaw/node_modules/sqlite-vec-linux-x64/vec0.so" \
   --arg token "$gateway_token" \
   --argjson port "$LAB_PORT" \
   '
@@ -206,10 +207,27 @@ jq \
       port: $port,
       bind: "loopback",
       auth: {mode: "token", token: $token},
-      reload: {mode: "off"}
+      reload: {mode: "off"},
+      controlUi: {
+        allowedOrigins: [
+          ("http://127.0.0.1:" + ($port | tostring)),
+          ("http://localhost:" + ($port | tostring))
+        ],
+        allowInsecureAuth: false,
+        dangerouslyDisableDeviceAuth: false
+      }
     })
     | .channels = {}
+    | .bindings = []
     | del(.hooks)
+    | .mcp.servers = {}
+    | .tools.deny = (((.tools.deny // []) + [
+        "message",
+        "tts",
+        "image_generate",
+        "music_generate",
+        "video_generate"
+      ]) | unique)
     | .plugins.load.paths = []
     | .plugins.entries = ((.plugins.entries // {}) | with_entries(
         select(.key | test("^(browser|deepseek|duckduckgo|google|memory-core|openai|openrouter)$"))
@@ -218,6 +236,7 @@ jq \
         select(.key == "deepseek")
       ))
     | .agents.defaults.workspace = $workspace
+    | .agents.defaults.memorySearch.store.vector.extensionPath = $sqlite_vec_path
     | .agents.list = ((.agents.list // []) | map(
         if .id == "makaron" then
           .name = "vLab"
@@ -237,6 +256,12 @@ jq \
           else .
           end
         )
+      else .
+      end
+    | if (.plugins.entries["memory-core"]? | type) == "object" then
+        .plugins.entries["memory-core"].config = ((.plugins.entries["memory-core"].config // {}) + {
+          dreaming: (((.plugins.entries["memory-core"].config.dreaming // {}) + {enabled: false}))
+        })
       else .
       end
   ' \

@@ -28,9 +28,20 @@ ssh \
    test "$(stat -c %U /srv/vlab/state)" = "vlab"
    test "$(stat -c %U /srv/vlab/workspace)" = "vlab"
    test -s /srv/vlab/state/gateway-token
-   jq -e ".gateway.port == 23793 and .gateway.bind == \"loopback\" and (.channels | length) == 0" /srv/vlab/state/openclaw.json >/dev/null
+   jq -e "
+     .gateway.port == 23793
+     and .gateway.bind == \"loopback\"
+     and .gateway.controlUi.allowInsecureAuth == false
+     and .gateway.controlUi.dangerouslyDisableDeviceAuth == false
+     and (.channels | length) == 0
+     and (.bindings | length) == 0
+     and (.mcp.servers | length) == 0
+     and (.tools.deny | index(\"message\") != null)
+     and .plugins.entries[\"memory-core\"].config.dreaming.enabled == false
+     and (.agents.defaults.memorySearch.store.vector.extensionPath | startswith(\"/opt/vlab/\"))
+   " /srv/vlab/state/openclaw.json >/dev/null
    ss -ltn | grep -q "127.0.0.1:23793"
    ! ss -ltn | grep -q "0.0.0.0:23793"
-   test "$(find /srv/vlab/state/agents/makaron/sessions -maxdepth 1 -type f -name \"*.jsonl\" | wc -l)" -gt 0
+   test "$(find /srv/vlab/state/agents/makaron/sessions -maxdepth 1 -type f -name "*.jsonl" | wc -l)" -gt 0
    test "$(find /srv/vlab/workspace/memory -type f | wc -l)" -gt 0
    echo "vLab remote isolation smoke passed"'
