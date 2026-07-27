@@ -16,11 +16,11 @@ async function waitFor(predicate, options = {}) {
   throw new Error(options.message ?? `condition was not met within ${timeoutMs}ms`);
 }
 
-const durationMs = Number(process.env.VLAB_WORKER_TEST_DURATION_MS ?? 300);
+const durationMs = Number(process.env.VLAB_WORKER_TEST_DURATION_MS ?? 1_000);
 const pool = new WorkerPool({
   minWorkers: 1,
   maxWorkers: 4,
-  idleTimeoutMs: 250,
+  idleTimeoutMs: durationMs + 500,
   idleSweepIntervalMs: 25,
   requestTimeoutMs: 30_000,
 });

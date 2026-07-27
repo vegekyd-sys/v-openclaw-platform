@@ -9,6 +9,7 @@ node --check "${EXPERIMENT_DIR}/worker.mjs"
 node --check "${EXPERIMENT_DIR}/index.mjs"
 node --check "${EXPERIMENT_DIR}/self-test.mjs"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-remote.sh"
+bash -n "${REPO_ROOT}/tests/vlab-agent-worker-soak.sh"
 
 jq -e '.id == "vlab-agent-worker-isolation"' \
   "${EXPERIMENT_DIR}/openclaw.plugin.json" >/dev/null
