@@ -137,11 +137,27 @@ for round in $(seq 1 "$ROUNDS"); do
     request_pids+=("$!")
   done
 
-  sleep 5
-  call_gateway_to_file \
-    vlab.workers.status \
-    '{}' \
-    "${REPORT_DIR}/status-r${round}-during.json"
+  scaled_workers=0
+  pending_requests="$SESSION_COUNT"
+  for _ in $(seq 1 12); do
+    call_gateway_to_file \
+      vlab.workers.status \
+      '{}' \
+      "${REPORT_DIR}/status-r${round}-during.json"
+    scaled_workers="$(
+      payload "${REPORT_DIR}/status-r${round}-during.json" \
+        | jq -r '.workers | length'
+    )"
+    pending_requests="$(
+      payload "${REPORT_DIR}/status-r${round}-during.json" \
+        | jq -r '.pending'
+    )"
+    if [[ "$scaled_workers" == "$SESSION_COUNT" ]] \
+      && [[ "$pending_requests" == "0" ]]; then
+      break
+    fi
+    sleep 1
+  done
   call_gateway_to_file \
     health \
     '{}' \
@@ -173,13 +189,8 @@ for round in $(seq 1 "$ROUNDS"); do
     fi
   done
 
-  jq -e \
-    --argjson expected "$SESSION_COUNT" \
-    '(.result // .).workers | length == $expected' \
-    "${REPORT_DIR}/status-r${round}-during.json" >/dev/null
-  jq -e \
-    '(.result // .).pending == 0' \
-    "${REPORT_DIR}/status-r${round}-during.json" >/dev/null
+  [[ "$scaled_workers" == "$SESSION_COUNT" ]]
+  [[ "$pending_requests" == "0" ]]
   jq -e \
     '(.result // .).eventLoop.degraded == false' \
     "${REPORT_DIR}/health-r${round}-during.json" >/dev/null
