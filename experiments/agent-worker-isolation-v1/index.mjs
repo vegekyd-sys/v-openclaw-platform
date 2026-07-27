@@ -1,4 +1,5 @@
 import { WorkerPool } from "./worker-pool.mjs";
+import { performance } from "node:perf_hooks";
 
 const SESSION_PREFIX = "agent:makaron:explicit:vlab-worker-";
 
@@ -70,8 +71,13 @@ const plugin = {
       "vlab.workers.ping",
       async ({ params, respond }) => {
         try {
+          const startedAt = performance.now();
           const sessionKey = requireLabSessionKey(params);
-          respond(true, await pool.dispatch(sessionKey, { kind: "ping" }));
+          const result = await pool.dispatch(sessionKey, { kind: "ping" });
+          respond(true, {
+            ...result,
+            gatewayDispatchMs: performance.now() - startedAt,
+          });
         } catch (error) {
           respondError(respond, error);
         }
@@ -83,12 +89,17 @@ const plugin = {
       "vlab.workers.cpu",
       async ({ params, respond }) => {
         try {
+          const startedAt = performance.now();
           const sessionKey = requireLabSessionKey(params);
           const durationMs = readNumber(params, "durationMs", 5_000);
-          respond(
-            true,
-            await pool.dispatch(sessionKey, { kind: "cpu", durationMs }),
-          );
+          const result = await pool.dispatch(sessionKey, {
+            kind: "cpu",
+            durationMs,
+          });
+          respond(true, {
+            ...result,
+            gatewayDispatchMs: performance.now() - startedAt,
+          });
         } catch (error) {
           respondError(respond, error);
         }
@@ -100,23 +111,25 @@ const plugin = {
       "vlab.workers.agent",
       async ({ params, respond }) => {
         try {
+          const startedAt = performance.now();
           const sessionKey = requireLabSessionKey(params);
           const message = readString(params, "message", { required: true });
           const agentId = readString(params, "agentId") ?? "makaron";
           const timeoutSeconds = readNumber(params, "timeoutSeconds", 300);
-          respond(
-            true,
-            await pool.dispatch(sessionKey, {
-              kind: "agent",
-              message,
-              agentId,
-              timeoutSeconds,
-              modelRun: params?.modelRun === true,
-              toolsAllow: Array.isArray(params?.toolsAllow)
-                ? params.toolsAllow.filter((item) => typeof item === "string")
-                : undefined,
-            }),
-          );
+          const result = await pool.dispatch(sessionKey, {
+            kind: "agent",
+            message,
+            agentId,
+            timeoutSeconds,
+            modelRun: params?.modelRun === true,
+            toolsAllow: Array.isArray(params?.toolsAllow)
+              ? params.toolsAllow.filter((item) => typeof item === "string")
+              : undefined,
+          });
+          respond(true, {
+            ...result,
+            gatewayDispatchMs: performance.now() - startedAt,
+          });
         } catch (error) {
           respondError(respond, error);
         }

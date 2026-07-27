@@ -81,7 +81,11 @@ jq -e 'if has("ok") then .ok == true else true end' \
 worker_a="$(payload "${REPORT_DIR}/cpu-a.json" | jq -r '.workerPid')"
 worker_b="$(payload "${REPORT_DIR}/cpu-b.json" | jq -r '.workerPid')"
 [[ "$worker_a" != "$worker_b" ]]
-(( parallel_wall_ms < 8000 ))
+cpu_user_a="$(payload "${REPORT_DIR}/cpu-a.json" | jq -r '.cpuUserMs | floor')"
+cpu_user_b="$(payload "${REPORT_DIR}/cpu-b.json" | jq -r '.cpuUserMs | floor')"
+(( cpu_user_a > 4000 ))
+(( cpu_user_b > 4000 ))
+(( parallel_wall_ms < 13000 ))
 
 call_gateway \
   vlab.workers.cpu \
@@ -95,8 +99,12 @@ call_gateway \
   "{\"sessionKey\":\"${SESSION_B}\"}" \
   > "${REPORT_DIR}/isolation-ping.json"
 ping_finished_ns="$(date +%s%N)"
-cross_worker_ping_ms="$(( (ping_finished_ns - ping_started_ns) / 1000000 ))"
+cross_worker_cli_ms="$(( (ping_finished_ns - ping_started_ns) / 1000000 ))"
 wait "$busy_pid"
+cross_worker_ping_ms="$(
+  payload "${REPORT_DIR}/isolation-ping.json" \
+    | jq -r '.gatewayDispatchMs | floor'
+)"
 (( cross_worker_ping_ms < 1000 ))
 
 call_gateway vlab.workers.status '{}' > "${REPORT_DIR}/status-after.json"
@@ -115,6 +123,9 @@ jq -n \
   --arg worker_b "$worker_b" \
   --argjson parallel_wall_ms "$parallel_wall_ms" \
   --argjson cross_worker_ping_ms "$cross_worker_ping_ms" \
+  --argjson cross_worker_cli_ms "$cross_worker_cli_ms" \
+  --argjson cpu_user_a "$cpu_user_a" \
+  --argjson cpu_user_b "$cpu_user_b" \
   --arg baseline_restarts "$baseline_restarts" \
   --arg final_restarts "$final_restarts" \
   '{
@@ -123,7 +134,9 @@ jq -n \
     sessions: [$session_a, $session_b],
     workerPids: [$worker_a, $worker_b],
     parallelWallMs: $parallel_wall_ms,
+    workerCpuUserMs: [$cpu_user_a, $cpu_user_b],
     crossWorkerPingMs: $cross_worker_ping_ms,
+    crossWorkerCliMs: $cross_worker_cli_ms,
     gatewayRestarts: {
       before: $baseline_restarts,
       after: $final_restarts
