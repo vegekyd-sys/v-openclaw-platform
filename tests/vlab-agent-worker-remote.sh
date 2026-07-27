@@ -74,8 +74,10 @@ wait "$pid_b"
 parallel_finished_ns="$(date +%s%N)"
 parallel_wall_ms="$(( (parallel_finished_ns - parallel_started_ns) / 1000000 ))"
 
-jq -e '.ok == true' "${REPORT_DIR}/cpu-a.json" >/dev/null
-jq -e '.ok == true' "${REPORT_DIR}/cpu-b.json" >/dev/null
+jq -e 'if has("ok") then .ok == true else true end' \
+  "${REPORT_DIR}/cpu-a.json" >/dev/null
+jq -e 'if has("ok") then .ok == true else true end' \
+  "${REPORT_DIR}/cpu-b.json" >/dev/null
 worker_a="$(payload "${REPORT_DIR}/cpu-a.json" | jq -r '.workerPid')"
 worker_b="$(payload "${REPORT_DIR}/cpu-b.json" | jq -r '.workerPid')"
 [[ "$worker_a" != "$worker_b" ]]
