@@ -107,6 +107,10 @@ completion, preventing concurrent child processes from losing an index entry.
 Transcripts remain OpenClaw's per-session JSONL files; no parallel session
 owner or database is introduced.
 
+Scale-in first sends `SIGTERM`, then uses a bounded forced exit if an Agent
+Runtime plugin keeps the child event loop alive. A retiring process therefore
+cannot occupy a worker slot forever and block queued sessions from scaling out.
+
 The custom `vlab.workers.*` methods are vLab experiment probes. Production
 promotion must attach execution isolation to OpenClaw's native dispatch/runtime
 seam instead of exposing a second user-facing agent/session API.

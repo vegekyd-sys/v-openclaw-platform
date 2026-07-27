@@ -6,6 +6,7 @@ EXPERIMENT_DIR="${REPO_ROOT}/experiments/agent-worker-isolation-v1"
 
 node --check "${EXPERIMENT_DIR}/worker-pool.mjs"
 node --check "${EXPERIMENT_DIR}/worker.mjs"
+node --check "${EXPERIMENT_DIR}/stubborn-worker.mjs"
 node --check "${EXPERIMENT_DIR}/index.mjs"
 node --check "${EXPERIMENT_DIR}/self-test.mjs"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-remote.sh"

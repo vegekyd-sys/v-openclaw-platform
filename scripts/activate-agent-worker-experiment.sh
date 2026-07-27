@@ -89,6 +89,7 @@ for required in \
   index.mjs \
   worker-pool.mjs \
   worker.mjs \
+  stubborn-worker.mjs \
   self-test.mjs; do
   [[ -f "${RELEASE_DIR}/${required}" ]] || {
     echo "release is missing ${required}" >&2

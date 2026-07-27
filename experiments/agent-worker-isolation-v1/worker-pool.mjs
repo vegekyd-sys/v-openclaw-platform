@@ -17,6 +17,7 @@ export class WorkerPool {
       Math.min(Math.max(Math.floor(this.idleTimeoutMs / 4), 1_000), 30_000);
     this.requestTimeoutMs = options.requestTimeoutMs ?? 600_000;
     this.startupTimeoutMs = options.startupTimeoutMs ?? 15_000;
+    this.retireGraceMs = options.retireGraceMs ?? 2_000;
     this.workerPath = options.workerPath ?? DEFAULT_WORKER_PATH;
     this.workerEnv = options.workerEnv ?? process.env;
     this.workers = new Map();
@@ -45,6 +46,9 @@ export class WorkerPool {
       this.idleSweepIntervalMs < 10
     ) {
       throw new Error("idleSweepIntervalMs must be >= 10");
+    }
+    if (!Number.isFinite(this.retireGraceMs) || this.retireGraceMs < 10) {
+      throw new Error("retireGraceMs must be >= 10");
     }
   }
 
@@ -101,6 +105,7 @@ export class WorkerPool {
       queue: [],
       lastIdleAt: Date.now(),
       startupPromise: null,
+      retireTimer: null,
     };
     this.workers.set(slot, handle);
 
@@ -292,6 +297,10 @@ export class WorkerPool {
   }
 
   onExit(worker, code, signal) {
+    if (worker.retireTimer) {
+      clearTimeout(worker.retireTimer);
+      worker.retireTimer = null;
+    }
     if (this.workers.get(worker.slot) === worker) {
       this.workers.delete(worker.slot);
     }
@@ -354,15 +363,36 @@ export class WorkerPool {
       )
       .sort((left, right) => right.slot - left.slot);
 
-    let removable = this.workers.size - this.minWorkers;
+    const retiringCount = [...this.workers.values()].filter(
+      (worker) => worker.retiring,
+    ).length;
+    let removable = this.workers.size - this.minWorkers - retiringCount;
     for (const worker of idleWorkers) {
       if (removable <= 0) {
         break;
       }
-      worker.retiring = true;
-      worker.child.kill("SIGTERM");
+      this.retire(worker);
       removable -= 1;
     }
+  }
+
+  retire(worker) {
+    if (worker.retiring) {
+      return;
+    }
+    worker.retiring = true;
+    worker.retireTimer = setTimeout(() => {
+      worker.retireTimer = null;
+      if (
+        this.workers.get(worker.slot) === worker &&
+        worker.child.exitCode === null &&
+        worker.child.signalCode === null
+      ) {
+        worker.child.kill("SIGKILL");
+      }
+    }, this.retireGraceMs);
+    worker.retireTimer.unref?.();
+    worker.child.kill("SIGTERM");
   }
 
   status() {
@@ -405,6 +435,12 @@ export class WorkerPool {
     }
 
     const children = [...this.workers.values()].map((worker) => worker.child);
+    for (const worker of this.workers.values()) {
+      if (worker.retireTimer) {
+        clearTimeout(worker.retireTimer);
+        worker.retireTimer = null;
+      }
+    }
     await Promise.all(
       children.map(
         (child) =>

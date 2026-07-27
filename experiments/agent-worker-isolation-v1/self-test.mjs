@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
+import { fileURLToPath } from "node:url";
 import { WorkerPool } from "./worker-pool.mjs";
 
 async function waitFor(predicate, options = {}) {
@@ -129,4 +130,44 @@ try {
   );
 } finally {
   await pool.close();
+}
+
+const stubbornWorkerPath = fileURLToPath(
+  new URL("./stubborn-worker.mjs", import.meta.url),
+);
+const stubbornPool = new WorkerPool({
+  minWorkers: 1,
+  maxWorkers: 2,
+  idleTimeoutMs: 100,
+  idleSweepIntervalMs: 25,
+  retireGraceMs: 100,
+  workerPath: stubbornWorkerPath,
+});
+
+try {
+  await stubbornPool.start();
+  const stubbornResults = await Promise.all([
+    stubbornPool.dispatch(
+      "agent:makaron:explicit:vlab-worker-selftest-stubborn-1",
+      { kind: "ping" },
+    ),
+    stubbornPool.dispatch(
+      "agent:makaron:explicit:vlab-worker-selftest-stubborn-2",
+      { kind: "ping" },
+    ),
+  ]);
+  assert.equal(new Set(stubbornResults.map((result) => result.workerPid)).size, 2);
+  const forcedScaleDown = await waitFor(
+    () => {
+      const status = stubbornPool.status();
+      return status.workers.length === 1 ? status : undefined;
+    },
+    {
+      timeoutMs: 3_000,
+      message: "SIGTERM-resistant worker blocked elastic scale-in",
+    },
+  );
+  assert.equal(forcedScaleDown.workers[0].retiring, false);
+} finally {
+  await stubbornPool.close();
 }
