@@ -23,7 +23,9 @@ function readNumber(params, key, fallback) {
 }
 
 function requireLabSessionKey(params) {
-  const sessionKey = readString(params, "sessionKey", { required: true });
+  const sessionKey = readString(params, "sessionKey", {
+    required: true,
+  }).toLowerCase();
   if (!sessionKey.startsWith(SESSION_PREFIX)) {
     throw new Error(`sessionKey must start with ${SESSION_PREFIX}`);
   }

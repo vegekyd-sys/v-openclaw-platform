@@ -12,7 +12,8 @@ GATEWAY_TIMEOUT_MS="${VLAB_SOAK_GATEWAY_TIMEOUT_MS:-240000}"
 MIN_DURATION_SECONDS="${VLAB_SOAK_MIN_DURATION_SECONDS:-180}"
 MAX_DURATION_SECONDS="${VLAB_SOAK_MAX_DURATION_SECONDS:-360}"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-SESSION_PREFIX="agent:makaron:explicit:vlab-worker-soak-${TIMESTAMP}"
+SESSION_TOKEN="$(printf '%s' "$TIMESTAMP" | tr '[:upper:]' '[:lower:]')"
+SESSION_PREFIX="agent:makaron:explicit:vlab-worker-soak-${SESSION_TOKEN}"
 REPORT_DIR="${LAB_ROOT}/logs/agent-worker-soak-${TIMESTAMP}"
 
 call_gateway() {

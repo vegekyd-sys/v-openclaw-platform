@@ -18,6 +18,8 @@ channels. It adds five vLab-only Gateway methods:
 
 Only synthetic session keys beginning with
 `agent:makaron:explicit:vlab-worker-` are accepted.
+They are normalized to lowercase before native OpenClaw session lookup and
+dispatch, matching OpenClaw's canonical session-key format.
 
 ## Candidate
 
