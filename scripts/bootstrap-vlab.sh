@@ -194,7 +194,10 @@ jq \
         else .
         end
       ))
-    | .browser = ((.browser // {}) + {controlPort: ($port + 2)})
+    | if (.browser? | type) == "object" then
+        del(.browser.controlPort)
+      else .
+      end
     | if (.plugins.entries? | type) == "object" then
         .plugins.entries |= with_entries(
           if (.key | test("feishu|lark|slack|telegram|wecom|wechat|dingtalk|qq"; "i"))

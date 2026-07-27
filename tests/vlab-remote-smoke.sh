@@ -10,8 +10,11 @@ ssh \
   -o StrictHostKeyChecking=yes \
   "$TARGET" \
   'set -eu
+   sleep 8
    systemctl is-active --quiet openclaw-vlab-gateway.service
    systemctl is-active --quiet --user openclaw-gateway.service
+   test "$(systemctl show openclaw-vlab-gateway.service -p SubState --value)" = "running"
+   test "$(systemctl show openclaw-vlab-gateway.service -p MainPID --value)" -gt 0
    test "$(stat -c %U /srv/vlab/state)" = "vlab"
    test "$(stat -c %U /srv/vlab/workspace)" = "vlab"
    test -s /srv/vlab/state/gateway-token
@@ -21,4 +24,3 @@ ssh \
    test "$(find /srv/vlab/state/agents/makaron/sessions -maxdepth 1 -type f -name \"*.jsonl\" | wc -l)" -gt 0
    test "$(find /srv/vlab/workspace/memory -type f | wc -l)" -gt 0
    echo "vLab remote isolation smoke passed"'
-
