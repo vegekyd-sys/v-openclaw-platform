@@ -72,6 +72,17 @@ idle_timeout_ms="$(
 initial_workers="$(
   payload "${REPORT_DIR}/status-before.json" | jq -r '.workers | length'
 )"
+if [[ "$initial_workers" != "$min_workers" ]]; then
+  initial_quiesce_seconds="$((idle_timeout_ms / 1000 + 35))"
+  sleep "$initial_quiesce_seconds"
+  call_gateway_to_file \
+    vlab.workers.status \
+    '{}' \
+    "${REPORT_DIR}/status-before.json"
+  initial_workers="$(
+    payload "${REPORT_DIR}/status-before.json" | jq -r '.workers | length'
+  )"
+fi
 [[ "$initial_workers" == "$min_workers" ]]
 
 declare -a request_pids=()
