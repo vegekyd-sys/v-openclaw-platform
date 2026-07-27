@@ -21,6 +21,12 @@ Only synthetic session keys beginning with
 They are normalized to lowercase before native OpenClaw session lookup and
 dispatch, matching OpenClaw's canonical session-key format.
 
+The vLab experiment sets OpenClaw's existing
+`tools.sessions.visibility="agent"` policy. This lets one `makaron` session
+inspect another `makaron` session through `sessions_list` and
+`sessions_history` without enabling unrestricted cross-agent visibility or
+introducing a separate worker registry.
+
 ## Candidate
 
 - OpenClaw: `2026.7.1`

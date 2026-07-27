@@ -136,7 +136,10 @@ jq \
   --argjson worker_count "$WORKER_COUNT" \
   --argjson idle_timeout_ms "$IDLE_TIMEOUT_MS" \
   '
-    .plugins = (.plugins // {})
+    .tools = (.tools // {})
+    | .tools.sessions = (.tools.sessions // {})
+    | .tools.sessions.visibility = "agent"
+    | .plugins = (.plugins // {})
     | .plugins.load = (.plugins.load // {})
     | .plugins.load.paths = (
         (

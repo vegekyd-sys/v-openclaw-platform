@@ -11,6 +11,8 @@ node --check "${EXPERIMENT_DIR}/index.mjs"
 node --check "${EXPERIMENT_DIR}/self-test.mjs"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-remote.sh"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-soak.sh"
+grep -q 'visibility = "agent"' \
+  "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
 
 jq -e '.id == "vlab-agent-worker-isolation"' \
   "${EXPERIMENT_DIR}/openclaw.plugin.json" >/dev/null
