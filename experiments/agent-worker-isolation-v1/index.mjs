@@ -142,6 +142,28 @@ const plugin = {
     );
 
     api.registerGatewayMethod(
+      "vlab.workers.hold",
+      async ({ params, respond }) => {
+        try {
+          const startedAt = performance.now();
+          const sessionKey = requireLabSessionKey(params);
+          const durationMs = readNumber(params, "durationMs", 5_000);
+          const result = await pool.dispatch(sessionKey, {
+            kind: "hold",
+            durationMs,
+          });
+          respond(true, {
+            ...result,
+            gatewayDispatchMs: performance.now() - startedAt,
+          });
+        } catch (error) {
+          respondError(respond, error);
+        }
+      },
+      { scope: "operator.write" },
+    );
+
+    api.registerGatewayMethod(
       "vlab.workers.agent",
       async ({ params, respond }) => {
         try {

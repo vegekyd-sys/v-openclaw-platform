@@ -42,6 +42,15 @@ function runCpu(durationMs) {
   };
 }
 
+async function runHold(durationMs) {
+  const startedAt = performance.now();
+  await new Promise((resolve) => setTimeout(resolve, durationMs));
+  return {
+    kind: "hold",
+    wallMs: performance.now() - startedAt,
+  };
+}
+
 async function runAgent(message) {
   const { agentCommand } = await loadAgentRuntime();
   const startedAt = performance.now();
@@ -91,6 +100,12 @@ process.on("message", async (message) => {
         throw new Error("durationMs must be between 1 and 60000");
       }
       result = runCpu(durationMs);
+    } else if (message.kind === "hold") {
+      const durationMs = Number(message.durationMs);
+      if (!Number.isFinite(durationMs) || durationMs < 1 || durationMs > 60_000) {
+        throw new Error("durationMs must be between 1 and 60000");
+      }
+      result = await runHold(durationMs);
     } else if (message.kind === "agent") {
       result = await runAgent(message);
     } else {

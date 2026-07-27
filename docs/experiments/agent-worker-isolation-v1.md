@@ -8,11 +8,12 @@ Workers scale out only when simultaneous session work requires them and return
 to one warm process after the configured idle timeout.
 
 This experiment does not change private V and does not route production
-channels. It adds four vLab-only Gateway methods:
+channels. It adds five vLab-only Gateway methods:
 
 - `vlab.workers.status`
 - `vlab.workers.ping`
 - `vlab.workers.cpu`
+- `vlab.workers.hold`
 - `vlab.workers.agent`
 
 Only synthetic session keys beginning with

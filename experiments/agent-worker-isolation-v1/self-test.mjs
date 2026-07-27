@@ -100,6 +100,12 @@ try {
   const resumed = await pool.dispatch(stickySession, { kind: "ping" });
   assert.equal(resumed.kind, "ping");
   assert.equal(pool.status().workers.length, 1);
+  const held = await pool.dispatch(stickySession, {
+    kind: "hold",
+    durationMs: 25,
+  });
+  assert.equal(held.kind, "hold");
+  assert.ok(held.wallMs >= 20);
 
   console.log(
     JSON.stringify(
@@ -115,6 +121,7 @@ try {
         cappedRequests: capped.length,
         scaledDownWorkers: scaledDownStatus.workers.length,
         resumedWorkerPid: resumed.workerPid,
+        holdWallMs: held.wallMs,
       },
       null,
       2,

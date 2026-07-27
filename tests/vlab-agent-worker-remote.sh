@@ -7,7 +7,7 @@ OPENCLAW="/opt/vlab/current/node_modules/openclaw/openclaw.mjs"
 NODE="/opt/vlab/node/bin/node"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 REPORT_DIR="${LAB_ROOT}/logs/agent-worker-elastic-acceptance-${TIMESTAMP}"
-CPU_DURATION_MS="${VLAB_ELASTIC_CPU_DURATION_MS:-1000}"
+HOLD_DURATION_MS="${VLAB_ELASTIC_HOLD_DURATION_MS:-5000}"
 
 call_gateway() {
   sudo -u vlab env \
@@ -53,9 +53,9 @@ declare -a request_pids=()
 for index in $(seq 1 "$max_workers"); do
   session_key="agent:makaron:explicit:vlab-worker-elastic-${index}"
   call_gateway \
-    vlab.workers.cpu \
-    "{\"sessionKey\":\"${session_key}\",\"durationMs\":${CPU_DURATION_MS}}" \
-    > "${REPORT_DIR}/cpu-${index}.json" &
+    vlab.workers.hold \
+    "{\"sessionKey\":\"${session_key}\",\"durationMs\":${HOLD_DURATION_MS}}" \
+    > "${REPORT_DIR}/hold-${index}.json" &
   request_pids+=("$!")
 done
 
@@ -79,7 +79,7 @@ done
 
 worker_pids="$(
   for index in $(seq 1 "$max_workers"); do
-    payload "${REPORT_DIR}/cpu-${index}.json" | jq -r '.workerPid'
+    payload "${REPORT_DIR}/hold-${index}.json" | jq -r '.workerPid'
   done | sort -u
 )"
 unique_worker_count="$(printf '%s\n' "$worker_pids" | sed '/^$/d' | wc -l | tr -d ' ')"
@@ -87,25 +87,25 @@ unique_worker_count="$(printf '%s\n' "$worker_pids" | sed '/^$/d' | wc -l | tr -
 
 sticky_session="agent:makaron:explicit:vlab-worker-elastic-sticky"
 call_gateway \
-  vlab.workers.cpu \
+  vlab.workers.hold \
   "{\"sessionKey\":\"${sticky_session}\",\"durationMs\":1000}" \
-  > "${REPORT_DIR}/sticky-cpu.json" &
-sticky_cpu_pid=$!
+  > "${REPORT_DIR}/sticky-hold.json" &
+sticky_hold_pid=$!
 sleep 0.1
 call_gateway \
   vlab.workers.ping \
   "{\"sessionKey\":\"${sticky_session}\"}" \
   > "${REPORT_DIR}/sticky-ping.json" &
 sticky_ping_pid=$!
-wait "$sticky_cpu_pid"
+wait "$sticky_hold_pid"
 wait "$sticky_ping_pid"
-sticky_cpu_worker="$(
-  payload "${REPORT_DIR}/sticky-cpu.json" | jq -r '.workerPid'
+sticky_hold_worker="$(
+  payload "${REPORT_DIR}/sticky-hold.json" | jq -r '.workerPid'
 )"
 sticky_ping_worker="$(
   payload "${REPORT_DIR}/sticky-ping.json" | jq -r '.workerPid'
 )"
-[[ "$sticky_cpu_worker" == "$sticky_ping_worker" ]]
+[[ "$sticky_hold_worker" == "$sticky_ping_worker" ]]
 
 scale_down_timeout_seconds="$((idle_timeout_ms / 1000 + 45))"
 scale_down_deadline="$((SECONDS + scale_down_timeout_seconds))"
@@ -138,7 +138,7 @@ jq -n \
   --argjson idle_timeout_ms "$idle_timeout_ms" \
   --argjson unique_worker_count "$unique_worker_count" \
   --arg sticky_session "$sticky_session" \
-  --arg sticky_worker "$sticky_cpu_worker" \
+  --arg sticky_worker "$sticky_hold_worker" \
   --arg baseline_restarts "$baseline_restarts" \
   --arg final_restarts "$final_restarts" \
   '{
