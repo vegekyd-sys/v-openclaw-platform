@@ -43,6 +43,8 @@ if ss -ltnH | awk '{print $4}' | grep -Eq "(^|:)${LAB_PORT}$"; then
   fi
 fi
 
+systemctl stop openclaw-vlab-gateway.service 2>/dev/null || true
+
 available_kb="$(df -Pk / | awk 'NR==2 {print $4}')"
 if (( available_kb < 20 * 1024 * 1024 )); then
   echo "vLab requires at least 20 GiB free on the root filesystem" >&2
@@ -238,6 +240,38 @@ chmod 0700 "$LAB_ROOT" "$LAB_ROOT/state" "$LAB_ROOT/workspace"
 install -m 0644 "$UNIT_SOURCE" "$UNIT_TARGET"
 systemctl daemon-reload
 systemctl enable openclaw-vlab-gateway.service
+
+doctor_log="${LAB_ROOT}/logs/bootstrap-doctor.log"
+set +e
+sudo -u "$LAB_USER" env \
+  HOME="$LAB_ROOT" \
+  OPENCLAW_HOME="$LAB_ROOT" \
+  OPENCLAW_STATE_DIR="${LAB_ROOT}/state" \
+  OPENCLAW_CONFIG_PATH="${LAB_ROOT}/state/openclaw.json" \
+  OPENCLAW_WORKSPACE_DIR="${LAB_ROOT}/workspace" \
+  /opt/vlab/node/bin/node \
+  /opt/vlab/current/node_modules/openclaw/openclaw.mjs \
+  doctor --fix >"$doctor_log" 2>&1
+doctor_exit=$?
+set -e
+
+per_agent_memory_db="${LAB_ROOT}/state/agents/makaron/agent/openclaw-agent.sqlite"
+legacy_memory_dir="${LAB_ROOT}/state/memory"
+if [[ -d "$legacy_memory_dir" ]] \
+  && [[ -f "$per_agent_memory_db" ]] \
+  && [[ "$(stat -c %s "$per_agent_memory_db")" -gt 1048576 ]]; then
+  legacy_backup="${LAB_ROOT}/backups/legacy-memory-core-seed"
+  install -d -o "$LAB_USER" -g "$LAB_USER" -m 0700 "${LAB_ROOT}/backups"
+  if [[ ! -e "$legacy_backup" ]]; then
+    mv "$legacy_memory_dir" "$legacy_backup"
+  fi
+fi
+
+if (( doctor_exit != 0 )) && [[ ! -s "$per_agent_memory_db" ]]; then
+  echo "vLab doctor failed before creating a per-agent memory database; see $doctor_log" >&2
+  exit "$doctor_exit"
+fi
+
 find "${LAB_ROOT}/state/logs/stability" \
   -maxdepth 1 \
   -type f \
