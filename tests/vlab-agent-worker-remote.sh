@@ -61,7 +61,15 @@ done
 
 scaled_workers=0
 for _ in $(seq 1 100); do
-  call_gateway vlab.workers.status '{}' > "${REPORT_DIR}/status-during.json"
+  if ! call_gateway vlab.workers.status '{}' \
+    > "${REPORT_DIR}/status-during.json.tmp"; then
+    rm -f "${REPORT_DIR}/status-during.json.tmp"
+    sleep 0.1
+    continue
+  fi
+  mv \
+    "${REPORT_DIR}/status-during.json.tmp" \
+    "${REPORT_DIR}/status-during.json"
   scaled_workers="$(
     payload "${REPORT_DIR}/status-during.json" | jq -r '.workers | length'
   )"
@@ -111,7 +119,15 @@ scale_down_timeout_seconds="$((idle_timeout_ms / 1000 + 45))"
 scale_down_deadline="$((SECONDS + scale_down_timeout_seconds))"
 final_workers="$max_workers"
 while (( SECONDS < scale_down_deadline )); do
-  call_gateway vlab.workers.status '{}' > "${REPORT_DIR}/status-after.json"
+  if ! call_gateway vlab.workers.status '{}' \
+    > "${REPORT_DIR}/status-after.json.tmp"; then
+    rm -f "${REPORT_DIR}/status-after.json.tmp"
+    sleep 1
+    continue
+  fi
+  mv \
+    "${REPORT_DIR}/status-after.json.tmp" \
+    "${REPORT_DIR}/status-after.json"
   final_workers="$(
     payload "${REPORT_DIR}/status-after.json" | jq -r '.workers | length'
   )"
