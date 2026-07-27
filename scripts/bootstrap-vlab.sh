@@ -5,28 +5,22 @@ LAB_ROOT="${LAB_ROOT:-/srv/vlab}"
 LAB_USER="${LAB_USER:-vlab}"
 LAB_PORT="${LAB_PORT:-23793}"
 OPENCLAW_VERSION="${OPENCLAW_VERSION:-2026.7.1}"
+NODE_VERSION="${NODE_VERSION:-22.22.3}"
 SOURCE_STATE="${SOURCE_STATE:-/root/.openclaw}"
 SOURCE_WORKSPACE="${SOURCE_WORKSPACE:-/root/makaron-openclaw/.openclaw-local/workspace}"
-NODE_BIN="${NODE_BIN:-/root/.nvm/versions/node/v22.22.1/bin/node}"
-NPM_BIN="${NPM_BIN:-/root/.nvm/versions/node/v22.22.1/bin/npm}"
 UNIT_SOURCE="${UNIT_SOURCE:-/tmp/openclaw-vlab-gateway.service}"
 UNIT_TARGET="/etc/systemd/system/openclaw-vlab-gateway.service"
 RELEASE_ROOT="/opt/vlab/releases/${OPENCLAW_VERSION}"
+NODE_ROOT="/opt/vlab/node-v${NODE_VERSION}-linux-x64"
 SEED_MARKER="${LAB_ROOT}/state/.seeded-from-v-from-versa"
-
-export PATH="$(dirname "$NODE_BIN"):${PATH}"
 
 if [[ "$(id -u)" -ne 0 ]]; then
   echo "bootstrap-vlab.sh must run as root" >&2
   exit 1
 fi
 
-for required in jq rsync openssl "$NODE_BIN" "$NPM_BIN"; do
-  if [[ "$required" == /* ]]; then
-    [[ -x "$required" ]] || { echo "missing executable: $required" >&2; exit 1; }
-  else
-    command -v "$required" >/dev/null || { echo "missing command: $required" >&2; exit 1; }
-  fi
+for required in curl jq rsync openssl sha256sum tar xz; do
+  command -v "$required" >/dev/null || { echo "missing command: $required" >&2; exit 1; }
 done
 
 [[ -f "${SOURCE_STATE}/openclaw.json" ]] || {
@@ -49,6 +43,8 @@ if ss -ltnH | awk '{print $4}' | grep -Eq "(^|:)${LAB_PORT}$"; then
   fi
 fi
 
+systemctl stop openclaw-vlab-gateway.service 2>/dev/null || true
+
 available_kb="$(df -Pk / | awk 'NR==2 {print $4}')"
 if (( available_kb < 20 * 1024 * 1024 )); then
   echo "vLab requires at least 20 GiB free on the root filesystem" >&2
@@ -59,12 +55,31 @@ if ! id "$LAB_USER" >/dev/null 2>&1; then
   useradd --system --create-home --home-dir "$LAB_ROOT" --shell /usr/sbin/nologin "$LAB_USER"
 fi
 
-install -d -m 0755 /opt/vlab/bin /opt/vlab/releases
-install -m 0755 "$NODE_BIN" /opt/vlab/bin/node
+install -d -m 0755 /opt/vlab /opt/vlab/releases
+
+if [[ ! -x "${NODE_ROOT}/bin/node" ]]; then
+  node_archive="node-v${NODE_VERSION}-linux-x64.tar.xz"
+  node_download_dir="$(mktemp -d)"
+  trap 'rm -rf "$node_download_dir"' EXIT
+
+  curl -fsSLo "${node_download_dir}/${node_archive}" \
+    "https://nodejs.org/dist/v${NODE_VERSION}/${node_archive}"
+  curl -fsSLo "${node_download_dir}/SHASUMS256.txt" \
+    "https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt"
+
+  (
+    cd "$node_download_dir"
+    grep "  ${node_archive}$" SHASUMS256.txt | sha256sum -c -
+  )
+  tar -xJf "${node_download_dir}/${node_archive}" -C /opt/vlab
+fi
+
+ln -sfn "$NODE_ROOT" /opt/vlab/node
+export PATH="/opt/vlab/node/bin:${PATH}"
 
 if [[ ! -f "${RELEASE_ROOT}/node_modules/openclaw/openclaw.mjs" ]]; then
   install -d -m 0755 "$RELEASE_ROOT"
-  "$NPM_BIN" install \
+  /opt/vlab/node/bin/npm install \
     --prefix "$RELEASE_ROOT" \
     --omit=dev \
     --no-audit \
@@ -81,7 +96,7 @@ install -d -o "$LAB_USER" -g "$LAB_USER" -m 0700 \
   "$LAB_ROOT/logs"
 
 if [[ ! -f "$SEED_MARKER" ]]; then
-  for state_dir in agents/makaron memory identity credentials extensions skills plugin-skills plugins plugin-state state; do
+  for state_dir in agents/makaron memory identity credentials skills; do
     if [[ -e "${SOURCE_STATE}/${state_dir}" ]]; then
       install -d -o "$LAB_USER" -g "$LAB_USER" -m 0700 "${LAB_ROOT}/state/${state_dir}"
       rsync -a --delete "${SOURCE_STATE}/${state_dir}/" "${LAB_ROOT}/state/${state_dir}/"
@@ -153,22 +168,75 @@ if [[ ! -f "$SEED_MARKER" ]]; then
   touch "$SEED_MARKER"
 fi
 
-gateway_token="$(openssl rand -hex 32)"
+legacy_plugin_backup="${LAB_ROOT}/backups/legacy-plugin-state-seed"
+install -d -o "$LAB_USER" -g "$LAB_USER" -m 0700 \
+  "${LAB_ROOT}/backups" \
+  "$legacy_plugin_backup"
+for legacy_plugin_dir in extensions plugins plugin-state plugin-skills state; do
+  if [[ -e "${LAB_ROOT}/state/${legacy_plugin_dir}" ]] \
+    && [[ ! -e "${legacy_plugin_backup}/${legacy_plugin_dir}" ]]; then
+    mv \
+      "${LAB_ROOT}/state/${legacy_plugin_dir}" \
+      "${legacy_plugin_backup}/${legacy_plugin_dir}"
+  fi
+done
+
+if [[ -s "${LAB_ROOT}/state/gateway-token" ]]; then
+  gateway_token="$(cat "${LAB_ROOT}/state/gateway-token")"
+else
+  gateway_token="$(openssl rand -hex 32)"
+fi
 jq \
+  --arg source_state "$SOURCE_STATE" \
+  --arg lab_state "${LAB_ROOT}/state" \
+  --arg source_workspace "$SOURCE_WORKSPACE" \
   --arg workspace "${LAB_ROOT}/workspace" \
   --arg agent_dir "${LAB_ROOT}/state/agents/makaron/agent" \
+  --arg sqlite_vec_path "${RELEASE_ROOT}/node_modules/openclaw/node_modules/sqlite-vec-linux-x64/vec0.so" \
   --arg token "$gateway_token" \
   --argjson port "$LAB_PORT" \
   '
-    .gateway = ((.gateway // {}) + {
+    walk(
+      if type == "string" then
+        gsub("^" + $source_state; $lab_state)
+        | gsub("^" + $source_workspace; $workspace)
+      else .
+      end
+    )
+    | .gateway = ((.gateway // {}) + {
       port: $port,
       bind: "loopback",
       auth: {mode: "token", token: $token},
-      reload: {mode: "off"}
+      reload: {mode: "off"},
+      controlUi: {
+        allowedOrigins: [
+          ("http://127.0.0.1:" + ($port | tostring)),
+          ("http://localhost:" + ($port | tostring))
+        ],
+        allowInsecureAuth: false,
+        dangerouslyDisableDeviceAuth: false
+      }
     })
     | .channels = {}
+    | .bindings = []
     | del(.hooks)
+    | .mcp.servers = {}
+    | .tools.deny = (((.tools.deny // []) + [
+        "message",
+        "tts",
+        "image_generate",
+        "music_generate",
+        "video_generate"
+      ]) | unique)
+    | .plugins.load.paths = []
+    | .plugins.entries = ((.plugins.entries // {}) | with_entries(
+        select(.key | test("^(browser|deepseek|duckduckgo|google|memory-core|openai|openrouter)$"))
+      ))
+    | .models.providers = ((.models.providers // {}) | with_entries(
+        select(.key == "deepseek")
+      ))
     | .agents.defaults.workspace = $workspace
+    | .agents.defaults.memorySearch.store.vector.extensionPath = $sqlite_vec_path
     | .agents.list = ((.agents.list // []) | map(
         if .id == "makaron" then
           .name = "vLab"
@@ -177,7 +245,10 @@ jq \
         else .
         end
       ))
-    | .browser = ((.browser // {}) + {controlPort: ($port + 2)})
+    | if (.browser? | type) == "object" then
+        del(.browser.controlPort)
+      else .
+      end
     | if (.plugins.entries? | type) == "object" then
         .plugins.entries |= with_entries(
           if (.key | test("feishu|lark|slack|telegram|wecom|wechat|dingtalk|qq"; "i"))
@@ -185,6 +256,12 @@ jq \
           else .
           end
         )
+      else .
+      end
+    | if (.plugins.entries["memory-core"]? | type) == "object" then
+        .plugins.entries["memory-core"].config = ((.plugins.entries["memory-core"].config // {}) + {
+          dreaming: (((.plugins.entries["memory-core"].config.dreaming // {}) + {enabled: false}))
+        })
       else .
       end
   ' \
@@ -205,9 +282,67 @@ fi
 chown -R "$LAB_USER:$LAB_USER" "$LAB_ROOT"
 chmod 0700 "$LAB_ROOT" "$LAB_ROOT/state" "$LAB_ROOT/workspace"
 
+deepseek_plugin_path="$(
+  find "${LAB_ROOT}/state/npm/projects" \
+    -path '*/node_modules/@openclaw/deepseek-provider' \
+    -type d \
+    -print \
+    -quit 2>/dev/null || true
+)"
+if [[ -z "$deepseek_plugin_path" ]]; then
+  sudo -u "$LAB_USER" env \
+    HOME="$LAB_ROOT" \
+    PATH="/opt/vlab/node/bin:/usr/bin:/bin" \
+    OPENCLAW_HOME="$LAB_ROOT" \
+    OPENCLAW_STATE_DIR="${LAB_ROOT}/state" \
+    OPENCLAW_CONFIG_PATH="${LAB_ROOT}/state/openclaw.json" \
+    OPENCLAW_WORKSPACE_DIR="${LAB_ROOT}/workspace" \
+    /opt/vlab/node/bin/node \
+    /opt/vlab/current/node_modules/openclaw/openclaw.mjs \
+    plugins install "@openclaw/deepseek-provider@${OPENCLAW_VERSION}"
+fi
+
 install -m 0644 "$UNIT_SOURCE" "$UNIT_TARGET"
 systemctl daemon-reload
 systemctl enable openclaw-vlab-gateway.service
+
+doctor_log="${LAB_ROOT}/logs/bootstrap-doctor.log"
+set +e
+sudo -u "$LAB_USER" env \
+  HOME="$LAB_ROOT" \
+  OPENCLAW_HOME="$LAB_ROOT" \
+  OPENCLAW_STATE_DIR="${LAB_ROOT}/state" \
+  OPENCLAW_CONFIG_PATH="${LAB_ROOT}/state/openclaw.json" \
+  OPENCLAW_WORKSPACE_DIR="${LAB_ROOT}/workspace" \
+  /opt/vlab/node/bin/node \
+  /opt/vlab/current/node_modules/openclaw/openclaw.mjs \
+  doctor --fix >"$doctor_log" 2>&1
+doctor_exit=$?
+set -e
+
+per_agent_memory_db="${LAB_ROOT}/state/agents/makaron/agent/openclaw-agent.sqlite"
+legacy_memory_dir="${LAB_ROOT}/state/memory"
+if [[ -d "$legacy_memory_dir" ]] \
+  && [[ -f "$per_agent_memory_db" ]] \
+  && [[ "$(stat -c %s "$per_agent_memory_db")" -gt 1048576 ]]; then
+  legacy_backup="${LAB_ROOT}/backups/legacy-memory-core-seed"
+  install -d -o "$LAB_USER" -g "$LAB_USER" -m 0700 "${LAB_ROOT}/backups"
+  if [[ ! -e "$legacy_backup" ]]; then
+    mv "$legacy_memory_dir" "$legacy_backup"
+  fi
+fi
+
+if (( doctor_exit != 0 )) && [[ ! -s "$per_agent_memory_db" ]]; then
+  echo "vLab doctor failed before creating a per-agent memory database; see $doctor_log" >&2
+  exit "$doctor_exit"
+fi
+
+find "${LAB_ROOT}/state/logs/stability" \
+  -maxdepth 1 \
+  -type f \
+  \( -name '*gateway.startup_failed.json' -o -name '*gateway.crash_loop_breaker.json' \) \
+  -delete 2>/dev/null || true
+systemctl reset-failed openclaw-vlab-gateway.service 2>/dev/null || true
 systemctl restart openclaw-vlab-gateway.service
 
 echo "vLab bootstrap completed"

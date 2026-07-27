@@ -15,7 +15,7 @@ Environment=OPENCLAW_CONFIG_PATH=/srv/vlab/state/openclaw.json
 Environment=OPENCLAW_WORKSPACE_DIR=/srv/vlab/workspace
 Environment=OPENCLAW_GATEWAY_PORT=23793
 Environment=NODE_ENV=production
-ExecStart=/opt/vlab/bin/node /opt/vlab/current/node_modules/openclaw/openclaw.mjs gateway --port 23793
+ExecStart=/opt/vlab/node/bin/node /opt/vlab/current/node_modules/openclaw/openclaw.mjs gateway --port 23793
 Restart=on-failure
 RestartSec=5
 KillMode=control-group
@@ -33,4 +33,3 @@ CPUQuota=200%
 
 [Install]
 WantedBy=multi-user.target
-
