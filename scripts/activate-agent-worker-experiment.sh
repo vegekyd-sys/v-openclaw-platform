@@ -14,7 +14,8 @@ NODE="/opt/vlab/node/bin/node"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 BACKUP_DIR="${LAB_ROOT}/backups/agent-worker-isolation-v1/${TIMESTAMP}"
 ACTIVE_MANIFEST="${STATE_DIR}/active.json"
-CONFIG_BACKUP="${BACKUP_DIR}/openclaw.json"
+PRE_DEPLOY_CONFIG="${BACKUP_DIR}/openclaw.json"
+ROLLBACK_CONFIG="$PRE_DEPLOY_CONFIG"
 rollback_armed=false
 
 run_openclaw() {
@@ -29,8 +30,8 @@ run_openclaw() {
 
 restore_on_error() {
   local exit_code=$?
-  if [[ "$rollback_armed" == true ]] && [[ -f "$CONFIG_BACKUP" ]]; then
-    install -o vlab -g vlab -m 0600 "$CONFIG_BACKUP" "$CONFIG_PATH"
+  if [[ "$rollback_armed" == true ]] && [[ -f "$PRE_DEPLOY_CONFIG" ]]; then
+    install -o vlab -g vlab -m 0600 "$PRE_DEPLOY_CONFIG" "$CONFIG_PATH"
     systemctl restart openclaw-vlab-gateway.service || true
   fi
   exit "$exit_code"
@@ -84,7 +85,27 @@ sudo -u vlab env \
   > "${LAB_ROOT}/logs/agent-worker-self-test-${TIMESTAMP}.json"
 
 install -d -o vlab -g vlab -m 0700 "$BACKUP_DIR" "$STATE_DIR"
-install -o vlab -g vlab -m 0600 "$CONFIG_PATH" "$CONFIG_BACKUP"
+install -o vlab -g vlab -m 0600 "$CONFIG_PATH" "$PRE_DEPLOY_CONFIG"
+if jq -e \
+  '.plugins.entries["vlab-agent-worker-isolation"].enabled == true' \
+  "$CONFIG_PATH" >/dev/null 2>&1; then
+  while IFS= read -r candidate; do
+    if ! jq -e \
+      '.plugins.entries["vlab-agent-worker-isolation"].enabled == true' \
+      "$candidate" >/dev/null 2>&1; then
+      ROLLBACK_CONFIG="$candidate"
+      break
+    fi
+  done < <(
+    find "${LAB_ROOT}/backups/agent-worker-isolation-v1" \
+      -mindepth 2 \
+      -maxdepth 2 \
+      -name openclaw.json \
+      -type f \
+      -print \
+      | sort -r
+  )
+fi
 rollback_armed=true
 
 candidate_config="$(mktemp)"
@@ -137,13 +158,15 @@ jq -n \
   --arg experiment "agent-worker-isolation-v1" \
   --arg platform_commit "$PLATFORM_COMMIT" \
   --arg release_dir "$RELEASE_DIR" \
-  --arg config_backup "$CONFIG_BACKUP" \
+  --arg config_backup "$ROLLBACK_CONFIG" \
+  --arg pre_deploy_config "$PRE_DEPLOY_CONFIG" \
   --arg activated_at "$TIMESTAMP" \
   '{
     experiment: $experiment,
     platformCommit: $platform_commit,
     releaseDir: $release_dir,
     configBackup: $config_backup,
+    preDeployConfig: $pre_deploy_config,
     activatedAt: $activated_at,
     status: "active"
   }' \
