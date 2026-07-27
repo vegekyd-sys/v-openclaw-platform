@@ -257,7 +257,14 @@ fi
 chown -R "$LAB_USER:$LAB_USER" "$LAB_ROOT"
 chmod 0700 "$LAB_ROOT" "$LAB_ROOT/state" "$LAB_ROOT/workspace"
 
-if [[ ! -d "${LAB_ROOT}/state/extensions/deepseek" ]]; then
+deepseek_plugin_path="$(
+  find "${LAB_ROOT}/state/npm/projects" \
+    -path '*/node_modules/@openclaw/deepseek-provider' \
+    -type d \
+    -print \
+    -quit 2>/dev/null || true
+)"
+if [[ -z "$deepseek_plugin_path" ]]; then
   sudo -u "$LAB_USER" env \
     HOME="$LAB_ROOT" \
     PATH="/opt/vlab/node/bin:/usr/bin:/bin" \
