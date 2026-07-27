@@ -61,6 +61,7 @@ if [[ ! -d "$RELEASE_DIR" ]]; then
   tar -xzf "$ARCHIVE_PATH" -C "$RELEASE_DIR"
   find "$RELEASE_DIR" -type d -exec chmod 0755 {} +
   find "$RELEASE_DIR" -type f -exec chmod 0644 {} +
+  chown -R root:root "$RELEASE_DIR"
 fi
 
 for required in \
