@@ -42,16 +42,50 @@ const plugin = {
   name: "vLab Agent Worker Isolation",
   description: "Runs vLab experiment workloads in sticky child-process workers.",
   register(api) {
+    const minWorkers = Number(api.pluginConfig?.minWorkers ?? 1);
     const maxWorkers = Number(api.pluginConfig?.maxWorkers ?? 2);
+    const idleTimeoutMs = Number(api.pluginConfig?.idleTimeoutMs ?? 180_000);
     const requestTimeoutMs = Number(api.pluginConfig?.requestTimeoutMs ?? 600_000);
-    const pool = new WorkerPool({ maxWorkers, requestTimeoutMs });
+    const pool = new WorkerPool({
+      minWorkers,
+      maxWorkers,
+      idleTimeoutMs,
+      requestTimeoutMs,
+    });
+
+    function readNativeSession(agentId, sessionKey) {
+      const sessionRuntime = api.runtime.agent.session;
+      const storePath = sessionRuntime.resolveStorePath(api.config.session?.store, {
+        agentId,
+      });
+      const entry = sessionRuntime.getSessionEntry({
+        agentId,
+        storePath,
+        sessionKey,
+        readConsistency: "latest",
+      });
+      if (!entry) {
+        return {
+          exists: false,
+        };
+      }
+      return {
+        exists: true,
+        sessionId: entry.sessionId,
+        updatedAt: entry.updatedAt,
+        status: entry.status,
+        startedAt: entry.startedAt,
+        endedAt: entry.endedAt,
+        abortedLastRun: entry.abortedLastRun === true,
+      };
+    }
 
     api.registerService({
       id: "vlab-agent-worker-isolation",
       async start() {
         await pool.start();
         api.logger.info(
-          `vLab Agent Worker Isolation started with ${maxWorkers} workers`,
+          `vLab Agent Worker Isolation started with ${minWorkers}-${maxWorkers} elastic workers`,
         );
       },
       async stop() {
@@ -116,6 +150,7 @@ const plugin = {
           const message = readString(params, "message", { required: true });
           const agentId = readString(params, "agentId") ?? "makaron";
           const timeoutSeconds = readNumber(params, "timeoutSeconds", 300);
+          const nativeSessionBefore = readNativeSession(agentId, sessionKey);
           const result = await pool.dispatch(sessionKey, {
             kind: "agent",
             message,
@@ -126,8 +161,13 @@ const plugin = {
               ? params.toolsAllow.filter((item) => typeof item === "string")
               : undefined,
           });
+          const nativeSessionAfter = readNativeSession(agentId, sessionKey);
           respond(true, {
             ...result,
+            nativeSession: {
+              before: nativeSessionBefore,
+              after: nativeSessionAfter,
+            },
             gatewayDispatchMs: performance.now() - startedAt,
           });
         } catch (error) {

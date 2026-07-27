@@ -9,10 +9,20 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {
+      "minWorkers": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 16
+      },
       "maxWorkers": {
         "type": "integer",
-        "minimum": 2,
+        "minimum": 1,
         "maximum": 16
+      },
+      "idleTimeoutMs": {
+        "type": "integer",
+        "minimum": 100,
+        "maximum": 3600000
       },
       "requestTimeoutMs": {
         "type": "integer",

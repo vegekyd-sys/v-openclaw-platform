@@ -2,89 +2,119 @@ import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
 import { WorkerPool } from "./worker-pool.mjs";
 
-function findSessionForSlot(pool, wantedSlot) {
-  for (let index = 0; index < 10_000; index += 1) {
-    const sessionKey = `agent:makaron:explicit:vlab-worker-selftest-${index}`;
-    if (pool.slotFor(sessionKey) === wantedSlot) {
-      return sessionKey;
+async function waitFor(predicate, options = {}) {
+  const timeoutMs = options.timeoutMs ?? 3_000;
+  const intervalMs = options.intervalMs ?? 25;
+  const startedAt = performance.now();
+  while (performance.now() - startedAt < timeoutMs) {
+    const value = predicate();
+    if (value) {
+      return value;
     }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
-  throw new Error(`unable to find session key for slot ${wantedSlot}`);
+  throw new Error(options.message ?? `condition was not met within ${timeoutMs}ms`);
 }
 
-const durationMs = Number(process.env.VLAB_WORKER_TEST_DURATION_MS ?? 750);
+const durationMs = Number(process.env.VLAB_WORKER_TEST_DURATION_MS ?? 300);
 const pool = new WorkerPool({
-  maxWorkers: 2,
+  minWorkers: 1,
+  maxWorkers: 4,
+  idleTimeoutMs: 250,
+  idleSweepIntervalMs: 25,
   requestTimeoutMs: 30_000,
 });
 
 try {
   await pool.start();
-  const session0 = findSessionForSlot(pool, 0);
-  const session1 = findSessionForSlot(pool, 1);
+  const initialStatus = pool.status();
+  assert.equal(initialStatus.minWorkers, 1);
+  assert.equal(initialStatus.maxWorkers, 4);
+  assert.equal(initialStatus.workers.length, 1);
+  assert.equal(initialStatus.pending, 0);
 
-  const sequentialStartedAt = performance.now();
-  const sequential0 = await pool.dispatch(session0, { kind: "cpu", durationMs });
-  const sequential1 = await pool.dispatch(session1, { kind: "cpu", durationMs });
-  const sequentialWallMs = performance.now() - sequentialStartedAt;
-
+  const sessions = Array.from(
+    { length: 4 },
+    (_, index) => `agent:makaron:explicit:vlab-worker-selftest-${index}`,
+  );
   const parallelStartedAt = performance.now();
-  const [parallel0, parallel1] = await Promise.all([
-    pool.dispatch(session0, { kind: "cpu", durationMs }),
-    pool.dispatch(session1, { kind: "cpu", durationMs }),
-  ]);
+  const parallel = await Promise.all(
+    sessions.map((sessionKey) =>
+      pool.dispatch(sessionKey, { kind: "cpu", durationMs }),
+    ),
+  );
   const parallelWallMs = performance.now() - parallelStartedAt;
+  const parallelWorkerPids = new Set(parallel.map((result) => result.workerPid));
 
-  const isolationStartedAt = performance.now();
-  const busy = pool.dispatch(session0, {
-    kind: "cpu",
-    durationMs: Math.max(durationMs, 500),
-  });
-  await new Promise((resolve) => setTimeout(resolve, 50));
-  const pingStartedAt = performance.now();
-  const ping = await pool.dispatch(session1, { kind: "ping" });
-  const crossWorkerPingMs = performance.now() - pingStartedAt;
-  await busy;
+  assert.equal(parallelWorkerPids.size, 4);
+  assert.ok(
+    parallelWallMs < durationMs * 2.75,
+    `elastic parallel wall ${parallelWallMs.toFixed(1)}ms was too high`,
+  );
+  assert.equal(pool.status().workers.length, 4);
 
-  const sameWorkerStartedAt = performance.now();
-  const sameWorkerBusy = pool.dispatch(session0, {
-    kind: "cpu",
-    durationMs: 300,
-  });
-  const sameWorkerPing = pool.dispatch(session0, { kind: "ping" });
-  await Promise.all([sameWorkerBusy, sameWorkerPing]);
-  const sameWorkerQueueMs = performance.now() - sameWorkerStartedAt;
+  const stickySession =
+    "agent:makaron:explicit:vlab-worker-selftest-sticky-session";
+  const stickyStartedAt = performance.now();
+  const [stickyBusy, stickyPing] = await Promise.all([
+    pool.dispatch(stickySession, {
+      kind: "cpu",
+      durationMs: Math.max(durationMs, 250),
+    }),
+    pool.dispatch(stickySession, { kind: "ping" }),
+  ]);
+  const stickyWallMs = performance.now() - stickyStartedAt;
 
-  assert.notEqual(sequential0.workerPid, sequential1.workerPid);
-  assert.equal(parallel0.slot, 0);
-  assert.equal(parallel1.slot, 1);
+  assert.equal(stickyBusy.workerPid, stickyPing.workerPid);
   assert.ok(
-    parallelWallMs < sequentialWallMs * 0.75,
-    `parallel wall ${parallelWallMs.toFixed(1)}ms was not sufficiently below sequential ${sequentialWallMs.toFixed(1)}ms`,
+    stickyWallMs >= Math.max(durationMs, 250) * 0.9,
+    `same-session work was not serialized: ${stickyWallMs.toFixed(1)}ms`,
   );
-  assert.ok(
-    crossWorkerPingMs < 300,
-    `cross-worker ping took ${crossWorkerPingMs.toFixed(1)}ms`,
+
+  const cappedSessions = Array.from(
+    { length: 5 },
+    (_, index) => `agent:makaron:explicit:vlab-worker-selftest-capped-${index}`,
   );
-  assert.ok(
-    sameWorkerQueueMs >= 275,
-    `same-worker queue was not serialized: ${sameWorkerQueueMs.toFixed(1)}ms`,
+  const capped = await Promise.all(
+    cappedSessions.map((sessionKey) =>
+      pool.dispatch(sessionKey, { kind: "cpu", durationMs: 150 }),
+    ),
   );
+  assert.equal(pool.status().workers.length, 4);
+  assert.equal(new Set(capped.map((result) => result.workerPid)).size, 4);
+
+  const scaledDownStatus = await waitFor(
+    () => {
+      const status = pool.status();
+      return status.workers.length === 1 ? status : undefined;
+    },
+    {
+      timeoutMs: 3_000,
+      message: "elastic pool did not return to minWorkers",
+    },
+  );
+  assert.equal(scaledDownStatus.pending, 0);
+  assert.equal(scaledDownStatus.workers[0].active, null);
+  assert.equal(scaledDownStatus.workers[0].queued, 0);
+
+  const resumed = await pool.dispatch(stickySession, { kind: "ping" });
+  assert.equal(resumed.kind, "ping");
+  assert.equal(pool.status().workers.length, 1);
 
   console.log(
     JSON.stringify(
       {
         ok: true,
-        workerPids: [parallel0.workerPid, parallel1.workerPid],
-        sessions: [session0, session1],
-        sequentialWallMs,
+        minWorkers: initialStatus.workers.length,
+        peakWorkers: parallelWorkerPids.size,
+        maxWorkers: initialStatus.maxWorkers,
+        parallelWorkerPids: [...parallelWorkerPids],
         parallelWallMs,
-        speedup: sequentialWallMs / parallelWallMs,
-        crossWorkerPingMs,
-        sameWorkerQueueMs,
-        cpuUserMs: [parallel0.cpuUserMs, parallel1.cpuUserMs],
-        ping,
-        isolationWallMs: performance.now() - isolationStartedAt,
+        stickyWorkerPid: stickyBusy.workerPid,
+        stickyWallMs,
+        cappedRequests: capped.length,
+        scaledDownWorkers: scaledDownStatus.workers.length,
+        resumedWorkerPid: resumed.workerPid,
       },
       null,
       2,

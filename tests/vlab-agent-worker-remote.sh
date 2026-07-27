@@ -6,9 +6,8 @@ CONFIG_PATH="${LAB_ROOT}/state/openclaw.json"
 OPENCLAW="/opt/vlab/current/node_modules/openclaw/openclaw.mjs"
 NODE="/opt/vlab/node/bin/node"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-REPORT_DIR="${LAB_ROOT}/logs/agent-worker-acceptance-${TIMESTAMP}"
-SESSION_A="agent:makaron:explicit:vlab-worker-acceptance-a"
-SESSION_B="agent:makaron:explicit:vlab-worker-acceptance-b"
+REPORT_DIR="${LAB_ROOT}/logs/agent-worker-elastic-acceptance-${TIMESTAMP}"
+CPU_DURATION_MS="${VLAB_ELASTIC_CPU_DURATION_MS:-1000}"
 
 call_gateway() {
   sudo -u vlab env \
@@ -36,107 +35,127 @@ baseline_restarts="$(
   systemctl show openclaw-vlab-gateway.service -p NRestarts --value
 )"
 call_gateway vlab.workers.status '{}' > "${REPORT_DIR}/status-before.json"
+min_workers="$(
+  payload "${REPORT_DIR}/status-before.json" | jq -r '.minWorkers'
+)"
+max_workers="$(
+  payload "${REPORT_DIR}/status-before.json" | jq -r '.maxWorkers'
+)"
+idle_timeout_ms="$(
+  payload "${REPORT_DIR}/status-before.json" | jq -r '.idleTimeoutMs'
+)"
+initial_workers="$(
+  payload "${REPORT_DIR}/status-before.json" | jq -r '.workers | length'
+)"
+[[ "$initial_workers" == "$min_workers" ]]
 
-call_gateway \
-  vlab.workers.ping \
-  "{\"sessionKey\":\"${SESSION_A}\"}" \
-  > "${REPORT_DIR}/slot-a.json"
-slot_a="$(payload "${REPORT_DIR}/slot-a.json" | jq -r '.slot')"
-for suffix in b b-alt b-alt-2 b-alt-3; do
-  SESSION_B="agent:makaron:explicit:vlab-worker-acceptance-${suffix}"
+declare -a request_pids=()
+for index in $(seq 1 "$max_workers"); do
+  session_key="agent:makaron:explicit:vlab-worker-elastic-${index}"
   call_gateway \
-    vlab.workers.ping \
-    "{\"sessionKey\":\"${SESSION_B}\"}" \
-    > "${REPORT_DIR}/slot-b.json"
-  slot_b="$(payload "${REPORT_DIR}/slot-b.json" | jq -r '.slot')"
-  if [[ "$slot_a" != "$slot_b" ]]; then
+    vlab.workers.cpu \
+    "{\"sessionKey\":\"${session_key}\",\"durationMs\":${CPU_DURATION_MS}}" \
+    > "${REPORT_DIR}/cpu-${index}.json" &
+  request_pids+=("$!")
+done
+
+scaled_workers=0
+for _ in $(seq 1 100); do
+  call_gateway vlab.workers.status '{}' > "${REPORT_DIR}/status-during.json"
+  scaled_workers="$(
+    payload "${REPORT_DIR}/status-during.json" | jq -r '.workers | length'
+  )"
+  if [[ "$scaled_workers" == "$max_workers" ]]; then
     break
   fi
+  sleep 0.1
 done
-[[ "$slot_a" != "$slot_b" ]]
+[[ "$scaled_workers" == "$max_workers" ]]
+call_gateway health '{}' > "${REPORT_DIR}/health-during.json"
 
-parallel_started_ns="$(date +%s%N)"
+for request_pid in "${request_pids[@]}"; do
+  wait "$request_pid"
+done
+
+worker_pids="$(
+  for index in $(seq 1 "$max_workers"); do
+    payload "${REPORT_DIR}/cpu-${index}.json" | jq -r '.workerPid'
+  done | sort -u
+)"
+unique_worker_count="$(printf '%s\n' "$worker_pids" | sed '/^$/d' | wc -l | tr -d ' ')"
+[[ "$unique_worker_count" == "$max_workers" ]]
+
+sticky_session="agent:makaron:explicit:vlab-worker-elastic-sticky"
 call_gateway \
   vlab.workers.cpu \
-  "{\"sessionKey\":\"${SESSION_A}\",\"durationMs\":5000}" \
-  > "${REPORT_DIR}/cpu-a.json" &
-pid_a=$!
-call_gateway \
-  vlab.workers.cpu \
-  "{\"sessionKey\":\"${SESSION_B}\",\"durationMs\":5000}" \
-  > "${REPORT_DIR}/cpu-b.json" &
-pid_b=$!
-
-sleep 0.25
-call_gateway health '{}' > "${REPORT_DIR}/health-during-parallel.json"
-wait "$pid_a"
-wait "$pid_b"
-parallel_finished_ns="$(date +%s%N)"
-parallel_wall_ms="$(( (parallel_finished_ns - parallel_started_ns) / 1000000 ))"
-
-jq -e 'if has("ok") then .ok == true else true end' \
-  "${REPORT_DIR}/cpu-a.json" >/dev/null
-jq -e 'if has("ok") then .ok == true else true end' \
-  "${REPORT_DIR}/cpu-b.json" >/dev/null
-worker_a="$(payload "${REPORT_DIR}/cpu-a.json" | jq -r '.workerPid')"
-worker_b="$(payload "${REPORT_DIR}/cpu-b.json" | jq -r '.workerPid')"
-[[ "$worker_a" != "$worker_b" ]]
-cpu_user_a="$(payload "${REPORT_DIR}/cpu-a.json" | jq -r '.cpuUserMs | floor')"
-cpu_user_b="$(payload "${REPORT_DIR}/cpu-b.json" | jq -r '.cpuUserMs | floor')"
-(( cpu_user_a > 4000 ))
-(( cpu_user_b > 4000 ))
-(( parallel_wall_ms < 13000 ))
-
-call_gateway \
-  vlab.workers.cpu \
-  "{\"sessionKey\":\"${SESSION_A}\",\"durationMs\":5000}" \
-  > "${REPORT_DIR}/isolation-busy.json" &
-busy_pid=$!
-sleep 0.25
-ping_started_ns="$(date +%s%N)"
+  "{\"sessionKey\":\"${sticky_session}\",\"durationMs\":1000}" \
+  > "${REPORT_DIR}/sticky-cpu.json" &
+sticky_cpu_pid=$!
+sleep 0.1
 call_gateway \
   vlab.workers.ping \
-  "{\"sessionKey\":\"${SESSION_B}\"}" \
-  > "${REPORT_DIR}/isolation-ping.json"
-ping_finished_ns="$(date +%s%N)"
-cross_worker_cli_ms="$(( (ping_finished_ns - ping_started_ns) / 1000000 ))"
-wait "$busy_pid"
-cross_worker_ping_ms="$(
-  payload "${REPORT_DIR}/isolation-ping.json" \
-    | jq -r '.gatewayDispatchMs | floor'
+  "{\"sessionKey\":\"${sticky_session}\"}" \
+  > "${REPORT_DIR}/sticky-ping.json" &
+sticky_ping_pid=$!
+wait "$sticky_cpu_pid"
+wait "$sticky_ping_pid"
+sticky_cpu_worker="$(
+  payload "${REPORT_DIR}/sticky-cpu.json" | jq -r '.workerPid'
 )"
-(( cross_worker_ping_ms < 1000 ))
+sticky_ping_worker="$(
+  payload "${REPORT_DIR}/sticky-ping.json" | jq -r '.workerPid'
+)"
+[[ "$sticky_cpu_worker" == "$sticky_ping_worker" ]]
 
-call_gateway vlab.workers.status '{}' > "${REPORT_DIR}/status-after.json"
+scale_down_timeout_seconds="$((idle_timeout_ms / 1000 + 45))"
+scale_down_deadline="$((SECONDS + scale_down_timeout_seconds))"
+final_workers="$max_workers"
+while (( SECONDS < scale_down_deadline )); do
+  call_gateway vlab.workers.status '{}' > "${REPORT_DIR}/status-after.json"
+  final_workers="$(
+    payload "${REPORT_DIR}/status-after.json" | jq -r '.workers | length'
+  )"
+  if [[ "$final_workers" == "$min_workers" ]]; then
+    break
+  fi
+  sleep 1
+done
+[[ "$final_workers" == "$min_workers" ]]
+
 final_restarts="$(
   systemctl show openclaw-vlab-gateway.service -p NRestarts --value
 )"
 [[ "$baseline_restarts" == "$final_restarts" ]]
 jq -e '(.result // .).eventLoop.degraded == false' \
-  "${REPORT_DIR}/health-during-parallel.json" >/dev/null
+  "${REPORT_DIR}/health-during.json" >/dev/null
 
 jq -n \
   --arg timestamp "$TIMESTAMP" \
-  --arg session_a "$SESSION_A" \
-  --arg session_b "$SESSION_B" \
-  --arg worker_a "$worker_a" \
-  --arg worker_b "$worker_b" \
-  --argjson parallel_wall_ms "$parallel_wall_ms" \
-  --argjson cross_worker_ping_ms "$cross_worker_ping_ms" \
-  --argjson cross_worker_cli_ms "$cross_worker_cli_ms" \
-  --argjson cpu_user_a "$cpu_user_a" \
-  --argjson cpu_user_b "$cpu_user_b" \
+  --argjson min_workers "$min_workers" \
+  --argjson max_workers "$max_workers" \
+  --argjson scaled_workers "$scaled_workers" \
+  --argjson final_workers "$final_workers" \
+  --argjson idle_timeout_ms "$idle_timeout_ms" \
+  --argjson unique_worker_count "$unique_worker_count" \
+  --arg sticky_session "$sticky_session" \
+  --arg sticky_worker "$sticky_cpu_worker" \
   --arg baseline_restarts "$baseline_restarts" \
   --arg final_restarts "$final_restarts" \
   '{
     ok: true,
     timestamp: $timestamp,
-    sessions: [$session_a, $session_b],
-    workerPids: [$worker_a, $worker_b],
-    parallelWallMs: $parallel_wall_ms,
-    workerCpuUserMs: [$cpu_user_a, $cpu_user_b],
-    crossWorkerPingMs: $cross_worker_ping_ms,
-    crossWorkerCliMs: $cross_worker_cli_ms,
+    workers: {
+      min: $min_workers,
+      max: $max_workers,
+      scaled: $scaled_workers,
+      final: $final_workers,
+      uniquePids: $unique_worker_count,
+      idleTimeoutMs: $idle_timeout_ms
+    },
+    stickySession: {
+      sessionKey: $sticky_session,
+      workerPid: $sticky_worker
+    },
     gatewayRestarts: {
       before: $baseline_restarts,
       after: $final_restarts

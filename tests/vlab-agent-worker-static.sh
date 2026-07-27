@@ -12,6 +12,11 @@ bash -n "${REPO_ROOT}/tests/vlab-agent-worker-remote.sh"
 
 jq -e '.id == "vlab-agent-worker-isolation"' \
   "${EXPERIMENT_DIR}/openclaw.plugin.json" >/dev/null
+jq -e \
+  '.configSchema.properties.minWorkers.minimum == 1
+   and .configSchema.properties.maxWorkers.maximum == 16
+   and .configSchema.properties.idleTimeoutMs.maximum == 3600000' \
+  "${EXPERIMENT_DIR}/openclaw.plugin.json" >/dev/null
 jq -e '.openclaw.extensions == ["./index.mjs"]' \
   "${EXPERIMENT_DIR}/package.json" >/dev/null
 

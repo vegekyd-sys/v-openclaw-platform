@@ -2,7 +2,9 @@
 set -Eeuo pipefail
 
 LAB_ROOT="${LAB_ROOT:-/srv/vlab}"
+MIN_WORKERS="${VLAB_WORKER_MIN_COUNT:-1}"
 WORKER_COUNT="${VLAB_WORKER_COUNT:-2}"
+IDLE_TIMEOUT_MS="${VLAB_WORKER_IDLE_TIMEOUT_MS:-180000}"
 ARCHIVE_PATH="${ARCHIVE_PATH:-/tmp/vlab-agent-worker-isolation-v1.tar.gz}"
 PLATFORM_COMMIT="${PLATFORM_COMMIT:?PLATFORM_COMMIT is required}"
 PLUGIN_ID="vlab-agent-worker-isolation"
@@ -43,9 +45,19 @@ if [[ "$(id -u)" -ne 0 ]]; then
   echo "activate-agent-worker-experiment.sh must run as root" >&2
   exit 1
 fi
+if ! [[ "$MIN_WORKERS" =~ ^[0-9]+$ ]] \
+  || (( MIN_WORKERS < 1 || MIN_WORKERS > 16 )); then
+  echo "VLAB_WORKER_MIN_COUNT must be an integer between 1 and 16" >&2
+  exit 1
+fi
 if ! [[ "$WORKER_COUNT" =~ ^[0-9]+$ ]] \
-  || (( WORKER_COUNT < 2 || WORKER_COUNT > 16 )); then
-  echo "VLAB_WORKER_COUNT must be an integer between 2 and 16" >&2
+  || (( WORKER_COUNT < MIN_WORKERS || WORKER_COUNT > 16 )); then
+  echo "VLAB_WORKER_COUNT must be an integer between VLAB_WORKER_MIN_COUNT and 16" >&2
+  exit 1
+fi
+if ! [[ "$IDLE_TIMEOUT_MS" =~ ^[0-9]+$ ]] \
+  || (( IDLE_TIMEOUT_MS < 100 || IDLE_TIMEOUT_MS > 3600000 )); then
+  echo "VLAB_WORKER_IDLE_TIMEOUT_MS must be an integer between 100 and 3600000" >&2
   exit 1
 fi
 [[ -f "$ARCHIVE_PATH" ]] || {
@@ -119,7 +131,9 @@ jq \
   --arg plugin_id "$PLUGIN_ID" \
   --arg release_dir "$RELEASE_DIR" \
   --arg experiment_root "$EXPERIMENT_ROOT" \
+  --argjson min_workers "$MIN_WORKERS" \
   --argjson worker_count "$WORKER_COUNT" \
+  --argjson idle_timeout_ms "$IDLE_TIMEOUT_MS" \
   '
     .plugins = (.plugins // {})
     | .plugins.load = (.plugins.load // {})
@@ -135,7 +149,9 @@ jq \
     | .plugins.entries[$plugin_id] = {
         enabled: true,
         config: {
+          minWorkers: $min_workers,
           maxWorkers: $worker_count,
+          idleTimeoutMs: $idle_timeout_ms,
           requestTimeoutMs: 600000
         }
       }
@@ -164,8 +180,8 @@ ready_worker_count="$(
   jq -r '(.result // .).workers | length' \
     "${LAB_ROOT}/logs/agent-worker-status-${TIMESTAMP}.json"
 )"
-[[ "$ready_worker_count" == "$WORKER_COUNT" ]] || {
-  echo "expected ${WORKER_COUNT} ready workers, got ${ready_worker_count}" >&2
+[[ "$ready_worker_count" == "$MIN_WORKERS" ]] || {
+  echo "expected ${MIN_WORKERS} warm workers, got ${ready_worker_count}" >&2
   false
 }
 
@@ -194,5 +210,5 @@ rollback_armed=false
 trap - ERR
 
 echo "vLab Agent Worker Isolation activated"
-jq '{ok, result: ((.result // .) | {started, maxWorkers, workers})}' \
+jq '{ok, result: ((.result // .) | {started, minWorkers, maxWorkers, idleTimeoutMs, pending, workers})}' \
   "${LAB_ROOT}/logs/agent-worker-status-${TIMESTAMP}.json"
