@@ -21,6 +21,28 @@ call_gateway() {
     --json
 }
 
+call_gateway_to_file() {
+  local method="$1"
+  local params="$2"
+  local output_path="$3"
+  local temp_path="${output_path}.tmp"
+  local call_exit
+
+  set +e
+  call_gateway "$method" "$params" > "$temp_path"
+  call_exit=$?
+  set -e
+  if jq -e '.' "$temp_path" >/dev/null 2>&1; then
+    mv "$temp_path" "$output_path"
+    return 0
+  fi
+  rm -f "$temp_path"
+  if (( call_exit == 0 )); then
+    return 1
+  fi
+  return "$call_exit"
+}
+
 payload() {
   jq -c '.result // .' "$1"
 }
@@ -34,7 +56,10 @@ install -d -o vlab -g vlab -m 0700 "$REPORT_DIR"
 baseline_restarts="$(
   systemctl show openclaw-vlab-gateway.service -p NRestarts --value
 )"
-call_gateway vlab.workers.status '{}' > "${REPORT_DIR}/status-before.json"
+call_gateway_to_file \
+  vlab.workers.status \
+  '{}' \
+  "${REPORT_DIR}/status-before.json"
 min_workers="$(
   payload "${REPORT_DIR}/status-before.json" | jq -r '.minWorkers'
 )"
@@ -52,24 +77,22 @@ initial_workers="$(
 declare -a request_pids=()
 for index in $(seq 1 "$max_workers"); do
   session_key="agent:makaron:explicit:vlab-worker-elastic-${index}"
-  call_gateway \
+  call_gateway_to_file \
     vlab.workers.hold \
     "{\"sessionKey\":\"${session_key}\",\"durationMs\":${HOLD_DURATION_MS}}" \
-    > "${REPORT_DIR}/hold-${index}.json" &
+    "${REPORT_DIR}/hold-${index}.json" &
   request_pids+=("$!")
 done
 
 scaled_workers=0
 for _ in $(seq 1 100); do
-  if ! call_gateway vlab.workers.status '{}' \
-    > "${REPORT_DIR}/status-during.json.tmp"; then
-    rm -f "${REPORT_DIR}/status-during.json.tmp"
+  if ! call_gateway_to_file \
+    vlab.workers.status \
+    '{}' \
+    "${REPORT_DIR}/status-during.json"; then
     sleep 0.1
     continue
   fi
-  mv \
-    "${REPORT_DIR}/status-during.json.tmp" \
-    "${REPORT_DIR}/status-during.json"
   scaled_workers="$(
     payload "${REPORT_DIR}/status-during.json" | jq -r '.workers | length'
   )"
@@ -79,7 +102,7 @@ for _ in $(seq 1 100); do
   sleep 0.1
 done
 [[ "$scaled_workers" == "$max_workers" ]]
-call_gateway health '{}' > "${REPORT_DIR}/health-during.json"
+call_gateway_to_file health '{}' "${REPORT_DIR}/health-during.json"
 
 for request_pid in "${request_pids[@]}"; do
   wait "$request_pid"
@@ -94,16 +117,16 @@ unique_worker_count="$(printf '%s\n' "$worker_pids" | sed '/^$/d' | wc -l | tr -
 [[ "$unique_worker_count" == "$max_workers" ]]
 
 sticky_session="agent:makaron:explicit:vlab-worker-elastic-sticky"
-call_gateway \
+call_gateway_to_file \
   vlab.workers.hold \
   "{\"sessionKey\":\"${sticky_session}\",\"durationMs\":1000}" \
-  > "${REPORT_DIR}/sticky-hold.json" &
+  "${REPORT_DIR}/sticky-hold.json" &
 sticky_hold_pid=$!
 sleep 0.1
-call_gateway \
+call_gateway_to_file \
   vlab.workers.ping \
   "{\"sessionKey\":\"${sticky_session}\"}" \
-  > "${REPORT_DIR}/sticky-ping.json" &
+  "${REPORT_DIR}/sticky-ping.json" &
 sticky_ping_pid=$!
 wait "$sticky_hold_pid"
 wait "$sticky_ping_pid"
@@ -119,19 +142,13 @@ scale_down_wait_seconds="$((idle_timeout_ms / 1000 + 35))"
 sleep "$scale_down_wait_seconds"
 final_workers="$max_workers"
 for _ in $(seq 1 5); do
-  set +e
-  call_gateway vlab.workers.status '{}' \
-    > "${REPORT_DIR}/status-after.json.tmp"
-  status_call_exit=$?
-  set -e
-  if (( status_call_exit != 0 )); then
-    rm -f "${REPORT_DIR}/status-after.json.tmp"
+  if ! call_gateway_to_file \
+    vlab.workers.status \
+    '{}' \
+    "${REPORT_DIR}/status-after.json"; then
     sleep 1
     continue
   fi
-  mv \
-    "${REPORT_DIR}/status-after.json.tmp" \
-    "${REPORT_DIR}/status-after.json"
   final_workers="$(
     payload "${REPORT_DIR}/status-after.json" | jq -r '.workers | length'
   )"
