@@ -160,19 +160,16 @@ for round in $(seq 1 "$ROUNDS"); do
       '(.result // .).payloads | any(.text? | contains($marker))' \
       "$result_path" >/dev/null
     jq -e \
-      '(.result // .).nativeSession.after.exists == true' \
+      '((.result // .).meta.sessionId | type) == "string"
+       and ((.result // .).meta.sessionId | length) > 0' \
       "$result_path" >/dev/null
     current_session_id="$(
-      payload "$result_path" | jq -r '.nativeSession.after.sessionId'
+      payload "$result_path" | jq -r '.meta.sessionId'
     )"
     if [[ "$round" == "1" ]]; then
       session_ids[$((index - 1))]="$current_session_id"
     else
       [[ "${session_ids[$((index - 1))]}" == "$current_session_id" ]]
-      jq -e \
-        --arg expected_session_id "$current_session_id" \
-        '(.result // .).nativeSession.before.sessionId == $expected_session_id' \
-        "$result_path" >/dev/null
     fi
   done
 
@@ -215,6 +212,19 @@ native_session_count="$(
   payload "${REPORT_DIR}/sessions.json" | jq -r '.sessions | length'
 )"
 [[ "$native_session_count" == "$SESSION_COUNT" ]]
+for index in $(seq 1 "$SESSION_COUNT"); do
+  session_key="${SESSION_PREFIX}-${index}"
+  expected_session_id="${session_ids[$((index - 1))]}"
+  jq -e \
+    --arg session_key "$session_key" \
+    --arg expected_session_id "$expected_session_id" \
+    '(.result // .).sessions
+     | any(
+         ((.key | ascii_downcase) == ($session_key | ascii_downcase))
+         and .sessionId == $expected_session_id
+       )' \
+    "${REPORT_DIR}/sessions.json" >/dev/null
+done
 
 call_gateway_to_file health '{}' "${REPORT_DIR}/health-after.json"
 call_gateway_to_file \
