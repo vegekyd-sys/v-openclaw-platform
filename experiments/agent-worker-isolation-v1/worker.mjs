@@ -72,16 +72,18 @@ async function runAgent(message) {
     oneShotCliRun: true,
     allowGatewaySubagentBinding: false,
   });
+  const agentMeta = result.meta?.agentMeta ?? result.meta ?? {};
   return {
     kind: "agent",
     elapsedMs: performance.now() - startedAt,
     payloads: jsonSafe(result.payloads),
     meta: jsonSafe({
-      provider: result.meta?.provider,
-      model: result.meta?.model,
-      agentId: result.meta?.agentId,
-      sessionId: result.meta?.sessionId,
-      usage: result.meta?.usage,
+      provider: agentMeta.provider,
+      model: agentMeta.model,
+      agentId: message.agentId ?? "makaron",
+      sessionId: agentMeta.sessionId,
+      sessionFile: agentMeta.sessionFile,
+      usage: agentMeta.usage,
     }),
   };
 }

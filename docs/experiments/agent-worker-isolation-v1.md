@@ -99,6 +99,14 @@ registry. OpenClaw's native session key, store, history, visibility rules, and
 `sessionKey -> worker process` routing while work is active; the mapping is
 discarded when the active burst ends and can be rebuilt after a worker exit.
 
+Because the current OpenClaw session index is shared by all processes, worker
+completion metadata is merged back through OpenClaw's native
+`api.runtime.agent.session.upsertSessionEntry` API on the Gateway. These native
+writes are serialized and replay all completed synthetic sessions after every
+completion, preventing concurrent child processes from losing an index entry.
+Transcripts remain OpenClaw's per-session JSONL files; no parallel session
+owner or database is introduced.
+
 The custom `vlab.workers.*` methods are vLab experiment probes. Production
 promotion must attach execution isolation to OpenClaw's native dispatch/runtime
 seam instead of exposing a second user-facing agent/session API.

@@ -52,6 +52,8 @@ const plugin = {
       idleTimeoutMs,
       requestTimeoutMs,
     });
+    const nativeSessionSnapshots = new Map();
+    let nativeSessionWriteTail = Promise.resolve();
 
     function readNativeSession(agentId, sessionKey) {
       const sessionRuntime = api.runtime.agent.session;
@@ -78,6 +80,66 @@ const plugin = {
         endedAt: entry.endedAt,
         abortedLastRun: entry.abortedLastRun === true,
       };
+    }
+
+    async function reconcileNativeSessions(agentId, sessionKey, result) {
+      const sessionId = result.meta?.sessionId;
+      if (typeof sessionId !== "string" || sessionId.trim() === "") {
+        throw new Error("worker Agent result did not include a native sessionId");
+      }
+      const now = Date.now();
+      nativeSessionSnapshots.set(sessionKey, {
+        agentId,
+        sessionId,
+        sessionFile: result.meta?.sessionFile,
+        updatedAt: now,
+      });
+      while (nativeSessionSnapshots.size > 1024) {
+        nativeSessionSnapshots.delete(nativeSessionSnapshots.keys().next().value);
+      }
+
+      const reconcile = async () => {
+        for (const [knownSessionKey, snapshot] of nativeSessionSnapshots) {
+          const sessionRuntime = api.runtime.agent.session;
+          const storePath = sessionRuntime.resolveStorePath(api.config.session?.store, {
+            agentId: snapshot.agentId,
+          });
+          const existing = sessionRuntime.getSessionEntry({
+            agentId: snapshot.agentId,
+            storePath,
+            sessionKey: knownSessionKey,
+            readConsistency: "latest",
+          });
+          if (existing && existing.sessionId !== snapshot.sessionId) {
+            throw new Error(
+              `native session ${knownSessionKey} changed from ${snapshot.sessionId} to ${existing.sessionId}`,
+            );
+          }
+          if (existing) {
+            continue;
+          }
+          await sessionRuntime.upsertSessionEntry({
+            agentId: snapshot.agentId,
+            storePath,
+            sessionKey: knownSessionKey,
+            readConsistency: "latest",
+            entry: {
+              sessionId: snapshot.sessionId,
+              updatedAt: snapshot.updatedAt,
+              lastActivityAt: snapshot.updatedAt,
+              sessionStartedAt: snapshot.updatedAt,
+              abortedLastRun: false,
+              ...(typeof snapshot.sessionFile === "string"
+                ? { sessionFile: snapshot.sessionFile }
+                : {}),
+            },
+          });
+        }
+      };
+
+      const pendingWrite = nativeSessionWriteTail.then(reconcile, reconcile);
+      nativeSessionWriteTail = pendingWrite.catch(() => {});
+      await pendingWrite;
     }
 
     api.registerService({
@@ -183,6 +245,7 @@ const plugin = {
               ? params.toolsAllow.filter((item) => typeof item === "string")
               : undefined,
           });
+          await reconcileNativeSessions(agentId, sessionKey, result);
           const nativeSessionAfter = readNativeSession(agentId, sessionKey);
           respond(true, {
             ...result,
