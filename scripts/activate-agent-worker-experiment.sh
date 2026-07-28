@@ -91,7 +91,12 @@ fi
   echo "vLab OpenClaw runtime is incomplete" >&2
   exit 1
 }
-systemctl is-active --quiet openclaw-vlab-gateway.service
+[[ "$(
+  systemctl show openclaw-vlab-gateway.service -p LoadState --value
+)" == "loaded" ]] || {
+  echo "openclaw-vlab-gateway.service is not installed" >&2
+  exit 1
+}
 
 install -d -m 0755 "$EXPERIMENT_ROOT" "${EXPERIMENT_ROOT}/releases"
 if [[ ! -d "$RELEASE_DIR" ]]; then
