@@ -1,7 +1,10 @@
 import { WorkerPool } from "./worker-pool.mjs";
 import { performance } from "node:perf_hooks";
+import { dirname, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { resolveOpenClawAgentRuntimePath } from "./runtime-path.mjs";
 import { buildHarnessFailureAttempt } from "./harness-failure.mjs";
+import { closeInterruptedToolCalls } from "./transcript-recovery.mjs";
 
 const SESSION_PREFIX = "agent:makaron:explicit:vlab-worker-";
 const NATIVE_HARNESS_ID = "vlab-worker";
@@ -72,6 +75,8 @@ function acquireSharedPool(options) {
         completed: 0,
         cancelled: 0,
         failed: 0,
+        interruptedToolCallsRecovered: 0,
+        transcriptRecoveryFailed: 0,
         lastSessionKey: undefined,
         lastWorkerSlot: undefined,
         lastWorkerPid: undefined,
@@ -100,6 +105,11 @@ const plugin = {
         ? api.pluginConfig.workerConfigPath
         : undefined;
     const openClawAgentRuntimePath = resolveOpenClawAgentRuntimePath();
+    const transcriptRuntimePromise = import(
+      pathToFileURL(
+        resolve(dirname(openClawAgentRuntimePath), "session-transcript-runtime.js"),
+      ).href
+    );
     const workerEnv = {
       ...process.env,
       VLAB_OPENCLAW_AGENT_RUNTIME: openClawAgentRuntimePath,
@@ -235,6 +245,31 @@ const plugin = {
           };
         }
         nativeHarnessStats.failed += 1;
+        try {
+          const { withSessionTranscriptWriteLock } =
+            await transcriptRuntimePromise;
+          nativeHarnessStats.interruptedToolCallsRecovered +=
+            await closeInterruptedToolCalls({
+              withSessionTranscriptWriteLock,
+              target: {
+                agentId: params.agentId ?? "makaron",
+                sessionKey,
+                sessionId: params.sessionId,
+                sessionFile: params.sessionFile,
+              },
+              config: api.config,
+              error,
+            });
+        } catch (recoveryError) {
+          nativeHarnessStats.transcriptRecoveryFailed += 1;
+          api.logger.warn(
+            `failed to close interrupted worker tool calls for ${sessionKey}: ${
+              recoveryError instanceof Error
+                ? recoveryError.message
+                : String(recoveryError)
+            }`,
+          );
+        }
         // Agent Harness expects a terminal attempt result. Throwing here skips
         // OpenClaw's normal attempt finalization and can leave the Session and
         // per-chat lane active even though the worker already failed.
