@@ -69,7 +69,9 @@ jq -e \
    and .sessionsPerWorker == 3
    and .openClawConcurrency.maxConcurrent == 8
    and .openClawConcurrency.subagentsMaxConcurrent == 8
-   and .openClawConcurrency.agentRuntime.id == "vlab-worker"' \
+   and (.openClawConcurrency.configuredModelRuntimes | length) > 0
+   and (.openClawConcurrency.configuredModelRuntimes
+     | all(. == "vlab-worker"))' \
   <<< "$status_before" >/dev/null
 
 for index in $(seq 1 "$SESSION_COUNT"); do

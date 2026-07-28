@@ -103,6 +103,12 @@ const plugin = {
       lastWorkerPid: undefined,
     };
 
+    function configuredAgentModelRuntimes() {
+      return Object.values(api.config.agents?.defaults?.models ?? {})
+        .map((entry) => entry?.agentRuntime?.id)
+        .filter((value) => typeof value === "string");
+    }
+
     async function dispatchNativeHarnessAttempt(params) {
       const sessionKey =
         typeof params.sessionKey === "string" && params.sessionKey.trim()
@@ -462,7 +468,7 @@ const plugin = {
             maxConcurrent: api.config.agents?.defaults?.maxConcurrent,
             subagentsMaxConcurrent:
               api.config.agents?.defaults?.subagents?.maxConcurrent,
-            agentRuntime: api.config.agents?.defaults?.agentRuntime,
+            configuredModelRuntimes: configuredAgentModelRuntimes(),
           },
           integration: {
             currentEntry: "native Channel/dispatch -> AgentHarness -> worker agentCommand",

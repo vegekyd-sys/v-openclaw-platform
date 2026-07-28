@@ -166,9 +166,26 @@ jq \
     | .agents = (.agents // {})
     | .agents.defaults = (.agents.defaults // {})
     | .agents.defaults.maxConcurrent = $agent_max_concurrent
-    | .agents.defaults.agentRuntime = (
-        (.agents.defaults.agentRuntime // {})
-        + {id: "vlab-worker"}
+    | .agents.defaults.models = (
+        (.agents.defaults.models // {})
+        | with_entries(
+            .value = ((.value // {}) + {
+              agentRuntime: (((.value // {}).agentRuntime // {}) + {
+                id: "vlab-worker"
+              })
+            })
+          )
+      )
+    | .models = (.models // {})
+    | .models.providers = (
+        (.models.providers // {})
+        | with_entries(
+            .value = ((.value // {}) + {
+              agentRuntime: (((.value // {}).agentRuntime // {}) + {
+                id: "vlab-worker"
+              })
+            })
+          )
       )
     | .agents.defaults.subagents = (.agents.defaults.subagents // {})
     | .agents.defaults.subagents.maxConcurrent = $subagent_max_concurrent
@@ -200,10 +217,28 @@ install -o vlab -g vlab -m 0600 "$candidate_config" "$CONFIG_PATH"
 
 worker_candidate_config="$(mktemp)"
 jq \
-  '.agents.defaults.agentRuntime = (
-      (.agents.defaults.agentRuntime // {})
-      + {id: "openclaw"}
-    )' \
+  '
+    .agents.defaults.models = (
+      (.agents.defaults.models // {})
+      | with_entries(
+          .value = ((.value // {}) + {
+            agentRuntime: (((.value // {}).agentRuntime // {}) + {
+              id: "openclaw"
+            })
+          })
+        )
+    )
+    | .models.providers = (
+        (.models.providers // {})
+        | with_entries(
+            .value = ((.value // {}) + {
+              agentRuntime: (((.value // {}).agentRuntime // {}) + {
+                id: "openclaw"
+              })
+            })
+          )
+      )
+  ' \
   "$candidate_config" > "$worker_candidate_config"
 install -o vlab -g vlab -m 0600 \
   "$worker_candidate_config" \
