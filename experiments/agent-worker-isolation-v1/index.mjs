@@ -189,7 +189,6 @@ const plugin = {
         return result.attempt;
       } catch (error) {
         if (
-          params.abortSignal?.aborted ||
           error?.name === "AbortError" ||
           error?.code === "VLAB_WORKER_CANCELLED"
         ) {
