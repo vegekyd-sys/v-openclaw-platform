@@ -3,6 +3,9 @@ import { performance } from "node:perf_hooks";
 
 const SESSION_PREFIX = "agent:makaron:explicit:vlab-worker-";
 const NATIVE_HARNESS_ID = "vlab-worker";
+const SHARED_POOL_KEY = Symbol.for(
+  "versa.vlab-agent-worker-isolation.shared-pool-v1",
+);
 
 function readString(params, key, options = {}) {
   const value = params?.[key];
@@ -58,6 +61,24 @@ function operationSnapshot(operation) {
   };
 }
 
+function acquireSharedPool(options) {
+  if (!globalThis[SHARED_POOL_KEY]) {
+    globalThis[SHARED_POOL_KEY] = {
+      pool: new WorkerPool(options),
+      nativeHarnessStats: {
+        admitted: 0,
+        completed: 0,
+        cancelled: 0,
+        failed: 0,
+        lastSessionKey: undefined,
+        lastWorkerSlot: undefined,
+        lastWorkerPid: undefined,
+      },
+    };
+  }
+  return globalThis[SHARED_POOL_KEY];
+}
+
 const plugin = {
   id: "vlab-agent-worker-isolation",
   name: "vLab Agent Worker Isolation",
@@ -75,7 +96,7 @@ const plugin = {
       typeof api.pluginConfig?.workerConfigPath === "string"
         ? api.pluginConfig.workerConfigPath
         : undefined;
-    const pool = new WorkerPool({
+    const sharedPool = acquireSharedPool({
       minWorkers,
       maxWorkers,
       sessionsPerWorker,
@@ -88,20 +109,13 @@ const plugin = {
           }
         : process.env,
     });
+    const pool = sharedPool.pool;
     const nativeSessionSnapshots = new Map();
     const operationsById = new Map();
     const operationsByIdempotencyKey = new Map();
     let nextOperationId = 1;
     let nativeSessionWriteTail = Promise.resolve();
-    const nativeHarnessStats = {
-      admitted: 0,
-      completed: 0,
-      cancelled: 0,
-      failed: 0,
-      lastSessionKey: undefined,
-      lastWorkerSlot: undefined,
-      lastWorkerPid: undefined,
-    };
+    const nativeHarnessStats = sharedPool.nativeHarnessStats;
 
     function configuredAgentModelRuntimes() {
       return Object.values(api.config.agents?.defaults?.models ?? {})
@@ -148,7 +162,6 @@ const plugin = {
           senderId: params.senderId,
         },
         toolsAllow: params.toolsAllow,
-        thinking: params.thinkLevel,
         extraSystemPrompt: params.extraSystemPrompt,
         sourceReplyDeliveryMode: params.sourceReplyDeliveryMode,
         senderIsOwner: params.senderIsOwner,
