@@ -12,6 +12,7 @@ node --check "${EXPERIMENT_DIR}/self-test.mjs"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-remote.sh"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-soak.sh"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-faults.sh"
+bash -n "${REPO_ROOT}/tests/vlab-agent-worker-subagents.sh"
 grep -q 'visibility = "agent"' \
   "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
 grep -q '.agents.defaults.maxConcurrent = $agent_max_concurrent' \

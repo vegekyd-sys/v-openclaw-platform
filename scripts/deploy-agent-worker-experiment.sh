@@ -39,6 +39,7 @@ scp \
   "${REPO_ROOT}/tests/vlab-agent-worker-remote.sh" \
   "${REPO_ROOT}/tests/vlab-agent-worker-soak.sh" \
   "${REPO_ROOT}/tests/vlab-agent-worker-faults.sh" \
+  "${REPO_ROOT}/tests/vlab-agent-worker-subagents.sh" \
   "${TARGET}:/tmp/"
 
 ssh \
@@ -46,4 +47,4 @@ ssh \
   -o IdentitiesOnly=yes \
   -o StrictHostKeyChecking=yes \
   "$TARGET" \
-  "chmod 0700 /tmp/activate-agent-worker-experiment.sh /tmp/rollback-agent-worker-experiment.sh /tmp/vlab-agent-worker-remote.sh /tmp/vlab-agent-worker-soak.sh /tmp/vlab-agent-worker-faults.sh && PLATFORM_COMMIT=${PLATFORM_COMMIT} VLAB_WORKER_MIN_COUNT=${MIN_WORKERS} VLAB_WORKER_COUNT=${WORKER_COUNT} VLAB_WORKER_SESSIONS_PER_WORKER=${SESSIONS_PER_WORKER} VLAB_AGENT_MAX_CONCURRENT=${AGENT_MAX_CONCURRENT} VLAB_SUBAGENT_MAX_CONCURRENT=${SUBAGENT_MAX_CONCURRENT} VLAB_WORKER_IDLE_TIMEOUT_MS=${IDLE_TIMEOUT_MS} /tmp/activate-agent-worker-experiment.sh"
+  "chmod 0700 /tmp/activate-agent-worker-experiment.sh /tmp/rollback-agent-worker-experiment.sh /tmp/vlab-agent-worker-remote.sh /tmp/vlab-agent-worker-soak.sh /tmp/vlab-agent-worker-faults.sh /tmp/vlab-agent-worker-subagents.sh && PLATFORM_COMMIT=${PLATFORM_COMMIT} VLAB_WORKER_MIN_COUNT=${MIN_WORKERS} VLAB_WORKER_COUNT=${WORKER_COUNT} VLAB_WORKER_SESSIONS_PER_WORKER=${SESSIONS_PER_WORKER} VLAB_AGENT_MAX_CONCURRENT=${AGENT_MAX_CONCURRENT} VLAB_SUBAGENT_MAX_CONCURRENT=${SUBAGENT_MAX_CONCURRENT} VLAB_WORKER_IDLE_TIMEOUT_MS=${IDLE_TIMEOUT_MS} /tmp/activate-agent-worker-experiment.sh"

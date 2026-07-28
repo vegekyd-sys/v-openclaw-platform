@@ -85,6 +85,9 @@ The plugin does not patch OpenClaw's compiled files.
    `agentCommand` and reaches a terminal `cancelled` state.
 17. Recovery requires an explicit new idempotency key and succeeds on a
    replacement worker.
+18. One worker accepts eight `sessions_spawn` calls, reports all eight
+   subagents simultaneously running, and records all eight child completion
+   markers without a Gateway restart or Event Loop degradation.
 
 The production-shaped soak is executable on vLab:
 
@@ -107,6 +110,12 @@ Fault acceptance uses real Agent turns:
 
 ```bash
 /tmp/vlab-agent-worker-faults.sh
+```
+
+Subagent capacity acceptance preserves V's existing `8/8` limits:
+
+```bash
+/tmp/vlab-agent-worker-subagents.sh
 ```
 
 ## Deploy and rollback
