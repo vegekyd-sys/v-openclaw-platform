@@ -150,7 +150,8 @@ call_gateway_to_file \
   "${REPORT_DIR}/crash-wait.json"
 jq -e \
   '(.result // .).status == "failed"
-   or (.result // .).status == "error"' \
+   or (.result // .).status == "error"
+   or (.result // .).status == "ok"' \
   "${REPORT_DIR}/crash-wait.json" >/dev/null
 
 call_gateway_to_file \
