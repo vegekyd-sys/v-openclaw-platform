@@ -67,7 +67,7 @@ jq -e \
    and .integration.nativeAgentHarnessId == "vlab-worker"
    and .maxWorkers == 3
    and .sessionsPerWorker == 3
-   and .openClawConcurrency.maxConcurrent == 8
+   and .openClawConcurrency.maxConcurrent == 9
    and .openClawConcurrency.subagentsMaxConcurrent == 8
    and (.openClawConcurrency.configuredModelRuntimes | length) > 0
    and (.openClawConcurrency.configuredModelRuntimes
