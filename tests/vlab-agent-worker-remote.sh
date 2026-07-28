@@ -76,7 +76,10 @@ jq -e \
   '.openClawConcurrency.maxConcurrent == 9
    and .openClawConcurrency.subagentsMaxConcurrent == 8
    and .integration.nativeAgentHarnessDispatchAttached == true
-   and .integration.productionPromotionBlocked == true' \
+   and .integration.productionPromotionBlocked == false
+   and .integration.productionPromotionAcceptance.nativeThreeByThree == true
+   and .integration.productionPromotionAcceptance.activeWorkerCrashIsolation == true
+   and .integration.productionPromotionAcceptance.rollbackAndRedeploy == true' \
   <<< "$status_before" >/dev/null
 
 if [[ "$(jq -r '.workers | length' <<< "$status_before")" != "$min_workers" ]]; then

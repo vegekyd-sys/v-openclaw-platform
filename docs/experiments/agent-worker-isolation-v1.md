@@ -170,6 +170,9 @@ session id. The child owns the native transcript write and returns an
 `AgentHarnessAttemptResult` to the Gateway for ordinary reply delivery.
 
 `integration.nativeAgentHarnessDispatchAttached=true` proves registration,
-not production readiness by itself. Promotion remains blocked until native
-`chat.send` 3x3 saturation, idempotent retry, cancellation, active-worker
-crash recovery, resource monitoring, and rollback acceptance pass on vLab.
+not production readiness by itself. The vLab candidate now reports
+`productionPromotionBlocked=false` because native `chat.send` 3x3 saturation,
+idempotent retry, cancellation, active-worker crash recovery, resource
+monitoring, and rollback/redeploy acceptance passed. This marks the candidate
+eligible for a separately authorized production change; it does not deploy or
+restart production V.

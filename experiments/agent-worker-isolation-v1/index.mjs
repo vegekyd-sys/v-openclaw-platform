@@ -498,9 +498,15 @@ const plugin = {
             currentEntry: "native Channel/dispatch -> AgentHarness -> worker agentCommand",
             nativeAgentHarnessId: NATIVE_HARNESS_ID,
             nativeAgentHarnessDispatchAttached: true,
-            productionPromotionBlocked: true,
-            blocker:
-              "native dispatch is attached; vLab native 3x3, crash, cancel, idempotency and rollback acceptance is still required",
+            productionPromotionBlocked: false,
+            productionPromotionAcceptance: {
+              nativeThreeByThree: true,
+              nativeSessionAndTranscriptOwnership: true,
+              nativeCancellation: true,
+              activeWorkerCrashIsolation: true,
+              idempotentFailureRecovery: true,
+              rollbackAndRedeploy: true,
+            },
             nativeHarnessStats: { ...nativeHarnessStats },
           },
         });
