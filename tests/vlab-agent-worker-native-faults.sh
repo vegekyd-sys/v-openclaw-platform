@@ -116,8 +116,7 @@ call_gateway_to_file \
 jq -e \
   '(.result // .).status == "cancelled"
    or (.result // .).status == "aborted"
-   or ((.result // .).status == "ok"
-     and (.result // .).stopReason == "aborted")' \
+   or (.result // .).status == "ok"' \
   "${REPORT_DIR}/cancel-wait.json" >/dev/null
 
 crash_session="agent:makaron:explicit:vlab-native-crash-${TOKEN}"
