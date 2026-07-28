@@ -71,12 +71,22 @@ const plugin = {
     );
     const idleTimeoutMs = Number(api.pluginConfig?.idleTimeoutMs ?? 180_000);
     const requestTimeoutMs = Number(api.pluginConfig?.requestTimeoutMs ?? 600_000);
+    const workerConfigPath =
+      typeof api.pluginConfig?.workerConfigPath === "string"
+        ? api.pluginConfig.workerConfigPath
+        : undefined;
     const pool = new WorkerPool({
       minWorkers,
       maxWorkers,
       sessionsPerWorker,
       idleTimeoutMs,
       requestTimeoutMs,
+      workerEnv: workerConfigPath
+        ? {
+            ...process.env,
+            OPENCLAW_CONFIG_PATH: workerConfigPath,
+          }
+        : process.env,
     });
     const nativeSessionSnapshots = new Map();
     const operationsById = new Map();
@@ -452,6 +462,7 @@ const plugin = {
             maxConcurrent: api.config.agents?.defaults?.maxConcurrent,
             subagentsMaxConcurrent:
               api.config.agents?.defaults?.subagents?.maxConcurrent,
+            agentRuntime: api.config.agents?.defaults?.agentRuntime,
           },
           integration: {
             currentEntry: "native Channel/dispatch -> AgentHarness -> worker agentCommand",

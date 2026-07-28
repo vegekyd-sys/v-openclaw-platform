@@ -33,6 +33,10 @@
         "type": "integer",
         "minimum": 1000,
         "maximum": 1800000
+      },
+      "workerConfigPath": {
+        "type": "string",
+        "minLength": 1
       }
     }
   }

@@ -14,6 +14,7 @@ PLUGIN_ID="vlab-agent-worker-isolation"
 EXPERIMENT_ROOT="/opt/vlab/experiments/agent-worker-isolation-v1"
 RELEASE_DIR="${EXPERIMENT_ROOT}/releases/${PLATFORM_COMMIT}"
 STATE_DIR="${LAB_ROOT}/experiments/agent-worker-isolation-v1"
+WORKER_CONFIG_PATH="${STATE_DIR}/worker-openclaw.json"
 CONFIG_PATH="${LAB_ROOT}/state/openclaw.json"
 OPENCLAW="/opt/vlab/current/node_modules/openclaw/openclaw.mjs"
 NODE="/opt/vlab/node/bin/node"
@@ -151,6 +152,7 @@ jq \
   --arg plugin_id "$PLUGIN_ID" \
   --arg release_dir "$RELEASE_DIR" \
   --arg experiment_root "$EXPERIMENT_ROOT" \
+  --arg worker_config_path "$WORKER_CONFIG_PATH" \
   --argjson min_workers "$MIN_WORKERS" \
   --argjson worker_count "$WORKER_COUNT" \
   --argjson sessions_per_worker "$SESSIONS_PER_WORKER" \
@@ -164,6 +166,10 @@ jq \
     | .agents = (.agents // {})
     | .agents.defaults = (.agents.defaults // {})
     | .agents.defaults.maxConcurrent = $agent_max_concurrent
+    | .agents.defaults.agentRuntime = (
+        (.agents.defaults.agentRuntime // {})
+        + {id: "vlab-worker"}
+      )
     | .agents.defaults.subagents = (.agents.defaults.subagents // {})
     | .agents.defaults.subagents.maxConcurrent = $subagent_max_concurrent
     | .plugins = (.plugins // {})
@@ -184,12 +190,25 @@ jq \
           maxWorkers: $worker_count,
           sessionsPerWorker: $sessions_per_worker,
           idleTimeoutMs: $idle_timeout_ms,
-          requestTimeoutMs: 600000
+          requestTimeoutMs: 600000,
+          workerConfigPath: $worker_config_path
         }
       }
   ' \
   "$CONFIG_PATH" > "$candidate_config"
 install -o vlab -g vlab -m 0600 "$candidate_config" "$CONFIG_PATH"
+
+worker_candidate_config="$(mktemp)"
+jq \
+  '.agents.defaults.agentRuntime = (
+      (.agents.defaults.agentRuntime // {})
+      + {id: "openclaw"}
+    )' \
+  "$candidate_config" > "$worker_candidate_config"
+install -o vlab -g vlab -m 0600 \
+  "$worker_candidate_config" \
+  "$WORKER_CONFIG_PATH"
+rm -f "$worker_candidate_config"
 rm -f "$candidate_config"
 
 run_openclaw config validate >/dev/null

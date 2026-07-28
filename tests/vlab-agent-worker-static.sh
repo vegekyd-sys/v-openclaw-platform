@@ -21,6 +21,10 @@ grep -q '.agents.defaults.maxConcurrent = $agent_max_concurrent' \
   "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
 grep -q '.agents.defaults.subagents.maxConcurrent = $subagent_max_concurrent' \
   "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
+grep -q '{id: "vlab-worker"}' \
+  "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
+grep -q '{id: "openclaw"}' \
+  "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
 grep -q 'api.registerAgentHarness' "${EXPERIMENT_DIR}/index.mjs"
 grep -q 'nativeAgentHarnessDispatchAttached: true' "${EXPERIMENT_DIR}/index.mjs"
 
