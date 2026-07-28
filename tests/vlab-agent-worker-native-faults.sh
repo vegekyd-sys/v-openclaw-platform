@@ -100,11 +100,11 @@ wait_for_active_slot \
   "$cancel_session" \
   "${REPORT_DIR}/cancel-status-active.json" >/dev/null
 call_gateway_to_file \
-  chat.abort \
+  sessions.abort \
   "$(jq -cn \
     --arg session "$cancel_session" \
     --arg run "$cancel_run" \
-    '{sessionKey: $session, agentId: "makaron", runId: $run}')" \
+    '{key: $session, agentId: "makaron", runId: $run}')" \
   "${REPORT_DIR}/cancel-abort.json"
 call_gateway_to_file \
   agent.wait \
