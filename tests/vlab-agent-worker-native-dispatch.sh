@@ -7,6 +7,9 @@ OPENCLAW="/opt/vlab/current/node_modules/openclaw/openclaw.mjs"
 NODE="/opt/vlab/node/bin/node"
 SESSION_COUNT="${VLAB_NATIVE_SESSION_COUNT:-9}"
 TOOL_HOLD_SECONDS="${VLAB_NATIVE_TOOL_HOLD_SECONDS:-15}"
+RUN_TIMEOUT_MS="${VLAB_NATIVE_RUN_TIMEOUT_MS:-420000}"
+GATEWAY_TIMEOUT_MS="${VLAB_NATIVE_GATEWAY_TIMEOUT_MS:-480000}"
+SATURATION_WAIT_SECONDS="${VLAB_NATIVE_SATURATION_WAIT_SECONDS:-180}"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 TOKEN="${TIMESTAMP,,}"
 SESSION_PREFIX="agent:makaron:explicit:vlab-native-${TOKEN}"
@@ -22,7 +25,7 @@ call_gateway() {
     OPENCLAW_WORKSPACE_DIR="${LAB_ROOT}/workspace" \
     "$NODE" "$OPENCLAW" gateway call "$1" \
     --params "$2" \
-    --timeout 240000 \
+    --timeout "$GATEWAY_TIMEOUT_MS" \
     --json
 }
 
@@ -47,6 +50,21 @@ fi
 if ! [[ "$SESSION_COUNT" =~ ^[0-9]+$ ]] \
   || (( SESSION_COUNT < 1 || SESSION_COUNT > 9 )); then
   echo "VLAB_NATIVE_SESSION_COUNT must be an integer between 1 and 9" >&2
+  exit 1
+fi
+if ! [[ "$RUN_TIMEOUT_MS" =~ ^[0-9]+$ ]] \
+  || (( RUN_TIMEOUT_MS < 180000 || RUN_TIMEOUT_MS > 600000 )); then
+  echo "VLAB_NATIVE_RUN_TIMEOUT_MS must be between 180000 and 600000" >&2
+  exit 1
+fi
+if ! [[ "$GATEWAY_TIMEOUT_MS" =~ ^[0-9]+$ ]] \
+  || (( GATEWAY_TIMEOUT_MS < RUN_TIMEOUT_MS || GATEWAY_TIMEOUT_MS > 600000 )); then
+  echo "VLAB_NATIVE_GATEWAY_TIMEOUT_MS must be between the run timeout and 600000" >&2
+  exit 1
+fi
+if ! [[ "$SATURATION_WAIT_SECONDS" =~ ^[0-9]+$ ]] \
+  || (( SATURATION_WAIT_SECONDS < 60 || SATURATION_WAIT_SECONDS > 300 )); then
+  echo "VLAB_NATIVE_SATURATION_WAIT_SECONDS must be between 60 and 300" >&2
   exit 1
 fi
 
@@ -85,12 +103,13 @@ for index in $(seq 1 "$SESSION_COUNT"); do
       --arg session_key "$session_key" \
       --arg run_id "$run_id" \
       --arg message "$message" \
+      --argjson timeout_ms "$RUN_TIMEOUT_MS" \
       '{
         sessionKey: $session_key,
         agentId: "makaron",
         message: $message,
         deliver: false,
-        timeoutMs: 180000,
+        timeoutMs: $timeout_ms,
         idempotencyKey: $run_id
       }'
   )"
@@ -102,7 +121,7 @@ for index in $(seq 1 "$SESSION_COUNT"); do
 done
 
 saturated=false
-for _ in $(seq 1 60); do
+for _ in $(seq 1 "$SATURATION_WAIT_SECONDS"); do
   call_gateway_to_file \
     vlab.workers.status \
     '{}' \
@@ -137,7 +156,10 @@ for index in $(seq 1 "$SESSION_COUNT"); do
   run_id="${RUN_PREFIX}-${index}"
   call_gateway_to_file \
     agent.wait \
-    "$(jq -cn --arg run_id "$run_id" '{runId: $run_id, timeoutMs: 180000}')" \
+    "$(jq -cn \
+      --arg run_id "$run_id" \
+      --argjson timeout_ms "$RUN_TIMEOUT_MS" \
+      '{runId: $run_id, timeoutMs: $timeout_ms}')" \
     "${REPORT_DIR}/wait-${index}.json"
   jq -e \
     '(.result // .).status == "ok"
@@ -167,12 +189,13 @@ call_gateway_to_file \
   "$(jq -cn \
     --arg session_key "${SESSION_PREFIX}-1" \
     --arg run_id "${RUN_PREFIX}-1" \
+    --argjson timeout_ms "$RUN_TIMEOUT_MS" \
     '{
       sessionKey: $session_key,
       agentId: "makaron",
       message: "THIS_MUST_NOT_EXECUTE",
       deliver: false,
-      timeoutMs: 180000,
+      timeoutMs: $timeout_ms,
       idempotencyKey: $run_id
     }')" \
   "${REPORT_DIR}/idempotent-retry.json"
