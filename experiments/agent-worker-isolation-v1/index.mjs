@@ -1,6 +1,7 @@
 import { WorkerPool } from "./worker-pool.mjs";
 import { performance } from "node:perf_hooks";
 import { resolveOpenClawAgentRuntimePath } from "./runtime-path.mjs";
+import { buildHarnessFailureAttempt } from "./harness-failure.mjs";
 
 const SESSION_PREFIX = "agent:makaron:explicit:vlab-worker-";
 const NATIVE_HARNESS_ID = "vlab-worker";
@@ -134,6 +135,8 @@ const plugin = {
         typeof params.sessionKey === "string" && params.sessionKey.trim()
           ? params.sessionKey
           : `agent:${params.agentId ?? "makaron"}:${params.sessionId}`;
+      const channelTimeoutMs = Number(params.timeoutMs ?? 300_000);
+      const workerRequestTimeoutMs = Math.max(1_000, channelTimeoutMs - 30_000);
       const submitted = await pool.submit(sessionKey, {
         kind: "agent",
         harnessAttempt: true,
@@ -147,8 +150,12 @@ const plugin = {
         runId: params.runId,
         timeoutSeconds: Math.max(
           1,
-          Math.ceil(Number(params.timeoutMs ?? 300_000) / 1_000),
+          Math.ceil(channelTimeoutMs / 1_000),
         ),
+        // The worker must settle before Feishu's per-chat 300s eviction. If
+        // the frontend releases first, a late worker keeps the native Session
+        // owner alive and every later message re-enters the same blocked lane.
+        requestTimeoutMs: workerRequestTimeoutMs,
         messageChannel: params.messageChannel,
         messageProvider: params.messageProvider,
         channel: params.messageChannel,
@@ -228,7 +235,10 @@ const plugin = {
           };
         }
         nativeHarnessStats.failed += 1;
-        throw error;
+        // Agent Harness expects a terminal attempt result. Throwing here skips
+        // OpenClaw's normal attempt finalization and can leave the Session and
+        // per-chat lane active even though the worker already failed.
+        return buildHarnessFailureAttempt(error, params);
       } finally {
         if (
           nativeRequestsByRunId.get(params.runId)?.requestId ===

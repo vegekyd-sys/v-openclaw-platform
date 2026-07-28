@@ -316,14 +316,25 @@ export class WorkerPool {
         break;
       }
       const [job] = worker.queue.splice(jobIndex, 1);
+      const requestedTimeoutMs = Number(job.request?.requestTimeoutMs);
+      const requestTimeoutMs = Number.isFinite(requestedTimeoutMs)
+        ? Math.min(this.requestTimeoutMs, Math.max(1_000, requestedTimeoutMs))
+        : this.requestTimeoutMs;
       const timer = setTimeout(() => {
         if (worker.active.get(job.id)?.id !== job.id) {
           return;
         }
         worker.active.delete(job.id);
-        job.reject(new Error(`worker request ${job.id} timed out`));
+        const error = new Error(
+          `worker request ${job.id} timed out after ${requestTimeoutMs}ms`,
+        );
+        error.code = "VLAB_WORKER_REQUEST_TIMEOUT";
+        // Do not let a same-session retry attach to the worker between the
+        // timeout rejection and the SIGKILL exit event.
+        worker.retiring = true;
+        job.reject(error);
         worker.child.kill("SIGKILL");
-      }, this.requestTimeoutMs);
+      }, requestTimeoutMs);
 
       worker.active.set(job.id, { ...job, timer });
       worker.child.send({

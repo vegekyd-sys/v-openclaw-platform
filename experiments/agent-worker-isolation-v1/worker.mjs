@@ -111,9 +111,13 @@ async function runAgent(message, abortSignal) {
     sourceReplyDeliveryMode: message.sourceReplyDeliveryMode,
     senderIsOwner: message.senderIsOwner,
     modelRun: message.modelRun ?? false,
-    cleanupBundleMcpOnRunEnd: true,
-    cleanupCliLiveSessionOnRunEnd: true,
-    oneShotCliRun: true,
+    // This process is a persistent, concurrent Agent runtime, not a one-shot
+    // local CLI. Per-turn one-shot teardown can wait on process-global MCP/CLI
+    // resources after the assistant has already finished, holding the parent
+    // Session lane for minutes. Process retirement owns final resource cleanup.
+    cleanupBundleMcpOnRunEnd: false,
+    cleanupCliLiveSessionOnRunEnd: false,
+    oneShotCliRun: false,
     allowGatewaySubagentBinding: false,
     abortSignal,
   });
