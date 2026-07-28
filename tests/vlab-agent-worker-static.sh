@@ -14,9 +14,9 @@ bash -n "${REPO_ROOT}/tests/vlab-agent-worker-soak.sh"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-faults.sh"
 grep -q 'visibility = "agent"' \
   "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
-grep -q '.agents.defaults.maxConcurrent = $sessions_per_worker' \
+grep -q '.agents.defaults.maxConcurrent = $agent_max_concurrent' \
   "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
-grep -q '.agents.defaults.subagents.maxConcurrent = 1' \
+grep -q '.agents.defaults.subagents.maxConcurrent = $subagent_max_concurrent' \
   "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
 
 jq -e '.id == "vlab-agent-worker-isolation"' \

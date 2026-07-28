@@ -73,8 +73,8 @@ idle_timeout_ms="$(jq -r '.idleTimeoutMs' <<< "$status_before")"
 [[ "$sessions_per_worker" == "3" ]]
 [[ "$max_active_sessions" == "9" ]]
 jq -e \
-  '.openClawConcurrency.maxConcurrent == 3
-   and .openClawConcurrency.subagentsMaxConcurrent == 1
+  '.openClawConcurrency.maxConcurrent == 8
+   and .openClawConcurrency.subagentsMaxConcurrent == 8
    and .integration.nativeAgentHarnessDispatchAttached == false
    and .integration.productionPromotionBlocked == true' \
   <<< "$status_before" >/dev/null

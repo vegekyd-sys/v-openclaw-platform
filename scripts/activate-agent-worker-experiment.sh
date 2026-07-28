@@ -5,6 +5,8 @@ LAB_ROOT="${LAB_ROOT:-/srv/vlab}"
 MIN_WORKERS="${VLAB_WORKER_MIN_COUNT:-1}"
 WORKER_COUNT="${VLAB_WORKER_COUNT:-3}"
 SESSIONS_PER_WORKER="${VLAB_WORKER_SESSIONS_PER_WORKER:-3}"
+AGENT_MAX_CONCURRENT="${VLAB_AGENT_MAX_CONCURRENT:-8}"
+SUBAGENT_MAX_CONCURRENT="${VLAB_SUBAGENT_MAX_CONCURRENT:-8}"
 IDLE_TIMEOUT_MS="${VLAB_WORKER_IDLE_TIMEOUT_MS:-180000}"
 ARCHIVE_PATH="${ARCHIVE_PATH:-/tmp/vlab-agent-worker-isolation-v1.tar.gz}"
 PLATFORM_COMMIT="${PLATFORM_COMMIT:?PLATFORM_COMMIT is required}"
@@ -59,6 +61,16 @@ fi
 if ! [[ "$SESSIONS_PER_WORKER" =~ ^[0-9]+$ ]] \
   || (( SESSIONS_PER_WORKER < 1 || SESSIONS_PER_WORKER > 3 )); then
   echo "VLAB_WORKER_SESSIONS_PER_WORKER must be an integer between 1 and 3" >&2
+  exit 1
+fi
+if ! [[ "$AGENT_MAX_CONCURRENT" =~ ^[0-9]+$ ]] \
+  || (( AGENT_MAX_CONCURRENT < SESSIONS_PER_WORKER || AGENT_MAX_CONCURRENT > 64 )); then
+  echo "VLAB_AGENT_MAX_CONCURRENT must be an integer between VLAB_WORKER_SESSIONS_PER_WORKER and 64" >&2
+  exit 1
+fi
+if ! [[ "$SUBAGENT_MAX_CONCURRENT" =~ ^[0-9]+$ ]] \
+  || (( SUBAGENT_MAX_CONCURRENT < 1 || SUBAGENT_MAX_CONCURRENT > 64 )); then
+  echo "VLAB_SUBAGENT_MAX_CONCURRENT must be an integer between 1 and 64" >&2
   exit 1
 fi
 if ! [[ "$IDLE_TIMEOUT_MS" =~ ^[0-9]+$ ]] \
@@ -141,6 +153,8 @@ jq \
   --argjson min_workers "$MIN_WORKERS" \
   --argjson worker_count "$WORKER_COUNT" \
   --argjson sessions_per_worker "$SESSIONS_PER_WORKER" \
+  --argjson agent_max_concurrent "$AGENT_MAX_CONCURRENT" \
+  --argjson subagent_max_concurrent "$SUBAGENT_MAX_CONCURRENT" \
   --argjson idle_timeout_ms "$IDLE_TIMEOUT_MS" \
   '
     .tools = (.tools // {})
@@ -148,9 +162,9 @@ jq \
     | .tools.sessions.visibility = "agent"
     | .agents = (.agents // {})
     | .agents.defaults = (.agents.defaults // {})
-    | .agents.defaults.maxConcurrent = $sessions_per_worker
+    | .agents.defaults.maxConcurrent = $agent_max_concurrent
     | .agents.defaults.subagents = (.agents.defaults.subagents // {})
-    | .agents.defaults.subagents.maxConcurrent = 1
+    | .agents.defaults.subagents.maxConcurrent = $subagent_max_concurrent
     | .plugins = (.plugins // {})
     | .plugins.load = (.plugins.load // {})
     | .plugins.load.paths = (

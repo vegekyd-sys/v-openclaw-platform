@@ -40,9 +40,10 @@ introducing a separate worker registry.
 - Same-session turns: sticky and serialized inside one worker
 - Defaults: `minWorkers=1`, `maxWorkers=3`,
   `sessionsPerWorker=3`, `idleTimeoutMs=180000`
-- OpenClaw process concurrency: `agents.defaults.maxConcurrent=3`
-- Subagent fan-out guard:
-  `agents.defaults.subagents.maxConcurrent=1`
+- OpenClaw process concurrency: `agents.defaults.maxConcurrent=8`, preserving
+  V's existing per-process execution capacity
+- Subagent concurrency: `agents.defaults.subagents.maxConcurrent=8`, preserving
+  V's existing subagent capacity
 - vLab host capacity: 4 vCPUs, `CPUQuota=400%`, `MemoryHigh=5G`,
   `MemoryMax=6G`
 - Integration: OpenClaw plugin API plus the stable
