@@ -100,12 +100,15 @@ wait_for_active_slot \
   "$cancel_session" \
   "${REPORT_DIR}/cancel-status-active.json" >/dev/null
 call_gateway_to_file \
-  sessions.abort \
+  vlab.workers.native.cancel \
   "$(jq -cn \
-    --arg session "$cancel_session" \
     --arg run "$cancel_run" \
-    '{key: $session, agentId: "makaron", runId: $run}')" \
+    '{runId: $run}')" \
   "${REPORT_DIR}/cancel-abort.json"
+jq -e \
+  '(.result // .).cancelled == true
+   and (.result // .).state == "active"' \
+  "${REPORT_DIR}/cancel-abort.json" >/dev/null
 call_gateway_to_file \
   agent.wait \
   "$(jq -cn --arg run "$cancel_run" '{runId: $run, timeoutMs: 120000}')" \

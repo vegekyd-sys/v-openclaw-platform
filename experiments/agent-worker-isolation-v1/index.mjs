@@ -74,6 +74,7 @@ function acquireSharedPool(options) {
         lastWorkerSlot: undefined,
         lastWorkerPid: undefined,
       },
+      nativeRequestsByRunId: new Map(),
     };
   }
   return globalThis[SHARED_POOL_KEY];
@@ -110,6 +111,7 @@ const plugin = {
         : process.env,
     });
     const pool = sharedPool.pool;
+    const nativeRequestsByRunId = sharedPool.nativeRequestsByRunId;
     const nativeSessionSnapshots = new Map();
     const operationsById = new Map();
     const operationsByIdempotencyKey = new Map();
@@ -168,6 +170,10 @@ const plugin = {
       });
       nativeHarnessStats.admitted += 1;
       nativeHarnessStats.lastSessionKey = sessionKey;
+      nativeRequestsByRunId.set(params.runId, {
+        requestId: submitted.requestId,
+        sessionKey,
+      });
       const onAbort = () => {
         pool.cancel(submitted.requestId);
       };
@@ -221,6 +227,12 @@ const plugin = {
         nativeHarnessStats.failed += 1;
         throw error;
       } finally {
+        if (
+          nativeRequestsByRunId.get(params.runId)?.requestId ===
+          submitted.requestId
+        ) {
+          nativeRequestsByRunId.delete(params.runId);
+        }
         params.abortSignal?.removeEventListener("abort", onAbort);
       }
     }
@@ -559,6 +571,32 @@ const plugin = {
           respond(true, {
             ...cancellation,
             operation: operationSnapshot(operation),
+          });
+        } catch (error) {
+          respondError(respond, error);
+        }
+      },
+      { scope: "operator.write" },
+    );
+
+    api.registerGatewayMethod(
+      "vlab.workers.native.cancel",
+      async ({ params, respond }) => {
+        try {
+          const runId = readString(params, "runId", { required: true });
+          const nativeRequest = nativeRequestsByRunId.get(runId);
+          if (!nativeRequest) {
+            respond(true, {
+              cancelled: false,
+              state: "not_found",
+              runId,
+            });
+            return;
+          }
+          respond(true, {
+            ...pool.cancel(nativeRequest.requestId),
+            runId,
+            sessionKey: nativeRequest.sessionKey,
           });
         } catch (error) {
           respondError(respond, error);
