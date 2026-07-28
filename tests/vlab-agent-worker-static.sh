@@ -28,6 +28,8 @@ grep -q 'id: "openclaw"' \
   "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
 grep -q 'api.registerAgentHarness' "${EXPERIMENT_DIR}/index.mjs"
 grep -q 'nativeAgentHarnessDispatchAttached: true' "${EXPERIMENT_DIR}/index.mjs"
+grep -q 'lane: message.lane ?? message.sessionKey' \
+  "${EXPERIMENT_DIR}/worker.mjs"
 
 jq -e '.id == "vlab-agent-worker-isolation"' \
   "${EXPERIMENT_DIR}/openclaw.plugin.json" >/dev/null

@@ -38,6 +38,8 @@ introducing a separate worker registry.
 - Sessions per worker: at most three active, distinct sessions
 - Total active-session capacity: `3 workers x 3 sessions = 9`
 - Same-session turns: sticky and serialized inside one worker
+- Different sessions in the same worker use distinct OpenClaw global lanes;
+  repeated turns for one session still use the same per-session lane
 - Defaults: `minWorkers=1`, `maxWorkers=3`,
   `sessionsPerWorker=3`, `idleTimeoutMs=180000`
 - OpenClaw Gateway parent-session concurrency:
@@ -60,6 +62,8 @@ The plugin does not patch OpenClaw's compiled files.
 2. Nine simultaneous sessions create three workers, with exactly three active
    sessions in each worker.
 3. Work for the same active session stays on one worker and is serialized.
+   Different sessions assigned to that worker execute concurrently instead of
+   sharing OpenClaw's default `main` lane.
 4. A tenth simultaneous session waits without creating a fourth process.
 5. Idle workers exit safely until only `minWorkers` remain.
 6. Gateway health remains non-degraded during overlapping jobs.

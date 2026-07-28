@@ -86,6 +86,11 @@ async function runAgent(message, abortSignal) {
     agentId: message.agentId ?? "makaron",
     sessionId: message.sessionId,
     sessionKey: message.sessionKey,
+    // The embedded runner also has a global execution lane. If omitted, every
+    // session in this process shares "main" and is silently serialized.
+    // A canonical session key gives different sessions independent lanes while
+    // repeated turns for one session remain serialized.
+    lane: message.lane ?? message.sessionKey,
     runId: message.runId,
     deliver: false,
     json: true,
