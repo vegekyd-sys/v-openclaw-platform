@@ -143,7 +143,7 @@ for (let index = 1; index <= sessionCount; index += 1) {
 let saturated = false;
 let peakWorkers = 0;
 let peakActiveSessions = 0;
-let maxPending = 0;
+let maxPendingDuringScaleUp = 0;
 const saturationDeadline = Date.now() + saturationWaitSeconds * 1_000;
 while (Date.now() < saturationDeadline) {
   const status = await call("vlab.workers.status");
@@ -153,7 +153,10 @@ while (Date.now() < saturationDeadline) {
     0,
   );
   peakActiveSessions = Math.max(peakActiveSessions, active);
-  maxPending = Math.max(maxPending, status.pending);
+  maxPendingDuringScaleUp = Math.max(
+    maxPendingDuringScaleUp,
+    status.pending,
+  );
   await saveJson("status-during.json", status);
   if (
     status.workers.length === 3 &&
@@ -170,6 +173,7 @@ while (Date.now() < saturationDeadline) {
 assert.equal(saturated, true, "native workload never reached 3x3 saturation");
 
 const metrics = [];
+let maxPendingAtSteadyState = 0;
 const completionDeadline = Date.now() + runTimeoutMs + 120_000;
 while (Date.now() < completionDeadline) {
   const healthStartedAt = performance.now();
@@ -184,7 +188,10 @@ while (Date.now() < completionDeadline) {
   );
   peakWorkers = Math.max(peakWorkers, status.workers.length);
   peakActiveSessions = Math.max(peakActiveSessions, active);
-  maxPending = Math.max(maxPending, status.pending);
+  maxPendingAtSteadyState = Math.max(
+    maxPendingAtSteadyState,
+    status.pending,
+  );
   metrics.push({
     timestamp: new Date().toISOString(),
     eventLoop: health.eventLoop,
@@ -292,7 +299,7 @@ assert.ok(
 );
 assert.equal(peakWorkers, 3);
 assert.equal(peakActiveSessions, sessionCount);
-assert.equal(maxPending, 0);
+assert.equal(maxPendingAtSteadyState, 0);
 
 const maximum = (read) =>
   metrics.reduce((max, sample) => Math.max(max, read(sample) ?? 0), 0);
@@ -348,7 +355,8 @@ const summary = {
     maxMemoryPeakBytes: maximum((sample) => sample.memoryPeakBytes),
     peakWorkers,
     peakActiveSessions,
-    maxPending,
+    maxPendingDuringScaleUp,
+    maxPendingAtSteadyState,
   },
   reportDir,
 };

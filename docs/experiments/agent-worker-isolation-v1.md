@@ -167,6 +167,9 @@ event-loop sample is recorded but does not fail the run; consecutive degraded
 samples or a control-plane RPC slower than 3 seconds do. This distinguishes a
 brief CPU spike from a Gateway that is actually preventing unrelated sessions
 or channel ingress from being received and registered.
+Queue depth is reported separately for elastic scale-up and steady-state
+saturation: a request may wait briefly while a worker process starts, but once
+3 x 3 is reached the steady-state pending count must remain zero.
 
 For the sustained gate, set `VLAB_NATIVE_TOOL_HOLD_SECONDS=180`. This keeps all
 nine native sessions active for roughly three minutes while retaining the same
