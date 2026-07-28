@@ -160,10 +160,15 @@ Scale-in first sends `SIGTERM`, then uses a bounded forced exit if an Agent
 Runtime plugin keeps the child event loop alive. A retiring process therefore
 cannot occupy a worker slot forever and block queued sessions from scaling out.
 
-The custom `vlab.workers.*` methods are vLab experiment probes. Production
-promotion remains blocked while `vlab.workers.status` reports
-`integration.nativeAgentHarnessDispatchAttached=false`. Before production,
-worker admission must be attached to OpenClaw's native Agent Harness/dispatch
-seam instead of exposing a second user-facing agent/session API. The current
-RPC uses the stable `agentCommand` entry point and is valid for vLab
-experiments, but it is not presented as the production dispatch integration.
+The custom `vlab.workers.*` methods remain diagnostic and fault-injection
+probes. Normal WebChat and channel traffic now enters through OpenClaw's
+native Agent Harness selection, where the `vlab-worker` Harness submits the
+turn to the elastic pool. Each child invokes the stable native `agentCommand`
+entry point against the same OpenClaw state directory, session key, and
+session id. The child owns the native transcript write and returns an
+`AgentHarnessAttemptResult` to the Gateway for ordinary reply delivery.
+
+`integration.nativeAgentHarnessDispatchAttached=true` proves registration,
+not production readiness by itself. Promotion remains blocked until native
+`chat.send` 3x3 saturation, idempotent retry, cancellation, active-worker
+crash recovery, resource monitoring, and rollback acceptance pass on vLab.

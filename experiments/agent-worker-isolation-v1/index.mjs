@@ -2,6 +2,7 @@ import { WorkerPool } from "./worker-pool.mjs";
 import { performance } from "node:perf_hooks";
 
 const SESSION_PREFIX = "agent:makaron:explicit:vlab-worker-";
+const NATIVE_HARNESS_ID = "vlab-worker";
 
 function readString(params, key, options = {}) {
   const value = params?.[key];
@@ -60,7 +61,8 @@ function operationSnapshot(operation) {
 const plugin = {
   id: "vlab-agent-worker-isolation",
   name: "vLab Agent Worker Isolation",
-  description: "Runs vLab experiment workloads in sticky child-process workers.",
+  description:
+    "Runs native OpenClaw Agent Harness dispatch in elastic child-process workers.",
   register(api) {
     const minWorkers = Number(api.pluginConfig?.minWorkers ?? 1);
     const maxWorkers = Number(api.pluginConfig?.maxWorkers ?? 3);
@@ -81,6 +83,118 @@ const plugin = {
     const operationsByIdempotencyKey = new Map();
     let nextOperationId = 1;
     let nativeSessionWriteTail = Promise.resolve();
+    const nativeHarnessStats = {
+      admitted: 0,
+      completed: 0,
+      cancelled: 0,
+      failed: 0,
+      lastSessionKey: undefined,
+      lastWorkerSlot: undefined,
+      lastWorkerPid: undefined,
+    };
+
+    async function dispatchNativeHarnessAttempt(params) {
+      const sessionKey =
+        typeof params.sessionKey === "string" && params.sessionKey.trim()
+          ? params.sessionKey
+          : `agent:${params.agentId ?? "makaron"}:${params.sessionId}`;
+      const submitted = await pool.submit(sessionKey, {
+        kind: "agent",
+        harnessAttempt: true,
+        message: params.prompt,
+        transcriptMessage: params.transcriptPrompt ?? params.prompt,
+        images: params.images,
+        imageOrder: params.imageOrder,
+        clientTools: params.clientTools,
+        agentId: params.agentId ?? "makaron",
+        sessionId: params.sessionId,
+        runId: params.runId,
+        timeoutSeconds: Math.max(
+          1,
+          Math.ceil(Number(params.timeoutMs ?? 300_000) / 1_000),
+        ),
+        messageChannel: params.messageChannel,
+        messageProvider: params.messageProvider,
+        channel: params.messageChannel,
+        accountId: params.agentAccountId,
+        to: params.messageTo,
+        replyTo: params.messageTo,
+        replyChannel: params.messageChannel,
+        replyAccountId: params.agentAccountId,
+        threadId: params.messageThreadId,
+        runContext: {
+          messageChannel: params.messageChannel,
+          accountId: params.agentAccountId,
+          groupId: params.groupId,
+          groupChannel: params.groupChannel,
+          groupSpace: params.groupSpace,
+          currentChannelId: params.currentChannelId,
+          senderId: params.senderId,
+        },
+        toolsAllow: params.toolsAllow,
+        thinking: params.thinkLevel,
+        extraSystemPrompt: params.extraSystemPrompt,
+        sourceReplyDeliveryMode: params.sourceReplyDeliveryMode,
+        senderIsOwner: params.senderIsOwner,
+      });
+      nativeHarnessStats.admitted += 1;
+      nativeHarnessStats.lastSessionKey = sessionKey;
+      const onAbort = () => {
+        pool.cancel(submitted.requestId);
+      };
+      params.abortSignal?.addEventListener("abort", onAbort, { once: true });
+      try {
+        const result = await submitted.promise;
+        nativeHarnessStats.completed += 1;
+        nativeHarnessStats.lastWorkerSlot = result.slot;
+        nativeHarnessStats.lastWorkerPid = result.workerPid;
+        if (!result.attempt || typeof result.attempt !== "object") {
+          throw new Error("worker did not return an Agent Harness attempt result");
+        }
+        return result.attempt;
+      } catch (error) {
+        if (
+          params.abortSignal?.aborted ||
+          error?.name === "AbortError" ||
+          error?.code === "VLAB_WORKER_CANCELLED"
+        ) {
+          nativeHarnessStats.cancelled += 1;
+          return {
+            aborted: true,
+            assistantTranscriptOwned: true,
+            externalAbort: true,
+            timedOut: false,
+            idleTimedOut: false,
+            timedOutDuringCompaction: false,
+            promptError: null,
+            promptErrorSource: null,
+            sessionIdUsed: params.sessionId,
+            sessionFileUsed: params.sessionFile,
+            messagesSnapshot: [],
+            assistantTexts: [],
+            toolMetas: [],
+            acceptedSessionSpawns: [],
+            didSendViaMessagingTool: false,
+            messagingToolSentTexts: [],
+            messagingToolSentMediaUrls: [],
+            messagingToolSentTargets: [],
+            replayMetadata: {
+              hadPotentialSideEffects: false,
+              replaySafe: true,
+            },
+            itemLifecycle: {
+              startedCount: 0,
+              completedCount: 0,
+              activeCount: 0,
+            },
+          };
+        }
+        nativeHarnessStats.failed += 1;
+        throw error;
+      } finally {
+        params.abortSignal?.removeEventListener("abort", onAbort);
+      }
+    }
 
     function readNativeSession(agentId, sessionKey) {
       const sessionRuntime = api.runtime.agent.session;
@@ -316,6 +430,19 @@ const plugin = {
       },
     });
 
+    api.registerAgentHarness({
+      id: NATIVE_HARNESS_ID,
+      label: "vLab elastic worker harness",
+      supports() {
+        return {
+          supported: true,
+          priority: 100,
+          reason: "vLab worker isolation experiment is enabled",
+        };
+      },
+      runAttempt: dispatchNativeHarnessAttempt,
+    });
+
     api.registerGatewayMethod(
       "vlab.workers.status",
       async ({ respond }) => {
@@ -327,11 +454,13 @@ const plugin = {
               api.config.agents?.defaults?.subagents?.maxConcurrent,
           },
           integration: {
-            currentEntry: "vlab RPC -> agentCommand",
-            nativeAgentHarnessDispatchAttached: false,
+            currentEntry: "native Channel/dispatch -> AgentHarness -> worker agentCommand",
+            nativeAgentHarnessId: NATIVE_HARNESS_ID,
+            nativeAgentHarnessDispatchAttached: true,
             productionPromotionBlocked: true,
             blocker:
-              "attach worker admission to OpenClaw native Agent Harness/dispatch before production",
+              "native dispatch is attached; vLab native 3x3, crash, cancel, idempotency and rollback acceptance is still required",
+            nativeHarnessStats: { ...nativeHarnessStats },
           },
         });
       },

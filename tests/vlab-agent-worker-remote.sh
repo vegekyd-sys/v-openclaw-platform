@@ -75,7 +75,7 @@ idle_timeout_ms="$(jq -r '.idleTimeoutMs' <<< "$status_before")"
 jq -e \
   '.openClawConcurrency.maxConcurrent == 8
    and .openClawConcurrency.subagentsMaxConcurrent == 8
-   and .integration.nativeAgentHarnessDispatchAttached == false
+   and .integration.nativeAgentHarnessDispatchAttached == true
    and .integration.productionPromotionBlocked == true' \
   <<< "$status_before" >/dev/null
 

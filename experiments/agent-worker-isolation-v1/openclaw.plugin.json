@@ -4,7 +4,7 @@
     "onStartup": true
   },
   "name": "vLab Agent Worker Isolation",
-  "description": "Routes vLab experiment requests from Gateway RPC to sticky child-process workers.",
+  "description": "Routes native OpenClaw Agent Harness dispatch and vLab experiment RPCs to elastic child-process workers.",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,

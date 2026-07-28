@@ -1,5 +1,6 @@
 import { performance } from "node:perf_hooks";
 import { pathToFileURL } from "node:url";
+import { buildHarnessAttemptResult } from "./harness-result.mjs";
 
 let agentRuntimePromise;
 const activeControllers = new Map();
@@ -78,16 +79,32 @@ async function runAgent(message, abortSignal) {
   const startedAt = performance.now();
   const result = await agentCommand({
     message: message.message,
-    transcriptMessage: message.message,
+    transcriptMessage: message.transcriptMessage ?? message.message,
+    images: message.images,
+    imageOrder: message.imageOrder,
+    clientTools: message.clientTools,
     agentId: message.agentId ?? "makaron",
+    sessionId: message.sessionId,
     sessionKey: message.sessionKey,
     runId: message.runId,
     deliver: false,
     json: true,
     timeout: String(message.timeoutSeconds ?? 300),
-    messageChannel: "webchat",
-    channel: "webchat",
+    messageChannel: message.messageChannel ?? "webchat",
+    messageProvider: message.messageProvider,
+    channel: message.channel ?? message.messageChannel ?? "webchat",
+    accountId: message.accountId,
+    to: message.to,
+    replyTo: message.replyTo,
+    replyChannel: message.replyChannel,
+    replyAccountId: message.replyAccountId,
+    threadId: message.threadId,
+    runContext: message.runContext,
     toolsAllow: message.toolsAllow,
+    thinking: message.thinking,
+    extraSystemPrompt: message.extraSystemPrompt,
+    sourceReplyDeliveryMode: message.sourceReplyDeliveryMode,
+    senderIsOwner: message.senderIsOwner,
     modelRun: message.modelRun ?? false,
     cleanupBundleMcpOnRunEnd: true,
     cleanupCliLiveSessionOnRunEnd: true,
@@ -99,10 +116,25 @@ async function runAgent(message, abortSignal) {
     throw abortSignal.reason ?? new Error("worker Agent request was cancelled");
   }
   const agentMeta = result.meta?.agentMeta ?? result.meta ?? {};
-  return {
+  const response = {
     kind: "agent",
     elapsedMs: performance.now() - startedAt,
     payloads: jsonSafe(result.payloads),
+    didSendViaMessagingTool: result.didSendViaMessagingTool === true,
+    didDeliverSourceReplyViaMessageTool:
+      result.didDeliverSourceReplyViaMessageTool === true,
+    didSendDeterministicApprovalPrompt:
+      result.didSendDeterministicApprovalPrompt === true,
+    messagingToolSentTexts: jsonSafe(result.messagingToolSentTexts ?? []),
+    messagingToolSentMediaUrls: jsonSafe(
+      result.messagingToolSentMediaUrls ?? [],
+    ),
+    messagingToolSentTargets: jsonSafe(result.messagingToolSentTargets ?? []),
+    messagingToolSourceReplyPayloads: jsonSafe(
+      result.messagingToolSourceReplyPayloads ?? [],
+    ),
+    acceptedSessionSpawns: jsonSafe(result.acceptedSessionSpawns ?? []),
+    heartbeatToolResponse: jsonSafe(result.heartbeatToolResponse ?? null),
     meta: jsonSafe({
       provider: agentMeta.provider,
       model: agentMeta.model,
@@ -110,8 +142,17 @@ async function runAgent(message, abortSignal) {
       sessionId: agentMeta.sessionId,
       sessionFile: agentMeta.sessionFile,
       usage: agentMeta.usage,
+      aborted: result.meta?.aborted === true,
+      systemPromptReport: result.meta?.systemPromptReport,
+      finalPromptText: result.meta?.finalPromptText,
+      compactionCount: agentMeta.compactionCount,
+      compactionTokensAfter: agentMeta.compactionTokensAfter,
     }),
   };
+  if (message.harnessAttempt === true) {
+    response.attempt = jsonSafe(await buildHarnessAttemptResult(result));
+  }
+  return response;
 }
 
 process.on("message", async (message) => {

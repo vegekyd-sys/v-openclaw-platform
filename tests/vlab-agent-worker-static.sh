@@ -6,6 +6,7 @@ EXPERIMENT_DIR="${REPO_ROOT}/experiments/agent-worker-isolation-v1"
 
 node --check "${EXPERIMENT_DIR}/worker-pool.mjs"
 node --check "${EXPERIMENT_DIR}/worker.mjs"
+node --check "${EXPERIMENT_DIR}/harness-result.mjs"
 node --check "${EXPERIMENT_DIR}/stubborn-worker.mjs"
 node --check "${EXPERIMENT_DIR}/index.mjs"
 node --check "${EXPERIMENT_DIR}/self-test.mjs"
@@ -13,12 +14,15 @@ bash -n "${REPO_ROOT}/tests/vlab-agent-worker-remote.sh"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-soak.sh"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-faults.sh"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-subagents.sh"
+bash -n "${REPO_ROOT}/tests/vlab-agent-worker-native-dispatch.sh"
 grep -q 'visibility = "agent"' \
   "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
 grep -q '.agents.defaults.maxConcurrent = $agent_max_concurrent' \
   "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
 grep -q '.agents.defaults.subagents.maxConcurrent = $subagent_max_concurrent' \
   "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
+grep -q 'api.registerAgentHarness' "${EXPERIMENT_DIR}/index.mjs"
+grep -q 'nativeAgentHarnessDispatchAttached: true' "${EXPERIMENT_DIR}/index.mjs"
 
 jq -e '.id == "vlab-agent-worker-isolation"' \
   "${EXPERIMENT_DIR}/openclaw.plugin.json" >/dev/null
