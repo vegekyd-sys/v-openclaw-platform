@@ -92,7 +92,6 @@ jq -e \
      | all(. == "vlab-worker"))' \
   <<< "$status_before" >/dev/null
 
-declare -a send_pids=()
 for index in $(seq 1 "$SESSION_COUNT"); do
   session_key="${SESSION_PREFIX}-${index}"
   run_id="${RUN_PREFIX}-${index}"
@@ -116,8 +115,7 @@ for index in $(seq 1 "$SESSION_COUNT"); do
   call_gateway_to_file \
     chat.send \
     "$params" \
-    "${REPORT_DIR}/send-${index}.json" &
-  send_pids+=("$!")
+    "${REPORT_DIR}/send-${index}.json"
 done
 
 saturated=false
@@ -140,9 +138,6 @@ for _ in $(seq 1 "$SATURATION_WAIT_SECONDS"); do
 done
 [[ "$saturated" == true ]]
 
-for send_pid in "${send_pids[@]}"; do
-  wait "$send_pid"
-done
 for index in $(seq 1 "$SESSION_COUNT"); do
   run_id="${RUN_PREFIX}-${index}"
   jq -e --arg run_id "$run_id" \
