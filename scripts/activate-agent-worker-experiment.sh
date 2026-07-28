@@ -113,6 +113,7 @@ for required in \
   index.mjs \
   worker-pool.mjs \
   worker.mjs \
+  runtime-path.mjs \
   harness-result.mjs \
   stubborn-worker.mjs \
   self-test.mjs; do

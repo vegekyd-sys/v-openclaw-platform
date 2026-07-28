@@ -1,5 +1,6 @@
 import { WorkerPool } from "./worker-pool.mjs";
 import { performance } from "node:perf_hooks";
+import { resolveOpenClawAgentRuntimePath } from "./runtime-path.mjs";
 
 const SESSION_PREFIX = "agent:makaron:explicit:vlab-worker-";
 const NATIVE_HARNESS_ID = "vlab-worker";
@@ -97,18 +98,22 @@ const plugin = {
       typeof api.pluginConfig?.workerConfigPath === "string"
         ? api.pluginConfig.workerConfigPath
         : undefined;
+    const openClawAgentRuntimePath = resolveOpenClawAgentRuntimePath();
+    const workerEnv = {
+      ...process.env,
+      VLAB_OPENCLAW_AGENT_RUNTIME: openClawAgentRuntimePath,
+      VLAB_REQUIRE_OPENCLAW_AGENT_RUNTIME: "1",
+      ...(workerConfigPath
+        ? { OPENCLAW_CONFIG_PATH: workerConfigPath }
+        : {}),
+    };
     const sharedPool = acquireSharedPool({
       minWorkers,
       maxWorkers,
       sessionsPerWorker,
       idleTimeoutMs,
       requestTimeoutMs,
-      workerEnv: workerConfigPath
-        ? {
-            ...process.env,
-            OPENCLAW_CONFIG_PATH: workerConfigPath,
-          }
-        : process.env,
+      workerEnv,
     });
     const pool = sharedPool.pool;
     const nativeRequestsByRunId = sharedPool.nativeRequestsByRunId;

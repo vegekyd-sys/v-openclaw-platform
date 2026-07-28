@@ -214,4 +214,8 @@ process.on("message", async (message) => {
   }
 });
 
+if (process.env.VLAB_REQUIRE_OPENCLAW_AGENT_RUNTIME === "1") {
+  await loadAgentRuntime();
+}
+
 process.send?.({ type: "ready", pid: process.pid });
