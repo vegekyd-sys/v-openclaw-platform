@@ -168,6 +168,10 @@ samples or a control-plane RPC slower than 3 seconds do. This distinguishes a
 brief CPU spike from a Gateway that is actually preventing unrelated sessions
 or channel ingress from being received and registered.
 
+For the sustained gate, set `VLAB_NATIVE_TOOL_HOLD_SECONDS=180`. This keeps all
+nine native sessions active for roughly three minutes while retaining the same
+control-plane, memory, event-loop, transcript, and idempotency assertions.
+
 Scale-in first sends `SIGTERM`, then uses a bounded forced exit if an Agent
 Runtime plugin keeps the child event loop alive. A retiring process therefore
 cannot occupy a worker slot forever and block queued sessions from scaling out.

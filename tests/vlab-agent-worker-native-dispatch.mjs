@@ -18,7 +18,7 @@ const toolHoldSeconds = readInteger(
   "VLAB_NATIVE_TOOL_HOLD_SECONDS",
   15,
   1,
-  50,
+  300,
 );
 const runTimeoutMs = readInteger(
   "VLAB_NATIVE_RUN_TIMEOUT_MS",
