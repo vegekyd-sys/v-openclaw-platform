@@ -112,7 +112,6 @@ const plugin = {
     });
     const pool = sharedPool.pool;
     const nativeRequestsByRunId = sharedPool.nativeRequestsByRunId;
-    const nativeSessionSnapshots = new Map();
     const operationsById = new Map();
     const operationsByIdempotencyKey = new Map();
     let nextOperationId = 1;
@@ -268,54 +267,48 @@ const plugin = {
       if (typeof sessionId !== "string" || sessionId.trim() === "") {
         throw new Error("worker Agent result did not include a native sessionId");
       }
-      const now = Date.now();
-      nativeSessionSnapshots.set(sessionKey, {
+      const snapshot = {
         agentId,
         sessionId,
         sessionFile: result.meta?.sessionFile,
-        updatedAt: now,
-      });
-      while (nativeSessionSnapshots.size > 1024) {
-        nativeSessionSnapshots.delete(nativeSessionSnapshots.keys().next().value);
-      }
+        updatedAt: Date.now(),
+      };
 
       const reconcile = async () => {
-        for (const [knownSessionKey, snapshot] of nativeSessionSnapshots) {
-          const sessionRuntime = api.runtime.agent.session;
-          const storePath = sessionRuntime.resolveStorePath(api.config.session?.store, {
-            agentId: snapshot.agentId,
-          });
-          const existing = sessionRuntime.getSessionEntry({
-            agentId: snapshot.agentId,
-            storePath,
-            sessionKey: knownSessionKey,
-            readConsistency: "latest",
-          });
-          if (existing && existing.sessionId !== snapshot.sessionId) {
-            throw new Error(
-              `native session ${knownSessionKey} changed from ${snapshot.sessionId} to ${existing.sessionId}`,
-            );
-          }
-          if (existing) {
-            continue;
-          }
-          await sessionRuntime.upsertSessionEntry({
-            agentId: snapshot.agentId,
-            storePath,
-            sessionKey: knownSessionKey,
-            readConsistency: "latest",
-            entry: {
-              sessionId: snapshot.sessionId,
-              updatedAt: snapshot.updatedAt,
-              lastActivityAt: snapshot.updatedAt,
-              sessionStartedAt: snapshot.updatedAt,
-              abortedLastRun: false,
-              ...(typeof snapshot.sessionFile === "string"
-                ? { sessionFile: snapshot.sessionFile }
-                : {}),
-            },
-          });
+        const sessionRuntime = api.runtime.agent.session;
+        const storePath = sessionRuntime.resolveStorePath(api.config.session?.store, {
+          agentId: snapshot.agentId,
+        });
+        const existing = sessionRuntime.getSessionEntry({
+          agentId: snapshot.agentId,
+          storePath,
+          sessionKey,
+          readConsistency: "latest",
+        });
+        if (existing && existing.sessionId !== snapshot.sessionId) {
+          throw new Error(
+            `native session ${sessionKey} changed from ${snapshot.sessionId} to ${existing.sessionId}`,
+          );
         }
+        if (existing) {
+          return;
+        }
+        await sessionRuntime.upsertSessionEntry({
+          agentId: snapshot.agentId,
+          storePath,
+          sessionKey,
+          readConsistency: "latest",
+          entry: {
+            sessionId: snapshot.sessionId,
+            updatedAt: snapshot.updatedAt,
+            lastActivityAt: snapshot.updatedAt,
+            sessionStartedAt: snapshot.updatedAt,
+            abortedLastRun: false,
+            ...(typeof snapshot.sessionFile === "string"
+              ? { sessionFile: snapshot.sessionFile }
+              : {}),
+          },
+        });
       };
 
       const pendingWrite = nativeSessionWriteTail.then(reconcile, reconcile);

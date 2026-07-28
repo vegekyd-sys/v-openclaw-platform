@@ -153,13 +153,20 @@ registry. OpenClaw's native session key, store, history, visibility rules, and
 `sessionKey -> worker process` routing while work is active; the mapping is
 discarded when the active burst ends and can be rebuilt after a worker exit.
 
-Because the current OpenClaw session index is shared by all processes, worker
-completion metadata is merged back through OpenClaw's native
-`api.runtime.agent.session.upsertSessionEntry` API on the Gateway. These native
-writes are serialized and replay all completed synthetic sessions after every
-completion, preventing concurrent child processes from losing an index entry.
+Because the current OpenClaw session index is shared by all processes, each
+worker completion is checked and, when necessary, merged back through
+OpenClaw's native `api.runtime.agent.session.upsertSessionEntry` API on the
+Gateway. These native writes are serialized, but only the completed session is
+checked; the Gateway does not repeatedly rescan every prior completion.
 Transcripts remain OpenClaw's per-session JSONL files; no parallel session
 owner or database is introduced.
+
+The native saturation gate also probes Gateway health and worker-status RPC
+latency throughout the 3 workers x 3 sessions run. A single transient degraded
+event-loop sample is recorded but does not fail the run; consecutive degraded
+samples or a control-plane RPC slower than 3 seconds do. This distinguishes a
+brief CPU spike from a Gateway that is actually preventing unrelated sessions
+or channel ingress from being received and registered.
 
 Scale-in first sends `SIGTERM`, then uses a bounded forced exit if an Agent
 Runtime plugin keeps the child event loop alive. A retiring process therefore
