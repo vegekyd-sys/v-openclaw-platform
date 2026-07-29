@@ -50,6 +50,7 @@
     "VLab keeps isolated sessions, memory, browser state, crons, bindings, and external-write MCP state.",
     "VLab uses four CPU cores and a 6 GiB cgroup limit, so service memory and CPU limits are scaled down.",
     "VLab may use only the DeepSeek provider; production provider credentials and fallbacks are not copied.",
-    "Workspace layout and plugin contracts are mirrored, but the production workspace data set is not copied."
+    "Workspace roles are mirrored, but the production workspace data set is not copied.",
+    "Production-only adapter plugins such as makaron-image require their own VLab credential and compatibility smoke; this parity gate does not claim them as covered."
   ]
 }
