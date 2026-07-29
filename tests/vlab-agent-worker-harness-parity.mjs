@@ -101,12 +101,25 @@ async function saveJson(name, value) {
 await mkdir(reportDir, { recursive: true, mode: 0o700 });
 
 const { callGatewayFromCli } = await import(pathToFileURL(runtimePath).href);
-const call = async (method, params = {}) =>
-  await callGatewayFromCli(
-    method,
-    { timeout: "300000", json: true },
-    params,
-  );
+const call = async (method, params = {}) => {
+  let lastError;
+  for (let attempt = 1; attempt <= 10; attempt += 1) {
+    try {
+      return await callGatewayFromCli(
+        method,
+        { timeout: "300000", json: true },
+        params,
+      );
+    } catch (error) {
+      lastError = error;
+      if (attempt === 10) {
+        break;
+      }
+      await sleep(2_000);
+    }
+  }
+  throw lastError;
+};
 
 const baselineRestarts = systemdNumber("NRestarts");
 const before = await call("vlab.workers.status");
