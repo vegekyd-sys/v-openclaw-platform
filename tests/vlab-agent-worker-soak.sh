@@ -215,10 +215,10 @@ expected_workers="$(
     --argjson max_workers "$max_workers" \
     '[
       $max_workers,
-      [
+      ([
         $min_workers,
         (($sessions / $per_worker) | ceil)
-      ] | max
+      ] | max)
     ] | min'
 )"
 record_service_sample "${REPORT_DIR}/service-before.txt"
