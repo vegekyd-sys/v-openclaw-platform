@@ -786,7 +786,7 @@ const plugin = {
             nativeAgentHarnessId: NATIVE_HARNESS_ID,
             nativeAgentHarnessDispatchAttached: true,
             nestedGatewayHarnessRouting: true,
-            workerAttemptRuntimeOverride: "openclaw",
+            workerUsesIngressAgentCommand: true,
             workerIsolationVersion: "0.1.5-p1",
             longRunProgressBridge: true,
             channelTimeoutCoupledToWorker: false,

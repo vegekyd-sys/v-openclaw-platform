@@ -53,7 +53,7 @@ test("persistent worker does not run one-shot CLI teardown per turn", async () =
       suppressPromptPersistence: false,
       skipInitialSessionTouch: true,
       allowGatewaySubagentBinding: true,
-      agentHarnessRuntimeOverride: "openclaw",
+      allowModelOverride: true,
     });
     assert.equal(result.attempt.itemLifecycle.activeCount, 0);
     assert.equal(pool.status().workers[0].activeCount, 0);

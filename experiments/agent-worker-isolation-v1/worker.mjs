@@ -103,9 +103,12 @@ async function runHold(durationMs, abortSignal) {
 }
 
 async function runAgent(message, abortSignal) {
-  const { agentCommand } = await loadAgentRuntime();
+  const { agentCommandFromIngress } = await loadAgentRuntime();
+  if (typeof agentCommandFromIngress !== "function") {
+    throw new Error("OpenClaw ingress Agent runtime is unavailable");
+  }
   const startedAt = performance.now();
-  const result = await agentCommand({
+  const result = await agentCommandFromIngress({
     message: message.message,
     transcriptMessage: message.transcriptMessage ?? message.message,
     images: message.images,
@@ -139,10 +142,7 @@ async function runAgent(message, abortSignal) {
     sourceReplyDeliveryMode: message.sourceReplyDeliveryMode,
     senderIsOwner: message.senderIsOwner,
     modelRun: message.modelRun ?? false,
-    // The overlay keeps Gateway model routing intact so nested subagent and
-    // completion runs return to the central worker Harness. Only this already
-    // admitted worker attempt is forced to native OpenClaw to avoid recursion.
-    agentHarnessRuntimeOverride: "openclaw",
+    allowModelOverride: true,
     // This process is a persistent, concurrent Agent runtime, not a one-shot
     // local CLI. Per-turn one-shot teardown can wait on process-global MCP/CLI
     // resources after the assistant has already finished, holding the parent

@@ -58,7 +58,7 @@ grep -q 'lane: message.lane ?? message.sessionKey' \
   "${EXPERIMENT_DIR}/worker.mjs"
 grep -q 'allowGatewaySubagentBinding: true' \
   "${EXPERIMENT_DIR}/worker.mjs"
-grep -q 'agentHarnessRuntimeOverride: "openclaw"' \
+grep -q 'agentCommandFromIngress' \
   "${EXPERIMENT_DIR}/worker.mjs"
 grep -q 'api.on(' "${EXPERIMENT_DIR}/index.mjs"
 grep -q '"resolve_exec_env"' "${EXPERIMENT_DIR}/index.mjs"

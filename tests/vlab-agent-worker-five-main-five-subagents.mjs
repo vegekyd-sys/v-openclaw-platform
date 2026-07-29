@@ -107,7 +107,7 @@ const before = await call("vlab.workers.status");
 await saveJson("status-before.json", before);
 assert.equal(before.integration.workerIsolationVersion, "0.1.5-p1");
 assert.equal(before.integration.nestedGatewayHarnessRouting, true);
-assert.equal(before.integration.workerAttemptRuntimeOverride, "openclaw");
+assert.equal(before.integration.workerUsesIngressAgentCommand, true);
 assert.equal(before.maxWorkers, 3);
 assert.equal(before.sessionsPerWorker, 3);
 assert.equal(before.openClawConcurrency.subagentsMaxConcurrent, 8);

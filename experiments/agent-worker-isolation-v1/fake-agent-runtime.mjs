@@ -65,6 +65,7 @@ export async function agentCommand(params) {
             params.allowGatewaySubagentBinding,
           agentHarnessRuntimeOverride:
             params.agentHarnessRuntimeOverride,
+          allowModelOverride: params.allowModelOverride,
         }),
       },
     ],
@@ -76,4 +77,8 @@ export async function agentCommand(params) {
       },
     },
   };
+}
+
+export async function agentCommandFromIngress(params) {
+  return await agentCommand(params);
 }
