@@ -20,6 +20,12 @@ const toolHoldSeconds = readInteger(
   1,
   420,
 );
+const toolHoldStaggerSeconds = readInteger(
+  "VLAB_NATIVE_TOOL_HOLD_STAGGER_SECONDS",
+  0,
+  0,
+  30,
+);
 const runTimeoutMs = readInteger(
   "VLAB_NATIVE_RUN_TIMEOUT_MS",
   420_000,
@@ -124,9 +130,15 @@ for (let index = 1; index <= sessionCount; index += 1) {
   const sessionKey = `${sessionPrefix}-${index}`;
   const runId = `${runPrefix}-${index}`;
   const marker = `VLAB_NATIVE_OK_${index}`;
+  const sessionToolHoldSeconds =
+    toolHoldSeconds + (index - 1) * toolHoldStaggerSeconds;
+  assert.ok(
+    sessionToolHoldSeconds <= 420,
+    `session ${index} tool hold ${sessionToolHoldSeconds}s exceeds 420s`,
+  );
   const message =
     `这是 vLab 原生 dispatch 验收。必须使用 exec 执行 /bin/sleep ` +
-    `${toolHoldSeconds}，然后只回复 ${marker}。不要发送外部消息，不要修改文件。`;
+    `${sessionToolHoldSeconds}，然后只回复 ${marker}。不要发送外部消息，不要修改文件。`;
   const sent = await call("chat.send", {
     sessionKey,
     agentId: "makaron",
@@ -324,6 +336,8 @@ const summary = {
   entry: "chat.send -> native AgentHarness -> elastic worker",
   topology: "3 workers x 3 sessions",
   sessionCount,
+  toolHoldSeconds,
+  toolHoldStaggerSeconds,
   durationSeconds: Math.round((Date.now() - startedAt) / 1_000),
   nativeHarnessAdmittedDelta:
     finalStatus.integration.nativeHarnessStats.admitted - admittedBefore,
