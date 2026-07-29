@@ -207,6 +207,20 @@ max_active_sessions="$(
 [[ "$sessions_per_worker" == "3" ]]
 [[ "$max_active_sessions" == "9" ]]
 (( SESSION_COUNT <= max_active_sessions ))
+expected_workers="$(
+  jq -nr \
+    --argjson sessions "$SESSION_COUNT" \
+    --argjson per_worker "$sessions_per_worker" \
+    --argjson min_workers "$(payload "${REPORT_DIR}/status-before.json" | jq -r '.minWorkers')" \
+    --argjson max_workers "$max_workers" \
+    '[
+      $max_workers,
+      [
+        $min_workers,
+        (($sessions / $per_worker) | ceil)
+      ] | max
+    ] | min'
+)"
 record_service_sample "${REPORT_DIR}/service-before.txt"
 monitor_metrics &
 MONITOR_PID=$!
@@ -261,7 +275,7 @@ for round in $(seq 1 "$ROUNDS"); do
       payload "${REPORT_DIR}/status-r${round}-during.json" \
         | jq -r '[.workers[].activeCount] | add // 0'
     )"
-    if [[ "$scaled_workers" == "$max_workers" ]] \
+    if [[ "$scaled_workers" == "$expected_workers" ]] \
       && [[ "$active_requests" == "$SESSION_COUNT" ]] \
       && [[ "$pending_requests" == "0" ]]; then
       break
@@ -299,7 +313,7 @@ for round in $(seq 1 "$ROUNDS"); do
     fi
   done
 
-  [[ "$scaled_workers" == "$max_workers" ]]
+  [[ "$scaled_workers" == "$expected_workers" ]]
   [[ "$active_requests" == "$SESSION_COUNT" ]]
   [[ "$pending_requests" == "0" ]]
   jq -e \
@@ -413,6 +427,7 @@ jq -n \
   --argjson peak_worker_count "$peak_worker_count" \
   --argjson unique_worker_pids "$unique_worker_pids" \
   --argjson sessions_per_worker "$sessions_per_worker" \
+  --argjson expected_workers "$expected_workers" \
   --argjson max_active_sessions "$max_active_sessions" \
   --argjson metrics "$metrics_summary" \
   --arg baseline_restarts "$baseline_restarts" \
@@ -438,6 +453,7 @@ jq -n \
     workers: {
       peak: $peak_worker_count,
       sessionsPerWorker: $sessions_per_worker,
+      expectedForLoad: $expected_workers,
       maxActiveSessions: $max_active_sessions,
       uniquePidsAcrossRun: $unique_worker_pids,
       pendingDuringSamples: 0
