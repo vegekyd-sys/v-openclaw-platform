@@ -39,12 +39,31 @@ test("persistent worker does not run one-shot CLI teardown per turn", async () =
       cleanupBundleMcpOnRunEnd: false,
       cleanupCliLiveSessionOnRunEnd: false,
       oneShotCliRun: false,
-      suppressPromptPersistence: true,
+      suppressPromptPersistence: false,
       skipInitialSessionTouch: true,
     });
     assert.equal(result.attempt.itemLifecycle.activeCount, 0);
     assert.equal(pool.status().workers[0].activeCount, 0);
     assert.deepEqual(pool.status().workers[0].sessionKeys, []);
+  } finally {
+    await pool.close();
+  }
+});
+
+test("worker suppresses its copy when Gateway already persisted the user turn", async () => {
+  const pool = makePool();
+  try {
+    const result = await pool.dispatch("agent:fixture:session-owned", {
+      kind: "agent",
+      harnessAttempt: true,
+      message: "inspect-flags",
+      sessionId: "session-owned",
+      runId: "run-owned",
+      suppressPromptPersistence: true,
+    });
+    const flags = JSON.parse(result.payloads[0].text);
+
+    assert.equal(flags.suppressPromptPersistence, true);
   } finally {
     await pool.close();
   }

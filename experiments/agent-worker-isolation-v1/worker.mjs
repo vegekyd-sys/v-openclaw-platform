@@ -142,10 +142,10 @@ async function runAgent(message, abortSignal) {
     cleanupBundleMcpOnRunEnd: false,
     cleanupCliLiveSessionOnRunEnd: false,
     oneShotCliRun: false,
-    // The Gateway Harness owns the visible user turn. Persisting it again in
-    // the worker creates a duplicate turn; after a worker crash, that stale
-    // duplicate can be replayed ahead of the next real user message.
-    suppressPromptPersistence: true,
+    // The worker owns the user line unless the Gateway recorder had already
+    // persisted it before dispatch. After the run, the Gateway acknowledges
+    // the exact worker-written message so its fallback cannot append a copy.
+    suppressPromptPersistence: message.suppressPromptPersistence === true,
     skipInitialSessionTouch: true,
     allowGatewaySubagentBinding: false,
     abortSignal,

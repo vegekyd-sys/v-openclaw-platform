@@ -4,8 +4,13 @@ import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { resolveOpenClawAgentRuntimePath } from "./runtime-path.mjs";
 import { buildHarnessFailureAttempt } from "./harness-failure.mjs";
+import { readNativeSessionMessages } from "./harness-result.mjs";
 import { closeInterruptedToolCalls } from "./transcript-recovery.mjs";
 import { relayWorkerProgress } from "./worker-progress.mjs";
+import {
+  acknowledgeWorkerUserTurn,
+  shouldWorkerPersistUserTurn,
+} from "./user-turn-ownership.mjs";
 import {
   buildWorkerEnvironment,
   resolveWorkerExecEnv,
@@ -82,6 +87,10 @@ function acquireSharedPool(options) {
         failed: 0,
         interruptedToolCallsRecovered: 0,
         transcriptRecoveryFailed: 0,
+        userTurnsAcknowledgedFromWorker: 0,
+        userTurnsAlreadyPersisted: 0,
+        userTurnAcknowledgementMisses: 0,
+        userTurnOwnershipUnavailable: 0,
         lastSessionKey: undefined,
         lastWorkerSlot: undefined,
         lastWorkerPid: undefined,
@@ -188,11 +197,16 @@ const plugin = {
           ? params.sessionKey
           : `agent:${params.agentId ?? "makaron"}:${params.sessionId}`;
       const attemptTimeoutMs = Number(params.timeoutMs ?? requestTimeoutMs);
+      const expectedUserTurn = params.transcriptPrompt ?? params.prompt;
+      const workerShouldPersistUserTurn = shouldWorkerPersistUserTurn(
+        params.userTurnTranscriptRecorder,
+      );
       const submitted = await pool.submit(sessionKey, {
         kind: "agent",
         harnessAttempt: true,
         message: params.prompt,
-        transcriptMessage: params.transcriptPrompt ?? params.prompt,
+        transcriptMessage: expectedUserTurn,
+        suppressPromptPersistence: !workerShouldPersistUserTurn,
         images: params.images,
         imageOrder: params.imageOrder,
         clientTools: params.clientTools,
@@ -236,6 +250,7 @@ const plugin = {
         pool.cancel(submitted.requestId);
       };
       params.abortSignal?.addEventListener("abort", onAbort, { once: true });
+      let workerMessagesSnapshot;
       try {
         const result = await submitted.promise;
         nativeHarnessStats.completed += 1;
@@ -244,6 +259,7 @@ const plugin = {
         if (!result.attempt || typeof result.attempt !== "object") {
           throw new Error("worker did not return an Agent Harness attempt result");
         }
+        workerMessagesSnapshot = result.attempt.messagesSnapshot;
         return result.attempt;
       } catch (error) {
         if (
@@ -312,6 +328,29 @@ const plugin = {
         // per-chat lane active even though the worker already failed.
         return buildHarnessFailureAttempt(error, params);
       } finally {
+        if (!Array.isArray(workerMessagesSnapshot)) {
+          try {
+            workerMessagesSnapshot = await readNativeSessionMessages(
+              params.sessionFile,
+            );
+          } catch {
+            workerMessagesSnapshot = [];
+          }
+        }
+        const userTurnAcknowledgement = acknowledgeWorkerUserTurn({
+          recorder: params.userTurnTranscriptRecorder,
+          messages: workerMessagesSnapshot,
+          expectedText: expectedUserTurn,
+        });
+        if (userTurnAcknowledgement === "acknowledged") {
+          nativeHarnessStats.userTurnsAcknowledgedFromWorker += 1;
+        } else if (userTurnAcknowledgement === "already-persisted") {
+          nativeHarnessStats.userTurnsAlreadyPersisted += 1;
+        } else if (userTurnAcknowledgement === "not-found") {
+          nativeHarnessStats.userTurnAcknowledgementMisses += 1;
+        } else if (userTurnAcknowledgement === "unavailable") {
+          nativeHarnessStats.userTurnOwnershipUnavailable += 1;
+        }
         if (
           nativeRequestsByRunId.get(params.runId)?.requestId ===
           submitted.requestId
@@ -578,10 +617,12 @@ const plugin = {
             currentEntry: "native Channel/dispatch -> AgentHarness -> worker agentCommand",
             nativeAgentHarnessId: NATIVE_HARNESS_ID,
             nativeAgentHarnessDispatchAttached: true,
-            workerIsolationVersion: "0.1.2",
+            workerIsolationVersion: "0.1.3",
             longRunProgressBridge: true,
             channelTimeoutCoupledToWorker: false,
             cooperativeRequestTimeout: true,
+            nativeUserTurnOwnedByWorker: true,
+            nativeUserTurnAcknowledgedByGateway: true,
             configDomainIsolation: {
               workerRuntimeConfigPath: workerConfigPath,
               workerExecConfigPath: gatewayConfigPath,
