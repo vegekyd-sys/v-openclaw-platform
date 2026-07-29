@@ -16,7 +16,7 @@
     "workerConfig": "/srv/vlab/experiments/agent-worker-isolation-v1/worker-openclaw.json"
   },
   "config": {
-    "agentMaxConcurrent": 8,
+    "agentMaxConcurrent": 10,
     "subagentMaxConcurrent": 8,
     "sessionsVisibility": "all",
     "workshopMaxSkillBytes": 100000,

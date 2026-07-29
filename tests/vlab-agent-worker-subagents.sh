@@ -44,7 +44,7 @@ baseline_restarts="$(
 )"
 call_gateway_to_file vlab.workers.status '{}' "${REPORT_DIR}/status-before.json"
 jq -e \
-  '.openClawConcurrency.maxConcurrent == 9
+  '.openClawConcurrency.maxConcurrent == 10
    and .openClawConcurrency.subagentsMaxConcurrent == 8' \
   "${REPORT_DIR}/status-before.json" >/dev/null
 
@@ -159,7 +159,7 @@ jq -n \
     timestamp: $timestamp,
     parentSession: $parent_session,
     configured: {
-      maxConcurrent: 9,
+      maxConcurrent: 10,
       subagentsMaxConcurrent: 8
     },
     subagents: {

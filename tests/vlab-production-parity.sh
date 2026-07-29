@@ -36,7 +36,7 @@ jq -e \
   --arg personal_skills "$personal_skills" \
   '
     .agents.defaults.workspace == $default_workspace
-    and .agents.defaults.maxConcurrent == 8
+    and .agents.defaults.maxConcurrent == 10
     and .agents.defaults.subagents.maxConcurrent == 8
     and any(.agents.list[]; .id == "makaron"
       and .workspace == $makaron_workspace
@@ -64,7 +64,7 @@ jq -e \
   --arg makaron_workspace "$makaron_workspace" \
   --arg personal_skills "$personal_skills" \
   '
-    .agents.defaults.maxConcurrent == 8
+    .agents.defaults.maxConcurrent == 10
     and .agents.defaults.subagents.maxConcurrent == 8
     and any(.agents.list[]; .id == "makaron" and .workspace == $makaron_workspace)
     and .tools.sessions.visibility == "all"

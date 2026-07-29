@@ -110,6 +110,7 @@ assert.equal(before.integration.nestedGatewayHarnessRouting, true);
 assert.equal(before.integration.workerUsesIngressAgentCommand, true);
 assert.equal(before.maxWorkers, 3);
 assert.equal(before.sessionsPerWorker, 3);
+assert.equal(before.openClawConcurrency.maxConcurrent, 10);
 assert.equal(before.openClawConcurrency.subagentsMaxConcurrent, 8);
 
 const mains = Array.from({ length: mainCount }, (_, index) => {

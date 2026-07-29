@@ -53,7 +53,7 @@ const controlPlaneMaxLatencyMs = readInteger(
 );
 const expectedMaxConcurrent = readInteger(
   "VLAB_EXPECTED_MAX_CONCURRENT",
-  9,
+  10,
   1,
   64,
 );

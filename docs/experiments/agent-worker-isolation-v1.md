@@ -44,8 +44,9 @@ introducing a separate worker registry.
 - Defaults: `minWorkers=1`, `maxWorkers=3`,
   `sessionsPerWorker=3`, `idleTimeoutMs=180000`
 - OpenClaw Gateway parent-session concurrency:
-  `agents.defaults.maxConcurrent=9`, one above V's existing value of 8 so the
-  native dispatch path can fill all `3 workers x 3 sessions` slots
+  `agents.defaults.maxConcurrent=10`; this admits a full 5 main + 5 child
+  composite load into the Harness while the Worker pool still limits actual
+  execution to `3 workers x 3 sessions = 9`
 - Subagent concurrency: `agents.defaults.subagents.maxConcurrent=8`, preserving
   V's existing subagent capacity
 - vLab host capacity: 4 vCPUs, `CPUQuota=400%`, `MemoryHigh=5G`,

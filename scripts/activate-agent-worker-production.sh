@@ -172,6 +172,7 @@ jq \
       )
     | .plugins = (.plugins // {})
     | .plugins.load = (.plugins.load // {})
+    | .agents.defaults.maxConcurrent = 10
     | .plugins.load.paths = (
         (
           (.plugins.load.paths // [])
@@ -212,7 +213,7 @@ jq \
   ' "$CONFIG_PATH" > "$candidate_config"
 
 jq -e \
-  '.agents.defaults.maxConcurrent == 8
+  '.agents.defaults.maxConcurrent == 10
    and .agents.defaults.subagents.maxConcurrent == 8' \
   "$candidate_config" >/dev/null
 
