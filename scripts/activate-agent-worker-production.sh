@@ -217,29 +217,7 @@ jq -e \
   "$candidate_config" >/dev/null
 
 worker_candidate_config="$(mktemp)"
-jq \
-  '
-    .agents.defaults.models = (
-      (.agents.defaults.models // {})
-      | with_entries(
-          .value = ((.value // {}) + {
-            agentRuntime: (((.value // {}).agentRuntime // {}) + {
-              id: "openclaw"
-            })
-          })
-        )
-    )
-    | .models.providers = (
-        (.models.providers // {})
-        | with_entries(
-            .value = ((.value // {}) + {
-              agentRuntime: (((.value // {}).agentRuntime // {}) + {
-                id: "openclaw"
-              })
-            })
-          )
-      )
-  ' "$candidate_config" > "$worker_candidate_config"
+jq '.' "$candidate_config" > "$worker_candidate_config"
 chown "$SERVICE_USER:$SERVICE_GROUP" \
   "$candidate_config" "$worker_candidate_config"
 chmod 0600 "$candidate_config" "$worker_candidate_config"

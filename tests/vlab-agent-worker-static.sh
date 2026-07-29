@@ -6,8 +6,6 @@ EXPERIMENT_DIR="${REPO_ROOT}/experiments/agent-worker-isolation-v1"
 
 node --check "${EXPERIMENT_DIR}/worker-pool.mjs"
 node --check "${EXPERIMENT_DIR}/worker.mjs"
-node --check "${EXPERIMENT_DIR}/gateway-subagent-bridge.mjs"
-node --check "${EXPERIMENT_DIR}/gateway-subagent-bridge.test.mjs"
 node --check "${EXPERIMENT_DIR}/exec-env.mjs"
 node --check "${EXPERIMENT_DIR}/exec-env.test.mjs"
 node --check "${EXPERIMENT_DIR}/runtime-path.mjs"
@@ -33,7 +31,6 @@ node --test \
   "${EXPERIMENT_DIR}/harness-result.test.mjs" \
   "${EXPERIMENT_DIR}/session-rollover-retry.test.mjs" \
   "${EXPERIMENT_DIR}/fast-compaction-provider.test.mjs" \
-  "${EXPERIMENT_DIR}/gateway-subagent-bridge.test.mjs" \
   "${EXPERIMENT_DIR}/worker-agent.test.mjs"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-remote.sh"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-soak.sh"
@@ -55,15 +52,13 @@ grep -q '.agents.defaults.subagents.maxConcurrent = $subagent_max_concurrent' \
   "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
 grep -q 'id: "vlab-worker"' \
   "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
-grep -q 'id: "openclaw"' \
-  "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
 grep -q 'api.registerAgentHarness' "${EXPERIMENT_DIR}/index.mjs"
 grep -q 'nativeAgentHarnessDispatchAttached: true' "${EXPERIMENT_DIR}/index.mjs"
 grep -q 'lane: message.lane ?? message.sessionKey' \
   "${EXPERIMENT_DIR}/worker.mjs"
 grep -q 'allowGatewaySubagentBinding: true' \
   "${EXPERIMENT_DIR}/worker.mjs"
-grep -q 'installGatewaySubagentBridge' \
+grep -q 'agentHarnessRuntimeOverride: "openclaw"' \
   "${EXPERIMENT_DIR}/worker.mjs"
 grep -q 'api.on(' "${EXPERIMENT_DIR}/index.mjs"
 grep -q '"resolve_exec_env"' "${EXPERIMENT_DIR}/index.mjs"

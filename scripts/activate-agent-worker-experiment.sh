@@ -273,30 +273,7 @@ jq \
 install -o vlab -g vlab -m 0600 "$candidate_config" "$CONFIG_PATH"
 
 worker_candidate_config="$(mktemp)"
-jq \
-  '
-    .agents.defaults.models = (
-      (.agents.defaults.models // {})
-      | with_entries(
-          .value = ((.value // {}) + {
-            agentRuntime: (((.value // {}).agentRuntime // {}) + {
-              id: "openclaw"
-            })
-          })
-        )
-    )
-    | .models.providers = (
-        (.models.providers // {})
-        | with_entries(
-            .value = ((.value // {}) + {
-              agentRuntime: (((.value // {}).agentRuntime // {}) + {
-                id: "openclaw"
-              })
-            })
-          )
-      )
-  ' \
-  "$candidate_config" > "$worker_candidate_config"
+jq '.' "$candidate_config" > "$worker_candidate_config"
 install -o vlab -g vlab -m 0600 \
   "$worker_candidate_config" \
   "$WORKER_CONFIG_PATH"

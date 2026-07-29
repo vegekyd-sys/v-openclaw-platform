@@ -2,10 +2,8 @@ import { performance } from "node:perf_hooks";
 import { pathToFileURL } from "node:url";
 import { buildHarnessAttemptResult } from "./harness-result.mjs";
 import { readFastCompactionStats } from "./fast-compaction-provider.mjs";
-import { installGatewaySubagentBridge } from "./gateway-subagent-bridge.mjs";
 
 let agentRuntimePromise;
-let gatewaySubagentBridgePromise;
 const activeControllers = new Map();
 const configuredHeartbeatMs = Number(
   process.env.VLAB_WORKER_HEARTBEAT_MS ?? 15_000,
@@ -56,20 +54,7 @@ async function loadAgentRuntime() {
     const runtimePath =
       process.env.VLAB_OPENCLAW_AGENT_RUNTIME ??
       "/opt/vlab/current/node_modules/openclaw/dist/plugin-sdk/agent-runtime.js";
-    agentRuntimePromise = (async () => {
-      if (process.env.VLAB_GATEWAY_SUBAGENT_BRIDGE !== "0") {
-        if (!gatewaySubagentBridgePromise) {
-          gatewaySubagentBridgePromise = installGatewaySubagentBridge({
-            agentRuntimePath: runtimePath,
-            timeoutMs: Number(
-              process.env.VLAB_GATEWAY_SUBAGENT_TIMEOUT_MS ?? 600_000,
-            ),
-          });
-        }
-        await gatewaySubagentBridgePromise;
-      }
-      return await import(pathToFileURL(runtimePath).href);
-    })();
+    agentRuntimePromise = import(pathToFileURL(runtimePath).href);
   }
   return await agentRuntimePromise;
 }
@@ -154,6 +139,10 @@ async function runAgent(message, abortSignal) {
     sourceReplyDeliveryMode: message.sourceReplyDeliveryMode,
     senderIsOwner: message.senderIsOwner,
     modelRun: message.modelRun ?? false,
+    // The overlay keeps Gateway model routing intact so nested subagent and
+    // completion runs return to the central worker Harness. Only this already
+    // admitted worker attempt is forced to native OpenClaw to avoid recursion.
+    agentHarnessRuntimeOverride: "openclaw",
     // This process is a persistent, concurrent Agent runtime, not a one-shot
     // local CLI. Per-turn one-shot teardown can wait on process-global MCP/CLI
     // resources after the assistant has already finished, holding the parent
@@ -166,8 +155,6 @@ async function runAgent(message, abortSignal) {
     // the exact worker-written message so its fallback cannot append a copy.
     suppressPromptPersistence: message.suppressPromptPersistence === true,
     skipInitialSessionTouch: true,
-    // Child runs and completion announces return through the Gateway so the
-    // central Session Owner serializes every write to the parent transcript.
     allowGatewaySubagentBinding: true,
     abortSignal,
   });

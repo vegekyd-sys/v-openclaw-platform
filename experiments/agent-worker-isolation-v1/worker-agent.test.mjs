@@ -19,7 +19,6 @@ function makePool() {
       ...process.env,
       VLAB_OPENCLAW_AGENT_RUNTIME: runtimePath,
       VLAB_REQUIRE_OPENCLAW_AGENT_RUNTIME: "1",
-      VLAB_GATEWAY_SUBAGENT_BRIDGE: "0",
     },
   });
 }
@@ -54,6 +53,7 @@ test("persistent worker does not run one-shot CLI teardown per turn", async () =
       suppressPromptPersistence: false,
       skipInitialSessionTouch: true,
       allowGatewaySubagentBinding: true,
+      agentHarnessRuntimeOverride: "openclaw",
     });
     assert.equal(result.attempt.itemLifecycle.activeCount, 0);
     assert.equal(pool.status().workers[0].activeCount, 0);

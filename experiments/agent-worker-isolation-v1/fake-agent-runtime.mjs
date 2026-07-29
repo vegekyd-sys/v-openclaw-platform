@@ -63,6 +63,8 @@ export async function agentCommand(params) {
           skipInitialSessionTouch: params.skipInitialSessionTouch,
           allowGatewaySubagentBinding:
             params.allowGatewaySubagentBinding,
+          agentHarnessRuntimeOverride:
+            params.agentHarnessRuntimeOverride,
         }),
       },
     ],
