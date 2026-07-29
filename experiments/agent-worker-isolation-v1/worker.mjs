@@ -1,6 +1,7 @@
 import { performance } from "node:perf_hooks";
 import { pathToFileURL } from "node:url";
 import { buildHarnessAttemptResult } from "./harness-result.mjs";
+import { readFastCompactionStats } from "./fast-compaction-provider.mjs";
 
 let agentRuntimePromise;
 const activeControllers = new Map();
@@ -185,6 +186,7 @@ async function runAgent(message, abortSignal) {
       finalPromptText: result.meta?.finalPromptText,
       compactionCount: agentMeta.compactionCount,
       compactionTokensAfter: agentMeta.compactionTokensAfter,
+      fastCompaction: readFastCompactionStats(),
     }),
   };
   if (message.harnessAttempt === true) {

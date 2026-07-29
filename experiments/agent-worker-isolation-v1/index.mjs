@@ -15,6 +15,8 @@ import {
   buildWorkerEnvironment,
   resolveWorkerExecEnv,
 } from "./exec-env.mjs";
+import { buildFastCompactionProvider } from "./fast-compaction-provider.mjs";
+import { runWithSessionRolloverRetry } from "./session-rollover-retry.mjs";
 
 const SESSION_PREFIX = "agent:makaron:explicit:vlab-worker-";
 const NATIVE_HARNESS_ID = "vlab-worker";
@@ -91,11 +93,15 @@ function acquireSharedPool(options) {
         userTurnsAlreadyPersisted: 0,
         userTurnAcknowledgementMisses: 0,
         userTurnOwnershipUnavailable: 0,
+        workerAttempts: 0,
+        sessionRolloverRetries: 0,
+        sessionRolloverRetryFailures: 0,
         lastSessionKey: undefined,
         lastWorkerSlot: undefined,
         lastWorkerPid: undefined,
       },
       nativeRequestsByRunId: new Map(),
+      fastCompactionWorkerStats: new Map(),
     };
   }
   return globalThis[SHARED_POOL_KEY];
@@ -136,6 +142,29 @@ const plugin = {
     if (!gatewayConfigPath) {
       throw new Error("gatewayConfigPath is required");
     }
+    const fastCompactionModel =
+      typeof api.pluginConfig?.fastCompactionModel === "string" &&
+      api.pluginConfig.fastCompactionModel.trim()
+        ? api.pluginConfig.fastCompactionModel.trim()
+        : typeof api.config.agents?.defaults?.compaction?.model === "string" &&
+            api.config.agents.defaults.compaction.model.trim()
+          ? api.config.agents.defaults.compaction.model.trim()
+          : "azure-openai/gpt-5.5";
+    const fastCompactionProvider = buildFastCompactionProvider({
+      model: fastCompactionModel,
+      maxInputChars: Number(
+        api.pluginConfig?.fastCompactionMaxInputChars ?? 420_000,
+      ),
+      maxOutputTokens: Number(
+        api.pluginConfig?.fastCompactionMaxOutputTokens ?? 12_000,
+      ),
+      maxQualityRetries: Number(
+        api.pluginConfig?.fastCompactionMaxQualityRetries ?? 1,
+      ),
+      llmComplete: (params) => api.runtime.llm.complete(params),
+      agentId: "makaron",
+    });
+    api.registerCompactionProvider(fastCompactionProvider);
     const openClawAgentRuntimePath = resolveOpenClawAgentRuntimePath();
     const transcriptRuntimePromise = import(
       pathToFileURL(
@@ -179,6 +208,7 @@ const plugin = {
     });
     const pool = sharedPool.pool;
     const nativeRequestsByRunId = sharedPool.nativeRequestsByRunId;
+    const fastCompactionWorkerStats = sharedPool.fastCompactionWorkerStats;
     const operationsById = new Map();
     const operationsByIdempotencyKey = new Map();
     let nextOperationId = 1;
@@ -201,61 +231,110 @@ const plugin = {
       const workerShouldPersistUserTurn = shouldWorkerPersistUserTurn(
         params.userTurnTranscriptRecorder,
       );
-      const submitted = await pool.submit(sessionKey, {
-        kind: "agent",
-        harnessAttempt: true,
-        message: params.prompt,
-        transcriptMessage: expectedUserTurn,
-        suppressPromptPersistence: !workerShouldPersistUserTurn,
-        images: params.images,
-        imageOrder: params.imageOrder,
-        clientTools: params.clientTools,
-        agentId: params.agentId ?? "makaron",
-        sessionId: params.sessionId,
-        runId: params.runId,
-        timeoutSeconds: Math.max(
-          1,
-          Math.ceil(attemptTimeoutMs / 1_000),
-        ),
-        messageChannel: params.messageChannel,
-        messageProvider: params.messageProvider,
-        channel: params.messageChannel,
-        accountId: params.agentAccountId,
-        to: params.messageTo,
-        replyTo: params.messageTo,
-        replyChannel: params.messageChannel,
-        replyAccountId: params.agentAccountId,
-        threadId: params.messageThreadId,
-        runContext: {
-          messageChannel: params.messageChannel,
-          accountId: params.agentAccountId,
-          groupId: params.groupId,
-          groupChannel: params.groupChannel,
-          groupSpace: params.groupSpace,
-          currentChannelId: params.currentChannelId,
-          senderId: params.senderId,
-        },
-        toolsAllow: params.toolsAllow,
-        extraSystemPrompt: params.extraSystemPrompt,
-        sourceReplyDeliveryMode: params.sourceReplyDeliveryMode,
-        senderIsOwner: params.senderIsOwner,
-      });
       nativeHarnessStats.admitted += 1;
       nativeHarnessStats.lastSessionKey = sessionKey;
-      nativeRequestsByRunId.set(params.runId, {
-        requestId: submitted.requestId,
-        sessionKey,
-      });
-      const onAbort = () => {
-        pool.cancel(submitted.requestId);
-      };
-      params.abortSignal?.addEventListener("abort", onAbort, { once: true });
       let workerMessagesSnapshot;
+      let finalSession = {
+        sessionId: params.sessionId,
+        sessionFile: params.sessionFile,
+      };
       try {
-        const result = await submitted.promise;
+        const logicalAttempt = await runWithSessionRolloverRetry({
+          initialSession: finalSession,
+          maxRetries: 1,
+          readLatestSession: async () =>
+            readNativeSession(params.agentId ?? "makaron", sessionKey),
+          onRetry: (event) => {
+            nativeHarnessStats.sessionRolloverRetries += 1;
+            api.logger.warn(
+              `retrying ${sessionKey} after compaction rotation ${event.previousSessionId} -> ${event.nextSessionId}`,
+            );
+          },
+          execute: async (session) => {
+            if (params.abortSignal?.aborted) {
+              throw (
+                params.abortSignal.reason ??
+                Object.assign(new Error("worker Agent request was cancelled"), {
+                  name: "AbortError",
+                })
+              );
+            }
+            finalSession = session;
+            const submitted = await pool.submit(sessionKey, {
+              kind: "agent",
+              harnessAttempt: true,
+              message: params.prompt,
+              transcriptMessage: expectedUserTurn,
+              suppressPromptPersistence: !workerShouldPersistUserTurn,
+              images: params.images,
+              imageOrder: params.imageOrder,
+              clientTools: params.clientTools,
+              agentId: params.agentId ?? "makaron",
+              sessionId: session.sessionId,
+              runId: params.runId,
+              timeoutSeconds: Math.max(
+                1,
+                Math.ceil(attemptTimeoutMs / 1_000),
+              ),
+              messageChannel: params.messageChannel,
+              messageProvider: params.messageProvider,
+              channel: params.messageChannel,
+              accountId: params.agentAccountId,
+              to: params.messageTo,
+              replyTo: params.messageTo,
+              replyChannel: params.messageChannel,
+              replyAccountId: params.agentAccountId,
+              threadId: params.messageThreadId,
+              runContext: {
+                messageChannel: params.messageChannel,
+                accountId: params.agentAccountId,
+                groupId: params.groupId,
+                groupChannel: params.groupChannel,
+                groupSpace: params.groupSpace,
+                currentChannelId: params.currentChannelId,
+                senderId: params.senderId,
+              },
+              toolsAllow: params.toolsAllow,
+              extraSystemPrompt: params.extraSystemPrompt,
+              sourceReplyDeliveryMode: params.sourceReplyDeliveryMode,
+              senderIsOwner: params.senderIsOwner,
+            });
+            nativeHarnessStats.workerAttempts += 1;
+            nativeRequestsByRunId.set(params.runId, {
+              requestId: submitted.requestId,
+              sessionKey,
+            });
+            const onAbort = () => {
+              pool.cancel(submitted.requestId);
+            };
+            params.abortSignal?.addEventListener("abort", onAbort, {
+              once: true,
+            });
+            try {
+              return await submitted.promise;
+            } finally {
+              if (
+                nativeRequestsByRunId.get(params.runId)?.requestId ===
+                submitted.requestId
+              ) {
+                nativeRequestsByRunId.delete(params.runId);
+              }
+              params.abortSignal?.removeEventListener("abort", onAbort);
+            }
+          },
+        });
+        finalSession = logicalAttempt.session;
+        const result = logicalAttempt.value;
         nativeHarnessStats.completed += 1;
         nativeHarnessStats.lastWorkerSlot = result.slot;
         nativeHarnessStats.lastWorkerPid = result.workerPid;
+        if (result.meta?.fastCompaction) {
+          nativeHarnessStats.fastCompaction = result.meta.fastCompaction;
+          fastCompactionWorkerStats.set(
+            result.workerPid,
+            result.meta.fastCompaction,
+          );
+        }
         if (!result.attempt || typeof result.attempt !== "object") {
           throw new Error("worker did not return an Agent Harness attempt result");
         }
@@ -298,6 +377,20 @@ const plugin = {
           };
         }
         nativeHarnessStats.failed += 1;
+        const latestSession = readNativeSession(
+          params.agentId ?? "makaron",
+          sessionKey,
+        );
+        if (
+          latestSession.exists &&
+          latestSession.sessionId !== finalSession.sessionId
+        ) {
+          finalSession = {
+            sessionId: latestSession.sessionId,
+            sessionFile: latestSession.sessionFile,
+          };
+          nativeHarnessStats.sessionRolloverRetryFailures += 1;
+        }
         try {
           const { withSessionTranscriptWriteLock } =
             await transcriptRuntimePromise;
@@ -307,8 +400,8 @@ const plugin = {
               target: {
                 agentId: params.agentId ?? "makaron",
                 sessionKey,
-                sessionId: params.sessionId,
-                sessionFile: params.sessionFile,
+                sessionId: finalSession.sessionId,
+                sessionFile: finalSession.sessionFile,
               },
               config: api.config,
               error,
@@ -326,12 +419,16 @@ const plugin = {
         // Agent Harness expects a terminal attempt result. Throwing here skips
         // OpenClaw's normal attempt finalization and can leave the Session and
         // per-chat lane active even though the worker already failed.
-        return buildHarnessFailureAttempt(error, params);
+        return buildHarnessFailureAttempt(error, {
+          ...params,
+          sessionId: finalSession.sessionId,
+          sessionFile: finalSession.sessionFile,
+        });
       } finally {
         if (!Array.isArray(workerMessagesSnapshot)) {
           try {
             workerMessagesSnapshot = await readNativeSessionMessages(
-              params.sessionFile,
+              finalSession.sessionFile,
             );
           } catch {
             workerMessagesSnapshot = [];
@@ -351,13 +448,6 @@ const plugin = {
         } else if (userTurnAcknowledgement === "unavailable") {
           nativeHarnessStats.userTurnOwnershipUnavailable += 1;
         }
-        if (
-          nativeRequestsByRunId.get(params.runId)?.requestId ===
-          submitted.requestId
-        ) {
-          nativeRequestsByRunId.delete(params.runId);
-        }
-        params.abortSignal?.removeEventListener("abort", onAbort);
       }
     }
 
@@ -380,11 +470,57 @@ const plugin = {
       return {
         exists: true,
         sessionId: entry.sessionId,
+        sessionFile: entry.sessionFile,
+        lifecycleRevision: entry.lifecycleRevision,
+        compactionCount: entry.compactionCount,
+        totalTokens: entry.totalTokens,
         updatedAt: entry.updatedAt,
         status: entry.status,
         startedAt: entry.startedAt,
         endedAt: entry.endedAt,
         abortedLastRun: entry.abortedLastRun === true,
+      };
+    }
+
+    function aggregateWorkerCompactionStats() {
+      const aggregate = {
+        calls: 0,
+        modelCalls: 0,
+        qualityRetries: 0,
+        repaired: 0,
+        failures: 0,
+        workerProcesses: fastCompactionWorkerStats.size,
+      };
+      let latest;
+      for (const stats of fastCompactionWorkerStats.values()) {
+        for (const key of [
+          "calls",
+          "modelCalls",
+          "qualityRetries",
+          "repaired",
+          "failures",
+        ]) {
+          aggregate[key] += Number(stats?.[key] ?? 0);
+        }
+        if (
+          !latest ||
+          Number(stats?.updatedAt ?? 0) > Number(latest?.updatedAt ?? 0)
+        ) {
+          latest = stats;
+        }
+      }
+      return {
+        ...aggregate,
+        ...(latest
+          ? {
+              lastDurationMs: latest.lastDurationMs,
+              lastInputChars: latest.lastInputChars,
+              lastOutputChars: latest.lastOutputChars,
+              lastAuditReasons: latest.lastAuditReasons,
+              lastModel: latest.lastModel,
+              updatedAt: latest.updatedAt,
+            }
+          : {}),
       };
     }
 
@@ -617,12 +753,23 @@ const plugin = {
             currentEntry: "native Channel/dispatch -> AgentHarness -> worker agentCommand",
             nativeAgentHarnessId: NATIVE_HARNESS_ID,
             nativeAgentHarnessDispatchAttached: true,
-            workerIsolationVersion: "0.1.3",
+            workerIsolationVersion: "0.1.4",
             longRunProgressBridge: true,
             channelTimeoutCoupledToWorker: false,
             cooperativeRequestTimeout: true,
             nativeUserTurnOwnedByWorker: true,
             nativeUserTurnAcknowledgedByGateway: true,
+            sessionRolloverRebindRetry: true,
+            fastCompaction: {
+              provider: fastCompactionProvider.id,
+              model: fastCompactionModel,
+              maxQualityRetries: Number(
+                api.pluginConfig?.fastCompactionMaxQualityRetries ?? 1,
+              ),
+              stats: { ...fastCompactionProvider.stats },
+              lastWorkerStats: nativeHarnessStats.fastCompaction,
+              aggregateWorkerStats: aggregateWorkerCompactionStats(),
+            },
             configDomainIsolation: {
               workerRuntimeConfigPath: workerConfigPath,
               workerExecConfigPath: gatewayConfigPath,

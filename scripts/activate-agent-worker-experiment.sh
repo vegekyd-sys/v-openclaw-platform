@@ -24,6 +24,7 @@ ACTIVE_MANIFEST="${STATE_DIR}/active.json"
 PRE_DEPLOY_CONFIG="${BACKUP_DIR}/openclaw.json"
 ROLLBACK_CONFIG="$PRE_DEPLOY_CONFIG"
 rollback_armed=false
+existing_worker_compaction='{}'
 
 run_openclaw() {
   sudo -u vlab env \
@@ -91,6 +92,11 @@ fi
   echo "vLab OpenClaw runtime is incomplete" >&2
   exit 1
 }
+if [[ -f "$WORKER_CONFIG_PATH" ]]; then
+  existing_worker_compaction="$(
+    jq -c '.agents.defaults.compaction // {}' "$WORKER_CONFIG_PATH"
+  )"
+fi
 [[ "$(
   systemctl show openclaw-vlab-gateway.service -p LoadState --value
 )" == "loaded" ]] || {
@@ -117,6 +123,9 @@ for required in \
   exec-env.mjs \
   runtime-path.mjs \
   harness-result.mjs \
+  harness-failure.mjs \
+  session-rollover-retry.mjs \
+  fast-compaction-provider.mjs \
   stubborn-worker.mjs \
   self-test.mjs; do
   [[ -f "${RELEASE_DIR}/${required}" ]] || {
@@ -168,6 +177,7 @@ jq \
   --argjson agent_max_concurrent "$AGENT_MAX_CONCURRENT" \
   --argjson subagent_max_concurrent "$SUBAGENT_MAX_CONCURRENT" \
   --argjson idle_timeout_ms "$IDLE_TIMEOUT_MS" \
+  --argjson existing_worker_compaction "$existing_worker_compaction" \
   '
     .tools = (.tools // {})
     | .tools.sessions = (.tools.sessions // {})
@@ -198,6 +208,15 @@ jq \
       )
     | .agents.defaults.subagents = (.agents.defaults.subagents // {})
     | .agents.defaults.subagents.maxConcurrent = $subagent_max_concurrent
+    | .agents.defaults.compaction = (
+        (.agents.defaults.compaction // {}) * $existing_worker_compaction
+      )
+    | .agents.defaults.compaction.provider = "versa-fast-quality-v1"
+    | .agents.defaults.compaction.qualityGuard = (
+        (.agents.defaults.compaction.qualityGuard // {})
+        | .enabled = true
+        | .maxRetries = 1
+      )
     | .plugins = (.plugins // {})
     | .plugins.load = (.plugins.load // {})
     | .plugins.load.paths = (
@@ -217,6 +236,19 @@ jq \
           sessionsPerWorker: $sessions_per_worker,
           idleTimeoutMs: $idle_timeout_ms,
           requestTimeoutMs: 600000,
+          fastCompactionModel: (
+            $existing_worker_compaction.model
+            // .agents.defaults.compaction.model
+            // (
+              if (.agents.defaults.model | type) == "object"
+              then .agents.defaults.model.primary
+              else .agents.defaults.model
+              end
+            )
+          ),
+          fastCompactionMaxInputChars: 420000,
+          fastCompactionMaxOutputTokens: 12000,
+          fastCompactionMaxQualityRetries: 1,
           workerConfigPath: $worker_config_path,
           gatewayConfigPath: $gateway_config_path
         }

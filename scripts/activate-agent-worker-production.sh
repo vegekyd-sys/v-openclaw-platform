@@ -32,6 +32,7 @@ rollback_armed=false
 candidate_config=""
 worker_candidate_config=""
 manifest_candidate=""
+existing_worker_compaction='{}'
 
 run_openclaw() {
   sudo -u "$SERVICE_USER" env \
@@ -99,6 +100,9 @@ actual_sha256="$(sha256sum "$ARCHIVE_PATH" | awk '{print $1}')"
   echo "artifact checksum mismatch" >&2
   exit 1
 }
+existing_worker_compaction="$(
+  jq -c '.agents.defaults.compaction // {}' "$WORKER_CONFIG_PATH"
+)"
 
 install -d -m 0755 "$EXPERIMENT_ROOT" "${EXPERIMENT_ROOT}/releases"
 if [[ ! -d "$RELEASE_DIR" ]]; then
@@ -115,13 +119,17 @@ for required in \
   worker-pool.mjs \
   worker.mjs \
   exec-env.mjs \
+  harness-result.mjs \
+  harness-failure.mjs \
+  session-rollover-retry.mjs \
+  fast-compaction-provider.mjs \
   self-test.mjs; do
   [[ -f "${RELEASE_DIR}/${required}" ]] || {
     echo "release is missing ${required}" >&2
     exit 1
   }
 done
-[[ "$(jq -r '.version' "${RELEASE_DIR}/package.json")" == "0.1.2" ]] || {
+[[ "$(jq -r '.version' "${RELEASE_DIR}/package.json")" == "0.1.4" ]] || {
   echo "unexpected Worker isolation version" >&2
   exit 1
 }
@@ -149,8 +157,20 @@ jq \
   --arg experiment_root "$EXPERIMENT_ROOT" \
   --arg worker_config_path "$WORKER_CONFIG_PATH" \
   --arg gateway_config_path "$CONFIG_PATH" \
+  --argjson existing_worker_compaction "$existing_worker_compaction" \
   '
-    .plugins = (.plugins // {})
+    .agents = (.agents // {})
+    | .agents.defaults = (.agents.defaults // {})
+    | .agents.defaults.compaction = (
+        (.agents.defaults.compaction // {}) * $existing_worker_compaction
+      )
+    | .agents.defaults.compaction.provider = "versa-fast-quality-v1"
+    | .agents.defaults.compaction.qualityGuard = (
+        (.agents.defaults.compaction.qualityGuard // {})
+        | .enabled = true
+        | .maxRetries = 1
+      )
+    | .plugins = (.plugins // {})
     | .plugins.load = (.plugins.load // {})
     | .plugins.load.paths = (
         (
@@ -169,6 +189,13 @@ jq \
           sessionsPerWorker: 3,
           idleTimeoutMs: 180000,
           requestTimeoutMs: 600000,
+          fastCompactionModel: (
+            $existing_worker_compaction.model
+            // .agents.defaults.compaction.model
+          ),
+          fastCompactionMaxInputChars: 420000,
+          fastCompactionMaxOutputTokens: 12000,
+          fastCompactionMaxQualityRetries: 1,
           workerConfigPath: $worker_config_path,
           gatewayConfigPath: $gateway_config_path
         }
@@ -224,7 +251,7 @@ install -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0600 \
 manifest_candidate="$(mktemp)"
 jq -n \
   --arg commit "$PLATFORM_COMMIT" \
-  --arg version "0.1.2" \
+  --arg version "0.1.4" \
   --arg prepared_at "$TIMESTAMP" \
   --arg artifact_sha256 "$ARTIFACT_SHA256" \
   --arg release_dir "$RELEASE_DIR" \
@@ -268,8 +295,11 @@ run_openclaw gateway call vlab.workers.status --params '{}' --json \
   > "$STATUS_FILE"
 
 jq -e \
-  '.integration.workerIsolationVersion == "0.1.2"
+  '.integration.workerIsolationVersion == "0.1.4"
    and .integration.nativeAgentHarnessDispatchAttached == true
+   and .integration.sessionRolloverRebindRetry == true
+   and .integration.fastCompaction.provider == "versa-fast-quality-v1"
+   and .integration.fastCompaction.model == "azure-openai/gpt-5.5"
    and .integration.configDomainIsolation.execUsesGatewayConfig == true
    and .integration.configDomainIsolation.workerExecConfigPath
      == "/home/openclaw/.openclaw/openclaw.json"
@@ -289,7 +319,7 @@ rollback_armed=false
 
 jq -n \
   --arg commit "$PLATFORM_COMMIT" \
-  --arg version "0.1.2" \
+  --arg version "0.1.4" \
   --arg artifact_sha256 "$ARTIFACT_SHA256" \
   --arg backup_dir "$BACKUP_DIR" \
   --arg rollback_command "sudo ${STATE_DIR}/rollback-latest.sh" \

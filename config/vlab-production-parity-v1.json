@@ -21,6 +21,13 @@
     "sessionsVisibility": "all",
     "workshopMaxSkillBytes": 100000,
     "workshopAllowSymlinkTargetWrites": true,
+    "compaction": {
+      "provider": "versa-fast-quality-v1",
+      "model": "inherit-existing-worker-compaction-model",
+      "maxInputChars": 420000,
+      "maxOutputTokens": 12000,
+      "maxQualityRetries": 1
+    },
     "worker": {
       "minWorkers": 1,
       "maxWorkers": 3,
