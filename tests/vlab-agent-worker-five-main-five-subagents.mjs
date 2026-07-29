@@ -310,9 +310,28 @@ const takeoverErrors = (
   ) ?? []
 ).length;
 const after = await call("vlab.workers.status");
-const healthAfter = await call("health");
+let healthAfter = await call("health");
+const eventLoopRecovery = [
+  {
+    at: new Date().toISOString(),
+    eventLoop: healthAfter.eventLoop,
+  },
+];
+const eventLoopRecoveryDeadline = Date.now() + 30_000;
+while (
+  healthAfter.eventLoop?.degraded === true &&
+  Date.now() < eventLoopRecoveryDeadline
+) {
+  await sleep(2_000);
+  healthAfter = await call("health");
+  eventLoopRecovery.push({
+    at: new Date().toISOString(),
+    eventLoop: healthAfter.eventLoop,
+  });
+}
 await saveJson("status-after.json", after);
 await saveJson("health-after.json", healthAfter);
+await saveJson("event-loop-recovery.json", eventLoopRecovery);
 const finalRestarts = systemdNumber("NRestarts");
 
 assert.equal(childByMain.size, childCount);
@@ -369,6 +388,8 @@ const summary = {
     degradedSamples,
     maxDegradedStreak,
     maxWarmEventLoopP99Ms,
+    eventLoopRecoverySamples: eventLoopRecovery.length,
+    eventLoopRecovered: healthAfter.eventLoop?.degraded === false,
     memoryCurrentPeakObservedBytes: maxMemoryCurrent,
     memoryPeakBytes: systemdNumber("MemoryPeak"),
     eventLoopAfter: healthAfter.eventLoop,
