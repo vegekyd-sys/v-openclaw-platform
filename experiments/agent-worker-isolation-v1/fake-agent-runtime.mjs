@@ -61,6 +61,8 @@ export async function agentCommand(params) {
           oneShotCliRun: params.oneShotCliRun,
           suppressPromptPersistence: params.suppressPromptPersistence,
           skipInitialSessionTouch: params.skipInitialSessionTouch,
+          allowGatewaySubagentBinding:
+            params.allowGatewaySubagentBinding,
         }),
       },
     ],

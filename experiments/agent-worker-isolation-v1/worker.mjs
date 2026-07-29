@@ -2,8 +2,10 @@ import { performance } from "node:perf_hooks";
 import { pathToFileURL } from "node:url";
 import { buildHarnessAttemptResult } from "./harness-result.mjs";
 import { readFastCompactionStats } from "./fast-compaction-provider.mjs";
+import { installGatewaySubagentBridge } from "./gateway-subagent-bridge.mjs";
 
 let agentRuntimePromise;
+let gatewaySubagentBridgePromise;
 const activeControllers = new Map();
 const configuredHeartbeatMs = Number(
   process.env.VLAB_WORKER_HEARTBEAT_MS ?? 15_000,
@@ -54,7 +56,20 @@ async function loadAgentRuntime() {
     const runtimePath =
       process.env.VLAB_OPENCLAW_AGENT_RUNTIME ??
       "/opt/vlab/current/node_modules/openclaw/dist/plugin-sdk/agent-runtime.js";
-    agentRuntimePromise = import(pathToFileURL(runtimePath).href);
+    agentRuntimePromise = (async () => {
+      if (process.env.VLAB_GATEWAY_SUBAGENT_BRIDGE !== "0") {
+        if (!gatewaySubagentBridgePromise) {
+          gatewaySubagentBridgePromise = installGatewaySubagentBridge({
+            agentRuntimePath: runtimePath,
+            timeoutMs: Number(
+              process.env.VLAB_GATEWAY_SUBAGENT_TIMEOUT_MS ?? 600_000,
+            ),
+          });
+        }
+        await gatewaySubagentBridgePromise;
+      }
+      return await import(pathToFileURL(runtimePath).href);
+    })();
   }
   return await agentRuntimePromise;
 }
@@ -151,7 +166,9 @@ async function runAgent(message, abortSignal) {
     // the exact worker-written message so its fallback cannot append a copy.
     suppressPromptPersistence: message.suppressPromptPersistence === true,
     skipInitialSessionTouch: true,
-    allowGatewaySubagentBinding: false,
+    // Child runs and completion announces return through the Gateway so the
+    // central Session Owner serializes every write to the parent transcript.
+    allowGatewaySubagentBinding: true,
     abortSignal,
   });
   if (abortSignal.aborted) {

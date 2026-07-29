@@ -129,7 +129,7 @@ for required in \
     exit 1
   }
 done
-[[ "$(jq -r '.version' "${RELEASE_DIR}/package.json")" == "0.1.5" ]] || {
+[[ "$(jq -r '.version' "${RELEASE_DIR}/package.json")" == "0.1.5-p1" ]] || {
   echo "unexpected Worker isolation version" >&2
   exit 1
 }
@@ -260,7 +260,7 @@ install -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0600 \
 manifest_candidate="$(mktemp)"
 jq -n \
   --arg commit "$PLATFORM_COMMIT" \
-  --arg version "0.1.5" \
+  --arg version "0.1.5-p1" \
   --arg prepared_at "$TIMESTAMP" \
   --arg artifact_sha256 "$ARTIFACT_SHA256" \
   --arg release_dir "$RELEASE_DIR" \
@@ -304,7 +304,7 @@ run_openclaw gateway call vlab.workers.status --params '{}' --json \
   > "$STATUS_FILE"
 
 jq -e \
-  '.integration.workerIsolationVersion == "0.1.5"
+  '.integration.workerIsolationVersion == "0.1.5-p1"
    and .integration.nativeAgentHarnessDispatchAttached == true
    and .integration.sessionRolloverRebindRetry == true
    and .integration.fastCompaction.provider == "versa-fast-quality-v1"
@@ -328,7 +328,7 @@ rollback_armed=false
 
 jq -n \
   --arg commit "$PLATFORM_COMMIT" \
-  --arg version "0.1.5" \
+  --arg version "0.1.5-p1" \
   --arg artifact_sha256 "$ARTIFACT_SHA256" \
   --arg backup_dir "$BACKUP_DIR" \
   --arg rollback_command "sudo ${STATE_DIR}/rollback-latest.sh" \

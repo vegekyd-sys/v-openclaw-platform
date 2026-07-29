@@ -34,7 +34,7 @@ introducing a separate worker registry.
 ## Candidate
 
 - OpenClaw: `2026.7.1`
-- Worker isolation plugin: `0.1.5`
+- Worker isolation plugin: `0.1.5-p1`
 - Worker count: elastic from one warm worker to three workers
 - Sessions per worker: at most three active, distinct sessions
 - Total active-session capacity: `3 workers x 3 sessions = 9`
@@ -170,7 +170,7 @@ Subagent capacity acceptance preserves V's existing `8/8` limits:
 /tmp/vlab-agent-worker-subagents.sh
 ```
 
-Harness semantic parity acceptance covers the v0.1.5 incident path:
+Harness semantic parity acceptance covers the v0.1.5-p1 incident path:
 
 ```bash
 /tmp/vlab-agent-worker-harness-parity.sh
