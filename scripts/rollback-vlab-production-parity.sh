@@ -36,7 +36,7 @@ fi
 systemctl daemon-reload
 systemctl restart openclaw-vlab-gateway.service
 systemctl is-active --quiet openclaw-vlab-gateway.service
-jq '.status = "rolled_back" | .rolledBackAt = now | todateiso8601' \
+jq '.status = "rolled_back" | .rolledBackAt = (now | todateiso8601)' \
   "$ACTIVE_MANIFEST" > "${ACTIVE_MANIFEST}.new"
 chown vlab:vlab "${ACTIVE_MANIFEST}.new"
 chmod 0600 "${ACTIVE_MANIFEST}.new"
