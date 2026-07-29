@@ -67,8 +67,10 @@ race_run="vlab-compaction-race-${TOKEN}"
 seed_identifier="oc_vlabcompact${TOKEN//[^a-z0-9]/}"
 race_user_marker="VLAB_COMPACTION_RACE_USER_${TOKEN}"
 race_reply_marker="VLAB_COMPACTION_RACE_REPLY_${TOKEN}"
+# Keep one CLI argument below the Linux per-argument limit (about 128 KiB).
+# sessions.compact is explicit, so this still tests the real compaction path.
 seed_body="$(
-  dd if=/dev/zero bs=1000 count=140 2>/dev/null \
+  dd if=/dev/zero bs=1000 count=80 2>/dev/null \
     | tr '\0' 'S'
 )"
 

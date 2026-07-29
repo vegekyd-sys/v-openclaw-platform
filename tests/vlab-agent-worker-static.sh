@@ -59,6 +59,8 @@ grep -q '.agents.defaults.compaction.provider = "versa-fast-quality-v1"' \
   "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
 grep -q 'sessionRolloverRebindRetry: true' "${EXPERIMENT_DIR}/index.mjs"
 grep -q 'api.registerCompactionProvider' "${EXPERIMENT_DIR}/index.mjs"
+grep -q 'allowModelOverride' "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
+grep -q 'allowedModels' "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
 
 jq -e '.id == "vlab-agent-worker-isolation"' \
   "${EXPERIMENT_DIR}/openclaw.plugin.json" >/dev/null

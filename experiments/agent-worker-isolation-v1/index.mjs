@@ -162,7 +162,6 @@ const plugin = {
         api.pluginConfig?.fastCompactionMaxQualityRetries ?? 1,
       ),
       llmComplete: (params) => api.runtime.llm.complete(params),
-      agentId: "makaron",
     });
     api.registerCompactionProvider(fastCompactionProvider);
     const openClawAgentRuntimePath = resolveOpenClawAgentRuntimePath();

@@ -183,6 +183,15 @@ jq \
     | .plugins.entries = (.plugins.entries // {})
     | .plugins.entries[$plugin_id] = {
         enabled: true,
+        llm: {
+          allowModelOverride: true,
+          allowedModels: [
+            (
+              $existing_worker_compaction.model
+              // .agents.defaults.compaction.model
+            )
+          ]
+        },
         config: {
           minWorkers: 1,
           maxWorkers: 3,

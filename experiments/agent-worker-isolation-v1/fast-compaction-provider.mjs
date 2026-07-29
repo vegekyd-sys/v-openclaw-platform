@@ -333,7 +333,6 @@ export function buildFastCompactionProvider(options) {
             systemPrompt,
             signal: params.signal,
             purpose: "versa-fast-quality-compaction",
-            agentId: options.agentId ?? "makaron",
           });
           summary =
             typeof result?.text === "string" ? result.text.trim() : "";
