@@ -34,7 +34,7 @@ introducing a separate worker registry.
 ## Candidate
 
 - OpenClaw: `2026.7.1`
-- Worker isolation plugin: `0.1.1`
+- Worker isolation plugin: `0.1.2`
 - Worker count: elastic from one warm worker to three workers
 - Sessions per worker: at most three active, distinct sessions
 - Total active-session capacity: `3 workers x 3 sessions = 9`
@@ -62,8 +62,26 @@ introducing a separate worker registry.
   Worker process is killed only if the request does not unwind within the
   bounded cancellation grace period, so cooperative timeouts do not interrupt
   the other two sessions assigned to the same Worker.
+- The Worker process loads its private runtime overlay from
+  `workerConfigPath`, but OpenClaw's `resolve_exec_env` hook gives Agent
+  `exec` commands the Gateway's `gatewayConfigPath`. Global CLI changes made
+  inside a Worker therefore update the Gateway control-plane config instead of
+  silently mutating the runtime overlay.
 
 The plugin does not patch OpenClaw's compiled files.
+
+## Config-domain acceptance
+
+Run the real Worker-to-exec smoke after activation:
+
+```bash
+/tmp/vlab-agent-worker-config-domain.sh
+```
+
+The smoke temporarily changes `skills.workshop.maxSkillBytes` from inside a
+Worker Agent, verifies the value through Gateway `config.get`, proves the
+Worker overlay remained byte-for-byte unchanged, and then restores the
+original Gateway value.
 
 ## Acceptance
 
