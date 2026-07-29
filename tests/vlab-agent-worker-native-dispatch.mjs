@@ -19,7 +19,7 @@ const toolHoldSeconds = readInteger(
   "VLAB_NATIVE_TOOL_HOLD_SECONDS",
   15,
   1,
-  420,
+  7_200,
 );
 const toolHoldStaggerSeconds = readInteger(
   "VLAB_NATIVE_TOOL_HOLD_STAGGER_SECONDS",
@@ -31,13 +31,13 @@ const runTimeoutMs = readInteger(
   "VLAB_NATIVE_RUN_TIMEOUT_MS",
   420_000,
   180_000,
-  600_000,
+  7_200_000,
 );
 const gatewayTimeoutMs = readInteger(
   "VLAB_NATIVE_GATEWAY_TIMEOUT_MS",
   480_000,
   runTimeoutMs,
-  600_000,
+  7_200_000,
 );
 const saturationWaitSeconds = readInteger(
   "VLAB_NATIVE_SATURATION_WAIT_SECONDS",
@@ -156,10 +156,6 @@ for (let index = 1; index <= sessionCount; index += 1) {
   const marker = `VLAB_NATIVE_OK_${index}`;
   const sessionToolHoldSeconds =
     toolHoldSeconds + (index - 1) * toolHoldStaggerSeconds;
-  assert.ok(
-    sessionToolHoldSeconds <= 420,
-    `session ${index} tool hold ${sessionToolHoldSeconds}s exceeds 420s`,
-  );
   const message =
     `这是 vLab 原生 dispatch 验收。必须使用 exec 执行 /bin/sleep ` +
     `${sessionToolHoldSeconds}，然后只回复 ${marker}。不要发送外部消息，不要修改文件。`;
@@ -215,6 +211,18 @@ while (Date.now() < saturationDeadline) {
       .length >= requiredWorkers &&
     status.pending === 0
   ) {
+    const targetRequests = status.workers.flatMap((worker) =>
+      worker.active.filter((entry) =>
+        entry.sessionKey?.startsWith(`${sessionPrefix}-`),
+      ),
+    );
+    assert.ok(
+      targetRequests.every(
+        (entry) =>
+          entry.requestTimeoutMs >= sessionToolHoldSeconds * 1_000,
+      ),
+      "Worker did not preserve the upstream native Agent deadline",
+    );
     saturated = true;
     break;
   }
