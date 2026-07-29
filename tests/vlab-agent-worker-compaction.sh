@@ -166,11 +166,7 @@ session_file_after="$(jq -r '.sessionFile' <<< "$entry_after")"
 [[ -f "$session_file_after" ]]
 
 summary="$(
-  jq -r \
-    'select(.type == "compaction")
-     | (.summary // .content // "")' \
-    "$session_file_after" \
-    | tail -n 1
+  jq -r '.result.summary // ""' "${REPORT_DIR}/compact.json"
 )"
 for heading in \
   "## Decisions" \
