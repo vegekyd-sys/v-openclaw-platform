@@ -133,12 +133,10 @@ assert.equal(
 const message =
   `这是 Worker Harness 语义回归，必须严格按顺序调用工具：` +
   `1) 使用 sessions_spawn 启动一个 isolated subagent；child 必须先用 ` +
-  `exec 执行 /bin/sleep 5，然后只回复 CHILD_DONE_${token}。` +
-  `2) spawn 被接受后，parent 自己调用 exec，command 必须是 /bin/sleep 8，` +
-  `并显式设置 yieldMs=15000、timeout=15，让它保持前台直到结束，同时让 child ` +
-  `在 parent 仍运行时完成。` +
-  `3) parent 的 exec 完成后立刻调用 sessions_yield 等待 child，不要轮询。` +
-  `4) 收到真实 subagent completion event 后，只回复 ${marker}。` +
+  `exec 执行 /bin/sleep 20，然后只回复 CHILD_DONE_${token}。` +
+  `2) spawn 被接受后，parent 必须立即调用 sessions_yield 等待 child，` +
+  `不要调用 exec、process、sessions_list、sessions_history 或任何轮询工具。` +
+  `3) 收到真实 subagent completion event 后，只回复 ${marker}。` +
   `不要发送外部消息，不要修改文件，不能用文字假装调用工具。`;
 
 const sent = await call("chat.send", {
