@@ -27,6 +27,8 @@ const toolHoldStaggerSeconds = readInteger(
   0,
   30,
 );
+const maximumToolHoldSeconds =
+  toolHoldSeconds + (sessionCount - 1) * toolHoldStaggerSeconds;
 const runTimeoutMs = readInteger(
   "VLAB_NATIVE_RUN_TIMEOUT_MS",
   420_000,
@@ -219,7 +221,7 @@ while (Date.now() < saturationDeadline) {
     assert.ok(
       targetRequests.every(
         (entry) =>
-          entry.requestTimeoutMs >= sessionToolHoldSeconds * 1_000,
+          entry.requestTimeoutMs >= maximumToolHoldSeconds * 1_000,
       ),
       "Worker did not preserve the upstream native Agent deadline",
     );

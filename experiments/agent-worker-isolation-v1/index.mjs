@@ -726,9 +726,15 @@ const plugin = {
       let request;
       let afterSuccess = async () => {};
       if (kind === "hold") {
+        const durationMs = readNumber(params, "durationMs", 5_000);
         request = {
           kind,
-          durationMs: readNumber(params, "durationMs", 5_000),
+          durationMs,
+          requestTimeoutMs: readNumber(
+            params,
+            "requestTimeoutMs",
+            Math.max(requestTimeoutMs, durationMs + 60_000),
+          ),
         };
       } else {
         const agentId = readString(params, "agentId") ?? "makaron";
@@ -1047,9 +1053,15 @@ const plugin = {
           const startedAt = performance.now();
           const sessionKey = requireLabSessionKey(params);
           const durationMs = readNumber(params, "durationMs", 5_000);
+          const resolvedRequestTimeoutMs = readNumber(
+            params,
+            "requestTimeoutMs",
+            Math.max(requestTimeoutMs, durationMs + 60_000),
+          );
           const result = await pool.dispatch(sessionKey, {
             kind: "hold",
             durationMs,
+            requestTimeoutMs: resolvedRequestTimeoutMs,
           });
           respond(true, {
             ...result,
