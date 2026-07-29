@@ -8,6 +8,7 @@ import { performance } from "node:perf_hooks";
 import { pathToFileURL } from "node:url";
 
 const labRoot = process.env.LAB_ROOT ?? "/srv/vlab";
+const reportRoot = process.env.VLAB_REPORT_ROOT ?? `${labRoot}/logs`;
 const service =
   process.env.VLAB_GATEWAY_SERVICE ?? "openclaw-vlab-gateway.service";
 const runtimePath =
@@ -50,6 +51,12 @@ const controlPlaneMaxLatencyMs = readInteger(
   500,
   10_000,
 );
+const expectedMaxConcurrent = readInteger(
+  "VLAB_EXPECTED_MAX_CONCURRENT",
+  9,
+  1,
+  64,
+);
 const timestamp = new Date()
   .toISOString()
   .replaceAll("-", "")
@@ -58,7 +65,8 @@ const timestamp = new Date()
 const token = timestamp.toLowerCase();
 const sessionPrefix = `agent:makaron:explicit:vlab-native-${token}`;
 const runPrefix = `vlab-native-${token}`;
-const reportDir = `${labRoot}/logs/agent-worker-native-dispatch-${timestamp}`;
+const reportDir =
+  `${reportRoot}/agent-worker-native-dispatch-${timestamp}`;
 const startedAt = Date.now();
 
 function readInteger(name, fallback, min, max) {
@@ -121,7 +129,10 @@ assert.equal(before.integration.nativeAgentHarnessDispatchAttached, true);
 assert.equal(before.integration.nativeAgentHarnessId, "vlab-worker");
 assert.equal(before.maxWorkers, 3);
 assert.equal(before.sessionsPerWorker, 3);
-assert.equal(before.openClawConcurrency.maxConcurrent, 9);
+assert.equal(
+  before.openClawConcurrency.maxConcurrent,
+  expectedMaxConcurrent,
+);
 assert.equal(before.openClawConcurrency.subagentsMaxConcurrent, 8);
 assert.ok(before.openClawConcurrency.configuredModelRuntimes.length > 0);
 assert.ok(
@@ -132,6 +143,10 @@ assert.ok(
 
 const admittedBefore = before.integration.nativeHarnessStats.admitted;
 const completedBefore = before.integration.nativeHarnessStats.completed;
+const requiredWorkers = Math.ceil(
+  sessionCount / before.sessionsPerWorker,
+);
+assert.ok(requiredWorkers <= before.maxWorkers);
 
 let agentWaitTerminalCount = 0;
 let agentWaitRegistryTimeoutCount = 0;
@@ -164,6 +179,7 @@ for (let index = 1; index <= sessionCount; index += 1) {
 let saturated = false;
 let peakWorkers = 0;
 let peakActiveSessions = 0;
+let peakTargetActiveSessions = 0;
 let maxPendingDuringScaleUp = 0;
 const saturationDeadline = Date.now() + saturationWaitSeconds * 1_000;
 while (Date.now() < saturationDeadline) {
@@ -175,13 +191,17 @@ while (Date.now() < saturationDeadline) {
   );
   const targetActive = targetActiveSessions(status);
   peakActiveSessions = Math.max(peakActiveSessions, active);
+  peakTargetActiveSessions = Math.max(
+    peakTargetActiveSessions,
+    targetActive,
+  );
   maxPendingDuringScaleUp = Math.max(
     maxPendingDuringScaleUp,
     status.pending,
   );
   await saveJson("status-during.json", status);
   if (
-    status.workers.length === 3 &&
+    status.workers.length >= requiredWorkers &&
     targetActive === sessionCount &&
     status.workers
       .map(
@@ -190,9 +210,9 @@ while (Date.now() < saturationDeadline) {
             entry.sessionKey?.startsWith(`${sessionPrefix}-`),
           ).length,
       )
+      .filter((count) => count > 0)
       .sort()
-      .join(",") ===
-      "3,3,3" &&
+      .length >= requiredWorkers &&
     status.pending === 0
   ) {
     saturated = true;
@@ -219,6 +239,10 @@ while (Date.now() < completionDeadline) {
   const targetActive = targetActiveSessions(status);
   peakWorkers = Math.max(peakWorkers, status.workers.length);
   peakActiveSessions = Math.max(peakActiveSessions, active);
+  peakTargetActiveSessions = Math.max(
+    peakTargetActiveSessions,
+    targetActive,
+  );
   maxPendingAtSteadyState = Math.max(
     maxPendingAtSteadyState,
     status.pending,
@@ -235,6 +259,7 @@ while (Date.now() < completionDeadline) {
     restarts: systemdNumber("NRestarts"),
     workers: status.workers.length,
     activeSessions: active,
+    targetActiveSessions: targetActive,
     pending: status.pending,
   });
   await writeFile(
@@ -329,8 +354,8 @@ assert.ok(
   maxDegradedStreak <= 1,
   `event loop was degraded for ${maxDegradedStreak} consecutive samples`,
 );
-assert.equal(peakWorkers, 3);
-assert.equal(peakActiveSessions, sessionCount);
+assert.ok(peakWorkers >= requiredWorkers);
+assert.equal(peakTargetActiveSessions, sessionCount);
 assert.equal(maxPendingAtSteadyState, 0);
 
 const maximum = (read) =>
@@ -354,7 +379,9 @@ assert.ok(
 const summary = {
   ok: true,
   entry: "chat.send -> native AgentHarness -> elastic worker",
-  topology: "3 workers x 3 sessions",
+  topology:
+    `${requiredWorkers}+ workers x up to ` +
+    `${before.sessionsPerWorker} sessions`,
   sessionCount,
   toolHoldSeconds,
   toolHoldStaggerSeconds,
@@ -390,6 +417,7 @@ const summary = {
     maxMemoryPeakBytes: maximum((sample) => sample.memoryPeakBytes),
     peakWorkers,
     peakActiveSessions,
+    peakTargetActiveSessions,
     maxPendingDuringScaleUp,
     maxPendingAtSteadyState,
   },

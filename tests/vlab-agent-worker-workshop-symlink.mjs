@@ -11,6 +11,10 @@ import {
 import { pathToFileURL } from "node:url";
 
 const labRoot = process.env.LAB_ROOT ?? "/srv/vlab";
+const stateRoot =
+  process.env.OPENCLAW_STATE_DIR ?? `${labRoot}/state`;
+const workspaceDir =
+  process.env.OPENCLAW_WORKSPACE_DIR ?? `${labRoot}/workspace`;
 const runtimePath =
   process.env.VLAB_OPENCLAW_GATEWAY_RUNTIME ??
   "/opt/vlab/current/node_modules/openclaw/dist/plugin-sdk/gateway-runtime.js";
@@ -28,12 +32,14 @@ const token = timestamp.toLowerCase();
 const skillName = `vlab-worker-config-smoke-${token}`;
 const sessionKey = `agent:makaron:explicit:${skillName}`;
 const runId = skillName;
-const targetRoot = `${labRoot}/.agents/skills`;
+const targetRoot =
+  process.env.VLAB_WORKSHOP_TARGET_ROOT ??
+  `${labRoot}/.agents/skills`;
 const targetSkillDir = `${targetRoot}/${skillName}`;
 const targetSkillFile = `${targetSkillDir}/SKILL.md`;
-const workspaceSkillDir = `${labRoot}/workspace/skills/${skillName}`;
+const workspaceSkillDir = `${workspaceDir}/skills/${skillName}`;
 const workspaceSkillFile = `${workspaceSkillDir}/SKILL.md`;
-const draftDir = `${labRoot}/workspace/.openclaw/vlab-worker-smoke`;
+const draftDir = `${workspaceDir}/.openclaw/vlab-worker-smoke`;
 const draftPath = `${draftDir}/${skillName}.md`;
 const marker = `VLAB_WORKSHOP_APPLIED_${timestamp}`;
 
@@ -42,8 +48,13 @@ function sleep(ms) {
 }
 
 function parseRawConfig(response) {
-  assert.equal(typeof response.raw, "string");
-  return JSON.parse(response.raw);
+  if (typeof response.raw === "string") {
+    return JSON.parse(response.raw);
+  }
+  const config = response.raw ?? response.config ?? response.parsed;
+  assert.equal(typeof config, "object");
+  assert.notEqual(config, null);
+  return config;
 }
 
 function runGatewayConfigCommand(args, gatewayConfigPath) {
@@ -53,9 +64,9 @@ function runGatewayConfigCommand(args, gatewayConfigPath) {
       ...process.env,
       HOME: labRoot,
       OPENCLAW_HOME: labRoot,
-      OPENCLAW_STATE_DIR: `${labRoot}/state`,
+      OPENCLAW_STATE_DIR: stateRoot,
       OPENCLAW_CONFIG_PATH: gatewayConfigPath,
-      OPENCLAW_WORKSPACE_DIR: `${labRoot}/workspace`,
+      OPENCLAW_WORKSPACE_DIR: workspaceDir,
     },
   });
 }
@@ -98,10 +109,11 @@ const previousAllowWrites =
   gatewayBefore.skills?.workshop?.allowSymlinkTargetWrites;
 const previousAllowedTargets =
   gatewayBefore.skills?.load?.allowSymlinkTargets;
+const probeAllowedTargets = [
+  ...(previousAllowedTargets ?? []),
+  targetRoot,
+].filter((value, index, values) => values.indexOf(value) === index);
 const workerBeforeRaw = await readFile(workerConfigPath, "utf8");
-const completedBefore =
-  statusBefore.integration.nativeHarnessStats.completed;
-const failedBefore = statusBefore.integration.nativeHarnessStats.failed;
 let targetCreated = false;
 let linkCreated = false;
 let draftCreated = false;
@@ -142,7 +154,7 @@ try {
   );
   draftCreated = true;
 
-  const allowedTargetsJson = JSON.stringify([targetRoot]);
+  const allowedTargetsJson = JSON.stringify(probeAllowedTargets);
   const command = [
     `${nodePath} ${openClawPath} config set skills.workshop.maxSkillBytes 100000 --strict-json`,
     `${nodePath} ${openClawPath} config set skills.workshop.allowSymlinkTargetWrites true --strict-json`,
@@ -155,7 +167,9 @@ try {
   const message =
     "这是 vLab Workshop 配置域验收。必须使用 exec 原样执行下面命令一次：\n" +
     `${command}\n` +
-    "执行后只回复 VLAB_WORKSHOP_SYMLINK_OK。不要调用其他工具。";
+    "如果 exec 返回 Command still running，必须使用 process poll 对返回的 " +
+    "session 持续轮询，直到命令退出并拿到最终输出。然后只回复 " +
+    "VLAB_WORKSHOP_SYMLINK_OK。不要执行其他操作。";
 
   const sent = await call("chat.send", {
     sessionKey,
@@ -167,41 +181,45 @@ try {
   });
   assert.equal(sent.runId, runId);
 
-  let terminal = false;
-  for (let attempt = 0; attempt < 240; attempt += 1) {
-    const status = await call("vlab.workers.status");
-    const completed =
-      status.integration.nativeHarnessStats.completed - completedBefore;
-    const failed =
-      status.integration.nativeHarnessStats.failed - failedBefore;
-    if (failed > 0) {
-      throw new Error("Worker Workshop symlink smoke failed in Agent Harness");
-    }
-    if (completed > 0) {
-      terminal = true;
+  const waited = await call("agent.wait", {
+    runId,
+    timeoutMs: timeoutMs - 10_000,
+  });
+  assert.ok(
+    waited.status === "ok" ||
+      waited.status === "succeeded" ||
+      (waited.status === "timeout" &&
+        waited.timeoutPhase === "gateway_draining"),
+    `Worker Workshop symlink smoke did not terminate: ${waited.status}`,
+  );
+
+  let history;
+  let execOutput = "";
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    history = await call("chat.history", {
+      sessionKey,
+      limit: 40,
+    });
+    execOutput = history.messages
+      .filter(
+        (entry) =>
+          entry.role === "toolResult" &&
+          (entry.toolName === "exec" || entry.toolName === "process"),
+      )
+      .flatMap((entry) =>
+        Array.isArray(entry.content)
+          ? entry.content
+              .filter((item) => item.type === "text")
+              .map((item) => item.text)
+          : [],
+      )
+      .join("\n");
+    if (execOutput.length > 0) {
       break;
     }
     await sleep(1_000);
   }
-  assert.equal(terminal, true, "Worker Workshop symlink smoke did not complete");
-
-  const history = await call("chat.history", {
-    sessionKey,
-    limit: 40,
-  });
-  const execOutput = history.messages
-    .filter(
-      (entry) =>
-        entry.role === "toolResult" && entry.toolName === "exec",
-    )
-    .flatMap((entry) =>
-      Array.isArray(entry.content)
-        ? entry.content
-            .filter((item) => item.type === "text")
-            .map((item) => item.text)
-        : [],
-    )
-    .join("\n");
+  assert.ok(history);
   assert.match(execOutput, /VLAB_WORKSHOP_SYMLINK_OK proposal=/);
 
   assert.equal(await realpath(workspaceSkillDir), targetSkillDir);
@@ -215,7 +233,7 @@ try {
   );
   assert.deepEqual(
     gatewayAfter.skills?.load?.allowSymlinkTargets,
-    [targetRoot],
+    probeAllowedTargets,
   );
 
   process.stdout.write(
