@@ -141,6 +141,66 @@ test("preserves async task, cron and delivery evidence as terminal side effects"
   assert.equal(attempt.replayMetadata.replaySafe, false);
 });
 
+test("recovers accepted sessions_spawn metadata from the native transcript", async () => {
+  const result = await withSession(
+    [
+      {
+        role: "user",
+        content: "delegate this",
+      },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "spawn-call",
+            name: "sessions_spawn",
+            arguments: {
+              task: "child task",
+              mode: "run",
+              cleanup: "keep",
+              label: "child label",
+            },
+          },
+        ],
+      },
+      {
+        role: "toolResult",
+        toolCallId: "spawn-call",
+        toolName: "sessions_spawn",
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              status: "accepted",
+              childSessionKey: "agent:makaron:subagent:child",
+              runId: "child-run",
+              mode: "run",
+            }),
+          },
+        ],
+        isError: false,
+      },
+    ],
+    async (sessionFile) =>
+      await buildHarnessAttemptResult({
+        meta: { sessionFile },
+      }),
+  );
+
+  assert.deepEqual(result.acceptedSessionSpawns, [
+    {
+      status: "accepted",
+      childSessionKey: "agent:makaron:subagent:child",
+      runId: "child-run",
+      mode: "run",
+      task: "child task",
+      cleanup: "keep",
+      label: "child label",
+    },
+  ]);
+});
+
 test("preserves media-only terminal payloads", async () => {
   const attempt = await buildHarnessAttemptResult({
     payloads: [

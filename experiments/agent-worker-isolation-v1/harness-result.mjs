@@ -143,6 +143,76 @@ function readToolMetas(messages) {
   return metas;
 }
 
+function readAcceptedSessionSpawns(messages) {
+  const spawnArgsByCallId = new Map();
+  const accepted = [];
+  for (const message of messages) {
+    if (message?.role === "assistant" && Array.isArray(message.content)) {
+      for (const block of message.content) {
+        if (
+          isRecord(block) &&
+          (block.type === "toolCall" || block.type === "tool_use") &&
+          block.name === "sessions_spawn" &&
+          typeof block.id === "string"
+        ) {
+          spawnArgsByCallId.set(
+            block.id,
+            isRecord(block.arguments) ? block.arguments : {},
+          );
+        }
+      }
+      continue;
+    }
+    if (
+      (message?.role !== "toolResult" &&
+        message?.role !== "tool_result") ||
+      message.toolName !== "sessions_spawn" ||
+      message.isError === true
+    ) {
+      continue;
+    }
+    let result = isRecord(message.details) ? message.details : undefined;
+    if (!result) {
+      for (const text of readTextBlocks(message)) {
+        try {
+          const parsed = JSON.parse(text);
+          if (isRecord(parsed)) {
+            result = parsed;
+            break;
+          }
+        } catch {
+          // Native tools may return human-readable text.
+        }
+      }
+    }
+    if (
+      result?.status !== "accepted" ||
+      typeof result.runId !== "string" ||
+      typeof result.childSessionKey !== "string"
+    ) {
+      continue;
+    }
+    const args = spawnArgsByCallId.get(message.toolCallId) ?? {};
+    accepted.push({
+      ...result,
+      ...(typeof result.task !== "string" && typeof args.task === "string"
+        ? { task: args.task }
+        : {}),
+      ...(typeof result.mode !== "string" && typeof args.mode === "string"
+        ? { mode: args.mode }
+        : {}),
+      ...(typeof result.cleanup !== "string" &&
+      typeof args.cleanup === "string"
+        ? { cleanup: args.cleanup }
+        : {}),
+      ...(typeof result.label !== "string" && typeof args.label === "string"
+        ? { label: args.label }
+        : {}),
+    });
+  }
+  return accepted;
+}
+
 function readClientToolCalls(meta) {
   if (!Array.isArray(meta?.pendingToolCalls)) {
     return undefined;
@@ -257,11 +327,22 @@ export async function buildHarnessAttemptResult(agentResult) {
   const toolMetas = readToolMetas(currentTurnMessages);
   const lastToolError = readTerminalToolError(currentTurnMessages);
   const payloadMedia = readPayloadMedia(agentResult?.payloads);
-  const acceptedSessionSpawns = Array.isArray(
-    agentResult?.acceptedSessionSpawns,
-  )
-    ? agentResult.acceptedSessionSpawns
-    : [];
+  const acceptedSessionSpawns = [];
+  const acceptedRunIds = new Set();
+  for (const spawn of [
+    ...(Array.isArray(agentResult?.acceptedSessionSpawns)
+      ? agentResult.acceptedSessionSpawns
+      : []),
+    ...readAcceptedSessionSpawns(currentTurnMessages),
+  ]) {
+    const runId =
+      typeof spawn?.runId === "string" ? spawn.runId.trim() : undefined;
+    if (!runId || acceptedRunIds.has(runId)) {
+      continue;
+    }
+    acceptedRunIds.add(runId);
+    acceptedSessionSpawns.push(spawn);
+  }
   const successfulCronAdds = Number.isFinite(agentResult?.successfulCronAdds)
     ? Math.max(0, Number(agentResult.successfulCronAdds))
     : 0;
