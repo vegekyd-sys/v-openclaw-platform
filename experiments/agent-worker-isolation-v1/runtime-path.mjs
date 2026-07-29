@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { dirname, join, normalize, sep } from "node:path";
 
 export function resolveOpenClawAgentRuntimePath(options = {}) {
@@ -38,4 +38,24 @@ export function resolveOpenClawAgentRuntimePath(options = {}) {
       uniqueCandidates.join(", ") || "(no candidates)"
     }`,
   );
+}
+
+export function resolveOpenClawSubagentAnnounceRuntimePath(options = {}) {
+  const agentRuntimePath =
+    options.agentRuntimePath ?? resolveOpenClawAgentRuntimePath(options);
+  const distDir = dirname(dirname(agentRuntimePath));
+  const readDirectory = options.readDirectory ?? readdirSync;
+  const candidates = readDirectory(distDir)
+    .filter(
+      (name) =>
+        name === "subagent-announce.js" ||
+        /^subagent-announce-[A-Za-z0-9_-]+\.js$/.test(name),
+    )
+    .sort();
+  if (candidates.length !== 1) {
+    throw new Error(
+      `OpenClaw native subagent announce runtime was not uniquely resolved in ${distDir}; found ${candidates.length}`,
+    );
+  }
+  return join(distDir, candidates[0]);
 }

@@ -2,7 +2,10 @@ import { WorkerPool } from "./worker-pool.mjs";
 import { performance } from "node:perf_hooks";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { resolveOpenClawAgentRuntimePath } from "./runtime-path.mjs";
+import {
+  resolveOpenClawAgentRuntimePath,
+  resolveOpenClawSubagentAnnounceRuntimePath,
+} from "./runtime-path.mjs";
 import { buildHarnessFailureAttempt } from "./harness-failure.mjs";
 import { readNativeSessionMessages } from "./harness-result.mjs";
 import { closeInterruptedToolCalls } from "./transcript-recovery.mjs";
@@ -17,6 +20,7 @@ import {
 } from "./exec-env.mjs";
 import { buildFastCompactionProvider } from "./fast-compaction-provider.mjs";
 import { runWithSessionRolloverRetry } from "./session-rollover-retry.mjs";
+import { startSubagentCompletionRelays } from "./subagent-completion-relay.mjs";
 
 const SESSION_PREFIX = "agent:makaron:explicit:vlab-worker-";
 const NATIVE_HARNESS_ID = "vlab-worker";
@@ -98,11 +102,18 @@ function acquireSharedPool(options) {
         sessionPreflightRebindFailures: 0,
         sessionRolloverRetries: 0,
         sessionRolloverRetryFailures: 0,
+        subagentCompletionRelay: {
+          started: 0,
+          completed: 0,
+          failed: 0,
+          delivered: 0,
+        },
         lastSessionKey: undefined,
         lastWorkerSlot: undefined,
         lastWorkerPid: undefined,
       },
       nativeRequestsByRunId: new Map(),
+      nativeSubagentCompletionRelays: new Map(),
       fastCompactionWorkerStats: new Map(),
     };
   }
@@ -177,6 +188,13 @@ const plugin = {
         resolve(dirname(openClawAgentRuntimePath), "diagnostic-runtime.js"),
       ).href
     );
+    const nativeSubagentAnnounceRuntimePromise = import(
+      pathToFileURL(
+        resolveOpenClawSubagentAnnounceRuntimePath({
+          agentRuntimePath: openClawAgentRuntimePath,
+        }),
+      ).href
+    );
     const workerEnv = buildWorkerEnvironment(
       {
         ...process.env,
@@ -209,6 +227,8 @@ const plugin = {
     });
     const pool = sharedPool.pool;
     const nativeRequestsByRunId = sharedPool.nativeRequestsByRunId;
+    const nativeSubagentCompletionRelays =
+      sharedPool.nativeSubagentCompletionRelays;
     const fastCompactionWorkerStats = sharedPool.fastCompactionWorkerStats;
     const operationsById = new Map();
     const operationsByIdempotencyKey = new Map();
@@ -370,6 +390,31 @@ const plugin = {
         if (!result.attempt || typeof result.attempt !== "object") {
           throw new Error("worker did not return an Agent Harness attempt result");
         }
+        startSubagentCompletionRelays({
+          spawns: result.attempt.acceptedSessionSpawns,
+          requesterSessionKey: sessionKey,
+          requesterOrigin: {
+            channel: params.messageChannel,
+            accountId: params.agentAccountId,
+            to: params.messageTo,
+            threadId: params.messageThreadId,
+          },
+          active: nativeSubagentCompletionRelays,
+          stats: nativeHarnessStats.subagentCompletionRelay,
+          waitForRun: (waitParams) =>
+            api.runtime.subagent.waitForRun(waitParams),
+          runNativeAnnounce: async (announceParams) => {
+            const { runSubagentAnnounceFlow } =
+              await nativeSubagentAnnounceRuntimePromise;
+            if (typeof runSubagentAnnounceFlow !== "function") {
+              throw new Error(
+                "OpenClaw native subagent announce runtime is unavailable",
+              );
+            }
+            return await runSubagentAnnounceFlow(announceParams);
+          },
+          logger: api.logger,
+        });
         workerMessagesSnapshot = result.attempt.messagesSnapshot;
         return result.attempt;
       } catch (error) {
@@ -796,6 +841,7 @@ const plugin = {
             nativeYieldTerminalSemantics: true,
             nativeNonTextTerminalSemantics: true,
             transcriptOwnerSerialization: true,
+            nativeSubagentCompletionRelay: true,
             staleSessionPreflightRebind: true,
             sessionRolloverRebindRetry: true,
             fastCompaction: {

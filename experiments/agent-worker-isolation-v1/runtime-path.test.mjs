@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { resolveOpenClawAgentRuntimePath } from "./runtime-path.mjs";
+import {
+  resolveOpenClawAgentRuntimePath,
+  resolveOpenClawSubagentAnnounceRuntimePath,
+} from "./runtime-path.mjs";
 
 const vlabRuntime =
   "/opt/vlab/current/node_modules/openclaw/dist/plugin-sdk/agent-runtime.js";
@@ -40,4 +43,24 @@ assert.throws(
   /OpenClaw Agent runtime was not found/,
 );
 
-console.log(JSON.stringify({ ok: true, cases: 4 }));
+assert.equal(
+  resolveOpenClawSubagentAnnounceRuntimePath({
+    agentRuntimePath: vlabRuntime,
+    readDirectory: () => [
+      "agent-events-abc.js",
+      "subagent-announce-CIkgndJa.js",
+    ],
+  }),
+  "/opt/vlab/current/node_modules/openclaw/dist/subagent-announce-CIkgndJa.js",
+);
+
+assert.throws(
+  () =>
+    resolveOpenClawSubagentAnnounceRuntimePath({
+      agentRuntimePath: vlabRuntime,
+      readDirectory: () => [],
+    }),
+  /was not uniquely resolved/,
+);
+
+console.log(JSON.stringify({ ok: true, cases: 6 }));
