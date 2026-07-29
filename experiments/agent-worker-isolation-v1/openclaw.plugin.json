@@ -34,9 +34,42 @@
         "minimum": 1000,
         "maximum": 1800000
       },
+      "requestCancelGraceMs": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 60000
+      },
+      "workerHeartbeatMs": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 60000
+      },
       "workerConfigPath": {
         "type": "string",
         "minLength": 1
+      },
+      "gatewayConfigPath": {
+        "type": "string",
+        "minLength": 1
+      },
+      "fastCompactionModel": {
+        "type": "string",
+        "minLength": 1
+      },
+      "fastCompactionMaxInputChars": {
+        "type": "integer",
+        "minimum": 10000,
+        "maximum": 1500000
+      },
+      "fastCompactionMaxOutputTokens": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 30000
+      },
+      "fastCompactionMaxQualityRetries": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 1
       }
     }
   }

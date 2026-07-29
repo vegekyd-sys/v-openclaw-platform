@@ -1,9 +1,34 @@
 import { performance } from "node:perf_hooks";
 import { pathToFileURL } from "node:url";
 import { buildHarnessAttemptResult } from "./harness-result.mjs";
+import { readFastCompactionStats } from "./fast-compaction-provider.mjs";
 
 let agentRuntimePromise;
 const activeControllers = new Map();
+const configuredHeartbeatMs = Number(
+  process.env.VLAB_WORKER_HEARTBEAT_MS ?? 15_000,
+);
+const heartbeatMs = Number.isFinite(configuredHeartbeatMs)
+  ? Math.max(25, configuredHeartbeatMs)
+  : 15_000;
+
+function sendProgress(requestId, request, reason = "worker:active") {
+  process.send?.({
+    type: "progress",
+    id: requestId,
+    runId: request.runId,
+    sessionId: request.sessionId,
+    sessionKey: request.sessionKey,
+    reason,
+  });
+}
+
+const heartbeatTimer = setInterval(() => {
+  for (const [requestId, active] of activeControllers) {
+    sendProgress(requestId, active.request);
+  }
+}, heartbeatMs);
+heartbeatTimer.unref?.();
 
 function serializeError(error) {
   return {
@@ -118,6 +143,11 @@ async function runAgent(message, abortSignal) {
     cleanupBundleMcpOnRunEnd: false,
     cleanupCliLiveSessionOnRunEnd: false,
     oneShotCliRun: false,
+    // The worker owns the user line unless the Gateway recorder had already
+    // persisted it before dispatch. After the run, the Gateway acknowledges
+    // the exact worker-written message so its fallback cannot append a copy.
+    suppressPromptPersistence: message.suppressPromptPersistence === true,
+    skipInitialSessionTouch: true,
     allowGatewaySubagentBinding: false,
     abortSignal,
   });
@@ -156,6 +186,7 @@ async function runAgent(message, abortSignal) {
       finalPromptText: result.meta?.finalPromptText,
       compactionCount: agentMeta.compactionCount,
       compactionTokensAfter: agentMeta.compactionTokensAfter,
+      fastCompaction: readFastCompactionStats(),
     }),
   };
   if (message.harnessAttempt === true) {
@@ -166,7 +197,8 @@ async function runAgent(message, abortSignal) {
 
 process.on("message", async (message) => {
   if (message?.type === "cancel" && message.requestId) {
-    const controller = activeControllers.get(message.requestId);
+    const active = activeControllers.get(message.requestId);
+    const controller = active?.controller;
     if (controller && !controller.signal.aborted) {
       const error = new Error(`worker request ${message.requestId} was cancelled`);
       error.name = "AbortError";
@@ -178,7 +210,8 @@ process.on("message", async (message) => {
     return;
   }
   const controller = new AbortController();
-  activeControllers.set(message.id, controller);
+  activeControllers.set(message.id, { controller, request: message });
+  sendProgress(message.id, message, "worker:started");
   try {
     let result;
     if (message.kind === "ping") {

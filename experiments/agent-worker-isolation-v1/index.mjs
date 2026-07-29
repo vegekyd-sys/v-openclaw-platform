@@ -4,7 +4,19 @@ import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { resolveOpenClawAgentRuntimePath } from "./runtime-path.mjs";
 import { buildHarnessFailureAttempt } from "./harness-failure.mjs";
+import { readNativeSessionMessages } from "./harness-result.mjs";
 import { closeInterruptedToolCalls } from "./transcript-recovery.mjs";
+import { relayWorkerProgress } from "./worker-progress.mjs";
+import {
+  acknowledgeWorkerUserTurn,
+  shouldWorkerPersistUserTurn,
+} from "./user-turn-ownership.mjs";
+import {
+  buildWorkerEnvironment,
+  resolveWorkerExecEnv,
+} from "./exec-env.mjs";
+import { buildFastCompactionProvider } from "./fast-compaction-provider.mjs";
+import { runWithSessionRolloverRetry } from "./session-rollover-retry.mjs";
 
 const SESSION_PREFIX = "agent:makaron:explicit:vlab-worker-";
 const NATIVE_HARNESS_ID = "vlab-worker";
@@ -77,11 +89,19 @@ function acquireSharedPool(options) {
         failed: 0,
         interruptedToolCallsRecovered: 0,
         transcriptRecoveryFailed: 0,
+        userTurnsAcknowledgedFromWorker: 0,
+        userTurnsAlreadyPersisted: 0,
+        userTurnAcknowledgementMisses: 0,
+        userTurnOwnershipUnavailable: 0,
+        workerAttempts: 0,
+        sessionRolloverRetries: 0,
+        sessionRolloverRetryFailures: 0,
         lastSessionKey: undefined,
         lastWorkerSlot: undefined,
         lastWorkerPid: undefined,
       },
       nativeRequestsByRunId: new Map(),
+      fastCompactionWorkerStats: new Map(),
     };
   }
   return globalThis[SHARED_POOL_KEY];
@@ -100,34 +120,94 @@ const plugin = {
     );
     const idleTimeoutMs = Number(api.pluginConfig?.idleTimeoutMs ?? 180_000);
     const requestTimeoutMs = Number(api.pluginConfig?.requestTimeoutMs ?? 600_000);
+    const requestCancelGraceMs = Number(
+      api.pluginConfig?.requestCancelGraceMs ?? 15_000,
+    );
+    const workerHeartbeatMs = Number(
+      api.pluginConfig?.workerHeartbeatMs ?? 15_000,
+    );
     const workerConfigPath =
       typeof api.pluginConfig?.workerConfigPath === "string"
-        ? api.pluginConfig.workerConfigPath
+        ? api.pluginConfig.workerConfigPath.trim()
         : undefined;
+    const gatewayConfigPath =
+      typeof api.pluginConfig?.gatewayConfigPath === "string"
+        ? api.pluginConfig.gatewayConfigPath.trim()
+        : typeof process.env.OPENCLAW_CONFIG_PATH === "string"
+          ? process.env.OPENCLAW_CONFIG_PATH.trim()
+          : undefined;
+    if (!workerConfigPath) {
+      throw new Error("workerConfigPath is required");
+    }
+    if (!gatewayConfigPath) {
+      throw new Error("gatewayConfigPath is required");
+    }
+    const fastCompactionModel =
+      typeof api.pluginConfig?.fastCompactionModel === "string" &&
+      api.pluginConfig.fastCompactionModel.trim()
+        ? api.pluginConfig.fastCompactionModel.trim()
+        : typeof api.config.agents?.defaults?.compaction?.model === "string" &&
+            api.config.agents.defaults.compaction.model.trim()
+          ? api.config.agents.defaults.compaction.model.trim()
+          : "azure-openai/gpt-5.5";
+    const fastCompactionProvider = buildFastCompactionProvider({
+      model: fastCompactionModel,
+      maxInputChars: Number(
+        api.pluginConfig?.fastCompactionMaxInputChars ?? 420_000,
+      ),
+      maxOutputTokens: Number(
+        api.pluginConfig?.fastCompactionMaxOutputTokens ?? 12_000,
+      ),
+      maxQualityRetries: Number(
+        api.pluginConfig?.fastCompactionMaxQualityRetries ?? 1,
+      ),
+      llmComplete: (params) => api.runtime.llm.complete(params),
+    });
+    api.registerCompactionProvider(fastCompactionProvider);
     const openClawAgentRuntimePath = resolveOpenClawAgentRuntimePath();
     const transcriptRuntimePromise = import(
       pathToFileURL(
         resolve(dirname(openClawAgentRuntimePath), "session-transcript-runtime.js"),
       ).href
     );
-    const workerEnv = {
-      ...process.env,
-      VLAB_OPENCLAW_AGENT_RUNTIME: openClawAgentRuntimePath,
-      VLAB_REQUIRE_OPENCLAW_AGENT_RUNTIME: "1",
-      ...(workerConfigPath
-        ? { OPENCLAW_CONFIG_PATH: workerConfigPath }
-        : {}),
-    };
+    const diagnosticRuntimePromise = import(
+      pathToFileURL(
+        resolve(dirname(openClawAgentRuntimePath), "diagnostic-runtime.js"),
+      ).href
+    );
+    const workerEnv = buildWorkerEnvironment(
+      {
+        ...process.env,
+        VLAB_OPENCLAW_AGENT_RUNTIME: openClawAgentRuntimePath,
+        VLAB_REQUIRE_OPENCLAW_AGENT_RUNTIME: "1",
+        VLAB_WORKER_HEARTBEAT_MS: String(workerHeartbeatMs),
+      },
+      {
+        gatewayConfigPath,
+        workerConfigPath,
+      },
+    );
+    api.on(
+      "resolve_exec_env",
+      (event) => resolveWorkerExecEnv(event),
+      { priority: 100 },
+    );
     const sharedPool = acquireSharedPool({
       minWorkers,
       maxWorkers,
       sessionsPerWorker,
       idleTimeoutMs,
       requestTimeoutMs,
+      requestCancelGraceMs,
       workerEnv,
+      async onProgress(progress) {
+        const { emitDiagnosticEvent } = await diagnosticRuntimePromise;
+        relayWorkerProgress(emitDiagnosticEvent, progress);
+      },
     });
     const pool = sharedPool.pool;
     const nativeRequestsByRunId = sharedPool.nativeRequestsByRunId;
+    const fastCompactionWorkerStats = sharedPool.fastCompactionWorkerStats;
     const operationsById = new Map();
     const operationsByIdempotencyKey = new Map();
     let nextOperationId = 1;
@@ -145,68 +225,119 @@ const plugin = {
         typeof params.sessionKey === "string" && params.sessionKey.trim()
           ? params.sessionKey
           : `agent:${params.agentId ?? "makaron"}:${params.sessionId}`;
-      const channelTimeoutMs = Number(params.timeoutMs ?? 300_000);
-      const workerRequestTimeoutMs = Math.max(1_000, channelTimeoutMs - 30_000);
-      const submitted = await pool.submit(sessionKey, {
-        kind: "agent",
-        harnessAttempt: true,
-        message: params.prompt,
-        transcriptMessage: params.transcriptPrompt ?? params.prompt,
-        images: params.images,
-        imageOrder: params.imageOrder,
-        clientTools: params.clientTools,
-        agentId: params.agentId ?? "makaron",
-        sessionId: params.sessionId,
-        runId: params.runId,
-        timeoutSeconds: Math.max(
-          1,
-          Math.ceil(channelTimeoutMs / 1_000),
-        ),
-        // The worker must settle before Feishu's per-chat 300s eviction. If
-        // the frontend releases first, a late worker keeps the native Session
-        // owner alive and every later message re-enters the same blocked lane.
-        requestTimeoutMs: workerRequestTimeoutMs,
-        messageChannel: params.messageChannel,
-        messageProvider: params.messageProvider,
-        channel: params.messageChannel,
-        accountId: params.agentAccountId,
-        to: params.messageTo,
-        replyTo: params.messageTo,
-        replyChannel: params.messageChannel,
-        replyAccountId: params.agentAccountId,
-        threadId: params.messageThreadId,
-        runContext: {
-          messageChannel: params.messageChannel,
-          accountId: params.agentAccountId,
-          groupId: params.groupId,
-          groupChannel: params.groupChannel,
-          groupSpace: params.groupSpace,
-          currentChannelId: params.currentChannelId,
-          senderId: params.senderId,
-        },
-        toolsAllow: params.toolsAllow,
-        extraSystemPrompt: params.extraSystemPrompt,
-        sourceReplyDeliveryMode: params.sourceReplyDeliveryMode,
-        senderIsOwner: params.senderIsOwner,
-      });
+      const attemptTimeoutMs = Number(params.timeoutMs ?? requestTimeoutMs);
+      const expectedUserTurn = params.transcriptPrompt ?? params.prompt;
+      const workerShouldPersistUserTurn = shouldWorkerPersistUserTurn(
+        params.userTurnTranscriptRecorder,
+      );
       nativeHarnessStats.admitted += 1;
       nativeHarnessStats.lastSessionKey = sessionKey;
-      nativeRequestsByRunId.set(params.runId, {
-        requestId: submitted.requestId,
-        sessionKey,
-      });
-      const onAbort = () => {
-        pool.cancel(submitted.requestId);
+      let workerMessagesSnapshot;
+      let finalSession = {
+        sessionId: params.sessionId,
+        sessionFile: params.sessionFile,
       };
-      params.abortSignal?.addEventListener("abort", onAbort, { once: true });
       try {
-        const result = await submitted.promise;
+        const logicalAttempt = await runWithSessionRolloverRetry({
+          initialSession: finalSession,
+          maxRetries: 1,
+          readLatestSession: async () =>
+            readNativeSession(params.agentId ?? "makaron", sessionKey),
+          onRetry: (event) => {
+            nativeHarnessStats.sessionRolloverRetries += 1;
+            api.logger.warn(
+              `retrying ${sessionKey} after compaction rotation ${event.previousSessionId} -> ${event.nextSessionId}`,
+            );
+          },
+          execute: async (session) => {
+            if (params.abortSignal?.aborted) {
+              throw (
+                params.abortSignal.reason ??
+                Object.assign(new Error("worker Agent request was cancelled"), {
+                  name: "AbortError",
+                })
+              );
+            }
+            finalSession = session;
+            const submitted = await pool.submit(sessionKey, {
+              kind: "agent",
+              harnessAttempt: true,
+              message: params.prompt,
+              transcriptMessage: expectedUserTurn,
+              suppressPromptPersistence: !workerShouldPersistUserTurn,
+              images: params.images,
+              imageOrder: params.imageOrder,
+              clientTools: params.clientTools,
+              agentId: params.agentId ?? "makaron",
+              sessionId: session.sessionId,
+              runId: params.runId,
+              timeoutSeconds: Math.max(
+                1,
+                Math.ceil(attemptTimeoutMs / 1_000),
+              ),
+              messageChannel: params.messageChannel,
+              messageProvider: params.messageProvider,
+              channel: params.messageChannel,
+              accountId: params.agentAccountId,
+              to: params.messageTo,
+              replyTo: params.messageTo,
+              replyChannel: params.messageChannel,
+              replyAccountId: params.agentAccountId,
+              threadId: params.messageThreadId,
+              runContext: {
+                messageChannel: params.messageChannel,
+                accountId: params.agentAccountId,
+                groupId: params.groupId,
+                groupChannel: params.groupChannel,
+                groupSpace: params.groupSpace,
+                currentChannelId: params.currentChannelId,
+                senderId: params.senderId,
+              },
+              toolsAllow: params.toolsAllow,
+              extraSystemPrompt: params.extraSystemPrompt,
+              sourceReplyDeliveryMode: params.sourceReplyDeliveryMode,
+              senderIsOwner: params.senderIsOwner,
+            });
+            nativeHarnessStats.workerAttempts += 1;
+            nativeRequestsByRunId.set(params.runId, {
+              requestId: submitted.requestId,
+              sessionKey,
+            });
+            const onAbort = () => {
+              pool.cancel(submitted.requestId);
+            };
+            params.abortSignal?.addEventListener("abort", onAbort, {
+              once: true,
+            });
+            try {
+              return await submitted.promise;
+            } finally {
+              if (
+                nativeRequestsByRunId.get(params.runId)?.requestId ===
+                submitted.requestId
+              ) {
+                nativeRequestsByRunId.delete(params.runId);
+              }
+              params.abortSignal?.removeEventListener("abort", onAbort);
+            }
+          },
+        });
+        finalSession = logicalAttempt.session;
+        const result = logicalAttempt.value;
         nativeHarnessStats.completed += 1;
         nativeHarnessStats.lastWorkerSlot = result.slot;
         nativeHarnessStats.lastWorkerPid = result.workerPid;
+        if (result.meta?.fastCompaction) {
+          nativeHarnessStats.fastCompaction = result.meta.fastCompaction;
+          fastCompactionWorkerStats.set(
+            result.workerPid,
+            result.meta.fastCompaction,
+          );
+        }
         if (!result.attempt || typeof result.attempt !== "object") {
           throw new Error("worker did not return an Agent Harness attempt result");
         }
+        workerMessagesSnapshot = result.attempt.messagesSnapshot;
         return result.attempt;
       } catch (error) {
         if (
@@ -245,6 +376,20 @@ const plugin = {
           };
         }
         nativeHarnessStats.failed += 1;
+        const latestSession = readNativeSession(
+          params.agentId ?? "makaron",
+          sessionKey,
+        );
+        if (
+          latestSession.exists &&
+          latestSession.sessionId !== finalSession.sessionId
+        ) {
+          finalSession = {
+            sessionId: latestSession.sessionId,
+            sessionFile: latestSession.sessionFile,
+          };
+          nativeHarnessStats.sessionRolloverRetryFailures += 1;
+        }
         try {
           const { withSessionTranscriptWriteLock } =
             await transcriptRuntimePromise;
@@ -254,8 +399,8 @@ const plugin = {
               target: {
                 agentId: params.agentId ?? "makaron",
                 sessionKey,
-                sessionId: params.sessionId,
-                sessionFile: params.sessionFile,
+                sessionId: finalSession.sessionId,
+                sessionFile: finalSession.sessionFile,
               },
               config: api.config,
               error,
@@ -273,15 +418,35 @@ const plugin = {
         // Agent Harness expects a terminal attempt result. Throwing here skips
         // OpenClaw's normal attempt finalization and can leave the Session and
         // per-chat lane active even though the worker already failed.
-        return buildHarnessFailureAttempt(error, params);
+        return buildHarnessFailureAttempt(error, {
+          ...params,
+          sessionId: finalSession.sessionId,
+          sessionFile: finalSession.sessionFile,
+        });
       } finally {
-        if (
-          nativeRequestsByRunId.get(params.runId)?.requestId ===
-          submitted.requestId
-        ) {
-          nativeRequestsByRunId.delete(params.runId);
+        if (!Array.isArray(workerMessagesSnapshot)) {
+          try {
+            workerMessagesSnapshot = await readNativeSessionMessages(
+              finalSession.sessionFile,
+            );
+          } catch {
+            workerMessagesSnapshot = [];
+          }
         }
-        params.abortSignal?.removeEventListener("abort", onAbort);
+        const userTurnAcknowledgement = acknowledgeWorkerUserTurn({
+          recorder: params.userTurnTranscriptRecorder,
+          messages: workerMessagesSnapshot,
+          expectedText: expectedUserTurn,
+        });
+        if (userTurnAcknowledgement === "acknowledged") {
+          nativeHarnessStats.userTurnsAcknowledgedFromWorker += 1;
+        } else if (userTurnAcknowledgement === "already-persisted") {
+          nativeHarnessStats.userTurnsAlreadyPersisted += 1;
+        } else if (userTurnAcknowledgement === "not-found") {
+          nativeHarnessStats.userTurnAcknowledgementMisses += 1;
+        } else if (userTurnAcknowledgement === "unavailable") {
+          nativeHarnessStats.userTurnOwnershipUnavailable += 1;
+        }
       }
     }
 
@@ -304,11 +469,57 @@ const plugin = {
       return {
         exists: true,
         sessionId: entry.sessionId,
+        sessionFile: entry.sessionFile,
+        lifecycleRevision: entry.lifecycleRevision,
+        compactionCount: entry.compactionCount,
+        totalTokens: entry.totalTokens,
         updatedAt: entry.updatedAt,
         status: entry.status,
         startedAt: entry.startedAt,
         endedAt: entry.endedAt,
         abortedLastRun: entry.abortedLastRun === true,
+      };
+    }
+
+    function aggregateWorkerCompactionStats() {
+      const aggregate = {
+        calls: 0,
+        modelCalls: 0,
+        qualityRetries: 0,
+        repaired: 0,
+        failures: 0,
+        workerProcesses: fastCompactionWorkerStats.size,
+      };
+      let latest;
+      for (const stats of fastCompactionWorkerStats.values()) {
+        for (const key of [
+          "calls",
+          "modelCalls",
+          "qualityRetries",
+          "repaired",
+          "failures",
+        ]) {
+          aggregate[key] += Number(stats?.[key] ?? 0);
+        }
+        if (
+          !latest ||
+          Number(stats?.updatedAt ?? 0) > Number(latest?.updatedAt ?? 0)
+        ) {
+          latest = stats;
+        }
+      }
+      return {
+        ...aggregate,
+        ...(latest
+          ? {
+              lastDurationMs: latest.lastDurationMs,
+              lastInputChars: latest.lastInputChars,
+              lastOutputChars: latest.lastOutputChars,
+              lastAuditReasons: latest.lastAuditReasons,
+              lastModel: latest.lastModel,
+              updatedAt: latest.updatedAt,
+            }
+          : {}),
       };
     }
 
@@ -541,6 +752,29 @@ const plugin = {
             currentEntry: "native Channel/dispatch -> AgentHarness -> worker agentCommand",
             nativeAgentHarnessId: NATIVE_HARNESS_ID,
             nativeAgentHarnessDispatchAttached: true,
+            workerIsolationVersion: "0.1.4",
+            longRunProgressBridge: true,
+            channelTimeoutCoupledToWorker: false,
+            cooperativeRequestTimeout: true,
+            nativeUserTurnOwnedByWorker: true,
+            nativeUserTurnAcknowledgedByGateway: true,
+            sessionRolloverRebindRetry: true,
+            fastCompaction: {
+              provider: fastCompactionProvider.id,
+              model: fastCompactionModel,
+              maxQualityRetries: Number(
+                api.pluginConfig?.fastCompactionMaxQualityRetries ?? 1,
+              ),
+              stats: { ...fastCompactionProvider.stats },
+              lastWorkerStats: nativeHarnessStats.fastCompaction,
+              aggregateWorkerStats: aggregateWorkerCompactionStats(),
+            },
+            configDomainIsolation: {
+              workerRuntimeConfigPath: workerConfigPath,
+              workerExecConfigPath: gatewayConfigPath,
+              execUsesGatewayConfig: true,
+            },
+            workerHeartbeatMs,
             productionPromotionBlocked: false,
             productionPromotionAcceptance: {
               nativeThreeByThree: true,

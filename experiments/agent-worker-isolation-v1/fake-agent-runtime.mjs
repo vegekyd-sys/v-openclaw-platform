@@ -14,6 +14,8 @@ export async function agentCommand(params) {
           cleanupCliLiveSessionOnRunEnd:
             params.cleanupCliLiveSessionOnRunEnd,
           oneShotCliRun: params.oneShotCliRun,
+          suppressPromptPersistence: params.suppressPromptPersistence,
+          skipInitialSessionTouch: params.skipInitialSessionTouch,
         }),
       },
     ],
