@@ -19,6 +19,7 @@ node --check "${EXPERIMENT_DIR}/worker-agent.test.mjs"
 node --check "${EXPERIMENT_DIR}/fast-compaction-provider.mjs"
 node --check "${EXPERIMENT_DIR}/fast-compaction-provider.test.mjs"
 node --check "${EXPERIMENT_DIR}/stubborn-worker.mjs"
+node --check "${EXPERIMENT_DIR}/silent-worker.mjs"
 node --check "${EXPERIMENT_DIR}/index.mjs"
 node --check "${EXPERIMENT_DIR}/self-test.mjs"
 node --check "${REPO_ROOT}/tests/vlab-agent-worker-native-dispatch.mjs"
@@ -27,6 +28,7 @@ node --check "${REPO_ROOT}/tests/vlab-agent-worker-harness-parity.mjs"
 node --check "${REPO_ROOT}/tests/vlab-agent-worker-five-main-five-subagents.mjs"
 node "${EXPERIMENT_DIR}/runtime-path.test.mjs"
 node "${EXPERIMENT_DIR}/exec-env.test.mjs"
+node "${EXPERIMENT_DIR}/worker-timeout-isolation.test.mjs"
 node --test \
   "${EXPERIMENT_DIR}/harness-result.test.mjs" \
   "${EXPERIMENT_DIR}/session-rollover-retry.test.mjs" \
@@ -78,14 +80,17 @@ jq -e \
    and .configSchema.properties.maxWorkers.maximum == 3
    and .configSchema.properties.sessionsPerWorker.maximum == 3
    and .configSchema.properties.idleTimeoutMs.maximum == 3600000
+   and .configSchema.properties.requestTimeoutMs.maximum == 172800000
+   and .configSchema.properties.requestStallTimeoutMs.minimum == 30000
    and .configSchema.properties.workerConfigPath.minLength == 1
    and .configSchema.properties.gatewayConfigPath.minLength == 1
    and .configSchema.properties.fastCompactionMaxQualityRetries.maximum == 1' \
   "${EXPERIMENT_DIR}/openclaw.plugin.json" >/dev/null
 jq -e '.openclaw.extensions == ["./index.mjs"]' \
   "${EXPERIMENT_DIR}/package.json" >/dev/null
-jq -e '.version == "0.1.5-p1"' \
+jq -e '.version == "0.1.6"' \
   "${EXPERIMENT_DIR}/package.json" >/dev/null
+grep -q 'requestTimeoutMs: attemptTimeoutMs' "${EXPERIMENT_DIR}/index.mjs"
 
 if rg -n \
   '(^|[^[:alnum:]_])(token|secret|password|api[_-]?key)[[:space:]]*[:=][[:space:]]*["'\''][^"'\'']+["'\'']' \

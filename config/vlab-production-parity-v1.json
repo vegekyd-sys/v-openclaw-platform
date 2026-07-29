@@ -33,7 +33,8 @@
       "maxWorkers": 3,
       "sessionsPerWorker": 3,
       "idleTimeoutMs": 180000,
-      "requestTimeoutMs": 600000
+      "requestTimeoutMs": 600000,
+      "requestStallTimeoutMs": 120000
     }
   },
   "service": {

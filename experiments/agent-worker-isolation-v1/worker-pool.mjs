@@ -22,8 +22,20 @@ function requestTimeoutError(requestId, timeoutMs) {
   return error;
 }
 
+function workerStallTimeoutError(requestId, timeoutMs) {
+  const error = new Error(
+    `worker request ${requestId} made no progress for ${timeoutMs}ms`,
+  );
+  error.code = "VLAB_WORKER_STALL_TIMEOUT";
+  return error;
+}
+
 function clearJobTimers(job) {
   clearTimeout(job.timer);
+  if (job.stallTimer) {
+    clearTimeout(job.stallTimer);
+    job.stallTimer = null;
+  }
   if (job.forceKillTimer) {
     clearTimeout(job.forceKillTimer);
     job.forceKillTimer = null;
@@ -39,7 +51,12 @@ export class WorkerPool {
     this.idleSweepIntervalMs =
       options.idleSweepIntervalMs ??
       Math.min(Math.max(Math.floor(this.idleTimeoutMs / 4), 1_000), 30_000);
+    // Fallback only for callers that do not provide OpenClaw's resolved
+    // per-attempt timeout. It must never cap a longer upstream deadline.
     this.requestTimeoutMs = options.requestTimeoutMs ?? 600_000;
+    // Worker-process liveness watchdog. Progress heartbeats reset this timer;
+    // it is deliberately separate from the business request deadline.
+    this.requestStallTimeoutMs = options.requestStallTimeoutMs ?? 120_000;
     this.requestCancelGraceMs = options.requestCancelGraceMs ?? 15_000;
     this.startupTimeoutMs = options.startupTimeoutMs ?? 15_000;
     this.retireGraceMs = options.retireGraceMs ?? 2_000;
@@ -82,6 +99,18 @@ export class WorkerPool {
     }
     if (!Number.isFinite(this.retireGraceMs) || this.retireGraceMs < 10) {
       throw new Error("retireGraceMs must be >= 10");
+    }
+    if (
+      !Number.isFinite(this.requestTimeoutMs) ||
+      this.requestTimeoutMs < 10
+    ) {
+      throw new Error("requestTimeoutMs must be >= 10");
+    }
+    if (
+      !Number.isFinite(this.requestStallTimeoutMs) ||
+      this.requestStallTimeoutMs < 10
+    ) {
+      throw new Error("requestStallTimeoutMs must be >= 10");
     }
     if (
       !Number.isFinite(this.requestCancelGraceMs) ||
@@ -327,6 +356,42 @@ export class WorkerPool {
     }
   }
 
+  beginTimedCancellation(worker, active, error) {
+    if (
+      worker.active.get(active.id) !== active ||
+      active.timeoutError
+    ) {
+      return;
+    }
+    active.timeoutError = error;
+    worker.child.send({ type: "cancel", requestId: active.id });
+    active.forceKillTimer = setTimeout(() => {
+      if (worker.active.get(active.id) !== active) {
+        return;
+      }
+      // A cooperative AbortSignal normally unwinds just this request. Only
+      // an unresponsive child process reaches this fallback, where process
+      // replacement is required to restore the pool.
+      worker.retiring = true;
+      worker.child.kill("SIGKILL");
+    }, this.requestCancelGraceMs);
+    active.forceKillTimer.unref?.();
+  }
+
+  armStallWatchdog(worker, active) {
+    if (active.stallTimer) {
+      clearTimeout(active.stallTimer);
+    }
+    active.stallTimer = setTimeout(() => {
+      this.beginTimedCancellation(
+        worker,
+        active,
+        workerStallTimeoutError(active.id, this.requestStallTimeoutMs),
+      );
+    }, this.requestStallTimeoutMs);
+    active.stallTimer.unref?.();
+  }
+
   drain(worker) {
     if (
       !worker.ready ||
@@ -349,35 +414,27 @@ export class WorkerPool {
       const [job] = worker.queue.splice(jobIndex, 1);
       const requestedTimeoutMs = Number(job.request?.requestTimeoutMs);
       const requestTimeoutMs = Number.isFinite(requestedTimeoutMs)
-        ? Math.min(this.requestTimeoutMs, Math.max(1_000, requestedTimeoutMs))
+        ? Math.max(1_000, requestedTimeoutMs)
         : this.requestTimeoutMs;
-      const timer = setTimeout(() => {
-        const active = worker.active.get(job.id);
-        if (active?.id !== job.id || active.timeoutError) {
-          return;
-        }
-        active.timeoutError = requestTimeoutError(job.id, requestTimeoutMs);
-        worker.child.send({ type: "cancel", requestId: job.id });
-        active.forceKillTimer = setTimeout(() => {
-          if (worker.active.get(job.id) !== active) {
-            return;
-          }
-          // A cooperative AbortSignal normally unwinds just this request. Only
-          // an unresponsive child process reaches this fallback, where process
-          // replacement is required to restore the pool.
-          worker.retiring = true;
-          worker.child.kill("SIGKILL");
-        }, this.requestCancelGraceMs);
-        active.forceKillTimer.unref?.();
-      }, requestTimeoutMs);
-
-      worker.active.set(job.id, {
+      const active = {
         ...job,
-        timer,
+        timer: null,
+        stallTimer: null,
         forceKillTimer: null,
         timeoutError: null,
+        requestTimeoutMs,
         lastProgressAt: Date.now(),
-      });
+      };
+      worker.active.set(job.id, active);
+      active.timer = setTimeout(() => {
+        this.beginTimedCancellation(
+          worker,
+          active,
+          requestTimeoutError(job.id, requestTimeoutMs),
+        );
+      }, requestTimeoutMs);
+      active.timer.unref?.();
+      this.armStallWatchdog(worker, active);
       worker.child.send({
         id: job.id,
         sessionKey: job.sessionKey,
@@ -421,6 +478,7 @@ export class WorkerPool {
         return;
       }
       active.lastProgressAt = Date.now();
+      this.armStallWatchdog(worker, active);
       if (this.onProgress) {
         const progress = {
           requestId: active.id,
@@ -593,6 +651,7 @@ export class WorkerPool {
       maxActiveSessions: this.maxWorkers * this.sessionsPerWorker,
       idleTimeoutMs: this.idleTimeoutMs,
       requestTimeoutMs: this.requestTimeoutMs,
+      requestStallTimeoutMs: this.requestStallTimeoutMs,
       requestCancelGraceMs: this.requestCancelGraceMs,
       pending: this.pending.length,
       workers: [...this.workers.values()]
@@ -610,6 +669,7 @@ export class WorkerPool {
             kind: job.request?.kind,
             runId: job.request?.runId,
             timeoutPending: Boolean(job.timeoutError),
+            requestTimeoutMs: job.requestTimeoutMs,
             lastProgressAgeMs: Math.max(
               0,
               Date.now() - job.lastProgressAt,

@@ -34,7 +34,7 @@ introducing a separate worker registry.
 ## Candidate
 
 - OpenClaw: `2026.7.1`
-- Worker isolation plugin: `0.1.5-p1`
+- Worker isolation plugin: `0.1.6`
 - Worker count: elastic from one warm worker to three workers
 - Sessions per worker: at most three active, distinct sessions
 - Total active-session capacity: `3 workers x 3 sessions = 9`
@@ -59,7 +59,16 @@ introducing a separate worker registry.
   the Gateway every 15 seconds. This preserves OpenClaw's native stuck-session
   diagnosis without treating Feishu's 300-second per-chat queue cap as an
   Agent lifetime.
-- A request hard timeout first sends an AbortSignal to that request only. The
+- OpenClaw's resolved per-attempt timeout is authoritative: ordinary Agents
+  retain the native 48-hour default, isolated Agent Cron jobs retain their
+  explicit timeout or native 60-minute safety default, and the plugin's
+  `requestTimeoutMs` is only a fallback for non-Harness experiment RPCs.
+- `requestStallTimeoutMs=120000` is a separate Worker-process liveness
+  watchdog. Every Worker heartbeat refreshes it, so a healthy long model or
+  foreground tool run is not terminated merely because its wall time passed
+  ten minutes.
+- A real request deadline or liveness timeout first sends an AbortSignal to
+  that request only. The
   Worker process is killed only if the request does not unwind within the
   bounded cancellation grace period, so cooperative timeouts do not interrupt
   the other two sessions assigned to the same Worker.
@@ -171,7 +180,7 @@ Subagent capacity acceptance preserves V's existing `8/8` limits:
 /tmp/vlab-agent-worker-subagents.sh
 ```
 
-Harness semantic parity acceptance covers the v0.1.5-p1 incident path:
+Harness semantic parity acceptance covers the v0.1.6 incident path:
 
 ```bash
 /tmp/vlab-agent-worker-harness-parity.sh

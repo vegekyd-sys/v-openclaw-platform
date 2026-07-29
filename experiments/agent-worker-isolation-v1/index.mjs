@@ -133,6 +133,9 @@ const plugin = {
     );
     const idleTimeoutMs = Number(api.pluginConfig?.idleTimeoutMs ?? 180_000);
     const requestTimeoutMs = Number(api.pluginConfig?.requestTimeoutMs ?? 600_000);
+    const requestStallTimeoutMs = Number(
+      api.pluginConfig?.requestStallTimeoutMs ?? 120_000,
+    );
     const requestCancelGraceMs = Number(
       api.pluginConfig?.requestCancelGraceMs ?? 15_000,
     );
@@ -218,6 +221,7 @@ const plugin = {
       sessionsPerWorker,
       idleTimeoutMs,
       requestTimeoutMs,
+      requestStallTimeoutMs,
       requestCancelGraceMs,
       workerEnv,
       async onProgress(progress) {
@@ -320,6 +324,9 @@ const plugin = {
                   1,
                   Math.ceil(attemptTimeoutMs / 1_000),
                 ),
+                // OpenClaw owns the business deadline. The Worker fallback
+                // applies only when a non-Harness caller omitted one.
+                requestTimeoutMs: attemptTimeoutMs,
                 messageChannel: params.messageChannel,
                 messageProvider: params.messageProvider,
                 channel: params.messageChannel,
@@ -725,11 +732,13 @@ const plugin = {
         };
       } else {
         const agentId = readString(params, "agentId") ?? "makaron";
+        const timeoutSeconds = readNumber(params, "timeoutSeconds", 300);
         request = {
           kind,
           message: readString(params, "message", { required: true }),
           agentId,
-          timeoutSeconds: readNumber(params, "timeoutSeconds", 300),
+          timeoutSeconds,
+          requestTimeoutMs: timeoutSeconds * 1_000,
           modelRun: params?.modelRun === true,
           toolsAllow: Array.isArray(params?.toolsAllow)
             ? params.toolsAllow.filter((item) => typeof item === "string")
@@ -832,8 +841,11 @@ const plugin = {
             nativeAgentHarnessDispatchAttached: true,
             nestedGatewayHarnessRouting: true,
             workerUsesIngressAgentCommand: true,
-            workerIsolationVersion: "0.1.5-p1",
+            workerIsolationVersion: "0.1.6",
             longRunProgressBridge: true,
+            upstreamAttemptTimeoutPropagation: true,
+            workerRequestTimeoutIsFallbackOnly: true,
+            workerStallTimeoutMs: requestStallTimeoutMs,
             channelTimeoutCoupledToWorker: false,
             cooperativeRequestTimeout: true,
             nativeUserTurnOwnedByWorker: true,
@@ -1065,6 +1077,7 @@ const plugin = {
             message,
             agentId,
             timeoutSeconds,
+            requestTimeoutMs: timeoutSeconds * 1_000,
             modelRun: params?.modelRun === true,
             toolsAllow: Array.isArray(params?.toolsAllow)
               ? params.toolsAllow.filter((item) => typeof item === "string")

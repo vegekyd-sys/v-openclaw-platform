@@ -32,6 +32,11 @@
       "requestTimeoutMs": {
         "type": "integer",
         "minimum": 1000,
+        "maximum": 172800000
+      },
+      "requestStallTimeoutMs": {
+        "type": "integer",
+        "minimum": 30000,
         "maximum": 1800000
       },
       "requestCancelGraceMs": {

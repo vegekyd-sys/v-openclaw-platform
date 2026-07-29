@@ -126,8 +126,8 @@ const before = await call("vlab.workers.status");
 await saveJson("status-before.json", before);
 assert.equal(
   before.integration.workerIsolationVersion,
-  "0.1.5-p1",
-  "vLab is not running worker isolation 0.1.5-p1",
+  "0.1.6",
+  "vLab is not running worker isolation 0.1.6",
 );
 
 const message =

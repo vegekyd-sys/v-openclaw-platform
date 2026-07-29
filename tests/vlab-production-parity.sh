@@ -58,6 +58,7 @@ jq -e \
     and .plugins.entries["vlab-agent-worker-isolation"].config.sessionsPerWorker == 3
     and .plugins.entries["vlab-agent-worker-isolation"].config.idleTimeoutMs == 180000
     and .plugins.entries["vlab-agent-worker-isolation"].config.requestTimeoutMs == 600000
+    and .plugins.entries["vlab-agent-worker-isolation"].config.requestStallTimeoutMs == 120000
   ' "$CONFIG_PATH" >/dev/null
 
 jq -e \

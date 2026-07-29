@@ -251,6 +251,7 @@ jq \
           sessionsPerWorker: $sessions_per_worker,
           idleTimeoutMs: $idle_timeout_ms,
           requestTimeoutMs: 600000,
+          requestStallTimeoutMs: 120000,
           fastCompactionModel: (
             $existing_worker_compaction.model
             // .agents.defaults.compaction.model
