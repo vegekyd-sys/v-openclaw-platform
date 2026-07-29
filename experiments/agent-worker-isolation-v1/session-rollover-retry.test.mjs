@@ -60,6 +60,7 @@ test("rebinds to the latest session and retries once after compaction rotation",
       attempt: 1,
       previousSessionId: "session-before",
       nextSessionId: "session-after",
+      sameSessionId: false,
     },
   ]);
 });
@@ -136,25 +137,27 @@ test("does not replay a non-admission failure with possible side effects", async
   assert.equal(executions, 1);
 });
 
-test("does not retry when the latest store entry did not actually rotate", async () => {
+test("retries once when the same session revision changed before work started", async () => {
   let executions = 0;
-  await assert.rejects(
-    runWithSessionRolloverRetry({
-      initialSession: { sessionId: "session-before" },
-      execute: async () => {
-        executions += 1;
+  const result = await runWithSessionRolloverRetry({
+    initialSession: { sessionId: "session-before" },
+    execute: async () => {
+      executions += 1;
+      if (executions === 1) {
         throw new Error(
           'Session "agent:makaron:feishu:direct:test" changed while starting work. Retry.',
         );
-      },
-      readLatestSession: async () => ({
-        exists: true,
-        sessionId: "session-before",
-      }),
+      }
+      return "VISIBLE_REPLY";
+    },
+    readLatestSession: async () => ({
+      exists: true,
+      sessionId: "session-before",
     }),
-    /changed while starting work/,
-  );
-  assert.equal(executions, 1);
+  });
+  assert.equal(result.value, "VISIBLE_REPLY");
+  assert.equal(result.retries, 1);
+  assert.equal(executions, 2);
 });
 
 test("recognizes only the pre-work session lifecycle guard", () => {

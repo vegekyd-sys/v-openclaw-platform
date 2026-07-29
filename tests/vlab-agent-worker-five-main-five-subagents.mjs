@@ -135,8 +135,10 @@ await Promise.all(
       `agentId=makaron，child 任务为：${childTask} ` +
       `2) spawn accepted 后，main 立即使用 exec 执行 /bin/sleep ` +
       `${mainHoldSeconds}；如果返回后台进程，必须使用 process poll 等待真实退出。` +
-      `3) main 结束后调用 sessions_yield，收到真实 child completion 后只回复 ` +
-      `${item.mainMarker}。不能用文字假装调用工具。`;
+      `3) main 结束时，如果真实 child completion 已在本轮到达，直接只回复 ` +
+      `${item.mainMarker}；如果尚未到达，才调用 sessions_yield，收到真实 ` +
+      `completion 后只回复 ${item.mainMarker}。不能用文字假装收到 completion，` +
+      `也不能为已经收到的 completion 再次 yield。`;
     const sent = await call("chat.send", {
       sessionKey: item.sessionKey,
       agentId: "makaron",

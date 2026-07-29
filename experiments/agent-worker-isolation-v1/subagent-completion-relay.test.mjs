@@ -73,7 +73,7 @@ test("completed child uses OpenClaw native announce flow", async () => {
   assert.equal(active.size, 1);
   await Promise.all(promises);
 
-  assert.equal(active.size, 0);
+  assert.equal(active.size, 1);
   assert.equal(stats.started, 1);
   assert.equal(stats.completed, 1);
   assert.equal(stats.failed, 0);

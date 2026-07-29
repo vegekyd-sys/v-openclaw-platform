@@ -68,8 +68,7 @@ export async function runWithSessionRolloverRetry(options) {
       const latest = await options.readLatestSession();
       if (
         latest?.exists !== true ||
-        !validSessionId(latest) ||
-        latest.sessionId === session.sessionId
+        !validSessionId(latest)
       ) {
         throw error;
       }
@@ -88,6 +87,7 @@ export async function runWithSessionRolloverRetry(options) {
         attempt: retries,
         previousSessionId,
         nextSessionId: session.sessionId,
+        sameSessionId: previousSessionId === session.sessionId,
       });
     }
   }

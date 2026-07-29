@@ -1,4 +1,5 @@
 const DEFAULT_WAIT_TIMEOUT_MS = 86_400_000;
+const MAX_TRACKED_RELAYS = 10_000;
 
 function increment(stats, key) {
   stats[key] = Number(stats[key] ?? 0) + 1;
@@ -60,6 +61,9 @@ export function startSubagentCompletionRelays(options) {
     if (active.has(runId)) {
       continue;
     }
+    while (active.size >= MAX_TRACKED_RELAYS) {
+      active.delete(active.keys().next().value);
+    }
     increment(stats, "started");
     const relay = (async () => {
       try {
@@ -96,8 +100,6 @@ export function startSubagentCompletionRelays(options) {
             error instanceof Error ? error.message : String(error)
           }`,
         );
-      } finally {
-        active.delete(runId);
       }
     })();
     active.set(runId, relay);

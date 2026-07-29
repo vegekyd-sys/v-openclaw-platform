@@ -333,7 +333,11 @@ export async function buildHarnessAttemptResult(agentResult) {
     ...(Array.isArray(agentResult?.acceptedSessionSpawns)
       ? agentResult.acceptedSessionSpawns
       : []),
-    ...readAcceptedSessionSpawns(currentTurnMessages),
+    // A child can finish while the parent is still inside a long foreground
+    // tool call. OpenClaw then appends an internal completion user event to
+    // this same attempt, so limiting the scan to the last user message would
+    // discard the earlier sessions_spawn result.
+    ...readAcceptedSessionSpawns(messagesSnapshot),
   ]) {
     const runId =
       typeof spawn?.runId === "string" ? spawn.runId.trim() : undefined;

@@ -268,7 +268,7 @@ const plugin = {
           onRetry: (event) => {
             nativeHarnessStats.sessionRolloverRetries += 1;
             api.logger.warn(
-              `retrying ${sessionKey} after compaction rotation ${event.previousSessionId} -> ${event.nextSessionId}`,
+              `retrying ${sessionKey} after pre-work session revision ${event.previousSessionId} -> ${event.nextSessionId}`,
             );
           },
           onRebind: (event) => {
