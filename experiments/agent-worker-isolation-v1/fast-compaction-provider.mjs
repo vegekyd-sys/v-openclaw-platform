@@ -256,6 +256,34 @@ function baseSystemPrompt(customInstructions) {
     .join("\n\n");
 }
 
+function buildCompletionPrompt({
+  transcript,
+  identifiers,
+  previousAttempt,
+  auditReasons,
+}) {
+  return [
+    "Task: Return only the compact summary, with no preface or commentary.",
+    "Use these headings exactly once and in this exact order:",
+    ...REQUIRED_COMPACTION_SECTIONS,
+    identifiers.length > 0
+      ? `Required literal identifiers: ${identifiers.join(", ")}`
+      : "Required literal identifiers: none.",
+    auditReasons?.length
+      ? `Repair every failed check: ${auditReasons.join("; ")}`
+      : "",
+    previousAttempt?.trim()
+      ? `<previous_failed_attempt>\n${truncateText(
+          previousAttempt,
+          8_000,
+        )}\n</previous_failed_attempt>`
+      : "",
+    transcript,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 export function buildFastCompactionProvider(options) {
   if (typeof options?.llmComplete !== "function") {
     throw new Error("llmComplete is required");
@@ -310,7 +338,7 @@ export function buildFastCompactionProvider(options) {
       const transcript = buildBoundedTranscript(
         Array.isArray(params.messages) ? params.messages : [],
         params.previousSummary,
-        maxInputChars,
+        Math.max(10_000, maxInputChars - 12_000),
       );
       const identifiers = extractIdentifiers(transcript);
       const originalSystemPrompt = baseSystemPrompt(params.customInstructions);
@@ -326,7 +354,17 @@ export function buildFastCompactionProvider(options) {
         ) {
           stats.modelCalls += 1;
           const result = await options.llmComplete({
-            messages: [{ role: "user", content: transcript }],
+            messages: [
+              {
+                role: "user",
+                content: buildCompletionPrompt({
+                  transcript,
+                  identifiers,
+                  previousAttempt: summary,
+                  auditReasons: attempt > 0 ? audit.reasons : [],
+                }),
+              },
+            ],
             model,
             maxTokens: maxOutputTokens,
             temperature: 0,

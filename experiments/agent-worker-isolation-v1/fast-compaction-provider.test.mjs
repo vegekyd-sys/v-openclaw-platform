@@ -58,6 +58,8 @@ test("uses one configured GPT-5.5 completion when the first summary passes audit
   assert.equal(calls[0].model, "azure-openai/gpt-5.5");
   assert.equal(calls[0].agentId, undefined);
   assert.equal(calls[0].temperature, 0);
+  assert.match(calls[0].messages[0].content, /## Decisions/);
+  assert.match(calls[0].messages[0].content, /Return only the compact summary/);
   assert.match(calls[0].messages[0].content, /oc_1234567890abcdef/);
   assert.ok(calls[0].messages[0].content.length < 20_000);
 });
