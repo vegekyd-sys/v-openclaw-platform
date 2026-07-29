@@ -187,7 +187,7 @@ function buildBoundedTranscript(messages, previousSummary, maxInputChars) {
 function extractIdentifiers(text) {
   const matches =
     text.match(
-      /(oc_[A-Za-z0-9_-]{8,}|https?:\/\/\S+|\/[A-Za-z0-9_.-]{2,}(?:\/[A-Za-z0-9_.-]+)+|\b[A-Fa-f0-9]{12,}\b|\b\d{9,}\b)/g,
+      /(oc_[A-Za-z0-9_-]{8,}|https?:\/\/\S+|\b[A-Fa-f0-9]{12,}\b|\b\d{9,}\b)/g,
     ) ?? [];
   return [...new Set(matches.map((value) => value.replace(/[),.;\]}]+$/g, "")))]
     .filter((value) => value.length >= 8)

@@ -17,6 +17,7 @@ import {
 } from "./exec-env.mjs";
 import { buildFastCompactionProvider } from "./fast-compaction-provider.mjs";
 import { runWithSessionRolloverRetry } from "./session-rollover-retry.mjs";
+import { createCompactionAdmissionBarrier } from "./compaction-admission-barrier.mjs";
 
 const SESSION_PREFIX = "agent:makaron:explicit:vlab-worker-";
 const NATIVE_HARNESS_ID = "vlab-worker";
@@ -164,6 +165,27 @@ const plugin = {
       llmComplete: (params) => api.runtime.llm.complete(params),
     });
     api.registerCompactionProvider(fastCompactionProvider);
+    const compactionAdmissionBarrier = createCompactionAdmissionBarrier({
+      timeoutMs: 120_000,
+    });
+    api.on(
+      "before_compaction",
+      (event, context) =>
+        compactionAdmissionBarrier.beforeCompaction(event, context),
+      { priority: 100 },
+    );
+    api.on(
+      "after_compaction",
+      (event, context) =>
+        compactionAdmissionBarrier.afterCompaction(event, context),
+      { priority: 100 },
+    );
+    api.on(
+      "before_dispatch",
+      (event, context) =>
+        compactionAdmissionBarrier.beforeDispatch(event, context),
+      { priority: 100 },
+    );
     const openClawAgentRuntimePath = resolveOpenClawAgentRuntimePath();
     const transcriptRuntimePromise = import(
       pathToFileURL(
@@ -720,6 +742,7 @@ const plugin = {
         );
       },
       async stop() {
+        compactionAdmissionBarrier.dispose();
         await pool.close();
       },
     });
@@ -759,6 +782,7 @@ const plugin = {
             nativeUserTurnOwnedByWorker: true,
             nativeUserTurnAcknowledgedByGateway: true,
             sessionRolloverRebindRetry: true,
+            compactionAdmissionBarrier: compactionAdmissionBarrier.status(),
             fastCompaction: {
               provider: fastCompactionProvider.id,
               model: fastCompactionModel,

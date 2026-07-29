@@ -163,3 +163,36 @@ test("bounds large histories while retaining the newest real user request", asyn
   assert.ok(captured.messages[0].content.length <= 40_000);
   assert.match(captured.messages[0].content, /LATEST_USER_ASK_987654321/);
 });
+
+test("does not spend a quality retry on incidental tool-result file paths", async () => {
+  let calls = 0;
+  const provider = buildFastCompactionProvider({
+    model: "azure-openai/gpt-5.5",
+    maxQualityRetries: 1,
+    llmComplete: async () => {
+      calls += 1;
+      return {
+        text: validSummary,
+        provider: "azure-openai",
+        model: "gpt-5.5",
+        usage: {},
+      };
+    },
+  });
+
+  await provider.summarize({
+    messages: [
+      {
+        role: "user",
+        content: "继续处理 oc_1234567890abcdef。",
+      },
+      {
+        role: "toolResult",
+        content:
+          "Read /var/log/syslog.3.gz and /srv/vlab/workspace/internal/cache.json",
+      },
+    ],
+  });
+
+  assert.equal(calls, 1);
+});

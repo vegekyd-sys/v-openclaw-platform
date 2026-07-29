@@ -122,6 +122,7 @@ for required in \
   harness-result.mjs \
   harness-failure.mjs \
   session-rollover-retry.mjs \
+  compaction-admission-barrier.mjs \
   fast-compaction-provider.mjs \
   self-test.mjs; do
   [[ -f "${RELEASE_DIR}/${required}" ]] || {
@@ -307,6 +308,7 @@ jq -e \
   '.integration.workerIsolationVersion == "0.1.4"
    and .integration.nativeAgentHarnessDispatchAttached == true
    and .integration.sessionRolloverRebindRetry == true
+   and .integration.compactionAdmissionBarrier.timeoutMs == 120000
    and .integration.fastCompaction.provider == "versa-fast-quality-v1"
    and .integration.fastCompaction.model == "azure-openai/gpt-5.5"
    and .integration.configDomainIsolation.execUsesGatewayConfig == true

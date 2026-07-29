@@ -125,6 +125,7 @@ for required in \
   harness-result.mjs \
   harness-failure.mjs \
   session-rollover-retry.mjs \
+  compaction-admission-barrier.mjs \
   fast-compaction-provider.mjs \
   stubborn-worker.mjs \
   self-test.mjs; do
