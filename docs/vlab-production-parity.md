@@ -32,10 +32,9 @@ The seeded Makaron workspace is additive and remains as a sandbox fixture after
 rollback. No production credential, Session, Memory, browser profile, or cron
 state is copied by this mechanism.
 
-Production-only adapter plugins are reported as an intentional gap until VLab
-has its own provider credential and a real compatibility smoke. In particular,
-the core Worker and Workshop acceptance must not be presented as proof that the
-`makaron-image` adapter itself works in VLab.
+The Makaron image adapter uses VLab's own Makaron auth and CLI installation.
+The parity gate checks that the plugin contract is loaded; a real image smoke
+is still required when a candidate changes image-provider behavior.
 
 ## Promotion rule
 

@@ -15,9 +15,10 @@ Environment=OPENCLAW_CONFIG_PATH=/srv/vlab/state/openclaw.json
 Environment=OPENCLAW_WORKSPACE_DIR=/srv/vlab/workspace
 Environment=OPENCLAW_GATEWAY_PORT=23793
 Environment=NODE_ENV=production
+EnvironmentFile=-/srv/vlab/state/makaron.env
 Environment=NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 Environment=TMPDIR=/srv/vlab/tmp
-Environment=PATH=/opt/vlab/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=PATH=/srv/vlab/node_modules/.bin:/opt/vlab/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=/opt/vlab/node/bin/node --inspect=127.0.0.1:9239 --max-old-space-size=4096 /opt/vlab/current/node_modules/openclaw/dist/index.js gateway --port 23793
 Restart=always
 RestartSec=5

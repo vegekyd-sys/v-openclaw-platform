@@ -7,6 +7,9 @@ UNIT_SOURCE="${VLAB_PARITY_UNIT_SOURCE:-/tmp/openclaw-vlab-gateway.service}"
 CONFIG_PATH="${LAB_ROOT}/state/openclaw.json"
 WORKER_CONFIG_PATH="${LAB_ROOT}/experiments/agent-worker-isolation-v1/worker-openclaw.json"
 ACTIVE_MANIFEST="${LAB_ROOT}/experiments/production-parity-v1/active.json"
+MAKARON_AUTH_SOURCE="${VLAB_MAKARON_AUTH_SOURCE:-/root/.makaron/auth.json}"
+MAKARON_PLUGIN_SOURCE="${VLAB_MAKARON_PLUGIN_SOURCE:-${LAB_ROOT}/backups/legacy-plugin-state-seed/extensions/makaron-image}"
+MAKARON_CLI_VERSION="${VLAB_MAKARON_CLI_VERSION:-0.13.0}"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 BACKUP_DIR="${LAB_ROOT}/backups/production-parity-v1/${TIMESTAMP}"
 UNIT_TARGET="/etc/systemd/system/openclaw-vlab-gateway.service"
@@ -51,6 +54,14 @@ done
 }
 [[ -f "$CONFIG_PATH" ]] || {
   echo "missing vLab config: $CONFIG_PATH" >&2
+  exit 1
+}
+[[ -f "$MAKARON_AUTH_SOURCE" ]] || {
+  echo "missing VLab Makaron auth: $MAKARON_AUTH_SOURCE" >&2
+  exit 1
+}
+[[ -f "${MAKARON_PLUGIN_SOURCE}/openclaw.plugin.json" ]] || {
+  echo "missing VLab Makaron plugin source: $MAKARON_PLUGIN_SOURCE" >&2
   exit 1
 }
 
@@ -122,6 +133,35 @@ elif [[ ! -e "$makaron_skill" && -d "$personal_makaron_skill" ]]; then
   ln -s "$personal_makaron_skill" "$makaron_skill"
 fi
 
+makaron_plugin_path="${makaron_workspace}/plugins/makaron-image"
+install -d -o vlab -g vlab -m 0700 \
+  "${LAB_ROOT}/.makaron" \
+  "$(dirname "$makaron_plugin_path")"
+install -o vlab -g vlab -m 0600 \
+  "$MAKARON_AUTH_SOURCE" "${LAB_ROOT}/.makaron/auth.json"
+makaron_api_key="$(jq -er '._apiKey' "$MAKARON_AUTH_SOURCE")"
+makaron_url="$(jq -er '._baseUrl' "$MAKARON_AUTH_SOURCE")"
+{
+  printf 'MAKARON_API_KEY=%s\n' "$makaron_api_key"
+  printf 'MAKARON_URL=%s\n' "$makaron_url"
+} > "${LAB_ROOT}/state/makaron.env"
+chown root:root "${LAB_ROOT}/state/makaron.env"
+chmod 0600 "${LAB_ROOT}/state/makaron.env"
+unset makaron_api_key makaron_url
+install -d -o vlab -g vlab -m 0700 "$makaron_plugin_path"
+rsync -a --delete "${MAKARON_PLUGIN_SOURCE}/" "${makaron_plugin_path}/"
+if [[ ! -x "${LAB_ROOT}/node_modules/.bin/makaron-cli" ]]; then
+  sudo -u vlab env \
+    HOME="$LAB_ROOT" \
+    PATH="/opt/vlab/node/bin:/usr/bin:/bin" \
+    /opt/vlab/node/bin/npm install \
+    --prefix "$LAB_ROOT" \
+    --omit=dev \
+    --no-audit \
+    --no-fund \
+    "makaron-cli@${MAKARON_CLI_VERSION}"
+fi
+
 candidate="$(mktemp)"
 jq \
   --arg default_workspace "$default_workspace" \
@@ -140,6 +180,7 @@ jq \
   --argjson request_timeout_ms "$request_timeout_ms" \
   --arg worker_config_path "$WORKER_CONFIG_PATH" \
   --arg gateway_config_path "$CONFIG_PATH" \
+  --arg makaron_plugin_path "$makaron_plugin_path" \
   '
     .agents.defaults.workspace = $default_workspace
     | .agents.defaults.maxConcurrent = $agent_max
@@ -168,7 +209,8 @@ jq \
           sub("^" + $default_workspace; $makaron_workspace)
         else .
         end
-      ))
+      ) + [$makaron_plugin_path] | unique)
+    | .plugins.entries["makaron-image"] = {enabled: true}
     | .plugins.entries["vlab-agent-worker-isolation"].config = (
         (.plugins.entries["vlab-agent-worker-isolation"].config // {}) + {
           minWorkers: $min_workers,
@@ -197,6 +239,7 @@ if [[ -f "$WORKER_CONFIG_PATH" ]]; then
     --argjson subagent_max "$subagent_max" \
     --argjson workshop_max "$workshop_max" \
     --argjson allow_symlink_writes "$allow_symlink_writes" \
+    --arg makaron_plugin_path "$makaron_plugin_path" \
     '
       .agents.defaults.workspace = $default_workspace
       | .agents.defaults.maxConcurrent = $agent_max
@@ -220,7 +263,8 @@ if [[ -f "$WORKER_CONFIG_PATH" ]]; then
             sub("^" + $default_workspace; $makaron_workspace)
           else .
           end
-        ))
+        ) + [$makaron_plugin_path] | unique)
+      | .plugins.entries["makaron-image"] = {enabled: true}
     ' \
     "$WORKER_CONFIG_PATH" > "$worker_candidate"
   install -o vlab -g vlab -m 0600 "$worker_candidate" "$WORKER_CONFIG_PATH"

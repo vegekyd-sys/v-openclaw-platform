@@ -49,6 +49,8 @@ jq -e \
     ]
     and all(.plugins.load.paths[]?;
       (startswith($default_workspace + "/plugins/") | not))
+    and (.plugins.load.paths | index($makaron_workspace + "/plugins/makaron-image")) != null
+    and .plugins.entries["makaron-image"].enabled == true
     and .plugins.entries["vlab-agent-worker-isolation"].config.minWorkers == 1
     and .plugins.entries["vlab-agent-worker-isolation"].config.maxWorkers == 3
     and .plugins.entries["vlab-agent-worker-isolation"].config.sessionsPerWorker == 3
@@ -81,6 +83,10 @@ systemctl is-active --quiet openclaw-vlab-gateway.service
 [[ -d "$makaron_workspace" ]]
 [[ -L "${makaron_workspace}/skills/makaron" ]]
 [[ "$(realpath "${makaron_workspace}/skills/makaron")" == "${personal_skills}/makaron" ]]
+[[ -f "${makaron_workspace}/plugins/makaron-image/openclaw.plugin.json" ]]
+[[ -x "${LAB_ROOT}/node_modules/.bin/makaron-cli" ]]
+[[ -s "${LAB_ROOT}/state/makaron.env" ]]
+[[ "$(stat -c %a "${LAB_ROOT}/state/makaron.env")" == "600" ]]
 [[ "$(jq -er '.platformCommit' "${LAB_ROOT}/experiments/agent-worker-isolation-v1/active.json")" == "$expected_release" ]]
 
 sudo -u vlab env \
