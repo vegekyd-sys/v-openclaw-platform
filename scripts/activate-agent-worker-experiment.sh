@@ -114,6 +114,7 @@ for required in \
   worker-pool.mjs \
   worker.mjs \
   worker-progress.mjs \
+  exec-env.mjs \
   runtime-path.mjs \
   harness-result.mjs \
   stubborn-worker.mjs \
@@ -160,6 +161,7 @@ jq \
   --arg release_dir "$RELEASE_DIR" \
   --arg experiment_root "$EXPERIMENT_ROOT" \
   --arg worker_config_path "$WORKER_CONFIG_PATH" \
+  --arg gateway_config_path "$CONFIG_PATH" \
   --argjson min_workers "$MIN_WORKERS" \
   --argjson worker_count "$WORKER_COUNT" \
   --argjson sessions_per_worker "$SESSIONS_PER_WORKER" \
@@ -215,7 +217,8 @@ jq \
           sessionsPerWorker: $sessions_per_worker,
           idleTimeoutMs: $idle_timeout_ms,
           requestTimeoutMs: 600000,
-          workerConfigPath: $worker_config_path
+          workerConfigPath: $worker_config_path,
+          gatewayConfigPath: $gateway_config_path
         }
       }
   ' \

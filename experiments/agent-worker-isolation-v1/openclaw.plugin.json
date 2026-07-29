@@ -47,6 +47,10 @@
       "workerConfigPath": {
         "type": "string",
         "minLength": 1
+      },
+      "gatewayConfigPath": {
+        "type": "string",
+        "minLength": 1
       }
     }
   }

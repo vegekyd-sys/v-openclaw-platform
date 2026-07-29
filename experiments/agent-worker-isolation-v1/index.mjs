@@ -6,6 +6,10 @@ import { resolveOpenClawAgentRuntimePath } from "./runtime-path.mjs";
 import { buildHarnessFailureAttempt } from "./harness-failure.mjs";
 import { closeInterruptedToolCalls } from "./transcript-recovery.mjs";
 import { relayWorkerProgress } from "./worker-progress.mjs";
+import {
+  buildWorkerEnvironment,
+  resolveWorkerExecEnv,
+} from "./exec-env.mjs";
 
 const SESSION_PREFIX = "agent:makaron:explicit:vlab-worker-";
 const NATIVE_HARNESS_ID = "vlab-worker";
@@ -109,8 +113,20 @@ const plugin = {
     );
     const workerConfigPath =
       typeof api.pluginConfig?.workerConfigPath === "string"
-        ? api.pluginConfig.workerConfigPath
+        ? api.pluginConfig.workerConfigPath.trim()
         : undefined;
+    const gatewayConfigPath =
+      typeof api.pluginConfig?.gatewayConfigPath === "string"
+        ? api.pluginConfig.gatewayConfigPath.trim()
+        : typeof process.env.OPENCLAW_CONFIG_PATH === "string"
+          ? process.env.OPENCLAW_CONFIG_PATH.trim()
+          : undefined;
+    if (!workerConfigPath) {
+      throw new Error("workerConfigPath is required");
+    }
+    if (!gatewayConfigPath) {
+      throw new Error("gatewayConfigPath is required");
+    }
     const openClawAgentRuntimePath = resolveOpenClawAgentRuntimePath();
     const transcriptRuntimePromise = import(
       pathToFileURL(
@@ -122,15 +138,23 @@ const plugin = {
         resolve(dirname(openClawAgentRuntimePath), "diagnostic-runtime.js"),
       ).href
     );
-    const workerEnv = {
-      ...process.env,
-      VLAB_OPENCLAW_AGENT_RUNTIME: openClawAgentRuntimePath,
-      VLAB_REQUIRE_OPENCLAW_AGENT_RUNTIME: "1",
-      VLAB_WORKER_HEARTBEAT_MS: String(workerHeartbeatMs),
-      ...(workerConfigPath
-        ? { OPENCLAW_CONFIG_PATH: workerConfigPath }
-        : {}),
-    };
+    const workerEnv = buildWorkerEnvironment(
+      {
+        ...process.env,
+        VLAB_OPENCLAW_AGENT_RUNTIME: openClawAgentRuntimePath,
+        VLAB_REQUIRE_OPENCLAW_AGENT_RUNTIME: "1",
+        VLAB_WORKER_HEARTBEAT_MS: String(workerHeartbeatMs),
+      },
+      {
+        gatewayConfigPath,
+        workerConfigPath,
+      },
+    );
+    api.on(
+      "resolve_exec_env",
+      (event) => resolveWorkerExecEnv(event),
+      { priority: 100 },
+    );
     const sharedPool = acquireSharedPool({
       minWorkers,
       maxWorkers,
@@ -554,10 +578,15 @@ const plugin = {
             currentEntry: "native Channel/dispatch -> AgentHarness -> worker agentCommand",
             nativeAgentHarnessId: NATIVE_HARNESS_ID,
             nativeAgentHarnessDispatchAttached: true,
-            workerIsolationVersion: "0.1.1",
+            workerIsolationVersion: "0.1.2",
             longRunProgressBridge: true,
             channelTimeoutCoupledToWorker: false,
             cooperativeRequestTimeout: true,
+            configDomainIsolation: {
+              workerRuntimeConfigPath: workerConfigPath,
+              workerExecConfigPath: gatewayConfigPath,
+              execUsesGatewayConfig: true,
+            },
             workerHeartbeatMs,
             productionPromotionBlocked: false,
             productionPromotionAcceptance: {
