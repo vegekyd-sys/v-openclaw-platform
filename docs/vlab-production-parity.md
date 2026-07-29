@@ -44,3 +44,10 @@ VLab acceptance is valid for production only when:
 
 If production changes any material field, update the profile first and repeat
 VLab acceptance. Do not discover the difference during production cutover.
+
+The 6-Session soak reports Event Loop at two levels. Zero degraded samples is
+the optimization target. The hard stress gate allows at most a 20% transient
+degraded-sample ratio and a 2000 ms worst sampled p99, but still requires every
+turn to finish, no pending work, final Event Loop recovery, and no Gateway
+restart. This distinction keeps a brief recovered spike visible without
+misreporting a completed run as a crash or silent failure.

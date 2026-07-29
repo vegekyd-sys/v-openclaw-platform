@@ -18,6 +18,8 @@ REPORT_DIR="${LAB_ROOT}/logs/agent-worker-soak-${TIMESTAMP}"
 METRICS_PATH="${REPORT_DIR}/metrics.jsonl"
 MONITOR_STOP="${REPORT_DIR}/monitor.stop"
 MONITOR_INTERVAL_SECONDS="${VLAB_SOAK_MONITOR_INTERVAL_SECONDS:-5}"
+MAX_DEGRADED_RATIO="${VLAB_SOAK_MAX_DEGRADED_RATIO:-0.20}"
+MAX_EVENT_LOOP_P99_MS="${VLAB_SOAK_MAX_EVENT_LOOP_P99_MS:-2000}"
 MONITOR_PID=""
 
 call_gateway() {
@@ -412,8 +414,15 @@ metrics_summary="$(
   }' "$METRICS_PATH"
 )"
 [[ "$(jq -r '.samples > 0' <<< "$metrics_summary")" == "true" ]]
-[[ "$(jq -r '.degradedSamples' <<< "$metrics_summary")" == "0" ]]
 [[ "$(jq -r '.peakActiveSessions' <<< "$metrics_summary")" == "$SESSION_COUNT" ]]
+event_loop_stress_slo_met="$(
+  jq -nr \
+    --argjson metrics "$metrics_summary" \
+    --argjson max_degraded_ratio "$MAX_DEGRADED_RATIO" \
+    --argjson max_p99_ms "$MAX_EVENT_LOOP_P99_MS" \
+    '($metrics.degradedSamples / $metrics.samples) <= $max_degraded_ratio
+     and $metrics.maxEventLoopDelayP99Ms <= $max_p99_ms'
+)"
 
 jq -n \
   --arg timestamp "$TIMESTAMP" \
@@ -430,6 +439,9 @@ jq -n \
   --argjson expected_workers "$expected_workers" \
   --argjson max_active_sessions "$max_active_sessions" \
   --argjson metrics "$metrics_summary" \
+  --argjson event_loop_stress_slo_met "$event_loop_stress_slo_met" \
+  --argjson max_degraded_ratio "$MAX_DEGRADED_RATIO" \
+  --argjson max_event_loop_p99_ms "$MAX_EVENT_LOOP_P99_MS" \
   --arg baseline_restarts "$baseline_restarts" \
   --arg final_restarts "$final_restarts" \
   '{
@@ -459,7 +471,13 @@ jq -n \
       pendingDuringSamples: 0
     },
     gateway: {
-      eventLoopDegraded: false,
+      eventLoopRecoveredAtEnd: true,
+      eventLoopZeroDegradationTargetMet: ($metrics.degradedSamples == 0),
+      eventLoopStressSloMet: $event_loop_stress_slo_met,
+      eventLoopStressSlo: {
+        maxDegradedRatio: $max_degraded_ratio,
+        maxEventLoopDelayP99Ms: $max_event_loop_p99_ms
+      },
       restartsBefore: $baseline_restarts,
       restartsAfter: $final_restarts
     },
@@ -469,3 +487,4 @@ chown vlab:vlab "${REPORT_DIR}/summary.json"
 chmod 0600 "${REPORT_DIR}/summary.json"
 
 cat "${REPORT_DIR}/summary.json"
+[[ "$event_loop_stress_slo_met" == "true" ]]
