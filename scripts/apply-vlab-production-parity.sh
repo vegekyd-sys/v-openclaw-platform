@@ -150,7 +150,14 @@ chmod 0600 "${LAB_ROOT}/state/makaron.env"
 unset makaron_api_key makaron_url
 install -d -o vlab -g vlab -m 0700 "$makaron_plugin_path"
 rsync -a --delete "${MAKARON_PLUGIN_SOURCE}/" "${makaron_plugin_path}/"
-if [[ ! -x "${LAB_ROOT}/node_modules/.bin/makaron-cli" ]]; then
+# The preserved vLab adapter predates the CLI binary rename and invokes
+# `npx makaron-cli`. Pin it to the locally installed `makaron` binary so a
+# smoke never downloads an unreviewed newer CLI at runtime.
+sed -i \
+  -e 's/const args = \["makaron-cli", "edit"\];/const args = ["edit"];/' \
+  -e 's/spawnSync("npx", args/spawnSync("makaron", args/' \
+  "${makaron_plugin_path}/image-generation-provider.js"
+if [[ ! -x "${LAB_ROOT}/node_modules/.bin/makaron" ]]; then
   sudo -u vlab env \
     HOME="$LAB_ROOT" \
     PATH="/opt/vlab/node/bin:/usr/bin:/bin" \

@@ -84,7 +84,7 @@ systemctl is-active --quiet openclaw-vlab-gateway.service
 [[ -L "${makaron_workspace}/skills/makaron" ]]
 [[ "$(realpath "${makaron_workspace}/skills/makaron")" == "${personal_skills}/makaron" ]]
 [[ -f "${makaron_workspace}/plugins/makaron-image/openclaw.plugin.json" ]]
-[[ -x "${LAB_ROOT}/node_modules/.bin/makaron-cli" ]]
+[[ -x "${LAB_ROOT}/node_modules/.bin/makaron" ]]
 [[ -s "${LAB_ROOT}/state/makaron.env" ]]
 [[ "$(stat -c %a "${LAB_ROOT}/state/makaron.env")" == "600" ]]
 [[ "$(jq -er '.platformCommit' "${LAB_ROOT}/experiments/agent-worker-isolation-v1/active.json")" == "$expected_release" ]]
