@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "profile": "vlab-production-parity-v1",
+  "openclaw": {
+    "version": "2026.7.1",
+    "build": "2d2ddc4",
+    "nodeVersion": "22.23.1"
+  },
+  "paths": {
+    "state": "/srv/vlab/state",
+    "defaultWorkspace": "/srv/vlab/workspace",
+    "makaronWorkspace": "/srv/vlab/makaron-openclaw/.openclaw-local/workspace",
+    "makaronAgentDir": "/srv/vlab/state/agents/makaron/agent",
+    "personalSkills": "/srv/vlab/.agents/skills",
+    "gatewayConfig": "/srv/vlab/state/openclaw.json",
+    "workerConfig": "/srv/vlab/experiments/agent-worker-isolation-v1/worker-openclaw.json"
+  },
+  "config": {
+    "agentMaxConcurrent": 8,
+    "subagentMaxConcurrent": 8,
+    "sessionsVisibility": "all",
+    "workshopMaxSkillBytes": 100000,
+    "workshopAllowSymlinkTargetWrites": true,
+    "worker": {
+      "minWorkers": 1,
+      "maxWorkers": 3,
+      "sessionsPerWorker": 3,
+      "idleTimeoutMs": 180000,
+      "requestTimeoutMs": 600000
+    }
+  },
+  "service": {
+    "restart": "always",
+    "memoryHigh": "5G",
+    "memoryMax": "6G",
+    "cpuQuota": "400%",
+    "maxOldSpaceSizeMiB": 4096
+  },
+  "productionReference": {
+    "workerRelease": "8d3b75ea2a61eb5dc118d6cf3b12d827b66f2329",
+    "nodeVersion": "22.23.1",
+    "serviceRestart": "always",
+    "memoryHigh": "24G",
+    "memoryMax": "26G",
+    "cpuQuota": "800%",
+    "maxOldSpaceSizeMiB": 12288
+  },
+  "intentionalDifferences": [
+    "VLab keeps its own Feishu account and never copies production channel credentials.",
+    "VLab keeps isolated sessions, memory, browser state, crons, bindings, and external-write MCP state.",
+    "VLab uses four CPU cores and a 6 GiB cgroup limit, so service memory and CPU limits are scaled down.",
+    "VLab may use only the DeepSeek provider; production provider credentials and fallbacks are not copied.",
+    "Workspace layout and plugin contracts are mirrored, but the production workspace data set is not copied."
+  ]
+}

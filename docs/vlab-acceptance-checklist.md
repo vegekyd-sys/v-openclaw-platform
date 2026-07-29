@@ -54,11 +54,21 @@ when the schema migration is nominally backward-compatible.
 
 ## Environment-parity review
 
+- [ ] `tests/vlab-production-parity.sh` passes against the versioned parity
+      profile.
+- [ ] Node/OpenClaw versions, Gateway restart policy, concurrency, Session
+      visibility, Makaron workspace layout, Workshop config, Worker config, and
+      exact Worker release match the profile.
 - [ ] Differences in environment variables, model endpoints, runtime versions,
-      filesystem layout, and expected load are listed.
+      filesystem layout, plugins, and expected load are listed.
 - [ ] Each material difference is either tested, mitigated, or explicitly
       accepted.
 - [ ] The exact accepted artifact can be staged on private V without rebuilding.
+
+The profile intentionally does not copy production credentials, sessions,
+memory, browser state, cron state, or the full production workspace. Hardware
+limits and provider availability are explicit scaled differences; they are not
+silently treated as parity.
 
 ## Rollback drill
 

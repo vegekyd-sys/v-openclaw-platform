@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import {
   mkdir,
   readFile,
@@ -13,8 +14,18 @@ import { pathToFileURL } from "node:url";
 const labRoot = process.env.LAB_ROOT ?? "/srv/vlab";
 const stateRoot =
   process.env.OPENCLAW_STATE_DIR ?? `${labRoot}/state`;
+const bootstrapGatewayConfigPath =
+  process.env.OPENCLAW_CONFIG_PATH ?? `${stateRoot}/openclaw.json`;
+const bootstrapConfig = JSON.parse(
+  readFileSync(bootstrapGatewayConfigPath, "utf8"),
+);
+const configuredMakaronWorkspace = bootstrapConfig.agents?.list?.find(
+  (agent) => agent.id === "makaron",
+)?.workspace;
 const workspaceDir =
-  process.env.OPENCLAW_WORKSPACE_DIR ?? `${labRoot}/workspace`;
+  process.env.VLAB_WORKSHOP_WORKSPACE ??
+  configuredMakaronWorkspace ??
+  `${labRoot}/workspace`;
 const runtimePath =
   process.env.VLAB_OPENCLAW_GATEWAY_RUNTIME ??
   "/opt/vlab/current/node_modules/openclaw/dist/plugin-sdk/gateway-runtime.js";
@@ -34,6 +45,7 @@ const sessionKey = `agent:makaron:explicit:${skillName}`;
 const runId = skillName;
 const targetRoot =
   process.env.VLAB_WORKSHOP_TARGET_ROOT ??
+  bootstrapConfig.skills?.load?.allowSymlinkTargets?.[0] ??
   `${labRoot}/.agents/skills`;
 const targetSkillDir = `${targetRoot}/${skillName}`;
 const targetSkillFile = `${targetSkillDir}/SKILL.md`;

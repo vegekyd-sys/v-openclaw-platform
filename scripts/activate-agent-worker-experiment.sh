@@ -5,7 +5,7 @@ LAB_ROOT="${LAB_ROOT:-/srv/vlab}"
 MIN_WORKERS="${VLAB_WORKER_MIN_COUNT:-1}"
 WORKER_COUNT="${VLAB_WORKER_COUNT:-3}"
 SESSIONS_PER_WORKER="${VLAB_WORKER_SESSIONS_PER_WORKER:-3}"
-AGENT_MAX_CONCURRENT="${VLAB_AGENT_MAX_CONCURRENT:-9}"
+AGENT_MAX_CONCURRENT="${VLAB_AGENT_MAX_CONCURRENT:-8}"
 SUBAGENT_MAX_CONCURRENT="${VLAB_SUBAGENT_MAX_CONCURRENT:-8}"
 IDLE_TIMEOUT_MS="${VLAB_WORKER_IDLE_TIMEOUT_MS:-180000}"
 ARCHIVE_PATH="${ARCHIVE_PATH:-/tmp/vlab-agent-worker-isolation-v1.tar.gz}"
@@ -171,7 +171,7 @@ jq \
   '
     .tools = (.tools // {})
     | .tools.sessions = (.tools.sessions // {})
-    | .tools.sessions.visibility = "agent"
+    | .tools.sessions.visibility = "all"
     | .agents = (.agents // {})
     | .agents.defaults = (.agents.defaults // {})
     | .agents.defaults.maxConcurrent = $agent_max_concurrent

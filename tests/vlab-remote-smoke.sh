@@ -27,6 +27,7 @@ ssh \
      gateway status --json --require-rpc --token "$gateway_token" >/dev/null
    test "$(stat -c %U /srv/vlab/state)" = "vlab"
    test "$(stat -c %U /srv/vlab/workspace)" = "vlab"
+   test "$(stat -c %U /srv/vlab/makaron-openclaw/.openclaw-local/workspace)" = "vlab"
    test -s /srv/vlab/state/gateway-token
    jq -e "
      .gateway.port == 23793

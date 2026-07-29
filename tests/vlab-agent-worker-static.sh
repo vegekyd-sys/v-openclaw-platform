@@ -25,7 +25,7 @@ bash -n "${REPO_ROOT}/tests/vlab-agent-worker-subagents.sh"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-native-dispatch.sh"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-native-faults.sh"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-config-domain.sh"
-grep -q 'visibility = "agent"' \
+grep -q 'visibility = "all"' \
   "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
 grep -q '.agents.defaults.maxConcurrent = $agent_max_concurrent' \
   "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"

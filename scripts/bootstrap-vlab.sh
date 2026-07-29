@@ -5,7 +5,7 @@ LAB_ROOT="${LAB_ROOT:-/srv/vlab}"
 LAB_USER="${LAB_USER:-vlab}"
 LAB_PORT="${LAB_PORT:-23793}"
 OPENCLAW_VERSION="${OPENCLAW_VERSION:-2026.7.1}"
-NODE_VERSION="${NODE_VERSION:-22.22.3}"
+NODE_VERSION="${NODE_VERSION:-22.23.1}"
 SOURCE_STATE="${SOURCE_STATE:-/root/.openclaw}"
 SOURCE_WORKSPACE="${SOURCE_WORKSPACE:-/root/makaron-openclaw/.openclaw-local/workspace}"
 UNIT_SOURCE="${UNIT_SOURCE:-/tmp/openclaw-vlab-gateway.service}"
@@ -93,6 +93,8 @@ install -d -o "$LAB_USER" -g "$LAB_USER" -m 0700 \
   "$LAB_ROOT/state" \
   "$LAB_ROOT/state/agents/makaron" \
   "$LAB_ROOT/workspace" \
+  "$LAB_ROOT/makaron-openclaw/.openclaw-local/workspace" \
+  "$LAB_ROOT/tmp" \
   "$LAB_ROOT/logs"
 
 if [[ ! -f "$SEED_MARKER" ]]; then
