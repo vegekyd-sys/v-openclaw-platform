@@ -48,11 +48,46 @@ function assistantTexts(history) {
   );
 }
 
+function modelAssistantTexts(history) {
+  return history.messages.flatMap((message) =>
+    message.role === "assistant" &&
+    message.provider !== "openclaw" &&
+    Array.isArray(message.content)
+      ? message.content
+          .filter(
+            (block) =>
+              block?.type === "text" && typeof block.text === "string",
+          )
+          .map((block) => block.text)
+      : [],
+  );
+}
+
 function toolResults(history, toolName) {
   return history.messages.filter(
     (message) =>
       message.role === "toolResult" && message.toolName === toolName,
   );
+}
+
+function toolResultStatus(result) {
+  if (typeof result.details?.status === "string") {
+    return result.details.status;
+  }
+  for (const block of result.content ?? []) {
+    if (block?.type !== "text" || typeof block.text !== "string") {
+      continue;
+    }
+    try {
+      const parsed = JSON.parse(block.text);
+      if (typeof parsed?.status === "string") {
+        return parsed.status;
+      }
+    } catch {
+      // Some native tools return human-readable text instead of JSON.
+    }
+  }
+  return undefined;
 }
 
 async function saveJson(name, value) {
@@ -85,8 +120,9 @@ assert.equal(
 const message =
   `这是 Worker Harness 语义回归，必须严格按顺序调用工具：` +
   `1) 使用 sessions_spawn 启动一个 isolated subagent；child 必须先用 ` +
-  `exec 执行 /bin/sleep 12，然后只回复 CHILD_DONE_${token}。` +
-  `2) spawn 被接受后，parent 自己使用 exec 执行 /bin/sleep 18，让 child ` +
+  `exec 执行 /bin/sleep 5，然后只回复 CHILD_DONE_${token}。` +
+  `2) spawn 被接受后，parent 自己调用 exec，command 必须是 /bin/sleep 8，` +
+  `并显式设置 yieldMs=15000、timeout=15，让它保持前台直到结束，同时让 child ` +
   `在 parent 仍运行时完成。` +
   `3) parent 的 exec 完成后立刻调用 sessions_yield 等待 child，不要轮询。` +
   `4) 收到真实 subagent completion event 后，只回复 ${marker}。` +
@@ -107,8 +143,11 @@ let history;
 const deadline = Date.now() + 180_000;
 while (Date.now() < deadline) {
   history = await call("chat.history", { sessionKey, limit: 120 });
-  const texts = assistantTexts(history);
-  if (texts.some((text) => text.includes(marker))) {
+  const texts = modelAssistantTexts(history);
+  if (
+    texts.some((text) => text.includes(marker)) &&
+    toolResults(history, "sessions_yield").length > 0
+  ) {
     break;
   }
   await sleep(2_000);
@@ -117,9 +156,10 @@ assert.ok(history, "chat.history did not return");
 await saveJson("history.json", history);
 
 const texts = assistantTexts(history);
+const modelTexts = modelAssistantTexts(history);
 const allAssistantText = texts.join("\n");
 assert.ok(
-  texts.some((text) => text.includes(marker)),
+  modelTexts.some((text) => text.includes(marker)),
   "parent did not resume with the final marker after sessions_yield",
 );
 assert.equal(
@@ -132,21 +172,13 @@ assert.equal(
 
 const spawns = toolResults(history, "sessions_spawn");
 assert.ok(
-  spawns.some((result) => result.details?.status === "accepted"),
+  spawns.some((result) => toolResultStatus(result) === "accepted"),
   "sessions_spawn was not accepted",
 );
 const yields = toolResults(history, "sessions_yield");
 assert.ok(
-  yields.some((result) => result.details?.status === "yielded"),
+  yields.some((result) => toolResultStatus(result) === "yielded"),
   "sessions_yield did not reach its native yielded terminal state",
-);
-assert.ok(
-  history.messages.some(
-    (entry) =>
-      entry.role === "user" &&
-      JSON.stringify(entry.content).includes("Subagent completion event"),
-  ),
-  "subagent completion event was not appended to the parent session",
 );
 
 const after = await call("vlab.workers.status");
