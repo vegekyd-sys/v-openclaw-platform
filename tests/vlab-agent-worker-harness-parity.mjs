@@ -1,0 +1,177 @@
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdir, writeFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
+
+const labRoot = process.env.LAB_ROOT ?? "/srv/vlab";
+const service =
+  process.env.VLAB_GATEWAY_SERVICE ?? "openclaw-vlab-gateway.service";
+const runtimePath =
+  process.env.VLAB_OPENCLAW_GATEWAY_RUNTIME ??
+  "/opt/vlab/current/node_modules/openclaw/dist/plugin-sdk/gateway-runtime.js";
+const timestamp = new Date()
+  .toISOString()
+  .replaceAll("-", "")
+  .replaceAll(":", "")
+  .replace(/\.\d{3}Z$/, "Z");
+const token = timestamp.toLowerCase();
+const sessionKey = `agent:makaron:explicit:vlab-harness-parity-${token}`;
+const runId = `vlab-harness-parity-${token}`;
+const marker = `VLAB_HARNESS_PARITY_OK_${token}`;
+const reportDir =
+  `${labRoot}/logs/agent-worker-harness-parity-${timestamp}`;
+
+function systemdNumber(property) {
+  const raw = execFileSync(
+    "systemctl",
+    ["show", service, `-p${property}`, "--value"],
+    { encoding: "utf8" },
+  ).trim();
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function assistantTexts(history) {
+  return history.messages.flatMap((message) =>
+    message.role === "assistant" && Array.isArray(message.content)
+      ? message.content
+          .filter(
+            (block) =>
+              block?.type === "text" && typeof block.text === "string",
+          )
+          .map((block) => block.text)
+      : [],
+  );
+}
+
+function toolResults(history, toolName) {
+  return history.messages.filter(
+    (message) =>
+      message.role === "toolResult" && message.toolName === toolName,
+  );
+}
+
+async function saveJson(name, value) {
+  await writeFile(
+    `${reportDir}/${name}`,
+    `${JSON.stringify(value, null, 2)}\n`,
+    { mode: 0o600 },
+  );
+}
+
+await mkdir(reportDir, { recursive: true, mode: 0o700 });
+
+const { callGatewayFromCli } = await import(pathToFileURL(runtimePath).href);
+const call = async (method, params = {}) =>
+  await callGatewayFromCli(
+    method,
+    { timeout: "300000", json: true },
+    params,
+  );
+
+const baselineRestarts = systemdNumber("NRestarts");
+const before = await call("vlab.workers.status");
+await saveJson("status-before.json", before);
+assert.equal(
+  before.integration.workerIsolationVersion,
+  "0.1.5",
+  "vLab is not running worker isolation 0.1.5",
+);
+
+const message =
+  `这是 Worker Harness 语义回归，必须严格按顺序调用工具：` +
+  `1) 使用 sessions_spawn 启动一个 isolated subagent；child 必须先用 ` +
+  `exec 执行 /bin/sleep 12，然后只回复 CHILD_DONE_${token}。` +
+  `2) spawn 被接受后，parent 自己使用 exec 执行 /bin/sleep 18，让 child ` +
+  `在 parent 仍运行时完成。` +
+  `3) parent 的 exec 完成后立刻调用 sessions_yield 等待 child，不要轮询。` +
+  `4) 收到真实 subagent completion event 后，只回复 ${marker}。` +
+  `不要发送外部消息，不要修改文件，不能用文字假装调用工具。`;
+
+const sent = await call("chat.send", {
+  sessionKey,
+  agentId: "makaron",
+  message,
+  deliver: false,
+  timeoutMs: 240_000,
+  idempotencyKey: runId,
+});
+await saveJson("send.json", sent);
+assert.equal(sent.runId, runId);
+
+let history;
+const deadline = Date.now() + 180_000;
+while (Date.now() < deadline) {
+  history = await call("chat.history", { sessionKey, limit: 120 });
+  const texts = assistantTexts(history);
+  if (texts.some((text) => text.includes(marker))) {
+    break;
+  }
+  await sleep(2_000);
+}
+assert.ok(history, "chat.history did not return");
+await saveJson("history.json", history);
+
+const texts = assistantTexts(history);
+const allAssistantText = texts.join("\n");
+assert.ok(
+  texts.some((text) => text.includes(marker)),
+  "parent did not resume with the final marker after sessions_yield",
+);
+assert.equal(
+  /Agent couldn't generate a response|Something went wrong while processing|incomplete turn/i.test(
+    allAssistantText,
+  ),
+  false,
+  "Worker surfaced a generic incomplete-turn failure",
+);
+
+const spawns = toolResults(history, "sessions_spawn");
+assert.ok(
+  spawns.some((result) => result.details?.status === "accepted"),
+  "sessions_spawn was not accepted",
+);
+const yields = toolResults(history, "sessions_yield");
+assert.ok(
+  yields.some((result) => result.details?.status === "yielded"),
+  "sessions_yield did not reach its native yielded terminal state",
+);
+assert.ok(
+  history.messages.some(
+    (entry) =>
+      entry.role === "user" &&
+      JSON.stringify(entry.content).includes("Subagent completion event"),
+  ),
+  "subagent completion event was not appended to the parent session",
+);
+
+const after = await call("vlab.workers.status");
+const health = await call("health");
+await saveJson("status-after.json", after);
+await saveJson("health.json", health);
+const finalRestarts = systemdNumber("NRestarts");
+assert.equal(finalRestarts, baselineRestarts);
+assert.equal(health.eventLoop?.degraded, false);
+
+const summary = {
+  ok: true,
+  version: after.integration.workerIsolationVersion,
+  sessionKey,
+  runId,
+  sessionsSpawnAccepted: true,
+  sessionsYieldPreserved: true,
+  parentResumedAfterCompletion: true,
+  genericIncompleteTurnFailure: false,
+  gatewayRestarted: false,
+  eventLoop: health.eventLoop,
+  memoryCurrentBytes: systemdNumber("MemoryCurrent"),
+  memoryPeakBytes: systemdNumber("MemoryPeak"),
+  nativeHarnessStats: after.integration.nativeHarnessStats,
+  reportDir,
+};
+await saveJson("summary.json", summary);
+process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);

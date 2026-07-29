@@ -94,6 +94,8 @@ function acquireSharedPool(options) {
         userTurnAcknowledgementMisses: 0,
         userTurnOwnershipUnavailable: 0,
         workerAttempts: 0,
+        sessionPreflightRebinds: 0,
+        sessionPreflightRebindFailures: 0,
         sessionRolloverRetries: 0,
         sessionRolloverRetryFailures: 0,
         lastSessionKey: undefined,
@@ -249,6 +251,22 @@ const plugin = {
               `retrying ${sessionKey} after compaction rotation ${event.previousSessionId} -> ${event.nextSessionId}`,
             );
           },
+          onRebind: (event) => {
+            nativeHarnessStats.sessionPreflightRebinds =
+              (nativeHarnessStats.sessionPreflightRebinds ?? 0) + 1;
+            api.logger.info(
+              `rebound stale ${sessionKey} dispatch before execution ${event.previousSessionId} -> ${event.nextSessionId}`,
+            );
+          },
+          onRebindError: (error) => {
+            nativeHarnessStats.sessionPreflightRebindFailures =
+              (nativeHarnessStats.sessionPreflightRebindFailures ?? 0) + 1;
+            api.logger.warn(
+              `could not preflight ${sessionKey} session freshness; continuing with the admitted session: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+          },
           execute: async (session) => {
             if (params.abortSignal?.aborted) {
               throw (
@@ -259,45 +277,60 @@ const plugin = {
               );
             }
             finalSession = session;
-            const submitted = await pool.submit(sessionKey, {
-              kind: "agent",
-              harnessAttempt: true,
-              message: params.prompt,
-              transcriptMessage: expectedUserTurn,
-              suppressPromptPersistence: !workerShouldPersistUserTurn,
-              images: params.images,
-              imageOrder: params.imageOrder,
-              clientTools: params.clientTools,
-              agentId: params.agentId ?? "makaron",
-              sessionId: session.sessionId,
-              runId: params.runId,
-              timeoutSeconds: Math.max(
-                1,
-                Math.ceil(attemptTimeoutMs / 1_000),
-              ),
-              messageChannel: params.messageChannel,
-              messageProvider: params.messageProvider,
-              channel: params.messageChannel,
-              accountId: params.agentAccountId,
-              to: params.messageTo,
-              replyTo: params.messageTo,
-              replyChannel: params.messageChannel,
-              replyAccountId: params.agentAccountId,
-              threadId: params.messageThreadId,
-              runContext: {
+            const workerAgentId = params.agentId ?? "makaron";
+            const submitted = await pool.submit(
+              sessionKey,
+              {
+                kind: "agent",
+                harnessAttempt: true,
+                message: params.prompt,
+                transcriptMessage: expectedUserTurn,
+                suppressPromptPersistence: !workerShouldPersistUserTurn,
+                images: params.images,
+                imageOrder: params.imageOrder,
+                clientTools: params.clientTools,
+                agentId: workerAgentId,
+                sessionId: session.sessionId,
+                // Keep the channel/session routing identity distinct from the
+                // transcript owner used by the pool. Synthetic subagent
+                // announce keys can target the same parent transcript.
+                sessionKey,
+                runId: params.runId,
+                timeoutSeconds: Math.max(
+                  1,
+                  Math.ceil(attemptTimeoutMs / 1_000),
+                ),
                 messageChannel: params.messageChannel,
+                messageProvider: params.messageProvider,
+                channel: params.messageChannel,
                 accountId: params.agentAccountId,
-                groupId: params.groupId,
-                groupChannel: params.groupChannel,
-                groupSpace: params.groupSpace,
-                currentChannelId: params.currentChannelId,
-                senderId: params.senderId,
+                to: params.messageTo,
+                replyTo: params.messageTo,
+                replyChannel: params.messageChannel,
+                replyAccountId: params.agentAccountId,
+                threadId: params.messageThreadId,
+                runContext: {
+                  messageChannel: params.messageChannel,
+                  accountId: params.agentAccountId,
+                  groupId: params.groupId,
+                  groupChannel: params.groupChannel,
+                  groupSpace: params.groupSpace,
+                  currentChannelId: params.currentChannelId,
+                  senderId: params.senderId,
+                },
+                toolsAllow: params.toolsAllow,
+                extraSystemPrompt: params.extraSystemPrompt,
+                sourceReplyDeliveryMode: params.sourceReplyDeliveryMode,
+                senderIsOwner: params.senderIsOwner,
               },
-              toolsAllow: params.toolsAllow,
-              extraSystemPrompt: params.extraSystemPrompt,
-              sourceReplyDeliveryMode: params.sourceReplyDeliveryMode,
-              senderIsOwner: params.senderIsOwner,
-            });
+              {
+                // Session ID/file identity is the authoritative transcript
+                // owner. This serializes a parent turn and its synthetic
+                // subagent completion announce even when their dispatch keys
+                // differ.
+                sessionOwnerKey: `${workerAgentId}:${session.sessionId}`,
+              },
+            );
             nativeHarnessStats.workerAttempts += 1;
             nativeRequestsByRunId.set(params.runId, {
               requestId: submitted.requestId,
@@ -752,12 +785,16 @@ const plugin = {
             currentEntry: "native Channel/dispatch -> AgentHarness -> worker agentCommand",
             nativeAgentHarnessId: NATIVE_HARNESS_ID,
             nativeAgentHarnessDispatchAttached: true,
-            workerIsolationVersion: "0.1.4",
+            workerIsolationVersion: "0.1.5",
             longRunProgressBridge: true,
             channelTimeoutCoupledToWorker: false,
             cooperativeRequestTimeout: true,
             nativeUserTurnOwnedByWorker: true,
             nativeUserTurnAcknowledgedByGateway: true,
+            nativeYieldTerminalSemantics: true,
+            nativeNonTextTerminalSemantics: true,
+            transcriptOwnerSerialization: true,
+            staleSessionPreflightRebind: true,
             sessionRolloverRebindRetry: true,
             fastCompaction: {
               provider: fastCompactionProvider.id,

@@ -175,7 +175,7 @@ export class WorkerPool {
     return handle.startupPromise;
   }
 
-  async submit(sessionKey, request) {
+  async submit(sessionKey, request, options = {}) {
     if (!this.started) {
       await this.start();
     }
@@ -185,6 +185,11 @@ export class WorkerPool {
     if (typeof sessionKey !== "string" || sessionKey.trim() === "") {
       throw new Error("sessionKey is required");
     }
+    const sessionOwnerKey =
+      typeof options.sessionOwnerKey === "string" &&
+      options.sessionOwnerKey.trim() !== ""
+        ? options.sessionOwnerKey
+        : sessionKey;
 
     const requestId = `request-${this.nextRequestId}`;
     this.nextRequestId += 1;
@@ -192,6 +197,7 @@ export class WorkerPool {
       this.pending.push({
         id: requestId,
         sessionKey,
+        sessionOwnerKey,
         request,
         resolve,
         reject,
@@ -201,8 +207,8 @@ export class WorkerPool {
     return { requestId, promise };
   }
 
-  async dispatch(sessionKey, request) {
-    const submitted = await this.submit(sessionKey, request);
+  async dispatch(sessionKey, request, options) {
+    const submitted = await this.submit(sessionKey, request, options);
     return await submitted.promise;
   }
 
@@ -219,7 +225,7 @@ export class WorkerPool {
       if (queuedIndex >= 0) {
         const [job] = worker.queue.splice(queuedIndex, 1);
         job.reject(cancellationError(requestId));
-        this.releaseSessionOwner(worker, job.sessionKey);
+        this.releaseSessionOwner(worker, job.sessionOwnerKey);
         this.requestPump();
         return {
           cancelled: true,
@@ -283,12 +289,12 @@ export class WorkerPool {
     try {
       while (this.pending.length > 0 && !this.closing) {
         const job = this.pending[0];
-        let worker = this.sessionOwners.get(job.sessionKey);
+        let worker = this.sessionOwners.get(job.sessionOwnerKey);
         if (
           worker &&
           (worker.retiring || !this.workers.has(worker.slot))
         ) {
-          this.sessionOwners.delete(job.sessionKey);
+          this.sessionOwners.delete(job.sessionOwnerKey);
           worker = undefined;
         }
 
@@ -309,9 +315,9 @@ export class WorkerPool {
         }
 
         this.pending.shift();
-        if (!worker.ownerSessionKeys.has(job.sessionKey)) {
-          worker.ownerSessionKeys.add(job.sessionKey);
-          this.sessionOwners.set(job.sessionKey, worker);
+        if (!worker.ownerSessionKeys.has(job.sessionOwnerKey)) {
+          worker.ownerSessionKeys.add(job.sessionOwnerKey);
+          this.sessionOwners.set(job.sessionOwnerKey, worker);
         }
         worker.queue.push(job);
         this.drain(worker);
@@ -332,10 +338,10 @@ export class WorkerPool {
 
     while (worker.active.size < this.sessionsPerWorker) {
       const activeSessions = new Set(
-        [...worker.active.values()].map((job) => job.sessionKey),
+        [...worker.active.values()].map((job) => job.sessionOwnerKey),
       );
       const jobIndex = worker.queue.findIndex(
-        (candidate) => !activeSessions.has(candidate.sessionKey),
+        (candidate) => !activeSessions.has(candidate.sessionOwnerKey),
       );
       if (jobIndex < 0) {
         break;
@@ -380,17 +386,19 @@ export class WorkerPool {
     }
   }
 
-  releaseSessionOwner(worker, sessionKey) {
+  releaseSessionOwner(worker, sessionOwnerKey) {
     if (
-      sessionKey &&
-      this.sessionOwners.get(sessionKey) === worker &&
+      sessionOwnerKey &&
+      this.sessionOwners.get(sessionOwnerKey) === worker &&
       ![...worker.active.values()].some(
-        (active) => active.sessionKey === sessionKey,
+        (active) => active.sessionOwnerKey === sessionOwnerKey,
       ) &&
-      !worker.queue.some((queued) => queued.sessionKey === sessionKey)
+      !worker.queue.some(
+        (queued) => queued.sessionOwnerKey === sessionOwnerKey,
+      )
     ) {
-      this.sessionOwners.delete(sessionKey);
-      worker.ownerSessionKeys.delete(sessionKey);
+      this.sessionOwners.delete(sessionOwnerKey);
+      worker.ownerSessionKeys.delete(sessionOwnerKey);
       if (
         worker.active.size === 0 &&
         worker.queue.length === 0 &&
@@ -472,7 +480,7 @@ export class WorkerPool {
       active.reject(error);
     }
 
-    this.releaseSessionOwner(worker, active.sessionKey);
+    this.releaseSessionOwner(worker, active.sessionOwnerKey);
     this.drain(worker);
     this.requestPump();
   }

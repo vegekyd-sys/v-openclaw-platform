@@ -11,9 +11,11 @@ node --check "${EXPERIMENT_DIR}/exec-env.test.mjs"
 node --check "${EXPERIMENT_DIR}/runtime-path.mjs"
 node --check "${EXPERIMENT_DIR}/runtime-path.test.mjs"
 node --check "${EXPERIMENT_DIR}/harness-result.mjs"
+node --check "${EXPERIMENT_DIR}/harness-result.test.mjs"
 node --check "${EXPERIMENT_DIR}/harness-failure.mjs"
 node --check "${EXPERIMENT_DIR}/session-rollover-retry.mjs"
 node --check "${EXPERIMENT_DIR}/session-rollover-retry.test.mjs"
+node --check "${EXPERIMENT_DIR}/worker-agent.test.mjs"
 node --check "${EXPERIMENT_DIR}/fast-compaction-provider.mjs"
 node --check "${EXPERIMENT_DIR}/fast-compaction-provider.test.mjs"
 node --check "${EXPERIMENT_DIR}/stubborn-worker.mjs"
@@ -21,11 +23,14 @@ node --check "${EXPERIMENT_DIR}/index.mjs"
 node --check "${EXPERIMENT_DIR}/self-test.mjs"
 node --check "${REPO_ROOT}/tests/vlab-agent-worker-native-dispatch.mjs"
 node --check "${REPO_ROOT}/tests/vlab-agent-worker-config-domain.mjs"
+node --check "${REPO_ROOT}/tests/vlab-agent-worker-harness-parity.mjs"
 node "${EXPERIMENT_DIR}/runtime-path.test.mjs"
 node "${EXPERIMENT_DIR}/exec-env.test.mjs"
 node --test \
+  "${EXPERIMENT_DIR}/harness-result.test.mjs" \
   "${EXPERIMENT_DIR}/session-rollover-retry.test.mjs" \
-  "${EXPERIMENT_DIR}/fast-compaction-provider.test.mjs"
+  "${EXPERIMENT_DIR}/fast-compaction-provider.test.mjs" \
+  "${EXPERIMENT_DIR}/worker-agent.test.mjs"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-remote.sh"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-soak.sh"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-faults.sh"
@@ -34,6 +39,7 @@ bash -n "${REPO_ROOT}/tests/vlab-agent-worker-native-dispatch.sh"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-native-faults.sh"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-config-domain.sh"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-compaction.sh"
+bash -n "${REPO_ROOT}/tests/vlab-agent-worker-harness-parity.sh"
 bash -n "${REPO_ROOT}/scripts/activate-agent-worker-production.sh"
 bash -n "${REPO_ROOT}/scripts/deploy-agent-worker-production.sh"
 bash -n "${REPO_ROOT}/scripts/rollback-agent-worker-production.sh"
@@ -75,7 +81,7 @@ jq -e \
   "${EXPERIMENT_DIR}/openclaw.plugin.json" >/dev/null
 jq -e '.openclaw.extensions == ["./index.mjs"]' \
   "${EXPERIMENT_DIR}/package.json" >/dev/null
-jq -e '.version == "0.1.4"' \
+jq -e '.version == "0.1.5"' \
   "${EXPERIMENT_DIR}/package.json" >/dev/null
 
 if rg -n \

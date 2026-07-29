@@ -34,7 +34,7 @@ introducing a separate worker registry.
 ## Candidate
 
 - OpenClaw: `2026.7.1`
-- Worker isolation plugin: `0.1.2`
+- Worker isolation plugin: `0.1.5`
 - Worker count: elastic from one warm worker to three workers
 - Sessions per worker: at most three active, distinct sessions
 - Total active-session capacity: `3 workers x 3 sessions = 9`
@@ -67,6 +67,17 @@ introducing a separate worker registry.
   `exec` commands the Gateway's `gatewayConfigPath`. Global CLI changes made
   inside a Worker therefore update the Gateway control-plane config instead of
   silently mutating the runtime overlay.
+- Worker IPC preserves OpenClaw's native terminal semantics for
+  `sessions_yield`, hosted client-tool calls, accepted subagent spawns,
+  async-started tools, cron additions, message-tool delivery, and media-only
+  replies. These are not treated as empty or incomplete turns.
+- Pool ownership is keyed by the native transcript session ID, separately from
+  the channel dispatch key. A synthetic subagent completion announce and its
+  active parent therefore cannot write the same transcript concurrently.
+- A dispatch whose session ID became stale after compaction is rebound to the
+  latest native session before its first execution. The existing one-time
+  admission retry remains as a race fallback and never replays a post-tool
+  failure.
 
 The plugin does not patch OpenClaw's compiled files.
 
@@ -125,6 +136,10 @@ original Gateway value.
     aborted by `active_work_without_progress`.
 20. Timing out one request on a three-session Worker leaves the other two
     requests running to completion on the same Worker PID.
+21. A parent spawns an isolated child, remains active until the child
+    completes, then calls `sessions_yield`; the queued completion announce
+    resumes the parent with a visible reply and no incomplete-turn card or
+    transcript takeover.
 
 The production-shaped soak is executable on vLab:
 
@@ -153,6 +168,12 @@ Subagent capacity acceptance preserves V's existing `8/8` limits:
 
 ```bash
 /tmp/vlab-agent-worker-subagents.sh
+```
+
+Harness semantic parity acceptance covers the v0.1.5 incident path:
+
+```bash
+/tmp/vlab-agent-worker-harness-parity.sh
 ```
 
 ## Deploy and rollback

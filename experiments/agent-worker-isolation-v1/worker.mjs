@@ -43,6 +43,9 @@ function serializeError(error) {
 }
 
 function jsonSafe(value) {
+  if (value === undefined) {
+    return undefined;
+  }
   return JSON.parse(JSON.stringify(value));
 }
 
@@ -158,7 +161,7 @@ async function runAgent(message, abortSignal) {
   const response = {
     kind: "agent",
     elapsedMs: performance.now() - startedAt,
-    payloads: jsonSafe(result.payloads),
+    payloads: jsonSafe(result.payloads ?? []),
     didSendViaMessagingTool: result.didSendViaMessagingTool === true,
     didDeliverSourceReplyViaMessageTool:
       result.didDeliverSourceReplyViaMessageTool === true,

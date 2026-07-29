@@ -24,6 +24,32 @@ export async function runWithSessionRolloverRetry(options) {
   let session = { ...options.initialSession };
   let retries = 0;
 
+  let latestBeforeExecution;
+  try {
+    latestBeforeExecution = await options.readLatestSession();
+  } catch (error) {
+    options.onRebindError?.(error);
+  }
+  if (
+    latestBeforeExecution?.exists === true &&
+    validSessionId(latestBeforeExecution) &&
+    latestBeforeExecution.sessionId !== session.sessionId
+  ) {
+    const previousSessionId = session.sessionId;
+    session = {
+      ...session,
+      sessionId: latestBeforeExecution.sessionId,
+      ...(typeof latestBeforeExecution.sessionFile === "string" &&
+      latestBeforeExecution.sessionFile.trim().length > 0
+        ? { sessionFile: latestBeforeExecution.sessionFile }
+        : {}),
+    };
+    options.onRebind?.({
+      previousSessionId,
+      nextSessionId: session.sessionId,
+    });
+  }
+
   for (;;) {
     try {
       return {

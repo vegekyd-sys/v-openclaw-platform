@@ -23,6 +23,17 @@ function makePool() {
   });
 }
 
+function makeMultiWorkerPool() {
+  return new WorkerPool({
+    minWorkers: 1,
+    maxWorkers: 2,
+    sessionsPerWorker: 1,
+    idleTimeoutMs: 1_000,
+    requestTimeoutMs: 5_000,
+    requestCancelGraceMs: 100,
+  });
+}
+
 test("persistent worker does not run one-shot CLI teardown per turn", async () => {
   const pool = makePool();
   try {
@@ -64,6 +75,82 @@ test("worker suppresses its copy when Gateway already persisted the user turn", 
     const flags = JSON.parse(result.payloads[0].text);
 
     assert.equal(flags.suppressPromptPersistence, true);
+  } finally {
+    await pool.close();
+  }
+});
+
+test("worker preserves sessions_yield as a completed paused harness attempt", async () => {
+  const pool = makePool();
+  try {
+    const result = await pool.dispatch("agent:fixture:session-yield", {
+      kind: "agent",
+      harnessAttempt: true,
+      message: "yield-turn",
+      sessionId: "session-yield",
+      runId: "run-yield",
+    });
+
+    assert.equal(result.attempt.yieldDetected, true);
+    assert.deepEqual(result.attempt.assistantTexts, []);
+    assert.equal(pool.status().workers[0].activeCount, 0);
+    assert.deepEqual(pool.status().workers[0].sessionKeys, []);
+  } finally {
+    await pool.close();
+  }
+});
+
+test("different dispatch keys sharing one transcript owner are serialized", async () => {
+  const pool = makeMultiWorkerPool();
+  try {
+    const first = await pool.submit(
+      "agent:fixture:group",
+      { kind: "hold", durationMs: 120 },
+      { sessionOwnerKey: "agent:fixture:session-id:shared" },
+    );
+    const announce = await pool.submit(
+      "announce:v1:child:parent",
+      { kind: "hold", durationMs: 20 },
+      { sessionOwnerKey: "agent:fixture:session-id:shared" },
+    );
+
+    const [firstResult, announceResult] = await Promise.all([
+      first.promise,
+      announce.promise,
+    ]);
+
+    assert.equal(firstResult.slot, announceResult.slot);
+    assert.equal(pool.status().workers.length, 1);
+  } finally {
+    await pool.close();
+  }
+});
+
+test("worker IPC preserves native non-text terminal result semantics", async () => {
+  const pool = makePool();
+  try {
+    const result = await pool.dispatch("agent:fixture:special-terminal", {
+      kind: "agent",
+      harnessAttempt: true,
+      message: "special-terminal-results",
+      sessionId: "special-terminal",
+      runId: "run-special-terminal",
+    });
+
+    assert.deepEqual(result.attempt.clientToolCalls, [
+      {
+        name: "search_catalog",
+        params: { query: "worker parity" },
+      },
+    ]);
+    assert.deepEqual(result.attempt.toolMediaUrls, [
+      "https://example.test/worker-result.png",
+    ]);
+    assert.equal(result.attempt.toolTrustedLocalMedia, true);
+    assert.equal(result.attempt.successfulCronAdds, 1);
+    assert.equal(result.attempt.acceptedSessionSpawns.length, 1);
+    assert.equal(result.attempt.messagingToolSentTargets.length, 1);
+    assert.equal(result.attempt.replayMetadata.replaySafe, false);
   } finally {
     await pool.close();
   }

@@ -41,9 +41,84 @@ function readVisiblePayloadTexts(payloads) {
     .map((payload) => payload.text);
 }
 
+function readPayloadMedia(payloads) {
+  if (!Array.isArray(payloads)) {
+    return {
+      urls: [],
+      audioAsVoice: false,
+      trustedLocalMedia: false,
+    };
+  }
+  const urls = [];
+  let audioAsVoice = false;
+  let trustedLocalMedia = false;
+  for (const payload of payloads) {
+    if (
+      !isRecord(payload) ||
+      payload.isError === true ||
+      payload.isReasoning === true
+    ) {
+      continue;
+    }
+    if (typeof payload.mediaUrl === "string" && payload.mediaUrl.trim()) {
+      urls.push(payload.mediaUrl);
+    }
+    if (Array.isArray(payload.mediaUrls)) {
+      urls.push(
+        ...payload.mediaUrls.filter(
+          (url) => typeof url === "string" && url.trim() !== "",
+        ),
+      );
+    }
+    audioAsVoice ||= payload.audioAsVoice === true;
+    trustedLocalMedia ||= payload.trustedLocalMedia === true;
+  }
+  return {
+    urls: [...new Set(urls)],
+    audioAsVoice,
+    trustedLocalMedia,
+  };
+}
+
+function readAsyncTaskMeta(message) {
+  const details = isRecord(message?.details) ? message.details : undefined;
+  if (details?.async !== true || details.status !== "started") {
+    return undefined;
+  }
+  const nestedTask = isRecord(details.task) ? details.task : undefined;
+  const asyncTaskRunId =
+    typeof details.runId === "string"
+      ? details.runId
+      : typeof nestedTask?.runId === "string"
+        ? nestedTask.runId
+        : undefined;
+  const asyncTaskId =
+    typeof details.taskId === "string"
+      ? details.taskId
+      : typeof nestedTask?.taskId === "string"
+        ? nestedTask.taskId
+        : undefined;
+  return {
+    asyncStarted: true,
+    ...(asyncTaskRunId ? { asyncTaskRunId } : {}),
+    ...(asyncTaskId ? { asyncTaskId } : {}),
+  };
+}
+
 function readToolMetas(messages) {
   const metas = [];
+  const metasByCallId = new Map();
   for (const message of messages) {
+    if (message?.role === "toolResult" || message?.role === "tool_result") {
+      const asyncMeta = readAsyncTaskMeta(message);
+      if (asyncMeta && typeof message.toolCallId === "string") {
+        const meta = metasByCallId.get(message.toolCallId);
+        if (meta) {
+          Object.assign(meta, asyncMeta);
+        }
+      }
+      continue;
+    }
     if (message?.role !== "assistant" || !Array.isArray(message.content)) {
       continue;
     }
@@ -52,16 +127,46 @@ function readToolMetas(messages) {
         isRecord(block) &&
         (block.type === "toolCall" || block.type === "tool_use")
       ) {
-        metas.push({
+        const meta = {
           toolName:
             typeof block.name === "string" && block.name.trim()
               ? block.name
               : "unknown",
-        });
+        };
+        metas.push(meta);
+        if (typeof block.id === "string" && block.id.trim()) {
+          metasByCallId.set(block.id, meta);
+        }
       }
     }
   }
   return metas;
+}
+
+function readClientToolCalls(meta) {
+  if (!Array.isArray(meta?.pendingToolCalls)) {
+    return undefined;
+  }
+  const calls = [];
+  for (const call of meta.pendingToolCalls) {
+    if (!isRecord(call) || typeof call.name !== "string" || !call.name.trim()) {
+      continue;
+    }
+    let params;
+    try {
+      params =
+        typeof call.arguments === "string"
+          ? JSON.parse(call.arguments)
+          : call.arguments;
+    } catch {
+      continue;
+    }
+    if (!isRecord(params)) {
+      continue;
+    }
+    calls.push({ name: call.name, params });
+  }
+  return calls.length > 0 ? calls : undefined;
 }
 
 export async function readNativeSessionMessages(sessionFile) {
@@ -131,6 +236,43 @@ export async function buildHarnessAttemptResult(agentResult) {
     ? messagesSnapshot.lastIndexOf(lastAssistant)
     : undefined;
   const toolMetas = readToolMetas(currentTurnMessages);
+  const payloadMedia = readPayloadMedia(agentResult?.payloads);
+  const acceptedSessionSpawns = Array.isArray(
+    agentResult?.acceptedSessionSpawns,
+  )
+    ? agentResult.acceptedSessionSpawns
+    : [];
+  const successfulCronAdds = Number.isFinite(agentResult?.successfulCronAdds)
+    ? Math.max(0, Number(agentResult.successfulCronAdds))
+    : 0;
+  const messagingToolSentTexts = Array.isArray(
+    agentResult?.messagingToolSentTexts,
+  )
+    ? agentResult.messagingToolSentTexts
+    : [];
+  const messagingToolSentMediaUrls = Array.isArray(
+    agentResult?.messagingToolSentMediaUrls,
+  )
+    ? agentResult.messagingToolSentMediaUrls
+    : [];
+  const messagingToolSentTargets = Array.isArray(
+    agentResult?.messagingToolSentTargets,
+  )
+    ? agentResult.messagingToolSentTargets
+    : [];
+  const messagingToolSourceReplyPayloads = Array.isArray(
+    agentResult?.messagingToolSourceReplyPayloads,
+  )
+    ? agentResult.messagingToolSourceReplyPayloads
+    : [];
+  const hadPotentialSideEffects =
+    toolMetas.length > 0 ||
+    acceptedSessionSpawns.length > 0 ||
+    successfulCronAdds > 0 ||
+    messagingToolSentTexts.length > 0 ||
+    messagingToolSentMediaUrls.length > 0 ||
+    messagingToolSentTargets.length > 0 ||
+    messagingToolSourceReplyPayloads.length > 0;
 
   return {
     aborted: agentResult?.meta?.aborted === true,
@@ -143,13 +285,16 @@ export async function buildHarnessAttemptResult(agentResult) {
     promptErrorSource: null,
     sessionIdUsed: agentMeta.sessionId,
     sessionFileUsed: agentMeta.sessionFile,
+    diagnosticTrace: agentResult?.diagnosticTrace,
+    agentHarnessResultClassification:
+      agentResult?.meta?.agentHarnessResultClassification,
     systemPromptReport: agentResult?.meta?.systemPromptReport,
     finalPromptText: agentResult?.meta?.finalPromptText,
     messagesSnapshot,
     assistantTexts,
     lastAssistantTextMessageIndex,
     toolMetas,
-    acceptedSessionSpawns: agentResult?.acceptedSessionSpawns ?? [],
+    acceptedSessionSpawns,
     lastAssistant,
     currentAttemptAssistant: lastAssistant,
     didSendViaMessagingTool: agentResult?.didSendViaMessagingTool === true,
@@ -157,18 +302,29 @@ export async function buildHarnessAttemptResult(agentResult) {
       agentResult?.didDeliverSourceReplyViaMessageTool === true,
     didSendDeterministicApprovalPrompt:
       agentResult?.didSendDeterministicApprovalPrompt === true,
-    messagingToolSentTexts: agentResult?.messagingToolSentTexts ?? [],
-    messagingToolSentMediaUrls: agentResult?.messagingToolSentMediaUrls ?? [],
-    messagingToolSentTargets: agentResult?.messagingToolSentTargets ?? [],
-    messagingToolSourceReplyPayloads:
-      agentResult?.messagingToolSourceReplyPayloads ?? [],
+    messagingToolSentTexts,
+    messagingToolSentMediaUrls,
+    messagingToolSentTargets,
+    messagingToolSourceReplyPayloads,
     heartbeatToolResponse: agentResult?.heartbeatToolResponse,
+    toolMediaUrls:
+      payloadMedia.urls.length > 0 ? payloadMedia.urls : undefined,
+    toolAudioAsVoice: payloadMedia.audioAsVoice || undefined,
+    toolTrustedLocalMedia: payloadMedia.trustedLocalMedia || undefined,
+    successfulCronAdds,
+    cloudCodeAssistFormatError: false,
+    // agentCommand already translated the native sessions_yield tool into
+    // meta.yielded. Preserve that terminal semantic when reconstructing the
+    // AgentHarness attempt across the worker IPC boundary; otherwise the
+    // Gateway sees an empty tool-use turn and surfaces it as an error.
+    yieldDetected: agentResult?.meta?.yielded === true || undefined,
+    clientToolCalls: readClientToolCalls(agentResult?.meta),
     attemptUsage: agentMeta.usage,
     compactionCount: agentMeta.compactionCount,
     compactionTokensAfter: agentMeta.compactionTokensAfter,
     replayMetadata: {
-      hadPotentialSideEffects: toolMetas.length > 0,
-      replaySafe: toolMetas.length === 0,
+      hadPotentialSideEffects,
+      replaySafe: !hadPotentialSideEffects,
     },
     itemLifecycle: {
       startedCount: currentTurnMessages.length,
