@@ -39,6 +39,8 @@ test("persistent worker does not run one-shot CLI teardown per turn", async () =
       cleanupBundleMcpOnRunEnd: false,
       cleanupCliLiveSessionOnRunEnd: false,
       oneShotCliRun: false,
+      suppressPromptPersistence: true,
+      skipInitialSessionTouch: true,
     });
     assert.equal(result.attempt.itemLifecycle.activeCount, 0);
     assert.equal(pool.status().workers[0].activeCount, 0);
