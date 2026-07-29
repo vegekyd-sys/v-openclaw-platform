@@ -49,6 +49,7 @@ assert.equal(
     readDirectory: () => [
       "agent-events-abc.js",
       "subagent-announce-CIkgndJa.js",
+      "subagent-announce-origin-DRzxvCSi.js",
     ],
   }),
   "/opt/vlab/current/node_modules/openclaw/dist/subagent-announce-CIkgndJa.js",

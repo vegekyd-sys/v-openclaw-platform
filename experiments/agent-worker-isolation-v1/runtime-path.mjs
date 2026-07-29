@@ -49,7 +49,7 @@ export function resolveOpenClawSubagentAnnounceRuntimePath(options = {}) {
     .filter(
       (name) =>
         name === "subagent-announce.js" ||
-        /^subagent-announce-[A-Za-z0-9_-]+\.js$/.test(name),
+        /^subagent-announce-[A-Za-z0-9_]+\.js$/.test(name),
     )
     .sort();
   if (candidates.length !== 1) {
