@@ -169,6 +169,25 @@ function readClientToolCalls(meta) {
   return calls.length > 0 ? calls : undefined;
 }
 
+function readTerminalToolError(messages) {
+  const terminal = messages.at(-1);
+  if (
+    !isRecord(terminal) ||
+    (terminal.role !== "toolResult" && terminal.role !== "tool_result") ||
+    terminal.isError !== true
+  ) {
+    return undefined;
+  }
+  const error = readTextBlocks(terminal).join("\n").trim();
+  return {
+    toolName:
+      typeof terminal.toolName === "string" && terminal.toolName.trim()
+        ? terminal.toolName
+        : "unknown",
+    ...(error ? { error } : {}),
+  };
+}
+
 export async function readNativeSessionMessages(sessionFile) {
   if (typeof sessionFile !== "string" || sessionFile.trim() === "") {
     return [];
@@ -236,6 +255,7 @@ export async function buildHarnessAttemptResult(agentResult) {
     ? messagesSnapshot.lastIndexOf(lastAssistant)
     : undefined;
   const toolMetas = readToolMetas(currentTurnMessages);
+  const lastToolError = readTerminalToolError(currentTurnMessages);
   const payloadMedia = readPayloadMedia(agentResult?.payloads);
   const acceptedSessionSpawns = Array.isArray(
     agentResult?.acceptedSessionSpawns,
@@ -297,6 +317,7 @@ export async function buildHarnessAttemptResult(agentResult) {
     acceptedSessionSpawns,
     lastAssistant,
     currentAttemptAssistant: lastAssistant,
+    lastToolError,
     didSendViaMessagingTool: agentResult?.didSendViaMessagingTool === true,
     didDeliverSourceReplyViaMessageTool:
       agentResult?.didDeliverSourceReplyViaMessageTool === true,

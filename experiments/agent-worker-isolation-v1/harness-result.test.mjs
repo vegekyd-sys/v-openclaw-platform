@@ -165,3 +165,91 @@ test("preserves media-only terminal payloads", async () => {
   assert.equal(attempt.toolAudioAsVoice, true);
   assert.equal(attempt.toolTrustedLocalMedia, true);
 });
+
+test("preserves a terminal tool error instead of classifying it as empty", async () => {
+  const attempt = await withSession(
+    [
+      { role: "user", content: "run the requested tool" },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "tool-error-1",
+            name: "exec",
+            arguments: { command: "false" },
+          },
+        ],
+        stopReason: "toolUse",
+      },
+      {
+        role: "toolResult",
+        toolCallId: "tool-error-1",
+        toolName: "exec",
+        content: [{ type: "text", text: "Command exited with code 1" }],
+        isError: true,
+      },
+    ],
+    async (sessionFile) =>
+      await buildHarnessAttemptResult({
+        meta: {
+          agentMeta: {
+            provider: "fixture",
+            model: "fixture",
+            sessionId: "tool-error-session",
+            sessionFile,
+          },
+        },
+      }),
+  );
+
+  assert.deepEqual(attempt.lastToolError, {
+    toolName: "exec",
+    error: "Command exited with code 1",
+  });
+});
+
+test("does not retain an older tool error after later assistant output", async () => {
+  const attempt = await withSession(
+    [
+      { role: "user", content: "recover after a tool error" },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "tool-error-1",
+            name: "exec",
+            arguments: { command: "false" },
+          },
+        ],
+        stopReason: "toolUse",
+      },
+      {
+        role: "toolResult",
+        toolCallId: "tool-error-1",
+        toolName: "exec",
+        content: [{ type: "text", text: "Command exited with code 1" }],
+        isError: true,
+      },
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "I recovered." }],
+        stopReason: "stop",
+      },
+    ],
+    async (sessionFile) =>
+      await buildHarnessAttemptResult({
+        meta: {
+          agentMeta: {
+            provider: "fixture",
+            model: "fixture",
+            sessionId: "tool-error-recovered-session",
+            sessionFile,
+          },
+        },
+      }),
+  );
+
+  assert.equal(attempt.lastToolError, undefined);
+});
