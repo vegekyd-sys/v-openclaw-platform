@@ -129,7 +129,7 @@ call_gateway_to_file \
   "${REPORT_DIR}/compact.json"
 compact_finished_ms="$(date +%s%3N)"
 compact_duration_ms="$((compact_finished_ms - compact_started_ms))"
-jq -e '(.result // .).ok == true and (.result // .).compacted == true' \
+jq -e '.ok == true and .compacted == true' \
   "${REPORT_DIR}/compact.json" >/dev/null
 
 call_gateway_to_file \
