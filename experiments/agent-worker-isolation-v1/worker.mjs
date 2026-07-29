@@ -4,6 +4,30 @@ import { buildHarnessAttemptResult } from "./harness-result.mjs";
 
 let agentRuntimePromise;
 const activeControllers = new Map();
+const configuredHeartbeatMs = Number(
+  process.env.VLAB_WORKER_HEARTBEAT_MS ?? 15_000,
+);
+const heartbeatMs = Number.isFinite(configuredHeartbeatMs)
+  ? Math.max(25, configuredHeartbeatMs)
+  : 15_000;
+
+function sendProgress(requestId, request, reason = "worker:active") {
+  process.send?.({
+    type: "progress",
+    id: requestId,
+    runId: request.runId,
+    sessionId: request.sessionId,
+    sessionKey: request.sessionKey,
+    reason,
+  });
+}
+
+const heartbeatTimer = setInterval(() => {
+  for (const [requestId, active] of activeControllers) {
+    sendProgress(requestId, active.request);
+  }
+}, heartbeatMs);
+heartbeatTimer.unref?.();
 
 function serializeError(error) {
   return {
@@ -166,7 +190,8 @@ async function runAgent(message, abortSignal) {
 
 process.on("message", async (message) => {
   if (message?.type === "cancel" && message.requestId) {
-    const controller = activeControllers.get(message.requestId);
+    const active = activeControllers.get(message.requestId);
+    const controller = active?.controller;
     if (controller && !controller.signal.aborted) {
       const error = new Error(`worker request ${message.requestId} was cancelled`);
       error.name = "AbortError";
@@ -178,7 +203,8 @@ process.on("message", async (message) => {
     return;
   }
   const controller = new AbortController();
-  activeControllers.set(message.id, controller);
+  activeControllers.set(message.id, { controller, request: message });
+  sendProgress(message.id, message, "worker:started");
   try {
     let result;
     if (message.kind === "ping") {

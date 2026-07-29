@@ -14,6 +14,22 @@ function cancellationError(requestId) {
   return error;
 }
 
+function requestTimeoutError(requestId, timeoutMs) {
+  const error = new Error(
+    `worker request ${requestId} timed out after ${timeoutMs}ms`,
+  );
+  error.code = "VLAB_WORKER_REQUEST_TIMEOUT";
+  return error;
+}
+
+function clearJobTimers(job) {
+  clearTimeout(job.timer);
+  if (job.forceKillTimer) {
+    clearTimeout(job.forceKillTimer);
+    job.forceKillTimer = null;
+  }
+}
+
 export class WorkerPool {
   constructor(options = {}) {
     this.minWorkers = options.minWorkers ?? 1;
@@ -24,10 +40,13 @@ export class WorkerPool {
       options.idleSweepIntervalMs ??
       Math.min(Math.max(Math.floor(this.idleTimeoutMs / 4), 1_000), 30_000);
     this.requestTimeoutMs = options.requestTimeoutMs ?? 600_000;
+    this.requestCancelGraceMs = options.requestCancelGraceMs ?? 15_000;
     this.startupTimeoutMs = options.startupTimeoutMs ?? 15_000;
     this.retireGraceMs = options.retireGraceMs ?? 2_000;
     this.workerPath = options.workerPath ?? DEFAULT_WORKER_PATH;
     this.workerEnv = options.workerEnv ?? process.env;
+    this.onProgress =
+      typeof options.onProgress === "function" ? options.onProgress : undefined;
     this.workers = new Map();
     this.sessionOwners = new Map();
     this.pending = [];
@@ -63,6 +82,12 @@ export class WorkerPool {
     }
     if (!Number.isFinite(this.retireGraceMs) || this.retireGraceMs < 10) {
       throw new Error("retireGraceMs must be >= 10");
+    }
+    if (
+      !Number.isFinite(this.requestCancelGraceMs) ||
+      this.requestCancelGraceMs < 10
+    ) {
+      throw new Error("requestCancelGraceMs must be >= 10");
     }
   }
 
@@ -321,22 +346,32 @@ export class WorkerPool {
         ? Math.min(this.requestTimeoutMs, Math.max(1_000, requestedTimeoutMs))
         : this.requestTimeoutMs;
       const timer = setTimeout(() => {
-        if (worker.active.get(job.id)?.id !== job.id) {
+        const active = worker.active.get(job.id);
+        if (active?.id !== job.id || active.timeoutError) {
           return;
         }
-        worker.active.delete(job.id);
-        const error = new Error(
-          `worker request ${job.id} timed out after ${requestTimeoutMs}ms`,
-        );
-        error.code = "VLAB_WORKER_REQUEST_TIMEOUT";
-        // Do not let a same-session retry attach to the worker between the
-        // timeout rejection and the SIGKILL exit event.
-        worker.retiring = true;
-        job.reject(error);
-        worker.child.kill("SIGKILL");
+        active.timeoutError = requestTimeoutError(job.id, requestTimeoutMs);
+        worker.child.send({ type: "cancel", requestId: job.id });
+        active.forceKillTimer = setTimeout(() => {
+          if (worker.active.get(job.id) !== active) {
+            return;
+          }
+          // A cooperative AbortSignal normally unwinds just this request. Only
+          // an unresponsive child process reaches this fallback, where process
+          // replacement is required to restore the pool.
+          worker.retiring = true;
+          worker.child.kill("SIGKILL");
+        }, this.requestCancelGraceMs);
+        active.forceKillTimer.unref?.();
       }, requestTimeoutMs);
 
-      worker.active.set(job.id, { ...job, timer });
+      worker.active.set(job.id, {
+        ...job,
+        timer,
+        forceKillTimer: null,
+        timeoutError: null,
+        lastProgressAt: Date.now(),
+      });
       worker.child.send({
         id: job.id,
         sessionKey: job.sessionKey,
@@ -372,6 +407,43 @@ export class WorkerPool {
       this.requestPump();
       return;
     }
+    if (message?.type === "progress") {
+      const active = worker.active.get(message.id);
+      if (!active) {
+        return;
+      }
+      active.lastProgressAt = Date.now();
+      if (this.onProgress) {
+        const progress = {
+          requestId: active.id,
+          runId: active.request?.runId,
+          sessionId: active.request?.sessionId,
+          sessionKey: active.sessionKey,
+          reason:
+            typeof message.reason === "string"
+              ? message.reason
+              : "worker:active",
+          slot: worker.slot,
+          workerPid: worker.pid,
+        };
+        try {
+          Promise.resolve(this.onProgress(progress)).catch((error) => {
+            process.stderr.write(
+              `[vlab-worker:${worker.slot}] progress relay failed: ${
+                toError(error).message
+              }\n`,
+            );
+          });
+        } catch (error) {
+          process.stderr.write(
+            `[vlab-worker:${worker.slot}] progress relay failed: ${
+              toError(error).message
+            }\n`,
+          );
+        }
+      }
+      return;
+    }
     if (message?.type !== "response") {
       return;
     }
@@ -381,8 +453,10 @@ export class WorkerPool {
     }
 
     worker.active.delete(message.id);
-    clearTimeout(active.timer);
-    if (message.ok) {
+    clearJobTimers(active);
+    if (active.timeoutError) {
+      active.reject(active.timeoutError);
+    } else if (message.ok) {
       active.resolve({
         slot: worker.slot,
         workerPid: worker.pid,
@@ -422,8 +496,8 @@ export class WorkerPool {
     );
     worker.rejectStartup?.(error);
     for (const active of worker.active.values()) {
-      clearTimeout(active.timer);
-      active.reject(error);
+      clearJobTimers(active);
+      active.reject(active.timeoutError ?? error);
     }
     worker.active.clear();
     if (!this.closing && worker.queue.length > 0) {
@@ -510,6 +584,8 @@ export class WorkerPool {
       sessionsPerWorker: this.sessionsPerWorker,
       maxActiveSessions: this.maxWorkers * this.sessionsPerWorker,
       idleTimeoutMs: this.idleTimeoutMs,
+      requestTimeoutMs: this.requestTimeoutMs,
+      requestCancelGraceMs: this.requestCancelGraceMs,
       pending: this.pending.length,
       workers: [...this.workers.values()]
         .sort((left, right) => left.slot - right.slot)
@@ -524,6 +600,12 @@ export class WorkerPool {
             requestId: job.id,
             sessionKey: job.sessionKey,
             kind: job.request?.kind,
+            runId: job.request?.runId,
+            timeoutPending: Boolean(job.timeoutError),
+            lastProgressAgeMs: Math.max(
+              0,
+              Date.now() - job.lastProgressAt,
+            ),
           })),
           activeCount: worker.active.size,
           queued: worker.queue.length,
@@ -554,6 +636,9 @@ export class WorkerPool {
       if (worker.retireTimer) {
         clearTimeout(worker.retireTimer);
         worker.retireTimer = null;
+      }
+      for (const active of worker.active.values()) {
+        clearJobTimers(active);
       }
     }
     await Promise.all(

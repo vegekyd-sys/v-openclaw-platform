@@ -14,6 +14,7 @@ function makePool() {
     sessionsPerWorker: 1,
     idleTimeoutMs: 1_000,
     requestTimeoutMs: 5_000,
+    requestCancelGraceMs: 100,
     workerEnv: {
       ...process.env,
       VLAB_OPENCLAW_AGENT_RUNTIME: runtimePath,
@@ -76,7 +77,7 @@ test("worker rejection releases the same-session owner immediately", async () =>
   }
 });
 
-test("per-request deadline releases a hung Session before channel eviction", async () => {
+test("an unresponsive request still replaces the worker after cancel grace", async () => {
   const pool = makePool();
   try {
     await assert.rejects(

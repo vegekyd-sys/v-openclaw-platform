@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import { resolveOpenClawAgentRuntimePath } from "./runtime-path.mjs";
 import { buildHarnessFailureAttempt } from "./harness-failure.mjs";
 import { closeInterruptedToolCalls } from "./transcript-recovery.mjs";
+import { relayWorkerProgress } from "./worker-progress.mjs";
 
 const SESSION_PREFIX = "agent:makaron:explicit:vlab-worker-";
 const NATIVE_HARNESS_ID = "vlab-worker";
@@ -100,6 +101,12 @@ const plugin = {
     );
     const idleTimeoutMs = Number(api.pluginConfig?.idleTimeoutMs ?? 180_000);
     const requestTimeoutMs = Number(api.pluginConfig?.requestTimeoutMs ?? 600_000);
+    const requestCancelGraceMs = Number(
+      api.pluginConfig?.requestCancelGraceMs ?? 15_000,
+    );
+    const workerHeartbeatMs = Number(
+      api.pluginConfig?.workerHeartbeatMs ?? 15_000,
+    );
     const workerConfigPath =
       typeof api.pluginConfig?.workerConfigPath === "string"
         ? api.pluginConfig.workerConfigPath
@@ -110,10 +117,16 @@ const plugin = {
         resolve(dirname(openClawAgentRuntimePath), "session-transcript-runtime.js"),
       ).href
     );
+    const diagnosticRuntimePromise = import(
+      pathToFileURL(
+        resolve(dirname(openClawAgentRuntimePath), "diagnostic-runtime.js"),
+      ).href
+    );
     const workerEnv = {
       ...process.env,
       VLAB_OPENCLAW_AGENT_RUNTIME: openClawAgentRuntimePath,
       VLAB_REQUIRE_OPENCLAW_AGENT_RUNTIME: "1",
+      VLAB_WORKER_HEARTBEAT_MS: String(workerHeartbeatMs),
       ...(workerConfigPath
         ? { OPENCLAW_CONFIG_PATH: workerConfigPath }
         : {}),
@@ -124,7 +137,12 @@ const plugin = {
       sessionsPerWorker,
       idleTimeoutMs,
       requestTimeoutMs,
+      requestCancelGraceMs,
       workerEnv,
+      async onProgress(progress) {
+        const { emitDiagnosticEvent } = await diagnosticRuntimePromise;
+        relayWorkerProgress(emitDiagnosticEvent, progress);
+      },
     });
     const pool = sharedPool.pool;
     const nativeRequestsByRunId = sharedPool.nativeRequestsByRunId;
@@ -145,8 +163,7 @@ const plugin = {
         typeof params.sessionKey === "string" && params.sessionKey.trim()
           ? params.sessionKey
           : `agent:${params.agentId ?? "makaron"}:${params.sessionId}`;
-      const channelTimeoutMs = Number(params.timeoutMs ?? 300_000);
-      const workerRequestTimeoutMs = Math.max(1_000, channelTimeoutMs - 30_000);
+      const attemptTimeoutMs = Number(params.timeoutMs ?? requestTimeoutMs);
       const submitted = await pool.submit(sessionKey, {
         kind: "agent",
         harnessAttempt: true,
@@ -160,12 +177,8 @@ const plugin = {
         runId: params.runId,
         timeoutSeconds: Math.max(
           1,
-          Math.ceil(channelTimeoutMs / 1_000),
+          Math.ceil(attemptTimeoutMs / 1_000),
         ),
-        // The worker must settle before Feishu's per-chat 300s eviction. If
-        // the frontend releases first, a late worker keeps the native Session
-        // owner alive and every later message re-enters the same blocked lane.
-        requestTimeoutMs: workerRequestTimeoutMs,
         messageChannel: params.messageChannel,
         messageProvider: params.messageProvider,
         channel: params.messageChannel,
@@ -541,6 +554,11 @@ const plugin = {
             currentEntry: "native Channel/dispatch -> AgentHarness -> worker agentCommand",
             nativeAgentHarnessId: NATIVE_HARNESS_ID,
             nativeAgentHarnessDispatchAttached: true,
+            workerIsolationVersion: "0.1.1",
+            longRunProgressBridge: true,
+            channelTimeoutCoupledToWorker: false,
+            cooperativeRequestTimeout: true,
+            workerHeartbeatMs,
             productionPromotionBlocked: false,
             productionPromotionAcceptance: {
               nativeThreeByThree: true,

@@ -34,6 +34,7 @@ introducing a separate worker registry.
 ## Candidate
 
 - OpenClaw: `2026.7.1`
+- Worker isolation plugin: `0.1.1`
 - Worker count: elastic from one warm worker to three workers
 - Sessions per worker: at most three active, distinct sessions
 - Total active-session capacity: `3 workers x 3 sessions = 9`
@@ -53,6 +54,14 @@ introducing a separate worker registry.
   `dist/plugin-sdk/agent-runtime.js` entrypoint
 - Feature switch: enable or disable the
   `vlab-agent-worker-isolation` plugin
+- Long Agent runs publish a `run.progress` heartbeat from their Worker back to
+  the Gateway every 15 seconds. This preserves OpenClaw's native stuck-session
+  diagnosis without treating Feishu's 300-second per-chat queue cap as an
+  Agent lifetime.
+- A request hard timeout first sends an AbortSignal to that request only. The
+  Worker process is killed only if the request does not unwind within the
+  bounded cancellation grace period, so cooperative timeouts do not interrupt
+  the other two sessions assigned to the same Worker.
 
 The plugin does not patch OpenClaw's compiled files.
 
@@ -91,8 +100,13 @@ The plugin does not patch OpenClaw's compiled files.
 17. Recovery requires an explicit new idempotency key and succeeds on a
    replacement worker.
 18. One worker accepts eight `sessions_spawn` calls, reports all eight
-   subagents simultaneously running, and records all eight child completion
-   markers without a Gateway restart or Event Loop degradation.
+    subagents simultaneously running, and records all eight child completion
+    markers without a Gateway restart or Event Loop degradation.
+19. A native Agent run remains active past 300 seconds, emits Gateway-visible
+    Worker progress, completes with its expected transcript marker, and is not
+    aborted by `active_work_without_progress`.
+20. Timing out one request on a three-session Worker leaves the other two
+    requests running to completion on the same Worker PID.
 
 The production-shaped soak is executable on vLab:
 
