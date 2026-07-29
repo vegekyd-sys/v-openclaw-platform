@@ -21,7 +21,9 @@ for path in "$PROFILE_PATH" "$CONFIG_PATH" "$WORKER_CONFIG_PATH" "$ACTIVE_MANIFE
 done
 
 expected_node="$(jq -er '.openclaw.nodeVersion' "$PROFILE_PATH")"
-expected_release="$(jq -er '.productionReference.workerRelease' "$PROFILE_PATH")"
+expected_release="${VLAB_EXPECTED_WORKER_RELEASE:-$(
+  jq -er '.productionReference.workerRelease' "$PROFILE_PATH"
+)}"
 default_workspace="$(jq -er '.paths.defaultWorkspace' "$PROFILE_PATH")"
 makaron_workspace="$(jq -er '.paths.makaronWorkspace' "$PROFILE_PATH")"
 personal_skills="$(jq -er '.paths.personalSkills' "$PROFILE_PATH")"

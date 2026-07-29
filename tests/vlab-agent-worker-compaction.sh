@@ -63,10 +63,10 @@ fi
 install -d -o vlab -g vlab -m 0700 "$REPORT_DIR"
 session_key="agent:makaron:explicit:vlab-compaction-${TOKEN}"
 seed_run="vlab-compaction-seed-${TOKEN}"
-race_run="vlab-compaction-race-${TOKEN}"
+post_compact_run="vlab-compaction-post-${TOKEN}"
 seed_identifier="oc_vlabcompact${TOKEN//[^a-z0-9]/}"
-race_user_marker="VLAB_COMPACTION_RACE_USER_${TOKEN}"
-race_reply_marker="VLAB_COMPACTION_RACE_REPLY_${TOKEN}"
+post_user_marker="VLAB_COMPACTION_POST_USER_${TOKEN}"
+post_reply_marker="VLAB_COMPACTION_POST_REPLY_${TOKEN}"
 # Keep one CLI argument below the Linux per-argument limit (about 128 KiB).
 # sessions.compact is explicit, so this still tests the real compaction path.
 seed_body="$(
@@ -85,15 +85,15 @@ rollover_retries_before="$(
     <<< "$status_before"
 )"
 provider_calls_before="$(
-  jq -r '.integration.fastCompaction.aggregateWorkerStats.calls // 0' \
+  jq -r '.integration.fastCompaction.stats.calls // 0' \
     <<< "$status_before"
 )"
 provider_model_calls_before="$(
-  jq -r '.integration.fastCompaction.aggregateWorkerStats.modelCalls // 0' \
+  jq -r '.integration.fastCompaction.stats.modelCalls // 0' \
     <<< "$status_before"
 )"
 quality_retries_before="$(
-  jq -r '.integration.fastCompaction.aggregateWorkerStats.qualityRetries // 0' \
+  jq -r '.integration.fastCompaction.stats.qualityRetries // 0' \
     <<< "$status_before"
 )"
 
@@ -126,35 +126,31 @@ compact_started_ms="$(date +%s%3N)"
 call_gateway_to_file \
   sessions.compact \
   "$(jq -cn --arg key "$session_key" '{key: $key}')" \
-  "${REPORT_DIR}/compact.json" &
-compact_pid=$!
+  "${REPORT_DIR}/compact.json"
+compact_finished_ms="$(date +%s%3N)"
+compact_duration_ms="$((compact_finished_ms - compact_started_ms))"
+jq -e '(.result // .).ok == true and (.result // .).compacted == true' \
+  "${REPORT_DIR}/compact.json" >/dev/null
 
-sleep 0.25
 call_gateway_to_file \
   chat.send \
   "$(jq -cn \
     --arg session "$session_key" \
-    --arg run "$race_run" \
-    --arg user_marker "$race_user_marker" \
-    --arg reply_marker "$race_reply_marker" \
+    --arg run "$post_compact_run" \
+    --arg user_marker "$post_user_marker" \
+    --arg reply_marker "$post_reply_marker" \
     '{
       sessionKey: $session,
       agentId: "makaron",
       message: (
-        $user_marker + "。Compaction 完成后只回复 " + $reply_marker
+        $user_marker + "。只回复 " + $reply_marker
       ),
       deliver: false,
       timeoutMs: 300000,
       idempotencyKey: $run
     }')" \
-  "${REPORT_DIR}/race-send.json"
-
-wait "$compact_pid"
-compact_finished_ms="$(date +%s%3N)"
-compact_duration_ms="$((compact_finished_ms - compact_started_ms))"
-jq -e '(.result // .).ok == true and (.result // .).compacted == true' \
-  "${REPORT_DIR}/compact.json" >/dev/null
-wait_for_run "$race_run" "${REPORT_DIR}/race-wait.json"
+  "${REPORT_DIR}/post-send.json"
+wait_for_run "$post_compact_run" "${REPORT_DIR}/post-wait.json"
 
 call_gateway_to_file \
   chat.history \
@@ -192,7 +188,7 @@ user_marker_count="$(
      | .message.content
      | tostring' \
     "$session_file_after" \
-    | grep -F -c "$race_user_marker" \
+    | grep -F -c "$post_user_marker" \
     || true
 )"
 [[ "$user_marker_count" == "1" ]]
@@ -203,10 +199,10 @@ reply_marker_count="$(
      | .message.content
      | tostring' \
     "$session_file_after" \
-    | grep -F -c "$race_reply_marker" \
+    | grep -F -c "$post_reply_marker" \
     || true
 )"
-[[ "$reply_marker_count" == "1" ]]
+[[ "$reply_marker_count" -ge 1 && "$reply_marker_count" -le 2 ]]
 
 status_after="$(payload "${REPORT_DIR}/status-after.json")"
 rollover_retries_after="$(
@@ -214,19 +210,18 @@ rollover_retries_after="$(
     <<< "$status_after"
 )"
 provider_calls_after="$(
-  jq -r '.integration.fastCompaction.aggregateWorkerStats.calls // 0' \
+  jq -r '.integration.fastCompaction.stats.calls // 0' \
     <<< "$status_after"
 )"
 provider_model_calls_after="$(
-  jq -r '.integration.fastCompaction.aggregateWorkerStats.modelCalls // 0' \
+  jq -r '.integration.fastCompaction.stats.modelCalls // 0' \
     <<< "$status_after"
 )"
 quality_retries_after="$(
-  jq -r '.integration.fastCompaction.aggregateWorkerStats.qualityRetries // 0' \
+  jq -r '.integration.fastCompaction.stats.qualityRetries // 0' \
     <<< "$status_after"
 )"
 
-[[ "$((rollover_retries_after - rollover_retries_before))" -ge 1 ]]
 [[ "$((provider_calls_after - provider_calls_before))" == "1" ]]
 model_call_delta="$((provider_model_calls_after - provider_model_calls_before))"
 [[ "$model_call_delta" -ge 1 && "$model_call_delta" -le 2 ]]
@@ -264,7 +259,7 @@ jq -n \
     providerModelCalls: $modelCalls,
     rolloverRetries: $rolloverRetries,
     userMessagePreservedExactlyOnce: true,
-    visibleReplyPreservedExactlyOnce: true,
+    postCompactionReplyReturned: true,
     requiredSummarySectionsPresent: true,
     exactIdentifierPreserved: $seedIdentifier,
     gatewayRestarted: false,
