@@ -231,8 +231,12 @@ process.on("message", async (message) => {
       result = runCpu(durationMs);
     } else if (message.kind === "hold") {
       const durationMs = Number(message.durationMs);
-      if (!Number.isFinite(durationMs) || durationMs < 1 || durationMs > 60_000) {
-        throw new Error("durationMs must be between 1 and 60000");
+      if (
+        !Number.isFinite(durationMs) ||
+        durationMs < 1 ||
+        durationMs > 172_800_000
+      ) {
+        throw new Error("durationMs must be between 1 and 172800000");
       }
       result = await runHold(durationMs, controller.signal);
     } else if (message.kind === "agent") {
