@@ -1,4 +1,4 @@
-export const HARNESS_EVENT_CONTRACT_VERSION = "openclaw-2026.7.1-v2";
+export const HARNESS_EVENT_CONTRACT_VERSION = "openclaw-2026.7.1-v3";
 
 // These callbacks are asynchronous notifications. Their arguments and
 // completion semantics can cross the Worker IPC boundary without changing the
@@ -95,6 +95,7 @@ export const FORWARDED_HARNESS_OPTIONS = Object.freeze({
   ownerNumbers: "ownerNumbers",
   preserveUserFacingSessionModelState:
     "preserveUserFacingSessionModelState",
+  promptCacheKey: "promptCacheKey",
   promptMode: "promptMode",
   provider: "provider",
   reasoningLevel: "reasoningLevel",
@@ -162,6 +163,7 @@ export const PROCESS_LOCAL_HARNESS_OPTIONS = Object.freeze([
   "authStorage",
   "beforeAgentFinalizeRevisionAttempts",
   "beforeAgentStartResult",
+  "cleanupBundleMcpOnRunEnd",
   "config",
   "contextEngine",
   "contextTokenBudget",

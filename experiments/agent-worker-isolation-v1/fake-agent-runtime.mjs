@@ -138,6 +138,7 @@ export async function agentCommand(params) {
           cleanupCliLiveSessionOnRunEnd:
             params.cleanupCliLiveSessionOnRunEnd,
           oneShotCliRun: params.oneShotCliRun,
+          promptCacheKey: params.promptCacheKey,
           suppressPromptPersistence: params.suppressPromptPersistence,
           skipInitialSessionTouch: params.skipInitialSessionTouch,
           allowGatewaySubagentBinding:

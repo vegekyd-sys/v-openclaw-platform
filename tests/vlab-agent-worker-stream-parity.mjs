@@ -75,7 +75,7 @@ const partialRepliesBefore = parityBefore.eventsByCallback?.onPartialReply ?? 0;
 const completedBefore = before.integration.nativeHarnessStats.completed;
 
 assert.equal(before.integration.workerIsolationVersion, "0.1.7");
-assert.equal(parityBefore.contractVersion, "openclaw-2026.7.1-v2");
+assert.equal(parityBefore.contractVersion, "openclaw-2026.7.1-v3");
 assert.equal(parityBefore.orderedBackpressure, true);
 assert.equal(parityBefore.eventRelayFailures, 0);
 assert.deepEqual(parityBefore.unclassifiedCallbacks, []);

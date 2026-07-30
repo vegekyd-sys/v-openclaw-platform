@@ -82,6 +82,32 @@ test("worker suppresses its copy when Gateway already persisted the user turn", 
   }
 });
 
+test("worker forwards prompt cache identity but keeps one-shot cleanup disabled", async () => {
+  const pool = makePool();
+  try {
+    const result = await pool.dispatch("agent:fixture:cache", {
+      kind: "agent",
+      harnessAttempt: true,
+      message: "inspect-flags",
+      sessionId: "cache",
+      runId: "run-cache",
+      agentCommandOptions: {
+        promptCacheKey: "agent:makaron:feishu:group:fixture",
+        cleanupBundleMcpOnRunEnd: true,
+      },
+    });
+    const flags = JSON.parse(result.payloads[0].text);
+
+    assert.equal(
+      flags.promptCacheKey,
+      "agent:makaron:feishu:group:fixture",
+    );
+    assert.equal(flags.cleanupBundleMcpOnRunEnd, false);
+  } finally {
+    await pool.close();
+  }
+});
+
 test("worker preserves sessions_yield as a completed paused harness attempt", async () => {
   const pool = makePool();
   try {

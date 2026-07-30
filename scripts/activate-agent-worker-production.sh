@@ -310,7 +310,7 @@ jq -e \
   '.integration.workerIsolationVersion == "0.1.7"
    and .integration.nativeAgentHarnessDispatchAttached == true
    and .integration.nativeHarnessEventParity.contractVersion
-     == "openclaw-2026.7.1-v2"
+     == "openclaw-2026.7.1-v3"
    and .integration.nativeHarnessEventParity.orderedBackpressure == true
    and .integration.nativeHarnessEventParity.eventRelayFailures == 0
    and (.integration.nativeHarnessEventParity.unclassifiedOptions | length) == 0

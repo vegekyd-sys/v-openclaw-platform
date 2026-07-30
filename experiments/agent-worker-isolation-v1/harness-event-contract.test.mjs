@@ -16,7 +16,7 @@ test("classifies bridged, Gateway-owned, and unknown Harness callbacks", () => {
     notACallback() {},
   });
 
-  assert.equal(HARNESS_EVENT_CONTRACT_VERSION, "openclaw-2026.7.1-v2");
+  assert.equal(HARNESS_EVENT_CONTRACT_VERSION, "openclaw-2026.7.1-v3");
   assert.deepEqual(contract.bridged, [
     "onAgentEvent",
     "onPartialReply",
@@ -30,9 +30,11 @@ test("classifies and translates native Harness execution options", () => {
   const contract = inspectHarnessOptionContract({
     provider: "azure-openai",
     modelId: "gpt-5.6-sol",
+    promptCacheKey: "agent:makaron:feishu:group:fixture",
     thinkLevel: "high",
     blockReplyChunking: { minChars: 40, maxChars: 120 },
     sessionKey: "agent:fixture:one",
+    cleanupBundleMcpOnRunEnd: true,
     contextEngine: { id: "native" },
     onPartialReply() {},
     futureHarnessMode: "new",
@@ -42,11 +44,15 @@ test("classifies and translates native Harness execution options", () => {
   assert.deepEqual(contract.forwarded, [
     "blockReplyChunking",
     "modelId",
+    "promptCacheKey",
     "provider",
     "thinkLevel",
   ]);
   assert.deepEqual(contract.translated, ["sessionKey"]);
-  assert.deepEqual(contract.processLocal, ["contextEngine"]);
+  assert.deepEqual(contract.processLocal, [
+    "cleanupBundleMcpOnRunEnd",
+    "contextEngine",
+  ]);
   assert.deepEqual(contract.unclassified, [
     "futureHarnessMode",
     "futureHarnessResolver",
@@ -55,12 +61,15 @@ test("classifies and translates native Harness execution options", () => {
     buildForwardedHarnessOptions({
       provider: "azure-openai",
       modelId: "gpt-5.6-sol",
+      promptCacheKey: "agent:makaron:feishu:group:fixture",
       thinkLevel: "high",
       blockReplyBreak: "message_end",
+      cleanupBundleMcpOnRunEnd: true,
     }),
     {
       provider: "azure-openai",
       model: "gpt-5.6-sol",
+      promptCacheKey: "agent:makaron:feishu:group:fixture",
       thinking: "high",
       blockReplyBreak: "message_end",
     },
