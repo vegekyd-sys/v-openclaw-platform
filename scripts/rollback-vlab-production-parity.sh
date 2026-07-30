@@ -7,6 +7,17 @@ CONFIG_PATH="${LAB_ROOT}/state/openclaw.json"
 WORKER_CONFIG_PATH="${LAB_ROOT}/experiments/agent-worker-isolation-v1/worker-openclaw.json"
 UNIT_TARGET="/etc/systemd/system/openclaw-vlab-gateway.service"
 
+restore_feishu_bundles() {
+  local backup_root="${1}/feishu-bundles"
+  local target
+  [[ -d "$backup_root" ]] || return 0
+  while IFS= read -r -d '' backup_file; do
+    target="/${backup_file#"${backup_root}/"}"
+    install -d "$(dirname "$target")"
+    cp -a "$backup_file" "$target"
+  done < <(find "$backup_root" -type f -print0)
+}
+
 if [[ "$(id -u)" -ne 0 ]]; then
   echo "rollback-vlab-production-parity.sh must run as root" >&2
   exit 1
@@ -33,6 +44,7 @@ fi
 if [[ -L "${backup_dir}/node-target" ]]; then
   ln -sfn "$(readlink "${backup_dir}/node-target")" /opt/vlab/node
 fi
+restore_feishu_bundles "$backup_dir"
 systemctl daemon-reload
 systemctl restart openclaw-vlab-gateway.service
 systemctl is-active --quiet openclaw-vlab-gateway.service

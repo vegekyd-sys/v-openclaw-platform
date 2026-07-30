@@ -11,6 +11,7 @@ bash -n "${REPO_ROOT}/scripts/deploy-agent-worker-experiment.sh"
 bash -n "${REPO_ROOT}/scripts/apply-vlab-production-parity.sh"
 bash -n "${REPO_ROOT}/scripts/rollback-vlab-production-parity.sh"
 bash -n "${REPO_ROOT}/tests/vlab-production-parity.sh"
+node --test "${REPO_ROOT}/tests/patch-feishu-latest-snapshot-streaming.test.mjs"
 jq empty "${REPO_ROOT}/config/vlab-production-parity-v1.json"
 "${REPO_ROOT}/tests/vlab-agent-worker-static.sh"
 

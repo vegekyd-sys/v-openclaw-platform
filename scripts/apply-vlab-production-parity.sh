@@ -4,6 +4,7 @@ set -Eeuo pipefail
 LAB_ROOT="${LAB_ROOT:-/srv/vlab}"
 PROFILE_PATH="${VLAB_PARITY_PROFILE:-/tmp/vlab-production-parity-v1.json}"
 UNIT_SOURCE="${VLAB_PARITY_UNIT_SOURCE:-/tmp/openclaw-vlab-gateway.service}"
+FEISHU_PATCHER_SOURCE="${VLAB_FEISHU_PATCHER_SOURCE:-/tmp/patch-feishu-latest-snapshot-streaming.mjs}"
 CONFIG_PATH="${LAB_ROOT}/state/openclaw.json"
 WORKER_CONFIG_PATH="${LAB_ROOT}/experiments/agent-worker-isolation-v1/worker-openclaw.json"
 ACTIVE_MANIFEST="${LAB_ROOT}/experiments/production-parity-v1/active.json"
@@ -14,6 +15,17 @@ TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 BACKUP_DIR="${LAB_ROOT}/backups/production-parity-v1/${TIMESTAMP}"
 UNIT_TARGET="/etc/systemd/system/openclaw-vlab-gateway.service"
 rollback_armed=false
+
+restore_feishu_bundles() {
+  local backup_root="${1}/feishu-bundles"
+  local target
+  [[ -d "$backup_root" ]] || return 0
+  while IFS= read -r -d '' backup_file; do
+    target="/${backup_file#"${backup_root}/"}"
+    install -d "$(dirname "$target")"
+    cp -a "$backup_file" "$target"
+  done < <(find "$backup_root" -type f -print0)
+}
 
 restore_on_error() {
   local exit_code=$?
@@ -27,6 +39,7 @@ restore_on_error() {
     if [[ -L "${BACKUP_DIR}/node-target" ]]; then
       ln -sfn "$(readlink "${BACKUP_DIR}/node-target")" /opt/vlab/node
     fi
+    restore_feishu_bundles "$BACKUP_DIR"
     systemctl daemon-reload || true
     systemctl restart openclaw-vlab-gateway.service || true
   fi
@@ -50,6 +63,10 @@ done
 }
 [[ -f "$UNIT_SOURCE" ]] || {
   echo "missing staged systemd unit: $UNIT_SOURCE" >&2
+  exit 1
+}
+[[ -f "$FEISHU_PATCHER_SOURCE" ]] || {
+  echo "missing staged Feishu streaming patcher: $FEISHU_PATCHER_SOURCE" >&2
   exit 1
 }
 [[ -f "$CONFIG_PATH" ]] || {
@@ -95,6 +112,20 @@ fi
 if [[ -L /opt/vlab/node ]]; then
   ln -s "$(readlink /opt/vlab/node)" "${BACKUP_DIR}/node-target"
 fi
+mapfile -d '' feishu_bundles < <(
+  find "${LAB_ROOT}/state/npm/projects" \
+    -path "*/node_modules/@openclaw/feishu/dist/monitor.account-*.js" \
+    -type f \
+    -print0
+)
+[[ "${#feishu_bundles[@]}" -gt 0 ]] || {
+  echo "missing @openclaw/feishu monitor.account bundle" >&2
+  exit 1
+}
+for bundle in "${feishu_bundles[@]}"; do
+  install -d "${BACKUP_DIR}/feishu-bundles$(dirname "$bundle")"
+  cp -a "$bundle" "${BACKUP_DIR}/feishu-bundles${bundle}"
+done
 rollback_armed=true
 
 node_root="/opt/vlab/node-v${node_version}-linux-x64"
@@ -113,6 +144,18 @@ if [[ ! -x "${node_root}/bin/node" ]]; then
   rm -rf "$download_dir"
 fi
 ln -sfn "$node_root" /opt/vlab/node
+
+mapfile -t feishu_package_roots < <(
+  printf '%s\n' "${feishu_bundles[@]}" |
+    sed 's#/dist/monitor\.account-[^/]*\.js$##' |
+    sort -u
+)
+/opt/vlab/node/bin/node \
+  "$FEISHU_PATCHER_SOURCE" \
+  "${feishu_package_roots[@]}"
+for bundle in "${feishu_bundles[@]}"; do
+  /opt/vlab/node/bin/node --check "$bundle"
+done
 
 install -d -o vlab -g vlab -m 0700 \
   "$makaron_workspace" \

@@ -93,6 +93,19 @@ systemctl is-active --quiet openclaw-vlab-gateway.service
 [[ -s "${LAB_ROOT}/state/makaron.env" ]]
 [[ "$(stat -c %a "${LAB_ROOT}/state/makaron.env")" == "600" ]]
 [[ "$(jq -er '.platformCommit' "${LAB_ROOT}/experiments/agent-worker-isolation-v1/active.json")" == "$expected_release" ]]
+mapfile -d '' feishu_bundles < <(
+  find "${LAB_ROOT}/state/npm/projects" \
+    -path "*/node_modules/@openclaw/feishu/dist/monitor.account-*.js" \
+    -type f \
+    -print0
+)
+[[ "${#feishu_bundles[@]}" -gt 0 ]]
+for bundle in "${feishu_bundles[@]}"; do
+  grep -q 'let latestStreamingCombined = null;' "$bundle"
+  grep -q 'while (latestStreamingCombined !== null)' "$bundle"
+  grep -q 'streamText = mergeStreamingText(streamText, nextText);' "$bundle"
+  "$NODE" --check "$bundle"
+done
 
 sudo -u vlab env \
   HOME="$LAB_ROOT" \
