@@ -118,6 +118,7 @@ for required in \
   index.mjs \
   worker-pool.mjs \
   worker.mjs \
+  harness-event-contract.mjs \
   exec-env.mjs \
   harness-result.mjs \
   harness-failure.mjs \
@@ -129,7 +130,7 @@ for required in \
     exit 1
   }
 done
-[[ "$(jq -r '.version' "${RELEASE_DIR}/package.json")" == "0.1.6" ]] || {
+[[ "$(jq -r '.version' "${RELEASE_DIR}/package.json")" == "0.1.7" ]] || {
   echo "unexpected Worker isolation version" >&2
   exit 1
 }
@@ -262,7 +263,7 @@ install -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0600 \
 manifest_candidate="$(mktemp)"
 jq -n \
   --arg commit "$PLATFORM_COMMIT" \
-  --arg version "0.1.6" \
+  --arg version "0.1.7" \
   --arg prepared_at "$TIMESTAMP" \
   --arg artifact_sha256 "$ARTIFACT_SHA256" \
   --arg release_dir "$RELEASE_DIR" \
@@ -306,8 +307,13 @@ run_openclaw gateway call vlab.workers.status --params '{}' --json \
   > "$STATUS_FILE"
 
 jq -e \
-  '.integration.workerIsolationVersion == "0.1.6"
+  '.integration.workerIsolationVersion == "0.1.7"
    and .integration.nativeAgentHarnessDispatchAttached == true
+   and .integration.nativeHarnessEventParity.contractVersion
+     == "openclaw-2026.7.1-v2"
+   and .integration.nativeHarnessEventParity.orderedBackpressure == true
+   and .integration.nativeHarnessEventParity.eventRelayFailures == 0
+   and (.integration.nativeHarnessEventParity.unclassifiedOptions | length) == 0
    and .integration.upstreamAttemptTimeoutPropagation == true
    and .integration.workerRequestTimeoutIsFallbackOnly == true
    and .integration.workerStallTimeoutMs == 120000
@@ -333,7 +339,7 @@ rollback_armed=false
 
 jq -n \
   --arg commit "$PLATFORM_COMMIT" \
-  --arg version "0.1.6" \
+  --arg version "0.1.7" \
   --arg artifact_sha256 "$ARTIFACT_SHA256" \
   --arg backup_dir "$BACKUP_DIR" \
   --arg rollback_command "sudo ${STATE_DIR}/rollback-latest.sh" \

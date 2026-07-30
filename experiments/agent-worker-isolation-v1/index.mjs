@@ -21,6 +21,12 @@ import {
 import { buildFastCompactionProvider } from "./fast-compaction-provider.mjs";
 import { runWithSessionRolloverRetry } from "./session-rollover-retry.mjs";
 import { startSubagentCompletionRelays } from "./subagent-completion-relay.mjs";
+import {
+  buildForwardedHarnessOptions,
+  HARNESS_EVENT_CONTRACT_VERSION,
+  inspectHarnessEventContract,
+  inspectHarnessOptionContract,
+} from "./harness-event-contract.mjs";
 
 const SESSION_PREFIX = "agent:makaron:explicit:vlab-worker-";
 const NATIVE_HARNESS_ID = "vlab-worker";
@@ -115,7 +121,51 @@ function acquireSharedPool(options) {
       nativeRequestsByRunId: new Map(),
       nativeSubagentCompletionRelays: new Map(),
       fastCompactionWorkerStats: new Map(),
+      harnessEventParity: {
+        observedCallbacks: new Set(),
+        bridgedCallbacks: new Set(),
+        gatewayOwnedCallbacks: new Set(),
+        unclassifiedCallbacks: new Set(),
+        eventsRelayed: 0,
+        eventRelayFailures: 0,
+        eventsByCallback: new Map(),
+        observedOptions: new Set(),
+        forwardedOptions: new Set(),
+        translatedOptions: new Set(),
+        processLocalOptions: new Set(),
+        unclassifiedOptions: new Set(),
+      },
     };
+  }
+  if (!globalThis[SHARED_POOL_KEY].harnessEventParity) {
+    globalThis[SHARED_POOL_KEY].harnessEventParity = {
+      observedCallbacks: new Set(),
+      bridgedCallbacks: new Set(),
+      gatewayOwnedCallbacks: new Set(),
+      unclassifiedCallbacks: new Set(),
+      eventsRelayed: 0,
+      eventRelayFailures: 0,
+      eventsByCallback: new Map(),
+      observedOptions: new Set(),
+      forwardedOptions: new Set(),
+      translatedOptions: new Set(),
+      processLocalOptions: new Set(),
+      unclassifiedOptions: new Set(),
+    };
+  }
+  if (!globalThis[SHARED_POOL_KEY].harnessEventParity.eventsByCallback) {
+    globalThis[SHARED_POOL_KEY].harnessEventParity.eventsByCallback = new Map();
+  }
+  for (const name of [
+    "observedOptions",
+    "forwardedOptions",
+    "translatedOptions",
+    "processLocalOptions",
+    "unclassifiedOptions",
+  ]) {
+    if (!globalThis[SHARED_POOL_KEY].harnessEventParity[name]) {
+      globalThis[SHARED_POOL_KEY].harnessEventParity[name] = new Set();
+    }
   }
   return globalThis[SHARED_POOL_KEY];
 }
@@ -234,6 +284,7 @@ const plugin = {
     const nativeSubagentCompletionRelays =
       sharedPool.nativeSubagentCompletionRelays;
     const fastCompactionWorkerStats = sharedPool.fastCompactionWorkerStats;
+    const harnessEventParity = sharedPool.harnessEventParity;
     const operationsById = new Map();
     const operationsByIdempotencyKey = new Map();
     let nextOperationId = 1;
@@ -256,6 +307,45 @@ const plugin = {
       const workerShouldPersistUserTurn = shouldWorkerPersistUserTurn(
         params.userTurnTranscriptRecorder,
       );
+      const eventContract = inspectHarnessEventContract(params);
+      const optionContract = inspectHarnessOptionContract(params);
+      for (const name of eventContract.observed) {
+        harnessEventParity.observedCallbacks.add(name);
+      }
+      for (const name of eventContract.bridged) {
+        harnessEventParity.bridgedCallbacks.add(name);
+      }
+      for (const name of eventContract.gatewayOwned) {
+        harnessEventParity.gatewayOwnedCallbacks.add(name);
+      }
+      for (const name of eventContract.unclassified) {
+        if (!harnessEventParity.unclassifiedCallbacks.has(name)) {
+          api.logger.warn(
+            `OpenClaw exposed an unclassified Agent Harness callback: ${name}`,
+          );
+        }
+        harnessEventParity.unclassifiedCallbacks.add(name);
+      }
+      for (const name of optionContract.observed) {
+        harnessEventParity.observedOptions.add(name);
+      }
+      for (const name of optionContract.forwarded) {
+        harnessEventParity.forwardedOptions.add(name);
+      }
+      for (const name of optionContract.translated) {
+        harnessEventParity.translatedOptions.add(name);
+      }
+      for (const name of optionContract.processLocal) {
+        harnessEventParity.processLocalOptions.add(name);
+      }
+      for (const name of optionContract.unclassified) {
+        if (!harnessEventParity.unclassifiedOptions.has(name)) {
+          api.logger.warn(
+            `OpenClaw exposed an unclassified Agent Harness option: ${name}`,
+          );
+        }
+        harnessEventParity.unclassifiedOptions.add(name);
+      }
       nativeHarnessStats.admitted += 1;
       nativeHarnessStats.lastSessionKey = sessionKey;
       let workerMessagesSnapshot;
@@ -349,6 +439,8 @@ const plugin = {
                 extraSystemPrompt: params.extraSystemPrompt,
                 sourceReplyDeliveryMode: params.sourceReplyDeliveryMode,
                 senderIsOwner: params.senderIsOwner,
+                eventCallbackNames: eventContract.bridged,
+                agentCommandOptions: buildForwardedHarnessOptions(params),
               },
               {
                 // Session ID/file identity is the authoritative transcript
@@ -356,6 +448,26 @@ const plugin = {
                 // subagent completion announce even when their dispatch keys
                 // differ.
                 sessionOwnerKey: `${workerAgentId}:${session.sessionId}`,
+                onEvent: async (event) => {
+                  const callback = params[event.name];
+                  if (typeof callback !== "function") {
+                    throw new Error(
+                      `missing Gateway callback for Worker event ${event.name}`,
+                    );
+                  }
+                  try {
+                    await callback(...event.args);
+                    harnessEventParity.eventsRelayed += 1;
+                    harnessEventParity.eventsByCallback.set(
+                      event.name,
+                      (harnessEventParity.eventsByCallback.get(event.name) ??
+                        0) + 1,
+                    );
+                  } catch (error) {
+                    harnessEventParity.eventRelayFailures += 1;
+                    throw error;
+                  }
+                },
               },
             );
             nativeHarnessStats.workerAttempts += 1;
@@ -847,11 +959,50 @@ const plugin = {
             nativeAgentHarnessDispatchAttached: true,
             nestedGatewayHarnessRouting: true,
             workerUsesIngressAgentCommand: true,
-            workerIsolationVersion: "0.1.6",
+            workerIsolationVersion: "0.1.7",
             longRunProgressBridge: true,
             upstreamAttemptTimeoutPropagation: true,
             workerRequestTimeoutIsFallbackOnly: true,
             workerStallTimeoutMs: requestStallTimeoutMs,
+            nativeHarnessEventParity: {
+              contractVersion: HARNESS_EVENT_CONTRACT_VERSION,
+              orderedBackpressure: true,
+              differentialTraceTest: true,
+              observedCallbacks: [
+                ...harnessEventParity.observedCallbacks,
+              ].sort(),
+              bridgedCallbacks: [
+                ...harnessEventParity.bridgedCallbacks,
+              ].sort(),
+              gatewayOwnedCallbacks: [
+                ...harnessEventParity.gatewayOwnedCallbacks,
+              ].sort(),
+              unclassifiedCallbacks: [
+                ...harnessEventParity.unclassifiedCallbacks,
+              ].sort(),
+              eventsRelayed: harnessEventParity.eventsRelayed,
+              eventRelayFailures: harnessEventParity.eventRelayFailures,
+              eventsByCallback: Object.fromEntries(
+                [...harnessEventParity.eventsByCallback.entries()].sort(
+                  ([left], [right]) => left.localeCompare(right),
+                ),
+              ),
+              observedOptions: [
+                ...harnessEventParity.observedOptions,
+              ].sort(),
+              forwardedOptions: [
+                ...harnessEventParity.forwardedOptions,
+              ].sort(),
+              translatedOptions: [
+                ...harnessEventParity.translatedOptions,
+              ].sort(),
+              processLocalOptions: [
+                ...harnessEventParity.processLocalOptions,
+              ].sort(),
+              unclassifiedOptions: [
+                ...harnessEventParity.unclassifiedOptions,
+              ].sort(),
+            },
             channelTimeoutCoupledToWorker: false,
             cooperativeRequestTimeout: true,
             nativeUserTurnOwnedByWorker: true,
@@ -878,7 +1029,10 @@ const plugin = {
               execUsesGatewayConfig: true,
             },
             workerHeartbeatMs,
-            productionPromotionBlocked: false,
+            productionPromotionBlocked:
+              harnessEventParity.unclassifiedCallbacks.size > 0 ||
+              harnessEventParity.unclassifiedOptions.size > 0 ||
+              harnessEventParity.eventRelayFailures > 0,
             productionPromotionAcceptance: {
               nativeThreeByThree: true,
               nativeSessionAndTranscriptOwnership: true,

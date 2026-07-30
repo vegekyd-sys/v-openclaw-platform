@@ -6,6 +6,9 @@ EXPERIMENT_DIR="${REPO_ROOT}/experiments/agent-worker-isolation-v1"
 
 node --check "${EXPERIMENT_DIR}/worker-pool.mjs"
 node --check "${EXPERIMENT_DIR}/worker.mjs"
+node --check "${EXPERIMENT_DIR}/harness-event-contract.mjs"
+node --check "${EXPERIMENT_DIR}/harness-event-contract.test.mjs"
+node --check "${EXPERIMENT_DIR}/worker-stream-parity.test.mjs"
 node --check "${EXPERIMENT_DIR}/exec-env.mjs"
 node --check "${EXPERIMENT_DIR}/exec-env.test.mjs"
 node --check "${EXPERIMENT_DIR}/runtime-path.mjs"
@@ -23,6 +26,7 @@ node --check "${EXPERIMENT_DIR}/silent-worker.mjs"
 node --check "${EXPERIMENT_DIR}/index.mjs"
 node --check "${EXPERIMENT_DIR}/self-test.mjs"
 node --check "${REPO_ROOT}/tests/vlab-agent-worker-native-dispatch.mjs"
+node --check "${REPO_ROOT}/tests/vlab-agent-worker-stream-parity.mjs"
 node --check "${REPO_ROOT}/tests/vlab-agent-worker-config-domain.mjs"
 node --check "${REPO_ROOT}/tests/vlab-agent-worker-harness-parity.mjs"
 node --check "${REPO_ROOT}/tests/vlab-agent-worker-five-main-five-subagents.mjs"
@@ -31,9 +35,11 @@ node "${EXPERIMENT_DIR}/runtime-path.test.mjs"
 node "${EXPERIMENT_DIR}/exec-env.test.mjs"
 node "${EXPERIMENT_DIR}/worker-timeout-isolation.test.mjs"
 node --test \
+  "${EXPERIMENT_DIR}/harness-event-contract.test.mjs" \
   "${EXPERIMENT_DIR}/harness-result.test.mjs" \
   "${EXPERIMENT_DIR}/session-rollover-retry.test.mjs" \
   "${EXPERIMENT_DIR}/fast-compaction-provider.test.mjs" \
+  "${EXPERIMENT_DIR}/worker-stream-parity.test.mjs" \
   "${EXPERIMENT_DIR}/worker-agent.test.mjs"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-remote.sh"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-soak.sh"
@@ -73,6 +79,11 @@ grep -q 'sessionRolloverRebindRetry: true' "${EXPERIMENT_DIR}/index.mjs"
 grep -q 'api.registerCompactionProvider' "${EXPERIMENT_DIR}/index.mjs"
 grep -q 'allowModelOverride' "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
 grep -q 'allowedModels' "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
+grep -q 'nativeHarnessEventParity' "${EXPERIMENT_DIR}/index.mjs"
+grep -q '"stream-event"' "${EXPERIMENT_DIR}/worker.mjs"
+grep -q '"stream-event-ack"' "${EXPERIMENT_DIR}/worker-pool.mjs"
+grep -q 'onPartialReply' \
+  "${REPO_ROOT}/tests/vlab-agent-worker-stream-parity.mjs"
 
 jq -e '.id == "vlab-agent-worker-isolation"' \
   "${EXPERIMENT_DIR}/openclaw.plugin.json" >/dev/null
@@ -89,7 +100,7 @@ jq -e \
   "${EXPERIMENT_DIR}/openclaw.plugin.json" >/dev/null
 jq -e '.openclaw.extensions == ["./index.mjs"]' \
   "${EXPERIMENT_DIR}/package.json" >/dev/null
-jq -e '.version == "0.1.6"' \
+jq -e '.version == "0.1.7"' \
   "${EXPERIMENT_DIR}/package.json" >/dev/null
 grep -q 'requestTimeoutMs: attemptTimeoutMs' "${EXPERIMENT_DIR}/index.mjs"
 

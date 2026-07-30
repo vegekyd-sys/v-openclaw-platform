@@ -19,6 +19,7 @@
     "agentMaxConcurrent": 10,
     "subagentMaxConcurrent": 8,
     "sessionsVisibility": "all",
+    "feishuStreaming": true,
     "workshopMaxSkillBytes": 100000,
     "workshopAllowSymlinkTargetWrites": true,
     "compaction": {

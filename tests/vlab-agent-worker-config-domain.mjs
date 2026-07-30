@@ -56,7 +56,7 @@ const call = async (method, params = {}) =>
   );
 
 const statusBefore = await call("vlab.workers.status");
-assert.equal(statusBefore.integration.workerIsolationVersion, "0.1.6");
+assert.equal(statusBefore.integration.workerIsolationVersion, "0.1.7");
 assert.equal(
   statusBefore.integration.configDomainIsolation.execUsesGatewayConfig,
   true,

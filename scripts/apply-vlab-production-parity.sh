@@ -74,6 +74,7 @@ personal_skills="$(jq -er '.paths.personalSkills' "$PROFILE_PATH")"
 agent_max="$(jq -er '.config.agentMaxConcurrent' "$PROFILE_PATH")"
 subagent_max="$(jq -er '.config.subagentMaxConcurrent' "$PROFILE_PATH")"
 sessions_visibility="$(jq -er '.config.sessionsVisibility' "$PROFILE_PATH")"
+feishu_streaming="$(jq -er '.config.feishuStreaming' "$PROFILE_PATH")"
 workshop_max="$(jq -er '.config.workshopMaxSkillBytes' "$PROFILE_PATH")"
 allow_symlink_writes="$(jq -er '.config.workshopAllowSymlinkTargetWrites' "$PROFILE_PATH")"
 min_workers="$(jq -er '.config.worker.minWorkers' "$PROFILE_PATH")"
@@ -176,6 +177,7 @@ jq \
   --arg makaron_agent_dir "$makaron_agent_dir" \
   --arg personal_skills "$personal_skills" \
   --arg sessions_visibility "$sessions_visibility" \
+  --argjson feishu_streaming "$feishu_streaming" \
   --argjson agent_max "$agent_max" \
   --argjson subagent_max "$subagent_max" \
   --argjson workshop_max "$workshop_max" \
@@ -203,6 +205,7 @@ jq \
     | .tools = (.tools // {})
     | .tools.sessions = (.tools.sessions // {})
     | .tools.sessions.visibility = $sessions_visibility
+    | .channels.feishu.streaming = $feishu_streaming
     | .skills = (.skills // {})
     | .skills.workshop = ((.skills.workshop // {}) + {
         approvalPolicy: "auto",
@@ -242,6 +245,7 @@ if [[ -f "$WORKER_CONFIG_PATH" ]]; then
     --arg makaron_agent_dir "$makaron_agent_dir" \
     --arg personal_skills "$personal_skills" \
     --arg sessions_visibility "$sessions_visibility" \
+    --argjson feishu_streaming "$feishu_streaming" \
     --argjson agent_max "$agent_max" \
     --argjson subagent_max "$subagent_max" \
     --argjson workshop_max "$workshop_max" \
@@ -259,6 +263,7 @@ if [[ -f "$WORKER_CONFIG_PATH" ]]; then
           end
         ))
       | .tools.sessions.visibility = $sessions_visibility
+      | .channels.feishu.streaming = $feishu_streaming
       | .skills.workshop = ((.skills.workshop // {}) + {
           approvalPolicy: "auto",
           maxSkillBytes: $workshop_max,

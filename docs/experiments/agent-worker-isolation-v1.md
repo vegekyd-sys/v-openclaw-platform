@@ -34,7 +34,7 @@ introducing a separate worker registry.
 ## Candidate
 
 - OpenClaw: `2026.7.1`
-- Worker isolation plugin: `0.1.6`
+- Worker isolation plugin: `0.1.7`
 - Worker count: elastic from one warm worker to three workers
 - Sessions per worker: at most three active, distinct sessions
 - Total active-session capacity: `3 workers x 3 sessions = 9`
@@ -180,11 +180,31 @@ Subagent capacity acceptance preserves V's existing `8/8` limits:
 /tmp/vlab-agent-worker-subagents.sh
 ```
 
-Harness semantic parity acceptance covers the v0.1.6 incident path:
+Harness semantic parity acceptance covers the v0.1.7 incident path:
 
 ```bash
 /tmp/vlab-agent-worker-harness-parity.sh
 ```
+
+Worker/native user-visible parity is a versioned contract, not an informal
+checklist. `harness-event-contract.mjs` classifies every callback exposed by
+the native Agent Harness as one of:
+
+- bridged through Worker IPC with ordered async backpressure;
+- retained by the Gateway as lifecycle control; or
+- unclassified, which sets `productionPromotionBlocked=true`.
+
+`worker-stream-parity.test.mjs` compares the complete native and Worker event
+traces and verifies callback-failure cleanup. The real vLab promotion probe:
+
+```bash
+node /tmp/vlab-agent-worker-stream-parity.mjs
+```
+
+must observe `onPartialReply` on the native `chat.send` path, zero event relay
+failures, zero unclassified callbacks, and no Gateway restart. This contract
+must be rerun whenever OpenClaw is upgraded so new Harness behavior cannot
+silently bypass Worker isolation.
 
 ## Deploy and rollback
 

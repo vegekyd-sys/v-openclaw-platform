@@ -228,6 +228,8 @@ export class WorkerPool {
         sessionKey,
         sessionOwnerKey,
         request,
+        onEvent:
+          typeof options.onEvent === "function" ? options.onEvent : undefined,
         resolve,
         reject,
       });
@@ -424,6 +426,7 @@ export class WorkerPool {
         timeoutError: null,
         requestTimeoutMs,
         lastProgressAt: Date.now(),
+        streamEventTail: Promise.resolve(),
       };
       worker.active.set(job.id, active);
       active.timer = setTimeout(() => {
@@ -508,6 +511,62 @@ export class WorkerPool {
           );
         }
       }
+      return;
+    }
+    if (message?.type === "stream-event") {
+      const active = worker.active.get(message.id);
+      if (!active) {
+        worker.child.send({
+          type: "stream-event-ack",
+          requestId: message.id,
+          eventId: message.eventId,
+          ok: false,
+          error: {
+            code: "VLAB_WORKER_STREAM_REQUEST_NOT_ACTIVE",
+            message: `stream event request is not active: ${String(message.id)}`,
+          },
+        });
+        return;
+      }
+      active.lastProgressAt = Date.now();
+      this.armStallWatchdog(worker, active);
+      const delivery = active.streamEventTail.then(async () => {
+        await active.onEvent?.({
+          requestId: active.id,
+          runId: active.request?.runId,
+          sessionId: active.request?.sessionId,
+          sessionKey: active.sessionKey,
+          name: message.name,
+          args: Array.isArray(message.args) ? message.args : [],
+          slot: worker.slot,
+          workerPid: worker.pid,
+        });
+      });
+      active.streamEventTail = delivery.catch(() => {});
+      void delivery.then(
+        () => {
+          worker.child.send({
+            type: "stream-event-ack",
+            requestId: active.id,
+            eventId: message.eventId,
+            ok: true,
+          });
+        },
+        (error) => {
+          const failure = toError(error);
+          worker.child.send({
+            type: "stream-event-ack",
+            requestId: active.id,
+            eventId: message.eventId,
+            ok: false,
+            error: {
+              name: failure.name,
+              code: failure.code,
+              message: failure.message,
+            },
+          });
+        },
+      );
       return;
     }
     if (message?.type !== "response") {

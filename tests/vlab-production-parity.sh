@@ -42,6 +42,7 @@ jq -e \
       and .workspace == $makaron_workspace
       and .agentDir == "/srv/vlab/state/agents/makaron/agent")
     and .tools.sessions.visibility == "all"
+    and .channels.feishu.streaming == true
     and .skills.workshop.approvalPolicy == "auto"
     and .skills.workshop.maxSkillBytes == 100000
     and .skills.workshop.allowSymlinkTargetWrites == true
@@ -69,6 +70,7 @@ jq -e \
     and .agents.defaults.subagents.maxConcurrent == 8
     and any(.agents.list[]; .id == "makaron" and .workspace == $makaron_workspace)
     and .tools.sessions.visibility == "all"
+    and .channels.feishu.streaming == true
     and .skills.workshop.maxSkillBytes == 100000
     and .skills.workshop.allowSymlinkTargetWrites == true
     and .skills.load.allowSymlinkTargets == [

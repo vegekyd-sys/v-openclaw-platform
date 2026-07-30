@@ -2,9 +2,13 @@ import { performance } from "node:perf_hooks";
 import { pathToFileURL } from "node:url";
 import { buildHarnessAttemptResult } from "./harness-result.mjs";
 import { readFastCompactionStats } from "./fast-compaction-provider.mjs";
+import { isBridgedHarnessEventCallback } from "./harness-event-contract.mjs";
 
 let agentRuntimePromise;
+let agentEventRuntimePromise;
 const activeControllers = new Map();
+const pendingStreamEventAcks = new Map();
+let nextStreamEventId = 1;
 const configuredHeartbeatMs = Number(
   process.env.VLAB_WORKER_HEARTBEAT_MS ?? 15_000,
 );
@@ -49,14 +53,176 @@ function jsonSafe(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function streamEventError(message) {
+  const error = new Error(
+    message?.error?.message ?? "Worker stream event delivery failed",
+  );
+  error.name = message?.error?.name ?? error.name;
+  if (message?.error?.code) {
+    error.code = message.error.code;
+  }
+  return error;
+}
+
+async function sendStreamEvent(
+  requestId,
+  request,
+  name,
+  args,
+  abortSignal,
+) {
+  if (!isBridgedHarnessEventCallback(name)) {
+    throw new Error(`unsupported Worker stream callback: ${name}`);
+  }
+  if (typeof process.send !== "function") {
+    throw new Error("Worker stream callback requires an IPC channel");
+  }
+  const eventId = `stream-${nextStreamEventId}`;
+  nextStreamEventId += 1;
+  await new Promise((resolve, reject) => {
+    const finish = (error) => {
+      const pending = pendingStreamEventAcks.get(eventId);
+      if (!pending) {
+        return;
+      }
+      pendingStreamEventAcks.delete(eventId);
+      abortSignal.removeEventListener("abort", onAbort);
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
+    };
+    const onAbort = () => {
+      finish(
+        abortSignal.reason ??
+          Object.assign(new Error("Worker stream event was cancelled"), {
+            name: "AbortError",
+          }),
+      );
+    };
+    pendingStreamEventAcks.set(eventId, {
+      requestId,
+      resolve: () => finish(),
+      reject: (error) => finish(error),
+    });
+    abortSignal.addEventListener("abort", onAbort, { once: true });
+    process.send(
+      {
+        type: "stream-event",
+        id: requestId,
+        eventId,
+        runId: request.runId,
+        sessionId: request.sessionId,
+        sessionKey: request.sessionKey,
+        name,
+        args: jsonSafe(args),
+      },
+      (error) => {
+        if (error) {
+          finish(error);
+        }
+      },
+    );
+  });
+}
+
+function queueStreamEvent(
+  state,
+  requestId,
+  request,
+  name,
+  args,
+  abortSignal,
+) {
+  const delivery = state.tail.then(() =>
+    sendStreamEvent(
+      requestId,
+      request,
+      name,
+      args,
+      abortSignal,
+    ),
+  );
+  state.tail = delivery.catch((error) => {
+    state.failure ??= error;
+  });
+  return delivery;
+}
+
+function buildStreamCallbacks(
+  requestId,
+  request,
+  abortSignal,
+  state,
+  globallyBridgedNames,
+) {
+  const callbackNames = Array.isArray(request.eventCallbackNames)
+    ? request.eventCallbackNames
+    : [];
+  return Object.fromEntries(
+    callbackNames
+      .filter(
+        (name) =>
+          isBridgedHarnessEventCallback(name) &&
+          !globallyBridgedNames.has(name),
+      )
+      .map((name) => [
+        name,
+        async (...args) =>
+          await queueStreamEvent(
+            state,
+            requestId,
+            request,
+            name,
+            args,
+            abortSignal,
+          ),
+      ]),
+  );
+}
+
+function configuredAgentRuntimePath() {
+  return (
+    process.env.VLAB_OPENCLAW_AGENT_RUNTIME ??
+    "/opt/vlab/current/node_modules/openclaw/dist/plugin-sdk/agent-runtime.js"
+  );
+}
+
 async function loadAgentRuntime() {
   if (!agentRuntimePromise) {
-    const runtimePath =
-      process.env.VLAB_OPENCLAW_AGENT_RUNTIME ??
-      "/opt/vlab/current/node_modules/openclaw/dist/plugin-sdk/agent-runtime.js";
-    agentRuntimePromise = import(pathToFileURL(runtimePath).href);
+    agentRuntimePromise = import(
+      pathToFileURL(configuredAgentRuntimePath()).href
+    );
   }
   return await agentRuntimePromise;
+}
+
+async function loadAgentEventRuntime() {
+  if (!agentEventRuntimePromise) {
+    agentEventRuntimePromise = (async () => {
+      const agentRuntime = await loadAgentRuntime();
+      if (typeof agentRuntime.onAgentEvent === "function") {
+        return agentRuntime;
+      }
+      const runtimePath =
+        process.env.VLAB_OPENCLAW_AGENT_EVENT_RUNTIME ??
+        new URL(
+          "./agent-harness-runtime.js",
+          pathToFileURL(configuredAgentRuntimePath()),
+        );
+      try {
+        return await import(
+          runtimePath instanceof URL
+            ? runtimePath.href
+            : pathToFileURL(runtimePath).href
+        );
+      } catch {
+        return {};
+      }
+    })();
+  }
+  return await agentEventRuntimePromise;
 }
 
 function runCpu(durationMs) {
@@ -108,15 +274,68 @@ async function runAgent(message, abortSignal) {
     throw new Error("OpenClaw ingress Agent runtime is unavailable");
   }
   const startedAt = performance.now();
-  const result = await agentCommandFromIngress({
-    message: message.message,
-    transcriptMessage: message.transcriptMessage ?? message.message,
-    images: message.images,
-    imageOrder: message.imageOrder,
-    clientTools: message.clientTools,
-    agentId: message.agentId ?? "makaron",
-    sessionId: message.sessionId,
-    sessionKey: message.sessionKey,
+  const eventRuntime = await loadAgentEventRuntime();
+  const requestedEventNames = new Set(
+    Array.isArray(message.eventCallbackNames)
+      ? message.eventCallbackNames
+      : [],
+  );
+  const globallyBridgedNames = new Set();
+  const streamState = {
+    tail: Promise.resolve(),
+    failure: undefined,
+  };
+  let unsubscribeAgentEvents = () => {};
+  if (typeof eventRuntime.onAgentEvent === "function") {
+    globallyBridgedNames.add("onAgentEvent");
+    globallyBridgedNames.add("onPartialReply");
+    unsubscribeAgentEvents = eventRuntime.onAgentEvent((event) => {
+      if (event?.runId !== message.runId) {
+        return;
+      }
+      if (requestedEventNames.has("onAgentEvent")) {
+        void queueStreamEvent(
+          streamState,
+          message.id,
+          message,
+          "onAgentEvent",
+          [
+            {
+              stream: event.stream,
+              data: event.data,
+              sessionKey: event.sessionKey,
+            },
+          ],
+          abortSignal,
+        );
+      }
+      if (
+        event.stream === "assistant" &&
+        requestedEventNames.has("onPartialReply") &&
+        typeof event.data?.text === "string"
+      ) {
+        void queueStreamEvent(
+          streamState,
+          message.id,
+          message,
+          "onPartialReply",
+          [event.data],
+          abortSignal,
+        );
+      }
+    });
+  }
+  let result;
+  try {
+    result = await agentCommandFromIngress({
+      message: message.message,
+      transcriptMessage: message.transcriptMessage ?? message.message,
+      images: message.images,
+      imageOrder: message.imageOrder,
+      clientTools: message.clientTools,
+      agentId: message.agentId ?? "makaron",
+      sessionId: message.sessionId,
+      sessionKey: message.sessionKey,
     // The embedded runner also has a global execution lane. If omitted, every
     // session in this process shares "main" and is silently serialized.
     // A canonical session key gives different sessions independent lanes while
@@ -142,7 +361,15 @@ async function runAgent(message, abortSignal) {
     sourceReplyDeliveryMode: message.sourceReplyDeliveryMode,
     senderIsOwner: message.senderIsOwner,
     modelRun: message.modelRun ?? false,
+    ...(message.agentCommandOptions ?? {}),
     allowModelOverride: true,
+      ...buildStreamCallbacks(
+        message.id,
+        message,
+        abortSignal,
+        streamState,
+        globallyBridgedNames,
+      ),
     // This process is a persistent, concurrent Agent runtime, not a one-shot
     // local CLI. Per-turn one-shot teardown can wait on process-global MCP/CLI
     // resources after the assistant has already finished, holding the parent
@@ -156,8 +383,15 @@ async function runAgent(message, abortSignal) {
     suppressPromptPersistence: message.suppressPromptPersistence === true,
     skipInitialSessionTouch: true,
     allowGatewaySubagentBinding: true,
-    abortSignal,
-  });
+      abortSignal,
+    });
+    await streamState.tail;
+    if (streamState.failure) {
+      throw streamState.failure;
+    }
+  } finally {
+    unsubscribeAgentEvents();
+  }
   if (abortSignal.aborted) {
     throw abortSignal.reason ?? new Error("worker Agent request was cancelled");
   }
@@ -203,6 +437,18 @@ async function runAgent(message, abortSignal) {
 }
 
 process.on("message", async (message) => {
+  if (message?.type === "stream-event-ack" && message.eventId) {
+    const pending = pendingStreamEventAcks.get(message.eventId);
+    if (!pending || pending.requestId !== message.requestId) {
+      return;
+    }
+    if (message.ok === true) {
+      pending.resolve();
+    } else {
+      pending.reject(streamEventError(message));
+    }
+    return;
+  }
   if (message?.type === "cancel" && message.requestId) {
     const active = activeControllers.get(message.requestId);
     const controller = active?.controller;
