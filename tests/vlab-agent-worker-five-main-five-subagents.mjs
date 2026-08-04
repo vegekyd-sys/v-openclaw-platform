@@ -133,7 +133,7 @@ await Promise.all(
     const message =
       `这是 vLab 0.2.0 的 5 main + 5 Subagent 回归。严格执行：` +
       `1) 使用 sessions_spawn 启动恰好一个 isolated subagent，必须显式设置 ` +
-      `agentId=makaron，child 任务为：${childTask} ` +
+      `agentId=makaron、cleanup=keep，child 任务为：${childTask} ` +
       `2) spawn accepted 后，main 立即使用 exec 执行 /bin/sleep ` +
       `${mainHoldSeconds}；如果返回后台进程，必须使用 process poll 等待真实退出。` +
       `3) main 结束时，如果真实 child completion 已在本轮到达，直接只回复 ` +
