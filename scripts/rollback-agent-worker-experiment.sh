@@ -7,6 +7,9 @@ ACTIVE_MANIFEST="${STATE_DIR}/active.json"
 CONFIG_PATH="${LAB_ROOT}/state/openclaw.json"
 OPENCLAW="/opt/vlab/current/node_modules/openclaw/openclaw.mjs"
 NODE="/opt/vlab/node/bin/node"
+OPENCLAW_PACKAGE="/opt/vlab/current/node_modules/openclaw"
+SESSION_HOTSET_PATCHER="${STATE_DIR}/patch-openclaw-session-hotset.mjs"
+SESSION_HOTSET_DROPIN="/etc/systemd/system/openclaw-vlab-gateway.service.d/session-hotset-v0.2.0.conf"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 
 run_openclaw() {
@@ -39,6 +42,14 @@ install -o vlab -g vlab -m 0600 \
   "$CONFIG_PATH" \
   "${LAB_ROOT}/backups/agent-worker-isolation-v1/pre-rollback-${TIMESTAMP}.json"
 install -o vlab -g vlab -m 0600 "$config_backup" "$CONFIG_PATH"
+
+[[ -f "$SESSION_HOTSET_PATCHER" ]] || {
+  echo "missing Session Hotset rollback patcher: $SESSION_HOTSET_PATCHER" >&2
+  exit 1
+}
+"$NODE" "$SESSION_HOTSET_PATCHER" --restore "$OPENCLAW_PACKAGE"
+rm -f "$SESSION_HOTSET_DROPIN"
+systemctl daemon-reload
 
 run_openclaw config validate >/dev/null
 systemctl restart openclaw-vlab-gateway.service

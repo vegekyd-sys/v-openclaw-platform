@@ -26,15 +26,15 @@ They are normalized to lowercase before native OpenClaw session lookup and
 dispatch, matching OpenClaw's canonical session-key format.
 
 The vLab experiment sets OpenClaw's existing
-`tools.sessions.visibility="agent"` policy. This lets one `makaron` session
-inspect another `makaron` session through `sessions_list` and
-`sessions_history` without enabling unrestricted cross-agent visibility or
-introducing a separate worker registry.
+`tools.sessions.visibility="all"` policy. Session Hotset never replaces this
+central directory: `sessions_list`, `sessions_history`, `sessions_send`, A2A,
+transcripts and active-run ownership continue to use OpenClaw's native
+Gateway mechanisms.
 
 ## Candidate
 
 - OpenClaw: `2026.7.1`
-- Worker isolation plugin: `0.1.7`
+- Worker isolation plugin: `0.2.0`
 - Worker count: elastic from one warm worker to three workers
 - Sessions per worker: at most three active, distinct sessions
 - Total active-session capacity: `3 workers x 3 sessions = 9`
@@ -88,8 +88,18 @@ introducing a separate worker registry.
   latest native session before its first execution. The existing one-time
   admission retry remains as a race fallback and never replays a post-tool
   failure.
+- Session Hotset retains every Session identity, transcript pointer, route,
+  compaction checkpoint and plugin state. After 180 seconds of inactivity it
+  evicts only `skillsSnapshot` and `systemPromptReport`; OpenClaw's native
+  reply path rebuilds them when that Session is activated again.
+- Pre-start projection makes an existing large store lightweight. The
+  single-entry persistence hook continuously applies the same rule as
+  Sessions become dormant, without deleting or hiding a Session.
 
-The plugin does not patch OpenClaw's compiled files.
+The Hotset persistence hook is an exact, version-gated patch for OpenClaw
+`2026.7.1`. Activation backs up the original bundle and installs a systemd
+drop-in; rollback restores that bundle and removes the drop-in. A bundle shape
+or OpenClaw version mismatch fails before activation.
 
 ## Config-domain acceptance
 
@@ -150,6 +160,10 @@ original Gateway value.
     completes, then calls `sessions_yield`; the queued completion announce
     resumes the parent with a visible reply and no incomplete-turn card or
     transcript takeover.
+22. A store with at least 500 Sessions keeps the same directory count while
+    cold `readSessionEntry` latency and heap allocation improve over `0.1.7`.
+23. One active Session can use native `sessions_list` and `sessions_history`
+    to inspect a simultaneously running sibling Session.
 
 The production-shaped soak is executable on vLab:
 

@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 import { buildHarnessAttemptResult } from "./harness-result.mjs";
 import { readFastCompactionStats } from "./fast-compaction-provider.mjs";
 import { isBridgedHarnessEventCallback } from "./harness-event-contract.mjs";
+import { getSessionHotsetStatus } from "./session-hotset.mjs";
 
 let agentRuntimePromise;
 let agentEventRuntimePromise;
@@ -24,6 +25,7 @@ function sendProgress(requestId, request, reason = "worker:active") {
     sessionId: request.sessionId,
     sessionKey: request.sessionKey,
     reason,
+    sessionHotset: getSessionHotsetStatus(),
   });
 }
 
@@ -495,6 +497,7 @@ process.on("message", async (message) => {
       id: message.id,
       ok: true,
       result,
+      sessionHotset: getSessionHotsetStatus(),
     });
   } catch (error) {
     process.send?.({
@@ -502,6 +505,7 @@ process.on("message", async (message) => {
       id: message.id,
       ok: false,
       error: serializeError(error),
+      sessionHotset: getSessionHotsetStatus(),
     });
   } finally {
     activeControllers.delete(message.id);
@@ -512,4 +516,8 @@ if (process.env.VLAB_REQUIRE_OPENCLAW_AGENT_RUNTIME === "1") {
   await loadAgentRuntime();
 }
 
-process.send?.({ type: "ready", pid: process.pid });
+process.send?.({
+  type: "ready",
+  pid: process.pid,
+  sessionHotset: getSessionHotsetStatus(),
+});

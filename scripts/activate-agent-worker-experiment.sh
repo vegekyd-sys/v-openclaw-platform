@@ -8,6 +8,7 @@ SESSIONS_PER_WORKER="${VLAB_WORKER_SESSIONS_PER_WORKER:-3}"
 AGENT_MAX_CONCURRENT="${VLAB_AGENT_MAX_CONCURRENT:-10}"
 SUBAGENT_MAX_CONCURRENT="${VLAB_SUBAGENT_MAX_CONCURRENT:-8}"
 IDLE_TIMEOUT_MS="${VLAB_WORKER_IDLE_TIMEOUT_MS:-180000}"
+SESSION_HOTSET_TTL_MS="${VLAB_SESSION_HOTSET_TTL_MS:-180000}"
 ARCHIVE_PATH="${ARCHIVE_PATH:-/tmp/vlab-agent-worker-isolation-v1.tar.gz}"
 PLATFORM_COMMIT="${PLATFORM_COMMIT:?PLATFORM_COMMIT is required}"
 PLUGIN_ID="vlab-agent-worker-isolation"
@@ -18,12 +19,21 @@ WORKER_CONFIG_PATH="${STATE_DIR}/worker-openclaw.json"
 CONFIG_PATH="${LAB_ROOT}/state/openclaw.json"
 OPENCLAW="/opt/vlab/current/node_modules/openclaw/openclaw.mjs"
 NODE="/opt/vlab/node/bin/node"
+OPENCLAW_PACKAGE="/opt/vlab/current/node_modules/openclaw"
+SESSION_HOTSET_PATCHER_SOURCE="${VLAB_SESSION_HOTSET_PATCHER_SOURCE:-/tmp/patch-openclaw-session-hotset.mjs}"
+SESSION_HOTSET_PATCHER="${STATE_DIR}/patch-openclaw-session-hotset.mjs"
+SESSION_HOTSET_PRUNER_SOURCE="${VLAB_SESSION_HOTSET_PRUNER_SOURCE:-/tmp/prune-openclaw-session-hotset.mjs}"
+SESSION_HOTSET_PRUNER="${STATE_DIR}/prune-openclaw-session-hotset.mjs"
+SESSION_HOTSET_REPORT="${STATE_DIR}/last-prune.json"
+SESSION_HOTSET_DROPIN_DIR="/etc/systemd/system/openclaw-vlab-gateway.service.d"
+SESSION_HOTSET_DROPIN="${SESSION_HOTSET_DROPIN_DIR}/session-hotset-v0.2.0.conf"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 BACKUP_DIR="${LAB_ROOT}/backups/agent-worker-isolation-v1/${TIMESTAMP}"
 ACTIVE_MANIFEST="${STATE_DIR}/active.json"
 PRE_DEPLOY_CONFIG="${BACKUP_DIR}/openclaw.json"
 ROLLBACK_CONFIG="$PRE_DEPLOY_CONFIG"
 rollback_armed=false
+hotset_patch_armed=false
 existing_worker_compaction='{}'
 
 run_openclaw() {
@@ -40,6 +50,11 @@ restore_on_error() {
   local exit_code=$?
   if [[ "$rollback_armed" == true ]] && [[ -f "$PRE_DEPLOY_CONFIG" ]]; then
     install -o vlab -g vlab -m 0600 "$PRE_DEPLOY_CONFIG" "$CONFIG_PATH"
+    if [[ "$hotset_patch_armed" == true ]]; then
+      "$NODE" "$SESSION_HOTSET_PATCHER" --restore "$OPENCLAW_PACKAGE" || true
+      rm -f "$SESSION_HOTSET_DROPIN"
+      systemctl daemon-reload || true
+    fi
     systemctl restart openclaw-vlab-gateway.service || true
   fi
   exit "$exit_code"
@@ -80,6 +95,11 @@ if ! [[ "$IDLE_TIMEOUT_MS" =~ ^[0-9]+$ ]] \
   echo "VLAB_WORKER_IDLE_TIMEOUT_MS must be an integer between 100 and 3600000" >&2
   exit 1
 fi
+if ! [[ "$SESSION_HOTSET_TTL_MS" =~ ^[0-9]+$ ]] \
+  || (( SESSION_HOTSET_TTL_MS < 100 || SESSION_HOTSET_TTL_MS > 3600000 )); then
+  echo "VLAB_SESSION_HOTSET_TTL_MS must be between 100 and 3600000" >&2
+  exit 1
+fi
 [[ -f "$ARCHIVE_PATH" ]] || {
   echo "missing experiment archive: $ARCHIVE_PATH" >&2
   exit 1
@@ -90,6 +110,14 @@ fi
 }
 [[ -x "$NODE" && -f "$OPENCLAW" ]] || {
   echo "vLab OpenClaw runtime is incomplete" >&2
+  exit 1
+}
+[[ -f "$SESSION_HOTSET_PATCHER_SOURCE" ]] || {
+  echo "missing Session Hotset patcher: $SESSION_HOTSET_PATCHER_SOURCE" >&2
+  exit 1
+}
+[[ -f "$SESSION_HOTSET_PRUNER_SOURCE" ]] || {
+  echo "missing Session Hotset pruner: $SESSION_HOTSET_PRUNER_SOURCE" >&2
   exit 1
 }
 if [[ -f "$WORKER_CONFIG_PATH" ]]; then
@@ -126,6 +154,7 @@ for required in \
   harness-failure.mjs \
   session-rollover-retry.mjs \
   fast-compaction-provider.mjs \
+  session-hotset.mjs \
   stubborn-worker.mjs \
   self-test.mjs; do
   [[ -f "${RELEASE_DIR}/${required}" ]] || {
@@ -141,6 +170,12 @@ sudo -u vlab env \
   > "${LAB_ROOT}/logs/agent-worker-self-test-${TIMESTAMP}.json"
 
 install -d -o vlab -g vlab -m 0700 "$BACKUP_DIR" "$STATE_DIR"
+install -o root -g root -m 0755 \
+  "$SESSION_HOTSET_PATCHER_SOURCE" \
+  "$SESSION_HOTSET_PATCHER"
+install -o root -g root -m 0755 \
+  "$SESSION_HOTSET_PRUNER_SOURCE" \
+  "$SESSION_HOTSET_PRUNER"
 install -o vlab -g vlab -m 0600 "$CONFIG_PATH" "$PRE_DEPLOY_CONFIG"
 if jq -e \
   '.plugins.entries["vlab-agent-worker-isolation"].enabled == true' \
@@ -163,6 +198,25 @@ if jq -e \
   )
 fi
 rollback_armed=true
+
+"$NODE" "$SESSION_HOTSET_PATCHER" \
+  "$OPENCLAW_PACKAGE" \
+  "${RELEASE_DIR}/session-hotset.mjs"
+hotset_patch_armed=true
+install -d -o root -g root -m 0755 "$SESSION_HOTSET_DROPIN_DIR"
+session_hotset_dropin_candidate="$(mktemp)"
+printf '%s\n' \
+  '[Service]' \
+  'Environment=OPENCLAW_SESSION_HOTSET_ENABLED=1' \
+  "Environment=OPENCLAW_SESSION_HOTSET_TTL_MS=${SESSION_HOTSET_TTL_MS}" \
+  "Environment=OPENCLAW_SESSION_HOTSET_REPORT=${SESSION_HOTSET_REPORT}" \
+  "ExecStartPre=${NODE} ${SESSION_HOTSET_PRUNER} ${LAB_ROOT}/state/agents ${RELEASE_DIR}/session-hotset.mjs ${SESSION_HOTSET_TTL_MS}" \
+  > "$session_hotset_dropin_candidate"
+install -o root -g root -m 0644 \
+  "$session_hotset_dropin_candidate" \
+  "$SESSION_HOTSET_DROPIN"
+rm -f "$session_hotset_dropin_candidate"
+systemctl daemon-reload
 
 candidate_config="$(mktemp)"
 jq \
@@ -328,6 +382,12 @@ ready_worker_count="$(
   echo "expected ${MIN_WORKERS} warm workers, got ${ready_worker_count}" >&2
   false
 }
+jq -e \
+  '(.result // .) as $status
+   | $status.integration.workerIsolationVersion == "0.2.0"
+     and $status.integration.sessionHotset.gateway.enabled == true
+     and ($status.workers | all(.sessionHotset.enabled == true))' \
+  "${LAB_ROOT}/logs/agent-worker-status-${TIMESTAMP}.json" >/dev/null
 
 jq -n \
   --arg experiment "agent-worker-isolation-v1" \
@@ -336,6 +396,9 @@ jq -n \
   --arg config_backup "$ROLLBACK_CONFIG" \
   --arg pre_deploy_config "$PRE_DEPLOY_CONFIG" \
   --arg activated_at "$TIMESTAMP" \
+  --argjson session_hotset_ttl_ms "$SESSION_HOTSET_TTL_MS" \
+  --arg session_hotset_dropin "$SESSION_HOTSET_DROPIN" \
+  --arg session_hotset_report "$SESSION_HOTSET_REPORT" \
   '{
     experiment: $experiment,
     platformCommit: $platform_commit,
@@ -343,7 +406,14 @@ jq -n \
     configBackup: $config_backup,
     preDeployConfig: $pre_deploy_config,
     activatedAt: $activated_at,
-    status: "active"
+    status: "active",
+    sessionHotset: {
+      enabled: true,
+      strategy: "central-directory-cold-derived-state-v1",
+      ttlMs: $session_hotset_ttl_ms,
+      dropIn: $session_hotset_dropin,
+      lastPruneReport: $session_hotset_report
+    }
   }' \
   > "${ACTIVE_MANIFEST}.new"
 chown vlab:vlab "${ACTIVE_MANIFEST}.new"

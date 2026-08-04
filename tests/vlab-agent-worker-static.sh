@@ -21,6 +21,14 @@ node --check "${EXPERIMENT_DIR}/session-rollover-retry.test.mjs"
 node --check "${EXPERIMENT_DIR}/worker-agent.test.mjs"
 node --check "${EXPERIMENT_DIR}/fast-compaction-provider.mjs"
 node --check "${EXPERIMENT_DIR}/fast-compaction-provider.test.mjs"
+node --check "${EXPERIMENT_DIR}/session-hotset.mjs"
+node --check "${EXPERIMENT_DIR}/session-hotset.test.mjs"
+node --check "${REPO_ROOT}/scripts/patch-openclaw-session-hotset.mjs"
+node --check "${REPO_ROOT}/scripts/prune-openclaw-session-hotset.mjs"
+node --check "${REPO_ROOT}/tests/patch-openclaw-session-hotset.test.mjs"
+node --check "${REPO_ROOT}/tests/prune-openclaw-session-hotset.test.mjs"
+node --check "${REPO_ROOT}/tests/vlab-session-hotset-benchmark.mjs"
+node --check "${REPO_ROOT}/tests/vlab-session-hotset-cross-session.mjs"
 node --check "${EXPERIMENT_DIR}/stubborn-worker.mjs"
 node --check "${EXPERIMENT_DIR}/silent-worker.mjs"
 node --check "${EXPERIMENT_DIR}/index.mjs"
@@ -39,8 +47,11 @@ node --test \
   "${EXPERIMENT_DIR}/harness-result.test.mjs" \
   "${EXPERIMENT_DIR}/session-rollover-retry.test.mjs" \
   "${EXPERIMENT_DIR}/fast-compaction-provider.test.mjs" \
+  "${EXPERIMENT_DIR}/session-hotset.test.mjs" \
   "${EXPERIMENT_DIR}/worker-stream-parity.test.mjs" \
-  "${EXPERIMENT_DIR}/worker-agent.test.mjs"
+  "${EXPERIMENT_DIR}/worker-agent.test.mjs" \
+  "${REPO_ROOT}/tests/patch-openclaw-session-hotset.test.mjs" \
+  "${REPO_ROOT}/tests/prune-openclaw-session-hotset.test.mjs"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-remote.sh"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-soak.sh"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-faults.sh"
@@ -84,6 +95,16 @@ grep -q '"stream-event"' "${EXPERIMENT_DIR}/worker.mjs"
 grep -q '"stream-event-ack"' "${EXPERIMENT_DIR}/worker-pool.mjs"
 grep -q 'onPartialReply' \
   "${REPO_ROOT}/tests/vlab-agent-worker-stream-parity.mjs"
+grep -q 'OPENCLAW_SESSION_HOTSET_ENABLED=1' \
+  "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
+grep -q 'patch-openclaw-session-hotset.mjs" --restore' \
+  "${REPO_ROOT}/scripts/rollback-agent-worker-experiment.sh"
+grep -q 'applyVersaSessionHotsetProjection' \
+  "${REPO_ROOT}/scripts/patch-openclaw-session-hotset.mjs"
+grep -q 'ExecStartPre=.*prune-openclaw-session-hotset.mjs' \
+  "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
+grep -q 'sessionHotset: getSessionHotsetStatus()' \
+  "${EXPERIMENT_DIR}/worker.mjs"
 
 jq -e '.id == "vlab-agent-worker-isolation"' \
   "${EXPERIMENT_DIR}/openclaw.plugin.json" >/dev/null
@@ -100,7 +121,7 @@ jq -e \
   "${EXPERIMENT_DIR}/openclaw.plugin.json" >/dev/null
 jq -e '.openclaw.extensions == ["./index.mjs"]' \
   "${EXPERIMENT_DIR}/package.json" >/dev/null
-jq -e '.version == "0.1.7"' \
+jq -e '.version == "0.2.0"' \
   "${EXPERIMENT_DIR}/package.json" >/dev/null
 grep -q 'requestTimeoutMs: attemptTimeoutMs' "${EXPERIMENT_DIR}/index.mjs"
 

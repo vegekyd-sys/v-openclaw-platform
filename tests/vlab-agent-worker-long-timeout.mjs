@@ -57,7 +57,7 @@ const call = async (method, params = {}, timeoutMs = 120_000) =>
 
 const baselineRestarts = systemdNumber("NRestarts");
 const before = await call("vlab.workers.status");
-assert.equal(before.integration.workerIsolationVersion, "0.1.7");
+assert.equal(before.integration.workerIsolationVersion, "0.2.0");
 assert.equal(before.integration.upstreamAttemptTimeoutPropagation, true);
 assert.equal(before.integration.workerRequestTimeoutIsFallbackOnly, true);
 await saveJson("status-before.json", before);

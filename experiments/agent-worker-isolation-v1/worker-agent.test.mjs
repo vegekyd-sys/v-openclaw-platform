@@ -58,6 +58,7 @@ test("persistent worker does not run one-shot CLI teardown per turn", async () =
     assert.equal(result.attempt.itemLifecycle.activeCount, 0);
     assert.equal(pool.status().workers[0].activeCount, 0);
     assert.deepEqual(pool.status().workers[0].sessionKeys, []);
+    assert.equal(pool.status().workers[0].sessionHotset.enabled, false);
   } finally {
     await pool.close();
   }

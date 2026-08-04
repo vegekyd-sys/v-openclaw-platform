@@ -21,6 +21,7 @@ import {
 import { buildFastCompactionProvider } from "./fast-compaction-provider.mjs";
 import { runWithSessionRolloverRetry } from "./session-rollover-retry.mjs";
 import { startSubagentCompletionRelays } from "./subagent-completion-relay.mjs";
+import { getSessionHotsetStatus } from "./session-hotset.mjs";
 import {
   buildForwardedHarnessOptions,
   HARNESS_EVENT_CONTRACT_VERSION,
@@ -959,7 +960,15 @@ const plugin = {
             nativeAgentHarnessDispatchAttached: true,
             nestedGatewayHarnessRouting: true,
             workerUsesIngressAgentCommand: true,
-            workerIsolationVersion: "0.1.7",
+            workerIsolationVersion: "0.2.0",
+            sessionHotset: {
+              gateway: getSessionHotsetStatus(),
+              workers: pool.status().workers.map((worker) => ({
+                slot: worker.slot,
+                pid: worker.pid,
+                status: worker.sessionHotset,
+              })),
+            },
             longRunProgressBridge: true,
             upstreamAttemptTimeoutPropagation: true,
             workerRequestTimeoutIsFallbackOnly: true,

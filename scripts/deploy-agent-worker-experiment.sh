@@ -40,6 +40,8 @@ scp \
   "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh" \
   "${REPO_ROOT}/scripts/apply-vlab-production-parity.sh" \
   "${REPO_ROOT}/scripts/patch-feishu-latest-snapshot-streaming.mjs" \
+  "${REPO_ROOT}/scripts/patch-openclaw-session-hotset.mjs" \
+  "${REPO_ROOT}/scripts/prune-openclaw-session-hotset.mjs" \
   "${REPO_ROOT}/scripts/rollback-agent-worker-experiment.sh" \
   "${REPO_ROOT}/scripts/rollback-vlab-production-parity.sh" \
   "${REPO_ROOT}/config/vlab-production-parity-v1.json" \
@@ -63,6 +65,8 @@ scp \
   "${REPO_ROOT}/tests/vlab-agent-worker-harness-parity.mjs" \
   "${REPO_ROOT}/tests/vlab-agent-worker-five-main-five-subagents.mjs" \
   "${REPO_ROOT}/tests/vlab-agent-worker-long-timeout.mjs" \
+  "${REPO_ROOT}/tests/vlab-session-hotset-benchmark.mjs" \
+  "${REPO_ROOT}/tests/vlab-session-hotset-cross-session.mjs" \
   "${TARGET}:/tmp/"
 
 ssh \
@@ -70,4 +74,4 @@ ssh \
   -o IdentitiesOnly=yes \
   -o StrictHostKeyChecking=yes \
   "$TARGET" \
-  "chmod 0700 /tmp/apply-vlab-production-parity.sh /tmp/rollback-vlab-production-parity.sh /tmp/activate-agent-worker-experiment.sh /tmp/rollback-agent-worker-experiment.sh /tmp/vlab-production-parity.sh /tmp/vlab-agent-worker-remote.sh /tmp/vlab-agent-worker-soak.sh /tmp/vlab-agent-worker-faults.sh /tmp/vlab-agent-worker-subagents.sh /tmp/vlab-agent-worker-native-dispatch.sh /tmp/vlab-agent-worker-native-faults.sh /tmp/vlab-agent-worker-session-release.sh /tmp/vlab-agent-worker-config-domain.sh /tmp/vlab-agent-worker-workshop-symlink.sh /tmp/vlab-agent-worker-compaction.sh /tmp/vlab-agent-worker-harness-parity.sh && chmod 0755 /tmp/patch-feishu-latest-snapshot-streaming.mjs /tmp/vlab-agent-worker-native-dispatch.mjs /tmp/vlab-agent-worker-stream-parity.mjs /tmp/vlab-agent-worker-config-domain.mjs /tmp/vlab-agent-worker-workshop-symlink.mjs /tmp/vlab-agent-worker-harness-parity.mjs /tmp/vlab-agent-worker-five-main-five-subagents.mjs /tmp/vlab-agent-worker-long-timeout.mjs && VLAB_PARITY_PROFILE=/tmp/vlab-production-parity-v1.json VLAB_PARITY_UNIT_SOURCE=/tmp/openclaw-vlab-gateway.service VLAB_FEISHU_PATCHER_SOURCE=/tmp/patch-feishu-latest-snapshot-streaming.mjs /tmp/apply-vlab-production-parity.sh && PLATFORM_COMMIT=${PLATFORM_COMMIT} VLAB_WORKER_MIN_COUNT=${MIN_WORKERS} VLAB_WORKER_COUNT=${WORKER_COUNT} VLAB_WORKER_SESSIONS_PER_WORKER=${SESSIONS_PER_WORKER} VLAB_AGENT_MAX_CONCURRENT=${AGENT_MAX_CONCURRENT} VLAB_SUBAGENT_MAX_CONCURRENT=${SUBAGENT_MAX_CONCURRENT} VLAB_WORKER_IDLE_TIMEOUT_MS=${IDLE_TIMEOUT_MS} /tmp/activate-agent-worker-experiment.sh && VLAB_PARITY_PROFILE=/tmp/vlab-production-parity-v1.json VLAB_EXPECTED_WORKER_RELEASE=${PLATFORM_COMMIT} /tmp/vlab-production-parity.sh"
+  "chmod 0700 /tmp/apply-vlab-production-parity.sh /tmp/rollback-vlab-production-parity.sh /tmp/activate-agent-worker-experiment.sh /tmp/rollback-agent-worker-experiment.sh /tmp/vlab-production-parity.sh /tmp/vlab-agent-worker-remote.sh /tmp/vlab-agent-worker-soak.sh /tmp/vlab-agent-worker-faults.sh /tmp/vlab-agent-worker-subagents.sh /tmp/vlab-agent-worker-native-dispatch.sh /tmp/vlab-agent-worker-native-faults.sh /tmp/vlab-agent-worker-session-release.sh /tmp/vlab-agent-worker-config-domain.sh /tmp/vlab-agent-worker-workshop-symlink.sh /tmp/vlab-agent-worker-compaction.sh /tmp/vlab-agent-worker-harness-parity.sh && chmod 0755 /tmp/patch-feishu-latest-snapshot-streaming.mjs /tmp/patch-openclaw-session-hotset.mjs /tmp/prune-openclaw-session-hotset.mjs /tmp/vlab-agent-worker-native-dispatch.mjs /tmp/vlab-agent-worker-stream-parity.mjs /tmp/vlab-agent-worker-config-domain.mjs /tmp/vlab-agent-worker-workshop-symlink.mjs /tmp/vlab-agent-worker-harness-parity.mjs /tmp/vlab-agent-worker-five-main-five-subagents.mjs /tmp/vlab-agent-worker-long-timeout.mjs /tmp/vlab-session-hotset-benchmark.mjs /tmp/vlab-session-hotset-cross-session.mjs && VLAB_PARITY_PROFILE=/tmp/vlab-production-parity-v1.json VLAB_PARITY_UNIT_SOURCE=/tmp/openclaw-vlab-gateway.service VLAB_FEISHU_PATCHER_SOURCE=/tmp/patch-feishu-latest-snapshot-streaming.mjs /tmp/apply-vlab-production-parity.sh && PLATFORM_COMMIT=${PLATFORM_COMMIT} VLAB_WORKER_MIN_COUNT=${MIN_WORKERS} VLAB_WORKER_COUNT=${WORKER_COUNT} VLAB_WORKER_SESSIONS_PER_WORKER=${SESSIONS_PER_WORKER} VLAB_AGENT_MAX_CONCURRENT=${AGENT_MAX_CONCURRENT} VLAB_SUBAGENT_MAX_CONCURRENT=${SUBAGENT_MAX_CONCURRENT} VLAB_WORKER_IDLE_TIMEOUT_MS=${IDLE_TIMEOUT_MS} /tmp/activate-agent-worker-experiment.sh && VLAB_PARITY_PROFILE=/tmp/vlab-production-parity-v1.json VLAB_EXPECTED_WORKER_RELEASE=${PLATFORM_COMMIT} /tmp/vlab-production-parity.sh"

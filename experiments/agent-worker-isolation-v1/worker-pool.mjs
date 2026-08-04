@@ -174,6 +174,7 @@ export class WorkerPool {
       lastIdleAt: Date.now(),
       startupPromise: null,
       retireTimer: null,
+      sessionHotset: undefined,
     };
     this.workers.set(slot, handle);
 
@@ -470,6 +471,9 @@ export class WorkerPool {
   }
 
   onMessage(worker, message) {
+    if (message?.sessionHotset) {
+      worker.sessionHotset = message.sessionHotset;
+    }
     if (message?.type === "ready") {
       worker.resolveStartup?.();
       this.requestPump();
@@ -740,6 +744,7 @@ export class WorkerPool {
             worker.active.size === 0 && worker.ownerSessionKeys.size === 0
               ? Math.max(0, Date.now() - worker.lastIdleAt)
               : 0,
+          sessionHotset: worker.sessionHotset,
         })),
     };
   }
