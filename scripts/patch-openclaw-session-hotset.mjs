@@ -7,7 +7,6 @@ import { pathToFileURL } from "node:url";
 const EXPECTED_PACKAGE_VERSION = "2026.7.1";
 const IMPORT_ANCHOR = `import fs from "node:fs";\nimport path from "node:path";`;
 const IMPORT_IDENTIFIER = "applyVersaSessionHotsetProjection";
-const SERIALIZED_IMPORT_IDENTIFIER = "projectVersaSerializedSessionHotset";
 const PATCH_MARKER = "versa-session-hotset-v0.2.0";
 
 const ORIGINAL_PERSISTENCE_PROJECTION = `const persisted = projectSessionStoreForPersistence({
@@ -22,21 +21,6 @@ const PATCHED_PERSISTENCE_PROJECTION = `const persisted = projectSessionStoreFor
 \t// ${PATCH_MARKER}: retain every Session directory entry, evict only dormant derived prompt state.
 \t${IMPORT_IDENTIFIER}(persisted.store, { activeSessionKey: opts?.activeSessionKey });`;
 
-const ORIGINAL_SINGLE_ENTRY_WRITE = `if (singleEntrySerialized) {
-\t\t\tawait writeSessionStoreAtomic({
-\t\t\t\tstorePath,
-\t\t\t\tstore,
-\t\t\t\tserialized: singleEntrySerialized.serialized,`;
-
-const PATCHED_SINGLE_ENTRY_WRITE = `if (singleEntrySerialized) {
-\t\t\tconst hotsetSerialized = ${SERIALIZED_IMPORT_IDENTIFIER}(singleEntrySerialized.serialized, {
-\t\t\t\tactiveSessionKey: opts?.activeSessionKey ?? opts?.singleEntryPersistence?.sessionKey
-\t\t\t});
-\t\t\tawait writeSessionStoreAtomic({
-\t\t\t\tstorePath,
-\t\t\t\tstore,
-\t\t\t\tserialized: hotsetSerialized,`;
-
 function replaceExactlyOnce(source, original, replacement, label) {
   const first = source.indexOf(original);
   if (first === -1) {
@@ -49,7 +33,7 @@ function replaceExactlyOnce(source, original, replacement, label) {
 }
 
 export function patchOpenClawSessionStoreBundle(source, moduleUrl) {
-  const importLine = `import { applySessionHotsetProjection as ${IMPORT_IDENTIFIER}, projectSerializedSessionStoreHotset as ${SERIALIZED_IMPORT_IDENTIFIER} } from ${JSON.stringify(moduleUrl)};`;
+  const importLine = `import { applySessionHotsetProjection as ${IMPORT_IDENTIFIER} } from ${JSON.stringify(moduleUrl)};`;
   const hasImport = source.includes(importLine);
   const hasFunction = source.includes(PATCH_MARKER);
   if (hasImport && hasFunction) {
@@ -70,12 +54,6 @@ export function patchOpenClawSessionStoreBundle(source, moduleUrl) {
     ORIGINAL_PERSISTENCE_PROJECTION,
     PATCHED_PERSISTENCE_PROJECTION,
     "Session Store persistence projection",
-  );
-  patched = replaceExactlyOnce(
-    patched,
-    ORIGINAL_SINGLE_ENTRY_WRITE,
-    PATCHED_SINGLE_ENTRY_WRITE,
-    "single-entry Session Store persistence",
   );
   return { changed: true, source: patched };
 }

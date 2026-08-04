@@ -33,8 +33,7 @@ test("patches the exact OpenClaw 2026.7.1 persistence projection", () => {
   assert.match(result.source, /applyVersaSessionHotsetProjection/);
   assert.match(result.source, /versa-session-hotset-v0\.2\.0/);
   assert.match(result.source, /activeSessionKey: opts\?\.activeSessionKey/);
-  assert.match(result.source, /projectVersaSerializedSessionHotset/);
-  assert.match(result.source, /serialized: hotsetSerialized/);
+  assert.doesNotMatch(result.source, /serialized: hotsetSerialized/);
   assert.match(result.source, /JSON\.stringify\(persisted\.store/);
 });
 

@@ -109,17 +109,6 @@ export function applySessionHotsetProjection(store, options = {}) {
   return result;
 }
 
-export function projectSerializedSessionStoreHotset(serialized, options = {}) {
-  if (options.force !== true && !enabled()) {
-    return serialized;
-  }
-  const store = JSON.parse(serialized);
-  const result = applySessionHotsetProjection(store, options);
-  return result.changedEntries > 0
-    ? `${JSON.stringify(store, null, 2)}\n`
-    : serialized;
-}
-
 export function getSessionHotsetStatus() {
   return {
     enabled: enabled(),

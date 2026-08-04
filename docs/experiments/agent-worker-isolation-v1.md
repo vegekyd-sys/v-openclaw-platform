@@ -92,9 +92,9 @@ Gateway mechanisms.
   compaction checkpoint and plugin state. After 180 seconds of inactivity it
   evicts only `skillsSnapshot` and `systemPromptReport`; OpenClaw's native
   reply path rebuilds them when that Session is activated again.
-- Pre-start projection makes an existing large store lightweight. The
-  single-entry persistence hook continuously applies the same rule as
-  Sessions become dormant, without deleting or hiding a Session.
+- Pre-start projection makes an existing large store lightweight. OpenClaw's
+  native full-store persistence path applies the same projection again without
+  changing the concurrency-sensitive single-entry write path.
 
 The Hotset persistence hook is an exact, version-gated patch for OpenClaw
 `2026.7.1`. Activation backs up the original bundle and installs a systemd

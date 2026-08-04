@@ -4,7 +4,6 @@ import test from "node:test";
 import {
   applySessionHotsetProjection,
   getSessionHotsetStatus,
-  projectSerializedSessionStoreHotset,
   resetSessionHotsetStatsForTest,
 } from "./session-hotset.mjs";
 
@@ -134,24 +133,4 @@ test("status names the native state that is rebuilt instead of hiding Sessions",
     "skillsSnapshot",
     "systemPromptReport",
   ]);
-});
-
-test("single-entry persistence can continuously evict dormant derived state", () => {
-  const nowMs = 10_000;
-  const source = JSON.stringify({
-    "agent:makaron:explicit:old": makeEntry(1, 100),
-    "agent:makaron:explicit:active": makeEntry(2, 100),
-  });
-
-  const projected = projectSerializedSessionStoreHotset(source, {
-    force: true,
-    nowMs,
-    ttlMs: 100,
-    activeSessionKey: "agent:makaron:explicit:active",
-  });
-  const store = JSON.parse(projected);
-
-  assert.equal(Object.keys(store).length, 2);
-  assert.equal(store["agent:makaron:explicit:old"].skillsSnapshot, undefined);
-  assert.ok(store["agent:makaron:explicit:active"].skillsSnapshot);
 });
