@@ -14,6 +14,9 @@ const storePath =
   process.env.VLAB_SESSION_STORE ??
   `${labRoot}/state/agents/makaron/sessions/sessions.json`;
 const sampleCount = Number(process.env.VLAB_HOTSET_SAMPLE_COUNT ?? 15);
+const minimumSessionCount = Number(
+  process.env.VLAB_HOTSET_MIN_SESSION_COUNT ?? 500,
+);
 const reportPath = process.env.VLAB_HOTSET_REPORT_PATH;
 
 if (process.argv[2] === "--sample") {
@@ -56,7 +59,10 @@ const [bundlePath] = bundleCandidates;
 const source = await readFile(storePath, "utf8");
 const store = JSON.parse(source);
 const entries = Object.entries(store);
-assert.ok(entries.length >= 500, "VLab does not contain the required 500 Sessions");
+assert.ok(
+  entries.length >= minimumSessionCount,
+  `Session Store has ${entries.length} entries; expected at least ${minimumSessionCount}`,
+);
 const ordered = entries
   .filter(([, entry]) => typeof entry?.sessionId === "string")
   .sort((left, right) => Number(left[1].updatedAt ?? 0) - Number(right[1].updatedAt ?? 0));

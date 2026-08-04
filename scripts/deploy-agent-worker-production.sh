@@ -28,6 +28,8 @@ scp \
   -o StrictHostKeyChecking=yes \
   "$ARCHIVE" \
   "${REPO_ROOT}/scripts/activate-agent-worker-production.sh" \
+  "${REPO_ROOT}/scripts/patch-openclaw-session-hotset.mjs" \
+  "${REPO_ROOT}/scripts/prune-openclaw-session-hotset.mjs" \
   "${REPO_ROOT}/scripts/rollback-agent-worker-production.sh" \
   "${TARGET}:/tmp/"
 

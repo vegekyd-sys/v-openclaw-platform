@@ -97,12 +97,24 @@ grep -q 'onPartialReply' \
   "${REPO_ROOT}/tests/vlab-agent-worker-stream-parity.mjs"
 grep -q 'OPENCLAW_SESSION_HOTSET_ENABLED=1' \
   "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
-grep -q 'patch-openclaw-session-hotset.mjs" --restore' \
+grep -q 'SESSION_HOTSET_PATCHER.*--restore' \
   "${REPO_ROOT}/scripts/rollback-agent-worker-experiment.sh"
 grep -q 'applyVersaSessionHotsetProjection' \
   "${REPO_ROOT}/scripts/patch-openclaw-session-hotset.mjs"
-grep -q 'ExecStartPre=.*prune-openclaw-session-hotset.mjs' \
+grep -q 'ExecStartPre=.*SESSION_HOTSET_PRUNER' \
   "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
+grep -q 'OPENCLAW_SESSION_HOTSET_ENABLED=1' \
+  "${REPO_ROOT}/scripts/activate-agent-worker-production.sh"
+grep -q 'SESSION_HOTSET_PATCHER.*--restore' \
+  "${REPO_ROOT}/scripts/rollback-agent-worker-production.sh"
+grep -q 'ExecStartPre=.*SESSION_HOTSET_PRUNER' \
+  "${REPO_ROOT}/scripts/activate-agent-worker-production.sh"
+grep -q 'patch-openclaw-session-hotset.mjs' \
+  "${REPO_ROOT}/scripts/deploy-agent-worker-production.sh"
+grep -q 'prune-openclaw-session-hotset.mjs' \
+  "${REPO_ROOT}/scripts/deploy-agent-worker-production.sh"
+grep -q 'workerIsolationVersion == "0.2.0"' \
+  "${REPO_ROOT}/scripts/activate-agent-worker-production.sh"
 grep -q 'sessionHotset: getSessionHotsetStatus()' \
   "${EXPERIMENT_DIR}/worker.mjs"
 

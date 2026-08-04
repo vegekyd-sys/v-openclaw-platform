@@ -13,6 +13,9 @@ WORKER_CONFIG_PATH="${STATE_DIR}/worker-openclaw.json"
 ACTIVE_MANIFEST="${STATE_DIR}/active.json"
 NODE="/opt/node-v22.23.1/bin/node"
 OPENCLAW="/opt/openclaw-2026.7.1/node_modules/openclaw/openclaw.mjs"
+OPENCLAW_PACKAGE="/opt/openclaw-2026.7.1/node_modules/openclaw"
+SESSION_HOTSET_PATCHER="${STATE_DIR}/patch-openclaw-session-hotset.mjs"
+SESSION_HOTSET_DROPIN="/etc/systemd/system/${SERVICE}.d/session-hotset-v0.2.0.conf"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 
 run_openclaw() {
@@ -31,6 +34,10 @@ if [[ "$(id -u)" -ne 0 ]]; then
 fi
 [[ -f "$ACTIVE_MANIFEST" ]] || {
   echo "no active Agent Worker Isolation manifest" >&2
+  exit 1
+}
+[[ -f "$SESSION_HOTSET_PATCHER" ]] || {
+  echo "missing Session Hotset rollback patcher" >&2
   exit 1
 }
 
@@ -67,6 +74,10 @@ install -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0600 \
   "$backup_worker_config" "$WORKER_CONFIG_PATH"
 install -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0600 \
   "$previous_active_manifest" "$ACTIVE_MANIFEST"
+
+"$NODE" "$SESSION_HOTSET_PATCHER" --restore "$OPENCLAW_PACKAGE"
+rm -f "$SESSION_HOTSET_DROPIN"
+systemctl daemon-reload
 
 run_openclaw config validate >/dev/null
 systemctl restart "$SERVICE"
