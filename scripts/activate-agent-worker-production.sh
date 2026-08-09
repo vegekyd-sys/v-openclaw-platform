@@ -396,7 +396,7 @@ jq -n \
       lastPruneReport: $session_hotset_report
     },
     previousSessionHotset: {
-      existed: ($previous_hotset_module | length) > 0,
+      existed: (($previous_hotset_module | length) > 0),
       module: $previous_hotset_module,
       dropInBackup: $backup_hotset_dropin
     },
