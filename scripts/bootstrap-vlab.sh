@@ -226,6 +226,10 @@ jq \
     | .channels = {}
     | .bindings = []
     | del(.hooks)
+    | del(.secrets.providers.skillhub)
+    | .skills.entries = ((.skills.entries // {}) | with_entries(
+        select(.value.apiKey.provider? != "skillhub")
+      ))
     | .mcp.servers = {}
     | .tools.deny = (((.tools.deny // []) + [
         "message",
