@@ -34,12 +34,22 @@ function replaceExactlyOnce(source, original, replacement, label) {
 
 export function patchOpenClawSessionStoreBundle(source, moduleUrl) {
   const importLine = `import { applySessionHotsetProjection as ${IMPORT_IDENTIFIER} } from ${JSON.stringify(moduleUrl)};`;
+  const importPrefix = `import { applySessionHotsetProjection as ${IMPORT_IDENTIFIER} } from `;
+  const existingImports = source
+    .split("\n")
+    .filter((line) => line.startsWith(importPrefix));
   const hasImport = source.includes(importLine);
   const hasFunction = source.includes(PATCH_MARKER);
   if (hasImport && hasFunction) {
     return { changed: false, source };
   }
-  if (hasImport || hasFunction) {
+  if (hasFunction && existingImports.length === 1) {
+    return {
+      changed: true,
+      source: source.replace(existingImports[0], importLine),
+    };
+  }
+  if (hasImport || hasFunction || existingImports.length > 0) {
     throw new Error("Session Hotset bundle is partially patched");
   }
 

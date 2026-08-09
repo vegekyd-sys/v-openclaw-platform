@@ -33,10 +33,13 @@ TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 BACKUP_DIR="${LAB_ROOT}/backups/agent-worker-isolation-v1/${TIMESTAMP}"
 ACTIVE_MANIFEST="${STATE_DIR}/active.json"
 PRE_DEPLOY_CONFIG="${BACKUP_DIR}/openclaw.json"
+PRE_DEPLOY_HOTSET_DROPIN="${BACKUP_DIR}/session-hotset-v0.2.0.conf"
 ROLLBACK_CONFIG="$PRE_DEPLOY_CONFIG"
 rollback_armed=false
 hotset_patch_armed=false
 media_completion_patch_armed=false
+hotset_was_present=false
+previous_hotset_module=""
 existing_worker_compaction='{}'
 
 run_openclaw() {
@@ -55,8 +58,15 @@ restore_on_error() {
   if [[ "$rollback_armed" == true ]] && [[ -f "$PRE_DEPLOY_CONFIG" ]]; then
     install -o vlab -g vlab -m 0600 "$PRE_DEPLOY_CONFIG" "$CONFIG_PATH"
     if [[ "$hotset_patch_armed" == true ]]; then
-      "$NODE" "$SESSION_HOTSET_PATCHER" --restore "$OPENCLAW_PACKAGE" || true
-      rm -f "$SESSION_HOTSET_DROPIN"
+      if [[ "$hotset_was_present" == true && -n "$previous_hotset_module" ]]; then
+        "$NODE" "$SESSION_HOTSET_PATCHER" \
+          "$OPENCLAW_PACKAGE" "$previous_hotset_module" || true
+        install -o root -g root -m 0644 \
+          "$PRE_DEPLOY_HOTSET_DROPIN" "$SESSION_HOTSET_DROPIN" || true
+      else
+        "$NODE" "$SESSION_HOTSET_PATCHER" --restore "$OPENCLAW_PACKAGE" || true
+        rm -f "$SESSION_HOTSET_DROPIN"
+      fi
       systemctl daemon-reload || true
     fi
     if [[ "$media_completion_patch_armed" == true ]]; then
@@ -193,6 +203,19 @@ install -o root -g root -m 0755 \
   "$MEDIA_COMPLETION_PATCHER_SOURCE" \
   "$MEDIA_COMPLETION_PATCHER"
 install -o vlab -g vlab -m 0600 "$CONFIG_PATH" "$PRE_DEPLOY_CONFIG"
+if [[ -f "$SESSION_HOTSET_DROPIN" ]]; then
+  hotset_was_present=true
+  install -o root -g root -m 0644 \
+    "$SESSION_HOTSET_DROPIN" "$PRE_DEPLOY_HOTSET_DROPIN"
+  previous_hotset_module="$(
+    awk '{ for (i = 1; i <= NF; i += 1) if ($i ~ /\/session-hotset\.mjs$/) print $i }' \
+      "$PRE_DEPLOY_HOTSET_DROPIN" | head -n 1
+  )"
+  [[ -n "$previous_hotset_module" ]] || {
+    echo "could not resolve existing Session Hotset module" >&2
+    exit 1
+  }
+fi
 if jq -e \
   '.plugins.entries["vlab-agent-worker-isolation"].enabled == true' \
   "$CONFIG_PATH" >/dev/null 2>&1; then

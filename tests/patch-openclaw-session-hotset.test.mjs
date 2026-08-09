@@ -51,6 +51,25 @@ test("patch is idempotent for the same immutable module URL", () => {
   assert.equal(second.source, first.source);
 });
 
+test("upgrades an existing Hotset patch to the new immutable release URL", () => {
+  const first = patchOpenClawSessionStoreBundle(
+    fixture,
+    "file:///opt/vlab/releases/old/session-hotset.mjs",
+  );
+  const upgraded = patchOpenClawSessionStoreBundle(
+    first.source,
+    "file:///opt/vlab/releases/new/session-hotset.mjs",
+  );
+
+  assert.equal(upgraded.changed, true);
+  assert.match(upgraded.source, /releases\/new\/session-hotset\.mjs/);
+  assert.doesNotMatch(upgraded.source, /releases\/old\/session-hotset\.mjs/);
+  assert.equal(
+    upgraded.source.match(/versa-session-hotset-v0\.2\.0/g)?.length,
+    1,
+  );
+});
+
 test("patch rejects partial or unsupported bundles", () => {
   assert.throws(
     () => patchOpenClawSessionStoreBundle(
