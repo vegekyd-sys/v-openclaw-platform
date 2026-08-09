@@ -26,6 +26,8 @@ SESSION_HOTSET_PATCHER_SOURCE="${V_SESSION_HOTSET_PATCHER_SOURCE:-/tmp/patch-ope
 SESSION_HOTSET_PATCHER="${STATE_DIR}/patch-openclaw-session-hotset.mjs"
 SESSION_HOTSET_PRUNER_SOURCE="${V_SESSION_HOTSET_PRUNER_SOURCE:-/tmp/prune-openclaw-session-hotset.mjs}"
 SESSION_HOTSET_PRUNER="${STATE_DIR}/prune-openclaw-session-hotset.mjs"
+MEDIA_COMPLETION_PATCHER_SOURCE="${V_MEDIA_COMPLETION_PATCHER_SOURCE:-/tmp/patch-openclaw-media-completion-relay.mjs}"
+MEDIA_COMPLETION_PATCHER="${STATE_DIR}/patch-openclaw-media-completion-relay.mjs"
 SESSION_HOTSET_REPORT="${STATE_DIR}/last-prune.json"
 SESSION_HOTSET_DROPIN_DIR="/etc/systemd/system/${SERVICE}.d"
 SESSION_HOTSET_DROPIN="${SESSION_HOTSET_DROPIN_DIR}/session-hotset-v0.2.0.conf"
@@ -35,10 +37,14 @@ BACKUP_DIR="${STATE_ROOT}/backups/agent-worker-isolation-v1/${TIMESTAMP}-${SHORT
 BACKUP_CONFIG="${BACKUP_DIR}/openclaw.json"
 BACKUP_WORKER_CONFIG="${BACKUP_DIR}/worker-openclaw.json"
 PREVIOUS_ACTIVE_MANIFEST="${BACKUP_DIR}/active.json"
+PREVIOUS_HOTSET_DROPIN="${BACKUP_DIR}/session-hotset-v0.2.0.conf"
 HEALTH_FILE="${BACKUP_DIR}/candidate-health.json"
 STATUS_FILE="${BACKUP_DIR}/candidate-worker-status.json"
 rollback_armed=false
 hotset_patch_armed=false
+media_completion_patch_armed=false
+hotset_was_present=false
+previous_hotset_module=""
 candidate_config=""
 worker_candidate_config=""
 manifest_candidate=""
@@ -74,10 +80,21 @@ restore_on_error() {
     install -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0600 \
       "$PREVIOUS_ACTIVE_MANIFEST" "$ACTIVE_MANIFEST"
     if [[ "$hotset_patch_armed" == true ]]; then
-      "$NODE" "$SESSION_HOTSET_PATCHER" --restore "$OPENCLAW_PACKAGE" \
+      if [[ "$hotset_was_present" == true && -n "$previous_hotset_module" ]]; then
+        "$NODE" "$SESSION_HOTSET_PATCHER" \
+          "$OPENCLAW_PACKAGE" "$previous_hotset_module" || true
+        install -o root -g root -m 0644 \
+          "$PREVIOUS_HOTSET_DROPIN" "$SESSION_HOTSET_DROPIN" || true
+      else
+        "$NODE" "$SESSION_HOTSET_PATCHER" --restore "$OPENCLAW_PACKAGE" \
+          || true
+        rm -f "$SESSION_HOTSET_DROPIN"
+      fi
+    fi
+    if [[ "$media_completion_patch_armed" == true ]]; then
+      "$NODE" "$MEDIA_COMPLETION_PATCHER" --restore "$OPENCLAW_PACKAGE" \
         || true
     fi
-    rm -f "$SESSION_HOTSET_DROPIN"
     systemctl daemon-reload || true
     systemctl restart "$SERVICE" || true
   fi
@@ -118,8 +135,8 @@ fi
   echo "missing Session Hotset pruner" >&2
   exit 1
 }
-[[ ! -e "$SESSION_HOTSET_DROPIN" ]] || {
-  echo "Session Hotset systemd drop-in already exists; use a versioned upgrade path" >&2
+[[ -f "$MEDIA_COMPLETION_PATCHER_SOURCE" ]] || {
+  echo "missing media completion relay patcher" >&2
   exit 1
 }
 if ! [[ "$SESSION_HOTSET_TTL_MS" =~ ^[0-9]+$ ]] \
@@ -160,6 +177,7 @@ for required in \
   harness-failure.mjs \
   session-rollover-retry.mjs \
   fast-compaction-provider.mjs \
+  worker-gateway-events.mjs \
   session-hotset.mjs \
   self-test.mjs; do
   [[ -f "${RELEASE_DIR}/${required}" ]] || {
@@ -167,7 +185,7 @@ for required in \
     exit 1
   }
 done
-[[ "$(jq -r '.version' "${RELEASE_DIR}/package.json")" == "0.2.0" ]] || {
+[[ "$(jq -r '.version' "${RELEASE_DIR}/package.json")" == "0.2.1" ]] || {
   echo "unexpected Worker isolation version" >&2
   exit 1
 }
@@ -184,12 +202,27 @@ install -o root -g root -m 0755 \
   "$SESSION_HOTSET_PATCHER_SOURCE" "$SESSION_HOTSET_PATCHER"
 install -o root -g root -m 0755 \
   "$SESSION_HOTSET_PRUNER_SOURCE" "$SESSION_HOTSET_PRUNER"
+install -o root -g root -m 0755 \
+  "$MEDIA_COMPLETION_PATCHER_SOURCE" "$MEDIA_COMPLETION_PATCHER"
 install -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0600 \
   "$CONFIG_PATH" "$BACKUP_CONFIG"
 install -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0600 \
   "$WORKER_CONFIG_PATH" "$BACKUP_WORKER_CONFIG"
 install -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0600 \
   "$ACTIVE_MANIFEST" "$PREVIOUS_ACTIVE_MANIFEST"
+if [[ -f "$SESSION_HOTSET_DROPIN" ]]; then
+  hotset_was_present=true
+  install -o root -g root -m 0644 \
+    "$SESSION_HOTSET_DROPIN" "$PREVIOUS_HOTSET_DROPIN"
+  previous_hotset_module="$(
+    awk '{ for (i = 1; i <= NF; i += 1) if ($i ~ /\/session-hotset\.mjs$/) print $i }' \
+      "$PREVIOUS_HOTSET_DROPIN" | head -n 1
+  )"
+  [[ -n "$previous_hotset_module" ]] || {
+    echo "could not resolve existing Session Hotset module" >&2
+    exit 1
+  }
+fi
 rollback_armed=true
 
 hotset_patch_result="$(
@@ -197,9 +230,9 @@ hotset_patch_result="$(
     "$OPENCLAW_PACKAGE" \
     "${RELEASE_DIR}/session-hotset.mjs"
 )"
-if [[ "$hotset_patch_result" == patched\ * ]]; then
-  hotset_patch_armed=true
-fi
+hotset_patch_armed=true
+"$NODE" "$MEDIA_COMPLETION_PATCHER" "$OPENCLAW_PACKAGE"
+media_completion_patch_armed=true
 install -d -o root -g root -m 0755 "$SESSION_HOTSET_DROPIN_DIR"
 session_hotset_dropin_candidate="$(mktemp)"
 printf '%s\n' \
@@ -327,7 +360,7 @@ install -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0600 \
 manifest_candidate="$(mktemp)"
 jq -n \
   --arg commit "$PLATFORM_COMMIT" \
-  --arg version "0.2.0" \
+  --arg version "0.2.1" \
   --arg prepared_at "$TIMESTAMP" \
   --arg artifact_sha256 "$ARTIFACT_SHA256" \
   --arg release_dir "$RELEASE_DIR" \
@@ -340,6 +373,9 @@ jq -n \
   --argjson session_hotset_ttl_ms "$SESSION_HOTSET_TTL_MS" \
   --arg session_hotset_dropin "$SESSION_HOTSET_DROPIN" \
   --arg session_hotset_report "$SESSION_HOTSET_REPORT" \
+  --arg backup_hotset_dropin "$PREVIOUS_HOTSET_DROPIN" \
+  --arg previous_hotset_module "$previous_hotset_module" \
+  --arg media_completion_patcher "$MEDIA_COMPLETION_PATCHER" \
   '{
     commit: $commit,
     version: $version,
@@ -358,6 +394,16 @@ jq -n \
       ttlMs: $session_hotset_ttl_ms,
       dropIn: $session_hotset_dropin,
       lastPruneReport: $session_hotset_report
+    },
+    previousSessionHotset: {
+      existed: ($previous_hotset_module | length) > 0,
+      module: $previous_hotset_module,
+      dropInBackup: $backup_hotset_dropin
+    },
+    mediaCompletionRelay: {
+      enabled: true,
+      version: "0.2.1",
+      patcher: $media_completion_patcher
     }
   }' > "$manifest_candidate"
 install -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0600 \
@@ -381,7 +427,11 @@ run_openclaw gateway call vlab.workers.status --params '{}' --json \
   > "$STATUS_FILE"
 
 jq -e \
-  '.integration.workerIsolationVersion == "0.2.0"
+  '.integration.workerIsolationVersion == "0.2.1"
+   and .integration.mediaCompletionRelay.gatewayOwned == true
+   and .integration.mediaCompletionRelay.ackRetry == true
+   and .integration.mediaCompletionRelay.idempotent == true
+   and .integration.mediaCompletionRelay.failed == 0
    and .integration.sessionHotset.gateway.enabled == true
    and (.workers | all(.sessionHotset.enabled == true))
    and .integration.nativeAgentHarnessDispatchAttached == true
@@ -415,7 +465,7 @@ rollback_armed=false
 
 jq -n \
   --arg commit "$PLATFORM_COMMIT" \
-  --arg version "0.2.0" \
+  --arg version "0.2.1" \
   --arg artifact_sha256 "$ARTIFACT_SHA256" \
   --arg backup_dir "$BACKUP_DIR" \
   --arg rollback_command "sudo ${STATE_DIR}/rollback-latest.sh" \

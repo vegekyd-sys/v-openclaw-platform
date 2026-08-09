@@ -15,6 +15,7 @@ NODE="/opt/node-v22.23.1/bin/node"
 OPENCLAW="/opt/openclaw-2026.7.1/node_modules/openclaw/openclaw.mjs"
 OPENCLAW_PACKAGE="/opt/openclaw-2026.7.1/node_modules/openclaw"
 SESSION_HOTSET_PATCHER="${STATE_DIR}/patch-openclaw-session-hotset.mjs"
+MEDIA_COMPLETION_PATCHER="${STATE_DIR}/patch-openclaw-media-completion-relay.mjs"
 SESSION_HOTSET_DROPIN="/etc/systemd/system/${SERVICE}.d/session-hotset-v0.2.0.conf"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 
@@ -40,11 +41,24 @@ fi
   echo "missing Session Hotset rollback patcher" >&2
   exit 1
 }
+[[ -f "$MEDIA_COMPLETION_PATCHER" ]] || {
+  echo "missing media completion rollback patcher" >&2
+  exit 1
+}
 
 backup_config="$(jq -r '.backupConfig' "$ACTIVE_MANIFEST")"
 backup_worker_config="$(jq -r '.backupWorkerConfig' "$ACTIVE_MANIFEST")"
 previous_active_manifest="$(
   jq -r '.previousActiveManifest' "$ACTIVE_MANIFEST"
+)"
+previous_hotset_existed="$(
+  jq -r '.previousSessionHotset.existed // false' "$ACTIVE_MANIFEST"
+)"
+previous_hotset_module="$(
+  jq -r '.previousSessionHotset.module // ""' "$ACTIVE_MANIFEST"
+)"
+backup_hotset_dropin="$(
+  jq -r '.previousSessionHotset.dropInBackup // ""' "$ACTIVE_MANIFEST"
 )"
 for required in \
   "$backup_config" \
@@ -75,8 +89,20 @@ install -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0600 \
 install -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0600 \
   "$previous_active_manifest" "$ACTIVE_MANIFEST"
 
-"$NODE" "$SESSION_HOTSET_PATCHER" --restore "$OPENCLAW_PACKAGE"
-rm -f "$SESSION_HOTSET_DROPIN"
+if [[ "$previous_hotset_existed" == true ]]; then
+  [[ -n "$previous_hotset_module" && -f "$backup_hotset_dropin" ]] || {
+    echo "missing previous Session Hotset upgrade state" >&2
+    exit 1
+  }
+  "$NODE" "$SESSION_HOTSET_PATCHER" \
+    "$OPENCLAW_PACKAGE" "$previous_hotset_module"
+  install -o root -g root -m 0644 \
+    "$backup_hotset_dropin" "$SESSION_HOTSET_DROPIN"
+else
+  "$NODE" "$SESSION_HOTSET_PATCHER" --restore "$OPENCLAW_PACKAGE"
+  rm -f "$SESSION_HOTSET_DROPIN"
+fi
+"$NODE" "$MEDIA_COMPLETION_PATCHER" --restore "$OPENCLAW_PACKAGE"
 systemctl daemon-reload
 
 run_openclaw config validate >/dev/null
