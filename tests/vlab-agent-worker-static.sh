@@ -9,6 +9,10 @@ node --check "${EXPERIMENT_DIR}/worker.mjs"
 node --check "${EXPERIMENT_DIR}/harness-event-contract.mjs"
 node --check "${EXPERIMENT_DIR}/harness-event-contract.test.mjs"
 node --check "${EXPERIMENT_DIR}/worker-stream-parity.test.mjs"
+node --check "${EXPERIMENT_DIR}/worker-gateway-events.mjs"
+node --check "${EXPERIMENT_DIR}/worker-gateway-events.test.mjs"
+node --check "${EXPERIMENT_DIR}/worker-detached-event.test.mjs"
+node --check "${EXPERIMENT_DIR}/fake-detached-event-worker.mjs"
 node --check "${EXPERIMENT_DIR}/exec-env.mjs"
 node --check "${EXPERIMENT_DIR}/exec-env.test.mjs"
 node --check "${EXPERIMENT_DIR}/runtime-path.mjs"
@@ -24,8 +28,10 @@ node --check "${EXPERIMENT_DIR}/fast-compaction-provider.test.mjs"
 node --check "${EXPERIMENT_DIR}/session-hotset.mjs"
 node --check "${EXPERIMENT_DIR}/session-hotset.test.mjs"
 node --check "${REPO_ROOT}/scripts/patch-openclaw-session-hotset.mjs"
+node --check "${REPO_ROOT}/scripts/patch-openclaw-media-completion-relay.mjs"
 node --check "${REPO_ROOT}/scripts/prune-openclaw-session-hotset.mjs"
 node --check "${REPO_ROOT}/tests/patch-openclaw-session-hotset.test.mjs"
+node --check "${REPO_ROOT}/tests/patch-openclaw-media-completion-relay.test.mjs"
 node --check "${REPO_ROOT}/tests/prune-openclaw-session-hotset.test.mjs"
 node --check "${REPO_ROOT}/tests/vlab-session-hotset-benchmark.mjs"
 node --check "${REPO_ROOT}/tests/vlab-session-hotset-cross-session.mjs"
@@ -49,8 +55,11 @@ node --test \
   "${EXPERIMENT_DIR}/fast-compaction-provider.test.mjs" \
   "${EXPERIMENT_DIR}/session-hotset.test.mjs" \
   "${EXPERIMENT_DIR}/worker-stream-parity.test.mjs" \
+  "${EXPERIMENT_DIR}/worker-gateway-events.test.mjs" \
+  "${EXPERIMENT_DIR}/worker-detached-event.test.mjs" \
   "${EXPERIMENT_DIR}/worker-agent.test.mjs" \
   "${REPO_ROOT}/tests/patch-openclaw-session-hotset.test.mjs" \
+  "${REPO_ROOT}/tests/patch-openclaw-media-completion-relay.test.mjs" \
   "${REPO_ROOT}/tests/prune-openclaw-session-hotset.test.mjs"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-remote.sh"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-soak.sh"
@@ -93,11 +102,16 @@ grep -q 'allowedModels' "${REPO_ROOT}/scripts/activate-agent-worker-experiment.s
 grep -q 'nativeHarnessEventParity' "${EXPERIMENT_DIR}/index.mjs"
 grep -q '"stream-event"' "${EXPERIMENT_DIR}/worker.mjs"
 grep -q '"stream-event-ack"' "${EXPERIMENT_DIR}/worker-pool.mjs"
+grep -q '"worker-gateway-event"' "${EXPERIMENT_DIR}/worker.mjs"
+grep -q '"worker-gateway-event-ack"' "${EXPERIMENT_DIR}/worker-pool.mjs"
+grep -q 'mediaCompletionRelay' "${EXPERIMENT_DIR}/index.mjs"
 grep -q 'onPartialReply' \
   "${REPO_ROOT}/tests/vlab-agent-worker-stream-parity.mjs"
 grep -q 'OPENCLAW_SESSION_HOTSET_ENABLED=1' \
   "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
 grep -q 'SESSION_HOTSET_PATCHER.*--restore' \
+  "${REPO_ROOT}/scripts/rollback-agent-worker-experiment.sh"
+grep -q 'MEDIA_COMPLETION_PATCHER.*--restore' \
   "${REPO_ROOT}/scripts/rollback-agent-worker-experiment.sh"
 grep -q 'applyVersaSessionHotsetProjection' \
   "${REPO_ROOT}/scripts/patch-openclaw-session-hotset.mjs"
@@ -133,7 +147,7 @@ jq -e \
   "${EXPERIMENT_DIR}/openclaw.plugin.json" >/dev/null
 jq -e '.openclaw.extensions == ["./index.mjs"]' \
   "${EXPERIMENT_DIR}/package.json" >/dev/null
-jq -e '.version == "0.2.0"' \
+jq -e '.version == "0.2.1"' \
   "${EXPERIMENT_DIR}/package.json" >/dev/null
 grep -q 'requestTimeoutMs: attemptTimeoutMs' "${EXPERIMENT_DIR}/index.mjs"
 

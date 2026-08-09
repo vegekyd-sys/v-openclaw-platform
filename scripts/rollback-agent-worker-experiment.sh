@@ -9,6 +9,7 @@ OPENCLAW="/opt/vlab/current/node_modules/openclaw/openclaw.mjs"
 NODE="/opt/vlab/node/bin/node"
 OPENCLAW_PACKAGE="/opt/vlab/current/node_modules/openclaw"
 SESSION_HOTSET_PATCHER="${STATE_DIR}/patch-openclaw-session-hotset.mjs"
+MEDIA_COMPLETION_PATCHER="${STATE_DIR}/patch-openclaw-media-completion-relay.mjs"
 SESSION_HOTSET_DROPIN="/etc/systemd/system/openclaw-vlab-gateway.service.d/session-hotset-v0.2.0.conf"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 
@@ -48,6 +49,11 @@ install -o vlab -g vlab -m 0600 "$config_backup" "$CONFIG_PATH"
   exit 1
 }
 "$NODE" "$SESSION_HOTSET_PATCHER" --restore "$OPENCLAW_PACKAGE"
+[[ -f "$MEDIA_COMPLETION_PATCHER" ]] || {
+  echo "missing media completion rollback patcher: $MEDIA_COMPLETION_PATCHER" >&2
+  exit 1
+}
+"$NODE" "$MEDIA_COMPLETION_PATCHER" --restore "$OPENCLAW_PACKAGE"
 rm -f "$SESSION_HOTSET_DROPIN"
 systemctl daemon-reload
 

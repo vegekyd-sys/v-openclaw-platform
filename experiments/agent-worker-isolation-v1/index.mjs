@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import {
   resolveOpenClawAgentRuntimePath,
   resolveOpenClawSubagentAnnounceRuntimePath,
+  resolveOpenClawSubagentAnnounceOriginRuntimePath,
 } from "./runtime-path.mjs";
 import { buildHarnessFailureAttempt } from "./harness-failure.mjs";
 import { readNativeSessionMessages } from "./harness-result.mjs";
@@ -28,6 +29,10 @@ import {
   inspectHarnessEventContract,
   inspectHarnessOptionContract,
 } from "./harness-event-contract.mjs";
+import {
+  createWorkerGatewayEventRouter,
+  WORKER_GATEWAY_EVENT_CONTRACT_VERSION,
+} from "./worker-gateway-events.mjs";
 
 const SESSION_PREFIX = "agent:makaron:explicit:vlab-worker-";
 const NATIVE_HARNESS_ID = "vlab-worker";
@@ -249,6 +254,28 @@ const plugin = {
         }),
       ).href
     );
+    const nativeSubagentAnnounceOriginRuntimePromise = import(
+      pathToFileURL(
+        resolveOpenClawSubagentAnnounceOriginRuntimePath({
+          agentRuntimePath: openClawAgentRuntimePath,
+        }),
+      ).href
+    );
+    const mediaCompletionRelayStats = {};
+    const routeWorkerGatewayEvent = createWorkerGatewayEventRouter({
+      stats: mediaCompletionRelayStats,
+      async deliverMediaCompletion(deliveryParams) {
+        const runtime = await nativeSubagentAnnounceOriginRuntimePromise;
+        const deliverSubagentAnnouncement =
+          runtime.deliverSubagentAnnouncement ?? runtime.n;
+        if (typeof deliverSubagentAnnouncement !== "function") {
+          throw new Error(
+            "OpenClaw native completion delivery runtime is unavailable",
+          );
+        }
+        return await deliverSubagentAnnouncement(deliveryParams);
+      },
+    });
     const workerEnv = buildWorkerEnvironment(
       {
         ...process.env,
@@ -278,6 +305,18 @@ const plugin = {
       async onProgress(progress) {
         const { emitDiagnosticEvent } = await diagnosticRuntimePromise;
         relayWorkerProgress(emitDiagnosticEvent, progress);
+      },
+      async onWorkerEvent(event) {
+        try {
+          return await routeWorkerGatewayEvent(event);
+        } catch (error) {
+          api.logger.warn(
+            `Worker Gateway event relay failed for ${String(event?.eventId)}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+          throw error;
+        }
       },
     });
     const pool = sharedPool.pool;
@@ -960,7 +999,7 @@ const plugin = {
             nativeAgentHarnessDispatchAttached: true,
             nestedGatewayHarnessRouting: true,
             workerUsesIngressAgentCommand: true,
-            workerIsolationVersion: "0.2.0",
+            workerIsolationVersion: "0.2.1",
             sessionHotset: {
               gateway: getSessionHotsetStatus(),
               workers: pool.status().workers.map((worker) => ({
@@ -1020,6 +1059,13 @@ const plugin = {
             nativeNonTextTerminalSemantics: true,
             transcriptOwnerSerialization: true,
             nativeSubagentCompletionRelay: true,
+            mediaCompletionRelay: {
+              contractVersion: WORKER_GATEWAY_EVENT_CONTRACT_VERSION,
+              gatewayOwned: true,
+              ackRetry: true,
+              idempotent: true,
+              ...mediaCompletionRelayStats,
+            },
             staleSessionPreflightRebind: true,
             sessionRolloverRebindRetry: true,
             fastCompaction: {
@@ -1041,7 +1087,8 @@ const plugin = {
             productionPromotionBlocked:
               harnessEventParity.unclassifiedCallbacks.size > 0 ||
               harnessEventParity.unclassifiedOptions.size > 0 ||
-              harnessEventParity.eventRelayFailures > 0,
+              harnessEventParity.eventRelayFailures > 0 ||
+              Number(mediaCompletionRelayStats.failed ?? 0) > 0,
             productionPromotionAcceptance: {
               nativeThreeByThree: true,
               nativeSessionAndTranscriptOwnership: true,

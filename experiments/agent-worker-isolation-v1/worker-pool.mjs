@@ -64,6 +64,10 @@ export class WorkerPool {
     this.workerEnv = options.workerEnv ?? process.env;
     this.onProgress =
       typeof options.onProgress === "function" ? options.onProgress : undefined;
+    this.onWorkerEvent =
+      typeof options.onWorkerEvent === "function"
+        ? options.onWorkerEvent
+        : undefined;
     this.workers = new Map();
     this.sessionOwners = new Map();
     this.pending = [];
@@ -171,6 +175,7 @@ export class WorkerPool {
       ownerSessionKeys: new Set(),
       active: new Map(),
       queue: [],
+      detachedTaskKeys: new Set(),
       lastIdleAt: Date.now(),
       startupPromise: null,
       retireTimer: null,
@@ -517,6 +522,54 @@ export class WorkerPool {
       }
       return;
     }
+    if (message?.type === "worker-gateway-event") {
+      const event = message.event;
+      if (event?.eventKind === "detached_task_started" && event.taskKey) {
+        worker.detachedTaskKeys.add(event.taskKey);
+      }
+      const delivery = Promise.resolve().then(async () => {
+        return await this.onWorkerEvent?.({
+          ...event,
+          slot: worker.slot,
+          workerPid: worker.pid,
+        });
+      });
+      void delivery.then(
+        (result) => {
+          if (event?.eventKind === "detached_task_settled" && event.taskKey) {
+            worker.detachedTaskKeys.delete(event.taskKey);
+            if (
+              worker.active.size === 0 &&
+              worker.queue.length === 0 &&
+              worker.ownerSessionKeys.size === 0 &&
+              worker.detachedTaskKeys.size === 0
+            ) {
+              worker.lastIdleAt = Date.now();
+            }
+          }
+          worker.child.send({
+            type: "worker-gateway-event-ack",
+            eventId: event?.eventId,
+            ok: true,
+            result,
+          });
+        },
+        (error) => {
+          const failure = toError(error);
+          worker.child.send({
+            type: "worker-gateway-event-ack",
+            eventId: event?.eventId,
+            ok: false,
+            error: {
+              name: failure.name,
+              code: failure.code,
+              message: failure.message,
+            },
+          });
+        },
+      );
+      return;
+    }
     if (message?.type === "stream-event") {
       const active = worker.active.get(message.id);
       if (!active) {
@@ -667,6 +720,7 @@ export class WorkerPool {
           worker.ready &&
           !worker.retiring &&
           worker.ownerSessionKeys.size === 0 &&
+          worker.detachedTaskKeys.size === 0 &&
           worker.active.size === 0 &&
           worker.queue.length === 0 &&
           now - worker.lastIdleAt >= this.idleTimeoutMs,
@@ -726,6 +780,8 @@ export class WorkerPool {
           retiring: worker.retiring,
           sessionKeys: [...worker.ownerSessionKeys],
           assignedSessions: worker.ownerSessionKeys.size,
+          detachedTaskKeys: [...worker.detachedTaskKeys],
+          detachedTaskCount: worker.detachedTaskKeys.size,
           active: [...worker.active.values()].map((job) => ({
             requestId: job.id,
             sessionKey: job.sessionKey,

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   resolveOpenClawAgentRuntimePath,
+  resolveOpenClawSubagentAnnounceOriginRuntimePath,
   resolveOpenClawSubagentAnnounceRuntimePath,
 } from "./runtime-path.mjs";
 
@@ -64,4 +65,15 @@ assert.throws(
   /was not uniquely resolved/,
 );
 
-console.log(JSON.stringify({ ok: true, cases: 6 }));
+assert.equal(
+  resolveOpenClawSubagentAnnounceOriginRuntimePath({
+    agentRuntimePath: vlabRuntime,
+    readDirectory: () => [
+      "subagent-announce-CIkgndJa.js",
+      "subagent-announce-origin-DRzxvCSi.js",
+    ],
+  }),
+  "/opt/vlab/current/node_modules/openclaw/dist/subagent-announce-origin-DRzxvCSi.js",
+);
+
+console.log(JSON.stringify({ ok: true, cases: 7 }));

@@ -59,3 +59,21 @@ export function resolveOpenClawSubagentAnnounceRuntimePath(options = {}) {
   }
   return join(distDir, candidates[0]);
 }
+
+export function resolveOpenClawSubagentAnnounceOriginRuntimePath(options = {}) {
+  const agentRuntimePath =
+    options.agentRuntimePath ?? resolveOpenClawAgentRuntimePath(options);
+  const distDir = dirname(dirname(agentRuntimePath));
+  const readDirectory = options.readDirectory ?? readdirSync;
+  const candidates = readDirectory(distDir)
+    .filter((name) =>
+      /^subagent-announce-origin-[A-Za-z0-9_]+\.js$/.test(name),
+    )
+    .sort();
+  if (candidates.length !== 1) {
+    throw new Error(
+      `OpenClaw subagent announce origin runtime was not uniquely resolved in ${distDir}; found ${candidates.length}`,
+    );
+  }
+  return join(distDir, candidates[0]);
+}

@@ -4,11 +4,16 @@ import { buildHarnessAttemptResult } from "./harness-result.mjs";
 import { readFastCompactionStats } from "./fast-compaction-provider.mjs";
 import { isBridgedHarnessEventCallback } from "./harness-event-contract.mjs";
 import { getSessionHotsetStatus } from "./session-hotset.mjs";
+import {
+  normalizeWorkerGatewayEvent,
+  WORKER_GATEWAY_EVENT_BRIDGE_SYMBOL,
+} from "./worker-gateway-events.mjs";
 
 let agentRuntimePromise;
 let agentEventRuntimePromise;
 const activeControllers = new Map();
 const pendingStreamEventAcks = new Map();
+const pendingWorkerGatewayEventAcks = new Map();
 let nextStreamEventId = 1;
 const configuredHeartbeatMs = Number(
   process.env.VLAB_WORKER_HEARTBEAT_MS ?? 15_000,
@@ -65,6 +70,79 @@ function streamEventError(message) {
   }
   return error;
 }
+
+function workerGatewayEventError(message) {
+  const error = new Error(
+    message?.error?.message ?? "Worker Gateway event delivery failed",
+  );
+  error.name = message?.error?.name ?? error.name;
+  if (message?.error?.code) error.code = message.error.code;
+  return error;
+}
+
+async function sendWorkerGatewayEvent(rawEvent) {
+  if (typeof process.send !== "function") {
+    throw new Error("Worker Gateway event requires an IPC channel");
+  }
+  const event = normalizeWorkerGatewayEvent(rawEvent);
+  const timeoutMs = Math.max(
+    1_000,
+    Number(process.env.VLAB_WORKER_GATEWAY_EVENT_TIMEOUT_MS ?? 600_000),
+  );
+  const maxAttempts = Math.max(
+    1,
+    Number(process.env.VLAB_WORKER_GATEWAY_EVENT_MAX_ATTEMPTS ?? 3),
+  );
+  const existing = pendingWorkerGatewayEventAcks.get(event.eventId);
+  if (existing) return await existing.promise;
+
+  let resolvePending;
+  let rejectPending;
+  const promise = new Promise((resolve, reject) => {
+    resolvePending = resolve;
+    rejectPending = reject;
+  });
+  const pending = {
+    promise,
+    resolve: resolvePending,
+    reject: rejectPending,
+    timer: undefined,
+    attempts: 0,
+  };
+  pendingWorkerGatewayEventAcks.set(event.eventId, pending);
+
+  const sendAttempt = () => {
+    pending.attempts += 1;
+    process.send(
+      { type: "worker-gateway-event", event },
+      (error) => {
+        if (error && pendingWorkerGatewayEventAcks.has(event.eventId)) {
+          clearTimeout(pending.timer);
+          pendingWorkerGatewayEventAcks.delete(event.eventId);
+          pending.reject(error);
+        }
+      },
+    );
+    pending.timer = setTimeout(() => {
+      if (!pendingWorkerGatewayEventAcks.has(event.eventId)) return;
+      if (pending.attempts < maxAttempts) {
+        sendAttempt();
+        return;
+      }
+      pendingWorkerGatewayEventAcks.delete(event.eventId);
+      const error = new Error(
+        `Worker Gateway event ${event.eventId} was not acknowledged after ${maxAttempts} attempts`,
+      );
+      error.code = "VLAB_WORKER_GATEWAY_EVENT_ACK_TIMEOUT";
+      pending.reject(error);
+    }, timeoutMs);
+    pending.timer.unref?.();
+  };
+  sendAttempt();
+  return await promise;
+}
+
+globalThis[WORKER_GATEWAY_EVENT_BRIDGE_SYMBOL] = sendWorkerGatewayEvent;
 
 async function sendStreamEvent(
   requestId,
@@ -439,6 +517,15 @@ async function runAgent(message, abortSignal) {
 }
 
 process.on("message", async (message) => {
+  if (message?.type === "worker-gateway-event-ack" && message.eventId) {
+    const pending = pendingWorkerGatewayEventAcks.get(message.eventId);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    pendingWorkerGatewayEventAcks.delete(message.eventId);
+    if (message.ok === true) pending.resolve(message.result);
+    else pending.reject(workerGatewayEventError(message));
+    return;
+  }
   if (message?.type === "stream-event-ack" && message.eventId) {
     const pending = pendingStreamEventAcks.get(message.eventId);
     if (!pending || pending.requestId !== message.requestId) {

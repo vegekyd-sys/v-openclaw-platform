@@ -24,6 +24,8 @@ SESSION_HOTSET_PATCHER_SOURCE="${VLAB_SESSION_HOTSET_PATCHER_SOURCE:-/tmp/patch-
 SESSION_HOTSET_PATCHER="${STATE_DIR}/patch-openclaw-session-hotset.mjs"
 SESSION_HOTSET_PRUNER_SOURCE="${VLAB_SESSION_HOTSET_PRUNER_SOURCE:-/tmp/prune-openclaw-session-hotset.mjs}"
 SESSION_HOTSET_PRUNER="${STATE_DIR}/prune-openclaw-session-hotset.mjs"
+MEDIA_COMPLETION_PATCHER_SOURCE="${VLAB_MEDIA_COMPLETION_PATCHER_SOURCE:-/tmp/patch-openclaw-media-completion-relay.mjs}"
+MEDIA_COMPLETION_PATCHER="${STATE_DIR}/patch-openclaw-media-completion-relay.mjs"
 SESSION_HOTSET_REPORT="${STATE_DIR}/last-prune.json"
 SESSION_HOTSET_DROPIN_DIR="/etc/systemd/system/openclaw-vlab-gateway.service.d"
 SESSION_HOTSET_DROPIN="${SESSION_HOTSET_DROPIN_DIR}/session-hotset-v0.2.0.conf"
@@ -34,6 +36,7 @@ PRE_DEPLOY_CONFIG="${BACKUP_DIR}/openclaw.json"
 ROLLBACK_CONFIG="$PRE_DEPLOY_CONFIG"
 rollback_armed=false
 hotset_patch_armed=false
+media_completion_patch_armed=false
 existing_worker_compaction='{}'
 
 run_openclaw() {
@@ -54,6 +57,9 @@ restore_on_error() {
       "$NODE" "$SESSION_HOTSET_PATCHER" --restore "$OPENCLAW_PACKAGE" || true
       rm -f "$SESSION_HOTSET_DROPIN"
       systemctl daemon-reload || true
+    fi
+    if [[ "$media_completion_patch_armed" == true ]]; then
+      "$NODE" "$MEDIA_COMPLETION_PATCHER" --restore "$OPENCLAW_PACKAGE" || true
     fi
     systemctl restart openclaw-vlab-gateway.service || true
   fi
@@ -120,6 +126,10 @@ fi
   echo "missing Session Hotset pruner: $SESSION_HOTSET_PRUNER_SOURCE" >&2
   exit 1
 }
+[[ -f "$MEDIA_COMPLETION_PATCHER_SOURCE" ]] || {
+  echo "missing media completion relay patcher: $MEDIA_COMPLETION_PATCHER_SOURCE" >&2
+  exit 1
+}
 if [[ -f "$WORKER_CONFIG_PATH" ]]; then
   existing_worker_compaction="$(
     jq -c '.agents.defaults.compaction // {}' "$WORKER_CONFIG_PATH"
@@ -148,6 +158,7 @@ for required in \
   worker-pool.mjs \
   worker.mjs \
   worker-progress.mjs \
+  worker-gateway-events.mjs \
   exec-env.mjs \
   runtime-path.mjs \
   harness-result.mjs \
@@ -176,6 +187,9 @@ install -o root -g root -m 0755 \
 install -o root -g root -m 0755 \
   "$SESSION_HOTSET_PRUNER_SOURCE" \
   "$SESSION_HOTSET_PRUNER"
+install -o root -g root -m 0755 \
+  "$MEDIA_COMPLETION_PATCHER_SOURCE" \
+  "$MEDIA_COMPLETION_PATCHER"
 install -o vlab -g vlab -m 0600 "$CONFIG_PATH" "$PRE_DEPLOY_CONFIG"
 if jq -e \
   '.plugins.entries["vlab-agent-worker-isolation"].enabled == true' \
@@ -203,6 +217,8 @@ rollback_armed=true
   "$OPENCLAW_PACKAGE" \
   "${RELEASE_DIR}/session-hotset.mjs"
 hotset_patch_armed=true
+"$NODE" "$MEDIA_COMPLETION_PATCHER" "$OPENCLAW_PACKAGE"
+media_completion_patch_armed=true
 install -d -o root -g root -m 0755 "$SESSION_HOTSET_DROPIN_DIR"
 session_hotset_dropin_candidate="$(mktemp)"
 printf '%s\n' \
@@ -384,7 +400,9 @@ ready_worker_count="$(
 }
 jq -e \
   '(.result // .) as $status
-   | $status.integration.workerIsolationVersion == "0.2.0"
+   | $status.integration.workerIsolationVersion == "0.2.1"
+     and $status.integration.mediaCompletionRelay.gatewayOwned == true
+     and $status.integration.mediaCompletionRelay.ackRetry == true
      and $status.integration.sessionHotset.gateway.enabled == true
      and ($status.workers | all(.sessionHotset.enabled == true))' \
   "${LAB_ROOT}/logs/agent-worker-status-${TIMESTAMP}.json" >/dev/null
@@ -399,6 +417,7 @@ jq -n \
   --argjson session_hotset_ttl_ms "$SESSION_HOTSET_TTL_MS" \
   --arg session_hotset_dropin "$SESSION_HOTSET_DROPIN" \
   --arg session_hotset_report "$SESSION_HOTSET_REPORT" \
+  --arg media_completion_patcher "$MEDIA_COMPLETION_PATCHER" \
   '{
     experiment: $experiment,
     platformCommit: $platform_commit,
@@ -413,6 +432,11 @@ jq -n \
       ttlMs: $session_hotset_ttl_ms,
       dropIn: $session_hotset_dropin,
       lastPruneReport: $session_hotset_report
+    },
+    mediaCompletionRelay: {
+      enabled: true,
+      version: "0.2.1",
+      patcher: $media_completion_patcher
     }
   }' \
   > "${ACTIVE_MANIFEST}.new"
