@@ -46,8 +46,12 @@ fi
 systemctl stop openclaw-vlab-gateway.service 2>/dev/null || true
 
 available_kb="$(df -Pk / | awk 'NR==2 {print $4}')"
-if (( available_kb < 20 * 1024 * 1024 )); then
-  echo "vLab requires at least 20 GiB free on the root filesystem" >&2
+required_free_gib=20
+if [[ -f "$SEED_MARKER" ]]; then
+  required_free_gib=5
+fi
+if (( available_kb < required_free_gib * 1024 * 1024 )); then
+  echo "vLab requires at least ${required_free_gib} GiB free on the root filesystem" >&2
   exit 1
 fi
 
@@ -299,6 +303,7 @@ if [[ -z "$deepseek_plugin_path" ]]; then
     OPENCLAW_STATE_DIR="${LAB_ROOT}/state" \
     OPENCLAW_CONFIG_PATH="${LAB_ROOT}/state/openclaw.json" \
     OPENCLAW_WORKSPACE_DIR="${LAB_ROOT}/workspace" \
+    TMPDIR="${LAB_ROOT}/tmp" \
     /opt/vlab/node/bin/node \
     /opt/vlab/current/node_modules/openclaw/openclaw.mjs \
     plugins install "@openclaw/deepseek-provider@${OPENCLAW_VERSION}"
@@ -316,6 +321,7 @@ sudo -u "$LAB_USER" env \
   OPENCLAW_STATE_DIR="${LAB_ROOT}/state" \
   OPENCLAW_CONFIG_PATH="${LAB_ROOT}/state/openclaw.json" \
   OPENCLAW_WORKSPACE_DIR="${LAB_ROOT}/workspace" \
+  TMPDIR="${LAB_ROOT}/tmp" \
   /opt/vlab/node/bin/node \
   /opt/vlab/current/node_modules/openclaw/openclaw.mjs \
   doctor --fix >"$doctor_log" 2>&1
