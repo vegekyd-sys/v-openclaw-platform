@@ -20,6 +20,7 @@ run_openclaw() {
     OPENCLAW_STATE_DIR="${LAB_ROOT}/state" \
     OPENCLAW_CONFIG_PATH="$CONFIG_PATH" \
     OPENCLAW_WORKSPACE_DIR="${LAB_ROOT}/workspace" \
+    TMPDIR="${LAB_ROOT}/tmp" \
     "$NODE" "$OPENCLAW" "$@"
 }
 

@@ -46,6 +46,7 @@ run_openclaw() {
     OPENCLAW_STATE_DIR="${LAB_ROOT}/state" \
     OPENCLAW_CONFIG_PATH="$CONFIG_PATH" \
     OPENCLAW_WORKSPACE_DIR="${LAB_ROOT}/workspace" \
+    TMPDIR="${LAB_ROOT}/tmp" \
     "$NODE" "$OPENCLAW" "$@"
 }
 
@@ -176,6 +177,7 @@ done
 
 sudo -u vlab env \
   HOME="$LAB_ROOT" \
+  TMPDIR="${LAB_ROOT}/tmp" \
   VLAB_OPENCLAW_AGENT_RUNTIME="/opt/vlab/current/node_modules/openclaw/dist/plugin-sdk/agent-runtime.js" \
   "$NODE" "${RELEASE_DIR}/self-test.mjs" \
   > "${LAB_ROOT}/logs/agent-worker-self-test-${TIMESTAMP}.json"
