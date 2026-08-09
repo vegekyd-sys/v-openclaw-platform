@@ -8,10 +8,19 @@ NODE="${OPENCLAW_NODE:-/opt/node-v22.23.1/bin/node}"
 OPENCLAW="${OPENCLAW_CLI:-/opt/openclaw-2026.7.1/node_modules/openclaw/openclaw.mjs}"
 SERVICE="${OPENCLAW_SERVICE:-openclaw-gateway.service}"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-SESSION_PREFIX="agent:makaron:explicit:v-worker-media-021-comic-${TIMESTAMP,,}"
+SESSION_PREFIX="agent:makaron:explicit:vlab-worker-media-021-comic-${TIMESTAMP,,}"
 REPORT_DIR="${STATE_ROOT}/experiments/agent-worker-isolation-v1/acceptance/five-images-${TIMESTAMP}"
 METRICS_PATH="${REPORT_DIR}/metrics.jsonl"
 MONITOR_STOP="${REPORT_DIR}/monitor.stop"
+MONITOR_PID=""
+
+stop_monitor() {
+  if [[ -n "$MONITOR_PID" ]]; then
+    touch "$MONITOR_STOP"
+    wait "$MONITOR_PID" || true
+    MONITOR_PID=""
+  fi
+}
 
 run_openclaw() {
   sudo -u openclaw env \
@@ -79,6 +88,7 @@ systemctl show "$SERVICE" \
 
 monitor &
 MONITOR_PID=$!
+trap stop_monitor EXIT
 started_epoch="$(date +%s)"
 
 declare -a request_pids=()
@@ -136,8 +146,7 @@ for _ in $(seq 1 72); do
   sleep 5
 done
 
-touch "$MONITOR_STOP"
-wait "$MONITOR_PID"
+stop_monitor
 [[ "$completed" == 5 ]]
 
 images_path="${REPORT_DIR}/images.txt"
@@ -202,3 +211,5 @@ jq -n \
     finalDetached: ([$status_after.workers[].detachedTaskCount] | add // 0),
     productionPromotionBlocked: $status_after.integration.productionPromotionBlocked
   }'
+
+trap - EXIT
