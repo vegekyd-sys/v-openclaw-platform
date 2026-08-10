@@ -136,8 +136,14 @@ grep -q 'patch-openclaw-session-hotset.mjs' \
   "${REPO_ROOT}/scripts/deploy-agent-worker-production.sh"
 grep -q 'prune-openclaw-session-hotset.mjs' \
   "${REPO_ROOT}/scripts/deploy-agent-worker-production.sh"
-grep -q 'workerIsolationVersion == "0.2.0"' \
+grep -q 'workerIsolationVersion == "0.2.2"' \
   "${REPO_ROOT}/scripts/activate-agent-worker-production.sh"
+grep -q 'patch-openclaw-skill-workshop-worker-proxy.mjs' \
+  "${REPO_ROOT}/scripts/activate-agent-worker-production.sh"
+grep -q 'gatewayOwnedToolIsolation.preExisting' \
+  "${REPO_ROOT}/scripts/rollback-agent-worker-production.sh"
+grep -q 'mediaCompletionRelay.preExisting' \
+  "${REPO_ROOT}/scripts/rollback-agent-worker-production.sh"
 grep -q 'sessionHotset: getSessionHotsetStatus()' \
   "${EXPERIMENT_DIR}/worker.mjs"
 

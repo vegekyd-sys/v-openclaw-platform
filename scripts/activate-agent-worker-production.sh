@@ -43,6 +43,9 @@ STATUS_FILE="${BACKUP_DIR}/candidate-worker-status.json"
 rollback_armed=false
 hotset_patch_armed=false
 media_completion_patch_armed=false
+tool_proxy_patch_armed=false
+media_completion_preexisting=false
+tool_proxy_preexisting=false
 hotset_was_present=false
 previous_hotset_module=""
 candidate_config=""
@@ -79,6 +82,14 @@ restore_on_error() {
       "$BACKUP_WORKER_CONFIG" "$WORKER_CONFIG_PATH"
     install -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0600 \
       "$PREVIOUS_ACTIVE_MANIFEST" "$ACTIVE_MANIFEST"
+    if [[ "$tool_proxy_patch_armed" == true ]]; then
+      "$NODE" "${RELEASE_DIR}/patch-openclaw-skill-workshop-worker-proxy.mjs" \
+        --restore "$OPENCLAW_PACKAGE" || true
+    fi
+    if [[ "$media_completion_patch_armed" == true ]]; then
+      "$NODE" "$MEDIA_COMPLETION_PATCHER" --restore "$OPENCLAW_PACKAGE" \
+        || true
+    fi
     if [[ "$hotset_patch_armed" == true ]]; then
       if [[ "$hotset_was_present" == true && -n "$previous_hotset_module" ]]; then
         "$NODE" "$SESSION_HOTSET_PATCHER" \
@@ -90,10 +101,6 @@ restore_on_error() {
           || true
         rm -f "$SESSION_HOTSET_DROPIN"
       fi
-    fi
-    if [[ "$media_completion_patch_armed" == true ]]; then
-      "$NODE" "$MEDIA_COMPLETION_PATCHER" --restore "$OPENCLAW_PACKAGE" \
-        || true
     fi
     systemctl daemon-reload || true
     systemctl restart "$SERVICE" || true
@@ -179,13 +186,16 @@ for required in \
   fast-compaction-provider.mjs \
   worker-gateway-events.mjs \
   session-hotset.mjs \
+  gateway-owned-tool-proxy.mjs \
+  skill-workshop-subprocess-runner.mjs \
+  patch-openclaw-skill-workshop-worker-proxy.mjs \
   self-test.mjs; do
   [[ -f "${RELEASE_DIR}/${required}" ]] || {
     echo "release is missing ${required}" >&2
     exit 1
   }
 done
-[[ "$(jq -r '.version' "${RELEASE_DIR}/package.json")" == "0.2.1" ]] || {
+[[ "$(jq -r '.version' "${RELEASE_DIR}/package.json")" == "0.2.2" ]] || {
   echo "unexpected Worker isolation version" >&2
   exit 1
 }
@@ -231,8 +241,23 @@ hotset_patch_result="$(
     "${RELEASE_DIR}/session-hotset.mjs"
 )"
 hotset_patch_armed=true
-"$NODE" "$MEDIA_COMPLETION_PATCHER" "$OPENCLAW_PACKAGE"
-media_completion_patch_armed=true
+media_completion_patch_result="$(
+  "$NODE" "$MEDIA_COMPLETION_PATCHER" "$OPENCLAW_PACKAGE"
+)"
+if [[ "$media_completion_patch_result" == patched\ * ]]; then
+  media_completion_patch_armed=true
+else
+  media_completion_preexisting=true
+fi
+tool_proxy_patch_result="$(
+  "$NODE" "${RELEASE_DIR}/patch-openclaw-skill-workshop-worker-proxy.mjs" \
+    "$OPENCLAW_PACKAGE"
+)"
+if [[ "$tool_proxy_patch_result" == patched\ * ]]; then
+  tool_proxy_patch_armed=true
+else
+  tool_proxy_preexisting=true
+fi
 install -d -o root -g root -m 0755 "$SESSION_HOTSET_DROPIN_DIR"
 session_hotset_dropin_candidate="$(mktemp)"
 printf '%s\n' \
@@ -298,6 +323,7 @@ jq \
           idleTimeoutMs: 180000,
           requestTimeoutMs: 600000,
           requestStallTimeoutMs: 120000,
+          gatewayOwnedToolTimeoutMs: 310000,
           fastCompactionModel: (
             $existing_worker_compaction.model
             // .agents.defaults.compaction.model
@@ -360,7 +386,7 @@ install -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0600 \
 manifest_candidate="$(mktemp)"
 jq -n \
   --arg commit "$PLATFORM_COMMIT" \
-  --arg version "0.2.1" \
+  --arg version "0.2.2" \
   --arg prepared_at "$TIMESTAMP" \
   --arg artifact_sha256 "$ARTIFACT_SHA256" \
   --arg release_dir "$RELEASE_DIR" \
@@ -376,6 +402,9 @@ jq -n \
   --arg backup_hotset_dropin "$PREVIOUS_HOTSET_DROPIN" \
   --arg previous_hotset_module "$previous_hotset_module" \
   --arg media_completion_patcher "$MEDIA_COMPLETION_PATCHER" \
+  --arg tool_proxy_patcher "${RELEASE_DIR}/patch-openclaw-skill-workshop-worker-proxy.mjs" \
+  --argjson media_completion_preexisting "$media_completion_preexisting" \
+  --argjson tool_proxy_preexisting "$tool_proxy_preexisting" \
   '{
     commit: $commit,
     version: $version,
@@ -403,7 +432,13 @@ jq -n \
     mediaCompletionRelay: {
       enabled: true,
       version: "0.2.1",
-      patcher: $media_completion_patcher
+      patcher: $media_completion_patcher,
+      preExisting: $media_completion_preexisting
+    },
+    gatewayOwnedToolIsolation: {
+      subprocessTools: ["skill_workshop"],
+      patcher: $tool_proxy_patcher,
+      preExisting: $tool_proxy_preexisting
     }
   }' > "$manifest_candidate"
 install -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0600 \
@@ -427,11 +462,13 @@ run_openclaw gateway call vlab.workers.status --params '{}' --json \
   > "$STATUS_FILE"
 
 jq -e \
-  '.integration.workerIsolationVersion == "0.2.1"
+  '.integration.workerIsolationVersion == "0.2.2"
    and .integration.mediaCompletionRelay.gatewayOwned == true
    and .integration.mediaCompletionRelay.ackRetry == true
    and .integration.mediaCompletionRelay.idempotent == true
    and .integration.mediaCompletionRelay.failed == 0
+   and .integration.gatewayOwnedToolIsolation.enabled == true
+   and (.integration.gatewayOwnedToolIsolation.subprocessTools == ["skill_workshop"])
    and .integration.sessionHotset.gateway.enabled == true
    and (.workers | all(.sessionHotset.enabled == true))
    and .integration.nativeAgentHarnessDispatchAttached == true
@@ -465,7 +502,7 @@ rollback_armed=false
 
 jq -n \
   --arg commit "$PLATFORM_COMMIT" \
-  --arg version "0.2.1" \
+  --arg version "0.2.2" \
   --arg artifact_sha256 "$ARTIFACT_SHA256" \
   --arg backup_dir "$BACKUP_DIR" \
   --arg rollback_command "sudo ${STATE_DIR}/rollback-latest.sh" \
@@ -481,6 +518,7 @@ jq -n \
       minWorkers: $worker_status.minWorkers,
       maxWorkers: $worker_status.maxWorkers,
       sessionsPerWorker: $worker_status.sessionsPerWorker,
-      configDomainIsolation: $worker_status.integration.configDomainIsolation
+      configDomainIsolation: $worker_status.integration.configDomainIsolation,
+      gatewayOwnedToolIsolation: $worker_status.integration.gatewayOwnedToolIsolation
     }
   }'

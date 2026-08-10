@@ -16,6 +16,7 @@ OPENCLAW="/opt/openclaw-2026.7.1/node_modules/openclaw/openclaw.mjs"
 OPENCLAW_PACKAGE="/opt/openclaw-2026.7.1/node_modules/openclaw"
 SESSION_HOTSET_PATCHER="${STATE_DIR}/patch-openclaw-session-hotset.mjs"
 MEDIA_COMPLETION_PATCHER="${STATE_DIR}/patch-openclaw-media-completion-relay.mjs"
+TOOL_PROXY_PATCHER=""
 SESSION_HOTSET_DROPIN="/etc/systemd/system/${SERVICE}.d/session-hotset-v0.2.0.conf"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 
@@ -60,6 +61,15 @@ previous_hotset_module="$(
 backup_hotset_dropin="$(
   jq -r '.previousSessionHotset.dropInBackup // ""' "$ACTIVE_MANIFEST"
 )"
+TOOL_PROXY_PATCHER="$(
+  jq -r '.gatewayOwnedToolIsolation.patcher // empty' "$ACTIVE_MANIFEST"
+)"
+tool_proxy_preexisting="$(
+  jq -r '.gatewayOwnedToolIsolation.preExisting // false' "$ACTIVE_MANIFEST"
+)"
+media_completion_preexisting="$(
+  jq -r '.mediaCompletionRelay.preExisting // false' "$ACTIVE_MANIFEST"
+)"
 for required in \
   "$backup_config" \
   "$backup_worker_config" \
@@ -69,6 +79,11 @@ for required in \
     exit 1
   }
 done
+if [[ "$tool_proxy_preexisting" != true \
+  && ! -f "$TOOL_PROXY_PATCHER" ]]; then
+  echo "missing Workshop tool proxy rollback patcher: $TOOL_PROXY_PATCHER" >&2
+  exit 1
+fi
 
 pre_rollback_dir="$(
   dirname "$backup_config"
@@ -89,6 +104,12 @@ install -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0600 \
 install -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0600 \
   "$previous_active_manifest" "$ACTIVE_MANIFEST"
 
+if [[ "$tool_proxy_preexisting" != true ]]; then
+  "$NODE" "$TOOL_PROXY_PATCHER" --restore "$OPENCLAW_PACKAGE"
+fi
+if [[ "$media_completion_preexisting" != true ]]; then
+  "$NODE" "$MEDIA_COMPLETION_PATCHER" --restore "$OPENCLAW_PACKAGE"
+fi
 if [[ "$previous_hotset_existed" == true ]]; then
   [[ -n "$previous_hotset_module" && -f "$backup_hotset_dropin" ]] || {
     echo "missing previous Session Hotset upgrade state" >&2
@@ -102,7 +123,6 @@ else
   "$NODE" "$SESSION_HOTSET_PATCHER" --restore "$OPENCLAW_PACKAGE"
   rm -f "$SESSION_HOTSET_DROPIN"
 fi
-"$NODE" "$MEDIA_COMPLETION_PATCHER" --restore "$OPENCLAW_PACKAGE"
 systemctl daemon-reload
 
 run_openclaw config validate >/dev/null

@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import {
   PATCH_MARKER,
+  patchPackage,
   patchSkillWorkshopWorkerProxy,
+  restorePackage,
 } from "./patch-openclaw-skill-workshop-worker-proxy.mjs";
 
 const fixture = `
@@ -36,4 +41,26 @@ test("is idempotent", () => {
   const twice = patchSkillWorkshopWorkerProxy(once.source);
   assert.equal(twice.changed, false);
   assert.equal(twice.source, once.source);
+});
+
+test("refreshes a stale rollback backup before patching", async () => {
+  const packageDir = await mkdtemp(join(tmpdir(), "workshop-proxy-package-"));
+  const distDir = join(packageDir, "dist");
+  const bundlePath = join(distDir, "openclaw-tools-fixture.js");
+  const backupPath = `${bundlePath}.v-worker-tool-proxy-v0.2.2.bak`;
+  try {
+    await mkdir(distDir);
+    await writeFile(bundlePath, fixture);
+    await writeFile(backupPath, "stale backup");
+
+    const patched = await patchPackage(packageDir);
+    assert.equal(patched.changed, true);
+    assert.equal(await readFile(backupPath, "utf8"), fixture);
+    assert.match(await readFile(bundlePath, "utf8"), new RegExp(PATCH_MARKER));
+
+    await restorePackage(packageDir);
+    assert.equal(await readFile(bundlePath, "utf8"), fixture);
+  } finally {
+    await rm(packageDir, { recursive: true, force: true });
+  }
 });

@@ -70,11 +70,10 @@ export async function patchPackage(packageDir) {
   if (!result.changed) {
     return { ...result, bundlePath, backupPath };
   }
-  try {
-    await stat(backupPath);
-  } catch {
-    await copyFile(bundlePath, backupPath);
-  }
+  // A previous interrupted rollout can leave a stale backup behind while the
+  // live bundle is unpatched. Refresh the backup whenever this invocation
+  // actually changes the live bundle; idempotent retries do not reach here.
+  await copyFile(bundlePath, backupPath);
   const mode = (await stat(bundlePath)).mode;
   const temporaryPath = `${bundlePath}.tmp-${process.pid}`;
   await writeFile(temporaryPath, result.source, { encoding: "utf8", mode });
