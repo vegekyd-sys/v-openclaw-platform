@@ -1,4 +1,5 @@
 import { dirname, join } from "node:path";
+import { writeSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
@@ -40,9 +41,8 @@ async function resolveToolsModule() {
 }
 
 function writeEnvelope(envelope, exitCode) {
-  process.stdout.write(`${JSON.stringify(envelope)}\n`, () => {
-    process.exit(exitCode);
-  });
+  writeSync(3, `${JSON.stringify(envelope)}\n`);
+  process.exit(exitCode);
 }
 
 try {

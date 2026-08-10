@@ -7,16 +7,22 @@ if (request?.args?.mode === "hang") {
   await new Promise(() => setInterval(() => {}, 10_000));
 }
 if (request?.args?.mode === "error") {
-  process.stdout.write(
+  writeSync(
+    3,
     `${JSON.stringify({
       ok: false,
       error: { code: "FAKE_TOOL_ERROR", message: "fake tool failed" },
     })}\n`,
-    () => process.exit(1),
   );
+  process.exit(1);
 } else {
-  process.stdout.write(
+  if (request?.args?.stdoutNoise) {
+    process.stdout.write("plugin diagnostic before result\n");
+  }
+  writeSync(
+    3,
     `${JSON.stringify({ ok: true, result: { echoed: request.args } })}\n`,
-    () => process.exit(0),
   );
+  process.exit(0);
 }
+import { writeSync } from "node:fs";

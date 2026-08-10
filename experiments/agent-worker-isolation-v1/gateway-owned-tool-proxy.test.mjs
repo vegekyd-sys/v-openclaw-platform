@@ -40,3 +40,16 @@ test("preserves a subprocess tool error code", async () => {
       error?.code === "FAKE_TOOL_ERROR" && error.message === "fake tool failed",
   );
 });
+
+test("ignores plugin diagnostics written to stdout", async () => {
+  const proxy = createGatewayOwnedToolProxy({ runnerPath, timeoutMs: 2_000 });
+  const result = await proxy.execute({
+    toolName: "skill_workshop",
+    args: { mode: "success", stdoutNoise: true },
+  });
+  assert.deepEqual(result, {
+    echoed: { mode: "success", stdoutNoise: true },
+  });
+  assert.equal(proxy.status().succeeded, 1);
+  assert.equal(proxy.status().failed, 0);
+});

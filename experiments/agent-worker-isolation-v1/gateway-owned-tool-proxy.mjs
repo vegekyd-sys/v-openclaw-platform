@@ -68,10 +68,14 @@ export function createGatewayOwnedToolProxy(options = {}) {
               process.env.VLAB_SKILL_WORKSHOP_SUBPROCESS_TIMEOUT_MS ??
               "300000",
           },
-          stdio: ["pipe", "pipe", "pipe"],
+          // fd 3 is a dedicated result channel. OpenClaw and plugins may write
+          // diagnostics to stdout while tools are being constructed, so stdout
+          // cannot safely double as the machine-readable protocol.
+          stdio: ["pipe", "pipe", "pipe", "pipe"],
         });
         let stdout = "";
         let stderr = "";
+        let protocol = "";
         let settled = false;
         const finish = (error, value) => {
           if (settled) {
@@ -105,17 +109,21 @@ export function createGatewayOwnedToolProxy(options = {}) {
         child.stderr.on("data", (chunk) => {
           stderr = append(stderr, chunk);
         });
+        child.stdio[3].on("data", (chunk) => {
+          protocol = append(protocol, chunk);
+        });
         child.on("error", (error) => finish(error));
         child.on("exit", (code, signal) => {
           let envelope;
           try {
-            envelope = JSON.parse(stdout.trim());
+            envelope = JSON.parse(protocol.trim());
           } catch {
             finish(
               Object.assign(
                 new Error(
                   `${toolName} isolated tool returned invalid JSON ` +
-                    `(code=${String(code)} signal=${String(signal)}): ${stderr.trim()}`,
+                    `(code=${String(code)} signal=${String(signal)}): ` +
+                    `${stderr.trim() || stdout.trim()}`,
                 ),
                 { code: "VLAB_GATEWAY_OWNED_TOOL_INVALID_RESULT" },
               ),
