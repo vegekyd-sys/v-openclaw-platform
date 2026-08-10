@@ -11,6 +11,8 @@ const runtimePath =
   "/opt/vlab/current/node_modules/openclaw/dist/plugin-sdk/gateway-runtime.js";
 const mainCount = 5;
 const childCount = 5;
+const expectedWorkerVersion =
+  process.env.VLAB_EXPECTED_WORKER_VERSION ?? "0.2.2";
 const mainHoldSeconds = Number(process.env.VLAB_MAIN_HOLD_SECONDS ?? 180);
 const childHoldSeconds = Number(process.env.VLAB_CHILD_HOLD_SECONDS ?? 60);
 const timestamp = new Date()
@@ -105,7 +107,7 @@ const call = async (method, params = {}) => {
 const baselineRestarts = systemdNumber("NRestarts");
 const before = await call("vlab.workers.status");
 await saveJson("status-before.json", before);
-assert.equal(before.integration.workerIsolationVersion, "0.2.0");
+assert.equal(before.integration.workerIsolationVersion, expectedWorkerVersion);
 assert.equal(before.integration.nestedGatewayHarnessRouting, true);
 assert.equal(before.integration.workerUsesIngressAgentCommand, true);
 assert.equal(before.maxWorkers, 3);
@@ -131,7 +133,7 @@ await Promise.all(
       `必须使用 process poll 等待真实退出，然后只回复 ${item.childMarker}。` +
       `不要发送外部消息，不要修改文件。`;
     const message =
-      `这是 vLab 0.2.0 的 5 main + 5 Subagent 回归。严格执行：` +
+      `这是 Worker ${expectedWorkerVersion} 的 5 main + 5 Subagent 回归。严格执行：` +
       `1) 使用 sessions_spawn 启动恰好一个 isolated subagent，必须显式设置 ` +
       `agentId=makaron、cleanup=keep，child 任务为：${childTask} ` +
       `2) spawn accepted 后，main 立即使用 exec 执行 /bin/sleep ` +

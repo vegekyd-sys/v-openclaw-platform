@@ -84,7 +84,8 @@ const probes = [
     name: "read",
     toolName: "read",
     instruction:
-      "调用 read 读取 /srv/vlab/workspace/AGENTS.md 的前 5 行；完成后只回复 TOOL_PARITY_READ_OK。",
+      `调用 read 读取 ${labRoot}/workspace/AGENTS.md 的前 5 行；` +
+      "完成后只回复 TOOL_PARITY_READ_OK。",
     marker: "TOOL_PARITY_READ_OK",
   },
   {
