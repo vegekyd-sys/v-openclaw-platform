@@ -180,6 +180,7 @@ export class WorkerPool {
       startupPromise: null,
       retireTimer: null,
       sessionHotset: undefined,
+      gatewayOwnedToolProxy: undefined,
     };
     this.workers.set(slot, handle);
 
@@ -478,6 +479,9 @@ export class WorkerPool {
   onMessage(worker, message) {
     if (message?.sessionHotset) {
       worker.sessionHotset = message.sessionHotset;
+    }
+    if (message?.gatewayOwnedToolProxy) {
+      worker.gatewayOwnedToolProxy = message.gatewayOwnedToolProxy;
     }
     if (message?.type === "ready") {
       worker.resolveStartup?.();
@@ -801,6 +805,7 @@ export class WorkerPool {
               ? Math.max(0, Date.now() - worker.lastIdleAt)
               : 0,
           sessionHotset: worker.sessionHotset,
+          gatewayOwnedToolProxy: worker.gatewayOwnedToolProxy,
         })),
     };
   }

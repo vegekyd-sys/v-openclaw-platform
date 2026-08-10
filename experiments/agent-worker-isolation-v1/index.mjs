@@ -198,6 +198,9 @@ const plugin = {
     const workerHeartbeatMs = Number(
       api.pluginConfig?.workerHeartbeatMs ?? 15_000,
     );
+    const gatewayOwnedToolTimeoutMs = Number(
+      api.pluginConfig?.gatewayOwnedToolTimeoutMs ?? 310_000,
+    );
     const workerConfigPath =
       typeof api.pluginConfig?.workerConfigPath === "string"
         ? api.pluginConfig.workerConfigPath.trim()
@@ -282,6 +285,9 @@ const plugin = {
         VLAB_OPENCLAW_AGENT_RUNTIME: openClawAgentRuntimePath,
         VLAB_REQUIRE_OPENCLAW_AGENT_RUNTIME: "1",
         VLAB_WORKER_HEARTBEAT_MS: String(workerHeartbeatMs),
+        VLAB_GATEWAY_OWNED_TOOL_TIMEOUT_MS: String(
+          gatewayOwnedToolTimeoutMs,
+        ),
       },
       {
         gatewayConfigPath,
@@ -999,7 +1005,7 @@ const plugin = {
             nativeAgentHarnessDispatchAttached: true,
             nestedGatewayHarnessRouting: true,
             workerUsesIngressAgentCommand: true,
-            workerIsolationVersion: "0.2.1",
+            workerIsolationVersion: "0.2.2",
             sessionHotset: {
               gateway: getSessionHotsetStatus(),
               workers: pool.status().workers.map((worker) => ({
@@ -1082,6 +1088,16 @@ const plugin = {
               workerRuntimeConfigPath: workerConfigPath,
               workerExecConfigPath: gatewayConfigPath,
               execUsesGatewayConfig: true,
+            },
+            gatewayOwnedToolIsolation: {
+              enabled: true,
+              subprocessTools: ["skill_workshop"],
+              timeoutMs: gatewayOwnedToolTimeoutMs,
+              workers: pool.status().workers.map((worker) => ({
+                slot: worker.slot,
+                pid: worker.pid,
+                status: worker.gatewayOwnedToolProxy,
+              })),
             },
             workerHeartbeatMs,
             productionPromotionBlocked:

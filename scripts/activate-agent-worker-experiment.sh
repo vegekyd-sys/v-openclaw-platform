@@ -40,6 +40,9 @@ hotset_patch_armed=false
 media_completion_patch_armed=false
 hotset_was_present=false
 previous_hotset_module=""
+tool_proxy_patch_armed=false
+media_completion_preexisting=false
+tool_proxy_preexisting=false
 existing_worker_compaction='{}'
 
 run_openclaw() {
@@ -68,6 +71,10 @@ restore_on_error() {
         rm -f "$SESSION_HOTSET_DROPIN"
       fi
       systemctl daemon-reload || true
+    fi
+    if [[ "$tool_proxy_patch_armed" == true ]]; then
+      "$NODE" "${RELEASE_DIR}/patch-openclaw-skill-workshop-worker-proxy.mjs" \
+        --restore "$OPENCLAW_PACKAGE" || true
     fi
     if [[ "$media_completion_patch_armed" == true ]]; then
       "$NODE" "$MEDIA_COMPLETION_PATCHER" --restore "$OPENCLAW_PACKAGE" || true
@@ -177,6 +184,9 @@ for required in \
   session-rollover-retry.mjs \
   fast-compaction-provider.mjs \
   session-hotset.mjs \
+  gateway-owned-tool-proxy.mjs \
+  skill-workshop-subprocess-runner.mjs \
+  patch-openclaw-skill-workshop-worker-proxy.mjs \
   stubborn-worker.mjs \
   self-test.mjs; do
   [[ -f "${RELEASE_DIR}/${required}" ]] || {
@@ -242,8 +252,23 @@ rollback_armed=true
   "$OPENCLAW_PACKAGE" \
   "${RELEASE_DIR}/session-hotset.mjs"
 hotset_patch_armed=true
-"$NODE" "$MEDIA_COMPLETION_PATCHER" "$OPENCLAW_PACKAGE"
-media_completion_patch_armed=true
+media_completion_patch_result="$(
+  "$NODE" "$MEDIA_COMPLETION_PATCHER" "$OPENCLAW_PACKAGE"
+)"
+if [[ "$media_completion_patch_result" == patched\ * ]]; then
+  media_completion_patch_armed=true
+else
+  media_completion_preexisting=true
+fi
+tool_proxy_patch_result="$(
+  "$NODE" "${RELEASE_DIR}/patch-openclaw-skill-workshop-worker-proxy.mjs" \
+    "$OPENCLAW_PACKAGE"
+)"
+if [[ "$tool_proxy_patch_result" == patched\ * ]]; then
+  tool_proxy_patch_armed=true
+else
+  tool_proxy_preexisting=true
+fi
 install -d -o root -g root -m 0755 "$SESSION_HOTSET_DROPIN_DIR"
 session_hotset_dropin_candidate="$(mktemp)"
 printf '%s\n' \
@@ -347,6 +372,7 @@ jq \
           idleTimeoutMs: $idle_timeout_ms,
           requestTimeoutMs: 600000,
           requestStallTimeoutMs: 120000,
+          gatewayOwnedToolTimeoutMs: 310000,
           fastCompactionModel: (
             $existing_worker_compaction.model
             // .agents.defaults.compaction.model
@@ -425,10 +451,12 @@ ready_worker_count="$(
 }
 jq -e \
   '(.result // .) as $status
-   | $status.integration.workerIsolationVersion == "0.2.1"
+   | $status.integration.workerIsolationVersion == "0.2.2"
      and $status.integration.mediaCompletionRelay.gatewayOwned == true
      and $status.integration.mediaCompletionRelay.ackRetry == true
      and $status.integration.sessionHotset.gateway.enabled == true
+     and $status.integration.gatewayOwnedToolIsolation.enabled == true
+     and ($status.integration.gatewayOwnedToolIsolation.subprocessTools == ["skill_workshop"])
      and ($status.workers | all(.sessionHotset.enabled == true))' \
   "${LAB_ROOT}/logs/agent-worker-status-${TIMESTAMP}.json" >/dev/null
 
@@ -443,6 +471,9 @@ jq -n \
   --arg session_hotset_dropin "$SESSION_HOTSET_DROPIN" \
   --arg session_hotset_report "$SESSION_HOTSET_REPORT" \
   --arg media_completion_patcher "$MEDIA_COMPLETION_PATCHER" \
+  --arg tool_proxy_patcher "${RELEASE_DIR}/patch-openclaw-skill-workshop-worker-proxy.mjs" \
+  --argjson media_completion_preexisting "$media_completion_preexisting" \
+  --argjson tool_proxy_preexisting "$tool_proxy_preexisting" \
   '{
     experiment: $experiment,
     platformCommit: $platform_commit,
@@ -461,7 +492,13 @@ jq -n \
     mediaCompletionRelay: {
       enabled: true,
       version: "0.2.1",
-      patcher: $media_completion_patcher
+      patcher: $media_completion_patcher,
+      preExisting: $media_completion_preexisting
+    },
+    gatewayOwnedToolIsolation: {
+      subprocessTools: ["skill_workshop"],
+      patcher: $tool_proxy_patcher,
+      preExisting: $tool_proxy_preexisting
     }
   }' \
   > "${ACTIVE_MANIFEST}.new"

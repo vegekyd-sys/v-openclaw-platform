@@ -8,6 +8,7 @@ import {
   normalizeWorkerGatewayEvent,
   WORKER_GATEWAY_EVENT_BRIDGE_SYMBOL,
 } from "./worker-gateway-events.mjs";
+import { installGatewayOwnedToolProxy } from "./gateway-owned-tool-proxy.mjs";
 
 let agentRuntimePromise;
 let agentEventRuntimePromise;
@@ -21,6 +22,11 @@ const configuredHeartbeatMs = Number(
 const heartbeatMs = Number.isFinite(configuredHeartbeatMs)
   ? Math.max(25, configuredHeartbeatMs)
   : 15_000;
+const gatewayOwnedToolProxy = installGatewayOwnedToolProxy({
+  timeoutMs: Number(
+    process.env.VLAB_GATEWAY_OWNED_TOOL_TIMEOUT_MS ?? 310_000,
+  ),
+});
 
 function sendProgress(requestId, request, reason = "worker:active") {
   process.send?.({
@@ -31,6 +37,7 @@ function sendProgress(requestId, request, reason = "worker:active") {
     sessionKey: request.sessionKey,
     reason,
     sessionHotset: getSessionHotsetStatus(),
+    gatewayOwnedToolProxy: gatewayOwnedToolProxy.status(),
   });
 }
 
@@ -585,6 +592,7 @@ process.on("message", async (message) => {
       ok: true,
       result,
       sessionHotset: getSessionHotsetStatus(),
+      gatewayOwnedToolProxy: gatewayOwnedToolProxy.status(),
     });
   } catch (error) {
     process.send?.({
@@ -593,6 +601,7 @@ process.on("message", async (message) => {
       ok: false,
       error: serializeError(error),
       sessionHotset: getSessionHotsetStatus(),
+      gatewayOwnedToolProxy: gatewayOwnedToolProxy.status(),
     });
   } finally {
     activeControllers.delete(message.id);
@@ -605,6 +614,7 @@ if (process.env.VLAB_REQUIRE_OPENCLAW_AGENT_RUNTIME === "1") {
 
 process.send?.({
   type: "ready",
+  gatewayOwnedToolProxy: gatewayOwnedToolProxy.status(),
   pid: process.pid,
   sessionHotset: getSessionHotsetStatus(),
 });

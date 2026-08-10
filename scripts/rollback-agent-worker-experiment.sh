@@ -10,6 +10,7 @@ NODE="/opt/vlab/node/bin/node"
 OPENCLAW_PACKAGE="/opt/vlab/current/node_modules/openclaw"
 SESSION_HOTSET_PATCHER="${STATE_DIR}/patch-openclaw-session-hotset.mjs"
 MEDIA_COMPLETION_PATCHER="${STATE_DIR}/patch-openclaw-media-completion-relay.mjs"
+TOOL_PROXY_PATCHER=""
 SESSION_HOTSET_DROPIN="/etc/systemd/system/openclaw-vlab-gateway.service.d/session-hotset-v0.2.0.conf"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 
@@ -34,6 +35,9 @@ fi
 }
 
 config_backup="$(jq -r '.configBackup' "$ACTIVE_MANIFEST")"
+TOOL_PROXY_PATCHER="$(jq -r '.gatewayOwnedToolIsolation.patcher // empty' "$ACTIVE_MANIFEST")"
+TOOL_PROXY_PREEXISTING="$(jq -r '.gatewayOwnedToolIsolation.preExisting // false' "$ACTIVE_MANIFEST")"
+MEDIA_COMPLETION_PREEXISTING="$(jq -r '.mediaCompletionRelay.preExisting // false' "$ACTIVE_MANIFEST")"
 [[ -f "$config_backup" ]] || {
   echo "missing rollback config: $config_backup" >&2
   exit 1
@@ -54,7 +58,14 @@ install -o vlab -g vlab -m 0600 "$config_backup" "$CONFIG_PATH"
   echo "missing media completion rollback patcher: $MEDIA_COMPLETION_PATCHER" >&2
   exit 1
 }
-"$NODE" "$MEDIA_COMPLETION_PATCHER" --restore "$OPENCLAW_PACKAGE"
+if [[ "$TOOL_PROXY_PREEXISTING" != true \
+  && -n "$TOOL_PROXY_PATCHER" \
+  && -f "$TOOL_PROXY_PATCHER" ]]; then
+  "$NODE" "$TOOL_PROXY_PATCHER" --restore "$OPENCLAW_PACKAGE"
+fi
+if [[ "$MEDIA_COMPLETION_PREEXISTING" != true ]]; then
+  "$NODE" "$MEDIA_COMPLETION_PATCHER" --restore "$OPENCLAW_PACKAGE"
+fi
 rm -f "$SESSION_HOTSET_DROPIN"
 systemctl daemon-reload
 

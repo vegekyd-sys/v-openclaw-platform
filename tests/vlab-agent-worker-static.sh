@@ -27,6 +27,11 @@ node --check "${EXPERIMENT_DIR}/fast-compaction-provider.mjs"
 node --check "${EXPERIMENT_DIR}/fast-compaction-provider.test.mjs"
 node --check "${EXPERIMENT_DIR}/session-hotset.mjs"
 node --check "${EXPERIMENT_DIR}/session-hotset.test.mjs"
+node --check "${EXPERIMENT_DIR}/gateway-owned-tool-proxy.mjs"
+node --check "${EXPERIMENT_DIR}/gateway-owned-tool-proxy.test.mjs"
+node --check "${EXPERIMENT_DIR}/skill-workshop-subprocess-runner.mjs"
+node --check "${EXPERIMENT_DIR}/patch-openclaw-skill-workshop-worker-proxy.mjs"
+node --check "${EXPERIMENT_DIR}/patch-openclaw-skill-workshop-worker-proxy.test.mjs"
 node --check "${REPO_ROOT}/scripts/patch-openclaw-session-hotset.mjs"
 node --check "${REPO_ROOT}/scripts/patch-openclaw-media-completion-relay.mjs"
 node --check "${REPO_ROOT}/scripts/prune-openclaw-session-hotset.mjs"
@@ -35,6 +40,8 @@ node --check "${REPO_ROOT}/tests/patch-openclaw-media-completion-relay.test.mjs"
 node --check "${REPO_ROOT}/tests/prune-openclaw-session-hotset.test.mjs"
 node --check "${REPO_ROOT}/tests/vlab-session-hotset-benchmark.mjs"
 node --check "${REPO_ROOT}/tests/vlab-session-hotset-cross-session.mjs"
+node --check "${REPO_ROOT}/tests/vlab-agent-worker-tool-parity.mjs"
+node --check "${REPO_ROOT}/tests/vlab-workshop-scale-fixture.mjs"
 node --check "${EXPERIMENT_DIR}/stubborn-worker.mjs"
 node --check "${EXPERIMENT_DIR}/silent-worker.mjs"
 node --check "${EXPERIMENT_DIR}/index.mjs"
@@ -54,6 +61,8 @@ node --test \
   "${EXPERIMENT_DIR}/session-rollover-retry.test.mjs" \
   "${EXPERIMENT_DIR}/fast-compaction-provider.test.mjs" \
   "${EXPERIMENT_DIR}/session-hotset.test.mjs" \
+  "${EXPERIMENT_DIR}/gateway-owned-tool-proxy.test.mjs" \
+  "${EXPERIMENT_DIR}/patch-openclaw-skill-workshop-worker-proxy.test.mjs" \
   "${EXPERIMENT_DIR}/worker-stream-parity.test.mjs" \
   "${EXPERIMENT_DIR}/worker-gateway-events.test.mjs" \
   "${EXPERIMENT_DIR}/worker-detached-event.test.mjs" \
@@ -141,13 +150,14 @@ jq -e \
    and .configSchema.properties.idleTimeoutMs.maximum == 3600000
    and .configSchema.properties.requestTimeoutMs.maximum == 172800000
    and .configSchema.properties.requestStallTimeoutMs.minimum == 30000
+   and .configSchema.properties.gatewayOwnedToolTimeoutMs.minimum == 30000
    and .configSchema.properties.workerConfigPath.minLength == 1
    and .configSchema.properties.gatewayConfigPath.minLength == 1
    and .configSchema.properties.fastCompactionMaxQualityRetries.maximum == 1' \
   "${EXPERIMENT_DIR}/openclaw.plugin.json" >/dev/null
 jq -e '.openclaw.extensions == ["./index.mjs"]' \
   "${EXPERIMENT_DIR}/package.json" >/dev/null
-jq -e '.version == "0.2.1"' \
+jq -e '.version == "0.2.2"' \
   "${EXPERIMENT_DIR}/package.json" >/dev/null
 grep -q 'requestTimeoutMs: attemptTimeoutMs' "${EXPERIMENT_DIR}/index.mjs"
 
