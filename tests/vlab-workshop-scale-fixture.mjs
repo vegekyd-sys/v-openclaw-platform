@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -37,7 +38,7 @@ async function writeJson(path, value) {
   });
 }
 
-const manifest = await readJson(manifestPath);
+let manifest = await readJson(manifestPath);
 const retained = manifest.proposals.filter(
   (proposal) => !proposal.id.startsWith(prefix),
 );
@@ -73,9 +74,62 @@ assert.ok(
   ["pending", "rejected"].includes(requestedStatus),
   "status must be pending or rejected",
 );
-assert.ok(retained.length > 0, "at least one real VLab proposal is required");
-
-const sourceId = retained[0].id;
+let sourceId = retained[0]?.id;
+let generatedSource = false;
+if (!sourceId) {
+  const tempDir = process.env.TMPDIR ?? "/srv/vlab/tmp";
+  const draftPath = join(tempDir, `${prefix}seed-PROPOSAL.md`);
+  await mkdir(tempDir, { recursive: true, mode: 0o700 });
+  await writeFile(
+    draftPath,
+    "# VLab Workshop scale fixture\n\nSynthetic proposal. Never apply.\n",
+    { encoding: "utf8", mode: 0o600 },
+  );
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        process.env.VLAB_OPENCLAW_CLI ??
+          "/opt/vlab/current/node_modules/openclaw/openclaw.mjs",
+        "skills",
+        "workshop",
+        "--agent",
+        "makaron",
+        "propose-create",
+        "--name",
+        `${prefix}seed`,
+        "--description",
+        "Synthetic VLab Workshop scale source",
+        "--proposal",
+        draftPath,
+        "--json",
+      ],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          HOME: process.env.VLAB_HOME ?? "/srv/vlab",
+          OPENCLAW_HOME: process.env.VLAB_HOME ?? "/srv/vlab",
+          OPENCLAW_STATE_DIR: stateDir,
+          OPENCLAW_CONFIG_PATH:
+            process.env.OPENCLAW_CONFIG_PATH ??
+            "/srv/vlab/state/openclaw.json",
+          OPENCLAW_WORKSPACE_DIR:
+            process.env.OPENCLAW_WORKSPACE_DIR ?? "/srv/vlab/workspace",
+          TMPDIR: tempDir,
+        },
+      },
+    );
+  } finally {
+    await rm(draftPath, { force: true });
+  }
+  manifest = await readJson(manifestPath);
+  sourceId = manifest.proposals.find((proposal) =>
+    proposal.id.startsWith(`${prefix}seed`),
+  )?.id;
+  generatedSource = true;
+}
+assert.ok(sourceId, "could not create a synthetic Workshop source proposal");
 const sourceRecord = await readJson(
   join(proposalsDir, sourceId, "proposal.json"),
 );
@@ -117,6 +171,9 @@ for (let index = 0; index < requestedCount; index += 1) {
     { encoding: "utf8", mode: 0o600 },
   );
   synthetic.push(manifestEntry(record));
+}
+if (generatedSource) {
+  await rm(join(proposalsDir, sourceId), { recursive: true, force: true });
 }
 
 await writeJson(manifestPath, {
