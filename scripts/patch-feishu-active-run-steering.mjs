@@ -33,8 +33,22 @@ const PATCHED_QUEUE_RETURN = `\tconst enqueue = (key, task) => {
 \treturn enqueue;`;
 
 const ORIGINAL_DISPATCH = `\t\tawait enqueue(sequentialKey, task);`;
-const PATCHED_DISPATCH = `\t\tconst dispatchKey = enqueue.isBusy(sequentialKey) ? \`\${sequentialKey}:active-run\` : sequentialKey;
+const INTERMEDIATE_DISPATCH = `\t\tconst dispatchKey = enqueue.isBusy(sequentialKey) ? \`\${sequentialKey}:active-run\` : sequentialKey;
 \t\tawait enqueue(dispatchKey, task);`;
+const PATCHED_DISPATCH = `\t\tconst dispatchKey = activeRunDispatch ? \`\${sequentialKey}:active-run\` : sequentialKey;
+\t\tawait enqueue(dispatchKey, task);`;
+
+const ORIGINAL_TASK_DECLARATION = `\t\tconst task = () => handleMessage({`;
+const PATCHED_TASK_DECLARATION = `\t\tconst activeRunDispatch = enqueue.isBusy(sequentialKey);
+\t\tconst task = () => handleMessage({`;
+
+const ORIGINAL_TASK_TAIL = `\t\t\tprocessingClaimHeld: true,
+\t\t\tmessageDedupeKey
+\t\t});`;
+const PATCHED_TASK_TAIL = `\t\t\tprocessingClaimHeld: true,
+\t\t\tmessageDedupeKey,
+\t\t\tactiveRunDispatch
+\t\t});`;
 
 const ORIGINAL_REPLY_OPTIONS = `\t\treplyOptions: {
 \t\t\t...replyOptions,
@@ -46,6 +60,23 @@ const PATCHED_REPLY_OPTIONS = `\t\treplyOptions: {
 \t\t\t// can inspect and inject into the active Agent run.
 \t\t\tqueuedFollowupLifecycle: replyOptions.queuedFollowupLifecycle ?? {},
 \t\t\tonModelSelected: prefixContext.onModelSelected,`;
+
+const ORIGINAL_NO_VISIBLE_FALLBACK = `\t\t\tif (shouldSendNoVisibleReplyFallback({
+\t\t\t\t...dispatchResult,
+\t\t\t\tfailedCounts: dispatcher.getFailedCounts?.() ?? {
+\t\t\t\t\ttool: 0,
+\t\t\t\t\tblock: 0,
+\t\t\t\t\tfinal: 0
+\t\t\t\t}
+\t\t\t})) await ensureNoVisibleReplyFallback("dispatch-complete-no-visible-reply");`;
+const PATCHED_NO_VISIBLE_FALLBACK = `\t\t\tif (!params.activeRunDispatch && shouldSendNoVisibleReplyFallback({
+\t\t\t\t...dispatchResult,
+\t\t\t\tfailedCounts: dispatcher.getFailedCounts?.() ?? {
+\t\t\t\t\ttool: 0,
+\t\t\t\t\tblock: 0,
+\t\t\t\t\tfinal: 0
+\t\t\t\t}
+\t\t\t})) await ensureNoVisibleReplyFallback("dispatch-complete-no-visible-reply");`;
 
 function replaceExactlyOnce(source, original, replacement, label) {
   const first = source.indexOf(original);
@@ -61,58 +92,50 @@ function replaceExactlyOnce(source, original, replacement, label) {
 }
 
 export function patchFeishuActiveRunSteeringBundle(source) {
-  const patchedMarkers = [
-    PATCHED_QUEUE_RETURN,
-    PATCHED_DISPATCH,
-    PATCHED_REPLY_OPTIONS,
-  ];
-  const markerCount = patchedMarkers.filter((marker) =>
-    source.includes(marker),
-  ).length;
-  if (markerCount === patchedMarkers.length) {
-    return { changed: false, source };
-  }
-  if (
-    markerCount === 2 &&
-    source.includes(PATCHED_QUEUE_RETURN) &&
-    source.includes(PATCHED_DISPATCH) &&
-    !source.includes(PATCHED_REPLY_OPTIONS)
-  ) {
-    return {
-      changed: true,
-      source: replaceExactlyOnce(
-        source,
-        ORIGINAL_REPLY_OPTIONS,
-        PATCHED_REPLY_OPTIONS,
-        "queued follow-up lifecycle upgrade",
-      ),
-    };
-  }
-  if (markerCount !== 0) {
-    throw new Error(
-      `Feishu active-run steering bundle is partially patched (${markerCount}/${patchedMarkers.length} markers)`,
-    );
-  }
   let patched = source;
-  patched = replaceExactlyOnce(
-    patched,
-    ORIGINAL_QUEUE_RETURN,
+  let changed = false;
+  const applyStep = (originals, replacement, label) => {
+    if (patched.includes(replacement)) return;
+    const original = originals.find((candidate) => patched.includes(candidate));
+    if (!original) {
+      throw new Error(
+        `Feishu active-run steering patch found neither original nor patched ${label}`,
+      );
+    }
+    patched = replaceExactlyOnce(patched, original, replacement, label);
+    changed = true;
+  };
+  applyStep(
+    [ORIGINAL_QUEUE_RETURN],
     PATCHED_QUEUE_RETURN,
     "sequential queue return",
   );
-  patched = replaceExactlyOnce(
-    patched,
-    ORIGINAL_DISPATCH,
+  applyStep(
+    [ORIGINAL_TASK_DECLARATION],
+    PATCHED_TASK_DECLARATION,
+    "active-run task declaration",
+  );
+  applyStep(
+    [ORIGINAL_TASK_TAIL],
+    PATCHED_TASK_TAIL,
+    "active-run task flag",
+  );
+  applyStep(
+    [INTERMEDIATE_DISPATCH, ORIGINAL_DISPATCH],
     PATCHED_DISPATCH,
     "message dispatch enqueue",
   );
-  patched = replaceExactlyOnce(
-    patched,
-    ORIGINAL_REPLY_OPTIONS,
+  applyStep(
+    [ORIGINAL_REPLY_OPTIONS],
     PATCHED_REPLY_OPTIONS,
     "queued follow-up lifecycle",
   );
-  return { changed: true, source: patched };
+  applyStep(
+    [ORIGINAL_NO_VISIBLE_FALLBACK],
+    PATCHED_NO_VISIBLE_FALLBACK,
+    "adopted Steer empty-reply fallback",
+  );
+  return { changed, source: patched };
 }
 
 // Exported as an executable specification for the ordering regression test.

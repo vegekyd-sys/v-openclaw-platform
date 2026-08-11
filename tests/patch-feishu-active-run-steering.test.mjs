@@ -24,6 +24,12 @@ function createSequentialQueue(options = {}) {
 \t};
 }
 async function dispatchFeishuMessage() {
+		const sequentialKey = resolveSequentialKey();
+		const task = () => handleMessage({
+			cfg,
+			processingClaimHeld: true,
+			messageDedupeKey
+		});
 \t\tawait enqueue(sequentialKey, task);
 }
 function createFeishuReplyDispatcher() {
@@ -34,6 +40,16 @@ function createFeishuReplyDispatcher() {
 \t\t}
 \t};
 }
+async function handleFeishuMessage(params) {
+\t\t\tif (shouldSendNoVisibleReplyFallback({
+\t\t\t\t...dispatchResult,
+\t\t\t\tfailedCounts: dispatcher.getFailedCounts?.() ?? {
+\t\t\t\t\ttool: 0,
+\t\t\t\t\tblock: 0,
+\t\t\t\t\tfinal: 0
+\t\t\t\t}
+\t\t\t})) await ensureNoVisibleReplyFallback("dispatch-complete-no-visible-reply");
+}
 `;
 
 test("patch exposes busy state and routes a later message to the active-run lane", () => {
@@ -41,9 +57,15 @@ test("patch exposes busy state and routes a later message to the active-run lane
   assert.equal(result.changed, true);
   assert.match(result.source, /enqueue\.isBusy = \(key\) => queues\.has\(key\)/);
   assert.match(result.source, /\? `\$\{sequentialKey\}:active-run`/);
+  assert.match(result.source, /const activeRunDispatch = enqueue\.isBusy/);
+  assert.match(result.source, /messageDedupeKey,\n\t\t\tactiveRunDispatch/);
   assert.match(
     result.source,
     /queuedFollowupLifecycle: replyOptions\.queuedFollowupLifecycle \?\? \{\}/,
+  );
+  assert.match(
+    result.source,
+    /if \(!params\.activeRunDispatch && shouldSendNoVisibleReplyFallback/,
   );
   assert.equal(
     patchFeishuActiveRunSteeringBundle(result.source).changed,
