@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  resolveOpenClawAgentHarnessRuntimePath,
   resolveOpenClawAgentRuntimePath,
   resolveOpenClawSubagentAnnounceOriginRuntimePath,
   resolveOpenClawSubagentAnnounceRuntimePath,
@@ -45,6 +46,16 @@ assert.throws(
 );
 
 assert.equal(
+  resolveOpenClawAgentHarnessRuntimePath({
+    agentRuntimePath: vlabRuntime,
+    fileExists: (candidate) =>
+      candidate ===
+      "/opt/vlab/current/node_modules/openclaw/dist/plugin-sdk/agent-harness-runtime.js",
+  }),
+  "/opt/vlab/current/node_modules/openclaw/dist/plugin-sdk/agent-harness-runtime.js",
+);
+
+assert.equal(
   resolveOpenClawSubagentAnnounceRuntimePath({
     agentRuntimePath: vlabRuntime,
     readDirectory: () => [
@@ -76,4 +87,4 @@ assert.equal(
   "/opt/vlab/current/node_modules/openclaw/dist/subagent-announce-origin-DRzxvCSi.js",
 );
 
-console.log(JSON.stringify({ ok: true, cases: 7 }));
+console.log(JSON.stringify({ ok: true, cases: 8 }));

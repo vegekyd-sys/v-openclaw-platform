@@ -40,6 +40,19 @@ export function resolveOpenClawAgentRuntimePath(options = {}) {
   );
 }
 
+export function resolveOpenClawAgentHarnessRuntimePath(options = {}) {
+  const agentRuntimePath =
+    options.agentRuntimePath ?? resolveOpenClawAgentRuntimePath(options);
+  const candidate = join(dirname(agentRuntimePath), "agent-harness-runtime.js");
+  const fileExists = options.fileExists ?? existsSync;
+  if (!fileExists(candidate)) {
+    throw new Error(
+      `OpenClaw Agent Harness runtime was not found; checked: ${candidate}`,
+    );
+  }
+  return candidate;
+}
+
 export function resolveOpenClawSubagentAnnounceRuntimePath(options = {}) {
   const agentRuntimePath =
     options.agentRuntimePath ?? resolveOpenClawAgentRuntimePath(options);

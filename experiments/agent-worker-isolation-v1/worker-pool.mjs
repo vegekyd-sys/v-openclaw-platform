@@ -72,6 +72,8 @@ export class WorkerPool {
     this.sessionOwners = new Map();
     this.pending = [];
     this.nextRequestId = 1;
+    this.nextSteerId = 1;
+    this.pendingSteers = new Map();
     this.started = false;
     this.closing = false;
     this.pumping = false;
@@ -287,6 +289,61 @@ export class WorkerPool {
     return { cancelled: false, state: "not_found", requestId };
   }
 
+  async steer(requestId, text, options = {}) {
+    if (typeof text !== "string" || text.trim() === "") {
+      throw new Error("Steer text is required");
+    }
+    for (const worker of this.workers.values()) {
+      if (!worker.active.has(requestId)) continue;
+      const steerId = `steer-${this.nextSteerId}`;
+      this.nextSteerId += 1;
+      const promise = new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          this.pendingSteers.delete(steerId);
+          reject(new Error(`worker Steer ${steerId} acknowledgement timed out`));
+        }, 5_000);
+        timer.unref?.();
+        this.pendingSteers.set(steerId, {
+          requestId,
+          worker,
+          timer,
+          resolve,
+          reject,
+        });
+      });
+      worker.child.send({
+        type: "steer",
+        requestId,
+        steerId,
+        text,
+        options: {
+          steeringMode:
+            options?.steeringMode === "one-at-a-time"
+              ? "one-at-a-time"
+              : "all",
+          sourceReplyDeliveryMode: options?.sourceReplyDeliveryMode,
+          waitForTranscriptCommit: options?.waitForTranscriptCommit === true,
+        },
+      });
+      return await promise;
+    }
+    return {
+      steered: false,
+      state: "not_active",
+      requestId,
+      error: `worker request ${requestId} is not active`,
+    };
+  }
+
+  rejectPendingSteers(requestId, error) {
+    for (const [steerId, pending] of this.pendingSteers) {
+      if (pending.requestId !== requestId) continue;
+      clearTimeout(pending.timer);
+      this.pendingSteers.delete(steerId);
+      pending.reject(error);
+    }
+  }
+
   terminateWorker(slot, signal = "SIGKILL") {
     if (!Number.isInteger(slot)) {
       throw new Error("slot must be an integer");
@@ -488,6 +545,35 @@ export class WorkerPool {
       this.requestPump();
       return;
     }
+    if (message?.type === "steer-ack" && message.steerId) {
+      const pending = this.pendingSteers.get(message.steerId);
+      if (
+        !pending ||
+        pending.worker !== worker ||
+        pending.requestId !== message.requestId
+      ) {
+        return;
+      }
+      clearTimeout(pending.timer);
+      this.pendingSteers.delete(message.steerId);
+      if (message.ok === true) {
+        pending.resolve({
+          steered: true,
+          requestId: message.requestId,
+          steerId: message.steerId,
+          slot: worker.slot,
+          workerPid: worker.pid,
+        });
+      } else {
+        pending.reject(
+          Object.assign(
+            new Error(message.error?.message ?? "worker rejected Steer message"),
+            { code: message.error?.code ?? "VLAB_WORKER_STEER_REJECTED" },
+          ),
+        );
+      }
+      return;
+    }
     if (message?.type === "progress") {
       const active = worker.active.get(message.id);
       if (!active) {
@@ -639,6 +725,10 @@ export class WorkerPool {
     }
 
     worker.active.delete(message.id);
+    this.rejectPendingSteers(
+      message.id,
+      new Error(`worker request ${message.id} completed before Steer acknowledgement`),
+    );
     clearJobTimers(active);
     if (active.timeoutError) {
       active.reject(active.timeoutError);
@@ -683,6 +773,7 @@ export class WorkerPool {
     worker.rejectStartup?.(error);
     for (const active of worker.active.values()) {
       clearJobTimers(active);
+      this.rejectPendingSteers(active.id, error);
       active.reject(active.timeoutError ?? error);
     }
     worker.active.clear();
@@ -822,6 +913,11 @@ export class WorkerPool {
     const closeError = new Error("worker pool is closing");
     for (const pending of this.pending.splice(0)) {
       pending.reject(closeError);
+    }
+    for (const [steerId, pending] of this.pendingSteers) {
+      clearTimeout(pending.timer);
+      pending.reject(closeError);
+      this.pendingSteers.delete(steerId);
     }
 
     const children = [...this.workers.values()].map((worker) => worker.child);

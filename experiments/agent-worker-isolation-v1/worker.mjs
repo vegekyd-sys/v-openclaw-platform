@@ -555,6 +555,58 @@ process.on("message", async (message) => {
     }
     return;
   }
+  if (message?.type === "steer" && message.requestId && message.steerId) {
+    const active = activeControllers.get(message.requestId);
+    try {
+      if (!active) {
+        throw Object.assign(new Error("worker Agent request is not active"), {
+          code: "VLAB_WORKER_STEER_NOT_ACTIVE",
+        });
+      }
+      if (message.options?.waitForTranscriptCommit === true) {
+        throw Object.assign(
+          new Error("worker Steer does not support transcript-commit waiting"),
+          { code: "VLAB_WORKER_STEER_COMMIT_WAIT_UNSUPPORTED" },
+        );
+      }
+      const eventRuntime = await loadAgentEventRuntime();
+      if (typeof eventRuntime.queueAgentHarnessMessage !== "function") {
+        throw Object.assign(
+          new Error("OpenClaw Agent Harness Steer runtime is unavailable"),
+          { code: "VLAB_WORKER_STEER_RUNTIME_UNAVAILABLE" },
+        );
+      }
+      const accepted = eventRuntime.queueAgentHarnessMessage(
+        active.request.sessionId,
+        message.text,
+        {
+          steeringMode: message.options?.steeringMode ?? "all",
+          sourceReplyDeliveryMode:
+            message.options?.sourceReplyDeliveryMode,
+        },
+      );
+      if (accepted !== true) {
+        throw Object.assign(new Error("active Worker run rejected Steer"), {
+          code: "VLAB_WORKER_STEER_REJECTED",
+        });
+      }
+      process.send?.({
+        type: "steer-ack",
+        requestId: message.requestId,
+        steerId: message.steerId,
+        ok: true,
+      });
+    } catch (error) {
+      process.send?.({
+        type: "steer-ack",
+        requestId: message.requestId,
+        steerId: message.steerId,
+        ok: false,
+        error: serializeError(error),
+      });
+    }
+    return;
+  }
   if (!message?.id) {
     return;
   }

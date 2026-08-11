@@ -1,8 +1,16 @@
 const agentEventListeners = new Set();
+const activeSteerWaiters = new Map();
 
 export function onAgentEvent(listener) {
   agentEventListeners.add(listener);
   return () => agentEventListeners.delete(listener);
+}
+
+export function queueAgentHarnessMessage(sessionId, text) {
+  const waiter = activeSteerWaiters.get(sessionId);
+  if (!waiter) return false;
+  waiter(text);
+  return true;
 }
 
 function emitAgentEvent(event) {
@@ -12,6 +20,22 @@ function emitAgentEvent(event) {
 }
 
 export async function agentCommand(params) {
+  if (params.message === "steer-hold") {
+    const steeredText = await new Promise((resolve) => {
+      activeSteerWaiters.set(params.sessionId, resolve);
+    });
+    activeSteerWaiters.delete(params.sessionId);
+    return {
+      payloads: [{ text: `steered:${steeredText}` }],
+      meta: {
+        agentMeta: {
+          provider: "fixture",
+          model: "fixture",
+          sessionId: params.sessionId,
+        },
+      },
+    };
+  }
   if (params.message === "option-parity") {
     return {
       payloads: [

@@ -4,9 +4,11 @@ import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   resolveOpenClawAgentRuntimePath,
+  resolveOpenClawAgentHarnessRuntimePath,
   resolveOpenClawSubagentAnnounceRuntimePath,
   resolveOpenClawSubagentAnnounceOriginRuntimePath,
 } from "./runtime-path.mjs";
+import { createWorkerActiveRunProxy } from "./worker-active-run-proxy.mjs";
 import { buildHarnessFailureAttempt } from "./harness-failure.mjs";
 import { readNativeSessionMessages } from "./harness-result.mjs";
 import { closeInterruptedToolCalls } from "./transcript-recovery.mjs";
@@ -240,6 +242,13 @@ const plugin = {
     });
     api.registerCompactionProvider(fastCompactionProvider);
     const openClawAgentRuntimePath = resolveOpenClawAgentRuntimePath();
+    const agentHarnessActiveRunRuntimePromise = import(
+      pathToFileURL(
+        resolveOpenClawAgentHarnessRuntimePath({
+          agentRuntimePath: openClawAgentRuntimePath,
+        }),
+      ).href
+    );
     const transcriptRuntimePromise = import(
       pathToFileURL(
         resolve(dirname(openClawAgentRuntimePath), "session-transcript-runtime.js"),
@@ -524,12 +533,32 @@ const plugin = {
             const onAbort = () => {
               pool.cancel(submitted.requestId);
             };
+            const activeRunRuntime = await agentHarnessActiveRunRuntimePromise;
+            const activeRunProxy = createWorkerActiveRunProxy({
+              pool,
+              requestId: submitted.requestId,
+              runId: params.runId,
+              sourceReplyDeliveryMode: params.sourceReplyDeliveryMode,
+            });
+            activeRunRuntime.setActiveEmbeddedRun(
+              session.sessionId,
+              activeRunProxy.handle,
+              sessionKey,
+              session.sessionFile,
+            );
             params.abortSignal?.addEventListener("abort", onAbort, {
               once: true,
             });
             try {
               return await submitted.promise;
             } finally {
+              activeRunProxy.deactivate();
+              activeRunRuntime.clearActiveEmbeddedRun(
+                session.sessionId,
+                activeRunProxy.handle,
+                sessionKey,
+                session.sessionFile,
+              );
               if (
                 nativeRequestsByRunId.get(params.runId)?.requestId ===
                 submitted.requestId
@@ -1005,7 +1034,7 @@ const plugin = {
             nativeAgentHarnessDispatchAttached: true,
             nestedGatewayHarnessRouting: true,
             workerUsesIngressAgentCommand: true,
-            workerIsolationVersion: "0.2.2",
+            workerIsolationVersion: "0.2.3-steer-lab",
             sessionHotset: {
               gateway: getSessionHotsetStatus(),
               workers: pool.status().workers.map((worker) => ({

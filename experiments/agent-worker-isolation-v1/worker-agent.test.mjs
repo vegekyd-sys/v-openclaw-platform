@@ -64,6 +64,35 @@ test("persistent worker does not run one-shot CLI teardown per turn", async () =
   }
 });
 
+test("active Worker Agent turn accepts an in-turn Steer message", async () => {
+  const pool = makePool();
+  try {
+    const submitted = await pool.submit("agent:fixture:steer", {
+      kind: "agent",
+      harnessAttempt: true,
+      message: "steer-hold",
+      sessionId: "steer-session",
+      runId: "steer-run",
+    });
+    while (pool.status().workers[0]?.activeCount !== 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    const outcome = await pool.steer(
+      submitted.requestId,
+      "new objective",
+      { steeringMode: "all" },
+    );
+    assert.equal(outcome.steered, true);
+    const result = await submitted.promise;
+    assert.deepEqual(
+      result.payloads.map((payload) => payload.text),
+      ["steered:new objective"],
+    );
+  } finally {
+    await pool.close();
+  }
+});
+
 test("worker suppresses its copy when Gateway already persisted the user turn", async () => {
   const pool = makePool();
   try {
