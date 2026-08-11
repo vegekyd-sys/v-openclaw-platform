@@ -26,6 +26,14 @@ function createSequentialQueue(options = {}) {
 async function dispatchFeishuMessage() {
 \t\tawait enqueue(sequentialKey, task);
 }
+function createFeishuReplyDispatcher() {
+\treturn {
+\t\treplyOptions: {
+\t\t\t...replyOptions,
+\t\t\tonModelSelected: prefixContext.onModelSelected,
+\t\t}
+\t};
+}
 `;
 
 test("patch exposes busy state and routes a later message to the active-run lane", () => {
@@ -33,10 +41,31 @@ test("patch exposes busy state and routes a later message to the active-run lane
   assert.equal(result.changed, true);
   assert.match(result.source, /enqueue\.isBusy = \(key\) => queues\.has\(key\)/);
   assert.match(result.source, /\? `\$\{sequentialKey\}:active-run`/);
+  assert.match(
+    result.source,
+    /queuedFollowupLifecycle: replyOptions\.queuedFollowupLifecycle \?\? \{\}/,
+  );
   assert.equal(
     patchFeishuActiveRunSteeringBundle(result.source).changed,
     false,
   );
+});
+
+test("patch upgrades the ingress-only VLab draft with Reply Operation admission", () => {
+  const ingressOnly = officialFixture
+    .replace(
+      /\treturn \(key, task\) => \{[\s\S]*?\n\t\};\n\}/,
+      `${patchFeishuActiveRunSteeringBundle(officialFixture).source.match(
+        /\tconst enqueue = \(key, task\) => \{[\s\S]*?\n\treturn enqueue;\n\}/,
+      )[0]}`,
+    )
+    .replace(
+      "\t\tawait enqueue(sequentialKey, task);",
+      "\t\tconst dispatchKey = enqueue.isBusy(sequentialKey) ? `${sequentialKey}:active-run` : sequentialKey;\n\t\tawait enqueue(dispatchKey, task);",
+    );
+  const upgraded = patchFeishuActiveRunSteeringBundle(ingressOnly);
+  assert.equal(upgraded.changed, true);
+  assert.match(upgraded.source, /queuedFollowupLifecycle:/);
 });
 
 test("the second same-chat dispatch enters before the first completes", async () => {

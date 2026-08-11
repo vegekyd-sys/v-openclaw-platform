@@ -36,6 +36,17 @@ const ORIGINAL_DISPATCH = `\t\tawait enqueue(sequentialKey, task);`;
 const PATCHED_DISPATCH = `\t\tconst dispatchKey = enqueue.isBusy(sequentialKey) ? \`\${sequentialKey}:active-run\` : sequentialKey;
 \t\tawait enqueue(dispatchKey, task);`;
 
+const ORIGINAL_REPLY_OPTIONS = `\t\treplyOptions: {
+\t\t\t...replyOptions,
+\t\t\tonModelSelected: prefixContext.onModelSelected,`;
+const PATCHED_REPLY_OPTIONS = `\t\treplyOptions: {
+\t\t\t...replyOptions,
+\t\t\t// Required by OpenClaw's active Reply Operation admission. Without
+\t\t\t// this lifecycle, a later Feishu turn waits before queue-mode Steer
+\t\t\t// can inspect and inject into the active Agent run.
+\t\t\tqueuedFollowupLifecycle: replyOptions.queuedFollowupLifecycle ?? {},
+\t\t\tonModelSelected: prefixContext.onModelSelected,`;
+
 function replaceExactlyOnce(source, original, replacement, label) {
   const first = source.indexOf(original);
   if (first === -1) {
@@ -50,12 +61,32 @@ function replaceExactlyOnce(source, original, replacement, label) {
 }
 
 export function patchFeishuActiveRunSteeringBundle(source) {
-  const patchedMarkers = [PATCHED_QUEUE_RETURN, PATCHED_DISPATCH];
+  const patchedMarkers = [
+    PATCHED_QUEUE_RETURN,
+    PATCHED_DISPATCH,
+    PATCHED_REPLY_OPTIONS,
+  ];
   const markerCount = patchedMarkers.filter((marker) =>
     source.includes(marker),
   ).length;
   if (markerCount === patchedMarkers.length) {
     return { changed: false, source };
+  }
+  if (
+    markerCount === 2 &&
+    source.includes(PATCHED_QUEUE_RETURN) &&
+    source.includes(PATCHED_DISPATCH) &&
+    !source.includes(PATCHED_REPLY_OPTIONS)
+  ) {
+    return {
+      changed: true,
+      source: replaceExactlyOnce(
+        source,
+        ORIGINAL_REPLY_OPTIONS,
+        PATCHED_REPLY_OPTIONS,
+        "queued follow-up lifecycle upgrade",
+      ),
+    };
   }
   if (markerCount !== 0) {
     throw new Error(
@@ -74,6 +105,12 @@ export function patchFeishuActiveRunSteeringBundle(source) {
     ORIGINAL_DISPATCH,
     PATCHED_DISPATCH,
     "message dispatch enqueue",
+  );
+  patched = replaceExactlyOnce(
+    patched,
+    ORIGINAL_REPLY_OPTIONS,
+    PATCHED_REPLY_OPTIONS,
+    "queued follow-up lifecycle",
   );
   return { changed: true, source: patched };
 }
