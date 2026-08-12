@@ -37,6 +37,18 @@ fi
 }
 
 config_backup="$(jq -r '.configBackup' "$ACTIVE_MANIFEST")"
+previous_active_manifest="$(
+  jq -r '.previousActiveManifest // empty' "$ACTIVE_MANIFEST"
+)"
+previous_hotset_existed="$(
+  jq -r '.previousSessionHotset.existed // false' "$ACTIVE_MANIFEST"
+)"
+previous_hotset_module="$(
+  jq -r '.previousSessionHotset.module // empty' "$ACTIVE_MANIFEST"
+)"
+previous_hotset_dropin="$(
+  jq -r '.previousSessionHotset.dropInBackup // empty' "$ACTIVE_MANIFEST"
+)"
 TOOL_PROXY_PATCHER="$(jq -r '.gatewayOwnedToolIsolation.patcher // empty' "$ACTIVE_MANIFEST")"
 TOOL_PROXY_PREEXISTING="$(jq -r '.gatewayOwnedToolIsolation.preExisting // false' "$ACTIVE_MANIFEST")"
 MEDIA_COMPLETION_PREEXISTING="$(jq -r '.mediaCompletionRelay.preExisting // false' "$ACTIVE_MANIFEST")"
@@ -91,7 +103,18 @@ if [[ "$FEISHU_STEER_PREVIOUS_DROPIN_EXISTED" == true ]]; then
 else
   rm -f "$FEISHU_STEER_DROPIN"
 fi
-rm -f "$SESSION_HOTSET_DROPIN"
+if [[ "$previous_hotset_existed" == true ]]; then
+  [[ -n "$previous_hotset_module" && -f "$previous_hotset_dropin" ]] || {
+    echo "missing previous Session Hotset rollback state" >&2
+    exit 1
+  }
+  "$NODE" "$SESSION_HOTSET_PATCHER" \
+    "$OPENCLAW_PACKAGE" "$previous_hotset_module"
+  install -o root -g root -m 0644 \
+    "$previous_hotset_dropin" "$SESSION_HOTSET_DROPIN"
+else
+  rm -f "$SESSION_HOTSET_DROPIN"
+fi
 systemctl daemon-reload
 
 run_openclaw config validate >/dev/null
@@ -106,12 +129,17 @@ for _ in $(seq 1 30); do
 done
 run_openclaw gateway call health --params '{}' --json >/dev/null
 
-jq \
-  --arg rolled_back_at "$TIMESTAMP" \
-  '.status = "rolled_back" | .rolledBackAt = $rolled_back_at' \
-  "$ACTIVE_MANIFEST" > "${ACTIVE_MANIFEST}.new"
-chown vlab:vlab "${ACTIVE_MANIFEST}.new"
-chmod 0600 "${ACTIVE_MANIFEST}.new"
-mv "${ACTIVE_MANIFEST}.new" "$ACTIVE_MANIFEST"
+if [[ -n "$previous_active_manifest" && -f "$previous_active_manifest" ]]; then
+  install -o vlab -g vlab -m 0600 \
+    "$previous_active_manifest" "$ACTIVE_MANIFEST"
+else
+  jq \
+    --arg rolled_back_at "$TIMESTAMP" \
+    '.status = "rolled_back" | .rolledBackAt = $rolled_back_at' \
+    "$ACTIVE_MANIFEST" > "${ACTIVE_MANIFEST}.new"
+  chown vlab:vlab "${ACTIVE_MANIFEST}.new"
+  chmod 0600 "${ACTIVE_MANIFEST}.new"
+  mv "${ACTIVE_MANIFEST}.new" "$ACTIVE_MANIFEST"
+fi
 
 echo "vLab Agent Worker Isolation rolled back"

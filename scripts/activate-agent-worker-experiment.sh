@@ -38,9 +38,9 @@ TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 BACKUP_DIR="${LAB_ROOT}/backups/agent-worker-isolation-v1/${TIMESTAMP}"
 ACTIVE_MANIFEST="${STATE_DIR}/active.json"
 PRE_DEPLOY_CONFIG="${BACKUP_DIR}/openclaw.json"
+PREVIOUS_ACTIVE_MANIFEST="${BACKUP_DIR}/active.json"
 PRE_DEPLOY_HOTSET_DROPIN="${BACKUP_DIR}/session-hotset-v0.2.0.conf"
 PRE_DEPLOY_STEER_DROPIN="${BACKUP_DIR}/worker-steer-v0.2.3.conf"
-ROLLBACK_CONFIG="$PRE_DEPLOY_CONFIG"
 rollback_armed=false
 hotset_patch_armed=false
 media_completion_patch_armed=false
@@ -251,6 +251,10 @@ install -o root -g root -m 0755 \
   "$FEISHU_STEER_PATCHER_SOURCE" \
   "$FEISHU_STEER_PATCHER"
 install -o vlab -g vlab -m 0600 "$CONFIG_PATH" "$PRE_DEPLOY_CONFIG"
+if [[ -f "$ACTIVE_MANIFEST" ]]; then
+  install -o vlab -g vlab -m 0600 \
+    "$ACTIVE_MANIFEST" "$PREVIOUS_ACTIVE_MANIFEST"
+fi
 if [[ -f "$SESSION_HOTSET_DROPIN" ]]; then
   hotset_was_present=true
   install -o root -g root -m 0644 \
@@ -268,26 +272,6 @@ if [[ -f "$FEISHU_STEER_DROPIN" ]]; then
   steer_dropin_was_present=true
   install -o root -g root -m 0644 \
     "$FEISHU_STEER_DROPIN" "$PRE_DEPLOY_STEER_DROPIN"
-fi
-if jq -e \
-  '.plugins.entries["vlab-agent-worker-isolation"].enabled == true' \
-  "$CONFIG_PATH" >/dev/null 2>&1; then
-  while IFS= read -r candidate; do
-    if ! jq -e \
-      '.plugins.entries["vlab-agent-worker-isolation"].enabled == true' \
-      "$candidate" >/dev/null 2>&1; then
-      ROLLBACK_CONFIG="$candidate"
-      break
-    fi
-  done < <(
-    find "${LAB_ROOT}/backups/agent-worker-isolation-v1" \
-      -mindepth 2 \
-      -maxdepth 2 \
-      -name openclaw.json \
-      -type f \
-      -print \
-      | sort -r
-  )
 fi
 rollback_armed=true
 
@@ -526,8 +510,9 @@ jq -n \
   --arg experiment "agent-worker-isolation-v1" \
   --arg platform_commit "$PLATFORM_COMMIT" \
   --arg release_dir "$RELEASE_DIR" \
-  --arg config_backup "$ROLLBACK_CONFIG" \
+  --arg config_backup "$PRE_DEPLOY_CONFIG" \
   --arg pre_deploy_config "$PRE_DEPLOY_CONFIG" \
+  --arg previous_active_manifest "$PREVIOUS_ACTIVE_MANIFEST" \
   --arg activated_at "$TIMESTAMP" \
   --argjson session_hotset_ttl_ms "$SESSION_HOTSET_TTL_MS" \
   --arg session_hotset_dropin "$SESSION_HOTSET_DROPIN" \
@@ -537,6 +522,8 @@ jq -n \
   --arg feishu_steer_patcher "$FEISHU_STEER_PATCHER" \
   --arg feishu_steer_dropin "$FEISHU_STEER_DROPIN" \
   --arg previous_feishu_steer_dropin "$PRE_DEPLOY_STEER_DROPIN" \
+  --arg previous_hotset_dropin "$PRE_DEPLOY_HOTSET_DROPIN" \
+  --arg previous_hotset_module "$previous_hotset_module" \
   --arg feishu_steer_chat_ids "$FEISHU_STEER_CHAT_IDS" \
   --argjson media_completion_preexisting "$media_completion_preexisting" \
   --argjson feishu_steer_preexisting "$feishu_steer_preexisting" \
@@ -548,6 +535,7 @@ jq -n \
     releaseDir: $release_dir,
     configBackup: $config_backup,
     preDeployConfig: $pre_deploy_config,
+    previousActiveManifest: $previous_active_manifest,
     activatedAt: $activated_at,
     status: "active",
     sessionHotset: {
@@ -556,6 +544,11 @@ jq -n \
       ttlMs: $session_hotset_ttl_ms,
       dropIn: $session_hotset_dropin,
       lastPruneReport: $session_hotset_report
+    },
+    previousSessionHotset: {
+      existed: (($previous_hotset_module | length) > 0),
+      module: $previous_hotset_module,
+      dropInBackup: $previous_hotset_dropin
     },
     mediaCompletionRelay: {
       enabled: true,

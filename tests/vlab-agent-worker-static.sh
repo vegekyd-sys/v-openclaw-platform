@@ -140,6 +140,14 @@ grep -q 'V_FEISHU_STEER_CHAT_IDS' \
   "${REPO_ROOT}/scripts/deploy-agent-worker-production.sh"
 grep -q 'activeRunSteer' \
   "${REPO_ROOT}/scripts/rollback-agent-worker-production.sh"
+grep -q 'previousActiveManifest' \
+  "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
+grep -q 'previousSessionHotset' \
+  "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
+grep -q 'previous_active_manifest' \
+  "${REPO_ROOT}/scripts/rollback-agent-worker-experiment.sh"
+grep -q 'previous_hotset_module' \
+  "${REPO_ROOT}/scripts/rollback-agent-worker-experiment.sh"
 grep -q 'prune-openclaw-session-hotset.mjs' \
   "${REPO_ROOT}/scripts/deploy-agent-worker-production.sh"
 grep -q 'workerIsolationVersion == "0.2.3"' \
