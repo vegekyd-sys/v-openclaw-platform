@@ -11,7 +11,9 @@ OPENCLAW_PACKAGE="/opt/vlab/current/node_modules/openclaw"
 SESSION_HOTSET_PATCHER="${STATE_DIR}/patch-openclaw-session-hotset.mjs"
 MEDIA_COMPLETION_PATCHER="${STATE_DIR}/patch-openclaw-media-completion-relay.mjs"
 TOOL_PROXY_PATCHER=""
+FEISHU_STEER_PATCHER=""
 SESSION_HOTSET_DROPIN="/etc/systemd/system/openclaw-vlab-gateway.service.d/session-hotset-v0.2.0.conf"
+FEISHU_STEER_DROPIN="/etc/systemd/system/openclaw-vlab-gateway.service.d/worker-steer-v0.2.3.conf"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 
 run_openclaw() {
@@ -38,6 +40,14 @@ config_backup="$(jq -r '.configBackup' "$ACTIVE_MANIFEST")"
 TOOL_PROXY_PATCHER="$(jq -r '.gatewayOwnedToolIsolation.patcher // empty' "$ACTIVE_MANIFEST")"
 TOOL_PROXY_PREEXISTING="$(jq -r '.gatewayOwnedToolIsolation.preExisting // false' "$ACTIVE_MANIFEST")"
 MEDIA_COMPLETION_PREEXISTING="$(jq -r '.mediaCompletionRelay.preExisting // false' "$ACTIVE_MANIFEST")"
+FEISHU_STEER_PATCHER="$(jq -r '.activeRunSteer.patcher // empty' "$ACTIVE_MANIFEST")"
+FEISHU_STEER_PREEXISTING="$(jq -r '.activeRunSteer.preExisting // false' "$ACTIVE_MANIFEST")"
+FEISHU_STEER_DROPIN="$(jq -r '.activeRunSteer.dropIn // empty' "$ACTIVE_MANIFEST")"
+FEISHU_STEER_PREVIOUS_DROPIN_EXISTED="$(jq -r '.activeRunSteer.previousDropInExisted // false' "$ACTIVE_MANIFEST")"
+FEISHU_STEER_PREVIOUS_DROPIN="$(jq -r '.activeRunSteer.previousDropInBackup // empty' "$ACTIVE_MANIFEST")"
+if [[ -z "$FEISHU_STEER_DROPIN" ]]; then
+  FEISHU_STEER_DROPIN="/etc/systemd/system/openclaw-vlab-gateway.service.d/worker-steer-v0.2.3.conf"
+fi
 [[ -f "$config_backup" ]] || {
   echo "missing rollback config: $config_backup" >&2
   exit 1
@@ -65,6 +75,21 @@ if [[ "$TOOL_PROXY_PREEXISTING" != true \
 fi
 if [[ "$MEDIA_COMPLETION_PREEXISTING" != true ]]; then
   "$NODE" "$MEDIA_COMPLETION_PATCHER" --restore "$OPENCLAW_PACKAGE"
+fi
+if [[ "$FEISHU_STEER_PREEXISTING" != true \
+  && -n "$FEISHU_STEER_PATCHER" \
+  && -f "$FEISHU_STEER_PATCHER" ]]; then
+  "$NODE" "$FEISHU_STEER_PATCHER" --restore "$OPENCLAW_PACKAGE"
+fi
+if [[ "$FEISHU_STEER_PREVIOUS_DROPIN_EXISTED" == true ]]; then
+  [[ -f "$FEISHU_STEER_PREVIOUS_DROPIN" ]] || {
+    echo "missing previous Feishu Steer drop-in" >&2
+    exit 1
+  }
+  install -o root -g root -m 0644 \
+    "$FEISHU_STEER_PREVIOUS_DROPIN" "$FEISHU_STEER_DROPIN"
+else
+  rm -f "$FEISHU_STEER_DROPIN"
 fi
 rm -f "$SESSION_HOTSET_DROPIN"
 systemctl daemon-reload

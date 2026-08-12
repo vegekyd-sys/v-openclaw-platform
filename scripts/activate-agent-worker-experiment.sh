@@ -26,23 +26,32 @@ SESSION_HOTSET_PRUNER_SOURCE="${VLAB_SESSION_HOTSET_PRUNER_SOURCE:-/tmp/prune-op
 SESSION_HOTSET_PRUNER="${STATE_DIR}/prune-openclaw-session-hotset.mjs"
 MEDIA_COMPLETION_PATCHER_SOURCE="${VLAB_MEDIA_COMPLETION_PATCHER_SOURCE:-/tmp/patch-openclaw-media-completion-relay.mjs}"
 MEDIA_COMPLETION_PATCHER="${STATE_DIR}/patch-openclaw-media-completion-relay.mjs"
+FEISHU_STEER_PATCHER_SOURCE="${VLAB_FEISHU_STEER_PATCHER_SOURCE:-/tmp/patch-feishu-active-run-steering.mjs}"
+FEISHU_STEER_PATCHER="${STATE_DIR}/patch-feishu-active-run-steering.mjs"
+FEISHU_STEER_ENABLED="${VLAB_FEISHU_STEER_ENABLED:-1}"
+FEISHU_STEER_CHAT_IDS="${VLAB_FEISHU_STEER_CHAT_IDS:-*}"
 SESSION_HOTSET_REPORT="${STATE_DIR}/last-prune.json"
 SESSION_HOTSET_DROPIN_DIR="/etc/systemd/system/openclaw-vlab-gateway.service.d"
 SESSION_HOTSET_DROPIN="${SESSION_HOTSET_DROPIN_DIR}/session-hotset-v0.2.0.conf"
+FEISHU_STEER_DROPIN="${SESSION_HOTSET_DROPIN_DIR}/worker-steer-v0.2.3.conf"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 BACKUP_DIR="${LAB_ROOT}/backups/agent-worker-isolation-v1/${TIMESTAMP}"
 ACTIVE_MANIFEST="${STATE_DIR}/active.json"
 PRE_DEPLOY_CONFIG="${BACKUP_DIR}/openclaw.json"
 PRE_DEPLOY_HOTSET_DROPIN="${BACKUP_DIR}/session-hotset-v0.2.0.conf"
+PRE_DEPLOY_STEER_DROPIN="${BACKUP_DIR}/worker-steer-v0.2.3.conf"
 ROLLBACK_CONFIG="$PRE_DEPLOY_CONFIG"
 rollback_armed=false
 hotset_patch_armed=false
 media_completion_patch_armed=false
+feishu_steer_patch_armed=false
 hotset_was_present=false
 previous_hotset_module=""
 tool_proxy_patch_armed=false
 media_completion_preexisting=false
+feishu_steer_preexisting=false
 tool_proxy_preexisting=false
+steer_dropin_was_present=false
 existing_worker_compaction='{}'
 
 run_openclaw() {
@@ -78,6 +87,15 @@ restore_on_error() {
     fi
     if [[ "$media_completion_patch_armed" == true ]]; then
       "$NODE" "$MEDIA_COMPLETION_PATCHER" --restore "$OPENCLAW_PACKAGE" || true
+    fi
+    if [[ "$feishu_steer_patch_armed" == true ]]; then
+      "$NODE" "$FEISHU_STEER_PATCHER" --restore "$OPENCLAW_PACKAGE" || true
+    fi
+    if [[ "$steer_dropin_was_present" == true ]]; then
+      install -o root -g root -m 0644 \
+        "$PRE_DEPLOY_STEER_DROPIN" "$FEISHU_STEER_DROPIN" || true
+    else
+      rm -f "$FEISHU_STEER_DROPIN"
     fi
     systemctl restart openclaw-vlab-gateway.service || true
   fi
@@ -148,6 +166,18 @@ fi
   echo "missing media completion relay patcher: $MEDIA_COMPLETION_PATCHER_SOURCE" >&2
   exit 1
 }
+[[ -f "$FEISHU_STEER_PATCHER_SOURCE" ]] || {
+  echo "missing Feishu Steer patcher: $FEISHU_STEER_PATCHER_SOURCE" >&2
+  exit 1
+}
+[[ "$FEISHU_STEER_ENABLED" == 0 || "$FEISHU_STEER_ENABLED" == 1 ]] || {
+  echo "VLAB_FEISHU_STEER_ENABLED must be 0 or 1" >&2
+  exit 1
+}
+[[ -n "$FEISHU_STEER_CHAT_IDS" ]] || {
+  echo "VLAB_FEISHU_STEER_CHAT_IDS must not be empty" >&2
+  exit 1
+}
 if [[ -f "$WORKER_CONFIG_PATH" ]]; then
   existing_worker_compaction="$(
     jq -c '.agents.defaults.compaction // {}' "$WORKER_CONFIG_PATH"
@@ -179,6 +209,7 @@ for required in \
   worker-gateway-events.mjs \
   exec-env.mjs \
   runtime-path.mjs \
+  worker-active-run-proxy.mjs \
   harness-result.mjs \
   harness-failure.mjs \
   session-rollover-retry.mjs \
@@ -194,6 +225,10 @@ for required in \
     exit 1
   }
 done
+[[ "$(jq -r '.version' "${RELEASE_DIR}/package.json")" == "0.2.3" ]] || {
+  echo "unexpected Worker isolation version" >&2
+  exit 1
+}
 
 sudo -u vlab env \
   HOME="$LAB_ROOT" \
@@ -212,6 +247,9 @@ install -o root -g root -m 0755 \
 install -o root -g root -m 0755 \
   "$MEDIA_COMPLETION_PATCHER_SOURCE" \
   "$MEDIA_COMPLETION_PATCHER"
+install -o root -g root -m 0755 \
+  "$FEISHU_STEER_PATCHER_SOURCE" \
+  "$FEISHU_STEER_PATCHER"
 install -o vlab -g vlab -m 0600 "$CONFIG_PATH" "$PRE_DEPLOY_CONFIG"
 if [[ -f "$SESSION_HOTSET_DROPIN" ]]; then
   hotset_was_present=true
@@ -225,6 +263,11 @@ if [[ -f "$SESSION_HOTSET_DROPIN" ]]; then
     echo "could not resolve existing Session Hotset module" >&2
     exit 1
   }
+fi
+if [[ -f "$FEISHU_STEER_DROPIN" ]]; then
+  steer_dropin_was_present=true
+  install -o root -g root -m 0644 \
+    "$FEISHU_STEER_DROPIN" "$PRE_DEPLOY_STEER_DROPIN"
 fi
 if jq -e \
   '.plugins.entries["vlab-agent-worker-isolation"].enabled == true' \
@@ -260,6 +303,14 @@ if [[ "$media_completion_patch_result" == patched\ * ]]; then
 else
   media_completion_preexisting=true
 fi
+feishu_steer_patch_result="$(
+  "$NODE" "$FEISHU_STEER_PATCHER" "$OPENCLAW_PACKAGE"
+)"
+if [[ "$feishu_steer_patch_result" == patched\ * ]]; then
+  feishu_steer_patch_armed=true
+else
+  feishu_steer_preexisting=true
+fi
 tool_proxy_patch_result="$(
   "$NODE" "${RELEASE_DIR}/patch-openclaw-skill-workshop-worker-proxy.mjs" \
     "$OPENCLAW_PACKAGE"
@@ -282,6 +333,15 @@ install -o root -g root -m 0644 \
   "$session_hotset_dropin_candidate" \
   "$SESSION_HOTSET_DROPIN"
 rm -f "$session_hotset_dropin_candidate"
+steer_dropin_candidate="$(mktemp)"
+printf '%s\n' \
+  '[Service]' \
+  "Environment=VLAB_FEISHU_STEER_ENABLED=${FEISHU_STEER_ENABLED}" \
+  "Environment=VLAB_FEISHU_STEER_CHAT_IDS=${FEISHU_STEER_CHAT_IDS}" \
+  > "$steer_dropin_candidate"
+install -o root -g root -m 0644 \
+  "$steer_dropin_candidate" "$FEISHU_STEER_DROPIN"
+rm -f "$steer_dropin_candidate"
 systemctl daemon-reload
 
 candidate_config="$(mktemp)"
@@ -451,7 +511,9 @@ ready_worker_count="$(
 }
 jq -e \
   '(.result // .) as $status
-   | $status.integration.workerIsolationVersion == "0.2.2"
+   | $status.integration.workerIsolationVersion == "0.2.3"
+     and $status.integration.activeRunSteer.enabled == true
+     and ($status.integration.activeRunSteer.allowedChatIds | index("*")) != null
      and $status.integration.mediaCompletionRelay.gatewayOwned == true
      and $status.integration.mediaCompletionRelay.ackRetry == true
      and $status.integration.sessionHotset.gateway.enabled == true
@@ -472,7 +534,13 @@ jq -n \
   --arg session_hotset_report "$SESSION_HOTSET_REPORT" \
   --arg media_completion_patcher "$MEDIA_COMPLETION_PATCHER" \
   --arg tool_proxy_patcher "${RELEASE_DIR}/patch-openclaw-skill-workshop-worker-proxy.mjs" \
+  --arg feishu_steer_patcher "$FEISHU_STEER_PATCHER" \
+  --arg feishu_steer_dropin "$FEISHU_STEER_DROPIN" \
+  --arg previous_feishu_steer_dropin "$PRE_DEPLOY_STEER_DROPIN" \
+  --arg feishu_steer_chat_ids "$FEISHU_STEER_CHAT_IDS" \
   --argjson media_completion_preexisting "$media_completion_preexisting" \
+  --argjson feishu_steer_preexisting "$feishu_steer_preexisting" \
+  --argjson steer_dropin_was_present "$steer_dropin_was_present" \
   --argjson tool_proxy_preexisting "$tool_proxy_preexisting" \
   '{
     experiment: $experiment,
@@ -494,6 +562,16 @@ jq -n \
       version: "0.2.1",
       patcher: $media_completion_patcher,
       preExisting: $media_completion_preexisting
+    },
+    activeRunSteer: {
+      enabled: true,
+      version: "0.2.3",
+      patcher: $feishu_steer_patcher,
+      preExisting: $feishu_steer_preexisting,
+      chatIds: ($feishu_steer_chat_ids | split(",") | map(select(length > 0))),
+      dropIn: $feishu_steer_dropin,
+      previousDropInExisted: $steer_dropin_was_present,
+      previousDropInBackup: $previous_feishu_steer_dropin
     },
     gatewayOwnedToolIsolation: {
       subprocessTools: ["skill_workshop"],

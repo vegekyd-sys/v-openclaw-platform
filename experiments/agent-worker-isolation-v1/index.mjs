@@ -1034,7 +1034,14 @@ const plugin = {
             nativeAgentHarnessDispatchAttached: true,
             nestedGatewayHarnessRouting: true,
             workerUsesIngressAgentCommand: true,
-            workerIsolationVersion: "0.2.3-steer-lab",
+            workerIsolationVersion: "0.2.3",
+            activeRunSteer: {
+              enabled: process.env.VLAB_FEISHU_STEER_ENABLED === "1",
+              allowedChatIds: (process.env.VLAB_FEISHU_STEER_CHAT_IDS ?? "")
+                .split(",")
+                .map((value) => value.trim())
+                .filter(Boolean),
+            },
             sessionHotset: {
               gateway: getSessionHotsetStatus(),
               workers: pool.status().workers.map((worker) => ({

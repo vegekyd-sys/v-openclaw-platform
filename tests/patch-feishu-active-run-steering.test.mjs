@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import {
   createActiveRunAwareQueue,
+  patchPackage,
   patchFeishuActiveRunSteeringBundle,
+  restorePackage,
 } from "../scripts/patch-feishu-active-run-steering.mjs";
 
 const officialFixture = `
@@ -57,7 +62,10 @@ test("patch exposes busy state and routes a later message to the active-run lane
   assert.equal(result.changed, true);
   assert.match(result.source, /enqueue\.isBusy = \(key\) => queues\.has\(key\)/);
   assert.match(result.source, /\? `\$\{sequentialKey\}:active-run`/);
-  assert.match(result.source, /const activeRunDispatch = enqueue\.isBusy/);
+  assert.match(result.source, /const activeRunDispatch = .*enqueue\.isBusy/);
+  assert.match(result.source, /VLAB_FEISHU_STEER_ENABLED/);
+  assert.match(result.source, /VLAB_FEISHU_STEER_CHAT_IDS/);
+  assert.match(result.source, /workerSteerChatIds\.has\("\*"\)/);
   assert.match(result.source, /messageDedupeKey,\n\t\t\tactiveRunDispatch/);
   assert.match(
     result.source,
@@ -130,4 +138,28 @@ test("the second same-chat dispatch enters before the first completes", async ()
   ]);
   releaseFirst();
   await first;
+});
+
+test("the package patch is reversible for the monolithic OpenClaw package", async () => {
+  const packageRoot = await mkdtemp(
+    path.join(os.tmpdir(), "openclaw-feishu-steer-test-"),
+  );
+  try {
+    await mkdir(path.join(packageRoot, "dist"));
+    await writeFile(
+      path.join(packageRoot, "package.json"),
+      JSON.stringify({ name: "openclaw", version: "2026.7.1" }),
+    );
+    const bundlePath = path.join(packageRoot, "dist", "monitor.account-test.js");
+    await writeFile(bundlePath, officialFixture);
+
+    assert.equal((await patchPackage(packageRoot)).changed, true);
+    assert.match(await readFile(bundlePath, "utf8"), /VLAB_FEISHU_STEER_ENABLED/);
+    assert.equal((await patchPackage(packageRoot)).changed, false);
+    assert.equal((await restorePackage(packageRoot)).changed, true);
+    assert.equal(await readFile(bundlePath, "utf8"), officialFixture);
+    assert.equal((await restorePackage(packageRoot)).changed, false);
+  } finally {
+    await rm(packageRoot, { recursive: true, force: true });
+  }
 });

@@ -17,7 +17,9 @@ OPENCLAW_PACKAGE="/opt/openclaw-2026.7.1/node_modules/openclaw"
 SESSION_HOTSET_PATCHER="${STATE_DIR}/patch-openclaw-session-hotset.mjs"
 MEDIA_COMPLETION_PATCHER="${STATE_DIR}/patch-openclaw-media-completion-relay.mjs"
 TOOL_PROXY_PATCHER=""
+FEISHU_STEER_PATCHER=""
 SESSION_HOTSET_DROPIN="/etc/systemd/system/${SERVICE}.d/session-hotset-v0.2.0.conf"
+FEISHU_STEER_DROPIN="/etc/systemd/system/${SERVICE}.d/worker-steer-v0.2.3.conf"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 
 run_openclaw() {
@@ -70,6 +72,24 @@ tool_proxy_preexisting="$(
 media_completion_preexisting="$(
   jq -r '.mediaCompletionRelay.preExisting // false' "$ACTIVE_MANIFEST"
 )"
+FEISHU_STEER_PATCHER="$(
+  jq -r '.activeRunSteer.patcher // empty' "$ACTIVE_MANIFEST"
+)"
+feishu_steer_preexisting="$(
+  jq -r '.activeRunSteer.preExisting // false' "$ACTIVE_MANIFEST"
+)"
+FEISHU_STEER_DROPIN="$(
+  jq -r '.activeRunSteer.dropIn // empty' "$ACTIVE_MANIFEST"
+)"
+steer_dropin_was_present="$(
+  jq -r '.activeRunSteer.previousDropInExisted // false' "$ACTIVE_MANIFEST"
+)"
+previous_steer_dropin="$(
+  jq -r '.activeRunSteer.previousDropInBackup // empty' "$ACTIVE_MANIFEST"
+)"
+if [[ -z "$FEISHU_STEER_DROPIN" ]]; then
+  FEISHU_STEER_DROPIN="/etc/systemd/system/${SERVICE}.d/worker-steer-v0.2.3.conf"
+fi
 for required in \
   "$backup_config" \
   "$backup_worker_config" \
@@ -109,6 +129,21 @@ if [[ "$tool_proxy_preexisting" != true ]]; then
 fi
 if [[ "$media_completion_preexisting" != true ]]; then
   "$NODE" "$MEDIA_COMPLETION_PATCHER" --restore "$OPENCLAW_PACKAGE"
+fi
+if [[ "$feishu_steer_preexisting" != true \
+  && -n "$FEISHU_STEER_PATCHER" \
+  && -f "$FEISHU_STEER_PATCHER" ]]; then
+  "$NODE" "$FEISHU_STEER_PATCHER" --restore "$OPENCLAW_PACKAGE"
+fi
+if [[ "$steer_dropin_was_present" == true ]]; then
+  [[ -f "$previous_steer_dropin" ]] || {
+    echo "missing previous Feishu Steer drop-in" >&2
+    exit 1
+  }
+  install -o root -g root -m 0644 \
+    "$previous_steer_dropin" "$FEISHU_STEER_DROPIN"
+else
+  rm -f "$FEISHU_STEER_DROPIN"
 fi
 if [[ "$previous_hotset_existed" == true ]]; then
   [[ -n "$previous_hotset_module" && -f "$backup_hotset_dropin" ]] || {

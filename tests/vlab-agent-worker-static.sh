@@ -134,9 +134,15 @@ grep -q 'ExecStartPre=.*SESSION_HOTSET_PRUNER' \
   "${REPO_ROOT}/scripts/activate-agent-worker-production.sh"
 grep -q 'patch-openclaw-session-hotset.mjs' \
   "${REPO_ROOT}/scripts/deploy-agent-worker-production.sh"
+grep -q 'patch-feishu-active-run-steering.mjs' \
+  "${REPO_ROOT}/scripts/deploy-agent-worker-production.sh"
+grep -q 'V_FEISHU_STEER_CHAT_IDS' \
+  "${REPO_ROOT}/scripts/deploy-agent-worker-production.sh"
+grep -q 'activeRunSteer' \
+  "${REPO_ROOT}/scripts/rollback-agent-worker-production.sh"
 grep -q 'prune-openclaw-session-hotset.mjs' \
   "${REPO_ROOT}/scripts/deploy-agent-worker-production.sh"
-grep -q 'workerIsolationVersion == "0.2.2"' \
+grep -q 'workerIsolationVersion == "0.2.3"' \
   "${REPO_ROOT}/scripts/activate-agent-worker-production.sh"
 grep -q 'patch-openclaw-skill-workshop-worker-proxy.mjs' \
   "${REPO_ROOT}/scripts/activate-agent-worker-production.sh"
@@ -163,7 +169,7 @@ jq -e \
   "${EXPERIMENT_DIR}/openclaw.plugin.json" >/dev/null
 jq -e '.openclaw.extensions == ["./index.mjs"]' \
   "${EXPERIMENT_DIR}/package.json" >/dev/null
-jq -e '.version == "0.2.2"' \
+jq -e '.version == "0.2.3"' \
   "${EXPERIMENT_DIR}/package.json" >/dev/null
 grep -q 'requestTimeoutMs: attemptTimeoutMs' "${EXPERIMENT_DIR}/index.mjs"
 

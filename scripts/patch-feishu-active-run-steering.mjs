@@ -1,10 +1,20 @@
 #!/usr/bin/env node
 
-import { chmod, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  copyFile,
+  readFile,
+  readdir,
+  rename,
+  stat,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 const EXPECTED_PACKAGE_VERSION = "2026.7.1";
+const BACKUP_SUFFIX = ".v-worker-steer-v0.2.3.bak";
 
 const ORIGINAL_QUEUE_RETURN = `\treturn (key, task) => {
 \t\tconst previous = queues.get(key) ?? Promise.resolve();
@@ -39,7 +49,10 @@ const PATCHED_DISPATCH = `\t\tconst dispatchKey = activeRunDispatch ? \`\${seque
 \t\tawait enqueue(dispatchKey, task);`;
 
 const ORIGINAL_TASK_DECLARATION = `\t\tconst task = () => handleMessage({`;
-const PATCHED_TASK_DECLARATION = `\t\tconst activeRunDispatch = enqueue.isBusy(sequentialKey);
+const PATCHED_TASK_DECLARATION = `\t\tconst workerSteerEnabled = process.env.VLAB_FEISHU_STEER_ENABLED === "1";
+\t\tconst workerSteerChatIds = new Set((process.env.VLAB_FEISHU_STEER_CHAT_IDS ?? "").split(",").map((value) => value.trim()).filter(Boolean));
+\t\tconst workerSteerChatId = event.message.chat_id?.trim() ?? "";
+\t\tconst activeRunDispatch = workerSteerEnabled && (workerSteerChatIds.has("*") || workerSteerChatIds.has(workerSteerChatId)) && enqueue.isBusy(sequentialKey);
 \t\tconst task = () => handleMessage({`;
 
 const ORIGINAL_TASK_TAIL = `\t\t\tprocessingClaimHeld: true,
@@ -160,7 +173,7 @@ export function createActiveRunAwareQueue() {
 async function resolveBundle(packageRoot) {
   const packageJsonPath = path.join(packageRoot, "package.json");
   const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8"));
-  if (packageJson.name !== "@openclaw/feishu") {
+  if (!["openclaw", "@openclaw/feishu"].includes(packageJson.name)) {
     throw new Error(
       `unexpected package at ${packageRoot}: ${packageJson.name ?? "unknown"}`,
     );
@@ -182,11 +195,18 @@ async function resolveBundle(packageRoot) {
   return path.join(distDir, candidates[0]);
 }
 
-async function patchPackage(packageRoot) {
+export async function patchPackage(packageRoot) {
   const bundlePath = await resolveBundle(path.resolve(packageRoot));
   const original = await readFile(bundlePath, "utf8");
   const result = patchFeishuActiveRunSteeringBundle(original);
   if (!result.changed) return { bundlePath, changed: false };
+  const backupPath = `${bundlePath}${BACKUP_SUFFIX}`;
+  try {
+    await stat(backupPath);
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+    await copyFile(bundlePath, backupPath);
+  }
   const originalStat = await stat(bundlePath);
   const temporaryPath = `${bundlePath}.active-run-steering-${process.pid}.tmp`;
   await writeFile(temporaryPath, result.source, { mode: originalStat.mode });
@@ -195,16 +215,40 @@ async function patchPackage(packageRoot) {
   return { bundlePath, changed: true };
 }
 
+export async function restorePackage(packageRoot) {
+  const bundlePath = await resolveBundle(path.resolve(packageRoot));
+  const backupPath = `${bundlePath}${BACKUP_SUFFIX}`;
+  let backupStat;
+  try {
+    backupStat = await stat(backupPath);
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return { bundlePath, changed: false };
+    }
+    throw error;
+  }
+  const temporaryPath = `${bundlePath}.active-run-steering-restore-${process.pid}.tmp`;
+  await copyFile(backupPath, temporaryPath);
+  await chmod(temporaryPath, backupStat.mode);
+  await rename(temporaryPath, bundlePath);
+  await unlink(backupPath);
+  return { bundlePath, changed: true };
+}
+
 async function main(args) {
-  if (args.length === 0) {
+  const restore = args[0] === "--restore";
+  const packageRoots = restore ? args.slice(1) : args;
+  if (packageRoots.length === 0) {
     throw new Error(
-      "usage: patch-feishu-active-run-steering.mjs <package-root> [...]",
+      "usage: patch-feishu-active-run-steering.mjs [--restore] <package-root> [...]",
     );
   }
-  for (const packageRoot of args) {
-    const result = await patchPackage(packageRoot);
+  for (const packageRoot of packageRoots) {
+    const result = restore
+      ? await restorePackage(packageRoot)
+      : await patchPackage(packageRoot);
     process.stdout.write(
-      `${result.changed ? "patched" : "already-patched"} ${result.bundlePath}\n`,
+      `${result.changed ? (restore ? "restored" : "patched") : (restore ? "not-patched" : "already-patched")} ${result.bundlePath}\n`,
     );
   }
 }
