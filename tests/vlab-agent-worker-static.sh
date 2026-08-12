@@ -148,6 +148,10 @@ grep -q 'previous_active_manifest' \
   "${REPO_ROOT}/scripts/rollback-agent-worker-experiment.sh"
 grep -q 'previous_hotset_module' \
   "${REPO_ROOT}/scripts/rollback-agent-worker-experiment.sh"
+grep -q 'node_modules/@openclaw/feishu/package.json' \
+  "${REPO_ROOT}/scripts/activate-agent-worker-experiment.sh"
+grep -q 'patchedPackageRoots' \
+  "${REPO_ROOT}/scripts/activate-agent-worker-production.sh"
 grep -q 'prune-openclaw-session-hotset.mjs' \
   "${REPO_ROOT}/scripts/deploy-agent-worker-production.sh"
 grep -q 'workerIsolationVersion == "0.2.3"' \

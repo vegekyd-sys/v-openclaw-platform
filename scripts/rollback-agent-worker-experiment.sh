@@ -54,6 +54,9 @@ TOOL_PROXY_PREEXISTING="$(jq -r '.gatewayOwnedToolIsolation.preExisting // false
 MEDIA_COMPLETION_PREEXISTING="$(jq -r '.mediaCompletionRelay.preExisting // false' "$ACTIVE_MANIFEST")"
 FEISHU_STEER_PATCHER="$(jq -r '.activeRunSteer.patcher // empty' "$ACTIVE_MANIFEST")"
 FEISHU_STEER_PREEXISTING="$(jq -r '.activeRunSteer.preExisting // false' "$ACTIVE_MANIFEST")"
+mapfile -t FEISHU_STEER_PATCHED_ROOTS < <(
+  jq -r '.activeRunSteer.patchedPackageRoots[]? // empty' "$ACTIVE_MANIFEST"
+)
 FEISHU_STEER_DROPIN="$(jq -r '.activeRunSteer.dropIn // empty' "$ACTIVE_MANIFEST")"
 FEISHU_STEER_PREVIOUS_DROPIN_EXISTED="$(jq -r '.activeRunSteer.previousDropInExisted // false' "$ACTIVE_MANIFEST")"
 FEISHU_STEER_PREVIOUS_DROPIN="$(jq -r '.activeRunSteer.previousDropInBackup // empty' "$ACTIVE_MANIFEST")"
@@ -88,10 +91,14 @@ fi
 if [[ "$MEDIA_COMPLETION_PREEXISTING" != true ]]; then
   "$NODE" "$MEDIA_COMPLETION_PATCHER" --restore "$OPENCLAW_PACKAGE"
 fi
-if [[ "$FEISHU_STEER_PREEXISTING" != true \
-  && -n "$FEISHU_STEER_PATCHER" \
-  && -f "$FEISHU_STEER_PATCHER" ]]; then
-  "$NODE" "$FEISHU_STEER_PATCHER" --restore "$OPENCLAW_PACKAGE"
+if [[ "${#FEISHU_STEER_PATCHED_ROOTS[@]}" -eq 0 \
+  && "$FEISHU_STEER_PREEXISTING" != true ]]; then
+  FEISHU_STEER_PATCHED_ROOTS=("$OPENCLAW_PACKAGE")
+fi
+if [[ -n "$FEISHU_STEER_PATCHER" && -f "$FEISHU_STEER_PATCHER" ]]; then
+  for package_root in "${FEISHU_STEER_PATCHED_ROOTS[@]}"; do
+    "$NODE" "$FEISHU_STEER_PATCHER" --restore "$package_root"
+  done
 fi
 if [[ "$FEISHU_STEER_PREVIOUS_DROPIN_EXISTED" == true ]]; then
   [[ -f "$FEISHU_STEER_PREVIOUS_DROPIN" ]] || {

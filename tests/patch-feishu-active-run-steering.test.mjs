@@ -141,25 +141,34 @@ test("the second same-chat dispatch enters before the first completes", async ()
 });
 
 test("the package patch is reversible for the monolithic OpenClaw package", async () => {
-  const packageRoot = await mkdtemp(
-    path.join(os.tmpdir(), "openclaw-feishu-steer-test-"),
-  );
-  try {
-    await mkdir(path.join(packageRoot, "dist"));
-    await writeFile(
-      path.join(packageRoot, "package.json"),
-      JSON.stringify({ name: "openclaw", version: "2026.7.1" }),
+  for (const packageName of ["openclaw", "@openclaw/feishu"]) {
+    const packageRoot = await mkdtemp(
+      path.join(os.tmpdir(), "openclaw-feishu-steer-test-"),
     );
-    const bundlePath = path.join(packageRoot, "dist", "monitor.account-test.js");
-    await writeFile(bundlePath, officialFixture);
+    try {
+      await mkdir(path.join(packageRoot, "dist"));
+      await writeFile(
+        path.join(packageRoot, "package.json"),
+        JSON.stringify({ name: packageName, version: "2026.7.1" }),
+      );
+      const bundlePath = path.join(
+        packageRoot,
+        "dist",
+        "monitor.account-test.js",
+      );
+      await writeFile(bundlePath, officialFixture);
 
-    assert.equal((await patchPackage(packageRoot)).changed, true);
-    assert.match(await readFile(bundlePath, "utf8"), /VLAB_FEISHU_STEER_ENABLED/);
-    assert.equal((await patchPackage(packageRoot)).changed, false);
-    assert.equal((await restorePackage(packageRoot)).changed, true);
-    assert.equal(await readFile(bundlePath, "utf8"), officialFixture);
-    assert.equal((await restorePackage(packageRoot)).changed, false);
-  } finally {
-    await rm(packageRoot, { recursive: true, force: true });
+      assert.equal((await patchPackage(packageRoot)).changed, true);
+      assert.match(
+        await readFile(bundlePath, "utf8"),
+        /VLAB_FEISHU_STEER_ENABLED/,
+      );
+      assert.equal((await patchPackage(packageRoot)).changed, false);
+      assert.equal((await restorePackage(packageRoot)).changed, true);
+      assert.equal(await readFile(bundlePath, "utf8"), officialFixture);
+      assert.equal((await restorePackage(packageRoot)).changed, false);
+    } finally {
+      await rm(packageRoot, { recursive: true, force: true });
+    }
   }
 });

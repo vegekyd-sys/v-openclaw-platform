@@ -78,6 +78,9 @@ FEISHU_STEER_PATCHER="$(
 feishu_steer_preexisting="$(
   jq -r '.activeRunSteer.preExisting // false' "$ACTIVE_MANIFEST"
 )"
+mapfile -t feishu_steer_patched_roots < <(
+  jq -r '.activeRunSteer.patchedPackageRoots[]? // empty' "$ACTIVE_MANIFEST"
+)
 FEISHU_STEER_DROPIN="$(
   jq -r '.activeRunSteer.dropIn // empty' "$ACTIVE_MANIFEST"
 )"
@@ -130,10 +133,14 @@ fi
 if [[ "$media_completion_preexisting" != true ]]; then
   "$NODE" "$MEDIA_COMPLETION_PATCHER" --restore "$OPENCLAW_PACKAGE"
 fi
-if [[ "$feishu_steer_preexisting" != true \
-  && -n "$FEISHU_STEER_PATCHER" \
-  && -f "$FEISHU_STEER_PATCHER" ]]; then
-  "$NODE" "$FEISHU_STEER_PATCHER" --restore "$OPENCLAW_PACKAGE"
+if [[ "${#feishu_steer_patched_roots[@]}" -eq 0 \
+  && "$feishu_steer_preexisting" != true ]]; then
+  feishu_steer_patched_roots=("$OPENCLAW_PACKAGE")
+fi
+if [[ -n "$FEISHU_STEER_PATCHER" && -f "$FEISHU_STEER_PATCHER" ]]; then
+  for package_root in "${feishu_steer_patched_roots[@]}"; do
+    "$NODE" "$FEISHU_STEER_PATCHER" --restore "$package_root"
+  done
 fi
 if [[ "$steer_dropin_was_present" == true ]]; then
   [[ -f "$previous_steer_dropin" ]] || {

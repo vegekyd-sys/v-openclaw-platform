@@ -51,6 +51,8 @@ hotset_patch_armed=false
 media_completion_patch_armed=false
 tool_proxy_patch_armed=false
 feishu_steer_patch_armed=false
+feishu_steer_patched_roots=()
+feishu_steer_package_roots=()
 media_completion_preexisting=false
 tool_proxy_preexisting=false
 feishu_steer_preexisting=false
@@ -102,7 +104,9 @@ restore_on_error() {
         || true
     fi
     if [[ "$feishu_steer_patch_armed" == true ]]; then
-      "$NODE" "$FEISHU_STEER_PATCHER" --restore "$OPENCLAW_PACKAGE" || true
+      for package_root in "${feishu_steer_patched_roots[@]}"; do
+        "$NODE" "$FEISHU_STEER_PATCHER" --restore "$package_root" || true
+      done
     fi
     if [[ "$steer_dropin_was_present" == true ]]; then
       install -o root -g root -m 0644 \
@@ -291,14 +295,29 @@ if [[ "$media_completion_patch_result" == patched\ * ]]; then
 else
   media_completion_preexisting=true
 fi
-feishu_steer_patch_result="$(
-  "$NODE" "$FEISHU_STEER_PATCHER" "$OPENCLAW_PACKAGE"
-)"
-if [[ "$feishu_steer_patch_result" == patched\ * ]]; then
-  feishu_steer_patch_armed=true
-else
-  feishu_steer_preexisting=true
+feishu_steer_package_roots+=("$OPENCLAW_PACKAGE")
+if [[ -d "${STATE_ROOT}/npm/projects" ]]; then
+  while IFS= read -r package_json; do
+    feishu_steer_package_roots+=("${package_json%/package.json}")
+  done < <(
+    find "${STATE_ROOT}/npm/projects" \
+      -path '*/node_modules/@openclaw/feishu/package.json' \
+      -type f \
+      -print \
+      | sort -u
+  )
 fi
+for package_root in "${feishu_steer_package_roots[@]}"; do
+  feishu_steer_patch_result="$(
+    "$NODE" "$FEISHU_STEER_PATCHER" "$package_root"
+  )"
+  if [[ "$feishu_steer_patch_result" == patched\ * ]]; then
+    feishu_steer_patch_armed=true
+    feishu_steer_patched_roots+=("$package_root")
+  else
+    feishu_steer_preexisting=true
+  fi
+done
 tool_proxy_patch_result="$(
   "$NODE" "${RELEASE_DIR}/patch-openclaw-skill-workshop-worker-proxy.mjs" \
     "$OPENCLAW_PACKAGE"
@@ -471,6 +490,14 @@ jq -n \
   --argjson tool_proxy_preexisting "$tool_proxy_preexisting" \
   --argjson feishu_steer_preexisting "$feishu_steer_preexisting" \
   --argjson steer_dropin_was_present "$steer_dropin_was_present" \
+  --argjson feishu_steer_package_roots "$(
+    printf '%s\n' "${feishu_steer_package_roots[@]}" \
+      | jq -Rsc 'split("\n") | map(select(length > 0))'
+  )" \
+  --argjson feishu_steer_patched_roots "$(
+    printf '%s\n' "${feishu_steer_patched_roots[@]}" \
+      | jq -Rsc 'split("\n") | map(select(length > 0))'
+  )" \
   '{
     commit: $commit,
     version: $version,
@@ -506,6 +533,8 @@ jq -n \
       version: "0.2.3",
       patcher: $feishu_steer_patcher,
       preExisting: $feishu_steer_preexisting,
+      packageRoots: $feishu_steer_package_roots,
+      patchedPackageRoots: $feishu_steer_patched_roots,
       chatIds: ($feishu_steer_chat_ids | split(",") | map(select(length > 0))),
       dropIn: $feishu_steer_dropin,
       previousDropInExisted: $steer_dropin_was_present,
