@@ -138,6 +138,8 @@ grep -q 'patch-feishu-active-run-steering.mjs' \
   "${REPO_ROOT}/scripts/deploy-agent-worker-production.sh"
 grep -q 'V_FEISHU_STEER_CHAT_IDS' \
   "${REPO_ROOT}/scripts/deploy-agent-worker-production.sh"
+grep -q 'FEISHU_STEER_CHAT_IDS" == "\*"' \
+  "${REPO_ROOT}/scripts/activate-agent-worker-production.sh"
 grep -q 'activeRunSteer' \
   "${REPO_ROOT}/scripts/rollback-agent-worker-production.sh"
 grep -q 'previousActiveManifest' \

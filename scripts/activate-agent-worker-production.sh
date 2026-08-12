@@ -178,9 +178,9 @@ fi
   echo "production Steer deployment requires V_FEISHU_STEER_ENABLED=1" >&2
   exit 1
 }
-[[ "$FEISHU_STEER_CHAT_IDS" =~ ^oc_[A-Za-z0-9_,-]+$ \
-  && "$FEISHU_STEER_CHAT_IDS" != *"*"* ]] || {
-  echo "production Steer requires explicit Feishu oc_ chat ids; wildcard is forbidden" >&2
+[[ "$FEISHU_STEER_CHAT_IDS" == "*" \
+  || "$FEISHU_STEER_CHAT_IDS" =~ ^oc_[A-Za-z0-9_,-]+$ ]] || {
+  echo "production Steer requires explicit Feishu oc_ chat ids or an explicit wildcard" >&2
   exit 1
 }
 if ! [[ "$SESSION_HOTSET_TTL_MS" =~ ^[0-9]+$ ]] \
