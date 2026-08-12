@@ -25,7 +25,7 @@ IFS=',' read -r -a feishu_steer_chat_ids <<< "$FEISHU_STEER_CHAT_IDS"
   exit 1
 }
 for chat_id in "${feishu_steer_chat_ids[@]}"; do
-  [[ "$chat_id" =~ ^oc_[A-Za-z0-9_]+$ ]] || {
+  [[ "$chat_id" == "*" || "$chat_id" =~ ^oc_[A-Za-z0-9_]+$ ]] || {
     echo "invalid Feishu Steer canary chat id: $chat_id" >&2
     exit 1
   }
