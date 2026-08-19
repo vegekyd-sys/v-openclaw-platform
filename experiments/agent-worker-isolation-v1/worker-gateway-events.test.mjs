@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildSkillUsageRecord,
   createWorkerGatewayEventRouter,
   WORKER_GATEWAY_EVENT_CONTRACT_VERSION,
 } from "./worker-gateway-events.mjs";
@@ -24,6 +25,28 @@ function mediaEvent(overrides = {}) {
       expectsCompletionMessage: true,
       bestEffortDeliver: true,
       directIdempotencyKey: "image_generate:task-1:ok",
+    },
+    ...overrides,
+  };
+}
+
+function skillUsageEvent(overrides = {}) {
+  return {
+    contractVersion: WORKER_GATEWAY_EVENT_CONTRACT_VERSION,
+    eventKind: "skill_usage",
+    eventId: "skill.used:run-1:tool-1:makaron",
+    taskKey: "skill:run-1",
+    usage: {
+      runId: "run-1",
+      sessionKey: "agent:makaron:feishu:group:oc_test",
+      sessionId: "session-1",
+      agentId: "makaron",
+      skillName: "makaron",
+      skillSource: "workspace",
+      skillFile: "/srv/skills/makaron/SKILL.md",
+      activation: "read",
+      toolName: "read",
+      toolCallId: "tool-1",
     },
     ...overrides,
   };
@@ -102,5 +125,46 @@ test("failed delivery is retryable and lifecycle events are acknowledged", async
       taskKey: "media:task-1",
     }),
     { handled: true, lifecycle: "detached_task_started" },
+  );
+});
+
+test("records a Worker skill activation centrally exactly once", async () => {
+  const skillUsageStats = {};
+  const records = [];
+  const route = createWorkerGatewayEventRouter({
+    skillUsageStats,
+    async recordSkillUsage(record) {
+      records.push(record);
+    },
+    async deliverMediaCompletion() {
+      throw new Error("not expected");
+    },
+  });
+  const first = await route(skillUsageEvent());
+  const duplicate = await route(skillUsageEvent());
+  assert.deepEqual(first, { handled: true, recorded: true });
+  assert.deepEqual(duplicate, first);
+  assert.equal(records.length, 1);
+  assert.equal(records[0].skillFile, "/srv/skills/makaron/SKILL.md");
+  assert.deepEqual(skillUsageStats, {
+    received: 2,
+    duplicates: 1,
+    recorded: 1,
+    failed: 0,
+  });
+});
+
+test("validates skill usage identity before central recording", () => {
+  assert.throws(
+    () =>
+      buildSkillUsageRecord(
+        skillUsageEvent({
+          usage: {
+            ...skillUsageEvent().usage,
+            skillFile: "relative/SKILL.md",
+          },
+        }),
+      ),
+    /must be absolute/,
   );
 });

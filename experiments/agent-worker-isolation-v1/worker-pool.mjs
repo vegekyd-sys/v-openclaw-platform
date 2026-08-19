@@ -183,6 +183,7 @@ export class WorkerPool {
       retireTimer: null,
       sessionHotset: undefined,
       gatewayOwnedToolProxy: undefined,
+      skillUsageTelemetry: undefined,
     };
     this.workers.set(slot, handle);
 
@@ -539,6 +540,9 @@ export class WorkerPool {
     }
     if (message?.gatewayOwnedToolProxy) {
       worker.gatewayOwnedToolProxy = message.gatewayOwnedToolProxy;
+    }
+    if (message?.skillUsageTelemetry) {
+      worker.skillUsageTelemetry = message.skillUsageTelemetry;
     }
     if (message?.type === "ready") {
       worker.resolveStartup?.();
@@ -897,6 +901,7 @@ export class WorkerPool {
               : 0,
           sessionHotset: worker.sessionHotset,
           gatewayOwnedToolProxy: worker.gatewayOwnedToolProxy,
+          skillUsageTelemetry: worker.skillUsageTelemetry,
         })),
     };
   }

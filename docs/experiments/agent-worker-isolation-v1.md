@@ -34,7 +34,7 @@ Gateway mechanisms.
 ## Candidate
 
 - OpenClaw: `2026.7.1`
-- Worker isolation plugin: `0.2.0`
+- Worker isolation plugin: `0.2.4`
 - Worker count: elastic from one warm worker to three workers
 - Sessions per worker: at most three active, distinct sessions
 - Total active-session capacity: `3 workers x 3 sessions = 9`
@@ -95,6 +95,26 @@ Gateway mechanisms.
 - Pre-start projection makes an existing large store lightweight. OpenClaw's
   native full-store persistence path applies the same projection again without
   changing the concurrency-sensitive single-entry write path.
+- Worker and isolated-subagent Skill activations preserve OpenClaw's native
+  `skill.used` accounting. The Worker resolves the exact Skill file from the
+  admitted `skillsSnapshot`, relays only identity metadata through the existing
+  acknowledged Worker-to-Gateway channel, and the Gateway writes the event
+  through OpenClaw's trusted diagnostic API into the central `skill_usage`
+  ledger. No prompt, transcript, tool input, or tool output is copied into the
+  telemetry event. Event IDs are deduplicated before acknowledgement.
+
+After activation, operators can snapshot a baseline and inspect cumulative or
+post-baseline counts without reading transcripts:
+
+```bash
+node skill-usage-report.mjs \
+  --db /path/to/state/openclaw.sqlite \
+  --write-baseline /path/to/skill-usage-baseline.json
+
+node skill-usage-report.mjs \
+  --db /path/to/state/openclaw.sqlite \
+  --baseline /path/to/skill-usage-baseline.json
+```
 
 The Hotset persistence hook is an exact, version-gated patch for OpenClaw
 `2026.7.1`. Activation backs up the original bundle and installs a systemd
@@ -164,6 +184,11 @@ original Gateway value.
     cold `readSessionEntry` latency and heap allocation improve over `0.1.7`.
 23. One active Session can use native `sessions_list` and `sessions_history`
     to inspect a simultaneously running sibling Session.
+24. Reading the same known Skill through native Gateway, isolated Worker, and
+    isolated Subagent paths increments the same central OpenClaw usage ledger
+    exactly once per activation; Worker retries do not duplicate counts.
+25. `vlab.workers.status` reports zero Skill telemetry failures and unmatched
+    Skill identities before promotion.
 
 The production-shaped soak is executable on vLab:
 

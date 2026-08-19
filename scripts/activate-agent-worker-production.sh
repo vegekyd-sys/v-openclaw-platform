@@ -234,7 +234,7 @@ for required in \
     exit 1
   }
 done
-[[ "$(jq -r '.version' "${RELEASE_DIR}/package.json")" == "0.2.3" ]] || {
+[[ "$(jq -r '.version' "${RELEASE_DIR}/package.json")" == "0.2.4" ]] || {
   echo "unexpected Worker isolation version" >&2
   exit 1
 }
@@ -465,7 +465,7 @@ install -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0600 \
 manifest_candidate="$(mktemp)"
 jq -n \
   --arg commit "$PLATFORM_COMMIT" \
-  --arg version "0.2.3" \
+  --arg version "0.2.4" \
   --arg prepared_at "$TIMESTAMP" \
   --arg artifact_sha256 "$ARTIFACT_SHA256" \
   --arg release_dir "$RELEASE_DIR" \
@@ -530,7 +530,7 @@ jq -n \
     },
     activeRunSteer: {
       enabled: true,
-      version: "0.2.3",
+      version: "0.2.4",
       patcher: $feishu_steer_patcher,
       preExisting: $feishu_steer_preexisting,
       packageRoots: $feishu_steer_package_roots,
@@ -568,13 +568,19 @@ run_openclaw gateway call vlab.workers.status --params '{}' --json \
 
 jq -e \
   --argjson expected_steer_chat_ids "$(jq -Rn --arg value "$FEISHU_STEER_CHAT_IDS" '$value | split(",")')" \
-  '.integration.workerIsolationVersion == "0.2.3"
+  '.integration.workerIsolationVersion == "0.2.4"
    and .integration.activeRunSteer.enabled == true
    and .integration.activeRunSteer.allowedChatIds == $expected_steer_chat_ids
    and .integration.mediaCompletionRelay.gatewayOwned == true
    and .integration.mediaCompletionRelay.ackRetry == true
    and .integration.mediaCompletionRelay.idempotent == true
    and .integration.mediaCompletionRelay.failed == 0
+   and .integration.skillUsageTelemetry.gatewayOwnedLedger == true
+   and .integration.skillUsageTelemetry.nativeSkillUsageEvent == true
+   and .integration.skillUsageTelemetry.ackRetry == true
+   and .integration.skillUsageTelemetry.idempotent == true
+   and .integration.skillUsageTelemetry.failed == 0
+   and (.workers | all(.skillUsageTelemetry.unavailable == false))
    and .integration.gatewayOwnedToolIsolation.enabled == true
    and (.integration.gatewayOwnedToolIsolation.subprocessTools == ["skill_workshop"])
    and .integration.sessionHotset.gateway.enabled == true
@@ -610,7 +616,7 @@ rollback_armed=false
 
 jq -n \
   --arg commit "$PLATFORM_COMMIT" \
-  --arg version "0.2.3" \
+  --arg version "0.2.4" \
   --arg artifact_sha256 "$ARTIFACT_SHA256" \
   --arg backup_dir "$BACKUP_DIR" \
   --arg rollback_command "sudo ${STATE_DIR}/rollback-latest.sh" \

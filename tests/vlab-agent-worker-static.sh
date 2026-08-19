@@ -11,6 +11,10 @@ node --check "${EXPERIMENT_DIR}/harness-event-contract.test.mjs"
 node --check "${EXPERIMENT_DIR}/worker-stream-parity.test.mjs"
 node --check "${EXPERIMENT_DIR}/worker-gateway-events.mjs"
 node --check "${EXPERIMENT_DIR}/worker-gateway-events.test.mjs"
+node --check "${EXPERIMENT_DIR}/skill-usage-telemetry.mjs"
+node --check "${EXPERIMENT_DIR}/skill-usage-telemetry.test.mjs"
+node --check "${EXPERIMENT_DIR}/skill-usage-report.mjs"
+node --check "${EXPERIMENT_DIR}/skill-usage-report.test.mjs"
 node --check "${EXPERIMENT_DIR}/worker-detached-event.test.mjs"
 node --check "${EXPERIMENT_DIR}/fake-detached-event-worker.mjs"
 node --check "${EXPERIMENT_DIR}/exec-env.mjs"
@@ -65,6 +69,8 @@ node --test \
   "${EXPERIMENT_DIR}/patch-openclaw-skill-workshop-worker-proxy.test.mjs" \
   "${EXPERIMENT_DIR}/worker-stream-parity.test.mjs" \
   "${EXPERIMENT_DIR}/worker-gateway-events.test.mjs" \
+  "${EXPERIMENT_DIR}/skill-usage-telemetry.test.mjs" \
+  "${EXPERIMENT_DIR}/skill-usage-report.test.mjs" \
   "${EXPERIMENT_DIR}/worker-detached-event.test.mjs" \
   "${EXPERIMENT_DIR}/worker-agent.test.mjs" \
   "${REPO_ROOT}/tests/patch-openclaw-session-hotset.test.mjs" \
@@ -114,6 +120,7 @@ grep -q '"stream-event-ack"' "${EXPERIMENT_DIR}/worker-pool.mjs"
 grep -q '"worker-gateway-event"' "${EXPERIMENT_DIR}/worker.mjs"
 grep -q '"worker-gateway-event-ack"' "${EXPERIMENT_DIR}/worker-pool.mjs"
 grep -q 'mediaCompletionRelay' "${EXPERIMENT_DIR}/index.mjs"
+grep -q 'skillUsageTelemetry' "${EXPERIMENT_DIR}/index.mjs"
 grep -q 'onPartialReply' \
   "${REPO_ROOT}/tests/vlab-agent-worker-stream-parity.mjs"
 grep -q 'OPENCLAW_SESSION_HOTSET_ENABLED=1' \
@@ -156,7 +163,7 @@ grep -q 'patchedPackageRoots' \
   "${REPO_ROOT}/scripts/activate-agent-worker-production.sh"
 grep -q 'prune-openclaw-session-hotset.mjs' \
   "${REPO_ROOT}/scripts/deploy-agent-worker-production.sh"
-grep -q 'workerIsolationVersion == "0.2.3"' \
+grep -q 'workerIsolationVersion == "0.2.4"' \
   "${REPO_ROOT}/scripts/activate-agent-worker-production.sh"
 grep -q 'patch-openclaw-skill-workshop-worker-proxy.mjs' \
   "${REPO_ROOT}/scripts/activate-agent-worker-production.sh"
@@ -183,7 +190,7 @@ jq -e \
   "${EXPERIMENT_DIR}/openclaw.plugin.json" >/dev/null
 jq -e '.openclaw.extensions == ["./index.mjs"]' \
   "${EXPERIMENT_DIR}/package.json" >/dev/null
-jq -e '.version == "0.2.3"' \
+jq -e '.version == "0.2.4"' \
   "${EXPERIMENT_DIR}/package.json" >/dev/null
 grep -q 'requestTimeoutMs: attemptTimeoutMs' "${EXPERIMENT_DIR}/index.mjs"
 

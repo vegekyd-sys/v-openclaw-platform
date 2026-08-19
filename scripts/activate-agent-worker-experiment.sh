@@ -229,7 +229,7 @@ for required in \
     exit 1
   }
 done
-[[ "$(jq -r '.version' "${RELEASE_DIR}/package.json")" == "0.2.3" ]] || {
+[[ "$(jq -r '.version' "${RELEASE_DIR}/package.json")" == "0.2.4" ]] || {
   echo "unexpected Worker isolation version" >&2
   exit 1
 }
@@ -514,15 +514,19 @@ ready_worker_count="$(
 }
 jq -e \
   '(.result // .) as $status
-   | $status.integration.workerIsolationVersion == "0.2.3"
+   | $status.integration.workerIsolationVersion == "0.2.4"
      and $status.integration.activeRunSteer.enabled == true
      and ($status.integration.activeRunSteer.allowedChatIds | index("*")) != null
      and $status.integration.mediaCompletionRelay.gatewayOwned == true
      and $status.integration.mediaCompletionRelay.ackRetry == true
+     and $status.integration.skillUsageTelemetry.gatewayOwnedLedger == true
+     and $status.integration.skillUsageTelemetry.nativeSkillUsageEvent == true
+     and $status.integration.skillUsageTelemetry.failed == 0
      and $status.integration.sessionHotset.gateway.enabled == true
      and $status.integration.gatewayOwnedToolIsolation.enabled == true
      and ($status.integration.gatewayOwnedToolIsolation.subprocessTools == ["skill_workshop"])
-     and ($status.workers | all(.sessionHotset.enabled == true))' \
+     and ($status.workers | all(.sessionHotset.enabled == true))
+     and ($status.workers | all(.skillUsageTelemetry.unavailable == false))' \
   "${LAB_ROOT}/logs/agent-worker-status-${TIMESTAMP}.json" >/dev/null
 
 jq -n \
@@ -585,7 +589,7 @@ jq -n \
     },
     activeRunSteer: {
       enabled: true,
-      version: "0.2.3",
+      version: "0.2.4",
       patcher: $feishu_steer_patcher,
       preExisting: $feishu_steer_preexisting,
       packageRoots: $feishu_steer_package_roots,

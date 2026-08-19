@@ -9,10 +9,13 @@ import {
   WORKER_GATEWAY_EVENT_BRIDGE_SYMBOL,
 } from "./worker-gateway-events.mjs";
 import { installGatewayOwnedToolProxy } from "./gateway-owned-tool-proxy.mjs";
+import { buildRelayedSkillUsageEvent } from "./skill-usage-telemetry.mjs";
 
 let agentRuntimePromise;
 let agentEventRuntimePromise;
+let diagnosticRuntimePromise;
 const activeControllers = new Map();
+const skillTelemetryContexts = new Map();
 const pendingStreamEventAcks = new Map();
 const pendingWorkerGatewayEventAcks = new Map();
 let nextStreamEventId = 1;
@@ -27,6 +30,14 @@ const gatewayOwnedToolProxy = installGatewayOwnedToolProxy({
     process.env.VLAB_GATEWAY_OWNED_TOOL_TIMEOUT_MS ?? 310_000,
   ),
 });
+const skillUsageTelemetryStats = {
+  observed: 0,
+  relayed: 0,
+  unmatched: 0,
+  failed: 0,
+  pending: 0,
+  unavailable: false,
+};
 
 function sendProgress(requestId, request, reason = "worker:active") {
   process.send?.({
@@ -38,6 +49,7 @@ function sendProgress(requestId, request, reason = "worker:active") {
     reason,
     sessionHotset: getSessionHotsetStatus(),
     gatewayOwnedToolProxy: gatewayOwnedToolProxy.status(),
+    skillUsageTelemetry: { ...skillUsageTelemetryStats },
   });
 }
 
@@ -147,6 +159,59 @@ async function sendWorkerGatewayEvent(rawEvent) {
   };
   sendAttempt();
   return await promise;
+}
+
+async function loadDiagnosticRuntime() {
+  if (!diagnosticRuntimePromise) {
+    const runtimePath =
+      process.env.VLAB_OPENCLAW_DIAGNOSTIC_RUNTIME ??
+      new URL(
+        "./diagnostic-runtime.js",
+        pathToFileURL(configuredAgentRuntimePath()),
+      );
+    diagnosticRuntimePromise = import(
+      runtimePath instanceof URL
+        ? runtimePath.href
+        : pathToFileURL(runtimePath).href,
+    );
+  }
+  return await diagnosticRuntimePromise;
+}
+
+async function installSkillUsageTelemetry() {
+  const runtime = await loadDiagnosticRuntime();
+  if (typeof runtime.onInternalDiagnosticEvent !== "function") {
+    throw new Error("OpenClaw internal diagnostic subscription is unavailable");
+  }
+  return runtime.onInternalDiagnosticEvent((event, metadata) => {
+    if (event?.type !== "skill.used" || metadata?.trusted !== true) return;
+    skillUsageTelemetryStats.observed += 1;
+    const context = skillTelemetryContexts.get(event.runId);
+    const relayedEvent = buildRelayedSkillUsageEvent({
+      contractVersion: WORKER_GATEWAY_EVENT_CONTRACT_VERSION,
+      event,
+      request: context?.request,
+      skillTelemetryIndex: context?.skillTelemetryIndex,
+    });
+    if (!relayedEvent) {
+      skillUsageTelemetryStats.unmatched += 1;
+      return;
+    }
+    skillUsageTelemetryStats.pending += 1;
+    void sendWorkerGatewayEvent(relayedEvent)
+      .then(() => {
+        skillUsageTelemetryStats.relayed += 1;
+      })
+      .catch(() => {
+        skillUsageTelemetryStats.failed += 1;
+      })
+      .finally(() => {
+        skillUsageTelemetryStats.pending = Math.max(
+          0,
+          skillUsageTelemetryStats.pending - 1,
+        );
+      });
+  });
 }
 
 globalThis[WORKER_GATEWAY_EVENT_BRIDGE_SYMBOL] = sendWorkerGatewayEvent;
@@ -612,6 +677,14 @@ process.on("message", async (message) => {
   }
   const controller = new AbortController();
   activeControllers.set(message.id, { controller, request: message });
+  if (message.kind === "agent" && message.runId) {
+    skillTelemetryContexts.set(message.runId, {
+      request: message,
+      skillTelemetryIndex: Array.isArray(message.skillTelemetryIndex)
+        ? message.skillTelemetryIndex
+        : [],
+    });
+  }
   sendProgress(message.id, message, "worker:started");
   try {
     let result;
@@ -645,6 +718,7 @@ process.on("message", async (message) => {
       result,
       sessionHotset: getSessionHotsetStatus(),
       gatewayOwnedToolProxy: gatewayOwnedToolProxy.status(),
+      skillUsageTelemetry: { ...skillUsageTelemetryStats },
     });
   } catch (error) {
     process.send?.({
@@ -654,14 +728,29 @@ process.on("message", async (message) => {
       error: serializeError(error),
       sessionHotset: getSessionHotsetStatus(),
       gatewayOwnedToolProxy: gatewayOwnedToolProxy.status(),
+      skillUsageTelemetry: { ...skillUsageTelemetryStats },
     });
   } finally {
     activeControllers.delete(message.id);
+    if (message.kind === "agent" && message.runId) {
+      const retained = skillTelemetryContexts.get(message.runId);
+      const timer = setTimeout(() => {
+        if (skillTelemetryContexts.get(message.runId) === retained) {
+          skillTelemetryContexts.delete(message.runId);
+        }
+      }, 30_000);
+      timer.unref?.();
+    }
   }
 });
 
 if (process.env.VLAB_REQUIRE_OPENCLAW_AGENT_RUNTIME === "1") {
   await loadAgentRuntime();
+}
+if (process.env.VLAB_REQUIRE_SKILL_USAGE_TELEMETRY === "1") {
+  await installSkillUsageTelemetry();
+} else {
+  skillUsageTelemetryStats.unavailable = true;
 }
 
 process.send?.({
@@ -669,4 +758,5 @@ process.send?.({
   gatewayOwnedToolProxy: gatewayOwnedToolProxy.status(),
   pid: process.pid,
   sessionHotset: getSessionHotsetStatus(),
+  skillUsageTelemetry: { ...skillUsageTelemetryStats },
 });

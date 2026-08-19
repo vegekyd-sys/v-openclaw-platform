@@ -12,7 +12,7 @@ const runtimePath =
 const mainCount = 5;
 const childCount = 5;
 const expectedWorkerVersion =
-  process.env.VLAB_EXPECTED_WORKER_VERSION ?? "0.2.3";
+  process.env.VLAB_EXPECTED_WORKER_VERSION ?? "0.2.4";
 const mainHoldSeconds = Number(process.env.VLAB_MAIN_HOLD_SECONDS ?? 180);
 const childHoldSeconds = Number(process.env.VLAB_CHILD_HOLD_SECONDS ?? 60);
 const timestamp = new Date()

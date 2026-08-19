@@ -35,6 +35,7 @@ import {
   createWorkerGatewayEventRouter,
   WORKER_GATEWAY_EVENT_CONTRACT_VERSION,
 } from "./worker-gateway-events.mjs";
+import { buildSkillTelemetryIndex } from "./skill-usage-telemetry.mjs";
 
 const SESSION_PREFIX = "agent:makaron:explicit:vlab-worker-";
 const NATIVE_HARNESS_ID = "vlab-worker";
@@ -274,8 +275,10 @@ const plugin = {
       ).href
     );
     const mediaCompletionRelayStats = {};
+    const skillUsageRelayStats = {};
     const routeWorkerGatewayEvent = createWorkerGatewayEventRouter({
       stats: mediaCompletionRelayStats,
+      skillUsageStats: skillUsageRelayStats,
       async deliverMediaCompletion(deliveryParams) {
         const runtime = await nativeSubagentAnnounceOriginRuntimePromise;
         const deliverSubagentAnnouncement =
@@ -287,12 +290,42 @@ const plugin = {
         }
         return await deliverSubagentAnnouncement(deliveryParams);
       },
+      async recordSkillUsage(usage) {
+        const runtime = await diagnosticRuntimePromise;
+        if (
+          typeof runtime.emitTrustedDiagnosticEventWithPrivateData !==
+          "function"
+        ) {
+          throw new Error("OpenClaw trusted diagnostic emitter is unavailable");
+        }
+        runtime.emitTrustedDiagnosticEventWithPrivateData(
+          {
+            type: "skill.used",
+            runId: usage.runId,
+            sessionKey: usage.sessionKey,
+            sessionId: usage.sessionId,
+            agentId: usage.agentId,
+            skillName: usage.skillName,
+            skillSource: usage.skillSource,
+            activation: usage.activation,
+            toolName: usage.toolName,
+            toolCallId: usage.toolCallId,
+          },
+          { skillUsage: { skillFile: usage.skillFile } },
+        );
+        await runtime.waitForDiagnosticEventsDrained?.();
+      },
     });
     const workerEnv = buildWorkerEnvironment(
       {
         ...process.env,
         VLAB_OPENCLAW_AGENT_RUNTIME: openClawAgentRuntimePath,
+        VLAB_OPENCLAW_DIAGNOSTIC_RUNTIME: resolve(
+          dirname(openClawAgentRuntimePath),
+          "diagnostic-runtime.js",
+        ),
         VLAB_REQUIRE_OPENCLAW_AGENT_RUNTIME: "1",
+        VLAB_REQUIRE_SKILL_USAGE_TELEMETRY: "1",
         VLAB_WORKER_HEARTBEAT_MS: String(workerHeartbeatMs),
         VLAB_GATEWAY_OWNED_TOOL_TIMEOUT_MS: String(
           gatewayOwnedToolTimeoutMs,
@@ -459,6 +492,9 @@ const plugin = {
                 imageOrder: params.imageOrder,
                 clientTools: params.clientTools,
                 agentId: workerAgentId,
+                skillTelemetryIndex: buildSkillTelemetryIndex(
+                  params.skillsSnapshot,
+                ),
                 sessionId: session.sessionId,
                 // Keep the channel/session routing identity distinct from the
                 // transcript owner used by the pool. Synthetic subagent
@@ -1034,7 +1070,7 @@ const plugin = {
             nativeAgentHarnessDispatchAttached: true,
             nestedGatewayHarnessRouting: true,
             workerUsesIngressAgentCommand: true,
-            workerIsolationVersion: "0.2.3",
+            workerIsolationVersion: "0.2.4",
             activeRunSteer: {
               enabled: process.env.VLAB_FEISHU_STEER_ENABLED === "1",
               allowedChatIds: (process.env.VLAB_FEISHU_STEER_CHAT_IDS ?? "")
@@ -1108,6 +1144,19 @@ const plugin = {
               idempotent: true,
               ...mediaCompletionRelayStats,
             },
+            skillUsageTelemetry: {
+              contractVersion: WORKER_GATEWAY_EVENT_CONTRACT_VERSION,
+              gatewayOwnedLedger: true,
+              nativeSkillUsageEvent: true,
+              ackRetry: true,
+              idempotent: true,
+              ...skillUsageRelayStats,
+              workers: pool.status().workers.map((worker) => ({
+                slot: worker.slot,
+                pid: worker.pid,
+                status: worker.skillUsageTelemetry,
+              })),
+            },
             staleSessionPreflightRebind: true,
             sessionRolloverRebindRetry: true,
             fastCompaction: {
@@ -1140,7 +1189,14 @@ const plugin = {
               harnessEventParity.unclassifiedCallbacks.size > 0 ||
               harnessEventParity.unclassifiedOptions.size > 0 ||
               harnessEventParity.eventRelayFailures > 0 ||
-              Number(mediaCompletionRelayStats.failed ?? 0) > 0,
+              Number(mediaCompletionRelayStats.failed ?? 0) > 0 ||
+              Number(skillUsageRelayStats.failed ?? 0) > 0 ||
+              pool.status().workers.some(
+                (worker) =>
+                  Number(worker.skillUsageTelemetry?.failed ?? 0) > 0 ||
+                  Number(worker.skillUsageTelemetry?.unmatched ?? 0) > 0 ||
+                  worker.skillUsageTelemetry?.unavailable === true,
+              ),
             productionPromotionAcceptance: {
               nativeThreeByThree: true,
               nativeSessionAndTranscriptOwnership: true,
