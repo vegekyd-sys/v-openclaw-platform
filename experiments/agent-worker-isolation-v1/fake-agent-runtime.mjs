@@ -20,6 +20,33 @@ function emitAgentEvent(event) {
 }
 
 export async function agentCommand(params) {
+  if (params.message === "skill-telemetry") {
+    const { emitFakeTrustedDiagnosticEvent } = await import(
+      "./fake-diagnostic-runtime.mjs"
+    );
+    emitFakeTrustedDiagnosticEvent({
+      type: "skill.used",
+      runId: params.runId,
+      sessionId: params.sessionId,
+      sessionKey: params.sessionKey,
+      agentId: params.agentId,
+      skillName: "fixture-skill",
+      skillSource: "workspace",
+      activation: "read",
+      toolName: "read",
+      toolCallId: "fixture-tool-call",
+    });
+    return {
+      payloads: [{ text: "SKILL_TELEMETRY_FIXTURE_OK" }],
+      meta: {
+        agentMeta: {
+          provider: "fixture",
+          model: "fixture",
+          sessionId: params.sessionId,
+        },
+      },
+    };
+  }
   if (params.message === "steer-hold") {
     const steeredText = await new Promise((resolve) => {
       activeSteerWaiters.set(params.sessionId, resolve);

@@ -6,6 +6,7 @@ import { isBridgedHarnessEventCallback } from "./harness-event-contract.mjs";
 import { getSessionHotsetStatus } from "./session-hotset.mjs";
 import {
   normalizeWorkerGatewayEvent,
+  WORKER_GATEWAY_EVENT_CONTRACT_VERSION,
   WORKER_GATEWAY_EVENT_BRIDGE_SYMBOL,
 } from "./worker-gateway-events.mjs";
 import { installGatewayOwnedToolProxy } from "./gateway-owned-tool-proxy.mjs";
@@ -38,6 +39,13 @@ const skillUsageTelemetryStats = {
   pending: 0,
   unavailable: false,
 };
+
+function publishSkillUsageTelemetryStatus() {
+  process.send?.({
+    type: "skill-usage-telemetry-status",
+    skillUsageTelemetry: { ...skillUsageTelemetryStats },
+  });
+}
 
 function sendProgress(requestId, request, reason = "worker:active") {
   process.send?.({
@@ -186,18 +194,27 @@ async function installSkillUsageTelemetry() {
   return runtime.onInternalDiagnosticEvent((event, metadata) => {
     if (event?.type !== "skill.used" || metadata?.trusted !== true) return;
     skillUsageTelemetryStats.observed += 1;
-    const context = skillTelemetryContexts.get(event.runId);
-    const relayedEvent = buildRelayedSkillUsageEvent({
-      contractVersion: WORKER_GATEWAY_EVENT_CONTRACT_VERSION,
-      event,
-      request: context?.request,
-      skillTelemetryIndex: context?.skillTelemetryIndex,
-    });
+    let relayedEvent;
+    try {
+      const context = skillTelemetryContexts.get(event.runId);
+      relayedEvent = buildRelayedSkillUsageEvent({
+        contractVersion: WORKER_GATEWAY_EVENT_CONTRACT_VERSION,
+        event,
+        request: context?.request,
+        skillTelemetryIndex: context?.skillTelemetryIndex,
+      });
+    } catch {
+      skillUsageTelemetryStats.failed += 1;
+      publishSkillUsageTelemetryStatus();
+      return;
+    }
     if (!relayedEvent) {
       skillUsageTelemetryStats.unmatched += 1;
+      publishSkillUsageTelemetryStatus();
       return;
     }
     skillUsageTelemetryStats.pending += 1;
+    publishSkillUsageTelemetryStatus();
     void sendWorkerGatewayEvent(relayedEvent)
       .then(() => {
         skillUsageTelemetryStats.relayed += 1;
@@ -210,6 +227,7 @@ async function installSkillUsageTelemetry() {
           0,
           skillUsageTelemetryStats.pending - 1,
         );
+        publishSkillUsageTelemetryStatus();
       });
   });
 }

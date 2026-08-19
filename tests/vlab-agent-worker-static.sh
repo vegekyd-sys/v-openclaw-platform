@@ -15,6 +15,8 @@ node --check "${EXPERIMENT_DIR}/skill-usage-telemetry.mjs"
 node --check "${EXPERIMENT_DIR}/skill-usage-telemetry.test.mjs"
 node --check "${EXPERIMENT_DIR}/skill-usage-report.mjs"
 node --check "${EXPERIMENT_DIR}/skill-usage-report.test.mjs"
+node --check "${EXPERIMENT_DIR}/fake-diagnostic-runtime.mjs"
+node --check "${EXPERIMENT_DIR}/worker-skill-telemetry.test.mjs"
 node --check "${EXPERIMENT_DIR}/worker-detached-event.test.mjs"
 node --check "${EXPERIMENT_DIR}/fake-detached-event-worker.mjs"
 node --check "${EXPERIMENT_DIR}/exec-env.mjs"
@@ -71,6 +73,7 @@ node --test \
   "${EXPERIMENT_DIR}/worker-gateway-events.test.mjs" \
   "${EXPERIMENT_DIR}/skill-usage-telemetry.test.mjs" \
   "${EXPERIMENT_DIR}/skill-usage-report.test.mjs" \
+  "${EXPERIMENT_DIR}/worker-skill-telemetry.test.mjs" \
   "${EXPERIMENT_DIR}/worker-detached-event.test.mjs" \
   "${EXPERIMENT_DIR}/worker-agent.test.mjs" \
   "${REPO_ROOT}/tests/patch-openclaw-session-hotset.test.mjs" \
