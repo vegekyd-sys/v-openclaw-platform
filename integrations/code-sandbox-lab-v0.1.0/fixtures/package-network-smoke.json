@@ -1,0 +1,13 @@
+{
+  "jobId": "package-network-smoke",
+  "command": [
+    "python3",
+    "-c",
+    "import json, urllib.request\ndef get(url):\n try:\n  with urllib.request.urlopen(url, timeout=10) as r: return {'ok': True, 'status': r.status}\n except Exception as e: return {'ok': False, 'type': type(e).__name__}\nr={'registry':get('https://registry.npmjs.org/is-number/latest'),'unlisted':get('https://example.com')}\nprint(json.dumps(r))\nopen('network-result.json','w').write(json.dumps(r))"
+  ],
+  "files": [],
+  "collect": ["network-result.json"],
+  "vcpus": 1,
+  "timeoutMs": 120000,
+  "networkProfile": "packages"
+}

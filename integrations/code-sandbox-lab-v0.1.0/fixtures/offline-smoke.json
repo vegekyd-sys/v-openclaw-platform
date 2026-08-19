@@ -1,0 +1,20 @@
+{
+  "jobId": "offline-smoke",
+  "command": [
+    "python3",
+    "-c",
+    "import json, pathlib, urllib.request; p=pathlib.Path('result.json'); p.write_text(json.dumps({'answer': 42}));\ntry:\n urllib.request.urlopen('https://example.com', timeout=2); blocked=False\nexcept Exception:\n blocked=True\nprint(json.dumps({'marker':'VLAB_HARNESS_OK','networkBlocked':blocked}))"
+  ],
+  "files": [
+    {
+      "path": "README.txt",
+      "content": "This file was uploaded by the VLab sandbox harness."
+    }
+  ],
+  "collect": [
+    "result.json"
+  ],
+  "vcpus": 1,
+  "timeoutMs": 120000,
+  "networkProfile": "offline"
+}

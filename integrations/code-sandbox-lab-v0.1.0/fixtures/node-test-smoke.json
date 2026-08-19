@@ -1,0 +1,12 @@
+{
+  "jobId": "node-test-smoke",
+  "command": ["node", "--test", "math.test.mjs"],
+  "files": [
+    { "path": "math.mjs", "content": "export const sum = (a, b) => a + b;\n" },
+    { "path": "math.test.mjs", "content": "import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport { sum } from './math.mjs';\ntest('sum', () => assert.equal(sum(20, 22), 42));\n" }
+  ],
+  "collect": [],
+  "vcpus": 1,
+  "timeoutMs": 120000,
+  "networkProfile": "offline"
+}

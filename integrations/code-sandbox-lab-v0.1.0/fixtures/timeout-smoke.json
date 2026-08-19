@@ -1,0 +1,9 @@
+{
+  "jobId": "timeout-smoke",
+  "command": ["python3", "-c", "import time; print('started', flush=True); time.sleep(30)"],
+  "files": [],
+  "collect": [],
+  "vcpus": 1,
+  "timeoutMs": 3000,
+  "networkProfile": "offline"
+}

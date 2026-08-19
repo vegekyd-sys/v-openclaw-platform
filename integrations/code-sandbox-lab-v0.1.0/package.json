@@ -1,0 +1,15 @@
+{
+  "name": "@versa/v-code-sandbox-lab",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "smoke": "node bin/run-job.mjs < fixtures/offline-smoke.json",
+    "smoke:concurrency": "node bin/run-concurrency-smoke.mjs 5",
+    "smoke:preview": "node bin/run-preview-smoke.mjs"
+  },
+  "dependencies": {
+    "@vercel/sandbox": "3.0.0"
+  }
+}
