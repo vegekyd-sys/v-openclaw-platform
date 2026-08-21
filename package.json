@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "nightshift:compile": "node packages/nightshift-core/src/cli.mjs compile",
+    "nightshift:plan": "node packages/nightshift-core/src/cli.mjs plan",
     "nightshift:validate": "node packages/nightshift-core/src/cli.mjs validate",
     "test": "node --test packages/nightshift-core/test/*.test.mjs"
   },

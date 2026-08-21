@@ -16,7 +16,7 @@ metadata:
   version: 0.1.0
   name: Example content delivery
 spec:
-  ownerAgent: makaron
+  ownerAgentRole: content-operator
   concurrency:
     perInstance: 1
     maxActiveInstances: 3
@@ -67,6 +67,10 @@ Every agent or external-action stage declares:
 - side-effect classes and required approval scope;
 - evidence that must be attached to the native Workboard card.
 
+Agent roles are logical and portable. Environment bindings resolve them to a
+real OpenClaw Agent ID at instance start; missing bindings block before card
+creation.
+
 Human stages do not start placeholder Workers. They create a Workboard Review
 card with approve, reject, request-changes, and evidence actions.
 
@@ -103,4 +107,3 @@ workflow_release_sha + instance_id + stage_id + input_hash + attempt
 
 The side-effect idempotency key excludes `attempt`, so a retry cannot submit a
 second paid or publishing operation for the same logical input.
-
