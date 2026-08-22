@@ -1,122 +1,39 @@
-# Night Shift Workflow v1
+# Night Shift workflow.md standard
 
 Status: DRAFT
 
-`workflow.yaml` is the canonical, versioned command file for a Night Shift
-workflow. The visual editor reads and writes this schema; it does not maintain
-a separate graph definition.
+`workflow.md` is the only author-maintained command file for a Night Shift product workflow. It combines readable operating guidance with strict machine metadata. The engine compiles it into an immutable internal release; operators never maintain a second YAML or graph file.
 
-## Minimal example
+## Authoring contract
 
-```yaml
-apiVersion: nightshift.versa.ai/v1alpha1
-kind: Workflow
-metadata:
-  id: example-content-delivery
-  version: 0.1.0
-  name: Example content delivery
-spec:
-  ownerAgentRole: content-operator
-  concurrency:
-    perInstance: 1
-    maxActiveInstances: 3
-  inputs:
-    briefUrl:
-      type: string
-      required: true
-  stages:
-    - id: plan
-      title: Understand and plan
-      actor: agent
-      skills: [source-reader, planning-skill]
-      outputs: [planUrl]
-      completeWhen:
-        - output.planUrl.exists
-      retry:
-        maxAttempts: 2
-        idempotencyKey: "${instance.id}:${stage.id}:${input.hash}"
-      next: [produce]
+One file contains:
 
-    - id: produce
-      title: Produce deliverable
-      actor: agent
-      skill: makaron
-      needs: [plan]
-      sideEffects: [paid-production]
-      approval:
-        before: paid-production
-      outputs: [deliverableUrl]
-      completeWhen:
-        - output.deliverableUrl.reachable
-      retry:
-        maxAttempts: 2
-        idempotencyKey: "${instance.id}:${stage.id}:${input.hash}"
-```
+1. YAML frontmatter for workflow identity, inputs, concurrency, content routes, and logical Agent roles.
+2. Human-readable Markdown explaining the business workflow.
+3. One `## STAGE id｜title` section per business stage.
+4. One fenced `stage` block per stage for actor, scope, skills, dependencies, outputs, completion, retry, approval, and idempotency metadata.
 
-## Required stage semantics
+The visual designer reads and writes this exact Markdown document. Publishing freezes the parsed result and SHA-256. Running instances remain pinned to that release.
 
-Every agent or external-action stage declares:
+## Project and video-task model
 
-- stable `id` and human-readable `title`;
-- `actor`: `agent`, `human`, `timer`, or `system`;
-- explicit dependencies through `needs` or `next`;
-- typed inputs and outputs;
-- ordered `skills` or a deterministic handler (`skill` remains a supported
-  single-skill compatibility form);
-- machine-verifiable completion rules;
-- timeout, heartbeat, retry, and idempotency policy;
-- side-effect classes and required approval scope;
-- evidence that must be attached to the native Workboard card.
+- `WorkflowRelease`: one reusable workflow definition, such as Xingqing content delivery.
+- `Instance`: one customer or planning-document run of that release.
+- `ContentItem`: one planned video inside an instance.
+- `ContentItemRun`: one stage execution for one video task.
 
-Agent roles are logical and portable. Environment bindings resolve them to a
-real OpenClaw Agent ID at instance start; missing bindings block before card
-creation.
+A project-scoped planning stage creates the content backlog. Stages with `scope: content-item` fan out automatically. One project may therefore run `AI_GENERATE` and `SCENE_EDIT` tasks at the same time without creating separate workflows.
 
-Human stages do not start placeholder Workers. They create a Workboard Review
-card with approve, reject, request-changes, and evidence actions.
+Route-specific behavior belongs in `routeStrategies`, while approval, retry, Workboard dispatch, and state ownership stay generic engine capabilities.
 
-## Delivery manifest
-
-A workflow that produces media for human review declares `deliveryManifest`
-as an output and writes `instances/<instance-id>/deliverables.json`. Version 1
-contains the proposal link/summary, final video and poster, editable project
-link, QC report/summary, and native review-card identity. Paths are always
-relative to the instance directory; absolute paths and traversal are rejected.
-See `examples/instances/deliverables.v1.example.json`.
-
-This manifest is the projection contract for the Workboard UI. Base may retain
-business records, but users do not need Base to see or approve deliverables.
-
-## Lifecycle
+## Safety and lifecycle
 
 ```text
-draft -> validated -> lab-simulated -> published -> deprecated
+workflow.md draft -> validate -> simulate -> immutable release -> many instances
 ```
 
-- Publishing freezes the content and hash.
-- A running instance cannot silently move to a newer release.
-- Migration is an explicit operation with compatibility validation and audit.
-- Visual edits create a draft; they never mutate a published release.
+Validation rejects duplicate stages, cycles, unknown routes, unsafe side effects without approval, missing skills, unbounded retries, and content-item stages without a content-item contract.
 
-## Validation
+Paid production and publication use per-content-item idempotency and approvals. Base, Scene, Makaron, GeeLark, and Apify remain adapters and evidence sources; Workboard is the human-facing control surface.
 
-Validation rejects:
-
-- duplicate stage IDs, cycles, dangling dependencies, and unreachable stages;
-- agent stages without a skill/handler;
-- external side effects without idempotency and readback rules;
-- paid, publish, destructive, or permission-changing actions without approval;
-- outputs referenced downstream but never declared upstream;
-- unbounded retry, missing timeout, or unavailable agents/skills;
-- secrets embedded in the workflow file.
-
-## Execution identity
-
-Each StageRun uses:
-
-```text
-workflow_release_sha + instance_id + stage_id + input_hash + attempt
-```
-
-The side-effect idempotency key excludes `attempt`, so a retry cannot submit a
-second paid or publishing operation for the same logical input.
+See [`../examples/workflows/xingqing-content-delivery.workflow.md`](../examples/workflows/xingqing-content-delivery.workflow.md) for the first complete template.
