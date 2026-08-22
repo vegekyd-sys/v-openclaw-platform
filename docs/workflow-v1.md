@@ -75,6 +75,18 @@ creation.
 Human stages do not start placeholder Workers. They create a Workboard Review
 card with approve, reject, request-changes, and evidence actions.
 
+## Delivery manifest
+
+A workflow that produces media for human review declares `deliveryManifest`
+as an output and writes `instances/<instance-id>/deliverables.json`. Version 1
+contains the proposal link/summary, final video and poster, editable project
+link, QC report/summary, and native review-card identity. Paths are always
+relative to the instance directory; absolute paths and traversal are rejected.
+See `examples/instances/deliverables.v1.example.json`.
+
+This manifest is the projection contract for the Workboard UI. Base may retain
+business records, but users do not need Base to see or approve deliverables.
+
 ## Lifecycle
 
 ```text
