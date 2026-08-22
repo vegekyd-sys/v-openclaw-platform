@@ -28,7 +28,7 @@ spec:
     - id: plan
       title: Understand and plan
       actor: agent
-      skill: planning-skill
+      skills: [source-reader, planning-skill]
       outputs: [planUrl]
       completeWhen:
         - output.planUrl.exists
@@ -61,7 +61,8 @@ Every agent or external-action stage declares:
 - `actor`: `agent`, `human`, `timer`, or `system`;
 - explicit dependencies through `needs` or `next`;
 - typed inputs and outputs;
-- skill or deterministic handler;
+- ordered `skills` or a deterministic handler (`skill` remains a supported
+  single-skill compatibility form);
 - machine-verifiable completion rules;
 - timeout, heartbeat, retry, and idempotency policy;
 - side-effect classes and required approval scope;
