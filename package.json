@@ -3,12 +3,22 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dashboard:build": "vite build --config apps/nightshift-dashboard/vite.config.mjs",
+    "dashboard:dev": "vite --config apps/nightshift-dashboard/vite.config.mjs",
+    "dashboard:start": "node apps/nightshift-dashboard/server/index.mjs",
     "nightshift:compile": "node packages/nightshift-core/src/cli.mjs compile",
     "nightshift:plan": "node packages/nightshift-core/src/cli.mjs plan",
     "nightshift:validate": "node packages/nightshift-core/src/cli.mjs validate",
     "test": "node --test packages/nightshift-core/test/*.test.mjs"
   },
   "dependencies": {
+    "lucide-react": "0.468.0",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
     "yaml": "2.9.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "4.4.1",
+    "vite": "6.4.3"
   }
 }
