@@ -33,6 +33,27 @@ Content-Type: application/json
 
 `publish: false` validates and stores a draft. `publish: true` returns the draft plus the immutable release. A changed definition must use a new `metadata.version`; an active instance remains pinned to its original release SHA.
 
+## Create a project
+
+Operators create a project from either the selected Workflow or the Projects page. The UI derives required inputs and logical Agent roles from the immutable release, then calls:
+
+```http
+POST /api/instances
+Content-Type: application/json
+
+{
+  "id": "NS-CUSTOMER-CAMPAIGN",
+  "name": "Customer campaign",
+  "workflowSha256": "<immutable release SHA>",
+  "inputs": { "<workflow input>": "<value>" },
+  "agentBindings": { "<logical role>": "main" },
+  "status": "active",
+  "dispatch": true
+}
+```
+
+The control plane validates required inputs, input types, and every Agent binding before writing. An active project is immediately ticked and dispatched, while its Workflow SHA remains immutable for the lifetime of the project.
+
 ## Project and video-task model
 
 - `WorkflowRelease`: one reusable workflow definition, such as Xingqing content delivery.
