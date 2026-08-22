@@ -15,6 +15,24 @@ One file contains:
 
 The visual designer reads and writes this exact Markdown document. Publishing freezes the parsed result and SHA-256. Running instances remain pinned to that release.
 
+## Import and visual editing
+
+Operators use **Workflows → Import Workflow** to upload a `.md` file, inspect its stages visually, edit stage metadata, validate it, and publish an immutable release. The Markdown source remains available only under the advanced editor; it is not the primary operating surface.
+
+Agents such as V use the same contract through the control-plane API:
+
+```http
+POST /api/workflows/import
+Content-Type: application/json
+
+{
+  "sourceMarkdown": "<complete workflow.md>",
+  "publish": true
+}
+```
+
+`publish: false` validates and stores a draft. `publish: true` returns the draft plus the immutable release. A changed definition must use a new `metadata.version`; an active instance remains pinned to its original release SHA.
+
 ## Project and video-task model
 
 - `WorkflowRelease`: one reusable workflow definition, such as Xingqing content delivery.
