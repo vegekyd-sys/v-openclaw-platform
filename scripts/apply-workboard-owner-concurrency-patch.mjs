@@ -18,7 +18,7 @@ if (!args.get("--dist")) {
 
 const before = `const DEFAULT_DISPATCH_MAX_STARTS = 3;`;
 const beforeSelection = `if ((runningByOwner.get(owner) ?? 0) > 0) continue;\n\t\tselected.push(card);\n\t\trunningByOwner.set(owner, 1);`;
-const after = `const DEFAULT_DISPATCH_MAX_STARTS = 3;\nconst DEFAULT_DISPATCH_MAX_PER_OWNER = 3;`;
+const after = `const DEFAULT_DISPATCH_MAX_STARTS = 3;\nconst DEFAULT_DISPATCH_MAX_PER_OWNER = 8;`;
 const afterSelection = `if ((runningByOwner.get(owner) ?? 0) >= DEFAULT_DISPATCH_MAX_PER_OWNER) continue;\n\t\tselected.push(card);\n\t\trunningByOwner.set(owner, (runningByOwner.get(owner) ?? 0) + 1);`;
 
 const candidates = readdirSync(distDir)
@@ -55,4 +55,4 @@ if (!dryRun) {
   writeFileSync(file, updated);
 }
 
-process.stdout.write(JSON.stringify({ changed: !dryRun, dryRun, file, maxPerOwner: 3 }) + "\n");
+process.stdout.write(JSON.stringify({ changed: !dryRun, dryRun, file, maxPerOwner: 8 }) + "\n");
