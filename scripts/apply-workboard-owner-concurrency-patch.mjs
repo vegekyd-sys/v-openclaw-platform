@@ -19,6 +19,7 @@ if (!args.get("--dist")) {
 const before = `const DEFAULT_DISPATCH_MAX_STARTS = 3;`;
 const beforeSelection = `if ((runningByOwner.get(owner) ?? 0) > 0) continue;\n\t\tselected.push(card);\n\t\trunningByOwner.set(owner, 1);`;
 const after = `const DEFAULT_DISPATCH_MAX_STARTS = 3;\nconst DEFAULT_DISPATCH_MAX_PER_OWNER = 8;`;
+const previousPatch = `const DEFAULT_DISPATCH_MAX_STARTS = 3;\nconst DEFAULT_DISPATCH_MAX_PER_OWNER = 3;`;
 const afterSelection = `if ((runningByOwner.get(owner) ?? 0) >= DEFAULT_DISPATCH_MAX_PER_OWNER) continue;\n\t\tselected.push(card);\n\t\trunningByOwner.set(owner, (runningByOwner.get(owner) ?? 0) + 1);`;
 
 const candidates = readdirSync(distDir)
@@ -35,15 +36,17 @@ if (matches.length !== 1) {
 
 const file = matches[0];
 const source = readFileSync(file, "utf8");
-if (source.includes(afterSelection) && source.includes("DEFAULT_DISPATCH_MAX_PER_OWNER")) {
+if (source.includes(afterSelection) && source.includes(after)) {
   process.stdout.write(JSON.stringify({ changed: false, file, status: "already-patched" }) + "\n");
   process.exit(0);
 }
-if (!source.includes(before) || !source.includes(beforeSelection)) {
+if (!source.includes(beforeSelection) && !(source.includes(previousPatch) && source.includes(afterSelection))) {
   throw new Error("OpenClaw Workboard dispatcher shape changed; refusing to patch");
 }
 
-const updated = source.replace(before, after).replace(beforeSelection, afterSelection);
+const updated = source.includes(previousPatch)
+  ? source.replace(previousPatch, after)
+  : source.replace(before, after).replace(beforeSelection, afterSelection);
 if (updated === source || !updated.includes(afterSelection)) {
   throw new Error("Patch verification failed");
 }
