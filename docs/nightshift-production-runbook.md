@@ -27,6 +27,19 @@ sudo scripts/manage-nightshift-production.sh deploy <artifact.tgz> <sha256> <com
 
 The deploy command prints the immutable release, backup, and exact rollback command. It stops/restarts only Night Shift, not `openclaw-gateway.service`.
 
+## Workboard plugin prerequisite
+
+Workboard enablement and Worker capacity are separate configuration concerns. Never restore a saved full `openclaw.json` merely to enable Workboard. On a host where the built-in plugin is not yet persistent, use the release's guarded patcher:
+
+```bash
+sudo /opt/node-v22.23.1/bin/node \
+  <release>/scripts/ensure-workboard-plugin-enabled.mjs \
+  --config=/home/openclaw/.openclaw/openclaw.json \
+  --backup-dir=/home/openclaw/.openclaw/backups/workboard-enable/<timestamp>
+```
+
+The patcher changes only `plugins.entries.workboard.enabled` and, when an allowlist already exists, membership of `workboard` in that allowlist. It refuses the write if any other configuration changes. After the required controlled Gateway restart, verify both `workboard.cards.list` and `vlab.workers.status`; the Worker release, `maxConcurrent`, `maxWorkers`, `sessionsPerWorker`, and Session retention must be unchanged.
+
 ## Required acceptance
 
 1. Loopback health and `nightshiftctl health`.
