@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { compileWorkflow, parseWorkflow, requiredSkillsByRole, validateProjectRequest } from "../src/index.mjs";
+import { compileWorkflow, normalizeProjectCollaboration, parseWorkflow, requiredSkillsByRole, validateProjectRequest } from "../src/index.mjs";
 
 const workflowPath = new URL("../../../examples/workflows/xingqing-content-delivery.workflow.md", import.meta.url);
 
@@ -69,4 +69,20 @@ test("collects direct and route-specific Skills for Agent preflight", async () =
   assert.ok(skills.includes("makaron"));
   assert.ok(skills.includes("geelark-cloud-phone"));
   assert.equal(new Set(skills).size, skills.length);
+});
+
+test("normalizes a Feishu project origin and reviewer routing", () => {
+  assert.deepEqual(normalizeProjectCollaboration({
+    createdByOpenId: "ou_creator",
+    sourceChatId: "oc_source",
+    reviewers: ["ou_reviewer", "ou_reviewer"],
+    followers: ["ou_follower"],
+  }), {
+    createdByOpenId: "ou_creator",
+    sourceChatId: "oc_source",
+    reviewers: ["ou_reviewer"],
+    followers: ["ou_follower"],
+  });
+  assert.throws(() => normalizeProjectCollaboration({ createdByOpenId: "ou_creator" }), /requires both/);
+  assert.throws(() => normalizeProjectCollaboration({ createdByOpenId: "bad", sourceChatId: "oc_source" }), /invalid/);
 });

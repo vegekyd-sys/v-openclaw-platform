@@ -21,6 +21,8 @@ Environment=NIGHTSHIFT_HOST=127.0.0.1
 Environment=NIGHTSHIFT_PORT=24880
 Environment=NIGHTSHIFT_DATA_DIR=/srv/vlab/nightshift
 Environment=NIGHTSHIFT_BOARD=nightshift-lab
+Environment=NIGHTSHIFT_FEISHU_NOTIFICATIONS=1
+Environment=NIGHTSHIFT_PUBLIC_BASE_URL=http://127.0.0.1:24880
 Environment=NIGHTSHIFT_GATEWAY_URL=ws://127.0.0.1:23793
 Environment=NIGHTSHIFT_WORKFLOW_PATH=/srv/vlab/releases/nightshift-workboard/current/examples/workflows/generic-agent-delivery.workflow.md
 Environment=NIGHTSHIFT_SCHEDULER_MODE=external

@@ -132,6 +132,7 @@ export function validateWorkflow(document) {
   validateIdentifier(spec.ownerAgentRole, "spec.ownerAgentRole", issues);
   const contentRoutes = validateContentItemContract(spec.contentItems, issues);
   validateInputContracts(spec.inputs, issues);
+  validateNotificationContract(spec.notifications, issues);
   if (spec.completion !== undefined && (!isObject(spec.completion) || spec.completion.mode !== "strict-v1")) {
     issues.push(issue("completion.mode.invalid", "spec.completion.mode", "completion.mode must be strict-v1"));
   }
@@ -337,6 +338,24 @@ export function validateWorkflow(document) {
   }
 
   return issues;
+}
+
+function validateNotificationContract(notifications, issues) {
+  if (notifications === undefined) return;
+  if (!isObject(notifications)) {
+    issues.push(issue("notifications.invalid", "spec.notifications", "notifications must be an object"));
+    return;
+  }
+  const supported = new Set(["reviewRequested", "instanceCompleted"]);
+  for (const [name, value] of Object.entries(notifications)) {
+    if (!supported.has(name)) {
+      issues.push(issue("notifications.event.invalid", `spec.notifications.${name}`, `Unsupported notification event ${name}`));
+      continue;
+    }
+    if (!isObject(value) || typeof value.enabled !== "boolean") {
+      issues.push(issue("notifications.event.config.invalid", `spec.notifications.${name}`, "Notification config requires enabled: true|false"));
+    }
+  }
 }
 
 export function compileWorkflow(document) {

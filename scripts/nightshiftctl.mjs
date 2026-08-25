@@ -81,6 +81,15 @@ async function run(input) {
       method: "PATCH",
     });
   }
+  if (resource === "projects" && action === "collaboration" && subject) {
+    const file = option(input, "--file");
+    if (!file) throw new Error("projects collaboration requires --file <json>");
+    const collaboration = await readJson(file);
+    return api(`/api/instances/${encodeURIComponent(subject)}/collaboration`, {
+      body: JSON.stringify({ collaboration }),
+      method: "PATCH",
+    });
+  }
   if (resource === "cards" && action === "list") {
     const status = option(input, "--status");
     return api(`/api/cards${status ? `?status=${encodeURIComponent(status)}` : ""}`);
@@ -105,7 +114,7 @@ async function run(input) {
       method: "POST",
     });
   }
-  throw new Error("Usage: nightshiftctl health | workflows list|validate|import|publish | projects list|get|monitor|preflight|create|start|pause | projects inputs <id> --file <json> | cards list|session|approve|changes|reject|retry");
+  throw new Error("Usage: nightshiftctl health | workflows list|validate|import|publish | projects list|get|monitor|preflight|create|start|pause | projects inputs|collaboration <id> --file <json> | cards list|session|approve|changes|reject|retry");
 }
 
 async function resolveWorkflow(project) {

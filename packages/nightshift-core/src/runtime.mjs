@@ -5,6 +5,7 @@ import {
   WorkflowValidationError,
 } from "./workflow.mjs";
 import { buildAgentBrief, planNextActions, requiredApproval, resolveApprovalBinding, stageTimeoutSeconds } from "./orchestrator.mjs";
+import { normalizeProjectCollaboration } from "./project.mjs";
 
 export class NightShiftRuntime {
   constructor({ board = "nightshift", completionValidator = null, store, workboard }) {
@@ -61,6 +62,10 @@ export class NightShiftRuntime {
       throw new Error("Instance input patch must be an object");
     }
     return this.store.updateInstanceInputs(instanceId, patch);
+  }
+
+  updateInstanceCollaboration(instanceId, collaboration) {
+    return this.store.updateInstanceCollaboration(instanceId, normalizeProjectCollaboration(collaboration));
   }
 
   async reconcile(instanceId, cards = null) {

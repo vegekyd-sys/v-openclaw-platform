@@ -17,6 +17,10 @@ test("persists immutable releases, instances, stage runs, approvals, and audit e
     name: "Store test",
     workflowSha256: release.metadata.workflowSha256,
     agentBindings: { "content-operator": "main" },
+    collaboration: {
+      createdByOpenId: "ou_creator",
+      sourceChatId: "oc_project",
+    },
     inputs: { targetCount: 1 },
   });
   store.upsertStageRun({
@@ -55,6 +59,7 @@ test("persists immutable releases, instances, stage runs, approvals, and audit e
   assert.equal(store.getInstance("NS-STORE-1").approvals[0].bindingHash, "binding-sha");
   assert.equal(store.getInstance("NS-STORE-1").approvals[0].bindings.publicationTarget.tiktokHandle, "@fixture");
   assert.equal(store.listStageRuns("NS-STORE-1")[0].cardId, "card-1");
+  assert.equal(store.getInstance("NS-STORE-1").collaboration.createdByOpenId, "ou_creator");
   assert.equal(store.listContentItems("NS-STORE-1").length, 2);
   assert.equal(store.listContentItems("NS-STORE-1")[0].status, "routed");
   assert.equal(store.listContentItemRuns("NS-STORE-1")[0].contentItemId, "video-ai-01");

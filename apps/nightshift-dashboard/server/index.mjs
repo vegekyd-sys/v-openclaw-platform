@@ -10,11 +10,13 @@ import { runNightShiftSchedulerPulse } from "./scheduler.mjs";
 import {
   deliverableArtifactPaths,
   humanStageHandoff,
+  NightShiftNotificationCoordinator,
   NightShiftRuntime,
   NightShiftStore,
   normalizeArtifactPath,
   normalizeDeliverablesManifest,
   normalizeStageHandoff,
+  OpenClawFeishuNotificationSender,
   presentStageHandoff,
   redactSensitiveInputs,
   requiredSkillsByRole,
@@ -41,11 +43,19 @@ const schedulerMode = process.env.NIGHTSHIFT_SCHEDULER_MODE ?? "internal";
 const schedulerIntervalMs = positiveInteger(process.env.NIGHTSHIFT_SCHEDULER_INTERVAL_MS, 30_000);
 const schedulerDispatchMaxStarts = positiveInteger(process.env.NIGHTSHIFT_DISPATCH_MAX_STARTS, 12);
 const schedulerMaxWorkboardActive = positiveInteger(process.env.NIGHTSHIFT_MAX_WORKBOARD_ACTIVE, 36);
+const notificationsEnabled = process.env.NIGHTSHIFT_FEISHU_NOTIFICATIONS === "1";
 const publicAuth = await loadPublicAuth(process.env.NIGHTSHIFT_BASIC_AUTH_FILE);
 await mkdir(dataDir, { recursive: true });
 const store = new NightShiftStore(join(dataDir, "nightshift.sqlite"));
 const workboard = new WorkboardGatewayAdapter({ board });
 const runtime = new NightShiftRuntime({ board, completionValidator: validateCompletion, store, workboard });
+const notificationCoordinator = notificationsEnabled
+  ? new NightShiftNotificationCoordinator({
+      baseUrl: publicBaseUrl || `http://${host}:${port}`,
+      sender: new OpenClawFeishuNotificationSender(),
+      store,
+    })
+  : null;
 let cardCache = [];
 let cardsUpdatedAt = null;
 let cardRefreshPromise = null;
@@ -104,6 +114,7 @@ async function handleApi(request, response, url) {
       cardsUpdatedAt,
       lastSchedulerAt,
       lastSchedulerError,
+      notificationsEnabled,
       ok: true,
       schedulerMode,
       service: "nightshift-workboard",
@@ -384,6 +395,7 @@ async function handleApi(request, response, url) {
     return;
   }
   const instanceInputMatch = url.pathname.match(/^\/api\/instances\/([^/]+)\/inputs$/);
+  const instanceCollaborationMatch = url.pathname.match(/^\/api\/instances\/([^/]+)\/collaboration$/);
   const instanceLifecycleMatch = url.pathname.match(/^\/api\/instances\/([^/]+)\/(start|pause)$/);
   if (request.method === "POST" && instanceLifecycleMatch) {
     const instanceId = decodeURIComponent(instanceLifecycleMatch[1]);
@@ -409,6 +421,15 @@ async function handleApi(request, response, url) {
       body.inputs ?? {},
     );
     await writeProjectInputsSnapshot(updated);
+    json(response, 200, updated);
+    return;
+  }
+  if (request.method === "PATCH" && instanceCollaborationMatch) {
+    const body = await bodyJson(request);
+    const updated = runtime.updateInstanceCollaboration(
+      decodeURIComponent(instanceCollaborationMatch[1]),
+      body.collaboration ?? {},
+    );
     json(response, 200, updated);
     return;
   }
@@ -467,6 +488,58 @@ async function handleApi(request, response, url) {
     await refreshCards();
     const failed = results.filter((entry) => !entry.ok);
     json(response, failed.length ? 207 : 200, { approved: results.length - failed.length, failed: failed.length, ok: failed.length === 0, results });
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/notifications/review") {
+    const body = await bodyJson(request);
+    if (!notificationCoordinator) {
+      json(response, 503, { error: "Feishu notifications are not enabled" });
+      return;
+    }
+    if (!["approve", "changes", "reject"].includes(body.action) || typeof body.token !== "string" || typeof body.actorOpenId !== "string") {
+      json(response, 422, { error: "action, token, and actorOpenId are required" });
+      return;
+    }
+    let authorization;
+    try {
+      authorization = store.authorizeNotificationDecision(body.token, body.actorOpenId);
+    } catch (error) {
+      json(response, 403, { error: error.message });
+      return;
+    }
+    if (authorization.alreadyUsed) {
+      json(response, 200, { ...authorization.result, alreadyApplied: true });
+      return;
+    }
+    const cards = await refreshCards();
+    const card = cards.find((entry) => entry.id === authorization.cardId);
+    if (!card || card.status !== "review") {
+      json(response, 409, { error: "The original Workboard card is no longer waiting for review" });
+      return;
+    }
+    const actor = `feishu:${body.actorOpenId}`;
+    const evidence = body.action === "approve"
+      ? "Approved from the Feishu Night Shift notification"
+      : body.action === "changes"
+        ? "Changes requested from the Feishu Night Shift notification; follow-up details belong in the source conversation"
+        : "Rejected from the Feishu Night Shift notification";
+    const input = decisionInput({ body: { actor, evidence }, card });
+    const result = body.action === "approve"
+      ? await runtime.approve(input)
+      : body.action === "changes"
+        ? await runtime.requestChanges(input)
+        : await runtime.reject(input);
+    if (body.action === "approve") await recordHumanStageHandoff(input);
+    await refreshCards();
+    const reply = {
+      action: body.action,
+      cardId: card.id,
+      message: body.action === "approve" ? "已通过并回写原 Workboard 卡" : body.action === "changes" ? "已退回修改，请在当前飞书会话补充具体意见" : "已拒绝并回写原 Workboard 卡",
+      ok: true,
+      status: result.status,
+    };
+    store.completeNotificationDecision(body.token, reply);
+    json(response, 200, reply);
     return;
   }
   if (request.method === "POST" && decisionMatch) {
@@ -532,6 +605,16 @@ function runScheduler() {
       syncContentItemsManifest,
       workboard,
     });
+    if (notificationCoordinator) {
+      const notificationResult = await notificationCoordinator.reconcile({
+        cards: cardCache,
+        instances: store.listInstances(),
+        releases: store.listReleases(),
+      });
+      for (const delivery of notificationResult.delivered.filter((entry) => !entry.ok)) {
+        result.warnings.push(`notification ${delivery.id}: ${delivery.error}`);
+      }
+    }
     lastSchedulerAt = new Date().toISOString();
     lastSchedulerError = result.warnings.length > 0 ? result.warnings.join("; ") : null;
     return result;
