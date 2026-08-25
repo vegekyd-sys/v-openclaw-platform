@@ -13,6 +13,7 @@ import {
   Clock3,
   FileCode2,
   GitBranch,
+  History,
   LayoutDashboard,
   PanelLeftClose,
   PanelLeftOpen,
@@ -41,6 +42,7 @@ export const Icons = {
   Clock3,
   FileCode2,
   GitBranch,
+  History,
   LayoutDashboard,
   PanelLeftClose,
   PanelLeftOpen,
@@ -60,6 +62,7 @@ export function Sidebar({ active, collapsed, onChange, onToggle }) {
     ["workflows", "Workflows", Workflow],
     ["projects", "Projects", GitBranch],
     ["agents", "Agents", Bot],
+    ["updates", "Updates", History],
   ];
   return (
     <aside className={`sidebar ${collapsed ? "is-collapsed" : ""}`}>

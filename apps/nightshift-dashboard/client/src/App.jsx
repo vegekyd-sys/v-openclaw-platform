@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { api } from "./api.js";
+import { NIGHT_SHIFT_CHANGELOG } from "./changelog.js";
 import { Drawer, EmptyColumn, Icons, Metric, Sidebar, WorkCard } from "./components.jsx";
 
 const columns = [
@@ -175,6 +176,7 @@ export function App() {
         {active === "workflows" && <WorkflowStudio data={data} refresh={refresh} initialProjectId={workflowProjectId} initialWorkflowId={initialLocation.workflow} setSelected={setSelected} selected={selectedForDecision} decide={decide} approveMany={approveMany} retry={retry} delivery={delivery} deliveryState={deliveryState} deliveryError={deliveryError} handoff={handoff} handoffState={handoffState} handoffError={handoffError} onNewProject={(release) => setProjectReleaseSha(release?.workflowSha256 ?? data?.workflows?.[0]?.workflowSha256)} />}
         {active === "projects" && <Projects data={data} refresh={refresh} onNewProject={() => setProjectReleaseSha(data?.workflows?.[0]?.workflowSha256)} onOpenProject={(projectId) => { setWorkflowProjectId(projectId); updateDashboardLocation({ project: projectId, view: "workflows" }); setActive("workflows"); }} />}
         {active === "agents" && <Agents data={data} />}
+        {active === "updates" && <Changelog />}
       </main>
       {projectReleaseSha && <ProjectEditor releases={data?.workflows ?? []} initialReleaseSha={projectReleaseSha} onClose={() => setProjectReleaseSha(null)} onCreated={(result) => { setProjectReleaseSha(null); setActive("projects"); if (result.initialScheduleError) setError(`项目已创建，首次调度将在下一轮重试：${result.initialScheduleError}`); refresh(true).catch((reason) => setError(reason.message)); }} />}
     </div>
@@ -493,6 +495,41 @@ function Agents({ data }) {
   return <div className="simple-screen agents-screen"><header className="topbar"><div><span className="section-label">OpenClaw workers</span><h1>Agents</h1><p className="topbar-copy">当前参与 Workflow 与原生 Workboard 的 Agent。</p></div></header><div className="agent-list">{agents.length ? agents.map((agent) => <div className="agent-row" key={agent}><span className="agent-avatar"><Icons.Bot size={18} /></span><div><strong>{agent}</strong><span>Workflow binding or native Workboard assignment</span></div><span className="live-dot" /></div>) : <p className="empty-copy">No agent binding has been declared.</p>}</div></div>;
 }
 
+function Changelog() {
+  const [latest, ...history] = NIGHT_SHIFT_CHANGELOG;
+  return <div className="simple-screen changelog-screen">
+    <header className="topbar changelog-topbar">
+      <div><span className="section-label">Night Shift · Product journal</span><h1>更新日志</h1><p className="topbar-copy">从第一张 Workboard 卡片，到一条会自己推进的生产线。</p></div>
+      <div className="changelog-current"><span>Current</span><strong>{latest.date.replaceAll("-", ".")}</strong></div>
+    </header>
+    <main className="changelog-content">
+      <article className="changelog-latest">
+        <div className="changelog-version"><span>最新更新</span><time dateTime={latest.date}>{formatChangelogDate(latest.date)}</time></div>
+        <div className="changelog-latest-copy"><span className="changelog-kicker">Now shipping</span><h2>{latest.title}</h2><p>{latest.summary}</p><ChangelogItems items={latest.items} /></div>
+        <div className="changelog-signal" aria-hidden="true"><span /><span /><span /><span /><i /></div>
+      </article>
+      <section className="changelog-history" aria-label="历史更新">
+        <div className="changelog-history-head"><span>Product timeline</span><strong>{NIGHT_SHIFT_CHANGELOG.length} 次主要更新</strong></div>
+        <div className="changelog-rail">
+          {history.map((entry, index) => <article className="changelog-entry" key={`${entry.date}-${entry.title}`}>
+            <div className="changelog-entry-date"><time dateTime={entry.date}>{formatChangelogDate(entry.date)}</time><span>{String(history.length - index).padStart(2, "0")}</span></div>
+            <div className="changelog-entry-copy"><h2>{entry.title}</h2><p>{entry.summary}</p><ChangelogItems items={entry.items} /></div>
+          </article>)}
+        </div>
+      </section>
+    </main>
+  </div>;
+}
+
+function ChangelogItems({ items }) {
+  return <ul>{items.map((item) => <li key={item}><span aria-hidden="true" />{item}</li>)}</ul>;
+}
+
+function formatChangelogDate(value) {
+  const date = new Date(`${value}T00:00:00+08:00`);
+  return new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric" }).format(date);
+}
+
 function label(card, prefix) { return card.labels?.find((entry) => entry.startsWith(`${prefix}:`))?.slice(prefix.length + 1); }
 
 function cardLabel(card, prefix) {
@@ -600,7 +637,7 @@ function parseJsonValue(value) {
 function readDashboardLocation() {
   if (typeof window === "undefined") return { card: null, project: null, view: "board", workflow: null };
   const parameters = new URLSearchParams(window.location.search);
-  const view = ["board", "workflows", "projects", "agents"].includes(parameters.get("view")) ? parameters.get("view") : "board";
+  const view = ["board", "workflows", "projects", "agents", "updates"].includes(parameters.get("view")) ? parameters.get("view") : "board";
   return {
     card: parameters.get("card"),
     project: parameters.get("project"),
