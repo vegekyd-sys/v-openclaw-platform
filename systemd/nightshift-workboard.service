@@ -42,7 +42,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/home/openclaw/.openclaw/nightshift /home/openclaw/.openclaw/state
+ReadWritePaths=/home/openclaw/.openclaw/nightshift /home/openclaw/.openclaw/state /home/openclaw/.openclaw/extensions /home/openclaw/.openclaw/plugins /home/openclaw/.openclaw/plugin-skills
 
 [Install]
 WantedBy=multi-user.target

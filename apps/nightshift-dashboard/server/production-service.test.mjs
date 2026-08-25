@@ -21,7 +21,7 @@ test("production sandbox allows the OpenClaw CLI health-state write", async () =
   );
   assert.match(
     unit,
-    /^ReadWritePaths=.*\/home\/openclaw\/\.openclaw\/nightshift.*\/home\/openclaw\/\.openclaw\/state$/m,
+    /^ReadWritePaths=.*\/home\/openclaw\/\.openclaw\/nightshift.*\/home\/openclaw\/\.openclaw\/state.*\/home\/openclaw\/\.openclaw\/extensions.*\/home\/openclaw\/\.openclaw\/plugins.*\/home\/openclaw\/\.openclaw\/plugin-skills$/m,
   );
   assert.match(unit, /^Environment=NIGHTSHIFT_PUBLIC_BASE_URL=https:\/\/nightshift\.tianyi\.live$/m);
   assert.match(unit, /^Environment=NIGHTSHIFT_SCHEDULER_MODE=external$/m);
