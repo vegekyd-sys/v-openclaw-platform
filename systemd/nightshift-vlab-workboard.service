@@ -8,6 +8,7 @@ Type=simple
 User=vlab
 Group=vlab
 WorkingDirectory=/srv/vlab/releases/nightshift-workboard/current
+EnvironmentFile=/srv/vlab/state/feishu.env
 Environment=HOME=/srv/vlab
 Environment=OPENCLAW_HOME=/srv/vlab
 Environment=OPENCLAW_STATE_DIR=/srv/vlab/nightshift/openclaw-state
