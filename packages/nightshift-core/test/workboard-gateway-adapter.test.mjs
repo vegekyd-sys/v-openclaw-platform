@@ -53,9 +53,11 @@ test("creates and reuses native cards through Gateway RPC", async () => {
   assert.equal(first.status, "created");
   assert.equal(second.status, "reused");
   assert.equal(first.card.metadata.automation.boardId, "nightshift-lab");
+  assert.equal(first.card.boardId, "nightshift-lab");
   assert.equal(first.card.maxRetries, 2);
   assert.equal(first.card.maxRuntimeSeconds, 14_400);
   assert.ok(calls.every(({ args }) => !args.includes("--token")));
+  assert.ok(calls.every(({ args }) => !args.includes("--url")));
   assert.ok(calls.every(({ args }) => !args.join(" ").includes("test-token")));
   assert.ok(calls.every(({ env }) => env.OPENCLAW_GATEWAY_TOKEN === "test-token"));
   assert.ok(calls.every(({ env }) => env.OPENCLAW_GATEWAY_URL === "ws://127.0.0.1:23793"));
@@ -70,4 +72,16 @@ test("creates and reuses native cards through Gateway RPC", async () => {
   assert.equal(skills.skills[0].name, "night-shift-operator");
   const skillsCall = calls.find(({ args }) => args[2] === "skills.status");
   assert.deepEqual(JSON.parse(skillsCall.args[skillsCall.args.indexOf("--params") + 1]), { agentId: "main" });
+});
+
+test("refuses a remote Gateway instead of exposing its token in process arguments", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "nightshift-remote-gateway-"));
+  const configPath = join(dir, "openclaw.json");
+  await writeFile(configPath, JSON.stringify({ gateway: { auth: { token: "test-token" } } }));
+  const adapter = new WorkboardGatewayAdapter({
+    configPath,
+    gatewayUrl: "ws://100.82.39.107:22793",
+    runner: async () => { throw new Error("runner must not be called"); },
+  });
+  await assert.rejects(() => adapter.listCards(), /must be loopback-local/);
 });

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-source_state="/srv/vlab-browser/state"
-private_state="/srv/vlab-browser/nightshift/openclaw-state"
+source_state="${NIGHTSHIFT_SOURCE_STATE_DIR:-/srv/vlab-browser/state}"
+private_state="${OPENCLAW_STATE_DIR:-/srv/vlab-browser/nightshift/openclaw-state}"
 
 install -d -m 700 "$private_state" "$private_state/identity" "$private_state/state"
 install -m 600 "$source_state/identity/device.json" "$private_state/identity/device.json"

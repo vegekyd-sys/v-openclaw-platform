@@ -6,6 +6,7 @@ import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadPublicAuth, requiresPublicAuth, verifyPublicAuth } from "./public-auth.mjs";
 import { resolveCardDecisionContext } from "./decision-context.mjs";
+import { runNightShiftSchedulerPulse } from "./scheduler.mjs";
 import {
   deliverableArtifactPaths,
   humanStageHandoff,
@@ -36,6 +37,10 @@ const workflowPath = resolve(
 const board = process.env.NIGHTSHIFT_BOARD ?? "nightshift-lab";
 const publicHost = process.env.NIGHTSHIFT_PUBLIC_HOST ?? "";
 const publicBaseUrl = process.env.NIGHTSHIFT_PUBLIC_BASE_URL ?? "";
+const schedulerMode = process.env.NIGHTSHIFT_SCHEDULER_MODE ?? "internal";
+const schedulerIntervalMs = positiveInteger(process.env.NIGHTSHIFT_SCHEDULER_INTERVAL_MS, 30_000);
+const schedulerDispatchMaxStarts = positiveInteger(process.env.NIGHTSHIFT_DISPATCH_MAX_STARTS, 12);
+const schedulerMaxWorkboardActive = positiveInteger(process.env.NIGHTSHIFT_MAX_WORKBOARD_ACTIVE, 36);
 const publicAuth = await loadPublicAuth(process.env.NIGHTSHIFT_BASIC_AUTH_FILE);
 await mkdir(dataDir, { recursive: true });
 const store = new NightShiftStore(join(dataDir, "nightshift.sqlite"));
@@ -53,12 +58,18 @@ const contentManifestHashes = new Map();
 
 await ensureWorkflow();
 await ensureSeedInstance();
-const schedulerTimer = setInterval(() => {
-  runScheduler();
-}, 30000);
-schedulerTimer.unref();
-const initialSchedulerTimer = setTimeout(() => runScheduler(), 1000);
-initialSchedulerTimer.unref();
+let schedulerTimer = null;
+let initialSchedulerTimer = null;
+if (schedulerMode === "internal") {
+  schedulerTimer = setInterval(() => {
+    runScheduler().catch(() => undefined);
+  }, schedulerIntervalMs);
+  schedulerTimer.unref();
+  initialSchedulerTimer = setTimeout(() => runScheduler().catch(() => undefined), 1000);
+  initialSchedulerTimer.unref();
+} else if (schedulerMode !== "external") {
+  throw new Error("NIGHTSHIFT_SCHEDULER_MODE must be internal or external");
+}
 
 const server = createServer(async (request, response) => {
   try {
@@ -94,8 +105,17 @@ async function handleApi(request, response, url) {
       lastSchedulerAt,
       lastSchedulerError,
       ok: true,
+      schedulerMode,
       service: "nightshift-workboard",
     });
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/internal/scheduler/run") {
+    if (!requestIsLoopback(request)) {
+      json(response, 403, { error: "The scheduler pulse is loopback-only" });
+      return;
+    }
+    json(response, 200, await runScheduler());
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/bootstrap") {
@@ -503,31 +523,23 @@ async function ensureSeedInstance() {
 function runScheduler() {
   if (schedulerPromise) return schedulerPromise;
   schedulerPromise = (async () => {
-    await refreshCards();
-    let changed = false;
-    const warnings = [];
-    for (const instance of store.listInstances()) {
-      if (instance.status !== "active") continue;
-      try {
-        await syncContentItemsManifest(instance);
-      } catch (error) {
-        warnings.push(`${instance.id}: ${error.message}`);
-        store.appendEvent({
-          instanceId: instance.id,
-          type: "content-items.import.failed",
-          payload: { error: error.message },
-        });
-      }
-      const result = await serializedTick(instance.id, { dispatch: true });
-      if (result.applied.length > 0) changed = true;
-    }
-    if (changed) await refreshCards();
+    const result = await runNightShiftSchedulerPulse({
+      dispatchMaxStarts: schedulerDispatchMaxStarts,
+      maxWorkboardActive: schedulerMaxWorkboardActive,
+      refreshCards,
+      runtime,
+      store,
+      syncContentItemsManifest,
+      workboard,
+    });
     lastSchedulerAt = new Date().toISOString();
-    lastSchedulerError = warnings.length > 0 ? warnings.join("; ") : null;
+    lastSchedulerError = result.warnings.length > 0 ? result.warnings.join("; ") : null;
+    return result;
   })().catch((error) => {
     lastSchedulerAt = new Date().toISOString();
     lastSchedulerError = error.message;
     console.error(`Night Shift scheduler failed: ${error.message}`);
+    throw error;
   }).finally(() => {
     schedulerPromise = null;
   });
@@ -611,7 +623,7 @@ function serializedTick(instanceId, options) {
   const run = tickQueue
     .catch(() => undefined)
     .then(async () => {
-      const cards = await workboard.listCards();
+      const cards = options.cards ?? await workboard.listCards();
       return runtime.tick(instanceId, { ...options, cards });
     });
   tickQueue = run.catch(() => undefined);
@@ -1075,11 +1087,23 @@ function contentType(path) {
   }[extname(path)] ?? "application/octet-stream";
 }
 
+function positiveInteger(value, fallback) {
+  if (value == null || value === "") return fallback;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) throw new Error(`Expected a positive integer, received ${value}`);
+  return parsed;
+}
+
+function requestIsLoopback(request) {
+  const address = request.socket.remoteAddress ?? "";
+  return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
+}
+
 function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
-  clearInterval(schedulerTimer);
-  clearTimeout(initialSchedulerTimer);
+  if (schedulerTimer) clearInterval(schedulerTimer);
+  if (initialSchedulerTimer) clearTimeout(initialSchedulerTimer);
   let finished = false;
   let forceTimer;
   const finish = () => {

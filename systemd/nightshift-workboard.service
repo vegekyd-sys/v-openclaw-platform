@@ -24,6 +24,9 @@ Environment=NIGHTSHIFT_PUBLIC_HOST=nightshift.tianyi.live
 Environment=NIGHTSHIFT_PUBLIC_BASE_URL=https://nightshift.tianyi.live
 Environment=NIGHTSHIFT_BASIC_AUTH_FILE=/home/openclaw/.config/nightshift/public-auth.json
 Environment=NIGHTSHIFT_WORKFLOW_PATH=/home/openclaw/releases/nightshift-workboard/current/examples/workflows/xingqing-content-delivery.workflow.md
+Environment=NIGHTSHIFT_SCHEDULER_MODE=external
+Environment=NIGHTSHIFT_DISPATCH_MAX_STARTS=12
+Environment=NIGHTSHIFT_MAX_WORKBOARD_ACTIVE=36
 ExecStart=/opt/node-v22.23.1/bin/node --no-warnings apps/nightshift-dashboard/server/index.mjs
 Restart=on-failure
 RestartSec=3

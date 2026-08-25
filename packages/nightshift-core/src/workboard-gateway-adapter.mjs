@@ -29,24 +29,32 @@ export class WorkboardGatewayAdapter {
     return result.cards ?? [];
   }
 
-  async applyPlan(actions, { dryRun = false } = {}) {
+  async applyPlan(actions, { cards = null, dryRun = false } = {}) {
     const results = [];
-    for (const action of actions) results.push(await this.applyAction(action, { dryRun }));
+    const knownCards = cards ? [...cards] : await this.listCards();
+    for (const action of actions) {
+      const result = await this.applyAction(action, { dryRun, knownCards });
+      results.push(result);
+      if (result.card?.id && !knownCards.some((card) => card.id === result.card.id)) {
+        knownCards.push(result.card);
+      }
+    }
     return results;
   }
 
-  async applyAction(action, { dryRun = false } = {}) {
+  async applyAction(action, { dryRun = false, knownCards = null } = {}) {
     if (action.type === "schedule_timer") {
       return { action, status: "deferred", reason: "timer_store_required" };
     }
     const marker = gatewayIdempotencyLabel(action.idempotencyKey);
-    const existing = (await this.listCards()).find((card) =>
+    const existing = (knownCards ?? await this.listCards()).find((card) =>
       (card.labels ?? []).includes(marker),
     );
     if (existing) return { action, card: existing, status: "reused" };
 
     const card = action.card ?? approvalCard(action);
     const payload = {
+      boardId: this.board,
       title: card.title,
       status: card.status ?? "ready",
       priority: card.priority ?? "normal",
@@ -107,6 +115,10 @@ export class WorkboardGatewayAdapter {
 
   async call(method, params) {
     if (!this.gatewayUrl) throw new Error("NIGHTSHIFT_GATEWAY_URL is required");
+    const gateway = new URL(this.gatewayUrl);
+    if (!["127.0.0.1", "localhost", "[::1]"].includes(gateway.hostname)) {
+      throw new Error("Night Shift Workboard Gateway must be loopback-local");
+    }
     if (!this.configPath) throw new Error("OPENCLAW_CONFIG_PATH is required");
     const config = JSON.parse(await readFile(this.configPath, "utf8"));
     const token = config.gateway?.auth?.token;

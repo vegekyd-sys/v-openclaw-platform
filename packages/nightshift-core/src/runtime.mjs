@@ -303,7 +303,7 @@ export class NightShiftRuntime {
       contentItems,
       contentItemRuns,
     });
-    const applied = await this.workboard.applyPlan(actions, { dryRun });
+    const applied = await this.workboard.applyPlan(actions, { cards: currentCards, dryRun });
     if (!dryRun) {
       for (const result of applied) {
         const card = result.card;
