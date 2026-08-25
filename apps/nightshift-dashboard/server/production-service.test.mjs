@@ -21,7 +21,7 @@ test("production sandbox allows the OpenClaw CLI health-state write", async () =
   );
   assert.match(
     unit,
-    /^ReadWritePaths=.*\/home\/openclaw\/\.openclaw\/nightshift.*\/home\/openclaw\/\.openclaw\/state.*\/home\/openclaw\/\.openclaw\/extensions.*\/home\/openclaw\/\.openclaw\/plugins.*\/home\/openclaw\/\.openclaw\/plugin-skills$/m,
+    /^ReadWritePaths=.*\/home\/openclaw\/\.openclaw\/nightshift.*\/home\/openclaw\/\.openclaw\/state$/m,
   );
   assert.match(unit, /^Environment=NIGHTSHIFT_PUBLIC_BASE_URL=https:\/\/nightshift\.tianyi\.live$/m);
   assert.match(unit, /^Environment=NIGHTSHIFT_SCHEDULER_MODE=external$/m);
@@ -39,6 +39,17 @@ test("production deploy waits for the Workboard health endpoint", async () => {
   assert.equal((script.match(/^\s+wait_for_health$/gm) ?? []).length, 2);
   assert.match(script, /Release artifact is missing apps\/nightshift-dashboard\/dist\/index\.html/);
   assert.doesNotMatch(script, /grep -E?q/);
+});
+
+test("notification CLI keeps a private writable plugin registry", async () => {
+  const script = await readFile(
+    new URL("../../../scripts/bootstrap-nightshift-cli-state.sh", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(script, /for directory in extensions plugin-skills/);
+  assert.match(script, /cp -a "\$source_state\/plugins" "\$plugins_next"/);
+  assert.doesNotMatch(script, /for directory in extensions plugins plugin-skills/);
 });
 
 test("release packager builds and includes the dashboard distribution", async () => {
