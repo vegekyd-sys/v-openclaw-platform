@@ -2,7 +2,7 @@
   "id": "nightshift-feishu",
   "name": "Night Shift Feishu",
   "description": "Routes authorized Feishu review-card commands directly to Night Shift without an LLM turn.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "activation": {
     "onStartup": true,
     "onCommands": ["nightshift-review"]
