@@ -47,7 +47,7 @@ test("notification CLI keeps a private writable plugin registry", async () => {
     "utf8",
   );
 
-  assert.match(script, /for directory in extensions plugin-skills/);
+  assert.match(script, /for directory in extensions npm plugin-skills/);
   assert.match(script, /cp -a "\$source_state\/plugins" "\$plugins_next"/);
   assert.doesNotMatch(script, /for directory in extensions plugins plugin-skills/);
 });
