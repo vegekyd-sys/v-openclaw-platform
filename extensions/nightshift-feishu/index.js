@@ -1,5 +1,5 @@
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
-import { parseReviewArgs } from "./review-command.js";
+import { buildReviewOutcomeCard, parseReviewArgs, replaceReviewCard } from "./review-command.js";
 
 export default definePluginEntry({
   id: "nightshift-feishu",
@@ -23,7 +23,13 @@ export default definePluginEntry({
           });
           const body = await response.json().catch(() => ({}));
           if (!response.ok) throw new Error(body.error ?? `Night Shift returned HTTP ${response.status}`);
-          return { text: body.alreadyApplied ? `已处理过：${body.message}` : body.message };
+          await replaceReviewCard({
+            accountId: ctx.accountId,
+            card: buildReviewOutcomeCard(body),
+            config: ctx.config,
+            messageId: body.messageId,
+          });
+          return {};
         } catch (error) {
           api.logger.warn?.(`nightshift-review rejected: ${error.message}`);
           return { isError: true, text: `无法处理这次审核：${error.message}` };

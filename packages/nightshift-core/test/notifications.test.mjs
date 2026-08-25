@@ -47,7 +47,9 @@ test("notifies the creating Feishu conversation once and authorizes only the ass
   assert.equal(sent.length, 1);
   assert.equal(sent[0].targetChatId, "oc_source");
   assert.deepEqual(sent[0].allowedOpenIds, ["ou_reviewer"]);
-  const command = sent[0].presentation.blocks.find((block) => block.type === "buttons").buttons[0].action.command;
+  const buttons = sent[0].presentation.blocks.find((block) => block.type === "buttons").buttons;
+  assert.deepEqual(buttons.map((button) => button.label), ["通过", "拒绝", "打开 Night Shift"]);
+  const command = buttons[0].action.command;
   const token = command.split(" ").at(-1);
   assert.throws(() => store.authorizeNotificationDecision(token, "ou_creator"), /not an assigned reviewer/);
   assert.equal(store.authorizeNotificationDecision(token, "ou_reviewer").cardId, "card-review-1");

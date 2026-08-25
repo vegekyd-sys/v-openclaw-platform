@@ -165,7 +165,6 @@ export function reviewPresentation({ card, instance, taskUrl, token }) {
         type: "buttons",
         buttons: [
           { label: "通过", style: "primary", action: { type: "command", command: `/nightshift-review approve ${token}` } },
-          { label: "要求修改", style: "secondary", action: { type: "command", command: `/nightshift-review changes ${token}` } },
           { label: "拒绝", style: "danger", action: { type: "command", command: `/nightshift-review reject ${token}` } },
           { label: "打开 Night Shift", url: taskUrl },
         ],

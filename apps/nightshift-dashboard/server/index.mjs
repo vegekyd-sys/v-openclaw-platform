@@ -511,6 +511,7 @@ async function handleApi(request, response, url) {
       json(response, 200, { ...authorization.result, alreadyApplied: true });
       return;
     }
+    const delivery = store.getNotification(authorization.deliveryId);
     const cards = await refreshCards();
     const card = cards.find((entry) => entry.id === authorization.cardId);
     if (!card || card.status !== "review") {
@@ -534,6 +535,10 @@ async function handleApi(request, response, url) {
     const reply = {
       action: body.action,
       cardId: card.id,
+      cardTitle: card.title,
+      instanceId: authorization.instanceId,
+      instanceName: store.listInstances().find((entry) => entry.id === authorization.instanceId)?.name ?? authorization.instanceId,
+      messageId: delivery?.messageId ?? null,
       message: body.action === "approve" ? "已通过并回写原 Workboard 卡" : body.action === "changes" ? "已退回修改，请在当前飞书会话补充具体意见" : "已拒绝并回写原 Workboard 卡",
       ok: true,
       status: result.status,
