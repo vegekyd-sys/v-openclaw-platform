@@ -1,4 +1,5 @@
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
+import { SILENT_REPLY_TOKEN } from "openclaw/plugin-sdk/reply-runtime";
 import { buildReviewOutcomeCard, parseReviewArgs, replaceReviewCard } from "./review-command.js";
 
 export default definePluginEntry({
@@ -29,7 +30,7 @@ export default definePluginEntry({
             config: ctx.config,
             messageId: body.messageId,
           });
-          return {};
+          return { text: SILENT_REPLY_TOKEN };
         } catch (error) {
           api.logger.warn?.(`nightshift-review rejected: ${error.message}`);
           return { isError: true, text: `无法处理这次审核：${error.message}` };
