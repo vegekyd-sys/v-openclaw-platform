@@ -596,15 +596,19 @@ async function ensureSeedInstance() {
 function runScheduler() {
   if (schedulerPromise) return schedulerPromise;
   schedulerPromise = (async () => {
-    const result = await runNightShiftSchedulerPulse({
-      dispatchMaxStarts: schedulerDispatchMaxStarts,
-      maxWorkboardActive: schedulerMaxWorkboardActive,
-      refreshCards,
-      runtime,
-      store,
-      syncContentItemsManifest,
-      workboard,
-    });
+    const pulse = tickQueue
+      .catch(() => undefined)
+      .then(() => runNightShiftSchedulerPulse({
+        dispatchMaxStarts: schedulerDispatchMaxStarts,
+        maxWorkboardActive: schedulerMaxWorkboardActive,
+        refreshCards,
+        runtime,
+        store,
+        syncContentItemsManifest,
+        workboard,
+      }));
+    tickQueue = pulse.catch(() => undefined);
+    const result = await pulse;
     if (notificationCoordinator) {
       const notificationResult = await notificationCoordinator.reconcile({
         cards: cardCache,
