@@ -27,7 +27,7 @@ sudo -u openclaw env HOME=/home/openclaw OPENCLAW_HOME=/home/openclaw \
   OPENCLAW_STATE_DIR=/home/openclaw/.openclaw OPENCLAW_CONFIG_PATH="$gateway_config" \
   /opt/node-v22.23.1/bin/node /opt/openclaw-2026.7.1/node_modules/openclaw/dist/index.js \
   gateway call vlab.workers.status --json --timeout 10000 >"$status_file"
-if ! node -e 'const s=require(process.argv[1]);const active=s.workers.reduce((n,w)=>n+w.activeCount,0);const queued=s.workers.reduce((n,w)=>n+w.queued,0);if(active||queued||s.pending)process.exit(3)' "$status_file"; then
+if ! /opt/node-v22.23.1/bin/node -e 'const fs=require("fs");const s=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));const active=s.workers.reduce((n,w)=>n+w.activeCount,0);const queued=s.workers.reduce((n,w)=>n+w.queued,0);if(active||queued||s.pending)process.exit(3)' "$status_file"; then
   if [[ ${ALLOW_ACTIVE_RESTART:-0} != 1 ]]; then
     echo "Production Worker pool is not idle; refusing to restart" >&2
     exit 3
@@ -68,8 +68,20 @@ ln -sfn "$release" "$release_root/current"
 chown -h openclaw:openclaw "$release_root/current"
 systemctl daemon-reload
 systemctl restart "$gateway_service"
-for _ in {1..45}; do systemctl is-active --quiet "$gateway_service" && break; sleep 1; done
-systemctl is-active --quiet "$gateway_service"
+gateway_ready_file=$(mktemp)
+gateway_ready=0
+for _ in {1..60}; do
+  if systemctl is-active --quiet "$gateway_service" && \
+    sudo -u openclaw env HOME=/home/openclaw OPENCLAW_HOME=/home/openclaw \
+      OPENCLAW_STATE_DIR=/home/openclaw/.openclaw OPENCLAW_CONFIG_PATH="$gateway_config" \
+      /opt/node-v22.23.1/bin/node /opt/openclaw-2026.7.1/node_modules/openclaw/dist/index.js \
+      gateway call vlab.workers.status --json --timeout 5000 >"$gateway_ready_file" 2>/dev/null; then
+    gateway_ready=1
+    break
+  fi
+  sleep 1
+done
+[[ $gateway_ready -eq 1 ]] || { echo "Gateway did not become RPC-ready after restart" >&2; exit 1; }
 systemctl enable --now "$workboard_service"
 for _ in {1..30}; do curl -fsS --max-time 5 http://127.0.0.1:24879/api/health >"$backup/workboard-health.json" && break; sleep 1; done
 curl -fsS --max-time 5 http://127.0.0.1:24879/api/health >"$backup/workboard-health.json"
@@ -83,7 +95,8 @@ sudo -u openclaw env HOME=/home/openclaw OPENCLAW_HOME=/home/openclaw \
   --no-deliver --timeout-seconds 30 \
   --declaration-key nightshift-native-dispatch-v0.2-prod --json >"$backup/cron.add.json"
 
-cron_id=$(/opt/node-v22.23.1/bin/node -e 'const x=require(process.argv[1]);process.stdout.write(x.id??x.job?.id??"")' "$backup/cron.add.json")
+cron_id=$(/opt/node-v22.23.1/bin/node -e 'const fs=require("fs");const x=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.stdout.write(x.id??x.job?.id??"")' "$backup/cron.add.json")
+[[ "$cron_id" =~ ^[a-f0-9-]{36}$ ]] || { echo "Cron add did not return a valid job id" >&2; exit 1; }
 sudo -u openclaw env HOME=/home/openclaw OPENCLAW_HOME=/home/openclaw \
   OPENCLAW_STATE_DIR=/home/openclaw/.openclaw OPENCLAW_CONFIG_PATH="$gateway_config" \
   /opt/node-v22.23.1/bin/node /opt/openclaw-2026.7.1/node_modules/openclaw/dist/index.js cron run \
@@ -92,7 +105,7 @@ sudo -u openclaw env HOME=/home/openclaw OPENCLAW_HOME=/home/openclaw \
   OPENCLAW_STATE_DIR=/home/openclaw/.openclaw OPENCLAW_CONFIG_PATH="$gateway_config" \
   /opt/node-v22.23.1/bin/node /opt/openclaw-2026.7.1/node_modules/openclaw/dist/index.js \
   gateway call vlab.workers.status --json --timeout 10000 >"$backup/workers.after.json"
-/opt/node-v22.23.1/bin/node -e 'const s=require(process.argv[1]);if(s.maxWorkers!==15||s.maxActiveSessions!==45||s.openClawConcurrency?.maxConcurrent!==45||s.openClawConcurrency?.subagentsMaxConcurrent!==45||s.integration?.productionPromotionBlocked)process.exit(2)' "$backup/workers.after.json"
+/opt/node-v22.23.1/bin/node -e 'const fs=require("fs");const s=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(s.maxWorkers!==15||s.maxActiveSessions!==45||s.openClawConcurrency?.maxConcurrent!==45||s.openClawConcurrency?.subagentsMaxConcurrent!==45||s.integration?.productionPromotionBlocked)process.exit(2)' "$backup/workers.after.json"
 
 printf '%s\n' \
   "release=$release" \
