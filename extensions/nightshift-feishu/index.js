@@ -11,7 +11,6 @@ export default definePluginEntry({
       name: "nightshift-review",
       description: "Apply an authorized Night Shift review decision from a Feishu notification.",
       acceptsArgs: true,
-      channels: ["feishu"],
       requireAuth: true,
       handler: async (ctx) => {
         try {
