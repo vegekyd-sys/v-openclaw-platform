@@ -86,3 +86,13 @@ test("normalizes a Feishu project origin and reviewer routing", () => {
   assert.throws(() => normalizeProjectCollaboration({ createdByOpenId: "ou_creator" }), /requires both/);
   assert.throws(() => normalizeProjectCollaboration({ createdByOpenId: "bad", sourceChatId: "oc_source" }), /invalid/);
 });
+
+test("accepts a Feishu direct-message creator as the notification target", () => {
+  assert.deepEqual(normalizeProjectCollaboration({
+    createdByOpenId: "ou_creator",
+    sourceChatId: "user:ou_creator",
+  }), {
+    createdByOpenId: "ou_creator",
+    sourceChatId: "user:ou_creator",
+  });
+});

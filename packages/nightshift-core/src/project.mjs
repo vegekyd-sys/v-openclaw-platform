@@ -45,7 +45,11 @@ export function normalizeProjectCollaboration(value = {}) {
     throw new Error("Project collaboration must be an object");
   }
   const createdByOpenId = optionalId(value.createdByOpenId, "createdByOpenId", /^ou_[A-Za-z0-9_-]+$/);
-  const sourceChatId = optionalId(value.sourceChatId, "sourceChatId", /^oc_[A-Za-z0-9_-]+$/);
+  const sourceChatId = optionalId(
+    value.sourceChatId,
+    "sourceChatId",
+    /^(?:oc_[A-Za-z0-9_-]+|(?:user:)?ou_[A-Za-z0-9_-]+)$/,
+  );
   const reviewers = uniqueIds(value.reviewers, "reviewers", /^ou_[A-Za-z0-9_-]+$/);
   const followers = uniqueIds(value.followers, "followers", /^ou_[A-Za-z0-9_-]+$/);
   const feishuAccountId = optionalId(value.feishuAccountId, "feishuAccountId", /^[A-Za-z0-9._-]+$/);
