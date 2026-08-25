@@ -27,10 +27,13 @@ sudo -u openclaw env HOME=/home/openclaw OPENCLAW_HOME=/home/openclaw \
   OPENCLAW_STATE_DIR=/home/openclaw/.openclaw OPENCLAW_CONFIG_PATH="$gateway_config" \
   /opt/node-v22.23.1/bin/node /opt/openclaw-2026.7.1/node_modules/openclaw/dist/index.js \
   gateway call vlab.workers.status --json --timeout 10000 >"$status_file"
-node -e 'const s=require(process.argv[1]);const active=s.workers.reduce((n,w)=>n+w.activeCount,0);const queued=s.workers.reduce((n,w)=>n+w.queued,0);if(active||queued||s.pending)process.exit(3)' "$status_file" || {
-  echo "Production Worker pool is not idle; refusing to restart" >&2
-  exit 3
-}
+if ! node -e 'const s=require(process.argv[1]);const active=s.workers.reduce((n,w)=>n+w.activeCount,0);const queued=s.workers.reduce((n,w)=>n+w.queued,0);if(active||queued||s.pending)process.exit(3)' "$status_file"; then
+  if [[ ${ALLOW_ACTIVE_RESTART:-0} != 1 ]]; then
+    echo "Production Worker pool is not idle; refusing to restart" >&2
+    exit 3
+  fi
+  echo "WARNING: proceeding with an explicitly authorized active-session restart" >&2
+fi
 
 timestamp=$(date -u +%Y%m%dT%H%M%SZ)
 backup="$backup_root/$timestamp"
