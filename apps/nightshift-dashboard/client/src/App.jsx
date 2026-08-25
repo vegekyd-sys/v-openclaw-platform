@@ -496,38 +496,24 @@ function Agents({ data }) {
 }
 
 function Changelog() {
-  const [latest, ...history] = NIGHT_SHIFT_CHANGELOG;
   return <div className="simple-screen changelog-screen">
     <header className="topbar changelog-topbar">
-      <div><span className="section-label">Night Shift · Product journal</span><h1>更新日志</h1><p className="topbar-copy">从第一张 Workboard 卡片，到一条会自己推进的生产线。</p></div>
-      <div className="changelog-current"><span>Current</span><strong>{latest.date.replaceAll("-", ".")}</strong></div>
+      <div><span className="section-label">Night Shift</span><h1>更新日志</h1><p className="topbar-copy">记录 Night Shift 的主要产品更新。</p></div>
     </header>
     <main className="changelog-content">
-      <article className="changelog-latest">
-        <div className="changelog-version"><span>最新更新</span><time dateTime={latest.date}>{formatChangelogDate(latest.date)}</time></div>
-        <div className="changelog-latest-copy"><span className="changelog-kicker">Now shipping</span><h2>{latest.title}</h2><p>{latest.summary}</p><ChangelogItems items={latest.items} /></div>
-        <div className="changelog-signal" aria-hidden="true"><span /><span /><span /><span /><i /></div>
-      </article>
-      <section className="changelog-history" aria-label="历史更新">
-        <div className="changelog-history-head"><span>Product timeline</span><strong>{NIGHT_SHIFT_CHANGELOG.length} 次主要更新</strong></div>
-        <div className="changelog-rail">
-          {history.map((entry, index) => <article className="changelog-entry" key={`${entry.date}-${entry.title}`}>
-            <div className="changelog-entry-date"><time dateTime={entry.date}>{formatChangelogDate(entry.date)}</time><span>{String(history.length - index).padStart(2, "0")}</span></div>
-            <div className="changelog-entry-copy"><h2>{entry.title}</h2><p>{entry.summary}</p><ChangelogItems items={entry.items} /></div>
-          </article>)}
+      {NIGHT_SHIFT_CHANGELOG.map((entry, index) => <article className="changelog-entry" key={`${entry.date}-${entry.title}`}>
+        <time dateTime={entry.date}>{entry.date}</time>
+        <div>
+          <div className="changelog-entry-title"><h2>{entry.title}</h2>{index === 0 && <span>最新</span>}</div>
+          <ChangelogItems items={entry.items} />
         </div>
-      </section>
+      </article>)}
     </main>
   </div>;
 }
 
 function ChangelogItems({ items }) {
   return <ul>{items.map((item) => <li key={item}><span aria-hidden="true" />{item}</li>)}</ul>;
-}
-
-function formatChangelogDate(value) {
-  const date = new Date(`${value}T00:00:00+08:00`);
-  return new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric" }).format(date);
 }
 
 function label(card, prefix) { return card.labels?.find((entry) => entry.startsWith(`${prefix}:`))?.slice(prefix.length + 1); }
