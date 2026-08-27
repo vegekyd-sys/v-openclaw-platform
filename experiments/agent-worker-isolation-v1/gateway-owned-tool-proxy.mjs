@@ -59,6 +59,15 @@ export function createGatewayOwnedToolProxy(options = {}) {
     stats.lastTool = toolName;
 
     try {
+      if (
+        toolName === "sessions_spawn" &&
+        typeof options.executeInGateway === "function"
+      ) {
+        const result = await options.executeInGateway(request);
+        stats.succeeded += 1;
+        stats.lastErrorCode = undefined;
+        return result;
+      }
       const result = await new Promise((resolve, reject) => {
         const child = spawn(process.execPath, [runnerPath], {
           env: {

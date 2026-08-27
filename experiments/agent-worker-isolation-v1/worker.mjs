@@ -19,17 +19,54 @@ const activeControllers = new Map();
 const skillTelemetryContexts = new Map();
 const pendingStreamEventAcks = new Map();
 const pendingWorkerGatewayEventAcks = new Map();
+const pendingGatewayToolRequests = new Map();
 let nextStreamEventId = 1;
+let nextGatewayToolRequestId = 1;
 const configuredHeartbeatMs = Number(
   process.env.VLAB_WORKER_HEARTBEAT_MS ?? 15_000,
 );
 const heartbeatMs = Number.isFinite(configuredHeartbeatMs)
   ? Math.max(25, configuredHeartbeatMs)
   : 15_000;
+function gatewayToolError(message) {
+  const error = new Error(
+    message?.error?.message ?? "Gateway-owned tool request failed",
+  );
+  error.name = message?.error?.name ?? error.name;
+  if (message?.error?.code) error.code = message.error.code;
+  return error;
+}
+
+async function executeToolInGateway(request) {
+  if (typeof process.send !== "function") {
+    throw new Error("Gateway-owned tool request requires an IPC channel");
+  }
+  const requestId = `gateway-tool-${nextGatewayToolRequestId++}`;
+  const timeoutMs = Math.max(
+    1_000,
+    Number(process.env.VLAB_GATEWAY_OWNED_TOOL_TIMEOUT_MS ?? 310_000),
+  );
+  return await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      pendingGatewayToolRequests.delete(requestId);
+      reject(
+        Object.assign(
+          new Error(`Gateway-owned tool ${requestId} timed out after ${timeoutMs}ms`),
+          { code: "VLAB_GATEWAY_TOOL_TIMEOUT" },
+        ),
+      );
+    }, timeoutMs);
+    timer.unref?.();
+    pendingGatewayToolRequests.set(requestId, { resolve, reject, timer });
+    process.send({ type: "gateway-tool-request", requestId, request });
+  });
+}
+
 const gatewayOwnedToolProxy = installGatewayOwnedToolProxy({
   timeoutMs: Number(
     process.env.VLAB_GATEWAY_OWNED_TOOL_TIMEOUT_MS ?? 310_000,
   ),
+  executeInGateway: executeToolInGateway,
 });
 const skillUsageTelemetryStats = {
   observed: 0,
@@ -607,6 +644,15 @@ async function runAgent(message, abortSignal) {
 }
 
 process.on("message", async (message) => {
+  if (message?.type === "gateway-tool-response" && message.requestId) {
+    const pending = pendingGatewayToolRequests.get(message.requestId);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    pendingGatewayToolRequests.delete(message.requestId);
+    if (message.ok === true) pending.resolve(message.result);
+    else pending.reject(gatewayToolError(message));
+    return;
+  }
   if (message?.type === "worker-gateway-event-ack" && message.eventId) {
     const pending = pendingWorkerGatewayEventAcks.get(message.eventId);
     if (!pending) return;

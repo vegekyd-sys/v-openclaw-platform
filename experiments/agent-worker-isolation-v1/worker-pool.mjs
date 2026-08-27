@@ -68,6 +68,10 @@ export class WorkerPool {
       typeof options.onWorkerEvent === "function"
         ? options.onWorkerEvent
         : undefined;
+    this.onGatewayToolRequest =
+      typeof options.onGatewayToolRequest === "function"
+        ? options.onGatewayToolRequest
+        : undefined;
     this.workers = new Map();
     this.sessionOwners = new Map();
     this.pending = [];
@@ -653,6 +657,43 @@ export class WorkerPool {
           worker.child.send({
             type: "worker-gateway-event-ack",
             eventId: event?.eventId,
+            ok: false,
+            error: {
+              name: failure.name,
+              code: failure.code,
+              message: failure.message,
+            },
+          });
+        },
+      );
+      return;
+    }
+    if (message?.type === "gateway-tool-request" && message.requestId) {
+      const delivery = Promise.resolve().then(async () => {
+        if (!this.onGatewayToolRequest) {
+          throw Object.assign(new Error("Gateway tool request handler is unavailable"), {
+            code: "VLAB_GATEWAY_TOOL_HANDLER_UNAVAILABLE",
+          });
+        }
+        return await this.onGatewayToolRequest(message.request, {
+          slot: worker.slot,
+          workerPid: worker.pid,
+        });
+      });
+      void delivery.then(
+        (result) => {
+          worker.child.send({
+            type: "gateway-tool-response",
+            requestId: message.requestId,
+            ok: true,
+            result,
+          });
+        },
+        (error) => {
+          const failure = toError(error);
+          worker.child.send({
+            type: "gateway-tool-response",
+            requestId: message.requestId,
             ok: false,
             error: {
               name: failure.name,

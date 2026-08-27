@@ -36,6 +36,7 @@ import {
   WORKER_GATEWAY_EVENT_CONTRACT_VERSION,
 } from "./worker-gateway-events.mjs";
 import { buildSkillTelemetryIndex } from "./skill-usage-telemetry.mjs";
+import { createGatewaySessionsSpawnExecutor } from "./gateway-sessions-spawn.mjs";
 
 const SESSION_PREFIX = "agent:makaron:explicit:vlab-worker-";
 const NATIVE_HARNESS_ID = "vlab-worker";
@@ -316,6 +317,10 @@ const plugin = {
         await runtime.waitForDiagnosticEventsDrained?.();
       },
     });
+    const executeGatewaySessionsSpawn = createGatewaySessionsSpawnExecutor({
+      agentRuntimePath: openClawAgentRuntimePath,
+      getConfig: () => api.config,
+    });
     const workerEnv = buildWorkerEnvironment(
       {
         ...process.env,
@@ -365,6 +370,9 @@ const plugin = {
           );
           throw error;
         }
+      },
+      async onGatewayToolRequest(request) {
+        return await executeGatewaySessionsSpawn(request);
       },
     });
     const pool = sharedPool.pool;
@@ -621,7 +629,12 @@ const plugin = {
           throw new Error("worker did not return an Agent Harness attempt result");
         }
         startSubagentCompletionRelays({
-          spawns: result.attempt.acceptedSessionSpawns,
+          // Gateway-owned sessions_spawn already registered the native
+          // completion lifecycle in the Gateway. Only legacy Worker-owned
+          // spawns need the compatibility relay.
+          spawns: result.attempt.acceptedSessionSpawns.filter(
+            (spawn) => spawn?.vlabGatewayOwned !== true,
+          ),
           requesterSessionKey: sessionKey,
           requesterOrigin: {
             channel: params.messageChannel,
@@ -1070,7 +1083,7 @@ const plugin = {
             nativeAgentHarnessDispatchAttached: true,
             nestedGatewayHarnessRouting: true,
             workerUsesIngressAgentCommand: true,
-            workerIsolationVersion: "0.2.4",
+            workerIsolationVersion: "0.2.5",
             activeRunSteer: {
               enabled: process.env.VLAB_FEISHU_STEER_ENABLED === "1",
               allowedChatIds: (process.env.VLAB_FEISHU_STEER_CHAT_IDS ?? "")
