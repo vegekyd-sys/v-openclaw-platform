@@ -1,0 +1,33 @@
+[Unit]
+Description=VLab disposable project Sandbox Broker
+After=network-online.target vlab-openshell-tunnel.service
+Wants=network-online.target
+Requires=vlab-openshell-tunnel.service
+
+[Service]
+Type=simple
+User=vlab
+Group=vlab
+WorkingDirectory=/srv/vlab/releases/sandbox-broker-v0.2.0
+Environment=HOME=/srv/vlab
+Environment=OPENSHELL_GATEWAY=v-sandbox-1
+Environment=VLAB_SANDBOX_MAX_CONCURRENT=1
+Environment=VLAB_SANDBOX_PROJECT_ROOTS=/srv/vlab/projects:/srv/vlab/state/sandbox/projects
+Environment=VLAB_SANDBOX_POLICY_DIR=/srv/vlab/state/sandbox/policies
+Environment=VLAB_SANDBOX_STATE_DIR=/srv/vlab/state/sandbox-broker
+Environment=VLAB_SANDBOX_ARTIFACTS_DIR=/srv/vlab/state/sandbox-broker/artifacts
+Environment=VLAB_SANDBOX_SOCKET=/srv/vlab/state/sandbox-broker/broker.sock
+ExecStart=/usr/bin/node /srv/vlab/releases/sandbox-broker-v0.2.0/bin/sandboxd.mjs
+Restart=on-failure
+RestartSec=3s
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/srv/vlab/state/sandbox-broker
+ReadOnlyPaths=/srv/vlab/projects /srv/vlab/state/sandbox/projects /srv/vlab/state/sandbox/policies /srv/vlab/releases/sandbox-broker-v0.2.0 /srv/vlab/.config/openshell /srv/vlab/.ssh
+MemoryMax=256M
+TasksMax=128
+
+[Install]
+WantedBy=multi-user.target

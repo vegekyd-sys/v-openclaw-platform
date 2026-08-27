@@ -1,0 +1,38 @@
+version: 1
+filesystem_policy:
+  include_workdir: true
+  read_only: [/usr, /lib, /etc, /var/log]
+  read_write: [/sandbox, /tmp, /dev/null]
+landlock:
+  compatibility: best_effort
+network_policies:
+  npm:
+    name: npm-readonly
+    endpoints:
+      - { host: registry.npmjs.org, port: 443 }
+    binaries:
+      - { path: /usr/bin/node }
+      - { path: /usr/bin/npm }
+      - { path: /usr/local/bin/node }
+      - { path: /usr/local/bin/npm }
+  pypi:
+    name: pypi-readonly
+    endpoints:
+      - { host: pypi.org, port: 443 }
+      - { host: files.pythonhosted.org, port: 443 }
+    binaries:
+      - { path: /usr/bin/pip }
+      - { path: /usr/local/bin/pip }
+      - { path: /usr/local/bin/uv }
+      - { path: /usr/bin/python3 }
+  github-readonly:
+    name: github-readonly
+    endpoints:
+      - { host: github.com, port: 443 }
+      - { host: api.github.com, port: 443 }
+      - { host: raw.githubusercontent.com, port: 443 }
+      - { host: objects.githubusercontent.com, port: 443 }
+    binaries:
+      - { path: /usr/bin/git }
+      - { path: /usr/bin/curl }
+      - { path: /usr/bin/gh }
