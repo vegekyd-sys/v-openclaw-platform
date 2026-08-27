@@ -20,6 +20,18 @@ function emitAgentEvent(event) {
 }
 
 export async function agentCommand(params) {
+  if (params.message === "inspect-timeout") {
+    return {
+      payloads: [{ text: String(params.timeout) }],
+      meta: {
+        agentMeta: {
+          provider: "fixture",
+          model: "fixture",
+          sessionId: params.sessionId,
+        },
+      },
+    };
+  }
   if (params.message === "skill-telemetry") {
     const { emitFakeTrustedDiagnosticEvent } = await import(
       "./fake-diagnostic-runtime.mjs"

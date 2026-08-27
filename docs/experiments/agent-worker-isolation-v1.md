@@ -34,7 +34,7 @@ Gateway mechanisms.
 ## Candidate
 
 - OpenClaw: `2026.7.1`
-- Worker isolation plugin: `0.2.4`
+- Worker isolation plugin: `0.2.6`
 - Worker count: elastic from one warm worker to three workers
 - Sessions per worker: at most three active, distinct sessions
 - Total active-session capacity: `3 workers x 3 sessions = 9`
@@ -59,19 +59,19 @@ Gateway mechanisms.
   the Gateway every 15 seconds. This preserves OpenClaw's native stuck-session
   diagnosis without treating Feishu's 300-second per-chat queue cap as an
   Agent lifetime.
-- OpenClaw's resolved per-attempt timeout is authoritative: ordinary Agents
-  retain the native 48-hour default, isolated Agent Cron jobs retain their
-  explicit timeout or native 60-minute safety default, and the plugin's
-  `requestTimeoutMs` is only a fallback for non-Harness experiment RPCs.
+- OpenClaw 2026.7.1's 600-second default attempt budget is not allowed to cap
+  a healthy Worker run. `nativeRequestTimeoutMs` defaults to six hours; a
+  deliberately longer upstream deadline is preserved, and explicit
+  AbortSignal cancellation remains authoritative.
 - `requestStallTimeoutMs=120000` is a separate Worker-process liveness
   watchdog. Every Worker heartbeat refreshes it, so a healthy long model or
   foreground tool run is not terminated merely because its wall time passed
   ten minutes.
-- A real request deadline or liveness timeout first sends an AbortSignal to
-  that request only. The
-  Worker process is killed only if the request does not unwind within the
-  bounded cancellation grace period, so cooperative timeouts do not interrupt
-  the other two sessions assigned to the same Worker.
+- A real request deadline first sends an AbortSignal to that request only. If
+  it does not unwind, the Worker is quarantined: the expired request is
+  detached, sibling Sessions drain on the same PID, and only then is the
+  Worker replaced. Immediate process kill is reserved for a missing-heartbeat
+  Worker stall, where the whole process is already unhealthy.
 - The Worker process loads its private runtime overlay from
   `workerConfigPath`, but OpenClaw's `resolve_exec_env` hook gives Agent
   `exec` commands the Gateway's `gatewayConfigPath`. Global CLI changes made

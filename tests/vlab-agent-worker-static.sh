@@ -6,6 +6,9 @@ EXPERIMENT_DIR="${REPO_ROOT}/experiments/agent-worker-isolation-v1"
 
 node --check "${EXPERIMENT_DIR}/worker-pool.mjs"
 node --check "${EXPERIMENT_DIR}/worker.mjs"
+node --check "${EXPERIMENT_DIR}/native-request-timeout.mjs"
+node --check "${EXPERIMENT_DIR}/native-request-timeout.test.mjs"
+node --check "${EXPERIMENT_DIR}/noncooperative-worker.mjs"
 node --check "${EXPERIMENT_DIR}/harness-event-contract.mjs"
 node --check "${EXPERIMENT_DIR}/harness-event-contract.test.mjs"
 node --check "${EXPERIMENT_DIR}/worker-stream-parity.test.mjs"
@@ -58,10 +61,12 @@ node --check "${REPO_ROOT}/tests/vlab-agent-worker-config-domain.mjs"
 node --check "${REPO_ROOT}/tests/vlab-agent-worker-harness-parity.mjs"
 node --check "${REPO_ROOT}/tests/vlab-agent-worker-five-main-five-subagents.mjs"
 node --check "${REPO_ROOT}/tests/vlab-agent-worker-long-timeout.mjs"
+node --check "${REPO_ROOT}/tests/vlab-agent-worker-long-subagent.mjs"
 node "${EXPERIMENT_DIR}/runtime-path.test.mjs"
 node "${EXPERIMENT_DIR}/exec-env.test.mjs"
 node "${EXPERIMENT_DIR}/worker-timeout-isolation.test.mjs"
 node --test \
+  "${EXPERIMENT_DIR}/native-request-timeout.test.mjs" \
   "${EXPERIMENT_DIR}/harness-event-contract.test.mjs" \
   "${EXPERIMENT_DIR}/harness-result.test.mjs" \
   "${EXPERIMENT_DIR}/session-rollover-retry.test.mjs" \
@@ -185,6 +190,7 @@ jq -e \
    and .configSchema.properties.sessionsPerWorker.maximum == 3
    and .configSchema.properties.idleTimeoutMs.maximum == 3600000
    and .configSchema.properties.requestTimeoutMs.maximum == 172800000
+   and .configSchema.properties.nativeRequestTimeoutMs.minimum == 600000
    and .configSchema.properties.requestStallTimeoutMs.minimum == 30000
    and .configSchema.properties.gatewayOwnedToolTimeoutMs.minimum == 30000
    and .configSchema.properties.workerConfigPath.minLength == 1
@@ -193,7 +199,7 @@ jq -e \
   "${EXPERIMENT_DIR}/openclaw.plugin.json" >/dev/null
 jq -e '.openclaw.extensions == ["./index.mjs"]' \
   "${EXPERIMENT_DIR}/package.json" >/dev/null
-jq -e '.version == "0.2.4"' \
+jq -e '.version == "0.2.6"' \
   "${EXPERIMENT_DIR}/package.json" >/dev/null
 grep -q 'requestTimeoutMs: attemptTimeoutMs' "${EXPERIMENT_DIR}/index.mjs"
 

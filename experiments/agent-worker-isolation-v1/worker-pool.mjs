@@ -440,11 +440,36 @@ export class WorkerPool {
       if (worker.active.get(active.id) !== active) {
         return;
       }
-      // A cooperative AbortSignal normally unwinds just this request. Only
-      // an unresponsive child process reaches this fallback, where process
-      // replacement is required to restore the pool.
+      if (error.code === "VLAB_WORKER_STALL_TIMEOUT") {
+        // Missing Worker heartbeats mean the whole process is unhealthy; a
+        // process replacement is the only safe recovery in this case.
+        worker.retiring = true;
+        worker.child.kill("SIGKILL");
+        return;
+      }
+
+      // A business deadline belongs to one request, not every Session sharing
+      // this Worker. Quarantine the process, reject only the expired request,
+      // let siblings drain, then replace the Worker. A late response from the
+      // detached request is ignored by request id.
       worker.retiring = true;
-      worker.child.kill("SIGKILL");
+      worker.active.delete(active.id);
+      clearJobTimers(active);
+      this.rejectPendingSteers(active.id, error);
+      active.reject(error);
+      this.releaseSessionOwner(worker, active.sessionOwnerKey);
+
+      const queued = worker.queue.splice(0);
+      for (const queuedJob of queued) {
+        this.releaseSessionOwner(worker, queuedJob.sessionOwnerKey);
+      }
+      if (queued.length > 0) {
+        this.pending.unshift(...queued);
+      }
+      if (worker.active.size === 0) {
+        this.retire(worker);
+      }
+      this.requestPump();
     }, this.requestCancelGraceMs);
     active.forceKillTimer.unref?.();
   }
@@ -794,7 +819,11 @@ export class WorkerPool {
     }
 
     this.releaseSessionOwner(worker, active.sessionOwnerKey);
-    this.drain(worker);
+    if (worker.retiring && worker.active.size === 0) {
+      this.retire(worker);
+    } else {
+      this.drain(worker);
+    }
     this.requestPump();
   }
 
@@ -881,7 +910,7 @@ export class WorkerPool {
   }
 
   retire(worker) {
-    if (worker.retiring) {
+    if (worker.retiring && worker.retireTimer) {
       return;
     }
     worker.retiring = true;

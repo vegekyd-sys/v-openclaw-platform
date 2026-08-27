@@ -199,3 +199,71 @@ try {
 } finally {
   await stalledWorkerPool.close();
 }
+
+const noncooperativeWorkerPath = fileURLToPath(
+  new URL("./noncooperative-worker.mjs", import.meta.url),
+);
+const siblingIsolationPool = new WorkerPool({
+  minWorkers: 1,
+  maxWorkers: 1,
+  sessionsPerWorker: 3,
+  requestTimeoutMs: 1_000,
+  requestStallTimeoutMs: 500,
+  requestCancelGraceMs: 100,
+  workerPath: noncooperativeWorkerPath,
+});
+
+try {
+  await siblingIsolationPool.start();
+  const initialPid = siblingIsolationPool.status().workers[0].pid;
+  const expired = await siblingIsolationPool.submit(
+    "agent:makaron:test:noncooperative",
+    {
+      kind: "hold",
+      nonCooperative: true,
+      requestTimeoutMs: 1_000,
+    },
+  );
+  const sibling = await siblingIsolationPool.submit(
+    "agent:makaron:test:surviving-sibling",
+    {
+      kind: "hold",
+      durationMs: 1_800,
+      marker: "SIBLING_COMPLETED",
+      requestTimeoutMs: 2_500,
+    },
+  );
+
+  await waitFor(
+    () => siblingIsolationPool.status().workers[0]?.activeCount === 2,
+  );
+
+  await assert.rejects(expired.promise, {
+    code: "VLAB_WORKER_REQUEST_TIMEOUT",
+  });
+  const duringDrain = siblingIsolationPool.status().workers[0];
+  assert.equal(duringDrain.pid, initialPid);
+  assert.equal(duringDrain.retiring, true);
+  assert.equal(duringDrain.activeCount, 1);
+
+  const siblingResult = await sibling.promise;
+  assert.equal(siblingResult.marker, "SIBLING_COMPLETED");
+  assert.equal(siblingResult.workerPid, initialPid);
+  const replacement = await waitFor(() => {
+    const worker = siblingIsolationPool.status().workers[0];
+    return worker?.ready && worker.pid !== initialPid ? worker : undefined;
+  });
+  assert.notEqual(replacement.pid, initialPid);
+
+  console.log(
+    JSON.stringify({
+      ok: true,
+      noncooperativeTimeoutQuarantined: true,
+      siblingCompletedBeforeWorkerReplacement: true,
+      initialPid,
+      replacementPid: replacement.pid,
+    }),
+  );
+} finally {
+  await siblingIsolationPool.close();
+}

@@ -64,6 +64,27 @@ test("persistent worker does not run one-shot CLI teardown per turn", async () =
   }
 });
 
+test("worker forwards the extended native run lease to OpenClaw", async () => {
+  const pool = makePool();
+  try {
+    const result = await pool.dispatch("agent:fixture:long-timeout", {
+      kind: "agent",
+      harnessAttempt: true,
+      message: "inspect-timeout",
+      sessionId: "long-timeout",
+      runId: "run-long-timeout",
+      timeoutSeconds: 21_600,
+      requestTimeoutMs: 21_600_000,
+    });
+    assert.deepEqual(
+      result.payloads.map((payload) => payload.text),
+      ["21600"],
+    );
+  } finally {
+    await pool.close();
+  }
+});
+
 test("active Worker Agent turn accepts an in-turn Steer message", async () => {
   const pool = makePool();
   try {

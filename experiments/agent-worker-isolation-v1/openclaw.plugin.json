@@ -34,6 +34,11 @@
         "minimum": 1000,
         "maximum": 172800000
       },
+      "nativeRequestTimeoutMs": {
+        "type": "integer",
+        "minimum": 600000,
+        "maximum": 172800000
+      },
       "requestStallTimeoutMs": {
         "type": "integer",
         "minimum": 30000,

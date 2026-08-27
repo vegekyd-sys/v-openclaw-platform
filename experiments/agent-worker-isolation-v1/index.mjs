@@ -37,6 +37,10 @@ import {
 } from "./worker-gateway-events.mjs";
 import { buildSkillTelemetryIndex } from "./skill-usage-telemetry.mjs";
 import { createGatewaySessionsSpawnExecutor } from "./gateway-sessions-spawn.mjs";
+import {
+  DEFAULT_NATIVE_REQUEST_TIMEOUT_MS,
+  resolveNativeRequestTimeoutMs,
+} from "./native-request-timeout.mjs";
 
 const SESSION_PREFIX = "agent:makaron:explicit:vlab-worker-";
 const NATIVE_HARNESS_ID = "vlab-worker";
@@ -193,6 +197,14 @@ const plugin = {
     );
     const idleTimeoutMs = Number(api.pluginConfig?.idleTimeoutMs ?? 180_000);
     const requestTimeoutMs = Number(api.pluginConfig?.requestTimeoutMs ?? 600_000);
+    // OpenClaw 2026.7.1 supplies a 600s default attempt budget even for
+    // isolated child Sessions. Native Gateway Sessions historically continue
+    // well beyond that channel-sized budget, so the Worker must provide a
+    // longer execution lease while still honoring explicit AbortSignals.
+    const nativeRequestTimeoutMs = Number(
+      api.pluginConfig?.nativeRequestTimeoutMs ??
+        DEFAULT_NATIVE_REQUEST_TIMEOUT_MS,
+    );
     const requestStallTimeoutMs = Number(
       api.pluginConfig?.requestStallTimeoutMs ?? 120_000,
     );
@@ -398,7 +410,13 @@ const plugin = {
         typeof params.sessionKey === "string" && params.sessionKey.trim()
           ? params.sessionKey
           : `agent:${params.agentId ?? "makaron"}:${params.sessionId}`;
-      const attemptTimeoutMs = Number(params.timeoutMs ?? requestTimeoutMs);
+      const upstreamAttemptTimeoutMs = Number(
+        params.timeoutMs ?? requestTimeoutMs,
+      );
+      const attemptTimeoutMs = resolveNativeRequestTimeoutMs({
+        upstreamTimeoutMs: upstreamAttemptTimeoutMs,
+        nativeTimeoutMs: nativeRequestTimeoutMs,
+      });
       const expectedUserTurn = params.transcriptPrompt ?? params.prompt;
       const workerShouldPersistUserTurn = shouldWorkerPersistUserTurn(
         params.userTurnTranscriptRecorder,
@@ -513,8 +531,9 @@ const plugin = {
                   1,
                   Math.ceil(attemptTimeoutMs / 1_000),
                 ),
-                // OpenClaw owns the business deadline. The Worker fallback
-                // applies only when a non-Harness caller omitted one.
+                // Explicit cancellation still arrives through abortSignal.
+                // The longer Worker lease prevents OpenClaw's 600s default
+                // from turning into an isolated-Subagent hard wall.
                 requestTimeoutMs: attemptTimeoutMs,
                 messageChannel: params.messageChannel,
                 messageProvider: params.messageProvider,
@@ -1083,7 +1102,7 @@ const plugin = {
             nativeAgentHarnessDispatchAttached: true,
             nestedGatewayHarnessRouting: true,
             workerUsesIngressAgentCommand: true,
-            workerIsolationVersion: "0.2.5",
+            workerIsolationVersion: "0.2.6",
             activeRunSteer: {
               enabled: process.env.VLAB_FEISHU_STEER_ENABLED === "1",
               allowedChatIds: (process.env.VLAB_FEISHU_STEER_CHAT_IDS ?? "")
@@ -1101,7 +1120,9 @@ const plugin = {
             },
             longRunProgressBridge: true,
             upstreamAttemptTimeoutPropagation: true,
-            workerRequestTimeoutIsFallbackOnly: true,
+            nativeRequestTimeoutFloorMs: nativeRequestTimeoutMs,
+            upstreamDefaultDoesNotCapNativeRun: true,
+            workerRequestTimeoutIsFallbackOnly: false,
             workerStallTimeoutMs: requestStallTimeoutMs,
             nativeHarnessEventParity: {
               contractVersion: HARNESS_EVENT_CONTRACT_VERSION,

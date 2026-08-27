@@ -8,6 +8,7 @@ SESSIONS_PER_WORKER="${VLAB_WORKER_SESSIONS_PER_WORKER:-3}"
 AGENT_MAX_CONCURRENT="${VLAB_AGENT_MAX_CONCURRENT:-10}"
 SUBAGENT_MAX_CONCURRENT="${VLAB_SUBAGENT_MAX_CONCURRENT:-8}"
 IDLE_TIMEOUT_MS="${VLAB_WORKER_IDLE_TIMEOUT_MS:-180000}"
+NATIVE_REQUEST_TIMEOUT_MS="${VLAB_WORKER_NATIVE_REQUEST_TIMEOUT_MS:-21600000}"
 SESSION_HOTSET_TTL_MS="${VLAB_SESSION_HOTSET_TTL_MS:-180000}"
 ARCHIVE_PATH="${ARCHIVE_PATH:-/tmp/vlab-agent-worker-isolation-v1.tar.gz}"
 PLATFORM_COMMIT="${PLATFORM_COMMIT:?PLATFORM_COMMIT is required}"
@@ -141,6 +142,11 @@ if ! [[ "$IDLE_TIMEOUT_MS" =~ ^[0-9]+$ ]] \
   echo "VLAB_WORKER_IDLE_TIMEOUT_MS must be an integer between 100 and 3600000" >&2
   exit 1
 fi
+if ! [[ "$NATIVE_REQUEST_TIMEOUT_MS" =~ ^[0-9]+$ ]] \
+  || (( NATIVE_REQUEST_TIMEOUT_MS < 600000 || NATIVE_REQUEST_TIMEOUT_MS > 172800000 )); then
+  echo "VLAB_WORKER_NATIVE_REQUEST_TIMEOUT_MS must be between 600000 and 172800000" >&2
+  exit 1
+fi
 if ! [[ "$SESSION_HOTSET_TTL_MS" =~ ^[0-9]+$ ]] \
   || (( SESSION_HOTSET_TTL_MS < 100 || SESSION_HOTSET_TTL_MS > 3600000 )); then
   echo "VLAB_SESSION_HOTSET_TTL_MS must be between 100 and 3600000" >&2
@@ -209,6 +215,7 @@ for required in \
   index.mjs \
   worker-pool.mjs \
   worker.mjs \
+  native-request-timeout.mjs \
   worker-progress.mjs \
   worker-gateway-events.mjs \
   exec-env.mjs \
@@ -229,7 +236,7 @@ for required in \
     exit 1
   }
 done
-[[ "$(jq -r '.version' "${RELEASE_DIR}/package.json")" == "0.2.4" ]] || {
+[[ "$(jq -r '.version' "${RELEASE_DIR}/package.json")" == "0.2.6" ]] || {
   echo "unexpected Worker isolation version" >&2
   exit 1
 }
@@ -360,6 +367,7 @@ jq \
   --argjson agent_max_concurrent "$AGENT_MAX_CONCURRENT" \
   --argjson subagent_max_concurrent "$SUBAGENT_MAX_CONCURRENT" \
   --argjson idle_timeout_ms "$IDLE_TIMEOUT_MS" \
+  --argjson native_request_timeout_ms "$NATIVE_REQUEST_TIMEOUT_MS" \
   --argjson existing_worker_compaction "$existing_worker_compaction" \
   '
     .tools = (.tools // {})
@@ -434,6 +442,7 @@ jq \
           sessionsPerWorker: $sessions_per_worker,
           idleTimeoutMs: $idle_timeout_ms,
           requestTimeoutMs: 600000,
+          nativeRequestTimeoutMs: $native_request_timeout_ms,
           requestStallTimeoutMs: 120000,
           gatewayOwnedToolTimeoutMs: 310000,
           fastCompactionModel: (
@@ -513,8 +522,11 @@ ready_worker_count="$(
   false
 }
 jq -e \
+  --argjson expected_native_request_timeout_ms "$NATIVE_REQUEST_TIMEOUT_MS" \
   '(.result // .) as $status
-   | $status.integration.workerIsolationVersion == "0.2.4"
+   | $status.integration.workerIsolationVersion == "0.2.6"
+     and $status.integration.nativeRequestTimeoutFloorMs == $expected_native_request_timeout_ms
+     and $status.integration.upstreamDefaultDoesNotCapNativeRun == true
      and $status.integration.activeRunSteer.enabled == true
      and ($status.integration.activeRunSteer.allowedChatIds | index("*")) != null
      and $status.integration.mediaCompletionRelay.gatewayOwned == true
