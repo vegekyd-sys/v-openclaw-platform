@@ -18,12 +18,11 @@ const upstreamTimeoutMs = Number(
 const acceptanceTimeoutMs = Number(
   process.env.VLAB_LONG_SUBAGENT_ACCEPTANCE_TIMEOUT_MS ?? 900_000,
 );
+const nativeLaneBoundaryMs = upstreamTimeoutMs + 30_000;
 
-assert.ok(childHoldSeconds > 600, "child must cross the old ten-minute wall");
-assert.equal(
-  upstreamTimeoutMs,
-  600_000,
-  "the regression must exercise OpenClaw's observed 600s default",
+assert.ok(
+  childHoldSeconds * 1_000 > nativeLaneBoundaryMs,
+  "child must cross OpenClaw's timeout plus native lane grace",
 );
 assert.ok(
   acceptanceTimeoutMs > childHoldSeconds * 1_000,
@@ -139,6 +138,7 @@ assert.equal(sent.runId, runId);
 
 let spawn;
 let crossedOldBoundaryWhileActive = false;
+let crossedNativeLaneBoundaryWhileActive = false;
 let completionObserved = false;
 let childWorkerPid;
 const samples = [];
@@ -165,6 +165,9 @@ while (Date.now() < deadline) {
     );
     if (Date.now() - startedAt > upstreamTimeoutMs) {
       crossedOldBoundaryWhileActive = true;
+    }
+    if (Date.now() - startedAt > nativeLaneBoundaryMs) {
+      crossedNativeLaneBoundaryWhileActive = true;
     }
   }
   completionObserved = textBlocks(parentHistory).some((text) =>
@@ -193,6 +196,11 @@ assert.equal(
   crossedOldBoundaryWhileActive,
   true,
   "child was not active beyond the previous 600s wall",
+);
+assert.equal(
+  crossedNativeLaneBoundaryWhileActive,
+  true,
+  "child was not active beyond OpenClaw's native command-lane boundary",
 );
 assert.equal(completionObserved, true, "completion never returned to Parent");
 
@@ -239,8 +247,10 @@ const summary = {
   childWorkerPid,
   childHoldSeconds,
   upstreamTimeoutMs,
+  nativeLaneBoundaryMs,
   elapsedMs: Date.now() - startedAt,
   crossedOldBoundaryWhileActive,
+  crossedNativeLaneBoundaryWhileActive,
   parentCompletionReturned: completionObserved,
   nativeCommandLaneProgress: after.integration.nativeCommandLaneProgress,
   gatewayRestarts: systemdNumber("NRestarts") - baselineRestarts,
