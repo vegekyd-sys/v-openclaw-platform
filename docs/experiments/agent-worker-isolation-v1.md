@@ -35,6 +35,10 @@ Gateway mechanisms.
 
 - OpenClaw: `2026.7.1`
 - Worker isolation plugin: `0.2.6`
+- Worker heartbeats refresh both the Worker liveness watchdog and OpenClaw's
+  native command-lane progress lease. Long isolated Subagents therefore do not
+  fall out of the native lane at `timeoutMs + 30s` while their foreground tool
+  call is still making Worker-level progress.
 - Worker count: elastic from one warm worker to three workers
 - Sessions per worker: at most three active, distinct sessions
 - Total active-session capacity: `3 workers x 3 sessions = 9`

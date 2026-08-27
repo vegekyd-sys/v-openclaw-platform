@@ -110,6 +110,7 @@ await saveJson("status-before.json", before);
 assert.equal(before.integration.workerIsolationVersion, "0.2.6");
 assert.equal(before.integration.upstreamDefaultDoesNotCapNativeRun, true);
 assert.ok(before.integration.nativeRequestTimeoutFloorMs > upstreamTimeoutMs);
+assert.equal(before.integration.nativeCommandLaneProgress.failed, 0);
 
 const childTask =
   `使用 exec 前台执行 /bin/sleep ${childHoldSeconds}；必须等待它真实退出，` +
@@ -222,9 +223,11 @@ const journal = execFileSync(
   { encoding: "utf8", maxBuffer: 8 * 1024 * 1024 },
 );
 assert.equal(
-  /timed out after 600000ms|worker \d+ exited.*SIGKILL/.test(journal),
+  /timed out after 600000ms|Command lane .* timed out after 630000ms|worker \d+ exited.*SIGKILL/.test(
+    journal,
+  ),
   false,
-  "the old hard-timeout or collateral Worker kill reappeared",
+  "a Worker or native command-lane timeout reappeared",
 );
 
 const summary = {
@@ -239,6 +242,7 @@ const summary = {
   elapsedMs: Date.now() - startedAt,
   crossedOldBoundaryWhileActive,
   parentCompletionReturned: completionObserved,
+  nativeCommandLaneProgress: after.integration.nativeCommandLaneProgress,
   gatewayRestarts: systemdNumber("NRestarts") - baselineRestarts,
 };
 await saveJson("summary.json", summary);

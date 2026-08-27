@@ -41,6 +41,7 @@ import {
   DEFAULT_NATIVE_REQUEST_TIMEOUT_MS,
   resolveNativeRequestTimeoutMs,
 } from "./native-request-timeout.mjs";
+import { NativeLaneProgressBridge } from "./native-lane-progress.mjs";
 
 const SESSION_PREFIX = "agent:makaron:explicit:vlab-worker-";
 const NATIVE_HARNESS_ID = "vlab-worker";
@@ -133,6 +134,7 @@ function acquireSharedPool(options) {
         lastWorkerPid: undefined,
       },
       nativeRequestsByRunId: new Map(),
+      nativeLaneProgressBridge: new NativeLaneProgressBridge(),
       nativeSubagentCompletionRelays: new Map(),
       fastCompactionWorkerStats: new Map(),
       harnessEventParity: {
@@ -166,6 +168,10 @@ function acquireSharedPool(options) {
       processLocalOptions: new Set(),
       unclassifiedOptions: new Set(),
     };
+  }
+  if (!globalThis[SHARED_POOL_KEY].nativeLaneProgressBridge) {
+    globalThis[SHARED_POOL_KEY].nativeLaneProgressBridge =
+      new NativeLaneProgressBridge();
   }
   if (!globalThis[SHARED_POOL_KEY].harnessEventParity.eventsByCallback) {
     globalThis[SHARED_POOL_KEY].harnessEventParity.eventsByCallback = new Map();
@@ -368,6 +374,19 @@ const plugin = {
       requestCancelGraceMs,
       workerEnv,
       async onProgress(progress) {
+        const nativeLaneProgressBridge =
+          globalThis[SHARED_POOL_KEY]?.nativeLaneProgressBridge;
+        if (nativeLaneProgressBridge) {
+          try {
+            await nativeLaneProgressBridge.relay(progress);
+          } catch (error) {
+            api.logger.warn(
+              `Worker native lane progress relay failed for ${progress.requestId}: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+          }
+        }
         const { emitDiagnosticEvent } = await diagnosticRuntimePromise;
         relayWorkerProgress(emitDiagnosticEvent, progress);
       },
@@ -389,6 +408,7 @@ const plugin = {
     });
     const pool = sharedPool.pool;
     const nativeRequestsByRunId = sharedPool.nativeRequestsByRunId;
+    const nativeLaneProgressBridge = sharedPool.nativeLaneProgressBridge;
     const nativeSubagentCompletionRelays =
       sharedPool.nativeSubagentCompletionRelays;
     const fastCompactionWorkerStats = sharedPool.fastCompactionWorkerStats;
@@ -593,6 +613,21 @@ const plugin = {
               requestId: submitted.requestId,
               sessionKey,
             });
+            const unregisterNativeLaneProgress =
+              nativeLaneProgressBridge.register(
+                submitted.requestId,
+                async (progress) => {
+                  if (typeof params.onRunProgress !== "function") return;
+                  await params.onRunProgress({
+                    phase: "worker_active",
+                    source: "vlab-worker",
+                    reason: progress.reason,
+                    requestId: progress.requestId,
+                    workerPid: progress.workerPid,
+                    workerSlot: progress.slot,
+                  });
+                },
+              );
             const onAbort = () => {
               pool.cancel(submitted.requestId);
             };
@@ -615,6 +650,7 @@ const plugin = {
             try {
               return await submitted.promise;
             } finally {
+              unregisterNativeLaneProgress();
               activeRunProxy.deactivate();
               activeRunRuntime.clearActiveEmbeddedRun(
                 session.sessionId,
@@ -1119,6 +1155,7 @@ const plugin = {
               })),
             },
             longRunProgressBridge: true,
+            nativeCommandLaneProgress: nativeLaneProgressBridge.status(),
             upstreamAttemptTimeoutPropagation: true,
             nativeRequestTimeoutFloorMs: nativeRequestTimeoutMs,
             upstreamDefaultDoesNotCapNativeRun: true,
