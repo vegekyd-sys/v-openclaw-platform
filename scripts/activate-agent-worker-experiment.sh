@@ -118,8 +118,8 @@ if ! [[ "$MIN_WORKERS" =~ ^[0-9]+$ ]] \
   exit 1
 fi
 if ! [[ "$WORKER_COUNT" =~ ^[0-9]+$ ]] \
-  || (( WORKER_COUNT < MIN_WORKERS || WORKER_COUNT > 3 )); then
-  echo "VLAB_WORKER_COUNT must be an integer between VLAB_WORKER_MIN_COUNT and 3" >&2
+  || (( WORKER_COUNT < MIN_WORKERS || WORKER_COUNT > 16 )); then
+  echo "VLAB_WORKER_COUNT must be an integer between VLAB_WORKER_MIN_COUNT and 16" >&2
   exit 1
 fi
 if ! [[ "$SESSIONS_PER_WORKER" =~ ^[0-9]+$ ]] \

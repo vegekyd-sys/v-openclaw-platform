@@ -186,7 +186,7 @@ jq -e '.id == "vlab-agent-worker-isolation"' \
   "${EXPERIMENT_DIR}/openclaw.plugin.json" >/dev/null
 jq -e \
   '.configSchema.properties.minWorkers.minimum == 1
-   and .configSchema.properties.maxWorkers.maximum == 3
+   and .configSchema.properties.maxWorkers.maximum == 16
    and .configSchema.properties.sessionsPerWorker.maximum == 3
    and .configSchema.properties.idleTimeoutMs.maximum == 3600000
    and .configSchema.properties.requestTimeoutMs.maximum == 172800000
