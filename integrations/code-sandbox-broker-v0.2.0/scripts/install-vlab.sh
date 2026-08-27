@@ -57,6 +57,15 @@ cat > "$backup_dir/ROLLBACK.txt" <<EOF
 sudo $release_dir/scripts/rollback-vlab.sh $backup_dir
 EOF
 systemctl daemon-reload
-systemctl enable --now vlab-sandbox-broker.service
+systemctl enable vlab-sandbox-broker.service
+systemctl restart vlab-sandbox-broker.service
+for _ in $(seq 1 50); do
+  [[ -S /srv/vlab/state/sandbox-broker/broker.sock ]] && break
+  sleep 0.1
+done
+if [[ ! -S /srv/vlab/state/sandbox-broker/broker.sock ]]; then
+  systemctl status vlab-sandbox-broker.service --no-pager >&2 || true
+  exit 1
+fi
 sudo -u vlab -H /srv/vlab/bin/sandboxctl health
 echo "backup=$backup_dir"
