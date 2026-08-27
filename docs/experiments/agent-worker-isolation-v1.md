@@ -39,6 +39,9 @@ Gateway mechanisms.
   native command-lane progress lease. Long isolated Subagents therefore do not
   fall out of the native lane at `timeoutMs + 30s` while their foreground tool
   call is still making Worker-level progress.
+- The default Subagent runtime budget is aligned to the same six-hour native
+  lease (`agents.defaults.subagents.runTimeoutSeconds=21600`). Explicit tool
+  cancellation still wins, while the Worker stall watchdog remains 120s.
 - Worker count: elastic from one warm worker to three workers
 - Sessions per worker: at most three active, distinct sessions
 - Total active-session capacity: `3 workers x 3 sessions = 9`

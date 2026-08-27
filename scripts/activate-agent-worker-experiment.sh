@@ -9,6 +9,7 @@ AGENT_MAX_CONCURRENT="${VLAB_AGENT_MAX_CONCURRENT:-10}"
 SUBAGENT_MAX_CONCURRENT="${VLAB_SUBAGENT_MAX_CONCURRENT:-8}"
 IDLE_TIMEOUT_MS="${VLAB_WORKER_IDLE_TIMEOUT_MS:-180000}"
 NATIVE_REQUEST_TIMEOUT_MS="${VLAB_WORKER_NATIVE_REQUEST_TIMEOUT_MS:-21600000}"
+SUBAGENT_RUN_TIMEOUT_SECONDS="${VLAB_SUBAGENT_RUN_TIMEOUT_SECONDS:-21600}"
 SESSION_HOTSET_TTL_MS="${VLAB_SESSION_HOTSET_TTL_MS:-180000}"
 ARCHIVE_PATH="${ARCHIVE_PATH:-/tmp/vlab-agent-worker-isolation-v1.tar.gz}"
 PLATFORM_COMMIT="${PLATFORM_COMMIT:?PLATFORM_COMMIT is required}"
@@ -145,6 +146,11 @@ fi
 if ! [[ "$NATIVE_REQUEST_TIMEOUT_MS" =~ ^[0-9]+$ ]] \
   || (( NATIVE_REQUEST_TIMEOUT_MS < 600000 || NATIVE_REQUEST_TIMEOUT_MS > 172800000 )); then
   echo "VLAB_WORKER_NATIVE_REQUEST_TIMEOUT_MS must be between 600000 and 172800000" >&2
+  exit 1
+fi
+if ! [[ "$SUBAGENT_RUN_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] \
+  || (( SUBAGENT_RUN_TIMEOUT_SECONDS < 600 || SUBAGENT_RUN_TIMEOUT_SECONDS > 172800 )); then
+  echo "VLAB_SUBAGENT_RUN_TIMEOUT_SECONDS must be an integer between 600 and 172800" >&2
   exit 1
 fi
 if ! [[ "$SESSION_HOTSET_TTL_MS" =~ ^[0-9]+$ ]] \
@@ -368,6 +374,7 @@ jq \
   --argjson subagent_max_concurrent "$SUBAGENT_MAX_CONCURRENT" \
   --argjson idle_timeout_ms "$IDLE_TIMEOUT_MS" \
   --argjson native_request_timeout_ms "$NATIVE_REQUEST_TIMEOUT_MS" \
+  --argjson subagent_run_timeout_seconds "$SUBAGENT_RUN_TIMEOUT_SECONDS" \
   --argjson existing_worker_compaction "$existing_worker_compaction" \
   '
     .tools = (.tools // {})
@@ -399,6 +406,7 @@ jq \
       )
     | .agents.defaults.subagents = (.agents.defaults.subagents // {})
     | .agents.defaults.subagents.maxConcurrent = $subagent_max_concurrent
+    | .agents.defaults.subagents.runTimeoutSeconds = $subagent_run_timeout_seconds
     | .agents.defaults.compaction = (
         (.agents.defaults.compaction // {}) * $existing_worker_compaction
       )

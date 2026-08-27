@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ARCHIVE_PATH="${1:-/tmp/v-worker-longrun-v0.2.6-2a9cc57.tgz}"
-EXPECTED_SHA256="${2:-c80088e2dd4c313d567fbdbc1230272c60b36ab0a0439db93c2a12b49607bd18}"
-RELEASE_ID="2a9cc5722e3ea094b46faeae4407b723b5156040"
+ARCHIVE_PATH="${1:-/tmp/v-worker-longrun-v0.2.6-p1.tgz}"
+EXPECTED_SHA256="${2:?expected candidate SHA-256 is required}"
+RELEASE_ID="${3:-5f6db16898f42922ba9b3a250a69410590291153}"
 RELEASE_ROOT="/opt/openclaw-experiments/agent-worker-isolation-v1/releases"
 RELEASE_DIR="${RELEASE_ROOT}/${RELEASE_ID}"
 STATE_DIR="/home/openclaw/.openclaw"
@@ -122,6 +122,7 @@ patch_config() {
       | unique
     )
     | .plugins.entries["vlab-agent-worker-isolation"].config.nativeRequestTimeoutMs = 21600000
+    | .agents.defaults.subagents.runTimeoutSeconds = 21600
   ' "${source_path}" > "${candidate}"
   install -o openclaw -g openclaw -m 0600 "${candidate}" "${destination_path}"
   rm -f "${candidate}"
@@ -151,6 +152,7 @@ jq -e \
     .integration.workerIsolationVersion == "0.2.6"
     and .integration.nativeRequestTimeoutFloorMs == 21600000
     and .integration.upstreamDefaultDoesNotCapNativeRun == true
+    and .integration.nativeCommandLaneProgress.failed == 0
     and .minWorkers == $min_workers
     and .maxWorkers == $max_workers
     and .sessionsPerWorker == $sessions_per_worker
@@ -158,6 +160,10 @@ jq -e \
     and .pending == 0
     and ([.workers[] | select(.ready == true)] | length) >= $min_workers
   ' "${STATUS_FILE}.after" >/dev/null
+jq -e '.agents.defaults.subagents.runTimeoutSeconds == 21600' \
+  "${CONFIG_PATH}" >/dev/null
+jq -e '.agents.defaults.subagents.runTimeoutSeconds == 21600' \
+  "${WORKER_CONFIG_PATH}" >/dev/null
 
 trap - ERR
 echo "production Worker 0.2.6 promoted"
