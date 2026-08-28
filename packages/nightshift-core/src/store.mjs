@@ -99,6 +99,14 @@ export class NightShiftStore {
         payload_json TEXT NOT NULL,
         created_at TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS action_cards (
+        action_key TEXT PRIMARY KEY,
+        instance_id TEXT NOT NULL REFERENCES instances(id),
+        card_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS action_cards_instance_id_idx ON action_cards(instance_id);
       CREATE TABLE IF NOT EXISTS notification_subject_state (
         subject_key TEXT PRIMARY KEY,
         state TEXT NOT NULL,
@@ -484,6 +492,32 @@ export class NightShiftStore {
       payload: JSON.parse(row.payload_json),
       createdAt: row.created_at,
     }));
+  }
+
+  bindActionCard({ actionKey, instanceId, cardId }, now = new Date()) {
+    if (!actionKey || !instanceId || !cardId) throw new Error("Action key, instance id, and card id are required");
+    const timestamp = now.toISOString();
+    this.db.prepare(`
+      INSERT INTO action_cards(action_key, instance_id, card_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(action_key) DO UPDATE SET
+        instance_id=excluded.instance_id,
+        card_id=excluded.card_id,
+        updated_at=excluded.updated_at
+    `).run(actionKey, instanceId, cardId, timestamp, timestamp);
+    return { actionKey, instanceId, cardId, updatedAt: timestamp };
+  }
+
+  listActionCardIds(instanceIds) {
+    const ids = [...new Set((instanceIds ?? []).filter(Boolean))];
+    if (ids.length === 0) return [];
+    const placeholders = ids.map(() => "?").join(",");
+    return this.db.prepare(`
+      SELECT DISTINCT card_id AS cardId
+      FROM action_cards
+      WHERE instance_id IN (${placeholders})
+      ORDER BY card_id
+    `).all(...ids).map((row) => row.cardId);
   }
 
   transitionNotificationSubject(subjectKey, state, now = new Date()) {

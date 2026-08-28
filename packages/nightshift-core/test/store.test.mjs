@@ -53,6 +53,7 @@ test("persists immutable releases, instances, stage runs, approvals, and audit e
     bindings: { publicationTarget: { tiktokHandle: "@fixture" } },
     bindingHash: "binding-sha",
   });
+  store.bindActionCard({ actionKey: "approval-action", instanceId: "NS-STORE-1", cardId: "approval-card-1" });
 
   assert.equal(store.listReleases().length, 1);
   assert.equal(store.getInstance("NS-STORE-1").approvals.length, 1);
@@ -63,6 +64,7 @@ test("persists immutable releases, instances, stage runs, approvals, and audit e
   assert.equal(store.listContentItems("NS-STORE-1").length, 2);
   assert.equal(store.listContentItems("NS-STORE-1")[0].status, "routed");
   assert.equal(store.listContentItemRuns("NS-STORE-1")[0].contentItemId, "video-ai-01");
+  assert.deepEqual(store.listActionCardIds(["NS-STORE-1"]), ["approval-card-1"]);
   assert.deepEqual(
     store.listEvents("NS-STORE-1").map((event) => event.type),
     ["approval.recorded", "content-items.replaced", "content-items.replaced", "instance.created"],

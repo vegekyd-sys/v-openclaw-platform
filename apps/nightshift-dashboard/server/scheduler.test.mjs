@@ -28,7 +28,7 @@ test("uses one shared snapshot and one native dispatch for all active projects",
       tick: async (instanceId, options) => {
         ticks.push({ instanceId, options });
         return {
-          applied: [{ card: created[instanceId === "A" ? 0 : 1] }],
+          applied: [{ card: created[instanceId === "A" ? 0 : 1], status: "created" }],
         };
       },
     },
@@ -40,6 +40,7 @@ test("uses one shared snapshot and one native dispatch for all active projects",
         { id: "B", status: "active" },
         { id: "C", status: "done" },
       ],
+      listActionCardIds: () => [],
       listStageRuns: (instanceId) => instanceId === "A" ? [{ cardId: "running-1", stageId: "work", status: "running" }] : [],
     },
     syncContentItemsManifest: async () => {},
@@ -96,6 +97,7 @@ test("isolates a manifest warning without blocking native dispatch", async () =>
       appendEvent: (event) => events.push(event),
       listContentItemRuns: () => [],
       listInstances: () => [{ id: "A", status: "active" }],
+      listActionCardIds: () => [],
       listStageRuns: () => [{ cardId: "ready", stageId: "work", status: "ready" }],
     },
     syncContentItemsManifest: async () => { throw new Error("bad manifest"); },
@@ -125,6 +127,7 @@ test("scheduler scope is independent from historical Workboard card count", asyn
       appendEvent() {},
       listContentItemRuns: () => [{ cardId: "active-ready", contentItemId: "one", stageId: "work", status: "ready" }],
       listInstances: () => [{ id: "ACTIVE", status: "active" }, { id: "OLD", status: "done" }],
+      listActionCardIds: () => ["approval-card"],
       listStageRuns: () => [
         { attempt: 1, cardId: "history-done", stageId: "old", status: "done" },
         { attempt: 1, cardId: "old-attempt", stageId: "work", status: "running" },
@@ -140,8 +143,32 @@ test("scheduler scope is independent from historical Workboard card count", asyn
     },
   });
 
-  assert.deepEqual(requestedIds, ["active-running", "active-ready"]);
+  assert.deepEqual(requestedIds, ["active-running", "active-ready", "approval-card"]);
   assert.deepEqual(dispatchOptions.cardIds, requestedIds);
   assert.equal(result.running, 1);
   assert.equal(result.ready, 1);
+});
+
+test("reused idempotent actions do not trigger a second refresh", async () => {
+  let refreshes = 0;
+  const result = await runNightShiftSchedulerPulse({
+    refreshCards: async () => {
+      refreshes += 1;
+      return [{ id: "approval-card", status: "review", labels: ["nightshift:approval"] }];
+    },
+    runtime: { tick: async () => ({ applied: [{ card: { id: "approval-card" }, status: "reused" }] }) },
+    store: {
+      appendEvent() {},
+      listActionCardIds: () => ["approval-card"],
+      listContentItemRuns: () => [],
+      listInstances: () => [{ id: "ACTIVE", status: "active" }],
+      listStageRuns: () => [],
+    },
+    syncContentItemsManifest: async () => {},
+    workboard: { dispatch: async () => ({ started: 0 }) },
+  });
+
+  assert.equal(refreshes, 1);
+  assert.equal(result.changed, false);
+  assert.equal(result.timings.instances[0].mutations, 0);
 });

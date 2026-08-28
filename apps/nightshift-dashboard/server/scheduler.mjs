@@ -45,8 +45,9 @@ export async function runNightShiftSchedulerPulse({
         cards,
         dispatch: false,
       });
-      timings.instances.push({ id: instance.id, ms: elapsedMs(instanceStartedAt), applied: result.applied.length });
-      if (result.applied.length === 0) continue;
+      const mutations = result.applied.filter((entry) => ["created", "reopened"].includes(entry.status)).length;
+      timings.instances.push({ id: instance.id, ms: elapsedMs(instanceStartedAt), applied: result.applied.length, mutations });
+      if (mutations === 0) continue;
       changed = true;
       cards = mergeAppliedCards(cards, result.applied);
     }
@@ -98,6 +99,7 @@ export function instanceCardIds(store, instances) {
       if (typeof run.cardId === "string" && run.cardId.trim()) ids.add(run.cardId.trim());
     }
   }
+  for (const cardId of store.listActionCardIds?.(instances.map((instance) => instance.id)) ?? []) ids.add(cardId);
   return [...ids];
 }
 
