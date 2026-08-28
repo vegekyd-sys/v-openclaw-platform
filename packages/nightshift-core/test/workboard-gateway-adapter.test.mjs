@@ -88,6 +88,17 @@ test("creates and reuses native cards through Gateway RPC", async () => {
     maxStarts: 4,
     cardIds: ["card-1"],
   });
+
+  const beforePrefetch = calls.length;
+  const prefetch = await adapter.prefetchSessions(["session-a", "session-b", "session-a"], { concurrency: 2, limit: 12 });
+  assert.deepEqual(prefetch, { count: 2, failed: 0 });
+  assert.equal(calls.length, beforePrefetch + 2);
+  const cached = await adapter.getSession("session-a", { limit: 12 });
+  assert.equal(cached.messages[0].content[0].text, "session-a");
+  assert.equal(calls.length, beforePrefetch + 2);
+  adapter.clearSessionSnapshots();
+  await adapter.getSession("session-a", { limit: 12 });
+  assert.equal(calls.length, beforePrefetch + 3);
 });
 
 test("refuses a remote Gateway instead of exposing its token in process arguments", async () => {

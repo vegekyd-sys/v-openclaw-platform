@@ -6,6 +6,7 @@ test("uses one shared snapshot and one native dispatch for all active projects",
   let refreshes = 0;
   const refreshScopes = [];
   const dispatches = [];
+  const sessionPrefetches = [];
   const ticks = [];
   const initial = [
     { id: "running-1", status: "running" },
@@ -43,9 +44,14 @@ test("uses one shared snapshot and one native dispatch for all active projects",
     },
     syncContentItemsManifest: async () => {},
     workboard: {
+      clearSessionSnapshots: () => sessionPrefetches.push("cleared"),
       dispatch: async (maxStarts, options) => {
         dispatches.push({ maxStarts, options });
         return { started: maxStarts };
+      },
+      prefetchSessions: async (keys, options) => {
+        sessionPrefetches.push({ keys, options });
+        return { count: keys.length, failed: 0 };
       },
     },
   });
@@ -57,6 +63,7 @@ test("uses one shared snapshot and one native dispatch for all active projects",
   assert.equal(ticks[1].options.cards.some((card) => card.id === "new-a"), true);
   assert.deepEqual(refreshScopes[0], ["running-1", "ready-1"]);
   assert.deepEqual(dispatches, [{ maxStarts: 3, options: { cardIds: ["running-1", "ready-1"] } }]);
+  assert.deepEqual(sessionPrefetches, ["cleared"]);
   assert.equal(result.running, 1);
   assert.equal(result.ready, 3);
 });

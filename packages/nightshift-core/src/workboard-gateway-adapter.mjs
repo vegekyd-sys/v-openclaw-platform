@@ -24,6 +24,7 @@ export class WorkboardGatewayAdapter {
     this.gatewayUrl = gatewayUrl;
     this.rpcTimeoutMs = rpcTimeoutMs;
     this.runner = runner;
+    this.sessionSnapshots = null;
   }
 
   async listCards({ cardIds = null } = {}) {
@@ -101,7 +102,34 @@ export class WorkboardGatewayAdapter {
 
   async getSession(sessionKey, { limit = 300 } = {}) {
     if (!sessionKey) throw new Error("A native Workboard session key is required");
+    if (this.sessionSnapshots?.has(sessionKey)) {
+      const snapshot = this.sessionSnapshots.get(sessionKey);
+      if (snapshot.error) throw snapshot.error;
+      return snapshot.value;
+    }
     return this.call("sessions.get", { key: sessionKey, limit });
+  }
+
+  async prefetchSessions(sessionKeys, { concurrency = 8, limit = 12 } = {}) {
+    const keys = uniqueCardIds(sessionKeys);
+    const snapshots = new Map();
+    for (let offset = 0; offset < keys.length; offset += concurrency) {
+      const batch = keys.slice(offset, offset + concurrency);
+      const results = await Promise.all(batch.map(async (key) => {
+        try {
+          return { key, value: await this.call("sessions.get", { key, limit }) };
+        } catch (error) {
+          return { error, key };
+        }
+      }));
+      for (const result of results) snapshots.set(result.key, result);
+    }
+    this.sessionSnapshots = snapshots;
+    return { count: keys.length, failed: [...snapshots.values()].filter((entry) => entry.error).length };
+  }
+
+  clearSessionSnapshots() {
+    this.sessionSnapshots = null;
   }
 
   async completeCard(id, input = {}) {

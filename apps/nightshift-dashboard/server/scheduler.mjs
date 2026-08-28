@@ -13,24 +13,37 @@ export async function runNightShiftSchedulerPulse({
   let changed = false;
   const warnings = [];
 
-  for (const instance of activeInstances) {
-    try {
-      await syncContentItemsManifest(instance);
-    } catch (error) {
-      warnings.push(`${instance.id}: ${error.message}`);
-      store.appendEvent({
-        instanceId: instance.id,
-        type: "content-items.import.failed",
-        payload: { error: error.message },
+  const runningSessionKeys = cards
+    .filter(cardIsRunning)
+    .map((card) => card.sessionKey)
+    .filter((sessionKey) => typeof sessionKey === "string" && sessionKey);
+  if (typeof workboard.prefetchSessions === "function" && runningSessionKeys.length > 0) {
+    const prefetched = await workboard.prefetchSessions(runningSessionKeys, { concurrency: 8, limit: 12 });
+    if (prefetched.failed > 0) warnings.push(`Session snapshot prefetch failed for ${prefetched.failed}/${prefetched.count} running cards`);
+  }
+
+  try {
+    for (const instance of activeInstances) {
+      try {
+        await syncContentItemsManifest(instance);
+      } catch (error) {
+        warnings.push(`${instance.id}: ${error.message}`);
+        store.appendEvent({
+          instanceId: instance.id,
+          type: "content-items.import.failed",
+          payload: { error: error.message },
+        });
+      }
+      const result = await runtime.tick(instance.id, {
+        cards,
+        dispatch: false,
       });
+      if (result.applied.length === 0) continue;
+      changed = true;
+      cards = mergeAppliedCards(cards, result.applied);
     }
-    const result = await runtime.tick(instance.id, {
-      cards,
-      dispatch: false,
-    });
-    if (result.applied.length === 0) continue;
-    changed = true;
-    cards = mergeAppliedCards(cards, result.applied);
+  } finally {
+    workboard.clearSessionSnapshots?.();
   }
 
   if (changed) {
