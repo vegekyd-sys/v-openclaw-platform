@@ -57,11 +57,30 @@ export async function runNightShiftSchedulerPulse({
 export function instanceCardIds(store, instances) {
   const ids = new Set();
   for (const instance of instances) {
-    for (const run of [...store.listStageRuns(instance.id), ...store.listContentItemRuns(instance.id)]) {
+    const latestRuns = latestLogicalRuns([
+      ...store.listStageRuns(instance.id),
+      ...store.listContentItemRuns(instance.id),
+    ]);
+    for (const run of latestRuns) {
+      if (!schedulerRelevantStatus(run.status)) continue;
       if (typeof run.cardId === "string" && run.cardId.trim()) ids.add(run.cardId.trim());
     }
   }
   return [...ids];
+}
+
+function latestLogicalRuns(runs) {
+  const latest = new Map();
+  for (const run of runs) {
+    const key = `${run.contentItemId ?? ""}\u0000${run.stageId ?? ""}`;
+    const current = latest.get(key);
+    if (!current || Number(run.attempt ?? 1) >= Number(current.attempt ?? 1)) latest.set(key, run);
+  }
+  return [...latest.values()];
+}
+
+function schedulerRelevantStatus(status) {
+  return ["planned", "todo", "ready", "running", "review"].includes(String(status));
 }
 
 export function mergeAppliedCards(cards, applied) {

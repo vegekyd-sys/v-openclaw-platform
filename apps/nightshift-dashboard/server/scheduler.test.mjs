@@ -33,13 +33,13 @@ test("uses one shared snapshot and one native dispatch for all active projects",
     },
     store: {
       appendEvent() {},
-      listContentItemRuns: (instanceId) => instanceId === "B" ? [{ cardId: "ready-1" }] : [],
+      listContentItemRuns: (instanceId) => instanceId === "B" ? [{ cardId: "ready-1", stageId: "work", status: "ready" }] : [],
       listInstances: () => [
         { id: "A", status: "active" },
         { id: "B", status: "active" },
         { id: "C", status: "done" },
       ],
-      listStageRuns: (instanceId) => instanceId === "A" ? [{ cardId: "running-1" }] : [],
+      listStageRuns: (instanceId) => instanceId === "A" ? [{ cardId: "running-1", stageId: "work", status: "running" }] : [],
     },
     syncContentItemsManifest: async () => {},
     workboard: {
@@ -89,7 +89,7 @@ test("isolates a manifest warning without blocking native dispatch", async () =>
       appendEvent: (event) => events.push(event),
       listContentItemRuns: () => [],
       listInstances: () => [{ id: "A", status: "active" }],
-      listStageRuns: () => [{ cardId: "ready" }],
+      listStageRuns: () => [{ cardId: "ready", stageId: "work", status: "ready" }],
     },
     syncContentItemsManifest: async () => { throw new Error("bad manifest"); },
     workboard: { dispatch: async () => ({ started: 1 }) },
@@ -116,9 +116,13 @@ test("scheduler scope is independent from historical Workboard card count", asyn
     runtime: { tick: async () => ({ applied: [] }) },
     store: {
       appendEvent() {},
-      listContentItemRuns: () => [{ cardId: "active-ready" }],
+      listContentItemRuns: () => [{ cardId: "active-ready", contentItemId: "one", stageId: "work", status: "ready" }],
       listInstances: () => [{ id: "ACTIVE", status: "active" }, { id: "OLD", status: "done" }],
-      listStageRuns: () => [{ cardId: "active-running" }],
+      listStageRuns: () => [
+        { attempt: 1, cardId: "history-done", stageId: "old", status: "done" },
+        { attempt: 1, cardId: "old-attempt", stageId: "work", status: "running" },
+        { attempt: 2, cardId: "active-running", stageId: "work", status: "running" },
+      ],
     },
     syncContentItemsManifest: async () => {},
     workboard: {
