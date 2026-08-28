@@ -112,3 +112,40 @@ test("refuses a remote Gateway instead of exposing its token in process argument
   });
   await assert.rejects(() => adapter.listCards(), /must be loopback-local/);
 });
+
+test("creates independent Workboard actions with bounded control-plane concurrency", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "nightshift-gateway-concurrency-"));
+  const configPath = join(dir, "openclaw.json");
+  await writeFile(configPath, JSON.stringify({ gateway: { auth: { token: "test-token" } } }));
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const runner = async (_command, args) => {
+    const method = args[2];
+    if (method !== "workboard.cards.create") throw new Error(`unexpected ${method}`);
+    const params = JSON.parse(args[args.indexOf("--params") + 1]);
+    inFlight += 1;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    inFlight -= 1;
+    return JSON.stringify({ card: { id: params.title, ...params } });
+  };
+  const adapter = new WorkboardGatewayAdapter({
+    applyConcurrency: 3,
+    board: "nightshift-lab",
+    configPath,
+    gatewayUrl: "ws://127.0.0.1:23793",
+    runner,
+  });
+  const actions = Array.from({ length: 7 }, (_, index) => ({
+    type: "create_workboard_card",
+    idempotencyKey: `key-${index}`,
+    instanceId: "NS-CONCURRENT",
+    stageId: "work",
+    card: { title: `card-${index}`, status: "ready", labels: [] },
+  }));
+
+  const result = await adapter.applyPlan(actions, { cards: [] });
+
+  assert.equal(result.length, 7);
+  assert.equal(maxInFlight, 3);
+});

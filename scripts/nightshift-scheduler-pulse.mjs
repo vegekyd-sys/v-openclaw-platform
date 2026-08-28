@@ -10,7 +10,7 @@ if (!(["127.0.0.1", "localhost", "[::1]"].includes(url.hostname))) {
 
 const response = await fetch(url, {
   method: "POST",
-  signal: AbortSignal.timeout(Number(process.env.NIGHTSHIFT_SCHEDULER_PULSE_TIMEOUT_MS ?? 75_000)),
+  signal: AbortSignal.timeout(Number(process.env.NIGHTSHIFT_SCHEDULER_PULSE_TIMEOUT_MS ?? 150_000)),
 });
 if (!response.ok) {
   throw new Error(`Night Shift scheduler pulse failed with HTTP ${response.status}: ${(await response.text()).slice(0, 1000)}`);

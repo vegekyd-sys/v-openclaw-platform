@@ -13,6 +13,7 @@ export class WorkboardGatewayAdapter {
     entry = process.env.NIGHTSHIFT_OPENCLAW_ENTRY,
     env = process.env,
     gatewayUrl = process.env.NIGHTSHIFT_GATEWAY_URL,
+    applyConcurrency = positiveInteger(process.env.NIGHTSHIFT_WORKBOARD_APPLY_CONCURRENCY, 8),
     rpcTimeoutMs = positiveTimeout(process.env.NIGHTSHIFT_GATEWAY_RPC_TIMEOUT_MS, 30_000),
     runner = defaultRunner,
   } = {}) {
@@ -22,6 +23,7 @@ export class WorkboardGatewayAdapter {
     this.entry = entry;
     this.env = env;
     this.gatewayUrl = gatewayUrl;
+    this.applyConcurrency = applyConcurrency;
     this.rpcTimeoutMs = rpcTimeoutMs;
     this.runner = runner;
     this.sessionSnapshots = null;
@@ -38,11 +40,14 @@ export class WorkboardGatewayAdapter {
   async applyPlan(actions, { cards = null, dryRun = false } = {}) {
     const results = [];
     const knownCards = cards ? [...cards] : await this.listCards();
-    for (const action of actions) {
-      const result = await this.applyAction(action, { dryRun, knownCards });
-      results.push(result);
-      if (result.card?.id && !knownCards.some((card) => card.id === result.card.id)) {
-        knownCards.push(result.card);
+    for (let offset = 0; offset < actions.length; offset += this.applyConcurrency) {
+      const batch = actions.slice(offset, offset + this.applyConcurrency);
+      const applied = await Promise.all(batch.map((action) => this.applyAction(action, { dryRun, knownCards })));
+      for (const result of applied) {
+        results.push(result);
+        if (result.card?.id && !knownCards.some((card) => card.id === result.card.id)) {
+          knownCards.push(result.card);
+        }
       }
     }
     return results;
@@ -184,6 +189,11 @@ function uniqueCardIds(cardIds) {
 function positiveTimeout(value, fallback) {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed >= 1000 && parsed <= 120_000 ? parsed : fallback;
+}
+
+function positiveInteger(value, fallback) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 32 ? parsed : fallback;
 }
 
 export function gatewayIdempotencyLabel(key) {
