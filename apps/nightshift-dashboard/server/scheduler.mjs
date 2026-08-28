@@ -69,6 +69,24 @@ export async function runNightShiftSchedulerPulse({
   const dispatchStartedAt = performance.now();
   const dispatch = maxStarts > 0 ? await workboard.dispatch(maxStarts, { cardIds }) : null;
   timings.dispatchMs = elapsedMs(dispatchStartedAt);
+  const transientRequeues = [];
+  for (const failure of dispatch?.startFailures ?? []) {
+    if (!transientWorkerStartFailure(failure.error)) continue;
+    const run = latestRunForCard(store, failure.cardId);
+    if (!run || alreadyAutoRetried(store, run.instanceId, failure.cardId)) continue;
+    try {
+      transientRequeues.push(await runtime.retry({
+        actor: "nightshift:scheduler",
+        cardId: failure.cardId,
+        contentItemId: run.contentItemId ?? null,
+        evidence: "Automatic one-time recovery after a transient native Worker session-start race",
+        instanceId: run.instanceId,
+        stageId: run.stageId,
+      }));
+    } catch (error) {
+      warnings.push(`${failure.cardId}: transient Worker start recovery failed: ${error.message}`);
+    }
+  }
   timings.totalMs = elapsedMs(startedAt);
 
   return {
@@ -79,6 +97,7 @@ export async function runNightShiftSchedulerPulse({
     running,
     scopedCardCount: cardIds.length,
     timings,
+    transientRequeues,
     warnings,
   };
 }
@@ -129,4 +148,26 @@ function cardIsRunning(card) {
   return card.status === "running" ||
     card.execution?.status === "running" ||
     Boolean(card.metadata?.claim);
+}
+
+function transientWorkerStartFailure(error) {
+  return /Session .* was deleted while starting work\. Retry\./i.test(String(error ?? ""));
+}
+
+function latestRunForCard(store, cardId) {
+  const candidates = [];
+  for (const instance of store.listInstances()) {
+    for (const run of [...store.listStageRuns(instance.id), ...store.listContentItemRuns(instance.id)]) {
+      if (run.cardId === cardId) candidates.push(run);
+    }
+  }
+  return candidates.toSorted((left, right) => Number(right.attempt ?? 1) - Number(left.attempt ?? 1))[0] ?? null;
+}
+
+function alreadyAutoRetried(store, instanceId, cardId) {
+  return store.listEvents(instanceId, 500).some((event) =>
+    event.type === "stage.retry.requested" &&
+    event.payload?.cardId === cardId &&
+    event.payload?.actor === "nightshift:scheduler",
+  );
 }

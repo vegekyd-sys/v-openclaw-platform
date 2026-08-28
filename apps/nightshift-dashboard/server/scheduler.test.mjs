@@ -172,3 +172,32 @@ test("reused idempotent actions do not trigger a second refresh", async () => {
   assert.equal(result.changed, false);
   assert.equal(result.timings.instances[0].mutations, 0);
 });
+
+test("retries a transient native Worker session-start race exactly once", async () => {
+  const retries = [];
+  const result = await runNightShiftSchedulerPulse({
+    refreshCards: async () => [{ id: "route-card", status: "ready" }],
+    runtime: {
+      retry: async (input) => { retries.push(input); return { cardId: input.cardId, status: "ready" }; },
+      tick: async () => ({ applied: [] }),
+    },
+    store: {
+      appendEvent() {},
+      listActionCardIds: () => [],
+      listContentItemRuns: () => [{ cardId: "route-card", contentItemId: "video-1", instanceId: "ACTIVE", stageId: "route", status: "ready" }],
+      listEvents: () => [],
+      listInstances: () => [{ id: "ACTIVE", status: "active" }],
+      listStageRuns: () => [],
+    },
+    syncContentItemsManifest: async () => {},
+    workboard: {
+      dispatch: async () => ({
+        startFailures: [{ cardId: "route-card", error: 'Session "agent:test" was deleted while starting work. Retry.' }],
+      }),
+    },
+  });
+
+  assert.equal(retries.length, 1);
+  assert.equal(retries[0].contentItemId, "video-1");
+  assert.deepEqual(result.transientRequeues, [{ cardId: "route-card", status: "ready" }]);
+});

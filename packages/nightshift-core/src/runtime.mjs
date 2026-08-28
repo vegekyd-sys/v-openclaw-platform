@@ -261,7 +261,7 @@ export class NightShiftRuntime {
     if (!stage || !["agent", "system"].includes(stage.actor)) throw new Error("Only blocked executable stages can be retried");
     const missingApproval = requiredApproval(stage, instance, new Date(), contentItemId ?? null);
     if (missingApproval) throw new Error("Execution confirmation is required before this stage can be retried");
-    const cards = await this.workboard.listCards();
+    const cards = await this.workboard.listCards({ cardIds: [cardId] });
     const card = cards.find((entry) => entry.id === cardId);
     if (!card || card.status !== "blocked") throw new Error("Retry requires a blocked Workboard card");
     const contentItem = contentItemId
