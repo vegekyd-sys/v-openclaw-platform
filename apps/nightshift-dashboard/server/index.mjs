@@ -6,7 +6,7 @@ import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadPublicAuth, requiresPublicAuth, verifyPublicAuth } from "./public-auth.mjs";
 import { resolveCardDecisionContext } from "./decision-context.mjs";
-import { runNightShiftSchedulerPulse } from "./scheduler.mjs";
+import { instanceCardIds, runNightShiftSchedulerPulse } from "./scheduler.mjs";
 import {
   deliverableArtifactPaths,
   humanStageHandoff,
@@ -380,7 +380,7 @@ async function handleApi(request, response, url) {
           cardIds: scheduled.applied.map((entry) => entry.card?.id).filter(Boolean),
           dispatched: body.dispatch !== false,
         };
-        await refreshCards();
+        await refreshCards({ cardIds: instanceCardIds(store, [store.getInstance(created.id)]) });
       } catch (error) {
         initialScheduleError = error.message;
       }
@@ -410,7 +410,7 @@ async function handleApi(request, response, url) {
     }
     store.updateInstanceStatus(instanceId, "active");
     const result = await serializedTick(instanceId, { dispatch: true, dryRun: false });
-    await refreshCards();
+    await refreshCards({ cardIds: instanceCardIds(store, [store.getInstance(instanceId)]) });
     json(response, 200, { instance: store.getInstance(instanceId), schedule: result });
     return;
   }
@@ -452,7 +452,10 @@ async function handleApi(request, response, url) {
         dispatch: body.dispatch === true,
         dryRun: body.dryRun === true,
       });
-    if (!body.dryRun) await refreshCards();
+    if (!body.dryRun) {
+      const instance = store.getInstance(decodeURIComponent(tickMatch[1]));
+      await refreshCards({ cardIds: instanceCardIds(store, instance ? [instance] : []) });
+    }
     json(
       response,
       200,
@@ -715,7 +718,10 @@ function serializedTick(instanceId, options) {
   const run = tickQueue
     .catch(() => undefined)
     .then(async () => {
-      const cards = options.cards ?? await workboard.listCards();
+      const instance = store.getInstance(instanceId);
+      const cards = options.cards ?? await workboard.listCards({
+        cardIds: instanceCardIds(store, instance ? [instance] : []),
+      });
       return runtime.tick(instanceId, { ...options, cards });
     });
   tickQueue = run.catch(() => undefined);
