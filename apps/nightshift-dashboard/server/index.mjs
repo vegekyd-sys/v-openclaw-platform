@@ -722,16 +722,25 @@ function serializedTick(instanceId, options) {
   return run;
 }
 
-async function refreshCards() {
-  if (cardRefreshPromise) return cardRefreshPromise;
-  cardRefreshPromise = workboard.listCards().then((cards) => {
-    cardCache = cards;
+async function refreshCards({ cardIds = null } = {}) {
+  const scoped = Array.isArray(cardIds);
+  if (!scoped && cardRefreshPromise) return cardRefreshPromise;
+  const refresh = workboard.listCards({ cardIds }).then((cards) => {
+    cardCache = scoped ? mergeCards(cardCache, cards) : cards;
     cardsUpdatedAt = new Date().toISOString();
     return cards;
-  }).finally(() => {
+  });
+  if (scoped) return refresh;
+  cardRefreshPromise = refresh.finally(() => {
     cardRefreshPromise = null;
   });
   return cardRefreshPromise;
+}
+
+function mergeCards(existing, updates) {
+  const merged = new Map(existing.map((card) => [card.id, card]));
+  for (const card of updates) merged.set(card.id, card);
+  return [...merged.values()];
 }
 
 async function bodyJson(request) {

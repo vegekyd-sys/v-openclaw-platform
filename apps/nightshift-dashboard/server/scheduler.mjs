@@ -7,12 +7,13 @@ export async function runNightShiftSchedulerPulse({
   syncContentItemsManifest,
   workboard,
 }) {
-  let cards = await refreshCards();
+  const activeInstances = store.listInstances().filter((instance) => instance.status === "active");
+  let cardIds = instanceCardIds(store, activeInstances);
+  let cards = await refreshCards({ cardIds });
   let changed = false;
   const warnings = [];
 
-  for (const instance of store.listInstances()) {
-    if (instance.status !== "active") continue;
+  for (const instance of activeInstances) {
     try {
       await syncContentItemsManifest(instance);
     } catch (error) {
@@ -32,13 +33,16 @@ export async function runNightShiftSchedulerPulse({
     cards = mergeAppliedCards(cards, result.applied);
   }
 
-  if (changed) cards = await refreshCards();
+  if (changed) {
+    cardIds = instanceCardIds(store, activeInstances);
+    cards = await refreshCards({ cardIds });
+  }
 
   const running = cards.filter(cardIsRunning).length;
   const ready = cards.filter((card) => card.status === "ready").length;
   const available = Math.max(0, maxWorkboardActive - running);
   const maxStarts = Math.min(dispatchMaxStarts, available, ready);
-  const dispatch = maxStarts > 0 ? await workboard.dispatch(maxStarts) : null;
+  const dispatch = maxStarts > 0 ? await workboard.dispatch(maxStarts, { cardIds }) : null;
 
   return {
     changed,
@@ -48,6 +52,16 @@ export async function runNightShiftSchedulerPulse({
     running,
     warnings,
   };
+}
+
+export function instanceCardIds(store, instances) {
+  const ids = new Set();
+  for (const instance of instances) {
+    for (const run of [...store.listStageRuns(instance.id), ...store.listContentItemRuns(instance.id)]) {
+      if (typeof run.cardId === "string" && run.cardId.trim()) ids.add(run.cardId.trim());
+    }
+  }
+  return [...ids];
 }
 
 export function mergeAppliedCards(cards, applied) {

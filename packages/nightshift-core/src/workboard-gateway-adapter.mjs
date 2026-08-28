@@ -13,6 +13,7 @@ export class WorkboardGatewayAdapter {
     entry = process.env.NIGHTSHIFT_OPENCLAW_ENTRY,
     env = process.env,
     gatewayUrl = process.env.NIGHTSHIFT_GATEWAY_URL,
+    rpcTimeoutMs = positiveTimeout(process.env.NIGHTSHIFT_GATEWAY_RPC_TIMEOUT_MS, 30_000),
     runner = defaultRunner,
   } = {}) {
     this.board = board;
@@ -21,11 +22,15 @@ export class WorkboardGatewayAdapter {
     this.entry = entry;
     this.env = env;
     this.gatewayUrl = gatewayUrl;
+    this.rpcTimeoutMs = rpcTimeoutMs;
     this.runner = runner;
   }
 
-  async listCards() {
-    const result = await this.call("workboard.cards.list", { boardId: this.board });
+  async listCards({ cardIds = null } = {}) {
+    const result = await this.call("workboard.cards.list", {
+      boardId: this.board,
+      ...(Array.isArray(cardIds) ? { cardIds: uniqueCardIds(cardIds) } : {}),
+    });
     return result.cards ?? [];
   }
 
@@ -86,10 +91,11 @@ export class WorkboardGatewayAdapter {
     return result.card;
   }
 
-  async dispatch(maxStarts = 1) {
+  async dispatch(maxStarts = 1, { cardIds = null } = {}) {
     return this.call("workboard.cards.dispatch", {
       boardId: this.board,
       maxStarts,
+      ...(Array.isArray(cardIds) ? { cardIds: uniqueCardIds(cardIds) } : {}),
     });
   }
 
@@ -132,15 +138,24 @@ export class WorkboardGatewayAdapter {
       JSON.stringify(params),
       "--json",
       "--timeout",
-      "10000",
+      String(this.rpcTimeoutMs),
     ];
     const output = await this.runner(this.command, args, {
       ...this.env,
       OPENCLAW_GATEWAY_TOKEN: token,
       OPENCLAW_GATEWAY_URL: this.gatewayUrl,
-    });
+    }, { timeoutMs: this.rpcTimeoutMs + 5000 });
     return typeof output === "string" ? JSON.parse(output) : output;
   }
+}
+
+function uniqueCardIds(cardIds) {
+  return [...new Set(cardIds.filter((id) => typeof id === "string" && id.trim()).map((id) => id.trim()))];
+}
+
+function positiveTimeout(value, fallback) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 1000 && parsed <= 120_000 ? parsed : fallback;
 }
 
 export function gatewayIdempotencyLabel(key) {
@@ -162,14 +177,14 @@ function approvalCard(action) {
   };
 }
 
-async function defaultRunner(command, args, env) {
+async function defaultRunner(command, args, env, { timeoutMs = 35_000 } = {}) {
   try {
     const { stdout } = await execFileAsync(command, args, {
       encoding: "utf8",
       env,
       killSignal: "SIGKILL",
       maxBuffer: 8 * 1024 * 1024,
-      timeout: 15000,
+      timeout: timeoutMs,
     });
     return stdout;
   } catch (error) {

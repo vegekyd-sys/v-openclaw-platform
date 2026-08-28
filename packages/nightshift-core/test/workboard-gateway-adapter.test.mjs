@@ -72,6 +72,22 @@ test("creates and reuses native cards through Gateway RPC", async () => {
   assert.equal(skills.skills[0].name, "night-shift-operator");
   const skillsCall = calls.find(({ args }) => args[2] === "skills.status");
   assert.deepEqual(JSON.parse(skillsCall.args[skillsCall.args.indexOf("--params") + 1]), { agentId: "main" });
+
+  await adapter.listCards({ cardIds: ["card-1", "card-1", "  "] });
+  const scopedListCall = calls.at(-1);
+  assert.deepEqual(JSON.parse(scopedListCall.args[scopedListCall.args.indexOf("--params") + 1]), {
+    boardId: "nightshift-lab",
+    cardIds: ["card-1"],
+  });
+
+  await adapter.dispatch(4, { cardIds: ["card-1"] }).catch(() => undefined);
+  const dispatchCall = calls.at(-1);
+  assert.equal(dispatchCall.args[2], "workboard.cards.dispatch");
+  assert.deepEqual(JSON.parse(dispatchCall.args[dispatchCall.args.indexOf("--params") + 1]), {
+    boardId: "nightshift-lab",
+    maxStarts: 4,
+    cardIds: ["card-1"],
+  });
 });
 
 test("refuses a remote Gateway instead of exposing its token in process arguments", async () => {
