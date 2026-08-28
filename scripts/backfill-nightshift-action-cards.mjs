@@ -16,16 +16,30 @@ if (!databasePath) throw new Error("Usage: backfill-nightshift-action-cards.mjs 
 const store = new NightShiftStore(resolve(databasePath));
 try {
   const cards = await new WorkboardGatewayAdapter().listCards();
-  let bound = 0;
+  const canonical = new Map();
   for (const card of cards) {
     const labels = Array.isArray(card.labels) ? card.labels : [];
+    if (!labels.includes("nightshift:approval")) continue;
     const marker = labels.find((label) => label.startsWith("nightshift-action:"));
     const instanceId = labels.find((label) => label.startsWith("instance:"))?.slice("instance:".length);
     if (!marker || !instanceId || !store.getInstance(instanceId)) continue;
-    store.bindActionCard({ actionKey: `legacy:${marker}:${card.id}`, instanceId, cardId: card.id });
-    bound += 1;
+    const current = canonical.get(marker);
+    if (!current || compareCanonical(card, current.card) < 0) canonical.set(marker, { card, instanceId });
   }
-  process.stdout.write(`${JSON.stringify({ bound, scanned: cards.length })}\n`);
+  const removed = store.deleteActionCardsByPrefix("legacy:");
+  for (const [marker, value] of canonical) {
+    store.bindActionCard({ actionKey: `legacy:${marker}`, instanceId: value.instanceId, cardId: value.card.id });
+  }
+  process.stdout.write(`${JSON.stringify({ bound: canonical.size, removed, scanned: cards.length })}\n`);
 } finally {
   store.close();
+}
+
+function compareCanonical(left, right) {
+  const statusRank = (card) => ["review", "ready", "running", "blocked"].includes(card.status) ? 0 : 1;
+  const rank = statusRank(left) - statusRank(right);
+  if (rank !== 0) return rank;
+  const leftTime = Date.parse(left.createdAt ?? left.updatedAt ?? "") || Number.MAX_SAFE_INTEGER;
+  const rightTime = Date.parse(right.createdAt ?? right.updatedAt ?? "") || Number.MAX_SAFE_INTEGER;
+  return leftTime - rightTime || String(left.id).localeCompare(String(right.id));
 }

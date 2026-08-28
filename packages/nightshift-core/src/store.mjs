@@ -520,6 +520,14 @@ export class NightShiftStore {
     `).all(...ids).map((row) => row.cardId);
   }
 
+  deleteActionCardsByPrefix(prefix) {
+    if (!prefix) throw new Error("Action key prefix is required");
+    return this.db.prepare(`
+      DELETE FROM action_cards
+      WHERE substr(action_key, 1, length(?)) = ?
+    `).run(prefix, prefix).changes;
+  }
+
   transitionNotificationSubject(subjectKey, state, now = new Date()) {
     const current = this.db
       .prepare("SELECT state, generation, updated_at AS updatedAt FROM notification_subject_state WHERE subject_key = ?")

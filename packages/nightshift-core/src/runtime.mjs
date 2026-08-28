@@ -313,12 +313,12 @@ export class NightShiftRuntime {
       for (const result of applied) {
         const card = result.card;
         if (!card) continue;
-        this.store.bindActionCard({
-          actionKey: result.action.idempotencyKey,
-          instanceId,
-          cardId: card.id,
-        });
         if (result.action.type === "request_approval") {
+          this.store.bindActionCard({
+            actionKey: result.action.idempotencyKey,
+            instanceId,
+            cardId: card.id,
+          });
           if (card.status === "done") {
             await this.workboard.moveCard(card.id, "review");
             card.status = "review";

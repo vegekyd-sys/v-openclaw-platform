@@ -65,6 +65,9 @@ test("persists immutable releases, instances, stage runs, approvals, and audit e
   assert.equal(store.listContentItems("NS-STORE-1")[0].status, "routed");
   assert.equal(store.listContentItemRuns("NS-STORE-1")[0].contentItemId, "video-ai-01");
   assert.deepEqual(store.listActionCardIds(["NS-STORE-1"]), ["approval-card-1"]);
+  assert.equal(store.deleteActionCardsByPrefix("legacy:"), 0);
+  store.bindActionCard({ actionKey: "legacy:old", instanceId: "NS-STORE-1", cardId: "old-card" });
+  assert.equal(store.deleteActionCardsByPrefix("legacy:"), 1);
   assert.deepEqual(
     store.listEvents("NS-STORE-1").map((event) => event.type),
     ["approval.recorded", "content-items.replaced", "content-items.replaced", "instance.created"],
