@@ -7,9 +7,13 @@ export async function runNightShiftSchedulerPulse({
   syncContentItemsManifest,
   workboard,
 }) {
+  const startedAt = performance.now();
+  const timings = { instances: [] };
   const activeInstances = store.listInstances().filter((instance) => instance.status === "active");
   let cardIds = instanceCardIds(store, activeInstances);
+  const refreshStartedAt = performance.now();
   let cards = await refreshCards({ cardIds });
+  timings.refreshMs = elapsedMs(refreshStartedAt);
   let changed = false;
   const warnings = [];
 
@@ -18,12 +22,15 @@ export async function runNightShiftSchedulerPulse({
     .map((card) => card.sessionKey)
     .filter((sessionKey) => typeof sessionKey === "string" && sessionKey);
   if (typeof workboard.prefetchSessions === "function" && runningSessionKeys.length > 0) {
+    const prefetchStartedAt = performance.now();
     const prefetched = await workboard.prefetchSessions(runningSessionKeys, { concurrency: 8, limit: 12 });
+    timings.prefetchMs = elapsedMs(prefetchStartedAt);
     if (prefetched.failed > 0) warnings.push(`Session snapshot prefetch failed for ${prefetched.failed}/${prefetched.count} running cards`);
   }
 
   try {
     for (const instance of activeInstances) {
+      const instanceStartedAt = performance.now();
       try {
         await syncContentItemsManifest(instance);
       } catch (error) {
@@ -38,6 +45,7 @@ export async function runNightShiftSchedulerPulse({
         cards,
         dispatch: false,
       });
+      timings.instances.push({ id: instance.id, ms: elapsedMs(instanceStartedAt), applied: result.applied.length });
       if (result.applied.length === 0) continue;
       changed = true;
       cards = mergeAppliedCards(cards, result.applied);
@@ -48,14 +56,19 @@ export async function runNightShiftSchedulerPulse({
 
   if (changed) {
     cardIds = instanceCardIds(store, activeInstances);
+    const secondRefreshStartedAt = performance.now();
     cards = await refreshCards({ cardIds });
+    timings.secondRefreshMs = elapsedMs(secondRefreshStartedAt);
   }
 
   const running = cards.filter(cardIsRunning).length;
   const ready = cards.filter((card) => card.status === "ready").length;
   const available = Math.max(0, maxWorkboardActive - running);
   const maxStarts = Math.min(dispatchMaxStarts, available, ready);
+  const dispatchStartedAt = performance.now();
   const dispatch = maxStarts > 0 ? await workboard.dispatch(maxStarts, { cardIds }) : null;
+  timings.dispatchMs = elapsedMs(dispatchStartedAt);
+  timings.totalMs = elapsedMs(startedAt);
 
   return {
     changed,
@@ -63,8 +76,14 @@ export async function runNightShiftSchedulerPulse({
     maxStarts,
     ready,
     running,
+    scopedCardCount: cardIds.length,
+    timings,
     warnings,
   };
+}
+
+function elapsedMs(startedAt) {
+  return Math.round((performance.now() - startedAt) * 10) / 10;
 }
 
 export function instanceCardIds(store, instances) {

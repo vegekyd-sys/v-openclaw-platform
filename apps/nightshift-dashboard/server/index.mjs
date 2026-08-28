@@ -57,6 +57,7 @@ const notificationCoordinator = notificationsEnabled
     })
   : null;
 let cardCache = [];
+let lastSchedulerMetrics = null;
 let cardsUpdatedAt = null;
 let cardRefreshPromise = null;
 let lastSchedulerAt = null;
@@ -114,6 +115,7 @@ async function handleApi(request, response, url) {
       cardsUpdatedAt,
       lastSchedulerAt,
       lastSchedulerError,
+      lastSchedulerMetrics,
       notificationsEnabled,
       ok: true,
       schedulerMode,
@@ -617,6 +619,7 @@ function runScheduler() {
       }));
     tickQueue = pulse.catch(() => undefined);
     const result = await pulse;
+    const notificationStartedAt = performance.now();
     if (notificationCoordinator) {
       const notificationResult = await notificationCoordinator.reconcile({
         cards: cardCache,
@@ -627,6 +630,11 @@ function runScheduler() {
         result.warnings.push(`notification ${delivery.id}: ${delivery.error}`);
       }
     }
+    result.timings.notificationMs = Math.round((performance.now() - notificationStartedAt) * 10) / 10;
+    result.timings.totalWithNotificationsMs = Math.round(
+      (result.timings.totalMs + result.timings.notificationMs) * 10,
+    ) / 10;
+    lastSchedulerMetrics = result;
     lastSchedulerAt = new Date().toISOString();
     lastSchedulerError = result.warnings.length > 0 ? result.warnings.join("; ") : null;
     return result;
