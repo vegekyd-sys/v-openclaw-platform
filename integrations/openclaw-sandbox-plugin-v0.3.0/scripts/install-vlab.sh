@@ -94,9 +94,8 @@ progress() {
   printf '[project-sandbox-install] %s\n' "$*"
 }
 
-gateway_token=$(< /srv/vlab/state/gateway-token)
 broker_restarts_before=$(systemctl show "$broker_service" -p NRestarts --value)
-worker_status=$(run_openclaw "$main_config" gateway call vlab.workers.status --json --token "$gateway_token" --timeout 10000)
+worker_status=$(run_openclaw "$main_config" gateway call vlab.workers.status --json --timeout 10000)
 jq -e '.started == true and .pending == 0 and all(.workers[]?; .activeCount == 0 and .queued == 0)' <<<"$worker_status" >/dev/null || {
   echo "VLab Worker pool is not in a safe deployment window" >&2
   exit 1
@@ -274,7 +273,7 @@ refreshed_worker_status=
 worker_ready=0
 for _ in $(seq 1 60); do
   if systemctl is-active --quiet "$gateway_service"; then
-    if refreshed_worker_status=$(run_openclaw "$main_config" gateway call vlab.workers.status --json --token "$gateway_token" --timeout 10000 2>/dev/null); then
+    if refreshed_worker_status=$(run_openclaw "$main_config" gateway call vlab.workers.status --json --timeout 10000 2>/dev/null); then
       if jq -e '.started == true and .pending == 0 and any(.workers[]?; .ready == true)' <<<"$refreshed_worker_status" >/dev/null; then
         worker_ready=1
         break

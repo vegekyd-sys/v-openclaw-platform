@@ -39,6 +39,9 @@ test("VLab installer and rollback remain scoped to VLab services and state", asy
   assert.doesNotMatch(rollback, /:\-\{\}/);
   assert.match(install, /worker-status-after-start\.json/);
   assert.match(install, /Gateway restarted during acceptance/);
+  assert.doesNotMatch(install, /--token "\$gateway_token"/);
+  assert.match(rollback, /rollback refused: unable to verify that Project Sandbox is idle/);
+  assert.match(rollback, /rollback refused: invalid Project Sandbox health response/);
 });
 
 function escapeRegExp(value) {

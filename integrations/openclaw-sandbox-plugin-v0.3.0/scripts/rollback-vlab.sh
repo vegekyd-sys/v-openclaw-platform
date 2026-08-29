@@ -22,12 +22,18 @@ fi
 [[ -f $backup_dir/service-state.env ]] || { echo "backup service state is missing" >&2; exit 1; }
 
 if [[ -S /srv/vlab/state/sandbox-broker/broker.sock ]]; then
-  health=$(/srv/vlab/bin/sandboxctl health 2>/dev/null || true)
-  [[ -n $health ]] || health='{}'
-  if ! active=$(jq -er '((.workspaces.active // 0) + (.workspaces.opening // 0) + (.workspaces.queued // 0)) | floor' <<<"$health" 2>/dev/null); then
-    active=0
+  if ! health=$(/srv/vlab/bin/sandboxctl health 2>/dev/null); then
+    echo "rollback refused: unable to verify that Project Sandbox is idle" >&2
+    exit 1
   fi
-  [[ $active =~ ^[0-9]+$ ]] || active=0
+  if ! active=$(jq -er '((.workspaces.active // 0) + (.workspaces.opening // 0) + (.workspaces.queued // 0)) | floor' <<<"$health" 2>/dev/null); then
+    echo "rollback refused: invalid Project Sandbox health response" >&2
+    exit 1
+  fi
+  [[ $active =~ ^[0-9]+$ ]] || {
+    echo "rollback refused: invalid Project Sandbox active count" >&2
+    exit 1
+  }
   if (( active > 0 )); then
     echo "rollback refused: $active active/queued Project Sandbox workspaces remain" >&2
     exit 1
