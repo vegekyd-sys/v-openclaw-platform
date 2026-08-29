@@ -90,6 +90,10 @@ run_openclaw() {
     "$node_bin" "$openclaw_entry" "$@"
 }
 
+progress() {
+  printf '[project-sandbox-install] %s\n' "$*"
+}
+
 gateway_token=$(< /srv/vlab/state/gateway-token)
 broker_restarts_before=$(systemctl show "$broker_service" -p NRestarts --value)
 worker_status=$(run_openclaw "$main_config" gateway call vlab.workers.status --json --token "$gateway_token" --timeout 10000)
@@ -127,6 +131,7 @@ codex_tgz=$codex_stage/$(jq -r '.[0].filename // empty' <<<"$codex_pack_json")
 [[ -f $codex_tgz ]] || { echo "Codex Plugin package was not created" >&2; exit 1; }
 
 install -d -m 0700 "$backup_dir"
+progress "backup created: $backup_dir"
 printf 'gateway_enabled=%s\ngateway_active=%s\nbroker_enabled=%s\nbroker_active=%s\n' \
   "$(systemctl is-enabled "$gateway_service" 2>/dev/null || true)" \
   "$(systemctl is-active "$gateway_service" 2>/dev/null || true)" \
@@ -219,13 +224,24 @@ run_openclaw "$main_config" plugins install --force "$codex_plugin_spec"
 sudo -u vlab -H "$node_bin" "$release_dir/scripts/configure-vlab.mjs" "$main_config" "$project_id" "$project_path"
 sudo -u vlab -H "$node_bin" "$release_dir/scripts/configure-vlab.mjs" "$worker_config" "$project_id" "$project_path"
 sudo -u vlab -H "$node_bin" "$release_dir/scripts/configure-vlab-agents.mjs" "$main_config"
+progress "validating main and Worker configurations"
 run_openclaw "$main_config" config validate
 run_openclaw "$worker_config" config validate
-inspect_json=$(run_openclaw "$main_config" plugins inspect project-sandbox --runtime --json)
-jq -e '.plugin.status == "loaded" and .plugin.version == "0.3.0" and (.diagnostics | length) == 0' <<<"$inspect_json" >/dev/null
-codex_inspect_json=$(run_openclaw "$main_config" plugins inspect codex --runtime --json)
-jq -e '.plugin.status == "loaded" and .plugin.version == "2026.7.1" and .plugin.trustedOfficialInstall == true and (.diagnostics | length) == 0' <<<"$codex_inspect_json" >/dev/null
-run_openclaw "$main_config" plugins doctor | grep -F 'No plugin issues detected' >/dev/null
+progress "inspecting Project Sandbox and official Codex plugins"
+run_openclaw "$main_config" plugins inspect project-sandbox --runtime --json \
+  > "$backup_dir/project-sandbox-inspect.json" \
+  2> "$backup_dir/project-sandbox-inspect.stderr"
+jq -e '.plugin.status == "loaded" and .plugin.version == "0.3.0" and (.diagnostics | length) == 0' \
+  "$backup_dir/project-sandbox-inspect.json" >/dev/null
+run_openclaw "$main_config" plugins inspect codex --runtime --json \
+  > "$backup_dir/codex-inspect.json" \
+  2> "$backup_dir/codex-inspect.stderr"
+jq -e '.plugin.status == "loaded" and .plugin.version == "2026.7.1" and .plugin.trustedOfficialInstall == true and (.diagnostics | length) == 0' \
+  "$backup_dir/codex-inspect.json" >/dev/null
+run_openclaw "$main_config" plugins doctor \
+  > "$backup_dir/plugins-doctor.stdout" \
+  2> "$backup_dir/plugins-doctor.stderr"
+grep -F 'No plugin issues detected' "$backup_dir/plugins-doctor.stdout" >/dev/null
 jq -S '.plugins.entries["project-sandbox"]' "$main_config" > "$backup_dir/main-plugin-config.json"
 jq -S '.plugins.entries["project-sandbox"]' "$worker_config" > "$backup_dir/worker-plugin-config.json"
 cmp -s "$backup_dir/main-plugin-config.json" "$backup_dir/worker-plugin-config.json" || {
@@ -238,6 +254,7 @@ sudo bash $release_dir/scripts/rollback-vlab.sh $backup_dir
 EOF
 systemctl daemon-reload
 systemctl enable "$broker_service"
+progress "starting persistent Project Sandbox Broker"
 systemctl start "$broker_service"
 for _ in $(seq 1 100); do
   [[ -S /srv/vlab/state/sandbox-broker/broker.sock ]] && break
@@ -251,11 +268,15 @@ new_health=$(sudo -u vlab -H /srv/vlab/bin/sandboxctl health)
 jq -e '.ok == true and (.workspaces | type) == "object" and (.capacity | type) == "object" and .capacity.active == 0' <<<"$new_health" >/dev/null
 
 gateway_restarts_before=$(systemctl show "$gateway_service" -p NRestarts --value)
+progress "starting VLab Gateway and waiting for an isolated Worker"
 systemctl start "$gateway_service"
+refreshed_worker_status=
+worker_ready=0
 for _ in $(seq 1 60); do
   if systemctl is-active --quiet "$gateway_service"; then
     if refreshed_worker_status=$(run_openclaw "$main_config" gateway call vlab.workers.status --json --token "$gateway_token" --timeout 10000 2>/dev/null); then
       if jq -e '.started == true and .pending == 0 and any(.workers[]?; .ready == true)' <<<"$refreshed_worker_status" >/dev/null; then
+        worker_ready=1
         break
       fi
     fi
@@ -263,10 +284,27 @@ for _ in $(seq 1 60); do
   sleep 1
 done
 systemctl is-active --quiet "$gateway_service"
-jq -e '.started == true and .pending == 0 and any(.workers[]?; .ready == true)' <<<"${refreshed_worker_status:-{}}" >/dev/null
+if [[ $worker_ready != 1 ]]; then
+  echo "VLab Worker pool did not become ready within 60 seconds" >&2
+  systemctl status "$gateway_service" --no-pager >&2 || true
+  exit 1
+fi
+[[ -n $refreshed_worker_status ]] || refreshed_worker_status='{}'
+printf '%s\n' "$refreshed_worker_status" > "$backup_dir/worker-status-after-start.json"
+jq -e '.started == true and .pending == 0 and any(.workers[]?; .ready == true)' \
+  "$backup_dir/worker-status-after-start.json" >/dev/null
 sleep 5
-[[ $(systemctl show "$gateway_service" -p NRestarts --value) == "$gateway_restarts_before" ]]
-[[ $(systemctl show "$broker_service" -p NRestarts --value) == "$broker_restarts_before" ]]
+gateway_restarts_after=$(systemctl show "$gateway_service" -p NRestarts --value)
+broker_restarts_after=$(systemctl show "$broker_service" -p NRestarts --value)
+if [[ $gateway_restarts_after != "$gateway_restarts_before" ]]; then
+  echo "Gateway restarted during acceptance: before=$gateway_restarts_before after=$gateway_restarts_after" >&2
+  exit 1
+fi
+if [[ $broker_restarts_after != "$broker_restarts_before" ]]; then
+  echo "Project Sandbox Broker restarted during acceptance: before=$broker_restarts_before after=$broker_restarts_after" >&2
+  exit 1
+fi
 
 trap - ERR INT TERM
+progress "VLab deployment accepted"
 echo "backup=$backup_dir"

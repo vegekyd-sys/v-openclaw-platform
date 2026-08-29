@@ -23,7 +23,11 @@ fi
 
 if [[ -S /srv/vlab/state/sandbox-broker/broker.sock ]]; then
   health=$(/srv/vlab/bin/sandboxctl health 2>/dev/null || true)
-  active=$(jq -r '(.workspaces.active // 0) + (.workspaces.opening // 0) + (.workspaces.queued // 0)' <<<"${health:-{}}" 2>/dev/null || echo 0)
+  [[ -n $health ]] || health='{}'
+  if ! active=$(jq -er '((.workspaces.active // 0) + (.workspaces.opening // 0) + (.workspaces.queued // 0)) | floor' <<<"$health" 2>/dev/null); then
+    active=0
+  fi
+  [[ $active =~ ^[0-9]+$ ]] || active=0
   if (( active > 0 )); then
     echo "rollback refused: $active active/queued Project Sandbox workspaces remain" >&2
     exit 1

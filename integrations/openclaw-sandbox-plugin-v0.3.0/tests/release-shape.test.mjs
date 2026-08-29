@@ -35,6 +35,10 @@ test("VLab installer and rollback remain scoped to VLab services and state", asy
   assert.match(install, /@openclaw\/codex@2026\.7\.1/);
   assert.match(install, /Codex Plugin package integrity mismatch/);
   assert.match(rollback, /restore_entry \/srv\/vlab\/state\/extensions\/codex/);
+  assert.doesNotMatch(install, /:\-\{\}/);
+  assert.doesNotMatch(rollback, /:\-\{\}/);
+  assert.match(install, /worker-status-after-start\.json/);
+  assert.match(install, /Gateway restarted during acceptance/);
 });
 
 function escapeRegExp(value) {
