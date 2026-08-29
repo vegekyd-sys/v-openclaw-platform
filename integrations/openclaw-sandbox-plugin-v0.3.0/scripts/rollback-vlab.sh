@@ -68,6 +68,7 @@ restore_entry() {
 restore_entry /etc/systemd/system/vlab-sandbox-broker.service
 restore_entry /srv/vlab/state/sandbox/policies/offline-dev-v1.yaml
 restore_entry /srv/vlab/state/sandbox/policies/packages-dev-v1.yaml
+restore_entry /srv/vlab/state/gateway-token
 restore_entry /srv/vlab/state/openclaw.json
 restore_entry /srv/vlab/experiments/agent-worker-isolation-v1/worker-openclaw.json
 restore_entry /srv/vlab/bin/sandboxctl

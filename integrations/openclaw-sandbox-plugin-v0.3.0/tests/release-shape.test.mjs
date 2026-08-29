@@ -40,6 +40,9 @@ test("VLab installer and rollback remain scoped to VLab services and state", asy
   assert.match(install, /worker-status-after-start\.json/);
   assert.match(install, /Gateway restarted during acceptance/);
   assert.doesNotMatch(install, /--token "\$gateway_token"/);
+  assert.match(install, /VLAB_ROTATE_GATEWAY_TOKEN/);
+  assert.match(install, /rotating the VLab-only Gateway token/);
+  assert.match(rollback, /restore_entry \/srv\/vlab\/state\/gateway-token/);
   assert.match(rollback, /rollback refused: unable to verify that Project Sandbox is idle/);
   assert.match(rollback, /rollback refused: invalid Project Sandbox health response/);
 });

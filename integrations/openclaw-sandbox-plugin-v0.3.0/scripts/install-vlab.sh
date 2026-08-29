@@ -22,6 +22,9 @@ max_disk_used_percent=${VLAB_SANDBOX_MAX_DISK_USED_PERCENT:-95}
 codex_plugin_spec=@openclaw/codex@2026.7.1
 codex_plugin_integrity='sha512-OCEVg4R3yb5vXZiwchJp02o+XmWklnF9EdcXgQUGfvVELwIwJvvvQYJ0tp0M2zJLuA4zDSYPtFVDGviKRrKd2w=='
 codex_stage=
+gateway_token_stage=
+config_stage=
+rotate_gateway_token=${VLAB_ROTATE_GATEWAY_TOKEN:-0}
 
 if [[ $(id -u) -ne 0 ]]; then
   echo "install-vlab.sh must run as root" >&2
@@ -37,6 +40,7 @@ if ! [[ $min_free_kib =~ ^[0-9]+$ && $max_disk_used_percent =~ ^[0-9]+$ ]]; then
   echo "invalid VLab disk safety thresholds" >&2
   exit 1
 fi
+[[ $rotate_gateway_token =~ ^[01]$ ]] || { echo "invalid VLAB_ROTATE_GATEWAY_TOKEN flag" >&2; exit 1; }
 for executable in "$node_bin" "$npm_bin"; do
   [[ -x $executable ]] || { echo "missing VLab runtime: $executable" >&2; exit 1; }
 done
@@ -116,6 +120,14 @@ cleanup_stage() {
   if [[ -n ${codex_stage:-} && $codex_stage == /srv/vlab/staging/project-sandbox-codex.* && -d $codex_stage ]]; then
     rm -rf -- "$codex_stage"
   fi
+  if [[ -n ${gateway_token_stage:-} && $gateway_token_stage == /run/vlab-gateway-token.* && -f $gateway_token_stage ]]; then
+    rm -f -- "$gateway_token_stage"
+  fi
+  case ${config_stage:-} in
+    /srv/vlab/state/.gateway-token-rotation.*|/srv/vlab/experiments/agent-worker-isolation-v1/.gateway-token-rotation.*)
+      [[ -f $config_stage ]] && rm -f -- "$config_stage"
+      ;;
+  esac
 }
 trap cleanup_stage EXIT
 codex_pack_json=$(
@@ -154,6 +166,7 @@ for directory in \
 done
 for entry in \
   /etc/systemd/system/vlab-sandbox-broker.service \
+  /srv/vlab/state/gateway-token \
   "$main_config" \
   "$worker_config" \
   "$release_dir" \
@@ -223,6 +236,26 @@ run_openclaw "$main_config" plugins install --force "$codex_plugin_spec"
 sudo -u vlab -H "$node_bin" "$release_dir/scripts/configure-vlab.mjs" "$main_config" "$project_id" "$project_path"
 sudo -u vlab -H "$node_bin" "$release_dir/scripts/configure-vlab.mjs" "$worker_config" "$project_id" "$project_path"
 sudo -u vlab -H "$node_bin" "$release_dir/scripts/configure-vlab-agents.mjs" "$main_config"
+if [[ $rotate_gateway_token == 1 ]]; then
+  progress "rotating the VLab-only Gateway token without exposing it in process arguments"
+  gateway_token_stage=$(mktemp /run/vlab-gateway-token.XXXXXX)
+  "$node_bin" -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("hex"))' > "$gateway_token_stage"
+  [[ $(wc -c < "$gateway_token_stage") == 64 ]] || {
+    echo "failed to generate a VLab Gateway token" >&2
+    exit 1
+  }
+  for config in "$main_config" "$worker_config"; do
+    config_stage=$(mktemp "$(dirname "$config")/.gateway-token-rotation.XXXXXX")
+    jq --rawfile token "$gateway_token_stage" \
+      '.gateway.auth.mode = "token" | .gateway.auth.token = $token' \
+      "$config" > "$config_stage"
+    chown vlab:vlab "$config_stage"
+    chmod 0600 "$config_stage"
+    mv "$config_stage" "$config"
+    config_stage=
+  done
+  install -o vlab -g vlab -m 0600 "$gateway_token_stage" /srv/vlab/state/gateway-token
+fi
 progress "validating main and Worker configurations"
 run_openclaw "$main_config" config validate
 run_openclaw "$worker_config" config validate
