@@ -80,6 +80,20 @@ The service runs the patcher as `ExecStartPre`. A changed upstream bundle shape
 fails closed instead of receiving an unreviewed transformation. The official
 bundle is backed up before the first write.
 
+## Production-safe chat scoping
+
+Production V keeps the account-wide Feishu `renderMode=auto` behavior for
+ordinary OpenClaw agents. The optional scoped patch reads only
+`V_FEISHU_VCODEX_STREAM_CHAT_IDS`, accepts explicit `oc_` chat ids, and upgrades
+matching conversations to `card`. Empty, wildcard, and malformed entries do
+not change any conversation. The patch is version-shape gated, idempotent, and
+backs up the exact monitor bundle before writing.
+
+The scoped VLab promotion check ran with the account-wide mode still set to
+`auto`. The acceptance chat created its card in about 4.5 seconds, produced 15
+distinct updates on one message, showed the final marker, and completed with
+`NRestarts=0`. Unlisted-chat fallback behavior is covered by the patch fixture.
+
 ## Required acceptance
 
 1. Main VLab and all three prior experiments keep their original PIDs and ports.
