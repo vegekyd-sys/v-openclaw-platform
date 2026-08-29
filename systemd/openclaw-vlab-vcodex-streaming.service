@@ -1,0 +1,40 @@
+[Unit]
+Description=OpenClaw VLab VCodex streaming experiment
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=vlab-vcodex
+Group=vlab-vcodex
+WorkingDirectory=/srv/vlab-vcodex-streaming/workspace
+EnvironmentFile=/srv/vlab-vcodex-streaming/secrets/runtime.env
+Environment=HOME=/srv/vlab-vcodex-streaming/home
+Environment=CODEX_HOME=/srv/vlab-vcodex-streaming/codex-home
+Environment=OPENCLAW_HOME=/srv/vlab-vcodex-streaming/home
+Environment=OPENCLAW_STATE_DIR=/srv/vlab-vcodex-streaming/state
+Environment=OPENCLAW_CONFIG_PATH=/srv/vlab-vcodex-streaming/state/openclaw.json
+Environment=OPENCLAW_WORKSPACE_DIR=/srv/vlab-vcodex-streaming/workspace
+Environment=OPENCLAW_GATEWAY_PORT=24993
+Environment=TMPDIR=/srv/vlab-vcodex-streaming/tmp
+Environment=NODE_ENV=production
+ExecStartPre=/opt/vlab/node/bin/node /srv/vlab-vcodex-streaming/bin/apply-vcodex-feishu-stream-coalescing-patch.mjs --root=/srv/vlab-vcodex-streaming/state/npm/projects --backup-dir=/srv/vlab-vcodex-streaming/backups/feishu-stream-coalescing --allow-missing
+ExecStart=/opt/vlab/node/bin/node /srv/vlab-vcodex-streaming/current/node_modules/openclaw/openclaw.mjs gateway --port 24993
+Restart=on-failure
+RestartSec=5
+KillMode=control-group
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/vlab-vcodex-streaming
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryHigh=2G
+MemoryMax=3G
+CPUQuota=150%
+
+[Install]
+WantedBy=multi-user.target
