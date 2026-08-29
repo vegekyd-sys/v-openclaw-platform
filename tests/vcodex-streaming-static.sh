@@ -33,7 +33,7 @@ grep -q '^Environment=CODEX_HOME=/srv/vlab-vcodex-streaming/codex-home$' "${SERV
 grep -q '^Environment=OPENCLAW_GATEWAY_PORT=24993$' "${SERVICE}"
 grep -q '^ExecStartPre=/opt/vlab/node/bin/node /srv/vlab-vcodex-streaming/bin/apply-vcodex-feishu-stream-coalescing-patch.mjs ' "${SERVICE}"
 grep -q '^Environment=V_FEISHU_VCODEX_STREAM_CHAT_IDS=oc_' "${PRODUCTION_DROPIN}"
-grep -q '^ExecStartPre=-/opt/node-v22.23.1/bin/node .*apply-vcodex-feishu-scoped-streaming-patch.mjs .*--allow-missing$' "${PRODUCTION_DROPIN}"
+grep -q '^ExecStartPre=-+/opt/node-v22.23.1/bin/node .*apply-vcodex-feishu-scoped-streaming-patch.mjs .*--allow-missing$' "${PRODUCTION_DROPIN}"
 grep -q '^MemoryHigh=2G$' "${SERVICE}"
 grep -q '^MemoryMax=3G$' "${SERVICE}"
 grep -q '^CPUQuota=150%$' "${SERVICE}"
