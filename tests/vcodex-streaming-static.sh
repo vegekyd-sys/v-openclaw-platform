@@ -11,6 +11,7 @@ bash -n "${REPO_ROOT}/scripts/vcodex-streaming-env-exec.sh"
 node --check "${REPO_ROOT}/scripts/inject-vcodex-feishu-event.mjs"
 node --check "${REPO_ROOT}/scripts/capture-vcodex-feishu-timeline.mjs"
 node --check "${REPO_ROOT}/scripts/apply-vcodex-feishu-stream-coalescing-patch.mjs"
+node --check "${REPO_ROOT}/scripts/apply-vcodex-feishu-scoped-streaming-patch.mjs"
 "${REPO_ROOT}/tests/vcodex-feishu-coalescing-patch.sh"
 jq -e . "${AUTO_CONFIG}" >/dev/null
 jq -e . "${CARD_CONFIG}" >/dev/null
