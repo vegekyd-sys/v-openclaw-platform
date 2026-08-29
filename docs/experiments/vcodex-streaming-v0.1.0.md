@@ -140,6 +140,33 @@ At handoff the fourth candidate service is deliberately `inactive` and
 `disabled`, so it consumes no steady-state memory and cannot contend with the
 other VLab experiments. Its state, logs, backups, and worktree remain intact.
 
+## Production promotion — 2026-08-30
+
+Production V was promoted as `v0.1.1` with a chat-scoped systemd drop-in. The
+account-wide Feishu mode remains `auto`; only
+`oc_3355cd58853f38e19a613b8ff644f52f` resolves to `card`. The main
+`openclaw.json` and Worker overlay remained byte-identical to their predeploy
+backups.
+
+- Feishu monitor SHA before: `110c17fdadf85e5df3e089fc60bc44d62535f545e9905429b544610866bedd43`
+- Feishu monitor SHA after: `4dc0d6b3ccc5b07bdf71a2a2a10a5749f797946e4c5054432c0b9d062381ef1d`
+- Backup: `/home/openclaw/.openclaw/backups/vcodex-streaming-v0.1.1/20260830-045218-predeploy`
+- Acceptance: receive `04:55:44`, card start `04:55:48`, dispatch complete
+  `04:56:59`; one card produced at least nine observed snapshots and the final
+  marker `VCODEX_PROD_STREAM_OK_0830`.
+- Final health: Feishu connected, Worker Isolation `0.2.6` ready, no pending or
+  queued work, no event-relay failure, `NRestarts=0`, and Event Loop not
+  degraded.
+- V recorded the release in
+  `memory/projects/openclaw-codex-v/feishu-streaming-v0.1.1-2026-08-30.md`
+  and linked it from `current-architecture-2026-08-29.md`.
+
+The first production prestart attempted to write the root-owned bundle as the
+service user and failed with `EACCES`. The ignored prestart left the bundle
+unchanged and Gateway available. The corrected drop-in uses systemd's `+`
+privilege prefix for this version-gated file patch; the second controlled
+restart applied the expected SHA.
+
 ## Rollback
 
 This experiment is additive. Rollback is:
