@@ -1,0 +1,11 @@
+{
+  "name": "@versa/openclaw-sandbox-plugin-suite",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "for f in bin/*.mjs src/*.mjs scripts/*.mjs plugin/index.js plugin/core/*.js; do node --check \"$f\"; done && python3 -c \"compile(open('src/workspace-runner.py', encoding='utf-8').read(), 'src/workspace-runner.py', 'exec')\"",
+    "test": "node --test tests/*.test.mjs",
+    "start": "node bin/sandboxd.mjs"
+  }
+}

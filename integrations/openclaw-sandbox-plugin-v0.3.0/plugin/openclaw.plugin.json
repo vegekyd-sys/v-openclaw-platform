@@ -1,0 +1,105 @@
+{
+  "id": "project-sandbox",
+  "name": "Project Sandbox",
+  "description": "Session-bound project development in Broker-managed OpenShell Sandboxes.",
+  "version": "0.3.0",
+  "activation": {
+    "onStartup": true
+  },
+  "contracts": {
+    "trustedToolPolicies": [
+      "project-sandbox-host-deny"
+    ],
+    "tools": [
+      "project_sandbox_open",
+      "project_sandbox_files",
+      "project_sandbox_exec",
+      "project_sandbox_finish"
+    ]
+  },
+  "skills": [
+    "skill"
+  ],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "socketPath": {
+        "type": "string"
+      },
+      "brokerUrl": {
+        "type": "string"
+      },
+      "tokenEnv": {
+        "type": "string"
+      },
+      "tokenFile": {
+        "type": "string"
+      },
+      "openWaitMs": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 60000
+      },
+      "cliActorUserId": {
+        "type": "string"
+      },
+      "blockedAgentIds": {
+        "type": "array",
+        "default": [],
+        "uniqueItems": true,
+        "items": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "projects": {
+        "type": "object",
+        "minProperties": 1,
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path"
+          ],
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "cpu": {
+              "type": "string",
+              "enum": [
+                "500m",
+                "1",
+                "2"
+              ]
+            },
+            "memory": {
+              "type": "string",
+              "enum": [
+                "1Gi",
+                "2Gi",
+                "4Gi"
+              ]
+            },
+            "networkProfile": {
+              "type": "string",
+              "enum": [
+                "offline",
+                "packages"
+              ]
+            },
+            "leaseSeconds": {
+              "type": "integer",
+              "minimum": 60,
+              "maximum": 21600
+            }
+          }
+        }
+      }
+    }
+  }
+}
