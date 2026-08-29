@@ -11,6 +11,14 @@ test("systemd unit starts the immutable v0.3.0 Broker release", async () => {
   assert.doesNotMatch(unit, /sandbox-broker-v0\.2\.0\/bin\/sandboxd\.mjs/);
 });
 
+test("Sandbox policies permit cryptographic randomness without broad device writes", async () => {
+  for (const name of ["offline-dev-v1.yaml", "packages-dev-v1.yaml"]) {
+    const policy = await readFile(new URL(`../policies/${name}`, import.meta.url), "utf8");
+    assert.match(policy, /read_only: \[[^\n]*\/dev\/urandom[^\n]*\/dev\/random[^\n]*\]/);
+    assert.doesNotMatch(policy, /read_write: \[[^\n]*\/dev(?:,|\])/);
+  }
+});
+
 test("VLab installer and rollback remain scoped to VLab services and state", async () => {
   const install = await readFile(new URL("../scripts/install-vlab.sh", import.meta.url), "utf8");
   const rollback = await readFile(new URL("../scripts/rollback-vlab.sh", import.meta.url), "utf8");
@@ -30,6 +38,8 @@ test("VLab installer and rollback remain scoped to VLab services and state", asy
   assert.match(install, /\(\.capacity \| type\) == "object"/);
   assert.match(install, /active foreground openclaw agent process/);
   assert.match(install, /VLab disk safety gate failed/);
+  assert.match(install, /\.running \/\/ \.jobs\.running \/\/ 0/);
+  assert.match(install, /\.workspaces\.active \/\/ 0/);
   assert.match(install, /directory-modes\.tsv/);
   assert.match(rollback, /directory-modes\.tsv/);
   assert.match(install, /@openclaw\/codex@2026\.7\.1/);

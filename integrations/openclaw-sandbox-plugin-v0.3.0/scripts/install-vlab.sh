@@ -105,8 +105,15 @@ jq -e '.started == true and .pending == 0 and all(.workers[]?; .activeCount == 0
   exit 1
 }
 broker_health=$(sudo -u vlab -H /srv/vlab/bin/sandboxctl health)
-jq -e '.ok == true and .running == 0 and .queued == 0' <<<"$broker_health" >/dev/null || {
-  echo "legacy VLab Broker is not idle" >&2
+jq -e '
+  .ok == true and
+  (.running // .jobs.running // 0) == 0 and
+  (.queued // .jobs.queued // 0) == 0 and
+  (.workspaces.active // 0) == 0 and
+  (.workspaces.opening // 0) == 0 and
+  (.workspaces.queued // 0) == 0
+' <<<"$broker_health" >/dev/null || {
+  echo "VLab Broker is not idle" >&2
   exit 1
 }
 if pgrep -u vlab -f '/opt/vlab/current/node_modules/openclaw/dist/index\.js agent([[:space:]]|$)' >/dev/null; then
