@@ -46,7 +46,7 @@ systemctl cat "$gateway_service" >/dev/null
 systemctl cat "$broker_service" >/dev/null
 
 read -r disk_free_kib disk_used_percent < <(
-  df -Pk --output=avail,pcent /srv/vlab | tail -n 1 | awk '{ gsub(/%/, "", $2); print $1, $2 }'
+  df -k --output=avail,pcent /srv/vlab | tail -n 1 | awk '{ gsub(/%/, "", $2); print $1, $2 }'
 )
 if (( disk_free_kib < min_free_kib || disk_used_percent >= max_disk_used_percent )); then
   echo "VLab disk safety gate failed: free_kib=$disk_free_kib used_percent=$disk_used_percent" >&2
