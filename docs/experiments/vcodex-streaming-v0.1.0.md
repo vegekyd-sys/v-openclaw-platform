@@ -228,6 +228,22 @@ pre-`v0.1.1` Feishu bundle. A production promotion requires a separate user
 gate, a fresh backup, chat-scoped deployment, and acceptance in the real VCodex
 programming Session.
 
+## Main VLab integration
+
+The main VLab already loads the official Codex plugin and maps the `vcodex`
+model alias to `openai/gpt-5.6-sol` with `agentRuntime.id=codex`. Integration
+therefore does not change the Feishu binding, default Makaron model, Session
+store, Memory, workspace, or Worker configuration. The user opts into Codex in
+the existing VLab DM with `/model vcodex`.
+
+The main-Gateway drop-in adds only the explicit chat scope and two
+version-gated Feishu patchers. Both prestart commands use systemd's `-+`
+prefix: the exact accepted bundle may be patched with root privileges, while an
+incompatible future OpenClaw bundle logs the refusal but still lets the Gateway
+start normally without the optional VCodex presentation bridge. This keeps
+ordinary OpenClaw agents available during an upgrade even when the adapter
+needs to be revalidated.
+
 ## Rollback
 
 This experiment is additive. Rollback is:
