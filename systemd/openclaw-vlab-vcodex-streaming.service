@@ -19,6 +19,7 @@ Environment=OPENCLAW_GATEWAY_PORT=24993
 Environment=TMPDIR=/srv/vlab-vcodex-streaming/tmp
 Environment=NODE_ENV=production
 ExecStartPre=/opt/vlab/node/bin/node /srv/vlab-vcodex-streaming/bin/apply-vcodex-feishu-stream-coalescing-patch.mjs --root=/srv/vlab-vcodex-streaming/state/npm/projects --backup-dir=/srv/vlab-vcodex-streaming/backups/feishu-stream-coalescing --allow-missing
+ExecStartPre=/opt/vlab/node/bin/node /srv/vlab-vcodex-streaming/bin/apply-vcodex-feishu-meaningful-progress-patch.mjs --root=/srv/vlab-vcodex-streaming/state/npm/projects --backup-dir=/srv/vlab-vcodex-streaming/backups/feishu-meaningful-progress --allow-missing
 ExecStart=/opt/vlab/node/bin/node /srv/vlab-vcodex-streaming/current/node_modules/openclaw/openclaw.mjs gateway --port 24993
 Restart=on-failure
 RestartSec=5

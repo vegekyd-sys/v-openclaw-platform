@@ -21,6 +21,54 @@ const chatId = requiredEnv("VLAB_VCODEX_ACCEPTANCE_CHAT_ID");
 const marker = readFlag("--marker", "");
 const seconds = Number(readFlag("--seconds", "120"));
 const intervalMs = Number(readFlag("--interval-ms", "2000"));
+const debugRaw = process.argv.includes("--debug-raw");
+
+function parseCardContent(content) {
+  try {
+    const first = JSON.parse(content);
+    if (typeof first === "string") return JSON.parse(first);
+    if (typeof first?.json_card === "string") return JSON.parse(first.json_card);
+    return first;
+  } catch {
+    return null;
+  }
+}
+
+function collectUserVisibleText(value, output = []) {
+  if (!value || typeof value !== "object") return output;
+  if (Array.isArray(value)) {
+    for (const entry of value) collectUserVisibleText(entry, output);
+    return output;
+  }
+  for (const [key, entry] of Object.entries(value)) {
+    if ((key === "content" || key === "text") && typeof entry === "string") {
+      output.push(entry);
+      continue;
+    }
+    collectUserVisibleText(entry, output);
+  }
+  return output;
+}
+
+function summarizeMeaningfulText(content) {
+  const card = parseCardContent(content);
+  if (!card) return { meaningfulText: "", meaningfulTextLength: 0 };
+  const bodyElements = card?.body?.property?.elements;
+  const contentElement = Array.isArray(bodyElements)
+    ? bodyElements.find((element) => element?.id === "content")
+    : null;
+  const meaningfulText = collectUserVisibleText(contentElement ?? {})
+    .map((text) => text.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .filter((text) => !/^Agent:/u.test(text))
+    .filter((text) => !/^(?:🧪\s*)?VCodex Streaming Lab$/u.test(text))
+    .join(" ")
+    .trim();
+  return {
+    meaningfulText,
+    meaningfulTextLength: meaningfulText.length,
+  };
+}
 
 if (!Number.isFinite(seconds) || seconds <= 0 || seconds > 1800) {
   throw new Error("--seconds must be between 1 and 1800");
@@ -78,6 +126,7 @@ while (Date.now() < deadlineMs) {
         continue;
       }
       const content = String(item.body?.content ?? "");
+      const { meaningfulText, meaningfulTextLength } = summarizeMeaningfulText(content);
       const contentHash = crypto.createHash("sha256").update(content).digest("hex").slice(0, 16);
       const messageHash = crypto
         .createHash("sha256")
@@ -100,6 +149,10 @@ while (Date.now() < deadlineMs) {
           updateTime,
           contentLength: content.length,
           contentHash,
+          meaningfulTextLength,
+          hasMeaningfulText: meaningfulTextLength > 0,
+          meaningfulPreview: meaningfulText.slice(0, 160),
+          ...(debugRaw ? { rawPreview: content.slice(0, 1200) } : {}),
           markerVisible: Boolean(marker && content.includes(marker)),
           updated: Boolean(item.updated),
         }),
