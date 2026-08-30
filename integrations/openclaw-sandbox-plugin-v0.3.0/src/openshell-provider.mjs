@@ -250,7 +250,8 @@ export class OpenShellProvider {
       "sandbox", "create", "--name", name, "--from", this.image,
       "--cpu", input.cpu, "--memory", input.memory,
       "--policy", policy, "--label", "managed-by=vlab-sandbox-broker",
-      "--label", `${idLabel}=${idValue}`, "--detach", "--no-tty", "--no-auto-providers", "-o", "json",
+      "--label", `${idLabel}=${idValue}`, "--detach", "--no-tty", "--no-auto-providers",
+      "--", "sleep", "infinity",
     ], { maxBytes: 500_000 });
     requireSuccess(created, "sandbox create");
   }

@@ -17,7 +17,7 @@ config.plugins.entries.codex = {
   enabled: true,
   config: {
     ...(previousCodex.config ?? {}),
-    codexDynamicToolsLoading: "direct",
+    codexDynamicToolsLoading: "searchable",
     codexPlugins: { enabled: false },
   },
 };
@@ -42,7 +42,7 @@ upsertAgent(config.agents.list, {
   models: {
     "openai/gpt-5.6-sol": { agentRuntime: { id: "codex" } },
   },
-  tools: sandboxToolPolicy(),
+  tools: undefined,
 });
 
 const temp = `${configPath}.${process.pid}.tmp`;

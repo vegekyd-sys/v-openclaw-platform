@@ -10,6 +10,7 @@ Group=openclaw
 WorkingDirectory=/opt/openclaw-experiments/project-sandbox-v0.3.1/current
 Environment=HOME=/home/openclaw
 Environment=OPENSHELL_GATEWAY=v-sandbox-prod
+Environment=OPENSHELL_WORKSPACE=v-project-prod
 Environment=VLAB_SANDBOX_MAX_CONCURRENT=1
 Environment=VLAB_SANDBOX_PROJECT_ROOTS=/home/openclaw/makaron-openclaw/.openclaw-local/workspace/v-evolution-engine
 Environment=VLAB_SANDBOX_POLICY_DIR=/home/openclaw/.openclaw/experiments/project-sandbox-v0.3.1/policies

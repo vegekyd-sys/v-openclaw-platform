@@ -11,6 +11,7 @@ Group=vlab
 WorkingDirectory=/srv/vlab/releases/openclaw-sandbox-plugin-v0.3.0
 Environment=HOME=/srv/vlab
 Environment=OPENSHELL_GATEWAY=v-sandbox-1
+Environment=OPENSHELL_WORKSPACE=v-project-vlab
 Environment=VLAB_SANDBOX_MAX_CONCURRENT=1
 Environment=VLAB_SANDBOX_PROJECT_ROOTS=/srv/vlab/projects:/srv/vlab/state/sandbox/projects
 Environment=VLAB_SANDBOX_POLICY_DIR=/srv/vlab/state/sandbox/policies

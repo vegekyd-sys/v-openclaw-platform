@@ -8,6 +8,7 @@ test("systemd unit starts the immutable v0.3.0 Broker release", async () => {
   const unit = await readFile(new URL("../systemd/vlab-sandbox-broker.service", import.meta.url), "utf8");
   assert.match(unit, new RegExp(`^WorkingDirectory=${escapeRegExp(releaseRoot)}$`, "m"));
   assert.match(unit, new RegExp(`^ExecStart=/opt/vlab/node/bin/node ${escapeRegExp(releaseRoot)}/bin/sandboxd\\.mjs$`, "m"));
+  assert.match(unit, /^Environment=OPENSHELL_WORKSPACE=v-project-vlab$/m);
   assert.doesNotMatch(unit, /sandbox-broker-v0\.2\.0\/bin\/sandboxd\.mjs/);
 });
 
@@ -82,6 +83,7 @@ test("production canary is exact-scoped and ships a fail-closed one-click rollba
   assert.match(rollback, /VLAB_SANDBOX_SOCKET="\$state_root\/broker\.sock"/);
   assert.match(rollback, /Session, Memory, Broker state, and artifacts were preserved/);
   assert.match(broker, /Environment=VLAB_SANDBOX_MAX_CONCURRENT=1/);
+  assert.match(broker, /^Environment=OPENSHELL_WORKSPACE=v-project-prod$/m);
   assert.match(broker, /v-evolution-engine/);
   assert.match(broker, /MemoryMax=256M/);
   assert.match(broker, /Wants=network-online\.target v-openshell-tunnel\.service/);

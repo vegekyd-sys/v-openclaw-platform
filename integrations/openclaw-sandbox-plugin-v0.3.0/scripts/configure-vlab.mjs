@@ -18,7 +18,10 @@ config.plugins.entries ??= {};
 const previous = config.plugins.entries["project-sandbox"] ?? {};
 const previousConfig = previous.config ?? {};
 const protectedAgentIds = String(
-  process.env.VLAB_SANDBOX_PROTECTED_AGENT_IDS ?? "vlab-sandbox-openclaw,vlab-sandbox-codex",
+  process.env.VLAB_SANDBOX_PROTECTED_AGENT_IDS ?? "vlab-sandbox-openclaw",
+).split(",").map((value) => value.trim()).filter(Boolean);
+const choiceAgentIds = String(
+  process.env.VLAB_SANDBOX_CHOICE_AGENT_IDS ?? "vlab-sandbox-codex",
 ).split(",").map((value) => value.trim()).filter(Boolean);
 config.plugins.entries["project-sandbox"] = {
   ...previous,
@@ -28,10 +31,11 @@ config.plugins.entries["project-sandbox"] = {
     allowedAgentIds: unique([
       ...(previousConfig.allowedAgentIds ?? []),
       ...protectedAgentIds,
+      ...choiceAgentIds,
     ]),
     allowedSessionPrefixes: unique([
       ...(previousConfig.allowedSessionPrefixes ?? []),
-      ...protectedAgentIds.map((agentId) => `agent:${agentId}:`),
+      ...[...protectedAgentIds, ...choiceAgentIds].map((agentId) => `agent:${agentId}:`),
     ]),
     blockedAgentIds: unique([
       ...(previousConfig.blockedAgentIds ?? []),

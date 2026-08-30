@@ -27,7 +27,7 @@ test("VLab acceptance agents force distinct runtimes through one Plugin tool con
     const updated = JSON.parse(await readFile(configPath, "utf8"));
     assert.deepEqual(updated.plugins.allow, ["existing", "codex", "project-sandbox"]);
     assert.equal(updated.plugins.entries.codex.enabled, true);
-    assert.equal(updated.plugins.entries.codex.config.codexDynamicToolsLoading, "direct");
+    assert.equal(updated.plugins.entries.codex.config.codexDynamicToolsLoading, "searchable");
     assert.equal(updated.plugins.entries.codex.config.codexPlugins.enabled, false);
     assert.equal(updated.plugins.entries.codex.config.appServer.homeScope, "agent");
     assert.ok(updated.agents.list.some((agent) => agent.id === "existing-agent"));
@@ -35,9 +35,8 @@ test("VLab acceptance agents force distinct runtimes through one Plugin tool con
     const openclaw = updated.agents.list.find((agent) => agent.id === "vlab-sandbox-openclaw");
     const codex = updated.agents.list.find((agent) => agent.id === "vlab-sandbox-codex");
     assert.deepEqual(openclaw.tools.allow, allowed);
-    assert.deepEqual(codex.tools.allow, allowed);
+    assert.equal(codex.tools, undefined);
     assert.deepEqual(openclaw.tools.deny, ["group:runtime", "group:fs"]);
-    assert.deepEqual(codex.tools.deny, ["group:runtime", "group:fs"]);
     assert.equal(openclaw.models["deepseek/deepseek-v4-pro"].agentRuntime.id, "openclaw");
     assert.equal(codex.models["openai/gpt-5.6-sol"].agentRuntime.id, "codex");
     assert.equal(Object.hasOwn(openclaw, "agentRuntime"), false);

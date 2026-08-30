@@ -12,6 +12,8 @@ project_path=${VLAB_SANDBOX_PROJECT_PATH:-/srv/vlab/projects/v-core}
 node_bin=/opt/vlab/node/bin/node
 npm_bin=/opt/vlab/node/bin/npm
 openclaw_entry=/opt/vlab/current/node_modules/openclaw/openclaw.mjs
+openshell_bin=/usr/bin/openshell
+openshell_workspace=v-project-vlab
 gateway_service=openclaw-vlab-gateway.service
 broker_service=vlab-sandbox-broker.service
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
@@ -41,7 +43,7 @@ if ! [[ $min_free_kib =~ ^[0-9]+$ && $max_disk_used_percent =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 [[ $rotate_gateway_token =~ ^[01]$ ]] || { echo "invalid VLAB_ROTATE_GATEWAY_TOKEN flag" >&2; exit 1; }
-for executable in "$node_bin" "$npm_bin"; do
+for executable in "$node_bin" "$npm_bin" "$openshell_bin"; do
   [[ -x $executable ]] || { echo "missing VLab runtime: $executable" >&2; exit 1; }
 done
 [[ -f $openclaw_entry ]] || { echo "missing VLab OpenClaw entry: $openclaw_entry" >&2; exit 1; }
@@ -232,6 +234,12 @@ install -o root -g root -m 0644 "$release_dir/systemd/vlab-sandbox-broker.servic
 ln -sfn "$release_dir/bin/sandboxctl.mjs" /srv/vlab/bin/sandboxctl
 chmod 0755 "$release_dir/bin/"*.mjs "$release_dir/scripts/"*.sh
 
+if ! sudo -u vlab -H env HOME=/srv/vlab OPENSHELL_GATEWAY=v-sandbox-1 \
+  "$openshell_bin" workspace get "$openshell_workspace" >/dev/null 2>&1; then
+  sudo -u vlab -H env HOME=/srv/vlab OPENSHELL_GATEWAY=v-sandbox-1 \
+    "$openshell_bin" workspace create --name "$openshell_workspace" --label environment=vlab >/dev/null
+fi
+
 plugin_tgz=$(
   sudo -u vlab -H env PATH=/opt/vlab/node/bin:/usr/bin:/bin \
     "$npm_bin" pack "$release_dir/plugin" --pack-destination "$release_dir" --silent | tail -n 1
@@ -301,7 +309,7 @@ for _ in $(seq 1 100); do
 done
 [[ -S /srv/vlab/state/sandbox-broker/broker.sock ]] || {
   systemctl status "$broker_service" --no-pager >&2 || true
-  exit 1
+  rollback_on_error 1
 }
 new_health=$(sudo -u vlab -H /srv/vlab/bin/sandboxctl health)
 jq -e '.ok == true and (.workspaces | type) == "object" and (.capacity | type) == "object" and .capacity.active == 0' <<<"$new_health" >/dev/null

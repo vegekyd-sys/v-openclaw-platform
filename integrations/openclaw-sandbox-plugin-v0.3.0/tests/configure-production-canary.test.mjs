@@ -38,7 +38,7 @@ test("production canary is scoped to one Agent, one Session, and one project", a
     assert.deepEqual(plugin.config.allowedAgentIds, ["v-codex"]);
     assert.deepEqual(plugin.config.allowedSessionKeys, [session]);
     assert.deepEqual(plugin.config.allowedSessionPrefixes, []);
-    assert.deepEqual(plugin.config.blockedAgentIds, ["hard-sandbox-agent"]);
+    assert.deepEqual(plugin.config.blockedAgentIds, []);
     assert.deepEqual(Object.keys(plugin.config.projects), ["v-evolution-engine"]);
     assert.equal(plugin.config.projects["v-evolution-engine"].path, "/approved/v-evolution-engine");
     assert.equal(plugin.config.projects["v-evolution-engine"].networkProfile, "packages");

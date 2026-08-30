@@ -45,7 +45,6 @@ test("VLab config mutator preserves existing plugin policy and file mode", async
     assert.deepEqual(updated.plugins.entries["project-sandbox"].config.blockedAgentIds, [
       "sandbox-codex",
       "vlab-sandbox-openclaw",
-      "vlab-sandbox-codex",
     ]);
     assert.equal(updated.plugins.entries["project-sandbox"].config.projects.retained.path, "/approved/retained");
     assert.equal(updated.plugins.entries["project-sandbox"].config.projects["v-core"].path, "/srv/vlab/projects/v-core");

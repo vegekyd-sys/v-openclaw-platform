@@ -31,7 +31,9 @@ config.plugins.entries["project-sandbox"] = {
     allowedAgentIds: [agentId],
     allowedSessionKeys: [sessionKey],
     allowedSessionPrefixes: [],
-    blockedAgentIds: previousConfig.blockedAgentIds ?? [],
+    // VCodex keeps its normal runtime and native tools. The routing Skill lets
+    // it choose Project Sandbox only for approved project execution.
+    blockedAgentIds: [],
     socketPath: "/home/openclaw/.openclaw/experiments/project-sandbox-v0.3.1/state/broker.sock",
     openWaitMs: 45000,
     projects: {

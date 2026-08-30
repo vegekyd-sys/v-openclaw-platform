@@ -9,7 +9,7 @@ One OpenClaw Plugin exposes the same four project-development tools to both the 
 
 Both runtimes call the same local Broker. The Broker owns Session identity, project mapping, capacity, OpenShell lifecycle, durable command state, patches, artifacts, and cleanup. There is no separate Codex Sandbox implementation and no OpenClaw core patch.
 
-Tool exposure is fail-closed. `allowedAgentIds`, `allowedSessionKeys`, and `allowedSessionPrefixes` default to empty lists. A tool factory call must match both the Agent and an exact Session or prefix; every other context receives no Project Sandbox tools. The canary package does not declare a global bundled Skill, so one exact Agent chat can be enabled without changing other Agents' Skill snapshots.
+Tool exposure is fail-closed. `allowedAgentIds`, `allowedSessionKeys`, and `allowedSessionPrefixes` default to empty lists. A tool factory call must match both the Agent and an exact Session or prefix; every other context receives no Project Sandbox tools. The bundled Skill is visible as routing guidance, but it activates only when `project_sandbox_open` is available in the current Session and the task matches an operator-approved software project.
 
 The VLab installer adds two dedicated acceptance Agents. Their runtime is set on the exact model entry (whole-Agent runtime keys are intentionally not used), while both receive the same five-tool allowlist: the four Project Sandbox tools plus `message`. This restricted OpenClaw tool policy disables Codex native code mode; the Plugin's trusted pre-tool policy is an additional fail-closed guard against host tools.
 

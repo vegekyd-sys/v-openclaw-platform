@@ -6,6 +6,9 @@
   "activation": {
     "onStartup": true
   },
+  "skills": [
+    "./skill"
+  ],
   "contracts": {
     "trustedToolPolicies": [
       "project-sandbox-host-deny"

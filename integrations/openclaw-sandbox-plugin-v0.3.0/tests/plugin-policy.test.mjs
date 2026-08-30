@@ -7,7 +7,7 @@ import {
   normalizeProjectSandboxPolicyToolName,
 } from "../plugin/core/policy.js";
 
-test("plugin manifest declares fail-closed Agent exposure and keeps host restriction opt-in", async () => {
+test("plugin manifest declares routing Skill, fail-closed Agent exposure, and opt-in host restriction", async () => {
   const manifest = JSON.parse(
     await readFile(new URL("../plugin/openclaw.plugin.json", import.meta.url), "utf8"),
   );
@@ -19,7 +19,16 @@ test("plugin manifest declares fail-closed Agent exposure and keeps host restric
   assert.deepEqual(manifest.configSchema.properties.allowedSessionPrefixes.default, []);
   assert.deepEqual(manifest.configSchema.properties.blockedAgentIds.default, []);
   assert.equal(manifest.configSchema.properties.blockedAgentIds.uniqueItems, true);
-  assert.equal(manifest.skills, undefined, "the canary package must not inject a global Skill");
+  assert.deepEqual(manifest.skills, ["./skill"]);
+});
+
+test("routing Skill selects Sandbox for approved project execution without taking over ordinary Agent work", async () => {
+  const skill = await readFile(new URL("../plugin/skill/SKILL.md", import.meta.url), "utf8");
+  assert.match(skill, /current Session exposes `project_sandbox_open`/);
+  assert.match(skill, /searchable rather than already loaded/);
+  assert.match(skill, /ordinary conversation/);
+  assert.match(skill, /no matching approved project/);
+  assert.match(skill, /Do not silently edit the Gateway host project instead/);
 });
 
 test("configured agents deny host tools, Codex aliases, and every non-allowlisted tool", async () => {

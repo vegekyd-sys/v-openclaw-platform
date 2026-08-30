@@ -22,6 +22,8 @@ npm_bin=/opt/node-v22.23.1/bin/npm
 openclaw_entry=/opt/openclaw-2026.7.1/node_modules/openclaw/dist/index.js
 gateway_service=openclaw-gateway.service
 broker_service=v-project-sandbox-broker.service
+openshell_bin=/usr/bin/openshell
+openshell_workspace=v-project-prod
 tunnel_service=v-openshell-tunnel.service
 lock_path=/run/lock/v-project-sandbox-v0.3.1.lock
 
@@ -124,6 +126,7 @@ install -o openclaw -g openclaw -m 0644 "$release_dir/policies/offline-dev-v1.ya
 install -o openclaw -g openclaw -m 0644 "$release_dir/policies/packages-dev-v1.yaml" "$experiment_root/policies/packages-dev-v1.yaml"
 install -o root -g root -m 0644 "$release_dir/systemd/v-openshell-tunnel.service" /etc/systemd/system/v-openshell-tunnel.service
 install -o root -g root -m 0644 "$release_dir/systemd/v-project-sandbox-broker.service" /etc/systemd/system/v-project-sandbox-broker.service
+
 chmod 0755 "$release_dir/bin/"*.mjs "$release_dir/scripts/"*.sh
 ln -sfn "$release_dir/scripts/rollback-production-canary.sh" /usr/local/sbin/v-project-sandbox-rollback
 
@@ -160,6 +163,11 @@ for _ in $(seq 1 20); do
   sleep 1
 done
 systemctl is-active --quiet "$tunnel_service"
+if ! sudo -u openclaw -H env HOME=/home/openclaw OPENSHELL_GATEWAY=v-sandbox-prod \
+  "$openshell_bin" workspace get "$openshell_workspace" >/dev/null 2>&1; then
+  sudo -u openclaw -H env HOME=/home/openclaw OPENSHELL_GATEWAY=v-sandbox-prod \
+    "$openshell_bin" workspace create --name "$openshell_workspace" --label environment=production >/dev/null
+fi
 systemctl enable --now "$broker_service"
 for _ in $(seq 1 30); do
   [[ -S $experiment_root/state/broker.sock ]] && break
