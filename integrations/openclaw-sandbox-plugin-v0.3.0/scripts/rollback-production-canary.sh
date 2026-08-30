@@ -23,7 +23,8 @@ if [[ -z $backup_dir && -f $latest_backup ]]; then backup_dir=$(<"$latest_backup
 [[ -f $backup_dir/service-state.env ]] || { echo "backup service state is missing" >&2; exit 1; }
 
 if [[ -S $state_root/broker.sock ]]; then
-  health=$(/opt/openclaw-experiments/project-sandbox-v0.3.1/current/bin/sandboxctl.mjs health) || {
+  health=$(env VLAB_SANDBOX_SOCKET="$state_root/broker.sock" \
+    /opt/openclaw-experiments/project-sandbox-v0.3.1/current/bin/sandboxctl.mjs health) || {
     echo "rollback refused: unable to verify that Project Sandbox is idle" >&2; exit 1;
   }
   jq -e '(.workspaces.active // 0) == 0 and (.workspaces.opening // 0) == 0 and (.workspaces.queued // 0) == 0' <<<"$health" >/dev/null || {

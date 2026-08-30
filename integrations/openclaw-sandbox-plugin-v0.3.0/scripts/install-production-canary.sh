@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -Eeuo pipefail
+set -euo pipefail
 umask 077
 
 source_dir=${1:-/tmp/project-sandbox-v0.3.1}
@@ -165,7 +165,9 @@ for _ in $(seq 1 30); do
   [[ -S $experiment_root/state/broker.sock ]] && break
   sleep 1
 done
-broker_health=$(sudo -u openclaw -H "$release_dir/bin/sandboxctl.mjs" health)
+broker_health=$(sudo -u openclaw -H env \
+  VLAB_SANDBOX_SOCKET="$experiment_root/state/broker.sock" \
+  "$release_dir/bin/sandboxctl.mjs" health)
 jq -e '.ok == true and (.workspaces.active // 0) == 0 and (.workspaces.opening // 0) == 0 and (.workspaces.queued // 0) == 0' <<<"$broker_health" >/dev/null
 gateway_restarts_before=$(systemctl show "$gateway_service" -p NRestarts --value)
 systemctl start "$gateway_service"
