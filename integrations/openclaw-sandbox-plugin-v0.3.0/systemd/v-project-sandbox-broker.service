@@ -1,8 +1,7 @@
 [Unit]
 Description=Production V persistent project Sandbox Broker
 After=network-online.target v-openshell-tunnel.service
-Wants=network-online.target
-Requires=v-openshell-tunnel.service
+Wants=network-online.target v-openshell-tunnel.service
 
 [Service]
 Type=simple

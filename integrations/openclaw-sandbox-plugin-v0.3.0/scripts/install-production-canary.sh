@@ -187,6 +187,10 @@ done
 systemctl is-active --quiet "$gateway_service"
 [[ $worker_ready == 1 ]] || { echo "production Worker pool did not become ready within 60 seconds" >&2; exit 1; }
 sleep 5
+systemctl is-active --quiet "$tunnel_service"
+systemctl is-active --quiet "$broker_service"
+[[ $(systemctl show "$tunnel_service" -p NRestarts --value) == 0 ]] || { echo "OpenShell tunnel restart loop detected" >&2; exit 1; }
+[[ $(systemctl show "$broker_service" -p NRestarts --value) == 0 ]] || { echo "Project Sandbox Broker restart loop detected" >&2; exit 1; }
 gateway_restarts_after=$(systemctl show "$gateway_service" -p NRestarts --value)
 [[ $gateway_restarts_before == "$gateway_restarts_after" ]] || { echo "Gateway restart loop detected" >&2; exit 1; }
 

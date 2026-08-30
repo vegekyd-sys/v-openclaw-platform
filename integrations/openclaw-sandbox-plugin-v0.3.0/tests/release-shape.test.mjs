@@ -76,12 +76,16 @@ test("production canary is exact-scoped and ships a fail-closed one-click rollba
   assert.match(install, /Gateway restart loop detected/);
   assert.match(install, /production Worker pool did not become ready within 60 seconds/);
   assert.match(install, /\.started == true and \.pending == 0 and any\(\.workers/);
+  assert.match(install, /OpenShell tunnel restart loop detected/);
+  assert.match(install, /Project Sandbox Broker restart loop detected/);
   assert.match(rollback, /rollback refused: active or queued Sandbox work remains/);
   assert.match(rollback, /VLAB_SANDBOX_SOCKET="\$state_root\/broker\.sock"/);
   assert.match(rollback, /Session, Memory, Broker state, and artifacts were preserved/);
   assert.match(broker, /Environment=VLAB_SANDBOX_MAX_CONCURRENT=1/);
   assert.match(broker, /v-evolution-engine/);
   assert.match(broker, /MemoryMax=256M/);
+  assert.match(broker, /Wants=network-online\.target v-openshell-tunnel\.service/);
+  assert.doesNotMatch(broker, /^Requires=v-openshell-tunnel\.service$/m);
   assert.match(tunnel, /100\.79\.149\.4|v-sandbox-prod/);
   assert.match(tunnel, /ExitOnForwardFailure=yes/);
   for (const source of [install, rollback, broker, tunnel]) {
