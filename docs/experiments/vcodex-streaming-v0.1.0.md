@@ -244,7 +244,42 @@ start normally without the optional VCodex presentation bridge. This keeps
 ordinary OpenClaw agents available during an upgrade even when the adapter
 needs to be revalidated.
 
+Main VLab deployment and real Feishu acceptance completed on 2026-08-30:
+
+| Gate | Result | Evidence |
+| --- | --- | --- |
+| Main Gateway health | PASS | One controlled restart; `NRestarts=0`, Feishu connected, Event Loop P99 `20.2ms`, ELU `0.027`, and Worker `ready=true` with `pending=0`. |
+| Configuration preservation | PASS | The pre/post `openclaw.json` SHA-256 remained identical; all 458 Sessions were retained during the restart. |
+| Incremental meaningful text | PASS | One real Codex programming turn updated the same card from 2 readable characters to 147, 232, 279, and 330 characters before final replacement. |
+| Raw internals hidden | PASS | The visible card contained Codex-authored Chinese design/implementation/test commentary; no shell commands or tool events were displayed. |
+| Final replacement | PASS | The card finished with `VCODEX_MAIN_VLAB_STREAM_OK_0830B`, three created files, and a 5/5 passing test result. |
+| Actual coding result | PASS | The generated Node project was inspected and its five tests independently rerun successfully on VLab. |
+| Ordinary OpenClaw regression | PASS | The same DM switched back to `deepseek/deepseek-v4-pro` and visibly returned `OPENCLAW_BASELINE_OK_0830`, then was restored to `/model vcodex`. |
+
+The integrated Feishu monitor bundle SHA-256 is
+`6f204bc8333c7e389427e6516a57c7422e52a2806497f5547325a028c6ab494c`.
+The isolated fourth candidate service was stopped after the main VLab passed,
+so subsequent manual acceptance uses the normal VLab Gateway and Feishu route.
+
+The main VLab Codex Session uses the official `/exec security=full` Session
+setting for autonomous coding. Without it, the existing VLab plugin-approval
+policy forwards command approvals to an unavailable Telegram target and the
+coding turn waits for approval. This Session-level setting avoids changing the
+approval policy of ordinary OpenClaw Agents.
+
 ## Rollback
+
+For the main VLab integration, remove
+`/etc/systemd/system/openclaw-vlab-gateway.service.d/vcodex-streaming-v0.1.3.conf`,
+restore the Feishu bundle and `openclaw.json` from the pre-deploy backup, remove
+`/srv/vlab/state/vcodex-streaming.env`, run `systemctl daemon-reload`, and restart
+only `openclaw-vlab-gateway.service`. The exact backup is:
+
+```text
+/srv/vlab/backups/vcodex-streaming-v0.1.3/20260830-172529-predeploy
+```
+
+For the isolated fourth candidate, rollback remains:
 
 This experiment is additive. Rollback is:
 
