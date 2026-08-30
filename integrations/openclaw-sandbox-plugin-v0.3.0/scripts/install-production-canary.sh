@@ -74,6 +74,9 @@ jq -e '.started == true and .pending == 0 and all(.workers[]?; .activeCount == 0
 if pgrep -u openclaw -f '/opt/openclaw-2026\.7\.1/node_modules/openclaw/dist/index\.js agent([[:space:]]|$)' >/dev/null; then
   echo "production has an active foreground OpenClaw agent process" >&2; exit 1;
 fi
+gateway_restarts_before=$(systemctl show "$gateway_service" -p NRestarts --value)
+broker_restarts_before=$(systemctl show "$broker_service" -p NRestarts --value)
+tunnel_restarts_before=$(systemctl show "$tunnel_service" -p NRestarts --value)
 
 install -d -m 0700 "$backup_dir"
 printf 'gateway_enabled=%s\ngateway_active=%s\nbroker_enabled=%s\nbroker_active=%s\ntunnel_enabled=%s\ntunnel_active=%s\n' \
@@ -163,11 +166,21 @@ for _ in $(seq 1 20); do
   sleep 1
 done
 systemctl is-active --quiet "$tunnel_service"
-if ! sudo -u openclaw -H env HOME=/home/openclaw OPENSHELL_GATEWAY=v-sandbox-prod \
-  "$openshell_bin" workspace get "$openshell_workspace" >/dev/null 2>&1; then
-  sudo -u openclaw -H env HOME=/home/openclaw OPENSHELL_GATEWAY=v-sandbox-prod \
-    "$openshell_bin" workspace create --name "$openshell_workspace" --label environment=production >/dev/null
-fi
+workspace_ready=0
+for _ in $(seq 1 30); do
+  if sudo -u openclaw -H env HOME=/home/openclaw OPENSHELL_GATEWAY=v-sandbox-prod \
+    "$openshell_bin" workspace get "$openshell_workspace" >/dev/null 2>&1; then
+    workspace_ready=1
+    break
+  fi
+  if sudo -u openclaw -H env HOME=/home/openclaw OPENSHELL_GATEWAY=v-sandbox-prod \
+    "$openshell_bin" workspace create --name "$openshell_workspace" --label environment=production >/dev/null 2>&1; then
+    workspace_ready=1
+    break
+  fi
+  sleep 1
+done
+[[ $workspace_ready == 1 ]] || { echo "production OpenShell workspace did not become ready within 30 seconds" >&2; exit 1; }
 systemctl enable --now "$broker_service"
 for _ in $(seq 1 30); do
   [[ -S $experiment_root/state/broker.sock ]] && break
@@ -177,7 +190,6 @@ broker_health=$(sudo -u openclaw -H env \
   VLAB_SANDBOX_SOCKET="$experiment_root/state/broker.sock" \
   "$release_dir/bin/sandboxctl.mjs" health)
 jq -e '.ok == true and (.workspaces.active // 0) == 0 and (.workspaces.opening // 0) == 0 and (.workspaces.queued // 0) == 0' <<<"$broker_health" >/dev/null
-gateway_restarts_before=$(systemctl show "$gateway_service" -p NRestarts --value)
 systemctl start "$gateway_service"
 refreshed=
 worker_ready=0
@@ -197,8 +209,8 @@ systemctl is-active --quiet "$gateway_service"
 sleep 5
 systemctl is-active --quiet "$tunnel_service"
 systemctl is-active --quiet "$broker_service"
-[[ $(systemctl show "$tunnel_service" -p NRestarts --value) == 0 ]] || { echo "OpenShell tunnel restart loop detected" >&2; exit 1; }
-[[ $(systemctl show "$broker_service" -p NRestarts --value) == 0 ]] || { echo "Project Sandbox Broker restart loop detected" >&2; exit 1; }
+[[ $(systemctl show "$tunnel_service" -p NRestarts --value) == "$tunnel_restarts_before" ]] || { echo "OpenShell tunnel restart loop detected" >&2; exit 1; }
+[[ $(systemctl show "$broker_service" -p NRestarts --value) == "$broker_restarts_before" ]] || { echo "Project Sandbox Broker restart loop detected" >&2; exit 1; }
 gateway_restarts_after=$(systemctl show "$gateway_service" -p NRestarts --value)
 [[ $gateway_restarts_before == "$gateway_restarts_after" ]] || { echo "Gateway restart loop detected" >&2; exit 1; }
 
