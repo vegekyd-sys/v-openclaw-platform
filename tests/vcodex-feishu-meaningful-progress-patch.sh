@@ -22,6 +22,7 @@ node "${REPO_ROOT}/scripts/apply-vcodex-feishu-meaningful-progress-patch.mjs" \
 node --check "${DIST_DIR}/monitor.account-vcodex-meaningful-progress-fixture.js"
 grep -q 'allowToolLifecycleWhenProgressHidden: vcodexMeaningfulProgressEnabled' "${DIST_DIR}/monitor.account-vcodex-meaningful-progress-fixture.js"
 grep -q 'suppressToolErrorWarnings: vcodexMeaningfulProgressEnabled' "${DIST_DIR}/monitor.account-vcodex-meaningful-progress-fixture.js"
+grep -q 'sourceReplyDeliveryMode: vcodexMeaningfulProgressEnabled ? "automatic"' "${DIST_DIR}/monitor.account-vcodex-meaningful-progress-fixture.js"
 grep -q 'onItemEvent: vcodexMeaningfulProgressEnabled' "${DIST_DIR}/monitor.account-vcodex-meaningful-progress-fixture.js"
 grep -q 'const VCODEX_COMMENTARY_STREAM_V1 = true' "${DIST_DIR}/monitor.account-vcodex-meaningful-progress-fixture.js"
 grep -q 'vcodexDisplayPhase = "final"' "${DIST_DIR}/monitor.account-vcodex-meaningful-progress-fixture.js"
@@ -30,6 +31,8 @@ probe=$(VLAB_VCODEX_ACCEPTANCE_CHAT_ID='oc_vcodex' \
   node "${DIST_DIR}/monitor.account-vcodex-meaningful-progress-fixture.js" probe)
 grep -q '"scoped":true' <<<"${probe}"
 grep -q '"unlisted":false' <<<"${probe}"
+grep -q '"scopedDeliveryMode":"automatic"' <<<"${probe}"
+grep -q '"unlistedDeliveryMode":null' <<<"${probe}"
 grep -q '"afterStart":0' <<<"${probe}"
 grep -q '"afterTool":0' <<<"${probe}"
 grep -q '我先检查当前实现如何传递 Codex 的文字' <<<"${probe}"

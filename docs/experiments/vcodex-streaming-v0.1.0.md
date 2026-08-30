@@ -193,6 +193,9 @@ projection contract:
    phase, clears commentary, and replaces the card body. Late commentary events
    are ignored.
 6. Ordinary OpenClaw chats remain on the unmodified dispatcher behavior.
+7. The scoped run forces `sourceReplyDeliveryMode=automatic`, so Codex final
+   answers return through the same card without changing the account-wide
+   `messages.visibleReplies` policy used by ordinary OpenClaw agents.
 
 Local regression coverage proves: no empty start render, no command/tool render,
 two accumulated Codex commentary snapshots, one final replacement, and no late

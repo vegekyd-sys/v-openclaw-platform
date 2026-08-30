@@ -169,6 +169,7 @@ function createFeishuReplyDispatcher(params) {
 if (process.argv[2] === "probe") {
 	(async () => {
 		const dispatcher = createFeishuReplyDispatcher({ chatId: "oc_vcodex" });
+		const unlistedDispatcher = createFeishuReplyDispatcher({ chatId: "oc_unlisted" });
 		await dispatcher.onReplyStart();
 		await dispatcher.flush();
 		const afterStart = dispatcher.rendered.length;
@@ -189,6 +190,8 @@ if (process.argv[2] === "probe") {
 		const result = {
 			scoped: isVcodexMeaningfulProgressChat("oc_vcodex"),
 			unlisted: isVcodexMeaningfulProgressChat("oc_unlisted"),
+			scopedDeliveryMode: dispatcher.replyOptions.sourceReplyDeliveryMode ?? null,
+			unlistedDeliveryMode: unlistedDispatcher.replyOptions.sourceReplyDeliveryMode ?? null,
 			afterStart,
 			afterTool,
 			rendered: dispatcher.rendered,
