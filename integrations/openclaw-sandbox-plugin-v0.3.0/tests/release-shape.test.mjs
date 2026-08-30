@@ -70,6 +70,8 @@ test("production canary is exact-scoped and ships a fail-closed one-click rollba
   assert.match(install, /plugin\.version == "0\.3\.1"/);
   assert.match(install, /configure-production-canary\.mjs/);
   assert.match(install, /rollback-production-canary\.sh/);
+  assert.match(install, /project-sandbox-plugin\.XXXXXX/);
+  assert.match(install, /install failed at line/);
   assert.match(install, /Gateway restart loop detected/);
   assert.match(rollback, /rollback refused: active or queued Sandbox work remains/);
   assert.match(rollback, /Session, Memory, Broker state, and artifacts were preserved/);

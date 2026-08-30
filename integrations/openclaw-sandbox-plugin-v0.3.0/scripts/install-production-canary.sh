@@ -99,14 +99,16 @@ mv "$latest_backup.new" "$latest_backup"
 
 rollback_on_error() {
   local code=${1:-1}
+  local line=${2:-unknown}
   trap - ERR INT TERM
   set +e
+  echo "production Project Sandbox install failed at line $line; starting automatic rollback" >&2
   PROJECT_SANDBOX_LOCK_HELD=1 bash "$source_dir/scripts/rollback-production-canary.sh" "$backup_dir"
   local rollback_code=$?
   (( rollback_code == 0 )) || { echo "automatic rollback failed; backup=$backup_dir" >&2; exit 70; }
   exit "$code"
 }
-trap 'rollback_on_error $?' ERR
+trap 'rollback_on_error $? $LINENO' ERR
 trap 'rollback_on_error 130' INT
 trap 'rollback_on_error 143' TERM
 
@@ -125,9 +127,12 @@ install -o root -g root -m 0644 "$release_dir/systemd/v-project-sandbox-broker.s
 chmod 0755 "$release_dir/bin/"*.mjs "$release_dir/scripts/"*.sh
 ln -sfn "$release_dir/scripts/rollback-production-canary.sh" /usr/local/sbin/v-project-sandbox-rollback
 
+install -d -o openclaw -g openclaw -m 0700 /home/openclaw/.openclaw/tmp
+plugin_stage=$(mktemp -d /home/openclaw/.openclaw/tmp/project-sandbox-plugin.XXXXXX)
+chown openclaw:openclaw "$plugin_stage"
 plugin_name=$(sudo -u openclaw -H env HOME=/home/openclaw PATH=/opt/node-v22.23.1/bin:/usr/bin:/bin \
-  "$npm_bin" pack "$release_dir/plugin" --pack-destination "$release_dir" --silent | tail -n 1)
-plugin_tgz=$release_dir/$(basename "$plugin_name")
+  "$npm_bin" pack "$release_dir/plugin" --pack-destination "$plugin_stage" --silent | tail -n 1)
+plugin_tgz=$plugin_stage/$(basename "$plugin_name")
 [[ -f $plugin_tgz ]] || { echo "Plugin package was not created" >&2; exit 1; }
 run_openclaw "$main_config" plugins install --force "$plugin_tgz"
 sudo -u openclaw -H "$node_bin" "$release_dir/scripts/configure-production-canary.mjs" \
