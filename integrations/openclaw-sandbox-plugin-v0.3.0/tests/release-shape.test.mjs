@@ -74,6 +74,8 @@ test("production canary is exact-scoped and ships a fail-closed one-click rollba
   assert.match(install, /install failed at line/);
   assert.match(install, /VLAB_SANDBOX_SOCKET="\$experiment_root\/state\/broker\.sock"/);
   assert.match(install, /Gateway restart loop detected/);
+  assert.match(install, /production Worker pool did not become ready within 60 seconds/);
+  assert.match(install, /\.started == true and \.pending == 0 and any\(\.workers/);
   assert.match(rollback, /rollback refused: active or queued Sandbox work remains/);
   assert.match(rollback, /VLAB_SANDBOX_SOCKET="\$state_root\/broker\.sock"/);
   assert.match(rollback, /Session, Memory, Broker state, and artifacts were preserved/);

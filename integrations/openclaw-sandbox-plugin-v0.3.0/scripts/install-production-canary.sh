@@ -171,13 +171,22 @@ broker_health=$(sudo -u openclaw -H env \
 jq -e '.ok == true and (.workspaces.active // 0) == 0 and (.workspaces.opening // 0) == 0 and (.workspaces.queued // 0) == 0' <<<"$broker_health" >/dev/null
 gateway_restarts_before=$(systemctl show "$gateway_service" -p NRestarts --value)
 systemctl start "$gateway_service"
+refreshed=
+worker_ready=0
 for _ in $(seq 1 60); do
-  systemctl is-active --quiet "$gateway_service" && break
+  if systemctl is-active --quiet "$gateway_service"; then
+    if refreshed=$(run_openclaw "$main_config" gateway call vlab.workers.status --json --timeout 10000 2>/dev/null); then
+      if jq -e '.started == true and .pending == 0 and any(.workers[]?; .ready == true)' <<<"$refreshed" >/dev/null; then
+        worker_ready=1
+        break
+      fi
+    fi
+  fi
   sleep 1
 done
 systemctl is-active --quiet "$gateway_service"
-refreshed=$(run_openclaw "$main_config" gateway call vlab.workers.status --json --timeout 10000)
-jq -e '.started == true and any(.workers[]?; .ready == true)' <<<"$refreshed" >/dev/null
+[[ $worker_ready == 1 ]] || { echo "production Worker pool did not become ready within 60 seconds" >&2; exit 1; }
+sleep 5
 gateway_restarts_after=$(systemctl show "$gateway_service" -p NRestarts --value)
 [[ $gateway_restarts_before == "$gateway_restarts_after" ]] || { echo "Gateway restart loop detected" >&2; exit 1; }
 
