@@ -1,0 +1,64 @@
+{
+  "agents": {
+    "defaults": {
+      "models": {
+        "openai/*": {
+          "agentRuntime": {
+            "id": "vlab-worker"
+          }
+        },
+        "openai/gpt-5.6-sol": {
+          "alias": "sol",
+          "agentRuntime": {
+            "id": "vlab-worker"
+          }
+        }
+      }
+    },
+    "list": [
+      {
+        "id": "makaron",
+        "model": {
+          "primary": "deepseek/deepseek-v4-pro"
+        },
+        "models": {
+          "deepseek/deepseek-v4-pro": {}
+        }
+      },
+      {
+        "id": "v-codex",
+        "model": {
+          "primary": "openai/gpt-5.6-sol"
+        },
+        "models": {
+          "openai/gpt-5.6-sol": {
+            "agentRuntime": {
+              "id": "codex"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "plugins": {
+    "entries": {
+      "codex": {
+        "enabled": true
+      }
+    }
+  },
+  "bindings": [
+    {
+      "type": "route",
+      "agentId": "v-codex",
+      "match": {
+        "channel": "feishu",
+        "accountId": "default",
+        "peer": {
+          "kind": "group",
+          "id": "oc_existing_vcodex"
+        }
+      }
+    }
+  ]
+}
