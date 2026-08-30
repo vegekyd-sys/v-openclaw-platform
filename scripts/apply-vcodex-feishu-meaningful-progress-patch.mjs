@@ -59,12 +59,17 @@ if (bundles.length !== 1) {
 const file = bundles[0];
 const source = readFileSync(file, "utf8");
 const patchedMarkers = [
+  "const VCODEX_COMMENTARY_STREAM_V1 = true",
   "function isVcodexMeaningfulProgressChat(chatId)",
-  "function formatVcodexMeaningfulProgress(payload)",
+  "function formatVcodexCommentary(payload)",
   "const vcodexMeaningfulProgressEnabled =",
   "allowToolLifecycleWhenProgressHidden: vcodexMeaningfulProgressEnabled",
+  "suppressToolErrorWarnings: vcodexMeaningfulProgressEnabled",
   "onItemEvent: vcodexMeaningfulProgressEnabled",
-  "VCODEX_MEANINGFUL_PROGRESS_HEARTBEAT_MS",
+  "let vcodexDisplayPhase = \"commentary\"",
+  "const vcodexCommentaryByItem = new Map()",
+  "const appendVcodexCommentary =",
+  "const beginVcodexFinalAnswer =",
   "async replace(text)",
   "replace: vcodexMeaningfulProgressEnabled",
 ];
@@ -85,29 +90,17 @@ if (dispatcherOffset < 0 || dispatcherOffset !== source.lastIndexOf(dispatcherSi
   throw new Error(`Dispatcher signature changed; refusing to patch ${file}`);
 }
 
-const helpers = `const VCODEX_MEANINGFUL_PROGRESS_HEARTBEAT_MS = 3e4;
+const helpers = `const VCODEX_COMMENTARY_STREAM_V1 = true;
 function isVcodexMeaningfulProgressChat(chatId) {
 \tconst configuredChatIds = process.env.V_FEISHU_VCODEX_STREAM_CHAT_IDS ?? process.env.VLAB_VCODEX_ACCEPTANCE_CHAT_ID ?? "";
 \treturn configuredChatIds.split(",").map((value) => value.trim()).filter((value) => value.startsWith("oc_")).includes(chatId);
 }
-function sanitizeVcodexProgressText(text) {
-\tconst normalized = String(text ?? "").replace(/\x60/g, "").replace(/(?:\\\\|\\/)[^\\s，。；：！？]+/gu, "相关文件").replace(/\\s+/g, " ").trim();
-\tif (!normalized) return "";
-\treturn normalized.length > 220 ? \`\${normalized.slice(0, 217)}…\` : normalized;
+function sanitizeVcodexCommentaryText(text) {
+\treturn String(text ?? "").replace(/[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\u007f]/gu, "").trim();
 }
-function formatVcodexMeaningfulProgress(payload) {
-\tif (payload?.kind === "preamble" && payload.progressText) return sanitizeVcodexProgressText(payload.progressText);
-\tconst finished = payload?.phase === "result" || payload?.status === "completed";
-\tconst failed = payload?.status === "failed" || payload?.status === "error";
-\tif (failed) return "刚才的执行步骤遇到问题，正在检查并调整。";
-\tswitch (payload?.kind) {
-\t\tcase "command": return finished ? "已完成一轮项目检查，正在继续处理。" : "正在执行项目检查与代码验证。";
-\t\tcase "patch": return finished ? "代码修改已写入，正在继续验证。" : "正在修改代码并整理实现。";
-\t\tcase "search": return finished ? "资料检索已完成，正在整理结论。" : "正在检索相关资料与依据。";
-\t\tcase "analysis": return finished ? "分析阶段已完成，正在进入下一步。" : "正在分析上下文与实现方案。";
-\t\tcase "tool": return finished ? "工具步骤已完成，正在继续处理。" : "正在调用所需工具处理任务。";
-\t\tdefault: return "";
-\t}
+function formatVcodexCommentary(payload) {
+\tif (payload?.kind !== "preamble" || !payload.progressText) return "";
+\treturn sanitizeVcodexCommentaryText(payload.progressText);
 }
 `;
 
@@ -202,26 +195,25 @@ const replacements = [
 \tconst queueReasoningUpdate`,
   },
   {
-    label: "progress state",
+    label: "commentary stream state",
     before: `\tlet reasoningText = "";
 \tlet statusLine = "";
 \tlet snapshotBaseText = "";`,
     after: `\tlet reasoningText = "";
 \tlet statusLine = "";
-\tlet vcodexProgressText = "";
-\tlet vcodexProgressStartedAtMs = 0;
-\tlet vcodexProgressHeartbeat = null;
+\tlet vcodexDisplayPhase = "commentary";
+\tconst vcodexCommentaryByItem = new Map();
+\tconst vcodexCommentaryItemOrder = [];
 \tlet snapshotBaseText = "";`,
   },
   {
-    label: "reset progress timer",
+    label: "reset commentary stream state",
     before: `\tconst resetStreamingState = () => {
 \t\tstreaming = null;`,
     after: `\tconst resetStreamingState = () => {
-\t\tif (vcodexProgressHeartbeat) clearInterval(vcodexProgressHeartbeat);
-\t\tvcodexProgressHeartbeat = null;
-\t\tvcodexProgressText = "";
-\t\tvcodexProgressStartedAtMs = 0;
+\t\tvcodexDisplayPhase = "closed";
+\t\tvcodexCommentaryByItem.clear();
+\t\tvcodexCommentaryItemOrder.length = 0;
 \t\tstreaming = null;`,
   },
   {
@@ -235,25 +227,7 @@ const replacements = [
 \t\tstreamText = "";`,
   },
   {
-    label: "close timer before final",
-    before: `\tconst closeStreaming = async (options) => {
-\t\ttry {`,
-    after: `\tconst closeStreaming = async (options) => {
-\t\tif (vcodexProgressHeartbeat) clearInterval(vcodexProgressHeartbeat);
-\t\tvcodexProgressHeartbeat = null;
-\t\ttry {`,
-  },
-  {
-    label: "discard timer",
-    before: `\tconst discardStreamingPreview = async () => {
-\t\ttry {`,
-    after: `\tconst discardStreamingPreview = async () => {
-\t\tif (vcodexProgressHeartbeat) clearInterval(vcodexProgressHeartbeat);
-\t\tvcodexProgressHeartbeat = null;
-\t\ttry {`,
-  },
-  {
-    label: "meaningful progress updater",
+    label: "commentary stream updater",
     before: `\tconst updateStreamingStatusLine = (nextStatusLine, options) => {
 \t\tstatusLine = nextStatusLine;
 \t\tif (!Boolean(streaming?.isActive() || streamingStartPromise) && (options?.startIfNeeded === false || renderMode !== "card")) return;
@@ -264,35 +238,38 @@ const replacements = [
 \t\tstatusLine = nextStatusLine;
 \t\tif (!Boolean(streaming?.isActive() || streamingStartPromise) && (options?.startIfNeeded === false || renderMode !== "card")) return;
 \t\tstartStreaming();
-\t\tflushStreamingCardUpdate(buildCombinedStreamText(reasoningText, streamText), { replace: vcodexMeaningfulProgressEnabled });
+\t\tflushStreamingCardUpdate(buildCombinedStreamText(reasoningText, streamText));
 \t};
-\tconst renderVcodexMeaningfulProgress = () => {
-\t\tif (!vcodexMeaningfulProgressEnabled || !vcodexProgressText) return;
-\t\tconst elapsedSeconds = vcodexProgressStartedAtMs > 0 ? Math.max(0, Math.floor((Date.now() - vcodexProgressStartedAtMs) / 1e3)) : 0;
-\t\tconst elapsedText = elapsedSeconds >= 45 ? \`（已持续 \${Math.floor(elapsedSeconds / 60)} 分 \${elapsedSeconds % 60} 秒）\` : "";
-\t\tupdateStreamingStatusLine(\`🔄 **\${vcodexProgressText}**\${elapsedText}\`);
+\tconst appendVcodexCommentary = (itemId, nextText) => {
+\t\tif (!vcodexMeaningfulProgressEnabled || vcodexDisplayPhase !== "commentary" || !nextText) return;
+\t\tconst key = typeof itemId === "string" && itemId ? itemId : "unkeyed-commentary";
+\t\tif (vcodexCommentaryByItem.get(key) === nextText) return;
+\t\tif (!vcodexCommentaryByItem.has(key)) vcodexCommentaryItemOrder.push(key);
+\t\tvcodexCommentaryByItem.set(key, nextText);
+\t\tconst combined = vcodexCommentaryItemOrder.map((entry) => vcodexCommentaryByItem.get(entry)).filter(Boolean).join("\\n\\n");
+\t\tif (!combined) return;
+\t\tstartStreaming();
+\t\tflushStreamingCardUpdate(combined, { replace: true });
 \t};
-\tconst updateVcodexMeaningfulProgress = (nextText) => {
-\t\tif (!vcodexMeaningfulProgressEnabled || !nextText) return;
-\t\tvcodexProgressText = nextText;
-\t\tif (!vcodexProgressStartedAtMs) vcodexProgressStartedAtMs = Date.now();
-\t\trenderVcodexMeaningfulProgress();
-\t\tif (!vcodexProgressHeartbeat) vcodexProgressHeartbeat = setInterval(renderVcodexMeaningfulProgress, VCODEX_MEANINGFUL_PROGRESS_HEARTBEAT_MS);
-\t};
-\tconst stopVcodexMeaningfulProgress = () => {
-\t\tif (vcodexProgressHeartbeat) clearInterval(vcodexProgressHeartbeat);
-\t\tvcodexProgressHeartbeat = null;
+\tconst beginVcodexFinalAnswer = () => {
+\t\tif (!vcodexMeaningfulProgressEnabled || vcodexDisplayPhase === "closed") return;
+\t\tvcodexDisplayPhase = "final";
+\t\tvcodexCommentaryByItem.clear();
+\t\tvcodexCommentaryItemOrder.length = 0;
 \t\tstatusLine = "";
+\t\treasoningText = "";
+\t\tstreamText = "";
+\t\tlastPartial = "";
+\t\tsnapshotBaseText = "";
+\t\tlastSnapshotTextLength = 0;
+\t\thasStreamingFinalText = false;
 \t};`,
   },
   {
-    label: "initial meaningful text",
+    label: "defer scoped card until real text",
     before: `\t\t\tif (streamingEnabled && renderMode === "card") startStreaming();
 \t\t\tawait Promise.resolve(typingCallbacks?.onReplyStart?.());`,
-    after: `\t\t\tif (streamingEnabled && renderMode === "card") {
-\t\t\t\tstartStreaming();
-\t\t\t\tif (vcodexMeaningfulProgressEnabled && !vcodexProgressStartedAtMs) updateVcodexMeaningfulProgress("已收到任务，正在分析并准备执行。");
-\t\t\t}
+    after: `\t\t\tif (streamingEnabled && renderMode === "card" && !vcodexMeaningfulProgressEnabled) startStreaming();
 \t\t\tawait Promise.resolve(typingCallbacks?.onReplyStart?.());`,
   },
   {
@@ -302,10 +279,11 @@ const replacements = [
     after: `\t\t\tdisableBlockStreaming: typeof account.config?.blockStreaming === "boolean" ? !account.config.blockStreaming : true,
 \t\t\tsuppressDefaultToolProgressMessages: vcodexMeaningfulProgressEnabled ? true : replyOptions.suppressDefaultToolProgressMessages,
 \t\t\tallowToolLifecycleWhenProgressHidden: vcodexMeaningfulProgressEnabled ? true : replyOptions.allowToolLifecycleWhenProgressHidden,
+\t\t\tsuppressToolErrorWarnings: vcodexMeaningfulProgressEnabled ? true : replyOptions.suppressToolErrorWarnings,
 \t\t\tcommentaryProgressEnabled: vcodexMeaningfulProgressEnabled ? true : replyOptions.commentaryProgressEnabled,
 \t\t\tonItemEvent: vcodexMeaningfulProgressEnabled ? (payload) => {
-\t\t\t\tconst nextText = formatVcodexMeaningfulProgress(payload);
-\t\t\t\tif (nextText) updateVcodexMeaningfulProgress(nextText);
+\t\t\t\tconst nextText = formatVcodexCommentary(payload);
+\t\t\t\tif (nextText) appendVcodexCommentary(payload?.itemId, nextText);
 \t\t\t} : replyOptions.onItemEvent,
 \t\t\tonPartialReply: streamingEnabled ? (payload) => {`,
   },
@@ -315,7 +293,7 @@ const replacements = [
 \t\t\t\tstartStreaming();
 \t\t\t\tqueueStreamingUpdate(cleaned, {`,
     after: `\t\t\t\tif (!cleaned) return;
-\t\t\t\tif (vcodexMeaningfulProgressEnabled) stopVcodexMeaningfulProgress();
+\t\t\t\tif (vcodexMeaningfulProgressEnabled) beginVcodexFinalAnswer();
 \t\t\t\tstartStreaming();
 \t\t\t\tqueueStreamingUpdate(cleaned, {`,
   },
@@ -330,7 +308,7 @@ const replacements = [
 \t\t\t\t});`,
   },
   {
-    label: "sanitized tool lifecycle",
+    label: "suppress scoped tool lifecycle",
     before: `\t\t\tonToolStart: streamingEnabled ? (payload) => {
 \t\t\t\tif (!isChannelProgressDraftWorkToolName(payload.name)) return;
 \t\t\t\tconst statusLineLocal = formatChannelProgressDraftLineForEntry(account.config, {
@@ -342,12 +320,7 @@ const replacements = [
 \t\t\t\tif (statusLineLocal) updateStreamingStatusLine(statusLineLocal);
 \t\t\t} : void 0,`,
     after: `\t\t\tonToolStart: streamingEnabled ? (payload) => {
-\t\t\t\tif (vcodexMeaningfulProgressEnabled) {
-\t\t\t\t\tconst kind = payload.name === "bash" ? "command" : payload.name === "apply_patch" ? "patch" : payload.name === "web_search" ? "search" : "tool";
-\t\t\t\t\tconst nextText = formatVcodexMeaningfulProgress({ kind, phase: payload.phase });
-\t\t\t\t\tif (nextText) updateVcodexMeaningfulProgress(nextText);
-\t\t\t\t\treturn;
-\t\t\t\t}
+\t\t\t\tif (vcodexMeaningfulProgressEnabled) return;
 \t\t\t\tif (!isChannelProgressDraftWorkToolName(payload.name)) return;
 \t\t\t\tconst statusLineLocal = formatChannelProgressDraftLineForEntry(account.config, {
 \t\t\t\t\tevent: "tool",
@@ -359,14 +332,51 @@ const replacements = [
 \t\t\t} : void 0,`,
   },
   {
-    label: "answer transition status",
+    label: "suppress scoped assistant transition status",
     before: `\t\t\tonAssistantMessageStart: streamingEnabled ? () => {
 \t\t\t\tupdateStreamingStatusLine("", { startIfNeeded: false });
 \t\t\t} : void 0,`,
     after: `\t\t\tonAssistantMessageStart: streamingEnabled ? () => {
-\t\t\t\tif (vcodexMeaningfulProgressEnabled) updateVcodexMeaningfulProgress("正在整理并交付结果。");
-\t\t\t\telse updateStreamingStatusLine("", { startIfNeeded: false });
+\t\t\t\tif (!vcodexMeaningfulProgressEnabled) updateStreamingStatusLine("", { startIfNeeded: false });
 \t\t\t} : void 0,`,
+  },
+  {
+    label: "suppress scoped reasoning stream",
+    before: `\t\t\tonReasoningStream: reasoningPreviewEnabled ? (payload) => {
+\t\t\t\tif (!payload.text) return;`,
+    after: `\t\t\tonReasoningStream: reasoningPreviewEnabled ? (payload) => {
+\t\t\t\tif (vcodexMeaningfulProgressEnabled) return;
+\t\t\t\tif (!payload.text) return;`,
+  },
+  {
+    label: "suppress scoped compaction status",
+    before: `\t\t\tonCompactionStart: streamingEnabled ? () => {
+\t\t\t\tupdateStreamingStatusLine("📦 **Compacting context...**");
+\t\t\t} : void 0,
+\t\t\tonCompactionEnd: streamingEnabled ? () => {
+\t\t\t\tupdateStreamingStatusLine("");`,
+    after: `\t\t\tonCompactionStart: streamingEnabled ? () => {
+\t\t\t\tif (vcodexMeaningfulProgressEnabled) return;
+\t\t\t\tupdateStreamingStatusLine("📦 **Compacting context...**");
+\t\t\t} : void 0,
+\t\t\tonCompactionEnd: streamingEnabled ? () => {
+\t\t\t\tif (vcodexMeaningfulProgressEnabled) return;
+\t\t\t\tupdateStreamingStatusLine("");`,
+  },
+  {
+    label: "suppress scoped block replies",
+    before: `\t\tdeliver: async (payload, info) => {
+\t\t\tif (info?.kind === "final") skippedFinalReason = null;
+\t\t\tconst payloadText =`,
+    after: `\t\tdeliver: async (payload, info) => {
+\t\t\tif (info?.kind === "final") skippedFinalReason = null;
+\t\t\tif (vcodexMeaningfulProgressEnabled && info?.kind === "block") return;
+\t\t\tconst payloadText =`,
+  },
+  {
+    label: "authoritative scoped final reply",
+    before: `\t\t\tconst text = info?.kind === "final" ? mergeStreamingFinalText(streamText, reply.text, payload.isError === true && hasStreamingFinalText) : reply.text;`,
+    after: `\t\t\tconst text = info?.kind === "final" ? vcodexMeaningfulProgressEnabled ? reply.text : mergeStreamingFinalText(streamText, reply.text, payload.isError === true && hasStreamingFinalText) : reply.text;`,
   },
 ];
 

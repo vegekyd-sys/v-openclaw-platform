@@ -13,6 +13,14 @@ var FeishuStreamingSession = class {
 	}
 };
 
+const reasoningPreviewEnabled = false;
+const stripReasoningTagsFromText = (text) => text;
+const formatReasoningMessage = (text) => text;
+const isChannelProgressDraftWorkToolName = () => true;
+const formatChannelProgressDraftLineForEntry = () => "raw tool status";
+const resolveSendableOutboundReplyParts = (payload) => ({ text: payload.text });
+const mergeStreamingFinalText = (left, right) => [left, right].filter(Boolean).join("\n\n");
+
 function createFeishuReplyDispatcher(params) {
 	const { chatId } = params;
 	const account = { config: { streaming: true, blockStreaming: false } };
@@ -33,7 +41,8 @@ function createFeishuReplyDispatcher(params) {
 	let hasStreamingFinalText = false;
 	const replyOptions = {};
 	const typingCallbacks = {};
-	const buildCombinedStreamText = () => "";
+	const rendered = [];
+	const buildCombinedStreamText = (_reasoning, text) => text;
 	const flushStreamingCardUpdate = (combined) => {
 		latestStreamingCombined = combined;
 		if (streamingFlushScheduled) return;
@@ -56,7 +65,14 @@ function createFeishuReplyDispatcher(params) {
 		flushStreamingCardUpdate(buildCombinedStreamText(reasoningText, streamText));
 	};
 	const queueReasoningUpdate = () => {};
-	const startStreaming = () => {};
+	const startStreaming = () => {
+		if (streaming) return;
+		streaming = {
+			isActive: () => true,
+			update: async (text) => rendered.push({ operation: "update", text }),
+			replace: async (text) => rendered.push({ operation: "replace", text }),
+		};
+	};
 	const resetStreamingState = () => {
 		streaming = null;
 		streamingStartPromise = null;
@@ -96,9 +112,18 @@ function createFeishuReplyDispatcher(params) {
 			if (streamingEnabled && renderMode === "card") startStreaming();
 			await Promise.resolve(typingCallbacks?.onReplyStart?.());
 		},
+		deliver: async (payload, info) => {
+			if (info?.kind === "final") skippedFinalReason = null;
+			const payloadText = payload.isReasoning && payload.text ? formatReasoningMessage(payload.text) : payload.text;
+			const reply = resolveSendableOutboundReplyParts({ ...payload, text: payloadText });
+			const text = info?.kind === "final" ? mergeStreamingFinalText(streamText, reply.text, payload.isError === true && hasStreamingFinalText) : reply.text;
+			return text;
+		},
 	};
 	return {
 		...callbacks,
+		rendered,
+		flush: () => partialUpdateQueue,
 		replyOptions: {
 			...replyOptions,
 			disableBlockStreaming: typeof account.config?.blockStreaming === "boolean" ? !account.config.blockStreaming : true,
@@ -125,19 +150,52 @@ function createFeishuReplyDispatcher(params) {
 			onAssistantMessageStart: streamingEnabled ? () => {
 				updateStreamingStatusLine("", { startIfNeeded: false });
 			} : void 0,
+			onReasoningStream: reasoningPreviewEnabled ? (payload) => {
+				if (!payload.text) return;
+				startStreaming();
+				queueReasoningUpdate(formatReasoningMessage(payload.text));
+			} : void 0,
+			onReasoningEnd: reasoningPreviewEnabled ? () => {} : void 0,
+			onCompactionStart: streamingEnabled ? () => {
+				updateStreamingStatusLine("📦 **Compacting context...**");
+			} : void 0,
+			onCompactionEnd: streamingEnabled ? () => {
+				updateStreamingStatusLine("");
+			} : void 0
 		},
 	};
 }
 
 if (process.argv[2] === "probe") {
-	const result = {
-		scoped: isVcodexMeaningfulProgressChat("oc_vcodex"),
-		unlisted: isVcodexMeaningfulProgressChat("oc_unlisted"),
-		values: [
-		formatVcodexMeaningfulProgress({ kind: "command", phase: "start" }),
-		formatVcodexMeaningfulProgress({ kind: "patch", phase: "result", status: "completed" }),
-		formatVcodexMeaningfulProgress({ kind: "preamble", progressText: "正在检查 `/tmp/private/file.js` 并准备修改。" }),
-		],
-	};
-	process.stdout.write(JSON.stringify(result));
+	(async () => {
+		const dispatcher = createFeishuReplyDispatcher({ chatId: "oc_vcodex" });
+		await dispatcher.onReplyStart();
+		await dispatcher.flush();
+		const afterStart = dispatcher.rendered.length;
+		dispatcher.replyOptions.onItemEvent({ kind: "command", command: "RAW_COMMAND_SENTINEL" });
+		dispatcher.replyOptions.onToolStart({ name: "bash", args: { command: "RAW_COMMAND_SENTINEL" } });
+		await dispatcher.flush();
+		const afterTool = dispatcher.rendered.length;
+		dispatcher.replyOptions.onItemEvent({ itemId: "commentary-1", kind: "preamble", progressText: "我先检查" });
+		await dispatcher.flush();
+		dispatcher.replyOptions.onItemEvent({ itemId: "commentary-1", kind: "preamble", progressText: "我先检查当前实现如何传递 Codex 的文字。" });
+		await dispatcher.flush();
+		dispatcher.replyOptions.onItemEvent({ itemId: "commentary-2", kind: "preamble", progressText: "问题已经定位，我正在调整事件路由。" });
+		await dispatcher.flush();
+		dispatcher.replyOptions.onPartialReply({ text: "最终结果：文字流式已经完成。" });
+		await dispatcher.flush();
+		dispatcher.replyOptions.onItemEvent({ itemId: "commentary-late", kind: "preamble", progressText: "LATE_COMMENTARY_SENTINEL" });
+		await dispatcher.flush();
+		const result = {
+			scoped: isVcodexMeaningfulProgressChat("oc_vcodex"),
+			unlisted: isVcodexMeaningfulProgressChat("oc_unlisted"),
+			afterStart,
+			afterTool,
+			rendered: dispatcher.rendered,
+		};
+		process.stdout.write(JSON.stringify(result));
+	})().catch((error) => {
+		process.stderr.write(String(error));
+		process.exitCode = 1;
+	});
 }

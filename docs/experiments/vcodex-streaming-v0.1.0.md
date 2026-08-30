@@ -169,6 +169,62 @@ requires a separate user gate, a fresh production backup, and the same real
 VCodex programming-session acceptance. The failed `v0.1.1` path must not be
 reused.
 
+## Commentary-only candidate — v0.1.3
+
+User review rejected the `v0.1.2` presentation model: it proved liveness, but
+mostly translated native tool lifecycle events into generic status text. The
+desired experience is the Codex-authored commentary itself, with raw commands
+and tools hidden, followed by the complete final answer replacing all interim
+text.
+
+`v0.1.3` keeps the same chat scope and official Codex runtime but changes the
+projection contract:
+
+1. Only `kind=preamble` events carrying Codex `progressText` are rendered during
+   the commentary phase.
+2. Command, patch, search, tool, reasoning, compaction, arguments, stdout, and
+   paths never create or update the scoped card.
+3. The scoped card is not created at dispatch start. The first Codex commentary
+   or final-answer partial creates it, so an empty early card is not counted as
+   useful streaming.
+4. Commentary snapshots from the same item replace their earlier snapshot;
+   separate commentary messages accumulate in one card.
+5. The first final-answer partial moves the card to an irreversible `final`
+   phase, clears commentary, and replaces the card body. Late commentary events
+   are ignored.
+6. Ordinary OpenClaw chats remain on the unmodified dispatcher behavior.
+
+Local regression coverage proves: no empty start render, no command/tool render,
+two accumulated Codex commentary snapshots, one final replacement, and no late
+commentary overwrite. The patch also applies idempotently to the official
+`@openclaw/feishu@2026.7.1` bundle after the existing coalescing patch and passes
+`node --check`.
+
+Real Feishu acceptance on the isolated fourth VLab also passed:
+
+| Gate | Result | Evidence |
+| --- | --- | --- |
+| Meaningful first text | PASS | The short recovery run showed its first Codex-authored commentary after about 12 seconds. The 330-second run showed its first complete commentary after about 24 seconds. Card creation itself was not counted. |
+| Commentary semantics | PASS | Separate Codex commentary items accumulated; cumulative snapshots for the same item replaced their earlier text instead of duplicating it. |
+| Raw internals hidden | PASS | A deliberate failing Bash call and raw-command sentinels were absent from both observed snapshots and the final full-card payload. Tool-error warnings were suppressed only for the scoped VCodex reply run. |
+| Final replacement | PASS | The short run closed with only `VCODEX_COMMENTARY_V013_R3_FINAL_OK`; the long run closed with only `VCODEX_COMMENTARY_V013_LONG_FINAL_OK`. Late commentary could not overwrite the final phase. |
+| 300-second boundary | PASS | OpenClaw logged its native per-chat queue-lock eviction at 300 seconds, but did not cancel execution. Commentary remained visible and the original card received its final answer at about 364 seconds. |
+| Runtime health | PASS | Candidate PID `1072219` remained unchanged with `NRestarts=0`; `MemoryPeak=850,468,864` bytes and Gateway health stayed live. |
+| Other experiments | PASS with concurrent activity noted | VBrowser PID `1008092` and Workboard PID `875930` remained unchanged. The main VLab Gateway was independently restarted twice while this acceptance was running; the fourth candidate neither restarted nor shared its service lifecycle. |
+
+The accepted patched official Feishu monitor bundle SHA-256 is
+`d92ec2723cf601819ddbb65ca2b30d78b5111f35ad6e6caffa8772562400e2b9`.
+The latest pre-deploy backup is:
+
+```text
+/srv/vlab-vcodex-streaming/backups/vcodex-commentary-v0.1.3/20260830-115806-r3
+```
+
+This candidate remains **VLab-only**. Production V is still on the restored
+pre-`v0.1.1` Feishu bundle. A production promotion requires a separate user
+gate, a fresh backup, chat-scoped deployment, and acceptance in the real VCodex
+programming Session.
+
 ## Rollback
 
 This experiment is additive. Rollback is:
