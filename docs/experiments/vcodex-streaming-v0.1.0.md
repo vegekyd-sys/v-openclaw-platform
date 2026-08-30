@@ -236,8 +236,8 @@ therefore does not change the Feishu binding, default Makaron model, Session
 store, Memory, workspace, or Worker configuration. The user opts into Codex in
 the existing VLab DM with `/model vcodex`.
 
-The main-Gateway drop-in adds only the explicit chat scope and two
-version-gated Feishu patchers. Both prestart commands use systemd's `-+`
+The main-Gateway drop-in adds only the explicit chat scope and version-gated
+Feishu patchers. All prestart commands use systemd's `-+`
 prefix: the exact accepted bundle may be patched with root privileges, while an
 incompatible future OpenClaw bundle logs the refusal but still lets the Gateway
 start normally without the optional VCodex presentation bridge. This keeps
@@ -287,16 +287,29 @@ For the current main VLab configuration, normal models resolve to
 alias resolves to `deepseek-harness`. The Agent identity, Session, Memory,
 Skills, and workspace do not change when `/model vcodex` is selected.
 
+Main VLab runtime-footer acceptance passed on 2026-08-30:
+
+| Selection | Visible footer | Result |
+| --- | --- | --- |
+| `/model vcodex` | `Model: gpt-5.6-sol | Provider: openai | Runtime: codex` | PASS |
+| `/model deepseek/deepseek-v4-pro` | `Model: deepseek-v4-pro | Provider: deepseek | Runtime: vlab-worker` | PASS |
+
+Both replies completed through the real Feishu DM. The Session was restored to
+`/model vcodex` after the A/B. Gateway health remained good with `NRestarts=0`,
+Feishu connected, Worker `ready=true`, `pending=0`, and the pre/post
+`openclaw.json` SHA-256 identical. The integrated bundle SHA-256 is
+`3b5eef68447839609dfd077225ba70deb97d903286a01aae2ab42bbeae9a47f1`.
+
 ## Rollback
 
-For the main VLab integration, remove
-`/etc/systemd/system/openclaw-vlab-gateway.service.d/vcodex-streaming-v0.1.3.conf`,
+For the current main VLab integration, remove
+`/etc/systemd/system/openclaw-vlab-gateway.service.d/vcodex-streaming-v0.1.4.conf`,
 restore the Feishu bundle and `openclaw.json` from the pre-deploy backup, remove
 `/srv/vlab/state/vcodex-streaming.env`, run `systemctl daemon-reload`, and restart
 only `openclaw-vlab-gateway.service`. The exact backup is:
 
 ```text
-/srv/vlab/backups/vcodex-streaming-v0.1.3/20260830-172529-predeploy
+/srv/vlab/backups/vcodex-streaming-v0.1.4/20260830-175908-predeploy
 ```
 
 For the isolated fourth candidate, rollback remains:
