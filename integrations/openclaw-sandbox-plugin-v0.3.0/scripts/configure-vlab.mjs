@@ -26,6 +26,10 @@ const choiceAgentIds = String(
 config.plugins.entries["project-sandbox"] = {
   ...previous,
   enabled: true,
+  hooks: {
+    ...(previous.hooks ?? {}),
+    allowPromptInjection: true,
+  },
   config: {
     ...previousConfig,
     allowedAgentIds: unique([

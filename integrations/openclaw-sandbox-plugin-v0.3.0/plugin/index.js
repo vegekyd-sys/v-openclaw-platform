@@ -2,6 +2,7 @@ import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 
 import { BrokerClient } from "./core/broker-client.js";
 import { createProjectSandboxHostDenyPolicy } from "./core/policy.js";
+import { createProjectSandboxPromptContribution } from "./core/routing.js";
 import { createSandboxTools, TOOL_NAMES } from "./core/tools.js";
 
 const DESCRIPTIONS = {
@@ -23,6 +24,8 @@ export default definePluginEntry({
       { names: TOOL_NAMES },
     );
     api.registerTrustedToolPolicy(createProjectSandboxHostDenyPolicy(config));
+    api.on("before_prompt_build", (_event, context) =>
+      createProjectSandboxPromptContribution(context, config));
     for (const toolName of TOOL_NAMES) {
       api.registerToolMetadata({
         toolName,

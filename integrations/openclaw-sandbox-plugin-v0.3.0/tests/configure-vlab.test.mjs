@@ -32,6 +32,7 @@ test("VLab config mutator preserves existing plugin policy and file mode", async
     await run([configPath, "v-core", "/srv/vlab/projects/v-core"]);
     const updated = JSON.parse(await readFile(configPath, "utf8"));
     assert.deepEqual(updated.plugins.allow, ["existing-plugin", "project-sandbox"]);
+    assert.equal(updated.plugins.entries["project-sandbox"].hooks.allowPromptInjection, true);
     assert.deepEqual(updated.plugins.entries["project-sandbox"].config.allowedAgentIds, [
       "sandbox-openclaw",
       "vlab-sandbox-openclaw",

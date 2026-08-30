@@ -6,6 +6,7 @@ import {
   createProjectSandboxHostDenyPolicy,
   normalizeProjectSandboxPolicyToolName,
 } from "../plugin/core/policy.js";
+import { createProjectSandboxPromptContribution } from "../plugin/core/routing.js";
 
 test("plugin manifest declares routing Skill, fail-closed Agent exposure, and opt-in host restriction", async () => {
   const manifest = JSON.parse(
@@ -29,6 +30,32 @@ test("routing Skill selects Sandbox for approved project execution without takin
   assert.match(skill, /ordinary conversation/);
   assert.match(skill, /no matching approved project/);
   assert.match(skill, /Do not silently edit the Gateway host project instead/);
+});
+
+test("prompt hook gives exact allowed Sessions deterministic routing without reading conversation content", () => {
+  const config = {
+    allowedAgentIds: ["v-codex"],
+    allowedSessionKeys: ["agent:v-codex:feishu:group:approved"],
+    projects: {
+      "v-evolution-engine": {
+        path: "/operator-only/host/path",
+        description: "Approved V project",
+      },
+    },
+  };
+  const contribution = createProjectSandboxPromptContribution({
+    agentId: "v-codex",
+    sessionKey: "agent:v-codex:feishu:group:approved",
+  }, config);
+
+  assert.match(contribution.appendSystemContext, /use project_sandbox_open before native host/);
+  assert.match(contribution.appendSystemContext, /ordinary conversation/);
+  assert.match(contribution.appendSystemContext, /v-evolution-engine: Approved V project/);
+  assert.doesNotMatch(contribution.appendSystemContext, /operator-only\/host\/path/);
+  assert.equal(createProjectSandboxPromptContribution({
+    agentId: "v-codex",
+    sessionKey: "agent:v-codex:feishu:group:other",
+  }, config), undefined);
 });
 
 test("configured agents deny host tools, Codex aliases, and every non-allowlisted tool", async () => {

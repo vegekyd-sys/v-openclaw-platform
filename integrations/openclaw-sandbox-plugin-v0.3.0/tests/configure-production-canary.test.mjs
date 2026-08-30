@@ -35,6 +35,7 @@ test("production canary is scoped to one Agent, one Session, and one project", a
     const updated = JSON.parse(await readFile(configPath, "utf8"));
     const plugin = updated.plugins.entries["project-sandbox"];
     assert.equal(plugin.enabled, true);
+    assert.equal(plugin.hooks.allowPromptInjection, true);
     assert.deepEqual(plugin.config.allowedAgentIds, ["v-codex"]);
     assert.deepEqual(plugin.config.allowedSessionKeys, [session]);
     assert.deepEqual(plugin.config.allowedSessionPrefixes, []);

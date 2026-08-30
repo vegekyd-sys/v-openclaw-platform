@@ -26,6 +26,10 @@ const previousConfig = previous.config ?? {};
 config.plugins.entries["project-sandbox"] = {
   ...previous,
   enabled: true,
+  hooks: {
+    ...(previous.hooks ?? {}),
+    allowPromptInjection: true,
+  },
   config: {
     ...previousConfig,
     allowedAgentIds: [agentId],
