@@ -5,7 +5,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 AUTO_CONFIG="${REPO_ROOT}/config/vcodex-streaming/openclaw.auto.json"
 CARD_CONFIG="${REPO_ROOT}/config/vcodex-streaming/openclaw.card.json"
 SERVICE="${REPO_ROOT}/systemd/openclaw-vlab-vcodex-streaming.service"
-MAIN_VLAB_DROPIN="${REPO_ROOT}/systemd/openclaw-vlab-gateway-vcodex-streaming-v0.1.3.conf"
+MAIN_VLAB_DROPIN="${REPO_ROOT}/systemd/openclaw-vlab-gateway-vcodex-streaming-v0.1.4.conf"
 
 bash -n "${REPO_ROOT}/scripts/bootstrap-vcodex-streaming-vlab.sh"
 bash -n "${REPO_ROOT}/scripts/vcodex-streaming-env-exec.sh"
@@ -41,6 +41,7 @@ grep -q '^CPUQuota=150%$' "${SERVICE}"
 grep -q '^EnvironmentFile=-/srv/vlab/state/vcodex-streaming.env$' "${MAIN_VLAB_DROPIN}"
 grep -q '^ExecStartPre=-+/opt/vlab/node/bin/node .*apply-vcodex-feishu-stream-coalescing-patch.mjs .*--allow-missing$' "${MAIN_VLAB_DROPIN}"
 grep -q '^ExecStartPre=-+/opt/vlab/node/bin/node .*apply-vcodex-feishu-meaningful-progress-patch.mjs .*--allow-missing$' "${MAIN_VLAB_DROPIN}"
+grep -q '^ExecStartPre=-+/opt/vlab/node/bin/node .*apply-feishu-runtime-footer-patch.mjs .*--allow-missing$' "${MAIN_VLAB_DROPIN}"
 
 if rg -n \
   '(cli_[a-z0-9]{8,}|oc_[a-z0-9]{12,}|ou_[a-z0-9]{12,}|github_pat_|AKID|appSecret[[:space:]]*"?:[[:space:]]*"[^$]|apiKey[[:space:]]*"?:[[:space:]]*"[^$])' \

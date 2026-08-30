@@ -267,6 +267,26 @@ policy forwards command approvals to an unavailable Telegram target and the
 coding turn waits for approval. This Session-level setting avoids changing the
 approval policy of ordinary OpenClaw Agents.
 
+## Runtime footer — v0.1.4
+
+The Feishu card footer now exposes the execution boundary explicitly:
+
+```text
+Agent: V × Makaron | Model: gpt-5.6-sol | Provider: openai | Runtime: codex
+```
+
+This does not introduce a second Agent or a new runtime switch. The existing
+`/model` command selects a model entry, and OpenClaw resolves that entry's
+model-scoped `agentRuntime` policy. The footer observes the actual selected
+Provider/Model callback and applies the same relevant policy precedence:
+agent-specific exact model, default-agent exact model, provider model, agent
+wildcard, provider policy, then the OpenClaw/Codex default.
+
+For the current main VLab configuration, normal models resolve to
+`vlab-worker`, the `vcodex` alias resolves to `codex`, and the DeepSeek Harness
+alias resolves to `deepseek-harness`. The Agent identity, Session, Memory,
+Skills, and workspace do not change when `/model vcodex` is selected.
+
 ## Rollback
 
 For the main VLab integration, remove
