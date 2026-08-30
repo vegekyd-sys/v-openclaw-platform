@@ -42,6 +42,15 @@ if (config.plugins?.entries?.codex?.enabled !== true) {
 
 makaron.models ??= {};
 const targetModel = "openai/gpt-5.6-sol";
+const defaultModel = config.agents?.defaults?.models?.[targetModel];
+if (!defaultModel || defaultModel?.agentRuntime?.id !== "vlab-worker") {
+  throw new Error(`Refusing to change alias: expected ${targetModel} to remain on the default vlab-worker runtime`);
+}
+if (defaultModel.alias && !["sol", "vcodex"].includes(defaultModel.alias)) {
+  throw new Error(`Refusing to replace unexpected default alias ${defaultModel.alias}`);
+}
+defaultModel.alias = "vcodex";
+
 const expectedModel = {
   alias: "vcodex",
   params: { thinking: "medium" },
@@ -80,5 +89,6 @@ process.stdout.write(`${JSON.stringify({
   model: targetModel,
   alias: "vcodex",
   runtime: "codex",
+  defaultRuntime: defaultModel.agentRuntime.id,
   status: !changed ? "already-configured" : dryRun ? "would-configure" : "configured",
 })}\n`);

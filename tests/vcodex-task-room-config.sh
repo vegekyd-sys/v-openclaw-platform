@@ -15,6 +15,7 @@ node "${REPO_ROOT}/scripts/apply-vcodex-task-room-config.mjs" \
 
 jq -e '.agents.list[] | select(.id == "makaron") | .models["openai/gpt-5.6-sol"] == {alias:"vcodex",params:{thinking:"medium"},agentRuntime:{id:"codex"}}' "${CONFIG_PATH}" >/dev/null
 jq -e '.agents.defaults.models["openai/gpt-5.6-sol"].agentRuntime.id == "vlab-worker"' "${CONFIG_PATH}" >/dev/null
+jq -e '.agents.defaults.models["openai/gpt-5.6-sol"].alias == "vcodex"' "${CONFIG_PATH}" >/dev/null
 jq -e '.agents.list[] | select(.id == "v-codex") | .models["openai/gpt-5.6-sol"].agentRuntime.id == "codex"' "${CONFIG_PATH}" >/dev/null
 jq -e '[.bindings[] | select(.agentId == "v-codex" and .match.peer.id == "oc_existing_vcodex")] | length == 1' "${CONFIG_PATH}" >/dev/null
 jq -e '[.bindings[]] | length == 1' "${CONFIG_PATH}" >/dev/null
