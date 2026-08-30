@@ -12,7 +12,9 @@ node --check "${REPO_ROOT}/scripts/inject-vcodex-feishu-event.mjs"
 node --check "${REPO_ROOT}/scripts/capture-vcodex-feishu-timeline.mjs"
 node --check "${REPO_ROOT}/scripts/apply-vcodex-feishu-stream-coalescing-patch.mjs"
 node --check "${REPO_ROOT}/scripts/apply-vcodex-feishu-scoped-streaming-patch.mjs"
+node --check "${REPO_ROOT}/scripts/apply-vcodex-feishu-meaningful-progress-patch.mjs"
 "${REPO_ROOT}/tests/vcodex-feishu-coalescing-patch.sh"
+"${REPO_ROOT}/tests/vcodex-feishu-meaningful-progress-patch.sh"
 jq -e . "${AUTO_CONFIG}" >/dev/null
 jq -e . "${CARD_CONFIG}" >/dev/null
 
@@ -31,6 +33,7 @@ grep -q '^Environment=OPENCLAW_STATE_DIR=/srv/vlab-vcodex-streaming/state$' "${S
 grep -q '^Environment=CODEX_HOME=/srv/vlab-vcodex-streaming/codex-home$' "${SERVICE}"
 grep -q '^Environment=OPENCLAW_GATEWAY_PORT=24993$' "${SERVICE}"
 grep -q '^ExecStartPre=/opt/vlab/node/bin/node /srv/vlab-vcodex-streaming/bin/apply-vcodex-feishu-stream-coalescing-patch.mjs ' "${SERVICE}"
+grep -q '^ExecStartPre=/opt/vlab/node/bin/node /srv/vlab-vcodex-streaming/bin/apply-vcodex-feishu-meaningful-progress-patch.mjs ' "${SERVICE}"
 grep -q '^MemoryHigh=2G$' "${SERVICE}"
 grep -q '^MemoryMax=3G$' "${SERVICE}"
 grep -q '^CPUQuota=150%$' "${SERVICE}"

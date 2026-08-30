@@ -131,14 +131,43 @@ cancellation. In this test it appeared once at 300 seconds; the foreground
 process continued, dispatch completed about 53 seconds later, and the original
 card closed normally.
 
-The official adapter still does not expose all Codex commentary, hidden
-reasoning, or every byte of foreground tool stdout as body partials. The proven
-user experience is: an early working card, continuous final-answer body growth,
-one final card, and reliable long-task completion.
+The official adapter still does not expose hidden reasoning or raw foreground
+tool stdout as body partials. That is intentional: those details are noisy and
+can contain commands or private paths. The repaired candidate consumes the
+official Codex commentary and item lifecycle callbacks, converts native tool
+events into safe human-readable stages, and keeps one final card.
 
 At handoff the fourth candidate service is deliberately `inactive` and
 `disabled`, so it consumes no steady-state memory and cannot contend with the
 other VLab experiments. Its state, logs, backups, and worktree remain intact.
+
+## Repaired VLab candidate — v0.1.2
+
+The repaired `v0.1.2` candidate remains VLab-only. It adds a version-gated
+`meaningful progress` bridge over OpenClaw's existing `onItemEvent`,
+`onToolStart`, commentary, and final-answer callbacks. It does not change the
+Codex runtime or execution lifecycle. Only explicit chat ids from
+`V_FEISHU_VCODEX_STREAM_CHAT_IDS` or `VLAB_VCODEX_ACCEPTANCE_CHAT_ID` receive
+the bridge; unlisted chats keep the original Feishu reply options.
+
+Acceptance uses **meaningful visible text**, not card creation, as time zero:
+
+| Gate | Result | Evidence |
+| --- | --- | --- |
+| Empty-card baseline | FAIL as control | A 90-second tool task created a card after about 5 seconds but showed no body text until the final answer around 173 seconds. |
+| Meaningful first text | PASS | The final short run showed readable text about 13 seconds after capture start, followed by commentary and safe `command` / `patch` stages. |
+| No raw internals | PASS | The final candidate did not expose commands, arguments, workspace paths, JSON, Session ids, or hidden reasoning in the card body. |
+| In-place progress | PASS | Progress replaced the same body instead of appending old statuses; the final answer replaced progress and remained unchanged when the card closed. |
+| 300-second boundary | PASS | At exactly 300 seconds OpenClaw logged only queue-lock eviction. The foreground process and card updates continued. |
+| 11-minute execution | PASS | A 660-second foreground task reported 120/300/480/600-second milestones, completed normally, wrote and verified one result file, and returned the final marker in the original card. |
+| Final delivery | PASS | Dispatch completed at `10:49:24`, the card closed at `10:49:25`, and the Feishu-visible final contains `VCODEX_LONG_11MIN_FINAL_OK_0830`. |
+| Health | PASS | Candidate `NRestarts=0`, `MemoryPeak=853,499,904` bytes, service active, and no timeout/relay/card update failure was logged. |
+| Scope isolation | PASS | The patch fixture proves the configured `oc_` chat is enabled and an unlisted chat is unchanged; all behavior changes are guarded by that scoped predicate. |
+
+The repaired candidate is **not deployed to production V**. A future promotion
+requires a separate user gate, a fresh production backup, and the same real
+VCodex programming-session acceptance. The failed `v0.1.1` path must not be
+reused.
 
 ## Rollback
 
