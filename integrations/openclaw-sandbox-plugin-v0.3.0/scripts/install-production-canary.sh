@@ -75,8 +75,6 @@ if pgrep -u openclaw -f '/opt/openclaw-2026\.7\.1/node_modules/openclaw/dist/ind
   echo "production has an active foreground OpenClaw agent process" >&2; exit 1;
 fi
 gateway_restarts_before=$(systemctl show "$gateway_service" -p NRestarts --value)
-broker_restarts_before=$(systemctl show "$broker_service" -p NRestarts --value)
-tunnel_restarts_before=$(systemctl show "$tunnel_service" -p NRestarts --value)
 
 install -d -m 0700 "$backup_dir"
 printf 'gateway_enabled=%s\ngateway_active=%s\nbroker_enabled=%s\nbroker_active=%s\ntunnel_enabled=%s\ntunnel_active=%s\n' \
@@ -116,6 +114,11 @@ rollback_on_error() {
 trap 'rollback_on_error $? $LINENO' ERR
 trap 'rollback_on_error 130' INT
 trap 'rollback_on_error 143' TERM
+fail_after_backup() {
+  local message=$1
+  echo "$message" >&2
+  rollback_on_error 1 "${BASH_LINENO[0]:-unknown}"
+}
 
 systemctl stop "$gateway_service"
 systemctl stop "$broker_service" "$tunnel_service" 2>/dev/null || true
@@ -139,7 +142,7 @@ chown openclaw:openclaw "$plugin_stage"
 plugin_name=$(sudo -u openclaw -H env HOME=/home/openclaw PATH=/opt/node-v22.23.1/bin:/usr/bin:/bin \
   "$npm_bin" pack "$release_dir/plugin" --pack-destination "$plugin_stage" --silent | tail -n 1)
 plugin_tgz=$plugin_stage/$(basename "$plugin_name")
-[[ -f $plugin_tgz ]] || { echo "Plugin package was not created" >&2; exit 1; }
+[[ -f $plugin_tgz ]] || fail_after_backup "Plugin package was not created"
 run_openclaw "$main_config" plugins install --force "$plugin_tgz"
 sudo -u openclaw -H "$node_bin" "$release_dir/scripts/configure-production-canary.mjs" \
   "$main_config" "$project_id" "$project_path" "$agent_id" "$session_key"
@@ -180,7 +183,7 @@ for _ in $(seq 1 30); do
   fi
   sleep 1
 done
-[[ $workspace_ready == 1 ]] || { echo "production OpenShell workspace did not become ready within 30 seconds" >&2; exit 1; }
+[[ $workspace_ready == 1 ]] || fail_after_backup "production OpenShell workspace did not become ready within 30 seconds"
 systemctl enable --now "$broker_service"
 for _ in $(seq 1 30); do
   [[ -S $experiment_root/state/broker.sock ]] && break
@@ -205,14 +208,14 @@ for _ in $(seq 1 60); do
   sleep 1
 done
 systemctl is-active --quiet "$gateway_service"
-[[ $worker_ready == 1 ]] || { echo "production Worker pool did not become ready within 60 seconds" >&2; exit 1; }
+[[ $worker_ready == 1 ]] || fail_after_backup "production Worker pool did not become ready within 60 seconds"
 sleep 5
 systemctl is-active --quiet "$tunnel_service"
 systemctl is-active --quiet "$broker_service"
-[[ $(systemctl show "$tunnel_service" -p NRestarts --value) == "$tunnel_restarts_before" ]] || { echo "OpenShell tunnel restart loop detected" >&2; exit 1; }
-[[ $(systemctl show "$broker_service" -p NRestarts --value) == "$broker_restarts_before" ]] || { echo "Project Sandbox Broker restart loop detected" >&2; exit 1; }
+[[ $(systemctl show "$tunnel_service" -p NRestarts --value) == 0 ]] || fail_after_backup "OpenShell tunnel restart loop detected"
+[[ $(systemctl show "$broker_service" -p NRestarts --value) == 0 ]] || fail_after_backup "Project Sandbox Broker restart loop detected"
 gateway_restarts_after=$(systemctl show "$gateway_service" -p NRestarts --value)
-[[ $gateway_restarts_before == "$gateway_restarts_after" ]] || { echo "Gateway restart loop detected" >&2; exit 1; }
+[[ $gateway_restarts_before == "$gateway_restarts_after" ]] || fail_after_backup "Gateway restart loop detected"
 
 cat > "$backup_dir/ROLLBACK.txt" <<EOF
 One-click rollback (only when Sandbox is idle):

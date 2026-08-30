@@ -19,11 +19,11 @@ test("plugin manifest declares routing Skill, fail-closed Agent exposure, and op
   assert.deepEqual(manifest.configSchema.properties.allowedSessionPrefixes.default, []);
   assert.deepEqual(manifest.configSchema.properties.blockedAgentIds.default, []);
   assert.equal(manifest.configSchema.properties.blockedAgentIds.uniqueItems, true);
-  assert.deepEqual(manifest.skills, ["./skill"]);
+  assert.deepEqual(manifest.skills, ["./skills"]);
 });
 
 test("routing Skill selects Sandbox for approved project execution without taking over ordinary Agent work", async () => {
-  const skill = await readFile(new URL("../plugin/skill/SKILL.md", import.meta.url), "utf8");
+  const skill = await readFile(new URL("../plugin/skills/project-sandbox/SKILL.md", import.meta.url), "utf8");
   assert.match(skill, /current Session exposes `project_sandbox_open`/);
   assert.match(skill, /searchable rather than already loaded/);
   assert.match(skill, /ordinary conversation/);

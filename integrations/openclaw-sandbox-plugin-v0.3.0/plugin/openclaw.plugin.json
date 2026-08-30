@@ -7,7 +7,7 @@
     "onStartup": true
   },
   "skills": [
-    "./skill"
+    "./skills"
   ],
   "contracts": {
     "trustedToolPolicies": [
