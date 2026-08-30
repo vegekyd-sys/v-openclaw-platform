@@ -1,7 +1,7 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { pipe, run } from "./process.mjs";
+import { run } from "./process.mjs";
 
 const SNAPSHOT_EXCLUDES = [
   ".git", ".env", ".env.*", ".openclaw", ".ssh", ".aws", ".config/gcloud",
@@ -9,6 +9,9 @@ const SNAPSHOT_EXCLUDES = [
   "*.pem", "*.key", "*.p12", "*.sqlite", "*.sqlite3", "sessions.json",
 ];
 const WORKSPACE_RUNNER_PATH = "/sandbox/.versa/workspace-runner.py";
+const PROJECT_UPLOAD_PATH = "/sandbox/.versa/project-upload.tgz";
+const PROJECT_UPLOAD_CHUNK_BYTES = 512 * 1024;
+const PROJECT_UPLOAD_MAX_BYTES = 64 * 1024 * 1024;
 
 export class OpenShellProvider {
   constructor(env = process.env) {
@@ -17,6 +20,8 @@ export class OpenShellProvider {
     this.image = env.VLAB_SANDBOX_IMAGE ?? "base";
     this.policyDir = env.VLAB_SANDBOX_POLICY_DIR ?? "/srv/vlab/state/sandbox/policies";
     this.artifactsDir = env.VLAB_SANDBOX_ARTIFACTS_DIR ?? "/srv/vlab/state/sandbox-broker/artifacts";
+    this.uploadStageDir = env.VLAB_SANDBOX_UPLOAD_STAGE_DIR
+      ?? path.join(env.VLAB_SANDBOX_STATE_DIR ?? path.dirname(this.artifactsDir), "uploads");
   }
 
   async createWorkspace(workspace, hooks = {}) {
@@ -210,16 +215,7 @@ export class OpenShellProvider {
     requireSuccess(created, "sandbox create");
 
     await hooks.phase?.("upload");
-    const tarArgs = ["tar", "-czf", "-"];
-    for (const excluded of SNAPSHOT_EXCLUDES) tarArgs.push(`--exclude=${excluded}`);
-    tarArgs.push("-C", job.input.projectPath, ".");
-    const uploaded = await pipe(tarArgs, this.openshellArgs([
-      "sandbox", "exec", "-n", name, "--no-tty", "--timeout", "300", "--",
-      "sh", "-lc", "mkdir -p /sandbox/project && tar -xzf - -C /sandbox/project",
-    ]), { env: this.env });
-    if (uploaded.first?.code !== 0 || uploaded.second.code !== 0) {
-      throw new Error(`project upload failed: ${uploaded.stderr.toString("utf8").slice(-2000)}`);
-    }
+    await this.uploadProject(name, job.input.projectPath);
 
     await hooks.phase?.("execute");
     const commandStartedAt = Date.now();
@@ -257,15 +253,86 @@ export class OpenShellProvider {
   }
 
   async uploadProject(name, projectPath) {
-    const tarArgs = ["tar", "-czf", "-"];
-    for (const excluded of SNAPSHOT_EXCLUDES) tarArgs.push(`--exclude=${excluded}`);
-    tarArgs.push("-C", projectPath, ".");
-    const uploaded = await pipe(tarArgs, this.openshellArgs([
-      "sandbox", "exec", "-n", name, "--no-tty", "--timeout", "300", "--",
-      "sh", "-lc", "mkdir -p /sandbox/project && tar -xzf - -C /sandbox/project",
-    ]), { env: this.env });
-    if (uploaded.first?.code !== 0 || uploaded.second.code !== 0) {
-      throw new Error(`project upload failed: ${uploaded.stderr.toString("utf8").slice(-2000)}`);
+    await mkdir(this.uploadStageDir, { recursive: true, mode: 0o700 });
+    const stageDir = await mkdtemp(path.join(this.uploadStageDir, "project-"));
+    const archivePath = path.join(stageDir, "project.tgz");
+    let remoteArchiveCreated = false;
+    try {
+      const tarArgs = ["tar", "-czf", archivePath];
+      for (const excluded of SNAPSHOT_EXCLUDES) tarArgs.push(`--exclude=${excluded}`);
+      tarArgs.push("-C", projectPath, ".");
+      const packed = await run(tarArgs, { env: this.env, maxBytes: 100_000 });
+      requireSuccess(packed, "project snapshot create");
+
+      const archive = await stat(archivePath);
+      if (archive.size > PROJECT_UPLOAD_MAX_BYTES) {
+        throw new Error(`project snapshot exceeds ${PROJECT_UPLOAD_MAX_BYTES} byte safety limit`);
+      }
+
+      const prepared = await this.execInWorkspace(name, ["mkdir", "-p", "/sandbox/.versa", "/sandbox/project"], {
+        timeoutSeconds: 60,
+        workdir: "/sandbox",
+      });
+      requireSuccess(prepared, "project upload directory create");
+
+      const handle = await open(archivePath, "r");
+      const hash = createHash("sha256");
+      let offset = 0;
+      try {
+        while (offset < archive.size) {
+          const chunk = Buffer.allocUnsafe(Math.min(PROJECT_UPLOAD_CHUNK_BYTES, archive.size - offset));
+          const { bytesRead } = await handle.read(chunk, 0, chunk.length, offset);
+          if (bytesRead === 0) throw new Error("project snapshot ended before its declared size");
+          const payload = chunk.subarray(0, bytesRead);
+          hash.update(payload);
+          const uploaded = await this.execInWorkspace(
+            name,
+            offset === 0 ? ["tee", "--", PROJECT_UPLOAD_PATH] : ["tee", "-a", "--", PROJECT_UPLOAD_PATH],
+            { timeoutSeconds: 60, maxBytes: 1_000, stdin: payload, workdir: "/sandbox" },
+          );
+          requireSuccess(uploaded, `project upload chunk ${Math.floor(offset / PROJECT_UPLOAD_CHUNK_BYTES) + 1}`);
+          remoteArchiveCreated = true;
+          offset += bytesRead;
+        }
+      } finally {
+        await handle.close();
+      }
+
+      const expectedSha256 = hash.digest("hex");
+      const remoteHash = await this.execInWorkspace(name, ["sha256sum", PROJECT_UPLOAD_PATH], {
+        timeoutSeconds: 60,
+        maxBytes: 1_000,
+        workdir: "/sandbox",
+      });
+      requireSuccess(remoteHash, "project upload hash");
+      const actualSha256 = remoteHash.stdout.toString("utf8").trim().split(/\s+/)[0];
+      if (actualSha256 !== expectedSha256) throw new Error("project upload SHA-256 mismatch");
+
+      const remoteSize = await this.execInWorkspace(name, ["stat", "-c", "%s", PROJECT_UPLOAD_PATH], {
+        timeoutSeconds: 60,
+        maxBytes: 1_000,
+        workdir: "/sandbox",
+      });
+      requireSuccess(remoteSize, "project upload size");
+      if (Number(remoteSize.stdout.toString("utf8").trim()) !== archive.size) {
+        throw new Error("project upload size mismatch");
+      }
+
+      const extracted = await this.execInWorkspace(name, ["tar", "-xzf", PROJECT_UPLOAD_PATH, "-C", "/sandbox/project"], {
+        timeoutSeconds: 300,
+        maxBytes: 100_000,
+        workdir: "/sandbox",
+      });
+      requireSuccess(extracted, "project snapshot extract");
+    } finally {
+      await rm(stageDir, { recursive: true, force: true });
+      if (remoteArchiveCreated) {
+        await this.execInWorkspace(name, ["rm", "-f", PROJECT_UPLOAD_PATH], {
+          timeoutSeconds: 60,
+          maxBytes: 1_000,
+          workdir: "/sandbox",
+        }).catch(() => {});
+      }
     }
   }
 
