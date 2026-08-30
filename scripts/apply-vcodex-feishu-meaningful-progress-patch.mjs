@@ -59,10 +59,11 @@ if (bundles.length !== 1) {
 const file = bundles[0];
 const source = readFileSync(file, "utf8");
 const patchedMarkers = [
-  "const VCODEX_COMMENTARY_STREAM_V1 = true",
-  "function isVcodexMeaningfulProgressChat(chatId)",
+  "const VCODEX_COMMENTARY_STREAM_V2 = true",
+  "function resolveVcodexSessionRuntime(params)",
+  "getSessionEntry({",
   "function formatVcodexCommentary(payload)",
-  "const vcodexMeaningfulProgressEnabled =",
+  "resolveVcodexSessionRuntime({",
   "allowToolLifecycleWhenProgressHidden: vcodexMeaningfulProgressEnabled",
   "suppressToolErrorWarnings: vcodexMeaningfulProgressEnabled",
   "sourceReplyDeliveryMode: vcodexMeaningfulProgressEnabled ? \"automatic\"",
@@ -91,10 +92,73 @@ if (dispatcherOffset < 0 || dispatcherOffset !== source.lastIndexOf(dispatcherSi
   throw new Error(`Dispatcher signature changed; refusing to patch ${file}`);
 }
 
-const helpers = `const VCODEX_COMMENTARY_STREAM_V1 = true;
+const v1Helpers = `const VCODEX_COMMENTARY_STREAM_V1 = true;
 function isVcodexMeaningfulProgressChat(chatId) {
 \tconst configuredChatIds = process.env.V_FEISHU_VCODEX_STREAM_CHAT_IDS ?? process.env.VLAB_VCODEX_ACCEPTANCE_CHAT_ID ?? "";
 \treturn configuredChatIds.split(",").map((value) => value.trim()).filter((value) => value.startsWith("oc_")).includes(chatId);
+}
+function sanitizeVcodexCommentaryText(text) {
+\treturn String(text ?? "").replace(/[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\u007f]/gu, "").trim();
+}
+function formatVcodexCommentary(payload) {
+\tif (payload?.kind !== "preamble" || !payload.progressText) return "";
+\treturn sanitizeVcodexCommentaryText(payload.progressText);
+}
+`;
+
+const helpers = `const VCODEX_COMMENTARY_STREAM_V2 = true;
+function normalizeVcodexRuntimeId(value) {
+\tconst normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+\treturn normalized || void 0;
+}
+function resolveVcodexConfiguredRuntime(cfg, agentId, provider, model) {
+\tif (!provider || !model) return;
+\tconst normalizedProvider = provider.trim().toLowerCase();
+\tconst normalizedModel = model.trim();
+\tconst normalizedAgentId = String(agentId ?? "").trim().toLowerCase();
+\tconst agentEntry = (cfg?.agents?.list ?? []).find((entry) => String(entry?.id ?? "").trim().toLowerCase() === normalizedAgentId);
+\tconst modelMaps = [agentEntry?.models, cfg?.agents?.defaults?.models];
+\tconst readMapPolicy = (models, key) => {
+\t\tif (!models || typeof models !== "object") return;
+\t\tfor (const [candidateKey, entry] of Object.entries(models)) {
+\t\t\tif (candidateKey.trim().toLowerCase() !== key.toLowerCase()) continue;
+\t\t\tconst runtime = normalizeVcodexRuntimeId(entry?.agentRuntime?.id);
+\t\t\tif (runtime) return runtime;
+\t\t}
+\t};
+\tfor (const models of modelMaps) {
+\t\tconst runtime = readMapPolicy(models, \`\${normalizedProvider}/\${normalizedModel}\`);
+\t\tif (runtime) return runtime;
+\t}
+\tfor (const models of modelMaps) {
+\t\tconst runtime = readMapPolicy(models, \`\${normalizedProvider}/*\`);
+\t\tif (runtime) return runtime;
+\t}
+\treturn normalizedProvider === "openai" && cfg?.plugins?.entries?.codex?.enabled === true ? "codex" : "openclaw";
+}
+function resolveVcodexSessionRuntime(params) {
+\tlet provider;
+\tlet model;
+\ttry {
+\t\tconst entry = params.sessionKey ? getSessionEntry({
+\t\t\tstorePath: params.storePath,
+\t\t\tsessionKey: params.sessionKey,
+\t\t\treadConsistency: "latest"
+\t\t}) : void 0;
+\t\tprovider = typeof entry?.providerOverride === "string" ? entry.providerOverride : void 0;
+\t\tmodel = typeof entry?.modelOverride === "string" ? entry.modelOverride : void 0;
+\t} catch {}
+\tif (!provider || !model) {
+\t\tconst normalizedAgentId = String(params.agentId ?? "").trim().toLowerCase();
+\t\tconst agentEntry = (params.cfg?.agents?.list ?? []).find((entry) => String(entry?.id ?? "").trim().toLowerCase() === normalizedAgentId);
+\t\tconst primary = agentEntry?.model?.primary ?? params.cfg?.agents?.defaults?.model?.primary;
+\t\tif (typeof primary === "string" && primary.includes("/")) {
+\t\t\tconst slashIndex = primary.indexOf("/");
+\t\t\tprovider ||= primary.slice(0, slashIndex);
+\t\t\tmodel ||= primary.slice(slashIndex + 1);
+\t\t}
+\t}
+\treturn resolveVcodexConfiguredRuntime(params.cfg, params.agentId, provider, model);
 }
 function sanitizeVcodexCommentaryText(text) {
 \treturn String(text ?? "").replace(/[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\u007f]/gu, "").trim();
@@ -126,11 +190,16 @@ const replacements = [
 \t\tif (!this.state || this.closed) return;`,
   },
   {
-    label: "scoped progress flag",
+    label: "runtime-aware progress flag",
     before: `\tconst streamingEnabled = account.config?.streaming !== false && renderMode !== "raw";
 \tconst coreBlockStreamingEnabled = account.config?.blockStreaming === true;`,
     after: `\tconst streamingEnabled = account.config?.streaming !== false && renderMode !== "raw";
-\tconst vcodexMeaningfulProgressEnabled = streamingEnabled && isVcodexMeaningfulProgressChat(chatId);
+\tconst vcodexMeaningfulProgressEnabled = streamingEnabled && resolveVcodexSessionRuntime({
+\t\tcfg,
+\t\tagentId,
+\t\tsessionKey: params.sessionKey,
+\t\tstorePath: core.channel.session.resolveStorePath(cfg.session?.store, { agentId })
+\t}) === "codex";
 \tconst coreBlockStreamingEnabled = account.config?.blockStreaming === true;`,
   },
   {
@@ -382,14 +451,34 @@ const replacements = [
   },
 ];
 
-let updated = source.replace(dispatcherSignature, `${helpers}${dispatcherSignature}`);
-for (const replacement of replacements) {
-  const first = updated.indexOf(replacement.before);
-  const last = updated.lastIndexOf(replacement.before);
-  if (first < 0 || first !== last) {
-    throw new Error(`${replacement.label} signature changed; refusing to patch ${file}`);
+const v1Flag = `\tconst streamingEnabled = account.config?.streaming !== false && renderMode !== "raw";
+\tconst vcodexMeaningfulProgressEnabled = streamingEnabled && isVcodexMeaningfulProgressChat(chatId);
+\tconst coreBlockStreamingEnabled = account.config?.blockStreaming === true;`;
+const v2Flag = `\tconst streamingEnabled = account.config?.streaming !== false && renderMode !== "raw";
+\tconst vcodexMeaningfulProgressEnabled = streamingEnabled && resolveVcodexSessionRuntime({
+\t\tcfg,
+\t\tagentId,
+\t\tsessionKey: params.sessionKey,
+\t\tstorePath: core.channel.session.resolveStorePath(cfg.session?.store, { agentId })
+\t}) === "codex";
+\tconst coreBlockStreamingEnabled = account.config?.blockStreaming === true;`;
+
+let updated;
+if (source.includes("const VCODEX_COMMENTARY_STREAM_V1 = true")) {
+  if (!source.includes(v1Helpers) || !source.includes(v1Flag)) {
+    throw new Error(`V1 commentary signatures changed; refusing to upgrade ${file}`);
   }
-  updated = updated.replace(replacement.before, replacement.after);
+  updated = source.replace(v1Helpers, helpers).replace(v1Flag, v2Flag);
+} else {
+  updated = source.replace(dispatcherSignature, `${helpers}${dispatcherSignature}`);
+  for (const replacement of replacements) {
+    const first = updated.indexOf(replacement.before);
+    const last = updated.lastIndexOf(replacement.before);
+    if (first < 0 || first !== last) {
+      throw new Error(`${replacement.label} signature changed; refusing to patch ${file}`);
+    }
+    updated = updated.replace(replacement.before, replacement.after);
+  }
 }
 
 if (updated === source || !patchedMarkers.every((marker) => updated.includes(marker))) {

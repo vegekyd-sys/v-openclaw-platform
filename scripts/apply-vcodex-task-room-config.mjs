@@ -20,12 +20,11 @@ const args = new Map(process.argv.slice(2).map((arg) => {
 }));
 
 const configPath = args.get("--config") ? resolve(args.get("--config")) : null;
-const chatId = args.get("--chat-id")?.trim();
 const backupDir = args.get("--backup-dir") ? resolve(args.get("--backup-dir")) : null;
 const dryRun = args.has("--dry-run");
 
-if (!configPath || !chatId?.startsWith("oc_")) {
-  throw new Error("Usage: --config=/path/openclaw.json --chat-id=oc_xxx [--backup-dir=/path] [--dry-run]");
+if (!configPath) {
+  throw new Error("Usage: --config=/path/openclaw.json [--backup-dir=/path] [--dry-run]");
 }
 if (!dryRun && !backupDir) throw new Error("--backup-dir is required unless --dry-run is used");
 
@@ -54,36 +53,6 @@ if (existingModel && JSON.stringify(existingModel) !== JSON.stringify(expectedMo
 }
 makaron.models[targetModel] = expectedModel;
 
-config.bindings ??= [];
-const conflictingBinding = config.bindings.find((binding) =>
-  binding?.match?.channel === "feishu" &&
-  binding?.match?.accountId === "default" &&
-  binding?.match?.peer?.kind === "group" &&
-  binding?.match?.peer?.id === chatId &&
-  binding?.agentId !== "makaron"
-);
-if (conflictingBinding) throw new Error(`Refusing to replace existing non-makaron binding for ${chatId}`);
-
-const existingBinding = config.bindings.find((binding) =>
-  binding?.agentId === "makaron" &&
-  binding?.match?.channel === "feishu" &&
-  binding?.match?.accountId === "default" &&
-  binding?.match?.peer?.kind === "group" &&
-  binding?.match?.peer?.id === chatId
-);
-if (!existingBinding) {
-  config.bindings.push({
-    type: "route",
-    agentId: "makaron",
-    comment: "Feishu task room: Terra / DeepSeek / VCodex runtime switching acceptance.",
-    match: {
-      channel: "feishu",
-      accountId: "default",
-      peer: { kind: "group", id: chatId },
-    },
-  });
-}
-
 const updated = `${JSON.stringify(config, null, 2)}\n`;
 const beforeSha256 = sha256(source);
 const afterSha256 = sha256(updated);
@@ -106,12 +75,10 @@ process.stdout.write(`${JSON.stringify({
   changed: changed && !dryRun,
   dryRun,
   configPath,
-  chatId,
   beforeSha256,
   afterSha256,
   model: targetModel,
   alias: "vcodex",
   runtime: "codex",
-  binding: existingBinding ? "already-present" : "added",
   status: !changed ? "already-configured" : dryRun ? "would-configure" : "configured",
 })}\n`);

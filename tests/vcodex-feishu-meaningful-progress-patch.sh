@@ -24,15 +24,15 @@ grep -q 'allowToolLifecycleWhenProgressHidden: vcodexMeaningfulProgressEnabled' 
 grep -q 'suppressToolErrorWarnings: vcodexMeaningfulProgressEnabled' "${DIST_DIR}/monitor.account-vcodex-meaningful-progress-fixture.js"
 grep -q 'sourceReplyDeliveryMode: vcodexMeaningfulProgressEnabled ? "automatic"' "${DIST_DIR}/monitor.account-vcodex-meaningful-progress-fixture.js"
 grep -q 'onItemEvent: vcodexMeaningfulProgressEnabled' "${DIST_DIR}/monitor.account-vcodex-meaningful-progress-fixture.js"
-grep -q 'const VCODEX_COMMENTARY_STREAM_V1 = true' "${DIST_DIR}/monitor.account-vcodex-meaningful-progress-fixture.js"
+grep -q 'const VCODEX_COMMENTARY_STREAM_V2 = true' "${DIST_DIR}/monitor.account-vcodex-meaningful-progress-fixture.js"
+grep -q 'function resolveVcodexSessionRuntime(params)' "${DIST_DIR}/monitor.account-vcodex-meaningful-progress-fixture.js"
 grep -q 'vcodexDisplayPhase = "final"' "${DIST_DIR}/monitor.account-vcodex-meaningful-progress-fixture.js"
 
-probe=$(VLAB_VCODEX_ACCEPTANCE_CHAT_ID='oc_vcodex' \
-  node "${DIST_DIR}/monitor.account-vcodex-meaningful-progress-fixture.js" probe)
-grep -q '"scoped":true' <<<"${probe}"
-grep -q '"unlisted":false' <<<"${probe}"
-grep -q '"scopedDeliveryMode":"automatic"' <<<"${probe}"
-grep -q '"unlistedDeliveryMode":null' <<<"${probe}"
+probe=$(node "${DIST_DIR}/monitor.account-vcodex-meaningful-progress-fixture.js" probe)
+grep -q '"codexRuntime":"codex"' <<<"${probe}"
+grep -q '"workerRuntime":"vlab-worker"' <<<"${probe}"
+grep -q '"codexDeliveryMode":"automatic"' <<<"${probe}"
+grep -q '"workerDeliveryMode":null' <<<"${probe}"
 grep -q '"afterStart":0' <<<"${probe}"
 grep -q '"afterTool":0' <<<"${probe}"
 grep -q '我先检查当前实现如何传递 Codex 的文字' <<<"${probe}"

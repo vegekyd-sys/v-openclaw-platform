@@ -20,9 +20,15 @@ const isChannelProgressDraftWorkToolName = () => true;
 const formatChannelProgressDraftLineForEntry = () => "raw tool status";
 const resolveSendableOutboundReplyParts = (payload) => ({ text: payload.text });
 const mergeStreamingFinalText = (left, right) => [left, right].filter(Boolean).join("\n\n");
+const sessionEntries = new Map([
+	["session-codex", { providerOverride: "openai", modelOverride: "gpt-5.6-sol" }],
+	["session-worker", { providerOverride: "openai", modelOverride: "gpt-5.6-terra" }],
+]);
+const getSessionEntry = ({ sessionKey }) => sessionEntries.get(sessionKey);
 
 function createFeishuReplyDispatcher(params) {
-	const { chatId } = params;
+	const core = { channel: { session: { resolveStorePath: () => "/tmp/sessions.json" } } };
+	const { cfg, agentId, chatId } = params;
 	const account = { config: { streaming: true, blockStreaming: false } };
 	const renderMode = "card";
 	const streamingEnabled = account.config?.streaming !== false && renderMode !== "raw";
@@ -168,8 +174,27 @@ function createFeishuReplyDispatcher(params) {
 
 if (process.argv[2] === "probe") {
 	(async () => {
-		const dispatcher = createFeishuReplyDispatcher({ chatId: "oc_vcodex" });
-		const unlistedDispatcher = createFeishuReplyDispatcher({ chatId: "oc_unlisted" });
+		const cfg = {
+			agents: {
+				defaults: {
+					model: { primary: "deepseek/deepseek-v4-pro" },
+					models: {
+						"openai/*": { agentRuntime: { id: "vlab-worker" } },
+						"openai/gpt-5.6-terra": { agentRuntime: { id: "vlab-worker" } },
+					},
+				},
+				list: [{
+					id: "makaron",
+					model: { primary: "deepseek/deepseek-v4-pro" },
+					models: {
+						"openai/gpt-5.6-sol": { alias: "vcodex", agentRuntime: { id: "codex" } },
+					},
+				}],
+			},
+			plugins: { entries: { codex: { enabled: true } } },
+		};
+		const dispatcher = createFeishuReplyDispatcher({ cfg, agentId: "makaron", chatId: "oc_any", sessionKey: "session-codex" });
+		const workerDispatcher = createFeishuReplyDispatcher({ cfg, agentId: "makaron", chatId: "oc_any", sessionKey: "session-worker" });
 		await dispatcher.onReplyStart();
 		await dispatcher.flush();
 		const afterStart = dispatcher.rendered.length;
@@ -188,10 +213,10 @@ if (process.argv[2] === "probe") {
 		dispatcher.replyOptions.onItemEvent({ itemId: "commentary-late", kind: "preamble", progressText: "LATE_COMMENTARY_SENTINEL" });
 		await dispatcher.flush();
 		const result = {
-			scoped: isVcodexMeaningfulProgressChat("oc_vcodex"),
-			unlisted: isVcodexMeaningfulProgressChat("oc_unlisted"),
-			scopedDeliveryMode: dispatcher.replyOptions.sourceReplyDeliveryMode ?? null,
-			unlistedDeliveryMode: unlistedDispatcher.replyOptions.sourceReplyDeliveryMode ?? null,
+			codexRuntime: resolveVcodexSessionRuntime({ cfg, agentId: "makaron", sessionKey: "session-codex", storePath: "/tmp/sessions.json" }),
+			workerRuntime: resolveVcodexSessionRuntime({ cfg, agentId: "makaron", sessionKey: "session-worker", storePath: "/tmp/sessions.json" }),
+			codexDeliveryMode: dispatcher.replyOptions.sourceReplyDeliveryMode ?? null,
+			workerDeliveryMode: workerDispatcher.replyOptions.sourceReplyDeliveryMode ?? null,
 			afterStart,
 			afterTool,
 			rendered: dispatcher.rendered,
