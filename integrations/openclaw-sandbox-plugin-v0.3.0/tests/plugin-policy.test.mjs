@@ -7,14 +7,19 @@ import {
   normalizeProjectSandboxPolicyToolName,
 } from "../plugin/core/policy.js";
 
-test("plugin manifest declares the trusted policy and keeps blockedAgentIds opt-in", async () => {
+test("plugin manifest declares fail-closed Agent exposure and keeps host restriction opt-in", async () => {
   const manifest = JSON.parse(
     await readFile(new URL("../plugin/openclaw.plugin.json", import.meta.url), "utf8"),
   );
 
   assert.deepEqual(manifest.contracts.trustedToolPolicies, ["project-sandbox-host-deny"]);
+  assert.deepEqual(manifest.configSchema.properties.allowedAgentIds.default, []);
+  assert.equal(manifest.configSchema.properties.allowedAgentIds.uniqueItems, true);
+  assert.deepEqual(manifest.configSchema.properties.allowedSessionKeys.default, []);
+  assert.deepEqual(manifest.configSchema.properties.allowedSessionPrefixes.default, []);
   assert.deepEqual(manifest.configSchema.properties.blockedAgentIds.default, []);
   assert.equal(manifest.configSchema.properties.blockedAgentIds.uniqueItems, true);
+  assert.equal(manifest.skills, undefined, "the canary package must not inject a global Skill");
 });
 
 test("configured agents deny host tools, Codex aliases, and every non-allowlisted tool", async () => {

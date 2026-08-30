@@ -57,6 +57,32 @@ test("VLab installer and rollback remain scoped to VLab services and state", asy
   assert.match(rollback, /rollback refused: invalid Project Sandbox health response/);
 });
 
+test("production canary is exact-scoped and ships a fail-closed one-click rollback", async () => {
+  const install = await readFile(new URL("../scripts/install-production-canary.sh", import.meta.url), "utf8");
+  const rollback = await readFile(new URL("../scripts/rollback-production-canary.sh", import.meta.url), "utf8");
+  const broker = await readFile(new URL("../systemd/v-project-sandbox-broker.service", import.meta.url), "utf8");
+  const tunnel = await readFile(new URL("../systemd/v-openshell-tunnel.service", import.meta.url), "utf8");
+
+  assert.match(install, /agent_id=v-codex/);
+  assert.match(install, /oc_3355cd58853f38e19a613b8ff644f52f/);
+  assert.match(install, /project_id=v-evolution-engine/);
+  assert.match(install, /\.activeCount == 0 and \.queued == 0/);
+  assert.match(install, /plugin\.version == "0\.3\.1"/);
+  assert.match(install, /configure-production-canary\.mjs/);
+  assert.match(install, /rollback-production-canary\.sh/);
+  assert.match(install, /Gateway restart loop detected/);
+  assert.match(rollback, /rollback refused: active or queued Sandbox work remains/);
+  assert.match(rollback, /Session, Memory, Broker state, and artifacts were preserved/);
+  assert.match(broker, /Environment=VLAB_SANDBOX_MAX_CONCURRENT=1/);
+  assert.match(broker, /v-evolution-engine/);
+  assert.match(broker, /MemoryMax=256M/);
+  assert.match(tunnel, /100\.79\.149\.4|v-sandbox-prod/);
+  assert.match(tunnel, /ExitOnForwardFailure=yes/);
+  for (const source of [install, rollback, broker, tunnel]) {
+    assert.doesNotMatch(source, /100\.82\.39\.107/);
+  }
+});
+
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

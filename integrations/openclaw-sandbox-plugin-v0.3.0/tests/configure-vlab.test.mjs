@@ -18,6 +18,8 @@ test("VLab config mutator preserves existing plugin policy and file mode", async
           "project-sandbox": {
             enabled: false,
             config: {
+              allowedAgentIds: ["sandbox-openclaw"],
+              allowedSessionPrefixes: ["agent:sandbox-openclaw:"],
               blockedAgentIds: ["sandbox-codex"],
               projects: { retained: { path: "/approved/retained" } },
             },
@@ -30,6 +32,16 @@ test("VLab config mutator preserves existing plugin policy and file mode", async
     await run([configPath, "v-core", "/srv/vlab/projects/v-core"]);
     const updated = JSON.parse(await readFile(configPath, "utf8"));
     assert.deepEqual(updated.plugins.allow, ["existing-plugin", "project-sandbox"]);
+    assert.deepEqual(updated.plugins.entries["project-sandbox"].config.allowedAgentIds, [
+      "sandbox-openclaw",
+      "vlab-sandbox-openclaw",
+      "vlab-sandbox-codex",
+    ]);
+    assert.deepEqual(updated.plugins.entries["project-sandbox"].config.allowedSessionPrefixes, [
+      "agent:sandbox-openclaw:",
+      "agent:vlab-sandbox-openclaw:",
+      "agent:vlab-sandbox-codex:",
+    ]);
     assert.deepEqual(updated.plugins.entries["project-sandbox"].config.blockedAgentIds, [
       "sandbox-codex",
       "vlab-sandbox-openclaw",

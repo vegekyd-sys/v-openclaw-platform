@@ -25,6 +25,14 @@ config.plugins.entries["project-sandbox"] = {
   enabled: true,
   config: {
     ...previousConfig,
+    allowedAgentIds: unique([
+      ...(previousConfig.allowedAgentIds ?? []),
+      ...protectedAgentIds,
+    ]),
+    allowedSessionPrefixes: unique([
+      ...(previousConfig.allowedSessionPrefixes ?? []),
+      ...protectedAgentIds.map((agentId) => `agent:${agentId}:`),
+    ]),
     blockedAgentIds: unique([
       ...(previousConfig.blockedAgentIds ?? []),
       ...protectedAgentIds,

@@ -71,7 +71,11 @@ const finishSchema = {
 };
 
 export function createSandboxTools(context, { broker, config, logger = console }) {
-  const actor = () => resolveTrustedActor(context, config);
+  if (!isProjectSandboxContextAllowed(context, config)) return [];
+  const actor = () => {
+    requireProjectSandboxContextAllowed(context, config);
+    return resolveTrustedActor(context, config);
+  };
   const projectEntries = normalizedProjects(config.projects);
 
   return [
@@ -79,7 +83,7 @@ export function createSandboxTools(context, { broker, config, logger = console }
       name: "project_sandbox_open",
       label: "Project Sandbox Open",
       description:
-        "List approved projects, open one persistent Broker-managed Sandbox for this Session, or check its status. Use this before project_sandbox_files or project_sandbox_exec. Never ask for a host path.",
+        "List approved projects, open one persistent Broker-managed Sandbox for this Session, or check its status. For project development in an approved project, use this before native host file or exec tools. Never ask for a host path.",
       parameters: openSchema,
       async execute(toolCallId, params, signal) {
         const trusted = actor();
@@ -215,6 +219,41 @@ export function createSandboxTools(context, { broker, config, logger = console }
       },
     },
   ];
+}
+
+export function isProjectSandboxContextAllowed(context, config = {}) {
+  const agentId = normalizeAgentId(context?.agentId);
+  const sessionKey = normalizeSessionKey(context?.sessionKey);
+  if (!agentId || !sessionKey) return false;
+  if (!sessionKey.startsWith(`agent:${agentId}:`)) return false;
+  if (!normalizeAgentIds(config.allowedAgentIds).includes(agentId)) return false;
+  const exact = normalizeSessionKeys(config.allowedSessionKeys);
+  const prefixes = normalizeSessionKeys(config.allowedSessionPrefixes);
+  return exact.includes(sessionKey) || prefixes.some((prefix) => sessionKey.startsWith(prefix));
+}
+
+function requireProjectSandboxContextAllowed(context, config) {
+  if (!isProjectSandboxContextAllowed(context, config)) {
+    throw new Error("Project Sandbox is not enabled for this Agent Session");
+  }
+}
+
+function normalizeAgentIds(value) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map(normalizeAgentId).filter(Boolean))];
+}
+
+function normalizeAgentId(value) {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function normalizeSessionKeys(value) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map(normalizeSessionKey).filter(Boolean))];
+}
+
+function normalizeSessionKey(value) {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function normalizedProjects(projects) {

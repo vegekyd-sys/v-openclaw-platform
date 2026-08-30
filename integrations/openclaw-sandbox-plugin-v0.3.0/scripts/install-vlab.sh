@@ -270,7 +270,7 @@ progress "inspecting Project Sandbox and official Codex plugins"
 run_openclaw "$main_config" plugins inspect project-sandbox --runtime --json \
   > "$backup_dir/project-sandbox-inspect.json" \
   2> "$backup_dir/project-sandbox-inspect.stderr"
-jq -e '.plugin.status == "loaded" and .plugin.version == "0.3.0" and (.diagnostics | length) == 0' \
+jq -e '.plugin.status == "loaded" and .plugin.version == "0.3.1" and (.diagnostics | length) == 0' \
   "$backup_dir/project-sandbox-inspect.json" >/dev/null
 run_openclaw "$main_config" plugins inspect codex --runtime --json \
   > "$backup_dir/codex-inspect.json" \

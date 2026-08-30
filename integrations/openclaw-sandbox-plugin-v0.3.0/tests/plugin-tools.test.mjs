@@ -3,7 +3,11 @@ import test from "node:test";
 
 import { BrokerClient } from "../plugin/core/broker-client.js";
 import { resolveTrustedActor } from "../plugin/core/identity.js";
-import { createSandboxTools, TOOL_NAMES } from "../plugin/core/tools.js";
+import {
+  createSandboxTools,
+  isProjectSandboxContextAllowed,
+  TOOL_NAMES,
+} from "../plugin/core/tools.js";
 
 const WORKSPACE_ID = "vws-contract-0001";
 const FENCING_TOKEN = "fencing-contract-0001";
@@ -34,6 +38,37 @@ test("one tool factory exposes the same four tools to default and Codex runtimes
     owner: "agent:v-codex",
     session: "agent:v-codex:task:contract",
   });
+});
+
+test("tool exposure is fail-closed and scoped to configured Agent ids", () => {
+  const broker = new FakeBroker();
+  const allowed = channelContext({
+    agentId: " V-Codex ",
+    sessionKey: "agent:v-codex:feishu:group:oc-contract",
+  });
+  const denied = channelContext({ agentId: "makaron" });
+  const config = {
+    ...pluginConfig(),
+    allowedAgentIds: ["v-codex"],
+    allowedSessionKeys: ["agent:v-codex:feishu:group:oc-contract"],
+    allowedSessionPrefixes: [],
+  };
+
+  assert.equal(isProjectSandboxContextAllowed(allowed, config), true);
+  assert.equal(isProjectSandboxContextAllowed(denied, config), false);
+  assert.deepEqual(createSandboxTools(denied, { broker, config }), []);
+  assert.deepEqual(createSandboxTools(allowed, { broker, config }).map(({ name }) => name), TOOL_NAMES);
+  assert.deepEqual(createSandboxTools(allowed, { broker, config: { ...config, allowedAgentIds: [] } }), []);
+  assert.deepEqual(createSandboxTools(allowed, { broker, config: { ...config, allowedAgentIds: undefined } }), []);
+  assert.deepEqual(createSandboxTools(allowed, { broker, config: { ...config, allowedSessionKeys: [] } }), []);
+  assert.deepEqual(createSandboxTools({ ...allowed, sessionKey: "agent:v-codex:other" }, { broker, config }), []);
+  assert.deepEqual(
+    createSandboxTools(allowed, {
+      broker,
+      config: { ...config, allowedSessionKeys: [], allowedSessionPrefixes: ["agent:v-codex:feishu:group:"] },
+    }).map(({ name }) => name),
+    TOOL_NAMES,
+  );
 });
 
 test("tool schemas never let the model provide trusted identity or a host project path", () => {
@@ -232,14 +267,18 @@ test("project_sandbox_finish strips Broker host paths from both details and visi
 });
 
 test("missing trusted identity fails closed before any Broker request", async () => {
+  for (const context of [{}, { sessionKey: "agent:makaron:task:no-owner" }]) {
+    const broker = new FakeBroker();
+    assert.deepEqual(createSandboxTools(context, { broker, config: pluginConfig() }), []);
+    assert.equal(broker.calls.length, 0);
+  }
+
   for (const context of [
-    {},
-    { sessionKey: "agent:makaron:task:no-owner" },
     { requesterSenderId: "ou-no-session", agentId: "makaron" },
+    { agentId: "makaron" },
   ]) {
     const broker = new FakeBroker();
-    const list = toolNamed(createSandboxTools(context, { broker, config: pluginConfig() }), "project_sandbox_open");
-    await assert.rejects(list.execute("identity-call", { action: "list" }), /Project Sandbox denied/);
+    assert.deepEqual(createSandboxTools(context, { broker, config: pluginConfig() }), []);
     assert.equal(broker.calls.length, 0);
   }
 });
@@ -277,6 +316,8 @@ function channelContext(overrides = {}) {
 
 function pluginConfig() {
   return {
+    allowedAgentIds: ["makaron", "v-codex"],
+    allowedSessionPrefixes: ["agent:makaron:", "agent:v-codex:"],
     openWaitMs: 0,
     projects: {
       second: {

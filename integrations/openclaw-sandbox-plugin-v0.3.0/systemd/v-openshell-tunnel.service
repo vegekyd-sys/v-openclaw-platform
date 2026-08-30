@@ -1,0 +1,23 @@
+[Unit]
+Description=Production V tunnel to the OpenShell Sandbox Gateway
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=openclaw
+Group=openclaw
+Environment=HOME=/home/openclaw
+ExecStart=/usr/bin/ssh -F /home/openclaw/.ssh/project-sandbox-config -N -T -o BatchMode=yes -o ExitOnForwardFailure=yes -L 127.0.0.1:17672:127.0.0.1:17670 v-sandbox-prod
+Restart=always
+RestartSec=3s
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadOnlyPaths=/home/openclaw/.ssh
+MemoryMax=64M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

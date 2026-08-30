@@ -2,7 +2,7 @@
   "id": "project-sandbox",
   "name": "Project Sandbox",
   "description": "Session-bound project development in Broker-managed OpenShell Sandboxes.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "activation": {
     "onStartup": true
   },
@@ -17,9 +17,6 @@
       "project_sandbox_finish"
     ]
   },
-  "skills": [
-    "skill"
-  ],
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -43,6 +40,33 @@
       },
       "cliActorUserId": {
         "type": "string"
+      },
+      "allowedAgentIds": {
+        "type": "array",
+        "default": [],
+        "uniqueItems": true,
+        "items": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allowedSessionKeys": {
+        "type": "array",
+        "default": [],
+        "uniqueItems": true,
+        "items": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allowedSessionPrefixes": {
+        "type": "array",
+        "default": [],
+        "uniqueItems": true,
+        "items": {
+          "type": "string",
+          "minLength": 1
+        }
       },
       "blockedAgentIds": {
         "type": "array",

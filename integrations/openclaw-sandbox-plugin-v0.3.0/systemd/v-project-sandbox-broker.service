@@ -1,0 +1,33 @@
+[Unit]
+Description=Production V persistent project Sandbox Broker
+After=network-online.target v-openshell-tunnel.service
+Wants=network-online.target
+Requires=v-openshell-tunnel.service
+
+[Service]
+Type=simple
+User=openclaw
+Group=openclaw
+WorkingDirectory=/opt/openclaw-experiments/project-sandbox-v0.3.1/current
+Environment=HOME=/home/openclaw
+Environment=OPENSHELL_GATEWAY=v-sandbox-prod
+Environment=VLAB_SANDBOX_MAX_CONCURRENT=1
+Environment=VLAB_SANDBOX_PROJECT_ROOTS=/home/openclaw/makaron-openclaw/.openclaw-local/workspace/v-evolution-engine
+Environment=VLAB_SANDBOX_POLICY_DIR=/home/openclaw/.openclaw/experiments/project-sandbox-v0.3.1/policies
+Environment=VLAB_SANDBOX_STATE_DIR=/home/openclaw/.openclaw/experiments/project-sandbox-v0.3.1/state
+Environment=VLAB_SANDBOX_ARTIFACTS_DIR=/home/openclaw/.openclaw/experiments/project-sandbox-v0.3.1/state/artifacts
+Environment=VLAB_SANDBOX_SOCKET=/home/openclaw/.openclaw/experiments/project-sandbox-v0.3.1/state/broker.sock
+ExecStart=/opt/node-v22.23.1/bin/node /opt/openclaw-experiments/project-sandbox-v0.3.1/current/bin/sandboxd.mjs
+Restart=on-failure
+RestartSec=3s
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/openclaw/.openclaw/experiments/project-sandbox-v0.3.1/state
+ReadOnlyPaths=/home/openclaw/makaron-openclaw/.openclaw-local/workspace/v-evolution-engine /home/openclaw/.openclaw/experiments/project-sandbox-v0.3.1/policies /opt/openclaw-experiments/project-sandbox-v0.3.1 /home/openclaw/.config/openshell /home/openclaw/.ssh
+MemoryMax=256M
+TasksMax=128
+
+[Install]
+WantedBy=multi-user.target
