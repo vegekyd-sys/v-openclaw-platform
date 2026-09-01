@@ -179,3 +179,35 @@ test("creates independent Workboard actions with bounded control-plane concurren
   assert.equal(result.length, 7);
   assert.equal(maxInFlight, 3);
 });
+
+test("normalizes every label at the Gateway write boundary", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "nightshift-gateway-labels-"));
+  const configPath = join(dir, "openclaw.json");
+  await writeFile(configPath, JSON.stringify({ gateway: { auth: { token: "test-token" } } }));
+  const calls = [];
+  const adapter = new WorkboardGatewayAdapter({
+    configPath,
+    gatewayUrl: "ws://127.0.0.1:22793",
+    runner: async (_command, args) => {
+      const method = args[args.indexOf("call") + 1];
+      const params = JSON.parse(args[args.indexOf("--params") + 1]);
+      calls.push({ method, params });
+      return JSON.stringify({ card: { id: "created" } });
+    },
+  });
+
+  await adapter.applyAction({
+    type: "request_approval",
+    idempotencyKey: "approval-long-label",
+    instanceId: `NS-${"INSTANCE".repeat(8)}`,
+    contentItemId: `video-${"CONTENT".repeat(8)}`,
+    stageId: "review",
+    approval: { effect: "publish" },
+  }, { knownCards: [] });
+
+  const labels = calls[0].params.labels;
+  assert.ok(labels.every((label) => label.length <= 40));
+  assert.ok(labels.some((label) => label.startsWith("instance:") && /~[a-f0-9]{8}$/.test(label)));
+  assert.equal(calls[0].params.metadata.automation.instanceId, `NS-${"INSTANCE".repeat(8)}`);
+  assert.equal(calls[0].params.metadata.automation.contentItemId, `video-${"CONTENT".repeat(8)}`);
+});

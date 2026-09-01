@@ -180,7 +180,7 @@ function cardPayload(release, instance, stage, status, contentItem = null, resou
       `instance:${instance.id}`,
       `stage:${stage.id}`,
       ...(contentItem ? [`content-item:${contentItem.id}`, `route:${contentItem.route ?? "UNROUTED"}`] : []),
-    ].map(stableWorkboardLabel),
+    ].map(normalizeWorkboardLabel),
     automation: {
       workflowId: release.metadata.id,
       workflowVersion: release.metadata.version,
@@ -200,7 +200,7 @@ function cardPayload(release, instance, stage, status, contentItem = null, resou
   };
 }
 
-function stableWorkboardLabel(label) {
+export function normalizeWorkboardLabel(label) {
   const value = String(label);
   if (value.length <= 40) return value;
   const suffix = createHash("sha256").update(value).digest("hex").slice(0, 8);

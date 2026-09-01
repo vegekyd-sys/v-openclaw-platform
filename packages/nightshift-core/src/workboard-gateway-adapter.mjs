@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
+import { normalizeWorkboardLabel } from "./orchestrator.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -93,7 +94,7 @@ export class WorkboardGatewayAdapter {
       status: card.status ?? "ready",
       priority: card.priority ?? "normal",
       agentId: card.assignedAgent ?? undefined,
-      labels: [...new Set([...(card.labels ?? []), marker])],
+      labels: [...new Set([...(card.labels ?? []), marker])].map(normalizeWorkboardLabel),
       maxRetries: card.automation?.maxAttempts ?? undefined,
       maxRuntimeSeconds: card.automation?.maxRuntimeSeconds ?? undefined,
       notes: card.notes ?? null,
