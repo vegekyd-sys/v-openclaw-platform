@@ -133,6 +133,28 @@ test("fans one project out into independent content-item route cards", async () 
   assert.ok(actions[0].card.labels.includes("content-item:video-ai-01"));
 });
 
+test("keeps native Workboard labels within 40 characters without losing full ids from automation metadata", async () => {
+  const release = compileWorkflow(await loadWorkflow(fixture));
+  const instance = activeInstance(release);
+  instance.id = `NS-${"INSTANCE".repeat(8)}`;
+  const contentItem = {
+    ...twoItems()[0],
+    id: `video-${"CONTENT".repeat(8)}`,
+  };
+  const [action] = planNextActions({
+    release,
+    instance,
+    runs: [{ stageId: "plan", status: "done" }],
+    contentItems: [contentItem],
+  });
+
+  assert.ok(action.card.labels.every((label) => label.length <= 40));
+  assert.equal(action.card.automation.instanceId, instance.id);
+  assert.equal(action.card.automation.contentItemId, contentItem.id);
+  assert.match(action.card.labels.find((label) => label.startsWith("instance:")), /~[a-f0-9]{8}$/);
+  assert.match(action.card.labels.find((label) => label.startsWith("content-item:")), /~[a-f0-9]{8}$/);
+});
+
 test("selects route-specific material skills without creating a second workflow", async () => {
   const release = compileWorkflow(await loadWorkflow(fixture));
   const actions = planNextActions({

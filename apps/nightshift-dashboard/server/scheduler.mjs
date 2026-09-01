@@ -41,10 +41,23 @@ export async function runNightShiftSchedulerPulse({
           payload: { error: error.message },
         });
       }
-      const result = await runtime.tick(instance.id, {
-        cards,
-        dispatch: false,
-      });
+      let result;
+      try {
+        result = await runtime.tick(instance.id, {
+          cards,
+          dispatch: false,
+        });
+      } catch (error) {
+        const message = `${instance.id}: workflow tick failed: ${error.message}`;
+        warnings.push(message);
+        timings.instances.push({ id: instance.id, ms: elapsedMs(instanceStartedAt), error: error.message });
+        store.appendEvent({
+          instanceId: instance.id,
+          type: "scheduler.instance.failed",
+          payload: { error: error.message },
+        });
+        continue;
+      }
       const mutations = result.applied.filter((entry) => ["created", "reopened"].includes(entry.status)).length;
       timings.instances.push({ id: instance.id, ms: elapsedMs(instanceStartedAt), applied: result.applied.length, mutations });
       if (mutations === 0) continue;
