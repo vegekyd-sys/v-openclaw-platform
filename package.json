@@ -11,7 +11,7 @@
     "nightshift:ctl": "node scripts/nightshiftctl.mjs",
     "nightshift:plan": "node packages/nightshift-core/src/cli.mjs plan",
     "nightshift:validate": "node packages/nightshift-core/src/cli.mjs validate",
-    "test": "node --test packages/nightshift-core/test/*.test.mjs apps/nightshift-dashboard/server/*.test.mjs"
+    "test": "node --test packages/nightshift-core/test/*.test.mjs apps/nightshift-dashboard/server/*.test.mjs tests/*.test.mjs"
   },
   "dependencies": {
     "lucide-react": "0.468.0",
