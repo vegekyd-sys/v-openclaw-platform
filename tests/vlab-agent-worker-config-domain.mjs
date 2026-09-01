@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
 const labRoot = process.env.LAB_ROOT ?? "/srv/vlab";
@@ -26,8 +26,13 @@ function sleep(ms) {
 }
 
 function parseRawConfig(response) {
-  assert.equal(typeof response.raw, "string");
-  return JSON.parse(response.raw);
+  if (typeof response.raw === "string") {
+    return JSON.parse(response.raw);
+  }
+  const config = response.raw ?? response.config ?? response.parsed;
+  assert.equal(typeof config, "object");
+  assert.notEqual(config, null);
+  return config;
 }
 
 function runGatewayConfigCommand(args, gatewayConfigPath) {
@@ -56,7 +61,7 @@ const call = async (method, params = {}) =>
   );
 
 const statusBefore = await call("vlab.workers.status");
-assert.equal(statusBefore.integration.workerIsolationVersion, "0.2.0");
+assert.equal(statusBefore.integration.workerIsolationVersion, "0.2.8");
 assert.equal(
   statusBefore.integration.configDomainIsolation.execUsesGatewayConfig,
   true,
@@ -193,5 +198,8 @@ try {
         gatewayConfigPath,
       );
     }
+  }
+  if (await readFile(workerConfigPath, "utf8") !== workerBeforeRaw) {
+    await writeFile(workerConfigPath, workerBeforeRaw, "utf8");
   }
 }

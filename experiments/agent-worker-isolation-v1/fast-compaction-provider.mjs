@@ -367,7 +367,6 @@ export function buildFastCompactionProvider(options) {
             ],
             model,
             maxTokens: maxOutputTokens,
-            temperature: 0,
             systemPrompt,
             signal: params.signal,
             purpose: "versa-fast-quality-compaction",

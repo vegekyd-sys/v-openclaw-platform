@@ -57,7 +57,9 @@ test("uses one configured GPT-5.5 completion when the first summary passes audit
   assert.equal(calls.length, 1);
   assert.equal(calls[0].model, "azure-openai/gpt-5.5");
   assert.equal(calls[0].agentId, undefined);
-  assert.equal(calls[0].temperature, 0);
+  // OpenAI reasoning models reject explicit sampling temperature on the
+  // Chat Completions transport. Let the model/provider choose its default.
+  assert.equal(calls[0].temperature, undefined);
   assert.match(calls[0].messages[0].content, /## Decisions/);
   assert.match(calls[0].messages[0].content, /Return only the compact summary/);
   assert.match(calls[0].messages[0].content, /oc_1234567890abcdef/);

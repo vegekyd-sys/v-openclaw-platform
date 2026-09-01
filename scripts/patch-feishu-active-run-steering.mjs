@@ -13,7 +13,7 @@ import {
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-const EXPECTED_PACKAGE_VERSION = "2026.7.1";
+const SUPPORTED_PACKAGE_VERSIONS = new Set(["2026.7.1", "2026.8.1"]);
 const BACKUP_SUFFIX = ".v-worker-steer-v0.2.3.bak";
 
 const ORIGINAL_QUEUE_RETURN = `\treturn (key, task) => {
@@ -55,6 +55,13 @@ const PATCHED_TASK_DECLARATION = `\t\tconst workerSteerEnabled = process.env.VLA
 \t\tconst activeRunDispatch = workerSteerEnabled && (workerSteerChatIds.has("*") || workerSteerChatIds.has(workerSteerChatId)) && enqueue.isBusy(sequentialKey);
 \t\tconst task = () => handleMessage({`;
 
+const OPENCLAW81_TASK_DECLARATION = `\t\tconst task = async () => {`;
+const PATCHED_OPENCLAW81_TASK_DECLARATION = `\t\tconst workerSteerEnabled = process.env.VLAB_FEISHU_STEER_ENABLED === "1";
+\t\tconst workerSteerChatIds = new Set((process.env.VLAB_FEISHU_STEER_CHAT_IDS ?? "").split(",").map((value) => value.trim()).filter(Boolean));
+\t\tconst workerSteerChatId = event.message.chat_id?.trim() ?? "";
+\t\tconst activeRunDispatch = workerSteerEnabled && (workerSteerChatIds.has("*") || workerSteerChatIds.has(workerSteerChatId)) && enqueue.isBusy(sequentialKey);
+\t\tconst task = async () => {`;
+
 const ORIGINAL_TASK_TAIL = `\t\t\tprocessingClaimHeld: true,
 \t\t\tmessageDedupeKey
 \t\t});`;
@@ -62,6 +69,16 @@ const PATCHED_TASK_TAIL = `\t\t\tprocessingClaimHeld: true,
 \t\t\tmessageDedupeKey,
 \t\t\tactiveRunDispatch
 \t\t});`;
+
+const OPENCLAW81_TASK_TAIL = `\t\t\t\tprocessingClaim,
+\t\t\t\tmessageDedupeKey,
+\t\t\t\tturnAdoptionLifecycle
+\t\t\t});`;
+const PATCHED_OPENCLAW81_TASK_TAIL = `\t\t\t\tprocessingClaim,
+\t\t\t\tmessageDedupeKey,
+\t\t\t\tturnAdoptionLifecycle,
+\t\t\t\tactiveRunDispatch
+\t\t\t});`;
 
 const ORIGINAL_REPLY_OPTIONS = `\t\treplyOptions: {
 \t\t\t...replyOptions,
@@ -73,6 +90,17 @@ const PATCHED_REPLY_OPTIONS = `\t\treplyOptions: {
 \t\t\t// can inspect and inject into the active Agent run.
 \t\t\tqueuedFollowupLifecycle: replyOptions.queuedFollowupLifecycle ?? {},
 \t\t\tonModelSelected: prefixContext.onModelSelected,`;
+
+const OPENCLAW81_REPLY_OPTIONS = `\t\t\t\t\t\treplyOptions: {
+\t\t\t\t\t\t\t...replyOptions,
+\t\t\t\t\t\t\t...turnAdoptionLifecycle ? bindIngressLifecycleToReplyOptions(turnAdoptionLifecycle) : {}
+\t\t\t\t\t\t}`;
+const PATCHED_OPENCLAW81_REPLY_OPTIONS = `\t\t\t\t\t\treplyOptions: {
+\t\t\t\t\t\t\t...replyOptions,
+\t\t\t\t\t\t\t// Keep active Reply Operation admission available for Steer.
+\t\t\t\t\t\t\tqueuedFollowupLifecycle: replyOptions.queuedFollowupLifecycle ?? {},
+\t\t\t\t\t\t\t...turnAdoptionLifecycle ? bindIngressLifecycleToReplyOptions(turnAdoptionLifecycle) : {}
+\t\t\t\t\t\t}`;
 
 const ORIGINAL_NO_VISIBLE_FALLBACK = `\t\t\tif (shouldSendNoVisibleReplyFallback({
 \t\t\t\t...dispatchResult,
@@ -91,6 +119,9 @@ const PATCHED_NO_VISIBLE_FALLBACK = `\t\t\tif (!params.activeRunDispatch && shou
 \t\t\t\t}
 \t\t\t})) await ensureNoVisibleReplyFallback("dispatch-complete-no-visible-reply");`;
 
+const OPENCLAW81_NO_VISIBLE_FALLBACK = `\t\t\tif (shouldSendNoVisibleReplyFallback(dispatchResult)) await ensureNoVisibleReplyFallback("dispatch-complete-no-visible-reply");`;
+const PATCHED_OPENCLAW81_NO_VISIBLE_FALLBACK = `\t\t\tif (!params.activeRunDispatch && shouldSendNoVisibleReplyFallback(dispatchResult)) await ensureNoVisibleReplyFallback("dispatch-complete-no-visible-reply");`;
+
 function replaceExactlyOnce(source, original, replacement, label) {
   const first = source.indexOf(original);
   if (first === -1) {
@@ -105,6 +136,7 @@ function replaceExactlyOnce(source, original, replacement, label) {
 }
 
 export function patchFeishuActiveRunSteeringBundle(source) {
+  const openClaw81Shape = source.includes(OPENCLAW81_TASK_DECLARATION);
   let patched = source;
   let changed = false;
   const applyStep = (originals, replacement, label) => {
@@ -124,13 +156,17 @@ export function patchFeishuActiveRunSteeringBundle(source) {
     "sequential queue return",
   );
   applyStep(
-    [ORIGINAL_TASK_DECLARATION],
-    PATCHED_TASK_DECLARATION,
+    [ORIGINAL_TASK_DECLARATION, OPENCLAW81_TASK_DECLARATION],
+    openClaw81Shape
+      ? PATCHED_OPENCLAW81_TASK_DECLARATION
+      : PATCHED_TASK_DECLARATION,
     "active-run task declaration",
   );
   applyStep(
-    [ORIGINAL_TASK_TAIL],
-    PATCHED_TASK_TAIL,
+    [ORIGINAL_TASK_TAIL, OPENCLAW81_TASK_TAIL],
+    openClaw81Shape
+      ? PATCHED_OPENCLAW81_TASK_TAIL
+      : PATCHED_TASK_TAIL,
     "active-run task flag",
   );
   applyStep(
@@ -139,13 +175,17 @@ export function patchFeishuActiveRunSteeringBundle(source) {
     "message dispatch enqueue",
   );
   applyStep(
-    [ORIGINAL_REPLY_OPTIONS],
-    PATCHED_REPLY_OPTIONS,
+    [ORIGINAL_REPLY_OPTIONS, OPENCLAW81_REPLY_OPTIONS],
+    openClaw81Shape
+      ? PATCHED_OPENCLAW81_REPLY_OPTIONS
+      : PATCHED_REPLY_OPTIONS,
     "queued follow-up lifecycle",
   );
   applyStep(
-    [ORIGINAL_NO_VISIBLE_FALLBACK],
-    PATCHED_NO_VISIBLE_FALLBACK,
+    [ORIGINAL_NO_VISIBLE_FALLBACK, OPENCLAW81_NO_VISIBLE_FALLBACK],
+    openClaw81Shape
+      ? PATCHED_OPENCLAW81_NO_VISIBLE_FALLBACK
+      : PATCHED_NO_VISIBLE_FALLBACK,
     "adopted Steer empty-reply fallback",
   );
   return { changed, source: patched };
@@ -178,9 +218,9 @@ async function resolveBundle(packageRoot) {
       `unexpected package at ${packageRoot}: ${packageJson.name ?? "unknown"}`,
     );
   }
-  if (packageJson.version !== EXPECTED_PACKAGE_VERSION) {
+  if (!SUPPORTED_PACKAGE_VERSIONS.has(packageJson.version)) {
     throw new Error(
-      `unsupported @openclaw/feishu version ${packageJson.version}; expected ${EXPECTED_PACKAGE_VERSION}`,
+      `unsupported @openclaw/feishu version ${packageJson.version}; expected one of ${Array.from(SUPPORTED_PACKAGE_VERSIONS).join(", ")}`,
     );
   }
   const distDir = path.join(packageRoot, "dist");

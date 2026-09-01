@@ -172,3 +172,32 @@ test("wait timeout is announced as timeout without throwing", async () => {
   assert.equal(stats.completed, 1);
   assert.equal(stats.delivered, 0);
 });
+
+test("OpenClaw AgentHarnessTaskRuntime can own external Worker completion", async () => {
+  const stats = {};
+  const deliveries = [];
+  await Promise.all(
+    startSubagentCompletionRelays({
+      spawns: [
+        {
+          status: "accepted",
+          runId: "external-child",
+          childSessionKey: "agent:makaron:subagent:external-child",
+          task: "long task",
+        },
+      ],
+      requesterSessionKey: "agent:makaron:explicit:parent",
+      stats,
+      waitForRun: async () => ({ status: "ok" }),
+      deliverHarnessTaskCompletion: async (params) => {
+        deliveries.push(params);
+        return { delivered: true, path: "steered" };
+      },
+    }),
+  );
+  assert.equal(deliveries.length, 1);
+  assert.equal(deliveries[0].spawn.runId, "external-child");
+  assert.deepEqual(deliveries[0].outcome, { status: "ok" });
+  assert.equal(stats.delivered, 1);
+  assert.equal(stats.failed, 0);
+});

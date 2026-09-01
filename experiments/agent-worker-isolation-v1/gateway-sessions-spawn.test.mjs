@@ -57,4 +57,3 @@ test("rejects non-session Gateway tool requests", async () => {
     /unsupported Gateway-owned tool/,
   );
 });
-

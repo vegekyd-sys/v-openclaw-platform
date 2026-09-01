@@ -1,4 +1,27 @@
-export const HARNESS_EVENT_CONTRACT_VERSION = "openclaw-2026.7.1-v3";
+export const HARNESS_EVENT_CONTRACT_VERSION = "openclaw-2026.8.1-v6";
+
+// These are the canonical OpenClaw tool names that the official Codex Harness
+// certifies in 2026.8.1. The isolated Worker adds no native tool surface and
+// executes the same OpenClaw build/config overlay, so the same denies remain
+// exact after the IPC handoff.
+export const WORKER_CONVERSATION_TOOL_POLICY_SAFE_DENY_TOOLS = Object.freeze([
+  "web_fetch",
+  "x_search",
+  "memory_search",
+  "memory_get",
+  "dashboard",
+  "canvas",
+  "show_widget",
+  "message",
+  "heartbeat_respond",
+  "automations",
+  "gateway",
+  "skill_workshop",
+  "image_generate",
+  "music_generate",
+  "video_generate",
+  "tts",
+]);
 
 // These callbacks are asynchronous notifications. Their arguments and
 // completion semantics can cross the Worker IPC boundary without changing the
@@ -27,6 +50,7 @@ export const BRIDGED_HARNESS_EVENT_CALLBACKS = Object.freeze([
   "onToolResult",
   "onToolStart",
   "onToolStreamBoundary",
+  "onUserMessagePersistenceInvalidated",
 ]);
 
 // OpenClaw retains ownership of these lifecycle controls in the Gateway. They
@@ -35,6 +59,8 @@ export const GATEWAY_OWNED_HARNESS_CALLBACKS = Object.freeze([
   "onAttemptAbort",
   "onAttemptTimeout",
   "onAttemptTimeoutArmed",
+  "onDeferredLifecycleAbort",
+  "onDeferredLifecycleOwner",
   "onUserMessagePersisted",
 ]);
 
@@ -52,6 +78,7 @@ export const FORWARDED_HARNESS_OPTIONS = Object.freeze({
   blockReplyChunking: "blockReplyChunking",
   bootstrapContextMode: "bootstrapContextMode",
   bootstrapContextRunKind: "bootstrapContextRunKind",
+  bootstrapWorkspaceDir: "bootstrapWorkspaceDir",
   bootstrapPromptWarningSignature:
     "bootstrapPromptWarningSignature",
   bootstrapPromptWarningSignaturesSeen:
@@ -59,7 +86,12 @@ export const FORWARDED_HARNESS_OPTIONS = Object.freeze({
   chatType: "chatType",
   channelContext: "channelContext",
   chatId: "chatId",
+  // OpenClaw 2.0 uses client capabilities to decide whether inline widgets
+  // and other client-owned tools are part of the active tool surface.
+  clientCaps: "clientCaps",
   clientTools: "clientTools",
+  conversationToolPolicy: "conversationToolPolicy",
+  contextEngineAgentId: "contextEngineAgentId",
   currentChannelId: "currentChannelId",
   currentInboundAudio: "currentInboundAudio",
   currentInboundContext: "currentInboundContext",
@@ -68,6 +100,7 @@ export const FORWARDED_HARNESS_OPTIONS = Object.freeze({
   currentMessagingTarget: "currentMessagingTarget",
   currentThreadTs: "currentThreadTs",
   cwd: "cwd",
+  delegationCapability: "delegationCapability",
   disableMessageTool: "disableMessageTool",
   disableTools: "disableTools",
   enforceFinalTag: "enforceFinalTag",
@@ -81,6 +114,9 @@ export const FORWARDED_HARNESS_OPTIONS = Object.freeze({
   groupChannel: "groupChannel",
   groupId: "groupId",
   groupSpace: "groupSpace",
+  // Availability is resolved once in the Gateway. Forward the boolean so the
+  // Worker constructs the same GitHub identity/publish tools.
+  githubPublicationAvailable: "githubPublicationAvailable",
   images: "images",
   imageOrder: "imageOrder",
   inputProvenance: "inputProvenance",
@@ -90,11 +126,17 @@ export const FORWARDED_HARNESS_OPTIONS = Object.freeze({
   jobId: "jobId",
   memberRoleIds: "memberRoleIds",
   memoryFlushWritePath: "memoryFlushWritePath",
+  modelSelectionLocked: "modelSelectionLocked",
   modelId: "model",
   modelRun: "modelRun",
+  operation: "operation",
   ownerNumbers: "ownerNumbers",
   preserveUserFacingSessionModelState:
     "preserveUserFacingSessionModelState",
+  pluginHarnessToolPolicyRestricted:
+    "pluginHarnessToolPolicyRestricted",
+  pluginHarnessToolPolicySafeDeniedTools:
+    "pluginHarnessToolPolicySafeDeniedTools",
   promptCacheKey: "promptCacheKey",
   promptMode: "promptMode",
   provider: "provider",
@@ -111,21 +153,30 @@ export const FORWARDED_HARNESS_OPTIONS = Object.freeze({
   silentExpected: "silentExpected",
   silentReplyPromptMode: "silentReplyPromptMode",
   sourceReplyDeliveryMode: "sourceReplyDeliveryMode",
+  scheduledToolPolicy: "scheduledToolPolicy",
   spawnedBy: "spawnedBy",
+  startedAtMs: "startedAtMs",
   streamParams: "streamParams",
   streamReasoningInNonStreamModes: "streamReasoningInNonStreamModes",
   suppressAssistantErrorPersistence: "suppressAssistantErrorPersistence",
   suppressLiveStreamOutput: "suppressLiveStreamOutput",
   suppressNextUserMessagePersistence: "suppressNextUserMessagePersistence",
+  skipPreparedUserTurnMessage: "skipPreparedUserTurnMessage",
   suppressTranscriptOnlyAssistantPersistence:
     "suppressTranscriptOnlyAssistantPersistence",
+  swarmCollector: "swarmCollector",
   thinkLevel: "thinking",
   toolProgressDetail: "toolProgressDetail",
   toolResultFormat: "toolResultFormat",
+  // This fingerprint gates tool-authority-aware prompt hooks. It is opaque,
+  // JSON-safe and must remain identical across the Harness handoff.
+  toolAuthorityFingerprint: "toolAuthorityFingerprint",
   toolsAllow: "toolsAllow",
   trigger: "trigger",
+  trustedInternalHandoff: "trustedInternalHandoff",
   verboseLevel: "verbose",
   workspaceDir: "workspaceDir",
+  runtimePluginToolGrant: "runtimePluginToolGrant",
 });
 
 // These values are already translated by index.mjs into the ingress command
@@ -168,6 +219,7 @@ export const PROCESS_LOCAL_HARNESS_OPTIONS = Object.freeze([
   "contextEngine",
   "contextTokenBudget",
   "contextWindowInfo",
+  "cronCreatorAuthorityCapability",
   "crestodianTool",
   "deferTerminalLifecycle",
   "deferTerminalLifecycleEnd",
@@ -176,17 +228,26 @@ export const PROCESS_LOCAL_HARNESS_OPTIONS = Object.freeze([
   "fastModeAuto",
   "fastModeAutoProgressState",
   "hasRepliedRef",
+  "hostCapabilities",
   "initialReplayState",
+  "isTurnTainted",
   "lifecycleGeneration",
   "maxBeforeAgentFinalizeRevisions",
   "model",
   "modelFallbacksOverride",
   "modelRegistry",
+  "observeToolTerminal",
+  "preparedModelRuntime",
+  // Gateway chat.send supplies a closure that enriches webchat assistant media
+  // transcript metadata. It captures Gateway-local reply state and cannot be
+  // serialized into the Worker; Gateway delivery/finalization retains it.
+  "prepareAssistantTranscriptMessage",
   "replyOperation",
   "requestedModelId",
   "resolvedApiKey",
   "runTimeoutOverrideMs",
   "runtimePlan",
+  "sandbox",
   "sessionFile",
   "sessionTarget",
   "shouldEmitToolOutput",

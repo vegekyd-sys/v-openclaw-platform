@@ -1,5 +1,54 @@
 const agentEventListeners = new Set();
 const activeSteerWaiters = new Map();
+const fakePluginRegistry = { compactionProviders: [] };
+
+export function loadConfig() {
+  return {};
+}
+
+export function resolveAgentWorkspaceDir(_config, agentId) {
+  return `/tmp/fake-openclaw/${agentId}`;
+}
+
+export function resolveAgentDir(_config, agentId) {
+  return `/tmp/fake-openclaw/agents/${agentId}`;
+}
+
+export function loadAgentRuntimePluginRegistryHandle() {
+  return { compactionProviders: [] };
+}
+
+export function loadPluginMetadataSnapshot({ workspaceDir } = {}) {
+  return { plugins: [], workspaceDir };
+}
+
+export async function acquireAgentRunPreparedModelRuntime(
+  _input,
+  _options = {},
+) {
+  return {
+    pluginGeneration: {
+      pluginMetadataSnapshot: { plugins: [] },
+      pluginRegistry: {
+        compactionProviders: [
+          {
+            ownerPluginId: "vlab-agent-worker-isolation",
+            provider: { id: "versa-fast-quality-v1" },
+          },
+        ],
+      },
+    },
+    release() {},
+  };
+}
+
+export function requireActivePluginRegistry() {
+  return fakePluginRegistry;
+}
+
+export async function withPluginRuntimeRegistryScope(_registry, run) {
+  return await run();
+}
 
 export function onAgentEvent(listener) {
   agentEventListeners.add(listener);
@@ -60,9 +109,13 @@ export async function agentCommand(params) {
     };
   }
   if (params.message === "steer-hold") {
-    const steeredText = await new Promise((resolve) => {
+    const steered = new Promise((resolve) => {
       activeSteerWaiters.set(params.sessionId, resolve);
     });
+    await params.onExecutionPhase?.({
+      phase: "fixture_steer_ready",
+    });
+    const steeredText = await steered;
     activeSteerWaiters.delete(params.sessionId);
     return {
       payloads: [{ text: `steered:${steeredText}` }],
@@ -86,6 +139,20 @@ export async function agentCommand(params) {
             blockReplyBreak: params.blockReplyBreak,
             blockReplyChunking: params.blockReplyChunking,
             workspaceDir: params.workspaceDir,
+            conversationToolPolicy: params.conversationToolPolicy,
+            pluginHarnessToolPolicyRestricted:
+              params.pluginHarnessToolPolicyRestricted,
+            pluginHarnessToolPolicySafeDeniedTools:
+              params.pluginHarnessToolPolicySafeDeniedTools,
+            trustedInternalHandoff: params.trustedInternalHandoff,
+            bootstrapWorkspaceDir: params.bootstrapWorkspaceDir,
+            contextEngineAgentId: params.contextEngineAgentId,
+            delegationCapability: params.delegationCapability,
+            modelSelectionLocked: params.modelSelectionLocked,
+            operation: params.operation,
+            skipPreparedUserTurnMessage:
+              params.skipPreparedUserTurnMessage,
+            startedAtMs: params.startedAtMs,
           }),
         },
       ],
@@ -122,6 +189,7 @@ export async function agentCommand(params) {
     });
     await params.onPartialReply?.({ text: "Streaming" });
     await params.onCompactionStart?.();
+    await params.onUserMessagePersistenceInvalidated?.();
     await params.onCompactionEnd?.();
     emitAgentEvent({
       runId: params.runId,
@@ -220,6 +288,38 @@ export async function agentCommand(params) {
       },
     },
   };
+}
+
+export async function agentCommandFromGatewayIngress(
+  params,
+  _runtime,
+  _deps,
+  _recovery,
+  runtimeContext,
+) {
+  if (params.message === "inspect-compaction-runtime") {
+    return {
+      payloads: [
+        {
+          text: JSON.stringify({
+            hasRuntimeContext: Boolean(runtimeContext?.pluginGeneration),
+            providerIds:
+              runtimeContext?.pluginGeneration?.pluginRegistry?.compactionProviders?.map(
+                (entry) => entry?.provider?.id,
+              ) ?? [],
+          }),
+        },
+      ],
+      meta: {
+        agentMeta: {
+          provider: "fixture",
+          model: "fixture",
+          sessionId: params.sessionId,
+        },
+      },
+    };
+  }
+  return await agentCommand(params);
 }
 
 export async function agentCommandFromIngress(params) {

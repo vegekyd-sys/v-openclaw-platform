@@ -30,18 +30,20 @@ import {
   HARNESS_EVENT_CONTRACT_VERSION,
   inspectHarnessEventContract,
   inspectHarnessOptionContract,
+  WORKER_CONVERSATION_TOOL_POLICY_SAFE_DENY_TOOLS,
 } from "./harness-event-contract.mjs";
 import {
   createWorkerGatewayEventRouter,
   WORKER_GATEWAY_EVENT_CONTRACT_VERSION,
 } from "./worker-gateway-events.mjs";
 import { buildSkillTelemetryIndex } from "./skill-usage-telemetry.mjs";
-import { createGatewaySessionsSpawnExecutor } from "./gateway-sessions-spawn.mjs";
 import {
   DEFAULT_NATIVE_REQUEST_TIMEOUT_MS,
   resolveNativeRequestTimeoutMs,
 } from "./native-request-timeout.mjs";
 import { NativeLaneProgressBridge } from "./native-lane-progress.mjs";
+import { syncWorkerRuntimeConfigFile } from "./worker-config-sync.mjs";
+import { createGatewayNativeCompactionPassthrough } from "./gateway-native-compaction.mjs";
 
 const SESSION_PREFIX = "agent:makaron:explicit:vlab-worker-";
 const NATIVE_HARNESS_ID = "vlab-worker";
@@ -86,6 +88,24 @@ function respondError(respond, error) {
         : "vlab_worker_error",
     message: error instanceof Error ? error.message : String(error),
   });
+}
+
+function lastAssistantText(messages) {
+  for (let index = (messages?.length ?? 0) - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role !== "assistant" || !Array.isArray(message.content)) {
+      continue;
+    }
+    const text = message.content
+      .filter(
+        (block) => block?.type === "text" && typeof block.text === "string",
+      )
+      .map((block) => block.text.trim())
+      .filter(Boolean)
+      .join("\n");
+    if (text) return text;
+  }
+  return undefined;
 }
 
 function operationSnapshot(operation) {
@@ -217,6 +237,12 @@ const plugin = {
     const requestCancelGraceMs = Number(
       api.pluginConfig?.requestCancelGraceMs ?? 15_000,
     );
+    const workerStartupTimeoutMs = Number(
+      api.pluginConfig?.workerStartupTimeoutMs ?? 180_000,
+    );
+    const warmSpareWorkers = Number(
+      api.pluginConfig?.warmSpareWorkers ?? 1,
+    );
     const workerHeartbeatMs = Number(
       api.pluginConfig?.workerHeartbeatMs ?? 15_000,
     );
@@ -238,6 +264,17 @@ const plugin = {
     }
     if (!gatewayConfigPath) {
       throw new Error("gatewayConfigPath is required");
+    }
+    const workerRuntimeConfigSync = syncWorkerRuntimeConfigFile({
+      gatewayConfigPath,
+      workerConfigPath,
+    });
+    if (workerRuntimeConfigSync.changed) {
+      api.logger.info(
+        `Synchronized Worker runtime policy from Gateway config: ${workerRuntimeConfigSync.paths.join(
+          ", ",
+        )}`,
+      );
     }
     const fastCompactionModel =
       typeof api.pluginConfig?.fastCompactionModel === "string" &&
@@ -261,6 +298,20 @@ const plugin = {
       llmComplete: (params) => api.runtime.llm.complete(params),
     });
     api.registerCompactionProvider(fastCompactionProvider);
+    // This hook is needed inside the Worker child: Agent-launched CLI commands
+    // are control-plane clients and must target the Gateway config. Register it
+    // before the child-only early return.
+    api.on(
+      "resolve_exec_env",
+      (event) => resolveWorkerExecEnv(event),
+      { priority: 100 },
+    );
+    if (process.env.VLAB_WORKER_CHILD === "1") {
+      api.logger.info(
+        "Loaded Worker child compaction provider without recursive Worker services",
+      );
+      return;
+    }
     const openClawAgentRuntimePath = resolveOpenClawAgentRuntimePath();
     const agentHarnessActiveRunRuntimePromise = import(
       pathToFileURL(
@@ -269,9 +320,19 @@ const plugin = {
         }),
       ).href
     );
+    const compactNativeOpenClawSession =
+      createGatewayNativeCompactionPassthrough();
     const transcriptRuntimePromise = import(
       pathToFileURL(
         resolve(dirname(openClawAgentRuntimePath), "session-transcript-runtime.js"),
+      ).href
+    );
+    const agentHarnessTaskRuntimePromise = import(
+      pathToFileURL(
+        resolve(
+          dirname(openClawAgentRuntimePath),
+          "agent-harness-task-runtime.js",
+        ),
       ).href
     );
     const diagnosticRuntimePromise = import(
@@ -301,7 +362,7 @@ const plugin = {
       async deliverMediaCompletion(deliveryParams) {
         const runtime = await nativeSubagentAnnounceOriginRuntimePromise;
         const deliverSubagentAnnouncement =
-          runtime.deliverSubagentAnnouncement ?? runtime.n;
+          runtime.deliverSubagentAnnouncement ?? runtime.t ?? runtime.n;
         if (typeof deliverSubagentAnnouncement !== "function") {
           throw new Error(
             "OpenClaw native completion delivery runtime is unavailable",
@@ -335,10 +396,6 @@ const plugin = {
         await runtime.waitForDiagnosticEventsDrained?.();
       },
     });
-    const executeGatewaySessionsSpawn = createGatewaySessionsSpawnExecutor({
-      agentRuntimePath: openClawAgentRuntimePath,
-      getConfig: () => api.config,
-    });
     const workerEnv = buildWorkerEnvironment(
       {
         ...process.env,
@@ -359,11 +416,6 @@ const plugin = {
         workerConfigPath,
       },
     );
-    api.on(
-      "resolve_exec_env",
-      (event) => resolveWorkerExecEnv(event),
-      { priority: 100 },
-    );
     const sharedPool = acquireSharedPool({
       minWorkers,
       maxWorkers,
@@ -372,6 +424,8 @@ const plugin = {
       requestTimeoutMs,
       requestStallTimeoutMs,
       requestCancelGraceMs,
+      startupTimeoutMs: workerStartupTimeoutMs,
+      warmSpareWorkers,
       workerEnv,
       async onProgress(progress) {
         const nativeLaneProgressBridge =
@@ -402,9 +456,6 @@ const plugin = {
           throw error;
         }
       },
-      async onGatewayToolRequest(request) {
-        return await executeGatewaySessionsSpawn(request);
-      },
     });
     const pool = sharedPool.pool;
     const nativeRequestsByRunId = sharedPool.nativeRequestsByRunId;
@@ -426,6 +477,7 @@ const plugin = {
     }
 
     async function dispatchNativeHarnessAttempt(params) {
+      const harnessAttemptStartedAt = Date.now();
       const sessionKey =
         typeof params.sessionKey === "string" && params.sessionKey.trim()
           ? params.sessionKey
@@ -629,6 +681,19 @@ const plugin = {
                 },
               );
             const onAbort = () => {
+              const abortReason = params.abortSignal?.reason;
+              api.logger.warn(
+                `Gateway aborted Worker Agent request runId=${String(
+                  params.runId,
+                )} sessionKey=${sessionKey} elapsedMs=${
+                  Date.now() - harnessAttemptStartedAt
+                } upstreamTimeoutMs=${upstreamAttemptTimeoutMs} ` +
+                  `workerLeaseMs=${attemptTimeoutMs} reason=${
+                    abortReason instanceof Error
+                      ? `${abortReason.name}:${abortReason.message}`
+                      : String(abortReason ?? "unknown")
+                  }`,
+              );
               pool.cancel(submitted.requestId);
             };
             const activeRunRuntime = await agentHarnessActiveRunRuntimePromise;
@@ -683,11 +748,19 @@ const plugin = {
         if (!result.attempt || typeof result.attempt !== "object") {
           throw new Error("worker did not return an Agent Harness attempt result");
         }
+        const acceptedSessionSpawns = [
+          ...(Array.isArray(result.acceptedSessionSpawns)
+            ? result.acceptedSessionSpawns
+            : []),
+          ...(Array.isArray(result.attempt.acceptedSessionSpawns)
+            ? result.attempt.acceptedSessionSpawns
+            : []),
+        ];
         startSubagentCompletionRelays({
           // Gateway-owned sessions_spawn already registered the native
           // completion lifecycle in the Gateway. Only legacy Worker-owned
           // spawns need the compatibility relay.
-          spawns: result.attempt.acceptedSessionSpawns.filter(
+          spawns: acceptedSessionSpawns.filter(
             (spawn) => spawn?.vlabGatewayOwned !== true,
           ),
           requesterSessionKey: sessionKey,
@@ -701,6 +774,50 @@ const plugin = {
           stats: nativeHarnessStats.subagentCompletionRelay,
           waitForRun: (waitParams) =>
             api.runtime.subagent.waitForRun(waitParams),
+          deliverHarnessTaskCompletion: async ({ spawn, outcome }) => {
+            if (!params.agentHarnessTaskRuntimeScope) {
+              throw new Error(
+                "OpenClaw Agent Harness task runtime scope is unavailable",
+              );
+            }
+            const childSessionKey = spawn.childSessionKey.trim();
+            const childAgentId =
+              childSessionKey.split(":")[1]?.trim() ||
+              spawn.agentId ||
+              params.agentId ||
+              "makaron";
+            const childSession = readNativeSession(
+              childAgentId,
+              childSessionKey,
+            );
+            if (!childSession.exists || !childSession.sessionId) {
+              throw new Error(
+                `completed child Session was not found: ${childSessionKey}`,
+              );
+            }
+            const history = await api.runtime.subagent.getSessionMessages({
+              sessionKey: childSessionKey,
+              limit: 200,
+            });
+            const result =
+              lastAssistantText(history.messages) ??
+              outcome.error ??
+              `Child task ${outcome.status}`;
+            const runtime = await agentHarnessTaskRuntimePromise;
+            return await runtime.deliverAgentHarnessTaskCompletion({
+              scope: params.agentHarnessTaskRuntimeScope,
+              childSessionKey,
+              childSessionId: childSession.sessionId,
+              announceId: `vlab-worker:${spawn.runId}:${outcome.status}`,
+              announceType: "OpenClaw isolated subagent",
+              taskLabel: spawn.label || spawn.taskName || "OpenClaw subagent",
+              status: outcome.status === "ok" ? "succeeded" : "failed",
+              statusLabel: outcome.status,
+              result,
+              replyInstruction:
+                "Use the completed subagent result to continue or wrap up the parent task. Reply in your normal assistant voice and do not expose internal notification markup.",
+            });
+          },
           runNativeAnnounce: async (announceParams) => {
             const { runSubagentAnnounceFlow } =
               await nativeSubagentAnnounceRuntimePromise;
@@ -752,6 +869,13 @@ const plugin = {
           };
         }
         nativeHarnessStats.failed += 1;
+        api.logger.warn(
+          `Worker Agent request failed runId=${String(
+            params.runId,
+          )} sessionKey=${sessionKey} elapsedMs=${
+            Date.now() - harnessAttemptStartedAt
+          } error=${error instanceof Error ? `${error.name}:${error.message}` : String(error)}`,
+        );
         const latestSession = readNativeSession(
           params.agentId ?? "makaron",
           sessionKey,
@@ -1111,6 +1235,13 @@ const plugin = {
     api.registerAgentHarness({
       id: NATIVE_HARNESS_ID,
       label: "vLab elastic worker harness",
+      // OpenClaw 8.1 requires plugin Harnesses to certify exact enforcement
+      // before a run with any conversation-level tool restriction is admitted.
+      // The Worker runs the same OpenClaw build and config overlay, forwards
+      // the complete policy identity, and adds no native tool surface.
+      conversationToolPolicySupport: "exact",
+      conversationToolPolicySafeDenyTools:
+        WORKER_CONVERSATION_TOOL_POLICY_SAFE_DENY_TOOLS,
       supports() {
         return {
           supported: true,
@@ -1119,6 +1250,7 @@ const plugin = {
         };
       },
       runAttempt: dispatchNativeHarnessAttempt,
+      compact: compactNativeOpenClawSession,
     });
 
     api.registerGatewayMethod(
@@ -1138,7 +1270,7 @@ const plugin = {
             nativeAgentHarnessDispatchAttached: true,
             nestedGatewayHarnessRouting: true,
             workerUsesIngressAgentCommand: true,
-            workerIsolationVersion: "0.2.6",
+            workerIsolationVersion: "0.2.8",
             activeRunSteer: {
               enabled: process.env.VLAB_FEISHU_STEER_ENABLED === "1",
               allowedChatIds: (process.env.VLAB_FEISHU_STEER_CHAT_IDS ?? "")
@@ -1244,6 +1376,7 @@ const plugin = {
               workerRuntimeConfigPath: workerConfigPath,
               workerExecConfigPath: gatewayConfigPath,
               execUsesGatewayConfig: true,
+              runtimePolicySync: workerRuntimeConfigSync,
             },
             gatewayOwnedToolIsolation: {
               enabled: true,

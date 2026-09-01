@@ -4,7 +4,8 @@ import { chmod, copyFile, readFile, readdir, rename, stat, writeFile } from "nod
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-const EXPECTED_PACKAGE_VERSION = "2026.7.1";
+const LEGACY_PACKAGE_VERSION = "2026.7.1";
+const NATIVE_SQLITE_PACKAGE_VERSIONS = new Set(["2026.8.1"]);
 const IMPORT_ANCHOR = `import fs from "node:fs";\nimport path from "node:path";`;
 const IMPORT_IDENTIFIER = "applyVersaSessionHotsetProjection";
 const PATCH_MARKER = "versa-session-hotset-v0.2.0";
@@ -74,9 +75,16 @@ async function resolveBundle(packageRoot) {
   if (packageJson.name !== "openclaw") {
     throw new Error(`unexpected package at ${packageRoot}: ${packageJson.name ?? "unknown"}`);
   }
-  if (packageJson.version !== EXPECTED_PACKAGE_VERSION) {
+  if (NATIVE_SQLITE_PACKAGE_VERSIONS.has(packageJson.version)) {
+    return {
+      bundlePath: null,
+      nativeSqlite: true,
+      packageVersion: packageJson.version,
+    };
+  }
+  if (packageJson.version !== LEGACY_PACKAGE_VERSION) {
     throw new Error(
-      `unsupported OpenClaw version ${packageJson.version}; expected ${EXPECTED_PACKAGE_VERSION}`,
+      `unsupported OpenClaw version ${packageJson.version}; expected ${LEGACY_PACKAGE_VERSION} or a certified native SQLite release`,
     );
   }
   const distDir = path.join(packageRoot, "dist");
@@ -99,11 +107,23 @@ async function resolveBundle(packageRoot) {
       `expected one writable OpenClaw Session Store bundle in ${distDir}, found ${matches.length}`,
     );
   }
-  return matches[0];
+  return {
+    bundlePath: matches[0],
+    nativeSqlite: false,
+    packageVersion: packageJson.version,
+  };
 }
 
 async function patchPackage(packageRoot, modulePath) {
-  const bundlePath = await resolveBundle(path.resolve(packageRoot));
+  const resolved = await resolveBundle(path.resolve(packageRoot));
+  if (resolved.nativeSqlite) {
+    return {
+      changed: false,
+      nativeSqlite: true,
+      packageVersion: resolved.packageVersion,
+    };
+  }
+  const bundlePath = resolved.bundlePath;
   const moduleUrl = pathToFileURL(path.resolve(modulePath)).href;
   const original = await readFile(bundlePath, "utf8");
   const result = patchOpenClawSessionStoreBundle(original, moduleUrl);
@@ -129,7 +149,15 @@ async function patchPackage(packageRoot, modulePath) {
 }
 
 async function restorePackage(packageRoot) {
-  const bundlePath = await resolveBundle(path.resolve(packageRoot));
+  const resolved = await resolveBundle(path.resolve(packageRoot));
+  if (resolved.nativeSqlite) {
+    return {
+      restored: false,
+      nativeSqlite: true,
+      packageVersion: resolved.packageVersion,
+    };
+  }
+  const bundlePath = resolved.bundlePath;
   const backupPath = `${bundlePath}.pre-session-hotset-v0.2.0`;
   const backup = await readFile(backupPath, "utf8");
   const originalStat = await stat(bundlePath);
@@ -146,7 +174,11 @@ async function main(args) {
       throw new Error("usage: patch-openclaw-session-hotset.mjs --restore <openclaw-package-root>");
     }
     const result = await restorePackage(args[1]);
-    process.stdout.write(`restored ${result.bundlePath}\n`);
+    process.stdout.write(
+      result.nativeSqlite
+        ? `native-sqlite ${result.packageVersion}\n`
+        : `restored ${result.bundlePath}\n`,
+    );
     return;
   }
   if (args.length !== 2) {
@@ -156,7 +188,9 @@ async function main(args) {
   }
   const result = await patchPackage(args[0], args[1]);
   process.stdout.write(
-    `${result.changed ? "patched" : "already-patched"} ${result.bundlePath}\n`,
+    result.nativeSqlite
+      ? `native-sqlite ${result.packageVersion}\n`
+      : `${result.changed ? "patched" : "already-patched"} ${result.bundlePath}\n`,
   );
 }
 

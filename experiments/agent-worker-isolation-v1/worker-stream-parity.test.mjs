@@ -14,6 +14,7 @@ const callbackNames = [
   "onItemEvent",
   "onPartialReply",
   "onCompactionStart",
+  "onUserMessagePersistenceInvalidated",
   "onCompactionEnd",
   "onReasoningEnd",
 ];
@@ -160,6 +161,17 @@ test("Worker preserves native Harness execution options", async () => {
         blockReplyBreak: "message_end",
         blockReplyChunking: { minChars: 40, maxChars: 120 },
         workspaceDir: "/tmp/parity-workspace",
+        conversationToolPolicy: { deny: ["message"] },
+        pluginHarnessToolPolicyRestricted: true,
+        pluginHarnessToolPolicySafeDeniedTools: ["message"],
+        trustedInternalHandoff: true,
+        bootstrapWorkspaceDir: "/tmp/bootstrap-workspace",
+        contextEngineAgentId: "makaron",
+        delegationCapability: "full",
+        modelSelectionLocked: true,
+        operation: "attempt",
+        skipPreparedUserTurnMessage: true,
+        startedAtMs: 1234,
       },
     });
 
@@ -170,6 +182,17 @@ test("Worker preserves native Harness execution options", async () => {
       blockReplyBreak: "message_end",
       blockReplyChunking: { minChars: 40, maxChars: 120 },
       workspaceDir: "/tmp/parity-workspace",
+      conversationToolPolicy: { deny: ["message"] },
+      pluginHarnessToolPolicyRestricted: true,
+      pluginHarnessToolPolicySafeDeniedTools: ["message"],
+      trustedInternalHandoff: true,
+      bootstrapWorkspaceDir: "/tmp/bootstrap-workspace",
+      contextEngineAgentId: "makaron",
+      delegationCapability: "full",
+      modelSelectionLocked: true,
+      operation: "attempt",
+      skipPreparedUserTurnMessage: true,
+      startedAtMs: 1234,
     });
   } finally {
     await pool.close();

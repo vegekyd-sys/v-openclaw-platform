@@ -232,8 +232,14 @@ const stubbornPool = new WorkerPool({
 try {
   await stubbornPool.start();
   const stubbornResults = await Promise.all([
-    stubbornPool.dispatch(sessionKey("stubborn-1"), { kind: "ping" }),
-    stubbornPool.dispatch(sessionKey("stubborn-2"), { kind: "ping" }),
+    stubbornPool.dispatch(sessionKey("stubborn-1"), {
+      kind: "ping",
+      durationMs: 100,
+    }),
+    stubbornPool.dispatch(sessionKey("stubborn-2"), {
+      kind: "ping",
+      durationMs: 100,
+    }),
   ]);
   assert.equal(new Set(stubbornResults.map((result) => result.workerPid)).size, 2);
   const forcedScaleDown = await waitFor(

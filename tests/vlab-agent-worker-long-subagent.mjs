@@ -106,7 +106,7 @@ const call = async (method, params = {}, timeoutMs = 120_000) =>
 const baselineRestarts = systemdNumber("NRestarts");
 const before = await call("vlab.workers.status");
 await saveJson("status-before.json", before);
-assert.equal(before.integration.workerIsolationVersion, "0.2.6");
+assert.equal(before.integration.workerIsolationVersion, "0.2.8");
 assert.equal(before.integration.upstreamDefaultDoesNotCapNativeRun, true);
 assert.ok(before.integration.nativeRequestTimeoutFloorMs > upstreamTimeoutMs);
 assert.equal(before.integration.nativeCommandLaneProgress.failed, 0);
@@ -115,7 +115,7 @@ const childTask =
   `使用 exec 前台执行 /bin/sleep ${childHoldSeconds}；必须等待它真实退出，` +
   `然后只回复 ${childMarker}。不要发送外部消息，不要修改文件。`;
 const parentMessage =
-  `这是 Worker 0.2.6 长 Sub-Agent 回归。严格执行：` +
+  `这是 Worker 0.2.8 长 Sub-Agent 回归。严格执行：` +
   `使用 sessions_spawn 启动恰好一个 isolated subagent，显式设置 ` +
   `agentId=makaron、cleanup=keep，任务为：${childTask} ` +
   `spawn accepted 后立即调用 sessions_yield。收到真实 completion 后，` +

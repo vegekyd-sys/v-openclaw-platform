@@ -71,8 +71,10 @@ try {
   const tools = createOpenClawTools({
     workspaceDir: options.workspaceDir,
     config,
-    agentSessionKey: options.agentSessionKey,
-    requesterAgentIdOverride: options.requesterAgentIdOverride,
+    agentSessionKey: options.agentSessionKey ?? options.runSessionKey,
+    runSessionKey: options.runSessionKey ?? options.agentSessionKey,
+    requesterAgentIdOverride:
+      options.requesterAgentIdOverride ?? options.agentId,
     agentId: options.agentId,
     wrapBeforeToolCallHook: false,
   });

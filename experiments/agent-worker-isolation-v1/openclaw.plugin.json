@@ -49,6 +49,16 @@
         "minimum": 1000,
         "maximum": 60000
       },
+      "workerStartupTimeoutMs": {
+        "type": "integer",
+        "minimum": 15000,
+        "maximum": 600000
+      },
+      "warmSpareWorkers": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 15
+      },
       "workerHeartbeatMs": {
         "type": "integer",
         "minimum": 1000,

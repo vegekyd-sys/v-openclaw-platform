@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, normalize, sep } from "node:path";
 
 export function resolveOpenClawAgentRuntimePath(options = {}) {
@@ -58,6 +58,7 @@ export function resolveOpenClawSubagentAnnounceRuntimePath(options = {}) {
     options.agentRuntimePath ?? resolveOpenClawAgentRuntimePath(options);
   const distDir = dirname(dirname(agentRuntimePath));
   const readDirectory = options.readDirectory ?? readdirSync;
+  const readFile = options.readFile ?? ((candidate) => readFileSync(candidate, "utf8"));
   const candidates = readDirectory(distDir)
     .filter(
       (name) =>
@@ -65,12 +66,16 @@ export function resolveOpenClawSubagentAnnounceRuntimePath(options = {}) {
         /^subagent-announce-[A-Za-z0-9_]+\.js$/.test(name),
     )
     .sort();
-  if (candidates.length !== 1) {
+  const publicRuntimeCandidates = candidates.filter((name) => {
+    const source = readFile(join(distDir, name));
+    return /export\s*\{[^}]*\brunSubagentAnnounceFlow\b(?!\s+as\b)[^}]*\}/s.test(source);
+  });
+  if (publicRuntimeCandidates.length !== 1) {
     throw new Error(
-      `OpenClaw native subagent announce runtime was not uniquely resolved in ${distDir}; found ${candidates.length}`,
+      `OpenClaw native subagent announce runtime was not uniquely resolved in ${distDir}; found ${candidates.length} candidates and ${publicRuntimeCandidates.length} public runtimes`,
     );
   }
-  return join(distDir, candidates[0]);
+  return join(distDir, publicRuntimeCandidates[0]);
 }
 
 export function resolveOpenClawSubagentAnnounceOriginRuntimePath(options = {}) {
@@ -78,15 +83,78 @@ export function resolveOpenClawSubagentAnnounceOriginRuntimePath(options = {}) {
     options.agentRuntimePath ?? resolveOpenClawAgentRuntimePath(options);
   const distDir = dirname(dirname(agentRuntimePath));
   const readDirectory = options.readDirectory ?? readdirSync;
-  const candidates = readDirectory(distDir)
+  const readFile = options.readFile ?? ((candidate) => readFileSync(candidate, "utf8"));
+  const legacyCandidates = readDirectory(distDir)
     .filter((name) =>
       /^subagent-announce-origin-[A-Za-z0-9_]+\.js$/.test(name),
     )
     .sort();
+  if (legacyCandidates.length === 1) {
+    return join(distDir, legacyCandidates[0]);
+  }
+  if (legacyCandidates.length > 1) {
+    throw new Error(
+      `OpenClaw subagent announce origin runtime was not uniquely resolved in ${distDir}; found ${legacyCandidates.length} legacy candidates`,
+    );
+  }
+  const deliveryCandidates = readDirectory(distDir)
+    .filter((name) => /^subagent-announce-delivery-[A-Za-z0-9_]+\.js$/.test(name))
+    .filter((name) => {
+      const source = readFile(join(distDir, name));
+      return /export\s*\{[^}]*\bdeliverSubagentAnnouncement\s+as\s+[A-Za-z_$][\w$]*[^}]*\}/s.test(
+        source,
+      );
+    })
+    .sort();
+  if (deliveryCandidates.length !== 1) {
+    throw new Error(
+      `OpenClaw subagent announce delivery runtime was not uniquely resolved in ${distDir}; found ${deliveryCandidates.length} public delivery runtimes`,
+    );
+  }
+  return join(distDir, deliveryCandidates[0]);
+}
+
+function resolveNamedOpenClawRuntimePath(options) {
+  const agentRuntimePath =
+    options.agentRuntimePath ?? resolveOpenClawAgentRuntimePath(options);
+  const distDir = dirname(dirname(agentRuntimePath));
+  const readDirectory = options.readDirectory ?? readdirSync;
+  const readFile =
+    options.readFile ?? ((candidate) => readFileSync(candidate, "utf8"));
+  const candidates = readDirectory(distDir)
+    .filter((name) => options.filePattern.test(name))
+    .filter((name) => {
+      const source = readFile(join(distDir, name));
+      return options.exportNames.every((exportName) =>
+        new RegExp(
+          `export\\s*\\{[^}]*\\b${exportName}\\b(?!\\s+as\\b)[^}]*\\}`,
+          "s",
+        ).test(source),
+      );
+    })
+    .sort();
   if (candidates.length !== 1) {
     throw new Error(
-      `OpenClaw subagent announce origin runtime was not uniquely resolved in ${distDir}; found ${candidates.length}`,
+      `${options.label} was not uniquely resolved in ${distDir}; found ${candidates.length} public runtimes`,
     );
   }
   return join(distDir, candidates[0]);
+}
+
+export function resolveOpenClawAgentCommandRuntimePath(options = {}) {
+  return resolveNamedOpenClawRuntimePath({
+    ...options,
+    filePattern: /^agent-command-[A-Za-z0-9_-]+\.js$/,
+    exportNames: ["agentCommandFromGatewayIngress"],
+    label: "OpenClaw Gateway Agent command runtime",
+  });
+}
+
+export function resolveOpenClawPreparedModelRuntimePath(options = {}) {
+  return resolveNamedOpenClawRuntimePath({
+    ...options,
+    filePattern: /^prepared-model-runtime-[A-Za-z0-9_-]+\.js$/,
+    exportNames: ["acquireAgentRunPreparedModelRuntime"],
+    label: "OpenClaw prepared model runtime",
+  });
 }

@@ -3,6 +3,14 @@ import { fileURLToPath } from "node:url";
 
 const DEFAULT_WORKER_PATH = fileURLToPath(new URL("./worker.mjs", import.meta.url));
 
+export function resolveWorkerExecArgv(execArgv = process.execArgv) {
+  return execArgv.filter(
+    (arg) =>
+      !/^--inspect(?:-brk)?(?:=|$)/.test(arg) &&
+      !/^--debug(?:-brk)?(?:=|$)/.test(arg),
+  );
+}
+
 function toError(value) {
   return value instanceof Error ? value : new Error(String(value));
 }
@@ -58,7 +66,13 @@ export class WorkerPool {
     // it is deliberately separate from the business request deadline.
     this.requestStallTimeoutMs = options.requestStallTimeoutMs ?? 120_000;
     this.requestCancelGraceMs = options.requestCancelGraceMs ?? 15_000;
-    this.startupTimeoutMs = options.startupTimeoutMs ?? 15_000;
+    // OpenClaw 2.0 may spend tens of seconds opening a migrated Agent DB and
+    // preparing plugin state before a newly forked Worker can announce ready.
+    // Treat startup as capacity admission, not as a normal request timeout.
+    this.startupTimeoutMs = options.startupTimeoutMs ?? 180_000;
+    this.warmSpareWorkers =
+      options.warmSpareWorkers ??
+      Math.min(1, Math.max(0, this.maxWorkers - 1));
     this.retireGraceMs = options.retireGraceMs ?? 2_000;
     this.workerPath = options.workerPath ?? DEFAULT_WORKER_PATH;
     this.workerEnv = options.workerEnv ?? process.env;
@@ -109,6 +123,19 @@ export class WorkerPool {
     }
     if (!Number.isFinite(this.retireGraceMs) || this.retireGraceMs < 10) {
       throw new Error("retireGraceMs must be >= 10");
+    }
+    if (
+      !Number.isFinite(this.startupTimeoutMs) ||
+      this.startupTimeoutMs < 10
+    ) {
+      throw new Error("startupTimeoutMs must be >= 10");
+    }
+    if (
+      !Number.isInteger(this.warmSpareWorkers) ||
+      this.warmSpareWorkers < 0 ||
+      this.warmSpareWorkers >= this.maxWorkers
+    ) {
+      throw new Error("warmSpareWorkers must be an integer from 0 to maxWorkers - 1");
     }
     if (
       !Number.isFinite(this.requestTimeoutMs) ||
@@ -170,6 +197,9 @@ export class WorkerPool {
 
     const child = fork(this.workerPath, [], {
       env: this.workerEnv,
+      // A Gateway inspector port belongs to the Gateway process. Inheriting
+      // it into every Worker creates a collision per scale-out attempt.
+      execArgv: resolveWorkerExecArgv(),
       stdio: ["ignore", "ignore", "pipe", "ipc"],
     });
     const handle = {
@@ -421,6 +451,10 @@ export class WorkerPool {
         }
         worker.queue.push(job);
         this.drain(worker);
+        void this.ensureWarmSpareWorkers().catch(() => {
+          // A speculative spare must never fail the admitted request. The
+          // normal pending path retries capacity creation when it is needed.
+        });
       }
     } finally {
       this.pumping = false;
@@ -878,6 +912,43 @@ export class WorkerPool {
     }
   }
 
+  async ensureWarmSpareWorkers() {
+    if (this.closing || this.warmSpareWorkers === 0) return;
+    const workers = [...this.workers.values()].filter(
+      (worker) => !worker.retiring,
+    );
+    const hasLoad =
+      this.pending.length > 0 ||
+      workers.some(
+        (worker) =>
+          worker.ownerSessionKeys.size > 0 ||
+          worker.active.size > 0 ||
+          worker.queue.length > 0 ||
+          worker.detachedTaskKeys.size > 0,
+      );
+    if (!hasLoad) return;
+    let spareOrStarting = workers.filter(
+      (worker) =>
+        !worker.ready ||
+        (worker.ownerSessionKeys.size === 0 &&
+          worker.active.size === 0 &&
+          worker.queue.length === 0 &&
+          worker.detachedTaskKeys.size === 0),
+    ).length;
+    while (
+      !this.closing &&
+      spareOrStarting < this.warmSpareWorkers &&
+      this.workers.size < this.maxWorkers
+    ) {
+      // spawn() registers its handle synchronously before awaiting readiness,
+      // so concurrent callers observe this in-flight spare and do not fork a
+      // duplicate.
+      const startup = this.spawn(this.findAvailableSlot());
+      spareOrStarting += 1;
+      await startup;
+    }
+  }
+
   reapIdleWorkers() {
     if (this.closing || this.workers.size <= this.minWorkers) {
       return;
@@ -899,7 +970,20 @@ export class WorkerPool {
     const retiringCount = [...this.workers.values()].filter(
       (worker) => worker.retiring,
     ).length;
-    let removable = this.workers.size - this.minWorkers - retiringCount;
+    const nonIdleCount = [...this.workers.values()].filter(
+      (worker) =>
+        !worker.retiring &&
+        (!worker.ready ||
+          worker.ownerSessionKeys.size > 0 ||
+          worker.detachedTaskKeys.size > 0 ||
+          worker.active.size > 0 ||
+          worker.queue.length > 0),
+    ).length;
+    const keepCount = Math.max(
+      this.minWorkers,
+      nonIdleCount > 0 ? nonIdleCount + this.warmSpareWorkers : 0,
+    );
+    let removable = this.workers.size - keepCount - retiringCount;
     for (const worker of idleWorkers) {
       if (removable <= 0) {
         break;
@@ -936,6 +1020,8 @@ export class WorkerPool {
       sessionsPerWorker: this.sessionsPerWorker,
       maxActiveSessions: this.maxWorkers * this.sessionsPerWorker,
       idleTimeoutMs: this.idleTimeoutMs,
+      startupTimeoutMs: this.startupTimeoutMs,
+      warmSpareWorkers: this.warmSpareWorkers,
       requestTimeoutMs: this.requestTimeoutMs,
       requestStallTimeoutMs: this.requestStallTimeoutMs,
       requestCancelGraceMs: this.requestCancelGraceMs,

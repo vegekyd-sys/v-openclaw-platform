@@ -11,15 +11,23 @@ import {
 } from "./worker-gateway-events.mjs";
 import { installGatewayOwnedToolProxy } from "./gateway-owned-tool-proxy.mjs";
 import { buildRelayedSkillUsageEvent } from "./skill-usage-telemetry.mjs";
+import {
+  resolveOpenClawAgentCommandRuntimePath,
+  resolveOpenClawPreparedModelRuntimePath,
+} from "./runtime-path.mjs";
 
 let agentRuntimePromise;
 let agentEventRuntimePromise;
 let diagnosticRuntimePromise;
+let compactionRuntimePromise;
 const activeControllers = new Map();
 const skillTelemetryContexts = new Map();
 const pendingStreamEventAcks = new Map();
 const pendingWorkerGatewayEventAcks = new Map();
 const pendingGatewayToolRequests = new Map();
+const externalTaskContextsBySessionKey = new Map();
+const externalTaskContextsBySessionId = new Map();
+const externalTaskContextsByRunId = new Map();
 let nextStreamEventId = 1;
 let nextGatewayToolRequestId = 1;
 const configuredHeartbeatMs = Number(
@@ -28,6 +36,7 @@ const configuredHeartbeatMs = Number(
 const heartbeatMs = Number.isFinite(configuredHeartbeatMs)
   ? Math.max(25, configuredHeartbeatMs)
   : 15_000;
+
 function gatewayToolError(message) {
   const error = new Error(
     message?.error?.message ?? "Gateway-owned tool request failed",
@@ -68,6 +77,24 @@ const gatewayOwnedToolProxy = installGatewayOwnedToolProxy({
   ),
   executeInGateway: executeToolInGateway,
 });
+globalThis[Symbol.for("versa.vlab.external-harness-task-bridge-v1")] = true;
+globalThis[Symbol.for("versa.vlab.external-harness-task-record-v1")] =
+  (spawn) => {
+    const context =
+      externalTaskContextsByRunId.get(spawn?.requesterTurnRunId) ??
+      externalTaskContextsBySessionKey.get(spawn?.parentSessionKey);
+    if (context && spawn?.status === "accepted") {
+      context.acceptedSessionSpawns.push(spawn);
+    }
+  };
+globalThis[Symbol.for("versa.vlab.external-harness-task-yield-v1")] =
+  ({ sessionId, requesterSessionKey, requesterTurnRunId } = {}) => {
+    const context =
+      externalTaskContextsByRunId.get(requesterTurnRunId) ??
+      externalTaskContextsBySessionId.get(sessionId) ??
+      externalTaskContextsBySessionKey.get(requesterSessionKey);
+    return (context?.acceptedSessionSpawns.length ?? 0) > 0;
+  };
 const skillUsageTelemetryStats = {
   observed: 0,
   relayed: 0,
@@ -405,6 +432,62 @@ async function loadAgentRuntime() {
   return await agentRuntimePromise;
 }
 
+async function loadCompactionRuntime() {
+  if (!compactionRuntimePromise) {
+    compactionRuntimePromise = (async () => {
+      const agentRuntime = await loadAgentRuntime();
+      if (
+        typeof agentRuntime.loadConfig === "function" &&
+        typeof agentRuntime.agentCommandFromGatewayIngress === "function" &&
+        typeof agentRuntime.acquireAgentRunPreparedModelRuntime === "function"
+      ) {
+        return {
+          configRuntime: agentRuntime,
+          commandRuntime: agentRuntime,
+          preparedRuntime: agentRuntime,
+        };
+      }
+      const agentRuntimePath = configuredAgentRuntimePath();
+      const [
+        configRuntime,
+        commandRuntime,
+        preparedRuntime,
+      ] = await Promise.all([
+          import(
+            new URL("./config-runtime.js", pathToFileURL(agentRuntimePath)).href
+          ),
+          import(
+            pathToFileURL(
+              resolveOpenClawAgentCommandRuntimePath({ agentRuntimePath }),
+            ).href
+          ),
+          import(
+            pathToFileURL(
+              resolveOpenClawPreparedModelRuntimePath({ agentRuntimePath }),
+            ).href
+          ),
+        ]);
+      if (typeof configRuntime.loadConfig !== "function") {
+        throw new Error("OpenClaw config runtime is unavailable");
+      }
+      if (typeof commandRuntime.agentCommandFromGatewayIngress !== "function") {
+        throw new Error("OpenClaw Gateway Agent command runtime is unavailable");
+      }
+      if (
+        typeof preparedRuntime.acquireAgentRunPreparedModelRuntime !== "function"
+      ) {
+        throw new Error("OpenClaw prepared model runtime is unavailable");
+      }
+      return {
+        configRuntime,
+        commandRuntime,
+        preparedRuntime,
+      };
+    })();
+  }
+  return await compactionRuntimePromise;
+}
+
 async function loadAgentEventRuntime() {
   if (!agentEventRuntimePromise) {
     agentEventRuntimePromise = (async () => {
@@ -476,10 +559,7 @@ async function runHold(durationMs, abortSignal) {
 }
 
 async function runAgent(message, abortSignal) {
-  const { agentCommandFromIngress } = await loadAgentRuntime();
-  if (typeof agentCommandFromIngress !== "function") {
-    throw new Error("OpenClaw ingress Agent runtime is unavailable");
-  }
+  const agentRuntime = await loadAgentRuntime();
   const startedAt = performance.now();
   const eventRuntime = await loadAgentEventRuntime();
   const requestedEventNames = new Set(
@@ -534,7 +614,41 @@ async function runAgent(message, abortSignal) {
   }
   let result;
   try {
-    result = await agentCommandFromIngress({
+    const {
+      configRuntime,
+      commandRuntime,
+      preparedRuntime,
+    } = await loadCompactionRuntime();
+    const config = configRuntime.loadConfig();
+    const agentId = message.agentId ?? "makaron";
+    const workspaceDir = agentRuntime.resolveAgentWorkspaceDir(config, agentId);
+    const preparedRuntimeLease =
+      await preparedRuntime.acquireAgentRunPreparedModelRuntime(
+        {
+          config,
+          agentId,
+          agentDir: agentRuntime.resolveAgentDir(config, agentId),
+          allowGatewaySubagentBinding: true,
+          workspaceDir,
+        },
+        {
+          abortSignal,
+          catalogMode: "static",
+        },
+      );
+    try {
+      const externalTaskContext = { acceptedSessionSpawns: [] };
+      externalTaskContextsBySessionKey.set(
+        message.sessionKey,
+        externalTaskContext,
+      );
+      externalTaskContextsBySessionId.set(
+        message.sessionId,
+        externalTaskContext,
+      );
+      externalTaskContextsByRunId.set(message.runId, externalTaskContext);
+      try {
+        result = await commandRuntime.agentCommandFromGatewayIngress({
       message: message.message,
       transcriptMessage: message.transcriptMessage ?? message.message,
       images: message.images,
@@ -591,7 +705,37 @@ async function runAgent(message, abortSignal) {
     skipInitialSessionTouch: true,
     allowGatewaySubagentBinding: true,
       abortSignal,
-    });
+      }, undefined, undefined, {}, {
+        config,
+        pluginGeneration: preparedRuntimeLease.pluginGeneration,
+      });
+      } finally {
+        if (
+          externalTaskContextsBySessionKey.get(message.sessionKey) ===
+          externalTaskContext
+        ) {
+          externalTaskContextsBySessionKey.delete(message.sessionKey);
+        }
+        if (
+          externalTaskContextsBySessionId.get(message.sessionId) ===
+          externalTaskContext
+        ) {
+          externalTaskContextsBySessionId.delete(message.sessionId);
+        }
+        if (
+          externalTaskContextsByRunId.get(message.runId) ===
+          externalTaskContext
+        ) {
+          externalTaskContextsByRunId.delete(message.runId);
+        }
+      }
+      result.acceptedSessionSpawns = [
+        ...(result.acceptedSessionSpawns ?? []),
+        ...externalTaskContext.acceptedSessionSpawns,
+      ];
+    } finally {
+      preparedRuntimeLease.release();
+    }
     await streamState.tail;
     if (streamState.failure) {
       throw streamState.failure;

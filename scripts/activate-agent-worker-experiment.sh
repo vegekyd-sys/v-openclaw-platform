@@ -52,9 +52,15 @@ feishu_steer_package_roots=()
 hotset_was_present=false
 previous_hotset_module=""
 tool_proxy_patch_armed=false
+exec_config_patch_armed=false
+sessions_spawn_patch_armed=false
+sessions_yield_patch_armed=false
 media_completion_preexisting=false
 feishu_steer_preexisting=false
 tool_proxy_preexisting=false
+exec_config_preexisting=false
+sessions_spawn_preexisting=false
+sessions_yield_preexisting=false
 steer_dropin_was_present=false
 existing_worker_compaction='{}'
 
@@ -87,6 +93,18 @@ restore_on_error() {
     fi
     if [[ "$tool_proxy_patch_armed" == true ]]; then
       "$NODE" "${RELEASE_DIR}/patch-openclaw-skill-workshop-worker-proxy.mjs" \
+        --restore "$OPENCLAW_PACKAGE" || true
+    fi
+    if [[ "$exec_config_patch_armed" == true ]]; then
+      "$NODE" "${RELEASE_DIR}/patch-openclaw-worker-exec-config-domain.mjs" \
+        --restore "$OPENCLAW_PACKAGE" || true
+    fi
+    if [[ "$sessions_yield_patch_armed" == true ]]; then
+      "$NODE" "${RELEASE_DIR}/patch-openclaw-sessions-yield-external-task.mjs" \
+        --restore "$OPENCLAW_PACKAGE" || true
+    fi
+    if [[ "$sessions_spawn_patch_armed" == true ]]; then
+      "$NODE" "${RELEASE_DIR}/patch-openclaw-sessions-spawn-gateway-proxy.mjs" \
         --restore "$OPENCLAW_PACKAGE" || true
     fi
     if [[ "$media_completion_patch_armed" == true ]]; then
@@ -235,6 +253,9 @@ for required in \
   gateway-owned-tool-proxy.mjs \
   skill-workshop-subprocess-runner.mjs \
   patch-openclaw-skill-workshop-worker-proxy.mjs \
+  patch-openclaw-worker-exec-config-domain.mjs \
+  patch-openclaw-sessions-spawn-gateway-proxy.mjs \
+  patch-openclaw-sessions-yield-external-task.mjs \
   stubborn-worker.mjs \
   self-test.mjs; do
   [[ -f "${RELEASE_DIR}/${required}" ]] || {
@@ -242,7 +263,7 @@ for required in \
     exit 1
   }
 done
-[[ "$(jq -r '.version' "${RELEASE_DIR}/package.json")" == "0.2.6" ]] || {
+[[ "$(jq -r '.version' "${RELEASE_DIR}/package.json")" == "0.2.8" ]] || {
   echo "unexpected Worker isolation version" >&2
   exit 1
 }
@@ -292,10 +313,14 @@ if [[ -f "$FEISHU_STEER_DROPIN" ]]; then
 fi
 rollback_armed=true
 
-"$NODE" "$SESSION_HOTSET_PATCHER" \
-  "$OPENCLAW_PACKAGE" \
-  "${RELEASE_DIR}/session-hotset.mjs"
-hotset_patch_armed=true
+hotset_patch_result="$(
+  "$NODE" "$SESSION_HOTSET_PATCHER" \
+    "$OPENCLAW_PACKAGE" \
+    "${RELEASE_DIR}/session-hotset.mjs"
+)"
+if [[ "$hotset_patch_result" == patched\ * ]]; then
+  hotset_patch_armed=true
+fi
 media_completion_patch_result="$(
   "$NODE" "$MEDIA_COMPLETION_PATCHER" "$OPENCLAW_PACKAGE"
 )"
@@ -335,6 +360,33 @@ if [[ "$tool_proxy_patch_result" == patched\ * ]]; then
   tool_proxy_patch_armed=true
 else
   tool_proxy_preexisting=true
+fi
+exec_config_patch_result="$(
+  "$NODE" "${RELEASE_DIR}/patch-openclaw-worker-exec-config-domain.mjs" \
+    "$OPENCLAW_PACKAGE"
+)"
+if [[ "$exec_config_patch_result" == patched\ * ]]; then
+  exec_config_patch_armed=true
+else
+  exec_config_preexisting=true
+fi
+sessions_spawn_patch_result="$(
+  "$NODE" "${RELEASE_DIR}/patch-openclaw-sessions-spawn-gateway-proxy.mjs" \
+    "$OPENCLAW_PACKAGE"
+)"
+if [[ "$sessions_spawn_patch_result" == patched\ * ]]; then
+  sessions_spawn_patch_armed=true
+else
+  sessions_spawn_preexisting=true
+fi
+sessions_yield_patch_result="$(
+  "$NODE" "${RELEASE_DIR}/patch-openclaw-sessions-yield-external-task.mjs" \
+    "$OPENCLAW_PACKAGE"
+)"
+if [[ "$sessions_yield_patch_result" == patched\ * ]]; then
+  sessions_yield_patch_armed=true
+else
+  sessions_yield_preexisting=true
 fi
 install -d -o root -g root -m 0755 "$SESSION_HOTSET_DROPIN_DIR"
 session_hotset_dropin_candidate="$(mktemp)"
@@ -532,7 +584,7 @@ ready_worker_count="$(
 jq -e \
   --argjson expected_native_request_timeout_ms "$NATIVE_REQUEST_TIMEOUT_MS" \
   '(.result // .) as $status
-   | $status.integration.workerIsolationVersion == "0.2.6"
+   | $status.integration.workerIsolationVersion == "0.2.8"
      and $status.integration.nativeRequestTimeoutFloorMs == $expected_native_request_timeout_ms
      and $status.integration.upstreamDefaultDoesNotCapNativeRun == true
      and $status.integration.activeRunSteer.enabled == true
@@ -562,6 +614,9 @@ jq -n \
   --arg session_hotset_report "$SESSION_HOTSET_REPORT" \
   --arg media_completion_patcher "$MEDIA_COMPLETION_PATCHER" \
   --arg tool_proxy_patcher "${RELEASE_DIR}/patch-openclaw-skill-workshop-worker-proxy.mjs" \
+  --arg exec_config_patcher "${RELEASE_DIR}/patch-openclaw-worker-exec-config-domain.mjs" \
+  --arg sessions_spawn_patcher "${RELEASE_DIR}/patch-openclaw-sessions-spawn-gateway-proxy.mjs" \
+  --arg sessions_yield_patcher "${RELEASE_DIR}/patch-openclaw-sessions-yield-external-task.mjs" \
   --arg feishu_steer_patcher "$FEISHU_STEER_PATCHER" \
   --arg feishu_steer_dropin "$FEISHU_STEER_DROPIN" \
   --arg previous_feishu_steer_dropin "$PRE_DEPLOY_STEER_DROPIN" \
@@ -580,6 +635,9 @@ jq -n \
       | jq -Rsc 'split("\n") | map(select(length > 0))'
   )" \
   --argjson tool_proxy_preexisting "$tool_proxy_preexisting" \
+  --argjson exec_config_preexisting "$exec_config_preexisting" \
+  --argjson sessions_spawn_preexisting "$sessions_spawn_preexisting" \
+  --argjson sessions_yield_preexisting "$sessions_yield_preexisting" \
   '{
     experiment: $experiment,
     platformCommit: $platform_commit,
@@ -609,7 +667,7 @@ jq -n \
     },
     activeRunSteer: {
       enabled: true,
-      version: "0.2.4",
+      version: "0.2.8",
       patcher: $feishu_steer_patcher,
       preExisting: $feishu_steer_preexisting,
       packageRoots: $feishu_steer_package_roots,
@@ -623,6 +681,17 @@ jq -n \
       subprocessTools: ["skill_workshop"],
       patcher: $tool_proxy_patcher,
       preExisting: $tool_proxy_preexisting
+    },
+    workerExecConfigDomain: {
+      patcher: $exec_config_patcher,
+      preExisting: $exec_config_preexisting,
+      gatewayOwned: true
+    },
+    externalHarnessTaskBridge: {
+      spawnPatcher: $sessions_spawn_patcher,
+      yieldPatcher: $sessions_yield_patcher,
+      spawnPreExisting: $sessions_spawn_preexisting,
+      yieldPreExisting: $sessions_yield_preexisting
     }
   }' \
   > "${ACTIVE_MANIFEST}.new"

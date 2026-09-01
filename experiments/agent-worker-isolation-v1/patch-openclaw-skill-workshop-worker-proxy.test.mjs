@@ -33,6 +33,10 @@ test("routes only the Worker skill_workshop tool through the process proxy", () 
   assert.match(result.source, /toolName: "skill_workshop"/);
   assert.doesNotMatch(result.source, /^\+\s*const workerToolProxy/m);
   assert.match(result.source, /workspaceDir: options\.workspaceDir/);
+  assert.match(
+    result.source,
+    /runSessionKey: options\.runSessionKey \?\? options\.origin\?\.sessionKey/,
+  );
   assert.doesNotThrow(() => new Function(result.source));
 });
 
@@ -43,11 +47,60 @@ test("is idempotent", () => {
   assert.equal(twice.source, once.source);
 });
 
+test("upgrades the 0.2.2 proxy to preserve the 8.1 run session owner", () => {
+  const current = patchSkillWorkshopWorkerProxy(fixture).source;
+  const legacy = current
+    .replace(PATCH_MARKER, "v-worker-skill-workshop-subprocess-v0.2.2")
+    .replace(
+      "agentSessionKey: options.agentSessionKey ?? options.origin?.sessionKey",
+      "agentSessionKey: options.agentSessionKey",
+    )
+    .replace(
+      "\t\t\t\t\trunSessionKey: options.runSessionKey ?? options.origin?.sessionKey,\n",
+      "",
+    )
+    .replace(
+      "requesterAgentIdOverride: options.requesterAgentIdOverride ?? options.agentId",
+      "requesterAgentIdOverride: options.requesterAgentIdOverride",
+    );
+  const upgraded = patchSkillWorkshopWorkerProxy(legacy);
+  assert.equal(upgraded.changed, true);
+  assert.match(upgraded.source, new RegExp(PATCH_MARKER));
+  assert.match(upgraded.source, /options\.origin\?\.sessionKey/);
+  assert.doesNotMatch(
+    upgraded.source,
+    /v-worker-skill-workshop-subprocess-v0\.2\.2/,
+  );
+});
+
+test("upgrades the first 0.2.8 proxy to the origin-aware owner mapping", () => {
+  const current = patchSkillWorkshopWorkerProxy(fixture).source;
+  const legacy = current
+    .replace(PATCH_MARKER, "v-worker-skill-workshop-subprocess-v0.2.8")
+    .replace(
+      "agentSessionKey: options.agentSessionKey ?? options.origin?.sessionKey",
+      "agentSessionKey: options.agentSessionKey",
+    )
+    .replace(
+      "runSessionKey: options.runSessionKey ?? options.origin?.sessionKey",
+      "runSessionKey: options.runSessionKey",
+    )
+    .replace(
+      "requesterAgentIdOverride: options.requesterAgentIdOverride ?? options.agentId",
+      "requesterAgentIdOverride: options.requesterAgentIdOverride",
+    );
+  const upgraded = patchSkillWorkshopWorkerProxy(legacy);
+  assert.equal(upgraded.changed, true);
+  assert.match(upgraded.source, new RegExp(PATCH_MARKER));
+  assert.match(upgraded.source, /options\.origin\?\.sessionKey/);
+});
+
 test("refreshes a stale rollback backup before patching", async () => {
   const packageDir = await mkdtemp(join(tmpdir(), "workshop-proxy-package-"));
   const distDir = join(packageDir, "dist");
   const bundlePath = join(distDir, "openclaw-tools-fixture.js");
-  const backupPath = `${bundlePath}.v-worker-tool-proxy-v0.2.2.bak`;
+  const backupPath =
+    `${bundlePath}.v-worker-tool-proxy-v0.2.8-agent-owner.bak`;
   try {
     await mkdir(distDir);
     await writeFile(bundlePath, fixture);

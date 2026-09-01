@@ -11,6 +11,9 @@ OPENCLAW_PACKAGE="/opt/vlab/current/node_modules/openclaw"
 SESSION_HOTSET_PATCHER="${STATE_DIR}/patch-openclaw-session-hotset.mjs"
 MEDIA_COMPLETION_PATCHER="${STATE_DIR}/patch-openclaw-media-completion-relay.mjs"
 TOOL_PROXY_PATCHER=""
+EXEC_CONFIG_PATCHER=""
+SESSIONS_SPAWN_PATCHER=""
+SESSIONS_YIELD_PATCHER=""
 FEISHU_STEER_PATCHER=""
 SESSION_HOTSET_DROPIN="/etc/systemd/system/openclaw-vlab-gateway.service.d/session-hotset-v0.2.0.conf"
 FEISHU_STEER_DROPIN="/etc/systemd/system/openclaw-vlab-gateway.service.d/worker-steer-v0.2.3.conf"
@@ -51,6 +54,12 @@ previous_hotset_dropin="$(
 )"
 TOOL_PROXY_PATCHER="$(jq -r '.gatewayOwnedToolIsolation.patcher // empty' "$ACTIVE_MANIFEST")"
 TOOL_PROXY_PREEXISTING="$(jq -r '.gatewayOwnedToolIsolation.preExisting // false' "$ACTIVE_MANIFEST")"
+EXEC_CONFIG_PATCHER="$(jq -r '.workerExecConfigDomain.patcher // empty' "$ACTIVE_MANIFEST")"
+EXEC_CONFIG_PREEXISTING="$(jq -r '.workerExecConfigDomain.preExisting // false' "$ACTIVE_MANIFEST")"
+SESSIONS_SPAWN_PATCHER="$(jq -r '.externalHarnessTaskBridge.spawnPatcher // empty' "$ACTIVE_MANIFEST")"
+SESSIONS_YIELD_PATCHER="$(jq -r '.externalHarnessTaskBridge.yieldPatcher // empty' "$ACTIVE_MANIFEST")"
+SESSIONS_SPAWN_PREEXISTING="$(jq -r '.externalHarnessTaskBridge.spawnPreExisting // false' "$ACTIVE_MANIFEST")"
+SESSIONS_YIELD_PREEXISTING="$(jq -r '.externalHarnessTaskBridge.yieldPreExisting // false' "$ACTIVE_MANIFEST")"
 MEDIA_COMPLETION_PREEXISTING="$(jq -r '.mediaCompletionRelay.preExisting // false' "$ACTIVE_MANIFEST")"
 FEISHU_STEER_PATCHER="$(jq -r '.activeRunSteer.patcher // empty' "$ACTIVE_MANIFEST")"
 FEISHU_STEER_PREEXISTING="$(jq -r '.activeRunSteer.preExisting // false' "$ACTIVE_MANIFEST")"
@@ -87,6 +96,21 @@ if [[ "$TOOL_PROXY_PREEXISTING" != true \
   && -n "$TOOL_PROXY_PATCHER" \
   && -f "$TOOL_PROXY_PATCHER" ]]; then
   "$NODE" "$TOOL_PROXY_PATCHER" --restore "$OPENCLAW_PACKAGE"
+fi
+if [[ "$EXEC_CONFIG_PREEXISTING" != true \
+  && -n "$EXEC_CONFIG_PATCHER" \
+  && -f "$EXEC_CONFIG_PATCHER" ]]; then
+  "$NODE" "$EXEC_CONFIG_PATCHER" --restore "$OPENCLAW_PACKAGE"
+fi
+if [[ "$SESSIONS_YIELD_PREEXISTING" != true \
+  && -n "$SESSIONS_YIELD_PATCHER" \
+  && -f "$SESSIONS_YIELD_PATCHER" ]]; then
+  "$NODE" "$SESSIONS_YIELD_PATCHER" --restore "$OPENCLAW_PACKAGE"
+fi
+if [[ "$SESSIONS_SPAWN_PREEXISTING" != true \
+  && -n "$SESSIONS_SPAWN_PATCHER" \
+  && -f "$SESSIONS_SPAWN_PATCHER" ]]; then
+  "$NODE" "$SESSIONS_SPAWN_PATCHER" --restore "$OPENCLAW_PACKAGE"
 fi
 if [[ "$MEDIA_COMPLETION_PREEXISTING" != true ]]; then
   "$NODE" "$MEDIA_COMPLETION_PATCHER" --restore "$OPENCLAW_PACKAGE"

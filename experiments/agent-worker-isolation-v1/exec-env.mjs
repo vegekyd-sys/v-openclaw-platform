@@ -38,7 +38,7 @@ export function resolveWorkerExecEnv(event, env = process.env) {
   if (
     env.VLAB_WORKER_CHILD !== "1" ||
     event?.toolName !== "exec" ||
-    event?.host !== "gateway"
+    event?.host === "sandbox"
   ) {
     return undefined;
   }

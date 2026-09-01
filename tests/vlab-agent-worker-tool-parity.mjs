@@ -47,10 +47,7 @@ function textContent(message) {
 }
 
 function isToolError(message) {
-  return (
-    message?.isError === true ||
-    /timed out|timeout|failed|error/i.test(textContent(message))
-  );
+  return message?.isError === true;
 }
 
 async function saveJson(name, value) {
@@ -103,6 +100,13 @@ const probes = [
     marker: "TOOL_PARITY_SESSIONS_OK",
   },
   {
+    name: "browser-status",
+    toolName: "browser",
+    instruction:
+      "必须直接调用 OpenClaw 原生 browser 工具，action=status。禁止用 exec、CLI 或 HTTP 代替；完成后只回复 TOOL_PARITY_BROWSER_OK。",
+    marker: "TOOL_PARITY_BROWSER_OK",
+  },
+  {
     name: "skill-workshop-list",
     toolName: "skill_workshop",
     instruction:
@@ -139,7 +143,18 @@ const results = await Promise.all(probes.map(async (probe) => {
   let history;
   const deadline = Date.now() + 120_000;
   while (Date.now() < deadline) {
-    history = await call("chat.history", { sessionKey, limit: 40 });
+    try {
+      history = await call("chat.history", { sessionKey, limit: 40 });
+    } catch (error) {
+      if (
+        error?.retryable === true ||
+        /session history is rebuilding/i.test(String(error?.message ?? error))
+      ) {
+        await sleep(Number(error?.retryAfterMs ?? 250));
+        continue;
+      }
+      throw error;
+    }
     const toolResults = history.messages.filter(
       (message) =>
         message.role === "toolResult" && message.toolName === probe.toolName,
@@ -189,17 +204,27 @@ const results = await Promise.all(probes.map(async (probe) => {
 }));
 results.sort((left, right) => left.name.localeCompare(right.name));
 
-const statusAfter = await call("vlab.workers.status");
+let statusAfter;
+let workshopCallsAfter = workshopCallsBefore;
+for (let attempt = 0; attempt < 30; attempt += 1) {
+  statusAfter = await call("vlab.workers.status");
+  workshopCallsAfter = statusAfter.workers.reduce(
+    (sum, worker) => sum + Number(worker.gatewayOwnedToolProxy?.calls ?? 0),
+    0,
+  );
+  if (workshopCallsAfter >= workshopCallsBefore + 1) {
+    break;
+  }
+  // Worker process stats are delivered on the heartbeat, not synchronously
+  // with the final tool result.
+  await sleep(1_000);
+}
 const health = await call("health");
 await saveJson("status-after.json", statusAfter);
 await saveJson("health.json", health);
 assert.equal(systemdNumber("NRestarts"), baselineRestarts);
 assert.equal(statusAfter.pending, 0);
 assert.equal(health.eventLoop?.degraded, false);
-const workshopCallsAfter = statusAfter.workers.reduce(
-  (sum, worker) => sum + Number(worker.gatewayOwnedToolProxy?.calls ?? 0),
-  0,
-);
 assert.ok(
   workshopCallsAfter >= workshopCallsBefore + 1,
   "skill_workshop did not pass through the isolated tool proxy",

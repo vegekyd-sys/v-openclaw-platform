@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import {
+  chown,
   mkdir,
   readFile,
   realpath,
@@ -33,6 +34,10 @@ const nodePath = process.env.VLAB_NODE ?? "/opt/vlab/node/bin/node";
 const openClawPath =
   process.env.VLAB_OPENCLAW ??
   "/opt/vlab/current/node_modules/openclaw/openclaw.mjs";
+const gatewayService =
+  process.env.VLAB_GATEWAY_SERVICE ?? "openclaw-vlab-gateway.service";
+const gatewayUid = Number(process.env.VLAB_GATEWAY_UID ?? "996");
+const gatewayGid = Number(process.env.VLAB_GATEWAY_GID ?? "996");
 const timeoutMs = 240_000;
 const timestamp = new Date()
   .toISOString()
@@ -41,8 +46,10 @@ const timestamp = new Date()
   .replace(/\.\d{3}Z$/, "Z");
 const token = timestamp.toLowerCase();
 const skillName = `vlab-worker-config-smoke-${token}`;
-const sessionKey = `agent:makaron:explicit:${skillName}`;
-const runId = skillName;
+const configSessionKey = `agent:makaron:explicit:${skillName}-config`;
+const applySessionKey = `agent:makaron:explicit:${skillName}-apply`;
+const configRunId = `${skillName}-config`;
+const applyRunId = `${skillName}-apply`;
 const targetRoot =
   process.env.VLAB_WORKSHOP_TARGET_ROOT ??
   bootstrapConfig.skills?.load?.allowSymlinkTargets?.[0] ??
@@ -72,6 +79,8 @@ function parseRawConfig(response) {
 function runGatewayConfigCommand(args, gatewayConfigPath) {
   return execFileSync(nodePath, [openClawPath, "config", ...args], {
     encoding: "utf8",
+    uid: gatewayUid,
+    gid: gatewayGid,
     env: {
       ...process.env,
       HOME: labRoot,
@@ -80,6 +89,12 @@ function runGatewayConfigCommand(args, gatewayConfigPath) {
       OPENCLAW_CONFIG_PATH: gatewayConfigPath,
       OPENCLAW_WORKSPACE_DIR: workspaceDir,
     },
+  });
+}
+
+function restartGatewayService() {
+  execFileSync("systemctl", ["restart", gatewayService], {
+    encoding: "utf8",
   });
 }
 
@@ -105,8 +120,30 @@ const call = async (method, params = {}) =>
     params,
   );
 
+async function waitForWorkersReady() {
+  let lastError;
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    try {
+      const status = await call("vlab.workers.status");
+      if (
+        status.integration?.workerIsolationVersion === "0.2.8" &&
+        Array.isArray(status.workers) &&
+        status.workers.some((worker) => worker.ready === true)
+      ) {
+        return status;
+      }
+    } catch (error) {
+      lastError = error;
+    }
+    await sleep(1_000);
+  }
+  throw new Error("Gateway did not restore ready Workers after restart", {
+    cause: lastError,
+  });
+}
+
 const statusBefore = await call("vlab.workers.status");
-assert.equal(statusBefore.integration.workerIsolationVersion, "0.2.0");
+assert.equal(statusBefore.integration.workerIsolationVersion, "0.2.8");
 assert.equal(
   statusBefore.integration.configDomainIsolation.execUsesGatewayConfig,
   true,
@@ -129,6 +166,7 @@ const workerBeforeRaw = await readFile(workerConfigPath, "utf8");
 let targetCreated = false;
 let linkCreated = false;
 let draftCreated = false;
+let gatewayRestartedForConfig = false;
 
 try {
   await mkdir(targetRoot, { recursive: true });
@@ -149,6 +187,8 @@ try {
     ].join("\n"),
     "utf8",
   );
+  await chown(targetSkillDir, gatewayUid, gatewayGid);
+  await chown(targetSkillFile, gatewayUid, gatewayGid);
   await symlink(targetSkillDir, workspaceSkillDir, "dir");
   linkCreated = true;
   await mkdir(draftDir, { recursive: true });
@@ -167,34 +207,98 @@ try {
   draftCreated = true;
 
   const allowedTargetsJson = JSON.stringify(probeAllowedTargets);
-  const command = [
+  const configCommand = [
     `${nodePath} ${openClawPath} config set skills.workshop.maxSkillBytes 100000 --strict-json`,
     `${nodePath} ${openClawPath} config set skills.workshop.allowSymlinkTargetWrites true --strict-json`,
     `${nodePath} ${openClawPath} config set skills.load.allowSymlinkTargets '${allowedTargetsJson}' --strict-json`,
+    `/usr/bin/printf 'VLAB_WORKSHOP_CONFIG_OK\\n'`,
+  ].join(" && ");
+  const configMessage =
+    "这是 vLab Workshop 配置域验收第一阶段。必须使用 exec 原样执行下面命令一次：\n" +
+    `${configCommand}\n` +
+    "如果 exec 返回 Command still running，必须使用 process poll 对返回的 " +
+    "session 持续轮询，直到命令退出并拿到最终输出。然后只回复 " +
+    "VLAB_WORKSHOP_CONFIG_OK。不要执行其他操作。";
+
+  const configSent = await call("chat.send", {
+    sessionKey: configSessionKey,
+    agentId: "makaron",
+    message: configMessage,
+    deliver: false,
+    timeoutMs,
+    idempotencyKey: configRunId,
+  });
+  assert.equal(configSent.runId, configRunId);
+
+  const configWaited = await call("agent.wait", {
+    runId: configRunId,
+    timeoutMs: timeoutMs - 10_000,
+  });
+  assert.ok(
+    configWaited.status === "ok" ||
+      configWaited.status === "succeeded" ||
+      (configWaited.status === "timeout" &&
+        configWaited.timeoutPhase === "gateway_draining"),
+    `Worker Workshop config stage did not terminate: ${configWaited.status}`,
+  );
+
+  assert.equal(await readFile(workerConfigPath, "utf8"), workerBeforeRaw);
+  let reloadedGatewayConfig;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    reloadedGatewayConfig = parseRawConfig(await call("config.get"));
+    if (
+      reloadedGatewayConfig.skills?.workshop?.maxSkillBytes === 100_000 &&
+      reloadedGatewayConfig.skills?.workshop?.allowSymlinkTargetWrites === true &&
+      JSON.stringify(
+        reloadedGatewayConfig.skills?.load?.allowSymlinkTargets,
+      ) === JSON.stringify(probeAllowedTargets)
+    ) {
+      break;
+    }
+    await sleep(1_000);
+  }
+  assert.equal(reloadedGatewayConfig.skills?.workshop?.maxSkillBytes, 100_000);
+  assert.equal(
+    reloadedGatewayConfig.skills?.workshop?.allowSymlinkTargetWrites,
+    true,
+  );
+  assert.deepEqual(
+    reloadedGatewayConfig.skills?.load?.allowSymlinkTargets,
+    probeAllowedTargets,
+  );
+
+  // OpenClaw 8.1's Workshop apply RPC evaluates the Gateway's runtime config
+  // snapshot. A CLI config write updates the canonical file, but the Gateway
+  // must be reloaded before that new global policy is used by Workshop.
+  restartGatewayService();
+  gatewayRestartedForConfig = true;
+  await waitForWorkersReady();
+
+  const applyCommand = [
     `proposal_json="$(${nodePath} ${openClawPath} skills workshop propose-update ${skillName} --proposal ${draftPath} --description 'vLab worker config-domain symlink smoke' --json)"`,
     `proposal_id="$(/usr/bin/printf '%s' "$proposal_json" | /usr/bin/jq -r '.record.id')"`,
     `${nodePath} ${openClawPath} skills workshop apply "$proposal_id" --json`,
     `/usr/bin/printf 'VLAB_WORKSHOP_SYMLINK_OK proposal=%s\\n' "$proposal_id"`,
   ].join(" && ");
   const message =
-    "这是 vLab Workshop 配置域验收。必须使用 exec 原样执行下面命令一次：\n" +
-    `${command}\n` +
+    "这是 vLab Workshop 配置域验收第二阶段。Gateway 已确认加载新配置。必须使用 exec 原样执行下面命令一次：\n" +
+    `${applyCommand}\n` +
     "如果 exec 返回 Command still running，必须使用 process poll 对返回的 " +
     "session 持续轮询，直到命令退出并拿到最终输出。然后只回复 " +
     "VLAB_WORKSHOP_SYMLINK_OK。不要执行其他操作。";
 
   const sent = await call("chat.send", {
-    sessionKey,
+    sessionKey: applySessionKey,
     agentId: "makaron",
     message,
     deliver: false,
     timeoutMs,
-    idempotencyKey: runId,
+    idempotencyKey: applyRunId,
   });
-  assert.equal(sent.runId, runId);
+  assert.equal(sent.runId, applyRunId);
 
   const waited = await call("agent.wait", {
-    runId,
+    runId: applyRunId,
     timeoutMs: timeoutMs - 10_000,
   });
   assert.ok(
@@ -209,7 +313,7 @@ try {
   let execOutput = "";
   for (let attempt = 0; attempt < 30; attempt += 1) {
     history = await call("chat.history", {
-      sessionKey,
+      sessionKey: applySessionKey,
       limit: 40,
     });
     execOutput = history.messages
@@ -302,5 +406,9 @@ try {
   }
   if (draftCreated) {
     await rm(draftPath, { force: true });
+  }
+  if (gatewayRestartedForConfig) {
+    restartGatewayService();
+    await waitForWorkersReady();
   }
 }

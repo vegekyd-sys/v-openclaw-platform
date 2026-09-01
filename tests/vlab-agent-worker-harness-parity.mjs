@@ -18,6 +18,8 @@ const token = timestamp.toLowerCase();
 const sessionKey = `agent:makaron:explicit:vlab-harness-parity-${token}`;
 const runId = `vlab-harness-parity-${token}`;
 const marker = `VLAB_HARNESS_PARITY_OK_${token}`;
+const expectedWorkerVersion =
+  process.env.VLAB_EXPECTED_WORKER_VERSION ?? "0.2.8";
 const reportDir =
   `${labRoot}/logs/agent-worker-harness-parity-${timestamp}`;
 
@@ -126,8 +128,8 @@ const before = await call("vlab.workers.status");
 await saveJson("status-before.json", before);
 assert.equal(
   before.integration.workerIsolationVersion,
-  "0.2.0",
-  "vLab is not running worker isolation 0.2.0",
+  expectedWorkerVersion,
+  `vLab is not running worker isolation ${expectedWorkerVersion}`,
 );
 
 const message =

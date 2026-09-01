@@ -59,7 +59,7 @@ const toolNames = (history) =>
   );
 
 const before = await call("vlab.workers.status");
-assert.equal(before.integration.workerIsolationVersion, "0.2.0");
+assert.equal(before.integration.workerIsolationVersion, "0.2.8");
 assert.equal(before.integration.sessionHotset.gateway.enabled, true);
 assert.equal(
   before.integration.sessionHotset.gateway.strategy,

@@ -9,12 +9,28 @@ const service =
 const runtimePath =
   process.env.VLAB_OPENCLAW_GATEWAY_RUNTIME ??
   "/opt/vlab/current/node_modules/openclaw/dist/plugin-sdk/gateway-runtime.js";
-const mainCount = 5;
-const childCount = 5;
+const mainCount = Number(process.env.VLAB_MAIN_COUNT ?? 5);
+const childCount = mainCount;
 const expectedWorkerVersion =
-  process.env.VLAB_EXPECTED_WORKER_VERSION ?? "0.2.4";
+  process.env.VLAB_EXPECTED_WORKER_VERSION ?? "0.2.8";
+const expectedMaxWorkers = Number(
+  process.env.VLAB_EXPECTED_MAX_WORKERS ?? 15,
+);
+const expectedSessionsPerWorker = Number(
+  process.env.VLAB_EXPECTED_SESSIONS_PER_WORKER ?? 3,
+);
+const expectedMaxConcurrent = Number(
+  process.env.VLAB_EXPECTED_MAX_CONCURRENT ?? 45,
+);
+const expectedSubagentMaxConcurrent = Number(
+  process.env.VLAB_EXPECTED_SUBAGENT_MAX_CONCURRENT ?? 45,
+);
 const mainHoldSeconds = Number(process.env.VLAB_MAIN_HOLD_SECONDS ?? 180);
 const childHoldSeconds = Number(process.env.VLAB_CHILD_HOLD_SECONDS ?? 60);
+const testTimeoutMs = Number(process.env.VLAB_TEST_TIMEOUT_MS ?? 420_000);
+const gatewayCallAttempts = Number(
+  process.env.VLAB_GATEWAY_CALL_ATTEMPTS ?? 60,
+);
 const timestamp = new Date()
   .toISOString()
   .replaceAll("-", "")
@@ -87,18 +103,21 @@ await mkdir(reportDir, { recursive: true, mode: 0o700 });
 const { callGatewayFromCli } = await import(pathToFileURL(runtimePath).href);
 const call = async (method, params = {}) => {
   let lastError;
-  for (let attempt = 1; attempt <= 8; attempt += 1) {
+  for (let attempt = 1; attempt <= gatewayCallAttempts; attempt += 1) {
     try {
       return await callGatewayFromCli(
         method,
-        { timeout: "480000", json: true },
+        { timeout: String(Math.max(480_000, testTimeoutMs + 60_000)), json: true },
         params,
       );
     } catch (error) {
       lastError = error;
-      if (attempt < 8) {
-        await sleep(1_500);
-      }
+      const retryableHistoryRebuild =
+        error?.retryable === true ||
+        (error?.code === "UNAVAILABLE" &&
+          /history is rebuilding/i.test(error?.message ?? ""));
+      if (!retryableHistoryRebuild || attempt >= gatewayCallAttempts) throw error;
+      await sleep(Math.max(250, Number(error?.retryAfterMs ?? 1_000)));
     }
   }
   throw lastError;
@@ -110,10 +129,13 @@ await saveJson("status-before.json", before);
 assert.equal(before.integration.workerIsolationVersion, expectedWorkerVersion);
 assert.equal(before.integration.nestedGatewayHarnessRouting, true);
 assert.equal(before.integration.workerUsesIngressAgentCommand, true);
-assert.equal(before.maxWorkers, 3);
-assert.equal(before.sessionsPerWorker, 3);
-assert.equal(before.openClawConcurrency.maxConcurrent, 10);
-assert.equal(before.openClawConcurrency.subagentsMaxConcurrent, 8);
+assert.equal(before.maxWorkers, expectedMaxWorkers);
+assert.equal(before.sessionsPerWorker, expectedSessionsPerWorker);
+assert.equal(before.openClawConcurrency.maxConcurrent, expectedMaxConcurrent);
+assert.equal(
+  before.openClawConcurrency.subagentsMaxConcurrent,
+  expectedSubagentMaxConcurrent,
+);
 
 const mains = Array.from({ length: mainCount }, (_, index) => {
   const number = index + 1;
@@ -147,7 +169,7 @@ await Promise.all(
       agentId: "makaron",
       message,
       deliver: false,
-      timeoutMs: 420_000,
+      timeoutMs: testTimeoutMs,
       idempotencyKey: item.runId,
     });
     assert.equal(sent.runId, item.runId);
@@ -168,7 +190,7 @@ let degradedSamples = 0;
 let currentDegradedStreak = 0;
 let maxDegradedStreak = 0;
 let completionCount = 0;
-const deadline = Date.now() + 420_000;
+const deadline = Date.now() + testTimeoutMs;
 
 while (Date.now() < deadline) {
   const [status, health] = await Promise.all([
@@ -344,11 +366,11 @@ assert.equal(finalRestarts, baselineRestarts);
 assert.equal(healthAfter.eventLoop?.degraded, false);
 assert.equal(peakMainActive, mainCount);
 assert.ok(
-  peakChildActive >= 4,
+  peakChildActive >= childCount,
   `only ${peakChildActive} child runs entered the pool concurrently`,
 );
 assert.ok(
-  peakTargetActive >= 9,
+  peakTargetActive >= mainCount + childCount,
   `only ${peakTargetActive} target runs were simultaneously active`,
 );
 assert.ok(
@@ -370,7 +392,10 @@ const summary = {
     childCount,
     mainHoldSeconds,
     childHoldSeconds,
-    maxActiveSessions: 9,
+    configuredWorkerCapacity:
+      expectedMaxWorkers * expectedSessionsPerWorker,
+    expectedMaxConcurrent,
+    expectedSubagentMaxConcurrent,
   },
   acceptance: {
     acceptedChildren: childByMain.size,

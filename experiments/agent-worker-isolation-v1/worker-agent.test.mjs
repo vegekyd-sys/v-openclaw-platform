@@ -31,6 +31,7 @@ function makeMultiWorkerPool() {
     idleTimeoutMs: 1_000,
     requestTimeoutMs: 5_000,
     requestCancelGraceMs: 100,
+    warmSpareWorkers: 0,
   });
 }
 
@@ -64,6 +65,25 @@ test("persistent worker does not run one-shot CLI teardown per turn", async () =
   }
 });
 
+test("worker admits OpenClaw through a compaction-provider generation", async () => {
+  const pool = makePool();
+  try {
+    const result = await pool.dispatch("agent:fixture:compaction-runtime", {
+      kind: "agent",
+      harnessAttempt: true,
+      message: "inspect-compaction-runtime",
+      sessionId: "compaction-runtime",
+      runId: "run-compaction-runtime",
+    });
+    const runtime = JSON.parse(result.payloads[0].text);
+
+    assert.equal(runtime.hasRuntimeContext, true);
+    assert.deepEqual(runtime.providerIds, ["versa-fast-quality-v1"]);
+  } finally {
+    await pool.close();
+  }
+});
+
 test("worker forwards the extended native run lease to OpenClaw", async () => {
   const pool = makePool();
   try {
@@ -88,16 +108,32 @@ test("worker forwards the extended native run lease to OpenClaw", async () => {
 test("active Worker Agent turn accepts an in-turn Steer message", async () => {
   const pool = makePool();
   try {
-    const submitted = await pool.submit("agent:fixture:steer", {
-      kind: "agent",
-      harnessAttempt: true,
-      message: "steer-hold",
-      sessionId: "steer-session",
-      runId: "steer-run",
+    let markSteerReady;
+    const steerReady = new Promise((resolve) => {
+      markSteerReady = resolve;
     });
-    while (pool.status().workers[0]?.activeCount !== 1) {
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    }
+    const submitted = await pool.submit(
+      "agent:fixture:steer",
+      {
+        kind: "agent",
+        harnessAttempt: true,
+        message: "steer-hold",
+        sessionId: "steer-session",
+        runId: "steer-run",
+        eventCallbackNames: ["onExecutionPhase"],
+      },
+      {
+        onEvent(event) {
+          if (
+            event.name === "onExecutionPhase" &&
+            event.args[0]?.phase === "fixture_steer_ready"
+          ) {
+            markSteerReady();
+          }
+        },
+      },
+    );
+    await steerReady;
     const outcome = await pool.steer(
       submitted.requestId,
       "new objective",

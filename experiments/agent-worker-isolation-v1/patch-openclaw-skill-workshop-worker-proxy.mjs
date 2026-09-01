@@ -4,16 +4,42 @@ import { copyFile, readFile, readdir, rename, stat, writeFile } from "node:fs/pr
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-export const PATCH_MARKER = "v-worker-skill-workshop-subprocess-v0.2.2";
+export const PATCH_MARKER =
+  "v-worker-skill-workshop-subprocess-v0.2.8-agent-owner";
+const LEGACY_PATCH_MARKER_V028 =
+  "v-worker-skill-workshop-subprocess-v0.2.8";
+const LEGACY_PATCH_MARKER_V022 =
+  "v-worker-skill-workshop-subprocess-v0.2.2";
 const TOOL_ANCHOR =
   "/** Create the Skill Workshop tool for proposal discovery and lifecycle actions. */";
 const EXECUTE_ANCHOR = "\t\texecute: async (_toolCallId, args) => {\n";
-const BACKUP_SUFFIX = ".v-worker-tool-proxy-v0.2.2.bak";
-const INJECTION = `\t\t\t// ${PATCH_MARKER}\n\t\t\tconst workerToolProxy = globalThis[Symbol.for("versa.vlab.gateway-owned-tool-proxy-v1")];\n\t\t\tif (typeof workerToolProxy === "function") return await workerToolProxy({\n\t\t\t\ttoolName: "skill_workshop",\n\t\t\t\ttoolCallId: _toolCallId,\n\t\t\t\targs,\n\t\t\t\tcontext: {\n\t\t\t\t\tworkspaceDir: options.workspaceDir,\n\t\t\t\t\tagentId: options.agentId,\n\t\t\t\t\tagentSessionKey: options.agentSessionKey,\n\t\t\t\t\trequesterAgentIdOverride: options.requesterAgentIdOverride\n\t\t\t\t}\n\t\t\t});\n`;
+const BACKUP_SUFFIX = ".v-worker-tool-proxy-v0.2.8-agent-owner.bak";
+const LEGACY_INJECTION_V028 = `\t\t\t// ${LEGACY_PATCH_MARKER_V028}\n\t\t\tconst workerToolProxy = globalThis[Symbol.for("versa.vlab.gateway-owned-tool-proxy-v1")];\n\t\t\tif (typeof workerToolProxy === "function") return await workerToolProxy({\n\t\t\t\ttoolName: "skill_workshop",\n\t\t\t\ttoolCallId: _toolCallId,\n\t\t\t\targs,\n\t\t\t\tcontext: {\n\t\t\t\t\tworkspaceDir: options.workspaceDir,\n\t\t\t\t\tagentId: options.agentId,\n\t\t\t\t\tagentSessionKey: options.agentSessionKey,\n\t\t\t\t\trunSessionKey: options.runSessionKey,\n\t\t\t\t\trequesterAgentIdOverride: options.requesterAgentIdOverride\n\t\t\t\t}\n\t\t\t});\n`;
+const LEGACY_INJECTION_V022 = LEGACY_INJECTION_V028
+  .replace(LEGACY_PATCH_MARKER_V028, LEGACY_PATCH_MARKER_V022)
+  .replace("\t\t\t\t\trunSessionKey: options.runSessionKey,\n", "");
+const INJECTION = `\t\t\t// ${PATCH_MARKER}\n\t\t\tconst workerToolProxy = globalThis[Symbol.for("versa.vlab.gateway-owned-tool-proxy-v1")];\n\t\t\tif (typeof workerToolProxy === "function") return await workerToolProxy({\n\t\t\t\ttoolName: "skill_workshop",\n\t\t\t\ttoolCallId: _toolCallId,\n\t\t\t\targs,\n\t\t\t\tcontext: {\n\t\t\t\t\tworkspaceDir: options.workspaceDir,\n\t\t\t\t\tagentId: options.agentId,\n\t\t\t\t\tagentSessionKey: options.agentSessionKey ?? options.origin?.sessionKey,\n\t\t\t\t\trunSessionKey: options.runSessionKey ?? options.origin?.sessionKey,\n\t\t\t\t\trequesterAgentIdOverride: options.requesterAgentIdOverride ?? options.agentId\n\t\t\t\t}\n\t\t\t});\n`;
 
 export function patchSkillWorkshopWorkerProxy(source) {
   if (source.includes(PATCH_MARKER)) {
     return { source, changed: false };
+  }
+  for (const legacyInjection of [
+    LEGACY_INJECTION_V028,
+    LEGACY_INJECTION_V022,
+  ]) {
+    if (source.includes(legacyInjection)) {
+      return {
+        source: source.replace(legacyInjection, INJECTION),
+        changed: true,
+      };
+    }
+  }
+  if (
+    source.includes(LEGACY_PATCH_MARKER_V028) ||
+    source.includes(LEGACY_PATCH_MARKER_V022)
+  ) {
+    throw new Error("legacy Skill Workshop Worker proxy shape was not found");
   }
   const sectionStart = source.indexOf(TOOL_ANCHOR);
   if (sectionStart < 0) {

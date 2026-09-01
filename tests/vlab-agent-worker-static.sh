@@ -38,14 +38,24 @@ node --check "${EXPERIMENT_DIR}/session-hotset.mjs"
 node --check "${EXPERIMENT_DIR}/session-hotset.test.mjs"
 node --check "${EXPERIMENT_DIR}/gateway-owned-tool-proxy.mjs"
 node --check "${EXPERIMENT_DIR}/gateway-owned-tool-proxy.test.mjs"
+node --check "${EXPERIMENT_DIR}/gateway-sessions-spawn.mjs"
+node --check "${EXPERIMENT_DIR}/gateway-sessions-spawn.test.mjs"
+node --check "${EXPERIMENT_DIR}/patch-openclaw-sessions-spawn-gateway-proxy.mjs"
+node --check "${EXPERIMENT_DIR}/patch-openclaw-sessions-spawn-gateway-proxy.test.mjs"
+node --check "${EXPERIMENT_DIR}/patch-openclaw-sessions-yield-external-task.mjs"
+node --check "${EXPERIMENT_DIR}/patch-openclaw-sessions-yield-external-task.test.mjs"
+node --check "${EXPERIMENT_DIR}/subagent-completion-relay.mjs"
+node --check "${EXPERIMENT_DIR}/subagent-completion-relay.test.mjs"
 node --check "${EXPERIMENT_DIR}/skill-workshop-subprocess-runner.mjs"
 node --check "${EXPERIMENT_DIR}/patch-openclaw-skill-workshop-worker-proxy.mjs"
 node --check "${EXPERIMENT_DIR}/patch-openclaw-skill-workshop-worker-proxy.test.mjs"
 node --check "${REPO_ROOT}/scripts/patch-openclaw-session-hotset.mjs"
 node --check "${REPO_ROOT}/scripts/patch-openclaw-media-completion-relay.mjs"
+node --check "${REPO_ROOT}/scripts/patch-feishu-active-run-steering.mjs"
 node --check "${REPO_ROOT}/scripts/prune-openclaw-session-hotset.mjs"
 node --check "${REPO_ROOT}/tests/patch-openclaw-session-hotset.test.mjs"
 node --check "${REPO_ROOT}/tests/patch-openclaw-media-completion-relay.test.mjs"
+node --check "${REPO_ROOT}/tests/patch-feishu-active-run-steering.test.mjs"
 node --check "${REPO_ROOT}/tests/prune-openclaw-session-hotset.test.mjs"
 node --check "${REPO_ROOT}/tests/vlab-session-hotset-benchmark.mjs"
 node --check "${REPO_ROOT}/tests/vlab-session-hotset-cross-session.mjs"
@@ -70,10 +80,15 @@ node --test \
   "${EXPERIMENT_DIR}/harness-event-contract.test.mjs" \
   "${EXPERIMENT_DIR}/harness-result.test.mjs" \
   "${EXPERIMENT_DIR}/session-rollover-retry.test.mjs" \
+  "${EXPERIMENT_DIR}/gateway-sessions-spawn.test.mjs" \
+  "${EXPERIMENT_DIR}/patch-openclaw-sessions-spawn-gateway-proxy.test.mjs" \
+  "${EXPERIMENT_DIR}/patch-openclaw-sessions-yield-external-task.test.mjs" \
+  "${EXPERIMENT_DIR}/subagent-completion-relay.test.mjs" \
   "${EXPERIMENT_DIR}/fast-compaction-provider.test.mjs" \
   "${EXPERIMENT_DIR}/session-hotset.test.mjs" \
   "${EXPERIMENT_DIR}/gateway-owned-tool-proxy.test.mjs" \
   "${EXPERIMENT_DIR}/patch-openclaw-skill-workshop-worker-proxy.test.mjs" \
+  "${EXPERIMENT_DIR}/patch-openclaw-worker-exec-config-domain.test.mjs" \
   "${EXPERIMENT_DIR}/worker-stream-parity.test.mjs" \
   "${EXPERIMENT_DIR}/worker-gateway-events.test.mjs" \
   "${EXPERIMENT_DIR}/skill-usage-telemetry.test.mjs" \
@@ -81,8 +96,10 @@ node --test \
   "${EXPERIMENT_DIR}/worker-skill-telemetry.test.mjs" \
   "${EXPERIMENT_DIR}/worker-detached-event.test.mjs" \
   "${EXPERIMENT_DIR}/worker-agent.test.mjs" \
+  "${EXPERIMENT_DIR}/worker-exec-argv.test.mjs" \
   "${REPO_ROOT}/tests/patch-openclaw-session-hotset.test.mjs" \
   "${REPO_ROOT}/tests/patch-openclaw-media-completion-relay.test.mjs" \
+  "${REPO_ROOT}/tests/patch-feishu-active-run-steering.test.mjs" \
   "${REPO_ROOT}/tests/prune-openclaw-session-hotset.test.mjs"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-remote.sh"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-soak.sh"
@@ -92,6 +109,7 @@ bash -n "${REPO_ROOT}/tests/vlab-agent-worker-native-dispatch.sh"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-native-faults.sh"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-config-domain.sh"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-compaction.sh"
+bash -n "${REPO_ROOT}/tests/vlab-openclaw-runtime-auto-compaction.sh"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-harness-parity.sh"
 bash -n "${REPO_ROOT}/scripts/activate-agent-worker-production.sh"
 bash -n "${REPO_ROOT}/scripts/deploy-agent-worker-production.sh"
@@ -110,7 +128,7 @@ grep -q 'lane: message.lane ?? message.sessionKey' \
   "${EXPERIMENT_DIR}/worker.mjs"
 grep -q 'allowGatewaySubagentBinding: true' \
   "${EXPERIMENT_DIR}/worker.mjs"
-grep -q 'agentCommandFromIngress' \
+grep -q 'agentCommandFromGatewayIngress' \
   "${EXPERIMENT_DIR}/worker.mjs"
 grep -q 'api.on(' "${EXPERIMENT_DIR}/index.mjs"
 grep -q '"resolve_exec_env"' "${EXPERIMENT_DIR}/index.mjs"
@@ -171,7 +189,7 @@ grep -q 'patchedPackageRoots' \
   "${REPO_ROOT}/scripts/activate-agent-worker-production.sh"
 grep -q 'prune-openclaw-session-hotset.mjs' \
   "${REPO_ROOT}/scripts/deploy-agent-worker-production.sh"
-grep -q 'workerIsolationVersion == "0.2.4"' \
+grep -q 'workerIsolationVersion == "0.2.8"' \
   "${REPO_ROOT}/scripts/activate-agent-worker-production.sh"
 grep -q 'patch-openclaw-skill-workshop-worker-proxy.mjs' \
   "${REPO_ROOT}/scripts/activate-agent-worker-production.sh"
@@ -199,7 +217,7 @@ jq -e \
   "${EXPERIMENT_DIR}/openclaw.plugin.json" >/dev/null
 jq -e '.openclaw.extensions == ["./index.mjs"]' \
   "${EXPERIMENT_DIR}/package.json" >/dev/null
-jq -e '.version == "0.2.6"' \
+jq -e '.version == "0.2.8"' \
   "${EXPERIMENT_DIR}/package.json" >/dev/null
 grep -q 'requestTimeoutMs: attemptTimeoutMs' "${EXPERIMENT_DIR}/index.mjs"
 

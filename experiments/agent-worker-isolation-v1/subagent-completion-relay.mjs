@@ -69,7 +69,7 @@ export function startSubagentCompletionRelays(options) {
       try {
         const wait = await options.waitForRun({ runId, timeoutMs });
         let delivered = false;
-        const announced = await options.runNativeAnnounce({
+        const announceParams = {
           childSessionKey: spawn.childSessionKey.trim(),
           childRunId: runId,
           requesterSessionKey: options.requesterSessionKey,
@@ -88,7 +88,18 @@ export function startSubagentCompletionRelays(options) {
               delivered = true;
             }
           },
-        });
+        };
+        const announced =
+          typeof options.deliverHarnessTaskCompletion === "function"
+            ? await options.deliverHarnessTaskCompletion({
+                spawn,
+                wait,
+                outcome: announceParams.outcome,
+              })
+            : await options.runNativeAnnounce(announceParams);
+        if (announced?.delivered === true) {
+          delivered = true;
+        }
         if (announced === true || delivered) {
           increment(stats, "delivered");
         }

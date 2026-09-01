@@ -57,6 +57,53 @@ async function handleFeishuMessage(params) {
 }
 `;
 
+const openClaw81Fixture = `
+function createSequentialQueue(options = {}) {
+\tconst queues = /* @__PURE__ */ new Map();
+\tconst taskTimeoutMs = options.taskTimeoutMs ?? DEFAULT_TASK_TIMEOUT_MS;
+\tconst onTaskTimeout = options.onTaskTimeout;
+\treturn (key, task) => {
+\t\tconst previous = queues.get(key) ?? Promise.resolve();
+\t\tconst wrapped = () => boundedRun(key, task, taskTimeoutMs, onTaskTimeout);
+\t\tconst next = previous.then(wrapped, wrapped);
+\t\tqueues.set(key, next);
+\t\tconst cleanup = () => {
+\t\t\tif (queues.get(key) === next) queues.delete(key);
+\t\t};
+\t\tnext.then(cleanup, cleanup);
+\t\treturn next;
+\t};
+}
+async function handleFeishuMessage(params) {
+\tconst replyOptions = {};
+\tconst turnAdoptionLifecycle = params.turnAdoptionLifecycle;
+\tconst turnResult = await core.channel.inbound.run({
+\t\tadapter: { resolveTurn: () => ({
+\t\t\t\t\t\treplyOptions: {
+\t\t\t\t\t\t\t...replyOptions,
+\t\t\t\t\t\t\t...turnAdoptionLifecycle ? bindIngressLifecycleToReplyOptions(turnAdoptionLifecycle) : {}
+\t\t\t\t\t\t}
+\t\t}) }
+\t});
+\t\t\tif (shouldSendNoVisibleReplyFallback(dispatchResult)) await ensureNoVisibleReplyFallback("dispatch-complete-no-visible-reply");
+}
+function createFeishuMessageReceiveHandler() {
+\tconst dispatchFeishuMessage = async (event, messageDedupeKey, processingClaim, turnAdoptionLifecycle) => {
+\t\tconst sequentialKey = resolveSequentialKey({ accountId, event });
+\t\tconst task = async () => {
+\t\t\tif (turnAdoptionLifecycle?.abortSignal.aborted) return;
+\t\t\tawait handleMessage({
+\t\t\t\tcfg,
+\t\t\t\tprocessingClaim,
+\t\t\t\tmessageDedupeKey,
+\t\t\t\tturnAdoptionLifecycle
+\t\t\t});
+\t\t};
+\t\tawait enqueue(sequentialKey, task);
+\t};
+}
+`;
+
 test("patch exposes busy state and routes a later message to the active-run lane", () => {
   const result = patchFeishuActiveRunSteeringBundle(officialFixture);
   assert.equal(result.changed, true);
@@ -96,6 +143,23 @@ test("patch upgrades the ingress-only VLab draft with Reply Operation admission"
   const upgraded = patchFeishuActiveRunSteeringBundle(ingressOnly);
   assert.equal(upgraded.changed, true);
   assert.match(upgraded.source, /queuedFollowupLifecycle:/);
+});
+
+test("patches the OpenClaw 2026.8.1 durable-ingress shape", () => {
+  const result = patchFeishuActiveRunSteeringBundle(openClaw81Fixture);
+  assert.equal(result.changed, true);
+  assert.match(result.source, /const task = async \(\) => \{/);
+  assert.match(result.source, /activeRunDispatch/);
+  assert.match(result.source, /turnAdoptionLifecycle,\n\t\t\t\tactiveRunDispatch/);
+  assert.match(result.source, /queuedFollowupLifecycle:/);
+  assert.match(
+    result.source,
+    /if \(!params\.activeRunDispatch && shouldSendNoVisibleReplyFallback\(dispatchResult\)\)/,
+  );
+  assert.equal(
+    patchFeishuActiveRunSteeringBundle(result.source).changed,
+    false,
+  );
 });
 
 test("the second same-chat dispatch enters before the first completes", async () => {
@@ -141,7 +205,11 @@ test("the second same-chat dispatch enters before the first completes", async ()
 });
 
 test("the package patch is reversible for the monolithic OpenClaw package", async () => {
-  for (const packageName of ["openclaw", "@openclaw/feishu"]) {
+  for (const [packageName, version, fixture] of [
+    ["openclaw", "2026.7.1", officialFixture],
+    ["@openclaw/feishu", "2026.7.1", officialFixture],
+    ["@openclaw/feishu", "2026.8.1", openClaw81Fixture],
+  ]) {
     const packageRoot = await mkdtemp(
       path.join(os.tmpdir(), "openclaw-feishu-steer-test-"),
     );
@@ -149,14 +217,14 @@ test("the package patch is reversible for the monolithic OpenClaw package", asyn
       await mkdir(path.join(packageRoot, "dist"));
       await writeFile(
         path.join(packageRoot, "package.json"),
-        JSON.stringify({ name: packageName, version: "2026.7.1" }),
+        JSON.stringify({ name: packageName, version }),
       );
       const bundlePath = path.join(
         packageRoot,
         "dist",
         "monitor.account-test.js",
       );
-      await writeFile(bundlePath, officialFixture);
+      await writeFile(bundlePath, fixture);
 
       assert.equal((await patchPackage(packageRoot)).changed, true);
       assert.match(
@@ -165,7 +233,7 @@ test("the package patch is reversible for the monolithic OpenClaw package", asyn
       );
       assert.equal((await patchPackage(packageRoot)).changed, false);
       assert.equal((await restorePackage(packageRoot)).changed, true);
-      assert.equal(await readFile(bundlePath, "utf8"), officialFixture);
+      assert.equal(await readFile(bundlePath, "utf8"), fixture);
       assert.equal((await restorePackage(packageRoot)).changed, false);
     } finally {
       await rm(packageRoot, { recursive: true, force: true });

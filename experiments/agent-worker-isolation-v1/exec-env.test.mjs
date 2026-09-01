@@ -36,6 +36,19 @@ assert.deepEqual(
     VLAB_ACTIVE_CONFIG_DOMAIN: "gateway",
   },
 );
+assert.deepEqual(
+  resolveWorkerExecEnv(
+    {
+      toolName: "exec",
+      host: "node",
+    },
+    workerEnv,
+  ),
+  {
+    OPENCLAW_CONFIG_PATH: gatewayConfigPath,
+    VLAB_ACTIVE_CONFIG_DOMAIN: "gateway",
+  },
+);
 assert.equal(
   resolveWorkerExecEnv(
     {
