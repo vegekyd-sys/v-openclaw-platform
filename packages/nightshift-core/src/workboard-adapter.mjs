@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { normalizeWorkboardLabel } from "./orchestrator.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -48,7 +49,7 @@ export class WorkboardCliAdapter {
     }
 
     const card = action.card ?? approvalCard(action);
-    const labels = [...new Set([...(card.labels ?? []), marker])];
+    const labels = [...new Set([...(card.labels ?? []), marker])].map(normalizeWorkboardLabel);
     const notes = JSON.stringify(
       {
         nightshift: {
