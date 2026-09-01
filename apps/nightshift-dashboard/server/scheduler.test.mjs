@@ -121,6 +121,39 @@ test("isolates a manifest warning without blocking native dispatch", async () =>
   assert.equal(result.maxStarts, 1);
 });
 
+test("isolates one workflow tick failure without blocking other instances or native dispatch", async () => {
+  const events = [];
+  const ticks = [];
+  const result = await runNightShiftSchedulerPulse({
+    refreshCards: async () => [{ id: "ready", status: "ready" }],
+    runtime: {
+      tick: async (instanceId) => {
+        ticks.push(instanceId);
+        if (instanceId === "BROKEN") throw new Error("labels must be 40 characters or fewer");
+        return { applied: [] };
+      },
+    },
+    store: {
+      appendEvent: (event) => events.push(event),
+      listContentItemRuns: () => [],
+      listInstances: () => [
+        { id: "BROKEN", status: "active" },
+        { id: "HEALTHY", status: "active" },
+      ],
+      listActionCardIds: () => [],
+      listStageRuns: () => [{ cardId: "ready", stageId: "work", status: "ready" }],
+    },
+    syncContentItemsManifest: async () => {},
+    workboard: { dispatch: async () => ({ started: 1 }) },
+  });
+
+  assert.deepEqual(ticks, ["BROKEN", "HEALTHY"]);
+  assert.equal(result.maxStarts, 1);
+  assert.equal(result.warnings.length, 1);
+  assert.match(result.warnings[0], /BROKEN: workflow tick failed/);
+  assert.equal(events[0].type, "scheduler.instance.failed");
+});
+
 test("scheduler scope is independent from historical Workboard card count", async () => {
   const historical = Array.from({ length: 500 }, (_, index) => ({ id: `history-${index}`, status: "done" }));
   const activeCards = [
