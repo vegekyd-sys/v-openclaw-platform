@@ -1,17 +1,27 @@
 import { createServer } from "node:http";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, readFile, realpath, stat } from "node:fs/promises";
-import { extname, join, normalize, resolve, sep } from "node:path";
+import { mkdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
+import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadPublicAuth, requiresPublicAuth, verifyPublicAuth } from "./public-auth.mjs";
+import { resolveCardDecisionContext } from "./decision-context.mjs";
+import { dashboardCardIds, instanceCardIds, runNightShiftSchedulerPulse } from "./scheduler.mjs";
 import {
   deliverableArtifactPaths,
+  humanStageHandoff,
+  NightShiftNotificationCoordinator,
   NightShiftRuntime,
   NightShiftStore,
   normalizeArtifactPath,
   normalizeDeliverablesManifest,
+  normalizeStageHandoff,
+  OpenClawFeishuNotificationSender,
+  presentStageHandoff,
+  redactSensitiveInputs,
   requiredSkillsByRole,
+  stageHandoffPath,
+  validateDeclaredCompletion,
   validateProjectRequest,
   WorkboardGatewayAdapter,
 } from "../../../packages/nightshift-core/src/index.mjs";
@@ -28,14 +38,29 @@ const workflowPath = resolve(
 );
 const board = process.env.NIGHTSHIFT_BOARD ?? "nightshift-lab";
 const publicHost = process.env.NIGHTSHIFT_PUBLIC_HOST ?? "";
+const publicBaseUrl = process.env.NIGHTSHIFT_PUBLIC_BASE_URL ?? "";
+const schedulerMode = process.env.NIGHTSHIFT_SCHEDULER_MODE ?? "internal";
+const schedulerIntervalMs = positiveInteger(process.env.NIGHTSHIFT_SCHEDULER_INTERVAL_MS, 30_000);
+const schedulerDispatchMaxStarts = positiveInteger(process.env.NIGHTSHIFT_DISPATCH_MAX_STARTS, 12);
+const schedulerMaxWorkboardActive = positiveInteger(process.env.NIGHTSHIFT_MAX_WORKBOARD_ACTIVE, 36);
+const notificationsEnabled = process.env.NIGHTSHIFT_FEISHU_NOTIFICATIONS === "1";
 const publicAuth = await loadPublicAuth(process.env.NIGHTSHIFT_BASIC_AUTH_FILE);
 await mkdir(dataDir, { recursive: true });
 const store = new NightShiftStore(join(dataDir, "nightshift.sqlite"));
 const workboard = new WorkboardGatewayAdapter({ board });
 const runtime = new NightShiftRuntime({ board, completionValidator: validateCompletion, store, workboard });
+const notificationCoordinator = notificationsEnabled
+  ? new NightShiftNotificationCoordinator({
+      baseUrl: publicBaseUrl || `http://${host}:${port}`,
+      sender: new OpenClawFeishuNotificationSender(),
+      store,
+    })
+  : null;
 let cardCache = [];
+let lastSchedulerMetrics = null;
 let cardsUpdatedAt = null;
 let cardRefreshPromise = null;
+let dashboardRevision = 0;
 let lastSchedulerAt = null;
 let lastSchedulerError = null;
 let schedulerPromise = null;
@@ -45,14 +70,18 @@ const contentManifestHashes = new Map();
 
 await ensureWorkflow();
 await ensureSeedInstance();
-await refreshCards();
-await reconcileSeededInstances(cardCache);
-const schedulerTimer = setInterval(() => {
-  runScheduler();
-}, 30000);
-schedulerTimer.unref();
-const initialSchedulerTimer = setTimeout(() => runScheduler(), 1000);
-initialSchedulerTimer.unref();
+let schedulerTimer = null;
+let initialSchedulerTimer = null;
+if (schedulerMode === "internal") {
+  schedulerTimer = setInterval(() => {
+    runScheduler().catch(() => undefined);
+  }, schedulerIntervalMs);
+  schedulerTimer.unref();
+  initialSchedulerTimer = setTimeout(() => runScheduler().catch(() => undefined), 1000);
+  initialSchedulerTimer.unref();
+} else if (schedulerMode !== "external") {
+  throw new Error("NIGHTSHIFT_SCHEDULER_MODE must be internal or external");
+}
 
 const server = createServer(async (request, response) => {
   try {
@@ -87,14 +116,33 @@ async function handleApi(request, response, url) {
       cardsUpdatedAt,
       lastSchedulerAt,
       lastSchedulerError,
+      lastSchedulerMetrics,
+      notificationsEnabled,
       ok: true,
+      schedulerMode,
       service: "nightshift-workboard",
     });
     return;
   }
+  if (request.method === "POST" && url.pathname === "/api/internal/scheduler/run") {
+    if (!requestIsLoopback(request)) {
+      json(response, 403, { error: "The scheduler pulse is loopback-only" });
+      return;
+    }
+    json(response, 200, await runScheduler());
+    return;
+  }
   if (request.method === "GET" && url.pathname === "/api/bootstrap") {
-    if (url.searchParams.get("refresh") === "1") await refreshCards();
-    const instances = store.listInstances().map((instance) => ({
+    const activeInstances = store.listInstances().filter((instance) => instance.status !== "archived");
+    if (url.searchParams.get("refresh") === "1" || (cardCache.length === 0 && activeInstances.length > 0)) {
+      await refreshCards({ cardIds: dashboardCardIds(store, activeInstances) });
+    }
+    const since = Number(url.searchParams.get("since"));
+    if (url.searchParams.has("since") && Number.isInteger(since) && since === dashboardRevision) {
+      json(response, 200, { cardsUpdatedAt, notModified: true, revision: dashboardRevision });
+      return;
+    }
+    const instances = activeInstances.map((instance) => ({
       ...instance,
       contentItems: store.listContentItems(instance.id),
       contentItemRuns: store.listContentItemRuns(instance.id),
@@ -102,11 +150,13 @@ async function handleApi(request, response, url) {
     }));
     json(response, 200, {
       board,
-      cards: cardCache,
+      cards: visibleCards(cardCache, instances).map((card) => withCardLinks(cardSummary(card))),
       cardsUpdatedAt,
       events: store.listEvents(null, 80),
-      instances,
-      workflows: store.listReleases(),
+      instances: instances.map(withInstanceLinks),
+      links: dashboardLinks(),
+      revision: dashboardRevision,
+      workflows: store.listReleases().map(withWorkflowLinks),
     });
     return;
   }
@@ -118,13 +168,14 @@ async function handleApi(request, response, url) {
         version: release.version,
         workflowId: release.workflowId,
         workflowSha256: release.workflowSha256,
+        links: workflowLinks(release),
       })),
     });
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/instances") {
     json(response, 200, {
-      instances: store.listInstances().map((instance) => ({
+      instances: store.listInstances().filter((instance) => instance.status !== "archived").map((instance) => withInstanceLinks({
         ...instance,
         contentItemCount: store.listContentItems(instance.id).length,
         contentItemRuns: store.listContentItemRuns(instance.id),
@@ -142,23 +193,81 @@ async function handleApi(request, response, url) {
       return;
     }
     json(response, 200, {
-      ...instance,
+      ...withInstanceLinks(instance),
       contentItems: store.listContentItems(instanceId),
       contentItemRuns: store.listContentItemRuns(instanceId),
       stageRuns: store.listStageRuns(instanceId),
     });
     return;
   }
+  if (request.method === "DELETE" && instanceReadMatch) {
+    const instanceId = decodeURIComponent(instanceReadMatch[1]);
+    const instance = store.getInstance(instanceId);
+    if (!instance || instance.status === "archived") {
+      json(response, 404, { error: "Project not found" });
+      return;
+    }
+    const projectCards = cardCache.filter((card) => cardInstanceId(card) === instanceId);
+    const running = projectCards.filter((card) => card.status === "running");
+    if (running.length > 0) {
+      json(response, 409, { error: `项目仍有 ${running.length} 个 Agent 正在工作，请等待完成或先暂停项目` });
+      return;
+    }
+    for (const card of projectCards.filter((entry) => !["done", "cancelled"].includes(entry.status))) {
+      await workboard.moveCard(card.id, "cancelled");
+    }
+    const archived = store.archiveInstance(instanceId);
+    cardCache = cardCache.filter((card) => cardInstanceId(card) !== instanceId);
+    dashboardRevision += 1;
+    json(response, 200, { id: archived.id, status: archived.status });
+    return;
+  }
   if (request.method === "GET" && url.pathname === "/api/cards") {
-    const cards = url.searchParams.get("refresh") === "1" ? await refreshCards() : cardCache;
+    const instances = store.listInstances().filter((instance) => instance.status !== "archived");
+    const cards = url.searchParams.get("refresh") === "1"
+      ? await refreshCards({ cardIds: dashboardCardIds(store, instances) })
+      : cardCache;
     const status = url.searchParams.get("status");
-    json(response, 200, { cards: status ? cards.filter((card) => card.status === status) : cards });
+    const filtered = visibleCards(cards, instances);
+    json(response, 200, { cards: (status ? filtered.filter((card) => card.status === status) : filtered).map((card) => withCardLinks(cardSummary(card))), revision: dashboardRevision });
+    return;
+  }
+  const cardReadMatch = url.pathname.match(/^\/api\/cards\/([^/]+)$/);
+  if (request.method === "GET" && cardReadMatch) {
+    const cardId = decodeURIComponent(cardReadMatch[1]);
+    const card = (await refreshCards({ cardIds: [cardId] })).find((entry) => entry.id === cardId);
+    if (!card) {
+      json(response, 404, { error: "Workboard card not found" });
+      return;
+    }
+    json(response, 200, { card: withCardLinks(card), revision: dashboardRevision });
+    return;
+  }
+  const stageHandoffMatch = url.pathname.match(/^\/api\/instances\/([^/]+)\/stages\/([^/]+)\/handoff$/);
+  if (request.method === "GET" && stageHandoffMatch) {
+    const instanceId = decodeURIComponent(stageHandoffMatch[1]);
+    const stageId = decodeURIComponent(stageHandoffMatch[2]);
+    const contentItemId = url.searchParams.get("contentItemId");
+    const instance = store.getInstance(instanceId);
+    if (!instance) {
+      json(response, 404, { error: "Project not found" });
+      return;
+    }
+    const release = store.getRelease(instance.workflowSha256)?.manifest;
+    if (!release?.spec?.stages?.some((entry) => entry.id === stageId)) {
+      json(response, 404, { error: "Workflow stage not found" });
+      return;
+    }
+    const runs = contentItemId ? store.listContentItemRuns(instanceId) : store.listStageRuns(instanceId);
+    const run = runs.filter((entry) => entry.stageId === stageId && (contentItemId ? entry.contentItemId === contentItemId : true)).at(-1);
+    const manifest = await loadStageHandoff({ contentItemId, instance, release, stageId });
+    json(response, 200, presentStageHandoff({ completed: run?.status === "done", manifest, release, stageId }));
     return;
   }
   const cardSessionMatch = url.pathname.match(/^\/api\/cards\/([^/]+)\/session$/);
   if (request.method === "GET" && cardSessionMatch) {
     const cardId = decodeURIComponent(cardSessionMatch[1]);
-    const card = cardCache.find((entry) => entry.id === cardId) ?? (await refreshCards()).find((entry) => entry.id === cardId);
+    const card = cardCache.find((entry) => entry.id === cardId) ?? (await refreshCards({ cardIds: [cardId] })).find((entry) => entry.id === cardId);
     if (!card) {
       json(response, 404, { error: "Workboard card not found" });
       return;
@@ -247,7 +356,7 @@ async function handleApi(request, response, url) {
   }
   if (request.method === "POST" && url.pathname === "/api/workflows/publish") {
     const body = await bodyJson(request);
-    json(response, 200, runtime.publish(body.sourceMarkdown ?? body.sourceYaml ?? ""));
+    json(response, 200, withWorkflowLinks(runtime.publish(body.sourceMarkdown ?? body.sourceYaml ?? "")));
     return;
   }
   if (request.method === "POST" && url.pathname === "/api/workflows/import") {
@@ -259,7 +368,7 @@ async function handleApi(request, response, url) {
       return;
     }
     const draft = runtime.saveDraft(source);
-    const release = body.publish === false ? null : runtime.publish(source);
+    const release = body.publish === false ? null : withWorkflowLinks(runtime.publish(source));
     json(response, release ? 201 : 200, { draft, release });
     return;
   }
@@ -295,7 +404,7 @@ async function handleApi(request, response, url) {
           cardIds: scheduled.applied.map((entry) => entry.card?.id).filter(Boolean),
           dispatched: body.dispatch !== false,
         };
-        await refreshCards();
+        await refreshCards({ cardIds: instanceCardIds(store, [store.getInstance(created.id)]) });
       } catch (error) {
         initialScheduleError = error.message;
       }
@@ -304,11 +413,13 @@ async function handleApi(request, response, url) {
       ...store.getInstance(created.id),
       initialSchedule,
       initialScheduleError,
+      links: projectLinks(created.id),
       preflight,
     });
     return;
   }
   const instanceInputMatch = url.pathname.match(/^\/api\/instances\/([^/]+)\/inputs$/);
+  const instanceCollaborationMatch = url.pathname.match(/^\/api\/instances\/([^/]+)\/collaboration$/);
   const instanceLifecycleMatch = url.pathname.match(/^\/api\/instances\/([^/]+)\/(start|pause)$/);
   if (request.method === "POST" && instanceLifecycleMatch) {
     const instanceId = decodeURIComponent(instanceLifecycleMatch[1]);
@@ -323,20 +434,27 @@ async function handleApi(request, response, url) {
     }
     store.updateInstanceStatus(instanceId, "active");
     const result = await serializedTick(instanceId, { dispatch: true, dryRun: false });
-    await refreshCards();
+    await refreshCards({ cardIds: instanceCardIds(store, [store.getInstance(instanceId)]) });
     json(response, 200, { instance: store.getInstance(instanceId), schedule: result });
     return;
   }
   if (request.method === "PATCH" && instanceInputMatch) {
     const body = await bodyJson(request);
-    json(
-      response,
-      200,
-      runtime.updateInstanceInputs(
-        decodeURIComponent(instanceInputMatch[1]),
-        body.inputs ?? {},
-      ),
+    const updated = runtime.updateInstanceInputs(
+      decodeURIComponent(instanceInputMatch[1]),
+      body.inputs ?? {},
     );
+    await writeProjectInputsSnapshot(updated);
+    json(response, 200, updated);
+    return;
+  }
+  if (request.method === "PATCH" && instanceCollaborationMatch) {
+    const body = await bodyJson(request);
+    const updated = runtime.updateInstanceCollaboration(
+      decodeURIComponent(instanceCollaborationMatch[1]),
+      body.collaboration ?? {},
+    );
+    json(response, 200, updated);
     return;
   }
   const contentItemsMatch = url.pathname.match(/^\/api\/instances\/([^/]+)\/content-items$/);
@@ -358,7 +476,10 @@ async function handleApi(request, response, url) {
         dispatch: body.dispatch === true,
         dryRun: body.dryRun === true,
       });
-    if (!body.dryRun) await refreshCards();
+    if (!body.dryRun) {
+      const instance = store.getInstance(decodeURIComponent(tickMatch[1]));
+      await refreshCards({ cardIds: instanceCardIds(store, instance ? [instance] : []) });
+    }
     json(
       response,
       200,
@@ -367,30 +488,132 @@ async function handleApi(request, response, url) {
     return;
   }
   const decisionMatch = url.pathname.match(/^\/api\/cards\/([^/]+)\/(approve|request-changes|reject)$/);
+  if (request.method === "POST" && url.pathname === "/api/cards/bulk/approve") {
+    const body = await bodyJson(request);
+    const cardIds = [...new Set(Array.isArray(body.cardIds) ? body.cardIds : [])];
+    if (cardIds.length === 0 || cardIds.length > 100 || cardIds.some((id) => typeof id !== "string" || !id.trim())) {
+      json(response, 422, { error: "cardIds must contain between 1 and 100 card IDs" });
+      return;
+    }
+    const missingCardIds = cardIds.filter((cardId) => !cardCache.some((entry) => entry.id === cardId));
+    if (missingCardIds.length > 0) await refreshCards({ cardIds: missingCardIds });
+    const cards = cardCache;
+    const decisions = cardIds.map((cardId) => {
+      const card = cards.find((entry) => entry.id === cardId);
+      if (!card) throw new Error(`Workboard card not found: ${cardId}`);
+      if (card.status !== "review") throw new Error(`Card is not waiting for review: ${cardId}`);
+      return { card, input: decisionInput({ body, card }) };
+    });
+    const results = [];
+    for (const decision of decisions) {
+      try {
+        const result = await runtime.approve(decision.input);
+        await recordHumanStageHandoff(decision.input);
+        results.push({ affectedCardIds: result.affectedCardIds, cardId: decision.card.id, ok: true, status: result.status });
+      } catch (error) {
+        results.push({ cardId: decision.card.id, error: error.message, ok: false });
+      }
+    }
+    const affectedCardIds = [...new Set(results.flatMap((entry) => entry.affectedCardIds ?? [entry.cardId]).filter(Boolean))];
+    const updated = await refreshCards({ cardIds: affectedCardIds });
+    const failed = results.filter((entry) => !entry.ok);
+    json(response, failed.length ? 207 : 200, { approved: results.length - failed.length, cards: updated.map((card) => withCardLinks(cardSummary(card))), failed: failed.length, ok: failed.length === 0, results, revision: dashboardRevision });
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/notifications/review") {
+    const body = await bodyJson(request);
+    if (!notificationCoordinator) {
+      json(response, 503, { error: "Feishu notifications are not enabled" });
+      return;
+    }
+    if (!["approve", "changes", "reject"].includes(body.action) || typeof body.token !== "string" || typeof body.actorOpenId !== "string") {
+      json(response, 422, { error: "action, token, and actorOpenId are required" });
+      return;
+    }
+    let authorization;
+    try {
+      authorization = store.authorizeNotificationDecision(body.token, body.actorOpenId);
+    } catch (error) {
+      json(response, 403, { error: error.message });
+      return;
+    }
+    if (authorization.alreadyUsed) {
+      json(response, 200, { ...authorization.result, alreadyApplied: true });
+      return;
+    }
+    const delivery = store.getNotification(authorization.deliveryId);
+    const cards = await refreshCards({ cardIds: [authorization.cardId] });
+    const card = cards.find((entry) => entry.id === authorization.cardId);
+    if (!card || card.status !== "review") {
+      json(response, 409, { error: "The original Workboard card is no longer waiting for review" });
+      return;
+    }
+    const actor = `feishu:${body.actorOpenId}`;
+    const evidence = body.action === "approve"
+      ? "Approved from the Feishu Night Shift notification"
+      : body.action === "changes"
+        ? "Changes requested from the Feishu Night Shift notification; follow-up details belong in the source conversation"
+        : "Rejected from the Feishu Night Shift notification";
+    const input = decisionInput({ body: { actor, evidence }, card });
+    const result = body.action === "approve"
+      ? await runtime.approve(input)
+      : body.action === "changes"
+        ? await runtime.requestChanges(input)
+        : await runtime.reject(input);
+    if (body.action === "approve") await recordHumanStageHandoff(input);
+    const updated = await refreshCards({ cardIds: result.affectedCardIds ?? [card.id] });
+    const reply = {
+      action: body.action,
+      cardId: card.id,
+      cardTitle: card.title,
+      instanceId: authorization.instanceId,
+      instanceName: store.listInstances().find((entry) => entry.id === authorization.instanceId)?.name ?? authorization.instanceId,
+      messageId: delivery?.messageId ?? null,
+      message: body.action === "approve" ? "已通过并回写原 Workboard 卡" : body.action === "changes" ? "已退回修改，请在当前飞书会话补充具体意见" : "已拒绝并回写原 Workboard 卡",
+      ok: true,
+      status: result.status,
+      cards: updated.map((entry) => withCardLinks(cardSummary(entry))),
+      revision: dashboardRevision,
+    };
+    store.completeNotificationDecision(body.token, reply);
+    json(response, 200, reply);
+    return;
+  }
   if (request.method === "POST" && decisionMatch) {
     const body = await bodyJson(request);
-    const input = {
-      ...body,
-      cardId: decodeURIComponent(decisionMatch[1]),
-    };
+    const cardId = decodeURIComponent(decisionMatch[1]);
+    const card = cardCache.find((entry) => entry.id === cardId) ?? (await refreshCards({ cardIds: [cardId] })).find((entry) => entry.id === cardId);
+    if (!card) {
+      json(response, 404, { error: "Workboard card not found" });
+      return;
+    }
+    const input = decisionInput({ body, card });
     const result = decisionMatch[2] === "approve"
       ? await runtime.approve(input)
       : decisionMatch[2] === "request-changes"
         ? await runtime.requestChanges(input)
         : await runtime.reject(input);
-    await refreshCards();
-    json(response, 200, result);
+    if (decisionMatch[2] === "approve") await recordHumanStageHandoff(input);
+    const updated = await refreshCards({ cardIds: result.affectedCardIds ?? [cardId] });
+    json(response, 200, { ...result, cards: updated.map((entry) => withCardLinks(cardSummary(entry))), revision: dashboardRevision });
     return;
   }
   const retryMatch = url.pathname.match(/^\/api\/cards\/([^/]+)\/retry$/);
   if (request.method === "POST" && retryMatch) {
     const body = await bodyJson(request);
     const result = await runtime.retry({ ...body, cardId: decodeURIComponent(retryMatch[1]) });
-    await refreshCards();
-    json(response, 200, result);
+    const updated = await refreshCards({ cardIds: result.affectedCardIds ?? [decodeURIComponent(retryMatch[1])] });
+    json(response, 200, { ...result, cards: updated.map((entry) => withCardLinks(cardSummary(entry))), revision: dashboardRevision });
     return;
   }
   json(response, 404, { error: "Not found" });
+}
+
+function decisionInput({ body, card }) {
+  const baseInput = resolveCardDecisionContext({ body, card });
+  const instance = baseInput.instanceId ? store.getInstance(baseInput.instanceId) : null;
+  const release = instance ? store.getRelease(instance.workflowSha256)?.manifest : null;
+  return resolveCardDecisionContext({ body, card, instance, release });
 }
 
 async function ensureWorkflow() {
@@ -407,40 +630,46 @@ async function ensureSeedInstance() {
   await startInstance({ ...seed, workflowSha256: release.workflowSha256 });
 }
 
-async function reconcileSeededInstances(cards) {
-  for (const instance of store.listInstances()) {
-    await runtime.reconcile(instance.id, cards);
-  }
-}
-
 function runScheduler() {
   if (schedulerPromise) return schedulerPromise;
   schedulerPromise = (async () => {
-    await refreshCards();
-    let changed = false;
-    const warnings = [];
-    for (const instance of store.listInstances()) {
-      if (instance.status !== "active") continue;
-      try {
-        await syncContentItemsManifest(instance);
-      } catch (error) {
-        warnings.push(`${instance.id}: ${error.message}`);
-        store.appendEvent({
-          instanceId: instance.id,
-          type: "content-items.import.failed",
-          payload: { error: error.message },
-        });
+    const pulse = tickQueue
+      .catch(() => undefined)
+      .then(() => runNightShiftSchedulerPulse({
+        dispatchMaxStarts: schedulerDispatchMaxStarts,
+        maxWorkboardActive: schedulerMaxWorkboardActive,
+        refreshCards,
+        runtime,
+        store,
+        syncContentItemsManifest,
+        workboard,
+      }));
+    tickQueue = pulse.catch(() => undefined);
+    const result = await pulse;
+    const notificationStartedAt = performance.now();
+    if (notificationCoordinator) {
+      const notificationResult = await notificationCoordinator.reconcile({
+        cards: cardCache,
+        instances: store.listInstances(),
+        releases: store.listReleases(),
+      });
+      for (const delivery of notificationResult.delivered.filter((entry) => !entry.ok)) {
+        result.warnings.push(`notification ${delivery.id}: ${delivery.error}`);
       }
-      const result = await serializedTick(instance.id, { dispatch: true });
-      if (result.applied.length > 0) changed = true;
     }
-    if (changed) await refreshCards();
+    result.timings.notificationMs = Math.round((performance.now() - notificationStartedAt) * 10) / 10;
+    result.timings.totalWithNotificationsMs = Math.round(
+      (result.timings.totalMs + result.timings.notificationMs) * 10,
+    ) / 10;
+    lastSchedulerMetrics = result;
     lastSchedulerAt = new Date().toISOString();
-    lastSchedulerError = warnings.length > 0 ? warnings.join("; ") : null;
+    lastSchedulerError = result.warnings.length > 0 ? result.warnings.join("; ") : null;
+    return result;
   })().catch((error) => {
     lastSchedulerAt = new Date().toISOString();
     lastSchedulerError = error.message;
     console.error(`Night Shift scheduler failed: ${error.message}`);
+    throw error;
   }).finally(() => {
     schedulerPromise = null;
   });
@@ -451,16 +680,33 @@ async function startInstance(instance) {
   assertInstanceId(instance.id);
   const instanceDir = resolve(dataDir, "instances", instance.id);
   await mkdir(instanceDir, { recursive: true });
-  return runtime.startInstance({
+  const prepared = {
     ...instance,
     inputs: {
       ...(instance.inputs ?? {}),
       nightshift: {
         instanceDir,
         contentItemsManifestPath: join(instanceDir, "content-items.json"),
+        projectInputsPath: join(instanceDir, "project-inputs.json"),
       },
     },
-  });
+  };
+  await writeProjectInputsSnapshot(prepared);
+  return runtime.startInstance(prepared);
+}
+
+async function writeProjectInputsSnapshot(instance) {
+  const snapshotPath = instance.inputs?.nightshift?.projectInputsPath;
+  if (!snapshotPath) return;
+  await mkdir(dirname(snapshotPath), { recursive: true });
+  const temporaryPath = `${snapshotPath}.tmp`;
+  const snapshot = {
+    version: 1,
+    instanceId: instance.id,
+    inputs: redactSensitiveInputs(instance.inputs ?? {}),
+  };
+  await writeFile(temporaryPath, `${JSON.stringify(snapshot, null, 2)}\n`, { mode: 0o600 });
+  await rename(temporaryPath, snapshotPath);
 }
 
 async function preflightProjectSkills(release, project) {
@@ -507,23 +753,53 @@ function serializedTick(instanceId, options) {
   const run = tickQueue
     .catch(() => undefined)
     .then(async () => {
-      const cards = await workboard.listCards();
+      const instance = store.getInstance(instanceId);
+      const cards = options.cards ?? await workboard.listCards({
+        cardIds: instanceCardIds(store, instance ? [instance] : []),
+      });
       return runtime.tick(instanceId, { ...options, cards });
     });
   tickQueue = run.catch(() => undefined);
   return run;
 }
 
-async function refreshCards() {
-  if (cardRefreshPromise) return cardRefreshPromise;
-  cardRefreshPromise = workboard.listCards().then((cards) => {
-    cardCache = cards;
+async function refreshCards({ cardIds = null } = {}) {
+  const scoped = Array.isArray(cardIds);
+  if (!scoped && cardRefreshPromise) return cardRefreshPromise;
+  const refresh = workboard.listCards({ cardIds }).then((cards) => {
+    cardCache = scoped ? mergeCards(cardCache, cards, cardIds) : cards;
     cardsUpdatedAt = new Date().toISOString();
+    dashboardRevision += 1;
     return cards;
-  }).finally(() => {
+  });
+  if (scoped) return refresh;
+  cardRefreshPromise = refresh.finally(() => {
     cardRefreshPromise = null;
   });
   return cardRefreshPromise;
+}
+
+function mergeCards(existing, updates, replacedIds = []) {
+  const merged = new Map(existing.map((card) => [card.id, card]));
+  for (const id of replacedIds) merged.delete(id);
+  for (const card of updates) merged.set(card.id, card);
+  return [...merged.values()];
+}
+
+function cardSummary(card) {
+  const automation = card.metadata?.automation;
+  return {
+    id: card.id,
+    title: card.title,
+    status: card.status,
+    priority: card.priority,
+    labels: card.labels ?? [],
+    agentId: card.agentId,
+    createdAt: card.createdAt,
+    updatedAt: card.updatedAt,
+    position: card.position,
+    metadata: automation ? { automation } : undefined,
+  };
 }
 
 async function bodyJson(request) {
@@ -547,6 +823,20 @@ async function loadDeliverables(instanceId, contentItemId = null) {
 
 async function validateCompletion({ contentItemId, instance, release, stageId }) {
   const stage = release?.spec?.stages?.find((entry) => entry.id === stageId);
+  let handoff = null;
+  if (release?.spec?.handoff?.version === 1) {
+    const manifest = await loadStageHandoff({ contentItemId, instance, release, stageId, required: true });
+    handoff = normalizeStageHandoff(manifest, { contentItemId, instanceId: instance.id, release, stageId });
+  }
+  if (release?.spec?.completion?.mode === "strict-v1") {
+    await validateDeclaredCompletion({
+      checkUrl: checkCompletionUrl,
+      instanceCreatedAt: instance.createdAt,
+      loadArtifact: (artifact) => loadInstanceArtifact({ artifact, contentItemId, instance }),
+      manifest: handoff,
+      stage,
+    });
+  }
   if (!stage?.outputs?.includes("deliveryManifest")) return;
   if (!contentItemId) throw new Error("deliveryManifest completion requires a content item");
   const manifest = await loadDeliverables(instance.id, contentItemId);
@@ -559,6 +849,76 @@ async function validateCompletion({ contentItemId, instance, release, stageId })
   const videoPath = await resolveDeclaredArtifact(manifest, manifest.video.path, contentItemId);
   const actualSha = await sha256File(videoPath);
   if (actualSha !== manifest.video.sha256) throw new Error("deliveryManifest video.sha256 does not match the file");
+}
+
+async function loadInstanceArtifact({ artifact, contentItemId = null, instance }) {
+  const normalizedPath = normalizeArtifactPath(artifact);
+  const configuredRoot = instance.inputs?.nightshift?.instanceDir ?? resolve(dataDir, "instances", instance.id);
+  const instanceRoot = await realpath(configuredRoot);
+  const roots = contentItemId ? [resolve(instanceRoot, "content-items", contentItemId), instanceRoot] : [instanceRoot];
+  let candidate = null;
+  for (const root of roots) {
+    try {
+      const resolved = await realpath(resolve(root, normalizedPath));
+      if (resolved.startsWith(`${instanceRoot}${sep}`)) { candidate = resolved; break; }
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+  }
+  if (!candidate) throw new Error(`Completion artifact not found: ${normalizedPath}`);
+  const info = await stat(candidate);
+  if (!info.isFile()) throw new Error("Completion artifact is not a file");
+  const extension = extname(candidate).toLowerCase();
+  if (extension === ".json") return { exists: true, json: JSON.parse(await readFile(candidate, "utf8")), mtimeMs: info.mtimeMs };
+  if ([".md", ".markdown", ".txt", ".yaml", ".yml"].includes(extension)) return { exists: true, mtimeMs: info.mtimeMs, text: await readFile(candidate, "utf8") };
+  return { exists: true, mtimeMs: info.mtimeMs };
+}
+
+async function checkCompletionUrl(url) {
+  try {
+    const response = await fetch(url, { method: "HEAD", redirect: "follow", signal: AbortSignal.timeout(8000) });
+    if (response.ok) return true;
+    if (![403, 405].includes(response.status)) return false;
+    const fallback = await fetch(url, { headers: { Range: "bytes=0-0" }, redirect: "follow", signal: AbortSignal.timeout(8000) });
+    await fallback.body?.cancel();
+    return fallback.ok;
+  } catch { return false; }
+}
+
+async function loadStageHandoff({ contentItemId = null, instance, release, required = false, stageId }) {
+  const instanceDir = instance.inputs?.nightshift?.instanceDir ?? resolve(dataDir, "instances", instance.id);
+  const manifestPath = stageHandoffPath({ instanceDir, contentItemId, release, stageId });
+  try {
+    const source = JSON.parse(await readFile(manifestPath, "utf8"));
+    return normalizeStageHandoff(source, { contentItemId, instanceId: instance.id, release, stageId });
+  } catch (error) {
+    if (error.code === "ENOENT" && !required) return null;
+    if (error.code === "ENOENT") throw new Error(`Stage handoff is required: ${stageId}`);
+    throw error;
+  }
+}
+
+async function recordHumanStageHandoff({ actor, cardId, contentItemId = null, evidence, instanceId, stageId }) {
+  const instance = store.getInstance(instanceId);
+  const release = instance ? store.getRelease(instance.workflowSha256)?.manifest : null;
+  const stage = release?.spec?.stages?.find((entry) => entry.id === stageId);
+  if (!instance || !release || stage?.actor !== "human" || release.spec?.handoff?.version !== 1) return;
+  const instanceDir = instance.inputs?.nightshift?.instanceDir ?? resolve(dataDir, "instances", instance.id);
+  const manifestPath = stageHandoffPath({ instanceDir, contentItemId, release, stageId });
+  const manifest = humanStageHandoff({
+    actor,
+    approvalArtifact: `workboard-approval:${cardId}`,
+    contentItemId,
+    evidence,
+    instanceDir,
+    instanceId,
+    release,
+    stageId,
+  });
+  await mkdir(dirname(manifestPath), { recursive: true });
+  const temporaryPath = `${manifestPath}.tmp`;
+  await writeFile(temporaryPath, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 });
+  await rename(temporaryPath, manifestPath);
 }
 
 async function sha256File(filePath) {
@@ -772,6 +1132,77 @@ function parseByteRange(header, size) {
   return { start, end };
 }
 
+function dashboardLinks() {
+  return {
+    home: dashboardUrl(),
+    liveBoard: dashboardUrl({ view: "board" }),
+    projects: dashboardUrl({ view: "projects" }),
+    workflows: dashboardUrl({ view: "workflows" }),
+  };
+}
+
+function workflowLinks(release) {
+  return {
+    workflow: dashboardUrl({
+      view: "workflows",
+      workflow: release.workflowId ?? release.metadata?.id,
+      release: release.workflowSha256 ?? release.metadata?.workflowSha256,
+    }),
+  };
+}
+
+function projectLinks(instanceId) {
+  return {
+    project: dashboardUrl({ view: "workflows", project: instanceId }),
+  };
+}
+
+function cardLinks(cardId) {
+  return {
+    task: dashboardUrl({ view: "board", card: cardId }),
+  };
+}
+
+function withWorkflowLinks(release) {
+  return { ...release, links: workflowLinks(release) };
+}
+
+function withInstanceLinks(instance) {
+  return { ...instance, links: projectLinks(instance.id) };
+}
+
+function withCardLinks(card) {
+  return { ...card, links: cardLinks(card.id) };
+}
+
+function cardInstanceId(card) {
+  return card.metadata?.automation?.instanceId ??
+    (card.labels ?? []).find((entry) => entry.startsWith("instance:"))?.slice("instance:".length) ??
+    null;
+}
+
+function visibleCards(cards, instances) {
+  const archived = new Set(
+    store.listInstances()
+      .filter((instance) => instance.status === "archived")
+      .map((instance) => instance.id),
+  );
+  const visible = new Set(instances.map((instance) => instance.id));
+  return cards.filter((card) => {
+    const instanceId = cardInstanceId(card);
+    return !instanceId || visible.has(instanceId) || !archived.has(instanceId);
+  });
+}
+
+function dashboardUrl(parameters = {}) {
+  const origin = publicBaseUrl || (publicHost ? `https://${publicHost}` : `http://${host}:${port}`);
+  const url = new URL("/", origin);
+  for (const [key, value] of Object.entries(parameters)) {
+    if (value) url.searchParams.set(key, value);
+  }
+  return url.toString();
+}
+
 async function serveStatic(response, pathname) {
   const relative = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
   const candidate = resolve(distRoot, normalize(relative));
@@ -816,11 +1247,23 @@ function contentType(path) {
   }[extname(path)] ?? "application/octet-stream";
 }
 
+function positiveInteger(value, fallback) {
+  if (value == null || value === "") return fallback;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) throw new Error(`Expected a positive integer, received ${value}`);
+  return parsed;
+}
+
+function requestIsLoopback(request) {
+  const address = request.socket.remoteAddress ?? "";
+  return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
+}
+
 function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
-  clearInterval(schedulerTimer);
-  clearTimeout(initialSchedulerTimer);
+  if (schedulerTimer) clearInterval(schedulerTimer);
+  if (initialSchedulerTimer) clearTimeout(initialSchedulerTimer);
   let finished = false;
   let forceTimer;
   const finish = () => {

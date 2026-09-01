@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { compileWorkflow, parseWorkflow, requiredSkillsByRole, validateProjectRequest } from "../src/index.mjs";
+import { compileWorkflow, normalizeProjectCollaboration, parseWorkflow, requiredSkillsByRole, validateProjectRequest } from "../src/index.mjs";
 
 const workflowPath = new URL("../../../examples/workflows/xingqing-content-delivery.workflow.md", import.meta.url);
 
@@ -47,6 +47,18 @@ test("rejects a project with missing inputs or agent bindings", async () => {
     () => validateProjectRequest(release, { ...base, id: "NS-LAB-PROJECT-ID-THAT-IS-LONGER-THAN-THIRTY-ONE" }),
     /1-31 characters/,
   );
+  assert.throws(
+    () => validateProjectRequest(release, {
+      ...base,
+      inputs: {
+        customerId: "customer-2",
+        briefUrl: "https://example.com/brief",
+        authorizationScope: {},
+        publicationTarget: { tiktokHandle: "@fixture" },
+      },
+    }),
+    /publicationTarget is missing required properties/,
+  );
 });
 
 test("collects direct and route-specific Skills for Agent preflight", async () => {
@@ -57,4 +69,30 @@ test("collects direct and route-specific Skills for Agent preflight", async () =
   assert.ok(skills.includes("makaron"));
   assert.ok(skills.includes("geelark-cloud-phone"));
   assert.equal(new Set(skills).size, skills.length);
+});
+
+test("normalizes a Feishu project origin and reviewer routing", () => {
+  assert.deepEqual(normalizeProjectCollaboration({
+    createdByOpenId: "ou_creator",
+    sourceChatId: "oc_source",
+    reviewers: ["ou_reviewer", "ou_reviewer"],
+    followers: ["ou_follower"],
+  }), {
+    createdByOpenId: "ou_creator",
+    sourceChatId: "oc_source",
+    reviewers: ["ou_reviewer"],
+    followers: ["ou_follower"],
+  });
+  assert.throws(() => normalizeProjectCollaboration({ createdByOpenId: "ou_creator" }), /requires both/);
+  assert.throws(() => normalizeProjectCollaboration({ createdByOpenId: "bad", sourceChatId: "oc_source" }), /invalid/);
+});
+
+test("accepts a Feishu direct-message creator as the notification target", () => {
+  assert.deepEqual(normalizeProjectCollaboration({
+    createdByOpenId: "ou_creator",
+    sourceChatId: "user:ou_creator",
+  }), {
+    createdByOpenId: "ou_creator",
+    sourceChatId: "user:ou_creator",
+  });
 });

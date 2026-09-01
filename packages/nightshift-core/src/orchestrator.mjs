@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
+import { handoffManifestExample, stageHandoffContract, stageHandoffPath } from "./handoff.mjs";
 import { interpolate, stageSkills } from "./workflow.mjs";
 
 const ACTIVE_STATUSES = new Set(["ready", "running"]);
+export const WORKBOARD_NOTES_LIMIT = 12000;
 const PRESENT_STATUSES = new Set([
   "ready",
   "running",
@@ -32,6 +34,8 @@ export function planNextActions({
   ).length;
   const limit = release.spec.concurrency?.perInstance ?? 1;
   if (activeCount >= limit) return [];
+  const itemById = new Map(contentItems.map((item) => [item.id, item]));
+  const reservedResources = activeResourceLocks({ instance, itemById, latestItemRuns, latestRuns, stageById });
 
   const actions = [];
   for (const stage of stages) {
@@ -74,14 +78,17 @@ export function planNextActions({
         }
         const type = stage.actor === "human" ? "create_review_card" : "create_workboard_card";
         if (!["agent", "system", "human"].includes(stage.actor)) continue;
+        const resourceKey = stage.actor === "human" ? null : stageResourceLock(stage, instance, contentItem);
+        if (resourceKey && reservedResources.has(resourceKey)) continue;
         actions.push({
           type,
           instanceId: instance.id,
           contentItemId: contentItem.id,
           stageId: stage.id,
           idempotencyKey: actionKey(release, instance, stage, stage.actor === "human" ? "review" : "run", contentItem),
-          card: cardPayload(release, instance, stage, stage.actor === "human" ? "review" : "ready", contentItem),
+          card: cardPayload(release, instance, stage, stage.actor === "human" ? "review" : "ready", contentItem, resourceKey),
         });
+        if (resourceKey) reservedResources.add(resourceKey);
       }
       continue;
     }
@@ -137,20 +144,23 @@ export function planNextActions({
     }
 
     if (stage.actor === "agent" || stage.actor === "system") {
+      const resourceKey = stageResourceLock(stage, instance);
+      if (resourceKey && reservedResources.has(resourceKey)) continue;
       actions.push({
         type: "create_workboard_card",
         instanceId: instance.id,
         stageId: stage.id,
         idempotencyKey: actionKey(release, instance, stage, "run"),
-        card: cardPayload(release, instance, stage, "ready"),
+        card: cardPayload(release, instance, stage, "ready", null, resourceKey),
       });
+      if (resourceKey) reservedResources.add(resourceKey);
     }
   }
 
   return actions;
 }
 
-function cardPayload(release, instance, stage, status, contentItem = null) {
+function cardPayload(release, instance, stage, status, contentItem = null, resourceKey = null) {
   const inputHash = instance.inputHash ?? hashJson(instance.inputs ?? {});
   const agentRole = stage.agentRole ?? release.spec.ownerAgentRole;
   const assignedAgent = stage.actor === "agent" ? instance.agentBindings?.[agentRole] : null;
@@ -183,24 +193,79 @@ function cardPayload(release, instance, stage, status, contentItem = null) {
       inputHash,
       skills: stageSkills(stage, contentItem?.route),
       maxRuntime: stage.timeout,
+      maxRuntimeSeconds: stageTimeoutSeconds(stage.timeout),
       maxAttempts: stage.retry?.maxAttempts ?? 1,
+      resourceKey,
     },
   };
 }
 
+function activeResourceLocks({ instance, itemById, latestItemRuns, latestRuns, stageById }) {
+  const locks = new Set();
+  for (const run of latestRuns.values()) {
+    if (!ACTIVE_STATUSES.has(run.status)) continue;
+    const key = stageResourceLock(stageById.get(run.stageId), instance);
+    if (key) locks.add(key);
+  }
+  for (const run of latestItemRuns.values()) {
+    if (!ACTIVE_STATUSES.has(run.status)) continue;
+    const key = stageResourceLock(stageById.get(run.stageId), instance, itemById.get(run.contentItemId));
+    if (key) locks.add(key);
+  }
+  return locks;
+}
+
+function stageResourceLock(stage, instance, contentItem = null) {
+  if (!stage?.resourceLock) return null;
+  return interpolate(stage.resourceLock, {
+    contentItem: contentItem ?? {},
+    input: instance.inputs ?? {},
+    instance,
+    stage,
+  });
+}
+
+export function stageTimeoutSeconds(value) {
+  const match = /^\s*(\d+)\s*([smhd])\s*$/i.exec(String(value ?? ""));
+  if (!match) throw new Error(`Unsupported stage timeout ${value}`);
+  const unitSeconds = { s: 1, m: 60, h: 3600, d: 86400 };
+  return Number(match[1]) * unitSeconds[match[2].toLowerCase()];
+}
+
 export function buildAgentBrief(release, instance, stage, contentItem = null) {
   const safeInputs = redactSensitiveInputs(instance.inputs ?? {});
+  const projectInputsPath = instance.inputs?.nightshift?.projectInputsPath;
+  const inlineInputs = projectInputsPath ? summarizeInputs(safeInputs) : safeInputs;
   const strategy = contentItem?.route ? stage.routeStrategies?.[contentItem.route] : null;
   const instanceDir = instance.inputs?.nightshift?.instanceDir;
   const itemDir = contentItem && instanceDir ? `${instanceDir}/content-items/${contentItem.id}` : null;
-  return [
+  const handoffEnabled = release.spec?.handoff?.version === 1 && instanceDir;
+  const handoffContract = handoffEnabled ? stageHandoffContract(release, stage.id) : null;
+  const handoffPath = handoffEnabled ? stageHandoffPath({
+    instanceDir,
+    contentItemId: contentItem?.id ?? null,
+    release,
+    stageId: stage.id,
+  }) : null;
+  const upstreamHandoffPaths = handoffEnabled ? handoffContract.previous.map((upstream) => stageHandoffPath({
+    instanceDir,
+    contentItemId: contentItem?.id ?? null,
+    release,
+    stageId: upstream.id,
+  })) : [];
+  const exactApprovalRecorded = Boolean(stage.approval?.before) && !requiredApproval(stage, instance, new Date(), contentItem?.id ?? null);
+  const approvalBinding = exactApprovalRecorded ? resolveApprovalBinding(stage, instance, contentItem?.id ?? null) : null;
+  const lines = [
     `Night Shift workflow: ${release.metadata.name} (${release.metadata.version})`,
     `Instance: ${instance.id}`,
     `Stage: ${stage.id} — ${stage.title}`,
-    ...(contentItem ? [`Content item: ${JSON.stringify(redactSensitiveInputs(contentItem))}`] : []),
+    ...(contentItem ? [`Content item: ${JSON.stringify(summarizeContentItem(contentItem))}`] : []),
     `Objective: ${strategy?.description ?? stage.description ?? "Complete the declared stage."}`,
     `Required skills (load in order): ${stageSkills(stage, contentItem?.route).join(", ") || "none"}`,
-    `Inputs: ${JSON.stringify(safeInputs)}`,
+    `Input summary: ${JSON.stringify(inlineInputs)}`,
+    ...(projectInputsPath
+      ? [`Authoritative project inputs: read ${projectInputsPath} before acting. The snapshot contains the complete redacted project brief and constraints; do not replace it with this summary.`]
+      : []),
     ...(stage.id === "plan" && instance.inputs?.nightshift?.contentItemsManifestPath
       ? [`Content backlog contract: write {"contentItems":[{"id":"stable-id","title":"...","route":"AI_GENERATE|SCENE_EDIT|null","status":"planned|routing"}]} to ${instance.inputs.nightshift.contentItemsManifestPath}. The control plane imports this file and fans out Workboard tasks.`]
       : []),
@@ -208,18 +273,38 @@ export function buildAgentBrief(release, instance, stage, contentItem = null) {
       ? [`Route writeback contract: update only this ContentItem in ${instance.inputs.nightshift.contentItemsManifestPath}; preserve every other item and stable id.`]
       : []),
     ...(itemDir ? [`Content item artifact directory: ${itemDir}`] : []),
+    ...(handoffEnabled ? [
+      `Stage handoff inputs: ${upstreamHandoffPaths.length > 0 ? `read ${upstreamHandoffPaths.join(", ")} and every artifact they reference before acting` : "use the declared project inputs as the authoritative source"}.`,
+      `Stage handoff output: after finishing the declared outputs, write ${handoffPath} using exactly this v1 shape: ${JSON.stringify(handoffManifestExample({ instanceId: instance.id, contentItemId: contentItem?.id ?? null, release, stageId: stage.id }))}`,
+      "The handoff summary is for people; the referenced artifacts are authoritative. Do not silently drop, rewrite, or replace an upstream requirement.",
+    ] : []),
     ...(stage.outputs?.includes("deliveryManifest") && itemDir
       ? [`Delivery contract: write exactly this v1 shape to ${itemDir}/deliverables.json (paths are relative to ${itemDir}): ${JSON.stringify(deliveryManifestExample(instance.id, contentItem))}`]
       : []),
     `Required outputs: ${(stage.outputs ?? []).join(", ") || "none"}`,
+    ...(exactApprovalRecorded ? [
+      `Execution authorization: a later, exact Workboard approval is recorded for ${stage.approval.before} with scope ${stage.approval.scope ?? "stage"}${contentItem ? ` on content item ${contentItem.id}` : ""}. It intentionally opens only this approved action after the project's default-deny baseline; do not treat that earlier baseline as a conflict and do not edit the project inputs.`,
+      ...(approvalBinding && Object.keys(approvalBinding.values).length > 0
+        ? [`Immutable approval bindings: ${JSON.stringify(redactSensitiveInputs(approvalBinding.values))}. Use this exact target; never guess or substitute another account or device.`]
+        : []),
+    ] : []),
+    ...(release.spec?.completion?.mode === "strict-v1" ? [
+      "Strict completion: the control plane will load every declared output artifact and evaluate every completeWhen rule from this Workflow. A summary, internal substitute, or claimed success cannot complete the card. JSON facts must be booleans or concrete values; URL outputs must put the real HTTPS URL directly in the handoff artifact field.",
+      ...Object.entries(stage.outputContracts ?? {}).map(([name, contract]) => `Output contract ${name}: ${JSON.stringify(contract)}`),
+    ] : []),
     ...(stage.id === "brief" && itemDir ? [
       `Brief output contract: read ${itemDir}/routeDecision.json and ${itemDir}/frozenInputManifest.json, then write ${itemDir}/finishedVideoBrief.md. It must explicitly record routeMatchesContentItem, inputsFrozen, and productionReady; include target duration, narrative structure, a shot table bound to exact frozen source_url/start_sec/end_sec values, TTS or no-TTS behavior, subtitle/audio rules, missing-footage handling, and final QC acceptance. Do not inspect Night Shift source code to infer this contract.`,
     ] : []),
     `Completion checks: ${(stage.completeWhen ?? []).join("; ") || "human decision"}`,
     `Safety: ${(stage.sideEffects ?? []).length ? `requires approved side effects: ${stage.sideEffects.join(", ")}` : "no declared external side effect"}`,
-    "Workboard completion safety: workboard heartbeat/complete/block and the equivalent Gateway RPCs mutate this real card. Never probe, test, or enumerate those RPCs, and never use placeholder input such as summary=test. First finish every required output and verify every completion check. Only then call workboard_complete once; in an isolated Worker where that tool is absent, call `openclaw gateway call workboard.cards.complete --params '{\"id\":\"<Card id from Worker protocol>\",\"token\":\"<Claim token from Worker protocol>\",\"summary\":\"<concise evidence-backed result>\"}' --json` exactly once. Call workboard.cards.block exactly once only for a genuine blocker, with the real evidence-backed reason. Do not search source code or inspect plugin internals. Never print the claim token.",
+    "Workboard completion safety: Never probe, test, or enumerate completion RPCs, and never use placeholder input such as summary=test. Finish every required output and verify every completion check first. Then call workboard_complete exactly once; if unavailable in an isolated Worker, call `openclaw gateway call workboard.cards.complete` exactly once with the real card id, claim token, and evidence summary. Block exactly once only for a genuine blocker. Do not search source code or inspect plugin internals. Never print the claim token.",
     "Return a concise result with evidence links or an explicit blocker. Do not invent missing evidence.",
-  ].join("\n").slice(0, 8000);
+  ];
+  const brief = lines.join("\n");
+  if (brief.length > WORKBOARD_NOTES_LIMIT) {
+    throw new Error(`Night Shift card brief exceeds the native Workboard ${WORKBOARD_NOTES_LIMIT} character limit (${brief.length})`);
+  }
+  return brief;
 }
 
 function deliveryManifestExample(instanceId, contentItem) {
@@ -245,7 +330,7 @@ function deliveryManifestExample(instanceId, contentItem) {
   };
 }
 
-function redactSensitiveInputs(value, key = "") {
+export function redactSensitiveInputs(value, key = "") {
   if (/(secret|token|password|credential|api.?key)/i.test(key)) return "[REDACTED]";
   if (Array.isArray(value)) return value.map((entry) => redactSensitiveInputs(entry));
   if (value && typeof value === "object") {
@@ -257,6 +342,29 @@ function redactSensitiveInputs(value, key = "") {
     );
   }
   return value;
+}
+
+function summarizeInputs(inputs) {
+  const keys = [
+    "customerId",
+    "customerName",
+    "briefUrl",
+    "sceneProjectId",
+    "targetVideoCount",
+    "authorizationScope",
+    "publicationTarget",
+    "nightshift",
+  ];
+  return Object.fromEntries(keys.filter((key) => inputs[key] !== undefined).map((key) => [key, inputs[key]]));
+}
+
+function summarizeContentItem(contentItem) {
+  return redactSensitiveInputs({
+    id: contentItem.id,
+    title: contentItem.title,
+    route: contentItem.route ?? null,
+    status: contentItem.status ?? null,
+  });
 }
 
 function actionKey(release, instance, stage, action, contentItem = null) {
@@ -279,12 +387,14 @@ export function requiredApproval(stage, instance, now, contentItemId = null) {
   if (!stage.approval?.before) return null;
   const approvals = Array.isArray(instance.approvals) ? instance.approvals : [];
   const requiredScope = stage.approval.scope ?? "stage";
-  const accepted = approvals.some((approval) => {
+  const binding = resolveApprovalBinding(stage, instance, contentItemId);
+  const accepted = binding.missingFields.length === 0 && approvals.some((approval) => {
     if (approval.status !== "approved") return false;
     if (approval.stageId && approval.stageId !== stage.id) return false;
     if ((approval.contentItemId ?? null) !== contentItemId) return false;
     if (approval.effect !== stage.approval.before) return false;
     if (approval.scope !== requiredScope) return false;
+    if (binding.bindingHash && approval.bindingHash !== binding.bindingHash) return false;
     if (approval.expiresAt && new Date(approval.expiresAt) <= now) return false;
     return true;
   });
@@ -292,7 +402,44 @@ export function requiredApproval(stage, instance, now, contentItemId = null) {
   return {
     effect: stage.approval.before,
     scope: requiredScope,
+    ...(Object.keys(binding.values).length > 0 ? { bindings: redactSensitiveInputs(binding.values) } : {}),
+    ...(binding.bindingHash ? { bindingHash: binding.bindingHash } : {}),
+    ...(binding.missingFields.length > 0 ? { missingFields: binding.missingFields } : {}),
   };
+}
+
+export function resolveApprovalBinding(stage, instance, contentItemId = null) {
+  const bindings = stage.approval?.bindings;
+  if (!bindings || typeof bindings !== "object" || Array.isArray(bindings)) {
+    return { bindingHash: null, missingFields: [], values: {} };
+  }
+  const values = {};
+  const missingFields = [];
+  for (const [name, binding] of Object.entries(bindings)) {
+    const value = resolvePath({ input: instance.inputs ?? {}, instance }, binding.source);
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      missingFields.push(name);
+      continue;
+    }
+    values[name] = value;
+    for (const field of binding.requiredFields ?? []) {
+      const fieldValue = resolvePath(value, field);
+      if (fieldValue === undefined || fieldValue === null || fieldValue === "") {
+        missingFields.push(`${name}.${field}`);
+      }
+    }
+  }
+  const payload = { contentItemId, stageId: stage.id, values };
+  return {
+    bindingHash: missingFields.length === 0 ? hashJson(payload) : null,
+    missingFields: [...new Set(missingFields)],
+    values,
+  };
+}
+
+function resolvePath(root, path) {
+  if (typeof path !== "string" || !path.trim()) return undefined;
+  return path.split(".").reduce((value, key) => value?.[key], root);
 }
 
 function timerReady(expression, instance, now) {

@@ -17,6 +17,10 @@ test("persists immutable releases, instances, stage runs, approvals, and audit e
     name: "Store test",
     workflowSha256: release.metadata.workflowSha256,
     agentBindings: { "content-operator": "main" },
+    collaboration: {
+      createdByOpenId: "ou_creator",
+      sourceChatId: "oc_project",
+    },
     inputs: { targetCount: 1 },
   });
   store.upsertStageRun({
@@ -46,14 +50,24 @@ test("persists immutable releases, instances, stage runs, approvals, and audit e
     effect: "paid-production",
     status: "approved",
     actor: "tianyi",
+    bindings: { publicationTarget: { tiktokHandle: "@fixture" } },
+    bindingHash: "binding-sha",
   });
+  store.bindActionCard({ actionKey: "approval-action", instanceId: "NS-STORE-1", cardId: "approval-card-1" });
 
   assert.equal(store.listReleases().length, 1);
   assert.equal(store.getInstance("NS-STORE-1").approvals.length, 1);
+  assert.equal(store.getInstance("NS-STORE-1").approvals[0].bindingHash, "binding-sha");
+  assert.equal(store.getInstance("NS-STORE-1").approvals[0].bindings.publicationTarget.tiktokHandle, "@fixture");
   assert.equal(store.listStageRuns("NS-STORE-1")[0].cardId, "card-1");
+  assert.equal(store.getInstance("NS-STORE-1").collaboration.createdByOpenId, "ou_creator");
   assert.equal(store.listContentItems("NS-STORE-1").length, 2);
   assert.equal(store.listContentItems("NS-STORE-1")[0].status, "routed");
   assert.equal(store.listContentItemRuns("NS-STORE-1")[0].contentItemId, "video-ai-01");
+  assert.deepEqual(store.listActionCardIds(["NS-STORE-1"]), ["approval-card-1"]);
+  assert.equal(store.deleteActionCardsByPrefix("legacy:"), 0);
+  store.bindActionCard({ actionKey: "legacy:old", instanceId: "NS-STORE-1", cardId: "old-card" });
+  assert.equal(store.deleteActionCardsByPrefix("legacy:"), 1);
   assert.deepEqual(
     store.listEvents("NS-STORE-1").map((event) => event.type),
     ["approval.recorded", "content-items.replaced", "content-items.replaced", "instance.created"],
@@ -73,5 +87,25 @@ test("one workflow release owns many isolated customer instances", async () => {
   assert.equal(store.listInstances().length, 2);
   assert.equal(store.listContentItems("NS-CUSTOMER-A")[0].title, "customer-a video");
   assert.equal(store.listContentItems("NS-CUSTOMER-B")[0].title, "customer-b video");
+  store.close();
+});
+
+test("archiving a project keeps it recoverable and records an audit event", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) => readFile(fixture, "utf8"));
+  const release = compileWorkflow(await loadWorkflow(fixture));
+  const store = new NightShiftStore();
+  store.saveRelease(release, source);
+  store.createInstance({
+    id: "NS-ARCHIVE-1",
+    name: "Archive test",
+    workflowSha256: release.metadata.workflowSha256,
+    status: "paused",
+  });
+
+  const archived = store.archiveInstance("NS-ARCHIVE-1", new Date("2026-08-23T12:00:00Z"));
+
+  assert.equal(archived.status, "archived");
+  assert.equal(store.listEvents("NS-ARCHIVE-1")[0].type, "instance.archived");
+  assert.equal(store.listEvents("NS-ARCHIVE-1")[0].payload.previousStatus, "paused");
   store.close();
 });

@@ -11,8 +11,24 @@ test("production sandbox allows the OpenClaw CLI health-state write", async () =
   assert.match(unit, /^ProtectHome=read-only$/m);
   assert.match(
     unit,
+    /^Environment=OPENCLAW_STATE_DIR=\/home\/openclaw\/\.openclaw\/nightshift\/openclaw-state$/m,
+  );
+  assert.match(unit, /^Environment=NIGHTSHIFT_SOURCE_STATE_DIR=\/home\/openclaw\/\.openclaw$/m);
+  assert.match(unit, /^Environment=NIGHTSHIFT_FEISHU_NOTIFICATIONS=1$/m);
+  assert.match(
+    unit,
+    /^ExecStartPre=\/home\/openclaw\/releases\/nightshift-workboard\/current\/scripts\/bootstrap-nightshift-cli-state\.sh$/m,
+  );
+  assert.match(
+    unit,
     /^ReadWritePaths=.*\/home\/openclaw\/\.openclaw\/nightshift.*\/home\/openclaw\/\.openclaw\/state$/m,
   );
+  assert.match(unit, /^Environment=NIGHTSHIFT_PUBLIC_BASE_URL=https:\/\/nightshift\.tianyi\.live$/m);
+  assert.match(unit, /^Environment=NIGHTSHIFT_SCHEDULER_MODE=external$/m);
+  assert.match(unit, /^Environment=NIGHTSHIFT_MAX_WORKBOARD_ACTIVE=36$/m);
+  assert.match(unit, /^Environment=NIGHTSHIFT_DISPATCH_MAX_STARTS=12$/m);
+  assert.match(unit, /^Environment=NIGHTSHIFT_OPENCLAW_ENTRY=\/opt\/openclaw-2026\.8\.1\/node_modules\/openclaw\/dist\/index\.js$/m);
+  assert.match(unit, /^Environment=NIGHTSHIFT_WORKBOARD_DISPATCH_METHOD=workboard\.cards\.dispatchWithOptions$/m);
 });
 
 test("production deploy waits for the Workboard health endpoint", async () => {
@@ -24,7 +40,20 @@ test("production deploy waits for the Workboard health endpoint", async () => {
   assert.match(script, /^wait_for_health\(\) \{$/m);
   assert.equal((script.match(/^\s+wait_for_health$/gm) ?? []).length, 2);
   assert.match(script, /Release artifact is missing apps\/nightshift-dashboard\/dist\/index\.html/);
+  assert.match(script, /apply-workboard-owner-concurrency-patch\.mjs/);
+  assert.match(script, /apply-workboard-scoped-dispatch-patch\.mjs/);
   assert.doesNotMatch(script, /grep -E?q/);
+});
+
+test("notification CLI keeps a private writable plugin registry", async () => {
+  const script = await readFile(
+    new URL("../../../scripts/bootstrap-nightshift-cli-state.sh", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(script, /for directory in extensions npm plugin-skills/);
+  assert.match(script, /cp -a "\$source_state\/plugins" "\$plugins_next"/);
+  assert.doesNotMatch(script, /for directory in extensions plugins plugin-skills/);
 });
 
 test("release packager builds and includes the dashboard distribution", async () => {

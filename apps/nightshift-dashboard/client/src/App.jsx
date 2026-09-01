@@ -6,12 +6,15 @@ import {
   ChevronDown,
   FilePenLine,
   FileUp,
+  MoreHorizontal,
   Plus,
   Save,
+  Trash2,
   Upload,
   X,
 } from "lucide-react";
 import { api } from "./api.js";
+import { NIGHT_SHIFT_CHANGELOG } from "./changelog.js";
 import { Drawer, EmptyColumn, Icons, Metric, Sidebar, WorkCard } from "./components.jsx";
 
 const columns = [
@@ -23,7 +26,9 @@ const columns = [
 ];
 
 export function App() {
-  const [active, setActive] = useState("board");
+  const initialLocation = useRef(readDashboardLocation()).current;
+  const deepLinkApplied = useRef(false);
+  const [active, setActive] = useState(initialLocation.view);
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
@@ -31,16 +36,30 @@ export function App() {
   const [delivery, setDelivery] = useState(null);
   const [deliveryState, setDeliveryState] = useState("idle");
   const [deliveryError, setDeliveryError] = useState("");
+  const [handoff, setHandoff] = useState(null);
+  const [handoffState, setHandoffState] = useState("idle");
+  const [handoffError, setHandoffError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [projectReleaseSha, setProjectReleaseSha] = useState(null);
+  const [workflowProjectId, setWorkflowProjectId] = useState(initialLocation.project);
+  const [navigationCollapsed, setNavigationCollapsed] = useState(() => typeof window !== "undefined" && window.localStorage.getItem("nightshift.navigationCollapsed") === "true");
   const refreshInFlight = useRef(null);
+  const revisionRef = useRef(null);
   const selectedForDecision = useMemo(() => withDecisionContext(selected, data), [selected, data]);
 
   function refresh(force = false) {
     if (refreshInFlight.current) return refreshInFlight.current;
     setRefreshing(true);
-    const request = api(force ? "/api/bootstrap?refresh=1" : "/api/bootstrap")
-      .then((result) => { setData(result); setError(""); return result; })
+    const suffix = force
+      ? "?refresh=1"
+      : revisionRef.current == null ? "" : `?since=${encodeURIComponent(revisionRef.current)}`;
+    const request = api(`/api/bootstrap${suffix}`)
+      .then((result) => {
+        if (result.revision != null) revisionRef.current = result.revision;
+        if (!result.notModified) setData(result);
+        setError("");
+        return result;
+      })
       .catch((reason) => { setError(reason.message); throw reason; })
       .finally(() => { setRefreshing(false); refreshInFlight.current = null; });
     refreshInFlight.current = request;
@@ -54,31 +73,73 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    updateDashboardLocation({ view: active });
+  }, [active]);
+
+  useEffect(() => {
+    window.localStorage.setItem("nightshift.navigationCollapsed", String(navigationCollapsed));
+  }, [navigationCollapsed]);
+
+  useEffect(() => {
+    if (!data || deepLinkApplied.current) return;
+    if (initialLocation.card) {
+      const card = (data.cards ?? []).find((entry) => entry.id === initialLocation.card);
+      if (card) openCard(card);
+    }
+    deepLinkApplied.current = true;
+  }, [data, initialLocation.card]);
+
+  useEffect(() => {
+    if (!data || !deepLinkApplied.current) return;
+    updateDashboardLocation({ card: selected?.id ?? null });
+  }, [data, selected?.id]);
+
+  useEffect(() => {
     const instanceId = selected ? cardLabel(selected, "instance") : null;
     const contentItemId = selected?.metadata?.automation?.contentItemId ?? (selected ? label(selected, "content-item") : null);
-    if (!instanceId) {
+    const stageId = selected?.metadata?.automation?.stageId ?? (selected ? label(selected, "stage") : null);
+    if (!instanceId || !stageId) {
       setDelivery(null);
       setDeliveryState("idle");
       setDeliveryError("");
+      setHandoff(null);
+      setHandoffState("idle");
+      setHandoffError("");
       return undefined;
     }
     let current = true;
     setDelivery(null);
-    setDeliveryState("loading");
+    setDeliveryState("idle");
     setDeliveryError("");
-    const deliveryPath = contentItemId
-      ? `/api/instances/${encodeURIComponent(instanceId)}/content-items/${encodeURIComponent(contentItemId)}/deliverables`
-      : `/api/instances/${encodeURIComponent(instanceId)}/deliverables`;
-    api(deliveryPath)
-      .then((result) => {
+    setHandoff(null);
+    setHandoffState("loading");
+    setHandoffError("");
+    const query = contentItemId ? `?contentItemId=${encodeURIComponent(contentItemId)}` : "";
+    api(`/api/instances/${encodeURIComponent(instanceId)}/stages/${encodeURIComponent(stageId)}/handoff${query}`)
+      .then(async (result) => {
         if (!current) return;
-        setDelivery(result);
-        setDeliveryState("ready");
+        setHandoff(result);
+        setHandoffState("ready");
+        if (!result.deliveryPlacement) return;
+        setDeliveryState("loading");
+        const deliveryPath = contentItemId
+          ? `/api/instances/${encodeURIComponent(instanceId)}/content-items/${encodeURIComponent(contentItemId)}/deliverables`
+          : `/api/instances/${encodeURIComponent(instanceId)}/deliverables`;
+        try {
+          const deliveryResult = await api(deliveryPath);
+          if (!current) return;
+          setDelivery(deliveryResult);
+          setDeliveryState("ready");
+        } catch (reason) {
+          if (!current) return;
+          setDeliveryError(reason.message);
+          setDeliveryState("missing");
+        }
       })
       .catch((reason) => {
         if (!current) return;
-        setDeliveryError(reason.message);
-        setDeliveryState("missing");
+        setHandoffError(reason.message);
+        setHandoffState("error");
       });
     return () => { current = false; };
   }, [selected?.id]);
@@ -91,12 +152,12 @@ export function App() {
     const approval = automation.approval;
     const decisionCardId = automation.decisionCardId ?? card.id;
     try {
-      await api(`/api/cards/${decisionCardId}/${status}`, {
+      const result = await api(`/api/cards/${decisionCardId}/${status}`, {
         method: "POST",
         body: JSON.stringify({ actor: "Workboard operator", contentItemId, effect: approval?.effect, evidence, instanceId, scope: approval?.scope, stageId }),
       });
+      applyCardUpdates(result);
       setSelected(null);
-      await refresh();
     } catch (reason) {
       setError(reason.message);
       throw reason;
@@ -107,102 +168,196 @@ export function App() {
     const instanceId = cardLabel(card, "instance");
     const contentItemId = card.metadata?.automation?.contentItemId ?? label(card, "content-item");
     const stageId = card.metadata?.automation?.stageId ?? label(card, "stage");
-    await api(`/api/cards/${card.id}/retry`, {
+    const result = await api(`/api/cards/${card.id}/retry`, {
       method: "POST",
       body: JSON.stringify({ actor: "Workboard operator", contentItemId, evidence: "Retry requested from Workboard", instanceId, stageId }),
     });
+    applyCardUpdates(result);
     setSelected(null);
-    await refresh();
+  }
+
+  async function openCard(card) {
+    if (!card) {
+      setSelected(null);
+      return;
+    }
+    setSelected(card);
+    try {
+      const result = await api(`/api/cards/${encodeURIComponent(card.id)}`);
+      if (result.revision != null) revisionRef.current = result.revision;
+      setSelected((current) => current?.id === card.id ? result.card : current);
+    } catch (reason) {
+      setError(reason.message);
+    }
+  }
+
+  function applyCardUpdates(result) {
+    if (result?.revision != null) revisionRef.current = result.revision;
+    if (!Array.isArray(result?.cards) || result.cards.length === 0) return;
+    setData((current) => current ? { ...current, cards: mergeCardUpdates(current.cards ?? [], result.cards), revision: result.revision ?? current.revision } : current);
   }
 
   return (
-    <div className="app-shell">
-      <Sidebar active={active} onChange={setActive} />
+    <div className={`app-shell ${navigationCollapsed ? "navigation-collapsed" : ""}`}>
+      <Sidebar active={active} collapsed={navigationCollapsed} onChange={setActive} onToggle={() => setNavigationCollapsed((value) => !value)} />
       <main className="main-shell">
         {error && <div className="error-banner">{error}</div>}
-        {active === "board" && <LiveBoard data={data} query={query} setQuery={setQuery} selected={selectedForDecision} setSelected={setSelected} refreshing={refreshing} refresh={refresh} decide={decide} retry={retry} delivery={delivery} deliveryState={deliveryState} deliveryError={deliveryError} />}
-        {active === "workflows" && <WorkflowStudio data={data} refresh={refresh} setSelected={setSelected} selected={selectedForDecision} decide={decide} retry={retry} delivery={delivery} deliveryState={deliveryState} deliveryError={deliveryError} onNewProject={(release) => setProjectReleaseSha(release?.workflowSha256 ?? data?.workflows?.[0]?.workflowSha256)} />}
-        {active === "projects" && <Projects data={data} onNewProject={() => setProjectReleaseSha(data?.workflows?.[0]?.workflowSha256)} />}
+        {active === "board" && <LiveBoard data={data} query={query} setQuery={setQuery} selected={selectedForDecision} setSelected={openCard} refreshing={refreshing} refresh={refresh} decide={decide} retry={retry} delivery={delivery} deliveryState={deliveryState} deliveryError={deliveryError} handoff={handoff} handoffState={handoffState} handoffError={handoffError} />}
+        {active === "workflows" && <WorkflowStudio data={data} refresh={refresh} initialProjectId={workflowProjectId} initialWorkflowId={initialLocation.workflow} setSelected={openCard} selected={selectedForDecision} decide={decide} approveMany={approveMany} retry={retry} delivery={delivery} deliveryState={deliveryState} deliveryError={deliveryError} handoff={handoff} handoffState={handoffState} handoffError={handoffError} onNewProject={(release) => setProjectReleaseSha(release?.workflowSha256 ?? data?.workflows?.[0]?.workflowSha256)} />}
+        {active === "projects" && <Projects data={data} refresh={refresh} onNewProject={() => setProjectReleaseSha(data?.workflows?.[0]?.workflowSha256)} onOpenProject={(projectId) => { setWorkflowProjectId(projectId); updateDashboardLocation({ project: projectId, view: "workflows" }); setActive("workflows"); }} />}
         {active === "agents" && <Agents data={data} />}
+        {active === "updates" && <Changelog />}
       </main>
       {projectReleaseSha && <ProjectEditor releases={data?.workflows ?? []} initialReleaseSha={projectReleaseSha} onClose={() => setProjectReleaseSha(null)} onCreated={(result) => { setProjectReleaseSha(null); setActive("projects"); if (result.initialScheduleError) setError(`项目已创建，首次调度将在下一轮重试：${result.initialScheduleError}`); refresh(true).catch((reason) => setError(reason.message)); }} />}
     </div>
   );
+
+  async function approveMany(cards, evidence) {
+    const result = await api("/api/cards/bulk/approve", {
+      method: "POST",
+      body: JSON.stringify({ actor: "Workboard operator", cardIds: cards.map((card) => card.id), evidence }),
+    });
+    if (!result.ok) throw new Error(`已通过 ${result.approved} 条，另有 ${result.failed} 条失败，请刷新后重试`);
+    applyCardUpdates(result);
+    return result;
+  }
 }
 
-function LiveBoard({ data, query, setQuery, selected, setSelected, refreshing, refresh, decide, retry, delivery, deliveryState, deliveryError }) {
+function LiveBoard({ data, query, setQuery, selected, setSelected, refreshing, refresh, decide, retry, delivery, deliveryState, deliveryError, handoff, handoffState, handoffError }) {
   const cards = useMemo(() => (data?.cards ?? []).filter((card) => !query || card.title.toLowerCase().includes(query.toLowerCase())), [data, query]);
   const count = (statuses) => cards.filter((card) => statuses.includes(card.status)).length;
+  const [mobileColumn, setMobileColumn] = useState("running");
   return <>
     <header className="topbar"><div><span className="section-label">Night Shift operations</span><h1>Live Workboard</h1></div><div className="top-actions"><label className="search"><Icons.Search size={16} /><input aria-label="Search cards" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search work" /></label><button onClick={() => refresh(true)} className="refresh-button">{refreshing ? "Refreshing…" : "Refresh"}</button></div></header>
     <section className="metrics"><Metric label="Active agents" value={count(["running"])} tone="active" /><Metric label="Waiting review" value={count(["review"])} tone="review" /><Metric label="Blocked" value={count(["blocked"])} tone="blocked" /><Metric label="Completed" value={count(["done"])} /></section>
+    <nav className="mobile-board-tabs" aria-label="任务状态">{columns.map(([id, title, statuses]) => <button className={mobileColumn === id ? "active" : ""} key={id} onClick={() => setMobileColumn(id)}><span>{title}</span><strong>{count(statuses)}</strong></button>)}</nav>
     <section className={`board ${selected ? "with-drawer" : ""}`}>
-      <div className="board-columns">{columns.map(([id, title, statuses]) => { const items = cards.filter((card) => statuses.includes(card.status)); return <div className={`board-column column-${id}`} key={id}><div className="column-head"><h2>{title}</h2><span>{items.length}</span></div><div className="column-body">{items.map((card) => <WorkCard key={card.id} card={card} onClick={setSelected} />)}{items.length === 0 && <EmptyColumn />}</div></div>; })}</div>
-      <Drawer card={selected} delivery={delivery} deliveryState={deliveryState} deliveryError={deliveryError} onClose={() => setSelected(null)} onDecide={decide} onRetry={retry} />
+      <div className="board-columns">{columns.map(([id, title, statuses]) => { const items = cards.filter((card) => statuses.includes(card.status)); return <div className={`board-column column-${id} ${mobileColumn === id ? "mobile-active" : ""}`} key={id}><div className="column-head"><h2>{title}</h2><span>{items.length}</span></div><div className="column-body">{items.map((card) => <WorkCard key={card.id} card={card} onClick={setSelected} />)}{items.length === 0 && <EmptyColumn />}</div></div>; })}</div>
+      <Drawer card={selected} delivery={delivery} deliveryState={deliveryState} deliveryError={deliveryError} handoff={handoff} handoffState={handoffState} handoffError={handoffError} onClose={() => setSelected(null)} onDecide={decide} onRetry={retry} />
     </section>
   </>;
 }
 
-function WorkflowStudio({ data, refresh, setSelected, selected, decide, retry, delivery, deliveryState, deliveryError, onNewProject }) {
+function WorkflowStudio({ data, refresh, initialProjectId, initialWorkflowId, setSelected, selected, decide, approveMany, retry, delivery, deliveryState, deliveryError, handoff, handoffState, handoffError, onNewProject }) {
   const groups = useMemo(() => groupWorkflowReleases(data?.workflows ?? []), [data?.workflows]);
-  const [workflowId, setWorkflowId] = useState("");
-  const [projectId, setProjectId] = useState("all");
+  const deepLinkApplied = useRef(false);
+  const [workflowId, setWorkflowId] = useState(initialWorkflowId ?? "");
+  const [projectId, setProjectId] = useState(initialProjectId ?? "all");
+  const [mobileStageId, setMobileStageId] = useState("");
+  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
+  const [bulkApproval, setBulkApproval] = useState(null);
+  const [bulkEvidence, setBulkEvidence] = useState("");
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkError, setBulkError] = useState("");
+  const [libraryCollapsed, setLibraryCollapsed] = useState(() => typeof window !== "undefined" && window.localStorage.getItem("nightshift.workflowLibraryCollapsed") === "true");
   const [editor, setEditor] = useState(null);
   useEffect(() => {
     if (!groups.length) return;
+    if (!deepLinkApplied.current && initialProjectId) {
+      const project = (data?.instances ?? []).find((entry) => entry.id === initialProjectId);
+      const release = (data?.workflows ?? []).find((entry) => entry.workflowSha256 === project?.workflowSha256);
+      if (release) setWorkflowId(release.workflowId);
+      deepLinkApplied.current = true;
+      return;
+    }
     if (!groups.some((group) => group.id === workflowId)) setWorkflowId(groups[0].id);
-  }, [groups, workflowId]);
+  }, [data?.instances, data?.workflows, groups, initialProjectId, workflowId]);
   const group = groups.find((entry) => entry.id === workflowId) ?? groups[0];
   const releaseShas = useMemo(() => new Set(group?.releases.map((release) => release.workflowSha256) ?? []), [group]);
   const projects = useMemo(() => (data?.instances ?? []).filter((instance) => releaseShas.has(instance.workflowSha256)), [data?.instances, releaseShas]);
-  useEffect(() => { if (projectId !== "all" && !projects.some((project) => project.id === projectId)) setProjectId("all"); }, [projectId, projects]);
+  useEffect(() => {
+    if (!data) return;
+    if (projectId === "all" || projects.some((project) => project.id === projectId)) return;
+    const project = (data?.instances ?? []).find((entry) => entry.id === projectId);
+    const release = (data?.workflows ?? []).find((entry) => entry.workflowSha256 === project?.workflowSha256);
+    if (release && release.workflowId !== workflowId) return;
+    setProjectId("all");
+  }, [data?.instances, data?.workflows, projectId, projects, workflowId]);
+  useEffect(() => {
+    if (!data) return;
+    updateDashboardLocation({ project: projectId === "all" ? null : projectId, workflow: workflowId || null });
+  }, [data, projectId, workflowId]);
+  useEffect(() => {
+    window.localStorage.setItem("nightshift.workflowLibraryCollapsed", String(libraryCollapsed));
+  }, [libraryCollapsed]);
   const visibleProjects = projectId === "all" ? projects : projects.filter((project) => project.id === projectId);
   const pinnedRelease = projectId === "all" ? group?.releases[0] : group?.releases.find((release) => release.workflowSha256 === visibleProjects[0]?.workflowSha256);
   const stages = pinnedRelease?.manifest?.spec?.stages ?? [];
   const taskIndex = useMemo(() => indexStageTasks(stages, visibleProjects, data?.cards ?? []), [stages, visibleProjects, data?.cards]);
+  const allTasks = useMemo(() => [...taskIndex.values()].flat(), [taskIndex]);
+  const liveSummary = useMemo(() => summarizeStatuses(allTasks), [allTasks]);
+  const activeTasks = useMemo(() => allTasks.filter((task) => task.status === "running"), [allTasks]);
+  useEffect(() => {
+    if (!stages.length) return;
+    if (stages.some((stage) => stage.id === mobileStageId)) return;
+    const attentionStage = stages.find((stage) => (taskIndex.get(stage.id) ?? []).some((task) => ["running", "review", "blocked"].includes(task.status)));
+    setMobileStageId(attentionStage?.id ?? stages[0].id);
+  }, [mobileStageId, stages, taskIndex]);
 
   if (!data) return <div className="workflow-loading"><span className="delivery-skeleton" /><strong>正在载入 Workflow 运行状态</strong></div>;
   if (!group) return <div className="simple-screen"><header className="topbar"><div><h1>Workflows</h1><p className="topbar-copy">导入第一份 workflow.md，建立可执行生产线。</p></div><div className="top-actions"><button className="primary" onClick={() => setEditor({ mode: "create", source: newWorkflowSource() })}><Plus size={15} />新建 Workflow</button></div></header></div>;
 
   return <div className="workflow-screen workflow-studio">
     <header className="topbar workflow-topbar">
-      <div><span className="section-label">Workflow operations</span><h1>{group.name}</h1><p className="topbar-copy">每个项目沿同一条阶段轨道运行；点击任务即可查看证据、处理审核或解除阻塞。</p></div>
-      <div className="top-actions"><button onClick={() => setEditor({ mode: "import", source: "" })}><Upload size={15} />导入 Workflow</button><button onClick={() => setEditor({ mode: "edit", source: group.releases[0].sourceMarkdown ?? group.releases[0].sourceYaml })}><FilePenLine size={15} />编辑 Workflow</button><button className="primary" onClick={() => setEditor({ mode: "create", source: newWorkflowSource() })}><Plus size={15} />新建 Workflow</button></div>
+      <div className="workflow-title"><span className="workflow-v-avatar"><img src="/v-avatar.jpg" alt="V" /><i /></span><div className="workflow-title-copy"><span className="section-label">V · Workflow control room</span><h1>{group.name}</h1><p className={`topbar-copy workflow-live-line ${activeTasks.length ? "is-live" : ""}`}><span />{activeTasks.length ? `${activeTasks.length} 个任务运行中` : "本轮调度完成"} · {liveSummary.review ?? 0} 个待审核 · {visibleProjects.length} 个项目</p></div></div>
+      <div className="workflow-header-stats" aria-label="Workflow 状态"><span><strong>{liveSummary.running ?? 0}</strong>进行中</span><span><strong>{liveSummary.review ?? 0}</strong>待审核</span><span><strong>{liveSummary.done ?? 0}</strong>已完成</span></div>
+      <div className="top-actions desktop-workflow-actions"><button onClick={() => setEditor({ mode: "import", source: "" })}><Upload size={15} />导入 Workflow</button><button onClick={() => setEditor({ mode: "edit", source: group.releases[0].sourceMarkdown ?? group.releases[0].sourceYaml })}><FilePenLine size={15} />编辑 Workflow</button><button className="primary" onClick={() => setEditor({ mode: "create", source: newWorkflowSource() })}><Plus size={15} />新建 Workflow</button></div>
+      <button className="mobile-workflow-menu-button" aria-label="Workflow 操作" aria-expanded={mobileActionsOpen} onClick={() => setMobileActionsOpen((value) => !value)}><MoreHorizontal size={19} /></button>
+      {mobileActionsOpen && <div className="mobile-workflow-menu">
+        <button onClick={() => { setMobileActionsOpen(false); setEditor({ mode: "import", source: "" }); }}><Upload size={15} />导入 Workflow</button>
+        <button onClick={() => { setMobileActionsOpen(false); setEditor({ mode: "edit", source: group.releases[0].sourceMarkdown ?? group.releases[0].sourceYaml }); }}><FilePenLine size={15} />编辑 Workflow</button>
+        <button onClick={() => { setMobileActionsOpen(false); setEditor({ mode: "create", source: newWorkflowSource() }); }}><Plus size={15} />新建 Workflow</button>
+      </div>}
     </header>
-    <div className={`workflow-workspace ${selected ? "with-drawer" : ""}`}>
-      <aside className="workflow-library" aria-label="Workflow 列表">
-        <div className="library-head"><strong>Workflows</strong><span>{groups.length}</span></div>
+    <div className={`workflow-workspace ${libraryCollapsed ? "library-collapsed" : ""} ${selected ? "with-drawer" : ""}`}>
+      <aside className="workflow-library" aria-label="Workflow 列表" aria-hidden={libraryCollapsed} inert={libraryCollapsed ? true : undefined}>
+        <div className="library-head"><strong>Workflows</strong><span>{groups.length}</span><button aria-label="收起 Workflow 列表" title="收起 Workflow 列表" onClick={() => setLibraryCollapsed(true)}><Icons.PanelLeftClose size={15} /></button></div>
         {groups.map((entry) => {
           const shas = new Set(entry.releases.map((release) => release.workflowSha256));
           const count = (data?.instances ?? []).filter((instance) => shas.has(instance.workflowSha256)).length;
-          return <button className={entry.id === group.id ? "selected" : ""} key={entry.id} onClick={() => { setWorkflowId(entry.id); setProjectId("all"); }}><span className="workflow-signal" /><div><strong>{entry.name}</strong><small>{count} 个项目 · {entry.releases[0].version}</small></div></button>;
+          return <button className={entry.id === group.id ? "selected" : ""} title={entry.name} key={entry.id} onClick={() => { setWorkflowId(entry.id); setProjectId("all"); }}><span className="workflow-signal" /><div><strong>{entry.name}</strong><small>{count} 个项目 · {entry.releases[0].version}</small></div></button>;
         })}
       </aside>
+      {libraryCollapsed && <button className="workflow-library-peek" aria-label="展开 Workflow 列表" title="展开 Workflow 列表" onClick={() => setLibraryCollapsed(false)}><Icons.PanelLeftOpen size={16} /></button>}
       <main className="workflow-runway">
         <div className="runway-toolbar">
           <div className="release-identity"><span className="mono">{pinnedRelease?.version}</span><strong>{stages.length} 个阶段</strong><small>SHA {pinnedRelease?.workflowSha256.slice(0, 12)}</small></div>
           <div className="runway-actions">
+            <label className="mobile-workflow-filter"><span>Workflow</span><select value={workflowId} onChange={(event) => { setWorkflowId(event.target.value); setProjectId("all"); }}>{groups.map((entry) => <option key={entry.id} value={entry.id}>{entry.name} · {entry.releases[0].version}</option>)}</select><ChevronDown size={14} /></label>
             <label className="project-filter"><span>查看项目</span><select value={projectId} onChange={(event) => setProjectId(event.target.value)}><option value="all">全部项目（{projects.length}）</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select><ChevronDown size={14} /></label>
-            <button className="workflow-project-shortcut" onClick={() => onNewProject(pinnedRelease ?? group.releases[0])}><Plus size={13} />用此 Workflow 新建项目</button>
+            <button className="workflow-project-shortcut" onClick={() => onNewProject(group.releases[0])}><Plus size={13} />用最新版本新建项目</button>
           </div>
         </div>
+        <nav className="mobile-stage-nav" aria-label="Workflow 阶段">
+          {stages.map((stage, index) => {
+            const tasks = taskIndex.get(stage.id) ?? [];
+            const summary = summarizeStatuses(tasks);
+            const tone = ["running", "review", "blocked", "ready", "done"].find((status) => summary[status]) ?? "empty";
+            return <button className={`${mobileStageId === stage.id ? "selected" : ""} state-${tone}`} key={stage.id} onClick={() => setMobileStageId(stage.id)}><span>{String(index + 1).padStart(2, "0")}</span><strong>{stage.title}</strong><small>{tasks.length ? `${tasks.length} 个任务` : "未开始"}</small></button>;
+          })}
+        </nav>
         <div className="stage-runway" style={{ "--stage-count": stages.length }}>
           <div className="stage-rail" />
-          {stages.map((stage, index) => <StageLane key={stage.id} stage={stage} index={index} tasks={taskIndex.get(stage.id) ?? []} onSelect={setSelected} />)}
+          {stages.map((stage, index) => <StageLane key={stage.id} stage={stage} index={index} mobileSelected={mobileStageId === stage.id} tasks={taskIndex.get(stage.id) ?? []} onSelect={setSelected} onBulkApprove={(cards) => { setBulkApproval({ cards, stage }); setBulkEvidence(""); setBulkError(""); }} />)}
         </div>
       </main>
-      <Drawer card={selected} delivery={delivery} deliveryState={deliveryState} deliveryError={deliveryError} onClose={() => setSelected(null)} onDecide={decide} onRetry={retry} />
+      <Drawer card={selected} delivery={delivery} deliveryState={deliveryState} deliveryError={deliveryError} handoff={handoff} handoffState={handoffState} handoffError={handoffError} onClose={() => setSelected(null)} onDecide={decide} onRetry={retry} />
     </div>
     {editor && <WorkflowEditor initialSource={editor.source} mode={editor.mode} onClose={() => setEditor(null)} onPublished={async () => { setEditor(null); await refresh(true); }} />}
+    {bulkApproval && <div className="workflow-modal bulk-approval-modal" role="dialog" aria-modal="true" aria-label="批量审核">
+      <div className="bulk-approval-dialog"><span className="section-label">Batch review</span><h2>批量通过 {bulkApproval.cards.length} 条任务</h2><p>每条任务仍会生成独立审批记录。付费生产、外部发布等动作继续严格使用各自 Workflow 声明的权限与范围。</p><textarea aria-label="批量审核备注" value={bulkEvidence} onChange={(event) => setBulkEvidence(event.target.value)} placeholder="审核备注（可选）" />{bulkError && <p className="decision-error">{bulkError}</p>}<div><button onClick={() => setBulkApproval(null)} disabled={bulkSaving}>取消</button><button className="primary" disabled={bulkSaving} onClick={async () => { setBulkSaving(true); setBulkError(""); try { await approveMany(bulkApproval.cards, bulkEvidence); setBulkApproval(null); } catch (reason) { setBulkError(reason.message); } finally { setBulkSaving(false); } }}>{bulkSaving ? "处理中…" : "确认批量通过"}</button></div></div>
+    </div>}
   </div>;
 }
 
-function StageLane({ stage, index, tasks, onSelect }) {
+function StageLane({ stage, index, mobileSelected, tasks, onSelect, onBulkApprove }) {
   const summary = summarizeStatuses(tasks);
-  return <section className="stage-lane">
+  const isLive = (summary.running ?? 0) > 0;
+  const reviewCards = tasks.filter((task) => task.status === "review" && task.card).map((task) => task.card);
+  return <section className={`stage-lane ${isLive ? "is-live" : ""} ${mobileSelected ? "mobile-selected" : ""}`}>
     <header><span className="stage-index">{String(index + 1).padStart(2, "0")}</span><div><strong>{stage.title}</strong><small>{stage.scope === "content-item" ? "每条内容" : "整个项目"} · {stage.actor === "human" ? "人工" : "Agent"}</small></div></header>
-    <div className="stage-counts">{Object.entries(summary).map(([status, count]) => <span className={`state-${status}`} key={status}>{statusLabel(status)} {count}</span>)}{tasks.length === 0 && <span>尚未开始</span>}</div>
-    <div className="stage-tasks">{tasks.map((task) => <button key={`${task.projectId}-${task.contentItemId ?? "project"}-${task.stageId}-${task.card?.id ?? task.attempt}`} className={`stage-task state-${task.status}`} disabled={!task.card} onClick={() => task.card && onSelect(task.card)}><span className="task-state" /><div><strong>{task.contentTitle ?? task.projectName}</strong><small>{task.contentTitle ? task.projectName : task.projectId}</small></div><span className="task-action">{task.requiresApproval ? "等待确认执行" : statusLabel(task.status)}</span></button>)}</div>
+    <div className="stage-counts">{Object.entries(summary).map(([status, count]) => <span className={`state-${status}`} key={status}>{statusLabel(status)} {count}</span>)}{tasks.length === 0 && <span>尚未开始</span>}{reviewCards.length > 1 && <button className="bulk-review-button" onClick={() => onBulkApprove(reviewCards)}>批量通过 {reviewCards.length}</button>}</div>
+    <div className="stage-tasks">{tasks.map((task) => <button key={`${task.projectId}-${task.contentItemId ?? "project"}-${task.stageId}-${task.card?.id ?? task.attempt}`} className={`stage-task state-${task.status}`} disabled={!task.card} onClick={() => task.card && onSelect(task.card)}><span className="task-state" /><div><strong>{task.contentTitle ?? task.projectName}</strong><small>{task.contentTitle ? task.projectName : task.projectId}</small></div><span className="task-action">{taskActionLabel(task)}</span></button>)}</div>
   </section>;
 }
 
@@ -341,21 +496,54 @@ function ProjectInput({ name, contract, value, onChange }) {
   const labelText = projectInputLabel(name);
   if (name === "authorizationScope") {
     const scope = value ?? {};
-    return <fieldset className="authorization-field"><legend>{labelText}</legend><label><input type="checkbox" checked={scope.paidProduction === true} onChange={(event) => onChange({ ...scope, paidProduction: event.target.checked })} /><span>允许进入付费生产审批</span></label><label><input type="checkbox" checked={scope.externalPublication === true} onChange={(event) => onChange({ ...scope, externalPublication: event.target.checked })} /><span>允许申请外部发布</span></label><label><input type="checkbox" checked={scope.vlabOnly !== false} onChange={(event) => onChange({ ...scope, vlabOnly: event.target.checked })} /><span>仅在 VLab 运行</span></label></fieldset>;
+    return <fieldset className="authorization-field"><legend>{labelText}</legend><label><input type="checkbox" checked={scope.paidProduction === true} onChange={(event) => onChange({ ...scope, paidProduction: event.target.checked })} /><span>允许进入付费生产审批</span></label><label><input type="checkbox" checked={scope.externalPublication === true} onChange={(event) => onChange({ ...scope, externalPublication: event.target.checked })} /><span>允许申请外部发布</span></label><label><input type="checkbox" checked={scope.vlabOnly !== false} onChange={(event) => onChange({ ...scope, vlabOnly: event.target.checked })} /><span>仅由 V 内部执行</span></label></fieldset>;
   }
   if (contract.type === "boolean") return <label className="project-field checkbox-field"><input type="checkbox" checked={value === true} onChange={(event) => onChange(event.target.checked)} /><span>{labelText}</span></label>;
   if (contract.type === "object" || contract.type === "array") return <label className="project-field wide"><span>{labelText}{contract.required ? " *" : ""}</span><textarea value={typeof value === "string" ? value : JSON.stringify(value ?? (contract.type === "array" ? [] : {}), null, 2)} onChange={(event) => onChange(parseJsonValue(event.target.value))} /></label>;
   return <label className="project-field"><span>{labelText}{contract.required ? " *" : ""}</span><input type={contract.type === "number" ? "number" : name.toLowerCase().includes("url") ? "url" : "text"} value={value ?? ""} onChange={(event) => onChange(contract.type === "number" ? Number(event.target.value) : event.target.value)} required={contract.required === true} placeholder={projectInputPlaceholder(name)} /></label>;
 }
 
-function Projects({ data, onNewProject }) { return <div className="simple-screen"><header className="topbar"><div><span className="section-label">Workflow instances</span><h1>Projects</h1><p className="topbar-copy">一个 Project 是某个客户或策划案在一个固定 Workflow 版本上的运行实例。</p></div><div className="top-actions"><button className="primary" onClick={onNewProject}><Plus size={15} />新建项目</button></div></header><div className="project-table"><div className="table-head"><span>Project</span><span>Workflow</span><span>视频任务</span><span>Status</span><span>Updated</span></div>{(data?.instances ?? []).map((instance) => <div className="table-row" key={instance.id}><strong>{instance.name}</strong><span className="mono">{instance.workflowSha256.slice(0, 12)}</span><span>{instance.contentItems?.length ?? 0} 条 · {routeSummary(instance.contentItems)}</span><span>{instance.status}</span><span>{new Date(instance.updatedAt).toLocaleString()}</span></div>)}</div></div>; }
+function Projects({ data, onNewProject, onOpenProject, refresh }) {
+  const [deleting, setDeleting] = useState(null);
+  const [deleteError, setDeleteError] = useState("");
+  async function archiveProject(instance) {
+    setDeleteError("");
+    try {
+      await api(`/api/instances/${encodeURIComponent(instance.id)}`, { method: "DELETE" });
+      setDeleting(null);
+      await refresh(true);
+    } catch (reason) { setDeleteError(reason.message); }
+  }
+  return <div className="simple-screen projects-screen"><header className="topbar"><div><span className="section-label">V · Workflow instances</span><h1>Projects</h1><p className="topbar-copy">每个项目是一条由 V 驱动、锁定 Workflow 版本的生产线。</p></div><div className="top-actions"><button className="primary" onClick={onNewProject}><Plus size={15} />新建项目</button></div></header><div className="project-table"><div className="table-head"><span>Project</span><span>Workflow</span><span>视频任务</span><span>Status</span><span>Updated</span><span /></div>{(data?.instances ?? []).map((instance) => <div className="table-row" role="button" tabIndex="0" onClick={() => onOpenProject(instance.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onOpenProject(instance.id); }} key={instance.id}><strong className="project-name">{instance.name}</strong><span className="project-workflow mono">{instance.workflowSha256.slice(0, 12)}</span><span className="project-content">{instance.contentItems?.length ?? 0} 条 · {routeSummary(instance.contentItems)}</span><span className={`project-status status-${instance.status}`}>{instance.status}</span><span className="project-updated">{new Date(instance.updatedAt).toLocaleString()}</span><button className="project-delete" aria-label={`删除项目 ${instance.name}`} title="删除项目" onClick={(event) => { event.stopPropagation(); setDeleteError(""); setDeleting(instance); }}><Trash2 size={15} /></button></div>)}</div>{deleting && <div className="confirm-scrim" role="dialog" aria-modal="true" aria-label="删除项目"><div className="confirm-dialog"><span className="confirm-icon"><Trash2 size={20} /></span><h2>删除这个项目？</h2><p><strong>{deleting.name}</strong> 将从 V 的工作视野中移除。运行中的项目不会被强制删除。</p>{deleteError && <div className="confirm-error">{deleteError}</div>}<div><button onClick={() => setDeleting(null)}>取消</button><button className="danger" onClick={() => archiveProject(deleting)}>删除项目</button></div></div></div>}</div>;
+}
 
 function Agents({ data }) {
   const agents = [...new Set([
     ...(data?.cards ?? []).map((card) => card.agentId),
     ...(data?.instances ?? []).flatMap((instance) => Object.values(instance.agentBindings ?? {})),
   ].filter(Boolean))];
-  return <div className="simple-screen"><header className="topbar"><div><span className="section-label">OpenClaw workers</span><h1>Agents</h1></div></header><div className="agent-list">{agents.length ? agents.map((agent) => <div className="agent-row" key={agent}><span className="agent-avatar"><Icons.Bot size={18} /></span><div><strong>{agent}</strong><span>Workflow binding or native Workboard assignment</span></div><span className="live-dot" /></div>) : <p className="empty-copy">No agent binding has been declared.</p>}</div></div>;
+  return <div className="simple-screen agents-screen"><header className="topbar"><div><span className="section-label">OpenClaw workers</span><h1>Agents</h1><p className="topbar-copy">当前参与 Workflow 与原生 Workboard 的 Agent。</p></div></header><div className="agent-list">{agents.length ? agents.map((agent) => <div className="agent-row" key={agent}><span className="agent-avatar"><Icons.Bot size={18} /></span><div><strong>{agent}</strong><span>Workflow binding or native Workboard assignment</span></div><span className="live-dot" /></div>) : <p className="empty-copy">No agent binding has been declared.</p>}</div></div>;
+}
+
+function Changelog() {
+  return <div className="simple-screen changelog-screen">
+    <header className="topbar changelog-topbar">
+      <div><span className="section-label">Night Shift</span><h1>更新日志</h1><p className="topbar-copy">记录 Night Shift 的主要产品更新。</p></div>
+    </header>
+    <main className="changelog-content">
+      {NIGHT_SHIFT_CHANGELOG.map((entry, index) => <article className="changelog-entry" key={`${entry.date}-${entry.title}`}>
+        <time dateTime={entry.date}>{entry.date}</time>
+        <div>
+          <div className="changelog-entry-title"><h2>{entry.title}</h2>{index === 0 && <span>最新</span>}</div>
+          <ChangelogItems items={entry.items} />
+        </div>
+      </article>)}
+    </main>
+  </div>;
+}
+
+function ChangelogItems({ items }) {
+  return <ul>{items.map((item) => <li key={item}><span aria-hidden="true" />{item}</li>)}</ul>;
 }
 
 function label(card, prefix) { return card.labels?.find((entry) => entry.startsWith(`${prefix}:`))?.slice(prefix.length + 1); }
@@ -405,6 +593,7 @@ function emptyWorkflow() {
     spec: {
       ownerAgentRole: "operator",
       concurrency: { perInstance: 2, maxActiveInstances: 3 },
+      completion: { mode: "strict-v1" },
       inputs: {},
       stages: [defaultStage(1)],
     },
@@ -461,6 +650,28 @@ function parseJsonValue(value) {
   catch { return value; }
 }
 
+function readDashboardLocation() {
+  if (typeof window === "undefined") return { card: null, project: null, view: "board", workflow: null };
+  const parameters = new URLSearchParams(window.location.search);
+  const view = ["board", "workflows", "projects", "agents", "updates"].includes(parameters.get("view")) ? parameters.get("view") : "board";
+  return {
+    card: parameters.get("card"),
+    project: parameters.get("project"),
+    view,
+    workflow: parameters.get("workflow"),
+  };
+}
+
+function updateDashboardLocation(patch) {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  for (const [key, value] of Object.entries(patch)) {
+    if (value) url.searchParams.set(key, value);
+    else url.searchParams.delete(key);
+  }
+  window.history.replaceState(null, "", url);
+}
+
 function defaultStage(number) {
   return {
     id: `stage-${number}`,
@@ -505,6 +716,7 @@ function indexStageTasks(stages, projects, cards) {
         ...run,
         card,
         contentTitle: content?.title,
+        guardedEffect: stageById.get(run.stageId)?.approval?.before ?? null,
         projectId: project.id,
         projectName: project.name,
         requiresApproval: missingApprovalFor(project, stageById.get(run.stageId), run.contentItemId),
@@ -526,6 +738,7 @@ function indexStageTasks(stages, projects, cards) {
       card,
       contentItemId,
       contentTitle: content?.title,
+      guardedEffect: stageById.get(stageId)?.approval?.before ?? null,
       isApproval: true,
       projectId,
       projectName: project.name,
@@ -548,7 +761,19 @@ function indexStageTasks(stages, projects, cards) {
 
 function withDecisionContext(card, data) {
   if (!card || !data) return card;
-  const fresh = (data.cards ?? []).find((entry) => entry.id === card.id) ?? card;
+  const summary = (data.cards ?? []).find((entry) => entry.id === card.id);
+  const fresh = summary ? {
+    ...card,
+    ...summary,
+    metadata: {
+      ...(card.metadata ?? {}),
+      ...(summary.metadata ?? {}),
+      automation: {
+        ...(card.metadata?.automation ?? {}),
+        ...(summary.metadata?.automation ?? {}),
+      },
+    },
+  } : card;
   const instanceId = cardLabel(fresh, "instance");
   const stageId = fresh.metadata?.automation?.stageId ?? label(fresh, "stage");
   const contentItemId = fresh.metadata?.automation?.contentItemId ?? label(fresh, "content-item") ?? null;
@@ -586,6 +811,12 @@ function withDecisionContext(card, data) {
   };
 }
 
+function mergeCardUpdates(existing, updates) {
+  const merged = new Map(existing.map((card) => [card.id, card]));
+  for (const update of updates) merged.set(update.id, { ...(merged.get(update.id) ?? {}), ...update });
+  return [...merged.values()];
+}
+
 function missingApprovalFor(instance, stage, contentItemId = null) {
   if (!stage?.approval?.before) return false;
   const requiredScope = stage.approval.scope ?? "stage";
@@ -614,6 +845,18 @@ function preferTask(candidate, current) {
 
 function statusLabel(status) {
   return ({ ready: "待开始", running: "进行中", review: "待审核", blocked: "已阻塞", done: "已完成", cancelled: "已取消" })[status] ?? status;
+}
+
+function taskActionLabel(task) {
+  const effect = guardedEffectLabel(task.guardedEffect);
+  if (task.requiresApproval && effect) return `确认${effect}`;
+  if (task.status === "done" && effect) return `${effect}完成`;
+  if (task.status === "blocked" && effect) return `${effect}未完成`;
+  return task.requiresApproval ? "等待确认执行" : statusLabel(task.status);
+}
+
+function guardedEffectLabel(effect) {
+  return ({ "external-publication": "外部发布", "paid-production": "付费生产", destructive: "高风险操作", "permission-change": "权限变更" })[effect] ?? null;
 }
 
 function csv(value) { return value.split(",").map((entry) => entry.trim()).filter(Boolean); }

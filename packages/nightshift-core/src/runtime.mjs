@@ -4,7 +4,8 @@ import {
   validateWorkflow,
   WorkflowValidationError,
 } from "./workflow.mjs";
-import { buildAgentBrief, planNextActions, requiredApproval } from "./orchestrator.mjs";
+import { buildAgentBrief, planNextActions, requiredApproval, resolveApprovalBinding, stageTimeoutSeconds } from "./orchestrator.mjs";
+import { normalizeProjectCollaboration } from "./project.mjs";
 
 export class NightShiftRuntime {
   constructor({ board = "nightshift", completionValidator = null, store, workboard }) {
@@ -63,6 +64,10 @@ export class NightShiftRuntime {
     return this.store.updateInstanceInputs(instanceId, patch);
   }
 
+  updateInstanceCollaboration(instanceId, collaboration) {
+    return this.store.updateInstanceCollaboration(instanceId, normalizeProjectCollaboration(collaboration));
+  }
+
   async reconcile(instanceId, cards = null) {
     const currentCards = cards ?? await this.workboard.listCards();
     const instance = this.store.getInstance(instanceId);
@@ -77,9 +82,18 @@ export class NightShiftRuntime {
       if (labels.includes("nightshift:approval")) continue;
       let status = card.status;
       let summary = card.metadata?.automation?.summary ?? null;
-      if (status === "done" && this.completionValidator) {
-        const stageId = stageLabel.slice("stage:".length);
-        const contentItemId = contentItemLabel?.slice("content-item:".length) ?? null;
+      const stageId = stageLabel.slice("stage:".length);
+      const contentItemId = contentItemLabel?.slice("content-item:".length) ?? null;
+      let completionAlreadyValidated = false;
+      if (status === "running") {
+        const recovered = await this.recoverTerminalCard({ card, contentItemId, instance, release, stageId });
+        if (recovered) {
+          status = recovered.status;
+          summary = recovered.summary;
+          completionAlreadyValidated = recovered.status === "done";
+        }
+      }
+      if (status === "done" && this.completionValidator && !completionAlreadyValidated) {
         try {
           await this.completionValidator({ card, contentItemId, instance, release, stageId });
           await this.restoreDownstreamCards({
@@ -109,7 +123,7 @@ export class NightShiftRuntime {
       }
       const run = {
         instanceId,
-        stageId: stageLabel.slice("stage:".length),
+        stageId,
         attempt: card.metadata?.automation?.attempt ?? 1,
         cardId: card.id,
         status,
@@ -122,6 +136,55 @@ export class NightShiftRuntime {
       }
     }
     return this.store.listStageRuns(instanceId);
+  }
+
+  async recoverTerminalCard({ card, contentItemId, instance, release, stageId }) {
+    if (!card.sessionKey || card.execution?.status !== "running") return null;
+    if (typeof this.workboard.getSession !== "function") return null;
+    if (typeof this.workboard.completeCard !== "function" || typeof this.workboard.blockCard !== "function") return null;
+    let session;
+    try {
+      session = await this.workboard.getSession(card.sessionKey, { limit: 12 });
+    } catch {
+      return null;
+    }
+    const messages = Array.isArray(session?.messages) ? session.messages : [];
+    const latest = messages.at(-1);
+    const startedAt = Number(card.execution?.startedAt ?? card.metadata?.attempts?.at(-1)?.startedAt ?? 0);
+    const terminalAt = Number(latest?.timestamp ?? latest?.__openclaw?.recordTimestampMs ?? 0);
+    if (latest?.role !== "assistant" || latest.stopReason !== "stop" || terminalAt < startedAt) return null;
+    const terminalText = messageText(latest);
+    try {
+      if (this.completionValidator) {
+        await this.completionValidator({ card, contentItemId, instance, release, stageId });
+      }
+      const summary = boundedSummary(terminalText || `${stageId} completed with validated outputs`);
+      const completed = await this.workboard.completeCard(card.id, {
+        summary,
+        proof: {
+          status: "passed",
+          label: "Night Shift terminal reconciliation",
+          note: "Agent Session ended normally and the pinned Workflow output contract passed validation.",
+        },
+      });
+      Object.assign(card, completed);
+      this.store.appendEvent({
+        instanceId: instance.id,
+        type: "stage.terminal.recovered",
+        payload: { cardId: card.id, contentItemId, stageId, terminalAt },
+      });
+      return { status: "done", summary };
+    } catch (error) {
+      const reason = boundedReason(`Terminal Agent Session did not satisfy the Workflow output contract: ${error.message}`);
+      const blocked = await this.workboard.blockCard(card.id, { reason });
+      Object.assign(card, blocked);
+      this.store.appendEvent({
+        instanceId: instance.id,
+        type: "stage.terminal.blocked",
+        payload: { cardId: card.id, contentItemId, error: error.message, stageId, terminalAt },
+      });
+      return { status: "blocked", summary: reason };
+    }
   }
 
   async blockDownstreamCards({ cards, contentItemId, failedStageId, instanceId, release }) {
@@ -190,7 +253,7 @@ export class NightShiftRuntime {
     }
   }
 
-  async retry({ actor, cardId, contentItemId, evidence, instanceId, stageId }) {
+  async retry({ actor, card = null, cardId, contentItemId, evidence, instanceId, stageId }) {
     const instance = this.store.getInstance(instanceId);
     if (!instance) throw new Error(`Unknown instance ${instanceId}`);
     const release = this.store.getRelease(instance.workflowSha256)?.manifest;
@@ -198,14 +261,18 @@ export class NightShiftRuntime {
     if (!stage || !["agent", "system"].includes(stage.actor)) throw new Error("Only blocked executable stages can be retried");
     const missingApproval = requiredApproval(stage, instance, new Date(), contentItemId ?? null);
     if (missingApproval) throw new Error("Execution confirmation is required before this stage can be retried");
-    const cards = await this.workboard.listCards();
-    const card = cards.find((entry) => entry.id === cardId);
-    if (!card || card.status !== "blocked") throw new Error("Retry requires a blocked Workboard card");
+    const scopedCards = card ? [card] : await this.workboard.listCards({ cardIds: [cardId] });
+    const blockedCard = scopedCards.find((entry) => entry.id === cardId);
+    if (!blockedCard || blockedCard.status !== "blocked") throw new Error("Retry requires a blocked Workboard card");
     const contentItem = contentItemId
       ? this.store.listContentItems(instanceId).find((entry) => entry.id === contentItemId)
       : null;
     if (contentItemId && !contentItem) throw new Error(`Unknown content item ${contentItemId}`);
-    await this.workboard.updateCard(cardId, { notes: buildAgentBrief(release, instance, stage, contentItem) });
+    await this.workboard.updateCard(cardId, {
+      notes: buildAgentBrief(release, instance, stage, contentItem),
+      maxRetries: stage.retry?.maxAttempts ?? 1,
+      maxRuntimeSeconds: stageTimeoutSeconds(stage.timeout),
+    });
     await this.workboard.moveCard(cardId, "ready");
     const runs = contentItemId ? this.store.listContentItemRuns(instanceId) : this.store.listStageRuns(instanceId);
     const run = runs.find((entry) => entry.cardId === cardId && entry.stageId === stageId);
@@ -221,7 +288,7 @@ export class NightShiftRuntime {
       type: "stage.retry.requested",
       payload: { actor, cardId, contentItemId, evidence, stageId },
     });
-    return { cardId, contentItemId, stageId, status: "ready" };
+    return { affectedCardIds: [cardId], cardId, contentItemId, stageId, status: "ready" };
   }
 
   async tick(instanceId, { cards = null, dispatch = false, dryRun = false } = {}) {
@@ -241,15 +308,21 @@ export class NightShiftRuntime {
       contentItems,
       contentItemRuns,
     });
-    const applied = await this.workboard.applyPlan(actions, { dryRun });
+    const applied = await this.workboard.applyPlan(actions, { cards: currentCards, dryRun });
     if (!dryRun) {
       for (const result of applied) {
         const card = result.card;
         if (!card) continue;
         if (result.action.type === "request_approval") {
+          this.store.bindActionCard({
+            actionKey: result.action.idempotencyKey,
+            instanceId,
+            cardId: card.id,
+          });
           if (card.status === "done") {
             await this.workboard.moveCard(card.id, "review");
             card.status = "review";
+            result.status = "reopened";
             this.store.appendEvent({
               instanceId,
               type: "approval.reopened",
@@ -323,8 +396,17 @@ export class NightShiftRuntime {
     scope,
     stageId,
   }) {
+    const instance = this.store.getInstance(instanceId);
+    const release = instance ? this.store.getRelease(instance.workflowSha256)?.manifest : null;
+    const stage = release?.spec?.stages?.find((entry) => entry.id === stageId);
+    const binding = resolveApprovalBinding(stage ?? {}, instance ?? {}, contentItemId ?? null);
+    if (binding.missingFields.length > 0) {
+      throw new Error(`Approval binding is incomplete: ${binding.missingFields.join(", ")}`);
+    }
     const approval = this.store.recordApproval({
       actor,
+      bindingHash: binding.bindingHash,
+      bindings: binding.values,
       cardId,
       contentItemId,
       effect,
@@ -341,12 +423,11 @@ export class NightShiftRuntime {
     if (run) contentItemId
       ? this.store.upsertContentItemRun({ ...run, status: "done" })
       : this.store.upsertStageRun({ ...run, status: "done" });
-    const instance = this.store.getInstance(instanceId);
-    const release = instance ? this.store.getRelease(instance.workflowSha256)?.manifest : null;
-    const stage = release?.spec?.stages?.find((entry) => entry.id === stageId);
     const requiredScope = stage?.approval?.scope ?? "stage";
     if (stage?.approval?.before === effect && requiredScope === scope) {
-      const cards = await this.workboard.listCards();
+      const cards = await this.workboard.listCards({
+        cardIds: candidateAffectedCardIds(this.store, instanceId, stageId, contentItemId),
+      });
       const blockedExecutionCard = cards.find((card) => {
         const labels = card.labels ?? [];
         if (card.status !== "blocked" || labels.includes("nightshift:approval")) return false;
@@ -357,6 +438,7 @@ export class NightShiftRuntime {
       if (blockedExecutionCard) {
         await this.retry({
           actor,
+          card: blockedExecutionCard,
           cardId: blockedExecutionCard.id,
           contentItemId,
           evidence: `Execution confirmed by ${actor}: ${evidence ?? "no evidence"}`,
@@ -365,7 +447,10 @@ export class NightShiftRuntime {
         });
       }
     }
-    return approval;
+    return {
+      ...approval,
+      affectedCardIds: [cardId, ...candidateAffectedCardIds(this.store, instanceId, stageId, contentItemId)].filter(Boolean),
+    };
   }
 
   async reject({ actor, cardId, contentItemId, evidence, instanceId, stageId }) {
@@ -385,7 +470,7 @@ export class NightShiftRuntime {
     if (run) contentItemId
       ? this.store.upsertContentItemRun({ ...run, status: "blocked" })
       : this.store.upsertStageRun({ ...run, status: "blocked" });
-    return approval;
+    return { ...approval, affectedCardIds: [cardId].filter(Boolean) };
   }
 
   async requestChanges({ actor, cardId, contentItemId, evidence, instanceId, stageId }) {
@@ -405,8 +490,36 @@ export class NightShiftRuntime {
     if (run) contentItemId
       ? this.store.upsertContentItemRun({ ...run, status: "blocked" })
       : this.store.upsertStageRun({ ...run, status: "blocked" });
-    return approval;
+    return { ...approval, affectedCardIds: [cardId].filter(Boolean) };
   }
+}
+
+function candidateAffectedCardIds(store, instanceId, stageId, contentItemId) {
+  const runs = contentItemId ? store.listContentItemRuns(instanceId) : store.listStageRuns(instanceId);
+  return runs
+    .filter((entry) => entry.stageId === stageId && (contentItemId ? entry.contentItemId === contentItemId : true))
+    .map((entry) => entry.cardId)
+    .filter((id) => typeof id === "string" && id);
+}
+
+function messageText(message) {
+  if (typeof message?.content === "string") return message.content.trim();
+  if (!Array.isArray(message?.content)) return "";
+  return message.content
+    .filter((entry) => entry?.type === "text" && typeof entry.text === "string")
+    .map((entry) => entry.text.trim())
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function boundedSummary(value) {
+  const normalized = String(value ?? "").trim();
+  return normalized.length <= 1900 ? normalized : `${normalized.slice(0, 1897)}...`;
+}
+
+function boundedReason(value) {
+  const normalized = String(value ?? "").trim();
+  return normalized.length <= 950 ? normalized : `${normalized.slice(0, 947)}...`;
 }
 
 function workflowComplete(release, projectRuns, contentItems, contentItemRuns) {

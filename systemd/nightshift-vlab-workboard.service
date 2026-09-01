@@ -1,37 +1,46 @@
 [Unit]
 Description=Night Shift Workboard VLab
-After=network-online.target openclaw-vlab-browser.service
-Wants=network-online.target
+After=network-online.target openclaw-vlab-gateway.service
+Wants=network-online.target openclaw-vlab-gateway.service
 
 [Service]
 Type=simple
-User=vlab-browser
-Group=vlab-browser
-WorkingDirectory=/srv/vlab-browser/releases/nightshift-workboard/current
-Environment=HOME=/srv/vlab-browser
-Environment=OPENCLAW_HOME=/srv/vlab-browser
-Environment=OPENCLAW_STATE_DIR=/srv/vlab-browser/nightshift/openclaw-state
-Environment=OPENCLAW_CONFIG_PATH=/srv/vlab-browser/state/openclaw.json
-Environment=PATH=/opt/node-v22.23.1/bin:/usr/local/bin:/usr/bin:/bin
-Environment=NIGHTSHIFT_OPENCLAW_COMMAND=/opt/node-v22.23.1/bin/node
-Environment=NIGHTSHIFT_OPENCLAW_ENTRY=/srv/vlab-browser/openclaw-v-browser-0.4.5/node_modules/openclaw/dist/index.js
-Environment=NIGHTSHIFT_HOST=100.82.39.107
+User=vlab
+Group=vlab
+WorkingDirectory=/srv/vlab/releases/nightshift-workboard/current
+EnvironmentFile=/srv/vlab/state/feishu.env
+Environment=HOME=/srv/vlab
+Environment=OPENCLAW_HOME=/srv/vlab
+Environment=OPENCLAW_STATE_DIR=/srv/vlab/nightshift/openclaw-state
+Environment=OPENCLAW_CONFIG_PATH=/srv/vlab/state/openclaw.json
+Environment=NIGHTSHIFT_SOURCE_STATE_DIR=/srv/vlab/state
+Environment=TMPDIR=/srv/vlab/tmp
+Environment=PATH=/opt/vlab/node/bin:/usr/local/bin:/usr/bin:/bin
+Environment=NIGHTSHIFT_OPENCLAW_COMMAND=/opt/vlab/node/bin/node
+Environment=NIGHTSHIFT_OPENCLAW_ENTRY=/opt/vlab/current/node_modules/openclaw/dist/index.js
+Environment=NIGHTSHIFT_HOST=127.0.0.1
 Environment=NIGHTSHIFT_PORT=24880
-Environment=NIGHTSHIFT_DATA_DIR=/srv/vlab-browser/nightshift
+Environment=NIGHTSHIFT_DATA_DIR=/srv/vlab/nightshift
 Environment=NIGHTSHIFT_BOARD=nightshift-lab
-Environment=NIGHTSHIFT_GATEWAY_URL=ws://100.82.39.107:23793
-Environment=NIGHTSHIFT_WORKFLOW_PATH=/srv/vlab-browser/releases/nightshift-workboard/current/examples/workflows/xingqing-content-delivery.workflow.md
-Environment=NIGHTSHIFT_SEED_INSTANCE_PATH=/srv/vlab-browser/releases/nightshift-workboard/current/examples/instances/xingqing-vlab-smoke.json
-ExecStartPre=/srv/vlab-browser/releases/nightshift-workboard/current/scripts/bootstrap-nightshift-cli-state.sh
-ExecStart=/opt/node-v22.23.1/bin/node --no-warnings apps/nightshift-dashboard/server/index.mjs
+Environment=NIGHTSHIFT_FEISHU_NOTIFICATIONS=1
+Environment=NIGHTSHIFT_PUBLIC_BASE_URL=http://127.0.0.1:24880
+Environment=NIGHTSHIFT_GATEWAY_URL=ws://127.0.0.1:23793
+Environment=NIGHTSHIFT_WORKBOARD_DISPATCH_METHOD=workboard.cards.dispatchWithOptions
+Environment=NIGHTSHIFT_WORKFLOW_PATH=/srv/vlab/releases/nightshift-workboard/current/examples/workflows/generic-agent-delivery.workflow.md
+Environment=NIGHTSHIFT_SCHEDULER_MODE=external
+Environment=NIGHTSHIFT_DISPATCH_MAX_STARTS=12
+Environment=NIGHTSHIFT_MAX_WORKBOARD_ACTIVE=36
+ExecStartPre=/srv/vlab/releases/nightshift-workboard/current/scripts/bootstrap-nightshift-cli-state.sh
+ExecStart=/opt/vlab/node/bin/node --no-warnings apps/nightshift-dashboard/server/index.mjs
 Restart=on-failure
 RestartSec=3
 TimeoutStopSec=20
+UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/srv/vlab-browser/nightshift
+ReadWritePaths=/srv/vlab/nightshift /srv/vlab/state /srv/vlab/tmp
 
 [Install]
 WantedBy=multi-user.target

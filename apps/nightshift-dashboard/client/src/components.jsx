@@ -13,7 +13,10 @@ import {
   Clock3,
   FileCode2,
   GitBranch,
+  History,
   LayoutDashboard,
+  PanelLeftClose,
+  PanelLeftOpen,
   Play,
   RefreshCw,
   Search,
@@ -39,7 +42,10 @@ export const Icons = {
   Clock3,
   FileCode2,
   GitBranch,
+  History,
   LayoutDashboard,
+  PanelLeftClose,
+  PanelLeftOpen,
   Play,
   RefreshCw,
   Search,
@@ -50,18 +56,20 @@ export const Icons = {
   X,
 };
 
-export function Sidebar({ active, onChange }) {
+export function Sidebar({ active, collapsed, onChange, onToggle }) {
   const items = [
     ["board", "Live Board", LayoutDashboard],
     ["workflows", "Workflows", Workflow],
     ["projects", "Projects", GitBranch],
     ["agents", "Agents", Bot],
+    ["updates", "Updates", History],
   ];
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${collapsed ? "is-collapsed" : ""}`}>
       <div className="brand">
         <span className="brand-mark"><Sparkles size={17} /></span>
-        <div><strong>Night Shift</strong><span>AI operations</span></div>
+        <div><strong>Night Shift</strong><span>Powered by V</span></div>
+        <button className="sidebar-toggle" aria-label={collapsed ? "展开主菜单" : "收起主菜单"} title={collapsed ? "展开主菜单" : "收起主菜单"} onClick={onToggle}>{collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}</button>
       </div>
       <nav>
         {items.map(([id, label, Icon]) => (
@@ -72,7 +80,7 @@ export function Sidebar({ active, onChange }) {
       </nav>
       <div className="sidebar-foot">
         <span className="live-dot" />
-        <div><strong>VLab connected</strong><span>Workboard native</span></div>
+        <div><strong>V connected</strong><span>Workboard native</span></div>
       </div>
     </aside>
   );
@@ -108,7 +116,7 @@ export function WorkCard({ card, onClick }) {
   );
 }
 
-export function Drawer({ card, delivery, deliveryState, deliveryError, onClose, onDecide, onRetry }) {
+export function Drawer({ card, delivery, deliveryState, deliveryError, handoff, handoffState, handoffError, onClose, onDecide, onRetry }) {
   const [reviewAction, setReviewAction] = useState(null);
   const [evidence, setEvidence] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -163,7 +171,8 @@ export function Drawer({ card, delivery, deliveryState, deliveryError, onClose, 
   const automation = card.metadata?.automation ?? {};
   const approval = automation.approval;
   const publicationApproval = approval?.effect === "external-publication";
-  const canSubmit = reviewAction === "approve" || evidence.trim().length > 0;
+  const approvalIncomplete = (approval?.missingFields?.length ?? 0) > 0;
+  const canSubmit = (reviewAction !== "approve" || !approvalIncomplete) && (reviewAction === "approve" || evidence.trim().length > 0);
 
   async function submitDecision() {
     if (!reviewAction || !canSubmit || submitting) return;
@@ -179,9 +188,10 @@ export function Drawer({ card, delivery, deliveryState, deliveryError, onClose, 
 
   return (
     <aside className="drawer">
-      <div className="drawer-head"><div><span>项目交付</span><h2>{delivery?.title ?? card.title}</h2></div><button onClick={onClose} aria-label="关闭详情"><X size={18} /></button></div>
+      <div className="drawer-head"><div><span>阶段详情</span><h2>{delivery?.title ?? card.title}</h2></div><button onClick={onClose} aria-label="关闭详情"><X size={18} /></button></div>
       <div className="drawer-status"><StatusIcon status={card.status} /><strong>{card.status}</strong><span>{card.id?.slice(0, 8)}</span></div>
-      <DeliveryPanel delivery={delivery} state={deliveryState} error={deliveryError} showPlaceholder={card.status === "review"} />
+      <StageHandoffPanel handoff={handoff} state={handoffState} error={handoffError} delivery={delivery} deliveryState={deliveryState} deliveryError={deliveryError} />
+      {(automation.skills?.length ?? 0) > 0 && <section className="stage-skills"><h3>本阶段使用的 Skills</h3><div>{automation.skills.map((skill) => <span key={skill}><Wrench size={11} />{skill}</span>)}</div></section>}
       <section><h3>Execution</h3><Detail label="Agent" value={card.agentId ?? automation.agentRole ?? "—"} /><Detail label="Stage" value={automation.stageId ?? findLabel(card, "stage")} /><Detail label="Runtime" value={automation.maxRuntime ?? "—"} /><Detail label="Attempts" value={attempts.length} /></section>
       {automation.contentItemId && <section><h3>视频任务</h3><Detail label="ContentItem" value={automation.contentItemId} mono /><Detail label="Route" value={automation.contentRoute ?? findLabel(card, "route")} /></section>}
       <NativeWorkboardActivity card={card} />
@@ -213,7 +223,7 @@ export function Drawer({ card, delivery, deliveryState, deliveryError, onClose, 
         state={sessionState}
       />}
       <section><h3>Evidence & safety</h3><Detail label="Workflow SHA" value={automation.workflowSha256?.slice(0, 12) ?? "—"} mono /><Detail label="Input hash" value={automation.inputHash?.slice(0, 12) ?? "—"} mono /><Detail label="Idempotency" value={automation.nightshiftActionKey ? "protected" : "native card"} /></section>
-      {approval && <section className="publication-approval"><h3>执行确认</h3><p>{publicationApproval ? "本次确认包含外部发布授权；确认后任务才会进入发布步骤。" : "这个阶段需要明确授权后才能继续；确认后任务会进入执行队列。"}</p><Detail label="权限" value={publicationApproval ? "外部发布" : approval.effect} /><Detail label="范围" value={approval.scope ?? "stage"} /></section>}
+      {approval && <section className="publication-approval"><h3>执行确认</h3><p>{publicationApproval ? "本次确认包含外部发布授权；确认后任务才会进入发布步骤。" : "这个阶段需要明确授权后才能继续；确认后任务会进入执行队列。"}</p><Detail label="权限" value={publicationApproval ? "外部发布" : approval.effect} /><Detail label="范围" value={approval.scope ?? "stage"} />{Object.entries(approval.bindings ?? {}).map(([name, value]) => <Detail key={name} label={name === "publicationTarget" ? "发布目标" : name} value={presentApprovalBinding(value)} />)}{approvalIncomplete && <p className="decision-error">发布前还缺少：{approval.missingFields.join("、")}</p>}</section>}
       {card.notes && <section><h3>Operator notes</h3><pre>{card.notes}</pre></section>}
       {(card.status === "review" || approval) && <div className="review-zone">
         {!reviewAction && (approval ? <div className="approval-actions approval-actions-two"><button className="primary" onClick={() => setReviewAction("approve")}>确认执行</button><button className="danger" onClick={() => setReviewAction("reject")}>暂不执行</button></div> : <div className="approval-actions"><button className="primary" onClick={() => setReviewAction("approve")}>通过</button><button onClick={() => setReviewAction("request-changes")}>要求修改</button><button className="danger" onClick={() => setReviewAction("reject")}>拒绝</button></div>)}
@@ -227,6 +237,54 @@ export function Drawer({ card, delivery, deliveryState, deliveryError, onClose, 
       {card.status === "blocked" && !approval && <div className="review-zone"><button className="primary" disabled={submitting} onClick={async () => { setSubmitting(true); try { await onRetry(card); } catch (reason) { setSubmitError(reason.message); setSubmitting(false); } }}>{submitting ? "重新排队中…" : "修正后重新执行"}</button>{submitError && <p className="decision-error">{submitError}</p>}</div>}
     </aside>
   );
+}
+
+function StageHandoffPanel({ handoff, state, error, delivery, deliveryState, deliveryError }) {
+  if (state === "loading") return <section className="handoff-panel handoff-loading"><div className="delivery-skeleton" /><span>正在载入阶段输入与输出…</span></section>;
+  if (!handoff) return <section className="handoff-panel handoff-empty"><AlertTriangle size={17} /><span>{error || "这张卡没有可用的阶段交接信息。"}</span></section>;
+  const previous = handoff.previous?.length ? handoff.previous.map((entry) => entry.title).join("、") : "项目输入";
+  const next = handoff.next?.length ? handoff.next.map((entry) => entry.title).join("、") : "流程结束";
+  return <section className="handoff-panel">
+    <div className="handoff-flow" aria-label="阶段流转"><span>{previous}</span><ChevronRight size={13} /><strong>{handoff.stage.title}</strong><ChevronRight size={13} /><span>{next}</span></div>
+    {!handoff.recorded && <div className="handoff-legacy">历史任务：按 Workflow 推导输入与输出；新任务会记录实际交接摘要。</div>}
+    <HandoffGroup title="Input｜上一步交给本阶段" entries={handoff.inputs} />
+    {handoff.deliveryPlacement === "input" && <DeliveryPanel delivery={delivery} state={deliveryState} error={deliveryError} showPlaceholder contextLabel="本阶段输入" />}
+    <HandoffGroup title="Output｜本阶段交给下一步" entries={handoff.outputs} />
+    {handoff.deliveryPlacement === "output" && <DeliveryPanel delivery={delivery} state={deliveryState} error={deliveryError} showPlaceholder contextLabel="本阶段输出" />}
+  </section>;
+}
+
+function HandoffGroup({ entries = [], title }) {
+  return <div className="handoff-group"><h3>{title}</h3>{entries.length > 0 ? <div className="handoff-items">{entries.map((entry) => <article key={`${entry.sourceStage}:${entry.name}`} className={`handoff-item state-${entry.status}`}><div><strong>{humanArtifactName(entry.name)}</strong><span>{entry.sourceStage}</span></div>{entry.summary && <p>{entry.summary}</p>}{entry.artifactUrl ? <a className="handoff-artifact-link" href={entry.artifactUrl} target="_blank" rel="noreferrer"><span>{entry.name === "publicUrl" ? "打开发布页面" : "查看交付证据"}</span><ExternalLink size={12} /></a> : <small className={entry.name === "publicUrl" && entry.status === "completed-unregistered" ? "missing-publication-link" : ""}>{entry.artifact ? entry.artifact.split("/").at(-1) : entry.name === "publicUrl" && entry.status === "completed-unregistered" ? "未登记实际发布链接" : entry.status === "completed-unregistered" ? "阶段已完成 · 未登记交接摘要" : "等待阶段产出"}</small>}</article>)}</div> : <p className="handoff-none">没有上一步；本阶段直接使用项目输入。</p>}</div>;
+}
+
+function humanArtifactName(name) {
+  const labels = {
+    approvedAssetVersion: "已批准版本",
+    contentItemsManifest: "内容任务清单",
+    deliveryManifest: "交付清单",
+    finishedAsset: "最终成片",
+    finishedVideoBrief: "成片 Brief",
+    frozenInputManifest: "冻结输入清单",
+    machineQc: "机器 QC",
+    materialReadiness: "素材准备结果",
+    metricsSnapshot: "数据快照",
+    planUrl: "策划案",
+    publicationEvidence: "发布证据",
+    publishTask: "发布任务",
+    publicUrl: "公开链接",
+    requirementSnapshot: "需求快照",
+    retrospective: "复盘建议",
+    routeDecision: "路线判断",
+  };
+  return labels[name] ?? name;
+}
+
+function presentApprovalBinding(value) {
+  if (!value || typeof value !== "object") return String(value ?? "—");
+  const preferred = [value.tiktokHandle, value.platform, value.market, value.language, value.geelarkDeviceId].filter(Boolean);
+  if (preferred.length > 0) return preferred.join(" · ");
+  return Object.entries(value).map(([key, entry]) => `${key}: ${String(entry)}`).join(" · ");
 }
 
 function NativeWorkboardActivity({ card }) {
@@ -261,7 +319,7 @@ function SessionPart({ part }) {
   return <div className="session-structured"><span>{part?.type ?? "content"}</span><pre>{JSON.stringify(part, null, 2)}</pre></div>;
 }
 
-function DeliveryPanel({ delivery, state, error, showPlaceholder }) {
+function DeliveryPanel({ delivery, state, error, showPlaceholder, contextLabel = "交付内容" }) {
   if (state === "loading") return <section className="delivery-panel delivery-loading"><div className="delivery-skeleton" /><span>正在载入交付内容…</span></section>;
   if (!delivery) {
     if (!showPlaceholder) return null;
@@ -272,7 +330,7 @@ function DeliveryPanel({ delivery, state, error, showPlaceholder }) {
     delivery.video.width && delivery.video.height ? `${delivery.video.width}×${delivery.video.height}` : null,
   ].filter(Boolean);
   return <section className="delivery-panel">
-    <div className="delivery-heading"><div><span>DELIVERABLES</span><h3>交付内容</h3></div><span className={`qc-badge qc-${delivery.qc.status}`}><ShieldCheck size={13} />QC {delivery.qc.status === "passed" ? "通过" : delivery.qc.status}</span></div>
+    <div className="delivery-heading"><div><span>DELIVERABLE</span><h3>{contextLabel}</h3></div><span className={`qc-badge qc-${delivery.qc.status}`}><ShieldCheck size={13} />QC {delivery.qc.status === "passed" ? "通过" : delivery.qc.status}</span></div>
     <div className="video-frame">
       <video aria-label={delivery.video.title} controls playsInline preload="metadata" poster={delivery.video.posterUrl ?? undefined}>
         <source src={delivery.video.url} type={delivery.video.mimeType} />

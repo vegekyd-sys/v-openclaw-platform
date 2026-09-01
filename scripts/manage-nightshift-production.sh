@@ -7,6 +7,8 @@ backup_root=/home/openclaw/.openclaw/backups/nightshift-workboard
 service_name=nightshift-workboard.service
 service_path=/etc/systemd/system/nightshift-workboard.service
 cli_path=/home/openclaw/.local/bin/nightshiftctl
+gateway_dist=/opt/openclaw-2026.8.1/node_modules/openclaw/dist
+gateway_service=openclaw-gateway.service
 
 wait_for_health() {
   local attempts=15
@@ -59,6 +61,14 @@ case "${1:-}" in
     if [[ -f "$service_path" ]]; then
       cp -a "$service_path" "$backup/service.before"
     fi
+    mapfile -t runtime_bundles < <(grep -l 'workboard.cards.dispatch' "$gateway_dist"/runtime-api-*.js)
+    if [[ ${#runtime_bundles[@]} -ne 1 ]]; then
+      echo "Expected exactly one Workboard runtime bundle" >&2
+      exit 1
+    fi
+    runtime_bundle=${runtime_bundles[0]}
+    printf '%s\n' "$runtime_bundle" >"$backup/gateway-runtime.path"
+    cp -a "$runtime_bundle" "$backup/gateway-runtime.before"
     was_active=0
     if systemctl is-active --quiet "$service_name"; then
       was_active=1
@@ -70,11 +80,16 @@ case "${1:-}" in
     sudo -u openclaw tar -xzf "$artifact" -C "$release"
     sudo -u openclaw env PATH=/opt/node-v22.23.1/bin:/usr/local/bin:/usr/bin:/bin \
       /opt/node-v22.23.1/bin/npm --prefix "$release" ci --omit=dev --ignore-scripts
+    /opt/node-v22.23.1/bin/node "$release/scripts/apply-workboard-owner-concurrency-patch.mjs" \
+      --dist="$gateway_dist" --backup-dir="$backup"
+    /opt/node-v22.23.1/bin/node "$release/scripts/apply-workboard-scoped-dispatch-patch.mjs" \
+      --dist="$gateway_dist" --backup-dir="$backup"
     install -o root -g root -m 644 "$release/systemd/nightshift-workboard.service" "$service_path"
     ln -sfn "$release" "$release_root/current"
     install -d -o openclaw -g openclaw -m 755 "$(dirname "$cli_path")"
     ln -sfn "$release/scripts/nightshiftctl.mjs" "$cli_path"
     systemctl daemon-reload
+    systemctl restart "$gateway_service"
     systemctl enable --now "$service_name"
     wait_for_health
     printf '%s\n' "deployed=$release" "backup=$backup" "rollback=sudo $0 rollback $backup"
@@ -87,6 +102,15 @@ case "${1:-}" in
     fi
     timestamp=$(date -u +%Y%m%dT%H%M%SZ)
     systemctl stop "$service_name" || true
+    if [[ -f "$backup/gateway-runtime.before" && -s "$backup/gateway-runtime.path" ]]; then
+      runtime_bundle=$(cat "$backup/gateway-runtime.path")
+      if [[ ! "$runtime_bundle" =~ ^/opt/openclaw-2026\.8\.1/node_modules/openclaw/dist/runtime-api-[A-Za-z0-9_-]+\.js$ ]]; then
+        echo "Invalid Gateway runtime path in backup" >&2
+        exit 1
+      fi
+      cp -a "$backup/gateway-runtime.before" "$runtime_bundle"
+      systemctl restart "$gateway_service"
+    fi
     if [[ -d "$state_root" ]]; then
       mv "$state_root" "$state_root.failed-$timestamp"
     fi

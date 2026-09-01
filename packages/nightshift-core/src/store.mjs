@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { normalizeContentItems } from "./content-items.mjs";
 
 export class NightShiftStore {
@@ -37,6 +37,7 @@ export class NightShiftStore {
         status TEXT NOT NULL,
         inputs_json TEXT NOT NULL,
         agent_bindings_json TEXT NOT NULL,
+        collaboration_json TEXT NOT NULL DEFAULT '{}',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
@@ -84,6 +85,8 @@ export class NightShiftStore {
         status TEXT NOT NULL,
         actor TEXT NOT NULL,
         evidence TEXT,
+        binding_json TEXT,
+        binding_hash TEXT,
         approval_card_id TEXT,
         expires_at TEXT,
         created_at TEXT NOT NULL
@@ -96,10 +99,69 @@ export class NightShiftStore {
         payload_json TEXT NOT NULL,
         created_at TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS action_cards (
+        action_key TEXT PRIMARY KEY,
+        instance_id TEXT NOT NULL REFERENCES instances(id),
+        card_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS action_cards_instance_id_idx ON action_cards(instance_id);
+      CREATE TABLE IF NOT EXISTS notification_subject_state (
+        subject_key TEXT PRIMARY KEY,
+        state TEXT NOT NULL,
+        generation INTEGER NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS notification_deliveries (
+        id TEXT PRIMARY KEY,
+        notification_key TEXT NOT NULL UNIQUE,
+        instance_id TEXT NOT NULL REFERENCES instances(id),
+        card_id TEXT,
+        kind TEXT NOT NULL,
+        target_chat_id TEXT NOT NULL,
+        allowed_open_ids_json TEXT NOT NULL,
+        presentation_json TEXT NOT NULL,
+        fallback_text TEXT NOT NULL,
+        status TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        message_id TEXT,
+        last_error TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        delivered_at TEXT
+      );
+      CREATE TABLE IF NOT EXISTS notification_decisions (
+        token_hash TEXT PRIMARY KEY,
+        delivery_id TEXT NOT NULL REFERENCES notification_deliveries(id),
+        instance_id TEXT NOT NULL REFERENCES instances(id),
+        card_id TEXT NOT NULL,
+        allowed_open_ids_json TEXT NOT NULL,
+        status TEXT NOT NULL,
+        result_json TEXT,
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        used_at TEXT
+      );
+      CREATE TABLE IF NOT EXISTS notification_metadata (
+        key TEXT PRIMARY KEY,
+        value_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
     `);
+    const instanceColumns = this.db.prepare("PRAGMA table_info(instances)").all();
+    if (!instanceColumns.some((column) => column.name === "collaboration_json")) {
+      this.db.exec("ALTER TABLE instances ADD COLUMN collaboration_json TEXT NOT NULL DEFAULT '{}'");
+    }
     const approvalColumns = this.db.prepare("PRAGMA table_info(approvals)").all();
     if (!approvalColumns.some((column) => column.name === "content_item_id")) {
       this.db.exec("ALTER TABLE approvals ADD COLUMN content_item_id TEXT");
+    }
+    if (!approvalColumns.some((column) => column.name === "binding_json")) {
+      this.db.exec("ALTER TABLE approvals ADD COLUMN binding_json TEXT");
+    }
+    if (!approvalColumns.some((column) => column.name === "binding_hash")) {
+      this.db.exec("ALTER TABLE approvals ADD COLUMN binding_hash TEXT");
     }
   }
 
@@ -161,8 +223,8 @@ export class NightShiftStore {
     this.db
       .prepare(`
         INSERT INTO instances(
-          id, name, workflow_sha, status, inputs_json, agent_bindings_json, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          id, name, workflow_sha, status, inputs_json, agent_bindings_json, collaboration_json, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       .run(
         instance.id,
@@ -171,6 +233,7 @@ export class NightShiftStore {
         instance.status ?? "active",
         JSON.stringify(instance.inputs ?? {}),
         JSON.stringify(instance.agentBindings ?? {}),
+        JSON.stringify(instance.collaboration ?? {}),
         timestamp,
         timestamp,
       );
@@ -204,6 +267,19 @@ export class NightShiftStore {
     return this.getInstance(id);
   }
 
+  archiveInstance(id, now = new Date()) {
+    const current = this.getInstance(id);
+    if (!current) throw new Error(`Unknown instance ${id}`);
+    const archived = this.updateInstanceStatus(id, "archived", now);
+    this.appendEvent({
+      instanceId: id,
+      type: "instance.archived",
+      payload: { previousStatus: current.status },
+      now,
+    });
+    return archived;
+  }
+
   updateInstanceInputs(id, patch, now = new Date()) {
     const current = this.getInstance(id);
     if (!current) throw new Error(`Unknown instance ${id}`);
@@ -215,6 +291,24 @@ export class NightShiftStore {
       instanceId: id,
       type: "instance.inputs.updated",
       payload: { keys: Object.keys(patch).sort() },
+      now,
+    });
+    return this.getInstance(id);
+  }
+
+  updateInstanceCollaboration(id, collaboration, now = new Date()) {
+    if (!this.getInstance(id)) throw new Error(`Unknown instance ${id}`);
+    this.db
+      .prepare("UPDATE instances SET collaboration_json = ?, updated_at = ? WHERE id = ?")
+      .run(JSON.stringify(collaboration ?? {}), now.toISOString(), id);
+    this.appendEvent({
+      instanceId: id,
+      type: "instance.collaboration.updated",
+      payload: {
+        hasCreator: Boolean(collaboration?.createdByOpenId),
+        hasSourceChat: Boolean(collaboration?.sourceChatId),
+        reviewerCount: collaboration?.reviewers?.length ?? 0,
+      },
       now,
     });
     return this.getInstance(id);
@@ -327,8 +421,8 @@ export class NightShiftStore {
       .prepare(`
         INSERT INTO approvals(
           id, instance_id, stage_id, content_item_id, effect, scope, status, actor, evidence,
-          approval_card_id, expires_at, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          binding_json, binding_hash, approval_card_id, expires_at, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       .run(
         id,
@@ -340,6 +434,8 @@ export class NightShiftStore {
         approval.status,
         approval.actor,
         approval.evidence ?? null,
+        approval.bindings ? JSON.stringify(approval.bindings) : null,
+        approval.bindingHash ?? null,
         approval.cardId ?? null,
         approval.expiresAt ?? null,
         now.toISOString(),
@@ -357,11 +453,16 @@ export class NightShiftStore {
     return this.db
       .prepare(`
         SELECT id, instance_id AS instanceId, stage_id AS stageId, content_item_id AS contentItemId, effect, scope, status,
-               actor, evidence, approval_card_id AS cardId,
+               actor, evidence, binding_json AS bindingJson, binding_hash AS bindingHash, approval_card_id AS cardId,
                expires_at AS expiresAt, created_at AS createdAt
         FROM approvals WHERE instance_id = ? ORDER BY created_at DESC
       `)
-      .all(instanceId);
+      .all(instanceId)
+      .map((approval) => ({
+        ...approval,
+        bindings: approval.bindingJson ? JSON.parse(approval.bindingJson) : null,
+        bindingJson: undefined,
+      }));
   }
 
   appendEvent({ instanceId = null, type, payload = {}, now = new Date(), eventId }) {
@@ -392,6 +493,184 @@ export class NightShiftStore {
       createdAt: row.created_at,
     }));
   }
+
+  bindActionCard({ actionKey, instanceId, cardId }, now = new Date()) {
+    if (!actionKey || !instanceId || !cardId) throw new Error("Action key, instance id, and card id are required");
+    const timestamp = now.toISOString();
+    this.db.prepare(`
+      INSERT INTO action_cards(action_key, instance_id, card_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(action_key) DO UPDATE SET
+        instance_id=excluded.instance_id,
+        card_id=excluded.card_id,
+        updated_at=excluded.updated_at
+    `).run(actionKey, instanceId, cardId, timestamp, timestamp);
+    return { actionKey, instanceId, cardId, updatedAt: timestamp };
+  }
+
+  listActionCardIds(instanceIds) {
+    const ids = [...new Set((instanceIds ?? []).filter(Boolean))];
+    if (ids.length === 0) return [];
+    const placeholders = ids.map(() => "?").join(",");
+    return this.db.prepare(`
+      SELECT DISTINCT card_id AS cardId
+      FROM action_cards
+      WHERE instance_id IN (${placeholders})
+      ORDER BY card_id
+    `).all(...ids).map((row) => row.cardId);
+  }
+
+  deleteActionCardsByPrefix(prefix) {
+    if (!prefix) throw new Error("Action key prefix is required");
+    return this.db.prepare(`
+      DELETE FROM action_cards
+      WHERE substr(action_key, 1, length(?)) = ?
+    `).run(prefix, prefix).changes;
+  }
+
+  transitionNotificationSubject(subjectKey, state, now = new Date()) {
+    const current = this.db
+      .prepare("SELECT state, generation, updated_at AS updatedAt FROM notification_subject_state WHERE subject_key = ?")
+      .get(subjectKey);
+    if (current?.state === state) return { changed: false, ...current, subjectKey };
+    const generation = (current?.generation ?? 0) + 1;
+    const updatedAt = now.toISOString();
+    this.db.prepare(`
+      INSERT INTO notification_subject_state(subject_key, state, generation, updated_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(subject_key) DO UPDATE SET
+        state=excluded.state,
+        generation=excluded.generation,
+        updated_at=excluded.updated_at
+    `).run(subjectKey, state, generation, updatedAt);
+    return { changed: true, generation, state, subjectKey, updatedAt };
+  }
+
+  enqueueNotification(delivery, decision = null, now = new Date()) {
+    const existing = this.db
+      .prepare("SELECT * FROM notification_deliveries WHERE notification_key = ?")
+      .get(delivery.notificationKey);
+    if (existing) return notificationDeliveryRow(existing);
+    const id = delivery.id ?? randomUUID();
+    const timestamp = now.toISOString();
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      this.db.prepare(`
+        INSERT INTO notification_deliveries(
+          id, notification_key, instance_id, card_id, kind, target_chat_id,
+          allowed_open_ids_json, presentation_json, fallback_text, status,
+          attempts, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?)
+      `).run(
+        id,
+        delivery.notificationKey,
+        delivery.instanceId,
+        delivery.cardId ?? null,
+        delivery.kind,
+        delivery.targetChatId,
+        JSON.stringify(delivery.allowedOpenIds ?? []),
+        JSON.stringify(delivery.presentation),
+        delivery.fallbackText,
+        timestamp,
+        timestamp,
+      );
+      if (decision) {
+        this.db.prepare(`
+          INSERT INTO notification_decisions(
+            token_hash, delivery_id, instance_id, card_id, allowed_open_ids_json,
+            status, expires_at, created_at
+          ) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+        `).run(
+          hashDecisionToken(decision.token),
+          id,
+          delivery.instanceId,
+          delivery.cardId,
+          JSON.stringify(delivery.allowedOpenIds ?? []),
+          decision.expiresAt,
+          timestamp,
+        );
+      }
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+    return this.getNotification(id);
+  }
+
+  getNotification(id) {
+    const row = this.db.prepare("SELECT * FROM notification_deliveries WHERE id = ?").get(id);
+    return row ? notificationDeliveryRow(row) : null;
+  }
+
+  listPendingNotifications(limit = 20) {
+    return this.db.prepare(`
+      SELECT * FROM notification_deliveries
+      WHERE status IN ('pending', 'failed') AND attempts < 5
+      ORDER BY created_at ASC LIMIT ?
+    `).all(limit).map(notificationDeliveryRow);
+  }
+
+  markNotificationDelivered(id, messageId, now = new Date()) {
+    const timestamp = now.toISOString();
+    this.db.prepare(`
+      UPDATE notification_deliveries
+      SET status='delivered', attempts=attempts+1, message_id=?, last_error=NULL,
+          delivered_at=?, updated_at=?
+      WHERE id=?
+    `).run(messageId ?? null, timestamp, timestamp, id);
+    return this.getNotification(id);
+  }
+
+  markNotificationFailed(id, error, now = new Date()) {
+    this.db.prepare(`
+      UPDATE notification_deliveries
+      SET status='failed', attempts=attempts+1, last_error=?, updated_at=?
+      WHERE id=?
+    `).run(String(error).slice(0, 2000), now.toISOString(), id);
+    return this.getNotification(id);
+  }
+
+  authorizeNotificationDecision(token, actorOpenId, now = new Date()) {
+    const row = this.db.prepare(`
+      SELECT token_hash AS tokenHash, delivery_id AS deliveryId, instance_id AS instanceId,
+             card_id AS cardId, allowed_open_ids_json AS allowedOpenIdsJson,
+             status, result_json AS resultJson, expires_at AS expiresAt, used_at AS usedAt
+      FROM notification_decisions WHERE token_hash = ?
+    `).get(hashDecisionToken(token));
+    if (!row) throw new Error("This review action is invalid");
+    const allowedOpenIds = JSON.parse(row.allowedOpenIdsJson);
+    if (!allowedOpenIds.includes(actorOpenId)) throw new Error("You are not an assigned reviewer for this task");
+    if (row.status === "used") {
+      return { ...row, allowedOpenIds, alreadyUsed: true, result: row.resultJson ? JSON.parse(row.resultJson) : null };
+    }
+    if (new Date(row.expiresAt) <= now) throw new Error("This review action has expired; open the latest notification");
+    return { ...row, allowedOpenIds, alreadyUsed: false, result: null };
+  }
+
+  completeNotificationDecision(token, result, now = new Date()) {
+    const timestamp = now.toISOString();
+    this.db.prepare(`
+      UPDATE notification_decisions
+      SET status='used', result_json=?, used_at=?
+      WHERE token_hash=? AND status='pending'
+    `).run(JSON.stringify(result), timestamp, hashDecisionToken(token));
+    return result;
+  }
+
+  getNotificationMetadata(key) {
+    const row = this.db.prepare("SELECT value_json AS valueJson FROM notification_metadata WHERE key = ?").get(key);
+    return row ? JSON.parse(row.valueJson) : null;
+  }
+
+  setNotificationMetadata(key, value, now = new Date()) {
+    this.db.prepare(`
+      INSERT INTO notification_metadata(key, value_json, updated_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json, updated_at=excluded.updated_at
+    `).run(key, JSON.stringify(value), now.toISOString());
+    return value;
+  }
 }
 
 function releaseRow(row) {
@@ -415,10 +694,36 @@ function instanceRow(row, approvals) {
     status: row.status,
     inputs: JSON.parse(row.inputs_json),
     agentBindings: JSON.parse(row.agent_bindings_json),
+    collaboration: row.collaboration_json ? JSON.parse(row.collaboration_json) : {},
     approvals,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function notificationDeliveryRow(row) {
+  return {
+    id: row.id,
+    notificationKey: row.notification_key,
+    instanceId: row.instance_id,
+    cardId: row.card_id,
+    kind: row.kind,
+    targetChatId: row.target_chat_id,
+    allowedOpenIds: JSON.parse(row.allowed_open_ids_json),
+    presentation: JSON.parse(row.presentation_json),
+    fallbackText: row.fallback_text,
+    status: row.status,
+    attempts: row.attempts,
+    messageId: row.message_id,
+    lastError: row.last_error,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    deliveredAt: row.delivered_at,
+  };
+}
+
+function hashDecisionToken(token) {
+  return createHash("sha256").update(String(token)).digest("hex");
 }
 
 function contentItemRow(row) {

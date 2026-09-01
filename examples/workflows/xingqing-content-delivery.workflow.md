@@ -3,11 +3,16 @@ apiVersion: nightshift.versa.ai/v1alpha1
 kind: Workflow
 metadata:
   id: xingqing-content-delivery
-  version: 0.4.5
+  version: 0.4.11
   name: 星擎内容交付
 spec:
   ownerAgentRole: content-operator
-  concurrency: {perInstance: 4, maxActiveInstances: 3}
+  concurrency: {perInstance: 8, maxActiveInstances: 3}
+  completion: {mode: strict-v1}
+  handoff: {version: 1, mode: stage-input-output}
+  notifications:
+    reviewRequested: {enabled: true}
+    instanceCompleted: {enabled: true}
   contentItems:
     routes: [AI_GENERATE, SCENE_EDIT]
     maxItems: 30
@@ -16,6 +21,10 @@ spec:
     customerId: {type: string, required: true}
     briefUrl: {type: string, required: true}
     authorizationScope: {type: object, required: true}
+    publicationTarget:
+      type: object
+      required: false
+      requiredProperties: [accountRecordId, tiktokHandle, geelarkDeviceId, platform, market, language, timezone]
 ---
 
 # 星擎内容交付 Workflow
@@ -147,7 +156,7 @@ next: [publish-feedback]
 
 ### Goal
 
-对已批准版本按授权范围幂等发布、回收真实链接与数据，并形成下一轮建议；等待统计属于本阶段子状态。
+使用 geelark-cloud-phone 将已批准版本发布到授权的 TikTok 账号，回收真实 TikTok 链接与数据，并形成下一轮建议；没有 publicUrl 和发布证据时不得报告完成，等待统计属于本阶段子状态。
 
 ```stage
 actor: agent
@@ -155,9 +164,22 @@ scope: content-item
 skills: [lark-base, social-search-apify-first, geelark-cloud-phone]
 needs: [review]
 sideEffects: [external-publication]
-approval: {before: external-publication, scope: asset-and-account}
+approval:
+  before: external-publication
+  scope: asset-and-account
+  bindings:
+    publicationTarget:
+      source: input.publicationTarget
+      requiredFields: [accountRecordId, tiktokHandle, geelarkDeviceId, platform, market, language, timezone]
+resourceLock: "geelark:${input.publicationTarget.geelarkDeviceId}"
 outputs: [publishTask, publicUrl, publicationEvidence, metricsSnapshot, retrospective]
-completeWhen: [output.publicUrl.reachable, output.publicationEvidence.accountMatches, output.metricsSnapshot.traceableOrUnknown, output.retrospective.evidenceLinked]
+outputContracts:
+  publicUrl: {type: https-url, allowedHosts: [tiktok.com]}
+  publicationEvidence:
+    type: json
+    equals: {platform: tiktok, published: true, accountMatches: true}
+    matches: {publicUrl: output.publicUrl.url}
+completeWhen: [output.publicUrl.hostAllowed, output.publicUrl.reachable, output.publicationEvidence.published, output.publicationEvidence.accountMatches, output.publicationEvidence.publishedAt, output.metricsSnapshot.traceableOrUnknown, output.retrospective.evidenceLinked]
 timeout: 7d
 retry: {maxAttempts: 4, idempotencyKey: "${instance.id}:${contentItem.id}:publish-feedback"}
 ```
