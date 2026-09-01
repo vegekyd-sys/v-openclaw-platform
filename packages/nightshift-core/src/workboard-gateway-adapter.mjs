@@ -14,6 +14,9 @@ export class WorkboardGatewayAdapter {
     env = process.env,
     gatewayUrl = process.env.NIGHTSHIFT_GATEWAY_URL,
     applyConcurrency = positiveInteger(process.env.NIGHTSHIFT_WORKBOARD_APPLY_CONCURRENCY, 8),
+    listBatchSize = positiveInteger(process.env.NIGHTSHIFT_WORKBOARD_LIST_BATCH_SIZE, 100, 500),
+    listConcurrency = positiveInteger(process.env.NIGHTSHIFT_WORKBOARD_LIST_CONCURRENCY, 4),
+    maxBufferBytes = positiveBufferSize(process.env.NIGHTSHIFT_GATEWAY_MAX_BUFFER_BYTES, 32 * 1024 * 1024),
     rpcTimeoutMs = positiveTimeout(process.env.NIGHTSHIFT_GATEWAY_RPC_TIMEOUT_MS, 30_000),
     runner = defaultRunner,
   } = {}) {
@@ -24,17 +27,35 @@ export class WorkboardGatewayAdapter {
     this.env = env;
     this.gatewayUrl = gatewayUrl;
     this.applyConcurrency = applyConcurrency;
+    this.listBatchSize = listBatchSize;
+    this.listConcurrency = listConcurrency;
+    this.maxBufferBytes = maxBufferBytes;
     this.rpcTimeoutMs = rpcTimeoutMs;
     this.runner = runner;
     this.sessionSnapshots = null;
   }
 
   async listCards({ cardIds = null } = {}) {
-    const result = await this.call("workboard.cards.list", {
-      boardId: this.board,
-      ...(Array.isArray(cardIds) ? { cardIds: uniqueCardIds(cardIds) } : {}),
-    });
-    return result.cards ?? [];
+    if (!Array.isArray(cardIds)) {
+      const result = await this.call("workboard.cards.list", { boardId: this.board });
+      return result.cards ?? [];
+    }
+    const ids = uniqueCardIds(cardIds);
+    if (ids.length === 0) return [];
+    const cards = [];
+    for (let offset = 0; offset < ids.length; offset += this.listBatchSize * this.listConcurrency) {
+      const window = ids.slice(offset, offset + this.listBatchSize * this.listConcurrency);
+      const batches = [];
+      for (let index = 0; index < window.length; index += this.listBatchSize) {
+        batches.push(window.slice(index, index + this.listBatchSize));
+      }
+      const results = await Promise.all(batches.map((batch) => this.call("workboard.cards.list", {
+        boardId: this.board,
+        cardIds: batch,
+      })));
+      for (const result of results) cards.push(...(result.cards ?? []));
+    }
+    return cards;
   }
 
   async applyPlan(actions, { cards = null, dryRun = false } = {}) {
@@ -177,7 +198,7 @@ export class WorkboardGatewayAdapter {
       ...this.env,
       OPENCLAW_GATEWAY_TOKEN: token,
       OPENCLAW_GATEWAY_URL: this.gatewayUrl,
-    }, { timeoutMs: this.rpcTimeoutMs + 5000 });
+    }, { maxBufferBytes: this.maxBufferBytes, timeoutMs: this.rpcTimeoutMs + 5000 });
     return typeof output === "string" ? JSON.parse(output) : output;
   }
 }
@@ -191,9 +212,14 @@ function positiveTimeout(value, fallback) {
   return Number.isInteger(parsed) && parsed >= 1000 && parsed <= 120_000 ? parsed : fallback;
 }
 
-function positiveInteger(value, fallback) {
+function positiveInteger(value, fallback, maximum = 32) {
   const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 32 ? parsed : fallback;
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= maximum ? parsed : fallback;
+}
+
+function positiveBufferSize(value, fallback) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 1024 * 1024 && parsed <= 256 * 1024 * 1024 ? parsed : fallback;
 }
 
 export function gatewayIdempotencyLabel(key) {
@@ -215,13 +241,13 @@ function approvalCard(action) {
   };
 }
 
-async function defaultRunner(command, args, env, { timeoutMs = 35_000 } = {}) {
+async function defaultRunner(command, args, env, { maxBufferBytes = 32 * 1024 * 1024, timeoutMs = 35_000 } = {}) {
   try {
     const { stdout } = await execFileAsync(command, args, {
       encoding: "utf8",
       env,
       killSignal: "SIGKILL",
-      maxBuffer: 8 * 1024 * 1024,
+      maxBuffer: maxBufferBytes,
       timeout: timeoutMs,
     });
     return stdout;

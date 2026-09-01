@@ -248,6 +248,7 @@ test("confirmation resumes a blocked guarded stage and retry cannot bypass appro
     ],
     status: "review",
   });
+  workboard.listCalls = [];
 
   await assert.rejects(
     runtime.retry({
@@ -273,6 +274,7 @@ test("confirmation resumes a blocked guarded stage and retry cannot bypass appro
   assert.equal(workboard.cards.find((card) => card.id === "approval-review").status, "done");
   assert.equal(workboard.cards.find((card) => card.id === "execution-blocked").status, "ready");
   assert.equal(store.listContentItemRuns("NS-RUNTIME-CONFIRM-EXECUTION")[0].status, "ready");
+  assert.deepEqual(workboard.listCalls, [{ cardIds: ["execution-blocked"] }]);
   store.close();
 });
 
@@ -470,10 +472,14 @@ class FakeWorkboard {
     this.completeCalls = [];
     this.dispatchCalls = [];
     this.sessions = new Map();
+    this.listCalls = [];
   }
 
-  async listCards() {
-    return this.cards;
+  async listCards(options = {}) {
+    this.listCalls.push(options);
+    return Array.isArray(options.cardIds)
+      ? this.cards.filter((card) => options.cardIds.includes(card.id))
+      : this.cards;
   }
 
   async applyPlan(actions) {

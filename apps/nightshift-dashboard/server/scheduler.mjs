@@ -122,6 +122,17 @@ export function instanceCardIds(store, instances) {
   return [...ids];
 }
 
+export function dashboardCardIds(store, instances) {
+  const ids = new Set();
+  for (const instance of instances) {
+    for (const run of [...store.listStageRuns(instance.id), ...store.listContentItemRuns(instance.id)]) {
+      if (typeof run.cardId === "string" && run.cardId.trim()) ids.add(run.cardId.trim());
+    }
+  }
+  for (const cardId of store.listActionCardIds?.(instances.map((instance) => instance.id)) ?? []) ids.add(cardId);
+  return [...ids];
+}
+
 function latestLogicalRuns(runs) {
   const latest = new Map();
   for (const run of runs) {

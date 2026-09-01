@@ -1,6 +1,14 @@
 // Add new updates at the top. Keep the format to date + title + 1–3 user-facing items.
 export const NIGHT_SHIFT_CHANGELOG = [
   {
+    date: "2026-09-01",
+    title: "大项目也能稳定推进",
+    items: [
+      "调度只读取当前项目需要的卡片，历史任务再多也不会阻塞新任务。",
+      "审核后只更新相关任务，Dashboard 使用轻量增量刷新。",
+    ],
+  },
+  {
     date: "2026-08-25",
     title: "审核回到飞书",
     items: [

@@ -113,6 +113,36 @@ test("refuses a remote Gateway instead of exposing its token in process argument
   await assert.rejects(() => adapter.listCards(), /must be loopback-local/);
 });
 
+test("bounds scoped card reads with batches and never expands an empty scope", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "nightshift-gateway-list-batches-"));
+  const configPath = join(dir, "openclaw.json");
+  await writeFile(configPath, JSON.stringify({ gateway: { auth: { token: "test-token" } } }));
+  const scopes = [];
+  const runnerOptions = [];
+  const runner = async (_command, args, _env, options) => {
+    const params = JSON.parse(args[args.indexOf("--params") + 1]);
+    scopes.push(params.cardIds);
+    runnerOptions.push(options);
+    return JSON.stringify({ cards: params.cardIds.map((id) => ({ id })) });
+  };
+  const adapter = new WorkboardGatewayAdapter({
+    board: "nightshift-lab",
+    configPath,
+    gatewayUrl: "ws://127.0.0.1:23793",
+    listBatchSize: 100,
+    listConcurrency: 2,
+    maxBufferBytes: 32 * 1024 * 1024,
+    runner,
+  });
+
+  assert.deepEqual(await adapter.listCards({ cardIds: [] }), []);
+  assert.equal(scopes.length, 0);
+  const cards = await adapter.listCards({ cardIds: Array.from({ length: 205 }, (_, index) => `card-${index}`) });
+  assert.equal(cards.length, 205);
+  assert.deepEqual(scopes.map((scope) => scope.length), [100, 100, 5]);
+  assert.ok(runnerOptions.every((options) => options.maxBufferBytes === 32 * 1024 * 1024));
+});
+
 test("creates independent Workboard actions with bounded control-plane concurrency", async () => {
   const dir = await mkdtemp(join(tmpdir(), "nightshift-gateway-concurrency-"));
   const configPath = join(dir, "openclaw.json");

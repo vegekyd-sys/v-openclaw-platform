@@ -30,9 +30,10 @@ test("notifies the creating Feishu conversation once and authorizes only the ass
     },
   });
   const sent = [];
+  const now = new Date();
   const coordinator = new NightShiftNotificationCoordinator({
     baseUrl: "https://nightshift.example.test",
-    now: () => new Date("2026-08-25T00:00:00Z"),
+    now: () => now,
     sender: { send: async (delivery) => { sent.push(delivery); return { messageId: `om_${sent.length}` }; } },
     store,
   });

@@ -253,7 +253,7 @@ export class NightShiftRuntime {
     }
   }
 
-  async retry({ actor, cardId, contentItemId, evidence, instanceId, stageId }) {
+  async retry({ actor, card = null, cardId, contentItemId, evidence, instanceId, stageId }) {
     const instance = this.store.getInstance(instanceId);
     if (!instance) throw new Error(`Unknown instance ${instanceId}`);
     const release = this.store.getRelease(instance.workflowSha256)?.manifest;
@@ -261,9 +261,9 @@ export class NightShiftRuntime {
     if (!stage || !["agent", "system"].includes(stage.actor)) throw new Error("Only blocked executable stages can be retried");
     const missingApproval = requiredApproval(stage, instance, new Date(), contentItemId ?? null);
     if (missingApproval) throw new Error("Execution confirmation is required before this stage can be retried");
-    const cards = await this.workboard.listCards({ cardIds: [cardId] });
-    const card = cards.find((entry) => entry.id === cardId);
-    if (!card || card.status !== "blocked") throw new Error("Retry requires a blocked Workboard card");
+    const scopedCards = card ? [card] : await this.workboard.listCards({ cardIds: [cardId] });
+    const blockedCard = scopedCards.find((entry) => entry.id === cardId);
+    if (!blockedCard || blockedCard.status !== "blocked") throw new Error("Retry requires a blocked Workboard card");
     const contentItem = contentItemId
       ? this.store.listContentItems(instanceId).find((entry) => entry.id === contentItemId)
       : null;
@@ -288,7 +288,7 @@ export class NightShiftRuntime {
       type: "stage.retry.requested",
       payload: { actor, cardId, contentItemId, evidence, stageId },
     });
-    return { cardId, contentItemId, stageId, status: "ready" };
+    return { affectedCardIds: [cardId], cardId, contentItemId, stageId, status: "ready" };
   }
 
   async tick(instanceId, { cards = null, dispatch = false, dryRun = false } = {}) {
@@ -425,7 +425,9 @@ export class NightShiftRuntime {
       : this.store.upsertStageRun({ ...run, status: "done" });
     const requiredScope = stage?.approval?.scope ?? "stage";
     if (stage?.approval?.before === effect && requiredScope === scope) {
-      const cards = await this.workboard.listCards();
+      const cards = await this.workboard.listCards({
+        cardIds: candidateAffectedCardIds(this.store, instanceId, stageId, contentItemId),
+      });
       const blockedExecutionCard = cards.find((card) => {
         const labels = card.labels ?? [];
         if (card.status !== "blocked" || labels.includes("nightshift:approval")) return false;
@@ -436,6 +438,7 @@ export class NightShiftRuntime {
       if (blockedExecutionCard) {
         await this.retry({
           actor,
+          card: blockedExecutionCard,
           cardId: blockedExecutionCard.id,
           contentItemId,
           evidence: `Execution confirmed by ${actor}: ${evidence ?? "no evidence"}`,
@@ -444,7 +447,10 @@ export class NightShiftRuntime {
         });
       }
     }
-    return approval;
+    return {
+      ...approval,
+      affectedCardIds: [cardId, ...candidateAffectedCardIds(this.store, instanceId, stageId, contentItemId)].filter(Boolean),
+    };
   }
 
   async reject({ actor, cardId, contentItemId, evidence, instanceId, stageId }) {
@@ -464,7 +470,7 @@ export class NightShiftRuntime {
     if (run) contentItemId
       ? this.store.upsertContentItemRun({ ...run, status: "blocked" })
       : this.store.upsertStageRun({ ...run, status: "blocked" });
-    return approval;
+    return { ...approval, affectedCardIds: [cardId].filter(Boolean) };
   }
 
   async requestChanges({ actor, cardId, contentItemId, evidence, instanceId, stageId }) {
@@ -484,8 +490,16 @@ export class NightShiftRuntime {
     if (run) contentItemId
       ? this.store.upsertContentItemRun({ ...run, status: "blocked" })
       : this.store.upsertStageRun({ ...run, status: "blocked" });
-    return approval;
+    return { ...approval, affectedCardIds: [cardId].filter(Boolean) };
   }
+}
+
+function candidateAffectedCardIds(store, instanceId, stageId, contentItemId) {
+  const runs = contentItemId ? store.listContentItemRuns(instanceId) : store.listStageRuns(instanceId);
+  return runs
+    .filter((entry) => entry.stageId === stageId && (contentItemId ? entry.contentItemId === contentItemId : true))
+    .map((entry) => entry.cardId)
+    .filter((id) => typeof id === "string" && id);
 }
 
 function messageText(message) {

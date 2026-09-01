@@ -6,7 +6,7 @@ import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadPublicAuth, requiresPublicAuth, verifyPublicAuth } from "./public-auth.mjs";
 import { resolveCardDecisionContext } from "./decision-context.mjs";
-import { instanceCardIds, runNightShiftSchedulerPulse } from "./scheduler.mjs";
+import { dashboardCardIds, instanceCardIds, runNightShiftSchedulerPulse } from "./scheduler.mjs";
 import {
   deliverableArtifactPaths,
   humanStageHandoff,
@@ -60,6 +60,7 @@ let cardCache = [];
 let lastSchedulerMetrics = null;
 let cardsUpdatedAt = null;
 let cardRefreshPromise = null;
+let dashboardRevision = 0;
 let lastSchedulerAt = null;
 let lastSchedulerError = null;
 let schedulerPromise = null;
@@ -132,8 +133,16 @@ async function handleApi(request, response, url) {
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/bootstrap") {
-    if (url.searchParams.get("refresh") === "1") await refreshCards();
-    const instances = store.listInstances().filter((instance) => instance.status !== "archived").map((instance) => ({
+    const activeInstances = store.listInstances().filter((instance) => instance.status !== "archived");
+    if (url.searchParams.get("refresh") === "1" || (cardCache.length === 0 && activeInstances.length > 0)) {
+      await refreshCards({ cardIds: dashboardCardIds(store, activeInstances) });
+    }
+    const since = Number(url.searchParams.get("since"));
+    if (url.searchParams.has("since") && Number.isInteger(since) && since === dashboardRevision) {
+      json(response, 200, { cardsUpdatedAt, notModified: true, revision: dashboardRevision });
+      return;
+    }
+    const instances = activeInstances.map((instance) => ({
       ...instance,
       contentItems: store.listContentItems(instance.id),
       contentItemRuns: store.listContentItemRuns(instance.id),
@@ -141,11 +150,12 @@ async function handleApi(request, response, url) {
     }));
     json(response, 200, {
       board,
-      cards: visibleCards(cardCache, instances).map(withCardLinks),
+      cards: visibleCards(cardCache, instances).map((card) => withCardLinks(cardSummary(card))),
       cardsUpdatedAt,
       events: store.listEvents(null, 80),
       instances: instances.map(withInstanceLinks),
       links: dashboardLinks(),
+      revision: dashboardRevision,
       workflows: store.listReleases().map(withWorkflowLinks),
     });
     return;
@@ -207,18 +217,30 @@ async function handleApi(request, response, url) {
       await workboard.moveCard(card.id, "cancelled");
     }
     const archived = store.archiveInstance(instanceId);
-    refreshCards().catch((error) => {
-      lastSchedulerError = error.message;
-    });
+    cardCache = cardCache.filter((card) => cardInstanceId(card) !== instanceId);
+    dashboardRevision += 1;
     json(response, 200, { id: archived.id, status: archived.status });
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/cards") {
-    const cards = url.searchParams.get("refresh") === "1" ? await refreshCards() : cardCache;
-    const status = url.searchParams.get("status");
     const instances = store.listInstances().filter((instance) => instance.status !== "archived");
+    const cards = url.searchParams.get("refresh") === "1"
+      ? await refreshCards({ cardIds: dashboardCardIds(store, instances) })
+      : cardCache;
+    const status = url.searchParams.get("status");
     const filtered = visibleCards(cards, instances);
-    json(response, 200, { cards: (status ? filtered.filter((card) => card.status === status) : filtered).map(withCardLinks) });
+    json(response, 200, { cards: (status ? filtered.filter((card) => card.status === status) : filtered).map((card) => withCardLinks(cardSummary(card))), revision: dashboardRevision });
+    return;
+  }
+  const cardReadMatch = url.pathname.match(/^\/api\/cards\/([^/]+)$/);
+  if (request.method === "GET" && cardReadMatch) {
+    const cardId = decodeURIComponent(cardReadMatch[1]);
+    const card = (await refreshCards({ cardIds: [cardId] })).find((entry) => entry.id === cardId);
+    if (!card) {
+      json(response, 404, { error: "Workboard card not found" });
+      return;
+    }
+    json(response, 200, { card: withCardLinks(card), revision: dashboardRevision });
     return;
   }
   const stageHandoffMatch = url.pathname.match(/^\/api\/instances\/([^/]+)\/stages\/([^/]+)\/handoff$/);
@@ -245,7 +267,7 @@ async function handleApi(request, response, url) {
   const cardSessionMatch = url.pathname.match(/^\/api\/cards\/([^/]+)\/session$/);
   if (request.method === "GET" && cardSessionMatch) {
     const cardId = decodeURIComponent(cardSessionMatch[1]);
-    const card = cardCache.find((entry) => entry.id === cardId) ?? (await refreshCards()).find((entry) => entry.id === cardId);
+    const card = cardCache.find((entry) => entry.id === cardId) ?? (await refreshCards({ cardIds: [cardId] })).find((entry) => entry.id === cardId);
     if (!card) {
       json(response, 404, { error: "Workboard card not found" });
       return;
@@ -473,7 +495,9 @@ async function handleApi(request, response, url) {
       json(response, 422, { error: "cardIds must contain between 1 and 100 card IDs" });
       return;
     }
-    const cards = await refreshCards();
+    const missingCardIds = cardIds.filter((cardId) => !cardCache.some((entry) => entry.id === cardId));
+    if (missingCardIds.length > 0) await refreshCards({ cardIds: missingCardIds });
+    const cards = cardCache;
     const decisions = cardIds.map((cardId) => {
       const card = cards.find((entry) => entry.id === cardId);
       if (!card) throw new Error(`Workboard card not found: ${cardId}`);
@@ -485,14 +509,15 @@ async function handleApi(request, response, url) {
       try {
         const result = await runtime.approve(decision.input);
         await recordHumanStageHandoff(decision.input);
-        results.push({ cardId: decision.card.id, ok: true, status: result.status });
+        results.push({ affectedCardIds: result.affectedCardIds, cardId: decision.card.id, ok: true, status: result.status });
       } catch (error) {
         results.push({ cardId: decision.card.id, error: error.message, ok: false });
       }
     }
-    await refreshCards();
+    const affectedCardIds = [...new Set(results.flatMap((entry) => entry.affectedCardIds ?? [entry.cardId]).filter(Boolean))];
+    const updated = await refreshCards({ cardIds: affectedCardIds });
     const failed = results.filter((entry) => !entry.ok);
-    json(response, failed.length ? 207 : 200, { approved: results.length - failed.length, failed: failed.length, ok: failed.length === 0, results });
+    json(response, failed.length ? 207 : 200, { approved: results.length - failed.length, cards: updated.map((card) => withCardLinks(cardSummary(card))), failed: failed.length, ok: failed.length === 0, results, revision: dashboardRevision });
     return;
   }
   if (request.method === "POST" && url.pathname === "/api/notifications/review") {
@@ -517,7 +542,7 @@ async function handleApi(request, response, url) {
       return;
     }
     const delivery = store.getNotification(authorization.deliveryId);
-    const cards = await refreshCards();
+    const cards = await refreshCards({ cardIds: [authorization.cardId] });
     const card = cards.find((entry) => entry.id === authorization.cardId);
     if (!card || card.status !== "review") {
       json(response, 409, { error: "The original Workboard card is no longer waiting for review" });
@@ -536,7 +561,7 @@ async function handleApi(request, response, url) {
         ? await runtime.requestChanges(input)
         : await runtime.reject(input);
     if (body.action === "approve") await recordHumanStageHandoff(input);
-    await refreshCards();
+    const updated = await refreshCards({ cardIds: result.affectedCardIds ?? [card.id] });
     const reply = {
       action: body.action,
       cardId: card.id,
@@ -547,6 +572,8 @@ async function handleApi(request, response, url) {
       message: body.action === "approve" ? "已通过并回写原 Workboard 卡" : body.action === "changes" ? "已退回修改，请在当前飞书会话补充具体意见" : "已拒绝并回写原 Workboard 卡",
       ok: true,
       status: result.status,
+      cards: updated.map((entry) => withCardLinks(cardSummary(entry))),
+      revision: dashboardRevision,
     };
     store.completeNotificationDecision(body.token, reply);
     json(response, 200, reply);
@@ -555,7 +582,7 @@ async function handleApi(request, response, url) {
   if (request.method === "POST" && decisionMatch) {
     const body = await bodyJson(request);
     const cardId = decodeURIComponent(decisionMatch[1]);
-    const card = cardCache.find((entry) => entry.id === cardId) ?? (await refreshCards()).find((entry) => entry.id === cardId);
+    const card = cardCache.find((entry) => entry.id === cardId) ?? (await refreshCards({ cardIds: [cardId] })).find((entry) => entry.id === cardId);
     if (!card) {
       json(response, 404, { error: "Workboard card not found" });
       return;
@@ -567,16 +594,16 @@ async function handleApi(request, response, url) {
         ? await runtime.requestChanges(input)
         : await runtime.reject(input);
     if (decisionMatch[2] === "approve") await recordHumanStageHandoff(input);
-    await refreshCards();
-    json(response, 200, result);
+    const updated = await refreshCards({ cardIds: result.affectedCardIds ?? [cardId] });
+    json(response, 200, { ...result, cards: updated.map((entry) => withCardLinks(cardSummary(entry))), revision: dashboardRevision });
     return;
   }
   const retryMatch = url.pathname.match(/^\/api\/cards\/([^/]+)\/retry$/);
   if (request.method === "POST" && retryMatch) {
     const body = await bodyJson(request);
     const result = await runtime.retry({ ...body, cardId: decodeURIComponent(retryMatch[1]) });
-    await refreshCards();
-    json(response, 200, result);
+    const updated = await refreshCards({ cardIds: result.affectedCardIds ?? [decodeURIComponent(retryMatch[1])] });
+    json(response, 200, { ...result, cards: updated.map((entry) => withCardLinks(cardSummary(entry))), revision: dashboardRevision });
     return;
   }
   json(response, 404, { error: "Not found" });
@@ -740,8 +767,9 @@ async function refreshCards({ cardIds = null } = {}) {
   const scoped = Array.isArray(cardIds);
   if (!scoped && cardRefreshPromise) return cardRefreshPromise;
   const refresh = workboard.listCards({ cardIds }).then((cards) => {
-    cardCache = scoped ? mergeCards(cardCache, cards) : cards;
+    cardCache = scoped ? mergeCards(cardCache, cards, cardIds) : cards;
     cardsUpdatedAt = new Date().toISOString();
+    dashboardRevision += 1;
     return cards;
   });
   if (scoped) return refresh;
@@ -751,10 +779,27 @@ async function refreshCards({ cardIds = null } = {}) {
   return cardRefreshPromise;
 }
 
-function mergeCards(existing, updates) {
+function mergeCards(existing, updates, replacedIds = []) {
   const merged = new Map(existing.map((card) => [card.id, card]));
+  for (const id of replacedIds) merged.delete(id);
   for (const card of updates) merged.set(card.id, card);
   return [...merged.values()];
+}
+
+function cardSummary(card) {
+  const automation = card.metadata?.automation;
+  return {
+    id: card.id,
+    title: card.title,
+    status: card.status,
+    priority: card.priority,
+    labels: card.labels ?? [],
+    agentId: card.agentId,
+    createdAt: card.createdAt,
+    updatedAt: card.updatedAt,
+    position: card.position,
+    metadata: automation ? { automation } : undefined,
+  };
 }
 
 async function bodyJson(request) {

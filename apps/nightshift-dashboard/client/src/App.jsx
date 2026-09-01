@@ -44,13 +44,22 @@ export function App() {
   const [workflowProjectId, setWorkflowProjectId] = useState(initialLocation.project);
   const [navigationCollapsed, setNavigationCollapsed] = useState(() => typeof window !== "undefined" && window.localStorage.getItem("nightshift.navigationCollapsed") === "true");
   const refreshInFlight = useRef(null);
+  const revisionRef = useRef(null);
   const selectedForDecision = useMemo(() => withDecisionContext(selected, data), [selected, data]);
 
   function refresh(force = false) {
     if (refreshInFlight.current) return refreshInFlight.current;
     setRefreshing(true);
-    const request = api(force ? "/api/bootstrap?refresh=1" : "/api/bootstrap")
-      .then((result) => { setData(result); setError(""); return result; })
+    const suffix = force
+      ? "?refresh=1"
+      : revisionRef.current == null ? "" : `?since=${encodeURIComponent(revisionRef.current)}`;
+    const request = api(`/api/bootstrap${suffix}`)
+      .then((result) => {
+        if (result.revision != null) revisionRef.current = result.revision;
+        if (!result.notModified) setData(result);
+        setError("");
+        return result;
+      })
       .catch((reason) => { setError(reason.message); throw reason; })
       .finally(() => { setRefreshing(false); refreshInFlight.current = null; });
     refreshInFlight.current = request;
@@ -75,7 +84,7 @@ export function App() {
     if (!data || deepLinkApplied.current) return;
     if (initialLocation.card) {
       const card = (data.cards ?? []).find((entry) => entry.id === initialLocation.card);
-      if (card) setSelected(card);
+      if (card) openCard(card);
     }
     deepLinkApplied.current = true;
   }, [data, initialLocation.card]);
@@ -143,12 +152,12 @@ export function App() {
     const approval = automation.approval;
     const decisionCardId = automation.decisionCardId ?? card.id;
     try {
-      await api(`/api/cards/${decisionCardId}/${status}`, {
+      const result = await api(`/api/cards/${decisionCardId}/${status}`, {
         method: "POST",
         body: JSON.stringify({ actor: "Workboard operator", contentItemId, effect: approval?.effect, evidence, instanceId, scope: approval?.scope, stageId }),
       });
+      applyCardUpdates(result);
       setSelected(null);
-      await refresh();
     } catch (reason) {
       setError(reason.message);
       throw reason;
@@ -159,12 +168,33 @@ export function App() {
     const instanceId = cardLabel(card, "instance");
     const contentItemId = card.metadata?.automation?.contentItemId ?? label(card, "content-item");
     const stageId = card.metadata?.automation?.stageId ?? label(card, "stage");
-    await api(`/api/cards/${card.id}/retry`, {
+    const result = await api(`/api/cards/${card.id}/retry`, {
       method: "POST",
       body: JSON.stringify({ actor: "Workboard operator", contentItemId, evidence: "Retry requested from Workboard", instanceId, stageId }),
     });
+    applyCardUpdates(result);
     setSelected(null);
-    await refresh();
+  }
+
+  async function openCard(card) {
+    if (!card) {
+      setSelected(null);
+      return;
+    }
+    setSelected(card);
+    try {
+      const result = await api(`/api/cards/${encodeURIComponent(card.id)}`);
+      if (result.revision != null) revisionRef.current = result.revision;
+      setSelected((current) => current?.id === card.id ? result.card : current);
+    } catch (reason) {
+      setError(reason.message);
+    }
+  }
+
+  function applyCardUpdates(result) {
+    if (result?.revision != null) revisionRef.current = result.revision;
+    if (!Array.isArray(result?.cards) || result.cards.length === 0) return;
+    setData((current) => current ? { ...current, cards: mergeCardUpdates(current.cards ?? [], result.cards), revision: result.revision ?? current.revision } : current);
   }
 
   return (
@@ -172,8 +202,8 @@ export function App() {
       <Sidebar active={active} collapsed={navigationCollapsed} onChange={setActive} onToggle={() => setNavigationCollapsed((value) => !value)} />
       <main className="main-shell">
         {error && <div className="error-banner">{error}</div>}
-        {active === "board" && <LiveBoard data={data} query={query} setQuery={setQuery} selected={selectedForDecision} setSelected={setSelected} refreshing={refreshing} refresh={refresh} decide={decide} retry={retry} delivery={delivery} deliveryState={deliveryState} deliveryError={deliveryError} handoff={handoff} handoffState={handoffState} handoffError={handoffError} />}
-        {active === "workflows" && <WorkflowStudio data={data} refresh={refresh} initialProjectId={workflowProjectId} initialWorkflowId={initialLocation.workflow} setSelected={setSelected} selected={selectedForDecision} decide={decide} approveMany={approveMany} retry={retry} delivery={delivery} deliveryState={deliveryState} deliveryError={deliveryError} handoff={handoff} handoffState={handoffState} handoffError={handoffError} onNewProject={(release) => setProjectReleaseSha(release?.workflowSha256 ?? data?.workflows?.[0]?.workflowSha256)} />}
+        {active === "board" && <LiveBoard data={data} query={query} setQuery={setQuery} selected={selectedForDecision} setSelected={openCard} refreshing={refreshing} refresh={refresh} decide={decide} retry={retry} delivery={delivery} deliveryState={deliveryState} deliveryError={deliveryError} handoff={handoff} handoffState={handoffState} handoffError={handoffError} />}
+        {active === "workflows" && <WorkflowStudio data={data} refresh={refresh} initialProjectId={workflowProjectId} initialWorkflowId={initialLocation.workflow} setSelected={openCard} selected={selectedForDecision} decide={decide} approveMany={approveMany} retry={retry} delivery={delivery} deliveryState={deliveryState} deliveryError={deliveryError} handoff={handoff} handoffState={handoffState} handoffError={handoffError} onNewProject={(release) => setProjectReleaseSha(release?.workflowSha256 ?? data?.workflows?.[0]?.workflowSha256)} />}
         {active === "projects" && <Projects data={data} refresh={refresh} onNewProject={() => setProjectReleaseSha(data?.workflows?.[0]?.workflowSha256)} onOpenProject={(projectId) => { setWorkflowProjectId(projectId); updateDashboardLocation({ project: projectId, view: "workflows" }); setActive("workflows"); }} />}
         {active === "agents" && <Agents data={data} />}
         {active === "updates" && <Changelog />}
@@ -188,7 +218,7 @@ export function App() {
       body: JSON.stringify({ actor: "Workboard operator", cardIds: cards.map((card) => card.id), evidence }),
     });
     if (!result.ok) throw new Error(`已通过 ${result.approved} 条，另有 ${result.failed} 条失败，请刷新后重试`);
-    await refresh(true);
+    applyCardUpdates(result);
     return result;
   }
 }
@@ -731,7 +761,19 @@ function indexStageTasks(stages, projects, cards) {
 
 function withDecisionContext(card, data) {
   if (!card || !data) return card;
-  const fresh = (data.cards ?? []).find((entry) => entry.id === card.id) ?? card;
+  const summary = (data.cards ?? []).find((entry) => entry.id === card.id);
+  const fresh = summary ? {
+    ...card,
+    ...summary,
+    metadata: {
+      ...(card.metadata ?? {}),
+      ...(summary.metadata ?? {}),
+      automation: {
+        ...(card.metadata?.automation ?? {}),
+        ...(summary.metadata?.automation ?? {}),
+      },
+    },
+  } : card;
   const instanceId = cardLabel(fresh, "instance");
   const stageId = fresh.metadata?.automation?.stageId ?? label(fresh, "stage");
   const contentItemId = fresh.metadata?.automation?.contentItemId ?? label(fresh, "content-item") ?? null;
@@ -767,6 +809,12 @@ function withDecisionContext(card, data) {
       },
     },
   };
+}
+
+function mergeCardUpdates(existing, updates) {
+  const merged = new Map(existing.map((card) => [card.id, card]));
+  for (const update of updates) merged.set(update.id, { ...(merged.get(update.id) ?? {}), ...update });
+  return [...merged.values()];
 }
 
 function missingApprovalFor(instance, stage, contentItemId = null) {

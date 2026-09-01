@@ -1,6 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { runNightShiftSchedulerPulse } from "./scheduler.mjs";
+import { dashboardCardIds, runNightShiftSchedulerPulse } from "./scheduler.mjs";
+
+test("dashboard scope includes history referenced by instances without scanning the board", () => {
+  const store = {
+    listActionCardIds: () => ["approval-1"],
+    listContentItemRuns: () => [{ cardId: "content-done" }, { cardId: "content-running" }],
+    listStageRuns: () => [{ cardId: "project-done" }, { cardId: null }],
+  };
+  assert.deepEqual(
+    dashboardCardIds(store, [{ id: "A" }]),
+    ["project-done", "content-done", "content-running", "approval-1"],
+  );
+});
 
 test("uses one shared snapshot and one native dispatch for all active projects", async () => {
   let refreshes = 0;
