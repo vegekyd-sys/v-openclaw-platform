@@ -3,7 +3,139 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { WorkboardGatewayAdapter } from "../src/index.mjs";
+import { PersistentGatewayRpcClient, WorkboardGatewayAdapter } from "../src/index.mjs";
+
+test("reuses one persistent Gateway client across concurrent RPC calls", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "nightshift-persistent-gateway-"));
+  const configPath = join(dir, "openclaw.json");
+  await writeFile(configPath, JSON.stringify({ gateway: { auth: { token: "test-token" } } }));
+  const requests = [];
+  let factoryCalls = 0;
+  let closeCalls = 0;
+  const rpcClient = {
+    async request(method, params) {
+      requests.push({ method, params });
+      return method === "workboard.cards.list" ? { cards: [] } : { ok: true };
+    },
+    async close() {
+      closeCalls += 1;
+    },
+  };
+  const adapter = new WorkboardGatewayAdapter({
+    board: "nightshift-lab",
+    configPath,
+    entry: "/opt/openclaw/dist/index.js",
+    gatewayUrl: "ws://127.0.0.1:23793",
+    rpcClientFactory(options) {
+      factoryCalls += 1;
+      assert.equal(options.token, "test-token");
+      assert.equal(options.gatewayUrl, "ws://127.0.0.1:23793");
+      return rpcClient;
+    },
+  });
+
+  await Promise.all([adapter.listCards(), adapter.listCards(), adapter.listCards()]);
+  assert.equal(factoryCalls, 1);
+  assert.equal(requests.length, 3);
+  assert.ok(requests.every((request) => request.method === "workboard.cards.list"));
+  await adapter.close();
+  assert.equal(closeCalls, 1);
+});
+
+test("persistent Gateway client starts once and multiplexes requests", async () => {
+  const requests = [];
+  let starts = 0;
+  let stops = 0;
+  class FakeGatewayClient {
+    constructor(options) {
+      this.options = options;
+    }
+    start() {
+      starts += 1;
+      queueMicrotask(() => this.options.onHelloOk({ protocol: 4 }));
+    }
+    async request(method, params) {
+      requests.push({ method, params });
+      return { method, params };
+    }
+    async stopAndWait() {
+      stops += 1;
+    }
+  }
+  const client = new PersistentGatewayRpcClient({
+    entry: "/opt/openclaw/dist/index.js",
+    gatewayClientLoader: async () => FakeGatewayClient,
+    gatewayUrl: "ws://127.0.0.1:22793",
+    token: "test-token",
+  });
+
+  const results = await Promise.all([
+    client.request("workboard.cards.list", { boardId: "nightshift" }),
+    client.request("sessions.get", { key: "session-1" }),
+  ]);
+  assert.equal(starts, 1);
+  assert.deepEqual(client.client.options.scopes, ["operator.admin", "operator.read", "operator.write"]);
+  assert.equal(requests.length, 2);
+  assert.equal(results[1].method, "sessions.get");
+  await client.close();
+  assert.equal(stops, 1);
+});
+
+test("persistent Gateway client waits for the existing socket to reconnect", async () => {
+  let instance;
+  let starts = 0;
+  class ReconnectingGatewayClient {
+    constructor(options) {
+      this.options = options;
+      instance = this;
+    }
+    start() {
+      starts += 1;
+      queueMicrotask(() => this.options.onHelloOk({ protocol: 4 }));
+    }
+    async request(method) {
+      return method;
+    }
+    async stopAndWait() {}
+  }
+  const client = new PersistentGatewayRpcClient({
+    entry: "/opt/openclaw/dist/index.js",
+    gatewayClientLoader: async () => ReconnectingGatewayClient,
+    gatewayUrl: "ws://127.0.0.1:22793",
+    requestTimeoutMs: 1000,
+    token: "test-token",
+  });
+
+  assert.equal(await client.request("health", {}), "health");
+  instance.options.onClose(1006, "network reset");
+  const pending = client.request("workboard.cards.list", {});
+  setTimeout(() => instance.options.onHelloOk({ protocol: 4 }), 10);
+  assert.equal(await pending, "workboard.cards.list");
+  assert.equal(starts, 1);
+  await client.close();
+});
+
+test("persistent Gateway client authenticates a Tailscale endpoint with the existing device identity", async () => {
+  const identity = { deviceId: "device-1", publicKeyPem: "public", privateKeyPem: "private" };
+  let options;
+  class FakeGatewayClient {
+    constructor(value) { options = value; }
+    start() { queueMicrotask(() => options.onHelloOk({ protocol: 4 })); }
+    async request() { return { cards: [] }; }
+    async stopAndWait() {}
+  }
+  const client = new PersistentGatewayRpcClient({
+    deviceIdentityLoader: async () => identity,
+    entry: "/opt/openclaw/dist/index.js",
+    gatewayClientLoader: async () => FakeGatewayClient,
+    gatewayUrl: "ws://100.82.39.107:22793",
+    token: "test-token",
+  });
+
+  await client.request("workboard.cards.list", { boardId: "nightshift" });
+  assert.equal(options.deviceIdentity, identity);
+  await client.close();
+});
 
 test("creates and reuses native cards through Gateway RPC", async () => {
   const dir = await mkdtemp(join(tmpdir(), "nightshift-gateway-"));
@@ -101,16 +233,32 @@ test("creates and reuses native cards through Gateway RPC", async () => {
   assert.equal(calls.length, beforePrefetch + 3);
 });
 
-test("refuses a remote Gateway instead of exposing its token in process arguments", async () => {
+test("refuses an insecure remote Gateway instead of exposing its token", async () => {
   const dir = await mkdtemp(join(tmpdir(), "nightshift-remote-gateway-"));
   const configPath = join(dir, "openclaw.json");
   await writeFile(configPath, JSON.stringify({ gateway: { auth: { token: "test-token" } } }));
   const adapter = new WorkboardGatewayAdapter({
     configPath,
-    gatewayUrl: "ws://100.82.39.107:22793",
+    gatewayUrl: "ws://192.0.2.10:22793",
     runner: async () => { throw new Error("runner must not be called"); },
   });
-  await assert.rejects(() => adapter.listCards(), /must be loopback-local/);
+  await assert.rejects(() => adapter.listCards(), /must use loopback, Tailscale, or secure WebSocket/);
+});
+
+test("allows a Tailscale-protected Gateway for isolated VLab", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "nightshift-tailscale-gateway-"));
+  const configPath = join(dir, "openclaw.json");
+  await writeFile(configPath, JSON.stringify({ gateway: { auth: { token: "test-token" } } }));
+  const adapter = new WorkboardGatewayAdapter({
+    configPath,
+    gatewayUrl: "ws://100.82.39.107:22793",
+    rpcClientFactory: () => ({
+      async request() { return { cards: [] }; },
+      async close() {},
+    }),
+  });
+  assert.deepEqual(await adapter.listCards(), []);
+  await adapter.close();
 });
 
 test("bounds scoped card reads with batches and never expands an empty scope", async () => {

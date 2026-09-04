@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
@@ -13,6 +13,7 @@ test("enables Workboard without changing Worker 0.2.5 capacity", () => {
   const backupDir = join(root, "backup");
   const config = fixtureConfig({ withAllowlist: true });
   writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o640 });
+  chmodSync(configPath, 0o640);
 
   const result = JSON.parse(
     execFileSync(process.execPath, [

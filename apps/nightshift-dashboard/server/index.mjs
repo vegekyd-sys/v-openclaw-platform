@@ -1259,7 +1259,7 @@ function requestIsLoopback(request) {
   return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
 }
 
-function shutdown() {
+async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   if (schedulerTimer) clearInterval(schedulerTimer);
@@ -1273,6 +1273,7 @@ function shutdown() {
     store.close();
     process.exit(0);
   };
+  await workboard.close().catch(() => undefined);
   forceTimer = setTimeout(() => {
     server.closeAllConnections?.();
     finish();
