@@ -887,6 +887,9 @@ const plugin = {
           };
         }
         nativeHarnessStats.failed += 1;
+        if (error?.code === "SESSION_WORK_START_CHANGED" || error?.name === "SessionWorkStartChangedError") {
+          api.logger.warn(`Worker lifecycle rejection frames: ${String(error?.stack ?? "").split("\n").filter((line) => /^\s+at /.test(line)).slice(0, 8).join(" | ")}`);
+        }
         api.logger.warn(
           `Worker Agent request failed runId=${String(
             params.runId,
