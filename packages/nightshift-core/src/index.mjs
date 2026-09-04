@@ -15,6 +15,7 @@ export {
   WorkboardGatewayAdapter,
   gatewayIdempotencyLabel,
 } from "./workboard-gateway-adapter.mjs";
+export { PersistentGatewayRpcClient } from "./persistent-gateway-rpc-client.mjs";
 export { NightShiftRuntime } from "./runtime.mjs";
 export {
   deliverableArtifactPaths,

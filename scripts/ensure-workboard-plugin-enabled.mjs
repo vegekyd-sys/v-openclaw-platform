@@ -65,6 +65,9 @@ if (!dryRun && changed) {
   writeFileSync(temporaryPath, `${JSON.stringify(next, null, 2)}\n`, {
     mode: originalStat.mode & 0o777,
   });
+  // writeFile mode is filtered through the process umask. Restore the exact
+  // source permissions before the atomic rename.
+  chmodSync(temporaryPath, originalStat.mode & 0o777);
   chownSync(temporaryPath, originalStat.uid, originalStat.gid);
   renameSync(temporaryPath, configPath);
 

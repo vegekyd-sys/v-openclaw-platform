@@ -3,6 +3,7 @@ import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { normalizeWorkboardLabel } from "./orchestrator.mjs";
+import { PersistentGatewayRpcClient } from "./persistent-gateway-rpc-client.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -19,7 +20,8 @@ export class WorkboardGatewayAdapter {
     listConcurrency = positiveInteger(process.env.NIGHTSHIFT_WORKBOARD_LIST_CONCURRENCY, 4),
     maxBufferBytes = positiveBufferSize(process.env.NIGHTSHIFT_GATEWAY_MAX_BUFFER_BYTES, 32 * 1024 * 1024),
     rpcTimeoutMs = positiveTimeout(process.env.NIGHTSHIFT_GATEWAY_RPC_TIMEOUT_MS, 30_000),
-    runner = defaultRunner,
+    rpcClientFactory = (options) => new PersistentGatewayRpcClient(options),
+    runner,
   } = {}) {
     this.board = board;
     this.command = command;
@@ -33,6 +35,8 @@ export class WorkboardGatewayAdapter {
     this.maxBufferBytes = maxBufferBytes;
     this.rpcTimeoutMs = rpcTimeoutMs;
     this.runner = runner;
+    this.rpcClientFactory = rpcClientFactory;
+    this.rpcClient = null;
     this.sessionSnapshots = null;
   }
 
@@ -177,13 +181,23 @@ export class WorkboardGatewayAdapter {
   async call(method, params) {
     if (!this.gatewayUrl) throw new Error("NIGHTSHIFT_GATEWAY_URL is required");
     const gateway = new URL(this.gatewayUrl);
-    if (!["127.0.0.1", "localhost", "[::1]"].includes(gateway.hostname)) {
-      throw new Error("Night Shift Workboard Gateway must be loopback-local");
+    if (!gatewayEndpointIsPrivate(gateway)) {
+      throw new Error("Night Shift Workboard Gateway must use loopback, Tailscale, or secure WebSocket transport");
     }
     if (!this.configPath) throw new Error("OPENCLAW_CONFIG_PATH is required");
     const config = JSON.parse(await readFile(this.configPath, "utf8"));
     const token = config.gateway?.auth?.token;
     if (!token) throw new Error("Gateway auth token is missing from the configured file");
+    if (!this.runner) {
+      this.rpcClient ??= this.rpcClientFactory({
+        entry: this.entry,
+        env: this.env,
+        gatewayUrl: this.gatewayUrl,
+        requestTimeoutMs: this.rpcTimeoutMs,
+        token,
+      });
+      return this.rpcClient.request(method, params);
+    }
     const args = [
       ...(this.entry ? [this.entry] : []),
       "gateway",
@@ -202,6 +216,23 @@ export class WorkboardGatewayAdapter {
     }, { maxBufferBytes: this.maxBufferBytes, timeoutMs: this.rpcTimeoutMs + 5000 });
     return typeof output === "string" ? JSON.parse(output) : output;
   }
+
+  async close() {
+    await this.rpcClient?.close?.();
+    this.rpcClient = null;
+  }
+}
+
+function gatewayEndpointIsPrivate(gateway) {
+  if (gateway.protocol === "wss:") return true;
+  if (["127.0.0.1", "localhost", "[::1]"].includes(gateway.hostname)) return true;
+  const octets = gateway.hostname.split(".").map(Number);
+  return gateway.protocol === "ws:"
+    && octets.length === 4
+    && octets.every((value) => Number.isInteger(value) && value >= 0 && value <= 255)
+    && octets[0] === 100
+    && octets[1] >= 64
+    && octets[1] <= 127;
 }
 
 function uniqueCardIds(cardIds) {
