@@ -63,7 +63,7 @@ export function resolveOpenClawSubagentAnnounceRuntimePath(options = {}) {
     .filter(
       (name) =>
         name === "subagent-announce.js" ||
-        /^subagent-announce-[A-Za-z0-9_]+\.js$/.test(name),
+        /^subagent-announce-[A-Za-z0-9_-]+\.js$/.test(name),
     )
     .sort();
   const publicRuntimeCandidates = candidates.filter((name) => {
@@ -86,7 +86,7 @@ export function resolveOpenClawSubagentAnnounceOriginRuntimePath(options = {}) {
   const readFile = options.readFile ?? ((candidate) => readFileSync(candidate, "utf8"));
   const legacyCandidates = readDirectory(distDir)
     .filter((name) =>
-      /^subagent-announce-origin-[A-Za-z0-9_]+\.js$/.test(name),
+      /^subagent-announce-origin-[A-Za-z0-9_-]+\.js$/.test(name),
     )
     .sort();
   if (legacyCandidates.length === 1) {
@@ -98,7 +98,7 @@ export function resolveOpenClawSubagentAnnounceOriginRuntimePath(options = {}) {
     );
   }
   const deliveryCandidates = readDirectory(distDir)
-    .filter((name) => /^subagent-announce-delivery-[A-Za-z0-9_]+\.js$/.test(name))
+    .filter((name) => /^subagent-announce-delivery-[A-Za-z0-9_-]+\.js$/.test(name))
     .filter((name) => {
       const source = readFile(join(distDir, name));
       return /export\s*\{[^}]*\bdeliverSubagentAnnouncement\s+as\s+[A-Za-z_$][\w$]*[^}]*\}/s.test(

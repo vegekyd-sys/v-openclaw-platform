@@ -151,4 +151,28 @@ assert.equal(
   "/opt/vlab/current/node_modules/openclaw/dist/subagent-announce-delivery-CzAZKB_N.js",
 );
 
-console.log(JSON.stringify({ ok: true, cases: 12 }));
+// OpenClaw 2026.9.1's public facade contains a hyphen in its build hash.
+assert.equal(
+  resolveOpenClawSubagentAnnounceRuntimePath({
+    agentRuntimePath: vlabRuntime,
+    readDirectory: () => ["subagent-announce-D-7rIufL.js", "subagent-announce-DM0I4BxK.js"],
+    readFile: (candidate) => candidate.endsWith("subagent-announce-D-7rIufL.js")
+      ? "export { runSubagentAnnounceFlow, testing };"
+      : "export { runSubagentAnnounceFlow as n, testing as r };",
+  }),
+  "/opt/vlab/current/node_modules/openclaw/dist/subagent-announce-D-7rIufL.js",
+);
+assert.equal(
+  resolveOpenClawSubagentAnnounceOriginRuntimePath({
+    agentRuntimePath: vlabRuntime,
+    readDirectory: () => ["subagent-announce-delivery-Dose-7Zr.js"],
+    readFile: () => "export { deliverSubagentAnnouncement as t };",
+  }),
+  "/opt/vlab/current/node_modules/openclaw/dist/subagent-announce-delivery-Dose-7Zr.js",
+);
+assert.throws(() => resolveOpenClawSubagentAnnounceRuntimePath({
+  agentRuntimePath: vlabRuntime,
+  readDirectory: () => ["subagent-announce-D-7rIufL.js", "subagent-announce-another.js"],
+  readFile: () => "export { runSubagentAnnounceFlow };",
+}), /was not uniquely resolved/);
+console.log(JSON.stringify({ ok: true, cases: 15 }));
