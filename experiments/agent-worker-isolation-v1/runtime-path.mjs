@@ -167,3 +167,12 @@ export function resolveOpenClawGatewayCallerContextRuntimePath(options = {}) {
   if(candidates.length !== 1) throw new Error('Native process-owned Gateway context runtime is unavailable');
   return join(dist,candidates[0]);
 }
+
+export function resolveOpenClawGatewayRequestScopeRuntimePath(options = {}) {
+  const agentRuntimePath = options.agentRuntimePath ?? resolveOpenClawAgentRuntimePath(options);
+  const dist = dirname(dirname(agentRuntimePath));
+  const candidates = readdirSync(dist).filter(name => /^gateway-request-scope-[\w-]+\.js$/.test(name) &&
+    readFileSync(join(dist,name),'utf8').includes('withPluginRuntimeGatewayContextResolver as s'));
+  if(candidates.length !== 1) throw new Error('Native Gateway instance context runtime is unavailable');
+  return join(dist,candidates[0]);
+}

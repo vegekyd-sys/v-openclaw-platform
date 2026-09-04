@@ -8,9 +8,11 @@ import {
   resolveOpenClawSubagentAnnounceRuntimePath,
   resolveOpenClawSubagentAnnounceOriginRuntimePath,
   resolveOpenClawGatewayCallerContextRuntimePath,
+  resolveOpenClawGatewayRequestScopeRuntimePath,
 } from "./runtime-path.mjs";
 import { createWorkerActiveRunProxy } from "./worker-active-run-proxy.mjs";
 import { createGatewayMessageToolRelay } from "./gateway-message-tool.mjs";
+import { withGatewayCompletionContext } from "./gateway-completion-context.mjs";
 import { buildHarnessFailureAttempt } from "./harness-failure.mjs";
 import { readNativeSessionMessages } from "./harness-result.mjs";
 import { closeInterruptedToolCalls } from "./transcript-recovery.mjs";
@@ -332,6 +334,9 @@ const plugin = {
     );
     const gatewayCallerRuntimePromise = import(pathToFileURL(
       resolveOpenClawGatewayCallerContextRuntimePath({agentRuntimePath:openClawAgentRuntimePath}),
+    ).href);
+    const gatewayScopeRuntimePromise = import(pathToFileURL(
+      resolveOpenClawGatewayRequestScopeRuntimePath({agentRuntimePath:openClawAgentRuntimePath}),
     ).href);
     const agentHarnessTaskRuntimePromise = import(
       pathToFileURL(
@@ -819,10 +824,15 @@ const plugin = {
               `Child task ${outcome.status}`;
             const runtime = await agentHarnessTaskRuntimePromise;
             const { o: withoutGatewayToolCallerIdentity } = await gatewayCallerRuntimePromise;
+            const { r: getResolver, s: withResolver } = await gatewayScopeRuntimePromise;
             // Core's process-owned-work boundary releases only the expired
             // initiating turn context. The native task scope still owns the
             // requester and native delivery validates the completion lifecycle.
-            return await withoutGatewayToolCallerIdentity(() => runtime.deliverAgentHarnessTaskCompletion({
+            return await withGatewayCompletionContext({
+              scope: params.agentHarnessTaskRuntimeScope,
+              subagentRuntime: api.runtime.subagent,
+              getResolver, withResolver, withoutCaller: withoutGatewayToolCallerIdentity,
+            }, () => runtime.deliverAgentHarnessTaskCompletion({
               scope: params.agentHarnessTaskRuntimeScope,
               childSessionKey,
               childSessionId: childSession.sessionId,
