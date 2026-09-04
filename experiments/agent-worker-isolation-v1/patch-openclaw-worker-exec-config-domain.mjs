@@ -63,9 +63,9 @@ async function resolveBundle(packageRoot) {
   const packageJson = JSON.parse(
     await readFile(join(root, "package.json"), "utf8"),
   );
-  if (packageJson.name !== "openclaw" || packageJson.version !== "2026.8.1") {
+  if (packageJson.name !== "openclaw" || !["2026.8.1", "2026.9.1"].includes(packageJson.version)) {
     throw new Error(
-      `unsupported OpenClaw package ${packageJson.name}@${packageJson.version}; expected openclaw@2026.8.1`,
+      `unsupported OpenClaw package ${packageJson.name}@${packageJson.version}; expected audited openclaw@2026.8.1 or 2026.9.1`,
     );
   }
   const dist = join(root, "dist");

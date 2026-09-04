@@ -69,3 +69,14 @@ test("sessions_spawn external Harness patch is idempotent", () => {
   assert.equal(twice.changed, false);
   assert.equal(twice.source, once.source);
 });
+
+test("preserves the 9.1 abort signal and source-execution guard", () => {
+  const guard = 'const assertActive = captureAgentToolSourceExecutionGuard(signal);';
+  const source = openClaw81Fixture.replace('(_toolCallId, args)', '(_toolCallId, args, signal)')
+    .replace('const params = args;', `${guard}\n\t\t\tconst params = args;`);
+  const result = patchSessionsSpawnGatewayProxy(source);
+  assert.match(result.source, /execute: async \(_toolCallId, args, signal\)/);
+  assert.ok(result.source.includes(guard));
+  assert.doesNotThrow(() => new Function(result.source));
+  assert.equal(patchSessionsSpawnGatewayProxy(result.source).changed, false);
+});

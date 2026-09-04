@@ -18,7 +18,10 @@ const ACCEPTED_PATCH_MARKER =
   "v-worker-sessions-spawn-external-task-record-v0.2.8-v4";
 const LEGACY_TOOL_ANCHOR = "sessions_spawn built-in tool";
 const TOOL_FUNCTION_ANCHOR = "function createSessionsSpawnTool(opts)";
-const EXECUTE_ANCHOR = "\t\texecute: async (_toolCallId, args) => {\n";
+const EXECUTE_ANCHORS = [
+  "\t\texecute: async (_toolCallId, args) => {\n",
+  "\t\texecute: async (_toolCallId, args, signal) => {\n",
+];
 const ACCEPTED_CALL_PATTERN =
   /\t+recordAcceptedSessionSpawn\(result, [^)]+\);\n/g;
 const BACKUP_SUFFIX = ".v-worker-sessions-spawn-v0.2.8-v4.bak";
@@ -53,13 +56,14 @@ export function patchSessionsSpawnGatewayProxy(source) {
   const nextSection = source.indexOf("//#endregion", sectionStart);
   const sectionEnd = nextSection >= 0 ? nextSection : source.length;
   const section = source.slice(sectionStart, sectionEnd);
-  const matches = section.split(EXECUTE_ANCHOR).length - 1;
+  const matches = EXECUTE_ANCHORS.reduce((n, anchor) => n + section.split(anchor).length - 1, 0);
   if (matches !== 1) {
     throw new Error(`expected one sessions_spawn execute anchor, found ${matches}`);
   }
+  const executeAnchor = EXECUTE_ANCHORS.find(anchor => section.includes(anchor));
   const patched = section.replace(
-    EXECUTE_ANCHOR,
-    `${EXECUTE_ANCHOR}${INJECTION}`,
+    executeAnchor,
+    `${executeAnchor}${INJECTION}`,
   );
   const acceptedMatches = [...patched.matchAll(ACCEPTED_CALL_PATTERN)].length;
   if (acceptedMatches < 1) {
