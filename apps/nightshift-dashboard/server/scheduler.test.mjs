@@ -75,10 +75,29 @@ test("uses one shared snapshot and one native dispatch for all active projects",
   assert.equal(ticks[0].options.dispatch, false);
   assert.equal(ticks[1].options.cards.some((card) => card.id === "new-a"), true);
   assert.deepEqual(refreshScopes[0], ["running-1", "ready-1"]);
-  assert.deepEqual(dispatches, [{ maxStarts: 3, options: { cardIds: ["running-1", "ready-1"] } }]);
+  assert.deepEqual(dispatches, [{ maxStarts: 2, options: { cardIds: ["running-1", "ready-1"] } }]);
   assert.deepEqual(sessionPrefetches, ["cleared"]);
   assert.equal(result.running, 1);
   assert.equal(result.ready, 3);
+});
+
+test("limits each Pulse dispatch burst without lowering the global active capacity", async () => {
+  let dispatched = null;
+  const cards = Array.from({ length: 8 }, (_, index) => ({ id: `ready-${index}`, status: "ready" }));
+  const result = await runNightShiftSchedulerPulse({
+    dispatchBurstMaxStarts: 2,
+    dispatchMaxStarts: 12,
+    maxWorkboardActive: 36,
+    refreshCards: async () => cards,
+    runtime: { tick: async () => ({ applied: [] }) },
+    store: { appendEvent() {}, listContentItemRuns: () => [], listInstances: () => [], listStageRuns: () => [] },
+    syncContentItemsManifest: async () => {},
+    workboard: { dispatch: async (maxStarts) => { dispatched = maxStarts; return { started: [] }; } },
+  });
+
+  assert.equal(dispatched, 2);
+  assert.equal(result.maxStarts, 2);
+  assert.equal(result.ready, 8);
 });
 
 test("reserves interactive capacity and does not dispatch above the Workboard cap", async () => {

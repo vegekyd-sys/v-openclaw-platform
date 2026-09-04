@@ -1,4 +1,5 @@
 export async function runNightShiftSchedulerPulse({
+  dispatchBurstMaxStarts = 2,
   dispatchMaxStarts = 12,
   maxWorkboardActive = 36,
   refreshCards,
@@ -78,7 +79,7 @@ export async function runNightShiftSchedulerPulse({
   const running = cards.filter(cardIsRunning).length;
   const ready = cards.filter((card) => card.status === "ready").length;
   const available = Math.max(0, maxWorkboardActive - running);
-  const maxStarts = Math.min(dispatchMaxStarts, available, ready);
+  const maxStarts = Math.min(dispatchBurstMaxStarts, dispatchMaxStarts, available, ready);
   const dispatchStartedAt = performance.now();
   const dispatch = maxStarts > 0 ? await workboard.dispatch(maxStarts, { cardIds }) : null;
   timings.dispatchMs = elapsedMs(dispatchStartedAt);

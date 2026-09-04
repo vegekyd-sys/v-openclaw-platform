@@ -42,6 +42,7 @@ const publicBaseUrl = process.env.NIGHTSHIFT_PUBLIC_BASE_URL ?? "";
 const schedulerMode = process.env.NIGHTSHIFT_SCHEDULER_MODE ?? "internal";
 const schedulerIntervalMs = positiveInteger(process.env.NIGHTSHIFT_SCHEDULER_INTERVAL_MS, 30_000);
 const schedulerDispatchMaxStarts = positiveInteger(process.env.NIGHTSHIFT_DISPATCH_MAX_STARTS, 12);
+const schedulerDispatchBurstMaxStarts = positiveInteger(process.env.NIGHTSHIFT_DISPATCH_BURST_MAX_STARTS, 2);
 const schedulerMaxWorkboardActive = positiveInteger(process.env.NIGHTSHIFT_MAX_WORKBOARD_ACTIVE, 36);
 const notificationsEnabled = process.env.NIGHTSHIFT_FEISHU_NOTIFICATIONS === "1";
 const publicAuth = await loadPublicAuth(process.env.NIGHTSHIFT_BASIC_AUTH_FILE);
@@ -636,6 +637,7 @@ function runScheduler() {
     const pulse = tickQueue
       .catch(() => undefined)
       .then(() => runNightShiftSchedulerPulse({
+        dispatchBurstMaxStarts: schedulerDispatchBurstMaxStarts,
         dispatchMaxStarts: schedulerDispatchMaxStarts,
         maxWorkboardActive: schedulerMaxWorkboardActive,
         refreshCards,
