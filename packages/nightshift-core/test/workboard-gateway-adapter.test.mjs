@@ -3,7 +3,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { PersistentGatewayRpcClient, WorkboardGatewayAdapter } from "../src/index.mjs";
+import { gatewayIdempotencyLabel, PersistentGatewayRpcClient, WorkboardGatewayAdapter } from "../src/index.mjs";
 
 test("reuses one persistent Gateway client across concurrent RPC calls", async () => {
   const dir = await mkdtemp(join(tmpdir(), "nightshift-persistent-gateway-"));
@@ -309,6 +309,7 @@ test("creates independent Workboard actions with bounded control-plane concurren
   };
   const adapter = new WorkboardGatewayAdapter({
     applyConcurrency: 3,
+    maxCreatesPerPlan: 7,
     board: "nightshift-lab",
     configPath,
     gatewayUrl: "ws://127.0.0.1:23793",
@@ -326,6 +327,36 @@ test("creates independent Workboard actions with bounded control-plane concurren
 
   assert.equal(result.length, 7);
   assert.equal(maxInFlight, 3);
+});
+
+test("defers excess new cards per plan while reusing known cards without consuming the budget", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "nightshift-gateway-budget-"));
+  const configPath = join(dir, "openclaw.json");
+  await writeFile(configPath, JSON.stringify({ gateway: { auth: { token: "test-token" } } }));
+  const calls = [];
+  const adapter = new WorkboardGatewayAdapter({
+    applyConcurrency: 4,
+    configPath,
+    gatewayUrl: "ws://127.0.0.1:22793",
+    maxCreatesPerPlan: 2,
+    runner: async (_command, args) => {
+      const params = JSON.parse(args[args.indexOf("--params") + 1]);
+      calls.push(params);
+      return JSON.stringify({ card: { id: params.title, ...params } });
+    },
+  });
+  const actions = Array.from({ length: 4 }, (_, index) => ({
+    type: "create_workboard_card",
+    idempotencyKey: `budget-key-${index}`,
+    card: { title: `budget-card-${index}`, status: "ready", labels: [] },
+  }));
+  const known = [{ id: "existing", labels: [gatewayIdempotencyLabel("budget-key-0")] }];
+
+  const result = await adapter.applyPlan(actions, { cards: known });
+
+  assert.deepEqual(result.map((item) => item.status), ["reused", "created", "created", "deferred"]);
+  assert.equal(result[3].reason, "create_budget_exhausted");
+  assert.equal(calls.length, 2);
 });
 
 test("normalizes every label at the Gateway write boundary", async () => {

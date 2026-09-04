@@ -16,6 +16,7 @@ export class WorkboardGatewayAdapter {
     env = process.env,
     gatewayUrl = process.env.NIGHTSHIFT_GATEWAY_URL,
     applyConcurrency = positiveInteger(process.env.NIGHTSHIFT_WORKBOARD_APPLY_CONCURRENCY, 8),
+    maxCreatesPerPlan = positiveInteger(process.env.NIGHTSHIFT_WORKBOARD_MAX_CREATES_PER_PLAN, 4),
     listBatchSize = positiveInteger(process.env.NIGHTSHIFT_WORKBOARD_LIST_BATCH_SIZE, 100, 500),
     listConcurrency = positiveInteger(process.env.NIGHTSHIFT_WORKBOARD_LIST_CONCURRENCY, 4),
     maxBufferBytes = positiveBufferSize(process.env.NIGHTSHIFT_GATEWAY_MAX_BUFFER_BYTES, 32 * 1024 * 1024),
@@ -30,6 +31,7 @@ export class WorkboardGatewayAdapter {
     this.env = env;
     this.gatewayUrl = gatewayUrl;
     this.applyConcurrency = applyConcurrency;
+    this.maxCreatesPerPlan = maxCreatesPerPlan;
     this.listBatchSize = listBatchSize;
     this.listConcurrency = listConcurrency;
     this.maxBufferBytes = maxBufferBytes;
@@ -64,13 +66,27 @@ export class WorkboardGatewayAdapter {
   }
 
   async applyPlan(actions, { cards = null, dryRun = false } = {}) {
-    const results = [];
     const knownCards = cards ? [...cards] : await this.listCards();
-    for (let offset = 0; offset < actions.length; offset += this.applyConcurrency) {
-      const batch = actions.slice(offset, offset + this.applyConcurrency);
-      const applied = await Promise.all(batch.map((action) => this.applyAction(action, { dryRun, knownCards })));
-      for (const result of applied) {
-        results.push(result);
+    const results = new Array(actions.length);
+    const runnable = [];
+    let createsReserved = 0;
+    for (const [index, action] of actions.entries()) {
+      const marker = gatewayIdempotencyLabel(action.idempotencyKey);
+      const existing = knownCards.find((card) => (card.labels ?? []).includes(marker));
+      const needsCreate = action.type !== "schedule_timer" && !existing;
+      if (!dryRun && needsCreate && createsReserved >= this.maxCreatesPerPlan) {
+        results[index] = { action, status: "deferred", reason: "create_budget_exhausted" };
+        continue;
+      }
+      if (needsCreate) createsReserved += 1;
+      runnable.push({ action, index });
+    }
+    for (let offset = 0; offset < runnable.length; offset += this.applyConcurrency) {
+      const batch = runnable.slice(offset, offset + this.applyConcurrency);
+      const applied = await Promise.all(batch.map(({ action }) => this.applyAction(action, { dryRun, knownCards })));
+      for (let index = 0; index < applied.length; index += 1) {
+        const result = applied[index];
+        results[batch[index].index] = result;
         if (result.card?.id && !knownCards.some((card) => card.id === result.card.id)) {
           knownCards.push(result.card);
         }
