@@ -272,6 +272,7 @@ export async function agentCommand(params) {
           promptCacheKey: params.promptCacheKey,
           suppressPromptPersistence: params.suppressPromptPersistence,
           skipInitialSessionTouch: params.skipInitialSessionTouch,
+          mainRestartRecoveryAdmitted: params.mainRestartRecoveryAdmitted,
           allowGatewaySubagentBinding:
             params.allowGatewaySubagentBinding,
           agentHarnessRuntimeOverride:

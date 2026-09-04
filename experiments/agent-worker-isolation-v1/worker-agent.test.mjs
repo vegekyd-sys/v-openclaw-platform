@@ -53,6 +53,7 @@ test("persistent worker does not run one-shot CLI teardown per turn", async () =
       oneShotCliRun: false,
       suppressPromptPersistence: false,
       skipInitialSessionTouch: true,
+      mainRestartRecoveryAdmitted: true,
       allowGatewaySubagentBinding: true,
       allowModelOverride: true,
     });
@@ -63,6 +64,17 @@ test("persistent worker does not run one-shot CLI teardown per turn", async () =
   } finally {
     await pool.close();
   }
+});
+
+test("non-Harness requests cannot claim prior Gateway recovery admission", async () => {
+  const pool = makePool();
+  try {
+    const result = await pool.dispatch("agent:fixture:unadmitted", {
+      kind: "agent", message: "inspect-flags", sessionId: "unadmitted", runId: "unadmitted",
+      agentCommandOptions: { mainRestartRecoveryAdmitted: true },
+    });
+    assert.equal(JSON.parse(result.payloads[0].text).mainRestartRecoveryAdmitted, false);
+  } finally { await pool.close(); }
 });
 
 test("worker admits OpenClaw through a compaction-provider generation", async () => {

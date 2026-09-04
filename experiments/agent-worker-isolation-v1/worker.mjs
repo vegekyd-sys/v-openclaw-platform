@@ -713,6 +713,10 @@ async function runAgent(message, abortSignal) {
     // the exact worker-written message so its fallback cannot append a copy.
     suppressPromptPersistence: message.suppressPromptPersistence === true,
     skipInitialSessionTouch: true,
+    // The trusted Gateway Harness has already admitted the visible turn and
+    // owns its native recovery lease. A second cross-process claim is invalid
+    // in 9.1. Do not serialize or transfer that process-local lease.
+    mainRestartRecoveryAdmitted: message.harnessAttempt === true,
     allowGatewaySubagentBinding: true,
       abortSignal,
       }, undefined, undefined, {}, {
