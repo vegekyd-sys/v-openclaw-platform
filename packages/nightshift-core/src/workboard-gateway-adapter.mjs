@@ -140,7 +140,7 @@ export class WorkboardGatewayAdapter {
   }
 
   async dispatch(maxStarts = 1, { cardIds = null } = {}) {
-    return this.call("workboard.cards.dispatch", {
+    return this.call("workboard.cards.dispatchWithOptions", {
       boardId: this.board,
       maxStarts,
       ...(Array.isArray(cardIds) ? { cardIds: uniqueCardIds(cardIds) } : {}),

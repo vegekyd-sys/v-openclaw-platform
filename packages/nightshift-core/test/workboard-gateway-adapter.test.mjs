@@ -214,7 +214,7 @@ test("creates and reuses native cards through Gateway RPC", async () => {
 
   await adapter.dispatch(4, { cardIds: ["card-1"] }).catch(() => undefined);
   const dispatchCall = calls.at(-1);
-  assert.equal(dispatchCall.args[2], "workboard.cards.dispatch");
+  assert.equal(dispatchCall.args[2], "workboard.cards.dispatchWithOptions");
   assert.deepEqual(JSON.parse(dispatchCall.args[dispatchCall.args.indexOf("--params") + 1]), {
     boardId: "nightshift-lab",
     maxStarts: 4,
