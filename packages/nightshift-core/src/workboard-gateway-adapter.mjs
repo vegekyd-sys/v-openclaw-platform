@@ -16,7 +16,7 @@ export class WorkboardGatewayAdapter {
     env = process.env,
     gatewayUrl = process.env.NIGHTSHIFT_GATEWAY_URL,
     applyConcurrency = positiveInteger(process.env.NIGHTSHIFT_WORKBOARD_APPLY_CONCURRENCY, 8),
-    maxCreatesPerPlan = positiveInteger(process.env.NIGHTSHIFT_WORKBOARD_MAX_CREATES_PER_PLAN, 4),
+    maxCreatesPerPlan = positiveInteger(process.env.NIGHTSHIFT_WORKBOARD_MAX_CREATES_PER_PLAN, 3),
     listBatchSize = positiveInteger(process.env.NIGHTSHIFT_WORKBOARD_LIST_BATCH_SIZE, 100, 500),
     listConcurrency = positiveInteger(process.env.NIGHTSHIFT_WORKBOARD_LIST_CONCURRENCY, 4),
     maxBufferBytes = positiveBufferSize(process.env.NIGHTSHIFT_GATEWAY_MAX_BUFFER_BYTES, 32 * 1024 * 1024),
