@@ -1301,7 +1301,7 @@ const plugin = {
             nativeAgentHarnessDispatchAttached: true,
             nestedGatewayHarnessRouting: true,
             workerUsesIngressAgentCommand: true,
-            workerIsolationVersion: "0.2.9-rc.1",
+            workerIsolationVersion: "0.2.9-rc.2",
             activeRunSteer: {
               enabled: process.env.VLAB_FEISHU_STEER_ENABLED === "1",
               allowedChatIds: (process.env.VLAB_FEISHU_STEER_CHAT_IDS ?? "")

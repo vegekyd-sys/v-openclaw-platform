@@ -170,6 +170,13 @@ test("Worker preserves native Harness execution options", async () => {
         delegationCapability: "full",
         modelSelectionLocked: true,
         operation: "attempt",
+        scheduledRuntimeAuthority: {
+          version: 1,
+          runtimeId: "openclaw",
+          namespace: "cron.fixture",
+          payload: { nonce: "opaque" },
+        },
+        scheduledRuntimeAuthorityRecoveryRequired: true,
         skipPreparedUserTurnMessage: true,
         startedAtMs: 1234,
       },
@@ -191,6 +198,13 @@ test("Worker preserves native Harness execution options", async () => {
       delegationCapability: "full",
       modelSelectionLocked: true,
       operation: "attempt",
+      scheduledRuntimeAuthority: {
+        version: 1,
+        runtimeId: "openclaw",
+        namespace: "cron.fixture",
+        payload: { nonce: "opaque" },
+      },
+      scheduledRuntimeAuthorityRecoveryRequired: true,
       skipPreparedUserTurnMessage: true,
       startedAtMs: 1234,
     });

@@ -150,6 +150,9 @@ export async function agentCommand(params) {
             delegationCapability: params.delegationCapability,
             modelSelectionLocked: params.modelSelectionLocked,
             operation: params.operation,
+            scheduledRuntimeAuthority: params.scheduledRuntimeAuthority,
+            scheduledRuntimeAuthorityRecoveryRequired:
+              params.scheduledRuntimeAuthorityRecoveryRequired,
             skipPreparedUserTurnMessage:
               params.skipPreparedUserTurnMessage,
             startedAtMs: params.startedAtMs,

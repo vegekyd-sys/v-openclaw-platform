@@ -19,7 +19,7 @@ test("classifies bridged, Gateway-owned, and unknown Harness callbacks", () => {
     notACallback() {},
   });
 
-  assert.equal(HARNESS_EVENT_CONTRACT_VERSION, "openclaw-2026.9.1-v7");
+  assert.equal(HARNESS_EVENT_CONTRACT_VERSION, "openclaw-2026.9.1-v8");
   assert.deepEqual(contract.bridged, [
     "onAgentEvent",
     "onPartialReply",
@@ -52,6 +52,13 @@ test("classifies and translates native Harness execution options", () => {
     toolAuthorityFingerprint: "authority-v1",
     modelSelectionLocked: true,
     operation: "attempt",
+    scheduledRuntimeAuthority: {
+      version: 1,
+      runtimeId: "openclaw",
+      namespace: "cron.fixture",
+      payload: { nonce: "opaque" },
+    },
+    scheduledRuntimeAuthorityRecoveryRequired: true,
     skipPreparedUserTurnMessage: true,
     startedAtMs: 1234,
     sessionKey: "agent:fixture:one",
@@ -84,6 +91,8 @@ test("classifies and translates native Harness execution options", () => {
     "pluginHarnessToolPolicySafeDeniedTools",
     "promptCacheKey",
     "provider",
+    "scheduledRuntimeAuthority",
+    "scheduledRuntimeAuthorityRecoveryRequired",
     "skipPreparedUserTurnMessage",
     "startedAtMs",
     "thinkLevel",
@@ -124,6 +133,13 @@ test("classifies and translates native Harness execution options", () => {
       toolAuthorityFingerprint: "authority-v1",
       modelSelectionLocked: true,
       operation: "attempt",
+      scheduledRuntimeAuthority: {
+        version: 1,
+        runtimeId: "openclaw",
+        namespace: "cron.fixture",
+        payload: { nonce: "opaque" },
+      },
+      scheduledRuntimeAuthorityRecoveryRequired: true,
       skipPreparedUserTurnMessage: true,
       startedAtMs: 1234,
       cleanupBundleMcpOnRunEnd: true,
@@ -145,6 +161,13 @@ test("classifies and translates native Harness execution options", () => {
       toolAuthorityFingerprint: "authority-v1",
       modelSelectionLocked: true,
       operation: "attempt",
+      scheduledRuntimeAuthority: {
+        version: 1,
+        runtimeId: "openclaw",
+        namespace: "cron.fixture",
+        payload: { nonce: "opaque" },
+      },
+      scheduledRuntimeAuthorityRecoveryRequired: true,
       skipPreparedUserTurnMessage: true,
       startedAtMs: 1234,
     },

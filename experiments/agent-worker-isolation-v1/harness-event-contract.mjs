@@ -1,4 +1,4 @@
-export const HARNESS_EVENT_CONTRACT_VERSION = "openclaw-2026.9.1-v7";
+export const HARNESS_EVENT_CONTRACT_VERSION = "openclaw-2026.9.1-v8";
 
 // These are the canonical OpenClaw tool names that the official Codex Harness
 // certifies in 2026.8.1. The isolated Worker adds no native tool surface and
@@ -156,6 +156,13 @@ export const FORWARDED_HARNESS_OPTIONS = Object.freeze({
   silentExpected: "silentExpected",
   silentReplyPromptMode: "silentReplyPromptMode",
   sourceReplyDeliveryMode: "sourceReplyDeliveryMode",
+  // OpenClaw 2026.9.1 gives scheduled runs a store-private runtime authority
+  // envelope. The Gateway is still the authority owner; the isolated Worker is
+  // only the continuation of that admitted run, so both fields must cross the
+  // Harness handoff unchanged.
+  scheduledRuntimeAuthority: "scheduledRuntimeAuthority",
+  scheduledRuntimeAuthorityRecoveryRequired:
+    "scheduledRuntimeAuthorityRecoveryRequired",
   scheduledToolPolicy: "scheduledToolPolicy",
   spawnedBy: "spawnedBy",
   startedAtMs: "startedAtMs",
