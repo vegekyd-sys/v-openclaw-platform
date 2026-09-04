@@ -110,6 +110,10 @@ export function startSubagentCompletionRelays(options) {
             runId,
             path: typeof announced?.path === "string" ? announced.path : undefined,
             reason: typeof announced?.reason === "string" ? announced.reason : undefined,
+            error: typeof announced?.error === "string" ? announced.error
+              .replace(/https?:\/\/\S+/g, "[url]")
+              .replace(/(?:Bearer\s+|(?:token|secret|apiKey|password)[=:]\s*)\S+/gi, "[credential]")
+              .slice(0, 400) : undefined,
             terminal: announced?.terminal === true,
             disposition: typeof announced?.disposition === "string" ? announced.disposition : undefined,
             phases: Array.isArray(announced?.phases) ? announced.phases.map(p => ({

@@ -158,3 +158,12 @@ export function resolveOpenClawPreparedModelRuntimePath(options = {}) {
     label: "OpenClaw prepared model runtime",
   });
 }
+
+export function resolveOpenClawGatewayCallerContextRuntimePath(options = {}) {
+  const agentRuntimePath = options.agentRuntimePath ?? resolveOpenClawAgentRuntimePath(options);
+  const dist = dirname(dirname(agentRuntimePath));
+  const candidates = readdirSync(dist).filter(name => /^gateway-caller-context-[\w-]+\.js$/.test(name) &&
+    readFileSync(join(dist,name),'utf8').includes('withoutGatewayToolCallerIdentity as o'));
+  if(candidates.length !== 1) throw new Error('Native process-owned Gateway context runtime is unavailable');
+  return join(dist,candidates[0]);
+}

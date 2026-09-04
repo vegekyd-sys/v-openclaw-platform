@@ -7,6 +7,7 @@ import {
   resolveOpenClawAgentHarnessRuntimePath,
   resolveOpenClawSubagentAnnounceRuntimePath,
   resolveOpenClawSubagentAnnounceOriginRuntimePath,
+  resolveOpenClawGatewayCallerContextRuntimePath,
 } from "./runtime-path.mjs";
 import { createWorkerActiveRunProxy } from "./worker-active-run-proxy.mjs";
 import { createGatewayMessageToolRelay } from "./gateway-message-tool.mjs";
@@ -329,6 +330,9 @@ const plugin = {
         resolve(dirname(openClawAgentRuntimePath), "session-transcript-runtime.js"),
       ).href
     );
+    const gatewayCallerRuntimePromise = import(pathToFileURL(
+      resolveOpenClawGatewayCallerContextRuntimePath({agentRuntimePath:openClawAgentRuntimePath}),
+    ).href);
     const agentHarnessTaskRuntimePromise = import(
       pathToFileURL(
         resolve(
@@ -775,7 +779,7 @@ const plugin = {
           ),
           requesterSessionKey: sessionKey,
           requesterOrigin: {
-            channel: params.messageChannel,
+            channel: messageChannel,
             accountId: params.agentAccountId,
             to: params.messageTo,
             threadId: params.messageThreadId,
@@ -814,7 +818,11 @@ const plugin = {
               outcome.error ??
               `Child task ${outcome.status}`;
             const runtime = await agentHarnessTaskRuntimePromise;
-            return await runtime.deliverAgentHarnessTaskCompletion({
+            const { o: withoutGatewayToolCallerIdentity } = await gatewayCallerRuntimePromise;
+            // Core's process-owned-work boundary releases only the expired
+            // initiating turn context. The native task scope still owns the
+            // requester and native delivery validates the completion lifecycle.
+            return await withoutGatewayToolCallerIdentity(() => runtime.deliverAgentHarnessTaskCompletion({
               scope: params.agentHarnessTaskRuntimeScope,
               childSessionKey,
               childSessionId: childSession.sessionId,
@@ -826,7 +834,7 @@ const plugin = {
               result,
               replyInstruction:
                 "Use the completed subagent result to continue or wrap up the parent task. Reply in your normal assistant voice and do not expose internal notification markup.",
-            });
+            }));
           },
           runNativeAnnounce: async (announceParams) => {
             const { runSubagentAnnounceFlow } =
