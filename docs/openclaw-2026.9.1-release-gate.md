@@ -329,3 +329,14 @@
   contains only the old synthetic fixture and this run's test device, no human
   browser devices. Restarted only that lab browser-assist service to restore
   the test topology; this is not production/browser-component upgrade proof.
+- R15 (sent 00:42:31) after browser-assist recovery reached device discovery,
+  acquire, fixture tab metadata, and successful release. Native `browser`
+  snapshot still targeted default `vbrowser-01` rather than the leased profile
+  (assist authenticated the new route as vbrowser-02), and reported attachOnly
+  profile not running. This is a remaining Session lease -> native browser
+  profile binding failure; tab metadata alone is NOT browser-read acceptance.
+  Final failure card: `om_x100b669b1ddb64a4b2e1489055abe84`.
+- Final candidate pool read: pending=0, two ready Workers, active=0/queued=0;
+  productionPromotionBlocked=true remains intentional. Test DM is back on
+  Makaron; no test browser lease was retained. The dedicated R13–R15 fixture
+  service is stopped after testing. Production cutover is NOT performed.
