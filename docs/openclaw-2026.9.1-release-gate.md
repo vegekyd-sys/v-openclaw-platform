@@ -121,3 +121,37 @@
   service-lifetime MemoryPeak approximately 3.61GB (not attributed solely to test).
   Final Worker snapshot active=0 / pending=0 / queued=0, eventRelayFailures=0.
   Unclassified Harness fields still keep productionPromotionBlocked=true.
+- Second Worker candidate `8750ef7` was installed in the isolated mirror at
+  22:15. It preserves native quiet/collector semantics but restores the public
+  completion expectation for normal external children, explicitly instructing
+  parents to yield instead of polling. It also counts unconfirmed delivery
+  separately from completed relay attempts. 108 local tests passed.
+- Runtime footer patch `cf7e75c` is applied to the mirror's 9.1 runtime and
+  installed Feishu bundle. Three unit tests, exact-version/anchor checks,
+  idempotency and JavaScript syntax checks passed. Visible Feishu verification
+  for Worker and Codex remains pending; this is not a passed gate yet.
+- Short relay R2: parent yielded, received a native `agent_harness_task`
+  inter-session completion event and replied. Relay delivered=1, unconfirmed=0.
+- Five-parent/five-child R3: all parents were executing between 22:19 and their
+  yield times (earliest yield 22:21:56); all five children had begun real exec
+  by 22:21:39. Thus all ten overlapped for at least approximately 17 seconds.
+  Direct status snapshots independently observed eight active and no queue;
+  do not call eight a sampled peak of ten. The pool grew to five Workers.
+- All five R3 child processes completed exactly 660 wall-clock seconds:
+  22:20:31–22:31:31, 22:20:43–22:31:43, 22:20:58–22:31:58,
+  22:21:23–22:32:23, and 22:21:39–22:32:39. Each child ended `done`.
+  Five separate native completion events reached their own parents between
+  22:31:38 and 22:32:46; all five parent final markers followed by 22:32:50.
+  No parent polled child files/history/status as a substitute for delivery.
+  Combined relay counters (short R2 + five R3) are started=6, completed=6,
+  delivered=6, failed=0, unconfirmed=0; final active=0 and pending=0.
+  Evidence: `pre91-backup/evidence/5p5-final-evidence.json` and
+  `5p5-final-status.json` on VLab. These contain dedicated test-session evidence
+  and are intentionally excluded from git.
+- Production read-only refresh at 22:28: service active, NRestarts=0,
+  MemoryCurrent approximately 21.5GB, MemoryHigh=28GiB, MemoryMax=34GiB;
+  root disk remains 96% used with approximately 16GB free. Main and subagent
+  concurrency are both 45. Current production includes the additional xiaoai
+  Agent and newer plugin settings; preserve these during promotion.
+- Production remains unchanged. Remaining interface, current-topology,
+  business-path, storage and rollback gates must pass before cutover.
