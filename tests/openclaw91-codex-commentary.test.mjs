@@ -17,6 +17,6 @@ test('bounded memory and control-character sanitization', () => {
   assert(text.length<=16000);
 });
 test('patch is idempotent, fails closed on drift, and preserves final-delivery code', () => {
-  const source='function createFeishuReplyDispatcher(params) {\n\tlet lastPartial = "";\n\tconst performStreamingClose = async () => {\n};\nreturn {\n\t\treplyOptions: {\n\t\t\tonModelSelected,\n\t\t\tonPartialReply: previewStreamingEnabled ? (payload) => {\n\t\t\t\tif (!payload.text) return false;\nreturn nativeFinal(payload);\n} : undefined}};}';
+  const source='function createFeishuReplyDispatcher(params) {\n\tlet lastPartial = "";\n\tconst performStreamingClose = async (disposition) => {\n};\nreturn {\n\t\treplyOptions: {\n\t\t\tonModelSelected,\n\t\t\tonPartialReply: previewStreamingEnabled ? (payload) => {\n\t\t\t\tif (!payload.text) return false;\nreturn nativeFinal(payload);\n} : undefined}};}';
   const result=patchCommentary(source);assert.equal(patchCommentary(result),result);assert.match(result,/nativeFinal\(payload\)/);assert.throws(()=>patchCommentary('wrong source'),/unique/);assert.throws(()=>patchCommentary(source+source),/unique/);
 });

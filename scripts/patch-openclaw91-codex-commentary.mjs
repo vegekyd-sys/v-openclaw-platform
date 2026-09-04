@@ -45,7 +45,7 @@ export function patchCommentary(source) {
 \t\t\t} : void 0,`);
   result = once(result, '\t\t\tonPartialReply: previewStreamingEnabled ? (payload) => {\n\t\t\t\tif (!payload.text) return false;',
     '\t\t\tonPartialReply: previewStreamingEnabled ? (payload) => {\n\t\t\t\tif (!payload.text) return false;\n\t\t\t\tvlab91Commentary.close();');
-  result = once(result, '\tconst performStreamingClose = async () => {', '\tconst performStreamingClose = async () => {\n\t\tvlab91Commentary.close();');
+  result = once(result, '\tconst performStreamingClose = async (disposition) => {', '\tconst performStreamingClose = async (disposition) => {\n\t\tvlab91Commentary.close();');
   return addQuietLaneGate(result);
 }
 function addQuietLaneGate(source) {

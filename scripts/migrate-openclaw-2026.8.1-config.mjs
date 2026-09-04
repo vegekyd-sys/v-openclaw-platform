@@ -204,8 +204,7 @@ export function migrateOpenClaw2026081Config(input, options = {}) {
   const agentIds = Object.keys(config.agents?.entries ?? {});
   if (
     agentIds.length > 1 &&
-    config.agents?.ownership === undefined &&
-    !legacyAgentList.some((agent) => isObject(agent) && agent.default === true)
+    config.agents?.ownership === undefined
   ) {
     config.agents.ownership = "explicit";
     changes.push({ action: "add", path: "agents.ownership", value: "explicit" });

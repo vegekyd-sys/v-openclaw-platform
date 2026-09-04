@@ -13,13 +13,19 @@ const matches = config.bindings.filter(binding => binding.match?.channel === 'fe
 assert.equal(matches.length, 1, 'Expected exactly the existing VLab test DM binding');
 const binding = matches[0];
 if (action === 'enable') {
-  assert.equal(binding.agentId, 'makaron');
-  fs.writeFileSync(saved, JSON.stringify(binding), { flag: 'wx', mode: 0o600 });
+  assert(['makaron', 'v-codex'].includes(binding.agentId));
+  if (fs.existsSync(saved)) {
+    const original = JSON.parse(fs.readFileSync(saved));
+    assert.equal(original.agentId, 'makaron');
+    assert.deepEqual(binding.match, original.match);
+  } else {
+    fs.writeFileSync(saved, JSON.stringify(binding), { flag: 'wx', mode: 0o600 });
+  }
   binding.agentId = 'v-codex';
 } else {
   const original = JSON.parse(fs.readFileSync(saved));
   assert.equal(original.agentId, 'makaron');
-  assert.equal(binding.agentId, 'v-codex');
+  assert(['makaron', 'v-codex'].includes(binding.agentId));
   assert.deepEqual(binding.match, original.match);
   // Restore this one route only, never overwrite intervening config edits.
   binding.agentId = original.agentId;

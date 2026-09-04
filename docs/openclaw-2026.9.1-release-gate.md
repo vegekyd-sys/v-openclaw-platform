@@ -400,3 +400,47 @@
   task scope, gives an existing scoped resolver precedence, and never substitutes
   a new instance for an expired lifecycle fence. Nine targeted context/relay
   tests passed. This is pending real-channel acceptance, not production clearance.
+
+## 2026-09-05 production cutover and final acceptance
+
+- Production V now runs OpenClaw `2026.9.1 (ad6fe23)` from
+  `/opt/openclaw-2026.9.1-v/openclaw`. The fresh pre-cutover rollback snapshot is
+  `/srv/openclaw-data/disk/openclaw-storage/cold-migrated-2/openclaw/backups/openclaw-2026.9.1-cutover/20260905T020829-pre91/openclaw-state.tar.zst`.
+- Worker `0.2.9-rc.2`, commit `2d8595f`, is promoted with the 9.1 v8 Harness
+  contract. Capacity remains elastic `1-15 x 3 = 45`; production status is ready,
+  pending/queued zero, and no permission/lifecycle field remains unclassified.
+  Previously accepted 5+5 and 660-second suites were not repeated.
+- Feishu 9.1 parity restored commentary streaming and system Runtime footers.
+  Real VCodex showed an in-progress card and final `Runtime: codex`; ordinary
+  Worker cards show `Runtime: vlab-worker`. Production V Browser completed native
+  devices -> acquire -> browser snapshot -> release and replied `V91_BROWSER_OK`.
+- OpenClaw 9.1 marked the old Memory indexes as provenance-mismatched. Official
+  sequential indexing, never `--force`, rebuilt all five Agent indexes. Makaron
+  and VCodex each have 3,531 files / 30,657 chunks; Short-V, DealClaw and XiaoAI
+  are also valid and complete. Real main-DM `memory_search` replied
+  `V91_MEMORY_SEARCH_OK`.
+- Night Shift required three genuine 9.1 compatibility repairs, kept in branch
+  `codex/nightshift-openclaw91-dispatch`: use
+  `workboard.cards.dispatchWithOptions` (`aa9ed88`), preserve scoped `cardIds` and
+  the 36-slot global/owner budget (`aec4dc0`, `9939566`), and retain the 12,000
+  character Workboard notes limit. The final real Pulse started two Makaron cards
+  concurrently with zero start failures and zero warnings; the formerly failing
+  long-notes instance advanced normally.
+- After the final restart, two Night Shift Worker tasks were active while the main
+  DM independently returned `V91_CONCURRENT_REPLY_OK`. Gateway and Night Shift
+  are active with `NRestarts=0`; Feishu is ready/connected, WeCom is running,
+  Worker pending/queued are zero, Event Loop P99 is 20.8 ms and degraded=false.
+  The final log audit found no per-chat 300-second timeout, Worker timeout/exit,
+  event relay failure, SIGKILL, OOM, unclassified option, or plugin load failure.
+- Rollback material for the final Workboard compatibility patch is under
+  `/home/openclaw/.openclaw/backups/openclaw91-workboard-parity/20260905T0435-prepatch`.
+  The Night Shift release rollback pointer/state backup is under
+  `/home/openclaw/.openclaw/backups/nightshift-openclaw91-dispatch/20260905T0425-predeploy`.
+- One 9.1 validation-only regression was also closed: the legacy
+  `data-selection` Skill lacked frontmatter metadata. It now registers as eligible;
+  its prior file is backed up under
+  `/home/openclaw/.openclaw/backups/openclaw91-data-selection-skill/20260905T0450`.
+
+Final decision: production 9.1 is accepted and kept. Browser, VCodex streaming,
+Night Shift, Memory Search, real Feishu tools, Worker concurrency, Runtime footer,
+WeCom, and rollback paths are all available on the production-shaped path.
