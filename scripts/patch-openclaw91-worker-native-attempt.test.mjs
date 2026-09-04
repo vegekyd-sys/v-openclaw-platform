@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { patchAttempt, patchMessage, patchGatewayIdentity, patchHostIdentity, marker } from './patch-openclaw91-worker-native-attempt.mjs';
+import { patchAttempt, patchMessage, patchGatewayIdentity, patchHostIdentity, patchDeferredSubagentContext, marker } from './patch-openclaw91-worker-native-attempt.mjs';
 test('attempt bridge adds native authorization and is idempotent',()=>{
   const input='async function runEmbeddedAttempt(input) {\n\tlet params = input;\n}\n\tsetActiveEmbeddedRun(attempt.sessionId, queueHandle, attempt.sessionKey, attempt.sessionFile, input.hookAgentId);';
   const out=patchAttempt(input,'permission-change-fixture.js');
@@ -23,4 +23,10 @@ test('message execution is Gateway-owned only when Worker explicitly handles it'
   const input='\t\t\tif (signal?.aborted) throw createAbortError("Message send aborted");';
   const out=patchMessage(input);assert.ok(out.includes('if (relayed.handled) return relayed.result'));
   assert.equal(patchMessage(out),out);assert.throws(()=>patchMessage('changed'),/mismatch/);
+});
+test('deferred plugin runtime retains native Gateway instance fencing',()=>{
+ const source='function createDeferredGatewaySubagentRuntime(runtime) {\n\treturn {\n\t\trun: (...args) => runtime.subagent.run(...args)\n\t};\n}\nfunction createDeferredGatewayNodesRuntime(runtime) {';
+ const out=patchDeferredSubagentContext(source);
+ assert.match(out,/bindGatewayContextResolver\(deferred, getGatewayContextResolver\(runtime\.subagent\)\)/);
+ assert.equal(patchDeferredSubagentContext(out),out);
 });

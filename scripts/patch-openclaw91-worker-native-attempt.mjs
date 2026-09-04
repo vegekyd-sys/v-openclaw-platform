@@ -58,6 +58,14 @@ export function patchHostIdentity(source) {
 \t\t\treturn result;
 \t\t},`);
 }
+export function patchDeferredSubagentContext(source) {
+  const contextMarker='vlab91-native-deferred-subagent-context-v1';
+  if(source.includes(contextMarker))return source;
+  const anchor='function createDeferredGatewaySubagentRuntime(runtime) {\n\treturn {';
+  const result=once(source,anchor,`function createDeferredGatewaySubagentRuntime(runtime) {\n\t// ${contextMarker}: preserve the native lifecycle-fenced instance resolver.\n\tconst deferred = {`);
+  return once(result,'\n\t};\n}\nfunction createDeferredGatewayNodesRuntime(runtime) {',
+    '\n\t};\n\tbindGatewayContextResolver(deferred, getGatewayContextResolver(runtime.subagent));\n\treturn deferred;\n}\nfunction createDeferredGatewayNodesRuntime(runtime) {');
+}
 async function main() {
   const [core, mode] = process.argv.slice(2);
   if (!core || !['--check', '--apply'].includes(mode)) throw new Error('Usage: core-package --check|--apply');
@@ -76,6 +84,7 @@ async function main() {
     [await unique(/^openclaw-tools-[\w-]+\.js$/, 'function createMessageTool(options)'), patchMessage],
     [await unique(/^gateway-[\w-]+\.js$/, 'async function resolveAgentRuntimeIdentityTokenForGatewayTool'), patchGatewayIdentity],
     [await unique(/^host-capability-[\w-]+\.js$/, 'function createAgentHarnessHostCapabilities'), patchHostIdentity],
+    [await unique(/^loader-[\w-]+\.js$/, 'function createDeferredGatewaySubagentRuntime(runtime)'), patchDeferredSubagentContext],
   ];
   const changes = await Promise.all(specs.map(async ([name, patch]) => {
     const file = path.join(dist,name), before = await fs.readFile(file,'utf8');

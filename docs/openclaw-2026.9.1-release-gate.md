@@ -390,3 +390,13 @@
   Latest production inventory includes the xiaoai Agent/plugin, NightShift 0.1.2,
   WeCom 2026.8.17-vlab.1 and 26 bindings; do not overwrite these with the older lab
   fixture config. Fresh rollback snapshot remains a cutover prerequisite.
+- R20 eventually executed the requested child plus the previously queued R18
+  child. Both finished at 01:45:59–01:46:00. Completion diagnostics now identify
+  the precise remaining fault: `In-process gateway dispatch requires a gateway
+  request scope or instance binding (method: agent).` Thus caller detachment
+  alone (`f5b815e`) was insufficient. Native recovery admission did work.
+- `4c69527` binds detached SDK completion to the native Gateway instance resolver
+  already attached to api.runtime.subagent; it keeps the original host-issued
+  task scope, gives an existing scoped resolver precedence, and never substitutes
+  a new instance for an expired lifecycle fence. Nine targeted context/relay
+  tests passed. This is pending real-channel acceptance, not production clearance.
