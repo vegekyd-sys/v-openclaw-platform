@@ -189,3 +189,45 @@
   transient unit disappeared after stop. The separate original VLab Night Shift
   service is still active and was not modified. Recreate the mirror companion
   with verified isolated paths/ports before claiming Night Shift acceptance.
+
+## Follow-up authorization and real-channel checks (2026-09-04 evening)
+
+- Tianyi explicitly authorized further VLab acceptance messages as his Feishu
+  user identity, without repeated per-test confirmation in this workflow. He
+  also authorized deletion of unneeded old 8.1 intermediate backups instead of
+  COS archival. This is not authorization for unrelated messages or data loss.
+- Production cleanup completed: deleted only `20260902T110500-fresh` (incomplete,
+  sessions archive only) and `20260902T111124-fresh` (superseded intermediate)
+  under the verified canonical `openclaw-2026.8.1-cutover` backup directory.
+  Before deletion, all ten entries in the retained `20260902T114920-fresh`
+  SHA-256 manifest passed, including configs, all listed databases and sessions
+  archive. Retained the 22.53GB `20260901T150143Z-full.tar.zst` and its prior
+  successful archive-validation metadata, plus the latest complete snapshot.
+  The two deleted intermediate directories cannot be recovered verbatim.
+  Production root free space increased from approximately 16GB to 33GB;
+  production service stayed active with NRestarts=0. No production runtime,
+  session, configuration, credentials or service were changed.
+- R4 real Feishu tool reply at 23:19 displayed the system footer
+  `Runtime: vlab-worker` beside Agent/Model/Provider. The footer was not model
+  prose. Message `om_x100b669a5989c0a0b2a26e1d64caa35` confirms it. Codex's real
+  card footer remains a separate unpassed gate.
+- R5 exposed a concrete mirror parity gap: native `message` tool failed with
+  `Feishu account "default" not configured`. Production overlay has the Feishu
+  account; the mirror overlay had no `channels.feishu` at all. After an idle
+  gate, copied only the mirror's own VLAB_FEISHU environment references and
+  Feishu settings into its overlay. No production credentials were copied.
+  Overlay validation passed. Mirror Gateway restarted and became ready at
+  23:40:57; production was not restarted. Guarded operator script is
+  `vlab91-align-feishu-tools.mjs`; it preserves a mode-0600 config rollback copy.
+- R6 native message tool successfully sent `VLAB91_MESSAGE_TOOL_R6_OK`
+  (platform message `om_x100b669a22e080bcb10989382c3fb63`). The subsequent requested
+  second reply conflicted with the Agent's NO_REPLY anti-duplication instruction;
+  the model produced explanatory text in its ordinary assistant text channel.
+  Do not mislabel that observation as confirmed thinking-channel relay leakage.
+- R7 deliberately followed the native post-send NO_REPLY convention. The native
+  message tool delivered `VLAB91_MESSAGE_TOOL_R7_OK` exactly once (platform
+  message `om_x100b669a3c46a4a4b348faffac7e164`) without a second reply card in the
+  observed message list. The Gateway/Worker completion state is checked separately.
+- Real Feishu `v_browser_devices` also returned zero devices, so browser
+  acquire/read/release is still not accepted. Message delivery success does not
+  clear the separate four-field Harness authority/route/deadline audit.
