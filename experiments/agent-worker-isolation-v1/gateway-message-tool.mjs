@@ -18,6 +18,18 @@ export function createGatewayMessageToolRelay(params) {
     invalidate,
     async execute(request) {
       assertActive();
+      if (request.kind === "native-gateway-identity") {
+        if (typeof params.hostCapabilities.vlabResolveGatewayIdentity !== "function") {
+          throw new Error("Native Gateway identity adapter is unavailable");
+        }
+        // Return only core's signed token; never expose config keys, credentials,
+        // or mutable admission claims. Core rechecks this authority on every RPC.
+        const token = await params.hostCapabilities.vlabResolveGatewayIdentity({
+          method: request.method, required: request.required === true, signal: params.abortSignal,
+        });
+        assertActive();
+        return { token };
+      }
       if (request.kind !== "native-message" || typeof request.toolCallId !== "string" || !request.toolCallId) {
         throw new Error("Invalid native message request");
       }

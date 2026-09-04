@@ -581,15 +581,14 @@ const plugin = {
             }
             finalSession = session;
             const workerAgentId = params.agentId ?? "makaron";
-            const gatewayMessageRelay = params.messageActionTurnCapability
-              ? createGatewayMessageToolRelay(params) : undefined;
+            const gatewayMessageRelay = createGatewayMessageToolRelay(params);
             const submitted = await pool.submit(
               sessionKey,
               {
                 kind: "agent",
                 harnessAttempt: true,
                 nativeAttempt91: true,
-                gatewayMessageTool: Boolean(gatewayMessageRelay),
+                gatewayMessageTool: Boolean(params.messageActionTurnCapability),
                 message: params.prompt,
                 transcriptMessage: expectedUserTurn,
                 suppressPromptPersistence: !workerShouldPersistUserTurn,

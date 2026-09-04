@@ -71,5 +71,18 @@ export function createNativeAttemptBridge() {
       if (current(options.runId) !== c || signal?.aborted) throw new Error("Message owner ended during delivery");
       return { handled: true, result };
     },
+    async resolveGatewayIdentity(identity, params) {
+      const c = current(identity?.operationalRunInstance?.runId);
+      if(identity.sessionKey !== c.message.sessionKey || identity.agentId !== c.message.agentId) {
+        throw new Error("Worker Gateway identity mismatch");
+      }
+      if(params.target !== "local" || params.opts?.gatewayUrl || params.opts?.gatewayToken) {
+        throw new Error("Worker identity requires trusted local Gateway");
+      }
+      const result = await c.executeMessage({kind:"native-gateway-identity",ownerRequestId:c.message.id,
+        method:params.method,required:params.required===true});
+      if(current(identity.operationalRunInstance.runId)!==c)throw new Error("Worker Gateway owner retired");
+      return result?.token;
+    },
   };
 }

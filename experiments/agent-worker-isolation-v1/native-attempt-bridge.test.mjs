@@ -98,3 +98,14 @@ test('permission ACK cannot cross Worker/request owners',async()=>{
   pool.onMessage(worker, {...m,type:'permission-change-ack',ok:true,applied:true});
   assert.equal(await pending,true);assert.equal(pool.pendingControls.size,0);
 });
+test('native identity relay retains local target and exact session, without serializing claims',async()=>{
+ const b=createNativeAttemptBridge(),c=new AbortController();let request;
+ const close=b.register(message,c.signal,()=>{},async r=>(request=r,{token:'native-signed-token'}));
+ const identity={operationalRunInstance:{runId:'run1'},sessionKey:message.sessionKey,agentId:'a'};
+ const params={method:'exec.approval.request',target:'local',opts:{},required:true};
+ assert.equal(await b.resolveGatewayIdentity(identity,params),'native-signed-token');
+ assert.deepEqual(Object.keys(request).sort(),['kind','method','ownerRequestId','required']);
+ await assert.rejects(b.resolveGatewayIdentity({...identity,agentId:'other'},params),/mismatch/);
+ await assert.rejects(b.resolveGatewayIdentity(identity,{...params,target:'remote'}),/trusted local/);
+ close();await assert.rejects(b.resolveGatewayIdentity(identity,params),/no longer active/);
+});

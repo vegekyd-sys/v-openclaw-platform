@@ -793,7 +793,7 @@ export class WorkerPool {
     }
     if (message?.type === "gateway-tool-request" && message.requestId) {
       const delivery = Promise.resolve().then(async () => {
-        if (message.request?.kind === "native-message") {
+        if (["native-message", "native-gateway-identity"].includes(message.request?.kind)) {
           const owner = worker.active.get(message.request.ownerRequestId);
           if (!owner || owner.cancelRequested || owner.timeoutError || !owner.onGatewayToolRequest) {
             throw new Error("Gateway message tool owner is no longer active");
