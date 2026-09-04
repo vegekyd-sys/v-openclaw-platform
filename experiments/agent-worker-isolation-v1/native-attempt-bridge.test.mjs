@@ -17,7 +17,8 @@ test('native attempt preserves both deadline callbacks and current conversation 
   assert.deepEqual(events,[['native',d],['gateway',d]]);
   assert.throws(()=>b.prepare({...message,sessionId:'other'}),/identity mismatch/);
   close();
-  assert.throws(()=>p.onAttemptDeadlineChanged(d),/no longer active/);
+  p.onAttemptDeadlineChanged(d);
+  assert.equal(events.length,2);
 });
 test('native permission change uses exact bound owner and denies retired generations',async()=>{
   const b=createNativeAttemptBridge(),c=new AbortController();

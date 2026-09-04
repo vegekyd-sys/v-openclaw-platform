@@ -27,7 +27,9 @@ export function createNativeAttemptBridge() {
         ...input,
         conversationRoutePeerId: c.message.agentCommandOptions?.conversationRoutePeerId,
         onAttemptDeadlineChanged(deadline) {
-          current(input.runId);
+          // Native cleanup may close an approval wait after cancellation.
+          // Ignore retired notifications without throwing into native cleanup.
+          if (runs.get(input.runId) !== c || c.signal.aborted) return;
           upstreamDeadline?.(deadline);
           c.onDeadline(deadline);
         },
