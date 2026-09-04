@@ -80,3 +80,30 @@ test("preserves the 9.1 abort signal and source-execution guard", () => {
   assert.doesNotThrow(() => new Function(result.source));
   assert.equal(patchSessionsSpawnGatewayProxy(result.source).changed, false);
 });
+
+test("external completion changes only public reply semantics, not native ownership", async () => {
+  const enabled = Symbol.for('versa.vlab.external-harness-task-bridge-v1');
+  const recorder = Symbol.for('versa.vlab.external-harness-task-record-v1');
+  const facts = [];
+  globalThis[enabled] = true;
+  globalThis[recorder] = f => facts.push(f);
+  try {
+    const source = fixture.replace('return { opts, params };', 'return { result, nativeParams: params };');
+    const create = new Function('recordAcceptedSessionSpawn', patchSessionsSpawnGatewayProxy(source).source + '\nreturn createSessionsSpawnTool;')(() => {});
+    const tool = create({agentSessionKey:'agent:test:parent'});
+    const normal = await tool.execute('call', {task:'test'});
+    assert.equal(normal.nativeParams.expectsCompletionMessage, false);
+    assert.equal(normal.result.expectsCompletionMessage, true);
+    assert.match(normal.result.note, /sessions_yield/);
+    assert.equal(facts[0].vlabCompletionExpected, true);
+    const quiet = await tool.execute('call2', {task:'test', expectsCompletionMessage:false});
+    assert.equal(quiet.nativeParams.expectsCompletionMessage, false);
+    assert.equal(facts[1].vlabCompletionExpected, false);
+    const collected = await tool.execute('call3', {task:'test', collect:true});
+    assert.equal(facts[2].vlabCompletionExpected, false);
+    assert.equal(collected.result.note, undefined);
+  } finally {
+    delete globalThis[enabled]; delete globalThis[recorder];
+    delete globalThis[Symbol.for('versa.vlab.external-harness-task-owners-v1')];
+  }
+});

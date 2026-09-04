@@ -5,6 +5,23 @@ import {
   startSubagentCompletionRelays,
 } from "./subagent-completion-relay.mjs";
 
+test("unconfirmed completion is observable and does not count as delivery", async () => {
+  const stats = {}, warnings = [];
+  await Promise.all(startSubagentCompletionRelays({
+    spawns: [{status: "accepted", runId: "test-child", childSessionKey: "agent:test:subagent:child"}],
+    requesterSessionKey: "agent:test:parent", stats,
+    waitForRun: async () => ({status: "ok"}),
+    deliverHarnessTaskCompletion: async () => ({delivered: false, path: "none", reason: "source_owner_changed", terminal: true, secret: "never-log", result: "private child output"}),
+    logger: {warn: s => warnings.push(s)},
+  }));
+  assert.equal(stats.completed, 1);
+  assert.equal(stats.delivered, 0);
+  assert.equal(stats.unconfirmed, 1);
+  assert.equal(stats.lastUnconfirmed.reason, "source_owner_changed");
+  assert.equal(warnings.length, 1);
+  assert.doesNotMatch(warnings[0], /never-log|private child output/);
+});
+
 test("only accepted isolated runs are relayed once", () => {
   assert.deepEqual(
     acceptedSubagentRuns([

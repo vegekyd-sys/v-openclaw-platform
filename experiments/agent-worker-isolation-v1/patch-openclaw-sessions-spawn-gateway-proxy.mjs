@@ -24,8 +24,25 @@ const EXECUTE_ANCHORS = [
 ];
 const ACCEPTED_CALL_PATTERN =
   /\t+recordAcceptedSessionSpawn\(result, [^)]+\);\n/g;
-const BACKUP_SUFFIX = ".v-worker-sessions-spawn-v0.2.8-v4.bak";
+const BACKUP_SUFFIX = ".v-worker-sessions-spawn-v0.2.9-v1.bak";
 const INJECTION = `\t\t\t// ${PATCH_MARKER}\n\t\t\tif (globalThis[Symbol.for("versa.vlab.external-harness-task-bridge-v1")] === true && args && typeof args === "object") {\n\t\t\t\targs = { ...args, expectsCompletionMessage: false };\n\t\t\t}\n`;
+const NOTE_MARKER = 'vlab-worker-completion-note-v1';
+function patchCompletionNote(source) {
+  if (source.includes(NOTE_MARKER)) return {source, changed: false};
+  if (source.split(INJECTION).length !== 2) throw new Error('Expected one external spawn bridge injection');
+  source = source.replace(INJECTION,
+    `\t\t\t// ${NOTE_MARKER}\n\t\t\tconst externalReplyExpectsCompletion = globalThis[Symbol.for("versa.vlab.external-harness-task-bridge-v1")] === true && args && typeof args === "object" && args.expectsCompletionMessage !== false && args.collect !== true && args.mode !== "session";\n` + INJECTION);
+  const anchor = `\t\t\t// ${ACCEPTED_PATCH_MARKER}\n`;
+  if (!source.includes(anchor)) throw new Error('Missing accepted spawn record');
+  source = source.replaceAll(anchor, anchor +
+    '\t\t\tif (externalReplyExpectsCompletion && result?.status === "accepted") {\n' +
+    '\t\t\t\tresult.expectsCompletionMessage = true;\n' +
+    '\t\t\t\tresult.note = "Completion is owned by the Gateway external task bridge. Use sessions_yield to await the completion event; do not poll files or status to substitute for completion.";\n' +
+    '\t\t\t}\n');
+  source = source.replaceAll('\t\t\t\t...result,\n\t\t\t\tparentSessionKey:',
+    '\t\t\t\t...result,\n\t\t\t\tvlabCompletionExpected: Boolean(externalReplyExpectsCompletion),\n\t\t\t\tparentSessionKey:');
+  return {source, changed: true};
+}
 const ACCEPTED_INJECTION = `\t\t\t// ${ACCEPTED_PATCH_MARKER}\n\t\t\tconst externalTaskFact = {\n\t\t\t\t...result,\n\t\t\t\tparentSessionKey: opts?.agentSessionKey,\n\t\t\t\trequesterTurnRunId: opts?.requesterTurnRunId,\n\t\t\t\ttask: params.task,\n\t\t\t\tmode: params.mode,\n\t\t\t\tcleanup: params.cleanup,\n\t\t\t\tlabel: params.label\n\t\t\t};\n\t\t\tconst externalTaskRecorder = globalThis[Symbol.for("versa.vlab.external-harness-task-record-v1")];\n\t\t\tif (typeof externalTaskRecorder === "function") externalTaskRecorder(externalTaskFact);\n\t\t\tconst externalTaskOwnerKeys = [\n\t\t\t\topts?.agentSessionKey?.trim(),\n\t\t\t\topts?.completionOwnerKey?.trim(),\n\t\t\t\topts?.requesterTurnRunId ? \`run:\${opts.requesterTurnRunId}\` : undefined\n\t\t\t].filter(Boolean);\n\t\t\tif (result?.status === "accepted" && externalTaskOwnerKeys.length > 0) {\n\t\t\t\tconst ownerSymbol = Symbol.for("versa.vlab.external-harness-task-owners-v1");\n\t\t\t\tconst owners = globalThis[ownerSymbol] instanceof Set ? globalThis[ownerSymbol] : new Set();\n\t\t\t\tfor (const ownerKey of externalTaskOwnerKeys) owners.add(ownerKey);\n\t\t\t\tglobalThis[ownerSymbol] = owners;\n\t\t\t}\n`;
 
 export function patchSessionsSpawnGatewayProxy(source) {
@@ -45,7 +62,7 @@ export function patchSessionsSpawnGatewayProxy(source) {
   }
   const hasExecutePatch = source.includes(PATCH_MARKER);
   const hasAcceptedPatch = source.includes(ACCEPTED_PATCH_MARKER);
-  if (hasExecutePatch && hasAcceptedPatch) return { source, changed: false };
+  if (hasExecutePatch && hasAcceptedPatch) return patchCompletionNote(source);
   if (hasExecutePatch || hasAcceptedPatch) {
     throw new Error("partial sessions_spawn external Harness patch detected");
   }
@@ -75,13 +92,10 @@ export function patchSessionsSpawnGatewayProxy(source) {
     ACCEPTED_CALL_PATTERN,
     (acceptedCall) => `${acceptedCall}${ACCEPTED_INJECTION}`,
   );
-  return {
-    source:
+  return patchCompletionNote(
       source.slice(0, sectionStart) +
       acceptedPatched +
-      source.slice(sectionEnd),
-    changed: true,
-  };
+      source.slice(sectionEnd));
 }
 
 async function resolveBundle(packageDir) {

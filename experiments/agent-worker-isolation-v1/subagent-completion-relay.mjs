@@ -19,6 +19,7 @@ export function acceptedSubagentRuns(spawns) {
     const childSessionKey = nonEmptyString(spawn?.childSessionKey);
     if (
       spawn?.status !== "accepted" ||
+      spawn.vlabCompletionExpected === false ||
       !runId ||
       !childSessionKey ||
       seen.has(runId)
@@ -48,7 +49,7 @@ function outcomeFromWait(wait) {
 export function startSubagentCompletionRelays(options) {
   const active = options.active ?? new Map();
   const stats = options.stats ?? {};
-  for (const key of ["started", "completed", "failed", "delivered"]) {
+  for (const key of ["started", "completed", "failed", "delivered", "unconfirmed"]) {
     stats[key] = Number(stats[key] ?? 0);
   }
   const timeoutMs = Number.isFinite(options.timeoutMs)
@@ -102,6 +103,21 @@ export function startSubagentCompletionRelays(options) {
         }
         if (announced === true || delivered) {
           increment(stats, "delivered");
+        } else {
+          increment(stats, "unconfirmed");
+          // Keep only delivery metadata, never child output or capability tokens.
+          const diagnostic = {
+            runId,
+            path: typeof announced?.path === "string" ? announced.path : undefined,
+            reason: typeof announced?.reason === "string" ? announced.reason : undefined,
+            terminal: announced?.terminal === true,
+            disposition: typeof announced?.disposition === "string" ? announced.disposition : undefined,
+            phases: Array.isArray(announced?.phases) ? announced.phases.map(p => ({
+              phase: p.phase, delivered: p.delivered === true, path: p.path, reason: p.reason,
+            })) : undefined,
+          };
+          stats.lastUnconfirmed = diagnostic;
+          options.logger?.warn?.(`subagent completion delivery unconfirmed: ${JSON.stringify(diagnostic)}`);
         }
         increment(stats, "completed");
       } catch (error) {
