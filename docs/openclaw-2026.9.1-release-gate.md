@@ -30,6 +30,7 @@
 8. Audit every active 7.1 patch: upstream equivalent, retained compatible patch, or explicit blocker. A setting or health response is not behavioral proof.
 9. Rehearse rollback: exact pre-cutover state, configuration, auth/plugin installation metadata, runtime and service. Fail loudly on restore errors and prove a real reply after rollback. Do not restore an obsolete shared database from a prior date.
 10. Freeze tested code/artifact hashes, check production drift, enter a controlled idle window, prevent watchdog resurrection, take a fresh snapshot, migrate, start, and run business smoke before marking promoted.
+11. Feishu card footer parity: show the actual Runtime alongside Agent, Model and Provider for both ordinary isolated-Worker turns and VCodex turns. Verify the visible card against the executing runtime, not only configuration. Tianyi's 2026-09-04 21:55 screenshot and the real smoke reply show Runtime is currently missing; this gate is NOT passed. Audit the previous footer patch and prefer an upstream equivalent when available.
 
 ## Recovery requirements
 
@@ -43,7 +44,7 @@
 
 - Official 9.1 tarball downloaded to VLab and SHA-512 verified.
 - New runtime installed separately at `/opt/vlab/releases/2026.9.1`; official package lifecycle completed; CLI version verified.
-- Production untouched; VLab Gateway has not yet switched to 9.1.
+- Production untouched; VLab mirror Gateway is now running 9.1 (started 21:46 Asia/Shanghai).
 - VLab mirror and its Night Shift companion were stopped after pending/active were zero.
 - Operational snapshot verified by zstd frame validation, tar listing, and SHA-256:
   `b34ac6d6baf99ace5299d253197d800ae5464d4d45c0227a1736ef6c8a3427b5`.
@@ -77,8 +78,29 @@
 - After the update: all 9 agents / 483 session nodes / 19,529 transcript events
   remain. Only database byte sizes changed in the inventory (schema metadata);
   session, transcript, memory-index, and auth-profile row counts are unchanged.
-- Four compatibility patches were applied to the updated mirror runtime. Official
-  `update repair --no-restart` is now running; real model/channel tests are pending.
+- Four compatibility patches were applied to the updated mirror runtime. After
+  reviewing the sole pending capability delta (the existing Dingtalk channel),
+  official `update repair --no-restart --accept-capabilities` exited zero. Both
+  main and Worker-overlay config validations passed. Gateway ready, Feishu
+  WebSocket connected, Worker 0.2.9-rc.1 ready with elastic 1-15 workers / 3 slots.
 - Operator confirmed the real test DM is V - Lab (not production V). Tianyi
   explicitly approved a tool-reply smoke and two 660-second child tasks sent as
   his user identity. Do not treat prior VLab messages as current 9.1 acceptance.
+- Real smoke: sent 21:52:09, received 21:52:10.583, dispatch 21:52:10.612,
+  streaming 21:52:43.423, dispatch complete 21:52:45.995. Transcript confirms
+  exec returned VLAB91_TOOL_OK; Feishu card visibly returned VLAB91_REPLY_OK.
+  The card footer lacks Runtime (see gate 11).
+- Two-child 660-second test sent 21:53:39. Both spawns accepted and both local
+  heartbeat files started; completion acceptance is still pending. Parent and
+  two children were observed active together; pending/queued zero.
+- Real Harness calls exposed one unclassified callback (onAttemptDeadlineChanged)
+  and three options (conversationRoutePeerId, messageActionTurnCapability,
+  permissionChange). These remain compatibility blockers, not silently ignored
+  fields. The spawn proxy also returns a misleading native quiet-run note while
+  the Worker owns completion relay; verify/fix its model-visible semantics.
+- Footer audit (read-only): production's Feishu 7.1 bundle contains
+  `if (prefixCtx.agentRuntime) parts.push(Runtime...)`; the installed mirror
+  Feishu 8.1 bundle does not. Native 9.1 reply-prefix also does not retain a
+  runtime field. Thus restoring only a footer string is insufficient: verify
+  selected-runtime metadata reaches it, including session overrides/fallbacks.
+  No production footer files were changed.
