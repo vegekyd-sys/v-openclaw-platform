@@ -231,3 +231,101 @@
 - Real Feishu `v_browser_devices` also returned zero devices, so browser
   acquire/read/release is still not accepted. Message delivery success does not
   clear the separate four-field Harness authority/route/deadline audit.
+
+## Post-midnight continuation (2026-09-05)
+
+- Restored the isolated Night Shift companion on loopback port 24980 using the
+  existing `bbc2ead-openclaw81-statefix1` dashboard release and the 9.1 Gateway
+  at 24993. External scheduler mode and notifications disabled prevent dispatch
+  or messages from unrelated cloned business instances. The original VLab
+  service and production were not touched.
+- Dedicated `NS-V91-RELAY-20260904` three-stage native Workboard smoke completed
+  A -> B -> C. Created 23:57:33; final observation 00:00:53 showed all three
+  stages done. The test harness only pulsed the native scheduler for this test
+  instance; Agents themselves ran the foreground tools and native
+  `workboard_proof` / `workboard_complete`. No operator forced card completion.
+  This accepts isolated task succession, not Feishu approval notifications or
+  an unattended production scheduler timer.
+- Production read-only refresh at 00:08:19: service active, NRestarts=0,
+  MemoryCurrent=17,158,529,024 bytes and root free space 33GB. Five live Agents
+  include xiaoai; enabled plugins additionally include QQ, Codex Supervisor,
+  Landing Chat and Xiaoai Cloud. The old candidate cannot replace that config.
+- Temporarily routed only the already-known VLab acceptance DM to v-codex.
+  `vlab91-codex-dm-binding.mjs restore` restores only this route, not a stale
+  whole-config backup. It must be restored before handing the lab back.
+- R8 actual Codex Feishu run (00:03:32–00:04:23): native terminal worked but
+  interim preambles did not appear. Final used native message(action=send,
+  final=true), producing a plain post with no footer. NOT streaming acceptance.
+- Official 9.1 `messages.visibleReplies="automatic"` is now explicit in both
+  lab configs. It preserves prior automatic reply behavior; group policy was
+  already explicit automatic. Source room-event and send-policy restrictions
+  remain native and unchanged. R9 then produced a real streaming final card
+  with `Runtime: codex` (message `om_x100b669a9e8fd8a0b1a4477778bc58f`), but
+  commentary before/during its 30-second tool still did not appear.
+- Production's existing `VCODEX_COMMENTARY_STREAM_V2` patch consumes explicit
+  preamble Item events. Ported that narrow integration to the candidate's
+  Feishu adapter, keeping native final delivery and actual-runtime detection.
+  Six local tests pass, including no reasoning/tool event display, bounds,
+  idempotency and anchor-drift refusal. Live acceptance remains pending.
+- Prepared a dedicated real headless Chrome with a synthetic extension
+  protocol peer, owned by the VLab test identity, at CDP port 24952. It does not
+  pre-acquire any lease; the Agent must list/acquire/operate/release it. This
+  is not acceptance of the user's physical installed browser extension.
+
+## Continued live checks and promotion blockers (2026-09-05 00:34)
+
+- R10 Codex failed before its tool with process-inspection deadline / Linux
+  namespace diagnostics; R11 and R12 subsequently completed. This cold-start
+  anomaly is not dismissed merely because retries worked.
+- R12 after the narrow commentary-v2 patch: received 00:22:36.140, dispatch
+  00:22:36.166, streaming card opened 00:22:54.108, closed 00:23:33.520, dispatch
+  complete 00:23:33.552 with one reply. Live observations showed a Bash progress
+  indicator at 00:23:17/23 and preamble text at 00:23:29. Later Feishu readback
+  confirmed the same card held only `VLAB91_CODEX_FINAL_R12_OK` and the system
+  `Runtime: codex` footer. This proves an in-progress card and clean finalization;
+  it does not yet prove the requested START preamble appeared before tool start.
+- Restored the temporary VLab DM binding from v-codex to makaron. Restarted only
+  the idle candidate Gateway; ready at 00:30:32.059. Production was untouched.
+- R13 real Feishu browser test received the fixture's exact device ID but native
+  `v_browser_devices` returned empty and acquire failed `actor cannot access
+  this device`; release returned false because no lease existed. The Agent
+  accurately reported failure, with `Runtime: vlab-worker` in the system footer.
+  Independent broker read for the intended trusted Feishu principal returned
+  that device online; both main and overlay target the same 24891 broker.
+  Browser acceptance remains FAILED pending identity/context investigation;
+  do not broaden access or alias arbitrary principals to make the test pass.
+- The first Worker dispatch after restart again reported unclassified route,
+  message-action authority, and permission-change fields. A fresh-process
+  `productionPromotionBlocked=false` before any Worker run is NOT clearance:
+  these counters are discovered dynamically. The four-field audit remains open.
+- Normal macOS SSH routing timed out for both Tailscale addresses despite node
+  pings working. Existing management SSH keys succeeded through
+  `ProxyCommand=/usr/local/bin/tailscale nc <tailscale-ip> 22`; no public SSH
+  fallback was used. Production readonly at 00:29:24: active, NRestarts=0,
+  MemoryCurrent=17,333,379,072 bytes.
+- Deployment remains NOT READY. In addition to the above browser/Harness
+  blockers, latest production topology, migration/rollback, and remaining
+  7.1 capability gates must be reconciled before cutover. No production upgrade,
+  configuration change, or restart was performed in this continuation.
+- Browser investigation identified a concrete adapter mismatch: 9.1's real
+  Harness input carried `messageProvider` without `messageChannel`; native
+  tool selection uses `messageChannel ?? messageProvider`. Our IPC nested
+  ingress defaulted the absent channel to webchat, changing the trusted actor's
+  channel namespace. Worker commit `395c9d9` normalizes the native channel before
+  populating all IPC channel/reply/run-context fields. It never uses model
+  provider or session-key text to infer identity. All 112 Worker tests passed.
+  Candidate main and overlay point to an isolated `worker-openclaw91-395c9d9`
+  release; previous config copies end in `.pre-395c9d9`. Archive extraction
+  initially preserved local UID 501 and was correctly rejected by the loader;
+  fixed ownership on that new release only to root:root, then restarted the
+  lab. Do not retain local ownership when packaging the production artifact.
+  Real-channel browser re-acceptance remains required.
+- R14 (00:37:53) confirmed the corrected trusted identity: native device listing
+  now returned the intended online test device. Acquire then failed at a
+  separate downstream boundary, `browser gateway connection timed out`.
+  The broker is configured to the existing dedicated browser-assist 8.1
+  Gateway on 24793 (not the 9.1 main Gateway on 24993). Its active process
+  answered neither loopback nor Tailscale HTTP within four seconds. Registry
+  contains only the old synthetic fixture and this run's test device, no human
+  browser devices. Restarted only that lab browser-assist service to restore
+  the test topology; this is not production/browser-component upgrade proof.
