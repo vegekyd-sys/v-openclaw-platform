@@ -340,3 +340,53 @@
   productionPromotionBlocked=true remains intentional. Test DM is back on
   Makaron; no test browser lease was retained. The dedicated R13–R15 fixture
   service is stopped after testing. Production cutover is NOT performed.
+
+## Updated promotion order authorized by Tianyi
+
+- Complete and regress the 9.1 Worker permission/lifecycle compatibility first,
+  then deploy production V when the remaining non-browser safety gates pass.
+- Browser end-to-end acceptance is explicitly deferred until after production
+  cutover. R15 remains a known unresolved browser issue, not a passed test.
+- This does not waive Worker authority checks, current-production configuration
+  preservation, rollback readiness, or real Feishu reply acceptance.
+
+## 2026-09-05 native authority and recovery follow-up
+
+- Scope narrowed at Tianyi's request: do not repeat the accepted 5+5/660-second,
+  compaction, memory-search, and VCodex suites. Regress only changed native
+  boundaries and the actually failing real-Feishu completion path.
+- Worker `cead1c5` bridges native attempt deadlines and running permission changes,
+  and keeps opaque message-action authority in the Gateway. `7613f98` delegates
+  backend RPC identity minting to the original native Gateway admission rather
+  than a Worker-local authority. No hand-built signed claims or broad allowlist.
+- Running permission smoke at 01:11:38–01:11:53 passed: while a 90-second Python
+  tool was running, native sessions.patch read-only interrupted the tool; the
+  Agent returned VLAB91_PERMISSION_INTERRUPTED_OK and the Worker PID survived.
+- Real Feishu R16 delivered VLAB91_NATIVE_MESSAGE_R16_OK through the native message
+  tool at about 01:07:43, with no duplicate final after NO_REPLY.
+- Explicit headless approval test was NOT an interactive approval-pause pass:
+  before the identity bridge, exec.approval.request rejected stale runtime
+  authority; after it, registration succeeded at 01:24:27 but native policy
+  denied waiting because the explicit headless ingress had no approval route.
+  Do not loosen production security or count the already-ended run as cancelled.
+- R17 real Feishu child e9e23b09-8893-4bf0-815d-e0d898005fa1 finished at
+  01:25:43 but Parent delivery remained unconfirmed. `f5b815e` uses the official
+  withoutGatewayToolCallerIdentity helper for process-owned completion delivery,
+  retaining the original native task-runtime scope. Its real-channel result is
+  pending; it must not be called accepted from unit tests.
+- R18/R19 then exposed an earlier failure after restart: Worker attempted to
+  claim a second main-session recovery owner. The captured stack points exactly
+  to claimAgentCommandRecoveryOwner in official agent-command-DPfawBbr.js:352.
+  `114c2dc` sets native mainRestartRecoveryAdmitted only on trusted Harness
+  requests, after forwarded options. Gateway continues owning recovery; no
+  serialized lease, reset, tombstone removal, or lifecycle bypass patch. The
+  targeted 12-test suite passed, including refusing caller option spoofing on
+  non-Harness requests. Candidate main+overlay now use that exact release.
+- R20 received at 01:42:22.808 in the same existing Feishu DM and passed the
+  formerly failing admission into model execution. Await actual child completion
+  and visible Parent reply before marking this regression passed.
+- Production readonly: PID 293790, active, NRestarts=0; 33 GiB filesystem free.
+  No production configuration/runtime/restart mutation in this follow-up yet.
+  Latest production inventory includes the xiaoai Agent/plugin, NightShift 0.1.2,
+  WeCom 2026.8.17-vlab.1 and 26 bindings; do not overwrite these with the older lab
+  fixture config. Fresh rollback snapshot remains a cutover prerequisite.
