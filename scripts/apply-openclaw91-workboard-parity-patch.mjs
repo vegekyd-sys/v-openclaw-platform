@@ -17,21 +17,30 @@ if (!args.get("--dist")) {
   throw new Error("Usage: apply-openclaw91-workboard-parity-patch.mjs --dist=/path/to/openclaw/dist [--backup-dir=/path] [--max-per-owner=36] [--max-total=36] [--dry-run]");
 }
 
-const matches = readdirSync(distDir)
+const runtimeMatches = readdirSync(distDir)
   .filter((name) => /^runtime-api-.*\.js$/.test(name))
   .map((name) => join(distDir, name))
   .filter((file) => readFileSync(file, "utf8").includes("workboard.cards.dispatchWithOptions"));
-if (matches.length !== 1) throw new Error(`Expected exactly one OpenClaw 9.1 Workboard runtime bundle, found ${matches.length}`);
+if (runtimeMatches.length !== 1) throw new Error(`Expected exactly one OpenClaw 9.1 Workboard runtime bundle, found ${runtimeMatches.length}`);
+const sqliteMatches = readdirSync(distDir)
+  .filter((name) => /^sqlite-store-.*\.js$/.test(name))
+  .map((name) => join(distDir, name))
+  .filter((file) => readFileSync(file, "utf8").includes("claimIfOwnerAvailable"));
+if (sqliteMatches.length !== 1) throw new Error(`Expected exactly one OpenClaw 9.1 Workboard SQLite bundle, found ${sqliteMatches.length}`);
 
-const file = matches[0];
+const file = runtimeMatches[0];
+const sqliteFile = sqliteMatches[0];
 const source = readFileSync(file, "utf8");
+const sqliteSource = readFileSync(sqliteFile, "utf8");
 const marker = "const NIGHTSHIFT_OPENCLAW91_WORKBOARD_PARITY_PATCH = 1;";
-if (source.includes(marker)) {
-  process.stdout.write(`${JSON.stringify({ changed: false, file, maxPerOwner, maxTotal, status: "already-patched" })}\n`);
+const sqliteMarker = `const NIGHTSHIFT_OPENCLAW91_SQLITE_OWNER_CAP_PATCH = ${maxPerOwner};`;
+if (source.includes(marker) && sqliteSource.includes(sqliteMarker)) {
+  process.stdout.write(`${JSON.stringify({ changed: false, file, sqliteFile, maxPerOwner, maxTotal, status: "already-patched" })}\n`);
   process.exit(0);
 }
 
 let updated = source;
+if (!source.includes(marker)) {
 updated = replaceOnce(updated,
   "const DEFAULT_DISPATCH_MAX_STARTS = 3;",
   [
@@ -127,6 +136,21 @@ updated = replaceOnce(updated,
   `\t\t\tstartedByOwner.set(ownerId, (startedByOwner.get(ownerId) ?? 0) + 1);`,
   "started owner accounting",
 );
+}
+
+let sqliteUpdated = sqliteSource;
+if (!sqliteSource.includes(sqliteMarker)) {
+  sqliteUpdated = replaceOnce(sqliteUpdated,
+    `var WorkboardSqliteCardStore = class {`,
+    `${sqliteMarker}\nvar WorkboardSqliteCardStore = class {`,
+    "SQLite owner cap marker",
+  );
+  sqliteUpdated = replaceOnce(sqliteUpdated,
+    `\t\t\tconst preloaded = loadCardChildRows(this.db);\n\t\t\tfor (const row of rows) {\n\t\t\t\tconst card = readCard(this.db, row, preloaded);\n\t\t\t\tif (workboardCardConsumesOwnerSlot(card, now) && workboardCardSlotOwner(card) === ownerId) return "owner_busy";\n\t\t\t}`,
+    `\t\t\tconst preloaded = loadCardChildRows(this.db);\n\t\t\tlet activeForOwner = 0;\n\t\t\tfor (const row of rows) {\n\t\t\t\tconst card = readCard(this.db, row, preloaded);\n\t\t\t\tif (workboardCardConsumesOwnerSlot(card, now) && workboardCardSlotOwner(card) === ownerId) activeForOwner += 1;\n\t\t\t\tif (activeForOwner >= NIGHTSHIFT_OPENCLAW91_SQLITE_OWNER_CAP_PATCH) return "owner_busy";\n\t\t\t}`,
+    "SQLite atomic owner claim",
+  );
+}
 
 for (const expected of [
   marker,
@@ -138,15 +162,24 @@ for (const expected of [
 ]) {
   if (!updated.includes(expected)) throw new Error(`Patch verification failed: ${expected}`);
 }
+if (!sqliteUpdated.includes(sqliteMarker) || !sqliteUpdated.includes("activeForOwner >= NIGHTSHIFT_OPENCLAW91_SQLITE_OWNER_CAP_PATCH")) {
+  throw new Error("SQLite owner-cap patch verification failed");
+}
 
 if (!dryRun) {
   if (!backupDir) throw new Error("--backup-dir is required unless --dry-run is used");
   mkdirSync(backupDir, { recursive: true });
-  copyFileSync(file, join(backupDir, `${basename(file)}.before-openclaw91-workboard-parity`));
-  writeFileSync(file, updated);
+  if (updated !== source) {
+    copyFileSync(file, join(backupDir, `${basename(file)}.before-openclaw91-workboard-parity`));
+    writeFileSync(file, updated);
+  }
+  if (sqliteUpdated !== sqliteSource) {
+    copyFileSync(sqliteFile, join(backupDir, `${basename(sqliteFile)}.before-openclaw91-workboard-parity`));
+    writeFileSync(sqliteFile, sqliteUpdated);
+  }
 }
 
-process.stdout.write(`${JSON.stringify({ changed: !dryRun, dryRun, file, maxPerOwner, maxTotal })}\n`);
+process.stdout.write(`${JSON.stringify({ changed: !dryRun && (updated !== source || sqliteUpdated !== sqliteSource), dryRun, file, sqliteFile, maxPerOwner, maxTotal })}\n`);
 
 function replaceOnce(value, before, after, label) {
   const first = value.indexOf(before);
