@@ -104,3 +104,20 @@
   runtime field. Thus restoring only a footer string is insufficient: verify
   selected-runtime metadata reaches it, including session overrides/fallbacks.
   No production footer files were changed.
+- 660-second result: A heartbeat started 21:54:52 and completed 22:05:52;
+  B started 21:54:57 and completed 22:05:57. Each has 12 heartbeats (0..660)
+  and its DONE marker. Child assistant completions appeared 22:05:57.898 and
+  22:06:00.717; parent card VLAB91_LONG_OK delivered 22:06:09.867.
+  Endurance and visible final reply PASSED, but automatic completion delivery
+  NOT passed: relay started=2, completed=2, failed=0, delivered=0. Two warnings
+  at 22:06:07 report active requester wake failed (queue_message_failed /
+  no_active_run) with fallback attempted. Parent actually polled files and
+  called subagents.list; no child completion event appears in its transcript.
+  A successful final marker must not conceal this gap.
+- Feishu released its per-chat queue at 21:58:39 (300 seconds) without killing
+  either child. Observed active parent + two children, zero pending/queued.
+  Mid-test Event Loop P99=23ms / max=73.5ms / utilization=0.035, not degraded;
+  Feishu connected, NRestarts=0. Service MemoryCurrent approximately 1.48GB;
+  service-lifetime MemoryPeak approximately 3.61GB (not attributed solely to test).
+  Final Worker snapshot active=0 / pending=0 / queued=0, eventRelayFailures=0.
+  Unclassified Harness fields still keep productionPromotionBlocked=true.
