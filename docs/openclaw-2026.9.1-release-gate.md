@@ -155,3 +155,37 @@
   Agent and newer plugin settings; preserve these during promotion.
 - Production remains unchanged. Remaining interface, current-topology,
   business-path, storage and rollback gates must pass before cutover.
+- VCodex internal RPC smoke: `agent:v-codex:explicit:vlab91-codex-tools-r1-20260904`
+  resolved actual runtime `codex`; transcript contains progress text, a successful
+  native `bash` tool with VLAB91_CODEX_TOOL_OK, further progress, and the final
+  VLAB91_CODEX_FINAL_OK marker. This proves runtime/tools/progress events, not
+  the real Feishu streaming card or Runtime footer.
+- Native OpenClaw compaction smoke: the test session used `vlab-worker`, not
+  Codex. `sessions.compact` reduced 64,968 tokens to 435 in 24,511ms. Continuation
+  recalled a random project code and both release constraints without the
+  follow-up repeating those facts. Script `vlab91-compact-smoke.mjs` passed.
+- Memory: real positive search returned six results. A first batch of five
+  threshold-1 empty queries encountered two Gemini embedding 429 errors and
+  was NOT accepted. The follow-up strictly sequential five calls all returned
+  zero results without errors (22:40:49–22:41:08). No reindex/sync log appeared
+  in this interval; background-job inventory still needs checking before
+  claiming the full no-reindex-storm gate.
+- Browser internal-session check reached the native `v_browser_devices` tool
+  successfully but returned an empty device list. No device was paired,
+  acquired, navigated or released. This is not browser acceptance and does not
+  prove no devices exist globally: the explicit test session may lack the
+  real Feishu requester's device authorization.
+- Read-only Lark check still showed the 22:06 pre-footer-patch card as latest.
+  Further user-identity test messages await explicit confirmation; no extra
+  user-identity messages were sent after the two individually approved tests.
+- 9.1 authority audit: `messageActionTurnCapability` resolves against a
+  process-local native Map and is checked again when minting Gateway runtime
+  identity. Blind JSON forwarding or minting an unrelated Worker token cannot
+  establish equivalent Gateway authorization. `permissionChange` contains
+  host-issued WeakMap-backed callbacks, not serializable configuration.
+  Preserve native scope/revocation checks; do not waive these fields merely to
+  clear `productionPromotionBlocked`. No authority-boundary patch is deployed.
+- Night Shift mirror companion remains stopped following the snapshot; its
+  transient unit disappeared after stop. The separate original VLab Night Shift
+  service is still active and was not modified. Recreate the mirror companion
+  with verified isolated paths/ports before claiming Night Shift acceptance.
