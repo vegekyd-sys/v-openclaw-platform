@@ -7,7 +7,11 @@ temp_dir="${TMPDIR:-$private_state/tmp}"
 
 install -d -m 700 "$private_state" "$private_state/identity" "$private_state/state" "$temp_dir"
 install -m 600 "$source_state/identity/device.json" "$private_state/identity/device.json"
-install -m 600 "$source_state/identity/device-auth.json" "$private_state/identity/device-auth.json"
+if [[ -f "$source_state/identity/device-auth.json" ]]; then
+  install -m 600 "$source_state/identity/device-auth.json" "$private_state/identity/device-auth.json"
+else
+  rm -f -- "$private_state/identity/device-auth.json"
+fi
 
 for directory in extensions npm plugin-skills; do
   if [[ -e "$private_state/$directory" && ! -L "$private_state/$directory" ]]; then
