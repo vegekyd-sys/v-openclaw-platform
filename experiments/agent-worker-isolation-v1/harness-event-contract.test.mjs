@@ -19,7 +19,7 @@ test("classifies bridged, Gateway-owned, and unknown Harness callbacks", () => {
     notACallback() {},
   });
 
-  assert.equal(HARNESS_EVENT_CONTRACT_VERSION, "openclaw-2026.8.1-v6");
+  assert.equal(HARNESS_EVENT_CONTRACT_VERSION, "openclaw-2026.9.1-v7");
   assert.deepEqual(contract.bridged, [
     "onAgentEvent",
     "onPartialReply",

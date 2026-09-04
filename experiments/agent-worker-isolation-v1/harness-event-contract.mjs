@@ -1,4 +1,4 @@
-export const HARNESS_EVENT_CONTRACT_VERSION = "openclaw-2026.8.1-v6";
+export const HARNESS_EVENT_CONTRACT_VERSION = "openclaw-2026.9.1-v7";
 
 // These are the canonical OpenClaw tool names that the official Codex Harness
 // certifies in 2026.8.1. The isolated Worker adds no native tool surface and
@@ -32,6 +32,7 @@ export const BRIDGED_HARNESS_EVENT_CALLBACKS = Object.freeze([
   "onAgentToolResult",
   "onAssistantErrorMessagePersisted",
   "onAssistantMessageStart",
+  "onAttemptDeadlineChanged",
   "onBlockReply",
   "onBlockReplyFlush",
   "onCommandOutput",
@@ -91,6 +92,8 @@ export const FORWARDED_HARNESS_OPTIONS = Object.freeze({
   clientCaps: "clientCaps",
   clientTools: "clientTools",
   conversationToolPolicy: "conversationToolPolicy",
+  conversationRoutePeerId: "conversationRoutePeerId",
+  permissionMode: "permissionMode",
   contextEngineAgentId: "contextEngineAgentId",
   currentChannelId: "currentChannelId",
   currentInboundAudio: "currentInboundAudio",
@@ -188,6 +191,10 @@ export const TRANSLATED_HARNESS_OPTIONS = Object.freeze([
   "messageProvider",
   "messageThreadId",
   "messageTo",
+  // Retained by the Gateway's native host-tool relay; never serialized.
+  "messageActionTurnCapability",
+  // Authorized native owner -> exact active Worker request -> native refresh.
+  "permissionChange",
   "prompt",
   "runContext",
   "runId",

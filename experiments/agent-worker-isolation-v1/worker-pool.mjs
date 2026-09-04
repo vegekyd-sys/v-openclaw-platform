@@ -92,6 +92,8 @@ export class WorkerPool {
     this.nextRequestId = 1;
     this.nextSteerId = 1;
     this.pendingSteers = new Map();
+    this.pendingControls = new Map();
+    this.nextControlId = 1;
     this.started = false;
     this.closing = false;
     this.pumping = false;
@@ -274,6 +276,7 @@ export class WorkerPool {
         request,
         onEvent:
           typeof options.onEvent === "function" ? options.onEvent : undefined,
+        onGatewayToolRequest: options.onGatewayToolRequest,
         resolve,
         reject,
       });
@@ -311,6 +314,7 @@ export class WorkerPool {
         };
       }
       if (worker.active.has(requestId)) {
+        worker.active.get(requestId).cancelRequested = true;
         worker.child.send({ type: "cancel", requestId });
         return {
           cancelled: true,
@@ -322,6 +326,51 @@ export class WorkerPool {
       }
     }
     return { cancelled: false, state: "not_found", requestId };
+  }
+
+  async applyPermission(requestId, mode) {
+    for (const worker of this.workers.values()) {
+      const active = worker.active.get(requestId);
+      if (!active || active.cancelRequested || active.timeoutError) continue;
+      const controlId = `permission-${this.nextControlId++}`;
+      return await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          this.pendingControls.delete(controlId);
+          reject(new Error("Worker permission acknowledgement timed out"));
+        }, 5_000);
+        timer.unref?.();
+        this.pendingControls.set(controlId, { requestId, worker, active, timer, resolve, reject });
+        worker.child.send({ type: "permission-change", controlId, requestId, mode });
+      });
+    }
+    return false;
+  }
+
+  updateAttemptDeadline(worker, active, deadline) {
+    if (worker.active.get(active.id) !== active || active.cancelRequested || active.timeoutError) {
+      throw new Error("Worker deadline owner is no longer active");
+    }
+    if (deadline?.kind !== "unlimited" &&
+        !(deadline?.kind === "bounded" && Number.isFinite(deadline.deadlineAtMs))) {
+      throw new Error("Malformed native Worker deadline");
+    }
+    clearTimeout(active.timer);
+    active.timer = null;
+    active.nativeDeadline = deadline;
+    if (deadline.kind === "bounded") {
+      // Core owns the business deadline. A short grace lets it report timeout
+      // normally; process liveness is still monitored independently.
+      const delay = Math.max(1, deadline.deadlineAtMs - Date.now() + this.requestCancelGraceMs);
+      const arm = () => {
+        const remaining = deadline.deadlineAtMs - Date.now() + this.requestCancelGraceMs;
+        if (remaining > 0) {
+          active.timer = setTimeout(arm, Math.min(remaining, 2_147_483_647));
+          active.timer.unref?.();
+        } else this.beginTimedCancellation(worker, active, requestTimeoutError(active.id, active.requestTimeoutMs));
+      };
+      active.timer = setTimeout(arm, Math.min(delay, 2_147_483_647));
+      active.timer.unref?.();
+    }
   }
 
   async steer(requestId, text, options = {}) {
@@ -371,6 +420,12 @@ export class WorkerPool {
   }
 
   rejectPendingSteers(requestId, error) {
+    for (const [id, pending] of this.pendingControls) {
+      if (pending.requestId !== requestId) continue;
+      clearTimeout(pending.timer);
+      this.pendingControls.delete(id);
+      pending.reject(error);
+    }
     for (const [steerId, pending] of this.pendingSteers) {
       if (pending.requestId !== requestId) continue;
       clearTimeout(pending.timer);
@@ -598,6 +653,15 @@ export class WorkerPool {
   }
 
   onMessage(worker, message) {
+    if (message?.type === "permission-change-ack") {
+      const p = this.pendingControls.get(message.controlId);
+      if (!p || p.worker !== worker || p.requestId !== message.requestId) return;
+      clearTimeout(p.timer);
+      this.pendingControls.delete(message.controlId);
+      if (!message.ok) p.reject(toError(message.error));
+      else p.resolve(message.applied === true && worker.active.get(p.requestId) === p.active && !p.active.cancelRequested);
+      return;
+    }
     if (message?.sessionHotset) {
       worker.sessionHotset = message.sessionHotset;
     }
@@ -729,6 +793,13 @@ export class WorkerPool {
     }
     if (message?.type === "gateway-tool-request" && message.requestId) {
       const delivery = Promise.resolve().then(async () => {
+        if (message.request?.kind === "native-message") {
+          const owner = worker.active.get(message.request.ownerRequestId);
+          if (!owner || owner.cancelRequested || owner.timeoutError || !owner.onGatewayToolRequest) {
+            throw new Error("Gateway message tool owner is no longer active");
+          }
+          return await owner.onGatewayToolRequest(message.request);
+        }
         if (!this.onGatewayToolRequest) {
           throw Object.assign(new Error("Gateway tool request handler is unavailable"), {
             code: "VLAB_GATEWAY_TOOL_HANDLER_UNAVAILABLE",
@@ -782,6 +853,12 @@ export class WorkerPool {
       active.lastProgressAt = Date.now();
       this.armStallWatchdog(worker, active);
       const delivery = active.streamEventTail.then(async () => {
+        if (worker.active.get(active.id) !== active || active.cancelRequested || active.timeoutError) {
+          throw new Error("Worker event owner is no longer active");
+        }
+        if (message.name === "onAttemptDeadlineChanged") {
+          this.updateAttemptDeadline(worker, active, message.args?.[0]);
+        }
         await active.onEvent?.({
           requestId: active.id,
           runId: active.request?.runId,
@@ -1044,6 +1121,7 @@ export class WorkerPool {
             runId: job.request?.runId,
             timeoutPending: Boolean(job.timeoutError),
             requestTimeoutMs: job.requestTimeoutMs,
+            nativeDeadline: job.nativeDeadline,
             lastProgressAgeMs: Math.max(
               0,
               Date.now() - job.lastProgressAt,
@@ -1072,6 +1150,11 @@ export class WorkerPool {
       this.reapTimer = null;
     }
     const closeError = new Error("worker pool is closing");
+    for (const [id, pending] of this.pendingControls) {
+      clearTimeout(pending.timer);
+      pending.reject(closeError);
+      this.pendingControls.delete(id);
+    }
     for (const pending of this.pending.splice(0)) {
       pending.reject(closeError);
     }

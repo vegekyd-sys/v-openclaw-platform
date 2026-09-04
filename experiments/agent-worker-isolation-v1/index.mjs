@@ -9,6 +9,7 @@ import {
   resolveOpenClawSubagentAnnounceOriginRuntimePath,
 } from "./runtime-path.mjs";
 import { createWorkerActiveRunProxy } from "./worker-active-run-proxy.mjs";
+import { createGatewayMessageToolRelay } from "./gateway-message-tool.mjs";
 import { buildHarnessFailureAttempt } from "./harness-failure.mjs";
 import { readNativeSessionMessages } from "./harness-result.mjs";
 import { closeInterruptedToolCalls } from "./transcript-recovery.mjs";
@@ -580,11 +581,15 @@ const plugin = {
             }
             finalSession = session;
             const workerAgentId = params.agentId ?? "makaron";
+            const gatewayMessageRelay = params.messageActionTurnCapability
+              ? createGatewayMessageToolRelay(params) : undefined;
             const submitted = await pool.submit(
               sessionKey,
               {
                 kind: "agent",
                 harnessAttempt: true,
+                nativeAttempt91: true,
+                gatewayMessageTool: Boolean(gatewayMessageRelay),
                 message: params.prompt,
                 transcriptMessage: expectedUserTurn,
                 suppressPromptPersistence: !workerShouldPersistUserTurn,
@@ -640,6 +645,7 @@ const plugin = {
                 // subagent completion announce even when their dispatch keys
                 // differ.
                 sessionOwnerKey: `${workerAgentId}:${session.sessionId}`,
+                onGatewayToolRequest: gatewayMessageRelay?.execute,
                 onEvent: async (event) => {
                   const callback = params[event.name];
                   if (typeof callback !== "function") {
@@ -704,6 +710,8 @@ const plugin = {
               requestId: submitted.requestId,
               runId: params.runId,
               sourceReplyDeliveryMode: params.sourceReplyDeliveryMode,
+              permissionChange: params.permissionChange,
+              onPermissionChange: () => gatewayMessageRelay?.invalidate(),
             });
             activeRunRuntime.setActiveEmbeddedRun(
               session.sessionId,
@@ -719,6 +727,7 @@ const plugin = {
             } finally {
               unregisterNativeLaneProgress();
               activeRunProxy.deactivate();
+              gatewayMessageRelay?.close();
               activeRunRuntime.clearActiveEmbeddedRun(
                 session.sessionId,
                 activeRunProxy.handle,

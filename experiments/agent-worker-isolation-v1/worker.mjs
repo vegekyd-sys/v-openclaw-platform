@@ -11,6 +11,7 @@ import {
 } from "./worker-gateway-events.mjs";
 import { installGatewayOwnedToolProxy } from "./gateway-owned-tool-proxy.mjs";
 import { buildRelayedSkillUsageEvent } from "./skill-usage-telemetry.mjs";
+import { createNativeAttemptBridge, NATIVE_ATTEMPT_BRIDGE } from "./native-attempt-bridge.mjs";
 import {
   resolveOpenClawAgentCommandRuntimePath,
   resolveOpenClawPreparedModelRuntimePath,
@@ -30,6 +31,8 @@ const externalTaskContextsBySessionId = new Map();
 const externalTaskContextsByRunId = new Map();
 let nextStreamEventId = 1;
 let nextGatewayToolRequestId = 1;
+const nativeAttemptBridge = createNativeAttemptBridge();
+globalThis[NATIVE_ATTEMPT_BRIDGE] = nativeAttemptBridge;
 const configuredHeartbeatMs = Number(
   process.env.VLAB_WORKER_HEARTBEAT_MS ?? 15_000,
 );
@@ -572,6 +575,13 @@ async function runAgent(message, abortSignal) {
     tail: Promise.resolve(),
     failure: undefined,
   };
+  const unregisterNativeAttempt = message.nativeAttempt91 === true
+    ? nativeAttemptBridge.register(message, abortSignal, (deadline) => {
+        if (!requestedEventNames.has("onAttemptDeadlineChanged")) return;
+        void queueStreamEvent(streamState, message.id, message,
+          "onAttemptDeadlineChanged", [deadline], abortSignal).catch(() => {});
+      }, executeToolInGateway)
+    : () => {};
   let unsubscribeAgentEvents = () => {};
   if (typeof eventRuntime.onAgentEvent === "function") {
     globallyBridgedNames.add("onAgentEvent");
@@ -709,6 +719,7 @@ async function runAgent(message, abortSignal) {
         config,
         pluginGeneration: preparedRuntimeLease.pluginGeneration,
       });
+      if (message.nativeAttempt91 === true) nativeAttemptBridge.assertPrepared(message.runId);
       } finally {
         if (
           externalTaskContextsBySessionKey.get(message.sessionKey) ===
@@ -742,6 +753,7 @@ async function runAgent(message, abortSignal) {
     }
   } finally {
     unsubscribeAgentEvents();
+    unregisterNativeAttempt();
   }
   if (abortSignal.aborted) {
     throw abortSignal.reason ?? new Error("worker Agent request was cancelled");
@@ -788,6 +800,19 @@ async function runAgent(message, abortSignal) {
 }
 
 process.on("message", async (message) => {
+  if (message?.type === "permission-change" && message.requestId && message.controlId) {
+    const active = activeControllers.get(message.requestId);
+    try {
+      if (!active || active.controller.signal.aborted) throw new Error("Worker request is not active");
+      const applied = await nativeAttemptBridge.applyPermission(active.request.runId, message.mode);
+      process.send?.({ type: "permission-change-ack", requestId: message.requestId,
+        controlId: message.controlId, ok: true, applied });
+    } catch (error) {
+      process.send?.({ type: "permission-change-ack", requestId: message.requestId,
+        controlId: message.controlId, ok: false, error: serializeError(error) });
+    }
+    return;
+  }
   if (message?.type === "gateway-tool-response" && message.requestId) {
     const pending = pendingGatewayToolRequests.get(message.requestId);
     if (!pending) return;
