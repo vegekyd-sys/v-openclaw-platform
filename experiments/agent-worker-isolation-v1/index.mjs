@@ -44,6 +44,7 @@ import {
 import { NativeLaneProgressBridge } from "./native-lane-progress.mjs";
 import { syncWorkerRuntimeConfigFile } from "./worker-config-sync.mjs";
 import { createGatewayNativeCompactionPassthrough } from "./gateway-native-compaction.mjs";
+import { resolveHarnessMessageChannel } from "./harness-channel.mjs";
 
 const SESSION_PREFIX = "agent:makaron:explicit:vlab-worker-";
 const NATIVE_HARNESS_ID = "vlab-worker";
@@ -478,6 +479,7 @@ const plugin = {
 
     async function dispatchNativeHarnessAttempt(params) {
       const harnessAttemptStartedAt = Date.now();
+      const messageChannel = resolveHarnessMessageChannel(params);
       const sessionKey =
         typeof params.sessionKey === "string" && params.sessionKey.trim()
           ? params.sessionKey
@@ -607,17 +609,17 @@ const plugin = {
                 // The longer Worker lease prevents OpenClaw's 600s default
                 // from turning into an isolated-Subagent hard wall.
                 requestTimeoutMs: attemptTimeoutMs,
-                messageChannel: params.messageChannel,
+                messageChannel,
                 messageProvider: params.messageProvider,
-                channel: params.messageChannel,
+                channel: messageChannel,
                 accountId: params.agentAccountId,
                 to: params.messageTo,
                 replyTo: params.messageTo,
-                replyChannel: params.messageChannel,
+                replyChannel: messageChannel,
                 replyAccountId: params.agentAccountId,
                 threadId: params.messageThreadId,
                 runContext: {
-                  messageChannel: params.messageChannel,
+                  messageChannel,
                   accountId: params.agentAccountId,
                   groupId: params.groupId,
                   groupChannel: params.groupChannel,
