@@ -25,8 +25,9 @@ test('message execution is Gateway-owned only when Worker explicitly handles it'
   assert.equal(patchMessage(out),out);assert.throws(()=>patchMessage('changed'),/mismatch/);
 });
 test('deferred plugin runtime retains native Gateway instance fencing',()=>{
- const source='function createDeferredGatewaySubagentRuntime(runtime) {\n\treturn {\n\t\trun: (...args) => runtime.subagent.run(...args)\n\t};\n}\nfunction createDeferredGatewayNodesRuntime(runtime) {';
+ const source='import { r as getGatewayContextResolver, u as withPluginRuntimePluginScope } from "./gateway-request-scope-fixture.js";\nfunction createDeferredGatewaySubagentRuntime(runtime) {\n\treturn {\n\t\trun: (...args) => runtime.subagent.run(...args)\n\t};\n}\nfunction createDeferredGatewayNodesRuntime(runtime) {';
  const out=patchDeferredSubagentContext(source);
  assert.match(out,/bindGatewayContextResolver\(deferred, getGatewayContextResolver\(runtime\.subagent\)\)/);
+ assert.match(out,/t as bindGatewayContextResolver/);
  assert.equal(patchDeferredSubagentContext(out),out);
 });

@@ -60,9 +60,18 @@ export function patchHostIdentity(source) {
 }
 export function patchDeferredSubagentContext(source) {
   const contextMarker='vlab91-native-deferred-subagent-context-v1';
-  if(source.includes(contextMarker))return source;
+  if(source.includes(contextMarker)) {
+    if(source.includes('t as bindGatewayContextResolver'))return source;
+    return once(source,'r as getGatewayContextResolver, u as withPluginRuntimePluginScope',
+      'r as getGatewayContextResolver, t as bindGatewayContextResolver, u as withPluginRuntimePluginScope');
+  }
   const anchor='function createDeferredGatewaySubagentRuntime(runtime) {\n\treturn {';
-  const result=once(source,anchor,`function createDeferredGatewaySubagentRuntime(runtime) {\n\t// ${contextMarker}: preserve the native lifecycle-fenced instance resolver.\n\tconst deferred = {`);
+  let result=source;
+  if(result.includes('from "./gateway-request-scope-')) {
+    result=once(result,'r as getGatewayContextResolver, u as withPluginRuntimePluginScope',
+      'r as getGatewayContextResolver, t as bindGatewayContextResolver, u as withPluginRuntimePluginScope');
+  }
+  result=once(result,anchor,`function createDeferredGatewaySubagentRuntime(runtime) {\n\t// ${contextMarker}: preserve the native lifecycle-fenced instance resolver.\n\tconst deferred = {`);
   return once(result,'\n\t};\n}\nfunction createDeferredGatewayNodesRuntime(runtime) {',
     '\n\t};\n\tbindGatewayContextResolver(deferred, getGatewayContextResolver(runtime.subagent));\n\treturn deferred;\n}\nfunction createDeferredGatewayNodesRuntime(runtime) {');
 }
@@ -92,7 +101,9 @@ async function main() {
   }));
   for (const c of changes) {
     if (mode === '--apply' && c.before !== c.after) {
-      await fs.copyFile(c.file,c.file+'.'+marker+'.bak',fs.constants.COPYFILE_EXCL);
+      if (!c.before.includes('vlab91-native-deferred-subagent-context-v1')) {
+        await fs.copyFile(c.file,c.file+'.'+marker+'.bak',fs.constants.COPYFILE_EXCL);
+      }
       const st = await fs.stat(c.file), tmp = c.file+'.tmp-'+process.pid;
       await fs.writeFile(tmp,c.after,{mode:st.mode});
       await fs.chown(tmp,st.uid,st.gid);
