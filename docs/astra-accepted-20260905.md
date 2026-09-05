@@ -1,5 +1,14 @@
 # GPT-6 Astra — 双 Runtime 独立 VLab 验收通过
 
+## 生产交接更新
+
+统筹任务 `01a06fbe-7654-7331-8d6e-73a8cd2dcd7e` 后续反馈：已在生产完成窄补丁部署，并通过只读 `chat.history` 重新确认以下两条均为 `openai/gpt-6-astra`，有真实 `ASTRA_PROD_TOOL_OK` 工具结果及 `ASTRA_PROD_REPLY_OK` 最终结果：
+
+- makaron / vlab-worker：`astra-prod-smoke-1788590853514-d740eb61`
+- v-codex / codex：`astra-prod-smoke-1788590882329-9d365f78`
+
+这是统筹任务的生产验收反馈，本任务没有重复执行生产模型测试。主/overlay业务默认模型的最终备份比对由统筹任务负责；不把这两条短测扩展为全功能或用户侧飞书验收结论。下面保留候选交付时的状态、版本与回滚操作。
+
 2026-09-05 14:28 Asia/Shanghai：**实际模型及工具执行通过，尚未生产部署或用户侧飞书验收。**
 
 生产写入、重启由统筹线程 `01a06fbe-7654-7331-8d6e-73a8cd2dcd7e` 统一执行。本任务没有修改生产 V，也没有为这轮验收重启共享24993。
