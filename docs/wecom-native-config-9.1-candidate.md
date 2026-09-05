@@ -1,7 +1,29 @@
 # WeCom native tool configuration candidate — 2026-09-05
 
-Status: private tests passed; native VLab regression reproduced; integration
-install blocked by explicit capability consent. Not deployed to production.
+Status (2026-09-06 01:00 Asia/Shanghai): private tests passed; candidate installed
+in integration VLab with reviewed capability consent. Real business acceptance
+blocked by missing VLab WeCom account configuration. Not deployed to production.
+
+## September 6 integration result
+
+- User reports browser works after returning home; no further browser changes.
+- Reviewed feature merged into dedicated `codex/wecom91-integration` worktree.
+- Acquired integration lease as this task owner; official installer accepted the
+  exact candidate hash below with `--accept-capabilities`. Manifest scope was
+  checked identical to installed vlab.1. Installer exited 0; main config unchanged.
+- Restarted only integration VLab: PID 1587731, NRestarts 0, Gateway ready.
+- Native `tools.invoke` no longer returns runtime-not-initialized. It now reports
+  default WeCom account missing botId / secret. Current main and Worker config
+  lack `channels.wecom`; the pre-install backup lacks it too. This installation
+  did not remove it. Eleven scoped current/baseline/backup config files checked
+  had no WeCom account. Existing WeCom session history is not live channel setup.
+- No production credentials copied into VLab, no business API success claimed,
+  no production deployment. Need VLab-specific WeCom authorization/configuration
+  before native + Worker real tool acceptance and conditional production release.
+- Initial immediate post-restart probe hit ECONNREFUSED during startup; subsequent
+  probe reached ready Gateway successfully. This was not a restart loop.
+
+The original attempted-install notes below are historical, not current status.
 
 - Source fix: `346916e`, on `codex/browser-codex-session-routing`.
 - Private instance: `astra`, owner `01a06fbe-7654-7331-8d6e-73a8cd2dcd7e`;
