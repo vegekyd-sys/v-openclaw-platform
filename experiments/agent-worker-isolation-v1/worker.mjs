@@ -1,4 +1,5 @@
 import { performance } from "node:perf_hooks";
+import { initializeWorkerNativeHooks } from "./native-hook-runtime.mjs";
 import { pathToFileURL } from "node:url";
 import { buildHarnessAttemptResult } from "./harness-result.mjs";
 import { readFastCompactionStats } from "./fast-compaction-provider.mjs";
@@ -648,6 +649,10 @@ async function runAgent(message, abortSignal) {
         },
       );
     try {
+      await initializeWorkerNativeHooks({
+        pluginGeneration: preparedRuntimeLease.pluginGeneration,
+        agentRuntimePath: configuredAgentRuntimePath(),
+      });
       const externalTaskContext = { acceptedSessionSpawns: [] };
       externalTaskContextsBySessionKey.set(
         message.sessionKey,
