@@ -3,6 +3,17 @@ import assert from 'node:assert/strict';
 import {buildNativeHarnessData,applyNativeHarnessData,cloneWireData} from './native-harness-data.mjs';
 import {WorkerPool} from './worker-pool.mjs';
 import {fileURLToPath} from 'node:url';
+test('native image provenance survives JSON IPC without broad Symbol permission',()=>{
+ const symbol=Symbol.for('openclaw.runtimePromptImageFactIndexes'),images=[{type:'image',data:'test',mimeType:'image/png'}];
+ Object.defineProperty(images,symbol,{value:[7],configurable:true});
+ const encoded=JSON.parse(JSON.stringify(buildNativeHarnessData({images,nested:{futureImages:images}})));
+ const decoded=applyNativeHarnessData({sessionId:'local'},encoded);
+ assert.deepEqual(decoded.images[symbol],[7]);assert.deepEqual(decoded.nested.futureImages[symbol],[7]);
+ assert.equal(Object.getOwnPropertyDescriptor(decoded.images,symbol).enumerable,false);
+ assert.throws(()=>buildNativeHarnessData({images:Object.assign([],{[Symbol.for('unknown.authority')]:true})}),/Unreviewed symbol/);
+ assert.throws(()=>applyNativeHarnessData({},{$vlabNativeImageFacts:[{path:['config'],factIndexes:[]}]}),/Invalid/);
+ assert.throws(()=>applyNativeHarnessData({},{images:[], $vlabNativeImageFacts:[{path:['images'],factIndexes:[0]}]}),/Invalid/);
+});
 test('new native data reaches native attempt without adding an ingress parameter mapping',()=>{
  const future={futureVoiceRouting:{enabled:true,formats:['ogg'],future:{mode:'native'}},thinkLevel:'high'};
  const data=buildNativeHarnessData({...future,sessionId:'s',config:{apiKey:'not-for-wire'},abortSignal:new AbortController().signal,onPartialReply(){}});
@@ -34,11 +45,14 @@ test('real child-process IPC carries future native data and reply metadata witho
  try {
   await Promise.all([0,1,2].map(async i=>{
    const futureNativeOption={session:i,nested:{enabled:true,values:[false,null,'new field']}};
+   const images=[{type:'image',data:'AA==',mimeType:'image/png'}];
+   Object.defineProperty(images,Symbol.for('openclaw.runtimePromptImageFactIndexes'),{value:[i]});
    const result=await pool.dispatch(`agent:fixture:future-${i}`,{kind:'agent',nativeAttempt91:true,
     agentId:'fixture',sessionId:`future-${i}`,runId:`future-${i}`,message:'native-data-envelope',
-    nativeHarnessData:buildNativeHarnessData({futureNativeOption})});
+    nativeHarnessData:buildNativeHarnessData({futureNativeOption,images})});
    assert.deepEqual(JSON.parse(result.payloads[0].text),futureNativeOption);
    assert.deepEqual(result.payloads[0].futureMetadata,{preserved:true});
+   assert.deepEqual(result.payloads[0].imageFactIndexes,[i]);
   }));
  } finally {await pool.close();}
 });

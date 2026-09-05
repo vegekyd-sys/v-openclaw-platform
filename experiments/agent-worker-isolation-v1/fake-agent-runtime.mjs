@@ -72,7 +72,8 @@ export async function agentCommand(params) {
   if (params.message === 'native-data-envelope') {
     const bridge=globalThis[Symbol.for('versa.vlab.native-attempt-91-v1')];
     const native=bridge.prepare({runId:params.runId,sessionId:params.sessionId,agentId:params.agentId});
-    return {payloads:[{text:JSON.stringify(native.futureNativeOption),futureMetadata:{preserved:true}}],
+    return {payloads:[{text:JSON.stringify(native.futureNativeOption),futureMetadata:{preserved:true},
+      ...(native.images?{imageFactIndexes:native.images[Symbol.for('openclaw.runtimePromptImageFactIndexes')]}:{})}],
       meta:{agentMeta:{provider:'fixture',model:'fixture',sessionId:params.sessionId}}};
   }
   if (params.message === "inspect-timeout") {
