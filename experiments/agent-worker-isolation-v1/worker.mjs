@@ -664,7 +664,7 @@ async function runAgent(message, abortSignal) {
       );
       externalTaskContextsByRunId.set(message.runId, externalTaskContext);
       try {
-        result = await commandRuntime.agentCommandFromGatewayIngress({
+        result = await nativeAttemptBridge.withPluginGeneration(preparedRuntimeLease.pluginGeneration, () => commandRuntime.agentCommandFromGatewayIngress({
       message: message.message,
       transcriptMessage: message.transcriptMessage ?? message.message,
       images: message.images,
@@ -728,7 +728,7 @@ async function runAgent(message, abortSignal) {
       }, undefined, undefined, {}, {
         config,
         pluginGeneration: preparedRuntimeLease.pluginGeneration,
-      });
+      }));
       if (message.nativeAttempt91 === true) nativeAttemptBridge.assertPrepared(message.runId);
       } finally {
         if (

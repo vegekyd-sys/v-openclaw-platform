@@ -1,15 +1,24 @@
 // Worker-only hooks. Contexts are registered by trusted IPC admission, never by
 // tool arguments. Native run ownership and permission checks remain in core.
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { applyNativeHarnessData } from './native-harness-data.mjs';
 export const NATIVE_ATTEMPT_BRIDGE = Symbol.for("versa.vlab.native-attempt-91-v1");
 
 export function createNativeAttemptBridge() {
   const runs = new Map();
+  const runtimeScope = new AsyncLocalStorage();
   function current(runId) {
     const context = runs.get(runId);
     if (!context || context.signal.aborted) throw new Error("Worker native attempt is no longer active");
     return context;
   }
   return {
+    // Use native prepared plugin registrations, never a copied capability list.
+    // Async scope keeps simultaneous agents from changing each other's registry.
+    withPluginGeneration(generation, run) {
+      return runtimeScope.run(generation?.pluginRegistry, run);
+    },
+    getChannelRegistry() { return runtimeScope.getStore(); },
     register(message, signal, onDeadline, executeMessage) {
       if (runs.has(message.runId)) throw new Error("Duplicate Worker native run identity");
       const context = { message, signal, onDeadline, executeMessage };
@@ -24,7 +33,7 @@ export function createNativeAttemptBridge() {
       const upstreamDeadline = input.onAttemptDeadlineChanged;
       c.prepared = true;
       return {
-        ...input,
+        ...applyNativeHarnessData(input, c.message.nativeHarnessData),
         conversationRoutePeerId: c.message.agentCommandOptions?.conversationRoutePeerId,
         onAttemptDeadlineChanged(deadline) {
           // Native cleanup may close an approval wait after cancellation.

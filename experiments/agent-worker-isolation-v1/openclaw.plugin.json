@@ -1,7 +1,8 @@
 {
   "id": "vlab-agent-worker-isolation",
   "activation": {
-    "onStartup": true
+    "onStartup": true,
+    "onAgentHarnesses": ["vlab-worker"]
   },
   "name": "vLab Agent Worker Isolation",
   "description": "Routes native OpenClaw Agent Harness dispatch and vLab experiment RPCs to elastic child-process workers.",

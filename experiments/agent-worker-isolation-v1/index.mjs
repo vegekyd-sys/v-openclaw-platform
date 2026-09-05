@@ -1,5 +1,9 @@
 import { WorkerPool } from "./worker-pool.mjs";
 import { performance } from "node:perf_hooks";
+import { buildNativeHarnessData } from './native-harness-data.mjs';
+// A clean relay counter is not production acceptance. This candidate still
+// needs real active-cancel and restart-recovery ownership acceptance.
+const nativeParityReleaseHold = true;
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -488,6 +492,8 @@ const plugin = {
     }
 
     async function dispatchNativeHarnessAttempt(params) {
+      // Validate before creating a relay or admitting any side effects.
+      const nativeHarnessData = buildNativeHarnessData(params);
       const harnessAttemptStartedAt = Date.now();
       const messageChannel = resolveHarnessMessageChannel(params);
       const sessionKey =
@@ -537,6 +543,11 @@ const plugin = {
         harnessEventParity.processLocalOptions.add(name);
       }
       for (const name of optionContract.unclassified) {
+        if (Object.hasOwn(nativeHarnessData, name)) {
+          harnessEventParity.automaticallyForwardedOptions ??= new Set();
+          harnessEventParity.automaticallyForwardedOptions.add(name);
+          continue;
+        }
         if (!harnessEventParity.unclassifiedOptions.has(name)) {
           api.logger.warn(
             `OpenClaw exposed an unclassified Agent Harness option: ${name}`,
@@ -597,6 +608,7 @@ const plugin = {
                 kind: "agent",
                 harnessAttempt: true,
                 nativeAttempt91: true,
+                nativeHarnessData,
                 gatewayMessageTool: Boolean(params.messageActionTurnCapability),
                 message: params.prompt,
                 transcriptMessage: expectedUserTurn,
@@ -1302,7 +1314,14 @@ const plugin = {
             nativeAgentHarnessDispatchAttached: true,
             nestedGatewayHarnessRouting: true,
             workerUsesIngressAgentCommand: true,
-            workerIsolationVersion: "0.2.9-rc.2",
+            workerIsolationVersion: "0.2.10-rc.1",
+            nativeDataTransport: {
+              contract: "native-harness-data-v1",
+              ordinaryDataPassthrough: true,
+              nonDataRequiresReview: true,
+              perRunNativeChannelRegistry: true,
+              automaticFields: [...(harnessEventParity.automaticallyForwardedOptions ?? [])].sort(),
+            },
             activeRunSteer: {
               enabled: process.env.VLAB_FEISHU_STEER_ENABLED === "1",
               allowedChatIds: (process.env.VLAB_FEISHU_STEER_CHAT_IDS ?? "")
@@ -1422,6 +1441,7 @@ const plugin = {
             },
             workerHeartbeatMs,
             productionPromotionBlocked:
+              nativeParityReleaseHold ||
               harnessEventParity.unclassifiedCallbacks.size > 0 ||
               harnessEventParity.unclassifiedOptions.size > 0 ||
               harnessEventParity.eventRelayFailures > 0 ||
@@ -1434,12 +1454,10 @@ const plugin = {
                   worker.skillUsageTelemetry?.unavailable === true,
               ),
             productionPromotionAcceptance: {
-              nativeThreeByThree: true,
-              nativeSessionAndTranscriptOwnership: true,
-              nativeCancellation: true,
-              activeWorkerCrashIsolation: true,
-              idempotentFailureRecovery: true,
-              rollbackAndRedeploy: true,
+              status: "vlab-only-incomplete",
+              report: "docs/worker-native-parity-v0.2.10-rc.1.md",
+              legacyAcceptanceIsNotInherited: true,
+              blockers: ["feishu-active-cancel", "restart-recovery-ownership"],
             },
             nativeHarnessStats: { ...nativeHarnessStats },
           },
