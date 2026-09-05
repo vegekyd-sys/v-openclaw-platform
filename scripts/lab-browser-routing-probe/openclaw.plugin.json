@@ -1,0 +1,1 @@
+{"id":"lab-browser-routing-probe","name":"Lab browser routing probe","activation":{"onStartup":true},"contracts":{"tools":["lab_browser_mark"]},"configSchema":{"type":"object","properties":{},"additionalProperties":false}}
