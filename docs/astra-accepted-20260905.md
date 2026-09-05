@@ -35,6 +35,8 @@ Probe每次使用唯一Session/label，并拒绝共享generation。wrapper必须
 
 **不能复制整个Lab配置或认证库。**
 
+部署前运行 `astra-hash-gate.mjs before CORE WORKER`，三个目标文件必须匹配生产基线；代码apply后运行同命令的`after`。任何hash不符都先review，不能用整包覆盖别人的补丁。CLI策略另有二进制SHA门禁。
+
 1. `patch-openclaw91-astra.mjs apply CORE WORKER CODE_BACKUP`：
    - model-route-contract仅加Astra双runtime路由与low/medium/high/xhigh/max。
    - openai-chatgpt-provider仅加Astra订阅Responses模型元数据，无temperature。
