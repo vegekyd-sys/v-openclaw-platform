@@ -41,6 +41,7 @@ test('native IPC keeps recorder/callbacks local and fences acceptance/receipt by
  pool.onMessage({}, {...m,type:'steer-accepted',accepted:true});assert.equal(accepted,0);
  pool.onMessage(worker,{...m,requestId:'other',type:'steer-persisted'});assert.equal(persisted,0);
  pool.onMessage(worker,{...m,type:'steer-accepted',accepted:true});assert.equal(accepted,1);
+ pool.onMessage(worker,{...m,type:'steer-accepted',accepted:true});assert.equal(accepted,1);
  pool.onMessage(worker,{...m,type:'steer-persisted',message:{},receipt:{}});assert.equal(persisted,1);
  pool.onMessage(worker,{...m,type:'steer-ack',ok:true,result:{transcriptCommit:'confirmed'}});
  assert.equal((await p).result.transcriptCommit,'confirmed');assert.equal(pool.pendingSteers.size,0);
@@ -52,8 +53,22 @@ test('accepted then lost acknowledgement reports unconfirmed, never rejection/re
  pool.onMessage(worker,{...m,type:'steer-ack',ok:false,error:{message:'worker exited'}});
  assert.deepEqual(await p,{steered:true,result:{transcriptCommit:'unconfirmed',errorMessage:'worker exited'}});
 });
-test('native IPC fails closed for unreviewed function or accessor fields',async()=>{
+test('native IPC fails closed for unreviewed function fields',async()=>{
  const {pool,sent}=fixture();
  await assert.rejects(pool.steer('a','x',{newCallback:()=>{}}),/Unreviewed/);
  assert.equal(sent.length,0);
+});
+test('inbound cancellation targets only its pending steer and cleans listener after settlement',async()=>{
+ const {pool,worker,sent}=fixture();const controller=new AbortController();
+ const p=pool.steer('a','x',{abortSignal:controller.signal});await tick();const m=sent[0];
+ controller.abort();assert.deepEqual(sent[1],{type:'steer-cancel',requestId:'a',steerId:m.steerId});
+ pool.onMessage(worker,{...m,type:'steer-ack',ok:false,error:{message:'aborted'}});
+ await assert.rejects(p,/aborted/);assert.equal(pool.pendingSteers.size,0);
+ const c2=new AbortController();const p2=pool.steer('a','y',{abortSignal:c2.signal});await tick();
+ pool.onMessage(worker,{...sent[2],type:'steer-ack',ok:true});await p2;
+ c2.abort();assert.equal(sent.length,3);
+});
+test('disconnected IPC fails promptly without retaining pending acknowledgement',async()=>{
+ const {pool,worker}=fixture();worker.child.send=()=>{throw Error('disconnected');};
+ await assert.rejects(pool.steer('a','x',{}),/disconnected/);assert.equal(pool.pendingSteers.size,0);
 });

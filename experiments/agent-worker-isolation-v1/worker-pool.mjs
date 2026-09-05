@@ -392,8 +392,17 @@ export class WorkerPool {
       this.nextSteerId += 1;
       const promise = new Promise((resolve, reject) => {
         let accepted = false;
-        const rejectSafely = error => accepted ? resolve({steered:true,result:{
-          transcriptCommit:'unconfirmed',errorMessage:error.message}}) : reject(error);
+        const onAbort = () => {
+          try { worker.child.send({type:'steer-cancel',requestId,steerId}); }
+          catch { /* The pending acknowledgement/worker-exit path settles this request. */ }
+        };
+        const cleanup = () => abortSignal?.removeEventListener('abort', onAbort);
+        const resolveSafely = value => { cleanup(); resolve(value); };
+        const rejectSafely = error => {
+          cleanup();
+          if (accepted) resolve({steered:true,result:{transcriptCommit:'unconfirmed',errorMessage:error.message}});
+          else reject(error);
+        };
         const timer = setTimeout(() => {
           this.pendingSteers.delete(steerId);
           rejectSafely(new Error(`worker Steer ${steerId} acknowledgement timed out`));
@@ -403,13 +412,14 @@ export class WorkerPool {
           requestId,
           worker,
           timer,
-          resolve,
+          resolve: resolveSafely,
           reject: rejectSafely,
-          onAccepted: value => { if(value) accepted=true; onQueueAccepted?.(value); },
+          onAccepted: value => { if (accepted) return; if(value) accepted=true; onQueueAccepted?.(value); },
           recorder: native ? userTurnTranscriptRecorder : undefined,
         });
+        if (native) abortSignal?.addEventListener('abort', onAbort, {once:true});
       });
-      worker.child.send({
+      try { worker.child.send({
         type: "steer",
         requestId,
         steerId,
@@ -423,7 +433,14 @@ export class WorkerPool {
           sourceReplyDeliveryMode: options?.sourceReplyDeliveryMode,
           waitForTranscriptCommit: options?.waitForTranscriptCommit === true,
         },
-      });
+      }); } catch (error) {
+        const pending = this.pendingSteers.get(steerId);
+        if (pending) {
+          clearTimeout(pending.timer);
+          this.pendingSteers.delete(steerId);
+          pending.reject(toError(error));
+        }
+      }
       return await promise;
     }
     return {

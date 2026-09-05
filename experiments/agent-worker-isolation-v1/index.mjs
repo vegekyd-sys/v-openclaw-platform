@@ -3,7 +3,7 @@ import { performance } from "node:perf_hooks";
 import { buildNativeHarnessData } from './native-harness-data.mjs';
 import { gatewayOwnedEventArgs } from './gateway-owned-terminal.mjs';
 // Release gates are documented separately from runtime parity counters.
-const nativeParityReleaseHold = false;
+const nativeParityReleaseHold = true; // 9.1 Steer candidate: real Feishu acceptance pending.
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -1320,7 +1320,7 @@ const plugin = {
             nativeAgentHarnessDispatchAttached: true,
             nestedGatewayHarnessRouting: true,
             workerUsesIngressAgentCommand: true,
-            workerIsolationVersion: "0.2.10",
+            workerIsolationVersion: "0.2.11-rc.1",
             nativeDataTransport: {
               contract: "native-harness-data-v1",
               ordinaryDataPassthrough: true,
@@ -1460,11 +1460,11 @@ const plugin = {
                   worker.skillUsageTelemetry?.unavailable === true,
               ),
             productionPromotionAcceptance: {
-              status: "vlab-scoped-regression-passed",
-              report: "docs/worker-native-parity-v0.2.10.md",
+              status: "private-worker-passed-channel-acceptance-pending",
+              report: "docs/steer91-repair.md",
               legacyAcceptanceIsNotInherited: true,
-              verified: ["feishu-voice-note", "active-cancel-and-next-turn", "settled-turn-restart", "two-child-completion"],
-              blockers: [],
+              verified: ["private-worker-steer-original-run", "single-user-transcript", "single-worker-attempt"],
+              blockers: ["real-feishu-worker-and-codex-steer"],
             },
             nativeHarnessStats: { ...nativeHarnessStats },
           },

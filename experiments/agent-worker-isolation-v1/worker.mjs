@@ -23,6 +23,7 @@ let agentEventRuntimePromise;
 let diagnosticRuntimePromise;
 let compactionRuntimePromise;
 const activeControllers = new Map();
+const activeSteerControllers = new Map();
 const skillTelemetryContexts = new Map();
 const pendingStreamEventAcks = new Map();
 const pendingWorkerGatewayEventAcks = new Map();
@@ -868,6 +869,11 @@ process.on("message", async (message) => {
     }
     return;
   }
+  if (message?.type === "steer-cancel") {
+    const pending = activeSteerControllers.get(message.steerId);
+    if (pending?.requestId === message.requestId) pending.controller.abort();
+    return;
+  }
   if (message?.type === "steer" && message.requestId && message.steerId) {
     const active = activeControllers.get(message.requestId);
     try {
@@ -877,10 +883,12 @@ process.on("message", async (message) => {
         });
       }
       if (active.request.nativeAttempt91 === true) {
+        const controller = new AbortController();
+        activeSteerControllers.set(message.steerId, {requestId:message.requestId,controller});
         const emit = data => process.send?.({requestId:message.requestId,steerId:message.steerId,...data});
         const result = await nativeAttemptBridge.steer(active.request.runId, message.text, {
           ...message.options,
-          abortSignal: active.controller.signal,
+          abortSignal: AbortSignal.any([active.controller.signal, controller.signal]),
           onQueueAccepted: accepted => emit({type:'steer-accepted',accepted}),
           ...(message.preparedMessage ? {userTurnTranscriptRecorder:{
             resolveMessage: async () => message.preparedMessage,
@@ -931,6 +939,8 @@ process.on("message", async (message) => {
         ok: false,
         error: serializeError(error),
       });
+    } finally {
+      activeSteerControllers.delete(message.steerId);
     }
     return;
   }

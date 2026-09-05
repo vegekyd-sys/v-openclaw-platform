@@ -30,6 +30,19 @@ for(let i=0;i<60;i++){
 }
 assert(ready,'No actual tool-call boundary reached');
 log('tool-boundary');
+if (process.argv.includes('--stop')) {
+  const stop=await call('chat.send',{agentId:'lab',sessionKey:key,deliver:false,idempotencyKey:`steer91-stop-${stamp}`,message:'/stop'});
+  log('stop-admitted',{status:stop.status});
+  const terminal=await call('agent.wait',{runId:first.runId,timeoutMs:30000});
+  assert(!['running','timeout'].includes(terminal.status),'Stopped run did not settle');
+  const next=await call('chat.send',{agentId:'lab',sessionKey:key,deliver:false,idempotencyKey:`steer91-next-${stamp}`,message:'停止验收已完成，不要恢复旧任务。本轮只回复 STEER91_AFTER_STOP_OK。'});
+  const done=await call('agent.wait',{runId:next.runId,timeoutMs:40000});assert.equal(done.status,'ok');
+  const history=await call('chat.history',{agentId:'lab',sessionKey:key,limit:30});
+  const texts=history.messages.filter(m=>m.role==='assistant').flatMap(m=>m.content?.filter(x=>x.type==='text').map(x=>x.text)??[]).join('\n');
+  assert(texts.includes('STEER91_AFTER_STOP_OK'));assert(!texts.includes('STEER91_ORIGINAL_DONE'));
+  log('stop-and-next-turn-passed',{originalStatus:terminal.status,nextStatus:done.status});
+  process.exit(0);
+}
 const second=await call('chat.send',{agentId:'lab',sessionKey:key,deliver:false,idempotencyKey:`steer91-second-${stamp}`,queueMode:'steer',timeoutMs:150000,
   message:'【Steer 变更】立即改变正在执行的这一个任务：不要回复旧的 ORIGINAL 标记，也不要另外启动一轮任务。现有前台工具结束后，本轮最终只回复 STEER91_CHANGED_OK。'});
 log('steer-admitted',{runId:second.runId,status:second.status,keys:Object.keys(second)});

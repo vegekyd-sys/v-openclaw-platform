@@ -121,6 +121,9 @@ const PATCHED_NO_VISIBLE_FALLBACK = `\t\t\tif (!params.activeRunDispatch && shou
 
 const OPENCLAW81_NO_VISIBLE_FALLBACK = `\t\t\tif (shouldSendNoVisibleReplyFallback(dispatchResult)) await ensureNoVisibleReplyFallback("dispatch-complete-no-visible-reply");`;
 const PATCHED_OPENCLAW81_NO_VISIBLE_FALLBACK = `\t\t\tif (!params.activeRunDispatch && shouldSendNoVisibleReplyFallback(dispatchResult)) await ensureNoVisibleReplyFallback("dispatch-complete-no-visible-reply");`;
+// 9.1 exposes native admission evidence. Do not hide genuine empty/failed
+// replies merely because they entered the active-run transport lane.
+const PATCHED_OPENCLAW91_NO_VISIBLE_FALLBACK = `\t\t\tif (dispatchResult.deferredToActiveRun !== "steer" && shouldSendNoVisibleReplyFallback(dispatchResult)) await ensureNoVisibleReplyFallback("dispatch-complete-no-visible-reply");`;
 
 function replaceExactlyOnce(source, original, replacement, label) {
   const first = source.indexOf(original);
@@ -137,6 +140,7 @@ function replaceExactlyOnce(source, original, replacement, label) {
 
 export function patchFeishuActiveRunSteeringBundle(source) {
   const openClaw81Shape = source.includes(OPENCLAW81_TASK_DECLARATION);
+  const nativeReceiptShape = source.includes('dispatchResult.settledReceipt?.anyVisibleDelivered');
   let patched = source;
   let changed = false;
   const applyStep = (originals, replacement, label) => {
@@ -182,8 +186,10 @@ export function patchFeishuActiveRunSteeringBundle(source) {
     "queued follow-up lifecycle",
   );
   applyStep(
-    [ORIGINAL_NO_VISIBLE_FALLBACK, OPENCLAW81_NO_VISIBLE_FALLBACK],
-    openClaw81Shape
+    [ORIGINAL_NO_VISIBLE_FALLBACK, OPENCLAW81_NO_VISIBLE_FALLBACK, PATCHED_OPENCLAW81_NO_VISIBLE_FALLBACK],
+    nativeReceiptShape
+      ? PATCHED_OPENCLAW91_NO_VISIBLE_FALLBACK
+      : openClaw81Shape
       ? PATCHED_OPENCLAW81_NO_VISIBLE_FALLBACK
       : PATCHED_NO_VISIBLE_FALLBACK,
     "adopted Steer empty-reply fallback",

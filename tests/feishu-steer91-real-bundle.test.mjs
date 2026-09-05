@@ -34,6 +34,8 @@ test('real 9.1 bundle: patch is exact and idempotent', {skip:!source}, () => {
   const p=patchFeishuActiveRunSteeringBundle(source);
   assert(p.changed); assert(!patchFeishuActiveRunSteeringBundle(p.source).changed);
   assert.equal(p.source.includes('const DEFAULT_TASK_TIMEOUT_MS = 3e5;'),true);
+  assert(p.source.includes('dispatchResult.deferredToActiveRun !== "steer"'));
+  assert(!p.source.includes('!params.activeRunDispatch && shouldSendNoVisibleReplyFallback'));
 });
 
 for (const [label,patched,enabled,chats,expectedEarly] of [
