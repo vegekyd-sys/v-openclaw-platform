@@ -64,6 +64,17 @@ export function createNativeAttemptBridge() {
       });
       return result === true && runs.get(runId) === c && !c.signal.aborted && c.isCurrent();
     },
+    async steer(runId, text, options) {
+      const c = current(runId);
+      if (!c.handle || !c.isCurrent?.() || c.handle.isStopped?.() || c.handle.isCompacting?.()) {
+        throw new Error('Native Worker is not ready for message injection');
+      }
+      if (options.isInboundUserMessage === true && (!options.toolAuthorityFingerprint ||
+          options.toolAuthorityFingerprint !== c.handle.toolAuthorityFingerprint)) {
+        throw new Error('Native Worker Steer tool authority mismatch');
+      }
+      return await c.handle.queueMessage(text, options);
+    },
     async executeMessage(options, toolCallId, args, signal) {
       const c = current(options?.runId);
       if (options.sessionId !== c.message.sessionId || options.agentSessionKey !== c.message.sessionKey) {

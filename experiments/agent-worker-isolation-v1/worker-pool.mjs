@@ -1,5 +1,6 @@
 import { fork } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { cloneWireData } from "./native-harness-data.mjs";
 
 const DEFAULT_WORKER_PATH = fileURLToPath(new URL("./worker.mjs", import.meta.url));
 
@@ -379,20 +380,33 @@ export class WorkerPool {
     }
     for (const worker of this.workers.values()) {
       if (!worker.active.has(requestId)) continue;
+      const job = worker.active.get(requestId);
+      const native = job.request?.nativeAttempt91 === true;
+      const { onQueueAccepted, userTurnTranscriptRecorder, abortSignal, ...dataOptions } = options;
+      if (abortSignal?.aborted) throw cancellationError(requestId);
+      const nativeOptions = native ? cloneWireData(dataOptions, 'steerOptions') : undefined;
+      const preparedMessage = native && userTurnTranscriptRecorder
+        ? cloneWireData(await userTurnTranscriptRecorder.resolveMessage(), 'steerMessage') : undefined;
+      if (worker.active.get(requestId) !== job || abortSignal?.aborted) throw cancellationError(requestId);
       const steerId = `steer-${this.nextSteerId}`;
       this.nextSteerId += 1;
       const promise = new Promise((resolve, reject) => {
+        let accepted = false;
+        const rejectSafely = error => accepted ? resolve({steered:true,result:{
+          transcriptCommit:'unconfirmed',errorMessage:error.message}}) : reject(error);
         const timer = setTimeout(() => {
           this.pendingSteers.delete(steerId);
-          reject(new Error(`worker Steer ${steerId} acknowledgement timed out`));
-        }, 5_000);
+          rejectSafely(new Error(`worker Steer ${steerId} acknowledgement timed out`));
+        }, native ? (Number.isFinite(options.deliveryTimeoutMs) ? Math.max(5000, options.deliveryTimeoutMs) : 120000) + 5000 : 5_000);
         timer.unref?.();
         this.pendingSteers.set(steerId, {
           requestId,
           worker,
           timer,
           resolve,
-          reject,
+          reject: rejectSafely,
+          onAccepted: value => { if(value) accepted=true; onQueueAccepted?.(value); },
+          recorder: native ? userTurnTranscriptRecorder : undefined,
         });
       });
       worker.child.send({
@@ -400,7 +414,8 @@ export class WorkerPool {
         requestId,
         steerId,
         text,
-        options: {
+        preparedMessage,
+        options: nativeOptions ?? {
           steeringMode:
             options?.steeringMode === "one-at-a-time"
               ? "one-at-a-time"
@@ -694,6 +709,7 @@ export class WorkerPool {
           steerId: message.steerId,
           slot: worker.slot,
           workerPid: worker.pid,
+          result: message.result,
         });
       } else {
         pending.reject(
@@ -702,6 +718,17 @@ export class WorkerPool {
             { code: message.error?.code ?? "VLAB_WORKER_STEER_REJECTED" },
           ),
         );
+      }
+      return;
+    }
+    if (['steer-accepted','steer-persisted'].includes(message?.type)) {
+      const pending=this.pendingSteers.get(message.steerId);
+      if(!pending || pending.worker!==worker || pending.requestId!==message.requestId) return;
+      try {
+        if(message.type==='steer-accepted') pending.onAccepted?.(message.accepted===true);
+        else pending.recorder?.markRuntimePersisted?.(message.message,message.receipt);
+      } catch(error) {
+        clearTimeout(pending.timer);this.pendingSteers.delete(message.steerId);pending.reject(toError(error));
       }
       return;
     }

@@ -730,6 +730,9 @@ const plugin = {
               requestId: submitted.requestId,
               runId: params.runId,
               sourceReplyDeliveryMode: params.sourceReplyDeliveryMode,
+              nativeSteer: true,
+              toolAuthorityFingerprint: params.toolAuthorityFingerprint,
+              taskSuggestionDeliveryMode: params.taskSuggestionDeliveryMode,
               permissionChange: params.permissionChange,
               onPermissionChange: () => gatewayMessageRelay?.invalidate(),
             });
@@ -739,6 +742,9 @@ const plugin = {
               sessionKey,
               session.sessionFile,
             );
+            // 9.1 resolves interactive injection through the native Reply
+            // Operation, not only the legacy embedded-run map.
+            params.replyOperation?.attachBackend(activeRunProxy.handle);
             params.abortSignal?.addEventListener("abort", onAbort, {
               once: true,
             });

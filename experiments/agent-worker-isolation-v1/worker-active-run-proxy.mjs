@@ -6,7 +6,9 @@ export function createWorkerActiveRunProxy(options) {
     handle: {
       kind: "embedded",
       runId,
-      supportsTranscriptCommitWait: false,
+      supportsTranscriptCommitWait: options.nativeSteer === true,
+      toolAuthorityFingerprint: options.toolAuthorityFingerprint,
+      taskSuggestionDeliveryMode: options.taskSuggestionDeliveryMode,
       sourceReplyDeliveryMode,
       permissionChangeOwner: permissionChange?.owner,
       applyPermissionMode: permissionChange ? (mode, revokeApprovals) => {
@@ -27,7 +29,7 @@ export function createWorkerActiveRunProxy(options) {
         if (!active) {
           throw new Error("worker Agent run is no longer active");
         }
-        if (steerOptions.waitForTranscriptCommit === true) {
+        if (steerOptions.waitForTranscriptCommit === true && !options.nativeSteer) {
           throw new Error(
             "worker Steer does not support transcript-commit waiting",
           );
@@ -36,6 +38,7 @@ export function createWorkerActiveRunProxy(options) {
         if (result.steered !== true) {
           throw new Error(result.error ?? "worker rejected Steer message");
         }
+        return result.result;
       },
       cancel() {
         return pool.cancel(requestId).cancelled;

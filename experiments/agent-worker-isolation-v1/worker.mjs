@@ -876,6 +876,20 @@ process.on("message", async (message) => {
           code: "VLAB_WORKER_STEER_NOT_ACTIVE",
         });
       }
+      if (active.request.nativeAttempt91 === true) {
+        const emit = data => process.send?.({requestId:message.requestId,steerId:message.steerId,...data});
+        const result = await nativeAttemptBridge.steer(active.request.runId, message.text, {
+          ...message.options,
+          abortSignal: active.controller.signal,
+          onQueueAccepted: accepted => emit({type:'steer-accepted',accepted}),
+          ...(message.preparedMessage ? {userTurnTranscriptRecorder:{
+            resolveMessage: async () => message.preparedMessage,
+            markRuntimePersisted: (persisted,receipt) => emit({type:'steer-persisted',message:persisted,receipt}),
+          }} : {}),
+        });
+        emit({type:'steer-ack',ok:true,result});
+        return;
+      }
       if (message.options?.waitForTranscriptCommit === true) {
         throw Object.assign(
           new Error("worker Steer does not support transcript-commit waiting"),
