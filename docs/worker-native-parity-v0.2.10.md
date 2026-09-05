@@ -119,6 +119,46 @@ Browser target-identity diagnostics (74d0f67); no production config was changed.
 Service ready 19:10:41, PID 961442, NRestarts 0. Production acceptance continues;
 Browser is explicitly not yet accepted.
 
+### Browser screenshot isolation and rejected timeout experiment
+
+Production's real internal setup probe subsequently returned NATIVE_PROBE_0210_OK
+in 42,729 ms, action `none`. This acceptance is separate from Browser.
+
+Candidate 7963c3b enlarged the native page-identity deadline from 2 to 8 seconds.
+Its private native-function test resolved a 2.8-second identity response, and
+VLab's second real Codex/fixture run delivered a verified screenshot. The first
+cold fixture run still had discovery-only `tab-*` handles and failed; it is not
+counted as passed. Production deployment at 19:21:58 did not fix the actual
+Chrome path: getTargetInfo timed out at 8,001 and 8,000 ms. This experiment was
+rolled back on production at 19:30:12 and VLab at 19:30:56, with no config changes.
+Production ready PID 971960, Worker 0.2.10 ready, pending 0, no active sessions.
+VLab integration lease was released. Proven voice/native-probe fixes remain.
+
+A bounded, model-free production Browser RPC diagnostic at 19:34 reproduced:
+
+- authorized HA tab enumeration: 1,313 ms;
+- native snapshot: 2,673 ms, 4,465 characters, 80 refs;
+- native screenshot: timeout after 20,497 ms;
+- Broker pending Page.captureScreenshot and Runtime.callFunctionOn;
+- subsequent native target queries timed out while extension frame count
+  stopped advancing. Earlier matching failures also ended in extension
+  heartbeat timeout. The diagnostic released its lease successfully.
+
+This changes the working hypothesis: at least some identity failures are
+downstream of screenshot/Chrome transport stalling, not missing Worker fields.
+The desktop tool then explicitly reported the user's Mac locked and automatic
+unlock unsuccessful. No lock-screen bypass was attempted. Unlock-and-repeat
+is required before attributing all prior failures to screen locking or declaring
+Browser repaired. Loaded extension files already have concurrent CDP handling;
+file presence alone does not prove which code is currently running in Chrome.
+
+Next: with the Mac unlocked, compare the same authorized tab snapshot/screenshot
+path, including foreground/background behavior. Do not increase timeouts again
+without evidence. Do not send more tests to the business group previously used
+in error; use V Backup or VLab. The external 十二家 group's send denial remains
+respected. Production voice acceptance was an actual Feishu audio message using
+GPT-5.6 Terra, not Grok; original screenshot failure is not a new passing test.
+
 ### Rollback
 
 - Native selection and Browser diagnostics only:
