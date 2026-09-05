@@ -1,16 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 [[ $(hostname) == VM-0-4-ubuntu ]]
-[[ $1 == makaron || $1 == v-codex ]]
-candidate=/srv/vlab-production-mirror/generations/candidate-official-update-final-20260902
-systemd-run --quiet --wait --pipe --collect --unit="vlab91-astra-$$" \
- --property=User=vlab --property=Group=vlab --property=WorkingDirectory="$candidate" \
- --property=MemoryHigh=3G --property=MemoryMax=4G \
- --property=EnvironmentFile="-$candidate/state/.env.production-mirror" \
- --property=EnvironmentFile="-$candidate/state/gateway.systemd.env.production-mirror" \
- --property=EnvironmentFile=-/srv/vlab/state/feishu.env \
- --setenv=HOME="$candidate" --setenv=OPENCLAW_HOME="$candidate" \
- --setenv=OPENCLAW_STATE_DIR="$candidate/state" --setenv=OPENCLAW_CONFIG_PATH="$candidate/state/openclaw.json" \
- --setenv=OPENCLAW_WORKSPACE_DIR="$candidate/workspace" --setenv=OPENCLAW_GATEWAY_PORT=24993 \
- --setenv=PATH="$candidate/runtime/npm-global/bin:/opt/vlab/node-v22.23.1-linux-x64/bin:/usr/local/bin:/usr/bin:/bin" \
- /opt/vlab/node-v22.23.1-linux-x64/bin/node /srv/vlab/staging/vlab91-astra-probe.mjs "$1"
+[[ $1 == lab || $1 == v-codex ]]
+: "${VLAB_INSTANCE_OWNER:?Set the owner thread id explicitly}"
+exec sudo labctl run astra --owner "$VLAB_INSTANCE_OWNER" -- \
+ /opt/vlab/node-v22.23.1-linux-x64/bin/node \
+ /srv/vlab-production-mirror/labs/instances/astra/source/scripts/vlab91-astra-probe.mjs "$1"

@@ -21,7 +21,9 @@ for(const f of ['openclaw.json','worker-openclaw.json']) {
   const p=`${root}/state/${f}`,c=JSON.parse(fs.readFileSync(p));
   c.agents.entries['v-codex']={name:'Isolated Codex',workspace:`${root}/workspace`,agentDir:`${root}/state/agents/v-codex/agent`,model:{primary:'openai/gpt-5.6-sol',fallbacks:[]},models:{'openai/gpt-5.6-sol':{agentRuntime:{id:'codex'}}}};
   c.plugins.allow=[...new Set([...c.plugins.allow,'openai','codex'])];
-  c.plugins.load.paths=[...new Set([...c.plugins.load.paths,codexPlugin])];
+  // Codex owns a reserved native harness. Let OpenClaw's official bundled-plugin
+  // installer register it; config.load would downgrade its ownership to custom.
+  c.plugins.load.paths=c.plugins.load.paths.filter(p=>p!==codexPlugin);
   c.plugins.entries.openai={enabled:true};
   c.plugins.entries.codex={enabled:true,config:{appServer:{command:binary}}};
   c.auth??={};c.auth.profiles??={};c.auth.profiles[profileId]={provider:'openai',mode:'oauth'};
