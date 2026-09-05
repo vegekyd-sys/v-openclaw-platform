@@ -27,9 +27,13 @@ if(process.argv[2]==='repack-runtime-only'){
  fs.writeFileSync(backup+'/manifest.json',JSON.stringify(manifest,null,2),{mode:0o600});
  console.log(JSON.stringify({stage:'repacked',sha:manifest.sha,dependenciesPinned:true}));install(manifest.candidate,'install-runtime-only.log');process.exit(0);
 }
-if(process.argv[2]==='retry-install'){
+if(['retry-install','accept-reviewed-capabilities'].includes(process.argv[2])){
  const manifest=JSON.parse(fs.readFileSync(backup+'/manifest.json'));
  assert.equal(createHash('sha256').update(fs.readFileSync(manifest.candidate)).digest('hex'),manifest.sha);
+ if(process.argv[2]==='accept-reviewed-capabilities'){
+  assert.equal(manifest.sha,'2ac843d6455c34f30c33c0cf7bd75a5d16fb23e3b170dd134af3e60e5e0875a7');
+  assert.deepEqual(JSON.parse(fs.readFileSync(backup+'/package/openclaw.plugin.json')),JSON.parse(fs.readFileSync(src+'/openclaw.plugin.json')),'Capability scope changed');
+ }
  install(manifest.candidate,'install-retry.log');process.exit(0);
 }
 assert(!fs.existsSync(backup),'Candidate already staged; inspect rather than overwrite');
@@ -55,7 +59,8 @@ const cache=backup+'/install-cache';fs.mkdirSync(cache,{recursive:true,mode:0o70
 // OpenClaw is a host-provided optional peer, not a second Gateway to install.
 // npm 10's peer resolver crashes on this package's development peer graph.
 assert.equal(JSON.parse(fs.readFileSync(core+'/package.json')).version,'2026.9.1');
-const r=spawnSync('runuser',['-u','vlab','--',node,core+'/openclaw.mjs','plugins','install','--force',candidate],{env:{...process.env,npm_config_cache:cache,npm_config_legacy_peer_deps:'true'},encoding:'utf8',timeout:180000,maxBuffer:8*1024*1024});
+const consent=process.argv[2]==='accept-reviewed-capabilities'?['--accept-capabilities']:[];
+const r=spawnSync('runuser',['-u','vlab','--',node,core+'/openclaw.mjs','plugins','install','--force',...consent,candidate],{env:{...process.env,npm_config_cache:cache},encoding:'utf8',timeout:180000,maxBuffer:8*1024*1024});
 fs.writeFileSync(backup+'/'+log,(r.stdout??'')+'\n'+(r.stderr??''),{mode:0o600});
 console.log(JSON.stringify({stage:'installed',status:r.status,error:r.error?.code,configChanged:fs.readFileSync(process.env.OPENCLAW_CONFIG_PATH,'utf8')!==configBefore,log:backup+'/'+log}));
 // Never auto-accept new capabilities or restart on a rejected installation.
