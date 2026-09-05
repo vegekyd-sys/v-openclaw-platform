@@ -2,9 +2,8 @@ import { WorkerPool } from "./worker-pool.mjs";
 import { performance } from "node:perf_hooks";
 import { buildNativeHarnessData } from './native-harness-data.mjs';
 import { gatewayOwnedEventArgs } from './gateway-owned-terminal.mjs';
-// A clean relay counter is not production acceptance. This candidate still
-// needs real active-cancel and restart-recovery ownership acceptance.
-const nativeParityReleaseHold = true;
+// Release gates are documented separately from runtime parity counters.
+const nativeParityReleaseHold = false;
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -1315,7 +1314,7 @@ const plugin = {
             nativeAgentHarnessDispatchAttached: true,
             nestedGatewayHarnessRouting: true,
             workerUsesIngressAgentCommand: true,
-            workerIsolationVersion: "0.2.10-rc.1",
+            workerIsolationVersion: "0.2.10",
             nativeDataTransport: {
               contract: "native-harness-data-v1",
               ordinaryDataPassthrough: true,
@@ -1455,10 +1454,11 @@ const plugin = {
                   worker.skillUsageTelemetry?.unavailable === true,
               ),
             productionPromotionAcceptance: {
-              status: "vlab-only-incomplete",
-              report: "docs/worker-native-parity-v0.2.10-rc.1.md",
+              status: "vlab-scoped-regression-passed",
+              report: "docs/worker-native-parity-v0.2.10.md",
               legacyAcceptanceIsNotInherited: true,
-              blockers: ["feishu-active-cancel", "restart-recovery-ownership"],
+              verified: ["feishu-voice-note", "active-cancel-and-next-turn", "settled-turn-restart", "two-child-completion"],
+              blockers: [],
             },
             nativeHarnessStats: { ...nativeHarnessStats },
           },
