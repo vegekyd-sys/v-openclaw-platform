@@ -1,6 +1,7 @@
 # Control UI HTTPS candidate (2026-09-05)
 
-Status: independent VLab candidate; production deployment is owned by the coordinator.
+Status: independent VLab candidate deployed by the coordinator; initial production
+HTTPS acceptance passed. Longer real-business observation remains separate.
 
 ## Incident evidence
 
@@ -137,3 +138,47 @@ Official references:
 - https://docs.openclaw.ai/web/control-ui
 - https://docs.openclaw.ai/gateway/cloudflare-access
 - https://docs.openclaw.ai/gateway/stable-https-url
+
+## Production acceptance (2026-09-05 Asia/Shanghai)
+
+The coordinator deployed the candidate on loopback port 22794 and restarted the
+main Gateway. This specialist performed read-only config/log checks plus the
+explicitly authorized browser pairing and limited test message; no production
+config or service writes were performed by this specialist.
+
+- Nginx matches the reviewed template; existing Cloudflare unrelated ingresses
+  and the email-template / v-browser paths remain intact.
+- Native token auth and device pairing remain enabled. Trusted proxy is exactly
+  127.0.0.1/32; the proxy listens only on loopback. Gateway's pre-existing LAN bind
+  remains unchanged.
+- 14:45:56 Gateway ready, PID 818462, NRestarts 0. Cold SQLite loading caused a
+  lengthy startup, tracked by the coordinator independently of HTTPS routing.
+- Public page HTTP 200, first byte 2.079 seconds / total 2.111 seconds in one Mac
+  curl sample. Public unauthenticated POST /tools/invoke returned HTTP 401.
+- Native one-time owner bootstrap redeemed in Chrome on the HTTPS origin. No
+  gateway token was printed or embedded in versioned assets.
+- 14:48:03 HTTPS WebSocket connected. The real main DM (207.4k/258.4k context)
+  loaded visible historical messages and an enabled composer; verified by the
+  next browser observation within 7.4 seconds, not a precise render benchmark.
+- 14:48:55 chat.send accepted (247 ms Gateway time). At 14:49:13 the UI visibly
+  showed the printf tool and V_HTTPS_REPLY_OK. Context display subsequently became
+  45.5k; compaction quality is outside this transport acceptance.
+- Switched to the real V Backup group (91.3k/500k), history and input available.
+  One CUA mouse-dispatch call timed out at 2234 ms but the click had taken effect;
+  the next AX check confirmed successful navigation. No duplicate click was sent.
+- 14:50:55 deliberate browser reload ended the connection; 14:50:55.873 connected
+  again, and message subscription succeeded at 14:50:56.370 (177 ms). No new
+  credential entry or device approval was required. Original HTTPS connection
+  lasted about 2m51s until this deliberate reload, beyond the earlier ~50s pattern.
+- In this initial acceptance window, neither browser state nor inspected Gateway
+  logs showed the original CLIENT_TIMEOUT / subscription recovery failure.
+- Around 14:53, the original private UI tab was navigated to the public main DM.
+  The task-created temporary Mac tunnel process was terminated, port 22793 no
+  longer had a local listener, and the public main DM still showed the test reply
+  and usable composer. The original LaunchAgent plist remains intact but was left
+  unloaded; it can be restored explicitly if private fallback is needed.
+
+Conclusion: public authenticated Control UI is initially usable with real V
+history, a tool-backed reply, session switching, and remembered-browser reload.
+This is not a long-duration SLA or a claim that large-page rendering is fully
+optimized. Do not infer unrelated Feishu/Worker/Browser acceptance from this report.
