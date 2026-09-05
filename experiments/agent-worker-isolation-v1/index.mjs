@@ -1,6 +1,7 @@
 import { WorkerPool } from "./worker-pool.mjs";
 import { performance } from "node:perf_hooks";
 import { buildNativeHarnessData } from './native-harness-data.mjs';
+import { gatewayOwnedEventArgs } from './gateway-owned-terminal.mjs';
 // A clean relay counter is not production acceptance. This candidate still
 // needs real active-cancel and restart-recovery ownership acceptance.
 const nativeParityReleaseHold = true;
@@ -674,7 +675,7 @@ const plugin = {
                     );
                   }
                   try {
-                    await callback(...event.args);
+                    await callback(...gatewayOwnedEventArgs(event.name, event.args));
                     harnessEventParity.eventsRelayed += 1;
                     harnessEventParity.eventsByCallback.set(
                       event.name,
