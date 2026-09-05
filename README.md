@@ -2,6 +2,15 @@
 
 Private release and sandbox infrastructure for V.
 
+## Current operation (2026-09-05)
+
+Production runs OpenClaw 2026.9.1. See the
+[four-track release report](docs/v91-integration-20260905.md) for Astra,
+authenticated public Control UI, Browser compatibility, acceptance, and rollback.
+New experiments must use [one worktree plus one owned Lab instance](lab/README.md).
+The bootstrap below is historical 7.1 infrastructure documentation, not the
+current production runtime or a command to rerun against an existing instance.
+
 ## Environments
 
 | Environment | Purpose | Mutable state | Inbound channels |
