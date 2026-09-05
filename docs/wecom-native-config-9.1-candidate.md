@@ -35,7 +35,7 @@ changes. Continue that separately after restoring ordinary messaging.
 
 ## September 6 integration result
 
-- User reports browser works after returning home; no further browser changes.
+- Historical misunderstanding corrected: user meant their local browser was available after returning home, not that V Browser passed. V Browser remains unaccepted; see `wecom-browser-diagnosis-20260906.md`.
 - Reviewed feature merged into dedicated `codex/wecom91-integration` worktree.
 - Acquired integration lease as this task owner; official installer accepted the
   exact candidate hash below with `--accept-capabilities`. Manifest scope was
