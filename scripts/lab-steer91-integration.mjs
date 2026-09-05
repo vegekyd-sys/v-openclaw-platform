@@ -43,7 +43,9 @@ if(mode==='rpc'){
  const method=process.argv[3];assert(['chat.history','sessions.patch','agent.wait','vlab.workers.status'].includes(method));
  const params=JSON.parse(process.argv[4]??'{}');
  if(method==='sessions.patch')assert.equal(params.key,'agent:makaron:feishu:direct:ou_775a78b0aaae67da5e15eeaf102e3cd9');
- console.log(JSON.stringify(await call(method,params)));process.exit(0);
+ const result=await call(method,params);
+ const output=method==='sessions.patch'?{ok:result.ok,key:result.key,modelOverride:result.entry?.modelOverride,keys:Object.keys(result)}:result;
+ await new Promise(resolve=>process.stdout.write(JSON.stringify(output)+'\n',resolve));process.exit(0);
 }
 const s=await status();assert(s.ok&&s.pending===0&&s.workerActive===0&&s.active.length===0&&s.queued===0,'Integration not idle');
 const configs=[main,read(main).plugins.entries['vlab-agent-worker-isolation'].config.workerConfigPath];
