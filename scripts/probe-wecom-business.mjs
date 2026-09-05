@@ -1,0 +1,18 @@
+import fs from 'node:fs';import os from 'node:os';import assert from 'node:assert/strict';import {execFileSync}from'node:child_process';
+assert.equal(os.hostname(),'VM-8-2-ubuntu');const root='/home/openclaw/.openclaw',core='/opt/openclaw-2026.9.1-v/openclaw';
+const pid=execFileSync('systemctl',['show','openclaw-gateway.service','-p','MainPID','--value'],{encoding:'utf8'}).trim();for(const s of fs.readFileSync(`/proc/${pid}/environ`,'utf8').split('\0').filter(Boolean))process.env[s.slice(0,s.indexOf('='))]=s.slice(s.indexOf('=')+1);process.env.OPENCLAW_CONFIG_PATH=root+'/openclaw.json';
+const{callGatewayFromCli}=await import(core+'/dist/plugin-sdk/gateway-runtime.js');const call=(m,p={})=>callGatewayFromCli(m,{timeout:'60000',json:true},p);
+const commands=[['contact',['contact','users','search','--json','{"keywords":["Tianyi"]}']],['documents',['doc','search','--json','{"keywords":["测试"],"limit":3}']],['disk',['disk','files','list','--json','{"limit":3}']],['calendar',['calendar','schedules','list','--json','{"begin_time":"2026-09-06 00:00:00","end_time":"2026-09-06 23:59:59"}']],['meeting',['meeting','list','--json','{"begin_time":"2026-09-06 00:00:00","end_time":"2026-09-06 23:59:59","limit":3}']],['todo',['todo','list','--json','{"limit":3}']]];
+function summary(out){const d=out?.details??out;let data;try{data=JSON.parse(d.stdout);}catch{}return {status:d?.status,error:!!d?.error,runtimeMissing:JSON.stringify(d).includes('插件运行时未初始化'),ms:d?.ms,timedOut:d?.timedOut,errcode:data?.errcode??data?.error?.code,success:data?.ok??data?.success,counts:data?Object.fromEntries(Object.entries(data).filter(([k,v])=>Array.isArray(v)).map(([k,v])=>[k,v.length])):{},hasMore:data?.has_more,stdoutBytes:d?.stdoutBytes,stderrLength:d?.stderr?.length};}
+if(process.argv[2]==='worker'){
+ const id='wecom91-worker-regression-'+Date.now(),key='agent:makaron:explicit:'+id;
+ const prompt='只读升级验收，不处理任何业务、不修改配置文件、不发外部消息、不委托。必须使用 wecom-cli 工具（不得改用 exec/shell），依次执行这两个 args：'+JSON.stringify(commands.slice(0,2).map(x=>x[1]))+'。不要输出联系人姓名/ID、文档内容、URL或凭据。只汇总每次工具真实退出状态、命中数量和错误。两次真实成功后回复 WECOM91_WORKER_OK，否则回复 WECOM91_WORKER_FAILED。';
+ const admitted=await call('chat.send',{agentId:'makaron',sessionKey:key,idempotencyKey:id,deliver:false,timeoutMs:180000,message:prompt});console.log(JSON.stringify({stage:'admitted',runId:admitted.runId,key}));
+ for(let i=0;i<4;i++){const r=await call('agent.wait',{runId:admitted.runId??id,timeoutMs:45000});console.log(JSON.stringify({stage:'wait',status:r.status}));if(!['timeout','running'].includes(r.status))break;}
+ const h=await call('chat.history',{agentId:'makaron',sessionKey:key,limit:30});
+ console.log(JSON.stringify({stage:'worker-history',runtime:h.sessionInfo?.agentRuntime,model:h.sessionInfo?.model,messages:h.messages?.map(m=>({role:m.role,toolName:m.toolName,calls:m.content?.filter?.(x=>x.type==='toolCall'||x.type==='tool_use').map(x=>({name:x.name})),result:m.role==='toolResult'?summary(m):undefined,hasOk:JSON.stringify(m.content).includes('WECOM91_WORKER_OK'),hasFail:JSON.stringify(m.content).includes('WECOM91_WORKER_FAILED')}))}));
+}else{
+ const sessions=await call('sessions.list',{limit:1000});const s=sessions.sessions.find(s=>(s.key??'').startsWith('agent:makaron:wecom:'));assert(s);
+ for(const[label,args]of commands){const r=await call('tools.invoke',{name:'wecom-cli',agentId:'makaron',sessionKey:s.key,args:{args}});console.log(JSON.stringify({stage:'native',label,rpcOk:r.ok,...summary(r.output)}));}
+ const w=await call('vlab.workers.status'),h=await call('health');console.log(JSON.stringify({stage:'health',ok:h.ok,workerCount:w.workers.length,pending:w.pending,active:w.workers.reduce((n,x)=>n+x.activeCount,0)}));
+}
