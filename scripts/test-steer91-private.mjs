@@ -16,6 +16,7 @@ const call=async(m,p)=>{
 };
 const stamp=Date.now(),key=`agent:lab:explicit:steer91-${stamp}`;
 const log=(phase,value={})=>console.log(JSON.stringify({at:new Date().toISOString(),phase,...value}));
+const before=await call('vlab.workers.status',{});
 const first=await call('chat.send',{agentId:'lab',sessionKey:key,deliver:false,idempotencyKey:`steer91-first-${stamp}`,timeoutMs:150000,
   message:'这是隔离环境的 Steer 验收，不处理业务、不发消息、不修改配置、不委托。请先用 exec 执行 sleep 30（前台等待，若返回进程ID则用 process 等它完成），完成后只回复 STEER91_ORIGINAL_DONE。若执行期间收到用户新指令，以新指令改变本轮最终回复。'});
 log('first-admitted',{runId:first.runId,key});
@@ -36,8 +37,15 @@ for(let i=0;i<3;i++){
   const s=await call('agent.wait',{runId:first.runId,timeoutMs:40000});log('wait-first',{status:s.status});if(s.status!=='timeout'&&s.status!=='running')break;
 }
 const h=await call('chat.history',{agentId:'lab',sessionKey:key,limit:30});
+const after=await call('vlab.workers.status',{});
+const secondTerminal=await call('agent.wait',{runId:second.runId,timeoutMs:1000});
 const final=h.messages.filter(m=>m.role==='assistant').flatMap(m=>m.content?.filter(x=>x.type==='text').map(x=>x.text)??[]).join('\n');
-const result={runtime:h.sessionInfo?.agentRuntime?.id,original:final.includes('STEER91_ORIGINAL_DONE'),changed:final.includes('STEER91_CHANGED_OK'),roles:h.messages.map(m=>m.role),firstRunId:first.runId,secondRunId:second.runId};
+const result={runtime:h.sessionInfo?.agentRuntime?.id,original:final.includes('STEER91_ORIGINAL_DONE'),changed:final.includes('STEER91_CHANGED_OK'),roles:h.messages.map(m=>m.role),firstRunId:first.runId,secondRunId:second.runId,
+  userMessages:h.messages.filter(m=>m.role==='user').length,secondTerminal:secondTerminal.status,
+  attempts:after.integration?.nativeHarnessStats?.workerAttempts-before.integration?.nativeHarnessStats?.workerAttempts};
 log('result',result);
 fs.writeFileSync(root+'/workspace/steer91-last-result.json',JSON.stringify(result,null,2));
 assert(!result.original && result.changed,'Active turn did not adopt the new target');
+assert.equal(result.userMessages,2,'Steer user transcript must be persisted exactly once');
+assert.equal(result.secondTerminal,'ok','Injected turn must settle normally');
+assert.equal(result.attempts,1,'Injection must not create a second Worker attempt');
