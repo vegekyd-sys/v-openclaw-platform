@@ -14,4 +14,5 @@ assert(session,'No existing Makaron WeCom session; refusing implicit session cre
 const r=await call('tools.invoke',{name:'wecom-cli',agentId:'makaron',sessionKey:session.key??session.sessionKey,args:{args:['contact','users','search','--json','{"keywords":["Tianyi"]}']}});
 const out=r.output?.details??r.output;
 function summarize(x){if(typeof x==='string'){try{return summarize(JSON.parse(x));}catch{return {textLength:x.length,runtimeMissing:x.includes('插件运行时未初始化')};}}if(Array.isArray(x))return {count:x.length};if(x&&typeof x==='object')return Object.fromEntries(Object.entries(x).filter(([k])=>!/(userid|token|secret|url|name|email|phone|mobile)/i.test(k)).map(([k,v])=>[k,/(code|status|timedOut|ms)$/i.test(k)&&typeof v!=='object'?v:summarize(v)]));return typeof x==='number'||typeof x==='boolean'?x:typeof x;}
-console.log(JSON.stringify({lab,pid,rpcOk:r.ok,toolError:r.error??null,output:summarize(out)}));
+const error=typeof out?.error==='string'?out.error:'';
+console.log(JSON.stringify({lab,pid,rpcOk:r.ok,toolError:r.error??null,output:summarize(out),errorCategories:['插件运行时未初始化','未找到 wecom-cli','缺少账号上下文','未配置 botId','凭据不可用','授权','权限','ENOENT','EACCES','config','配置'].filter(s=>error.includes(s)),safeError:error.replace(/(?:[A-Za-z0-9_-]{24,})/g,'[redacted]')}));
