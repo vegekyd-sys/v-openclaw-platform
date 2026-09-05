@@ -18,6 +18,7 @@ const monitor=g+'/state/npm/projects/openclaw-feishu-dc69f44688__openclaw-genera
 const read=p=>JSON.parse(fs.readFileSync(p));
 const hash=x=>createHash('sha256').update(x).digest('hex');
 const run=(cmd,args)=>execFileSync(cmd,args,{encoding:'utf8',timeout:60000}).trim();
+const git=args=>execFileSync('git',['-C',source,...args],{uid:fs.statSync(source).uid,gid:fs.statSync(source).gid,encoding:'utf8',timeout:10000}).trim();
 const mode=process.argv[2];assert(['status','apply','rollback','rpc'].includes(mode));
 const pid=run('systemctl',['show',unit,'-p','MainPID','--value']);assert(Number(pid)>0);
 for(const x of fs.readFileSync(`/proc/${pid}/environ`,'utf8').split('\0').filter(Boolean))process.env[x.slice(0,x.indexOf('='))]=x.slice(x.indexOf('=')+1);
@@ -52,7 +53,7 @@ if(mode==='apply'){
  assert(!fs.existsSync(backup));assert(!fs.existsSync(dest));
  assert(!fs.existsSync(dropIn));
  assert.equal(read(source+'/experiments/agent-worker-isolation-v1/package.json').version,'0.2.11-rc.1');
- assert.equal(run('git',['-C',source,'status','--porcelain']),'');
+ assert.equal(git(['status','--porcelain']),'');
  fs.mkdirSync(backup,{recursive:true,mode:0o700});
  const configOwner=fs.statSync(main);fs.chownSync(backup,configOwner.uid,configOwner.gid);
  fs.cpSync(source+'/experiments/agent-worker-isolation-v1',dest,{recursive:true});
@@ -66,7 +67,7 @@ if(mode==='apply'){
  const before=fs.readFileSync(monitor,'utf8'),p=patchFeishuActiveRunSteeringBundle(before);assert(p.changed);
  fs.writeFileSync(backup+'/feishu.before.js',before,{flag:'wx',mode:0o600});
  feishu={p:monitor,before,after:p.source};
- fs.writeFileSync(backup+'/release.json',JSON.stringify({commit:run('git',['-C',source,'rev-parse','HEAD']),old,dest,
+ fs.writeFileSync(backup+'/release.json',JSON.stringify({commit:git(['rev-parse','HEAD']),old,dest,
   files:[...plans,feishu].map(x=>({path:x.p,before:hash(x.before),after:hash(x.after)}))}),{flag:'wx',mode:0o600});
 } else {
  assert.equal(fs.readFileSync(dropIn,'utf8'),dropText,'Test environment override drift');
