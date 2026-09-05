@@ -19,12 +19,10 @@ export function createGatewayNativeProbe({agentRuntimePath,loadHarness}={}) {
     const dist=dirname(dirname(agentRuntimePath));
     const version=JSON.parse(readFileSync(join(dirname(dist),'package.json'))).version;
     if(version!=='2026.9.1')throw new Error('Native inference probe adapter needs version review');
-    const modules=readdirSync(dist).filter(x=>/^builtin-openclaw-.*\.js$/.test(x));
+    const modules=readdirSync(dist).filter(x=>/^builtin-openclaw-.*\.js$/.test(x))
+      .filter(x=>/export\s*\{\s*createOpenClawAgentHarness\s*\}/.test(readFileSync(join(dist,x),'utf8')));
     if(modules.length!==1)throw new Error('Native OpenClaw Harness is ambiguous');
-    const file=join(dist,modules[0]),source=readFileSync(file,'utf8');
-    const alias=source.match(/createOpenClawAgentHarness as ([\w$]+)/)?.[1];
-    if(!alias)throw new Error('Native OpenClaw Harness export changed');
-    return (await import(pathToFileURL(file).href))[alias]();
+    return (await import(pathToFileURL(join(dist,modules[0])).href)).createOpenClawAgentHarness();
   });
   return async p=>{
     if(!isGatewayOwnedInferenceProbe(p))throw new Error('Not a caller-owned native inference probe');
