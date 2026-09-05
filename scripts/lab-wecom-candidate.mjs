@@ -38,7 +38,10 @@ install(candidate,'install.log');
 function install(candidate,log){
 const configBefore=fs.readFileSync(process.env.OPENCLAW_CONFIG_PATH,'utf8');
 const cache=backup+'/install-cache';fs.mkdirSync(cache,{recursive:true,mode:0o700});fs.chownSync(cache,Number(execFileSync('id',['-u','vlab'],{encoding:'utf8'})),Number(execFileSync('id',['-g','vlab'],{encoding:'utf8'})));
-const r=spawnSync('runuser',['-u','vlab','--',node,core+'/openclaw.mjs','plugins','install','--force',candidate],{env:{...process.env,npm_config_cache:cache},encoding:'utf8',timeout:180000,maxBuffer:8*1024*1024});
+// OpenClaw is a host-provided optional peer, not a second Gateway to install.
+// npm 10's peer resolver crashes on this package's development peer graph.
+assert.equal(JSON.parse(fs.readFileSync(core+'/package.json')).version,'2026.9.1');
+const r=spawnSync('runuser',['-u','vlab','--',node,core+'/openclaw.mjs','plugins','install','--force',candidate],{env:{...process.env,npm_config_cache:cache,npm_config_legacy_peer_deps:'true'},encoding:'utf8',timeout:180000,maxBuffer:8*1024*1024});
 fs.writeFileSync(backup+'/'+log,(r.stdout??'')+'\n'+(r.stderr??''),{mode:0o600});
 console.log(JSON.stringify({stage:'installed',status:r.status,error:r.error?.code,configChanged:fs.readFileSync(process.env.OPENCLAW_CONFIG_PATH,'utf8')!==configBefore,log:backup+'/'+log}));
 // Never auto-accept new capabilities or restart on a rejected installation.
