@@ -4,6 +4,28 @@ Status (2026-09-06 01:00 Asia/Shanghai): private tests passed; candidate install
 in integration VLab with reviewed capability consent. Real business acceptance
 blocked by missing VLab WeCom account configuration. Not deployed to production.
 
+## Production attempt and rollback — September 6
+
+User explicitly authorized production regression because VLab has no WeCom bot.
+Installed exact vlab.2 artifact at 01:01 and restarted V at 01:01:11. Native and
+Worker probes initially hit ECONNREFUSED during cold startup; neither completed
+business acceptance. Gateway only reached ready at 01:02:52 (about 101 seconds).
+Feishu connected at 01:02:37 and received a delayed real DM at 01:02:40.
+User reported ordinary Feishu messages had no reply, triggering conservative
+rollback per authorization. Restored vlab.1 using official plugin installation,
+then restarted at 01:03:17. Main and Worker config unchanged throughout. Gateway
+ready 01:03:45; Feishu WebSocket ready 01:03:40. Recovery acceptance message was
+received and dispatched at 01:04:26; final visible reply still being checked.
+
+Backup `/home/openclaw/.openclaw/backups/wecom-native-config-20260906` contains
+full original plugin tar, immutable candidate, previous runtime-only package,
+configuration snapshots, manifest, installer logs and `deploy.mjs rollback`.
+The source adapter is NOT production accepted. Do not assume its code caused the
+cold-start delay; no causal comparison isolated it. Browser is also NOT accepted:
+user clarified only their local browser was usable at home. Our read-only browser
+probe found the previously authorized HA overview tab absent and made no page
+changes. Continue that separately after restoring ordinary messaging.
+
 ## September 6 integration result
 
 - User reports browser works after returning home; no further browser changes.
