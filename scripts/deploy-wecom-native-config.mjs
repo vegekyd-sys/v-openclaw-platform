@@ -1,6 +1,6 @@
 import fs from 'node:fs';import os from 'node:os';import assert from 'node:assert/strict';import {execFileSync,spawnSync} from 'node:child_process';import {createHash} from 'node:crypto';
 assert.equal(os.hostname(),'VM-8-2-ubuntu');assert.equal(process.getuid(),0);
-const mode=process.argv[2];assert(['apply','rollback','status'].includes(mode));
+const input=process.argv[2];assert(['apply','retry-apply','rollback','status'].includes(input));const mode=input==='retry-apply'?'apply':input;
 const state='/home/openclaw/.openclaw',core='/opt/openclaw-2026.9.1-v/openclaw',node='/opt/node-v22.23.1/bin/node',unit='openclaw-gateway.service',src=state+'/extensions/wecom-openclaw-plugin',backup=state+'/backups/wecom-native-config-20260906';
 const read=p=>JSON.parse(fs.readFileSync(p)),sha=p=>createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 const pid=execFileSync('systemctl',['show',unit,'-p','MainPID','--value'],{encoding:'utf8'}).trim();
@@ -11,7 +11,7 @@ async function idle(){const w=await callGatewayFromCli('vlab.workers.status',{ti
 if(mode==='status'){await idle();process.exit(0);}
 assert.equal(read(core+'/package.json').version,'2026.9.1');
 const uid=Number(execFileSync('id',['-u','openclaw'],{encoding:'utf8'})),gid=Number(execFileSync('id',['-g','openclaw'],{encoding:'utf8'}));
-if(mode==='apply'){
+if(mode==='apply'&&input!=='retry-apply'){
  assert(await idle(),'Wait for safe restart window');assert(!fs.existsSync(backup),'Backup exists: inspect first');assert.equal(read(src+'/package.json').version,'2026.8.17-vlab.1');
  assert.equal(sha('/tmp/wecom-native-config-346916e.tgz'),'2ac843d6455c34f30c33c0cf7bd75a5d16fb23e3b170dd134af3e60e5e0875a7');
  fs.mkdirSync(backup,{mode:0o700});fs.chownSync(backup,uid,gid);fs.copyFileSync(import.meta.filename,backup+'/deploy.mjs');fs.copyFileSync('/tmp/wecom-native-config-346916e.tgz',backup+'/candidate.tgz');
@@ -29,7 +29,7 @@ const manifest=read(backup+'/manifest.json');const archive=backup+(mode==='apply
 fs.chownSync(archive,uid,gid);fs.chmodSync(archive,0o600);const cache=backup+'/install-cache';fs.mkdirSync(cache,{recursive:true,mode:0o700});fs.chownSync(cache,uid,gid);
 if(mode==='apply')assert(await idle(),'New active work; no install performed');
 const before=manifest.configs.map(p=>fs.readFileSync(p,'utf8'));
-const r=spawnSync('runuser',['-u','openclaw','--',node,core+'/openclaw.mjs','plugins','install','--force','--accept-capabilities',archive],{env:{...process.env,npm_config_cache:cache},encoding:'utf8',timeout:180000,maxBuffer:8*1024*1024});
+const r=spawnSync('/usr/sbin/runuser',['-u','openclaw','--',node,core+'/openclaw.mjs','plugins','install','--force','--accept-capabilities',archive],{env:{...process.env,npm_config_cache:cache},encoding:'utf8',timeout:180000,maxBuffer:8*1024*1024});
 fs.writeFileSync(backup+'/'+mode+'.log',(r.stdout??'')+'\n'+(r.stderr??''),{mode:0o600});
 console.log(JSON.stringify({stage:'install',mode,status:r.status,error:r.error?.code,backup,version:read(src+'/package.json').version,configChanged:manifest.configs.map((p,i)=>fs.readFileSync(p,'utf8')!==before[i])}));
 assert.equal(r.status,0,'Installer failed: inspect private log; no restart');
