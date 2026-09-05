@@ -2,6 +2,7 @@
 
 import {
   chmod,
+  chown,
   copyFile,
   readFile,
   readdir,
@@ -257,6 +258,7 @@ export async function patchPackage(packageRoot) {
   const temporaryPath = `${bundlePath}.active-run-steering-${process.pid}.tmp`;
   await writeFile(temporaryPath, result.source, { mode: originalStat.mode });
   await chmod(temporaryPath, originalStat.mode);
+  await chown(temporaryPath, originalStat.uid, originalStat.gid);
   await rename(temporaryPath, bundlePath);
   return { bundlePath, changed: true };
 }

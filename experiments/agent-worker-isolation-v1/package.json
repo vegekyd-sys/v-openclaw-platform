@@ -1,6 +1,6 @@
 {
   "name": "@versa/vlab-agent-worker-isolation",
-  "version": "0.2.11-rc.1",
+  "version": "0.2.11",
   "private": true,
   "type": "module",
   "peerDependencies": {
