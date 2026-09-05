@@ -55,7 +55,21 @@ Production deployment/acceptance is recorded separately below, not implied by th
 
 ## Production
 
-Not deployed as of writing this candidate acceptance. Use a versioned Worker
-release, back up the single native registry file and current config delta,
-validate as the actual service user, preserve concurrent configuration edits,
-restart in an idle window, then verify real audio and Browser output in V.
+First production attempt: 18:10:52 applied, ready 18:11:24. Four previously
+finished sessions were reconciled by core (started=0, settled=4). Live old-history
+Worker test exposed `Unreviewed symbol capability: images`, triggering model
+fallback; this was an acceptance failure. Codex Browser attempt separately failed
+before tool execution with process-inspection deadline during cold startup.
+
+Rolled back 18:14:52; ready 18:15:26, PID 934726, NRestarts 0. Config rollback
+retained unrelated changes. Backup: production `.openclaw/backups/worker-0.2.10-browser-policy-20260905`.
+
+Second candidate 5f9e136 preserves native `runtimePromptImageFactIndexes` via a
+validated data sidecar on annotated image arrays at any parameter path; native
+9.1 factory/reader and three concurrent real fork/IPC tests verify ownership.
+Unknown symbols/authority handles are still rejected, not silently removed.
+140 local tests passed. This is a codec exception for native image provenance,
+not a claim that all future opaque JavaScript values can transport automatically.
+VLab Grok attempt could not run because its independent OAuth refresh token was
+expired; production credentials were not copied or changed. Testing the same
+native image path with VLab's configured Azure vision model follows.

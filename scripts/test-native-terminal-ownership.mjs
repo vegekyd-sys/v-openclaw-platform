@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict';
 import {pathToFileURL} from 'node:url';
 import {deferWorkerTerminalEvent} from '../experiments/agent-worker-isolation-v1/gateway-owned-terminal.mjs';
+import {buildNativeHarnessData,applyNativeHarnessData} from '../experiments/agent-worker-isolation-v1/native-harness-data.mjs';
 const root=process.argv[2];
 assert(root?.includes('/labs/instances/'),'Private instance core required');
 const {t:createBackstop}=await import(pathToFileURL(root+'/dist/agent-lifecycle-terminal-BKyQ-iM8.js'));
 const {d:onAgentEvent,c:getGeneration}=await import(pathToFileURL(root+'/dist/agent-events-Con5xUCM.js'));
+const {t:finalizeImages,n:readFacts}=await import(pathToFileURL(root+'/dist/runtime-prompt-image-provenance-a6jbLyXX.js'));
+const {images}=finalizeImages([{image:{type:'image',data:'AA==',mimeType:'image/png'},factIndex:7}]);
+const after=applyNativeHarnessData({},JSON.parse(JSON.stringify(buildNativeHarnessData({images}))));
+assert.deepEqual(readFacts(after.images),[7]);
 let seq=0;
 for(const sample of [{stopReason:'end_turn'}, {aborted:true,stopReason:'user_aborted'}, {yielded:true,livenessState:'paused',stopReason:'end_turn'}]) {
   for(const fixed of [false,true]) {
@@ -23,4 +28,4 @@ for(const sample of [{stopReason:'end_turn'}, {aborted:true,stopReason:'user_abo
     }
   }
 }
-console.log(JSON.stringify({nativeCore:'2026.9.1',oldTerminalPublications:0,fixedTerminalPublications:1,duplicateSuppressed:true,cancellationAndYieldPreserved:true,noGatewayOrSessionWrites:true}));
+console.log(JSON.stringify({nativeCore:'2026.9.1',nativeImageFactOwnershipPreserved:true,oldTerminalPublications:0,fixedTerminalPublications:1,duplicateSuppressed:true,cancellationAndYieldPreserved:true,noGatewayOrSessionWrites:true}));
