@@ -9,8 +9,12 @@
 - This is **not model execution acceptance**. No Astra tool/streaming success yet.
 - Latest Codex probe reached the provider and returned HTTP 400:
   `The 'gpt-6-astra' model requires a newer version of Codex. Please upgrade to the latest app or CLI and try again.`
-- Running bundled CLI is 0.152.1. npm metadata reported 0.153.4 at inspection;
-  the newer binary has **not** been installed or tested.
+- Running bundled CLI is 0.152.1. Codex 0.153.4 is now installed side by side at
+  `/opt/vlab/codex-0.153.4`; its native binary reports `codex-cli 0.153.4`.
+  OpenClaw's command override has **not** been switched, and model execution
+  with the new binary is **not yet tested**, pending the Worker acceptance window.
+  Installation used the exact official npm package with a dedicated npm cache,
+  `--ignore-scripts --no-audit --no-fund`; no shared npm ownership was changed.
 - VLab makaron's auth fixture is stale (legacy openai-codex identity, no current
   openai OAuth profile). VLab v-codex has a current openai OAuth profile.
   Production makaron and v-codex have current openai OAuth profiles. No credentials
@@ -59,7 +63,8 @@ the allocated Lab window. Native rollback checks current content before restorin
 
 ## Next bounded step after the window is returned
 
-1. Install Codex 0.153.4 side by side in VLab, retaining bundled 0.152.1.
+1. Codex 0.153.4 installation is complete; retain bundled 0.152.1 for rollback.
+   Native binary: `/opt/vlab/codex-0.153.4/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex`.
 2. Use supported `plugins.entries.codex.config.appServer.command` override;
    no global PATH replacement or OpenClaw upgrade.
 3. Run one Codex Astra tool probe. If backend denies account access, stop and
