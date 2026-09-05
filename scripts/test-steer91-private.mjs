@@ -4,10 +4,23 @@ import assert from 'node:assert/strict';
 assert.equal(os.hostname(),'VM-0-4-ubuntu');
 const root='/srv/vlab-production-mirror/labs/instances/steer91';
 assert.equal(process.env.OPENCLAW_CONFIG_PATH,root+'/state/openclaw.json');
-const {callGatewayFromCli}=await import(root+'/runtime/openclaw/dist/plugin-sdk/gateway-runtime.js');
+const {GatewayClient}=await import(root+'/runtime/openclaw/dist/plugin-sdk/gateway-runtime.js');
+const config=JSON.parse(fs.readFileSync(process.env.OPENCLAW_CONFIG_PATH));
+const token=process.env.OPENCLAW_GATEWAY_TOKEN??config.gateway.auth.token;
+assert.equal(typeof token,'string');
+let client;
+await new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>{client.stop();reject(Error('Private test connection timed out'));},10000);
+  client=new GatewayClient({url:'ws://127.0.0.1:26160',token,deviceIdentity:null,
+    clientName:'cli',mode:'cli',scopes:['operator.read','operator.write'],
+    onHelloOk:()=>{clearTimeout(timer);resolve();},
+    onConnectError:error=>{clearTimeout(timer);client.stop();reject(error);}});
+  client.start();
+});
+try {
 const call=async(m,p)=>{
   for(let attempt=0;;attempt++){
-    try{return await callGatewayFromCli(m,{timeout:'45000',json:true},p);}
+    try{return await client.request(m,p,{timeoutMs:45000});}
     catch(error){
       if(m!=='chat.history'||error.retryable!==true||attempt>=8)throw error;
       await new Promise(r=>setTimeout(r,Math.max(250,error.retryAfterMs??250)));
@@ -62,3 +75,4 @@ assert(!result.original && result.changed,'Active turn did not adopt the new tar
 assert.equal(result.userMessages,2,'Steer user transcript must be persisted exactly once');
 assert.equal(result.secondTerminal,'ok','Injected turn must settle normally');
 assert.equal(result.attempts,1,'Injection must not create a second Worker attempt');
+} finally { client.stop(); }
