@@ -17,6 +17,13 @@ then restarted at 01:03:17. Main and Worker config unchanged throughout. Gateway
 ready 01:03:45; Feishu WebSocket ready 01:03:40. Recovery acceptance message was
 received and dispatched at 01:04:26; final visible reply still being checked.
 
+Recovery completed: message sent 01:04:25, received 01:04:26.034, dispatched
+01:04:26.052, streaming card created 01:05:16.090, closed and dispatch complete
+01:05:17.914. Lark CLI readback confirmed exact visible `V_FEISHU_RECOVERED_0906`
+in main DM, runtime Codex / GPT-6 Astra. Ingress ~1s, total response ~53s; this
+proves restored messaging, not optimized model response latency. Main and Worker
+config compare identical to pre-deploy snapshots, plugin vlab.1, NRestarts 0.
+
 Backup `/home/openclaw/.openclaw/backups/wecom-native-config-20260906` contains
 full original plugin tar, immutable candidate, previous runtime-only package,
 configuration snapshots, manifest, installer logs and `deploy.mjs rollback`.
