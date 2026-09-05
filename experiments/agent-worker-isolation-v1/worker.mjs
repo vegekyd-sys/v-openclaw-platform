@@ -562,6 +562,7 @@ async function runHold(durationMs, abortSignal) {
 }
 
 async function runAgent(message, abortSignal) {
+  const attemptStartedAt = Date.now();
   const agentRuntime = await loadAgentRuntime();
   const startedAt = performance.now();
   const eventRuntime = await loadAgentEventRuntime();
@@ -798,7 +799,12 @@ async function runAgent(message, abortSignal) {
     }),
   };
   if (message.harnessAttempt === true) {
-    response.attempt = jsonSafe(await buildHarnessAttemptResult(result));
+    response.attempt = jsonSafe(await buildHarnessAttemptResult(result,
+      message.nativeAttempt91 === true ? { attemptStartedAt, transcriptTarget: {
+        agentId: message.agentId ?? "makaron",
+        sessionKey: message.sessionKey,
+        sessionId: agentMeta.sessionId ?? message.sessionId,
+      } } : {}));
   }
   return response;
 }

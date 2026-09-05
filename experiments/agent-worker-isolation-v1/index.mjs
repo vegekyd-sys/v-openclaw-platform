@@ -958,7 +958,8 @@ const plugin = {
         if (!Array.isArray(workerMessagesSnapshot)) {
           try {
             workerMessagesSnapshot = await readNativeSessionMessages(
-              finalSession.sessionFile,
+              { agentId: params.agentId ?? "makaron", sessionKey,
+                sessionId: finalSession.sessionId },
             );
           } catch {
             workerMessagesSnapshot = [];

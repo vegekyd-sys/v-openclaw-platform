@@ -1,4 +1,7 @@
 import { readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { resolveOpenClawAgentRuntimePath } from "./runtime-path.mjs";
 
 function isRecord(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -258,7 +261,22 @@ function readTerminalToolError(messages) {
   };
 }
 
-export async function readNativeSessionMessages(sessionFile) {
+export async function readNativeSessionMessages(sessionFile, options = {}) {
+  if (isRecord(sessionFile)) {
+    const target = sessionFile;
+    if (!target.agentId || !target.sessionId || !target.sessionKey) {
+      throw new Error("Native transcript read requires explicit session identity");
+    }
+    const reader = options.readVisibleEntries ?? (await import(pathToFileURL(join(
+      dirname(resolveOpenClawAgentRuntimePath()), "session-transcript-runtime.js",
+    )).href)).readVisibleSessionTranscriptMessageEntries;
+    const entries = await reader(target);
+    if (!Array.isArray(entries)) throw new Error("Invalid native transcript projection");
+    return entries.filter(entry => isRecord(entry.message)).map(entry => ({
+      ...entry.message,
+      ...(entry.message.timestamp == null && entry.createdAt ? {timestamp:Date.parse(entry.createdAt)} : {}),
+    }));
+  }
   if (typeof sessionFile !== "string" || sessionFile.trim() === "") {
     return [];
   }
@@ -281,10 +299,14 @@ export async function readNativeSessionMessages(sessionFile) {
   return messages;
 }
 
-export async function buildHarnessAttemptResult(agentResult) {
+export async function buildHarnessAttemptResult(agentResult, options = {}) {
   const agentMeta = agentResult?.meta?.agentMeta ?? agentResult?.meta ?? {};
   let messagesSnapshot = [];
-  try {
+  if (options.transcriptTarget) {
+    // 9.1 owns transcripts in SQLite. Use its branch-aware public reader;
+    // never silently fall back to stale JSONL or hide a failed identity read.
+    messagesSnapshot = await readNativeSessionMessages(options.transcriptTarget, options);
+  } else try {
     messagesSnapshot = await readNativeSessionMessages(agentMeta.sessionFile);
   } catch {
     messagesSnapshot = [];
@@ -297,8 +319,12 @@ export async function buildHarnessAttemptResult(agentResult) {
       break;
     }
   }
-  const currentTurnMessages =
-    currentTurnStart >= 0
+  const currentTurnMessages = Number.isFinite(options.attemptStartedAt)
+    ? messagesSnapshot.filter(message => {
+        const time = typeof message.timestamp === 'number' ? message.timestamp : Date.parse(message.timestamp);
+        return time >= options.attemptStartedAt;
+      })
+    : currentTurnStart >= 0
       ? messagesSnapshot.slice(currentTurnStart + 1)
       : messagesSnapshot;
   const currentAssistants = currentTurnMessages.filter(
@@ -337,7 +363,7 @@ export async function buildHarnessAttemptResult(agentResult) {
     // tool call. OpenClaw then appends an internal completion user event to
     // this same attempt, so limiting the scan to the last user message would
     // discard the earlier sessions_spawn result.
-    ...readAcceptedSessionSpawns(messagesSnapshot),
+    ...readAcceptedSessionSpawns(options.transcriptTarget ? currentTurnMessages : messagesSnapshot),
   ]) {
     const runId =
       typeof spawn?.runId === "string" ? spawn.runId.trim() : undefined;
