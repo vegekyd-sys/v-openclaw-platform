@@ -182,3 +182,48 @@ Conclusion: public authenticated Control UI is initially usable with real V
 history, a tool-backed reply, session switching, and remembered-browser reload.
 This is not a long-duration SLA or a claim that large-page rendering is fully
 optimized. Do not infer unrelated Feishu/Worker/Browser acceptance from this report.
+
+## Exact production rollback (coordinator only; not executed)
+
+Reviewed implementation:
+`/Users/tianyicai/v-openclaw-platform-browser91/scripts/deploy-control-ui-https.mjs`.
+Installed production script: `/tmp/deploy-control-ui-https.mjs`.
+Private backup: `/home/openclaw/.openclaw/backups/control-ui-https-20260905`:
+
+- `openclaw.json.before` (sensitive; diagnostic backup, do not overwrite whole config)
+- `v-dashboard.yml.before`
+- `proxy-fields.before.json` (original trustedProxies and allowedOrigins)
+
+After coordinator approval and checking that no later changes to these proxy
+fields would be lost, run through Tailscale management SSH only:
+
+```sh
+ssh -o ProxyCommand='/usr/local/bin/tailscale nc 100.82.39.107 22' \
+  -o HostKeyAlias=100.82.39.107 -o IdentitiesOnly=yes -o BatchMode=yes \
+  -i /Users/tianyicai/.ssh/v-zkda-20260719 ubuntu@100.82.39.107 \
+  'sudo /opt/node-v22.23.1/bin/node /tmp/deploy-control-ui-https.mjs rollback'
+```
+
+The script asserts the production hostname and root identity. It restores only
+the saved proxy fields in the current Gateway config, changes the exact default
+Cloudflare origin from 22794 back to 22793, moves this Nginx stanza into the backup
+directory as `nginx.disabled-<timestamp>`, validates/reloads Nginx, and restarts
+only `cloudflared-v-dashboard.service`. **It does not restart the main Gateway**;
+the coordinator must arrange that separately for the reverted config to apply.
+Then verify Gateway readiness, Feishu/WeCom/Workers and authenticated access.
+
+This rollback restores the pre-change routing state, which previously returned
+proxy-attribution 403 on the public UI; it is not a claim that the prior public
+route becomes usable. Retain an authenticated private fallback as needed.
+The independent Astra backup is
+`/home/openclaw/.openclaw/backups/astra-ui-20260905`; do not restore entire config
+snapshots across these changes or remove unrelated Astra/model changes.
+
+## QA teardown
+
+At the coordinator's request after production acceptance, both task-owned units
+`vlab-control-ui-qa-20260905.service` and
+`vlab-control-ui-proxy-qa-20260905.service` were stopped. Verified inactive,
+MainPID=0 and no listeners on 25993–25995. The Mac QA forwarding SSH process was
+also stopped. The isolated fixture files are retained for reproducibility; no
+shared lab Gateway, Browser/Astra instance, or production service was stopped.
