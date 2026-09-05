@@ -7,7 +7,7 @@ export function validateName(name) {
 export function requireOwner(manifest, owner) {
   if (!owner || manifest.owner !== owner) throw Error('Owner mismatch; refusing to operate another experiment');
 }
-export function buildConfig(root, port, {provider, worker = true} = {}) {
+export function buildConfig(root, port, {provider, providerPluginPath, worker = true} = {}) {
   const model = 'deepseek/deepseek-v4-pro';
   const config = {
     gateway: {mode: 'local', bind: 'loopback', port, auth: {mode: 'token', token: randomBytes(32).toString('hex')}, reload: {mode: 'off'}},
@@ -21,12 +21,12 @@ export function buildConfig(root, port, {provider, worker = true} = {}) {
     },
     channels: {}, cron: {enabled: false}, browser: {enabled: false},
     plugins: {allow: ['deepseek', ...(worker ? ['vlab-agent-worker-isolation'] : [])],
-      load: {paths: worker ? [`${root}/runtime/worker`] : []},
+      load: {paths: [...(providerPluginPath ? [providerPluginPath] : []), ...(worker ? [`${root}/runtime/worker`] : [])]},
       entries: {deepseek: {enabled: true}}},
   };
   if (provider) config.models = {providers: {deepseek: {...provider, apiKey: '${DEEPSEEK_API_KEY}'}}};
   if (worker) config.plugins.entries['vlab-agent-worker-isolation'] = {enabled: true, config: {
-    minWorkers: 1, maxWorkers: 1, sessionsPerWorker: 2,
+    minWorkers: 1, maxWorkers: 1, warmSpareWorkers: 0, sessionsPerWorker: 2,
     idleTimeoutMs: 180000, requestTimeoutMs: 600000, nativeRequestTimeoutMs: 21600000,
     requestStallTimeoutMs: 120000, gatewayOwnedToolTimeoutMs: 310000,
     workerConfigPath: `${root}/state/worker-openclaw.json`, gatewayConfigPath: `${root}/state/openclaw.json`
@@ -34,7 +34,7 @@ export function buildConfig(root, port, {provider, worker = true} = {}) {
   const overlay = structuredClone(config);
   overlay.agents.defaults.models[model].agentRuntime.id = 'openclaw';
   overlay.plugins.allow = ['deepseek'];
-  overlay.plugins.load.paths = [];
+  overlay.plugins.load.paths = providerPluginPath ? [providerPluginPath] : [];
   delete overlay.plugins.entries['vlab-agent-worker-isolation'];
   return {config, overlay};
 }

@@ -46,6 +46,7 @@ labctl cli my-experiment --owner THREAD_ID -- gateway health --json
 labctl restart my-experiment --owner THREAD_ID
 labctl stop my-experiment --owner THREAD_ID
 labctl list
+labctl candidate my-experiment --owner THREAD_ID --commit FULL_40_CHAR_SHA
 
 labctl lease integration --owner THREAD_ID
 # 此处才允许操作共享 VLab，先检查活跃业务及其他验收；lease 不是强杀授权。
@@ -53,6 +54,8 @@ labctl lease integration --owner THREAD_ID --release true
 ```
 
 `--provider-config PATH` 仅用于服务器端从明确的已有 VLab 配置提取 DeepSeek 静态 key，生成实例私有 `secrets.env`；不会复制原渠道、绑定、Session 或凭证库。默认不注入密钥。
+
+服务器已安装 `/usr/local/bin/labctl`，使用 `sudo labctl ...` 即可。`candidate` 检查实例 source 的 HEAD 和干净工作树，再记录运行代码 hash；这个 hash 不能代替真实功能验收。
 
 源码 checkout 在 `instances/<name>/source`，运行代码在同实例 `runtime/`。应用本任务补丁时必须指定该 runtime 路径，记录 patch commit；不要运行仍写死旧 generation/24993 的脚本。换候选推荐创建新实例名，旧实例可停止保留证据；目前无自动删除命令。
 

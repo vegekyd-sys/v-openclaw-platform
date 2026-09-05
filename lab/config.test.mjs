@@ -29,4 +29,14 @@ test('base profile disables unattended jobs and limits concurrency',()=>{
   assert.equal(config.cron.enabled,false);
   assert.equal(config.agents.defaults.maxConcurrent,2);
   assert.equal(config.plugins.entries['vlab-agent-worker-isolation'].config.maxWorkers,1);
+  assert.equal(config.plugins.entries['vlab-agent-worker-isolation'].config.warmSpareWorkers,0);
+});
+test('both native and worker configs pin the same private provider code',()=>{
+  const providerPluginPath='/lab/a/runtime/npm/projects/p/node_modules/@openclaw/deepseek-provider';
+  const {config,overlay}=buildConfig('/lab/a',26100,{providerPluginPath});
+  assert(config.plugins.load.paths.includes(providerPluginPath));
+  assert.deepEqual(overlay.plugins.load.paths,[providerPluginPath]);
+  assertSafeConfig(config,'/lab/a',26100);
+  config.plugins.entries['vlab-agent-worker-isolation'].config.workerConfigPath='/shared/overlay.json';
+  assert.throws(()=>assertSafeConfig(config,'/lab/a',26100));
 });

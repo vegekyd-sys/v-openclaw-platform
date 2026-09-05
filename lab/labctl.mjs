@@ -6,6 +6,7 @@ import os from 'node:os';
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {buildConfig, validateName, requireOwner, assertSafeConfig} from './config.mjs';
+import {privateProviderPath} from './private-provider.mjs';
 
 const ROOT = '/srv/vlab-production-mirror/labs';
 const NODE = '/opt/vlab/node-v22.23.1-linux-x64/bin/node';
@@ -51,8 +52,22 @@ function check(m) {
   assertSafeConfig(read(`${m.root}/state/openclaw.json`), m.root, m.port);
   if (fs.realpathSync(m.root) !== m.root) fail('Instance root must not be a symlink');
   walk(`${m.root}/runtime`,(p,e)=>{
-    if(e.isSymbolicLink()&&!fs.realpathSync(p).startsWith(m.root+'/'))fail('Runtime symlink escaped instance: '+p);
+    if(e.isSymbolicLink()&&!linkTarget(p).startsWith(m.root+'/'))fail('Runtime symlink escaped instance: '+p);
   });
+}
+function linkTarget(p) {
+  try {return fs.realpathSync(p);} catch(e) {
+    // npm may retain an unused .bin link for an optional package. Preserve it,
+    // but never permit even a dangling link to resolve outside this instance.
+    if(e.code!=='ENOENT')throw e;
+    let target=path.resolve(path.dirname(p),fs.readlinkSync(p));
+    const suffix=[];
+    while(!fs.existsSync(target)) {
+      if(target===path.dirname(target))throw e;
+      suffix.unshift(path.basename(target));target=path.dirname(target);
+    }
+    return path.join(fs.realpathSync(target),...suffix);
+  }
 }
 function freeDisk() {const s=fs.statfsSync(ROOT); return s.bavail*s.bsize;}
 function walk(dir, fn) {
@@ -67,7 +82,7 @@ function fingerprint(dir) {
   walk(dir,(p,e)=>{
     const relative=path.relative(dir,p);
     if(e.isSymbolicLink()) {
-      const target=fs.realpathSync(p);
+      const target=linkTarget(p);
       if(!target.startsWith(dir+'/')) fail(`External symlink in baseline: ${relative}`);
       hash.update(relative+'\0'+fs.readlinkSync(p));
     } else if(e.isFile()) {hash.update(relative+'\0');hash.update(fs.readFileSync(p));files++;}
@@ -146,7 +161,7 @@ try {
         secret=`DEEPSEEK_API_KEY="${provider.apiKey}"\n`;
         delete provider.apiKey;
       }
-      const {config,overlay}=buildConfig(root,port,{provider,worker:opts.worker!=='false'});
+      const {config,overlay}=buildConfig(root,port,{provider,providerPluginPath:privateProviderPath(root),worker:opts.worker!=='false'});
       save(`${root}/state/openclaw.json`,config);save(`${root}/state/worker-openclaw.json`,overlay);
       fs.writeFileSync(`${root}/secrets.env`,secret,{mode:0o600});
       fs.writeFileSync(`${root}/workspace/AGENTS.md`,'This is an isolated development experiment. Work only inside this instance. No production business, messaging channels, external config edits, or shared Gateway restarts.\n');
