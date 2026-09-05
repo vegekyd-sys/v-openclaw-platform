@@ -12,6 +12,8 @@ const core=g+'/runtime/npm-global/lib/node_modules/openclaw';
 const main=g+'/state/openclaw.json',unit='openclaw-vlab-production-mirror-v8.service';
 const old=g+'/runtime/plugins/worker-image-provenance-5f9e136',dest=g+'/runtime/plugins/worker-steer91-rc1';
 const backup=g+'/backups/steer91-rc1-20260906';
+const dropDir='/run/systemd/system/'+unit+'.d',dropIn=dropDir+'/90-steer91-test.conf';
+const dropText='[Service]\nEnvironment=VLAB_FEISHU_STEER_ENABLED=1\nEnvironment=VLAB_FEISHU_STEER_CHAT_IDS=*\n';
 const monitor=g+'/state/npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js';
 const read=p=>JSON.parse(fs.readFileSync(p));
 const hash=x=>createHash('sha256').update(x).digest('hex');
@@ -48,9 +50,11 @@ assert.equal(read(core+'/package.json').version,'2026.9.1');
 let plans,feishu;
 if(mode==='apply'){
  assert(!fs.existsSync(backup));assert(!fs.existsSync(dest));
+ assert(!fs.existsSync(dropIn));
  assert.equal(read(source+'/experiments/agent-worker-isolation-v1/package.json').version,'0.2.11-rc.1');
  assert.equal(run('git',['-C',source,'status','--porcelain']),'');
  fs.mkdirSync(backup,{recursive:true,mode:0o700});
+ const configOwner=fs.statSync(main);fs.chownSync(backup,configOwner.uid,configOwner.gid);
  fs.cpSync(source+'/experiments/agent-worker-isolation-v1',dest,{recursive:true});
  run('chmod',['-R','a+rX',dest]);
  plans=configs.map((p,i)=>{
@@ -65,6 +69,7 @@ if(mode==='apply'){
  fs.writeFileSync(backup+'/release.json',JSON.stringify({commit:run('git',['-C',source,'rev-parse','HEAD']),old,dest,
   files:[...plans,feishu].map(x=>({path:x.p,before:hash(x.before),after:hash(x.after)}))}),{flag:'wx',mode:0o600});
 } else {
+ assert.equal(fs.readFileSync(dropIn,'utf8'),dropText,'Test environment override drift');
  const r=read(backup+'/release.json');
  plans=configs.map((p,i)=>({p,before:fs.readFileSync(p,'utf8'),after:fs.readFileSync(backup+'/'+i+'.before.json','utf8')}));
  feishu={p:monitor,before:fs.readFileSync(monitor,'utf8'),after:fs.readFileSync(backup+'/feishu.before.js','utf8')};
@@ -77,6 +82,9 @@ for(const p of plans){
  catch{throw Error('Candidate validation failed; live configuration untouched');}
 }
 lease();for(const x of [...plans,feishu])assert.equal(fs.readFileSync(x.p,'utf8'),x.before,'Concurrent mutation');
+if(mode==='apply'){fs.mkdirSync(dropDir,{recursive:true});fs.writeFileSync(dropIn,dropText,{flag:'wx',mode:0o644});}
+else fs.unlinkSync(dropIn);
+run('systemctl',['daemon-reload']);
 for(const x of [...plans,feishu])atomic(x.p,x.after);
 run('systemctl',['restart',unit]);
 console.log(JSON.stringify({at:new Date().toISOString(),mode,restartIssued:true,backup}));
