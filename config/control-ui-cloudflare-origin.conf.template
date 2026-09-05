@@ -1,0 +1,35 @@
+# Include inside nginx http {}. Only cloudflared on this host should reach it.
+# Keep OpenClaw token auth and device pairing; this is NOT identity-header auth.
+map $http_upgrade $v_control_connection { default upgrade; '' close; }
+geo $http_cf_connecting_ip $v_control_public_client {
+  default 1;
+  0.0.0.0/8 0; 10.0.0.0/8 0; 100.64.0.0/10 0; 127.0.0.0/8 0;
+  169.254.0.0/16 0; 172.16.0.0/12 0; 192.168.0.0/16 0;
+  224.0.0.0/4 0; 240.0.0.0/4 0;
+  ::/128 0; ::1/128 0; fc00::/7 0; fe80::/10 0; ff00::/8 0;
+}
+server {
+  listen 127.0.0.1:__PROXY_PORT__;
+  server_name openclaw.tianyi.live;
+  if ($host != openclaw.tianyi.live) { return 403; }
+  # Native OpenClaw additionally validates the address syntax / proxy chain.
+  if ($http_cf_connecting_ip = '') { return 403; }
+  if ($v_control_public_client = 0) { return 403; }
+  location / {
+    proxy_pass http://127.0.0.1:__GATEWAY_PORT__;
+    proxy_http_version 1.1;
+    proxy_set_header Host openclaw.tianyi.live;
+    proxy_set_header X-Forwarded-Host openclaw.tianyi.live;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-Port 443;
+    # Never append attacker-supplied XFF. Cloudflare supplies this authoritative IP.
+    proxy_set_header X-Forwarded-For $http_cf_connecting_ip;
+    proxy_set_header X-Real-IP $http_cf_connecting_ip;
+    proxy_set_header Forwarded '';
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $v_control_connection;
+    proxy_buffering off;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+  }
+}
