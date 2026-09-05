@@ -112,7 +112,7 @@ function start(m) {
 try {
   if(os.hostname()!=='VM-0-4-ubuntu' || process.getuid()!==0) fail('Run as root on VLab only, through the private SSH alias');
   if(command==='list') {
-    console.log(JSON.stringify(manifests().map(m=>({name:m.name,owner:m.owner,branch:m.branch,commit:m.commit,port:m.port,running:active(m)})),null,2));
+    console.log(JSON.stringify(manifests().map(m=>({name:m.name,owner:m.owner,branch:m.candidate?.branch??m.branch,commit:m.candidate?.commit??m.commit,createdFromCommit:m.commit,port:m.port,running:active(m)})),null,2));
   } else if(command==='seal') {
     validateName(name);
     const base=`${ROOT}/baselines/${name}`;
@@ -190,7 +190,7 @@ try {
     else if(command==='stop') {run('systemctl',['stop',m.unit]);audit('stop',m);console.log('Stopped only '+name);}
     else if(command==='restart')lock(()=>{check(m);run('systemctl',['stop',m.unit]);start(m);});
     else if(command==='status') {
-      console.log(JSON.stringify({name,owner:m.owner,branch:m.branch,commit:m.commit,port:m.port,root:m.root}));
+      console.log(JSON.stringify({name,owner:m.owner,branch:m.candidate?.branch??m.branch,commit:m.candidate?.commit??m.commit,createdFromCommit:m.commit,port:m.port,root:m.root}));
       console.log(run('systemctl',['show',m.unit,'-p','ActiveState,MainPID,NRestarts,MemoryCurrent,MemoryPeak,MemoryHigh,MemoryMax,CPUQuotaPerSecUSec']));
     } else if(command==='candidate') {
       check(m);
