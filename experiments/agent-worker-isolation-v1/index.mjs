@@ -1,7 +1,6 @@
 import { WorkerPool } from "./worker-pool.mjs";
 import { performance } from "node:perf_hooks";
 import { buildNativeHarnessData } from './native-harness-data.mjs';
-import {createGatewayNativeProbe,isGatewayOwnedInferenceProbe} from './gateway-native-probe.mjs';
 import { gatewayOwnedEventArgs } from './gateway-owned-terminal.mjs';
 // Release gates are documented separately from runtime parity counters.
 const nativeParityReleaseHold = false;
@@ -323,7 +322,6 @@ const plugin = {
       return;
     }
     const openClawAgentRuntimePath = resolveOpenClawAgentRuntimePath();
-    const runGatewayNativeProbe = createGatewayNativeProbe({agentRuntimePath:openClawAgentRuntimePath});
     const agentHarnessActiveRunRuntimePromise = import(
       pathToFileURL(
         resolveOpenClawAgentHarnessRuntimePath({
@@ -494,7 +492,6 @@ const plugin = {
     }
 
     async function dispatchNativeHarnessAttempt(params) {
-      if (isGatewayOwnedInferenceProbe(params)) return runGatewayNativeProbe(params);
       // Validate before creating a relay or admitting any side effects.
       const nativeHarnessData = buildNativeHarnessData(params);
       const harnessAttemptStartedAt = Date.now();
