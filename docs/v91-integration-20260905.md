@@ -66,3 +66,10 @@ Feishu `/stop` Lab验收未通过。用户确认生产 `/stop` 可用，应先�
 首次对既有 docs.openclaw.ai 标签 attach 曾30秒超时；新建独立测试页通过，尚不能证明所有旧标签无陈旧连接问题。没有为此清理用户业务标签或扩大浏览器权限。
 公网大页面曾发生一次鼠标工具等待超时但实际切换成功；短时重连验收通过不等于长期稳定 SLA。冷启动和大页面渲染仍可后续优化。
 Worker 0.2.10-rc.1 语音/取消候选保持 Lab-only，未混入本次四项发布，不能把本次成功视为该候选已验收。
+
+## 集成交接
+
+Astra 7e7b1bd..c4832c7（8条）、Lab 018ff16..9b57469（5条）、UI 2d92f9d/19c72bc/37c2e97 已选择性合入本机 `codex/browser91-compat`，合并后12条单测通过。Browser 在独立仓库 `codex/browser-openclaw91`，验收脚本收口提交515dc69；此前55条测试通过。没有把上游分支携带的其他 Night Shift 历史批量重放，也没有推送/合并 Git main。
+
+14:58:05 飞书已向 V 主DM发送四项发布与运行边界交接，V实际卡片回复确认理解；message_id `om_x100b668f9648bca8b25f8f7ac2ba7c2`。这也提供了重启后的真实 Feishu 可见回复证据。未要求 V 自动改模型、重启或开展业务。
+个人 Astra/isolation-check 实例均已停止，UI私有QA已停止，证据保留；共享 integration lease 已释放。生产 Browser 服务继续运行，不把它当临时测试服务停止。
