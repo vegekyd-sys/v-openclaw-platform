@@ -1,4 +1,9 @@
-# Astra support — VLab candidate, NOT production accepted
+# Historical Astra setup notes — superseded
+
+**2026-09-05 14:28 update: both runtime paths now passed real model/tool execution.**
+Use [astra-accepted-20260905.md](astra-accepted-20260905.md) for current status,
+candidate versions, evidence and production rollback. The sections below preserve
+the earlier failed/held state and are not the current deployment instructions.
 
 ## Current outcome
 
