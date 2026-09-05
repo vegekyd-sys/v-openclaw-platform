@@ -2,7 +2,7 @@
 
 Branch: `codex/steer91-repair`; integrated in `codex/steer91-integration`.
 Worker release: 0.2.11 (same functional code as accepted 0.2.11-rc.1).
-Status: private Worker and real Feishu integration passed; production not yet deployed.
+Status: private Worker, real Feishu integration, and production V Backup canary passed.
 
 ## Confirmed causes
 
@@ -20,7 +20,7 @@ Status: private Worker and real Feishu integration passed; production not yet de
 
 ## Evidence
 
-- 35 scoped local tests passed against the actual read-only production Feishu bundle, Worker proxy, IPC receipts and legacy worker harness fixture.
+- 43 scoped local tests passed against the actual read-only production Feishu bundle, Worker proxy, IPC receipts, native data/registry parity and legacy worker harness fixture.
 - Private instance `steer91`, port 26160, own state/config/HOME/runtime, no channels or cron.
 - 2026-09-06 02:51:59–02:52:42 CST: actual DeepSeek + Worker + exec task adopted the changed target; original marker absent.
 - 2026-09-06 03:00:19–03:00:55 CST: repeated actual tool-boundary injection passed, exactly two user transcript messages, exactly one Worker attempt, original and injected run handles settled normally.
@@ -33,3 +33,28 @@ Status: private Worker and real Feishu integration passed; production not yet de
 ## Release boundary
 
 Shared VLab was acquired through explicit Browser lease handoff; its changes are reverted before returning the window. Production deployment must preserve other plugins/config and install from exact candidate with pre-change hashes and rollback. Do not reset business sessions or widen tool permissions. Native code remains 9.1; no core bundle is changed beyond the Feishu transport adapter. A startup check reapplies the reviewed adapter to installed Feishu 9.1 generations; future versions require explicit migration review.
+
+## Production acceptance — 2026-09-06 CST
+
+- Exact release commit `0c3efefcc0623c8282a35a8bda298586ae9ded64`, archive SHA-256 `b4dfa8d62fa975b43b23ee9fbe1e50de01d7cd60a514bbf766b3f2f5e5e824a0`.
+- 03:23:20 preflight: health ok, no active sessions/Worker work/pending/queued. Verified old Worker hashes and unchanged capability manifest.
+- 03:23:46 and 03:23:51 repeated idle checks. 03:23:52 restart after validated, backed-up configuration changes.
+- Gateway PID 1171400 -> 1213009. Worker 0.2.11, NRestarts=0; Feishu connected and existing channels recovered. Startup Steer recheck reported changed=false, proving idempotence.
+- V Backup: original message `om_x100b66f2825728a0c388191e188f0d8`, receive 03:26:02.564, dispatch 03:26:02.781. Existing session/runtime/model preserved.
+- During actual exec/process tool execution, Steer message `om_x100b66f29ff9b8a8c43b1d92c9ef616` received 03:27:15.694, dispatched 03:27:15.704. Injection settled with zero standalone replies 03:27:25.740. Original run completed 03:27:37.804 with one final reply.
+- Visible card `om_x100b66f29cb710a4b174f862caa59ca` replies to the ORIGINAL message and contains `V_STEER_OK_1788636358641`, Runtime vlab-worker. No old-result marker or empty-reply warning. Native counters admitted=1/completed=1/workerAttempts=1/failed=0; pending=0, all Workers idle afterward.
+- First history read returned native retryable `session history is rebuilding`; fixed the read-only observer to honor retryAfterMs and resumed the SAME canary manually. No duplicate first message or session reset. Do not describe the original observer process as having passed automatically.
+- Shared VLab restored to Worker 0.2.10, original Feishu file and modelOverride=null. Temporary Steer environment drop-in removed. Lease released at 03:22:41 and explicitly handed to Browser repair.
+
+### Rollback
+
+Preserved old Worker: `/opt/openclaw-experiments/agent-worker-isolation-v1/releases/0.2.10-5f9e136`.
+Backup: `/home/openclaw/.openclaw/backups/steer91-0.2.11-20260906`.
+
+On production through management Tailscale SSH:
+
+```sh
+sudo /opt/node-v22.23.1/bin/node /home/openclaw/.openclaw/backups/steer91-0.2.11-20260906/deploy.mjs rollback
+```
+
+The rollback checks for active work and file drift, restores only the Worker load paths (preserving later unrelated config changes), restores Feishu's pre-Steer file, removes the new Steer prestart hook, and restarts the same Gateway. Recheck channels and visible reply afterward. Never run an old doctor --fix or reset business sessions to roll back Steer.
