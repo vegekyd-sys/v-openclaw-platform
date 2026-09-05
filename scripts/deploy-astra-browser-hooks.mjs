@@ -9,6 +9,10 @@ const newWorker='/opt/openclaw-experiments/agent-worker-isolation-v1/releases/bb
 const oldBrowser='/opt/v-browser/releases/0.4.5/openclaw-plugin',newBrowser='/opt/v-browser/releases/0.4.6/openclaw-plugin';
 const digest=x=>createHash('sha256').update(x).digest('hex');
 const read=p=>JSON.parse(fs.readFileSync(p));
+function replaceConfig(file,text) {
+ const st=fs.statSync(file),temp=file+'.astra-browser-'+process.pid+'.tmp';
+ fs.writeFileSync(temp,text,{mode:st.mode&0o777,flag:'wx'});fs.chownSync(temp,st.uid,st.gid);fs.renameSync(temp,file);
+}
 const files=()=>[main,read(main).plugins.entries['vlab-agent-worker-isolation'].config.workerConfigPath];
 const alias=c=>{
  for(const id of ['makaron','v-codex']) {
@@ -58,6 +62,10 @@ if(mode==='prepare') {
  console.log(JSON.stringify({prepared:true,liveConfigChanged:false,backup}));process.exit(0);
 }
 assert(fs.existsSync(backup+'/release.json'));
+const release=read(backup+'/release.json');
+assert.equal(digest(fs.readFileSync(newWorker+'/worker.mjs')),release.workerAfter);
+assert.equal(digest(fs.readFileSync(newWorker+'/native-hook-runtime.mjs')),release.helper);
+assert.equal(digest(fs.readFileSync(newBrowser+'/index.js')),release.browserEntry);
 if(!await idle()){console.log(JSON.stringify({changed:false,reason:'active work; waiting'}));process.exit(2);}
 const pending=[];
 for(const [i,file] of files().entries()) {
@@ -86,7 +94,7 @@ for(const {file,raw,c,before,after,i} of pending) {
   fs.writeFileSync(backup+'/'+i+'.before.json',raw,{mode:0o600,flag:'wx'});
   fs.writeFileSync(backup+'/'+i+'.delta.json',JSON.stringify({before,after},null,2),{mode:0o600,flag:'wx'});
  }
- fs.writeFileSync(file,JSON.stringify(c,null,2)+'\n');
+ replaceConfig(file,JSON.stringify(c,null,2)+'\n');
 }
 console.log(JSON.stringify({at:new Date().toISOString(),mode,configUpdated:true,backup}));
 execFileSync('systemctl',['restart',unit],{timeout:60000});
