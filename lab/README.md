@@ -25,6 +25,8 @@
 
 只通过 `/Users/tianyicai/v-upgrade-private/20260904/ssh-config` 的 `vlab91` 别名连接。`labctl.mjs` 固定检查 VLab hostname，不接受生产地址参数。
 
+**入口边界：这个 SSH 配置和 `vlab91` 别名在 Tianyi 本机，不在生产 V。生产 V 当前没有 `vlab` SSH 别名，本轮也没有给 V 新增到 VLab 的 SSH 凭证或登录权限。** 因此不能通知 V “直接运行 ssh vlab / labctl 即可”。目前由本机管理者连接 VLab 后执行 `sudo labctl`；若要让 V 自助创建实验，需另外建立明确授权、最小权限的访问入口，不能复制本机管理私钥过去。
+
 ```sh
 # 本机：在任务自己的 worktree 中提交，打包精确分支
 git status --short

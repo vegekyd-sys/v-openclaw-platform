@@ -51,6 +51,8 @@
 - 额外 Control UI/Browser QA 仍需由统筹负责人合并计算宿主机预算；labctl 的两实例限制不计算遗留的外部 systemd 服务，不能当成全主机总预算保证。
 - 共享24993交给统筹任务 `01a06fbe-7654-7331-8d6e-73a8cd2dcd7e` 持有 integration lease，不再作为个人开发默认目标。
 - 验收结束后停止 isolation-check，仅保留数据和证据；astra 供后续 Astra 独立验收。
+- Astra 双路径验收及生产交接完成后，由本任务确认自己的 Worker 无 active/pending/queued，再停止 astra；保留目录、代码和证据，不释放统筹线程持有的 integration lease。
+- `vlab91` SSH 入口只存在 Tianyi 本机。生产 V 没有 `vlab` SSH 别名，本轮没有建立 V 到 VLab 的自助访问授权。
 - 管理员 sudo 可以绕过保护；已补共同项目 AGENTS 入口并通知并行任务。旧脚本若绕过 labctl 直接操作共享路径，仍是违反流程，不能宣称操作系统能阻止有 root 权限的人。
 
 ## 本轮发现并处理
