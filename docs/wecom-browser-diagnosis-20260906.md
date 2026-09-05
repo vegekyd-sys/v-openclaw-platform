@@ -1,7 +1,7 @@
 # WeCom and V Browser: diagnosis and acceptance gates
 
-Status: diagnosis only. Neither feature has passed end-to-end production acceptance.
-No production restart, plugin install, or configuration change during this diagnosis.
+Historical diagnosis below, before the retry deployment. Updated WeCom production results are in [the 02:10 deployment report](wecom91-production-acceptance-20260906.md). Browser remains a separate task.
+No production restart, plugin install, or configuration change occurred during the initial diagnosis described below.
 
 ## WeCom
 
