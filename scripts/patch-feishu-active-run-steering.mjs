@@ -13,7 +13,7 @@ import {
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-const SUPPORTED_PACKAGE_VERSIONS = new Set(["2026.7.1", "2026.8.1"]);
+const SUPPORTED_PACKAGE_VERSIONS = new Set(["2026.7.1", "2026.8.1", "2026.9.1"]);
 const BACKUP_SUFFIX = ".v-worker-steer-v0.2.3.bak";
 
 const ORIGINAL_QUEUE_RETURN = `\treturn (key, task) => {

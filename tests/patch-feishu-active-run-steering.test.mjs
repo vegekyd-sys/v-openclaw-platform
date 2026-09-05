@@ -209,6 +209,7 @@ test("the package patch is reversible for the monolithic OpenClaw package", asyn
     ["openclaw", "2026.7.1", officialFixture],
     ["@openclaw/feishu", "2026.7.1", officialFixture],
     ["@openclaw/feishu", "2026.8.1", openClaw81Fixture],
+    ["@openclaw/feishu", "2026.9.1", openClaw81Fixture],
   ]) {
     const packageRoot = await mkdtemp(
       path.join(os.tmpdir(), "openclaw-feishu-steer-test-"),
