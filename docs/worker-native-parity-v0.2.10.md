@@ -1,8 +1,8 @@
 # Worker 0.2.10 — scoped 9.1 parity repair
 
 2026-09-05 Asia/Shanghai. Supersedes the unresolved gates in the RC.1 report.
-Functional candidate: 6a9393930676963f2338d8de006cccd0da0d761c.
-Release changes after that candidate only adjust version and acceptance metadata.
+Initial functional candidate: 6a9393930676963f2338d8de006cccd0da0d761c.
+Later image-provenance and native setup-probe corrections are recorded below.
 Production deployment/acceptance is recorded separately below, not implied by this report.
 
 ## Fixes
@@ -72,4 +72,60 @@ Unknown symbols/authority handles are still rejected, not silently removed.
 not a claim that all future opaque JavaScript values can transport automatically.
 VLab Grok attempt could not run because its independent OAuth refresh token was
 expired; production credentials were not copied or changed. Testing the same
-native image path with VLab's configured Azure vision model follows.
+native image path with VLab's configured Azure vision model passed at 18:26:
+the real supplied fixture image was read correctly, native TTS returned Feishu
+audio (2 seconds), and the Session finished `done` without an active run.
+
+### Production R2 and remaining Browser gate
+
+- 18:29:37 applied 5f9e136; service restarted 18:29:38, ready 18:30:34,
+  PID 941511, NRestarts 0. Capacity remains 45 main / 45 subagents, 15 × 3.
+- 18:32 actual production Worker TTS was delivered as Feishu `audio` (3 seconds),
+  Session `done`, no active run. Actual model was GPT-5.6 Terra: a concurrent
+  Makaron model change was preserved, not overwritten by this deployment.
+- The test group was later found to be the wrong business group. No more test
+  messages are to be sent there. Subsequent production Browser acceptance uses
+  V Backup only. The original external voice group could not be messaged via
+  this user's CLI (230027); no alternative identity was used to bypass it.
+- Browser production tests did not pass: the original localhost page had left
+  the authorized tab inventory. HA overview remained authorized, but native
+  snapshot and screenshot reported unresolved Playwright target identities.
+  A fresh direct CDP diagnostic resolved the real target in 136–154 ms; this is
+  not equivalent to VCodex user-path acceptance. A scoped native attach-only
+  stop/reacquire restored tabs but did not restore snapshot/screenshot.
+- A later Gateway health sample was not degraded, Event Loop P99 21.3 ms,
+  ELU 0.039, pending 0. Earlier cold-start samples were degraded and must not
+  be omitted when assessing performance.
+
+### Native setup inference follow-up
+
+At 18:34 production's internal `openclaw` diagnostic failed at Worker admission:
+`Unreviewed runtime object: sessionManager`. This is a native tool-free,
+caller-owned in-memory setup probe, not a durable chat.
+
+An attempted delegation from inside the plugin to the built-in Harness was
+rejected in VLab (native admission had already been stripped). Commits 8f78001
+and 511bb43 were reverted; they were never deployed to production.
+
+The effective correction is 3dc0d04: before plugin capability stripping, native
+Harness selection retains the built-in OpenClaw owner only for the detached,
+tool-free setup-inference probe when the selected harness would be vlab-worker.
+Normal chats, tool-enabled runs, Codex and persisted Sessions are unchanged.
+No failed run is retried as a fallback. VLab actual `openclaw.chat` returned
+NATIVE_PROBE_0210_OK twice, including after removing the failed helper candidate.
+
+19:10:18 production received this native selection correction plus failure-only
+Browser target-identity diagnostics (74d0f67); no production config was changed.
+Service ready 19:10:41, PID 961442, NRestarts 0. Production acceptance continues;
+Browser is explicitly not yet accepted.
+
+### Rollback
+
+- Native selection and Browser diagnostics only:
+  `/home/openclaw/.openclaw/backups/native-probe-owner-3dc0d04/deploy.mjs rollback`.
+- Worker R2 plus native channel registry and exact-host browser policy:
+  `/home/openclaw/.openclaw/backups/worker-0.2.10-browser-policy-r2-20260905/deploy.mjs rollback`.
+- Run with production Node as root during an idle window. Both scripts validate
+  current owned file hashes/config deltas and preserve unrelated model/binding
+  changes. For a full return to the previous stable release, undo the native
+  follow-up first, then R2; each operation restarts the Gateway.
