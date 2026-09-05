@@ -1,6 +1,6 @@
 # Browser routing investigation 2026-09-05
 
-Production remains unchanged by this repair candidate. User priority is the
+Initial checkpoint below preceded deployment. User priority is the
 Codex group `oc_3093c03dab8938387ebc87ad047ea773`, then Night Shift execution.
 
 ## Evidence and candidate boundary
@@ -39,3 +39,23 @@ System disk free: 5.2G -> 7.2G; data disk remained 4.2G free. Four checked Gatew
 Broker services remained active. No Session, Memory, configuration or rollback
 backup deleted. Disposable cache deletion is permanent; fixtures can be regenerated.
 The agent-managed fixture variant cleans its own newly-created profile on exit.
+
+## Later verified results / release
+
+- Codex R9 real Feishu: acquire -> ordinary browser tabs -> snapshot -> release; fixture heading verified.
+- Worker needed the native prepared generation's hook runner initialized. The helper calls official SDK `initializeGlobalHookRunner` with that exact registry, not a custom dispatcher or gateway startup hooks.
+- Worker R12 real Feishu: clean acquire -> tabs -> suggestedTargetId snapshot -> release, visible fixture heading. Preceding R11 recovered from an incorrect raw tab ID; it was not the clean gate.
+- Tests passed: 15 native hook/Worker cases, 1 progress case, 14 stream/Steer/event parity cases; Browser 12 plugin cases (58 repository suite earlier).
+- Production 17:03: Browser 0.4.6 and production Worker bb69480 clone + native-hook helper deployed. Lab's unrelated voice RC Worker bundle was NOT copied into production.
+- Production Codex saw authorized Home Assistant tabs and released its lease, but snapshot was rejected by native SSRF policy. Main/overlay allowed only the CDP bridge hostname; actual HA host 192.168.1.50 was not allowed. This is NOT full production Browser acceptance. Exact-host policy follow-up paused for production incident; no blanket private-network exception added.
+- Original Browser group rejected CLI user-identity sends (230027); no permission bypass/re-auth attempted. Production Codex Browser probe instead ran in the already authorized Astra group.
+- Shared Lab lease released; owned astra private service and browser fixture stopped. Shared Lab Gateway remains active.
+
+## Production restart incident, 17:09 onward
+
+- Our deployment restarted at 17:03 and was ready at 17:03:32; Astra real-path acceptance passed after it.
+- Separate audio integration session added `activation.onStartup` to its ReSpeaker bridge manifest and executed another Gateway restart at 17:09. Main config is byte-equivalent in parsed JSON to our 17:03 apply candidate; no new primary/Worker alias edits detected.
+- Gateway ready at 17:13:13, NRestarts=0. Startup reported slow agent database opens; process read_bytes was ~5.6 GB, I/O full pressure briefly ~45%. No evidence of an endless startup crash loop.
+- Three interrupted Worker recovery attempts failed after 120s without progress; main DM history temporarily returned `session history is rebuilding`.
+- Feishu received/dispatch restored before visible replies. A real main DM reply appeared 17:16; fresh recovery probe remains the final acceptance gate. Do not claim ReSpeaker plugin itself caused the database slowdown solely from temporal correlation.
+- Browser follow-up and further production changes paused during incident response. No further restart/reset/rollback by this task.

@@ -23,4 +23,12 @@ Acceptance at 2026-09-05 16:26–16:30 Asia/Shanghai:
 - Browser acceptance is a separate gate and is not implied by this result.
 
 Lab backups: generation `backups/astra-codex-alias-20260905` (restricted, never in Git).
-Production: not deployed at this checkpoint.
+Production: deployed 2026-09-05 17:03 Asia/Shanghai; native command and real Codex bash + visible reply accepted at 17:05.
+
+Production details:
+- Candidate validation runs as the production config owner, not root. Root validation incorrectly rejected user-owned plugin installations as suspicious ownership; no permissions/security checks were disabled.
+- Main and overlay changed only Browser/Worker release paths and Makaron/v-codex Astra model metadata. Existing primary defaults, credentials and concurrency preserved.
+- `/model astra -s` returned explicit session-only confirmation in the requested group; actual history recorded `openai/gpt-6-astra`, runtime `codex`, bash `V_ASTRA_TOOL_OK`, terminal `V_ASTRA_REPLY_OK`.
+- The existing group explicitly overrides thinking to low, which remains in force. Alias default high does not erase an existing Session override; `/think high` is the native explicit change.
+- Scoped rollback: `/tmp/deploy-astra-browser-hooks.mjs rollback`, run with the same production Node/root management environment; script requires an idle window and refuses to overwrite concurrently changed alias metadata.
+- Restricted backup: `/home/openclaw/.openclaw/backups/astra-browser-nativehooks-20260905`.

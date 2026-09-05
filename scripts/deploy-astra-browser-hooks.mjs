@@ -83,8 +83,10 @@ for(const [i,file] of files().entries()) {
   assert(c.plugins.load.paths.includes(newWorker)&&c.plugins.load.paths.includes(newBrowser));
   c.plugins.load.paths=c.plugins.load.paths.map(p=>p===newWorker?oldWorker:p===newBrowser?oldBrowser:p);
  }
- const candidate=backup+'/'+i+'.'+mode+'.candidate.json';fs.writeFileSync(candidate,JSON.stringify(c,null,2)+'\n',{mode:0o600});
- execFileSync(process.execPath,[core+'/dist/index.js','config','validate','--json'],{env:{...process.env,OPENCLAW_CONFIG_PATH:candidate},stdio:['ignore','pipe','pipe'],timeout:30000});
+ const owner=fs.statSync(file);fs.chownSync(backup,owner.uid,owner.gid);
+ const candidate=backup+'/'+i+'.'+mode+'.candidate.json';fs.writeFileSync(candidate,JSON.stringify(c,null,2)+'\n',{mode:0o600});fs.chownSync(candidate,owner.uid,owner.gid);
+ try {execFileSync(process.execPath,[core+'/dist/index.js','config','validate','--json'],{uid:owner.uid,gid:owner.gid,env:{...process.env,OPENCLAW_CONFIG_PATH:candidate},stdio:['ignore','pipe','pipe'],timeout:30000});}
+ catch(error) {let detail;try{detail=JSON.stringify(JSON.parse(String(error.stdout)).error);}catch{}throw new Error('Candidate validation failed: '+(detail??'see restricted local validation output'));}
  pending.push({file,raw,c,before,after:projection(c),i});
 }
 if(!await idle()){console.log(JSON.stringify({changed:false,reason:'work arrived during validation'}));process.exit(2);}
