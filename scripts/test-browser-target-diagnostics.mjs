@@ -1,0 +1,10 @@
+import fs from 'node:fs';import vm from 'node:vm';import assert from 'node:assert/strict';import {patchBrowserTargetDiagnostics}from'./patch-browser-target-diagnostics.mjs';
+const file=process.argv[2];assert(file.includes('/labs/instances/'));
+const source=fs.readFileSync(file,'utf8'),patched=patchBrowserTargetDiagnostics(source);assert.equal(patchBrowserTargetDiagnostics(patched),patched);
+const start=patched.indexOf('async function readPageTargetInfo(page) {'),end=patched.indexOf('\nfunction pageTargetInfo(page)',start),logs=[];
+const scope={Date,Promise,setTimeout,clearTimeout,PLAYWRIGHT_TARGET_INFO_TIMEOUT_MS:15,normalizeOptionalString:s=>s,redactCdpErrorText:s=>s,console:{warn:s=>logs.push(JSON.parse(s.slice(s.indexOf('{'))))}};vm.createContext(scope);vm.runInContext(patched.slice(start,end),scope);
+const page=send=>({context:()=>({newCDPSession:async()=>({send,detach:async()=>{}})})});
+assert.equal((await scope.readPageTargetInfo(page(async()=>({targetInfo:{targetId:'real',title:'fixture'}})))).targetId,'real');assert.equal(logs.length,0);
+await assert.rejects(()=>scope.readPageTargetInfo(page(async()=>{throw Error('protocol fixture');})),/protocol fixture/);assert.equal(logs[0].kind,'error');
+const keepAlive=setTimeout(()=>{},100);assert.equal(await scope.readPageTargetInfo(page(()=>new Promise(()=>{}))),null);clearTimeout(keepAlive);assert.equal(logs[1].kind,'timeout');assert.equal(logs[1].stage,'getTargetInfo');
+console.log(JSON.stringify({nativeFunction:true,unchangedSuccessErrorTimeout:true,diagnostics:logs.length}));
