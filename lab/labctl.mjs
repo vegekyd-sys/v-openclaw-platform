@@ -19,7 +19,7 @@ for (let i=0; i<argv.length; i++) {
   if (!argv[i].startsWith('--') || !argv[i+1]) throw Error('Options require values');
   opts[argv[i].slice(2)] = argv[++i];
 }
-const run = (bin,args,options={}) => execFileSync(bin,args,{encoding:'utf8',timeout:120000,maxBuffer:8*1024*1024,...options}).trim();
+const run = (bin,args,options={}) => execFileSync(bin,args,{encoding:'utf8',timeout:120000,maxBuffer:8*1024*1024,...options})?.trim() ?? '';
 const read = p => JSON.parse(fs.readFileSync(p,'utf8'));
 const save = (p,v,mode=0o600) => fs.writeFileSync(p,JSON.stringify(v,null,2)+'\n',{mode});
 function fail(message) {throw Error(message);}
@@ -50,6 +50,9 @@ function check(m) {
   requireOwner(m, opts.owner);
   assertSafeConfig(read(`${m.root}/state/openclaw.json`), m.root, m.port);
   if (fs.realpathSync(m.root) !== m.root) fail('Instance root must not be a symlink');
+  walk(`${m.root}/runtime`,(p,e)=>{
+    if(e.isSymbolicLink()&&!fs.realpathSync(p).startsWith(m.root+'/'))fail('Runtime symlink escaped instance: '+p);
+  });
 }
 function freeDisk() {const s=fs.statfsSync(ROOT); return s.bavail*s.bsize;}
 function walk(dir, fn) {
@@ -174,6 +177,14 @@ try {
     else if(command==='status') {
       console.log(JSON.stringify({name,owner:m.owner,branch:m.branch,commit:m.commit,port:m.port,root:m.root}));
       console.log(run('systemctl',['show',m.unit,'-p','ActiveState,MainPID,NRestarts,MemoryCurrent,MemoryPeak,MemoryHigh,MemoryMax,CPUQuotaPerSecUSec']));
+    } else if(command==='candidate') {
+      check(m);
+      if(!/^[0-9a-f]{40}$/.test(opts.commit??''))fail('Candidate requires exact --commit');
+      const git=args=>run('runuser',['-u',m.user,'--','git','-C',`${m.root}/source`,...args]);
+      if(git(['rev-parse','HEAD'])!==opts.commit)fail('Commit does not match instance source HEAD');
+      if(git(['status','--porcelain']))fail('Commit source changes before recording a candidate');
+      m.candidate={commit:opts.commit,branch:git(['branch','--show-current']),runtime:fingerprint(`${m.root}/runtime`),at:new Date().toISOString(),acceptance:'NOT_IMPLIED_BY_HASH'};
+      save(`${ROOT}/control/${name}.json`,m);audit('candidate',m,{candidate:m.candidate});console.log(JSON.stringify(m.candidate));
     } else if(command==='cli') {
       check(m);if(!extra.length)fail('Use cli NAME --owner OWNER -- gateway health --json');
       run('systemd-run',['--quiet','--wait','--pipe','--collect',`--unit=lab-cli-${name}-${process.pid}`,...unitArgs(m),

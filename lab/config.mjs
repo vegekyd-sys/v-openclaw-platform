@@ -43,6 +43,7 @@ export function assertSafeConfig(config, root, port) {
   if (config.gateway?.bind !== 'loopback' || config.gateway?.port !== port || !config.gateway?.auth?.token) throw Error('Gateway endpoint isolation violated');
   if (Object.keys(config.channels ?? {}).length) throw Error('Personal instances cannot attach messaging channels; use the leased integration Gateway');
   if (config.cron?.enabled !== false || config.browser?.enabled !== false) throw Error('Cron/browser must be explicitly disabled in the base development profile');
-  const paths = [config.agents?.defaults?.workspace, ...Object.values(config.agents?.entries ?? {}).flatMap(a=>[a.workspace,a.agentDir]), ...(config.plugins?.load?.paths ?? [])];
+  const worker=config.plugins?.entries?.['vlab-agent-worker-isolation']?.config;
+  const paths = [config.agents?.defaults?.workspace, worker?.workerConfigPath, worker?.gatewayConfigPath, ...Object.values(config.agents?.entries ?? {}).flatMap(a=>[a.workspace,a.agentDir]), ...(config.plugins?.load?.paths ?? [])];
   if (paths.some(p=>typeof p === 'string' && !p.startsWith(root + '/'))) throw Error('Config references a shared mutable path');
 }
