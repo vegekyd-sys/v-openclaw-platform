@@ -200,10 +200,10 @@ try {
       if(git(['status','--porcelain']))fail('Commit source changes before recording a candidate');
       m.candidate={commit:opts.commit,branch:git(['branch','--show-current']),runtime:fingerprint(`${m.root}/runtime`),at:new Date().toISOString(),acceptance:'NOT_IMPLIED_BY_HASH'};
       save(`${ROOT}/control/${name}.json`,m);audit('candidate',m,{candidate:m.candidate});console.log(JSON.stringify(m.candidate));
-    } else if(command==='cli') {
+    } else if(command==='cli' || command==='run') {
       check(m);if(!extra.length)fail('Use cli NAME --owner OWNER -- gateway health --json');
       run('systemd-run',['--quiet','--wait','--pipe','--collect',`--unit=lab-cli-${name}-${process.pid}`,...unitArgs(m),
-        NODE,`${m.root}/runtime/openclaw/dist/index.js`,...extra],{stdio:'inherit',timeout:180000});
+        ...(command==='cli' ? [NODE,`${m.root}/runtime/openclaw/dist/index.js`,...extra] : extra)],{stdio:'inherit',timeout:240000});
     } else fail('Commands: seal/create/list/start/stop/restart/status/cli/lease. Mutations require explicit instance + owner.');
   }
 } catch(e) {console.error(e.message);process.exitCode=1;}
