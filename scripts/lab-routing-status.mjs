@@ -1,0 +1,10 @@
+import fs from 'node:fs';import {execFileSync} from 'node:child_process';
+const root='/srv/vlab-production-mirror/generations/candidate-official-update-final-20260902';
+const pid=execFileSync('systemctl',['show','openclaw-vlab-production-mirror-v8.service','-p','MainPID','--value'],{encoding:'utf8'}).trim();
+for(const s of fs.readFileSync(`/proc/${pid}/environ`,'utf8').split('\0').filter(Boolean))process.env[s.slice(0,s.indexOf('='))]=s.slice(s.indexOf('=')+1);
+const {callGatewayFromCli}=await import(root+'/runtime/npm-global/lib/node_modules/openclaw/dist/plugin-sdk/gateway-runtime.js');
+const key='agent:makaron:feishu:direct:ou_775a78b0aaae67da5e15eeaf102e3cd9';
+const r=await callGatewayFromCli('chat.history',{timeout:'20000',json:true},{sessionKey:key,limit:8});
+console.log(JSON.stringify({sessionInfo:r.sessionInfo,messages:(r.messages??[]).map(m=>({role:m.role,timestamp:m.timestamp,toolName:m.toolName,content:m.content?.filter?.(c=>c.type!=='thinking').map(c=>c.type==='toolCall'?{type:c.type,name:c.name}:c)}))}));
+const c=JSON.parse(fs.readFileSync(root+'/state/openclaw.json'));
+console.log(JSON.stringify({makaronPrimary:c.agents.entries.makaron.model,alias:c.agents.entries.makaron.models['openai/gpt-6-astra']}));
