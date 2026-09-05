@@ -5,7 +5,15 @@ assert.equal(os.hostname(),'VM-0-4-ubuntu');
 const root='/srv/vlab-production-mirror/labs/instances/steer91';
 assert.equal(process.env.OPENCLAW_CONFIG_PATH,root+'/state/openclaw.json');
 const {callGatewayFromCli}=await import(root+'/runtime/openclaw/dist/plugin-sdk/gateway-runtime.js');
-const call=(m,p)=>callGatewayFromCli(m,{timeout:'45000',json:true},p);
+const call=async(m,p)=>{
+  for(let attempt=0;;attempt++){
+    try{return await callGatewayFromCli(m,{timeout:'45000',json:true},p);}
+    catch(error){
+      if(m!=='chat.history'||error.retryable!==true||attempt>=8)throw error;
+      await new Promise(r=>setTimeout(r,Math.max(250,error.retryAfterMs??250)));
+    }
+  }
+};
 const stamp=Date.now(),key=`agent:lab:explicit:steer91-${stamp}`;
 const log=(phase,value={})=>console.log(JSON.stringify({at:new Date().toISOString(),phase,...value}));
 const first=await call('chat.send',{agentId:'lab',sessionKey:key,deliver:false,idempotencyKey:`steer91-first-${stamp}`,timeoutMs:150000,
