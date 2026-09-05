@@ -39,7 +39,9 @@ const changes=[env.OPENCLAW_CONFIG_PATH,overlay].map((p,i)=>{
  c.browser.defaultProfile='openclaw';
  return {p,c};
 });
-execFileSync('systemctl',['stop',unit],{timeout:60000});
+// A transient systemd unit disappears after stop. Keep its definition loaded
+// by issuing restart as one transaction, never separate stop/start calls.
+fs.writeFileSync(backup+'/unit.before.txt',execFileSync('systemctl',['cat',unit]));
 for(const {p,c} of changes)fs.writeFileSync(p,JSON.stringify(c,null,2)+'\n');
-execFileSync('systemctl',['start',unit],{timeout:60000});
+execFileSync('systemctl',['restart',unit],{timeout:60000});
 console.log(JSON.stringify({installed:true,backup,pluginVersion:'0.4.6',productionChanged:false}));
