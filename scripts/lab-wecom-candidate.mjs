@@ -13,6 +13,20 @@ const w=await callGatewayFromCli('vlab.workers.status',{timeout:'20000',json:tru
 const sessions=await callGatewayFromCli('sessions.list',{timeout:'20000',json:true},{limit:1000});
 assert(!sessions.hasMore,'Need full session inventory');assert(!sessions.sessions.some(s=>s.hasActiveRun),'Active session');assert(w.pending===0&&w.workers.every(w=>!w.activeCount&&!w.queued),'Active Worker');
 const src=base+'/state/extensions/wecom-openclaw-plugin',backup=base+'/backups/wecom-native-config-346916e';
+if(process.argv[2]==='repack-runtime-only'){
+ const stage=backup+'/package',pkg=JSON.parse(fs.readFileSync(stage+'/package.json'));
+ delete pkg.devDependencies;
+ for(const name of Object.keys(pkg.dependencies??{}))pkg.dependencies[name]=JSON.parse(fs.readFileSync(src+'/node_modules/'+name+'/package.json')).version;
+ fs.writeFileSync(stage+'/package.json',JSON.stringify(pkg,null,2)+'\n');
+ const manifest=JSON.parse(fs.readFileSync(backup+'/manifest.json'));
+ assert(!fs.existsSync(backup+'/candidate-with-dev-deps.tgz'));fs.renameSync(manifest.candidate,backup+'/candidate-with-dev-deps.tgz');
+ const packed=JSON.parse(execFileSync(node,['/opt/vlab/node-v22.23.1-linux-x64/lib/node_modules/npm/bin/npm-cli.js','pack','--ignore-scripts','--json','--pack-destination',backup],{cwd:stage,encoding:'utf8',env:{...process.env,npm_config_cache:backup+'/build-cache'}}));
+ fs.renameSync(backup+'/'+packed[0].filename,manifest.candidate);
+ fs.chownSync(manifest.candidate,Number(execFileSync('id',['-u','vlab'],{encoding:'utf8'})),Number(execFileSync('id',['-g','vlab'],{encoding:'utf8'})));fs.chmodSync(manifest.candidate,0o600);
+ manifest.priorSha=manifest.sha;manifest.sha=createHash('sha256').update(fs.readFileSync(manifest.candidate)).digest('hex');manifest.dependencies=pkg.dependencies;manifest.buildOnlyDependenciesRemoved=true;
+ fs.writeFileSync(backup+'/manifest.json',JSON.stringify(manifest,null,2),{mode:0o600});
+ console.log(JSON.stringify({stage:'repacked',sha:manifest.sha,dependenciesPinned:true}));install(manifest.candidate,'install-runtime-only.log');process.exit(0);
+}
 if(process.argv[2]==='retry-install'){
  const manifest=JSON.parse(fs.readFileSync(backup+'/manifest.json'));
  assert.equal(createHash('sha256').update(fs.readFileSync(manifest.candidate)).digest('hex'),manifest.sha);
