@@ -6,6 +6,7 @@ V 的整体发行与验收入口。用户只选择一个 V 版本；内部保留
 
 当前已完成 **发行装配骨架与独占 VLab 的首轮 9.1 / 9.2 Worker 往返验证**，不是已完成的安装包。
 详见 [首轮 VLab 验收与未闭合项](./VLAB-92-FIRST-PASS-20260906.md)。
+后续 [热重载与媒体契约修复](./RELOAD-MEDIA-REGRESSION-20260906.md) 已通过 218 项本机/Linux 回归；新候选真实运行验收仍待 VLab 名额，不继承首轮结果。
 当前生产的功能验收不能自动转移为新发行包的验收；必须证明干净实例可重建。
 默认 CLI 不安装软件、不重启服务、不读取凭据内容或业务会话；任何入口都不修改生产。
 
@@ -56,6 +57,8 @@ node --test platform/platform.test.mjs
 - `lab-control-probe.mjs steer|stop INSTANCE OWNER VERSION`：真实工具边界上的同任务修改，以及停止后执行新一轮；只创建自有合成会话。
 - `lab-probe.mjs INSTANCE OWNER VERSION`：核对先前通过的合成会话历史仍在，再执行指定模型的工具与最终回复。
 - `lab-compat.mjs INSTANCE OWNER VERSION`：对当前登记适配做一批只读检查；锚点存在仅表示可以继续 review，不表示应应用旧补丁。
+- `lab-reload-probe.mjs INSTANCE OWNER VERSION`：仅在自有空闲实例改变并还原一个 Worker 参数，检查原生热重载前后的真实工具与最终回复，要求 Gateway PID 不变。
+- `lab-media-contract.mjs INSTANCE OWNER`：读取自有 9.2 原生媒体函数进行合成契约验证，不修改核心、不生成媒体、不发渠道消息。
 - `lab-stage.mjs select91|select92 INSTANCE OWNER`：只切换已暂存的自有核心代码链接，必须先由 labctl 停止实例；不恢复、覆盖或删除状态。
 - `scripts/patch-openclaw-worker-native-attempt.mjs CORE --check`：只读检查五个原生桥的 bundle 契约；`--apply INSTANCE OWNER` 只允许停止的自有 VLab 核心。
 
