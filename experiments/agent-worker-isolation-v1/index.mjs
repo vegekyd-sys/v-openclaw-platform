@@ -1,5 +1,5 @@
 import { WorkerPool } from "./worker-pool.mjs";
-import { acquireWorkerRuntime, createWorkerRuntimeLifecycle } from "./worker-runtime-lifecycle.mjs";
+import { acquireWorkerRuntime, createWorkerRuntimeLifecycle, resolveWorkerRuntime } from "./worker-runtime-lifecycle.mjs";
 import { performance } from "node:perf_hooks";
 import { buildNativeHarnessData } from './native-harness-data.mjs';
 import { gatewayOwnedEventArgs } from './gateway-owned-terminal.mjs';
@@ -506,12 +506,12 @@ const plugin = {
     }
 
     async function dispatchNativeHarnessAttempt(params) {
+      // Validate before creating a relay or admitting any side effects.
+      const nativeHarnessData = buildNativeHarnessData(params);
       // A request keeps its generation even if a cached registration is rebound.
       const { pool, nativeRequestsByRunId, nativeLaneProgressBridge,
         nativeSubagentCompletionRelays, fastCompactionWorkerStats,
-        harnessEventParity, nativeHarnessStats } = sharedPool;
-      // Validate before creating a relay or admitting any side effects.
-      const nativeHarnessData = buildNativeHarnessData(params);
+        harnessEventParity, nativeHarnessStats } = resolveWorkerRuntime(SHARED_POOL_KEY, sharedPool);
       const harnessAttemptStartedAt = Date.now();
       const messageChannel = resolveHarnessMessageChannel(params);
       const sessionKey =
@@ -1176,7 +1176,7 @@ const plugin = {
     }
 
     async function startOperation(params) {
-      const { pool } = sharedPool;
+      const { pool } = resolveWorkerRuntime(SHARED_POOL_KEY, sharedPool);
       const idempotencyKey = readString(params, "idempotencyKey", {
         required: true,
       });

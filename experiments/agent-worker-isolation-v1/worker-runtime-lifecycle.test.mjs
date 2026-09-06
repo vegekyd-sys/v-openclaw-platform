@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { WorkerPool } from "./worker-pool.mjs";
-import { acquireWorkerRuntime, createWorkerRuntimeLifecycle } from "./worker-runtime-lifecycle.mjs";
+import { acquireWorkerRuntime, createWorkerRuntimeLifecycle, resolveWorkerRuntime } from "./worker-runtime-lifecycle.mjs";
 
 const workerPath = fileURLToPath(new URL("./fake-delayed-ready-worker.mjs", import.meta.url));
 function fixture(overrides = () => ({})) {
@@ -25,12 +25,34 @@ function fixture(overrides = () => ({})) {
     const service = createWorkerRuntimeLifecycle({ acquire, bind: r => { bound = r; } });
     return { ...service, current: () => bound };
   };
-  return { acquire, registration, generations, async cleanup() {
+  return { key, acquire, registration, generations, async cleanup() {
     await Promise.all(generations.map(g => g.pool.close()));
     delete globalThis[key];
   } };
 }
 const ping = runtime => runtime.pool.dispatch("agent:fixture:reload", { kind: "ping" });
+
+test("a cached model harness uses the active service generation only at new request admission", async () => {
+  const f = fixture();
+  const first = f.registration(), a = {}, b = {};
+  try {
+    await first.start(a);
+    const cached = first.current();
+    const admittedBeforeReload = resolveWorkerRuntime(f.key, cached);
+    await first.stop(a);
+    const second = f.registration();
+    assert.throws(() => resolveWorkerRuntime(f.key, cached), /no active service/);
+    assert.equal(second.current().pool.started, false);
+    await second.start(b);
+    const admittedAfterReload = resolveWorkerRuntime(f.key, cached);
+    assert.equal(admittedAfterReload, second.current());
+    assert.ok((await ping(admittedAfterReload)).workerPid);
+    assert.equal(admittedBeforeReload, cached);
+    await assert.rejects(ping(admittedBeforeReload), /closing/);
+    await second.stop(b);
+    assert.throws(() => resolveWorkerRuntime(f.key, cached), /no active service/);
+  } finally { await f.cleanup(); }
+});
 
 test("cached service registration survives three stop/start generations and late old stops", async () => {
   const f = fixture();

@@ -16,6 +16,18 @@ export function acquireWorkerRuntime(key, createRuntime) {
   return runtime;
 }
 
+// Prepared model snapshots can retain a harness registration whose service was
+// never restarted. Resolve only at admission, then keep that generation for the
+// entire request. Never create a pool using a stale snapshot's configuration.
+export function resolveWorkerRuntime(key, captured) {
+  if (!captured.pool.closing) return captured;
+  const current = globalThis[key];
+  if (current && !current.pool.closing && current.serviceOwner && !current.serviceOwner.stopped) {
+    return current;
+  }
+  throw new Error("worker pool is closing; no active service generation");
+}
+
 export function createWorkerRuntimeLifecycle({ acquire, bind }) {
   const owners = new WeakMap();
   const defaultContext = {};
