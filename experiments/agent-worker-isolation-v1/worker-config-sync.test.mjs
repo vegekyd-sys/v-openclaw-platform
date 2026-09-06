@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
@@ -98,6 +98,10 @@ test("atomically updates only the Worker config and becomes a no-op", () => {
     }),
     { mode: 0o640 },
   );
+  // The Lab service has UMask=0077. Establish the fixture's intended mode
+  // explicitly so this tests preservation, not the parent's creation mask.
+  chmodSync(workerConfigPath, 0o640);
+  assert.equal(statSync(workerConfigPath).mode & 0o777, 0o640);
 
   const first = syncWorkerRuntimeConfigFile({
     gatewayConfigPath,
