@@ -87,6 +87,7 @@
       "id": "worker-contracts",
       "purpose": "原生 Worker 执行、权限、归属、媒体与回传的离线契约",
       "files": [
+        "scripts/patch-openclaw-worker-native-attempt.test.mjs",
         "experiments/agent-worker-isolation-v1/exec-env.test.mjs",
         "experiments/agent-worker-isolation-v1/fast-compaction-provider.test.mjs",
         "experiments/agent-worker-isolation-v1/gateway-completion-context.test.mjs",
@@ -440,6 +441,15 @@
     }
   ],
   "adaptations": [
+    {
+      "id": "patch-openclaw-worker-native-attempt",
+      "file": "scripts/patch-openclaw-worker-native-attempt.mjs",
+      "component": "worker-runtime",
+      "reason": "从 9.1 平台来源收拢原生执行、身份、消息与实例上下文桥；9.2 锚点检查不等于全能力通过",
+      "hostVersions": ["2026.9.1", "2026.9.2"],
+      "disposition": "needs-live-reconciliation",
+      "sourceSha256": "ea6548485b849d3a383f497dc30227593885553499caf679a3fb2cfaff4cd3a4"
+    },
     {
       "id": "patch-openclaw-sessions-spawn-gateway-proxy",
       "file": "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-spawn-gateway-proxy.mjs",
