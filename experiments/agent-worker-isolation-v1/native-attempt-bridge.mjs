@@ -32,8 +32,15 @@ export function createNativeAttemptBridge() {
       }
       const upstreamDeadline = input.onAttemptDeadlineChanged;
       c.prepared = true;
+      const prepared = applyNativeHarnessData(input, c.message.nativeHarnessData);
+      // 9.2 prepares execution authority before runEmbeddedAttempt. A Gateway
+      // fingerprint is not the Worker's process-local prepared authority.
+      if (input.toolAuthorityFingerprint) {
+        prepared.toolAuthorityFingerprint = input.toolAuthorityFingerprint;
+        c.localToolAuthorityFingerprint = input.toolAuthorityFingerprint;
+      }
       return {
-        ...applyNativeHarnessData(input, c.message.nativeHarnessData),
+        ...prepared,
         conversationRoutePeerId: c.message.agentCommandOptions?.conversationRoutePeerId,
         onAttemptDeadlineChanged(deadline) {
           // Native cleanup may close an approval wait after cancellation.
@@ -69,9 +76,16 @@ export function createNativeAttemptBridge() {
       if (!c.handle || !c.isCurrent?.() || c.handle.isStopped?.() || c.handle.isCompacting?.()) {
         throw new Error('Native Worker is not ready for message injection');
       }
-      if (options.isInboundUserMessage === true && (!options.toolAuthorityFingerprint ||
-          options.toolAuthorityFingerprint !== c.handle.toolAuthorityFingerprint)) {
-        throw new Error('Native Worker Steer tool authority mismatch');
+      if (options.isInboundUserMessage === true) {
+        const gatewayFingerprint = c.message.nativeHarnessData?.toolAuthorityFingerprint;
+        const expected = c.localToolAuthorityFingerprint ? gatewayFingerprint : c.handle.toolAuthorityFingerprint;
+        if (!options.toolAuthorityFingerprint || options.toolAuthorityFingerprint !== expected ||
+            (c.localToolAuthorityFingerprint && c.handle.toolAuthorityFingerprint !== c.localToolAuthorityFingerprint)) {
+          throw new Error('Native Worker Steer tool authority mismatch');
+        }
+        // The trusted IPC owner has already validated Gateway authority. Core
+        // still validates its own exact current handle, policy and lifecycle.
+        options = {...options, toolAuthorityFingerprint: c.handle.toolAuthorityFingerprint};
       }
       return await c.handle.queueMessage(text, options);
     },

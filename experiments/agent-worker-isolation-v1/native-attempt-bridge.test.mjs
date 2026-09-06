@@ -7,6 +7,22 @@ import { WorkerPool } from './worker-pool.mjs';
 
 const message = {id:'r1',runId:'run1',sessionId:'s1',sessionKey:'agent:a:s1',agentId:'a',gatewayMessageTool:true,
   agentCommandOptions:{conversationRoutePeerId:'peer1'}};
+test('9.2 preserves native local authority and fences Gateway-to-Worker Steer translation',async()=>{
+ const b=createNativeAttemptBridge(),c=new AbortController(),seen=[];
+ const close=b.register({...message,nativeHarnessData:{toolAuthorityFingerprint:'gateway-issued'}},c.signal,()=>{},()=>{});
+ const input=b.prepare({...message,toolAuthorityFingerprint:'worker-native'});
+ assert.equal(input.toolAuthorityFingerprint,'worker-native');
+ const handle={toolAuthorityFingerprint:'worker-native',queueMessage:async(text,options)=>seen.push(options)};
+ b.bind(message,handle,()=>true,()=>{});
+ const options={isInboundUserMessage:true,toolAuthorityFingerprint:'gateway-issued'};
+ await b.steer('run1','edit',options);
+ assert.equal(seen[0].toolAuthorityFingerprint,'worker-native');
+ assert.equal(options.toolAuthorityFingerprint,'gateway-issued');
+ await assert.rejects(b.steer('run1','edit',{...options,toolAuthorityFingerprint:'worker-native'}),/authority mismatch/);
+ handle.toolAuthorityFingerprint='new-generation';
+ await assert.rejects(b.steer('run1','edit',options),/authority mismatch/);
+ close();await assert.rejects(b.steer('run1','edit',options),/no longer active/);
+});
 test('native attempt preserves both deadline callbacks and current conversation route', () => {
   const b=createNativeAttemptBridge(), events=[], c=new AbortController();
   const close=b.register(message,c.signal,d=>events.push(['gateway',d]),()=>{});
