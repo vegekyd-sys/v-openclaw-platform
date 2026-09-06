@@ -1,0 +1,14 @@
+{
+  "name": "@versa/v-platform",
+  "version": "0.1.0-alpha.1",
+  "private": true,
+  "type": "module",
+  "description": "V-Platform versioned assembly and acceptance controller; not yet an installable runtime distribution",
+  "engines": {"node": ">=22.23.1"},
+  "bin": {"v-platform": "platform/cli.mjs"},
+  "scripts": {
+    "test": "node platform/cli.mjs test",
+    "check": "node platform/cli.mjs audit",
+    "release:check": "node platform/cli.mjs release-check"
+  }
+}

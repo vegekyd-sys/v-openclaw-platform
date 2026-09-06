@@ -1,0 +1,633 @@
+{
+  "schemaVersion": 1,
+  "name": "V-Platform",
+  "releaseId": "v-platform-0.1.0-assembly.1",
+  "openclawVersion": "2026.9.1",
+  "sourceBaseline": {
+    "repository": "v-openclaw-platform",
+    "commit": "6b78fffe432a7741e270526a75027bdd657bbaca",
+    "note": "Steer 0.2.11 accepted source. This is not a complete production artifact inventory."
+  },
+  "components": [
+    {
+      "id": "openclaw-core",
+      "role": "主 Gateway 与其官方运行库",
+      "expectedVersion": "2026.9.1",
+      "artifactState": "not-locked"
+    },
+    {
+      "id": "node-runtime",
+      "role": "服务器 Node 运行时与启动入口",
+      "expectedVersion": "22.23.1",
+      "artifactState": "not-locked"
+    },
+    {
+      "id": "worker-runtime",
+      "role": "进程隔离、原生工具与生命周期桥接",
+      "expectedVersion": "0.2.11",
+      "artifactState": "not-locked"
+    },
+    {
+      "id": "codex-plugin",
+      "role": "通过原生可信安装注册的官方 Codex Harness",
+      "expectedVersion": "2026.9.1",
+      "artifactState": "not-locked"
+    },
+    {
+      "id": "codex-cli",
+      "role": "Codex 插件显式使用的独立 CLI",
+      "expectedVersion": "0.153.4",
+      "artifactState": "not-locked"
+    },
+    {
+      "id": "feishu-channel",
+      "role": "飞书入站、流式卡片及媒体投递",
+      "expectedVersion": "unresolved",
+      "artifactState": "not-locked"
+    },
+    {
+      "id": "wecom-channel",
+      "role": "企微渠道及原生业务工具上下文",
+      "expectedVersion": "2026.8.17-vlab.2",
+      "artifactState": "not-locked"
+    },
+    {
+      "id": "browser-gateway",
+      "role": "独立 Browser Gateway，不能遗漏为旧版",
+      "expectedVersion": "2026.9.1",
+      "artifactState": "not-locked"
+    },
+    {
+      "id": "browser-broker",
+      "role": "Browser 授权、会话绑定与 CDP 传输",
+      "expectedVersion": "unresolved",
+      "artifactState": "not-locked"
+    },
+    {
+      "id": "browser-client",
+      "role": "本机扩展与已授权 Tailscale 连接组件",
+      "expectedVersion": "unresolved",
+      "artifactState": "not-locked"
+    },
+    {
+      "id": "nightshift",
+      "role": "夜班/Workboard 编排和原生调度",
+      "expectedVersion": "unresolved",
+      "artifactState": "not-locked"
+    },
+    {
+      "id": "platform-policy",
+      "role": "主/Worker 配置变换、入口、系统服务与迁移",
+      "expectedVersion": "unresolved",
+      "artifactState": "not-locked"
+    }
+  ],
+  "offlineSuites": [
+    {
+      "id": "worker-contracts",
+      "purpose": "原生 Worker 执行、权限、归属、媒体与回传的离线契约",
+      "files": [
+        "experiments/agent-worker-isolation-v1/exec-env.test.mjs",
+        "experiments/agent-worker-isolation-v1/fast-compaction-provider.test.mjs",
+        "experiments/agent-worker-isolation-v1/gateway-completion-context.test.mjs",
+        "experiments/agent-worker-isolation-v1/gateway-native-compaction.test.mjs",
+        "experiments/agent-worker-isolation-v1/gateway-owned-terminal.test.mjs",
+        "experiments/agent-worker-isolation-v1/gateway-owned-tool-proxy.test.mjs",
+        "experiments/agent-worker-isolation-v1/gateway-sessions-spawn.test.mjs",
+        "experiments/agent-worker-isolation-v1/harness-channel.test.mjs",
+        "experiments/agent-worker-isolation-v1/harness-event-contract.test.mjs",
+        "experiments/agent-worker-isolation-v1/harness-failure.test.mjs",
+        "experiments/agent-worker-isolation-v1/harness-native-transcript.test.mjs",
+        "experiments/agent-worker-isolation-v1/harness-result.test.mjs",
+        "experiments/agent-worker-isolation-v1/native-attempt-bridge.test.mjs",
+        "experiments/agent-worker-isolation-v1/native-harness-data.test.mjs",
+        "experiments/agent-worker-isolation-v1/native-hook-runtime.test.mjs",
+        "experiments/agent-worker-isolation-v1/native-lane-progress.test.mjs",
+        "experiments/agent-worker-isolation-v1/native-request-timeout.test.mjs",
+        "experiments/agent-worker-isolation-v1/native-setup-probe-owner.test.mjs",
+        "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-spawn-gateway-proxy.test.mjs",
+        "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-yield-external-task.test.mjs",
+        "experiments/agent-worker-isolation-v1/patch-openclaw-skill-workshop-worker-proxy.test.mjs",
+        "experiments/agent-worker-isolation-v1/patch-openclaw-worker-exec-config-domain.test.mjs",
+        "experiments/agent-worker-isolation-v1/runtime-path.test.mjs",
+        "experiments/agent-worker-isolation-v1/session-hotset.test.mjs",
+        "experiments/agent-worker-isolation-v1/session-rollover-retry.test.mjs",
+        "experiments/agent-worker-isolation-v1/skill-usage-report.test.mjs",
+        "experiments/agent-worker-isolation-v1/skill-usage-telemetry.test.mjs",
+        "experiments/agent-worker-isolation-v1/subagent-completion-relay.test.mjs",
+        "experiments/agent-worker-isolation-v1/transcript-recovery.test.mjs",
+        "experiments/agent-worker-isolation-v1/user-turn-ownership.test.mjs",
+        "experiments/agent-worker-isolation-v1/worker-active-run-proxy.test.mjs",
+        "experiments/agent-worker-isolation-v1/worker-agent.test.mjs",
+        "experiments/agent-worker-isolation-v1/worker-config-sync.test.mjs",
+        "experiments/agent-worker-isolation-v1/worker-detached-event.test.mjs",
+        "experiments/agent-worker-isolation-v1/worker-exec-argv.test.mjs",
+        "experiments/agent-worker-isolation-v1/worker-gateway-events.test.mjs",
+        "experiments/agent-worker-isolation-v1/worker-pool-scaling.test.mjs",
+        "experiments/agent-worker-isolation-v1/worker-progress.test.mjs",
+        "experiments/agent-worker-isolation-v1/worker-skill-telemetry.test.mjs",
+        "experiments/agent-worker-isolation-v1/worker-steer91.test.mjs",
+        "experiments/agent-worker-isolation-v1/worker-stream-parity.test.mjs",
+        "experiments/agent-worker-isolation-v1/worker-timeout-isolation.test.mjs"
+      ]
+    },
+    {
+      "id": "channel-patches",
+      "purpose": "飞书显示、Steer、媒体和 Session 补丁的确定性回归",
+      "files": [
+        "scripts/patch-worker-channel-registry.test.mjs",
+        "tests/patch-feishu-active-run-steering.test.mjs",
+        "tests/patch-feishu-latest-snapshot-streaming.test.mjs",
+        "tests/patch-openclaw-media-completion-relay.test.mjs",
+        "tests/patch-openclaw-session-hotset.test.mjs",
+        "tests/prune-openclaw-session-hotset.test.mjs"
+      ]
+    },
+    {
+      "id": "model-policy",
+      "purpose": "Astra 路由和 Codex CLI 配置保持",
+      "files": [
+        "scripts/astra-codex-cli-policy.test.mjs",
+        "scripts/astra-model-policy.test.mjs",
+        "scripts/patch-openclaw91-astra.test.mjs"
+      ]
+    },
+    {
+      "id": "lab-isolation",
+      "purpose": "实例、状态、配置和业务渠道隔离",
+      "files": [
+        "lab/config.test.mjs"
+      ]
+    },
+    {
+      "id": "platform-contracts",
+      "purpose": "发行清单、防漏、版本边界和严格验收入口自身的回归",
+      "files": ["platform/platform.test.mjs"]
+    }
+  ],
+  "deferredTestFiles": [
+    {
+      "file": "tests/feishu-steer91-real-bundle.test.mjs",
+      "reason": "需要未修改的真实 Feishu 9.1 bundle fixture；不在离线入口中将条件 skip 冒充通过。后续接入制品兼容性门槛。"
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "worker-execution",
+      "title": "Worker 原生执行",
+      "required": true,
+      "components": [
+        "worker-runtime",
+        "openclaw-core"
+      ],
+      "offlineSuites": [
+        "worker-contracts"
+      ],
+      "liveAssertions": [
+        "实际 runtime=vlab-worker；实际模型与显式选择一致，无隐式 fallback",
+        "真实 exec 工具结果与最终回复同属当前 run，Session 正常 done"
+      ]
+    },
+    {
+      "id": "codex-execution",
+      "title": "Codex 原生执行",
+      "required": true,
+      "components": [
+        "codex-plugin",
+        "codex-cli"
+      ],
+      "offlineSuites": [
+        "model-policy"
+      ],
+      "liveAssertions": [
+        "通过官方可信注册使用固定 CLI；真实 Astra 工具结果及最终回复",
+        "保持当前默认模型、已选账号及会话原有 runtime；无新建替代会话或降级冒充成功"
+      ]
+    },
+    {
+      "id": "tool-authority",
+      "title": "身份、配置与工具权限",
+      "required": true,
+      "components": [
+        "worker-runtime",
+        "platform-policy"
+      ],
+      "offlineSuites": [
+        "worker-contracts",
+        "lab-isolation"
+      ],
+      "liveAssertions": [
+        "每次工具调用由原生可信上下文确定身份和配置",
+        "跨 Agent/账号越权请求拒绝；过期 owner 与取消后的调用拒绝；原有显式限制不变"
+      ]
+    },
+    {
+      "id": "subagent-completion",
+      "title": "子任务完成回传",
+      "required": true,
+      "components": [
+        "worker-runtime",
+        "openclaw-core"
+      ],
+      "offlineSuites": [
+        "worker-contracts"
+      ],
+      "liveAssertions": [
+        "真实 child 完成后返回正确 Parent 和飞书会话",
+        "完成只发布一次，NO_REPLY 和 yield 不被误重试；独立任务互不吞完成事件"
+      ]
+    },
+    {
+      "id": "turn-controls",
+      "title": "运行中修改、停止与继续",
+      "required": true,
+      "components": [
+        "worker-runtime",
+        "feishu-channel"
+      ],
+      "offlineSuites": [
+        "worker-contracts",
+        "channel-patches"
+      ],
+      "liveAssertions": [
+        "Worker 和 Codex 活跃任务可 steer；确认修改确实作用于原任务",
+        "stop 后副作用停止且后续聊天可继续；不能先说成功再静默新跑一轮"
+      ]
+    },
+    {
+      "id": "feishu-presentation",
+      "title": "飞书流式与终态",
+      "required": true,
+      "components": [
+        "feishu-channel",
+        "codex-plugin"
+      ],
+      "offlineSuites": [
+        "channel-patches"
+      ],
+      "liveAssertions": [
+        "真实进度与最终正文可见，工具进度不覆盖回复，Runtime 标识正确",
+        "同一条结果不重复发送；工具失败有诚实终态"
+      ]
+    },
+    {
+      "id": "feishu-voice",
+      "title": "语音媒体语义",
+      "required": true,
+      "components": [
+        "feishu-channel",
+        "worker-runtime"
+      ],
+      "offlineSuites": [
+        "worker-contracts",
+        "channel-patches"
+      ],
+      "liveAssertions": [
+        "实际消息类型为可播放的 audio/Opus 语音气泡",
+        "普通 MP3 保持附件语义；工具/API 成功不能代替收件端媒体检查"
+      ]
+    },
+    {
+      "id": "browser-results",
+      "title": "授权浏览器与截图",
+      "required": true,
+      "components": [
+        "browser-gateway",
+        "browser-broker",
+        "browser-client",
+        "worker-runtime",
+        "codex-plugin"
+      ],
+      "offlineSuites": [
+        "worker-contracts"
+      ],
+      "liveAssertions": [
+        "使用独立测试浏览器或独占授权，保持现有配对与分享范围",
+        "Worker/Codex 各完成两次新截图、实际消息投递、下载/解码及视觉核验",
+        "release 后租约/命令清空；延迟/断线故障必须可诊断，不把实验候选带入生产"
+      ]
+    },
+    {
+      "id": "wecom-native-tools",
+      "title": "企微原生业务工具",
+      "required": true,
+      "components": [
+        "wecom-channel",
+        "worker-runtime"
+      ],
+      "offlineSuites": [],
+      "offlineGap": "共享 wrapper 目前只有独立探针，尚未迁入无凭据离线 fixture。",
+      "liveAssertions": [
+        "原生可信账户的联系人/文档等只读工具真实完成",
+        "隔离 Worker 的工具和最终回复均有证据；凭据不打包、模型不能选另一配置/账户"
+      ]
+    },
+    {
+      "id": "memory-recall",
+      "title": "Memory 与索引",
+      "required": true,
+      "components": [
+        "openclaw-core",
+        "platform-policy"
+      ],
+      "offlineSuites": [],
+      "offlineGap": "Memory 9.1 provenance/索引回归还在主体升级来源，需要收拢。",
+      "liveAssertions": [
+        "合成数据与真实授权只读样本的 search 命中正确，来源归属不变",
+        "空结果不触发无界重建；SQLite 迁移与索引错误可见且不损坏原库"
+      ]
+    },
+    {
+      "id": "nightshift-scheduling",
+      "title": "Night Shift / Workboard",
+      "required": true,
+      "components": [
+        "nightshift",
+        "worker-runtime"
+      ],
+      "offlineSuites": [],
+      "offlineGap": "Night Shift 独立包测试尚未导入当前来源树。",
+      "liveAssertions": [
+        "独立测试账号或独占集成内，同 Agent 两个任务完成并回到各自所有者",
+        "并发预算明确且主对话仍可回复，任务取消和错误回传可见"
+      ]
+    },
+    {
+      "id": "skill-workshop",
+      "title": "原生 Skill Workshop",
+      "required": true,
+      "components": [
+        "worker-runtime",
+        "openclaw-core"
+      ],
+      "offlineSuites": [
+        "worker-contracts"
+      ],
+      "liveAssertions": [
+        "原生工作区/配置归属正确，在测试技能上执行 proposal/apply 并检查真实目标",
+        "只读/拒绝/回滚路径保持；data-selection 注册和 Skill 工具发现可用"
+      ]
+    },
+    {
+      "id": "client-entrypoints",
+      "title": "CLI、Control UI 与设备入口",
+      "required": true,
+      "components": [
+        "node-runtime",
+        "openclaw-core",
+        "browser-gateway",
+        "codex-cli",
+        "platform-policy"
+      ],
+      "offlineSuites": [
+        "model-policy",
+        "lab-isolation"
+      ],
+      "liveAssertions": [
+        "主 Gateway、两用户 shell CLI、Browser Gateway 与插件指定 CLI 逐项核对实际二进制",
+        "HTTPS 认证/配对不放宽；大历史、刷新重连与官方 iOS 入口验证"
+      ]
+    },
+    {
+      "id": "restart-recovery",
+      "title": "生命周期及恢复",
+      "required": true,
+      "components": [
+        "openclaw-core",
+        "worker-runtime"
+      ],
+      "offlineSuites": [
+        "worker-contracts"
+      ],
+      "liveAssertions": [
+        "仅在自有实例注入 Worker 退出、Gateway 重启和取消竞态",
+        "已接受任务的恢复归属正确，终态无重复，其他任务不丢失"
+      ]
+    },
+    {
+      "id": "migration-rollback",
+      "title": "干净安装与数据安全回退",
+      "required": true,
+      "components": [
+        "platform-policy"
+      ],
+      "offlineSuites": [
+        "lab-isolation",
+        "platform-contracts"
+      ],
+      "liveAssertions": [
+        "空白自有实例只依赖锁定安装包即可重建 9.1，不读取生产 Session/认证库",
+        "配置增量幂等且保留未知用户字段；状态迁移/兼容性先在合成数据验证",
+        "回滚不自动覆盖升级后新增 Session/Memory，代码与数据回退分别演练"
+      ]
+    },
+    {
+      "id": "load-isolation",
+      "title": "负载与延迟",
+      "required": true,
+      "components": [
+        "worker-runtime",
+        "openclaw-core"
+      ],
+      "offlineSuites": [
+        "worker-contracts"
+      ],
+      "liveAssertions": [
+        "固定输入重复测量实际模型、工具、回复，区分人为等待、排队和模型时间",
+        "功能全完成仍需独立性能结论；繁忙/延迟回归不得被健康状态覆盖",
+        "负载结束后恢复、无新重启/OOM、无残留自有任务；45 路配置不是验收容量"
+      ]
+    }
+  ],
+  "adaptations": [
+    {
+      "id": "patch-openclaw-sessions-spawn-gateway-proxy",
+      "file": "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-spawn-gateway-proxy.mjs",
+      "component": "worker-runtime",
+      "reason": "子任务创建与真实 Parent 完成归属",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "needs-live-reconciliation",
+      "sourceSha256": "58fd090986abd0564deded7ea74b7fad1dce3aab707808ea40bd88636e6e7a87"
+    },
+    {
+      "id": "patch-openclaw-sessions-yield-external-task",
+      "file": "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-yield-external-task.mjs",
+      "component": "worker-runtime",
+      "reason": "跨 Worker yield 与生命周期归属",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "needs-live-reconciliation",
+      "sourceSha256": "45486559a808fddeabdc35332ed342098441751212703a084c1c6502a4bea0cc"
+    },
+    {
+      "id": "patch-openclaw-skill-workshop-worker-proxy",
+      "file": "experiments/agent-worker-isolation-v1/patch-openclaw-skill-workshop-worker-proxy.mjs",
+      "component": "worker-runtime",
+      "reason": "Skill Workshop 保持 Gateway 可信配置与写入所有权",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "needs-live-reconciliation",
+      "sourceSha256": "a3d6044b7db096fa1778ad3c0c85c5233b5f0d0179f689fc8b19fe0bdbe61da6"
+    },
+    {
+      "id": "patch-openclaw-worker-exec-config-domain",
+      "file": "experiments/agent-worker-isolation-v1/patch-openclaw-worker-exec-config-domain.mjs",
+      "component": "worker-runtime",
+      "reason": "exec 继承正确配置域，不以业务参数选择账户",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "needs-live-reconciliation",
+      "sourceSha256": "f00adc2e3332abf2779fe46fa1e1d45f04e0a2e105638e7c2a8bfb4d5aef8e8b"
+    },
+    {
+      "id": "patch-browser-target-diagnostics",
+      "file": "scripts/patch-browser-target-diagnostics.mjs",
+      "component": "browser-gateway",
+      "reason": "诊断候选；不继承为生产基线",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "excluded-candidate",
+      "sourceSha256": "a5f8112c378c9cea004fb32beb1f88f384df6fda86d5eaed3d5bc5819f947997"
+    },
+    {
+      "id": "patch-browser-target-timeout",
+      "file": "scripts/patch-browser-target-timeout.mjs",
+      "component": "browser-gateway",
+      "reason": "未发布的超时增强候选，禁止随整包混入生产",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "excluded-candidate",
+      "sourceSha256": "3bdf6e125c9e59efe012cb6e9a1397e51c3b174cb0d882ebbc0b3ce1e43380bc"
+    },
+    {
+      "id": "patch-feishu-active-run-steering",
+      "file": "scripts/patch-feishu-active-run-steering.mjs",
+      "component": "feishu-channel",
+      "reason": "飞书活跃任务 steer/stop 与原生异步接管",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "needs-live-reconciliation",
+      "sourceSha256": "af5719c2542ccc132ae0215b15560b2b709e7dbd0e24d10ce553a6e14c566535"
+    },
+    {
+      "id": "patch-feishu-latest-snapshot-streaming",
+      "file": "scripts/patch-feishu-latest-snapshot-streaming.mjs",
+      "component": "feishu-channel",
+      "reason": "卡片进度与正文最新快照",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "needs-live-reconciliation",
+      "sourceSha256": "8cb1350842ac2696883e13bbe14c2df62f257fe735fc6711a1e11527073b61eb"
+    },
+    {
+      "id": "patch-native-setup-probe-owner",
+      "file": "scripts/patch-native-setup-probe-owner.mjs",
+      "component": "worker-runtime",
+      "reason": "原生 setup probe 的真实 runtime artifact/owner",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "needs-live-reconciliation",
+      "sourceSha256": "e83348e0ad518b820452d463e5a883faee7ba0d1f6a9648949d689522b04c67b"
+    },
+    {
+      "id": "patch-openclaw-media-completion-relay",
+      "file": "scripts/patch-openclaw-media-completion-relay.mjs",
+      "component": "worker-runtime",
+      "reason": "媒体终态/完成回传",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "needs-live-reconciliation",
+      "sourceSha256": "f803680a6c931537f1c0e85caf919ccf3990c2f375fc30595ad0dedf49acaeab"
+    },
+    {
+      "id": "patch-openclaw-session-hotset",
+      "file": "scripts/patch-openclaw-session-hotset.mjs",
+      "component": "openclaw-core",
+      "reason": "Session 热集合与存储兼容；需要确认 9.1 是否仍需",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "needs-live-reconciliation",
+      "sourceSha256": "38872cceff26ab27a0e3c3147000fe78189a88c6390993f41e1299315952838a"
+    },
+    {
+      "id": "patch-openclaw91-astra",
+      "file": "scripts/patch-openclaw91-astra.mjs",
+      "component": "openclaw-core",
+      "reason": "Astra 模型路由与 Harness 声明，9.2 应检查是否可移除",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "needs-live-reconciliation",
+      "sourceSha256": "737c8afb63018856e2cc131609ea398927ec934d64091494f0f4c2d3ce7117ae"
+    },
+    {
+      "id": "patch-wecom-runtime-config",
+      "file": "scripts/patch-wecom-runtime-config.mjs",
+      "component": "wecom-channel",
+      "reason": "原生每次工具调用的可信配置上下文",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "needs-live-reconciliation",
+      "sourceSha256": "9d701b5a7e92a81e5360a96f70cacad9cdcc5b16f43141b392b08305cc9516ef"
+    },
+    {
+      "id": "patch-worker-channel-registry",
+      "file": "scripts/patch-worker-channel-registry.mjs",
+      "component": "worker-runtime",
+      "reason": "Worker 渠道能力与语音语义",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "needs-live-reconciliation",
+      "sourceSha256": "dbbdad3432f3e57e0df7e1cda3893f41400120c813a7689c793cfd7c4ae654e5"
+    }
+  ],
+  "externalInputs": [
+    {
+      "id": "upstream-native-bridge",
+      "status": "unresolved",
+      "reason": "9.1 原生 attempt/Gateway identity/subagent context 补丁位于主体升级来源，当前集成树未包含完整集合。"
+    },
+    {
+      "id": "browser-release",
+      "status": "unresolved",
+      "reason": "Browser Broker/扩展为独立仓库；只收已接受生产修复，不混入目标识别超时增强候选。"
+    },
+    {
+      "id": "nightshift-release",
+      "status": "unresolved",
+      "reason": "Night Shift 9.1 调度、cardIds、预算和 data-selection 改动在独立来源。"
+    },
+    {
+      "id": "host-startup-chain",
+      "status": "unresolved",
+      "reason": "必须只读盘点所有相关 systemd ExecStartPre、shell launchers 和本机连接服务，不靠历史报告手工猜测。"
+    },
+    {
+      "id": "native-plugin-install-provenance",
+      "status": "unresolved",
+      "reason": "官方插件安装身份、注册与每个实际安装 artifact 需要安全重建，不复制带凭据的注册/状态数据库。"
+    }
+  ],
+  "assemblyBlockers": [
+    "9.1 生产组件与启动补丁的只读完整盘点尚未完成",
+    "所有上游与 V 制品尚未锁定内容 hash，不能从 current/latest 取依赖",
+    "尚未实现完整无生产状态的安装与迁移/回滚执行器",
+    "尚未在独立实例证明从空白状态完整重建 V 9.1",
+    "真实双 runtime、媒体、渠道和性能验收尚未绑定到新发行包",
+    "生产发布必须绑定精确 release ID，经过 V review、Codex 验收及用户明确批准"
+  ]
+}

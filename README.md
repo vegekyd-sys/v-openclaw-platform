@@ -2,6 +2,15 @@
 
 Private release and sandbox infrastructure for V.
 
+## V-Platform installation-package initiative (2026-09-06)
+
+The versioned [V-Platform controller](platform/README.md) now owns the component,
+adaptation and acceptance inventory. Run `npm test` for the unified offline
+regressions and `npm run check` for catalog drift detection. The 9.1 distribution
+is still being assembled: `npm run release:check` deliberately blocks release
+until immutable artifacts, clean installation, state-safe rollback and fresh
+end-to-end evidence have been implemented and verified. It does not upgrade V.
+
 ## Current operation (2026-09-05)
 
 Production runs OpenClaw 2026.9.1. See the
