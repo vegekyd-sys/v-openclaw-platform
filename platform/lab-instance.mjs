@@ -25,7 +25,9 @@ export function target(name,owner,{stopped=false}={}){
   return m;
 }
 export function sourceCommit(m){
-  const git=args=>run('runuser',['-u',m.user,'--','git','-C',`${m.root}/source`,...args]);
+  // Native Gateway PATH excludes sbin. Nested probes inherit that environment,
+  // but this owner check must still resolve the fixed administrator utility.
+  const git=args=>run('/usr/sbin/runuser',['-u',m.user,'--','/usr/bin/git','-C',`${m.root}/source`,...args]);
   assert.equal(git(['status','--porcelain']),'','Source must be committed');
   return git(['rev-parse','HEAD']);
 }
