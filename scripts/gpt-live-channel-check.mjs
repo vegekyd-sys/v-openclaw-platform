@@ -35,6 +35,23 @@ try {
   const c=await client.request('talk.catalog',{});
   console.log(JSON.stringify({ready:c.ready,activeProvider:c.activeProvider,providers:c.providers?.map(p=>({id:p.id,configured:p.configured,ready:p.ready}))}));
  }
+ if(process.argv[2]==='restore-probe'){
+  assert.equal(s.closing,false);assert(s.workers.some(w=>w.ready));
+  const key=`agent:makaron:explicit:vlab-worker-gpt-live-restore-${Date.now()}`;
+  await client.request('sessions.patch',{key,agentId:'makaron',model:'deepseek/deepseek-v4-pro'});
+  const accepted=await client.request('chat.send',{agentId:'makaron',sessionKey:key,deliver:false,idempotencyKey:key,message:'这是 VLab 内部恢复验收。只调用 exec 执行 printf "VLAB_VOICE_RESTORED_OK\\n"，核对真实结果后只回复 VLAB_VOICE_RESTORED_OK。不要访问记忆、其他文件或外部消息。'});
+  let done;
+  for(let i=0;i<4;i++){
+   done=await client.request('agent.wait',{runId:accepted.runId,timeoutMs:30000},{timeoutMs:35000});
+   if(!['running','timeout'].includes(done.status))break;
+  }
+  assert.equal(done.status,'ok');
+  const h=await client.request('chat.history',{agentId:'makaron',sessionKey:key,limit:12});
+  assert.equal(h.sessionInfo?.agentRuntime?.id,'vlab-worker');
+  assert((h.messages??[]).some(m=>m.role==='toolResult'&&JSON.stringify(m.content).includes('VLAB_VOICE_RESTORED_OK')));
+  assert((h.messages??[]).some(m=>m.role==='assistant'&&m.model==='deepseek-v4-pro'&&JSON.stringify(m.content).includes('VLAB_VOICE_RESTORED_OK')));
+  console.log(JSON.stringify({restoredVoiceWorkerProbe:true,sessionKey:key,deliver:false,gatewayPid:pid}));
+ }
  if(process.argv[2]==='history'){
   const key=process.argv[3];assert(key.includes('ou_775a78b0aaae67da5e15eeaf102e3cd9'));
   const h=await client.request('chat.history',{agentId:'makaron',sessionKey:key,limit:20});
