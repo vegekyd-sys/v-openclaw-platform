@@ -25,8 +25,9 @@ try {
  const s=await client.request('vlab.workers.status',{});
  console.log(JSON.stringify({gatewayPid:pid,generation:s.generation,closing:s.closing,pending:s.pending,workers:s.workers.map(w=>({pid:w.pid,ready:w.ready,activeCount:w.activeCount,queued:w.queued})),stats:s.integration?.nativeHarnessStats}));
  if(process.argv[2]==='inspect'){
-  const all=await client.request('sessions.list',{limit:200});
-  console.log(JSON.stringify({activeSessions:(all.sessions??[]).filter(s=>['running','queued','busy','active'].includes(s.status)).map(s=>({key:s.key,status:s.status}))}));
+  const all=await client.request('sessions.list',{limit:1000});
+  assert(!all.hasMore,'Uninspected session page');
+  console.log(JSON.stringify({activeSessions:(all.sessions??[]).filter(s=>s.hasActiveRun===true||['running','queued','busy','active'].includes(s.status)).map(s=>({key:s.key,status:s.status}))}));
   const sessions=await client.request('sessions.list',{search:'ou_775a78b0aaae67da5e15eeaf102e3cd9',limit:20});
   console.log(JSON.stringify({sessions:(sessions.sessions??[]).map(s=>({key:s.key,sessionId:s.sessionId,model:s.model,modelProvider:s.modelProvider,agentRuntime:s.agentRuntime,status:s.status,updatedAt:s.updatedAt}))}));
  }

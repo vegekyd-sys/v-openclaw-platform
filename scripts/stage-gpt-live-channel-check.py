@@ -27,6 +27,8 @@ if mode=='stage':
     assert hashlib.sha256(archive.read_bytes()).hexdigest()=='9a6fe93a8cc150846ca2a98e2be59b3103406341ea40d928b6f39034271ea06a'
     backup.mkdir(mode=0o700)
     shutil.copy2(cfgpath,backup/'original-openclaw.json')
+    (backup/'unit.before.txt').write_bytes(subprocess.check_output(['systemctl','cat','openclaw-vlab-production-mirror-v8.service']))
+    os.chmod(backup/'unit.before.txt',0o600)
     new.mkdir()
     subprocess.run(['tar','-xf',str(archive),'-C',str(new),'--strip-components=2'],check=True)
     for base,dirs,files in os.walk(new):
@@ -34,7 +36,9 @@ if mode=='stage':
         for f in files:os.chown(pathlib.Path(base)/f,uid,gid)
     assert hashlib.sha256((new/'native-harness-data.mjs').read_bytes()).hexdigest()==hashlib.sha256((old/'native-harness-data.mjs').read_bytes()).hexdigest()
     c['plugins']['load']['paths']=[str(new) if p==str(old) else p for p in c['plugins']['load']['paths']]
-    c['gateway']['reload']['mode']='hybrid'
+    # Keep reload off until the candidate is loaded with one explicit restart.
+    # Changing load.paths and enabling reload together makes native 9.1 exit;
+    # a clean exit removes the transient unit before restart can reach it.
     staged=backup/'candidate-openclaw.json'
     staged.write_text(json.dumps(c,ensure_ascii=False,indent=2)+'\n');os.chmod(staged,0o600)
     pid=subprocess.check_output(['systemctl','show','openclaw-vlab-production-mirror-v8.service','-p','MainPID','--value'],text=True).strip()
@@ -42,6 +46,11 @@ if mode=='stage':
     env['OPENCLAW_CONFIG_PATH']=str(staged)
     result=subprocess.run(['/opt/vlab/node-v22.23.1-linux-x64/bin/node',str(R/'runtime/npm-global/lib/node_modules/openclaw/dist/index.js'),'config','validate'],env=env,capture_output=True,text=True)
     if result.returncode:raise RuntimeError('Candidate config validation failed; live config untouched')
+    write_config(c)
+elif mode=='arm':
+    assert str(new) in c['plugins']['load']['paths']
+    assert c['gateway']['reload']['mode']=='off'
+    c['gateway']['reload']['mode']='hybrid'
     write_config(c)
 elif mode=='enable':
     assert str(new) in c['plugins']['load']['paths']
