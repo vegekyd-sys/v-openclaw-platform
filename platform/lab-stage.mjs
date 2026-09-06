@@ -16,11 +16,13 @@ if(action==='media92'){
     .map(file=>({file,path:`${core}/dist/${file}`}))
     .filter(x=>fs.readFileSync(x.path,'utf8').includes('function scheduleMediaGenerationTaskCompletion(params)'));
   assert.equal(matches.length,1);const {file,path}=matches[0];
+  assert.equal(fs.realpathSync(path),path,'Media bundle must not escape through a symlink');
   const before=fs.readFileSync(path,'utf8'),patched=patchOpenClaw92MediaCompletionBundle(before);
   run(NODE,['--check','--input-type=module'],{input:patched.source});
   if(patched.changed){
     const backup=`${path}.pre-vplatform-media92-${commit}`,stat=fs.statSync(path);
     fs.copyFileSync(path,backup,fs.constants.COPYFILE_EXCL);
+    assert.equal(digest(fs.readFileSync(backup)),digest(before),'Backup differs from observed preimage');
     const temporary=`${path}.vplatform-stage-${commit}`;
     fs.writeFileSync(temporary,patched.source,{flag:'wx',mode:stat.mode&0o777});
     fs.chownSync(temporary,stat.uid,stat.gid);fs.chmodSync(temporary,stat.mode&0o777);
