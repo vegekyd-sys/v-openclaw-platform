@@ -24,7 +24,7 @@
     {
       "id": "worker-runtime",
       "role": "进程隔离、原生工具与生命周期桥接",
-      "expectedVersion": "0.2.11",
+      "expectedVersion": "0.2.12-rc.1",
       "artifactState": "not-locked"
     },
     {
@@ -113,7 +113,6 @@
         "experiments/agent-worker-isolation-v1/runtime-path.test.mjs",
         "experiments/agent-worker-isolation-v1/session-hotset.test.mjs",
         "experiments/agent-worker-isolation-v1/session-rollover-retry.test.mjs",
-        "experiments/agent-worker-isolation-v1/shared-pool-lifecycle.test.mjs",
         "experiments/agent-worker-isolation-v1/skill-usage-report.test.mjs",
         "experiments/agent-worker-isolation-v1/skill-usage-telemetry.test.mjs",
         "experiments/agent-worker-isolation-v1/subagent-completion-relay.test.mjs",
@@ -126,6 +125,8 @@
         "experiments/agent-worker-isolation-v1/worker-exec-argv.test.mjs",
         "experiments/agent-worker-isolation-v1/worker-gateway-events.test.mjs",
         "experiments/agent-worker-isolation-v1/worker-pool-scaling.test.mjs",
+        "experiments/agent-worker-isolation-v1/worker-pool-lifecycle.test.mjs",
+        "experiments/agent-worker-isolation-v1/worker-runtime-lifecycle.test.mjs",
         "experiments/agent-worker-isolation-v1/worker-progress.test.mjs",
         "experiments/agent-worker-isolation-v1/worker-skill-telemetry.test.mjs",
         "experiments/agent-worker-isolation-v1/worker-steer91.test.mjs",

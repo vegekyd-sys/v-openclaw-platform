@@ -27,8 +27,13 @@ if(trigger==='talk'){
   workerCfg.requestTimeoutMs=oldTimeout+1;
 }
 const changed=Buffer.from(JSON.stringify(cfg,null,2)+'\n');
+const second=structuredClone(cfg);
+if(trigger==='talk')second.talk.realtime.provider=cfg.talk.realtime.provider==='openai'?'google':'openai';
+else second.plugins.entries['vlab-agent-worker-isolation'].config.requestTimeoutMs++;
+const alternate=Buffer.from(JSON.stringify(second,null,2)+'\n');
 const staged=`${root}/state/reload-probe-${Date.now()}.json`;
 let client,modified=false;
+let expected=original;
 const rounds=[];
 const atomicWrite=(bytes,expected)=>{
   assert.equal(digest(fs.readFileSync(path)),digest(expected),'Concurrent owned config change; refusing overwrite');
@@ -52,13 +57,15 @@ try {
   const status=()=>client.request('vlab.workers.status',{}, {timeoutMs:10000});
   const prove=()=>run(NODE,[`${root}/source/platform/lab-probe.mjs`,name,owner,expectedCore],{timeout:240000});
   prove();
-  for (const restore of [false,true]) {
+  const variants=[changed,alternate,changed,original];
+  for (const [cycle,bytes] of variants.entries()) {
+    const restore=cycle===variants.length-1;
     const old=await status();
     assert.equal(old.pending,0);
     assert(old.workers.every(w=>w.activeCount===0&&w.queued===0),'Owned probe must be idle before reload');
     const oldPids=old.workers.map(w=>w.pid);
     assert(oldPids.length>0);
-    atomicWrite(restore?original:changed,restore?changed:original);modified=!restore;
+    atomicWrite(bytes,expected);expected=bytes;modified=!restore;
     const started=Date.now();let next,lastError;
     while(Date.now()-started<120000) {
       unchanged();
@@ -69,9 +76,10 @@ try {
       await new Promise(r=>setTimeout(r,1500));
     }
     assert(next,`Native hot reload did not produce a fresh ready pool: ${lastError??'deadline'}`);
+    if(Number.isInteger(old.generation))assert.equal(next.generation,old.generation+1,'Expected exactly one new pool generation');
     for(const pid of oldPids) assert(!fs.existsSync(`/proc/${pid}`),'Old Worker process still exists');
     const proof=prove();unchanged();
-    rounds.push({restored:restore,oldPids,newPids:next.workers.map(w=>w.pid),elapsedMs:Date.now()-started,
+    rounds.push({cycle:cycle+1,restored:restore,generation:next.generation,oldPids,newPids:next.workers.map(w=>w.pid),elapsedMs:Date.now()-started,
       actualModelToolFinalPassed:true,evidence:JSON.parse(proof).out});
     console.log(JSON.stringify({phase:'hot-reload-round',...rounds.at(-1)}));
   }
@@ -84,6 +92,6 @@ try {
   process.exitCode=1;
 } finally {
   // Never overwrite somebody else's changes even on failure.
-  if(modified) atomicWrite(original,changed);
+  if(modified) atomicWrite(original,expected);
   client?.stop();
 }

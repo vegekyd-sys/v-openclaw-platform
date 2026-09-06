@@ -1,5 +1,5 @@
 import { WorkerPool } from "./worker-pool.mjs";
-import { acquirePoolGeneration, createPoolServiceLease } from "./shared-pool-lifecycle.mjs";
+import { acquireWorkerRuntime, createWorkerRuntimeLifecycle, resolveWorkerRuntime } from "./worker-runtime-lifecycle.mjs";
 import { performance } from "node:perf_hooks";
 import { buildNativeHarnessData } from './native-harness-data.mjs';
 import { gatewayOwnedEventArgs } from './gateway-owned-terminal.mjs';
@@ -137,8 +137,12 @@ function operationSnapshot(operation) {
 }
 
 function acquireSharedPool(options) {
-  globalThis[SHARED_POOL_KEY] = acquirePoolGeneration(globalThis[SHARED_POOL_KEY], () => ({
-      pool: new WorkerPool(options),
+  const shared = acquireWorkerRuntime(SHARED_POOL_KEY, () => {
+    const runtime = {
+      pool: new WorkerPool({
+        ...options,
+        onProgress: progress => options.onProgress?.(progress, runtime.nativeLaneProgressBridge),
+      }),
       nativeHarnessStats: {
         admitted: 0,
         completed: 0,
@@ -183,9 +187,11 @@ function acquireSharedPool(options) {
         processLocalOptions: new Set(),
         unclassifiedOptions: new Set(),
       },
-    }));
-  if (!globalThis[SHARED_POOL_KEY].harnessEventParity) {
-    globalThis[SHARED_POOL_KEY].harnessEventParity = {
+    };
+    return runtime;
+  });
+  if (!shared.harnessEventParity) {
+    shared.harnessEventParity = {
       observedCallbacks: new Set(),
       bridgedCallbacks: new Set(),
       gatewayOwnedCallbacks: new Set(),
@@ -200,12 +206,12 @@ function acquireSharedPool(options) {
       unclassifiedOptions: new Set(),
     };
   }
-  if (!globalThis[SHARED_POOL_KEY].nativeLaneProgressBridge) {
-    globalThis[SHARED_POOL_KEY].nativeLaneProgressBridge =
+  if (!shared.nativeLaneProgressBridge) {
+    shared.nativeLaneProgressBridge =
       new NativeLaneProgressBridge();
   }
-  if (!globalThis[SHARED_POOL_KEY].harnessEventParity.eventsByCallback) {
-    globalThis[SHARED_POOL_KEY].harnessEventParity.eventsByCallback = new Map();
+  if (!shared.harnessEventParity.eventsByCallback) {
+    shared.harnessEventParity.eventsByCallback = new Map();
   }
   for (const name of [
     "observedOptions",
@@ -214,11 +220,11 @@ function acquireSharedPool(options) {
     "processLocalOptions",
     "unclassifiedOptions",
   ]) {
-    if (!globalThis[SHARED_POOL_KEY].harnessEventParity[name]) {
-      globalThis[SHARED_POOL_KEY].harnessEventParity[name] = new Set();
+    if (!shared.harnessEventParity[name]) {
+      shared.harnessEventParity[name] = new Set();
     }
   }
-  return globalThis[SHARED_POOL_KEY];
+  return shared;
 }
 
 const plugin = {
@@ -431,7 +437,7 @@ const plugin = {
         workerConfigPath,
       },
     );
-    const sharedPool = acquireSharedPool({
+    const poolOptions = {
       minWorkers,
       maxWorkers,
       sessionsPerWorker,
@@ -442,9 +448,7 @@ const plugin = {
       startupTimeoutMs: workerStartupTimeoutMs,
       warmSpareWorkers,
       workerEnv,
-      async onProgress(progress) {
-        const nativeLaneProgressBridge =
-          sharedPool.nativeLaneProgressBridge;
+      async onProgress(progress, nativeLaneProgressBridge) {
         if (nativeLaneProgressBridge) {
           try {
             await nativeLaneProgressBridge.relay(progress);
@@ -471,19 +475,30 @@ const plugin = {
           throw error;
         }
       },
-    });
-    const pool = sharedPool.pool;
-    const nativeRequestsByRunId = sharedPool.nativeRequestsByRunId;
-    const nativeLaneProgressBridge = sharedPool.nativeLaneProgressBridge;
-    const nativeSubagentCompletionRelays =
+    };
+    let sharedPool = acquireSharedPool(poolOptions);
+    let pool = sharedPool.pool;
+    let nativeRequestsByRunId = sharedPool.nativeRequestsByRunId;
+    let nativeLaneProgressBridge = sharedPool.nativeLaneProgressBridge;
+    let nativeSubagentCompletionRelays =
       sharedPool.nativeSubagentCompletionRelays;
-    const fastCompactionWorkerStats = sharedPool.fastCompactionWorkerStats;
-    const harnessEventParity = sharedPool.harnessEventParity;
+    let fastCompactionWorkerStats = sharedPool.fastCompactionWorkerStats;
+    let harnessEventParity = sharedPool.harnessEventParity;
     const operationsById = new Map();
     const operationsByIdempotencyKey = new Map();
     let nextOperationId = 1;
     let nativeSessionWriteTail = Promise.resolve();
-    const nativeHarnessStats = sharedPool.nativeHarnessStats;
+    let nativeHarnessStats = sharedPool.nativeHarnessStats;
+
+    const poolLifecycle = createWorkerRuntimeLifecycle({
+      acquire: () => acquireSharedPool(poolOptions),
+      bind(runtime) {
+        sharedPool = runtime;
+        ({ pool, nativeRequestsByRunId, nativeLaneProgressBridge,
+          nativeSubagentCompletionRelays, fastCompactionWorkerStats,
+          harnessEventParity, nativeHarnessStats } = runtime);
+      },
+    });
 
     function configuredAgentModelRuntimes() {
       return Object.values(api.config.agents?.defaults?.models ?? {})
@@ -494,6 +509,11 @@ const plugin = {
     async function dispatchNativeHarnessAttempt(params) {
       // Validate before creating a relay or admitting any side effects.
       const nativeHarnessData = buildNativeHarnessData(params);
+      // Cached registration rebinding must not move an in-flight request to
+      // another generation's pool, request IDs, progress bridge, or statistics.
+      const { pool, nativeRequestsByRunId, nativeLaneProgressBridge,
+        nativeSubagentCompletionRelays, fastCompactionWorkerStats,
+        harnessEventParity, nativeHarnessStats } = resolveWorkerRuntime(SHARED_POOL_KEY, sharedPool);
       const harnessAttemptStartedAt = Date.now();
       const messageChannel = resolveHarnessMessageChannel(params);
       const sessionKey =
@@ -1158,6 +1178,7 @@ const plugin = {
     }
 
     async function startOperation(params) {
+      const { pool } = resolveWorkerRuntime(SHARED_POOL_KEY, sharedPool);
       const idempotencyKey = readString(params, "idempotencyKey", {
         required: true,
       });
@@ -1269,15 +1290,17 @@ const plugin = {
       };
     }
 
-    const poolService = createPoolServiceLease(sharedPool, () => {
+    api.registerService({
+      id: "vlab-agent-worker-isolation",
+      async start(context) {
+        await poolLifecycle.start(context);
         api.logger.info(
           `vLab Agent Worker Isolation started with ${minWorkers}-${maxWorkers} elastic workers and ${sessionsPerWorker} sessions per worker`,
         );
-    });
-    api.registerService({
-      id: "vlab-agent-worker-isolation",
-      start: poolService.start,
-      stop: poolService.stop,
+      },
+      async stop(context) {
+        await poolLifecycle.stop(context);
+      },
     });
 
     api.registerAgentHarness({
@@ -1306,6 +1329,7 @@ const plugin = {
       async ({ respond }) => {
         respond(true, {
           ...pool.status(),
+          generation: sharedPool.generation,
           openClawConcurrency: {
             maxConcurrent: api.config.agents?.defaults?.maxConcurrent,
             subagentsMaxConcurrent:
@@ -1318,7 +1342,7 @@ const plugin = {
             nativeAgentHarnessDispatchAttached: true,
             nestedGatewayHarnessRouting: true,
             workerUsesIngressAgentCommand: true,
-            workerIsolationVersion: "0.2.11",
+            workerIsolationVersion: "0.2.12-rc.1",
             nativeDataTransport: {
               contract: "native-harness-data-v1",
               ordinaryDataPassthrough: true,

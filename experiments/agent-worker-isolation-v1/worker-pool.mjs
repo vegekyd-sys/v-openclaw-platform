@@ -165,7 +165,10 @@ export class WorkerPool {
   start() {
     if (this.closing) return Promise.reject(new Error("worker pool is closing"));
     if (this.startPromise) return this.startPromise;
-    this.startPromise = this.startWorkers();
+    this.startPromise = this.startWorkers().catch(async error => {
+      await this.close();
+      throw error;
+    });
     return this.startPromise;
   }
 
@@ -1196,6 +1199,7 @@ export class WorkerPool {
   close() {
     if (this.closePromise) return this.closePromise;
     this.closing = true;
+    this.started = false;
     this.closePromise = this.closeWorkers();
     return this.closePromise;
   }

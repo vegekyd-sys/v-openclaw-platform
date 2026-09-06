@@ -30,7 +30,8 @@ if(action==='enable-reload'||action==='restore-reload'){
   assert(['2026.9.1','2026.9.2'].includes(hostVersion));
   if(action==='worker91')assert.equal(hostVersion,'2026.9.1');
   const src=`${root}/source/experiments/agent-worker-isolation-v1`,dest=`${root}/runtime/worker`;
-  assert.equal(readJson(`${src}/package.json`).version,'0.2.11');
+  const version=readJson(`${src}/package.json`).version;
+  assert(['0.2.11','0.2.12-rc.1'].includes(version),'Unknown Worker candidate version');
   const backup=action==='worker91'?`${root}/runtime/worker-before-v-platform`:`${root}/runtime/worker-before-${commit}`;
   assert(!fs.existsSync(backup),'Worker bootstrap already performed');
   const before=treeHash(dest),after=treeHash(src);
@@ -39,7 +40,7 @@ if(action==='enable-reload'||action==='restore-reload'){
   run('chown',['-R',`${m.user}:${m.user}`,`${dest}.vplatform-stage`]);
   fs.renameSync(dest,backup);fs.renameSync(`${dest}.vplatform-stage`,dest);
   assert.deepEqual(service('openclaw-vlab-production-mirror-v8.service'),integration);
-  record(m,'worker-staged',{commit,hostVersion,version:'0.2.11',candidateBuild:action==='worker-candidate',before,after,configChanged:false,sharedGatewayUnchanged:true,accepted:false});
+  record(m,'worker-staged',{commit,hostVersion,version,candidateBuild:action==='worker-candidate',before,after,configChanged:false,sharedGatewayUnchanged:true,accepted:false});
 }else if(action==='select91'||action==='select92'){
   const version=action==='select91'?'2026.9.1':'2026.9.2';
   const dest=action==='select91'?`${root}/runtime/openclaw-before-92`:`${root}/runtime/core92/node_modules/openclaw`;
