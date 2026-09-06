@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "name": "V-Platform",
-  "releaseId": "v-platform-0.1.0-assembly.1",
+  "releaseId": "v-platform-0.1.0-integration.1",
   "openclawVersion": "2026.9.1",
   "sourceBaseline": {
     "repository": "v-openclaw-platform",

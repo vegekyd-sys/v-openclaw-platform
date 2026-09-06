@@ -1,6 +1,6 @@
 {
   "name": "@versa/v-platform",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-integration.1",
   "private": true,
   "type": "module",
   "description": "V-Platform versioned assembly and acceptance controller; not yet an installable runtime distribution",
