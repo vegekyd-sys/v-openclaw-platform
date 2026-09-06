@@ -6,7 +6,7 @@ V 的整体发行与验收入口。用户只选择一个 V 版本；内部保留
 
 当前已完成 **发行装配骨架与独占 VLab 的首轮 9.1 / 9.2 Worker 往返验证**，不是已完成的安装包。
 详见 [首轮 VLab 验收与未闭合项](./VLAB-92-FIRST-PASS-20260906.md)。
-后续 [热重载与媒体契约修复](./RELOAD-MEDIA-REGRESSION-20260906.md) 已通过 218 项本机/Linux 回归；新候选真实运行验收仍待 VLab 名额，不继承首轮结果。
+后续 [缓存代际修复与双版本验收](./RELOAD-CACHE-ACCEPTANCE-20260906.md) 已通过 222 项本机/Linux 回归，以及同一 Worker 在 9.2 → 9.1 → 9.2 的连续热重载、真实工具和最终回复验证。媒体契约与适配已在自有 9.2 验证/暂存，真实渠道媒体交付仍未验收。
 当前生产的功能验收不能自动转移为新发行包的验收；必须证明干净实例可重建。
 默认 CLI 不安装软件、不重启服务、不读取凭据内容或业务会话；任何入口都不修改生产。
 
@@ -50,16 +50,18 @@ node --test platform/platform.test.mjs
 
 `lab-instance.mjs`、`lab-stage.mjs` 和 `lab-probe.mjs` 只允许 VLab 的已登记自有实例，
 强制 hostname、owner、root、无渠道/cron/browser 和提交来源检查。运行与停止仍通过 labctl。
-它们用于先对齐 Worker 0.2.11，再检查原生 9.1/9.2 的实际模型、工具和最终回复。
+它们用于对齐明确的 Worker 候选（目前 0.2.12-rc.1），再检查原生 9.1/9.2 的实际模型、工具和最终回复。
 9.2 依赖从精确 npm 版本安装到实例独立前缀，保留 package-lock，切换前留存旧核心和自有状态检查点。
 这不是干净重建或完整 V 能力验收；新制品只有拿到全部门槛证据后才能成为可安装发行包。
 
 - `lab-control-probe.mjs steer|stop INSTANCE OWNER VERSION`：真实工具边界上的同任务修改，以及停止后执行新一轮；只创建自有合成会话。
 - `lab-probe.mjs INSTANCE OWNER VERSION`：核对先前通过的合成会话历史仍在，再执行指定模型的工具与最终回复。
 - `lab-compat.mjs INSTANCE OWNER VERSION`：对当前登记适配做一批只读检查；锚点存在仅表示可以继续 review，不表示应应用旧补丁。
-- `lab-reload-probe.mjs INSTANCE OWNER VERSION`：仅在自有空闲实例改变并还原一个 Worker 参数，检查原生热重载前后的真实工具与最终回复，要求 Gateway PID 不变。
+- `lab-reload-probe.mjs INSTANCE OWNER VERSION`：仅在已启用 hybrid 重载的自有空闲实例三次切换 Talk provider，再恢复原配置；每轮检查新 Worker 代际和真实工具/最终回复，要求 Gateway PID 不变。可显式追加 `plugin` 测 Worker 参数变更，不把无效触发视为通过。
 - `lab-media-contract.mjs INSTANCE OWNER`：读取自有 9.2 原生媒体函数进行合成契约验证，不修改核心、不生成媒体、不发渠道消息。
 - `lab-stage.mjs select91|select92 INSTANCE OWNER`：只切换已暂存的自有核心代码链接，必须先由 labctl 停止实例；不恢复、覆盖或删除状态。
+- `lab-stage.mjs enable-reload|restore-reload INSTANCE OWNER`：只在停止的自有实例备份/恢复基线 reload 设置；不改变共享环境。
+- `lab-stage.mjs media92 INSTANCE OWNER`：仅在停止的自有 9.2 核心验证、备份并原子应用媒体适配，拒绝 symlink 逃逸；装配成功不等于媒体交付验收。
 - `scripts/patch-openclaw-worker-native-attempt.mjs CORE --check`：只读检查五个原生桥的 bundle 契约；`--apply INSTANCE OWNER` 只允许停止的自有 VLab 核心。
 
 这些是构建期实验工具，不是公开安装 API。生产发布门仍保持阻断。
