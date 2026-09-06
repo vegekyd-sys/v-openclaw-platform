@@ -554,12 +554,13 @@
       "id": "patch-openclaw-media-completion-relay",
       "file": "scripts/patch-openclaw-media-completion-relay.mjs",
       "component": "worker-runtime",
-      "reason": "媒体终态/完成回传",
+      "reason": "媒体终态/完成回传；9.2 保留原生 pending/失败语义，仍需实机交付验收",
       "hostVersions": [
-        "2026.9.1"
+        "2026.9.1",
+        "2026.9.2"
       ],
       "disposition": "needs-live-reconciliation",
-      "sourceSha256": "f803680a6c931537f1c0e85caf919ccf3990c2f375fc30595ad0dedf49acaeab"
+      "sourceSha256": "6cab05c9f89be1e35186f13e44fb30ec7a3ed4c267015d0f38971bee9f322107"
     },
     {
       "id": "patch-openclaw-session-hotset",

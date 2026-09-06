@@ -14,6 +14,7 @@ import { pathToFileURL } from "node:url";
 
 const SUPPORTED_PACKAGE_VERSIONS = new Set(["2026.7.1", "2026.8.1"]);
 export const PATCH_MARKER = "versa-worker-media-completion-relay-v0.2.1";
+export const PATCH_MARKER_92 = "versa-worker-media-completion-relay-v0.3.0-92";
 const BACKUP_SUFFIX = ".pre-worker-media-completion-relay-v0.2.1";
 const BRIDGE_SYMBOL = "versa.vlab-worker.gateway-event-bridge-v1";
 const CONTRACT_VERSION = "versa-worker-gateway-events-v1";
@@ -191,6 +192,9 @@ function replaceExactlyOnce(source, original, replacement, label) {
 }
 
 export function patchOpenClawMediaCompletionBundle(source) {
+  if (source.includes(PATCH_MARKER_92) || source.includes('async function wakeMediaGenerationTaskCompletionWithRetry(params)')) {
+    return patchOpenClaw92MediaCompletionBundle(source);
+  }
   const markerCount = source.split(PATCH_MARKER).length - 1;
   if (markerCount === 2) return { changed: false, source };
   if (markerCount !== 0) throw new Error("media completion bundle is partially patched");
@@ -245,6 +249,62 @@ export function patchOpenClawMediaCompletionBundle(source) {
   );
   patched = `${patched.slice(0, wakeStart)}${patchedWake}${patched.slice(wakeEnd)}`;
   return { changed: true, source: patched };
+}
+
+// 9.2 moved wake before schedule and changed its result from boolean to a
+// delivered/pending/permanent_failure contract. Keep its payload and retry
+// logic verbatim; only move the actual native delivery call to the Gateway.
+export function patchOpenClaw92MediaCompletionBundle(source) {
+  const markers=source.split(PATCH_MARKER_92).length-1;
+  if(markers===2) {
+    for(const anchor of ['async function deliverMediaThroughWorkerGateway(nativeDelivery)',
+      'eventKind: "detached_task_started"','eventKind: "detached_task_settled"',
+      'const delivery = await deliverMediaThroughWorkerGateway({']) {
+      if(!source.includes(anchor))throw new Error('9.2 media completion patch is incomplete');
+    }
+    return {changed:false,source};
+  }
+  if(markers || source.includes(PATCH_MARKER))throw new Error('9.2 media completion bundle is partially or legacy patched');
+  const wakeStart=source.indexOf('async function wakeMediaGenerationTaskCompletion(params)');
+  const wakeEnd=source.indexOf('//#region src/agents/tools/media-generate-background-shared.ts',wakeStart);
+  const scheduleStart=source.indexOf('function scheduleMediaGenerationTaskCompletion(params)');
+  const scheduleEnd=source.indexOf('function createMediaGenerationTaskLifecycle(params)',scheduleStart);
+  if(!(wakeStart>=0&&wakeEnd>wakeStart&&scheduleStart>wakeEnd&&scheduleEnd>scheduleStart)) {
+    throw new Error('9.2 media wake/schedule module boundaries drifted');
+  }
+  const wake=source.slice(wakeStart,wakeEnd);
+  for(const anchor of ['requesterAgentId: params.handle.requesterAgentId',
+    'if (delivery.delivered) return { status: "delivered" };',
+    'delivery.disposition === "session_queued"',
+    'return { status: "pending" };',
+    'return { status: "permanent_failure" };']) {
+    if(!wake.includes(anchor))throw new Error(`9.2 media outcome contract missing: ${anchor}`);
+  }
+  const bridge=`\t// ${PATCH_MARKER_92}: preserve native payload and nonterminal handoff outcomes.
+\tasync function deliverMediaThroughWorkerGateway(nativeDelivery) {
+\t\tconst bridge = globalThis[Symbol.for(${JSON.stringify(BRIDGE_SYMBOL)})];
+\t\tif (typeof bridge !== "function") return await deliverSubagentAnnouncement(nativeDelivery);
+\t\tconst bridged = await bridge({
+\t\t\tcontractVersion: ${JSON.stringify(CONTRACT_VERSION)},
+\t\t\teventKind: "media_generation_completion",
+\t\t\teventId: \`\${announceId}:gateway\`,
+\t\t\ttaskKey: \`media:\${params.handle.taskId}\`,
+\t\t\ttaskId: params.handle.taskId,
+\t\t\trunId: params.handle.runId,
+\t\t\ttoolName: params.toolName,
+\t\t\tstatus: params.status,
+\t\t\tdelivery: nativeDelivery
+\t\t});
+\t\tif (bridged?.handled !== true) throw new Error("Worker media completion was not handled by Gateway");
+\t\treturn bridged;
+\t}
+\tconst delivery = await deliverMediaThroughWorkerGateway({`;
+  const patchedWake=replaceExactlyOnce(wake,DELIVERY_ANCHOR,bridge,'9.2 native delivery call');
+  let schedule=source.slice(scheduleStart,scheduleEnd);
+  schedule=replaceExactlyOnce(schedule,SQLITE_SCHEDULE_START,
+    PATCHED_SQLITE_SCHEDULE_START.replaceAll(PATCH_MARKER,PATCH_MARKER_92),'9.2 detached schedule start');
+  schedule=replaceExactlyOnce(schedule,SQLITE_SCHEDULE_END,PATCHED_SQLITE_SCHEDULE_END,'9.2 detached schedule end');
+  return {changed:true,source:source.slice(0,wakeStart)+patchedWake+source.slice(wakeEnd,scheduleStart)+schedule+source.slice(scheduleEnd)};
 }
 
 async function resolveBundle(packageRoot) {

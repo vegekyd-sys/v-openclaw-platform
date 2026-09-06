@@ -52,7 +52,6 @@ export function buildMediaCompletionDelivery(event) {
     "triggerMessage",
     "steerMessage",
     "sourceSessionKey",
-    "sourceChannel",
     "sourceTool",
   ]) {
     if (typeof delivery[field] !== "string" || !delivery[field].trim()) {
@@ -62,8 +61,17 @@ export function buildMediaCompletionDelivery(event) {
   if (!Array.isArray(delivery.internalEvents)) {
     throw new Error("media completion delivery.internalEvents must be an array");
   }
+  // 9.2 derives the internal source at the native destination; older hosts
+  // provide sourceChannel. Preserve either shape, never invent an identity.
+  for (const field of ["sourceChannel", "requesterAgentId"]) {
+    if (delivery[field] !== undefined &&
+      (typeof delivery[field] !== "string" || !delivery[field].trim())) {
+      throw new Error(`media completion delivery.${field} must be a nonempty string`);
+    }
+  }
   return {
     requesterSessionKey: delivery.requesterSessionKey,
+    ...(delivery.requesterAgentId === undefined ? {} : {requesterAgentId: delivery.requesterAgentId}),
     targetRequesterSessionKey: delivery.targetRequesterSessionKey,
     announceId: delivery.announceId,
     triggerMessage: delivery.triggerMessage,
@@ -75,7 +83,7 @@ export function buildMediaCompletionDelivery(event) {
     completionDirectOrigin: delivery.completionDirectOrigin,
     directOrigin: delivery.directOrigin,
     sourceSessionKey: delivery.sourceSessionKey,
-    sourceChannel: delivery.sourceChannel,
+    ...(delivery.sourceChannel === undefined ? {} : {sourceChannel: delivery.sourceChannel}),
     sourceTool: delivery.sourceTool,
     requesterIsSubagent: delivery.requesterIsSubagent === true,
     expectsCompletionMessage: delivery.expectsCompletionMessage === true,
@@ -185,13 +193,19 @@ export function createWorkerGatewayEventRouter(options) {
           terminal: delivery?.terminal === true,
           path: delivery?.path,
           reason: delivery?.reason,
+          ...(delivery?.disposition === undefined ? {} : {disposition: delivery.disposition}),
+          ...(delivery?.error === undefined ? {} : {error: delivery.error}),
         };
         if (result.delivered) stats.delivered += 1;
         if (result.terminal) stats.terminal += 1;
-        while (completed.size >= maxRemembered) {
-          completed.delete(completed.keys().next().value);
+        // Pending handoffs must be retried with the SAME native idempotency
+        // key. Caching them as completed would freeze 9.2's retry loop forever.
+        if (result.delivered || result.terminal || result.disposition === "ambiguous") {
+          while (completed.size >= maxRemembered) {
+            completed.delete(completed.keys().next().value);
+          }
+          completed.set(event.eventId, result);
         }
-        completed.set(event.eventId, result);
         return result;
       } catch (error) {
         eventStats.failed += 1;

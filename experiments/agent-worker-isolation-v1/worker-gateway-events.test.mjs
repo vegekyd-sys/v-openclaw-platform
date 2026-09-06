@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildSkillUsageRecord,
+  buildMediaCompletionDelivery,
   createWorkerGatewayEventRouter,
   WORKER_GATEWAY_EVENT_CONTRACT_VERSION,
 } from "./worker-gateway-events.mjs";
@@ -167,4 +168,40 @@ test("validates skill usage identity before central recording", () => {
       ),
     /must be absolute/,
   );
+});
+
+test('9.2 requester identity and structured attachments survive without a legacy sourceChannel',()=>{
+  const event=mediaEvent();delete event.delivery.sourceChannel;
+  event.delivery.requesterAgentId='lab';
+  event.delivery.internalEvents[0].attachments=[{type:'image',url:'https://example.invalid/test.png'}];
+  const result=buildMediaCompletionDelivery(event);
+  assert.equal(result.requesterAgentId,'lab');
+  assert.equal(Object.hasOwn(result,'sourceChannel'),false);
+  assert.deepEqual(result.internalEvents,event.delivery.internalEvents);
+  event.delivery.requesterAgentId=42;
+  assert.throws(()=>buildMediaCompletionDelivery(event),/requesterAgentId/);
+});
+
+test('pending native handoff retries once ready instead of caching pending as completion',async()=>{
+  let calls=0;
+  const route=createWorkerGatewayEventRouter({async deliverMediaCompletion(){
+    calls++;return calls===1?{delivered:false,disposition:'session_queued',reason:'completion_handoff_pending'}:{delivered:true};
+  }});
+  const first=await route(mediaEvent());assert.equal(first.disposition,'session_queued');
+  assert.equal(first.delivered,false);
+  assert.equal((await route(mediaEvent())).delivered,true);
+  assert.equal((await route(mediaEvent())).delivered,true);
+  assert.equal(calls,2);
+});
+
+test('ambiguous terminal delivery is preserved and not duplicated; ordinary failure remains retryable',async()=>{
+  let calls=0;
+  const route=createWorkerGatewayEventRouter({async deliverMediaCompletion(){
+    calls++;return {delivered:false,disposition:'ambiguous',error:'native terminal fallback'};
+  }});
+  const first=await route(mediaEvent());assert.equal(first.disposition,'ambiguous');
+  assert.equal(first.error,'native terminal fallback');
+  await route(mediaEvent());assert.equal(calls,1);
+  const retry=createWorkerGatewayEventRouter({async deliverMediaCompletion(){calls++;return {delivered:false,error:'not ready'};}});
+  await retry(mediaEvent());await retry(mediaEvent());assert.equal(calls,3);
 });
