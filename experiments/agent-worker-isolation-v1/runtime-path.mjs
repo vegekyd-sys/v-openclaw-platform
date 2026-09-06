@@ -1,5 +1,49 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, normalize, sep } from "node:path";
+import { pathToFileURL } from "node:url";
+
+// Resolve semantic exports, never guess minifier letters. In 9.2 the old `s`
+// slot is hasGatewayContextOwner, not withPluginRuntimeGatewayContextResolver.
+export function nativeExportBindings(source, names) {
+  const exports = [...source.matchAll(/export\s*\{([^}]+)\}\s*;?/gs)]
+    .flatMap(match => match[1].split(',').map(value => value.trim()))
+    .map(value => /^([\w$]+)(?:\s+as\s+([\w$]+))?$/.exec(value)).filter(Boolean);
+  return Object.fromEntries(names.map(name => {
+    const matches = exports.filter(entry => entry[1] === name);
+    if (matches.length !== 1) throw new Error(`Native export ${name} must resolve exactly once`);
+    return [name, matches[0][2] ?? name];
+  }));
+}
+
+export function resolveNativeRuntimeContract(options) {
+  const dist = dirname(dirname(options.agentRuntimePath ?? resolveOpenClawAgentRuntimePath(options)));
+  const readDirectory = options.readDirectory ?? readdirSync;
+  const readFile = options.readFile ?? (file => readFileSync(file, 'utf8'));
+  const candidates = readDirectory(dist).filter(name => options.filePattern.test(name)).flatMap(name => {
+    try { return [{path: join(dist, name), bindings: nativeExportBindings(readFile(join(dist, name)), options.exportNames)}]; }
+    catch { return []; }
+  });
+  if (candidates.length !== 1) throw new Error(`Native runtime contract must resolve uniquely; found ${candidates.length}`);
+  return candidates[0];
+}
+
+export async function loadNativeRuntimeContract(contract, importer = path => import(path)) {
+  const runtime = await importer(pathToFileURL(contract.path).href);
+  return Object.fromEntries(Object.entries(contract.bindings).map(([name, binding]) => {
+    if (typeof runtime[binding] !== 'function') throw new Error(`Native export ${name} is not a function`);
+    return [name, runtime[binding]];
+  }));
+}
+
+export function resolveGatewayCallerContract(options = {}) {
+  return resolveNativeRuntimeContract({...options, filePattern: /^gateway-caller-context-[\w-]+\.js$/,
+    exportNames: ['withoutGatewayToolCallerIdentity']});
+}
+
+export function resolveGatewayScopeContract(options = {}) {
+  return resolveNativeRuntimeContract({...options, filePattern: /^gateway-request-scope-[\w-]+\.js$/,
+    exportNames: ['getGatewayContextResolver', 'withPluginRuntimeGatewayContextResolver']});
+}
 
 export function resolveOpenClawAgentRuntimePath(options = {}) {
   const fileExists = options.fileExists ?? existsSync;
@@ -160,19 +204,9 @@ export function resolveOpenClawPreparedModelRuntimePath(options = {}) {
 }
 
 export function resolveOpenClawGatewayCallerContextRuntimePath(options = {}) {
-  const agentRuntimePath = options.agentRuntimePath ?? resolveOpenClawAgentRuntimePath(options);
-  const dist = dirname(dirname(agentRuntimePath));
-  const candidates = readdirSync(dist).filter(name => /^gateway-caller-context-[\w-]+\.js$/.test(name) &&
-    readFileSync(join(dist,name),'utf8').includes('withoutGatewayToolCallerIdentity as o'));
-  if(candidates.length !== 1) throw new Error('Native process-owned Gateway context runtime is unavailable');
-  return join(dist,candidates[0]);
+  return resolveGatewayCallerContract(options).path;
 }
 
 export function resolveOpenClawGatewayRequestScopeRuntimePath(options = {}) {
-  const agentRuntimePath = options.agentRuntimePath ?? resolveOpenClawAgentRuntimePath(options);
-  const dist = dirname(dirname(agentRuntimePath));
-  const candidates = readdirSync(dist).filter(name => /^gateway-request-scope-[\w-]+\.js$/.test(name) &&
-    readFileSync(join(dist,name),'utf8').includes('withPluginRuntimeGatewayContextResolver as s'));
-  if(candidates.length !== 1) throw new Error('Native Gateway instance context runtime is unavailable');
-  return join(dist,candidates[0]);
+  return resolveGatewayScopeContract(options).path;
 }

@@ -4,14 +4,16 @@ import assert from 'node:assert/strict';
 import {target,sourceCommit,treeHash,readJson,run,service,record,digest} from './lab-instance.mjs';
 
 const [action,name,owner]=process.argv.slice(2);
-assert(['worker91','core92'].includes(action),'worker91|core92 INSTANCE OWNER');
+assert(['worker91','worker-candidate','core92'].includes(action),'worker91|worker-candidate|core92 INSTANCE OWNER');
 const m=target(name,owner,{stopped:true});const root=m.root,commit=sourceCommit(m);
 const integration=service('openclaw-vlab-production-mirror-v8.service');
-if(action==='worker91'){
-  assert.equal(readJson(`${root}/runtime/openclaw/package.json`).version,'2026.9.1');
+if(action==='worker91'||action==='worker-candidate'){
+  const hostVersion=readJson(`${root}/runtime/openclaw/package.json`).version;
+  assert(['2026.9.1','2026.9.2'].includes(hostVersion));
+  if(action==='worker91')assert.equal(hostVersion,'2026.9.1');
   const src=`${root}/source/experiments/agent-worker-isolation-v1`,dest=`${root}/runtime/worker`;
   assert.equal(readJson(`${src}/package.json`).version,'0.2.11');
-  const backup=`${root}/runtime/worker-before-v-platform`;
+  const backup=action==='worker91'?`${root}/runtime/worker-before-v-platform`:`${root}/runtime/worker-before-${commit}`;
   assert(!fs.existsSync(backup),'Worker bootstrap already performed');
   const before=treeHash(dest),after=treeHash(src);
   fs.cpSync(src,`${dest}.vplatform-stage`,{recursive:true,errorOnExist:true,force:false});
@@ -19,7 +21,7 @@ if(action==='worker91'){
   run('chown',['-R',`${m.user}:${m.user}`,`${dest}.vplatform-stage`]);
   fs.renameSync(dest,backup);fs.renameSync(`${dest}.vplatform-stage`,dest);
   assert.deepEqual(service('openclaw-vlab-production-mirror-v8.service'),integration);
-  record(m,'worker91-staged',{commit,version:'0.2.11',before,after,configChanged:false,sharedGatewayUnchanged:true,accepted:false});
+  record(m,'worker-staged',{commit,hostVersion,version:'0.2.11',candidateBuild:action==='worker-candidate',before,after,configChanged:false,sharedGatewayUnchanged:true,accepted:false});
 }else{
   const candidate=`${root}/runtime/core92/node_modules/openclaw`;
   assert.equal(readJson(`${candidate}/package.json`).version,'2026.9.2');

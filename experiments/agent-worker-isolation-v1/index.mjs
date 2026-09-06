@@ -6,13 +6,16 @@ import { gatewayOwnedEventArgs } from './gateway-owned-terminal.mjs';
 const nativeParityReleaseHold = false; // 9.1 Steer: real Feishu Worker/Codex acceptance passed.
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { readFileSync } from "node:fs";
 import {
   resolveOpenClawAgentRuntimePath,
   resolveOpenClawAgentHarnessRuntimePath,
   resolveOpenClawSubagentAnnounceRuntimePath,
   resolveOpenClawSubagentAnnounceOriginRuntimePath,
-  resolveOpenClawGatewayCallerContextRuntimePath,
-  resolveOpenClawGatewayRequestScopeRuntimePath,
+  resolveGatewayCallerContract,
+  resolveGatewayScopeContract,
+  nativeExportBindings,
+  loadNativeRuntimeContract,
 } from "./runtime-path.mjs";
 import { createWorkerActiveRunProxy } from "./worker-active-run-proxy.mjs";
 import { createGatewayMessageToolRelay } from "./gateway-message-tool.mjs";
@@ -336,12 +339,10 @@ const plugin = {
         resolve(dirname(openClawAgentRuntimePath), "session-transcript-runtime.js"),
       ).href
     );
-    const gatewayCallerRuntimePromise = import(pathToFileURL(
-      resolveOpenClawGatewayCallerContextRuntimePath({agentRuntimePath:openClawAgentRuntimePath}),
-    ).href);
-    const gatewayScopeRuntimePromise = import(pathToFileURL(
-      resolveOpenClawGatewayRequestScopeRuntimePath({agentRuntimePath:openClawAgentRuntimePath}),
-    ).href);
+    const gatewayCallerRuntimePromise = loadNativeRuntimeContract(
+      resolveGatewayCallerContract({agentRuntimePath:openClawAgentRuntimePath}));
+    const gatewayScopeRuntimePromise = loadNativeRuntimeContract(
+      resolveGatewayScopeContract({agentRuntimePath:openClawAgentRuntimePath}));
     const agentHarnessTaskRuntimePromise = import(
       pathToFileURL(
         resolve(
@@ -362,13 +363,13 @@ const plugin = {
         }),
       ).href
     );
-    const nativeSubagentAnnounceOriginRuntimePromise = import(
-      pathToFileURL(
-        resolveOpenClawSubagentAnnounceOriginRuntimePath({
-          agentRuntimePath: openClawAgentRuntimePath,
-        }),
-      ).href
-    );
+    const nativeDeliveryPath = resolveOpenClawSubagentAnnounceOriginRuntimePath({
+      agentRuntimePath: openClawAgentRuntimePath,
+    });
+    const nativeSubagentAnnounceOriginRuntimePromise = loadNativeRuntimeContract({
+      path: nativeDeliveryPath,
+      bindings: nativeExportBindings(readFileSync(nativeDeliveryPath, 'utf8'), ['deliverSubagentAnnouncement']),
+    });
     const mediaCompletionRelayStats = {};
     const skillUsageRelayStats = {};
     const routeWorkerGatewayEvent = createWorkerGatewayEventRouter({
@@ -377,7 +378,7 @@ const plugin = {
       async deliverMediaCompletion(deliveryParams) {
         const runtime = await nativeSubagentAnnounceOriginRuntimePromise;
         const deliverSubagentAnnouncement =
-          runtime.deliverSubagentAnnouncement ?? runtime.t ?? runtime.n;
+          runtime.deliverSubagentAnnouncement;
         if (typeof deliverSubagentAnnouncement !== "function") {
           throw new Error(
             "OpenClaw native completion delivery runtime is unavailable",
@@ -841,8 +842,8 @@ const plugin = {
               outcome.error ??
               `Child task ${outcome.status}`;
             const runtime = await agentHarnessTaskRuntimePromise;
-            const { o: withoutGatewayToolCallerIdentity } = await gatewayCallerRuntimePromise;
-            const { r: getResolver, s: withResolver } = await gatewayScopeRuntimePromise;
+            const { withoutGatewayToolCallerIdentity } = await gatewayCallerRuntimePromise;
+            const { getGatewayContextResolver: getResolver, withPluginRuntimeGatewayContextResolver: withResolver } = await gatewayScopeRuntimePromise;
             // Core's process-owned-work boundary releases only the expired
             // initiating turn context. The native task scope still owns the
             // requester and native delivery validates the completion lifecycle.

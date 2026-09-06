@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import {
+  nativeExportBindings,
+  resolveGatewayScopeContract,
+  loadNativeRuntimeContract,
   resolveOpenClawAgentCommandRuntimePath,
   resolveOpenClawAgentHarnessRuntimePath,
   resolveOpenClawAgentRuntimePath,
@@ -175,4 +178,25 @@ assert.throws(() => resolveOpenClawSubagentAnnounceRuntimePath({
   readDirectory: () => ["subagent-announce-D-7rIufL.js", "subagent-announce-another.js"],
   readFile: () => "export { runSubagentAnnounceFlow };",
 }), /was not uniquely resolved/);
-console.log(JSON.stringify({ ok: true, cases: 15 }));
+for (const alias of ['s', 'c']) {
+  const descriptor = resolveGatewayScopeContract({
+    agentRuntimePath: vlabRuntime,
+    readDirectory: () => ['gateway-request-scope-native.js', 'gateway-request-scope-facade.js'],
+    readFile: file => file.endsWith('native.js')
+      ? `export { getGatewayContextResolver as r, withPluginRuntimeGatewayContextResolver as ${alias}${alias === 'c' ? ', hasGatewayContextOwner as s' : ''} };`
+      : 'export { withPluginRuntimeRegistryScope };',
+  });
+  assert.equal(descriptor.bindings.withPluginRuntimeGatewayContextResolver, alias);
+  const expected = () => true, wrong = () => false;
+  const runtime = await loadNativeRuntimeContract(descriptor, async () => ({s: wrong, r: () => {}, [alias]: expected}));
+  assert.equal(runtime.withPluginRuntimeGatewayContextResolver, expected);
+  await assert.rejects(loadNativeRuntimeContract(descriptor, async () => ({})), /is not a function/);
+}
+assert.throws(() => nativeExportBindings('export { unrelated as s };', ['withPluginRuntimeGatewayContextResolver']), /exactly once/);
+assert.throws(() => nativeExportBindings('export { wanted as a, wanted as b };', ['wanted']), /exactly once/);
+assert.throws(() => resolveGatewayScopeContract({agentRuntimePath: vlabRuntime,
+  readDirectory: () => ['gateway-request-scope-one.js', 'gateway-request-scope-two.js'],
+  readFile: () => 'export { getGatewayContextResolver as r, withPluginRuntimeGatewayContextResolver as c };',
+}), /resolve uniquely/);
+assert.deepEqual(nativeExportBindings('export { deliverSubagentAnnouncement as n };', ['deliverSubagentAnnouncement']), {deliverSubagentAnnouncement: 'n'});
+console.log(JSON.stringify({ ok: true, cases: 27 }));
