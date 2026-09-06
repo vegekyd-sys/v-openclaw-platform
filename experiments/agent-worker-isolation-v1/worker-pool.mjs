@@ -97,6 +97,8 @@ export class WorkerPool {
     this.nextControlId = 1;
     this.started = false;
     this.closing = false;
+    this.startPromise = null;
+    this.closePromise = null;
     this.pumping = false;
     this.reapTimer = null;
 
@@ -161,20 +163,30 @@ export class WorkerPool {
   }
 
   async start() {
-    if (this.started) {
-      return;
-    }
+    // Pools are one generation. Reusing a closed pool must not masquerade as
+    // a successful plugin-service start; the service must acquire a new pool.
+    if (this.closing) throw new Error("worker pool is closing");
+    if (this.startPromise) return this.startPromise;
     this.started = true;
-    await Promise.all(
-      Array.from({ length: this.minWorkers }, () =>
-        this.spawn(this.findAvailableSlot()),
-      ),
-    );
-    this.reapTimer = setInterval(
-      () => this.reapIdleWorkers(),
-      this.idleSweepIntervalMs,
-    );
-    this.reapTimer.unref?.();
+    this.startPromise = (async () => {
+      try {
+        await Promise.all(
+          Array.from({ length: this.minWorkers }, () =>
+            this.spawn(this.findAvailableSlot()),
+          ),
+        );
+        if (this.closing) throw new Error("worker pool is closing");
+        this.reapTimer = setInterval(
+          () => this.reapIdleWorkers(),
+          this.idleSweepIntervalMs,
+        );
+        this.reapTimer.unref?.();
+      } catch (error) {
+        await this.close();
+        throw error;
+      }
+    })();
+    return this.startPromise;
   }
 
   findAvailableSlot() {
@@ -1136,6 +1148,7 @@ export class WorkerPool {
   status() {
     return {
       started: this.started,
+      closing: this.closing,
       minWorkers: this.minWorkers,
       maxWorkers: this.maxWorkers,
       sessionsPerWorker: this.sessionsPerWorker,
@@ -1184,11 +1197,15 @@ export class WorkerPool {
     };
   }
 
-  async close() {
-    if (this.closing) {
-      return;
-    }
+  close() {
+    if (this.closePromise) return this.closePromise;
     this.closing = true;
+    this.started = false;
+    this.closePromise = this.closeWorkers();
+    return this.closePromise;
+  }
+
+  async closeWorkers() {
     if (this.reapTimer) {
       clearInterval(this.reapTimer);
       this.reapTimer = null;
