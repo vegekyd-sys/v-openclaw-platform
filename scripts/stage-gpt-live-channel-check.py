@@ -54,8 +54,9 @@ elif mode=='arm':
     write_config(c)
 elif mode=='enable':
     assert str(new) in c['plugins']['load']['paths']
-    assert c['talk']['realtime']['provider']=='google'
+    assert c['talk']['realtime']['provider'] in ('google','openai')
     c['talk']['realtime'].update(provider='openai',model='gpt-live-1-codex',speakerVoice='spruce',transport='webrtc')
+    c['talk']['realtime'].setdefault('providers',{}).setdefault('openai',{}).update(model='gpt-live-1-codex',speakerVoice='spruce',transport='webrtc')
     write_config(c)
 elif mode=='restore-talk':
     assert str(new) in c['plugins']['load']['paths']
