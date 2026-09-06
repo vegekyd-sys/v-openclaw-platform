@@ -1,13 +1,35 @@
 // Candidate-only bootstrap. Not the future production installer.
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
-import {target,sourceCommit,treeHash,readJson,run,service,record,digest} from './lab-instance.mjs';
+import {target,sourceCommit,treeHash,readJson,run,service,record,digest,NODE} from './lab-instance.mjs';
+import {patchOpenClaw92MediaCompletionBundle} from '../scripts/patch-openclaw-media-completion-relay.mjs';
 
 const [action,name,owner]=process.argv.slice(2);
-assert(['worker91','worker-candidate','core92','select91','select92','enable-reload','restore-reload'].includes(action),'worker91|worker-candidate|core92|select91|select92|enable-reload|restore-reload INSTANCE OWNER');
+assert(['worker91','worker-candidate','core92','select91','select92','enable-reload','restore-reload','media92'].includes(action),'worker91|worker-candidate|core92|select91|select92|enable-reload|restore-reload|media92 INSTANCE OWNER');
 const m=target(name,owner,{stopped:true});const root=m.root,commit=sourceCommit(m);
 const integration=service('openclaw-vlab-production-mirror-v8.service');
-if(action==='enable-reload'||action==='restore-reload'){
+if(action==='media92'){
+  const core=fs.realpathSync(`${root}/runtime/openclaw`);
+  assert(core.startsWith(`${root}/runtime/`),'Core must be wholly owned by this instance');
+  assert.equal(readJson(`${core}/package.json`).version,'2026.9.2');
+  const matches=fs.readdirSync(`${core}/dist`).filter(n=>/^openclaw-tools-[\w-]+\.js$/.test(n))
+    .map(file=>({file,path:`${core}/dist/${file}`}))
+    .filter(x=>fs.readFileSync(x.path,'utf8').includes('function scheduleMediaGenerationTaskCompletion(params)'));
+  assert.equal(matches.length,1);const {file,path}=matches[0];
+  const before=fs.readFileSync(path,'utf8'),patched=patchOpenClaw92MediaCompletionBundle(before);
+  run(NODE,['--check','--input-type=module'],{input:patched.source});
+  if(patched.changed){
+    const backup=`${path}.pre-vplatform-media92-${commit}`,stat=fs.statSync(path);
+    fs.copyFileSync(path,backup,fs.constants.COPYFILE_EXCL);
+    const temporary=`${path}.vplatform-stage-${commit}`;
+    fs.writeFileSync(temporary,patched.source,{flag:'wx',mode:stat.mode&0o777});
+    fs.chownSync(temporary,stat.uid,stat.gid);fs.chmodSync(temporary,stat.mode&0o777);
+    assert.equal(fs.readFileSync(path,'utf8'),before,'Concurrent core change');fs.renameSync(temporary,path);
+  }
+  assert.deepEqual(service('openclaw-vlab-production-mirror-v8.service'),integration);
+  record(m,'media92-staged',{commit,file,changed:patched.changed,beforeSha256:digest(before),
+    afterSha256:digest(patched.source),sharedGatewayUnchanged:true,configChanged:false,accepted:false});
+}else if(action==='enable-reload'||action==='restore-reload'){
   const path=`${root}/state/openclaw.json`,before=fs.readFileSync(path,'utf8'),cfg=JSON.parse(before),stat=fs.statSync(path);
   const backup=`${root}/tmp/vplatform-reload-mode-before.json`;
   if(action==='enable-reload'){
