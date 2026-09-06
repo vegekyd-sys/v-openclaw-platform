@@ -4,7 +4,8 @@ V 的整体发行与验收入口。用户只选择一个 V 版本；内部保留
 
 ## 当前边界
 
-第一阶段是 **9.1 发行装配与自动验收骨架**，不是已完成的安装包。
+当前已完成 **发行装配骨架与独占 VLab 的首轮 9.1 / 9.2 Worker 往返验证**，不是已完成的安装包。
+详见 [首轮 VLab 验收与未闭合项](./VLAB-92-FIRST-PASS-20260906.md)。
 当前生产的功能验收不能自动转移为新发行包的验收；必须证明干净实例可重建。
 默认 CLI 不安装软件、不重启服务、不读取凭据内容或业务会话；任何入口都不修改生产。
 
@@ -51,3 +52,11 @@ node --test platform/platform.test.mjs
 它们用于先对齐 Worker 0.2.11，再检查原生 9.1/9.2 的实际模型、工具和最终回复。
 9.2 依赖从精确 npm 版本安装到实例独立前缀，保留 package-lock，切换前留存旧核心和自有状态检查点。
 这不是干净重建或完整 V 能力验收；新制品只有拿到全部门槛证据后才能成为可安装发行包。
+
+- `lab-control-probe.mjs steer|stop INSTANCE OWNER VERSION`：真实工具边界上的同任务修改，以及停止后执行新一轮；只创建自有合成会话。
+- `lab-probe.mjs INSTANCE OWNER VERSION`：核对先前通过的合成会话历史仍在，再执行指定模型的工具与最终回复。
+- `lab-compat.mjs INSTANCE OWNER VERSION`：对当前登记适配做一批只读检查；锚点存在仅表示可以继续 review，不表示应应用旧补丁。
+- `lab-stage.mjs select91|select92 INSTANCE OWNER`：只切换已暂存的自有核心代码链接，必须先由 labctl 停止实例；不恢复、覆盖或删除状态。
+- `scripts/patch-openclaw-worker-native-attempt.mjs CORE --check`：只读检查五个原生桥的 bundle 契约；`--apply INSTANCE OWNER` 只允许停止的自有 VLab 核心。
+
+这些是构建期实验工具，不是公开安装 API。生产发布门仍保持阻断。

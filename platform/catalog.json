@@ -609,7 +609,7 @@
     {
       "id": "upstream-native-bridge",
       "status": "unresolved",
-      "reason": "9.1 原生 attempt/Gateway identity/subagent context 补丁位于主体升级来源，当前集成树未包含完整集合。"
+      "reason": "已导入主体升级来源的五 bundle 原生桥并完成 9.2 基本执行/Steer 验证；仍需与实际 9.1 制品逐项锁定及完成子任务、权限、渠道全路径验收，不能据此认定完整来源对齐。"
     },
     {
       "id": "browser-release",
