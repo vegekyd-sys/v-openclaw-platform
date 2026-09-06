@@ -102,11 +102,13 @@ try {
   await ping();
   emit({ phase: "before", gatewayPid, ...summary(before) });
   await modelTool("before");
-  for (let cycle = 1; cycle <= (expectBug ? 1 : 3); cycle++) {
+  for (const cycle of expectBug ? [1] : [1, 2, 3, "restore"]) {
     const previous = await status();
     const previousPids = previous.workers.map(w => w.pid);
-    const nextTalk = { ...initialTalk, realtime: { ...initialTalk?.realtime,
-      instructions: `Private VLab hot-reload lifecycle acceptance ${stamp}, cycle ${cycle}.` } };
+    const nextTalk = cycle === "restore" ? initialTalk : {
+      ...initialTalk, realtime: { ...initialTalk?.realtime,
+        instructions: `Private VLab hot-reload lifecycle acceptance ${stamp}, cycle ${cycle}.` },
+    };
     writeTalk(nextTalk);
     const start = Date.now();
     let after, emptySince;
@@ -141,7 +143,10 @@ try {
   emit({ phase: "failure", error: String(error.message).slice(0, 500), passed: false });
   process.exitCode = 1;
 } finally {
-  try { writeTalk(initialTalk); emit({ phase: "config-restored", passed: true }); }
+  try {
+    if (JSON.stringify(expectedTalk) !== JSON.stringify(initialTalk)) writeTalk(initialTalk);
+    emit({ phase: "config-restored", passed: true });
+  }
   catch (e) { emit({ phase: "restore-failed", error: e.message }); process.exitCode = 1; }
   client?.stop();
   fs.writeFileSync(output, `${JSON.stringify(results, null, 2)}\n`, { mode: 0o600 });
