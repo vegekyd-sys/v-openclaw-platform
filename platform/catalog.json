@@ -113,6 +113,7 @@
         "experiments/agent-worker-isolation-v1/runtime-path.test.mjs",
         "experiments/agent-worker-isolation-v1/session-hotset.test.mjs",
         "experiments/agent-worker-isolation-v1/session-rollover-retry.test.mjs",
+        "experiments/agent-worker-isolation-v1/shared-pool-lifecycle.test.mjs",
         "experiments/agent-worker-isolation-v1/skill-usage-report.test.mjs",
         "experiments/agent-worker-isolation-v1/skill-usage-telemetry.test.mjs",
         "experiments/agent-worker-isolation-v1/subagent-completion-relay.test.mjs",

@@ -1,4 +1,5 @@
 import { WorkerPool } from "./worker-pool.mjs";
+import { acquirePoolGeneration, createPoolServiceLease } from "./shared-pool-lifecycle.mjs";
 import { performance } from "node:perf_hooks";
 import { buildNativeHarnessData } from './native-harness-data.mjs';
 import { gatewayOwnedEventArgs } from './gateway-owned-terminal.mjs';
@@ -136,8 +137,7 @@ function operationSnapshot(operation) {
 }
 
 function acquireSharedPool(options) {
-  if (!globalThis[SHARED_POOL_KEY]) {
-    globalThis[SHARED_POOL_KEY] = {
+  globalThis[SHARED_POOL_KEY] = acquirePoolGeneration(globalThis[SHARED_POOL_KEY], () => ({
       pool: new WorkerPool(options),
       nativeHarnessStats: {
         admitted: 0,
@@ -183,8 +183,7 @@ function acquireSharedPool(options) {
         processLocalOptions: new Set(),
         unclassifiedOptions: new Set(),
       },
-    };
-  }
+    }));
   if (!globalThis[SHARED_POOL_KEY].harnessEventParity) {
     globalThis[SHARED_POOL_KEY].harnessEventParity = {
       observedCallbacks: new Set(),
@@ -445,7 +444,7 @@ const plugin = {
       workerEnv,
       async onProgress(progress) {
         const nativeLaneProgressBridge =
-          globalThis[SHARED_POOL_KEY]?.nativeLaneProgressBridge;
+          sharedPool.nativeLaneProgressBridge;
         if (nativeLaneProgressBridge) {
           try {
             await nativeLaneProgressBridge.relay(progress);
@@ -1270,17 +1269,15 @@ const plugin = {
       };
     }
 
-    api.registerService({
-      id: "vlab-agent-worker-isolation",
-      async start() {
-        await pool.start();
+    const poolService = createPoolServiceLease(sharedPool, () => {
         api.logger.info(
           `vLab Agent Worker Isolation started with ${minWorkers}-${maxWorkers} elastic workers and ${sessionsPerWorker} sessions per worker`,
         );
-      },
-      async stop() {
-        await pool.close();
-      },
+    });
+    api.registerService({
+      id: "vlab-agent-worker-isolation",
+      start: poolService.start,
+      stop: poolService.stop,
     });
 
     api.registerAgentHarness({

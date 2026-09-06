@@ -97,6 +97,8 @@ export class WorkerPool {
     this.nextControlId = 1;
     this.started = false;
     this.closing = false;
+    this.startPromise = null;
+    this.closePromise = null;
     this.pumping = false;
     this.reapTimer = null;
 
@@ -160,16 +162,21 @@ export class WorkerPool {
     }
   }
 
-  async start() {
-    if (this.started) {
-      return;
-    }
+  start() {
+    if (this.closing) return Promise.reject(new Error("worker pool is closing"));
+    if (this.startPromise) return this.startPromise;
+    this.startPromise = this.startWorkers();
+    return this.startPromise;
+  }
+
+  async startWorkers() {
     this.started = true;
     await Promise.all(
       Array.from({ length: this.minWorkers }, () =>
         this.spawn(this.findAvailableSlot()),
       ),
     );
+    if (this.closing) throw new Error("worker pool is closing");
     this.reapTimer = setInterval(
       () => this.reapIdleWorkers(),
       this.idleSweepIntervalMs,
@@ -187,6 +194,7 @@ export class WorkerPool {
   }
 
   async spawn(slot) {
+    if (this.closing) throw new Error("worker pool is closing");
     if (slot === undefined) {
       throw new Error("worker pool is at capacity");
     }
@@ -1136,6 +1144,7 @@ export class WorkerPool {
   status() {
     return {
       started: this.started,
+      closing: this.closing,
       minWorkers: this.minWorkers,
       maxWorkers: this.maxWorkers,
       sessionsPerWorker: this.sessionsPerWorker,
@@ -1184,11 +1193,14 @@ export class WorkerPool {
     };
   }
 
-  async close() {
-    if (this.closing) {
-      return;
-    }
+  close() {
+    if (this.closePromise) return this.closePromise;
     this.closing = true;
+    this.closePromise = this.closeWorkers();
+    return this.closePromise;
+  }
+
+  async closeWorkers() {
     if (this.reapTimer) {
       clearInterval(this.reapTimer);
       this.reapTimer = null;
