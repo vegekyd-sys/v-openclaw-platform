@@ -15,7 +15,15 @@ gid=pwd.getpwnam('vlab').pw_gid
 def write_config(value):
     p=cfgpath.with_name('gpt-live-config-pending.json')
     with p.open('x') as f:json.dump(value,f,ensure_ascii=False,indent=2);f.write('\n')
-    os.chmod(p,0o600);os.chown(p,uid,gid);p.replace(cfgpath)
+    os.chmod(p,0o600);os.chown(p,uid,gid)
+    pid=subprocess.check_output(['systemctl','show','openclaw-vlab-production-mirror-v8.service','-p','MainPID','--value'],text=True).strip()
+    env=dict(item.split('=',1) for item in pathlib.Path('/proc/'+pid+'/environ').read_text().split('\0') if '=' in item)
+    env['OPENCLAW_CONFIG_PATH']=str(p)
+    checked=subprocess.run(['/opt/vlab/node-v22.23.1-linux-x64/bin/node',str(R/'runtime/npm-global/lib/node_modules/openclaw/dist/index.js'),'config','validate'],env=env,capture_output=True,text=True)
+    if checked.returncode:
+        p.unlink()
+        raise RuntimeError('Candidate configuration rejected; live configuration was not replaced')
+    p.replace(cfgpath)
 mode=sys.argv[1]
 if mode=='stage':
     assert c['plugins']['load']['paths'].count(str(old))==1
