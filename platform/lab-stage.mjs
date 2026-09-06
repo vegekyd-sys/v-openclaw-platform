@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {target,sourceCommit,treeHash,readJson,run,service,record,digest} from './lab-instance.mjs';
 
 const [action,name,owner]=process.argv.slice(2);
-assert(['worker91','worker-candidate','core92'].includes(action),'worker91|worker-candidate|core92 INSTANCE OWNER');
+assert(['worker91','worker-candidate','core92','select91','select92'].includes(action),'worker91|worker-candidate|core92|select91|select92 INSTANCE OWNER');
 const m=target(name,owner,{stopped:true});const root=m.root,commit=sourceCommit(m);
 const integration=service('openclaw-vlab-production-mirror-v8.service');
 if(action==='worker91'||action==='worker-candidate'){
@@ -22,6 +22,17 @@ if(action==='worker91'||action==='worker-candidate'){
   fs.renameSync(dest,backup);fs.renameSync(`${dest}.vplatform-stage`,dest);
   assert.deepEqual(service('openclaw-vlab-production-mirror-v8.service'),integration);
   record(m,'worker-staged',{commit,hostVersion,version:'0.2.11',candidateBuild:action==='worker-candidate',before,after,configChanged:false,sharedGatewayUnchanged:true,accepted:false});
+}else if(action==='select91'||action==='select92'){
+  const version=action==='select91'?'2026.9.1':'2026.9.2';
+  const dest=action==='select91'?`${root}/runtime/openclaw-before-92`:`${root}/runtime/core92/node_modules/openclaw`;
+  const current=`${root}/runtime/openclaw`,temporary=`${root}/runtime/openclaw-switch-${commit}`;
+  assert(fs.lstatSync(current).isSymbolicLink(),'Only a previously staged private core link may switch');
+  assert.equal(readJson(`${dest}/package.json`).version,version);
+  assert(fs.realpathSync(dest).startsWith(root+'/runtime/'));
+  assert(!fs.existsSync(temporary));
+  fs.symlinkSync(dest,temporary,'dir');fs.renameSync(temporary,current);
+  assert.deepEqual(service('openclaw-vlab-production-mirror-v8.service'),integration);
+  record(m,'core-selected',{commit,version,previousCodeRetained:true,stateRestored:false,stateOverwritten:false,sharedGatewayUnchanged:true,accepted:false});
 }else{
   const candidate=`${root}/runtime/core92/node_modules/openclaw`;
   assert.equal(readJson(`${candidate}/package.json`).version,'2026.9.2');
