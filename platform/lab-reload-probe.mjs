@@ -1,10 +1,11 @@
 // Exercise the native file-watcher/plugin replacement, not a Gateway restart.
-// Changes one harmless Worker timeout by 1 ms, then restores its exact bytes.
+// Changes only the Talk provider selector (or one Worker timeout), then restores exact bytes.
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import {target,readJson,service,record,sourceCommit,treeHash,digest,run,NODE} from './lab-instance.mjs';
 
-const [name,owner,expectedCore]=process.argv.slice(2),m=target(name,owner),root=m.root;
+const [name,owner,expectedCore,trigger='talk']=process.argv.slice(2),m=target(name,owner),root=m.root;
+assert(['talk','plugin'].includes(trigger));
 assert(['2026.9.1','2026.9.2'].includes(expectedCore));
 const core=`${root}/runtime/openclaw`;
 assert.equal(readJson(`${core}/package.json`).version,expectedCore);
@@ -15,10 +16,16 @@ for(const entry of fs.readFileSync(`/proc/${before.MainPID}/environ`,'utf8').spl
   const n=entry.indexOf('=');process.env[entry.slice(0,n)]=entry.slice(n+1);
 }
 const path=`${root}/state/openclaw.json`,original=fs.readFileSync(path),cfg=JSON.parse(original),stat=fs.statSync(path);
-const workerCfg=cfg.plugins.entries['vlab-agent-worker-isolation'].config;
-const oldTimeout=workerCfg.requestTimeoutMs??600000;
-assert(Number.isInteger(oldTimeout)&&oldTimeout>=10);
-workerCfg.requestTimeoutMs=oldTimeout+1;
+assert(['hot','hybrid'].includes(cfg.gateway.reload?.mode),'Enable native hot reload in this stopped owner instance before probing');
+if(trigger==='talk'){
+  cfg.talk??={};cfg.talk.realtime??={};
+  cfg.talk.realtime.provider=cfg.talk.realtime.provider==='openai'?'google':'openai';
+}else{
+  const workerCfg=cfg.plugins.entries['vlab-agent-worker-isolation'].config;
+  const oldTimeout=workerCfg.requestTimeoutMs??600000;
+  assert(Number.isInteger(oldTimeout)&&oldTimeout>=10);
+  workerCfg.requestTimeoutMs=oldTimeout+1;
+}
 const changed=Buffer.from(JSON.stringify(cfg,null,2)+'\n');
 const staged=`${root}/state/reload-probe-${Date.now()}.json`;
 let client,modified=false;
@@ -70,10 +77,10 @@ try {
   }
   assert.equal(digest(fs.readFileSync(path)),digest(original));
   assert.equal(fs.statSync(path).uid,stat.uid);assert.equal(fs.statSync(path).mode,stat.mode);
-  record(m,'hot-reload-probe',{commit,workerArtifact,expectedCore,rounds,gatewayUnchanged:true,
+  record(m,'hot-reload-probe',{commit,workerArtifact,expectedCore,trigger,rounds,gatewayUnchanged:true,
     sharedGatewayUnchanged:true,configRestored:true,passed:true});
 } catch(error) {
-  record(m,'hot-reload-probe-failed',{commit,workerArtifact,expectedCore,rounds,error:String(error.message).slice(0,300),passed:false});
+  record(m,'hot-reload-probe-failed',{commit,workerArtifact,expectedCore,trigger,rounds,error:String(error.message).slice(0,300),passed:false});
   process.exitCode=1;
 } finally {
   // Never overwrite somebody else's changes even on failure.

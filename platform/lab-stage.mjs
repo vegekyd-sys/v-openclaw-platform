@@ -4,10 +4,28 @@ import assert from 'node:assert/strict';
 import {target,sourceCommit,treeHash,readJson,run,service,record,digest} from './lab-instance.mjs';
 
 const [action,name,owner]=process.argv.slice(2);
-assert(['worker91','worker-candidate','core92','select91','select92'].includes(action),'worker91|worker-candidate|core92|select91|select92 INSTANCE OWNER');
+assert(['worker91','worker-candidate','core92','select91','select92','enable-reload','restore-reload'].includes(action),'worker91|worker-candidate|core92|select91|select92|enable-reload|restore-reload INSTANCE OWNER');
 const m=target(name,owner,{stopped:true});const root=m.root,commit=sourceCommit(m);
 const integration=service('openclaw-vlab-production-mirror-v8.service');
-if(action==='worker91'||action==='worker-candidate'){
+if(action==='enable-reload'||action==='restore-reload'){
+  const path=`${root}/state/openclaw.json`,before=fs.readFileSync(path,'utf8'),cfg=JSON.parse(before),stat=fs.statSync(path);
+  const backup=`${root}/tmp/vplatform-reload-mode-before.json`;
+  if(action==='enable-reload'){
+    assert.equal(cfg.gateway.reload?.mode,'off','Only the isolated baseline reload-off mode may be enabled');
+    fs.writeFileSync(backup,JSON.stringify({previous:cfg.gateway.reload})+'\n',{flag:'wx',mode:0o600});
+    cfg.gateway.reload={...cfg.gateway.reload,mode:'hybrid'};
+  }else{
+    const saved=readJson(backup);
+    assert.deepEqual(cfg.gateway.reload,{...saved.previous,mode:'hybrid'},'Reload configuration changed concurrently');
+    cfg.gateway.reload=saved.previous;
+  }
+  const temporary=`${path}.vplatform-reload-${commit}`;
+  fs.writeFileSync(temporary,JSON.stringify(cfg,null,2)+'\n',{flag:'wx',mode:stat.mode&0o777});
+  fs.chownSync(temporary,stat.uid,stat.gid);fs.chmodSync(temporary,stat.mode&0o777);
+  assert.equal(fs.readFileSync(path,'utf8'),before,'Concurrent config change');fs.renameSync(temporary,path);
+  assert.deepEqual(service('openclaw-vlab-production-mirror-v8.service'),integration);
+  record(m,'reload-mode-staged',{commit,action,mode:cfg.gateway.reload.mode,sharedGatewayUnchanged:true,accepted:false});
+}else if(action==='worker91'||action==='worker-candidate'){
   const hostVersion=readJson(`${root}/runtime/openclaw/package.json`).version;
   assert(['2026.9.1','2026.9.2'].includes(hostVersion));
   if(action==='worker91')assert.equal(hostVersion,'2026.9.1');
