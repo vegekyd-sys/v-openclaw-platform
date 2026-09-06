@@ -36,7 +36,12 @@ if(action==='media92'){
   const backup=`${root}/tmp/vplatform-reload-mode-before.json`;
   if(action==='enable-reload'){
     assert.equal(cfg.gateway.reload?.mode,'off','Only the isolated baseline reload-off mode may be enabled');
-    fs.writeFileSync(backup,JSON.stringify({previous:cfg.gateway.reload})+'\n',{flag:'wx',mode:0o600});
+    if(fs.existsSync(backup)){
+      assert.equal(fs.realpathSync(backup),backup,'Reload backup must not be a symlink');
+      assert.deepEqual(readJson(backup).previous,cfg.gateway.reload,'Saved baseline differs; refusing to replace the rollback record');
+    }else{
+      fs.writeFileSync(backup,JSON.stringify({previous:cfg.gateway.reload})+'\n',{flag:'wx',mode:0o600});
+    }
     cfg.gateway.reload={...cfg.gateway.reload,mode:'hybrid'};
   }else{
     const saved=readJson(backup);
