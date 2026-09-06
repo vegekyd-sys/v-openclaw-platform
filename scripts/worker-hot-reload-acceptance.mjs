@@ -15,6 +15,7 @@ assert.equal(cfg.gateway.reload.mode, "hybrid");
 assert.deepEqual(cfg.channels, {});
 assert.equal(cfg.cron.enabled, false);
 assert.equal(cfg.browser.enabled, false);
+assert.equal(cfg.talk?.realtime?.provider, "google", "Seed the isolated baseline before starting this probe");
 const expectBug = process.argv.includes("--expect-bug");
 const initialTalk = cfg.talk;
 let expectedTalk = initialTalk;
@@ -107,6 +108,9 @@ try {
     const previousPids = previous.workers.map(w => w.pid);
     const nextTalk = cycle === "restore" ? initialTalk : {
       ...initialTalk, realtime: { ...initialTalk?.realtime,
+        // A provider change is the native reload-plugins trigger. Instructions
+        // alone are a no-op reload path and cannot reproduce the incident.
+        provider: cycle % 2 === 1 ? "openai" : "google",
         instructions: `Private VLab hot-reload lifecycle acceptance ${stamp}, cycle ${cycle}.` },
     };
     writeTalk(nextTalk);
