@@ -32,7 +32,7 @@ export function createNativeAttemptBridge() {
       if (input.sessionId !== c.message.sessionId || input.agentId !== c.message.agentId) {
         throw new Error("Worker native attempt identity mismatch");
       }
-      acknowledgeGatewayPersistedUserTurn(input, c.message);
+      const gatewayUserTurnPersisted = acknowledgeGatewayPersistedUserTurn(input, c.message);
       const upstreamDeadline = input.onAttemptDeadlineChanged;
       const callbacks = {};
       for (const [name, relay] of Object.entries(c.getStreamCallbacks())) {
@@ -57,6 +57,9 @@ export function createNativeAttemptBridge() {
       }
       return {
         ...prepared,
+        // This is a derived handoff invariant, not an ordinary request option.
+        // Keep the admitted row and suppress exactly one native replay append.
+        ...(gatewayUserTurnPersisted ? {suppressNextUserMessagePersistence:true} : {}),
         ...callbacks,
         conversationRoutePeerId: c.message.agentCommandOptions?.conversationRoutePeerId,
         onAttemptDeadlineChanged(deadline) {

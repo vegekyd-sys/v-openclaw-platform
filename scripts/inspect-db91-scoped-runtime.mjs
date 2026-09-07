@@ -21,7 +21,8 @@ try {
    const h=await client.request('chat.history',{agentId:'makaron',sessionKey:j.sessionKey,limit:30},{timeoutMs:20000});
    const users=(h.messages??[]).filter(m=>m.role==='user');
    console.log(JSON.stringify({runId:j.runId,userCount:users.length,idempotencyPresent:users.map(m=>typeof m.idempotencyKey==='string')}));
-   assert.equal(users.length,1,'duplicate or missing user turn');
+   if(process.argv.includes('--inspect-multiplicity'))console.log(JSON.stringify({runId:j.runId,users:users.map(m=>({keys:Object.keys(m),customType:m.customType,excludeFromContext:m.excludeFromContext,metadataKeys:Object.keys(m.__openclaw??{}),contentSummary:Array.isArray(m.content)?m.content.map(c=>({type:c.type,chars:c.text?.length,prefix:c.text?.slice(0,140)})):typeof m.content}))}));
+   else assert.equal(users.length,1,'duplicate or missing user turn');
   }
  }
 } finally {client.stop();}

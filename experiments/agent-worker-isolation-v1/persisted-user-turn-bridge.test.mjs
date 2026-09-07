@@ -45,3 +45,10 @@ test('native bridge acknowledges only a current admitted run', () => {
   bridge.prepare({...identity,userTurnTranscriptRecorder:recorder});assert.equal(recorder.calls(),1);
   close();assert.throws(()=>bridge.prepare({...identity,userTurnTranscriptRecorder:recorder}),/no longer active/);
 });
+test('durable handoff suppresses replay append after ordinary option overlay', () => {
+  const bridge=createNativeAttemptBridge(),abort=new AbortController(),recorder=localRecorder();
+  bridge.register({...request(),nativeHarnessData:{suppressNextUserMessagePersistence:false}},abort.signal,()=>{},()=>{});
+  const prepared=bridge.prepare({...identity,userTurnTranscriptRecorder:recorder});
+  assert.equal(prepared.suppressNextUserMessagePersistence,true);
+  assert.equal(prepared.userTurnTranscriptRecorder.getPersistedMessage().idempotencyKey,message.idempotencyKey);
+});
