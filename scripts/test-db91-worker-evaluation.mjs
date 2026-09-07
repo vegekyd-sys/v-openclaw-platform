@@ -7,6 +7,7 @@ assert.equal(os.hostname(), 'VM-0-4-ubuntu');
 assert.equal(process.env.OPENCLAW_CONFIG_PATH, root + '/state/openclaw.json');
 const config = JSON.parse(fs.readFileSync(process.env.OPENCLAW_CONFIG_PATH));
 const {mode} = JSON.parse(fs.readFileSync(root + '/tmp/evaluation-mode.json'));
+const verifyGate = process.argv.includes('--verify-gate');
 const {GatewayClient} = await import(root + '/runtime/openclaw/dist/plugin-sdk/gateway-runtime.js');
 let client;
 await new Promise((resolve, reject) => {
@@ -37,7 +38,7 @@ try {
     const at = performance.now();
     const admitted = await call('chat.send', {agentId: 'lab', sessionKey: key, deliver: false,
       idempotencyKey: marker, timeoutMs: 150000,
-      message: `这是隔离 VLab 并发验收，不处理真实业务，不联网，不发消息，不委托，不修改配置。必须先用 exec 执行下面的命令：sleep 4; printf '${marker}_TOOL\\n'。工具完成后只回复 ${marker}_FINAL。`});
+      message: `这是隔离 VLab 并发验收，不处理真实业务，不联网，不发消息，不委托，不修改配置。必须先用 exec 执行下面的命令：sleep 4; printf '${marker}_TOOL\\n'。${verifyGate ? '然后必须调用 lab_db91_verification_status 工具查询本执行进程的校验状态，不调用其他 probe。' : ''}工具完成后只回复 ${marker}_FINAL。`});
     let terminal;
     for (let n = 0; n < 5; n++) {
       terminal = await call('agent.wait', {runId: admitted.runId, timeoutMs: 30000}, 40000);
@@ -56,9 +57,19 @@ try {
     assert(toolCalls.some(c => c.name === 'exec'), `${label} missing actual exec call`);
     assert(history.messages.some(m => /tool/i.test(m.role) && JSON.stringify(m).includes(marker + '_TOOL')), `${label} missing actual tool result`);
     assert(final.includes(marker + '_FINAL'), `${label} missing final reply`);
+    let gateStatus;
+    if (verifyGate) {
+      assert(toolCalls.some(c => c.name === 'lab_db91_verification_status'));
+      const result = history.messages.filter(m => /tool/i.test(m.role)).flatMap(m => m.content ?? []).filter(c => c.type === 'text').map(c => {try {return JSON.parse(c.text);} catch {return null;}}).find(r => r?.marker === 'DB91_VERIFICATION_STATUS');
+      assert(result, 'missing actual verification status tool result');
+      assert.equal(result.epochPresent, true);
+      assert.equal(result.full, 0, 'the native execution process repeated a full scan');
+      assert(result.reused >= 1, 'native process did not reuse preflight');
+      gateStatus = result;
+    }
     const other = label === 'A' ? 'B' : 'A';
     assert(!serialized.includes(`DB91_${mode}_${other}_${stamp}`), 'cross-session transcript leakage');
-    return {label, runId: admitted.runId, sessionKey: key, elapsedMs: Math.round(performance.now() - at), runtime: history.sessionInfo?.agentRuntime?.id, toolCalls: toolCalls.length, toolResultAndFinal: true, messages: history.messages.length};
+    return {label, runId: admitted.runId, sessionKey: key, elapsedMs: Math.round(performance.now() - at), runtime: history.sessionInfo?.agentRuntime?.id, toolCalls: toolCalls.length, gateStatus, toolResultAndFinal: true, messages: history.messages.length};
   }));
   const elapsedMs = Math.round(performance.now() - started);
   const workers = mode === 'native' ? null : await call('vlab.workers.status', {});

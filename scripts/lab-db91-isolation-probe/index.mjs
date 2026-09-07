@@ -8,6 +8,15 @@ const root = '/srv/vlab-production-mirror/labs/instances/db91-fix';
 export default {id: 'lab-db91-isolation-probe', register(api) {
   assert.equal(os.hostname(), 'VM-0-4-ubuntu');
   assert(process.env.OPENCLAW_CONFIG_PATH?.startsWith(root + '/state/'), 'never load outside the owned Lab');
+  api.registerTool(() => ({name: 'lab_db91_verification_status',
+    description: 'Read-only Lab acceptance: report this execution process verification reuse counters and whether it inherited the Gateway verification lifecycle. No database reads or writes.',
+    parameters: {type: 'object', properties: {}, additionalProperties: false},
+    async execute() {
+      const {getIntegrityGateStats} = await import(root + '/runtime/openclaw/dist/db91-integrity-gate.mjs');
+      const result = {marker: 'DB91_VERIFICATION_STATUS', epochPresent: Boolean(process.env.OPENCLAW_DB91_INTEGRITY_EPOCH), ...getIntegrityGateStats()};
+      return {content: [{type: 'text', text: JSON.stringify(result)}], details: result};
+    }
+  }), {name: 'lab_db91_verification_status'});
   api.registerTool(ctx => ({name: 'lab_db91_integrity_probe',
     description: 'Lab-only acceptance tool: run repeated real SQLite integrity checks on a fixed synthetic database for roughly three seconds. No business data or writes. Use only when explicitly asked to run the isolation probe.',
     parameters: {type: 'object', properties: {}, additionalProperties: false},
