@@ -30,3 +30,75 @@ actual index repair must remain. A production change needs an explicit mode,
 controlled full-check maintenance, rollback, and real runtime acceptance.
 
 Status: investigation/benchmark candidate only; no production modification.
+
+## User requirement: integrity AND speed, not an either/or switch
+
+The repair design must distinguish transaction correctness from full physical
+scrubbing. Do not simply switch off `integrity_check` in production.
+
+1. Keep transactional atomicity, current durability settings, foreign-key
+   enforcement, schema/owner/permission checks and error quarantine in the
+   normal write/open path. Do not silently change synchronous/NORMAL, WAL
+   checkpoint policy, schema version, or retention as a performance fix.
+2. Introduce one validation coordinator per database. Full integrity and foreign
+   key scans execute in a resource-bounded independent process, not the Gateway
+   event loop. Multiple workers subscribe to the same validation job instead
+   of each issuing a full scan. Each scan uses one consistent SQLite read
+   transaction; limit concurrency and reader duration to avoid WAL growth.
+3. Reuse a successful validation only within an explicitly defined database
+   lifecycle. A path string, timestamp, or inode alone is NOT sufficient proof
+   that new content is validated. Replacement, restore, migration, schema
+   changes, failed/incomplete checks and detected corruption invalidate trust.
+   The exact lifecycle/attestation design needs fault tests before deployment.
+4. Prevalidate existing databases during controlled startup so live requests
+   do not pay for a multi-GB scan. Revalidate in the background before the
+   successful result becomes stale. If a first-use check is still running,
+   queue only the affected database's work asynchronously; do not busy-wait
+   inside the synchronous database-open API and block every agent.
+5. Keep migration/repair out of the request path. A schema defect or corrupt
+   database must fail closed for that database and require exclusive, backed-up
+   repair; it must not silently reopen using an old successful receipt.
+
+This requires changes to the database lifecycle/open orchestration, not just a
+one-line pragma replacement. Shared validation can match the current cached
+connection lifecycle, but it must not be presented as detecting arbitrary new
+hardware corruption instantaneously. Background scrubbing plus transaction
+constraints and runtime error handling are complementary protections.
+
+### Required acceptance
+
+- Five simultaneous cold users of one large synthetic database cause one full
+  check, with Gateway RPC still responsive and no global watchdog stall.
+- Successful ordinary writes remain atomic and foreign-key invalid writes are
+  rejected; concurrent readers/writers preserve committed record counts.
+- Missing or drifted indexes are detected; full validation follows repair.
+- Replaced/truncated database, stale receipt, schema migration, checker crash,
+  lock contention and interrupted recovery never reuse an invalid result.
+- A failed database is isolated without stalling unrelated agents.
+- Record scan duration, disk I/O, WAL growth, open p95/p99 and event-loop lag;
+  do not extrapolate a tiny warm-cache benchmark into production acceptance.
+- Full production rollback and real model/tool/channel acceptance remain
+  required before calling the original repair request complete.
+
+## Native-bundle experiment (completed, not production acceptance)
+
+Owned VLab instance: `db91-fix`, owner `codex-db91-contention-20260907`, port
+26300; source commit `12bbea3383cfb7ce2cd0ef693fdc666cca19242a`.
+Gateway was not started. The probe ran under `labctl run` using the instance UID,
+isolated paths and cgroup limits. Other gateways were not modified or restarted.
+
+Native 9.1 functions on 72,929,280 bytes of synthetic SQLite data, 8,192 rows:
+
+| Pass | Full integrity + index contracts | Index contracts only |
+| --- | ---: | ---: |
+| 1 | 20.83 ms | 0.30 ms |
+| 2 | 18.41 ms | 0.30 ms |
+
+The index-contract repair function still repaired a deliberately drifted index;
+the post-repair full integrity check passed and all 8,192 rows remained. This
+proves the physical scrub and structural checks are separate native mechanisms.
+It does **not** establish a production speedup or justify disabling full checks.
+This is a small, warm-cache synthetic test, not the 6.9 GB production workload.
+
+No production code/config/data was changed. The coordinator, lifecycle fencing,
+asynchronous readiness path and fault acceptance above are not implemented yet.
