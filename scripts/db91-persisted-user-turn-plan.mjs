@@ -23,7 +23,9 @@ export function patchPersistedUserTurnFile(name, original, helperSource) {
     once(imp,imp+"\nimport { acknowledgeGatewayPersistedUserTurn } from './user-turn-ownership.mjs';");
     const anchor='        throw new Error("Worker native attempt identity mismatch");\n      }';
     once(anchor,anchor+'\n      const gatewayUserTurnPersisted = acknowledgeGatewayPersistedUserTurn(input, c.message);');
-    const apply='        ...applyNativeHarnessData(input, c.message.nativeHarnessData),';
+    const apply=result.includes('        ...applyNativeHarnessData(input, c.message.nativeHarnessData),')
+      ? '        ...applyNativeHarnessData(input, c.message.nativeHarnessData),'
+      : '        ...prepared,'; // Shared 9.2 keeps its process-local tool authority.
     once(apply,apply+`\n        // This is a derived handoff invariant, not an ordinary request option.
         // Keep the admitted row and suppress exactly one native replay append.
         ...(gatewayUserTurnPersisted ? {suppressNextUserMessagePersistence:true} : {}),`);
