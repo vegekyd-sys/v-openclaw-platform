@@ -27,6 +27,7 @@ assert.equal(os.hostname(), 'VM-0-4-ubuntu'); lease();
 assert.equal(read(core + '/package.json').version, '2026.9.1'); assert.equal(fs.realpathSync(core), core);
 const commit = run('git', ['-c', 'safe.directory=' + source, '-C', source, 'rev-parse', 'HEAD']);
 assert.equal(run('git', ['-c', 'safe.directory=' + source, '-C', source, 'status', '--porcelain']), '');
+const flags = enabled => '[Service]\nEnvironment=OPENCLAW_DB91_INTEGRITY_ENABLE=' + enabled + '\nEnvironment=OPENCLAW_DB91_INTEGRITY_STATE_ROOT=' + root + '/state\nEnvironment=OPENCLAW_CONFIG_PATH=' + configFile + '\n';
 const record = (phase, data) => {
   const report = {at: new Date().toISOString(), phase, owner, commit, ...data};
   fs.writeFileSync(evidence + '/' + Date.now() + '-' + phase + '.json', JSON.stringify(report, null, 2), {mode: 0o600, flag: 'wx'});
@@ -38,6 +39,13 @@ if (mode === 'restart-step' || mode === 'rollback-step') {
   const action = mode === 'restart-step' ? 'ensure' : 'rollback';
   console.log(run(node, [source + '/scripts/patch-db91-integrity-gate.mjs', action, core, evidence + '/bundle-backup'], {timeout: 120000}));
   process.exit(0);
+}
+if (mode === 'prepare-rollback') {
+  assert.equal(process.getuid(), 0); const saved = read(evidence + '/manifest.json'); assert.equal(saved.commit, commit);
+  assert.equal(hash(configFile), saved.configSha);
+  const current = fs.readFileSync(dropin, 'utf8'); assert(current === fs.readFileSync(evidence + '/dropin.staged.txt', 'utf8') || current === flags('1'));
+  fs.writeFileSync(dropin, flags('0') + 'ExecStartPre=' + node + ' ' + source + '/scripts/db91-shared-integration.mjs rollback-step\n', {mode: 0o644});
+  run('systemctl', ['daemon-reload']); record('rollback-prepared', {nextStep: 'restart the same unit under this lease; recheck active work if Gateway is responsive'}); process.exit(0);
 }
 assert.equal(process.getuid(), 0, 'management actions require the explicit administrator');
 const gatewayPid = pid(); assert(gatewayPid > 1);
@@ -62,7 +70,6 @@ const idle = async () => {
   assert(!(sessions.sessions ?? []).some(s => s.hasActiveRun || ['running', 'queued', 'busy', 'active'].includes(s.status)), 'active session business');
   return {pending: s.pending, workers: s.workers.map(w => ({pid: w.pid, ready: w.ready, activeCount: w.activeCount, queued: w.queued}))};
 };
-const flags = enabled => '[Service]\nEnvironment=OPENCLAW_DB91_INTEGRITY_ENABLE=' + enabled + '\nEnvironment=OPENCLAW_DB91_INTEGRITY_STATE_ROOT=' + root + '/state\nEnvironment=OPENCLAW_CONFIG_PATH=' + configFile + '\n';
 try {
   if (mode === 'inspect') {
     console.log(JSON.stringify({owner, commit, gatewayPid, coreVersion: '2026.9.1', configSha: sha(configBytes), workerPaths: cfg.plugins.load.paths.filter(p => p.includes('worker-')), idle: await idle(), patchFiles: buildPlan(core).map(p => path.relative(core, p.filename))}));
