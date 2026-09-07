@@ -1,0 +1,23 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { instrumentSessionTiming } from './db91-session-timing-plan.mjs';
+
+assert.equal(os.hostname(), 'VM-0-4-ubuntu');
+assert.equal(process.getuid(), 0);
+const m = JSON.parse(fs.readFileSync('/srv/vlab-production-mirror/labs/control/db91-fix.json', 'utf8'));
+assert.equal(m.owner, 'codex-db91-contention-20260907');
+assert.equal(m.root, '/srv/vlab-production-mirror/labs/instances/db91-fix');
+assert.equal(execFileSync('systemctl', ['show', m.unit, '-p', 'MainPID', '--value'], {encoding:'utf8'}).trim(), '0');
+const file = m.root + '/runtime/openclaw/dist/builtin-openclaw-zQV8Wwjr.js';
+const backup = m.root + '/state/db91-session-timing.original.js';
+const original = fs.readFileSync(fs.existsSync(backup) ? backup : file, 'utf8');
+const patched = instrumentSessionTiming(original);
+const current = fs.readFileSync(file, 'utf8');
+assert(current === original || current === patched, 'unexpected concurrent modification');
+const result = process.argv.includes('--restore') ? original : patched;
+if (!fs.existsSync(backup)) fs.writeFileSync(backup, original, {mode:0o600, flag:'wx'});
+fs.writeFileSync(file, result);
+console.log(JSON.stringify({file, restored:result === original, sha256:createHash('sha256').update(result).digest('hex')}));
