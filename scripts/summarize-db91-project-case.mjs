@@ -38,4 +38,4 @@ const result={caseId:plan.caseId,fullCasePassed:Boolean(report),projectCount:pla
   resources:report?{samples:report.resourceSamples.length,minHostMemAvailable:Math.min(...report.resourceSamples.map(r=>r.hostMemAvailable)),
     minDiskFreeBytes:Math.min(...report.resourceSamples.map(r=>r.diskFreeBytes)),peakGroupMemoryBytes:Math.max(...report.resourceSamples.map(r=>Number(r.memoryCurrent)))}:null};
 fs.writeFileSync(root+'/workspace/project-write-summary-'+plan.caseId+'.json',JSON.stringify(result,null,2),{mode:0o600});
-console.log(JSON.stringify(result));
+console.log(JSON.stringify({...result,warnings:undefined,warningCounts:Object.fromEntries([...new Set(warnings.map(w=>w.message.startsWith('slow SQLite session write')?'slow SQLite session write':w.message))].map(message=>[message,warnings.filter(w=>w.message===message||message==='slow SQLite session write'&&w.message.startsWith(message)).length])),failures:warnings.filter(w=>/failed|unavailable/i.test(w.message))}));

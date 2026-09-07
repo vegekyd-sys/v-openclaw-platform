@@ -96,7 +96,14 @@ try {
   }));
   const overlapMs = Math.min(...outcomes.map(o => o.evidence.endedAt)) - Math.max(...outcomes.map(o => o.evidence.startedAt));
   assert(overlapMs > 0, 'the actual write workloads never overlapped');
+  const evaluation=JSON.parse(fs.readFileSync(root+'/tmp/evaluation-mode.json'));
+  const workers=evaluation.mode==='native'?null:await call('vlab.workers.status',{});
+  if(evaluation.mode==='multi') {
+    assert.equal(new Set(outcomes.map(o=>o.evidence.pid)).size,count);
+    assert(outcomes.every(o=>workers.workers.some(w=>w.pid===o.evidence.pid)));
+  }
   const result = {caseId, at: new Date().toISOString(), completeDb: true, agentId, projectCount: count,
+    evaluation,candidateFlags:Object.fromEntries(['INTEGRITY','PROVENANCE','MEMORY_SCHEMA','MAINTENANCE'].map(flag=>[flag,process.env['OPENCLAW_DB91_'+flag+'_ENABLE']==='1'])),
     roundsPerProject: rounds, workloadOverlapMs: overlapMs, outcomes, samples, resourceSamples,
     limitations: 'single screening run; native SDK synthetic workload plus real model/tool/final, not production acceptance'};
   fs.writeFileSync(root + '/workspace/project-write-case-' + caseId + '.json', JSON.stringify(result), {mode: 0o600, flag: 'wx'});
