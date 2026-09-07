@@ -8,6 +8,7 @@ assert.equal(process.env.OPENCLAW_CONFIG_PATH, root + '/state/openclaw.json');
 const config = JSON.parse(fs.readFileSync(process.env.OPENCLAW_CONFIG_PATH));
 const {mode} = JSON.parse(fs.readFileSync(root + '/tmp/evaluation-mode.json'));
 const verifyGate = process.argv.includes('--verify-gate');
+const agentId = process.argv.includes('--complete-db') ? 'makaron' : 'lab';
 const {GatewayClient} = await import(root + '/runtime/openclaw/dist/plugin-sdk/gateway-runtime.js');
 let client;
 await new Promise((resolve, reject) => {
@@ -33,10 +34,10 @@ const stamp = Date.now();
 try {
   const started = performance.now();
   const outcomes = await Promise.all(['A', 'B'].map(async label => {
-    const key = `agent:lab:explicit:db91-${mode}-${label}-${stamp}`;
+    const key = `agent:${agentId}:explicit:db91-${mode}-${label}-${stamp}`;
     const marker = `DB91_${mode}_${label}_${stamp}`;
     const at = performance.now();
-    const admitted = await call('chat.send', {agentId: 'lab', sessionKey: key, deliver: false,
+    const admitted = await call('chat.send', {agentId, sessionKey: key, deliver: false,
       idempotencyKey: marker, timeoutMs: 150000,
       message: `这是隔离 VLab 并发验收，不处理真实业务，不联网，不发消息，不委托，不修改配置。必须先用 exec 执行下面的命令：sleep 4; printf '${marker}_TOOL\\n'。${verifyGate ? '然后必须调用 lab_db91_verification_status 工具查询本执行进程的校验状态，不调用其他 probe。' : ''}工具完成后只回复 ${marker}_FINAL。`});
     let terminal;
@@ -47,7 +48,7 @@ try {
     assert.equal(terminal.status, 'ok', `${label} did not complete`);
     let history;
     for (let n = 0; n < 10; n++) {
-      try {history = await call('chat.history', {agentId: 'lab', sessionKey: key, limit: 30}); break;}
+      try {history = await call('chat.history', {agentId, sessionKey: key, limit: 30}); break;}
       catch (e) {if (!e.retryable || n === 9) throw e; await new Promise(r => setTimeout(r, Math.max(250, e.retryAfterMs ?? 250)));}
     }
     const serialized = JSON.stringify(history.messages);
@@ -73,9 +74,14 @@ try {
   }));
   const elapsedMs = Math.round(performance.now() - started);
   const workers = mode === 'native' ? null : await call('vlab.workers.status', {});
+  if (verifyGate && workers) {
+    const pids = workers.workers.map(w => w.pid);
+    for (const outcome of outcomes) assert(pids.includes(outcome.gateStatus.pid), 'status tool did not run in the native Worker process');
+    if (mode === 'multi') assert.equal(new Set(outcomes.map(o => o.gateStatus.pid)).size, 2, 'multi acceptance must exercise both cold processes');
+  }
   poll = false; await health;
   const sorted = samples.filter(s => s.ok).map(s => s.ms).sort((a, b) => a - b);
-  const result = {mode, at: new Date().toISOString(), elapsedMs, outcomes,
+  const result = {mode, agentId, at: new Date().toISOString(), elapsedMs, outcomes,
     health: {samples: samples.length, failures: samples.filter(s => !s.ok).length, p95Ms: Math.round(sorted[Math.floor(sorted.length * .95)] ?? 0), maxMs: Math.round(sorted.at(-1) ?? 0)},
     workerProcesses: workers?.workers?.map(w => ({slot: w.slot, pid: w.pid, active: w.active})),
     limitation: 'two-session tool/reply baseline only; not fault, heavy-database, channel, or production acceptance'};
