@@ -28,14 +28,18 @@ if (providerSource) {
   delete provider.apiKey;
 }
 const previous = JSON.parse(fs.readFileSync(root + '/state/openclaw.json'));
-const providerPlugin = previous.plugins.load.paths.find(p => !p.endsWith('/worker'));
+const providerPlugin = previous.plugins.load.paths.find(p => !p.endsWith('/worker') && !p.endsWith('/evaluation-probe'));
 const {config, overlay} = buildConfig(root, manifest.port, {provider, providerPluginPath: providerPlugin, worker: mode !== 'native'});
 config.gateway.auth.token = previous.gateway.auth.token;
 overlay.gateway.auth.token = previous.gateway.auth.token;
 for (const cfg of [config, overlay]) {
   cfg.messages = {queue: {mode: 'steer'}};
   cfg.agents.defaults.thinkingDefault = 'low';
+  cfg.plugins.allow.push('lab-db91-isolation-probe');
+  cfg.plugins.load.paths.push(root + '/runtime/evaluation-probe');
+  cfg.plugins.entries['lab-db91-isolation-probe'] = {enabled: true};
 }
+fs.cpSync(root + '/source/scripts/lab-db91-isolation-probe', root + '/runtime/evaluation-probe', {recursive: true});
 if (mode !== 'native') {
   const worker = config.plugins.entries['vlab-agent-worker-isolation'].config;
   worker.minWorkers = worker.maxWorkers = mode === 'single' ? 1 : 2;
@@ -50,5 +54,5 @@ for (const name of ['openclaw.json', 'worker-openclaw.json']) fs.copyFileSync(ro
 fs.writeFileSync(root + '/state/openclaw.json', JSON.stringify(config, null, 2) + '\n', {mode: 0o600});
 fs.writeFileSync(root + '/state/worker-openclaw.json', JSON.stringify(overlay, null, 2) + '\n', {mode: 0o600});
 fs.writeFileSync(root + '/tmp/evaluation-mode.json', JSON.stringify({mode, at: new Date().toISOString(), sourceCommit: execFileSync('git', ['-c', 'safe.directory=' + root + '/source', '-C', root + '/source', 'rev-parse', 'HEAD'], {encoding: 'utf8'}).trim()}));
-execFileSync('chown', ['-R', manifest.user + ':' + manifest.user, root + '/runtime/worker', root + '/state', root + '/tmp', root + '/secrets.env']);
+execFileSync('chown', ['-R', manifest.user + ':' + manifest.user, root + '/runtime/worker', root + '/runtime/evaluation-probe', root + '/state', root + '/tmp', root + '/secrets.env']);
 console.log(JSON.stringify({mode, nativeDatabaseCodeUnchanged: true, owner: manifest.owner, port: manifest.port, totalSessionCapacity: 2, channelsEnabled: false}));
