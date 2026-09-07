@@ -1,0 +1,17 @@
+import fs from 'node:fs';import os from 'node:os';import assert from 'node:assert/strict';import {execFileSync} from 'node:child_process';import {createHash} from 'node:crypto';
+import {filename,beforeSha,patchWorkspaceSessionLookup} from '../experiments/db91-session-lookup/plan.mjs';
+import {replacePublicCode} from './db91-firstword-files.mjs';
+assert.equal(os.hostname(),'VM-0-4-ubuntu');assert.equal(process.getuid(),0);
+const shared=process.argv.includes('--shared'),restore=process.argv.includes('--restore');
+const meta=JSON.parse(fs.readFileSync('/srv/vlab-production-mirror/labs/control/'+(shared?'integration':'db91-fix')+'.json'));
+assert.equal(meta.owner,'codex-db91-contention-20260907');
+const root=shared?'/srv/vlab-production-mirror/generations/candidate-official-update-final-20260902':meta.root;
+const unit=shared?'openclaw-vlab-production-mirror-v8.service':meta.unit;
+assert.equal(execFileSync('systemctl',['show',unit,'-p','MainPID','--value'],{encoding:'utf8'}).trim(),'0');
+const file=root+(shared?'/runtime/npm-global/lib/node_modules/openclaw':'/runtime/openclaw')+'/dist/'+filename;
+const backup=root+'/state/db91-session-lookup.original.js',hash=s=>createHash('sha256').update(s).digest('hex');
+const original=fs.readFileSync(fs.existsSync(backup)?backup:file,'utf8');assert.equal(hash(original),beforeSha);
+const patched=patchWorkspaceSessionLookup(original);assert([original,patched].includes(fs.readFileSync(file,'utf8')),'concurrent code modification');
+if(!fs.existsSync(backup))fs.writeFileSync(backup,original,{flag:'wx',mode:0o600});
+const stat=fs.statSync(file);replacePublicCode(file,Buffer.from(restore?original:patched),{mode:stat.mode&0o777,uid:stat.uid,gid:stat.gid});
+console.log(JSON.stringify({file,shared,restored:restore,sha256:hash(restore?original:patched)}));
