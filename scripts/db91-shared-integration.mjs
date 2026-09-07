@@ -63,7 +63,7 @@ if (mode === 'prepare-rollback') {
   assert.equal(process.getuid(), 0); const saved = read(evidence + '/manifest.json'); assert.equal(saved.commit, commit);
   assert.equal(hash(configFile), saved.configSha);
   const current = fs.readFileSync(dropin, 'utf8'); assert(current === fs.readFileSync(evidence + '/dropin.staged.txt', 'utf8') || current === flags('1'));
-  fs.writeFileSync(dropin, flags('0') + 'ExecStartPre=' + node + ' ' + source + '/scripts/db91-shared-integration.mjs rollback-step\n', {mode: 0o644});
+  fs.writeFileSync(dropin, flags('0') + 'ExecStartPre=+' + node + ' ' + source + '/scripts/db91-shared-integration.mjs rollback-step\n', {mode: 0o644});
   run('systemctl', ['daemon-reload']); record('rollback-prepared', {nextStep: 'restart the same unit under this lease; recheck active work if Gateway is responsive'}); process.exit(0);
 }
 assert.equal(process.getuid(), 0, 'management actions require the explicit administrator');
@@ -104,7 +104,9 @@ try {
     fs.writeFileSync(evidence + '/original-config.json', configBytes, {mode: 0o600});
     fs.writeFileSync(evidence + '/unit.before.txt', run('systemctl', ['cat', unit]), {mode: 0o600});
     await idle(); lease(); assert.equal(pid(), gatewayPid); assert.equal(hash(configFile), saved.configSha);
-    const body = flags('1') + 'ExecStartPre=' + node + ' ' + source + '/scripts/db91-shared-integration.mjs restart-step\n';
+    // The administrator owns the lease. Only the bounded prestart installer
+    // runs as root; the Gateway retains the original service User.
+    const body = flags('1') + 'ExecStartPre=+' + node + ' ' + source + '/scripts/db91-shared-integration.mjs restart-step\n';
     fs.mkdirSync(path.dirname(dropin), {recursive: true}); fs.writeFileSync(dropin, body, {mode: 0o644, flag: 'wx'});
     fs.writeFileSync(evidence + '/dropin.staged.txt', body, {mode: 0o600});
     run('systemctl', ['daemon-reload']); assert.equal(pid(), gatewayPid);
@@ -134,10 +136,22 @@ try {
   } else if (mode === 'verify') {
     const saved = read(evidence + '/manifest.json'); assert.equal(hash(configFile), saved.configSha); assert.equal(hash(saved.voiceFile), saved.voiceSha);
     for (const p of saved.files) assert.equal(hash(p.filename), p.afterSha);
-    assert(process.env.OPENCLAW_DB91_INTEGRITY_EPOCH && process.env.OPENCLAW_DB91_INTEGRITY_DIR?.startsWith(root + '/state/.db91-integrity/'));
     for(const flag of switches) assert.equal(process.env['OPENCLAW_DB91_'+flag+'_ENABLE'],'1');
-    const receipts = fs.readdirSync(process.env.OPENCLAW_DB91_INTEGRITY_DIR).filter(n => n.endsWith('.json') && !n.includes('revoked'));
-    assert(receipts.length > 0); const status = await idle();
+    const status = await idle();
+    // Linux /proc/Gateway/environ exposes its initial exec environment, not
+    // variables added by the running Node process during preflight. A ready
+    // Worker inherits the effective epoch when spawned after preflight.
+    const workerEnvs=status.workers.flatMap(w=>{
+      try{return [Object.fromEntries(fs.readFileSync('/proc/'+w.pid+'/environ','utf8').split('\0').filter(Boolean).map(s=>{const i=s.indexOf('=');return [s.slice(0,i),s.slice(i+1)];}))];}
+      catch(error){if(error.code==='ENOENT')return [];throw error;}
+    });
+    assert(workerEnvs.length>0,'no live worker environment proof');
+    const epoch=workerEnvs[0].OPENCLAW_DB91_INTEGRITY_EPOCH;
+    assert(epoch&&workerEnvs.every(e=>e.OPENCLAW_DB91_INTEGRITY_EPOCH===epoch));
+    const receiptDir=root+'/state/.db91-integrity/'+epoch;
+    assert(workerEnvs.every(e=>e.OPENCLAW_DB91_INTEGRITY_DIR===receiptDir));
+    const receipts = fs.readdirSync(receiptDir).filter(n => n.endsWith('.json') && !n.includes('revoked'));
+    assert(receipts.length > 0);
     // Retain only the environment switch after successful activation. Future
     // restarts no longer depend on this temporary integration control checkout.
     const current = fs.readFileSync(dropin, 'utf8'); assert(current === fs.readFileSync(evidence + '/dropin.staged.txt', 'utf8') || current === flags('1'));
