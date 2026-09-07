@@ -107,3 +107,23 @@ test("new-worker boot does not block dispatch to a ready Worker that becomes idl
     assert.equal(result.workerPid, pool.status().workers.find(w => w.ready).pid);
   } finally { await pool.close(); }
 });
+
+test("burst expansion preserves one demand boot alongside the existing warm spare", async () => {
+  const pool = new WorkerPool({
+    minWorkers: 1, maxWorkers: 3, sessionsPerWorker: 1,
+    warmSpareWorkers: 1, startupTimeoutMs: 2_000, requestTimeoutMs: 2_000,
+    workerPath: delayedWorkerPath,
+    workerEnv: {...process.env, VLAB_FAKE_WORKER_READY_DELAY_MS: "400"},
+  });
+  const jobs=[];
+  try {
+    await pool.start();
+    for(let i=0;i<3;i++){
+      const j=await pool.submit('agent:fixture:burst-'+i,{kind:'hold',durationMs:100});
+      j.promise.catch(()=>{});jobs.push(j);
+    }
+    assert.equal(pool.status().workers.length,3,'a warm spare must not serialize demand expansion');
+    assert.equal(pool.status().workers.filter(w=>!w.ready).length,2);
+    await Promise.all(jobs.map(j=>j.promise));
+  } finally {await pool.close();}
+});
