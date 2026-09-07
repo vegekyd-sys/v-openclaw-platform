@@ -84,14 +84,16 @@ try{
   const round={label,before,startedAt:Date.now(),samples:[],jobs:[]};report.rounds.push(round);persist();
   let sampling=true;
   let resourceFailure,healthFailures=0;
-  const sampler=(async()=>{while(sampling){const at=Date.now();try{
-   const snapshot=await workerSnapshot();const sample={...snapshot,rpcMs:Date.now()-at};
-   if(production){
+  const resourceMonitor=(async()=>{if(!production)return;round.resourceSamples=[];
+   while(sampling){const sample={at:Date.now()};try{
     sample.resources=resources();const r=sample.resources;
     if(r.available<4*1024**3||r.anon>26*1024**3||r.oomKill>resourceBefore.oomKill)resourceFailure='production resource reserve crossed';
     try{const h=await fetch('http://127.0.0.1:22793/healthz',{signal:AbortSignal.timeout(2500)});if(!h.ok)throw Error('health');healthFailures=0;sample.health=true;}catch{healthFailures++;sample.health=false;if(healthFailures>=3)resourceFailure='three production health failures';}
-   }
-   round.samples.push(sample);
+   }catch(e){resourceFailure='resource monitor unavailable';sample.error=String(e);}
+   round.resourceSamples.push(sample);await new Promise(r=>setTimeout(r,500));
+  }})();
+  const sampler=(async()=>{while(sampling){const at=Date.now();try{
+   const snapshot=await workerSnapshot();round.samples.push({...snapshot,rpcMs:Date.now()-at});
   }catch(e){round.samples.push({at,error:String(e)});}await new Promise(r=>setTimeout(r,500));}})();
   const outcomes=await Promise.allSettled(Array.from({length:count},async(_,i)=>{
    const runId='DB91_TIMELINE_'+stamp+'_'+label+'_'+i,key='agent:makaron:explicit:db91-timeline-'+stamp+'-'+label+'-'+i;
@@ -100,6 +102,7 @@ try{
    try{
     assert.equal((await call('sessions.messages.subscribe',{agentId:'makaron',key})).subscribed,true);
     j.start=Date.now();
+    sent=true; // Even an uncertain admission timeout must abort this unique test run.
     const r=await call('chat.send',{agentId:'makaron',sessionKey:key,deliver:false,idempotencyKey:runId,timeoutMs:150000,message:`VLab内部真实Agent并发验收。不要读写业务文件、记忆或配置，不访问网络或浏览器，不委托，不发外部消息。首先直接输出一句可见中文“收到，我现在开始检查本次测试。”，然后只调用exec执行 printf '${runId}_TOOL\\n'。看到真实工具结果后只回复 ${runId}_FINAL。`});
     sent=true;assert.equal(r.runId,runId);j.admittedMs=Date.now()-j.start;
     while(Date.now()-j.start<150000){
@@ -121,13 +124,14 @@ try{
    }catch(error){j.error=String(error);throw error;}
    finally{if(sent&&!done)await call('chat.abort',{sessionKey:key,runId}).catch(()=>{});}
   }));
-  sampling=false;await sampler;round.after=await idle();round.finishedAt=Date.now();persist();
+  sampling=false;await Promise.all([sampler,resourceMonitor]);round.after=await idle();round.finishedAt=Date.now();persist();
   assert(outcomes.every(o=>o.status==='fulfilled'),'real agent round failure');
   if(process.env.DB91_REQUIRE_STREAM==='1'){
    assert(round.jobs.every(j=>Number.isFinite(j.firstTextMs)),'missing user-visible first text');
    for(const name of ['onAssistantMessageStart','onExecutionPhase','onToolOutcome']){
     assert((round.after.parity?.eventsByCallback?.[name]??0)-(round.before.parity?.eventsByCallback?.[name]??0)>=count,'missing native callback '+name);
    }
+   if(production)assert(Math.max(...round.samples.map(s=>(s.workers??[]).flatMap(w=>w.active??[]).filter(a=>round.jobs.some(j=>j.runId===a.runId)).length))>=count,'did not observe all requested production sessions running concurrently');
   }
  }
  report.completed=true;persist();console.log(JSON.stringify({phase:'timeline-complete',output}));
