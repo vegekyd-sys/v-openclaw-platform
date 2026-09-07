@@ -96,7 +96,11 @@ export async function runProjectWriteLoad(ctx, signal) {
     measurements, limitation: 'beforeCallback includes queue/open/scheduling, not pure SQLite lock wait'};
   result.nativeWriteTrace = observer.events.slice(traceStart);
   result.nativeTraceDropped = observer.dropped;
+  if (fs.existsSync(root + '/runtime/openclaw/dist/db91-memory-provenance.mjs')) {
+    const {getProvenanceFastPathStats} = await import(root + '/runtime/openclaw/dist/db91-memory-provenance.mjs');
+    result.provenanceStats = getProvenanceFastPathStats();
+  }
   fs.writeFileSync(root + '/workspace/project-write-' + plan.caseId + '-' + project.index + '.json',
     JSON.stringify(result), {mode: 0o600, flag: 'wx'});
-  return {...result, measurements: undefined};
+  return {...result, measurements: undefined, nativeWriteTrace: undefined};
 }

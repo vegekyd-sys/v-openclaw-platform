@@ -8,8 +8,9 @@ assert.equal(os.hostname(),'VM-0-4-ubuntu');assert.equal(process.getuid(),0);
 const manifest=JSON.parse(fs.readFileSync('/srv/vlab-production-mirror/labs/control/db91-fix.json'));
 const grant=JSON.parse(fs.readFileSync(root+'/tmp/benchmark-grant.json'));
 validateGrant(manifest,grant);
-const [mode,gate]=process.argv.slice(2);
-assert(['native','single','multi'].includes(mode));assert(['0','1'].includes(gate));
+const [mode,gate,provenance='0']=process.argv.slice(2);
+assert(['native','single','multi'].includes(mode));assert(['0','1'].includes(gate));assert(['0','1'].includes(provenance));
+if(provenance==='1')assert(fs.existsSync(root+'/runtime/openclaw/dist/db91-memory-provenance.mjs'));
 assert.equal(execFileSync('systemctl',['show',manifest.unit,'-p','MainPID','--value'],{encoding:'utf8'}).trim(),'0');
 for (const [script,args] of [['prepare-db91-worker-evaluation.mjs',[mode]],['prepare-db91-full-gateway.mjs',[]],['prepare-db91-integrity-lab.mjs',[gate]]])
   execFileSync(process.execPath,[root+'/source/scripts/'+script,...args],{stdio:'inherit'});
@@ -23,4 +24,6 @@ for(const name of ['openclaw.json','worker-openclaw.json']) {
   }
   fs.writeFileSync(file,JSON.stringify(config,null,2)+'\n',{mode:0o600});
 }
-console.log(JSON.stringify({mode,gate:gate==='1',profile:PROFILE,actualTargetConcurrent:5,aggregateCPUPercent:200,aggregateMemoryMaxGiB:6,expiresAt:grant.until}));
+const envFile=root+'/secrets.env';
+fs.writeFileSync(envFile,fs.readFileSync(envFile,'utf8').split('\n').filter(l=>!l.startsWith('OPENCLAW_DB91_PROVENANCE_ENABLE=')).join('\n')+'\nOPENCLAW_DB91_PROVENANCE_ENABLE='+provenance+'\n',{mode:0o600});
+console.log(JSON.stringify({mode,gate:gate==='1',provenance:provenance==='1',profile:PROFILE,actualTargetConcurrent:5,aggregateCPUPercent:200,aggregateMemoryMaxGiB:6,expiresAt:grant.until}));
