@@ -52,6 +52,8 @@ try{
    const j={runId,sessionKey:key,start:Date.now(),events:{},historyRetries:0};round.jobs.push(j);tracked.set(runId,j);
    let done=false,sent=false;
    try{
+    assert.equal((await call('sessions.messages.subscribe',{agentId:'makaron',key})).subscribed,true);
+    j.start=Date.now();
     const r=await call('chat.send',{agentId:'makaron',sessionKey:key,deliver:false,idempotencyKey:runId,timeoutMs:150000,message:`VLab内部真实Agent并发验收。不要读写业务文件、记忆或配置，不访问网络或浏览器，不委托，不发外部消息。首先直接输出一句可见中文“收到，我现在开始检查本次测试。”，然后只调用exec执行 printf '${runId}_TOOL\\n'。看到真实工具结果后只回复 ${runId}_FINAL。`});
     sent=true;assert.equal(r.runId,runId);j.admittedMs=Date.now()-j.start;
     while(Date.now()-j.start<150000){
