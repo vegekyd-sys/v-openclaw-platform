@@ -16,7 +16,14 @@ const guard=()=>{
  if(!production)return assert.equal(read('/srv/vlab-production-mirror/labs/control/'+(privateLab?'db91-fix':'integration')+'.json').owner,owner);
  const manifest=read(root+'/backups/db91-firstword-20260907/manifest.json');
  const hash=p=>createHash('sha256').update(fs.readFileSync(p)).digest('hex');
- for(const f of manifest.files)assert.equal(hash(f.filename),f.afterSha,'release not active');
+ const userTurnRelease=process.env.DB91_PRODUCTION_USER_TURN==='1'?read(root+'/backups/db91-persisted-user-turn-20260908/manifest.json'):null;
+ const overridden=new Set(userTurnRelease?.files.map(f=>f.filename)??[]);
+ if(userTurnRelease){
+  assert.equal(hash(root+'/backups/db91-firstword-20260907/manifest.json'),userTurnRelease.previousManifestSha);
+  execFileSync(process.execPath,['/opt/openclaw-experiments/db91-persisted-user-turn-20260908/source/scripts/release-db91-persisted-user-turn.mjs','verify'],{stdio:'pipe'});
+  for(const f of userTurnRelease.files)assert.equal(hash(f.filename),f.afterSha,'user turn release not active');
+ }
+ for(const f of manifest.files)if(!overridden.has(f.filename))assert.equal(hash(f.filename),f.afterSha,'release not active');
  for(const [f,sha] of Object.entries(manifest.protectedFiles))assert.equal(hash(f),sha,'protected production file drift');
  assert.equal(process.env.DB91_REQUIRE_STREAM,'1');
 };guard();
