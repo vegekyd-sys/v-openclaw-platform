@@ -84,7 +84,7 @@ try {
   const result = {mode, agentId, at: new Date().toISOString(), elapsedMs, outcomes,
     health: {samples: samples.length, failures: samples.filter(s => !s.ok).length, p95Ms: Math.round(sorted[Math.floor(sorted.length * .95)] ?? 0), maxMs: Math.round(sorted.at(-1) ?? 0)},
     workerProcesses: workers?.workers?.map(w => ({slot: w.slot, pid: w.pid, active: w.active})),
-    limitation: 'two-session tool/reply baseline only; not fault, heavy-database, channel, or production acceptance'};
+    limitation: agentId === 'makaron' ? 'complete VLab snapshot, two-session tool/reply and exact-process verification reuse; not high-concurrency capacity, channel, or production acceptance' : 'two-session tool/reply baseline only; not fault, heavy-database, channel, or production acceptance'};
   fs.writeFileSync(root + '/workspace/worker-evaluation-' + mode + '-' + stamp + '.json', JSON.stringify(result, null, 2));
   console.log(JSON.stringify(result, null, 2));
 } finally {poll = false; await health; client.stop();}
