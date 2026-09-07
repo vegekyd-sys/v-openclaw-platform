@@ -18,7 +18,7 @@ assert(fs.statfsSync(root).bavail*fs.statfsSync(root).bsize>3*1024**3);
 const {GatewayClient}=await import(root+(privateLab?'/runtime/openclaw':'/runtime/npm-global/lib/node_modules/openclaw')+'/dist/plugin-sdk/gateway-runtime.js');
 const tracked=new Map();let client;
 await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{client?.stop();reject(Error('connection deadline'));},20000);
- client=new GatewayClient({url:'ws://127.0.0.1:'+cfg.gateway.port,token:cfg.gateway.auth.token,deviceIdentity:null,clientName:'cli',mode:'cli',scopes:['operator.read','operator.write','operator.admin'],onHelloOk:()=>{clearTimeout(timer);resolve();},onConnectError:e=>{clearTimeout(timer);reject(e);},onEvent:event=>{
+ client=new GatewayClient({url:'ws://127.0.0.1:'+cfg.gateway.port,token:cfg.gateway.auth.token,deviceIdentity:null,clientName:'cli',mode:'cli',caps:['tool-events'],scopes:['operator.read','operator.write','operator.admin'],onHelloOk:()=>{clearTimeout(timer);resolve();},onConnectError:e=>{clearTimeout(timer);reject(e);},onEvent:event=>{
   const p=event.payload,j=tracked.get(p?.runId)??[...tracked.values()].find(j=>p?.sessionKey===j.sessionKey);if(!j)return;
   const key=[event.event,p.stream??'',p.data?.phase??p.state??''].join('/'),at=Date.now()-j.start;
   const record=j.events[key]??={firstMs:at,lastMs:at,count:0};record.lastMs=at;record.count++;
@@ -76,6 +76,12 @@ try{
   }));
   sampling=false;await sampler;round.after=await idle();round.finishedAt=Date.now();persist();
   assert(outcomes.every(o=>o.status==='fulfilled'),'real agent round failure');
+  if(process.env.DB91_REQUIRE_STREAM==='1'){
+   assert(round.jobs.every(j=>Number.isFinite(j.firstTextMs)),'missing user-visible first text');
+   for(const name of ['onAssistantMessageStart','onExecutionPhase','onToolOutcome']){
+    assert((round.after.parity?.eventsByCallback?.[name]??0)-(round.before.parity?.eventsByCallback?.[name]??0)>=count,'missing native callback '+name);
+   }
+  }
  }
  report.completed=true;persist();console.log(JSON.stringify({phase:'timeline-complete',output}));
 }finally{persist();client.stop();}
