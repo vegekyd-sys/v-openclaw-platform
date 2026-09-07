@@ -25,5 +25,5 @@ for(const name of ['openclaw.json','worker-openclaw.json']) {
   fs.writeFileSync(file,JSON.stringify(config,null,2)+'\n',{mode:0o600});
 }
 const envFile=root+'/secrets.env';
-fs.writeFileSync(envFile,fs.readFileSync(envFile,'utf8').split('\n').filter(l=>!l.startsWith('OPENCLAW_DB91_PROVENANCE_ENABLE=')).join('\n')+'\nOPENCLAW_DB91_PROVENANCE_ENABLE='+provenance+'\n',{mode:0o600});
+fs.writeFileSync(envFile,fs.readFileSync(envFile,'utf8').split('\n').filter(l=>!l.startsWith('OPENCLAW_DB91_PROVENANCE_ENABLE=')&&!l.startsWith('OPENCLAW_DB91_MEMORY_SCHEMA_ENABLE=')).join('\n')+'\nOPENCLAW_DB91_PROVENANCE_ENABLE='+provenance+'\nOPENCLAW_DB91_MEMORY_SCHEMA_ENABLE='+provenance+'\n',{mode:0o600});
 console.log(JSON.stringify({mode,gate:gate==='1',provenance:provenance==='1',profile:PROFILE,actualTargetConcurrent:5,aggregateCPUPercent:200,aggregateMemoryMaxGiB:6,expiresAt:grant.until}));

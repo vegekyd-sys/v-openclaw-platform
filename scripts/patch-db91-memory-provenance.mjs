@@ -9,8 +9,16 @@ export function patchProvenance(source) {
   assert.equal(source.split(anchor).length,2,'native provenance anchor drift');
   assert(!source.includes('db91ProvenanceComplete'),'already patched');
   assert(source.includes("SELECT id, 'untrusted', 'unknown', updated_at FROM memory_index_chunks;"));
-  return 'import { isMemoryProvenanceBackfillComplete as db91ProvenanceComplete } from "./db91-memory-provenance.mjs";\n'+
-    source.replace(anchor,anchor+'\tif (db91ProvenanceComplete(db, MEMORY_INDEX_CHUNK_PROVENANCE_SCHEMA_SQL)) return;\n');
+  source=source.replace(anchor,anchor+'\tif (db91ProvenanceComplete(db, MEMORY_INDEX_CHUNK_PROVENANCE_SCHEMA_SQL)) return;\n');
+  // The original outer SAVEPOINT is deferred: schema reads then attempt a
+  // write upgrade, which can fail immediately with BUSY_SNAPSHOT under another
+  // process's commit. Acquire the existing SQLite writer lock before those
+  // reads; retain both original savepoint rollback paths inside it.
+  for(const [name,label] of [['ensureMemoryChunkFtsSchema','memory.fts.ensure-body'],['ensureMemoryPathFtsSchema','memory.fts.ensure-path']]) {
+    const target='function '+name+'(params) {\n';assert.equal(source.split(target).length,2);
+    source=source.replace(target,target+'\tif (process.env.OPENCLAW_DB91_MEMORY_SCHEMA_ENABLE === "1" && !params.db.isTransaction) return runSqliteImmediateTransactionSync(params.db, () => '+name+'(params), {operationLabel: "'+label+'", databaseLabel: "memory index"});\n');
+  }
+  return 'import { isMemoryProvenanceBackfillComplete as db91ProvenanceComplete } from "./db91-memory-provenance.mjs";\n'+source;
 }
 export function buildProvenancePlan(core) {
   const dist=path.join(core,'dist');

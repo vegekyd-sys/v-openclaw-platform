@@ -61,3 +61,28 @@ test('patch only adds a conditional no-op before the exact original implementati
   const after=patchProvenance(native);assert(after.includes(region.replace('function ensureMemoryChunkProvenance(db) {','function ensureMemoryChunkProvenance(db) {\n\tif (db91ProvenanceComplete(db, MEMORY_INDEX_CHUNK_PROVENANCE_SCHEMA_SQL)) return;')));
   assert.throws(()=>patchProvenance(after));assert.throws(()=>patchProvenance(native.replace('function ensureMemoryChunkProvenance(db) {','function drift(db) {')));
 });
+test('FTS initialization acquires writer before schema reads and preserves native backfill and triggers',()=>{
+  const source=patchProvenance(native).replace(/^import .*\n/gm,'').replace(/^export .*$/gm,'');
+  const db=new DatabaseSync(':memory:');
+  db.exec(`CREATE TABLE memory_index_sources(id INTEGER PRIMARY KEY,path TEXT,source TEXT);
+    CREATE TABLE memory_index_chunks(id TEXT PRIMARY KEY,text TEXT,path TEXT,source TEXT,model TEXT,start_line INTEGER,end_line INTEGER);
+    INSERT INTO memory_index_sources VALUES(1,'test-path','memory');
+    INSERT INTO memory_index_chunks VALUES('a','hello search','test-path','memory','model',1,2);`);
+  const scopes=[];
+  const run=(d,fn,options)=>{scopes.push(options.operationLabel);d.exec('BEGIN IMMEDIATE');try{const value=fn();d.exec('COMMIT');return value;}catch(e){d.exec('ROLLBACK');throw e;}};
+  const factory=new Function('runSqliteImmediateTransactionSync','db91ProvenanceComplete',source+'\nreturn {body:ensureMemoryChunkFtsSchema,path:ensureMemoryPathFtsSchema};');
+  const methods=factory(run,()=>false),before=process.env.OPENCLAW_DB91_MEMORY_SCHEMA_ENABLE;
+  process.env.OPENCLAW_DB91_MEMORY_SCHEMA_ENABLE='1';
+  try {
+    methods.body({db,ftsTable:'memory_index_chunks_fts',tokenizeClause:''});
+    methods.path({db,tokenizeClause:''});
+    assert.deepEqual(scopes,['memory.fts.ensure-body','memory.fts.ensure-path']);
+    assert.equal(db.prepare("SELECT count(*) n FROM memory_index_chunks_fts WHERE memory_index_chunks_fts MATCH 'hello'").get().n,1);
+    db.exec("INSERT INTO memory_index_sources VALUES(2,'later-path','memory')");
+    assert.equal(db.prepare('SELECT count(*) n FROM memory_index_paths_fts').get().n,2);
+    methods.body({db,ftsTable:'memory_index_chunks_fts',tokenizeClause:''});
+    assert.equal(db.prepare('SELECT count(*) n FROM memory_index_chunks_fts').get().n,1);
+    db.exec('BEGIN IMMEDIATE');methods.path({db,tokenizeClause:''});db.exec('COMMIT');
+    assert.equal(scopes.length,3,'existing outer transaction must not acquire a second BEGIN');
+  } finally {if(before===undefined)delete process.env.OPENCLAW_DB91_MEMORY_SCHEMA_ENABLE;else process.env.OPENCLAW_DB91_MEMORY_SCHEMA_ENABLE=before;db.close();}
+});
