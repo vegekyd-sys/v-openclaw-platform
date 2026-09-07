@@ -5,6 +5,8 @@ import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {performance} from 'node:perf_hooks';
 const [core, root, mode = 'read'] = process.argv.slice(2);
+const rows = Number(process.env.DB91_SYNTHETIC_ROWS ?? 8192);
+assert([8192, 32768].includes(rows));
 assert(root.startsWith('/srv/vlab-production-mirror/labs/instances/db91-fix/tmp/native-gate-'));
 assert.equal(process.env.OPENCLAW_STATE_DIR, root + '/state');
 const dist = path.join(core, 'dist');
@@ -22,11 +24,11 @@ if (mode === 'create') {
   opened.db.exec('CREATE TABLE db91_fixture_parent(id INTEGER PRIMARY KEY, payload TEXT); CREATE TABLE db91_fixture_child(id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES db91_fixture_parent(id)); BEGIN IMMEDIATE');
   const insert = opened.db.prepare('INSERT INTO db91_fixture_parent VALUES(?, ?)');
   const payload = 'db91-synthetic-'.repeat(2048);
-  for (let i = 0; i < 8192; i++) insert.run(i, payload);
+  for (let i = 0; i < rows; i++) insert.run(i, payload);
   opened.db.exec('INSERT INTO db91_fixture_child VALUES(1,1); COMMIT; PRAGMA wal_checkpoint(TRUNCATE)');
 }
-assert.equal(opened.db.prepare('SELECT count(*) AS n FROM db91_fixture_parent').get().n, 8192);
+assert.equal(opened.db.prepare('SELECT count(*) AS n FROM db91_fixture_parent').get().n, rows);
 assert.equal(opened.db.prepare('PRAGMA foreign_keys').get().foreign_keys, 1);
 assert.throws(() => opened.db.exec('INSERT INTO db91_fixture_child VALUES(99,999999)'), /FOREIGN KEY/i);
 get('closeOpenClawAgentDatabases')();
-console.log(JSON.stringify({mode, elapsedMs, bytes: fs.statSync(opened.path).size, stats: gate.getIntegrityGateStats(), rows: 8192, foreignKeysEnforced: true}));
+console.log(JSON.stringify({mode, elapsedMs, bytes: fs.statSync(opened.path).size, stats: gate.getIntegrityGateStats(), rows, foreignKeysEnforced: true}));
