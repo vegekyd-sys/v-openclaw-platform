@@ -30,4 +30,15 @@ const after=original.replace(anchor,replacement), current=fs.readFileSync(file,'
 assert(current===original||current===after,'refuse unexpected native trace target drift');
 if(!fs.existsSync(backup)) fs.writeFileSync(backup,original,{mode:0o600,flag:'wx'});
 fs.writeFileSync(file,process.argv.includes('--restore')?original:after);
+const transactionFile=root+'/runtime/openclaw/dist/node-sqlite-CL-d6drd.js';
+const transactionBackup=root+'/tmp/native-transaction.original.js';
+const transactionOriginal=fs.existsSync(transactionBackup)?fs.readFileSync(transactionBackup,'utf8'):fs.readFileSync(transactionFile,'utf8');
+const pidAnchor='pid: process.pid,';
+assert.equal(transactionOriginal.split(pidAnchor).length,4,'three slow/failure transaction log sites');
+const transactionAfter=transactionOriginal.replaceAll(pidAnchor,pidAnchor+'\n\t\tdb91Callsite: process.env.DB91_TRACE_NATIVE === "1" ? new Error("db91 native transaction trace").stack : void 0,');
+assert([transactionOriginal,transactionAfter].includes(fs.readFileSync(transactionFile,'utf8')),'transaction observer target drift');
+if(!fs.existsSync(transactionBackup))fs.writeFileSync(transactionBackup,transactionOriginal,{mode:0o600,flag:'wx'});
+fs.writeFileSync(transactionFile,process.argv.includes('--restore')?transactionOriginal:transactionAfter);
+const envFile=root+'/secrets.env',envText=fs.readFileSync(envFile,'utf8').split('\n').filter(l=>!l.startsWith('DB91_TRACE_NATIVE=')).join('\n');
+fs.writeFileSync(envFile,envText+'\nDB91_TRACE_NATIVE='+(process.argv.includes('--restore')?'0':'1')+'\n',{mode:0o600});
 console.log(JSON.stringify({observerEnabled:!process.argv.includes('--restore'),productionInstallerUnaffected:true}));
