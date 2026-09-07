@@ -84,7 +84,7 @@ function readFence(locations) {return readMarker(locations.revoked) + '|' + read
 export function beginVerification(db, filename, agentId, {env = process.env} = {}) {
   const cfg = configuration(env);
   if (!cfg) return null;
-  return {epoch: cfg.epoch, identity: readDatabaseIdentity(db, filename, agentId), fence: readFence(paths(cfg, filename))};
+  return {epoch: cfg.epoch, identity: readDatabaseIdentity(db, filename, agentId), minimumFileBytes: fs.statSync(filename).size, fence: readFence(paths(cfg, filename))};
 }
 
 export function readReusableVerification(db, filename, agentId, {env = process.env, now = Date.now()} = {}) {
@@ -94,6 +94,7 @@ export function readReusableVerification(db, filename, agentId, {env = process.e
   const fence = readFence(locations);
   const receipt = readOwnedJson(locations.receipt);
   if (!receipt || receipt.format !== FORMAT || receipt.epoch !== cfg.epoch || receipt.fence !== fence || !Number.isFinite(receipt.checkedAt) || receipt.checkedAt > now + 30000 || now - receipt.checkedAt > MAX_AGE_MS) return false;
+  if (!Number.isSafeInteger(receipt.minimumFileBytes) || receipt.minimumFileBytes < 0 || fs.statSync(filename).size < receipt.minimumFileBytes) return false;
   return sameIdentity(receipt.identity, readDatabaseIdentity(db, filename, agentId));
 }
 
@@ -108,12 +109,12 @@ export function finishVerification(db, filename, agentId, {env = process.env, no
   const locations = paths(cfg, filename);
   const identity = readDatabaseIdentity(db, filename, agentId);
   if (!ticket || ticket.epoch !== cfg.epoch || !sameIdentity(ticket.identity, identity) || ticket.fence !== readFence(locations)) return null;
-  return {format: FORMAT, epoch: cfg.epoch, identity, fence: ticket.fence, checkedAt: now, source};
+  return {format: FORMAT, epoch: cfg.epoch, identity, minimumFileBytes: ticket.minimumFileBytes, fence: ticket.fence, checkedAt: now, source};
 }
 
 export function publishVerificationProof(proof, filename, {env = process.env, now = Date.now()} = {}) {
   const cfg = configuration(env);
-  if (!cfg || !proof || proof.format !== FORMAT || proof.epoch !== cfg.epoch || proof.identity?.path !== path.resolve(filename) || proof.identity?.version !== 19 || typeof proof.identity?.agentId !== 'string' || !/^[a-f0-9]{64}$/.test(proof.identity?.schemaHash ?? '') || !Number.isFinite(proof.checkedAt) || proof.checkedAt > now + 30000 || now - proof.checkedAt > MAX_AGE_MS) return false;
+  if (!cfg || !proof || proof.format !== FORMAT || proof.epoch !== cfg.epoch || proof.identity?.path !== path.resolve(filename) || proof.identity?.version !== 19 || typeof proof.identity?.agentId !== 'string' || !/^[a-f0-9]{64}$/.test(proof.identity?.schemaHash ?? '') || !Number.isSafeInteger(proof.minimumFileBytes) || proof.minimumFileBytes < 0 || !Number.isFinite(proof.checkedAt) || proof.checkedAt > now + 30000 || now - proof.checkedAt > MAX_AGE_MS) return false;
   const locations = paths(cfg, filename);
   if (proof.fence !== readFence(locations)) return false;
   const current = readOwnedJson(locations.receipt);
@@ -127,9 +128,17 @@ export function publishVerificationProof(proof, filename, {env = process.env, no
 
 // Optional hooks for the existing native read-only verification child. Fail to
 // cache on incompatible metadata; never change the child's full-check result.
-export function beginNativeVerification(db, filename, {env = process.env} = {}) {
+export function captureNativeVerificationFile(filename, {env = process.env} = {}) {
+  if (!configuration(env)) return null;
+  try {if (fs.realpathSync(filename) !== path.resolve(filename)) return null; return fileIdentity(filename);} catch {return null;}
+}
+
+export function beginNativeVerification(db, filename, {env = process.env, expectedFileIdentity} = {}) {
   if (!configuration(env)) return null;
   try {
+    // Capture before open, compare after open: a replacement in that interval
+    // must not certify a new path using a handle to the old inode.
+    if (!expectedFileIdentity || expectedFileIdentity !== fileIdentity(filename)) return null;
     const owner = db.prepare("SELECT role, agent_id, schema_version FROM schema_meta WHERE meta_key = 'primary'").get();
     if (owner?.role !== 'agent' || owner.schema_version !== 19 || typeof owner.agent_id !== 'string') return null;
     return beginVerification(db, filename, owner.agent_id, {env});

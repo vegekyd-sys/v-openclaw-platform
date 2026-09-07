@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
-import {MAX_AGE_MS, readReusableVerification, recordSuccessfulVerification as record, beginVerification, invalidateVerification, assertNotRevoked, verifyCurrentAgentDatabase, rememberConnection, assertConnectionUsable} from './gate.mjs';
+import {MAX_AGE_MS, readReusableVerification, recordSuccessfulVerification as record, beginVerification, invalidateVerification, assertNotRevoked, verifyCurrentAgentDatabase, rememberConnection, assertConnectionUsable, captureNativeVerificationFile, beginNativeVerification} from './gate.mjs';
 
 function recordSuccessfulVerification(db, filename, agentId, options) {
   const ticket = beginVerification(db, filename, agentId, options);
@@ -24,6 +24,31 @@ function fixture(t) {
   t.after(() => {if (db.isOpen) db.close(); fs.rmSync(root, {recursive: true, force: true});});
   return {db, filename: fs.realpathSync(filename), dir, env};
 }
+
+test('native verifier cannot certify a new inode using an older open connection', t => {
+  const f = fixture(t);
+  const expectedFileIdentity = captureNativeVerificationFile(f.filename, {env: f.env});
+  assert(beginNativeVerification(f.db, f.filename, {env: f.env, expectedFileIdentity}));
+  assert.equal(beginNativeVerification(f.db, f.filename, {env: f.env}), null);
+  fs.renameSync(f.filename, f.filename + '.old');
+  fs.copyFileSync(f.filename + '.old', f.filename);
+  assert.equal(beginNativeVerification(f.db, f.filename, {env: f.env, expectedFileIdentity}), null);
+});
+
+test('a truncated file cannot reuse the result even when its inode is unchanged', t => {
+  const f = fixture(t); recordSuccessfulVerification(f.db, f.filename, 'lab', {env: f.env}); f.db.close();
+  fs.truncateSync(f.filename, fs.statSync(f.filename).size - 4096);
+  assert.equal(readReusableVerification(f.db, f.filename, 'lab', {env: f.env}), false);
+});
+
+test('ordinary SQLite file growth does not invalidate verification', t => {
+  const f = fixture(t); recordSuccessfulVerification(f.db, f.filename, 'lab', {env: f.env});
+  const size = fs.statSync(f.filename).size;
+  f.db.exec('BEGIN'); const insert = f.db.prepare('INSERT INTO parent VALUES(?)');
+  for (let i = 0; i < 3000; i++) insert.run(i); f.db.exec('COMMIT');
+  assert(fs.statSync(f.filename).size > size);
+  assert.equal(readReusableVerification(f.db, f.filename, 'lab', {env: f.env}), true);
+});
 
 test('only a completed full check can establish reusable verification', t => {
   const f = fixture(t); let full = 0, contracts = 0;

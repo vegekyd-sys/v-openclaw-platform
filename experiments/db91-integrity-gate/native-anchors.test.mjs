@@ -77,6 +77,8 @@ test('native checker uses source read transaction only for opted-in agent DBs; d
   const after = patchVerifierWorker(before);
   assert(after.includes('target.kind === "agent" && Boolean(process.env.OPENCLAW_DB91_INTEGRITY_EPOCH)'));
   assert(after.includes('db91Direct ? {location: target.path} : await location.prepareSqliteReadOnlyLocationInProcess(target.path)'));
+  assert(after.indexOf('db91CaptureNative(target.path)') < after.indexOf('database = sqlite.openNodeSqliteDatabase'));
+  assert(after.includes('{expectedFileIdentity: db91FileIdentity}'));
   assert(after.indexOf('database.exec("BEGIN;")') < after.indexOf('db91BeginNative(database'));
   assert(after.indexOf('integrity.assertSqliteIntegrity(database') < after.indexOf('db91FinishNative(database'));
   assert(after.indexOf('db91FinishNative(database') < after.indexOf('database.exec("ROLLBACK;")'));
