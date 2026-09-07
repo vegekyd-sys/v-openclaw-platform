@@ -3,6 +3,8 @@ import fs from 'node:fs';import os from 'node:os';import assert from 'node:asser
 assert.equal(os.hostname(),'VM-0-4-ubuntu');assert.equal(process.getuid(),0);
 const root='/srv/vlab-production-mirror/generations/candidate-official-update-final-20260902',unit='openclaw-vlab-production-mirror-v8.service';
 const owner='codex-db91-contention-20260907';
+const count=Number(process.env.DB91_CASES??15);assert(Number.isInteger(count)&&count>=1&&count<=15);
+const labels=(process.env.DB91_ROUNDS??'initial,warm').split(',');
 const read=p=>JSON.parse(fs.readFileSync(p));
 const guard=()=>assert.equal(read('/srv/vlab-production-mirror/labs/control/integration.json').owner,owner);guard();
 const pid=execFileSync('systemctl',['show',unit,'-p','MainPID','--value'],{encoding:'utf8'}).trim();assert(Number(pid)>1);
@@ -17,6 +19,13 @@ await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{client?.stop();
   const p=event.payload,j=tracked.get(p?.runId);if(!j)return;
   const key=[event.event,p.stream??'',p.data?.phase??p.state??''].join('/'),at=Date.now()-j.start;
   const record=j.events[key]??={firstMs:at,lastMs:at,count:0};record.lastMs=at;record.count++;
+  const visibleText=event.event==='agent'&&p.stream==='assistant'?p.data?.text:
+   event.event==='chat'&&['delta','final'].includes(p.state)?
+    (p.message?.content??[]).filter(c=>c.type==='text').map(c=>c.text).join(''):'';
+  if(typeof visibleText==='string'&&visibleText.trim()&&j.firstTextMs===undefined){
+   j.firstTextMs=at;j.firstTextEvent=key;j.firstTextChars=visibleText.length;
+   console.log(JSON.stringify({phase:'first-text',runId:j.runId,elapsedMs:at,event:key}));
+  }
   if(event.event==='chat'&&p.state==='final')j.finalEventMs=at;
  }});client.start();
 });
@@ -29,21 +38,21 @@ const idle=async()=>{
   await new Promise(r=>setTimeout(r,1000));
  }while(Date.now()<until);throw Error('runtime not idle');
 };
-const stamp=Date.now(),report={owner,gatewayPid:pid,startedAt:new Date().toISOString(),runtimePatched:true,configUnchanged:true,rounds:[]};
+const stamp=Date.now(),report={owner,gatewayPid:pid,startedAt:new Date().toISOString(),variant:process.env.DB91_VARIANT??'candidate',count,configUnchanged:true,rounds:[]};
 const output=root+'/state/db91-c5-release-20260907/timeline-'+stamp+'.json';
 const persist=()=>fs.writeFileSync(output,JSON.stringify(report,null,2),{mode:0o600});
 try{
- for(const label of ['initial','warm']){
+ for(const label of labels){
   guard();const before=await idle();console.log(JSON.stringify({phase:'round-start',label,before}));
   const round={label,before,startedAt:Date.now(),samples:[],jobs:[]};report.rounds.push(round);persist();
   let sampling=true;
   const sampler=(async()=>{while(sampling){const at=Date.now();try{const snapshot=await workerSnapshot();round.samples.push({...snapshot,rpcMs:Date.now()-at});}catch(e){round.samples.push({at,error:String(e)});}await new Promise(r=>setTimeout(r,500));}})();
-  const outcomes=await Promise.allSettled(Array.from({length:10},async(_,i)=>{
+  const outcomes=await Promise.allSettled(Array.from({length:count},async(_,i)=>{
    const runId='DB91_TIMELINE_'+stamp+'_'+label+'_'+i,key='agent:makaron:explicit:db91-timeline-'+stamp+'-'+label+'-'+i;
    const j={runId,sessionKey:key,start:Date.now(),events:{},historyRetries:0};round.jobs.push(j);tracked.set(runId,j);
    let done=false,sent=false;
    try{
-    const r=await call('chat.send',{agentId:'makaron',sessionKey:key,deliver:false,idempotencyKey:runId,timeoutMs:150000,message:`VLab内部真实Agent并发验收。不要读写业务文件、记忆或配置，不访问网络或浏览器，不委托，不发外部消息。只调用exec执行 printf '${runId}_TOOL\\n'。看到真实工具结果后只回复 ${runId}_FINAL。`});
+    const r=await call('chat.send',{agentId:'makaron',sessionKey:key,deliver:false,idempotencyKey:runId,timeoutMs:150000,message:`VLab内部真实Agent并发验收。不要读写业务文件、记忆或配置，不访问网络或浏览器，不委托，不发外部消息。首先直接输出一句可见中文“收到，我现在开始检查本次测试。”，然后只调用exec执行 printf '${runId}_TOOL\\n'。看到真实工具结果后只回复 ${runId}_FINAL。`});
     sent=true;assert.equal(r.runId,runId);j.admittedMs=Date.now()-j.start;
     while(Date.now()-j.start<150000){
      await new Promise(r=>setTimeout(r,1500));let h;
