@@ -3,6 +3,7 @@ import { acquireWorkerRuntime, createWorkerRuntimeLifecycle, resolveWorkerRuntim
 import { performance } from "node:perf_hooks";
 import { buildNativeHarnessData } from './native-harness-data.mjs';
 import { gatewayOwnedEventArgs } from './gateway-owned-terminal.mjs';
+import { publishWorkerPublicStream } from './gateway-public-stream.mjs';
 // Release gates are documented separately from runtime parity counters.
 const nativeParityReleaseHold = false; // 9.1 Steer: real Feishu Worker/Codex acceptance passed.
 import { dirname, resolve } from "node:path";
@@ -695,6 +696,8 @@ const plugin = {
                   }
                   try {
                     await callback(...gatewayOwnedEventArgs(event.name, event.args));
+                    publishWorkerPublicStream(params, event.name, event.args,
+                      (await agentHarnessActiveRunRuntimePromise).emitAgentEvent);
                     harnessEventParity.eventsRelayed += 1;
                     harnessEventParity.eventsByCallback.set(
                       event.name,

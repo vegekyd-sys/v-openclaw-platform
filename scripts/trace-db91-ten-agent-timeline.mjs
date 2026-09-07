@@ -1,21 +1,24 @@
 // Full shared Lab only: two real 10-session rounds with read-only timing probes.
 import fs from 'node:fs';import os from 'node:os';import assert from 'node:assert/strict';import {execFileSync} from 'node:child_process';
 assert.equal(os.hostname(),'VM-0-4-ubuntu');assert.equal(process.getuid(),0);
-const root='/srv/vlab-production-mirror/generations/candidate-official-update-final-20260902',unit='openclaw-vlab-production-mirror-v8.service';
+const privateLab=process.argv.includes('--private');
+const privateMeta=privateLab?JSON.parse(fs.readFileSync('/srv/vlab-production-mirror/labs/control/db91-fix.json')):null;
+const root=privateLab?privateMeta.root:'/srv/vlab-production-mirror/generations/candidate-official-update-final-20260902',unit=privateLab?privateMeta.unit:'openclaw-vlab-production-mirror-v8.service';
 const owner='codex-db91-contention-20260907';
 const count=Number(process.env.DB91_CASES??15);assert(Number.isInteger(count)&&count>=1&&count<=15);
+if(privateLab){assert.equal(privateMeta.owner,owner);assert(count<=2);}
 const labels=(process.env.DB91_ROUNDS??'initial,warm').split(',');
 const read=p=>JSON.parse(fs.readFileSync(p));
-const guard=()=>assert.equal(read('/srv/vlab-production-mirror/labs/control/integration.json').owner,owner);guard();
+const guard=()=>assert.equal(read('/srv/vlab-production-mirror/labs/control/'+(privateLab?'db91-fix':'integration')+'.json').owner,owner);guard();
 const pid=execFileSync('systemctl',['show',unit,'-p','MainPID','--value'],{encoding:'utf8'}).trim();assert(Number(pid)>1);
 for(const v of fs.readFileSync('/proc/'+pid+'/environ','utf8').split('\0')){const i=v.indexOf('=');if(i>0)process.env[v.slice(0,i)]=v.slice(i+1);}
 assert.equal(process.env.OPENCLAW_CONFIG_PATH,root+'/state/openclaw.json');
-const cfg=read(process.env.OPENCLAW_CONFIG_PATH);assert.equal(cfg.gateway.port,24993);
+const cfg=read(process.env.OPENCLAW_CONFIG_PATH);assert.equal(cfg.gateway.port,privateLab?26300:24993);
 assert(fs.statfsSync(root).bavail*fs.statfsSync(root).bsize>3*1024**3);
-const {GatewayClient}=await import(root+'/runtime/npm-global/lib/node_modules/openclaw/dist/plugin-sdk/gateway-runtime.js');
+const {GatewayClient}=await import(root+(privateLab?'/runtime/openclaw':'/runtime/npm-global/lib/node_modules/openclaw')+'/dist/plugin-sdk/gateway-runtime.js');
 const tracked=new Map();let client;
 await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{client?.stop();reject(Error('connection deadline'));},20000);
- client=new GatewayClient({url:'ws://127.0.0.1:24993',token:cfg.gateway.auth.token,deviceIdentity:null,clientName:'cli',mode:'cli',scopes:['operator.read','operator.write','operator.admin'],onHelloOk:()=>{clearTimeout(timer);resolve();},onConnectError:e=>{clearTimeout(timer);reject(e);},onEvent:event=>{
+ client=new GatewayClient({url:'ws://127.0.0.1:'+cfg.gateway.port,token:cfg.gateway.auth.token,deviceIdentity:null,clientName:'cli',mode:'cli',scopes:['operator.read','operator.write','operator.admin'],onHelloOk:()=>{clearTimeout(timer);resolve();},onConnectError:e=>{clearTimeout(timer);reject(e);},onEvent:event=>{
   const p=event.payload,j=tracked.get(p?.runId)??[...tracked.values()].find(j=>p?.sessionKey===j.sessionKey);if(!j)return;
   const key=[event.event,p.stream??'',p.data?.phase??p.state??''].join('/'),at=Date.now()-j.start;
   const record=j.events[key]??={firstMs:at,lastMs:at,count:0};record.lastMs=at;record.count++;
@@ -40,7 +43,7 @@ const idle=async()=>{
  }while(Date.now()<until);throw Error('runtime not idle');
 };
 const stamp=Date.now(),report={owner,gatewayPid:pid,startedAt:new Date().toISOString(),variant:process.env.DB91_VARIANT??'candidate',count,configUnchanged:true,rounds:[]};
-const output=root+'/state/db91-c5-release-20260907/timeline-'+stamp+'.json';
+const output=root+(privateLab?'/workspace':'/state/db91-c5-release-20260907')+'/timeline-'+stamp+'.json';
 const persist=()=>fs.writeFileSync(output,JSON.stringify(report,null,2),{mode:0o600});
 try{
  for(const label of labels){
