@@ -25,7 +25,10 @@ const updated=fs.readFileSync(source,'utf8');
 const from=updated.indexOf('        if (!worker) {\n          // Readiness is an event');
 assert(from>=0);const to=updated.indexOf('\n\n        this.pending.shift();',from);assert(to>from);
 const after=before.replace(anchor,updated.slice(from,to));
-assert([before,after].includes(fs.readFileSync(file,'utf8')),'unrelated runtime edit');
+const current=fs.readFileSync(file,'utf8');
+// The first measured candidate is explicitly replaceable by this revision.
+const firstCandidateSha=shared?'ba09576bbd53518a4a3ad3bf1d1ec5140e2b096964b4c04c5fbabfe337c03914':'d4ce3535490b485cc06418be292eb77d54e159ce45955f73c2cf218267eee912';
+assert([before,after].includes(current)||hash(current)===firstCandidateSha,'unrelated runtime edit');
 if(!fs.existsSync(backup))fs.writeFileSync(backup,before,{mode:0o600,flag:'wx'});
 const stat=fs.statSync(file),tmp=file+'.dispatch-'+process.pid+'.tmp',value=restore?before:after;
 fs.writeFileSync(tmp,value,{flag:'wx',mode:stat.mode&0o777});fs.chmodSync(tmp,stat.mode&0o777);fs.chownSync(tmp,stat.uid,stat.gid);fs.renameSync(tmp,file);
