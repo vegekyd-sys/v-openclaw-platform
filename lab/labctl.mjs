@@ -7,6 +7,7 @@ import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {buildConfig, validateName, requireOwner, assertSafeConfig} from './config.mjs';
 import {privateProviderPath} from './private-provider.mjs';
+import {PROFILE, SLICE, validateGrant, sliceUnit} from './db91-benchmark-profile.mjs';
 
 const ROOT = '/srv/vlab-production-mirror/labs';
 const NODE = '/opt/vlab/node-v22.23.1-linux-x64/bin/node';
@@ -35,13 +36,23 @@ function env(m) {
     OPENCLAW_WORKSPACE_DIR:`${r}/workspace`,OPENCLAW_GATEWAY_PORT:String(m.port),
     CODEX_HOME:`${r}/codex`,XDG_CACHE_HOME:`${r}/cache`,TMPDIR:`${r}/tmp`,
     VLAB_OPENCLAW_AGENT_RUNTIME:`${r}/runtime/openclaw/dist/plugin-sdk/agent-runtime.js`,
-    npm_config_cache:`${r}/cache/npm`,npm_config_prefix:`${r}/runtime/user-npm`};
+    npm_config_cache:`${r}/cache/npm`,npm_config_prefix:`${r}/runtime/user-npm`,
+    ...(opts.profile?{DB91_BENCHMARK_UNTIL:String(read(`${m.root}/tmp/benchmark-grant.json`).until)}:{})};
 }
 function properties(m) {
+  const benchmark = opts.profile ? benchmarkGrant(m) : null;
   return [`User=${m.user}`,`Group=${m.user}`,`WorkingDirectory=${m.root}/workspace`,
-    'MemoryHigh=2G','MemoryMax=3G','CPUQuota=100%','TasksMax=256','NoNewPrivileges=yes',
+    ...(benchmark ? [`Slice=${benchmark.slice}`,`RuntimeMaxSec=${benchmark.seconds}`,'MemoryHigh=4G','MemoryMax=6G','CPUQuota=200%'] : ['MemoryHigh=2G','MemoryMax=3G','CPUQuota=100%']),
+    'TasksMax=256','NoNewPrivileges=yes',
     'ProtectSystem=strict','ProtectHome=yes','PrivateTmp=yes',`ReadWritePaths=${m.root}`,
     'UMask=0077',`EnvironmentFile=${m.root}/secrets.env`];
+}
+function benchmarkGrant(m) {
+  if(opts.profile !== PROFILE) fail('Only the exact owned DB91 C5 profile is supported');
+  const grant=read(`${m.root}/tmp/benchmark-grant.json`);
+  const result=validateGrant(m,grant);
+  if(run('git',['-c',`safe.directory=${m.root}/source`,'-C',`${m.root}/source`,'rev-parse','HEAD'])!==grant.commit)fail('Benchmark source changed after grant');
+  return result;
 }
 function unitArgs(m) {return [...properties(m).map(p=>`--property=${p}`),...Object.entries(env(m)).map(([k,v])=>`--setenv=${k}=${v}`)];}
 function audit(action, m, detail={}) {
@@ -50,6 +61,9 @@ function audit(action, m, detail={}) {
 function check(m) {
   requireOwner(m, opts.owner);
   assertSafeConfig(read(`${m.root}/state/openclaw.json`), m.root, m.port);
+  const config=read(`${m.root}/state/openclaw.json`);
+  if(opts.profile) benchmarkGrant(m);
+  if((config.agents?.defaults?.maxConcurrent??2)>2 && !opts.profile) fail('C5 requires the explicit benchmark profile');
   if (fs.realpathSync(m.root) !== m.root) fail('Instance root must not be a symlink');
   walk(`${m.root}/runtime`,(p,e)=>{
     if(e.isSymbolicLink()&&!linkTarget(p).startsWith(m.root+'/'))fail('Runtime symlink escaped instance: '+p);
@@ -186,7 +200,25 @@ try {
     validateName(name);
     const m=read(`${ROOT}/control/${name}.json`);
     requireOwner(m,opts.owner);
-    if(command==='start')lock(()=>start(m));
+    if(command==='benchmark-grant')lock(()=>{
+      if(active(m))fail('Stop owned instance before granting benchmark resources');
+      const now=Date.now(), until=Number(opts.until);
+      const grant={profile:PROFILE,owner:m.owner,commit:opts.commit,createdAt:now,until};
+      validateGrant(m,grant,now);
+      const available=Number(fs.readFileSync('/proc/meminfo','utf8').match(/^MemAvailable:\s+(\d+)/m)?.[1])*1024;
+      if(available<8*1024**3 || freeDisk()<3.5*1024**3)fail('C5 host memory/disk preflight failed');
+      if(manifests().some(x=>x.name==='worker91-eval'&&active(x)))fail('Worker benchmark instance must be stopped');
+      if(run('git',['-c',`safe.directory=${m.root}/source`,'-C',`${m.root}/source`,'rev-parse','HEAD'])!==opts.commit)fail('Benchmark commit must match source HEAD');
+      if(run('git',['-c',`safe.directory=${m.root}/source`,'-C',`${m.root}/source`,'status','--porcelain']))fail('Commit benchmark source before use');
+      const unit=`/run/systemd/system/${SLICE}`, text=sliceUnit();
+      if(fs.existsSync(unit)&&fs.readFileSync(unit,'utf8')!==text)fail('Refuse to overwrite an unrelated slice');
+      fs.writeFileSync(unit,text,{mode:0o644});
+      run('systemctl',['daemon-reload']);run('systemctl',['start',SLICE]);
+      save(`${m.root}/tmp/benchmark-grant.json`,grant);
+      audit('benchmark-grant',m,{grant,aggregateCPUPercent:200,aggregateMemoryMaxGiB:6});
+      console.log(JSON.stringify(grant));
+    });
+    else if(command==='start')lock(()=>start(m));
     else if(command==='stop') {run('systemctl',['stop',m.unit]);audit('stop',m);console.log('Stopped only '+name);}
     else if(command==='restart')lock(()=>{check(m);run('systemctl',['stop',m.unit]);start(m);});
     else if(command==='status') {
