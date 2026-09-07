@@ -19,15 +19,17 @@ const tools=plan.projects.map(p=>{
 const traces=[...new Map(tools.flatMap(r=>r.nativeWriteTrace??[]).map(e=>[e.pid+':'+e.seq,e])).values()];
 const pid=execFileSync('systemctl',['show','openclaw-lab-db91-fix.service','-p','MainPID','--value'],{encoding:'utf8'}).trim();
 const logFile='/proc/'+pid+'/root/tmp/openclaw/openclaw-2026-09-07.log';
+const logAvailable=fs.existsSync(logFile);
 const warnings=[];
-if(fs.existsSync(logFile))for(const line of fs.readFileSync(logFile,'utf8').split('\n')) {
+if(logAvailable)for(const line of fs.readFileSync(logFile,'utf8').split('\n')) {
   let r;try{r=JSON.parse(line);}catch{continue;}
   if(new Date(r._meta?.date??0).getTime()<plan.expiresAt-240000)continue;
   const message=String(r.message??r['2']??r['1']??'');
   if(/SQLite transaction|SQLite session write failed|SQLite automatic session maintenance failed|fts unavailable|slow SQLite session write/.test(message))
     warnings.push({at:r._meta?.date,message,...(typeof r['1']==='object'?r['1']:{})});
 }
-const result={caseId:plan.caseId,dataAndRepliesPassed:Boolean(report),overallAccepted:Boolean(report)&&warnings.every(w=>!/failed|unavailable/i.test(w.message))&&tools.every(t=>t.nativeTraceDropped===0),projectCount:plan.projects.length,rounds:plan.rounds,
+const result={caseId:plan.caseId,dataAndRepliesPassed:Boolean(report),logAvailable,
+  overallAccepted:Boolean(report)&&logAvailable&&report.samples.length>0&&report.samples.every(s=>s.status===200)&&tools.length===plan.projects.length&&warnings.every(w=>!/failed|unavailable/i.test(w.message))&&tools.every(t=>t.nativeTraceDropped===0),projectCount:plan.projects.length,rounds:plan.rounds,
   evaluation:report?.evaluation,candidateFlags:report?.candidateFlags,
   workloadOverlapMs:report?.workloadOverlapMs,toolProcesses:tools.map(r=>({projectIndex:r.projectIndex,pid:r.pid,verifiedEvents:r.verifiedEvents,provenance:r.provenanceStats,traceDropped:r.nativeTraceDropped})),
   timings:{patch:quantiles(tools.flatMap(r=>r.measurements).filter(m=>m.op==='session-entry.patch').map(m=>m.totalMs)),
