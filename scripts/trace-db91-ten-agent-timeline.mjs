@@ -30,9 +30,17 @@ await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{client?.stop();
    console.log(JSON.stringify({phase:'first-text',runId:j.runId,elapsedMs:at,event:key}));
   }
   if(event.event==='chat'&&p.state==='final'){j.finalEventMs=at;j.finalPayloadKeys=Object.keys(p);}
+  if(event.event==='chat'&&['error','aborted'].includes(p.state))j.terminalError=p.state;
  }});client.start();
 });
 const call=(method,params={},timeoutMs=20000)=>client.request(method,params,{timeoutMs});
+let historyReaders=0;const historyQueue=[];
+const readHistory=async params=>{
+ if(historyReaders>=3)await new Promise(resolve=>historyQueue.push(resolve));
+ else historyReaders++;
+ try{return await call('chat.history',params);}
+ finally{const next=historyQueue.shift();if(next)next();else historyReaders--;}
+};
 if(process.env.DB91_INSPECT==='1'){const w=await call('vlab.workers.status');console.log(JSON.stringify(w.integration?.nativeHarnessEventParity));client.stop();process.exit(0);}
 const workerSnapshot=async()=>{const w=await call('vlab.workers.status');return {at:Date.now(),pending:w.pending,parity:w.integration?.nativeHarnessEventParity,workers:w.workers.map(v=>({slot:v.slot,pid:v.pid,ready:v.ready,active:v.active?.map(a=>({runId:a.runId,sessionKey:a.sessionKey}))??[],activeCount:v.activeCount,queued:v.queued}))};};
 const idle=async()=>{
@@ -47,7 +55,7 @@ const output=root+(privateLab?'/workspace':'/state/db91-c5-release-20260907')+'/
 const persist=()=>fs.writeFileSync(output,JSON.stringify(report,null,2),{mode:0o600});
 try{
  for(const label of labels){
-  guard();const before=await idle();console.log(JSON.stringify({phase:'round-start',label,before}));
+  guard();const before=await idle();console.log(JSON.stringify({phase:'round-start',label,before:{at:before.at,pending:before.pending,workers:before.workers}}));
   const round={label,before,startedAt:Date.now(),samples:[],jobs:[]};report.rounds.push(round);persist();
   let sampling=true;
   const sampler=(async()=>{while(sampling){const at=Date.now();try{const snapshot=await workerSnapshot();round.samples.push({...snapshot,rpcMs:Date.now()-at});}catch(e){round.samples.push({at,error:String(e)});}await new Promise(r=>setTimeout(r,500));}})();
@@ -61,11 +69,15 @@ try{
     const r=await call('chat.send',{agentId:'makaron',sessionKey:key,deliver:false,idempotencyKey:runId,timeoutMs:150000,message:`VLab内部真实Agent并发验收。不要读写业务文件、记忆或配置，不访问网络或浏览器，不委托，不发外部消息。首先直接输出一句可见中文“收到，我现在开始检查本次测试。”，然后只调用exec执行 printf '${runId}_TOOL\\n'。看到真实工具结果后只回复 ${runId}_FINAL。`});
     sent=true;assert.equal(r.runId,runId);j.admittedMs=Date.now()-j.start;
     while(Date.now()-j.start<150000){
-     await new Promise(r=>setTimeout(r,1500));let h;
-     try{h=await call('chat.history',{agentId:'makaron',sessionKey:key,limit:30});}catch(e){if(e.retryable||e.code==='UNAVAILABLE'){j.historyRetries++;continue;}throw e;}
+     if(j.terminalError)throw Error('native terminal '+j.terminalError);
+     // Live timing comes from events. Do not create 15 polling readers while
+     // the model and tools are actively writing the same agent database.
+     if(j.finalEventMs===undefined){await new Promise(r=>setTimeout(r,200));continue;}
+     let h;
+     try{h=await readHistory({agentId:'makaron',sessionKey:key,limit:30});}catch(e){if(e.retryable||e.code==='UNAVAILABLE'||e.name==='GatewayClientRequestTimeoutError'){j.historyRetries++;await new Promise(r=>setTimeout(r,500));continue;}throw e;}
      const messages=h.messages??[];
      const a=messages.find(m=>m.role==='assistant'&&(m.content??[]).some(c=>c.type==='text'&&c.text.includes(runId+'_FINAL')));
-     if(!a)continue;
+     if(!a){await new Promise(r=>setTimeout(r,500));continue;}
      assert.equal(a.model,'deepseek-v4-pro');assert.equal(h.sessionInfo?.agentRuntime?.id,'vlab-worker');
      assert(messages.some(m=>/tool/i.test(m.role)&&!m.isError&&JSON.stringify(m).includes(runId+'_TOOL')));
      j.replyVisibleMs=Date.now()-j.start;j.realToolResult=true;j.model=a.model;done=true;
