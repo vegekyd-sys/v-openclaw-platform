@@ -65,6 +65,8 @@ A project-scoped planning stage creates the content backlog. Stages with `scope:
 
 Route-specific behavior belongs in `routeStrategies`, while approval, retry, Workboard dispatch, and state ownership stay generic engine capabilities.
 
+Input-driven branches use `when: {input: <name>, equals: <value>}` or `when: {input: <name>, notEquals: <value>}`. Inactive stages are excluded from planning, Skill preflight, dependency fan-in, reconciliation, and workflow completion. A project-scoped stage may depend on a content-item stage; it becomes ready only after that stage is done for every content item.
+
 ## Safety and lifecycle
 
 ```text
