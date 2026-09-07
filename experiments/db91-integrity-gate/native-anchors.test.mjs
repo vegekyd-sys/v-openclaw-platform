@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import {execFileSync} from 'node:child_process';
-import {buildPlan, patchMaintenance, patchLifecycle, patchEntry} from '../../scripts/patch-db91-integrity-gate.mjs';
+import {buildPlan, patchMaintenance, patchLifecycle, patchEntry, patchVerifierWorker} from '../../scripts/patch-db91-integrity-gate.mjs';
 const core = process.env.DB91_NATIVE_CORE;
 const enabled = Boolean(core);
 const selected = (prefix, marker) => fs.readdirSync(path.join(core, 'dist')).filter(x => x.startsWith(prefix) && x.endsWith('.js')).map(x => fs.readFileSync(path.join(core, 'dist', x), 'utf8')).find(x => x.includes(marker));
@@ -70,4 +70,15 @@ test('real entry is patched only inside main CLI scope and has a strict opt-in',
 test('bundle drift is rejected rather than guessed around', {skip: !enabled}, () => {
   const before = selected('openclaw-agent-db-maintenance-', 'function assertAgentDatabaseIntegrityBeforeMutation(');
   assert.throws(() => patchMaintenance(before.replaceAll('allowMissingColumns: true', 'allowMissingColumns: false')), /anchor drift/);
+});
+
+test('native checker uses source read transaction only for opted-in agent DBs; default snapshot path retained', {skip: !enabled}, () => {
+  const before = fs.readFileSync(path.join(core, 'dist/state/openclaw-database-verify.worker.js'), 'utf8');
+  const after = patchVerifierWorker(before);
+  assert(after.includes('target.kind === "agent" && Boolean(process.env.OPENCLAW_DB91_INTEGRITY_EPOCH)'));
+  assert(after.includes('db91Direct ? {location: target.path} : await location.prepareSqliteReadOnlyLocationInProcess(target.path)'));
+  assert(after.indexOf('database.exec("BEGIN;")') < after.indexOf('db91BeginNative(database'));
+  assert(after.indexOf('integrity.assertSqliteIntegrity(database') < after.indexOf('db91FinishNative(database'));
+  assert(after.indexOf('db91FinishNative(database') < after.indexOf('database.exec("ROLLBACK;")'));
+  assert(after.includes('database?.close()'));
 });

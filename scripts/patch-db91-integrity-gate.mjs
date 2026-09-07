@@ -31,7 +31,10 @@ export function patchLifecycle(source) {
 
 export function patchVerifierWorker(source) {
   assert(!source.includes('db91BeginNative'), 'already patched');
+  source = once(source, '\t\t\tconst prepared = await location.prepareSqliteReadOnlyLocationInProcess(target.path);', '\t\t\tconst db91Direct = target.kind === "agent" && Boolean(process.env.OPENCLAW_DB91_INTEGRITY_EPOCH);\n\t\t\tconst prepared = db91Direct ? {location: target.path} : await location.prepareSqliteReadOnlyLocationInProcess(target.path);');
+  source = once(source, '\t\t\tdatabase.exec(`PRAGMA busy_timeout = ${OPENCLAW_SQLITE_BUSY_TIMEOUT_MS};`);', '\t\t\tdatabase.exec(`PRAGMA busy_timeout = ${OPENCLAW_SQLITE_BUSY_TIMEOUT_MS};`);\n\t\t\tif (db91Direct) database.exec("BEGIN;");');
   source = once(source, '\t\t\tintegrity.assertSqliteIntegrity(database, target.label);', '\t\t\tconst db91Ticket = target.kind === "agent" && prepared.location === target.path ? db91BeginNative(database, target.path) : null;\n\t\t\tintegrity.assertSqliteIntegrity(database, target.label);\n\t\t\tconst db91Verification = db91FinishNative(database, target.path, db91Ticket);');
+  source = once(source, '\t\t\tconst db91Verification = db91FinishNative(database, target.path, db91Ticket);', '\t\t\tconst db91Verification = db91FinishNative(database, target.path, db91Ticket);\n\t\t\tif (db91Direct) database.exec("ROLLBACK;");');
   source = once(source, '\t\t\t\tpath: target.path,\n\t\t\t\tok: true', '\t\t\t\tpath: target.path,\n\t\t\t\tdb91Verification,\n\t\t\t\tok: true');
   return 'import { beginNativeVerification as db91BeginNative, finishNativeVerification as db91FinishNative } from "../db91-integrity-gate.mjs";\n' + source;
 }
