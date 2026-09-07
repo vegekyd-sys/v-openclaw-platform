@@ -28,6 +28,7 @@ import { closeInterruptedToolCalls } from "./transcript-recovery.mjs";
 import { relayWorkerProgress } from "./worker-progress.mjs";
 import {
   acknowledgeWorkerUserTurn,
+  snapshotPersistedUserTurn,
   shouldWorkerPersistUserTurn,
 } from "./user-turn-ownership.mjs";
 import {
@@ -532,6 +533,10 @@ const plugin = {
       const workerShouldPersistUserTurn = shouldWorkerPersistUserTurn(
         params.userTurnTranscriptRecorder,
       );
+      const nativePersistedUserTurn = snapshotPersistedUserTurn(params.userTurnTranscriptRecorder, {
+        runId: params.runId, sessionId: params.sessionId, sessionKey,
+        agentId: params.agentId ?? 'makaron',
+      });
       const eventContract = inspectHarnessEventContract(params);
       const optionContract = inspectHarnessOptionContract(params);
       for (const name of eventContract.observed) {
@@ -630,6 +635,9 @@ const plugin = {
                 harnessAttempt: true,
                 nativeAttempt91: true,
                 nativeHarnessData,
+                // A rollover gets a new transcript owner; never carry the old
+                // session's durable message acknowledgement into that owner.
+                nativePersistedUserTurn: session.sessionId === params.sessionId ? nativePersistedUserTurn : undefined,
                 gatewayMessageTool: Boolean(params.messageActionTurnCapability),
                 message: params.prompt,
                 transcriptMessage: expectedUserTurn,

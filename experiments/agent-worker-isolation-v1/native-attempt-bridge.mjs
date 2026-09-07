@@ -3,6 +3,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { applyNativeHarnessData } from './native-harness-data.mjs';
 import { isBridgedHarnessEventCallback } from './harness-event-contract.mjs';
+import { acknowledgeGatewayPersistedUserTurn } from './user-turn-ownership.mjs';
 export const NATIVE_ATTEMPT_BRIDGE = Symbol.for("versa.vlab.native-attempt-91-v1");
 
 export function createNativeAttemptBridge() {
@@ -31,6 +32,7 @@ export function createNativeAttemptBridge() {
       if (input.sessionId !== c.message.sessionId || input.agentId !== c.message.agentId) {
         throw new Error("Worker native attempt identity mismatch");
       }
+      acknowledgeGatewayPersistedUserTurn(input, c.message);
       const upstreamDeadline = input.onAttemptDeadlineChanged;
       const callbacks = {};
       for (const [name, relay] of Object.entries(c.getStreamCallbacks())) {
