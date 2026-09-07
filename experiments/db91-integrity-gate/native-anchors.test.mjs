@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
+import os from 'node:os';
+import {fileURLToPath} from 'node:url';
 import {execFileSync} from 'node:child_process';
 import {buildPlan, patchMaintenance, patchLifecycle, patchEntry, patchVerifierWorker} from '../../scripts/patch-db91-integrity-gate.mjs';
 const core = process.env.DB91_NATIVE_CORE;
@@ -83,4 +85,33 @@ test('native checker uses source read transaction only for opted-in agent DBs; d
   assert(after.indexOf('integrity.assertSqliteIntegrity(database') < after.indexOf('db91FinishNative(database'));
   assert(after.indexOf('db91FinishNative(database') < after.indexOf('database.exec("ROLLBACK;")'));
   assert(after.includes('database?.close()'));
+});
+
+test('installer is idempotent after success and rollback recovers an interrupted file set', {skip: !enabled}, t => {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'db91-install-test-')));
+  t.after(() => fs.rmSync(root, {recursive: true, force: true}));
+  const copy = path.join(root, 'core'); fs.mkdirSync(path.join(copy, 'dist/state'), {recursive: true});
+  for (const p of buildPlan(core).filter(p => p.before !== null)) fs.writeFileSync(path.join(copy, path.relative(core, p.filename)), p.before);
+  const installer = fileURLToPath(new URL('../../scripts/patch-db91-integrity-gate.mjs', import.meta.url));
+  const backup = path.join(root, 'backup');
+  const run = action => execFileSync(process.execPath, [installer, action, copy, backup], {encoding: 'utf8'});
+  run('ensure'); assert(JSON.parse(run('ensure')).alreadyApplied);
+  const plan = JSON.parse(fs.readFileSync(path.join(backup, 'changes.json')));
+  fs.writeFileSync(plan[0].filename, plan[0].before); fs.unlinkSync(plan.at(-1).filename);
+  assert.equal(JSON.parse(run('rollback')).restored, 7);
+  for (const p of plan) if (p.before === null) assert(!fs.existsSync(p.filename)); else assert.equal(fs.readFileSync(p.filename, 'utf8'), p.before);
+});
+
+test('rollback rejects unexpected concurrent bundle edits without touching other files', {skip: !enabled}, t => {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'db91-conflict-test-')));
+  t.after(() => fs.rmSync(root, {recursive: true, force: true}));
+  const copy = path.join(root, 'core'); fs.mkdirSync(path.join(copy, 'dist/state'), {recursive: true});
+  for (const p of buildPlan(core).filter(p => p.before !== null)) fs.writeFileSync(path.join(copy, path.relative(core, p.filename)), p.before);
+  const installer = fileURLToPath(new URL('../../scripts/patch-db91-integrity-gate.mjs', import.meta.url));
+  const backup = path.join(root, 'backup');
+  execFileSync(process.execPath, [installer, 'apply', copy, backup]);
+  const plan = JSON.parse(fs.readFileSync(path.join(backup, 'changes.json')));
+  fs.appendFileSync(plan[0].filename, '// another task\n');
+  assert.throws(() => execFileSync(process.execPath, [installer, 'rollback', copy, backup], {stdio: 'pipe'}));
+  assert.equal(fs.readFileSync(plan[1].filename, 'utf8'), plan[1].after);
 });

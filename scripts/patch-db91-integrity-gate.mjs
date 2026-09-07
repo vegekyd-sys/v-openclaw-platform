@@ -90,18 +90,34 @@ function writeFile(filename, text, template) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [action, core, backup] = process.argv.slice(2);
-  assert(['check', 'apply', 'rollback'].includes(action) && core && path.isAbsolute(core));
+  assert(['check', 'apply', 'ensure', 'rollback'].includes(action) && core && path.isAbsolute(core));
   assert.equal(fs.realpathSync(core), core);
   if (action === 'rollback') {
     assert(backup && path.isAbsolute(backup));
     const plan = JSON.parse(fs.readFileSync(path.join(backup, 'changes.json'), 'utf8'));
     assert(Array.isArray(plan) && plan.length === 7 && plan.every(p => p.filename.startsWith(core + '/dist/')));
-    for (const p of plan) assert.equal(fs.readFileSync(p.filename, 'utf8'), p.after, 'Concurrent bundle change: rollback refused');
-    for (const p of plan) {if (p.before === null) fs.unlinkSync(p.filename); else writeFile(p.filename, p.before);}
+    // A stopped process may have interrupted a multi-file installation. Accept
+    // only exact before/after bytes; any third-party edit still blocks rollback.
+    for (const p of plan) {
+      const current = fs.existsSync(p.filename) ? fs.readFileSync(p.filename, 'utf8') : null;
+      assert(current === p.after || current === p.before, 'Concurrent bundle change: rollback refused');
+    }
+    for (const p of plan) {
+      const current = fs.existsSync(p.filename) ? fs.readFileSync(p.filename, 'utf8') : null;
+      if (current === p.before) continue;
+      if (p.before === null) fs.unlinkSync(p.filename); else writeFile(p.filename, p.before);
+    }
     console.log(JSON.stringify({action, restored: plan.length}));
   } else {
+    if (action === 'ensure' && backup && fs.existsSync(path.join(backup, 'changes.json'))) {
+      const prior = JSON.parse(fs.readFileSync(path.join(backup, 'changes.json'), 'utf8'));
+      assert(Array.isArray(prior) && prior.length === 7 && prior.every(p => p.filename.startsWith(core + '/dist/')));
+      for (const p of prior) assert.equal(fs.readFileSync(p.filename, 'utf8'), p.after, 'Existing installation differs; do not retry a partial or competing change');
+      console.log(JSON.stringify({action, alreadyApplied: true, files: prior.length}));
+      process.exit(0);
+    }
     const plan = buildPlan(core);
-    if (action === 'apply') {
+    if (action === 'apply' || action === 'ensure') {
       assert(backup && path.isAbsolute(backup) && !fs.existsSync(backup), 'New exact backup directory required');
       fs.mkdirSync(backup, {recursive: true, mode: 0o700});
       fs.writeFileSync(path.join(backup, 'changes.json'), JSON.stringify(plan), {flag: 'wx', mode: 0o600});
