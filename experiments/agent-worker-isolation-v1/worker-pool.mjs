@@ -535,10 +535,20 @@ export class WorkerPool {
           );
         }
 
-        if (!worker && this.workers.size < this.maxWorkers) {
-          worker = await this.spawn(this.findAvailableSlot());
-        }
         if (!worker) {
+          // Readiness is an event, not a queue-wide lock. An existing Worker
+          // may finish a turn while another process is still booting; its
+          // completion must be able to pump pending work immediately.
+          // Reuse an in-flight warm spare before forking another process.
+          const starting = [...this.workers.values()].some(
+            (candidate) => !candidate.ready && !candidate.retiring,
+          );
+          if (!starting && this.workers.size < this.maxWorkers) {
+            void this.spawn(this.findAvailableSlot()).catch((error) => {
+              const failure = toError(error);
+              for (const pending of this.pending.splice(0)) pending.reject(failure);
+            });
+          }
           break;
         }
 

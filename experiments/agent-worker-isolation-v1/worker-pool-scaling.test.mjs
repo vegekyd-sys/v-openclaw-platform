@@ -84,3 +84,26 @@ test("active load prewarms one idle Worker without delaying the admitted turn", 
     await pool.close();
   }
 });
+
+test("new-worker boot does not block dispatch to a ready Worker that becomes idle", async () => {
+  const pool = new WorkerPool({
+    minWorkers: 1, maxWorkers: 2, sessionsPerWorker: 1,
+    warmSpareWorkers: 0, startupTimeoutMs: 2_000, requestTimeoutMs: 2_000,
+    workerPath: delayedWorkerPath,
+    workerEnv: {...process.env, VLAB_FAKE_WORKER_READY_DELAY_MS: "400"},
+  });
+  let second;
+  try {
+    await pool.start();
+    const first = await pool.submit("agent:fixture:first", {kind: "hold", durationMs: 50});
+    second = await pool.submit("agent:fixture:second", {kind: "hold", durationMs: 1});
+    second.promise.catch(() => {});
+    await first.promise;
+    const result = await Promise.race([
+      second.promise,
+      new Promise(resolve => setTimeout(() => resolve(null), 150)),
+    ]);
+    assert.ok(result, "pending job waited for cold boot while a ready Worker was free");
+    assert.equal(result.workerPid, pool.status().workers.find(w => w.ready).pid);
+  } finally { await pool.close(); }
+});
