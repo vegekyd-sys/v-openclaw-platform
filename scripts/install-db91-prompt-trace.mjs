@@ -13,7 +13,8 @@ assert.equal(execFileSync('systemctl',['show',unit,'-p','MainPID','--value'],{en
 const file=root+(shared?'/runtime/npm-global/lib/node_modules/openclaw':'/runtime/openclaw')+'/dist/builtin-openclaw-zQV8Wwjr.js';
 const backup=root+'/state/db91-prompt-trace.original.js';
 const worker=root+(shared?'/runtime/plugins/worker-v-platform-0.1.0-integration.1':'/runtime/worker')+'/worker.mjs';
-const plans=[[file,backup,instrumentPrompt],[worker,root+'/state/db91-worker-trace.original.mjs',instrumentWorker]].map(([file,backup,instrument])=>{
+const workerBackup=root+'/state/db91-worker-trace'+(process.argv.includes('--callbacks')?'.callbacks':'')+'.original.mjs';
+const plans=[[file,backup,instrumentPrompt],[worker,workerBackup,instrumentWorker]].map(([file,backup,instrument])=>{
  const original=fs.readFileSync(fs.existsSync(backup)?backup:file,'utf8');
  const patched=instrument(original),current=fs.readFileSync(file,'utf8');
  assert(current===original||current===patched,'unexpected concurrent native modification');
