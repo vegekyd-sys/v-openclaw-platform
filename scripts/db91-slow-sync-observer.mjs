@@ -7,10 +7,12 @@ import {performance} from 'node:perf_hooks';
 const output=process.stderr.write.bind(process.stderr);
 const wrap=(object,key,label)=>{
  const original=object[key];if(typeof original!=='function')return;
- object[key]=function(...args){const start=performance.now();try{return Reflect.apply(original,this,args);}finally{
+ const wrapped=function(...args){const start=performance.now();try{return Reflect.apply(original,this,args);}finally{
   const ms=performance.now()-start;
   if(ms>=100)output('[db91-slow-sync] '+JSON.stringify({pid:process.pid,atMs:Date.now(),op:label,ms:Math.round(ms),stack:new Error().stack.split('\n').slice(2,9)})+'\n');
  }};
+ for(const name of Reflect.ownKeys(original))if(!['length','name','prototype','arguments','caller'].includes(name))Object.defineProperty(wrapped,name,Object.getOwnPropertyDescriptor(original,name));
+ object[key]=wrapped;
 };
 const probe=new DatabaseSync(':memory:');
 const statementPrototype=Object.getPrototypeOf(probe.prepare('select 1'));probe.close();
