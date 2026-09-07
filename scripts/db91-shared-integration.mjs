@@ -10,7 +10,7 @@ import {buildPlan} from './patch-db91-integrity-gate.mjs';
 const root = '/srv/vlab-production-mirror/generations/candidate-official-update-final-20260902';
 const core = root + '/runtime/npm-global/lib/node_modules/openclaw';
 const configFile = root + '/state/openclaw.json';
-const evidence = root + '/state/db91-integrity-release-20260907';
+const evidence = root + '/state/db91-c5-release-20260907';
 const unit = 'openclaw-vlab-production-mirror-v8.service';
 const owner = 'codex-db91-contention-20260907';
 const node = '/opt/vlab/node-v22.23.1-linux-x64/bin/node';
@@ -27,7 +27,16 @@ assert.equal(os.hostname(), 'VM-0-4-ubuntu'); lease();
 assert.equal(read(core + '/package.json').version, '2026.9.1'); assert.equal(fs.realpathSync(core), core);
 const commit = run('git', ['-c', 'safe.directory=' + source, '-C', source, 'rev-parse', 'HEAD']);
 assert.equal(run('git', ['-c', 'safe.directory=' + source, '-C', source, 'status', '--porcelain']), '');
-const flags = enabled => '[Service]\nEnvironment=OPENCLAW_DB91_INTEGRITY_ENABLE=' + enabled + '\nEnvironment=OPENCLAW_DB91_INTEGRITY_STATE_ROOT=' + root + '/state\nEnvironment=OPENCLAW_CONFIG_PATH=' + configFile + '\n';
+const switches = ['INTEGRITY', 'PROVENANCE', 'MEMORY_SCHEMA', 'MAINTENANCE'];
+const flags = enabled => '[Service]\n' + switches.map(flag => 'Environment=OPENCLAW_DB91_' + flag + '_ENABLE=' + enabled + '\n').join('') + 'Environment=OPENCLAW_DB91_INTEGRITY_STATE_ROOT=' + root + '/state\nEnvironment=OPENCLAW_CONFIG_PATH=' + configFile + '\n';
+const installers = [['integrity-gate', 'bundle-backup'], ['memory-provenance', 'memory-backup'], ['maintenance-throttle', 'maintenance-backup']];
+const patchFiles = () => {
+  const integrity = buildPlan(core).map(p => ({filename:p.filename, beforeSha:p.before===null?null:sha(p.before), afterSha:sha(p.after)}));
+  const others = installers.slice(1).flatMap(([name]) => JSON.parse(run(node, [source + '/scripts/patch-db91-' + name + '.mjs', 'check', core])).files);
+  const plan = [...integrity, ...others];
+  assert.equal(plan.length,11); assert.equal(new Set(plan.map(p=>p.filename)).size,11);
+  return plan;
+};
 const record = (phase, data) => {
   const report = {at: new Date().toISOString(), phase, owner, commit, ...data};
   fs.writeFileSync(evidence + '/' + Date.now() + '-' + phase + '.json', JSON.stringify(report, null, 2), {mode: 0o600, flag: 'wx'});
@@ -37,7 +46,17 @@ if (mode === 'restart-step' || mode === 'rollback-step') {
   const manifest = read(evidence + '/manifest.json'); assert.equal(manifest.commit, commit); assert.equal(pid(), 0, 'never patch an active Gateway');
   assert.equal(hash(configFile), manifest.configSha);
   const action = mode === 'restart-step' ? 'ensure' : 'rollback';
-  console.log(run(node, [source + '/scripts/patch-db91-integrity-gate.mjs', action, core, evidence + '/bundle-backup'], {timeout: 120000}));
+  // Check every file before touching any subset; all three installers also
+  // validate exact before/after bytes and preserve unrelated edits.
+  for (const p of manifest.files) {
+    const current=fs.existsSync(p.filename)?hash(p.filename):null;
+    assert(current===p.beforeSha||current===p.afterSha,'concurrent release file change');
+  }
+  const order=action==='rollback'?[...installers].reverse():installers;
+  for (const [name,backup] of order) {
+    if(action==='rollback'&&!fs.existsSync(evidence+'/'+backup+'/changes.json')) continue;
+    console.log(run(node, [source + '/scripts/patch-db91-' + name + '.mjs', action, core, evidence + '/' + backup], {timeout: 120000}));
+  }
   process.exit(0);
 }
 if (mode === 'prepare-rollback') {
@@ -72,15 +91,15 @@ const idle = async () => {
 };
 try {
   if (mode === 'inspect') {
-    console.log(JSON.stringify({owner, commit, gatewayPid, coreVersion: '2026.9.1', configSha: sha(configBytes), workerPaths: cfg.plugins.load.paths.filter(p => p.includes('worker-')), idle: await idle(), patchFiles: buildPlan(core).map(p => path.relative(core, p.filename))}));
+    console.log(JSON.stringify({owner, commit, gatewayPid, coreVersion: '2026.9.1', configSha: sha(configBytes), workerPaths: cfg.plugins.load.paths.filter(p => p.includes('worker-')), idle: await idle(), patchFiles: patchFiles().map(p => path.relative(core, p.filename))}));
   } else if (mode === 'stage') {
     const before = await idle(); assert(!fs.existsSync(evidence) && !fs.existsSync(dropin));
-    const plan = buildPlan(core); const st = fs.statSync(configFile);
-    for (const p of plan.filter(p => p.before !== null)) assert.equal(fs.statSync(p.filename).uid, st.uid, 'restart step must own its exact native files');
+    const plan = patchFiles(); const st = fs.statSync(configFile);
+    for (const p of plan.filter(p => p.beforeSha !== null)) assert.equal(fs.statSync(p.filename).uid, st.uid, 'restart step must own its exact native files');
     const voiceFile = core + '/dist/agent-command-DPfawBbr.js';
     assert.equal(hash(voiceFile), 'f914243041fab139683a7fbf74ed6817da3312791e89dc3586d981e88c83df4a', 'preserve identified voice CAS increment');
     fs.mkdirSync(evidence, {mode: 0o700}); fs.chownSync(evidence, st.uid, st.gid);
-    const saved = {owner, commit, gatewayPid, configSha: sha(configBytes), voiceFile, voiceSha: hash(voiceFile), files: plan.map(p => ({filename: p.filename, beforeSha: p.before === null ? null : sha(p.before), afterSha: sha(p.after)}))};
+    const saved = {owner, commit, gatewayPid, configSha: sha(configBytes), voiceFile, voiceSha: hash(voiceFile), files: plan};
     fs.writeFileSync(evidence + '/manifest.json', JSON.stringify(saved, null, 2), {mode: 0o600}); fs.chownSync(evidence + '/manifest.json', st.uid, st.gid);
     fs.writeFileSync(evidence + '/original-config.json', configBytes, {mode: 0o600});
     fs.writeFileSync(evidence + '/unit.before.txt', run('systemctl', ['cat', unit]), {mode: 0o600});
@@ -116,6 +135,7 @@ try {
     const saved = read(evidence + '/manifest.json'); assert.equal(hash(configFile), saved.configSha); assert.equal(hash(saved.voiceFile), saved.voiceSha);
     for (const p of saved.files) assert.equal(hash(p.filename), p.afterSha);
     assert(process.env.OPENCLAW_DB91_INTEGRITY_EPOCH && process.env.OPENCLAW_DB91_INTEGRITY_DIR?.startsWith(root + '/state/.db91-integrity/'));
+    for(const flag of switches) assert.equal(process.env['OPENCLAW_DB91_'+flag+'_ENABLE'],'1');
     const receipts = fs.readdirSync(process.env.OPENCLAW_DB91_INTEGRITY_DIR).filter(n => n.endsWith('.json') && !n.includes('revoked'));
     assert(receipts.length > 0); const status = await idle();
     // Retain only the environment switch after successful activation. Future
