@@ -30,7 +30,8 @@ await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{client?.stop();
  }});client.start();
 });
 const call=(method,params={},timeoutMs=20000)=>client.request(method,params,{timeoutMs});
-const workerSnapshot=async()=>{const w=await call('vlab.workers.status');return {at:Date.now(),pending:w.pending,workers:w.workers.map(v=>({slot:v.slot,pid:v.pid,ready:v.ready,active:v.active?.map(a=>({runId:a.runId,sessionKey:a.sessionKey}))??[],activeCount:v.activeCount,queued:v.queued}))};};
+if(process.env.DB91_INSPECT==='1'){const w=await call('vlab.workers.status');console.log(JSON.stringify(w.integration?.nativeHarnessEventParity));client.stop();process.exit(0);}
+const workerSnapshot=async()=>{const w=await call('vlab.workers.status');return {at:Date.now(),pending:w.pending,parity:w.integration?.nativeHarnessEventParity,workers:w.workers.map(v=>({slot:v.slot,pid:v.pid,ready:v.ready,active:v.active?.map(a=>({runId:a.runId,sessionKey:a.sessionKey}))??[],activeCount:v.activeCount,queued:v.queued}))};};
 const idle=async()=>{
  const until=Date.now()+30000;
  do{const w=await workerSnapshot(),s=await call('sessions.list',{limit:1000});
