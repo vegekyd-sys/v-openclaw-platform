@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import {isMemoryProvenanceBackfillComplete as ready} from './fast-path.mjs';
 import {patchProvenance} from '../../scripts/patch-db91-memory-provenance.mjs';
-const native=fs.readFileSync('/private/tmp/db91-memory-schema-BSs9MQgq.js','utf8');
+const native=fs.readFileSync(process.env.DB91_NATIVE_MEMORY_SCHEMA ?? '/private/tmp/db91-memory-schema-BSs9MQgq.js','utf8');
 const region=native.slice(native.indexOf('const MEMORY_INDEX_CHUNK_PROVENANCE_TABLE'),native.indexOf('//#endregion'));
 const nativeFactory=new Function('db91ProvenanceComplete','runSqliteImmediateTransactionSync',region+'\nreturn {ensure:ensureMemoryChunkProvenance,schema:MEMORY_INDEX_CHUNK_PROVENANCE_SCHEMA_SQL};');
 const on={OPENCLAW_DB91_PROVENANCE_ENABLE:'1'};
@@ -85,4 +87,41 @@ test('FTS initialization acquires writer before schema reads and preserves nativ
     db.exec('BEGIN IMMEDIATE');methods.path({db,tokenizeClause:''});db.exec('COMMIT');
     assert.equal(scopes.length,3,'existing outer transaction must not acquire a second BEGIN');
   } finally {if(before===undefined)delete process.env.OPENCLAW_DB91_MEMORY_SCHEMA_ENABLE;else process.env.OPENCLAW_DB91_MEMORY_SCHEMA_ENABLE=before;db.close();}
+});
+test('original deferred FTS path reproduces BUSY_SNAPSHOT; immediate writer prevents unsafe upgrade',()=>{
+  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'db91-fts-upgrade-'));
+  const db=new DatabaseSync(path.join(directory,'test.sqlite')),other=new DatabaseSync(path.join(directory,'test.sqlite'));
+  db.exec(`PRAGMA journal_mode=WAL; CREATE TABLE ticks(n INTEGER);
+    CREATE TABLE memory_index_chunks(id TEXT PRIMARY KEY,text TEXT,path TEXT,source TEXT,model TEXT,start_line INTEGER,end_line INTEGER);
+    INSERT INTO memory_index_chunks VALUES('a','hello','path','memory','model',1,2);`);
+  other.exec('PRAGMA busy_timeout=0');
+  const factory=source=>new Function('runSqliteImmediateTransactionSync','db91ProvenanceComplete',source.replace(/^import .*\n/gm,'').replace(/^export .*$/gm,'')+'\nreturn ensureMemoryChunkFtsSchema;');
+  const run=(d,fn)=>{d.exec('BEGIN IMMEDIATE');try{const r=fn();d.exec('COMMIT');return r;}catch(e){d.exec('ROLLBACK');throw e;}};
+  const original=factory(native)(run,()=>false),patched=factory(patchProvenance(native))(run,()=>false);
+  const params={db,ftsTable:'memory_index_chunks_fts',tokenizeClause:''};original(params);
+  let injected=false,writerError;
+  const observed=new Proxy(db,{get(target,key){
+    if(key==='prepare')return sql=>{
+      const stmt=target.prepare(sql);
+      if(!sql.startsWith('SELECT sql FROM sqlite_schema'))return stmt;
+      return new Proxy(stmt,{get(statement,method){
+        if(method==='get')return (...args)=>{const result=statement.get(...args);if(!injected){injected=true;try{other.exec('INSERT INTO ticks VALUES(1)');}catch(e){writerError=e;}}return result;};
+        const value=statement[method];return typeof value==='function'?value.bind(statement):value;
+      }});
+    };
+    const value=target[key];return typeof value==='function'?value.bind(target):value;
+  }});
+  const previous=process.env.OPENCLAW_DB91_MEMORY_SCHEMA_ENABLE;
+  try {
+    assert.throws(()=>original({...params,db:observed}),error=>error.errcode===517);
+    assert.equal(writerError,undefined);assert(injected);
+    other.exec('DELETE FROM ticks');injected=false;writerError=undefined;
+    process.env.OPENCLAW_DB91_MEMORY_SCHEMA_ENABLE='1';patched({...params,db:observed});
+    assert(injected);assert.equal(writerError.errcode&255,5);
+    other.exec('INSERT INTO ticks VALUES(1)');
+    assert.equal(db.prepare('SELECT count(*) n FROM memory_index_chunks_fts').get().n,1);
+  } finally {
+    if(previous===undefined)delete process.env.OPENCLAW_DB91_MEMORY_SCHEMA_ENABLE;else process.env.OPENCLAW_DB91_MEMORY_SCHEMA_ENABLE=previous;
+    other.close();db.close();fs.rmSync(directory,{recursive:true});
+  }
 });
