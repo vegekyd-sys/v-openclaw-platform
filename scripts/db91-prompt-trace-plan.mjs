@@ -29,5 +29,34 @@ export function instrumentPrompt(source) {
   if(phase==='tool-schema-directory')once(anchor,anchor+'\n\tdb91Phase("'+phase+'");');
   else once(anchor,'\tdb91Phase("'+phase+'");\n'+anchor);
  }
- return source.slice(0,at)+body+source.slice(until);
+ let result=source.slice(0,at)+body+source.slice(until);
+ const setup='\tconst prepare = createEmbeddedAttemptPreparation({\n\t\tconfig: params.config,\n\t\tassertCurrent: externalAbortController.throwIfFired\n\t});';
+ assert.equal(result.split(setup).length,2);
+ result=result.replace(setup,setup.replace('const prepare =','const db91BasePrepare =')+`
+ const prepare = (stage, fn) => db91BasePrepare(stage, async () => {
+  const at = performance.now();
+  try { return await fn(); }
+  finally { if (params.sessionKey?.includes("db91-")) console.error("[db91-attempt-phase] " + JSON.stringify({runId:params.runId,pid:process.pid,stage,elapsedMs:Math.round((performance.now()-at)*10)/10})); }
+ });`);
+ return result;
+}
+
+export function instrumentWorker(source) {
+ const anchor='  const attemptStartedAt = Date.now();\n  const agentRuntime = await loadAgentRuntime();';
+ assert.equal(source.split(anchor).length,2);
+ let body=source.replace(anchor,`  const attemptStartedAt = Date.now();
+  let db91Previous = performance.now();
+  const db91Phase = (phase) => {
+    const now = performance.now();
+    if (message.sessionKey?.includes("db91-")) console.error("[db91-worker-phase] " + JSON.stringify({runId:message.runId,pid:process.pid,phase,elapsedMs:Math.round((now-db91Previous)*10)/10}));
+    db91Previous = now;
+  };
+  const agentRuntime = await loadAgentRuntime();
+  db91Phase("agent-runtime");`);
+ for(const [text,phase] of [
+  ['    const config = configRuntime.loadConfig();','compaction-runtime'],
+  ['      await initializeWorkerNativeHooks({','prepared-plugin-runtime'],
+  ['      const externalTaskContext = { acceptedSessionSpawns: [] };','native-hooks'],
+ ]){assert.equal(body.split(text).length,2);body=body.replace(text,'    db91Phase("'+phase+'");\n'+text);}
+ return body;
 }
