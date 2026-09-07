@@ -8,7 +8,7 @@ const since=new Date(report.startedAt).toISOString().replace('T',' ').replace(/\
 const logs=execFileSync('journalctl',['-u',prod?'openclaw-gateway.service':'openclaw-vlab-production-mirror-v8.service','--since',since,'--no-pager','-o','json'],{encoding:'utf8',maxBuffer:64*1024**2});
 for(const line of logs.split('\n').filter(Boolean)){
  const row=JSON.parse(line),text=String(row.MESSAGE??'');
- for(const m of text.matchAll(/\[db91-(worker|attempt|prompt)-phase\] (\{[^\n]+\})/g)){
+ for(const m of text.matchAll(/\[db91-(worker|attempt|prompt|session|boundary)-(?:phase|timing)\] (\{[^\n]+\})/g)){
   let p;try{p=JSON.parse(m[2]);}catch{continue;}const j=jobs.get(p.runId);if(!j)continue;
   const key=m[1]+'/'+(p.phase??p.stage);(j.phases[key]??=[]).push(p.elapsedMs);
   if(key==='worker/agent-runtime')j.workerEntryMs??=p.atMs-p.elapsedMs-j.start;
@@ -30,9 +30,11 @@ const rounds=report.rounds.map(r=>{
   return {runId:j.runId,error:j.error,admissionMs:j.admittedMs,workerEntryMs:j.workerEntryMs,observedDispatchMs:dispatch?dispatch.at-j.start:undefined,
    nativeFirstTextMs:j.nativeFirstTextMs,firstTextMs:j.firstTextMs,relayMs:Number.isFinite(j.firstTextMs)&&Number.isFinite(j.nativeFirstTextMs)?j.firstTextMs-j.nativeFirstTextMs:undefined,
    modelPhaseStartMs:modelStart,modelPhaseToTextMs:Number.isFinite(modelStart)&&Number.isFinite(j.firstTextMs)?j.firstTextMs-modelStart:undefined,
+   modelPhaseToToolMs:Number.isFinite(firstTool)&&Number.isFinite(modelStart)?firstTool-modelStart:undefined,
+   toolEndToTextMs:Number.isFinite(j.firstTextMs)&&Number.isFinite(toolEnd)?j.firstTextMs-toolEnd:undefined,
    toolWindowMs:Number.isFinite(firstTool)&&Number.isFinite(toolEnd)?toolEnd-firstTool:undefined,finalEventMs:j.finalEventMs,historyVerifiedMs:j.replyVisibleMs,historyRetries:j.historyRetries};
  });
- const metrics=Object.fromEntries(['admissionMs','workerEntryMs','observedDispatchMs','nativeFirstTextMs','firstTextMs','relayMs','modelPhaseStartMs','modelPhaseToTextMs','toolWindowMs','finalEventMs','historyVerifiedMs'].map(k=>[k,stats(rows.map(j=>j[k]))]));
+ const metrics=Object.fromEntries(['admissionMs','workerEntryMs','observedDispatchMs','nativeFirstTextMs','firstTextMs','relayMs','modelPhaseStartMs','modelPhaseToTextMs','modelPhaseToToolMs','toolEndToTextMs','toolWindowMs','finalEventMs','historyVerifiedMs'].map(k=>[k,stats(rows.map(j=>j[k]))]));
  const phaseNames=[...new Set(r.jobs.flatMap(j=>Object.keys(jobs.get(j.runId).phases)))];
  const phases=Object.fromEntries(phaseNames.map(k=>[k,stats(r.jobs.flatMap(j=>jobs.get(j.runId).phases[k]??[]))]));
  const ids=new Set(r.jobs.map(j=>j.runId));
