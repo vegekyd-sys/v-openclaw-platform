@@ -30,5 +30,27 @@ export function instrumentSessionTiming(source) {
     ['\treturn {\n\t\tagentSession: preparedAgentSession,', 'transport'],
   ];
   for (const [anchor, stage] of marks) once(anchor, `\tdb91TimingMark("${stage}");\n` + anchor);
-  return source.slice(0, at) + body + source.slice(end);
+  let result = source.slice(0, at) + body + source.slice(end);
+  const boundaryStart = 'async function prepareEmbeddedAttemptSessionBoundary(input) {';
+  const from = result.indexOf(boundaryStart), until = result.indexOf('async function prepareEmbeddedAttemptSessionManager(', from);
+  assert(from >= 0 && until > from);
+  let boundary = result.slice(from, until);
+  const mark = (anchor, stage) => {
+    assert.equal(boundary.split(anchor).length, 2, `unique boundary anchor: ${anchor}`);
+    boundary = boundary.replace(anchor, `\tdb91BoundaryMark("${stage}");\n` + anchor);
+  };
+  boundary = boundary.replace(boundaryStart, boundaryStart + `
+ let db91BoundaryPrevious = performance.now();
+ const db91BoundaryMark = (stage) => {
+  const now = performance.now();
+  if (input.attempt.sessionKey?.includes("db91-")) console.error("[db91-boundary-timing] " + JSON.stringify({runId:input.attempt.runId,pid:process.pid,stage,atMs:Date.now(),elapsedMs:Math.round((now-db91BoundaryPrevious)*10)/10}));
+  db91BoundaryPrevious = now;
+ };
+ db91BoundaryMark("entered-owner-scope");
+`);
+  mark('\tif (orphanRepair?.removeLeaf) {', 'orphan-plan');
+  mark('\t\t\tawait waitForSessionTranscriptProjection(target, input.abortSignal);', 'projection-start');
+  mark('\t\tsessionManager.clearNextUserMessagePersistenceSuppression?.();', 'projection-end');
+  mark('\tconst boundaryTimezone = preserveExactPrompt ?', 'rebuild-context');
+  return result.slice(0, from) + boundary + result.slice(until);
 }
