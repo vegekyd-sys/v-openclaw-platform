@@ -36,7 +36,8 @@ function env(m) {
     OPENCLAW_WORKSPACE_DIR:`${r}/workspace`,OPENCLAW_GATEWAY_PORT:String(m.port),
     CODEX_HOME:`${r}/codex`,XDG_CACHE_HOME:`${r}/cache`,TMPDIR:`${r}/tmp`,
     VLAB_OPENCLAW_AGENT_RUNTIME:`${r}/runtime/openclaw/dist/plugin-sdk/agent-runtime.js`,
-    npm_config_cache:`${r}/cache/npm`,npm_config_prefix:`${r}/runtime/user-npm`};
+    npm_config_cache:`${r}/cache/npm`,npm_config_prefix:`${r}/runtime/user-npm`,
+    ...(opts.profile?{DB91_BENCHMARK_UNTIL:String(read(`${m.root}/tmp/benchmark-grant.json`).until)}:{})};
 }
 function properties(m) {
   const benchmark = opts.profile ? benchmarkGrant(m) : null;
@@ -48,7 +49,10 @@ function properties(m) {
 }
 function benchmarkGrant(m) {
   if(opts.profile !== PROFILE) fail('Only the exact owned DB91 C5 profile is supported');
-  return validateGrant(m,read(`${m.root}/tmp/benchmark-grant.json`));
+  const grant=read(`${m.root}/tmp/benchmark-grant.json`);
+  const result=validateGrant(m,grant);
+  if(run('git',['-c',`safe.directory=${m.root}/source`,'-C',`${m.root}/source`,'rev-parse','HEAD'])!==grant.commit)fail('Benchmark source changed after grant');
+  return result;
 }
 function unitArgs(m) {return [...properties(m).map(p=>`--property=${p}`),...Object.entries(env(m)).map(([k,v])=>`--setenv=${k}=${v}`)];}
 function audit(action, m, detail={}) {

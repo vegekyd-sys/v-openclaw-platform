@@ -9,6 +9,7 @@ assert.equal(os.hostname(), 'VM-0-4-ubuntu');
 assert.equal(process.env.OPENCLAW_STATE_DIR, root + '/state');
 const count = Number(process.argv[2] ?? 2), rounds = Number(process.argv[3] ?? 3);
 assert([2, 5].includes(count)); assert(Number.isInteger(rounds) && rounds > 0 && rounds <= 240);
+if (count === 5 && process.env.DB91_BENCHMARK_UNTIL) assert(Number(process.env.DB91_BENCHMARK_UNTIL) - Date.now() > 240000, 'insufficient benchmark window');
 const config = JSON.parse(fs.readFileSync(root + '/state/openclaw.json'));
 assert.equal(config.cron.enabled, false); assert.equal(Object.keys(config.channels).length, 0);
 assert(config.agents.defaults.maxConcurrent >= count, 'do not count queued requests as active concurrency');
@@ -24,7 +25,7 @@ await new Promise((resolve, reject) => {
   client.start();
 });
 const call = (method, params, timeoutMs = 15000) => client.request(method, params, {timeoutMs});
-const runs = [], projects = [], samples = [];
+const runs = [], projects = [], samples = [], resourceSamples = [];
 let poll = false, monitor;
 try {
   for (let index = 0; index < count; index++) {
@@ -54,6 +55,21 @@ try {
         const response = await fetch('http://127.0.0.1:26300/healthz', {signal: AbortSignal.timeout(3000)});
         await response.arrayBuffer(); samples.push({at: Date.now(), ms: performance.now() - at, status: response.status});
       } catch {samples.push({at: Date.now(), ms: performance.now() - at, status: null});}
+      const memory = Number(fs.readFileSync('/proc/meminfo','utf8').match(/^MemAvailable:\s+(\d+)/m)?.[1]) * 1024;
+      const disk = fs.statfsSync(root), freeBytes = disk.bavail * disk.bsize;
+      const group = '/sys/fs/cgroup/vlabdb91benchmark.slice/';
+      const readMetric = name => {try {return fs.readFileSync(group + name,'utf8').trim();} catch {return null;}};
+      const resource = {at: Date.now(), hostMemAvailable: memory, diskFreeBytes: freeBytes,
+        memoryCurrent: readMetric('memory.current'), memoryEvents: readMetric('memory.events'),
+        swapCurrent: readMetric('memory.swap.current'), cpu: readMetric('cpu.stat'), io: readMetric('io.stat')};
+      resourceSamples.push(resource);
+      if (memory < 2*1024**3 || freeBytes < 3.25*1024**3 ||
+          Number(resource.memoryEvents?.match(/^oom_kill (\d+)/m)?.[1] ?? 0) > 0 ||
+          (samples.length >= 3 && samples.slice(-3).every(s => s.status === null))) {
+        fs.writeFileSync(root + '/tmp/project-stop-' + caseId, 'resource-or-health-stop', {mode:0o600});
+        for (const run of runs) await call('chat.abort', {...run, agentId}).catch(() => {});
+        poll = false;
+      }
       await new Promise(resolve => setTimeout(resolve, 250));
     }
   })();
@@ -81,11 +97,14 @@ try {
   const overlapMs = Math.min(...outcomes.map(o => o.evidence.endedAt)) - Math.max(...outcomes.map(o => o.evidence.startedAt));
   assert(overlapMs > 0, 'the actual write workloads never overlapped');
   const result = {caseId, at: new Date().toISOString(), completeDb: true, agentId, projectCount: count,
-    roundsPerProject: rounds, workloadOverlapMs: overlapMs, outcomes, samples,
+    roundsPerProject: rounds, workloadOverlapMs: overlapMs, outcomes, samples, resourceSamples,
     limitations: 'single screening run; native SDK synthetic workload plus real model/tool/final, not production acceptance'};
   fs.writeFileSync(root + '/workspace/project-write-case-' + caseId + '.json', JSON.stringify(result), {mode: 0o600, flag: 'wx'});
   console.log(JSON.stringify({caseId, projectCount: count, verifiedWrites: count * rounds,
     overlapMs, elapsedMs: outcomes.map(o => o.endedAt - o.startedAt), healthFailures: samples.filter(s => s.status !== 200).length}));
+} catch (error) {
+  fs.writeFileSync(root + '/workspace/project-write-failed-' + caseId + '.json', JSON.stringify({caseId, projects, runs, samples, resourceSamples, error: String(error)}), {mode:0o600});
+  throw error;
 } finally {
   poll = false; await monitor;
   for (const run of runs) await call('chat.abort', {...run, agentId}).catch(() => {});

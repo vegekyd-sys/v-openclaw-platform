@@ -46,6 +46,7 @@ export async function runProjectWriteLoad(ctx, signal) {
   const measurements = [], expected = new Map();
   for (let i = 0; i < plan.rounds; i++) {
     signal?.throwIfAborted();
+    assert(!fs.existsSync(root + '/tmp/project-stop-' + plan.caseId), 'pressure controller stopped the workload');
     assert(Date.now() < plan.expiresAt, 'pressure window expired');
     if (i % 10 === 0) {
       const stat = fs.statfsSync(root);
