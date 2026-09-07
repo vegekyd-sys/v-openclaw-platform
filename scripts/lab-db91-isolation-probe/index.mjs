@@ -4,10 +4,19 @@ import fs from 'node:fs';
 import os from 'node:os';
 import {DatabaseSync} from 'node:sqlite';
 import {performance} from 'node:perf_hooks';
+import {runProjectWriteLoad} from './project-write-load.mjs';
 const root = '/srv/vlab-production-mirror/labs/instances/db91-fix';
 export default {id: 'lab-db91-isolation-probe', register(api) {
   assert.equal(os.hostname(), 'VM-0-4-ubuntu');
   assert(process.env.OPENCLAW_CONFIG_PATH?.startsWith(root + '/state/'), 'never load outside the owned Lab');
+  api.registerTool(ctx => ({name: 'lab_db91_project_write_load',
+    description: 'Explicit Lab benchmark only: write and verify bounded native session metadata and transcript events for this planned project. No network or external messages. Use only when requested by the acceptance prompt.',
+    parameters: {type: 'object', properties: {}, additionalProperties: false},
+    async execute(_id, _params, signal) {
+      const result = await runProjectWriteLoad(ctx, signal);
+      return {content: [{type: 'text', text: JSON.stringify(result)}], details: result};
+    }
+  }), {name: 'lab_db91_project_write_load'});
   api.registerTool(() => ({name: 'lab_db91_verification_status',
     description: 'Read-only Lab acceptance: report this execution process verification reuse counters and whether it inherited the Gateway verification lifecycle. No database reads or writes.',
     parameters: {type: 'object', properties: {}, additionalProperties: false},
