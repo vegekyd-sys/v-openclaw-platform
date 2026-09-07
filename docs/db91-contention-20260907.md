@@ -1,5 +1,20 @@
 # OpenClaw 9.1 database contention: isolated repair investigation
 
+## Current user gate: evaluate Worker necessity first
+
+On 2026-09-07 the user explicitly reordered the work:
+first establish in VLab whether the custom multiprocess Worker layer is needed
+under native 9.1; only then choose and accept a database fix in VLab. No
+production change before that acceptance. The coordinator proposal below is
+paused, not the selected architecture.
+
+Compare original native 9.1, one Worker with two slots, and two Workers with one
+slot each, keeping model, total concurrency and instance resources equal. Do
+not change integrity code during the comparison. Separate normal I/O concurrency
+from CPU/database stall isolation, process failure containment, memory overhead,
+transcript integrity, cancellation and subagent completion. A fast normal-path
+result alone is insufficient to remove the isolation layer.
+
 Scope: production incident of 2026-09-07, native 9.1 agent database open path.
 Branch: `codex/db91-contention-20260907`; baseline `6b78fffe432a7741e270526a75027bdd657bbaca`.
 No 9.2 platform upgrade is included.
