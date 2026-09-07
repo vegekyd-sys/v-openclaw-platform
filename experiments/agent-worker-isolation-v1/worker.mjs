@@ -583,7 +583,8 @@ async function runAgent(message, abortSignal) {
         if (!requestedEventNames.has("onAttemptDeadlineChanged")) return;
         void queueStreamEvent(streamState, message.id, message,
           "onAttemptDeadlineChanged", [deadline], abortSignal).catch(() => {});
-      }, executeToolInGateway)
+      }, executeToolInGateway, () => buildStreamCallbacks(
+        message.id, message, abortSignal, streamState, globallyBridgedNames))
     : () => {};
   let unsubscribeAgentEvents = () => {};
   if (typeof eventRuntime.onAgentEvent === "function") {
@@ -701,13 +702,13 @@ async function runAgent(message, abortSignal) {
     modelRun: message.modelRun ?? false,
     ...(message.agentCommandOptions ?? {}),
     allowModelOverride: true,
-      ...buildStreamCallbacks(
+      ...(message.nativeAttempt91 === true ? {} : buildStreamCallbacks(
         message.id,
         message,
         abortSignal,
         streamState,
         globallyBridgedNames,
-      ),
+      )),
     // This process is a persistent, concurrent Agent runtime, not a one-shot
     // local CLI. Per-turn one-shot teardown can wait on process-global MCP/CLI
     // resources after the assistant has already finished, holding the parent

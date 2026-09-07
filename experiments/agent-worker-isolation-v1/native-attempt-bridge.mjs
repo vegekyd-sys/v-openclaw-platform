@@ -2,6 +2,7 @@
 // tool arguments. Native run ownership and permission checks remain in core.
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { applyNativeHarnessData } from './native-harness-data.mjs';
+import { isBridgedHarnessEventCallback } from './harness-event-contract.mjs';
 export const NATIVE_ATTEMPT_BRIDGE = Symbol.for("versa.vlab.native-attempt-91-v1");
 
 export function createNativeAttemptBridge() {
@@ -19,9 +20,9 @@ export function createNativeAttemptBridge() {
       return runtimeScope.run(generation?.pluginRegistry, run);
     },
     getChannelRegistry() { return runtimeScope.getStore(); },
-    register(message, signal, onDeadline, executeMessage) {
+    register(message, signal, onDeadline, executeMessage, getStreamCallbacks = () => ({})) {
       if (runs.has(message.runId)) throw new Error("Duplicate Worker native run identity");
-      const context = { message, signal, onDeadline, executeMessage };
+      const context = { message, signal, onDeadline, executeMessage, getStreamCallbacks };
       runs.set(message.runId, context);
       return () => { if (runs.get(message.runId) === context) runs.delete(message.runId); };
     },
@@ -31,6 +32,19 @@ export function createNativeAttemptBridge() {
         throw new Error("Worker native attempt identity mismatch");
       }
       const upstreamDeadline = input.onAttemptDeadlineChanged;
+      const callbacks = {};
+      for (const [name, relay] of Object.entries(c.getStreamCallbacks())) {
+        if (!isBridgedHarnessEventCallback(name) || typeof relay !== 'function') throw new Error('Unreviewed native event callback');
+        // The dedicated deadline bridge preserves synchronous native ownership.
+        if (name === 'onAttemptDeadlineChanged') continue;
+        const local = input[name];
+        callbacks[name] = async (...args) => {
+          if (runs.get(input.runId) !== c || c.signal.aborted) return;
+          const result = await local?.(...args);
+          if (runs.get(input.runId) === c && !c.signal.aborted) await relay(...args);
+          return result;
+        };
+      }
       c.prepared = true;
       const prepared = applyNativeHarnessData(input, c.message.nativeHarnessData);
       // 9.2 prepares execution authority before runEmbeddedAttempt. A Gateway
@@ -41,6 +55,7 @@ export function createNativeAttemptBridge() {
       }
       return {
         ...prepared,
+        ...callbacks,
         conversationRoutePeerId: c.message.agentCommandOptions?.conversationRoutePeerId,
         onAttemptDeadlineChanged(deadline) {
           // Native cleanup may close an approval wait after cancellation.

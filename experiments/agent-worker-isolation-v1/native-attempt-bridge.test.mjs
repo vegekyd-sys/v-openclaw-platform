@@ -23,6 +23,19 @@ test('9.2 preserves native local authority and fences Gateway-to-Worker Steer tr
  await assert.rejects(b.steer('run1','edit',options),/authority mismatch/);
  close();await assert.rejects(b.steer('run1','edit',options),/no longer active/);
 });
+test('native attempt receives event callbacks even when outer command ignores callback options',async()=>{
+ const b=createNativeAttemptBridge(),c=new AbortController(),seen=[];
+ const close=b.register(message,c.signal,()=>{},()=>{},()=>({
+  onAssistantMessageStart:async value=>seen.push(['gateway-start',value]),
+  onToolOutcome:async value=>seen.push(['gateway-tool',value]),
+ }));
+ const p=b.prepare({...message,onToolOutcome:async value=>{seen.push(['native-tool',value]);return 'native-result';}});
+ assert.equal(typeof p.onAssistantMessageStart,'function');
+ await p.onAssistantMessageStart({id:'item'});
+ assert.equal(await p.onToolOutcome({id:'tool'}),'native-result');
+ assert.deepEqual(seen,[['gateway-start',{id:'item'}],['native-tool',{id:'tool'}],['gateway-tool',{id:'tool'}]]);
+ close();await p.onAssistantMessageStart({id:'late'});assert.equal(seen.length,3);
+});
 test('native attempt preserves both deadline callbacks and current conversation route', () => {
   const b=createNativeAttemptBridge(), events=[], c=new AbortController();
   const close=b.register(message,c.signal,d=>events.push(['gateway',d]),()=>{});
