@@ -1,6 +1,50 @@
 # OpenClaw 9.1 database contention: isolated repair investigation
 
+## Latest authorization: two parallel tasks
+
+The user subsequently split the work into two concurrent threads. This current
+thread owns the urgent Database repair: reproduce and pass VLab validation,
+then deploy the targeted repair to production V with rollback and real-path
+acceptance. A separate thread owns the Worker high-concurrency/process-necessity
+evaluation, with no production write scope. The earlier sequential Worker-first
+gate below is superseded by this parallel split, not by permission to skip Lab
+acceptance. This Database task must remain compatible with the existing Worker
+architecture; do not make production Worker removal a prerequisite for repair.
+
+The Database task retains the stopped, independently owned `db91-fix` instance.
+The Worker task must not change it. Coordinate exclusive heavy-load windows and
+data-disk capacity even though development proceeds in parallel.
+
 ## Current user gate: evaluate Worker necessity first
+
+### Clarification: high concurrency is the primary criterion
+
+The user clarified that the original value of Worker was avoiding system-wide
+stalls under high concurrency (historically described as roughly five jobs
+stalling without Worker versus around one hundred remaining responsive with
+Worker). Treat those numbers as the user's historical observation, NOT a
+verified current 9.1 benchmark. Two-session success does not establish that
+Worker is unnecessary.
+
+The first decision must use matched resource/model/database inputs and a
+stepped load test: 5, 10, 20, then higher only within an exclusive resource
+budget. Record submitted, queued, actually executing and completed tasks
+separately; do not call 100 queued requests “100 concurrent executions.” Record
+worker OS processes separately from agent/task concurrency. Measure completed
+throughput, queue/admission latency, response p95/p99, Gateway heartbeat/RPC,
+CPU/RSS/swap/I/O, database-open/lock waits, failure/cancel/recovery rates, and
+missing/duplicated results. Include steady-state, cold starts and bursts.
+
+Personal-instance default concurrency remains two until an explicitly scoped
+load-test resource/lease arrangement is in place. Do not bypass that limit or
+load-test 100 active jobs alongside someone else's VLab runtime.
+
+Current evidence only: native two-session real tool/final test passed in
+11,214 ms; one Worker with two slots passed in 15,994 ms. These single rounds
+include provider/startup variation and are NOT a throughput ranking. The
+two-Worker mode was started but not tested before the user's interruption.
+Synchronous SQLite injection is a secondary fault-containment test; it does
+not replace the required high-concurrency comparison.
 
 On 2026-09-07 the user explicitly reordered the work:
 first establish in VLab whether the custom multiprocess Worker layer is needed
