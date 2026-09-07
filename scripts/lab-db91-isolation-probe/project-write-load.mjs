@@ -13,6 +13,9 @@ export async function runProjectWriteLoad(ctx, signal) {
   const plan = JSON.parse(fs.readFileSync(root + '/tmp/project-write-plan.json'));
   assert(plan.expiresAt > Date.now(), 'expired pressure-test plan');
   assert.equal(plan.agentId, 'makaron');
+  const traceKey = Symbol.for('db91.lab.native.write.trace');
+  const observer = globalThis[traceKey] ??= {sequence: 0, dropped: 0, events: []};
+  const traceStart = observer.events.length;
   assert(Number.isInteger(plan.rounds) && plan.rounds >= 1 && plan.rounds <= 240);
   assert(Number.isInteger(plan.payloadBytes) && plan.payloadBytes >= 128 && plan.payloadBytes <= 16384);
   const project = plan.projects.find(p => p.chatSessionKey === ctx.sessionKey);
@@ -90,6 +93,8 @@ export async function runProjectWriteLoad(ctx, signal) {
     rounds: plan.rounds, payloadBytes: plan.payloadBytes, verifiedEvents: seen.size,
     sessionId, writeSessionKey: scope.sessionKey, projectId: project.id,
     measurements, limitation: 'beforeCallback includes queue/open/scheduling, not pure SQLite lock wait'};
+  result.nativeWriteTrace = observer.events.slice(traceStart);
+  result.nativeTraceDropped = observer.dropped;
   fs.writeFileSync(root + '/workspace/project-write-' + plan.caseId + '-' + project.index + '.json',
     JSON.stringify(result), {mode: 0o600, flag: 'wx'});
   return {...result, measurements: undefined};
