@@ -16,7 +16,7 @@ const {GatewayClient}=await import(root+'/runtime/npm-global/lib/node_modules/op
 const tracked=new Map();let client;
 await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{client?.stop();reject(Error('connection deadline'));},20000);
  client=new GatewayClient({url:'ws://127.0.0.1:24993',token:cfg.gateway.auth.token,deviceIdentity:null,clientName:'cli',mode:'cli',scopes:['operator.read','operator.write','operator.admin'],onHelloOk:()=>{clearTimeout(timer);resolve();},onConnectError:e=>{clearTimeout(timer);reject(e);},onEvent:event=>{
-  const p=event.payload,j=tracked.get(p?.runId);if(!j)return;
+  const p=event.payload,j=tracked.get(p?.runId)??[...tracked.values()].find(j=>p?.sessionKey===j.sessionKey);if(!j)return;
   const key=[event.event,p.stream??'',p.data?.phase??p.state??''].join('/'),at=Date.now()-j.start;
   const record=j.events[key]??={firstMs:at,lastMs:at,count:0};record.lastMs=at;record.count++;
   const visibleText=event.event==='agent'&&p.stream==='assistant'?p.data?.text:
@@ -26,7 +26,7 @@ await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{client?.stop();
    j.firstTextMs=at;j.firstTextEvent=key;j.firstTextChars=visibleText.length;
    console.log(JSON.stringify({phase:'first-text',runId:j.runId,elapsedMs:at,event:key}));
   }
-  if(event.event==='chat'&&p.state==='final')j.finalEventMs=at;
+  if(event.event==='chat'&&p.state==='final'){j.finalEventMs=at;j.finalPayloadKeys=Object.keys(p);}
  }});client.start();
 });
 const call=(method,params={},timeoutMs=20000)=>client.request(method,params,{timeoutMs});
