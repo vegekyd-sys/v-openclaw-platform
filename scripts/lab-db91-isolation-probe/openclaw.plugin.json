@@ -1,1 +1,1 @@
-{"id":"lab-db91-isolation-probe","name":"Lab-only DB91 isolation probe","activation":{"onStartup":true},"contracts":{"tools":["lab_db91_integrity_probe"]},"configSchema":{"type":"object","properties":{},"additionalProperties":false}}
+{"id":"lab-db91-isolation-probe","name":"Lab-only DB91 isolation probe","activation":{"onStartup":true},"contracts":{"tools":["lab_db91_integrity_probe","lab_db91_verification_status"]},"configSchema":{"type":"object","properties":{},"additionalProperties":false}}

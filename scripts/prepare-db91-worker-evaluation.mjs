@@ -55,4 +55,4 @@ fs.writeFileSync(root + '/state/openclaw.json', JSON.stringify(config, null, 2) 
 fs.writeFileSync(root + '/state/worker-openclaw.json', JSON.stringify(overlay, null, 2) + '\n', {mode: 0o600});
 fs.writeFileSync(root + '/tmp/evaluation-mode.json', JSON.stringify({mode, at: new Date().toISOString(), sourceCommit: execFileSync('git', ['-c', 'safe.directory=' + root + '/source', '-C', root + '/source', 'rev-parse', 'HEAD'], {encoding: 'utf8'}).trim()}));
 execFileSync('chown', ['-R', manifest.user + ':' + manifest.user, root + '/runtime/worker', root + '/runtime/evaluation-probe', root + '/state', root + '/tmp', root + '/secrets.env']);
-console.log(JSON.stringify({mode, nativeDatabaseCodeUnchanged: true, owner: manifest.owner, port: manifest.port, totalSessionCapacity: 2, channelsEnabled: false}));
+console.log(JSON.stringify({mode, nativeDatabaseCodeUnchanged: !fs.existsSync(root + '/runtime/openclaw/dist/db91-integrity-gate.mjs'), owner: manifest.owner, port: manifest.port, totalSessionCapacity: 2, channelsEnabled: false}));

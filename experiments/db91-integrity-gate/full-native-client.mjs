@@ -1,0 +1,25 @@
+// Complete VLab snapshot only. Emit counts/timings, never transcript contents.
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import {pathToFileURL} from 'node:url';
+import {performance} from 'node:perf_hooks';
+const [core, root] = process.argv.slice(2);
+assert.equal(root, '/srv/vlab-production-mirror/labs/instances/db91-fix/tmp/full-native-v1');
+assert.equal(process.env.OPENCLAW_STATE_DIR, root + '/state');
+const dist = path.join(core, 'dist');
+const names = fs.readdirSync(dist).filter(n => n.startsWith('openclaw-agent-db-') && n.endsWith('.js') && fs.readFileSync(path.join(dist, n), 'utf8').includes('function openOpenClawAgentDatabase(')); assert.equal(names.length, 1);
+const file = path.join(dist, names[0]), src = fs.readFileSync(file, 'utf8'), mod = await import(pathToFileURL(file).href);
+const get = name => mod[src.slice(src.lastIndexOf('export {')).match(new RegExp('\\b' + name + ' as (\\w+)'))[1]];
+const {getIntegrityGateStats} = await import(pathToFileURL(path.join(dist, 'db91-integrity-gate.mjs')).href);
+const started = performance.now();
+const handle = get('openOpenClawAgentDatabase')({agentId: 'makaron', path: root + '/state/agents/makaron/agent/openclaw-agent.sqlite', env: process.env});
+const elapsedMs = performance.now() - started;
+const tableNames = handle.db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map(r => r.name);
+const counts = {};
+for (const table of ['session_nodes', 'session_windows', 'transcript_events', 'memory_documents', 'memory_chunks']) if (tableNames.includes(table)) counts[table] = handle.db.prepare('SELECT count(*) AS n FROM "' + table + '"').get().n;
+const owner = handle.db.prepare("SELECT role, agent_id, schema_version FROM schema_meta WHERE meta_key='primary'").get();
+assert.equal(owner.agent_id, 'makaron'); assert.equal(owner.schema_version, 19);
+assert.equal(handle.db.prepare('PRAGMA foreign_keys').get().foreign_keys, 1);
+get('closeOpenClawAgentDatabases')();
+console.log(JSON.stringify({pid: process.pid, elapsedMs, bytes: fs.statSync(handle.path).size, owner, tableCount: tableNames.length, counts, stats: getIntegrityGateStats()}));
