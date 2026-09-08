@@ -11,7 +11,7 @@ export function parityResources(m, lease) {
   assert.equal(m.owner, parityOwner);
   assert.equal(m.root, '/srv/vlab-production-mirror/labs/instances/db91-parity');
   assert.equal(lease.owner, parityOwner, 'Explicit integration lease required');
-  return ['MemoryHigh=10G','MemoryMax=12G','CPUQuota=400%'];
+  return ['MemoryHigh=12G','MemoryMax=14G','CPUQuota=400%'];
 }
 
 // Patch only the reviewed canonical controller, preserving other instance defaults.
