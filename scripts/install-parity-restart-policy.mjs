@@ -1,0 +1,11 @@
+import fs from 'node:fs';import os from 'node:os';import assert from 'node:assert/strict';import {execFileSync} from 'node:child_process';
+import {patchParityRestartController} from '../lab/parity-restart-policy.mjs';import {parityResources} from '../lab/parity-resource-profile.mjs';
+assert.equal(os.hostname(),'VM-0-4-ubuntu');assert.equal(process.getuid(),0);
+const control='/srv/vlab-production-mirror/labs/control',m=JSON.parse(fs.readFileSync(control+'/db91-parity.json'));
+parityResources(m,JSON.parse(fs.readFileSync(control+'/integration.json')));
+assert.equal(execFileSync('systemctl',['show',m.unit,'-p','MainPID','--value'],{encoding:'utf8'}).trim(),'0');
+const file=control+'/labctl.mjs',before=fs.readFileSync(file,'utf8'),after=patchParityRestartController(before);
+fs.writeFileSync(m.root+'/tmp/labctl-before-native-restart.mjs',before,{mode:0o600,flag:'wx'});
+const pending=control+'/labctl-native-restart.pending.mjs';fs.writeFileSync(pending,after,{mode:0o755,flag:'wx'});execFileSync(process.execPath,['--check',pending]);
+assert.equal(fs.readFileSync(file,'utf8'),before,'Concurrent controller edit');fs.renameSync(pending,file);
+console.log(JSON.stringify({onlyInstance:m.name,killMode:'mixed',nativeIntentOnRestart:true,otherInstancesUnchanged:true}));
