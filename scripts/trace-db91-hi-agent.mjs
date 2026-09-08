@@ -15,6 +15,9 @@ assert.equal(cfg.gateway.port,shared?24993:26300);if(!shared){assert.equal(cfg.c
 const db=root+'/state/agents/makaron/agent/openclaw-agent.sqlite';assert(fs.statSync(db).size>=2_500_000_000);
 assert(fs.statfsSync(root).bavail*fs.statfsSync(root).bsize>3*1024**3);
 const thinking=process.env.DB91_HI_THINKING??'low';assert(['low','max'].includes(thinking));
+const fixtureName=process.argv.find(a=>/^hi-fixtures-\d+\.json$/.test(a));
+const fixtures=fixtureName?JSON.parse(fs.readFileSync(root+'/state/db91-c5-release-20260907/'+fixtureName)):null;
+if(fixtures){assert(shared);assert(fixtures.dm?.key?.startsWith('agent:makaron:')&&fixtures.group?.key?.startsWith('agent:makaron:'));}
 const stamp=Date.now(),report={startedAt:new Date().toISOString(),gatewayPid:pid,databaseBytes:fs.statSync(db).size,thinkingRequested:thinking,message:'hi',count:3,scope:(shared?'shared':'private')+'-real-agent-websocket-no-channel-delivery',jobs:[]};
 const output=root+(shared?'/state/db91-c5-release-20260907':'/workspace')+'/hi-'+stamp+'.json';
 const persist=()=>fs.writeFileSync(output,JSON.stringify(report,null,2),{mode:0o600});
@@ -38,16 +41,25 @@ const call=(method,params={},timeoutMs=20000)=>client.request(method,params,{tim
 const compactStatus=async()=>{const s=await call('vlab.workers.status');return {pending:s.pending,workers:s.workers.map(w=>({pid:w.pid,ready:w.ready,activeCount:w.activeCount,queued:w.queued}))};};
 const counters=file=>Object.fromEntries(fs.readFileSync(file,'utf8').trim().split('\n').map(line=>{const [k,v]=line.split(/\s+/);return [k,Number(v)];}));
 const cgroup='/sys/fs/cgroup/system.slice/'+unit;
+report.resourceLimits=Object.fromEntries(['cpu.max','memory.high','memory.max'].map(name=>[name,fs.readFileSync(cgroup+'/'+name,'utf8').trim()]));
+if(fixtures)report.historyFixture=fixtureName;
 const resource=()=>({atMs:Date.now(),memoryCurrent:Number(fs.readFileSync(cgroup+'/memory.current')),memoryEvents:counters(cgroup+'/memory.events'),cpu:counters(cgroup+'/cpu.stat')});
 try{
   report.before=await compactStatus();assert.equal(report.before.pending,0);assert(report.before.workers.every(w=>w.ready&&!w.activeCount&&!w.queued));
-  const modes=['cold_new','warm_same','warm_new'];
+  const modes=fixtures?['dm_fork','group_fork','group_same']:['cold_new','warm_same','warm_new'];
   for(const [i,mode]of modes.entries()){
     assert.equal(JSON.parse(fs.readFileSync('/srv/vlab-production-mirror/labs/control/'+(shared?'integration':'db91-fix')+'.json')).owner,'codex-db91-contention-20260907');
-    const sessionIndex=mode==='warm_same'?0:i;
+    const sessionIndex=mode==='warm_same'?0:mode==='group_same'?1:i;
     const sessionKey='agent:makaron:explicit:db91-hi-'+stamp+'-'+thinking+'-'+sessionIndex;
     const j={mode,runId:'DB91_HI_'+stamp+'_'+thinking+'_'+mode,sessionKey,start:Date.now(),events:{},resourceBefore:resource()};
     report.jobs.push(j);current=j;persist();
+    if(fixtures&&mode!=='group_same'){
+      const parent=mode==='dm_fork'?fixtures.dm:fixtures.group;
+      const forkAt=Date.now();
+      await call('sessions.create',{key:sessionKey,agentId:'makaron',parentSessionKey:parent.key,fork:true,forkFrom:'last-completed',emitCommandHooks:false,succeedsParent:false,thinkingLevel:thinking},120000);
+      j.forkSetupMs=Date.now()-forkAt;
+      j.parentKeyHash=createHash('sha256').update(parent.key).digest('hex').slice(0,12);
+    }
     assert.equal((await call('sessions.messages.subscribe',{agentId:'makaron',key:sessionKey})).subscribed,true);
     j.start=Date.now();let finished=false;
     try{
@@ -61,7 +73,9 @@ try{
       assert(Number.isFinite(j.finalEventMs),'final deadline');assert(Number.isFinite(j.firstTextMs),'no visible text');
       const h=await call('chat.history',{agentId:'makaron',sessionKey,limit:50});
       const users=(h.messages??[]).filter(v=>v.role==='user');
-      assert.equal(users.length,mode==='warm_same'?2:1);assert.equal(users.at(-1).idempotencyKey,j.runId+':user');
+      if(!fixtures)assert.equal(users.length,mode==='warm_same'?2:1);
+      assert.equal(users.at(-1).idempotencyKey,j.runId+':user');
+      assert.equal(users.filter(u=>u.idempotencyKey===j.runId+':user').length,1);
       assert.equal(h.sessionInfo?.agentRuntime?.id,'vlab-worker');
       const assistants=(h.messages??[]).filter(v=>v.role==='assistant');
       const last=assistants.at(-1);assert.equal(last?.model,'deepseek-v4-pro');assert.notEqual(last.stopReason,'error');

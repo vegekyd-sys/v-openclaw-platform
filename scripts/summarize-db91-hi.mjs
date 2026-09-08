@@ -58,5 +58,5 @@ const output=[...jobs.values()].map(j=>{
       memoryPeakSample:Math.max(j.resourceBefore.memoryCurrent,j.resourceAfter.memoryCurrent),oomKills:j.resourceAfter.memoryEvents.oom_kill-j.resourceBefore.memoryEvents.oom_kill}:undefined,
     assistantMetadata:j.assistantMetadata};
 });
-console.log(JSON.stringify({source:file,databaseBytes:r.databaseBytes,thinkingRequested:r.thinkingRequested,completed:r.completed??false,gatewayPid:r.gatewayPid,
-  notes:['Wire-to-headers includes remote wait and network, not pure inference time.','First body is when SDK consumes its first existing stream chunk, not a packet timestamp.','Missing segments remain null.','Cold means first measured Agent turn after Gateway restart and readiness; not empty database.','Private instance is CPU 1 core, MemoryHigh 2GiB, MemoryMax 3GiB.'],jobs:output}));
+console.log(JSON.stringify({source:file,databaseBytes:r.databaseBytes,thinkingRequested:r.thinkingRequested,completed:r.completed??false,gatewayPid:r.gatewayPid,resourceLimits:r.resourceLimits,historyFixture:r.historyFixture,
+  notes:['Wire-to-headers includes remote wait and network, not pure inference time.','First body is when SDK consumes its first existing stream chunk, not a packet timestamp.','Missing segments remain null.','Cold means first measured Agent turn after Gateway restart and readiness; not empty database.',shared?'Shared VLab configuration is unchanged; this is not external channel delivery.':'Private instance is CPU 1 core, MemoryHigh 2GiB, MemoryMax 3GiB.'],jobs:output}));
