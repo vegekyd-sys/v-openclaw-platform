@@ -50,16 +50,16 @@ for rec in meta['databases']:
             preserve_rows(c,'session_pending_inputs',tag)
             changes['pending_inputs_cancelled']=c.execute("UPDATE session_pending_inputs SET state='cancelled' WHERE state!='cancelled'").rowcount
         preimages=[]
-        for key,raw in c.execute('SELECT session_key,entry_json FROM session_nodes').fetchall():
+        for key,raw,status in c.execute('SELECT session_key,entry_json,status FROM session_nodes').fetchall():
             entry=json.loads(raw);new=dict(entry)
             for k in list(new):
                 if k.startswith('restartRecovery') or k in ['activeWriterRunId','pendingFinalDelivery','pendingDeliveryNotice','liveModelSwitchPending','subagentRecovery','cronRunContinuation','quotaSuspension']:
                     del new[k]
             if new.get('status') in ['running','queued','pending','paused']:
-                new['status']='aborted';new['abortedLastRun']=True
+                new['status']='killed';new['abortedLastRun']=True
             if new!=entry:
-                preimages.append({'key':key,'entry_json':raw})
-                c.execute('UPDATE session_nodes SET entry_json=? WHERE session_key=?',(json.dumps(new,ensure_ascii=False),key))
+                preimages.append({'key':key,'entry_json':raw,'status':status})
+                c.execute('UPDATE session_nodes SET entry_json=?, status=? WHERE session_key=?',(json.dumps(new,ensure_ascii=False),'killed' if status=='running' else status,key))
         (backup/(tag+'-session_nodes.json')).write_text(json.dumps(preimages))
         changes['session_recovery_disabled']=len(preimages)
     c.commit()
