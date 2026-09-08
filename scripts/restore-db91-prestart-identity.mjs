@@ -1,0 +1,10 @@
+import fs from 'node:fs';import os from 'node:os';import assert from 'node:assert/strict';import {execFileSync} from 'node:child_process';
+import {db91ReleaseUnit} from './db91-production-plan.mjs';
+assert.equal(os.hostname(),'VM-8-2-ubuntu');assert.equal(process.getuid(),0);
+const file='/etc/systemd/system/openclaw-gateway.service.d/zzzz-db91-release-v1.conf',expected=db91ReleaseUnit(),before=expected.replaceAll('ExecStartPre=-+','ExecStartPre=-');
+assert.equal(fs.readFileSync(file,'utf8'),before);
+const old=fs.readFileSync('/home/openclaw/.openclaw/backups/v2026.9.1-db91.1/service.before','utf8');
+assert(old.includes('ExecStartPre=-+/bin/bash'));assert(old.includes('ExecStartPre=-+/opt/node-v22.23.1/bin/node'));
+fs.writeFileSync(file,expected,{mode:0o644});
+execFileSync('systemctl',['daemon-reload']);
+console.log(JSON.stringify({originalPrestartIdentityRestored:true,noRestart:true}));

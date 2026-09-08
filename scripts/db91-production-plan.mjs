@@ -22,9 +22,9 @@ export function db91ReleaseUnit(){
 ExecStart=
 ExecStart=${node} --inspect=127.0.0.1:9229 --max-old-space-size=12288 ${core}/dist/index.js gateway --port 22793
 ExecStartPre=
-ExecStartPre=-/bin/bash ${state}/releases/openclaw91-feishu-parity-v1/apply-openclaw91-feishu-parity.sh ${core} ${state} ${state}/releases/openclaw91-feishu-parity-v1
+ExecStartPre=-+/bin/bash ${state}/releases/openclaw91-feishu-parity-v1/apply-openclaw91-feishu-parity.sh ${core} ${state} ${state}/releases/openclaw91-feishu-parity-v1
 ExecStartPre=${node} ${state}/experiments/agent-worker-isolation-v1/prune-openclaw-session-hotset.mjs ${state}/agents /opt/openclaw-experiments/agent-worker-isolation-v1/releases/80e6d3bfe447a581451bfce2d74e25517b11d9ef/session-hotset.mjs 180000
-ExecStartPre=-${node} ${state}/releases/steer91-0.2.11/apply-feishu-steer91-prestart.mjs ${state}
+ExecStartPre=-+${node} ${state}/releases/steer91-0.2.11/apply-feishu-steer91-prestart.mjs ${state}
 Environment=OPENCLAW_DB91_READ_AHEAD_ENABLE=1
 Environment=OPENCLAW_DB91_STATE_READ_AHEAD_ENABLE=1
 Environment=OPENCLAW_DB91_TRAJECTORY_SWEEP_ENABLE=1
