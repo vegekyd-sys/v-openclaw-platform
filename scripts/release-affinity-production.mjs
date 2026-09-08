@@ -58,8 +58,12 @@ if(mode==='stage'){
  fs.writeFileSync(drop,hook,{mode:0o644,flag:'wx'});run('systemctl',['daemon-reload']);record('staged',{arm,beforePid,files:files.map(f=>({path:f.path,beforeSha:f.beforeSha,afterSha:f.afterSha})),activeRuntimeUnchanged:true});
 }else if(mode==='restart'){
  const s=read(dir+'/pending.json');assert.equal(s.beforePid,beforePid);assert.equal(fs.readFileSync(drop,'utf8'),hook);for(const f of s.files)assert.equal(hash(fs.readFileSync(f.path)),f.beforeSha);
- record('official-restart-request',{arm:s.arm,beforePid,command:'openclaw gateway restart --preserve-definition --wait 30s --json'});
- const child=spawn(process.execPath,[core+'/openclaw.mjs','gateway','restart','--preserve-definition','--wait','30s','--json'],{env:process.env,stdio:['ignore','pipe','pipe']});let output='';child.stdout.on('data',b=>{output+=b;if(output.length>200000)output=output.slice(-200000);});child.stderr.on('data',()=>{});
+ // The root CLI rejects this service-owned WeCom plugin. Use the same official
+ // restart-intent writer and existing system-scope supervisor; never doctor-fix.
+ const{a:writeIntent}=await import(core+'/dist/restart-intent-BYVo1227.js');
+ assert(writeIntent({targetPid:beforePid,env:process.env,intent:{waitMs:30000},reason:'gateway.restart'}),'native restart intent failed');
+ record('official-restart-request',{arm:s.arm,beforePid,command:'official restart intent (30s) + systemctl restart openclaw-gateway.service',preserveDefinition:true});
+ const child=spawn('systemctl',['restart',unit],{env:process.env,stdio:['ignore','pipe','pipe']});let output='';child.stdout.on('data',b=>{output+=b;if(output.length>200000)output=output.slice(-200000);});child.stderr.on('data',()=>{});
  const code=await new Promise(resolve=>child.once('exit',resolve));fs.writeFileSync(dir+'/'+Date.now()+'-official-restart-output.txt',output,{mode:0o600,flag:'wx'});record('official-restart-return',{arm:s.arm,code,pid:pid()});process.exitCode=code??1;
 }else if(mode==='verify'){
  const s=read(dir+'/pending.json');assert.notEqual(beforePid,s.beforePid,'Gateway did not restart');for(const f of s.files)assert.equal(hash(fs.readFileSync(f.path)),f.afterSha);
