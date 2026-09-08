@@ -1,0 +1,16 @@
+import fs from 'node:fs';import os from 'node:os';import assert from 'node:assert/strict';import {execFileSync} from 'node:child_process';
+import {patchLateWorkerReplies} from '../experiments/agent-worker-isolation-v1/late-worker-reply.mjs';
+assert.equal(os.hostname(),'VM-0-4-ubuntu');assert.equal(process.getuid(),0);
+const root='/srv/vlab-production-mirror/labs/instances/db91-parity';
+const m=JSON.parse(fs.readFileSync(root+'/../../control/db91-parity.json'));assert.equal(m.owner,'codex-db91-production-equivalent-20260908');
+assert.equal(execFileSync('systemctl',['show',m.unit,'-p','MainPID','--value'],{encoding:'utf8'}).trim(),'0');
+const file=root+'/runtime/production-worker/worker-pool.mjs',original=fs.readFileSync(file,'utf8'),patched=patchLateWorkerReplies(original);
+fs.writeFileSync(root+'/tmp/before-late-reply-worker-pool.mjs',original,{mode:0o600,flag:'wx'});
+fs.copyFileSync(new URL('../experiments/agent-worker-isolation-v1/late-worker-reply.mjs',import.meta.url),root+'/runtime/production-worker/late-worker-reply.mjs',fs.constants.COPYFILE_EXCL);
+fs.writeFileSync(file,patched);execFileSync(process.execPath,['--check',file]);
+const configFile=root+'/state/openclaw.json',beforeConfig=fs.readFileSync(configFile,'utf8'),cfg=JSON.parse(beforeConfig);
+assert.equal(cfg.gateway.port,26340);assert.equal(Object.keys(cfg.channels).length,0);assert.equal(cfg.cron.enabled,false);
+fs.writeFileSync(root+'/tmp/before-test-model-pin.json',beforeConfig,{mode:0o600,flag:'wx'});
+for(const entry of [cfg.agents.defaults,...Object.values(cfg.agents.entries)])entry.model={primary:'deepseek/deepseek-v4-pro',fallbacks:[]};
+fs.writeFileSync(configFile,JSON.stringify(cfg,null,2)+'\n');
+console.log(JSON.stringify({lateRepliesGuarded:7,requestAdmissionUnchanged:true,testModel:'deepseek/deepseek-v4-pro',testAgentDefaultsPinned:true}));
