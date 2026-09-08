@@ -23,7 +23,7 @@ process.on('SIGTERM',()=>{stopping=true;});process.on('SIGINT',()=>{stopping=tru
 const {GatewayClient}=await import(root+'/runtime/openclaw/dist/plugin-sdk/gateway-runtime.js');
 await new Promise((resolve,reject)=>{
  const timer=setTimeout(()=>{client?.stop();reject(Error('connect deadline'));},25000);
- client=new GatewayClient({url:'ws://127.0.0.1:26340',token:cfg.gateway.auth.token,deviceIdentity:null,clientName:'cli',mode:'cli',caps:['tool-events'],scopes:['operator.read','operator.write','operator.admin'],
+ client=new GatewayClient({url:'ws://127.0.0.1:26340',token:cfg.gateway.auth.token,clientName:'cli',mode:'cli',caps:['tool-events'],scopes:['operator.read','operator.write','operator.admin'],
  onHelloOk:()=>{clearTimeout(timer);resolve();},onConnectError:e=>{clearTimeout(timer);reject(e);},
  onEvent:e=>{const p=e.payload,j=tracked.get(p?.runId);if(!j)return;const elapsed=Date.now()-j.start;
  if(e.event==='agent'&&p.stream==='assistant'&&typeof p.data?.text==='string'&&p.data.text.trim())j.firstTextMs??=elapsed;
@@ -39,12 +39,13 @@ try{
  for(let i=0;i<roster.length;i++){
   const agentId=roster[i],file=root+'/state/agents/'+agentId+'/agent/openclaw-agent.sqlite';
   const db=new DatabaseSync(file,{readOnly:true});
-  const parents=db.prepare("SELECT session_key, json_extract(entry_json,'$.totalTokens') AS tokens FROM session_nodes WHERE status='done' AND json_extract(entry_json,'$.totalTokens') BETWEEN 30000 AND 90000 AND session_key NOT LIKE '%parity-%' ORDER BY tokens DESC LIMIT 12").all();db.close();
+  const parents=db.prepare("SELECT session_key,current_session_id, json_extract(entry_json,'$.totalTokens') AS tokens FROM session_nodes WHERE status='done' AND json_extract(entry_json,'$.totalTokens') BETWEEN 30000 AND 90000 AND session_key NOT LIKE '%parity-%' ORDER BY tokens DESC LIMIT 12").all().map(p=>({...p,transcriptBytes:db.prepare('SELECT coalesce(sum(length(CAST(event_json AS BLOB))),0) AS n FROM transcript_events WHERE session_id=?').get(p.current_session_id).n})).filter(p=>p.transcriptBytes<=16*1024**2);db.close();
   const parent=parents.length?parents[i%parents.length]:null;
+  const space=fs.statfsSync(root);assert(space.bavail*space.bsize>3.7*1024**3+3*(parent?.transcriptBytes??0),'Fork would violate data reserve');
   const key='agent:'+agentId+':explicit:parity-bg-'+tag+'-'+i;
   await call('sessions.create',{agentId,key,idempotencyKey:'BG_CREATE_'+tag+'_'+i,model:report.model,thinkingLevel:'low',
     ...(parent?{parentSessionKey:parent.session_key,fork:true,forkFrom:'last-completed',emitCommandHooks:false,succeedsParent:false}:{})},120000);
-  report.sessions.push({agentId,key,parentKey:parent?.session_key??null,parentTokens:parent?.tokens??null});persist();
+  report.sessions.push({agentId,key,parentKey:parent?.session_key??null,parentTokens:parent?.tokens??null,parentTranscriptBytes:parent?.transcriptBytes??null});persist();
  }
  sampleLoop=(async()=>{while(!shouldStop()){
   try{const s=await call('vlab.workers.status');const totalActive=s.workers.reduce((n,w)=>n+w.activeCount,0);
@@ -86,7 +87,7 @@ try{
   }
  });
  await Promise.allSettled(workers);report.completed=report.errors.length===0;
-}finally{
+}catch(e){report.errors.push({stage:'setup-or-run',error:String(e)});throw e;}finally{
  stopping=true;
  for(const j of report.jobs.filter(x=>!x.verified))await call('chat.abort',{agentId:j.agentId,sessionKey:j.sessionKey,runId:j.runId}).catch(()=>{});
  await sampleLoop;report.finishedAt=Date.now();persist();client.stop();
