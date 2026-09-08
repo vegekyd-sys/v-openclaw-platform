@@ -7,6 +7,8 @@ const unit='openclaw-lab-db91-parity.service';
 const read=key=>execFileSync('systemctl',['show',unit,'-p',key,'--value'],{encoding:'utf8'}).trim();
 const pid=Number(read('MainPID'));assert(pid>1);assert.equal(read('KillMode'),'mixed','Start the new mixed-signal unit before testing native restart');
 const {a:writeGatewayRestartIntentSync}=await import(pathToFileURL(root+'/runtime/openclaw/dist/restart-intent-BYVo1227.js'));
-assert(writeGatewayRestartIntentSync({targetPid:pid,reason:'owned-vlab-restart-recovery',intent:{waitMs:0},env:process.env}),'Native restart intent write failed');
+// Native waitMs=0 means default drain, not immediate. This lifecycle test must
+// reach the native restart marker before systemd's fixed 30-second stop bound.
+assert(writeGatewayRestartIntentSync({targetPid:pid,reason:'owned-vlab-restart-recovery',intent:{force:true,waitMs:0},env:process.env}),'Native restart intent write failed');
 assert.equal(Number(read('MainPID')),pid,'Gateway changed while preparing intent');
-console.log(JSON.stringify({nativeRestartIntentWritten:true,targetPid:pid,waitMs:0,signalPolicy:'mixed',noUserRequestReplay:true}));
+console.log(JSON.stringify({nativeRestartIntentWritten:true,targetPid:pid,force:true,waitMs:0,signalPolicy:'mixed',noUserRequestReplay:true}));
