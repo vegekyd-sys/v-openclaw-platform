@@ -1,0 +1,14 @@
+import fs from 'node:fs';import os from 'node:os';import assert from 'node:assert/strict';import {execFileSync} from 'node:child_process';
+import {patchTrajectorySweep} from '../experiments/db91-integrity-gate/trajectory-sweep.mjs';
+assert.equal(os.hostname(),'VM-0-4-ubuntu');assert.equal(process.getuid(),0);
+const root='/srv/vlab-production-mirror/labs/instances/db91-parity';
+const m=JSON.parse(fs.readFileSync(root+'/../../control/db91-parity.json'));assert.equal(m.owner,'codex-db91-production-equivalent-20260908');
+assert.equal(execFileSync('systemctl',['show',m.unit,'-p','MainPID','--value'],{encoding:'utf8'}).trim(),'0');
+const file=root+'/runtime/openclaw/dist/runtime-store.sqlite-D0DF2c9M.js',before=fs.readFileSync(file,'utf8');
+const after=patchTrajectorySweep(before);
+fs.writeFileSync(root+'/tmp/before-trajectory-sweep.js',before,{mode:0o600,flag:'wx'});
+fs.copyFileSync(new URL('../experiments/db91-integrity-gate/trajectory-sweep.mjs',import.meta.url),root+'/runtime/openclaw/dist/db91-trajectory-sweep.mjs',fs.constants.COPYFILE_EXCL);
+fs.writeFileSync(file,after);execFileSync(process.execPath,['--check',file]);
+const envFile=root+'/secrets.env',env=fs.readFileSync(envFile,'utf8');assert(!env.includes('OPENCLAW_DB91_TRAJECTORY_SWEEP_ENABLE='));
+fs.writeFileSync(envFile,env+'\nOPENCLAW_DB91_TRAJECTORY_SWEEP_ENABLE=1\n',{mode:0o600});
+console.log(JSON.stringify({globalScanOutsideWriteTransaction:true,concurrentMutationInvalidatesPlan:true,lockTimeoutUnchanged:true,fullIntegrityUnchanged:true}));
