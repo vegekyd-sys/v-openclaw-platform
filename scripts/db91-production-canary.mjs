@@ -62,7 +62,7 @@ if(mode==='setup'){
  }
  run('/usr/sbin/runuser',['-u','openclaw','--','/usr/bin/test','-x',root+'/workspace']);
  assert.equal(run('ss',['-H','-ltn','sport = :22894']),'','Canary port occupied');
- run('systemd-run',['--unit='+unit,'--property=Type=exec','--property=User=openclaw','--property=Group=openclaw','--property=UMask=0077','--property=CPUQuota=100%','--property=MemoryHigh=3G','--property=MemoryMax=4G','--property=KillMode=mixed','--property=TimeoutStopSec=45','--property=ProtectSystem=strict','--property=ProtectHome=read-only','--property=ReadWritePaths='+root,'--property=WorkingDirectory='+root+'/workspace',
+ run('systemd-run',['--unit='+unit,'--property=Type=exec','--property=User=openclaw','--property=Group=openclaw','--property=UMask=0077','--property=CPUQuota=100%','--property=MemoryHigh=3G','--property=MemoryMax=4G','--property=KillMode=mixed','--property=TimeoutStopSec=45','--property=ProtectSystem=strict','--property=ProtectHome=read-only','--property=PrivateTmp=true','--property=ReadWritePaths='+root,'--property=WorkingDirectory='+root+'/workspace',
   '--setenv=HOME='+root+'/home','--setenv=TMPDIR='+root+'/tmp','--setenv=OPENCLAW_DEBUG=1','--setenv=OPENCLAW_STATE_DIR='+root+'/state','--setenv=OPENCLAW_CONFIG_PATH='+cfgFile,
   '--setenv=OPENCLAW_DB91_INTEGRITY_ENABLE=1','--setenv=OPENCLAW_DB91_INTEGRITY_STATE_ROOT='+root+'/state','--setenv=OPENCLAW_DB91_READ_AHEAD_ENABLE=1','--setenv=OPENCLAW_DB91_STATE_READ_AHEAD_ENABLE=1','--setenv=OPENCLAW_DB91_TRAJECTORY_SWEEP_ENABLE=1','--setenv=OPENCLAW_WORKER_SESSION_AFFINITY_ENABLE=1',
   ...(trace?['/usr/bin/strace','-f','-s','160','-e','trace=openat,mkdir,access','-o',root+'/tmp/open-paths.log']:[]),
