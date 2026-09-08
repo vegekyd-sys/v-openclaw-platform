@@ -1,7 +1,7 @@
 // Versioned production cutover. Every mutation is bounded to this approved release.
 import fs from 'node:fs';import os from 'node:os';import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';import {execFileSync} from 'node:child_process';import {DatabaseSync} from 'node:sqlite';
-import {db91Release as release,oldDb91Core,planDb91Config,db91SignalPolicy,db91ReleaseUnit} from './db91-production-plan.mjs';
+import {db91Release as release,oldDb91Core,planDb91Config,db91SignalPolicy,db91ReleaseUnit,db91NativeDrainMs} from './db91-production-plan.mjs';
 import {trajectoryIndexName,trajectoryIndexSql,trajectoryBudgetSql} from '../experiments/db91-integrity-gate/trajectory-index.mjs';
 assert.equal(os.hostname(),'VM-8-2-ubuntu');assert.equal(process.getuid(),0);
 const [mode]=process.argv.slice(2);assert(['prepare','stop','apply','start','verify','rollback'].includes(mode));
@@ -40,7 +40,7 @@ if(mode==='prepare'){
  assert.equal(run('systemctl',['show',unit,'-p','KillSignal','--value']),'10','Controlled restart requires SIGUSR1');
  const entry=fs.readFileSync('/proc/'+p+'/cmdline','utf8').includes(release+'/core/')?release+'/core':oldDb91Core;
  run('/usr/sbin/runuser',['-u','openclaw','--',process.execPath,release+'/source/scripts/write-db91-restart-intent.mjs',entry,String(p)],{env:process.env});
- record('native-stop-requested',{beforePid:p,nativeDrainMs:30000,killMode:'mixed'});
+ record('native-stop-requested',{beforePid:p,nativeDrainMs:db91NativeDrainMs,killMode:'mixed',signal:'SIGUSR1'});
  run('systemctl',['stop',unit],{timeout:65000});assert.equal(pid(),0);record('stopped',{beforePid:p});
 }else if(mode==='apply'){
  assert.equal(pid(),0);const prepared=read(backup+'/prepared.json');

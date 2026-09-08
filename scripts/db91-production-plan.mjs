@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 export const db91Release='/opt/openclaw-experiments/db91-release-v2026.9.1-db91.1';
 export const oldDb91Core='/opt/openclaw-2026.9.1-v/openclaw';
 export const oldDb91Worker='/opt/openclaw-experiments/agent-worker-isolation-v1/releases/0.2.11-steer91';
+export const db91NativeDrainMs=5000;
 export function planDb91Config(bytes){
  const cfg=JSON.parse(bytes);let worker=0,core=0;
  const rewrite=value=>{
