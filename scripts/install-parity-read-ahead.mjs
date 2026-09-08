@@ -1,0 +1,18 @@
+import fs from 'node:fs';import os from 'node:os';import assert from 'node:assert/strict';import {execFileSync} from 'node:child_process';import {patchVerificationWorker} from '../experiments/db91-integrity-gate/read-ahead.mjs';
+assert.equal(os.hostname(),'VM-0-4-ubuntu');assert.equal(process.getuid(),0);
+const root='/srv/vlab-production-mirror/labs/instances/db91-parity',dist=root+'/runtime/openclaw/dist';
+const m=JSON.parse(fs.readFileSync(root+'/../../control/db91-parity.json'));
+assert.equal(m.owner,'codex-db91-production-equivalent-20260908');
+assert.equal(execFileSync('systemctl',['show',m.unit,'-p','MainPID','--value'],{encoding:'utf8'}).trim(),'0');
+const file=dist+'/state/openclaw-database-verify.worker.js',before=fs.readFileSync(file,'utf8');
+const patched=patchVerificationWorker(before);
+const bootFile=dist+'/db91-integrity-bootstrap.mjs',boot=fs.readFileSync(bootFile,'utf8');
+const anchor="stdio: ['ignore', 'ignore', 'ignore', 'ipc']";
+assert.equal(boot.split(anchor).length,2);
+const bootAfter=boot.replace(anchor,"stdio: ['ignore', 'ignore', env.OPENCLAW_DB91_PHASE_TRACE==='1'?'inherit':'ignore', 'ipc']");
+for(const [name,content] of [['verification-worker.js',before],['integrity-bootstrap.mjs',boot]])fs.writeFileSync(root+'/tmp/before-read-ahead-'+name,content,{mode:0o600,flag:'wx'});
+fs.writeFileSync(file,patched);fs.writeFileSync(bootFile,bootAfter);
+fs.writeFileSync(dist+'/db91-read-ahead.mjs',fs.readFileSync(new URL('../experiments/db91-integrity-gate/read-ahead.mjs',import.meta.url)),{mode:0o644,flag:'wx'});
+execFileSync(process.execPath,['--check',file]);execFileSync(process.execPath,['--check',bootFile]);
+fs.appendFileSync(root+'/secrets.env','\nOPENCLAW_DB91_PHASE_TRACE=1\nOPENCLAW_DB91_READ_AHEAD_ENABLE=1\n');
+console.log(JSON.stringify({installed:true,nativeFullCheckRetained:true,timeoutMs:300000,readAhead:true}));
