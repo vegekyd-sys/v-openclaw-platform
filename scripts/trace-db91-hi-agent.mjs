@@ -17,8 +17,10 @@ assert(fs.statfsSync(root).bavail*fs.statfsSync(root).bsize>3*1024**3);
 const thinking=process.env.DB91_HI_THINKING??'low';assert(['low','max'].includes(thinking));
 const fixtureName=process.argv.find(a=>/^hi-fixtures-\d+\.json$/.test(a));
 const fixtures=fixtureName?JSON.parse(fs.readFileSync(root+'/state/db91-c5-release-20260907/'+fixtureName)):null;
+const deferred=process.argv.includes('--deferred');assert(!deferred||!fixtures);
 if(fixtures){assert(shared);assert(fixtures.dm?.key?.startsWith('agent:makaron:')&&fixtures.group?.key?.startsWith('agent:makaron:'));}
 const stamp=Date.now(),report={startedAt:new Date().toISOString(),gatewayPid:pid,databaseBytes:fs.statSync(db).size,thinkingRequested:thinking,message:'hi',count:3,scope:(shared?'shared':'private')+'-real-agent-websocket-no-channel-delivery',jobs:[]};
+if(deferred){report.message='deferred read-only tool regression, not hi latency';report.count=1;}
 const output=root+(shared?'/state/db91-c5-release-20260907':'/workspace')+'/hi-'+stamp+'.json';
 const persist=()=>fs.writeFileSync(output,JSON.stringify(report,null,2),{mode:0o600});
 let current,client;
@@ -47,7 +49,7 @@ const resource=()=>({atMs:Date.now(),memoryCurrent:Number(fs.readFileSync(cgroup
 try{
   report.before=await compactStatus();assert.equal(report.before.pending,0);assert(report.before.workers.every(w=>w.ready&&!w.activeCount&&!w.queued));
   if(process.argv.includes('--status-only')){console.log(JSON.stringify(report.before));client.stop();process.exit(0);}
-  const modes=fixtures?['dm_fork','group_fork','group_same']:['cold_new','warm_same','warm_new'];
+  const modes=deferred?['directory_deferred']:fixtures?['dm_fork','group_fork','group_same']:['cold_new','warm_same','warm_new'];
   for(const [i,mode]of modes.entries()){
     assert.equal(JSON.parse(fs.readFileSync('/srv/vlab-production-mirror/labs/control/'+(shared?'integration':'db91-fix')+'.json')).owner,'codex-db91-contention-20260907');
     const sessionIndex=mode==='warm_same'?0:mode==='group_same'?1:i;
@@ -71,7 +73,8 @@ try{
     assert.equal((await call('sessions.messages.subscribe',{agentId:'makaron',key:sessionKey})).subscribed,true);
     j.resourceBefore=resource();j.start=Date.now();let finished=false;
     try{
-      const ack=await call('chat.send',{agentId:'makaron',sessionKey,message:'hi',thinking,deliver:false,idempotencyKey:j.runId,timeoutMs:180000});
+      const message=deferred?`执行只读工具目录验收，不发送任何外部消息，不修改文件或配置，不使用 exec。依次调用 tool_search（英文查询 sessions_list），tool_describe（读取 sessions_list 的完整 schema），再通过 tool_call 调用 sessions_list，limit=1、messageLimit=0。成功后只回复 ${j.runId}_PASS，不展示会话内容。必须真实调用上述三个目录工具，不要仅用文字描述。`:'hi';
+      const ack=await call('chat.send',{agentId:'makaron',sessionKey,message,thinking,deliver:false,idempotencyKey:j.runId,timeoutMs:180000});
       assert.equal(ack.runId,j.runId);j.admittedMs=Date.now()-j.start;
       while(Date.now()-j.start<180000){
         if(j.terminalError)throw Error('terminal '+j.terminalError);
@@ -87,6 +90,17 @@ try{
       assert.equal(h.sessionInfo?.agentRuntime?.id,'vlab-worker');
       const assistants=(h.messages??[]).filter(v=>v.role==='assistant');
       const last=assistants.at(-1);assert.equal(last?.model,'deepseek-v4-pro');assert.notEqual(last.stopReason,'error');
+      if(deferred){
+        const toolCalls=assistants.flatMap(a=>(a.content??[]).filter(c=>c.type==='toolCall'));
+        j.toolNames=toolCalls.map(t=>t.name);
+        for(const name of ['tool_search','tool_describe','tool_call'])assert(j.toolNames.includes(name),'missing '+name);
+        const results=(h.messages??[]).filter(m=>m.role==='toolResult');
+        for(const name of ['tool_search','tool_describe','tool_call'])assert(results.some(r=>r.toolName===name&&r.isError!==true),'missing successful result '+name);
+        const inner=toolCalls.filter(t=>t.name==='tool_call');
+        assert(inner.some(t=>JSON.stringify(t.arguments??{}).includes('sessions_list')),'wrong deferred target');
+        assert(last.content.filter(c=>c.type==='text').map(c=>c.text).join('').includes(j.runId+'_PASS'),'missing final token');
+        j.deferredToolVerified=true;
+      }
       j.historyVerifiedMs=Date.now()-j.start;j.userCount=users.length;j.lastUserIdempotencyVerified=true;j.model=last.model;
       j.assistantMetadata=assistants.map(v=>({model:v.model,stopReason:v.stopReason,contentTypes:Array.isArray(v.content)?v.content.map(c=>c.type):[typeof v.content],usage:v.usage?{input:v.usage.input,cacheRead:v.usage.cacheRead,output:v.usage.output}:undefined}));
       j.resourceAfter=resource();j.within10Seconds=j.firstTextMs<=10000;
