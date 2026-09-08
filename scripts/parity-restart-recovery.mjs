@@ -1,6 +1,7 @@
 // A real Agent/tool lifecycle test; the timer creates an in-flight boundary,
 // and is NEVER used as a performance/TTFT sample or background load.
 import fs from 'node:fs';import os from 'node:os';import assert from 'node:assert/strict';import {execFileSync} from 'node:child_process';
+import {originalRecoveryUserIndex} from '../experiments/db91-integrity-gate/recovery-proof.mjs';
 assert.equal(os.hostname(),'VM-0-4-ubuntu');
 const root='/srv/vlab-production-mirror/labs/instances/db91-parity';
 assert.equal(process.env.OPENCLAW_STATE_DIR,root+'/state');
@@ -39,7 +40,7 @@ try{
   const started=Date.now();let lastSummary;
   while(Date.now()-started<420000){
    assert.deepEqual(effectLines(),[report.runId],'Restart must not duplicate or erase the side effect');
-   const h=await history(),userIndex=h.messages.findLastIndex(x=>x.role==='user');assert.equal(h.messages[userIndex]?.idempotencyKey,report.runId+':user','No user resend is allowed');
+   const h=await history(),userIndex=originalRecoveryUserIndex(h.messages,report.runId);
    const turn=h.messages.slice(userIndex+1),last=turn.filter(x=>x.role==='assistant').at(-1),row=await state();
    const calls=turn.flatMap(x=>Array.isArray(x.content)?x.content.filter(c=>c.type==='toolCall'):[]);
    const writes=calls.filter(c=>c.name==='exec'&&JSON.stringify(c.arguments??{}).includes('EFFECT_WRITTEN '+report.runId));
