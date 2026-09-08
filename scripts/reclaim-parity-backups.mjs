@@ -10,7 +10,10 @@ const owner = 'codex-db91-production-equivalent-20260908';
 const lease = '/srv/vlab-production-mirror/labs/control/integration.json';
 assert.equal(JSON.parse(fs.readFileSync(lease)).owner, owner);
 const dir = '/srv/vlab-production-mirror/generations/candidate-official-update-final-20260902/tmp';
-const targets = [dir + '/makaron-agent.before-auth-refresh.sqlite', dir + '/vcodex-auth-migrate-backup'];
+assert([undefined,'synthetic'].includes(process.argv[2]));
+const targets = process.argv[2]==='synthetic'
+ ? ['native-gate-v1','native-gate-v2','native-gate-scale-v3'].map(n=>'/srv/vlab-production-mirror/labs/instances/db91-fix/tmp/'+n+'/state/agents/db91synthetic/agent/openclaw-agent.sqlite')
+ : [dir + '/makaron-agent.before-auth-refresh.sqlite', dir + '/vcodex-auth-migrate-backup'];
 const out = '/var/log/vlab-space-cleanup/20260908-production-equivalent-'+Date.now();
 fs.mkdirSync(out, {recursive:true, mode:0o700});
 const hash = async p => {const h=createHash('sha256');for await (const c of fs.createReadStream(p))h.update(c);return h.digest('hex');};
