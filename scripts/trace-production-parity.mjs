@@ -22,7 +22,7 @@ const stamp=Date.now(),directory=root+'/tmp/parity-results';fs.mkdirSync(directo
 const output=directory+'/'+arm+'-'+mode+'-'+stamp+'.json';
 const report={arm,mode,stamp,startedAt:new Date().toISOString(),gatewayPid:pid,workerLimits:wc,
   databaseBytes:fs.statSync(root+'/state/agents/makaron/agent/openclaw-agent.sqlite').size,
-  jobs:[],maxOwnActive:0,maxObservedTotalActive:0,completed:false};
+  jobs:[],samples:[],statusErrors:[],maxOwnActive:0,maxObservedTotalActive:0,completed:false};
 const persist=()=>fs.writeFileSync(output,JSON.stringify(report,null,2),{mode:0o600});
 const tracked=new Map();let client;
 const {GatewayClient}=await import(root+'/runtime/openclaw/dist/plugin-sdk/gateway-runtime.js');
@@ -39,6 +39,8 @@ await new Promise((resolve,reject)=>{
 });
 const call=(method,params={},timeoutMs=30000)=>client.request(method,params,{timeoutMs});
 async function status(){const s=await call('vlab.workers.status');const totalActive=s.workers.reduce((n,w)=>n+w.activeCount,0);report.maxObservedTotalActive=Math.max(report.maxObservedTotalActive,totalActive);return {totalActive,pending:s.pending,workers:s.workers.length};}
+let monitoring=true;
+const monitor=(async()=>{while(monitoring){try{report.samples.push({at:Date.now(),ownSubmitted:tracked.size,...await status()});}catch(e){report.statusErrors.push({at:Date.now(),error:String(e)});}if(monitoring)await new Promise(r=>setTimeout(r,1000));}})();
 async function run(label,key,tool=false,agentId='makaron'){
  const j={label,agentId,sessionKey:key,runId:'PARITY_'+stamp+'_'+report.jobs.length,start:Date.now(),tool};
  report.jobs.push(j);tracked.set(j.runId,j);report.maxOwnActive=Math.max(report.maxOwnActive,tracked.size);assert(tracked.size<=5);persist();
@@ -54,6 +56,7 @@ async function run(label,key,tool=false,agentId='makaron'){
   assert.equal(h.sessionInfo?.agentRuntime?.id,'vlab-worker');
   const users=h.messages.filter(x=>x.role==='user');assert.equal(users.at(-1).idempotencyKey,j.runId+':user');
   const last=h.messages.filter(x=>x.role==='assistant').at(-1);assert.equal(last.model,'deepseek-v4-pro');assert.notEqual(last.stopReason,'error');
+  j.usage=last.usage??null;
   if(tool){
    const turn=h.messages.slice(h.messages.findLastIndex(x=>x.role==='user')+1);
    const calls=turn.flatMap(x=>Array.isArray(x.content)?x.content.filter(c=>c.type==='toolCall'):[]).filter(c=>(c.name==='exec'||c.name==='tool_call')&&JSON.stringify(c.arguments??{}).includes(j.runId));
@@ -72,11 +75,15 @@ try{
  for(let i=0;i<(mode==='smoke'?1:5);i++){const key='agent:makaron:explicit:parity-'+stamp+'-'+i;await run('new-session-'+i,key);await run('revisit-'+i,key,true);}
  if(mode!=='smoke'){
   const key='agent:makaron:explicit:parity-'+stamp+'-4';for(let i=0;i<30;i++)await run('serial-warm-'+i,key,i%5===0);
-  if(mode==='full')for(let i=0;i<10;i++)await Promise.all([0,1,2,3,4].map(n=>run('c5-'+i+'-'+n,'agent:makaron:explicit:parity-'+stamp+'-c5-'+n,i%2===0)));
+  if(mode==='full')for(let i=0;i<10;i++){
+   const results=await Promise.allSettled([0,1,2,3,4].map(n=>run('c5-'+i+'-'+n,'agent:makaron:explicit:parity-'+stamp+'-c5-'+n,i%2===0)));
+   if(results.some(r=>r.status==='rejected'))throw new AggregateError(results.filter(r=>r.status==='rejected').map(r=>r.reason),'C5 batch failed; every sibling result retained');
+  }
  }
  report.completed=true;
 }finally{
  for(const j of report.jobs.filter(x=>!x.verified))await call('chat.abort',{sessionKey:j.sessionKey,runId:j.runId}).catch(()=>{});
+ monitoring=false;await monitor;
  report.finishedAt=new Date().toISOString();persist();client.stop();
 }
 console.log(JSON.stringify({phase:'completed',arm,output,jobs:report.jobs.length,completed:report.completed,maxOwnActive:report.maxOwnActive,maxObservedTotalActive:report.maxObservedTotalActive}));
