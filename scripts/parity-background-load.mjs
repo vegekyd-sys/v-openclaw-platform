@@ -44,7 +44,7 @@ try{
   const space=fs.statfsSync(root);assert(space.bavail*space.bsize>3.7*1024**3+3*(parent?.transcriptBytes??0),'Fork would violate data reserve');
   const key='agent:'+agentId+':explicit:parity-bg-'+tag+'-'+i;
   await call('sessions.create',{agentId,key,idempotencyKey:'BG_CREATE_'+tag+'_'+i,model:report.model,thinkingLevel:'low',
-    ...(parent?{parentSessionKey:parent.session_key,fork:true,forkFrom:'last-completed',emitCommandHooks:false,succeedsParent:false}:{})},120000);
+    ...(parent?{parentSessionKey:parent.session_key,fork:true,forkFrom:'last-completed',emitCommandHooks:false}:{})},120000);
   report.sessions.push({agentId,key,parentKey:parent?.session_key??null,parentTokens:parent?.tokens??null,parentTranscriptBytes:parent?.transcriptBytes??null});persist();
  }
  sampleLoop=(async()=>{while(!shouldStop()){
