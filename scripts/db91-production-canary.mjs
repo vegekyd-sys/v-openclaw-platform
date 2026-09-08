@@ -5,7 +5,8 @@ import {execFileSync} from 'node:child_process';import {DatabaseSync} from 'node
 import {trajectoryIndexSql,trajectoryIndexName} from '../experiments/db91-integrity-gate/trajectory-index.mjs';
 assert.equal(os.hostname(),'VM-8-2-ubuntu');assert.equal(process.getuid(),0);
 const release='/opt/openclaw-experiments/db91-release-v2026.9.1-db91.1',live='/home/openclaw/.openclaw';
-const root=live+'/backups/v2026.9.1-db91.1/canary',unit='v-db91-release-canary.service';
+const backupRoot=fs.realpathSync(live+'/backups/v2026.9.1-db91.1');
+const root=backupRoot+'/canary',unit='v-db91-release-canary.service';
 const [mode]=process.argv.slice(2);assert(['setup','start','verify','stop'].includes(mode));
 const run=(command,args,options={})=>execFileSync(command,args,{encoding:'utf8',timeout:30000,...options}).trim();
 const uid=Number(run('id',['-u','openclaw'])),gid=Number(run('id',['-g','openclaw']));assert(uid>0&&gid>0);
@@ -50,6 +51,15 @@ if(mode==='setup'){
  run('chown',['-R','openclaw:openclaw',root]);
  console.log(JSON.stringify({canaryPrepared:true,copiedAgent:'dealclaw',channels:0,cron:false,browser:false,productionUntouched:true}));
 }else if(mode==='start'){
+ // Backup contents stay root-only; the service group can traverse to its own
+ // canary directory, but cannot list or read the private backup files.
+ fs.chownSync(backupRoot,0,gid);fs.chmodSync(backupRoot,0o710);
+ const alias=live+'/backups/v2026.9.1-db91.1/canary';
+ for(const file of [cfgFile,overlayFile]){
+  const content=fs.readFileSync(file,'utf8');
+  if(content.includes(alias))fs.writeFileSync(file,content.split(alias).join(root),{mode:0o600});
+ }
+ run('/usr/sbin/runuser',['-u','openclaw','--','/usr/bin/test','-x',root+'/workspace']);
  assert.equal(run('ss',['-H','-ltn','sport = :22894']),'','Canary port occupied');
  run('systemd-run',['--unit='+unit,'--property=Type=exec','--property=User=openclaw','--property=Group=openclaw','--property=UMask=0077','--property=CPUQuota=100%','--property=MemoryHigh=3G','--property=MemoryMax=4G','--property=KillMode=mixed','--property=TimeoutStopSec=45','--property=ProtectSystem=strict','--property=ProtectHome=read-only','--property=ReadWritePaths='+root,'--property=WorkingDirectory='+root+'/workspace',
   '--setenv=HOME='+root+'/home','--setenv=TMPDIR='+root+'/tmp','--setenv=OPENCLAW_STATE_DIR='+root+'/state','--setenv=OPENCLAW_CONFIG_PATH='+cfgFile,
