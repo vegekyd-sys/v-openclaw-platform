@@ -89,6 +89,16 @@ export class WorkerPool {
         : undefined;
     this.workers = new Map();
     this.sessionOwners = new Map();
+    // worker-affinity.1: a bounded scheduling hint, never an ownership lease.
+    // A busy/retired Worker must not hold up admission to an available Worker.
+    this.sessionAffinityEnabled = options.sessionAffinityEnabled ??
+      process.env.OPENCLAW_WORKER_SESSION_AFFINITY_ENABLE === "1";
+    this.sessionAffinityTtlMs = options.sessionAffinityTtlMs ?? 180_000;
+    this.sessionAffinityMaxEntries = options.sessionAffinityMaxEntries ?? 1024;
+    if (!Number.isFinite(this.sessionAffinityTtlMs) || this.sessionAffinityTtlMs < 1 ||
+        !Number.isInteger(this.sessionAffinityMaxEntries) || this.sessionAffinityMaxEntries < 1)
+      throw new Error("invalid Worker session affinity bounds");
+    this.sessionAffinity = new Map();
     this.pending = [];
     this.nextRequestId = 1;
     this.nextSteerId = 1;
@@ -509,6 +519,29 @@ export class WorkerPool {
     });
   }
 
+  preferredSessionWorker(key) {
+    if (!this.sessionAffinityEnabled) return undefined;
+    const hint = this.sessionAffinity.get(key);
+    if (!hint) return undefined;
+    const worker = hint.worker;
+    if (Date.now() - hint.at >= this.sessionAffinityTtlMs ||
+        this.workers.get(worker.slot) !== worker || worker.retiring) {
+      this.sessionAffinity.delete(key);
+      return undefined;
+    }
+    if (!worker.ready || worker.ownerSessionKeys.size >= this.sessionsPerWorker ||
+        worker.active.size >= this.sessionsPerWorker || worker.queue.length > 0) return undefined;
+    return worker;
+  }
+
+  rememberSessionWorker(key, worker) {
+    if (!this.sessionAffinityEnabled) return;
+    this.sessionAffinity.delete(key);
+    this.sessionAffinity.set(key, {worker, at: Date.now()});
+    while (this.sessionAffinity.size > this.sessionAffinityMaxEntries)
+      this.sessionAffinity.delete(this.sessionAffinity.keys().next().value);
+  }
+
   async pump() {
     if (this.pumping || this.closing) {
       return;
@@ -527,7 +560,7 @@ export class WorkerPool {
         }
 
         if (!worker) {
-          worker = [...this.workers.values()].find(
+          worker = this.preferredSessionWorker(job.sessionOwnerKey) ?? [...this.workers.values()].find(
             (candidate) =>
               candidate.ready &&
               !candidate.retiring &&
@@ -557,6 +590,7 @@ export class WorkerPool {
         }
 
         this.pending.shift();
+        this.rememberSessionWorker(job.sessionOwnerKey, worker);
         if (!worker.ownerSessionKeys.has(job.sessionOwnerKey)) {
           worker.ownerSessionKeys.add(job.sessionOwnerKey);
           this.sessionOwners.set(job.sessionOwnerKey, worker);
@@ -1008,6 +1042,8 @@ export class WorkerPool {
   }
 
   onExit(worker, code, signal) {
+    for (const [key, hint] of this.sessionAffinity)
+      if (hint.worker === worker) this.sessionAffinity.delete(key);
     if (worker.retireTimer) {
       clearTimeout(worker.retireTimer);
       worker.retireTimer = null;
@@ -1267,5 +1303,6 @@ export class WorkerPool {
     );
     this.workers.clear();
     this.sessionOwners.clear();
+    this.sessionAffinity.clear();
   }
 }
