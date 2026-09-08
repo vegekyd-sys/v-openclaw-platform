@@ -8,6 +8,7 @@ const release='/opt/openclaw-experiments/db91-release-v2026.9.1-db91.1',live='/h
 const backupRoot=fs.realpathSync(live+'/backups/v2026.9.1-db91.1');
 const root=backupRoot+'/canary',unit='v-db91-release-canary.service';
 const [mode]=process.argv.slice(2);assert(['setup','start','verify','stop'].includes(mode));
+const trace=process.argv.includes('--trace');
 const run=(command,args,options={})=>execFileSync(command,args,{encoding:'utf8',timeout:30000,...options}).trim();
 const uid=Number(run('id',['-u','openclaw'])),gid=Number(run('id',['-g','openclaw']));assert(uid>0&&gid>0);
 const cfgFile=root+'/state/openclaw.json',overlayFile=root+'/state/worker-openclaw.json';
@@ -17,7 +18,7 @@ if(mode==='setup'){
  const meta=JSON.parse(fs.readFileSync(backup+'/manifest.json'));
  assert(meta.databases.some(x=>x.path==='agents/dealclaw/agent/openclaw-agent.sqlite'));
  const cfg=JSON.parse(fs.readFileSync(live+'/openclaw.json'));
- for(const directory of ['state/agents/dealclaw/agent','workspace','home','tmp'])fs.mkdirSync(root+'/'+directory,{recursive:true,mode:0o700});
+ for(const directory of ['state/agents/dealclaw/agent','state/state','workspace','home','tmp'])fs.mkdirSync(root+'/'+directory,{recursive:true,mode:0o700});
  const dbFile=root+'/state/agents/dealclaw/agent/openclaw-agent.sqlite';
  fs.copyFileSync(backup+'/agents/dealclaw/agent/openclaw-agent.sqlite',dbFile);
  const db=new DatabaseSync(dbFile);
@@ -62,8 +63,9 @@ if(mode==='setup'){
  run('/usr/sbin/runuser',['-u','openclaw','--','/usr/bin/test','-x',root+'/workspace']);
  assert.equal(run('ss',['-H','-ltn','sport = :22894']),'','Canary port occupied');
  run('systemd-run',['--unit='+unit,'--property=Type=exec','--property=User=openclaw','--property=Group=openclaw','--property=UMask=0077','--property=CPUQuota=100%','--property=MemoryHigh=3G','--property=MemoryMax=4G','--property=KillMode=mixed','--property=TimeoutStopSec=45','--property=ProtectSystem=strict','--property=ProtectHome=read-only','--property=ReadWritePaths='+root,'--property=WorkingDirectory='+root+'/workspace',
-  '--setenv=HOME='+root+'/home','--setenv=TMPDIR='+root+'/tmp','--setenv=OPENCLAW_STATE_DIR='+root+'/state','--setenv=OPENCLAW_CONFIG_PATH='+cfgFile,
+  '--setenv=HOME='+root+'/home','--setenv=TMPDIR='+root+'/tmp','--setenv=OPENCLAW_DEBUG=1','--setenv=OPENCLAW_STATE_DIR='+root+'/state','--setenv=OPENCLAW_CONFIG_PATH='+cfgFile,
   '--setenv=OPENCLAW_DB91_INTEGRITY_ENABLE=1','--setenv=OPENCLAW_DB91_INTEGRITY_STATE_ROOT='+root+'/state','--setenv=OPENCLAW_DB91_READ_AHEAD_ENABLE=1','--setenv=OPENCLAW_DB91_STATE_READ_AHEAD_ENABLE=1','--setenv=OPENCLAW_DB91_TRAJECTORY_SWEEP_ENABLE=1','--setenv=OPENCLAW_WORKER_SESSION_AFFINITY_ENABLE=1',
+  ...(trace?['/usr/bin/strace','-f','-s','160','-e','trace=openat,mkdir,access','-o',root+'/tmp/open-paths.log']:[]),
   '/opt/node-v22.23.1/bin/node','--max-old-space-size=3072',release+'/core/dist/index.js','gateway','--port','22894']);
  console.log(JSON.stringify({canaryStarted:true,unit,port:22894,liveGatewayNotRestarted:true}));
 }else if(mode==='verify'){
