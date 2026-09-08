@@ -23,7 +23,7 @@ const now=Date.now(),age=14*24*3600*1000;
 const add=db.prepare('INSERT INTO trajectory_runtime_events VALUES(?,?,?,?,?)');
 function reset(){db.exec('DELETE FROM trajectory_runtime_events');for(const [session,run,timestamp,payload]of [['expired','old',now-age-1000,'old'],['oldest','r1',now-5000,'中文'.repeat(100)],['newer','r2',now-1000,'new'.repeat(100)],['current','previous',now-2000,'prev']])add.run(session,0,run,JSON.stringify({payload}),timestamp);}
 const rows=()=>db.prepare('SELECT * FROM trajectory_runtime_events ORDER BY session_id,seq').all();
-const event={runId:'current-run',timestamp:new Date(now).toISOString(),payload:'工具🙂'.repeat(100)};
+const event={runId:'current-run',ts:new Date(now).toISOString(),payload:'工具🙂'.repeat(100)};
 let cases=0;
 try{
  for(const [globalLimit,sessionLimit]of [[1e8,1e7],[1000,1e7],[1,1e7],[1000,50]]){
