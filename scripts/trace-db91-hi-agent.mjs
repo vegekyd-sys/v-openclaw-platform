@@ -50,7 +50,9 @@ try{
   for(const [i,mode]of modes.entries()){
     assert.equal(JSON.parse(fs.readFileSync('/srv/vlab-production-mirror/labs/control/'+(shared?'integration':'db91-fix')+'.json')).owner,'codex-db91-contention-20260907');
     const sessionIndex=mode==='warm_same'?0:mode==='group_same'?1:i;
-    const sessionKey='agent:makaron:explicit:db91-hi-'+stamp+'-'+thinking+'-'+sessionIndex;
+    // Use a synthetic, non-deliverable group peer while retaining native group classification.
+    const prefix=fixtures&&mode.startsWith('group_')?'agent:makaron:feishu:group:':'agent:makaron:explicit:';
+    const sessionKey=prefix+'db91-hi-'+stamp+'-'+thinking+'-'+sessionIndex;
     const j={mode,runId:'DB91_HI_'+stamp+'_'+thinking+'_'+mode,sessionKey,start:Date.now(),events:{},resourceBefore:resource()};
     report.jobs.push(j);current=j;persist();
     if(fixtures&&mode!=='group_same'){
@@ -59,6 +61,10 @@ try{
       await call('sessions.create',{key:sessionKey,agentId:'makaron',parentSessionKey:parent.key,fork:true,forkFrom:'last-completed',emitCommandHooks:false,succeedsParent:false,thinkingLevel:thinking},120000);
       j.forkSetupMs=Date.now()-forkAt;
       j.parentKeyHash=createHash('sha256').update(parent.key).digest('hex').slice(0,12);
+      const inventory=await call('sessions.list',{limit:1000});
+      const entry=(inventory.sessions??[]).find(s=>(s.key??s.sessionKey)===sessionKey);
+      assert(entry,'forked session missing from native inventory');j.fixtureKind=entry.kind;j.fixtureChatType=entry.chatType;
+      if(mode==='group_fork')assert.equal(entry.chatType,'group','group fixture lost native group classification');
     }
     assert.equal((await call('sessions.messages.subscribe',{agentId:'makaron',key:sessionKey})).subscribed,true);
     j.start=Date.now();let finished=false;
