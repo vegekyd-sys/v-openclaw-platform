@@ -30,13 +30,13 @@ const spec=[
 ];
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const manifest={releaseId,upstream:'2026.9.1',workerBase:'0.2.11-steer91',nodeVersion:'22.23.1',
- platformCommit:execFileSync('git',['-C',root+'/source','rev-parse','HEAD'],{encoding:'utf8'}).trim(),
+ platformCommit:execFileSync('git',['-c','safe.directory='+root+'/source','-C',root+'/source','rev-parse','HEAD'],{encoding:'utf8'}).trim(),
  testedSourceCommit:coordinator.sourceCommit,testedRuntimeSha256:'386187b8478e10247825a769fb8874f49490ba1e85022a915b1265c4cca74b8f6',
  files:[],acceptance:{foreground:90,realExec:36,backgroundCompleted:391,inFlightRecovery:true,duplicateEffects:0},
  excludes:['all state and credentials','all VLab config','temporary inspector/prototype observer','database-open and Kysely timing-only instrumentation'],
  limitations:['two background first replies exceeded 80s','final same-memory cold A/B/A not complete','channel acceptance required in production'],
  migration:'additive trajectory runtime byte-budget index; original retention policy and integrity checks unchanged'};
-assert.equal(execFileSync('git',['-C',root+'/source','status','--porcelain'],{encoding:'utf8'}).trim(),'');
+assert.equal(execFileSync('git',['-c','safe.directory='+root+'/source','-C',root+'/source','status','--porcelain'],{encoding:'utf8'}).trim(),'');
 fs.mkdirSync(directory,{mode:0o755});
 for(const [kind,name,baseline]of spec){
  const input=root+'/runtime/'+(kind==='core'?'openclaw':'production-worker')+'/'+name;
