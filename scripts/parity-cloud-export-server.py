@@ -10,6 +10,8 @@ import socket
 import subprocess
 import threading
 import time
+import sys
+import re
 
 assert socket.gethostname() == 'VM-8-2-ubuntu' and os.geteuid() == 0
 os.umask(0o077)
@@ -19,6 +21,29 @@ assert meta.get('exportSealedAt') and len(meta['databases'])==9
 files={'/manifest.json':root/'manifest.json'}
 files.update({'/'+r['file']:root/r['file'] for r in meta['databases']})
 code={'/core.tar.zst':pathlib.Path('/opt/openclaw-2026.9.1-v/openclaw'),'/worker.tar.zst':pathlib.Path('/opt/openclaw-experiments/agent-worker-isolation-v1/releases/0.2.11-steer91')}
+if '--profile-only' in sys.argv:
+    # Data stays in the cloud. Only these explicitly selected configuration
+    # sections and prompt bootstrap files are exported, never auth/channel data.
+    cfg=json.loads(pathlib.Path('/home/openclaw/.openclaw/openclaw.json').read_text())
+    profile={'agents':cfg['agents'],'session':cfg.get('session',{}),
+             'worker':cfg['plugins']['entries']['vlab-agent-worker-isolation']['config'],
+             'capturedAt':time.time(),'bootstrap':{}}
+    workspaces={cfg['agents']['defaults']['workspace']}
+    workspaces.update(a['workspace'] for a in cfg['agents']['entries'].values() if 'workspace' in a)
+    for workspace in sorted(workspaces):
+        items={}
+        for name in ['AGENTS.md','SOUL.md','USER.md','IDENTITY.md','TOOLS.md','MEMORY.md','HEARTBEAT.md','BOOTSTRAP.md']:
+            p=pathlib.Path(workspace)/name
+            if not p.is_file():continue
+            assert p.stat().st_size<4*1024*1024
+            content=p.read_text()
+            assert not re.search(r'(?:sk-[A-Za-z0-9_-]{20,}|-----BEGIN .*PRIVATE KEY-----|ghp_[A-Za-z0-9]{20,})',content), 'Credential-like bootstrap content; manual review required'
+            items[name]={'content':content,'sha256':hashlib.sha256(content.encode()).hexdigest()}
+        profile['bootstrap'][workspace]=items
+    target=root/'production-profile.json'
+    target.write_text(json.dumps(profile,ensure_ascii=False))
+    files={'/production-profile.json':target}
+    code={}
 token=secrets.token_hex(32)
 tokenfile=root/'transfer-token'
 with tokenfile.open('x') as f:f.write(token)
