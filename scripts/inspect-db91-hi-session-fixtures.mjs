@@ -20,10 +20,22 @@ try{
   const group=eligible.filter(r=>key(r).includes(':group:')||r.chatType==='group'||r.kind==='group');
   const dm=eligible.filter(r=>key(r)==='agent:makaron:main'||key(r).includes(':direct:')||r.chatType==='direct'||r.kind==='direct');
   const choose=items=>items.sort((a,b)=>(b.totalTokens??0)-(a.totalTokens??0)||(b.updatedAt??0)-(a.updatedAt??0))[0];
-  const main=eligible.find(r=>key(r)==='agent:makaron:main')??choose(dm),room=choose(group);
+  const main=eligible.find(r=>key(r)==='agent:makaron:main')??choose(dm);
+  // Recent delivery-mirror-only sessions are not historical group fixtures.
+  const candidates=group.sort((a,b)=>(b.updatedAt??0)-(a.updatedAt??0)).slice(0,20),scored=[];
+  for(const entry of candidates){
+    const h=await client.request('chat.history',{agentId:'makaron',sessionKey:key(entry),limit:50},{timeoutMs:20000});
+    const messages=h.messages??[];
+    const userCount=messages.filter(m=>m.role==='user').length;
+    const modelReplyCount=messages.filter(m=>m.role==='assistant'&&m.model==='deepseek-v4-pro').length;
+    scored.push({entry,userCount,modelReplyCount,messageCount:messages.length});
+  }
+  const best=scored.filter(s=>s.userCount&&s.modelReplyCount).sort((a,b)=>b.userCount-a.userCount||b.messageCount-a.messageCount)[0];
+  assert(best,'no genuine user/model group history among bounded candidates');
+  const room=best.entry;
   const compact=r=>r?{key:key(r),sessionId:r.sessionId,kind:r.kind,chatType:r.chatType,channel:r.channel??r.lastChannel,
     totalTokens:r.totalTokens,updatedAt:r.updatedAt,thinkingLevel:r.thinkingLevel,agentRuntime:r.agentRuntime?.id}:null;
-  const selected={createdAt:new Date().toISOString(),dm:compact(main),group:compact(room)};
+  const selected={createdAt:new Date().toISOString(),dm:compact(main),group:{...compact(room),historyProof:{userCount:best.userCount,modelReplyCount:best.modelReplyCount,messageCount:best.messageCount}}};
   const file=root+'/state/db91-c5-release-20260907/hi-fixtures-'+Date.now()+'.json';
   fs.writeFileSync(file,JSON.stringify(selected,null,2),{mode:0o600,flag:'wx'});
   const sanitize=r=>r?{...r,key:undefined,sessionId:undefined,keyHash:createHash('sha256').update(r.key).digest('hex').slice(0,12)}:null;
