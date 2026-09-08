@@ -3,12 +3,14 @@ import fs from 'node:fs';import os from 'node:os';import assert from 'node:asser
 assert.equal(os.hostname(),'VM-8-2-ubuntu');assert.equal(process.getuid(),0);
 const root='/home/openclaw/.openclaw',core='/opt/openclaw-2026.9.1-v/openclaw',dir=root+'/backups/worker-affinity-production-20260908';
 const arm=process.argv[2];assert(['A','B','smokeA','smokeB'].includes(arm));
+const serialOnly=process.argv.includes('--serial-only');
 const pid=execFileSync('systemctl',['show','openclaw-gateway.service','-p','MainPID','--value'],{encoding:'utf8'}).trim();assert(Number(pid)>1);
 for(const e of fs.readFileSync('/proc/'+pid+'/environ','utf8').split('\0')){const i=e.indexOf('=');if(i>0)process.env[e.slice(0,i)]=e.slice(i+1);}
 assert.equal(process.env.OPENCLAW_WORKER_SESSION_AFFINITY_ENABLE==='1',arm.endsWith('B'));
 const cfg=JSON.parse(fs.readFileSync(root+'/openclaw.json'));assert.equal(cfg.gateway.port,22793);const wc=cfg.plugins.entries['vlab-agent-worker-isolation'].config;
 assert.equal(cfg.mcp.servers['universal-memory'].enabled,false);assert.equal(JSON.parse(fs.readFileSync(wc.workerConfigPath)).mcp.servers['universal-memory'].enabled,false);
 const stamp=Date.now(),report={version:'worker-affinity.production.1',arm,startedAt:new Date().toISOString(),gatewayPid:pid,umDisabled:true,workerLimits:{min:wc.minWorkers,max:wc.maxWorkers,slots:wc.sessionsPerWorker},databaseBytes:fs.statSync(root+'/agents/makaron/agent/openclaw-agent.sqlite').size,jobs:[],maxOwnActive:0,maxObservedTotalActive:0};
+report.serialOnly=serialOnly;
 const output=dir+'/affinity-'+arm+'-'+stamp+'.json',persist=()=>fs.writeFileSync(output,JSON.stringify(report,null,2),{mode:0o600});
 const tracked=new Map();let client;
 const{GatewayClient}=await import(core+'/dist/plugin-sdk/gateway-runtime.js');
@@ -32,7 +34,7 @@ async function run(label,key,tool=false){
 }
 try{
  for(let i=0;i<(arm.startsWith('smoke')?1:5);i++){const key='agent:makaron:explicit:affinity-prod-'+stamp+'-'+i;await run('new-session-'+i,key);await run('revisit-'+i,key,true);}
- if(!arm.startsWith('smoke')){const key='agent:makaron:explicit:affinity-prod-'+stamp+'-4';for(let i=0;i<30;i++)await run('serial-warm-'+i,key,i%5===0);for(let i=0;i<10;i++)await Promise.all([0,1,2,3,4].map(n=>run('c5-'+i+'-'+n,'agent:makaron:explicit:affinity-prod-'+stamp+'-c5-'+n,i%2===0)));}
+ if(!arm.startsWith('smoke')){const key='agent:makaron:explicit:affinity-prod-'+stamp+'-4';for(let i=0;i<30;i++)await run('serial-warm-'+i,key,i%5===0);if(!serialOnly)for(let i=0;i<10;i++)await Promise.all([0,1,2,3,4].map(n=>run('c5-'+i+'-'+n,'agent:makaron:explicit:affinity-prod-'+stamp+'-c5-'+n,i%2===0)));}
  report.completed=true;
 }finally{for(const j of tracked.values())await call('chat.abort',{sessionKey:j.sessionKey,runId:j.runId}).catch(()=>{});report.finishedAt=new Date().toISOString();persist();client.stop();}
 console.log(JSON.stringify({phase:'completed',arm,output,jobs:report.jobs.length,completed:report.completed,maxOwnActive:report.maxOwnActive,maxObservedTotalActive:report.maxObservedTotalActive}));
