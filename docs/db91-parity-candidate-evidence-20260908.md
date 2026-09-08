@@ -65,7 +65,15 @@
 - 证据：`tmp/parity-results/B-full-1788882219184.json`、`background-I12-B1.json`、`coordinator-I12-B1.json`、`tmp/I12-B1-native-runtime.log`。
 - `i12-recovery1`：真实 exec 已写入唯一标记后、仍 active 时调用旧 labctl restart。Gateway PID 1724334 → 1726039，ready 等待 134824 ms；420 秒验证窗口内没有新最终回复，标记未重复，恢复验收失败。
 - 定位：旧 labctl restart 直接 systemctl stop/start；原生 SIGTERM 只有消费到 restart intent 才走重启恢复，否则为 stop。KillMode=control-group 又把 SIGTERM 同时送给 Worker，其退出后插件补写 interrupted tool result 并终结为 failed，启动恢复不会选中该失败会话。生产服务只读核对也为 control-group，但本轮不改生产。
-- 已提交仅限本实例的管理入口候选：KillMode=mixed、labctl restart 先通过原生 API 写入精确 PID 的 restart intent（waitMs=0），再按原入口停止/启动；其他实例保持原行为。需要新的真实重启验证，不能以代码分析宣布恢复已修好。
+- 已提交仅限本实例的管理入口候选：KillMode=mixed、labctl restart 先通过原生 API 写入精确 PID 的 restart intent（force=true、waitMs=0），再按原入口停止/启动；其他实例保持原行为。force 显式选择本次受控进行中恢复边界；仅 waitMs=0 在原生实现中会回落默认排空等待，并不代表立即重启。
+
+## 2026-09-09 进行中重启恢复实测
+
+- `i12-recovery2`：使用新入口，在唯一文件已经写入一行、真实 Agent 仍 active 时执行重启。旧 Gateway 日志先记录原生 restart intent、标记 1 个 interrupted main session，随后才中止 Worker；关闭耗时 4702 ms，未放宽 systemd 停止超时或原生完整性检查期限。
+- Gateway PID 1726686 → 1727378；新进程 ready 等待 101423 ms。自动续跑产生新进程启动后的最终回复；没有用户重发；跨原始请求及原生内部恢复消息统计，原始写入工具调用 1 次、唯一标记 1 行。验证 `completed=true`。
+- 恢复判定保留原始用户消息，额外 user-role 消息只允许原生 `internal_system` / `main_session_restart_recovery` 来源；不允许重复原始请求或新增普通用户消息。不是缩小到最后一条用户消息后统计副作用。
+- 当前运行时代码包含取消消息的 EPIPE 防护。已启动 `I12-B2-restarted`，在恢复后的同一进程补跑完整 90 前台 / 16 后台矩阵。此轮不是文件缓存冷启动样本；新防护的负载取消验证、同为 12/14 GiB 的控制组及冷启动重复仍待完成。
+- 证据：实例内 `tmp/parity-results/recovery-i12-recovery2.json` 及对应新旧 PID 的 systemd journal。生产 V 与其他实例未修改。
 
 ## 必须保留的限制与纠正
 
