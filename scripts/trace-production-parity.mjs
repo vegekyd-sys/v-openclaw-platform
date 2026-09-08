@@ -63,7 +63,7 @@ async function run(label,key,tool=false,agentId='makaron'){
    assert(JSON.stringify(result).includes(j.runId)&&/\d{10}/.test(JSON.stringify(result)));j.toolVerified=true;
   }
   const idleStart=Date.now();let idle=false;
-  while(Date.now()-idleStart<60000){const s=await call('sessions.list',{limit:3000});const row=s.sessions.find(x=>x.key===key);if(row&&row.hasActiveRun===false){idle=true;break;}await new Promise(r=>setTimeout(r,500));}
+  while(Date.now()-idleStart<60000){const s=await call('sessions.list',{limit:100});const row=s.sessions.find(x=>x.key===key);if(row&&row.hasActiveRun===false){idle=true;break;}await new Promise(r=>setTimeout(r,500));}
   j.idleWaitMs=Date.now()-idleStart;assert(idle,'own session did not reach native idle');j.verified=true;j.slow=j.firstTextMs>=80000;
   console.log(JSON.stringify({phase:j.slow?'slow-reply':'reply',arm,label,runId:j.runId,firstTextMs:j.firstTextMs,finalMs:j.finalMs,toolVerified:j.toolVerified,idleWaitMs:j.idleWaitMs,loadBefore:j.loadBefore}));
  }catch(e){j.failure=String(e);throw e;}finally{tracked.delete(j.runId);persist();}
