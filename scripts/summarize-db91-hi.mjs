@@ -53,10 +53,11 @@ const output=[...jobs.values()].map(j=>{
   return {mode:j.mode,runId:j.runId,firstTextMs:j.firstTextMs,finalEventMs:j.finalEventMs,within10Seconds:j.within10Seconds,error:j.error,
     userCount:j.userCount,lastUserIdempotencyVerified:j.lastUserIdempotencyVerified,segments,calls,
     nativePhases:j.nativePhases.map(p=>({...p,atMs:relative(p.atMs)})),
+    deepStages:j.stages.filter(s=>s.stage.startsWith('deep-')).map(({runId,...p})=>({...p,atMs:relative(p.atMs)})),
     preProviderStages:j.stages.filter(s=>!s.call).map(({stage,atMs,cpuUserUs,cpuSystemUs,pid,eventLoopLagMaxMs,eventLoopUtilization})=>({stage,atMs:relative(atMs),cpuUserUs,cpuSystemUs,pid,eventLoopLagMaxMs,eventLoopUtilization})),
     resourceDelta:cpu0&&cpu1?{usageMs:(cpu1.usage_usec-cpu0.usage_usec)/1000,throttledMs:(cpu1.throttled_usec-cpu0.throttled_usec)/1000,throttledPeriods:cpu1.nr_throttled-cpu0.nr_throttled,
       memoryPeakSample:Math.max(j.resourceBefore.memoryCurrent,j.resourceAfter.memoryCurrent),oomKills:j.resourceAfter.memoryEvents.oom_kill-j.resourceBefore.memoryEvents.oom_kill}:undefined,
     assistantMetadata:j.assistantMetadata};
 });
 console.log(JSON.stringify({source:file,databaseBytes:r.databaseBytes,thinkingRequested:r.thinkingRequested,completed:r.completed??false,gatewayPid:r.gatewayPid,resourceLimits:r.resourceLimits,historyFixture:r.historyFixture,
-  notes:['Wire-to-headers includes remote wait and network, not pure inference time.','First body is when SDK consumes its first existing stream chunk, not a packet timestamp.','Missing segments remain null.','Cold means first measured Agent turn after Gateway restart and readiness; not empty database.',shared?'Shared VLab configuration is unchanged; this is not external channel delivery.':'Private instance is CPU 1 core, MemoryHigh 2GiB, MemoryMax 3GiB.'],jobs:output}));
+  notes:['Wire-to-headers includes remote wait and network, not pure inference time.','First body is when SDK consumes its first existing stream chunk, not a packet timestamp.','Missing segments remain null.','Cold means first measured Agent turn after Gateway restart and readiness; not empty database.',shared?'Shared VLab real Agent without external channel delivery; consult candidate manifest for configuration differences.':'Private instance is CPU 1 core, MemoryHigh 2GiB, MemoryMax 3GiB.'],jobs:output}));
