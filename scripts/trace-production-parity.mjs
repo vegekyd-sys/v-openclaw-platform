@@ -7,8 +7,9 @@ import {execFileSync} from 'node:child_process';
 assert.equal(os.hostname(),'VM-0-4-ubuntu');
 const root='/srv/vlab-production-mirror/labs/instances/db91-parity';
 assert.equal(process.env.OPENCLAW_STATE_DIR,root+'/state');
-const [arm='A',mode='smoke']=process.argv.slice(2);
+const [arm='A',mode='smoke',backgroundTag]=process.argv.slice(2);
 assert(['A','B','A2'].includes(arm));assert(['smoke','serial','full'].includes(mode));
+if(backgroundTag)assert(/^[A-Za-z0-9-]{1,40}$/.test(backgroundTag));
 const cfg=JSON.parse(fs.readFileSync(root+'/state/openclaw.json'));
 assert.equal(cfg.gateway.port,26340);assert.equal(cfg.mcp.servers['universal-memory'].enabled,false);
 const wc=cfg.plugins.entries['vlab-agent-worker-isolation'].config;
@@ -20,10 +21,12 @@ const env=fs.readFileSync('/proc/'+pid+'/environ','utf8').split('\0');
 assert(env.includes('OPENCLAW_WORKER_SESSION_AFFINITY_ENABLE=1'));
 const stamp=Date.now(),directory=root+'/tmp/parity-results';fs.mkdirSync(directory,{recursive:true,mode:0o700});
 const output=directory+'/'+arm+'-'+mode+'-'+stamp+'.json';
-const report={arm,mode,stamp,startedAt:new Date().toISOString(),gatewayPid:pid,workerLimits:wc,
+const report={arm,mode,backgroundTag,stamp,startedAt:new Date().toISOString(),gatewayPid:pid,workerLimits:wc,
   databaseBytes:fs.statSync(root+'/state/agents/makaron/agent/openclaw-agent.sqlite').size,
   jobs:[],samples:[],statusErrors:[],maxOwnActive:0,maxObservedTotalActive:0,completed:false};
-const persist=()=>fs.writeFileSync(output,JSON.stringify(report,null,2),{mode:0o600});
+const persist=()=>{const tmp=output+'.'+process.pid+'.tmp';fs.writeFileSync(tmp,JSON.stringify(report,null,2),{mode:0o600});fs.renameSync(tmp,output);};
+const backgroundFile=backgroundTag?directory+'/background-'+backgroundTag+'.json':null;
+if(backgroundFile){const b=JSON.parse(fs.readFileSync(backgroundFile));assert(b.ready&&!b.finishedAt&&b.errors.length===0,'Sixteen background agents must be active before the foreground matrix');}
 const tracked=new Map();let client;
 const {GatewayClient}=await import(root+'/runtime/openclaw/dist/plugin-sdk/gateway-runtime.js');
 await new Promise((resolve,reject)=>{
@@ -40,7 +43,7 @@ await new Promise((resolve,reject)=>{
 const call=(method,params={},timeoutMs=30000)=>client.request(method,params,{timeoutMs});
 async function status(){const s=await call('vlab.workers.status');const totalActive=s.workers.reduce((n,w)=>n+w.activeCount,0);report.maxObservedTotalActive=Math.max(report.maxObservedTotalActive,totalActive);return {totalActive,pending:s.pending,workers:s.workers.length};}
 let monitoring=true;
-const monitor=(async()=>{while(monitoring){try{report.samples.push({at:Date.now(),ownSubmitted:tracked.size,...await status()});}catch(e){report.statusErrors.push({at:Date.now(),error:String(e)});}if(monitoring)await new Promise(r=>setTimeout(r,1000));}})();
+const monitor=(async()=>{while(monitoring){try{report.samples.push({at:Date.now(),ownSubmitted:tracked.size,...await status()});if(backgroundFile){const b=JSON.parse(fs.readFileSync(backgroundFile));if(b.finishedAt||b.errors.length)report.backgroundFailure='Background run ended or failed before foreground completion';}}catch(e){report.statusErrors.push({at:Date.now(),error:String(e)});}if(monitoring)await new Promise(r=>setTimeout(r,1000));}})();
 async function run(label,key,tool=false,agentId='makaron'){
  const j={label,agentId,sessionKey:key,runId:'PARITY_'+stamp+'_'+report.jobs.length,start:Date.now(),tool};
  report.jobs.push(j);tracked.set(j.runId,j);report.maxOwnActive=Math.max(report.maxOwnActive,tracked.size);assert(tracked.size<=5);persist();
@@ -50,7 +53,7 @@ async function run(label,key,tool=false,agentId='makaron'){
   const message=tool?'本次独立验收编号 '+j.runId+'。请现在重新调用本机 exec 工具执行这条只读命令：'+command+' 。必须执行本轮命令，不能复用上轮结果，也不能只口头说完成。不要读写其他文件或调用网络工具。最终只回复命令的实际输出。':'hi';
   const ack=await call('chat.send',{agentId,sessionKey:key,message,thinking:'low',deliver:false,idempotencyKey:j.runId,timeoutMs:180000});
   j.ack={runId:ack.runId,status:ack.status,queued:ack.queued};persist();
-  while(Date.now()-j.start<180000){if(j.error)throw Error(j.error);if(j.firstTextMs!==undefined&&j.finalMs!==undefined)break;await new Promise(r=>setTimeout(r,250));}
+  while(Date.now()-j.start<180000){if(report.backgroundFailure)throw Error(report.backgroundFailure);if(j.error)throw Error(j.error);if(j.firstTextMs!==undefined&&j.finalMs!==undefined)break;await new Promise(r=>setTimeout(r,250));}
   assert(Number.isFinite(j.firstTextMs)&&Number.isFinite(j.finalMs),'native visible final deadline');
   const h=await call('chat.history',{agentId,sessionKey:key,limit:50});
   assert.equal(h.sessionInfo?.agentRuntime?.id,'vlab-worker');
@@ -80,10 +83,12 @@ try{
    if(results.some(r=>r.status==='rejected'))throw new AggregateError(results.filter(r=>r.status==='rejected').map(r=>r.reason),'C5 batch failed; every sibling result retained');
   }
  }
+ if(backgroundTag&&mode==='full')assert(report.samples.some(s=>s.totalActive>=21&&s.ownSubmitted===5),'Did not observe actual sixteen-background plus five-foreground concurrency');
  report.completed=true;
 }finally{
  for(const j of report.jobs.filter(x=>!x.verified))await call('chat.abort',{sessionKey:j.sessionKey,runId:j.runId}).catch(()=>{});
  monitoring=false;await monitor;
+ if(backgroundTag){const marker=directory+'/background-'+backgroundTag+'.stop';if(!fs.existsSync(marker))fs.writeFileSync(marker,'foreground matrix ended\n',{mode:0o600,flag:'wx'});}
  report.finishedAt=new Date().toISOString();persist();client.stop();
 }
 console.log(JSON.stringify({phase:'completed',arm,output,jobs:report.jobs.length,completed:report.completed,maxOwnActive:report.maxOwnActive,maxObservedTotalActive:report.maxObservedTotalActive}));

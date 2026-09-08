@@ -17,7 +17,7 @@ const output=directory+'/background-'+tag+'.json';assert(!fs.existsSync(output),
 const stopFile=directory+'/background-'+tag+'.stop';const stamp=Date.now();
 const roster=[...Array(10).fill('makaron'),'v-codex','dealclaw','dealclaw','short-v','short-v','xiaoai'];
 const report={tag,stamp,roster,controlledReplay:true,productionOAuthCopied:false,model:'deepseek/deepseek-v4-pro',jobs:[],sessions:[],samples:[],errors:[],ready:false,completed:false};
-const persist=()=>fs.writeFileSync(output,JSON.stringify(report,null,2),{mode:0o600});persist();
+const persist=()=>{const tmp=output+'.'+process.pid+'.tmp';fs.writeFileSync(tmp,JSON.stringify(report,null,2),{mode:0o600});fs.renameSync(tmp,output);};persist();
 const tracked=new Map();let client,stopping=false;
 process.on('SIGTERM',()=>{stopping=true;});process.on('SIGINT',()=>{stopping=true;});
 const {GatewayClient}=await import(root+'/runtime/openclaw/dist/plugin-sdk/gateway-runtime.js');
