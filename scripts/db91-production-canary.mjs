@@ -42,7 +42,7 @@ if(mode==='setup'){
   models:{mode:'merge',providers:{deepseek:cfg.models.providers.deepseek}},
   channels:{},cron:{enabled:false},browser:{enabled:false},mcp:{servers:{}},
   tools:{profile:'full',elevated:{enabled:false}},
-  plugins:{allow:['deepseek','vlab-agent-worker-isolation'],load:{paths:[release+'/worker']},entries:{'vlab-agent-worker-isolation':{enabled:true,config:{...cfg.plugins.entries['vlab-agent-worker-isolation'].config,minWorkers:1,maxWorkers:1,sessionsPerWorker:3,workerConfigPath:overlayFile,gatewayConfigPath:cfgFile}}}}};
+  plugins:{allow:['deepseek','vlab-agent-worker-isolation'],load:{paths:[release+'/worker']},entries:{'vlab-agent-worker-isolation':{enabled:true,config:{...cfg.plugins.entries['vlab-agent-worker-isolation'].config,minWorkers:1,maxWorkers:1,warmSpareWorkers:0,sessionsPerWorker:3,workerConfigPath:overlayFile,gatewayConfigPath:cfgFile}}}}};
  const overlay=structuredClone(main);
  const native=value=>{if(value&&typeof value==='object'){if(value.agentRuntime?.id==='vlab-worker')value.agentRuntime.id='openclaw';for(const v of Object.values(value))native(v);}};native(overlay);
  overlay.plugins={allow:['deepseek'],entries:{},load:{paths:[]}};
@@ -60,6 +60,10 @@ if(mode==='setup'){
   const content=fs.readFileSync(file,'utf8');
   if(content.includes(alias))fs.writeFileSync(file,content.split(alias).join(root),{mode:0o600});
  }
+ const bounded=JSON.parse(fs.readFileSync(cfgFile));
+ assert.equal(bounded.plugins.entries['vlab-agent-worker-isolation'].config.maxWorkers,1);
+ bounded.plugins.entries['vlab-agent-worker-isolation'].config.warmSpareWorkers=0;
+ fs.writeFileSync(cfgFile,JSON.stringify(bounded,null,2),{mode:0o600});
  run('/usr/sbin/runuser',['-u','openclaw','--','/usr/bin/test','-x',root+'/workspace']);
  assert.equal(run('ss',['-H','-ltn','sport = :22894']),'','Canary port occupied');
  run('systemd-run',['--unit='+unit,'--property=Type=exec','--property=User=openclaw','--property=Group=openclaw','--property=UMask=0077','--property=CPUQuota=100%','--property=MemoryHigh=3G','--property=MemoryMax=4G','--property=KillMode=mixed','--property=TimeoutStopSec=45','--property=ProtectSystem=strict','--property=ProtectHome=read-only','--property=PrivateTmp=true','--property=ReadWritePaths='+root,'--property=WorkingDirectory='+root+'/workspace',
@@ -72,6 +76,8 @@ if(mode==='setup'){
  const cfg=JSON.parse(fs.readFileSync(cfgFile));assert.equal(cfg.gateway.port,22894);
  assert.equal(Object.keys(cfg.channels).length,0);const {GatewayClient}=await import(release+'/core/dist/plugin-sdk/gateway-runtime.js');let client;
  await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Canary connect deadline')),30000);client=new GatewayClient({url:'ws://127.0.0.1:22894',token:cfg.gateway.auth.token,deviceIdentity:null,clientName:'cli',mode:'cli',scopes:['operator.read','operator.write','operator.admin'],onHelloOk:()=>{clearTimeout(timer);resolve()},onConnectError:reject});client.start()});
+ const status=await client.request('vlab.workers.status',{},{timeoutMs:30000});
+ assert(status.workers.some(w=>w.ready),'Worker plugin must be registered and ready');
  const stamp=Date.now(),key='agent:dealclaw:explicit:db91-package-'+stamp,report={startedAt:stamp,rows:[],completed:false};
  try{for(let n=0;n<2;n++){
   const id='DB91_PACKAGE_'+stamp+'_'+n,command='date -u "+%s '+id+'"',started=Date.now();
@@ -83,6 +89,7 @@ if(mode==='setup'){
    if(at>=0&&h.messages[at].idempotencyKey===id+':user'){
     const turn=h.messages.slice(at+1),last=turn.filter(m=>m.role==='assistant').at(-1);
     if(last?.stopReason==='stop'){
+     assert.equal(h.sessionInfo?.agentRuntime?.id,'vlab-worker');
      const calls=turn.flatMap(m=>Array.isArray(m.content)?m.content.filter(c=>c.type==='toolCall'):[]).filter(c=>c.name==='exec'&&JSON.stringify(c.arguments).includes(id));
      assert.equal(calls.length,1);assert(turn.some(m=>m.role==='toolResult'&&m.toolCallId===calls[0].id&&!m.isError&&JSON.stringify(m).includes(id)));
      assert.equal(last.model,'deepseek-v4-pro');assert(JSON.stringify(last.content).includes(id));
