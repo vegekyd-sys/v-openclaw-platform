@@ -59,6 +59,16 @@
 
 ## 必须保留的限制与纠正
 
+## 12/14 GiB 完整负载与首次重启检查
+
+- `I12-B1`：运行代码仍为 `fe002ce...`；原生 ready 等待 121755 ms，实际 16 后台后 89 ms 启动前台。前台 90/90、36 次真实 exec、最大前台 5 / 总 active 21；首段中位数 17618 ms、P95 40289 ms、最大 48791 ms。
+- 后台 404 次完整 exec/read/write/最终回复验证，16 次结束时受控取消，驱动 errors=0；后台首段最大 77558 ms。持续运行后达到 12 GiB 软限制并使用约 3.2 GiB swap；不能声称硬件等同 V。
+- 本轮原生日志无 `database is locked`、状态锁争用异常或 terminal session persistence failure；取消阶段有两次非致命 EPIPE，调用点均为 `WorkerPool.cancel` 的异步 IPC send。已提交取消发送保护候选，只使用原有关闭通道回调保护，不改变请求准入。
+- 证据：`tmp/parity-results/B-full-1788882219184.json`、`background-I12-B1.json`、`coordinator-I12-B1.json`、`tmp/I12-B1-native-runtime.log`。
+- `i12-recovery1`：真实 exec 已写入唯一标记后、仍 active 时调用旧 labctl restart。Gateway PID 1724334 → 1726039，ready 等待 134824 ms；420 秒验证窗口内没有新最终回复，标记未重复，恢复验收失败。
+- 定位：旧 labctl restart 直接 systemctl stop/start；原生 SIGTERM 只有消费到 restart intent 才走重启恢复，否则为 stop。KillMode=control-group 又把 SIGTERM 同时送给 Worker，其退出后插件补写 interrupted tool result 并终结为 failed，启动恢复不会选中该失败会话。生产服务只读核对也为 control-group，但本轮不改生产。
+- 已提交仅限本实例的管理入口候选：KillMode=mixed、labctl restart 先通过原生 API 写入精确 PID 的 restart intent（waitMs=0），再按原入口停止/启动；其他实例保持原行为。需要新的真实重启验证，不能以代码分析宣布恢复已修好。
+
 - VLab 4 核/约 15 GiB，生产 V 8 核/约 30 GiB，不能称为硬件完全等价。
 - 9 库原始封存副本合计 14,159,519,744 字节；机器人、cron、浏览器、外部交付关闭；未复制生产 OAuth；旧业务恢复标记被隔离。后台采用 30–90k token 的完成历史，Short-V 保留原生 Flash 历史，其他后台及所有前台用 Pro。
 - `B16-07` 的 16 个任务均完成实际工具和最终回复，但测试键含大写编号；Gateway 规范化为小写，导致精确空闲比较失败。逐个原生查询确认全部空闲后，修正测试键与目标查询，未降低空闲/并发门槛。该轮不作为完整矩阵通过。
