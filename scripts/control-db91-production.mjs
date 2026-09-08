@@ -38,8 +38,7 @@ if(mode==='prepare'){
  if(fs.existsSync(signalDrop))assert.equal(fs.readFileSync(signalDrop,'utf8'),db91SignalPolicy);else fs.writeFileSync(signalDrop,db91SignalPolicy,{mode:0o644,flag:'wx'});
  run('systemctl',['daemon-reload']);assert.equal(run('systemctl',['show',unit,'-p','KillMode','--value']),'mixed');
  const entry=fs.readFileSync('/proc/'+p+'/cmdline','utf8').includes(release+'/core/')?release+'/core':oldDb91Core;
- const {a:writeIntent}=await import(entry+'/dist/restart-intent-BYVo1227.js');
- assert(writeIntent({targetPid:p,reason:'db91-production-controlled-restart',intent:{waitMs:30000},env:process.env}));
+ run('/usr/sbin/runuser',['-u','openclaw','--',process.execPath,release+'/source/scripts/write-db91-restart-intent.mjs',entry,String(p)],{env:process.env});
  record('native-stop-requested',{beforePid:p,nativeDrainMs:30000,killMode:'mixed'});
  run('systemctl',['stop',unit],{timeout:65000});assert.equal(pid(),0);record('stopped',{beforePid:p});
 }else if(mode==='apply'){
