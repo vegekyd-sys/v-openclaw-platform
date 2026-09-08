@@ -8,7 +8,7 @@ assert.equal(process.env.OPENCLAW_STATE_DIR,root+'/state');
 const manifest=JSON.parse(fs.readFileSync(root+'/../../control/db91-parity.json'));assert.equal(manifest.owner,'codex-db91-production-equivalent-20260908');
 assert.equal(execFileSync('systemctl',['show',manifest.unit,'-p','MainPID','--value'],{encoding:'utf8'}).trim(),'0');
 const dist=root+'/runtime/openclaw/dist/',file=dist+'runtime-store.sqlite-D0DF2c9M.js';
-const [mode]=process.argv.slice(2);assert(mode===undefined||mode==='restored-12g');
+const [mode]=process.argv.slice(2);assert(mode===undefined||/^restored-[a-z0-9-]{1,40}$/.test(mode));
 const before=fs.readFileSync(file,'utf8'),after=mode?before:patchTrajectoryBudgetQuery(before);
 assert(before.includes('prepareTrajectorySweep'),'expected previous candidate');
 const backup=root+'/tmp/before-trajectory-budget-query.js';
