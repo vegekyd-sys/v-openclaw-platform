@@ -17,7 +17,7 @@ const expressions=[
   ['open-sqlite','openNodeSqliteDatabase(pathname)'],
   ['integrity','assertAgentDatabaseIntegrityBeforeMutation(db, agentId, pathname)'],
   ['schema','ensureAgentSchema(db, agentId, pathname)'],
-  ['register-global','registerOpenClawAgentDatabase({\n\t\t\tagentId,\n\t\t\tpath: pathname,\n\t\t\tenv: options.env\n\t\t})'],
+  ['register-global','registerOpenClawAgentDatabase({\n\t\t\t\tagentId,\n\t\t\t\tpath: pathname,\n\t\t\t\tenv: options.env\n\t\t\t})'],
 ];
 for(const [label,expression] of expressions){
   const count=source.split(expression).length-1;
