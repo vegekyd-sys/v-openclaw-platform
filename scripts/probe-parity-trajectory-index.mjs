@@ -1,12 +1,13 @@
 // Scoped diagnostic on the stopped owned copy. Adds one reversible index only.
 import fs from 'node:fs';import os from 'node:os';import assert from 'node:assert/strict';import {execFileSync} from 'node:child_process';import {DatabaseSync} from 'node:sqlite';
 import {trajectoryIndexName,trajectoryIndexSql,trajectoryBudgetSql} from '../experiments/db91-integrity-gate/trajectory-index.mjs';
-assert.equal(os.hostname(),'VM-0-4-ubuntu');
+assert.equal(os.hostname(),'VM-0-4-ubuntu');assert.equal(process.getuid(),0);
 const root='/srv/vlab-production-mirror/labs/instances/db91-parity';
 assert.equal(process.env.OPENCLAW_STATE_DIR,root+'/state');
 const manifest=JSON.parse(fs.readFileSync(root+'/../../control/db91-parity.json'));assert.equal(manifest.owner,'codex-db91-production-equivalent-20260908');
 assert.equal(execFileSync('systemctl',['show',manifest.unit,'-p','MainPID','--value'],{encoding:'utf8'}).trim(),'0');
 const file=root+'/state/agents/makaron/agent/openclaw-agent.sqlite';assert.equal(fs.realpathSync(file),file);
+const owner=fs.statSync(file);assert(owner.uid>0&&owner.gid>0);process.setgroups([]);process.setgid(owner.gid);process.setuid(owner.uid);
 const output=root+'/tmp/parity-results/trajectory-index-probe.json';assert(!fs.existsSync(output));
 const db=new DatabaseSync(file),report={startedAt:Date.now(),file,diagnosticOnly:true};
 const query=(sql,...args)=>{const start=performance.now();const rows=db.prepare(sql).all(...args);return {rows,ms:Math.round(performance.now()-start)};};
