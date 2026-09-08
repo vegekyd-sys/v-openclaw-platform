@@ -37,6 +37,7 @@ if(mode==='prepare'){
  assert(fs.existsSync(backup+'/prepared.json'));const p=loadLiveEnv();
  if(fs.existsSync(signalDrop))assert.equal(fs.readFileSync(signalDrop,'utf8'),db91SignalPolicy);else fs.writeFileSync(signalDrop,db91SignalPolicy,{mode:0o644,flag:'wx'});
  run('systemctl',['daemon-reload']);assert.equal(run('systemctl',['show',unit,'-p','KillMode','--value']),'mixed');
+ assert.equal(run('systemctl',['show',unit,'-p','KillSignal','--value']),'10','Controlled restart requires SIGUSR1');
  const entry=fs.readFileSync('/proc/'+p+'/cmdline','utf8').includes(release+'/core/')?release+'/core':oldDb91Core;
  run('/usr/sbin/runuser',['-u','openclaw','--',process.execPath,release+'/source/scripts/write-db91-restart-intent.mjs',entry,String(p)],{env:process.env});
  record('native-stop-requested',{beforePid:p,nativeDrainMs:30000,killMode:'mixed'});

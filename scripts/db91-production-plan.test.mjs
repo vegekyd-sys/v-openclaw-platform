@@ -13,5 +13,6 @@ test('unit preserves established command options and startup hooks',()=>{
  assert.equal((unit.match(/^ExecStartPre=-\+/gm)||[]).length,2,'Both established root prestart helpers retain their systemd identity prefix');
  assert(unit.includes('ExecStartPre=/opt/node-v22.23.1/bin/node'),'Session hotset prestart stays unprivileged');
  assert(!/Timeout|MemoryHigh|MemoryMax|CPUQuota/.test(unit));assert(unit.includes('KillMode=mixed'));
- assert.equal(db91SignalPolicy,'[Service]\nKillMode=mixed\n');
+ assert.equal(db91SignalPolicy,'[Service]\nKillMode=mixed\nKillSignal=SIGUSR1\n');
+ assert(!unit.includes('KillSignal='),'Ordinary service stops retain their original signal');
 });

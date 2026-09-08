@@ -15,7 +15,9 @@ export function planDb91Config(bytes){
  assert.equal(after.mcp.servers['universal-memory'].enabled,false);
  return JSON.stringify(after,null,2)+'\n';
 }
-export const db91SignalPolicy='[Service]\nKillMode=mixed\n';
+// Only installed by the controlled stop helper after writing a native intent.
+// SIGUSR1 reaches native restart admission without unrelated SIGTERM exit hooks.
+export const db91SignalPolicy='[Service]\nKillMode=mixed\nKillSignal=SIGUSR1\n';
 export function db91ReleaseUnit(){
  const state='/home/openclaw/.openclaw',node='/opt/node-v22.23.1/bin/node',core=db91Release+'/core';
  return `[Service]
