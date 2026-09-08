@@ -21,6 +21,13 @@ assert meta.get('exportSealedAt') and len(meta['databases'])==9
 files={'/manifest.json':root/'manifest.json'}
 files.update({'/'+r['file']:root/r['file'] for r in meta['databases']})
 code={'/core.tar.zst':pathlib.Path('/opt/openclaw-2026.9.1-v/openclaw'),'/worker.tar.zst':pathlib.Path('/opt/openclaw-experiments/agent-worker-isolation-v1/releases/0.2.11-steer91')}
+if '--baseline-only' in sys.argv:
+    files={'/manifest.json':root/'manifest.json'}
+    for row in meta['databases']:
+        name=row['file']+'.zst'
+        assert pathlib.PurePosixPath(name).name==name and (root/name).is_file()
+        files['/'+name]=root/name
+    code={}
 if '--profile-only' in sys.argv:
     # Data stays in the cloud. Only these explicitly selected configuration
     # sections and prompt bootstrap files are exported, never auth/channel data.
@@ -105,7 +112,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 server=http.server.ThreadingHTTPServer(('100.82.39.107',29340),Handler)
 timer=threading.Timer(3600,server.shutdown);timer.daemon=True;timer.start()
-print(json.dumps({'ready':True,'bind':'100.82.39.107:29340','allowedPeer':'100.75.190.64','ttlSeconds':3600,'exports':len(files),'runtimeArchives':2}),flush=True)
+print(json.dumps({'ready':True,'bind':'100.82.39.107:29340','allowedPeer':'100.75.190.64','ttlSeconds':3600,'exports':len(files),'runtimeArchives':len(code)}),flush=True)
 try:server.serve_forever(poll_interval=0.5)
 finally:
     timer.cancel();server.server_close();tokenfile.unlink(missing_ok=True)
