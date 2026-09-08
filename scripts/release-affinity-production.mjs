@@ -12,7 +12,7 @@ const pid=()=>Number(run('systemctl',['show',unit,'-p','MainPID','--value']));
 const commit=run('git',['-c','safe.directory='+source,'-C',source,'rev-parse','HEAD']);assert.equal(run('git',['-c','safe.directory='+source,'-C',source,'status','--porcelain']),'');
 const pool='/opt/openclaw-experiments/agent-worker-isolation-v1/releases/0.2.11-steer91/worker-pool.mjs';
 const cfgFiles=[root+'/openclaw.json',root+'/experiments/agent-worker-isolation-v1/worker-openclaw.json'];
-const atomic=(p,b)=>{const st=fs.statSync(p),tmp=p+'.affinity-'+process.pid;fs.writeFileSync(tmp,b,{mode:st.mode&0o777,flag:'wx'});fs.chownSync(tmp,st.uid,st.gid);fs.renameSync(tmp,p);};
+const atomic=(p,b)=>{const st=fs.statSync(p),tmp=p+'.affinity-'+process.pid;fs.writeFileSync(tmp,b,{mode:st.mode&0o777,flag:'wx'});fs.chownSync(tmp,st.uid,st.gid);fs.chmodSync(tmp,st.mode&0o777);fs.renameSync(tmp,p);};
 const mode=process.argv[2],arm=process.argv[3];assert(['inspect','stage','prestart','restart','verify'].includes(mode));
 const record=(phase,data={})=>{const r={at:new Date().toISOString(),phase,commit,...data};fs.writeFileSync(dir+'/'+Date.now()+'-'+phase+'.json',JSON.stringify(r,null,2),{mode:0o600,flag:'wx'});console.log(JSON.stringify(r));};
 if(mode==='prestart'){
