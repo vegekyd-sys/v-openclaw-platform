@@ -4,14 +4,17 @@ assert.equal(os.hostname(),'VM-0-4-ubuntu');assert.equal(process.getuid(),0);
 const root='/srv/vlab-production-mirror/generations/candidate-official-update-final-20260902',meta='/srv/vlab-production-mirror/labs/control/integration.json',owner='codex-db91-contention-20260907';
 const m=JSON.parse(fs.readFileSync(meta));assert.equal(m.owner,owner);const unit='openclaw-vlab-production-mirror-v8.service';
 const arm=process.argv[2];assert(['A','B','A2','smoke'].includes(arm));
+const noUm=process.argv.includes('--no-um');
 const pid=execFileSync('systemctl',['show',unit,'-p','MainPID','--value'],{encoding:'utf8'}).trim();assert(Number(pid)>1);
 for(const s of fs.readFileSync('/proc/'+pid+'/environ','utf8').split('\0')){const i=s.indexOf('=');if(i>0)process.env[s.slice(0,i)]=s.slice(i+1);}
 assert.equal(process.env.OPENCLAW_WORKER_SESSION_AFFINITY_ENABLE==='1',arm==='B');
 const cfg=JSON.parse(fs.readFileSync(root+'/state/openclaw.json'));assert.equal(cfg.gateway.port,24993);assert.equal(cfg.gateway.reload.mode,'off');
 const poolCfg=cfg.plugins.entries['vlab-agent-worker-isolation'].config;assert.equal(poolCfg.minWorkers,2);assert.equal(poolCfg.maxWorkers,2);assert.equal(poolCfg.sessionsPerWorker,3);assert.equal(cfg.agents.defaults.maxConcurrent,5);
+if(noUm){assert.equal(cfg.mcp.servers['universal-memory'].enabled,false);assert.equal(JSON.parse(fs.readFileSync(poolCfg.workerConfigPath)).mcp.servers['universal-memory'].enabled,false);}
 assert(fs.statfsSync(root).bavail*fs.statfsSync(root).bsize>3*1024**3);
 const stamp=Date.now(),report={version:'worker-affinity.1',arm,startedAt:new Date().toISOString(),gatewayPid:pid,commit:execFileSync('git',['-c','safe.directory='+process.cwd(),'-C',process.cwd(),'rev-parse','HEAD'],{encoding:'utf8'}).trim(),databaseBytes:fs.statSync(root+'/state/agents/makaron/agent/openclaw-agent.sqlite').size,jobs:[],maxActive:0};
-const output=root+'/state/worker-affinity-shared-20260908/affinity-'+arm+'-'+stamp+'.json',persist=()=>fs.writeFileSync(output,JSON.stringify(report,null,2),{mode:0o600});
+report.umDisabled=noUm;
+const output=root+'/state/worker-affinity-shared'+(noUm?'-no-um':'')+'-20260908/affinity-'+arm+'-'+stamp+'.json',persist=()=>fs.writeFileSync(output,JSON.stringify(report,null,2),{mode:0o600});
 const tracked=new Map();let client,holds=[];
 const {GatewayClient}=await import(root+'/runtime/npm-global/lib/node_modules/openclaw/dist/plugin-sdk/gateway-runtime.js');
 await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('connect deadline')),25000);client=new GatewayClient({url:'ws://127.0.0.1:24993',token:cfg.gateway.auth.token,deviceIdentity:null,clientName:'cli',mode:'cli',caps:['tool-events'],scopes:['operator.read','operator.write','operator.admin'],onHelloOk:()=>{clearTimeout(timer);resolve();},onConnectError:e=>{clearTimeout(timer);reject(e);},onEvent:e=>{
@@ -27,14 +30,15 @@ const idle=async()=>{const end=Date.now()+30000;while(Date.now()<end){const s=aw
 async function run(label,key,tool=false){
  const j={label,sessionKey:key,runId:'AFF_'+stamp+'_'+report.jobs.length,start:Date.now(),tool};report.jobs.push(j);tracked.set(j.runId,j);persist();
  await call('sessions.messages.subscribe',{agentId:'makaron',key});j.start=Date.now();
- const message=tool?'请实际调用 Universal Memory 的只读 MCP 工具 umemory_search_index_health。如果它在工具目录中，先查找和获取工具定义，再执行。不要调用写入/修复/同步工具，不修改任何文件，不发送外部消息。拿到真实结果后只回复“检查完成”。':'hi';
+ const command='date -u "+%s '+j.runId+'"';
+ const message=tool?(noUm?'本次独立验收编号 '+j.runId+'。请现在重新调用本机 exec 工具执行这条只读命令：'+command+' 。必须执行本轮命令，不能复用上轮结果，也不能只口头说完成。不要读写其他文件或调用网络工具。最终只回复命令的实际输出。':'请实际调用 Universal Memory 的只读 MCP 工具 umemory_search_index_health。如果它在工具目录中，先查找和获取工具定义，再执行。不要调用写入/修复/同步工具，不修改任何文件，不发送外部消息。拿到真实结果后只回复“检查完成”。'):'hi';
  await call('chat.send',{agentId:'makaron',sessionKey:key,message,thinking:'low',deliver:false,idempotencyKey:j.runId,timeoutMs:180000});
  while(Date.now()-j.start<180000){if(j.error)throw Error(j.error);if(j.finalMs!==undefined)break;await status();await new Promise(r=>setTimeout(r,250));}
  assert(Number.isFinite(j.firstTextMs)&&Number.isFinite(j.finalMs),'native visible final deadline');
  const h=await call('chat.history',{agentId:'makaron',sessionKey:key,limit:50});
  assert.equal(h.sessionInfo?.agentRuntime?.id,'vlab-worker');const users=(h.messages??[]).filter(x=>x.role==='user');assert.equal(users.at(-1).idempotencyKey,j.runId+':user');
  const last=(h.messages??[]).filter(x=>x.role==='assistant').at(-1);assert.equal(last.model,'deepseek-v4-pro');assert.notEqual(last.stopReason,'error');
- if(tool){const messages=h.messages??[],u=messages.findLastIndex(x=>x.role==='user');const turn=messages.slice(u+1);const calls=turn.flatMap(x=>Array.isArray(x.content)?x.content.filter(c=>c.type==='toolCall'):[]).filter(c=>/umemory_search_index_health/.test(c.name)||(c.name==='tool_call'&&JSON.stringify(c.arguments??{}).includes('umemory_search_index_health')));assert.equal(calls.length,1,'exact real Universal Memory health call required');const result=turn.find(x=>x.role==='toolResult'&&x.toolCallId===calls[0].id);assert(result&&result.isError!==true);assert(!turn.some(x=>x.role==='toolResult'&&x.isError===true));const payload=JSON.stringify(result);assert(payload.includes('total_documents')&&payload.includes('indexed_documents')&&payload.includes('healthy'),'real health aggregate payload required');j.toolName=calls[0].name;j.toolVerified=true;}
+ if(tool){const messages=h.messages??[],u=messages.findLastIndex(x=>x.role==='user');const turn=messages.slice(u+1);const calls=turn.flatMap(x=>Array.isArray(x.content)?x.content.filter(c=>c.type==='toolCall'):[]).filter(c=>noUm?((c.name==='exec'||c.name==='tool_call')&&JSON.stringify(c.arguments??{}).includes(j.runId)):(/umemory_search_index_health/.test(c.name)||(c.name==='tool_call'&&JSON.stringify(c.arguments??{}).includes('umemory_search_index_health'))));assert.equal(calls.length,1,'exact fresh real tool call required');const result=turn.find(x=>x.role==='toolResult'&&x.toolCallId===calls[0].id);assert(result&&result.isError!==true);assert(!turn.some(x=>x.role==='toolResult'&&x.isError===true));const payload=JSON.stringify(result);assert(noUm?(payload.includes(j.runId)&&/\d{10}/.test(payload)):(payload.includes('total_documents')&&payload.includes('indexed_documents')&&payload.includes('healthy')),'real tool payload required');j.toolName=calls[0].name;j.toolVerified=true;}
  j.verified=true;tracked.delete(j.runId);persist();console.log(JSON.stringify({phase:'reply',arm,label,runId:j.runId,firstTextMs:j.firstTextMs,finalMs:j.finalMs,toolVerified:j.toolVerified}));return j;
 }
 try{

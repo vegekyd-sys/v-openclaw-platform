@@ -2,7 +2,7 @@
 import fs from 'node:fs';import os from 'node:os';import assert from 'node:assert/strict';import{execFileSync}from'node:child_process';
 assert.equal(os.hostname(),'VM-0-4-ubuntu');const root='/srv/vlab-production-mirror/generations/candidate-official-update-final-20260902';
 const name=process.argv[2];assert(/^affinity-(A|B|A2|smoke)-\d+\.json$/.test(name));
-const r=JSON.parse(fs.readFileSync(root+'/state/worker-affinity-shared-20260908/'+name));
+const r=JSON.parse(fs.readFileSync(root+'/state/worker-affinity-shared'+(process.argv.includes('--no-um')?'-no-um':'')+'-20260908/'+name));
 const log=execFileSync('journalctl',['-u','openclaw-vlab-production-mirror-v8.service','--since',r.startedAt.replace('T',' ').replace('Z',' UTC'),'--until',r.finishedAt.replace('T',' ').replace('Z',' UTC'),'--no-pager','-o','cat'],{encoding:'utf8',maxBuffer:64e6});
 const bundles=[],prompts=[];for(const line of log.split('\n'))for(const [prefix,out]of [['[bundle-prep-observer] ',bundles],['[prompt-prep-observer.1] ',prompts]]){const i=line.indexOf(prefix);if(i>=0)try{out.push(JSON.parse(line.slice(i+prefix.length)))}catch{}}
 const jobs=r.jobs.map(j=>{const b=bundles.find(b=>b.runId===j.runId&&b.kind==='end'),p=prompts.find(p=>p.runId===j.runId&&p.stage==='total');return {label:j.label,runId:j.runId,firstTextMs:j.firstTextMs,finalMs:j.finalMs,startingModelMs:j.startingModelMs,verified:j.verified,toolVerified:j.toolVerified,workerPid:b?.pid,bundleMs:b?.totalMs,bundleCached:b?.events.find(e=>e.stage==='catalog-get')?.cached,promptMs:p?.elapsedMs,throughPromptMs:p?p.atMs-j.start:undefined};});

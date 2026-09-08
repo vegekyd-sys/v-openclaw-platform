@@ -9,10 +9,11 @@ const run=(c,a)=>execFileSync(c,a,{encoding:'utf8'}).trim(),git=a=>run('git',['-
 assert.equal(git(['status','--porcelain']),'');assert.equal(run('systemctl',['show',unit,'-p','MainPID','--value']),'0');
 const commit=git(['rev-parse','HEAD']),hash=b=>createHash('sha256').update(b).digest('hex');
 const mode=process.argv[2];assert(['configure','candidate','baseline','restore-config'].includes(mode));
+const noUm=process.argv.includes('--no-um');
 const cfgPath=root+'/state/openclaw.json',bytes=fs.readFileSync(cfgPath),cfg=JSON.parse(bytes);
 assert.equal(cfg.gateway.port,24993);assert.equal(cfg.gateway.reload.mode,'off');
 const worker=root+'/runtime/plugins/worker-v-platform-0.1.0-integration.1';assert(cfg.plugins.load.paths.includes(worker));
-const file=worker+'/worker-pool.mjs',dir=root+'/state/worker-affinity-shared-20260908',drop='/etc/systemd/system/'+unit+'.d/zzz-worker-affinity-shared.conf';
+const file=worker+'/worker-pool.mjs',dir=root+'/state/worker-affinity-shared'+(noUm?'-no-um':'')+'-20260908',drop='/etc/systemd/system/'+unit+'.d/zzz-worker-affinity-shared.conf';
 const hook='[Service]\nEnvironment=OPENCLAW_WORKER_SESSION_AFFINITY_ENABLE=1\n';
 const atomic=(p,b)=>{const st=fs.statSync(p),temp=p+'.affinity-'+process.pid;fs.writeFileSync(temp,b,{mode:st.mode&0o777,flag:'wx'});fs.chownSync(temp,st.uid,st.gid);fs.renameSync(temp,p);};
 fs.mkdirSync(dir,{recursive:true,mode:0o700});
@@ -23,9 +24,18 @@ assert([hash(before),hash(after)].includes(hash(fs.readFileSync(file))),'pool dr
 run(process.execPath,['--check',source+'/experiments/agent-worker-isolation-v1/worker-pool.mjs']);
 const original=fs.readFileSync(dir+'/config.before'),nextCfg=JSON.parse(original);
 Object.assign(nextCfg.plugins.entries['vlab-agent-worker-isolation'].config,{minWorkers:2,maxWorkers:2,sessionsPerWorker:3,warmSpareWorkers:0});nextCfg.agents.defaults.maxConcurrent=5;
+if(noUm){assert(nextCfg.mcp.servers['universal-memory']);nextCfg.mcp.servers['universal-memory'].enabled=false;}
 const next=Buffer.from(JSON.stringify(nextCfg,null,2)+'\n');assert([hash(original),hash(next)].includes(hash(bytes)),'config drift');
 if(mode==='configure')atomic(cfgPath,next);
 if(mode==='restore-config')atomic(cfgPath,original);
+if(noUm){
+ const wp=cfg.plugins.entries['vlab-agent-worker-isolation'].config.workerConfigPath;
+ assert.equal(wp,root+'/experiments/agent-worker-isolation-v1/worker-openclaw.json');
+ const backup=dir+'/worker-config.before';if(!fs.existsSync(backup))fs.writeFileSync(backup,fs.readFileSync(wp),{mode:0o600,flag:'wx'});
+ const wb=fs.readFileSync(backup),wc=JSON.parse(wb);assert(wc.mcp.servers['universal-memory']);wc.mcp.servers['universal-memory'].enabled=false;
+ const wn=Buffer.from(JSON.stringify(wc,null,2)+'\n');assert([hash(wb),hash(wn)].includes(hash(fs.readFileSync(wp))),'worker config drift');
+ if(mode==='configure')atomic(wp,wn);if(mode==='restore-config')atomic(wp,wb);
+}
 if(mode==='candidate'){atomic(file,after);fs.mkdirSync(path.dirname(drop),{recursive:true});if(fs.existsSync(drop))assert.equal(fs.readFileSync(drop,'utf8'),hook);else fs.writeFileSync(drop,hook,{mode:0o644,flag:'wx'});}
 if(mode==='baseline'){atomic(file,before);if(fs.existsSync(drop)){assert.equal(fs.readFileSync(drop,'utf8'),hook);fs.unlinkSync(drop);}}
 run('systemctl',['daemon-reload']);
