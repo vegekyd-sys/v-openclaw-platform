@@ -46,6 +46,7 @@ if(fixtures)report.historyFixture=fixtureName;
 const resource=()=>({atMs:Date.now(),memoryCurrent:Number(fs.readFileSync(cgroup+'/memory.current')),memoryEvents:counters(cgroup+'/memory.events'),cpu:counters(cgroup+'/cpu.stat')});
 try{
   report.before=await compactStatus();assert.equal(report.before.pending,0);assert(report.before.workers.every(w=>w.ready&&!w.activeCount&&!w.queued));
+  if(process.argv.includes('--status-only')){console.log(JSON.stringify(report.before));client.stop();process.exit(0);}
   const modes=fixtures?['dm_fork','group_fork','group_same']:['cold_new','warm_same','warm_new'];
   for(const [i,mode]of modes.entries()){
     assert.equal(JSON.parse(fs.readFileSync('/srv/vlab-production-mirror/labs/control/'+(shared?'integration':'db91-fix')+'.json')).owner,'codex-db91-contention-20260907');
