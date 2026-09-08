@@ -45,7 +45,15 @@
 - 失败前新 Worker 6（PID 1720764）全局状态库原生完整性检查耗时 60810 ms；锁外轨迹扫描后续出现 27815 / 21982 ms，同步事件循环停顿 51239 ms。实例触及 MemoryHigh=10 GiB，存在回收/换出压力；高压状态是相关证据，尚不能证明单一原因。
 - 正在独立验证表达式统计索引，候选尚未接入运行时。小型等价性和无正文回表测试通过，不等于实际 Agent 验收。
 
-记录：`tmp/parity-results/{coordinator-M-A1,coordinator-M-B1,background-M-B1}.json`、`B-full-1788879329282.json`、`tmp/{M-A1,M-B1}-native-runtime.log`。M-A2 及进行中重启恢复仍未完成。
+记录：`tmp/parity-results/{coordinator-M-A1,coordinator-M-B1,background-M-B1}.json`、`B-full-1788879329282.json`、`tmp/{M-A1,M-B1}-native-runtime.log`。
+
+### 反向对照 M-A2 与表达式索引候选
+
+- M-A2 恢复原始 9 库及同一隔离修正，原运行代码 SHA-256 仍为 `956874c9bd20963d6543e0c1db58d82a36bd5a4e45b611db94bd11110f9cb018`。九库缓存驻留页归零；原生 ready 等待 128766 ms。实际 16 后台后 85 ms 发出前台请求。
+- 第一项前台完成，随后后台 `PARITY_BG_M-A2_7_0` 原生日志出现 `rawError=database is locked`，后台驱动失败、前台矩阵随之停止。两次原方案对照都复现锁错误；M-B1 本身也失败，因此旧候选不算修复完成。记录 `tmp/M-A2-native-runtime.log` 及 `tmp/parity-results/*M-A2*`。
+- 新候选 `c6d8c5c` 为轨迹表增加覆盖统计所需的表达式索引，并把同义聚合查询中的常量 1 从 Kysely 参数绑定改为 SQL 字面量，以匹配索引。没有修改记录、保留策略或超时；不是完整性检查的替代品。
+- 本地 5 项索引/并发计划检查通过。VLab 原生 schema contains 在加索引前后均通过；真实 9.1 轨迹实现验证原生、字面量查询、加索引、加索引并分离扫描四种实现的策略等价（4 组预算策略），并通过并发失效后重试检查。夹具完整性通过，不计作真实 Agent 性能验收。
+- 新候选正在恢复干净快照后准备安装；真实负载及进行中重启恢复尚未完成。
 
 ## 必须保留的限制与纠正
 
