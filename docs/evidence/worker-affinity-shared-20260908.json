@@ -1,0 +1,1053 @@
+{
+  "note": "Incomplete shared matrix. A passed; B stopped at unverified real-tool request; A2 not run. Stage observer data absent. No production release.",
+  "A": {
+    "source": "affinity-A-1788857626943.json",
+    "arm": "A",
+    "commit": "e69dd8ee3ea7c6cd644a4e0ceec924ee0733e194",
+    "databaseBytes": 2569568256,
+    "completed": true,
+    "maxActive": 5,
+    "groups": {
+      "worker-cold": {
+        "firstText": {
+          "n": 5,
+          "median": 18117,
+          "p95": 18510,
+          "max": 18510
+        },
+        "bundle": {
+          "n": 0,
+          "median": null
+        },
+        "throughPrompt": {
+          "n": 0,
+          "median": null
+        },
+        "cacheHits": 0
+      },
+      "prime-second": {
+        "firstText": {
+          "n": 5,
+          "median": 11673,
+          "p95": 16181,
+          "max": 16181
+        },
+        "bundle": {
+          "n": 0,
+          "median": null
+        },
+        "throughPrompt": {
+          "n": 0,
+          "median": null
+        },
+        "cacheHits": 0
+      },
+      "revisit": {
+        "firstText": {
+          "n": 5,
+          "median": 12967,
+          "p95": 14977,
+          "max": 14977
+        },
+        "bundle": {
+          "n": 0,
+          "median": null
+        },
+        "throughPrompt": {
+          "n": 0,
+          "median": null
+        },
+        "cacheHits": 0
+      },
+      "serial-warm": {
+        "firstText": {
+          "n": 30,
+          "median": 2296,
+          "p95": 5445,
+          "max": 5484
+        },
+        "bundle": {
+          "n": 0,
+          "median": null
+        },
+        "throughPrompt": {
+          "n": 0,
+          "median": null
+        },
+        "cacheHits": 0
+      },
+      "c5": {
+        "firstText": {
+          "n": 50,
+          "median": 6763,
+          "p95": 12133,
+          "max": 14862
+        },
+        "bundle": {
+          "n": 0,
+          "median": null
+        },
+        "throughPrompt": {
+          "n": 0,
+          "median": null
+        },
+        "cacheHits": 0
+      },
+      "c5-tool": {
+        "firstText": {
+          "n": 25,
+          "median": 7598,
+          "p95": 12882,
+          "max": 14862
+        },
+        "bundle": {
+          "n": 0,
+          "median": null
+        },
+        "throughPrompt": {
+          "n": 0,
+          "median": null
+        },
+        "cacheHits": 0
+      },
+      "c5-greeting": {
+        "firstText": {
+          "n": 25,
+          "median": 4627,
+          "p95": 6703,
+          "max": 6946
+        },
+        "bundle": {
+          "n": 0,
+          "median": null
+        },
+        "throughPrompt": {
+          "n": 0,
+          "median": null
+        },
+        "cacheHits": 0
+      }
+    },
+    "jobs": [
+      {
+        "label": "worker-cold-0",
+        "runId": "AFF_1788857626943_0",
+        "firstTextMs": 18510,
+        "finalMs": 18992,
+        "verified": true
+      },
+      {
+        "label": "prime-second-0",
+        "runId": "AFF_1788857626943_1",
+        "firstTextMs": 9880,
+        "finalMs": 10025,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "revisit-0",
+        "runId": "AFF_1788857626943_2",
+        "firstTextMs": 12967,
+        "finalMs": 13498,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "worker-cold-1",
+        "runId": "AFF_1788857626943_3",
+        "firstTextMs": 18117,
+        "finalMs": 18714,
+        "verified": true
+      },
+      {
+        "label": "prime-second-1",
+        "runId": "AFF_1788857626943_4",
+        "firstTextMs": 16181,
+        "finalMs": 16694,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "revisit-1",
+        "runId": "AFF_1788857626943_5",
+        "firstTextMs": 7088,
+        "finalMs": 7252,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "worker-cold-2",
+        "runId": "AFF_1788857626943_6",
+        "firstTextMs": 18159,
+        "finalMs": 18642,
+        "verified": true
+      },
+      {
+        "label": "prime-second-2",
+        "runId": "AFF_1788857626943_7",
+        "firstTextMs": 9925,
+        "finalMs": 10069,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "revisit-2",
+        "runId": "AFF_1788857626943_8",
+        "firstTextMs": 14977,
+        "finalMs": 15522,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "worker-cold-3",
+        "runId": "AFF_1788857626943_9",
+        "firstTextMs": 17993,
+        "finalMs": 18505,
+        "verified": true
+      },
+      {
+        "label": "prime-second-3",
+        "runId": "AFF_1788857626943_10",
+        "firstTextMs": 15794,
+        "finalMs": 16330,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "revisit-3",
+        "runId": "AFF_1788857626943_11",
+        "firstTextMs": 8376,
+        "finalMs": 8531,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "worker-cold-4",
+        "runId": "AFF_1788857626943_12",
+        "firstTextMs": 16487,
+        "finalMs": 17000,
+        "verified": true
+      },
+      {
+        "label": "prime-second-4",
+        "runId": "AFF_1788857626943_13",
+        "firstTextMs": 11673,
+        "finalMs": 11823,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "revisit-4",
+        "runId": "AFF_1788857626943_14",
+        "firstTextMs": 14299,
+        "finalMs": 14851,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "serial-warm-0",
+        "runId": "AFF_1788857626943_15",
+        "firstTextMs": 5445,
+        "finalMs": 5587,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "serial-warm-1",
+        "runId": "AFF_1788857626943_16",
+        "firstTextMs": 3152,
+        "finalMs": 3275,
+        "verified": true
+      },
+      {
+        "label": "serial-warm-2",
+        "runId": "AFF_1788857626943_17",
+        "firstTextMs": 2626,
+        "finalMs": 2717,
+        "verified": true
+      },
+      {
+        "label": "serial-warm-3",
+        "runId": "AFF_1788857626943_18",
+        "firstTextMs": 3010,
+        "finalMs": 3164,
+        "verified": true
+      },
+      {
+        "label": "serial-warm-4",
+        "runId": "AFF_1788857626943_19",
+        "firstTextMs": 2209,
+        "finalMs": 2472,
+        "verified": true
+      },
+      {
+        "label": "serial-warm-5",
+        "runId": "AFF_1788857626943_20",
+        "firstTextMs": 5484,
+        "finalMs": 5657,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "serial-warm-6",
+        "runId": "AFF_1788857626943_21",
+        "firstTextMs": 2132,
+        "finalMs": 2299,
+        "verified": true
+      },
+      {
+        "label": "serial-warm-7",
+        "runId": "AFF_1788857626943_22",
+        "firstTextMs": 2478,
+        "finalMs": 2715,
+        "verified": true
+      },
+      {
+        "label": "serial-warm-8",
+        "runId": "AFF_1788857626943_23",
+        "firstTextMs": 2172,
+        "finalMs": 2328,
+        "verified": true
+      },
+      {
+        "label": "serial-warm-9",
+        "runId": "AFF_1788857626943_24",
+        "firstTextMs": 1725,
+        "finalMs": 1871,
+        "verified": true
+      },
+      {
+        "label": "serial-warm-10",
+        "runId": "AFF_1788857626943_25",
+        "firstTextMs": 4821,
+        "finalMs": 4969,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "serial-warm-11",
+        "runId": "AFF_1788857626943_26",
+        "firstTextMs": 2335,
+        "finalMs": 2488,
+        "verified": true
+      },
+      {
+        "label": "serial-warm-12",
+        "runId": "AFF_1788857626943_27",
+        "firstTextMs": 2106,
+        "finalMs": 2318,
+        "verified": true
+      },
+      {
+        "label": "serial-warm-13",
+        "runId": "AFF_1788857626943_28",
+        "firstTextMs": 2182,
+        "finalMs": 2388,
+        "verified": true
+      },
+      {
+        "label": "serial-warm-14",
+        "runId": "AFF_1788857626943_29",
+        "firstTextMs": 2486,
+        "finalMs": 2641,
+        "verified": true
+      },
+      {
+        "label": "serial-warm-15",
+        "runId": "AFF_1788857626943_30",
+        "firstTextMs": 4917,
+        "finalMs": 5062,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "serial-warm-16",
+        "runId": "AFF_1788857626943_31",
+        "firstTextMs": 2369,
+        "finalMs": 2528,
+        "verified": true
+      },
+      {
+        "label": "serial-warm-17",
+        "runId": "AFF_1788857626943_32",
+        "firstTextMs": 2098,
+        "finalMs": 2297,
+        "verified": true
+      },
+      {
+        "label": "serial-warm-18",
+        "runId": "AFF_1788857626943_33",
+        "firstTextMs": 1772,
+        "finalMs": 1944,
+        "verified": true
+      },
+      {
+        "label": "serial-warm-19",
+        "runId": "AFF_1788857626943_34",
+        "firstTextMs": 2097,
+        "finalMs": 2219,
+        "verified": true
+      },
+      {
+        "label": "serial-warm-20",
+        "runId": "AFF_1788857626943_35",
+        "firstTextMs": 4435,
+        "finalMs": 4579,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "serial-warm-21",
+        "runId": "AFF_1788857626943_36",
+        "firstTextMs": 2130,
+        "finalMs": 2289,
+        "verified": true
+      },
+      {
+        "label": "serial-warm-22",
+        "runId": "AFF_1788857626943_37",
+        "firstTextMs": 2117,
+        "finalMs": 2289,
+        "verified": true
+      },
+      {
+        "label": "serial-warm-23",
+        "runId": "AFF_1788857626943_38",
+        "firstTextMs": 2157,
+        "finalMs": 2338,
+        "verified": true
+      },
+      {
+        "label": "serial-warm-24",
+        "runId": "AFF_1788857626943_39",
+        "firstTextMs": 2193,
+        "finalMs": 2348,
+        "verified": true
+      },
+      {
+        "label": "serial-warm-25",
+        "runId": "AFF_1788857626943_40",
+        "firstTextMs": 4233,
+        "finalMs": 4375,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "serial-warm-26",
+        "runId": "AFF_1788857626943_41",
+        "firstTextMs": 2446,
+        "finalMs": 2602,
+        "verified": true
+      },
+      {
+        "label": "serial-warm-27",
+        "runId": "AFF_1788857626943_42",
+        "firstTextMs": 2275,
+        "finalMs": 2470,
+        "verified": true
+      },
+      {
+        "label": "serial-warm-28",
+        "runId": "AFF_1788857626943_43",
+        "firstTextMs": 2216,
+        "finalMs": 2384,
+        "verified": true
+      },
+      {
+        "label": "serial-warm-29",
+        "runId": "AFF_1788857626943_44",
+        "firstTextMs": 2317,
+        "finalMs": 2485,
+        "verified": true
+      },
+      {
+        "label": "c5-0-0",
+        "runId": "AFF_1788857626943_45",
+        "firstTextMs": 9289,
+        "finalMs": 9405,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "c5-0-1",
+        "runId": "AFF_1788857626943_46",
+        "firstTextMs": 10578,
+        "finalMs": 10769,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "c5-0-2",
+        "runId": "AFF_1788857626943_47",
+        "firstTextMs": 8892,
+        "finalMs": 9036,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "c5-0-3",
+        "runId": "AFF_1788857626943_48",
+        "firstTextMs": 12133,
+        "finalMs": 12238,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "c5-0-4",
+        "runId": "AFF_1788857626943_49",
+        "firstTextMs": 11909,
+        "finalMs": 12058,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "c5-1-0",
+        "runId": "AFF_1788857626943_50",
+        "firstTextMs": 4569,
+        "finalMs": 4985,
+        "verified": true
+      },
+      {
+        "label": "c5-1-1",
+        "runId": "AFF_1788857626943_51",
+        "firstTextMs": 6703,
+        "finalMs": 6956,
+        "verified": true
+      },
+      {
+        "label": "c5-1-2",
+        "runId": "AFF_1788857626943_52",
+        "firstTextMs": 4706,
+        "finalMs": 4801,
+        "verified": true
+      },
+      {
+        "label": "c5-1-3",
+        "runId": "AFF_1788857626943_53",
+        "firstTextMs": 5875,
+        "finalMs": 6200,
+        "verified": true
+      },
+      {
+        "label": "c5-1-4",
+        "runId": "AFF_1788857626943_54",
+        "firstTextMs": 4656,
+        "finalMs": 5065,
+        "verified": true
+      },
+      {
+        "label": "c5-2-0",
+        "runId": "AFF_1788857626943_55",
+        "firstTextMs": 7179,
+        "finalMs": 7321,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "c5-2-1",
+        "runId": "AFF_1788857626943_56",
+        "firstTextMs": 7709,
+        "finalMs": 7900,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "c5-2-2",
+        "runId": "AFF_1788857626943_57",
+        "firstTextMs": 8876,
+        "finalMs": 9020,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "c5-2-3",
+        "runId": "AFF_1788857626943_58",
+        "firstTextMs": 8019,
+        "finalMs": 8142,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "c5-2-4",
+        "runId": "AFF_1788857626943_59",
+        "firstTextMs": 11137,
+        "finalMs": 11278,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "c5-3-0",
+        "runId": "AFF_1788857626943_60",
+        "firstTextMs": 4424,
+        "finalMs": 5061,
+        "verified": true
+      },
+      {
+        "label": "c5-3-1",
+        "runId": "AFF_1788857626943_61",
+        "firstTextMs": 3933,
+        "finalMs": 4301,
+        "verified": true
+      },
+      {
+        "label": "c5-3-2",
+        "runId": "AFF_1788857626943_62",
+        "firstTextMs": 3850,
+        "finalMs": 4227,
+        "verified": true
+      },
+      {
+        "label": "c5-3-3",
+        "runId": "AFF_1788857626943_63",
+        "firstTextMs": 3992,
+        "finalMs": 4934,
+        "verified": true
+      },
+      {
+        "label": "c5-3-4",
+        "runId": "AFF_1788857626943_64",
+        "firstTextMs": 4350,
+        "finalMs": 4456,
+        "verified": true
+      },
+      {
+        "label": "c5-4-0",
+        "runId": "AFF_1788857626943_65",
+        "firstTextMs": 7394,
+        "finalMs": 7554,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "c5-4-1",
+        "runId": "AFF_1788857626943_66",
+        "firstTextMs": 6823,
+        "finalMs": 6976,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "c5-4-2",
+        "runId": "AFF_1788857626943_67",
+        "firstTextMs": 7038,
+        "finalMs": 7228,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "c5-4-3",
+        "runId": "AFF_1788857626943_68",
+        "firstTextMs": 6866,
+        "finalMs": 7103,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "c5-4-4",
+        "runId": "AFF_1788857626943_69",
+        "firstTextMs": 7602,
+        "finalMs": 7732,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "c5-5-0",
+        "runId": "AFF_1788857626943_70",
+        "firstTextMs": 5153,
+        "finalMs": 5215,
+        "verified": true
+      },
+      {
+        "label": "c5-5-1",
+        "runId": "AFF_1788857626943_71",
+        "firstTextMs": 5314,
+        "finalMs": 5386,
+        "verified": true
+      },
+      {
+        "label": "c5-5-2",
+        "runId": "AFF_1788857626943_72",
+        "firstTextMs": 4459,
+        "finalMs": 4757,
+        "verified": true
+      },
+      {
+        "label": "c5-5-3",
+        "runId": "AFF_1788857626943_73",
+        "firstTextMs": 6946,
+        "finalMs": 7007,
+        "verified": true
+      },
+      {
+        "label": "c5-5-4",
+        "runId": "AFF_1788857626943_74",
+        "firstTextMs": 4821,
+        "finalMs": 4914,
+        "verified": true
+      },
+      {
+        "label": "c5-6-0",
+        "runId": "AFF_1788857626943_75",
+        "firstTextMs": 7250,
+        "finalMs": 7317,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "c5-6-1",
+        "runId": "AFF_1788857626943_76",
+        "firstTextMs": 6446,
+        "finalMs": 6586,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "c5-6-2",
+        "runId": "AFF_1788857626943_77",
+        "firstTextMs": 7449,
+        "finalMs": 7568,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "c5-6-3",
+        "runId": "AFF_1788857626943_78",
+        "firstTextMs": 14862,
+        "finalMs": 15010,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "c5-6-4",
+        "runId": "AFF_1788857626943_79",
+        "firstTextMs": 7066,
+        "finalMs": 7206,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "c5-7-0",
+        "runId": "AFF_1788857626943_80",
+        "firstTextMs": 4211,
+        "finalMs": 4367,
+        "verified": true
+      },
+      {
+        "label": "c5-7-1",
+        "runId": "AFF_1788857626943_81",
+        "firstTextMs": 4607,
+        "finalMs": 4748,
+        "verified": true
+      },
+      {
+        "label": "c5-7-2",
+        "runId": "AFF_1788857626943_82",
+        "firstTextMs": 4212,
+        "finalMs": 4505,
+        "verified": true
+      },
+      {
+        "label": "c5-7-3",
+        "runId": "AFF_1788857626943_83",
+        "firstTextMs": 6175,
+        "finalMs": 6265,
+        "verified": true
+      },
+      {
+        "label": "c5-7-4",
+        "runId": "AFF_1788857626943_84",
+        "firstTextMs": 4035,
+        "finalMs": 4166,
+        "verified": true
+      },
+      {
+        "label": "c5-8-0",
+        "runId": "AFF_1788857626943_85",
+        "firstTextMs": 7025,
+        "finalMs": 7171,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "c5-8-1",
+        "runId": "AFF_1788857626943_86",
+        "firstTextMs": 7426,
+        "finalMs": 7551,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "c5-8-2",
+        "runId": "AFF_1788857626943_87",
+        "firstTextMs": 7597,
+        "finalMs": 7694,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "c5-8-3",
+        "runId": "AFF_1788857626943_88",
+        "firstTextMs": 12882,
+        "finalMs": 13021,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "c5-8-4",
+        "runId": "AFF_1788857626943_89",
+        "firstTextMs": 7598,
+        "finalMs": 7848,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "c5-9-0",
+        "runId": "AFF_1788857626943_90",
+        "firstTextMs": 4666,
+        "finalMs": 4894,
+        "verified": true
+      },
+      {
+        "label": "c5-9-1",
+        "runId": "AFF_1788857626943_91",
+        "firstTextMs": 4183,
+        "finalMs": 4358,
+        "verified": true
+      },
+      {
+        "label": "c5-9-2",
+        "runId": "AFF_1788857626943_92",
+        "firstTextMs": 4822,
+        "finalMs": 5020,
+        "verified": true
+      },
+      {
+        "label": "c5-9-3",
+        "runId": "AFF_1788857626943_93",
+        "firstTextMs": 6119,
+        "finalMs": 6206,
+        "verified": true
+      },
+      {
+        "label": "c5-9-4",
+        "runId": "AFF_1788857626943_94",
+        "firstTextMs": 4627,
+        "finalMs": 4774,
+        "verified": true
+      }
+    ]
+  },
+  "B": {
+    "source": "affinity-B-1788858161158.json",
+    "arm": "B",
+    "commit": "e69dd8ee3ea7c6cd644a4e0ceec924ee0733e194",
+    "databaseBytes": 2574585856,
+    "completed": false,
+    "maxActive": 4,
+    "groups": {
+      "worker-cold": {
+        "firstText": {
+          "n": 4,
+          "median": 17988.5,
+          "p95": 18479,
+          "max": 18479
+        },
+        "bundle": {
+          "n": 0,
+          "median": null
+        },
+        "throughPrompt": {
+          "n": 0,
+          "median": null
+        },
+        "cacheHits": 0
+      },
+      "prime-second": {
+        "firstText": {
+          "n": 4,
+          "median": 13238,
+          "p95": 18105,
+          "max": 18105
+        },
+        "bundle": {
+          "n": 0,
+          "median": null
+        },
+        "throughPrompt": {
+          "n": 0,
+          "median": null
+        },
+        "cacheHits": 0
+      },
+      "revisit": {
+        "firstText": {
+          "n": 3,
+          "median": 6167,
+          "p95": 6818,
+          "max": 6818
+        },
+        "bundle": {
+          "n": 0,
+          "median": null
+        },
+        "throughPrompt": {
+          "n": 0,
+          "median": null
+        },
+        "cacheHits": 0
+      },
+      "serial-warm": {
+        "firstText": {
+          "n": 0,
+          "median": null
+        },
+        "bundle": {
+          "n": 0,
+          "median": null
+        },
+        "throughPrompt": {
+          "n": 0,
+          "median": null
+        },
+        "cacheHits": 0
+      },
+      "c5": {
+        "firstText": {
+          "n": 0,
+          "median": null
+        },
+        "bundle": {
+          "n": 0,
+          "median": null
+        },
+        "throughPrompt": {
+          "n": 0,
+          "median": null
+        },
+        "cacheHits": 0
+      },
+      "c5-tool": {
+        "firstText": {
+          "n": 0,
+          "median": null
+        },
+        "bundle": {
+          "n": 0,
+          "median": null
+        },
+        "throughPrompt": {
+          "n": 0,
+          "median": null
+        },
+        "cacheHits": 0
+      },
+      "c5-greeting": {
+        "firstText": {
+          "n": 0,
+          "median": null
+        },
+        "bundle": {
+          "n": 0,
+          "median": null
+        },
+        "throughPrompt": {
+          "n": 0,
+          "median": null
+        },
+        "cacheHits": 0
+      }
+    },
+    "jobs": [
+      {
+        "label": "worker-cold-0",
+        "runId": "AFF_1788858161158_0",
+        "firstTextMs": 17995,
+        "finalMs": 18523,
+        "verified": true
+      },
+      {
+        "label": "prime-second-0",
+        "runId": "AFF_1788858161158_1",
+        "firstTextMs": 10923,
+        "finalMs": 11078,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "revisit-0",
+        "runId": "AFF_1788858161158_2",
+        "firstTextMs": 6167,
+        "finalMs": 6318,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "worker-cold-1",
+        "runId": "AFF_1788858161158_3",
+        "firstTextMs": 18479,
+        "finalMs": 18988,
+        "verified": true
+      },
+      {
+        "label": "prime-second-1",
+        "runId": "AFF_1788858161158_4",
+        "firstTextMs": 15553,
+        "finalMs": 16081,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "revisit-1",
+        "runId": "AFF_1788858161158_5",
+        "firstTextMs": 6107,
+        "finalMs": 6260,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "worker-cold-2",
+        "runId": "AFF_1788858161158_6",
+        "firstTextMs": 17457,
+        "finalMs": 18199,
+        "verified": true
+      },
+      {
+        "label": "prime-second-2",
+        "runId": "AFF_1788858161158_7",
+        "firstTextMs": 18105,
+        "finalMs": 18662,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "revisit-2",
+        "runId": "AFF_1788858161158_8",
+        "firstTextMs": 6818,
+        "finalMs": 6983,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "worker-cold-3",
+        "runId": "AFF_1788858161158_9",
+        "firstTextMs": 17982,
+        "finalMs": 18445,
+        "verified": true
+      },
+      {
+        "label": "prime-second-3",
+        "runId": "AFF_1788858161158_10",
+        "firstTextMs": 10573,
+        "finalMs": 10755,
+        "verified": true,
+        "toolVerified": true
+      },
+      {
+        "label": "revisit-3",
+        "runId": "AFF_1788858161158_11",
+        "firstTextMs": 4115,
+        "finalMs": 4208
+      }
+    ]
+  }
+}
