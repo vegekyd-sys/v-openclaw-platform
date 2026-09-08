@@ -1,10 +1,11 @@
 import fs from 'node:fs';import os from 'node:os';import assert from 'node:assert/strict';import {execFileSync} from 'node:child_process';
 assert.equal(os.hostname(),'VM-0-4-ubuntu');assert.equal(process.getuid(),0);
-const root='/srv/vlab-production-mirror/labs/instances/db91-fix';
+const shared=process.argv.includes('--shared');
+const root=shared?'/srv/vlab-production-mirror/generations/candidate-official-update-final-20260902':'/srv/vlab-production-mirror/labs/instances/db91-fix';
 const file=process.argv[2];assert(/^hi-\d+\.json$/.test(file));
-const r=JSON.parse(fs.readFileSync(root+'/workspace/'+file));
+const r=JSON.parse(fs.readFileSync(root+(shared?'/state/db91-c5-release-20260907':'/workspace')+'/'+file));
 const since=new Date(r.startedAt).toISOString().replace('T',' ').replace(/\.\d+Z$/,' UTC');
-const logs=execFileSync('journalctl',['-u','openclaw-lab-db91-fix.service','--since',since,'--no-pager','-o','json'],{encoding:'utf8',maxBuffer:32*1024**2});
+const logs=execFileSync('journalctl',['-u',shared?'openclaw-vlab-production-mirror-v8.service':'openclaw-lab-db91-fix.service','--since',since,'--no-pager','-o','json'],{encoding:'utf8',maxBuffer:32*1024**2});
 const jobs=new Map(r.jobs.map(j=>[j.runId,{...j,stages:[],nativePhases:[]}]));
 for(const line of logs.split('\n').filter(Boolean)){
   const text=String(JSON.parse(line).MESSAGE??'');

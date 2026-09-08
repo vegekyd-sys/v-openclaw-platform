@@ -45,8 +45,8 @@ export function instrumentHiTransport(source){
   return once(source,'\t\tfetch: getAiTransportHost().buildModelFetch(model)',
     '\t\tfetch: db91Call ? db91Call.wrapFetch(getAiTransportHost().buildModelFetch(model)) : getAiTransportHost().buildModelFetch(model)');
 }
-export function instrumentHiGateway(source){
-  source='import {db91HiTrace} from "../../worker/db91-hi-trace.mjs";\n'+source;
+export function instrumentHiGateway(source,helperImport='../../worker/db91-hi-trace.mjs'){
+  source='import {db91HiTrace} from '+JSON.stringify(helperImport)+';\n'+source;
   const anchor='async function handleChatSendWithOptions({ params, respond, context, client, sessionMutationAuthorization, sessionMutationCommitGuard }, onAdmissionOwned, externalAuthorityAdmission, options) {';
   const at=source.indexOf(anchor),end=source.indexOf('async function handleChatSend(options,',at);assert(at>=0&&end>at);
   let body=source.slice(at,end);
