@@ -58,7 +58,8 @@ try{
     if(fixtures&&mode!=='group_same'){
       const parent=mode==='dm_fork'?fixtures.dm:fixtures.group;
       const forkAt=Date.now();
-      await call('sessions.create',{key:sessionKey,agentId:'makaron',parentSessionKey:parent.key,fork:true,forkFrom:'last-completed',emitCommandHooks:false,succeedsParent:false,thinkingLevel:thinking},120000);
+      // Native forks run parallel to the parent; no lifecycle hooks or succession.
+      await call('sessions.create',{key:sessionKey,agentId:'makaron',parentSessionKey:parent.key,fork:true,forkFrom:'last-completed',emitCommandHooks:false,thinkingLevel:thinking},120000);
       j.forkSetupMs=Date.now()-forkAt;
       j.parentKeyHash=createHash('sha256').update(parent.key).digest('hex').slice(0,12);
       const inventory=await call('sessions.list',{limit:1000});
@@ -67,7 +68,7 @@ try{
       if(mode==='group_fork')assert.equal(entry.chatType,'group','group fixture lost native group classification');
     }
     assert.equal((await call('sessions.messages.subscribe',{agentId:'makaron',key:sessionKey})).subscribed,true);
-    j.start=Date.now();let finished=false;
+    j.resourceBefore=resource();j.start=Date.now();let finished=false;
     try{
       const ack=await call('chat.send',{agentId:'makaron',sessionKey,message:'hi',thinking,deliver:false,idempotencyKey:j.runId,timeoutMs:180000});
       assert.equal(ack.runId,j.runId);j.admittedMs=Date.now()-j.start;
