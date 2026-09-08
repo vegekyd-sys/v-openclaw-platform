@@ -39,7 +39,7 @@ for rec in meta['databases']:
             if table in tables:
                 n=preserve_rows(c,table,tag);c.execute('DELETE FROM '+table);changes[table]=n
         preserve_rows(c,'task_runs',tag)
-        changes['task_runs_cancelled']=c.execute("UPDATE task_runs SET status='cancelled',notify_policy='none',delivery_status='skipped',ended_at=? WHERE status IN ('running','queued','pending','paused')",(int(time.time()*1000),)).rowcount
+        changes['task_runs_cancelled']=c.execute("UPDATE task_runs SET status='cancelled',notify_policy='silent',delivery_status='not_applicable',ended_at=? WHERE status IN ('running','queued')",(int(time.time()*1000),)).rowcount
         preserve_rows(c,'delivery_queue_entries',tag)
         changes['delivery_queue_stopped']=c.execute("UPDATE delivery_queue_entries SET status='completed',recovery_state=NULL WHERE status!='completed'").rowcount
         # Rebuild discovery cache from this instance, not old absolute paths.
