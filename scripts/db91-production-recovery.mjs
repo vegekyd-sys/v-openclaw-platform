@@ -7,7 +7,8 @@ const root='/home/openclaw/.openclaw';
 const livePid=execFileSync('systemctl',['show','openclaw-gateway.service','-p','MainPID','--value'],{encoding:'utf8'}).trim();
 for(const e of fs.readFileSync('/proc/'+livePid+'/environ','utf8').split('\0')){const i=e.indexOf('=');if(i>0)process.env[e.slice(0,i)]=e.slice(i+1);}
 assert.equal(process.env.V_RELEASE_VERSION,'v2026.9.1-db91.1');
-assert.equal(process.env.OPENCLAW_STATE_DIR,root);
+if(process.env.OPENCLAW_STATE_DIR)assert.equal(process.env.OPENCLAW_STATE_DIR,root);
+process.env.OPENCLAW_STATE_DIR=root;
 const [mode,tag]=process.argv.slice(2);assert(['start','verify'].includes(mode));assert(/^[a-z0-9-]{1,32}$/.test(tag));
 const cfg=JSON.parse(fs.readFileSync(root+'/openclaw.json'));assert.equal(cfg.gateway.port,22793);
 const resultFile=root+'/backups/v2026.9.1-db91.1/recovery-'+tag+'.json';
@@ -60,4 +61,3 @@ try{
   report.after=lastSummary;save();assert(report.completed,'Native continuation did not reach a visible final');console.log(JSON.stringify({completed:true,beforePid:report.beforePid,afterPid:report.afterPid,effectCount:1,userResend:false,writeCalls:report.after.writeCalls}));
  }
 }finally{if(mode==='start'&&!report.readyForRestart)await call('chat.abort',{agentId:'makaron',sessionKey:report.key,runId:report.runId}).catch(()=>{});client.stop();}
-
