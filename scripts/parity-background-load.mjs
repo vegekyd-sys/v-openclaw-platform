@@ -16,7 +16,7 @@ const directory=root+'/tmp/parity-results';fs.mkdirSync(directory,{recursive:tru
 const output=directory+'/background-'+tag+'.json';assert(!fs.existsSync(output),'unique run tag required');
 const stopFile=directory+'/background-'+tag+'.stop';const stamp=Date.now();
 const roster=[...Array(10).fill('makaron'),'v-codex','dealclaw','dealclaw','short-v','short-v','xiaoai'];
-const report={tag,stamp,roster,controlledReplay:true,productionOAuthCopied:false,model:'deepseek/deepseek-v4-pro',jobs:[],sessions:[],samples:[],errors:[],ready:false,completed:false};
+const report={tag,stamp,roster,controlledReplay:true,productionOAuthCopied:false,model:'deepseek/deepseek-v4-pro',backgroundModels:{'short-v':'deepseek/deepseek-v4-flash',other:'deepseek/deepseek-v4-pro'},jobs:[],sessions:[],samples:[],errors:[],ready:false,completed:false};
 const persist=()=>{const tmp=output+'.'+process.pid+'.tmp';fs.writeFileSync(tmp,JSON.stringify(report,null,2),{mode:0o600});fs.renameSync(tmp,output);};persist();
 const tracked=new Map();let client,stopping=false;
 process.on('SIGTERM',()=>{stopping=true;});process.on('SIGINT',()=>{stopping=true;});
@@ -38,20 +38,22 @@ try{
  // Fork completed copied history, never resume a copied pending business run.
  for(let i=0;i<roster.length;i++){
   const agentId=roster[i],file=root+'/state/agents/'+agentId+'/agent/openclaw-agent.sqlite';
+  const selectedModel=report.backgroundModels[agentId]??report.backgroundModels.other;
   const db=new DatabaseSync(file,{readOnly:true});
-  const parents=db.prepare("SELECT session_key,current_session_id, json_extract(entry_json,'$.totalTokens') AS tokens FROM session_nodes WHERE status='done' AND json_extract(entry_json,'$.totalTokens') BETWEEN 30000 AND 90000 AND session_key NOT LIKE '%parity-%' ORDER BY tokens DESC LIMIT 12").all().map(p=>({...p,transcriptBytes:db.prepare('SELECT coalesce(sum(length(CAST(event_json AS BLOB))),0) AS n FROM transcript_events WHERE session_id=?').get(p.current_session_id).n})).filter(p=>p.transcriptBytes<=16*1024**2);db.close();
+  const parents=db.prepare("SELECT session_key,current_session_id, json_extract(entry_json,'$.totalTokens') AS tokens FROM session_nodes WHERE status='done' AND json_extract(entry_json,'$.model')=? AND json_extract(entry_json,'$.totalTokens') BETWEEN 30000 AND 90000 AND session_key NOT LIKE '%parity-%' ORDER BY tokens DESC LIMIT 12").all(selectedModel.split('/')[1]).map(p=>({...p,transcriptBytes:db.prepare('SELECT coalesce(sum(length(CAST(event_json AS BLOB))),0) AS n FROM transcript_events WHERE session_id=?').get(p.current_session_id).n})).filter(p=>p.transcriptBytes<=16*1024**2);db.close();
+  assert(parents.length>0,'Representative completed history is required for every background agent');
   const parent=parents.length?parents[i%parents.length]:null;
   const space=fs.statfsSync(root);assert(space.bavail*space.bsize>3.7*1024**3+3*(parent?.transcriptBytes??0),'Fork would violate data reserve');
   const key='agent:'+agentId+':explicit:parity-bg-'+tag+'-'+i;
-  await call('sessions.create',{agentId,key,idempotencyKey:'BG_CREATE_'+tag+'_'+i,model:report.model,thinkingLevel:'low',
+  await call('sessions.create',{agentId,key,idempotencyKey:'BG_CREATE_'+tag+'_'+i,model:selectedModel,thinkingLevel:'low',
     ...(parent?{parentSessionKey:parent.session_key,fork:true,forkFrom:'last-completed',emitCommandHooks:false}:{})},120000);
   // A native history fork can retain agent defaults instead of create.model.
   // Pin and verify the model on the new test session before dispatching work.
-  const selected=await call('sessions.patch',{agentId,key,model:report.model,thinkingLevel:'low'},120000);
+  const selected=await call('sessions.patch',{agentId,key,model:selectedModel,thinkingLevel:'low'},120000);
   assert.equal(selected.ok,true,'Model selection must be acknowledged');
-  assert.equal(selected.resolved?.model,'deepseek-v4-pro','Fork must resolve the intended model');
+  assert.equal(selected.resolved?.model,selectedModel.split('/')[1],'Fork must resolve the intended model');
   assert.equal(selected.resolved?.modelProvider??selected.resolved?.provider,'deepseek');
-  report.sessions.push({agentId,key,parentKey:parent?.session_key??null,parentTokens:parent?.tokens??null,parentTranscriptBytes:parent?.transcriptBytes??null});persist();
+  report.sessions.push({agentId,key,model:selectedModel,parentKey:parent?.session_key??null,parentTokens:parent?.tokens??null,parentTranscriptBytes:parent?.transcriptBytes??null});persist();
  }
  sampleLoop=(async()=>{while(!shouldStop()){
   try{const s=await call('vlab.workers.status');const totalActive=s.workers.reduce((n,w)=>n+w.activeCount,0);
@@ -82,7 +84,7 @@ try{
     assert.equal(writes.length,1,'Exactly one fresh write required');
     const result=turnMessages.find(x=>x.role==='toolResult'&&x.toolCallId===writes[0].id);assert(result&&result.isError!==true);
     assert(calls.some(x=>x.name==='exec')&&calls.some(x=>x.name==='read'),'Actual native exec/read/write required');
-    const last=turnMessages.filter(x=>x.role==='assistant').at(-1);assert.equal(last.model,'deepseek-v4-pro');assert.notEqual(last.stopReason,'error');j.usage=last.usage??null;
+    const last=turnMessages.filter(x=>x.role==='assistant').at(-1);assert.equal(last.model,session.model.split('/')[1]);assert.notEqual(last.stopReason,'error');j.model=last.model;j.usage=last.usage??null;
     const workspace=cfg.agents.entries[j.agentId].workspace??cfg.agents.defaults.workspace;
     const file=workspace+'/'+filename;assert(fs.readFileSync(file,'utf8').includes(j.runId));j.outputBytes=fs.statSync(file).size;j.verified=true;
     // Real native idle boundary; no synthetic sleep to hold an occupied slot.
