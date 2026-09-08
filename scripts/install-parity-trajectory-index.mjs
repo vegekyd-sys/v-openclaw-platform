@@ -9,11 +9,11 @@ const manifest=JSON.parse(fs.readFileSync(root+'/../../control/db91-parity.json'
 assert.equal(execFileSync('systemctl',['show',manifest.unit,'-p','MainPID','--value'],{encoding:'utf8'}).trim(),'0');
 const dist=root+'/runtime/openclaw/dist/',file=dist+'runtime-store.sqlite-D0DF2c9M.js';
 const [mode]=process.argv.slice(2);assert(mode===undefined||/^restored-[a-z0-9-]{1,40}$/.test(mode));
-const before=fs.readFileSync(file,'utf8'),after=mode?before:patchTrajectoryBudgetQuery(before);
+const before=fs.readFileSync(file,'utf8');
 assert(before.includes('prepareTrajectorySweep'),'expected previous candidate');
 const backup=root+'/tmp/before-trajectory-budget-query.js';
-if(mode)assert.equal(before,patchTrajectoryBudgetQuery(fs.readFileSync(backup,'utf8')),'Installed query changed');
-else assert(!fs.existsSync(backup));
+const original=mode?fs.readFileSync(backup,'utf8'):before,after=patchTrajectoryBudgetQuery(original);
+if(mode)assert(before===original||before===after,'Installed query changed');else assert(!fs.existsSync(backup));
 const report={startedAt:Date.now(),databases:[],complete:false,nativeRuntimeIntegrityStillRequired:true};
 const schema=await import(pathToFileURL(dist+'openclaw-agent-db-maintenance-DYSkzMMg.js').href);
 const owner=fs.statSync(root+'/state/agents/main/agent/openclaw-agent.sqlite');
@@ -36,7 +36,7 @@ try{
  process.setegid(owner.gid);process.seteuid(owner.uid);
  try{for(const agent of ['openclaw','main','xiaoai','dealclaw','short-v','v-codex','makaron'])installDb(agent);}
  finally{process.seteuid(0);process.setegid(0);}
- if(!mode){fs.writeFileSync(backup,before,{mode:0o600,flag:'wx'});fs.writeFileSync(file,after);}execFileSync(process.execPath,['--check',file]);report.complete=true;
+ if(!mode)fs.writeFileSync(backup,before,{mode:0o600,flag:'wx'});if(before!==after)fs.writeFileSync(file,after);execFileSync(process.execPath,['--check',file]);report.complete=true;
 }finally{
  report.finishedAt=Date.now();fs.writeFileSync(root+'/tmp/trajectory-index-install'+(mode?'-'+mode:'')+'.json',JSON.stringify(report,null,2),{mode:0o600,flag:'wx'});
 }
