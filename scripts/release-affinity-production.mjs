@@ -21,7 +21,7 @@ if(mode==='prestart'){
  for(const f of s.protectedFiles)assert.equal(hash(fs.readFileSync(f.path)),f.sha,'protected runtime drift');
  // Repeated prestart after a failed boot is idempotent; refuse unrelated drift.
  for(const f of s.files)assert([f.beforeSha,f.afterSha].includes(hash(fs.readFileSync(f.path))),'prestart file drift');
- try{for(const f of s.files)atomic(f.path,fs.readFileSync(f.after));record('applied',{arm:s.arm,files:s.files.map(f=>({path:f.path,sha:hash(fs.readFileSync(f.path))}))});}
+ try{for(const f of s.files)atomic(f.path,fs.readFileSync(f.after));for(const f of s.files)run('/usr/sbin/runuser',['-u','openclaw','--','/usr/bin/test','-r',f.path]);record('applied',{arm:s.arm,files:s.files.map(f=>({path:f.path,sha:hash(fs.readFileSync(f.path)),mode:fs.statSync(f.path).mode&0o777}))});}
  catch(e){for(const f of s.files)if(hash(fs.readFileSync(f.path))===f.afterSha)atomic(f.path,fs.readFileSync(f.before));record('apply-rolled-back',{arm:s.arm,error:e.name});throw e;}
  process.exit(0);
 }
@@ -66,7 +66,7 @@ if(mode==='stage'){
  const child=spawn('systemctl',['restart',unit],{env:process.env,stdio:['ignore','pipe','pipe']});let output='';child.stdout.on('data',b=>{output+=b;if(output.length>200000)output=output.slice(-200000);});child.stderr.on('data',()=>{});
  const code=await new Promise(resolve=>child.once('exit',resolve));fs.writeFileSync(dir+'/'+Date.now()+'-official-restart-output.txt',output,{mode:0o600,flag:'wx'});record('official-restart-return',{arm:s.arm,code,pid:pid()});process.exitCode=code??1;
 }else if(mode==='verify'){
- const s=read(dir+'/pending.json');assert.notEqual(beforePid,s.beforePid,'Gateway did not restart');for(const f of s.files)assert.equal(hash(fs.readFileSync(f.path)),f.afterSha);
+ const s=read(dir+'/pending.json');assert.notEqual(beforePid,s.beforePid,'Gateway did not restart');for(const f of s.files){assert.equal(hash(fs.readFileSync(f.path)),f.afterSha);run('/usr/sbin/runuser',['-u','openclaw','--','/usr/bin/test','-r',f.path]);}
  for(const f of s.protectedFiles)assert.equal(hash(fs.readFileSync(f.path)),f.sha,'protected runtime drift');
  assert.equal(process.env.OPENCLAW_WORKER_SESSION_AFFINITY_ENABLE==='1',s.arm==='B');
  if(fs.existsSync(drop)){assert.equal(fs.readFileSync(drop,'utf8'),hook);fs.unlinkSync(drop);run('systemctl',['daemon-reload']);}
