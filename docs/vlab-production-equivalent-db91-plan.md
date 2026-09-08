@@ -27,5 +27,14 @@
 - 5 个生产 workspace 的 31 个引导文件已复制，未复制全部 Skill/媒体目录；不声称提示词或所有插件完全等价。
 - 主/子 Agent 并发 45，Worker 1～15 × 3 保留。私有实例资源例外为 CPU 400%、MemoryHigh 10 GiB / Max 12 GiB。物理硬件仍是 VLab 4 核/约 15 GiB，与 V 8 核/约 30 GiB 不同。
 - 首次原生检查复现 300 秒超时（7 库），CPU 约 15.8 秒；Gateway 未准入。逐库顺序预读候选在文件缓存驻留页确认归零后，完整检查用时 98.483 秒，未修改 300 秒上限或删减检查。
-- 上述仅为启动检查阶段结果。首次检查通过后的插件迁移要求重新启动，尚不能认定 Gateway 可用，更不能认定真实请求、写锁和恢复问题已通过。
+- 插件迁移已通过受控重启收敛，基础真实 Agent 矩阵 90 次通过；不含后台竞争与重启恢复，不能作为全项验收。
 - 生产 V 的当前运行代码、配置与服务未修改；本轮仍不包含生产发布。
+
+## 2026-09-08 后台竞争复现与候选
+
+- `A16-03`：16 个复制历史的独立会话提交真实 Agent 请求，观察到 15 active + 1 pending，随后一例 `StateDatabaseCoordinatorContentionError`。测试驱动按失败即停规则中止其余请求；这些中止不计为 15 个独立故障。
+- 原生慢调用栈：Worker 1（PID 1712903）在 `ensureSchema → isOpenClawStateSchemaFastPathEligible → assertSqliteIntegrity` 花费 6682 ms；该调用位于 `fresh state database open` 的 state-lifecycle 锁内。同时 Worker 2（PID 1712914）在该锁的 SQLite acquire 等待 5051 ms 后超时。
+- 候选 `fd18c72517afa2ed5c58f2cefa6c9cd0aa4b5877`：独立开关 `OPENCLAW_DB91_STATE_READ_AHEAD_ENABLE` 默认关闭；首次打开全局库前、获取生命周期锁前，用固定 1 MiB 缓冲顺序只读主文件。不生成完整性凭证，不缓存校验结果，不改原生所有权、恢复、事务、schema、完整性检查或 5 秒锁上限。
+- 此候选再次九库 mincore 驻留归零后，七个 Agent 库完整预检 94400 ms 通过；全局库预读 18 ms，Gateway 随后可访问。不能凭这一点认定后台竞争已解决。
+- 本地测试 41 pass、8 个需原始 native bundle 的测试跳过（不计通过）。实际安装的原生 integrity checker 负控通过：33.6 MB 私有合成库预读后，外键损坏和物理页损坏仍被拒绝。负控不作为真实负载性能证明。
+- 后台竞争 B 组、关开对照、进行中重启/唯一副作用验证仍待完成；当前无全项完成声明。

@@ -45,6 +45,12 @@ try{
   const key='agent:'+agentId+':explicit:parity-bg-'+tag+'-'+i;
   await call('sessions.create',{agentId,key,idempotencyKey:'BG_CREATE_'+tag+'_'+i,model:report.model,thinkingLevel:'low',
     ...(parent?{parentSessionKey:parent.session_key,fork:true,forkFrom:'last-completed',emitCommandHooks:false}:{})},120000);
+  // A native history fork can retain agent defaults instead of create.model.
+  // Pin and verify the model on the new test session before dispatching work.
+  const selected=await call('sessions.patch',{agentId,key,model:report.model,thinkingLevel:'low'},120000);
+  assert.equal(selected.ok,true,'Model selection must be acknowledged');
+  assert.equal(selected.resolved?.model,'deepseek-v4-pro','Fork must resolve the intended model');
+  assert.equal(selected.resolved?.modelProvider??selected.resolved?.provider,'deepseek');
   report.sessions.push({agentId,key,parentKey:parent?.session_key??null,parentTokens:parent?.tokens??null,parentTranscriptBytes:parent?.transcriptBytes??null});persist();
  }
  sampleLoop=(async()=>{while(!shouldStop()){
