@@ -65,7 +65,7 @@ try{
       const inventory=await call('sessions.list',{limit:1000});
       const entry=(inventory.sessions??[]).find(s=>(s.key??s.sessionKey)===sessionKey);
       assert(entry,'forked session missing from native inventory');j.fixtureKind=entry.kind;j.fixtureChatType=entry.chatType;
-      if(mode==='group_fork')assert.equal(entry.chatType,'group','group fixture lost native group classification');
+      if(mode==='group_fork')assert.equal(entry.kind,'group','group fixture lost native group classification');
     }
     assert.equal((await call('sessions.messages.subscribe',{agentId:'makaron',key:sessionKey})).subscribed,true);
     j.resourceBefore=resource();j.start=Date.now();let finished=false;
