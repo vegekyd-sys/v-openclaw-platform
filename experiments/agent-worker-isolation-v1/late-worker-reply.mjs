@@ -1,4 +1,5 @@
-// Only replies/acks use this helper. Request admission must still fail normally.
+// Only replies/acks and cancellation use this helper. Request admission still
+// fails normally; a closed cancellation channel means the worker is exiting.
 export function sendLateWorkerReply(child,message){
   if(!child.connected)return false;
   const report=error=>{
@@ -17,4 +18,14 @@ export function patchLateWorkerReplies(source){
   const patched=source.replace(/worker\.child\.send\(\{(\s+type: "(?:worker-gateway-event-ack|gateway-tool-response|stream-event-ack)")/g,(_,tail)=>{count++;return 'sendLateWorkerReply(worker.child,{'+tail;});
   if(count!==7)throw Error('Reply anchors drift: '+count);
   return 'import {sendLateWorkerReply} from "./late-worker-reply.mjs";\n'+patched;
+}
+
+export function patchLateWorkerCancellations(source){
+  if(!source.includes('import {sendLateWorkerReply}'))throw Error('Reply guard prerequisite missing');
+  for(const message of ['{ type: "cancel", requestId }','{ type: "cancel", requestId: active.id }']){
+    const before='worker.child.send('+message+');';
+    if(source.split(before).length!==2)throw Error('Cancellation anchor drift or already patched');
+    source=source.replace(before,'sendLateWorkerReply(worker.child,'+message+');');
+  }
+  return source;
 }

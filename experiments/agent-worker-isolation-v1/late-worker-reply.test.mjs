@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {sendLateWorkerReply,patchLateWorkerReplies} from './late-worker-reply.mjs';
+import {sendLateWorkerReply,patchLateWorkerReplies,patchLateWorkerCancellations} from './late-worker-reply.mjs';
 test('closed reply channel is never used',()=>assert.equal(sendLateWorkerReply({connected:false,send(){throw Error('must not send');}},{type:'stream-event-ack'}),false));
 test('async channel-close race is consumed by send callback',async()=>{
   let done;const observed=new Promise(r=>done=r);
@@ -14,4 +14,17 @@ test('patch is reply-only, exact, and rejects duplicate application',()=>{
   const source=Array(7).fill('worker.child.send({\n type: "stream-event-ack"});').join('\n')+'\nworker.child.send({type:"request"});';
   const patched=patchLateWorkerReplies(source);assert(patched.includes('worker.child.send({type:"request"})'));
   assert.throws(()=>patchLateWorkerReplies(patched));assert.throws(()=>patchLateWorkerReplies('drift'));
+});
+test('cancellation and timeout sends are guarded without changing request admission',()=>{
+ const source='import {sendLateWorkerReply} from "./late-worker-reply.mjs";\nworker.child.send({ type: "cancel", requestId });\nworker.child.send({ type: "cancel", requestId: active.id });\nworker.child.send({ type: "request", requestId });';
+ const patched=patchLateWorkerCancellations(source);
+ assert.equal((patched.match(/sendLateWorkerReply\(worker.child/g)||[]).length,2);
+ assert(patched.includes('worker.child.send({ type: "request", requestId });'));
+ assert.throws(()=>patchLateWorkerCancellations(patched));assert.throws(()=>patchLateWorkerCancellations('changed'));
+});
+test('async EPIPE cancellation race is consumed without sending a second cancel',async()=>{
+ let sent=0,done;const completed=new Promise(r=>done=r);
+ const message={type:'cancel',requestId:'once'};
+ sendLateWorkerReply({connected:true,send(actual,callback){sent++;assert.equal(actual,message);queueMicrotask(()=>{callback({code:'EPIPE'});done();});return true;}},message);
+ await completed;assert.equal(sent,1);
 });
