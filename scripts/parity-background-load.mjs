@@ -44,7 +44,7 @@ try{
   assert(parents.length>0,'Representative completed history is required for every background agent');
   const parent=parents.length?parents[i%parents.length]:null;
   const space=fs.statfsSync(root);assert(space.bavail*space.bsize>3.7*1024**3+3*(parent?.transcriptBytes??0),'Fork would violate data reserve');
-  const key='agent:'+agentId+':explicit:parity-bg-'+tag+'-'+i;
+  const key='agent:'+agentId+':explicit:parity-bg-'+tag.toLowerCase()+'-'+i;
   await call('sessions.create',{agentId,key,idempotencyKey:'BG_CREATE_'+tag+'_'+i,model:selectedModel,thinkingLevel:'low',
     ...(parent?{parentSessionKey:parent.session_key,fork:true,forkFrom:'last-completed',emitCommandHooks:false}:{})},120000);
   // A native history fork can retain agent defaults instead of create.model.
@@ -88,7 +88,7 @@ try{
     const workspace=cfg.agents.entries[j.agentId].workspace??cfg.agents.defaults.workspace;
     const file=workspace+'/'+filename;assert(fs.readFileSync(file,'utf8').includes(j.runId));j.outputBytes=fs.statSync(file).size;j.verified=true;
     // Real native idle boundary; no synthetic sleep to hold an occupied slot.
-    let idle=false;const started=Date.now();while(!shouldStop()&&Date.now()-started<60000){const s=await call('sessions.list',{limit:100});if(s.sessions.some(x=>x.key===j.sessionKey&&x.hasActiveRun===false)){idle=true;break;}await sleep(500);}assert(idle||shouldStop(),'Background did not become idle');
+    let idle=false;const started=Date.now();while(!shouldStop()&&Date.now()-started<60000){const s=await call('sessions.list',{agentId:j.agentId,search:j.sessionKey,archived:'all',limit:10});if(s.sessions.some(x=>x.key===j.sessionKey&&x.hasActiveRun===false)){idle=true;break;}await sleep(500);}assert(idle||shouldStop(),'Background did not become idle');
     console.log(JSON.stringify({phase:'background-reply',index,turn,runId:j.runId,firstTextMs:j.firstTextMs,finalMs:j.finalMs,outputBytes:j.outputBytes}));
    }catch(e){j.failure=String(e);report.errors.push({runId:j.runId,error:String(e)});stopping=true;}
    finally{tracked.delete(j.runId);persist();}
