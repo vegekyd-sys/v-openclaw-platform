@@ -28,3 +28,16 @@ export function deepBundle(s){
 export function deepTransport(s){
   return once(s,' let db91FirstBody=false;',` let db91FirstBody=false;\n ${symbol}?.model(context);`);
 }
+export function deepPluginLoader(s){
+  const anchor='\t\tmoduleLoadMs = performance.now() - beforeModuleLoad;';
+  return once(s,anchor,anchor+`\n ${symbol}?.mark("plugin-import",{pluginId:record.id,elapsedMs:moduleLoadMs,failed:moduleLoadFailed,sourceType:path.extname(safeSource),origin:candidate.origin});`);
+}
+export function deepMcp(s){
+  for(const [anchor,label]of [
+    ['\t\t\t\t\t\tawait ensureSessionConnected(session, resolved.connectionTimeoutMs);','connect-start'],
+    ['\t\t\t\t\t\tconst capabilities = summarizeServerCapabilities(session.client.getServerCapabilities());','connected'],
+    ['\t\t\t\t\t\tconst toolFilter = normalizeMcpToolFilter','listed'],
+    ['\t\t\t\t\t\tsession.toolMetadata = normalizedTools.metadata;','normalized'],
+  ])s=once(s,anchor,`\t\t\t\t\t\t${symbol}?.mark("mcp-${label}",{server:["figma","universal-memory"].includes(serverName)?serverName:"other"});\n`+anchor);
+  return s;
+}

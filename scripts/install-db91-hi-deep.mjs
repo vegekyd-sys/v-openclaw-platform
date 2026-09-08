@@ -1,5 +1,5 @@
 import fs from 'node:fs';import os from 'node:os';import assert from 'node:assert/strict';import {execFileSync} from 'node:child_process';import {createHash} from 'node:crypto';
-import {deepWorker,deepPrepared,deepBundle,deepTransport} from './db91-hi-deep-plan.mjs';
+import {deepWorker,deepPrepared,deepBundle,deepTransport,deepPluginLoader,deepMcp} from './db91-hi-deep-plan.mjs';
 assert.equal(os.hostname(),'VM-0-4-ubuntu');assert.equal(process.getuid(),0);
 const shared=process.argv.includes('--shared');
 const root=shared?'/srv/vlab-production-mirror/generations/candidate-official-update-final-20260902':'/srv/vlab-production-mirror/labs/instances/db91-fix';
@@ -11,7 +11,7 @@ const source=shared?'/srv/vlab-production-mirror/labs/control/db91-hi-integratio
 const git=args=>execFileSync(shared?'git':'runuser',shared?['-C',source,...args]:['-u',m.user,'--','git','-C',source,...args],{encoding:'utf8'}).trim();assert.equal(git(['rev-parse','HEAD']),commit);assert.equal(git(['status','--porcelain']),'');
 const hash=b=>createHash('sha256').update(b).digest('hex'),restore=process.argv.includes('--restore'),dry=process.argv.includes('--dry-run');
 const worker=shared?'runtime/plugins/worker-v-platform-0.1.0-integration.1':'runtime/worker',core=shared?'runtime/npm-global/lib/node_modules/openclaw':'runtime/openclaw';
-const paths=[[worker+'/worker.mjs',deepWorker],[core+'/dist/prepared-model-runtime-C1N_aVhw.js',deepPrepared],[core+'/dist/builtin-openclaw-zQV8Wwjr.js',deepBundle],[core+'/node_modules/@openclaw/ai/dist/transports.mjs',deepTransport]];
+const paths=[[worker+'/worker.mjs',deepWorker],[core+'/dist/prepared-model-runtime-C1N_aVhw.js',deepPrepared],[core+'/dist/builtin-openclaw-zQV8Wwjr.js',deepBundle],[core+'/node_modules/@openclaw/ai/dist/transports.mjs',deepTransport],[core+'/dist/loader-UHuBXZwI.js',deepPluginLoader],[core+'/dist/agents/agent-bundle-mcp-runtime.js',deepMcp]];
 const backup=root+'/state/db91-hi-deep-20260908';
 const plans=paths.map(([path,fn],i)=>{const file=root+'/'+path,copy=backup+'/'+i+'.original',current=fs.readFileSync(file,'utf8'),original=fs.existsSync(copy)?fs.readFileSync(copy,'utf8'):current,patched=fn(original);assert(current===original||current===patched,'runtime drift '+path);execFileSync(process.execPath,['--check','--input-type=module'],{input:restore?original:patched});const stat=fs.statSync(file);return {file,copy,original,patched,uid:stat.uid,gid:stat.gid,mode:stat.mode&0o777};});
 if(shared){const proof=JSON.parse(fs.readFileSync('/srv/vlab-production-mirror/labs/instances/db91-fix/workspace/hi-1788836459434.json'));assert(proof.completed&&proof.jobs.every(j=>j.lastUserIdempotencyVerified&&Number.isFinite(j.firstTextMs)));}
