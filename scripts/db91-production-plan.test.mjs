@@ -10,6 +10,8 @@ test('release changes only exact runtime pointers and preserves user settings',(
 test('unit preserves established command options and startup hooks',()=>{
  const unit=db91ReleaseUnit();assert(unit.includes('--inspect=127.0.0.1:9229 --max-old-space-size=12288'));
  assert.equal((unit.match(/^ExecStartPre=.+$/gm)||[]).length,3);assert(!unit.includes(oldDb91Core));
+ assert.equal((unit.match(/^ExecStartPre=-\+/gm)||[]).length,2,'Both established root prestart helpers retain their systemd identity prefix');
+ assert(unit.includes('ExecStartPre=/opt/node-v22.23.1/bin/node'),'Session hotset prestart stays unprivileged');
  assert(!/Timeout|MemoryHigh|MemoryMax|CPUQuota/.test(unit));assert(unit.includes('KillMode=mixed'));
  assert.equal(db91SignalPolicy,'[Service]\nKillMode=mixed\n');
 });
