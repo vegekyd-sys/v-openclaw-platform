@@ -63,9 +63,9 @@ try{
       const assistants=(h.messages??[]).filter(v=>v.role==='assistant');
       const last=assistants.at(-1);assert.equal(last?.model,'deepseek-v4-pro');assert.notEqual(last.stopReason,'error');
       j.historyVerifiedMs=Date.now()-j.start;j.userCount=users.length;j.lastUserIdempotencyVerified=true;j.model=last.model;
-      j.assistantMetadata=assistants.map(v=>({model:v.model,stopReason:v.stopReason,contentTypes:(v.content??[]).map(c=>c.type),usage:v.usage?{input:v.usage.input,cacheRead:v.usage.cacheRead,output:v.usage.output}:undefined}));
+      j.assistantMetadata=assistants.map(v=>({model:v.model,stopReason:v.stopReason,contentTypes:Array.isArray(v.content)?v.content.map(c=>c.type):[typeof v.content],usage:v.usage?{input:v.usage.input,cacheRead:v.usage.cacheRead,output:v.usage.output}:undefined}));
       j.resourceAfter=resource();j.within10Seconds=j.firstTextMs<=10000;
-      j.replyTextSha256=createHash('sha256').update((last.content??[]).filter(c=>c.type==='text').map(c=>c.text).join('')).digest('hex');
+      j.replyTextSha256=createHash('sha256').update(Array.isArray(last.content)?last.content.filter(c=>c.type==='text').map(c=>c.text).join(''):String(last.content??'')).digest('hex');
       finished=true;persist();console.log(JSON.stringify({phase:'reply',mode,runId:j.runId,firstTextMs:j.firstTextMs,finalEventMs:j.finalEventMs,within10Seconds:j.within10Seconds}));
     }catch(error){j.error=String(error);persist();throw error;}
     finally{if(!finished)await call('chat.abort',{sessionKey,runId:j.runId}).catch(()=>{});current=undefined;}
