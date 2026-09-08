@@ -1,0 +1,17 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
+import {patchStateReadAhead} from '../experiments/db91-integrity-gate/state-read-ahead.mjs';
+assert.equal(os.hostname(),'VM-0-4-ubuntu');assert.equal(process.getuid(),0);
+const root='/srv/vlab-production-mirror/labs/instances/db91-parity';
+const manifest=JSON.parse(fs.readFileSync(root+'/../../control/db91-parity.json'));
+assert.equal(manifest.owner,'codex-db91-production-equivalent-20260908');
+assert.equal(execFileSync('systemctl',['show',manifest.unit,'-p','MainPID','--value'],{encoding:'utf8'}).trim(),'0');
+const file=root+'/runtime/openclaw/dist/openclaw-state-db-Bh3Bq87y.js';
+const original=fs.readFileSync(file,'utf8'),patched=patchStateReadAhead(original);
+fs.writeFileSync(root+'/tmp/before-state-read-ahead.js',original,{mode:0o600,flag:'wx'});
+fs.copyFileSync(new URL('../experiments/db91-integrity-gate/state-read-ahead.mjs',import.meta.url),root+'/runtime/openclaw/dist/db91-state-read-ahead.mjs',fs.constants.COPYFILE_EXCL);
+fs.writeFileSync(file,patched);execFileSync(process.execPath,['--check',file]);
+fs.appendFileSync(root+'/secrets.env','\nOPENCLAW_DB91_STATE_READ_AHEAD_ENABLE=1\n');
+console.log(JSON.stringify({installed:true,integrityCheckUnchanged:true}));
