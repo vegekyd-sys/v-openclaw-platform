@@ -1,12 +1,12 @@
 // Compare the exact installed function with its observer transform under stubs.
 import fs from 'node:fs';import vm from 'node:vm';import assert from 'node:assert/strict';
 import {observePrompt} from './prompt-prep-observer-plan.mjs';
-const source=fs.readFileSync(process.argv[2],'utf8'),after=observePrompt(source);
+const source=fs.readFileSync(process.argv[2]==='-'?0:process.argv[2],'utf8'),after=observePrompt(source);
 const extract=s=>{const at=s.indexOf('async function prepareEmbeddedAttemptSystemPrompt(params) {');return s.slice(at,s.indexOf('//#endregion',at));};
 const error=new Error('secret-error-must-not-be-logged');
 function fixture(code,fail,backlog=0){
  const logs=[],runtimeInfo={agentId:'a',sessionKey:'s'};
- const context={performance,process:{pid:1,stderr:{writableLength:backlog}},console:{error:s=>logs.push(s)}};
+ const context={performance,process:{pid:1,argv:['node','fixture'],env:{},stderr:{writableLength:backlog}},console:{error:s=>logs.push(s)}};
  const noop=()=>undefined;
  for(const name of ['resolveEmbeddedSandboxInfoExecPolicy','buildEmbeddedSandboxInfo','isReasoningTagProvider','buildToolSchemaDirectoryPrompt','resolveProcessToolScopeKey','resolveAgentPromptSurfaceForSessionKey','resolveProviderSystemPromptContribution','buildProjectMemoryWriteInstruction','buildModelToolsUnavailablePrompt','isAcpRuntimeSpawnAvailable','buildBootstrapPromptWarningNotice','buildBootstrapTruncationReportMeta'])context[name]=noop;
  Object.assign(context,{
@@ -16,7 +16,7 @@ function fixture(code,fail,backlog=0){
   buildAttemptSystemPrompt:()=>({systemPrompt:'private-prompt',refreshSystemPrompt:s=>s}),buildSystemPromptReport:p=>({systemPrompt:p.systemPrompt}),
  });
  if(fail)context[fail]=()=>{throw error;};
- const fn=vm.runInNewContext(extract(code)+';prepareEmbeddedAttemptSystemPrompt',context);
+ const fn=vm.runInNewContext(extract(code).replaceAll('import.meta.url','"file:///fixture/native.js"')+';prepareEmbeddedAttemptSystemPrompt',context);
  const params={attempt:{model:{api:'test'},provider:'test',modelId:'test',config:{},sessionKey:'ordinary-production-session',sessionId:'s',preparedModelRuntime:{activeProjectKeys:['p']}},
   getProviderRuntimeHandle:noop,effectiveTools:[{name:'read'}],capabilityToolNames:[],markStage:noop,
   bootstrap:{workspaceNotes:[],contextFiles:[],bootstrapPromptWarning:{lines:[]},bootstrapInjectionStats:[]}};
@@ -32,4 +32,5 @@ for(const fail of [null,'resolveAgentRuntimePrompt','prepareAgentMemoryPrompt','
 }
 const blocked=fixture(after,null,300000);await blocked.fn(blocked.params);assert.equal(blocked.logs.length,0);
 const settled=fixture(after);settled.params.attempt.operation='settled-tool-finalization';const result=await settled.fn(settled.params);assert.equal(result.systemPromptText,'');assert.equal(settled.logs.length,2);
-console.log(JSON.stringify({version:'prompt-prep-observer.1',tests:9,passed:true,returnAndErrorSemantics:true,contentNotLogged:true,backpressureGuard:true}));
+const late=fixture(after);const prepared=await late.fn(late.params);const logged=late.logs.length;const refresh=await prepared.preparePermissionPrompt();assert.equal(refresh('current'),'current');assert.equal(late.logs.length,logged);
+console.log(JSON.stringify({version:'prompt-prep-observer.1',tests:10,passed:true,returnAndErrorSemantics:true,contentNotLogged:true,backpressureGuard:true,lateCallbacksNotLogged:true}));
