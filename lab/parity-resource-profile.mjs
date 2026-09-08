@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 export const parityName = 'db91-parity';
 export const parityOwner = 'codex-db91-production-equivalent-20260908';
+export function patchLongRunController(source) {
+  const before="{stdio:'inherit',timeout:240000}";
+  assert.equal(source.split(before).length,2,'Long-run controller anchor drift');
+  return source.replace(before,"{stdio:'inherit',timeout:m.name===parityName&&command==='run'?7200000:240000}");
+}
 export function parityResources(m, lease) {
   assert.equal(m.name, parityName);
   assert.equal(m.owner, parityOwner);
@@ -20,5 +25,5 @@ export function patchController(source) {
     assert.equal(source.split(before).length, 2, 'Controller changed; re-review exact anchor');
     source = source.replace(before, after);
   }
-  return source;
+  return patchLongRunController(source);
 }
