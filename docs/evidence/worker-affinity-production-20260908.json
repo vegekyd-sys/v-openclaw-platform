@@ -1,0 +1,1764 @@
+{
+  "status": "production deployed; serial functionality verified; contention and cold-open unresolved",
+  "checkedAt": "2026-09-08T11:05:33.596Z",
+  "poolSha": "0dae077e391513f716757ddeaf1531319aed990f09497b6c606d9a91a1010c1f",
+  "gatewayPid": 3352362,
+  "A": {
+    "source": "affinity-A-1788863613324.json",
+    "arm": "A",
+    "databaseBytes": 7413997568,
+    "umDisabled": true,
+    "umConnectStarts": 0,
+    "completed": false,
+    "maxOwnActive": 5,
+    "maxObservedTotalActive": 18,
+    "groups": {
+      "new-session": {
+        "firstText": {
+          "n": 5,
+          "median": 9537,
+          "p95": 17872,
+          "max": 17872
+        },
+        "bundle": {
+          "n": 5,
+          "median": 221,
+          "p95": 320.8,
+          "max": 320.8
+        },
+        "throughPrompt": {
+          "n": 5,
+          "median": 2316,
+          "p95": 4083,
+          "max": 4083
+        },
+        "cacheHits": 0
+      },
+      "revisit": {
+        "firstText": {
+          "n": 5,
+          "median": 14831,
+          "p95": 53390,
+          "max": 53390
+        },
+        "bundle": {
+          "n": 5,
+          "median": 13.8,
+          "p95": 18.2,
+          "max": 18.2
+        },
+        "throughPrompt": {
+          "n": 5,
+          "median": 1546,
+          "p95": 2612,
+          "max": 2612
+        },
+        "cacheHits": 5
+      },
+      "serial-warm": {
+        "firstText": {
+          "n": 30,
+          "median": 6451,
+          "p95": 30440,
+          "max": 47168
+        },
+        "bundle": {
+          "n": 30,
+          "median": 16.05,
+          "p95": 22.8,
+          "max": 24.3
+        },
+        "throughPrompt": {
+          "n": 30,
+          "median": 1145,
+          "p95": 2574,
+          "max": 2641
+        },
+        "cacheHits": 30
+      },
+      "c5": {
+        "firstText": {
+          "n": 1,
+          "median": 12665,
+          "p95": 12665,
+          "max": 12665
+        },
+        "bundle": {
+          "n": 1,
+          "median": 366,
+          "p95": 366,
+          "max": 366
+        },
+        "throughPrompt": {
+          "n": 1,
+          "median": 8709,
+          "p95": 8709,
+          "max": 8709
+        },
+        "cacheHits": 0
+      },
+      "c5-tool": {
+        "firstText": {
+          "n": 1,
+          "median": 12665,
+          "p95": 12665,
+          "max": 12665
+        },
+        "bundle": {
+          "n": 1,
+          "median": 366,
+          "p95": 366,
+          "max": 366
+        },
+        "throughPrompt": {
+          "n": 1,
+          "median": 8709,
+          "p95": 8709,
+          "max": 8709
+        },
+        "cacheHits": 0
+      },
+      "c5-greeting": {
+        "firstText": {
+          "n": 0,
+          "median": null
+        },
+        "bundle": {
+          "n": 0,
+          "median": null
+        },
+        "throughPrompt": {
+          "n": 0,
+          "median": null
+        },
+        "cacheHits": 0
+      }
+    },
+    "jobs": [
+      {
+        "label": "new-session-0",
+        "runId": "AFF_PROD_1788863613324_0",
+        "firstTextMs": 17872,
+        "finalMs": 18334,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 6,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3327520,
+        "bundleMs": 225.6,
+        "bundleCached": false,
+        "promptMs": 15.44936199998483,
+        "throughPromptMs": 2246
+      },
+      {
+        "label": "revisit-0",
+        "runId": "AFF_PROD_1788863613324_1",
+        "firstTextMs": 14831,
+        "finalMs": 15444,
+        "verified": true,
+        "toolVerified": true,
+        "loadBefore": {
+          "totalActive": 7,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3327520,
+        "bundleMs": 17,
+        "bundleCached": true,
+        "promptMs": 12.636325000028592,
+        "throughPromptMs": 1408
+      },
+      {
+        "label": "new-session-1",
+        "runId": "AFF_PROD_1788863613324_2",
+        "firstTextMs": 5159,
+        "finalMs": 5617,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 5,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3327520,
+        "bundleMs": 210.6,
+        "bundleCached": false,
+        "promptMs": 9.930357000033837,
+        "throughPromptMs": 1352
+      },
+      {
+        "label": "revisit-1",
+        "runId": "AFF_PROD_1788863613324_3",
+        "firstTextMs": 53390,
+        "finalMs": 54190,
+        "verified": true,
+        "toolVerified": true,
+        "loadBefore": {
+          "totalActive": 5,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3327520,
+        "bundleMs": 18.2,
+        "bundleCached": true,
+        "promptMs": 10.373863000015263,
+        "throughPromptMs": 2612
+      },
+      {
+        "label": "new-session-2",
+        "runId": "AFF_PROD_1788863613324_4",
+        "firstTextMs": 7336,
+        "finalMs": 8203,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 4,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3327520,
+        "bundleMs": 320.8,
+        "bundleCached": false,
+        "promptMs": 15.271848999953363,
+        "throughPromptMs": 2316
+      },
+      {
+        "label": "revisit-2",
+        "runId": "AFF_PROD_1788863613324_5",
+        "firstTextMs": 9929,
+        "finalMs": 10854,
+        "verified": true,
+        "toolVerified": true,
+        "loadBefore": {
+          "totalActive": 4,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3327520,
+        "bundleMs": 12.8,
+        "bundleCached": true,
+        "promptMs": 9.475333000009414,
+        "throughPromptMs": 1546
+      },
+      {
+        "label": "new-session-3",
+        "runId": "AFF_PROD_1788863613324_6",
+        "firstTextMs": 9537,
+        "finalMs": 9914,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 4,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3327520,
+        "bundleMs": 212.8,
+        "bundleCached": false,
+        "promptMs": 10.571684999973513,
+        "throughPromptMs": 2552
+      },
+      {
+        "label": "revisit-3",
+        "runId": "AFF_PROD_1788863613324_7",
+        "firstTextMs": 19420,
+        "finalMs": 20442,
+        "verified": true,
+        "toolVerified": true,
+        "loadBefore": {
+          "totalActive": 4,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3327520,
+        "bundleMs": 13.7,
+        "bundleCached": true,
+        "promptMs": 9.25556299998425,
+        "throughPromptMs": 1003
+      },
+      {
+        "label": "new-session-4",
+        "runId": "AFF_PROD_1788863613324_8",
+        "firstTextMs": 12370,
+        "finalMs": 12796,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 5,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3327520,
+        "bundleMs": 221,
+        "bundleCached": false,
+        "promptMs": 11.763990000006743,
+        "throughPromptMs": 4083
+      },
+      {
+        "label": "revisit-4",
+        "runId": "AFF_PROD_1788863613324_9",
+        "firstTextMs": 6149,
+        "finalMs": 6706,
+        "verified": true,
+        "toolVerified": true,
+        "loadBefore": {
+          "totalActive": 5,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3327520,
+        "bundleMs": 13.8,
+        "bundleCached": true,
+        "promptMs": 10.364494999987073,
+        "throughPromptMs": 1685
+      },
+      {
+        "label": "serial-warm-0",
+        "runId": "AFF_PROD_1788863613324_10",
+        "firstTextMs": 19910,
+        "finalMs": 20944,
+        "verified": true,
+        "toolVerified": true,
+        "loadBefore": {
+          "totalActive": 6,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3327520,
+        "bundleMs": 16.7,
+        "bundleCached": true,
+        "promptMs": 10.38630299991928,
+        "throughPromptMs": 1173
+      },
+      {
+        "label": "serial-warm-1",
+        "runId": "AFF_PROD_1788863613324_11",
+        "firstTextMs": 2360,
+        "finalMs": 2925,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 5,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3327520,
+        "bundleMs": 13.9,
+        "bundleCached": true,
+        "promptMs": 11.144390000030398,
+        "throughPromptMs": 918
+      },
+      {
+        "label": "serial-warm-2",
+        "runId": "AFF_PROD_1788863613324_12",
+        "firstTextMs": 9476,
+        "finalMs": 10162,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 5,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3327520,
+        "bundleMs": 14.2,
+        "bundleCached": true,
+        "promptMs": 12.950704999966547,
+        "throughPromptMs": 1005
+      },
+      {
+        "label": "serial-warm-3",
+        "runId": "AFF_PROD_1788863613324_13",
+        "firstTextMs": 9195,
+        "finalMs": 10127,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 6,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3327520,
+        "bundleMs": 16.1,
+        "bundleCached": true,
+        "promptMs": 12.348151999991387,
+        "throughPromptMs": 983
+      },
+      {
+        "label": "serial-warm-4",
+        "runId": "AFF_PROD_1788863613324_14",
+        "firstTextMs": 5623,
+        "finalMs": 6006,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 6,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3327520,
+        "bundleMs": 12.4,
+        "bundleCached": true,
+        "promptMs": 9.884511000011116,
+        "throughPromptMs": 986
+      },
+      {
+        "label": "serial-warm-5",
+        "runId": "AFF_PROD_1788863613324_15",
+        "firstTextMs": 10622,
+        "finalMs": 11456,
+        "verified": true,
+        "toolVerified": true,
+        "loadBefore": {
+          "totalActive": 6,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3327520,
+        "bundleMs": 12.5,
+        "bundleCached": true,
+        "promptMs": 9.54664600000251,
+        "throughPromptMs": 1955
+      },
+      {
+        "label": "serial-warm-6",
+        "runId": "AFF_PROD_1788863613324_16",
+        "firstTextMs": 5740,
+        "finalMs": 6108,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 6,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3327520,
+        "bundleMs": 15.1,
+        "bundleCached": true,
+        "promptMs": 9.452172999968752,
+        "throughPromptMs": 1243
+      },
+      {
+        "label": "serial-warm-7",
+        "runId": "AFF_PROD_1788863613324_17",
+        "firstTextMs": 4803,
+        "finalMs": 5186,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 5,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3327520,
+        "bundleMs": 14.1,
+        "bundleCached": true,
+        "promptMs": 8.398976000025868,
+        "throughPromptMs": 2574
+      },
+      {
+        "label": "serial-warm-8",
+        "runId": "AFF_PROD_1788863613324_18",
+        "firstTextMs": 2705,
+        "finalMs": 3135,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 6,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3327520,
+        "bundleMs": 17.2,
+        "bundleCached": true,
+        "promptMs": 10.010919999913312,
+        "throughPromptMs": 969
+      },
+      {
+        "label": "serial-warm-9",
+        "runId": "AFF_PROD_1788863613324_19",
+        "firstTextMs": 4409,
+        "finalMs": 4789,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 6,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3327520,
+        "bundleMs": 24.3,
+        "bundleCached": true,
+        "promptMs": 10.235389000037685,
+        "throughPromptMs": 999
+      },
+      {
+        "label": "serial-warm-10",
+        "runId": "AFF_PROD_1788863613324_20",
+        "firstTextMs": 10684,
+        "finalMs": 11478,
+        "verified": true,
+        "toolVerified": true,
+        "loadBefore": {
+          "totalActive": 6,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3327520,
+        "bundleMs": 12.6,
+        "bundleCached": true,
+        "promptMs": 9.109577000024728,
+        "throughPromptMs": 996
+      },
+      {
+        "label": "serial-warm-11",
+        "runId": "AFF_PROD_1788863613324_21",
+        "firstTextMs": 3433,
+        "finalMs": 3838,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 7,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3327520,
+        "bundleMs": 13.6,
+        "bundleCached": true,
+        "promptMs": 9.499778000055812,
+        "throughPromptMs": 1029
+      },
+      {
+        "label": "serial-warm-12",
+        "runId": "AFF_PROD_1788863613324_22",
+        "firstTextMs": 6556,
+        "finalMs": 7183,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 7,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3327520,
+        "bundleMs": 19.4,
+        "bundleCached": true,
+        "promptMs": 12.17215999995824,
+        "throughPromptMs": 1970
+      },
+      {
+        "label": "serial-warm-13",
+        "runId": "AFF_PROD_1788863613324_23",
+        "firstTextMs": 6053,
+        "finalMs": 6614,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 7,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3327520,
+        "bundleMs": 13.5,
+        "bundleCached": true,
+        "promptMs": 10.089852000004612,
+        "throughPromptMs": 995
+      },
+      {
+        "label": "serial-warm-14",
+        "runId": "AFF_PROD_1788863613324_24",
+        "firstTextMs": 6256,
+        "finalMs": 6887,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 7,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3327520,
+        "bundleMs": 13.1,
+        "bundleCached": true,
+        "promptMs": 9.881023000110872,
+        "throughPromptMs": 1014
+      },
+      {
+        "label": "serial-warm-15",
+        "runId": "AFF_PROD_1788863613324_25",
+        "firstTextMs": 17163,
+        "finalMs": 17818,
+        "verified": true,
+        "toolVerified": true,
+        "loadBefore": {
+          "totalActive": 9,
+          "pending": 0,
+          "workers": 5
+        },
+        "workerPid": 3327520,
+        "bundleMs": 19.8,
+        "bundleCached": true,
+        "promptMs": 12.444094000034966,
+        "throughPromptMs": 1068
+      },
+      {
+        "label": "serial-warm-16",
+        "runId": "AFF_PROD_1788863613324_26",
+        "firstTextMs": 47168,
+        "finalMs": 49793,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 9,
+          "pending": 0,
+          "workers": 5
+        },
+        "workerPid": 3327520,
+        "bundleMs": 22.5,
+        "bundleCached": true,
+        "promptMs": 14.004852999933064,
+        "throughPromptMs": 1099
+      },
+      {
+        "label": "serial-warm-17",
+        "runId": "AFF_PROD_1788863613324_27",
+        "firstTextMs": 30440,
+        "finalMs": 31020,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 14,
+          "pending": 0,
+          "workers": 6
+        },
+        "workerPid": 3327520,
+        "bundleMs": 22.4,
+        "bundleCached": true,
+        "promptMs": 11.53877199999988,
+        "throughPromptMs": 1464
+      },
+      {
+        "label": "serial-warm-18",
+        "runId": "AFF_PROD_1788863613324_28",
+        "firstTextMs": 7859,
+        "finalMs": 8473,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 17,
+          "pending": 0,
+          "workers": 7
+        },
+        "workerPid": 3327520,
+        "bundleMs": 20.9,
+        "bundleCached": true,
+        "promptMs": 10.607851999928243,
+        "throughPromptMs": 2427
+      },
+      {
+        "label": "serial-warm-19",
+        "runId": "AFF_PROD_1788863613324_29",
+        "firstTextMs": 6590,
+        "finalMs": 7117,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 17,
+          "pending": 0,
+          "workers": 7
+        },
+        "workerPid": 3327520,
+        "bundleMs": 15.2,
+        "bundleCached": true,
+        "promptMs": 11.059707000036724,
+        "throughPromptMs": 1088
+      },
+      {
+        "label": "serial-warm-20",
+        "runId": "AFF_PROD_1788863613324_30",
+        "firstTextMs": 19440,
+        "finalMs": 21076,
+        "verified": true,
+        "toolVerified": true,
+        "loadBefore": {
+          "totalActive": 17,
+          "pending": 0,
+          "workers": 7
+        },
+        "workerPid": 3327520,
+        "bundleMs": 12.8,
+        "bundleCached": true,
+        "promptMs": 10.344877999974415,
+        "throughPromptMs": 1076
+      },
+      {
+        "label": "serial-warm-21",
+        "runId": "AFF_PROD_1788863613324_31",
+        "firstTextMs": 4375,
+        "finalMs": 5450,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 16,
+          "pending": 0,
+          "workers": 8
+        },
+        "workerPid": 3327520,
+        "bundleMs": 18.9,
+        "bundleCached": true,
+        "promptMs": 11.831532999989577,
+        "throughPromptMs": 2229
+      },
+      {
+        "label": "serial-warm-22",
+        "runId": "AFF_PROD_1788863613324_32",
+        "firstTextMs": 7923,
+        "finalMs": 8663,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 17,
+          "pending": 0,
+          "workers": 8
+        },
+        "workerPid": 3327520,
+        "bundleMs": 18.4,
+        "bundleCached": true,
+        "promptMs": 16.583392000058666,
+        "throughPromptMs": 2309
+      },
+      {
+        "label": "serial-warm-23",
+        "runId": "AFF_PROD_1788863613324_33",
+        "firstTextMs": 4716,
+        "finalMs": 5808,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 17,
+          "pending": 0,
+          "workers": 8
+        },
+        "workerPid": 3327520,
+        "bundleMs": 16,
+        "bundleCached": true,
+        "promptMs": 11.17471699998714,
+        "throughPromptMs": 1851
+      },
+      {
+        "label": "serial-warm-24",
+        "runId": "AFF_PROD_1788863613324_34",
+        "firstTextMs": 5545,
+        "finalMs": 6564,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 17,
+          "pending": 0,
+          "workers": 8
+        },
+        "workerPid": 3327520,
+        "bundleMs": 22.6,
+        "bundleCached": true,
+        "promptMs": 13.037076999899,
+        "throughPromptMs": 1875
+      },
+      {
+        "label": "serial-warm-25",
+        "runId": "AFF_PROD_1788863613324_35",
+        "firstTextMs": 25864,
+        "finalMs": 26601,
+        "verified": true,
+        "toolVerified": true,
+        "loadBefore": {
+          "totalActive": 18,
+          "pending": 0,
+          "workers": 8
+        },
+        "workerPid": 3327520,
+        "bundleMs": 16.2,
+        "bundleCached": true,
+        "promptMs": 9.989591000019573,
+        "throughPromptMs": 2641
+      },
+      {
+        "label": "serial-warm-26",
+        "runId": "AFF_PROD_1788863613324_36",
+        "firstTextMs": 6346,
+        "finalMs": 6828,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 18,
+          "pending": 0,
+          "workers": 8
+        },
+        "workerPid": 3327520,
+        "bundleMs": 19.3,
+        "bundleCached": true,
+        "promptMs": 15.406365999951959,
+        "throughPromptMs": 1684
+      },
+      {
+        "label": "serial-warm-27",
+        "runId": "AFF_PROD_1788863613324_37",
+        "firstTextMs": 7213,
+        "finalMs": 8194,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 18,
+          "pending": 0,
+          "workers": 8
+        },
+        "workerPid": 3327520,
+        "bundleMs": 22.8,
+        "bundleCached": true,
+        "promptMs": 44.645981000037864,
+        "throughPromptMs": 2161
+      },
+      {
+        "label": "serial-warm-28",
+        "runId": "AFF_PROD_1788863613324_38",
+        "firstTextMs": 5012,
+        "finalMs": 6071,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 16,
+          "pending": 0,
+          "workers": 8
+        },
+        "workerPid": 3327520,
+        "bundleMs": 14.8,
+        "bundleCached": true,
+        "promptMs": 11.707764999940991,
+        "throughPromptMs": 1778
+      },
+      {
+        "label": "serial-warm-29",
+        "runId": "AFF_PROD_1788863613324_39",
+        "firstTextMs": 3098,
+        "finalMs": 3566,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 16,
+          "pending": 0,
+          "workers": 8
+        },
+        "workerPid": 3327520,
+        "bundleMs": 14.9,
+        "bundleCached": true,
+        "promptMs": 10.698812999995425,
+        "throughPromptMs": 1117
+      },
+      {
+        "label": "c5-0-0",
+        "runId": "AFF_PROD_1788863613324_40",
+        "loadBefore": {
+          "totalActive": 16,
+          "pending": 0,
+          "workers": 8
+        },
+        "workerPid": 3340494,
+        "bundleMs": 281.9,
+        "bundleCached": false,
+        "promptMs": 17.445808999997098,
+        "throughPromptMs": 8939
+      },
+      {
+        "label": "c5-0-1",
+        "runId": "AFF_PROD_1788863613324_41",
+        "firstTextMs": 15318,
+        "loadBefore": {
+          "totalActive": 16,
+          "pending": 0,
+          "workers": 8
+        },
+        "workerPid": 3328374,
+        "bundleMs": 394.4,
+        "bundleCached": false,
+        "promptMs": 17.238569000037387,
+        "throughPromptMs": 8512
+      },
+      {
+        "label": "c5-0-2",
+        "runId": "AFF_PROD_1788863613324_42",
+        "firstTextMs": 14428,
+        "loadBefore": {
+          "totalActive": 16,
+          "pending": 0,
+          "workers": 8
+        },
+        "workerPid": 3340494,
+        "bundleMs": 506.9,
+        "bundleCached": false,
+        "promptMs": 11.01211300000432,
+        "throughPromptMs": 9212
+      },
+      {
+        "label": "c5-0-3",
+        "runId": "AFF_PROD_1788863613324_43",
+        "firstTextMs": 12665,
+        "finalMs": 13842,
+        "verified": true,
+        "toolVerified": true,
+        "loadBefore": {
+          "totalActive": 16,
+          "pending": 0,
+          "workers": 8
+        },
+        "workerPid": 3328374,
+        "bundleMs": 366,
+        "bundleCached": false,
+        "promptMs": 14.09513299993705,
+        "throughPromptMs": 8709
+      },
+      {
+        "label": "c5-0-4",
+        "runId": "AFF_PROD_1788863613324_44",
+        "firstTextMs": 21115,
+        "loadBefore": {
+          "totalActive": 16,
+          "pending": 0,
+          "workers": 8
+        },
+        "workerPid": 3327520,
+        "bundleMs": 468.3,
+        "bundleCached": false,
+        "promptMs": 23.332687999936752,
+        "throughPromptMs": 8031
+      }
+    ]
+  },
+  "B": {
+    "source": "affinity-B-1788864927677.json",
+    "arm": "B",
+    "databaseBytes": 7423401984,
+    "umDisabled": true,
+    "umConnectStarts": 0,
+    "completed": true,
+    "maxOwnActive": 1,
+    "maxObservedTotalActive": 6,
+    "groups": {
+      "new-session": {
+        "firstText": {
+          "n": 5,
+          "median": 8679,
+          "p95": 13895,
+          "max": 13895
+        },
+        "bundle": {
+          "n": 5,
+          "median": 210.3,
+          "p95": 234.9,
+          "max": 234.9
+        },
+        "throughPrompt": {
+          "n": 5,
+          "median": 1603,
+          "p95": 3247,
+          "max": 3247
+        },
+        "cacheHits": 0
+      },
+      "revisit": {
+        "firstText": {
+          "n": 5,
+          "median": 19739,
+          "p95": 21128,
+          "max": 21128
+        },
+        "bundle": {
+          "n": 5,
+          "median": 14.6,
+          "p95": 18.9,
+          "max": 18.9
+        },
+        "throughPrompt": {
+          "n": 5,
+          "median": 989,
+          "p95": 1114,
+          "max": 1114
+        },
+        "cacheHits": 5
+      },
+      "serial-warm": {
+        "firstText": {
+          "n": 30,
+          "median": 4845.5,
+          "p95": 17953,
+          "max": 18477
+        },
+        "bundle": {
+          "n": 30,
+          "median": 14.350000000000001,
+          "p95": 17.7,
+          "max": 26.9
+        },
+        "throughPrompt": {
+          "n": 30,
+          "median": 997.5,
+          "p95": 1506,
+          "max": 1710
+        },
+        "cacheHits": 30
+      },
+      "c5": {
+        "firstText": {
+          "n": 0,
+          "median": null
+        },
+        "bundle": {
+          "n": 0,
+          "median": null
+        },
+        "throughPrompt": {
+          "n": 0,
+          "median": null
+        },
+        "cacheHits": 0
+      },
+      "c5-tool": {
+        "firstText": {
+          "n": 0,
+          "median": null
+        },
+        "bundle": {
+          "n": 0,
+          "median": null
+        },
+        "throughPrompt": {
+          "n": 0,
+          "median": null
+        },
+        "cacheHits": 0
+      },
+      "c5-greeting": {
+        "firstText": {
+          "n": 0,
+          "median": null
+        },
+        "bundle": {
+          "n": 0,
+          "median": null
+        },
+        "throughPrompt": {
+          "n": 0,
+          "median": null
+        },
+        "cacheHits": 0
+      }
+    },
+    "jobs": [
+      {
+        "label": "new-session-0",
+        "runId": "AFF_PROD_1788864927677_0",
+        "firstTextMs": 8679,
+        "finalMs": 9438,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 2,
+          "pending": 0,
+          "workers": 3
+        },
+        "workerPid": 3352791,
+        "bundleMs": 234.9,
+        "bundleCached": false,
+        "promptMs": 15.759401999996044,
+        "throughPromptMs": 2159
+      },
+      {
+        "label": "revisit-0",
+        "runId": "AFF_PROD_1788864927677_1",
+        "firstTextMs": 19835,
+        "finalMs": 20672,
+        "verified": true,
+        "toolVerified": true,
+        "loadBefore": {
+          "totalActive": 2,
+          "pending": 0,
+          "workers": 3
+        },
+        "workerPid": 3352791,
+        "bundleMs": 18.9,
+        "bundleCached": true,
+        "promptMs": 10.441877000004752,
+        "throughPromptMs": 984
+      },
+      {
+        "label": "new-session-1",
+        "runId": "AFF_PROD_1788864927677_2",
+        "firstTextMs": 9838,
+        "finalMs": 10445,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 2,
+          "pending": 0,
+          "workers": 3
+        },
+        "workerPid": 3352837,
+        "bundleMs": 203.3,
+        "bundleCached": false,
+        "promptMs": 142.0594020000135,
+        "throughPromptMs": 3247
+      },
+      {
+        "label": "revisit-1",
+        "runId": "AFF_PROD_1788864927677_3",
+        "firstTextMs": 19739,
+        "finalMs": 20293,
+        "verified": true,
+        "toolVerified": true,
+        "loadBefore": {
+          "totalActive": 3,
+          "pending": 0,
+          "workers": 3
+        },
+        "workerPid": 3352837,
+        "bundleMs": 16.7,
+        "bundleCached": true,
+        "promptMs": 12.613646000012523,
+        "throughPromptMs": 1114
+      },
+      {
+        "label": "new-session-2",
+        "runId": "AFF_PROD_1788864927677_4",
+        "firstTextMs": 6060,
+        "finalMs": 6430,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 3,
+          "pending": 0,
+          "workers": 3
+        },
+        "workerPid": 3352837,
+        "bundleMs": 192.3,
+        "bundleCached": false,
+        "promptMs": 10.609019999974407,
+        "throughPromptMs": 1433
+      },
+      {
+        "label": "revisit-2",
+        "runId": "AFF_PROD_1788864927677_5",
+        "firstTextMs": 21128,
+        "finalMs": 21541,
+        "verified": true,
+        "toolVerified": true,
+        "loadBefore": {
+          "totalActive": 3,
+          "pending": 0,
+          "workers": 3
+        },
+        "workerPid": 3352837,
+        "bundleMs": 13.7,
+        "bundleCached": true,
+        "promptMs": 10.542778000002727,
+        "throughPromptMs": 991
+      },
+      {
+        "label": "new-session-3",
+        "runId": "AFF_PROD_1788864927677_6",
+        "firstTextMs": 13895,
+        "finalMs": 14545,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 4,
+          "pending": 0,
+          "workers": 3
+        },
+        "workerPid": 3352837,
+        "bundleMs": 222.6,
+        "bundleCached": false,
+        "promptMs": 14.508432000002358,
+        "throughPromptMs": 1603
+      },
+      {
+        "label": "revisit-3",
+        "runId": "AFF_PROD_1788864927677_7",
+        "firstTextMs": 6085,
+        "finalMs": 6891,
+        "verified": true,
+        "toolVerified": true,
+        "loadBefore": {
+          "totalActive": 5,
+          "pending": 0,
+          "workers": 3
+        },
+        "workerPid": 3352837,
+        "bundleMs": 12.9,
+        "bundleCached": true,
+        "promptMs": 9.58111100003589,
+        "throughPromptMs": 989
+      },
+      {
+        "label": "new-session-4",
+        "runId": "AFF_PROD_1788864927677_8",
+        "firstTextMs": 7329,
+        "finalMs": 8319,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 5,
+          "pending": 0,
+          "workers": 3
+        },
+        "workerPid": 3352837,
+        "bundleMs": 210.3,
+        "bundleCached": false,
+        "promptMs": 9.918597999960184,
+        "throughPromptMs": 1435
+      },
+      {
+        "label": "revisit-4",
+        "runId": "AFF_PROD_1788864927677_9",
+        "firstTextMs": 14665,
+        "finalMs": 15053,
+        "verified": true,
+        "toolVerified": true,
+        "loadBefore": {
+          "totalActive": 5,
+          "pending": 0,
+          "workers": 3
+        },
+        "workerPid": 3352837,
+        "bundleMs": 14.6,
+        "bundleCached": true,
+        "promptMs": 10.94344900001306,
+        "throughPromptMs": 976
+      },
+      {
+        "label": "serial-warm-0",
+        "runId": "AFF_PROD_1788864927677_10",
+        "firstTextMs": 17953,
+        "finalMs": 18477,
+        "verified": true,
+        "toolVerified": true,
+        "loadBefore": {
+          "totalActive": 5,
+          "pending": 0,
+          "workers": 3
+        },
+        "workerPid": 3352837,
+        "bundleMs": 14.3,
+        "bundleCached": true,
+        "promptMs": 10.184613000019453,
+        "throughPromptMs": 1710
+      },
+      {
+        "label": "serial-warm-1",
+        "runId": "AFF_PROD_1788864927677_11",
+        "firstTextMs": 4040,
+        "finalMs": 4554,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 5,
+          "pending": 0,
+          "workers": 3
+        },
+        "workerPid": 3352837,
+        "bundleMs": 13.5,
+        "bundleCached": true,
+        "promptMs": 9.809418999997433,
+        "throughPromptMs": 899
+      },
+      {
+        "label": "serial-warm-2",
+        "runId": "AFF_PROD_1788864927677_12",
+        "firstTextMs": 4464,
+        "finalMs": 4835,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 5,
+          "pending": 0,
+          "workers": 3
+        },
+        "workerPid": 3352837,
+        "bundleMs": 13.2,
+        "bundleCached": true,
+        "promptMs": 10.314079000032507,
+        "throughPromptMs": 892
+      },
+      {
+        "label": "serial-warm-3",
+        "runId": "AFF_PROD_1788864927677_13",
+        "firstTextMs": 18477,
+        "finalMs": 19023,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 5,
+          "pending": 0,
+          "workers": 3
+        },
+        "workerPid": 3352837,
+        "bundleMs": 16,
+        "bundleCached": true,
+        "promptMs": 9.841125999984797,
+        "throughPromptMs": 1377
+      },
+      {
+        "label": "serial-warm-4",
+        "runId": "AFF_PROD_1788864927677_14",
+        "firstTextMs": 9240,
+        "finalMs": 9606,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 4,
+          "pending": 0,
+          "workers": 3
+        },
+        "workerPid": 3352837,
+        "bundleMs": 11.7,
+        "bundleCached": true,
+        "promptMs": 9.969291999994311,
+        "throughPromptMs": 919
+      },
+      {
+        "label": "serial-warm-5",
+        "runId": "AFF_PROD_1788864927677_15",
+        "firstTextMs": 8724,
+        "finalMs": 9220,
+        "verified": true,
+        "toolVerified": true,
+        "loadBefore": {
+          "totalActive": 5,
+          "pending": 0,
+          "workers": 3
+        },
+        "workerPid": 3352837,
+        "bundleMs": 13,
+        "bundleCached": true,
+        "promptMs": 10.745877999986988,
+        "throughPromptMs": 993
+      },
+      {
+        "label": "serial-warm-6",
+        "runId": "AFF_PROD_1788864927677_16",
+        "firstTextMs": 16610,
+        "finalMs": 17577,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 6,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3352837,
+        "bundleMs": 13.2,
+        "bundleCached": true,
+        "promptMs": 9.458542999986093,
+        "throughPromptMs": 1506
+      },
+      {
+        "label": "serial-warm-7",
+        "runId": "AFF_PROD_1788864927677_17",
+        "firstTextMs": 6767,
+        "finalMs": 7242,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 3,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3352837,
+        "bundleMs": 17.2,
+        "bundleCached": true,
+        "promptMs": 13.375803000002634,
+        "throughPromptMs": 1155
+      },
+      {
+        "label": "serial-warm-8",
+        "runId": "AFF_PROD_1788864927677_18",
+        "firstTextMs": 4725,
+        "finalMs": 5140,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 4,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3352837,
+        "bundleMs": 15.2,
+        "bundleCached": true,
+        "promptMs": 10.8214910000097,
+        "throughPromptMs": 1344
+      },
+      {
+        "label": "serial-warm-9",
+        "runId": "AFF_PROD_1788864927677_19",
+        "firstTextMs": 2669,
+        "finalMs": 3498,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 3,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3352837,
+        "bundleMs": 15.2,
+        "bundleCached": true,
+        "promptMs": 10.274203000008129,
+        "throughPromptMs": 943
+      },
+      {
+        "label": "serial-warm-10",
+        "runId": "AFF_PROD_1788864927677_20",
+        "firstTextMs": 4520,
+        "finalMs": 5088,
+        "verified": true,
+        "toolVerified": true,
+        "loadBefore": {
+          "totalActive": 3,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3352837,
+        "bundleMs": 14.4,
+        "bundleCached": true,
+        "promptMs": 11.991527000034694,
+        "throughPromptMs": 988
+      },
+      {
+        "label": "serial-warm-11",
+        "runId": "AFF_PROD_1788864927677_21",
+        "firstTextMs": 3384,
+        "finalMs": 3767,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 3,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3352837,
+        "bundleMs": 15.9,
+        "bundleCached": true,
+        "promptMs": 10.724279999965802,
+        "throughPromptMs": 1029
+      },
+      {
+        "label": "serial-warm-12",
+        "runId": "AFF_PROD_1788864927677_22",
+        "firstTextMs": 3044,
+        "finalMs": 3557,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 3,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3352837,
+        "bundleMs": 12.8,
+        "bundleCached": true,
+        "promptMs": 10.483424000034574,
+        "throughPromptMs": 939
+      },
+      {
+        "label": "serial-warm-13",
+        "runId": "AFF_PROD_1788864927677_23",
+        "firstTextMs": 2601,
+        "finalMs": 3067,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 3,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3352837,
+        "bundleMs": 15,
+        "bundleCached": true,
+        "promptMs": 10.9145220000064,
+        "throughPromptMs": 1078
+      },
+      {
+        "label": "serial-warm-14",
+        "runId": "AFF_PROD_1788864927677_24",
+        "firstTextMs": 2389,
+        "finalMs": 3234,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 2,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3352837,
+        "bundleMs": 15.3,
+        "bundleCached": true,
+        "promptMs": 11.641350999998394,
+        "throughPromptMs": 1007
+      },
+      {
+        "label": "serial-warm-15",
+        "runId": "AFF_PROD_1788864927677_25",
+        "firstTextMs": 4966,
+        "finalMs": 5334,
+        "verified": true,
+        "toolVerified": true,
+        "loadBefore": {
+          "totalActive": 2,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3352837,
+        "bundleMs": 14.1,
+        "bundleCached": true,
+        "promptMs": 12.819087000039872,
+        "throughPromptMs": 1002
+      },
+      {
+        "label": "serial-warm-16",
+        "runId": "AFF_PROD_1788864927677_26",
+        "firstTextMs": 2544,
+        "finalMs": 3309,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 2,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3352837,
+        "bundleMs": 16.6,
+        "bundleCached": true,
+        "promptMs": 12.562741000030655,
+        "throughPromptMs": 938
+      },
+      {
+        "label": "serial-warm-17",
+        "runId": "AFF_PROD_1788864927677_27",
+        "firstTextMs": 6045,
+        "finalMs": 6450,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 2,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3352837,
+        "bundleMs": 11.9,
+        "bundleCached": true,
+        "promptMs": 9.848454000020865,
+        "throughPromptMs": 1009
+      },
+      {
+        "label": "serial-warm-18",
+        "runId": "AFF_PROD_1788864927677_28",
+        "firstTextMs": 2529,
+        "finalMs": 3376,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 2,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3352837,
+        "bundleMs": 13.2,
+        "bundleCached": true,
+        "promptMs": 11.498495000007097,
+        "throughPromptMs": 982
+      },
+      {
+        "label": "serial-warm-19",
+        "runId": "AFF_PROD_1788864927677_29",
+        "firstTextMs": 6344,
+        "finalMs": 7114,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 2,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3352837,
+        "bundleMs": 12.5,
+        "bundleCached": true,
+        "promptMs": 8.922255000041332,
+        "throughPromptMs": 958
+      },
+      {
+        "label": "serial-warm-20",
+        "runId": "AFF_PROD_1788864927677_30",
+        "firstTextMs": 14047,
+        "finalMs": 14608,
+        "verified": true,
+        "toolVerified": true,
+        "loadBefore": {
+          "totalActive": 2,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3352837,
+        "bundleMs": 26.9,
+        "bundleCached": true,
+        "promptMs": 15.862962000013795,
+        "throughPromptMs": 1481
+      },
+      {
+        "label": "serial-warm-21",
+        "runId": "AFF_PROD_1788864927677_31",
+        "firstTextMs": 6588,
+        "finalMs": 6985,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 2,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3352837,
+        "bundleMs": 13.4,
+        "bundleCached": true,
+        "promptMs": 12.03660300001502,
+        "throughPromptMs": 1029
+      },
+      {
+        "label": "serial-warm-22",
+        "runId": "AFF_PROD_1788864927677_32",
+        "firstTextMs": 2972,
+        "finalMs": 3998,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 2,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3352837,
+        "bundleMs": 13.1,
+        "bundleCached": true,
+        "promptMs": 9.603258999995887,
+        "throughPromptMs": 1163
+      },
+      {
+        "label": "serial-warm-23",
+        "runId": "AFF_PROD_1788864927677_33",
+        "firstTextMs": 10778,
+        "finalMs": 11211,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 2,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3352837,
+        "bundleMs": 17.1,
+        "bundleCached": true,
+        "promptMs": 9.61258800001815,
+        "throughPromptMs": 1163
+      },
+      {
+        "label": "serial-warm-24",
+        "runId": "AFF_PROD_1788864927677_34",
+        "firstTextMs": 8877,
+        "finalMs": 9295,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 2,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3352837,
+        "bundleMs": 15.7,
+        "bundleCached": true,
+        "promptMs": 9.540486000012606,
+        "throughPromptMs": 920
+      },
+      {
+        "label": "serial-warm-25",
+        "runId": "AFF_PROD_1788864927677_35",
+        "firstTextMs": 14628,
+        "finalMs": 15026,
+        "verified": true,
+        "toolVerified": true,
+        "loadBefore": {
+          "totalActive": 2,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3352837,
+        "bundleMs": 13.7,
+        "bundleCached": true,
+        "promptMs": 9.88761199999135,
+        "throughPromptMs": 957
+      },
+      {
+        "label": "serial-warm-26",
+        "runId": "AFF_PROD_1788864927677_36",
+        "firstTextMs": 2671,
+        "finalMs": 3821,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 2,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3352837,
+        "bundleMs": 13.1,
+        "bundleCached": true,
+        "promptMs": 10.563944999943487,
+        "throughPromptMs": 939
+      },
+      {
+        "label": "serial-warm-27",
+        "runId": "AFF_PROD_1788864927677_37",
+        "firstTextMs": 3119,
+        "finalMs": 3715,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 2,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3352837,
+        "bundleMs": 14.8,
+        "bundleCached": true,
+        "promptMs": 9.80438999994658,
+        "throughPromptMs": 976
+      },
+      {
+        "label": "serial-warm-28",
+        "runId": "AFF_PROD_1788864927677_38",
+        "firstTextMs": 2558,
+        "finalMs": 3072,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 2,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3352837,
+        "bundleMs": 17,
+        "bundleCached": true,
+        "promptMs": 10.716560999979265,
+        "throughPromptMs": 976
+      },
+      {
+        "label": "serial-warm-29",
+        "runId": "AFF_PROD_1788864927677_39",
+        "firstTextMs": 7128,
+        "finalMs": 7885,
+        "verified": true,
+        "loadBefore": {
+          "totalActive": 2,
+          "pending": 0,
+          "workers": 4
+        },
+        "workerPid": 3352837,
+        "bundleMs": 17.7,
+        "bundleCached": true,
+        "promptMs": 11.946501999977045,
+        "throughPromptMs": 1063
+      }
+    ]
+  },
+  "exceptions": {
+    "A": {
+      "jobs": 45,
+      "verified": 41,
+      "nativeDatabaseLockedRunIds": [
+        "AFF_PROD_1788863613324_41",
+        "AFF_PROD_1788863613324_44"
+      ],
+      "cleanupCancelledRunIds": [
+        "AFF_PROD_1788863613324_40",
+        "AFF_PROD_1788863613324_42",
+        "AFF_PROD_1788863613324_44"
+      ],
+      "note": "Failure and cancellation lists overlap; first native error caused fail-fast cleanup."
+    },
+    "smokeB": {
+      "source": "affinity-smokeB-1788864760475.json",
+      "verified": 2,
+      "firstTextMs": [
+        94446,
+        28422
+      ],
+      "cold": {
+        "runId": "AFF_PROD_1788864760475_0",
+        "throughPromptMs": 72987,
+        "bundleMs": 466.3,
+        "promptMs": 338.19848099999945,
+        "workerPid": 3352837,
+        "slowDatabaseOpenMs": 53656
+      },
+      "concurrentOtherWorkerDatabaseOpenMs": 116817
+    },
+    "restart": {
+      "beforeSessionCount": 2024,
+      "afterSessionCount": 2024,
+      "missing": 0,
+      "changedIds": 0,
+      "previouslyActive": 18,
+      "allResumed": false,
+      "coldPreflightTimeoutMs": 300000,
+      "warmRetryPreflightMs": 41765
+    }
+  }
+}
