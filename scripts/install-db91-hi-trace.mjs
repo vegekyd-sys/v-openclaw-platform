@@ -1,7 +1,8 @@
 // Private db91-fix only. Does not accept a shared or production target.
 import fs from 'node:fs';import os from 'node:os';import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';import {createHash} from 'node:crypto';
-import {instrumentHiWorker,instrumentHiIndex,instrumentHiPool,instrumentHiTransport,instrumentHiGateway} from './db91-hi-trace-plan.mjs';
+import {instrumentHiWorker,instrumentHiIndex,instrumentHiPool,instrumentHiTransport,instrumentHiGateway,instrumentHiNativeTransport} from './db91-hi-trace-plan.mjs';
+import {instrumentPrompt} from './db91-prompt-trace-plan.mjs';
 assert.equal(os.hostname(),'VM-0-4-ubuntu');assert.equal(process.getuid(),0);
 const root='/srv/vlab-production-mirror/labs/instances/db91-fix';
 const m=JSON.parse(fs.readFileSync('/srv/vlab-production-mirror/labs/control/db91-fix.json'));
@@ -17,6 +18,8 @@ const items=[
   ['runtime/worker/worker-pool.mjs',instrumentHiPool],
   ['runtime/openclaw/dist/chat-send-handler-DBjXcn_1.js',instrumentHiGateway],
   ['runtime/openclaw/node_modules/@openclaw/ai/dist/openai-completions-D0QZ0AyB.mjs',instrumentHiTransport],
+  ['runtime/openclaw/dist/builtin-openclaw-zQV8Wwjr.js',instrumentPrompt],
+  ['runtime/openclaw/node_modules/@openclaw/ai/dist/transports.mjs',instrumentHiNativeTransport],
 ];
 const plans=items.map(([relative,fn],i)=>{
   const file=root+'/'+relative,backup=root+'/state/db91-hi-trace-'+i+'.original';

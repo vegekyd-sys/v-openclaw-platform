@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {instrumentWorker} from './db91-prompt-trace-plan.mjs';
 function once(source,anchor,replacement){assert.equal(source.split(anchor).length,2,'unique hi trace anchor: '+anchor);return source.replace(anchor,replacement);}
 const helper='import {db91HiTrace} from "./db91-hi-trace.mjs";\n';
 export function instrumentHiWorker(source){
@@ -6,7 +7,7 @@ export function instrumentHiWorker(source){
   source=helper+once(source,'async function runAgent(message, abortSignal) {',
     'async function runAgent(message, abortSignal) {\n  return db91HiTrace.run(message, () => runDb91HiAgentBody(message, abortSignal));\n}\nasync function runDb91HiAgentBody(message, abortSignal) {');
   const anchor='        result = await nativeAttemptBridge.withPluginGeneration(';
-  return once(source,anchor,'        db91HiTrace.mark(message.runId,"worker-before-agent-command");\n'+anchor);
+  return instrumentWorker(once(source,anchor,'        db91HiTrace.mark(message.runId,"worker-before-agent-command");\n'+anchor));
 }
 export function instrumentHiIndex(source){
   source=helper+once(source,'    async function dispatchNativeHarnessAttempt(params) {',
@@ -58,5 +59,28 @@ export function instrumentHiGateway(source){
     ['\t\trespond(true, ackPayload, void 0, { runId: clientRunId });','gateway-ack'],
     ['\t\tstartChatDispatch({','gateway-dispatch-start'],
   ])body=once(body,text,'\t\tdb91HiMark("'+stage+'");\n'+text);
+  return source.slice(0,at)+body+source.slice(end);
+}
+
+export function instrumentHiNativeTransport(source){
+  const start='function createOpenAICompletionsTransportStreamFn() {';
+  const at=source.indexOf(start),end=source.indexOf('//#endregion',at);assert(at>=0&&end>at);
+  let body=source.slice(at,end);
+  const entry='\treturn (model, context, options) => {';
+  body=once(body,entry,entry+'\n const db91Call=globalThis[Symbol.for("db91.hi.trace")]?.beginModel(model,context,{...options,reasoningEffort:resolveOpenAICompletionsReasoningEffort(options)});\n let db91FirstBody=false;');
+  body=once(body,'\t\t\t\t\t\t\tdoneDetector.observe(chunk);',
+    '\t\t\t\t\t\t\tif(db91Call&&!db91FirstBody&&chunk.byteLength){db91FirstBody=true;db91Call.mark("http-first-native-body-chunk");}\n\t\t\t\t\t\t\tdoneDetector.observe(chunk);');
+  body=once(body,'{ fetch: doneDetectingFetch });','{ fetch: db91Call ? db91Call.wrapFetch(doneDetectingFetch) : doneDetectingFetch });');
+  for(const [anchor,stage]of [
+    ['\t\t\t\tlet params = buildOpenAICompletionsParams(model, context, options);','provider-client-ready'],
+    ['\t\t\t\tconst nextParams = await options?.onPayload?.(params, model);','provider-params-built'],
+    ['\t\t\t\tconst emitReasoning = shouldEmitOpenAICompletionsReasoning(model, options);','provider-payload-hooks-end'],
+    ['\t\t\t\tconst { data: responseStream, response } = await client.chat.completions.create(params, buildOpenAISdkRequestOptions(model, firstEventAbort.signal, { timeoutMs: options?.timeoutMs })).withResponse();','provider-sdk-call'],
+    ['\t\t\t\tconst hookedResponseStream = withProviderResponseHook({','provider-sdk-response'],
+    ['\t\t\t\tfinalizeTransportStream({','provider-complete'],
+  ])body=once(body,anchor,'\t\t\t\tdb91Call?.mark("'+stage+'");\n'+anchor);
+  const process='\t\t\t\tawait processCompletionsStream(hookedResponseStream, output, model, stream, {';
+  body=once(body,process,'\t\t\t\tconst db91ObservedStream=db91Call?{push(event){db91Call.event(event);return stream.push(event);}}:stream;\n'+process.replace('model, stream,','model, db91ObservedStream,'));
+  body=once(body,'\t\t\t} catch (error) {\n\t\t\t\tfailTransportStream({','\t\t\t} catch (error) {\n        db91Call?.error(error);\n\t\t\t\tfailTransportStream({');
   return source.slice(0,at)+body+source.slice(end);
 }

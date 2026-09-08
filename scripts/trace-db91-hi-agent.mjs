@@ -58,7 +58,7 @@ try{
       assert(Number.isFinite(j.finalEventMs),'final deadline');assert(Number.isFinite(j.firstTextMs),'no visible text');
       const h=await call('chat.history',{agentId:'makaron',sessionKey,limit:50});
       const users=(h.messages??[]).filter(v=>v.role==='user');
-      assert.equal(users.length,mode==='warm_same'?2:1);assert.equal(users.at(-1).idempotencyKey,j.runId);
+      assert.equal(users.length,mode==='warm_same'?2:1);assert.equal(users.at(-1).idempotencyKey,j.runId+':user');
       assert.equal(h.sessionInfo?.agentRuntime?.id,'vlab-worker');
       const assistants=(h.messages??[]).filter(v=>v.role==='assistant');
       const last=assistants.at(-1);assert.equal(last?.model,'deepseek-v4-pro');assert.notEqual(last.stopReason,'error');
