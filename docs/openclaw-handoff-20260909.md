@@ -79,6 +79,7 @@ Gateway 已入库用户消息，旧 Worker 却只继承“不要再写”而未�
 
 ## 四、其他相关任务的更新（按各任务最终记录复核，非本轮重新上线）
 
+- 默认模型与 `/model` 隔离，09-07：主 Gateway 的 makaron 专用 primary 覆盖全局 DeepSeek，已恢复为 `deepseek/deepseek-v4-pro`，保留显式模型选择及既有 fallback。另发现原生 `modelSelectionScope=effective` 会把普通 `/model terra` 写成共享 Agent 默认值，已通过原生配置设 `agents.defaults.modelSelectionScope=session`（helper 提交 `b494b39`）。A 切 Terra、B 和新 C 仍 DeepSeek、共享配置 SHA 不变、36 个显式选择保留；不重启、不清空会话。owner/admin 明确传 scope 的全局管理仍允许。这个跨会话污染故障曾真实存在，但该轮已修复，不能直接把今天小明群慢归给它；本轮09-09现场再次确认 scope=session。
 - Night Shift P0，09-07 最终 `86e8d92`：原生精确卡派工、受控人工交接及产物审计、私有飞书文档有身份核验、每轮共用看板快照、48 个暂停项目不再反复规划/检查旧产物、健康反映实际调度。100 项检查，自动约 16.25 秒启动、产物恢复约 30.8 秒且不重复下游，V 18:17 已签收引擎 P0；20 条成片/ZIP/OSS/Base 交付不能据此宣布完成。
 - 音箱 V：09-07 三项生产修复为 SQLite 会话状态 CAS 冲突重试（只重试保存、不重跑工具）、去除每条 prompt 重复规则并保留 AGENTS 要求、语音 DeepSeek Pro Off。真实 Windows 语音桥与 TTS 生成通过，当轮约 37 秒；未借此声称硬件播放/唤醒全部优化。语音桥常驻 4090，既有 voice-memory 保留。本轮不改语音设置。
 - GPT Live：独立 VLab 实例已验证语音、工具、重连；Juniper 已在实际语音连接确认，直接闲聊 1–1.4 秒样本，需要工作才调用后台。生产 V 未重新启用 GPT Live，不把独立试用入口当生产版本。
