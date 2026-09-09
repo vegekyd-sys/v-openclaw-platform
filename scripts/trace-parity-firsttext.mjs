@@ -12,6 +12,7 @@ const cfg=JSON.parse(fs.readFileSync(root+'/state/openclaw.json'));
 assert.equal(cfg.gateway.port,26340);assert.equal(Object.keys(cfg.channels??{}).length,0);assert.equal(cfg.cron.enabled,false);assert.equal(cfg.browser.enabled,false);
 assert(fs.statfsSync(root).bavail*fs.statfsSync(root).bsize>3*1024**3);
 const arm=process.argv[2]??'baseline';assert(/^[a-z0-9_-]{1,24}$/.test(arm));
+const historyMode=process.argv.includes('--history');
 const stamp=Date.now(),dir=root+'/tmp/firsttext-results';fs.mkdirSync(dir,{recursive:true,mode:0o700});
 const output=dir+'/'+arm+'-'+stamp+'.json';
 const report={arm,stamp,startedAt:new Date().toISOString(),gatewayPid:pid,thinking:'native-default-unmodified',scope:'full-data-lab-real-agent-websocket-no-external-channel',jobs:[]};
@@ -37,9 +38,30 @@ const call=(method,params={},timeoutMs=30000)=>client.request(method,params,{tim
 const status=async()=>{const s=await call('vlab.workers.status');return {pending:s.pending,workers:s.workers.map(w=>({pid:w.pid,ready:w.ready,activeCount:w.activeCount,queued:w.queued}))};};
 try{
  report.before=await status();assert.equal(report.before.pending,0);assert(report.before.workers.every(w=>w.ready&&!w.activeCount&&!w.queued));
- for(const [i,mode] of ['cold_new','warm_same','warm_new','exec_regression'].entries()){
-  const key='agent:makaron:explicit:db91-hi-firsttext-'+stamp+'-'+(i===1?0:i===3?2:i);
+ let fixture;
+ if(historyMode){
+  const fixtureFile=dir+'/history-fixture.json';
+  if(fs.existsSync(fixtureFile))fixture=JSON.parse(fs.readFileSync(fixtureFile));
+  else{
+   const rows=[];let offset=0;
+   for(let page=0;page<20;page++){const s=await call('sessions.list',{agentId:'makaron',limit:1000,offset});rows.push(...s.sessions??[]);if(!s.hasMore)break;assert(s.nextOffset>offset&&page<19);offset=s.nextOffset;}
+   const eligible=rows.filter(r=>r.key?.startsWith('agent:makaron:')&&!r.hasActiveRun&&!/db91|parity|acceptance|smoke|vlab-/i.test(r.key));
+   const candidates=eligible.filter(r=>r.key.includes(':group:')).sort((a,b)=>(b.totalTokens??0)-(a.totalTokens??0)).slice(0,12);
+   const requested=eligible.find(r=>r.key.includes('oc_5fc52b7eed8943718ee736bd3b66d222'));if(requested)candidates.unshift(requested);
+   for(const r of candidates){const h=await call('chat.history',{agentId:'makaron',sessionKey:r.key,limit:50});
+    const users=h.messages?.filter(m=>m.role==='user').length??0,answers=h.messages?.filter(m=>m.role==='assistant'&&m.model==='deepseek-v4-pro').length??0;
+    if(users&&answers){fixture={key:r.key,sessionId:r.sessionId,totalTokens:r.totalTokens,thinkingLevel:r.thinkingLevel,users,answers,createdAt:new Date().toISOString()};break;}}
+   assert(fixture,'no native completed group fixture found');fs.writeFileSync(fixtureFile,JSON.stringify(fixture),{mode:0o600,flag:'wx'});
+  }
+  report.fixture={keyHash:createHash('sha256').update(fixture.key).digest('hex').slice(0,16),totalTokens:fixture.totalTokens,thinkingLevel:fixture.thinkingLevel,users:fixture.users,answers:fixture.answers};persist();
+ }
+ const modes=historyMode?['history_fork','history_same','history_fork_new','exec_regression']:['cold_new','warm_same','warm_new','exec_regression'];
+ for(const [i,mode] of modes.entries()){
+  const key='agent:makaron:'+(historyMode?'feishu:group:':'explicit:')+'db91-hi-firsttext-'+stamp+'-'+(i===1?0:i===3?2:i);
   const j={mode,runId:'DB91_HI_'+stamp+'_'+arm+'_'+mode,sessionKey:key,start:Date.now()};report.jobs.push(j);current=j;persist();
+  if(historyMode&&(i===0||i===2)){
+   const start=Date.now();await call('sessions.create',{key,agentId:'makaron',parentSessionKey:fixture.key,fork:true,forkFrom:'last-completed',emitCommandHooks:false},120000);j.forkSetupMs=Date.now()-start;
+  }
   await call('sessions.messages.subscribe',{agentId:'makaron',key});j.start=Date.now();let finished=false;
   try{
    const message=mode==='exec_regression'?`请现在调用 exec 执行这条只读命令：date -u "+%s ${j.runId}"。不能复用过去结果，不访问网络，不读写其他文件。最后只回复本轮命令的实际输出。`:'hi';
