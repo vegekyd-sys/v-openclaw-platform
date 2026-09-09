@@ -1,7 +1,7 @@
 // Fixed owned full-data lab. Timing-only changes; no configuration/prompt changes.
 import fs from 'node:fs';import os from 'node:os';import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';import {createHash} from 'node:crypto';
-import {instrumentHiWorker,instrumentHiIndex,instrumentHiPool,instrumentHiGateway,instrumentHiNativeTransport} from './db91-hi-trace-plan.mjs';
+import {instrumentHiIndex,instrumentHiPool,instrumentHiGateway,instrumentHiNativeTransport} from './db91-hi-trace-plan.mjs';
 import {deepWorker,deepPrepared,deepTransport} from './db91-hi-deep-plan.mjs';
 assert.equal(os.hostname(),'VM-0-4-ubuntu');assert.equal(process.getuid(),0);
 const root='/srv/vlab-production-mirror/labs/instances/db91-parity',owner='codex-db91-production-equivalent-20260908';
@@ -13,8 +13,20 @@ const git=args=>execFileSync('runuser',['-u',m.user,'--','git','-C',root+'/sourc
 const commit=process.argv.find(a=>/^[a-f0-9]{40}$/.test(a));assert(commit);assert.equal(git(['rev-parse','HEAD']),commit);assert.equal(git(['status','--porcelain']),'');
 const dry=process.argv.includes('--dry-run'),restore=process.argv.includes('--restore');
 const dir=root+'/state/firsttext-observer-20260909';
+function observeWorker(s){
+ const once=(a,b)=>{assert.equal(s.split(a).length,2,'unique accepted Worker anchor: '+a);s=s.replace(a,b);};
+ s='import {db91HiTrace} from "./db91-hi-trace.mjs";\n'+s;
+ once('async function runAgent(message, abortSignal) {','async function runAgent(message, abortSignal) {\n return db91HiTrace.run(message, () => runDb91HiAgentBody(message, abortSignal));\n}\nasync function runDb91HiAgentBody(message, abortSignal) {');
+ for(const [a,stage] of [
+  ['  const startedAt = performance.now();','worker-agent-runtime-loaded'],
+  ['    const config = configRuntime.loadConfig();','worker-compaction-runtime-loaded'],
+  ['      const externalTaskContext = { acceptedSessionSpawns: [] };','worker-prepared-runtime-ready'],
+  ['        result = await commandRuntime.agentCommandFromGatewayIngress({','worker-before-agent-command'],
+ ])once(a,' db91HiTrace.mark(message.runId,"'+stage+'");\n'+a);
+ return deepWorker(s);
+}
 const items=[
- ['runtime/worker/worker.mjs',s=>deepWorker(instrumentHiWorker(s))],
+ ['runtime/worker/worker.mjs',observeWorker],
  ['runtime/worker/index.mjs',instrumentHiIndex],['runtime/worker/worker-pool.mjs',instrumentHiPool],
  ['runtime/openclaw/dist/chat-send-handler-DBjXcn_1.js',instrumentHiGateway],
  ['runtime/openclaw/node_modules/@openclaw/ai/dist/transports.mjs',s=>deepTransport(instrumentHiNativeTransport(s))],
