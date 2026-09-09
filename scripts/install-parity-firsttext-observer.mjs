@@ -12,7 +12,7 @@ assert.equal(execFileSync('systemctl',['show',m.unit,'-p','MainPID','--value'],{
 const git=args=>execFileSync('runuser',['-u',m.user,'--','git','-C',root+'/source',...args],{encoding:'utf8'}).trim();
 const commit=process.argv.find(a=>/^[a-f0-9]{40}$/.test(a));assert(commit);assert.equal(git(['rev-parse','HEAD']),commit);assert.equal(git(['status','--porcelain']),'');
 const dry=process.argv.includes('--dry-run'),restore=process.argv.includes('--restore');
-const dir=root+'/state/firsttext-observer-20260909';
+const dir=root+'/state/firsttext-observer-production-worker-20260909';
 function observeWorker(s){
  const once=(a,b)=>{assert.equal(s.split(a).length,2,'unique accepted Worker anchor: '+a);s=s.replace(a,b);};
  s='import {db91HiTrace} from "./db91-hi-trace.mjs";\n'+s;
@@ -21,14 +21,14 @@ function observeWorker(s){
   ['  const startedAt = performance.now();\n  const eventRuntime = await loadAgentEventRuntime();','worker-agent-runtime-loaded'],
   ['    const config = configRuntime.loadConfig();','worker-compaction-runtime-loaded'],
   ['      const externalTaskContext = { acceptedSessionSpawns: [] };','worker-prepared-runtime-ready'],
-  ['        result = await commandRuntime.agentCommandFromGatewayIngress({','worker-before-agent-command'],
+  ['        result = await nativeAttemptBridge.withPluginGeneration(','worker-before-agent-command'],
  ])once(a,' db91HiTrace.mark(message.runId,"'+stage+'");\n'+a);
  return deepWorker(s);
 }
 const items=[
- ['runtime/worker/worker.mjs',observeWorker],
- ['runtime/worker/index.mjs',instrumentHiIndex],['runtime/worker/worker-pool.mjs',instrumentHiPool],
- ['runtime/openclaw/dist/chat-send-handler-DBjXcn_1.js',instrumentHiGateway],
+ ['runtime/production-worker/worker.mjs',observeWorker],
+ ['runtime/production-worker/index.mjs',instrumentHiIndex],['runtime/production-worker/worker-pool.mjs',instrumentHiPool],
+ ['runtime/openclaw/dist/chat-send-handler-DBjXcn_1.js',s=>instrumentHiGateway(s,'../../production-worker/db91-hi-trace.mjs')],
  ['runtime/openclaw/node_modules/@openclaw/ai/dist/transports.mjs',s=>deepTransport(instrumentHiNativeTransport(s))],
  ['runtime/openclaw/dist/prepared-model-runtime-C1N_aVhw.js',deepPrepared],
 ];
@@ -43,7 +43,7 @@ const plans=items.map(([p,fn],i)=>{
 if(!dry){
  fs.mkdirSync(dir,{recursive:true,mode:0o700});
  for(const name of ['db91-hi-trace.mjs','db91-hi-deep.mjs']){
-  const file=root+'/runtime/worker/'+name,data=fs.readFileSync(new URL('./'+name,import.meta.url));
+  const file=root+'/runtime/production-worker/'+name,data=fs.readFileSync(new URL('./'+name,import.meta.url));
   if(fs.existsSync(file))assert.equal(hash(fs.readFileSync(file)),hash(data));
   else fs.writeFileSync(file,data,{flag:'wx',mode:0o644});
  }
