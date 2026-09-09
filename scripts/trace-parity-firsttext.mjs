@@ -55,16 +55,16 @@ try{
   }
   report.fixture={keyHash:createHash('sha256').update(fixture.key).digest('hex').slice(0,16),totalTokens:fixture.totalTokens,thinkingLevel:fixture.thinkingLevel,users:fixture.users,answers:fixture.answers};persist();
  }
- const modes=historyMode?['history_fork','history_same','history_fork_new','exec_regression']:['cold_new','warm_same','warm_new','exec_regression'];
+ const modes=historyMode?['history_fork','history_same','history_fork_new','exec_regression','identity_regression']:['cold_new','warm_same','warm_new','exec_regression'];
  for(const [i,mode] of modes.entries()){
-  const key='agent:makaron:'+(historyMode?'feishu:group:':'explicit:')+'db91-hi-firsttext-'+stamp+'-'+(i===1?0:i===3?2:i);
+  const key='agent:makaron:'+(historyMode?'feishu:group:':'explicit:')+'db91-hi-firsttext-'+stamp+'-'+(i===1?0:i>=3?2:i);
   const j={mode,runId:'DB91_HI_'+stamp+'_'+arm+'_'+mode,sessionKey:key,start:Date.now()};report.jobs.push(j);current=j;persist();
   if(historyMode&&(i===0||i===2)){
    const start=Date.now();await call('sessions.create',{key,agentId:'makaron',parentSessionKey:fixture.key,fork:true,forkFrom:'last-completed',emitCommandHooks:false},120000);j.forkSetupMs=Date.now()-start;
   }
   await call('sessions.messages.subscribe',{agentId:'makaron',key});j.start=Date.now();let finished=false;
   try{
-   const message=mode==='exec_regression'?`请现在调用 exec 执行这条只读命令：date -u "+%s ${j.runId}"。不能复用过去结果，不访问网络，不读写其他文件。最后只回复本轮命令的实际输出。`:'hi';
+   const message=mode==='identity_regression'?'请不要调用工具，只回复当前系统 Runtime 行里的 session 字段的完整值。不是历史对话中的 session，不要加解释。':mode==='exec_regression'?`请现在调用 exec 执行这条只读命令：date -u "+%s ${j.runId}"。不能复用过去结果，不访问网络，不读写其他文件。最后只回复本轮命令的实际输出。`:'hi';
    const ack=await call('chat.send',{agentId:'makaron',sessionKey:key,message,deliver:false,idempotencyKey:j.runId,timeoutMs:180000});assert.equal(ack.runId,j.runId);j.ackMs=Date.now()-j.start;
    while(Date.now()-j.start<180000&&j.finalMs===undefined&&!j.error)await new Promise(r=>setTimeout(r,100));
    assert(!j.error,j.error);assert(Number.isFinite(j.finalMs)&&Number.isFinite(j.firstTextMs),'final/first text deadline');
@@ -74,6 +74,7 @@ try{
    const turn=h.messages.slice(userAt+1),last=turn.filter(m=>m.role==='assistant').at(-1);assert.equal(last.model,'deepseek-v4-pro');assert.notEqual(last.stopReason,'error');
    j.assistants=turn.filter(m=>m.role==='assistant').map(m=>({model:m.model,usage:m.usage,stopReason:m.stopReason,contentTypes:m.content.map(c=>c.type)}));
    j.replyHash=createHash('sha256').update(last.content.filter(c=>c.type==='text').map(c=>c.text).join('')).digest('hex');
+   if(mode==='identity_regression'){assert(last.content.filter(c=>c.type==='text').map(c=>c.text).join('').includes(key),'must recognize current runtime session, not historical parent');assert(!turn.some(m=>m.content?.some?.(c=>c.type==='toolCall')));j.currentSessionVerified=true;}
    if(mode==='exec_regression'){
     const calls=turn.flatMap(m=>Array.isArray(m.content)?m.content.filter(c=>c.type==='toolCall'):[]).filter(c=>['exec','tool_call'].includes(c.name)&&JSON.stringify(c.arguments??{}).includes(j.runId));assert.equal(calls.length,1);
     const result=turn.find(m=>m.role==='toolResult'&&m.toolCallId===calls[0].id);assert(result&&!result.isError&&JSON.stringify(result).includes(j.runId));j.freshExecVerified=true;

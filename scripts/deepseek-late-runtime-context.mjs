@@ -13,6 +13,7 @@ export function placeDeepSeekRuntimeContext(messages,context,model,enabled=proce
  if(messages.slice(1).some(m=>m.role==='system'||m.role==='developer'))return messages;
  const lastUser=messages.findLastIndex(m=>m.role==='user');
  if(lastUser<2||!messages.slice(1,lastUser).some(m=>m.role==='assistant'))return messages;
+ try{globalThis[Symbol.for('db91.hi.deep')]?.mark('runtime-context-layout',{stableSystemChars:prefix.length,dynamicSystemChars:suffix.length,historyPrefixMessages:lastUser-1,nativeMessageCount:messages.length,requestMessageCount:messages.length+1});}catch{/* No diagnostic failure may affect the request. */}
  // Keep current user + subsequent tool continuation contiguous. Dynamic context
  // retains the same system authority and every original character. No histories,
  // tool definitions, reasoning settings, safety policy, or user bytes are removed.
