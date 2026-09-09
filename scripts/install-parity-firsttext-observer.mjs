@@ -18,7 +18,7 @@ function observeWorker(s){
  s='import {db91HiTrace} from "./db91-hi-trace.mjs";\n'+s;
  once('async function runAgent(message, abortSignal) {','async function runAgent(message, abortSignal) {\n return db91HiTrace.run(message, () => runDb91HiAgentBody(message, abortSignal));\n}\nasync function runDb91HiAgentBody(message, abortSignal) {');
  for(const [a,stage] of [
-  ['  const startedAt = performance.now();','worker-agent-runtime-loaded'],
+  ['  const startedAt = performance.now();\n  const eventRuntime = await loadAgentEventRuntime();','worker-agent-runtime-loaded'],
   ['    const config = configRuntime.loadConfig();','worker-compaction-runtime-loaded'],
   ['      const externalTaskContext = { acceptedSessionSpawns: [] };','worker-prepared-runtime-ready'],
   ['        result = await commandRuntime.agentCommandFromGatewayIngress({','worker-before-agent-command'],
