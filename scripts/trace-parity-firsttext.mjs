@@ -35,9 +35,19 @@ await new Promise((resolve,reject)=>{
  }});client.start();
 });
 const call=(method,params={},timeoutMs=30000)=>client.request(method,params,{timeoutMs});
-const status=async()=>{const s=await call('vlab.workers.status');return {pending:s.pending,workers:s.workers.map(w=>({pid:w.pid,ready:w.ready,activeCount:w.activeCount,queued:w.queued}))};};
+const status=async()=>{const s=await call('vlab.workers.status');return {pending:s.pending,workers:s.workers.map(w=>({slot:w.slot,pid:w.pid,ready:w.ready,activeCount:w.activeCount,queued:w.queued}))};};
 try{
  report.before=await status();assert.equal(report.before.pending,0);assert(report.before.workers.every(w=>w.ready&&!w.activeCount&&!w.queued));
+ if(process.argv.includes('--recycle-workers')){
+  const old=report.before.workers,start=Date.now();assert(old.length);
+  for(const w of old){
+   const now=await status(),target=now.workers.find(n=>n.slot===w.slot);assert.equal(now.pending,0);assert(now.workers.every(n=>!n.activeCount&&!n.queued));
+   if(!target)continue;assert.equal(target.pid,w.pid,'do not terminate a replacement');await call('vlab.workers.kill',{slot:w.slot});
+  }
+  let ready;
+  while(Date.now()-start<60000){const s=await status();if(s.workers.length&&s.workers.every(w=>w.ready&&!old.some(o=>o.pid===w.pid))){ready=s;break;}await new Promise(r=>setTimeout(r,250));}
+  assert(ready,'replacement Worker readiness deadline');report.workerRecycled=true;report.workerReadyMs=Date.now()-start;report.before=ready;persist();
+ }
  let fixture;
  if(historyMode){
   const fixtureFile=dir+'/history-fixture.json';
