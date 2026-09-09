@@ -3,6 +3,7 @@
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {channel} from 'node:diagnostics_channel';
 import {performance} from 'node:perf_hooks';
+import {createHash} from 'node:crypto';
 
 export const DB91_HI_TRACE = Symbol.for('db91.hi.trace');
 const valid = id => typeof id === 'string' && /^DB91_HI_[0-9]+_[a-z0-9_]+$/.test(id);
@@ -57,6 +58,19 @@ export function createHiTrace(write = row => console.error('[db91-hi-stage] '+JS
         const request=++fetches;
         const requestMark=(stage,fields={})=>modelMark(stage,{request,...fields});
         requestMark('http-fetch-start',{bodyChars:typeof init?.body==='string'?init.body.length:undefined});
+        try {
+          const payload=JSON.parse(init.body),messages=payload.messages;
+          if(Array.isArray(messages)){
+            const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+            const lastUser=messages.findLastIndex(m=>m.role==='user');
+            const history=messages.slice(1,lastUser).filter(m=>!['system','developer'].includes(m.role));
+            requestMark('http-payload-shape',{messageCount:messages.length,lastUserIndex:lastUser,
+              systemHashes:messages.filter(m=>['system','developer'].includes(m.role)).map(m=>digest(m)),
+              historyMessages:history.length,historyHash:digest(history),toolsHash:digest(payload.tools??[]),
+              historyChunks:Array.from({length:Math.ceil(history.length/32)},(_,i)=>({from:i*32,hash:digest(history.slice(i*32,i*32+32))})),
+              optionsHash:digest({...payload,messages:undefined,tools:undefined})});
+          }
+        } catch { /* Metadata observation must never reject or rewrite a payload. */ }
         try {
           const response=await requests.run({mark:requestMark},()=> (fetchFn??globalThis.fetch)(input,init));
           requestMark('http-fetch-response',{status:response.status});

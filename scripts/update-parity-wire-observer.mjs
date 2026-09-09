@@ -1,0 +1,15 @@
+import fs from 'node:fs';import os from 'node:os';import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';import {createHash} from 'node:crypto';
+assert.equal(os.hostname(),'VM-0-4-ubuntu');assert.equal(process.getuid(),0);
+const root='/srv/vlab-production-mirror/labs/instances/db91-parity',owner='codex-db91-production-equivalent-20260908';
+for(const f of ['db91-parity','integration'])assert.equal(JSON.parse(fs.readFileSync(root+'/../../control/'+f+'.json')).owner,owner);
+assert.equal(execFileSync('systemctl',['show','openclaw-lab-db91-parity.service','-p','MainPID','--value'],{encoding:'utf8'}).trim(),'0');
+const git=args=>execFileSync('runuser',['-u','lab-db91-parity','--','git','-C',root+'/source',...args],{encoding:'utf8'}).trim();
+const commit=process.argv[2];assert(/^[a-f0-9]{40}$/.test(commit));assert.equal(git(['rev-parse','HEAD']),commit);assert.equal(git(['status','--porcelain']),'');
+const file=root+'/runtime/production-worker/db91-hi-trace.mjs',data=fs.readFileSync(new URL('./db91-hi-trace.mjs',import.meta.url));
+const hash=s=>createHash('sha256').update(s).digest('hex'),before=fs.readFileSync(file);
+assert([hash(data),'827a8921182b4f98e1840293fc75f45ca5ad4a338e818c27d5aa81e09f9d71f1'].includes(hash(before)),'trace helper drift');
+const backup=root+'/state/firsttext-observer-production-worker-20260909/trace-before-wire-shape.mjs';
+if(!fs.existsSync(backup))fs.writeFileSync(backup,before,{flag:'wx',mode:0o600});
+const st=fs.statSync(file);fs.writeFileSync(file,data);fs.chmodSync(file,st.mode&0o777);fs.chownSync(file,st.uid,st.gid);
+execFileSync(process.execPath,['--check',file]);console.log(JSON.stringify({observerOnly:true,commit,sha256:hash(data)}));
