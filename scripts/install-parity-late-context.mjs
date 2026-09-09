@@ -23,7 +23,14 @@ if(!dry){
  fs.mkdirSync(dir,{recursive:true,mode:0o700});
  if(!fs.existsSync(backup)){fs.writeFileSync(backup,original,{flag:'wx',mode:0o600});fs.writeFileSync(dir+'/env.original',envOriginal,{flag:'wx',mode:0o600});}
  const helper=folder+'/deepseek-late-runtime-context.mjs',data=fs.readFileSync(new URL('./deepseek-late-runtime-context.mjs',import.meta.url));
- if(fs.existsSync(helper))assert.equal(hash(fs.readFileSync(helper)),hash(data));else fs.writeFileSync(helper,data,{flag:'wx',mode:0o644});
+ if(fs.existsSync(helper)){
+  const before=fs.readFileSync(helper),oldHash=hash(before);
+  assert([hash(data),'86e06f46b1b146e3d45083548a97f6b746a68ee7375e40642e0e84d7286a6d5c'].includes(oldHash),'helper drift');
+  if(!restore&&oldHash!==hash(data)){
+   if(!fs.existsSync(dir+'/helper-v1.original'))fs.writeFileSync(dir+'/helper-v1.original',before,{mode:0o600,flag:'wx'});
+   fs.writeFileSync(helper,data);fs.chmodSync(helper,0o644);
+  }
+ }else fs.writeFileSync(helper,data,{flag:'wx',mode:0o644});
  for(const [p,data] of [[file,restore?original:patched],[envFile,restore?envOriginal:envPatched]]){const st=fs.statSync(p);fs.writeFileSync(p,data);fs.chmodSync(p,st.mode&0o777);fs.chownSync(p,st.uid,st.gid);}
  fs.writeFileSync(dir+'/manifest.json',JSON.stringify({at:new Date().toISOString(),commit,restore,original:hash(original),patched:hash(patched),corePromptUnmodified:true,historyUnmodified:true,thinkingUnmodified:true},null,2),{mode:0o600});
 }

@@ -3,11 +3,15 @@ import {placeDeepSeekRuntimeContext as place,cacheBoundary as boundary} from './
 const model={provider:'deepseek',id:'deepseek-v4-pro'};
 const context={systemPrompt:'EXACT Core prompt.  \n'+boundary+'  Runtime: session=NEW\nPolicy stays system.'};
 const head={role:'system',content:context.systemPrompt.replace(boundary,'\n')};
-const history=[{role:'user',content:'old user'},{role:'assistant',content:'old assistant'},{role:'user',content:'new user'}];
+const history=[{role:'user',content:'old user '.repeat(18000)},{role:'assistant',content:'old assistant'},{role:'user',content:'new user'}];
 test('disabled and other models remain reference-identical',()=>{
  const m=[head,...history];assert.equal(place(m,context,model,false),m);
  assert.equal(place(m,context,{...model,provider:'other'},true),m);
  assert.equal(place(m,context,{...model,id:'deepseek-v4-flash'},true),m);
+});
+test('short conversation retains the baseline cache layout exactly',()=>{
+ const m=[head,{role:'user',content:'hi'},{role:'assistant',content:'hello'},{role:'user',content:'hi again'}];
+ assert.equal(place(m,context,model,true),m);
 });
 test('system text is byte-identical when recombined; roles and history are retained',()=>{
  const m=[head,...history],before=structuredClone(m),out=place(m,context,model,true);
