@@ -38,7 +38,7 @@ const resources = () => {
   }
   peakRss = Math.max(peakRss, rss); peakAnon = Math.max(peakAnon, anon);
   const subgroups = {};
-  for (const name of ['foreground', 'database-verifier']) if (fs.existsSync(cg + '/' + name)) subgroups[name] = {
+  for (const name of ['foreground', 'database-verifier']) if (fs.existsSync(cg + '/' + name + '/memory.current')) subgroups[name] = {
     memory: Number(fs.readFileSync(cg + '/' + name + '/memory.current')),
     eventsLocal: fs.readFileSync(cg + '/' + name + '/memory.events.local', 'utf8'),
     high: fs.readFileSync(cg + '/' + name + '/memory.high', 'utf8').trim(),
