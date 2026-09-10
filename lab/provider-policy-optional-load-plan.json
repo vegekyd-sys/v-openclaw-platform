@@ -1,0 +1,15 @@
+{
+  "baseRelease": "concurrency-lifecycle-projection-v1",
+  "files": [
+    {
+      "source": "lab/release-files/optional-public-surface-loader.js",
+      "target": "openclaw/dist/public-surface-loader-V55JV4Jk.js",
+      "before": "57794d0baea89de6f9fc7a1fc975ff7f3bdc230d895f88a9833c8da9108ba943"
+    },
+    {
+      "source": "lab/release-files/optional-provider-policy-surface.js",
+      "target": "openclaw/dist/provider-policy-surface-bKCE_kaj.js",
+      "before": "4711dae93f8bec59f1571d229f69167737376249624b7b75f92100ec0196b5e7"
+    }
+  ]
+}
