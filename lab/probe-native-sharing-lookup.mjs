@@ -61,12 +61,16 @@ function compare(key, expectExact = true) {
   assert.equal(exactReads > beforeReads, expectExact, 'Exact/full reader selection differed');
   compared++; timings.push({fullMs: a - t, exactMs: b - a}); return actual;
 }
-for (const key of keys) compare(key);
-assert.equal(compare('agent:makaron:explicit:concurrency-fix-sharing-missing-' + randomUUID()), null);
+// clone:false full-list reads use the native read view and do not open a
+// writer. First prove the cold fallback, then open only our fixture's writer
+// through the normal native mutation before asserting warm exact reads.
+compare(keys[0], false);
 const scope = {agentId: 'makaron', storePath: base + '/state/agents/makaron/agent/openclaw-agent.sqlite', sessionKey: 'agent:makaron:explicit:concurrency-fix-sharing-native-' + Date.now()};
 let sessionId = randomUUID();
 const initial = {sessionId, createdAt: Date.now(), updatedAt: Date.now(), status: 'done', visibility: 'draft', createdActor: {id: 'sharing-probe-owner', type: 'human', source: 'profile'}};
 await entry.p(scope, () => initial, {fallbackEntry: initial, replaceEntry: true, skipMaintenance: true});
+for (const key of keys) compare(key);
+assert.equal(compare('agent:makaron:explicit:concurrency-fix-sharing-missing-' + randomUUID()), null);
 const mutationParams = client => ({method: 'chat.send', requestParams: {sessionKey: scope.sessionKey, agentId: 'makaron'}, client, context: {getRuntimeConfig: () => cfg}});
 const adminClient = {connect: {scopes: ['operator.admin']}};
 const admission = candidateSharing.namespace.i(mutationParams(adminClient));
