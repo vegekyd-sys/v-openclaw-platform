@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 const [owner, countArg = '5', label = 'profile-baseline'] = process.argv.slice(2), count = Number(countArg);
-let peakMemory = 0, minFreeBytes = Infinity;
+let peakMemory = 0, minFreeBytes = Infinity, peakRss = 0, peakAnon = 0;
+const processPeaks = new Map();
 assert(owner && /^[\w-]+$/.test(owner)); assert(Number.isInteger(count) && count >= 1 && count <= 15); assert(/^[a-z0-9-]+$/.test(label));
 assert.equal(os.hostname(), 'VM-0-4-ubuntu');
 const base = '/srv/vlab-production-mirror/labs/instances/db91-parity';
@@ -21,11 +22,24 @@ for (const c of [cfg, JSON.parse(fs.readFileSync(cfg.plugins.entries['vlab-agent
   const a = c.agents.entries.makaron.model; assert.equal(typeof a === 'string' ? a : a.primary, model); if (typeof a === 'object') assert.deepEqual(a.fallbacks, []);
 }
 const cg = '/sys/fs/cgroup' + fs.readFileSync('/proc/' + pid + '/cgroup', 'utf8').trim().split('::')[1];
-const resources = () => {const memory = Number(fs.readFileSync(cg + '/memory.current')); peakMemory = Math.max(peakMemory, memory); return {memory, memoryEvents: fs.readFileSync(cg + '/memory.events', 'utf8'), cpu: fs.readFileSync(cg + '/cpu.stat', 'utf8')};};
+const resources = () => {
+  const memory = Number(fs.readFileSync(cg + '/memory.current')); peakMemory = Math.max(peakMemory, memory);
+  let rss = 0, anon = 0;
+  for (const id of [pid, ...fs.readFileSync('/proc/' + pid + '/task/' + pid + '/children', 'utf8').trim().split(/\s+/).filter(Boolean).map(Number)]) {
+    try {
+      const s = fs.readFileSync('/proc/' + id + '/status', 'utf8');
+      const r = Number(s.match(/^VmRSS:\s+(\d+)/m)?.[1] ?? 0) * 1024, a = Number(s.match(/^RssAnon:\s+(\d+)/m)?.[1] ?? 0) * 1024;
+      rss += r; anon += a;
+      const old = processPeaks.get(id) ?? {rss: 0, anon: 0}; processPeaks.set(id, {rss: Math.max(old.rss, r), anon: Math.max(old.anon, a)});
+    } catch { /* A retired child can disappear between reads. */ }
+  }
+  peakRss = Math.max(peakRss, rss); peakAnon = Math.max(peakAnon, anon);
+  return {memory, rss, anon, memoryEvents: fs.readFileSync(cg + '/memory.events', 'utf8'), memoryStat: fs.readFileSync(cg + '/memory.stat', 'utf8'), ioPressure: fs.readFileSync('/proc/pressure/io', 'utf8'), cpu: fs.readFileSync(cg + '/cpu.stat', 'utf8')};
+};
 const {GatewayClient} = await import(base + '/runtime/openclaw/dist/plugin-sdk/gateway-runtime.js');
 const rows = [], byId = new Map(); let client, before, saved = false, runtimeErrors = [];
 function save(failure) {
-  const summary = {label, count, pid, before, after: resources(), peakMemory, minFreeBytes, rows, runtimeErrors, ...(failure ? {failure} : {})};
+  const summary = {label, count, pid, before, after: resources(), peakMemory, peakRss, peakAnon, processPeaks: Object.fromEntries(processPeaks), minFreeBytes, rows, runtimeErrors, ...(failure ? {failure} : {})};
   const output = '/srv/vlab-production-mirror/labs/control/concurrency-profile-' + label + '-' + Date.now() + '.json';
   fs.writeFileSync(output, JSON.stringify(summary, null, 2) + '\n', {flag: 'wx', mode: 0o600}); saved = true;
   console.log(JSON.stringify({output, ...summary}));
@@ -68,7 +82,7 @@ try {
   const journal = execFileSync('journalctl', ['-u', 'openclaw-vlab-production-mirror-v8.service', '--since', new Date(rows[0].start - 1000).toISOString(), '-o', 'json', '--no-pager'], {encoding: 'utf8', maxBuffer: 40 * 1024 ** 2});
   for (const line of journal.split('\n')) {
     if (!line) continue; let message; try {message = JSON.parse(line).MESSAGE ?? '';} catch {continue;}
-    const kind = ['terminal session persistence failed', 'webchat dispatch failed', 'Embedded agent failed before reply', 'SQLite session write failed'].find(k => message.includes(k));
+    const kind = ['terminal session persistence failed', 'webchat dispatch failed', 'Embedded agent failed before reply', 'SQLite session write failed', 'Worker Agent request failed', 'SQLite automatic session maintenance failed', 'SQLite automatic maintenance coordinator failed', 'SQLite automatic maintenance coordinator release failed', 'SQLite session maintenance cleanup failed', 'SQLite session maintenance archive sizing failed'].find(k => message.includes(k));
     if (kind) runtimeErrors.push({kind, databaseLocked: message.includes('database is locked')});
   }
   save();

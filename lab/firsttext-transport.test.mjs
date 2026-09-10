@@ -8,7 +8,8 @@ for (const name of ['index.mjs', 'worker-pool.mjs', 'worker.mjs']) {
   const updated = read('./release-files/production-worker-' + name), before = read('./fixtures/concurrency-native-baseline/production-worker-' + name);
   test(name + ': only the already-sanitized observer sink changes', () => {
     const prefix = 'import {Console as FirsttextMetricConsole} from "node:console";\nconst ocFirsttextMetricConsole = new FirsttextMetricConsole({stdout: process.stdout, stderr: process.stderr, ignoreErrors: true});\n';
-    assert.equal(updated, prefix + before.replace("    console.error('[firsttext-worker-phases] ' + JSON.stringify(row));", "    // row contains only validated timing/identity fields; no prompt, tool args or credentials.\n    ocFirsttextMetricConsole.error('[firsttext-worker-phases] ' + JSON.stringify(row));"));
+    const withoutTemporaryProfile = updated.replace('// Temporary VLab-only, dedicated-session CPU diagnostic. No inspector listener.\nimport {withConcurrencyProfile} from \'../openclaw/dist/gateway-concurrency-profiler.mjs\';\nasync function runAgent(message, abortSignal) {\n  return withConcurrencyProfile(message, () => runAgentWithWorkerProfile(message, abortSignal));\n}\nasync function runAgentWithWorkerProfile(message, abortSignal) {', 'async function runAgent(message, abortSignal) {');
+    assert.equal(withoutTemporaryProfile, prefix + before.replace("    console.error('[firsttext-worker-phases] ' + JSON.stringify(row));", "    // row contains only validated timing/identity fields; no prompt, tool args or credentials.\n    ocFirsttextMetricConsole.error('[firsttext-worker-phases] ' + JSON.stringify(row));"));
   });
   test(name + ': allowlist excludes all arbitrary strings, secrets, bodies and tool arguments', () => {
     const output = [], source = updated.slice(updated.indexOf('\n') + 1, updated.indexOf('\nimport '));
