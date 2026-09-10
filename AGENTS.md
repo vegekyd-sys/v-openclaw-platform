@@ -4,11 +4,14 @@
 - Never add secrets, `.env` files, credentials, session transcripts, memory
   databases, browser profiles, generated media, or server snapshots.
 - Develop changes on a dedicated branch and worktree.
-- For VLab work, follow `lab/README.md`: one task = one worktree + one owned
-  runtime instance. Never patch/restart the shared 24993 Gateway for personal
-  development. Shared integration changes require an explicit exclusive lease.
-- Always name the target instance and record its owner, branch and exact commit.
-  Separate Git worktrees do not authorize sharing writable runtime/config/state.
+- For VLab work, follow `lab/README.md`: one lightweight source worktree per task,
+  merge into the canonical `dev`, then deploy/test on the shared Gateway.
+- Use `/Users/tianyicai/vlab-dev/lab/vlab.mjs` for worktree, integration and release
+  operations. Do not copy live state/runtime into task worktrees or hot-patch live
+  runtime outside this workflow. Explicit integration lease is required for
+  shared tests, staging, deployment and rollback; never steal another owner lease.
+- Preserve existing settings and conversations through the shared Gateway.
+  Never point independent Gateway processes at the same writable state directory.
 - Validate changes in vLab before proposing production promotion.
 - Keep vLab and production state paths, ports, workspaces, and channel
   credentials completely separate.
