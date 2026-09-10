@@ -4,6 +4,7 @@
 - Never add secrets, `.env` files, credentials, session transcripts, memory
   databases, browser profiles, generated media, or server snapshots.
 - Develop changes on a dedicated branch and worktree.
+- First read `lab/AGENT-QUICKSTART.md` for the copyable task workflow.
 - For VLab work, follow `lab/README.md`: one lightweight source worktree per task,
   merge into the canonical `dev`, then deploy/test on the shared Gateway.
 - Use `/Users/tianyicai/vlab-dev/lab/vlab.mjs` for worktree, integration and release
