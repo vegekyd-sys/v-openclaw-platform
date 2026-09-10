@@ -1,0 +1,51 @@
+{
+  "scope": "Pre-merge code-only native Worker startup benchmark; not end-to-end first-text acceptance",
+  "nodeVersion": "v22.23.1",
+  "runtimeBaseCommit": "645c24d4f952ce226fd4904bb797db12b8ec431b",
+  "runtimeBaseRelease": "three-fixes-20260910-v2",
+  "baselineWorkerSha256": "4ca913d1dcffc8aac28cb02fa9e446c5f61456af1bbbab292c5eb4914cfdcc80",
+  "candidateWorkerSha256": "5b49deac1c9eaafe69ec93d4c0ce9b2328d19fa44ec47158aa1b6c664effddf9",
+  "candidateHelperSha256": "287da78fdea204a160d0a85efb0753763facc64f371167862577ce3fe7795166",
+  "isolation": {
+    "network": "private",
+    "state": "fresh synthetic temporary directories, no business state copied",
+    "installedRuntime": "read-only dependencies, no deployed files changed",
+    "candidateFixture": "candidate Worker source with relative support imports relocated to installed modules and task helper",
+    "cpuQuotaPercent": 200,
+    "memoryMaxBytes": 2147483648,
+    "compileCache": "disabled",
+    "gatewayStarted": false,
+    "modelRequests": 0,
+    "toolRequests": 0
+  },
+  "finalNativeReadyUnit": "worker-cold-firsttext-final-ready-20260910.service",
+  "samples": [
+    {"variant":"baseline","index":0,"readyMs":4603,"telemetryReady":true,"ipcHold":true,"totalMs":4609},
+    {"variant":"candidate","index":1,"readyMs":2583,"telemetryReady":true,"ipcHold":true,"totalMs":2586},
+    {"variant":"baseline","index":2,"readyMs":4557,"telemetryReady":true,"ipcHold":true,"totalMs":4561},
+    {"variant":"candidate","index":3,"readyMs":2654,"telemetryReady":true,"ipcHold":true,"totalMs":2663},
+    {"variant":"baseline","index":4,"readyMs":4893,"telemetryReady":true,"ipcHold":true,"totalMs":4900},
+    {"variant":"candidate","index":5,"readyMs":2600,"telemetryReady":true,"ipcHold":true,"totalMs":2603}
+  ],
+  "summary": {
+    "baselineReadyP50Ms": 4603,
+    "candidateReadyP50Ms": 2600,
+    "readyReductionPercent": 43.5151,
+    "samplesPerVariant": 3,
+    "nativeFirstTextP50Ms": null
+  },
+  "initialCpuProfile": {
+    "unit": "worker-cold-firsttext-profile-20260910.service",
+    "agentRuntimeImportMs": 5864,
+    "packageExportsGetterSelfMs": 2226,
+    "compileSourceTextModuleSelfMs": 926,
+    "garbageCollectorSelfMs": 671
+  },
+  "resolutionMechanismProbe": {
+    "hits": 9030,
+    "misses": 1859,
+    "entries": 1859,
+    "maxEntries": 4096,
+    "note": "Counter probe before final custom-loader opt-out guard; final ready samples use exact helper SHA above"
+  }
+}
