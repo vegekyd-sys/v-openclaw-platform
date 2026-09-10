@@ -18,6 +18,9 @@ const main = await import(base + '/runtime/openclaw/dist/session-accessor-K0XuW6
 const entry = await import(base + '/runtime/openclaw/dist/session-accessor.sqlite-entry-BlklNPKQ.js');
 const scope = {agentId: 'makaron', storePath: base + '/state/agents/makaron/agent/openclaw-agent.sqlite', sessionKey: 'agent:makaron:explicit:concurrency-fix-native-commit-' + Date.now()};
 const initial = {sessionId: randomUUID(), createdAt: Date.now(), updatedAt: Date.now(), label: 'initial', status: 'done'};
+// Reply initialization runs after Gateway admission has opened the native owner
+// connection. Mirror that precondition without creating or mutating this row.
+entry.d({...scope, hydrateSkillPromptRefs: false});
 const empty = main.Y(scope);
 const created = await main.J({...scope, expectedRevision: empty.revision, sessionEntry: initial, deferMaintenance: true, archivePreviousTranscript: false}); assert.equal(created.ok, true);
 const snapshot = main.Y(scope); let prepares = 0, beforeCommits = 0;
