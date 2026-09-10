@@ -43,6 +43,8 @@ try {
   await Promise.all(rows.map(async r => {r.start = Date.now(); await client.request('chat.send', {agentId: 'makaron', sessionKey: r.key, message: '这是 VLab 并发验收，请只回复“收到，可以开始。”，不调用工具、不执行其他任务。编号 ' + r.id, deliver: false, idempotencyKey: r.id, timeoutMs: 120000}); r.ackMs = Date.now() - r.start;}));
   const deadline = Date.now() + 130000;
   while (rows.some(r => !r.terminal) && Date.now() < deadline) {guard(); assert(resources().memory < 12.5 * 1024 ** 3, 'Memory safety limit'); await sleep(250);}
+  // Keep verification history reads outside the timed CPU profile window.
+  if (label.startsWith('profile-')) await sleep(Math.max(0, rows[0].start + 28000 - Date.now()));
   for (const r of rows) {
     assert.equal(r.terminal, 'final'); const h = await client.request('chat.history', {agentId: 'makaron', sessionKey: r.key, limit: 3});
     const a = h.messages?.filter(m => m.role === 'assistant').at(-1), body = a?.content?.filter(c => c.type === 'text').map(c => c.text).join('\n') ?? '';
