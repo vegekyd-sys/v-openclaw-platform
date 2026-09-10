@@ -1,3 +1,4 @@
+import {withSqliteBeginContentionRetry} from "./sqlite-begin-contention-retry.mjs";
 import { waitAutomaticMaintenanceWindow as db91WaitAutomaticMaintenance } from "./db91-maintenance-throttle.mjs";
 import { y as uniqueStrings } from "./string-normalization-DiSb4JeN.js";
 import { n as getRuntimeConfig } from "./io.runtime-CKu7Rw0j.js";
@@ -582,7 +583,10 @@ async function patchSqliteSessionEntrySnapshotOnce(params) {
 		let result = null;
 		let previousIdentity = /* @__PURE__ */ new Map();
 		let currentIdentity = /* @__PURE__ */ new Map();
-		runOpenClawAgentWriteTransaction((writeDatabase) => {
+		await withSqliteBeginContentionRetry({
+			database: database.db,
+			run: operation => runOpenClawAgentWriteTransaction(operation, toDatabaseOptions(resolved)),
+			operation: (writeDatabase) => {
 			const fresh = params.readSnapshot(writeDatabase);
 			try { assertLifecycleTargetSnapshotUnchanged(prepared, fresh, params.operationLabel); }
 			catch (error) {
@@ -602,7 +606,8 @@ async function patchSqliteSessionEntrySnapshotOnce(params) {
 			wrote = true;
 			currentIdentity = readSessionIdentitySnapshot(writeDatabase, [sessionKey]);
 			result = cloneSessionEntry(persisted);
-		}, toDatabaseOptions(resolved));
+			}
+		});
 		try {
 			if (next && result) options.onCommitted?.(cloneSessionEntry(result));
 		} finally {

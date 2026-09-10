@@ -11,7 +11,7 @@ assert(files.length, 'No matching test metrics');
 const batches = files.map(n => ({file: n, ...JSON.parse(fs.readFileSync(control + '/' + n))}));
 const results = batches.flatMap(b => b.rows.map(r => ({label: b.label, pid: b.pid, ...r}))), byId = new Map(results.map(r => [r.id, r]));
 const start = Math.min(...results.map(r => r.start));
-const raw = execFileSync('journalctl', ['-u', 'openclaw-vlab-production-mirror-v8.service', '--since', new Date(start - 1000).toISOString(), '-o', 'json', '--no-pager'], {encoding: 'utf8', maxBuffer: 100 * 1024 ** 2});
+const raw = execFileSync('journalctl', ['-u', 'openclaw-vlab-production-mirror-v8.service', '--since', new Date(start - 1000).toISOString(), '-o', 'json', '--all', '--no-pager'], {encoding: 'utf8', maxBuffer: 100 * 1024 ** 2});
 const stages = new Map(), profiles = [];
 for (const line of raw.split('\n')) {
   if (!line) continue; let j; try {j = JSON.parse(line);} catch {continue;}

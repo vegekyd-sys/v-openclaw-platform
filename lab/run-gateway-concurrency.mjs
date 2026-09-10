@@ -22,9 +22,9 @@ for (const c of [cfg, JSON.parse(fs.readFileSync(cfg.plugins.entries['vlab-agent
 const cg = '/sys/fs/cgroup' + fs.readFileSync('/proc/' + pid + '/cgroup', 'utf8').trim().split('::')[1];
 const resources = () => ({memory: Number(fs.readFileSync(cg + '/memory.current')), memoryEvents: fs.readFileSync(cg + '/memory.events', 'utf8'), cpu: fs.readFileSync(cg + '/cpu.stat', 'utf8')});
 const {GatewayClient} = await import(base + '/runtime/openclaw/dist/plugin-sdk/gateway-runtime.js');
-const rows = [], byId = new Map(); let client, before, saved = false;
+const rows = [], byId = new Map(); let client, before, saved = false, runtimeErrors = [];
 function save(failure) {
-  const summary = {label, count, pid, before, after: resources(), rows, ...(failure ? {failure} : {})};
+  const summary = {label, count, pid, before, after: resources(), rows, runtimeErrors, ...(failure ? {failure} : {})};
   const output = '/srv/vlab-production-mirror/labs/control/concurrency-profile-' + label + '-' + Date.now() + '.json';
   fs.writeFileSync(output, JSON.stringify(summary, null, 2) + '\n', {flag: 'wx', mode: 0o600}); saved = true;
   console.log(JSON.stringify({output, ...summary}));
@@ -59,11 +59,21 @@ try {
     const h = await client.request('chat.history', {agentId: 'makaron', sessionKey: r.key, limit: 3});
     const a = h.messages?.filter(m => m.role === 'assistant').at(-1), body = a?.content?.filter(c => c.type === 'text').map(c => c.text).join('\n') ?? '';
     assert.equal(a?.provider, 'deepseek'); assert.equal(a?.model, 'deepseek-v4-pro'); assert(body.includes('收到，可以开始。')); assert.equal(a?.stopReason, 'stop');
-    r.model = a.model; r.thinking = h.sessionInfo?.thinkingLevel; r.expectedBody = true;
+    r.model = a.model; r.thinking = h.sessionInfo?.thinkingLevel; r.runtimeStatus = h.sessionInfo?.status;
+    r.terminalPersisted = r.runtimeStatus === 'done' && h.sessionInfo?.lastRunId === r.id && h.sessionInfo?.hasActiveRun === false;
+    r.expectedBody = true;
+  }
+  // Final text alone is not acceptance: terminal persistence can fail afterwards.
+  const journal = execFileSync('journalctl', ['-u', 'openclaw-vlab-production-mirror-v8.service', '--since', new Date(rows[0].start - 1000).toISOString(), '-o', 'json', '--no-pager'], {encoding: 'utf8', maxBuffer: 40 * 1024 ** 2});
+  for (const line of journal.split('\n')) {
+    if (!line) continue; let message; try {message = JSON.parse(line).MESSAGE ?? '';} catch {continue;}
+    const kind = ['terminal session persistence failed', 'webchat dispatch failed', 'Embedded agent failed before reply', 'SQLite session write failed'].find(k => message.includes(k));
+    if (kind) runtimeErrors.push({kind, databaseLocked: message.includes('database is locked')});
   }
   save();
   await idle();
-  assert(rows.every(r => r.terminal === 'final' && r.expectedBody), 'Batch failed; evidence saved, no escalation');
+  assert(rows.every(r => r.terminal === 'final' && r.expectedBody && r.terminalPersisted), 'Batch failed; evidence saved, no escalation');
+  assert.equal(runtimeErrors.length, 0, 'Runtime persistence/dispatch failure; final text is insufficient acceptance');
 } catch (error) {
   if (!saved && rows.some(r => r.start)) save({name: error.name, message: String(error.message).slice(0, 300)});
   throw error;

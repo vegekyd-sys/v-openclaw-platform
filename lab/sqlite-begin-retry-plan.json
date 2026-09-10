@@ -1,0 +1,15 @@
+{
+  "baseRelease": "concurrency-fix-v1",
+  "files": [
+    {
+      "source": "lab/release-files/session-accessor.sqlite-entry-BlklNPKQ.js",
+      "target": "openclaw/dist/session-accessor.sqlite-entry-BlklNPKQ.js",
+      "before": "581cc98f388fac85b297d5332fa52012fa97c5919db0d3abc23d1a8abb250d7c"
+    },
+    {
+      "source": "lab/release-files/sqlite-begin-contention-retry.mjs",
+      "target": "openclaw/dist/sqlite-begin-contention-retry.mjs",
+      "before": null
+    }
+  ]
+}

@@ -83,7 +83,10 @@ test('closed database and explicitly skipped writes do not run maintenance', asy
 });
 test('native queue, lifecycle transaction and reset/delete guards are byte-identical', () => {
   const before = read('./fixtures/concurrency-native-baseline/session-accessor.sqlite-entry-BlklNPKQ.js');
-  assert.equal(entryModule, before.replace('export { ensureSessionEntrySync as C,', 'export { kickSessionEntryMaintenanceAfterWrite, ensureSessionEntrySync as C,'));
+  const withoutBeginRetry = entryModule.replace('import {withSqliteBeginContentionRetry} from "./sqlite-begin-contention-retry.mjs";\n', '')
+    .replace('\t\tawait withSqliteBeginContentionRetry({\n\t\t\tdatabase: database.db,\n\t\t\trun: operation => runOpenClawAgentWriteTransaction(operation, toDatabaseOptions(resolved)),\n\t\t\toperation: (writeDatabase) => {\n', '\t\trunOpenClawAgentWriteTransaction((writeDatabase) => {\n')
+    .replace('\t\t\tresult = cloneSessionEntry(persisted);\n\t\t\t}\n\t\t});', '\t\t\tresult = cloneSessionEntry(persisted);\n\t\t}, toDatabaseOptions(resolved));');
+  assert.equal(withoutBeginRetry, before.replace('export { ensureSessionEntrySync as C,', 'export { kickSessionEntryMaintenanceAfterWrite, ensureSessionEntrySync as C,'));
   const oldAccessor = read('./fixtures/concurrency-native-baseline/session-accessor-K0XuW6ln.js');
   const prefix = accessor.slice(accessor.indexOf('\n') + 1, accessor.indexOf('async function commitReplySessionInitialization('));
   assert.equal(prefix, oldAccessor.slice(0, oldAccessor.indexOf('async function commitReplySessionInitialization(')));
