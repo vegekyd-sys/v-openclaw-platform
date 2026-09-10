@@ -136,6 +136,10 @@ test("package patch is exact, idempotent, and reversible", async () => {
       ["model-fallback-attempt-test.js", liveSwitchFixture],
       ["session-accessor.sqlite-entry-test.js", sqliteFixture],
       ["session-entry-persistence-test.js", persistenceFixture],
+      [
+        "session-entry-persistence-public.js",
+        `import { t as persistReplySessionEntry } from "./session-entry-persistence-test.js";\nexport { persistReplySessionEntry };\n`,
+      ],
     ]);
     for (const [name, source] of files) {
       await writeFile(path.join(dist, name), source);

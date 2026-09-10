@@ -156,7 +156,8 @@ const bundleSpecs = [
     label: "reply session persistence",
     pattern: /^session-entry-persistence-[A-Za-z0-9_-]+\.js$/,
     patch: patchReplySessionPersistenceBundle,
-    marker: "persistReplySessionEntry",
+    // Ignore the public re-export shim and patch the implementation chunk.
+    marker: "async function persistReplySessionEntry",
   },
 ];
 
