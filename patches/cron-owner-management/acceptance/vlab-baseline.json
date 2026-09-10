@@ -1,0 +1,9 @@
+{
+  "mode": "baseline",
+  "evidence": [
+    "baseline reproduces legacy-ownerless toolsAllow failure",
+    "baseline reproduces same-owner cross-group denial"
+  ],
+  "liveChannel": false,
+  "modelExecution": false
+}

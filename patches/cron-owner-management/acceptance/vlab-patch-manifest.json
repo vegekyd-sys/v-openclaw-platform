@@ -1,0 +1,46 @@
+{
+  "patch": "versa-cron-owner-management-v1",
+  "version": "2026.9.1",
+  "files": [
+    {
+      "name": "gateway-caller-context-CRUBJj3M.js",
+      "before": "2514aa14791b88fbd3b12897a58ddc303f57a45cd2c6ce092c95b0286c2f7f0b",
+      "after": "cef428887ffb9bb9e0477a794b55f624a61115bc481293ee5027c66cf8adf37d"
+    },
+    {
+      "name": "openclaw-tools-BODVdJQD.js",
+      "before": "bf54224a8e3a7f7017d067ba6cc4af10902acf3898243554f1e4e0b6daac1d18",
+      "after": "9369ebcdd6562c960f4faa857390b53a9e77af76a12026b564e51313d34b98b2"
+    },
+    {
+      "name": "cron-tool-CPu6etIM.js",
+      "before": "484906fd5b74c10114f07d2a9f7baeada7b22f341b815c85eedd32af08d36627",
+      "after": "78ac127628258065d6dd04237809266b63fd90228ee994fcab51f2d238e09771"
+    },
+    {
+      "name": "host-capability-Dq3cEEWF.js",
+      "before": "2f469e47f7a7ef6c7b8db0434360445c296fcfae4ff9c4491ab4a141510721c3",
+      "after": "bdfcff9db1a9331f4fcdaddcccc3ce544c7098c565a6f094de33ca23acef5e6a"
+    },
+    {
+      "name": "agent-runtime-identity-token-tbYOQmt6.js",
+      "before": "da0343df55d4fdb89b2a2f7b89991486f22f89302a697d627d8bebf94ebbf17e",
+      "after": "f3385ce015dadc5f291195458e09e4fc4da12d8eec789c4358dde0412b762f0a"
+    },
+    {
+      "name": "list-snapshot-revision-B919xtbt.js",
+      "before": "f0c04eff4dcd8eb70dcd76e99249de4bd22c98baa5f87c5e4d3187ecd5e68ff7",
+      "after": "c7143aedfa68a3504062ad554a59964f81ef1720c08c7d95f84aefb0f983cbb9"
+    },
+    {
+      "name": "cron-6EvXRcEQ.js",
+      "before": "f1c7a7db4bc046a42059e24329ae5788ab9efa470b20ea5f4bceeeaf7a675670",
+      "after": "459e76f837b5c18165ad206fe777bf666e4264c992645c08f0f42e587d887cfc"
+    },
+    {
+      "name": "versa-cron-owner-management-v1.mjs",
+      "before": null,
+      "after": "2e7c80d543737817de2213d02d3b90e3ffc39063128933c1549af18fa638f59e"
+    }
+  ]
+}

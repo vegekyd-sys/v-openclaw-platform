@@ -1,0 +1,19 @@
+{
+  "mode": "fixed",
+  "evidence": [
+    "legacy owner adoption and cap narrowing persist through native update",
+    "A creates, B reschedules, C edits/pauses; original execution owner retained",
+    "owner lists original task from another group",
+    "other users cannot list, create, update or remove protected jobs even in original group",
+    "forged owner parameter and tool-cap expansion rejected",
+    "revoked owner denied on subsequent request",
+    "owner revocation between preflight and locked commit prevents mutation",
+    "retired signed run cannot replay a mutation",
+    "fresh CronService reload confirms persisted data and denied mutations",
+    "owner deletes own task from another group",
+    "original Gateway host binds owner; Worker arguments and signed-token tampering cannot replace it",
+    "closed host capability cannot mint another owner token"
+  ],
+  "liveChannel": false,
+  "modelExecution": false
+}
