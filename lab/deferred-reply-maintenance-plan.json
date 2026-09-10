@@ -1,0 +1,20 @@
+{
+  "baseRelease": "concurrency-diag-v2",
+  "files": [
+    {
+      "source": "lab/release-files/get-reply-CqW1y05D.js",
+      "target": "openclaw/dist/get-reply-CqW1y05D.js",
+      "before": "d1e8f0f12a8a4507fba972f34723ecea1944a9a72962846a9a05d93ee8723648"
+    },
+    {
+      "source": "lab/release-files/session-accessor.sqlite-entry-BlklNPKQ.js",
+      "target": "openclaw/dist/session-accessor.sqlite-entry-BlklNPKQ.js",
+      "before": "f1decae0584c72f26393980ef0093db61ea84035cd17b76a29c0987b6f5fefa7"
+    },
+    {
+      "source": "lab/release-files/session-accessor-K0XuW6ln.js",
+      "target": "openclaw/dist/session-accessor-K0XuW6ln.js",
+      "before": "3b18271baa0cc644ab805ab077db73f4f331bc6bd42a85707bfaadab52a7bc08"
+    }
+  ]
+}

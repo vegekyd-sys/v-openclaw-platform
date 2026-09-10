@@ -28,15 +28,15 @@ for (const r of results) {
   r.phases = {sendToHarnessMs: at('gateway-harness-enter') - r.start, sendToWorkerMs: enter - r.start, gatewayPreflightMs: at('gateway-preflight-end') - at('gateway-preflight-enter'), poolQueueMs: at('pool-ipc-send') - at('pool-enqueued'), workerToModelMs: model - enter, modelToFirstTextMs: text - model, firstTextToGatewayBodyMs: r.start + r.firstBody - text};
   r.workerPid = s.find(e => e.stage === 'worker-agent-enter')?.pid;
   r.calls = s.filter(e => e.stage === 'model-call-enter').map(e => ({provider: e.provider, model: e.model}));
-  assert.equal(r.calls.length, 1, 'Expected one traced model call per short request');
-  assert.deepEqual(r.calls[0], {provider: 'deepseek', model: 'deepseek-v4-pro'});
+  if (r.terminal === 'final') assert.equal(r.calls.length, 1, 'Expected one traced model call per successful short request');
+  for (const call of r.calls) assert.deepEqual(call, {provider: 'deepseek', model: 'deepseek-v4-pro'});
   r.workerStart = enter; r.workerEnd = at('worker-command-end');
 }
 const groups = {};
 for (const label of new Set(results.map(r => r.label))) {
   const a = results.filter(r => r.label === label), edges = a.flatMap(r => Number.isFinite(r.workerStart) && Number.isFinite(r.workerEnd) ? [[r.workerStart, 1], [r.workerEnd, -1]] : []).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   let active = 0, maxActive = 0; for (const [, delta] of edges) {active += delta; maxActive = Math.max(active, maxActive);}
-  groups[label] = {n: a.length, firstBody: stat(a.map(r => r.firstBody)), ack: stat(a.map(r => r.ackMs)), total: stat(a.map(r => r.total)), maxSimultaneousWorkerRuns: maxActive, phases: Object.fromEntries(Object.keys(a[0].phases).map(key => [key, stat(a.map(r => r.phases[key]))]))};
+  groups[label] = {n: a.length, failures: a.filter(r => r.terminal !== 'final' || !r.expectedBody).length, firstBody: stat(a.map(r => r.firstBody)), ack: stat(a.map(r => r.ackMs)), total: stat(a.map(r => r.total)), maxSimultaneousWorkerRuns: maxActive, phases: Object.fromEntries(Object.keys(a[0].phases).map(key => [key, stat(a.map(r => r.phases[key]))]))};
 }
 const summary = {files, groups, profiles, results};
 const output = control + '/concurrency-metrics-' + Date.now() + '.json';
