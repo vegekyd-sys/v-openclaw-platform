@@ -31,7 +31,8 @@ assert.equal(typeof vm.SourceTextModule, 'function', 'Run with --experimental-vm
 let exactReads = 0;
 const imported = new Map();
 const candidate = new vm.SourceTextModule(utilsSource, {identifier: 'candidate-session-utils-store'});
-await candidate.link(specifier => {
+const linkNative = specifier => {
+  if (specifier === './session-utils-store-Dlphca2N.js') return candidate;
   const id = new URL(specifier, pathToFileURL(base + '/runtime/openclaw/dist/')).href;
   if (!imported.has(id)) imported.set(id, (async () => {
     const namespace = await import(id); const names = Object.keys(namespace);
@@ -44,14 +45,17 @@ await candidate.link(specifier => {
     }, {identifier: id});
   })());
   return imported.get(id);
-});
+};
+await candidate.link(linkNative);
 await candidate.evaluate();
+const candidateSharing = new vm.SourceTextModule(source, {identifier: 'candidate-session-sharing'});
+await candidateSharing.link(linkNative); await candidateSharing.evaluate();
 const exact = new Function('resolveGatewaySessionStoreTargetWithStore', 'resolveCanonicalSessionStoreMatchFromStoreKeys', 'return (' + body + ');')(candidate.namespace.f, candidate.namespace.c);
 // Compare against an explicitly full-list version, even after candidate deployment.
-const full = new Function('resolveGatewaySessionStoreTargetWithStore', 'resolveCanonicalSessionStoreMatchFromStoreKeys', 'return (' + body.replace('\n\t\texactRead: "warm",', '') + ');')(native.f, native.c);
+const full = new Function('resolveGatewaySessionStoreTargetWithStore', 'resolveCanonicalSessionStoreMatchFromStoreKeys', 'return (' + body.replace('\n\t\t...params.exactRead ? { exactRead: "warm" } : {},', '') + ');')(native.f, native.c);
 let compared = 0; const timings = [];
 function compare(key, expectExact = true) {
-  const params = {cfg, agentId: 'makaron', sessionKey: key};
+  const params = {cfg, agentId: 'makaron', sessionKey: key, exactRead: true};
   const t = performance.now(), expected = full(params), a = performance.now(), beforeReads = exactReads, actual = exact(params), b = performance.now();
   assert(isDeepStrictEqual(actual, expected), 'Sharing resolution differed; no entry contents emitted');
   assert.equal(exactReads > beforeReads, expectExact, 'Exact/full reader selection differed');
@@ -63,6 +67,13 @@ const scope = {agentId: 'makaron', storePath: base + '/state/agents/makaron/agen
 let sessionId = randomUUID();
 const initial = {sessionId, createdAt: Date.now(), updatedAt: Date.now(), status: 'done', visibility: 'draft', createdActor: {id: 'sharing-probe-owner', type: 'human', source: 'profile'}};
 await entry.p(scope, () => initial, {fallbackEntry: initial, replaceEntry: true, skipMaintenance: true});
+const mutationParams = client => ({method: 'chat.send', requestParams: {sessionKey: scope.sessionKey, agentId: 'makaron'}, client, context: {getRuntimeConfig: () => cfg}});
+const adminClient = {connect: {scopes: ['operator.admin']}};
+const admission = candidateSharing.namespace.i(mutationParams(adminClient));
+assert.equal(admission.error, null); assert(admission.authorization);
+const beforeAdmissionReads = exactReads; admission.authorization.assertCurrent(); assert(exactReads > beforeAdmissionReads, 'Point authorization did not use exact reads');
+const foreignClient = {connect: {scopes: ['operator.read']}, authenticatedUserProfile: {profileId: 'sharing-probe-foreign'}};
+assert(candidateSharing.namespace.i(mutationParams(foreignClient)).error, 'Foreign actor unexpectedly authorized into draft');
 for (const visibility of ['draft', 'shared', 'read-only', 'suggest']) {
   await entry.p(scope, () => ({visibility, updatedAt: Date.now()}), {skipMaintenance: true});
   const target = compare(scope.sessionKey); assert.equal(target.entry.visibility, visibility); assert.equal(target.entry.sessionId, sessionId);
@@ -74,6 +85,7 @@ for (const visibility of ['draft', 'shared', 'read-only', 'suggest']) {
 }
 sessionId = randomUUID(); await entry.p(scope, () => ({sessionId, updatedAt: Date.now()}), {skipMaintenance: true});
 assert.equal(compare(scope.sessionKey).entry.sessionId, sessionId);
+assert.throws(() => admission.authorization.assertCurrent(), error => error.name === 'SessionMutationAuthorizationChangedError');
 // Authorization inside a native write transaction retains the original full
 // store/cache snapshot, which need not expose an uncommitted row change.
 const nativeDb = await import(base + '/runtime/openclaw/dist/openclaw-agent-db-CUTe8BX6.js');
@@ -91,4 +103,4 @@ const afterRollback = entry.f({...scope, hydrateSkillPromptRefs: false});
 assert(isDeepStrictEqual(afterRollback, beforeRollback), 'Native rollback did not preserve the original probe record');
 compare(scope.sessionKey);
 const warm = timings.slice(1); const median = values => values.sort((a,b) => a-b)[Math.floor(values.length / 2)];
-console.log(JSON.stringify({event: 'native-sharing-lookup-passed', compared, fullDatabase: true, missingPreserved: true, visibilityChangesPreserved: true, ownerAndAdminAllowed: true, foreignDraftDenied: true, rolloverPreserved: true, nativeWriterSnapshotPreserved: true, rollbackPreserved: true, exactReads, sessionKey: scope.sessionKey, fullWarmMedianMs: median(warm.map(t => t.fullMs)), exactWarmMedianMs: median(warm.map(t => t.exactMs))}));
+console.log(JSON.stringify({event: 'native-sharing-lookup-passed', compared, fullDatabase: true, missingPreserved: true, visibilityChangesPreserved: true, ownerAndAdminAllowed: true, foreignDraftDenied: true, rolloverPreserved: true, actualMutationAuthorizationPreserved: true, staleAuthorizationRejected: true, nativeWriterSnapshotPreserved: true, rollbackPreserved: true, exactReads, sessionKey: scope.sessionKey, fullWarmMedianMs: median(warm.map(t => t.fullMs)), exactWarmMedianMs: median(warm.map(t => t.exactMs))}));

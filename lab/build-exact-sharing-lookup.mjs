@@ -15,7 +15,16 @@ const anchor = 'function resolveSessionSharingTarget(params) {\n\tconst target =
 assert.equal(source.split(anchor).length, 2);
 // The new private "warm" mode preserves the original full-list behavior for
 // missing/closed writers and while the owner is inside a write transaction.
-const output = source.replace(anchor, anchor + '\n\t\texactRead: "warm",');
+let output = source.replace(anchor, anchor + '\n\t\t...params.exactRead ? { exactRead: "warm" } : {},');
+// Only point-target mutation authorization opts in. Bulk session-list/event
+// projections keep their existing shared full-store cache and batching.
+for (const point of [
+  'return { target: resolveSessionSharingTarget({\n\t\t\t\tcfg: getCfg(),',
+  'const current = resolveSessionSharingTarget({\n\t\t\t\t\tcfg: currentCfg,',
+]) {
+  assert.equal(output.split(point).length, 2);
+  output = output.replace(point, point + '\n\t\t\t\texactRead: true,');
+}
 const dest = 'lab/release-files/session-sharing-BlMqwMBH.js';
 fs.writeFileSync(path.join(root, dest), output);
 const utilsTarget = 'openclaw/dist/session-utils-store-Dlphca2N.js', utils = read(utilsTarget);

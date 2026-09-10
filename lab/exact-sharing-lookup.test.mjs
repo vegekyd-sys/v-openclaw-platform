@@ -7,12 +7,13 @@ const body = source.match(/function resolveSessionSharingTarget\(params\) \{[\s\
 assert(body);
 const make = (load, match) => new Function('resolveGatewaySessionStoreTargetWithStore', 'resolveCanonicalSessionStoreMatchFromStoreKeys', 'return (' + body + ');')(load, match);
 test('artifact changes only exact-read mode at the native sharing lookup call', () => {
-  const before = source.replace(body, body.replace('\n\t\texactRead: "warm",', ''));
+  let before = source.replace(body, body.replace('\n\t\t...params.exactRead ? { exactRead: "warm" } : {},', ''));
+  for (const point of ['return { target: resolveSessionSharingTarget({\n\t\t\t\tcfg: getCfg(),', 'const current = resolveSessionSharingTarget({\n\t\t\t\t\tcfg: currentCfg,']) before = before.replace(point + '\n\t\t\t\texactRead: true,', point);
   const plan = JSON.parse(fs.readFileSync(new URL('./exact-sharing-lookup-plan.json', import.meta.url)));
   assert.equal(createHash('sha256').update(before).digest('hex'), plan.files[0].before);
 });
 test('native key resolution, list projection and per-authorization caches are preserved', () => {
-  const params = {cfg: {}, agentId: 'a', sessionKey: 'alias', storeCache: new Map(), targetDiscoveryCache: new Map()};
+  const params = {cfg: {}, agentId: 'a', sessionKey: 'alias', exactRead: true, storeCache: new Map(), targetDiscoveryCache: new Map()};
   const entry = {visibility: 'draft', createdActor: {id: 'owner'}, sessionId: 'v1'};
   const target = {agentId: 'a', canonicalKey: 'canonical', storeKeys: ['canonical', 'alias'], storePath: '/store', store: {canonical: entry}};
   const f = make(options => {
@@ -20,6 +21,9 @@ test('native key resolution, list projection and per-authorization caches are pr
     return target;
   }, (store, keys) => {assert.equal(store, target.store); assert.equal(keys, target.storeKeys); return {key: 'canonical', entry};});
   assert.deepEqual(f(params), {agentId: 'a', canonicalKey: 'canonical', entry, storeKey: 'canonical', storeKeys: target.storeKeys, storePath: '/store'});
+});
+test('bulk list/event sharing lookup does not opt into per-row exact reads', () => {
+  make(options => {assert.equal(Object.hasOwn(options, 'exactRead'), false); return {store: {}, storeKeys: []};}, () => undefined)({cfg: {}, sessionKey: 'a', storeCache: new Map()});
 });
 test('absent target stays null and canonical/duplicate errors are not swallowed', () => {
   const target = {store: {}, storeKeys: ['a']};
