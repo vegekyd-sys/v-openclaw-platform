@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
@@ -24,6 +24,21 @@ const configPath = path.resolve(
   process.env.OPENCLAW_CONFIG_PATH ??
     path.join(stateRoot, "shared-vlab-20260909-v3/openclaw.json"),
 );
+const gatewayService =
+  process.env.OPENCLAW_GATEWAY_SERVICE ??
+  "openclaw-vlab-production-mirror-v8.service";
+const gatewayPid = execFileSync(
+  "systemctl",
+  ["show", gatewayService, "-p", "MainPID", "--value"],
+  { encoding: "utf8" },
+).trim();
+assert(Number(gatewayPid) > 1, `${gatewayService} is not running`);
+for (const item of (await readFile(`/proc/${gatewayPid}/environ`, "utf8")).split("\0")) {
+  const separator = item.indexOf("=");
+  if (separator <= 0) continue;
+  const key = item.slice(0, separator);
+  if (process.env[key] === undefined) process.env[key] = item.slice(separator + 1);
+}
 const storePath = path.join(
   stateRoot,
   "agents/makaron/agent/openclaw-agent.sqlite",
@@ -101,7 +116,10 @@ async function runSqliteProbe() {
     }, { retrySnapshotConflicts: true, skipMaintenance: true });
     process.stdout.write("COMMITTED\\n");
   `);
-  const preparedDeadline = Date.now() + 10_000;
+  // A cold process validates the full 7.5 GiB mirrored database before it can
+  // enter the callback. Keep this a real full-data probe instead of silently
+  // replacing it with a small synthetic database.
+  const preparedDeadline = Date.now() + 240_000;
   while (!slow.stdout().includes("PREPARED\n")) {
     assert(Date.now() < preparedDeadline, "slow writer did not prepare");
     await sleep(10);
