@@ -74,10 +74,9 @@ function resolveSessionSharingTarget(params) {
 		cfg: params.cfg,
 		key: params.sessionKey,
 		agentId: params.agentId,
-		clone: true,
-		readOnly: false,
+		clone: false,
 		projection: "list",
-		exactRead: true,
+		exactRead: "warm",
 		...params.storeCache ? { storeCache: params.storeCache } : {},
 		...params.targetDiscoveryCache ? { targetDiscoveryCache: params.targetDiscoveryCache } : {}
 	});
