@@ -76,7 +76,7 @@ function resolveSessionSharingTarget(params) {
 		agentId: params.agentId,
 		clone: false,
 		projection: "list",
-		exactRead: "warm",
+		...params.exactRead ? { exactRead: "warm" } : {},
 		...params.storeCache ? { storeCache: params.storeCache } : {},
 		...params.targetDiscoveryCache ? { targetDiscoveryCache: params.targetDiscoveryCache } : {}
 	});
@@ -845,6 +845,7 @@ function resolveSessionMutationAuthorization(params) {
 		try {
 			return { target: resolveSessionSharingTarget({
 				cfg: getCfg(),
+				exactRead: true,
 				sessionKey: targetRef.sessionKey,
 				agentId: targetRef.agentId,
 				...lookupCaches ??= createLookupCaches()
@@ -966,6 +967,7 @@ function resolveSessionMutationAuthorization(params) {
 			const assertTargetCurrent = (targetRef, expected, currentCfg, currentLookupCaches, ensuredSessionId) => {
 				const current = resolveSessionSharingTarget({
 					cfg: currentCfg,
+				exactRead: true,
 					sessionKey: targetRef.sessionKey,
 					agentId: targetRef.agentId,
 					...currentLookupCaches
