@@ -1,3 +1,6 @@
+import {acquireAutomaticMaintenancePermit} from "./automatic-maintenance-coordinator.mjs";
+import {l as runSqliteDeferredTransactionSync, o as tryAcquireExclusiveSqliteCoordinator} from "./node-sqlite-CL-d6drd.js";
+import {commitPlannedSessionMaintenanceArchives} from "./session-history-eviction-d5aiCsHS.js";
 import {withSqliteBeginContentionRetry} from "./sqlite-begin-contention-retry.mjs";
 import { waitAutomaticMaintenanceWindow as db91WaitAutomaticMaintenance } from "./db91-maintenance-throttle.mjs";
 import { y as uniqueStrings } from "./string-normalization-DiSb4JeN.js";
@@ -151,29 +154,58 @@ async function runPendingMaintenance(databasePath, owner) {
 			await db91WaitAutomaticMaintenance(owner.database);
 			if (!isCurrent()) break;
 		}
+		// Incognito has no shared physical store. All ordinary file-backed callers
+		// use the existing native coordinator primitive on a data-free sidecar.
+		let permit;
+		try {
+			permit = isIncognitoOpenClawAgentSqlitePath(owner.database.path, {agentId: owner.scope.agentId, env: owner.scope.env})
+				? {finish() {}}
+				: acquireAutomaticMaintenancePermit(owner.database, tryAcquireExclusiveSqliteCoordinator, {
+					onReleaseError: error => getChildLogger({subsystem: "session-sqlite"}).warn("SQLite automatic maintenance coordinator release failed", {error})
+				});
+		} catch (error) {
+			getChildLogger({subsystem: "session-sqlite"}).warn("SQLite automatic maintenance coordinator failed", {error});
+			if (maintenanceByStore.get(databasePath) === owner) maintenanceByStore.delete(databasePath);
+			return;
+		}
+		if (!permit) {
+			if (maintenanceByStore.get(databasePath) === owner) maintenanceByStore.delete(databasePath);
+			return;
+		}
+		let completed = false;
 		const generation = owner.generation;
 		const activeSessionKeys = [...owner.activeSessionKeys];
 		owner.activeSessionKeys.clear();
 		try {
 			const plan = await runExclusiveSqliteSessionWrite(owner.scope, async () => {
 				if (!isCurrent()) return;
-				return runOpenClawAgentWriteTransaction((database) => applySessionEntryMaintenance(database, {
+				// Global selection runs in a native deferred read snapshot, not BEGIN
+				// IMMEDIATE. Foreground writers in other processes remain unblocked.
+				const planned = runSqliteDeferredTransactionSync(owner.database.db, () => applySessionEntryMaintenance(owner.database, {
 					activeSessionKeys,
 					archiveDirectory: owner.archiveDirectory,
 					maintenanceConfig: owner.maintenanceConfig,
-					storePath: owner.storePath
-				}), toDatabaseOptions(owner.scope));
+					storePath: owner.storePath,
+					planOnly: true
+				}));
+				if (!planned.plannedEntryArchives?.length) return planned;
+				return withSqliteBeginContentionRetry({database: owner.database.db,
+					run: operation => runOpenClawAgentWriteTransaction(operation, toDatabaseOptions(owner.scope)),
+					operation: database => commitPlannedSessionMaintenanceArchives(database, planned)});
 			});
 			if (!plan) {
 				if (maintenanceByStore.get(databasePath) === owner) maintenanceByStore.delete(databasePath);
 				return;
 			}
 			await finalizeSessionEntryMaintenancePlansAfterWriterReleaseBestEffort(owner.scope, [plan], { isCurrent });
+			completed = true;
 		} catch (error) {
 			getChildLogger({ subsystem: "session-sqlite" }).warn("SQLite automatic session maintenance failed", {
 				error,
 				path: databasePath
 			});
+		} finally {
+			permit.finish(completed);
 		}
 		if (maintenanceByStore.get(databasePath) !== owner) return;
 		if (!owner.database.db.isOpen || owner.generation === generation) {

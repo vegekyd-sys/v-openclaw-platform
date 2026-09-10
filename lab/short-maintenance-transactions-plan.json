@@ -1,0 +1,20 @@
+{
+  "baseRelease": "concurrency-worker-diag-v1",
+  "files": [
+    {
+      "source": "lab/release-files/session-history-eviction-d5aiCsHS.js",
+      "target": "openclaw/dist/session-history-eviction-d5aiCsHS.js",
+      "before": "0a22916a13f09a4436c7f9bab3665920e4cba58fbc347b6d94fcaae772367566"
+    },
+    {
+      "source": "lab/release-files/session-accessor.sqlite-entry-BlklNPKQ.js",
+      "target": "openclaw/dist/session-accessor.sqlite-entry-BlklNPKQ.js",
+      "before": "570bc609c0621980978150f2d6888429dd9e97e994dd96090e901f84a1714720"
+    },
+    {
+      "source": "lab/release-files/automatic-maintenance-coordinator.mjs",
+      "target": "openclaw/dist/automatic-maintenance-coordinator.mjs",
+      "before": null
+    }
+  ]
+}

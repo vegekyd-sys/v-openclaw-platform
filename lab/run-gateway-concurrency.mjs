@@ -82,7 +82,7 @@ try {
   const journal = execFileSync('journalctl', ['-u', 'openclaw-vlab-production-mirror-v8.service', '--since', new Date(rows[0].start - 1000).toISOString(), '-o', 'json', '--no-pager'], {encoding: 'utf8', maxBuffer: 40 * 1024 ** 2});
   for (const line of journal.split('\n')) {
     if (!line) continue; let message; try {message = JSON.parse(line).MESSAGE ?? '';} catch {continue;}
-    const kind = ['terminal session persistence failed', 'webchat dispatch failed', 'Embedded agent failed before reply', 'SQLite session write failed'].find(k => message.includes(k));
+    const kind = ['terminal session persistence failed', 'webchat dispatch failed', 'Embedded agent failed before reply', 'SQLite session write failed', 'Worker Agent request failed', 'SQLite automatic session maintenance failed', 'SQLite automatic maintenance coordinator failed', 'SQLite automatic maintenance coordinator release failed', 'SQLite session maintenance cleanup failed', 'SQLite session maintenance archive sizing failed'].find(k => message.includes(k));
     if (kind) runtimeErrors.push({kind, databaseLocked: message.includes('database is locked')});
   }
   save();

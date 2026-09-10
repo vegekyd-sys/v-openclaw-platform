@@ -62,6 +62,9 @@ const queueSource = entryModule.slice(entryModule.indexOf('const maintenanceBySt
 function queueHarness() {
   const scheduled = [], sweeps = [], warnings = [], database = {db: {isOpen: true}}; let finalize = async () => {};
   const deps = {resolveOpenClawAgentSqlitePath: () => '/fixture/db', toDatabaseOptions: x => x, getOpenClawAgentDatabaseIfOpen: () => database,
+    isIncognitoOpenClawAgentSqlitePath: () => false,
+    acquireAutomaticMaintenancePermit: () => ({finish() {}}), tryAcquireExclusiveSqliteCoordinator() {},
+    runSqliteDeferredTransactionSync: (_db, operation) => operation(),
     setImmediate: fn => scheduled.push(fn), process: {env: {}}, db91WaitAutomaticMaintenance: async () => {},
     runExclusiveSqliteSessionWrite: async (_scope, fn) => fn(), runOpenClawAgentWriteTransaction: fn => fn(database),
     applySessionEntryMaintenance: (_db, p) => {sweeps.push(p); return {};},
@@ -81,9 +84,12 @@ test('closed database and explicitly skipped writes do not run maintenance', asy
   const h = queueHarness(); h.kick({scope: {}, skipMaintenance: true}); assert.equal(h.scheduled.length, 0);
   h.kick({scope: {}, activeSessionKey: 'first'}); h.database.db.isOpen = false; await h.flush(); assert.equal(h.sweeps.length, 0); assert.equal(h.owners.size, 0);
 });
-test('native queue, lifecycle transaction and reset/delete guards are byte-identical', () => {
+test('outside the explicitly tested automatic queue, lifecycle/reset/delete guards are byte-identical', () => {
   const before = read('./fixtures/concurrency-native-baseline/session-accessor.sqlite-entry-BlklNPKQ.js');
-  const withoutBeginRetry = entryModule.replace('import {withSqliteBeginContentionRetry} from "./sqlite-begin-contention-retry.mjs";\n', '')
+  const beforeQueue = before.slice(before.indexOf('const maintenanceByStore ='), before.indexOf('//#endregion', before.indexOf('const maintenanceByStore =')));
+  const withoutBeginRetry = entryModule.replace(queueSource, beforeQueue)
+    .replace('import {acquireAutomaticMaintenancePermit} from "./automatic-maintenance-coordinator.mjs";\nimport {l as runSqliteDeferredTransactionSync, o as tryAcquireExclusiveSqliteCoordinator} from "./node-sqlite-CL-d6drd.js";\nimport {commitPlannedSessionMaintenanceArchives} from "./session-history-eviction-d5aiCsHS.js";\n', '')
+    .replace('import {withSqliteBeginContentionRetry} from "./sqlite-begin-contention-retry.mjs";\n', '')
     .replace('\t\tawait withSqliteBeginContentionRetry({\n\t\t\tdatabase: database.db,\n\t\t\trun: operation => runOpenClawAgentWriteTransaction(operation, toDatabaseOptions(resolved)),\n\t\t\toperation: (writeDatabase) => {\n', '\t\trunOpenClawAgentWriteTransaction((writeDatabase) => {\n')
     .replace('\t\t\tresult = cloneSessionEntry(persisted);\n\t\t\t}\n\t\t});', '\t\t\tresult = cloneSessionEntry(persisted);\n\t\t}, toDatabaseOptions(resolved));');
   assert.equal(withoutBeginRetry, before.replace('export { ensureSessionEntrySync as C,', 'export { kickSessionEntryMaintenanceAfterWrite, ensureSessionEntrySync as C,'));

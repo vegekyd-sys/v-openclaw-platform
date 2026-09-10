@@ -38,4 +38,28 @@ await entry.p(scope, () => ({sessionId: nextId, updatedAt: Date.now()}), {skipMa
 const stale = await main.J({...scope, expectedRevision: beforeRollover.revision, sessionEntry: {...beforeRollover.currentEntry, label: 'must-not-revive'}, deferMaintenance: true, archivePreviousTranscript: false});
 assert.equal(stale.ok, false); assert.equal(stale.reason, 'stale-snapshot');
 persisted = entry.f({...scope, hydrateSkillPromptRefs: false}); assert.equal(persisted.sessionId, nextId); assert.equal(persisted.label, 'concurrent-field');
-console.log(JSON.stringify({event: 'native-reply-commit-passed', sessionKey: scope.sessionKey, fullDatabase: true, created: true, concurrentMetadataPreserved: true, prepareCalls: prepares, beforeMutationCalls: beforeCommits, commitGuardDeniedWithoutWrite: true, staleRolloverRejected: true}));
+// Exercise the exact new short archive commit on a second dedicated row.
+// No global retention policy is changed and no business row is selected.
+const maintenance = await import(base + '/runtime/openclaw/dist/session-history-eviction-d5aiCsHS.js');
+const nativeDb = await import(base + '/runtime/openclaw/dist/openclaw-agent-db-CUTe8BX6.js');
+const nativeScope = await import(base + '/runtime/openclaw/dist/session-accessor.sqlite-scope-BwPKGcgm.js');
+const archiveScope = {...scope, sessionKey: scope.sessionKey + '-archive'};
+const archiveInitial = {sessionId: randomUUID(), updatedAt: Date.now(), label: 'archive-fixture', status: 'done'};
+await entry.p(archiveScope, () => archiveInitial, {fallbackEntry: archiveInitial, replaceEntry: true, skipMaintenance: true});
+const archiveOptions = nativeScope.m(nativeScope.c(archiveScope));
+const planArchive = () => {
+  const expectedEntry = entry.f({...archiveScope, hydrateSkillPromptRefs: false});
+  return {plannedEntryArchives: [{sessionKey: archiveScope.sessionKey, expectedEntry: structuredClone(expectedEntry), entry: {...expectedEntry, archivedAt: Date.now()}}], entryRemovals: [], stateDeletePlans: [], archived: 1, modelRunPruned: 0, pruned: 0, capped: 0};
+};
+const commitArchive = plan => nativeDb.y(db => maintenance.commitPlannedSessionMaintenanceArchives(db, plan), archiveOptions);
+const goodPlan = planArchive(); assert.equal(commitArchive(goodPlan).archived, 1);
+assert.equal(entry.f({...archiveScope, hydrateSkillPromptRefs: false}).archivedAt, goodPlan.plannedEntryArchives[0].entry.archivedAt);
+const changedPlan = planArchive();
+await entry.p(archiveScope, () => ({label: 'concurrent-archive-metadata', updatedAt: Date.now()}), {skipMaintenance: true});
+assert.equal(commitArchive(changedPlan).archived, 0);
+assert.equal(entry.f({...archiveScope, hydrateSkillPromptRefs: false}).label, 'concurrent-archive-metadata');
+const rolloverPlan = planArchive(), archiveNextId = randomUUID();
+await entry.p(archiveScope, () => ({sessionId: archiveNextId, updatedAt: Date.now()}), {skipMaintenance: true});
+assert.equal(commitArchive(rolloverPlan).archived, 0);
+assert.equal(entry.f({...archiveScope, hydrateSkillPromptRefs: false}).sessionId, archiveNextId);
+console.log(JSON.stringify({event: 'native-reply-commit-passed', sessionKey: scope.sessionKey, fullDatabase: true, created: true, concurrentMetadataPreserved: true, prepareCalls: prepares, beforeMutationCalls: beforeCommits, commitGuardDeniedWithoutWrite: true, staleRolloverRejected: true, nativeArchiveCommitted: true, changedArchiveSkipped: true, rolledOverArchiveSkipped: true}));
