@@ -8,7 +8,7 @@ import {execFileSync} from 'node:child_process';
 import {name,relative,sha,read,save} from './shared/files.mjs';
 const SSH=['-F','/Users/tianyicai/v-upgrade-private/20260904/ssh-config','-o','BatchMode=yes','-o','ConnectTimeout=10','vlab91'];
 const REMOTE='sudo /opt/vlab/node-v22.23.1-linux-x64/bin/node /srv/vlab-production-mirror/labs/shared-workflow/tool/server.mjs';
-const run=(bin,args,opts={})=>execFileSync(bin,args,{encoding:'utf8',maxBuffer:96*1024**2,timeout:300000,...opts}).trim();
+const run=(bin,args,opts={})=>execFileSync(bin,args,{encoding:'utf8',maxBuffer:96*1024**2,timeout:600000,...opts}).trim();
 const git=(dir,args)=>run('git',['-C',dir,...args]);
 const remote=req=>JSON.parse(os.hostname()==='VM-0-4-ubuntu' ? run('/opt/vlab/node-v22.23.1-linux-x64/bin/node',['/srv/vlab-production-mirror/labs/shared-workflow/tool/server.mjs'],{input:JSON.stringify(req)}) : run('ssh',[...SSH,REMOTE],{input:JSON.stringify(req)}));
 const [command,...args]=process.argv.slice(2);const opts={};
