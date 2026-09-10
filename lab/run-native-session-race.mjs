@@ -20,4 +20,4 @@ const uid = Number(status.match(/^Uid:\s+(\d+)/m)[1]), gid = Number(status.match
 assert(uid > 0 && gid > 0, 'Gateway must not run as root');
 process.setgroups([]); process.setgid(gid); process.setuid(uid);
 process.argv = [process.argv[0], process.argv[1], 'sqlite', 'success'];
-await import('../scripts/probe-openclaw91-session-races.mjs');
+await import('/srv/vlab-production-mirror/labs/shared-workflow/source/scripts/probe-openclaw91-session-races.mjs');
