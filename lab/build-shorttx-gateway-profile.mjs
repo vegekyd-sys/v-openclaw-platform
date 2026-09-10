@@ -1,0 +1,21 @@
+// Re-enable the existing in-process sampler only for dedicated operator test sessions.
+import fs from 'node:fs';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
+import {fileURLToPath} from 'node:url';
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const target = 'openclaw/dist/chat-send-handler-DBjXcn_1.js';
+const result = JSON.parse(execFileSync(process.execPath, ['/Users/tianyicai/vlab-dev/lab/vlab.mjs', 'read-code', '--target', target], {encoding: 'utf8', maxBuffer: 4 * 1024 ** 2, timeout: 120000}));
+assert.equal(result.current.release, 'concurrency-short-tx-v2');
+const source = Buffer.from(result.content, 'base64').toString();
+assert.equal(createHash('sha256').update(source).digest('hex'), result.sha256);
+assert.equal(source, fs.readFileSync(path.join(root, 'lab/release-files/chat-send-handler-DBjXcn_1.js'), 'utf8'));
+const anchor = 'async function handleChatSend(options, onAdmissionOwned, externalAuthorityAdmission) {\n\tawait handleChatSendWithOptions(options, onAdmissionOwned, externalAuthorityAdmission);\n}';
+assert.equal(source.split(anchor).length, 2);
+const output = 'import {withConcurrencyProfile} from "./gateway-concurrency-profiler.mjs";\n' + source.replace(anchor, 'async function handleChatSend(options, onAdmissionOwned, externalAuthorityAdmission) {\n\treturn await withConcurrencyProfile(options.params, () => handleChatSendWithOptions(options, onAdmissionOwned, externalAuthorityAdmission));\n}');
+const dest = 'lab/release-files/chat-send-handler-DBjXcn_1.js';
+fs.writeFileSync(path.join(root, dest), output);
+fs.writeFileSync(path.join(root, 'lab/shorttx-gateway-profile-plan.json'), JSON.stringify({baseRelease: result.current.release, files: [{source: dest, target, before: result.sha256}]}, null, 2) + '\n');
+console.log(JSON.stringify({baseRelease: result.current.release, before: result.sha256, after: createHash('sha256').update(output).digest('hex')}));
