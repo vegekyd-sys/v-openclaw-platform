@@ -36,13 +36,15 @@ const db = new DatabaseSync(base + '/state/plugins/workboard/workboard.sqlite', 
 try {
   const a = new Original(db), b = new Candidate(db);
   const ids = db.prepare('SELECT id FROM workboard_cards ORDER BY created_at ASC, id ASC').all().map(r => r.id);
-  assert(ids.length > 0); let compared = 0, concurrentChanges = 0, maxBytes = 0;
+  assert(ids.length > 0); let compared = 0, concurrentChanges = 0, maxBytes = 0, totalBytes = 0, activeCards = 0;
   const version = () => db.prepare('PRAGMA data_version').get().data_version;
   for (const id of [...ids, 'concurrency-fix-workboard-missing']) {
     const v = version(), left = await a.lookup(id), right = await b.lookup(id);
     if (version() !== v) {concurrentChanges++; continue;}
     assert(isDeepStrictEqual(left, right), 'Native lookup results differ; no card contents emitted'); compared++;
-    maxBytes = Math.max(maxBytes, Buffer.byteLength(JSON.stringify(left) ?? ''));
+    const bytes = Buffer.byteLength(JSON.stringify(left) ?? '');
+    totalBytes += bytes; maxBytes = Math.max(maxBytes, bytes);
+    if (left && !left.card.metadata?.archivedAt) activeCards++;
   }
   const time = async (store, keys, cycles) => {
     const started = performance.now();
@@ -52,5 +54,5 @@ try {
   const keys = ids.slice(0, 16); for (const key of keys) await b.lookup(key);
   const originalMs = await time(a, keys, 10), cachedMs = await time(b, keys, 10);
   const allOriginalMs = await time(a, ids, 3), allCachedMs = await time(b, ids, 3);
-  console.log(JSON.stringify({event: 'native-workboard-lookup-passed', readOnly: true, cards: ids.length, compared, concurrentChanges, maxBytes, repeatedSubset: {keys: keys.length, cycles: 10, originalMs, cachedMs}, fullCycles: {cycles: 3, originalMs: allOriginalMs, cachedMs: allCachedMs}}));
+  console.log(JSON.stringify({event: 'native-workboard-lookup-passed', readOnly: true, cards: ids.length, activeCards, compared, concurrentChanges, totalBytes, maxBytes, repeatedSubset: {keys: keys.length, cycles: 10, originalMs, cachedMs}, fullCycles: {cycles: 3, originalMs: allOriginalMs, cachedMs: allCachedMs}}));
 } finally {db.close();}

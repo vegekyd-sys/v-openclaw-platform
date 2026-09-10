@@ -1,8 +1,11 @@
 // Cache only complete, stable, non-transactional native lookup results.
 // Mutation/CAS/owner-slot code never consults this cache.
 const caches = new WeakMap();
-export const MAX_KEYS = 64;
-export const MAX_BYTES = 2 * 1024 ** 2;
+// Native board limit is 2,000 cards. Cover a complete lifecycle sweep without
+// eviction churn, while retaining an independent byte cap for unusually large
+// histories (less than 0.2% of the shared service's existing memory.high).
+export const MAX_KEYS = 2048;
+export const MAX_BYTES = 16 * 1024 ** 2;
 export const MAX_ENTRY_BYTES = 512 * 1024;
 function epoch(db) {
   // Query the live handle on every call: closed databases and schema failures
