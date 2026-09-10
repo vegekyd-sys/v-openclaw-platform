@@ -22,14 +22,23 @@ for (const c of [cfg, JSON.parse(fs.readFileSync(cfg.plugins.entries['vlab-agent
 const cg = '/sys/fs/cgroup' + fs.readFileSync('/proc/' + pid + '/cgroup', 'utf8').trim().split('::')[1];
 const resources = () => ({memory: Number(fs.readFileSync(cg + '/memory.current')), memoryEvents: fs.readFileSync(cg + '/memory.events', 'utf8'), cpu: fs.readFileSync(cg + '/cpu.stat', 'utf8')});
 const {GatewayClient} = await import(base + '/runtime/openclaw/dist/plugin-sdk/gateway-runtime.js');
-const rows = [], byId = new Map(); let client;
+const rows = [], byId = new Map(); let client, before, saved = false;
+function save(failure) {
+  const summary = {label, count, pid, before, after: resources(), rows, ...(failure ? {failure} : {})};
+  const output = '/srv/vlab-production-mirror/labs/control/concurrency-profile-' + label + '-' + Date.now() + '.json';
+  fs.writeFileSync(output, JSON.stringify(summary, null, 2) + '\n', {flag: 'wx', mode: 0o600}); saved = true;
+  console.log(JSON.stringify({output, ...summary}));
+}
 async function idle() {const s = await client.request('vlab.workers.status', {}); assert(!s.pending && s.workers.every(w => !w.activeCount && !w.queued && !w.detachedTaskCount), 'Shared Gateway is busy');}
 try {
   await new Promise((resolve, reject) => {
     client = new GatewayClient({url: 'ws://127.0.0.1:24993', token: cfg.gateway.auth.token.replace(/\$\{([A-Z0-9_]+)\}/g, (_, k) => env[k]), deviceIdentity: null, clientName: 'cli', mode: 'cli', caps: ['tool-events'], scopes: ['operator.read', 'operator.write', 'operator.admin'], onHelloOk: resolve, onConnectError: reject,
       onEvent(e) {const r = byId.get(e.payload?.runId); if (!r?.start) return;
         if (e.event === 'agent' && e.payload?.stream === 'assistant' && String(e.payload.data?.text ?? e.payload.data?.delta ?? '').trim() && !r.firstBody) r.firstBody = Date.now() - r.start;
-        if (e.event === 'chat' && ['final', 'error', 'aborted'].includes(e.payload?.state)) {r.terminal = e.payload.state; r.total = Date.now() - r.start;}
+        if (e.event === 'chat' && ['final', 'error', 'aborted'].includes(e.payload?.state)) {
+          r.terminal = e.payload.state; r.total = Date.now() - r.start;
+          if (r.terminal === 'error') r.errorClass = /database is locked/i.test(String(e.payload?.errorMessage ?? '')) ? 'database-locked' : 'terminal-error';
+        }
       }}); client.start();
   });
   await idle(); const stamp = Date.now();
@@ -38,7 +47,7 @@ try {
     await client.request('sessions.patch', {key: r.key, agentId: 'makaron', model});
     await client.request('sessions.messages.subscribe', {agentId: 'makaron', key: r.key}); rows.push(r); byId.set(r.id, r);
   }
-  guard(); const before = resources();
+  guard(); before = resources();
   console.log(JSON.stringify({event: 'start', label, count, pid, at: Date.now()}));
   await Promise.all(rows.map(async r => {r.start = Date.now(); await client.request('chat.send', {agentId: 'makaron', sessionKey: r.key, message: '这是 VLab 并发验收，请只回复“收到，可以开始。”，不调用工具、不执行其他任务。编号 ' + r.id, deliver: false, idempotencyKey: r.id, timeoutMs: 120000}); r.ackMs = Date.now() - r.start;}));
   const deadline = Date.now() + 130000;
@@ -46,13 +55,16 @@ try {
   // Keep verification history reads outside the timed CPU profile window.
   if (label.startsWith('profile-')) await sleep(Math.max(0, rows[0].start + 28000 - Date.now()));
   for (const r of rows) {
-    assert.equal(r.terminal, 'final'); const h = await client.request('chat.history', {agentId: 'makaron', sessionKey: r.key, limit: 3});
+    if (r.terminal !== 'final') {r.expectedBody = false; continue;}
+    const h = await client.request('chat.history', {agentId: 'makaron', sessionKey: r.key, limit: 3});
     const a = h.messages?.filter(m => m.role === 'assistant').at(-1), body = a?.content?.filter(c => c.type === 'text').map(c => c.text).join('\n') ?? '';
     assert.equal(a?.provider, 'deepseek'); assert.equal(a?.model, 'deepseek-v4-pro'); assert(body.includes('收到，可以开始。')); assert.equal(a?.stopReason, 'stop');
     r.model = a.model; r.thinking = h.sessionInfo?.thinkingLevel; r.expectedBody = true;
   }
-  const summary = {label, count, pid, before, after: resources(), rows};
-  const output = '/srv/vlab-production-mirror/labs/control/concurrency-profile-' + label + '-' + Date.now() + '.json';
-  fs.writeFileSync(output, JSON.stringify(summary, null, 2) + '\n', {flag: 'wx', mode: 0o600}); console.log(JSON.stringify({output, ...summary}));
+  save();
   await idle();
+  assert(rows.every(r => r.terminal === 'final' && r.expectedBody), 'Batch failed; evidence saved, no escalation');
+} catch (error) {
+  if (!saved && rows.some(r => r.start)) save({name: error.name, message: String(error.message).slice(0, 300)});
+  throw error;
 } finally {for (const r of rows) if (r.start && !r.terminal) await client?.request('chat.abort', {sessionKey: r.key, runId: r.id}).catch(() => {}); client?.stop();}
