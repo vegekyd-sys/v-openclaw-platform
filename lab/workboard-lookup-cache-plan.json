@@ -1,0 +1,15 @@
+{
+  "baseRelease": "concurrency-verifier-resource-v1",
+  "files": [
+    {
+      "source": "lab/release-files/sqlite-store-CH-caj1l.js",
+      "target": "openclaw/dist/sqlite-store-CH-caj1l.js",
+      "before": "3b091bc3da622e68ae5502e863ed71eea1c63bb73720f555542728cd78009e66"
+    },
+    {
+      "source": "lab/release-files/workboard-lookup-cache.mjs",
+      "target": "openclaw/dist/workboard-lookup-cache.mjs",
+      "before": null
+    }
+  ]
+}
