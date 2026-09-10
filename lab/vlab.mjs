@@ -38,6 +38,7 @@ try {
     save(admin+'/vlab-task.json',{owner:opts.owner,base:git(base,['rev-parse','HEAD']),task,createdAt:new Date().toISOString()});
     result={worktree:dest,branch:'codex/'+task,base:git(base,['rev-parse','HEAD']),runtimeCopied:false,stateCopied:false,dependencies:'Use shared package cache; no writable node_modules link created'};
   } else if(command==='merge') {
+    assert(os.hostname()!=='VM-0-4-ubuntu','Canonical dev integration runs on the Mac; export the committed task branch as a Git bundle for import there');
     result=lock(()=>{
       const d=dev();clean(d);assert(/^codex\/[a-z0-9][a-z0-9-]*$/.test(opts.branch??''),'Task branch required');
       const branchCommit=git(d,['rev-parse',opts.branch+'^{commit}']);assert.equal(branchCommit,opts.commit,'Task branch advanced; review exact commit');
