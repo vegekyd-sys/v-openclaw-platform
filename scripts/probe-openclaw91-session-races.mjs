@@ -61,7 +61,7 @@ function spawnModule(source) {
   const child = spawn(
     process.execPath,
     ["--input-type=module", "--eval", source],
-    { env: process.env, stdio: ["pipe", "pipe", "pipe"] },
+    { env: process.env, stdio: ["ignore", "pipe", "pipe"] },
   );
   let stdout = "";
   let stderr = "";
@@ -108,16 +108,6 @@ async function runSqliteProbe() {
     const runtime = await import(${JSON.stringify(accessorUrl)});
     const scope = ${JSON.stringify(scope)};
   `;
-  const fast = spawnModule(`${common}
-    process.stdout.write("READY\\n");
-    await new Promise((resolve) => process.stdin.once("data", resolve));
-    await runtime.p(scope, () => ({ displayName: "fast-writer", updatedAt: Date.now() }), { skipMaintenance: true });
-  `);
-  const readyDeadline = Date.now() + 240_000;
-  while (!fast.stdout().includes("READY\n")) {
-    assert(Date.now() < readyDeadline, "fast writer did not load the full database");
-    await sleep(10);
-  }
   const slow = spawnModule(`${common}
     await runtime.p(scope, async () => {
       process.stdout.write("PREPARED\\n");
@@ -134,9 +124,12 @@ async function runSqliteProbe() {
     assert(Date.now() < preparedDeadline, "slow writer did not prepare");
     await sleep(10);
   }
-  fast.child.stdin.end("GO\n");
-  const fastResult = await fast.completion;
-  assert.equal(fastResult.code, 0, fastResult.stderr);
+  assert.match(sessionKey, /^[a-z0-9:-]+$/);
+  const fastUpdatedAt = Date.now();
+  execFileSync("sqlite3", [
+    storePath,
+    `update session_nodes set entry_json=json_set(entry_json,'$.displayName','fast-writer','$.updatedAt',${fastUpdatedAt}),updated_at=${fastUpdatedAt} where session_key='${sessionKey}';`,
+  ]);
   const slowResult = await slow.completion;
   const entry = loadEntry({ ...scope, hydrateSkillPromptRefs: false });
   const conflict =
