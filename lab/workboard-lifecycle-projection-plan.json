@@ -1,0 +1,30 @@
+{
+  "baseRelease": "concurrency-cpu-memory-diag-v1",
+  "files": [
+    {
+      "source": "lab/release-files/lifecycle-sqlite-store.js",
+      "target": "openclaw/dist/sqlite-store-CH-caj1l.js",
+      "before": "2fdd8826af2eda667ed9fb4b5a5d0174ed33008324f1fb343571adca50a5aa0c"
+    },
+    {
+      "source": "lab/release-files/lifecycle-runtime-api.js",
+      "target": "openclaw/dist/runtime-api-1CCazqtv.js",
+      "before": "6e4bfe8509e71dd79a5adce1838a1ecbe1e1e62e68bd7ead22e9d7d76cacf1c6"
+    },
+    {
+      "source": "lab/release-files/lifecycle-workboard-index.js",
+      "target": "openclaw/dist/extensions/workboard/index.js",
+      "before": "6acf741573bb677c503228a68037d8826a02aba9f441a2ac7733470fa0c38ed7"
+    },
+    {
+      "source": "lab/release-files/chat-send-handler-DBjXcn_1.js",
+      "target": "openclaw/dist/chat-send-handler-DBjXcn_1.js",
+      "before": "89c4ead12505efef04c2d3f23cb9a21299c8a7fed685882919e78b5fd65c25b6"
+    },
+    {
+      "source": "lab/release-files/production-worker-worker.mjs",
+      "target": "production-worker/worker.mjs",
+      "before": "bb953f87f01d5d57b90499aa270d3d307ae9cf832c4fecd8802295a431ba33fc"
+    }
+  ]
+}
