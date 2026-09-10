@@ -21,7 +21,10 @@ for (const c of [cfg, JSON.parse(fs.readFileSync(cfg.plugins.entries['vlab-agent
   assert.equal(c.agents.defaults.model.primary, model); assert.deepEqual(c.agents.defaults.model.fallbacks, []);
   const a = c.agents.entries.makaron.model; assert.equal(typeof a === 'string' ? a : a.primary, model); if (typeof a === 'object') assert.deepEqual(a.fallbacks, []);
 }
-const cg = '/sys/fs/cgroup' + fs.readFileSync('/proc/' + pid + '/cgroup', 'utf8').trim().split('::')[1];
+const scope = run('systemctl', ['show', 'openclaw-vlab-production-mirror-v8.service', '-p', 'ControlGroup', '--value']);
+const processScope = fs.readFileSync('/proc/' + pid + '/cgroup', 'utf8').trim().split('::')[1];
+assert(processScope === scope || processScope === scope + '/foreground');
+const cg = '/sys/fs/cgroup' + scope;
 const resources = () => {
   const memory = Number(fs.readFileSync(cg + '/memory.current')); peakMemory = Math.max(peakMemory, memory);
   let rss = 0, anon = 0;
@@ -34,7 +37,14 @@ const resources = () => {
     } catch { /* A retired child can disappear between reads. */ }
   }
   peakRss = Math.max(peakRss, rss); peakAnon = Math.max(peakAnon, anon);
-  return {memory, rss, anon, memoryEvents: fs.readFileSync(cg + '/memory.events', 'utf8'), memoryStat: fs.readFileSync(cg + '/memory.stat', 'utf8'), ioPressure: fs.readFileSync('/proc/pressure/io', 'utf8'), cpu: fs.readFileSync(cg + '/cpu.stat', 'utf8')};
+  const subgroups = {};
+  for (const name of ['foreground', 'database-verifier']) if (fs.existsSync(cg + '/' + name)) subgroups[name] = {
+    memory: Number(fs.readFileSync(cg + '/' + name + '/memory.current')),
+    eventsLocal: fs.readFileSync(cg + '/' + name + '/memory.events.local', 'utf8'),
+    high: fs.readFileSync(cg + '/' + name + '/memory.high', 'utf8').trim(),
+    max: fs.readFileSync(cg + '/' + name + '/memory.max', 'utf8').trim(),
+  };
+  return {memory, rss, anon, subgroups, memoryEventsLocal: fs.readFileSync(cg + '/memory.events.local', 'utf8'), memoryEvents: fs.readFileSync(cg + '/memory.events', 'utf8'), memoryStat: fs.readFileSync(cg + '/memory.stat', 'utf8'), ioPressure: fs.readFileSync('/proc/pressure/io', 'utf8'), cpu: fs.readFileSync(cg + '/cpu.stat', 'utf8')};
 };
 const {GatewayClient} = await import(base + '/runtime/openclaw/dist/plugin-sdk/gateway-runtime.js');
 const rows = [], byId = new Map(); let client, before, saved = false, runtimeErrors = [];

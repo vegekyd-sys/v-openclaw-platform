@@ -1,0 +1,15 @@
+{
+  "baseRelease": "concurrency-exact-sharing-v3",
+  "files": [
+    {
+      "source": "lab/release-files/openclaw-database-verify-a3Yme38Y.js",
+      "target": "openclaw/dist/openclaw-database-verify-a3Yme38Y.js",
+      "before": "4763d165dc8b34dc3eb973677f9bff488e55fec946ad69a18be07ad441b90458"
+    },
+    {
+      "source": "lab/release-files/database-verify-resource-group.mjs",
+      "target": "openclaw/dist/database-verify-resource-group.mjs",
+      "before": null
+    }
+  ]
+}
