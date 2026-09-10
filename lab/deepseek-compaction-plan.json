@@ -1,0 +1,15 @@
+{
+  "baseRelease": "concurrency-shorttx-gateway-diag",
+  "files": [
+    {
+      "source": "lab/release-files/deepseek-compaction-transports.mjs",
+      "target": "openclaw/node_modules/@openclaw/ai/dist/transports.mjs",
+      "before": "24e8bea090323f8c55f5390f9d2fed1031b3b18ab52dd819b700915272004769"
+    },
+    {
+      "source": "lab/release-files/deepseek-compaction-openai-completions-D0QZ0AyB.mjs",
+      "target": "openclaw/node_modules/@openclaw/ai/dist/openai-completions-D0QZ0AyB.mjs",
+      "before": "9fed10c6857c0a279005670d6cda10160e66f2b18ae9e4066dc2d6a9c599bc36"
+    }
+  ]
+}
