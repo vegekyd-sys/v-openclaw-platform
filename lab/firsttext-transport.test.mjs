@@ -3,9 +3,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {Console} from 'node:console';
 import {Writable} from 'node:stream';
+import {restoreDemandExpansion} from './cold-start-pipeline-contract.mjs';
 const read = file => fs.readFileSync(new URL(file, import.meta.url), 'utf8');
 for (const name of ['index.mjs', 'worker-pool.mjs', 'worker.mjs']) {
-  const updated = read('./release-files/production-worker-' + name), before = read('./fixtures/concurrency-native-baseline/production-worker-' + name);
+  const raw = read('./release-files/production-worker-' + name);
+  const updated = name === 'worker-pool.mjs' ? restoreDemandExpansion(raw) : raw;
+  const before = read('./fixtures/concurrency-native-baseline/production-worker-' + name);
   test(name + ': only the already-sanitized observer sink changes', () => {
     const prefix = 'import {Console as FirsttextMetricConsole} from "node:console";\nconst ocFirsttextMetricConsole = new FirsttextMetricConsole({stdout: process.stdout, stderr: process.stderr, ignoreErrors: true});\n';
     const withoutTemporaryProfile = updated.replace('// Temporary VLab-only, dedicated-session CPU diagnostic. No inspector listener.\nimport {withConcurrencyProfile} from \'../openclaw/dist/gateway-concurrency-profiler.mjs\';\nasync function runAgent(message, abortSignal) {\n  return withConcurrencyProfile(message, () => runAgentWithWorkerProfile(message, abortSignal));\n}\nasync function runAgentWithWorkerProfile(message, abortSignal) {', 'async function runAgent(message, abortSignal) {')

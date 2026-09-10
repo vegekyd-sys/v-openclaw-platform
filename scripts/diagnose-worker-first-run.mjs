@@ -5,11 +5,12 @@ import {mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync}
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {pathToFileURL} from "node:url";
-import {randomUUID} from "node:crypto";
+import {randomUUID, createHash} from "node:crypto";
 import {WorkerPool} from "../experiments/agent-worker-isolation-v1/worker-pool.mjs";
 
 const root = process.argv[2];
 const cpuProfile = process.env.NATIVE_FIRST_RUN_PROFILE === "1";
+const coldConfigMode = process.env.NATIVE_FIRST_RUN_PATCH === "cold-config";
 const concurrency = Number(process.env.NATIVE_FIRST_RUN_CONCURRENCY ?? "1");
 if (![1, 3].includes(concurrency)) throw new Error("Diagnostic concurrency must be 1 or 3");
 if (!root?.startsWith("/")) throw new Error("Absolute installed runtime root required");
@@ -57,10 +58,43 @@ const server = createServer(async (req, res) => {
 await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
 const source = readFileSync(new URL("../lab/release-files/production-worker-worker.mjs", import.meta.url), "utf8");
 const helperURL = new URL("../experiments/agent-worker-isolation-v1/native-module-resolution-cache.mjs", import.meta.url).href;
+const commandName = 'agent-command-DPfawBbr.js';
+const commandPath = join(root, 'openclaw/dist', commandName);
+const diagnosticCommandHashes = new Map();
+if (coldConfigMode && createHash('sha256').update(readFileSync(commandPath)).digest('hex') !==
+    '013390e6d73c91ecfd1ff625fa8c90d3dee988d350ff3948e6c32d35394fac54')
+  throw new Error('Cold config baseline drift; do not benchmark an unknown native file');
 function makeFixture(variant) {
   let code = variant === "baseline" ? readFileSync(join(root, "production-worker/worker.mjs"), "utf8") : source;
   code = code.replace(/from (["'])(\.\/[^"']+)\1/g, (_match, quote, specifier) =>
     `from ${quote}${specifier === "./native-module-resolution-cache.mjs" ? helperURL : pathToFileURL(join(root, "production-worker", specifier)).href}${quote}`);
+  if (coldConfigMode) {
+    // Both variants receive the same observation hook. Only the candidate
+    // native command bytes differ. No live runtime files are replaced.
+    const commandSource = variant === 'candidate'
+      ? readFileSync(new URL('../lab/release-files/'+commandName,import.meta.url),'utf8')
+      : readFileSync(commandPath,'utf8');
+    const readAnchor = 'const { snapshot, writeOptions } = await readConfigFileSnapshotForWrite();';
+    if(commandSource.split(readAnchor).length !== 2) throw new Error('Config source observation anchor drift');
+    const configAnchor = 'const loadedRaw = getRuntimeConfig();';
+    if(commandSource.split(configAnchor).length !== 2) throw new Error('Config entry observation anchor drift');
+    const commandSha=createHash('sha256').update(commandSource).digest('hex');
+    diagnosticCommandHashes.set(variant,commandSha);
+    const instrumented = 'let coldDiagnosticSourceReads=0;\n' +
+      commandSource.replace(readAnchor,'process.stderr.write("[cold-config-source-reads] "+JSON.stringify({count:++coldDiagnosticSourceReads})+"\\n"); '+readAnchor)
+        .replace(configAnchor,configAnchor+' process.stderr.write('+JSON.stringify('[cold-config-code-observed] '+JSON.stringify({variant,commandSha})+'\n')+');');
+    code = `
+import {registerHooks as registerColdConfigHooks} from 'node:module';
+registerColdConfigHooks({load(url,context,nextLoad) {
+  if(url===${JSON.stringify(pathToFileURL(commandPath).href)}) return {format:'module',source:${JSON.stringify(instrumented)},shortCircuit:true};
+  if(url===${JSON.stringify(pathToFileURL(join(root,'openclaw/dist/cold-config-singleflight.mjs')).href)}) return {format:'module',source:${JSON.stringify(readFileSync(new URL('../lab/release-files/cold-config-singleflight.mjs',import.meta.url),'utf8'))},shortCircuit:true};
+  return nextLoad(url,context);
+}, resolve(specifier,context,nextResolve) {
+  if(specifier==='./cold-config-singleflight.mjs'&&context.parentURL===${JSON.stringify(pathToFileURL(commandPath).href)}) return {url:${JSON.stringify(pathToFileURL(join(root,'openclaw/dist/cold-config-singleflight.mjs')).href)},shortCircuit:true};
+  return nextResolve(specifier,context);
+}});
+` + code;
+  }
   if (cpuProfile) {
     const needle = "result = await runAgent(message, controller.signal);";
     if (code.split(needle).length !== 2) throw new Error("Native diagnostic profile boundary drift");
@@ -87,6 +121,8 @@ async function profileDiagnosticAgent(message, operation) {
 }
 try {
   for (const variant of ["baseline", "candidate"]) {
+    let codeObserved = false;
+    let sourceReads = 0;
     const state = join(scratch, variant), workspace = join(state, "workspace"), configPath = join(state, "config.json");
     mkdirSync(workspace, {recursive: true, mode: 0o700});
     const config = {
@@ -113,12 +149,12 @@ try {
       VLAB_REQUIRE_OPENCLAW_AGENT_RUNTIME: "1", VLAB_REQUIRE_SKILL_USAGE_TELEMETRY: "1",
       OPENCLAW_DIAGNOSTICS: "1", OPENCLAW_DIAGNOSTICS_TIMELINE_PATH: timeline,
       OPENCLAW_FIRSTTEXT_WORKER_PHASES: "1", NODE_DISABLE_COMPILE_CACHE: "1",
-      OPENCLAW_WORKER_RESOLVE_CACHE: variant === "candidate" ? "1" : "0"};
+      OPENCLAW_WORKER_RESOLVE_CACHE: coldConfigMode || variant === "candidate" ? "1" : "0"};
     delete env.NODE_COMPILE_CACHE;
     const pool = new WorkerPool({minWorkers: 1, maxWorkers: 1, warmSpareWorkers: 0,
       sessionsPerWorker: concurrency, startupTimeoutMs: 60_000, requestTimeoutMs: 60_000,
       requestCancelGraceMs: 1000, workerEnv: env,
-      workerPath: variant === "baseline" && !cpuProfile ? join(root, "production-worker/worker.mjs") : makeFixture(variant)});
+      workerPath: variant === "baseline" && !cpuProfile && !coldConfigMode ? join(root, "production-worker/worker.mjs") : makeFixture(variant)});
     const boot = performance.now();
     try {
       await pool.start();
@@ -130,7 +166,13 @@ try {
           pending += chunk;
           const lines = pending.split("\n"); pending = lines.pop();
           for (const line of lines) {
-            if (/firsttext-worker-phases|firsttext-metrics|bundle-prep-observer|prompt-prep-observer|project-memory-preparation/.test(line)) {
+            if (line.startsWith('[cold-config-code-observed] ')) {
+              const row=JSON.parse(line.slice(line.indexOf('{')));
+              if(row.variant!==variant||row.commandSha!==diagnosticCommandHashes.get(variant)) throw new Error('Diagnostic command identity mismatch');
+              codeObserved=true;
+            } else if (line.startsWith('[cold-config-source-reads] ')) {
+              sourceReads=JSON.parse(line.slice(line.indexOf('{'))).count;
+            } else if (/firsttext-worker-phases|firsttext-metrics|bundle-prep-observer|prompt-prep-observer|project-memory-preparation/.test(line)) {
               try {
                 const row = JSON.parse(line.slice(line.indexOf("{")));
                 if (!row.runId) continue;
@@ -146,7 +188,7 @@ try {
                 } else if (line.includes("prompt-prep-observer") && row.stage === "total") observation.promptMs = Math.round(row.elapsedMs);
                 else if (line.includes("project-memory-preparation") && row.stage === "manager") observation.projectMemoryMs = row.ms;
               } catch {}
-            } else if (/native-first-run-cpu|Error|error=|feishu|plugin.*(?:warn|fail|skip|invalid|block)/i.test(line)) {
+            } else if (/cold-config-source-reads|native-first-run-cpu|Error|error=|feishu|plugin.*(?:warn|fail|skip|invalid|block)/i.test(line)) {
               if (/blocked plugin|plugin present but blocked/.test(line)) pluginBlocked = true;
               process.stderr.write(line + "\n");
             }
@@ -178,6 +220,7 @@ try {
           modelToolCount: current.modelToolCount, feishuToolCount: current.feishuToolCount}));
         if (!output.includes("DIAGNOSTIC_OK")) throw new Error("Offline native response did not match");
         if (current.modelCalls !== 1) throw new Error("Expected exactly one model call for each diagnostic turn");
+        if (coldConfigMode && !codeObserved) throw new Error('Diagnostic candidate/baseline native command was not observed');
         if (feishuPath && (pluginBlocked || !(current.feishuToolCount > 0))) {
           throw new Error("Feishu fixture did not load additional native tools; not a valid plugin-shaped sample");
         }
@@ -185,6 +228,7 @@ try {
       }
     } finally {
       await pool.close();
+      if(coldConfigMode) console.log(JSON.stringify({variant,codeObserved,commandSha:diagnosticCommandHashes.get(variant),sourceReads}));
       if (existsSync(timeline)) {
         const timings = readFileSync(timeline, "utf8").split("\n").filter(Boolean).flatMap(line => {
           try {
