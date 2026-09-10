@@ -1,6 +1,6 @@
 # 给其他 agent 的 VLab 开发入口
 
-用户于 2026-09-10 确认并已实机验收的新默认：**每个任务一个轻量源码 worktree → 合入唯一 dev → 共享 VLab 验收 → 按授权上线同一产物。**
+用户于 2026-09-10 确认并已实机验收的新默认：**每个任务一个轻量源码 worktree → 完成开发和合入前测试 → 向 Tianyi 报告并等待其明确决定 → 获准后合入 dev → 按授权继续验收和上线。**
 
 完整合同见 [README.md](README.md)，实机证据见 [验收记录](../docs/vlab-shared-workflow-acceptance-20260910.md)。本页是操作入口，不是要求重新搭环境。
 
@@ -32,11 +32,13 @@ vlab rpc --method chat.history --params '{"agentId":"makaron","sessionKey":"EXAC
 
 模型、Skills、工具、Memory、浏览器登录状态由共享 Gateway 使用，worktree 不复制配置、凭据和在线数据库。以上只读查询不需要 lease。已有历史可读取；专用测试对话见下文。
 
-**共享服务运行的是当前已部署代码。** 未合入、未部署的 worktree 修改不能通过共享 RPC 自动生效。先在 worktree 做针对性单测、静态检查或最小数据夹具测试，再进入共享验收。
+**共享服务运行的是当前已部署代码。** 未合入、未部署的 worktree 修改不能通过共享 RPC 自动生效。在 worktree 完成可执行的测试并报告结果；需要共享候选环境才能验证的项目如实列为未验证项，不能为取得验收条件而擅自先合入 dev。
 
-## 3. 提交并合入 dev
+## 3. 在 worktree 完成后，等待用户决定是否合入 dev
 
-在自己的 worktree 只提交本任务内容，交付：任务分支、完整 commit SHA、测试结果、待部署文件清单和回退说明。同一个 agent 可以负责开发和集成，不要求另开任务或新增实例。
+在自己的 worktree 只提交本任务内容，交付：任务分支、完整 commit SHA、测试结果、待部署文件清单和回退说明。然后停在自己的 worktree，等待 Tianyi 明确决定是否合入。agent 可以执行用户批准的合入，但不能替用户作决定。测试通过、修复任务授权、拿到 lease 均不构成合入授权。
+
+只有用户明确批准本次变更合入后，才执行下列命令及后续集成步骤：
 
 ```sh
 vlab merge --branch codex/unique-fix-name --commit FULL_TASK_COMMIT_SHA
@@ -44,7 +46,7 @@ vlab merge --branch codex/unique-fix-name --commit FULL_TASK_COMMIT_SHA
 
 唯一集成目录是 `/Users/tianyicai/vlab-dev`，分支 `dev`。在合并结果上跑相关测试，记录新的完整 dev SHA。dev 脏、分支 SHA 不符或合并冲突时先处理具体问题，不 reset/覆盖其他人的修改。
 
-## 4. 取得共享验收窗口后部署
+## 4. 用户批准合入后，按授权取得共享验收窗口并部署
 
 先确认当前负责人已完成或明确交接，再获取 lease。别人占用时继续源码工作，不能按过期时间抢占。
 
