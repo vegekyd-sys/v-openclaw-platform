@@ -49,3 +49,13 @@ test('OpenClaw ready response omits activeCount; draining and expired fences nev
  assert.throws(()=>suspensionReady({status:'running',expiresAtMs:20000},0));
  assert.throws(()=>suspensionReady({status:'ready',expiresAtMs:4000},0));
 });
+
+test('native fence never calls plugin RPC after suspension and releases on drain timeout',async()=>{
+ const {acquireIdleFence}=await import('./lifecycle.mjs');const seen=[];
+ const call=async m=>{seen.push(m);if(m==='vlab.workers.status'){assert(!seen.includes('gateway.suspend.prepare'));return {pending:0,workers:[{activeCount:0,queued:0}]};}if(m==='gateway.suspend.prepare')return {suspensionId:'test'};if(m==='gateway.suspend.status')return {status:'ready',expiresAtMs:20000};};
+ assert.equal((await acquireIdleFence(call,'test',{now:()=>0})).suspensionId,'test');
+ assert.deepEqual(seen,['vlab.workers.status','gateway.suspend.prepare','gateway.suspend.status']);
+ let resumed=false;
+ const busy=async m=>{if(m==='gateway.suspend.status')return {status:'draining',activeCount:1,expiresAtMs:20000};if(m==='gateway.suspend.resume'){resumed=true;return{};}if(m==='vlab.workers.status')return {pending:0,workers:[]};return {suspensionId:'busy'};};
+ await assert.rejects(acquireIdleFence(busy,'busy',{now:()=>0,timeoutMs:0}),/deferred/);assert(resumed);
+});
