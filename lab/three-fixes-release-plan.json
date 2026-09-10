@@ -1,0 +1,65 @@
+{
+  "baseRelease": "concurrency-lifecycle-projection-v1",
+  "files": [
+    {
+      "source": "lab/release-files/three-fixes-cron-gateway-caller-context-CRUBJj3M.js",
+      "target": "openclaw/dist/gateway-caller-context-CRUBJj3M.js",
+      "before": "2514aa14791b88fbd3b12897a58ddc303f57a45cd2c6ce092c95b0286c2f7f0b"
+    },
+    {
+      "source": "lab/release-files/three-fixes-cron-openclaw-tools-BODVdJQD.js",
+      "target": "openclaw/dist/openclaw-tools-BODVdJQD.js",
+      "before": "bf54224a8e3a7f7017d067ba6cc4af10902acf3898243554f1e4e0b6daac1d18"
+    },
+    {
+      "source": "lab/release-files/three-fixes-cron-cron-tool-CPu6etIM.js",
+      "target": "openclaw/dist/cron-tool-CPu6etIM.js",
+      "before": "484906fd5b74c10114f07d2a9f7baeada7b22f341b815c85eedd32af08d36627"
+    },
+    {
+      "source": "lab/release-files/three-fixes-cron-host-capability-Dq3cEEWF.js",
+      "target": "openclaw/dist/host-capability-Dq3cEEWF.js",
+      "before": "2f469e47f7a7ef6c7b8db0434360445c296fcfae4ff9c4491ab4a141510721c3"
+    },
+    {
+      "source": "lab/release-files/three-fixes-cron-agent-runtime-identity-token-tbYOQmt6.js",
+      "target": "openclaw/dist/agent-runtime-identity-token-tbYOQmt6.js",
+      "before": "da0343df55d4fdb89b2a2f7b89991486f22f89302a697d627d8bebf94ebbf17e"
+    },
+    {
+      "source": "lab/release-files/three-fixes-cron-list-snapshot-revision-B919xtbt.js",
+      "target": "openclaw/dist/list-snapshot-revision-B919xtbt.js",
+      "before": "f0c04eff4dcd8eb70dcd76e99249de4bd22c98baa5f87c5e4d3187ecd5e68ff7"
+    },
+    {
+      "source": "lab/release-files/three-fixes-cron-cron-6EvXRcEQ.js",
+      "target": "openclaw/dist/cron-6EvXRcEQ.js",
+      "before": "f1c7a7db4bc046a42059e24329ae5788ab9efa470b20ea5f4bceeeaf7a675670"
+    },
+    {
+      "source": "patches/cron-shared-management/runtime.mjs",
+      "target": "openclaw/dist/versa-cron-shared-management-v1.mjs",
+      "before": null
+    },
+    {
+      "source": "lab/release-files/deepseek-compaction-transports.mjs",
+      "target": "openclaw/node_modules/@openclaw/ai/dist/transports.mjs",
+      "before": "24e8bea090323f8c55f5390f9d2fed1031b3b18ab52dd819b700915272004769"
+    },
+    {
+      "source": "lab/release-files/deepseek-compaction-openai-completions-D0QZ0AyB.mjs",
+      "target": "openclaw/node_modules/@openclaw/ai/dist/openai-completions-D0QZ0AyB.mjs",
+      "before": "9fed10c6857c0a279005670d6cda10160e66f2b18ae9e4066dc2d6a9c599bc36"
+    },
+    {
+      "source": "lab/release-files/optional-public-surface-loader.js",
+      "target": "openclaw/dist/public-surface-loader-V55JV4Jk.js",
+      "before": "57794d0baea89de6f9fc7a1fc975ff7f3bdc230d895f88a9833c8da9108ba943"
+    },
+    {
+      "source": "lab/release-files/optional-provider-policy-surface.js",
+      "target": "openclaw/dist/provider-policy-surface-bKCE_kaj.js",
+      "before": "4711dae93f8bec59f1571d229f69167737376249624b7b75f92100ec0196b5e7"
+    }
+  ]
+}

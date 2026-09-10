@@ -1,0 +1,19 @@
+{
+  "mode": "fixed",
+  "evidence": [
+    "legacy owner adoption and cap narrowing persist through native update",
+    "employee A creates, employee B reschedules, employee C edits/pauses across groups; execution origin retained",
+    "another ordinary employee lists the shared task across groups",
+    "missing authenticated sender cannot list, create, update or remove shared jobs",
+    "forged owner parameter and tool-cap expansion rejected",
+    "disabled shared access denies subsequent request",
+    "disabling shared access between preflight and locked commit prevents mutation",
+    "retired signed run cannot replay a mutation",
+    "fresh CronService reload confirms persisted data and denied mutations",
+    "employee B deletes employee A shared task from another group",
+    "original Gateway host accepts non-admin employee; Worker cannot forge source identity",
+    "closed host capability cannot mint another employee token"
+  ],
+  "liveChannel": false,
+  "modelExecution": false
+}
