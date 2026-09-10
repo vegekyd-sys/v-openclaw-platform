@@ -3,9 +3,9 @@
 const caches = new WeakMap();
 // Native board limit is 2,000 cards. Cover a complete lifecycle sweep without
 // eviction churn, while retaining an independent byte cap for unusually large
-// histories (less than 0.2% of the shared service's existing memory.high).
+// histories. The byte bound is serialized content, not an exact JS heap cap.
 export const MAX_KEYS = 2048;
-export const MAX_BYTES = 16 * 1024 ** 2;
+export const MAX_BYTES = 32 * 1024 ** 2;
 export const MAX_ENTRY_BYTES = 512 * 1024;
 function epoch(db) {
   // Query the live handle on every call: closed databases and schema failures
