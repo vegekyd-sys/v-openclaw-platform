@@ -1,0 +1,20 @@
+{
+  "baseRelease": "concurrency-workboard-cache-v1",
+  "files": [
+    {
+      "source": "lab/release-files/profile-chat-send-handler.js",
+      "target": "openclaw/dist/chat-send-handler-DBjXcn_1.js",
+      "before": "99c82a810e112f097ab75a0129d80cf3d6305c7c77867504a20307a4cab9b311"
+    },
+    {
+      "source": "lab/release-files/profile-production-worker.mjs",
+      "target": "production-worker/worker.mjs",
+      "before": "4ca913d1dcffc8aac28cb02fa9e446c5f61456af1bbbab292c5eb4914cfdcc80"
+    },
+    {
+      "source": "lab/release-files/concurrency-cpu-memory-profiler.mjs",
+      "target": "openclaw/dist/concurrency-cpu-memory-profiler.mjs",
+      "before": null
+    }
+  ]
+}
