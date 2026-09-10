@@ -191,7 +191,7 @@ async function runPendingMaintenance(databasePath, owner) {
 				if (!planned.plannedEntryArchives?.length) return planned;
 				return withSqliteBeginContentionRetry({database: owner.database.db,
 					run: operation => runOpenClawAgentWriteTransaction(operation, toDatabaseOptions(owner.scope)),
-					operation: database => commitPlannedSessionMaintenanceArchives(database, planned)});
+					operation: database => isCurrent() ? commitPlannedSessionMaintenanceArchives(database, planned) : void 0});
 			});
 			if (!plan) {
 				if (maintenanceByStore.get(databasePath) === owner) maintenanceByStore.delete(databasePath);
