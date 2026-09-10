@@ -84,7 +84,7 @@ async function cutover(req,rollback=false) {
     catch(e) {installFiles(RUNTIME,m.files,dir,from);throw e;}
     finally {run('systemctl',['start',UNIT]);stopped=false;}
     x.c.stop();
-    const until=Date.now()+90000;let ready=false;
+    const until=Date.now()+180000;let ready=false;
     while(Date.now()<until){try{const h=await rpc('health',{});assert.equal(h.ok,true);ready=true;break;}catch{await delay(2000);}}
     assert(ready,'Installed but Gateway not ready; pending journal retained for recovery');
     assertVersion(RUNTIME,m.files,to);assert.equal(live().configSha,m.configSha);

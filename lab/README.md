@@ -86,6 +86,8 @@ node lab/vlab.mjs lease --owner THREAD_ID --release true
 
 `deploy` 只报告部署与 Gateway readiness；`accept` 必须引用真实功能证据，不能以健康检查代替。回滚只恢复本次代码，保留新增对话。产物、回滚前文件和 receipts 在服务器 `labs/shared-workflow/`，不进入 Git。
 
+共享 VLab 的现有启动前数据校验在本次实测约 78 秒，发布入口给启动就绪保留 180 秒；该耗时来自现有运行环境，不是 worktree 复制。
+
 服务启动失败或进程中断时保留 `pending.json`，自动阻止后续发布。恢复者先核对 manifest、当前文件是否分别匹配 before/after 及服务活跃业务，再按保存的文件恢复；不能盲删 journal 或强行重试。普通回滚仅支持当前 release，配置变化需先明确协调恢复。
 
 VLab 验收后按生产授权推广同一精确代码产物；V 的配置、数据独立保留，连接只走 Tailscale。本工具固定为 VLab，不提供生产地址或隐式生产部署。
