@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
-import {sha,target,validateFiles,assertVersion,installFiles,fingerprint,save} from './files.mjs';
+import {sha,target,validateFiles,assertVersion,installFiles,fingerprint,save,suspensionReady} from './files.mjs';
 const tmp=t=>{const d=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'vlab-workflow-')));t.after(()=>fs.rmSync(d,{recursive:true,force:true}));return d;};
 function fixture(t) {const root=tmp(t);fs.mkdirSync(root+'/openclaw/dist',{recursive:true});fs.writeFileSync(root+'/openclaw/dist/a.mjs','export const a=1;');return root;}
 test('reject traversal, state, external symlink, duplicate and corrupt payloads',t=>{
@@ -41,4 +41,11 @@ test('two real worktrees share Git only; exact merge and dirty-dev gates',t=>{
  assert.throws(()=>call('merge','--branch',a.branch,'--commit','0'.repeat(40)));assert(!fs.existsSync(b.worktree+'/a.txt'));
  fs.writeFileSync(dev+'/dirty','other task');assert.throws(()=>call('merge','--branch',a.branch,'--commit',commit));assert.equal(fs.readFileSync(dev+'/dirty','utf8'),'other task');fs.unlinkSync(dev+'/dirty');
  const m=call('merge','--branch',a.branch,'--commit',commit);assert.equal(m.commit,git(dev,'rev-parse','HEAD'));assert(fs.existsSync(dev+'/a.txt'));
+});
+
+test('OpenClaw ready response omits activeCount; draining and expired fences never permit cutover',()=>{
+ assert.equal(suspensionReady({status:'ready',expiresAtMs:20000},0),true);
+ assert.equal(suspensionReady({status:'draining',activeCount:1,expiresAtMs:20000},0),false);
+ assert.throws(()=>suspensionReady({status:'running',expiresAtMs:20000},0));
+ assert.throws(()=>suspensionReady({status:'ready',expiresAtMs:4000},0));
 });

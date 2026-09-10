@@ -5,7 +5,7 @@ import os from 'node:os';
 import assert from 'node:assert/strict';
 import {execFileSync,spawn} from 'node:child_process';
 import {setTimeout as delay} from 'node:timers/promises';
-import {sha,read,save,replace,name,target,hashFile,validateFiles,assertVersion,installFiles,fingerprint} from './files.mjs';
+import {sha,read,save,replace,name,target,hashFile,validateFiles,assertVersion,installFiles,fingerprint,suspensionReady} from './files.mjs';
 const LAB='/srv/vlab-production-mirror/labs';
 const HOME=LAB+'/shared-workflow';
 const UNIT='openclaw-vlab-production-mirror-v8.service';
@@ -80,8 +80,7 @@ async function cutover(req,rollback=false) {
     const deadline=Date.now()+45000;let s;
     for(;;) {
       s=await x.call('gateway.suspend.status',{suspensionId:suspension.suspensionId});
-      assert(s.status!=='running'&&s.expiresAtMs>Date.now()+5000,'Admission fence expired');
-      if(s.activeCount===0)break;
+      if(suspensionReady(s))break;
       if(Date.now()>deadline)throw Error('Shared VLab drain deferred: '+JSON.stringify({status:s.status,activeCount:s.activeCount,blockers:s.blockers?.map(b=>({kind:b.kind,count:b.count}))}));
       await delay(1000);
     }
