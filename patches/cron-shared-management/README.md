@@ -1,64 +1,57 @@
-# Owner 跨群管理 Cron（OpenClaw 2026.9.1 候选补丁）
+# 员工共享管理 Cron（OpenClaw 2026.9.1 候选补丁）
 
-2026-09-10：仅在 VLab 机器的隔离代码副本验收。未合入主分支、未改共享 VLab、未部署生产。用户要求后续明确合入，再进入共享 VLab 验收，最后决定上线。
+2026-09-10 用户明确：V 是企业级 AI，员工可以管理所有共享 Cron，不按创建人或管理员名单区分。本候选替代此前误设的 owner 专属方案。仅在 VLab 机器的隔离副本测试，未合入主分支、共享 VLab 或生产。
 
-## 修复内容
+## 行为
 
-9.1 把任务的执行归属（sessionKey/accountId）同时用于交互管理权限。结果是同一位 owner 换群后无法管理任务；没有 owner 的旧任务修改 toolsAllow 时会失败。
+沿用 V 原有消息入口的访问控制。通过入口准入的员工可在不同群管理同一 agent 的所有共享任务：甲创建、乙修改、丙停用，任何员工均可查看和删除。**不要求 `senderIsOwner=true`，不维护个人 owner 白名单，不以任务创建者或创建群限制管理。**
 
-本补丁给显式配置的 agent 增加独立的管理 owner：使用 Gateway 原始消息中的已认证 senderId、channel、accountId，以及原生 senderIsOwner 标志。群 session 不再是管理权限的唯一依据。身份进入现有签名和运行生命周期校验；模型参数及 Worker 请求不能自报 owner。
+Gateway 从原始消息提取 senderId、channel、accountId，使用现有签名及活跃运行校验传递身份；模型正文、工具参数和 Worker 请求不能自报身份。补丁不添加员工登录或准入流程，也不会放宽既有消息入口的 allowlist/配对/群访问规则。是否为获准使用 V 的员工由现有入口负责，而非本模块重新查员工目录。
 
-- 在受管理 agent 下，只有配置的 owner 可交互创建、查看、修改、停用和删除任务。其他用户在原创建群中也没有管理权限。
-- 这是一位系统 owner 管理该 agent 的命名空间，**不是多租户的逐任务创建者 ACL**。仅适用于 V 这种 owner 管理的助手；不得直接套用于多人各自拥有私有任务的 agent。
-- 跨群修改保留原执行 owner 和原 account policy。历史缺失 owner 的任务在正常原生 update 中补齐，仍经过参数校验、锁内复验和持久化。
-- 不允许跨 account、channel 或 agent，不扩大已有 toolsAllow。原生执行权限、审批和 sandbox 仍然有效。若要扩大工具能力，需要单独 operator 授权。
-- 原生 operator 管理面不变；未配置的 agent 保持上游行为。原生签名的当前任务自删能力保留。
-- 配置缺失/无效时拒绝访问；权限与活跃运行在提交前重新检查。
+执行归属和管理权限分开：修改共享任务保留原执行 owner/session/account 及其执行策略。历史缺失 owner 的任务在原生 update 的预检、锁内校验及正常持久化中补齐，不手改数据库。不扩大已有工具执行上限，不改变审批或 sandbox。其他 agent、原生 operator shell/监控任务、定时任务及子代理的自动运行不因此获得共享管理权；原生签名的当前任务自删能力保留。
 
-## 配置（合入后再由集成负责人部署）
+## 配置
 
-由 Gateway 进程环境提供 `OPENCLAW_CRON_OWNER_POLICY=/absolute/operator-owned/cron-owner-policy.json`。文件必须由运维维护，不允许模型或 Worker 写入。例如：
+由 Gateway 环境设置 `OPENCLAW_CRON_SHARED_POLICY=/absolute/operator-owned/cron-shared-policy.json`：
 
 ```json
 {
   "version": 1,
   "agents": {
-    "makaron": {
-      "owners": [
-        {"version": 1, "channel": "feishu", "accountId": "default", "senderId": "REPLACE_WITH_VERIFIED_OWNER_ID"}
-      ]
-    }
+    "makaron": { "mode": "shared", "enabled": true }
   }
 }
 ```
 
-实际 senderId 应从可信消息入口与既有 owner 配置核对，不从聊天正文提取。还需确认原始 turn 的 `senderIsOwner=true`。空 owners 数组撤销该 agent 的交互管理权限；删除 agent 条目会回到上游策略，不等价于撤权。
+配置只指定哪些 agent 使用共享管理，无个人名单。文件由运维管理，模型及 Worker 不可写。`enabled:false` 关闭该 agent 的共享交互管理；未配置的 agent 保持上游行为（删除条目不等于关闭访问）。启用环境变量后，文件缺失/格式错误会拒绝请求。锁内提交前复验配置及运行有效性。
 
-## 验证证据
+## 验证与边界
 
-隔离副本来自当时共享 VLab 的 2026.9.1 代码；只复制可达模块（约 43 MiB），复用不可变 baseline 的 npm 依赖。没有建立 Gateway 实例、监听端口、接入机器人或调用模型。以非 root 用户运行，文件系统只读（仅测试结果目录可写），网络禁用，CPU 50%、内存 1 GiB。
+使用 VLab 原有 2026.9.1 的隔离代码副本（约 43 MiB），复用不可变 baseline 的 npm 依赖；没有新建 Gateway、监听端口、接入机器人或调用模型。测试以非 root 身份、只读文件系统、单独可写结果目录、禁网、CPU 50%、内存 1 GiB 运行。
 
-- 原始代码：复现旧 ownerless 任务修改 toolsAllow 失败，以及同 owner 跨群修改失败。
-- 修复代码：原生 Cron tool → 签名身份 → Gateway handlers → CronService/SQLite，通过跨群创建/改时间/改内容/停用/删除；拒绝非 owner；拒绝伪造 owner 参数和扩大 toolsAllow。
-- 原生 Gateway host capability：身份取自原始 admission，忽略 Worker 伪造身份；签名被篡改和已关闭能力均拒绝。
-- 撤权发生在预检与锁内提交之间时拒绝修改；已结束运行不能重放。新建 CronService 从磁盘读取验证持久化结果。
-- 单元及安装测试 9 项通过：策略边界、缺失配置、撤权、安装幂等性、回滚 checksum 与精确恢复、版本不匹配拒绝。
+原始代码已复现：旧任务修改 toolsAllow 的 owner 不匹配报错，以及跨群管理失败。新版验收覆盖：
 
-`acceptance/vlab-patch-manifest.json` 记录已测基线及产物 SHA-256。测试中的用户、群和任务均为合成数据。飞书 receive → Worker dispatch → visible reply 与实际业务定时执行尚未验收；应在共享 VLab 获得 lease 后完成。Universal Memory CLI 权限是独立问题，本补丁不迁移/运行同步业务。
+- 三名普通员工（`senderIsOwner:false`）跨群创建、查看、改时间、改内容、停用、删除同一共享任务。
+- 旧 ownerless 任务正常更新；新 CronService 从磁盘重新读取验证执行归属和数据。
+- 没有可信 sender 的请求被拒绝；Worker 伪造来源、签名篡改、已结束运行重放被拒绝。
+- 预检与提交之间关闭共享权限时拒绝修改。
+- 单元与安装测试验证跨来源管理、定时/子代理限制、版本检查、幂等安装、精确回滚和保护后续修改。
 
-## 重现和合入
+`acceptance/` 保存合成场景结果和已测产物 SHA-256；不包含账号、凭据、生产状态或数据库。真实飞书 receive → dispatch → visible reply 和业务定时执行仍需合入共享 VLab 后验收。Universal Memory CLI 权限是独立问题，本候选不迁移或运行该业务。
 
-1. 在新的小 worktree 保存独立补丁；不复制生产 config、state、凭据、会话和数据库。
-2. 用 `scripts/prepare-cron-owner-repro.py` 制作独立代码副本。必须保留至少 3 GiB 可用磁盘，不写共享 runtime，不使用指向可变代码的 hardlink。
-3. 在断网、限资源沙箱中运行 `tests/cron-owner-management/native-repro.mjs CORE FRESH_STATE baseline`，再在副本执行下面的 apply，使用另一空目录运行 `fixed`。
-4. `CRON_PATCH_BASELINE=/code-only/unpatched-fixture node --test tests/cron-owner-management/runtime.test.mjs tests/cron-owner-management/patcher.test.mjs`。
-5. 明确获准合入后再合并候选提交；共享 VLab 集成前通过 labctl 获取 lease 并交接。核对当时基线，若 SHA/结构变化则重建候选和重测，不覆盖其他任务改动。部署配置后真实验证 owner 在 A/B/C 群管理和非 owner 拒绝。
-6. 生产另行决定；使用同一已验收产物、备份与回滚，且仅通过 Tailscale 连接 V。
+## 重现、合入与回滚
+
+使用独立 worktree 保存补丁。`scripts/prepare-cron-owner-repro.py` 只复制代码到新目录，不复制 config/state/凭据，保留至少 3 GiB 可用磁盘。脚本保留历史文件名，与权限模型无关。
 
 ```sh
-node scripts/patch-openclaw91-cron-owner-management.mjs /isolated/core --check
-node scripts/patch-openclaw91-cron-owner-management.mjs /isolated/core --apply
-node scripts/patch-openclaw91-cron-owner-management.mjs /isolated/core --rollback
+node tests/cron-shared-management/native-repro.mjs /isolated/core /fresh/baseline-state baseline
+node scripts/patch-openclaw91-cron-shared-management.mjs /isolated/core --check
+node scripts/patch-openclaw91-cron-shared-management.mjs /isolated/core --apply
+node tests/cron-shared-management/native-repro.mjs /isolated/core /fresh/fixed-state fixed
+CRON_PATCH_BASELINE=/code-only/unpatched-fixture node --test tests/cron-shared-management/runtime.test.mjs tests/cron-shared-management/patcher.test.mjs
+node scripts/patch-openclaw91-cron-shared-management.mjs /isolated/core --rollback
 ```
 
-安装前先完成全部 anchor/语法检查；同一版本重复 apply 为 no-op。回滚仅在所有产物与安装 manifest 一致时执行，避免覆盖后续修改。备份目录保留供审计，回滚后重新安装前应由负责人归档该备份。生产集成仍需遵守现有发布流程，不直接对正在运行的 bundle 热改。
+原 owner 专属候选不得与此补丁叠加：先按旧 manifest 回滚，再安装新版。安装前检查全部 anchor 与语法；重复 apply 为 no-op。回滚前核对每个文件 SHA，不覆盖后续任务修改；备份保留，回滚后重新安装须归档旧备份。
+
+用户明确要求后才合并候选分支。共享 VLab 集成前通过 labctl 获取 lease 并交接；核对当时基线，变化则重建并重测，不覆盖其他任务。部署后用不同普通员工在不同群做真实验收，再决定生产发布。生产仅经 Tailscale，使用同一已验收产物并保留回滚。

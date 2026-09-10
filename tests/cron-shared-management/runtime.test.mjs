@@ -58,6 +58,11 @@ test('shared policy and staged migration', async (t) => {
         { payload: { kind: 'heartbeat' } }, { schedule: { kind: 'stream' } }]) {
         assert.equal(cronManagementJobDecision({ job: job(extra), callerScope: scope('B') }), false);
       }
+      assert.equal(cronManagementJobDecision({ job: job({ owner: { agentId: 'makaron',
+        accountId: 'another-bot', sessionKey: 'agent:makaron:telegram:group:X' } }), callerScope: scope('B') }), true);
+      assert.equal(cronManagementNamespaceDecision(scope('B', { sessionKey: 'agent:makaron:cron:x' })), false);
+      assert.equal(cronManagementNamespaceDecision(scope('B', { sessionKey: 'agent:makaron:subagent:x' })), false);
+      assert.equal(cronManagementNamespaceDecision(scope('B', { currentJobId: 'scheduled-job' })), false);
       assert.equal(cronManagementNamespaceDecision(undefined), undefined);
       assert.equal(cronManagementNamespaceDecision(scope('B', { agentId: 'unmanaged' })), undefined);
     });

@@ -58,7 +58,8 @@ export function cronManagementNamespaceDecision(scope) {
   if (!entry) return undefined;
   const principal = normalizeCronManagementPrincipal(scope.cronManagementPrincipal);
   if (!principal || scope.accountId !== principal.accountId ||
-      scope.cronManagementChannel !== principal.channel || !scope.sessionKey) return false;
+      scope.cronManagementChannel !== principal.channel || !scope.sessionKey ||
+      scope.currentJobId || /:(cron|subagent):/.test(scope.sessionKey)) return false;
   const authorized = entry.enabled;
   if (authorized) {
     // Shared access and active run authority are checked again during locked commit.
