@@ -1,6 +1,8 @@
-# VLab：轻量 worktree → dev → 共享验收
+# VLab：轻量 worktree → 用户决定合入 dev → 共享验收
 
-2026-09-10 用户确认的新默认流程。每个 agent 一个源码 worktree；共用一个共享 VLab 的配置、历史对话、Memory、浏览器与渠道。开发不再默认创建完整 Gateway 实例。旧私有实例只用于确需运行隔离的例外，参考 `labctl.mjs`，不能用其 stopped 状态推断目录可删除。
+2026-09-10 用户进一步明确：合入 dev 的决定权只属于 Tianyi。agent 在自己的 worktree 完成开发和合入前测试，报告结果后等待用户明确批准，不能自主合入；lease、测试通过或一般修复授权不代替批准。
+
+每个 agent 一个源码 worktree；共用一个共享 VLab 的配置、历史对话、Memory、浏览器与渠道。开发不再默认创建完整 Gateway 实例。旧私有实例只用于确需运行隔离的例外，参考 `labctl.mjs`，不能用其 stopped 状态推断目录可删除。
 
 首次接手请先读 [给其他 agent 的操作入口](AGENT-QUICKSTART.md)。其中区分源码开发、共享验收占用与成功/失败两条收尾路径。
 
@@ -44,7 +46,7 @@ node lab/vlab.mjs rpc --method agent.wait --params '{"runId":"RUN_ID","timeoutMs
 
 ## 合并与打包
 
-在任务 worktree 提交、测试后，记录精确 SHA，再进入集成：
+在任务 worktree 提交、测试后，报告改动、测试结果、未验证项和精确 SHA，然后等待 Tianyi 决定。只有用户明确批准本次变更合入 dev，才进入以下集成步骤：
 
 ```sh
 node lab/vlab.mjs merge --branch codex/my-fix --commit FULL_TASK_SHA

@@ -6,7 +6,12 @@
 - Develop changes on a dedicated branch and worktree.
 - First read `lab/AGENT-QUICKSTART.md` for the copyable task workflow.
 - For VLab work, follow `lab/README.md`: one lightweight source worktree per task,
-  merge into the canonical `dev`, then deploy/test on the shared Gateway.
+  complete development and pre-merge tests there, then report the branch, exact
+  commit and results to Tianyi. Only Tianyi decides whether to merge into `dev`.
+- Never merge a task into dev without Tianyi's explicit authorization for that
+  change. Passing tests, a repair request, an integration lease or another task
+  approval does not grant merge authorization. After approval, execute the
+  authorized integration and shared validation.
 - Use `/Users/tianyicai/vlab-dev/lab/vlab.mjs` for worktree, integration and release
   operations. Do not copy live state/runtime into task worktrees or hot-patch live
   runtime outside this workflow. Explicit integration lease is required for
