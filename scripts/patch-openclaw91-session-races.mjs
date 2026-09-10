@@ -157,6 +157,7 @@ const bundleSpecs = [
     pattern: /^session-entry-persistence-[A-Za-z0-9_-]+\.js$/,
     patch: patchReplySessionPersistenceBundle,
     marker: "persistReplySessionEntry",
+    allowMultiple: true,
   },
 ];
 
@@ -190,12 +191,12 @@ async function resolveBundles(packageRoot) {
         matches.push({ filename, source, spec });
       }
     }
-    if (matches.length !== 1) {
+    if (matches.length < 1 || (!spec.allowMultiple && matches.length !== 1)) {
       throw new Error(
-        `expected one ${spec.label} bundle in ${distDir}, found ${matches.length}`,
+        `expected ${spec.allowMultiple ? "one or more" : "one"} ${spec.label} bundle in ${distDir}, found ${matches.length}`,
       );
     }
-    bundles.push(matches[0]);
+    bundles.push(...matches);
   }
   return bundles;
 }

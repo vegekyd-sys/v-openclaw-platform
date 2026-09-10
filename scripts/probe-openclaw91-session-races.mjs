@@ -61,7 +61,7 @@ function spawnModule(source) {
   const child = spawn(
     process.execPath,
     ["--input-type=module", "--eval", source],
-    { env: process.env, stdio: ["ignore", "pipe", "pipe"] },
+    { env: process.env, stdio: ["pipe", "pipe", "pipe"] },
   );
   let stdout = "";
   let stderr = "";
@@ -108,10 +108,25 @@ async function runSqliteProbe() {
     const runtime = await import(${JSON.stringify(accessorUrl)});
     const scope = ${JSON.stringify(scope)};
   `;
+  const fast = spawnModule(`${common}
+    // Opening and reading the full mirrored store performs the cold DB91
+    // validation before the race window starts. Without this warm-up, the
+    // slow writer can finish while the competing process is still scanning.
+    runtime.f({ ...scope, hydrateSkillPromptRefs: false });
+    process.stdout.write("READY\\n");
+    await new Promise((resolve) => process.stdin.once("data", resolve));
+    await runtime.p(scope, () => ({ displayName: "fast-writer", updatedAt: Date.now() }), { skipMaintenance: true });
+    process.stdout.write("COMMITTED\\n");
+  `);
+  const readyDeadline = Date.now() + 240_000;
+  while (!fast.stdout().includes("READY\n")) {
+    assert(Date.now() < readyDeadline, "fast writer did not warm the full database");
+    await sleep(10);
+  }
   const slow = spawnModule(`${common}
     await runtime.p(scope, async () => {
       process.stdout.write("PREPARED\\n");
-      await new Promise((resolve) => setTimeout(resolve, 350));
+      await new Promise((resolve) => setTimeout(resolve, 3_000));
       return { label: "slow-writer", updatedAt: Date.now() };
     }, { retrySnapshotConflicts: true, skipMaintenance: true });
     process.stdout.write("COMMITTED\\n");
@@ -124,12 +139,9 @@ async function runSqliteProbe() {
     assert(Date.now() < preparedDeadline, "slow writer did not prepare");
     await sleep(10);
   }
-  assert.match(sessionKey, /^[a-z0-9:-]+$/);
-  const fastUpdatedAt = Date.now();
-  execFileSync("sqlite3", [
-    storePath,
-    `update session_nodes set entry_json=json_set(entry_json,'$.displayName','fast-writer','$.updatedAt',${fastUpdatedAt}),updated_at=${fastUpdatedAt} where session_key='${sessionKey}';`,
-  ]);
+  fast.child.stdin.end("GO\n");
+  const fastResult = await fast.completion;
+  assert.equal(fastResult.code, 0, fastResult.stderr);
   const slowResult = await slow.completion;
   const entry = loadEntry({ ...scope, hydrateSkillPromptRefs: false });
   const conflict =

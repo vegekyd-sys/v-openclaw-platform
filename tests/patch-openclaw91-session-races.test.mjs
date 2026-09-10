@@ -136,17 +136,18 @@ test("package patch is exact, idempotent, and reversible", async () => {
       ["model-fallback-attempt-test.js", liveSwitchFixture],
       ["session-accessor.sqlite-entry-test.js", sqliteFixture],
       ["session-entry-persistence-test.js", persistenceFixture],
+      ["session-entry-persistence-worker.js", persistenceFixture],
     ]);
     for (const [name, source] of files) {
       await writeFile(path.join(dist, name), source);
     }
 
     const first = await patchPackage(root);
-    assert.equal(first.filter((entry) => entry.changed).length, 3);
+    assert.equal(first.filter((entry) => entry.changed).length, 4);
     const second = await patchPackage(root);
     assert.equal(second.filter((entry) => entry.changed).length, 0);
     const restored = await restorePackage(root);
-    assert.equal(restored.filter((entry) => entry.changed).length, 3);
+    assert.equal(restored.filter((entry) => entry.changed).length, 4);
     for (const [name, source] of files) {
       assert.equal(await readFile(path.join(dist, name), "utf8"), source);
     }
