@@ -5,12 +5,13 @@ import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 const [owner, countArg = '5', label = 'profile-baseline'] = process.argv.slice(2), count = Number(countArg);
+let peakMemory = 0, minFreeBytes = Infinity;
 assert(owner && /^[\w-]+$/.test(owner)); assert(Number.isInteger(count) && count >= 1 && count <= 15); assert(/^[a-z0-9-]+$/.test(label));
 assert.equal(os.hostname(), 'VM-0-4-ubuntu');
 const base = '/srv/vlab-production-mirror/labs/instances/db91-parity';
 const run = (bin, args) => execFileSync(bin, args, {encoding: 'utf8', timeout: 10000}).trim();
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-function guard() {assert.equal(JSON.parse(fs.readFileSync('/srv/vlab-production-mirror/labs/control/integration.json')).owner, owner); const d = fs.statfsSync(base); assert(d.bavail * d.bsize >= 3 * 1024 ** 3, 'Data-disk reserve below 3 GiB');}
+function guard() {assert.equal(JSON.parse(fs.readFileSync('/srv/vlab-production-mirror/labs/control/integration.json')).owner, owner); const d = fs.statfsSync(base); minFreeBytes = Math.min(minFreeBytes, d.bavail * d.bsize); assert(minFreeBytes >= 3 * 1024 ** 3, 'Data-disk reserve below 3 GiB');}
 guard();
 const pid = Number(run('systemctl', ['show', 'openclaw-vlab-production-mirror-v8.service', '-p', 'MainPID', '--value'])); assert(pid > 1);
 const env = Object.fromEntries(fs.readFileSync('/proc/' + pid + '/environ', 'utf8').split('\0').filter(v => v.includes('=')).map(v => [v.slice(0, v.indexOf('=')), v.slice(v.indexOf('=') + 1)])); Object.assign(process.env, env);
@@ -20,11 +21,11 @@ for (const c of [cfg, JSON.parse(fs.readFileSync(cfg.plugins.entries['vlab-agent
   const a = c.agents.entries.makaron.model; assert.equal(typeof a === 'string' ? a : a.primary, model); if (typeof a === 'object') assert.deepEqual(a.fallbacks, []);
 }
 const cg = '/sys/fs/cgroup' + fs.readFileSync('/proc/' + pid + '/cgroup', 'utf8').trim().split('::')[1];
-const resources = () => ({memory: Number(fs.readFileSync(cg + '/memory.current')), memoryEvents: fs.readFileSync(cg + '/memory.events', 'utf8'), cpu: fs.readFileSync(cg + '/cpu.stat', 'utf8')});
+const resources = () => {const memory = Number(fs.readFileSync(cg + '/memory.current')); peakMemory = Math.max(peakMemory, memory); return {memory, memoryEvents: fs.readFileSync(cg + '/memory.events', 'utf8'), cpu: fs.readFileSync(cg + '/cpu.stat', 'utf8')};};
 const {GatewayClient} = await import(base + '/runtime/openclaw/dist/plugin-sdk/gateway-runtime.js');
 const rows = [], byId = new Map(); let client, before, saved = false, runtimeErrors = [];
 function save(failure) {
-  const summary = {label, count, pid, before, after: resources(), rows, runtimeErrors, ...(failure ? {failure} : {})};
+  const summary = {label, count, pid, before, after: resources(), peakMemory, minFreeBytes, rows, runtimeErrors, ...(failure ? {failure} : {})};
   const output = '/srv/vlab-production-mirror/labs/control/concurrency-profile-' + label + '-' + Date.now() + '.json';
   fs.writeFileSync(output, JSON.stringify(summary, null, 2) + '\n', {flag: 'wx', mode: 0o600}); saved = true;
   console.log(JSON.stringify({output, ...summary}));

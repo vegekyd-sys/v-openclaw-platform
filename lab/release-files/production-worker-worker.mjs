@@ -607,7 +607,12 @@ async function runHold(durationMs, abortSignal) {
   };
 }
 
+// Temporary VLab-only, dedicated-session CPU diagnostic. No inspector listener.
+import {withConcurrencyProfile} from '../openclaw/dist/gateway-concurrency-profiler.mjs';
 async function runAgent(message, abortSignal) {
+  return withConcurrencyProfile(message, () => runAgentWithWorkerProfile(message, abortSignal));
+}
+async function runAgentWithWorkerProfile(message, abortSignal) {
   ocFirsttextWorkerMark("worker-agent-enter", message.runId);
   const attemptStartedAt = Date.now();
   const agentRuntime = await loadAgentRuntime();
