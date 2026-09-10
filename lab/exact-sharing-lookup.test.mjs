@@ -6,8 +6,8 @@ const source = fs.readFileSync(new URL('./release-files/session-sharing-BlMqwMBH
 const body = source.match(/function resolveSessionSharingTarget\(params\) \{[\s\S]*?\n\}(?=\nfunction sharingIdentity)/)?.[0];
 assert(body);
 const make = (load, match) => new Function('resolveGatewaySessionStoreTargetWithStore', 'resolveCanonicalSessionStoreMatchFromStoreKeys', 'return (' + body + ');')(load, match);
-test('artifact changes only exactRead at the native sharing lookup call', () => {
-  const before = source.replace(body, body.replace('\n\t\texactRead: true,', ''));
+test('artifact changes only exact-read mode at the native sharing lookup call', () => {
+  const before = source.replace(body, body.replace('\n\t\texactRead: true,', '').replace('clone: true,\n\t\treadOnly: false,', 'clone: false,'));
   const plan = JSON.parse(fs.readFileSync(new URL('./exact-sharing-lookup-plan.json', import.meta.url)));
   assert.equal(createHash('sha256').update(before).digest('hex'), plan.files[0].before);
 });
@@ -16,7 +16,7 @@ test('native key resolution, list projection and per-authorization caches are pr
   const entry = {visibility: 'draft', createdActor: {id: 'owner'}, sessionId: 'v1'};
   const target = {agentId: 'a', canonicalKey: 'canonical', storeKeys: ['canonical', 'alias'], storePath: '/store', store: {canonical: entry}};
   const f = make(options => {
-    assert.deepEqual(options, {cfg: params.cfg, key: 'alias', agentId: 'a', clone: false, projection: 'list', exactRead: true, storeCache: params.storeCache, targetDiscoveryCache: params.targetDiscoveryCache});
+    assert.deepEqual(options, {cfg: params.cfg, key: 'alias', agentId: 'a', clone: true, readOnly: false, projection: 'list', exactRead: true, storeCache: params.storeCache, targetDiscoveryCache: params.targetDiscoveryCache});
     return target;
   }, (store, keys) => {assert.equal(store, target.store); assert.equal(keys, target.storeKeys); return {key: 'canonical', entry};});
   assert.deepEqual(f(params), {agentId: 'a', canonicalKey: 'canonical', entry, storeKey: 'canonical', storeKeys: target.storeKeys, storePath: '/store'});

@@ -13,7 +13,10 @@ const source = Buffer.from(result.content, 'base64').toString();
 assert.equal(createHash('sha256').update(source).digest('hex'), result.sha256);
 const anchor = 'function resolveSessionSharingTarget(params) {\n\tconst target = resolveGatewaySessionStoreTargetWithStore({\n\t\tcfg: params.cfg,\n\t\tkey: params.sessionKey,\n\t\tagentId: params.agentId,\n\t\tclone: false,\n\t\tprojection: "list",';
 assert.equal(source.split(anchor).length, 2);
-const output = source.replace(anchor, anchor + '\n\t\texactRead: true,');
+// clone:true + readOnly:false select the existing writable exact-reader for
+// configured stores, preserving visibility of the owner's uncommitted writes.
+// The lower exact loader still returns an owned, non-redundantly-cloned entry.
+const output = source.replace(anchor, anchor.replace('clone: false,', 'clone: true,\n\t\treadOnly: false,') + '\n\t\texactRead: true,');
 const dest = 'lab/release-files/session-sharing-BlMqwMBH.js';
 fs.writeFileSync(path.join(root, dest), output);
 const handlerTarget = 'openclaw/dist/chat-send-handler-DBjXcn_1.js', handler = read(handlerTarget);

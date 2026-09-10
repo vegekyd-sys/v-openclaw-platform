@@ -23,8 +23,9 @@ const sharing = await import(base + '/runtime/openclaw/dist/session-sharing-BlMq
 const native = await import(base + '/runtime/openclaw/dist/session-utils-store-Dlphca2N.js');
 const entry = await import(base + '/runtime/openclaw/dist/session-accessor.sqlite-entry-BlklNPKQ.js');
 const exact = new Function('resolveGatewaySessionStoreTargetWithStore', 'resolveCanonicalSessionStoreMatchFromStoreKeys', 'return (' + body + ');')(native.f, native.c);
+const readonlyExact = new Function('resolveGatewaySessionStoreTargetWithStore', 'resolveCanonicalSessionStoreMatchFromStoreKeys', 'return (' + body.replace('clone: true,\n\t\treadOnly: false,', 'clone: false,') + ');')(native.f, native.c);
 // Compare against an explicitly full-list version, even after candidate deployment.
-const full = new Function('resolveGatewaySessionStoreTargetWithStore', 'resolveCanonicalSessionStoreMatchFromStoreKeys', 'return (' + body.replace('\n\t\texactRead: true,', '') + ');')(native.f, native.c);
+const full = new Function('resolveGatewaySessionStoreTargetWithStore', 'resolveCanonicalSessionStoreMatchFromStoreKeys', 'return (' + body.replace('\n\t\texactRead: true,', '').replace('clone: true,\n\t\treadOnly: false,', 'clone: false,') + ');')(native.f, native.c);
 let compared = 0; const timings = [];
 function compare(key) {
   const params = {cfg, agentId: 'makaron', sessionKey: key};
@@ -49,5 +50,22 @@ for (const visibility of ['draft', 'shared', 'read-only', 'suggest']) {
 }
 sessionId = randomUUID(); await entry.p(scope, () => ({sessionId, updatedAt: Date.now()}), {skipMaintenance: true});
 assert.equal(compare(scope.sessionKey).entry.sessionId, sessionId);
+// Authorization can run inside its owner's native write transaction. Preserve
+// that transaction's view, not a separate read-only connection's old snapshot.
+const nativeDb = await import(base + '/runtime/openclaw/dist/openclaw-agent-db-CUTe8BX6.js');
+const nativeScope = await import(base + '/runtime/openclaw/dist/session-accessor.sqlite-scope-BwPKGcgm.js');
+const nativeStore = await import(base + '/runtime/openclaw/dist/session-accessor.sqlite-entry-store-VfW3gyuj.js');
+const beforeRollback = entry.f({...scope, hydrateSkillPromptRefs: false});
+const rollback = new Error('dedicated sharing probe rollback');
+assert.throws(() => nativeDb.y(database => {
+  nativeStore.y(database, scope.sessionKey, {...beforeRollback, label: 'uncommitted-sharing-probe', visibility: 'draft', updatedAt: Date.now()});
+  const target = compare(scope.sessionKey);
+  assert.equal(target.entry.label, 'uncommitted-sharing-probe'); assert.equal(target.entry.visibility, 'draft');
+  assert.notEqual(readonlyExact({cfg, agentId: 'makaron', sessionKey: scope.sessionKey})?.entry.label, 'uncommitted-sharing-probe', 'Expected independent read-only view to miss uncommitted owner writes');
+  throw rollback;
+}, nativeScope.m(nativeScope.c(scope))), error => error === rollback);
+const afterRollback = entry.f({...scope, hydrateSkillPromptRefs: false});
+assert(isDeepStrictEqual(afterRollback, beforeRollback), 'Native rollback did not preserve the original probe record');
+compare(scope.sessionKey);
 const warm = timings.slice(1); const median = values => values.sort((a,b) => a-b)[Math.floor(values.length / 2)];
-console.log(JSON.stringify({event: 'native-sharing-lookup-passed', compared, fullDatabase: true, missingPreserved: true, visibilityChangesPreserved: true, ownerAndAdminAllowed: true, foreignDraftDenied: true, rolloverPreserved: true, sessionKey: scope.sessionKey, fullWarmMedianMs: median(warm.map(t => t.fullMs)), exactWarmMedianMs: median(warm.map(t => t.exactMs))}));
+console.log(JSON.stringify({event: 'native-sharing-lookup-passed', compared, fullDatabase: true, missingPreserved: true, visibilityChangesPreserved: true, ownerAndAdminAllowed: true, foreignDraftDenied: true, rolloverPreserved: true, uncommittedOwnerViewPreserved: true, rollbackPreserved: true, sessionKey: scope.sessionKey, fullWarmMedianMs: median(warm.map(t => t.fullMs)), exactWarmMedianMs: median(warm.map(t => t.exactMs))}));
