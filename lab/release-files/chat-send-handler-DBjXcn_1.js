@@ -1,3 +1,4 @@
+import {withConcurrencyProfile} from "./gateway-concurrency-profiler.mjs";
 import { g as isFutureDateTimestampMs } from "./number-coercion-CLj0HTDM.js";
 import "./src-vebZIeLe.js";
 import { t as expectDefined } from "./expect-CyE8FADM.js";
@@ -4838,7 +4839,7 @@ async function handleChatSendWithOptions({ params, respond, context, client, ses
 	}
 }
 async function handleChatSend(options, onAdmissionOwned, externalAuthorityAdmission) {
-	await handleChatSendWithOptions(options, onAdmissionOwned, externalAuthorityAdmission);
+	return await withConcurrencyProfile(options.params, () => handleChatSendWithOptions(options, onAdmissionOwned, externalAuthorityAdmission));
 }
 /** Operator Resume admits one hidden internal continuation with the Goal transition. */
 async function handleSessionGoalResumeChat(options, operation) {

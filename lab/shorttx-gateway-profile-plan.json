@@ -1,0 +1,10 @@
+{
+  "baseRelease": "concurrency-short-tx-v2",
+  "files": [
+    {
+      "source": "lab/release-files/chat-send-handler-DBjXcn_1.js",
+      "target": "openclaw/dist/chat-send-handler-DBjXcn_1.js",
+      "before": "99c82a810e112f097ab75a0129d80cf3d6305c7c77867504a20307a4cab9b311"
+    }
+  ]
+}
