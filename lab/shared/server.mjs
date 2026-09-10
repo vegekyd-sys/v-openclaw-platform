@@ -50,6 +50,7 @@ function publicStatus() {
   const l=live();return {service:UNIT,pid:l.pid,port:24993,configSha:l.configSha,state:l.env.OPENCLAW_STATE_DIR,
     agents:Object.keys(l.cfg.agents.entries??{}),plugins:l.cfg.plugins?.load?.paths??[],reload:l.cfg.gateway.reload.mode,
     current:fs.existsSync(HOME+'/current.json')?current():null,
+    devSource:fs.existsSync(HOME+'/source/.git')?{path:HOME+'/source',commit:run('git',['-C',HOME+'/source','rev-parse','HEAD'])}:null,
     pending:fs.existsSync(HOME+'/pending.json')?read(HOME+'/pending.json'):null,
     lease:fs.existsSync(LAB+'/control/integration.json')?read(LAB+'/control/integration.json'):null,freeBytes:free()};
 }
@@ -114,7 +115,7 @@ async function main(req) {
   fs.mkdirSync(HOME,{recursive:true,mode:0o700});
   if(req.command==='status')return publicStatus();
   if(req.command==='rpc') {
-    const readMethods=['health','vlab.workers.status','sessions.list','chat.history','agent.wait'];
+    const readMethods=['health','vlab.workers.status','sessions.list','chat.history','agent.wait','gateway.suspend.status'];
     assert(readMethods.includes(req.method),'Use the explicit test command for writes');return rpc(req.method,req.params??{});
   }
   if(req.command==='test') {
@@ -131,6 +132,29 @@ async function main(req) {
   lease(req.owner);
   return lock(async()=>{
     lease(req.owner);
+    if(req.command==='sync') {
+      assert(/^[a-f0-9]{40}$/.test(req.sourceCommit));
+      const bytes=Buffer.from(req.bundle,'base64');assert(bytes.length<32*1024**2);
+      assert(free()>3*1024**3+bytes.length*4,'Source sync disk reserve');
+      const dir=HOME+'/source-bundles';fs.mkdirSync(dir,{recursive:true,mode:0o700});
+      const bundle=dir+'/'+req.sourceCommit+'.bundle';
+      if(fs.existsSync(bundle))assert.equal(hashFile(bundle),sha(bytes));else fs.writeFileSync(bundle,bytes,{flag:'wx',mode:0o600});
+      const bare=HOME+'/code.git',source=HOME+'/source';
+      if(!fs.existsSync(bare))run('git',['init','--bare',bare]);
+      run('git',['--git-dir='+bare,'bundle','verify',bundle]);
+      assert.equal(run('git',['bundle','list-heads',bundle]),req.sourceCommit+' refs/heads/dev');
+      run('git',['--git-dir='+bare,'fetch',bundle,'refs/heads/dev']);
+      if(!fs.existsSync(source)) {
+        run('git',['--git-dir='+bare,'branch','dev',req.sourceCommit]);
+        run('git',['--git-dir='+bare,'worktree','add',source,'dev']);
+        save(bare+'/vlab-workflow.json',{dev:source,base:req.sourceCommit,sshAlias:'local-vlab'});
+      } else {
+        assert.equal(run('git',['-C',source,'branch','--show-current']),'dev');
+        assert.equal(run('git',['-C',source,'status','--porcelain']),'','Server dev is dirty');
+        run('git',['-C',source,'merge','--ff-only',req.sourceCommit]);
+      }
+      return {devSource:source,sourceCommit:req.sourceCommit,bundleBytes:bytes.length,runtimeChanged:false};
+    }
     if(req.command==='baseline') {
       assert(!fs.existsSync(HOME+'/current.json'),'Baseline already registered');
       const id=name(req.id),dir=HOME+'/baselines/'+id;fs.mkdirSync(dir,{recursive:true,mode:0o700});
