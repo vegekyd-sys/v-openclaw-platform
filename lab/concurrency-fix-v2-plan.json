@@ -1,0 +1,30 @@
+{
+  "baseRelease": "concurrency-fix-v1",
+  "files": [
+    {
+      "source": "lab/release-files/session-accessor.sqlite-entry-BlklNPKQ.js",
+      "target": "openclaw/dist/session-accessor.sqlite-entry-BlklNPKQ.js",
+      "before": "581cc98f388fac85b297d5332fa52012fa97c5919db0d3abc23d1a8abb250d7c"
+    },
+    {
+      "source": "lab/release-files/sqlite-begin-contention-retry.mjs",
+      "target": "openclaw/dist/sqlite-begin-contention-retry.mjs",
+      "before": null
+    },
+    {
+      "source": "lab/release-files/production-worker-index.mjs",
+      "target": "production-worker/index.mjs",
+      "before": "5d140cf6d2c6babe61eb687a9c5b57eb73cf7c449c017a88353e9c36a290341d"
+    },
+    {
+      "source": "lab/release-files/production-worker-worker-pool.mjs",
+      "target": "production-worker/worker-pool.mjs",
+      "before": "128b098f726f7556d2e89a1dbab3c51d988c5408ada6e079bf46c7d7f72439e0"
+    },
+    {
+      "source": "lab/release-files/production-worker-worker.mjs",
+      "target": "production-worker/worker.mjs",
+      "before": "f4476c2017c3101b19eb2f22427244d00451663b55bfa0476234f8af36adb768"
+    }
+  ]
+}
