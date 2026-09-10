@@ -82,7 +82,7 @@ async function cutover(req,rollback=false) {
       s=await x.call('gateway.suspend.status',{suspensionId:suspension.suspensionId});
       assert(s.status!=='running'&&s.expiresAtMs>Date.now()+5000,'Admission fence expired');
       if(s.activeCount===0)break;
-      if(Date.now()>deadline)throw Error('Shared VLab has active work; release deferred without touching code');
+      if(Date.now()>deadline)throw Error('Shared VLab drain deferred: '+JSON.stringify({status:s.status,activeCount:s.activeCount,blockers:s.blockers?.map(b=>({kind:b.kind,count:b.count}))}));
       await delay(1000);
     }
     const w=await x.call('vlab.workers.status',{});assert.equal(w.pending,0);assert(w.workers.every(w=>!w.activeCount&&!w.queued),'Workers still active');
