@@ -1,0 +1,15 @@
+{
+  "baseRelease": "concurrency-shorttx-gateway-diag",
+  "files": [
+    {
+      "source": "lab/release-files/session-sharing-BlMqwMBH.js",
+      "target": "openclaw/dist/session-sharing-BlMqwMBH.js",
+      "before": "e2ce3c677502ce34ef66fe9d4b39adb8f8a1a2fdb7718592efe652bb36b97d22"
+    },
+    {
+      "source": "lab/release-files/chat-send-handler-DBjXcn_1.js",
+      "target": "openclaw/dist/chat-send-handler-DBjXcn_1.js",
+      "before": "40318311ba932d12cfdff624b408397b3e49556b340464ad24608a2725d10413"
+    }
+  ]
+}
