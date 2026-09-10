@@ -1,0 +1,10 @@
+{
+  "baseRelease": "concurrency-diag-v1",
+  "files": [
+    {
+      "source": "lab/release-files/gateway-concurrency-profiler.mjs",
+      "target": "openclaw/dist/gateway-concurrency-profiler.mjs",
+      "before": "c6ecfa30859ed79c6df67eeaede8b6dccb30fbc2d08eb5110c9995bb180bc5dd"
+    }
+  ]
+}

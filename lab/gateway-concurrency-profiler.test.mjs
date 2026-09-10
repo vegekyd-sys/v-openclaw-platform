@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {summarizeProfile, withConcurrencyProfile} from './release-files/gateway-concurrency-profiler.mjs';
+import os from 'node:os';
+import {summarizeProfile, withConcurrencyProfile, finishConcurrencyProfile} from './release-files/gateway-concurrency-profiler.mjs';
 test('profile aggregation uses frame names only and handles recursive parents once', () => {
   const f = name => ({functionName: name, url: '/private/path/code.js', lineNumber: 3});
   const summary = summarizeProfile({startTime: 0, endTime: 3000, nodes: [{id: 1, callFrame: f('root'), children: [2]}, {id: 2, callFrame: f('slow'), children: [3]}, {id: 3, callFrame: f('slow')}], samples: [2, 3], timeDeltas: [1000, 2000]});
@@ -10,4 +11,15 @@ test('profile aggregation uses frame names only and handles recursive parents on
 test('ordinary requests retain return value, rejection identity and single execution', async () => {
   let calls = 0; assert.equal(await withConcurrencyProfile({sessionKey: 'ordinary'}, () => {calls++; return 17;}), 17); assert.equal(calls, 1);
   const error = new Error('original'); await assert.rejects(withConcurrencyProfile({}, () => {throw error;}), e => e === error);
+});
+test('selected request starts and stops a real CPU profiler without changing operation semantics', async t => {
+  const events = [];
+  t.mock.method(os, 'hostname', () => 'VM-0-4-ubuntu');
+  t.mock.method(console, 'error', line => events.push(JSON.parse(line.slice(line.indexOf('{')))));
+  assert.equal(await withConcurrencyProfile({sessionKey: 'agent:makaron:explicit:concurrency-fix-profile-test'}, () => 23), 23);
+  await new Promise(resolve => setImmediate(resolve));
+  await finishConcurrencyProfile();
+  assert(events.some(e => e.event === 'start'));
+  assert(events.some(e => e.event === 'summary'));
+  assert(!events.some(e => e.event.includes('failed')));
 });
