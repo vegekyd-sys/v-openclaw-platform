@@ -5,6 +5,7 @@ import os from 'node:os';
 import assert from 'node:assert/strict';
 import {execFileSync,spawn} from 'node:child_process';
 import {setTimeout as delay} from 'node:timers/promises';
+import {acquireIdleFence} from './lifecycle.mjs';
 import {sha,read,save,replace,name,target,hashFile,validateFiles,assertVersion,installFiles,fingerprint,suspensionReady} from './files.mjs';
 const LAB='/srv/vlab-production-mirror/labs';
 const HOME=LAB+'/shared-workflow';
@@ -75,16 +76,7 @@ async function cutover(req,rollback=false) {
   const from=rollback?'after':'before',to=rollback?'before':'after';assertVersion(RUNTIME,m.files,from);
   const x=await connect();let suspension,stopped=false,installed=false;
   try {
-    suspension=await x.call('gateway.suspend.prepare',{requestId:'vlab-workflow-'+Date.now(),drain:true,terminalPolicy:'preserve'});
-    assert(suspension.suspensionId);
-    const deadline=Date.now()+45000;let s;
-    for(;;) {
-      s=await x.call('gateway.suspend.status',{suspensionId:suspension.suspensionId});
-      if(suspensionReady(s))break;
-      if(Date.now()>deadline)throw Error('Shared VLab drain deferred: '+JSON.stringify({status:s.status,activeCount:s.activeCount,blockers:s.blockers?.map(b=>({kind:b.kind,count:b.count}))}));
-      await delay(1000);
-    }
-    const w=await x.call('vlab.workers.status',{});assert.equal(w.pending,0);assert(w.workers.every(w=>!w.activeCount&&!w.queued),'Workers still active');
+    suspension=await acquireIdleFence(x.call,'vlab-workflow-'+Date.now());
     assert.equal(pid(),x.l.pid);lease(req.owner);assert.equal(live().configSha,m.configSha);assertVersion(RUNTIME,m.files,from);
     save(HOME+'/pending.json',{id,rollback,before,at:new Date().toISOString(),owner:req.owner});
     run('systemctl',['stop',UNIT]);stopped=true;assert.equal(pid(),0);
@@ -93,7 +85,7 @@ async function cutover(req,rollback=false) {
     finally {run('systemctl',['start',UNIT]);stopped=false;}
     x.c.stop();
     const until=Date.now()+90000;let ready=false;
-    while(Date.now()<until){try{await rpc('health',{});ready=true;break;}catch{await delay(2000);}}
+    while(Date.now()<until){try{const h=await rpc('health',{});assert.equal(h.ok,true);ready=true;break;}catch{await delay(2000);}}
     assert(ready,'Installed but Gateway not ready; pending journal retained for recovery');
     assertVersion(RUNTIME,m.files,to);assert.equal(live().configSha,m.configSha);
     const runtimeSha=fingerprint(RUNTIME).sha256;
