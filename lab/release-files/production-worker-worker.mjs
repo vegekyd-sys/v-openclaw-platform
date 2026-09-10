@@ -1,3 +1,5 @@
+import {Console as FirsttextMetricConsole} from "node:console";
+const ocFirsttextMetricConsole = new FirsttextMetricConsole({stdout: process.stdout, stderr: process.stderr, ignoreErrors: true});
 // OPENCLAW_FIRSTTEXT_WORKER_PHASES_V1
 const ocFirsttextWorkerStages = new Set(["gateway-harness-enter","gateway-preflight-enter","gateway-preflight-end","gateway-submit-return","gateway-callback-enter","gateway-callback-end","gateway-transcript-enter","gateway-transcript-end","gateway-harness-exit","pool-submit-enter","pool-enqueued","pool-spawn","pool-ready","pool-ipc-send","pool-stream-received","pool-callback-enter","pool-callback-end","pool-ack-send","pool-response-received","worker-command-enter","worker-command-end","worker-agent-enter","worker-runtime-loaded","worker-event-runtime-loaded","worker-compaction-runtime-loaded","worker-prepared-runtime-enter","worker-prepared-runtime-end","worker-hooks-end","worker-tail-enter","worker-tail-end","worker-result-build-enter","worker-result-build-end","worker-response-send","worker-response-error","worker-stream-send","worker-ack-done","worker-ack-error","worker-native-drain-enter","worker-native-drain-end","worker-final-tail-enter","worker-final-tail-end"]);
 const ocFirsttextWorkerCallbacks = new Set(['onAgentEvent','onPartialReply','onReasoningStream','onReasoningEnd','onToolStart','onToolResult','onBlockReply','onAssistantMessageStart','onAssistantMessageEnd','onAgentRunStart','onRunProgress','onAttemptDeadlineChanged','onCompactionStart','onCompactionEnd','onPlanUpdate','onApprovalEvent','onPatchSummary']);
@@ -24,7 +26,7 @@ function ocFirsttextWorkerMark(stage, runId, fields = {}) {
     if (Number.isSafeInteger(fields.workerPid) && fields.workerPid > 0) row.workerPid = fields.workerPid;
     if (Number.isSafeInteger(fields.slot) && fields.slot >= 0) row.slot = fields.slot;
     // row contains only validated timing/identity fields; no prompt, tool args or credentials.
-    process.stderr.write('[firsttext-worker-phases] ' + JSON.stringify(row) + '\n');
+    ocFirsttextMetricConsole.error('[firsttext-worker-phases] ' + JSON.stringify(row));
   } catch { /* Observation must not alter runtime control flow. */ }
 }
 

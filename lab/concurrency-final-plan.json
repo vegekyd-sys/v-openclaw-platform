@@ -1,0 +1,25 @@
+{
+  "baseRelease": "concurrency-fix-v2",
+  "files": [
+    {
+      "source": "lab/release-files/production-worker-index.mjs",
+      "target": "production-worker/index.mjs",
+      "before": "9a90b0452f632383cfe3f030ff6050db7d819bdb7e2b6096ce9b8692f2a44c25"
+    },
+    {
+      "source": "lab/release-files/production-worker-worker-pool.mjs",
+      "target": "production-worker/worker-pool.mjs",
+      "before": "9ec819d09dc2c8fa51c6ddec02e32cdfdeb41fd22e85eee64538e55afb3206e9"
+    },
+    {
+      "source": "lab/release-files/production-worker-worker.mjs",
+      "target": "production-worker/worker.mjs",
+      "before": "8fef0ae1041bd2436b39471bea21fe88b45bce1ae74c64034bd8345a85ea7434"
+    },
+    {
+      "source": "lab/release-files/chat-send-handler-DBjXcn_1.js",
+      "target": "openclaw/dist/chat-send-handler-DBjXcn_1.js",
+      "before": "40318311ba932d12cfdff624b408397b3e49556b340464ad24608a2725d10413"
+    }
+  ]
+}
