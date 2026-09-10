@@ -1,0 +1,17 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
+const target = 'openclaw/dist/sqlite-store-CH-caj1l.js';
+const result = JSON.parse(execFileSync(process.execPath, ['/Users/tianyicai/vlab-dev/lab/vlab.mjs', 'read-code', '--target', target], {encoding: 'utf8', maxBuffer: 4 * 1024 ** 2, timeout: 120000}));
+assert.equal(result.current.release, 'concurrency-verifier-resource-v1');
+const source = Buffer.from(result.content, 'base64').toString();
+assert.equal(createHash('sha256').update(source).digest('hex'), result.sha256);
+const original = '\tasync lookup(key) {\n\t\tconst row = this.db.prepare("SELECT * FROM workboard_cards WHERE id = ?").get(key);\n\t\treturn row ? {\n\t\t\tversion: 1,\n\t\t\tcard: readCard(this.db, row)\n\t\t} : void 0;\n\t}';
+assert.equal(source.split(original).length, 2);
+const replacement = original.replace('\tasync lookup(key) {\n', '\tasync lookup(key) {\n\t\treturn lookupWorkboardSnapshot(this.db, key, () => {\n').replace('\n\t}', '\n\t\t});\n\t}');
+const output = 'import {lookupWorkboardSnapshot} from "./workboard-lookup-cache.mjs";\n' + source.replace(original, replacement);
+const dest = 'lab/release-files/sqlite-store-CH-caj1l.js';
+fs.writeFileSync(new URL('./release-files/sqlite-store-CH-caj1l.js', import.meta.url), output);
+fs.writeFileSync(new URL('./workboard-lookup-cache-plan.json', import.meta.url), JSON.stringify({baseRelease: result.current.release, files: [{source: dest, target, before: result.sha256}, {source: 'lab/release-files/workboard-lookup-cache.mjs', target: 'openclaw/dist/workboard-lookup-cache.mjs', before: null}]}, null, 2) + '\n');
+console.log(JSON.stringify({before: result.sha256, after: createHash('sha256').update(output).digest('hex')}));
