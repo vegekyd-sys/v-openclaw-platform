@@ -1,73 +1,86 @@
-# VLab: 一个任务，一个 worktree，一个运行实例
+# VLab：轻量 worktree → dev → 共享验收
 
-之前的冲突不是 Git 分支没分开，而是多个分支的脚本都指向同一个 24993 Gateway、可写 bundle、配置和状态。**worktree 只隔离源码，不隔离部署。**
+2026-09-10 用户确认的新默认流程。每个 agent 一个源码 worktree；共用一个共享 VLab 的配置、历史对话、Memory、浏览器与渠道。开发不再默认创建完整 Gateway 实例。旧私有实例只用于确需运行隔离的例外，参考 `labctl.mjs`，不能用其 stopped 状态推断目录可删除。
 
-## 简单流程
+## 固定入口
 
-1. 从确定的集成提交建立自己的 `codex/<任务>` 分支和独立 worktree。不要在其他任务的 worktree 开发。
-2. 提交代码，在自己的实例测试；实例绑定 owner（Codex thread ID 或明确负责人）、branch、完整 commit SHA。未提交代码不能作为验收候选。
-3. 通过后合到集成分支；获取唯一的 integration lease，再用共享 VLab 机器人验真实飞书链路。完成后明确交还 lease，不凭过期时间抢占。
-4. 最后按已有发布、备份、回滚流程上 V。个人实验不会自动部署生产。
-
-**个人实例不连接飞书/企微机器人、不跑 NightShift/cron。** 同一机器人凭证不是可并发共享的测试资源。渠道、夜班、浏览器等端到端测试仍在独占集成验收环境，或者另外申请完全独立的测试账号/浏览器。
-
-## 实例边界
-
-- 独立本机 Git worktree；服务器独立 Git checkout（Git bundle 输入，禁止 hardlink）。
-- 独立 Gateway、端口、随机 token、Linux 用户、HOME、STATE、Session、Memory、workspace、npm cache、Codex HOME。
-- OpenClaw、Worker、插件代码从只读、带 checksum 的稳定基线复制，**不共享可写 runtime**。修改 baseline 必须新建版本，不能原地更新。
-- 默认 Worker 1 × 2，main/subagent 上限各 2，cgroup CPU 100%、MemoryHigh 2 GiB / Max 3 GiB；最多同时开两个个人实例，保留数据盘至少 3 GiB。现有 VLab 大并发验收独占进行，不照搬生产 45 并发。
-- 服务使用 `ProtectSystem=strict`、自己的 `ReadWritePaths` 和独立 UID。普通实验进程不能改共享 Gateway 或其他实例；管理员 sudo 仍能绕过，所以运维也必须遵守入口规则。
-- 模型供应商额度不因进程隔离而独立。OAuth 登录单独配置，不复制整个认证库或 refresh token。可由管理员在服务器内为实验注入指定静态 API key，不进 Git、不输出。
-- 基础实例并非“全功能验收已通过”的声明；运行机制、渠道和迁移测试需在候选报告逐项记录。
-
-## 用法（服务器端）
-
-只通过 `/Users/tianyicai/v-upgrade-private/20260904/ssh-config` 的 `vlab91` 别名连接。`labctl.mjs` 固定检查 VLab hostname，不接受生产地址参数。
-
-**入口边界：这个 SSH 配置和 `vlab91` 别名在 Tianyi 本机，不在生产 V。生产 V 当前没有 `vlab` SSH 别名，本轮也没有给 V 新增到 VLab 的 SSH 凭证或登录权限。** 因此不能通知 V “直接运行 ssh vlab / labctl 即可”。目前由本机管理者连接 VLab 后执行 `sudo labctl`；若要让 V 自助创建实验，需另外建立明确授权、最小权限的访问入口，不能复制本机管理私钥过去。
+本机集成工作区 `/Users/tianyicai/vlab-dev`，分支 `dev`，共用 `/Users/tianyicai/v-openclaw-platform/.git`。任务可在 `/Users/tianyicai/v-worktrees/<task>` 或显式 `--path` 中开发。以下命令在 dev 或任一同仓库 worktree 中执行；也可以为每条命令加 `--repo /Users/tianyicai/vlab-dev`。
 
 ```sh
-# 本机：在任务自己的 worktree 中提交，打包精确分支
-git status --short
-git rev-parse HEAD
-git bundle create /tmp/my-experiment.bundle codex/my-experiment
-# 将 bundle 复制到 VLab 的 labs/control/；不要复制 .env/session/credentials
-
-# VLab：必须明确 name 和 owner；不存在“默认 VLab”写入
-sudo /opt/vlab/node-v22.23.1-linux-x64/bin/node \
-  /srv/vlab-production-mirror/labs/control/labctl.mjs create my-experiment \
-  --owner THREAD_ID --baseline v-production91-20260905 \
-  --bundle /srv/vlab-production-mirror/labs/control/my-experiment.bundle \
-  --branch codex/my-experiment --commit FULL_40_CHAR_SHA
-
-# 以下用 labctl 简写上面 sudo node 的完整入口
-labctl start my-experiment --owner THREAD_ID
-labctl status my-experiment --owner THREAD_ID
-labctl cli my-experiment --owner THREAD_ID -- gateway health --json
-labctl restart my-experiment --owner THREAD_ID
-labctl stop my-experiment --owner THREAD_ID
-labctl list
-labctl candidate my-experiment --owner THREAD_ID --commit FULL_40_CHAR_SHA
-
-labctl lease integration --owner THREAD_ID
-# 此处才允许操作共享 VLab，先检查活跃业务及其他验收；lease 不是强杀授权。
-labctl lease integration --owner THREAD_ID --release true
+node /Users/tianyicai/vlab-dev/lab/vlab.mjs status
+node /Users/tianyicai/vlab-dev/lab/vlab.mjs new --task my-fix --owner THREAD_ID
 ```
 
-`--provider-config PATH` 仅用于服务器端从明确的已有 VLab 配置提取 DeepSeek 静态 key，生成实例私有 `secrets.env`；不会复制原渠道、绑定、Session 或凭证库。默认不注入密钥。
+`new` 只检出源码、共用 Git 对象，不复制 runtime/state，不启动 Gateway，不创建可写 node_modules 链接。安装依赖可复用包管理器缓存，依赖变化保留任务独立安装目录。不要在其他任务工作区开发。
 
-服务器已安装 `/usr/local/bin/labctl`，使用 `sudo labctl ...` 即可。`candidate` 检查实例 source 的 HEAD 和干净工作树，再记录运行代码 hash；这个 hash 不能代替真实功能验收。
+## 使用共享设置和对话
 
-源码 checkout 在 `instances/<name>/source`，运行代码在同实例 `runtime/`。应用本任务补丁时必须指定该 runtime 路径，记录 patch commit；不要运行仍写死旧 generation/24993 的脚本。换候选推荐创建新实例名，旧实例可停止保留证据；目前无自动删除命令。
+```sh
+node lab/vlab.mjs rpc --method sessions.list --params '{"agentId":"makaron","limit":10,"includeLastMessage":false}'
+node lab/vlab.mjs rpc --method chat.history --params '{"agentId":"makaron","sessionKey":"EXACT_SESSION_KEY","limit":10}'
+node lab/vlab.mjs lease --owner THREAD_ID
+node lab/vlab.mjs test --owner THREAD_ID --task my-fix --message '执行这次专用验收。'
+# 返回 sessionKey/runId；继续同一测试对话可以传 --sessionKey
+node lab/vlab.mjs rpc --method agent.wait --params '{"runId":"RUN_ID","timeoutMs":1}'
+```
 
-## 集成与回滚
+请求经本机已配置的 `vlab91` SSH 入口在服务器调用 Gateway。密钥只在服务器进程中使用。status 返回脱敏配置摘要；现有对话可读取。`test` 使用专用 `vlab-dev-*` session、`deliver:false`，可连续测试上下文，不向飞书等外部渠道发消息。完整配置及所有工具仍由共享 VLab 加载；接口不会把凭据明文交给 agent。针对原业务会话的写入或渠道验收另按明确授权操作。
 
-- 接收者先 review feature commit，再在专用 integration worktree 合入；**不能把 checkout 后的未提交热改视为已合入**。
-- 精确记录 code SHA、基线 SHA、补丁列表、配置差异、验收证据；Gateway 健康不代替真实模型/工具/消息回传验收。
-- 失败实验只停自己的 unit，不重启共享 Gateway。切回此前已验收实例/发布包，不用 `git reset --hard` 清其他人的工作。
-- 旧 hardcoded mirror 脚本只属于集成操作，需要 lease；新功能开发禁止直接调用。lease 是协作防误操作锁，不是针对有 sudo 权限管理员的安全沙箱。
+调用共享 Gateway 执行的是已部署代码，不是当前 worktree 的未部署代码。合并前测试使用针对性回归与最小复现夹具。
 
-## 自检
+## 合并与打包
 
-`node --test lab/config.test.mjs` 验证随机凭证、路径、双层 runtime、owner、禁渠道与并发限制。实机还必须证明两个 Gateway 同时运行，A 重启不改变 B/共享 Gateway PID，A 用户无法读取/写入 B 状态，私有代码改动不改变基线和 B 的 hash。
+在任务 worktree 提交、测试后，记录精确 SHA，再进入集成：
+
+```sh
+node lab/vlab.mjs merge --branch codex/my-fix --commit FULL_TASK_SHA
+# 在 /Users/tianyicai/vlab-dev 跑本改动相关测试，记录合并后的 SHA
+node lab/vlab.mjs read-code --target openclaw/dist/example.mjs
+```
+
+`merge` 要求 dev 干净、任务分支精确匹配指定 SHA，并用本机 Git 操作锁串行合并。有冲突时保留现场，由集成者处理，禁止 reset/覆盖其他任务。dev 只是集成状态，不自动表示已经验收。
+
+为本次变更写一个本地 plan（不含凭据），例如：
+
+```json
+{
+  "baseRelease": "status 返回的 current.release",
+  "files": [{
+    "source": "lab/release-files/example.mjs",
+    "target": "openclaw/dist/example.mjs",
+    "before": "read-code 返回的 sha256；新文件为 null"
+  }]
+}
+```
+
+`source` 是 dev 中已提交的精确产物文件。修改打包后的 OpenClaw 时，先在独立目录运行补丁脚本，将最终修改文件纳入提交；不要在共享 runtime 直接跑旧 patch 脚本。当前入口支持已有目录内的新增/替换代码文件；配置、依赖安装、删除文件、数据库迁移和大版本升级不走这个代码覆盖入口。
+
+```sh
+node lab/vlab.mjs package --id my-fix-v1 --commit FULL_TESTED_DEV_SHA --owner THREAD_ID --plan /absolute/plan.json
+node lab/vlab.mjs stage --artifact /absolute/artifact.json
+node lab/vlab.mjs deploy --id my-fix-v1 --owner THREAD_ID
+```
+
+发布必须基于当前 release。服务代码全量 fingerprint、配置 hash、目标文件原 hash 都需匹配；有外部热改就拒绝，先核实并纳入新的受控基线。产物 ID 不复用。部署会请求 Gateway suspend/drain，等无活跃任务再停止、逐文件原子替换并启动；忙时有界退出并恢复接入，不强杀业务。配置、会话数据库、浏览器与 workspace 不随代码替换。不要在 A 验收时部署 B。
+
+## 验收、回退、生产
+
+```sh
+node lab/vlab.mjs rollback --id my-fix-v1 --owner THREAD_ID
+node lab/vlab.mjs accept --id my-fix-v1 --owner THREAD_ID --artifactSha EXACT_ARTIFACT_SHA --evidence '验收报告路径及实际模型、工具、连续对话结果'
+node lab/vlab.mjs lease --owner THREAD_ID --release true
+```
+
+`deploy` 只报告部署与 Gateway readiness；`accept` 必须引用真实功能证据，不能以健康检查代替。回滚只恢复本次代码，保留新增对话。产物、回滚前文件和 receipts 在服务器 `labs/shared-workflow/`，不进入 Git。
+
+服务启动失败或进程中断时保留 `pending.json`，自动阻止后续发布。恢复者先核对 manifest、当前文件是否分别匹配 before/after 及服务活跃业务，再按保存的文件恢复；不能盲删 journal 或强行重试。普通回滚仅支持当前 release，配置变化需先明确协调恢复。
+
+VLab 验收后按生产授权推广同一精确代码产物；V 的配置、数据独立保留，连接只走 Tailscale。本工具固定为 VLab，不提供生产地址或隐式生产部署。
+
+## 基线与限制
+
+初始基线从已更新的共享 VLab 导入代码归档，保存 checksum；它包括历史热补丁，因此标明 imported live artifact，不能声称全部由 Git 上游源码重建。后续每个发布绑定该二进制基线、dev SHA 和精确变更。基线归档不包含在线 state，也排除 `.env`、`.npmrc`、SQLite、JSONL。
+
+这期代码覆盖模式保留既有服务路径，减少迁移影响；不是切换完整目录的 release symlink，也不支持数据库 schema 回滚。当前范围外的依赖、大版本、配置或迁移变更需要单独方案与相应验收。
+
+验证入口：`node --test lab/shared/files.test.mjs lab/config.test.mjs`。实机验收记录见 `docs/vlab-shared-workflow-acceptance-20260910.md`。
