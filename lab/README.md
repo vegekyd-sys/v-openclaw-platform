@@ -2,6 +2,8 @@
 
 2026-09-10 用户确认的新默认流程。每个 agent 一个源码 worktree；共用一个共享 VLab 的配置、历史对话、Memory、浏览器与渠道。开发不再默认创建完整 Gateway 实例。旧私有实例只用于确需运行隔离的例外，参考 `labctl.mjs`，不能用其 stopped 状态推断目录可删除。
 
+首次接手请先读 [给其他 agent 的操作入口](AGENT-QUICKSTART.md)。其中区分源码开发、共享验收占用与成功/失败两条收尾路径。
+
 ## 固定入口
 
 本机集成工作区 `/Users/tianyicai/vlab-dev`，分支 `dev`，共用 `/Users/tianyicai/v-openclaw-platform/.git`。任务可在 `/Users/tianyicai/v-worktrees/<task>` 或显式 `--path` 中开发。以下命令在 dev 或任一同仓库 worktree 中执行；也可以为每条命令加 `--repo /Users/tianyicai/vlab-dev`。
@@ -78,9 +80,21 @@ node lab/vlab.mjs deploy --id my-fix-v1 --owner THREAD_ID
 
 ## 验收、回退、生产
 
+验收通过时：
+
+```sh
+node lab/vlab.mjs accept --id my-fix-v1 --owner THREAD_ID --artifactSha EXACT_ARTIFACT_SHA --evidence '验收报告路径及实际模型、工具、连续对话结果'
+```
+
+失败需回退时执行下面的 rollback；不要回滚后再接受已经不是 current 的产物：
+
 ```sh
 node lab/vlab.mjs rollback --id my-fix-v1 --owner THREAD_ID
-node lab/vlab.mjs accept --id my-fix-v1 --owner THREAD_ID --artifactSha EXACT_ARTIFACT_SHA --evidence '验收报告路径及实际模型、工具、连续对话结果'
+```
+
+完成验收或回退后释放占用：
+
+```sh
 node lab/vlab.mjs lease --owner THREAD_ID --release true
 ```
 
