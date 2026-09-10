@@ -1,0 +1,20 @@
+{
+  "baseRelease": "three-fixes-20260910-v2",
+  "files": [
+    {
+      "source": "experiments/agent-worker-isolation-v1/native-module-resolution-cache.mjs",
+      "target": "production-worker/native-module-resolution-cache.mjs",
+      "before": null
+    },
+    {
+      "source": "lab/release-files/production-worker-worker.mjs",
+      "target": "production-worker/worker.mjs",
+      "before": "4ca913d1dcffc8aac28cb02fa9e446c5f61456af1bbbab292c5eb4914cfdcc80"
+    },
+    {
+      "source": "lab/release-files/session-accessor.sqlite-transcript-state-Cz9g7S9v.js",
+      "target": "openclaw/dist/session-accessor.sqlite-transcript-state-Cz9g7S9v.js",
+      "before": "686ae2059ab36a85f9c93a9de9fdc8c75212b5fc978ebcb780c6abca1bd595e5"
+    }
+  ]
+}

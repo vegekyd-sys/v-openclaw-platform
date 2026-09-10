@@ -31,6 +31,7 @@ function ocFirsttextWorkerMark(stage, runId, fields = {}) {
 }
 
 import { performance } from "node:perf_hooks";
+import { installNativeModuleResolutionCache } from "./native-module-resolution-cache.mjs";
 import { initializeWorkerNativeHooks } from "./native-hook-runtime.mjs";
 import { pathToFileURL } from "node:url";
 import { buildHarnessAttemptResult } from "./harness-result.mjs";
@@ -474,6 +475,7 @@ function configuredAgentRuntimePath() {
 
 async function loadAgentRuntime() {
   if (!agentRuntimePromise) {
+    installNativeModuleResolutionCache({agentRuntimePath: configuredAgentRuntimePath()});
     agentRuntimePromise = import(
       pathToFileURL(configuredAgentRuntimePath()).href
     );
