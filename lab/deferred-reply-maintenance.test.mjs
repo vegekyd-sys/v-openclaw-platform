@@ -59,22 +59,39 @@ test('retry callback remains once and retired entry/reset options survive', asyn
 });
 const entryModule = read('./release-files/session-accessor.sqlite-entry-BlklNPKQ.js');
 const queueSource = entryModule.slice(entryModule.indexOf('const maintenanceByStore ='), entryModule.indexOf('//#endregion', entryModule.indexOf('const maintenanceByStore =')));
-function queueHarness() {
-  const scheduled = [], sweeps = [], warnings = [], database = {db: {isOpen: true}}; let finalize = async () => {};
+function queueHarness({archives = false, permit = 'ok'} = {}) {
+  const scheduled = [], sweeps = [], warnings = [], archiveCommits = [], readSnapshots = [], writeTransactions = [], database = {db: {isOpen: true}}; let finalize = async () => {}, beforeArchiveRetry = () => {};
   const deps = {resolveOpenClawAgentSqlitePath: () => '/fixture/db', toDatabaseOptions: x => x, getOpenClawAgentDatabaseIfOpen: () => database,
     isIncognitoOpenClawAgentSqlitePath: () => false,
-    acquireAutomaticMaintenancePermit: () => ({finish() {}}), tryAcquireExclusiveSqliteCoordinator() {},
-    runSqliteDeferredTransactionSync: (_db, operation) => operation(),
+    acquireAutomaticMaintenancePermit: () => {if (permit === 'busy') return null; if (permit === 'error') throw new Error('fixture coordinator failed'); return {finish() {}};}, tryAcquireExclusiveSqliteCoordinator() {},
+    runSqliteDeferredTransactionSync: (_db, operation) => {readSnapshots.push(true); return operation();},
+    withSqliteBeginContentionRetry: async ({run, operation}) => {beforeArchiveRetry(); return run(operation);},
+    commitPlannedSessionMaintenanceArchives: (_db, plan) => {archiveCommits.push(plan); return plan;},
     setImmediate: fn => scheduled.push(fn), process: {env: {}}, db91WaitAutomaticMaintenance: async () => {},
-    runExclusiveSqliteSessionWrite: async (_scope, fn) => fn(), runOpenClawAgentWriteTransaction: fn => fn(database),
-    applySessionEntryMaintenance: (_db, p) => {sweeps.push(p); return {};},
+    runExclusiveSqliteSessionWrite: async (_scope, fn) => fn(), runOpenClawAgentWriteTransaction: fn => {writeTransactions.push(true); return fn(database);},
+    applySessionEntryMaintenance: (_db, p) => {sweeps.push(p); return archives ? {plannedEntryArchives: [{}]} : {};},
     finalizeSessionEntryMaintenancePlansAfterWriterReleaseBestEffort: async () => finalize(), getChildLogger: () => ({warn: (...args) => warnings.push(args)})};
   const api = Function(...Object.keys(deps), queueSource + ';return {kick: kickSessionEntryMaintenanceAfterWrite, owners: maintenanceByStore};')(...Object.values(deps));
-  return {...api, database, sweeps, scheduled, warnings, setFinalize: fn => {finalize = fn;}, flush: async () => {scheduled.shift()(); for (let i = 0; i < 20; i++) await Promise.resolve();}};
+  return {...api, database, sweeps, scheduled, warnings, archiveCommits, readSnapshots, writeTransactions, setBeforeArchiveRetry: fn => {beforeArchiveRetry = fn;}, setFinalize: fn => {finalize = fn;}, flush: async () => {scheduled.shift()(); for (let i = 0; i < 20; i++) await Promise.resolve();}};
 }
 test('native queue coalesces 15 writes and protects all active keys', async () => {
   const h = queueHarness(); for (let i = 0; i < 15; i++) h.kick({scope: {}, activeSessionKey: 'key' + i});
   assert.equal(h.scheduled.length, 1); await h.flush(); assert.equal(h.sweeps.length, 1); assert.equal(h.sweeps[0].activeSessionKeys.length, 15); assert.equal(h.owners.size, 0);
+  assert.equal(h.readSnapshots.length, 1); assert.equal(h.writeTransactions.length, 0); assert.equal(h.sweeps[0].planOnly, true);
+});
+test('automatic archive write uses a short native transaction after read-only planning', async () => {
+  const h = queueHarness({archives: true}); h.kick({scope: {}, activeSessionKey: 'first'}); await h.flush();
+  assert.equal(h.readSnapshots.length, 1); assert.equal(h.writeTransactions.length, 1); assert.equal(h.archiveCommits.length, 1);
+});
+test('retired owner cannot commit an archive after BEGIN contention yields', async () => {
+  const h = queueHarness({archives: true});
+  h.setBeforeArchiveRetry(() => h.owners.set('/fixture/db', {replacementOwner: true}));
+  h.kick({scope: {}, activeSessionKey: 'first'}); await h.flush();
+  assert.equal(h.archiveCommits.length, 0); assert.equal(h.owners.get('/fixture/db').replacementOwner, true);
+});
+for (const permit of ['busy', 'error']) test('automatic coordinator ' + permit + ' neither sweeps nor rejects the caller', async () => {
+  const h = queueHarness({permit}); h.kick({scope: {}, activeSessionKey: 'first'}); await h.flush();
+  assert.equal(h.sweeps.length, 0); assert.equal(h.owners.size, 0); assert.equal(h.warnings.length, permit === 'error' ? 1 : 0);
 });
 test('arrivals during maintenance finalization are not lost', async () => {
   const h = queueHarness(); let once = false; h.setFinalize(async () => {if (!once) {once = true; h.kick({scope: {}, activeSessionKey: 'later'});}});

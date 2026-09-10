@@ -82,7 +82,7 @@ entry = once(entry, `				return runOpenClawAgentWriteTransaction((database) => a
 				if (!planned.plannedEntryArchives?.length) return planned;
 				return withSqliteBeginContentionRetry({database: owner.database.db,
 					run: operation => runOpenClawAgentWriteTransaction(operation, toDatabaseOptions(owner.scope)),
-					operation: database => commitPlannedSessionMaintenanceArchives(database, planned)});`);
+					operation: database => isCurrent() ? commitPlannedSessionMaintenanceArchives(database, planned) : void 0});`);
 entry = once(entry, '\t\t\tawait finalizeSessionEntryMaintenancePlansAfterWriterReleaseBestEffort(owner.scope, [plan], { isCurrent });', '\t\t\tawait finalizeSessionEntryMaintenancePlansAfterWriterReleaseBestEffort(owner.scope, [plan], { isCurrent });\n\t\t\tcompleted = true;');
 entry = once(entry, '\t\t}\n\t\tif (maintenanceByStore.get(databasePath) !== owner) return;', '\t\t} finally {\n\t\t\tpermit.finish(completed);\n\t\t}\n\t\tif (maintenanceByStore.get(databasePath) !== owner) return;');
 fs.writeFileSync(path.join(root, 'lab/release-files/' + entryName), entry);
