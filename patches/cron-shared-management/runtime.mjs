@@ -17,7 +17,7 @@ export function normalizeCronManagementPrincipal(value) {
 
 /** Native tool construction / original Gateway admission only, never tool args. */
 export function cronManagementPrincipalFromTurn(options = {}) {
-  if (options.senderIsOwner !== true || options.sandboxed || options.gatewayCallerLocal ||
+  if (options.sandboxed || options.gatewayCallerLocal ||
       options.gatewayCallerScheduled || options.cronSelfRemoveOnlyJobId ||
       options.selfRemoveOnlyJobId || options.trigger === 'cron' || options.trigger === 'heartbeat') return undefined;
   const sessionKey = options.runSessionKey ?? options.agentSessionKey ?? options.sessionKey;
@@ -31,21 +31,21 @@ export function cronManagementPrincipalFromTurn(options = {}) {
 }
 
 // An explicit operator-owned policy makes the managed agent namespace unambiguous.
-// Unconfigured installations retain upstream behavior. Empty owners revokes access.
+// Every trusted channel user admitted by existing ingress policy can manage shared jobs.
+// No person-level owner list. Unconfigured agents retain upstream behavior.
 export function readCronManagementPolicy() {
-  const file = process.env.OPENCLAW_CRON_OWNER_POLICY;
+  const file = process.env.OPENCLAW_CRON_SHARED_POLICY;
   if (!file) return undefined;
-  if (!path.isAbsolute(file)) throw new TypeError('Cron owner policy must use an absolute path');
-  if (statSync(file).size > 65536) throw new TypeError('Cron owner policy is too large');
+  if (!path.isAbsolute(file)) throw new TypeError('Shared Cron policy must use an absolute path');
+  if (statSync(file).size > 65536) throw new TypeError('Shared Cron policy is too large');
   const policy = JSON.parse(readFileSync(file, 'utf8'));
   if (policy?.version !== 1 || !policy.agents || Array.isArray(policy.agents) ||
       typeof policy.agents !== 'object' || Object.keys(policy.agents).length > 64) {
-    throw new TypeError('Invalid Cron owner policy');
+    throw new TypeError('Invalid Shared Cron policy');
   }
   for (const [agentId, entry] of Object.entries(policy.agents)) {
-    if (!namespace(agentId) || !Array.isArray(entry?.owners) || entry.owners.length > 32 ||
-        entry.owners.some((p) => !normalizeCronManagementPrincipal(p))) {
-      throw new TypeError('Invalid Cron owner namespace or principal');
+    if (!namespace(agentId) || entry?.mode !== 'shared' || typeof entry.enabled !== 'boolean') {
+      throw new TypeError('Invalid Shared Cron namespace or principal');
     }
   }
   return policy;
@@ -59,10 +59,9 @@ export function cronManagementNamespaceDecision(scope) {
   const principal = normalizeCronManagementPrincipal(scope.cronManagementPrincipal);
   if (!principal || scope.accountId !== principal.accountId ||
       scope.cronManagementChannel !== principal.channel || !scope.sessionKey) return false;
-  const authorized = entry.owners.some((p) => p.channel === principal.channel &&
-    p.accountId === principal.accountId && p.senderId === principal.senderId);
+  const authorized = entry.enabled;
   if (authorized) {
-    // Membership is checked again during the locked commit, not cached at admission.
+    // Shared access and active run authority are checked again during locked commit.
     requestStorage.getStore()?.assertActive();
   }
   return authorized;
@@ -79,9 +78,7 @@ export function cronManagementJobDecision({ job, callerScope, defaultAgentId }) 
   const agentId = job.agentId || agentFromSession(job.sessionKey) || defaultAgentId;
   const ownerAgentId = job.owner?.agentId || agentFromSession(job.owner?.sessionKey);
   if (agentId !== callerScope.agentId || (ownerAgentId && ownerAgentId !== callerScope.agentId)) return false;
-  if (job.owner?.accountId && job.owner.accountId !== callerScope.accountId) return false;
-  const sourceChannel = /^agent:[^:]+:([^:]+):(group|direct):/.exec(job.owner?.sessionKey ?? '')?.[1];
-  if (sourceChannel && sourceChannel !== callerScope.cronManagementPrincipal.channel) return false;
+  // Stored account/channel describe execution origin, not employee management access.
   // System monitors and operator shell jobs are not agent-managed Cron jobs.
   return ['agentTurn', 'script', 'systemEvent'].includes(job.payload?.kind) &&
     !['on-exit', 'stream'].includes(job.schedule?.kind);
@@ -99,7 +96,7 @@ export function assertCronManagementCommit() {
   // Preserve the upstream narrow, signed current-job self-remove capability.
   if (request.method === 'cron.remove' && request.callerScope.currentJobId === request.jobId) return;
   if (cronManagementNamespaceDecision(request.callerScope) !== true) {
-    throw new TypeError('Cron owner management authorization was revoked');
+    throw new TypeError('Shared Cron management authorization was revoked');
   }
 }
 
@@ -112,7 +109,7 @@ export function prepareCronManagementPolicy(params) {
   const original = request.getJob();
   if (!original || cronManagementJobDecision({ job: original, callerScope: request.callerScope,
       defaultAgentId: request.defaultAgentId }) !== true) {
-    throw new TypeError('Cron owner authority changed before update');
+    throw new TypeError('Shared Cron authority changed before update');
   }
   if (!params.explicitlyMutatesToolsAllow && params.previouslyUsedToolRuntime) return params;
   const previousCap = original.payload?.toolsAllow;
@@ -121,7 +118,7 @@ export function prepareCronManagementPolicy(params) {
   // tool cap, account policy, sandbox and host exec checks remain in force too.
   if (Array.isArray(previousCap) && (!Array.isArray(nextCap) ||
       nextCap.some((tool) => !previousCap.includes(tool)))) {
-    throw new TypeError('Cron owner update cannot expand the existing toolsAllow cap; explicit operator reauthorization required');
+    throw new TypeError('Shared Cron update cannot expand the existing toolsAllow cap; explicit operator reauthorization required');
   }
   if (!['agentTurn', 'script'].includes(params.job.payload?.kind) && !params.job.trigger) return params;
   if (nextCap === undefined) return params;

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { applyPatch, rollbackPatch, runtimeName } from '../../scripts/patch-openclaw91-cron-owner-management.mjs';
+import { applyPatch, rollbackPatch, runtimeName } from '../../scripts/patch-openclaw91-cron-shared-management.mjs';
 
 // Supply a code-only 2026.9.1 fixture containing the seven targeted dist modules.
 const fixture = process.env.CRON_PATCH_BASELINE;

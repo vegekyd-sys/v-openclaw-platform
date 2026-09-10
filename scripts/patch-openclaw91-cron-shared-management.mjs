@@ -4,14 +4,14 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-export const marker = 'versa-cron-owner-management-v1';
+export const marker = 'versa-cron-shared-management-v1';
 export const runtimeName = `${marker}.mjs`;
 const hash = (value) => createHash('sha256').update(value).digest('hex');
-const runtimeSource = fileURLToPath(new URL('../patches/cron-owner-management/runtime.mjs', import.meta.url));
+const runtimeSource = fileURLToPath(new URL('../patches/cron-shared-management/runtime.mjs', import.meta.url));
 
 function once(source, anchor, replacement) {
   const count = source.split(anchor).length - 1;
-  if (count !== 1) throw new Error(`Cron owner patch anchor mismatch (${count}): ${anchor.slice(0, 110)}`);
+  if (count !== 1) throw new Error(`Shared Cron patch anchor mismatch (${count}): ${anchor.slice(0, 110)}`);
   return source.replace(anchor, replacement);
 }
 function imported(source, names) {
@@ -92,7 +92,7 @@ for (const [method, originalHandler] of Object.entries(cronHandlers)) {
     const assertActive = () => {
       if (typeof request.context.validateAgentRuntimeApprovalAuthority !== 'function' ||
           !request.context.validateAgentRuntimeApprovalAuthority(request.client.internal.agentRuntimeIdentity)) {
-        throw new TypeError('Cron owner management requires active authenticated run authority');
+        throw new TypeError('Shared Cron management requires active authenticated run authority');
       }
     };
     assertActive();
@@ -122,7 +122,7 @@ const specs = [
 
 export async function buildPatch(core) {
   if (JSON.parse(await fs.readFile(path.join(core, 'package.json'), 'utf8')).version !== '2026.9.1') {
-    throw new Error('Cron owner patch requires exact OpenClaw 2026.9.1');
+    throw new Error('Shared Cron patch requires exact OpenClaw 2026.9.1');
   }
   const dist = path.join(core, 'dist'), names = await fs.readdir(dist), changes = [];
   for (const [pattern, anchor, transform] of specs) {
@@ -142,7 +142,7 @@ export async function buildPatch(core) {
     if (e.code !== 'ENOENT') throw e;
     return null;
   });
-  if (prior !== null && prior !== runtime) throw new Error('Different Cron owner runtime already installed');
+  if (prior !== null && prior !== runtime) throw new Error('Different Shared Cron runtime already installed');
   changes.push({ name: runtimeName, before: prior, after: runtime });
   return changes;
 }
@@ -188,7 +188,7 @@ export async function rollbackPatch(core) {
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   const [core, mode] = process.argv.slice(2);
   if (!core || !path.isAbsolute(core) || !['--check', '--apply', '--rollback'].includes(mode)) {
-    console.error('Usage: node patch-openclaw91-cron-owner-management.mjs /absolute/core --check|--apply|--rollback');
+    console.error('Usage: node patch-openclaw91-cron-shared-management.mjs /absolute/core --check|--apply|--rollback');
     process.exitCode = 1;
   } else {
     try {

@@ -15,14 +15,14 @@ await fs.mkdir(state); // Refuse reuse of an existing state directory.
 process.env.HOME = state;
 process.env.OPENCLAW_STATE_DIR = path.join(state, 'state');
 process.env.OPENCLAW_CONFIG_PATH = path.join(state, 'openclaw.json');
-process.env.OPENCLAW_CRON_OWNER_POLICY = path.join(state, 'cron-owner-policy.json');
+process.env.OPENCLAW_CRON_SHARED_POLICY = path.join(state, 'cron-shared-policy.json');
 process.env.OPENCLAW_SKIP_CRON = '1';
 const cfg = { agents: { entries: { makaron: { workspace: path.join(state, 'workspace') } } },
   cron: { enabled: false }, plugins: { enabled: false }, tools: { sessions: { visibility: 'agent' } } };
 await fs.writeFile(process.env.OPENCLAW_CONFIG_PATH, JSON.stringify(cfg));
-const principal = { version: 1, channel: 'feishu', accountId: 'default', senderId: 'test-owner' };
-const writePolicy = async (owners = [principal]) => await fs.writeFile(process.env.OPENCLAW_CRON_OWNER_POLICY,
-  JSON.stringify({ version: 1, agents: { makaron: { owners } } }));
+const principal = { version: 1, channel: 'feishu', accountId: 'default', senderId: 'employee-a' };
+const writePolicy = async (enabled = true) => await fs.writeFile(process.env.OPENCLAW_CRON_SHARED_POLICY,
+  JSON.stringify({ version: 1, agents: { makaron: { mode: 'shared', enabled } } }));
 await writePolicy();
 const dist = path.join(core, 'dist'), names = await fs.readdir(dist);
 async function moduleFor(pattern, anchor) {
@@ -40,6 +40,7 @@ const { a: withCaller, r: getCaller } = await moduleFor(/^gateway-caller-context
 const { r: mint, i: verify, t: makeValidator } = await moduleFor(/^agent-runtime-identity-token-[\w-]+\.js$/, 'function prepareAgentRuntimeIdentityTokenPayload(');
 const { i: claim, y: release } = await moduleFor(/^agent-run-registry-[\w-]+\.js$/, 'function claimAgentRunDelegatedAuthority(');
 const { m: saveStore } = await moduleFor(/^store-[\w-]+\.js$/, 'function saveCronJobsStore(');
+const fromTurn = mode === 'fixed' ? (await import(pathToFileURL(path.join(dist, 'versa-cron-shared-management-v1.mjs')).href)).cronManagementPrincipalFromTurn : () => undefined;
 const storePath = path.join(state, 'cron', 'jobs.json');
 const legacyId = randomUUID();
 const now = Date.now();
@@ -71,14 +72,15 @@ async function gateway(method, options, args) {
   if (!response.ok) throw new Error(response.error?.message ?? JSON.stringify(response.error));
   return response.result;
 }
-async function turn(group, action, jobId, patch, sender = 'test-owner') {
+async function turn(group, action, jobId, patch, sender = `employee-${group.toLowerCase()}`) {
   const sessionKey = `agent:makaron:feishu:group:${group}`;
   const operationalRunInstance = { instanceId: randomUUID(), runId: randomUUID() };
   const authority = claim(operationalRunInstance);
   try {
     const tool = createCronTool({ agentSessionKey: sessionKey, agentId: 'makaron', agentAccountId: 'default',
       config: cfg, creatorToolAllowlist: ['exec', 'process', 'message'],
-      cronManagementPrincipal: { ...principal, senderId: sender } }, { callGatewayTool: gateway });
+      cronManagementPrincipal: fromTurn({ senderIsOwner: false, requesterSenderId: sender,
+        agentChannel: 'feishu', agentAccountId: 'default', agentSessionKey: sessionKey }) }, { callGatewayTool: gateway });
     const args = { action, ...(jobId ? { jobId } : {}), ...(patch ? { job: patch } : {}), includeDisabled: true };
     return await withCaller({ agentId: 'makaron', sessionKey, operationalRunInstance,
       turnSourceChannel: 'feishu', turnSourceAccountId: 'default' }, () => tool.execute(randomUUID(), args));
@@ -109,7 +111,7 @@ try {
   const id = added.id ?? added.job?.id; assert.ok(id);
   if (mode === 'baseline') {
     await assert.rejects(turn('B', 'update', id, { name: 'edited in B' }), /unknown cron job|not found/i);
-    pass('baseline reproduces same-owner cross-group denial');
+    pass('baseline reproduces shared-job cross-group denial');
   } else {
     await turn('B', 'update', id, { name: 'edited in B', schedule: { kind: 'every', everyMs: 7200000 } });
     await turn('C', 'update', id, { enabled: false, payload: { kind: 'agentTurn', message: 'edited in C', toolsAllow: ['exec'] } });
@@ -118,36 +120,36 @@ try {
     assert.equal(persisted.schedule.everyMs, 7200000);
     assert.equal(persisted.owner.sessionKey, 'agent:makaron:feishu:group:A');
     assert.equal(persisted.scheduledToolPolicy.ownerSessionKey, persisted.owner.sessionKey);
-    pass('A creates, B reschedules, C edits/pauses; original execution owner retained');
+    pass('employee A creates, employee B reschedules, employee C edits/pauses across groups; execution origin retained');
     const listing = resultOf(await turn('C', 'list'));
     assert.ok(listing.jobs.some((j) => j.id === id));
-    pass('owner lists original task from another group');
-    for (const group of ['A', 'B', 'C']) await assert.rejects(turn(group, 'update', id, { name: 'intruder' }, 'other-user'));
+    pass('another ordinary employee lists the shared task across groups');
+    for (const group of ['A', 'B', 'C']) await assert.rejects(turn(group, 'update', id, { name: 'intruder' }, ''));
     assert.equal((await cron.readJob(id)).name, 'edited in B');
-    await assert.rejects(turn('A', 'remove', id, undefined, 'other-user'));
-    const otherList = resultOf(await turn('A', 'list', undefined, undefined, 'other-user'));
+    await assert.rejects(turn('A', 'remove', id, undefined, ''));
+    const otherList = resultOf(await turn('A', 'list', undefined, undefined, ''));
     assert.ok(!otherList.jobs.some((j) => j.id === id));
     await assert.rejects(turn('A', 'add', undefined, { name: 'intruder-created', agentId: 'makaron',
       enabled: false, schedule: { kind: 'every', everyMs: 3600000 }, sessionTarget: 'isolated', wakeMode: 'now',
-      payload: { kind: 'agentTurn', message: 'intruder', toolsAllow: ['exec'] }, delivery: { mode: 'none' } }, 'other-user'));
-    pass('other users cannot list, create, update or remove protected jobs even in original group');
+      payload: { kind: 'agentTurn', message: 'intruder', toolsAllow: ['exec'] }, delivery: { mode: 'none' } }, ''));
+    pass('missing authenticated sender cannot list, create, update or remove shared jobs');
     await assert.rejects(turn('C', 'update', id, { owner: { agentId: 'makaron' } }), /unexpected property 'owner'/);
     await assert.rejects(turn('C', 'update', id, { payload: { kind: 'agentTurn', toolsAllow: ['exec', 'message'] } }), /cannot expand/);
     pass('forged owner parameter and tool-cap expansion rejected');
-    await writePolicy([]);
+    await writePolicy(false);
     await assert.rejects(turn('C', 'update', id, { name: 'revoked' }));
     await writePolicy();
-    pass('revoked owner denied on subsequent request');
+    pass('disabled shared access denies subsequent request');
     const updateOriginal = cron.updateWithPrecondition.bind(cron);
     cron.updateWithPrecondition = async (...args) => {
-      await writePolicy([]);
+      await writePolicy(false);
       return await updateOriginal(...args);
     };
     await assert.rejects(turn('B', 'update', id, { name: 'raced revocation' }));
     cron.updateWithPrecondition = updateOriginal;
     await writePolicy();
     assert.equal((await cron.readJob(id)).name, 'edited in B');
-    pass('owner revocation between preflight and locked commit prevents mutation');
+    pass('disabling shared access between preflight and locked commit prevents mutation');
     assert.equal(validator(lastIdentity), false);
     await assert.rejects(handlers['cron.update']({ params: { id, patch: { name: 'stale replay' } },
       context, client: { internal: { agentRuntimeIdentity: lastIdentity } }, respond() {} }), /active authenticated/);
@@ -164,7 +166,7 @@ try {
     pass('fresh CronService reload confirms persisted data and denied mutations');
     await turn('B', 'remove', id);
     assert.equal(await cron.readJob(id), undefined);
-    pass('owner deletes own task from another group');
+    pass('employee B deletes employee A shared task from another group');
   }
   if (mode === 'fixed') {
     const { a: prepareAdmission } = await moduleFor(/^admitted-run-context-[\w-]+\.js$/, 'function prepareAgentRunAdmission(');
@@ -176,7 +178,7 @@ try {
     const host = createHost({ pluginId: 'test-worker', requiredNodeCommands: [], attempt: {
       config: cfg, agentId: 'makaron', agentAccountId: 'default',
       sessionKey: 'agent:makaron:feishu:group:B', sessionId: randomUUID(), runId,
-      senderId: principal.senderId, senderIsOwner: true, messageChannel: 'feishu',
+      senderId: principal.senderId, senderIsOwner: false, messageChannel: 'feishu',
       admittedRunContext, cwd: state, workspaceDir: state } });
     try {
       const token = await host.capabilities.vlabResolveGatewayIdentity({ method: 'cron.update', required: true,
@@ -187,10 +189,10 @@ try {
       const changed = JSON.parse(Buffer.from(payload, 'base64url'));
       changed.cronManagementPrincipal.senderId = 'forged';
       assert.equal(await verify(Buffer.from(JSON.stringify(changed)).toString('base64url') + '.' + signature), undefined);
-      pass('original Gateway host binds owner; Worker arguments and signed-token tampering cannot replace it');
+      pass('original Gateway host accepts non-admin employee; Worker cannot forge source identity');
       host.close();
       await assert.rejects(host.capabilities.vlabResolveGatewayIdentity({ method: 'cron.update', required: true }), /no longer active/);
-      pass('closed host capability cannot mint another owner token');
+      pass('closed host capability cannot mint another employee token');
     } finally { host.close(); admission.close(); }
   }
 } finally { cron.stop(); }

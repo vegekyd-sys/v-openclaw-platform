@@ -7,9 +7,9 @@ import {
   cronManagementPrincipalFromTurn, normalizeCronManagementPrincipal,
   cronManagementNamespaceDecision, cronManagementJobDecision, withCronManagementRequest,
   prepareCronManagementPolicy, assertCronManagementCommit,
-} from '../../patches/cron-owner-management/runtime.mjs';
+} from '../../patches/cron-shared-management/runtime.mjs';
 
-const principal = { version: 1, channel: 'feishu', accountId: 'default', senderId: 'owner-user' };
+const principal = { version: 1, channel: 'feishu', accountId: 'default', senderId: 'employee-a' };
 const scope = (group = 'A', overrides = {}) => ({ kind: 'agentTool', agentId: 'makaron',
   sessionKey: `agent:makaron:feishu:group:${group}`, accountId: 'default',
   cronManagementChannel: 'feishu', cronManagementPrincipal: principal, ...overrides });
@@ -19,43 +19,42 @@ const job = (overrides = {}) => ({ id: 'job-one', agentId: 'makaron', enabled: t
   owner: { agentId: 'makaron', sessionKey: scope('A').sessionKey, accountId: 'default' },
   ...overrides });
 
-test('owner policy and staged migration', async (t) => {
+test('shared policy and staged migration', async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cron-owner-unit-'));
-  const previousEnv = process.env.OPENCLAW_CRON_OWNER_POLICY;
+  const previousEnv = process.env.OPENCLAW_CRON_SHARED_POLICY;
   const file = path.join(root, 'policy.json');
-  process.env.OPENCLAW_CRON_OWNER_POLICY = file;
-  const writePolicy = (owners = [principal]) => fs.writeFileSync(file, JSON.stringify({ version: 1,
-    agents: { makaron: { owners } } }));
+  process.env.OPENCLAW_CRON_SHARED_POLICY = file;
+  const writePolicy = (enabled = true) => fs.writeFileSync(file, JSON.stringify({ version: 1,
+    agents: { makaron: { mode: 'shared', enabled } } }));
   writePolicy();
   t.after(() => {
-    if (previousEnv === undefined) delete process.env.OPENCLAW_CRON_OWNER_POLICY;
-    else process.env.OPENCLAW_CRON_OWNER_POLICY = previousEnv;
+    if (previousEnv === undefined) delete process.env.OPENCLAW_CRON_SHARED_POLICY;
+    else process.env.OPENCLAW_CRON_SHARED_POLICY = previousEnv;
     fs.rmSync(root, { recursive: true, force: true });
   });
-    await t.test('native owner turn supplies stable human identity, never group identity', () => {
-      assert.deepEqual(cronManagementPrincipalFromTurn({ senderIsOwner: true,
-        requesterSenderId: 'owner-user', agentChannel: 'feishu', agentAccountId: 'default',
+    await t.test('ordinary admitted employee supplies identity without administrator flag', () => {
+      assert.deepEqual(cronManagementPrincipalFromTurn({ senderIsOwner: false,
+        requesterSenderId: 'employee-a', agentChannel: 'feishu', agentAccountId: 'default',
         agentSessionKey: scope('B').sessionKey }), principal);
-      for (const extra of [{ senderIsOwner: false }, { senderIsOwner: undefined },
-        { requesterSenderId: undefined }, { sandboxed: true }, { gatewayCallerScheduled: true },
+      for (const extra of [{ requesterSenderId: undefined }, { sandboxed: true }, { gatewayCallerScheduled: true },
         { gatewayCallerLocal: true }, { trigger: 'cron' }, { agentSessionKey: 'agent:makaron:cron:x' }]) {
-        assert.equal(cronManagementPrincipalFromTurn({ senderIsOwner: true,
-          requesterSenderId: 'owner-user', agentChannel: 'feishu', agentAccountId: 'default',
+        assert.equal(cronManagementPrincipalFromTurn({ senderIsOwner: false,
+          requesterSenderId: 'employee-a', agentChannel: 'feishu', agentAccountId: 'default',
           agentSessionKey: scope('B').sessionKey, ...extra }), undefined);
       }
     });
-    await t.test('A/B/C groups allowed, another sender denied even in creator group', () => {
+    await t.test('different employees can manage shared jobs from A/B/C groups', () => {
       for (const group of ['A', 'B', 'C']) {
         assert.equal(cronManagementJobDecision({ job: job(), callerScope: scope(group) }), true);
         assert.equal(cronManagementJobDecision({ job: job(), callerScope: scope(group,
-          { cronManagementPrincipal: { ...principal, senderId: 'other-user' } }) }), false);
+          { cronManagementPrincipal: { ...principal, senderId: 'employee-b' } }) }), true);
       }
     });
     await t.test('account/channel mismatch, other agent, shell jobs and monitors denied', () => {
       assert.equal(cronManagementNamespaceDecision(scope('B', { accountId: 'other' })), false);
       assert.equal(cronManagementNamespaceDecision(scope('B', { cronManagementChannel: 'telegram' })), false);
       for (const extra of [{ agentId: 'other' }, { owner: { agentId: 'other' } },
-        { owner: { accountId: 'other' } }, { payload: { kind: 'command' } },
+        { payload: { kind: 'command' } },
         { payload: { kind: 'heartbeat' } }, { schedule: { kind: 'stream' } }]) {
         assert.equal(cronManagementJobDecision({ job: job(extra), callerScope: scope('B') }), false);
       }
@@ -94,7 +93,7 @@ test('owner policy and staged migration', async (t) => {
       const request = { method: 'cron.update', jobId: 'job-one', callerScope: scope('C'), protectedAtAdmission: true,
         assertActive() {}, getJob: () => job() };
       await withCronManagementRequest(request, () => {
-        assertCronManagementCommit(); writePolicy([]);
+        assertCronManagementCommit(); writePolicy(false);
         assert.throws(assertCronManagementCommit, /revoked/);
       });
       writePolicy();
@@ -105,9 +104,9 @@ test('owner policy and staged migration', async (t) => {
     await t.test('configured invalid/missing policy fails closed, unset policy keeps upstream behavior', () => {
       fs.writeFileSync(file, '{bad json'); assert.throws(() => cronManagementNamespaceDecision(scope()));
       fs.unlinkSync(file); assert.throws(() => cronManagementNamespaceDecision(scope()));
-      delete process.env.OPENCLAW_CRON_OWNER_POLICY;
+      delete process.env.OPENCLAW_CRON_SHARED_POLICY;
       assert.equal(cronManagementNamespaceDecision(scope()), undefined);
-      process.env.OPENCLAW_CRON_OWNER_POLICY = file; writePolicy();
-      assert.equal(normalizeCronManagementPrincipal({ ...principal, senderId: '\nowner-user' }), undefined);
+      process.env.OPENCLAW_CRON_SHARED_POLICY = file; writePolicy();
+      assert.equal(normalizeCronManagementPrincipal({ ...principal, senderId: '\nemployee-a' }), undefined);
     });
 });
