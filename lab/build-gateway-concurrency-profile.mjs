@@ -1,0 +1,20 @@
+// Mechanically patch a single read-code response; never read or copy live state/runtime trees.
+import fs from 'node:fs';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
+import {fileURLToPath} from 'node:url';
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const target = 'openclaw/dist/chat-send-handler-DBjXcn_1.js';
+const result = JSON.parse(execFileSync(process.execPath, ['/Users/tianyicai/vlab-dev/lab/vlab.mjs', 'read-code', '--target', target], {encoding: 'utf8', maxBuffer: 4 * 1024 ** 2, timeout: 120000}));
+const source = Buffer.from(result.content, 'base64').toString();
+assert.equal(createHash('sha256').update(source).digest('hex'), result.sha256);
+const anchor = 'async function handleChatSend(options, onAdmissionOwned, externalAuthorityAdmission) {\n\tawait handleChatSendWithOptions(options, onAdmissionOwned, externalAuthorityAdmission);\n}';
+assert.equal(source.split(anchor).length, 2, 'Native handler changed; review baseline');
+const output = 'import {withConcurrencyProfile} from "./gateway-concurrency-profiler.mjs";\n' + source.replace(anchor, 'async function handleChatSend(options, onAdmissionOwned, externalAuthorityAdmission) {\n\treturn await withConcurrencyProfile(options.params, () => handleChatSendWithOptions(options, onAdmissionOwned, externalAuthorityAdmission));\n}');
+const dest = 'lab/release-files/chat-send-handler-DBjXcn_1.js';
+fs.writeFileSync(path.join(root, dest), output);
+const plan = {baseRelease: result.current.release, files: [{source: dest, target, before: result.sha256}, {source: 'lab/release-files/gateway-concurrency-profiler.mjs', target: 'openclaw/dist/gateway-concurrency-profiler.mjs', before: null}]};
+fs.writeFileSync(path.join(root, 'lab/gateway-concurrency-profile-plan.json'), JSON.stringify(plan, null, 2) + '\n');
+console.log(JSON.stringify({baseline: result.sha256, baseRelease: result.current.release, target, bytes: Buffer.byteLength(output)}));
