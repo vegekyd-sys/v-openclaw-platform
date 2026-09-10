@@ -1,0 +1,10 @@
+{
+  "baseRelease": "three-fixes-20260910-v1",
+  "files": [
+    {
+      "source": "lab/release-files/cron-shared-tool-surface.js",
+      "target": "openclaw/dist/agent-tools-djVuP1H1.js",
+      "before": "1a9f16ecfeeb8a2ff4b5792182e3633f16e9b64161ca6dab29ac5f495af44e63"
+    }
+  ]
+}
