@@ -1,0 +1,15 @@
+{
+  "baseRelease": "concurrency-short-tx-v1",
+  "files": [
+    {
+      "source": "lab/release-files/session-accessor.sqlite-entry-BlklNPKQ.js",
+      "target": "openclaw/dist/session-accessor.sqlite-entry-BlklNPKQ.js",
+      "before": "de83c3e84a498ae5517ce9b9ee86b23f16d07d5397d6a743df9050648f333160"
+    },
+    {
+      "source": "lab/release-files/production-worker-worker.mjs",
+      "target": "production-worker/worker.mjs",
+      "before": "7e0d35676dd8fcef1ff9ea32fd81abe2d750b8499e5819cc93be87153072535b"
+    }
+  ]
+}
