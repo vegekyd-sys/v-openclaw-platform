@@ -70,3 +70,8 @@ export function fingerprint(root) {
   }
   walk(root);return {sha256:sha(JSON.stringify(entries)),files:entries.length};
 }
+export function suspensionReady(s, now=Date.now()) {
+  assert(['ready','draining'].includes(s.status)&&s.expiresAtMs>now+5000,'Admission fence not held');
+  // OpenClaw 9.1 omits activeCount from the ready status response.
+  return s.status==='ready';
+}
