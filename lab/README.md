@@ -13,6 +13,18 @@ node /Users/tianyicai/vlab-dev/lab/vlab.mjs new --task my-fix --owner THREAD_ID
 
 `new` 只检出源码、共用 Git 对象，不复制 runtime/state，不启动 Gateway，不创建可写 node_modules 链接。安装依赖可复用包管理器缓存，依赖变化保留任务独立安装目录。不要在其他任务工作区开发。
 
+## VLab 上直接开发
+
+`node lab/vlab.mjs sync --owner THREAD_ID` 将 Mac 上的已提交 dev 通过代码-only Git bundle 同步到 VLab 的 `labs/shared-workflow/source`。同步只允许 fast-forward，拒绝服务器脏工作区。服务器共用 `labs/shared-workflow/code.git`；不会改旧 db91-parity/source。
+
+通过既有 `vlab91` 入口连接后，可用服务器 Node 调用：
+
+```sh
+sudo /opt/vlab/node-v22.23.1-linux-x64/bin/node /srv/vlab-production-mirror/labs/shared-workflow/source/lab/vlab.mjs new --repo /srv/vlab-production-mirror/labs/shared-workflow/source --task my-fix --owner THREAD_ID
+```
+
+默认 worktree 位于 `labs/shared-workflow/v-worktrees/my-fix`，RPC/test 在主机内连接同一个 Gateway，不需要本机 SSH 配置，也不复制凭据。保持服务器 dev 为镜像；唯一集成入口在 Mac，服务器任务提交后通过 Git bundle 导回 Mac 仓库，再用相同的 merge 流程合入。不要在两台机器各自合并出不同的 dev。
+
 ## 使用共享设置和对话
 
 ```sh
@@ -57,6 +69,7 @@ node lab/vlab.mjs read-code --target openclaw/dist/example.mjs
 
 ```sh
 node lab/vlab.mjs package --id my-fix-v1 --commit FULL_TESTED_DEV_SHA --owner THREAD_ID --plan /absolute/plan.json
+node lab/vlab.mjs sync --owner THREAD_ID
 node lab/vlab.mjs stage --artifact /absolute/artifact.json
 node lab/vlab.mjs deploy --id my-fix-v1 --owner THREAD_ID
 ```
