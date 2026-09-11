@@ -22,16 +22,17 @@ new-process command gap before the live candidate is deployed.
 
 ## Candidate
 
-The Agent command chunk now exposes `prewarmAgentCommandRuntimes()`, which only
-loads those existing modules. The opt-in Worker readiness pass calls it after
-acquiring the same static prepared-model lease and before reporting `ready`.
+The Agent command chunk and its semantic public facade now expose
+`prewarmAgentCommandRuntimes()`, which only loads those existing modules. The
+opt-in Worker readiness pass calls it after acquiring the same static
+prepared-model lease and before reporting `ready`.
 It does not create a session, write a transcript, invoke a model, or run a
 tool. If the exact OpenClaw command runtime does not expose the contract or an
 import fails, readiness reports `deferred-to-normal-turn` and preserves the
 old fail-open behavior.
 
-The artifact changes only the Agent command chunk and the existing opt-in
-runtime-prewarm helper. VLab configuration separately sets
+The artifact changes only the Agent command chunk, its two-line semantic
+facade, and the existing opt-in runtime-prewarm helper. VLab configuration separately sets
 `warmSpareWorkers: 0` during the final min1/min5 comparison so an unrequested
 sixth Worker cannot compete with admitted traffic. Production V is outside
 this candidate.
