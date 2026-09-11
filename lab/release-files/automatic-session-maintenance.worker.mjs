@@ -2,7 +2,8 @@ import { parentPort, workerData } from "node:worker_threads";
 import { l as runSqliteDeferredTransactionSync } from "./node-sqlite-CL-d6drd.js";
 import { n as withOpenClawAgentDatabaseReadOnly } from "./openclaw-agent-db-readonly-wb-jdztx.js";
 import { c as resolveSqliteScope, m as toDatabaseOptions } from "./session-accessor.sqlite-scope-BwPKGcgm.js";
-import { a as applySessionEntryMaintenance } from "./session-history-eviction-d5aiCsHS.js";
+import { boundAutomaticSessionMaintenancePlan } from "./automatic-session-maintenance-planner.mjs";
+import { a as applySessionEntryMaintenance, b as buildSessionMaintenanceBatches } from "./session-history-eviction-d5aiCsHS.js";
 
 if (!parentPort) throw new Error("Automatic session maintenance worker requires a parent port");
 
@@ -25,7 +26,10 @@ function attachArchiveByteSizes(database, plan) {
     ).all(...batch);
     for (const row of rows) bytes.set(row.session_id, Number(row.jsonl_bytes));
   }
-  return { ...plan, automaticArchiveBytesBySessionId: [...bytes] };
+  return boundAutomaticSessionMaintenancePlan({
+    ...plan,
+    automaticArchiveBytesBySessionId: [...bytes],
+  }, buildSessionMaintenanceBatches);
 }
 
 try {

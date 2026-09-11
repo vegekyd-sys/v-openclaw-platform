@@ -94,7 +94,10 @@ test('native deletion finalizer, snapshot comparison and other eviction code rem
 \ttry {
 \t\tarchiveBytesBySessionId = await readSessionTranscriptJsonlBytes(scope, stateDeletePlans.filter((plan) => plan.archiveTranscript).map((plan) => plan.sessionId), isCurrent);`;
   assert.equal(source.split(v2ArchiveSizing).length, 2, 'archive sizing fast-path anchor drift');
-  const normalized = source.replace(v2ArchiveSizing, nativeArchiveSizing);
+  const boundedBatchExport = 'applySessionEntryMaintenance as a, buildSessionMaintenanceBatches as b,';
+  assert.equal(source.split(boundedBatchExport).length, 2, 'bounded batch export anchor drift');
+  const normalized = source.replace(v2ArchiveSizing, nativeArchiveSizing)
+    .replace(boundedBatchExport, 'applySessionEntryMaintenance as a,');
   assert.equal(source.slice(0, source.indexOf('function applySessionEntryMaintenance(')), before.slice(0, before.indexOf('function applySessionEntryMaintenance(')));
   assert.equal(normalized.slice(normalized.indexOf(marker), normalized.indexOf('\n// Automatic planning is read-only.')), before.slice(before.indexOf(marker)));
 });

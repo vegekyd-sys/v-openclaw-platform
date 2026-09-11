@@ -74,6 +74,50 @@ function isProtected(item, protectedIdentities) {
     (typeof sessionKey === "string" && protectedIdentities.has(sessionKey));
 }
 
+/** Return at most one native cleanup batch so Worker-to-Gateway transfer and
+ * owner-process revalidation stay bounded even for a multi-thousand-session
+ * backlog. The full read-only scan still chooses the same oldest candidates. */
+export function boundAutomaticSessionMaintenancePlan(plan, buildBatches) {
+  if (typeof buildBatches !== "function") throw new Error("Automatic maintenance batch builder is required");
+  const automaticArchiveBytesBySessionId = plan.automaticArchiveBytesBySessionId ?? [];
+  const [batch] = buildBatches({
+    archiveBytesBySessionId: new Map(automaticArchiveBytesBySessionId),
+    entryRemovals: plan.entryRemovals,
+    stateDeletePlans: plan.stateDeletePlans,
+  });
+  const entryRemovals = batch?.entryRemovals ?? [];
+  const stateDeletePlans = batch?.stateDeletePlans ?? [];
+  const retainedStateIds = new Set(stateDeletePlans.map((item) => item.sessionId));
+  const boundedArchiveBytes = automaticArchiveBytesBySessionId.filter(([sessionId]) => retainedStateIds.has(sessionId));
+  const plannedEntryArchives = plan.plannedEntryArchives?.slice(0, 64);
+  const retainedArchiveKeys = new Set(plannedEntryArchives?.map((item) => item.sessionKey) ?? []);
+  const archivedWorktrees = plan.archivedWorktrees?.filter((item) => retainedArchiveKeys.has(item.sessionKey));
+  const counts = { modelRunPruned: 0, pruned: 0, capped: 0 };
+  for (const removal of entryRemovals) {
+    if (removal.maintenanceReason === "model-run-pruned") counts.modelRunPruned += 1;
+    else if (removal.maintenanceReason === "pruned") counts.pruned += 1;
+    else if (removal.maintenanceReason === "capped") counts.capped += 1;
+  }
+  const automaticPlanSummary = {
+    truncated: entryRemovals.length < plan.entryRemovals.length ||
+      stateDeletePlans.length < plan.stateDeletePlans.length ||
+      (plannedEntryArchives?.length ?? 0) < (plan.plannedEntryArchives?.length ?? 0),
+    entryRemovalsTotal: plan.entryRemovals.length,
+    plannedEntryArchivesTotal: plan.plannedEntryArchives?.length ?? 0,
+    stateDeletePlansTotal: plan.stateDeletePlans.length,
+  };
+  return {
+    ...plan,
+    ...plannedEntryArchives ? { plannedEntryArchives, archived: plannedEntryArchives.length } : { archived: 0 },
+    ...archivedWorktrees ? { archivedWorktrees } : {},
+    ...counts,
+    entryRemovals,
+    stateDeletePlans,
+    automaticArchiveBytesBySessionId: boundedArchiveBytes,
+    automaticPlanSummary,
+  };
+}
+
 /** Remove work that became active after the isolated read snapshot began. */
 export function filterAutomaticSessionMaintenancePlan(plan, identities) {
   const protectedIdentities = identities instanceof Set ? identities : new Set(identities ?? []);
