@@ -67,10 +67,11 @@ async function deliverPendingDeliveryNotice(sessionKey, storePath) {
 	const context = normalizeDeliveryContext(notice?.context);
 	const runtime = getGatewayRecoveryRuntime();
 	if (!entry || !runtime || !notice || notice.state !== "owed" || !context?.channel || !context.to || deliveryContextKey(context) !== deliveryContextKey(deliveryContextFromSession(entry))) return;
-	// Feishu direct-message users must not receive an implementation-level
-	// delivery-uncertainty sentence. Preserve the ambiguity in session state
-	// for diagnostics, but settle the one-shot debt without external delivery.
-	if (context.channel === "feishu" && context.to.startsWith("user:")) {
+	// Feishu users in direct messages and groups must not receive an
+	// implementation-level delivery-uncertainty sentence. Preserve the
+	// ambiguity in session state for diagnostics, but settle the one-shot debt
+	// without external delivery.
+	if (context.channel === "feishu") {
 		await updateSessionEntry({
 			sessionKey,
 			storePath

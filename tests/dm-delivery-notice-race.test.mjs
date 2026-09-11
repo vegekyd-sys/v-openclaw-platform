@@ -5,7 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
-  patchFeishuDmPendingDeliveryNoticePresentation,
+  patchFeishuPendingDeliveryNoticePresentation,
   patchPendingDeliveryNoticeRace,
 } from "../scripts/patch-dm-delivery-notice-race.mjs";
 
@@ -45,7 +45,7 @@ test("patch is exact and idempotent", () => {
   );
 });
 
-test("Feishu DM keeps terminal ambiguity internal while other routes retain the notice", () => {
+test("all Feishu chats keep terminal ambiguity internal while other channels retain the notice", () => {
   const fixture = `
 async function deliverPendingDeliveryNotice(entry, notice, context) {
 \tconst idempotencyKey = noticeId(notice.intentId);
@@ -53,14 +53,32 @@ async function deliverPendingDeliveryNotice(entry, notice, context) {
   delivered = await sendRecoveryNotice({ text: "implementation detail" });
   return { delivered, idempotencyKey };
 }`;
-  const patched = patchFeishuDmPendingDeliveryNoticePresentation(fixture);
+  const patched = patchFeishuPendingDeliveryNoticePresentation(fixture);
   assert.equal(patched.changed, true);
   assert.match(patched.source, /context\.channel === "feishu"/);
-  assert.match(patched.source, /context\.to\.startsWith\("user:"\)/);
+  assert.doesNotMatch(patched.source, /context\.to\.startsWith\("user:"\)/);
   assert.match(patched.source, /state: "unresolved"/);
   assert.match(patched.source, /sendRecoveryNotice/);
-  const second = patchFeishuDmPendingDeliveryNoticePresentation(patched.source);
+  const second = patchFeishuPendingDeliveryNoticePresentation(patched.source);
   assert.equal(second.changed, false);
+
+  const v1Source = patched.source
+    .replace(
+      "\t// Feishu users in direct messages and groups must not receive an\n" +
+        "\t// implementation-level delivery-uncertainty sentence. Preserve the\n" +
+        "\t// ambiguity in session state for diagnostics, but settle the one-shot debt\n" +
+        "\t// without external delivery.",
+      "\t// Feishu direct-message users must not receive an implementation-level\n" +
+        "\t// delivery-uncertainty sentence. Preserve the ambiguity in session state\n" +
+        "\t// for diagnostics, but settle the one-shot debt without external delivery.",
+    )
+    .replace(
+      'if (context.channel === "feishu")',
+      'if (context.channel === "feishu" && context.to.startsWith("user:"))',
+    );
+  const upgraded = patchFeishuPendingDeliveryNoticePresentation(v1Source);
+  assert.equal(upgraded.changed, true);
+  assert.equal(upgraded.source, patched.source);
 });
 
 test("generated release file contains only the terminal-ambiguity predicate", () => {
@@ -73,13 +91,13 @@ test("generated release file contains only the terminal-ambiguity predicate", ()
   assert.match(source, /current === "unknown" && state === "unknown" \? current : state/);
 });
 
-test("generated lifecycle keeps Feishu DM uncertainty internal without changing other routes", () => {
+test("generated lifecycle keeps all Feishu uncertainty internal without changing other channels", () => {
   const source = fs.readFileSync(
     path.join(root, "lab/release-files/dm-delivery-notice-lifecycle-YRwzpo9_.js"),
     "utf8",
   );
   assert.equal(source.split('context.channel === "feishu"').length - 1, 1);
-  assert.equal(source.split('context.to.startsWith("user:")').length - 1, 1);
+  assert.equal(source.split('context.to.startsWith("user:")').length - 1, 0);
   assert.match(source, /state: "unresolved"/);
   assert.equal(source.split("runtime.sendRecoveryNotice").length - 1, 1);
 });
@@ -136,7 +154,7 @@ test("generated delivery state machine reproduces and closes the live overlap", 
   assert.equal(entry.pendingDeliveryNotice.state, "owed");
 });
 
-test("generated Feishu-DM handler records a real ambiguity without sending it", async () => {
+test("generated handler hides Feishu DM and group ambiguity but preserves other channels", async () => {
   const source = fs.readFileSync(
     path.join(root, "lab/release-files/dm-delivery-notice-lifecycle-YRwzpo9_.js"),
     "utf8",
@@ -145,55 +163,67 @@ test("generated Feishu-DM handler records a real ambiguity without sending it", 
   const end = source.indexOf("//#endregion", start);
   assert.ok(start >= 0 && end > start);
   const functionSource = source.slice(start, end);
-  let entry = {
-    sessionId: "session-1",
-    pendingDeliveryNotice: {
-      intentId: "intent-1",
-      state: "owed",
-      context: { channel: "feishu", to: "user:user-1" },
-    },
-  };
-  let sendCalls = 0;
-  let transcriptCalls = 0;
-  const runtime = {
-    sendRecoveryNotice: async () => {
-      sendCalls += 1;
-      return { suppressed: false };
-    },
-  };
-  const updateSessionEntry = async (_identity, mutate) => {
-    const patch = mutate(entry);
-    if (patch) {
-      entry = { ...entry, ...patch };
-    }
-  };
-  const deliver = new Function(
-    "loadSessionEntryReadOnly",
-    "normalizeDeliveryContext",
-    "getGatewayRecoveryRuntime",
-    "deliveryContextKey",
-    "deliveryContextFromSession",
-    "updateSessionEntry",
-    "appendAssistantMessageToSessionTranscript",
-    "findDeliveryIntentOwner",
-    "noticeId",
-    `${functionSource}; return deliverPendingDeliveryNotice;`,
-  )(
-    () => entry,
-    (value) => value,
-    () => runtime,
-    (value) => `${value.channel}|${value.to}`,
-    () => entry.pendingDeliveryNotice.context,
-    updateSessionEntry,
-    async () => {
-      transcriptCalls += 1;
-      return { ok: true };
-    },
-    () => null,
-    (intentId) => `notice:${intentId}`,
-  );
-  await deliver("agent:makaron:feishu:direct:user-1", "/unused");
-  assert.equal(sendCalls, 0);
-  assert.equal(transcriptCalls, 0);
-  assert.equal(entry.pendingDeliveryNotice.state, "unresolved");
+  async function runCase(channel, to) {
+    let entry = {
+      sessionId: "session-1",
+      pendingDeliveryNotice: {
+        intentId: "intent-1",
+        state: "owed",
+        context: { channel, to },
+      },
+    };
+    let sendCalls = 0;
+    let transcriptCalls = 0;
+    const runtime = {
+      sendRecoveryNotice: async () => {
+        sendCalls += 1;
+        return { suppressed: false };
+      },
+    };
+    const updateSessionEntry = async (_identity, mutate) => {
+      const patch = mutate(entry);
+      if (patch) {
+        entry = { ...entry, ...patch };
+      }
+    };
+    const deliver = new Function(
+      "loadSessionEntryReadOnly",
+      "normalizeDeliveryContext",
+      "getGatewayRecoveryRuntime",
+      "deliveryContextKey",
+      "deliveryContextFromSession",
+      "updateSessionEntry",
+      "appendAssistantMessageToSessionTranscript",
+      "findDeliveryIntentOwner",
+      "noticeId",
+      `const PENDING_DELIVERY_NOTICE = "implementation detail"; ${functionSource}; return deliverPendingDeliveryNotice;`,
+    )(
+      () => entry,
+      (value) => value,
+      () => runtime,
+      (value) => `${value.channel}|${value.to}`,
+      () => entry.pendingDeliveryNotice.context,
+      updateSessionEntry,
+      async () => {
+        transcriptCalls += 1;
+        return { ok: true };
+      },
+      () => null,
+      (intentId) => `notice:${intentId}`,
+    );
+    await deliver(`agent:makaron:${channel}:${to}`, "/unused");
+    return { entry, sendCalls, transcriptCalls };
+  }
+
+  for (const to of ["user:user-1", "chat:oc_group-1"]) {
+    const result = await runCase("feishu", to);
+    assert.equal(result.sendCalls, 0, `unexpected Feishu send for ${to}`);
+    assert.equal(result.transcriptCalls, 0, `unexpected Feishu transcript append for ${to}`);
+    assert.equal(result.entry.pendingDeliveryNotice.state, "unresolved");
+  }
+
+  const other = await runCase("discord", "channel:channel-1");
+  assert.equal(other.sendCalls, 1);
+  assert.equal(other.transcriptCalls, 1);
+  assert.equal(other.entry.pendingDeliveryNotice.state, "acknowledged");
 });

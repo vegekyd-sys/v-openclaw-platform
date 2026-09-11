@@ -1,6 +1,8 @@
-# Main-DM delivery-notice race VLab acceptance
+# Feishu delivery-notice race VLab acceptance (v1 historical)
 
 Date: 2026-09-11
+
+This v1 record covers the original direct-message-only presentation patch. It is retained as historical evidence but is not the corrected production candidate because Feishu groups were not yet included. The corrected direct-message-and-group candidate requires a new VLab release and acceptance record before production.
 
 ## Candidate
 
