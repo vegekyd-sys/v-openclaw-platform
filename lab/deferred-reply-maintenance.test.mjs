@@ -59,22 +59,23 @@ test('retry callback remains once and retired entry/reset options survive', asyn
 });
 const entryModule = read('./release-files/session-accessor.sqlite-entry-BlklNPKQ.js');
 const queueSource = entryModule.slice(entryModule.indexOf('const maintenanceByStore ='), entryModule.indexOf('//#endregion', entryModule.indexOf('const maintenanceByStore =')));
-function queueHarness({archives = false, incognito = false, permit = 'ok', archiveSizes} = {}) {
-  const scheduled = [], sweeps = [], warnings = [], archiveCommits = [], offloadedPlans = [], readSnapshots = [], writeTransactions = [], finalizeCalls = [], database = {db: {isOpen: true}, path: '/fixture/db.sqlite'}; let finalize = async () => {}, beforeArchiveRetry = () => {};
+function queueHarness({archives = false, incognito = false, permit = 'ok', archiveSizes, admissions = []} = {}) {
+  const scheduled = [], timers = [], sweeps = [], warnings = [], archiveCommits = [], offloadedPlans = [], readSnapshots = [], writeTransactions = [], finalizeCalls = [], database = {db: {isOpen: true}, path: '/fixture/db.sqlite'}; let finalize = async () => {}, beforeArchiveRetry = () => {}, activeAdmissions = new Set(admissions);
   const deps = {resolveOpenClawAgentSqlitePath: () => '/fixture/db', toDatabaseOptions: x => x, getOpenClawAgentDatabaseIfOpen: () => database,
     isIncognitoOpenClawAgentSqlitePath: () => incognito,
     acquireAutomaticMaintenancePermit: () => {if (permit === 'busy') return null; if (permit === 'error') throw new Error('fixture coordinator failed'); return {finish() {}};}, tryAcquireExclusiveSqliteCoordinator() {},
     runSqliteDeferredTransactionSync: (_db, operation) => {readSnapshots.push(true); return operation();},
     runAutomaticSessionMaintenancePlan: async p => {offloadedPlans.push(p); const plan = deps.applySessionEntryMaintenance(database, {...p, planOnly: true}); return archiveSizes ? {...plan, automaticArchiveBytesBySessionId: archiveSizes} : plan;},
-    filterAutomaticSessionMaintenancePlan: p => p, collectActiveSessionWorkAdmissions: () => new Map(), uniqueStrings: xs => [...new Set(xs)],
+    filterAutomaticSessionMaintenancePlan: p => p, collectActiveSessionWorkAdmissions: () => activeAdmissions.size ? new Map([['/fixture/sessions.json', new Set(activeAdmissions)]]) : new Map(), uniqueStrings: xs => [...new Set(xs)],
     withSqliteBeginContentionRetry: async ({run, operation}) => {beforeArchiveRetry(); return run(operation);},
     commitPlannedSessionMaintenanceArchives: (_db, plan) => {archiveCommits.push(plan); return plan;},
-    resolveMaintenanceConfig: () => ({mode: 'enforce'}), setImmediate: fn => scheduled.push(fn), process: {env: {}}, db91WaitAutomaticMaintenance: async () => {},
+    resolveMaintenanceConfig: () => ({mode: 'enforce'}), setImmediate: fn => scheduled.push(fn), setTimeout: fn => {timers.push(fn); return {unref() {}};}, process: {env: {}}, db91WaitAutomaticMaintenance: async () => {},
     runExclusiveSqliteSessionWrite: async (_scope, fn) => fn(), runOpenClawAgentWriteTransaction: fn => {writeTransactions.push(true); return fn(database);},
     applySessionEntryMaintenance: (_db, p) => {sweeps.push(p); return archives ? {plannedEntryArchives: [{}]} : {};},
     finalizeSessionEntryMaintenancePlansAfterWriterReleaseBestEffort: async (...args) => {finalizeCalls.push(args); return finalize();}, getChildLogger: () => ({warn: (...args) => warnings.push(args)})};
   const api = Function(...Object.keys(deps), queueSource + ';return {kick: kickSessionEntryMaintenanceAfterWrite, owners: maintenanceByStore};')(...Object.values(deps));
-  return {...api, database, sweeps, scheduled, warnings, archiveCommits, offloadedPlans, readSnapshots, writeTransactions, finalizeCalls, setBeforeArchiveRetry: fn => {beforeArchiveRetry = fn;}, setFinalize: fn => {finalize = fn;}, flush: async () => {scheduled.shift()(); for (let i = 0; i < 20; i++) await Promise.resolve();}};
+  const settle = async () => {for (let i = 0; i < 20; i++) await Promise.resolve();};
+  return {...api, database, sweeps, scheduled, timers, warnings, archiveCommits, offloadedPlans, readSnapshots, writeTransactions, finalizeCalls, setAdmissions: values => {activeAdmissions = new Set(values);}, setBeforeArchiveRetry: fn => {beforeArchiveRetry = fn;}, setFinalize: fn => {finalize = fn;}, flush: async () => {scheduled.shift()(); await settle();}, tick: async () => {timers.shift()(); await settle();}};
 }
 test('native queue coalesces 15 writes and protects all active keys', async () => {
   const h = queueHarness(); for (let i = 0; i < 15; i++) h.kick({scope: {agentId: 'makaron'}, activeSessionKey: 'key' + i, archiveDirectory: '/fixture/archive', storePath: '/fixture/sessions.json'});
@@ -97,6 +98,17 @@ test('automatic finalization forwards archive sizing prepared off the event loop
   await h.flush();
   assert.equal(h.finalizeCalls.length, 1);
   assert.deepEqual([...h.finalizeCalls[0][2].archiveBytesBySessionId], sizes);
+});
+test('automatic destructive finalization waits for admitted Agent turns to drain', async () => {
+  const h = queueHarness({admissions: ['agent:makaron:explicit:busy']});
+  h.kick({scope: {agentId: 'makaron'}, activeSessionKey: 'first', archiveDirectory: '/fixture/archive', storePath: '/fixture/sessions.json'});
+  await h.flush();
+  assert.equal(h.offloadedPlans.length, 1);
+  assert.equal(h.timers.length, 1);
+  assert.equal(h.finalizeCalls.length, 0);
+  h.setAdmissions([]);
+  await h.tick();
+  assert.equal(h.finalizeCalls.length, 1);
 });
 test('retired owner cannot commit an archive after BEGIN contention yields', async () => {
   const h = queueHarness({archives: true});
