@@ -129,6 +129,15 @@ function listSessionTranscriptArchivesReadOnly(scope) {
 //#endregion
 //#region src/config/sessions/session-accessor.sqlite-maintenance-kick.ts
 const maintenanceByStore = /* @__PURE__ */ new Map();
+const AUTOMATIC_MAINTENANCE_IDLE_POLL_MS = 250;
+const AUTOMATIC_MAINTENANCE_IDLE_POLLS = 120;
+async function waitForAutomaticMaintenanceAdmissionsToDrain(isCurrent, currentAdmissionIdentities) {
+	for (let remaining = AUTOMATIC_MAINTENANCE_IDLE_POLLS; isCurrent() && currentAdmissionIdentities().size > 0; remaining -= 1) {
+		if (remaining <= 0) return false;
+		await new Promise((resolve) => setTimeout(resolve, AUTOMATIC_MAINTENANCE_IDLE_POLL_MS));
+	}
+	return isCurrent();
+}
 /** Coalesce automatic logical maintenance outside ordinary entry-write latency. */
 function kickSessionEntryMaintenanceAfterWrite(params) {
 	if (params.skipMaintenance) return;
@@ -201,7 +210,11 @@ async function runPendingMaintenance(databasePath, owner) {
 					maintenanceConfig,
 					storePath: owner.storePath
 				});
-			plan = filterAutomaticSessionMaintenancePlan(plan, currentAdmissionIdentities());
+			// Planning is read-only and can overlap active work. Archive commits and
+			// deletion transactions are best-effort background writes: never let them
+			// enter SQLite while a real Agent turn for this store is still admitted.
+			if (!incognito && !await waitForAutomaticMaintenanceAdmissionsToDrain(isCurrent, currentAdmissionIdentities)) plan = void 0;
+			if (plan) plan = filterAutomaticSessionMaintenancePlan(plan, currentAdmissionIdentities());
 			if (!isCurrent()) plan = void 0;
 			if (plan?.plannedEntryArchives?.length) plan = await runExclusiveSqliteSessionWrite(owner.scope, async () => {
 				if (!isCurrent()) return;

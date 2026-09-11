@@ -52,6 +52,24 @@ All native materialization, size-bounded batching, delete transactions,
 archive publication, lifecycle events, and commit-time revalidation remain in
 the owner process.
 
+## V3: destructive work waits for admission drain
+
+On V2, C1 and C5 passed, but C10 showed a simultaneous 5.002-second HTTP
+timeout and 6.225-second Gateway health response while all 10 replies still
+completed correctly. The isolated planner had returned and the native archive
+materializer later entered its short deletion transaction while the same store
+still had active Agent turns. SQLite's synchronous lock wait could therefore
+stall the Gateway even though the read scan and archive encoding were already
+off-thread.
+
+V3 lets the read-only planner overlap active work, then waits asynchronously for
+that store's native admission registry to become empty before any automatic
+archive commit or deletion finalization. The wait polls every 250ms for at most
+30 seconds. A continuously busy store skips that best-effort cycle and releases
+the coordinator immediately; explicit maintenance is unchanged. Plan snapshots,
+late-admission filtering, entry compare-and-swap, transcript snapshot fences,
+and final deletion revalidation remain authoritative after the wait.
+
 ## Acceptance gates
 
 1. Deterministic queue and planner tests, including archive revalidation and a
