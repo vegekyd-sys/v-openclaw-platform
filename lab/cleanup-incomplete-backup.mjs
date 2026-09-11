@@ -1,0 +1,25 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import assert from 'node:assert/strict';
+import {inspectTree,processReferences,unlinkTreeExact,diskUsage,assertMappings} from '/usr/local/lib/v-storage-governance/core.mjs';
+assert.equal(os.hostname(),'VM-8-2-ubuntu');assert.equal(process.getuid(),0);
+assert(fs.readFileSync('/proc/self/cgroup','utf8').includes('incomplete-backup-cleanup-20260911'));
+const policy=JSON.parse(fs.readFileSync('/usr/local/lib/v-storage-governance/policy.json'));
+assertMappings(policy);
+const suffix='v2026.9.1-db91.1/state-final-incomplete-timer-0130';
+const root=policy.diskRoot+'/openclaw/backups/'+suffix;
+const retained=policy.diskRoot+'/openclaw/backups/v2026.9.1-db91.1/state-final';
+const old=JSON.parse(fs.readFileSync(root+'/manifest.json'));
+const good=JSON.parse(fs.readFileSync(retained+'/manifest.json'));
+assert.equal(old.complete,false);assert.equal(good.complete,true);
+assert(good.startedAt>old.startedAt);
+for(const e of old.databases){const x=good.databases.find(a=>a.path===e.path);assert(x&&x.sha256===e.sha256&&x.bytes===e.bytes);assert.equal(fs.statSync(retained+'/'+x.path).size,x.bytes);}
+const map=policy.mappings.find(m=>m.name==='backups');
+const roots=[root,map.original+'/'+suffix,...map.aliases.map(p=>p+'/'+suffix),'/var/lib/v-storage-governance/underlays/backups/'+suffix];
+assert.equal(processReferences(roots).length,0);
+const inventory=inspectTree(root);assert(inventory.length<100);assert(inventory.every(e=>e.type!=='link'));assert(inventory.filter(e=>e.type==='file').every(e=>e.nlink===1));
+const report={at:new Date().toISOString(),reason:'Superseded incomplete upgrade backup; completed final backup retained',removedRoot:root,retained,oldManifest:old,retainedManifest:good,inventory,before:diskUsage(policy.diskRoot)};
+fs.writeFileSync('/var/lib/v-storage-governance/incomplete-backup-cleanup-20260911.json',JSON.stringify(report,null,2),{mode:0o600,flag:'wx'});
+console.log(JSON.stringify({event:'verified-delete-start',files:inventory.length,bytes:inventory.reduce((n,e)=>n+e.blocks*512,0)}));
+assert.equal(processReferences(roots).length,0);assertMappings(policy);unlinkTreeExact(root,inventory);
+console.log(JSON.stringify({event:'deleted',after:diskUsage(policy.diskRoot)}));

@@ -1,0 +1,5 @@
+import fs from 'node:fs';import {DatabaseSync} from 'node:sqlite';
+const folder='/srv/openclaw-data/disk1/openclaw/memory-repair-probe-20260911';
+for(const file of fs.readdirSync(folder).filter(x=>x.startsWith('production-small-repack-receipt-'))){const r=JSON.parse(fs.readFileSync(folder+'/'+file));console.log(JSON.stringify({receipt:file,startedAt:r.startedAt,events:r.phases.filter(x=>['source-verified','all-vector-bytes-verified','parity-passed','published','verified-complete','failed'].includes(x.event))}));}
+const db=new DatabaseSync('/home/openclaw/.openclaw/agents/makaron/agent/openclaw-agent.sqlite',{readOnly:true});
+console.log(JSON.stringify({event:'current-vector-layout',geometry:db.prepare('SELECT size,count(*) AS chunks FROM memory_index_chunks_vec_chunks GROUP BY size').all(),vectors:db.prepare('SELECT count(*) AS n FROM memory_index_chunks_vec_rowids').get().n,indexedChunks:db.prepare('SELECT count(*) AS n FROM memory_index_chunks').get().n,rollbackPresent:!!db.prepare("SELECT 1 FROM sqlite_master WHERE name='memory_repair_rollback_vec_20260911'").get()}));db.close();
