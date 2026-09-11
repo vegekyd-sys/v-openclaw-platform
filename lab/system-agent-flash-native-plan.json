@@ -1,0 +1,10 @@
+{
+  "baseRelease": "worker-cold-firsttext-20260911-v2",
+  "files": [
+    {
+      "source": "lab/release-files/system-agent-flash/inference-route-Bv_D48Z8.js",
+      "target": "openclaw/dist/inference-route-Bv_D48Z8.js",
+      "before": "9d64dbf86259ecc8af74a7d55d34281b2c9253c7e91cd45fee9de1372f6b70f1"
+    }
+  ]
+}
