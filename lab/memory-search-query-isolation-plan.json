@@ -1,0 +1,15 @@
+{
+  "baseRelease": "native-final-candidate-20260911-v1",
+  "files": [
+    {
+      "source": "lab/release-files/memory-search-timeout-tools.js",
+      "target": "openclaw/dist/tools-Byg09TOP.js",
+      "before": "ab4ea0b409edc959a27a99835ed062b326477a2e37ac9df082619ac15c6c675a"
+    },
+    {
+      "source": "lab/release-files/memory-vector-chunks-manager.js",
+      "target": "openclaw/dist/extensions/memory-core/manager-runtime.js",
+      "before": "1ec72378de48cee9d8deeaef75e753e694162a5b8eba66fd663b0b3c92854e84"
+    }
+  ]
+}

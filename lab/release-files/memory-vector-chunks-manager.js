@@ -3895,7 +3895,7 @@ function isTransientMemoryIndexManagerPurpose(purpose) {
 	return purpose !== "default";
 }
 function normalizeMemoryIndexManagerPurpose(purpose) {
-	return purpose === "status" || purpose === "cli" || purpose === "maintenance" ? purpose : "default";
+	return purpose === "status" || purpose === "cli" || purpose === "maintenance" || purpose === "search" ? purpose : "default";
 }
 function resolveMemoryIndexManagerCacheKey(params) {
 	return [
@@ -5412,6 +5412,7 @@ var MemorySearchOrchestration = class extends MemoryKeywordRetrieval {
 				this.assertRequiredProviderAvailable("search");
 			}
 			let hasIndexedContent = this.hasIndexedContent();
+			if (!hasIndexedContent && this.purpose === "search") return [];
 			if (!hasIndexedContent) {
 				try {
 					await this.syncAdmitted({
@@ -5463,13 +5464,14 @@ var MemorySearchOrchestration = class extends MemoryKeywordRetrieval {
 				})) this.refreshIndexIdentityDirty({ providerKeyKnown: this.providerInitialized });
 			}
 			const indexIdentity = embeddingBootstrapKeywordOnly ? this.refreshKeywordFallbackIndexIdentity() : this.refreshIndexIdentityDirty({ providerKeyKnown: this.providerInitialized });
-			if (indexIdentity.status === "missing" && hasIndexedContent) await this.syncAdmitted({
+			const canRepairMissingIdentity = indexIdentity.status === "missing" && hasIndexedContent && this.purpose !== "search";
+			if (canRepairMissingIdentity) await this.syncAdmitted({
 				reason: "search",
 				force: true
 			}, { allowEmbeddingBootstrapFallback: true }).catch((err) => {
 				log$1.warn(`memory sync failed (search-identity-repair): ${formatErrorMessage(err)}`);
 			});
-			let repairedIndexIdentity = indexIdentity.status === "missing" && hasIndexedContent ? embeddingBootstrapKeywordOnly ? this.refreshKeywordFallbackIndexIdentity() : this.refreshIndexIdentityDirty({ providerKeyKnown: this.providerInitialized }) : indexIdentity;
+			let repairedIndexIdentity = canRepairMissingIdentity ? embeddingBootstrapKeywordOnly ? this.refreshKeywordFallbackIndexIdentity() : this.refreshIndexIdentityDirty({ providerKeyKnown: this.providerInitialized }) : indexIdentity;
 			if (repairedIndexIdentity.status === "mismatched" && !embeddingBootstrapKeywordOnly && await this.adoptPublishedFallbackProviderIfMatched()) repairedIndexIdentity = this.refreshIndexIdentityDirty({ providerKeyKnown: this.providerInitialized });
 			if (repairedIndexIdentity.status !== "valid") return [];
 			const backgroundSearchSync = startAsyncSearchSync({
