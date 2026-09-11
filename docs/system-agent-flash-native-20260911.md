@@ -36,6 +36,11 @@ After Tianyi explicitly approves merging this commit into `dev`, acquire the
 shared integration lease and package the one-file code artifact. Deploy it only
 to shared VLab, then require all of the following before acceptance:
 
+If shared VLab is still in the earlier native-execution experiment, restore the
+Worker route with `restore-worker-config-preserving-current.mjs`. It merges
+only the reviewed Worker settings from the private server backup into the
+current configuration, preserving channels and other settings added later.
+
 1. `openclaw.setup.verify` returns `ok=true` and identifies
    `deepseek/deepseek-flash` without trying unrelated fallback owners.
 2. A benign `openclaw.chat` request returns a real Chinese reply through the
