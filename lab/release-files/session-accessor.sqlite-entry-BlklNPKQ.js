@@ -1,6 +1,9 @@
 import {acquireAutomaticMaintenancePermit} from "./automatic-maintenance-coordinator.mjs";
+import {filterAutomaticSessionMaintenancePlan, runAutomaticSessionMaintenancePlan} from "./automatic-session-maintenance-planner.mjs";
 import {l as runSqliteDeferredTransactionSync, o as tryAcquireExclusiveSqliteCoordinator} from "./node-sqlite-CL-d6drd.js";
 import {commitPlannedSessionMaintenanceArchives} from "./session-history-eviction-d5aiCsHS.js";
+import {s as resolveMaintenanceConfig} from "./disk-budget-BzLS0kmH.js";
+import {i as collectActiveSessionWorkAdmissions} from "./session-lifecycle-admission-siUq03Jk.js";
 import {withSqliteBeginContentionRetry} from "./sqlite-begin-contention-retry.mjs";
 import { waitAutomaticMaintenanceWindow as db91WaitAutomaticMaintenance } from "./db91-maintenance-throttle.mjs";
 import { y as uniqueStrings } from "./string-normalization-DiSb4JeN.js";
@@ -174,29 +177,44 @@ async function runPendingMaintenance(databasePath, owner) {
 		}
 		let completed = false;
 		const generation = owner.generation;
-		const activeSessionKeys = [...owner.activeSessionKeys];
+		const currentAdmissionIdentities = () => collectActiveSessionWorkAdmissions().get(owner.storePath) ?? /* @__PURE__ */ new Set();
+		const activeSessionKeys = uniqueStrings([...owner.activeSessionKeys, ...currentAdmissionIdentities()]);
 		owner.activeSessionKeys.clear();
 		try {
-			const plan = await runExclusiveSqliteSessionWrite(owner.scope, async () => {
-				if (!isCurrent()) return;
-				// Global selection runs in a native deferred read snapshot, not BEGIN
-				// IMMEDIATE. Foreground writers in other processes remain unblocked.
-				const planned = runSqliteDeferredTransactionSync(owner.database.db, () => applySessionEntryMaintenance(owner.database, {
+			const incognito = isIncognitoOpenClawAgentSqlitePath(owner.database.path, {agentId: owner.scope.agentId, env: owner.scope.env});
+			const maintenanceConfig = owner.maintenanceConfig ?? resolveMaintenanceConfig();
+			// A file-backed store can require a multi-second global read scan. Keep that
+			// synchronous SQLite work off the request-owning Gateway/Worker event loop.
+			// Incognito stores are process-local and retain the native inline path.
+			let plan = incognito
+				? runSqliteDeferredTransactionSync(owner.database.db, () => applySessionEntryMaintenance(owner.database, {
 					activeSessionKeys,
 					archiveDirectory: owner.archiveDirectory,
-					maintenanceConfig: owner.maintenanceConfig,
+					maintenanceConfig,
 					storePath: owner.storePath,
 					planOnly: true
-				}));
-				if (!planned.plannedEntryArchives?.length) return planned;
+				}))
+				: await runAutomaticSessionMaintenancePlan({
+					activeSessionKeys,
+					agentId: owner.scope.agentId,
+					archiveDirectory: owner.archiveDirectory,
+					maintenanceConfig,
+					storePath: owner.storePath
+				});
+			plan = filterAutomaticSessionMaintenancePlan(plan, currentAdmissionIdentities());
+			if (!isCurrent()) plan = void 0;
+			if (plan?.plannedEntryArchives?.length) plan = await runExclusiveSqliteSessionWrite(owner.scope, async () => {
+				if (!isCurrent()) return;
+				plan = filterAutomaticSessionMaintenancePlan(plan, currentAdmissionIdentities());
 				return withSqliteBeginContentionRetry({database: owner.database.db,
 					run: operation => runOpenClawAgentWriteTransaction(operation, toDatabaseOptions(owner.scope)),
-					operation: database => isCurrent() ? commitPlannedSessionMaintenanceArchives(database, planned) : void 0});
+					operation: database => isCurrent() ? commitPlannedSessionMaintenanceArchives(database, plan) : void 0});
 			});
 			if (!plan) {
 				if (maintenanceByStore.get(databasePath) === owner) maintenanceByStore.delete(databasePath);
 				return;
 			}
+			plan = filterAutomaticSessionMaintenancePlan(plan, currentAdmissionIdentities());
 			await finalizeSessionEntryMaintenancePlansAfterWriterReleaseBestEffort(owner.scope, [plan], { isCurrent });
 			completed = true;
 		} catch (error) {
