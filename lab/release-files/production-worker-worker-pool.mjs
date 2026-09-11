@@ -32,6 +32,7 @@ function ocFirsttextWorkerMark(stage, runId, fields = {}) {
 
 import {sendLateWorkerReply} from "./late-worker-reply.mjs";
 import { fork } from "node:child_process";
+import { availableParallelism } from "node:os";
 import { fileURLToPath } from "node:url";
 import { cloneWireData } from "./native-harness-data.mjs";
 
@@ -88,7 +89,12 @@ export class WorkerPool {
   constructor(options = {}) {
     this.minWorkers = options.minWorkers ?? 1;
     this.maxWorkers = options.maxWorkers ?? 2;
+    this.maxConcurrentStarts = options.maxConcurrentStarts ??
+      Math.min(this.maxWorkers, 4, availableParallelism());
     this.sessionsPerWorker = options.sessionsPerWorker ?? 1;
+    if (!Number.isInteger(this.maxConcurrentStarts) || this.maxConcurrentStarts < 1 ||
+        this.maxConcurrentStarts > this.maxWorkers)
+      throw new Error("maxConcurrentStarts must be an integer from 1 to maxWorkers");
     this.idleTimeoutMs = options.idleTimeoutMs ?? 180_000;
     this.idleSweepIntervalMs =
       options.idleSweepIntervalMs ??
@@ -595,23 +601,10 @@ export class WorkerPool {
         }
 
         if (!worker) {
-          // Readiness is an event, not a queue-wide lock. An existing Worker
-          // may finish a turn while another process is still booting; its
-          // completion must be able to pump pending work immediately.
-          // Preserve the original warm-spare + one demand-start concurrency,
-          // without letting repeated pumps fork one process per queued job.
-          if (!this.capacityStartupPromise && this.workers.size < this.maxWorkers) {
-            const startup = this.spawn(this.findAvailableSlot());
-            this.capacityStartupPromise = startup;
-            void startup.then(() => {
-              if (this.capacityStartupPromise === startup) this.capacityStartupPromise = null;
-              this.requestPump();
-            }, (error) => {
-              if (this.capacityStartupPromise === startup) this.capacityStartupPromise = null;
-              const failure = toError(error);
-              for (const pending of this.pending.splice(0)) pending.reject(failure);
-            });
-          }
+          // Account for every starting process and distinct unowned session.
+          // A burst may start bounded capacity now, without waiting for one
+          // boot promise per wave or spawning once per queued turn.
+          this.ensureDemandWorkers();
           break;
         }
 
@@ -1119,6 +1112,29 @@ export class WorkerPool {
     }
   }
 
+  startingWorkerCount() {
+    return [...this.workers.values()].filter(w => !w.ready && !w.retiring).length;
+  }
+
+  ensureDemandWorkers() {
+    if (this.closing) return;
+    const unowned = new Set(this.pending
+      .filter(job => !this.sessionOwners.has(job.sessionOwnerKey))
+      .map(job => job.sessionOwnerKey));
+    const projectedSlots = [...this.workers.values()]
+      .filter(w => !w.retiring)
+      .reduce((sum, w) => sum + Math.max(0, this.sessionsPerWorker - w.ownerSessionKeys.size), 0);
+    let needed = Math.ceil(Math.max(0, unowned.size - projectedSlots) / this.sessionsPerWorker);
+    while (needed-- > 0 && !this.closing && this.workers.size < this.maxWorkers &&
+           this.startingWorkerCount() < this.maxConcurrentStarts) {
+      const startup = this.spawn(this.findAvailableSlot());
+      void startup.then(() => this.requestPump(), error => {
+        const failure = toError(error);
+        for (const pending of this.pending.splice(0)) pending.reject(failure);
+      });
+    }
+  }
+
   async ensureMinimumWorkers() {
     while (!this.closing && this.workers.size < this.minWorkers) {
       await this.spawn(this.findAvailableSlot());
@@ -1151,6 +1167,7 @@ export class WorkerPool {
     while (
       !this.closing &&
       spareOrStarting < this.warmSpareWorkers &&
+      this.startingWorkerCount() < this.maxConcurrentStarts &&
       this.workers.size < this.maxWorkers
     ) {
       // spawn() registers its handle synchronously before awaiting readiness,
@@ -1230,6 +1247,7 @@ export class WorkerPool {
       started: this.started,
       minWorkers: this.minWorkers,
       maxWorkers: this.maxWorkers,
+      maxConcurrentStarts: this.maxConcurrentStarts,
       sessionsPerWorker: this.sessionsPerWorker,
       maxActiveSessions: this.maxWorkers * this.sessionsPerWorker,
       idleTimeoutMs: this.idleTimeoutMs,

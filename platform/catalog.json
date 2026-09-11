@@ -125,13 +125,18 @@
         "experiments/agent-worker-isolation-v1/worker-exec-argv.test.mjs",
         "experiments/agent-worker-isolation-v1/worker-gateway-events.test.mjs",
         "experiments/agent-worker-isolation-v1/worker-pool-scaling.test.mjs",
+        "experiments/agent-worker-isolation-v1/worker-pool-demand.test.mjs",
         "experiments/agent-worker-isolation-v1/worker-pool-lifecycle.test.mjs",
         "experiments/agent-worker-isolation-v1/worker-runtime-lifecycle.test.mjs",
         "experiments/agent-worker-isolation-v1/worker-progress.test.mjs",
         "experiments/agent-worker-isolation-v1/worker-skill-telemetry.test.mjs",
         "experiments/agent-worker-isolation-v1/worker-steer91.test.mjs",
         "experiments/agent-worker-isolation-v1/worker-stream-parity.test.mjs",
-        "experiments/agent-worker-isolation-v1/worker-timeout-isolation.test.mjs"
+        "experiments/agent-worker-isolation-v1/worker-timeout-isolation.test.mjs",
+        "lab/cold-config-singleflight.test.mjs",
+        "lab/cold-start-pipeline-contract.test.mjs",
+        "lab/gateway-module-resolution-cache.test.mjs",
+        "lab/worker-coldstart-longterm.test.mjs"
       ]
     },
     {
