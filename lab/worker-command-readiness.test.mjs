@@ -8,7 +8,7 @@ const sha = (value) => createHash("sha256").update(value).digest("hex");
 
 test("command runtime exposes a module-only first-command preparation contract", () => {
   const command = read("./release-files/agent-command-DPfawBbr.js");
-  assert.match(command, /async function prewarmAgentCommandRuntimes\(\)/);
+  assert.match(command, /async function prewarmAgentCommandRuntimes\(params\)/);
   assert.match(
     command,
     /export \{[^}]*\bprewarmAgentCommandRuntimes\b[^}]*\};/s,
@@ -30,7 +30,7 @@ test("command runtime exposes a module-only first-command preparation contract",
     "loadSkillsRuntime",
   ]) {
     const body = command.slice(
-      command.indexOf("async function prewarmAgentCommandRuntimes()"),
+      command.indexOf("async function prewarmAgentCommandRuntimes(params)"),
       command.indexOf("async function resolveAgentCommandDeps"),
     );
     assert(body.includes(`${loader}()`), `missing ${loader}`);
@@ -60,6 +60,8 @@ test("Worker prewarm requires command preparation after the static lease", () =>
   assert(acquire >= 0);
   assert(command > acquire);
   assert.match(helper, /deferred-to-normal-turn/);
+  assert.match(helper, /pluginMetadataSnapshot:/);
+  assert.match(helper, /skillSnapshotPrepared:/);
 });
 
 test("release plan is pinned to the currently deployed readiness candidate", () => {

@@ -676,9 +676,12 @@ function loadSkillsRuntime() {
 	return skillsRuntimeLoader.load();
 }
 /** Import every runtime that can be needed before the first embedded Agent
- * attempt. This performs module loading only: it does not open a session,
+ * attempt and, when a pinned execution context is supplied, populate the
+ * process-local workspace skill snapshot cache. This does not open a session,
  * invoke a model, run a tool, or mutate the Agent transcript. */
-async function prewarmAgentCommandRuntimes() {
+async function prewarmAgentCommandRuntimes(params) {
+	const execDefaultsPromise = loadExecDefaultsRuntime();
+	const skillsPromise = loadSkillsRuntime();
 	await Promise.all([
 		loadAttemptExecutionRuntime(),
 		loadAcpManagerRuntime(),
@@ -692,9 +695,37 @@ async function prewarmAgentCommandRuntimes() {
 		loadTranscriptResolveRuntime(),
 		loadTranscriptAppendRuntime(),
 		cliDepsRuntimeLoader.load(),
-		loadExecDefaultsRuntime(),
-		loadSkillsRuntime()
+		execDefaultsPromise,
+		skillsPromise
 	]);
+	if (!params?.config || !params.agentId || !params.workspaceDir) return { skillSnapshotPrepared: false };
+	const [{ resolveNodeExecEligibility }, { getRemoteSkillEligibility, resolveReusableWorkspaceSkillSnapshot }] = await Promise.all([execDefaultsPromise, skillsPromise]);
+	const nodeSkillsEligibility = resolveNodeExecEligibility({
+		cfg: params.config,
+		sessionEntry: void 0,
+		sessionKey: void 0,
+		agentId: params.agentId
+	});
+	const executionCwd = resolveUserPath(resolveAgentRunCwd(params.config, params.agentId) ?? params.workspaceDir);
+	const pluginMetadataSnapshot = params.config.plugins?.enabled === false ? void 0 : params.pluginMetadataSnapshot ?? resolvePluginMetadataSnapshot({
+		config: params.config,
+		env: process.env,
+		workspaceDir: params.workspaceDir
+	});
+	resolveReusableWorkspaceSkillSnapshot({
+		workspaceDir: params.workspaceDir,
+		executionSkillsDir: path.join(executionCwd, "skills"),
+		config: params.config,
+		agentId: params.agentId,
+		skillFilter: resolveEffectiveAgentSkillFilter(params.config, params.agentId),
+		eligibility: {
+			nodeSkills: nodeSkillsEligibility,
+			remote: getRemoteSkillEligibility({ advertiseExecNode: nodeSkillsEligibility.canExec })
+		},
+		watch: false,
+		...pluginMetadataSnapshot ? { pluginMetadataSnapshot } : {}
+	});
+	return { skillSnapshotPrepared: true };
 }
 async function resolveAgentCommandDeps(deps) {
 	if (deps) return deps;
