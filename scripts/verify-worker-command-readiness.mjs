@@ -24,9 +24,7 @@ try {
   const workspace = join(state, "workspace");
   mkdirSync(workspace, { recursive: true, mode: 0o700 });
   const configPath = join(state, "openclaw.json");
-  writeFileSync(
-    configPath,
-    JSON.stringify({
+  const config = {
       agents: {
         defaults: {
           workspace,
@@ -35,7 +33,10 @@ try {
       },
       models: { providers: {} },
       plugins: { enabled: true, allow: [], load: { paths: [] }, entries: {} },
-    }),
+    };
+  writeFileSync(
+    configPath,
+    JSON.stringify(config),
     { mode: 0o600 },
   );
   process.env.OPENCLAW_STATE_DIR = state;
@@ -70,11 +71,17 @@ try {
   const startedAt = performance.now();
   const runtime = await import(pathToFileURL(facadePath).href);
   assert.equal(typeof runtime.prewarmAgentCommandRuntimes, "function");
-  await runtime.prewarmAgentCommandRuntimes();
+  const preparation = await runtime.prewarmAgentCommandRuntimes({
+    config,
+    agentId: "makaron",
+    workspaceDir: workspace,
+  });
+  assert.equal(preparation.skillSnapshotPrepared, true);
   console.log(
     JSON.stringify({
       status: "ready",
       commandPrewarmMs: Math.round(performance.now() - startedAt),
+      skillSnapshotPrepared: preparation.skillSnapshotPrepared,
       noAgentModelOrToolRequest: true,
     }),
   );

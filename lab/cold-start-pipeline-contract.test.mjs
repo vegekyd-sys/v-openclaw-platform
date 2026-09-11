@@ -16,5 +16,5 @@ test('tested demand methods match release artifact byte for byte',()=>{
   assert.equal(methods(source),methods(release));
 });
 test('native command retains the reviewed post-cold-sharing readiness surface',()=>{
-  assert.equal(hash(restoreColdConfigSharing(read('./release-files/agent-command-DPfawBbr.js'))),'50101d2a3344b93bbf7ae33fb76883a4421e05b0a4f7c691b38b6241ff36cdb7');
+  assert.equal(hash(restoreColdConfigSharing(read('./release-files/agent-command-DPfawBbr.js'))),'7b47ea5a0baed065803d0fd29ad219f367ba17476d88460169256c2373527292');
 });

@@ -15,22 +15,35 @@ export async function prewarmWorkerRuntime({
     const { commandRuntime, configRuntime, preparedRuntime } =
       await loadCompactionRuntime();
     const config = configRuntime.loadConfig();
+    const workspaceDir = agentRuntime.resolveAgentWorkspaceDir(config, agentId);
     lease = await preparedRuntime.acquireAgentRunPreparedModelRuntime(
       {
         config,
         agentId,
         agentDir: agentRuntime.resolveAgentDir(config, agentId),
         allowGatewaySubagentBinding: true,
-        workspaceDir: agentRuntime.resolveAgentWorkspaceDir(config, agentId),
+        workspaceDir,
       },
       { abortSignal: signal, catalogMode: "static" },
     );
     if (typeof commandRuntime.prewarmAgentCommandRuntimes !== "function") {
       throw new Error("OpenClaw Agent command runtime prewarm is unavailable");
     }
-    await commandRuntime.prewarmAgentCommandRuntimes();
+    const commandPreparation =
+      await commandRuntime.prewarmAgentCommandRuntimes({
+        config,
+        agentId,
+        workspaceDir,
+        pluginMetadataSnapshot:
+          lease.pluginGeneration?.pluginMetadataSnapshot,
+      });
     await preloadBuiltin();
-    return { status: "ready", ms: Math.round(performance.now() - start) };
+    return {
+      status: "ready",
+      ms: Math.round(performance.now() - start),
+      skillSnapshotPrepared:
+        commandPreparation?.skillSnapshotPrepared === true,
+    };
   } catch (error) {
     return {
       status: "deferred-to-normal-turn",

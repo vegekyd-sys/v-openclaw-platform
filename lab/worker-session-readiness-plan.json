@@ -1,0 +1,20 @@
+{
+  "baseRelease": "worker-command-readiness-20260912-v3",
+  "files": [
+    {
+      "source": "lab/release-files/agent-command-DPfawBbr.js",
+      "target": "openclaw/dist/agent-command-DPfawBbr.js",
+      "before": "b901716000cc1474a4c7982fe3fc7f5d9045beabb912efab4263c82435407c46"
+    },
+    {
+      "source": "experiments/agent-worker-isolation-v1/runtime-prewarm.mjs",
+      "target": "production-worker/runtime-prewarm.mjs",
+      "before": "353da5470410b65f6fe89a4516fd456665a704bc27653200631928f0d687d3c1"
+    },
+    {
+      "source": "lab/release-files/session-diff-baseline-DLuS-HQ-.js",
+      "target": "openclaw/dist/session-diff-baseline-DLuS-HQ-.js",
+      "before": "1e1d6ff55c983deab33905c6e7e4060f66dc0d958c7d97c2671d127d9e0dd2d9"
+    }
+  ]
+}
