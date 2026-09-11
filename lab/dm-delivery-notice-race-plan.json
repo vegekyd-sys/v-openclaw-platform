@@ -1,15 +1,15 @@
 {
-  "baseRelease": "system-agent-flash-20260911-v2",
+  "baseRelease": "dm-delivery-notice-race-20260911-v1",
   "files": [
     {
       "source": "lab/release-files/dm-delivery-notice-delivery-completion-Do3nBV6b.js",
       "target": "openclaw/dist/delivery-completion-Do3nBV6b.js",
-      "before": "0c9f3a47d6a6ca7687a3cc1fae41b41b515942ac9617be3417f94d675392916c"
+      "before": "d223a342ad217203dacac3fb6fc87b28e853b6f6f1afa0673e177cca1f1322d1"
     },
     {
       "source": "lab/release-files/dm-delivery-notice-lifecycle-YRwzpo9_.js",
       "target": "openclaw/dist/lifecycle-YRwzpo9_.js",
-      "before": "fadb95ce09a408c0b8b45d81755f9803afd306c7ae421c1bb0b25c686275abb8"
+      "before": "0f7c0f780f73992a2e1bd521833e23738a497f768dd1efdd3358b84bebe291a0"
     }
   ]
 }

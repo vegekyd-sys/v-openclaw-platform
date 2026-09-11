@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  patchFeishuDmPendingDeliveryNoticePresentation,
+  patchFeishuPendingDeliveryNoticePresentation,
   patchPendingDeliveryNoticeRace,
 } from "../scripts/patch-dm-delivery-notice-race.mjs";
 
@@ -21,7 +21,7 @@ const specs = [
   {
     target: "openclaw/dist/lifecycle-YRwzpo9_.js",
     destination: "lab/release-files/dm-delivery-notice-lifecycle-YRwzpo9_.js",
-    patch: patchFeishuDmPendingDeliveryNoticePresentation,
+    patch: patchFeishuPendingDeliveryNoticePresentation,
   },
 ];
 const files = [];
@@ -49,12 +49,12 @@ for (const spec of specs) {
   const source = Buffer.from(result.content, "base64").toString();
   assert.equal(createHash("sha256").update(source).digest("hex"), result.sha256);
   const patched = spec.patch(source);
-  assert.equal(patched.changed, true);
   fs.writeFileSync(path.join(root, spec.destination), patched.source);
   files.push({ source: spec.destination, target: spec.target, before: result.sha256 });
   console.log(
     JSON.stringify({
       target: spec.target,
+      changed: patched.changed,
       before: result.sha256,
       after: createHash("sha256").update(patched.source).digest("hex"),
     }),
