@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { filterAutomaticSessionMaintenancePlan, runAutomaticSessionMaintenancePlan } from "./release-files/automatic-session-maintenance-planner.mjs";
+import { boundAutomaticSessionMaintenancePlan, filterAutomaticSessionMaintenancePlan, runAutomaticSessionMaintenancePlan } from "./release-files/automatic-session-maintenance-planner.mjs";
 
 const request = {
   activeSessionKeys: ["agent:makaron:explicit:test"],
@@ -76,6 +76,29 @@ test("maintenance planner rejects incomplete or duplicate archive byte sizes", a
     }});
     await assert.rejects(result, /archive byte size/);
   }
+});
+
+test("automatic plans cross the process boundary one native batch at a time", () => {
+  const entryRemovals = Array.from({length: 100}, (_, index) => ({
+    expectedEntry: {sessionId: `session-${index}`},
+    maintenanceReason: ["capped", "pruned", "model-run-pruned"][index % 3],
+    sessionKey: `key-${index}`,
+  }));
+  const stateDeletePlans = entryRemovals.map((item) => ({archiveTranscript: true, sessionId: item.expectedEntry.sessionId}));
+  const plannedEntryArchives = entryRemovals.map((item) => ({sessionKey: item.sessionKey}));
+  const archivedWorktrees = entryRemovals.map((item) => ({sessionKey: item.sessionKey}));
+  const sizes = stateDeletePlans.map((item, index) => [item.sessionId, index]);
+  const plan = boundAutomaticSessionMaintenancePlan({
+    archived: 100, capped: 34, entryRemovals, modelRunPruned: 33, plannedEntryArchives,
+    pruned: 33, stateDeletePlans, automaticArchiveBytesBySessionId: sizes, archivedWorktrees,
+  }, (params) => [{entryRemovals: params.entryRemovals.slice(0, 64), stateDeletePlans: params.stateDeletePlans.slice(0, 64)}]);
+  assert.equal(plan.entryRemovals.length, 64);
+  assert.equal(plan.stateDeletePlans.length, 64);
+  assert.equal(plan.plannedEntryArchives.length, 64);
+  assert.equal(plan.archivedWorktrees.length, 64);
+  assert.equal(plan.automaticArchiveBytesBySessionId.length, 64);
+  assert.deepEqual({capped: plan.capped, pruned: plan.pruned, modelRunPruned: plan.modelRunPruned}, {capped: 22, pruned: 21, modelRunPruned: 21});
+  assert.deepEqual(plan.automaticPlanSummary, {truncated: true, entryRemovalsTotal: 100, plannedEntryArchivesTotal: 100, stateDeletePlansTotal: 100});
 });
 
 test("late active admissions are removed from every destructive plan surface", () => {

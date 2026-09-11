@@ -1023,7 +1023,7 @@ async function enforceSessionHistoryMaintenanceSerialized(params) {
 	});
 }
 //#endregion
-export { applySessionEntryMaintenance as a, emitCommittedLifecycleIdentityMutations as c, emitSessionIdentityMutation as d, emitSessionLifecycleEvent as f, readSessionLifecycleVersion as g, readSessionIdentityMutationVersion as h, kickSessionHistoryDiskBudgetMaintenance as i, emitCommittedSessionEntryRemovals as l, onSessionLifecycleEvent as m, enforceSqliteSessionHistoryDiskBudget as n, finalizeSessionEntryMaintenancePlansAfterWriterReleaseBestEffort as o, onSessionIdentityMutation as p, inspectSqliteSessionHistoryDiskBudget as r, refreshSqliteSessionPlannerStatisticsBestEffort as s, collectAdmissionProtectedSessionIds as t, emitCommittedSessionIdentityDiff as u };
+export { applySessionEntryMaintenance as a, buildSessionMaintenanceBatches as b, emitCommittedLifecycleIdentityMutations as c, emitSessionIdentityMutation as d, emitSessionLifecycleEvent as f, readSessionLifecycleVersion as g, readSessionIdentityMutationVersion as h, kickSessionHistoryDiskBudgetMaintenance as i, emitCommittedSessionEntryRemovals as l, onSessionLifecycleEvent as m, enforceSqliteSessionHistoryDiskBudget as n, finalizeSessionEntryMaintenancePlansAfterWriterReleaseBestEffort as o, onSessionIdentityMutation as p, inspectSqliteSessionHistoryDiskBudget as r, refreshSqliteSessionPlannerStatisticsBestEffort as s, collectAdmissionProtectedSessionIds as t, emitCommittedSessionIdentityDiff as u };
 
 // Automatic planning is read-only. Revalidate exact entry snapshots at commit.
 export function commitPlannedSessionMaintenanceArchives(database, plan) {

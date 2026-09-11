@@ -1,0 +1,20 @@
+{
+  "baseRelease": "offthread-session-maintenance-20260912-v3",
+  "files": [
+    {
+      "source": "lab/release-files/session-history-eviction-d5aiCsHS.js",
+      "target": "openclaw/dist/session-history-eviction-d5aiCsHS.js",
+      "before": "e013d6d541770dc2a8622a196e6a448f928fbf46c3ae7467537a750278ff9e04"
+    },
+    {
+      "source": "lab/release-files/automatic-session-maintenance-planner.mjs",
+      "target": "openclaw/dist/automatic-session-maintenance-planner.mjs",
+      "before": "1c2bef4559e424d9face2d79c8f9a13e6d8cad001052e9969f8581b316a40c9f"
+    },
+    {
+      "source": "lab/release-files/automatic-session-maintenance.worker.mjs",
+      "target": "openclaw/dist/automatic-session-maintenance.worker.mjs",
+      "before": "cf9d00f55d8e2bc05590ace24c3026d502d1a5f16b323fc4b8a24c9cd93001f0"
+    }
+  ]
+}

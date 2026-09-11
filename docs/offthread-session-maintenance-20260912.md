@@ -70,12 +70,35 @@ the coordinator immediately; explicit maintenance is unchanged. Plan snapshots,
 late-admission filtering, entry compare-and-swap, transcript snapshot fences,
 and final deletion revalidation remain authoritative after the wait.
 
+## V4: bound the Worker result to one native cleanup batch
+
+V3's first fresh C1 still produced a simultaneous 2.448-second health response
+when the isolated planner finished. The Agent turn was still admitted, so the
+new V3 drain had not entered any archive or deletion write. The pause instead
+matched delivery of the complete plan: roughly 2,900 entry snapshots, state
+delete snapshots, archive candidates, worktrees, and transcript sizes were
+structured-cloned back onto the Gateway event loop at once.
+
+V4 still performs the complete read-only selection and transcript-size scan in
+the Worker, but returns only the first batch from the existing native
+`buildSessionMaintenanceBatches` policy and at most 64 independent dashboard
+archive candidates. Matching byte sizes and worktrees are filtered with the
+same identities. Counts describe only the returned work while a compact summary
+records the full backlog. Later automatic kicks progressively drain the rest;
+the native coordinator already limits successful sweeps to once per minute.
+
+This preserves native session-family grouping, 64 MiB archive boundaries,
+entry compare-and-swap, late-admission filtering, and state deletion snapshots.
+It bounds the common multi-thousand-session process crossing without moving any
+destructive or lifecycle work into the Worker.
+
 ## Acceptance gates
 
 1. Deterministic queue and planner tests, including archive revalidation and a
    deliberately blocking scan that proves the caller event loop advances.
 2. Exact installed-runtime read-only planner and transcript-sizing probe against
-   the full Makaron database, with zero mutations and bounded worker exit.
+   the full Makaron database, with zero mutations, bounded returned-plan size,
+   and bounded worker exit.
 3. Fresh-session C1 before increasing load; then identical min=1 and min=5
    C1/C5/C10/C15 matrices, HTTP/RPC health, event-loop lag, memory, and OOM gates.
 4. Three configuration generations, soak, tools/context/Memory, and real Feishu
