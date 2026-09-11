@@ -1,0 +1,25 @@
+// Emergency recovery only when the scoped service is already stopped/failed.
+import fs from 'node:fs';
+import os from 'node:os';
+import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+import {execFileSync} from 'node:child_process';
+const unit='openclaw-vlab-production-mirror-v8.service';
+const dir='/srv/vlab-production-mirror/labs/control/native-execution-rollout-20260911';
+const read=p=>JSON.parse(fs.readFileSync(p));
+const run=(c,a)=>execFileSync(c,a,{encoding:'utf8',timeout:20000}).trim();
+const hash=b=>createHash('sha256').update(b).digest('hex');
+assert.equal(os.hostname(),'VM-0-4-ubuntu');assert.equal(process.getuid(),0);
+assert.equal(read('/srv/vlab-production-mirror/labs/control/integration.json').owner,'01a07b32-72be-7fe0-85d4-00680ea01f4e');
+assert(!fs.existsSync('/srv/vlab-production-mirror/labs/shared-workflow/pending.json'));
+assert.equal(Number(run('systemctl',['show',unit,'-p','MainPID','--value'])),0,'Do not stop a live Gateway through offline recovery');
+const m=read(dir+'/manifest.json'),mode=read(dir+'/mode.json');
+assert.equal(m.owner,'01a07b32-72be-7fe0-85d4-00680ea01f4e');
+assert(m.configPath.startsWith('/srv/vlab-production-mirror/labs/instances/db91-parity/state/'));
+assert.deepEqual(read('/srv/vlab-production-mirror/labs/shared-workflow/current.json'),m.runtime);
+const bytes=fs.readFileSync(dir+'/original-config.json');assert.equal(hash(bytes),m.originalSha);
+assert([mode.configSha,m.originalSha].includes(hash(fs.readFileSync(m.configPath))),'Config drift');
+const stat=fs.statSync(m.configPath),tmp=m.configPath+'.native-recover-tmp';
+fs.writeFileSync(tmp,bytes,{flag:'wx',mode:stat.mode});fs.chownSync(tmp,stat.uid,stat.gid);fs.renameSync(tmp,m.configPath);
+fs.writeFileSync(dir+'/mode.json',JSON.stringify({variant:'worker',configSha:m.originalSha,offlineRecovery:true,at:new Date().toISOString()}),{mode:0o600});
+run('systemctl',['start',unit]);console.log(JSON.stringify({restoredConfigSha:m.originalSha,started:true,readiness:'must verify'}));
