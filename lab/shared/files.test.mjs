@@ -50,7 +50,7 @@ test('OpenClaw ready response omits activeCount; draining and expired fences nev
  assert.throws(()=>suspensionReady({status:'ready',expiresAtMs:4000},0));
 });
 
-test('native fence never calls plugin RPC after suspension and releases on drain timeout',async()=>{
+test('idle fence checks optional Workers before suspension and releases on drain timeout',async()=>{
  const {acquireIdleFence}=await import('./lifecycle.mjs');const seen=[];
  const call=async m=>{seen.push(m);if(m==='vlab.workers.status'){assert(!seen.includes('gateway.suspend.prepare'));return {pending:0,workers:[{activeCount:0,queued:0}]};}if(m==='gateway.suspend.prepare')return {suspensionId:'test'};if(m==='gateway.suspend.status')return {status:'ready',expiresAtMs:20000};};
  assert.equal((await acquireIdleFence(call,'test',{now:()=>0})).suspensionId,'test');
@@ -58,4 +58,15 @@ test('native fence never calls plugin RPC after suspension and releases on drain
  let resumed=false;
  const busy=async m=>{if(m==='gateway.suspend.status')return {status:'draining',activeCount:1,expiresAtMs:20000};if(m==='gateway.suspend.resume'){resumed=true;return{};}if(m==='vlab.workers.status')return {pending:0,workers:[]};return {suspensionId:'busy'};};
  await assert.rejects(acquireIdleFence(busy,'busy',{now:()=>0,timeoutMs:0}),/deferred/);assert(resumed);
+});
+
+test('all-Native idle fence accepts only the exact missing Worker RPC error',async()=>{
+ const {acquireIdleFence}=await import('./lifecycle.mjs');const seen=[];
+ const native=async m=>{seen.push(m);if(m==='vlab.workers.status')throw Error('unknown method: vlab.workers.status');if(m==='gateway.suspend.prepare')return {suspensionId:'native'};if(m==='gateway.suspend.status')return {status:'ready',expiresAtMs:20000};};
+ assert.equal((await acquireIdleFence(native,'native',{now:()=>0})).suspensionId,'native');
+ assert.deepEqual(seen,['vlab.workers.status','gateway.suspend.prepare','gateway.suspend.status']);
+ const failed=[];
+ const transport=async m=>{failed.push(m);throw Error('Gateway connect deadline');};
+ await assert.rejects(acquireIdleFence(transport,'failed',{now:()=>0}),/Gateway connect deadline/);
+ assert.deepEqual(failed,['vlab.workers.status']);
 });

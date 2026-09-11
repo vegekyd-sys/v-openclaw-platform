@@ -2,11 +2,18 @@ import assert from 'node:assert/strict';
 import {setTimeout as delay} from 'node:timers/promises';
 import {suspensionReady} from './files.mjs';
 export async function acquireIdleFence(call, requestId, {now=Date.now,sleep=delay,timeoutMs=45000}={}) {
-  // Plugin RPC is unavailable once suspended. Check Workers before closing admission;
-  // native ready then covers chat/queued/cron/terminal work behind that fence.
-  const workers=await call('vlab.workers.status',{});
-  assert.equal(workers.pending,0,'Worker requests pending; retry later');
-  assert(workers.workers.every(w=>!w.activeCount&&!w.queued),'Workers active; retry later');
+  // Plugin RPC is unavailable once suspended. Check Workers before closing admission
+  // when the optional Worker plugin is loaded. In all-Native mode the method does
+  // not exist, so the Gateway's own suspension is the complete admission fence.
+  let workers;
+  try {workers=await call('vlab.workers.status',{});}
+  catch(e) {
+    if(!/^unknown method: vlab\.workers\.status$/i.test(String(e?.message??e)))throw e;
+  }
+  if(workers) {
+    assert.equal(workers.pending,0,'Worker requests pending; retry later');
+    assert(workers.workers.every(w=>!w.activeCount&&!w.queued),'Workers active; retry later');
+  }
   const held=await call('gateway.suspend.prepare',{requestId,drain:true,terminalPolicy:'preserve'});
   assert(held.suspensionId,'Native suspension was not acquired');
   try {
