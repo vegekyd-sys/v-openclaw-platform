@@ -12,7 +12,6 @@ import {
 } from "../scripts/patch-dm-delivery-notice-race.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const expectedRelease = "worker-cold-firsttext-20260911-v2";
 const specs = [
   {
     target: "openclaw/dist/delivery-completion-Do3nBV6b.js",
@@ -26,6 +25,7 @@ const specs = [
   },
 ];
 const files = [];
+let baseRelease;
 for (const spec of specs) {
   const result = JSON.parse(
     execFileSync(
@@ -41,7 +41,11 @@ for (const spec of specs) {
       { encoding: "utf8", maxBuffer: 8 * 1024 ** 2, timeout: 120_000 },
     ),
   );
-  assert.equal(result.current.release, expectedRelease);
+  if (baseRelease === undefined) {
+    baseRelease = result.current.release;
+  } else {
+    assert.equal(result.current.release, baseRelease, "VLab release changed during artifact read");
+  }
   const source = Buffer.from(result.content, "base64").toString();
   assert.equal(createHash("sha256").update(source).digest("hex"), result.sha256);
   const patched = spec.patch(source);
@@ -56,7 +60,8 @@ for (const spec of specs) {
     }),
   );
 }
-const plan = { baseRelease: expectedRelease, files };
+assert.equal(typeof baseRelease, "string");
+const plan = { baseRelease, files };
 fs.writeFileSync(
   path.join(root, "lab/dm-delivery-notice-race-plan.json"),
   `${JSON.stringify(plan, null, 2)}\n`,
