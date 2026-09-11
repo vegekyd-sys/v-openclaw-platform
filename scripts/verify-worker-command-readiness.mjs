@@ -54,9 +54,21 @@ try {
   });
   const candidatePath = join(scratch, "agent-command-candidate.mjs");
   writeFileSync(candidatePath, source, { mode: 0o600 });
+  const facadePath = join(scratch, "agent-command-facade.mjs");
+  writeFileSync(
+    facadePath,
+    readFileSync(
+      new URL("../lab/release-files/agent-command-DeP5kHlK.js", import.meta.url),
+      "utf8",
+    ).replace(
+      '"./agent-command-DPfawBbr.js"',
+      JSON.stringify(pathToFileURL(candidatePath).href),
+    ),
+    { mode: 0o600 },
+  );
 
   const startedAt = performance.now();
-  const runtime = await import(pathToFileURL(candidatePath).href);
+  const runtime = await import(pathToFileURL(facadePath).href);
   assert.equal(typeof runtime.prewarmAgentCommandRuntimes, "function");
   await runtime.prewarmAgentCommandRuntimes();
   console.log(

@@ -37,6 +37,18 @@ test("command runtime exposes a module-only first-command preparation contract",
   }
 });
 
+test("semantic command facade exposes the preparation contract to Worker resolution", () => {
+  const facade = read("./release-files/agent-command-DeP5kHlK.js");
+  assert.match(
+    facade,
+    /import \{[^}]*\bprewarmAgentCommandRuntimes\b[^}]*\} from "\.\/agent-command-DPfawBbr\.js";/,
+  );
+  assert.match(
+    facade,
+    /export \{[^}]*\bprewarmAgentCommandRuntimes\b[^}]*\};/,
+  );
+});
+
 test("Worker prewarm requires command preparation after the static lease", () => {
   const helper = read(
     "../experiments/agent-worker-isolation-v1/runtime-prewarm.mjs",
@@ -59,6 +71,10 @@ test("release plan is pinned to the currently deployed readiness candidate", () 
       [
         "openclaw/dist/agent-command-DPfawBbr.js",
         "1ffe7569cc0edcdc45d108056dc89f14853d27d1e9c1bff4d2bfc0f583f2bc18",
+      ],
+      [
+        "openclaw/dist/agent-command-DeP5kHlK.js",
+        "893415c5f2bb79551a48b8571099f85743f8f04329235eda2f268e0b7634835a",
       ],
       [
         "production-worker/runtime-prewarm.mjs",

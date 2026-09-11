@@ -7,6 +7,11 @@
       "before": "1ffe7569cc0edcdc45d108056dc89f14853d27d1e9c1bff4d2bfc0f583f2bc18"
     },
     {
+      "source": "lab/release-files/agent-command-DeP5kHlK.js",
+      "target": "openclaw/dist/agent-command-DeP5kHlK.js",
+      "before": "893415c5f2bb79551a48b8571099f85743f8f04329235eda2f268e0b7634835a"
+    },
+    {
       "source": "experiments/agent-worker-isolation-v1/runtime-prewarm.mjs",
       "target": "production-worker/runtime-prewarm.mjs",
       "before": "a6c8d4e994de17f5c0114c9b8d396392e81698db732088bf5bf893ef76a0a57a"
