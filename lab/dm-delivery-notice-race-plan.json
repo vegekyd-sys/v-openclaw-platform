@@ -1,0 +1,15 @@
+{
+  "baseRelease": "worker-cold-firsttext-20260911-v2",
+  "files": [
+    {
+      "source": "lab/release-files/dm-delivery-notice-delivery-completion-Do3nBV6b.js",
+      "target": "openclaw/dist/delivery-completion-Do3nBV6b.js",
+      "before": "0c9f3a47d6a6ca7687a3cc1fae41b41b515942ac9617be3417f94d675392916c"
+    },
+    {
+      "source": "lab/release-files/dm-delivery-notice-lifecycle-YRwzpo9_.js",
+      "target": "openclaw/dist/lifecycle-YRwzpo9_.js",
+      "before": "fadb95ce09a408c0b8b45d81755f9803afd306c7ae421c1bb0b25c686275abb8"
+    }
+  ]
+}
