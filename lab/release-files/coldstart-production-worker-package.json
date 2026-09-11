@@ -1,0 +1,19 @@
+{
+  "name": "@versa/vlab-agent-worker-isolation",
+  "version": "0.2.12-rc.1",
+  "private": true,
+  "type": "module",
+  "peerDependencies": {
+    "openclaw": ">=2026.8.1"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.mjs"
+    ]
+  }
+}

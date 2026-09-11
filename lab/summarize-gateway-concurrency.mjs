@@ -17,7 +17,7 @@ for (const line of raw.split('\n')) {
   if (!line) continue; let j; try {j = JSON.parse(line);} catch {continue;}
   const msg = j.MESSAGE ?? '', profileMatch = msg.match(/\[gateway-concurrency-profile\] (\{.*\})/);
   if (profileMatch) {const e = JSON.parse(profileMatch[1]); if (e.event === 'summary') profiles.push(e);}
-  const match = msg.match(/\[(?:firsttext-metrics|firsttext-worker-phases|firsttext-native-premodel)\] (\{.*\})/);
+  const match = msg.match(/\[(?:firsttext-metrics|firsttext-worker-phases|firsttext-native-premodel|gateway-dispatch-phases)\] (\{.*\})/);
   if (!match) continue; let e; try {e = JSON.parse(match[1]);} catch {continue;}
   if (!byId.has(e.runId)) continue; const a = stages.get(e.runId) ?? []; a.push(e); stages.set(e.runId, a);
 }
@@ -25,7 +25,26 @@ const stat = values => {const a = values.filter(Number.isFinite).sort((a, b) => 
 for (const r of results) {
   const s = stages.get(r.id) ?? [], at = stage => {const e = s.find(e => e.stage === stage); return e?.atMs ?? e?.at;};
   const enter = at('worker-agent-enter'), model = at('model-call-enter'), text = at('first-nonempty-text');
-  r.phases = {sendToHarnessMs: at('gateway-harness-enter') - r.start, sendToWorkerMs: enter - r.start, gatewayPreflightMs: at('gateway-preflight-end') - at('gateway-preflight-enter'), poolQueueMs: at('pool-ipc-send') - at('pool-enqueued'), workerToModelMs: model - enter, modelToFirstTextMs: text - model, firstTextToGatewayBodyMs: r.start + r.firstBody - text};
+  r.phases = {
+    ackToDispatchFunctionMs: at('gateway-dispatch-function-enter') - (r.start + r.ackMs),
+    dispatchFunctionToWrapperMs: at('gateway-dispatch-wrapper-call') - at('gateway-dispatch-function-enter'),
+    wrapperToMediaTranscriptRunMs: at('gateway-media-transcript-run') - at('gateway-dispatch-wrapper-call'),
+    mediaTranscriptToWorkAdmissionMs: at('gateway-work-admission-run') - at('gateway-media-transcript-run'),
+    workAdmissionToInboundMs: at('gateway-dispatch-inbound-enter') - at('gateway-work-admission-run'),
+    inboundToPluginMediaAwaitMs: at('gateway-plugin-media-await-enter') - at('gateway-dispatch-inbound-enter'),
+    pluginMediaAwaitMs: at('gateway-plugin-media-await-end') - at('gateway-plugin-media-await-enter'),
+    pluginMediaToProjectedDispatchMs: at('gateway-projected-dispatch-enter') - at('gateway-plugin-media-await-end'),
+    projectedDispatchToHarnessMs: at('gateway-harness-enter') - at('gateway-projected-dispatch-enter'),
+    sendToHarnessMs: at('gateway-harness-enter') - r.start,
+    sendToWorkerMs: enter - r.start,
+    gatewayPreflightMs: at('gateway-preflight-end') - at('gateway-preflight-enter'),
+    poolQueueMs: at('pool-ipc-send') - at('pool-enqueued'),
+    workerToModelMs: model - enter,
+    modelToFirstTextMs: text - model,
+    firstTextToGatewayBodyMs: r.start + r.firstBody - text,
+  };
+  r.gatewayStages = s.filter(e => e.v === 1 && typeof e.elapsedMs === 'number' && e.stage?.startsWith('gateway-'))
+    .map(({stage,atMs,elapsedMs,cpuUserMs,cpuSystemMs,eventLoopUtilization,pid}) => ({stage,atMs,elapsedMs,cpuUserMs,cpuSystemMs,eventLoopUtilization,pid}));
   r.workerPid = s.find(e => e.stage === 'worker-agent-enter')?.pid;
   r.calls = s.filter(e => e.stage === 'model-call-enter').map(e => ({provider: e.provider, model: e.model}));
   if (r.terminal === 'final') assert.equal(r.calls.length, 1, 'Expected one traced model call per successful short request');
