@@ -111,6 +111,7 @@
         "experiments/agent-worker-isolation-v1/patch-openclaw-skill-workshop-worker-proxy.test.mjs",
         "experiments/agent-worker-isolation-v1/patch-openclaw-worker-exec-config-domain.test.mjs",
         "experiments/agent-worker-isolation-v1/runtime-path.test.mjs",
+        "experiments/agent-worker-isolation-v1/runtime-prewarm.test.mjs",
         "experiments/agent-worker-isolation-v1/session-hotset.test.mjs",
         "experiments/agent-worker-isolation-v1/session-rollover-retry.test.mjs",
         "experiments/agent-worker-isolation-v1/skill-usage-report.test.mjs",
@@ -136,7 +137,9 @@
         "lab/cold-config-singleflight.test.mjs",
         "lab/cold-start-pipeline-contract.test.mjs",
         "lab/gateway-module-resolution-cache.test.mjs",
-        "lab/worker-coldstart-longterm.test.mjs"
+        "lab/worker-coldstart-longterm.test.mjs",
+        "lab/worker-command-readiness.test.mjs",
+        "lab/worker-runtime-readiness.test.mjs"
       ]
     },
     {

@@ -1,0 +1,15 @@
+{
+  "baseRelease": "worker-runtime-readiness-20260912-v1",
+  "files": [
+    {
+      "source": "lab/release-files/agent-command-DPfawBbr.js",
+      "target": "openclaw/dist/agent-command-DPfawBbr.js",
+      "before": "1ffe7569cc0edcdc45d108056dc89f14853d27d1e9c1bff4d2bfc0f583f2bc18"
+    },
+    {
+      "source": "experiments/agent-worker-isolation-v1/runtime-prewarm.mjs",
+      "target": "production-worker/runtime-prewarm.mjs",
+      "before": "a6c8d4e994de17f5c0114c9b8d396392e81698db732088bf5bf893ef76a0a57a"
+    }
+  ]
+}

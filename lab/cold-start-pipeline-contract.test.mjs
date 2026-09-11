@@ -8,13 +8,13 @@ const hash=value=>createHash('sha256').update(value).digest('hex');
 const source=read('../experiments/agent-worker-isolation-v1/worker-pool.mjs');
 const release=read('./release-files/production-worker-worker-pool.mjs');
 test('pool admission, ownership, cancellation and event contracts otherwise unchanged',()=>{
-  assert.equal(hash(restoreDemandExpansion(source)),'a4a3bfd547074b5d851a0c000cb8a9ff4975e16e5d02cc8918c017aa1882b94c');
-  assert.equal(hash(restoreDemandExpansion(release)),'9b471ee18ace343f60081f0f8d8f9040fa2c058444ba697aad90a7e1ecc9d046');
+  assert.equal(hash(restoreDemandExpansion(source)),'7967e68a1cf410402fe114f79bb71efb053edf806870a35537b12ca177793d41');
+  assert.equal(hash(restoreDemandExpansion(release)),'b079b955078ec12dcc201978d72eceb08e4acd425aeffe922b045410740d3fc6');
 });
 test('tested demand methods match release artifact byte for byte',()=>{
   const methods=s=>s.slice(s.indexOf('  startingWorkerCount() {'),s.indexOf('  async ensureMinimumWorkers() {'));
   assert.equal(methods(source),methods(release));
 });
-test('native command changes only scoped config initialization sharing',()=>{
-  assert.equal(hash(restoreColdConfigSharing(read('./release-files/agent-command-DPfawBbr.js'))),'013390e6d73c91ecfd1ff625fa8c90d3dee988d350ff3948e6c32d35394fac54');
+test('native command retains the reviewed post-cold-sharing readiness surface',()=>{
+  assert.equal(hash(restoreColdConfigSharing(read('./release-files/agent-command-DPfawBbr.js'))),'50101d2a3344b93bbf7ae33fb76883a4421e05b0a4f7c691b38b6241ff36cdb7');
 });
