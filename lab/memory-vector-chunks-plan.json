@@ -1,0 +1,10 @@
+{
+  "baseRelease": "dm-delivery-notice-race-20260911-v1",
+  "files": [
+    {
+      "source": "lab/release-files/memory-vector-chunks-manager.js",
+      "target": "openclaw/dist/extensions/memory-core/manager-runtime.js",
+      "before": "d6dee81008ed3a7cba84acb52fb6d19c1c8b585e7e6fd4fd20e2d8c2e8f239d3"
+    }
+  ]
+}
