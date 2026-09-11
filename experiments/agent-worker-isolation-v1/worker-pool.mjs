@@ -248,6 +248,7 @@ export class WorkerPool {
       sessionHotset: undefined,
       gatewayOwnedToolProxy: undefined,
       skillUsageTelemetry: undefined,
+      runtimePrewarm: undefined,
     };
     this.workers.set(slot, handle);
 
@@ -755,6 +756,9 @@ export class WorkerPool {
     if (message?.skillUsageTelemetry) {
       worker.skillUsageTelemetry = message.skillUsageTelemetry;
     }
+    if (message?.runtimePrewarm) {
+      worker.runtimePrewarm = message.runtimePrewarm;
+    }
     if (message?.type === "ready") {
       worker.resolveStartup?.();
       this.requestPump();
@@ -1260,6 +1264,7 @@ export class WorkerPool {
           sessionHotset: worker.sessionHotset,
           gatewayOwnedToolProxy: worker.gatewayOwnedToolProxy,
           skillUsageTelemetry: worker.skillUsageTelemetry,
+          runtimePrewarm: worker.runtimePrewarm,
         })),
     };
   }
