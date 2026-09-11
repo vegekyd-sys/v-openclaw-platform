@@ -34,12 +34,30 @@ This does not remove retention, archive, cap, integrity, or SQLite contention
 guards. It changes only which event loop performs the read-only global planning
 scan.
 
+## V2: archive sizing in the same isolated snapshot
+
+The first VLab deployment removed the proven 3.3-second Gateway planning
+transaction, but a clean C15 still produced a 5-second health timeout and a
+5.824-second event-loop interval. The remaining automatic finalizer was sizing
+2,871 archive candidates on the Gateway in 64-session synchronous batches after
+the isolated planner returned.
+
+V2 computes those transcript byte totals in the planner's existing read-only
+Worker transaction and forwards the validated map to the native finalizer. A
+session with no transcript rows is represented as zero bytes. The finalizer
+keeps its native sizing path for explicit maintenance and older callers, while
+the automatic path refuses an incomplete or duplicate size map. Late active
+admissions filter both the deletion plan and its matching size entry together.
+All native materialization, size-bounded batching, delete transactions,
+archive publication, lifecycle events, and commit-time revalidation remain in
+the owner process.
+
 ## Acceptance gates
 
 1. Deterministic queue and planner tests, including archive revalidation and a
    deliberately blocking scan that proves the caller event loop advances.
-2. Exact installed-runtime read-only planner probe against the full Makaron
-   database, with zero mutations and bounded worker exit.
+2. Exact installed-runtime read-only planner and transcript-sizing probe against
+   the full Makaron database, with zero mutations and bounded worker exit.
 3. Fresh-session C1 before increasing load; then identical min=1 and min=5
    C1/C5/C10/C15 matrices, HTTP/RPC health, event-loop lag, memory, and OOM gates.
 4. Three configuration generations, soak, tools/context/Memory, and real Feishu

@@ -63,6 +63,11 @@ assert.equal(after.sessions, before.sessions, "session count changed during read
 assert.equal(after.stat.size, before.stat.size, "database size changed during read-only planner probe");
 assert.equal(after.stat.mtimeMs, before.stat.mtimeMs, "database mtime changed during read-only planner probe");
 assert(eventLoopTurns >= 3, `caller event loop advanced only ${eventLoopTurns} times`);
+assert(Array.isArray(plan.automaticArchiveBytesBySessionId), "planner did not return precomputed archive sizes");
+const archiveIds = new Set(plan.stateDeletePlans.filter((item) => item.archiveTranscript).map((item) => item.sessionId));
+const archiveSizes = new Map(plan.automaticArchiveBytesBySessionId);
+assert.equal(archiveSizes.size, plan.automaticArchiveBytesBySessionId.length, "planner returned duplicate archive sizes");
+for (const sessionId of archiveIds) assert(archiveSizes.has(sessionId), `planner omitted archive size for ${sessionId}`);
 console.log(JSON.stringify({
   agentId,
   elapsedMs,
@@ -76,6 +81,8 @@ console.log(JSON.stringify({
     plannedEntryArchives: plan.plannedEntryArchives?.length ?? 0,
     pruned: plan.pruned,
     stateDeletePlans: plan.stateDeletePlans.length,
+    transcriptSizeCount: archiveSizes.size,
+    transcriptBytes: [...archiveSizes.values()].reduce((sum, bytes) => sum + bytes, 0),
   },
   readOnly: true,
 }));

@@ -577,9 +577,11 @@ async function finalizeSessionEntryMaintenancePlansAfterWriterReleaseBestEffort(
 		await refreshSqliteSessionPlannerStatisticsBestEffort(scope, options.deletedEntriesBeforeMaintenance ?? 0, { isCurrent });
 		return emptyResult();
 	}
-	let archiveBytesBySessionId;
+	let archiveBytesBySessionId = options.archiveBytesBySessionId;
 	try {
-		archiveBytesBySessionId = await readSessionTranscriptJsonlBytes(scope, stateDeletePlans.filter((plan) => plan.archiveTranscript).map((plan) => plan.sessionId), isCurrent);
+		if (archiveBytesBySessionId) {
+			for (const plan of stateDeletePlans) if (plan.archiveTranscript && !archiveBytesBySessionId.has(plan.sessionId)) throw new Error(`Missing precomputed archive byte size for ${plan.sessionId}`);
+		} else archiveBytesBySessionId = await readSessionTranscriptJsonlBytes(scope, stateDeletePlans.filter((plan) => plan.archiveTranscript).map((plan) => plan.sessionId), isCurrent);
 	} catch (error) {
 		warn("SQLite session maintenance archive sizing failed", error, stateDeletePlans);
 		await refreshSqliteSessionPlannerStatisticsBestEffort(scope, options.deletedEntriesBeforeMaintenance ?? 0, { isCurrent });

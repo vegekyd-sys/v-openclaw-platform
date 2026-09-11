@@ -37,6 +37,22 @@ function validatePlan(plan) {
   if (plan.plannedEntryArchives !== undefined && !Array.isArray(plan.plannedEntryArchives)) {
     throw new Error("Automatic session maintenance plan has invalid plannedEntryArchives");
   }
+  if (plan.automaticArchiveBytesBySessionId !== undefined) {
+    if (!Array.isArray(plan.automaticArchiveBytesBySessionId) ||
+      plan.automaticArchiveBytesBySessionId.some((entry) =>
+        !Array.isArray(entry) || entry.length !== 2 || typeof entry[0] !== "string" ||
+        !Number.isFinite(entry[1]) || entry[1] < 0)) {
+      throw new Error("Automatic session maintenance plan has invalid archive byte sizes");
+    }
+    const ids = plan.automaticArchiveBytesBySessionId.map(([sessionId]) => sessionId);
+    if (new Set(ids).size !== ids.length) {
+      throw new Error("Automatic session maintenance plan has duplicate archive byte sizes");
+    }
+    const sized = new Set(ids);
+    if (plan.stateDeletePlans.some((item) => item.archiveTranscript && !sized.has(item.sessionId))) {
+      throw new Error("Automatic session maintenance plan is missing an archive byte size");
+    }
+  }
   for (const field of ["archived", "modelRunPruned", "pruned", "capped"]) {
     if (!Number.isFinite(plan[field]) || plan[field] < 0) {
       throw new Error(`Automatic session maintenance plan has invalid ${field}`);
@@ -66,11 +82,15 @@ export function filterAutomaticSessionMaintenancePlan(plan, identities) {
   const entryRemovals = plan.entryRemovals.filter((item) => !isProtected(item, protectedIdentities));
   const stateDeletePlans = plan.stateDeletePlans.filter((item) => !isProtected(item, protectedIdentities));
   const archivedWorktrees = plan.archivedWorktrees?.filter((item) => !isProtected(item, protectedIdentities));
+  const retainedStateIds = new Set(stateDeletePlans.map((item) => item.sessionId));
+  const automaticArchiveBytesBySessionId = plan.automaticArchiveBytesBySessionId
+    ?.filter(([sessionId]) => retainedStateIds.has(sessionId));
   return {
     ...plan,
     ...plannedEntryArchives ? { plannedEntryArchives, archived: plannedEntryArchives.length } : {},
     entryRemovals,
     stateDeletePlans,
+    ...automaticArchiveBytesBySessionId ? { automaticArchiveBytesBySessionId } : {},
     ...archivedWorktrees ? { archivedWorktrees } : {},
   };
 }

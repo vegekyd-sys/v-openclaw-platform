@@ -215,7 +215,10 @@ async function runPendingMaintenance(databasePath, owner) {
 				return;
 			}
 			plan = filterAutomaticSessionMaintenancePlan(plan, currentAdmissionIdentities());
-			await finalizeSessionEntryMaintenancePlansAfterWriterReleaseBestEffort(owner.scope, [plan], { isCurrent });
+			const archiveBytesBySessionId = plan.automaticArchiveBytesBySessionId
+				? new Map(plan.automaticArchiveBytesBySessionId)
+				: void 0;
+			await finalizeSessionEntryMaintenancePlansAfterWriterReleaseBestEffort(owner.scope, [plan], { isCurrent, archiveBytesBySessionId });
 			completed = true;
 		} catch (error) {
 			getChildLogger({ subsystem: "session-sqlite" }).warn("SQLite automatic session maintenance failed", {
