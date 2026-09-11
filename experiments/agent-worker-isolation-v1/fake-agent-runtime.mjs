@@ -46,6 +46,8 @@ export async function acquireAgentRunPreparedModelRuntime(
   };
 }
 
+export async function prewarmAgentCommandRuntimes() {}
+
 export function requireActivePluginRegistry() {
   return fakePluginRegistry;
 }

@@ -12,7 +12,8 @@ export async function prewarmWorkerRuntime({
   let lease;
   try {
     const agentRuntime = await loadAgentRuntime();
-    const { configRuntime, preparedRuntime } = await loadCompactionRuntime();
+    const { commandRuntime, configRuntime, preparedRuntime } =
+      await loadCompactionRuntime();
     const config = configRuntime.loadConfig();
     lease = await preparedRuntime.acquireAgentRunPreparedModelRuntime(
       {
@@ -24,6 +25,10 @@ export async function prewarmWorkerRuntime({
       },
       { abortSignal: signal, catalogMode: "static" },
     );
+    if (typeof commandRuntime.prewarmAgentCommandRuntimes !== "function") {
+      throw new Error("OpenClaw Agent command runtime prewarm is unavailable");
+    }
+    await commandRuntime.prewarmAgentCommandRuntimes();
     await preloadBuiltin();
     return { status: "ready", ms: Math.round(performance.now() - start) };
   } catch (error) {

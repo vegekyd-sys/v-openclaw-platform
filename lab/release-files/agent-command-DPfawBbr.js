@@ -675,6 +675,27 @@ function loadExecDefaultsRuntime() {
 function loadSkillsRuntime() {
 	return skillsRuntimeLoader.load();
 }
+/** Import every runtime that can be needed before the first embedded Agent
+ * attempt. This performs module loading only: it does not open a session,
+ * invoke a model, run a tool, or mutate the Agent transcript. */
+async function prewarmAgentCommandRuntimes() {
+	await Promise.all([
+		loadAttemptExecutionRuntime(),
+		loadAcpManagerRuntime(),
+		loadAcpPolicyRuntime(),
+		loadAcpRuntimeErrorsRuntime(),
+		loadAcpSessionIdentifiersRuntime(),
+		loadDeliveryRuntime(),
+		loadSessionStoreRuntime(),
+		loadCliCompactionRuntime(),
+		loadAgentRunnerMemoryRuntime(),
+		loadTranscriptResolveRuntime(),
+		loadTranscriptAppendRuntime(),
+		cliDepsRuntimeLoader.load(),
+		loadExecDefaultsRuntime(),
+		loadSkillsRuntime()
+	]);
+}
 async function resolveAgentCommandDeps(deps) {
 	if (deps) return deps;
 	const { createDefaultDeps } = await cliDepsRuntimeLoader.load();
@@ -3707,4 +3728,4 @@ async function agentCommandFromGatewayIngress(opts, runtime, deps, recovery, run
 	return await agentCommandFromIngressInternal(opts, runtime, deps, recovery, runtimeContext);
 }
 //#endregion
-export { agentCommandFromSystem as i, agentCommandFromGatewayIngress as n, agentCommandFromIngress as r, agentCommand as t };
+export { agentCommandFromSystem as i, agentCommandFromGatewayIngress as n, prewarmAgentCommandRuntimes, agentCommandFromIngress as r, agentCommand as t };
