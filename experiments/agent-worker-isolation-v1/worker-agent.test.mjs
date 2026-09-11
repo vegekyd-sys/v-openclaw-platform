@@ -35,6 +35,34 @@ function makeMultiWorkerPool() {
   });
 }
 
+test("eager runtime preparation completes before a Worker reports ready", async () => {
+  const pool = new WorkerPool({
+    minWorkers: 1,
+    maxWorkers: 1,
+    sessionsPerWorker: 1,
+    idleTimeoutMs: 1_000,
+    startupTimeoutMs: 5_000,
+    workerEnv: {
+      ...process.env,
+      VLAB_OPENCLAW_AGENT_RUNTIME: runtimePath,
+      VLAB_REQUIRE_OPENCLAW_AGENT_RUNTIME: "1",
+      OPENCLAW_WORKER_EAGER_PREPARE: "1",
+      VLAB_FAKE_PREPARE_DELAY_MS: "75",
+    },
+  });
+  const startedAt = performance.now();
+  try {
+    await pool.start();
+    const worker = pool.status().workers[0];
+    assert.equal(worker.ready, true);
+    assert.equal(worker.runtimePrewarm.status, "ready");
+    assert(worker.runtimePrewarm.ms >= 65);
+    assert(performance.now() - startedAt >= 65);
+  } finally {
+    await pool.close();
+  }
+});
+
 test("persistent worker does not run one-shot CLI teardown per turn", async () => {
   const pool = makePool();
   try {

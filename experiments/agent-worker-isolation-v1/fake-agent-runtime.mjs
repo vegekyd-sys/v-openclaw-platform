@@ -26,6 +26,10 @@ export async function acquireAgentRunPreparedModelRuntime(
   _input,
   _options = {},
 ) {
+  const delayMs = Number(process.env.VLAB_FAKE_PREPARE_DELAY_MS ?? 0);
+  if (Number.isFinite(delayMs) && delayMs > 0) {
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
   return {
     pluginGeneration: {
       pluginMetadataSnapshot: { plugins: [] },

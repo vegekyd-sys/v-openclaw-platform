@@ -1,0 +1,20 @@
+{
+  "baseRelease": "worker-coldstart-longterm-20260912-v1",
+  "files": [
+    {
+      "source": "lab/release-files/production-worker-worker.mjs",
+      "target": "production-worker/worker.mjs",
+      "before": "5b49deac1c9eaafe69ec93d4c0ce9b2328d19fa44ec47158aa1b6c664effddf9"
+    },
+    {
+      "source": "experiments/agent-worker-isolation-v1/runtime-prewarm.mjs",
+      "target": "production-worker/runtime-prewarm.mjs",
+      "before": "9d6822a344e8e9a26d6a3784b0e85ca8279549d1360e95141208177804a560a9"
+    },
+    {
+      "source": "lab/release-files/production-worker-worker-pool.mjs",
+      "target": "production-worker/worker-pool.mjs",
+      "before": "14dc8e6c4f588a77ef8b9d9c465b7c34c865af3a0c36bf085481eec3952611fb"
+    }
+  ]
+}
