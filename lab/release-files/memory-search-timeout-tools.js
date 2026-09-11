@@ -656,11 +656,11 @@ function createMemorySearchTool(options) {
 			const toolStartedAt = Date.now();
 			const searchesMemory = requestedCorpus !== "wiki";
 			const searchesWiki = requestedCorpus === "wiki" || requestedCorpus === "all";
-			const memoryManagerPurpose = options.oneShotCliRun ? "cli" : void 0;
+			const memoryManagerPurpose = options.oneShotCliRun ? "cli" : "search";
 			const memoryManagersToClose = /* @__PURE__ */ new Set();
 			let cleanupStarted = false;
 			const trackMemoryManager = (context) => {
-				if (memoryManagerPurpose === "cli" && isActiveMemoryManagerContext(context)) {
+				if (isActiveMemoryManagerContext(context)) {
 					if (cleanupStarted) closeMemoryManagers([context.manager]);
 					else memoryManagersToClose.add(context.manager);
 				}
