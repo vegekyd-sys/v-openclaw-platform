@@ -23,7 +23,11 @@ const runtimeSha=fingerprint(base+'/runtime').sha256;assert.equal(runtimeSha,cur
 const unit='openclaw-vlab-production-mirror-v8.service';
 const pid=Number(run('systemctl',['show',unit,'-p','MainPID','--value']));assert(pid>1);
 const cgroup=run('systemctl',['show',unit,'-p','ControlGroup','--value']);
-const pids=fs.readFileSync('/sys/fs/cgroup'+cgroup+'/cgroup.procs','utf8').trim().split('\n').filter(Boolean).map(Number);
+function readPids(dir){
+ const direct=fs.readFileSync(dir+'/cgroup.procs','utf8').trim().split('\n').filter(Boolean).map(Number);
+ return direct.concat(...fs.readdirSync(dir,{withFileTypes:true}).filter(e=>e.isDirectory()).map(e=>readPids(dir+'/'+e.name)));
+}
+const pids=[...new Set(readPids('/sys/fs/cgroup'+cgroup))];assert(pids.includes(pid),'Audit must include main Gateway cgroup');
 const workerPids=pids.filter(p=>{try{return /production-worker\/worker\.(mjs|js)/.test(fs.readFileSync(`/proc/${p}/cmdline`,'utf8'));}catch{return false;}});
 if(mode.variant==='native')assert.equal(workerPids.length,0);
 const health=await fetch('http://127.0.0.1:24993/healthz',{signal:AbortSignal.timeout(5000)});assert.equal(health.status,200);
