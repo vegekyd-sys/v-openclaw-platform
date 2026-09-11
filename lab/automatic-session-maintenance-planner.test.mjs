@@ -51,6 +51,33 @@ test("maintenance planner rejects malformed worker plans", async () => {
   await assert.rejects(result, /missing entryRemovals/);
 });
 
+test("maintenance planner rejects incomplete or duplicate archive byte sizes", async () => {
+  class FakeWorker {
+    #listeners = new Map();
+    constructor(plan) { this.plan = plan; }
+    once(name, listener) { this.#listeners.set(name, listener); return this; }
+    removeAllListeners() { this.#listeners.clear(); }
+    terminate() {}
+    start() {
+      queueMicrotask(() => {
+        this.#listeners.get("message")?.({type: "result", plan: this.plan});
+        this.#listeners.get("exit")?.(0);
+      });
+    }
+  }
+  const base = { archived: 0, capped: 0, entryRemovals: [], modelRunPruned: 0, pruned: 0,
+    stateDeletePlans: [{sessionId: "archive-me", archiveTranscript: true}] };
+  for (const sizes of [[], [["archive-me", 1], ["archive-me", 2]]]) {
+    let fake;
+    const result = runAutomaticSessionMaintenancePlan(request, {createWorker: () => {
+      fake = new FakeWorker({...base, automaticArchiveBytesBySessionId: sizes});
+      queueMicrotask(() => fake.start());
+      return fake;
+    }});
+    await assert.rejects(result, /archive byte size/);
+  }
+});
+
 test("late active admissions are removed from every destructive plan surface", () => {
   const keep = {sessionKey: "agent:makaron:explicit:keep", expectedEntry: {sessionId: "keep-id"}};
   const remove = {sessionKey: "agent:makaron:explicit:remove", expectedEntry: {sessionId: "remove-id"}};
@@ -62,11 +89,13 @@ test("late active admissions are removed from every destructive plan surface", (
     plannedEntryArchives: [keep, remove],
     pruned: 2,
     stateDeletePlans: [{sessionId: "keep-id"}, {sessionId: "remove-id"}],
+    automaticArchiveBytesBySessionId: [["keep-id", 10], ["remove-id", 20]],
     archivedWorktrees: [{sessionKey: keep.sessionKey, entry: keep.expectedEntry}, {sessionKey: remove.sessionKey, entry: remove.expectedEntry}],
   }, new Set([keep.sessionKey, "keep-id"]));
   assert.deepEqual(plan.entryRemovals, [remove]);
   assert.deepEqual(plan.plannedEntryArchives, [remove]);
   assert.deepEqual(plan.stateDeletePlans, [{sessionId: "remove-id"}]);
+  assert.deepEqual(plan.automaticArchiveBytesBySessionId, [["remove-id", 20]]);
   assert.deepEqual(plan.archivedWorktrees, [{sessionKey: remove.sessionKey, entry: remove.expectedEntry}]);
   assert.equal(plan.archived, 1);
 });

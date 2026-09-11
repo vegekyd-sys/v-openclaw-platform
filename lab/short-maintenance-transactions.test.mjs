@@ -85,8 +85,18 @@ test('skip/warn modes and protected active keys remain non-mutating', () => {
 test('native deletion finalizer, snapshot comparison and other eviction code remain byte-identical', () => {
   const before = read('./fixtures/concurrency-native-baseline/session-history-eviction-d5aiCsHS.js');
   const marker = '/** Finalizes maintenance after its caller releases the per-store writer lane. */';
+  const v2ArchiveSizing = `\tlet archiveBytesBySessionId = options.archiveBytesBySessionId;
+\ttry {
+\t\tif (archiveBytesBySessionId) {
+\t\t\tfor (const plan of stateDeletePlans) if (plan.archiveTranscript && !archiveBytesBySessionId.has(plan.sessionId)) throw new Error(\`Missing precomputed archive byte size for \${plan.sessionId}\`);
+\t\t} else archiveBytesBySessionId = await readSessionTranscriptJsonlBytes(scope, stateDeletePlans.filter((plan) => plan.archiveTranscript).map((plan) => plan.sessionId), isCurrent);`;
+  const nativeArchiveSizing = `\tlet archiveBytesBySessionId;
+\ttry {
+\t\tarchiveBytesBySessionId = await readSessionTranscriptJsonlBytes(scope, stateDeletePlans.filter((plan) => plan.archiveTranscript).map((plan) => plan.sessionId), isCurrent);`;
+  assert.equal(source.split(v2ArchiveSizing).length, 2, 'archive sizing fast-path anchor drift');
+  const normalized = source.replace(v2ArchiveSizing, nativeArchiveSizing);
   assert.equal(source.slice(0, source.indexOf('function applySessionEntryMaintenance(')), before.slice(0, before.indexOf('function applySessionEntryMaintenance(')));
-  assert.equal(source.slice(source.indexOf(marker), source.indexOf('\n// Automatic planning is read-only.')), before.slice(before.indexOf(marker)));
+  assert.equal(normalized.slice(normalized.indexOf(marker), normalized.indexOf('\n// Automatic planning is read-only.')), before.slice(before.indexOf(marker)));
 });
 test('coordinator success holds one cooldown, failure/closed handle releases immediately', () => {
   for (const mode of ['success', 'failure', 'closed']) {
