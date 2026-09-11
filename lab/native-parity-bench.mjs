@@ -50,4 +50,3 @@ async function bench(){assert.equal(enabled,variant==='worker');assert.equal(cfg
   finally{done=true;for(const r of rows)if(r.start&&!r.terminal){if(enabled)await call('vlab.workers.native.cancel',{runId:r.id}).catch(()=>{});await call('chat.abort',{agentId:'makaron',sessionKey:r.key,runId:r.id}).catch(()=>{});}await Promise.allSettled([monitor,httpMonitor].filter(Boolean));client?.stop();}
 }
 try{await bench();}catch(e){console.error(JSON.stringify({failure:e.message,action,variant,count,workload}));client?.stop();process.exitCode=1;}
-
