@@ -1,0 +1,20 @@
+{
+  "baseRelease": "dm-delivery-notice-race-20260911-v1",
+  "files": [
+    {
+      "source": "lab/release-files/dm-delivery-notice-lifecycle-YRwzpo9_.js",
+      "target": "openclaw/dist/lifecycle-YRwzpo9_.js",
+      "before": "0f7c0f780f73992a2e1bd521833e23738a497f768dd1efdd3358b84bebe291a0"
+    },
+    {
+      "source": "lab/release-files/memory-search-timeout-tools.js",
+      "target": "openclaw/dist/tools-Byg09TOP.js",
+      "before": "cc33a6027e379008655ae73cab4973cdb62ef51af39afa209d478727bb3e0d4e"
+    },
+    {
+      "source": "lab/release-files/memory-vector-chunks-manager.js",
+      "target": "openclaw/dist/extensions/memory-core/manager-runtime.js",
+      "before": "d6dee81008ed3a7cba84acb52fb6d19c1c8b585e7e6fd4fd20e2d8c2e8f239d3"
+    }
+  ]
+}
