@@ -1,0 +1,5 @@
+import fs from 'node:fs';import test from 'node:test';import assert from 'node:assert/strict';
+const source=fs.readFileSync(new URL('./native-parity-bench.mjs',import.meta.url),'utf8');
+test('benchmark is bench-only, uses prior short prompt and no model override',()=>{assert(source.includes("assert.equal(action,'bench')"));assert(!source.includes("call('sessions.patch'"));assert(source.includes('这是 VLab 并发验收，请只回复“收到，可以开始。”，不调用工具、不执行其他任务。编号 '));assert(source.includes("thinking:'high'"));assert(source.includes('timeoutMs:120000'));});
+test('real output, persistence, Memory surface and independent control plane are gates',()=>{for(const word of ['r.bodyOk','r.toolOk','r.persisted','summary.healthErrors','summary.httpErrors','memory_search','memory_get','intent','hasActiveRun===false'])assert(source.includes(word));});
+test('post-timing report reads are read-only and no config writes in benchmark',()=>{assert(source.includes('readOnly:true'));assert(!source.includes('switchMode'));assert(!source.includes("replace(configPath"));});
