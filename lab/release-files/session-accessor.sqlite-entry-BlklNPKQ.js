@@ -132,19 +132,6 @@ function listSessionTranscriptArchivesReadOnly(scope) {
 const maintenanceByStore = /* @__PURE__ */ new Map();
 const AUTOMATIC_MAINTENANCE_IDLE_POLL_MS = 250;
 const AUTOMATIC_MAINTENANCE_IDLE_POLLS = 120;
-function traceAutomaticMaintenance(stage, databasePath, owner, details = {}) {
-	if (process.env.OPENCLAW_DB91_MAINTENANCE_TRACE !== "1") return;
-	const current = maintenanceByStore.get(databasePath);
-	process.stderr.write(`[db91-maintenance-trace] ${JSON.stringify({
-		stage,
-		pid: process.pid,
-		currentOwner: current === owner,
-		currentGeneration: current?.generation,
-		ownerGeneration: owner.generation,
-		databaseOpen: owner.database.db.isOpen,
-		...details
-	})}\n`);
-}
 async function waitForAutomaticMaintenanceAdmissionsToDrain(isCurrent, currentAdmissionIdentities) {
 	for (let remaining = AUTOMATIC_MAINTENANCE_IDLE_POLLS; isCurrent() && currentAdmissionIdentities().size > 0; remaining -= 1) {
 		if (remaining <= 0) return false;
@@ -166,7 +153,6 @@ function kickSessionEntryMaintenanceAfterWrite(params) {
 		// physical file-backed owner instead of replacing it while its coordinator
 		// permit is still held. Incognito generations remain object-identity scoped.
 		Object.assign(owner, params, { database, generation: owner.generation + 1 });
-		traceAutomaticMaintenance("kick-coalesced", databasePath, owner);
 		return;
 	}
 	const created = {
@@ -176,7 +162,6 @@ function kickSessionEntryMaintenanceAfterWrite(params) {
 		generation: 1
 	};
 	maintenanceByStore.set(databasePath, created);
-	traceAutomaticMaintenance("kick-created", databasePath, created);
 	setImmediate(() => void runPendingMaintenance(databasePath, created));
 }
 async function runPendingMaintenance(databasePath, owner) {
@@ -187,7 +172,6 @@ async function runPendingMaintenance(databasePath, owner) {
 	// the store under the native writer lane. Incognito stores remain tied to the
 	// process-local handle because they have no stable physical owner.
 	const isCurrent = () => maintenanceByStore.get(databasePath) === owner && (!incognito || owner.database.db.isOpen);
-	traceAutomaticMaintenance("run-start", databasePath, owner, {incognito});
 	while (isCurrent()) {
 		if (process.env.OPENCLAW_DB91_MAINTENANCE_ENABLE === "1") {
 			await db91WaitAutomaticMaintenance(owner.database);
@@ -210,11 +194,9 @@ async function runPendingMaintenance(databasePath, owner) {
 			return;
 		}
 		if (!permit) {
-			traceAutomaticMaintenance("permit-missing", databasePath, owner);
 			if (maintenanceByStore.get(databasePath) === owner) maintenanceByStore.delete(databasePath);
 			return;
 		}
-		traceAutomaticMaintenance("permit-acquired", databasePath, owner);
 		let completed = false;
 		let retryAfterForegroundActivity = false;
 		let generation = owner.generation;
@@ -228,11 +210,9 @@ async function runPendingMaintenance(databasePath, owner) {
 				isLocallyIdle: () => currentAdmissionIdentities().size === 0
 			});
 			if (!incognito && !quietWindow) {
-				traceAutomaticMaintenance("quiet-window-missing", databasePath, owner);
 				if (maintenanceByStore.get(databasePath) === owner) maintenanceByStore.delete(databasePath);
 				return;
 			}
-			traceAutomaticMaintenance("quiet-window-ready", databasePath, owner);
 			generation = owner.generation;
 			const activeSessionKeys = uniqueStrings([...owner.activeSessionKeys, ...currentAdmissionIdentities()]);
 			owner.activeSessionKeys.clear();
@@ -257,28 +237,14 @@ async function runPendingMaintenance(databasePath, owner) {
 				}, {
 					shouldInterrupt: async () => !isCurrent() || currentAdmissionIdentities().size > 0 || await quietWindow.changed()
 				});
-			traceAutomaticMaintenance("plan-resolved", databasePath, owner, {
-				entryRemovals: plan?.entryRemovals?.length,
-				stateDeletePlans: plan?.stateDeletePlans?.length
-			});
-			const changedAfterPlan = !incognito && await quietWindow.changed();
-			traceAutomaticMaintenance("plan-revalidated", databasePath, owner, {
-				changedAfterPlan,
-				admissions: currentAdmissionIdentities().size
-			});
-			if (changedAfterPlan) {
+			if (!incognito && await quietWindow.changed()) {
 				plan = void 0;
 				retryAfterForegroundActivity = isCurrent();
 			}
 			// Planning is read-only and can overlap active work. Archive commits and
 			// deletion transactions are best-effort background writes: never let them
 			// enter SQLite while a real Agent turn for this store is still admitted.
-			const admissionsDrained = incognito || await waitForAutomaticMaintenanceAdmissionsToDrain(isCurrent, currentAdmissionIdentities);
-			traceAutomaticMaintenance("admissions-drained", databasePath, owner, {
-				admissions: currentAdmissionIdentities().size,
-				admissionsDrained
-			});
-			if (!admissionsDrained) {
+			if (!incognito && !await waitForAutomaticMaintenanceAdmissionsToDrain(isCurrent, currentAdmissionIdentities)) {
 				plan = void 0;
 				retryAfterForegroundActivity = isCurrent();
 			}
@@ -294,7 +260,6 @@ async function runPendingMaintenance(databasePath, owner) {
 					operation: database => isCurrent() ? commitPlannedSessionMaintenanceArchives(database, plan) : void 0});
 			});
 			if (!plan) {
-				traceAutomaticMaintenance("plan-discarded", databasePath, owner, {retryAfterForegroundActivity});
 				if (retryAfterForegroundActivity && isCurrent()) continue;
 				if (maintenanceByStore.get(databasePath) === owner) maintenanceByStore.delete(databasePath);
 				return;
@@ -303,19 +268,9 @@ async function runPendingMaintenance(databasePath, owner) {
 			const archiveBytesBySessionId = plan.automaticArchiveBytesBySessionId
 				? new Map(plan.automaticArchiveBytesBySessionId)
 				: void 0;
-			traceAutomaticMaintenance("finalizer-start", databasePath, owner, {
-				entryRemovals: plan.entryRemovals?.length,
-				stateDeletePlans: plan.stateDeletePlans?.length
-			});
 			await finalizeSessionEntryMaintenancePlansAfterWriterReleaseBestEffort(owner.scope, [plan], { isCurrent, archiveBytesBySessionId });
-			traceAutomaticMaintenance("finalizer-finished", databasePath, owner);
 			completed = true;
 		} catch (error) {
-			traceAutomaticMaintenance("failed", databasePath, owner, {
-				errorName: error instanceof Error ? error.name : typeof error,
-				errorCode: typeof error?.code === "string" ? error.code : void 0,
-				errorMessage: error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300)
-			});
 			if (error instanceof AutomaticSessionMaintenanceInterruptedError) {
 				retryAfterForegroundActivity = isCurrent();
 			} else {
@@ -325,7 +280,6 @@ async function runPendingMaintenance(databasePath, owner) {
 				});
 			}
 		} finally {
-			traceAutomaticMaintenance("permit-finish", databasePath, owner, {completed, retryAfterForegroundActivity});
 			permit.finish(completed, owner.database);
 		}
 		if (retryAfterForegroundActivity && isCurrent()) continue;

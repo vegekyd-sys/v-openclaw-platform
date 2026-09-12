@@ -21,6 +21,12 @@ const closeChannel = () => parentPort ? parentPort.close() : process.disconnect(
 
 const TRANSCRIPT_SIZE_BATCH = 64;
 
+function runAutomaticMaintenanceReadSnapshot(database, operation) {
+  return database.db.isTransaction
+    ? operation()
+    : runSqliteDeferredTransactionSync(database.db, operation);
+}
+
 function attachArchiveByteSizes(database, plan) {
   const sessionIds = [...new Set(plan.stateDeletePlans
     .filter((item) => item.archiveTranscript)
@@ -51,7 +57,7 @@ try {
     storePath: request.storePath,
   });
   const opened = withOpenClawAgentDatabaseReadOnly((database) =>
-    runSqliteDeferredTransactionSync(database.db, () => attachArchiveByteSizes(database,
+    runAutomaticMaintenanceReadSnapshot(database, () => attachArchiveByteSizes(database,
       applySessionEntryMaintenance(database, {
       activeSessionKeys: request.activeSessionKeys,
       archiveDirectory: request.archiveDirectory,

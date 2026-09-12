@@ -200,3 +200,15 @@ remains unchanged.
    C1/C5/C10/C15 matrices, HTTP/RPC health, event-loop lag, memory, and OOM gates.
 4. Three configuration generations, soak, tools/context/Memory, and real Feishu
    receive to visible process/final acceptance before accepting a release.
+
+## V11: reuse the initialization cache snapshot
+
+The live VLab gate exposed one production-only interaction with the existing
+read-only initialization cache. That helper already owns a snapshot transaction,
+but the isolated planner issued another `BEGIN DEFERRED` and failed with
+`cannot start a transaction within a transaction` before scanning any rows.
+
+The final worker reuses the existing snapshot when `db.isTransaction` is true,
+and otherwise opens exactly one deferred snapshot. This does not change schema,
+selection, archive, deletion or commit-time revalidation behavior. The temporary
+phase trace used to isolate the failure is removed from the final runtime.
