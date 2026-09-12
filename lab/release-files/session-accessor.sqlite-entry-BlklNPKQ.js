@@ -312,7 +312,9 @@ async function runPendingMaintenance(databasePath, owner) {
 			completed = true;
 		} catch (error) {
 			traceAutomaticMaintenance("failed", databasePath, owner, {
-				errorName: error instanceof Error ? error.name : typeof error
+				errorName: error instanceof Error ? error.name : typeof error,
+				errorCode: typeof error?.code === "string" ? error.code : void 0,
+				errorMessage: error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300)
 			});
 			if (error instanceof AutomaticSessionMaintenanceInterruptedError) {
 				retryAfterForegroundActivity = isCurrent();
