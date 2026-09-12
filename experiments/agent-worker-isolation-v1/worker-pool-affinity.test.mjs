@@ -43,3 +43,33 @@ test('affinity uses explicit session owner identity, not display session key',as
 test('disabled baseline keeps no affinity entries',async()=>{
  const p=make({sessionAffinityEnabled:false});try{await p.start();await run(p,'s');assert.equal(p.sessionAffinity.size,0);}finally{await p.close();}
 });
+
+test('ready Workers spread active sessions before packing siblings behind a busy process',async()=>{
+ const p=make({minWorkers:4,maxWorkers:4,sessionsPerWorker:3});
+ try{
+  await p.start();
+  const [firstWorker]=[...p.workers.values()].sort((a,b)=>a.slot-b.slot);
+  p.rememberSessionWorker('slow-a',firstWorker);
+  p.rememberSessionWorker('slow-b',firstWorker);
+  const heartbeat=await p.submit('heartbeat',{kind:'hold',durationMs:160});
+  const slowA=await p.submit('slow-a',{kind:'hold',durationMs:20});
+  const slowB=await p.submit('slow-b',{kind:'hold',durationMs:20});
+  const fast=await p.submit('fast',{kind:'hold',durationMs:20});
+  const results=await Promise.all([heartbeat.promise,slowA.promise,slowB.promise,fast.promise]);
+  assert.equal(new Set(results.map(row=>row.workerPid)).size,4);
+  assert.equal(results[0].workerPid,firstWorker.pid);
+  assert.ok(results.slice(1).every(row=>row.workerPid!==firstWorker.pid));
+ }finally{await p.close();}
+});
+
+test('load spreading preserves every configured Session slot at saturation',async()=>{
+ const p=make({minWorkers:4,maxWorkers:4,sessionsPerWorker:3});
+ try{
+  await p.start();
+  const submitted=await Promise.all(Array.from({length:12},(_,i)=>p.submit(`session-${i}`,{kind:'hold',durationMs:80})));
+  const results=await Promise.all(submitted.map(item=>item.promise));
+  const counts=new Map();
+  for(const row of results) counts.set(row.workerPid,(counts.get(row.workerPid)??0)+1);
+  assert.deepEqual([...counts.values()].sort((a,b)=>a-b),[3,3,3,3]);
+ }finally{await p.close();}
+});
