@@ -125,6 +125,7 @@
         "experiments/agent-worker-isolation-v1/worker-detached-event.test.mjs",
         "experiments/agent-worker-isolation-v1/worker-exec-argv.test.mjs",
         "experiments/agent-worker-isolation-v1/worker-gateway-events.test.mjs",
+        "experiments/agent-worker-isolation-v1/worker-pool-affinity.test.mjs",
         "experiments/agent-worker-isolation-v1/worker-pool-scaling.test.mjs",
         "experiments/agent-worker-isolation-v1/worker-pool-demand.test.mjs",
         "experiments/agent-worker-isolation-v1/worker-pool-lifecycle.test.mjs",

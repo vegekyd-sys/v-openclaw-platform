@@ -575,6 +575,40 @@ export class WorkerPool {
       this.sessionAffinity.delete(this.sessionAffinity.keys().next().value);
   }
 
+  compareSessionWorkerLoad(left, right) {
+    const activeDelta =
+      left.active.size + left.detachedTaskKeys.size -
+      right.active.size - right.detachedTaskKeys.size;
+    if (activeDelta !== 0) return activeDelta;
+    const queueDelta = left.queue.length - right.queue.length;
+    if (queueDelta !== 0) return queueDelta;
+    return left.ownerSessionKeys.size - right.ownerSessionKeys.size;
+  }
+
+  selectSessionWorker(key) {
+    const candidates = [...this.workers.values()]
+      .filter(
+        (candidate) =>
+          candidate.ready &&
+          !candidate.retiring &&
+          candidate.ownerSessionKeys.size < this.sessionsPerWorker,
+      )
+      .sort(
+        (left, right) =>
+          this.compareSessionWorkerLoad(left, right) || left.slot - right.slot,
+      );
+    const leastLoaded = candidates[0];
+    if (!leastLoaded) return undefined;
+    const preferred = this.preferredSessionWorker(key);
+    // Affinity is valuable only when it does not place a new Session behind
+    // more work in one Node process. Spread across ready Workers first, then
+    // pack up to sessionsPerWorker once every process is equally occupied.
+    return preferred &&
+        this.compareSessionWorkerLoad(preferred, leastLoaded) <= 0
+      ? preferred
+      : leastLoaded;
+  }
+
   async pump() {
     if (this.pumping || this.closing) {
       return;
@@ -592,14 +626,7 @@ export class WorkerPool {
           worker = undefined;
         }
 
-        if (!worker) {
-          worker = this.preferredSessionWorker(job.sessionOwnerKey) ?? [...this.workers.values()].find(
-            (candidate) =>
-              candidate.ready &&
-              !candidate.retiring &&
-              candidate.ownerSessionKeys.size < this.sessionsPerWorker,
-          );
-        }
+        if (!worker) worker = this.selectSessionWorker(job.sessionOwnerKey);
 
         if (!worker) {
           // Account for every starting process and distinct unowned session.

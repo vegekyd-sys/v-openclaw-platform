@@ -4,10 +4,13 @@ import fs from 'node:fs';
 import {Console} from 'node:console';
 import {Writable} from 'node:stream';
 import {restoreDemandExpansion} from './cold-start-pipeline-contract.mjs';
+import {restoreWorkerLoadSpread} from './worker-load-spread-contract.mjs';
 const read = file => fs.readFileSync(new URL(file, import.meta.url), 'utf8');
 for (const name of ['index.mjs', 'worker-pool.mjs', 'worker.mjs']) {
   const raw = read('./release-files/production-worker-' + name);
-  const updated = name === 'worker-pool.mjs' ? restoreDemandExpansion(raw) : raw;
+  const updated = name === 'worker-pool.mjs'
+    ? restoreWorkerLoadSpread(restoreDemandExpansion(raw))
+    : raw;
   const before = read('./fixtures/concurrency-native-baseline/production-worker-' + name);
   test(name + ': only the already-sanitized observer sink changes', () => {
     const prefix = 'import {Console as FirsttextMetricConsole} from "node:console";\nconst ocFirsttextMetricConsole = new FirsttextMetricConsole({stdout: process.stdout, stderr: process.stderr, ignoreErrors: true});\n';
