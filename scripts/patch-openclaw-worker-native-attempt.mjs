@@ -103,6 +103,15 @@ export function patchScopedSubagentContext(source, bindings) {
   return once(result,'\n\t\t\t};\n\t\t} });\n\t\tpluginRuntimeById.set(pluginId, runtime);',
     '\n\t\t\t};\n\t\t\tbindGatewayContextResolver(scopedSubagent, getGatewayContextResolver(subagent));\n\t\t\treturn scopedSubagent;\n\t\t} });\n\t\tpluginRuntimeById.set(pluginId, runtime);');
 }
+export function patchStartupMigrationLease(source) {
+  const leaseMarker = 'vlab91-large-state-startup-lease-v1';
+  if (source.includes(leaseMarker)) return source;
+  return once(
+    source,
+    'const STARTUP_MIGRATION_LEASE_TTL_MS = 3e5;',
+    `const STARTUP_MIGRATION_LEASE_TTL_MS = 18e5; // ${leaseMarker}: cold 15GB state validation can exceed five minutes.`,
+  );
+}
 async function main() {
   const [core, mode, name, owner] = process.argv.slice(2);
   if (!core || !['--check', '--apply'].includes(mode)) throw new Error('Usage: core-package --check|--apply');
@@ -132,6 +141,12 @@ async function main() {
     [await unique(/^loader-[\w-]+\.m?js$/, 'function createDeferredGatewaySubagentRuntime(runtime)'),
       s=>patchScopedSubagentContext(patchDeferredSubagentContext(s, scopeBindings), scopeBindings)],
   ];
+  if (version === '2026.9.4') {
+    specs.push([
+      await unique(/^startup-migration-checkpoint-[\w-]+\.m?js$/, 'const STARTUP_MIGRATION_LEASE_SCOPE = "startup-migrations";'),
+      patchStartupMigrationLease,
+    ]);
+  }
   const changes = await Promise.all(specs.map(async ([name, patch]) => {
     const file = path.join(dist,name), before = await fs.readFile(file,'utf8');
     return {file,before,after:patch(before)};

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { patchAttempt, patchMessage, patchGatewayIdentity, patchHostIdentity, patchDeferredSubagentContext, patchScopedSubagentContext, marker } from './patch-openclaw-worker-native-attempt.mjs';
+import { patchAttempt, patchMessage, patchGatewayIdentity, patchHostIdentity, patchDeferredSubagentContext, patchScopedSubagentContext, patchStartupMigrationLease, marker } from './patch-openclaw-worker-native-attempt.mjs';
 test('attempt bridge adds native authorization and is idempotent',()=>{
   const input='async function runEmbeddedAttempt(input) {\n\tlet params = input;\n}\n\tsetActiveEmbeddedRun(attempt.sessionId, queueHandle, attempt.sessionKey, attempt.sessionFile, input.hookAgentId);';
   const out=patchAttempt(input,'permission-change-fixture.js');
@@ -56,4 +56,13 @@ test('9.4 mjs loader uses its semantic Gateway scope aliases',()=>{
  assert.ok(out.includes('bindGatewayContextResolver(scopedSubagent'));
  assert.equal(patchDeferredSubagentContext(out,bindings),out);
  assert.equal(patchScopedSubagentContext(out,bindings),out);
+});
+
+test('9.4 startup migration lease covers cold large-state validation',()=>{
+ const source='const STARTUP_MIGRATION_LEASE_TTL_MS = 3e5;';
+ const out=patchStartupMigrationLease(source);
+ assert.ok(out.includes('STARTUP_MIGRATION_LEASE_TTL_MS = 18e5'));
+ assert.ok(out.includes('vlab91-large-state-startup-lease-v1'));
+ assert.equal(patchStartupMigrationLease(out),out);
+ assert.throws(()=>patchStartupMigrationLease('const STARTUP_MIGRATION_LEASE_TTL_MS = 4e5;'),/mismatch/);
 });
