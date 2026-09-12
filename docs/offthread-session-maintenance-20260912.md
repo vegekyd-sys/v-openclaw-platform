@@ -118,6 +118,24 @@ This interruption is an expected best-effort deferral and is not logged as a
 maintenance failure. The next committed reply re-kicks maintenance, while all
 explicit maintenance behavior remains unchanged.
 
+## V6: retry an interrupted sweep without requiring another write
+
+Installed V5 evidence showed the intended foreground isolation: a hot C1
+returned first text in 2.99 seconds with HTTP max 129 ms, then the niceness-10
+planner started only after the 30-second quiet window. However, a foreground
+interruption released the coordinator immediately and removed the in-process
+owner. With no later write there was no new kick, so the existing backlog did
+not resume.
+
+V6 keeps the same owner only when an expected foreground interruption, a
+post-plan database/WAL change, or an admission-drain timeout occurs and the
+owner is still current. It releases the coordinator, waits for a fresh full
+quiet window, and retries without requiring another session write. Stale
+owners, closed databases, coordinator contention, and unexpected failures keep
+their previous bounded best-effort exits. Every retry still re-plans from a new
+read-only snapshot and passes all late-admission, exact-entry, archive, and
+deletion revalidation gates.
+
 ## Acceptance gates
 
 1. Deterministic queue and planner tests, including archive revalidation and a
