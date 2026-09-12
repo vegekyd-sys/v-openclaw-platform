@@ -13,7 +13,7 @@ function once(source, before, after) {
 }
 export function patchAttempt(source, permissionFile) {
   if (source.includes(marker)) return source;
-  if (!/^permission-change-[\w-]+\.js$/.test(permissionFile)) throw new Error('Invalid native permission module');
+  if (!/^permission-change-[\w-]+\.m?js$/.test(permissionFile)) throw new Error('Invalid native permission module');
   let result = once(source, 'async function runEmbeddedAttempt(input) {\n\tlet params = input;',
     `async function runEmbeddedAttempt(input) {\n\t// ${marker}: preserve native permission/lifecycle implementation.\n\tlet params = globalThis[Symbol.for("${symbol}")]?.prepare(input) ?? input;`);
   const anchor = '\tsetActiveEmbeddedRun(attempt.sessionId, queueHandle, attempt.sessionKey, attempt.sessionFile, input.hookAgentId);';
@@ -45,7 +45,7 @@ export function patchGatewayIdentity(source) {
 export function patchHostIdentity(source) {
   const identityMarker='vlab91-native-gateway-identity-v1';
   if(source.includes(identityMarker))return source;
-  const importMatch=source.match(/import \{ t as callGatewayTool \} from "(\.\/gateway-[\w-]+\.js)";/);
+  const importMatch=source.match(/import \{ t as callGatewayTool \} from "(\.\/gateway-[\w-]+\.m?js)";/);
   if(!importMatch)throw new Error('Native host Gateway import changed');
   let result=once(source,importMatch[0],`import { t as callGatewayTool, vlabResolveNativeGatewayIdentity } from "${importMatch[1]}";`);
   return once(result,'\t\tkind: "agent-harness-host-capability",',`\t\tkind: "agent-harness-host-capability",
@@ -61,35 +61,44 @@ export function patchHostIdentity(source) {
 \t\t\treturn result;
 \t\t},`);
 }
-function addResolverImport(source) {
-  if (source.includes('t as bindGatewayContextResolver')) return source;
-  const matches=[...source.matchAll(/import \{ ([^}]+) \} from "(\.\/gateway-request-scope-[\w-]+\.js)";/g)];
-  if(matches.length!==1 || !matches[0][1].includes('r as getGatewayContextResolver')) throw new Error('Native resolver import changed');
-  return once(source,matches[0][0],`import { ${matches[0][1]}, t as bindGatewayContextResolver } from "${matches[0][2]}";`);
+function addResolverImport(source, bindings = {
+  bindGatewayContextResolver: 't',
+  getGatewayContextResolver: 'r',
+}) {
+  const bindImport = `${bindings.bindGatewayContextResolver} as bindGatewayContextResolver`;
+  const getImport = `${bindings.getGatewayContextResolver} as getGatewayContextResolver`;
+  if (source.includes(bindImport)) return source;
+  const matches=[...source.matchAll(/import \{ ([^}]+) \} from "(\.\/gateway-request-scope-[\w-]+\.m?js)";/g)];
+  if(matches.length!==1 || !matches[0][1].includes(getImport)) throw new Error('Native resolver import changed');
+  return once(source,matches[0][0],`import { ${matches[0][1]}, ${bindImport} } from "${matches[0][2]}";`);
 }
-export function patchDeferredSubagentContext(source) {
+export function patchDeferredSubagentContext(source, bindings) {
   const contextMarker='vlab91-native-deferred-subagent-context-v1';
   const lateMarker='vlab91-native-deferred-subagent-context-v2';
   const lateBinding=`\t// ${lateMarker}: Gateway binds the native runtime after plugin registration.\n\tlet capturedResolver = getGatewayContextResolver(runtime.subagent);\n\tbindGatewayContextResolver(deferred, () => {\n\t\tcapturedResolver ??= getGatewayContextResolver(runtime.subagent);\n\t\tif (!capturedResolver) throw new Error("Native Gateway subagent context is not ready");\n\t\treturn capturedResolver();\n\t});`;
   if(source.includes(lateMarker)) return source;
   if(source.includes(contextMarker)) {
     let result=source;
-    if(!result.includes('t as bindGatewayContextResolver'))result=addResolverImport(result);
+    if(!result.includes('bindGatewayContextResolver'))result=addResolverImport(result, bindings);
     return once(result,'\tbindGatewayContextResolver(deferred, getGatewayContextResolver(runtime.subagent));',lateBinding);
   }
   const anchor='function createDeferredGatewaySubagentRuntime(runtime) {\n\treturn {';
   let result=source;
   if(result.includes('from "./gateway-request-scope-')) {
-    result=addResolverImport(result);
+    result=addResolverImport(result, bindings);
   }
   result=once(result,anchor,`function createDeferredGatewaySubagentRuntime(runtime) {\n\t// ${contextMarker}: preserve the native lifecycle-fenced instance resolver.\n\tconst deferred = {`);
   return once(result,'\n\t};\n}\nfunction createDeferredGatewayNodesRuntime(runtime) {',
     '\n\t};\n'+lateBinding+'\n\treturn deferred;\n}\nfunction createDeferredGatewayNodesRuntime(runtime) {');
 }
-export function patchScopedSubagentContext(source) {
+export function patchScopedSubagentContext(source, bindings) {
   const scopedMarker='vlab91-native-scoped-subagent-context-v1';
   if(source.includes(scopedMarker))return source;
-  let result=once(source,'\t\t\tconst subagent = getRuntimeProperty();\n\t\t\treturn {',
+  let result=source;
+  if(result.includes('from "./gateway-request-scope-')) {
+    result=addResolverImport(result, bindings);
+  }
+  result=once(result,'\t\t\tconst subagent = getRuntimeProperty();\n\t\t\treturn {',
     `\t\t\tconst subagent = getRuntimeProperty();\n\t\t\t// ${scopedMarker}: retain the underlying Gateway fence across the plugin facade.\n\t\t\tconst scopedSubagent = {`);
   return once(result,'\n\t\t\t};\n\t\t} });\n\t\tpluginRuntimeById.set(pluginId, runtime);',
     '\n\t\t\t};\n\t\t\tbindGatewayContextResolver(scopedSubagent, getGatewayContextResolver(subagent));\n\t\t\treturn scopedSubagent;\n\t\t} });\n\t\tpluginRuntimeById.set(pluginId, runtime);');
@@ -98,7 +107,7 @@ async function main() {
   const [core, mode, name, owner] = process.argv.slice(2);
   if (!core || !['--check', '--apply'].includes(mode)) throw new Error('Usage: core-package --check|--apply');
   const version=JSON.parse(await fs.readFile(path.join(core, 'package.json'))).version;
-  if (!['2026.9.1','2026.9.2'].includes(version)) throw new Error('Requires reviewed OpenClaw 2026.9.1 or 2026.9.2');
+  if (!['2026.9.1','2026.9.2','2026.9.4'].includes(version)) throw new Error('Requires reviewed OpenClaw 2026.9.1, 2026.9.2, or 2026.9.4');
   if(mode==='--apply'){
     const m=target(name,owner,{stopped:true});
     assert.equal(await fs.realpath(core),await fs.realpath(m.root+'/runtime/openclaw'),'Only the owned candidate core may be patched');
@@ -111,16 +120,17 @@ async function main() {
     if (found.length !== 1) throw new Error(`Expected one ${pattern}, got ${found.length}`);
     return found[0];
   };
-  const permission = await unique(/^permission-change-[\w-]+\.js$/, 'withAuthorizedPermissionChange as n');
-  const scope = await unique(/^gateway-request-scope-[\w-]+\.js$/, 'function bindGatewayContextResolver');
-  assert.deepEqual(nativeExportBindings(await fs.readFile(path.join(dist,scope),'utf8'),['bindGatewayContextResolver','getGatewayContextResolver']),
-    {bindGatewayContextResolver:'t',getGatewayContextResolver:'r'});
+  const permission = await unique(/^permission-change-[\w-]+\.m?js$/, 'withAuthorizedPermissionChange as n');
+  const scope = await unique(/^gateway-request-scope-[\w-]+\.m?js$/, 'function bindGatewayContextResolver');
+  const scopeBindings = nativeExportBindings(await fs.readFile(path.join(dist,scope),'utf8'),
+    ['bindGatewayContextResolver','getGatewayContextResolver']);
   const specs = [
-    [await unique(/^builtin-openclaw-[\w-]+\.js$/, 'async function runEmbeddedAttempt(input)'), s => patchAttempt(s, permission)],
-    [await unique(/^openclaw-tools-[\w-]+\.js$/, 'function createMessageTool(options)'), patchMessage],
-    [await unique(/^gateway-[\w-]+\.js$/, 'async function resolveAgentRuntimeIdentityTokenForGatewayTool'), patchGatewayIdentity],
-    [await unique(/^host-capability-[\w-]+\.js$/, 'function createAgentHarnessHostCapabilities'), patchHostIdentity],
-    [await unique(/^loader-[\w-]+\.js$/, 'function createDeferredGatewaySubagentRuntime(runtime)'), s=>patchScopedSubagentContext(patchDeferredSubagentContext(s))],
+    [await unique(/^builtin-openclaw-[\w-]+\.m?js$/, 'async function runEmbeddedAttempt(input)'), s => patchAttempt(s, permission)],
+    [await unique(/^openclaw-tools-[\w-]+\.m?js$/, 'function createMessageTool(options)'), patchMessage],
+    [await unique(/^gateway-[\w-]+\.m?js$/, 'async function resolveAgentRuntimeIdentityTokenForGatewayTool'), patchGatewayIdentity],
+    [await unique(/^(?:host-capability|selection)-[\w-]+\.m?js$/, 'function createAgentHarnessHostCapabilities'), patchHostIdentity],
+    [await unique(/^loader-[\w-]+\.m?js$/, 'function createDeferredGatewaySubagentRuntime(runtime)'),
+      s=>patchScopedSubagentContext(patchDeferredSubagentContext(s, scopeBindings), scopeBindings)],
   ];
   const changes = await Promise.all(specs.map(async ([name, patch]) => {
     const file = path.join(dist,name), before = await fs.readFile(file,'utf8');
@@ -140,4 +150,3 @@ async function main() {
   }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) main().catch(e => { console.error(e.message); process.exitCode=1; });
-

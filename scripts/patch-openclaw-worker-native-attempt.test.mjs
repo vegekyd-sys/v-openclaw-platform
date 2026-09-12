@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { patchAttempt, patchMessage, patchGatewayIdentity, patchHostIdentity, patchDeferredSubagentContext, marker } from './patch-openclaw-worker-native-attempt.mjs';
+import { patchAttempt, patchMessage, patchGatewayIdentity, patchHostIdentity, patchDeferredSubagentContext, patchScopedSubagentContext, marker } from './patch-openclaw-worker-native-attempt.mjs';
 test('attempt bridge adds native authorization and is idempotent',()=>{
   const input='async function runEmbeddedAttempt(input) {\n\tlet params = input;\n}\n\tsetActiveEmbeddedRun(attempt.sessionId, queueHandle, attempt.sessionKey, attempt.sessionFile, input.hookAgentId);';
   const out=patchAttempt(input,'permission-change-fixture.js');
@@ -18,6 +18,8 @@ test('identity relay preserves local target checks and delegates minting to nati
  assert.ok(patched.includes('await withCaller(() => vlabResolveNativeGatewayIdentity'));
  assert.ok(patched.includes('assertActive();'));
  assert.equal(patchHostIdentity(patched),patched);
+ const mjs=patchHostIdentity(host.replace('./gateway-fixture.js','./gateway-fixture.mjs'));
+ assert.ok(mjs.includes('from "./gateway-fixture.mjs"'));
 });
 test('message execution is Gateway-owned only when Worker explicitly handles it',()=>{
   const input='\t\t\tif (signal?.aborted) throw createAbortError("Message send aborted");';
@@ -43,3 +45,15 @@ test('9.2 loader import aliases preserve native owner checks',()=>{
  assert.throws(()=>patchDeferredSubagentContext(source.replace('r as getGatewayContextResolver','a as getGatewayContextResolver')), /import changed/);
 });
 
+test('9.4 mjs loader uses its semantic Gateway scope aliases',()=>{
+ const bindings={bindGatewayContextResolver:'t',getGatewayContextResolver:'i'};
+ const source='import { f as withPluginRuntimePluginIdScope, i as getGatewayContextResolver, m as withPluginRuntimeRegistryScope } from "./gateway-request-scope-openclaw94.mjs";\nfunction createDeferredGatewaySubagentRuntime(runtime) {\n\treturn {\n\t\trun: (...args) => runtime.subagent.run(...args)\n\t};\n}\nfunction createDeferredGatewayNodesRuntime(runtime) {\n\treturn {};\n}\nfunction scoped() {\n\t\t\tconst subagent = getRuntimeProperty();\n\t\t\treturn {\n\t\t\t\trun: (params) => subagent.run(params)\n\t\t\t};\n\t\t} });\n\t\tpluginRuntimeById.set(pluginId, runtime);\n}';
+ const deferred=patchDeferredSubagentContext(source,bindings);
+ const out=patchScopedSubagentContext(deferred,bindings);
+ assert.ok(out.includes('i as getGatewayContextResolver'));
+ assert.ok(out.includes('t as bindGatewayContextResolver'));
+ assert.ok(out.includes('bindGatewayContextResolver(deferred'));
+ assert.ok(out.includes('bindGatewayContextResolver(scopedSubagent'));
+ assert.equal(patchDeferredSubagentContext(out,bindings),out);
+ assert.equal(patchScopedSubagentContext(out,bindings),out);
+});

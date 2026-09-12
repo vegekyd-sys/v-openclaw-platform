@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   nativeExportBindings,
+  resolveGatewayCallerContract,
   resolveGatewayScopeContract,
   loadNativeRuntimeContract,
   resolveOpenClawAgentCommandRuntimePath,
@@ -191,6 +192,32 @@ for (const alias of ['s', 'c']) {
   const runtime = await loadNativeRuntimeContract(descriptor, async () => ({s: wrong, r: () => {}, [alias]: expected}));
   assert.equal(runtime.withPluginRuntimeGatewayContextResolver, expected);
   await assert.rejects(loadNativeRuntimeContract(descriptor, async () => ({})), /is not a function/);
+}
+{
+  const descriptor = resolveGatewayCallerContract({
+    agentRuntimePath: vlabRuntime,
+    readDirectory: () => ['gateway-caller-context-openclaw94.mjs'],
+    readFile: () => 'export { withoutGatewayToolCallerIdentity as o };',
+  });
+  assert.equal(descriptor.path, '/opt/vlab/current/node_modules/openclaw/dist/gateway-caller-context-openclaw94.mjs');
+  assert.equal(descriptor.bindings.withoutGatewayToolCallerIdentity, 'o');
+}
+{
+  const descriptor = resolveGatewayScopeContract({
+    agentRuntimePath: vlabRuntime,
+    readDirectory: () => [
+      'gateway-request-scope-openclaw94.mjs',
+      'gateway-request-scope-facade.mjs',
+    ],
+    readFile: file => file.endsWith('openclaw94.mjs')
+      ? 'export { getGatewayContextResolver as i, withPluginRuntimeGatewayContextResolver as u };'
+      : 'export { withPluginRuntimeRegistryScope };',
+  });
+  assert.equal(descriptor.path, '/opt/vlab/current/node_modules/openclaw/dist/gateway-request-scope-openclaw94.mjs');
+  assert.deepEqual(descriptor.bindings, {
+    getGatewayContextResolver: 'i',
+    withPluginRuntimeGatewayContextResolver: 'u',
+  });
 }
 assert.throws(() => nativeExportBindings('export { unrelated as s };', ['withPluginRuntimeGatewayContextResolver']), /exactly once/);
 assert.throws(() => nativeExportBindings('export { wanted as a, wanted as b };', ['wanted']), /exactly once/);
