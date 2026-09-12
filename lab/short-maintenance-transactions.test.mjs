@@ -116,6 +116,21 @@ test('coordinator success or same-path handle rotation holds one cooldown; failu
     assert.equal(releases, 1);
   }
 });
+test('file-backed owner may acquire after its cached handle closes and still holds cooldown', () => {
+  const scheduled = []; let releases = 0, acquisitions = 0;
+  const database = {path: '/fixture/agent.sqlite', db: {isOpen: false}};
+  const permit = acquireAutomaticMaintenancePermit(database, () => {acquisitions++; return {release() {releases++;}};}, {
+    allowClosedFileOwner: true,
+    setTimer: (f, ms) => {scheduled.push([f, ms]); return {unref() {}};},
+  });
+  assert.equal(acquisitions, 1);
+  permit.finish(true, database);
+  assert.equal(releases, 0);
+  assert.equal(scheduled.length, 1);
+  assert.equal(scheduled[0][1], 60000);
+  scheduled[0][0]();
+  assert.equal(releases, 1);
+});
 test('coordinator busy does not steal, corrupt/error is surfaced, closed handle is untouched', () => {
   assert.equal(acquireAutomaticMaintenancePermit({path: '/fixture/db', db: {isOpen: true}}, () => null), null);
   const error = new Error('coordinator failed'); assert.throws(() => acquireAutomaticMaintenancePermit({path: '/fixture/db', db: {isOpen: true}}, () => {throw error;}), e => e === error);

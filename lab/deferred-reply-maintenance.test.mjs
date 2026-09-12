@@ -66,6 +66,7 @@ function queueHarness({archives = false, incognito = false, permit = 'ok', archi
   let interruptionsRemaining = interrupt ? 1 : 0;
   const quietWindow = {changed: async () => false};
   const deps = {resolveOpenClawAgentSqlitePath: () => '/fixture/db', toDatabaseOptions: x => x, getOpenClawAgentDatabaseIfOpen: () => currentDatabase,
+    openOpenClawAgentDatabase: () => currentDatabase,
     isIncognitoOpenClawAgentSqlitePath: () => incognito,
     waitForAutomaticMaintenanceQuietWindow: async p => {order.push('quiet'); quietCalls.push(p); return quiet === 'stale' ? null : quietWindow;}, AutomaticSessionMaintenanceInterruptedError: Interrupted,
     acquireAutomaticMaintenancePermit: () => {order.push('permit'); if (permit === 'busy') return null; if (permit === 'error') throw new Error('fixture coordinator failed'); return {finish() {}};}, tryAcquireExclusiveSqliteCoordinator() {},
@@ -174,8 +175,17 @@ test('arrivals during maintenance finalization are not lost', async () => {
   const h = queueHarness(); let once = false; h.setFinalize(async () => {if (!once) {once = true; h.kick({scope: {}, activeSessionKey: 'later'});}});
   h.kick({scope: {}, activeSessionKey: 'first'}); await h.flush(); assert.deepEqual(h.sweeps.map(p => p.activeSessionKeys), [['first'], ['later']]); assert.equal(h.owners.size, 0);
 });
-test('closed database and explicitly skipped writes do not run maintenance', async () => {
-  const h = queueHarness(); h.kick({scope: {}, skipMaintenance: true}); assert.equal(h.scheduled.length, 0);
+test('file-backed owner survives its queued SQLite handle closing', async () => {
+  const h = queueHarness();
+  h.kick({scope: {}, activeSessionKey: 'first'});
+  h.database.db.isOpen = false;
+  await h.flush();
+  assert.equal(h.offloadedPlans.length, 1);
+  assert.equal(h.finalizeCalls.length, 1);
+  assert.equal(h.owners.size, 0);
+});
+test('incognito closed database and explicitly skipped writes do not run maintenance', async () => {
+  const h = queueHarness({incognito: true}); h.kick({scope: {}, skipMaintenance: true}); assert.equal(h.scheduled.length, 0);
   h.kick({scope: {}, activeSessionKey: 'first'}); h.database.db.isOpen = false; await h.flush(); assert.equal(h.sweeps.length, 0); assert.equal(h.owners.size, 0);
 });
 test('outside the explicitly tested automatic queue, lifecycle/reset/delete guards are byte-identical', () => {

@@ -23,10 +23,14 @@ function spawnAutomaticSessionMaintenanceProcess(url, workerOptions) {
   if (!Number.isInteger(maxOldGenerationSizeMb) || maxOldGenerationSizeMb <= 0) {
     throw new Error("Automatic session maintenance heap limit must be a positive integer");
   }
-  const child = spawn(process.execPath, [
+  const nodeArgs = [
     `--max-old-space-size=${maxOldGenerationSizeMb}`,
     fileURLToPath(url),
-  ], {
+  ];
+  // Keep a global read scan below foreground Gateway and Agent Worker CPU work.
+  // nice(1) execs Node in place, so the IPC channel remains the child channel.
+  const useNice = process.platform !== "win32";
+  const child = spawn(useNice ? "/usr/bin/nice" : process.execPath, useNice ? ["-n", "10", process.execPath, ...nodeArgs] : nodeArgs, {
     env: process.env,
     serialization: "advanced",
     stdio: ["ignore", "ignore", "ignore", "ipc"],
