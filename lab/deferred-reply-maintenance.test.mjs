@@ -59,13 +59,16 @@ test('retry callback remains once and retired entry/reset options survive', asyn
 });
 const entryModule = read('./release-files/session-accessor.sqlite-entry-BlklNPKQ.js');
 const queueSource = entryModule.slice(entryModule.indexOf('const maintenanceByStore ='), entryModule.indexOf('//#endregion', entryModule.indexOf('const maintenanceByStore =')));
-function queueHarness({archives = false, incognito = false, permit = 'ok', archiveSizes, admissions = []} = {}) {
-  const scheduled = [], timers = [], sweeps = [], warnings = [], archiveCommits = [], offloadedPlans = [], readSnapshots = [], writeTransactions = [], finalizeCalls = [], database = {db: {isOpen: true}, path: '/fixture/db.sqlite'}; let finalize = async () => {}, beforeArchiveRetry = () => {}, activeAdmissions = new Set(admissions);
+function queueHarness({archives = false, incognito = false, permit = 'ok', archiveSizes, admissions = [], quiet = 'ok', interrupt = false} = {}) {
+  const scheduled = [], timers = [], sweeps = [], warnings = [], archiveCommits = [], offloadedPlans = [], plannerOptions = [], interruptChecks = [], quietCalls = [], readSnapshots = [], writeTransactions = [], finalizeCalls = [], order = [], database = {db: {isOpen: true}, path: '/fixture/db.sqlite'}; let finalize = async () => {}, beforeArchiveRetry = () => {}, activeAdmissions = new Set(admissions);
+  class Interrupted extends Error {}
+  const quietWindow = {changed: async () => false};
   const deps = {resolveOpenClawAgentSqlitePath: () => '/fixture/db', toDatabaseOptions: x => x, getOpenClawAgentDatabaseIfOpen: () => database,
     isIncognitoOpenClawAgentSqlitePath: () => incognito,
-    acquireAutomaticMaintenancePermit: () => {if (permit === 'busy') return null; if (permit === 'error') throw new Error('fixture coordinator failed'); return {finish() {}};}, tryAcquireExclusiveSqliteCoordinator() {},
+    waitForAutomaticMaintenanceQuietWindow: async p => {order.push('quiet'); quietCalls.push(p); return quiet === 'stale' ? null : quietWindow;}, AutomaticSessionMaintenanceInterruptedError: Interrupted,
+    acquireAutomaticMaintenancePermit: () => {order.push('permit'); if (permit === 'busy') return null; if (permit === 'error') throw new Error('fixture coordinator failed'); return {finish() {}};}, tryAcquireExclusiveSqliteCoordinator() {},
     runSqliteDeferredTransactionSync: (_db, operation) => {readSnapshots.push(true); return operation();},
-    runAutomaticSessionMaintenancePlan: async p => {offloadedPlans.push(p); const plan = deps.applySessionEntryMaintenance(database, {...p, planOnly: true}); return archiveSizes ? {...plan, automaticArchiveBytesBySessionId: archiveSizes} : plan;},
+    runAutomaticSessionMaintenancePlan: async (p, options) => {offloadedPlans.push(p); plannerOptions.push(options); interruptChecks.push(await options.shouldInterrupt()); if (interrupt) throw new Interrupted(); const plan = deps.applySessionEntryMaintenance(database, {...p, planOnly: true}); return archiveSizes ? {...plan, automaticArchiveBytesBySessionId: archiveSizes} : plan;},
     filterAutomaticSessionMaintenancePlan: p => p, collectActiveSessionWorkAdmissions: () => activeAdmissions.size ? new Map([['/fixture/sessions.json', new Set(activeAdmissions)]]) : new Map(), uniqueStrings: xs => [...new Set(xs)],
     withSqliteBeginContentionRetry: async ({run, operation}) => {beforeArchiveRetry(); return run(operation);},
     commitPlannedSessionMaintenanceArchives: (_db, plan) => {archiveCommits.push(plan); return plan;},
@@ -75,13 +78,16 @@ function queueHarness({archives = false, incognito = false, permit = 'ok', archi
     finalizeSessionEntryMaintenancePlansAfterWriterReleaseBestEffort: async (...args) => {finalizeCalls.push(args); return finalize();}, getChildLogger: () => ({warn: (...args) => warnings.push(args)})};
   const api = Function(...Object.keys(deps), queueSource + ';return {kick: kickSessionEntryMaintenanceAfterWrite, owners: maintenanceByStore};')(...Object.values(deps));
   const settle = async () => {for (let i = 0; i < 20; i++) await Promise.resolve();};
-  return {...api, database, sweeps, scheduled, timers, warnings, archiveCommits, offloadedPlans, readSnapshots, writeTransactions, finalizeCalls, setAdmissions: values => {activeAdmissions = new Set(values);}, setBeforeArchiveRetry: fn => {beforeArchiveRetry = fn;}, setFinalize: fn => {finalize = fn;}, flush: async () => {scheduled.shift()(); await settle();}, tick: async () => {timers.shift()(); await settle();}};
+  return {...api, database, sweeps, scheduled, timers, warnings, archiveCommits, offloadedPlans, plannerOptions, interruptChecks, quietCalls, readSnapshots, writeTransactions, finalizeCalls, order, setAdmissions: values => {activeAdmissions = new Set(values);}, setBeforeArchiveRetry: fn => {beforeArchiveRetry = fn;}, setFinalize: fn => {finalize = fn;}, flush: async () => {scheduled.shift()(); await settle();}, tick: async () => {timers.shift()(); await settle();}};
 }
 test('native queue coalesces 15 writes and protects all active keys', async () => {
   const h = queueHarness(); for (let i = 0; i < 15; i++) h.kick({scope: {agentId: 'makaron'}, activeSessionKey: 'key' + i, archiveDirectory: '/fixture/archive', storePath: '/fixture/sessions.json'});
   assert.equal(h.scheduled.length, 1); await h.flush(); assert.equal(h.sweeps.length, 1); assert.equal(h.sweeps[0].activeSessionKeys.length, 15); assert.equal(h.owners.size, 0);
   assert.equal(h.offloadedPlans.length, 1); assert.equal(h.readSnapshots.length, 0); assert.equal(h.writeTransactions.length, 0); assert.equal(h.sweeps[0].planOnly, true);
   assert.equal(h.offloadedPlans[0].maintenanceConfig.mode, 'enforce');
+  assert.deepEqual(h.order.slice(0, 2), ['permit', 'quiet']);
+  assert.equal(h.quietCalls[0].databasePath, '/fixture/db.sqlite');
+  assert.deepEqual(h.interruptChecks, [false]);
 });
 test('incognito maintenance retains the process-local inline snapshot', async () => {
   const h = queueHarness({incognito: true}); h.kick({scope: {agentId: 'makaron'}, activeSessionKey: 'key', archiveDirectory: '/fixture/archive', storePath: '/fixture/sessions.json'}); await h.flush();
@@ -120,6 +126,17 @@ for (const permit of ['busy', 'error']) test('automatic coordinator ' + permit +
   const h = queueHarness({permit}); h.kick({scope: {}, activeSessionKey: 'first'}); await h.flush();
   assert.equal(h.sweeps.length, 0); assert.equal(h.owners.size, 0); assert.equal(h.warnings.length, permit === 'error' ? 1 : 0);
 });
+test('stale quiet-window owner and foreground interruption stay best-effort and silent', async () => {
+  for (const mode of ['stale', 'interrupt']) {
+    const h = queueHarness(mode === 'stale' ? {quiet: 'stale'} : {interrupt: true});
+    h.kick({scope: {}, activeSessionKey: 'first'});
+    await h.flush();
+    assert.equal(h.sweeps.length, 0);
+    assert.equal(h.finalizeCalls.length, 0);
+    assert.equal(h.warnings.length, 0);
+    assert.equal(h.owners.size, 0);
+  }
+});
 test('arrivals during maintenance finalization are not lost', async () => {
   const h = queueHarness(); let once = false; h.setFinalize(async () => {if (!once) {once = true; h.kick({scope: {}, activeSessionKey: 'later'});}});
   h.kick({scope: {}, activeSessionKey: 'first'}); await h.flush(); assert.deepEqual(h.sweeps.map(p => p.activeSessionKeys), [['first'], ['later']]); assert.equal(h.owners.size, 0);
@@ -133,6 +150,8 @@ test('outside the explicitly tested automatic queue, lifecycle/reset/delete guar
   const beforeQueue = before.slice(before.indexOf('const maintenanceByStore ='), before.indexOf('//#endregion', before.indexOf('const maintenanceByStore =')));
   const withoutBeginRetry = entryModule.replace(queueSource, beforeQueue)
     .replace('import {acquireAutomaticMaintenancePermit} from "./automatic-maintenance-coordinator.mjs";\n', '')
+    .replace('import {waitForAutomaticMaintenanceQuietWindow} from "./automatic-maintenance-quiet-window.mjs";\n', '')
+    .replace('import {AutomaticSessionMaintenanceInterruptedError, filterAutomaticSessionMaintenancePlan, runAutomaticSessionMaintenancePlan} from "./automatic-session-maintenance-planner.mjs";\n', '')
     .replace('import {runAutomaticSessionMaintenancePlan} from "./automatic-session-maintenance-planner.mjs";\n', '')
     .replace('import {filterAutomaticSessionMaintenancePlan, runAutomaticSessionMaintenancePlan} from "./automatic-session-maintenance-planner.mjs";\n', '')
     .replace('import {l as runSqliteDeferredTransactionSync, o as tryAcquireExclusiveSqliteCoordinator} from "./node-sqlite-CL-d6drd.js";\n', '')

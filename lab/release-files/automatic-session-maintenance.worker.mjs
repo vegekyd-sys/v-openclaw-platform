@@ -1,11 +1,23 @@
 import { parentPort, workerData } from "node:worker_threads";
+import { setPriority } from "node:os";
 import { l as runSqliteDeferredTransactionSync } from "./node-sqlite-CL-d6drd.js";
 import { n as withOpenClawAgentDatabaseReadOnly } from "./openclaw-agent-db-readonly-wb-jdztx.js";
 import { c as resolveSqliteScope, m as toDatabaseOptions } from "./session-accessor.sqlite-scope-BwPKGcgm.js";
 import { boundAutomaticSessionMaintenancePlan } from "./automatic-session-maintenance-planner.mjs";
 import { a as applySessionEntryMaintenance, b as buildSessionMaintenanceBatches } from "./session-history-eviction-d5aiCsHS.js";
 
-if (!parentPort) throw new Error("Automatic session maintenance worker requires a parent port");
+const processChannel = !parentPort && typeof process.send === "function";
+if (!parentPort && !processChannel) throw new Error("Automatic session maintenance requires an isolated message channel");
+if (processChannel) {
+  try { setPriority(0, 10); } catch {}
+}
+
+const request = parentPort ? workerData : await new Promise((resolve, reject) => {
+  process.once("message", resolve);
+  process.once("disconnect", () => reject(new Error("Automatic session maintenance owner disconnected before dispatch")));
+});
+const postMessage = (message) => parentPort ? parentPort.postMessage(message) : process.send(message);
+const closeChannel = () => parentPort ? parentPort.close() : process.disconnect();
 
 const TRANSCRIPT_SIZE_BATCH = 64;
 
@@ -33,7 +45,6 @@ function attachArchiveByteSizes(database, plan) {
 }
 
 try {
-  const request = workerData;
   const resolved = resolveSqliteScope({
     agentId: request.agentId,
     sessionKey: "",
@@ -51,12 +62,12 @@ try {
   if (!opened.found) {
     throw new Error(`Automatic session maintenance could not open the Agent database: ${opened.reason}`);
   }
-  parentPort.postMessage({ type: "result", plan: opened.value });
+  postMessage({ type: "result", plan: opened.value });
 } catch (error) {
-  parentPort.postMessage({
+  postMessage({
     type: "error",
     message: error instanceof Error ? error.message : String(error),
   });
 } finally {
-  parentPort.close();
+  closeChannel();
 }

@@ -1,11 +1,18 @@
 import { parentPort, workerData } from "node:worker_threads";
 
-const until = Date.now() + (workerData.testBusyMs ?? 0);
+const request = parentPort ? workerData : await new Promise((resolve, reject) => {
+  process.once("message", resolve);
+  process.once("disconnect", () => reject(new Error("owner disconnected")));
+});
+const postMessage = (message) => parentPort ? parentPort.postMessage(message) : process.send(message);
+const closeChannel = () => parentPort ? parentPort.close() : process.disconnect();
+
+const until = Date.now() + (request.testBusyMs ?? 0);
 while (Date.now() < until) {
   // This deliberately blocks only the isolated fixture Worker.
 }
 
-parentPort.postMessage({
+postMessage({
   type: "result",
   plan: {
     archived: 0,
@@ -17,4 +24,4 @@ parentPort.postMessage({
     stateDeletePlans: [],
   },
 });
-parentPort.close();
+closeChannel();

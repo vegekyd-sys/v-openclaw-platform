@@ -92,6 +92,32 @@ entry compare-and-swap, late-admission filtering, and state deletion snapshots.
 It bounds the common multi-thousand-session process crossing without moving any
 destructive or lifecycle work into the Worker.
 
+## V5: require a cross-process quiet window
+
+V4 bounded the plan transfer, but clean C10 still produced one 5.002-second HTTP
+timeout and a 6.375-second event-loop interval. Repeating C10 with four resident
+Workers removed process creation but retained the stall. Holding only the
+data-free automatic-maintenance coordinator for the same four-Worker C10 reduced
+first-text P50/P95 to 10.137/12.145 seconds, kept HTTP and RPC errors at zero,
+and bounded the event-loop interval to 0.536 seconds. Automatic maintenance,
+not Worker residency or model latency, remained the causal difference.
+
+V5 acquires that coordinator only to elect one maintenance process, then waits
+for 30 continuous seconds with no local admission and no change to the Agent
+database or WAL. Database/WAL identity, size, nanosecond modification time, and
+change time form the cross-process activity fingerprint; SHM is excluded because
+readers legitimately update it. The wait is bounded to five minutes and never
+blocks a foreground write.
+
+During the isolated scan, the owner polls the same fingerprint every 100ms. The
+scan runs in a niceness-10, 512 MiB-capped subprocess so synchronous SQLite work
+can be terminated at the operating-system boundary. A new write from any
+Gateway or Worker terminates the read-only planning process;
+local admission also interrupts it before that admission's first database write.
+This interruption is an expected best-effort deferral and is not logged as a
+maintenance failure. The next committed reply re-kicks maintenance, while all
+explicit maintenance behavior remains unchanged.
+
 ## Acceptance gates
 
 1. Deterministic queue and planner tests, including archive revalidation and a

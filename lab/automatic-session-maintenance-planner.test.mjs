@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { boundAutomaticSessionMaintenancePlan, filterAutomaticSessionMaintenancePlan, runAutomaticSessionMaintenancePlan } from "./release-files/automatic-session-maintenance-planner.mjs";
+import { AutomaticSessionMaintenanceInterruptedError, boundAutomaticSessionMaintenancePlan, filterAutomaticSessionMaintenancePlan, runAutomaticSessionMaintenancePlan } from "./release-files/automatic-session-maintenance-planner.mjs";
 
 const request = {
   activeSessionKeys: ["agent:makaron:explicit:test"],
@@ -22,6 +22,18 @@ test("maintenance planner keeps synchronous work off the caller event loop", asy
   } finally {
     clearInterval(timer);
   }
+});
+
+test("foreground activity terminates an in-flight planning worker", async () => {
+  let polls = 0;
+  const startedAt = Date.now();
+  const result = runAutomaticSessionMaintenancePlan({...request, testBusyMs: 5_000}, {
+    abortPollMs: 10,
+    shouldInterrupt: async () => ++polls >= 10,
+    workerUrl: new URL("./fixtures/automatic-session-maintenance.echo-worker.mjs", import.meta.url),
+  });
+  await assert.rejects(result, (error) => error instanceof AutomaticSessionMaintenanceInterruptedError);
+  assert(Date.now() - startedAt < 1_000, "isolated synchronous work did not terminate promptly");
 });
 
 test("maintenance planner rejects malformed requests before spawning", async () => {
