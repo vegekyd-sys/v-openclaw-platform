@@ -136,6 +136,23 @@ their previous bounded best-effort exits. Every retry still re-plans from a new
 read-only snapshot and passes all late-admission, exact-entry, archive, and
 deletion revalidation gates.
 
+## V7: preserve one file-backed owner across handle rotation
+
+V6 proved that the interrupted planner's owner was already stale: the retry
+branch did not run even though the Gateway remained healthy and no later sweep
+started. The queue previously coalesced only when the cached SQLite handle was
+the same JavaScript object. During a 30-second wait, a handle rotation could
+therefore replace the owner while the old owner still held the cross-process
+coordinator. The replacement observed the coordinator as busy and removed
+itself; the old owner then observed itself as stale. Both exits were individually
+safe, but together they lost the background retry.
+
+V7 coalesces a new kick into the existing owner when both resolve to the same
+file-backed physical database path, rebinding the owner to the current open
+handle and advancing its generation. Incognito owners continue to require exact
+database-object identity. Tests cover both boundaries. This changes no
+coordinator, quiet-window, plan, transaction, or lifecycle revalidation rule.
+
 ## Acceptance gates
 
 1. Deterministic queue and planner tests, including archive revalidation and a

@@ -101,15 +101,17 @@ test('native deletion finalizer, snapshot comparison and other eviction code rem
   assert.equal(source.slice(0, source.indexOf('function applySessionEntryMaintenance(')), before.slice(0, before.indexOf('function applySessionEntryMaintenance(')));
   assert.equal(normalized.slice(normalized.indexOf(marker), normalized.indexOf('\n// Automatic planning is read-only.')), before.slice(before.indexOf(marker)));
 });
-test('coordinator success holds one cooldown, failure/closed handle releases immediately', () => {
-  for (const mode of ['success', 'failure', 'closed']) {
+test('coordinator success or same-path handle rotation holds one cooldown; failure/closed handle releases immediately', () => {
+  for (const mode of ['success', 'rebound', 'failure', 'closed']) {
     const scheduled = [], paths = []; let releases = 0;
     const database = {path: '/fixture/agent.sqlite', db: {isOpen: true}};
     const permit = acquireAutomaticMaintenancePermit(database, (p, o) => {paths.push([p, o]); return {release() {releases++;}};}, {setTimer: (f, ms) => {scheduled.push([f, ms]); return {unref() {}};}});
-    if (mode === 'closed') database.db.isOpen = false;
-    permit.finish(mode !== 'failure'); permit.finish(true);
+    let currentDatabase = database;
+    if (mode === 'closed' || mode === 'rebound') database.db.isOpen = false;
+    if (mode === 'rebound') currentDatabase = {path: database.path, db: {isOpen: true}};
+    permit.finish(mode !== 'failure', currentDatabase); permit.finish(true, currentDatabase);
     assert.equal(paths[0][0], '/fixture/agent.sqlite.automatic-maintenance-coordinator'); assert.equal(paths[0][1].busyTimeoutMs, 0);
-    if (mode === 'success') {assert.equal(releases, 0); assert.equal(scheduled.length, 1); assert.equal(scheduled[0][1], 60000); scheduled[0][0](); scheduled[0][0]();}
+    if (mode === 'success' || mode === 'rebound') {assert.equal(releases, 0); assert.equal(scheduled.length, 1); assert.equal(scheduled[0][1], 60000); scheduled[0][0](); scheduled[0][0]();}
     else assert.equal(scheduled.length, 0);
     assert.equal(releases, 1);
   }

@@ -146,9 +146,13 @@ function kickSessionEntryMaintenanceAfterWrite(params) {
 	const database = getOpenClawAgentDatabaseIfOpen(toDatabaseOptions(params.scope));
 	if (!database) return;
 	const owner = maintenanceByStore.get(databasePath);
-	if (owner?.database === database) {
+	const fileBackedOwner = owner && !isIncognitoOpenClawAgentSqlitePath(database.path, {agentId: params.scope.agentId, env: params.scope.env});
+	if (owner?.database === database || fileBackedOwner) {
 		owner.activeSessionKeys.add(params.activeSessionKey);
-		Object.assign(owner, params, { generation: owner.generation + 1 });
+		// A long quiet wait can outlive one cached SQLite handle. Rebind the same
+		// physical file-backed owner instead of replacing it while its coordinator
+		// permit is still held. Incognito generations remain object-identity scoped.
+		Object.assign(owner, params, { database, generation: owner.generation + 1 });
 		return;
 	}
 	const created = {
@@ -268,7 +272,7 @@ async function runPendingMaintenance(databasePath, owner) {
 				});
 			}
 		} finally {
-			permit.finish(completed);
+			permit.finish(completed, owner.database);
 		}
 		if (retryAfterForegroundActivity && isCurrent()) continue;
 		if (maintenanceByStore.get(databasePath) !== owner) return;
