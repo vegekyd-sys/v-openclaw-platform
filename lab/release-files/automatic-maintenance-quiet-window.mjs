@@ -14,7 +14,12 @@ async function fingerprintFile(filename, readStat) {
   try {
     const value = await readStat(filename, { bigint: true });
     if (!value.isFile()) throw new Error(`Automatic maintenance activity path is not a file: ${filename}`);
-    return [value.dev, value.ino, value.size, value.mtimeNs, value.ctimeNs].join(":");
+    // A read-only SQLite connection can update WAL ctime while taking/releasing
+    // locks even though the WAL contents did not change. Including ctime makes
+    // the isolated planner observe its own read as foreground write activity
+    // and interrupt itself. Device/inode still detect replacement; size/mtime
+    // track content changes without that self-interference.
+    return [value.dev, value.ino, value.size, value.mtimeNs].join(":");
   } catch (error) {
     if (error?.code === "ENOENT") return "missing";
     throw error;

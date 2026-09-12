@@ -56,7 +56,7 @@ test("local admissions prevent a quiet window and stale owners stop waiting", as
   assert.equal(at, 500);
 });
 
-test("database activity fingerprint tracks the database and WAL but not SHM", async () => {
+test("database activity fingerprint tracks database and WAL content but ignores read-only ctime churn", async () => {
   const calls = [];
   const values = new Map([
     ["/fixture/agent.sqlite", {dev: 1n, ino: 2n, size: 3n, mtimeNs: 4n, ctimeNs: 5n}],
@@ -68,9 +68,15 @@ test("database activity fingerprint tracks the database and WAL but not SHM", as
       return {...values.get(filename), isFile: () => true};
     },
   });
-  assert.equal(fingerprint, "1:2:3:4:5|6:7:8:9:10");
+  assert.equal(fingerprint, "1:2:3:4|6:7:8:9");
   assert.deepEqual(calls.map(([filename]) => filename), ["/fixture/agent.sqlite", "/fixture/agent.sqlite-wal"]);
   assert(calls.every(([, options]) => options.bigint === true));
+
+  values.get("/fixture/agent.sqlite").ctimeNs = 50n;
+  values.get("/fixture/agent.sqlite-wal").ctimeNs = 100n;
+  assert.equal(await readAutomaticMaintenanceActivityFingerprint("/fixture/agent.sqlite", {
+    stat: async (filename) => ({...values.get(filename), isFile: () => true}),
+  }), fingerprint);
 });
 
 test("missing WAL has a stable explicit fingerprint", async () => {
@@ -80,5 +86,5 @@ test("missing WAL has a stable explicit fingerprint", async () => {
       return {dev: 1n, ino: 2n, size: 3n, mtimeNs: 4n, ctimeNs: 5n, isFile: () => true};
     },
   });
-  assert.equal(fingerprint, "1:2:3:4:5|missing");
+  assert.equal(fingerprint, "1:2:3:4|missing");
 });
