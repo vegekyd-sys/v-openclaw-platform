@@ -24,6 +24,11 @@ export function patchSessionAccessor(source) {
   );
   result = once(
     result,
+    '\t\treturn withDatabase(() => {\n\t\t\tlet result = null;\n',
+    '\t\treturn withDatabase(async () => {\n\t\t\tlet result = null;\n',
+  );
+  result = once(
+    result,
     '\t\t\tconst publish = runOpenClawAgentWriteTransaction((writeDatabase) => {\n',
     '\t\t\tconst publish = await withSqliteBeginContentionRetry({\n' +
       '\t\t\t\tdatabase: database.db,\n' +
