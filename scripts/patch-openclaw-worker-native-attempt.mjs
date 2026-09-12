@@ -112,6 +112,24 @@ export function patchStartupMigrationLease(source) {
     `const STARTUP_MIGRATION_LEASE_TTL_MS = 18e5; // ${leaseMarker}: cold 15GB state validation can exceed five minutes.`,
   );
 }
+export function patchStalledEmbeddedRunAbort(source) {
+  const recoveryMarker = 'vlab91-large-state-worker-recovery-v1';
+  if (source.includes(recoveryMarker)) return source;
+  return once(
+    source,
+    'const MIN_STALLED_EMBEDDED_RUN_ABORT_MS = 3e5;',
+    `const MIN_STALLED_EMBEDDED_RUN_ABORT_MS = 18e5; // ${recoveryMarker}: a cold 8GB agent database open can block Worker progress for more than six minutes.`,
+  );
+}
+export function patchRunStaleTakeover(source) {
+  const recoveryMarker = 'vlab91-large-state-worker-recovery-v1';
+  if (source.includes(recoveryMarker)) return source;
+  return once(
+    source,
+    'const RUN_STALE_TAKEOVER_MS = 6e5;',
+    `const RUN_STALE_TAKEOVER_MS = 18e5; // ${recoveryMarker}: keep reply ownership while the isolated Worker opens a cold large-state database.`,
+  );
+}
 async function main() {
   const [core, mode, name, owner] = process.argv.slice(2);
   if (!core || !['--check', '--apply'].includes(mode)) throw new Error('Usage: core-package --check|--apply');
@@ -145,6 +163,14 @@ async function main() {
     specs.push([
       await unique(/^startup-migration-checkpoint-[\w-]+\.m?js$/, 'const STARTUP_MIGRATION_LEASE_SCOPE = "startup-migrations";'),
       patchStartupMigrationLease,
+    ]);
+    specs.push([
+      await unique(/^diagnostic-[\w-]+\.m?js$/, 'const DEFAULT_STUCK_SESSION_WARN_MS = 12e4;'),
+      patchStalledEmbeddedRunAbort,
+    ]);
+    specs.push([
+      await unique(/^diagnostic-run-activity-[\w-]+\.m?js$/, 'function resolveRunStaleThresholdMs'),
+      patchRunStaleTakeover,
     ]);
   }
   const changes = await Promise.all(specs.map(async ([name, patch]) => {

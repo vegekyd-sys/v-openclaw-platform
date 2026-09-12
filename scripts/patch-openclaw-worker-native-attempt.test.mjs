@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { patchAttempt, patchMessage, patchGatewayIdentity, patchHostIdentity, patchDeferredSubagentContext, patchScopedSubagentContext, patchStartupMigrationLease, marker } from './patch-openclaw-worker-native-attempt.mjs';
+import { patchAttempt, patchMessage, patchGatewayIdentity, patchHostIdentity, patchDeferredSubagentContext, patchScopedSubagentContext, patchStartupMigrationLease, patchStalledEmbeddedRunAbort, patchRunStaleTakeover, marker } from './patch-openclaw-worker-native-attempt.mjs';
 test('attempt bridge adds native authorization and is idempotent',()=>{
   const input='async function runEmbeddedAttempt(input) {\n\tlet params = input;\n}\n\tsetActiveEmbeddedRun(attempt.sessionId, queueHandle, attempt.sessionKey, attempt.sessionFile, input.hookAgentId);';
   const out=patchAttempt(input,'permission-change-fixture.js');
@@ -65,4 +65,20 @@ test('9.4 startup migration lease covers cold large-state validation',()=>{
  assert.ok(out.includes('vlab91-large-state-startup-lease-v1'));
  assert.equal(patchStartupMigrationLease(out),out);
  assert.throws(()=>patchStartupMigrationLease('const STARTUP_MIGRATION_LEASE_TTL_MS = 4e5;'),/mismatch/);
+});
+
+test('9.4 recovery retains a cold large-state Worker run for thirty minutes',()=>{
+ const diagnostic='const MIN_STALLED_EMBEDDED_RUN_ABORT_MS = 3e5;';
+ const patchedDiagnostic=patchStalledEmbeddedRunAbort(diagnostic);
+ assert.ok(patchedDiagnostic.includes('MIN_STALLED_EMBEDDED_RUN_ABORT_MS = 18e5'));
+ assert.ok(patchedDiagnostic.includes('vlab91-large-state-worker-recovery-v1'));
+ assert.equal(patchStalledEmbeddedRunAbort(patchedDiagnostic),patchedDiagnostic);
+ assert.throws(()=>patchStalledEmbeddedRunAbort('const MIN_STALLED_EMBEDDED_RUN_ABORT_MS = 4e5;'),/mismatch/);
+
+ const activity='const RUN_STALE_TAKEOVER_MS = 6e5;';
+ const patchedActivity=patchRunStaleTakeover(activity);
+ assert.ok(patchedActivity.includes('RUN_STALE_TAKEOVER_MS = 18e5'));
+ assert.ok(patchedActivity.includes('vlab91-large-state-worker-recovery-v1'));
+ assert.equal(patchRunStaleTakeover(patchedActivity),patchedActivity);
+ assert.throws(()=>patchRunStaleTakeover('const RUN_STALE_TAKEOVER_MS = 7e5;'),/mismatch/);
 });
