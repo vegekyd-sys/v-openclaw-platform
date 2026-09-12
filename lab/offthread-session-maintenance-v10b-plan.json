@@ -1,4 +1,5 @@
 {
+  "baseRelease": "offthread-session-maintenance-20260912-v10",
   "files": [
     {
       "source": "lab/release-files/session-accessor.sqlite-entry-BlklNPKQ.js",
