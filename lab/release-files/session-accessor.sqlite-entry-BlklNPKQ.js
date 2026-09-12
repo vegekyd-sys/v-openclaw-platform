@@ -1,5 +1,6 @@
 import {acquireAutomaticMaintenancePermit} from "./automatic-maintenance-coordinator.mjs";
-import {filterAutomaticSessionMaintenancePlan, runAutomaticSessionMaintenancePlan} from "./automatic-session-maintenance-planner.mjs";
+import {waitForAutomaticMaintenanceQuietWindow} from "./automatic-maintenance-quiet-window.mjs";
+import {AutomaticSessionMaintenanceInterruptedError, filterAutomaticSessionMaintenancePlan, runAutomaticSessionMaintenancePlan} from "./automatic-session-maintenance-planner.mjs";
 import {l as runSqliteDeferredTransactionSync, o as tryAcquireExclusiveSqliteCoordinator} from "./node-sqlite-CL-d6drd.js";
 import {commitPlannedSessionMaintenanceArchives} from "./session-history-eviction-d5aiCsHS.js";
 import {s as resolveMaintenanceConfig} from "./disk-budget-BzLS0kmH.js";
@@ -166,6 +167,8 @@ async function runPendingMaintenance(databasePath, owner) {
 			await db91WaitAutomaticMaintenance(owner.database);
 			if (!isCurrent()) break;
 		}
+		const incognito = isIncognitoOpenClawAgentSqlitePath(owner.database.path, {agentId: owner.scope.agentId, env: owner.scope.env});
+		const currentAdmissionIdentities = () => collectActiveSessionWorkAdmissions().get(owner.storePath) ?? /* @__PURE__ */ new Set();
 		// Incognito has no shared physical store. All ordinary file-backed callers
 		// use the existing native coordinator primitive on a data-free sidecar.
 		let permit;
@@ -185,12 +188,23 @@ async function runPendingMaintenance(databasePath, owner) {
 			return;
 		}
 		let completed = false;
-		const generation = owner.generation;
-		const currentAdmissionIdentities = () => collectActiveSessionWorkAdmissions().get(owner.storePath) ?? /* @__PURE__ */ new Set();
-		const activeSessionKeys = uniqueStrings([...owner.activeSessionKeys, ...currentAdmissionIdentities()]);
-		owner.activeSessionKeys.clear();
+		let generation = owner.generation;
 		try {
-			const incognito = isIncognitoOpenClawAgentSqlitePath(owner.database.path, {agentId: owner.scope.agentId, env: owner.scope.env});
+			// The data-free coordinator elects one process to poll. A continuous quiet
+			// window in the Agent database/WAL keeps the full scan away from bursts in
+			// every Gateway/Worker process that shares this store.
+			const quietWindow = incognito ? void 0 : await waitForAutomaticMaintenanceQuietWindow({
+				databasePath: owner.database.path,
+				isCurrent,
+				isLocallyIdle: () => currentAdmissionIdentities().size === 0
+			});
+			if (!incognito && !quietWindow) {
+				if (maintenanceByStore.get(databasePath) === owner) maintenanceByStore.delete(databasePath);
+				return;
+			}
+			generation = owner.generation;
+			const activeSessionKeys = uniqueStrings([...owner.activeSessionKeys, ...currentAdmissionIdentities()]);
+			owner.activeSessionKeys.clear();
 			const maintenanceConfig = owner.maintenanceConfig ?? resolveMaintenanceConfig();
 			// A file-backed store can require a multi-second global read scan. Keep that
 			// synchronous SQLite work off the request-owning Gateway/Worker event loop.
@@ -209,7 +223,10 @@ async function runPendingMaintenance(databasePath, owner) {
 					archiveDirectory: owner.archiveDirectory,
 					maintenanceConfig,
 					storePath: owner.storePath
+				}, {
+					shouldInterrupt: async () => !isCurrent() || currentAdmissionIdentities().size > 0 || await quietWindow.changed()
 				});
+			if (!incognito && await quietWindow.changed()) plan = void 0;
 			// Planning is read-only and can overlap active work. Archive commits and
 			// deletion transactions are best-effort background writes: never let them
 			// enter SQLite while a real Agent turn for this store is still admitted.
@@ -234,10 +251,12 @@ async function runPendingMaintenance(databasePath, owner) {
 			await finalizeSessionEntryMaintenancePlansAfterWriterReleaseBestEffort(owner.scope, [plan], { isCurrent, archiveBytesBySessionId });
 			completed = true;
 		} catch (error) {
-			getChildLogger({ subsystem: "session-sqlite" }).warn("SQLite automatic session maintenance failed", {
-				error,
-				path: databasePath
-			});
+			if (!(error instanceof AutomaticSessionMaintenanceInterruptedError)) {
+				getChildLogger({ subsystem: "session-sqlite" }).warn("SQLite automatic session maintenance failed", {
+					error,
+					path: databasePath
+				});
+			}
 		} finally {
 			permit.finish(completed);
 		}

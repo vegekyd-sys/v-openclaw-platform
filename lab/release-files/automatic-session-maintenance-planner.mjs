@@ -1,12 +1,45 @@
-import { Worker } from "node:worker_threads";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const DEFAULT_TIMEOUT_MS = 120_000;
+const DEFAULT_ABORT_POLL_MS = 100;
 const DEFAULT_RESOURCE_LIMITS = Object.freeze({ maxOldGenerationSizeMb: 512 });
+
+export class AutomaticSessionMaintenanceInterruptedError extends Error {
+  constructor() {
+    super("Automatic session maintenance interrupted by foreground activity");
+    this.name = "AutomaticSessionMaintenanceInterruptedError";
+  }
+}
 
 function assertAbsolutePath(value, label) {
   if (typeof value !== "string" || !value.startsWith("/")) {
     throw new Error(`${label} must be an absolute path`);
   }
+}
+
+function spawnAutomaticSessionMaintenanceProcess(url, workerOptions) {
+  const maxOldGenerationSizeMb = workerOptions.resourceLimits?.maxOldGenerationSizeMb ?? DEFAULT_RESOURCE_LIMITS.maxOldGenerationSizeMb;
+  if (!Number.isInteger(maxOldGenerationSizeMb) || maxOldGenerationSizeMb <= 0) {
+    throw new Error("Automatic session maintenance heap limit must be a positive integer");
+  }
+  const child = spawn(process.execPath, [
+    `--max-old-space-size=${maxOldGenerationSizeMb}`,
+    fileURLToPath(url),
+  ], {
+    env: process.env,
+    serialization: "advanced",
+    stdio: ["ignore", "ignore", "ignore", "ipc"],
+  });
+  child.terminate = () => {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+  };
+  child.send(workerOptions.workerData, (error) => {
+    if (!error) return;
+    child.automaticDispatchError = error;
+    child.terminate();
+  });
+  return child;
 }
 
 function validateRequest(request) {
@@ -150,8 +183,12 @@ export function runAutomaticSessionMaintenancePlan(request, options = {}) {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
     return Promise.reject(new Error("Automatic session maintenance timeout must be positive"));
   }
+  const abortPollMs = options.abortPollMs ?? DEFAULT_ABORT_POLL_MS;
+  if (typeof options.shouldInterrupt === "function" && (!Number.isFinite(abortPollMs) || abortPollMs <= 0)) {
+    return Promise.reject(new Error("Automatic session maintenance abortPollMs must be positive"));
+  }
   const workerUrl = options.workerUrl ?? new URL("./automatic-session-maintenance.worker.mjs", import.meta.url);
-  const createWorker = options.createWorker ?? ((url, workerOptions) => new Worker(url, workerOptions));
+  const createWorker = options.createWorker ?? spawnAutomaticSessionMaintenanceProcess;
   let worker;
   try {
     worker = createWorker(workerUrl, {
@@ -165,17 +202,44 @@ export function runAutomaticSessionMaintenancePlan(request, options = {}) {
     let result;
     let protocolError;
     let settled = false;
+    let abortTimer;
     const timer = setTimeout(() => {
       if (settled) return;
       settled = true;
+      if (abortTimer) clearInterval(abortTimer);
       void worker.terminate?.();
       reject(new Error(`Automatic session maintenance worker timed out after ${timeoutMs}ms`));
     }, timeoutMs);
     timer.unref?.();
+    let abortPollActive = false;
+    const pollForAbort = async () => {
+      if (settled || abortPollActive || typeof options.shouldInterrupt !== "function") return;
+      abortPollActive = true;
+      try {
+        const interrupted = await options.shouldInterrupt();
+        if (!settled && interrupted) {
+          protocolError = new AutomaticSessionMaintenanceInterruptedError();
+          void worker.terminate?.();
+        }
+      } catch (error) {
+        if (!settled) {
+          protocolError = error instanceof Error ? error : new Error(String(error));
+          void worker.terminate?.();
+        }
+      } finally {
+        abortPollActive = false;
+      }
+    };
+    if (typeof options.shouldInterrupt === "function") {
+      abortTimer = setInterval(() => void pollForAbort(), abortPollMs);
+      abortTimer.unref?.();
+      void pollForAbort();
+    }
     const finish = (operation) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      if (abortTimer) clearInterval(abortTimer);
       worker.removeAllListeners?.();
       operation();
     };
@@ -198,6 +262,7 @@ export function runAutomaticSessionMaintenancePlan(request, options = {}) {
     worker.once("error", (error) => finish(() => reject(error)));
     worker.once("exit", (code) => finish(() => {
       if (protocolError) reject(protocolError);
+      else if (worker.automaticDispatchError) reject(worker.automaticDispatchError);
       else if (code !== 0) reject(new Error(`Automatic session maintenance worker exited with code ${code}`));
       else if (!result) reject(new Error("Automatic session maintenance worker exited without a plan"));
       else resolve(result);
