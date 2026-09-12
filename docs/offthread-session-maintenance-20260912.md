@@ -153,6 +153,27 @@ handle and advancing its generation. Incognito owners continue to require exact
 database-object identity. Tests cover both boundaries. This changes no
 coordinator, quiet-window, plan, transaction, or lifecycle revalidation rule.
 
+## V8: detach file ownership from the cached SQLite handle
+
+Installed V7 proved that same-path kick coalescing was necessary but not
+sufficient. The first isolated planner still exited after about 1.8 seconds and
+never retried even though no replacement owner existed. The cached SQLite handle
+that originally queued maintenance can close without a later write/rebind; V7's
+`isCurrent` therefore still retired a valid physical-store owner mid-scan.
+
+V8 treats a file-backed automatic-maintenance owner as current while its exact
+map entry owns the same resolved store path. The quiet wait and planner require
+no live cached handle. Coordinator acquisition and cooldown may likewise outlive
+that handle because the lock lives in a separate, data-free sidecar keyed by the
+owned absolute path. Any archive write explicitly reopens the current database
+under the native writer lane, and final cleanup already opens fresh handles and
+revalidates exact snapshots at commit. Incognito work remains live-handle scoped.
+
+The installed V7 process table also exposed that the intended lower CPU priority
+had not reached the spawned Node process (`NI=0`). V8 executes the bounded planner
+through `/usr/bin/nice -n 10` on Unix while preserving the same IPC channel and
+512 MiB heap cap. This affects only the isolated read-only planner subprocess.
+
 ## Acceptance gates
 
 1. Deterministic queue and planner tests, including archive revalidation and a

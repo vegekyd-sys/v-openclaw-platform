@@ -165,13 +165,18 @@ function kickSessionEntryMaintenanceAfterWrite(params) {
 	setImmediate(() => void runPendingMaintenance(databasePath, created));
 }
 async function runPendingMaintenance(databasePath, owner) {
-	const isCurrent = () => maintenanceByStore.get(databasePath) === owner && owner.database.db.isOpen;
+	const incognito = isIncognitoOpenClawAgentSqlitePath(owner.database.path, {agentId: owner.scope.agentId, env: owner.scope.env});
+	// File-backed maintenance is owned by the physical store, not by one cached
+	// SQLite handle. The handle that queued the work may close while the quiet
+	// window or isolated planner is running; commit paths reopen and revalidate
+	// the store under the native writer lane. Incognito stores remain tied to the
+	// process-local handle because they have no stable physical owner.
+	const isCurrent = () => maintenanceByStore.get(databasePath) === owner && (!incognito || owner.database.db.isOpen);
 	while (isCurrent()) {
 		if (process.env.OPENCLAW_DB91_MAINTENANCE_ENABLE === "1") {
 			await db91WaitAutomaticMaintenance(owner.database);
 			if (!isCurrent()) break;
 		}
-		const incognito = isIncognitoOpenClawAgentSqlitePath(owner.database.path, {agentId: owner.scope.agentId, env: owner.scope.env});
 		const currentAdmissionIdentities = () => collectActiveSessionWorkAdmissions().get(owner.storePath) ?? /* @__PURE__ */ new Set();
 		// Incognito has no shared physical store. All ordinary file-backed callers
 		// use the existing native coordinator primitive on a data-free sidecar.
@@ -180,6 +185,7 @@ async function runPendingMaintenance(databasePath, owner) {
 			permit = isIncognitoOpenClawAgentSqlitePath(owner.database.path, {agentId: owner.scope.agentId, env: owner.scope.env})
 				? {finish() {}}
 				: acquireAutomaticMaintenancePermit(owner.database, tryAcquireExclusiveSqliteCoordinator, {
+					allowClosedFileOwner: true,
 					onReleaseError: error => getChildLogger({subsystem: "session-sqlite"}).warn("SQLite automatic maintenance coordinator release failed", {error})
 				});
 		} catch (error) {
@@ -246,8 +252,10 @@ async function runPendingMaintenance(databasePath, owner) {
 			if (!isCurrent()) plan = void 0;
 			if (plan?.plannedEntryArchives?.length) plan = await runExclusiveSqliteSessionWrite(owner.scope, async () => {
 				if (!isCurrent()) return;
+				const currentDatabase = openOpenClawAgentDatabase(toDatabaseOptions(owner.scope));
+				owner.database = currentDatabase;
 				plan = filterAutomaticSessionMaintenancePlan(plan, currentAdmissionIdentities());
-				return withSqliteBeginContentionRetry({database: owner.database.db,
+				return withSqliteBeginContentionRetry({database: currentDatabase.db,
 					run: operation => runOpenClawAgentWriteTransaction(operation, toDatabaseOptions(owner.scope)),
 					operation: database => isCurrent() ? commitPlannedSessionMaintenanceArchives(database, plan) : void 0});
 			});
@@ -276,7 +284,7 @@ async function runPendingMaintenance(databasePath, owner) {
 		}
 		if (retryAfterForegroundActivity && isCurrent()) continue;
 		if (maintenanceByStore.get(databasePath) !== owner) return;
-		if (!owner.database.db.isOpen || owner.generation === generation) {
+		if ((incognito && !owner.database.db.isOpen) || owner.generation === generation) {
 			maintenanceByStore.delete(databasePath);
 			return;
 		}
