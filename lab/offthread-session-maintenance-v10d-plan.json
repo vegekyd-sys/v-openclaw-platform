@@ -1,0 +1,10 @@
+{
+  "baseRelease": "offthread-session-maintenance-20260912-v10c",
+  "files": [
+    {
+      "source": "lab/release-files/session-accessor.sqlite-entry-BlklNPKQ.js",
+      "target": "openclaw/dist/session-accessor.sqlite-entry-BlklNPKQ.js",
+      "before": "cec4a1bd7398dc0245a12262ac618d042125630e71c5396128aec81da4795de9"
+    }
+  ]
+}
