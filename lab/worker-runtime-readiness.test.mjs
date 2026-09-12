@@ -22,6 +22,18 @@ test("release pool exposes sanitized preparation state", () => {
   assert.match(pool, /runtimePrewarm: worker\.runtimePrewarm/);
 });
 
+test("release pool contains transient fork exhaustion without dropping queued work", () => {
+  const pool = read("./release-files/production-worker-worker-pool.mjs");
+  assert.match(pool, /child\.once\("error", \(error\) => this\.onExit/);
+  assert.match(pool, /cause\?\.code === "EAGAIN"/);
+  assert.match(pool, /this\.scheduleSpawnRetry\(\)/);
+  assert.match(pool, /if \(this\.closing \|\| this\.spawnRetryTimer\) return/);
+  assert.match(
+    pool,
+    /if \(failure\.code === "EAGAIN"\) \{\s*this\.scheduleSpawnRetry\(\);\s*return;\s*\}\s*for \(const pending of this\.pending\.splice\(0\)\)/,
+  );
+});
+
 test("release plan is pinned to the deployed cold-start candidate", () => {
   const plan = JSON.parse(read("./worker-runtime-readiness-plan.json"));
   assert.equal(plan.baseRelease, "worker-coldstart-longterm-20260912-v1");
