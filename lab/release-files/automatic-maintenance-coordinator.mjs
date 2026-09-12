@@ -21,10 +21,11 @@ export function acquireAutomaticMaintenancePermit(database, acquire, options = {
     try { lease.release(); } catch (error) { try { options.onReleaseError?.(error); } catch {} }
   };
   return {
-    finish(success) {
+    finish(success, currentDatabase = database) {
       if (finished) return;
       finished = true;
-      if (!success || !database.db.isOpen || cooldownMs === 0) { release(); return; }
+      const currentDatabaseOpen = currentDatabase?.path === database.path && currentDatabase?.db?.isOpen === true;
+      if (!success || !currentDatabaseOpen || cooldownMs === 0) { release(); return; }
       const timer = (options.setTimer ?? setTimeout)(release, cooldownMs);
       timer.unref?.();
     },

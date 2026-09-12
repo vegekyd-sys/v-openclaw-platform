@@ -61,10 +61,11 @@ const entryModule = read('./release-files/session-accessor.sqlite-entry-BlklNPKQ
 const queueSource = entryModule.slice(entryModule.indexOf('const maintenanceByStore ='), entryModule.indexOf('//#endregion', entryModule.indexOf('const maintenanceByStore =')));
 function queueHarness({archives = false, incognito = false, permit = 'ok', archiveSizes, admissions = [], quiet = 'ok', interrupt = false} = {}) {
   const scheduled = [], timers = [], sweeps = [], warnings = [], archiveCommits = [], offloadedPlans = [], plannerOptions = [], interruptChecks = [], quietCalls = [], readSnapshots = [], writeTransactions = [], finalizeCalls = [], order = [], database = {db: {isOpen: true}, path: '/fixture/db.sqlite'}; let finalize = async () => {}, beforeArchiveRetry = () => {}, activeAdmissions = new Set(admissions);
+  let currentDatabase = database;
   class Interrupted extends Error {}
   let interruptionsRemaining = interrupt ? 1 : 0;
   const quietWindow = {changed: async () => false};
-  const deps = {resolveOpenClawAgentSqlitePath: () => '/fixture/db', toDatabaseOptions: x => x, getOpenClawAgentDatabaseIfOpen: () => database,
+  const deps = {resolveOpenClawAgentSqlitePath: () => '/fixture/db', toDatabaseOptions: x => x, getOpenClawAgentDatabaseIfOpen: () => currentDatabase,
     isIncognitoOpenClawAgentSqlitePath: () => incognito,
     waitForAutomaticMaintenanceQuietWindow: async p => {order.push('quiet'); quietCalls.push(p); return quiet === 'stale' ? null : quietWindow;}, AutomaticSessionMaintenanceInterruptedError: Interrupted,
     acquireAutomaticMaintenancePermit: () => {order.push('permit'); if (permit === 'busy') return null; if (permit === 'error') throw new Error('fixture coordinator failed'); return {finish() {}};}, tryAcquireExclusiveSqliteCoordinator() {},
@@ -79,7 +80,7 @@ function queueHarness({archives = false, incognito = false, permit = 'ok', archi
     finalizeSessionEntryMaintenancePlansAfterWriterReleaseBestEffort: async (...args) => {finalizeCalls.push(args); return finalize();}, getChildLogger: () => ({warn: (...args) => warnings.push(args)})};
   const api = Function(...Object.keys(deps), queueSource + ';return {kick: kickSessionEntryMaintenanceAfterWrite, owners: maintenanceByStore};')(...Object.values(deps));
   const settle = async () => {for (let i = 0; i < 20; i++) await Promise.resolve();};
-  return {...api, database, sweeps, scheduled, timers, warnings, archiveCommits, offloadedPlans, plannerOptions, interruptChecks, quietCalls, readSnapshots, writeTransactions, finalizeCalls, order, setAdmissions: values => {activeAdmissions = new Set(values);}, setBeforeArchiveRetry: fn => {beforeArchiveRetry = fn;}, setFinalize: fn => {finalize = fn;}, flush: async () => {scheduled.shift()(); await settle();}, tick: async () => {timers.shift()(); await settle();}};
+  return {...api, database, sweeps, scheduled, timers, warnings, archiveCommits, offloadedPlans, plannerOptions, interruptChecks, quietCalls, readSnapshots, writeTransactions, finalizeCalls, order, reopen: () => {currentDatabase = {db: {isOpen: true}, path: '/fixture/db.sqlite'}; return currentDatabase;}, setAdmissions: values => {activeAdmissions = new Set(values);}, setBeforeArchiveRetry: fn => {beforeArchiveRetry = fn;}, setFinalize: fn => {finalize = fn;}, flush: async () => {scheduled.shift()(); await settle();}, tick: async () => {timers.shift()(); await settle();}};
 }
 test('native queue coalesces 15 writes and protects all active keys', async () => {
   const h = queueHarness(); for (let i = 0; i < 15; i++) h.kick({scope: {agentId: 'makaron'}, activeSessionKey: 'key' + i, archiveDirectory: '/fixture/archive', storePath: '/fixture/sessions.json'});
@@ -90,9 +91,31 @@ test('native queue coalesces 15 writes and protects all active keys', async () =
   assert.equal(h.quietCalls[0].databasePath, '/fixture/db.sqlite');
   assert.deepEqual(h.interruptChecks, [false]);
 });
+test('file-backed owner rebinds a rotated database handle without losing its coordinator run', async () => {
+  const h = queueHarness();
+  h.kick({scope: {agentId: 'makaron'}, activeSessionKey: 'before', archiveDirectory: '/fixture/archive', storePath: '/fixture/sessions.json'});
+  const reopened = h.reopen();
+  h.kick({scope: {agentId: 'makaron'}, activeSessionKey: 'after', archiveDirectory: '/fixture/archive', storePath: '/fixture/sessions.json'});
+  assert.equal(h.scheduled.length, 1);
+  assert.equal(h.owners.get('/fixture/db').database, reopened);
+  await h.flush();
+  assert.deepEqual(h.offloadedPlans[0].activeSessionKeys, ['before', 'after']);
+  assert.equal(h.owners.size, 0);
+});
 test('incognito maintenance retains the process-local inline snapshot', async () => {
   const h = queueHarness({incognito: true}); h.kick({scope: {agentId: 'makaron'}, activeSessionKey: 'key', archiveDirectory: '/fixture/archive', storePath: '/fixture/sessions.json'}); await h.flush();
   assert.equal(h.offloadedPlans.length, 0); assert.equal(h.readSnapshots.length, 1); assert.equal(h.sweeps.length, 1); assert.equal(h.sweeps[0].planOnly, true);
+});
+test('incognito handle rotation preserves object-identity ownership', async () => {
+  const h = queueHarness({incognito: true});
+  h.kick({scope: {agentId: 'makaron'}, activeSessionKey: 'before'});
+  h.reopen();
+  h.kick({scope: {agentId: 'makaron'}, activeSessionKey: 'after'});
+  assert.equal(h.scheduled.length, 2);
+  await h.flush();
+  assert.equal(h.sweeps.length, 0);
+  await h.flush();
+  assert.equal(h.sweeps.length, 1);
 });
 test('automatic archive write uses a short native transaction after read-only planning', async () => {
   const h = queueHarness({archives: true}); h.kick({scope: {agentId: 'makaron'}, activeSessionKey: 'first', archiveDirectory: '/fixture/archive', storePath: '/fixture/sessions.json'}); await h.flush();

@@ -1,0 +1,15 @@
+{
+  "baseRelease": "offthread-session-maintenance-20260912-v6",
+  "files": [
+    {
+      "source": "lab/release-files/session-accessor.sqlite-entry-BlklNPKQ.js",
+      "target": "openclaw/dist/session-accessor.sqlite-entry-BlklNPKQ.js",
+      "before": "29fe4c0848cb9ad4e17e891a376aa1324b17a939f329e80551d5ef691b54a274"
+    },
+    {
+      "source": "lab/release-files/automatic-maintenance-coordinator.mjs",
+      "target": "openclaw/dist/automatic-maintenance-coordinator.mjs",
+      "before": "276b63f98c2b1432a3224ac27d033695aee062c7db31479a29223e77e6b956f1"
+    }
+  ]
+}
