@@ -104,10 +104,10 @@ not Worker residency or model latency, remained the causal difference.
 
 V5 acquires that coordinator only to elect one maintenance process, then waits
 for 30 continuous seconds with no local admission and no change to the Agent
-database or WAL. Database/WAL identity, size, nanosecond modification time, and
-change time form the cross-process activity fingerprint; SHM is excluded because
-readers legitimately update it. The wait is bounded to five minutes and never
-blocks a foreground write.
+database or WAL. Database/WAL identity, size, and nanosecond modification time
+form the cross-process activity fingerprint; SHM is excluded because readers
+legitimately update it. The wait is bounded to five minutes and never blocks a
+foreground write.
 
 During the isolated scan, the owner polls the same fingerprint every 100ms. The
 scan runs in a niceness-10, 512 MiB-capped subprocess so synchronous SQLite work
@@ -173,6 +173,21 @@ The installed V7 process table also exposed that the intended lower CPU priority
 had not reached the spawned Node process (`NI=0`). V8 executes the bounded planner
 through `/usr/bin/nice -n 10` on Unix while preserving the same IPC channel and
 512 MiB heap cap. This affects only the isolated read-only planner subprocess.
+
+## V9: do not classify a read-only WAL lock as foreground activity
+
+Installed V8 held the coordinator through the quiet window but released it when
+the planner opened the WAL, without committing a cleanup batch. An exact
+before/after probe of the same full read-only plan showed unchanged database and
+WAL identity, size, and modification time, while the WAL change time alone
+advanced. SQLite may change WAL metadata while a read-only connection takes and
+releases locks, so that signal made the planner interrupt itself.
+
+V9 removes change time from the activity fingerprint. Device and inode still
+detect replacement, while size and nanosecond modification time detect content
+changes. A regression test proves that change-time-only churn leaves the
+fingerprint stable; every admission, post-plan, CAS, archive, and deletion guard
+remains unchanged.
 
 ## Acceptance gates
 
