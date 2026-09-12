@@ -577,11 +577,9 @@ async function finalizeSessionEntryMaintenancePlansAfterWriterReleaseBestEffort(
 		await refreshSqliteSessionPlannerStatisticsBestEffort(scope, options.deletedEntriesBeforeMaintenance ?? 0, { isCurrent });
 		return emptyResult();
 	}
-	let archiveBytesBySessionId = options.archiveBytesBySessionId;
+	let archiveBytesBySessionId;
 	try {
-		if (archiveBytesBySessionId) {
-			for (const plan of stateDeletePlans) if (plan.archiveTranscript && !archiveBytesBySessionId.has(plan.sessionId)) throw new Error(`Missing precomputed archive byte size for ${plan.sessionId}`);
-		} else archiveBytesBySessionId = await readSessionTranscriptJsonlBytes(scope, stateDeletePlans.filter((plan) => plan.archiveTranscript).map((plan) => plan.sessionId), isCurrent);
+		archiveBytesBySessionId = await readSessionTranscriptJsonlBytes(scope, stateDeletePlans.filter((plan) => plan.archiveTranscript).map((plan) => plan.sessionId), isCurrent);
 	} catch (error) {
 		warn("SQLite session maintenance archive sizing failed", error, stateDeletePlans);
 		await refreshSqliteSessionPlannerStatisticsBestEffort(scope, options.deletedEntriesBeforeMaintenance ?? 0, { isCurrent });
@@ -1023,7 +1021,7 @@ async function enforceSessionHistoryMaintenanceSerialized(params) {
 	});
 }
 //#endregion
-export { applySessionEntryMaintenance as a, buildSessionMaintenanceBatches as b, emitCommittedLifecycleIdentityMutations as c, emitSessionIdentityMutation as d, emitSessionLifecycleEvent as f, readSessionLifecycleVersion as g, readSessionIdentityMutationVersion as h, kickSessionHistoryDiskBudgetMaintenance as i, emitCommittedSessionEntryRemovals as l, onSessionLifecycleEvent as m, enforceSqliteSessionHistoryDiskBudget as n, finalizeSessionEntryMaintenancePlansAfterWriterReleaseBestEffort as o, onSessionIdentityMutation as p, inspectSqliteSessionHistoryDiskBudget as r, refreshSqliteSessionPlannerStatisticsBestEffort as s, collectAdmissionProtectedSessionIds as t, emitCommittedSessionIdentityDiff as u };
+export { applySessionEntryMaintenance as a, emitCommittedLifecycleIdentityMutations as c, emitSessionIdentityMutation as d, emitSessionLifecycleEvent as f, readSessionLifecycleVersion as g, readSessionIdentityMutationVersion as h, kickSessionHistoryDiskBudgetMaintenance as i, emitCommittedSessionEntryRemovals as l, onSessionLifecycleEvent as m, enforceSqliteSessionHistoryDiskBudget as n, finalizeSessionEntryMaintenancePlansAfterWriterReleaseBestEffort as o, onSessionIdentityMutation as p, inspectSqliteSessionHistoryDiskBudget as r, refreshSqliteSessionPlannerStatisticsBestEffort as s, collectAdmissionProtectedSessionIds as t, emitCommittedSessionIdentityDiff as u };
 
 // Automatic planning is read-only. Revalidate exact entry snapshots at commit.
 export function commitPlannedSessionMaintenanceArchives(database, plan) {
