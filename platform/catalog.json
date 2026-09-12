@@ -140,7 +140,8 @@
         "lab/worker-coldstart-longterm.test.mjs",
         "lab/worker-command-readiness.test.mjs",
         "lab/worker-session-readiness.test.mjs",
-        "lab/worker-runtime-readiness.test.mjs"
+        "lab/worker-runtime-readiness.test.mjs",
+        "lab/safe-restart-no-forced-timeout.test.mjs"
       ]
     },
     {
