@@ -10,6 +10,11 @@ const read = file => fs.readFileSync(new URL(file, import.meta.url), 'utf8');
 const source = read('./release-files/session-history-eviction-d5aiCsHS.js');
 const applySource = source.slice(source.indexOf('function applySessionEntryMaintenance('), source.indexOf('/** Finalizes maintenance after its caller releases the per-store writer lane. */'));
 const commitSource = source.slice(source.indexOf('export function commitPlannedSessionMaintenanceArchives(')).replace('export function ', 'function ');
+const workerSource = read('./release-files/automatic-session-maintenance.worker.mjs');
+const workerSnapshotSource = workerSource.slice(
+  workerSource.indexOf('function runAutomaticMaintenanceReadSnapshot('),
+  workerSource.indexOf('\n\nfunction attachArchiveByteSizes('),
+);
 function maintenanceFixture() {
   const entries = {
     archive: {sessionId: 'archive-session', updatedAt: 1, label: 'original', worktree: {branch: 'test-only'}},
@@ -60,6 +65,29 @@ test('automatic planning has zero writes and produces the same deletion snapshot
   assert.equal(plan.plannedEntryArchives[0].entry.archivedAt, 100);
   const other = maintenanceFixture(), explicit = other.applySessionEntryMaintenance(other.database, {activeSessionKeys: ['active'], storePath: '/fixture'});
   assert.deepEqual(plan.entryRemovals, explicit.entryRemovals); assert.deepEqual(plan.stateDeletePlans, explicit.stateDeletePlans);
+});
+test('automatic planner reuses an existing read-only snapshot without nesting BEGIN', () => {
+  let begins = 0, operations = 0;
+  const run = Function('runSqliteDeferredTransactionSync',
+    `${workerSnapshotSource}; return runAutomaticMaintenanceReadSnapshot;`)(() => {
+      begins += 1;
+      throw new Error('nested transaction');
+    });
+  assert.equal(run({db: {isTransaction: true}}, () => ++operations), 1);
+  assert.equal(begins, 0);
+  assert.equal(operations, 1);
+});
+test('automatic planner opens one deferred snapshot when the helper has none', () => {
+  let begins = 0, operations = 0;
+  const run = Function('runSqliteDeferredTransactionSync',
+    `${workerSnapshotSource}; return runAutomaticMaintenanceReadSnapshot;`)((db, operation) => {
+      assert.equal(db.isTransaction, false);
+      begins += 1;
+      return operation();
+    });
+  assert.equal(run({db: {isTransaction: false}}, () => ++operations), 1);
+  assert.equal(begins, 1);
+  assert.equal(operations, 1);
 });
 test('archive commit revalidates unchanged records before writing', () => {
   const h = maintenanceFixture(), plan = h.applySessionEntryMaintenance(h.database, {planOnly: true});
