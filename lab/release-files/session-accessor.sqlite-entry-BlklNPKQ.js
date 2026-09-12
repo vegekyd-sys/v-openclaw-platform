@@ -188,6 +188,7 @@ async function runPendingMaintenance(databasePath, owner) {
 			return;
 		}
 		let completed = false;
+		let retryAfterForegroundActivity = false;
 		let generation = owner.generation;
 		try {
 			// The data-free coordinator elects one process to poll. A continuous quiet
@@ -226,11 +227,17 @@ async function runPendingMaintenance(databasePath, owner) {
 				}, {
 					shouldInterrupt: async () => !isCurrent() || currentAdmissionIdentities().size > 0 || await quietWindow.changed()
 				});
-			if (!incognito && await quietWindow.changed()) plan = void 0;
+			if (!incognito && await quietWindow.changed()) {
+				plan = void 0;
+				retryAfterForegroundActivity = isCurrent();
+			}
 			// Planning is read-only and can overlap active work. Archive commits and
 			// deletion transactions are best-effort background writes: never let them
 			// enter SQLite while a real Agent turn for this store is still admitted.
-			if (!incognito && !await waitForAutomaticMaintenanceAdmissionsToDrain(isCurrent, currentAdmissionIdentities)) plan = void 0;
+			if (!incognito && !await waitForAutomaticMaintenanceAdmissionsToDrain(isCurrent, currentAdmissionIdentities)) {
+				plan = void 0;
+				retryAfterForegroundActivity = isCurrent();
+			}
 			if (plan) plan = filterAutomaticSessionMaintenancePlan(plan, currentAdmissionIdentities());
 			if (!isCurrent()) plan = void 0;
 			if (plan?.plannedEntryArchives?.length) plan = await runExclusiveSqliteSessionWrite(owner.scope, async () => {
@@ -241,6 +248,7 @@ async function runPendingMaintenance(databasePath, owner) {
 					operation: database => isCurrent() ? commitPlannedSessionMaintenanceArchives(database, plan) : void 0});
 			});
 			if (!plan) {
+				if (retryAfterForegroundActivity && isCurrent()) continue;
 				if (maintenanceByStore.get(databasePath) === owner) maintenanceByStore.delete(databasePath);
 				return;
 			}
@@ -251,7 +259,9 @@ async function runPendingMaintenance(databasePath, owner) {
 			await finalizeSessionEntryMaintenancePlansAfterWriterReleaseBestEffort(owner.scope, [plan], { isCurrent, archiveBytesBySessionId });
 			completed = true;
 		} catch (error) {
-			if (!(error instanceof AutomaticSessionMaintenanceInterruptedError)) {
+			if (error instanceof AutomaticSessionMaintenanceInterruptedError) {
+				retryAfterForegroundActivity = isCurrent();
+			} else {
 				getChildLogger({ subsystem: "session-sqlite" }).warn("SQLite automatic session maintenance failed", {
 					error,
 					path: databasePath
@@ -260,6 +270,7 @@ async function runPendingMaintenance(databasePath, owner) {
 		} finally {
 			permit.finish(completed);
 		}
+		if (retryAfterForegroundActivity && isCurrent()) continue;
 		if (maintenanceByStore.get(databasePath) !== owner) return;
 		if (!owner.database.db.isOpen || owner.generation === generation) {
 			maintenanceByStore.delete(databasePath);

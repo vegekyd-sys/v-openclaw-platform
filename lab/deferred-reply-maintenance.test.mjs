@@ -62,13 +62,14 @@ const queueSource = entryModule.slice(entryModule.indexOf('const maintenanceBySt
 function queueHarness({archives = false, incognito = false, permit = 'ok', archiveSizes, admissions = [], quiet = 'ok', interrupt = false} = {}) {
   const scheduled = [], timers = [], sweeps = [], warnings = [], archiveCommits = [], offloadedPlans = [], plannerOptions = [], interruptChecks = [], quietCalls = [], readSnapshots = [], writeTransactions = [], finalizeCalls = [], order = [], database = {db: {isOpen: true}, path: '/fixture/db.sqlite'}; let finalize = async () => {}, beforeArchiveRetry = () => {}, activeAdmissions = new Set(admissions);
   class Interrupted extends Error {}
+  let interruptionsRemaining = interrupt ? 1 : 0;
   const quietWindow = {changed: async () => false};
   const deps = {resolveOpenClawAgentSqlitePath: () => '/fixture/db', toDatabaseOptions: x => x, getOpenClawAgentDatabaseIfOpen: () => database,
     isIncognitoOpenClawAgentSqlitePath: () => incognito,
     waitForAutomaticMaintenanceQuietWindow: async p => {order.push('quiet'); quietCalls.push(p); return quiet === 'stale' ? null : quietWindow;}, AutomaticSessionMaintenanceInterruptedError: Interrupted,
     acquireAutomaticMaintenancePermit: () => {order.push('permit'); if (permit === 'busy') return null; if (permit === 'error') throw new Error('fixture coordinator failed'); return {finish() {}};}, tryAcquireExclusiveSqliteCoordinator() {},
     runSqliteDeferredTransactionSync: (_db, operation) => {readSnapshots.push(true); return operation();},
-    runAutomaticSessionMaintenancePlan: async (p, options) => {offloadedPlans.push(p); plannerOptions.push(options); interruptChecks.push(await options.shouldInterrupt()); if (interrupt) throw new Interrupted(); const plan = deps.applySessionEntryMaintenance(database, {...p, planOnly: true}); return archiveSizes ? {...plan, automaticArchiveBytesBySessionId: archiveSizes} : plan;},
+    runAutomaticSessionMaintenancePlan: async (p, options) => {offloadedPlans.push(p); plannerOptions.push(options); interruptChecks.push(await options.shouldInterrupt()); if (interruptionsRemaining-- > 0) throw new Interrupted(); const plan = deps.applySessionEntryMaintenance(database, {...p, planOnly: true}); return archiveSizes ? {...plan, automaticArchiveBytesBySessionId: archiveSizes} : plan;},
     filterAutomaticSessionMaintenancePlan: p => p, collectActiveSessionWorkAdmissions: () => activeAdmissions.size ? new Map([['/fixture/sessions.json', new Set(activeAdmissions)]]) : new Map(), uniqueStrings: xs => [...new Set(xs)],
     withSqliteBeginContentionRetry: async ({run, operation}) => {beforeArchiveRetry(); return run(operation);},
     commitPlannedSessionMaintenanceArchives: (_db, plan) => {archiveCommits.push(plan); return plan;},
@@ -126,16 +127,25 @@ for (const permit of ['busy', 'error']) test('automatic coordinator ' + permit +
   const h = queueHarness({permit}); h.kick({scope: {}, activeSessionKey: 'first'}); await h.flush();
   assert.equal(h.sweeps.length, 0); assert.equal(h.owners.size, 0); assert.equal(h.warnings.length, permit === 'error' ? 1 : 0);
 });
-test('stale quiet-window owner and foreground interruption stay best-effort and silent', async () => {
-  for (const mode of ['stale', 'interrupt']) {
-    const h = queueHarness(mode === 'stale' ? {quiet: 'stale'} : {interrupt: true});
-    h.kick({scope: {}, activeSessionKey: 'first'});
-    await h.flush();
-    assert.equal(h.sweeps.length, 0);
-    assert.equal(h.finalizeCalls.length, 0);
-    assert.equal(h.warnings.length, 0);
-    assert.equal(h.owners.size, 0);
-  }
+test('stale quiet-window owner stays best-effort and silent', async () => {
+  const h = queueHarness({quiet: 'stale'});
+  h.kick({scope: {}, activeSessionKey: 'first'});
+  await h.flush();
+  assert.equal(h.sweeps.length, 0);
+  assert.equal(h.finalizeCalls.length, 0);
+  assert.equal(h.warnings.length, 0);
+  assert.equal(h.owners.size, 0);
+});
+test('foreground interruption retries a fresh quiet window without another write', async () => {
+  const h = queueHarness({interrupt: true});
+  h.kick({scope: {}, activeSessionKey: 'first'});
+  await h.flush();
+  assert.equal(h.offloadedPlans.length, 2);
+  assert.equal(h.quietCalls.length, 2);
+  assert.equal(h.sweeps.length, 1);
+  assert.equal(h.finalizeCalls.length, 1);
+  assert.equal(h.warnings.length, 0);
+  assert.equal(h.owners.size, 0);
 });
 test('arrivals during maintenance finalization are not lost', async () => {
   const h = queueHarness(); let once = false; h.setFinalize(async () => {if (!once) {once = true; h.kick({scope: {}, activeSessionKey: 'later'});}});
