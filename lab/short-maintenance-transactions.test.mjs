@@ -10,11 +10,6 @@ const read = file => fs.readFileSync(new URL(file, import.meta.url), 'utf8');
 const source = read('./release-files/session-history-eviction-d5aiCsHS.js');
 const applySource = source.slice(source.indexOf('function applySessionEntryMaintenance('), source.indexOf('/** Finalizes maintenance after its caller releases the per-store writer lane. */'));
 const commitSource = source.slice(source.indexOf('export function commitPlannedSessionMaintenanceArchives(')).replace('export function ', 'function ');
-const workerSource = read('./release-files/automatic-session-maintenance.worker.mjs');
-const workerSnapshotSource = workerSource.slice(
-  workerSource.indexOf('function runAutomaticMaintenanceReadSnapshot('),
-  workerSource.indexOf('\n\nfunction attachArchiveByteSizes('),
-);
 function maintenanceFixture() {
   const entries = {
     archive: {sessionId: 'archive-session', updatedAt: 1, label: 'original', worktree: {branch: 'test-only'}},
@@ -66,29 +61,6 @@ test('automatic planning has zero writes and produces the same deletion snapshot
   const other = maintenanceFixture(), explicit = other.applySessionEntryMaintenance(other.database, {activeSessionKeys: ['active'], storePath: '/fixture'});
   assert.deepEqual(plan.entryRemovals, explicit.entryRemovals); assert.deepEqual(plan.stateDeletePlans, explicit.stateDeletePlans);
 });
-test('automatic planner reuses an existing read-only snapshot without nesting BEGIN', () => {
-  let begins = 0, operations = 0;
-  const run = Function('runSqliteDeferredTransactionSync',
-    `${workerSnapshotSource}; return runAutomaticMaintenanceReadSnapshot;`)(() => {
-      begins += 1;
-      throw new Error('nested transaction');
-    });
-  assert.equal(run({db: {isTransaction: true}}, () => ++operations), 1);
-  assert.equal(begins, 0);
-  assert.equal(operations, 1);
-});
-test('automatic planner opens one deferred snapshot when the helper has none', () => {
-  let begins = 0, operations = 0;
-  const run = Function('runSqliteDeferredTransactionSync',
-    `${workerSnapshotSource}; return runAutomaticMaintenanceReadSnapshot;`)((db, operation) => {
-      assert.equal(db.isTransaction, false);
-      begins += 1;
-      return operation();
-    });
-  assert.equal(run({db: {isTransaction: false}}, () => ++operations), 1);
-  assert.equal(begins, 1);
-  assert.equal(operations, 1);
-});
 test('archive commit revalidates unchanged records before writing', () => {
   const h = maintenanceFixture(), plan = h.applySessionEntryMaintenance(h.database, {planOnly: true});
   const committed = h.commitPlannedSessionMaintenanceArchives(h.database, plan);
@@ -113,51 +85,21 @@ test('skip/warn modes and protected active keys remain non-mutating', () => {
 test('native deletion finalizer, snapshot comparison and other eviction code remain byte-identical', () => {
   const before = read('./fixtures/concurrency-native-baseline/session-history-eviction-d5aiCsHS.js');
   const marker = '/** Finalizes maintenance after its caller releases the per-store writer lane. */';
-  const v2ArchiveSizing = `\tlet archiveBytesBySessionId = options.archiveBytesBySessionId;
-\ttry {
-\t\tif (archiveBytesBySessionId) {
-\t\t\tfor (const plan of stateDeletePlans) if (plan.archiveTranscript && !archiveBytesBySessionId.has(plan.sessionId)) throw new Error(\`Missing precomputed archive byte size for \${plan.sessionId}\`);
-\t\t} else archiveBytesBySessionId = await readSessionTranscriptJsonlBytes(scope, stateDeletePlans.filter((plan) => plan.archiveTranscript).map((plan) => plan.sessionId), isCurrent);`;
-  const nativeArchiveSizing = `\tlet archiveBytesBySessionId;
-\ttry {
-\t\tarchiveBytesBySessionId = await readSessionTranscriptJsonlBytes(scope, stateDeletePlans.filter((plan) => plan.archiveTranscript).map((plan) => plan.sessionId), isCurrent);`;
-  assert.equal(source.split(v2ArchiveSizing).length, 2, 'archive sizing fast-path anchor drift');
-  const boundedBatchExport = 'applySessionEntryMaintenance as a, buildSessionMaintenanceBatches as b,';
-  assert.equal(source.split(boundedBatchExport).length, 2, 'bounded batch export anchor drift');
-  const normalized = source.replace(v2ArchiveSizing, nativeArchiveSizing)
-    .replace(boundedBatchExport, 'applySessionEntryMaintenance as a,');
   assert.equal(source.slice(0, source.indexOf('function applySessionEntryMaintenance(')), before.slice(0, before.indexOf('function applySessionEntryMaintenance(')));
-  assert.equal(normalized.slice(normalized.indexOf(marker), normalized.indexOf('\n// Automatic planning is read-only.')), before.slice(before.indexOf(marker)));
+  assert.equal(source.slice(source.indexOf(marker), source.indexOf('\n// Automatic planning is read-only.')), before.slice(before.indexOf(marker)));
 });
-test('coordinator success or same-path handle rotation holds one cooldown; failure/closed handle releases immediately', () => {
-  for (const mode of ['success', 'rebound', 'failure', 'closed']) {
+test('coordinator success holds one cooldown, failure/closed handle releases immediately', () => {
+  for (const mode of ['success', 'failure', 'closed']) {
     const scheduled = [], paths = []; let releases = 0;
     const database = {path: '/fixture/agent.sqlite', db: {isOpen: true}};
     const permit = acquireAutomaticMaintenancePermit(database, (p, o) => {paths.push([p, o]); return {release() {releases++;}};}, {setTimer: (f, ms) => {scheduled.push([f, ms]); return {unref() {}};}});
-    let currentDatabase = database;
-    if (mode === 'closed' || mode === 'rebound') database.db.isOpen = false;
-    if (mode === 'rebound') currentDatabase = {path: database.path, db: {isOpen: true}};
-    permit.finish(mode !== 'failure', currentDatabase); permit.finish(true, currentDatabase);
+    if (mode === 'closed') database.db.isOpen = false;
+    permit.finish(mode !== 'failure'); permit.finish(true);
     assert.equal(paths[0][0], '/fixture/agent.sqlite.automatic-maintenance-coordinator'); assert.equal(paths[0][1].busyTimeoutMs, 0);
-    if (mode === 'success' || mode === 'rebound') {assert.equal(releases, 0); assert.equal(scheduled.length, 1); assert.equal(scheduled[0][1], 60000); scheduled[0][0](); scheduled[0][0]();}
+    if (mode === 'success') {assert.equal(releases, 0); assert.equal(scheduled.length, 1); assert.equal(scheduled[0][1], 60000); scheduled[0][0](); scheduled[0][0]();}
     else assert.equal(scheduled.length, 0);
     assert.equal(releases, 1);
   }
-});
-test('file-backed owner may acquire after its cached handle closes and still holds cooldown', () => {
-  const scheduled = []; let releases = 0, acquisitions = 0;
-  const database = {path: '/fixture/agent.sqlite', db: {isOpen: false}};
-  const permit = acquireAutomaticMaintenancePermit(database, () => {acquisitions++; return {release() {releases++;}};}, {
-    allowClosedFileOwner: true,
-    setTimer: (f, ms) => {scheduled.push([f, ms]); return {unref() {}};},
-  });
-  assert.equal(acquisitions, 1);
-  permit.finish(true, database);
-  assert.equal(releases, 0);
-  assert.equal(scheduled.length, 1);
-  assert.equal(scheduled[0][1], 60000);
-  scheduled[0][0]();
-  assert.equal(releases, 1);
 });
 test('coordinator busy does not steal, corrupt/error is surfaced, closed handle is untouched', () => {
   assert.equal(acquireAutomaticMaintenancePermit({path: '/fixture/db', db: {isOpen: true}}, () => null), null);

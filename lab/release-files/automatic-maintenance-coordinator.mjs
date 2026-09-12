@@ -3,7 +3,7 @@
 // never locks the Agent database or changes foreground/explicit maintenance.
 import fs from 'node:fs';
 export function acquireAutomaticMaintenancePermit(database, acquire, options = {}) {
-  if (!database.db.isOpen && options.allowClosedFileOwner !== true) return null;
+  if (!database.db.isOpen) return null;
   if (typeof database.path !== 'string' || !database.path.startsWith('/')) throw new Error('Automatic maintenance requires an owned absolute database path');
   const cooldownMs = options.cooldownMs ?? 60_000;
   if (!Number.isFinite(cooldownMs) || cooldownMs < 0) throw new Error('Invalid automatic maintenance cooldown');
@@ -21,12 +21,10 @@ export function acquireAutomaticMaintenancePermit(database, acquire, options = {
     try { lease.release(); } catch (error) { try { options.onReleaseError?.(error); } catch {} }
   };
   return {
-    finish(success, currentDatabase = database) {
+    finish(success) {
       if (finished) return;
       finished = true;
-      const currentDatabaseOwned = currentDatabase?.path === database.path &&
-        (currentDatabase?.db?.isOpen === true || options.allowClosedFileOwner === true);
-      if (!success || !currentDatabaseOwned || cooldownMs === 0) { release(); return; }
+      if (!success || !database.db.isOpen || cooldownMs === 0) { release(); return; }
       const timer = (options.setTimer ?? setTimeout)(release, cooldownMs);
       timer.unref?.();
     },

@@ -1,10 +1,6 @@
 import {acquireAutomaticMaintenancePermit} from "./automatic-maintenance-coordinator.mjs";
-import {waitForAutomaticMaintenanceQuietWindow} from "./automatic-maintenance-quiet-window.mjs";
-import {AutomaticSessionMaintenanceInterruptedError, filterAutomaticSessionMaintenancePlan, runAutomaticSessionMaintenancePlan} from "./automatic-session-maintenance-planner.mjs";
 import {l as runSqliteDeferredTransactionSync, o as tryAcquireExclusiveSqliteCoordinator} from "./node-sqlite-CL-d6drd.js";
 import {commitPlannedSessionMaintenanceArchives} from "./session-history-eviction-d5aiCsHS.js";
-import {s as resolveMaintenanceConfig} from "./disk-budget-BzLS0kmH.js";
-import {i as collectActiveSessionWorkAdmissions} from "./session-lifecycle-admission-siUq03Jk.js";
 import {withSqliteBeginContentionRetry} from "./sqlite-begin-contention-retry.mjs";
 import { waitAutomaticMaintenanceWindow as db91WaitAutomaticMaintenance } from "./db91-maintenance-throttle.mjs";
 import { y as uniqueStrings } from "./string-normalization-DiSb4JeN.js";
@@ -130,15 +126,6 @@ function listSessionTranscriptArchivesReadOnly(scope) {
 //#endregion
 //#region src/config/sessions/session-accessor.sqlite-maintenance-kick.ts
 const maintenanceByStore = /* @__PURE__ */ new Map();
-const AUTOMATIC_MAINTENANCE_IDLE_POLL_MS = 250;
-const AUTOMATIC_MAINTENANCE_IDLE_POLLS = 120;
-async function waitForAutomaticMaintenanceAdmissionsToDrain(isCurrent, currentAdmissionIdentities) {
-	for (let remaining = AUTOMATIC_MAINTENANCE_IDLE_POLLS; isCurrent() && currentAdmissionIdentities().size > 0; remaining -= 1) {
-		if (remaining <= 0) return false;
-		await new Promise((resolve) => setTimeout(resolve, AUTOMATIC_MAINTENANCE_IDLE_POLL_MS));
-	}
-	return isCurrent();
-}
 /** Coalesce automatic logical maintenance outside ordinary entry-write latency. */
 function kickSessionEntryMaintenanceAfterWrite(params) {
 	if (params.skipMaintenance) return;
@@ -146,13 +133,9 @@ function kickSessionEntryMaintenanceAfterWrite(params) {
 	const database = getOpenClawAgentDatabaseIfOpen(toDatabaseOptions(params.scope));
 	if (!database) return;
 	const owner = maintenanceByStore.get(databasePath);
-	const fileBackedOwner = owner && !isIncognitoOpenClawAgentSqlitePath(database.path, {agentId: params.scope.agentId, env: params.scope.env});
-	if (owner?.database === database || fileBackedOwner) {
+	if (owner?.database === database) {
 		owner.activeSessionKeys.add(params.activeSessionKey);
-		// A long quiet wait can outlive one cached SQLite handle. Rebind the same
-		// physical file-backed owner instead of replacing it while its coordinator
-		// permit is still held. Incognito generations remain object-identity scoped.
-		Object.assign(owner, params, { database, generation: owner.generation + 1 });
+		Object.assign(owner, params, { generation: owner.generation + 1 });
 		return;
 	}
 	const created = {
@@ -165,19 +148,12 @@ function kickSessionEntryMaintenanceAfterWrite(params) {
 	setImmediate(() => void runPendingMaintenance(databasePath, created));
 }
 async function runPendingMaintenance(databasePath, owner) {
-	const incognito = isIncognitoOpenClawAgentSqlitePath(owner.database.path, {agentId: owner.scope.agentId, env: owner.scope.env});
-	// File-backed maintenance is owned by the physical store, not by one cached
-	// SQLite handle. The handle that queued the work may close while the quiet
-	// window or isolated planner is running; commit paths reopen and revalidate
-	// the store under the native writer lane. Incognito stores remain tied to the
-	// process-local handle because they have no stable physical owner.
-	const isCurrent = () => maintenanceByStore.get(databasePath) === owner && (!incognito || owner.database.db.isOpen);
+	const isCurrent = () => maintenanceByStore.get(databasePath) === owner && owner.database.db.isOpen;
 	while (isCurrent()) {
 		if (process.env.OPENCLAW_DB91_MAINTENANCE_ENABLE === "1") {
 			await db91WaitAutomaticMaintenance(owner.database);
 			if (!isCurrent()) break;
 		}
-		const currentAdmissionIdentities = () => collectActiveSessionWorkAdmissions().get(owner.storePath) ?? /* @__PURE__ */ new Set();
 		// Incognito has no shared physical store. All ordinary file-backed callers
 		// use the existing native coordinator primitive on a data-free sidecar.
 		let permit;
@@ -185,7 +161,6 @@ async function runPendingMaintenance(databasePath, owner) {
 			permit = isIncognitoOpenClawAgentSqlitePath(owner.database.path, {agentId: owner.scope.agentId, env: owner.scope.env})
 				? {finish() {}}
 				: acquireAutomaticMaintenancePermit(owner.database, tryAcquireExclusiveSqliteCoordinator, {
-					allowClosedFileOwner: true,
 					onReleaseError: error => getChildLogger({subsystem: "session-sqlite"}).warn("SQLite automatic maintenance coordinator release failed", {error})
 				});
 		} catch (error) {
@@ -198,93 +173,42 @@ async function runPendingMaintenance(databasePath, owner) {
 			return;
 		}
 		let completed = false;
-		let retryAfterForegroundActivity = false;
-		let generation = owner.generation;
+		const generation = owner.generation;
+		const activeSessionKeys = [...owner.activeSessionKeys];
+		owner.activeSessionKeys.clear();
 		try {
-			// The data-free coordinator elects one process to poll. A continuous quiet
-			// window in the Agent database/WAL keeps the full scan away from bursts in
-			// every Gateway/Worker process that shares this store.
-			const quietWindow = incognito ? void 0 : await waitForAutomaticMaintenanceQuietWindow({
-				databasePath: owner.database.path,
-				isCurrent,
-				isLocallyIdle: () => currentAdmissionIdentities().size === 0
-			});
-			if (!incognito && !quietWindow) {
-				if (maintenanceByStore.get(databasePath) === owner) maintenanceByStore.delete(databasePath);
-				return;
-			}
-			generation = owner.generation;
-			const activeSessionKeys = uniqueStrings([...owner.activeSessionKeys, ...currentAdmissionIdentities()]);
-			owner.activeSessionKeys.clear();
-			const maintenanceConfig = owner.maintenanceConfig ?? resolveMaintenanceConfig();
-			// A file-backed store can require a multi-second global read scan. Keep that
-			// synchronous SQLite work off the request-owning Gateway/Worker event loop.
-			// Incognito stores are process-local and retain the native inline path.
-			let plan = incognito
-				? runSqliteDeferredTransactionSync(owner.database.db, () => applySessionEntryMaintenance(owner.database, {
+			const plan = await runExclusiveSqliteSessionWrite(owner.scope, async () => {
+				if (!isCurrent()) return;
+				// Global selection runs in a native deferred read snapshot, not BEGIN
+				// IMMEDIATE. Foreground writers in other processes remain unblocked.
+				const planned = runSqliteDeferredTransactionSync(owner.database.db, () => applySessionEntryMaintenance(owner.database, {
 					activeSessionKeys,
 					archiveDirectory: owner.archiveDirectory,
-					maintenanceConfig,
+					maintenanceConfig: owner.maintenanceConfig,
 					storePath: owner.storePath,
 					planOnly: true
-				}))
-				: await runAutomaticSessionMaintenancePlan({
-					activeSessionKeys,
-					agentId: owner.scope.agentId,
-					archiveDirectory: owner.archiveDirectory,
-					maintenanceConfig,
-					storePath: owner.storePath
-				}, {
-					shouldInterrupt: async () => !isCurrent() || currentAdmissionIdentities().size > 0 || await quietWindow.changed()
-				});
-			if (!incognito && await quietWindow.changed()) {
-				plan = void 0;
-				retryAfterForegroundActivity = isCurrent();
-			}
-			// Planning is read-only and can overlap active work. Archive commits and
-			// deletion transactions are best-effort background writes: never let them
-			// enter SQLite while a real Agent turn for this store is still admitted.
-			if (!incognito && !await waitForAutomaticMaintenanceAdmissionsToDrain(isCurrent, currentAdmissionIdentities)) {
-				plan = void 0;
-				retryAfterForegroundActivity = isCurrent();
-			}
-			if (plan) plan = filterAutomaticSessionMaintenancePlan(plan, currentAdmissionIdentities());
-			if (!isCurrent()) plan = void 0;
-			if (plan?.plannedEntryArchives?.length) plan = await runExclusiveSqliteSessionWrite(owner.scope, async () => {
-				if (!isCurrent()) return;
-				const currentDatabase = openOpenClawAgentDatabase(toDatabaseOptions(owner.scope));
-				owner.database = currentDatabase;
-				plan = filterAutomaticSessionMaintenancePlan(plan, currentAdmissionIdentities());
-				return withSqliteBeginContentionRetry({database: currentDatabase.db,
+				}));
+				if (!planned.plannedEntryArchives?.length) return planned;
+				return withSqliteBeginContentionRetry({database: owner.database.db,
 					run: operation => runOpenClawAgentWriteTransaction(operation, toDatabaseOptions(owner.scope)),
-					operation: database => isCurrent() ? commitPlannedSessionMaintenanceArchives(database, plan) : void 0});
+					operation: database => isCurrent() ? commitPlannedSessionMaintenanceArchives(database, planned) : void 0});
 			});
 			if (!plan) {
-				if (retryAfterForegroundActivity && isCurrent()) continue;
 				if (maintenanceByStore.get(databasePath) === owner) maintenanceByStore.delete(databasePath);
 				return;
 			}
-			plan = filterAutomaticSessionMaintenancePlan(plan, currentAdmissionIdentities());
-			const archiveBytesBySessionId = plan.automaticArchiveBytesBySessionId
-				? new Map(plan.automaticArchiveBytesBySessionId)
-				: void 0;
-			await finalizeSessionEntryMaintenancePlansAfterWriterReleaseBestEffort(owner.scope, [plan], { isCurrent, archiveBytesBySessionId });
+			await finalizeSessionEntryMaintenancePlansAfterWriterReleaseBestEffort(owner.scope, [plan], { isCurrent });
 			completed = true;
 		} catch (error) {
-			if (error instanceof AutomaticSessionMaintenanceInterruptedError) {
-				retryAfterForegroundActivity = isCurrent();
-			} else {
-				getChildLogger({ subsystem: "session-sqlite" }).warn("SQLite automatic session maintenance failed", {
-					error,
-					path: databasePath
-				});
-			}
+			getChildLogger({ subsystem: "session-sqlite" }).warn("SQLite automatic session maintenance failed", {
+				error,
+				path: databasePath
+			});
 		} finally {
-			permit.finish(completed, owner.database);
+			permit.finish(completed);
 		}
-		if (retryAfterForegroundActivity && isCurrent()) continue;
 		if (maintenanceByStore.get(databasePath) !== owner) return;
-		if ((incognito && !owner.database.db.isOpen) || owner.generation === generation) {
+		if (!owner.database.db.isOpen || owner.generation === generation) {
 			maintenanceByStore.delete(databasePath);
 			return;
 		}
