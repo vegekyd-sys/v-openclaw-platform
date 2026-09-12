@@ -135,7 +135,7 @@ const AUTOMATIC_MAINTENANCE_IDLE_POLLS = 120;
 function traceAutomaticMaintenance(stage, databasePath, owner, details = {}) {
 	if (process.env.OPENCLAW_DB91_MAINTENANCE_TRACE !== "1") return;
 	const current = maintenanceByStore.get(databasePath);
-	getChildLogger({subsystem: "session-sqlite"}).warn("SQLite automatic maintenance trace", {
+	process.stderr.write(`[db91-maintenance-trace] ${JSON.stringify({
 		stage,
 		pid: process.pid,
 		currentOwner: current === owner,
@@ -143,7 +143,7 @@ function traceAutomaticMaintenance(stage, databasePath, owner, details = {}) {
 		ownerGeneration: owner.generation,
 		databaseOpen: owner.database.db.isOpen,
 		...details
-	});
+	})}\n`);
 }
 async function waitForAutomaticMaintenanceAdmissionsToDrain(isCurrent, currentAdmissionIdentities) {
 	for (let remaining = AUTOMATIC_MAINTENANCE_IDLE_POLLS; isCurrent() && currentAdmissionIdentities().size > 0; remaining -= 1) {

@@ -1,0 +1,9 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/session-accessor.sqlite-entry-BlklNPKQ.js",
+      "target": "openclaw/dist/session-accessor.sqlite-entry-BlklNPKQ.js",
+      "before": "1b19e786de9a5fc9793681b0ee2a9c3f2421ac0e2edcbf71a016e2b73be5f42e"
+    }
+  ]
+}
