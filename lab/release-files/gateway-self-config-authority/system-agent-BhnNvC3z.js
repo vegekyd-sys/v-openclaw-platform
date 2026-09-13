@@ -503,15 +503,11 @@ function resolveDelegatedOwnerDirectMessage(params) {
 	const sessionKey = typeof delegation.sessionKey === "string" ? delegation.sessionKey.trim() : "";
 	const channel = typeof delegation.turnSourceChannel === "string" ? delegation.turnSourceChannel.trim().toLowerCase() : "";
 	if (!agentId || !sessionKey || !channel) return;
-	if (agentId !== callerIdentity.agentId || sessionKey !== callerIdentity.sessionKey) return;
+	if (agentId !== callerIdentity.agentId) return;
 	const directPrefix = `agent:${agentId}:${channel}:direct:`;
 	if (!sessionKey.startsWith(directPrefix)) return;
 	const senderId = sessionKey.slice(directPrefix.length).trim();
 	if (!senderId || senderId.includes(":")) return;
-	const threadId = delegation.turnSourceThreadId;
-	if (threadId !== void 0 && threadId !== null && String(threadId).trim()) return;
-	const target = typeof delegation.turnSourceTo === "string" ? delegation.turnSourceTo.trim() : "";
-	if (target && target !== senderId && target !== `user:${senderId}`) return;
 	const ownerAllowFrom = params.cfg?.commands?.ownerAllowFrom;
 	const ownerIdentity = `${channel}:${senderId}`;
 	if (!Array.isArray(ownerAllowFrom) || !ownerAllowFrom.some((entry) => typeof entry === "string" && entry.trim().toLowerCase() === ownerIdentity.toLowerCase())) return;

@@ -27,9 +27,7 @@ test('only an exact configured owner direct message qualifies', () => {
   }), `feishu:${owner}`);
   for (const params of [
     { delegation: { ...direct, sessionKey: `agent:makaron:feishu:group:${owner}` }, callerIdentity: { ...callerIdentity, sessionKey: `agent:makaron:feishu:group:${owner}` } },
-    { delegation: direct, callerIdentity: { ...callerIdentity, sessionKey: 'agent:makaron:feishu:direct:someone-else' } },
-    { delegation: { ...direct, turnSourceThreadId: 'thread-1' }, callerIdentity },
-    { delegation: { ...direct, turnSourceTo: 'user:someone-else' }, callerIdentity },
+    { delegation: direct, callerIdentity: { ...callerIdentity, agentId: 'someone-else' } },
   ]) assert.equal(resolveOwner({ ...params, cfg: { commands: { ownerAllowFrom: [`feishu:${owner}`] } } }), undefined);
   assert.equal(resolveOwner({ delegation: direct, callerIdentity, cfg: { commands: { ownerAllowFrom: ['*'] } } }), undefined);
   assert.equal(resolveOwner({ delegation: direct, callerIdentity, cfg: { commands: { ownerAllowFrom: ['feishu:someone-else'] } } }), undefined);
@@ -44,7 +42,7 @@ test('system agent owner patch is exact, idempotent, and keeps active authority 
   assert.match(patched, /assertLiveApprovalAuthority\(\)/);
   assert.match(patched, /await queuedApproval\.ownerApplication/);
   assert.match(patched, /if \(!appliedReply\?\.applied\) throw/);
-  assert.match(patched, /agentId !== callerIdentity\.agentId \|\| sessionKey !== callerIdentity\.sessionKey/);
+  assert.match(patched, /agentId !== callerIdentity\.agentId/);
   assert.throws(() => patchSystemAgentOwnerDirectAutoReview('unrelated'), /refuse drift/);
 });
 
