@@ -51,6 +51,7 @@ node --check "${EXPERIMENT_DIR}/patch-openclaw-skill-workshop-worker-proxy.mjs"
 node --check "${EXPERIMENT_DIR}/patch-openclaw-skill-workshop-worker-proxy.test.mjs"
 node --check "${REPO_ROOT}/scripts/patch-openclaw-session-hotset.mjs"
 node --check "${REPO_ROOT}/scripts/patch-openclaw-media-completion-relay.mjs"
+node --check "${REPO_ROOT}/scripts/patch-openclaw91-sessions-send-owner.mjs"
 node --check "${REPO_ROOT}/scripts/patch-feishu-active-run-steering.mjs"
 node --check "${REPO_ROOT}/scripts/prune-openclaw-session-hotset.mjs"
 node --check "${REPO_ROOT}/tests/patch-openclaw-session-hotset.test.mjs"
@@ -99,6 +100,7 @@ node --test \
   "${EXPERIMENT_DIR}/worker-exec-argv.test.mjs" \
   "${REPO_ROOT}/tests/patch-openclaw-session-hotset.test.mjs" \
   "${REPO_ROOT}/tests/patch-openclaw-media-completion-relay.test.mjs" \
+  "${REPO_ROOT}/tests/patch-openclaw91-sessions-send-owner.test.mjs" \
   "${REPO_ROOT}/tests/patch-feishu-active-run-steering.test.mjs" \
   "${REPO_ROOT}/tests/prune-openclaw-session-hotset.test.mjs"
 bash -n "${REPO_ROOT}/tests/vlab-agent-worker-remote.sh"
