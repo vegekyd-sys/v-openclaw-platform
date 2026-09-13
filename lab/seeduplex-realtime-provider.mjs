@@ -164,6 +164,18 @@ function buildAgentConsultProviderResult(result) {
   return { result: text.slice(0, MAX_CONSULT_RESULT_CHARS) };
 }
 
+function spokenToolResult(result) {
+  if (typeof result === "string") return optionalString(result);
+  if (!result || typeof result !== "object" || Array.isArray(result)) return undefined;
+  return (
+    optionalString(result.result) ??
+    optionalString(result.text) ??
+    (optionalString(result.error)
+      ? `OpenClaw Agent 没有完成：${optionalString(result.error)}`
+      : undefined)
+  );
+}
+
 export class SeeduplexRealtimeVoiceBridge {
   constructor(request, options = {}) {
     this.request = request;
@@ -184,7 +196,8 @@ export class SeeduplexRealtimeVoiceBridge {
     this.connectReject = null;
     this.connectTimer = null;
     this.abortController = new AbortController();
-    this.supportsToolResultContinuation = false;
+    this.skipNextResponseDone = false;
+    this.supportsToolResultContinuation = true;
     this.supportsToolResultSuppression = false;
   }
 
@@ -298,14 +311,24 @@ export class SeeduplexRealtimeVoiceBridge {
   }
 
   submitToolResult(callId, result, options = {}) {
-    if (options.willContinue) {
-      throw new Error("Seeduplex does not support continuing tool results");
-    }
     if (options.suppressResponse) {
       throw new Error("Seeduplex does not support suppressed tool results");
     }
     const batch = this.pendingToolCalls.get(callId);
     if (!batch) {
+      const continuing = this.toolBatches.find(
+        (candidate) => candidate.continuing && candidate.ids.includes(callId),
+      );
+      if (continuing) {
+        if (options.willContinue || continuing.finalResults.has(callId)) return;
+        const text = spokenToolResult(result);
+        continuing.finalResults.set(
+          callId,
+          text ?? "OpenClaw Agent 没有返回可以播报的结果。",
+        );
+        this.#dispatchContinuedResult(continuing);
+        return;
+      }
       if (this.seenToolCalls.has(callId)) return;
       throw new Error(`Unknown Seeduplex tool call: ${callId}`);
     }
@@ -316,12 +339,41 @@ export class SeeduplexRealtimeVoiceBridge {
       content: [{ type: "input_text", text: serializeToolResult(result) }],
     });
     if (batch.results.size !== batch.ids.length) return;
+    batch.continuing = options.willContinue === true;
     this.#send({
       type: "conversation.item.create",
+      event_id: `event_${randomUUID()}`,
       items: batch.ids.map((id) => batch.results.get(id)),
     });
     for (const id of batch.ids) this.pendingToolCalls.delete(id);
-    this.toolBatches.splice(this.toolBatches.indexOf(batch), 1);
+    if (batch.continuing) {
+      batch.finalResults = new Map();
+      batch.phase = "waiting-working-audio";
+    } else {
+      this.toolBatches.splice(this.toolBatches.indexOf(batch), 1);
+    }
+  }
+
+  #dispatchContinuedResult(batch) {
+    if (
+      batch.phase !== "waiting-finals" ||
+      batch.finalResults.size !== batch.ids.length
+    ) {
+      return;
+    }
+    const text = batch.ids
+      .map((id) => batch.finalResults.get(id))
+      .filter(Boolean)
+      .join("\n")
+      .slice(0, MAX_CONSULT_RESULT_CHARS);
+    batch.phase = "waiting-final-audio";
+    batch.spokenText = text;
+    this.request.onTranscript?.("assistant", text, true);
+    this.#send({
+      type: "speech_text_buffer.commit",
+      event_id: `event_${randomUUID()}`,
+      text,
+    });
   }
 
   acknowledgeMark(_markName) {}
@@ -405,8 +457,37 @@ export class SeeduplexRealtimeVoiceBridge {
         return this.#fail(new Error("Invalid Seeduplex audio output"));
       }
     }
-    if (type === "response.done" || type === "response.output_audio.done") {
-      this.#onResponseDone({ status: "completed", responseId: event.response_id });
+    if (type === "response.output_audio.done") {
+      const continuing = this.toolBatches.find(
+        (batch) =>
+          batch.continuing &&
+          (batch.phase === "waiting-working-audio" || batch.phase === "waiting-final-audio"),
+      );
+      if (continuing?.phase === "waiting-working-audio") {
+        continuing.phase = "waiting-finals";
+        this.#dispatchContinuedResult(continuing);
+      } else if (continuing?.phase === "waiting-final-audio") {
+        continuing.phase = "completed";
+        this.toolBatches.splice(this.toolBatches.indexOf(continuing), 1);
+        this.skipNextResponseDone = true;
+        this.#onResponseDone({ status: "completed", responseId: event.response_id });
+      } else {
+        this.#onResponseDone({ status: "completed", responseId: event.response_id });
+      }
+    } else if (type === "response.done") {
+      if (this.skipNextResponseDone) {
+        this.skipNextResponseDone = false;
+      } else {
+        const hasOpenContinuation = this.toolBatches.some(
+          (batch) => batch.continuing && batch.phase !== "completed",
+        );
+        if (!hasOpenContinuation) {
+          this.#onResponseDone({
+            status: "completed",
+            responseId: event.response_id ?? optionalString(event.response?.id),
+          });
+        }
+      }
     } else if (type === "response.canceled") {
       this.#onResponseDone({
         status: "cancelled",
@@ -443,7 +524,13 @@ export class SeeduplexRealtimeVoiceBridge {
     if (this.seenToolCalls.size + calls.length > MAX_TOOL_CALLS) {
       return this.#fail(new Error("Seeduplex tool-call session limit exceeded"));
     }
-    const batch = { ids: calls.map((call) => call.callId), results: new Map() };
+    const batch = {
+      ids: calls.map((call) => call.callId),
+      results: new Map(),
+      continuing: false,
+      finalResults: new Map(),
+      phase: "collecting",
+    };
     this.toolBatches.push(batch);
     for (const call of calls) {
       this.seenToolCalls.add(call.callId);
