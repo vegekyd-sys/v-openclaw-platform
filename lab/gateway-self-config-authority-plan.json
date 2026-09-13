@@ -15,6 +15,11 @@
       "source": "lab/release-files/gateway-self-config-authority/openclaw-tools-BODVdJQD.js",
       "target": "openclaw/dist/openclaw-tools-BODVdJQD.js",
       "before": "62ede7a96acbba962115aee945882cfe132ae199c326c577e23097f4cfda2c94"
+    },
+    {
+      "source": "lab/release-files/gateway-self-config-authority/system-agent-BhnNvC3z.js",
+      "target": "openclaw/dist/system-agent-BhnNvC3z.js",
+      "before": "edce966071cb789c23d00f6b80757f4fcf91f7ecc877236da599a8430fa22442"
     }
   ]
 }

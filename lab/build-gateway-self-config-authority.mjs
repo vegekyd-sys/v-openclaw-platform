@@ -10,6 +10,7 @@ import {
   patchGatewayAgentRuntimeIdentityMethods,
   patchInProcessGatewayFallbackOptions,
   patchOpenClawDelegateTimeout,
+  patchSystemAgentTransportAuthority,
 } from './gateway-self-config-authority.mjs';
 
 const repo = '/Users/tianyicai/vlab-dev';
@@ -21,6 +22,7 @@ const targets = [
   ['gateway-DVu5Urba.js', patchGatewayAgentRuntimeIdentityMethods],
   ['sessions-helpers-Bn_vDNby.js', patchInProcessGatewayFallbackOptions],
   ['openclaw-tools-BODVdJQD.js', patchOpenClawDelegateTimeout],
+  ['system-agent-BhnNvC3z.js', patchSystemAgentTransportAuthority],
 ];
 
 mkdirSync(outputDir, { recursive: true });
@@ -47,4 +49,3 @@ for (const [name, patch] of targets) {
 
 writeFileSync(resolve(root, 'lab/gateway-self-config-authority-plan.json'), `${JSON.stringify({ baseRelease, files }, null, 2)}\n`);
 console.log(JSON.stringify({ baseRelease, files: files.length }));
-
