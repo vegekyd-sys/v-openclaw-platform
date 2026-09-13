@@ -1,10 +1,10 @@
 {
-  "baseRelease": "gateway-self-config-authority-v6",
+  "baseRelease": "seeduplex-voice-provider-v1",
   "files": [
     {
       "source": "lab/release-files/seeduplex-voice-provider/production-worker-index.mjs",
       "target": "production-worker/index.mjs",
-      "before": "c89dcad19c8a975315a7fe267935fc0437ee59e470cefe69bd04849c13aa1b8b"
+      "before": "d5416a86ff77bf8a8c00395a0e7feb05a31d1668e9234c8ce001762f8c59f13e"
     },
     {
       "source": "lab/release-files/seeduplex-voice-provider/seeduplex-realtime-provider.mjs",

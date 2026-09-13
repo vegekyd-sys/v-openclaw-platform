@@ -13,6 +13,7 @@ const INPUT_FRAME_BYTES = 640;
 const MAX_PENDING_INPUT_BYTES = 16_000 * 2 * 10;
 const MAX_TOOL_CALLS = 100;
 const MAX_TOOL_RESULT_BYTES = 32_000;
+const MAX_CONSULT_RESULT_CHARS = 8_000;
 const MAX_UPSTREAM_MESSAGE_BYTES = 1_048_576;
 
 function optionalString(value) {
@@ -129,6 +130,40 @@ function serializeToolResult(result) {
   return text;
 }
 
+export function buildSeeduplexAgentConsultPrompt(args = {}) {
+  const question =
+    optionalString(args.question) ??
+    optionalString(args.prompt) ??
+    optionalString(args.query) ??
+    optionalString(args.task) ??
+    optionalString(args.request);
+  if (!question) throw new Error("Seeduplex agent consult requires a question");
+  const context = optionalString(args.context);
+  const responseStyle = optionalString(args.responseStyle);
+  const confirmationId = optionalString(args.confirmationId);
+  return [
+    "Live voice request during a Gateway-relay Talk session.",
+    "Act as the configured OpenClaw agent for this user. Use available tools when the request asks you to do work.",
+    "Return only the concise terminal result that the realtime voice agent should speak. Preserve failures, limits, numbers, and pending approvals.",
+    responseStyle ? `Spoken style: ${responseStyle}` : undefined,
+    context ? `Additional realtime context:\n${context}` : undefined,
+    confirmationId ? `Server-issued voice confirmation id: ${confirmationId}` : undefined,
+    `User request:\n${question}`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function buildAgentConsultProviderResult(result) {
+  const text = optionalString(result?.text);
+  if (!text) {
+    return {
+      error: "The OpenClaw agent consult ended without a confirmed result. Do not claim success.",
+    };
+  }
+  return { result: text.slice(0, MAX_CONSULT_RESULT_CHARS) };
+}
+
 export class SeeduplexRealtimeVoiceBridge {
   constructor(request, options = {}) {
     this.request = request;
@@ -148,6 +183,7 @@ export class SeeduplexRealtimeVoiceBridge {
     this.connectResolve = null;
     this.connectReject = null;
     this.connectTimer = null;
+    this.abortController = new AbortController();
     this.supportsToolResultContinuation = false;
     this.supportsToolResultSuppression = false;
   }
@@ -294,6 +330,7 @@ export class SeeduplexRealtimeVoiceBridge {
     if (this.terminal) return;
     this.terminal = true;
     this.ready = false;
+    this.abortController.abort(new Error("Seeduplex session closed"));
     clearTimeout(this.connectTimer);
     if (this.socket?.readyState === 1) {
       this.#send({ type: "session.close" });
@@ -417,6 +454,28 @@ export class SeeduplexRealtimeVoiceBridge {
         name: call.name,
         args: call.args,
       });
+      if (
+        call.name === "openclaw_agent_consult" &&
+        typeof this.request.runAgentConsult === "function"
+      ) {
+        void this.#runAgentConsult(call);
+      }
+    }
+  }
+
+  async #runAgentConsult(call) {
+    try {
+      const result = await this.request.runAgentConsult({
+        prompt: buildSeeduplexAgentConsultPrompt(call.args),
+        signal: this.abortController.signal,
+      });
+      if (this.terminal || this.abortController.signal.aborted) return;
+      this.submitToolResult(call.callId, buildAgentConsultProviderResult(result));
+    } catch {
+      if (this.terminal || this.abortController.signal.aborted) return;
+      this.submitToolResult(call.callId, {
+        error: "The OpenClaw agent consult failed. Tell the user it did not complete.",
+      });
     }
   }
 
@@ -434,6 +493,7 @@ export class SeeduplexRealtimeVoiceBridge {
     if (this.terminal) return;
     this.terminal = true;
     this.ready = false;
+    this.abortController.abort(error);
     clearTimeout(this.connectTimer);
     this.connectReject?.(error);
     try {
