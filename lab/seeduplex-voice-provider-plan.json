@@ -9,7 +9,7 @@
     {
       "source": "lab/release-files/seeduplex-voice-provider/seeduplex-realtime-provider.mjs",
       "target": "production-worker/seeduplex-realtime-provider.mjs",
-      "before": null
+      "before": "3f1ee17d117130a35683da3dff6e2f852c8582ab7b1a932cfc8957504e2c869e"
     }
   ]
 }

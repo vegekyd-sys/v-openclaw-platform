@@ -14,24 +14,37 @@ const fixtureDir = resolve(root, "lab/fixtures/seeduplex-voice-provider");
 const outputDir = resolve(root, "lab/release-files/seeduplex-voice-provider");
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 
+function readLiveCode(target) {
+  try {
+    return JSON.parse(
+      execFileSync(
+        process.execPath,
+        [
+          "/Users/tianyicai/vlab-dev/lab/vlab.mjs",
+          "read-code",
+          "--repo",
+          repo,
+          "--target",
+          target,
+        ],
+        { encoding: "utf8", maxBuffer: 32 * 1024 ** 2, timeout: 600_000 },
+      ),
+    );
+  } catch (error) {
+    const output = `${error?.stdout ?? ""}\n${error?.stderr ?? ""}`;
+    if (output.includes("does not exist")) return null;
+    throw error;
+  }
+}
+
 mkdirSync(fixtureDir, { recursive: true });
 mkdirSync(outputDir, { recursive: true });
 
 const target = "production-worker/index.mjs";
-const result = JSON.parse(
-  execFileSync(
-    process.execPath,
-    [
-      "/Users/tianyicai/vlab-dev/lab/vlab.mjs",
-      "read-code",
-      "--repo",
-      repo,
-      "--target",
-      target,
-    ],
-    { encoding: "utf8", maxBuffer: 32 * 1024 ** 2, timeout: 600_000 },
-  ),
-);
+const result = readLiveCode(target);
+assert(result, `${target} is missing from VLab`);
+const providerTarget = "production-worker/seeduplex-realtime-provider.mjs";
+const currentProvider = readLiveCode(providerTarget);
 const before = Buffer.from(result.content, "base64").toString();
 assert.equal(sha256(before), result.sha256, "VLab read-code digest mismatch");
 const after = patchProductionWorkerForSeeduplex(before);
@@ -53,8 +66,8 @@ const plan = {
     },
     {
       source: "lab/release-files/seeduplex-voice-provider/seeduplex-realtime-provider.mjs",
-      target: "production-worker/seeduplex-realtime-provider.mjs",
-      before: null,
+      target: providerTarget,
+      before: currentProvider?.sha256 ?? null,
     },
   ],
 };
