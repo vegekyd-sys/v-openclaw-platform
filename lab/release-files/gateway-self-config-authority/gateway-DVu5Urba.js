@@ -174,7 +174,8 @@ const AGENT_RUNTIME_IDENTITY_METHODS = /* @__PURE__ */ new Set([
 	"cron.run",
 	"cron.runs",
 	"secrets.store.delete",
-	"openclaw.chat"
+	"openclaw.chat",
+	"approval.get"
 ]);
 const OPTIONAL_LOCAL_AGENT_RUNTIME_IDENTITY_METHODS = /* @__PURE__ */ new Set(["node.invoke", "question.request"]);
 function resolveApprovalRuntimeTokenForGatewayTool(params) {
