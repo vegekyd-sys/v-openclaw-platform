@@ -196,3 +196,29 @@ const GATEWAY_TIMEOUT_AFTER = `\t\ttimeoutMs: extra?.timeoutMs ?? gateway.timeou
 export function patchGatewayToolRequestedTimeout(source) {
   return replaceExactlyOnce(source, GATEWAY_TIMEOUT_BEFORE, GATEWAY_TIMEOUT_AFTER, 'Gateway tool requested timeout');
 }
+
+const OWNER_SAME_LANE_BEFORE = `\t\t\ttry {
+\t\t\t\tconst reply = await runWithGatewayIndependentRootWorkContinuation(() => runSystemAgentGatewayTask(async () => {
+\t\t\t\t\tconst assertLiveApprovalAuthority = () => {
+\t\t\t\t\t\tif (decision !== "deny" && (!record.approvalAuthority || record.approvalAuthority() === false)) throw new Error("system-agent approval authority is no longer active");
+\t\t\t\t\t};
+\t\t\t\t\tassertLiveApprovalAuthority();
+\t\t\t\t\tif (params.sessions.get(params.sessionId) !== params.session) return null;
+\t\t\t\t\tif (params.session.pendingApproval?.id === record.id) params.session.pendingApproval = void 0;
+\t\t\t\t\treturn await params.session.engine.resolveOperatorApproval(decision, params.proposal.hash, assertLiveApprovalAuthority);
+\t\t\t\t}), "system-agent:task");`;
+const OWNER_SAME_LANE_AFTER = `\t\t\ttry {
+\t\t\t\tconst applyApprovedChange = async () => {
+\t\t\t\t\tconst assertLiveApprovalAuthority = () => {
+\t\t\t\t\t\tif (decision !== "deny" && (!record.approvalAuthority || record.approvalAuthority() === false)) throw new Error("system-agent approval authority is no longer active");
+\t\t\t\t\t};
+\t\t\t\t\tassertLiveApprovalAuthority();
+\t\t\t\t\tif (params.sessions.get(params.sessionId) !== params.session) return null;
+\t\t\t\t\tif (params.session.pendingApproval?.id === record.id) params.session.pendingApproval = void 0;
+\t\t\t\t\treturn await params.session.engine.resolveOperatorApproval(decision, params.proposal.hash, assertLiveApprovalAuthority);
+\t\t\t\t};
+\t\t\t\tconst reply = ownerDirectMessage ? await applyApprovedChange() : await runWithGatewayIndependentRootWorkContinuation(() => runSystemAgentGatewayTask(applyApprovedChange), "system-agent:task");`;
+
+export function patchOwnerAutoReviewSameLane(source) {
+  return replaceExactlyOnce(source, OWNER_SAME_LANE_BEFORE, OWNER_SAME_LANE_AFTER, 'owner auto-review same lane');
+}

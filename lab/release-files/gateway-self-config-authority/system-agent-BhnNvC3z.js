@@ -630,7 +630,7 @@ function queueDelegatedApproval(params) {
 				return;
 			}
 			try {
-				const reply = await runWithGatewayIndependentRootWorkContinuation(() => runSystemAgentGatewayTask(async () => {
+				const applyApprovedChange = async () => {
 					const assertLiveApprovalAuthority = () => {
 						if (decision !== "deny" && (!record.approvalAuthority || record.approvalAuthority() === false)) throw new Error("system-agent approval authority is no longer active");
 					};
@@ -638,7 +638,8 @@ function queueDelegatedApproval(params) {
 					if (params.sessions.get(params.sessionId) !== params.session) return null;
 					if (params.session.pendingApproval?.id === record.id) params.session.pendingApproval = void 0;
 					return await params.session.engine.resolveOperatorApproval(decision, params.proposal.hash, assertLiveApprovalAuthority);
-				}), "system-agent:task");
+				};
+				const reply = ownerDirectMessage ? await applyApprovedChange() : await runWithGatewayIndependentRootWorkContinuation(() => runSystemAgentGatewayTask(applyApprovedChange), "system-agent:task");
 				publishApplicationResult(decision, reply?.applied === true ? "applied" : "not-applied");
 				resolveOwnerApplication?.(reply);
 			} catch (error) {
