@@ -1,10 +1,10 @@
 {
-  "baseRelease": "gateway-self-config-realpath-v1",
+  "baseRelease": "gateway-self-config-realpath-v2",
   "files": [
     {
       "source": "lab/release-files/gateway-self-config-authority/system-agent-BhnNvC3z.js",
       "target": "openclaw/dist/system-agent-BhnNvC3z.js",
-      "before": "57a79f3a1c930f1eeadddc44f94a1b7128603e863e40dca76061ec5735379263"
+      "before": "40ec8c1db5cba43fd7ff44947331da980447bb2a85a9d8d268fbc2d1e46ff142"
     }
   ]
 }

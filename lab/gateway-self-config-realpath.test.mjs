@@ -21,7 +21,7 @@ const callerIdentity = { agentId: 'makaron', sessionKey: direct.sessionKey };
 
 test('only an exact configured owner direct message qualifies', () => {
   assert.equal(resolveOwner({
-    delegation: direct,
+    delegation: { ...direct, turnSourceChannel: 'webchat' },
     callerIdentity,
     cfg: { commands: { ownerAllowFrom: [`feishu:${owner}`] } },
   }), `feishu:${owner}`);
