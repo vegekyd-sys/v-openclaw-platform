@@ -18,6 +18,10 @@ import {
   patchOpenClawDelegateTimeout,
   patchSystemAgentTransportAuthority,
 } from './gateway-self-config-authority.mjs';
+import {
+  patchDelegateClosedApprovalMisread,
+  patchSystemAgentOwnerDirectAutoReview,
+} from './gateway-self-config-realpath.mjs';
 
 for (const [name, patch, before, after] of [
   ['runtime identity allowlist', patchGatewayAgentRuntimeIdentityMethods, GATEWAY_BEFORE, GATEWAY_AFTER],
@@ -79,8 +83,8 @@ const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 for (const [name, patch, beforeSha, afterSha] of [
   ['gateway-DVu5Urba.js', patchGatewayAgentRuntimeIdentityMethods, '2beb3a88a1a0609e46b3f331473a73a63b1c8f10454359a5a3ed6c9582a68344', 'fbe3bf4335c1974c2c6120480dbe9cb2ed34756e8e7c1178d4ff6db4fef8ba02'],
   ['sessions-helpers-Bn_vDNby.js', patchInProcessGatewayFallbackOptions, 'f88076204b3df1773c093e837f436c902a5fee899ebda1760be8b34d6ae5eb60', '4c8dd6f402ee54ce0eee133cfefe25e01340a485d598390ad21d22fc8ed8206c'],
-  ['openclaw-tools-BODVdJQD.js', patchOpenClawDelegateTimeout, '62ede7a96acbba962115aee945882cfe132ae199c326c577e23097f4cfda2c94', '88c05d23c85e257ceb9b7bb863f8205ba9e04f8160cf99f4ed70157fbf4bea89'],
-  ['system-agent-BhnNvC3z.js', patchSystemAgentTransportAuthority, 'edce966071cb789c23d00f6b80757f4fcf91f7ecc877236da599a8430fa22442', 'a50d7a54475e8a4fbd161ab7eb93ebb298bd36a36386ad15faf502a08d9d7723'],
+  ['openclaw-tools-BODVdJQD.js', (source) => patchDelegateClosedApprovalMisread(patchOpenClawDelegateTimeout(source)), '62ede7a96acbba962115aee945882cfe132ae199c326c577e23097f4cfda2c94', 'b5934202f8e5a152c416cea77ef8033eb121cc0da4671f43137c6837f3932e6a'],
+  ['system-agent-BhnNvC3z.js', (source) => patchSystemAgentOwnerDirectAutoReview(patchSystemAgentTransportAuthority(source)), 'edce966071cb789c23d00f6b80757f4fcf91f7ecc877236da599a8430fa22442', '57a79f3a1c930f1eeadddc44f94a1b7128603e863e40dca76061ec5735379263'],
 ]) {
   test(`${name} release artifact is derived from the exact live baseline`, () => {
     const before = readFileSync(new URL(`./fixtures/gateway-self-config-authority/${name}`, import.meta.url), 'utf8');
