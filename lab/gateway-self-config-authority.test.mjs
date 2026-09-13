@@ -21,6 +21,7 @@ import {
 import {
   patchDelegateClosedApprovalMisread,
   patchGatewayToolRequestedTimeout,
+  patchOwnerAutoReviewSameLane,
   patchSystemAgentOwnerDirectAutoReview,
 } from './gateway-self-config-realpath.mjs';
 
@@ -85,7 +86,7 @@ for (const [name, patch, beforeSha, afterSha] of [
   ['gateway-DVu5Urba.js', (source) => patchGatewayToolRequestedTimeout(patchGatewayAgentRuntimeIdentityMethods(source)), '2beb3a88a1a0609e46b3f331473a73a63b1c8f10454359a5a3ed6c9582a68344', 'e6e07ff7f43bc29124039984f7672adca49cd935272c76c0210e9b20274d864e'],
   ['sessions-helpers-Bn_vDNby.js', patchInProcessGatewayFallbackOptions, 'f88076204b3df1773c093e837f436c902a5fee899ebda1760be8b34d6ae5eb60', '4c8dd6f402ee54ce0eee133cfefe25e01340a485d598390ad21d22fc8ed8206c'],
   ['openclaw-tools-BODVdJQD.js', (source) => patchDelegateClosedApprovalMisread(patchOpenClawDelegateTimeout(source)), '62ede7a96acbba962115aee945882cfe132ae199c326c577e23097f4cfda2c94', 'b5934202f8e5a152c416cea77ef8033eb121cc0da4671f43137c6837f3932e6a'],
-  ['system-agent-BhnNvC3z.js', (source) => patchSystemAgentOwnerDirectAutoReview(patchSystemAgentTransportAuthority(source)), 'edce966071cb789c23d00f6b80757f4fcf91f7ecc877236da599a8430fa22442', 'a92bba21afb0b9e85b7b327d9da269002c7930c0849e2509010927fa7f67c77d'],
+  ['system-agent-BhnNvC3z.js', (source) => patchOwnerAutoReviewSameLane(patchSystemAgentOwnerDirectAutoReview(patchSystemAgentTransportAuthority(source))), 'edce966071cb789c23d00f6b80757f4fcf91f7ecc877236da599a8430fa22442', '50f9c3e48d5c2defacca72da0e5420f8b369095c511bdc148a0ad1791ad22c06'],
 ]) {
   test(`${name} release artifact is derived from the exact live baseline`, () => {
     const before = readFileSync(new URL(`./fixtures/gateway-self-config-authority/${name}`, import.meta.url), 'utf8');

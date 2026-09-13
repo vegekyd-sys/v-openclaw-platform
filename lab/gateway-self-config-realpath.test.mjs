@@ -7,6 +7,7 @@ import {
   OWNER_DIRECT_HELPER,
   patchDelegateClosedApprovalMisread,
   patchGatewayToolRequestedTimeout,
+  patchOwnerAutoReviewSameLane,
   patchSystemAgentOwnerDirectAutoReview,
 } from './gateway-self-config-realpath.mjs';
 
@@ -68,11 +69,21 @@ test('requested delegate timeout reaches the loopback Gateway client', () => {
   assert.throws(() => patchGatewayToolRequestedTimeout('unrelated'), /refuse drift/);
 });
 
+test('owner auto-review applies in the already-held System Agent lane', () => {
+  const fixture = readFileSync(new URL('./fixtures/gateway-self-config-authority/system-agent-BhnNvC3z.js', import.meta.url), 'utf8');
+  const ownerPatched = patchSystemAgentOwnerDirectAutoReview(patchSystemAgentTransportAuthority(fixture));
+  const patched = patchOwnerAutoReviewSameLane(ownerPatched);
+  assert.match(patched, /ownerDirectMessage \? await applyApprovedChange\(\)/);
+  assert.match(patched, /runSystemAgentGatewayTask\(applyApprovedChange\)/);
+  assert.equal(patchOwnerAutoReviewSameLane(patched), patched);
+  assert.throws(() => patchOwnerAutoReviewSameLane('unrelated'), /refuse drift/);
+});
+
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 for (const [name, baselinePatch, realPathPatch] of [
   ['gateway-DVu5Urba.js', patchGatewayAgentRuntimeIdentityMethods, patchGatewayToolRequestedTimeout],
   ['openclaw-tools-BODVdJQD.js', patchOpenClawDelegateTimeout, patchDelegateClosedApprovalMisread],
-  ['system-agent-BhnNvC3z.js', patchSystemAgentTransportAuthority, patchSystemAgentOwnerDirectAutoReview],
+  ['system-agent-BhnNvC3z.js', patchSystemAgentTransportAuthority, (source) => patchOwnerAutoReviewSameLane(patchSystemAgentOwnerDirectAutoReview(source))],
 ]) test(`${name} release file is exactly derived from the prior accepted patch`, () => {
   const fixture = readFileSync(new URL(`./fixtures/gateway-self-config-authority/${name}`, import.meta.url), 'utf8');
   const release = readFileSync(new URL(`./release-files/gateway-self-config-authority/${name}`, import.meta.url), 'utf8');
