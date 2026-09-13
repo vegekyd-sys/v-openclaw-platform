@@ -222,3 +222,42 @@ const OWNER_SAME_LANE_AFTER = `\t\t\ttry {
 export function patchOwnerAutoReviewSameLane(source) {
   return replaceExactlyOnce(source, OWNER_SAME_LANE_BEFORE, OWNER_SAME_LANE_AFTER, 'owner auto-review same lane');
 }
+
+const SOURCE_ONLY_PATHS_BEFORE = `\t\tconst configChangedPaths = diffGatewayReloadPaths(currentCompareConfig, nextCompareConfig, listConfigReloadRefinementPrefixes());`;
+const SOURCE_ONLY_PATHS_AFTER = `${SOURCE_ONLY_PATHS_BEFORE}
+\t\tconst sourceChangedPaths = diffConfigPaths(currentSourceConfig, nextSourceConfig);`;
+const SOURCE_ONLY_NOTIFY_BEFORE = `\t\tconst changedPaths = [...configChangedPaths, ...pluginInstallRecordChangedPaths];
+\t\tconst pluginInstallTimestampNoopPaths = [...configPluginInstallTimestampNoopPaths, ...pluginInstallRecordTimestampNoopPaths];
+\t\tconst pluginInstallWholeRecordPaths = [...configPluginInstallWholeRecordPaths, ...pluginInstallRecordWholeRecordPaths];
+\t\tawait appliedRevision.flush(currentConfig);
+\t\tassertCurrent();
+\t\tconst commitReloadBaseline = async (options = {}) => {
+\t\t\tassertCurrent();
+\t\t\tawait appliedRevision.flush(currentConfig);
+\t\t\tassertCurrent();
+\t\t\tconst notifyCommitted = () => {
+\t\t\t\tif (changedPaths.length > 0) opts.onConfigCandidateCommitted?.({
+\t\t\t\t\tpath: opts.watchPath,
+\t\t\t\t\tpersistedHash: persistedHash ?? null,
+\t\t\t\t\tchangedPaths`;
+const SOURCE_ONLY_NOTIFY_AFTER = `\t\tconst changedPaths = [...configChangedPaths, ...pluginInstallRecordChangedPaths];
+\t\tconst publishedChangedPaths = [.../* @__PURE__ */ new Set([...changedPaths, ...sourceChangedPaths])];
+\t\tconst pluginInstallTimestampNoopPaths = [...configPluginInstallTimestampNoopPaths, ...pluginInstallRecordTimestampNoopPaths];
+\t\tconst pluginInstallWholeRecordPaths = [...configPluginInstallWholeRecordPaths, ...pluginInstallRecordWholeRecordPaths];
+\t\tawait appliedRevision.flush(currentConfig);
+\t\tassertCurrent();
+\t\tconst commitReloadBaseline = async (options = {}) => {
+\t\t\tassertCurrent();
+\t\t\tawait appliedRevision.flush(currentConfig);
+\t\t\tassertCurrent();
+\t\t\tconst notifyCommitted = () => {
+\t\t\t\tif (publishedChangedPaths.length > 0) opts.onConfigCandidateCommitted?.({
+\t\t\t\t\tpath: opts.watchPath,
+\t\t\t\t\tpersistedHash: persistedHash ?? null,
+\t\t\t\t\tchangedPaths: publishedChangedPaths`;
+
+export function patchConfigSourceOnlyResponseCacheInvalidation(source) {
+  let patched = replaceExactlyOnce(source, SOURCE_ONLY_PATHS_BEFORE, SOURCE_ONLY_PATHS_AFTER, 'source-only changed paths');
+  patched = replaceExactlyOnce(patched, SOURCE_ONLY_NOTIFY_BEFORE, SOURCE_ONLY_NOTIFY_AFTER, 'source-only config response cache invalidation');
+  return patched;
+}
