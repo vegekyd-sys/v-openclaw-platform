@@ -495,6 +495,28 @@ function sameApprovalAuthority(left, right) {
 	if (left.kind !== right.kind || left.claimId !== right.claimId || left.lifecycleGeneration !== right.lifecycleGeneration || left.operationalRunInstance.instanceId !== right.operationalRunInstance.instanceId || left.operationalRunInstance.runId !== right.operationalRunInstance.runId) return false;
 	return left.kind === "worker" && right.kind === "worker" ? sameWorkerSessionTurnClaim(left.turnClaim, right.turnClaim) : true;
 }
+function resolveDelegatedOwnerDirectMessage(params) {
+	const delegation = params.delegation;
+	const callerIdentity = params.callerIdentity;
+	if (!delegation || !callerIdentity) return;
+	const agentId = typeof delegation.agentId === "string" ? delegation.agentId.trim() : "";
+	const sessionKey = typeof delegation.sessionKey === "string" ? delegation.sessionKey.trim() : "";
+	const channel = typeof delegation.turnSourceChannel === "string" ? delegation.turnSourceChannel.trim().toLowerCase() : "";
+	if (!agentId || !sessionKey || !channel) return;
+	if (agentId !== callerIdentity.agentId || sessionKey !== callerIdentity.sessionKey) return;
+	const directPrefix = `agent:${agentId}:${channel}:direct:`;
+	if (!sessionKey.startsWith(directPrefix)) return;
+	const senderId = sessionKey.slice(directPrefix.length).trim();
+	if (!senderId || senderId.includes(":")) return;
+	const threadId = delegation.turnSourceThreadId;
+	if (threadId !== void 0 && threadId !== null && String(threadId).trim()) return;
+	const target = typeof delegation.turnSourceTo === "string" ? delegation.turnSourceTo.trim() : "";
+	if (target && target !== senderId && target !== `user:${senderId}`) return;
+	const ownerAllowFrom = params.cfg?.commands?.ownerAllowFrom;
+	const ownerIdentity = `${channel}:${senderId}`;
+	if (!Array.isArray(ownerAllowFrom) || !ownerAllowFrom.some((entry) => typeof entry === "string" && entry.trim().toLowerCase() === ownerIdentity.toLowerCase())) return;
+	return ownerIdentity;
+}
 function queueDelegatedApproval(params) {
 	const manager = params.context.systemAgentApprovalManager;
 	if (!manager) throw new Error("OpenClaw approval registry unavailable");
@@ -512,13 +534,19 @@ function queueDelegatedApproval(params) {
 		kind: "local",
 		...approvalAuthority
 	};
+	const ownerDirectMessage = resolveDelegatedOwnerDirectMessage({
+		cfg: params.context.getRuntimeConfig?.() ?? {},
+		delegation: params.delegation,
+		callerIdentity
+	});
 	const pendingApproval = params.session.pendingApproval;
 	if (pendingApproval && pendingApproval.proposalHash === params.proposal.hash) {
 		const closed = manager.forceDenyIfRuntimeAuthorityClosed(pendingApproval.id);
 		const existing = manager.getSnapshot(pendingApproval.id);
 		if (!closed && existing) {
-			if (existing.resolvedAtMs === void 0 && existing.agentRuntimeDelegatedAuthority && sameApprovalAuthority(existing.agentRuntimeDelegatedAuthority, runtimeApprovalAuthority)) return pendingApproval.id;
+			if (!ownerDirectMessage && existing.resolvedAtMs === void 0 && existing.agentRuntimeDelegatedAuthority && sameApprovalAuthority(existing.agentRuntimeDelegatedAuthority, runtimeApprovalAuthority)) return { id: pendingApproval.id };
 		}
+		if (ownerDirectMessage && existing?.resolvedAtMs === void 0) manager.expire(pendingApproval.id, "owner-direct-retry");
 		params.session.pendingApproval = void 0;
 	}
 	const description = describeSystemAgentPersistentOperation(params.proposal.operation);
@@ -577,6 +605,12 @@ function queueDelegatedApproval(params) {
 		});
 		params.context.approvalEvents?.publishResolved("system-agent", resolvedEvent);
 	};
+	let resolveOwnerApplication;
+	let rejectOwnerApplication;
+	const ownerApplication = ownerDirectMessage ? new Promise((resolve, reject) => {
+		resolveOwnerApplication = resolve;
+		rejectOwnerApplication = reject;
+	}) : void 0;
 	handlePendingApprovalRequest({
 		manager,
 		record,
@@ -591,7 +625,10 @@ function queueDelegatedApproval(params) {
 		keepPendingWithoutRoute: true,
 		requireDeliveryRoute: false,
 		afterDecision: async (decision) => {
-			if (!decision) return;
+			if (!decision) {
+				resolveOwnerApplication?.(null);
+				return;
+			}
 			try {
 				const reply = await runWithGatewayIndependentRootWorkContinuation(() => runSystemAgentGatewayTask(async () => {
 					const assertLiveApprovalAuthority = () => {
@@ -603,14 +640,20 @@ function queueDelegatedApproval(params) {
 					return await params.session.engine.resolveOperatorApproval(decision, params.proposal.hash, assertLiveApprovalAuthority);
 				}), "system-agent:task");
 				publishApplicationResult(decision, reply?.applied === true ? "applied" : "not-applied");
+				resolveOwnerApplication?.(reply);
 			} catch (error) {
 				publishApplicationResult(decision, "not-applied");
+				rejectOwnerApplication?.(error);
 				throw error;
 			}
 		},
 		afterDecisionErrorLabel: "OpenClaw approval apply failed"
 	});
-	return record.id;
+	if (ownerDirectMessage && !manager.resolveAutoReview(record.id, `owner-direct:${ownerDirectMessage}`)) throw new Error("delegated owner OpenClaw approval could not be resolved while the run was active");
+	return {
+		id: record.id,
+		...ownerApplication ? { ownerApplication } : {}
+	};
 }
 const systemAgentSessionQueues = /* @__PURE__ */ new WeakMap();
 function getSystemAgentSessionQueue(sessions) {
@@ -1125,15 +1168,24 @@ const systemAgentHandlers = {
 				let proposalId;
 				if (delegation) {
 					const proposal = session.engine.getPendingOperatorProposal();
-					if (proposal) proposalId = queueDelegatedApproval({
-						context,
-						client,
-						sessions,
-						session,
-						sessionId,
-						delegation,
-						proposal
-					});
+					if (proposal) {
+						const queuedApproval = queueDelegatedApproval({
+							context,
+							client,
+							sessions,
+							session,
+							sessionId,
+							delegation,
+							proposal
+						});
+						proposalId = queuedApproval.id;
+						if (queuedApproval.ownerApplication) {
+							const appliedReply = await queuedApproval.ownerApplication;
+							if (!appliedReply?.applied) throw new Error("delegated owner OpenClaw change was approved but not applied");
+							reply = appliedReply;
+							proposalId = void 0;
+						}
+					}
 				}
 				const pendingReply = proposalId ? buildDelegatedApprovalPendingReply({
 					cfg: context.getRuntimeConfig?.() ?? {},

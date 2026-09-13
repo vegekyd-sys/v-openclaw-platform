@@ -1,0 +1,15 @@
+{
+  "baseRelease": "gateway-self-config-authority-v6",
+  "files": [
+    {
+      "source": "lab/release-files/gateway-self-config-authority/openclaw-tools-BODVdJQD.js",
+      "target": "openclaw/dist/openclaw-tools-BODVdJQD.js",
+      "before": "88c05d23c85e257ceb9b7bb863f8205ba9e04f8160cf99f4ed70157fbf4bea89"
+    },
+    {
+      "source": "lab/release-files/gateway-self-config-authority/system-agent-BhnNvC3z.js",
+      "target": "openclaw/dist/system-agent-BhnNvC3z.js",
+      "before": "a50d7a54475e8a4fbd161ab7eb93ebb298bd36a36386ad15faf502a08d9d7723"
+    }
+  ]
+}
