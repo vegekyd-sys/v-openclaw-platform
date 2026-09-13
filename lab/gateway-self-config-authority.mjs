@@ -28,3 +28,42 @@ export const OPENCLAW_TOOL_AFTER = `\t\t\t\t\t...options?.turnSourceThreadId !==
 export function patchOpenClawDelegateTimeout(source) {
   return replaceExactlyOnce(source, OPENCLAW_TOOL_BEFORE, OPENCLAW_TOOL_AFTER, 'OpenClaw delegate timeout');
 }
+
+export const SYSTEM_AGENT_AUTHORITY_BEFORE = `function queueDelegatedApproval(params) {
+	const manager = params.context.systemAgentApprovalManager;
+	if (!manager) throw new Error("OpenClaw approval registry unavailable");
+	const callerIdentity = getGatewayToolCallerIdentity();
+	const approvalAuthority = callerIdentity?.approvalAuthority ?? (callerIdentity?.operationalRunInstance ? getActiveAgentRunDelegatedAuthority(callerIdentity.operationalRunInstance) : void 0);
+	if (!approvalAuthority) throw new Error("delegated OpenClaw approval requires an active run authority");
+	const runtimeApprovalAuthority = callerIdentity?.workerTurnClaim ? {
+		kind: "worker",
+		...approvalAuthority,
+		turnClaim: callerIdentity.workerTurnClaim
+	} : {`;
+export const SYSTEM_AGENT_AUTHORITY_AFTER = `function queueDelegatedApproval(params) {
+	const manager = params.context.systemAgentApprovalManager;
+	if (!manager) throw new Error("OpenClaw approval registry unavailable");
+	const transportIdentity = params.client?.internal?.agentRuntimeIdentity;
+	const callerIdentity = getGatewayToolCallerIdentity() ?? transportIdentity;
+	const runtimeDelegatedAuthority = callerIdentity?.delegatedAuthority;
+	const approvalAuthority = callerIdentity?.approvalAuthority ?? runtimeDelegatedAuthority ?? (callerIdentity?.operationalRunInstance ? getActiveAgentRunDelegatedAuthority(callerIdentity.operationalRunInstance) : void 0);
+	if (!approvalAuthority) throw new Error("delegated OpenClaw approval requires an active run authority");
+	const workerTurnClaim = callerIdentity?.workerTurnClaim ?? (runtimeDelegatedAuthority?.kind === "worker" ? runtimeDelegatedAuthority.turnClaim : void 0);
+	const runtimeApprovalAuthority = workerTurnClaim ? {
+		kind: "worker",
+		...approvalAuthority,
+		turnClaim: workerTurnClaim
+	} : {`;
+
+export const SYSTEM_AGENT_CALL_BEFORE = `					if (proposal) proposalId = queueDelegatedApproval({
+						context,
+						sessions,`;
+export const SYSTEM_AGENT_CALL_AFTER = `					if (proposal) proposalId = queueDelegatedApproval({
+						context,
+						client,
+						sessions,`;
+
+export function patchSystemAgentTransportAuthority(source) {
+  const withAuthority = replaceExactlyOnce(source, SYSTEM_AGENT_AUTHORITY_BEFORE, SYSTEM_AGENT_AUTHORITY_AFTER, 'System Agent transport authority');
+  return replaceExactlyOnce(withAuthority, SYSTEM_AGENT_CALL_BEFORE, SYSTEM_AGENT_CALL_AFTER, 'System Agent transport client');
+}

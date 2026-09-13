@@ -9,9 +9,14 @@ import {
   OPENCLAW_TOOL_BEFORE,
   SESSIONS_HELPERS_AFTER,
   SESSIONS_HELPERS_BEFORE,
+  SYSTEM_AGENT_AUTHORITY_AFTER,
+  SYSTEM_AGENT_AUTHORITY_BEFORE,
+  SYSTEM_AGENT_CALL_AFTER,
+  SYSTEM_AGENT_CALL_BEFORE,
   patchGatewayAgentRuntimeIdentityMethods,
   patchInProcessGatewayFallbackOptions,
   patchOpenClawDelegateTimeout,
+  patchSystemAgentTransportAuthority,
 } from './gateway-self-config-authority.mjs';
 
 for (const [name, patch, before, after] of [
@@ -29,11 +34,29 @@ for (const [name, patch, before, after] of [
   });
 }
 
+test('System Agent transport authority patch is exact, idempotent, and refuses drift', () => {
+  const source = `${SYSTEM_AGENT_AUTHORITY_BEFORE}\nbody\n${SYSTEM_AGENT_CALL_BEFORE}`;
+  const expected = `${SYSTEM_AGENT_AUTHORITY_AFTER}\nbody\n${SYSTEM_AGENT_CALL_AFTER}`;
+  const patched = patchSystemAgentTransportAuthority(source);
+  assert.equal(patched, expected);
+  assert.equal(patchSystemAgentTransportAuthority(patched), patched);
+  assert.throws(() => patchSystemAgentTransportAuthority('unrelated'), /refuse drift/);
+});
+
 test('authority remains bounded to the active caller and only adds openclaw.chat', () => {
   const patched = patchGatewayAgentRuntimeIdentityMethods(GATEWAY_BEFORE);
   assert.equal((patched.match(/"openclaw\.chat"/g) ?? []).length, 1);
   assert.equal(patched.includes('config.set'), false);
   assert.equal(patched.includes('gateway.restart'), false);
+});
+
+test('delegated approval accepts only the verified local backend identity and preserves worker use-time validation', () => {
+  const patched = patchSystemAgentTransportAuthority(`${SYSTEM_AGENT_AUTHORITY_BEFORE}\nbody\n${SYSTEM_AGENT_CALL_BEFORE}`);
+  assert.match(patched, /params\.client\?\.internal\?\.agentRuntimeIdentity/);
+  assert.match(patched, /runtimeDelegatedAuthority\?\.kind === "worker"/);
+  assert.match(patched, /turnClaim: workerTurnClaim/);
+  assert.match(patched, /\n\t\t\t\t\t\tclient,/);
+  assert.doesNotMatch(patched, /auth\?\.agentRuntimeIdentityToken/);
 });
 
 test('delegate timeout is two minutes and reaches the remote fallback transport', () => {
@@ -49,6 +72,7 @@ for (const [name, patch, beforeSha, afterSha] of [
   ['gateway-DVu5Urba.js', patchGatewayAgentRuntimeIdentityMethods, '2beb3a88a1a0609e46b3f331473a73a63b1c8f10454359a5a3ed6c9582a68344', 'd9802bcb326491cfea724c0d8248ef42a805d6ca9ea639ee1e20d2faee33aad7'],
   ['sessions-helpers-Bn_vDNby.js', patchInProcessGatewayFallbackOptions, 'f88076204b3df1773c093e837f436c902a5fee899ebda1760be8b34d6ae5eb60', '4c8dd6f402ee54ce0eee133cfefe25e01340a485d598390ad21d22fc8ed8206c'],
   ['openclaw-tools-BODVdJQD.js', patchOpenClawDelegateTimeout, '62ede7a96acbba962115aee945882cfe132ae199c326c577e23097f4cfda2c94', '8536373e36af8252a880b807a25f63f6050ac3f2867a001d4ded8f0ea3c51dec'],
+  ['system-agent-BhnNvC3z.js', patchSystemAgentTransportAuthority, 'edce966071cb789c23d00f6b80757f4fcf91f7ecc877236da599a8430fa22442', 'a50d7a54475e8a4fbd161ab7eb93ebb298bd36a36386ad15faf502a08d9d7723'],
 ]) {
   test(`${name} release artifact is derived from the exact live baseline`, () => {
     const before = readFileSync(new URL(`./fixtures/gateway-self-config-authority/${name}`, import.meta.url), 'utf8');
