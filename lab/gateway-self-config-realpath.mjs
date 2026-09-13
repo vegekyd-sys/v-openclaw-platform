@@ -225,6 +225,7 @@ export function patchOwnerAutoReviewSameLane(source) {
 
 const SOURCE_ONLY_PATHS_BEFORE = `\t\tconst configChangedPaths = diffGatewayReloadPaths(currentCompareConfig, nextCompareConfig, listConfigReloadRefinementPrefixes());`;
 const SOURCE_ONLY_PATHS_AFTER = `${SOURCE_ONLY_PATHS_BEFORE}
+\t\t// Source-only commits can return to the runtime baseline; still invalidate authored config reads.
 \t\tconst sourceChangedPaths = diffConfigPaths(currentSourceConfig, nextSourceConfig);`;
 const SOURCE_ONLY_NOTIFY_BEFORE = `\t\tconst changedPaths = [...configChangedPaths, ...pluginInstallRecordChangedPaths];
 \t\tconst pluginInstallTimestampNoopPaths = [...configPluginInstallTimestampNoopPaths, ...pluginInstallRecordTimestampNoopPaths];
