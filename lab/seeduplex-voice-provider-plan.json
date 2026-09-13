@@ -1,5 +1,5 @@
 {
-  "baseRelease": "seeduplex-voice-provider-v1",
+  "baseRelease": "seeduplex-voice-provider-v7",
   "files": [
     {
       "source": "lab/release-files/seeduplex-voice-provider/production-worker-index.mjs",
@@ -9,7 +9,7 @@
     {
       "source": "lab/release-files/seeduplex-voice-provider/seeduplex-realtime-provider.mjs",
       "target": "production-worker/seeduplex-realtime-provider.mjs",
-      "before": "3f1ee17d117130a35683da3dff6e2f852c8582ab7b1a932cfc8957504e2c869e"
+      "before": "90939117627fedcf755172a18831327b4176c4ba577a10c2a95365f6fad650d3"
     }
   ]
 }

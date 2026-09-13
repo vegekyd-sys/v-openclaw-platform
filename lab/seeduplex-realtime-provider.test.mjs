@@ -267,6 +267,8 @@ test("Gateway-owned consults return one ordered Seeduplex tool-result batch", as
     onAudio() {},
     onClearAudio() {},
     onToolCall() {},
+    onTranscript: (...args) => prompts.push(args),
+    onResponseDone: (outcome) => prompts.push(outcome),
     onError(error) {
       assert.fail(error.message);
     },
@@ -293,16 +295,48 @@ test("Gateway-owned consults return one ordered Seeduplex tool-result batch", as
       },
     ],
   });
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(prompts.length, 2);
-  const resultEvents = socket.sent.filter((event) => event.type === "conversation.item.create");
-  assert.equal(resultEvents.length, 1);
+  bridge.submitToolResult(
+    "call-1",
+    { status: "working", message: "Agent 正在处理。" },
+    { willContinue: true },
+  );
+  bridge.submitToolResult(
+    "call-2",
+    { status: "working", message: "Agent 正在处理。" },
+    { willContinue: true },
+  );
+  const workingEvents = socket.sent.filter(
+    (event) => event.type === "conversation.item.create",
+  );
+  assert.equal(workingEvents.length, 1);
   assert.deepEqual(
-    resultEvents[0].items.map((item) => [item.call_id, JSON.parse(item.content[0].text)]),
+    workingEvents[0].items.map((item) => [item.call_id, JSON.parse(item.content[0].text)]),
     [
-      ["call-1", { result: "结果一" }],
-      ["call-2", { result: "结果二" }],
+      ["call-1", { status: "working", message: "Agent 正在处理。" }],
+      ["call-2", { status: "working", message: "Agent 正在处理。" }],
     ],
+  );
+  socket.message({ type: "response.output_audio.done", response_id: "working-response" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(prompts.filter((entry) => typeof entry === "string").length, 2);
+  const speechEvents = socket.sent.filter(
+    (event) => event.type === "speech_text_buffer.commit",
+  );
+  assert.equal(speechEvents.length, 1);
+  assert.equal(speechEvents[0].text, "结果一\n结果二");
+  bridge.submitToolResult("call-1", { result: "duplicate ignored" });
+  assert.equal(
+    socket.sent.filter((event) => event.type === "speech_text_buffer.commit").length,
+    1,
+  );
+  socket.message({ type: "response.output_audio.done", response_id: "final-response" });
+  socket.message({
+    type: "response.done",
+    response: { id: "final-response", status: "completed" },
+  });
+  assert.equal(
+    prompts.filter((entry) => entry?.status === "completed").length,
+    1,
   );
   bridge.close();
 });
