@@ -152,6 +152,7 @@
         "tests/patch-feishu-active-run-steering.test.mjs",
         "tests/patch-feishu-latest-snapshot-streaming.test.mjs",
         "tests/patch-openclaw-media-completion-relay.test.mjs",
+        "tests/patch-openclaw91-sessions-send-owner.test.mjs",
         "tests/patch-openclaw-session-hotset.test.mjs",
         "tests/prune-openclaw-session-hotset.test.mjs"
       ]
@@ -583,6 +584,17 @@
       ],
       "disposition": "needs-live-reconciliation",
       "sourceSha256": "38872cceff26ab27a0e3c3147000fe78189a88c6390993f41e1299315952838a"
+    },
+    {
+      "id": "patch-openclaw91-sessions-send-owner",
+      "file": "scripts/patch-openclaw91-sessions-send-owner.mjs",
+      "component": "openclaw-core",
+      "reason": "精确 sessionKey 的内部 sessions_send 保留源 Session agent owner，不回退到飞书默认账户归属",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "needs-live-reconciliation",
+      "sourceSha256": "438258042cde182e2e876daabd67d68676446899e886f6f5ca940696ca0456c7"
     },
     {
       "id": "patch-openclaw91-astra",
