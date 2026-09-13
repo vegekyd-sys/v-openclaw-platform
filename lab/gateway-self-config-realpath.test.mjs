@@ -5,6 +5,7 @@ import test from 'node:test';
 import { patchGatewayAgentRuntimeIdentityMethods, patchOpenClawDelegateTimeout, patchSystemAgentTransportAuthority } from './gateway-self-config-authority.mjs';
 import {
   OWNER_DIRECT_HELPER,
+  patchConfigSourceOnlyResponseCacheInvalidation,
   patchDelegateClosedApprovalMisread,
   patchGatewayToolRequestedTimeout,
   patchOwnerAutoReviewSameLane,
@@ -77,6 +78,23 @@ test('owner auto-review applies in the already-held System Agent lane', () => {
   assert.match(patched, /runSystemAgentGatewayTask\(applyApprovedChange\)/);
   assert.equal(patchOwnerAutoReviewSameLane(patched), patched);
   assert.throws(() => patchOwnerAutoReviewSameLane('unrelated'), /refuse drift/);
+});
+
+test('source-only config commits invalidate config.get on rollback to the runtime baseline', () => {
+  const fixture = readFileSync(new URL('./fixtures/gateway-self-config-realpath/server-reload-handlers-DblQx0j4.js', import.meta.url), 'utf8');
+  const patched = patchConfigSourceOnlyResponseCacheInvalidation(fixture);
+  assert.match(patched, /sourceChangedPaths = diffConfigPaths\(currentSourceConfig, nextSourceConfig\)/);
+  assert.match(patched, /publishedChangedPaths = \[\.\.\.\/\* @__PURE__ \*\/ new Set\(\[\.\.\.changedPaths, \.\.\.sourceChangedPaths\]\)\]/);
+  assert.match(patched, /changedPaths: publishedChangedPaths/);
+  assert.equal(patchConfigSourceOnlyResponseCacheInvalidation(patched), patched);
+  assert.throws(() => patchConfigSourceOnlyResponseCacheInvalidation('unrelated'), /refuse drift/);
+});
+
+test('source-only config reload artifact is exactly derived from the live v5 baseline', () => {
+  const fixture = readFileSync(new URL('./fixtures/gateway-self-config-realpath/server-reload-handlers-DblQx0j4.js', import.meta.url), 'utf8');
+  const release = readFileSync(new URL('./release-files/gateway-self-config-realpath/server-reload-handlers-DblQx0j4.js', import.meta.url), 'utf8');
+  assert.equal(sha256(fixture), '2c97321c2adff17b58181e08fa8a4734030ef2799a9679cf7aeb52e2a3d6491e');
+  assert.equal(release, patchConfigSourceOnlyResponseCacheInvalidation(fixture));
 });
 
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');

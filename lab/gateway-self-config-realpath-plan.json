@@ -1,15 +1,10 @@
 {
-  "baseRelease": "gateway-self-config-realpath-v3",
+  "baseRelease": "gateway-self-config-realpath-v5",
   "files": [
     {
-      "source": "lab/release-files/gateway-self-config-authority/gateway-DVu5Urba.js",
-      "target": "openclaw/dist/gateway-DVu5Urba.js",
-      "before": "fbe3bf4335c1974c2c6120480dbe9cb2ed34756e8e7c1178d4ff6db4fef8ba02"
-    },
-    {
-      "source": "lab/release-files/gateway-self-config-authority/system-agent-BhnNvC3z.js",
-      "target": "openclaw/dist/system-agent-BhnNvC3z.js",
-      "before": "a92bba21afb0b9e85b7b327d9da269002c7930c0849e2509010927fa7f67c77d"
+      "source": "lab/release-files/gateway-self-config-realpath/server-reload-handlers-DblQx0j4.js",
+      "target": "openclaw/dist/server-reload-handlers-DblQx0j4.js",
+      "before": "2c97321c2adff17b58181e08fa8a4734030ef2799a9679cf7aeb52e2a3d6491e"
     }
   ]
 }
