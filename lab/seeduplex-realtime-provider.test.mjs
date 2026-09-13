@@ -6,6 +6,7 @@ import {
   SEEDUPLEX_MODEL,
   SEEDUPLEX_RESOURCE_ID,
   SEEDUPLEX_VOICES,
+  buildSeeduplexAgentConsultPrompt,
   buildSeeduplexRealtimeVoiceProvider,
   buildSeeduplexSession,
   decodeSeeduplexFloat32Pcm,
@@ -94,6 +95,18 @@ test("session request preserves Talk instructions and native tools", () => {
   assert.equal(session.session.audio.output.voice, SEEDUPLEX_VOICES.companion);
   assert.equal(session.session.tools[0].name, "openclaw_agent_consult");
   assert.match(session.session.instructions, /full V agent/);
+});
+
+test("agent consult prompt preserves the concrete voice request and constraints", () => {
+  const prompt = buildSeeduplexAgentConsultPrompt({
+    question: "检查项目状态",
+    context: "当前项目是 VLab",
+    responseStyle: "简短中文",
+  });
+  assert.match(prompt, /检查项目状态/);
+  assert.match(prompt, /当前项目是 VLab/);
+  assert.match(prompt, /简短中文/);
+  assert.throws(() => buildSeeduplexAgentConsultPrompt({}), /requires a question/);
 });
 
 test("24 kHz PCM16 input is statefully converted to 16 kHz", () => {
@@ -226,4 +239,70 @@ test("upstream rejection never relays vendor diagnostics or credentials", async 
   socket.emit("unexpected-response", {}, { statusCode: 403, resume() {} });
   await assert.rejects(connecting, /not enabled/);
   assert.equal(errors.join(" ").includes("do-not-leak"), false);
+});
+
+test("Gateway-owned consults return one ordered Seeduplex tool-result batch", async () => {
+  const socket = new FakeSocket();
+  const prompts = [];
+  const provider = buildSeeduplexRealtimeVoiceProvider({
+    env: { VOLCENGINE_REALTIME_API_KEY: "secret-value" },
+    createWebSocket: async () => socket,
+  });
+  const bridge = provider.createBridge({
+    providerConfig: { voice: "xiaohe" },
+    instructions: "Use the agent.",
+    tools: [
+      {
+        type: "function",
+        name: "openclaw_agent_consult",
+        description: "Delegate",
+        parameters: { type: "object", properties: {} },
+      },
+    ],
+    runAgentConsult: async ({ prompt, signal }) => {
+      assert.equal(signal.aborted, false);
+      prompts.push(prompt);
+      return { text: prompt.includes("第一个") ? "结果一" : "结果二" };
+    },
+    onAudio() {},
+    onClearAudio() {},
+    onToolCall() {},
+    onError(error) {
+      assert.fail(error.message);
+    },
+    onClose() {},
+  });
+
+  const connecting = bridge.connect();
+  await new Promise((resolve) => setImmediate(resolve));
+  socket.open();
+  socket.message({ type: "session.created" });
+  await connecting;
+  socket.message({
+    type: "response.function_call_arguments.done",
+    items: [
+      {
+        call_id: "call-1",
+        name: "openclaw_agent_consult",
+        arguments: JSON.stringify({ question: "第一个问题" }),
+      },
+      {
+        call_id: "call-2",
+        name: "openclaw_agent_consult",
+        arguments: JSON.stringify({ question: "第二个问题" }),
+      },
+    ],
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(prompts.length, 2);
+  const resultEvents = socket.sent.filter((event) => event.type === "conversation.item.create");
+  assert.equal(resultEvents.length, 1);
+  assert.deepEqual(
+    resultEvents[0].items.map((item) => [item.call_id, JSON.parse(item.content[0].text)]),
+    [
+      ["call-1", { result: "结果一" }],
+      ["call-2", { result: "结果二" }],
+    ],
+  );
+  bridge.close();
 });

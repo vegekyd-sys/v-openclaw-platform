@@ -52,7 +52,7 @@ test("release artifacts derive from the exact current VLab runtime", () => {
   const sha256 = (value) => createHash("sha256").update(value).digest("hex");
   assert.equal(
     sha256(fixture),
-    "c89dcad19c8a975315a7fe267935fc0437ee59e470cefe69bd04849c13aa1b8b",
+    "d5416a86ff77bf8a8c00395a0e7feb05a31d1668e9234c8ce001762f8c59f13e",
   );
   assert.equal(releaseIndex, patchProductionWorkerForSeeduplex(fixture));
   assert.equal(
@@ -62,6 +62,6 @@ test("release artifacts derive from the exact current VLab runtime", () => {
   assert.equal(releaseProvider, provider);
   assert.equal(
     sha256(releaseProvider),
-    "3f1ee17d117130a35683da3dff6e2f852c8582ab7b1a932cfc8957504e2c869e",
+    "90939117627fedcf755172a18831327b4176c4ba577a10c2a95365f6fad650d3",
   );
 });

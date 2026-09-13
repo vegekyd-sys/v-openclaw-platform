@@ -30,6 +30,7 @@ function ocFirsttextWorkerMark(stage, runId, fields = {}) {
   } catch { /* Observation must not alter runtime control flow. */ }
 }
 
+import { buildSeeduplexRealtimeVoiceProvider } from "./seeduplex-realtime-provider.mjs";
 import { WorkerPool } from "./worker-pool.mjs";
 import { acquireWorkerRuntime, createWorkerRuntimeLifecycle, resolveWorkerRuntime } from "./worker-runtime-lifecycle.mjs";
 import { performance } from "node:perf_hooks";
@@ -264,6 +265,7 @@ const plugin = {
   description:
     "Runs native OpenClaw Agent Harness dispatch in elastic child-process workers.",
   register(api) {
+    api.registerRealtimeVoiceProvider(buildSeeduplexRealtimeVoiceProvider());
     const minWorkers = Number(api.pluginConfig?.minWorkers ?? 1);
     const maxWorkers = Number(api.pluginConfig?.maxWorkers ?? 3);
     const sessionsPerWorker = Number(
