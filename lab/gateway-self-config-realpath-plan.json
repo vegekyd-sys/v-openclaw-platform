@@ -1,10 +1,10 @@
 {
-  "baseRelease": "gateway-self-config-realpath-v5",
+  "baseRelease": "gateway-self-config-realpath-v6",
   "files": [
     {
       "source": "lab/release-files/gateway-self-config-realpath/server-reload-handlers-DblQx0j4.js",
       "target": "openclaw/dist/server-reload-handlers-DblQx0j4.js",
-      "before": "2c97321c2adff17b58181e08fa8a4734030ef2799a9679cf7aeb52e2a3d6491e"
+      "before": "6619bd63190e025f205e0bda6a9b6ac45498280c77db300fde077a10194b0e52"
     }
   ]
 }

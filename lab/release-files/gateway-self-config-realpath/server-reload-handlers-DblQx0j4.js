@@ -1402,6 +1402,7 @@ function startGatewayConfigReloader(opts) {
 			}
 		};
 		const configChangedPaths = diffGatewayReloadPaths(currentCompareConfig, nextCompareConfig, listConfigReloadRefinementPrefixes());
+		// Source-only commits can return to the runtime baseline; still invalidate authored config reads.
 		const sourceChangedPaths = diffConfigPaths(currentSourceConfig, nextSourceConfig);
 		const configPluginInstallTimestampNoopPaths = listPluginInstallTimestampMetadataPaths(currentCompareConfig, nextCompareConfig);
 		const configPluginInstallWholeRecordPaths = listPluginInstallWholeRecordPaths(currentCompareConfig, nextCompareConfig);
