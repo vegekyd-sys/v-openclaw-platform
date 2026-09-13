@@ -9703,11 +9703,12 @@ function createOpenClawDelegateTool(options) {
 		description: "Ask system expert. Gateway restart, config, channels, plugins, agents, models/providers, updates. Changes need human approval.",
 		parameters: OpenClawDelegateSchema,
 		outputSchema: OpenClawDelegateOutputSchema,
-		execute: async (_toolCallId, args) => {
+		execute: async (_toolCallId, args, signal) => {
 			const params = args ?? {};
 			const message = readToolStringParam(params, "message", { required: true });
 			const sessionId = readToolStringParam(params, "sessionId") ?? defaultSessionId;
-			const result = await (options?.callGateway ?? callInProcessGatewayTool)("openclaw.chat", {
+			const callGateway = options?.callGateway ?? callInProcessGatewayTool;
+			const result = await callGateway("openclaw.chat", {
 				sessionId,
 				message,
 				delegation: {
@@ -9718,12 +9719,37 @@ function createOpenClawDelegateTool(options) {
 					...options?.turnSourceAccountId ? { turnSourceAccountId: options.turnSourceAccountId } : {},
 					...options?.turnSourceThreadId !== void 0 ? { turnSourceThreadId: options.turnSourceThreadId } : {}
 				}
-			}, { timeoutMs: 12e4 });
+			}, {
+				signal,
+				timeoutMs: 12e4
+			});
+			if (result.needsApproval && result.proposalId) {
+				let approval;
+				const waitUntil = Date.now() + 6e5;
+				do {
+					signal?.throwIfAborted?.();
+					await new Promise((resolve) => setTimeout(resolve, 500));
+					const snapshot = await callGateway("approval.get", { id: result.proposalId }, {
+						signal,
+						timeoutMs: 15e3
+					});
+					approval = snapshot.approval;
+				} while (approval?.status === "pending" && Date.now() < waitUntil);
+				if (approval?.status === "allowed") {
+					await new Promise((resolve) => setTimeout(resolve, 1e3));
+					return jsonResult({
+						reply: "The operator approved the OpenClaw change. Read the affected Gateway setting now and report success only if its value actually changed.",
+						action: result.action
+					});
+				}
+				return jsonResult({
+					reply: `The OpenClaw change was not applied (approval status: ${approval?.status ?? "unavailable"}).`,
+					action: result.action
+				});
+			}
 			return jsonResult({
 				reply: result.reply,
-				...result.action && result.action !== "none" ? { action: result.action } : {},
-				...result.needsApproval ? { needsApproval: true } : {},
-				...result.proposalId ? { proposalId: result.proposalId } : {}
+				...result.action && result.action !== "none" ? { action: result.action } : {}
 			});
 		}
 	};
