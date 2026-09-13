@@ -9725,20 +9725,26 @@ function createOpenClawDelegateTool(options) {
 			});
 			if (result.needsApproval && result.proposalId) {
 				let approval;
+				let approvalRecordClosed = false;
 				const waitUntil = Date.now() + 6e5;
 				do {
 					signal?.throwIfAborted?.();
 					await new Promise((resolve) => setTimeout(resolve, 500));
-					const snapshot = await callGateway("approval.get", { id: result.proposalId }, {
-						signal,
-						timeoutMs: 15e3
-					});
-					approval = snapshot.approval;
-				} while (approval?.status === "pending" && Date.now() < waitUntil);
-				if (approval?.status === "allowed") {
+					try {
+						const snapshot = await callGateway("approval.get", { id: result.proposalId }, {
+							signal,
+							timeoutMs: 15e3
+						});
+						approval = snapshot.approval;
+					} catch (error) {
+						if (!String(error?.message ?? error).includes("approval not found")) throw error;
+						approvalRecordClosed = true;
+					}
+				} while (!approvalRecordClosed && approval?.status === "pending" && Date.now() < waitUntil);
+				if (approval?.status === "allowed" || approvalRecordClosed) {
 					await new Promise((resolve) => setTimeout(resolve, 1e3));
 					return jsonResult({
-						reply: "The operator approved the OpenClaw change. Read the affected Gateway setting now and report success only if its value actually changed.",
+						reply: approval?.status === "allowed" ? "The operator approved the OpenClaw change. Read the affected Gateway setting now and report success only if its value actually changed." : "The approval record closed after operator action. Read the affected Gateway setting now and report success only if its value actually changed; otherwise report that the change was not applied.",
 						action: result.action
 					});
 				}

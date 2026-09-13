@@ -67,20 +67,26 @@ export const OPENCLAW_TOOL_AFTER = `\t\texecute: async (_toolCallId, args, signa
 \t\t\t});
 \t\t\tif (result.needsApproval && result.proposalId) {
 \t\t\t\tlet approval;
+\t\t\t\tlet approvalRecordClosed = false;
 \t\t\t\tconst waitUntil = Date.now() + 6e5;
 \t\t\t\tdo {
 \t\t\t\t\tsignal?.throwIfAborted?.();
 \t\t\t\t\tawait new Promise((resolve) => setTimeout(resolve, 500));
-\t\t\t\t\tconst snapshot = await callGateway("approval.get", { id: result.proposalId }, {
-\t\t\t\t\t\tsignal,
-\t\t\t\t\t\ttimeoutMs: 15e3
-\t\t\t\t\t});
-\t\t\t\t\tapproval = snapshot.approval;
-\t\t\t\t} while (approval?.status === "pending" && Date.now() < waitUntil);
-\t\t\t\tif (approval?.status === "allowed") {
+\t\t\t\t\ttry {
+\t\t\t\t\t\tconst snapshot = await callGateway("approval.get", { id: result.proposalId }, {
+\t\t\t\t\t\t\tsignal,
+\t\t\t\t\t\t\ttimeoutMs: 15e3
+\t\t\t\t\t\t});
+\t\t\t\t\t\tapproval = snapshot.approval;
+\t\t\t\t\t} catch (error) {
+\t\t\t\t\t\tif (!String(error?.message ?? error).includes("approval not found")) throw error;
+\t\t\t\t\t\tapprovalRecordClosed = true;
+\t\t\t\t\t}
+\t\t\t\t} while (!approvalRecordClosed && approval?.status === "pending" && Date.now() < waitUntil);
+\t\t\t\tif (approval?.status === "allowed" || approvalRecordClosed) {
 \t\t\t\t\tawait new Promise((resolve) => setTimeout(resolve, 1e3));
 \t\t\t\t\treturn jsonResult({
-\t\t\t\t\t\treply: "The operator approved the OpenClaw change. Read the affected Gateway setting now and report success only if its value actually changed.",
+\t\t\t\t\t\treply: approval?.status === "allowed" ? "The operator approved the OpenClaw change. Read the affected Gateway setting now and report success only if its value actually changed." : "The approval record closed after operator action. Read the affected Gateway setting now and report success only if its value actually changed; otherwise report that the change was not applied.",
 \t\t\t\t\t\taction: result.action
 \t\t\t\t\t});
 \t\t\t\t}

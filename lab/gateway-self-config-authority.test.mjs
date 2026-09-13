@@ -43,7 +43,7 @@ test('System Agent transport authority patch is exact, idempotent, and refuses d
   assert.throws(() => patchSystemAgentTransportAuthority('unrelated'), /refuse drift/);
 });
 
-test('authority remains bounded to the active caller and only adds openclaw.chat', () => {
+test('authority remains bounded to the active caller and only adds the delegated methods', () => {
   const patched = patchGatewayAgentRuntimeIdentityMethods(GATEWAY_BEFORE);
   assert.equal((patched.match(/"openclaw\.chat"/g) ?? []).length, 1);
   assert.equal((patched.match(/"approval\.get"/g) ?? []).length, 1);
@@ -65,6 +65,8 @@ test('delegate timeout is two minutes and reaches the remote fallback transport'
   const fallback = patchInProcessGatewayFallbackOptions(SESSIONS_HELPERS_BEFORE);
   assert.match(delegate, /timeoutMs: 12e4/);
   assert.match(delegate, /callGateway\("approval\.get", \{ id: result\.proposalId \}/);
+  assert.match(delegate, /approvalRecordClosed/);
+  assert.match(delegate, /approval not found/);
   assert.match(delegate, /approval\?\.status === "pending"/);
   assert.match(delegate, /signal\?\.throwIfAborted/);
   assert.match(delegate, /Read the affected Gateway setting now/);
@@ -76,7 +78,7 @@ const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 for (const [name, patch, beforeSha, afterSha] of [
   ['gateway-DVu5Urba.js', patchGatewayAgentRuntimeIdentityMethods, '2beb3a88a1a0609e46b3f331473a73a63b1c8f10454359a5a3ed6c9582a68344', 'fbe3bf4335c1974c2c6120480dbe9cb2ed34756e8e7c1178d4ff6db4fef8ba02'],
   ['sessions-helpers-Bn_vDNby.js', patchInProcessGatewayFallbackOptions, 'f88076204b3df1773c093e837f436c902a5fee899ebda1760be8b34d6ae5eb60', '4c8dd6f402ee54ce0eee133cfefe25e01340a485d598390ad21d22fc8ed8206c'],
-  ['openclaw-tools-BODVdJQD.js', patchOpenClawDelegateTimeout, '62ede7a96acbba962115aee945882cfe132ae199c326c577e23097f4cfda2c94', '063f4f98b2f74a1f89cd3190af4d54500fcb788ef595e33fde2948469d0765a4'],
+  ['openclaw-tools-BODVdJQD.js', patchOpenClawDelegateTimeout, '62ede7a96acbba962115aee945882cfe132ae199c326c577e23097f4cfda2c94', '026d01b586714b1d696c63817f9b90a5e98887c6872b3778bd56b520c1e9d4ed'],
   ['system-agent-BhnNvC3z.js', patchSystemAgentTransportAuthority, 'edce966071cb789c23d00f6b80757f4fcf91f7ecc877236da599a8430fa22442', 'a50d7a54475e8a4fbd161ab7eb93ebb298bd36a36386ad15faf502a08d9d7723'],
 ]) {
   test(`${name} release artifact is derived from the exact live baseline`, () => {
