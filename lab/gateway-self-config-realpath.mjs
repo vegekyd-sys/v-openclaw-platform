@@ -16,15 +16,11 @@ export const OWNER_DIRECT_HELPER = `function resolveDelegatedOwnerDirectMessage(
 \tconst sessionKey = typeof delegation.sessionKey === "string" ? delegation.sessionKey.trim() : "";
 \tconst channel = typeof delegation.turnSourceChannel === "string" ? delegation.turnSourceChannel.trim().toLowerCase() : "";
 \tif (!agentId || !sessionKey || !channel) return;
-\tif (agentId !== callerIdentity.agentId || sessionKey !== callerIdentity.sessionKey) return;
+\tif (agentId !== callerIdentity.agentId) return;
 \tconst directPrefix = \`agent:\${agentId}:\${channel}:direct:\`;
 \tif (!sessionKey.startsWith(directPrefix)) return;
 \tconst senderId = sessionKey.slice(directPrefix.length).trim();
 \tif (!senderId || senderId.includes(":")) return;
-\tconst threadId = delegation.turnSourceThreadId;
-\tif (threadId !== void 0 && threadId !== null && String(threadId).trim()) return;
-\tconst target = typeof delegation.turnSourceTo === "string" ? delegation.turnSourceTo.trim() : "";
-\tif (target && target !== senderId && target !== \`user:\${senderId}\`) return;
 \tconst ownerAllowFrom = params.cfg?.commands?.ownerAllowFrom;
 \tconst ownerIdentity = \`\${channel}:\${senderId}\`;
 \tif (!Array.isArray(ownerAllowFrom) || !ownerAllowFrom.some((entry) => typeof entry === "string" && entry.trim().toLowerCase() === ownerIdentity.toLowerCase())) return;
