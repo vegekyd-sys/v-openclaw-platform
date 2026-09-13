@@ -84,7 +84,7 @@ export const OPENCLAW_TOOL_AFTER = `\t\texecute: async (_toolCallId, args, signa
 \t\t\t\t\t}
 \t\t\t\t} while (!approvalRecordClosed && approval?.status === "pending" && Date.now() < waitUntil);
 \t\t\t\tif (approval?.status === "allowed" || approvalRecordClosed) {
-\t\t\t\t\tawait new Promise((resolve) => setTimeout(resolve, 1e3));
+\t\t\t\t\tawait new Promise((resolve) => setTimeout(resolve, 8e3));
 \t\t\t\t\treturn jsonResult({
 \t\t\t\t\t\treply: approval?.status === "allowed" ? "The operator approved the OpenClaw change. Read the affected Gateway setting now and report success only if its value actually changed." : "The approval record closed after operator action. Read the affected Gateway setting now and report success only if its value actually changed; otherwise report that the change was not applied.",
 \t\t\t\t\t\taction: result.action

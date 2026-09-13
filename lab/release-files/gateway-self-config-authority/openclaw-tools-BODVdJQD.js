@@ -9742,7 +9742,7 @@ function createOpenClawDelegateTool(options) {
 					}
 				} while (!approvalRecordClosed && approval?.status === "pending" && Date.now() < waitUntil);
 				if (approval?.status === "allowed" || approvalRecordClosed) {
-					await new Promise((resolve) => setTimeout(resolve, 1e3));
+					await new Promise((resolve) => setTimeout(resolve, 8e3));
 					return jsonResult({
 						reply: approval?.status === "allowed" ? "The operator approved the OpenClaw change. Read the affected Gateway setting now and report success only if its value actually changed." : "The approval record closed after operator action. Read the affected Gateway setting now and report success only if its value actually changed; otherwise report that the change was not applied.",
 						action: result.action
