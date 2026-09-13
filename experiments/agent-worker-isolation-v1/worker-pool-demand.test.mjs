@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {EventEmitter} from 'node:events';
 import test from 'node:test';
 import {fileURLToPath} from 'node:url';
 import {WorkerPool} from './worker-pool.mjs';
@@ -83,4 +84,32 @@ test('failed demand boot does not abort work already admitted to a healthy worke
     const next=await p.dispatch('agent:after-failure',{kind:'ping'});
     assert.ok(next.workerPid);
   } finally {await p.close();}
+});
+
+test('transient EAGAIN demand spawn keeps Gateway alive and drains on healthy capacity',async()=>{
+    const p=new WorkerPool({minWorkers:1,maxWorkers:2,maxConcurrentStarts:1,
+      sessionsPerWorker:1,warmSpareWorkers:0,startupTimeoutMs:3000,
+      requestTimeoutMs:5000,workerPath,
+      workerEnv:{...process.env,VLAB_FAKE_WORKER_READY_DELAY_MS:'250'},
+      spawnRetryBaseMs:1000,spawnRetryMaxMs:1000});
+    try {
+      await p.start();
+      const active=await p.submit('agent:eagain:active',{kind:'hold',durationMs:100});
+      p.forkWorker=()=>{
+        const child=new EventEmitter();
+        child.pid=undefined; child.exitCode=null; child.signalCode=null;
+        child.stderr=new EventEmitter(); child.kill=()=>true; child.send=()=>{};
+        process.nextTick(()=>{
+          const error=Object.assign(new Error('spawn node EAGAIN'),{code:'EAGAIN'});
+          child.emit('error',error);
+        });
+        return child;
+      };
+      const pending=await p.submit('agent:eagain:pending',{kind:'hold',durationMs:1});
+      const [first,second]=await Promise.all([active.promise,pending.promise]);
+      assert.equal(second.workerPid,first.workerPid);
+      assert.equal(p.workers.size,1);
+      assert.equal(p.status().spawnFailureCount,1);
+      assert.equal(p.status().spawnRetryPending,true);
+    } finally {await p.close();}
 });

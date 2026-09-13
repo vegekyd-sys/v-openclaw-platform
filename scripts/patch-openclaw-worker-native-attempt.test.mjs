@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { patchAttempt, patchMessage, patchGatewayIdentity, patchHostIdentity, patchDeferredSubagentContext, marker } from './patch-openclaw-worker-native-attempt.mjs';
+import { patchAttempt, patchMessage, patchGatewayIdentity, patchHostIdentity, patchDeferredSubagentContext, patchScopedSubagentContext, patchStartupMigrationLease, patchStalledEmbeddedRunAbort, patchRunStaleTakeover, marker } from './patch-openclaw-worker-native-attempt.mjs';
 test('attempt bridge adds native authorization and is idempotent',()=>{
   const input='async function runEmbeddedAttempt(input) {\n\tlet params = input;\n}\n\tsetActiveEmbeddedRun(attempt.sessionId, queueHandle, attempt.sessionKey, attempt.sessionFile, input.hookAgentId);';
   const out=patchAttempt(input,'permission-change-fixture.js');
@@ -18,6 +18,8 @@ test('identity relay preserves local target checks and delegates minting to nati
  assert.ok(patched.includes('await withCaller(() => vlabResolveNativeGatewayIdentity'));
  assert.ok(patched.includes('assertActive();'));
  assert.equal(patchHostIdentity(patched),patched);
+ const mjs=patchHostIdentity(host.replace('./gateway-fixture.js','./gateway-fixture.mjs'));
+ assert.ok(mjs.includes('from "./gateway-fixture.mjs"'));
 });
 test('message execution is Gateway-owned only when Worker explicitly handles it',()=>{
   const input='\t\t\tif (signal?.aborted) throw createAbortError("Message send aborted");';
@@ -43,3 +45,40 @@ test('9.2 loader import aliases preserve native owner checks',()=>{
  assert.throws(()=>patchDeferredSubagentContext(source.replace('r as getGatewayContextResolver','a as getGatewayContextResolver')), /import changed/);
 });
 
+test('9.4 mjs loader uses its semantic Gateway scope aliases',()=>{
+ const bindings={bindGatewayContextResolver:'t',getGatewayContextResolver:'i'};
+ const source='import { f as withPluginRuntimePluginIdScope, i as getGatewayContextResolver, m as withPluginRuntimeRegistryScope } from "./gateway-request-scope-openclaw94.mjs";\nfunction createDeferredGatewaySubagentRuntime(runtime) {\n\treturn {\n\t\trun: (...args) => runtime.subagent.run(...args)\n\t};\n}\nfunction createDeferredGatewayNodesRuntime(runtime) {\n\treturn {};\n}\nfunction scoped() {\n\t\t\tconst subagent = getRuntimeProperty();\n\t\t\treturn {\n\t\t\t\trun: (params) => subagent.run(params)\n\t\t\t};\n\t\t} });\n\t\tpluginRuntimeById.set(pluginId, runtime);\n}';
+ const deferred=patchDeferredSubagentContext(source,bindings);
+ const out=patchScopedSubagentContext(deferred,bindings);
+ assert.ok(out.includes('i as getGatewayContextResolver'));
+ assert.ok(out.includes('t as bindGatewayContextResolver'));
+ assert.ok(out.includes('bindGatewayContextResolver(deferred'));
+ assert.ok(out.includes('bindGatewayContextResolver(scopedSubagent'));
+ assert.equal(patchDeferredSubagentContext(out,bindings),out);
+ assert.equal(patchScopedSubagentContext(out,bindings),out);
+});
+
+test('9.4 startup migration lease covers cold large-state validation',()=>{
+ const source='const STARTUP_MIGRATION_LEASE_TTL_MS = 3e5;';
+ const out=patchStartupMigrationLease(source);
+ assert.ok(out.includes('STARTUP_MIGRATION_LEASE_TTL_MS = 18e5'));
+ assert.ok(out.includes('vlab91-large-state-startup-lease-v1'));
+ assert.equal(patchStartupMigrationLease(out),out);
+ assert.throws(()=>patchStartupMigrationLease('const STARTUP_MIGRATION_LEASE_TTL_MS = 4e5;'),/mismatch/);
+});
+
+test('9.4 recovery retains a cold large-state Worker run for thirty minutes',()=>{
+ const diagnostic='const MIN_STALLED_EMBEDDED_RUN_ABORT_MS = 3e5;';
+ const patchedDiagnostic=patchStalledEmbeddedRunAbort(diagnostic);
+ assert.ok(patchedDiagnostic.includes('MIN_STALLED_EMBEDDED_RUN_ABORT_MS = 18e5'));
+ assert.ok(patchedDiagnostic.includes('vlab91-large-state-worker-recovery-v1'));
+ assert.equal(patchStalledEmbeddedRunAbort(patchedDiagnostic),patchedDiagnostic);
+ assert.throws(()=>patchStalledEmbeddedRunAbort('const MIN_STALLED_EMBEDDED_RUN_ABORT_MS = 4e5;'),/mismatch/);
+
+ const activity='const RUN_STALE_TAKEOVER_MS = 6e5;';
+ const patchedActivity=patchRunStaleTakeover(activity);
+ assert.ok(patchedActivity.includes('RUN_STALE_TAKEOVER_MS = 18e5'));
+ assert.ok(patchedActivity.includes('vlab91-large-state-worker-recovery-v1'));
+ assert.equal(patchRunStaleTakeover(patchedActivity),patchedActivity);
+ assert.throws(()=>patchRunStaleTakeover('const RUN_STALE_TAKEOVER_MS = 7e5;'),/mismatch/);
+});

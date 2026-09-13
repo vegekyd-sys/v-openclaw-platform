@@ -36,12 +36,12 @@ export async function loadNativeRuntimeContract(contract, importer = path => imp
 }
 
 export function resolveGatewayCallerContract(options = {}) {
-  return resolveNativeRuntimeContract({...options, filePattern: /^gateway-caller-context-[\w-]+\.js$/,
+  return resolveNativeRuntimeContract({...options, filePattern: /^gateway-caller-context-[\w-]+\.m?js$/,
     exportNames: ['withoutGatewayToolCallerIdentity']});
 }
 
 export function resolveGatewayScopeContract(options = {}) {
-  return resolveNativeRuntimeContract({...options, filePattern: /^gateway-request-scope-[\w-]+\.js$/,
+  return resolveNativeRuntimeContract({...options, filePattern: /^gateway-request-scope-[\w-]+\.m?js$/,
     exportNames: ['getGatewayContextResolver', 'withPluginRuntimeGatewayContextResolver']});
 }
 
@@ -107,7 +107,7 @@ export function resolveOpenClawSubagentAnnounceRuntimePath(options = {}) {
     .filter(
       (name) =>
         name === "subagent-announce.js" ||
-        /^subagent-announce-[A-Za-z0-9_-]+\.js$/.test(name),
+        /^subagent-announce-[A-Za-z0-9_-]+\.m?js$/.test(name),
     )
     .sort();
   const publicRuntimeCandidates = candidates.filter((name) => {
@@ -130,7 +130,7 @@ export function resolveOpenClawSubagentAnnounceOriginRuntimePath(options = {}) {
   const readFile = options.readFile ?? ((candidate) => readFileSync(candidate, "utf8"));
   const legacyCandidates = readDirectory(distDir)
     .filter((name) =>
-      /^subagent-announce-origin-[A-Za-z0-9_-]+\.js$/.test(name),
+      /^subagent-announce-origin-[A-Za-z0-9_-]+\.m?js$/.test(name),
     )
     .sort();
   if (legacyCandidates.length === 1) {
@@ -142,7 +142,7 @@ export function resolveOpenClawSubagentAnnounceOriginRuntimePath(options = {}) {
     );
   }
   const deliveryCandidates = readDirectory(distDir)
-    .filter((name) => /^subagent-announce-delivery-[A-Za-z0-9_-]+\.js$/.test(name))
+    .filter((name) => /^subagent-announce-delivery-[A-Za-z0-9_-]+\.m?js$/.test(name))
     .filter((name) => {
       const source = readFile(join(distDir, name));
       return /export\s*\{[^}]*\bdeliverSubagentAnnouncement\s+as\s+[A-Za-z_$][\w$]*[^}]*\}/s.test(
@@ -188,7 +188,7 @@ function resolveNamedOpenClawRuntimePath(options) {
 export function resolveOpenClawAgentCommandRuntimePath(options = {}) {
   return resolveNamedOpenClawRuntimePath({
     ...options,
-    filePattern: /^agent-command-[A-Za-z0-9_-]+\.js$/,
+    filePattern: /^agent-command-[A-Za-z0-9_-]+\.m?js$/,
     exportNames: ["agentCommandFromGatewayIngress"],
     label: "OpenClaw Gateway Agent command runtime",
   });
@@ -197,7 +197,7 @@ export function resolveOpenClawAgentCommandRuntimePath(options = {}) {
 export function resolveOpenClawPreparedModelRuntimePath(options = {}) {
   return resolveNamedOpenClawRuntimePath({
     ...options,
-    filePattern: /^prepared-model-runtime-[A-Za-z0-9_-]+\.js$/,
+    filePattern: /^prepared-model-runtime-[A-Za-z0-9_-]+\.m?js$/,
     exportNames: ["acquireAgentRunPreparedModelRuntime"],
     label: "OpenClaw prepared model runtime",
   });

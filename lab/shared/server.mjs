@@ -12,16 +12,29 @@ const HOME=LAB+'/shared-workflow';
 const UNIT='openclaw-vlab-production-mirror-v8.service';
 const NODE='/opt/vlab/node-v22.23.1-linux-x64/bin/node';
 const RUNTIME=LAB+'/instances/db91-parity/runtime';
+const INSTANCE=LAB+'/instances/db91-parity';
 const run=(bin,args)=>execFileSync(bin,args,{encoding:'utf8',timeout:60000,maxBuffer:8*1024**2}).trim();
 const pid=()=>Number(run('systemctl',['show',UNIT,'-p','MainPID','--value']));
+function activeCore(p) {
+  const argv=fs.readFileSync(`/proc/${p}/cmdline`,'utf8').split('\0').filter(Boolean);
+  const entry=argv.find(value=>value.endsWith('/openclaw/dist/index.js'));
+  assert(entry,'Shared Gateway OpenClaw entrypoint is unavailable');
+  const stable=RUNTIME+'/openclaw/dist/index.js';
+  const candidate=new RegExp(`^${INSTANCE.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}/upgrade/[A-Za-z0-9._-]+/runtime/[A-Za-z0-9._-]+/node_modules/openclaw/dist/index\\.js$`);
+  assert(entry===stable||candidate.test(entry),'Shared Gateway uses an unapproved OpenClaw runtime path');
+  const gatewayIndex=argv.indexOf('gateway');
+  const portIndex=argv.indexOf('--port');
+  assert(gatewayIndex>0&&portIndex>gatewayIndex&&argv[portIndex+1]==='24993','Shared Gateway process arguments do not match the integration instance');
+  return entry.slice(0,-'/dist/index.js'.length);
+}
 function live() {
   const p=pid();assert(p>1,'Shared Gateway is not running');
   const env=Object.fromEntries(fs.readFileSync(`/proc/${p}/environ`,'utf8').split('\0').filter(Boolean).map(s=>{const i=s.indexOf('=');return [s.slice(0,i),s.slice(i+1)];}));
   assert(env.OPENCLAW_STATE_DIR?.startsWith(LAB+'/instances/db91-parity/state'));
   assert(env.OPENCLAW_CONFIG_PATH?.startsWith(env.OPENCLAW_STATE_DIR+'/'));
   const cfg=read(env.OPENCLAW_CONFIG_PATH);assert.equal(cfg.gateway.port,24993);assert.equal(cfg.gateway.reload?.mode,'off');
-  assert(fs.readFileSync(`/proc/${p}/cmdline`,'utf8').includes(RUNTIME+'/openclaw/dist/index.js'));
-  return {pid:p,env,cfg,configSha:hashFile(env.OPENCLAW_CONFIG_PATH)};
+  const core=activeCore(p);
+  return {pid:p,env,cfg,core,configSha:hashFile(env.OPENCLAW_CONFIG_PATH)};
 }
 function lease(owner) {
   assert(owner && read(LAB+'/control/integration.json').owner===owner,'Integration lease belongs to another task');
@@ -36,7 +49,7 @@ async function lock(fn) {
 async function connect() {
   const l=live();Object.assign(process.env,l.env);
   const token=l.cfg.gateway.auth.token.replace(/\$\{([^}]+)\}/g,(_,k)=>{assert(l.env[k]);return l.env[k];});
-  const {GatewayClient}=await import(RUNTIME+'/openclaw/dist/plugin-sdk/gateway-runtime.js');let c;
+  const {GatewayClient}=await import(l.core+'/dist/plugin-sdk/gateway-runtime.js');let c;
   try {
     await new Promise((resolve,reject)=>{
       const timer=setTimeout(()=>reject(Error('Gateway connect deadline')),20000);
@@ -48,7 +61,7 @@ async function connect() {
 }
 async function rpc(method,params) {const x=await connect();try{return await x.call(method,params);}finally{x.c.stop();}}
 function publicStatus() {
-  const l=live();return {service:UNIT,pid:l.pid,port:24993,configSha:l.configSha,state:l.env.OPENCLAW_STATE_DIR,
+  const l=live();return {service:UNIT,pid:l.pid,port:24993,core:l.core,configSha:l.configSha,state:l.env.OPENCLAW_STATE_DIR,
     agents:Object.keys(l.cfg.agents.entries??{}),plugins:l.cfg.plugins?.load?.paths??[],reload:l.cfg.gateway.reload.mode,
     current:fs.existsSync(HOME+'/current.json')?current():null,
     devSource:fs.existsSync(HOME+'/source/.git')?{path:HOME+'/source',commit:run('git',['-C',HOME+'/source','rev-parse','HEAD'])}:null,

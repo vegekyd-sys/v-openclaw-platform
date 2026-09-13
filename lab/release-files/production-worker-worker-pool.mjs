@@ -116,6 +116,9 @@ export class WorkerPool {
     this.retireGraceMs = options.retireGraceMs ?? 2_000;
     this.workerPath = options.workerPath ?? DEFAULT_WORKER_PATH;
     this.workerEnv = options.workerEnv ?? process.env;
+    this.forkWorker = options.forkWorker ?? fork;
+    this.spawnRetryBaseMs = options.spawnRetryBaseMs ?? 1_000;
+    this.spawnRetryMaxMs = options.spawnRetryMaxMs ?? 10_000;
     this.onProgress =
       typeof options.onProgress === "function" ? options.onProgress : undefined;
     this.onWorkerEvent =
@@ -148,6 +151,8 @@ export class WorkerPool {
     this.closing = false;
     this.pumping = false;
     this.reapTimer = null;
+    this.spawnRetryTimer = null;
+    this.spawnFailureCount = 0;
 
     if (!Number.isInteger(this.minWorkers) || this.minWorkers < 1) {
       throw new Error("minWorkers must be an integer >= 1");
@@ -175,6 +180,11 @@ export class WorkerPool {
     }
     if (!Number.isFinite(this.retireGraceMs) || this.retireGraceMs < 10) {
       throw new Error("retireGraceMs must be >= 10");
+    }
+    if (!Number.isFinite(this.spawnRetryBaseMs) || this.spawnRetryBaseMs < 10 ||
+        !Number.isFinite(this.spawnRetryMaxMs) ||
+        this.spawnRetryMaxMs < this.spawnRetryBaseMs) {
+      throw new Error("invalid Worker spawn retry bounds");
     }
     if (
       !Number.isFinite(this.startupTimeoutMs) ||
@@ -247,7 +257,7 @@ export class WorkerPool {
       return existing.startupPromise;
     }
 
-    const child = fork(this.workerPath, [], {
+    const child = this.forkWorker(this.workerPath, [], {
       env: this.workerEnv,
       // A Gateway inspector port belongs to the Gateway process. Inheriting
       // it into every Worker creates a collision per scale-out attempt.
@@ -268,6 +278,7 @@ export class WorkerPool {
       lastIdleAt: Date.now(),
       startupPromise: null,
       retireTimer: null,
+      terminalHandled: false,
       sessionHotset: undefined,
       gatewayOwnedToolProxy: undefined,
       skillUsageTelemetry: undefined,
@@ -278,9 +289,6 @@ export class WorkerPool {
     child.stderr?.on("data", (chunk) => {
       process.stderr.write(`[vlab-worker:${slot}] ${chunk}`);
     });
-    child.on("message", (message) => this.onMessage(handle, message));
-    child.on("exit", (code, signal) => this.onExit(handle, code, signal));
-
     handle.startupPromise = new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         reject(new Error(`worker ${slot} startup timed out`));
@@ -292,6 +300,7 @@ export class WorkerPool {
         clearTimeout(timer);
         handle.ready = true;
         handle.lastIdleAt = Date.now();
+        this.resetSpawnRetry();
         resolve(handle);
       };
       handle.rejectStartup = (error) => {
@@ -299,6 +308,10 @@ export class WorkerPool {
         reject(error);
       };
     });
+
+    child.on("message", (message) => this.onMessage(handle, message));
+    child.once("error", (error) => this.onExit(handle, null, null, toError(error)));
+    child.on("exit", (code, signal) => this.onExit(handle, code, signal));
 
     return handle.startupPromise;
   }
@@ -1096,7 +1109,9 @@ export class WorkerPool {
     this.requestPump();
   }
 
-  onExit(worker, code, signal) {
+  onExit(worker, code, signal, cause) {
+    if (worker.terminalHandled) return;
+    worker.terminalHandled = true;
     for (const [key, hint] of this.sessionAffinity)
       if (hint.worker === worker) this.sessionAffinity.delete(key);
     if (worker.retireTimer) {
@@ -1112,7 +1127,7 @@ export class WorkerPool {
       }
     }
 
-    const error = new Error(
+    const error = cause ?? new Error(
       `worker ${worker.slot} exited code=${String(code)} signal=${String(signal)}`,
     );
     worker.rejectStartup?.(error);
@@ -1130,7 +1145,9 @@ export class WorkerPool {
       }
     }
 
-    if (!this.closing) {
+    if (!this.closing && cause?.code === "EAGAIN") {
+      this.scheduleSpawnRetry();
+    } else if (!this.closing) {
       void this.ensureMinimumWorkers()
         .then(() => this.requestPump())
         .catch((spawnError) => {
@@ -1147,8 +1164,30 @@ export class WorkerPool {
     return [...this.workers.values()].filter(w => !w.ready && !w.retiring).length;
   }
 
+  resetSpawnRetry() {
+    this.spawnFailureCount = 0;
+    if (this.spawnRetryTimer) {
+      clearTimeout(this.spawnRetryTimer);
+      this.spawnRetryTimer = null;
+    }
+  }
+
+  scheduleSpawnRetry() {
+    if (this.closing || this.spawnRetryTimer) return;
+    this.spawnFailureCount += 1;
+    const delay = Math.min(
+      this.spawnRetryMaxMs,
+      this.spawnRetryBaseMs * (2 ** Math.min(this.spawnFailureCount - 1, 10)),
+    );
+    this.spawnRetryTimer = setTimeout(() => {
+      this.spawnRetryTimer = null;
+      this.requestPump();
+    }, delay);
+    this.spawnRetryTimer.unref?.();
+  }
+
   ensureDemandWorkers() {
-    if (this.closing) return;
+    if (this.closing || this.spawnRetryTimer) return;
     const unowned = new Set(this.pending
       .filter(job => !this.sessionOwners.has(job.sessionOwnerKey))
       .map(job => job.sessionOwnerKey));
@@ -1161,6 +1200,10 @@ export class WorkerPool {
       const startup = this.spawn(this.findAvailableSlot());
       void startup.then(() => this.requestPump(), error => {
         const failure = toError(error);
+        if (failure.code === "EAGAIN") {
+          this.scheduleSpawnRetry();
+          return;
+        }
         for (const pending of this.pending.splice(0)) pending.reject(failure);
       });
     }
@@ -1287,6 +1330,8 @@ export class WorkerPool {
       requestTimeoutMs: this.requestTimeoutMs,
       requestStallTimeoutMs: this.requestStallTimeoutMs,
       requestCancelGraceMs: this.requestCancelGraceMs,
+      spawnFailureCount: this.spawnFailureCount,
+      spawnRetryPending: this.spawnRetryTimer !== null,
       pending: this.pending.length,
       workers: [...this.workers.values()]
         .sort((left, right) => left.slot - right.slot)
@@ -1331,6 +1376,10 @@ export class WorkerPool {
       return;
     }
     this.closing = true;
+    if (this.spawnRetryTimer) {
+      clearTimeout(this.spawnRetryTimer);
+      this.spawnRetryTimer = null;
+    }
     if (this.reapTimer) {
       clearInterval(this.reapTimer);
       this.reapTimer = null;
