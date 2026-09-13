@@ -244,6 +244,7 @@ test("upstream rejection never relays vendor diagnostics or credentials", async 
 test("Gateway-owned consults return one ordered Seeduplex tool-result batch", async () => {
   const socket = new FakeSocket();
   const prompts = [];
+  const serverEvents = [];
   const provider = buildSeeduplexRealtimeVoiceProvider({
     env: { VOLCENGINE_REALTIME_API_KEY: "secret-value" },
     createWebSocket: async () => socket,
@@ -269,6 +270,7 @@ test("Gateway-owned consults return one ordered Seeduplex tool-result batch", as
     onToolCall() {},
     onTranscript: (...args) => prompts.push(args),
     onResponseDone: (outcome) => prompts.push(outcome),
+    onEvent: (event) => serverEvents.push(event.type),
     onError(error) {
       assert.fail(error.message);
     },
@@ -338,5 +340,7 @@ test("Gateway-owned consults return one ordered Seeduplex tool-result batch", as
     prompts.filter((entry) => entry?.status === "completed").length,
     1,
   );
+  assert.equal(serverEvents.includes("response.output_audio.done"), false);
+  assert.equal(serverEvents.includes("response.done"), false);
   bridge.close();
 });

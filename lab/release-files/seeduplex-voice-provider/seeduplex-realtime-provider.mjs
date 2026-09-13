@@ -496,11 +496,16 @@ export class SeeduplexRealtimeVoiceBridge {
       });
     }
     if (type === "response.function_call_arguments.done") this.#onToolCalls(event.items);
-    this.request.onEvent?.({
-      direction: "server",
-      type: typeof type === "string" ? type : "unknown",
-      responseId: optionalString(event.response_id),
-    });
+    // Completion is emitted only through the typed onResponseDone callback.
+    // Forwarding the same raw events activates OpenClaw's legacy completion
+    // fallback and would end a continued Agent turn after the working audio.
+    if (type !== "response.done" && type !== "response.output_audio.done") {
+      this.request.onEvent?.({
+        direction: "server",
+        type: typeof type === "string" ? type : "unknown",
+        responseId: optionalString(event.response_id),
+      });
+    }
   }
 
   #onToolCalls(items) {
