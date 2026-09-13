@@ -1,5 +1,5 @@
 {
-  "baseRelease": "worker-session-distribution-20260913-v1",
+  "baseRelease": "sessions-send-owner-91-v1",
   "files": [
     {
       "source": "lab/release-files/gateway-self-config-authority/gateway-DVu5Urba.js",
