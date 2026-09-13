@@ -1,0 +1,20 @@
+{
+  "baseRelease": "sessions-send-owner-91-v1",
+  "files": [
+    {
+      "source": "lab/release-files/gateway-self-config-authority/gateway-DVu5Urba.js",
+      "target": "openclaw/dist/gateway-DVu5Urba.js",
+      "before": "2beb3a88a1a0609e46b3f331473a73a63b1c8f10454359a5a3ed6c9582a68344"
+    },
+    {
+      "source": "lab/release-files/gateway-self-config-authority/sessions-helpers-Bn_vDNby.js",
+      "target": "openclaw/dist/sessions-helpers-Bn_vDNby.js",
+      "before": "f88076204b3df1773c093e837f436c902a5fee899ebda1760be8b34d6ae5eb60"
+    },
+    {
+      "source": "lab/release-files/gateway-self-config-authority/openclaw-tools-BODVdJQD.js",
+      "target": "openclaw/dist/openclaw-tools-BODVdJQD.js",
+      "before": "62ede7a96acbba962115aee945882cfe132ae199c326c577e23097f4cfda2c94"
+    }
+  ]
+}
