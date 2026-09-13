@@ -189,3 +189,10 @@ const DELEGATE_PENDING_AFTER = `\t\t\tif (result.needsApproval && result.proposa
 export function patchDelegateClosedApprovalMisread(source) {
   return replaceExactlyOnce(source, DELEGATE_PENDING_BEFORE, DELEGATE_PENDING_AFTER, 'delegated approval result');
 }
+
+const GATEWAY_TIMEOUT_BEFORE = `\t\ttimeoutMs: gateway.timeoutMs,`;
+const GATEWAY_TIMEOUT_AFTER = `\t\ttimeoutMs: extra?.timeoutMs ?? gateway.timeoutMs,`;
+
+export function patchGatewayToolRequestedTimeout(source) {
+  return replaceExactlyOnce(source, GATEWAY_TIMEOUT_BEFORE, GATEWAY_TIMEOUT_AFTER, 'Gateway tool requested timeout');
+}

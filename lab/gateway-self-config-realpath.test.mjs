@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { patchOpenClawDelegateTimeout, patchSystemAgentTransportAuthority } from './gateway-self-config-authority.mjs';
+import { patchGatewayAgentRuntimeIdentityMethods, patchOpenClawDelegateTimeout, patchSystemAgentTransportAuthority } from './gateway-self-config-authority.mjs';
 import {
   OWNER_DIRECT_HELPER,
   patchDelegateClosedApprovalMisread,
+  patchGatewayToolRequestedTimeout,
   patchSystemAgentOwnerDirectAutoReview,
 } from './gateway-self-config-realpath.mjs';
 
@@ -58,8 +59,18 @@ test('delegate never treats an invisible approval as operator action', () => {
   assert.throws(() => patchDelegateClosedApprovalMisread('unrelated'), /refuse drift/);
 });
 
+test('requested delegate timeout reaches the loopback Gateway client', () => {
+  const fixture = readFileSync(new URL('./fixtures/gateway-self-config-authority/gateway-DVu5Urba.js', import.meta.url), 'utf8');
+  const baseline = patchGatewayAgentRuntimeIdentityMethods(fixture);
+  const patched = patchGatewayToolRequestedTimeout(baseline);
+  assert.match(patched, /timeoutMs: extra\?\.timeoutMs \?\? gateway\.timeoutMs/);
+  assert.equal(patchGatewayToolRequestedTimeout(patched), patched);
+  assert.throws(() => patchGatewayToolRequestedTimeout('unrelated'), /refuse drift/);
+});
+
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 for (const [name, baselinePatch, realPathPatch] of [
+  ['gateway-DVu5Urba.js', patchGatewayAgentRuntimeIdentityMethods, patchGatewayToolRequestedTimeout],
   ['openclaw-tools-BODVdJQD.js', patchOpenClawDelegateTimeout, patchDelegateClosedApprovalMisread],
   ['system-agent-BhnNvC3z.js', patchSystemAgentTransportAuthority, patchSystemAgentOwnerDirectAutoReview],
 ]) test(`${name} release file is exactly derived from the prior accepted patch`, () => {

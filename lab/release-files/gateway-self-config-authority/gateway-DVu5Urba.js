@@ -398,7 +398,7 @@ async function callGatewayTool(method, opts, params, extra) {
 		token: gateway.token,
 		method,
 		params: callParams,
-		timeoutMs: gateway.timeoutMs,
+		timeoutMs: extra?.timeoutMs ?? gateway.timeoutMs,
 		signal: extra?.signal,
 		expectFinal: extra?.expectFinal,
 		clientName: GATEWAY_CLIENT_NAMES.GATEWAY_CLIENT,
