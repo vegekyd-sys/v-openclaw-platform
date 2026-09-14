@@ -46,7 +46,8 @@ const config = JSON.parse(configBytes);
 assert.equal(config.gateway.port, 24993);
 const workerConfigPath = config.plugins.entries['vlab-agent-worker-isolation'].config.workerConfigPath;
 const workerConfigSha256 = sha256(fs.readFileSync(workerConfigPath));
-const agentDatabasePath = base + '/state/agents/makaron/agent/openclaw-agent.sqlite';
+assert(env.OPENCLAW_STATE_DIR.startsWith(base + '/state/'));
+const agentDatabasePath = env.OPENCLAW_STATE_DIR + '/agents/makaron/agent/openclaw-agent.sqlite';
 assert(fs.statSync(agentDatabasePath).isFile());
 const modelSpec = config.agents.entries.makaron.model ?? config.agents.defaults.model;
 const model = typeof modelSpec === 'string' ? modelSpec : modelSpec.primary;
@@ -169,17 +170,19 @@ try {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let holderStdout = '', holderStderr = '';
+  let holderFailure;
   holderChild.stdout.on('data', chunk => { holderStdout += chunk; });
   holderChild.stderr.on('data', chunk => { holderStderr += chunk; });
   const holderResult = new Promise((resolve, reject) => {
     holderChild.once('error', reject);
     holderChild.once('exit', code => code === 0 ? resolve() : reject(new Error(`holder exited ${code}: ${holderStderr.slice(-500)}`)));
   });
-  void holderResult.catch(() => {});
+  void holderResult.catch(error => { holderFailure = error; });
   holder = {child: holderChild, readyPath: holderReadyPath, result: holderResult};
-  const holderReadyDeadline = Date.now() + 20_000;
-  while (!fs.existsSync(holderReadyPath) && Date.now() < holderReadyDeadline) await sleep(25);
-  assert(fs.existsSync(holderReadyPath), 'real process writer holder did not enter its transaction');
+  const holderReadyDeadline = Date.now() + 60_000;
+  while (!fs.existsSync(holderReadyPath) && !holderFailure && Date.now() < holderReadyDeadline) await sleep(25);
+  assert(!holderFailure, `real process writer holder failed: ${holderFailure?.message ?? holderStderr.slice(-500)}`);
+  assert(fs.existsSync(holderReadyPath), `real process writer holder did not enter its transaction: ${holderStderr.slice(-500)}`);
   for (let round = 0; round < rounds; round += 1) {
     const batch = [];
     for (let index = 0; index < concurrency; index += 1) {
