@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
+import {setTimeout as sleep} from 'node:timers/promises';
 import {
   controlledStopPolicy,
   newRelease,
@@ -16,7 +17,7 @@ import {
 
 assert.equal(os.hostname(), 'VM-8-2-ubuntu');
 const [mode, rawPid] = process.argv.slice(2);
-assert(['stage', 'stop', 'write-intent', 'apply', 'start', 'verify', 'rollback'].includes(mode));
+assert(['stage', 'stop', 'write-intent', 'cutover-live', 'apply', 'start', 'verify', 'rollback'].includes(mode));
 
 const root = '/home/openclaw/.openclaw';
 const unit = 'openclaw-gateway.service';
@@ -190,6 +191,47 @@ if (mode === 'stage') {
     record('stopped', {beforePid: pid, activeAtNativeHandoff: active});
   } finally {
     client.stop();
+  }
+} else if (mode === 'cutover-live') {
+  checkCandidate();
+  const staged = readJson(`${backup}/staged.json`);
+  const pid = gatewayPid();
+  const environment = readLiveEnvironment(pid);
+  assert.equal(environment.V_RELEASE_VERSION, 'v2026.9.1-db91.1');
+  assert(fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').includes(`${oldRelease}/core/dist/index.js`));
+  assert.equal(fs.readFileSync(stopDropin, 'utf8'), controlledStopPolicy, 'Expected the guarded SIGUSR1 policy from the first native handoff');
+  for (const config of staged.configs) {
+    assert.equal(sha(config.file), config.beforeSha256, `Live config drift: ${config.file}`);
+    assert.equal(sha(config.afterPath), config.afterSha256, `Staged config drift: ${config.afterPath}`);
+  }
+  run('/usr/sbin/runuser', ['-u', 'openclaw', '--', process.execPath, `${source}/scripts/deploy-db91-process-global-writer-production.mjs`, 'write-intent', String(pid)], {env: process.env});
+  let applied = false;
+  try {
+    for (const config of staged.configs) atomic(config.file, fs.readFileSync(config.afterPath));
+    fs.writeFileSync(permanentDropin, productionReleaseUnit(), {mode: 0o644, flag: 'wx'});
+    fs.unlinkSync(stopDropin);
+    run('systemctl', ['daemon-reload']);
+    assert.equal(run('systemctl', ['show', unit, '-p', 'KillSignal', '--value']), '15');
+    applied = true;
+    record('live-cutover-armed', {beforePid: pid, configs: staged.configs.length, terminalPolicy: 'preserve'});
+    process.kill(pid, 'SIGUSR1');
+    const deadline = Date.now() + 65_000;
+    let nextPid = pid;
+    while (Date.now() < deadline) {
+      await sleep(500);
+      nextPid = gatewayPid();
+      if (nextPid > 1 && nextPid !== pid) break;
+    }
+    assert(nextPid > 1 && nextPid !== pid, 'Gateway did not restart into the candidate release');
+    record('live-cutover-restarted', {beforePid: pid, pid: nextPid});
+  } catch (error) {
+    if (applied && gatewayPid() === pid) {
+      for (const config of staged.configs) atomic(config.file, fs.readFileSync(config.beforePath));
+      if (fs.existsSync(permanentDropin)) fs.unlinkSync(permanentDropin);
+      run('systemctl', ['daemon-reload']);
+      record('live-cutover-arm-rolled-back', {pid, error: error.name});
+    }
+    throw error;
   }
 } else if (mode === 'apply') {
   assert.equal(gatewayPid(), 0, 'Gateway must be stopped');
