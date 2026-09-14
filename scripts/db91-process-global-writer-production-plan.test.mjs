@@ -75,13 +75,14 @@ test('production stage never hardlinks the live runtime', () => {
   assert(source.includes('Date.now() + 180_000'), 'native cutover must allow persisted-session shutdown to finish');
 });
 
-test('production pressure stays within the five-Worker C15 capacity', () => {
+test('production pressure stays within configured autoscaling capacity', () => {
   const source = fs.readFileSync(new URL('./stress-db91-process-global-writer-production.mjs', import.meta.url), 'utf8');
   assert.equal((source.match(/await runCohort\(/g) ?? []).length, 1);
   assert(source.includes('requestedCount <= 15'));
   assert(source.includes('await runCohort(requestedCount)'));
-  assert(source.includes("assert.equal(status.workers, 5"));
+  assert(source.includes('status.workers <= status.maxWorkers'));
   assert(source.includes('reserve: requestedCount'));
+  assert(source.includes('workerCount: status.workers'));
 });
 
 test('unit retains established hooks without changing stop bounds', () => {
