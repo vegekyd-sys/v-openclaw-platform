@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { brotliDecompressSync, gunzipSync } from "node:zlib";
 import {
   AUDIO_APPEND_LIMIT,
   AUDIO_APPEND_LIMIT_AFTER,
@@ -10,9 +9,11 @@ import {
   CONTROL_UI_ASSET_AFTER,
   CONTROL_UI_ASSET_BEFORE,
   CONTROL_UI_ASSET_PATH,
-  CONTROL_UI_COMPRESSED_ASSETS,
+  PRECOMPRESSED_GUARD_AFTER,
+  PRECOMPRESSED_GUARD_BEFORE,
   patchControlUiAssetManifest,
   patchRealtimeTalkAudioBackpressure,
+  patchRealtimeTalkPrecompressedFallback,
 } from "./patch-realtime-talk-audio-backpressure.mjs";
 
 const fixture = `const ${AUDIO_APPEND_LIMIT_BEFORE};class Talk{append(){if(this.pendingAudioAppends.size>=vN){this.failAudioAppend(\"Realtime Talk audio input fell behind\");return}this.pendingAudioAppends.add(r)}}`;
@@ -55,10 +56,7 @@ test("release artifact contains the reviewed bounded limit", () => {
 });
 
 test("manifest patch publishes a new retained Control UI generation", () => {
-  const assets = [
-    { path: CONTROL_UI_ASSET_PATH, ...CONTROL_UI_ASSET_BEFORE },
-    ...CONTROL_UI_COMPRESSED_ASSETS.map((asset) => ({ path: asset.path, ...asset.before })),
-  ];
+  const assets = [{ path: CONTROL_UI_ASSET_PATH, ...CONTROL_UI_ASSET_BEFORE }];
   const before = {
     version: 1,
     generation: "",
@@ -71,12 +69,6 @@ test("manifest patch publishes a new retained Control UI generation", () => {
   const patched = patchControlUiAssetManifest(JSON.stringify(before));
   const after = JSON.parse(patched);
   assert.deepEqual(after.assets[0], { path: CONTROL_UI_ASSET_PATH, ...CONTROL_UI_ASSET_AFTER });
-  for (const compressed of CONTROL_UI_COMPRESSED_ASSETS) {
-    assert.deepEqual(
-      after.assets.find((asset) => asset.path === compressed.path),
-      { path: compressed.path, ...compressed.after },
-    );
-  }
   assert.notEqual(after.generation, before.generation);
   assert.equal(patchControlUiAssetManifest(patched), patched);
 });
@@ -92,24 +84,25 @@ test("release manifest points at the patched bundle", () => {
   const manifest = JSON.parse(release);
   const entry = manifest.assets.find((asset) => asset.path === CONTROL_UI_ASSET_PATH);
   assert.deepEqual(entry, { path: CONTROL_UI_ASSET_PATH, ...CONTROL_UI_ASSET_AFTER });
-  for (const compressed of CONTROL_UI_COMPRESSED_ASSETS) {
-    assert.deepEqual(
-      manifest.assets.find((asset) => asset.path === compressed.path),
-      { path: compressed.path, ...compressed.after },
-    );
-  }
   assert.equal(patchControlUiAssetManifest(release), release);
 });
 
-test("precompressed release artifacts decode to the patched bundle", () => {
-  const directory = new URL("./release-files/talk-audio-wan-backpressure/", import.meta.url);
-  const bundle = readFileSync(new URL("control-ui-boot-chat-DWTSrxxk.js", directory));
-  assert.deepEqual(
-    brotliDecompressSync(readFileSync(new URL("control-ui-boot-chat-DWTSrxxk.js.br", directory))),
-    bundle,
+test("patched Talk bundle bypasses stale precompressed sidecars", () => {
+  const fixture = `function resolveOpenedControlUiRepresentation(params) {\n\tconst { req, precompressed } = params;\n\tconst extension = \".js\";\n\t${PRECOMPRESSED_GUARD_BEFORE}\n\treturn encodings;\n}`;
+  const patched = patchRealtimeTalkPrecompressedFallback(fixture);
+  assert.equal(patched.includes(PRECOMPRESSED_GUARD_BEFORE), false);
+  assert.equal(patched.includes(PRECOMPRESSED_GUARD_AFTER), true);
+  assert.equal(patchRealtimeTalkPrecompressedFallback(patched), patched);
+});
+
+test("release server artifact contains the scoped identity fallback", () => {
+  const release = readFileSync(
+    new URL(
+      "./release-files/talk-audio-wan-backpressure/control-ui-DhD7PO_6.js",
+      import.meta.url,
+    ),
+    "utf8",
   );
-  assert.deepEqual(
-    gunzipSync(readFileSync(new URL("control-ui-boot-chat-DWTSrxxk.js.gz", directory))),
-    bundle,
-  );
+  assert.equal(patchRealtimeTalkPrecompressedFallback(release), release);
+  assert.equal(release.includes(PRECOMPRESSED_GUARD_AFTER), true);
 });
