@@ -106,9 +106,13 @@ test('outside the explicitly tested automatic queue, lifecycle/reset/delete guar
   const beforeQueue = before.slice(before.indexOf('const maintenanceByStore ='), before.indexOf('//#endregion', before.indexOf('const maintenanceByStore =')));
   const withoutBeginRetry = entryModule.replace(queueSource, beforeQueue)
     .replace('import {acquireAutomaticMaintenancePermit} from "./automatic-maintenance-coordinator.mjs";\nimport {l as runSqliteDeferredTransactionSync, o as tryAcquireExclusiveSqliteCoordinator} from "./node-sqlite-CL-d6drd.js";\nimport {commitPlannedSessionMaintenanceArchives} from "./session-history-eviction-d5aiCsHS.js";\n', '')
-    .replace('import {withSqliteBeginContentionRetry} from "./sqlite-begin-contention-retry.mjs";\n', '')
+    .replace('import {withSqliteBeginContentionRetry, withSqliteBeginContentionRetrySync} from "./sqlite-begin-contention-retry.mjs";\n', '')
     .replace('\t\tawait withSqliteBeginContentionRetry({\n\t\t\tdatabase: database.db,\n\t\t\trun: operation => runOpenClawAgentWriteTransaction(operation, toDatabaseOptions(resolved)),\n\t\t\toperation: (writeDatabase) => {\n', '\t\trunOpenClawAgentWriteTransaction((writeDatabase) => {\n')
-    .replace('\t\t\tresult = cloneSessionEntry(persisted);\n\t\t\t}\n\t\t});', '\t\t\tresult = cloneSessionEntry(persisted);\n\t\t}, toDatabaseOptions(resolved));');
+    .replace('\t\t\tresult = cloneSessionEntry(persisted);\n\t\t\t}\n\t\t});', '\t\t\tresult = cloneSessionEntry(persisted);\n\t\t}, toDatabaseOptions(resolved));')
+    .replace('const ownerDatabase = openOpenClawAgentDatabase(toDatabaseOptions(resolved));\n\twithSqliteBeginContentionRetrySync({\n\t\tdatabase: ownerDatabase.db,\n\t\trun: operation => runOpenClawAgentWriteTransaction(operation, toDatabaseOptions(resolved)),\n\t\toperation: (database) => {', 'runOpenClawAgentWriteTransaction((database) => {')
+    .replace('\t\t}\n\t});\n\tif (!initializing', '\t}, toDatabaseOptions(resolved));\n\tif (!initializing')
+    .replace('const ownerDatabase = openOpenClawAgentDatabase(toDatabaseOptions(resolved));\n\twithSqliteBeginContentionRetrySync({\n\t\tdatabase: ownerDatabase.db,\n\t\trun: operation => runOpenClawAgentWriteTransaction(operation, toDatabaseOptions(resolved)),\n\t\toperation: (database) => {', 'runOpenClawAgentWriteTransaction((database) => {')
+    .replace('\t\t}\n\t});\n\temitCommittedSessionIdentityDiff(previous, current);', '\t}, toDatabaseOptions(resolved));\n\temitCommittedSessionIdentityDiff(previous, current);');
   assert.equal(withoutBeginRetry, before.replace('export { ensureSessionEntrySync as C,', 'export { kickSessionEntryMaintenanceAfterWrite, ensureSessionEntrySync as C,'));
   const oldAccessor = read('./fixtures/concurrency-native-baseline/session-accessor-K0XuW6ln.js');
   const prefix = accessor.slice(accessor.indexOf('\n') + 1, accessor.indexOf('async function commitReplySessionInitialization('));

@@ -1,0 +1,15 @@
+{
+  "baseRelease": "db91-memory-fts-admission-v1",
+  "files": [
+    {
+      "source": "lab/release-files/session-accessor.sqlite-entry-BlklNPKQ.js",
+      "target": "openclaw/dist/session-accessor.sqlite-entry-BlklNPKQ.js",
+      "before": "6b12190ca8e975ea6c8bce6703af805e01a1ef492e83f4829a6fe0f90669d96b"
+    },
+    {
+      "source": "lab/release-files/sqlite-begin-contention-retry.mjs",
+      "target": "openclaw/dist/sqlite-begin-contention-retry.mjs",
+      "before": "07e24fe94aabf1559e742a6890722fe9e6a586ee92fca7234f3d4170705e5c89"
+    }
+  ]
+}

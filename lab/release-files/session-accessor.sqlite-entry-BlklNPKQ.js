@@ -1,7 +1,7 @@
 import {acquireAutomaticMaintenancePermit} from "./automatic-maintenance-coordinator.mjs";
 import {l as runSqliteDeferredTransactionSync, o as tryAcquireExclusiveSqliteCoordinator} from "./node-sqlite-CL-d6drd.js";
 import {commitPlannedSessionMaintenanceArchives} from "./session-history-eviction-d5aiCsHS.js";
-import {withSqliteBeginContentionRetry} from "./sqlite-begin-contention-retry.mjs";
+import {withSqliteBeginContentionRetry, withSqliteBeginContentionRetrySync} from "./sqlite-begin-contention-retry.mjs";
 import { waitAutomaticMaintenanceWindow as db91WaitAutomaticMaintenance } from "./db91-maintenance-throttle.mjs";
 import { y as uniqueStrings } from "./string-normalization-DiSb4JeN.js";
 import { n as getRuntimeConfig } from "./io.runtime-CKu7Rw0j.js";
@@ -267,7 +267,11 @@ function ensureSessionEntrySync(scope, entry) {
 	let owned = false;
 	let previous = /* @__PURE__ */ new Map();
 	let current = /* @__PURE__ */ new Map();
-	runOpenClawAgentWriteTransaction((database) => {
+	const ownerDatabase = openOpenClawAgentDatabase(toDatabaseOptions(resolved));
+	withSqliteBeginContentionRetrySync({
+		database: ownerDatabase.db,
+		run: operation => runOpenClawAgentWriteTransaction(operation, toDatabaseOptions(resolved)),
+		operation: (database) => {
 		assertOwnedTranscriptWriteCommit({
 			...fencedScope,
 			sessionId: entry.sessionId
@@ -305,7 +309,8 @@ function ensureSessionEntrySync(scope, entry) {
 				}
 			})) throw new Error("initial session writer requires a managed commit boundary");
 		}
-	}, toDatabaseOptions(resolved));
+		}
+	});
 	if (!initializing && (current.size !== previous.size || owned)) emitCommittedSessionIdentityDiff(previous, current);
 	if (fencedScope.expectedWriterRunId !== void 0 && !owned) throw new SessionTranscriptWriterClaimReboundError();
 	return owned;
@@ -534,12 +539,17 @@ function replaceSessionEntrySync(scope, entry) {
 	assertCanonicalSessionWriteScope(resolved);
 	let previous = /* @__PURE__ */ new Map();
 	let current = /* @__PURE__ */ new Map();
-	runOpenClawAgentWriteTransaction((database) => {
+	const ownerDatabase = openOpenClawAgentDatabase(toDatabaseOptions(resolved));
+	withSqliteBeginContentionRetrySync({
+		database: ownerDatabase.db,
+		run: operation => runOpenClawAgentWriteTransaction(operation, toDatabaseOptions(resolved)),
+		operation: (database) => {
 		const identityKeys = collectSessionEntryLookupKeys(database, resolved.sessionKey);
 		previous = readSessionIdentitySnapshot(database, identityKeys);
 		writeSessionEntry(database, resolved.sessionKey, entry);
 		current = readSessionIdentitySnapshot(database, identityKeys);
-	}, toDatabaseOptions(resolved));
+		}
+	});
 	emitCommittedSessionIdentityDiff(previous, current);
 }
 /** Patches one entry in the additive SQLite session store. */
