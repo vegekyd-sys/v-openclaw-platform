@@ -103,3 +103,14 @@ CPU/event-loop 饱和和 memory FTS 慢操作会扩大排队，排队又增加 r
 它不复用夜班业务会话，也不向飞书发送测试消息。A 必须先把已验收 baseline 同产物重新
 部署到一次干净生命周期后运行；B 再部署候选同样运行。`lab/compare-db91-writer-ab.mjs`
 比较两份原始 JSON 并以非零退出码拒绝任何 event-loop 或内存门槛失败。
+
+9.1 原始 `health.eventLoop` 只返回 P99。为满足 P50/P99 同窗比较，先部署只增加
+`monitor.percentile(50)` 返回字段、完全不改变分类阈值或调度行为的
+`db91-writer-ab-metrics-v1`，A 和 B 都以这层观测补丁为共同基线。没有 P50 样本的
+旧 A 结果一律无效，不参与放行。
+
+A 还必须由一个真实独立 Node 进程通过 9.1 的
+`runOpenClawAgentWriteTransaction` 持有 Agent DB 写事务 40 秒；持锁后再从主 Gateway
+同时发起 `sessions.patch` 和 C15 Worker 消息。比较器要求 A 同时出现数据库锁错误、
+至少 30 秒的 slow session write、至少 1 秒 event-loop P99 和至少 1 GiB cgroup
+内存增长。少任何一项都视为“没有复现线上故障”，不得拿来与 B 比较。

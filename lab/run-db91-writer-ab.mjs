@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
-import {execFileSync} from 'node:child_process';
+import {execFileSync, spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {setTimeout as sleep} from 'node:timers/promises';
 
@@ -20,7 +20,7 @@ const unit = 'openclaw-vlab-production-mirror-v8.service';
 const base = '/srv/vlab-production-mirror/labs/instances/db91-parity';
 const control = '/srv/vlab-production-mirror/labs/control';
 const expectedRelease = variant === 'baseline'
-  ? 'db91-global-write-admission-v3'
+  ? 'db91-writer-ab-metrics-v1'
   : 'db91-process-global-writer-v1';
 const run = (bin, args) => execFileSync(bin, args, {encoding: 'utf8', timeout: 20_000}).trim();
 const readJson = path => JSON.parse(fs.readFileSync(path, 'utf8'));
@@ -46,6 +46,8 @@ const config = JSON.parse(configBytes);
 assert.equal(config.gateway.port, 24993);
 const workerConfigPath = config.plugins.entries['vlab-agent-worker-isolation'].config.workerConfigPath;
 const workerConfigSha256 = sha256(fs.readFileSync(workerConfigPath));
+const agentDatabasePath = base + '/state/agents/makaron/agent/openclaw-agent.sqlite';
+assert(fs.statSync(agentDatabasePath).isFile());
 const modelSpec = config.agents.entries.makaron.model ?? config.agents.defaults.model;
 const model = typeof modelSpec === 'string' ? modelSpec : modelSpec.primary;
 assert.equal(typeof model, 'string');
@@ -113,9 +115,11 @@ const rows = [];
 const health = [];
 const resources = [];
 const runtimeErrors = [];
+const slowSessionWrites = [];
 let sampling = true;
 let startedAt;
 let failure;
+let holder;
 const sampler = (async () => {
   while (sampling) {
     const at = Date.now();
@@ -158,6 +162,24 @@ try {
   }
   await assertIdle();
   startedAt = Date.now();
+  const holderReadyPath = `${control}/.db91-writer-holder-${variant}-${startedAt}.ready`;
+  const holderCode = `import fs from 'node:fs';const wait=new Int32Array(new SharedArrayBuffer(4));const {y:write}=await import(${JSON.stringify(base + '/runtime/openclaw/dist/openclaw-agent-db-CUTe8BX6.js')});const startedAt=Date.now();write(()=>{fs.writeFileSync(process.argv[2],String(process.pid),{flag:'wx',mode:0o600});Atomics.wait(wait,0,0,40000);return true},{agentId:'makaron',path:process.argv[1],env:process.env},{operationLabel:'db91.ab.real-process-holder'});process.stdout.write(JSON.stringify({pid:process.pid,startedAt,finishedAt:Date.now()}));`;
+  const holderChild = spawn(process.execPath, ['--input-type=module', '-e', holderCode, agentDatabasePath, holderReadyPath], {
+    env: process.env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let holderStdout = '', holderStderr = '';
+  holderChild.stdout.on('data', chunk => { holderStdout += chunk; });
+  holderChild.stderr.on('data', chunk => { holderStderr += chunk; });
+  const holderResult = new Promise((resolve, reject) => {
+    holderChild.once('error', reject);
+    holderChild.once('exit', code => code === 0 ? resolve() : reject(new Error(`holder exited ${code}: ${holderStderr.slice(-500)}`)));
+  });
+  void holderResult.catch(() => {});
+  holder = {child: holderChild, readyPath: holderReadyPath, result: holderResult};
+  const holderReadyDeadline = Date.now() + 20_000;
+  while (!fs.existsSync(holderReadyPath) && Date.now() < holderReadyDeadline) await sleep(25);
+  assert(fs.existsSync(holderReadyPath), 'real process writer holder did not enter its transaction');
   for (let round = 0; round < rounds; round += 1) {
     const batch = [];
     for (let index = 0; index < concurrency; index += 1) {
@@ -170,7 +192,6 @@ try {
         key: `agent:makaron:explicit:db91-ab-${variant}-${startedAt}-${round}-${index}`,
       };
       rows.push(row);
-      await call('sessions.patch', {key: row.key, agentId: 'makaron', model});
       batch.push(row);
     }
     await Promise.all(batch.map(async row => {
@@ -180,6 +201,9 @@ try {
       const terminal = new Promise(resolve => { resolveTerminal = resolve; });
       terminalWaiters.set(row.id, resolveTerminal);
       try {
+        // sessions.patch is intentionally after the real process owns BEGIN
+        // so A exercises the main Gateway writer while the Worker wave also writes.
+        await call('sessions.patch', {key: row.key, agentId: 'makaron', model}, 120_000);
         await call('chat.send', {
           agentId: 'makaron',
           sessionKey: row.key,
@@ -216,6 +240,8 @@ try {
     if (failure) throw new Error(failure.message);
     await assertIdle();
   }
+  await holderResult;
+  holder.finished = JSON.parse(holderStdout);
   // Capture whether anonymous memory returns after the same bounded cooldown.
   await sleep(30_000);
   const journal = execFileSync('journalctl', ['-u', unit, '--since', new Date(startedAt - 1_000).toISOString(), '-o', 'json', '--no-pager'], {encoding: 'utf8', maxBuffer: 64 * 1024 ** 2});
@@ -234,12 +260,18 @@ try {
       'webchat dispatch failed',
     ].find(candidate => message.includes(candidate));
     if (kind) runtimeErrors.push({kind, databaseLocked: /database is locked|SQLITE_BUSY/i.test(message)});
+    if (message.includes('slow SQLite session write')) {
+      const elapsedMs = Number(message.match(/elapsedMs["'=:\s]+(\d+(?:\.\d+)?)/)?.[1]);
+      slowSessionWrites.push({elapsedMs: Number.isFinite(elapsedMs) ? elapsedMs : null});
+    }
   }
 } catch (error) {
   failure ??= {name: error.name, message: String(error.message).slice(0, 300)};
 } finally {
   sampling = false;
   await sampler;
+  if (holder?.child.exitCode === null && holder.child.signalCode === null) holder.child.kill('SIGTERM');
+  if (holder?.readyPath && fs.existsSync(holder.readyPath)) fs.unlinkSync(holder.readyPath);
   client?.stop();
 }
 
@@ -258,6 +290,8 @@ const result = {
   health,
   resources,
   runtimeErrors,
+  slowSessionWrites,
+  holder: holder?.finished ?? null,
   ...(failure ? {failure} : {}),
 };
 const output = `${control}/db91-writer-ab-${variant}-${startedAt}.json`;

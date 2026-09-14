@@ -1,5 +1,5 @@
 {
-  "baseRelease": "db91-global-write-admission-v3",
+  "baseRelease": "db91-writer-ab-metrics-v1",
   "files": [
     {
       "source": "lab/release-files/agent-db-process-coordinator.mjs",
