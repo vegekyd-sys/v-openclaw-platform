@@ -1,0 +1,10 @@
+{
+  "baseRelease": "seeduplex-voice-provider-v9",
+  "files": [
+    {
+      "source": "lab/release-files/memory-schema-BSs9MQgq.js",
+      "target": "openclaw/dist/memory-schema-BSs9MQgq.js",
+      "before": "826691c2d7cb634ed6762908e34f015aaf508eaaabc9936a73cafd83929f4da5"
+    }
+  ]
+}
