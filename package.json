@@ -10,6 +10,9 @@
     "nightshift:compile": "node packages/nightshift-core/src/cli.mjs compile",
     "nightshift:ctl": "node scripts/nightshiftctl.mjs",
     "nightshift:plan": "node packages/nightshift-core/src/cli.mjs plan",
+    "nightshift:replay:export": "node scripts/export-nightshift-replay.mjs",
+    "nightshift:replay:compat": "node scripts/replay-nightshift-compatibility.mjs",
+    "nightshift:replay:pressure": "node scripts/benchmark-nightshift-gateway-pressure.mjs",
     "nightshift:validate": "node packages/nightshift-core/src/cli.mjs validate",
     "test": "node --test packages/nightshift-core/test/*.test.mjs apps/nightshift-dashboard/server/*.test.mjs"
   },
