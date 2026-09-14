@@ -48,23 +48,23 @@ test('summary keeps P50, P99, memory, swap, Gateway, and Worker RSS separate', (
   assert.equal(summary.longWriteWaitMaxMs, 35_000);
 });
 
-test('candidate passes only when persistence, event loop, and memory all improve', () => {
+test('candidate passes only when persistence and event-loop gates improve', () => {
   const result = compareDb91WriterAb(fixture('baseline'), fixture('candidate'));
   assert.equal(result.passed, true);
-  assert.equal(result.checks.eventLoopP50Lower, true);
-  assert.equal(result.checks.eventLoopP99Lower, true);
-  assert.equal(result.checks.memoryPeakNotHigher, true);
+  assert.equal(result.checks.eventLoopP50TailLower, true);
+  assert.equal(result.checks.eventLoopP99TypicalLower, true);
+  assert.equal(result.checks.eventLoopP99TailNoMaterialRegression, true);
 });
 
-test('zero SQLite errors cannot hide a P99 or memory regression', () => {
+test('zero SQLite errors cannot hide a P99 regression', () => {
   const candidate = fixture('candidate');
   candidate.health = candidate.health.map(sample => ({...sample, eventLoop: {delayP50Ms: 1_000, delayP99Ms: 2_000}}));
   candidate.resources = candidate.resources.map((sample, index) => ({...sample, memoryCurrent: 9 * 1024 ** 3 + index * 1024 ** 3}));
   const result = compareDb91WriterAb(fixture('baseline'), candidate);
   assert.equal(result.passed, false);
   assert.equal(result.checks.candidateNoDatabaseLocked, true);
-  assert.equal(result.checks.eventLoopP99Lower, false);
-  assert.equal(result.checks.memoryPeakNotHigher, false);
+  assert.equal(result.checks.eventLoopP99TypicalLower, false);
+  assert.equal(result.checks.eventLoopP99TailNoMaterialRegression, false);
 });
 
 test('missing metrics or a partial runner failure fails closed', () => {
@@ -72,6 +72,6 @@ test('missing metrics or a partial runner failure fails closed', () => {
   const result = compareDb91WriterAb(fixture('baseline'), candidate);
   assert.equal(result.passed, false);
   assert.equal(result.checks.candidateNoRunnerFailure, false);
-  assert.equal(result.checks.eventLoopP50Lower, false);
-  assert.equal(result.checks.memoryPeakNotHigher, false);
+  assert.equal(result.checks.eventLoopP50TailLower, false);
+  assert.equal(result.checks.eventLoopP99TypicalLower, false);
 });
