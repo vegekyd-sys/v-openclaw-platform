@@ -9,6 +9,7 @@ test('shared VLab acceptance fixes five Workers, runs C15 rounds, and records fi
   assert.match(source, /holderWaitMs = 40_000/);
   assert.match(source, /roundsArg = '2'/);
   assert.match(source, /concurrencyArg = '15'/);
+  assert.match(source, /DB91_SCOPE_\$\{variant\}_\$\{row\.round\}_\$\{row\.index\}_\$\{stamp\}/);
   assert.match(source, /firstTextP50Ms/);
   assert.match(source, /firstTextP95Ms/);
   assert.match(source, /eventLoopP50P95Ms/);
