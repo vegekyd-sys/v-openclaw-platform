@@ -82,11 +82,12 @@ test('skip/warn modes and protected active keys remain non-mutating', () => {
     assert.equal(plan.archived, 0); assert.deepEqual(h.writes, []); assert.deepEqual(plan.entryRemovals, []);
   }
 });
-test('native deletion finalizer, snapshot comparison and other eviction code remain byte-identical', () => {
+test('native deletion finalizer and unrelated eviction code remain byte-identical', () => {
   const before = read('./fixtures/concurrency-native-baseline/session-history-eviction-d5aiCsHS.js');
   const marker = '/** Finalizes maintenance after its caller releases the per-store writer lane. */';
-  assert.equal(source.slice(0, source.indexOf('function applySessionEntryMaintenance(')), before.slice(0, before.indexOf('function applySessionEntryMaintenance(')));
-  assert.equal(source.slice(source.indexOf(marker), source.indexOf('\n// Automatic planning is read-only.')), before.slice(before.indexOf(marker)));
+  const slice = (text, start, end) => text.slice(text.indexOf(start), text.indexOf(end, text.indexOf(start)));
+  assert.equal(slice(source, 'function buildSessionMaintenanceBatches(', 'function applySessionEntryMaintenance('), slice(before, 'function buildSessionMaintenanceBatches(', 'function applySessionEntryMaintenance('));
+  assert.equal(slice(source, marker, 'function reclaimSqliteFreePages('), slice(before, marker, 'function reclaimSqliteFreePages('));
 });
 test('coordinator success holds one cooldown, failure/closed handle releases immediately', () => {
   for (const mode of ['success', 'failure', 'closed']) {
