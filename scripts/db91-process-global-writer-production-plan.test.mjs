@@ -3,8 +3,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
   controlledStopPolicy,
+  feishuPeerLink,
   newRelease,
+  newFeishuPeerTarget,
   oldRelease,
+  oldFeishuPeerTarget,
   planProductionConfig,
   productionFiles,
   productionReleaseUnit,
@@ -54,6 +57,9 @@ test('release manifest is exact and hash guarded', () => {
   assert.equal(new Set(productionFiles.map((file) => file.target)).size, productionFiles.length);
   assert.equal(productionFiles.filter((file) => file.beforeSha256 === null).length, 1);
   assert.match(preservedMemoryFtsSha256, /^[0-9a-f]{64}$/);
+  assert.equal(oldFeishuPeerTarget, `${oldRelease}/core`);
+  assert.equal(newFeishuPeerTarget, `${newRelease}/core`);
+  assert.match(feishuPeerLink, /\/feishu\/node_modules\/openclaw$/);
   for (const file of productionFiles) {
     assert.match(file.source, /^lab\/release-files\//);
     assert.match(file.target, /^core\/dist\//);

@@ -4,6 +4,9 @@ export const releaseId = 'v2026.9.1-db91.5';
 export const oldRelease = '/opt/openclaw-experiments/db91-release-v2026.9.1-db91.4';
 export const newRelease = '/opt/openclaw-experiments/db91-release-v2026.9.1-db91.5';
 export const preservedMemoryFtsSha256 = '7267571c87d05e1662a8277b86a22760d77679e7ff48474022983eec2238584b';
+export const feishuPeerLink = '/opt/openclaw-experiments/worker-visible-progress-v2026.9.1-20260909/feishu/node_modules/openclaw';
+export const oldFeishuPeerTarget = `${oldRelease}/core`;
+export const newFeishuPeerTarget = `${newRelease}/core`;
 
 export const productionFiles = [
   {
