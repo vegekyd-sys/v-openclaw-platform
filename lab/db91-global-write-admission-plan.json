@@ -1,0 +1,10 @@
+{
+  "baseRelease": "db91-lock-rootcause-v2",
+  "files": [
+    {
+      "source": "lab/release-files/openclaw-agent-db-CUTe8BX6.js",
+      "target": "openclaw/dist/openclaw-agent-db-CUTe8BX6.js",
+      "before": "acbf762a26fcb52e6b6561b3258d4ad54ee7497ee29958bc6f01c445a609320b"
+    }
+  ]
+}
