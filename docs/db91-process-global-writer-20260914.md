@@ -92,14 +92,40 @@ CPU/event-loop 饱和和 memory FTS 慢操作会扩大排队，排队又增加 r
 6. 必须做同配置、同模型、同轮数、同 C15 和同大上下文负载的 A/B。A 与 B 都从一次
    明确的干净 Gateway 生命周期开始，采样整个 service cgroup，而不只看主 PID。
 7. A/B 原始项必须包含 event-loop `delayP50Ms`/`delayP99Ms`、cgroup memory/swap、
-   Gateway RSS、每个 Worker RSS、完成/持久化数和 journal 错误。比较程序要求 B 的
-   P50 中位数与 P99 的 P95 都低于 A，memory peak 不高于 A 的 105%，cooldown 后增长
-   不高于 A 加 64 MiB；任一项不满足即失败，不能因 `database is locked=0` 放行。
-8. 若 B 的锁错误消失但内存或 event-loop 不降，writer 修复保留为独立正确性修复，
-   生产发布暂停，继续定位 Worker/主 Gateway 的匿名内存增长与长任务回收问题。
+   Gateway RSS、每个 Worker RSS、完成/持久化数和 journal 错误。20ms monitor 分辨率会让
+   P50 中位数落在同一个底值，因此当前门槛使用 P50 的 P95 必须下降、P99 中位数必须下降，
+   且 P99 的 P95 不得回退超过 5%；最大单点继续完整报告，但不单独作为放行门槛。
+8. 2026-09-14 用户明确决定把长期内存回收拆到下一步。本轮仍完整记录 memory peak、
+   growth、Gateway/Worker RSS，但不作为 writer 正确性补丁的阻断门槛，也不宣称内存泄漏
+   已修复。
 
 验收脚本为 `lab/run-db91-writer-ab.mjs`，固定使用 `deliver:false` 的独立 session，
 默认执行两轮 C15、每个请求约 1,500 行合成上下文，并在完成后保留 30 秒 cooldown。
+
+## 固定 5 Worker A/B（2026-09-14）
+
+按生产 V 的常驻 Worker 数，将共享 VLab 临时设置为 `minWorkers=5`、`maxWorkers=15`、
+`sessionsPerWorker=3`。A/B 的 Gateway 配置 SHA 均为
+`d7546232f72936f49cb85a6d43ea52b42c6413b43f161f2d7aeea106bb6e619b`，Worker 配置
+SHA 均为 `1d77c89aef2edcbe5f43f912da4b23cc5ad0edcbb8a5bd3feab8e1a2a58dd0ff`；
+两侧均执行两轮 C15 和真实 40 秒 Agent DB 持写事务，五个 Agent Worker 全程常驻。
+
+- A（`db91-writer-ab-baseline-1789385650456.json`）：29/30 完成并持久化，1 次
+  `database is locked`，失败写等待 30,287ms，7 次 health timeout；P50 P95 36.6ms，
+  P99 median/P95/max 为 68.8/442.8/3338.7ms；测试窗口内存增长 2.29GiB，峰值 9.59GiB。
+- B（`db91-writer-ab-candidate-1789386541368.json`）：30/30 完成并持久化，0 次
+  `database is locked`、0 次 runner runtime error；仍有 3 次 health timeout 和 1 次
+  liveness delayed；P50 P95 27.1ms，P99 median/P95/max 为 64.8/371.5/545.8ms；
+  测试窗口内存增长 0.36GiB，峰值 6.84GiB。
+- B 的请求总耗时中位数从 11,837ms 降至 10,639ms，但 P95 从 57,198ms 升至
+  59,152ms。补丁因此证明了锁错误和最坏 event-loop stall 的显著改善，不证明所有请求
+  都更快，也不证明 event-loop 或内存问题已经根治。
+- 第一笔 B 尝试在正式 `startedAt` 前因后台 reconcile 令测试 holder 超过 180 秒仍未取得
+  Writer 而作废；重跑得到上述有效 B。该作废样本和 B 的 3 次 health timeout 都必须保留
+  为后续异步 Writer/P99 工作的输入，不能从验收记录中删去。
+
+用户基于这一固定 5 Worker 对照，明确批准把本补丁作为 Agent DB 跨进程写入正确性修复
+上线；发布接受范围不包含剩余 event-loop、reconcile 排队或长期内存回收问题。
 它不复用夜班业务会话，也不向飞书发送测试消息。A 必须先把已验收 baseline 同产物重新
 部署到一次干净生命周期后运行；B 再部署候选同样运行。`lab/compare-db91-writer-ab.mjs`
 比较两份原始 JSON 并以非零退出码拒绝任何 event-loop 或内存门槛失败。

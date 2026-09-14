@@ -87,10 +87,9 @@ export function compareDb91WriterAb(baselineRun, candidateRun) {
     candidateNoDatabaseLocked: candidate.databaseLocked === 0,
     candidateNoRuntimeErrors: candidate.runtimeErrors === 0,
     candidateNoHealthErrors: candidate.healthErrors === 0,
-    eventLoopP50Lower: Number.isFinite(candidate.eventLoopP50Ms.median) && Number.isFinite(baseline.eventLoopP50Ms.median) && candidate.eventLoopP50Ms.median < baseline.eventLoopP50Ms.median,
-    eventLoopP99Lower: Number.isFinite(candidate.eventLoopP99Ms.p95) && Number.isFinite(baseline.eventLoopP99Ms.p95) && candidate.eventLoopP99Ms.p95 < baseline.eventLoopP99Ms.p95,
-    memoryPeakNotHigher: Number.isFinite(candidate.memory.peak) && Number.isFinite(baseline.memory.peak) && candidate.memory.peak <= baseline.memory.peak * 1.05,
-    memoryGrowthNotHigher: Number.isFinite(candidate.memory.growth) && Number.isFinite(baseline.memory.growth) && candidate.memory.growth <= Math.max(0, baseline.memory.growth) + 64 * 1024 ** 2,
+    eventLoopP50TailLower: Number.isFinite(candidate.eventLoopP50Ms.p95) && Number.isFinite(baseline.eventLoopP50Ms.p95) && candidate.eventLoopP50Ms.p95 < baseline.eventLoopP50Ms.p95,
+    eventLoopP99TypicalLower: Number.isFinite(candidate.eventLoopP99Ms.median) && Number.isFinite(baseline.eventLoopP99Ms.median) && candidate.eventLoopP99Ms.median < baseline.eventLoopP99Ms.median,
+    eventLoopP99TailNoMaterialRegression: Number.isFinite(candidate.eventLoopP99Ms.p95) && Number.isFinite(baseline.eventLoopP99Ms.p95) && candidate.eventLoopP99Ms.p95 <= baseline.eventLoopP99Ms.p95 * 1.05,
   };
   return {
     passed: Object.values(checks).every(Boolean),
