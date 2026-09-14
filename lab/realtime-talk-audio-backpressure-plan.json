@@ -1,0 +1,10 @@
+{
+  "baseRelease": "db91-process-global-writer-v1",
+  "files": [
+    {
+      "source": "lab/release-files/talk-audio-wan-backpressure/control-ui-boot-chat-DWTSrxxk.js",
+      "target": "openclaw/dist/control-ui/assets/control-ui-boot-chat-DWTSrxxk.js",
+      "before": "ef2fb5a520b04cdc214fb055652c3c307f683b5f245216644b74859253391bb1"
+    }
+  ]
+}
