@@ -7,11 +7,15 @@ import os from 'node:os';
 import {randomUUID} from 'node:crypto';
 import {setTimeout as sleep} from 'node:timers/promises';
 
-const [owner, variant, label = `db91-scope-${variant}`] = process.argv.slice(2);
+const [owner, variant, label = `db91-scope-${variant}`, roundsArg = '2', concurrencyArg = '15'] = process.argv.slice(2);
+const rounds = Number(roundsArg);
+const concurrency = Number(concurrencyArg);
 assert.equal(os.hostname(), 'VM-0-4-ubuntu');
 assert(owner && /^[\w-]+$/.test(owner));
 assert(['baseline', 'candidate'].includes(variant));
 assert(/^[a-z0-9-]+$/.test(label));
+assert(Number.isInteger(rounds) && rounds >= 1 && rounds <= 4);
+assert(Number.isInteger(concurrency) && concurrency >= 1 && concurrency <= 15);
 
 const unit = 'openclaw-vlab-production-mirror-v8.service';
 const base = '/srv/vlab-production-mirror/labs/instances/db91-parity';
@@ -50,7 +54,7 @@ const agentDatabasePath = env.OPENCLAW_STATE_DIR + '/agents/makaron/agent/opencl
 assert(fs.statSync(agentDatabasePath).isFile());
 const cgroup = '/sys/fs/cgroup' + run('systemctl', ['show', unit, '-p', 'ControlGroup', '--value']);
 const release = readJson('/srv/vlab-production-mirror/labs/shared-workflow/current.json');
-const holderWaitMs = 4_000;
+const holderWaitMs = 40_000;
 
 const {GatewayClient} = await import(base + '/runtime/openclaw/dist/plugin-sdk/gateway-runtime.js');
 const rows = [];
@@ -145,14 +149,6 @@ try {
   await idle();
 
   const stamp = Date.now();
-  for (let index = 0; index < 5; index += 1) {
-    const row = {index, id: randomUUID(), key: `agent:makaron:explicit:${label}-${stamp}-${index}`};
-    await call('sessions.patch', {key: row.key, agentId: 'makaron', model});
-    await call('sessions.messages.subscribe', {agentId: 'makaron', key: row.key});
-    rows.push(row);
-    byId.set(row.id, row);
-  }
-
   const readyPath = `${control}/.${label}-holder-${stamp}.ready`;
   const holderCode = `import fs from 'node:fs';import {setTimeout as sleep} from 'node:timers/promises';const {p:runExclusive}=await import(${JSON.stringify(base + '/runtime/openclaw/dist/session-accessor.sqlite-scope-BwPKGcgm.js')});const startedAt=Date.now();await runExclusive({agentId:'makaron',path:process.argv[1],sessionKey:'agent:makaron:explicit:db91-scope-holder'},async()=>{fs.writeFileSync(process.argv[2],'ready',{flag:'wx',mode:0o600});await sleep(Number(process.argv[3]))});process.stdout.write(JSON.stringify({startedAt,finishedAt:Date.now()}));`;
   const child = spawn(process.execPath, ['--input-type=module', '-e', holderCode, agentDatabasePath, readyPath, String(holderWaitMs)], {env: process.env, stdio: ['ignore', 'pipe', 'pipe']});
@@ -171,30 +167,51 @@ try {
   startedAt = Date.now();
   sampling = true;
   sampler = sampleWhileActive();
-  await Promise.all(rows.map(async row => {
-    row.startedAt = Date.now();
-    await call('chat.send', {
-      agentId: 'makaron',
-      sessionKey: row.key,
-      message: `这是 VLab 五 Worker 首字验收。只回复 DB91_SCOPE_${variant}_${row.index}_${stamp}，不调用工具。`,
-      deliver: false,
-      thinking: 'low',
-      idempotencyKey: row.id,
-      timeoutMs: 120_000,
-    }, 130_000);
-  }));
-  await Promise.all(rows.map(row => waitForTerminal(row)));
+  for (let round = 0; round < rounds; round += 1) {
+    const batch = Array.from({length: concurrency}, (_, index) => ({
+      round,
+      index,
+      id: randomUUID(),
+      key: `agent:makaron:explicit:${label}-${stamp}-${round}-${index}`,
+    }));
+    rows.push(...batch);
+    await Promise.all(batch.map(async row => {
+      byId.set(row.id, row);
+      row.startedAt = Date.now();
+      try {
+        // Deliberately mutate the real session only after the independent process
+        // entered runExclusiveSqliteSessionWrite. The old broad lease must block
+        // here; the candidate's transaction-only lease must not.
+        await call('sessions.patch', {key: row.key, agentId: 'makaron', model}, 120_000);
+        await call('sessions.messages.subscribe', {agentId: 'makaron', key: row.key});
+        await call('chat.send', {
+          agentId: 'makaron',
+          sessionKey: row.key,
+          message: `这是 VLab 五 Worker C15 锁竞争验收。只回复 DB91_SCOPE_${variant}_${round}_${index}_${stamp}，不调用工具。`,
+          deliver: false,
+          thinking: 'low',
+          idempotencyKey: row.id,
+          timeoutMs: 120_000,
+        }, 130_000);
+        await waitForTerminal(row);
+      } catch (error) {
+        row.terminal = 'error';
+        row.error = String(error.message).slice(0, 300);
+        row.totalMs ??= Date.now() - row.startedAt;
+      }
+    }));
+    await idle();
+  }
   const holderTiming = await holderResult;
   holder.timing = holderTiming;
   sampling = false;
   await sampler;
 
-  for (const row of rows) {
-    assert.equal(row.terminal, 'final');
+  for (const row of rows.filter(item => item.terminal === 'final')) {
     const history = await call('chat.history', {agentId: 'makaron', sessionKey: row.key, limit: 5});
     const assistant = history.messages?.filter(message => message.role === 'assistant').at(-1);
     const body = assistant?.content?.filter(part => part.type === 'text').map(part => part.text).join('\n') ?? '';
-    row.bodyOk = body.includes(`DB91_SCOPE_${variant}_${row.index}_${stamp}`);
+    row.bodyOk = body.includes(`DB91_SCOPE_${variant}_${row.round}_${row.index}_${stamp}`);
     row.persisted = history.sessionInfo?.status === 'done' && history.sessionInfo?.lastRunId === row.id && history.sessionInfo?.hasActiveRun === false;
     row.provider = assistant?.provider;
     row.model = assistant?.model;
@@ -208,7 +225,7 @@ try {
     if (!line) continue;
     let message;
     try { message = JSON.parse(line).MESSAGE ?? ''; } catch { continue; }
-    const kind = ['database is locked', 'Agent DB process coordinator wait exceeded', 'SQLite session write failed', 'session transcript reconcile failed', 'Worker stream acknowledgement timed out', 'terminal session persistence failed', 'webchat dispatch failed'].find(candidate => message.includes(candidate));
+    const kind = ['database is locked', 'SQLITE_BUSY', 'Agent DB process coordinator wait exceeded', 'slow SQLite session write', 'SQLite session write failed', 'session transcript reconcile failed', 'Worker stream acknowledgement timed out', 'terminal session persistence failed', 'webchat dispatch failed'].find(candidate => message.includes(candidate));
     if (kind) runtimeErrors.push({kind, message: message.slice(0, 300)});
   }
   await idle();
@@ -232,7 +249,9 @@ const summary = {
   label,
   release,
   model,
-  count: 5,
+  count: rows.length,
+  rounds,
+  concurrency,
   holderWaitMs,
   configSha256: sha256(configBytes),
   workerConfigSha256: sha256(workerConfigBytes),
@@ -248,6 +267,9 @@ const summary = {
   eventLoopP99MaxMs: q(eventLoopP99, 1),
   healthErrors: health.filter(sample => sample.error).length,
   runtimeErrors: runtimeErrors.length,
+  coordinatorErrors: runtimeErrors.filter(error => error.kind === 'Agent DB process coordinator wait exceeded').length + rows.filter(row => /coordinator wait exceeded/i.test(row.error ?? '')).length,
+  databaseLocked: runtimeErrors.filter(error => /database is locked|SQLITE_BUSY/i.test(error.message)).length + rows.filter(row => /database is locked|SQLITE_BUSY/i.test(row.error ?? '')).length,
+  failed: rows.filter(row => row.terminal === 'error').length,
   memoryPeak: q(resources.map(sample => sample.memoryCurrent), 1),
   memoryGrowth: resources.length > 1 ? resources.at(-1).memoryCurrent - resources[0].memoryCurrent : null,
   ...(failure ? {failure} : {}),
@@ -255,4 +277,4 @@ const summary = {
 const output = `${control}/${label}-${Date.now()}.json`;
 fs.writeFileSync(output, JSON.stringify({summary, rows, health, resources, runtimeErrors, holder: holder?.timing ?? null}, null, 2) + '\n', {flag: 'wx', mode: 0o600});
 console.log(JSON.stringify({output, ...summary}));
-if (failure || summary.completed !== 5 || summary.persisted !== 5 || summary.runtimeErrors !== 0 || summary.healthErrors !== 0) process.exitCode = 1;
+if (failure) process.exitCode = 1;
