@@ -16,30 +16,10 @@ export const CONTROL_UI_ASSET_AFTER = {
   sha256: "6f9b3d199a587cd8ed85117b2bb21c0e0665682ec7a38692a95a8897c3358e57",
   size: 785580,
 };
-export const CONTROL_UI_COMPRESSED_ASSETS = [
-  {
-    path: `${CONTROL_UI_ASSET_PATH}.br`,
-    before: {
-      sha256: "0abfd28a4cc2afa954f5f1462af1de9d53e49177cab0b0d662ad53f322af3ef7",
-      size: 188564,
-    },
-    after: {
-      sha256: "8f23ce143f4f34c39d2addf3ab7b0a148588c4941ed54b65f90653e57f9ab4ce",
-      size: 174060,
-    },
-  },
-  {
-    path: `${CONTROL_UI_ASSET_PATH}.gz`,
-    before: {
-      sha256: "15b58a1ff8080f96e20706d2fa2ffac0257a0079d3e1d59d9972c133f4b3b0bf",
-      size: 214433,
-    },
-    after: {
-      sha256: "dcaad0c597c79a8746fe531e64215e51d98bc30768bfb678313e820ddfd539a4",
-      size: 214432,
-    },
-  },
-];
+export const PRECOMPRESSED_GUARD_BEFORE =
+  "const encodings = resolveControlUiContentEncodings(req, precompressed && CONTROL_UI_COMPRESSIBLE_EXTENSIONS.has(extension));";
+export const PRECOMPRESSED_GUARD_AFTER =
+  `const usePrecompressed = precompressed && CONTROL_UI_COMPRESSIBLE_EXTENSIONS.has(extension) && !params.contentPath.endsWith("${CONTROL_UI_ASSET_PATH}");\n\tconst encodings = resolveControlUiContentEncodings(req, usePrecompressed);`;
 
 const count = (source, needle) => source.split(needle).length - 1;
 
@@ -66,6 +46,17 @@ export function patchRealtimeTalkAudioBackpressure(source) {
   return source.replace(AUDIO_APPEND_LIMIT_BEFORE, AUDIO_APPEND_LIMIT_AFTER);
 }
 
+export function patchRealtimeTalkPrecompressedFallback(source) {
+  assert.equal(typeof source, "string", "Control UI server bundle must be text");
+  if (source.includes(PRECOMPRESSED_GUARD_AFTER)) {
+    assert.equal(count(source, PRECOMPRESSED_GUARD_AFTER), 1, "patched encoding guard is ambiguous");
+    assert.equal(count(source, PRECOMPRESSED_GUARD_BEFORE), 0, "encoding guard is partially patched");
+    return source;
+  }
+  assert.equal(count(source, PRECOMPRESSED_GUARD_BEFORE), 1, "encoding guard anchor drifted");
+  return source.replace(PRECOMPRESSED_GUARD_BEFORE, PRECOMPRESSED_GUARD_AFTER);
+}
+
 function hashManifestAssets(assets) {
   const hash = createHash("sha256");
   for (const asset of assets) {
@@ -88,21 +79,16 @@ export function patchControlUiAssetManifest(source) {
     hashManifestAssets(manifest.assets),
     "Control UI manifest generation drifted",
   );
-  const replacements = [
-    { path: CONTROL_UI_ASSET_PATH, before: CONTROL_UI_ASSET_BEFORE, after: CONTROL_UI_ASSET_AFTER },
-    ...CONTROL_UI_COMPRESSED_ASSETS,
-  ];
-  for (const replacement of replacements) {
-    const matches = manifest.assets.filter((asset) => asset.path === replacement.path);
-    assert.equal(matches.length, 1, `Control UI manifest entry drifted: ${replacement.path}`);
-    const entry = matches[0];
-    if (entry.sha256 === replacement.after.sha256 && entry.size === replacement.after.size) continue;
+  const matches = manifest.assets.filter((asset) => asset.path === CONTROL_UI_ASSET_PATH);
+  assert.equal(matches.length, 1, "Control UI bundle manifest entry drifted");
+  const entry = matches[0];
+  if (!(entry.sha256 === CONTROL_UI_ASSET_AFTER.sha256 && entry.size === CONTROL_UI_ASSET_AFTER.size)) {
     assert.deepEqual(
       { sha256: entry.sha256, size: entry.size },
-      replacement.before,
-      `Control UI manifest value drifted: ${replacement.path}`,
+      CONTROL_UI_ASSET_BEFORE,
+      "Control UI bundle manifest value drifted",
     );
-    Object.assign(entry, replacement.after);
+    Object.assign(entry, CONTROL_UI_ASSET_AFTER);
   }
   manifest.generation = hashManifestAssets(manifest.assets);
   return `${JSON.stringify(manifest)}\n`;

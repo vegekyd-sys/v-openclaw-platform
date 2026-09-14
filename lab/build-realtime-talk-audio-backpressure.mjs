@@ -7,29 +7,34 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { brotliCompressSync, constants as zlibConstants, gzipSync } from "node:zlib";
 import {
   CONTROL_UI_ASSET_AFTER,
-  CONTROL_UI_COMPRESSED_ASSETS,
-  patchControlUiAssetManifest,
+  patchRealtimeTalkPrecompressedFallback,
   patchRealtimeTalkAudioBackpressure,
 } from "./patch-realtime-talk-audio-backpressure.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const target = "openclaw/dist/control-ui/assets/control-ui-boot-chat-DWTSrxxk.js";
 const runtimeFile = `/srv/vlab-production-mirror/labs/instances/db91-parity/runtime/${target}`;
-const manifestTarget = "openclaw/dist/control-ui/asset-manifest.json";
+const serverTarget = "openclaw/dist/control-ui-DhD7PO_6.js";
+const serverRuntimeFile =
+  "/srv/vlab-production-mirror/labs/instances/db91-parity/runtime/openclaw/dist/control-ui-DhD7PO_6.js";
 const manifestRuntimeFile =
   "/srv/vlab-production-mirror/labs/instances/db91-parity/runtime/openclaw/dist/control-ui/asset-manifest.json";
 const outputRelative =
   "lab/release-files/talk-audio-wan-backpressure/control-ui-boot-chat-DWTSrxxk.js";
 const output = resolve(root, outputRelative);
-const manifestOutputRelative =
-  "lab/release-files/talk-audio-wan-backpressure/asset-manifest.json";
-const manifestOutput = resolve(root, manifestOutputRelative);
+const serverOutputRelative =
+  "lab/release-files/talk-audio-wan-backpressure/control-ui-DhD7PO_6.js";
+const serverOutput = resolve(root, serverOutputRelative);
+const manifestOutput = resolve(
+  root,
+  "lab/release-files/talk-audio-wan-backpressure/asset-manifest.json",
+);
 const planPath = resolve(root, "lab/realtime-talk-audio-backpressure-plan.json");
-const expectedManifestBefore =
-  "d26f184ddd625458a08abfbbfde4433aaadb46a75f777ec43122b2d7da3a9f95";
+const expectedServerBefore =
+  "638fd21e36e1ed8b6b2d6d02608fd59485f1c3a7bb65d28276d7c860c264f205";
+const expectedManifest = "d26f184ddd625458a08abfbbfde4433aaadb46a75f777ec43122b2d7da3a9f95";
 const ssh = [
   "-F",
   "/Users/tianyicai/v-upgrade-private/20260904/ssh-config",
@@ -90,30 +95,13 @@ export function build() {
   const after = patchRealtimeTalkAudioBackpressure(before.toString("utf8"));
   mkdirSync(dirname(output), { recursive: true });
   writeFileSync(output, after);
-  const compressed = new Map([
-    [
-      `${target}.br`,
-      brotliCompressSync(Buffer.from(after), {
-        params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 11 },
-      }),
-    ],
-    [`${target}.gz`, gzipSync(Buffer.from(after), { level: 9 })],
-  ]);
-  for (const descriptor of CONTROL_UI_COMPRESSED_ASSETS) {
-    const targetPath = `openclaw/dist/control-ui/${descriptor.path}`;
-    const content = compressed.get(targetPath);
-    assert(content, `compressed artifact is missing: ${targetPath}`);
-    assert.deepEqual(
-      { sha256: sha256(content), size: content.length },
-      descriptor.after,
-      `compressed artifact drifted: ${targetPath}`,
-    );
-    writeFileSync(resolve(root, `lab/release-files/talk-audio-wan-backpressure/${descriptor.path.split("/").at(-1)}`), content);
-  }
-  const manifestBefore = readRuntimeFile(manifestRuntimeFile);
-  assert.equal(sha256(manifestBefore), expectedManifestBefore, "asset manifest SHA drifted");
-  const manifestAfter = patchControlUiAssetManifest(manifestBefore.toString("utf8"));
-  writeFileSync(manifestOutput, manifestAfter);
+  const serverBefore = readRuntimeFile(serverRuntimeFile);
+  assert.equal(sha256(serverBefore), expectedServerBefore, "Control UI server SHA drifted");
+  const serverAfter = patchRealtimeTalkPrecompressedFallback(serverBefore.toString("utf8"));
+  writeFileSync(serverOutput, serverAfter);
+  const manifest = readRuntimeFile(manifestRuntimeFile);
+  assert.equal(sha256(manifest), expectedManifest, "Control UI manifest SHA drifted");
+  writeFileSync(manifestOutput, manifest);
   const statusAfter = remote({ command: "status" });
   assert.equal(
     statusAfter.current.release,
@@ -125,15 +113,10 @@ export function build() {
   const plan = {
     baseRelease: statusBefore.current.release,
     files: [
-      ...CONTROL_UI_COMPRESSED_ASSETS.map((descriptor) => ({
-        source: `lab/release-files/talk-audio-wan-backpressure/${descriptor.path.split("/").at(-1)}`,
-        target: `openclaw/dist/control-ui/${descriptor.path}`,
-        before: descriptor.before.sha256,
-      })),
       {
-        source: manifestOutputRelative,
-        target: manifestTarget,
-        before: expectedManifestBefore,
+        source: serverOutputRelative,
+        target: serverTarget,
+        before: expectedServerBefore,
       },
     ],
   };
@@ -141,11 +124,11 @@ export function build() {
   return {
     baseRelease: plan.baseRelease,
     bundle: { target, sha256: sha256(after), bytes: Buffer.byteLength(after) },
-    manifest: {
-      target: manifestTarget,
-      before: expectedManifestBefore,
-      after: sha256(manifestAfter),
-      bytes: Buffer.byteLength(manifestAfter),
+    server: {
+      target: serverTarget,
+      before: expectedServerBefore,
+      after: sha256(serverAfter),
+      bytes: Buffer.byteLength(serverAfter),
     },
   };
 }
