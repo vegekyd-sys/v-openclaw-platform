@@ -1,0 +1,10 @@
+{
+  "baseRelease": "db91-global-write-admission-v3",
+  "files": [
+    {
+      "source": "lab/release-files/server-start-BNcm1gUN.js",
+      "target": "openclaw/dist/server-start-BNcm1gUN.js",
+      "before": "845b97e1f276c426497fea21eedb8f7650d16e11dc70765e32e1ef4080e21864"
+    }
+  ]
+}

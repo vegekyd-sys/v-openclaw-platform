@@ -36,6 +36,7 @@ export function summarizeDb91WriterAbRun(run) {
     persisted: run.rows.filter(row => row.persisted === true).length,
     databaseLocked: run.runtimeErrors.filter(error => error.databaseLocked).length,
     runtimeErrors: run.runtimeErrors.length,
+    slowSessionWriteMaxMs: quantile(run.slowSessionWrites?.map(write => write.elapsedMs) ?? [], 1),
     healthErrors: run.health.filter(sample => sample.error).length,
     failure: run.failure ?? null,
     eventLoopP50Ms: {
@@ -72,6 +73,10 @@ export function compareDb91WriterAb(baselineRun, candidateRun) {
   const expected = baseline.rounds * baseline.concurrency;
   const checks = {
     baselineNoRunnerFailure: baseline.failure === null,
+    baselineReproducedDatabaseLock: baseline.databaseLocked > 0,
+    baselineReproducedSlowWrite: baseline.slowSessionWriteMaxMs >= 30_000,
+    baselineReproducedEventLoopStall: baseline.eventLoopP99Ms.max >= 1_000,
+    baselineReproducedMemoryGrowth: baseline.memory.growth >= 1024 ** 3,
     candidateNoRunnerFailure: candidate.failure === null,
     candidateCompleted: candidate.completed === expected,
     candidatePersisted: candidate.persisted === expected,
