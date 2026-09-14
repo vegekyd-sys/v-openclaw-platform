@@ -126,7 +126,7 @@ test('the OS releases a process lease after an owner is killed', async () => {
   const readyPath = path.join(dir, 'ready');
   const helperUrl = new URL('./release-files/agent-db-process-coordinator.mjs', import.meta.url).href;
   fs.writeFileSync(databasePath, 'fixture');
-  const code = `import fs from 'node:fs';import {DatabaseSync} from 'node:sqlite';import {withAgentDatabaseProcessLease} from ${JSON.stringify(helperUrl)};const acquire=(f,o)=>{const db=new DatabaseSync(f);db.exec('PRAGMA busy_timeout='+o.busyTimeoutMs);try{db.exec('BEGIN EXCLUSIVE')}catch(e){db.close();if((e.errcode&255)===5)return null;throw e}return{release(){db.exec('ROLLBACK');db.close()}}};await withAgentDatabaseProcessLease({databasePath:process.argv[1],acquire,fn:async()=>{fs.writeFileSync(process.argv[2],'ready');await new Promise(()=>{})}});`;
+  const code = `import fs from 'node:fs';import {DatabaseSync} from 'node:sqlite';import {withAgentDatabaseProcessLease} from ${JSON.stringify(helperUrl)};const acquire=(f,o)=>{const db=new DatabaseSync(f);db.exec('PRAGMA busy_timeout='+o.busyTimeoutMs);try{db.exec('BEGIN EXCLUSIVE')}catch(e){db.close();if((e.errcode&255)===5)return null;throw e}return{release(){db.exec('ROLLBACK');db.close()}}};await withAgentDatabaseProcessLease({databasePath:process.argv[1],acquire,fn:async()=>{fs.writeFileSync(process.argv[2],'ready');await new Promise(()=>{setInterval(()=>{},1e3)})}});`;
   const owner = runChild(code, [databasePath, readyPath]);
   try {
     while (!fs.existsSync(readyPath)) await new Promise(resolve => setTimeout(resolve, 5));
