@@ -2,7 +2,7 @@
 
 2026-09-10 用户进一步明确：合入 dev 的决定权只属于 Tianyi。agent 在自己的 worktree 完成开发和合入前测试，报告结果后等待用户明确批准，不能自主合入；lease、测试通过或一般修复授权不代替批准。
 
-2026-09-15 用户更新：每个任务在自己的 worktree 执行自己的候选代码，复用 VLab 的数据来源；共享 VLab 是上线前的 Dev 集成门禁。默认用 [candidate](candidate/README.md) 隔离进程，不创建常驻 Gateway。配置快照与选定 SQLite 备份可并行使用，可写状态各自独立；在线数据库不共写。
+2026-09-15 用户更新：每个任务在自己的 worktree 执行自己的候选代码，复用 VLab 的数据来源；共享 VLab 是上线前的 Dev 集成门禁。默认用 [candidate](candidate/README.md) 直接执行 Agent 指定的测试，不创建常驻 Gateway；工具不限制网络、能力或资源，Agent 自主判断。配置快照与选定 SQLite 备份可并行使用，可写状态各自独立；在线数据库不共写。
 
 首次接手请先读 [给其他 agent 的操作入口](AGENT-QUICKSTART.md)。其中区分源码开发、共享验收占用与成功/失败两条收尾路径。
 

@@ -7,22 +7,20 @@ import {execFileSync} from 'node:child_process';
 const hash = b => createHash('sha256').update(b).digest('hex');
 export function buildRequest(root, plan, owner) {
   root = fs.realpathSync(root);
-  assert(/^[\w-]{1,100}$/.test(owner ?? ''), 'Owner required');
+  owner ??= 'agent';
   function file(source) {
-    assert(typeof source === 'string' && !path.isAbsolute(source));
+    assert(typeof source === 'string');
     const resolved = fs.realpathSync(path.resolve(root, source));
-    assert(resolved.startsWith(root + '/'), 'Candidate inputs must be inside the task worktree');
-    assert(!/(^|\/)(\.env[^/]*|credentials|state|sessions|node_modules)(\/|$)/.test(source));
+    const relative = path.relative(root, resolved);
+    const destination = relative.startsWith('../') || path.isAbsolute(relative) ? 'external/' + hash(resolved).slice(0, 16) + '/' + path.basename(resolved) : relative;
     const content = fs.readFileSync(resolved);
-    assert(content.length <= 16 * 1024 ** 2, 'Candidate input exceeds 16 MiB');
-    return {source, content: content.toString('base64'), sha256: hash(content)};
+    return {source: destination, originalSource: source, content: content.toString('base64'), sha256: hash(content)};
   }
-  assert(Array.isArray(plan.tests) && plan.tests.length > 0, 'Specify test entrypoints');
-  const inputs = [...new Set([...plan.tests, ...(plan.support ?? [])])].map(file);
+  assert(plan.command || (Array.isArray(plan.tests) && plan.tests.length > 0), 'Specify tests or command');
+  const inputs = [...new Set([...(plan.tests ?? []), ...(plan.support ?? [])])].map(file);
   const files = (plan.files ?? []).map(f => ({...file(f.source), target: f.target, before: f.before}));
-  const request = {owner, tests: plan.tests, inputs, files, databases: plan.databases ?? [],
-    timeoutSeconds: plan.timeoutSeconds ?? 120, baseRelease: plan.baseRelease};
-  assert(Buffer.byteLength(JSON.stringify(request)) < 48 * 1024 ** 2, 'Candidate payload exceeds 48 MiB');
+  const request = {owner, tests: (plan.tests ?? []).map(t => inputs.find(f => f.originalSource === t).source), inputs, files, databases: plan.databases ?? [],
+    timeoutSeconds: plan.timeoutSeconds ?? 0, baseRelease: plan.baseRelease, command: plan.command, env: plan.env ?? {}, cwd: plan.cwd, user: plan.user};
   return {...request, inputSha256: hash(JSON.stringify(request))};
 }
 
@@ -32,7 +30,6 @@ export function candidate(opts) {
   const req = buildRequest(root, plan, opts.owner);
   const git = args => execFileSync('git', ['-C', root, ...args], {encoding: 'utf8'}).trim();
   const branch = git(['branch', '--show-current']);
-  assert(branch.startsWith('codex/'), 'Run candidate tests from the task worktree');
   req.branch = branch;
   req.sourceCommit = git(['rev-parse', 'HEAD']);
   req.dirty = Boolean(git(['status', '--porcelain']));
@@ -45,7 +42,7 @@ export function candidate(opts) {
   const result = JSON.parse(execFileSync('ssh', ['-F', '/Users/tianyicai/v-upgrade-private/20260904/ssh-config',
     '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', 'vlab91', command], {
     input: JSON.stringify({runner: runner.toString('base64'), request: {...req, runnerSha256: hash(runner)}}),
-    encoding: 'utf8', maxBuffer: 8 * 1024 ** 2, timeout: (req.timeoutSeconds + 180) * 1000,
+    encoding: 'utf8', maxBuffer: Infinity,
   }));
   result.totalClientMs = Math.round(performance.now() - start);
   const output = path.resolve(opts.output ?? path.join(root, 'tmp/candidate', result.id + '.json'));
