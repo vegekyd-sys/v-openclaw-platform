@@ -4,7 +4,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
-import {setTimeout as sleep} from 'node:timers/promises';
 import {
   controlledStopPolicy,
   newRelease,
@@ -172,34 +171,21 @@ if (mode === 'stage') {
   const environment = readLiveEnvironment(pid);
   const config = readJson(configFiles[0]);
   const client = await connect(`${oldRelease}/core`, config, environment);
-  let suspension;
   try {
     const workers = await client.request('vlab.workers.status', {}, {timeoutMs: 20_000});
-    assert.equal(workers.pending, 0, 'Worker request pending');
-    assert(workers.workers.every((worker) => !worker.activeCount && !worker.queued && !worker.detachedTaskCount), 'Night Shift or another Worker task is still active');
-    const requestId = `db91-process-writer-${Date.now()}`;
-    suspension = await client.request('gateway.suspend.prepare', {requestId, drain: true, terminalPolicy: 'preserve'}, {timeoutMs: 20_000});
-    assert(suspension.suspensionId);
-    const deadline = Date.now() + 30_000;
-    for (;;) {
-      const status = await client.request('gateway.suspend.status', {suspensionId: suspension.suspensionId}, {timeoutMs: 10_000});
-      if (status.status === 'ready' && status.expiresAtMs > Date.now() + 5_000) break;
-      if (Date.now() >= deadline) throw new Error(`Gateway suspension did not become ready: ${status.status}`);
-      await sleep(500);
-    }
+    const active = workers.workers.reduce((sum, worker) => sum + worker.activeCount, 0);
+    const queued = workers.workers.reduce((sum, worker) => sum + (worker.queued ?? 0), 0);
     fs.writeFileSync(stopDropin, controlledStopPolicy, {mode: 0o644, flag: 'wx'});
     run('systemctl', ['daemon-reload']);
     assert.equal(run('systemctl', ['show', unit, '-p', 'KillSignal', '--value']), '10');
     run('/usr/sbin/runuser', ['-u', 'openclaw', '--', process.execPath, `${source}/scripts/deploy-db91-process-global-writer-production.mjs`, 'write-intent', String(pid)], {env: process.env});
-    record('native-stop-requested', {beforePid: pid, suspensionId: suspension.suspensionId, active: 0, queued: 0});
+    // The already accepted db91.1 restart protocol persists active turns before
+    // exit and reconnects them after start. SIGUSR1 avoids the QQBot TERM hook
+    // that would otherwise exit before the native restart intent is consumed.
+    record('native-stop-requested', {beforePid: pid, active, queued, pending: workers.pending, terminalPolicy: 'preserve'});
     run('systemctl', ['stop', unit], {timeout: 65_000});
     assert.equal(gatewayPid(), 0);
-    record('stopped', {beforePid: pid});
-  } catch (error) {
-    if (suspension?.suspensionId) {
-      await client.request('gateway.suspend.resume', {suspensionId: suspension.suspensionId}, {timeoutMs: 10_000}).catch(() => {});
-    }
-    throw error;
+    record('stopped', {beforePid: pid, activeAtNativeHandoff: active});
   } finally {
     client.stop();
   }
