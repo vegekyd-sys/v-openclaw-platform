@@ -107,15 +107,17 @@ const compactStatus = async () => {
     pending: status.pending,
   };
 };
-const assertIdle = async () => {
+const assertFiveWorkerCapacity = async ({reserve = 0} = {}) => {
   const status = await compactStatus();
-  assert.equal(status.pending, 0);
-  assert.equal(status.active, 0);
-  assert.equal(status.queued, 0);
   assert.equal(status.minWorkers, 5);
   assert.equal(status.maxWorkers, 15);
   assert.equal(status.sessionsPerWorker, 3);
-  assert(status.readyWorkers >= 5);
+  assert.equal(status.workers, 5, 'Production C5 acceptance must not exceed five Workers');
+  assert.equal(status.readyWorkers, 5);
+  assert(
+    status.active + status.queued + Number(status.pending ?? 0) + reserve <= 15,
+    'Not enough capacity to add C5 without scaling past five Workers',
+  );
   return status;
 };
 
@@ -171,7 +173,7 @@ async function runCohort(count) {
     }
   }));
   cohort.finishedAt = Date.now();
-  cohort.statusAfter = await assertIdle();
+  cohort.statusAfter = await assertFiveWorkerCapacity();
   const firstText = cohort.rows.map((row) => row.firstTextMs);
   cohort.firstTextMs = {
     median: quantile(firstText, 0.5),
@@ -185,7 +187,7 @@ async function runCohort(count) {
 let sampling = true;
 let sampler;
 try {
-  report.statusBefore = await assertIdle();
+  report.statusBefore = await assertFiveWorkerCapacity({reserve: 5});
   report.resourceBefore = resources();
   sampler = (async () => {
     while (sampling) {
@@ -213,7 +215,7 @@ try {
   sampling = false;
   await sampler;
   report.resourceAfter = resources();
-  report.statusAfter = await assertIdle();
+  report.statusAfter = await assertFiveWorkerCapacity();
   assert.equal(crypto.createHash('sha256').update(fs.readFileSync(configPath)).digest('hex'), configSha256);
   assert.equal(Number(run('systemctl', ['show', unit, '-p', 'MainPID', '--value'])), gatewayPid);
   const journal = run('journalctl', ['-u', unit, '--since', new Date(stamp - 1_000).toISOString(), '--no-pager', '-o', 'cat'], {maxBuffer: 64 * 1024 ** 2});
