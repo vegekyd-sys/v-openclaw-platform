@@ -6,6 +6,12 @@ export const newRelease = '/opt/openclaw-experiments/db91-release-v2026.9.1-db91
 
 export const productionFiles = [
   {
+    source: 'lab/release-files/sqlite-begin-contention-retry.mjs',
+    target: 'core/dist/sqlite-begin-contention-retry.mjs',
+    beforeSha256: '07e24fe94aabf1559e742a6890722fe9e6a586ee92fca7234f3d4170705e5c89',
+    afterSha256: '0540c343e348045452d68ddeb8ca62bc9e46303a517011eb17ca516a3e85ce4d',
+  },
+  {
     source: 'lab/release-files/agent-db-process-coordinator.mjs',
     target: 'core/dist/agent-db-process-coordinator.mjs',
     beforeSha256: null,
