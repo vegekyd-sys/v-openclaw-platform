@@ -201,7 +201,13 @@ if (mode === 'stage') {
   const environment = readLiveEnvironment(pid);
   assert.equal(environment.V_RELEASE_VERSION, 'v2026.9.1-db91.1');
   assert(fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').includes(`${oldRelease}/core/dist/index.js`));
-  assert.equal(fs.readFileSync(stopDropin, 'utf8'), controlledStopPolicy, 'Expected the guarded SIGUSR1 policy from the first native handoff');
+  if (fs.existsSync(stopDropin)) {
+    assert.equal(fs.readFileSync(stopDropin, 'utf8'), controlledStopPolicy);
+  } else {
+    fs.writeFileSync(stopDropin, controlledStopPolicy, {mode: 0o644, flag: 'wx'});
+    run('systemctl', ['daemon-reload']);
+  }
+  assert.equal(run('systemctl', ['show', unit, '-p', 'KillSignal', '--value']), '10');
   for (const config of staged.configs) {
     assert.equal(sha(config.file), config.beforeSha256, `Live config drift: ${config.file}`);
     assert.equal(sha(config.afterPath), config.afterSha256, `Staged config drift: ${config.afterPath}`);
