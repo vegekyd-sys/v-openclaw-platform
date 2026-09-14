@@ -133,8 +133,10 @@ if (mode === 'stage') {
   const group = Number(run('id', ['-g', 'openclaw']));
   fs.chownSync(backup, 0, group);
   fs.chmodSync(backup, 0o750);
-  run('cp', ['-al', `${oldRelease}/core`, `${newRelease}/core`], {timeout: 180_000});
-  run('cp', ['-al', `${oldRelease}/worker`, `${newRelease}/worker`], {timeout: 60_000});
+  // OpenClaw rejects hardlinked plugin manifests as unsafe. A normal copy is
+  // required even though it costs about 524 MiB on the production data disk.
+  run('cp', ['-a', `${oldRelease}/core`, `${newRelease}/core`], {timeout: 180_000});
+  run('cp', ['-a', `${oldRelease}/worker`, `${newRelease}/worker`], {timeout: 60_000});
   for (const file of productionFiles) {
     const destination = `${newRelease}/${file.target}`;
     const temporary = `${destination}.${process.pid}.tmp`;

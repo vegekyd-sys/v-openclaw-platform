@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import {
   controlledStopPolicy,
   newRelease,
@@ -48,7 +49,7 @@ test('Worker child config preserves its independent minWorkers mirror', () => {
 
 test('release manifest is exact and hash guarded', () => {
   assert.equal(releaseId, 'v2026.9.1-db91.2');
-  assert.equal(productionFiles.length, 5);
+  assert.equal(productionFiles.length, 6);
   assert.equal(new Set(productionFiles.map((file) => file.target)).size, productionFiles.length);
   assert.equal(productionFiles.filter((file) => file.beforeSha256 === null).length, 1);
   for (const file of productionFiles) {
@@ -57,6 +58,12 @@ test('release manifest is exact and hash guarded', () => {
     assert.match(file.afterSha256, /^[0-9a-f]{64}$/);
     if (file.beforeSha256) assert.match(file.beforeSha256, /^[0-9a-f]{64}$/);
   }
+});
+
+test('production stage never hardlinks the live runtime', () => {
+  const source = fs.readFileSync(new URL('./deploy-db91-process-global-writer-production.mjs', import.meta.url), 'utf8');
+  assert(source.includes("run('cp', ['-a', `${oldRelease}/core`, `${newRelease}/core`]"));
+  assert(!source.includes("run('cp', ['-al'"));
 });
 
 test('unit retains established hooks without changing stop bounds', () => {
