@@ -1,10 +1,20 @@
 {
-  "baseRelease": "talk-audio-wan-backpressure-v1",
+  "baseRelease": "talk-audio-wan-backpressure-v2",
   "files": [
+    {
+      "source": "lab/release-files/talk-audio-wan-backpressure/control-ui-boot-chat-DWTSrxxk.js.br",
+      "target": "openclaw/dist/control-ui/assets/control-ui-boot-chat-DWTSrxxk.js.br",
+      "before": "0abfd28a4cc2afa954f5f1462af1de9d53e49177cab0b0d662ad53f322af3ef7"
+    },
+    {
+      "source": "lab/release-files/talk-audio-wan-backpressure/control-ui-boot-chat-DWTSrxxk.js.gz",
+      "target": "openclaw/dist/control-ui/assets/control-ui-boot-chat-DWTSrxxk.js.gz",
+      "before": "15b58a1ff8080f96e20706d2fa2ffac0257a0079d3e1d59d9972c133f4b3b0bf"
+    },
     {
       "source": "lab/release-files/talk-audio-wan-backpressure/asset-manifest.json",
       "target": "openclaw/dist/control-ui/asset-manifest.json",
-      "before": "a967daf8fe509bc38378f53ee9a1b8d7de8181e6adb7e3dc9c21c3ae3fe39dbc"
+      "before": "d26f184ddd625458a08abfbbfde4433aaadb46a75f777ec43122b2d7da3a9f95"
     }
   ]
 }

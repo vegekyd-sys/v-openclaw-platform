@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { brotliDecompressSync, gunzipSync } from "node:zlib";
 import {
   AUDIO_APPEND_LIMIT,
   AUDIO_APPEND_LIMIT_AFTER,
@@ -9,6 +10,7 @@ import {
   CONTROL_UI_ASSET_AFTER,
   CONTROL_UI_ASSET_BEFORE,
   CONTROL_UI_ASSET_PATH,
+  CONTROL_UI_COMPRESSED_ASSETS,
   patchControlUiAssetManifest,
   patchRealtimeTalkAudioBackpressure,
 } from "./patch-realtime-talk-audio-backpressure.mjs";
@@ -53,20 +55,28 @@ test("release artifact contains the reviewed bounded limit", () => {
 });
 
 test("manifest patch publishes a new retained Control UI generation", () => {
+  const assets = [
+    { path: CONTROL_UI_ASSET_PATH, ...CONTROL_UI_ASSET_BEFORE },
+    ...CONTROL_UI_COMPRESSED_ASSETS.map((asset) => ({ path: asset.path, ...asset.before })),
+  ];
   const before = {
     version: 1,
     generation: "",
-    assets: [{ path: CONTROL_UI_ASSET_PATH, ...CONTROL_UI_ASSET_BEFORE }],
+    assets,
   };
   const manifestHash = createHash("sha256")
-    .update(
-      `${CONTROL_UI_ASSET_PATH}\0${CONTROL_UI_ASSET_BEFORE.size}\0${CONTROL_UI_ASSET_BEFORE.sha256}\n`,
-    )
+    .update(assets.map((asset) => `${asset.path}\0${asset.size}\0${asset.sha256}\n`).join(""))
     .digest("hex");
   before.generation = manifestHash;
   const patched = patchControlUiAssetManifest(JSON.stringify(before));
   const after = JSON.parse(patched);
   assert.deepEqual(after.assets[0], { path: CONTROL_UI_ASSET_PATH, ...CONTROL_UI_ASSET_AFTER });
+  for (const compressed of CONTROL_UI_COMPRESSED_ASSETS) {
+    assert.deepEqual(
+      after.assets.find((asset) => asset.path === compressed.path),
+      { path: compressed.path, ...compressed.after },
+    );
+  }
   assert.notEqual(after.generation, before.generation);
   assert.equal(patchControlUiAssetManifest(patched), patched);
 });
@@ -82,5 +92,24 @@ test("release manifest points at the patched bundle", () => {
   const manifest = JSON.parse(release);
   const entry = manifest.assets.find((asset) => asset.path === CONTROL_UI_ASSET_PATH);
   assert.deepEqual(entry, { path: CONTROL_UI_ASSET_PATH, ...CONTROL_UI_ASSET_AFTER });
+  for (const compressed of CONTROL_UI_COMPRESSED_ASSETS) {
+    assert.deepEqual(
+      manifest.assets.find((asset) => asset.path === compressed.path),
+      { path: compressed.path, ...compressed.after },
+    );
+  }
   assert.equal(patchControlUiAssetManifest(release), release);
+});
+
+test("precompressed release artifacts decode to the patched bundle", () => {
+  const directory = new URL("./release-files/talk-audio-wan-backpressure/", import.meta.url);
+  const bundle = readFileSync(new URL("control-ui-boot-chat-DWTSrxxk.js", directory));
+  assert.deepEqual(
+    brotliDecompressSync(readFileSync(new URL("control-ui-boot-chat-DWTSrxxk.js.br", directory))),
+    bundle,
+  );
+  assert.deepEqual(
+    gunzipSync(readFileSync(new URL("control-ui-boot-chat-DWTSrxxk.js.gz", directory))),
+    bundle,
+  );
 });
