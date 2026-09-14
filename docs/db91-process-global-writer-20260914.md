@@ -112,5 +112,6 @@ CPU/event-loop 饱和和 memory FTS 慢操作会扩大排队，排队又增加 r
 A 还必须由一个真实独立 Node 进程通过 9.1 的
 `runOpenClawAgentWriteTransaction` 持有 Agent DB 写事务 40 秒；持锁后再从主 Gateway
 同时发起 `sessions.patch` 和 C15 Worker 消息。比较器要求 A 同时出现数据库锁错误、
-至少 30 秒的 slow session write、至少 1 秒 event-loop P99 和至少 1 GiB cgroup
-内存增长。少任何一项都视为“没有复现线上故障”，不得拿来与 B 比较。
+至少 30 秒的 slow session write，或等价的 session mutation 等待后以 DB lock 失败；
+同时还要有至少 1 秒 event-loop P99 和至少 1 GiB cgroup 内存增长。少任何一项都
+视为“没有复现线上故障”，不得拿来与 B 比较。
