@@ -9,6 +9,8 @@ import {newRelease, releaseId} from './db91-process-global-writer-production-pla
 
 assert.equal(os.hostname(), 'VM-8-2-ubuntu');
 assert.equal(process.getuid(), 0);
+const requestedCount = Number(process.argv[2] ?? 5);
+assert(Number.isInteger(requestedCount) && requestedCount >= 1 && requestedCount <= 15);
 
 const unit = 'openclaw-gateway.service';
 const root = '/home/openclaw/.openclaw';
@@ -187,7 +189,7 @@ async function runCohort(count) {
 let sampling = true;
 let sampler;
 try {
-  report.statusBefore = await assertFiveWorkerCapacity({reserve: 5});
+  report.statusBefore = await assertFiveWorkerCapacity({reserve: requestedCount});
   report.resourceBefore = resources();
   sampler = (async () => {
     while (sampling) {
@@ -210,7 +212,7 @@ try {
       await sleep(500);
     }
   })();
-  await runCohort(5);
+  await runCohort(requestedCount);
   assert(!report.safetyStop);
   sampling = false;
   await sampler;
