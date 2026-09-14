@@ -44,6 +44,15 @@ export function buildSeeduplexSession(providerConfig, request) {
     throw new Error(`Unsupported Seeduplex model: ${model}`);
   }
   const voice = resolveSeeduplexVoice(providerConfig.voice);
+  const language = optionalString(request.language)?.toLowerCase();
+  const instructions = [
+    optionalString(request.instructions),
+    language?.startsWith("zh")
+      ? "重要语言规则：本次通话指定中文。整个会话只能使用中文，包括调用工具之前的简短确认、等待提示和最终回答。禁止使用英文开场白；不要说 Let me check、Sure 或 I will。"
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
   const tools = (request.tools ?? []).map((tool) => ({
     type: "function",
     name: tool.name,
@@ -54,7 +63,7 @@ export function buildSeeduplexSession(providerConfig, request) {
     type: "session.create",
     session: {
       model,
-      instructions: request.instructions,
+      instructions,
       audio: {
         input: { format: { type: "pcm", rate: 16_000 } },
         output: {
@@ -145,6 +154,7 @@ export function buildSeeduplexAgentConsultPrompt(args = {}) {
     "Live voice request during a Gateway-relay Talk session.",
     "Act as the configured OpenClaw agent for this user. Use available tools when the request asks you to do work.",
     "Return only the concise terminal result that the realtime voice agent should speak. Preserve failures, limits, numbers, and pending approvals.",
+    "Answer in the same language as the user's request. If the user speaks Chinese, the terminal result must be Chinese.",
     responseStyle ? `Spoken style: ${responseStyle}` : undefined,
     context ? `Additional realtime context:\n${context}` : undefined,
     confirmationId ? `Server-issued voice confirmation id: ${confirmationId}` : undefined,
@@ -196,6 +206,7 @@ export class SeeduplexRealtimeVoiceBridge {
     this.connectReject = null;
     this.connectTimer = null;
     this.abortController = new AbortController();
+    this.agentConsultTail = Promise.resolve();
     this.skipNextResponseDone = false;
     this.supportsToolResultContinuation = true;
     this.supportsToolResultSuppression = false;
@@ -540,17 +551,28 @@ export class SeeduplexRealtimeVoiceBridge {
     for (const call of calls) {
       this.seenToolCalls.add(call.callId);
       this.pendingToolCalls.set(call.callId, batch);
-      this.request.onToolCall?.({
-        itemId: call.callId,
-        callId: call.callId,
-        name: call.name,
-        args: call.args,
-      });
       if (
         call.name === "openclaw_agent_consult" &&
         typeof this.request.runAgentConsult === "function"
       ) {
-        void this.#runAgentConsult(call);
+        // Gateway-relay sessions provide runAgentConsult and therefore own the
+        // entire delegation. Publishing the same call through onToolCall makes
+        // the browser start a second Agent run against the same session.
+        this.submitToolResult(
+          call.callId,
+          { status: "working", message: "OpenClaw Agent 正在处理。" },
+          { willContinue: true },
+        );
+        this.agentConsultTail = this.agentConsultTail.then(() =>
+          this.#runAgentConsult(call),
+        );
+      } else {
+        this.request.onToolCall?.({
+          itemId: call.callId,
+          callId: call.callId,
+          name: call.name,
+          args: call.args,
+        });
       }
     }
   }

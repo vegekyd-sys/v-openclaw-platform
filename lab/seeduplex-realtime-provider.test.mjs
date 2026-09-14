@@ -80,6 +80,7 @@ test("session request preserves Talk instructions and native tools", () => {
     { model: SEEDUPLEX_MODEL, voice: "companion" },
     {
       instructions: "Use the full V agent when needed.",
+      language: "zh",
       tools: [
         {
           type: "function",
@@ -95,6 +96,8 @@ test("session request preserves Talk instructions and native tools", () => {
   assert.equal(session.session.audio.output.voice, SEEDUPLEX_VOICES.companion);
   assert.equal(session.session.tools[0].name, "openclaw_agent_consult");
   assert.match(session.session.instructions, /full V agent/);
+  assert.match(session.session.instructions, /整个会话只能使用中文/);
+  assert.match(session.session.instructions, /禁止使用英文开场白/);
 });
 
 test("agent consult prompt preserves the concrete voice request and constraints", () => {
@@ -106,6 +109,8 @@ test("agent consult prompt preserves the concrete voice request and constraints"
   assert.match(prompt, /检查项目状态/);
   assert.match(prompt, /当前项目是 VLab/);
   assert.match(prompt, /简短中文/);
+  assert.match(prompt, /same language/);
+  assert.match(prompt, /must be Chinese/);
   assert.throws(() => buildSeeduplexAgentConsultPrompt({}), /requires a question/);
 });
 
@@ -244,6 +249,10 @@ test("upstream rejection never relays vendor diagnostics or credentials", async 
 test("Gateway-owned consults return one ordered Seeduplex tool-result batch", async () => {
   const socket = new FakeSocket();
   const prompts = [];
+  const browserCalls = [];
+  const pending = [];
+  let activeConsults = 0;
+  let maxActiveConsults = 0;
   const serverEvents = [];
   const provider = buildSeeduplexRealtimeVoiceProvider({
     env: { VOLCENGINE_REALTIME_API_KEY: "secret-value" },
@@ -263,13 +272,20 @@ test("Gateway-owned consults return one ordered Seeduplex tool-result batch", as
     runAgentConsult: async ({ prompt, signal }) => {
       assert.equal(signal.aborted, false);
       prompts.push(prompt);
-      return { text: prompt.includes("第一个") ? "结果一" : "结果二" };
+      activeConsults += 1;
+      maxActiveConsults = Math.max(maxActiveConsults, activeConsults);
+      return await new Promise((resolve) => {
+        pending.push((text) => {
+          activeConsults -= 1;
+          resolve({ text });
+        });
+      });
     },
     onAudio() {},
     onClearAudio() {},
-    onToolCall() {},
-    onTranscript: (...args) => prompts.push(args),
-    onResponseDone: (outcome) => prompts.push(outcome),
+    onToolCall: (call) => browserCalls.push(call),
+    onTranscript() {},
+    onResponseDone() {},
     onEvent: (event) => serverEvents.push(event.type),
     onError(error) {
       assert.fail(error.message);
@@ -297,16 +313,10 @@ test("Gateway-owned consults return one ordered Seeduplex tool-result batch", as
       },
     ],
   });
-  bridge.submitToolResult(
-    "call-1",
-    { status: "working", message: "Agent 正在处理。" },
-    { willContinue: true },
-  );
-  bridge.submitToolResult(
-    "call-2",
-    { status: "working", message: "Agent 正在处理。" },
-    { willContinue: true },
-  );
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(browserCalls.length, 0, "Gateway-owned calls must not reach the browser");
+  assert.equal(pending.length, 1, "only the first Agent consult starts immediately");
+  assert.equal(maxActiveConsults, 1);
   const workingEvents = socket.sent.filter(
     (event) => event.type === "conversation.item.create",
   );
@@ -314,12 +324,17 @@ test("Gateway-owned consults return one ordered Seeduplex tool-result batch", as
   assert.deepEqual(
     workingEvents[0].items.map((item) => [item.call_id, JSON.parse(item.content[0].text)]),
     [
-      ["call-1", { status: "working", message: "Agent 正在处理。" }],
-      ["call-2", { status: "working", message: "Agent 正在处理。" }],
+      ["call-1", { status: "working", message: "OpenClaw Agent 正在处理。" }],
+      ["call-2", { status: "working", message: "OpenClaw Agent 正在处理。" }],
     ],
   );
-  socket.message({ type: "response.output_audio.done", response_id: "working-response" });
+  pending[0]("结果一");
   await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(pending.length, 2, "the second consult starts after the first settles");
+  assert.equal(maxActiveConsults, 1, "same-session Agent consults are serialized");
+  pending[1]("结果二");
+  await new Promise((resolve) => setImmediate(resolve));
+  socket.message({ type: "response.output_audio.done", response_id: "working-response" });
   assert.equal(prompts.filter((entry) => typeof entry === "string").length, 2);
   const speechEvents = socket.sent.filter(
     (event) => event.type === "speech_text_buffer.commit",
@@ -336,10 +351,6 @@ test("Gateway-owned consults return one ordered Seeduplex tool-result batch", as
     type: "response.done",
     response: { id: "final-response", status: "completed" },
   });
-  assert.equal(
-    prompts.filter((entry) => entry?.status === "completed").length,
-    1,
-  );
   assert.equal(serverEvents.includes("response.output_audio.done"), false);
   assert.equal(serverEvents.includes("response.done"), false);
   bridge.close();
