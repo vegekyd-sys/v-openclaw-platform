@@ -89,6 +89,7 @@ import { NativeLaneProgressBridge } from "./native-lane-progress.mjs";
 import { syncWorkerRuntimeConfigFile } from "./worker-config-sync.mjs";
 import { createGatewayNativeCompactionPassthrough } from "./gateway-native-compaction.mjs";
 import { resolveHarnessMessageChannel } from "./harness-channel.mjs";
+import { withWorkerHarnessModelSelection } from "./worker-harness-model-routing.mjs";
 
 const SESSION_PREFIX = "agent:makaron:explicit:vlab-worker-";
 const NATIVE_HARNESS_ID = "vlab-worker";
@@ -722,7 +723,7 @@ const plugin = {
                 sourceReplyDeliveryMode: params.sourceReplyDeliveryMode,
                 senderIsOwner: params.senderIsOwner,
                 eventCallbackNames: eventContract.bridged,
-                agentCommandOptions: buildForwardedHarnessOptions(params),
+                agentCommandOptions: buildForwardedHarnessOptions(withWorkerHarnessModelSelection(params)),
               },
               {
                 // Session ID/file identity is the authoritative transcript

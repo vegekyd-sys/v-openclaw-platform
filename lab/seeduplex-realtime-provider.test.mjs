@@ -12,6 +12,7 @@ import {
   decodeSeeduplexFloat32Pcm,
   resolveSeeduplexApiKey,
   resolveSeeduplexVoice,
+  stripEnglishLeadIn,
 } from "./seeduplex-realtime-provider.mjs";
 
 class FakeSocket extends EventEmitter {
@@ -100,6 +101,15 @@ test("session request preserves Talk instructions and native tools", () => {
   assert.match(session.session.instructions, /禁止使用英文开场白/);
 });
 
+test("session request keeps Chinese replies consistent when the browser omits language", () => {
+  const session = buildSeeduplexSession(
+    { model: SEEDUPLEX_MODEL, voice: "xiaohe" },
+    { tools: [] },
+  );
+  assert.match(session.session.instructions, /用户说中文时，所有回复都必须使用中文/);
+  assert.match(session.session.instructions, /不要在中文请求后默认使用英文开场白/);
+});
+
 test("agent consult prompt preserves the concrete voice request and constraints", () => {
   const prompt = buildSeeduplexAgentConsultPrompt({
     question: "检查项目状态",
@@ -112,6 +122,35 @@ test("agent consult prompt preserves the concrete voice request and constraints"
   assert.match(prompt, /same language/);
   assert.match(prompt, /must be Chinese/);
   assert.throws(() => buildSeeduplexAgentConsultPrompt({}), /requires a question/);
+});
+
+test("Chinese Agent results cannot retain an English spoken preamble", () => {
+  assert.equal(
+    stripEnglishLeadIn(
+      "I have a clear picture now. Here's what I found:\n\n**查询结果：** 当前没有项目。",
+      '{"question":"查询项目"}',
+    ),
+    "**查询结果：** 当前没有项目。",
+  );
+  assert.equal(
+    stripEnglishLeadIn("All systems are operational.", '{"question":"status"}'),
+    "All systems are operational.",
+  );
+  assert.equal(
+    stripEnglishLeadIn("All systems are operational.", '{"question":"检查状态"}'),
+    "处理已完成，但没有返回可播报的中文结果，请再试一次。",
+  );
+  assert.equal(
+    stripEnglishLeadIn(
+      `最近的项目 doesn't map cleanly. Let me report back truthfully.
+
+The request asked me to 调用 OpenClaw. I should answer honestly in Chinese.
+
+当前环境里没有项目列表。OpenClaw 查询失败，请稍后重试。`,
+      '{"question":"查询最近的项目"}',
+    ),
+    "当前环境里没有项目列表。OpenClaw 查询失败，请稍后重试。",
+  );
 });
 
 test("24 kHz PCM16 input is statefully converted to 16 kHz", () => {
@@ -132,6 +171,65 @@ test("float32 upstream output becomes bounded 24 kHz PCM16", () => {
     [-32768, -32768, -16384, 0, 16384, 32767, 32767],
   );
   assert.throws(() => decodeSeeduplexFloat32Pcm(Buffer.alloc(3).toString("base64")), /Invalid/);
+});
+
+test("barge-in drains locally when Seeduplex omits its cancellation acknowledgement", async () => {
+  const socket = new FakeSocket();
+  const audio = [];
+  const clears = [];
+  const responses = [];
+  const provider = buildSeeduplexRealtimeVoiceProvider({
+    env: { VOLCENGINE_REALTIME_API_KEY: "secret-value" },
+    createWebSocket: async () => socket,
+  });
+  const bridge = provider.createBridge({
+    providerConfig: { voice: "xiaohe" },
+    onAudio: (value) => audio.push(value),
+    onClearAudio: (reason) => clears.push(reason),
+    onResponseDone: (outcome) => responses.push(outcome),
+    onError(error) {
+      assert.fail(error.message);
+    },
+    onClose() {},
+  });
+
+  const connecting = bridge.connect();
+  await new Promise((resolve) => setImmediate(resolve));
+  socket.open();
+  socket.message({ type: "session.created" });
+  await connecting;
+  socket.message({ type: "response.created", response_id: "response-1" });
+  bridge.handleBargeIn();
+  assert.equal(socket.sent.at(-1).type, "response.cancel");
+  assert.match(socket.sent.at(-1).event_id, /^event_/u);
+  assert.deepEqual(clears, ["barge-in"]);
+  assert.deepEqual(responses, []);
+
+  socket.message({ type: "response.output_audio.delta", delta: floatAudio([0.5]) });
+  socket.message({ type: "response.output_audio.done", response_id: "response-1" });
+  socket.message({ type: "response.done", response_id: "response-1" });
+  assert.equal(audio.length, 0, "late cancelled audio must stay suppressed");
+  assert.equal(responses.length, 0, "late cancelled completion must stay suppressed");
+
+  socket.message({ type: "conversation.item.input_audio_transcription.started" });
+  socket.message({ type: "response.created", response_id: "response-2" });
+  socket.message({ type: "response.output_audio.delta", delta: floatAudio([0.25]) });
+  socket.message({ type: "response.output_audio.done", response_id: "response-2" });
+  assert.equal(audio.length, 1, "the next provider generation must remain usable");
+  assert.deepEqual(responses.at(-1), { status: "completed", responseId: "response-2" });
+  const cancelCount = socket.sent.filter((event) => event.type === "response.cancel").length;
+  bridge.handleBargeIn();
+  assert.equal(
+    socket.sent.filter((event) => event.type === "response.cancel").length,
+    cancelCount,
+    "completed upstream output must not receive a stale response.cancel",
+  );
+  assert.equal(
+    responses.filter((outcome) => outcome.status === "cancelled").length,
+    0,
+    "local cancellation completion is owned by the Gateway drain",
+  );
+  bridge.close();
 });
 
 test("bridge owns auth, audio conversion, transcripts and exactly-once tool results", async () => {
@@ -254,6 +352,7 @@ test("Gateway-owned consults return one ordered Seeduplex tool-result batch", as
   let activeConsults = 0;
   let maxActiveConsults = 0;
   const serverEvents = [];
+  const responses = [];
   const provider = buildSeeduplexRealtimeVoiceProvider({
     env: { VOLCENGINE_REALTIME_API_KEY: "secret-value" },
     createWebSocket: async () => socket,
@@ -285,7 +384,7 @@ test("Gateway-owned consults return one ordered Seeduplex tool-result batch", as
     onClearAudio() {},
     onToolCall: (call) => browserCalls.push(call),
     onTranscript() {},
-    onResponseDone() {},
+    onResponseDone: (outcome) => responses.push(outcome),
     onEvent: (event) => serverEvents.push(event.type),
     onError(error) {
       assert.fail(error.message);
@@ -298,6 +397,13 @@ test("Gateway-owned consults return one ordered Seeduplex tool-result batch", as
   socket.open();
   socket.message({ type: "session.created" });
   await connecting;
+  socket.message({ type: "response.created", response_id: "initial-response" });
+  // Volcengine can deliver the final transcription after response.created.
+  // That ordering must not reopen Gateway ownership for internal TTS responses.
+  socket.message({
+    type: "conversation.item.input_audio_transcription.completed",
+    text: "请查询项目",
+  });
   socket.message({
     type: "response.function_call_arguments.done",
     items: [
@@ -324,8 +430,24 @@ test("Gateway-owned consults return one ordered Seeduplex tool-result batch", as
   assert.deepEqual(
     workingEvents[0].items.map((item) => [item.call_id, JSON.parse(item.content[0].text)]),
     [
-      ["call-1", { status: "working", message: "OpenClaw Agent 正在处理。" }],
-      ["call-2", { status: "working", message: "OpenClaw Agent 正在处理。" }],
+      [
+        "call-1",
+        {
+          status: "working",
+          language: "zh-CN",
+          message: "正在帮你处理，请稍等。",
+          instruction: "只使用中文播报 message 字段，不要说任何英文。",
+        },
+      ],
+      [
+        "call-2",
+        {
+          status: "working",
+          language: "zh-CN",
+          message: "正在帮你处理，请稍等。",
+          instruction: "只使用中文播报 message 字段，不要说任何英文。",
+        },
+      ],
     ],
   );
   pending[0]("结果一");
@@ -334,18 +456,29 @@ test("Gateway-owned consults return one ordered Seeduplex tool-result batch", as
   assert.equal(maxActiveConsults, 1, "same-session Agent consults are serialized");
   pending[1]("结果二");
   await new Promise((resolve) => setImmediate(resolve));
+  socket.message({ type: "response.created", response_id: "working-generated" });
+  socket.message({ type: "response.created", response_id: "working-generated-duplicate" });
+  socket.message({ type: "response.output_audio.delta", delta: floatAudio([0.5]) });
   socket.message({ type: "response.output_audio.done", response_id: "working-response" });
   assert.equal(prompts.filter((entry) => typeof entry === "string").length, 2);
-  const speechEvents = socket.sent.filter(
+  let speechEvents = socket.sent.filter(
     (event) => event.type === "speech_text_buffer.commit",
   );
   assert.equal(speechEvents.length, 1);
-  assert.equal(speechEvents[0].text, "结果一\n结果二");
+  assert.equal(speechEvents[0].text, "正在帮你处理，请稍等。");
+  socket.message({ type: "response.created", response_id: "working-tts" });
+  socket.message({ type: "response.output_audio.done", response_id: "working-tts" });
+  speechEvents = socket.sent.filter(
+    (event) => event.type === "speech_text_buffer.commit",
+  );
+  assert.equal(speechEvents.length, 2);
+  assert.equal(speechEvents[1].text, "结果一\n结果二");
   bridge.submitToolResult("call-1", { result: "duplicate ignored" });
   assert.equal(
     socket.sent.filter((event) => event.type === "speech_text_buffer.commit").length,
-    1,
+    2,
   );
+  socket.message({ type: "response.created", response_id: "final-response" });
   socket.message({ type: "response.output_audio.done", response_id: "final-response" });
   socket.message({
     type: "response.done",
@@ -353,5 +486,13 @@ test("Gateway-owned consults return one ordered Seeduplex tool-result batch", as
   });
   assert.equal(serverEvents.includes("response.output_audio.done"), false);
   assert.equal(serverEvents.includes("response.done"), false);
+  assert.deepEqual(
+    serverEvents.filter((type) => type === "response.created"),
+    ["response.created"],
+    "every provider-internal continuation must retain the original Gateway output owner",
+  );
+  assert.deepEqual(responses, [
+    { status: "completed", responseId: "initial-response" },
+  ]);
   bridge.close();
 });

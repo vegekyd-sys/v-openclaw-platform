@@ -10,6 +10,11 @@
       "source": "lab/release-files/seeduplex-voice-provider/seeduplex-realtime-provider.mjs",
       "target": "production-worker/seeduplex-realtime-provider.mjs",
       "before": "c5c3c84301ba0ab9f95dfec6790c9c5f25c8d41d35a9c371d2cb780822547ea1"
+    },
+    {
+      "source": "lab/worker-harness-model-routing.mjs",
+      "target": "production-worker/worker-harness-model-routing.mjs",
+      "before": null
     }
   ]
 }

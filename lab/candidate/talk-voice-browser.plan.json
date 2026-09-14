@@ -1,0 +1,59 @@
+{
+  "baseRelease": "talk-voice-wip-cleanup-v1",
+  "files": [
+    {
+      "source": "lab/release-files/talk-agent-continuation/control-ui-boot-chat-DWTSrxxk.js",
+      "target": "openclaw/dist/control-ui/assets/control-ui-boot-chat-DWTSrxxk.js",
+      "before": "ef2fb5a520b04cdc214fb055652c3c307f683b5f245216644b74859253391bb1"
+    },
+    {
+      "source": "lab/release-files/talk-agent-continuation/asset-manifest.json",
+      "target": "openclaw/dist/control-ui/asset-manifest.json",
+      "before": "a967daf8fe509bc38378f53ee9a1b8d7de8181e6adb7e3dc9c21c3ae3fe39dbc"
+    },
+    {
+      "source": "lab/release-files/talk-audio-wan-backpressure/control-ui-DhD7PO_6.js",
+      "target": "openclaw/dist/control-ui-DhD7PO_6.js",
+      "before": "638fd21e36e1ed8b6b2d6d02608fd59485f1c3a7bb65d28276d7c860c264f205"
+    },
+    {
+      "source": "lab/release-files/seeduplex-voice-provider/seeduplex-realtime-provider.mjs",
+      "target": "production-worker/seeduplex-realtime-provider.mjs",
+      "before": "c5c3c84301ba0ab9f95dfec6790c9c5f25c8d41d35a9c371d2cb780822547ea1"
+    },
+    {
+      "source": "lab/release-files/seeduplex-voice-provider/production-worker-index.mjs",
+      "target": "production-worker/index.mjs",
+      "before": "d5416a86ff77bf8a8c00395a0e7feb05a31d1668e9234c8ce001762f8c59f13e"
+    },
+    {
+      "source": "lab/release-files/talk-session-model-inheritance/realtime-session-harness-CEO5kVAJ.js",
+      "target": "openclaw/dist/realtime-session-harness-CEO5kVAJ.js",
+      "before": "ea7f772f4e383c58fed00ec7a0922ce73bd58173acfde5cebde869672279ce85"
+    },
+    {
+      "source": "lab/release-files/talk-consult-model/talk-DkFuKRod.js",
+      "target": "openclaw/dist/talk-DkFuKRod.js",
+      "before": "bc7f7e15e211fc7669446b221222de980a355a042c4f8a40e301357186e5aa42"
+    },
+    {
+      "source": "lab/worker-harness-model-routing.mjs",
+      "target": "production-worker/worker-harness-model-routing.mjs"
+    }
+  ],
+  "support": [
+    "lab/candidate/talk-voice-browser.mjs",
+    "lab/candidate/fixtures/agent-consult.pcm",
+    "lab/worker-harness-model-routing.mjs"
+  ],
+  "env": {
+    "VLAB_TALK_AGENT_MODEL": "deepseek/deepseek-v4-flash",
+    "VLAB_TALK_CONSULT_THINKING_LEVEL": "off"
+  },
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/talk-voice-browser.mjs"
+  ],
+  "user": "lab-db91-parity",
+  "timeoutSeconds": 720
+}
