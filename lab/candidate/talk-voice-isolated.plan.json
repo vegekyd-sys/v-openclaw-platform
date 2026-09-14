@@ -1,0 +1,22 @@
+{
+  "baseRelease": "talk-voice-wip-cleanup-v1",
+  "files": [
+    {
+      "source": "lab/release-files/talk-agent-continuation/control-ui-boot-chat-DWTSrxxk.js",
+      "target": "openclaw/dist/control-ui/assets/control-ui-boot-chat-DWTSrxxk.js",
+      "before": "ef2fb5a520b04cdc214fb055652c3c307f683b5f245216644b74859253391bb1"
+    },
+    {
+      "source": "lab/release-files/talk-agent-continuation/asset-manifest.json",
+      "target": "openclaw/dist/control-ui/asset-manifest.json",
+      "before": "a967daf8fe509bc38378f53ee9a1b8d7de8181e6adb7e3dc9c21c3ae3fe39dbc"
+    },
+    {
+      "source": "lab/release-files/talk-audio-wan-backpressure/control-ui-DhD7PO_6.js",
+      "target": "openclaw/dist/control-ui-DhD7PO_6.js",
+      "before": "638fd21e36e1ed8b6b2d6d02608fd59485f1c3a7bb65d28276d7c860c264f205"
+    }
+  ],
+  "tests": ["lab/candidate/talk-voice-isolated.test.mjs"],
+  "timeoutSeconds": 120
+}
