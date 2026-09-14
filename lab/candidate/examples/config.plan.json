@@ -2,5 +2,6 @@
   "tests": ["lab/candidate/examples/config.test.mjs"],
   "files": [],
   "databases": ["agents/openclaw/agent/openclaw-agent.sqlite"],
-  "timeoutSeconds": 60
+  "timeoutSeconds": 0,
+  "user": "lab-db91-parity"
 }

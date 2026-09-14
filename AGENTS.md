@@ -14,7 +14,9 @@
   authorized integration and shared validation.
 - Use `/Users/tianyicai/vlab-dev/lab/vlab.mjs` for worktree, integration and release
   operations. Use `candidate` for pre-merge tests against cached runtime code and selected
-  VLab data snapshots in isolated disposable server directories. No merge or
+  VLab data snapshots in disposable server directories. Candidate execution has
+  host networking and no runner-imposed capability, resource, concurrency or
+  duration limits; the agent chooses the command, environment and test scope. No merge or
   integration lease is required for candidate tests. Do not copy online state
   into Git or write shared runtime. A lease is required only for shared Gateway
   tests, staging, deployment and rollback; never steal another owner lease.

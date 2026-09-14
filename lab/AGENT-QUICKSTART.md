@@ -10,19 +10,19 @@
 node /Users/tianyicai/vlab-dev/lab/vlab.mjs new --task unique-fix --owner YOUR_TASK_ID --repo /Users/tianyicai/vlab-dev
 ```
 
-进入返回的 worktree，之后优先使用该 worktree 的 `node lab/vlab.mjs`，这样控制工具自身的改动也能被测试。
+进入返回的 worktree，候选测试优先使用 dev 的控制入口并将 `--repo` 指向当前 worktree；修改控制工具自身时才调用自己的 `lab/vlab.mjs`。
 
 ## 一条命令测试候选
 
 ```sh
-node lab/vlab.mjs candidate --repo "$PWD" --owner YOUR_TASK_ID --plan /absolute/candidate.plan.json
+node /Users/tianyicai/vlab-dev/lab/vlab.mjs candidate --repo "$PWD" --owner YOUR_TASK_ID --plan /absolute/candidate.plan.json
 ```
 
-plan 指定本次测试文件、替换的 runtime 文件、需要的 SQLite 数据库；格式与例子见 [candidate/README.md](candidate/README.md)。第一次缓存当前 runtime；之后只传代码差量并复用基线。配置每次读取共享 VLab 当前设置并生成脱敏副本，数据库按需生成一致性备份；所有测试写入只发生在自己的临时目录。
+plan 指定本次测试文件、替换的 runtime 文件、需要的 SQLite 数据库；格式与例子见 [candidate/README.md](candidate/README.md)。第一次缓存当前 runtime；之后只传代码差量并复用基线。配置每次复用共享 VLab 当前设置与服务器环境，数据库按需生成一致性备份；默认使用自己的可写目录，也可按场景访问共享资源。候选工具不限制网络、并发、CPU/内存、时长或数据大小，Agent 自主决定测试方式。
 
 支持未提交修改，receipt 记录输入文件 hash、HEAD、dirty、真实代码基线、数据来源、结果和分段耗时。开发迭代不必为测试先 commit/merge/package/stage。准备交付时提交并核对被测试文件 hash。
 
-配置、schema、路径、迁移、模块行为优先走 candidate；真实模型、OAuth、渠道、共享 Worker 调度和浏览器登录态需要最后的共享集成验收。candidate 的成功不冒充后者。
+配置、模型、OAuth、语音、插件等都可按需要在 candidate 中测试，不再以“候选无网络/凭据”为由推迟到 Dev。结果只证明实际执行过的场景，最后集成验收范围由 Agent 根据改动和证据判断。
 
 只读查看共享历史无需 lease：
 
