@@ -226,8 +226,7 @@ function resolveControlUiHtmlEncoding(req) {
 function resolveOpenedControlUiRepresentation(params) {
 	const { req, sourceFile, precompressed, openPrecompressedFile } = params;
 	const extension = path.extname(params.contentPath).toLowerCase();
-	const usePrecompressed = precompressed && CONTROL_UI_COMPRESSIBLE_EXTENSIONS.has(extension) && !params.contentPath.endsWith("assets/control-ui-boot-chat-DWTSrxxk.js");
-	const encodings = resolveControlUiContentEncodings(req, usePrecompressed);
+	const encodings = resolveControlUiContentEncodings(req, precompressed && CONTROL_UI_COMPRESSIBLE_EXTENSIONS.has(extension));
 	for (const selected of encodings) {
 		if (selected === "identity") return { bodyFile: sourceFile };
 		const suffix = selected === "br" ? ".br" : ".gz";
