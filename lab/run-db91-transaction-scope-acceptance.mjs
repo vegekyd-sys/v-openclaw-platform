@@ -187,7 +187,7 @@ try {
         await call('chat.send', {
           agentId: 'makaron',
           sessionKey: row.key,
-          message: `这是 VLab 五 Worker C15 锁竞争验收。只回复 DB91_SCOPE_${variant}_${round}_${index}_${stamp}，不调用工具。`,
+          message: `这是 VLab 五 Worker C15 锁竞争验收。只回复 DB91_SCOPE_${variant}_${row.round}_${row.index}_${stamp}，不调用工具。`,
           deliver: false,
           thinking: 'low',
           idempotencyKey: row.id,
