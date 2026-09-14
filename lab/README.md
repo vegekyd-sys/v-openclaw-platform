@@ -1,8 +1,8 @@
-# VLab：轻量 worktree → 用户决定合入 dev → 共享验收
+# VLab：独立候选测试 → 用户决定合入 dev → 最后共享验收
 
 2026-09-10 用户进一步明确：合入 dev 的决定权只属于 Tianyi。agent 在自己的 worktree 完成开发和合入前测试，报告结果后等待用户明确批准，不能自主合入；lease、测试通过或一般修复授权不代替批准。
 
-每个 agent 一个源码 worktree；共用一个共享 VLab 的配置、历史对话、Memory、浏览器与渠道。开发不再默认创建完整 Gateway 实例。旧私有实例只用于确需运行隔离的例外，参考 `labctl.mjs`，不能用其 stopped 状态推断目录可删除。
+2026-09-15 用户更新：每个任务在自己的 worktree 执行自己的候选代码，复用 VLab 的数据来源；共享 VLab 是上线前的 Dev 集成门禁。默认用 [candidate](candidate/README.md) 隔离进程，不创建常驻 Gateway。配置快照与选定 SQLite 备份可并行使用，可写状态各自独立；在线数据库不共写。
 
 首次接手请先读 [给其他 agent 的操作入口](AGENT-QUICKSTART.md)。其中区分源码开发、共享验收占用与成功/失败两条收尾路径。
 
@@ -19,7 +19,7 @@ node /Users/tianyicai/vlab-dev/lab/vlab.mjs new --task my-fix --owner THREAD_ID
 
 ## VLab 上直接开发
 
-`node lab/vlab.mjs sync --owner THREAD_ID` 将 Mac 上的已提交 dev 通过代码-only Git bundle 同步到 VLab 的 `labs/shared-workflow/source`。同步只允许 fast-forward，拒绝服务器脏工作区。服务器共用 `labs/shared-workflow/code.git`；不会改旧 db91-parity/source。
+`node lab/vlab.mjs sync --owner THREAD_ID` 按服务器已有提交增量同步 Mac 已提交 dev 到 VLab 的 `labs/shared-workflow/source`，相同提交直接跳过。同步只允许 fast-forward，拒绝服务器脏工作区。服务器共用 `labs/shared-workflow/code.git`；不会改旧 db91-parity/source。
 
 通过既有 `vlab91` 入口连接后，可用服务器 Node 调用：
 
@@ -42,7 +42,7 @@ node lab/vlab.mjs rpc --method agent.wait --params '{"runId":"RUN_ID","timeoutMs
 
 请求经本机已配置的 `vlab91` SSH 入口在服务器调用 Gateway。密钥只在服务器进程中使用。status 返回脱敏配置摘要；现有对话可读取。`test` 使用专用 `vlab-dev-*` session、`deliver:false`，可连续测试上下文，不向飞书等外部渠道发消息。完整配置及所有工具仍由共享 VLab 加载；接口不会把凭据明文交给 agent。针对原业务会话的写入或渠道验收另按明确授权操作。
 
-调用共享 Gateway 执行的是已部署代码，不是当前 worktree 的未部署代码。合并前测试使用针对性回归与最小复现夹具。
+调用共享 Gateway 执行的是已部署代码。合并前用 `node lab/vlab.mjs candidate --repo "$PWD" --owner TASK_ID --plan PLAN` 运行当前 worktree 的实际候选代码和真实数据副本；它不需要 lease、commit、merge 或共享 Gateway 重启。
 
 ## 合并与打包
 
@@ -73,7 +73,7 @@ node lab/vlab.mjs read-code --target openclaw/dist/example.mjs
 
 ```sh
 node lab/vlab.mjs package --id my-fix-v1 --commit FULL_TESTED_DEV_SHA --owner THREAD_ID --plan /absolute/plan.json
-node lab/vlab.mjs sync --owner THREAD_ID
+# 仅需服务器源码镜像时运行 sync；代码产物部署本身无需同步 Git 历史
 node lab/vlab.mjs stage --artifact /absolute/artifact.json
 node lab/vlab.mjs deploy --id my-fix-v1 --owner THREAD_ID
 ```
@@ -115,3 +115,11 @@ VLab 验收后按生产授权推广同一精确代码产物；V 的配置、数�
 这期代码覆盖模式保留既有服务路径，减少迁移影响；不是切换完整目录的 release symlink，也不支持数据库 schema 回滚。当前范围外的依赖、大版本、配置或迁移变更需要单独方案与相应验收。
 
 验证入口：`node --test lab/shared/files.test.mjs lab/config.test.mjs`。实机验收记录见 `docs/vlab-shared-workflow-acceptance-20260910.md`。
+
+## 执行速度与验收范围
+
+- 开发：一个 candidate 命令完成基线、输入、配置/数据库快照、测试与 receipt。普通修改不走部署链。
+- 交付：只重测受影响行为；基线与输入文件一致的证据可复用。修改被测文件、依赖、数据或相关集成行为后再重跑。
+- 集成：lease 只用于共享写入、部署与真实集成测试。基线缓存和任务私有测试目录不持有 integration lease。
+- 先看 receipt 的 inspect/baseline/snapshot/overlay/test 耗时，定位慢步骤；不要根据模型名称直接判断服务器瓶颈。
+- SOL/Astra 使用相同确定性入口。不要每轮重读全部历史说明、手动发几十次 SSH、轮询 unchanged 状态或默认重跑完整发布验收。
