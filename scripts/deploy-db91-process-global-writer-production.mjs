@@ -7,8 +7,11 @@ import {execFileSync} from 'node:child_process';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {
   controlledStopPolicy,
+  feishuPeerLink,
   newRelease,
+  newFeishuPeerTarget,
   oldRelease,
+  oldFeishuPeerTarget,
   planProductionConfig,
   productionFiles,
   productionReleaseUnit,
@@ -18,7 +21,7 @@ import {
 
 assert.equal(os.hostname(), 'VM-8-2-ubuntu');
 const [mode, rawPid] = process.argv.slice(2);
-assert(['stage', 'stop', 'write-intent', 'cutover-live', 'apply', 'start', 'verify', 'rollback'].includes(mode));
+assert(['stage', 'stop', 'write-intent', 'cutover-live', 'repair-peer', 'restart-live', 'apply', 'start', 'verify', 'rollback'].includes(mode));
 
 const root = '/home/openclaw/.openclaw';
 const unit = 'openclaw-gateway.service';
@@ -52,6 +55,11 @@ const atomic = (file, bytes) => {
   fs.writeFileSync(temporary, bytes, {mode: stat.mode & 0o777, flag: 'wx'});
   fs.chownSync(temporary, stat.uid, stat.gid);
   fs.chmodSync(temporary, stat.mode & 0o777);
+  fs.renameSync(temporary, file);
+};
+const atomicSymlink = (file, target) => {
+  const temporary = `${file}.${releaseId}.${process.pid}.tmp`;
+  fs.symlinkSync(target, temporary);
   fs.renameSync(temporary, file);
 };
 const readLiveEnvironment = (pid) => {
@@ -103,7 +111,9 @@ if (mode === 'write-intent') {
   const pid = Number(rawPid);
   assert.equal(gatewayPid(), pid);
   assert.equal(run('systemctl', ['show', unit, '-p', 'KillMode', '--value']), 'mixed');
-  const {a: writeIntent} = await import(`${oldRelease}/core/dist/restart-intent-BYVo1227.js`);
+  const commandLine = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8');
+  const runtime = commandLine.includes(`${newRelease}/core/dist/index.js`) ? newRelease : oldRelease;
+  const {a: writeIntent} = await import(`${runtime}/core/dist/restart-intent-BYVo1227.js`);
   assert(writeIntent({
     targetPid: pid,
     reason: 'db91-writer-transaction-scope-production-cutover',
@@ -133,6 +143,7 @@ if (mode === 'stage') {
     assert.equal(sha(`${source}/${file.source}`), file.afterSha256, `Committed artifact drift: ${file.source}`);
   }
   assert.equal(sha(`${oldRelease}/${memoryFtsTarget}`), preservedMemoryFtsSha256, 'Live Memory FTS fix drift');
+  assert.equal(fs.readlinkSync(feishuPeerLink), oldFeishuPeerTarget, 'Feishu peer link baseline drift');
   fs.mkdirSync(backup, {mode: 0o700});
   const group = Number(run('id', ['-g', 'openclaw']));
   fs.chownSync(backup, 0, group);
@@ -220,6 +231,8 @@ if (mode === 'stage') {
   let applied = false;
   try {
     for (const config of staged.configs) atomic(config.file, fs.readFileSync(config.afterPath));
+    assert.equal(fs.readlinkSync(feishuPeerLink), oldFeishuPeerTarget, 'Feishu peer link baseline drift');
+    atomicSymlink(feishuPeerLink, newFeishuPeerTarget);
     fs.writeFileSync(permanentDropin, productionReleaseUnit(), {mode: 0o644, flag: 'wx'});
     fs.unlinkSync(stopDropin);
     run('systemctl', ['daemon-reload']);
@@ -241,12 +254,37 @@ if (mode === 'stage') {
   } catch (error) {
     if (applied && gatewayPid() === pid) {
       for (const config of staged.configs) atomic(config.file, fs.readFileSync(config.beforePath));
+      if (fs.readlinkSync(feishuPeerLink) === newFeishuPeerTarget) atomicSymlink(feishuPeerLink, oldFeishuPeerTarget);
       if (fs.existsSync(permanentDropin)) fs.unlinkSync(permanentDropin);
       run('systemctl', ['daemon-reload']);
       record('live-cutover-arm-rolled-back', {pid, error: error.name});
     }
     throw error;
   }
+} else if (mode === 'repair-peer') {
+  const pid = gatewayPid();
+  const environment = readLiveEnvironment(pid);
+  assert.equal(environment.V_RELEASE_VERSION, releaseId);
+  assert(fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').includes(`${newRelease}/core/dist/index.js`));
+  assert.equal(fs.readlinkSync(feishuPeerLink), oldFeishuPeerTarget, 'Feishu peer link baseline drift');
+  atomicSymlink(feishuPeerLink, newFeishuPeerTarget);
+  record('feishu-peer-repaired', {pid, before: oldFeishuPeerTarget, after: newFeishuPeerTarget});
+} else if (mode === 'restart-live') {
+  const pid = gatewayPid();
+  const environment = readLiveEnvironment(pid);
+  assert.equal(environment.V_RELEASE_VERSION, releaseId);
+  assert.equal(fs.readlinkSync(feishuPeerLink), newFeishuPeerTarget);
+  run('/usr/sbin/runuser', ['-u', 'openclaw', '--', process.execPath, `${source}/scripts/deploy-db91-process-global-writer-production.mjs`, 'write-intent', String(pid)], {env: process.env});
+  process.kill(pid, 'SIGUSR1');
+  const deadline = Date.now() + 180_000;
+  let nextPid = pid;
+  while (Date.now() < deadline) {
+    await sleep(500);
+    nextPid = gatewayPid();
+    if (nextPid > 1 && nextPid !== pid) break;
+  }
+  assert(nextPid > 1 && nextPid !== pid, 'Gateway did not restart after Feishu peer repair');
+  record('feishu-peer-restart-complete', {beforePid: pid, pid: nextPid});
 } else if (mode === 'apply') {
   assert.equal(gatewayPid(), 0, 'Gateway must be stopped');
   checkCandidate();
@@ -256,6 +294,8 @@ if (mode === 'stage') {
     assert.equal(sha(config.afterPath), config.afterSha256, `Staged config drift: ${config.afterPath}`);
     atomic(config.file, fs.readFileSync(config.afterPath));
   }
+  assert.equal(fs.readlinkSync(feishuPeerLink), oldFeishuPeerTarget, 'Feishu peer link baseline drift');
+  atomicSymlink(feishuPeerLink, newFeishuPeerTarget);
   fs.writeFileSync(permanentDropin, productionReleaseUnit(), {mode: 0o644, flag: 'wx'});
   if (fs.existsSync(stopDropin)) {
     assert.equal(fs.readFileSync(stopDropin, 'utf8'), controlledStopPolicy);
@@ -278,6 +318,7 @@ if (mode === 'stage') {
   assert(fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').includes(`${newRelease}/core/dist/index.js`));
   const staged = readJson(`${backup}/staged.json`);
   for (const config of staged.configs) assert.equal(sha(config.file), config.afterSha256);
+  assert.equal(fs.readlinkSync(feishuPeerLink), newFeishuPeerTarget, 'Feishu peer link was not rebound to this release');
   assert.equal(run('systemctl', ['show', unit, '-p', 'KillSignal', '--value']), '15', 'Normal stop signal must be restored');
   const client = await connect(`${newRelease}/core`, readJson(configFiles[0]), environment);
   try {
@@ -304,6 +345,7 @@ if (mode === 'stage') {
     assert([config.beforeSha256, config.afterSha256].includes(sha(config.file)));
     atomic(config.file, fs.readFileSync(config.beforePath));
   }
+  if (fs.readlinkSync(feishuPeerLink) === newFeishuPeerTarget) atomicSymlink(feishuPeerLink, oldFeishuPeerTarget);
   if (fs.existsSync(permanentDropin)) {
     assert.equal(fs.readFileSync(permanentDropin, 'utf8'), productionReleaseUnit());
     fs.unlinkSync(permanentDropin);
