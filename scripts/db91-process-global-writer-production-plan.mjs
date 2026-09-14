@@ -45,7 +45,7 @@ export const productionFiles = [
   {
     source: 'lab/release-files/session-history-eviction-d5aiCsHS.js',
     target: 'core/dist/session-history-eviction-d5aiCsHS.js',
-    beforeSha256: '04a6851b951872b52f95bf75c3f50b9cdf07aca66ee430e446d4779d1894af94',
+    beforeSha256: '04a6851b05385b6361637c8a8e52d82260943717c507b4ccfda34970b12b22e0',
     afterSha256: '014136ce2b566bc589490f89f6d2a4ce5d437f524c9ceb33453582496160fe2d',
   },
 ];
