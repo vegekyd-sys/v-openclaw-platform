@@ -38,6 +38,14 @@ test('production config changes only the two release pointers and preserves five
   assert.throws(() => planProductionConfig(planProductionConfig(JSON.stringify(before))));
 });
 
+test('Worker child config preserves its independent minWorkers mirror', () => {
+  const before = fixture();
+  before.plugins.entries['vlab-agent-worker-isolation'].config.minWorkers = 1;
+  const after = JSON.parse(planProductionConfig(JSON.stringify(before), {expectedMinWorkers: 1}));
+  assert.equal(after.plugins.entries['vlab-agent-worker-isolation'].config.minWorkers, 1);
+  assert.equal(after.plugins.load.paths[1], `${newRelease}/worker`);
+});
+
 test('release manifest is exact and hash guarded', () => {
   assert.equal(releaseId, 'v2026.9.1-db91.2');
   assert.equal(productionFiles.length, 5);
