@@ -227,7 +227,9 @@ if (mode === 'stage') {
     applied = true;
     record('live-cutover-armed', {beforePid: pid, configs: staged.configs.length, terminalPolicy: 'preserve'});
     process.kill(pid, 'SIGUSR1');
-    const deadline = Date.now() + 65_000;
+    // Production shutdown includes persisted-session reconciliation and can
+    // legitimately exceed a minute even after its bounded active-run drain.
+    const deadline = Date.now() + 180_000;
     let nextPid = pid;
     while (Date.now() < deadline) {
       await sleep(500);
