@@ -148,7 +148,7 @@ if (mode === 'stage') {
   const configs = [];
   for (const [index, file] of configFiles.entries()) {
     const before = fs.readFileSync(file);
-    const after = Buffer.from(planProductionConfig(before));
+    const after = Buffer.from(planProductionConfig(before, {expectedMinWorkers: index === 0 ? 5 : 1}));
     const beforePath = `${backup}/config-${index}.before`;
     const afterPath = `${backup}/config-${index}.after`;
     fs.writeFileSync(beforePath, before, {mode: 0o600, flag: 'wx'});

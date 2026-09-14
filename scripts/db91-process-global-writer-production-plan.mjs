@@ -37,7 +37,7 @@ export const productionFiles = [
   },
 ];
 
-export function planProductionConfig(bytes) {
+export function planProductionConfig(bytes, {expectedMinWorkers = 5} = {}) {
   const config = JSON.parse(bytes);
   let coreRewrites = 0;
   let workerRewrites = 0;
@@ -66,7 +66,7 @@ export function planProductionConfig(bytes) {
       maxWorkers: worker?.maxWorkers,
       sessionsPerWorker: worker?.sessionsPerWorker,
     },
-    {minWorkers: 5, maxWorkers: 15, sessionsPerWorker: 3},
+    {minWorkers: expectedMinWorkers, maxWorkers: 15, sessionsPerWorker: 3},
     'Production Worker capacity must remain unchanged',
   );
   return `${JSON.stringify(next, null, 2)}\n`;
