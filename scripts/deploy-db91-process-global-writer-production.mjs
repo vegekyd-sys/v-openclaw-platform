@@ -129,6 +129,9 @@ if (mode === 'stage') {
     assert.equal(sha(`${source}/${file.source}`), file.afterSha256, `Committed artifact drift: ${file.source}`);
   }
   fs.mkdirSync(backup, {mode: 0o700});
+  const group = Number(run('id', ['-g', 'openclaw']));
+  fs.chownSync(backup, 0, group);
+  fs.chmodSync(backup, 0o750);
   run('cp', ['-al', `${oldRelease}/core`, `${newRelease}/core`], {timeout: 180_000});
   run('cp', ['-al', `${oldRelease}/worker`, `${newRelease}/worker`], {timeout: 60_000});
   for (const file of productionFiles) {
@@ -142,7 +145,6 @@ if (mode === 'stage') {
     run('/usr/sbin/runuser', ['-u', 'openclaw', '--', '/usr/bin/test', '-r', destination]);
   }
   checkCandidate();
-  const group = Number(run('id', ['-g', 'openclaw']));
   const configs = [];
   for (const [index, file] of configFiles.entries()) {
     const before = fs.readFileSync(file);
@@ -153,7 +155,7 @@ if (mode === 'stage') {
     fs.writeFileSync(afterPath, after, {mode: 0o640, flag: 'wx'});
     fs.chownSync(afterPath, 0, group);
     run('/usr/sbin/runuser', ['-u', 'openclaw', '--', process.execPath, `${newRelease}/core/openclaw.mjs`, 'config', 'validate', '--json'], {
-      env: {...process.env, OPENCLAW_CONFIG_PATH: afterPath},
+      env: {...process.env, OPENCLAW_STATE_DIR: root, OPENCLAW_CONFIG_PATH: afterPath},
       timeout: 60_000,
     });
     configs.push({file, beforePath, afterPath, beforeSha256: hash(before), afterSha256: hash(after)});
