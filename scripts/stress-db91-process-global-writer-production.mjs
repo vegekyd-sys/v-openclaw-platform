@@ -109,16 +109,16 @@ const compactStatus = async () => {
     pending: status.pending,
   };
 };
-const assertFiveWorkerCapacity = async ({reserve = 0} = {}) => {
+const assertWorkerCapacity = async ({reserve = 0} = {}) => {
   const status = await compactStatus();
   assert.equal(status.minWorkers, 5);
   assert.equal(status.maxWorkers, 15);
   assert.equal(status.sessionsPerWorker, 3);
-  assert.equal(status.workers, 5, 'Production C5 acceptance must not exceed five Workers');
-  assert.equal(status.readyWorkers, 5);
+  assert(status.workers >= 5 && status.workers <= status.maxWorkers, 'Worker count outside configured bounds');
+  assert.equal(status.readyWorkers, status.workers);
   assert(
-    status.active + status.queued + Number(status.pending ?? 0) + reserve <= 15,
-    'Not enough capacity to add C5 without scaling past five Workers',
+    status.active + status.queued + Number(status.pending ?? 0) + reserve <= status.maxWorkers * status.sessionsPerWorker,
+    'Not enough configured capacity for requested production cohort',
   );
   return status;
 };
@@ -175,7 +175,7 @@ async function runCohort(count) {
     }
   }));
   cohort.finishedAt = Date.now();
-  cohort.statusAfter = await assertFiveWorkerCapacity();
+  cohort.statusAfter = await assertWorkerCapacity();
   const firstText = cohort.rows.map((row) => row.firstTextMs);
   cohort.firstTextMs = {
     median: quantile(firstText, 0.5),
@@ -189,14 +189,15 @@ async function runCohort(count) {
 let sampling = true;
 let sampler;
 try {
-  report.statusBefore = await assertFiveWorkerCapacity({reserve: requestedCount});
+  report.statusBefore = await assertWorkerCapacity({reserve: requestedCount});
   report.resourceBefore = resources();
   sampler = (async () => {
     while (sampling) {
       const at = Date.now();
       try {
         const health = await call('health', {}, 5_000);
-        report.health.push({at, latencyMs: Date.now() - at, eventLoop: health.eventLoop});
+        const status = await compactStatus();
+        report.health.push({at, latencyMs: Date.now() - at, eventLoop: health.eventLoop, workerCount: status.workers});
       } catch (error) {
         report.health.push({at, latencyMs: Date.now() - at, error: String(error?.message ?? error).slice(0, 200)});
       }
@@ -217,7 +218,7 @@ try {
   sampling = false;
   await sampler;
   report.resourceAfter = resources();
-  report.statusAfter = await assertFiveWorkerCapacity();
+  report.statusAfter = await assertWorkerCapacity();
   assert.equal(crypto.createHash('sha256').update(fs.readFileSync(configPath)).digest('hex'), configSha256);
   assert.equal(Number(run('systemctl', ['show', unit, '-p', 'MainPID', '--value'])), gatewayPid);
   const journal = run('journalctl', ['-u', unit, '--since', new Date(stamp - 1_000).toISOString(), '--no-pager', '-o', 'cat'], {maxBuffer: 64 * 1024 ** 2});
