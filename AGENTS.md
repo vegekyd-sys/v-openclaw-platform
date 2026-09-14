@@ -13,10 +13,14 @@
   approval does not grant merge authorization. After approval, execute the
   authorized integration and shared validation.
 - Use `/Users/tianyicai/vlab-dev/lab/vlab.mjs` for worktree, integration and release
-  operations. Do not copy live state/runtime into task worktrees or hot-patch live
-  runtime outside this workflow. Explicit integration lease is required for
-  shared tests, staging, deployment and rollback; never steal another owner lease.
-- Preserve existing settings and conversations through the shared Gateway.
+  operations. Use `candidate` for pre-merge tests against cached runtime code and selected
+  VLab data snapshots in isolated disposable server directories. No merge or
+  integration lease is required for candidate tests. Do not copy online state
+  into Git or write shared runtime. A lease is required only for shared Gateway
+  tests, staging, deployment and rollback; never steal another owner lease.
+- Use shared VLab as the final Dev integration gate, not the default test runner.
+  Preserve existing settings and conversations; use private writable snapshots
+  for candidate tests and shared RPC for read-only history.
   Never point independent Gateway processes at the same writable state directory.
 - Validate changes in vLab before proposing production promotion.
 - Keep vLab and production state paths, ports, workspaces, and channel

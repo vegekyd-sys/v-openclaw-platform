@@ -6,6 +6,8 @@ import os from 'node:os';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {name,relative,sha,read,save} from './shared/files.mjs';
+import {candidate} from './candidate/client.mjs';
+import {sourceBundle} from './shared/source.mjs';
 const SSH=['-F','/Users/tianyicai/v-upgrade-private/20260904/ssh-config','-o','BatchMode=yes','-o','ConnectTimeout=10','vlab91'];
 const REMOTE='sudo /opt/vlab/node-v22.23.1-linux-x64/bin/node /srv/vlab-production-mirror/labs/shared-workflow/tool/server.mjs';
 const run=(bin,args,opts={})=>execFileSync(bin,args,{encoding:'utf8',maxBuffer:96*1024**2,timeout:600000,...opts}).trim();
@@ -23,7 +25,9 @@ function lock(fn) {
 }
 try {
   let result;
-  if(command==='init') {
+  if(command==='candidate') {
+    result=candidate(opts); if(!result.ok)process.exitCode=1;
+  } else if(command==='init') {
     const common=repo(),dest=path.resolve(opts.path);assert(opts.base,'Explicit baseline commit required');
     assert(!fs.existsSync(common+'/vlab-workflow.json'),'Already initialized');
     const commit=git(opts.repo??process.cwd(),['rev-parse',opts.base+'^{commit}']);
@@ -31,12 +35,13 @@ try {
     git(opts.repo??process.cwd(),['worktree','add','-b','dev',dest,commit]);
     save(common+'/vlab-workflow.json',{dev:dest,base:commit,sshAlias:'vlab91'});result={dev:dest,commit};
   } else if(command==='new') {
-    const task=name(opts.task),base=dev(),dest=path.resolve(opts.path??path.join(path.dirname(base),'v-worktrees',task));clean(base);
+    const task=name(opts.task),base=dev(),dest=path.resolve(opts.path??path.join(path.dirname(base),'v-worktrees',task));
     assert(opts.owner,'Task owner required');assert(!fs.existsSync(dest));
-    git(base,['worktree','add','-b','codex/'+task,dest,'dev']);
+    const baseCommit=git(base,['rev-parse','HEAD']);
+    git(base,['worktree','add','-b','codex/'+task,dest,baseCommit]);
     const admin=git(dest,['rev-parse','--absolute-git-dir']);
-    save(admin+'/vlab-task.json',{owner:opts.owner,base:git(base,['rev-parse','HEAD']),task,createdAt:new Date().toISOString()});
-    result={worktree:dest,branch:'codex/'+task,base:git(base,['rev-parse','HEAD']),runtimeCopied:false,stateCopied:false,dependencies:'Use shared package cache; no writable node_modules link created'};
+    save(admin+'/vlab-task.json',{owner:opts.owner,base:baseCommit,task,createdAt:new Date().toISOString()});
+    result={worktree:dest,branch:'codex/'+task,base:baseCommit,runtimeCopied:false,stateCopied:false,dependencies:'Use shared package cache; no writable node_modules link created'};
   } else if(command==='merge') {
     assert(os.hostname()!=='VM-0-4-ubuntu','Canonical dev integration runs on the Mac; export the committed task branch as a Git bundle for import there');
     result=lock(()=>{
@@ -55,11 +60,12 @@ try {
     result={artifact:dest,sourceCommit:commit,files:files.length};
   } else if(command==='sync') {
     const d=dev();clean(d);const commit=git(d,['rev-parse','HEAD']);assert(opts.owner);
-    const dir=fs.mkdtempSync(path.join(os.tmpdir(),'vlab-source-'));
-    try {
-      git(d,['bundle','create',dir+'/source.bundle','dev']);
-      result=remote({command:'sync',owner:opts.owner,sourceCommit:commit,bundle:fs.readFileSync(dir+'/source.bundle').toString('base64')});
-    } finally {fs.rmSync(dir,{recursive:true,force:true});}
+    const remoteCommit=remote({command:'status'}).devSource?.commit;
+    const bundle=sourceBundle(d,remoteCommit);
+    assert.equal(bundle.commit,commit,'dev advanced during sync preparation; retry with the current commit');
+    result=bundle.bytes
+      ? remote({command:'sync',owner:opts.owner,sourceCommit:commit,bundle:bundle.bytes.toString('base64')})
+      : {devSourceCommit:commit,bundleBytes:0,skipped:true,runtimeChanged:false};
   } else if(command==='status')result=remote({command:'status'});
   else if(command==='lease') {
     assert(/^[\w-]+$/.test(opts.owner??''),'Owner required');assert(['true','false',undefined].includes(opts.release));
@@ -72,6 +78,6 @@ try {
   } else if(command==='rpc')result=remote({command:'rpc',method:opts.method,params:opts.params?JSON.parse(opts.params):{}});
   else if(command==='read-code')result=remote({command:'read-code',target:opts.target});
   else if(command==='test')result=remote({command:'test',owner:opts.owner,task:opts.task,agent:opts.agent,sessionKey:opts.sessionKey,message:opts.message,idempotencyKey:opts.idempotencyKey});
-  else throw Error('Commands: init, new, merge, package, lease, status, read-code, stage, deploy, rollback, accept, rpc, test, sync, baseline. See lab/README.md');
+  else throw Error('Commands: candidate, init, new, merge, package, lease, status, read-code, stage, deploy, rollback, accept, rpc, test, sync, baseline. See lab/README.md');
   console.log(typeof result==='string'?result:JSON.stringify(result,null,2));
 } catch(e) {console.error(e.message);process.exitCode=1;}

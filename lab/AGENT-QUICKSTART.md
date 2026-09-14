@@ -1,112 +1,43 @@
-# 给其他 agent 的 VLab 开发入口
+# VLab 开发入口
 
-用户于 2026-09-10 确认并已实机验收的新默认：**每个任务一个轻量源码 worktree → 完成开发和合入前测试 → 向 Tianyi 报告并等待其明确决定 → 获准后合入 dev → 按授权继续验收和上线。**
+2026-09-15：**worktree 开发与独立测试 → 用户决定合入 dev → 共享 VLab 最后集成验收 → 按授权上 V。**
 
-完整合同见 [README.md](README.md)，实机证据见 [验收记录](../docs/vlab-shared-workflow-acceptance-20260910.md)。本页是操作入口，不是要求重新搭环境。
+普通开发测试不占 integration lease，不要求先合 dev，不重启共享 Gateway。共享 VLab 是 Dev 环境，不是每次修改的测试运行器。
 
-## 1. 开始任务：不需要占用 Gateway
-
-Mac 上从任何目录都可定义这个便利函数（参数中的路径解决当前 cwd 不是平台仓库的问题）：
+## 开始
 
 ```sh
-vlab() {
-  node /Users/tianyicai/vlab-dev/lab/vlab.mjs "$@" --repo /Users/tianyicai/vlab-dev
-}
-# 用当前任务 ID / 明确负责人替换；不要沿用本页占位值或别人的 owner。
-vlab_owner='YOUR_THREAD_ID'
-vlab_task='unique-fix-name'
-vlab status
-vlab new --task "$vlab_task" --owner "$vlab_owner"
+node /Users/tianyicai/vlab-dev/lab/vlab.mjs new --task unique-fix --owner YOUR_TASK_ID --repo /Users/tianyicai/vlab-dev
 ```
 
-进入 `new` 返回的 worktree 开发，分支为 `codex/<task>`。默认目录 `/Users/tianyicai/v-worktrees/<task>`。不要重跑 `init`、`baseline`，不要运行旧 `labctl create` 为每个任务复制实例。源码开发不持有长时间 integration lease。
+进入返回的 worktree，之后优先使用该 worktree 的 `node lab/vlab.mjs`，这样控制工具自身的改动也能被测试。
 
-`status` 中：`current` 是当前已部署产物；`devSource` 是服务器源码镜像，两者可能不同。`lease` 非空表示有人占用；`pending` 非空表示未完成发布需要恢复。不要绕过这些状态直接热改 runtime。
-
-## 2. 使用共享配置与历史
+## 一条命令测试候选
 
 ```sh
-vlab rpc --method sessions.list --params '{"agentId":"makaron","limit":10,"includeLastMessage":false}'
-vlab rpc --method chat.history --params '{"agentId":"makaron","sessionKey":"EXACT_SESSION_KEY","limit":10}'
+node lab/vlab.mjs candidate --repo "$PWD" --owner YOUR_TASK_ID --plan /absolute/candidate.plan.json
 ```
 
-模型、Skills、工具、Memory、浏览器登录状态由共享 Gateway 使用，worktree 不复制配置、凭据和在线数据库。以上只读查询不需要 lease。已有历史可读取；专用测试对话见下文。
+plan 指定本次测试文件、替换的 runtime 文件、需要的 SQLite 数据库；格式与例子见 [candidate/README.md](candidate/README.md)。第一次缓存当前 runtime；之后只传代码差量并复用基线。配置每次读取共享 VLab 当前设置并生成脱敏副本，数据库按需生成一致性备份；所有测试写入只发生在自己的临时目录。
 
-**共享服务运行的是当前已部署代码。** 未合入、未部署的 worktree 修改不能通过共享 RPC 自动生效。在 worktree 完成可执行的测试并报告结果；需要共享候选环境才能验证的项目如实列为未验证项，不能为取得验收条件而擅自先合入 dev。
+支持未提交修改，receipt 记录输入文件 hash、HEAD、dirty、真实代码基线、数据来源、结果和分段耗时。开发迭代不必为测试先 commit/merge/package/stage。准备交付时提交并核对被测试文件 hash。
 
-## 3. 在 worktree 完成后，等待用户决定是否合入 dev
+配置、schema、路径、迁移、模块行为优先走 candidate；真实模型、OAuth、渠道、共享 Worker 调度和浏览器登录态需要最后的共享集成验收。candidate 的成功不冒充后者。
 
-在自己的 worktree 只提交本任务内容，交付：任务分支、完整 commit SHA、测试结果、待部署文件清单和回退说明。然后停在自己的 worktree，等待 Tianyi 明确决定是否合入。agent 可以执行用户批准的合入，但不能替用户作决定。测试通过、修复任务授权、拿到 lease 均不构成合入授权。
-
-只有用户明确批准本次变更合入后，才执行下列命令及后续集成步骤：
+只读查看共享历史无需 lease：
 
 ```sh
-vlab merge --branch codex/unique-fix-name --commit FULL_TASK_COMMIT_SHA
+node lab/vlab.mjs rpc --method sessions.list --params '{"agentId":"makaron","limit":10,"includeLastMessage":false}'
 ```
 
-唯一集成目录是 `/Users/tianyicai/vlab-dev`，分支 `dev`。在合并结果上跑相关测试，记录新的完整 dev SHA。dev 脏、分支 SHA 不符或合并冲突时先处理具体问题，不 reset/覆盖其他人的修改。
+## 最后集成
 
-## 4. 用户批准合入后，按授权取得共享验收窗口并部署
+提交自己的修改，报告结果和完整 SHA，由 Tianyi 决定是否合 dev。已有明确授权直接执行，不反复确认。
 
-先确认当前负责人已完成或明确交接，再获取 lease。别人占用时继续源码工作，不能按过期时间抢占。
+获准后：合并 → 相关回归 → 获取空闲 integration lease → package/stage/deploy → 一次有针对性的真实验收 → accept/释放。命令与失败回退见 [README.md](README.md)。`sync` 仅在需要更新服务器源码镜像时运行；已有相同提交会跳过，否则增量传输。共享业务有活跃运行时不强杀，不抢其他任务的 lease。
 
-```sh
-vlab lease --owner "$vlab_owner"
-vlab status
-```
+普通配置/模块修复不默认扩大成全套渠道、媒体、压力与冷启动验收。只有改动涉及这些行为、相关测试失败，或出现新的回归证据才扩大。复用同一输入 hash/代码基线下已有证据。
 
-按 README 的 plan 格式准备发布：`baseRelease` 来自当前 status；每个文件的 `source` 必须是 dev 已提交的最终代码文件；`target` 是 runtime 内相对路径；`before` 是 `read-code` 返回的旧 SHA256，新文件用 JSON null。
+## 结果怎么报告
 
-```sh
-vlab read-code --target openclaw/dist/CHANGED_FILE.mjs
-vlab package --id unique-fix-v1 --commit FULL_TESTED_DEV_SHA --owner "$vlab_owner" --plan /absolute/plan.json
-vlab sync --owner "$vlab_owner"
-vlab stage --artifact /absolute/PATH_RETURNED_BY_PACKAGE.json
-vlab deploy --id unique-fix-v1 --owner "$vlab_owner"
-```
-
-必须等上一步成功再继续。`package` 返回真实 artifact 路径；不要把占位路径直接执行。产物 ID 不复用。若 dev 在打包后变化，重新验证合并结果并打包。配置或代码漂移、占用冲突、磁盘不足、活跃工作未排空时，处理具体原因，不关闭保护。
-
-## 5. 实际验收，再按结果分支处理
-
-```sh
-vlab test --owner "$vlab_owner" --task "$vlab_task" --idempotencyKey UNIQUE_RUN_ID --message '这次改动的具体工具、输入和预期输出验收要求'
-vlab rpc --method agent.wait --params '{"runId":"RETURNED_RUN_ID","timeoutMs":1}'
-vlab rpc --method chat.history --params '{"agentId":"makaron","sessionKey":"RETURNED_SESSION_KEY","limit":30}'
-```
-
-检查真实工具结果和最终回复，不能只信模型说“成功”。`test` 返回专用 sessionKey，可传 `--sessionKey` 继续同一条对话，验证跨部署上下文。`deliver:false` 不会把测试发到飞书；原业务会话写入与外部渠道验收按已有授权另行操作。调用结果不确定时先查历史/运行状态，需要重试时复用 idempotencyKey。
-
-**通过时**记录证据并接受当前产物：
-
-```sh
-vlab accept --id unique-fix-v1 --owner "$vlab_owner" --artifactSha EXACT_STAGE_ARTIFACT_SHA --evidence '具体验收报告路径及实际结果'
-```
-
-**失败且需回退时**恢复本次代码，再核对配置、对话和实际行为：
-
-```sh
-vlab rollback --id unique-fix-v1 --owner "$vlab_owner"
-```
-
-以上是两个分支，不是先 rollback 再 accept 的连续步骤。仅能回滚当前 release；有 pending journal 时按 README 恢复，不能盲删。
-
-结束后释放占用，并记录最终运行 release、验收结果和遗留问题：
-
-```sh
-vlab lease --owner "$vlab_owner" --release true
-```
-
-释放前确认没有尚待完成的部署或测试交接。VLab 通过不等于生产上线；本 CLI 不部署 V。按用户已有生产授权推广同一产物，生产配置/数据独立保留，连接 V 只走 Tailscale。
-
-## 服务器上的 agent
-
-具备既有 VLab 管理入口的 agent 可在服务器 `labs/shared-workflow/source` 中调用同一 CLI；Node 路径、sudo 和完整命令见 README。源码 worktree 共用服务器 Git 对象库，RPC 在主机内访问共享 Gateway。
-
-服务器 dev 是镜像，不能在那里另行合并成第二条 dev。服务器任务提交后导出 Git bundle，由 Mac 集成者校验精确 branch/SHA、导入一个未占用的任务分支，再按上述 merge 流程集成。同步 dev 不等于更新业务 runtime，也不等于自动替换控制工具。
-
-生产 V 上的 agent 不会因为本流程自动获得 VLab 的 SSH 权限；没有已配置入口时由有权限的集成者执行，不复制管理私钥。
-
-## 当前适用范围
-
-小批代码文件新增/替换；配置调整、依赖安装、大版本升级、删除资源和数据库迁移需单独处理。历史导入基线包含旧热补丁，不能仅凭平台 Git SHA 宣称完整运行时代码相同。以实际 status、artifact checksum 和验收证据为准。
+报告改动、候选测试实际结果与耗时、未覆盖的集成场景、分支/commit。部署结果与业务验收分开表述。VLab 通过不代表生产已上线；生产连接只走 Tailscale。
