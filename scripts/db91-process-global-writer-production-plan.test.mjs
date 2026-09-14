@@ -66,6 +66,7 @@ test('production stage never hardlinks the live runtime', () => {
   const source = fs.readFileSync(new URL('./deploy-db91-process-global-writer-production.mjs', import.meta.url), 'utf8');
   assert(source.includes("run('cp', ['-a', `${oldRelease}/core`, `${newRelease}/core`]"));
   assert(!source.includes("run('cp', ['-al'"));
+  assert(source.includes('Date.now() + 180_000'), 'native cutover must allow persisted-session shutdown to finish');
 });
 
 test('unit retains established hooks without changing stop bounds', () => {
