@@ -17,15 +17,14 @@ test('shared VLab acceptance fixes five Workers, runs C15 rounds, and records fi
   assert.match(source, /deliver: false/);
 });
 
-test('comparison rejects first-text or event-loop regression', () => {
+test('comparison requires a bad C15 baseline, repaired C15 candidate, and healthy C5 user load', () => {
   const source = fs.readFileSync(new URL('./compare-db91-transaction-scope-acceptance.mjs', import.meta.url), 'utf8');
-  assert.match(source, /firstTextP50NotSlower/);
-  assert.match(source, /firstTextP95NotSlower/);
-  assert.match(source, /eventLoopP50TailNotSlower/);
-  assert.match(source, /eventLoopP99TailNotSlower/);
-  assert.match(source, /scopeDelayReproduced/);
-  assert.match(source, /baselineReproducedBroadScopeFailure/);
-  assert.match(source, /baselineReproducedThirtySecondWait/);
-  assert.match(source, /firstTextP50AbsoluteGate/);
-  assert.match(source, /firstTextP95AbsoluteGate/);
+  assert.match(source, /baselineReproducedBroadScopeStall/);
+  assert.match(source, /baselineReproducedServicePressure/);
+  assert.match(source, /stressFirstTextP95ReducedByAtLeastHalf/);
+  assert.match(source, /stressTotalP95ReducedByAtLeastHalf/);
+  assert.match(source, /targetLoadFirstTextP50WithinSevenSeconds/);
+  assert.match(source, /targetLoadFirstTextP95WithinSevenSeconds/);
+  assert.match(source, /targetLoadEventLoopP50TailHealthy/);
+  assert.match(source, /targetLoadEventLoopP99TailHealthy/);
 });
