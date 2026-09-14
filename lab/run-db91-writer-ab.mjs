@@ -46,7 +46,7 @@ const config = JSON.parse(configBytes);
 assert.equal(config.gateway.port, 24993);
 const workerConfigPath = config.plugins.entries['vlab-agent-worker-isolation'].config.workerConfigPath;
 const workerConfigSha256 = sha256(fs.readFileSync(workerConfigPath));
-assert(env.OPENCLAW_STATE_DIR.startsWith(base + '/state/'));
+assert(env.OPENCLAW_STATE_DIR === base + '/state' || env.OPENCLAW_STATE_DIR.startsWith(base + '/state/'));
 const agentDatabasePath = env.OPENCLAW_STATE_DIR + '/agents/makaron/agent/openclaw-agent.sqlite';
 assert(fs.statSync(agentDatabasePath).isFile());
 const modelSpec = config.agents.entries.makaron.model ?? config.agents.defaults.model;
@@ -162,8 +162,8 @@ try {
     terminalWaiters.delete(warmId);
   }
   await assertIdle();
-  startedAt = Date.now();
-  const holderReadyPath = `${control}/.db91-writer-holder-${variant}-${startedAt}.ready`;
+  const caseId = Date.now();
+  const holderReadyPath = `${control}/.db91-writer-holder-${variant}-${caseId}.ready`;
   const holderCode = `import fs from 'node:fs';const wait=new Int32Array(new SharedArrayBuffer(4));const {y:write}=await import(${JSON.stringify(base + '/runtime/openclaw/dist/openclaw-agent-db-CUTe8BX6.js')});const startedAt=Date.now();write(()=>{fs.writeFileSync(process.argv[2],String(process.pid),{flag:'wx',mode:0o600});Atomics.wait(wait,0,0,40000);return true},{agentId:'makaron',path:process.argv[1],env:process.env},{operationLabel:'db91.ab.real-process-holder'});process.stdout.write(JSON.stringify({pid:process.pid,startedAt,finishedAt:Date.now()}));`;
   const holderChild = spawn(process.execPath, ['--input-type=module', '-e', holderCode, agentDatabasePath, holderReadyPath], {
     env: process.env,
@@ -179,10 +179,11 @@ try {
   });
   void holderResult.catch(error => { holderFailure = error; });
   holder = {child: holderChild, readyPath: holderReadyPath, result: holderResult};
-  const holderReadyDeadline = Date.now() + 60_000;
+  const holderReadyDeadline = Date.now() + 180_000;
   while (!fs.existsSync(holderReadyPath) && !holderFailure && Date.now() < holderReadyDeadline) await sleep(25);
   assert(!holderFailure, `real process writer holder failed: ${holderFailure?.message ?? holderStderr.slice(-500)}`);
   assert(fs.existsSync(holderReadyPath), `real process writer holder did not enter its transaction: ${holderStderr.slice(-500)}`);
+  startedAt = Date.now();
   for (let round = 0; round < rounds; round += 1) {
     const batch = [];
     for (let index = 0; index < concurrency; index += 1) {

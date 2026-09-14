@@ -45,6 +45,7 @@ test('summary keeps P50, P99, memory, swap, Gateway, and Worker RSS separate', (
   assert.equal(summary.memory.growth, 1200 * 1024 ** 2);
   assert.equal(summary.databaseLocked, 1);
   assert.equal(summary.slowSessionWriteMaxMs, 35_000);
+  assert.equal(summary.longWriteWaitMaxMs, 35_000);
 });
 
 test('candidate passes only when persistence, event loop, and memory all improve', () => {

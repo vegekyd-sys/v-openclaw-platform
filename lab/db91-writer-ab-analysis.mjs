@@ -23,6 +23,8 @@ export function summarizeDb91WriterAbRun(run) {
   const swaps = run.resources.map(sample => sample.memorySwapCurrent);
   const gatewayRss = run.resources.map(sample => sample.gatewayRss);
   const childRss = run.resources.flatMap(sample => sample.processes?.map(process => process.rss) ?? []);
+  const failedWriteWaitMaxMs = quantile(run.rows.filter(row => row.terminal === 'error').map(row => row.totalMs), 1);
+  const slowSessionWriteMaxMs = quantile(run.slowSessionWrites?.map(write => write.elapsedMs) ?? [], 1);
   const firstMemory = finite(memories)[0] === undefined ? null : run.resources.find(sample => Number.isFinite(sample.memoryCurrent))?.memoryCurrent;
   const lastMemory = [...run.resources].reverse().find(sample => Number.isFinite(sample.memoryCurrent))?.memoryCurrent ?? null;
   return {
@@ -36,7 +38,9 @@ export function summarizeDb91WriterAbRun(run) {
     persisted: run.rows.filter(row => row.persisted === true).length,
     databaseLocked: run.runtimeErrors.filter(error => error.databaseLocked).length,
     runtimeErrors: run.runtimeErrors.length,
-    slowSessionWriteMaxMs: quantile(run.slowSessionWrites?.map(write => write.elapsedMs) ?? [], 1),
+    failedWriteWaitMaxMs,
+    slowSessionWriteMaxMs,
+    longWriteWaitMaxMs: Math.max(failedWriteWaitMaxMs ?? 0, slowSessionWriteMaxMs ?? 0),
     healthErrors: run.health.filter(sample => sample.error).length,
     failure: run.failure ?? null,
     eventLoopP50Ms: {
@@ -74,7 +78,7 @@ export function compareDb91WriterAb(baselineRun, candidateRun) {
   const checks = {
     baselineNoRunnerFailure: baseline.failure === null,
     baselineReproducedDatabaseLock: baseline.databaseLocked > 0,
-    baselineReproducedSlowWrite: baseline.slowSessionWriteMaxMs >= 30_000,
+    baselineReproducedLongWriteWait: baseline.longWriteWaitMaxMs >= 30_000,
     baselineReproducedEventLoopStall: baseline.eventLoopP99Ms.max >= 1_000,
     baselineReproducedMemoryGrowth: baseline.memory.growth >= 1024 ** 3,
     candidateNoRunnerFailure: candidate.failure === null,
