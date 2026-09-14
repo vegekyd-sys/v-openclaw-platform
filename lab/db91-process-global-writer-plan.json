@@ -1,0 +1,25 @@
+{
+  "baseRelease": "db91-global-write-admission-v3",
+  "files": [
+    {
+      "source": "lab/release-files/agent-db-process-coordinator.mjs",
+      "target": "openclaw/dist/agent-db-process-coordinator.mjs",
+      "before": null
+    },
+    {
+      "source": "lab/release-files/session-accessor.sqlite-scope-BwPKGcgm.js",
+      "target": "openclaw/dist/session-accessor.sqlite-scope-BwPKGcgm.js",
+      "before": "193a84fe7518a8b83db2315acb0518653011087b17f14f3f9f01cc7aa8a6c834"
+    },
+    {
+      "source": "lab/release-files/session-transcript-reconcile-j5qhAafV.js",
+      "target": "openclaw/dist/session-transcript-reconcile-j5qhAafV.js",
+      "before": "0c0461d43f9147aa6b8d7991466f5f3f1b07924306ccb7cf14cafcd0315b84f3"
+    },
+    {
+      "source": "lab/release-files/openclaw-agent-db-CUTe8BX6.js",
+      "target": "openclaw/dist/openclaw-agent-db-CUTe8BX6.js",
+      "before": "a4c1d63df182d95cc029c25e338eb18708c484b7a8afc998d4ea61292416bb71"
+    }
+  ]
+}
