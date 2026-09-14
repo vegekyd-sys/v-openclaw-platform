@@ -1,8 +1,9 @@
 import { invalidateVerification as db91Invalidate, invalidateAllVerifications as db91InvalidateAll, assertConnectionUsable as db91AssertConnection, rememberConnection as db91RememberConnection } from "./db91-integrity-gate.mjs";
 import { r as isPathInside } from "./path-guards-Cp-mGr3-.js";
 import { t as createSubsystemLogger } from "./subsystem-bfHYmnCE.js";
-import { t as openNodeSqliteDatabase, u as runSqliteImmediateTransactionSync } from "./node-sqlite-CL-d6drd.js";
+import { o as tryAcquireExclusiveSqliteCoordinator, t as openNodeSqliteDatabase, u as runSqliteImmediateTransactionSync } from "./node-sqlite-CL-d6drd.js";
 import {withSqliteBeginContentionRetrySync} from "./sqlite-begin-contention-retry.mjs";
+import {isAgentDatabaseProcessLeaseHeld, withAgentDatabaseProcessLeaseSync} from "./agent-db-process-coordinator.mjs";
 import { t as enableNodeSqliteKyselyStatementCache } from "./kysely-sync-DKYGT267.js";
 import { o as OPENCLAW_SQLITE_BUSY_TIMEOUT_MS } from "./openclaw-state-db-contract-CsSSYjX0.js";
 import { i as isSqliteSchemaVersionError } from "./sqlite-user-version-DkmzAA6V.js";
@@ -281,7 +282,7 @@ function deferOpenClawAgentPostCommitPublication(database, publish) {
 function runOpenClawAgentWriteTransaction(operation, options, transactionOptions = {}) {
 	const database = openOpenClawAgentDatabase(options);
 	const enteredNestedTransaction = database.db.isTransaction;
-	return withSqlitePostCommitPublications(database.db, () => withSqliteBeginContentionRetrySync({
+	const runTransaction = () => withSqlitePostCommitPublications(database.db, () => withSqliteBeginContentionRetrySync({
 		database: database.db,
 		run: transactionOperation => runSqliteImmediateTransactionSync(database.db, () => transactionOperation(database), {
 			busyTimeoutMs: transactionOptions.busyTimeoutMs ?? 5e3,
@@ -297,6 +298,21 @@ function runOpenClawAgentWriteTransaction(operation, options, transactionOptions
 			return operationResult;
 		}
 	}));
+	if (incognitoDatabases.has(database) || isAgentDatabaseProcessLeaseHeld(database.path)) return runTransaction();
+	return withAgentDatabaseProcessLeaseSync({
+		acquire: tryAcquireExclusiveSqliteCoordinator,
+		databasePath: database.path,
+		fn: runTransaction,
+		onAcquired: ({ attempts, waitMs }) => {
+			if (waitMs >= 1e3) agentDbLog.warn("slow direct Agent DB process writer admission", {
+				attempts,
+				operationLabel: transactionOptions.operationLabel ?? "agent.write",
+				path: database.path,
+				waitMs
+			});
+		},
+		onReleaseError: (error) => agentDbLog.warn("direct Agent DB process writer coordinator release failed", { error, path: database.path })
+	});
 }
 let unregisterExitClose = null;
 function closeCachedOpenClawAgentDatabase(database, options = {}) {
