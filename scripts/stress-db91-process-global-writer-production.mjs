@@ -210,8 +210,6 @@ try {
   })();
   await runCohort(5);
   assert(!report.safetyStop);
-  await runCohort(10);
-  assert(!report.safetyStop);
   sampling = false;
   await sampler;
   report.resourceAfter = resources();

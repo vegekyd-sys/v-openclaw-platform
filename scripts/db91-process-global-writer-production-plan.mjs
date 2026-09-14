@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 
-export const releaseId = 'v2026.9.1-db91.2';
-export const oldRelease = '/opt/openclaw-experiments/db91-release-v2026.9.1-db91.1';
-export const newRelease = '/opt/openclaw-experiments/db91-release-v2026.9.1-db91.2';
+export const releaseId = 'v2026.9.1-db91.5';
+export const oldRelease = '/opt/openclaw-experiments/db91-release-v2026.9.1-db91.4';
+export const newRelease = '/opt/openclaw-experiments/db91-release-v2026.9.1-db91.5';
+export const preservedMemoryFtsSha256 = '7267571c87d05e1662a8277b86a22760d77679e7ff48474022983eec2238584b';
 
 export const productionFiles = [
   {
@@ -21,7 +22,7 @@ export const productionFiles = [
     source: 'lab/release-files/session-accessor.sqlite-scope-BwPKGcgm.js',
     target: 'core/dist/session-accessor.sqlite-scope-BwPKGcgm.js',
     beforeSha256: '193a84fe7518a8b83db2315acb0518653011087b17f14f3f9f01cc7aa8a6c834',
-    afterSha256: '6817511dc8a40eec8a3de4f13e71fe27d10f6d584bd2d3f7af342e9bbce8e787',
+    afterSha256: 'caffb3629c5cbfb1fbf6027c8dccac7fa7d829d30bd8f4ddac8c4046a4dfbf34',
   },
   {
     source: 'lab/release-files/session-transcript-reconcile-j5qhAafV.js',
@@ -33,13 +34,19 @@ export const productionFiles = [
     source: 'lab/release-files/openclaw-agent-db-CUTe8BX6.js',
     target: 'core/dist/openclaw-agent-db-CUTe8BX6.js',
     beforeSha256: 'acbf762a26fcb52e6b6561b3258d4ad54ee7497ee29958bc6f01c445a609320b',
-    afterSha256: 'f27dfd63df7347ba9d6cf9026227cb8a36e09fc33da19f17c07ba898b2163024',
+    afterSha256: '046d7a8253f5a97b1887bdbe5ae5d3826b6bae53aa84d5240e2f1216f4421cc5',
   },
   {
     source: 'lab/release-files/server-start-BNcm1gUN.js',
     target: 'core/dist/server-start-BNcm1gUN.js',
     beforeSha256: '845b97e1f276c426497fea21eedb8f7650d16e11dc70765e32e1ef4080e21864',
     afterSha256: '9b71ace5b596fffdaf4263d14fbc5ddac6c8d413dbd48253da7d69fc8bdb6205',
+  },
+  {
+    source: 'lab/release-files/session-history-eviction-d5aiCsHS.js',
+    target: 'core/dist/session-history-eviction-d5aiCsHS.js',
+    beforeSha256: '04a6851b951872b52f95bf75c3f50b9cdf07aca66ee430e446d4779d1894af94',
+    afterSha256: '014136ce2b566bc589490f89f6d2a4ce5d437f524c9ceb33453582496160fe2d',
   },
 ];
 
@@ -63,8 +70,8 @@ export function planProductionConfig(bytes, {expectedMinWorkers = 5} = {}) {
     return value;
   };
   const next = rewrite(config);
-  assert.equal(coreRewrites, 1, 'Expected exactly one db91.1 core pointer');
-  assert.equal(workerRewrites, 1, 'Expected exactly one db91.1 Worker pointer');
+  assert.equal(coreRewrites, 1, 'Expected exactly one db91.4 core pointer');
+  assert.equal(workerRewrites, 1, 'Expected exactly one db91.4 Worker pointer');
   const worker = next.plugins?.entries?.['vlab-agent-worker-isolation']?.config;
   assert.deepEqual(
     {

@@ -8,6 +8,7 @@ import {
   planProductionConfig,
   productionFiles,
   productionReleaseUnit,
+  preservedMemoryFtsSha256,
   releaseId,
 } from './db91-process-global-writer-production-plan.mjs';
 
@@ -48,10 +49,11 @@ test('Worker child config preserves its independent minWorkers mirror', () => {
 });
 
 test('release manifest is exact and hash guarded', () => {
-  assert.equal(releaseId, 'v2026.9.1-db91.2');
-  assert.equal(productionFiles.length, 6);
+  assert.equal(releaseId, 'v2026.9.1-db91.5');
+  assert.equal(productionFiles.length, 7);
   assert.equal(new Set(productionFiles.map((file) => file.target)).size, productionFiles.length);
   assert.equal(productionFiles.filter((file) => file.beforeSha256 === null).length, 1);
+  assert.match(preservedMemoryFtsSha256, /^[0-9a-f]{64}$/);
   for (const file of productionFiles) {
     assert.match(file.source, /^lab\/release-files\//);
     assert.match(file.target, /^core\/dist\//);

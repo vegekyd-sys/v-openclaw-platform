@@ -12,6 +12,7 @@ import {
   planProductionConfig,
   productionFiles,
   productionReleaseUnit,
+  preservedMemoryFtsSha256,
   releaseId,
 } from './db91-process-global-writer-production-plan.mjs';
 
@@ -23,8 +24,9 @@ const root = '/home/openclaw/.openclaw';
 const unit = 'openclaw-gateway.service';
 const backup = `${root}/backups/${releaseId}`;
 const source = `${newRelease}/source`;
-const permanentDropin = `/etc/systemd/system/${unit}.d/zzzzz-db91-process-global-writer-v2.conf`;
-const stopDropin = `/etc/systemd/system/${unit}.d/zzzzzz-db91-process-global-writer-stop.conf`;
+const permanentDropin = `/etc/systemd/system/${unit}.d/zzzzzzz-db91-writer-transaction-scope-v5.conf`;
+const stopDropin = `/etc/systemd/system/${unit}.d/zzzzzzzz-db91-writer-transaction-scope-stop.conf`;
+const memoryFtsTarget = 'core/dist/memory-schema-BSs9MQgq.js';
 const configFiles = [
   `${root}/openclaw.json`,
   `${root}/experiments/agent-worker-isolation-v1/worker-openclaw.json`,
@@ -66,6 +68,7 @@ const checkCandidate = () => {
     assert.equal(sha(`${source}/${file.source}`), file.afterSha256, `Source artifact drift: ${file.source}`);
     assert.equal(sha(`${newRelease}/${file.target}`), file.afterSha256, `Candidate runtime drift: ${file.target}`);
   }
+  assert.equal(sha(`${newRelease}/${memoryFtsTarget}`), preservedMemoryFtsSha256, 'Memory FTS fix must remain unchanged');
 };
 
 async function connect(core, config, environment) {
@@ -103,7 +106,7 @@ if (mode === 'write-intent') {
   const {a: writeIntent} = await import(`${oldRelease}/core/dist/restart-intent-BYVo1227.js`);
   assert(writeIntent({
     targetPid: pid,
-    reason: 'db91-process-global-writer-production-cutover',
+    reason: 'db91-writer-transaction-scope-production-cutover',
     intent: {waitMs: 5_000},
     env: process.env,
   }));
@@ -116,7 +119,7 @@ assert.equal(process.getuid(), 0);
 if (mode === 'stage') {
   const pid = gatewayPid();
   const environment = readLiveEnvironment(pid);
-  assert.equal(environment.V_RELEASE_VERSION, 'v2026.9.1-db91.1');
+  assert.equal(environment.V_RELEASE_VERSION, 'v2026.9.1-db91.4');
   assert.equal(fs.realpathSync(source), source);
   assert.equal(run('git', ['-c', `safe.directory=${source}`, '-C', source, 'status', '--porcelain']), '');
   const sourceCommit = run('git', ['-c', `safe.directory=${source}`, '-C', source, 'rev-parse', 'HEAD']);
@@ -129,6 +132,7 @@ if (mode === 'stage') {
     else assert.equal(sha(live), file.beforeSha256, `Production baseline drift: ${file.target}`);
     assert.equal(sha(`${source}/${file.source}`), file.afterSha256, `Committed artifact drift: ${file.source}`);
   }
+  assert.equal(sha(`${oldRelease}/${memoryFtsTarget}`), preservedMemoryFtsSha256, 'Live Memory FTS fix drift');
   fs.mkdirSync(backup, {mode: 0o700});
   const group = Number(run('id', ['-g', 'openclaw']));
   fs.chownSync(backup, 0, group);
@@ -199,7 +203,7 @@ if (mode === 'stage') {
   const staged = readJson(`${backup}/staged.json`);
   const pid = gatewayPid();
   const environment = readLiveEnvironment(pid);
-  assert.equal(environment.V_RELEASE_VERSION, 'v2026.9.1-db91.1');
+  assert.equal(environment.V_RELEASE_VERSION, 'v2026.9.1-db91.4');
   assert(fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').includes(`${oldRelease}/core/dist/index.js`));
   if (fs.existsSync(stopDropin)) {
     assert.equal(fs.readFileSync(stopDropin, 'utf8'), controlledStopPolicy);
