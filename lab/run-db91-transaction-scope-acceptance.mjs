@@ -59,6 +59,7 @@ const health = [];
 const resources = [];
 let client;
 let sampling = false;
+let sampler;
 
 function sampleResources() {
   guard();
@@ -114,7 +115,7 @@ let holder;
 let startedAt;
 let failure;
 const runtimeErrors = [];
-const sampler = (async () => {
+const sampleWhileActive = async () => {
   while (sampling) {
     const at = Date.now();
     try {
@@ -128,7 +129,7 @@ const sampler = (async () => {
     }
     await sleep(250);
   }
-})();
+};
 
 try {
   await idle();
@@ -169,6 +170,7 @@ try {
 
   startedAt = Date.now();
   sampling = true;
+  sampler = sampleWhileActive();
   await Promise.all(rows.map(async row => {
     row.startedAt = Date.now();
     await call('chat.send', {
@@ -214,7 +216,7 @@ try {
   failure = {name: error.name, message: String(error.message).slice(0, 500)};
 } finally {
   sampling = false;
-  await sampler;
+  if (sampler) await sampler;
   if (holder?.child.exitCode === null && holder.child.signalCode === null) holder.child.kill('SIGTERM');
   if (holder?.readyPath && fs.existsSync(holder.readyPath)) fs.unlinkSync(holder.readyPath);
   for (const row of rows) if (row.startedAt && !row.terminal) await call('chat.abort', {agentId: 'makaron', sessionKey: row.key, runId: row.id}).catch(() => {});
@@ -234,7 +236,7 @@ const summary = {
   holderWaitMs,
   configSha256: sha256(configBytes),
   workerConfigSha256: sha256(workerConfigBytes),
-  configuredMinWorkers: workerConfig.plugins?.entries?.['vlab-agent-worker-isolation']?.config?.minWorkers ?? workerConfig.minWorkers,
+  configuredMinWorkers: config.plugins.entries['vlab-agent-worker-isolation'].config.minWorkers,
   completed: rows.filter(row => row.terminal === 'final').length,
   persisted: rows.filter(row => row.persisted).length,
   firstTextP50Ms: q(firstText, 0.5),
