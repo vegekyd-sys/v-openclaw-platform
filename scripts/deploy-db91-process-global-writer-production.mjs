@@ -1,0 +1,274 @@
+import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {execFileSync} from 'node:child_process';
+import {setTimeout as sleep} from 'node:timers/promises';
+import {
+  controlledStopPolicy,
+  newRelease,
+  oldRelease,
+  planProductionConfig,
+  productionFiles,
+  productionReleaseUnit,
+  releaseId,
+} from './db91-process-global-writer-production-plan.mjs';
+
+assert.equal(os.hostname(), 'VM-8-2-ubuntu');
+const [mode, rawPid] = process.argv.slice(2);
+assert(['stage', 'stop', 'write-intent', 'apply', 'start', 'verify', 'rollback'].includes(mode));
+
+const root = '/home/openclaw/.openclaw';
+const unit = 'openclaw-gateway.service';
+const backup = `${root}/backups/${releaseId}`;
+const source = `${newRelease}/source`;
+const permanentDropin = `/etc/systemd/system/${unit}.d/zzzzz-db91-process-global-writer-v2.conf`;
+const stopDropin = `/etc/systemd/system/${unit}.d/zzzzzz-db91-process-global-writer-stop.conf`;
+const configFiles = [
+  `${root}/openclaw.json`,
+  `${root}/experiments/agent-worker-isolation-v1/worker-openclaw.json`,
+];
+const run = (command, args, options = {}) => execFileSync(command, args, {
+  encoding: 'utf8',
+  timeout: 30_000,
+  ...options,
+}).trim();
+const hash = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
+const sha = (file) => hash(fs.readFileSync(file));
+const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
+const gatewayPid = () => Number(run('systemctl', ['show', unit, '-p', 'MainPID', '--value']));
+const record = (phase, data = {}) => {
+  fs.mkdirSync(backup, {recursive: true, mode: 0o700});
+  const value = {at: new Date().toISOString(), phase, releaseId, ...data};
+  fs.writeFileSync(`${backup}/${Date.now()}-${phase}.json`, `${JSON.stringify(value, null, 2)}\n`, {mode: 0o600, flag: 'wx'});
+  console.log(JSON.stringify(value));
+};
+const atomic = (file, bytes) => {
+  const stat = fs.statSync(file);
+  const temporary = `${file}.${releaseId}.${process.pid}.tmp`;
+  fs.writeFileSync(temporary, bytes, {mode: stat.mode & 0o777, flag: 'wx'});
+  fs.chownSync(temporary, stat.uid, stat.gid);
+  fs.chmodSync(temporary, stat.mode & 0o777);
+  fs.renameSync(temporary, file);
+};
+const readLiveEnvironment = (pid) => {
+  assert(pid > 1);
+  const environment = Object.fromEntries(fs.readFileSync(`/proc/${pid}/environ`, 'utf8').split('\0').filter(Boolean).map((entry) => {
+    const index = entry.indexOf('=');
+    return [entry.slice(0, index), entry.slice(index + 1)];
+  }));
+  Object.assign(process.env, environment);
+  return environment;
+};
+const checkCandidate = () => {
+  for (const file of productionFiles) {
+    assert.equal(sha(`${source}/${file.source}`), file.afterSha256, `Source artifact drift: ${file.source}`);
+    assert.equal(sha(`${newRelease}/${file.target}`), file.afterSha256, `Candidate runtime drift: ${file.target}`);
+  }
+};
+
+async function connect(core, config, environment) {
+  const token = config.gateway.auth.token.replace(/\$\{([^}]+)\}/g, (_, key) => {
+    assert(environment[key], `Missing Gateway token environment ${key}`);
+    return environment[key];
+  });
+  const {GatewayClient} = await import(`${core}/dist/plugin-sdk/gateway-runtime.js`);
+  let client;
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Gateway connection deadline')), 20_000);
+    client = new GatewayClient({
+      url: 'ws://127.0.0.1:22793',
+      token,
+      deviceIdentity: null,
+      clientName: 'cli',
+      mode: 'cli',
+      caps: ['tool-events'],
+      scopes: ['operator.read', 'operator.write', 'operator.admin'],
+      onHelloOk: () => { clearTimeout(timer); resolve(); },
+      onConnectError: (error) => { clearTimeout(timer); reject(error); },
+    });
+    client.start();
+  });
+  return client;
+}
+
+if (mode === 'write-intent') {
+  const serviceUid = fs.statSync(root).uid;
+  assert.equal(process.getuid(), serviceUid);
+  assert(serviceUid > 0);
+  const pid = Number(rawPid);
+  assert.equal(gatewayPid(), pid);
+  assert.equal(run('systemctl', ['show', unit, '-p', 'KillMode', '--value']), 'mixed');
+  const {a: writeIntent} = await import(`${oldRelease}/core/dist/restart-intent-BYVo1227.js`);
+  assert(writeIntent({
+    targetPid: pid,
+    reason: 'db91-process-global-writer-production-cutover',
+    intent: {waitMs: 5_000},
+    env: process.env,
+  }));
+  console.log(JSON.stringify({nativeRestartIntentWritten: true, targetPid: pid, waitMs: 5_000}));
+  process.exit(0);
+}
+
+assert.equal(process.getuid(), 0);
+
+if (mode === 'stage') {
+  const pid = gatewayPid();
+  const environment = readLiveEnvironment(pid);
+  assert.equal(environment.V_RELEASE_VERSION, 'v2026.9.1-db91.1');
+  assert.equal(fs.realpathSync(source), source);
+  assert.equal(run('git', ['-c', `safe.directory=${source}`, '-C', source, 'status', '--porcelain']), '');
+  const sourceCommit = run('git', ['-c', `safe.directory=${source}`, '-C', source, 'rev-parse', 'HEAD']);
+  assert(!fs.existsSync(`${newRelease}/core`) && !fs.existsSync(`${newRelease}/worker`), 'Candidate runtime already staged');
+  assert(!fs.existsSync(backup), 'Production backup directory already exists');
+  assert(!fs.existsSync(permanentDropin) && !fs.existsSync(stopDropin));
+  for (const file of productionFiles) {
+    const live = `${oldRelease}/${file.target}`;
+    if (file.beforeSha256 === null) assert(!fs.existsSync(live), `Unexpected live file: ${file.target}`);
+    else assert.equal(sha(live), file.beforeSha256, `Production baseline drift: ${file.target}`);
+    assert.equal(sha(`${source}/${file.source}`), file.afterSha256, `Committed artifact drift: ${file.source}`);
+  }
+  fs.mkdirSync(backup, {mode: 0o700});
+  run('cp', ['-al', `${oldRelease}/core`, `${newRelease}/core`], {timeout: 180_000});
+  run('cp', ['-al', `${oldRelease}/worker`, `${newRelease}/worker`], {timeout: 60_000});
+  for (const file of productionFiles) {
+    const destination = `${newRelease}/${file.target}`;
+    const temporary = `${destination}.${process.pid}.tmp`;
+    fs.copyFileSync(`${source}/${file.source}`, temporary, fs.constants.COPYFILE_EXCL);
+    fs.chownSync(temporary, 0, 0);
+    fs.chmodSync(temporary, 0o644);
+    fs.renameSync(temporary, destination);
+    run(process.execPath, ['--check', destination]);
+    run('/usr/sbin/runuser', ['-u', 'openclaw', '--', '/usr/bin/test', '-r', destination]);
+  }
+  checkCandidate();
+  const group = Number(run('id', ['-g', 'openclaw']));
+  const configs = [];
+  for (const [index, file] of configFiles.entries()) {
+    const before = fs.readFileSync(file);
+    const after = Buffer.from(planProductionConfig(before));
+    const beforePath = `${backup}/config-${index}.before`;
+    const afterPath = `${backup}/config-${index}.after`;
+    fs.writeFileSync(beforePath, before, {mode: 0o600, flag: 'wx'});
+    fs.writeFileSync(afterPath, after, {mode: 0o640, flag: 'wx'});
+    fs.chownSync(afterPath, 0, group);
+    run('/usr/sbin/runuser', ['-u', 'openclaw', '--', process.execPath, `${newRelease}/core/openclaw.mjs`, 'config', 'validate', '--json'], {
+      env: {...process.env, OPENCLAW_CONFIG_PATH: afterPath},
+      timeout: 60_000,
+    });
+    configs.push({file, beforePath, afterPath, beforeSha256: hash(before), afterSha256: hash(after)});
+  }
+  fs.writeFileSync(`${backup}/service.before`, run('systemctl', ['cat', unit]), {mode: 0o600, flag: 'wx'});
+  fs.writeFileSync(`${backup}/unit.after`, productionReleaseUnit(), {mode: 0o600, flag: 'wx'});
+  const staged = {at: new Date().toISOString(), releaseId, sourceCommit, beforePid: pid, configs, files: productionFiles};
+  fs.writeFileSync(`${backup}/staged.json`, `${JSON.stringify(staged, null, 2)}\n`, {mode: 0o600, flag: 'wx'});
+  record('staged', {sourceCommit, beforePid: pid, files: productionFiles.length, liveRuntimeUnchanged: true});
+} else if (mode === 'stop') {
+  checkCandidate();
+  const staged = readJson(`${backup}/staged.json`);
+  const pid = gatewayPid();
+  assert.equal(pid, staged.beforePid, 'Gateway restarted after staging');
+  const environment = readLiveEnvironment(pid);
+  const config = readJson(configFiles[0]);
+  const client = await connect(`${oldRelease}/core`, config, environment);
+  let suspension;
+  try {
+    const workers = await client.request('vlab.workers.status', {}, {timeoutMs: 20_000});
+    assert.equal(workers.pending, 0, 'Worker request pending');
+    assert(workers.workers.every((worker) => !worker.activeCount && !worker.queued && !worker.detachedTaskCount), 'Night Shift or another Worker task is still active');
+    const requestId = `db91-process-writer-${Date.now()}`;
+    suspension = await client.request('gateway.suspend.prepare', {requestId, drain: true, terminalPolicy: 'preserve'}, {timeoutMs: 20_000});
+    assert(suspension.suspensionId);
+    const deadline = Date.now() + 30_000;
+    for (;;) {
+      const status = await client.request('gateway.suspend.status', {suspensionId: suspension.suspensionId}, {timeoutMs: 10_000});
+      if (status.status === 'ready' && status.expiresAtMs > Date.now() + 5_000) break;
+      if (Date.now() >= deadline) throw new Error(`Gateway suspension did not become ready: ${status.status}`);
+      await sleep(500);
+    }
+    fs.writeFileSync(stopDropin, controlledStopPolicy, {mode: 0o644, flag: 'wx'});
+    run('systemctl', ['daemon-reload']);
+    assert.equal(run('systemctl', ['show', unit, '-p', 'KillSignal', '--value']), '10');
+    run('/usr/sbin/runuser', ['-u', 'openclaw', '--', process.execPath, `${source}/scripts/deploy-db91-process-global-writer-production.mjs`, 'write-intent', String(pid)], {env: process.env});
+    record('native-stop-requested', {beforePid: pid, suspensionId: suspension.suspensionId, active: 0, queued: 0});
+    run('systemctl', ['stop', unit], {timeout: 65_000});
+    assert.equal(gatewayPid(), 0);
+    record('stopped', {beforePid: pid});
+  } catch (error) {
+    if (suspension?.suspensionId) {
+      await client.request('gateway.suspend.resume', {suspensionId: suspension.suspensionId}, {timeoutMs: 10_000}).catch(() => {});
+    }
+    throw error;
+  } finally {
+    client.stop();
+  }
+} else if (mode === 'apply') {
+  assert.equal(gatewayPid(), 0, 'Gateway must be stopped');
+  checkCandidate();
+  const staged = readJson(`${backup}/staged.json`);
+  for (const config of staged.configs) {
+    assert.equal(sha(config.file), config.beforeSha256, `Live config drift: ${config.file}`);
+    assert.equal(sha(config.afterPath), config.afterSha256, `Staged config drift: ${config.afterPath}`);
+    atomic(config.file, fs.readFileSync(config.afterPath));
+  }
+  fs.writeFileSync(permanentDropin, productionReleaseUnit(), {mode: 0o644, flag: 'wx'});
+  if (fs.existsSync(stopDropin)) {
+    assert.equal(fs.readFileSync(stopDropin, 'utf8'), controlledStopPolicy);
+    fs.unlinkSync(stopDropin);
+  }
+  run('systemctl', ['daemon-reload']);
+  record('applied', {configs: staged.configs.length, files: productionFiles.length, rollbackRetained: true});
+} else if (mode === 'start') {
+  assert.equal(gatewayPid(), 0, 'Gateway already running');
+  assert.equal(fs.readFileSync(permanentDropin, 'utf8'), productionReleaseUnit());
+  run('systemctl', ['start', unit], {timeout: 65_000});
+  const pid = gatewayPid();
+  assert(pid > 1);
+  record('started', {pid});
+} else if (mode === 'verify') {
+  checkCandidate();
+  const pid = gatewayPid();
+  const environment = readLiveEnvironment(pid);
+  assert.equal(environment.V_RELEASE_VERSION, releaseId);
+  assert(fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').includes(`${newRelease}/core/dist/index.js`));
+  const staged = readJson(`${backup}/staged.json`);
+  for (const config of staged.configs) assert.equal(sha(config.file), config.afterSha256);
+  assert.equal(run('systemctl', ['show', unit, '-p', 'KillSignal', '--value']), '15', 'Normal stop signal must be restored');
+  const client = await connect(`${newRelease}/core`, readJson(configFiles[0]), environment);
+  try {
+    const health = await client.request('health', {}, {timeoutMs: 30_000});
+    const workers = await client.request('vlab.workers.status', {}, {timeoutMs: 30_000});
+    assert.equal(workers.minWorkers, 5);
+    assert.equal(workers.maxWorkers, 15);
+    assert.equal(workers.sessionsPerWorker, 3);
+    assert(workers.workers.length >= 5 && workers.workers.filter((worker) => worker.ready).length >= 5);
+    record('verified', {
+      pid,
+      workers: workers.workers.length,
+      readyWorkers: workers.workers.filter((worker) => worker.ready).length,
+      eventLoop: health.eventLoop,
+      realMessageAcceptanceStillRequired: true,
+    });
+  } finally {
+    client.stop();
+  }
+} else if (mode === 'rollback') {
+  assert.equal(gatewayPid(), 0, 'Stop the Gateway before rollback');
+  const staged = readJson(`${backup}/staged.json`);
+  for (const config of staged.configs) {
+    assert([config.beforeSha256, config.afterSha256].includes(sha(config.file)));
+    atomic(config.file, fs.readFileSync(config.beforePath));
+  }
+  if (fs.existsSync(permanentDropin)) {
+    assert.equal(fs.readFileSync(permanentDropin, 'utf8'), productionReleaseUnit());
+    fs.unlinkSync(permanentDropin);
+  }
+  if (fs.existsSync(stopDropin)) {
+    assert.equal(fs.readFileSync(stopDropin, 'utf8'), controlledStopPolicy);
+    fs.unlinkSync(stopDropin);
+  }
+  run('systemctl', ['daemon-reload']);
+  run('systemctl', ['start', unit], {timeout: 65_000});
+  record('rolled-back', {pid: gatewayPid(), candidateRetained: true, databasesUnchanged: true});
+}
