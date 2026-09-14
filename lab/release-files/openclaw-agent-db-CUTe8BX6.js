@@ -282,6 +282,7 @@ function deferOpenClawAgentPostCommitPublication(database, publish) {
 function runOpenClawAgentWriteTransaction(operation, options, transactionOptions = {}) {
 	const database = openOpenClawAgentDatabase(options);
 	const enteredNestedTransaction = database.db.isTransaction;
+	const processAdmissionTimeoutMs = transactionOptions.busyTimeoutMs ?? 5e3;
 	const runTransaction = () => withSqlitePostCommitPublications(database.db, () => withSqliteBeginContentionRetrySync({
 		database: database.db,
 		run: transactionOperation => runSqliteImmediateTransactionSync(database.db, () => transactionOperation(database), {
@@ -303,6 +304,7 @@ function runOpenClawAgentWriteTransaction(operation, options, transactionOptions
 		acquire: tryAcquireExclusiveSqliteCoordinator,
 		databasePath: database.path,
 		fn: runTransaction,
+		maxWaitMs: processAdmissionTimeoutMs,
 		onAcquired: ({ attempts, waitMs }) => {
 			if (waitMs >= 1e3) agentDbLog.warn("slow direct Agent DB process writer admission", {
 				attempts,

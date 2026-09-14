@@ -8,8 +8,6 @@ import "./openclaw-agent-db-CUTe8BX6.js";
 import { n as withOpenClawAgentDatabaseReadOnly } from "./openclaw-agent-db-readonly-wb-jdztx.js";
 import { t as SQLITE_SESSION_WRITER_QUEUES, u as runQueuedStoreWrite } from "./store-writer-state-_Y6b9Vjm.js";
 import { t as formatSqliteSessionFileMarker } from "./legacy-sqlite-marker-COPKCuIN.js";
-import { o as tryAcquireExclusiveSqliteCoordinator } from "./node-sqlite-CL-d6drd.js";
-import { withAgentDatabaseProcessLease } from "./agent-db-process-coordinator.mjs";
 import { a as normalizeStoreSessionKey, u as resolveSqliteTargetFromSessionStorePath } from "./store-entry-CMuTqREZ.js";
 import path from "node:path";
 //#region src/config/sessions/session-accessor.sqlite-scope.ts
@@ -23,8 +21,6 @@ async function runExclusiveSqliteSessionWrite(scope, fn) {
 	const storePath = resolveOpenClawAgentSqlitePath(databaseOptions);
 	const startedAt = Date.now();
 	let localQueueWaitMs = 0;
-	let processQueueWaitMs = 0;
-	let processQueueAttempts = 0;
 	let criticalSectionMs = 0;
 	const runCriticalSection = async () => {
 		const criticalStartedAt = Date.now();
@@ -41,17 +37,7 @@ async function runExclusiveSqliteSessionWrite(scope, fn) {
 			label: "runExclusiveSqliteSessionWrite",
 			fn: async () => {
 				localQueueWaitMs = Date.now() - startedAt;
-				if (typeof scope.sessionKey === "string" && isIncognitoSessionKey(scope.sessionKey)) return await runCriticalSection();
-				return await withAgentDatabaseProcessLease({
-					acquire: tryAcquireExclusiveSqliteCoordinator,
-					databasePath: storePath,
-					fn: runCriticalSection,
-					onAcquired: ({ attempts, waitMs }) => {
-						processQueueAttempts = attempts;
-						processQueueWaitMs = waitMs;
-					},
-					onReleaseError: (error) => getChildLogger({ subsystem: "session-sqlite" }).warn("Agent DB process writer coordinator release failed", { error, storePath })
-				});
+				return await runCriticalSection();
 			}
 		});
 		const elapsedMs = Date.now() - startedAt;
@@ -60,8 +46,6 @@ async function runExclusiveSqliteSessionWrite(scope, fn) {
 			criticalSectionMs,
 			elapsedMs,
 			localQueueWaitMs,
-			processQueueAttempts,
-			processQueueWaitMs,
 			storePath
 		});
 		return result;
@@ -72,8 +56,6 @@ async function runExclusiveSqliteSessionWrite(scope, fn) {
 			elapsedMs: Date.now() - startedAt,
 			error,
 			localQueueWaitMs,
-			processQueueAttempts,
-			processQueueWaitMs,
 			storePath
 		});
 		throw error;

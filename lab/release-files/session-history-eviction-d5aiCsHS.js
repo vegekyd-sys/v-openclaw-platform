@@ -3,7 +3,8 @@ import { l as normalizeOptionalString } from "./string-coerce-CIXf7egm.js";
 import { y as uniqueStrings } from "./string-normalization-DiSb4JeN.js";
 import { a as getChildLogger } from "./logger-Dj_CBJHF.js";
 import { t as createSubsystemLogger } from "./subsystem-bfHYmnCE.js";
-import { p as runWithSqliteBusyTimeout } from "./node-sqlite-CL-d6drd.js";
+import { o as tryAcquireExclusiveSqliteCoordinator, p as runWithSqliteBusyTimeout } from "./node-sqlite-CL-d6drd.js";
+import { withAgentDatabaseProcessLeaseSync } from "./agent-db-process-coordinator.mjs";
 import { a as iterateSqliteQuerySync, n as executeSqliteQuerySync } from "./kysely-sync-DKYGT267.js";
 import { n as registerListener, t as notifyListeners } from "./listeners-BogSNJ-R.js";
 import { r as resolveOpenClawAgentSqlitePath, t as isIncognitoOpenClawAgentSqlitePath } from "./openclaw-agent-db.paths-DYna80bS.js";
@@ -234,8 +235,7 @@ async function refreshSqliteSessionPlannerStatisticsBestEffort(scope, deletedEnt
 	}
 	const completion = runExclusiveSqliteSessionWrite(scope, async () => {
 		if (!isCurrent()) return;
-		const database = openOpenClawAgentDatabase(toDatabaseOptions(scope));
-		runWithSqliteBusyTimeout(database.db, 0, () => {
+		runOpenClawAgentWriteTransaction((database) => runWithSqliteBusyTimeout(database.db, 0, () => {
 			const row = database.db.prepare("PRAGMA analysis_limit").get();
 			const previousLimit = Number(row?.analysis_limit ?? 0);
 			try {
@@ -243,7 +243,7 @@ async function refreshSqliteSessionPlannerStatisticsBestEffort(scope, deletedEnt
 			} finally {
 				database.db.exec(`PRAGMA analysis_limit = ${previousLimit};`);
 			}
-		});
+		}), toDatabaseOptions(scope), { operationLabel: "sessions.planner.analyze" });
 	}).catch((error) => {
 		getChildLogger({ subsystem: "session-sqlite" }).warn("SQLite session planner-statistics refresh failed", {
 			agentId: scope.agentId,
@@ -774,11 +774,21 @@ function readHistoricalSessionIds(params) {
 }
 function reclaimSqliteFreePages(databaseOptions) {
 	const database = openOpenClawAgentDatabase(databaseOptions);
-	database.walMaintenance.checkpoint();
-	const row = database.db.prepare("PRAGMA freelist_count").get();
-	const freePages = Number(row?.freelist_count ?? 0);
-	if (Number.isSafeInteger(freePages) && freePages > 0) database.db.exec(`PRAGMA incremental_vacuum(${freePages});`);
-	database.walMaintenance.checkpoint();
+	const runMaintenance = () => {
+		database.walMaintenance.checkpoint();
+		const row = database.db.prepare("PRAGMA freelist_count").get();
+		const freePages = Number(row?.freelist_count ?? 0);
+		if (Number.isSafeInteger(freePages) && freePages > 0) database.db.exec(`PRAGMA incremental_vacuum(${freePages});`);
+		database.walMaintenance.checkpoint();
+	};
+	if (isIncognitoOpenClawAgentSqlitePath(database.path, { agentId: databaseOptions.agentId, env: databaseOptions.env })) return runMaintenance();
+	return withAgentDatabaseProcessLeaseSync({
+		acquire: tryAcquireExclusiveSqliteCoordinator,
+		databasePath: database.path,
+		fn: runMaintenance,
+		maxWaitMs: 5e3,
+		onReleaseError: (error) => getChildLogger({ subsystem: "session-sqlite" }).warn("SQLite free-page coordinator release failed", { error, path: database.path })
+	});
 }
 function hasCanonicalSessionTranscriptArchives(databaseOptions) {
 	const database = openOpenClawAgentDatabase(databaseOptions);

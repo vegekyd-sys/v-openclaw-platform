@@ -5,14 +5,13 @@ import {patchDatabaseSource, patchScopeSource, patchReconcileSource} from './bui
 
 const read = name => fs.readFileSync(new URL(`./release-files/${name}`, import.meta.url), 'utf8');
 
-test('scope patch puts the process lease inside the existing per-process queue', () => {
+test('session scope retains only its per-process queue after transaction-scope repair', () => {
   const source = read('session-accessor.sqlite-scope-BwPKGcgm.js');
   const queue = source.indexOf('runQueuedStoreWrite({');
-  const lease = source.indexOf('withAgentDatabaseProcessLease({', queue);
-  const callback = source.indexOf('fn: runCriticalSection', lease);
-  assert(queue >= 0 && lease > queue && callback > lease);
-  assert.match(source, /localQueueWaitMs[\s\S]*processQueueWaitMs[\s\S]*criticalSectionMs/);
-  assert.match(source, /tryAcquireExclusiveSqliteCoordinator/);
+  const callback = source.indexOf('return await runCriticalSection()', queue);
+  assert(queue >= 0 && callback > queue);
+  assert.match(source, /localQueueWaitMs[\s\S]*criticalSectionMs/);
+  assert.doesNotMatch(source, /withAgentDatabaseProcessLease|tryAcquireExclusiveSqliteCoordinator|processQueueWaitMs/);
 });
 
 test('reconcile patch holds a distinct global owner around preflight and worker lifecycle', () => {

@@ -1,0 +1,20 @@
+{
+  "baseRelease": "talk-agent-continuation-v4",
+  "files": [
+    {
+      "source": "lab/release-files/session-accessor.sqlite-scope-BwPKGcgm.js",
+      "target": "openclaw/dist/session-accessor.sqlite-scope-BwPKGcgm.js",
+      "before": "6817511dc8a40eec8a3de4f13e71fe27d10f6d584bd2d3f7af342e9bbce8e787"
+    },
+    {
+      "source": "lab/release-files/openclaw-agent-db-CUTe8BX6.js",
+      "target": "openclaw/dist/openclaw-agent-db-CUTe8BX6.js",
+      "before": "f27dfd63df7347ba9d6cf9026227cb8a36e09fc33da19f17c07ba898b2163024"
+    },
+    {
+      "source": "lab/release-files/session-history-eviction-d5aiCsHS.js",
+      "target": "openclaw/dist/session-history-eviction-d5aiCsHS.js",
+      "before": "04a6851b05385b6361637c8a8e52d82260943717c507b4ccfda34970b12b22e0"
+    }
+  ]
+}
