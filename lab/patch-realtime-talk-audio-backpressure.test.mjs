@@ -6,6 +6,10 @@ import {
   AUDIO_APPEND_LIMIT,
   AUDIO_APPEND_LIMIT_AFTER,
   AUDIO_APPEND_LIMIT_BEFORE,
+  CONTROL_UI_ASSET_AFTER,
+  CONTROL_UI_ASSET_BEFORE,
+  CONTROL_UI_ASSET_PATH,
+  patchControlUiAssetManifest,
   patchRealtimeTalkAudioBackpressure,
 } from "./patch-realtime-talk-audio-backpressure.mjs";
 
@@ -46,4 +50,37 @@ test("release artifact contains the reviewed bounded limit", () => {
     createHash("sha256").update(release).digest("hex"),
     "6f9b3d199a587cd8ed85117b2bb21c0e0665682ec7a38692a95a8897c3358e57",
   );
+});
+
+test("manifest patch publishes a new retained Control UI generation", () => {
+  const before = {
+    version: 1,
+    generation: "",
+    assets: [{ path: CONTROL_UI_ASSET_PATH, ...CONTROL_UI_ASSET_BEFORE }],
+  };
+  const manifestHash = createHash("sha256")
+    .update(
+      `${CONTROL_UI_ASSET_PATH}\0${CONTROL_UI_ASSET_BEFORE.size}\0${CONTROL_UI_ASSET_BEFORE.sha256}\n`,
+    )
+    .digest("hex");
+  before.generation = manifestHash;
+  const patched = patchControlUiAssetManifest(JSON.stringify(before));
+  const after = JSON.parse(patched);
+  assert.deepEqual(after.assets[0], { path: CONTROL_UI_ASSET_PATH, ...CONTROL_UI_ASSET_AFTER });
+  assert.notEqual(after.generation, before.generation);
+  assert.equal(patchControlUiAssetManifest(patched), patched);
+});
+
+test("release manifest points at the patched bundle", () => {
+  const release = readFileSync(
+    new URL(
+      "./release-files/talk-audio-wan-backpressure/asset-manifest.json",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const manifest = JSON.parse(release);
+  const entry = manifest.assets.find((asset) => asset.path === CONTROL_UI_ASSET_PATH);
+  assert.deepEqual(entry, { path: CONTROL_UI_ASSET_PATH, ...CONTROL_UI_ASSET_AFTER });
+  assert.equal(patchControlUiAssetManifest(release), release);
 });

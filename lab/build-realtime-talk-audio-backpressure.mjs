@@ -4,24 +4,39 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { patchRealtimeTalkAudioBackpressure } from "./patch-realtime-talk-audio-backpressure.mjs";
+import {
+  CONTROL_UI_ASSET_AFTER,
+  patchControlUiAssetManifest,
+  patchRealtimeTalkAudioBackpressure,
+} from "./patch-realtime-talk-audio-backpressure.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const target = "openclaw/dist/control-ui/assets/control-ui-boot-chat-DWTSrxxk.js";
 const runtimeFile = `/srv/vlab-production-mirror/labs/instances/db91-parity/runtime/${target}`;
+const manifestTarget = "openclaw/dist/control-ui/asset-manifest.json";
+const manifestRuntimeFile =
+  "/srv/vlab-production-mirror/labs/instances/db91-parity/runtime/openclaw/dist/control-ui/asset-manifest.json";
 const outputRelative =
   "lab/release-files/talk-audio-wan-backpressure/control-ui-boot-chat-DWTSrxxk.js";
 const output = resolve(root, outputRelative);
+const manifestOutputRelative =
+  "lab/release-files/talk-audio-wan-backpressure/asset-manifest.json";
+const manifestOutput = resolve(root, manifestOutputRelative);
 const planPath = resolve(root, "lab/realtime-talk-audio-backpressure-plan.json");
-const expectedBefore = "ef2fb5a520b04cdc214fb055652c3c307f683b5f245216644b74859253391bb1";
+const expectedManifestBefore =
+  "a967daf8fe509bc38378f53ee9a1b8d7de8181e6adb7e3dc9c21c3ae3fe39dbc";
 const ssh = [
   "-F",
   "/Users/tianyicai/v-upgrade-private/20260904/ssh-config",
   "-o",
   "ControlPath=none",
+  "-o",
+  "ControlMaster=no",
+  "-o",
+  "ControlPersist=no",
   "-o",
   "BatchMode=yes",
   "-o",
@@ -31,6 +46,17 @@ const ssh = [
 const remoteTool =
   "sudo /opt/vlab/node-v22.23.1-linux-x64/bin/node /srv/vlab-production-mirror/labs/shared-workflow/tool/server.mjs";
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
+
+function readRuntimeFile(runtimePath) {
+  const encoded = execFileSync("ssh", [...ssh, `sudo base64 -w0 ${runtimePath}`], {
+    encoding: "utf8",
+    maxBuffer: 4 * 1024 ** 2,
+    timeout: 120_000,
+  });
+  const content = Buffer.from(encoded.trim(), "base64");
+  assert.equal(content.toString("base64"), encoded.trim(), `runtime file was truncated: ${runtimePath}`);
+  return content;
+}
 
 function remote(request) {
   return JSON.parse(
@@ -52,18 +78,20 @@ export function build() {
   );
   assert.equal(statusBefore.pending, null, "shared VLab has an unresolved deployment");
 
-  const encoded = execFileSync("ssh", [...ssh, `sudo base64 -w0 ${runtimeFile}`], {
+  const liveBundleSha = execFileSync("ssh", [...ssh, `sudo sha256sum ${runtimeFile}`], {
     encoding: "utf8",
-    maxBuffer: 4 * 1024 ** 2,
-    timeout: 120_000,
-  });
-  const before = Buffer.from(encoded.trim(), "base64");
-  assert.equal(before.toString("base64"), encoded.trim(), "runtime bundle was truncated");
-  assert.equal(sha256(before), expectedBefore, "control UI bundle SHA drifted");
-
+    timeout: 30_000,
+  }).split(/\s+/u)[0];
+  assert.equal(liveBundleSha, CONTROL_UI_ASSET_AFTER.sha256, "control UI bundle SHA drifted");
+  const before = readFileSync(output);
+  assert.equal(sha256(before), CONTROL_UI_ASSET_AFTER.sha256, "local release bundle SHA drifted");
   const after = patchRealtimeTalkAudioBackpressure(before.toString("utf8"));
   mkdirSync(dirname(output), { recursive: true });
   writeFileSync(output, after);
+  const manifestBefore = readRuntimeFile(manifestRuntimeFile);
+  assert.equal(sha256(manifestBefore), expectedManifestBefore, "asset manifest SHA drifted");
+  const manifestAfter = patchControlUiAssetManifest(manifestBefore.toString("utf8"));
+  writeFileSync(manifestOutput, manifestAfter);
   const statusAfter = remote({ command: "status" });
   assert.equal(
     statusAfter.current.release,
@@ -74,15 +102,24 @@ export function build() {
 
   const plan = {
     baseRelease: statusBefore.current.release,
-    files: [{ source: outputRelative, target, before: expectedBefore }],
+    files: [
+      {
+        source: manifestOutputRelative,
+        target: manifestTarget,
+        before: expectedManifestBefore,
+      },
+    ],
   };
   writeFileSync(planPath, `${JSON.stringify(plan, null, 2)}\n`);
   return {
     baseRelease: plan.baseRelease,
-    target,
-    before: expectedBefore,
-    after: sha256(after),
-    bytes: Buffer.byteLength(after),
+    bundle: { target, sha256: sha256(after), bytes: Buffer.byteLength(after) },
+    manifest: {
+      target: manifestTarget,
+      before: expectedManifestBefore,
+      after: sha256(manifestAfter),
+      bytes: Buffer.byteLength(manifestAfter),
+    },
   };
 }
 
