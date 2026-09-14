@@ -7,8 +7,10 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { brotliCompressSync, constants as zlibConstants, gzipSync } from "node:zlib";
 import {
   CONTROL_UI_ASSET_AFTER,
+  CONTROL_UI_COMPRESSED_ASSETS,
   patchControlUiAssetManifest,
   patchRealtimeTalkAudioBackpressure,
 } from "./patch-realtime-talk-audio-backpressure.mjs";
@@ -27,7 +29,7 @@ const manifestOutputRelative =
 const manifestOutput = resolve(root, manifestOutputRelative);
 const planPath = resolve(root, "lab/realtime-talk-audio-backpressure-plan.json");
 const expectedManifestBefore =
-  "a967daf8fe509bc38378f53ee9a1b8d7de8181e6adb7e3dc9c21c3ae3fe39dbc";
+  "d26f184ddd625458a08abfbbfde4433aaadb46a75f777ec43122b2d7da3a9f95";
 const ssh = [
   "-F",
   "/Users/tianyicai/v-upgrade-private/20260904/ssh-config",
@@ -88,6 +90,26 @@ export function build() {
   const after = patchRealtimeTalkAudioBackpressure(before.toString("utf8"));
   mkdirSync(dirname(output), { recursive: true });
   writeFileSync(output, after);
+  const compressed = new Map([
+    [
+      `${target}.br`,
+      brotliCompressSync(Buffer.from(after), {
+        params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 11 },
+      }),
+    ],
+    [`${target}.gz`, gzipSync(Buffer.from(after), { level: 9 })],
+  ]);
+  for (const descriptor of CONTROL_UI_COMPRESSED_ASSETS) {
+    const targetPath = `openclaw/dist/control-ui/${descriptor.path}`;
+    const content = compressed.get(targetPath);
+    assert(content, `compressed artifact is missing: ${targetPath}`);
+    assert.deepEqual(
+      { sha256: sha256(content), size: content.length },
+      descriptor.after,
+      `compressed artifact drifted: ${targetPath}`,
+    );
+    writeFileSync(resolve(root, `lab/release-files/talk-audio-wan-backpressure/${descriptor.path.split("/").at(-1)}`), content);
+  }
   const manifestBefore = readRuntimeFile(manifestRuntimeFile);
   assert.equal(sha256(manifestBefore), expectedManifestBefore, "asset manifest SHA drifted");
   const manifestAfter = patchControlUiAssetManifest(manifestBefore.toString("utf8"));
@@ -103,6 +125,11 @@ export function build() {
   const plan = {
     baseRelease: statusBefore.current.release,
     files: [
+      ...CONTROL_UI_COMPRESSED_ASSETS.map((descriptor) => ({
+        source: `lab/release-files/talk-audio-wan-backpressure/${descriptor.path.split("/").at(-1)}`,
+        target: `openclaw/dist/control-ui/${descriptor.path}`,
+        before: descriptor.before.sha256,
+      })),
       {
         source: manifestOutputRelative,
         target: manifestTarget,
