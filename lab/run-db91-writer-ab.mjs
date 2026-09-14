@@ -143,8 +143,19 @@ try {
   const warmKey = `agent:makaron:explicit:db91-ab-warm-${variant}-${Date.now()}`;
   const warmId = randomUUID();
   await call('sessions.patch', {key: warmKey, agentId: 'makaron', model});
-  await call('chat.send', {agentId: 'makaron', sessionKey: warmKey, message: 'VLab A/B 预热，只回复“预热完成”。', deliver: false, idempotencyKey: warmId, timeoutMs: 120_000}, 130_000);
-  await sleep(5_000);
+  let resolveWarmTerminal;
+  const warmTerminal = new Promise(resolve => { resolveWarmTerminal = resolve; });
+  terminalWaiters.set(warmId, resolveWarmTerminal);
+  try {
+    await call('chat.send', {agentId: 'makaron', sessionKey: warmKey, message: 'VLab A/B 预热，只回复“预热完成”。', deliver: false, idempotencyKey: warmId, timeoutMs: 120_000}, 130_000);
+    const warmEvent = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('warm-up terminal event deadline')), 120_000);
+      warmTerminal.then(value => { clearTimeout(timer); resolve(value); }, reject);
+    });
+    assert.equal(warmEvent.state, 'final', `warm-up terminal state ${warmEvent.state}`);
+  } finally {
+    terminalWaiters.delete(warmId);
+  }
   await assertIdle();
   startedAt = Date.now();
   for (let round = 0; round < rounds; round += 1) {
