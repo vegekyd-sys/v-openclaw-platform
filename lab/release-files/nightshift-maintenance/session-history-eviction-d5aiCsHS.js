@@ -218,6 +218,7 @@ function readSessionMaintenanceCapCandidates(params) {
 //#endregion
 //#region src/config/sessions/session-accessor.sqlite-maintenance.ts
 const MAX_SESSION_MAINTENANCE_BATCH_ENTRIES = 64;
+const MAX_AUTOMATIC_SESSION_MAINTENANCE_ENTRIES = 8;
 const MAX_SESSION_MAINTENANCE_BATCH_ARCHIVE_BYTES = 67108864;
 const SESSION_TRANSCRIPT_BYTE_QUERY_BATCH = MAX_SESSION_MAINTENANCE_BATCH_ENTRIES;
 const SESSION_PLANNER_ANALYSIS_MIN_DELETED_ENTRIES = MAX_SESSION_MAINTENANCE_BATCH_ENTRIES;
@@ -459,7 +460,7 @@ function applySessionEntryMaintenance(database, params) {
 		// the exact prefix this automatic batch will commit. Stop loading metadata
 		// once that prefix is known; explicit maintenance still plans the full cap.
 		const overflow = params.planOnly === true && params.forceMaintenance !== true && archivedKeys.size === 0
-			? Math.min(fullOverflow, Math.max(0, MAX_SESSION_MAINTENANCE_BATCH_ENTRIES - removalReasons.size))
+			? Math.min(fullOverflow, Math.max(0, MAX_AUTOMATIC_SESSION_MAINTENANCE_ENTRIES - removalReasons.size))
 			: fullOverflow;
 		if (overflow > 0) {
 			const capStore = readSessionMaintenanceCapCandidates({
@@ -483,10 +484,10 @@ function applySessionEntryMaintenance(database, params) {
 	}
 	const allSelectedKeys = uniqueStrings([...archivedKeys, ...removalReasons.keys()]);
 	// Automatic planning must be bounded before reading and cloning full entries.
-	// The native commit batches already use this limit; applying it only after
-	// planning still copied hundreds of MB while blocking the Gateway event loop.
+	// Interactive requests share this event loop and writer lane. Automatic
+	// maintenance uses a smaller planning slice than explicit cleanup batches.
 	const selectedKeys = params.planOnly === true && params.forceMaintenance !== true
-		? allSelectedKeys.slice(0, MAX_SESSION_MAINTENANCE_BATCH_ENTRIES)
+		? allSelectedKeys.slice(0, MAX_AUTOMATIC_SESSION_MAINTENANCE_ENTRIES)
 		: allSelectedKeys;
 	if (selectedKeys.length < allSelectedKeys.length) {
 		const selected = new Set(selectedKeys);
@@ -590,6 +591,7 @@ async function finalizeSessionEntryMaintenancePlansAfterWriterReleaseBestEffort(
 		getChildLogger({ subsystem: "session-sqlite" }).warn(message, {
 			agentId: scope.agentId,
 			error,
+			errorMessage: error instanceof Error ? error.message : String(error),
 			path: scope.path,
 			sessionIds: uniqueStrings(warnedStateDeletePlans.map((plan) => plan.sessionId))
 		});
