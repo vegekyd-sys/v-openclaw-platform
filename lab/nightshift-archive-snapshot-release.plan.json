@@ -1,0 +1,10 @@
+{
+  "baseRelease": "nightshift-sustained-recovery-v1",
+  "files": [
+    {
+      "source": "lab/release-files/nightshift-archive-snapshot/session-accessor.sqlite-archive.worker.js",
+      "target": "openclaw/dist/config/sessions/session-accessor.sqlite-archive.worker.js",
+      "before": "b28123913753b78f364813425293e4591d172bc78d6f92d241b3890358dd9f5c"
+    }
+  ]
+}
