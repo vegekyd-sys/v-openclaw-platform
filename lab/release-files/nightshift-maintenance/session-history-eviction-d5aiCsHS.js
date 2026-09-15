@@ -592,6 +592,7 @@ async function finalizeSessionEntryMaintenancePlansAfterWriterReleaseBestEffort(
 			agentId: scope.agentId,
 			error,
 			errorMessage: error instanceof Error ? error.message : String(error),
+			errorStack: error instanceof Error ? error.stack : undefined,
 			path: scope.path,
 			sessionIds: uniqueStrings(warnedStateDeletePlans.map((plan) => plan.sessionId))
 		});
