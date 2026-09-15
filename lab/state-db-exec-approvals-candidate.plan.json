@@ -1,0 +1,13 @@
+{
+  "tests": [
+    "lab/state-db-exec-approvals-repro.test.mjs"
+  ],
+  "files": [
+    {
+      "source": "lab/release-files/exec-approvals-store-D159_AKa.js",
+      "target": "openclaw/dist/exec-approvals-store-D159_AKa.js",
+      "before": "173d3fecf20e9e8fe1e7da153292224391dea6f5afad0cdebea116c420653789"
+    }
+  ],
+  "timeoutSeconds": 30
+}

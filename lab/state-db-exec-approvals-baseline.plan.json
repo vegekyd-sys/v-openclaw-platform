@@ -1,0 +1,6 @@
+{
+  "tests": [
+    "lab/state-db-exec-approvals-repro.test.mjs"
+  ],
+  "timeoutSeconds": 30
+}
