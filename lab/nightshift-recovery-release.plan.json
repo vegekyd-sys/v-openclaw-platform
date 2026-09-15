@@ -1,0 +1,15 @@
+{
+  "baseRelease": "nightshift-nested-transactions-v1",
+  "files": [
+    {
+      "source": "lab/release-files/nightshift-nested-transaction/node-sqlite-CL-d6drd.js",
+      "target": "openclaw/dist/node-sqlite-CL-d6drd.js",
+      "before": "fe46f37bb1dd01dc31d5d8349f944511841724709030106391433061f488aa7b"
+    },
+    {
+      "source": "lab/release-files/nightshift-maintenance/session-history-eviction-d5aiCsHS.js",
+      "target": "openclaw/dist/session-history-eviction-d5aiCsHS.js",
+      "before": "ec30a6e6e96d32e9238f5b9b5f26d0c0dc1ee412376f4c5ec60b54dbbd6d34a8"
+    }
+  ]
+}

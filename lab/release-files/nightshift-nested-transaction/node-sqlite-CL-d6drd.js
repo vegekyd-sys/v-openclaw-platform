@@ -201,10 +201,7 @@ function setTransactionDepth(db, depth) {
 }
 function runSqliteTransactionSync(db, operation, mode, options) {
 	const depth = getTransactionDepth(db);
-	// A transaction may be owned by a different native caller/module. SQLite's
-	// connection state is authoritative; nesting must not issue another BEGIN
-	// or commit/rollback the caller's transaction.
-	if (depth > 0 || db.isTransaction) {
+	if (depth > 0) {
 		const savepointName = nextSavepointName();
 		db.exec(`SAVEPOINT ${savepointName}`);
 		setTransactionDepth(db, depth + 1);
