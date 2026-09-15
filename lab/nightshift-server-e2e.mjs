@@ -6,7 +6,7 @@ import {randomUUID} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
 
 export async function testNightShiftServer({data,runtime,env,call,ordinary}) {
-  const id='NS-E2E-'+randomUUID(),board='server-'+id.toLowerCase();
+  const id='NS-E2E-'+randomUUID().slice(0,20),board='server-'+id.toLowerCase();
   const markerA=data+'/server-a.txt',markerB=data+'/server-b.txt';
   const source=`---
 apiVersion: nightshift.versa.ai/v1alpha1
