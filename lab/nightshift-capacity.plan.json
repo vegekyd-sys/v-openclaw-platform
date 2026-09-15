@@ -157,7 +157,8 @@
     "examples/instances/deliverables.v1.example.json",
     "scripts/apply-workboard-notes-limit-patch.mjs",
     "lab/nightshift-native-worker-config.mjs",
-    "lab/nightshift-native-worker-config.test.mjs"
+    "lab/nightshift-native-worker-config.test.mjs",
+    "lab/nightshift-server-e2e.mjs"
   ],
   "command": [
     "/opt/vlab/node-v22.23.1-linux-x64/bin/node",

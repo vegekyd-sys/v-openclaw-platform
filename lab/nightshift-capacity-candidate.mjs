@@ -70,6 +70,12 @@ for(const [id,agent] of Object.entries(config.agents.entries??{})){
   }
 }
 console.log(JSON.stringify({event:'identity-fixture',files:identityFiles}));
+if(process.env.NS_SERVER_E2E==='1'){
+  const skill=config.agents.entries.makaron.workspace+'/skills/nightshift-capacity-fixture';
+  fs.mkdirSync(skill,{recursive:true});
+  fs.writeFileSync(skill+'/SKILL.md','---\nname: nightshift-capacity-fixture\ndescription: Execute only the current isolated candidate Workboard test and report its actual marker.\n---\nRead the current card. Run only its stated local marker command, verify the result, call workboard_complete with the current card id and token, then reply with the marker. Never operate on another card or send a message.\n');
+}
+
 fs.writeFileSync(data+'/workspace/benchmark-seed.txt','Gateway offload workload fixture\n');
 for(const args of [['init','-q'],['config','user.name','Candidate Benchmark'],['config','user.email','candidate@example.invalid'],['add','benchmark-seed.txt'],['commit','-qm','benchmark fixture']])
   execFileSync('git',['-C',data+'/workspace',...args],{stdio:'pipe'});
@@ -176,7 +182,11 @@ try{
   const baseline=[];for(let i=0;i<3;i++)baseline.push(await ordinary());
   console.log(JSON.stringify({event:'ordinary-baseline',outcomes:baseline}));
   assert(baseline.every(x=>x.ok));
-  for(const count of (process.env.NS_COUNTS??'2').split(',').map(Number)){
+  if(process.env.NS_SERVER_E2E==='1'){
+    const {testNightShiftServer}=await import('./nightshift-server-e2e.mjs');
+    await testNightShiftServer({data,runtime,env,call,ordinary});
+  }
+  for(const count of (process.env.NS_COUNTS??'2').split(',').filter(Boolean).map(Number)){
     const stage=String(count)+'-'+randomUUID(),barrier=data+'/release-'+stage;
     const tasks=[];
     const hold=process.env.NS_HOLD==='1' && count>=20;
