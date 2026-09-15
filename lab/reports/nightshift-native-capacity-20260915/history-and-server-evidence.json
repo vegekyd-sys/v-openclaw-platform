@@ -1,0 +1,170 @@
+{
+  "id": "candidate-4e153e59-ee70-4734-baba-49051689f6da",
+  "ok": true,
+  "sourceCommit": "89bb5dd8151cb18de601b4ef40e84a44e1b1d850",
+  "branch": "codex/nightshift-native-capacity-20260915",
+  "dirty": true,
+  "inputSha256": "ca58fb1f71c9062d4090bc36b6e439e0ae0a574cd11d437a0a0430feddcaec0a",
+  "runnerSha256": "9eef05d52a246704275f7890cc9755ffe062bfdf3f359d34c696d435c0fb2d38",
+  "baseRelease": "state-db-exec-approvals-fastpath-v1",
+  "runtimeSha": "00f00ca1912df890868b0624702d4a31b56a9644f7213a93143f5dd3f384cc4c",
+  "configSha256": "d7546232f72936f49cb85a6d43ea52b42c6413b43f161f2d7aeea106bb6e619b",
+  "sharedBeforePid": 2646318,
+  "sharedAfterPid": 2646318,
+  "sharedUnchanged": true,
+  "dirtyNote": "Only acceptance report edits were uncommitted; execution inputs are checked against the receipt inputSha256.",
+  "tests": [
+    "# tests 167",
+    "# pass 167",
+    "# fail 0",
+    "# skipped 0",
+    "# duration_ms 2168.002851"
+  ],
+  "historyFixture": {
+    "event": "historical-workboard-fixture",
+    "count": 2250,
+    "serializedBytes": 3164670,
+    "runnable": 0
+  },
+  "server": {
+    "status": "done",
+    "stageRuns": [
+      {
+        "instanceId": "NS-E2E-a9b7cc22-3255-4adb-b",
+        "stageId": "first",
+        "attempt": 1,
+        "cardId": "cca6f0b4-794e-4d5e-95bf-3b437a600a9c",
+        "status": "done",
+        "summary": "Executed marker command: printf STAGE_A > /srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-4e153e59-ee70-4734-baba-49051689f6da/data/server-a.txt. Verified file content equals STAGE_A. Required output marker produced and completion check output.marker.traceable satisfied.",
+        "updatedAt": "2026-09-15T04:25:45.967Z",
+        "failure": null
+      },
+      {
+        "instanceId": "NS-E2E-a9b7cc22-3255-4adb-b",
+        "stageId": "second",
+        "attempt": 1,
+        "cardId": "73d0acdd-b866-456a-8481-8172f952f234",
+        "status": "done",
+        "summary": "Executed marker command: test -f .../server-a.txt && printf STAGE_B > .../server-b.txt. Verified server-b.txt content equals STAGE_B (7 bytes). Required output marker produced and completion check output.marker.traceable satisfied.",
+        "updatedAt": "2026-09-15T04:25:45.982Z",
+        "failure": null
+      }
+    ],
+    "wallMs": 43631.82526899999,
+    "lastSchedulerDurationMs": 33,
+    "schedulerMode": "workboard-events",
+    "ok": true,
+    "cards": [
+      {
+        "id": "cca6f0b4-794e-4d5e-95bf-3b437a600a9c",
+        "status": "done",
+        "labels": [
+          "workflow:candidate-native-dag",
+          "release:d62b9bf449dc",
+          "instance:NS-E2E-a9b7cc22-3255-4adb-b",
+          "stage:first",
+          "nightshift-action:43b447d963a2b1cc2227"
+        ],
+        "links": [
+          {
+            "id": "fe3888a7-67f8-460a-bb26-4b0434c9e1e9",
+            "type": "child",
+            "createdAt": 1789446325677,
+            "targetCardId": "73d0acdd-b866-456a-8481-8172f952f234"
+          }
+        ]
+      },
+      {
+        "id": "73d0acdd-b866-456a-8481-8172f952f234",
+        "status": "done",
+        "labels": [
+          "workflow:candidate-native-dag",
+          "release:d62b9bf449dc",
+          "instance:NS-E2E-a9b7cc22-3255-4adb-b",
+          "stage:second",
+          "nightshift-action:c3357113e58753347c0c"
+        ],
+        "links": [
+          {
+            "id": "aa070955-7e56-4f1a-b80c-3af50a056559",
+            "type": "parent",
+            "createdAt": 1789446325677,
+            "targetCardId": "cca6f0b4-794e-4d5e-95bf-3b437a600a9c"
+          }
+        ]
+      }
+    ],
+    "eventTypes": [
+      "instance.completed",
+      "stage.completion.validated",
+      "workboard.card.created",
+      "stage.completion.validated",
+      "workboard.card.created",
+      "instance.created"
+    ]
+  },
+  "capacity": {
+    "count": 30,
+    "peak": 30,
+    "actualWorkerPeak": 30,
+    "started": 30,
+    "pending": 0,
+    "stop": false,
+    "wallMs": 325588.296408,
+    "probes": {
+      "n": 54,
+      "p50": 14,
+      "p95": 27,
+      "max": 86
+    },
+    "admission": {
+      "n": 30,
+      "p50": 171.90415400000347,
+      "p95": 243.96937399999297,
+      "max": 252.6050680000044
+    },
+    "profile": {
+      "cpu": {
+        "user": 33588777,
+        "system": 3420120
+      },
+      "eventLoop": {
+        "p50": 10.084351,
+        "p95": 11.673599,
+        "p99": 21.348351,
+        "max": 866.648063
+      },
+      "memory": {
+        "rss": 788058112,
+        "heapTotal": 662831104,
+        "heapUsed": 460552096,
+        "external": 9530364,
+        "arrayBuffers": 5365080
+      }
+    },
+    "completed": 30,
+    "cardsDone": 30,
+    "ordinarySucceeded": 18,
+    "ordinaryAdmissionMs": {
+      "n": 18,
+      "p50": 5.884885000006761,
+      "p95": 43.857059000001755,
+      "max": 43.857059000001755
+    },
+    "ordinaryTotalMs": {
+      "n": 18,
+      "p50": 7099.303503000003,
+      "p95": 23441.699124999985,
+      "max": 23441.699124999985
+    }
+  },
+  "liveHistoryCount": {
+    "historyCards": 2250,
+    "statuses": [
+      [
+        "done",
+        2282
+      ]
+    ]
+  }
+}
