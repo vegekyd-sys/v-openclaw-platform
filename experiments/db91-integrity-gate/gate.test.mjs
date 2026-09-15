@@ -14,11 +14,12 @@ function recordSuccessfulVerification(db, filename, agentId, options) {
   return record(db, filename, agentId, {...options, ticket});
 }
 
-function fixture(t) {
+function fixture(t, autoVacuum = 0) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'db91-gate-test-'));
   const dir = path.join(root, 'gate'); fs.mkdirSync(dir, {mode: 0o700});
   const filename = path.join(root, 'agent.sqlite');
   const db = new DatabaseSync(filename);
+  db.exec(`PRAGMA auto_vacuum=${autoVacuum}`);
   db.exec("PRAGMA user_version=19; PRAGMA foreign_keys=ON; CREATE TABLE schema_meta(meta_key TEXT PRIMARY KEY, role TEXT, agent_id TEXT, schema_version INTEGER); INSERT INTO schema_meta VALUES('primary','agent','lab',19); CREATE TABLE parent(id INTEGER PRIMARY KEY); CREATE TABLE child(id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES parent(id));");
   const env = {OPENCLAW_DB91_INTEGRITY_DIR: fs.realpathSync(dir), OPENCLAW_DB91_INTEGRITY_EPOCH: randomUUID()};
   t.after(() => {if (db.isOpen) db.close(); fs.rmSync(root, {recursive: true, force: true});});
@@ -181,4 +182,35 @@ test('transient SQLite busy errors do not quarantine healthy sibling connections
   assert.throws(() => verifyCurrentAgentDatabase({db: f.db, filename: f.filename, agentId: 'lab', env: f.env, verifyContracts: () => {throw busy;}}), e => e === busy);
   assert.doesNotThrow(() => assertNotRevoked(f.filename, {env: f.env}));
   assert.equal(readReusableVerification(f.db, f.filename, 'lab', {env: f.env}), true);
+});
+
+for (const mode of [1, 2]) test(`committed auto-vacuum mode ${mode} shrink reuses the original check without refreshing it`, t => {
+  const f = fixture(t, mode);
+  f.db.exec("PRAGMA journal_mode=WAL; CREATE TABLE payload(data BLOB);");
+  const insert=f.db.prepare('INSERT INTO payload VALUES(zeroblob(8192))');for(let i=0;i<40;i++)insert.run();
+  f.db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+  recordSuccessfulVerification(f.db, f.filename, 'lab', {env:f.env});
+  const receiptPath=path.join(f.dir,fs.readdirSync(f.dir).find(n=>n.endsWith('.json')));
+  const receipt=fs.readFileSync(receiptPath,'utf8'),before=fs.statSync(f.filename).size;
+  f.db.exec('DELETE FROM payload');
+  if(mode===2) f.db.exec('PRAGMA incremental_vacuum');
+  f.db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+  assert(fs.statSync(f.filename).size<before);
+  assert.equal(f.db.prepare('PRAGMA integrity_check').get().integrity_check,'ok');
+  const other=new DatabaseSync(f.filename,{readOnly:true});
+  try {assert.equal(readReusableVerification(other,f.filename,'lab',{env:f.env}),true);}finally{other.close();}
+  assert.equal(fs.readFileSync(receiptPath,'utf8'),receipt);
+  let full=0,contracts=0;
+  verifyCurrentAgentDatabase({db:f.db,filename:f.filename,agentId:'lab',env:f.env,verifyFull:()=>full++,verifyContracts:()=>contracts++});
+  assert.equal(full,0);assert.equal(contracts,1);
+  invalidateVerification(f.filename,{env:f.env});
+  assert.equal(readReusableVerification(f.db,f.filename,'lab',{env:f.env}),false);
+});
+
+test('raw truncation is still rejected on an auto-vacuum database',t=>{
+ const f=fixture(t,2);f.db.exec('CREATE TABLE payload(data BLOB); INSERT INTO payload VALUES(zeroblob(32768))');
+ recordSuccessfulVerification(f.db,f.filename,'lab',{env:f.env});f.db.close();
+ fs.truncateSync(f.filename,fs.statSync(f.filename).size-4096);
+ const other=new DatabaseSync(f.filename,{readOnly:true});
+ try{assert.equal(readReusableVerification(other,f.filename,'lab',{env:f.env}),false);}finally{other.close();}
 });
