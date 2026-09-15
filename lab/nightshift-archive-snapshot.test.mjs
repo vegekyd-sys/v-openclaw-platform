@@ -13,12 +13,12 @@ const options={agentId:'makaron',path:databasePath};
 const readonly=await import(runtime+'/openclaw/dist/openclaw-agent-db-readonly-wb-jdztx.js');
 const snapshot=await import(runtime+'/openclaw/dist/session-accessor.sqlite-delete-snapshot-D_8sMB0n.js');
 const before=await import(shared+'/openclaw/dist/config/sessions/session-accessor.sqlite-archive.worker.js');
-const after=await import(runtime+'/openclaw/dist/config/sessions/session-accessor.sqlite-archive.worker.js');
+const after=await import(runtime+'/openclaw/dist/nightshift-session-archive.worker.js');
 const archiveDirectory=process.env.VLAB_CANDIDATE_DATA+'/archive-proof';
 const sessionId='b7b87800-510c-433f-8e3c-0af83d748c03';
 const input=readonly.n(database=>({snapshot:snapshot.t(database.db,sessionId),inTransaction:database.db.isTransaction,events:database.db.prepare('SELECT event_json FROM transcript_events WHERE session_id = ? ORDER BY seq ASC').all(sessionId).map(r=>r.event_json)}),options);
 assert(input.found&&input.value.inTransaction&&input.value.events.length>0);
-const plan={agentId:'makaron',databasePath,archiveDirectory,sessionId,snapshot:input.value.snapshot,reason:'pruned'};
+const plan={agentId:'makaron',databasePath,archiveDirectory,sessionId,snapshot:input.value.snapshot,reason:'deleted'};
 test('reproduces the live cached-read-only nested BEGIN failure',async()=>{
  await assert.rejects(before.materializeTranscriptArchiveInWorker(plan),/cannot start a transaction within a transaction/);
 });
@@ -39,5 +39,14 @@ test('changed snapshot still rejects without publishing or leaving staged files'
 test('uncached read-only access still opens and releases its own archive snapshot',async()=>{
  process.env.OPENCLAW_READONLY_INITIALIZATION_CACHE='0';
  const value=await after.materializeTranscriptArchiveInWorker(plan);assert.equal(decoded(value.archive).length,Buffer.byteLength(input.value.events.join('\n')+'\n'));
+ assert.equal(fs.readdirSync(archiveDirectory).length,0);
+});
+
+test('native parent launches the corrected worker and returns byte-identical materialized plans',async()=>{
+ process.env.OPENCLAW_READONLY_INITIALIZATION_CACHE='1';
+ const parent=await import(runtime+'/openclaw/dist/session-accessor.sqlite-archive-CuBPV-IT.js');
+ const values=await parent.r([{...plan,archiveTranscript:true}]);
+ assert.equal(values.length,1);assert.equal(values[0].sessionId,sessionId);
+ assert.deepEqual(decoded(values[0].archive),Buffer.from(input.value.events.join('\n')+'\n'));
  assert.equal(fs.readdirSync(archiveDirectory).length,0);
 });
