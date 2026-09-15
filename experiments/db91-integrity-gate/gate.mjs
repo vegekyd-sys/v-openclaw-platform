@@ -87,6 +87,33 @@ export function beginVerification(db, filename, agentId, {env = process.env} = {
   return {epoch: cfg.epoch, identity: readDatabaseIdentity(db, filename, agentId), minimumFileBytes: fs.statSync(filename).size, fence: readFence(paths(cfg, filename))};
 }
 
+// Incremental/full auto-vacuum may shrink a healthy database without changing
+// its inode or schema. Require a committed SQLite header and a complete current
+// logical image before treating that shrink like an ordinary SQLite write.
+function isCommittedAutoVacuumShrink(db, filename, fileBytes) {
+  let fd;
+  try {
+    if (!Number.isSafeInteger(fileBytes) || fileBytes < 512) return false;
+    fd = fs.openSync(filename, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+    if (fs.fstatSync(fd).size !== fileBytes) return false;
+    const header = Buffer.alloc(100);
+    if (fs.readSync(fd, header, 0, header.length, 0) !== header.length || header.subarray(0, 16).toString('binary') !== 'SQLite format 3\0') return false;
+    const encodedPageSize = header.readUInt16BE(16);
+    const pageSize = encodedPageSize === 1 ? 65536 : encodedPageSize;
+    const headerPages = header.readUInt32BE(28);
+    if (pageSize < 512 || pageSize > 65536 || (pageSize & (pageSize - 1)) !== 0 || fileBytes % pageSize !== 0 || headerPages === 0) return false;
+    if (header.readUInt32BE(24) !== header.readUInt32BE(92) || headerPages * pageSize > fileBytes) return false;
+    const mode = Number(db.prepare('PRAGMA auto_vacuum').get().auto_vacuum);
+    const logicalPages = Number(db.prepare('PRAGMA page_count').get().page_count);
+    const logicalPageSize = Number(db.prepare('PRAGMA page_size').get().page_size);
+    return (mode === 1 || mode === 2) && logicalPageSize === pageSize && Number.isSafeInteger(logicalPages) && logicalPages > 0 && logicalPages * pageSize <= fileBytes;
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+  }
+}
+
 export function readReusableVerification(db, filename, agentId, {env = process.env, now = Date.now()} = {}) {
   const cfg = configuration(env);
   if (!cfg) return false;
@@ -94,7 +121,9 @@ export function readReusableVerification(db, filename, agentId, {env = process.e
   const fence = readFence(locations);
   const receipt = readOwnedJson(locations.receipt);
   if (!receipt || receipt.format !== FORMAT || receipt.epoch !== cfg.epoch || receipt.fence !== fence || !Number.isFinite(receipt.checkedAt) || receipt.checkedAt > now + 30000 || now - receipt.checkedAt > MAX_AGE_MS) return false;
-  if (!Number.isSafeInteger(receipt.minimumFileBytes) || receipt.minimumFileBytes < 0 || fs.statSync(filename).size < receipt.minimumFileBytes) return false;
+  if (!Number.isSafeInteger(receipt.minimumFileBytes) || receipt.minimumFileBytes < 0) return false;
+  const fileBytes = fs.statSync(filename).size;
+  if (fileBytes < receipt.minimumFileBytes && !isCommittedAutoVacuumShrink(db, filename, fileBytes)) return false;
   return sameIdentity(receipt.identity, readDatabaseIdentity(db, filename, agentId));
 }
 
