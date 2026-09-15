@@ -81,6 +81,10 @@ for(const args of [['init','-q'],['config','user.name','Candidate Benchmark'],['
   execFileSync('git',['-C',data+'/workspace',...args],{stdio:'pipe'});
 fs.writeFileSync(configPath,JSON.stringify(config),{mode:0o600});
 fs.writeFileSync(state+'/worker-openclaw.json',JSON.stringify(workerConfig),{mode:0o600});
+if(Number(process.env.NS_HISTORY_CARDS)>0){
+  const {seedNightShiftHistory}=await import('./nightshift-history-fixture.mjs');
+  await seedNightShiftHistory({runtime,count:Number(process.env.NS_HISTORY_CARDS)});
+}
 const preload=path.resolve('lab/nightshift-capacity-profile.mjs');
 const env={...process.env,OPENCLAW_FIRSTTEXT_WORKER_PHASES:'1',OPENCLAW_NO_RESPAWN:'1',OPENCLAW_SKIP_CHANNELS:'1',OPENCLAW_SKIP_CRON:'1'};
 // A candidate cannot reuse the service's listener/inspector flags.
