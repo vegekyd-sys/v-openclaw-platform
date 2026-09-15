@@ -209,7 +209,7 @@ try{
       console.log(JSON.stringify({event:'native-parent-gate',parent:tasks[0].id,child:tasks[1].id,started:blocked.started.length}));
     }
     const pressure=new DispatchPressureGuard({maxActive:36,initialMaxActive:3});
-    const samples=[],interactive=[],launches=[];let peak=0,stop=false;
+    const samples=[],interactive=[],launches=[];let peak=0,stop=false,actualWorkerPeak=0;
     const initialGatewayPid=gateway.pid;
     await fetch('http://127.0.0.1:'+profilePort+'/start');
     const start=performance.now();
@@ -238,6 +238,13 @@ try{
       await delay(1500);
       const cards=await adapter.listCards({cardIds:tasks.map(t=>t.id)});
       peak=Math.max(peak,cards.filter(c=>c.status==='running'||c.execution?.status==='running').length);
+      const runIds=new Set(launches.map(run=>run.runId));
+      for(let n=0;n<60;n++){
+        const status=await call('vlab.workers.status',{});
+        actualWorkerPeak=Math.max(actualWorkerPeak,status.workers.flatMap(worker=>worker.active??[]).filter(run=>runIds.has(run.runId)).length);
+        if(actualWorkerPeak===count||launches.length!==count)break;
+        await delay(500);
+      }
       fs.writeFileSync(barrier,'release');
     }
     if(ordinaryPending)await ordinaryPending;
@@ -253,12 +260,12 @@ try{
     }
     const finalCards=await adapter.listCards({cardIds:tasks.map(t=>t.id)});
     const profile=await(await fetch('http://127.0.0.1:'+profilePort+'/stop')).json();
-    const result={event:'native-capacity',count,hold,peak,started:launches.length,pending:pending.size,stop,wallMs:performance.now()-start,probes:percentiles(samples),ordinary:interactive,admission:percentiles(launches.map(x=>x.admissionMs)),outcomes,cards:finalCards.map(c=>({id:c.id,status:c.status,parents:c.parents,execution:c.execution,automationSummary:c.metadata?.automation?.summary})),changes,profile,restarted:closed||gateway.pid!==initialGatewayPid,workerErrors,actualModels,logTail:outcomes.some(x=>!x.ok)?logTail:[]};
+    const result={event:'native-capacity',count,hold,peak,actualWorkerPeak,started:launches.length,pending:pending.size,stop,wallMs:performance.now()-start,probes:percentiles(samples),ordinary:interactive,admission:percentiles(launches.map(x=>x.admissionMs)),outcomes,cards:finalCards.map(c=>({id:c.id,status:c.status,parents:c.parents,execution:c.execution,automationSummary:c.metadata?.automation?.summary})),changes,profile,restarted:closed||gateway.pid!==initialGatewayPid,workerErrors,actualModels,logTail:outcomes.some(x=>!x.ok)?logTail:[]};
     console.log(JSON.stringify(result));
     assert.equal(launches.length,count,'pressure gate did not admit target');
     assert(outcomes.every(x=>x.ok&&x.memorySearch&&x.complete),'full native model/tool/final evidence required');
     assert(finalCards.every(c=>c.status==='done'),'native completion required');
-    if(hold)assert.equal(peak,count,'target must be concurrently running');
+    if(hold){assert.equal(peak,count,'target must be concurrently running');assert.equal(actualWorkerPeak,count,'target must actually occupy Worker slots');}
     assert(interactive.every(x=>x.ok),'ordinary session failure');
     assert(percentiles(interactive.map(x=>x.acceptedMs)).p95 < 1000,'ordinary admission p95 exceeded 1 second');
     const ordinaryBudgetMs=Math.max(30000,2*percentiles(baseline.slice(1).map(x=>x.totalMs)).p95);
