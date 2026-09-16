@@ -9,6 +9,7 @@ import {
   buildSeeduplexAgentConsultPrompt,
   buildSeeduplexRealtimeVoiceProvider,
   buildSeeduplexSession,
+  SEEDUPLEX_WORKING_SPEECH_VARIANTS,
   decodeSeeduplexFloat32Pcm,
   resolveSeeduplexApiKey,
   resolveSeeduplexVoice,
@@ -437,28 +438,27 @@ test("Gateway-owned consults return one ordered Seeduplex tool-result batch", as
     (event) => event.type === "conversation.item.create",
   );
   assert.equal(workingEvents.length, 1);
-  assert.deepEqual(
-    workingEvents[0].items.map((item) => [item.call_id, JSON.parse(item.content[0].text)]),
-    [
-      [
-        "call-1",
-        {
-          status: "working",
-          language: "zh-CN",
-          message: "正在帮你处理，请稍等。",
-          instruction: "只使用中文播报 message 字段，不要说任何英文。",
-        },
-      ],
-      [
-        "call-2",
-        {
-          status: "working",
-          language: "zh-CN",
-          message: "正在帮你处理，请稍等。",
-          instruction: "只使用中文播报 message 字段，不要说任何英文。",
-        },
-      ],
-    ],
+  const workingPayloads = workingEvents[0].items.map((item) => [
+    item.call_id,
+    JSON.parse(item.content[0].text),
+  ]);
+  assert.deepEqual(workingPayloads.map(([callId]) => callId), ["call-1", "call-2"]);
+  for (const [, payload] of workingPayloads) {
+    assert.equal(payload.status, "working");
+    assert.equal(payload.language, "zh-CN");
+    assert.equal(payload.instruction, "只使用中文播报 message 字段，不要说任何英文。");
+    // The wait phrase must come from the rotation, never a single hard-coded
+    // sentence: speaking the identical line on every delegated turn is what
+    // made the assistant sound canned.
+    assert.ok(
+      SEEDUPLEX_WORKING_SPEECH_VARIANTS.includes(payload.message),
+      `unexpected wait phrase: ${payload.message}`,
+    );
+  }
+  assert.notEqual(
+    workingPayloads[0][1].message,
+    workingPayloads[1][1].message,
+    "consecutive consults spoke the same wait phrase",
   );
   pending[0]("结果一");
   await new Promise((resolve) => setImmediate(resolve));
@@ -475,7 +475,9 @@ test("Gateway-owned consults return one ordered Seeduplex tool-result batch", as
     (event) => event.type === "speech_text_buffer.commit",
   );
   assert.equal(speechEvents.length, 1);
-  assert.equal(speechEvents[0].text, "正在帮你处理，请稍等。");
+  // The spoken announcement reuses the phrase chosen for this batch rather than
+  // drawing a third one.
+  assert.equal(speechEvents[0].text, workingPayloads.at(-1)[1].message);
   socket.message({ type: "response.created", response_id: "working-tts" });
   socket.message({ type: "response.output_audio.done", response_id: "working-tts" });
   speechEvents = socket.sent.filter(
