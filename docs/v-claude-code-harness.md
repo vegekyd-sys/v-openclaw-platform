@@ -25,10 +25,15 @@ the installed Claude Code executable via Anthropic's Agent SDK.
 Install and log in as the Gateway user:
 
 ```bash
-sudo -u openclaw bash -lc 'npm install -g @anthropic-ai/claude-code'
-sudo -u openclaw -i claude auth login --claudeai
-sudo -u openclaw bash -lc 'claude auth status --text'
+sudo -u openclaw -H bash -lc 'npm install -g @anthropic-ai/claude-code'
+sudo -u openclaw -H /home/openclaw/.npm-global/bin/claude auth login --claudeai
+sudo -u openclaw -H /home/openclaw/.npm-global/bin/claude auth status --text
 ```
+
+`-H` is required: without it `sudo` keeps the caller's `HOME` and the login
+lands outside `/home/openclaw/.claude`. `/home/openclaw/.npm-global/bin` is on
+the service `PATH` but not on the `openclaw` user's interactive `PATH`, so call
+`claude` by absolute path.
 
 `claude auth login` is interactive: it prints an authorization URL and waits for
 the code to be pasted back into the same invocation, so it has to be run by a
@@ -78,9 +83,9 @@ mandatory-adaptive-thinking models, so the level is honoured.
 ## Verification
 
 ```bash
-sudo -u openclaw openclaw models status --agent makaron   # Aliases: vcc -> anthropic/claude-opus-5
-sudo -u openclaw openclaw models list --provider anthropic
-sudo -u openclaw openclaw agent --agent makaron --model anthropic/claude-opus-5 --message "hi"
+sudo -u openclaw -H openclaw models status --agent makaron   # Aliases: vcc -> anthropic/claude-opus-5
+sudo -u openclaw -H openclaw models list --provider anthropic
+sudo -u openclaw -H openclaw agent --agent makaron --model anthropic/claude-opus-5 --message "hi"
 ```
 
 A green `models status` is not acceptance on its own: confirm a real V reply
