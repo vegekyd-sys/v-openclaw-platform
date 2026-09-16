@@ -1316,9 +1316,20 @@ export class WorkerPool {
       .filter((worker) => this.isFullyIdle(worker, now))
       .sort((left, right) => right.slot - left.slot);
 
-    const retiringCount = [...this.workers.values()].filter(
-      (worker) => worker.retiring,
-    ).length;
+    let removable =
+      this.workers.size - this.capacityFloor() - this.retiringWorkerCount();
+    for (const worker of idleWorkers) {
+      if (removable <= 0) {
+        break;
+      }
+      this.retire(worker);
+      removable -= 1;
+    }
+  }
+
+  // reapIdleWorkers and recycling must agree on how much warm capacity the
+  // pool owes its callers, or one of them removes what the other is holding.
+  capacityFloor() {
     const nonIdleCount = [...this.workers.values()].filter(
       (worker) =>
         !worker.retiring &&
@@ -1328,18 +1339,15 @@ export class WorkerPool {
           worker.active.size > 0 ||
           worker.queue.length > 0),
     ).length;
-    const keepCount = Math.max(
+    return Math.max(
       this.minWorkers,
       nonIdleCount > 0 ? nonIdleCount + this.warmSpareWorkers : 0,
     );
-    let removable = this.workers.size - keepCount - retiringCount;
-    for (const worker of idleWorkers) {
-      if (removable <= 0) {
-        break;
-      }
-      this.retire(worker);
-      removable -= 1;
-    }
+  }
+
+  retiringWorkerCount() {
+    return [...this.workers.values()].filter((worker) => worker.retiring)
+      .length;
   }
 
   isFullyIdle(worker, now) {
@@ -1407,13 +1415,28 @@ export class WorkerPool {
     const reason = this.recycleReason(worker, now);
     this.recyclingSlot = worker.slot;
     try {
-      if (this.workers.size - 1 < this.minWorkers) {
+      // Retiring this Worker must not dip below the warm floor, and Workers
+      // already on their way out in this same sweep count against it. Under
+      // real concurrency the floor is well above minWorkers, so this is what
+      // keeps recycling from stripping capacity reapIdleWorkers is holding.
+      if (
+        this.workers.size - this.retiringWorkerCount() - 1 <
+        this.capacityFloor()
+      ) {
         const slot = this.findAvailableSlot();
         if (slot === undefined) {
           // The pool is at capacity. reapIdleWorkers frees a slot first.
           return;
         }
         await this.spawn(slot);
+        // Load can grow while a replacement boots; re-check before retiring.
+        if (
+          this.closing ||
+          this.workers.size - this.retiringWorkerCount() - 1 <
+            this.capacityFloor()
+        ) {
+          return;
+        }
       }
       if (this.closing || this.workers.get(worker.slot) !== worker) {
         return;
