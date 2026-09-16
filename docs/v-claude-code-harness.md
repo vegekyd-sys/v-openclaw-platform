@@ -99,6 +99,11 @@ Restore the pre-change config backup and let the Gateway hot-reload:
 sudo cp -a /home/openclaw/.openclaw/openclaw.json.bak-vcc-<timestamp> /home/openclaw/.openclaw/openclaw.json
 ```
 
+The backup taken for the 2026-09-17 rollout is
+`openclaw.json.bak-vcc-20260917-015848`. Restore with `cp -a`, never by
+re-serializing the JSON: a reformat changes `configSha` and breaks later
+deploy assertions.
+
 Removing the alias does not uninstall Claude Code; `npm uninstall -g
 @anthropic-ai/claude-code` and `claude auth logout` are separate, and only
 needed if the subscription login must be revoked from the host.
