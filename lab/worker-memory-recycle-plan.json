@@ -1,10 +1,10 @@
 {
-  "baseRelease": "worker-memory-recycle-v2",
+  "baseRelease": "worker-memory-recycle-v3",
   "files": [
     {
-      "source": "lab/release-files/worker-memory-recycle/production-worker-openclaw.plugin.json",
-      "target": "production-worker/openclaw.plugin.json",
-      "before": "b677514dee001a2e9629f97fa60c79222c52e53fa8dfe9c915a3bfb807f7988f"
+      "source": "lab/release-files/worker-memory-recycle/production-worker-worker-pool.mjs",
+      "target": "production-worker/worker-pool.mjs",
+      "before": "37bc36717b8f64524ae7c8421f8baff7726158e92b99872ee6bc00724cc3d423"
     }
   ]
 }
