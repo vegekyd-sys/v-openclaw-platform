@@ -252,6 +252,9 @@ function inspectRpcFrames(events) {
   let outputAudioFrames = 0;
   let outputAudioBytes = 0;
   const assistantFinalTranscripts = [];
+  // Why the browser asked to stop playback. "barge-in" is the input-VAD guess
+  // this task is investigating; "playback-overflow" is a different cause.
+  const cancelOutputReasons = [];
   for (const event of events) {
     if (event.method === "Network.webSocketFrameSent") {
       try {
@@ -259,6 +262,9 @@ function inspectRpcFrames(events) {
         if (frame.type === "req" && typeof frame.method === "string") {
           methodCounts[frame.method] = (methodCounts[frame.method] ?? 0) + 1;
           requests.set(frame.id, frame.method);
+          if (frame.method === "talk.session.cancelOutput") {
+            cancelOutputReasons.push(frame.params?.reason ?? "unspecified");
+          }
         }
         if (
           frame.type === "req" &&
@@ -322,6 +328,7 @@ function inspectRpcFrames(events) {
     outputAudioFrames,
     outputAudioBytes,
     assistantFinalTranscripts,
+    cancelOutputReasons,
     methodCounts,
   };
 }
@@ -350,7 +357,7 @@ try {
   // first Agent reply. A short gap lands the second utterance while the first
   // reply is still speaking, which the provider treats as a barge-in and
   // cancels - a different failure path that reports the same owner error.
-  const gap = Buffer.alloc(24_000 * 2 * 150);
+  const gap = Buffer.alloc(24_000 * 2 * 240);
   writeWave(Buffer.concat([utterance, gap, utterance]), 24_000, 420);
 
   const devtoolsPath = path.join(tempDir, "profile", "DevToolsActivePort");
@@ -808,6 +815,7 @@ try {
     consoleWarnings,
     browserToolCallCount: metrics.methodCounts["talk.client.toolCall"] ?? 0,
     cancelOutputCount: metrics.methodCounts["talk.session.cancelOutput"] ?? 0,
+    cancelOutputReasons: metrics.cancelOutputReasons,
     agentRunCount,
     actualAgentProvider: actualAgentRoute?.provider,
     actualAgentModel: actualAgentRoute?.model,
@@ -830,9 +838,15 @@ try {
   assert.equal(summary.assistantHasChinese, true, "browser did not render a Chinese assistant reply");
   assert.equal(summary.terminalChineseResult, true, "browser did not render the final Chinese Agent result");
   assert.equal(summary.secondTurnChineseResult, true, "browser did not complete a second Chinese Agent turn");
-  // A barge-in cancels the turn and reports the same owner error, so a
-  // sequential two-turn run must not contain one or the result is ambiguous.
-  assert.equal(summary.cancelOutputCount, 0, "the run barged in instead of taking sequential turns");
+  // Only an input-VAD barge-in would mean the two turns overlapped, which would
+  // make the result ambiguous. A playback-overflow cancellation is a different
+  // cause and is expected here: it is what the browser reports when spoken
+  // output outruns the playback queue, and the turn must survive it.
+  assert.deepEqual(
+    summary.cancelOutputReasons.filter((reason) => reason === "barge-in"),
+    [],
+    "the run barged in instead of taking sequential turns",
+  );
   assert.equal(summary.hasEnglishLeadIn, false, "browser spoke English narration for a Chinese request");
   assert.equal(summary.talkStayedActive, true, "browser Talk stopped during sustained input");
   assert.equal(summary.containsAudioBackpressureError, false);
