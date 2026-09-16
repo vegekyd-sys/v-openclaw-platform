@@ -1468,7 +1468,8 @@ async function cancelTalkRealtimeRelayTurn(params) {
 		nativeCallIds: session.harness.forcedConsults.nativeCallIds(handle)
 	}));
 	const rootCallIds = /* @__PURE__ */ new Set([...session.activeAgentToolCalls.keys(), ...forcedConsults.map(({ handle }) => handle.id)]);
-	const playbackOnlyCancellation = session.outputOwnership.phase === "unowned" && rootCallIds.size === 0;
+	const playbackOverflowCancellation = (params.reason ?? "client-cancelled") === "playback-overflow";
+	const playbackOnlyCancellation = playbackOverflowCancellation || (session.outputOwnership.phase === "unowned" && rootCallIds.size === 0);
 	const terminalEpoch = ++session.toolResultEpoch;
 	session.forcedTerminalProviderResults.clear();
 	const reason = params.reason ?? "client-cancelled";

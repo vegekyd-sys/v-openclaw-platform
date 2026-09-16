@@ -23,9 +23,16 @@ export const RELAY_MODEL_AFTER =
 export const PLAYBACK_ONLY_CANCEL_BEFORE =
   '\tconst rootCallIds = /* @__PURE__ */ new Set([...session.activeAgentToolCalls.keys(), ...forcedConsults.map(({ handle }) => handle.id)]);\n' +
   '\tconst terminalEpoch = ++session.toolResultEpoch;';
+// A playback-overflow cancellation is the browser saying its output queue is
+// full, not the user interrupting. Classifying it as a real turn cancellation
+// aborts the running Agent and moves output ownership to "cancelling", after
+// which every further audio frame reports "no live response owner" and playback
+// stops a second in. Treat it as playback-only: drop what is queued, keep the
+// turn. The GPT Live One bridge makes the same distinction.
 export const PLAYBACK_ONLY_CANCEL_AFTER =
   '\tconst rootCallIds = /* @__PURE__ */ new Set([...session.activeAgentToolCalls.keys(), ...forcedConsults.map(({ handle }) => handle.id)]);\n' +
-  '\tconst playbackOnlyCancellation = session.outputOwnership.phase === "unowned" && rootCallIds.size === 0;\n' +
+  '\tconst playbackOverflowCancellation = (params.reason ?? "client-cancelled") === "playback-overflow";\n' +
+  '\tconst playbackOnlyCancellation = playbackOverflowCancellation || (session.outputOwnership.phase === "unowned" && rootCallIds.size === 0);\n' +
   '\tconst terminalEpoch = ++session.toolResultEpoch;';
 
 export const PLAYBACK_ONLY_CLEAR_BEFORE =
