@@ -1,20 +1,10 @@
 {
-  "baseRelease": "worker-memory-recycle-v1",
+  "baseRelease": "worker-memory-recycle-v2",
   "files": [
     {
-      "source": "lab/release-files/worker-memory-recycle/production-worker-worker-pool.mjs",
-      "target": "production-worker/worker-pool.mjs",
-      "before": "6ec3b4a26ce178478b3411ab56fa3ec5cb973c555d5a14b32bcf2fea355e9686"
-    },
-    {
-      "source": "lab/release-files/worker-memory-recycle/production-worker-worker.mjs",
-      "target": "production-worker/worker.mjs",
-      "before": "bdafad00103f2178cbf4605af13183a67f98eba8440c10dc74b401e8903df84b"
-    },
-    {
-      "source": "lab/release-files/worker-memory-recycle/production-worker-index.mjs",
-      "target": "production-worker/index.mjs",
-      "before": "b2a4ec2258d8960b77b65a9c2e211e0c1634a74bb93d44ec40077b57e8c8d183"
+      "source": "lab/release-files/worker-memory-recycle/production-worker-openclaw.plugin.json",
+      "target": "production-worker/openclaw.plugin.json",
+      "before": "b677514dee001a2e9629f97fa60c79222c52e53fa8dfe9c915a3bfb807f7988f"
     }
   ]
 }
