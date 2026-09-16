@@ -1474,14 +1474,19 @@ async function cancelTalkRealtimeRelayTurn(params) {
 	session.forcedTerminalProviderResults.clear();
 	const reason = params.reason ?? "client-cancelled";
 	if (playbackOnlyCancellation) {
-		const cancelled = session.harness.talk.cancelTurn({
+		// A full playback queue must not end the turn. cancelTurn clears
+		// activeTurnId, and the audio still streaming then resolves against no
+		// active turn, which is the same "no live response owner" failure by a
+		// different route. Overflow only needs the client to drop what it has
+		// queued, so broadcast the clear and leave the turn running.
+		const cancelled = playbackOverflowCancellation ? void 0 : session.harness.talk.cancelTurn({
 			turnId,
 			payload: { reason }
 		});
 		broadcastToOwner$1(session.context, session.connId, {
 			relaySessionId: session.id,
 			type: "clear",
-			talkEvent: cancelled.ok ? cancelled.event : void 0
+			talkEvent: cancelled?.ok ? cancelled.event : void 0
 		});
 		return {
 			status: "applied",

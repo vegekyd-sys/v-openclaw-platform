@@ -107,6 +107,19 @@ test("a playback-overflow cancellation keeps the turn instead of aborting the Ag
     /playbackOnlyCancellation = playbackOverflowCancellation \|\|/u,
     "playback-overflow does not reach the playback-only branch",
   );
+  // The playback-only branch itself calls cancelTurn, which clears
+  // activeTurnId. Audio still streaming would then resolve against no active
+  // turn - the same ownership failure by another route - so an overflow must
+  // skip that call and only broadcast the clear.
+  const branchStart = patched.indexOf("if (playbackOnlyCancellation)", fnStart);
+  assert.ok(branchStart > 0, "the playback-only branch is missing");
+  const branch = patched.slice(branchStart, branchStart + 1200);
+  assert.match(
+    branch,
+    /const cancelled = playbackOverflowCancellation \? void 0 : session\.harness\.talk\.cancelTurn/u,
+    "an overflow still cancels the Gateway turn",
+  );
+  assert.match(branch, /talkEvent: cancelled\?\.ok/u, "the clear broadcast assumes a cancelTurn result");
   // The unpatched runtime must not already contain it, or the guard is inert.
   const fixture = readFileSync(
     new URL("./fixtures/realtime-talk-consult-model/talk-DkFuKRod.js", import.meta.url),
