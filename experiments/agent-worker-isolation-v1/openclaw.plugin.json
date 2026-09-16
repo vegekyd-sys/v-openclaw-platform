@@ -2,7 +2,9 @@
   "id": "vlab-agent-worker-isolation",
   "activation": {
     "onStartup": true,
-    "onAgentHarnesses": ["vlab-worker"]
+    "onAgentHarnesses": [
+      "vlab-worker"
+    ]
   },
   "name": "vLab Agent Worker Isolation",
   "description": "Routes native OpenClaw Agent Harness dispatch and vLab experiment RPCs to elastic child-process workers.",
@@ -96,6 +98,34 @@
         "type": "integer",
         "minimum": 0,
         "maximum": 1
+      },
+      "workerMemoryReportMs": {
+        "type": "integer",
+        "minimum": 1000
+      },
+      "recycleRssMb": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "recycleMaxLifetimeMs": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "recycleMaxSessions": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "recycleCooldownMs": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "recycleMinAgeMs": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "workerMaxOldSpaceMb": {
+        "type": "integer",
+        "minimum": 0
       }
     }
   }
