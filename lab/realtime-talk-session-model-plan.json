@@ -1,0 +1,10 @@
+{
+  "baseRelease": "talk-voice-wip-cleanup-v1",
+  "files": [
+    {
+      "source": "lab/release-files/talk-session-model-inheritance/realtime-session-harness-CEO5kVAJ.js",
+      "target": "openclaw/dist/realtime-session-harness-CEO5kVAJ.js",
+      "before": "ea7f772f4e383c58fed00ec7a0922ce73bd58173acfde5cebde869672279ce85"
+    }
+  ]
+}

@@ -15,6 +15,11 @@
       "source": "lab/release-files/talk-audio-wan-backpressure/control-ui-DhD7PO_6.js",
       "target": "openclaw/dist/control-ui-DhD7PO_6.js",
       "before": "638fd21e36e1ed8b6b2d6d02608fd59485f1c3a7bb65d28276d7c860c264f205"
+    },
+    {
+      "source": "lab/release-files/seeduplex-voice-provider/seeduplex-realtime-provider.mjs",
+      "target": "production-worker/seeduplex-realtime-provider.mjs",
+      "before": "c5c3c84301ba0ab9f95dfec6790c9c5f25c8d41d35a9c371d2cb780822547ea1"
     }
   ],
   "tests": ["lab/candidate/talk-voice-isolated.test.mjs"],

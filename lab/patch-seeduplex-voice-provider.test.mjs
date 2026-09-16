@@ -7,6 +7,11 @@ import {
   SEEDUPLEX_REGISTER,
   patchProductionWorkerForSeeduplex,
 } from "./patch-seeduplex-voice-provider.mjs";
+import {
+  ROUTED_CALL,
+  ROUTING_IMPORT,
+  patchWorkerHarnessModelRouting,
+} from "./patch-worker-harness-model-routing.mjs";
 
 const fixture = readFileSync(
   new URL("./fixtures/seeduplex-voice-provider/production-worker-index.mjs", import.meta.url),
@@ -54,14 +59,15 @@ test("release artifacts derive from the exact current VLab runtime", () => {
     sha256(fixture),
     "d5416a86ff77bf8a8c00395a0e7feb05a31d1668e9234c8ce001762f8c59f13e",
   );
-  assert.equal(releaseIndex, patchProductionWorkerForSeeduplex(fixture));
   assert.equal(
-    sha256(releaseIndex),
-    "d5416a86ff77bf8a8c00395a0e7feb05a31d1668e9234c8ce001762f8c59f13e",
+    releaseIndex,
+    patchWorkerHarnessModelRouting(patchProductionWorkerForSeeduplex(fixture)),
   );
+  assert.equal(releaseIndex.split(ROUTING_IMPORT).length - 1, 1);
+  assert.equal(releaseIndex.split(ROUTED_CALL).length - 1, 1);
   assert.equal(releaseProvider, provider);
   assert.equal(
     sha256(releaseProvider),
-    "c5c3c84301ba0ab9f95dfec6790c9c5f25c8d41d35a9c371d2cb780822547ea1",
+    "22a81fce666595bfea2783d5365a3a3d6b79a161def755845fc69a063badab8f",
   );
 });

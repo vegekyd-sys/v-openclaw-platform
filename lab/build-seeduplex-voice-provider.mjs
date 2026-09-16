@@ -7,6 +7,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { patchProductionWorkerForSeeduplex } from "./patch-seeduplex-voice-provider.mjs";
+import { patchWorkerHarnessModelRouting } from "./patch-worker-harness-model-routing.mjs";
 
 const repo = "/Users/tianyicai/vlab-dev";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -47,7 +48,7 @@ const providerTarget = "production-worker/seeduplex-realtime-provider.mjs";
 const currentProvider = readLiveCode(providerTarget);
 const before = Buffer.from(result.content, "base64").toString();
 assert.equal(sha256(before), result.sha256, "VLab read-code digest mismatch");
-const after = patchProductionWorkerForSeeduplex(before);
+const after = patchWorkerHarnessModelRouting(patchProductionWorkerForSeeduplex(before));
 
 writeFileSync(resolve(fixtureDir, "production-worker-index.mjs"), before);
 writeFileSync(resolve(outputDir, "production-worker-index.mjs"), after);
@@ -68,6 +69,11 @@ const plan = {
       source: "lab/release-files/seeduplex-voice-provider/seeduplex-realtime-provider.mjs",
       target: providerTarget,
       before: currentProvider?.sha256 ?? null,
+    },
+    {
+      source: "lab/worker-harness-model-routing.mjs",
+      target: "production-worker/worker-harness-model-routing.mjs",
+      before: null,
     },
   ],
 };

@@ -15,6 +15,7 @@ const MAX_TOOL_CALLS = 100;
 const MAX_TOOL_RESULT_BYTES = 32_000;
 const MAX_CONSULT_RESULT_CHARS = 8_000;
 const MAX_UPSTREAM_MESSAGE_BYTES = 1_048_576;
+const SEEDUPLEX_WORKING_SPEECH = "正在帮你处理，请稍等。";
 
 function optionalString(value) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
@@ -44,6 +45,16 @@ export function buildSeeduplexSession(providerConfig, request) {
     throw new Error(`Unsupported Seeduplex model: ${model}`);
   }
   const voice = resolveSeeduplexVoice(providerConfig.voice);
+  const language = optionalString(request.language)?.toLowerCase();
+  const instructions = [
+    optionalString(request.instructions),
+    "语言规则：根据用户最近一句话的语言作答。用户说中文时，所有回复都必须使用中文，包括调用工具前的确认、等待提示和最终回答；不要在中文请求后默认使用英文开场白，不要说 Let me check、Sure 或 I will。用户使用其他语言时再跟随该语言。",
+    language?.startsWith("zh")
+      ? "重要语言规则：本次通话指定中文。整个会话只能使用中文，包括调用工具之前的简短确认、等待提示和最终回答。禁止使用英文开场白；不要说 Let me check、Sure 或 I will。"
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
   const tools = (request.tools ?? []).map((tool) => ({
     type: "function",
     name: tool.name,
@@ -54,7 +65,7 @@ export function buildSeeduplexSession(providerConfig, request) {
     type: "session.create",
     session: {
       model,
-      instructions: request.instructions,
+      instructions,
       audio: {
         input: { format: { type: "pcm", rate: 16_000 } },
         output: {
@@ -145,6 +156,7 @@ export function buildSeeduplexAgentConsultPrompt(args = {}) {
     "Live voice request during a Gateway-relay Talk session.",
     "Act as the configured OpenClaw agent for this user. Use available tools when the request asks you to do work.",
     "Return only the concise terminal result that the realtime voice agent should speak. Preserve failures, limits, numbers, and pending approvals.",
+    "Answer in the same language as the user's request. If the user speaks Chinese, the terminal result must be Chinese.",
     responseStyle ? `Spoken style: ${responseStyle}` : undefined,
     context ? `Additional realtime context:\n${context}` : undefined,
     confirmationId ? `Server-issued voice confirmation id: ${confirmationId}` : undefined,
@@ -176,6 +188,29 @@ function spokenToolResult(result) {
   );
 }
 
+function hasChinese(value) {
+  return /[\u3400-\u9fff]/u.test(value);
+}
+
+export function stripEnglishLeadIn(text, request) {
+  if (!hasChinese(request)) return text;
+  const paragraphs = text.split(/\n\s*\n/gu).map((value) => value.trim()).filter(Boolean);
+  const chineseParagraphs = paragraphs.filter((paragraph) => {
+    const chineseCharacters = paragraph.match(/[\u3400-\u9fff]/gu)?.length ?? 0;
+    const latinWords = paragraph.match(/[A-Za-z]{2,}/gu)?.length ?? 0;
+    return chineseCharacters >= 2 && latinWords <= Math.max(4, chineseCharacters / 3);
+  });
+  const candidate = chineseParagraphs.length > 0 ? chineseParagraphs.join("\n\n") : text;
+  const firstChinese = candidate.search(/[\u3400-\u9fff]/u);
+  if (firstChinese < 0) {
+    return "处理已完成，但没有返回可播报的中文结果，请再试一次。";
+  }
+  if (firstChinese === 0) return candidate.trim();
+  const prefix = candidate.slice(0, firstChinese);
+  if (!/[A-Za-z]/u.test(prefix)) return candidate.trim();
+  return candidate.slice(firstChinese).replace(/^[\s:：*#-]+/u, "").trim();
+}
+
 export class SeeduplexRealtimeVoiceBridge {
   constructor(request, options = {}) {
     this.request = request;
@@ -196,7 +231,12 @@ export class SeeduplexRealtimeVoiceBridge {
     this.connectReject = null;
     this.connectTimer = null;
     this.abortController = new AbortController();
+    this.agentConsultTail = Promise.resolve();
     this.skipNextResponseDone = false;
+    this.cancelledOutputPending = false;
+    this.responseActive = false;
+    this.responseOwnerAnnounced = false;
+    this.responseOwnerId = undefined;
     this.supportsToolResultContinuation = true;
     this.supportsToolResultSuppression = false;
   }
@@ -294,6 +334,8 @@ export class SeeduplexRealtimeVoiceBridge {
   sendUserMessage(text) {
     const normalized = optionalString(text);
     if (!normalized || !this.ready) return;
+    this.responseOwnerAnnounced = false;
+    this.responseOwnerId = undefined;
     this.#send({
       type: "conversation.item.create",
       items: [{ role: "user", content: [{ type: "input_text", text: normalized }] }],
@@ -307,7 +349,15 @@ export class SeeduplexRealtimeVoiceBridge {
   }
 
   handleBargeIn() {
-    if (this.ready) this.#send({ type: "response.cancel" });
+    if (!this.ready || this.cancelledOutputPending) return;
+    this.request.onClearAudio?.("barge-in");
+    if (this.responseActive) {
+      this.cancelledOutputPending = true;
+      this.responseActive = false;
+      this.#send({ type: "response.cancel", event_id: `event_${randomUUID()}` });
+    }
+    // The Gateway owns cancellation drain and keeps suppressing this output
+    // generation until the provider acknowledges it or the next user turn starts.
   }
 
   submitToolResult(callId, result, options = {}) {
@@ -412,6 +462,11 @@ export class SeeduplexRealtimeVoiceBridge {
       return this.#fail(new Error("Invalid Seeduplex upstream event"));
     }
     const type = event?.type;
+    if (type === "error" && this.cancelledOutputPending) {
+      // response.cancel is documented to return an error when its target ended
+      // in the race between local playback and the upstream command.
+      return;
+    }
     if (type === "error") return this.#fail(new Error("Seeduplex upstream session failed"));
     if (type === "session.created") {
       this.ready = true;
@@ -423,6 +478,37 @@ export class SeeduplexRealtimeVoiceBridge {
         this.pendingInput = this.pendingInput.subarray(INPUT_FRAME_BYTES);
         this.#send({ type: "input_audio_buffer.append", audio: frame.toString("base64") });
       }
+      return;
+    }
+    if (
+      type === "conversation.item.input_audio_transcription.started" ||
+      type === "conversation.item.input_audio_transcription.completed"
+    ) {
+      this.cancelledOutputPending = false;
+    }
+    if (type === "conversation.item.input_audio_transcription.started") {
+      this.responseOwnerAnnounced = false;
+      this.responseOwnerId = undefined;
+    }
+    const continuingBatch = this.toolBatches.find((batch) => batch.continuing);
+    const internalContinuationResponse =
+      type === "response.created" &&
+      (Boolean(continuingBatch) || this.responseOwnerAnnounced);
+    if (type === "response.created" && !this.cancelledOutputPending) {
+      this.responseActive = true;
+      if (!internalContinuationResponse) {
+        this.responseOwnerAnnounced = true;
+        this.responseOwnerId = optionalString(event.response_id);
+      }
+    }
+    if (
+      this.cancelledOutputPending &&
+      (type === "response.canceled" ||
+        type === "response.done" ||
+        type.startsWith("response.output_"))
+    ) {
+      // Ignore frames from the provider generation that the browser already
+      // cancelled. A subsequent response.created opens the next generation.
       return;
     }
     if (type === "session.closed") {
@@ -442,13 +528,29 @@ export class SeeduplexRealtimeVoiceBridge {
       const text = optionalString(event.transcript) ?? optionalString(event.text);
       if (text) this.request.onTranscript?.("user", text, true);
     }
-    if (type === "response.output_text.delta" && typeof event.delta === "string") {
+    const workingBatch = continuingBatch;
+    const suppressWorkingTranscript =
+      workingBatch?.phase === "waiting-working-audio" ||
+      workingBatch?.phase === "waiting-working-tts";
+    if (
+      type === "response.output_text.delta" &&
+      typeof event.delta === "string" &&
+      !suppressWorkingTranscript
+    ) {
       this.request.onTranscript?.("assistant", event.delta, false);
     }
-    if (type === "response.output_text.done" && typeof event.text === "string") {
+    if (
+      type === "response.output_text.done" &&
+      typeof event.text === "string" &&
+      !suppressWorkingTranscript
+    ) {
       this.request.onTranscript?.("assistant", event.text, true);
     }
-    if (type === "response.output_audio.delta" && typeof event.delta === "string") {
+    if (
+      type === "response.output_audio.delta" &&
+      typeof event.delta === "string" &&
+      workingBatch?.phase !== "waiting-working-audio"
+    ) {
       try {
         const audio = decodeSeeduplexFloat32Pcm(event.delta);
         this.request.onAudio(audio);
@@ -461,19 +563,37 @@ export class SeeduplexRealtimeVoiceBridge {
       const continuing = this.toolBatches.find(
         (batch) =>
           batch.continuing &&
-          (batch.phase === "waiting-working-audio" || batch.phase === "waiting-final-audio"),
+          (batch.phase === "waiting-working-audio" ||
+            batch.phase === "waiting-working-tts" ||
+            batch.phase === "waiting-final-audio"),
       );
       if (continuing?.phase === "waiting-working-audio") {
+        continuing.phase = "waiting-working-tts";
+        this.request.onTranscript?.("assistant", SEEDUPLEX_WORKING_SPEECH, true);
+        this.#send({
+          type: "speech_text_buffer.commit",
+          event_id: `event_${randomUUID()}`,
+          text: SEEDUPLEX_WORKING_SPEECH,
+        });
+      } else if (continuing?.phase === "waiting-working-tts") {
         continuing.phase = "waiting-finals";
         this.#dispatchContinuedResult(continuing);
       } else if (continuing?.phase === "waiting-final-audio") {
         continuing.phase = "completed";
         this.toolBatches.splice(this.toolBatches.indexOf(continuing), 1);
         this.skipNextResponseDone = true;
-        this.#onResponseDone({ status: "completed", responseId: event.response_id });
+        // A continued consult is one Gateway output generation even though
+        // Seeduplex creates separate upstream responses for the working and
+        // final speech_text_buffer commits. Complete the exact response id that
+        // established Gateway ownership, not the last internal upstream id.
+        this.#onResponseDone({
+          status: "completed",
+          responseId: this.responseOwnerId ?? event.response_id,
+        });
       } else {
         this.#onResponseDone({ status: "completed", responseId: event.response_id });
       }
+      this.responseActive = false;
     } else if (type === "response.done") {
       if (this.skipNextResponseDone) {
         this.skipNextResponseDone = false;
@@ -488,7 +608,9 @@ export class SeeduplexRealtimeVoiceBridge {
           });
         }
       }
+      this.responseActive = false;
     } else if (type === "response.canceled") {
+      this.responseActive = false;
       this.#onResponseDone({
         status: "cancelled",
         responseId: event.response_id,
@@ -499,7 +621,11 @@ export class SeeduplexRealtimeVoiceBridge {
     // Completion is emitted only through the typed onResponseDone callback.
     // Forwarding the same raw events activates OpenClaw's legacy completion
     // fallback and would end a continued Agent turn after the working audio.
-    if (type !== "response.done" && type !== "response.output_audio.done") {
+    if (
+      type !== "response.done" &&
+      type !== "response.output_audio.done" &&
+      !internalContinuationResponse
+    ) {
       this.request.onEvent?.({
         direction: "server",
         type: typeof type === "string" ? type : "unknown",
@@ -540,17 +666,33 @@ export class SeeduplexRealtimeVoiceBridge {
     for (const call of calls) {
       this.seenToolCalls.add(call.callId);
       this.pendingToolCalls.set(call.callId, batch);
-      this.request.onToolCall?.({
-        itemId: call.callId,
-        callId: call.callId,
-        name: call.name,
-        args: call.args,
-      });
       if (
         call.name === "openclaw_agent_consult" &&
         typeof this.request.runAgentConsult === "function"
       ) {
-        void this.#runAgentConsult(call);
+        // Gateway-relay sessions provide runAgentConsult and therefore own the
+        // entire delegation. Publishing the same call through onToolCall makes
+        // the browser start a second Agent run against the same session.
+        this.submitToolResult(
+          call.callId,
+          {
+            status: "working",
+            language: "zh-CN",
+            message: SEEDUPLEX_WORKING_SPEECH,
+            instruction: "只使用中文播报 message 字段，不要说任何英文。",
+          },
+          { willContinue: true },
+        );
+        this.agentConsultTail = this.agentConsultTail.then(() =>
+          this.#runAgentConsult(call),
+        );
+      } else {
+        this.request.onToolCall?.({
+          itemId: call.callId,
+          callId: call.callId,
+          name: call.name,
+          args: call.args,
+        });
       }
     }
   }
@@ -562,7 +704,14 @@ export class SeeduplexRealtimeVoiceBridge {
         signal: this.abortController.signal,
       });
       if (this.terminal || this.abortController.signal.aborted) return;
-      this.submitToolResult(call.callId, buildAgentConsultProviderResult(result));
+      const normalizedResult = buildAgentConsultProviderResult(result);
+      if (typeof normalizedResult.result === "string") {
+        normalizedResult.result = stripEnglishLeadIn(
+          normalizedResult.result,
+          JSON.stringify(call.args ?? {}),
+        );
+      }
+      this.submitToolResult(call.callId, normalizedResult);
     } catch {
       if (this.terminal || this.abortController.signal.aborted) return;
       this.submitToolResult(call.callId, {
