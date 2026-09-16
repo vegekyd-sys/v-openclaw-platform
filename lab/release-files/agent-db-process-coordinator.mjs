@@ -9,15 +9,18 @@ function leaseKey(databasePath, suffix) {
   return `${databasePath}\0${suffix}`;
 }
 
-function runWithHeldLease(databasePath, suffix, fn) {
-  const current = heldLeases.getStore();
-  const next = new Set(current ?? []);
-  next.add(leaseKey(databasePath, suffix));
-  return heldLeases.run(next, fn);
+function createHeldLeaseScope(databasePath, suffix) {
+  const token = {key: leaseKey(databasePath, suffix), active: true};
+  const next = [...(heldLeases.getStore() ?? []), token];
+  return {
+    run: fn => heldLeases.run(next, fn),
+    close: () => { token.active = false; },
+  };
 }
 
 export function isAgentDatabaseProcessLeaseHeld(databasePath, suffix = '.session-writer-coordinator') {
-  return heldLeases.getStore()?.has(leaseKey(databasePath, suffix)) ?? false;
+  const key = leaseKey(databasePath, suffix);
+  return heldLeases.getStore()?.some(token => token.active && token.key === key) ?? false;
 }
 
 function assertCoordinatorPathSafe(coordinatorPath) {
@@ -76,14 +79,19 @@ export async function withAgentDatabaseProcessLease(params, timing = {}) {
     await sleep(Math.min(remainingMs, backoffMs + jitterMs));
   }
   const waitMs = Math.max(0, now() - startedAt);
-  params.onAcquired?.({attempts: attempt + 1, coordinatorPath, waitMs});
+  const scope = createHeldLeaseScope(params.databasePath, suffix);
   let operationError;
   try {
-    return await runWithHeldLease(params.databasePath, suffix, params.fn);
+    params.onAcquired?.({attempts: attempt + 1, coordinatorPath, waitMs});
+    const result = scope.run(params.fn);
+    // A synchronous commit must release before yielding to another microtask.
+    // Otherwise a same-process synchronous writer can wait on our own lease.
+    return result && typeof result.then === 'function' ? await result : result;
   } catch (error) {
     operationError = error;
     throw error;
   } finally {
+    scope.close();
     try {
       lease.release();
     } catch (releaseError) {
@@ -122,14 +130,16 @@ export function withAgentDatabaseProcessLeaseSync(params, timing = {}) {
     const backoffMs = Math.min(50, 5 * 2 ** Math.min(attempt, 4));
     sleep(Math.min(remainingMs, backoffMs + ((process.pid + attempt) % 7)));
   }
-  params.onAcquired?.({attempts: attempt + 1, coordinatorPath, waitMs: Math.max(0, now() - startedAt)});
+  const scope = createHeldLeaseScope(params.databasePath, suffix);
   let operationError;
   try {
-    return runWithHeldLease(params.databasePath, suffix, params.fn);
+    params.onAcquired?.({attempts: attempt + 1, coordinatorPath, waitMs: Math.max(0, now() - startedAt)});
+    return scope.run(params.fn);
   } catch (error) {
     operationError = error;
     throw error;
   } finally {
+    scope.close();
     try {
       lease.release();
     } catch (releaseError) {
