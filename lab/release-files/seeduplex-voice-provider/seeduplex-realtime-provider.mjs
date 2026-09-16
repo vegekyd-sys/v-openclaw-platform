@@ -15,7 +15,25 @@ const MAX_TOOL_CALLS = 100;
 const MAX_TOOL_RESULT_BYTES = 32_000;
 const MAX_CONSULT_RESULT_CHARS = 8_000;
 const MAX_UPSTREAM_MESSAGE_BYTES = 1_048_576;
-const SEEDUPLEX_WORKING_SPEECH = "正在帮你处理，请稍等。";
+// The runtime asks the voice agent for "at most one short natural backchannel
+// ... vary it". A single constant defeated that: every delegated turn spoke the
+// identical sentence, which is what made the assistant sound canned. Rotate
+// instead, so consecutive consults never repeat.
+export const SEEDUPLEX_WORKING_SPEECH_VARIANTS = Object.freeze([
+  "好，我看一下。",
+  "稍等，我查查。",
+  "嗯，我来看看。",
+  "我找一下啊。",
+  "让我确认一下。",
+]);
+let seeduplexWorkingSpeechCursor = Math.floor(Math.random() * SEEDUPLEX_WORKING_SPEECH_VARIANTS.length);
+
+export function nextSeeduplexWorkingSpeech() {
+  const value = SEEDUPLEX_WORKING_SPEECH_VARIANTS[seeduplexWorkingSpeechCursor];
+  seeduplexWorkingSpeechCursor =
+    (seeduplexWorkingSpeechCursor + 1) % SEEDUPLEX_WORKING_SPEECH_VARIANTS.length;
+  return value;
+}
 
 function optionalString(value) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
@@ -236,6 +254,7 @@ export class SeeduplexRealtimeVoiceBridge {
     this.cancelledOutputPending = false;
     this.outputClosed = false;
     this.bargeInPending = false;
+    this.pendingWorkingSpeech = undefined;
     this.responseActive = false;
     this.responseOwnerAnnounced = false;
     this.responseOwnerId = undefined;
@@ -615,11 +634,12 @@ export class SeeduplexRealtimeVoiceBridge {
       );
       if (continuing?.phase === "waiting-working-audio") {
         continuing.phase = "waiting-working-tts";
-        this.request.onTranscript?.("assistant", SEEDUPLEX_WORKING_SPEECH, true);
+        const spoken = this.pendingWorkingSpeech ?? nextSeeduplexWorkingSpeech();
+        this.request.onTranscript?.("assistant", spoken, true);
         this.#send({
           type: "speech_text_buffer.commit",
           event_id: `event_${randomUUID()}`,
-          text: SEEDUPLEX_WORKING_SPEECH,
+          text: spoken,
         });
       } else if (continuing?.phase === "waiting-working-tts") {
         continuing.phase = "waiting-finals";
@@ -720,12 +740,14 @@ export class SeeduplexRealtimeVoiceBridge {
         // Gateway-relay sessions provide runAgentConsult and therefore own the
         // entire delegation. Publishing the same call through onToolCall makes
         // the browser start a second Agent run against the same session.
+        const workingSpeech = nextSeeduplexWorkingSpeech();
+        this.pendingWorkingSpeech = workingSpeech;
         this.submitToolResult(
           call.callId,
           {
             status: "working",
             language: "zh-CN",
-            message: SEEDUPLEX_WORKING_SPEECH,
+            message: workingSpeech,
             instruction: "只使用中文播报 message 字段，不要说任何英文。",
           },
           { willContinue: true },
