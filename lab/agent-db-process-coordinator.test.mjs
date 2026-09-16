@@ -225,3 +225,32 @@ test('a distinct process-global reconcile lease coalesces the same dirty work', 
     fs.rmSync(dir, {recursive: true});
   }
 });
+
+test('synchronous commits release async admission before another synchronous writer can run', async () => {
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'agent-db-sync-release-'));
+  const databasePath=path.join(dir,'db.sqlite');
+  const pending=withAgentDatabaseProcessLease({databasePath,acquire,fn:()=>1});
+  try {
+    assert.equal(withAgentDatabaseProcessLeaseSync({databasePath,acquire,maxWaitMs:20,fn:()=>2}),2);
+    assert.equal(await pending,1);
+  } finally {await pending;fs.rmSync(dir,{recursive:true});}
+});
+
+test('callbacks queued inside a completed lease cannot inherit stale writer ownership', async () => {
+  for(const run of [withAgentDatabaseProcessLease,withAgentDatabaseProcessLeaseSync]){
+    let observed;
+    await run({databasePath:'/fixture/stale-ownership.sqlite',acquire:()=>({release(){}}),fn:()=>{
+      observed=new Promise(resolve=>setImmediate(()=>resolve(isAgentDatabaseProcessLeaseHeld('/fixture/stale-ownership.sqlite'))));
+    }});
+    assert.equal(await observed,false);
+  }
+});
+
+test('an observer failure releases the acquired lease without running the operation', async () => {
+  for(const run of [withAgentDatabaseProcessLease,withAgentDatabaseProcessLeaseSync]){
+    let released=0;
+    await assert.rejects(async()=>run({databasePath:'/fixture/observer.sqlite',acquire:()=>({release(){released++;}}),
+      onAcquired(){throw Error('observer failed');},fn:()=>assert.fail('must not execute')}),/observer failed/);
+    assert.equal(released,1);
+  }
+});
