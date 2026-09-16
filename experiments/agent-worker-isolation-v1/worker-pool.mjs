@@ -5,12 +5,37 @@ import { cloneWireData } from "./native-harness-data.mjs";
 
 const DEFAULT_WORKER_PATH = fileURLToPath(new URL("./worker.mjs", import.meta.url));
 
-export function resolveWorkerExecArgv(execArgv = process.execArgv) {
-  return execArgv.filter(
+export function resolveWorkerExecArgv(
+  execArgv = process.execArgv,
+  maxOldSpaceMb = 0,
+) {
+  const inherited = execArgv.filter(
     (arg) =>
       !/^--inspect(?:-brk)?(?:=|$)/.test(arg) &&
       !/^--debug(?:-brk)?(?:=|$)/.test(arg),
   );
+  if (!Number.isInteger(maxOldSpaceMb) || maxOldSpaceMb <= 0) {
+    return inherited;
+  }
+  // A Worker must not silently inherit the Gateway's old-space ceiling. A
+  // ceiling far above what a Worker needs lets V8 defer major GC until the
+  // process is already several GiB wide, and those pages are never handed
+  // back to the OS. Replacing it is the only way the Worker's own limit wins.
+  return [
+    ...inherited.filter(
+      (arg) => !/^--max[-_]old[-_]space[-_]size(?:=|$)/.test(arg),
+    ),
+    `--max-old-space-size=${maxOldSpaceMb}`,
+  ];
+}
+
+function readIntEnv(env, key, fallback) {
+  const raw = env?.[key];
+  if (raw === undefined || raw === null || `${raw}`.trim() === "") {
+    return fallback;
+  }
+  const value = Number(raw);
+  return Number.isFinite(value) ? Math.trunc(value) : fallback;
 }
 
 function toError(value) {
@@ -59,6 +84,7 @@ export class WorkerPool {
     this.maxConcurrentStarts = options.maxConcurrentStarts ??
       Math.min(this.maxWorkers, 4, availableParallelism());
     this.sessionsPerWorker = options.sessionsPerWorker ?? 1;
+    this.configEnv = options.configEnv ?? process.env;
     if (!Number.isInteger(this.maxConcurrentStarts) || this.maxConcurrentStarts < 1 ||
         this.maxConcurrentStarts > this.maxWorkers)
       throw new Error("maxConcurrentStarts must be an integer from 1 to maxWorkers");
@@ -81,6 +107,27 @@ export class WorkerPool {
       options.warmSpareWorkers ??
       Math.min(1, Math.max(0, this.maxWorkers - 1));
     this.retireGraceMs = options.retireGraceMs ?? 2_000;
+    // worker-memory-recycle.1: a resident Worker never exits on its own, so
+    // every session it serves leaves its footprint behind for the lifetime of
+    // the Gateway. These bounds retire a Worker that has grown too large, but
+    // only while it is genuinely idle, and only after a replacement is warm.
+    this.recycleRssBytes = options.recycleRssBytes ??
+      readIntEnv(this.configEnv, "VLAB_WORKER_RECYCLE_RSS_MB", 1_536) *
+        1024 * 1024;
+    this.recycleMaxLifetimeMs = options.recycleMaxLifetimeMs ??
+      readIntEnv(this.configEnv, "VLAB_WORKER_RECYCLE_LIFETIME_MS",
+        12 * 60 * 60 * 1_000);
+    this.recycleMaxSessions = options.recycleMaxSessions ??
+      readIntEnv(this.configEnv, "VLAB_WORKER_RECYCLE_MAX_SESSIONS", 0);
+    this.recycleCooldownMs = options.recycleCooldownMs ??
+      readIntEnv(this.configEnv, "VLAB_WORKER_RECYCLE_COOLDOWN_MS", 60_000);
+    // A Worker that has only just started cannot be the one holding a large
+    // footprint. Without this floor a threshold set too low turns into a
+    // spawn/retire loop that costs more than the memory it reclaims.
+    this.recycleMinAgeMs = options.recycleMinAgeMs ??
+      readIntEnv(this.configEnv, "VLAB_WORKER_RECYCLE_MIN_AGE_MS", 300_000);
+    this.workerMaxOldSpaceMb = options.workerMaxOldSpaceMb ??
+      readIntEnv(this.configEnv, "VLAB_WORKER_MAX_OLD_SPACE_MB", 0);
     this.workerPath = options.workerPath ?? DEFAULT_WORKER_PATH;
     this.workerEnv = options.workerEnv ?? process.env;
     this.forkWorker = options.forkWorker ?? fork;
@@ -122,6 +169,9 @@ export class WorkerPool {
     this.reapTimer = null;
     this.spawnRetryTimer = null;
     this.spawnFailureCount = 0;
+    this.recyclingSlot = null;
+    this.lastRecycleAt = 0;
+    this.recycledWorkerCount = 0;
 
     if (!Number.isInteger(this.minWorkers) || this.minWorkers < 1) {
       throw new Error("minWorkers must be an integer >= 1");
@@ -186,6 +236,29 @@ export class WorkerPool {
     ) {
       throw new Error("requestCancelGraceMs must be >= 10");
     }
+    for (const [name, value] of [
+      ["recycleRssBytes", this.recycleRssBytes],
+      ["recycleMaxLifetimeMs", this.recycleMaxLifetimeMs],
+      ["recycleMaxSessions", this.recycleMaxSessions],
+    ]) {
+      // Zero disables that bound; a negative or non-finite value is a
+      // configuration error, not a silent "recycle everything".
+      if (!Number.isFinite(value) || value < 0) {
+        throw new Error(`${name} must be >= 0`);
+      }
+    }
+    if (!Number.isFinite(this.recycleCooldownMs) || this.recycleCooldownMs < 0) {
+      throw new Error("recycleCooldownMs must be >= 0");
+    }
+    if (!Number.isFinite(this.recycleMinAgeMs) || this.recycleMinAgeMs < 0) {
+      throw new Error("recycleMinAgeMs must be >= 0");
+    }
+    if (
+      !Number.isInteger(this.workerMaxOldSpaceMb) ||
+      this.workerMaxOldSpaceMb < 0
+    ) {
+      throw new Error("workerMaxOldSpaceMb must be an integer >= 0");
+    }
   }
 
   start() {
@@ -206,10 +279,12 @@ export class WorkerPool {
       ),
     );
     if (this.closing) throw new Error("worker pool is closing");
-    this.reapTimer = setInterval(
-      () => this.reapIdleWorkers(),
-      this.idleSweepIntervalMs,
-    );
+    this.reapTimer = setInterval(() => {
+      this.reapIdleWorkers();
+      // A rejected recycle attempt must never take the sweep timer down with
+      // it; capacity recovery is handled by ensureMinWorkers on the next tick.
+      this.recycleOverGrownWorker().catch(() => {});
+    }, this.idleSweepIntervalMs);
     this.reapTimer.unref?.();
   }
 
@@ -239,7 +314,10 @@ export class WorkerPool {
       env: this.workerEnv,
       // A Gateway inspector port belongs to the Gateway process. Inheriting
       // it into every Worker creates a collision per scale-out attempt.
-      execArgv: resolveWorkerExecArgv(),
+      execArgv: resolveWorkerExecArgv(
+        process.execArgv,
+        this.workerMaxOldSpaceMb,
+      ),
       stdio: ["ignore", "ignore", "pipe", "ipc"],
     });
     const handle = {
@@ -253,6 +331,9 @@ export class WorkerPool {
       queue: [],
       detachedTaskKeys: new Set(),
       lastIdleAt: Date.now(),
+      startedAt: Date.now(),
+      servedSessionCount: 0,
+      memory: null,
       startupPromise: null,
       retireTimer: null,
       terminalHandled: false,
@@ -627,6 +708,7 @@ export class WorkerPool {
         this.rememberSessionWorker(job.sessionOwnerKey, worker);
         if (!worker.ownerSessionKeys.has(job.sessionOwnerKey)) {
           worker.ownerSessionKeys.add(job.sessionOwnerKey);
+          worker.servedSessionCount += 1;
           this.sessionOwners.set(job.sessionOwnerKey, worker);
         }
         worker.queue.push(job);
@@ -798,6 +880,9 @@ export class WorkerPool {
     }
     if (message?.runtimePrewarm) {
       worker.runtimePrewarm = message.runtimePrewarm;
+    }
+    if (message?.memory && typeof message.memory.rss === "number") {
+      worker.memory = { ...message.memory, at: Date.now() };
     }
     if (message?.type === "ready") {
       worker.resolveStartup?.();
@@ -1228,16 +1313,7 @@ export class WorkerPool {
     }
     const now = Date.now();
     const idleWorkers = [...this.workers.values()]
-      .filter(
-        (worker) =>
-          worker.ready &&
-          !worker.retiring &&
-          worker.ownerSessionKeys.size === 0 &&
-          worker.detachedTaskKeys.size === 0 &&
-          worker.active.size === 0 &&
-          worker.queue.length === 0 &&
-          now - worker.lastIdleAt >= this.idleTimeoutMs,
-      )
+      .filter((worker) => this.isFullyIdle(worker, now))
       .sort((left, right) => right.slot - left.slot);
 
     const retiringCount = [...this.workers.values()].filter(
@@ -1263,6 +1339,102 @@ export class WorkerPool {
       }
       this.retire(worker);
       removable -= 1;
+    }
+  }
+
+  isFullyIdle(worker, now) {
+    return (
+      worker.ready &&
+      !worker.retiring &&
+      worker.ownerSessionKeys.size === 0 &&
+      worker.detachedTaskKeys.size === 0 &&
+      worker.active.size === 0 &&
+      worker.queue.length === 0 &&
+      now - worker.lastIdleAt >= this.idleTimeoutMs
+    );
+  }
+
+  recycleReason(worker, now) {
+    if (now - worker.startedAt < this.recycleMinAgeMs) {
+      return undefined;
+    }
+    if (
+      this.recycleRssBytes > 0 &&
+      (worker.memory?.rss ?? 0) >= this.recycleRssBytes
+    ) {
+      return "rss";
+    }
+    if (
+      this.recycleMaxLifetimeMs > 0 &&
+      now - worker.startedAt >= this.recycleMaxLifetimeMs
+    ) {
+      return "lifetime";
+    }
+    if (
+      this.recycleMaxSessions > 0 &&
+      worker.servedSessionCount >= this.recycleMaxSessions
+    ) {
+      return "sessions";
+    }
+    return undefined;
+  }
+
+  // reapIdleWorkers only ever shrinks the pool back toward minWorkers, so the
+  // resident Workers below that floor are never replaced and keep whatever
+  // they accumulated. This retires one of those, but only when it is fully
+  // idle and only behind a warm replacement, so no caller ever waits on a
+  // cold start and no live run is interrupted.
+  async recycleOverGrownWorker() {
+    if (this.closing || !this.started || this.recyclingSlot !== null) {
+      return;
+    }
+    const now = Date.now();
+    if (now - this.lastRecycleAt < this.recycleCooldownMs) {
+      return;
+    }
+    const worker = [...this.workers.values()]
+      .filter(
+        (candidate) =>
+          this.isFullyIdle(candidate, now) &&
+          this.recycleReason(candidate, now) !== undefined,
+      )
+      .sort(
+        (left, right) => (right.memory?.rss ?? 0) - (left.memory?.rss ?? 0),
+      )[0];
+    if (!worker) {
+      return;
+    }
+    const reason = this.recycleReason(worker, now);
+    this.recyclingSlot = worker.slot;
+    try {
+      if (this.workers.size - 1 < this.minWorkers) {
+        const slot = this.findAvailableSlot();
+        if (slot === undefined) {
+          // The pool is at capacity. reapIdleWorkers frees a slot first.
+          return;
+        }
+        await this.spawn(slot);
+      }
+      if (this.closing || this.workers.get(worker.slot) !== worker) {
+        return;
+      }
+      // The candidate may have taken a session while the replacement was
+      // starting. Recycling is never worth interrupting live work for.
+      if (!this.isFullyIdle(worker, Date.now())) {
+        return;
+      }
+      this.recycledWorkerCount += 1;
+      this.lastRecycleAt = Date.now();
+      process.stderr.write(
+        `[vlab-worker-pool] recycling worker slot=${worker.slot} ` +
+          `pid=${String(worker.pid)} reason=${reason} ` +
+          `rss=${String(worker.memory?.rss ?? 0)} ` +
+          `sessions=${String(worker.servedSessionCount)} ` +
+          `ageMs=${String(Date.now() - worker.startedAt)}\n`,
+      );
+      this.retire(worker);
+    } finally {
+      this.recyclingSlot = null;
     }
   }
 
@@ -1302,6 +1474,14 @@ export class WorkerPool {
       requestCancelGraceMs: this.requestCancelGraceMs,
       spawnFailureCount: this.spawnFailureCount,
       spawnRetryPending: this.spawnRetryTimer !== null,
+      workerMaxOldSpaceMb: this.workerMaxOldSpaceMb,
+      recycleRssBytes: this.recycleRssBytes,
+      recycleMaxLifetimeMs: this.recycleMaxLifetimeMs,
+      recycleMaxSessions: this.recycleMaxSessions,
+      recycleCooldownMs: this.recycleCooldownMs,
+      recycleMinAgeMs: this.recycleMinAgeMs,
+      recycledWorkerCount: this.recycledWorkerCount,
+      recyclingSlot: this.recyclingSlot,
       pending: this.pending.length,
       workers: [...this.workers.values()]
         .sort((left, right) => left.slot - right.slot)
@@ -1333,6 +1513,10 @@ export class WorkerPool {
             worker.active.size === 0 && worker.ownerSessionKeys.size === 0
               ? Math.max(0, Date.now() - worker.lastIdleAt)
               : 0,
+          ageMs: Math.max(0, Date.now() - worker.startedAt),
+          servedSessionCount: worker.servedSessionCount,
+          memory: worker.memory,
+          recycleReason: this.recycleReason(worker, Date.now()),
           sessionHotset: worker.sessionHotset,
           gatewayOwnedToolProxy: worker.gatewayOwnedToolProxy,
           skillUsageTelemetry: worker.skillUsageTelemetry,

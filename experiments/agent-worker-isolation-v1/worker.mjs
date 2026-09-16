@@ -43,6 +43,23 @@ const configuredHeartbeatMs = Number(
 const heartbeatMs = Number.isFinite(configuredHeartbeatMs)
   ? Math.max(25, configuredHeartbeatMs)
   : 15_000;
+const configuredMemoryReportMs = Number(
+  process.env.VLAB_WORKER_MEMORY_REPORT_MS ?? 30_000,
+);
+const memoryReportMs = Number.isFinite(configuredMemoryReportMs)
+  ? Math.max(1_000, configuredMemoryReportMs)
+  : 30_000;
+
+function memoryReport() {
+  const usage = process.memoryUsage();
+  return {
+    rss: usage.rss,
+    heapUsed: usage.heapUsed,
+    heapTotal: usage.heapTotal,
+    external: usage.external,
+    arrayBuffers: usage.arrayBuffers,
+  };
+}
 
 function gatewayToolError(message) {
   const error = new Error(
@@ -126,6 +143,7 @@ function sendProgress(requestId, request, reason = "worker:active") {
     sessionId: request.sessionId,
     sessionKey: request.sessionKey,
     reason,
+    memory: memoryReport(),
     sessionHotset: getSessionHotsetStatus(),
     gatewayOwnedToolProxy: gatewayOwnedToolProxy.status(),
     skillUsageTelemetry: { ...skillUsageTelemetryStats },
@@ -138,6 +156,13 @@ const heartbeatTimer = setInterval(() => {
   }
 }, heartbeatMs);
 heartbeatTimer.unref?.();
+
+// The progress heartbeat above only fires while a request is active, but the
+// Gateway decides whether to recycle a Worker precisely when it is idle.
+const memoryReportTimer = setInterval(() => {
+  process.send?.({ type: "memory-report", memory: memoryReport() });
+}, memoryReportMs);
+memoryReportTimer.unref?.();
 
 function serializeError(error) {
   return {
@@ -1062,6 +1087,7 @@ process.send?.({
   type: "ready",
   gatewayOwnedToolProxy: gatewayOwnedToolProxy.status(),
   pid: process.pid,
+  memory: memoryReport(),
   sessionHotset: getSessionHotsetStatus(),
   skillUsageTelemetry: { ...skillUsageTelemetryStats },
   runtimePrewarm,
