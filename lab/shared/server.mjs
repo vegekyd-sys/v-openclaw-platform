@@ -97,8 +97,20 @@ async function cutover(req,rollback=false) {
     catch(e) {installFiles(RUNTIME,m.files,dir,from);throw e;}
     finally {run('systemctl',['start',UNIT]);stopped=false;}
     x.c.stop();
-    const until=Date.now()+180000;let ready=false;
-    while(Date.now()<until){try{const h=await rpc('health',{});assert.equal(h.ok,true);ready=true;break;}catch{await delay(2000);}}
+    // A fixed window turns a slow boot into a stuck pending journal that only
+    // a human can clear, which is strictly worse than waiting: the Gateway now
+    // takes well over three minutes to answer health on a cold start. Wait
+    // while systemd still has a live main process, since that is real progress,
+    // and give up the moment a process that was up disappears, since no amount
+    // of waiting recovers a Gateway that keeps dying. The ceiling only bounds a
+    // process that stays up without ever becoming ready.
+    const ceiling=Date.now()+900000;let ready=false,sawMainPid=false;
+    while(Date.now()<ceiling){
+      const mainPid=pid();
+      if(mainPid===0&&sawMainPid)break;
+      if(mainPid!==0)sawMainPid=true;
+      try{const h=await rpc('health',{});assert.equal(h.ok,true);ready=true;break;}catch{await delay(2000);}
+    }
     assert(ready,'Installed but Gateway not ready; pending journal retained for recovery');
     assertVersion(RUNTIME,m.files,to);assert.equal(live().configSha,m.configSha);
     const runtimeSha=fingerprint(RUNTIME).sha256;
