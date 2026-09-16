@@ -83,3 +83,55 @@ test("Talk consult Agent model patch fails closed on runtime drift", () => {
     /anchor drifted/u,
   );
 });
+
+test("a playback-overflow cancellation keeps the turn instead of aborting the Agent", () => {
+  const patched = readFileSync(
+    new URL("./release-files/talk-consult-model/talk-DkFuKRod.js", import.meta.url),
+    "utf8",
+  );
+  // The classification must consider the reason before the turn is torn down,
+  // and it must sit above the branch that marks tool calls cancelled.
+  const fnStart = patched.indexOf("async function cancelTalkRealtimeRelayTurn");
+  assert.ok(fnStart > 0, "the relay cancellation entry point is missing");
+  const classify = patched.indexOf("const playbackOverflowCancellation", fnStart);
+  const teardown = patched.indexOf("session.toolCalls.markCancelled", fnStart);
+  assert.ok(classify > 0, "playback-overflow classification is missing");
+  assert.ok(classify < teardown, "playback-overflow is classified after the turn teardown");
+  assert.equal(
+    patched.split("const playbackOverflowCancellation").length - 1,
+    1,
+    "playback-overflow classification is duplicated",
+  );
+  assert.match(
+    patched.slice(classify, classify + 320),
+    /playbackOnlyCancellation = playbackOverflowCancellation \|\|/u,
+    "playback-overflow does not reach the playback-only branch",
+  );
+  // The playback-only branch itself calls cancelTurn, which clears
+  // activeTurnId. Audio still streaming would then resolve against no active
+  // turn - the same ownership failure by another route - so an overflow must
+  // skip that call and only broadcast the clear.
+  const branchStart = patched.indexOf("if (playbackOnlyCancellation)", fnStart);
+  assert.ok(branchStart > 0, "the playback-only branch is missing");
+  const branch = patched.slice(branchStart, branchStart + 1200);
+  assert.match(
+    branch,
+    /const cancelled = playbackOverflowCancellation \? void 0 : session\.harness\.talk\.cancelTurn/u,
+    "an overflow still cancels the Gateway turn",
+  );
+  assert.match(branch, /talkEvent: cancelled\?\.ok/u, "the clear broadcast assumes a cancelTurn result");
+  // The unpatched runtime must not already contain it, or the guard is inert.
+  const fixture = readFileSync(
+    new URL("./fixtures/realtime-talk-consult-model/talk-DkFuKRod.js", import.meta.url),
+    "utf8",
+  );
+  assert.equal(fixture.includes("playbackOverflowCancellation"), false);
+});
+
+test("the playback-overflow patch fails closed when its anchor drifts", () => {
+  assert.throws(
+    () => patchRealtimeTalkConsultModel("unrelated source"),
+    /anchor drifted/u,
+  );
+});
+

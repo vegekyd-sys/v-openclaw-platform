@@ -234,6 +234,8 @@ export class SeeduplexRealtimeVoiceBridge {
     this.agentConsultTail = Promise.resolve();
     this.skipNextResponseDone = false;
     this.cancelledOutputPending = false;
+    this.outputClosed = false;
+    this.bargeInPending = false;
     this.responseActive = false;
     this.responseOwnerAnnounced = false;
     this.responseOwnerId = undefined;
@@ -336,6 +338,7 @@ export class SeeduplexRealtimeVoiceBridge {
     if (!normalized || !this.ready) return;
     this.responseOwnerAnnounced = false;
     this.responseOwnerId = undefined;
+    this.outputClosed = false;
     this.#send({
       type: "conversation.item.create",
       items: [{ role: "user", content: [{ type: "input_text", text: normalized }] }],
@@ -349,15 +352,28 @@ export class SeeduplexRealtimeVoiceBridge {
   }
 
   handleBargeIn() {
-    if (!this.ready || this.cancelledOutputPending) return;
+    if (!this.ready) return;
+    // Flushing local playback is the whole barge-in, matching the GPT Live One
+    // bridge. A barge-in signal is only ever a guess by input VAD, and during a
+    // 30-second Agent consult the provider raises that guess on silence. Making
+    // it cheap means a wrong guess costs one flushed buffer instead of the turn:
+    // the upstream generation keeps streaming and Gateway output ownership is
+    // untouched. The upstream response is cancelled only once the user is
+    // confirmed to have actually said something, in #cancelUpstreamResponse.
     this.request.onClearAudio?.("barge-in");
-    if (this.responseActive) {
-      this.cancelledOutputPending = true;
-      this.responseActive = false;
-      this.#send({ type: "response.cancel", event_id: `event_${randomUUID()}` });
-    }
-    // The Gateway owns cancellation drain and keeps suppressing this output
-    // generation until the provider acknowledges it or the next user turn starts.
+    this.bargeInPending = true;
+  }
+
+  /**
+   * Tear down the upstream generation. Reserved for a confirmed user utterance,
+   * never for a bare barge-in signal.
+   */
+  #cancelUpstreamResponse() {
+    this.bargeInPending = false;
+    if (!this.ready || this.cancelledOutputPending || !this.responseActive) return;
+    this.cancelledOutputPending = true;
+    this.responseActive = false;
+    this.#send({ type: "response.cancel", event_id: `event_${randomUUID()}` });
   }
 
   submitToolResult(callId, result, options = {}) {
@@ -485,10 +501,26 @@ export class SeeduplexRealtimeVoiceBridge {
       type === "conversation.item.input_audio_transcription.completed"
     ) {
       this.cancelledOutputPending = false;
+      // Any user transcription means a new turn is underway, so output must
+      // reopen even when the provider never announces a Gateway-visible
+      // response.created for it. Without this the Gateway loses its turn-bound
+      // fallback claim and the next reply is dropped silently. Unlike the
+      // owner-announcement reset below, reopening output has no ordering
+      // hazard: outputClosed is only ever set once a turn has completed.
+      this.outputClosed = false;
     }
     if (type === "conversation.item.input_audio_transcription.started") {
       this.responseOwnerAnnounced = false;
       this.responseOwnerId = undefined;
+    }
+    if (type === "conversation.item.input_audio_transcription.completed") {
+      // A completed transcription carrying real text is the only evidence that
+      // the user actually spoke. Only then does a pending barge-in earn the
+      // right to tear the upstream generation down. This runs after the reset
+      // above so the fresh suppression is not immediately cleared.
+      const spoken = optionalString(event.transcript) ?? optionalString(event.text);
+      if (spoken && this.bargeInPending) this.#cancelUpstreamResponse();
+      this.bargeInPending = false;
     }
     const continuingBatch = this.toolBatches.find((batch) => batch.continuing);
     const internalContinuationResponse =
@@ -499,7 +531,21 @@ export class SeeduplexRealtimeVoiceBridge {
       if (!internalContinuationResponse) {
         this.responseOwnerAnnounced = true;
         this.responseOwnerId = optionalString(event.response_id);
+        this.outputClosed = false;
       }
+    }
+    if (
+      this.outputClosed &&
+      (type === "response.canceled" ||
+        type === "response.done" ||
+        type.startsWith("response.output_"))
+    ) {
+      // The continued consult already completed this Gateway output generation.
+      // Seeduplex keeps trailing frames on its own internal response after the
+      // final speech_text_buffer commit; forwarding them reaches a Gateway that
+      // has no live response owner. The next Gateway-visible response.created
+      // reopens output.
+      return;
     }
     if (
       this.cancelledOutputPending &&
@@ -590,6 +636,7 @@ export class SeeduplexRealtimeVoiceBridge {
           status: "completed",
           responseId: this.responseOwnerId ?? event.response_id,
         });
+        this.outputClosed = true;
       } else {
         this.#onResponseDone({ status: "completed", responseId: event.response_id });
       }

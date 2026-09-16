@@ -1,0 +1,10 @@
+{
+  "baseRelease": "talk-voice-event-loop-v1",
+  "files": [
+    {
+      "source": "lab/release-files/seeduplex-voice-provider/seeduplex-realtime-provider.mjs",
+      "target": "production-worker/seeduplex-realtime-provider.mjs",
+      "before": "22a81fce666595bfea2783d5365a3a3d6b79a161def755845fc69a063badab8f"
+    }
+  ]
+}

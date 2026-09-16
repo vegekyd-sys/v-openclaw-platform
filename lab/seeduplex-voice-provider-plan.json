@@ -1,5 +1,5 @@
 {
-  "baseRelease": "agent-db-lease-lifetime-v1",
+  "baseRelease": "talk-voice-event-loop-v1",
   "files": [
     {
       "source": "lab/release-files/seeduplex-voice-provider/production-worker-index.mjs",

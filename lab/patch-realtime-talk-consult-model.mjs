@@ -23,9 +23,16 @@ export const RELAY_MODEL_AFTER =
 export const PLAYBACK_ONLY_CANCEL_BEFORE =
   '\tconst rootCallIds = /* @__PURE__ */ new Set([...session.activeAgentToolCalls.keys(), ...forcedConsults.map(({ handle }) => handle.id)]);\n' +
   '\tconst terminalEpoch = ++session.toolResultEpoch;';
+// A playback-overflow cancellation is the browser saying its output queue is
+// full, not the user interrupting. Classifying it as a real turn cancellation
+// aborts the running Agent and moves output ownership to "cancelling", after
+// which every further audio frame reports "no live response owner" and playback
+// stops a second in. Treat it as playback-only: drop what is queued, keep the
+// turn. The GPT Live One bridge makes the same distinction.
 export const PLAYBACK_ONLY_CANCEL_AFTER =
   '\tconst rootCallIds = /* @__PURE__ */ new Set([...session.activeAgentToolCalls.keys(), ...forcedConsults.map(({ handle }) => handle.id)]);\n' +
-  '\tconst playbackOnlyCancellation = session.outputOwnership.phase === "unowned" && rootCallIds.size === 0;\n' +
+  '\tconst playbackOverflowCancellation = (params.reason ?? "client-cancelled") === "playback-overflow";\n' +
+  '\tconst playbackOnlyCancellation = playbackOverflowCancellation || (session.outputOwnership.phase === "unowned" && rootCallIds.size === 0);\n' +
   '\tconst terminalEpoch = ++session.toolResultEpoch;';
 
 export const PLAYBACK_ONLY_CLEAR_BEFORE =
@@ -34,14 +41,19 @@ export const PLAYBACK_ONLY_CLEAR_BEFORE =
 export const PLAYBACK_ONLY_CLEAR_AFTER =
   '\tconst reason = params.reason ?? "client-cancelled";\n' +
   '\tif (playbackOnlyCancellation) {\n' +
-  '\t\tconst cancelled = session.harness.talk.cancelTurn({\n' +
+  '\t\t// A full playback queue must not end the turn. cancelTurn clears\n' +
+  '\t\t// activeTurnId, and the audio still streaming then resolves against no\n' +
+  '\t\t// active turn, which is the same "no live response owner" failure by a\n' +
+  '\t\t// different route. Overflow only needs the client to drop what it has\n' +
+  '\t\t// queued, so broadcast the clear and leave the turn running.\n' +
+  '\t\tconst cancelled = playbackOverflowCancellation ? void 0 : session.harness.talk.cancelTurn({\n' +
   '\t\t\tturnId,\n' +
   '\t\t\tpayload: { reason }\n' +
   '\t\t});\n' +
   '\t\tbroadcastToOwner$1(session.context, session.connId, {\n' +
   '\t\t\trelaySessionId: session.id,\n' +
   '\t\t\ttype: "clear",\n' +
-  '\t\t\ttalkEvent: cancelled.ok ? cancelled.event : void 0\n' +
+  '\t\t\ttalkEvent: cancelled?.ok ? cancelled.event : void 0\n' +
   '\t\t});\n' +
   '\t\treturn {\n' +
   '\t\t\tstatus: "applied",\n' +
