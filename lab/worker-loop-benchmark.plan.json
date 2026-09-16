@@ -1,0 +1,5 @@
+{
+  "command": ["/opt/vlab/node-v22.23.1-linux-x64/bin/node", "lab/benchmark-worker-loop-state.mjs"],
+  "support": ["lab/benchmark-worker-loop-state.mjs", "lab/patch-worker-loop-state.mjs"],
+  "timeoutSeconds": 1800
+}
