@@ -1,5 +1,5 @@
 {
-  "baseRelease": "talk-voice-wip-cleanup-v1",
+  "baseRelease": "agent-db-lease-lifetime-v1",
   "files": [
     {
       "source": "lab/release-files/talk-agent-continuation/control-ui-boot-chat-DWTSrxxk.js",
@@ -24,7 +24,7 @@
     {
       "source": "lab/release-files/seeduplex-voice-provider/production-worker-index.mjs",
       "target": "production-worker/index.mjs",
-      "before": "d5416a86ff77bf8a8c00395a0e7feb05a31d1668e9234c8ce001762f8c59f13e"
+      "before": "6655f0caecb53b98beee73b17011e6a966d9ee2d2bd3e814df253ef843658191"
     },
     {
       "source": "lab/release-files/talk-session-model-inheritance/realtime-session-harness-CEO5kVAJ.js",

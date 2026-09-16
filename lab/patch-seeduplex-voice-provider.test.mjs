@@ -55,9 +55,13 @@ test("release artifacts derive from the exact current VLab runtime", () => {
     "utf8",
   );
   const sha256 = (value) => createHash("sha256").update(value).digest("hex");
+  // Re-baselined 2026-09-16 onto release agent-db-lease-lifetime-v1. The
+  // previous pin came from the 0.2.12-rc.1 lineage, which the shared VLab no
+  // longer runs; rebuilding from that baseline would have reverted the
+  // worker-memory-recycle knobs that are live today.
   assert.equal(
     sha256(fixture),
-    "d5416a86ff77bf8a8c00395a0e7feb05a31d1668e9234c8ce001762f8c59f13e",
+    "6655f0caecb53b98beee73b17011e6a966d9ee2d2bd3e814df253ef843658191",
   );
   assert.equal(
     releaseIndex,
