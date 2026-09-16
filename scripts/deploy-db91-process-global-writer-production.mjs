@@ -5,12 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {setTimeout as sleep} from 'node:timers/promises';
-import {pathToFileURL} from 'node:url';
-
-const releasePlan = await import(process.env.V_PRODUCTION_RELEASE_PLAN
-  ? pathToFileURL(path.resolve(process.env.V_PRODUCTION_RELEASE_PLAN)).href
-  : new URL('./db91-process-global-writer-production-plan.mjs', import.meta.url).href);
-const {
+import {
   controlledStopPolicy,
   feishuPeerLink,
   newRelease,
@@ -22,10 +17,7 @@ const {
   productionReleaseUnit,
   preservedMemoryFtsSha256,
   releaseId,
-  oldReleaseId = 'v2026.9.1-db91.4',
-  permanentDropinName = 'zzzzzzz-db91-writer-transaction-scope-v5.conf',
-  restartReason = 'db91-writer-transaction-scope-production-cutover',
-} = releasePlan;
+} from './db91-process-global-writer-production-plan.mjs';
 
 assert.equal(os.hostname(), 'VM-8-2-ubuntu');
 const [mode, rawPid] = process.argv.slice(2);
@@ -35,7 +27,7 @@ const root = '/home/openclaw/.openclaw';
 const unit = 'openclaw-gateway.service';
 const backup = `${root}/backups/${releaseId}`;
 const source = `${newRelease}/source`;
-const permanentDropin = `/etc/systemd/system/${unit}.d/${permanentDropinName}`;
+const permanentDropin = `/etc/systemd/system/${unit}.d/zzzzzzz-db91-writer-transaction-scope-v5.conf`;
 const stopDropin = `/etc/systemd/system/${unit}.d/zzzzzzzz-db91-writer-transaction-scope-stop.conf`;
 const memoryFtsTarget = 'core/dist/memory-schema-BSs9MQgq.js';
 const configFiles = [
@@ -124,7 +116,7 @@ if (mode === 'write-intent') {
   const {a: writeIntent} = await import(`${runtime}/core/dist/restart-intent-BYVo1227.js`);
   assert(writeIntent({
     targetPid: pid,
-    reason: restartReason,
+    reason: 'db91-writer-transaction-scope-production-cutover',
     intent: {waitMs: 5_000},
     env: process.env,
   }));
@@ -137,7 +129,7 @@ assert.equal(process.getuid(), 0);
 if (mode === 'stage') {
   const pid = gatewayPid();
   const environment = readLiveEnvironment(pid);
-  assert.equal(environment.V_RELEASE_VERSION, oldReleaseId);
+  assert.equal(environment.V_RELEASE_VERSION, 'v2026.9.1-db91.4');
   assert.equal(fs.realpathSync(source), source);
   assert.equal(run('git', ['-c', `safe.directory=${source}`, '-C', source, 'status', '--porcelain']), '');
   const sourceCommit = run('git', ['-c', `safe.directory=${source}`, '-C', source, 'rev-parse', 'HEAD']);
@@ -222,7 +214,7 @@ if (mode === 'stage') {
   const staged = readJson(`${backup}/staged.json`);
   const pid = gatewayPid();
   const environment = readLiveEnvironment(pid);
-  assert.equal(environment.V_RELEASE_VERSION, oldReleaseId);
+  assert.equal(environment.V_RELEASE_VERSION, 'v2026.9.1-db91.4');
   assert(fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').includes(`${oldRelease}/core/dist/index.js`));
   if (fs.existsSync(stopDropin)) {
     assert.equal(fs.readFileSync(stopDropin, 'utf8'), controlledStopPolicy);

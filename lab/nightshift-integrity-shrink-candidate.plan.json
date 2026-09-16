@@ -1,6 +1,0 @@
-{
-  "tests": ["lab/nightshift-integrity-shrink.test.mjs"],
-  "files": [{"source": "experiments/db91-integrity-gate/gate.mjs", "target": "openclaw/dist/db91-integrity-gate.mjs", "before": "3d6807a3350f6ec2ad594045b5e88760cb4738806259afebe01ad9753cbbc57e"}],
-  "user": "lab-db91-parity",
-  "timeoutSeconds": 330
-}

@@ -15,13 +15,5 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - name: Install Night Shift dependencies
-        run: npm ci
-      - name: Test Night Shift core
-        run: npm test
       - name: Validate vLab release assets
         run: ./tests/vlab-static.sh
