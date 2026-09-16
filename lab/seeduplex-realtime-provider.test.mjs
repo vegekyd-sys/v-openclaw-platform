@@ -200,10 +200,20 @@ test("barge-in drains locally when Seeduplex omits its cancellation acknowledgem
   await connecting;
   socket.message({ type: "response.created", response_id: "response-1" });
   bridge.handleBargeIn();
-  assert.equal(socket.sent.at(-1).type, "response.cancel");
-  assert.match(socket.sent.at(-1).event_id, /^event_/u);
+  // A barge-in signal alone only flushes local playback, matching GPT Live One.
+  // Input VAD raises it on silence during a long Agent consult, so tearing the
+  // upstream generation down here is what loses the turn.
+  assert.notEqual(socket.sent.at(-1).type, "response.cancel");
   assert.deepEqual(clears, ["barge-in"]);
   assert.deepEqual(responses, []);
+
+  // Confirming that the user really spoke is what earns the cancellation.
+  socket.message({
+    type: "conversation.item.input_audio_transcription.completed",
+    transcript: "等一下",
+  });
+  assert.equal(socket.sent.at(-1).type, "response.cancel");
+  assert.match(socket.sent.at(-1).event_id, /^event_/u);
 
   socket.message({ type: "response.output_audio.delta", delta: floatAudio([0.5]) });
   socket.message({ type: "response.output_audio.done", response_id: "response-1" });

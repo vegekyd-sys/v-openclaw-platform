@@ -341,7 +341,17 @@ try {
   };
   const inputPath = findFixture(fixtureRoot);
   assert(inputPath, "candidate voice input is missing");
-  writeWave(fs.readFileSync(inputPath), 24_000, 420);
+  // Two spoken turns. The 2026-09-16 regression only appears once a consult has
+  // already completed: Seeduplex keeps trailing frames on its own internal
+  // response, and a single-turn run asserted before they arrived. The gap
+  // between the utterances is where those frames land.
+  const utterance = fs.readFileSync(inputPath);
+  // The fake capture device plays on a wall clock, so the gap must outlast the
+  // first Agent reply. A short gap lands the second utterance while the first
+  // reply is still speaking, which the provider treats as a barge-in and
+  // cancels - a different failure path that reports the same owner error.
+  const gap = Buffer.alloc(24_000 * 2 * 150);
+  writeWave(Buffer.concat([utterance, gap, utterance]), 24_000, 420);
 
   const devtoolsPath = path.join(tempDir, "profile", "DevToolsActivePort");
   proxyServer = net.createServer((client) => {
@@ -618,6 +628,7 @@ try {
   let metrics;
   let assistantHasChinese = false;
   let terminalChineseResult = false;
+  let secondTurnChineseResult = false;
   let hasEnglishLeadIn = false;
   const observePage = async () => {
     await sleep(1_000);
@@ -627,6 +638,11 @@ try {
     assistantHasChinese = /V\s*[×x]\s*Makaron[\s\S]*[\u3400-\u9fff]/u.test(normalized);
     terminalChineseResult =
       metrics.assistantFinalTranscripts.length >= 2 &&
+      /[\u3400-\u9fff]/u.test(metrics.assistantFinalTranscripts.at(-1) ?? "");
+    // A consult speaks a working announcement and then the Agent result, so a
+    // second completed consult turn needs two more final transcripts.
+    secondTurnChineseResult =
+      metrics.assistantFinalTranscripts.length >= 4 &&
       /[\u3400-\u9fff]/u.test(metrics.assistantFinalTranscripts.at(-1) ?? "");
     hasEnglishLeadIn =
       metrics.assistantFinalTranscripts.some((text) =>
@@ -698,6 +714,19 @@ try {
     if (terminalChineseResult) break;
   }
 
+  // The second spoken turn proves the next consult can still claim the Gateway
+  // output owner after the first one released it.
+  const secondTurnDeadline = Date.now() + 300_000;
+  while (Date.now() < secondTurnDeadline) {
+    await observePage();
+    if (secondTurnChineseResult) break;
+  }
+
+  // Stay connected after the last reply. Late provider frames from a finished
+  // generation are exactly what produced "no live response owner" in the UI.
+  const settleDeadline = Date.now() + 25_000;
+  while (Date.now() < settleDeadline) await observePage();
+
   metrics = inspectRpcFrames(cdp.events);
   const finalText = state?.text ?? "";
   const acceptanceBrowserEvents = cdp.events.filter(
@@ -766,6 +795,7 @@ try {
     assistantFinalText: metrics.assistantFinalTranscripts.at(-1),
     assistantHasChinese,
     terminalChineseResult,
+    secondTurnChineseResult,
     hasEnglishLeadIn,
     talkStayedActive: state?.buttons?.some((entry) => /停止.*语音|stop.*voice/iu.test(entry.label)) ?? false,
     containsAudioBackpressureError: /Realtime Talk audio input fell behind/iu.test(finalText),
@@ -777,6 +807,7 @@ try {
     ignoredWorkspaceIconMisses,
     consoleWarnings,
     browserToolCallCount: metrics.methodCounts["talk.client.toolCall"] ?? 0,
+    cancelOutputCount: metrics.methodCounts["talk.session.cancelOutput"] ?? 0,
     agentRunCount,
     actualAgentProvider: actualAgentRoute?.provider,
     actualAgentModel: actualAgentRoute?.model,
@@ -798,6 +829,10 @@ try {
   assert(summary.outputAudioBytes > 0, "browser provider audio output was empty");
   assert.equal(summary.assistantHasChinese, true, "browser did not render a Chinese assistant reply");
   assert.equal(summary.terminalChineseResult, true, "browser did not render the final Chinese Agent result");
+  assert.equal(summary.secondTurnChineseResult, true, "browser did not complete a second Chinese Agent turn");
+  // A barge-in cancels the turn and reports the same owner error, so a
+  // sequential two-turn run must not contain one or the result is ambiguous.
+  assert.equal(summary.cancelOutputCount, 0, "the run barged in instead of taking sequential turns");
   assert.equal(summary.hasEnglishLeadIn, false, "browser spoke English narration for a Chinese request");
   assert.equal(summary.talkStayedActive, true, "browser Talk stopped during sustained input");
   assert.equal(summary.containsAudioBackpressureError, false);
@@ -806,7 +841,9 @@ try {
   assert.equal(summary.containsOutputOwnershipError, false);
   assert.equal(summary.consoleFailures, 0);
   assert.equal(summary.browserToolCallCount, 0, "Seeduplex consult escaped to the browser");
-  assert.equal(summary.agentRunCount, 1, "Seeduplex consult did not run exactly once");
+  // One Agent run per spoken turn. More than that is the duplicate-run defect
+  // where the consult also escapes to the browser.
+  assert.equal(summary.agentRunCount, 2, "Seeduplex consult did not run exactly once per turn");
   assert.equal(summary.actualAgentProvider, "deepseek", "Talk used the wrong Agent provider");
   assert.equal(summary.actualAgentModel, "deepseek-v4-pro", "Talk used the wrong Agent model");
   process.stdout.write(`${JSON.stringify({ candidateBrowserTalk: summary })}\n`);
