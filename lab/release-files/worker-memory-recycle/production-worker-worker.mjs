@@ -31,9 +31,7 @@ function ocFirsttextWorkerMark(stage, runId, fields = {}) {
 }
 
 import { performance } from "node:perf_hooks";
-import { installNativeModuleResolutionCache } from "./native-module-resolution-cache.mjs";
 import { initializeWorkerNativeHooks } from "./native-hook-runtime.mjs";
-import { prewarmWorkerRuntime } from "./runtime-prewarm.mjs";
 import { pathToFileURL } from "node:url";
 import { buildHarnessAttemptResult } from "./harness-result.mjs";
 import { readFastCompactionStats } from "./fast-compaction-provider.mjs";
@@ -501,7 +499,6 @@ function configuredAgentRuntimePath() {
 
 async function loadAgentRuntime() {
   if (!agentRuntimePromise) {
-    installNativeModuleResolutionCache({agentRuntimePath: configuredAgentRuntimePath()});
     agentRuntimePromise = import(
       pathToFileURL(configuredAgentRuntimePath()).href
     );
@@ -1125,35 +1122,6 @@ if (process.env.VLAB_REQUIRE_SKILL_USAGE_TELEMETRY === "1") {
   skillUsageTelemetryStats.unavailable = true;
 }
 
-let runtimePrewarm = { status: "disabled" };
-if (process.env.OPENCLAW_WORKER_EAGER_PREPARE === "1") {
-  const configuredTimeoutMs = Number(
-    process.env.OPENCLAW_WORKER_EAGER_PREPARE_TIMEOUT_MS ?? 30_000,
-  );
-  const timeoutMs = Number.isFinite(configuredTimeoutMs)
-    ? Math.min(180_000, Math.max(1_000, configuredTimeoutMs))
-    : 30_000;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  timer.unref?.();
-  try {
-    runtimePrewarm = await prewarmWorkerRuntime({
-      enabled: true,
-      loadAgentRuntime,
-      loadCompactionRuntime,
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timer);
-  }
-  process.stderr.write(
-    `[worker-runtime-prewarm.2] ${JSON.stringify({
-      pid: process.pid,
-      ...runtimePrewarm,
-    })}\n`,
-  );
-}
-
 process.send?.({
   type: "ready",
   gatewayOwnedToolProxy: gatewayOwnedToolProxy.status(),
@@ -1161,5 +1129,4 @@ process.send?.({
   memory: memoryReport(),
   sessionHotset: getSessionHotsetStatus(),
   skillUsageTelemetry: { ...skillUsageTelemetryStats },
-  runtimePrewarm,
 });

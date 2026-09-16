@@ -1,20 +1,20 @@
 {
-  "baseRelease": "state-db-exec-approvals-fastpath-v1",
+  "baseRelease": "worker-memory-recycle-v1",
   "files": [
     {
       "source": "lab/release-files/worker-memory-recycle/production-worker-worker-pool.mjs",
       "target": "production-worker/worker-pool.mjs",
-      "before": "347ee45cb341f0099c571d498dcb154a0badffe58fcdbc75ed608539a6fdd599"
+      "before": "6ec3b4a26ce178478b3411ab56fa3ec5cb973c555d5a14b32bcf2fea355e9686"
     },
     {
       "source": "lab/release-files/worker-memory-recycle/production-worker-worker.mjs",
       "target": "production-worker/worker.mjs",
-      "before": "8c4d3b1b7545b932eb4a9f8e47bc9adda8d58011a9b2ef012528f5b5d862a8de"
+      "before": "bdafad00103f2178cbf4605af13183a67f98eba8440c10dc74b401e8903df84b"
     },
     {
       "source": "lab/release-files/worker-memory-recycle/production-worker-index.mjs",
       "target": "production-worker/index.mjs",
-      "before": "d5416a86ff77bf8a8c00395a0e7feb05a31d1668e9234c8ce001762f8c59f13e"
+      "before": "b2a4ec2258d8960b77b65a9c2e211e0c1634a74bb93d44ec40077b57e8c8d183"
     }
   ]
 }
