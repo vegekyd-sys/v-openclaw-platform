@@ -76,13 +76,24 @@ ssh v 'sudo journalctl -u openclaw-gateway.service --since "-2min" | grep -c fir
 - Feishu WebSocket 已连
 - 整机：used 9GB→8GB，swap 2GB→1GB
 
-### 上线后立刻观察到的重要数据
+### 上线后观察到的增长与沉降
 
-**worker 增长比预估快得多。** slot 0 服务 2 个 session、154 秒内从 226MB 涨到 **1501MB**，同伴保持 222–226MB。
+**峰值和沉降值差很多，判定用的是沉降值。** slot 0 服务 2 个 session 后：
 
-这意味着 **1536MB 阈值可能偏低**：按这个速度，worker 每两三个 session 就会越线，回收会相当频繁。虽然回收本身对用户无感（先起替补再退休、只在空闲时动手），但频繁换 worker 会持续消耗 CPU 和启动时间。
+| 时刻 | RSS | 状态 |
+|---|---|---|
+| 12:46:23 | 2301 MB | turn 进行中（峰值工作内存） |
+| 12:47:11 | 595 MB | turn 结束，V8 自行归还 |
+| 12:47–12:52 | 595 MB | 稳定，空闲 380s |
 
-上线后需要按真实运行数据校准这个阈值，不要当成定值。查看当前分布：
+一轮对话真正留存约 373 MB（595 减去 222 MB 基线）。2301 MB 是瞬时的，不是泄漏。
+
+这让回收判定天然避开了误判：回收要求 worker 完全空闲满 180 秒，而空闲期间每 30 秒仍在上报内存，
+峰值读数会被沉降值覆盖。**所以越线判定用的一定是沉降后的内存**，一次突发不会触发回收。
+
+按沉降速度推算，worker 大约每几小时会累积越过 1536 MB，与上线前观测到的
+“1.5–2.8 小时沉降在 664–1041 MB” 吻合。**这个阈值是合适的，不需要立刻调整**，
+但仍应按真实运行数据复核。查看当前分布：
 
 ```bash
 ssh v 'sudo -u openclaw env HOME=/home/openclaw openclaw gateway call vlab.workers.status'
@@ -90,3 +101,12 @@ ssh v 'sudo -u openclaw env HOME=/home/openclaw openclaw gateway call vlab.worke
 
 调整方式（manifest 已声明该键，可安全写入配置）：在 `/home/openclaw/.openclaw/openclaw.json` 的
 `plugins.entries.vlab-agent-worker-isolation.config` 里设 `recycleRssMb`，然后重启 Gateway。
+
+### 生产验收边界
+
+已证明：新代码在跑（配置与遥测可见）、真实对话走通全链路拿到可见回复、session 计数正确、
+无误回收、Feishu 链路正常、整机 used 9GB→8GB / swap 2GB→1GB。
+
+**尚未在生产上观测到一次真实回收**——因为沉降值 595 MB 远低于 1536 MB 阈值，
+按自然累积需要数小时才会触发。回收后内存真实归还这一点，是在共享 VLab 上用同一份代码证明的
+（486MB → 回收 → 替补 223MB，释放 263MB）。生产侧需要持续观察确认。
