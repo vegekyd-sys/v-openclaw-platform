@@ -83,13 +83,58 @@ mandatory-adaptive-thinking models, so the level is honoured.
 ## Verification
 
 ```bash
-sudo -u openclaw -H openclaw models status --agent makaron   # Aliases: vcc -> anthropic/claude-opus-5
-sudo -u openclaw -H openclaw models list --provider anthropic
-sudo -u openclaw -H openclaw agent --agent makaron --model anthropic/claude-opus-5 --message "hi"
+sudo -u openclaw -H /home/openclaw/.npm-global/bin/claude auth status --text
+sudo -u openclaw -H openclaw models list --provider anthropic     # anthropic/claude-opus-5 ... alias:vcc
+sudo -u openclaw -H openclaw agent --agent makaron --session-key vcc-smoke \
+  --model anthropic/claude-opus-5 --message "Reply with exactly: VCC_OK"
 ```
 
-A green `models status` is not acceptance on its own: confirm a real V reply
-after `/vcc` in a live session, and confirm `/vcodex` still routes to Codex.
+`openclaw agent` runs through the Gateway by default, so this exercises the real
+path rather than a local embedded run. Use a scratch `--session-key` and delete
+it afterwards with `openclaw sessions delete "agent:makaron:vcc-smoke" --agent
+makaron --yes`.
+
+Confirm the route in the Gateway journal rather than trusting the reply alone:
+
+```
+[agent/cli-backend] cli exec: provider=claude-cli model=claude-opus-5 ...
+[agent/cli-backend] cli turn: provider=claude-cli model=claude-opus-5 durationMs=... 
+```
+
+And confirm the thinking level actually reached the Claude Code process:
+
+```bash
+sudo bash -c 'tr "\0" "\n" < /proc/$(pgrep -u openclaw -f "claude --output-format")/environ' \
+  | grep -E "MAX_THINKING_TOKENS|ADAPTIVE_THINKING|CLAUDE_CODE_OAUTH"
+```
+
+Expected: `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1` and
+`MAX_THINKING_TOKENS=16384`, with **no** `CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR`
+— its absence is the proof that the run uses the CLI's own subscription login
+instead of an OpenClaw-forwarded credential.
+
+Rollout result on 2026-09-17: `VCC_OK` returned in 7.0s through the Gateway on
+`provider=claude-cli model=claude-opus-5`, thinking env as above, Gateway
+`NRestarts=0`. The `/vcodex` route was checked in the same pass and still
+resolves to Codex; it answered with a subscription-quota message, which is a
+pre-existing Codex usage-limit condition and not a regression from this change.
+
+## Login gotchas
+
+`claude auth login` prints an authorization URL and waits for a `code#state`
+string of ~100 characters. Failure modes seen during rollout:
+
+- Submitting an empty line gives the same
+  `Login failed: Request failed with status code 400` as a wrong code; the error
+  comes from `POST https://platform.claude.com/v1/oauth/token`.
+- A truncated paste fails earlier and more usefully with
+  `Invalid code. Please make sure the full code was copied.` Pasting long
+  strings through `tmux` over `ssh -t` truncated it repeatedly; running the
+  login directly over `ssh -t` (no tmux) worked. Use the authorize page's Copy
+  button rather than a manual selection.
+- The process exits immediately on failure, so a tmux window without
+  `remain-on-exit on` disappears before the error can be read. Add
+  `--debug-file /tmp/vcc-debug.log` when a failure needs diagnosing.
 
 ## Rollback
 
