@@ -1,0 +1,42 @@
+{
+  "id": "candidate-00e23b18-e905-466e-9707-16411ef3e75c",
+  "sourceCommit": "081f9854925166d2ac2dc2e91017dac429c8e449",
+  "branch": "codex/worker-loop-scalability-20260915",
+  "inputSha256": "4c1e33a283df5f88970a66561cb35c99e60d714850a788946bdaa7fbd8b13237",
+  "runnerSha256": "9eef05d52a246704275f7890cc9755ffe062bfdf3f359d34c696d435c0fb2d38",
+  "baseRelease": "talk-voice-wip-cleanup-v1",
+  "runtimeSha": "25712c3aefec4dba83b44cde65b643f182eb905a8e5668d0d7f63d6deee2978a",
+  "configSha256": "d7546232f72936f49cb85a6d43ea52b42c6413b43f161f2d7aeea106bb6e619b",
+  "databases": [
+    {
+      "source": "state/openclaw.sqlite",
+      "bytes": 166916096
+    }
+  ],
+  "files": [
+    {
+      "source": "lab/release-files/plugin-state-store-PhQA2Nhh.js",
+      "target": "openclaw/dist/plugin-state-store-PhQA2Nhh.js",
+      "before": "68cd2f15ca331bb633c9f18491ec74a08a7f80d9459aba36d3258ae3e3aa0b32",
+      "after": "bd5d04d83971cd79a213e0cb6762c3c0e02f6ed28d6008900ef674dc87d3c24a"
+    },
+    {
+      "source": "lab/release-files/dreaming-state-B0qd2W7q.js",
+      "target": "openclaw/dist/dreaming-state-B0qd2W7q.js",
+      "before": "19e1fab8b1c8a682f47418c7dbca35bcc09c2f7ca4d40fe8b4a6c7a368a829ff",
+      "after": "dcd837e7444418f6cf23bd2cd419928e9c867681b68fa5d81ef481166165374e"
+    }
+  ],
+  "sharedBeforePid": 2575013,
+  "sharedAfterPid": 2575013,
+  "sharedUnchanged": true,
+  "timings": {
+    "inspectMs": 11,
+    "baselineMs": 2,
+    "snapshotMs": 69897,
+    "overlayMs": 1,
+    "testMs": 4674
+  },
+  "ok": true,
+  "testOutput": "TAP version 13\n# [parity-state-read-ahead] {\"pid\":2576306,\"at\":1789406917206,\"enabled\":true,\"bytes\":166916096,\"ms\":25}\n# (node:2576306) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n# (Use `node --trace-warnings ...` to show where the warning was created)\n# Subtest: native bounded writes preserve values, updates, namespace isolation and timer progress\nok 1 - native bounded writes preserve values, updates, namespace isolation and timer progress\n  ---\n  duration_ms: 390.799034\n  type: 'test'\n  ...\n# Subtest: invalid JSON is rejected before transaction and a failed batch does not poison scheduling\nok 2 - invalid JSON is rejected before transaction and a failed batch does not poison scheduling\n  ---\n  duration_ms: 2.531819\n  type: 'test'\n  ...\n# Subtest: reject-new rolls back the whole chunk including earlier updates\nok 3 - reject-new rolls back the whole chunk including earlier updates\n  ---\n  duration_ms: 3.079438\n  type: 'test'\n  ...\n# Subtest: eviction retains quota and expiration accounting across batches\nok 4 - eviction retains quota and expiration accounting across batches\n  ---\n  duration_ms: 26.368588\n  type: 'test'\n  ...\n# Subtest: memory replacement preserves another workspace and removes obsolete keys\nok 5 - memory replacement preserves another workspace and removes obsolete keys\n  ---\n  duration_ms: 7.517802\n  type: 'test'\n  ...\n# Subtest: memory works with the existing keyed-store interface and yields on fallback\nok 6 - memory works with the existing keyed-store interface and yields on fallback\n  ---\n  duration_ms: 1.878922\n  type: 'test'\n  ...\n# Subtest: bounded range reads preserve plugin and namespace ownership and reject invalid bounds\nok 7 - bounded range reads preserve plugin and namespace ownership and reject invalid bounds\n  ---\n  duration_ms: 2.682322\n  type: 'test'\n  ...\n# Subtest: batch retention keeps the plugin-wide cap across namespaces\nok 8 - batch retention keeps the plugin-wide cap across namespaces\n  ---\n  duration_ms: 346.406895\n  type: 'test'\n  ...\n# Subtest: five real native writers share one private database without lost writes or lock errors\nok 9 - five real native writers share one private database without lost writes or lock errors\n  ---\n  duration_ms: 2902.987162\n  type: 'test'\n  ...\n# Subtest: real VLab snapshot preserves all unrelated plugin-state rows byte-for-byte\nok 10 - real VLab snapshot preserves all unrelated plugin-state rows byte-for-byte\n  ---\n  duration_ms: 258.769745\n  type: 'test'\n  ...\n1..10\n# tests 10\n# suites 0\n# pass 10\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 4583.721294\n"
+}

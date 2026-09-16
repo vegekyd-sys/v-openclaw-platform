@@ -61,7 +61,7 @@ test("manifest publishes the new bundle generation", () => {
   assert.notEqual(manifest.generation, hash);
 });
 
-test("built consult waiter returns persisted final text after a blank live final", async () => {
+test("built consult waiter retries rebuilding history until the exact run is visible", async () => {
   const bundle = readFileSync(
     new URL(
       "./release-files/talk-agent-continuation/control-ui-boot-chat-DWTSrxxk.js",
@@ -78,6 +78,7 @@ test("built consult waiter returns persisted final text after a blank live final
   const waitForAgent = buildWaiter();
   let listener;
   const requests = [];
+  let historyAttempts = 0;
   const client = {
     addEventListener(callback) {
       listener = callback;
@@ -87,11 +88,27 @@ test("built consult waiter returns persisted final text after a blank live final
       requests.push([method, params]);
       if (method === "agent.wait") return { status: "done" };
       if (method === "chat.history") {
+        historyAttempts += 1;
+        if (historyAttempts <= 2) {
+          throw new Error("UNAVAILABLE: session history is rebuilding; retry shortly");
+        }
         return {
           messages: [
+            ...(historyAttempts === 3
+              ? [
+                  {
+                    role: "assistant",
+                    content: [{ type: "text", text: "另一个 run 的旧答案" }],
+                    __openclaw: { runId: "run-old" },
+                  },
+                ]
+              : []),
             {
               role: "assistant",
-              content: [{ type: "text", text: "今天完成了两件事。" }],
+              content:
+                historyAttempts >= 4
+                  ? [{ type: "text", text: "今天完成了两件事。" }]
+                  : [],
               __openclaw: { runId: "run-1" },
             },
           ],
@@ -114,6 +131,6 @@ test("built consult waiter returns persisted final text after a blank live final
   assert.equal(await result, "今天完成了两件事。");
   assert.deepEqual(
     requests.map(([method]) => method),
-    ["agent.wait", "chat.history"],
+    ["agent.wait", "chat.history", "chat.history", "chat.history", "chat.history"],
   );
 });

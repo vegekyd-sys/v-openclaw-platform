@@ -1,0 +1,10 @@
+{
+  "baseRelease": "talk-voice-wip-cleanup-v1",
+  "files": [
+    {
+      "source": "lab/release-files/talk-consult-model/talk-DkFuKRod.js",
+      "target": "openclaw/dist/talk-DkFuKRod.js",
+      "before": "bc7f7e15e211fc7669446b221222de980a355a042c4f8a40e301357186e5aa42"
+    }
+  ]
+}
