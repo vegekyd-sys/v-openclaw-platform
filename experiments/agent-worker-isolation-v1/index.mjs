@@ -265,6 +265,28 @@ const plugin = {
     const workerHeartbeatMs = Number(
       api.pluginConfig?.workerHeartbeatMs ?? 15_000,
     );
+    const workerMemoryReportMs = Number(
+      api.pluginConfig?.workerMemoryReportMs ?? 30_000,
+    );
+    // worker-memory-recycle.1: 0 disables the bound. recycleRssMb is the
+    // primary control; the lifetime bound only catches slow growth that never
+    // crosses the RSS threshold.
+    const recycleRssMb = Number(api.pluginConfig?.recycleRssMb ?? 1_536);
+    const recycleMaxLifetimeMs = Number(
+      api.pluginConfig?.recycleMaxLifetimeMs ?? 12 * 60 * 60 * 1_000,
+    );
+    const recycleMaxSessions = Number(api.pluginConfig?.recycleMaxSessions ?? 0);
+    const recycleCooldownMs = Number(
+      api.pluginConfig?.recycleCooldownMs ?? 60_000,
+    );
+    const recycleMinAgeMs = Number(
+      api.pluginConfig?.recycleMinAgeMs ?? 300_000,
+    );
+    // 0 keeps whatever the Gateway was started with. A Worker that inherits a
+    // Gateway-sized old-space ceiling has no reason to collect early.
+    const workerMaxOldSpaceMb = Number(
+      api.pluginConfig?.workerMaxOldSpaceMb ?? 0,
+    );
     const gatewayOwnedToolTimeoutMs = Number(
       api.pluginConfig?.gatewayOwnedToolTimeoutMs ?? 310_000,
     );
@@ -430,6 +452,7 @@ const plugin = {
         VLAB_REQUIRE_OPENCLAW_AGENT_RUNTIME: "1",
         VLAB_REQUIRE_SKILL_USAGE_TELEMETRY: "1",
         VLAB_WORKER_HEARTBEAT_MS: String(workerHeartbeatMs),
+        VLAB_WORKER_MEMORY_REPORT_MS: String(workerMemoryReportMs),
         VLAB_GATEWAY_OWNED_TOOL_TIMEOUT_MS: String(
           gatewayOwnedToolTimeoutMs,
         ),
@@ -449,6 +472,12 @@ const plugin = {
       requestCancelGraceMs,
       startupTimeoutMs: workerStartupTimeoutMs,
       warmSpareWorkers,
+      recycleRssBytes: Math.max(0, Math.trunc(recycleRssMb)) * 1024 * 1024,
+      recycleMaxLifetimeMs,
+      recycleMaxSessions,
+      recycleCooldownMs,
+      recycleMinAgeMs,
+      workerMaxOldSpaceMb: Math.trunc(workerMaxOldSpaceMb),
       workerEnv,
       async onProgress(progress, nativeLaneProgressBridge) {
         if (nativeLaneProgressBridge) {
@@ -1306,7 +1335,7 @@ const plugin = {
       async start(context) {
         await poolLifecycle.start(context);
         api.logger.info(
-          `vLab Agent Worker Isolation started with ${minWorkers}-${maxWorkers} elastic workers and ${sessionsPerWorker} sessions per worker`,
+          `vLab Agent Worker Isolation started with ${minWorkers}-${maxWorkers} elastic workers, ${sessionsPerWorker} sessions per worker, recycle rss=${recycleRssMb}MB lifetime=${recycleMaxLifetimeMs}ms sessions=${recycleMaxSessions}, worker heap=${workerMaxOldSpaceMb || "inherited"}`,
         );
       },
       async stop(context) {
