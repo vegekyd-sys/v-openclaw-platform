@@ -343,3 +343,55 @@ test("a real interruption still cancels the upstream generation", async () => {
     "a confirmed user utterance did not cancel the upstream generation",
   );
 });
+
+// 2026-09-17 field regression: chit-chat played the first fragment and then went
+// silent for the rest of the session. A spurious barge-in armed the cancellation
+// suppression on the user transcription that STARTS the next turn, so the reply
+// to that very utterance was swallowed. Suppression must cover the cancelled
+// generation only, and end at the next one.
+test("a confirmed interruption does not silence the turn it starts", async () => {
+  const h = await buildHarness();
+
+  // Turn 1 is speaking when the user cuts in.
+  h.startTurn();
+  h.socket.message({ type: "response.created", response_id: "gen-1" });
+  h.socket.message({ type: "response.output_audio.delta", delta: floatAudio([0.3]) });
+  const playedTurn1 = h.delivered.audio;
+  assert.ok(playedTurn1 > 0, "turn 1 never started playing");
+
+  h.bridge.handleBargeIn();
+  h.socket.message({
+    type: "conversation.item.input_audio_transcription.completed",
+    transcript: "等一下，换个话题",
+  });
+  assert.equal(
+    h.socket.sent.filter((event) => event.type === "response.cancel").length,
+    1,
+    "a confirmed interruption did not cancel the upstream generation",
+  );
+
+  // Tail of the cancelled generation must stay swallowed.
+  h.socket.message({ type: "response.output_audio.delta", delta: floatAudio([0.9]) });
+  assert.equal(h.delivered.audio, playedTurn1, "the cancelled generation kept playing");
+
+  // The reply to the interrupting utterance is a NEW generation and must be heard.
+  h.openTurn();
+  h.socket.message({ type: "response.created", response_id: "gen-2" });
+  h.socket.message({ type: "response.output_text.done", text: "好，我们换个话题。" });
+  h.socket.message({ type: "response.output_audio.delta", delta: floatAudio([0.4]) });
+  h.socket.message({ type: "response.output_audio.delta", delta: floatAudio([0.4]) });
+  h.socket.message({ type: "response.output_audio.done", response_id: "gen-2" });
+
+  assert.ok(
+    h.delivered.audio > playedTurn1,
+    "the reply to the interrupting utterance was silenced",
+  );
+  // Output ownership is deliberately not asserted here. A real interruption
+  // reaches the Gateway as talk.session.cancelOutput, which moves ownership to
+  // "cancelling" and releases it on the final user transcript or the drain
+  // timeout. This harness drives the bridge directly, so that path never runs
+  // and gen-1 stays owned. Asserting it here would test the harness, not the
+  // product. The spurious-barge-in case above does assert ownership, because
+  // there no Gateway cancellation is involved.
+});
+

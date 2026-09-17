@@ -519,7 +519,6 @@ export class SeeduplexRealtimeVoiceBridge {
       type === "conversation.item.input_audio_transcription.started" ||
       type === "conversation.item.input_audio_transcription.completed"
     ) {
-      this.cancelledOutputPending = false;
       // Any user transcription means a new turn is underway, so output must
       // reopen even when the provider never announces a Gateway-visible
       // response.created for it. Without this the Gateway loses its turn-bound
@@ -545,7 +544,15 @@ export class SeeduplexRealtimeVoiceBridge {
     const internalContinuationResponse =
       type === "response.created" &&
       (Boolean(continuingBatch) || this.responseOwnerAnnounced);
-    if (type === "response.created" && !this.cancelledOutputPending) {
+    if (type === "response.created") {
+      // The cancellation suppression exists to swallow the tail of the
+      // generation that was cancelled. A new response.created IS the next
+      // generation, so it ends the suppression. Clearing on the user
+      // transcription instead armed the suppression over the very turn that
+      // transcription started, which silenced that turn's whole reply.
+      this.cancelledOutputPending = false;
+    }
+    if (type === "response.created") {
       this.responseActive = true;
       if (!internalContinuationResponse) {
         this.responseOwnerAnnounced = true;
