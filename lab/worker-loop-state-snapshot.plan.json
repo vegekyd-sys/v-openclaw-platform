@@ -1,0 +1,26 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/plugin-state-store-PhQA2Nhh.js",
+      "target": "openclaw/dist/plugin-state-store-PhQA2Nhh.js",
+      "before": "68cd2f15ca331bb633c9f18491ec74a08a7f80d9459aba36d3258ae3e3aa0b32",
+      "after": "bd5d04d83971cd79a213e0cb6762c3c0e02f6ed28d6008900ef674dc87d3c24a"
+    },
+    {
+      "source": "lab/release-files/dreaming-state-B0qd2W7q.js",
+      "target": "openclaw/dist/dreaming-state-B0qd2W7q.js",
+      "before": "19e1fab8b1c8a682f47418c7dbca35bcc09c2f7ca4d40fe8b4a6c7a368a829ff",
+      "after": "dcd837e7444418f6cf23bd2cd419928e9c867681b68fa5d81ef481166165374e"
+    }
+  ],
+  "tests": [
+    "lab/worker-loop-state-native.test.mjs"
+  ],
+  "support": [
+    "lab/worker-loop-state-process.mjs"
+  ],
+  "timeoutSeconds": 300,
+  "databases": [
+    "state/openclaw.sqlite"
+  ]
+}

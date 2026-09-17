@@ -1,15 +1,20 @@
 {
-  "baseRelease": "seeduplex-voice-provider-v8",
+  "baseRelease": "talk-voice-event-loop-v1",
   "files": [
     {
       "source": "lab/release-files/seeduplex-voice-provider/production-worker-index.mjs",
       "target": "production-worker/index.mjs",
-      "before": "d5416a86ff77bf8a8c00395a0e7feb05a31d1668e9234c8ce001762f8c59f13e"
+      "before": "6655f0caecb53b98beee73b17011e6a966d9ee2d2bd3e814df253ef843658191"
     },
     {
       "source": "lab/release-files/seeduplex-voice-provider/seeduplex-realtime-provider.mjs",
       "target": "production-worker/seeduplex-realtime-provider.mjs",
-      "before": "3be4d7565ac7ae88d1ad73f2e5c14e0a7f9fe4d730508bcf517d6e337fdb71fc"
+      "before": "c5c3c84301ba0ab9f95dfec6790c9c5f25c8d41d35a9c371d2cb780822547ea1"
+    },
+    {
+      "source": "lab/worker-harness-model-routing.mjs",
+      "target": "production-worker/worker-harness-model-routing.mjs",
+      "before": null
     }
   ]
 }

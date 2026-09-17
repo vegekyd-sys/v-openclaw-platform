@@ -1,0 +1,10 @@
+import path from 'node:path';
+import {pathToFileURL} from 'node:url';
+const state=await import(pathToFileURL(path.join(process.env.VLAB_CANDIDATE_RUNTIME,'openclaw/dist/plugin-state-store-PhQA2Nhh.js')));
+const id=Number(process.argv[2]);
+const store=state.n('worker-loop-processes',{namespace:'writer-'+id,maxEntries:100});
+await store.registerMany(Array.from({length:64},(_,i)=>({key:'key-'+i,value:{writer:id,index:i}})));
+const entries=await store.entries();
+if(entries.length!==64||entries.some(e=>e.value.writer!==id))throw Error('Lost or mixed process writes');
+state.m();
+process.send({persisted:entries.length,id});

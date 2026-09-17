@@ -1,0 +1,30 @@
+{
+  "baseRelease": "talk-voice-event-loop-v1",
+  "files": [
+    {
+      "source": "lab/release-files/seeduplex-voice-provider/seeduplex-realtime-provider.mjs",
+      "target": "production-worker/seeduplex-realtime-provider.mjs",
+      "before": "22a81fce666595bfea2783d5365a3a3d6b79a161def755845fc69a063badab8f"
+    },
+    {
+      "source": "lab/release-files/talk-consult-model/talk-DkFuKRod.js",
+      "target": "openclaw/dist/talk-DkFuKRod.js",
+      "before": "fbcd8fc8aa570d0fa008ae91a2280570245d0676266d19a307db24c3e6b3d55c"
+    }
+  ],
+  "support": [
+    "lab/candidate/talk-voice-browser.mjs",
+    "lab/candidate/fixtures/agent-consult.pcm",
+    "lab/worker-harness-model-routing.mjs"
+  ],
+  "env": {
+    "VLAB_TALK_AGENT_MODEL": "deepseek/deepseek-v4-flash",
+    "VLAB_TALK_CONSULT_THINKING_LEVEL": "off"
+  },
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/talk-voice-browser.mjs"
+  ],
+  "user": "lab-db91-parity",
+  "timeoutSeconds": 1500
+}

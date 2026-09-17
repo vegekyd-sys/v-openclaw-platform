@@ -7,6 +7,11 @@ import {
   SEEDUPLEX_REGISTER,
   patchProductionWorkerForSeeduplex,
 } from "./patch-seeduplex-voice-provider.mjs";
+import {
+  ROUTED_CALL,
+  ROUTING_IMPORT,
+  patchWorkerHarnessModelRouting,
+} from "./patch-worker-harness-model-routing.mjs";
 
 const fixture = readFileSync(
   new URL("./fixtures/seeduplex-voice-provider/production-worker-index.mjs", import.meta.url),
@@ -50,18 +55,23 @@ test("release artifacts derive from the exact current VLab runtime", () => {
     "utf8",
   );
   const sha256 = (value) => createHash("sha256").update(value).digest("hex");
+  // Re-baselined 2026-09-16 onto release agent-db-lease-lifetime-v1. The
+  // previous pin came from the 0.2.12-rc.1 lineage, which the shared VLab no
+  // longer runs; rebuilding from that baseline would have reverted the
+  // worker-memory-recycle knobs that are live today.
   assert.equal(
     sha256(fixture),
-    "d5416a86ff77bf8a8c00395a0e7feb05a31d1668e9234c8ce001762f8c59f13e",
+    "6655f0caecb53b98beee73b17011e6a966d9ee2d2bd3e814df253ef843658191",
   );
-  assert.equal(releaseIndex, patchProductionWorkerForSeeduplex(fixture));
   assert.equal(
-    sha256(releaseIndex),
-    "d5416a86ff77bf8a8c00395a0e7feb05a31d1668e9234c8ce001762f8c59f13e",
+    releaseIndex,
+    patchWorkerHarnessModelRouting(patchProductionWorkerForSeeduplex(fixture)),
   );
+  assert.equal(releaseIndex.split(ROUTING_IMPORT).length - 1, 1);
+  assert.equal(releaseIndex.split(ROUTED_CALL).length - 1, 1);
   assert.equal(releaseProvider, provider);
   assert.equal(
     sha256(releaseProvider),
-    "c5c3c84301ba0ab9f95dfec6790c9c5f25c8d41d35a9c371d2cb780822547ea1",
+    "13285026e1fd3c7f1fff339ecbd273058143cade79715c6567a3ce6b1f6886b6",
   );
 });
