@@ -16,7 +16,7 @@
 import { createHash } from "node:crypto";
 import { copyFileSync, readFileSync, writeFileSync } from "node:fs";
 
-const MARKER = "claude-cli-visible-progress-v1";
+const MARKER = "claude-cli-visible-progress-v2";
 const RUNTIME = "'claude-cli'";
 
 /** Each site is matched exactly once; `patched` recognises an already-applied run. */
@@ -32,6 +32,22 @@ const SITES = [
     replace:
       "[\"codex\", \"vlab-worker\", \"claude-cli\"].includes(responsePrefixContextProvider().agentRuntime)",
     expectCount: 2,
+  },
+  {
+    // Without this, the final answer merges into the commentary text instead of
+    // replacing it: commentary assigns `streamText` directly while the final
+    // answer arrives through the snapshot path, so the two get concatenated.
+    // The first final-answer partial must retire commentary and reset the
+    // snapshot bookkeeping. Scoped to claude-cli so codex/vlab-worker keep
+    // their current deployed behaviour byte-for-byte.
+    id: "final-answer-retires-commentary",
+    find: `				if (!cleaned) return false;
+				startStreaming();
+				queueStreamingUpdate(cleaned, {`,
+    replace: `				if (!cleaned) return false;
+				if (!vlab91Commentary.isClosed() && responsePrefixContextProvider().agentRuntime === "claude-cli") { vlab91Commentary.close(); streamText = ""; snapshotBaseText = ""; lastSnapshotTextLength = 0; lastPartial = ""; }
+				startStreaming();
+				queueStreamingUpdate(cleaned, {`,
   },
 ];
 

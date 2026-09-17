@@ -16,6 +16,8 @@ node "$patcher" "$work/monitor.js" > "$work/first.json"
 grep -q '"changed":true' "$work/first.json" || { echo "FAIL: first run did not report a change"; exit 1; }
 [ "$(grep -c "'codex', 'vlab-worker', 'claude-cli'" "$work/monitor.js")" = "1" ] || { echo "FAIL: commentary allowlist not patched"; exit 1; }
 [ "$(grep -c '"codex", "vlab-worker", "claude-cli"' "$work/monitor.js")" = "2" ] || { echo "FAIL: tool/compaction allowlists not patched"; exit 1; }
+grep -q 'vlab91Commentary.close(); streamText = ""' "$work/monitor.js" || { echo "FAIL: final-answer transition not inserted"; exit 1; }
+grep -q 'agentRuntime === "claude-cli"' "$work/monitor.js" || { echo "FAIL: final-answer transition is not scoped to claude-cli"; exit 1; }
 node --check "$work/monitor.js" || { echo "FAIL: patched bundle does not parse"; exit 1; }
 
 # 2. Second run is a no-op.
