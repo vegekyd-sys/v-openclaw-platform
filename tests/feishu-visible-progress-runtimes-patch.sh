@@ -10,7 +10,15 @@ fixture="$root/tests/fixtures/feishu-plugin"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-cp -R "$fixture" "$work/plugin"
+# The fixture is stored flat (the repo ignores `dist/` everywhere), so assemble
+# the plugin layout the patcher expects.
+assemble() {
+  local dest="$1"
+  mkdir -p "$dest/dist"
+  cp "$fixture/openclaw.plugin.json" "$dest/openclaw.plugin.json"
+  cp "$fixture/monitor-bundle.fixture.js" "$dest/dist/monitor.account-FIXTURE.js"
+}
+assemble "$work/plugin"
 bundle="$work/plugin/dist/monitor.account-FIXTURE.js"
 manifest="$work/plugin/openclaw.plugin.json"
 
@@ -54,7 +62,7 @@ node "$patcher" "$work/plugin" > "$work/second.json"
 grep -q '"changed": true' "$work/second.json" && { echo "FAIL: patcher is not idempotent"; exit 1; }
 
 # 4. An unexpected bundle shape fails closed without writing either file.
-rm -rf "$work/wrong"; cp -R "$fixture" "$work/wrong"
+rm -rf "$work/wrong"; assemble "$work/wrong"
 printf 'const x = 1;\n' > "$work/wrong/dist/monitor.account-FIXTURE.js"
 before_manifest="$(shasum -a 256 < "$work/wrong/openclaw.plugin.json")"
 if node "$patcher" "$work/wrong" > "$work/third.json" 2>&1; then
