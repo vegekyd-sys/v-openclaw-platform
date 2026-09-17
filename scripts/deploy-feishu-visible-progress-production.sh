@@ -90,10 +90,21 @@ while [ "$SECONDS" -lt "$deadline" ]; do
   fi
 done
 
+# Channels connect well after the HTTP listener is up (about 80s on production),
+# so wait for the Feishu socket separately instead of reporting health too early.
+channel_deadline=$(( SECONDS + 180 ))
+while [ "$SECONDS" -lt "$channel_deadline" ]; do
+  if journalctl -u "$SERVICE" --since "-8min" --no-pager 2>/dev/null | grep -q "WebSocket client started"; then
+    echo "feishu websocket up after ${SECONDS}s"
+    break
+  fi
+  sleep 5
+done
+
 step "Health"
 systemctl show "$SERVICE" -p ActiveState -p NRestarts
 echo "NRestarts before deploy: $restarts_before"
-journalctl -u "$SERVICE" --since "-5min" --no-pager 2>/dev/null | grep -iE "feishu.*(WebSocket client started|starting feishu)" | tail -3
+journalctl -u "$SERVICE" --since "-8min" --no-pager 2>/dev/null | grep -iE "feishu.*(WebSocket client started|starting feishu)" | tail -3 || true
 
 cat <<ROLLBACK
 
