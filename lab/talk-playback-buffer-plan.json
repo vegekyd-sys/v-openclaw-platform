@@ -1,0 +1,15 @@
+{
+  "baseRelease": "talk-wait-phrase-v2",
+  "files": [
+    {
+      "source": "lab/release-files/talk-playback-buffer/control-ui-boot-shared-VfuwipMj.js",
+      "target": "openclaw/dist/control-ui/assets/control-ui-boot-shared-VfuwipMj.js",
+      "before": "fd2fc70e64780a8c0a69c6e5e55ff81c3aab6b2b661f976539c6515ad05fcc46"
+    },
+    {
+      "source": "lab/release-files/talk-playback-buffer/asset-manifest.json",
+      "target": "openclaw/dist/control-ui/asset-manifest.json",
+      "before": "ba7f4b9bc240afbdf4bd96c12aedaf8de2824f95a7e0b9f6c626c062f7a05c15"
+    }
+  ]
+}

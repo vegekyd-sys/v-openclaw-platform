@@ -120,6 +120,13 @@ test("a playback-overflow cancellation keeps the turn instead of aborting the Ag
     "an overflow still cancels the Gateway turn",
   );
   assert.match(branch, /talkEvent: cancelled\?\.ok/u, "the clear broadcast assumes a cancelTurn result");
+  // Clearing drops audio the user has not heard, which is what turned a full
+  // buffer into a missing middle section of the reply.
+  assert.match(
+    branch,
+    /if \(!playbackOverflowCancellation\) broadcastToOwner\$1/u,
+    "an overflow still clears the queued audio",
+  );
   // The unpatched runtime must not already contain it, or the guard is inert.
   const fixture = readFileSync(
     new URL("./fixtures/realtime-talk-consult-model/talk-DkFuKRod.js", import.meta.url),

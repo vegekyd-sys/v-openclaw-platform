@@ -45,12 +45,16 @@ export const PLAYBACK_ONLY_CLEAR_AFTER =
   '\t\t// activeTurnId, and the audio still streaming then resolves against no\n' +
   '\t\t// active turn, which is the same "no live response owner" failure by a\n' +
   '\t\t// different route. Overflow only needs the client to drop what it has\n' +
-  '\t\t// queued, so broadcast the clear and leave the turn running.\n' +
+  '\t\t// queued, and it must not lose what is already queued either.\n' +
   '\t\tconst cancelled = playbackOverflowCancellation ? void 0 : session.harness.talk.cancelTurn({\n' +
   '\t\t\tturnId,\n' +
   '\t\t\tpayload: { reason }\n' +
   '\t\t});\n' +
-  '\t\tbroadcastToOwner$1(session.context, session.connId, {\n' +
+  '\t\t// Clearing tells the client to drop everything already queued. On an\n' +
+  '\t\t// overflow that queue is exactly the audio the user has not heard yet,\n' +
+  '\t\t// so clearing turns a full buffer into a hole in the middle of the\n' +
+  '\t\t// reply. The frame that overflowed is already refused by the client.\n' +
+  '\t\tif (!playbackOverflowCancellation) broadcastToOwner$1(session.context, session.connId, {\n' +
   '\t\t\trelaySessionId: session.id,\n' +
   '\t\t\ttype: "clear",\n' +
   '\t\t\ttalkEvent: cancelled?.ok ? cancelled.event : void 0\n' +
