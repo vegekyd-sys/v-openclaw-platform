@@ -18,7 +18,21 @@ function createFeishuReplyDispatcher(params) {
 				}
 				return false;
 			} : void 0,
-			onCompactionStart: previewStreamingEnabled ? () => updateStreamingStatusLine("compacting", {startIfNeeded: ["codex", "vlab-worker"].includes(responsePrefixContextProvider().agentRuntime)}) : void 0
+			onCompactionStart: previewStreamingEnabled ? () => updateStreamingStatusLine("compacting", {startIfNeeded: ["codex", "vlab-worker"].includes(responsePrefixContextProvider().agentRuntime)}) : void 0,
+			onPartialReply: previewStreamingEnabled ? (payload) => {
+				if (!payload.text) return false;
+				const cleaned = stripReasoningTagsFromText(payload.text, {
+					mode: "strict",
+					trim: "both"
+				});
+				if (!cleaned) return false;
+				startStreaming();
+				queueStreamingUpdate(cleaned, {
+					dedupeWithLastPartial: true,
+					mode: "snapshot"
+				});
+				return false;
+			} : void 0
 		}
 	};
 }
