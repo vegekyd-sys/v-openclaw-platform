@@ -1,0 +1,16 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/session-accessor-K0XuW6ln.js",
+      "target": "openclaw/dist/session-accessor-K0XuW6ln.js",
+      "before": "21f2a5695f1caa2f3c18784f92a6f2beb7f54f71ad1378c5125f0d1d0563ca77",
+      "after": "17a22d799d732f9807386d75508d270a950376a06f4feb610a9116cec6361785"
+    },
+    {
+      "source": "lab/release-files/dreaming-session-cleanup-CILX8EJS.js",
+      "target": "openclaw/dist/dreaming-session-cleanup-CILX8EJS.js",
+      "before": "66a46632af01abe7f744b471db4bfaf3c6efd2497503eda1693b3c20723bc449",
+      "after": "25996cc07a4842113f2abd6017b668cf781a796751da2c2dd8e8259a32a90134"
+    }
+  ]
+}
