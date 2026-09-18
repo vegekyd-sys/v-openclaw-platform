@@ -106,6 +106,31 @@ Tianyi 批准合入 dev（`223db24`）后走 package → stage → deploy，Gate
 - 生产的 137 s 里，本补丁只覆盖列举部分；变化 session 的整份转录同步加载、session 写入维护的整表 parse、worker placement 的整表加载都是同一类问题，各自另立。
 - VLab 的 session 数比生产多，但 sessions 目录只有生产的 1/26，`readdirSync + realpathSync` 那一项在 VLab 上量不出来。
 
+## 第二层（2026-09-19）：生产上线后 03:00 仍冻结 75 s
+
+生产 9/19 03:00：最长冻结 137 s → 75 s（`host timing gap detected: process was frozen ~74949ms`），dreaming 窗口 8 min → 5 min，但 4 个 narrative run 仍 "Worker stream acknowledgement timed out"。
+
+**否定的假设**：变化 session 的整份转录同步加载。只读探针（`transcript-cost-probe.mjs`，私有 node:sqlite 只读连接 + 运行时的 `redactSensitiveText`）把当晚重扫的 29 个 session / 55 MB 全部加载、解析、脱敏：load 292 ms、解析循环 613 ms、最长同步块 107 ms。不是它。
+
+**真正的来源**（用 `profile-stacks.mjs` 按完整调用栈重切 VLab 补丁后 profile，`docs/evidence/dreaming-vlab-after-cpu-stretches-20260918.txt` 的同一份 profile）：
+
+| 阻塞段 | 主要栈 |
+|---|---|
+| 14.5 s | `clearPluginOwnedSessionStores → cleanupPluginHostSessionStore → listSessionEntriesCore`（full 投影、逐行 parse、每个 agent store 一次）；`planSessionLifecycleArtifactCleanup → readSessionEntryStore`（全 parse）；GC 22% |
+| 8.8 s | `runPendingMaintenance → applySessionEntryMaintenance`（`readSessionEntryStore` / `readSessionMaintenanceCapCandidates` / `cloneSessionEntry`） |
+| 8.1 s | `createWorkerPlacementSessionEvidenceResolver → readSessionIdentityEvidenceBatch`；`listSessionEntriesReadOnly` full 投影 |
+
+每个 narrative run 都走 `subagent.deleteSession` 两次（运行前后），每次 `cleanupSessionBeforeMutation → runPluginHostCleanup → clearPluginOwnedSessionStores` 对**每个 agent 的 store**整表加载只为找一个 key；run 结束再 `scrubDreamingNarrativeArtifacts` 做一次整表两读的 lifecycle 清理规划。生产 9 个 agent store、makaron 148 MB entry_json、一晚最多 12 个 narrative。
+
+**补丁**（`lab/patch-session-store-hotpaths.mjs`，两个文件，生产与 VLab 同字节）：
+
+1. `session-accessor-K0XuW6ln.js` `cleanupPluginHostSessionStore`：预扫描改 `projection: "list"`。谓词 `matchesPluginHostCleanupSession / hasPluginOwnedSessionState / hasPromotedSessionEntrySlot / isLockedHarnessSessionOwnedByPlugin` 只读 sessionId、pluginExtensions、pluginExtensionSlotKeys、pluginNextTurnInjections、promoted slot keys、modelSelectionLocked、agentHarnessId，不在被去掉的 skillsSnapshot / systemPromptReport 里；命中后的变更仍由 `patchSessionEntryCore` 重读全量。list 投影走进程缓存（data_version + session_nodes 代数校验），store 未变时不再 parse。
+2. `dreaming-session-cleanup-CILX8EJS.js` `scrubDreamingNarrativeArtifacts`：每 agent 每 10 分钟最多跑一次（孤儿最小年龄本来就是 5 分钟，跳过的 scrub 由下一次补上）；带 `nowMs` 的显式调用不节流。
+
+没动的：`applySessionEntryMaintenance` 的写后维护整表 parse（`session-accessor.sqlite-entry-BlklNPKQ.js` 在生产与 VLab 字节不同，不能一份补丁两边发）、worker placement 的 `readSessionIdentityEvidenceBatch`、`planSessionLifecycleArtifactCleanup` 自身的两次整表读（规划删除转录的代码，改动风险高，只靠节流减少次数）。
+
+验证：`lab/session-store-hotpaths-build.test.mjs` 5/5（含用 stub 执行补丁后模块的节流行为测试）。VLab 对照：见下。
+
 ## 顺带发现（未处理）
 
 - VLab 与生产的 dreaming narrative 结束时都有 `narrative session cleanup failed for … phase: cannot start a transaction within a transaction`。
