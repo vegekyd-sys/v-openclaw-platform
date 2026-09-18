@@ -1,7 +1,7 @@
 # Dreaming 03:00 卡顿：session 转录语料的同步全量列举
 
 任务分支 `codex/dreaming-session-ingestion`，开发基线 dev `2113a1e57dcc04978c56ad5a4d35f579ad7bdc46`。
-2026-09-18 21:03 CST 已合入 dev（`223db24`）并部署共享 VLab（release `dreaming-session-ingestion-v1`，accepted）。尚未上线生产 V。
+2026-09-18 21:03 CST 已合入 dev（`223db24`）并部署共享 VLab（release `dreaming-session-ingestion-v1`，accepted）。2026-09-18 21:32 CST 已上线生产 V（`scripts/deploy-dreaming-session-ingestion-production.sh`，备份 `*.predeploy-20260918-213202`）：Gateway 92 s 就绪、飞书 98 s 连上、29 个插件、重启后 liveness 告警 0；同一次重启激活了 PR #39 的 pruner，`last-prune.json` 现在如实报 `ok:false / outcome:no-central-store`。预启动脚本 `apply-feishu-steer91-prestart.mjs` 抛 "No reviewed Feishu 9.1 generation found" 是 9/17 重启时就有的老问题，不阻塞启动。**待验证：2026-09-19 03:00 生产 dreaming 的 eventLoopDelayMax 与 liveness 告警数（基线 137 s / 03:00–03:06 三个 narrative 超时）。**
 
 ## 现象（生产 V，2026-09-18 03:00）
 
