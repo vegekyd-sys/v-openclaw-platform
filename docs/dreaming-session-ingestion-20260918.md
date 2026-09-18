@@ -82,7 +82,7 @@ CPU profile 按“最长连续非空闲段”切（`lab/…/profile-stretches.mj
 
 指纹是每条语料的 `agentId, artifactKind, sessionFile, sessionId, sessionKind, transcriptSource, storePath, updatedAtMs, sessionKey, cron/dreaming 标记` 排序后的 sha256，`contentRevision` 除外。
 
-- `lab/dreaming-session-ingestion.candidate.plan.json` + `tests/dreaming-session-ingestion-candidate.test.mjs`：在候选 runtime 上对 dealclaw / short-v / xiaoai 的库副本做同样的等价与耗时断言（makaron 7.5 GB 副本超出共享 VLab 剩余磁盘，只能读共享原库）。
+- 候选通道（`node lab/vlab.mjs candidate … --plan lab/dreaming-session-ingestion.candidate.plan.json`，receipt `candidate-fa9c5227-a42c-443c-8371-a32e166a2209`）：在候选 runtime 上对 dealclaw / short-v / xiaoai 的在线 backup 副本跑 `tests/dreaming-session-ingestion-candidate.test.mjs`，4/4 通过，三个 agent 的语料条数（30 / 10 / 43）与指纹在 baseline 与 patched 之间完全一致，共享 Gateway PID 未变。makaron 7.5 GB 副本超出共享 VLab 剩余磁盘，等价性与耗时只能在共享原库上由上表给出。
 
 ## 覆盖边界
 
