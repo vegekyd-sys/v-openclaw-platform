@@ -1,0 +1,161 @@
+profile span 421s, 1195 non-idle stretches
+
+== stretch 13721 ms  at +21.3s .. +35.0s  (6062 samples)
+   inclusive:
+      100% (root) :-1
+       80% runMicrotasks :-1
+       80% runNextTicks task_queues:61
+       78% callbackTrampoline async_hooks:117
+       78% processImmediate timers:435
+       73% collectSessionIngestionBatches dreaming-phases-C5ItPb99.js:327
+       72% listSessionTranscriptCorpusEntriesForAgent memory-core-host-engine-sessions-CAnvQ_5o.js:306
+       72% listSessionTranscriptCorpusEntriesForAgentSync memory-core-host-engine-sessions-CAnvQ_5o.js:203
+       65% (anon) dreaming-phases-C5ItPb99.js:436
+       37% withOpenClawAgentDatabaseReadOnly openclaw-agent-db-readonly-wb-jdztx.js:85
+       36% listSessionTranscriptInstances session-accessor.sqlite-entry-BlklNPKQ.js:497
+       36% (anon) session-accessor.sqlite-entry-BlklNPKQ.js:502
+       28% listSqliteSessionEntriesFromDatabase session-accessor.sqlite-entry-BlklNPKQ.js:463
+       28% readSessionEntryCache session-accessor.sqlite-transcript-state-Cz9g7S9v.js:250
+   self:
+       19% structuredClone js_transferable:111
+       17% (garbage collector) :-1
+       14% parseSqliteSessionEntryRecord openclaw-agent-db-maintenance-DYSkzMMg.js:815
+       11% next :-1
+        7% iterateSqliteQuerySync kysely-sync-DKYGT267.js:191
+        3% lstat :-1
+
+== stretch 11609 ms  at +157.5s .. +169.1s  (5223 samples)
+   inclusive:
+      100% (root) :-1
+       77% runMicrotasks :-1
+       50% callbackTrampoline async_hooks:117
+       50% processImmediate timers:435
+       50% runNextTicks task_queues:61
+       50% runSqliteTransactionSync node-sqlite-CL-d6drd.js:201
+       50% run async_hooks:76
+       48% runExclusiveSqliteSessionWrite session-accessor.sqlite-scope-BwPKGcgm.js:18
+       48% runCriticalSection session-accessor.sqlite-scope-BwPKGcgm.js:24
+       48% fn session-accessor.sqlite-scope-BwPKGcgm.js:37
+       48% runActiveStoreWriter store-writer-state-_Y6b9Vjm.js:23
+       48% (anon) async_hooks:39
+       48% runInAsyncScope node:async_hooks:206
+       48% bound node:async_hooks:242
+   self:
+       23% next :-1
+       17% parseSqliteSessionEntryRecord openclaw-agent-db-maintenance-DYSkzMMg.js:815
+       14% structuredClone js_transferable:111
+       13% (garbage collector) :-1
+       10% iterateSqliteQuerySync kysely-sync-DKYGT267.js:191
+        4% _propagate async_hooks:63
+
+== stretch 8004 ms  at +109.5s .. +117.5s  (3662 samples)
+   inclusive:
+      100% (root) :-1
+       80% collectSessionIngestionBatches dreaming-phases-C5ItPb99.js:327
+       79% listSessionTranscriptCorpusEntriesForAgent memory-core-host-engine-sessions-CAnvQ_5o.js:306
+       79% listSessionTranscriptCorpusEntriesForAgentSync memory-core-host-engine-sessions-CAnvQ_5o.js:203
+       79% (anon) dreaming-phases-C5ItPb99.js:436
+       41% withOpenClawAgentDatabaseReadOnly openclaw-agent-db-readonly-wb-jdztx.js:85
+       40% listSessionTranscriptInstances session-accessor.sqlite-entry-BlklNPKQ.js:497
+       40% (anon) session-accessor.sqlite-entry-BlklNPKQ.js:502
+       36% listSqliteSessionEntriesFromDatabase session-accessor.sqlite-entry-BlklNPKQ.js:463
+       36% readSessionEntryCache session-accessor.sqlite-transcript-state-Cz9g7S9v.js:250
+       36% loadSessionEntrySnapshot session-accessor.sqlite-transcript-state-Cz9g7S9v.js:235
+       22% listTranscriptInstancesFromDatabase session-accessor.sqlite-entry-BlklNPKQ.js:48
+       22% (anon) session-accessor.sqlite-entry-BlklNPKQ.js:67
+       21% structuredClone js_transferable:111
+   self:
+       21% structuredClone js_transferable:111
+       19% parseSqliteSessionEntryRecord openclaw-agent-db-maintenance-DYSkzMMg.js:815
+       17% (garbage collector) :-1
+        9% iterateSqliteQuerySync kysely-sync-DKYGT267.js:191
+        6% next :-1
+        4% lstat :-1
+
+== stretch 7737 ms  at +88.2s .. +95.9s  (3534 samples)
+   inclusive:
+      100% (root) :-1
+       80% runMicrotasks :-1
+       80% callbackTrampoline async_hooks:117
+       80% runNextTicks task_queues:61
+       79% processImmediate timers:435
+       71% runSqliteTransactionSync node-sqlite-CL-d6drd.js:201
+       71% runSqliteDeferredTransactionSync node-sqlite-CL-d6drd.js:259
+       66% run async_hooks:76
+       65% runInAsyncScope node:async_hooks:206
+       65% runExclusiveSqliteSessionWrite session-accessor.sqlite-scope-BwPKGcgm.js:18
+       65% (anon) session-accessor.sqlite-entry-BlklNPKQ.js:179
+       65% runCriticalSection session-accessor.sqlite-scope-BwPKGcgm.js:24
+       65% fn session-accessor.sqlite-scope-BwPKGcgm.js:37
+       65% runActiveStoreWriter store-writer-state-_Y6b9Vjm.js:23
+   self:
+       25% next :-1
+       18% structuredClone js_transferable:111
+       16% (garbage collector) :-1
+       10% parseSqliteSessionEntryRecord openclaw-agent-db-maintenance-DYSkzMMg.js:815
+        8% iterateSqliteQuerySync kysely-sync-DKYGT267.js:191
+        2% couldMatchDefaultRedactPatterns redact-Df68iObN.js:1256
+
+== stretch 7267 ms  at +181.2s .. +188.5s  (3272 samples)
+   inclusive:
+      100% (root) :-1
+       34% withOpenClawAgentDatabaseReadOnly openclaw-agent-db-readonly-wb-jdztx.js:85
+       33% createWorkerPlacementSessionEvidenceResolver server-worker-placement-startup-BvPREvpr.js:2957
+       32% readSessionIdentityEvidenceBatch session-accessor-K0XuW6ln.js:397
+       32% (anon) session-accessor-K0XuW6ln.js:422
+       32% readSessionIdentityEvidenceRows session-accessor-K0XuW6ln.js:341
+       28% executeSqliteQuerySync kysely-sync-DKYGT267.js:173
+       27% executeWithCachedStatement kysely-sync-DKYGT267.js:98
+       27% executeCompiledSqliteQuerySync kysely-sync-DKYGT267.js:141
+       27% (anon) kysely-sync-DKYGT267.js:144
+       23% parseSessionEntryJson session-accessor.sqlite-transcript-state-Cz9g7S9v.js:158
+       22% listSessionEntryRows session-accessor.sqlite-entry-BlklNPKQ.js:413
+       22% listSessionEntriesCore session-accessor.entry-B8arwR7t.js:396
+       22% listSqliteSessionEntriesFromDatabase session-accessor.sqlite-entry-BlklNPKQ.js:463
+   self:
+       21% parseSqliteSessionEntryRecord openclaw-agent-db-maintenance-DYSkzMMg.js:815
+       20% (anon) kysely-sync-DKYGT267.js:144
+       19% (garbage collector) :-1
+       13% next :-1
+        6% iterateSqliteQuerySync kysely-sync-DKYGT267.js:191
+        2% fromRow placement-row-codec-DmVeQZuK.js:93
+
+== stretch 5812 ms  at +103.5s .. +109.3s  (2572 samples)
+   inclusive:
+      100% (root) :-1
+       70% processImmediate timers:435
+       70% callbackTrampoline async_hooks:117
+       69% runMicrotasks :-1
+       69% runNextTicks task_queues:61
+       55% listSessionEntryRows session-accessor.sqlite-entry-BlklNPKQ.js:413
+       55% listSessionEntriesCore session-accessor.entry-B8arwR7t.js:396
+       55% listSqliteSessionEntriesFromDatabase session-accessor.sqlite-entry-BlklNPKQ.js:463
+       52% readSessionEntryCache session-accessor.sqlite-transcript-state-Cz9g7S9v.js:250
+       52% loadSessionEntrySnapshot session-accessor.sqlite-transcript-state-Cz9g7S9v.js:235
+       34% clearPluginOwnedSessionStores host-hook-cleanup-BQvPj1LG.js:39
+       34% cleanupPluginHostSessionStore session-accessor-K0XuW6ln.js:1171
+       34% cleanupSessionBeforeMutation session-reset-service-l8JQHWxr.js:477
+       34% runPluginHostCleanup host-hook-cleanup-BQvPj1LG.js:98
+   self:
+       26% (garbage collector) :-1
+       20% parseSqliteSessionEntryRecord openclaw-agent-db-maintenance-DYSkzMMg.js:815
+       15% next :-1
+       10% iterateSqliteQuerySync kysely-sync-DKYGT267.js:191
+        6% _propagate async_hooks:63
+        2% structuredClone js_transferable:111
+
+== stretch 5036 ms  at +13.6s .. +18.6s  (2261 samples)
+   inclusive:
+      100% (root) :-1
+       80% runSqliteTransactionSync node-sqlite-CL-d6drd.js:201
+       80% runSqliteDeferredTransactionSync node-sqlite-CL-d6drd.js:259
+       80% runMicrotasks :-1
+       79% callbackTrampoline async_hooks:117
+       79% processImmediate timers:435
+       79% runNextTicks task_queues:61
+       78% runQueuedStoreWrite store-writer-state-_Y6b9Vjm.js:81
+       78% runExclusiveSqliteSessionWrite session-accessor.sqlite-scope-BwPKGcgm.js:18
+       78% runPendingMaintenance session-accessor.sqlite-entry-BlklNPKQ.js:149
+       78% run async_hooks:76
+       78% (anon) session-accessor.sqlite-entry-BlklNPKQ.js:179
+

@@ -1,7 +1,7 @@
 # Dreaming 03:00 卡顿：session 转录语料的同步全量列举
 
 任务分支 `codex/dreaming-session-ingestion`，开发基线 dev `2113a1e57dcc04978c56ad5a4d35f579ad7bdc46`。
-尚未合入 dev、未部署共享 VLab、未上线 V。
+2026-09-18 21:03 CST 已合入 dev（`223db24`）并部署共享 VLab（release `dreaming-session-ingestion-v1`，accepted）。尚未上线生产 V。
 
 ## 现象（生产 V，2026-09-18 03:00）
 
@@ -84,9 +84,25 @@ CPU profile 按“最长连续非空闲段”切（`lab/…/profile-stretches.mj
 
 - 候选通道（`node lab/vlab.mjs candidate … --plan lab/dreaming-session-ingestion.candidate.plan.json`，receipt `candidate-fa9c5227-a42c-443c-8371-a32e166a2209`）：在候选 runtime 上对 dealclaw / short-v / xiaoai 的在线 backup 副本跑 `tests/dreaming-session-ingestion-candidate.test.mjs`，4/4 通过，三个 agent 的语料条数（30 / 10 / 43）与指纹在 baseline 与 patched 之间完全一致，共享 Gateway PID 未变。makaron 7.5 GB 副本超出共享 VLab 剩余磁盘，等价性与耗时只能在共享原库上由上表给出。
 
+## 共享 VLab 部署后对照（release `dreaming-session-ingestion-v1`，2026-09-18 21:03 CST）
+
+Tianyi 批准合入 dev（`223db24`）后走 package → stage → deploy，Gateway PID 2826250 → 2893146，runtimeSha `891f4e9c…`，accepted=true。部署后 3 分钟再次 `openclaw cron run a2e895b2…`，同样的 inspector profile 与 5 秒健康探针：
+
+| | 部署前（15:36，Gateway 已热） | 部署后（21:07，Gateway 刚重启、缓存冷） |
+|---|---|---|
+| dreaming 窗口（触发 → promotion complete） | 约 180 s | **83 s** |
+| 窗口内 `eventLoopDelayMaxMs` 序列 | 9185 / 12876 / 9387 / 6975 | 6912 / 6556 / 5050 / 4408 / 5121 / 7277 / 4954 / 4293 |
+| 窗口内 liveness warning | 1（degradedFor=77s）+ heartbeat delayed 7.4s | **0** |
+| 同样 421 s profile 的 idle 占比 | 44% | 60% |
+| 最长连续阻塞段 | 13.7 s，72% 在 `listSessionTranscriptCorpusEntriesForAgentSync` | 14.5 s，在 `runQueuedStoreWrite` 的 session 写入维护（整表 parse）；语料列举函数不再出现在任何前列阻塞段 |
+
+剩下的 5–7 s 停顿来源（`docs/evidence/dreaming-vlab-after-cpu-stretches-20260918.txt`）：session 写入维护里 `listSqliteSessionEntriesFromDatabase` 整表 parse（14.5 s、8.8 s）、worker placement 的 `readSessionIdentityEvidenceBatch`（8.1 s）。都是同一类"整表同步加载"，不在本补丁范围。另外该实例在 dreaming 之外每约 60 秒有一次 3–5 s 的停顿（探针 21:09:47 / 21:10:46 / 21:11:48 / 21:12:47 / 21:13:47），部署前的探针尾段也有，与本补丁无关，值得单独查。
+
+同一次重启顺带带上的：PR #39（hotset pruner 诚实报告）。生产磁盘上 `/home/openclaw/.openclaw/experiments/agent-worker-isolation-v1/prune-openclaw-session-hotset.mjs` 已是 PR 版本（sha `09d58196…`），它是 `ExecStartPre`，生产下次 Gateway 重启即生效；共享 VLab 的 db91-parity 单元没有这个 `ExecStartPre`，只有未运行的旧 `openclaw-vlab-gateway` 单元引用它，已把 `/srv/vlab/experiments/agent-worker-isolation-v1/prune-openclaw-session-hotset.mjs` 更新为 PR 版本（备份 `.pre-pr39-20260918`）。
+
 ## 覆盖边界
 
-- 单进程 A/B 证明的是列举本身的成本与等价性；Gateway 内的停顿缩短需要部署到共享 VLab 后再触发一次 cron 对照（需要先合入 dev）。
+- 部署后对照跑在刚重启的 Gateway 上（缓存冷），部署前对照的 Gateway 是热的；方向上对补丁不利，结论仍成立。
 - 生产的 137 s 里，本补丁只覆盖列举部分；变化 session 的整份转录同步加载、session 写入维护的整表 parse、worker placement 的整表加载都是同一类问题，各自另立。
 - VLab 的 session 数比生产多，但 sessions 目录只有生产的 1/26，`readdirSync + realpathSync` 那一项在 VLab 上量不出来。
 
