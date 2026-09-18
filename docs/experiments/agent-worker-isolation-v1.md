@@ -102,6 +102,14 @@ Gateway mechanisms.
 - Pre-start projection makes an existing large store lightweight. OpenClaw's
   native full-store persistence path applies the same projection again without
   changing the concurrency-sensitive single-entry write path.
+- Compatibility: the projection targets the `sessions/sessions.json` central
+  directory of OpenClaw `2026.7.1`. Releases that keep Sessions in SQLite
+  (`2026.9.1` and later) have no such file and already strip `skillsSnapshot`
+  and `systemPromptReport` natively in the SQLite session accessor. There the
+  pre-start pruner reports `ok: false, outcome: "no-central-store"` and changes
+  nothing; it still exits 0 so the `ExecStartPre` never blocks Gateway start.
+  Remove the `session-hotset-v0.2.0` drop-in on those releases instead of
+  reading its report as a successful projection.
 - Worker and isolated-subagent Skill activations preserve OpenClaw's native
   `skill.used` accounting. The Worker resolves the exact Skill file from the
   admitted `skillsSnapshot`, relays only identity metadata through the existing

@@ -96,8 +96,30 @@ async function main(args) {
       await pruneStore(storePath, applySessionHotsetProjection, ttlMs),
     );
   }
+  // A store that is absent everywhere is not success. Releases that keep
+  // Sessions in SQLite never have the central directory this strategy
+  // projects, so every store is "missing" and nothing was evicted; reporting
+  // ok=true there hides that the pre-start step is a no-op.
+  const projected = stores.filter((entry) => entry.skipped === undefined);
+  const invalid = stores.filter((entry) => entry.skipped === "invalid-json");
+  const outcome =
+    invalid.length > 0
+      ? "invalid-store"
+      : projected.length > 0
+        ? "projected"
+        : stores.length > 0 &&
+            stores.every((entry) => entry.skipped === "missing")
+          ? "no-central-store"
+          : "nothing-to-project";
   const report = {
-    ok: stores.every((entry) => entry.skipped !== "invalid-json"),
+    ok: outcome === "projected",
+    outcome,
+    ...(outcome === "no-central-store" && {
+      note:
+        "No agent has sessions/sessions.json. This OpenClaw release stores " +
+        "Sessions in SQLite and evicts skillsSnapshot/systemPromptReport " +
+        "natively; the pre-start projection is a no-op here.",
+    }),
     strategy: "central-directory-cold-derived-state-v1",
     ttlMs,
     stores,
