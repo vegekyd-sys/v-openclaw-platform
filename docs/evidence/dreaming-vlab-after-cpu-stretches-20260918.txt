@@ -1,0 +1,121 @@
+profile span 422s, 406 non-idle stretches
+
+== stretch 14550 ms  at +77.7s .. +92.3s  (5942 samples)
+   inclusive:
+      100% (root) :-1
+       36% run async_hooks:76
+       35% runQueuedStoreWrite store-writer-state-_Y6b9Vjm.js:81
+       35% runMicrotasks :-1
+       35% runActiveStoreWriter store-writer-state-_Y6b9Vjm.js:23
+       35% (anon) async_hooks:39
+       35% runInAsyncScope node:async_hooks:206
+       35% bound node:async_hooks:242
+       35% fn store-writer-state-_Y6b9Vjm.js:88
+       35% drainStoreWriterQueue store-writer-state-_Y6b9Vjm.js:46
+       35% (anon) store-writer-state-_Y6b9Vjm.js:86
+       35% listSqliteSessionEntriesFromDatabase session-accessor.sqlite-entry-BlklNPKQ.js:463
+       35% runExclusiveSqliteSessionWrite session-accessor.sqlite-scope-BwPKGcgm.js:18
+       35% runCriticalSection session-accessor.sqlite-scope-BwPKGcgm.js:24
+   self:
+       22% next :-1
+       22% (garbage collector) :-1
+       19% parseSqliteSessionEntryRecord openclaw-agent-db-maintenance-DYSkzMMg.js:815
+       12% iterateSqliteQuerySync kysely-sync-DKYGT267.js:191
+        9% (anon) kysely-sync-DKYGT267.js:144
+        2% projectCanonicalSessionEntryShape store-writer-state-_Y6b9Vjm.js:121
+
+== stretch 8766 ms  at +16.0s .. +24.7s  (3741 samples)
+   inclusive:
+      100% (root) :-1
+       59% runSqliteTransactionSync node-sqlite-CL-d6drd.js:201
+       59% runSqliteDeferredTransactionSync node-sqlite-CL-d6drd.js:259
+       57% run async_hooks:76
+       56% runExclusiveSqliteSessionWrite session-accessor.sqlite-scope-BwPKGcgm.js:18
+       56% runPendingMaintenance session-accessor.sqlite-entry-BlklNPKQ.js:149
+       56% (anon) session-accessor.sqlite-entry-BlklNPKQ.js:179
+       56% runCriticalSection session-accessor.sqlite-scope-BwPKGcgm.js:24
+       56% fn session-accessor.sqlite-scope-BwPKGcgm.js:37
+       56% runActiveStoreWriter store-writer-state-_Y6b9Vjm.js:23
+       56% (anon) async_hooks:39
+       56% runInAsyncScope node:async_hooks:206
+       56% bound node:async_hooks:242
+       56% fn store-writer-state-_Y6b9Vjm.js:88
+   self:
+       32% next :-1
+       16% (garbage collector) :-1
+       16% structuredClone js_transferable:111
+        9% parseSqliteSessionEntryRecord openclaw-agent-db-maintenance-DYSkzMMg.js:815
+        6% iterateSqliteQuerySync kysely-sync-DKYGT267.js:191
+        2% projectCanonicalSessionEntryShape store-writer-state-_Y6b9Vjm.js:121
+
+== stretch 8116 ms  at +100.8s .. +108.9s  (3667 samples)
+   inclusive:
+      100% (root) :-1
+       66% withOpenClawAgentDatabaseReadOnly openclaw-agent-db-readonly-wb-jdztx.js:85
+       63% runMicrotasks :-1
+       39% processTimers timers:505
+       37% runNextTicks task_queues:61
+       32% createWorkerPlacementSessionEvidenceResolver server-worker-placement-startup-BvPREvpr.js:2957
+       32% listSqliteSessionEntriesFromDatabase session-accessor.sqlite-entry-BlklNPKQ.js:463
+       32% (anon) session-accessor.sqlite-entry-BlklNPKQ.js:430
+       32% listSessionEntriesReadOnly session-accessor.sqlite-entry-BlklNPKQ.js:425
+       31% readSessionEntryCache session-accessor.sqlite-transcript-state-Cz9g7S9v.js:250
+       31% loadSessionEntrySnapshot session-accessor.sqlite-transcript-state-Cz9g7S9v.js:235
+       31% readSessionIdentityEvidenceBatch session-accessor-K0XuW6ln.js:397
+       30% readSessionIdentityEvidenceRows session-accessor-K0XuW6ln.js:341
+       30% (anon) session-accessor-K0XuW6ln.js:422
+   self:
+       21% parseSqliteSessionEntryRecord openclaw-agent-db-maintenance-DYSkzMMg.js:815
+       21% (garbage collector) :-1
+       14% (anon) kysely-sync-DKYGT267.js:144
+       13% next :-1
+        7% iterateSqliteQuerySync kysely-sync-DKYGT267.js:191
+        2% HasPropertyKey guard.mjs:190
+
+== stretch 6971 ms  at +60.7s .. +67.7s  (3109 samples)
+   inclusive:
+      100% (root) :-1
+       39% listSessionEntryRows session-accessor.sqlite-entry-BlklNPKQ.js:413
+       39% listSessionEntriesCore session-accessor.entry-B8arwR7t.js:396
+       39% listSqliteSessionEntriesFromDatabase session-accessor.sqlite-entry-BlklNPKQ.js:463
+       37% readSessionEntryCache session-accessor.sqlite-transcript-state-Cz9g7S9v.js:250
+       37% loadSessionEntrySnapshot session-accessor.sqlite-transcript-state-Cz9g7S9v.js:235
+       33% runSqliteTransactionSync node-sqlite-CL-d6drd.js:201
+       32% next :-1
+       32% runOpenClawStateWriteTransaction openclaw-state-db-Bh3Bq87y.js:4053
+       32% runWriteTransaction plugin-state-store-PhQA2Nhh.js:232
+       32% withSqlitePostCommitPublications openclaw-state-db-Bh3Bq87y.js:167
+       32% (anon) openclaw-state-db-Bh3Bq87y.js:4059
+       32% runSqliteImmediateTransactionSync node-sqlite-CL-d6drd.js:262
+       32% callbackTrampoline async_hooks:117
+   self:
+       32% next :-1
+       17% (garbage collector) :-1
+       13% parseSqliteSessionEntryRecord openclaw-agent-db-maintenance-DYSkzMMg.js:815
+        8% iterateSqliteQuerySync kysely-sync-DKYGT267.js:191
+        5% run :-1
+        2% collectSegmentTokens short-term-promotion-store-C5NqITt5.js:328
+
+== stretch 6687 ms  at +93.3s .. +100.0s  (2925 samples)
+   inclusive:
+      100% (root) :-1
+       50% executeSqliteQuerySync kysely-sync-DKYGT267.js:173
+       50% executeWithCachedStatement kysely-sync-DKYGT267.js:98
+       50% executeCompiledSqliteQuerySync kysely-sync-DKYGT267.js:141
+       49% (anon) kysely-sync-DKYGT267.js:144
+       49% createWorkerPlacementSessionEvidenceResolver server-worker-placement-startup-BvPREvpr.js:2957
+       47% withOpenClawAgentDatabaseReadOnly openclaw-agent-db-readonly-wb-jdztx.js:85
+       47% readSessionIdentityEvidenceBatch session-accessor-K0XuW6ln.js:397
+       46% (anon) session-accessor-K0XuW6ln.js:422
+       46% readSessionIdentityEvidenceRows session-accessor-K0XuW6ln.js:341
+       35% run async_hooks:76
+       35% runExclusiveSqliteSessionWrite session-accessor.sqlite-scope-BwPKGcgm.js:18
+       35% runCriticalSection session-accessor.sqlite-scope-BwPKGcgm.js:24
+       35% fn session-accessor.sqlite-scope-BwPKGcgm.js:37
+   self:
+       32% (anon) kysely-sync-DKYGT267.js:144
+       26% next :-1
+       13% parseSqliteSessionEntryRecord openclaw-agent-db-maintenance-DYSkzMMg.js:815
+       13% (garbage collector) :-1
+        2% prepare :-1
+
