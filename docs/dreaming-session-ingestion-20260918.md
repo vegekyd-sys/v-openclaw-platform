@@ -129,7 +129,20 @@ Tianyi 批准合入 dev（`223db24`）后走 package → stage → deploy，Gate
 
 没动的：`applySessionEntryMaintenance` 的写后维护整表 parse（`session-accessor.sqlite-entry-BlklNPKQ.js` 在生产与 VLab 字节不同，不能一份补丁两边发）、worker placement 的 `readSessionIdentityEvidenceBatch`、`planSessionLifecycleArtifactCleanup` 自身的两次整表读（规划删除转录的代码，改动风险高，只靠节流减少次数）。
 
-验证：`lab/session-store-hotpaths-build.test.mjs` 5/5（含用 stub 执行补丁后模块的节流行为测试）。VLab 对照：见下。
+验证：`lab/session-store-hotpaths-build.test.mjs` 5/5（含用 stub 执行补丁后模块的节流行为测试）。
+**共享 VLab 对照（release `session-store-hotpaths-v1`，2026-09-19 07:11 CST，dev `592a2b7`，accepted 但注明"未证明收益"）**：9.4 线 06:54 回滚后，等 Jev 线 candidate 12 分钟，07:07 stage/deploy（PID 2968572 → 2970259），重启后已顺手拉起 nightshift 镜像（24980 http 200）。同一 cron 手动触发：dreaming 窗口 97 s（第一层后 83 s，基线 180 s），`eventLoopDelayMaxMs` 最高 10.8 s，1 次 liveness warning（degradedFor=65s）。**这轮不可比**：整机同时被 gpt-live91（55% CPU）和 browser91（35% CPU）两个无关常驻进程压着，4 核只剩不到一核。
+
+按完整调用栈切剩余 >7 s 的阻塞段（`docs/evidence/dreaming-vlab-layer2-after-cpu-stacks-20260919.txt`）：
+
+| 阻塞段 | 主要栈 |
+|---|---|
+| 11.0 s | `applySessionEntryMaintenance`（写后维护：readSessionEntryStore / readSessionMaintenanceCapCandidates / cloneSessionEntry）20%；`planSessionLifecycleArtifactCleanup → readSessionEntryStore` 7%；GC 22% |
+| 8.2 s | worker placement `readSessionIdentityEvidenceBatch` 逐行 parse 29%；lifecycle 删除路径 `readReferencedSessionIdsAfterTargetMutation` / `collectAdmissionProtectedSessionIds` / `deleteLifecycleTargetRows` 24% |
+| 7.5 s | worker placement 22%；`cleanupPluginHostSessionStore`（已改 list 投影）仍 7%——dreaming 期间 worker 进程在写 session，data_version 变化让 list 缓存持续失效，仍要整表轻量 parse；plugin-state retention 7%；`loadGatewaySessionLookupStoreUncached` 6% |
+| 7.2 s | worker placement 28% |
+
+结论：第二层两处改动方向正确但量小，剩下的停顿是四个核心 session-store 调用方（写后维护、worker placement 证据读取、lifecycle 删除/清理规划、session lookup）各自"parse 全部 session_nodes"，在 dreaming 这种 worker 持续写入的窗口里缓存也救不了，要改成按 key/索引的定点查询而不是 dist 级补丁。**未上线生产**（生产仍是 `dreaming-session-ingestion-v1`），等 9/20 03:00 的生产 profile（定时器已装）再定第三层。
+
 
 ## 顺带发现（未处理）
 
