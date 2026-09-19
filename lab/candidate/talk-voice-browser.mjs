@@ -9,6 +9,23 @@ const runtime = process.env.VLAB_CANDIDATE_RUNTIME;
 const configPath = process.env.OPENCLAW_CONFIG_PATH;
 assert(runtime && configPath, "candidate runtime environment is required");
 
+const backpressureMinPeak = Number(process.env.VLAB_TALK_BACKPRESSURE_MIN_PEAK ?? 32);
+const backpressureMaxPeak = Number(process.env.VLAB_TALK_BACKPRESSURE_MAX_PEAK ?? 32);
+const backpressureMinDelivered = Number(
+  process.env.VLAB_TALK_BACKPRESSURE_MIN_DELIVERED ?? 32,
+);
+const backpressureMinAppendRequests = Number(
+  process.env.VLAB_TALK_BACKPRESSURE_MIN_APPEND_REQUESTS ?? 64,
+);
+const backpressureMinAppendResponses = Number(
+  process.env.VLAB_TALK_BACKPRESSURE_MIN_APPEND_RESPONSES ?? 32,
+);
+assert(Number.isFinite(backpressureMinPeak) && backpressureMinPeak > 0);
+assert(Number.isFinite(backpressureMaxPeak) && backpressureMaxPeak >= backpressureMinPeak);
+assert(Number.isFinite(backpressureMinDelivered) && backpressureMinDelivered > 0);
+assert(Number.isFinite(backpressureMinAppendRequests) && backpressureMinAppendRequests > 0);
+assert(Number.isFinite(backpressureMinAppendResponses) && backpressureMinAppendResponses > 0);
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
 const port = Number(config.gateway?.port);
@@ -703,7 +720,10 @@ try {
   while (Date.now() < stressDeadline) {
     await observePage();
     browserBackpressure = await evaluate("({...globalThis.__talkCandidateBackpressure})");
-    if (browserBackpressure.peak >= 32 && browserBackpressure.delivered >= 32) break;
+    if (
+      browserBackpressure.peak >= backpressureMinPeak &&
+      browserBackpressure.delivered >= backpressureMinDelivered
+    ) break;
   }
   await evaluate("globalThis.__talkCandidateBackpressure.delayMs = 0");
   const drainDeadline = Date.now() + 30_000;
@@ -828,11 +848,27 @@ try {
   assert.equal(config.talk.realtime.provider, "seeduplex");
   assert.equal(config.talk.realtime.providers.seeduplex.voice, "xiaohe");
   assert.equal(config.talk.realtime.transport, "gateway-relay");
-  assert(summary.appendRequests >= 64, "browser did not sustain microphone input");
-  assert(summary.appendResponses >= 32, "browser did not receive audio append acknowledgements");
-  assert.equal(summary.pendingPeak, 32, "browser did not exercise the bounded backlog");
+  assert(
+    summary.appendRequests >= backpressureMinAppendRequests,
+    "browser did not sustain microphone input",
+  );
+  assert(
+    summary.appendResponses >= backpressureMinAppendResponses,
+    "browser did not receive audio append acknowledgements",
+  );
+  assert(
+    summary.pendingPeak >= backpressureMinPeak,
+    "browser did not exercise the required delayed-ack backlog",
+  );
+  assert(
+    summary.pendingPeak <= backpressureMaxPeak,
+    "browser microphone backlog exceeded its bounded cap",
+  );
   assert.equal(summary.pendingFinal, 0, "browser audio backlog did not drain");
-  assert(summary.delayedAppendResponses >= 32, "browser did not receive delayed audio acknowledgements");
+  assert(
+    summary.delayedAppendResponses >= backpressureMinDelivered,
+    "browser did not receive delayed audio acknowledgements",
+  );
   assert(summary.outputAudioFrames > 0, "browser did not receive provider audio output");
   assert(summary.outputAudioBytes > 0, "browser provider audio output was empty");
   assert.equal(summary.assistantHasChinese, true, "browser did not render a Chinese assistant reply");
