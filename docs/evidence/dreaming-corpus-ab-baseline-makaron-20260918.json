@@ -1,0 +1,58 @@
+{
+  "distDir": "/srv/vlab-production-mirror/labs/instances/db91-parity/runtime/openclaw/dist",
+  "variant": "baseline",
+  "agentId": "makaron",
+  "options": {
+    "includeRetainedSqlite": true
+  },
+  "fingerprint": {
+    "count": 6383,
+    "sha256": "89bc3b81b4269f5ccfb059c90f9b7c8fd7241532c57392b4829ad6c7fa77ee60",
+    "sample": [
+      "makaron|active-session|agent:makaron:acceptance:project-sandbox-031-normal|52e1ab14-9d46-49c6-87dc-468a0fd1174b|interactive|sqlite|/srv/vlab-production-mirror/labs/instances/db91-parity/state/agents/makaron/sessions/sessions.json|1788059619616|agent:makaron:acceptance:project-sandbox-031-normal|0|0",
+      "makaron|active-session|agent:makaron:codex-voice-stage1-20260906|b4572e9e-d1f2-4138-a456-0211c2eba334|interactive|sqlite|/srv/vlab-production-mirror/labs/instances/db91-parity/state/agents/makaron/sessions/sessions.json|1788698961009|agent:makaron:codex-voice-stage1-20260906|0|0",
+      "makaron|active-session|agent:makaron:cron:a2e895b2-94d9-492b-97cb-7fec087c27c9|2e037312-72ea-47ca-88c2-1217f7f4e2f1|interactive|sqlite|/srv/vlab-production-mirror/labs/instances/db91-parity/state/agents/makaron/sessions/sessions.json|1789716993060|agent:makaron:cron:a2e895b2-94d9-492b-97cb-7fec087c27c9|0|0"
+    ]
+  },
+  "runs": [
+    {
+      "iteration": 0,
+      "warmup": true,
+      "ms": 167756,
+      "maxSyncBlockMs": 167751,
+      "heapDeltaMb": 1029,
+      "count": 6383,
+      "sha256": "89bc3b81b4269f5ccfb059c90f9b7c8fd7241532c57392b4829ad6c7fa77ee60"
+    },
+    {
+      "iteration": 1,
+      "warmup": false,
+      "ms": 7701,
+      "maxSyncBlockMs": 7696,
+      "heapDeltaMb": 1019,
+      "count": 6383,
+      "sha256": "89bc3b81b4269f5ccfb059c90f9b7c8fd7241532c57392b4829ad6c7fa77ee60"
+    },
+    {
+      "iteration": 2,
+      "warmup": false,
+      "ms": 8324,
+      "maxSyncBlockMs": 8319,
+      "heapDeltaMb": 1015,
+      "count": 6383,
+      "sha256": "89bc3b81b4269f5ccfb059c90f9b7c8fd7241532c57392b4829ad6c7fa77ee60"
+    },
+    {
+      "iteration": 3,
+      "warmup": false,
+      "ms": 7849,
+      "maxSyncBlockMs": 7844,
+      "heapDeltaMb": 1004,
+      "count": 6383,
+      "sha256": "89bc3b81b4269f5ccfb059c90f9b7c8fd7241532c57392b4829ad6c7fa77ee60"
+    }
+  ],
+  "medianMs": 7849,
+  "maxSyncBlockMs": 8319,
+  "medianHeapDeltaMb": 1015
+}

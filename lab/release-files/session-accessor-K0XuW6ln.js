@@ -1175,6 +1175,7 @@ async function cleanupPluginHostSessionStore(params) {
 	let cleared = 0;
 	for (const { entry, sessionKey } of listSessionEntriesCore({
 		agentId: params.agentId,
+		projection: "list",
 		storePath: params.storePath
 	})) {
 		if (isLockedHarnessSessionOwnedByPlugin(entry, params.preserveLockedHarnessIds)) continue;

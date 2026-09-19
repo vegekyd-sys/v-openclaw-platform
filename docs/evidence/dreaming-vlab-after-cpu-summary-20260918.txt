@@ -1,0 +1,81 @@
+total 421.5s
+
+== self ==
+ 60.0%    252.7s  (idle) :-1
+  7.5%     31.5s  (garbage collector) :-1
+  6.8%     28.6s  next :-1
+  4.5%     19.2s  parseSqliteSessionEntryRecord openclaw-agent-db-maintenance-DYSkzMMg.js:815
+  3.7%     15.6s  (anon) kysely-sync-DKYGT267.js:144
+  1.7%      7.0s  iterateSqliteQuerySync kysely-sync-DKYGT267.js:191
+  0.8%      3.4s  lstat :-1
+  0.6%      2.5s  _propagate async_hooks:63
+  0.5%      2.0s  (program) :-1
+  0.5%      1.9s  parseAgentSessionKey session-key-CRjxKW0X.js:141
+  0.4%      1.8s  structuredClone js_transferable:111
+  0.4%      1.8s  openSync node:fs:558
+  0.4%      1.6s  prepare :-1
+  0.4%      1.6s  projectCanonicalSessionEntryShape store-writer-state-_Y6b9Vjm.js:121
+  0.4%      1.6s  run :-1
+  0.3%      1.4s  HasPropertyKey guard.mjs:190
+  0.3%      1.4s  get :-1
+  0.2%      1.0s  CheckSchema schema.mjs:256
+  0.2%      1.0s  fromRow placement-row-codec-DmVeQZuK.js:93
+  0.2%      0.9s  all :-1
+  0.2%      0.8s  isVitestRuntimeEnv test-runtime-env-DQDRzsLt.js:2
+  0.2%      0.7s  buildGatewaySessionRow session-utils-list-BUP03AzS.js:848
+  0.2%      0.7s  resolve node:path:1259
+  0.2%      0.7s  open :-1
+  0.2%      0.7s  freeze object-utils.js:61
+  0.2%      0.7s  visitNode operation-node-visitor.js:109
+  0.2%      0.7s  loadCardChildRows sqlite-store-CH-caj1l.js:414
+  0.2%      0.6s  (anon) session-accessor.entry-B8arwR7t.js:137
+  0.1%      0.6s  join node:path:1346
+  0.1%      0.6s  GetPropertyKeyAsPattern additionalProperties.mjs:19
+
+== inclusive ==
+100.0%    421.5s  (root) :-1
+ 60.0%    252.7s  (idle) :-1
+ 13.5%     57.1s  withOpenClawAgentDatabaseReadOnly openclaw-agent-db-readonly-wb-jdztx.js:85
+  8.9%     37.6s  executeSqliteQuerySync kysely-sync-DKYGT267.js:173
+  8.5%     36.0s  executeCompiledSqliteQuerySync kysely-sync-DKYGT267.js:141
+  8.5%     36.0s  executeWithCachedStatement kysely-sync-DKYGT267.js:98
+  8.4%     35.2s  (anon) kysely-sync-DKYGT267.js:144
+  7.5%     31.5s  (garbage collector) :-1
+  6.8%     28.6s  next :-1
+  6.5%     27.3s  createWorkerPlacementSessionEvidenceResolver server-worker-placement-startup-BvPREvpr.js:2957
+  6.3%     26.6s  readSessionIdentityEvidenceBatch session-accessor-K0XuW6ln.js:397
+  6.3%     26.4s  runMicrotasks :-1
+  6.2%     26.2s  (anon) session-accessor-K0XuW6ln.js:422
+  6.2%     26.2s  readSessionIdentityEvidenceRows session-accessor-K0XuW6ln.js:341
+  5.8%     24.4s  listVisibleSessions sessions-read-C6mAMxyQ.js:323
+  5.6%     23.8s  measureDiagnosticsTimelineSpan diagnostics-timeline-H3aAUCYk.js:238
+  5.2%     21.8s  runSqliteTransactionSync node-sqlite-CL-d6drd.js:201
+  5.0%     21.1s  parseSessionEntryJson session-accessor.sqlite-transcript-state-Cz9g7S9v.js:158
+  5.0%     20.9s  listSqliteSessionEntriesFromDatabase session-accessor.sqlite-entry-BlklNPKQ.js:463
+  4.7%     19.6s  run async_hooks:76
+  4.6%     19.5s  readSessionEntryCache session-accessor.sqlite-transcript-state-Cz9g7S9v.js:250
+  4.6%     19.4s  loadSessionEntrySnapshot session-accessor.sqlite-transcript-state-Cz9g7S9v.js:235
+  4.5%     19.2s  parseSqliteSessionEntryRecord openclaw-agent-db-maintenance-DYSkzMMg.js:815
+  4.5%     19.0s  parseReadableSqliteSessionEntryRow session-accessor.sqlite-entry-store-VfW3gyuj.js:1357
+  4.5%     18.9s  resolveGatewaySessionStoreTargetWithStore session-utils-store-Dlphca2N.js:274
+  4.4%     18.4s  resolveGatewaySessionStoreLookup session-utils-store-Dlphca2N.js:162
+  4.3%     18.3s  iterateSqliteQuerySync kysely-sync-DKYGT267.js:191
+  4.3%     18.0s  loadStore session-utils-store-Dlphca2N.js:173
+  4.3%     18.0s  loadGatewaySessionLookupStore session-utils-store-Dlphca2N.js:122
+  4.2%     17.6s  runInAsyncScope node:async_hooks:206
+  4.2%     17.6s  (anon) async_hooks:39
+  4.2%     17.6s  bound node:async_hooks:242
+  4.2%     17.6s  runQueuedStoreWrite store-writer-state-_Y6b9Vjm.js:81
+  4.2%     17.6s  runActiveStoreWriter store-writer-state-_Y6b9Vjm.js:23
+  4.2%     17.6s  fn store-writer-state-_Y6b9Vjm.js:88
+  4.2%     17.6s  drainStoreWriterQueue store-writer-state-_Y6b9Vjm.js:46
+  4.2%     17.6s  (anon) store-writer-state-_Y6b9Vjm.js:86
+  4.2%     17.6s  runExclusiveSqliteSessionWrite session-accessor.sqlite-scope-BwPKGcgm.js:18
+  4.2%     17.5s  runCriticalSection session-accessor.sqlite-scope-BwPKGcgm.js:24
+  4.2%     17.5s  fn session-accessor.sqlite-scope-BwPKGcgm.js:37
+  4.1%     17.3s  measureDiagnosticsTimelineSpan.config sessions-read-C6mAMxyQ.js:364
+  4.1%     17.2s  (anon) sessions-read-C6mAMxyQ.js:371
+  4.1%     17.2s  resolveSessionSharingTarget session-sharing-BlMqwMBH.js:71
+  3.6%     15.1s  processTicksAndRejections task_queues:70
+  3.3%     14.0s  loadGatewaySessionLookupStoreUncached session-utils-store-Dlphca2N.js:134
+
