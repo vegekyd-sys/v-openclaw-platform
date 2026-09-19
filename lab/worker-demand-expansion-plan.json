@@ -1,0 +1,10 @@
+{
+  "baseRelease": "session-store-hotpaths-v1",
+  "files": [
+    {
+      "source": "lab/release-files/worker-demand-expansion/production-worker-worker-pool.mjs",
+      "target": "production-worker/worker-pool.mjs",
+      "before": "a9f718d0c9ca1f209aba9a9a55d86181b84f2ab1afa8b65cc86bde96bc3b5ea3"
+    }
+  ]
+}
