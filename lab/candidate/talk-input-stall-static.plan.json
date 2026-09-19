@@ -1,0 +1,19 @@
+{
+  "baseRelease": "session-store-hotpaths-v1",
+  "files": [
+    {
+      "source": "lab/release-files/talk-input-stall/control-ui-boot-chat-DWTSrxxk.js",
+      "target": "openclaw/dist/control-ui/assets/control-ui-boot-chat-DWTSrxxk.js",
+      "before": "9d747515ee114f181899b848733c32d98c347b63ddf9b398e240deb6196fd3f6"
+    },
+    {
+      "source": "lab/release-files/talk-input-stall/asset-manifest.json",
+      "target": "openclaw/dist/control-ui/asset-manifest.json",
+      "before": "e9f318106f248a94613700ff38a2dfe105f791396ed372702f0c145ac630b13b"
+    }
+  ],
+  "tests": [
+    "lab/candidate/talk-input-stall-static.test.mjs"
+  ],
+  "timeoutSeconds": 180
+}
