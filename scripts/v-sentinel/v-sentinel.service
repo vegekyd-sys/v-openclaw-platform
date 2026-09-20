@@ -1,0 +1,14 @@
+[Unit]
+Description=V production sentinel (worker pool / stalled requests / host resources)
+Documentation=https://github.com/vegekyd-sys/v-openclaw-platform
+# Deliberately NOT After=openclaw-gateway.service: the sentinel must run and be
+# able to alert precisely when the Gateway is the thing that is broken.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/v-sentinel/sentinel.py
+User=root
+# The probe is cheap but must never become a second source of load.
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=120
