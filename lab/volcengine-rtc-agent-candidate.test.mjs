@@ -40,6 +40,7 @@ test("candidate server runtime registers and closes the managed-room provider", 
   const requests = [];
   const ids = ["room", "user", "task"];
   const provider = buildVolcengineRtcAgentProvider({
+    env: {},
     now: () => Date.parse("2026-09-21T00:00:00Z"),
     randomUUID: () => ids.shift(),
     fetch: async (url, init) => {

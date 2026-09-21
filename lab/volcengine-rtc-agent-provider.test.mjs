@@ -132,6 +132,7 @@ test("provider requires the server AppKey and resolves the named console bot", a
   const calls = [];
   const ids = ["room", "user", "task"];
   const provider = buildVolcengineRtcAgentProvider({
+    env: {},
     now: () => Date.parse("2026-09-21T00:00:00.000Z"),
     randomUUID: () => ids.shift(),
     fetch: async (url, init) => {
@@ -178,6 +179,7 @@ test("provider requires the server AppKey and resolves the named console bot", a
 
 test("named console bot selection fails closed when the name is ambiguous", async () => {
   const provider = buildVolcengineRtcAgentProvider({
+    env: {},
     fetch: async (url) => {
       const Result = { Bots: [{ Name: "小何" }, { Name: "小何" }] };
       return { ok: true, status: 200, json: async () => ({ ResponseMetadata: {}, Result }) };
