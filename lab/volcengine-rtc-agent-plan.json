@@ -1,0 +1,49 @@
+{
+  "baseRelease": "talk-input-stall-v1",
+  "tests": [
+    "lab/volcengine-rtc-agent-candidate.test.mjs"
+  ],
+  "timeoutSeconds": 60,
+  "files": [
+    {
+      "source": "lab/release-files/volcengine-rtc-agent/control-ui-boot-chat-DWTSrxxk.js",
+      "target": "openclaw/dist/control-ui/assets/control-ui-boot-chat-DWTSrxxk.js",
+      "before": "b1480f0fae6aa434532c02456bbd291d5c54edcdae61f386f13c62931a10b7e4"
+    },
+    {
+      "source": "lab/release-files/volcengine-rtc-agent/asset-manifest.json",
+      "target": "openclaw/dist/control-ui/asset-manifest.json",
+      "before": "a781e2fcba0d749a533a08a378f372cfe85ebe08003383adcc0c03b5c8392659"
+    },
+    {
+      "source": "lab/release-files/volcengine-rtc-agent/volcengine-rtc-managed-room-client.js",
+      "target": "openclaw/dist/control-ui/assets/volcengine-rtc-managed-room-client.js",
+      "before": null
+    },
+    {
+      "source": "lab/release-files/volcengine-rtc-agent/volcengine-rtc-4.68.1.esm.js",
+      "target": "openclaw/dist/control-ui/assets/volcengine-rtc-4.68.1.esm.js",
+      "before": null
+    },
+    {
+      "source": "lab/release-files/volcengine-rtc-agent/talk-DkFuKRod.js",
+      "target": "openclaw/dist/talk-DkFuKRod.js",
+      "before": "7b0f7548f264effb5e3bd1b250c96085cf76e4b75214fd9a5be65a5d3d7a7029"
+    },
+    {
+      "source": "lab/release-files/volcengine-rtc-agent/realtime-session-harness-CEO5kVAJ.js",
+      "target": "openclaw/dist/realtime-session-harness-CEO5kVAJ.js",
+      "before": "d4011faeac0ad58e84f1157c9ebd861909e0d819e131b29d040e295484a3889c"
+    },
+    {
+      "source": "lab/release-files/volcengine-rtc-agent/production-worker-index.mjs",
+      "target": "production-worker/index.mjs",
+      "before": "96e333eb824eb0bf37186f92f24eec21300a1f4790928fc54554b647a25208b0"
+    },
+    {
+      "source": "lab/release-files/volcengine-rtc-agent/volcengine-rtc-agent-provider.mjs",
+      "target": "production-worker/volcengine-rtc-agent-provider.mjs",
+      "before": null
+    }
+  ]
+}
