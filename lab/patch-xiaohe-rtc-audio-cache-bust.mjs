@@ -43,6 +43,18 @@ export function addManifestAsset(manifestSource, assetPath, assetBytes) {
     sha256: sha256(assetBytes),
     size: Buffer.byteLength(assetBytes),
   });
+  manifest.assets.sort((left, right) => left.path.localeCompare(right.path));
+  return serializeManifest(manifest);
+}
+
+export function normalizeManifest(manifestSource) {
+  const manifest = JSON.parse(manifestSource);
+  assert.equal(manifest.version, 1, "unsupported Control UI manifest");
+  manifest.assets.sort((left, right) => left.path.localeCompare(right.path));
+  return serializeManifest(manifest);
+}
+
+function serializeManifest(manifest) {
   const hash = createHash("sha256");
   for (const asset of manifest.assets) {
     hash.update(asset.path);
