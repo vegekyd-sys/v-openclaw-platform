@@ -1,0 +1,23 @@
+{
+  "baseRelease": "xiaohe-rtc-audio-manifest-hash-v1",
+  "tests": [
+    "lab/volcengine-rtc-managed-room-client.test.mjs",
+    "lab/patch-xiaohe-rtc-audio-cache-bust.test.mjs"
+  ],
+  "support": [
+    "lab/patch-xiaohe-rtc-audio-cache-bust.mjs"
+  ],
+  "timeoutSeconds": 60,
+  "files": [
+    {
+      "source": "lab/volcengine-rtc-managed-room-client.mjs",
+      "target": "openclaw/dist/control-ui/assets/volcengine-rtc-managed-room-client.js",
+      "before": "e73cb38096f8e8fbad4b68ac9d45820f9da0a56fef69ced8e7b1684105c0fdb7"
+    },
+    {
+      "source": "lab/release-files/xiaohe-rtc-sdk-timeout/asset-manifest.json",
+      "target": "openclaw/dist/control-ui/asset-manifest.json",
+      "before": "23050d852a7f72452d56f92b8ab46db8f3c466bbe23b12e7bff0c51e8f3c9a31"
+    }
+  ]
+}
