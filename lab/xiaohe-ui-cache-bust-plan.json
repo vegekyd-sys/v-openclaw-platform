@@ -1,0 +1,14 @@
+{
+  "baseRelease": "volcengine-rtc-agent-v4",
+  "tests": [
+    "lab/patch-control-ui-cache-reset.test.mjs"
+  ],
+  "timeoutSeconds": 60,
+  "files": [
+    {
+      "source": "lab/release-files/xiaohe-ui-cache-bust/control-ui-DhD7PO_6.js",
+      "target": "openclaw/dist/control-ui-DhD7PO_6.js",
+      "before": "e0c94d7cad05f7797d57a3e62223902cd31d3d870c2cd7ee6112605c304096b8"
+    }
+  ]
+}
