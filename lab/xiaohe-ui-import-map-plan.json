@@ -19,16 +19,6 @@
       "source": "lab/release-files/xiaohe-ui-import-map/control-ui-boot-chat-DWTSrxxk-rtc-v4.js",
       "target": "openclaw/dist/control-ui/assets/control-ui-boot-chat-DWTSrxxk-rtc-v4.js",
       "before": null
-    },
-    {
-      "source": "lab/release-files/xiaohe-ui-import-map/control-ui-boot-chat-DWTSrxxk-rtc-v4.js.br",
-      "target": "openclaw/dist/control-ui/assets/control-ui-boot-chat-DWTSrxxk-rtc-v4.js.br",
-      "before": null
-    },
-    {
-      "source": "lab/release-files/xiaohe-ui-import-map/control-ui-boot-chat-DWTSrxxk-rtc-v4.js.gz",
-      "target": "openclaw/dist/control-ui/assets/control-ui-boot-chat-DWTSrxxk-rtc-v4.js.gz",
-      "before": null
     }
   ]
 }
