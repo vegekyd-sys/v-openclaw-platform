@@ -5,6 +5,7 @@ import {
   RTC_BOOT_AFTER,
   addManifestAsset,
   normalizeManifest,
+  updateManifestAsset,
   patchControlUiRtcAdapterVersion,
   patchControlUiServerRtcBootVersion,
 } from "./patch-xiaohe-rtc-audio-cache-bust.mjs";
@@ -14,6 +15,18 @@ test("versions the RTC boot module served by the Control UI", () => {
   const after = patchControlUiServerRtcBootVersion(before);
   assert.match(after, new RegExp(RTC_BOOT_AFTER));
   assert.equal(patchControlUiServerRtcBootVersion(after), after);
+});
+
+test("updates a replaced asset hash and size in the manifest", () => {
+  const source = JSON.stringify({
+    version: 1,
+    generation: "stale-on-purpose",
+    assets: [{ path: "assets/rtc.js", sha256: "a".repeat(64), size: 1 }],
+  });
+  const result = JSON.parse(updateManifestAsset(source, "assets/rtc.js", Buffer.from("new-rtc")));
+  assert.equal(result.assets[0].size, 7);
+  assert.notEqual(result.assets[0].sha256, "a".repeat(64));
+  assert.match(result.generation, /^[a-f0-9]{64}$/);
 });
 
 test("versions the managed-room adapter dynamic import", () => {
