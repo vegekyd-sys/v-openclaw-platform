@@ -1,0 +1,17 @@
+{
+  "baseRelease": "ws-heartbeat-backport-91-v1",
+  "tests": [
+    "lab/volcengine-rtc-managed-room-client.test.mjs"
+  ],
+  "support": [
+    "lab/volcengine-rtc-managed-room-client.mjs"
+  ],
+  "timeoutSeconds": 90,
+  "files": [
+    {
+      "source": "lab/volcengine-rtc-managed-room-client.mjs",
+      "target": "openclaw/dist/control-ui/assets/volcengine-rtc-managed-room-client.js",
+      "before": "9590a41cb65ddcbbbf82ce3211d24e1caaa310c0c737800cc7b6cbc00809659b"
+    }
+  ]
+}

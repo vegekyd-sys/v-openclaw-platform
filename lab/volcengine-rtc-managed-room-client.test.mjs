@@ -54,12 +54,28 @@ function makeHarness() {
   const toolCalls = [];
   let inputStops = 0;
   let destroyed;
+  let supportChecks = 0;
+  let devicePermissionChecks = 0;
+  let deviceEnumerations = 0;
   const sdk = {
     events: {
       onRoomBinaryMessageReceived: "binary",
       onError: "error",
     },
     RoomProfileType: { chat: 12 },
+    isSupported: async () => {
+      supportChecks++;
+      return true;
+    },
+    enableDevices: async (options) => {
+      devicePermissionChecks++;
+      assert.deepEqual(options, { audio: true, video: false });
+      return { audio: true, video: false };
+    },
+    enumerateAudioCaptureDevices: async () => {
+      deviceEnumerations++;
+      return [{ kind: "audioinput", deviceId: "mic-default" }];
+    },
     createEngine: (appId) => {
       assert.equal(appId, "app");
       return engine;
@@ -90,6 +106,9 @@ function makeHarness() {
     toolCalls,
     inputStops: () => inputStops,
     destroyed: () => destroyed,
+    supportChecks: () => supportChecks,
+    devicePermissionChecks: () => devicePermissionChecks,
+    deviceEnumerations: () => deviceEnumerations,
   };
 }
 
@@ -110,6 +129,8 @@ test("managed-room uses RTC for audio and forwards only control data to V", asyn
   });
   assert.equal(await client.start(), "ready");
   assert.equal(harness.inputStops(), 1, "the host microphone probe must be released");
+  assert.equal(harness.supportChecks(), 1);
+  assert.equal(harness.devicePermissionChecks(), 0, "an explicit microphone skips enumeration");
   assert.equal(harness.engine.joined[0][0], "browser-room-token");
   assert.equal(harness.engine.joined[0][1], "room");
   assert.equal(harness.engine.joined[0][3].isAutoPublish, true);
@@ -168,6 +189,41 @@ test("managed-room uses RTC for audio and forwards only control data to V", asyn
   assert.equal(harness.engine.captureStopped, true);
   assert.equal(harness.engine.left, true);
   assert.equal(harness.destroyed(), harness.engine);
+});
+
+test("managed-room obtains a concrete microphone before capture", async () => {
+  const harness = makeHarness();
+  const client = new VolcengineRtcManagedRoomClient(makeSession(), harness.context, {
+    loadSdk: async () => harness.sdk,
+  });
+  assert.equal(await client.start(), "ready");
+  assert.equal(harness.devicePermissionChecks(), 1);
+  assert.equal(harness.deviceEnumerations(), 1);
+  assert.equal(harness.engine.inputDeviceId, "mic-default");
+  client.stop();
+});
+
+test("managed-room fails visibly instead of hanging during room join", async () => {
+  const harness = makeHarness();
+  harness.engine.joinRoom = async () => new Promise(() => {});
+  const client = new VolcengineRtcManagedRoomClient(makeSession(), harness.context, {
+    loadSdk: async () => harness.sdk,
+    stageTimeoutsMs: { join: 5 },
+  });
+  await assert.rejects(() => client.start(), /room join timed out/u);
+  assert.match(harness.statuses.at(-1)[1], /room join timed out/u);
+  assert.equal(harness.destroyed(), harness.engine);
+});
+
+test("managed-room rejects unsupported browsers before creating an engine", async () => {
+  const harness = makeHarness();
+  harness.sdk.isSupported = async () => false;
+  const client = new VolcengineRtcManagedRoomClient(makeSession(), harness.context, {
+    loadSdk: async () => harness.sdk,
+  });
+  await assert.rejects(() => client.start(), /not supported/u);
+  assert.match(harness.statuses.at(-1)[1], /not supported/u);
+  assert.equal(harness.destroyed(), undefined);
 });
 
 test("duplicate and unknown RTC tool calls cannot execute V twice", async () => {
