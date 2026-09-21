@@ -5,17 +5,20 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   RTC_MODULE_AFTER,
-  patchControlUiIndexImportMap,
+  patchControlUiServerImportMap,
 } from "./patch-control-ui-import-map.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const inputDir = resolve(root, "lab/release-files/volcengine-rtc-agent");
-const indexInput = resolve(root, "lab/release-files/control-ui-import-map-base/index.html");
+const serverInput = resolve(
+  root,
+  "lab/release-files/xiaohe-ui-cache-bust/control-ui-DhD7PO_6.js",
+);
 const outputDir = resolve(root, "lab/release-files/xiaohe-ui-import-map");
 const planPath = resolve(root, "lab/xiaohe-ui-import-map-plan.json");
 
 const hashes = {
-  index: "ecb3576de9af0afa7adea2ca0a062295c5f7d3a0c0c14455e783642990c42b78",
+  server: "9fd0d26098db573957e85cb84669127bcbf5d76cdb8158d19ea0dcc567613dd7",
   manifest: "5a7b1e0908389ac4c5c11c11d1d5708eac98bf01953669a45b3187d83d2b7a75",
   rtc: "71f6b0960f0d4d38ac586892bf0bbed30f270e55d227cf2d0e63e54f454c9c4b",
 };
@@ -51,7 +54,7 @@ function write(name, value) {
 }
 
 export function build() {
-  const indexBefore = checkedRead(indexInput, hashes.index, "Control UI index");
+  const serverBefore = checkedRead(serverInput, hashes.server, "Control UI server");
   const manifestBefore = checkedRead(
     resolve(inputDir, "asset-manifest.json"),
     hashes.manifest,
@@ -62,7 +65,9 @@ export function build() {
     hashes.rtc,
     "RTC module",
   );
-  const indexAfter = Buffer.from(patchControlUiIndexImportMap(indexBefore.toString("utf8")));
+  const serverAfter = Buffer.from(
+    patchControlUiServerImportMap(serverBefore.toString("utf8")),
+  );
   const manifest = JSON.parse(manifestBefore.toString("utf8"));
   assert.equal(manifest.version, 1, "unsupported Control UI manifest");
   assert.equal(manifest.generation, hashManifestAssets(manifest.assets), "manifest drifted");
@@ -78,7 +83,7 @@ export function build() {
 
   mkdirSync(outputDir, { recursive: true });
   const outputHashes = {
-    index: write("index.html", indexAfter),
+    server: write("control-ui-DhD7PO_6.js", serverAfter),
     manifest: write("asset-manifest.json", manifestAfter),
     rtc: write(RTC_MODULE_AFTER, rtc),
   };
@@ -88,9 +93,9 @@ export function build() {
     timeoutSeconds: 60,
     files: [
       {
-        source: "lab/release-files/xiaohe-ui-import-map/index.html",
-        target: "openclaw/dist/control-ui/index.html",
-        before: hashes.index,
+        source: "lab/release-files/xiaohe-ui-import-map/control-ui-DhD7PO_6.js",
+        target: "openclaw/dist/control-ui-DhD7PO_6.js",
+        before: hashes.server,
       },
       {
         source: "lab/release-files/xiaohe-ui-import-map/asset-manifest.json",
