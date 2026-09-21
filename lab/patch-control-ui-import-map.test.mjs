@@ -22,5 +22,17 @@ test("injects an import map into every served Control UI document", () => {
   assert.match(after, new RegExp(RTC_MODULE_BEFORE));
   assert.match(after, new RegExp(RTC_MODULE_AFTER));
   assert.match(after, /const withRtcImportMap/);
+  const helperStart = after.indexOf("function injectControlUiRtcImportMap");
+  const helperEnd = after.indexOf("async function serveResolvedIndexHtml", helperStart);
+  const makeHelper = new Function(
+    `${after.slice(helperStart, helperEnd)}; return injectControlUiRtcImportMap;`,
+  );
+  const rendered = makeHelper()(
+    '<html><head><script type="module" crossorigin src="/assets/index.js"></script></head></html>',
+    "",
+  );
+  assert.match(rendered, /<script type="importmap">/);
+  assert.match(rendered, new RegExp(`/assets/${RTC_MODULE_AFTER}`));
+  assert.ok(rendered.indexOf('type="importmap"') < rendered.indexOf('type="module"'));
   assert.equal(patchControlUiServerImportMap(after), after);
 });

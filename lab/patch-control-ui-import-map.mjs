@@ -9,7 +9,7 @@ function injectControlUiRtcImportMap(html, basePath) {
 	const before = \`\${basePath}/assets/${RTC_MODULE_BEFORE}\`;
 	const after = \`\${basePath}/assets/${RTC_MODULE_AFTER}\`;
 	const importMap = \`<script type="importmap">\${JSON.stringify({ imports: { [before]: after } })}</script>\`;
-	return html.replace(/(<script type="module"\\b)/, \`\${importMap}\\n    \$1\`);
+	return html.replace(/(<script type="module")/, \`\${importMap}\\n    \$1\`);
 }`;
 
 const INDEX_ANCHOR =

@@ -1,0 +1,14 @@
+{
+  "baseRelease": "xiaohe-ui-import-map-v3",
+  "tests": [
+    "lab/patch-control-ui-import-map.test.mjs"
+  ],
+  "timeoutSeconds": 60,
+  "files": [
+    {
+      "source": "lab/release-files/xiaohe-ui-import-map-match/control-ui-DhD7PO_6.js",
+      "target": "openclaw/dist/control-ui-DhD7PO_6.js",
+      "before": "4d4cb9e8e0a5a33a89a62601917c0ad2e9b0459a73f28c3c355753cc76fd9dd1"
+    }
+  ]
+}
