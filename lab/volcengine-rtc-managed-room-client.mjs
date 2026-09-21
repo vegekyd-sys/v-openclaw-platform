@@ -3,7 +3,10 @@ export const VOLC_RTC_SDK_ASSET = "./volcengine-rtc-4.68.1.esm.js";
 const MAX_BINARY_MESSAGE_BYTES = 64 * 1024;
 const TALK_TOOL_NAMES = new Set(["openclaw_agent_consult", "openclaw_agent_control"]);
 const DEFAULT_STAGE_TIMEOUTS_MS = Object.freeze({
-  sdk: 120_000,
+  // The first uncached SDK download is 1.45 MB. Remote VLab sessions can run
+  // through a bandwidth-limited SSH tunnel, so keep this one stage tolerant
+  // while retaining tight deadlines for browser checks, join, and capture.
+  sdk: 300_000,
   support: 15_000,
   join: 30_000,
   devices: 30_000,
