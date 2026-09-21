@@ -19,6 +19,8 @@ DISK_WARN_MB   = int(os.environ.get("VWATCH_DISK_MB", "25600"))
 MEM_WARN_MB    = int(os.environ.get("VWATCH_MEM_MB", "4096"))
 EGRESS_WARN_MBPS = float(os.environ.get("VWATCH_EGRESS_MBPS", "30"))  # cap is 50
 STALL_WARN = 3          # stalled requests per window; the measured normal is 0
+FAIL_RATE_WARN = 3.0    # rolling-hour user-facing failure %; daily noise sits under 1
+FAIL_BURST = 5          # failures in one window that count as a burst regardless of rate
 POOL_MAX = 15           # maxWorkers in production's worker-pool config
 # A port that answers 403/404 is alive and routing; only no-answer or an
 # upstream failure is a fault. browser_broker's 2026-09-12 outage was a 502.
@@ -265,9 +267,12 @@ def handle(out):
     for pid in [p for p in streak if p not in live]:
         streak.pop(pid, None); state["reported"].discard(f"w{pid}")
 
-    if not fails and calls_seen:
+    # Feed the rolling hour from EVERY cycle, not only the ones that alert.
+    # Failures during the 600s alert-suppression window used to be dropped from
+    # the denominator, which quietly biased the rate upward.
+    if calls_seen or fails:
         hist = state.setdefault("call_hist", [])
-        hist.append((now, len(calls_seen), 0))
+        hist.append((now, len(calls_seen), len(fails)))
         cutoff = now - 3600
         while hist and hist[0][0] < cutoff:
             hist.pop(0)
@@ -285,20 +290,24 @@ def handle(out):
         if fs_["quiet"] >= 10:
             emit("RECOVER", f"no model call failures for {10*INTERVAL}s ({fs_['total']} total this episode)")
             fs_.update(active=False, last=0.0, total=0, quiet=0)
-    if fails and (not fs_["active"] or now - fs_["last"] > 600):
+    hist = state.get("call_hist", [])
+    h_calls = sum(c for _, c, _ in hist)
+    h_fails = sum(f for _, _, f in hist)
+    h_rate = (h_fails / h_calls * 100) if h_calls else 0.0
+    # A single failed call is not news. Measured on 2026-09-21, isolated
+    # failures land at 0.15-0.96% of the hour and users never notice; the
+    # DeepSeek outage on 2026-09-20 ran deepseek's success rate down to 48%.
+    # Two orders of magnitude separate noise from an incident, so alert on the
+    # rate or on a genuine burst -- never on one call.
+    worth_saying = (len(fails) >= FAIL_BURST
+                    or (h_calls >= 200 and h_rate >= FAIL_RATE_WARN))
+    if fails and worth_saying and (not fs_["active"] or now - fs_["last"] > 600):
         fs_["active"] = True; fs_["last"] = now
         by = {}
         for prov, model, _ in fails:
             by[f"{prov}/{model}"] = by.get(f"{prov}/{model}", 0) + 1
         brief = ", ".join(f"{k} x{v}" for k, v in sorted(by.items(), key=lambda kv: -kv[1]))
-        hist = state.setdefault("call_hist", [])
-        hist.append((now, len(calls_seen), len(fails)))
-        cutoff = now - 3600
-        while hist and hist[0][0] < cutoff:
-            hist.pop(0)
-        h_calls = sum(c for _, c, _ in hist)
-        h_fails = sum(f for _, _, f in hist)
-        rate = (f"; last hour {h_fails}/{h_calls} = {h_fails / h_calls * 100:.2f}%"
+        rate = (f"; last hour {h_fails}/{h_calls} = {h_rate:.2f}%"
                 if h_calls >= 200 else f"; last hour {h_fails}/{h_calls} (too few to rate)")
         extra = f" [+{len(internal_fails)} internal/background]" if internal_fails else ""
         emit("CALLFAIL", f"{len(fails)} user-facing call(s) failed in {WINDOW}s{rate}{extra}. "
