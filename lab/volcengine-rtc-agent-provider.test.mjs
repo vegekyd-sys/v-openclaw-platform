@@ -128,7 +128,7 @@ test("provider rejects incomplete Xiaohe or OpenAPI configuration before network
   );
 });
 
-test("provider resolves the named console bot and AppKey without copying its voice config", async () => {
+test("provider requires the server AppKey and resolves the named console bot", async () => {
   const calls = [];
   const ids = ["room", "user", "task"];
   const provider = buildVolcengineRtcAgentProvider({
@@ -138,25 +138,24 @@ test("provider resolves the named console bot and AppKey without copying its voi
       const action = new URL(url).searchParams.get("Action");
       calls.push({ action, url, body: JSON.parse(init.body) });
       const Result =
-        action === "DescribeAppKeys"
-          ? { AppKey: "console-app-key" }
-          : action === "AibotxQuery"
-            ? {
-                Bots: [
-                  {
-                    Id: "bot-xiaohe",
-                    Name: "小何",
-                    Config: { LLMConfig: { SystemMessages: ["你是小何。"] } },
-                    AgentConfig: { UserId: "xiaohe-console-agent" },
-                  },
-                ],
-              }
-            : {};
+        action === "AibotxQuery"
+          ? {
+              Bots: [
+                {
+                  Id: "bot-xiaohe",
+                  Name: "小何",
+                  Config: { LLMConfig: { SystemMessages: ["你是小何。"] } },
+                  AgentConfig: { UserId: "xiaohe-console-agent" },
+                },
+              ],
+            }
+          : {};
       return { ok: true, status: 200, json: async () => ({ ResponseMetadata: {}, Result }) };
     },
   });
   const providerConfig = {
     appId: "rtc-app",
+    appKey: "console-app-key",
     accessKeyId: "access-key",
     secretAccessKey: "secret-key",
     botName: "小何",
@@ -167,15 +166,10 @@ test("provider resolves the named console bot and AppKey without copying its voi
     instructions: "工具请求交给 V。",
     tools: [],
   });
-  assert.deepEqual(calls.map((call) => call.action), [
-    "DescribeAppKeys",
-    "AibotxQuery",
-    "StartVoiceChat",
-  ]);
-  assert.match(calls[0].url, /Version=2020-12-01/u);
-  assert.match(calls[1].url, /Version=2025-08-01/u);
-  assert.equal(calls[2].body.AgentConfig.UserId, "xiaohe-console-agent");
-  assert.deepEqual(calls[2].body.Config.LLMConfig.SystemMessages, [
+  assert.deepEqual(calls.map((call) => call.action), ["AibotxQuery", "StartVoiceChat"]);
+  assert.match(calls[0].url, /Version=2025-08-01/u);
+  assert.equal(calls[1].body.AgentConfig.UserId, "xiaohe-console-agent");
+  assert.deepEqual(calls[1].body.Config.LLMConfig.SystemMessages, [
     "你是小何。",
     "工具请求交给 V。",
   ]);
@@ -185,11 +179,7 @@ test("provider resolves the named console bot and AppKey without copying its voi
 test("named console bot selection fails closed when the name is ambiguous", async () => {
   const provider = buildVolcengineRtcAgentProvider({
     fetch: async (url) => {
-      const action = new URL(url).searchParams.get("Action");
-      const Result =
-        action === "DescribeAppKeys"
-          ? { AppKey: "app-key" }
-          : { Bots: [{ Name: "小何" }, { Name: "小何" }] };
+      const Result = { Bots: [{ Name: "小何" }, { Name: "小何" }] };
       return { ok: true, status: 200, json: async () => ({ ResponseMetadata: {}, Result }) };
     },
   });
@@ -197,6 +187,7 @@ test("named console bot selection fails closed when the name is ambiguous", asyn
     provider.createBrowserSession({
       providerConfig: {
         appId: "app",
+        appKey: "app-key",
         accessKeyId: "ak",
         secretAccessKey: "sk",
         botName: "小何",
@@ -204,5 +195,23 @@ test("named console bot selection fails closed when the name is ambiguous", asyn
       tools: [],
     }),
     /matched 2 bots/u,
+  );
+});
+
+test("provider never attempts network AppKey discovery", async () => {
+  const provider = buildVolcengineRtcAgentProvider({
+    env: {},
+    fetch: () => assert.fail("no fetch"),
+  });
+  const providerConfig = {
+    appId: "app",
+    accessKeyId: "ak",
+    secretAccessKey: "sk",
+    botId: "bot-xiaohe",
+  };
+  assert.equal(provider.isConfigured({ providerConfig }), false);
+  await assert.rejects(
+    provider.createBrowserSession({ providerConfig, tools: [] }),
+    /RTC_APP_KEY is required/u,
   );
 });

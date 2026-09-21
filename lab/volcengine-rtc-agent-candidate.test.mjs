@@ -46,25 +46,24 @@ test("candidate server runtime registers and closes the managed-room provider", 
       const action = new URL(url).searchParams.get("Action");
       requests.push({ action, url, body: JSON.parse(init.body) });
       const Result =
-        action === "DescribeAppKeys"
-          ? { AppKey: "app-key" }
-          : action === "AibotxQuery"
-            ? {
-                Bots: [
-                  {
-                    Id: "bot-xiaohe",
-                    Name: "小何",
-                    Config: { LLMConfig: {} },
-                    AgentConfig: { UserId: "xiaohe" },
-                  },
-                ],
-              }
-            : {};
+        action === "AibotxQuery"
+          ? {
+              Bots: [
+                {
+                  Id: "bot-xiaohe",
+                  Name: "小何",
+                  Config: { LLMConfig: {} },
+                  AgentConfig: { UserId: "xiaohe" },
+                },
+              ],
+            }
+          : {};
       return { ok: true, status: 200, json: async () => ({ ResponseMetadata: {}, Result }) };
     },
   });
   const providerConfig = {
     appId: "app",
+    appKey: "app-key",
     accessKeyId: "access",
     secretAccessKey: "secret",
     botName: "小何",
@@ -82,9 +81,9 @@ test("candidate server runtime registers and closes the managed-room provider", 
   });
   assert.equal(session.transport, "managed-room");
   assert.equal(parseVolcRtcRoomUrl(session.roomUrl).agentUserId, "xiaohe");
-  assert.equal(requests[2].body.Config.LLMConfig.Tools[0].function.name, "openclaw_agent_consult");
+  assert.equal(requests[1].body.Config.LLMConfig.Tools[0].function.name, "openclaw_agent_consult");
   await provider.cancelBrowserSession({ providerConfig }, session);
-  assert.match(requests[3].url, /Action=StopVoiceChat/u);
+  assert.match(requests[2].url, /Action=StopVoiceChat/u);
 
   const worker = await readFile(join(runtime, "production-worker/index.mjs"), "utf8");
   const talk = await readFile(join(runtime, "openclaw/dist/talk-DkFuKRod.js"), "utf8");

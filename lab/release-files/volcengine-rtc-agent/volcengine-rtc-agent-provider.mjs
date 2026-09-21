@@ -3,7 +3,6 @@ import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 export const VOLC_RTC_AGENT_PROVIDER_ID = "volcengine-rtc-agent";
 export const VOLC_RTC_API_VERSION = "2025-06-01";
 export const VOLC_RTC_CONSOLE_API_VERSION = "2025-08-01";
-export const VOLC_RTC_APP_API_VERSION = "2020-12-01";
 export const VOLC_RTC_ENDPOINT = "https://rtc.volcengineapi.com";
 export const VOLC_RTC_REGION = "cn-north-1";
 export const VOLC_RTC_SERVICE = "rtc";
@@ -295,17 +294,6 @@ export function buildVolcengineRtcAgentProvider(options = {}) {
     return payload;
   }
 
-  async function resolveAppKey(config) {
-    if (config.appKey) return config.appKey;
-    const payload = await invoke(
-      config,
-      "DescribeAppKeys",
-      { AppId: requiredString(config.appId, "RTC_APP_ID") },
-      VOLC_RTC_APP_API_VERSION,
-    );
-    return requiredString(payload?.Result?.AppKey, "DescribeAppKeys Result.AppKey");
-  }
-
   async function resolveVoiceChat(config) {
     if (config.voiceChat) {
       validateVoiceChat(config.voiceChat);
@@ -369,6 +357,7 @@ export function buildVolcengineRtcAgentProvider(options = {}) {
       const config = resolveProviderConfig(providerConfig, options.env);
       return Boolean(
         config.appId &&
+          config.appKey &&
           config.accessKeyId &&
           config.secretAccessKey &&
           ((config.voiceChat?.Config && config.voiceChat?.AgentConfig?.UserId) ||
@@ -382,7 +371,7 @@ export function buildVolcengineRtcAgentProvider(options = {}) {
     async createBrowserSession(request) {
       const config = resolveProviderConfig(request.providerConfig, options.env);
       config.appId = requiredString(config.appId, "RTC_APP_ID");
-      config.appKey = await resolveAppKey(config);
+      config.appKey = requiredString(config.appKey, "RTC_APP_KEY");
       config.voiceChat = await resolveVoiceChat(config);
       const roomId = `v-${createId()}`;
       const userId = `user-${createId()}`;

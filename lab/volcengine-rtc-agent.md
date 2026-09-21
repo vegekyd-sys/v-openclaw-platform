@@ -35,11 +35,14 @@ browser control message --> talk.client.toolCall --> V / DeepSeek Flash
 VOLCENGINE_ACCESS_KEY_ID
 VOLCENGINE_SECRET_ACCESS_KEY
 RTC_APP_ID
+RTC_APP_KEY
+RTC_AGENT_USER_ID
 ```
 
 Provider 可以用 `botId`，也可以先用唯一的 `botName: "小何"` 自动读取控制台保存的
-`Config + AgentConfig`。AppKey 通过服务端 `DescribeAppKeys` 获取，不需要复制到
-OpenClaw 配置。
+`Config + AgentConfig`。`RTC_APP_ID` 与 `RTC_APP_KEY` 必须来自 RTC 应用管理，AppKey
+只放服务端环境；控制台查询接口不会返回它。若智能体配置没有 `AgentConfig.UserId`，
+Provider 会使用 `RTC_AGENT_USER_ID` 作为 RTC 里的小何用户 ID。
 
 ```json
 {
@@ -61,7 +64,7 @@ OpenClaw 配置。
 ```
 
 如果控制台存在重名智能体，Provider 会拒绝启动并要求改用精确 `botId`。也可以显式提供
-`voiceChat` 和 `appKey`，用于离线固定配置，但生产首选控制台智能体。
+`voiceChat`，用于离线固定配置；生产首选控制台智能体，但 AppKey 始终必须由服务端配置。
 
 ## 验收边界
 
