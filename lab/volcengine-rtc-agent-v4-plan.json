@@ -1,0 +1,45 @@
+{
+  "baseRelease": "volcengine-rtc-agent-v3",
+  "files": [
+    {
+      "source": "lab/release-files/volcengine-rtc-agent/control-ui-boot-chat-DWTSrxxk.js",
+      "target": "openclaw/dist/control-ui/assets/control-ui-boot-chat-DWTSrxxk.js",
+      "before": "71f6b0960f0d4d38ac586892bf0bbed30f270e55d227cf2d0e63e54f454c9c4b"
+    },
+    {
+      "source": "lab/release-files/volcengine-rtc-agent/asset-manifest.json",
+      "target": "openclaw/dist/control-ui/asset-manifest.json",
+      "before": "5a7b1e0908389ac4c5c11c11d1d5708eac98bf01953669a45b3187d83d2b7a75"
+    },
+    {
+      "source": "lab/release-files/volcengine-rtc-agent/volcengine-rtc-managed-room-client.js",
+      "target": "openclaw/dist/control-ui/assets/volcengine-rtc-managed-room-client.js",
+      "before": "9590a41cb65ddcbbbf82ce3211d24e1caaa310c0c737800cc7b6cbc00809659b"
+    },
+    {
+      "source": "lab/release-files/volcengine-rtc-agent/volcengine-rtc-4.68.1.esm.js",
+      "target": "openclaw/dist/control-ui/assets/volcengine-rtc-4.68.1.esm.js",
+      "before": "5a66d63e574bd4858f8479fe73203780983e8f082b74cfd2da0dc1b3b1fa0c3d"
+    },
+    {
+      "source": "lab/release-files/volcengine-rtc-agent/talk-DkFuKRod.js",
+      "target": "openclaw/dist/talk-DkFuKRod.js",
+      "before": "4f24a56f172b2e4ac9a28185b471f14769edb212718a4edb2cd976a47ee7f4f7"
+    },
+    {
+      "source": "lab/release-files/volcengine-rtc-agent/realtime-session-harness-CEO5kVAJ.js",
+      "target": "openclaw/dist/realtime-session-harness-CEO5kVAJ.js",
+      "before": "112101be2f6eb6e6be9cf253c948988dcd88d2dc3b275f64af6cd2dec685b191"
+    },
+    {
+      "source": "lab/release-files/volcengine-rtc-agent/production-worker-index.mjs",
+      "target": "production-worker/index.mjs",
+      "before": "c7593029d3ea721b1e2ae8f24d8c6d7de7204de031988af54f7c5ba181cb7329"
+    },
+    {
+      "source": "lab/release-files/volcengine-rtc-agent/volcengine-rtc-agent-provider.mjs",
+      "target": "production-worker/volcengine-rtc-agent-provider.mjs",
+      "before": "87ccd4a830d72f2d7fcf3a80199fc59796d092726452bed7c100934b6aa8d8bd"
+    }
+  ]
+}
