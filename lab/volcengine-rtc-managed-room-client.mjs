@@ -2,6 +2,13 @@ export const VOLC_RTC_SDK_ASSET = "./volcengine-rtc-4.68.1.esm.js";
 
 const MAX_BINARY_MESSAGE_BYTES = 64 * 1024;
 const TALK_TOOL_NAMES = new Set(["openclaw_agent_consult", "openclaw_agent_control"]);
+const DEFAULT_STAGE_TIMEOUTS_MS = Object.freeze({
+  sdk: 120_000,
+  support: 15_000,
+  join: 30_000,
+  devices: 30_000,
+  capture: 30_000,
+});
 
 function optionalString(value) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
@@ -68,6 +75,28 @@ async function loadDefaultSdk() {
   return normalizeSdk(await import(VOLC_RTC_SDK_ASSET));
 }
 
+function stageTimeoutMs(options, stage) {
+  const value = Number(options.stageTimeoutsMs?.[stage] ?? DEFAULT_STAGE_TIMEOUTS_MS[stage]);
+  return Number.isFinite(value) && value > 0 ? value : DEFAULT_STAGE_TIMEOUTS_MS[stage];
+}
+
+async function withStageTimeout(stage, timeoutMs, operation) {
+  let timer;
+  try {
+    return await Promise.race([
+      Promise.resolve().then(operation),
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`VolcEngine RTC ${stage} timed out after ${timeoutMs}ms`)),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function parseToolArguments(value) {
   if (value === undefined || value === null || value === "") return {};
   if (typeof value === "object") return value;
@@ -123,8 +152,14 @@ export class VolcengineRtcManagedRoomClient {
     this.toolControllers = new Map();
     this.completedToolCalls = new Set();
     this.pendingEvents = [];
+    this.eventBindings = [];
     this.onBinaryMessage = (event) => this.handleBinaryMessage(event);
-    this.onError = (event) => this.fail(event?.errorCode ?? event);
+    this.onError = (event) => {
+      const code = event?.errorCode ?? event?.code;
+      const message = optionalString(event?.message);
+      console.error("[OpenClaw RTC] SDK error", code ?? "unknown", message ?? "");
+      this.fail(message ? `${code ?? "RTC error"}: ${message}` : (code ?? event));
+    };
   }
 
   async start() {
@@ -134,37 +169,116 @@ export class VolcengineRtcManagedRoomClient {
     // Talk session. RTC owns capture after this point, so release that probe
     // stream instead of keeping a second microphone track alive.
     this.context.input?.stop?.();
-    this.sdk = normalizeSdk(await (this.options.loadSdk?.() ?? loadDefaultSdk()));
-    if (this.closed) return "cancelled";
-    this.engine = this.sdk.createEngine(this.room.appId);
-    if (this.room.businessId && typeof this.engine.setBusinessId === "function") {
-      this.engine.setBusinessId(this.room.businessId);
+    try {
+      console.info("[OpenClaw RTC] loading SDK");
+      this.sdk = normalizeSdk(
+        await withStageTimeout("SDK load", stageTimeoutMs(this.options, "sdk"), () =>
+          this.options.loadSdk?.() ?? loadDefaultSdk(),
+        ),
+      );
+      console.info("[OpenClaw RTC] SDK loaded");
+      if (this.closed) return "cancelled";
+      if (typeof this.sdk.isSupported === "function") {
+        const supported = await withStageTimeout(
+          "browser support check",
+          stageTimeoutMs(this.options, "support"),
+          () => this.sdk.isSupported(),
+        );
+        if (!supported) throw new Error("VolcEngine RTC is not supported by this browser");
+      }
+      this.engine = this.sdk.createEngine(this.room.appId);
+      if (this.room.businessId && typeof this.engine.setBusinessId === "function") {
+        this.engine.setBusinessId(this.room.businessId);
+      }
+      this.registerEngineEvents();
+      console.info("[OpenClaw RTC] joining room");
+      await withStageTimeout("room join", stageTimeoutMs(this.options, "join"), () =>
+        this.engine.joinRoom(
+          this.session.token,
+          this.room.roomId,
+          {
+            userId: this.room.userId,
+            extraInfo: JSON.stringify({
+              call_scene: "OpenClaw-Talk",
+              user_name: this.room.userId,
+              user_id: this.room.userId,
+            }),
+          },
+          {
+            isAutoPublish: true,
+            isAutoSubscribeAudio: true,
+            roomProfileType: this.sdk.RoomProfileType?.chat ?? 0,
+          },
+        ),
+      );
+      console.info("[OpenClaw RTC] room joined");
+      if (this.closed) return "cancelled";
+      const inputDeviceId = await this.resolveInputDeviceId();
+      console.info("[OpenClaw RTC] starting audio capture");
+      await withStageTimeout("audio capture", stageTimeoutMs(this.options, "capture"), () =>
+        this.engine.startAudioCapture(inputDeviceId),
+      );
+      console.info("[OpenClaw RTC] audio capture started");
+      if (this.closed) return "cancelled";
+      this.context.callbacks.onStatus?.("listening");
+      return "ready";
+    } catch (error) {
+      if (this.closed) return "cancelled";
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("[OpenClaw RTC] startup failed", message);
+      this.context.callbacks.onStatus?.("error", message);
+      this.stop({ emitIdle: false });
+      throw error;
     }
+  }
+
+  registerEngineEvents() {
     const events = this.sdk.events ?? {};
-    this.engine.on(events.onRoomBinaryMessageReceived ?? "onRoomBinaryMessageReceived", this.onBinaryMessage);
-    this.engine.on(events.onError ?? "onError", this.onError);
-    await this.engine.joinRoom(
-      this.session.token,
-      this.room.roomId,
-      {
-        userId: this.room.userId,
-        extraInfo: JSON.stringify({
-          call_scene: "OpenClaw-Talk",
-          user_name: this.room.userId,
-          user_id: this.room.userId,
-        }),
-      },
-      {
-        isAutoPublish: true,
-        isAutoSubscribeAudio: true,
-        roomProfileType: this.sdk.RoomProfileType?.chat ?? 0,
-      },
+    const bind = (eventName, listener) => {
+      if (!eventName || typeof this.engine.on !== "function") return;
+      this.engine.on(eventName, listener);
+      this.eventBindings.push([eventName, listener]);
+    };
+    bind(events.onRoomBinaryMessageReceived ?? "onRoomBinaryMessageReceived", this.onBinaryMessage);
+    bind(events.onError ?? "onError", this.onError);
+    bind(events.onConnectionStateChanged, (event) => {
+      console.info(
+        "[OpenClaw RTC] connection state",
+        event?.state ?? event?.connectionState ?? "unknown",
+      );
+    });
+    bind(events.onUserJoined, () => console.info("[OpenClaw RTC] remote user joined"));
+    bind(events.onUserPublishStream, () => console.info("[OpenClaw RTC] remote audio published"));
+    bind(events.onAutoplayFailed, () => {
+      console.warn("[OpenClaw RTC] autoplay failed");
+      this.context.callbacks.onStatus?.(
+        "error",
+        "浏览器阻止了小何语音播放，请点击页面后重试语音输入",
+      );
+    });
+  }
+
+  async resolveInputDeviceId() {
+    if (this.options.inputDeviceId) return this.options.inputDeviceId;
+    if (typeof this.sdk.enableDevices === "function") {
+      const permissions = await withStageTimeout(
+        "microphone permission",
+        stageTimeoutMs(this.options, "devices"),
+        () => this.sdk.enableDevices({ audio: true, video: false }),
+      );
+      if (permissions?.audio === false) {
+        throw new Error("Microphone permission was not granted to VolcEngine RTC");
+      }
+    }
+    if (typeof this.sdk.enumerateAudioCaptureDevices !== "function") return undefined;
+    const devices = await withStageTimeout(
+      "microphone enumeration",
+      stageTimeoutMs(this.options, "devices"),
+      () => this.sdk.enumerateAudioCaptureDevices(),
     );
-    if (this.closed) return "cancelled";
-    await this.engine.startAudioCapture(this.options.inputDeviceId);
-    if (this.closed) return "cancelled";
-    this.context.callbacks.onStatus?.("listening");
-    return "ready";
+    const inputDeviceId = devices?.find((device) => device?.deviceId)?.deviceId;
+    if (!inputDeviceId) throw new Error("No microphone device is available to VolcEngine RTC");
+    return inputDeviceId;
   }
 
   activate() {
@@ -184,11 +298,10 @@ export class VolcengineRtcManagedRoomClient {
     this.engine = null;
     if (engine) {
       try {
-        engine.off?.(
-          this.sdk?.events?.onRoomBinaryMessageReceived ?? "onRoomBinaryMessageReceived",
-          this.onBinaryMessage,
-        );
-        engine.off?.(this.sdk?.events?.onError ?? "onError", this.onError);
+        for (const [eventName, listener] of this.eventBindings) {
+          engine.off?.(eventName, listener);
+        }
+        this.eventBindings = [];
         Promise.resolve(engine.stopAudioCapture?.()).catch(() => undefined);
         Promise.resolve(engine.leaveRoom?.()).catch(() => undefined);
       } finally {
