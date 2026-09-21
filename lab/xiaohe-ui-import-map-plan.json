@@ -1,0 +1,34 @@
+{
+  "baseRelease": "xiaohe-ui-cache-bust-v1",
+  "tests": [
+    "lab/patch-control-ui-import-map.test.mjs"
+  ],
+  "timeoutSeconds": 60,
+  "files": [
+    {
+      "source": "lab/release-files/xiaohe-ui-import-map/index.html",
+      "target": "openclaw/dist/control-ui/index.html",
+      "before": "ecb3576de9af0afa7adea2ca0a062295c5f7d3a0c0c14455e783642990c42b78"
+    },
+    {
+      "source": "lab/release-files/xiaohe-ui-import-map/asset-manifest.json",
+      "target": "openclaw/dist/control-ui/asset-manifest.json",
+      "before": "5a7b1e0908389ac4c5c11c11d1d5708eac98bf01953669a45b3187d83d2b7a75"
+    },
+    {
+      "source": "lab/release-files/xiaohe-ui-import-map/control-ui-boot-chat-DWTSrxxk-rtc-v4.js",
+      "target": "openclaw/dist/control-ui/assets/control-ui-boot-chat-DWTSrxxk-rtc-v4.js",
+      "before": null
+    },
+    {
+      "source": "lab/release-files/xiaohe-ui-import-map/control-ui-boot-chat-DWTSrxxk-rtc-v4.js.br",
+      "target": "openclaw/dist/control-ui/assets/control-ui-boot-chat-DWTSrxxk-rtc-v4.js.br",
+      "before": null
+    },
+    {
+      "source": "lab/release-files/xiaohe-ui-import-map/control-ui-boot-chat-DWTSrxxk-rtc-v4.js.gz",
+      "target": "openclaw/dist/control-ui/assets/control-ui-boot-chat-DWTSrxxk-rtc-v4.js.gz",
+      "before": null
+    }
+  ]
+}
