@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#090a0d" />
+    <title>V · 小何语音验收</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <div class="brand">V</div>
+        <div>
+          <h1>小何语音验收</h1>
+        <p>请用 Chrome 打开；Codex 内置 Browser 不支持小何 RTC 入房</p>
+        </div>
+        <span id="connectionBadge" class="badge">未连接</span>
+      </header>
+
+      <section class="voice-panel" aria-labelledby="voiceTitle">
+        <div class="orb" id="orb" aria-hidden="true"><span></span><span></span><span></span></div>
+        <h2 id="voiceTitle">点一下，直接和 V 说话</h2>
+        <p id="statusText" class="status-text">会使用“小何”前端语音和 V 的 DeepSeek Flash 后端</p>
+        <button id="talkButton" class="talk-button" type="button">开始语音</button>
+        <button id="stopButton" class="stop-button" type="button" hidden>结束</button>
+      </section>
+
+      <section class="pipeline" aria-label="连接步骤">
+        <div class="step" data-step="gateway"><span>1</span><div><strong>连接 V</strong><small>Gateway 会话</small></div><em>等待</em></div>
+        <div class="step" data-step="sdk"><span>2</span><div><strong>加载 RTC</strong><small>火山浏览器 SDK</small></div><em>等待</em></div>
+        <div class="step" data-step="room"><span>3</span><div><strong>进入房间</strong><small>小何 RTC Agent</small></div><em>等待</em></div>
+        <div class="step" data-step="audio"><span>4</span><div><strong>开启语音</strong><small>麦克风与远端播放</small></div><em>等待</em></div>
+      </section>
+
+      <section class="transcript" aria-live="polite">
+        <div class="section-title"><h2>实时文字</h2><button id="copyLogButton" type="button">复制诊断</button></div>
+        <div id="conversation" class="conversation"><p class="empty">连接后，这里会显示双方说的话。</p></div>
+      </section>
+
+      <details class="diagnostics">
+        <summary>诊断日志</summary>
+        <pre id="diagnosticLog"></pre>
+      </details>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

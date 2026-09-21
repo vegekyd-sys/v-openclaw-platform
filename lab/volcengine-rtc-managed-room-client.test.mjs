@@ -203,6 +203,42 @@ test("managed-room obtains a concrete microphone before capture", async () => {
   client.stop();
 });
 
+test("managed-room reports observable startup stages without patching browser globals", async () => {
+  const stages = [];
+  const harness = makeHarness();
+  const client = new VolcengineRtcManagedRoomClient(makeSession(), harness.context, {
+    loadSdk: async () => harness.sdk,
+    inputDeviceId: "mic-1",
+    onStage: (event) => stages.push(`${event.stage}:${event.status}`),
+  });
+  await client.start();
+  assert.deepEqual(stages, [
+    "sdk:running",
+    "sdk:done",
+    "room:running",
+    "room:done",
+    "audio:running",
+    "audio:done",
+  ]);
+});
+
+test("microphone permission failures are reported as audio-stage failures", async () => {
+  const stages = [];
+  const harness = makeHarness();
+  harness.sdk.enableDevices = async () => ({ audio: false });
+  harness.sdk.enumerateAudioCaptureDevices = async () => [];
+  const client = new VolcengineRtcManagedRoomClient(makeSession(), harness.context, {
+    loadSdk: async () => harness.sdk,
+    onStage: (event) => stages.push(event),
+  });
+  await assert.rejects(client.start(), /Microphone permission was not granted/u);
+  assert.deepEqual(stages.at(-1), {
+    stage: "audio",
+    status: "error",
+    detail: "Microphone permission was not granted to VolcEngine RTC",
+  });
+});
+
 test("managed-room fails visibly instead of hanging during room join", async () => {
   const harness = makeHarness();
   harness.engine.joinRoom = async () => new Promise(() => {});
