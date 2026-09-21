@@ -12,7 +12,7 @@
     {
       "source": "lab/volcengine-rtc-managed-room-client.mjs",
       "target": "openclaw/dist/control-ui/assets/volcengine-rtc-managed-room-client.js",
-      "before": "e73cb38096f8e8fbad4b68ac9d45820f9da0a56fef69ced8e7b1684105c0fdb7"
+      "before": "e73c07c03f82567040902bdae6be44d3ceb5acfd84f6a2776af2944f34f4d49a"
     },
     {
       "source": "lab/release-files/xiaohe-rtc-sdk-timeout/asset-manifest.json",
