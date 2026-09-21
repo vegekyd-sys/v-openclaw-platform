@@ -14,7 +14,7 @@ const outputDir = resolve(root, "lab/release-files/xiaohe-rtc-sdk-timeout");
 const output = resolve(outputDir, "asset-manifest.json");
 const planPath = resolve(root, "lab/xiaohe-rtc-sdk-timeout-plan.json");
 const manifestBefore = "23050d852a7f72452d56f92b8ab46db8f3c466bbe23b12e7bff0c51e8f3c9a31";
-const adapterBefore = "e73cb38096f8e8fbad4b68ac9d45820f9da0a56fef69ced8e7b1684105c0fdb7";
+const adapterBefore = "e73c07c03f82567040902bdae6be44d3ceb5acfd84f6a2776af2944f34f4d49a";
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 
 export function build() {
