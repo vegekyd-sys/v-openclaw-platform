@@ -3,18 +3,24 @@ import test from "node:test";
 import {
   RTC_MODULE_AFTER,
   RTC_MODULE_BEFORE,
-  patchControlUiIndexImportMap,
+  patchControlUiServerImportMap,
 } from "./patch-control-ui-import-map.mjs";
 
-test("redirects the cached RTC module to a fresh URL", () => {
+test("injects an import map into every served Control UI document", () => {
   const before = [
-    "<head>",
-    '    <script type="module" crossorigin src="./assets/index-CjmhJEYB.js"></script>',
-    "</head>",
+    'const CONTROL_UI_NAMESPACE_PREFIX = "/__openclaw__/";',
+    "async function serveResolvedIndexHtml(req, res, body, basePath, allowWasm, environment) {",
+    "\tconst normalizedBasePath = normalizeControlUiBasePath(basePath);",
+    "\tconst withBasePath = rewriteControlUiIndexHtmlAssetHrefs(body, normalizedBasePath);",
+    "\tconst basePathAttribute = ` ${CONTROL_UI_BASE_PATH_ATTRIBUTE}=\"${escapeHtmlAttribute(normalizedBasePath)}\"`;",
+    "\tconst environmentAttributes = environment ? ` ${CONTROL_UI_ENVIRONMENT_ATTRIBUTE}=\"${escapeHtmlAttribute(JSON.stringify(environment))}\"` : \"\";",
+    "\tconst prepared = withBasePath.replace(/<html\\b/i, `<html${basePathAttribute} ${CONTROL_UI_TERMINAL_ENABLED_ATTRIBUTE}=\"${allowWasm === true}\"${environmentAttributes}`);",
+    "}",
   ].join("\n");
-  const after = patchControlUiIndexImportMap(before);
-  assert.match(after, /<script type="importmap">/);
-  assert.match(after, new RegExp(`/assets/${RTC_MODULE_BEFORE}`));
-  assert.match(after, new RegExp(`/assets/${RTC_MODULE_AFTER}`));
-  assert.equal(patchControlUiIndexImportMap(after), after);
+  const after = patchControlUiServerImportMap(before);
+  assert.match(after, /injectControlUiRtcImportMap/);
+  assert.match(after, new RegExp(RTC_MODULE_BEFORE));
+  assert.match(after, new RegExp(RTC_MODULE_AFTER));
+  assert.match(after, /const withRtcImportMap/);
+  assert.equal(patchControlUiServerImportMap(after), after);
 });

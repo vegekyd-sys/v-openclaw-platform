@@ -6,9 +6,9 @@
   "timeoutSeconds": 60,
   "files": [
     {
-      "source": "lab/release-files/xiaohe-ui-import-map/index.html",
-      "target": "openclaw/dist/control-ui/index.html",
-      "before": "ecb3576de9af0afa7adea2ca0a062295c5f7d3a0c0c14455e783642990c42b78"
+      "source": "lab/release-files/xiaohe-ui-import-map/control-ui-DhD7PO_6.js",
+      "target": "openclaw/dist/control-ui-DhD7PO_6.js",
+      "before": "9fd0d26098db573957e85cb84669127bcbf5d76cdb8158d19ea0dcc567613dd7"
     },
     {
       "source": "lab/release-files/xiaohe-ui-import-map/asset-manifest.json",
