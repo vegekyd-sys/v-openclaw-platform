@@ -1,0 +1,19 @@
+{
+  "baseRelease": "xiaohe-ui-import-map-v4",
+  "files": [
+    {
+      "source": "lab/release-files/ws-heartbeat-backport-91/websocket-keepalive-Jg8mBtsJ.js",
+      "target": "openclaw/dist/websocket-keepalive-Jg8mBtsJ.js",
+      "before": "b473eb86069e300809978032cf94fdd3f3af840540f580389eaf51196c0ddf8f"
+    },
+    {
+      "source": "lab/release-files/ws-heartbeat-backport-91/server-ws-runtime-BJcMZyBf.js",
+      "target": "openclaw/dist/server-ws-runtime-BJcMZyBf.js",
+      "before": "94930032ed5d2916e076e26ad5853ac98d0d85035663814f16676fcd0652a913"
+    }
+  ],
+  "tests": [
+    "lab/ws-heartbeat-backport-91-candidate.test.mjs"
+  ],
+  "timeoutSeconds": 120
+}
