@@ -204,8 +204,16 @@ export function buildVolcRtcStartRequest({
   validateVoiceChat(config.voiceChat);
   const voiceChat = clone(config.voiceChat);
   const llm = voiceChat.Config.LLMConfig ?? {};
-  const systemMessages = Array.isArray(llm.SystemMessages) ? llm.SystemMessages : [];
-  if (optionalString(instructions)) systemMessages.push(instructions.trim());
+  // OpenClaw owns the realtime persona. The console bot remains the source of
+  // its RTC/ASR/TTS/LLM wiring, but keeping both system prompts made policy
+  // conflicts nondeterministic (for example, which turns should consult V).
+  // Fall back to the console prompt only for callers that provide no explicit
+  // OpenClaw instructions.
+  const systemMessages = optionalString(instructions)
+    ? [instructions.trim()]
+    : Array.isArray(llm.SystemMessages)
+      ? llm.SystemMessages
+      : [];
   const rtcTools = tools.map((tool) => ({
     type: "function",
     function: {

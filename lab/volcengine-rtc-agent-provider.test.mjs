@@ -59,17 +59,37 @@ test("StartVoiceChat request preserves Xiaohe config and injects OpenClaw tools"
         description: "Delegate to V",
         parameters: { type: "object", properties: { question: { type: "string" } } },
       },
+      {
+        type: "function",
+        name: "openclaw_agent_control",
+        description: "Update the active V task",
+        parameters: { type: "object", properties: { mode: { type: "string" } } },
+      },
     ],
   });
   assert.equal(request.AppId, "rtc-app");
   assert.equal(request.RoomId, "room-1");
   assert.deepEqual(request.AgentConfig.TargetUserId, ["user-1"]);
   assert.equal(request.AgentConfig.UserId, "xiaohe-agent");
-  assert.deepEqual(request.Config.LLMConfig.SystemMessages, ["你是小何。", "需要外部信息时调用 V。"]);
-  assert.equal(request.Config.LLMConfig.Tools[0].function.name, "openclaw_agent_consult");
+  assert.deepEqual(request.Config.LLMConfig.SystemMessages, ['需要外部信息时调用 V。']);
+  assert.deepEqual(
+    request.Config.LLMConfig.Tools.map((tool) => tool.function.name),
+    ["openclaw_agent_consult", "openclaw_agent_control"],
+  );
   assert.equal(request.Config.LLMConfig.EnableToolCallHistory, true);
   assert.equal(request.Config.LLMConfig.EnableParallelToolCalls, false);
   assert.equal(PROVIDER_CONFIG.voiceChat.Config.LLMConfig.Tools, undefined, "input config must stay immutable");
+});
+
+test("StartVoiceChat keeps the console persona only when OpenClaw has no instructions", () => {
+  const request = buildVolcRtcStartRequest({
+    config: PROVIDER_CONFIG,
+    roomId: "room-1",
+    taskId: "task-1",
+    userId: "user-1",
+    tools: [],
+  });
+  assert.deepEqual(request.Config.LLMConfig.SystemMessages, ['你是小何。']);
 });
 
 test("provider starts and stops one managed RTC room without exposing server credentials", async () => {
@@ -170,10 +190,7 @@ test("provider requires the server AppKey and resolves the named console bot", a
   assert.deepEqual(calls.map((call) => call.action), ["AibotxQuery", "StartVoiceChat"]);
   assert.match(calls[0].url, /Version=2025-08-01/u);
   assert.equal(calls[1].body.AgentConfig.UserId, "xiaohe-console-agent");
-  assert.deepEqual(calls[1].body.Config.LLMConfig.SystemMessages, [
-    "你是小何。",
-    "工具请求交给 V。",
-  ]);
+  assert.deepEqual(calls[1].body.Config.LLMConfig.SystemMessages, ['工具请求交给 V。']);
   assert.equal(parseVolcRtcRoomUrl(session.roomUrl).agentUserId, "xiaohe-console-agent");
 });
 
