@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { brotliCompressSync, constants, gzipSync } from "node:zlib";
 import {
   RTC_MODULE_AFTER,
   patchControlUiIndexImportMap,
@@ -64,19 +63,10 @@ export function build() {
     "RTC module",
   );
   const indexAfter = Buffer.from(patchControlUiIndexImportMap(indexBefore.toString("utf8")));
-  const rtcBrotli = brotliCompressSync(rtc, {
-    params: { [constants.BROTLI_PARAM_QUALITY]: 4 },
-  });
-  const rtcGzip = gzipSync(rtc, { level: 6 });
-
   const manifest = JSON.parse(manifestBefore.toString("utf8"));
   assert.equal(manifest.version, 1, "unsupported Control UI manifest");
   assert.equal(manifest.generation, hashManifestAssets(manifest.assets), "manifest drifted");
-  const additions = [
-    manifestEntry(`assets/${RTC_MODULE_AFTER}`, rtc),
-    manifestEntry(`assets/${RTC_MODULE_AFTER}.br`, rtcBrotli),
-    manifestEntry(`assets/${RTC_MODULE_AFTER}.gz`, rtcGzip),
-  ];
+  const additions = [manifestEntry(`assets/${RTC_MODULE_AFTER}`, rtc)];
   assert.equal(
     manifest.assets.some((entry) => additions.some((added) => added.path === entry.path)),
     false,
@@ -91,8 +81,6 @@ export function build() {
     index: write("index.html", indexAfter),
     manifest: write("asset-manifest.json", manifestAfter),
     rtc: write(RTC_MODULE_AFTER, rtc),
-    rtcBrotli: write(`${RTC_MODULE_AFTER}.br`, rtcBrotli),
-    rtcGzip: write(`${RTC_MODULE_AFTER}.gz`, rtcGzip),
   };
   const plan = {
     baseRelease: "xiaohe-ui-cache-bust-v1",
@@ -109,11 +97,7 @@ export function build() {
         target: "openclaw/dist/control-ui/asset-manifest.json",
         before: hashes.manifest,
       },
-      ...[
-        RTC_MODULE_AFTER,
-        `${RTC_MODULE_AFTER}.br`,
-        `${RTC_MODULE_AFTER}.gz`,
-      ].map((name) => ({
+      ...[RTC_MODULE_AFTER].map((name) => ({
         source: `lab/release-files/xiaohe-ui-import-map/${name}`,
         target: `openclaw/dist/control-ui/assets/${name}`,
         before: null,
