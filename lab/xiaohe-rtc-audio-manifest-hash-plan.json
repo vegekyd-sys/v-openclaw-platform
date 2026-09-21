@@ -1,0 +1,17 @@
+{
+  "baseRelease": "xiaohe-rtc-audio-manifest-fix-v1",
+  "tests": [
+    "lab/patch-xiaohe-rtc-audio-cache-bust.test.mjs"
+  ],
+  "support": [
+    "lab/patch-xiaohe-rtc-audio-cache-bust.mjs"
+  ],
+  "timeoutSeconds": 60,
+  "files": [
+    {
+      "source": "lab/release-files/xiaohe-rtc-audio-manifest-hash/asset-manifest.json",
+      "target": "openclaw/dist/control-ui/asset-manifest.json",
+      "before": "7398cfa2e56c8bb29062412ad9632d7725c0e85a18d1265c62724f2a8ab4f939"
+    }
+  ]
+}

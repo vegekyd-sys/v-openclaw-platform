@@ -54,6 +54,17 @@ export function normalizeManifest(manifestSource) {
   return serializeManifest(manifest);
 }
 
+export function updateManifestAsset(manifestSource, assetPath, assetBytes) {
+  const manifest = JSON.parse(manifestSource);
+  assert.equal(manifest.version, 1, "unsupported Control UI manifest");
+  const matches = manifest.assets.filter((entry) => entry.path === assetPath);
+  assert.equal(matches.length, 1, "Control UI asset manifest entry drifted");
+  matches[0].sha256 = sha256(assetBytes);
+  matches[0].size = Buffer.byteLength(assetBytes);
+  manifest.assets.sort((left, right) => left.path.localeCompare(right.path));
+  return serializeManifest(manifest);
+}
+
 function serializeManifest(manifest) {
   const hash = createHash("sha256");
   for (const asset of manifest.assets) {
