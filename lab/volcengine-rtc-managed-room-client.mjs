@@ -173,6 +173,8 @@ export class VolcengineRtcManagedRoomClient {
     // stream instead of keeping a second microphone track alive.
     this.context.input?.stop?.();
     try {
+      this.stage = "sdk";
+      this.options.onStage?.({ stage: this.stage, status: "running" });
       console.info("[OpenClaw RTC] loading SDK");
       this.sdk = normalizeSdk(
         await withStageTimeout("SDK load", stageTimeoutMs(this.options, "sdk"), () =>
@@ -180,6 +182,7 @@ export class VolcengineRtcManagedRoomClient {
         ),
       );
       console.info("[OpenClaw RTC] SDK loaded");
+      this.options.onStage?.({ stage: this.stage, status: "done" });
       if (this.closed) return "cancelled";
       if (typeof this.sdk.isSupported === "function") {
         const supported = await withStageTimeout(
@@ -194,6 +197,8 @@ export class VolcengineRtcManagedRoomClient {
         this.engine.setBusinessId(this.room.businessId);
       }
       this.registerEngineEvents();
+      this.stage = "room";
+      this.options.onStage?.({ stage: this.stage, status: "running" });
       console.info("[OpenClaw RTC] joining room");
       await withStageTimeout("room join", stageTimeoutMs(this.options, "join"), () =>
         this.engine.joinRoom(
@@ -215,13 +220,18 @@ export class VolcengineRtcManagedRoomClient {
         ),
       );
       console.info("[OpenClaw RTC] room joined");
+      this.options.onStage?.({ stage: this.stage, status: "done" });
       if (this.closed) return "cancelled";
+      this.stage = "audio";
+      this.options.onStage?.({ stage: this.stage, status: "running" });
       const inputDeviceId = await this.resolveInputDeviceId();
       console.info("[OpenClaw RTC] starting audio capture");
       await withStageTimeout("audio capture", stageTimeoutMs(this.options, "capture"), () =>
         this.engine.startAudioCapture(inputDeviceId),
       );
       console.info("[OpenClaw RTC] audio capture started");
+      this.options.onStage?.({ stage: this.stage, status: "done" });
+      this.stage = undefined;
       if (this.closed) return "cancelled";
       this.context.callbacks.onStatus?.("listening");
       return "ready";
@@ -229,6 +239,7 @@ export class VolcengineRtcManagedRoomClient {
       if (this.closed) return "cancelled";
       const message = error instanceof Error ? error.message : String(error);
       console.error("[OpenClaw RTC] startup failed", message);
+      if (this.stage) this.options.onStage?.({ stage: this.stage, status: "error", detail: message });
       this.context.callbacks.onStatus?.("error", message);
       this.stop({ emitIdle: false });
       throw error;
@@ -245,9 +256,14 @@ export class VolcengineRtcManagedRoomClient {
     bind(events.onRoomBinaryMessageReceived ?? "onRoomBinaryMessageReceived", this.onBinaryMessage);
     bind(events.onError ?? "onError", this.onError);
     bind(events.onConnectionStateChanged, (event) => {
+      const detail = {
+        state: event?.state ?? event?.connectionState ?? "unknown",
+        reason: event?.reason ?? event?.connectionReason ?? event?.reconnectReason,
+        networkType: event?.networkType,
+      };
       console.info(
         "[OpenClaw RTC] connection state",
-        event?.state ?? event?.connectionState ?? "unknown",
+        JSON.stringify(Object.fromEntries(Object.entries(detail).filter(([, value]) => value !== undefined))),
       );
     });
     bind(events.onUserJoined, () => console.info("[OpenClaw RTC] remote user joined"));
