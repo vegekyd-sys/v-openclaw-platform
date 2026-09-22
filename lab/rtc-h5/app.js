@@ -44,11 +44,20 @@ function resetSteps() {
 }
 
 function setStatus(status, detail) {
-  elements.status.textContent = detail || ({ connecting: "正在连接小何…", listening: "我在听，请直接说", thinking: "V 正在处理…", speaking: "V 正在说话", idle: "语音已结束", error: "连接失败" }[status] ?? status);
+  document.body.dataset.voiceState = status;
+  elements.status.textContent = detail || ({
+    connecting: "正在靠近 V…",
+    listening: "我在，直接说吧",
+    thinking: "我去看看，很快回来",
+    speaking: "V 正在说",
+    idle: "想说话的时候，我都在",
+    error: "暂时没连上，再试一次吧",
+  }[status] ?? status);
   const active = ["listening", "thinking", "speaking"].includes(status);
   elements.orb.classList.toggle("active", active);
   elements.badge.classList.toggle("active", active);
-  elements.badge.textContent = status === "listening" ? "正在听" : status === "thinking" ? "处理中" : status === "speaking" ? "正在说" : status === "error" ? "错误" : status === "connecting" ? "连接中" : "未连接";
+  elements.badge.classList.toggle("error", status === "error");
+  elements.badge.innerHTML = `<i aria-hidden="true"></i>${status === "listening" ? "正在听" : status === "thinking" ? "正在想" : status === "speaking" ? "正在说" : status === "error" ? "连接失败" : status === "connecting" ? "连接中" : "随时在"}`;
 }
 
 function addTranscript({ role, text, final }) {
@@ -172,7 +181,7 @@ elements.stop.addEventListener("click", () => stop());
 elements.copy.addEventListener("click", async () => {
   await navigator.clipboard.writeText(logLines.join("\n"));
   elements.copy.textContent = "已复制";
-  window.setTimeout(() => { elements.copy.textContent = "复制诊断"; }, 1200);
+  window.setTimeout(() => { elements.copy.textContent = "复制日志"; }, 1200);
 });
 window.addEventListener("pagehide", () => {
   client?.stop();
@@ -186,7 +195,7 @@ window.addEventListener("pagehide", () => {
 
 api("/api/status").then((status) => {
   log("H5 桥接已就绪", status);
-  elements.badge.textContent = "可连接";
+  elements.badge.innerHTML = '<i aria-hidden="true"></i>随时在';
 }).catch((error) => {
   log("H5 桥接不可用", error.message);
   setStatus("error", `桥接不可用：${error.message}`);

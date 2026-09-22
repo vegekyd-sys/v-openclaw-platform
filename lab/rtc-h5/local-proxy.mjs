@@ -16,6 +16,7 @@ const staticFiles = new Map([
   ["/index.html", [join(here, "index.html"), "text/html; charset=utf-8"]],
   ["/styles.css", [join(here, "styles.css"), "text/css; charset=utf-8"]],
   ["/app.js", [join(here, "app.js"), "text/javascript; charset=utf-8"]],
+  ["/assets/v-listening-20260922.png", [join(here, "assets/v-listening-20260922.png"), "image/png"]],
   ["/adapter.js", [adapterPath, "text/javascript; charset=utf-8"]],
   ["/volcengine-rtc-4.68.1.esm.js", [sdkPath, "text/javascript; charset=utf-8"]],
 ]);
@@ -45,7 +46,7 @@ const server = createServer(async (request, response) => {
       response.writeHead(200, {
         "content-type": contentType,
         "content-length": info.size,
-        "cache-control": url.pathname === "/volcengine-rtc-4.68.1.esm.js" ? "public, max-age=31536000, immutable" : "no-store",
+        "cache-control": ["/volcengine-rtc-4.68.1.esm.js", "/assets/v-listening-20260922.png"].includes(url.pathname) ? "public, max-age=31536000, immutable" : "no-store",
       });
       response.end(await readFile(path));
       return;
