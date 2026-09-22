@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Patches an installed @openclaw/codex@2026.9.1 so the Codex harness can run DeepSeek (/vds).
+// Patches an installed @openclaw/codex@2026.9.1 so the Codex harness can run DeepSeek (/vds). 5 patches.
 // Idempotent: each anchor must match exactly once, or the patched text must already be present.
 //   node patch-codex-plugin.mjs <path-to>/node_modules/@openclaw/codex [--check]
 import assert from 'node:assert/strict';
@@ -37,6 +37,17 @@ const FILES = [
       // 4. Code mode exposes a custom "exec" tool; DeepSeek accepts only the apply_patch custom tool.
       ['nativeCodeModeEnabled: params.nativeToolSurfaceEnabled,',
        'nativeCodeModeEnabled: params.nativeToolSurfaceEnabled && String(params.buildAttemptParams()?.provider ?? "").trim().toLowerCase() !== "deepseek",'],
+    ],
+  },
+  {
+    file: find(/^thread-lifecycle-.*\.js$/u, 'function shouldDisableCodexToolSearchForModel'),
+    patches: [
+      // 5. Deferred OpenClaw dynamic tools (web_search, web_fetch, message, browser, ...) are reached via
+      //    Codex tool search, which rides on code mode. With code mode off (patch 4) DeepSeek sees them but
+      //    cannot call them. Reuse the plugin's per-model switch (today only gpt-5.4-nano) to load them
+      //    directly. Side effect by design: native multi_agent is off; OpenClaw sessions_spawn/subagents remain.
+      ['return normalizeCodexModelId(modelId) === "gpt-5.4-nano";',
+       'const normalizedId = normalizeCodexModelId(modelId); return normalizedId === "gpt-5.4-nano" || normalizedId.startsWith("deepseek");'],
     ],
   },
 ];

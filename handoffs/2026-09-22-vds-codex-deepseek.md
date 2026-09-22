@@ -43,7 +43,7 @@ GPT 读不到 DeepSeek 的明文 reasoning。不打补丁 4 时同线程续用�
 candidate 回执在 `~/v-worktrees/vds-codex-deepseek/tmp/candidate/`（gitignored）。最后一次全绿：
 `candidate-f017cec3-0806-4259-8744-772a9fea5005.json`。
 
-## 4. 4 处补丁（`patch-codex-plugin.mjs` 里有原文锚点）
+## 4. 4 处补丁（`patch-codex-plugin.mjs` 里有原文锚点；第 5 处见 §13）
 
 1. `harness-*.js`：`DEFAULT_CODEX_HARNESS_PROVIDER_IDS` 加 `"deepseek"`（白名单写死，不在 configSchema 里）。
 2. 同文件：`provider route compatibility with Codex is not declared` 这条对 deepseek 放行。
@@ -163,3 +163,35 @@ candidate 回执在 `~/v-worktrees/vds-codex-deepseek/tmp/candidate/`（gitignor
 `~/.claude/projects/-Users-tianyicai-v-openclaw-platform/memory/`：
 `codex-deepseek-vds.md`（完整过程）、`vlab-shared-instance-traps.md`（secrets.env / 身份 / 目录坑）、
 `v-model-alias-harnesses.md`（`/vcodex` 要看 agent 级配置）。
+
+## 13. 更新（2026-09-22 20:40 CST）：第 5 处补丁 + 工具可用性
+
+Codex 会话已按本文件合入共享 VLab（codex 正式安装、4 处补丁、`/vds` 别名、makaron `codex-home` 加 DeepSeek provider；
+`homeScope` 保持 agent；未配模型目录）。之后在「合入后的结构」上用 candidate 逐项测了 `/vds` 的工具：
+
+**发现**：补丁 4 关掉 code mode 后，OpenClaw 的动态工具（`web_search`、`web_fetch`、`message`、`browser`、`pdf`、
+`image_generate`、`tts`、`sessions_*`、`secrets`、`gateway` …）在 `codexDynamicToolsLoading=searchable` 下被放在
+「工具搜索」后面，而工具搜索靠 code mode 的 `exec` 桥接，所以 DeepSeek **看得到这些工具但调不了**。
+
+**第 5 处补丁**（已加进 `patch-codex-plugin.mjs`，锚点在 `thread-lifecycle-*.js`）：复用插件现成的按模型开关
+`shouldDisableCodexToolSearchForModel`（原本只对 `gpt-5.4-nano`），让 `deepseek*` 模型直接加载动态工具。
+设计上的副作用：该开关同时关掉 Codex 原生 `multi_agent`（`spawn_agent` 消失），开子 agent 改走 OpenClaw 的
+`sessions_spawn` / `subagents`（已验证能用）。**共享 VLab 需要补打这一处**：
+`node patch-codex-plugin.mjs <state>/npm/projects/openclaw-codex-*/node_modules/@openclaw/codex --check` 应显示 4 个 `already`、
+1 个 `pending`，执行后重启 Gateway。
+
+打上第 5 处后 `/vds` 的工具实测（Codex rollout 里确认了真实调用）：
+
+| 能力 | 工具 | 结果 |
+|---|---|---|
+| 跑命令 | `exec_command` | ✅ |
+| 改文件 | `apply_patch`（shell 形态） | ✅ |
+| 抓网页 | `web_fetch` | ✅ |
+| 网页搜索 | `web_search`（OpenClaw，provider=gemini） | ⚠️ 能调用，但 VLab 没有 Gemini key，报 `missing_gemini_api_key`。生产 V 的 `~/.openclaw/.env` 有相关 key，预计可用 |
+| 计划 | `progress_card` | ✅（`update_plan` 随 code mode 关闭；原生 Codex 搜索 `openaiCodex` 只给 GPT） |
+| 看图 | `view_image` | ✅ 可调用；DeepSeek V4.1 Flash 标称纯文本，它还用 shell 读了像素，图像理解未验证 |
+| 子 agent | `sessions_spawn` + `subagents` | ✅ |
+| 记忆 | `mcp__voice_memory::memory_search` | ⚠️ 可调用；candidate 无库，后端报错，属环境问题 |
+| 发消息 / 浏览器 | `message` / `browser` | 已进入可调用列表，未实测（candidate 无渠道） |
+
+另外确认：**没有 OpenAI / Codex 登录时 `/vds` 照常可用**（candidate 的 makaron `codex-home` 里没有登录），§7 第 2 条关闭。

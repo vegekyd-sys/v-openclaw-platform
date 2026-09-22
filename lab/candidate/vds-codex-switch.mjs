@@ -15,7 +15,7 @@ assert(runtime && configPath && stateDir, "candidate runtime environment is requ
 const VDS_REF = "deepseek/deepseek-flash";
 const VCODEX_REF = "openai/gpt-5.6-sol"; // production: makaron overrides it to the Codex runtime
 const DS_FLASH_REF = "deepseek/deepseek-v4-flash";
-const CODEX_HOME = process.env.VDS_CODEX_HOME ?? "/srv/vlab-production-mirror/labs/vds-codex-home";
+let CODEX_HOME = process.env.VDS_CODEX_HOME ?? "/srv/vlab-production-mirror/labs/vds-codex-home";
 const SECRETS = "/srv/vlab-production-mirror/labs/instances/db91-parity/secrets.env";
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const redact = (s) => String(s).replace(/(token|api.?key|authorization|secret|bearer)([=: ]+)[^\s"]+/giu, "$1$2[redacted]");
@@ -44,8 +44,9 @@ if (Array.isArray(config.plugins.allow)) config.plugins.allow = config.plugins.a
 // never registers the "codex" harness (see Gateway warnings "registry-owned codex harness").
 // Production installs it natively; do the same here from the identical package.
 const codexLoadPath = (config.plugins.load?.paths ?? []).find((p) => /\/@openclaw\/codex$/u.test(p));
-assert(codexLoadPath, "codex plugin load path not found");
-config.plugins.load.paths = config.plugins.load.paths.filter((p) => p !== codexLoadPath);
+// After the 2026-09-22 merge shared VLab installs codex natively (and patched); the candidate inherits it.
+const merged = !codexLoadPath;
+if (!merged) config.plugins.load.paths = config.plugins.load.paths.filter((p) => p !== codexLoadPath);
 
 const vdsEntry = { alias: "vds", agentRuntime: { id: "codex" }, params: { thinking: "high" } };
 for (const models of [config.agents.defaults.models, config.agents.entries?.makaron?.models].filter(Boolean)) models[VDS_REF] = vdsEntry;
@@ -53,7 +54,7 @@ for (const models of [config.agents.defaults.models, config.agents.entries?.maka
 config.agents.entries.makaron.models[VCODEX_REF] = { alias: "vcodex", params: { thinking: "medium" }, agentRuntime: { id: "codex" } };
 // The Codex plugin ignores env CODEX_HOME unless homeScope is "user" (default: <agentDir>/codex-home).
 const codexPlugin = config.plugins.entries.codex;
-codexPlugin.config = {
+if (!merged) codexPlugin.config = {
   ...(codexPlugin.config ?? {}),
   appServer: { ...(codexPlugin.config?.appServer ?? {}), homeScope: "user" },
   // Default model discovery timeout is 2.5s; app-server cold start exceeds it and OpenClaw then
@@ -75,6 +76,16 @@ fs.mkdirSync(path.dirname(workerPlugin.workerConfigPath), { recursive: true });
 fs.writeFileSync(workerPlugin.workerConfigPath, workerConfig, { mode: 0o600 });
 workerPlugin.gatewayConfigPath = configPath;
 fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+
+if (merged) {
+  // Same layout as shared VLab after the merge: agent-scoped Codex home, DeepSeek provider, no Codex login.
+  CODEX_HOME = path.join(config.agents.entries.makaron.agentDir, "codex-home");
+  fs.mkdirSync(CODEX_HOME, { recursive: true, mode: 0o700 });
+  const tomlPath = path.join(CODEX_HOME, "config.toml");
+  const toml = fs.existsSync(tomlPath) ? fs.readFileSync(tomlPath, "utf8") : "";
+  if (!toml.includes("[model_providers.deepseek]")) fs.writeFileSync(tomlPath, `${toml}\n[model_providers.deepseek]\nname = "DeepSeek"\nbase_url = "https://api.deepseek.com/v1"\nwire_api = "responses"\nenv_key = "DEEPSEEK_API_KEY"\n`, { mode: 0o600 });
+}
+console.log(JSON.stringify({ merged, codexHome: CODEX_HOME }));
 
 // ---- scratch repo the agent edits ----
 const repo = path.join(process.env.VLAB_CANDIDATE_DATA ?? stateDir, "vds-repo");
@@ -123,6 +134,7 @@ if (process.env.VDS_DIAG === "1") PATCHES.push([
   'const provider = ctx.provider.trim().toLowerCase(); if (provider === "deepseek") console.error("[vds-supports] " + JSON.stringify({ requestedRuntime: ctx.requestedRuntime, rto: ctx.modelProvider?.requestTransportOverrides, runtimePolicy: ctx.modelProvider?.runtimePolicy, auth: ctx.modelProvider?.preparedAuth && { source: ctx.modelProvider.preparedAuth.source, mode: ctx.modelProvider.preparedAuth.mode, requirement: ctx.modelProvider.preparedAuth.requirement }, api: ctx.modelProvider?.api, hasBaseUrl: Boolean(ctx.modelProvider?.baseUrl), hasRequest: Boolean(ctx.modelProvider?.request) }));',
 ]);
 for (const [from, to] of PATCHES) {
+  if (harnessSrc.includes(to)) continue; // already patched (merged install)
   assert.equal(harnessSrc.split(from).length, 2, `patch anchor must match exactly once: ${from.slice(0, 60)}`);
   harnessSrc = harnessSrc.replace(from, to);
 }
@@ -134,10 +146,25 @@ assert(runAttemptFile, "codex run-attempt module not found");
 let runAttemptSrc = fs.readFileSync(runAttemptFile, "utf8");
 const CODE_MODE_FROM = "nativeCodeModeEnabled: params.nativeToolSurfaceEnabled,";
 const CODE_MODE_TO = 'nativeCodeModeEnabled: params.nativeToolSurfaceEnabled && String(params.buildAttemptParams()?.provider ?? "").trim().toLowerCase() !== "deepseek",';
-assert.equal(runAttemptSrc.split(CODE_MODE_FROM).length, 2, "code mode anchor must match exactly once");
-runAttemptSrc = runAttemptSrc.replace(CODE_MODE_FROM, CODE_MODE_TO);
+if (!runAttemptSrc.includes(CODE_MODE_TO)) {
+  assert.equal(runAttemptSrc.split(CODE_MODE_FROM).length, 2, "code mode anchor must match exactly once");
+  runAttemptSrc = runAttemptSrc.replace(CODE_MODE_FROM, CODE_MODE_TO);
+}
 fs.writeFileSync(runAttemptFile, runAttemptSrc);
-console.log(JSON.stringify({ codexPatched: [path.basename(harnessFile), path.basename(runAttemptFile)] }));
+// Deferred OpenClaw dynamic tools are reached through Codex tool search, which needs code mode; with code
+// mode off DeepSeek can see web_search/web_fetch/message but cannot call them. Reuse the plugin's own
+// per-model "tool search unsupported" switch (today only gpt-5.4-nano) so they load directly.
+const lifecycleFile = fs.readdirSync(codexDist).map((f) => path.join(codexDist, f)).find((f) => /\/thread-lifecycle-[^/]+\.js$/u.test(f));
+assert(lifecycleFile, "codex thread-lifecycle module not found");
+let lifecycleSrc = fs.readFileSync(lifecycleFile, "utf8");
+const TS_FROM = 'return normalizeCodexModelId(modelId) === "gpt-5.4-nano";';
+const TS_TO = 'const normalizedId = normalizeCodexModelId(modelId); return normalizedId === "gpt-5.4-nano" || normalizedId.startsWith("deepseek");';
+if (process.env.VDS_NO_PATCH5 !== "1" && !lifecycleSrc.includes(TS_TO)) {
+  assert.equal(lifecycleSrc.split(TS_FROM).length, 2, "tool search anchor must match exactly once");
+  lifecycleSrc = lifecycleSrc.replace(TS_FROM, TS_TO);
+  fs.writeFileSync(lifecycleFile, lifecycleSrc);
+}
+console.log(JSON.stringify({ codexPatched: [path.basename(harnessFile), path.basename(runAttemptFile), path.basename(lifecycleFile)] }));
 
 const lines = [];
 const gateway = spawn(process.execPath, ["--max-old-space-size=4096", `${runtime}/openclaw/dist/index.js`, "gateway", "--port", String(port)], { env, stdio: ["ignore", "pipe", "pipe"] });
@@ -176,7 +203,7 @@ function turn(sessionKey, model, message) {
   const route = lines.slice(mark).filter((l) => /agent\/cli-backend|codex|provider=|model=|harness|runtime|error|failed|invalid_request/iu.test(l)).slice(-14);
   const rec = {
     sessionKey, requested: model, message: message.slice(0, 60), exit: r.status, secs: Math.round((Date.now() - started) / 1000),
-    reply: redact(reply).slice(0, 700),
+    reply: redact(reply).slice(0, 3000),
     model: meta?.agentMeta ? { provider: meta.agentMeta.provider, model: meta.agentMeta.model, harness: meta.agentMeta.harnessId ?? meta.agentMeta.runtime } : undefined,
     stderr: redact(r.stderr ?? "").split("\n").filter((l) => l && !/Skill descriptions/u.test(l)).slice(-14),
     route: route.map((l) => redact(l).slice(0, 260)),
@@ -210,6 +237,44 @@ try {
   // CLI turns do not parse inline /alias directives (those are channel-ingress only), so each
   // turn names its model with --model: same effect on harness routing as a user switch.
   const VDS = VDS_REF, DSF = DS_FLASH_REF, GPT = VCODEX_REF;
+  if (process.env.VDS_TOOLS === "1") {
+    const startedAt = Date.now();
+    fs.writeFileSync(path.join(repo, "pixel.png"), Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"));
+    const D = `vlab-dev-vds-tools-${t}`, G = `vlab-dev-vcodex-tools-${t}`;
+    const listPrompt = "Do not call any tool. List every tool / function name you can call in this session, exactly as named, one per line, grouped as you see them. No commentary.";
+    console.log("## Tool inventory");
+    turn(D, VDS_REF, listPrompt);
+    turn(G, VCODEX_REF, listPrompt);
+    console.log("## /vds tool probes");
+    const probes = [
+      ["shell", "Run the shell command `uname -s && python3 --version` and report the exact output."],
+      ["apply_patch", task("Create tools.txt with the two lines `alpha` and `beta`, then change `beta` to `gamma` using your file editing / patch tool (not shell redirection). Report which tool you used.")],
+      ["web_search", "Use your web search tool (not curl) to find the latest released version of the Python programming language. Give the version and one source URL. If you have no web search tool, say NO_WEB_SEARCH_TOOL."],
+      ["web_fetch", "Use your web_fetch tool (not curl) to fetch https://example.com and report the page <title> and the tool name. If you have no web fetch tool, say NO_WEB_FETCH_TOOL."],
+      ["plan", "Use your planning / todo / update_plan tool to record a 3-step plan for writing a CLI calculator, then report the tool name. If you have no such tool, say NO_PLAN_TOOL."],
+      ["view_image", `Use your image viewing tool to look at ${path.join(repo, "pixel.png")} and describe its colour. If you cannot view images, say NO_IMAGE_TOOL.`],
+      ["subagent", "Spawn a sub-agent (use your agent/sub-agent/session spawning tool) whose only job is to reply with the word SUBAGENT_OK, wait for it, and report its answer and the tool name you used. If you have no such tool, say NO_SUBAGENT_TOOL."],
+      ["memory", "Use the memory search tool to search for the word 'makaron' and report how many results came back and the tool name. If you have no such tool, say NO_MEMORY_TOOL."],
+    ];
+    for (const [name, prompt] of probes) { console.log(`### probe ${name}`); turn(D, VDS_REF, prompt); }
+    // Ground truth: what Codex actually called, per rollout, for this run only.
+    const rolls = spawnSync("bash", ["-c", `find ${CODEX_HOME}/sessions -name 'rollout-*.jsonl' -newermt @${Math.floor(startedAt / 1000)} | sort`], { encoding: "utf8" }).stdout.split("\n").filter(Boolean);
+    for (const f of rolls) {
+      let model = "", provider = "";
+      const calls = [], errors = [];
+      for (const line of fs.readFileSync(f, "utf8").split("\n").filter(Boolean)) {
+        let e; try { e = JSON.parse(line); } catch { continue; }
+        const p = e.payload ?? {};
+        if (e.type === "session_meta") provider = p.model_provider;
+        if (e.type === "turn_context") model = p.model;
+        if (e.type === "response_item" && /call$/u.test(p.type ?? "") && !/_output$/u.test(p.type)) calls.push(p.name ?? p.type);
+        if (e.type === "response_item" && /web_search/u.test(p.type ?? "")) calls.push(p.type);
+        if (e.type === "event_msg" && /error|warning/iu.test(p.type ?? "")) errors.push(String(p.message ?? JSON.stringify(p)).slice(0, 200));
+      }
+      console.log(JSON.stringify({ rollout: path.basename(f).slice(9, 28), provider, model, calls, errors: errors.slice(0, 3) }));
+    }
+    throw new Error("tools probe done");
+  }
   console.log("## Session A: vds -> ds-flash -> vds -> vcodex (makaron: Codex runtime, as production)");
   turn(A, VDS, task("Create notes.txt containing exactly the secret word PINEAPPLE-42, and add a function triple(x) returning 3*x to calc.py."));
   turn(A, DSF, task("Without reading notes.txt, tell me the secret word from earlier and the function added. Then add quadruple(x) returning 4*x below it."));
