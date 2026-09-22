@@ -1,0 +1,12 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/talk-consult-model/talk-DkFuKRod.js",
+      "target": "openclaw/dist/talk-DkFuKRod.js"
+    }
+  ],
+  "tests": [
+    "lab/candidate/talk-owner-terminal.test.mjs"
+  ],
+  "timeoutSeconds": 120
+}

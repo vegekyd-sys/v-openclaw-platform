@@ -20,6 +20,48 @@ export const RELAY_MODEL_AFTER =
   '\t\tconfig: params.cfg ?? params.context.getRuntimeConfig(),\n' +
   '\t\tprovider: configuredAgentProvider,\n\t\tmodel: configuredAgentModelId,';
 
+export const DIRECT_CONSULT_LIFECYCLE_SETUP_BEFORE =
+  '\t\tconst admission = runOutsideGatewayRootWorkAdmission(tryBeginGatewayRootWorkAdmission);\n' +
+  '\t\tif (!admission) throw new GatewayDrainingError();\n' +
+  '\t\treturn await admission.run(() => consultRealtimeVoiceAgent({';
+export const DIRECT_CONSULT_LIFECYCLE_SETUP_AFTER =
+  '\t\tconst admission = runOutsideGatewayRootWorkAdmission(tryBeginGatewayRootWorkAdmission);\n' +
+  '\t\tif (!admission) throw new GatewayDrainingError();\n' +
+  '\t\tlet activeRunId;\n' +
+  '\t\tconst emitAgentLifecycle = (type, runId, final = false) => {\n' +
+  '\t\t\tif (!params.ownerConnId) return;\n' +
+  '\t\t\tparams.context.broadcastToConnIds("talk.event", {\n' +
+  '\t\t\t\tvoiceSessionId,\n' +
+  '\t\t\t\ttalkEvent: {\n' +
+  '\t\t\t\t\ttype,\n' +
+  '\t\t\t\t\tcallId: runId,\n' +
+  '\t\t\t\t\tpayload: { name: REALTIME_VOICE_AGENT_CONSULT_TOOL_NAME },\n' +
+  '\t\t\t\t\t...final ? { final: true } : {}\n' +
+  '\t\t\t\t}\n' +
+  '\t\t\t}, /* @__PURE__ */ new Set([params.ownerConnId]), { dropIfSlow: false });\n' +
+  '\t\t};\n' +
+  '\t\treturn await admission.run(() => consultRealtimeVoiceAgent({';
+
+export const DIRECT_CONSULT_RUN_STARTED_BEFORE =
+  '\t\t\tonRunStarted: ({ runId, sessionId, timeoutMs }) => {\n' +
+  '\t\t\t\tif (params.registerRun) params.registerRun({ runId });';
+export const DIRECT_CONSULT_RUN_STARTED_AFTER =
+  '\t\t\tonRunStarted: ({ runId, sessionId, timeoutMs }) => {\n' +
+  '\t\t\t\tactiveRunId = runId;\n' +
+  '\t\t\t\temitAgentLifecycle("tool.call", runId);\n' +
+  '\t\t\t\tif (params.registerRun) params.registerRun({ runId });';
+
+export const DIRECT_CONSULT_TERMINAL_BEFORE =
+  '\t\t})).finally(admission.release);';
+export const DIRECT_CONSULT_TERMINAL_AFTER =
+  '\t\t})).then((result) => {\n' +
+  '\t\t\tif (activeRunId) emitAgentLifecycle("tool.result", activeRunId, true);\n' +
+  '\t\t\treturn result;\n' +
+  '\t\t}, (error) => {\n' +
+  '\t\t\tif (activeRunId) emitAgentLifecycle("tool.error", activeRunId, true);\n' +
+  '\t\t\tthrow error;\n' +
+  '\t\t}).finally(admission.release);';
+
 export const PLAYBACK_ONLY_CANCEL_BEFORE =
   '\tconst rootCallIds = /* @__PURE__ */ new Set([...session.activeAgentToolCalls.keys(), ...forcedConsults.map(({ handle }) => handle.id)]);\n' +
   '\tconst terminalEpoch = ++session.toolResultEpoch;';
@@ -145,6 +187,24 @@ export function patchRealtimeTalkConsultModel(source) {
     RELAY_MODEL_BEFORE,
     RELAY_MODEL_AFTER,
     "Talk relay provider agent model",
+  );
+  patched = replaceExactlyOnce(
+    patched,
+    DIRECT_CONSULT_LIFECYCLE_SETUP_BEFORE,
+    DIRECT_CONSULT_LIFECYCLE_SETUP_AFTER,
+    "Talk direct consult lifecycle setup",
+  );
+  patched = replaceExactlyOnce(
+    patched,
+    DIRECT_CONSULT_RUN_STARTED_BEFORE,
+    DIRECT_CONSULT_RUN_STARTED_AFTER,
+    "Talk direct consult start event",
+  );
+  patched = replaceExactlyOnce(
+    patched,
+    DIRECT_CONSULT_TERMINAL_BEFORE,
+    DIRECT_CONSULT_TERMINAL_AFTER,
+    "Talk direct consult terminal event",
   );
   patched = replaceExactlyOnce(
     patched,
