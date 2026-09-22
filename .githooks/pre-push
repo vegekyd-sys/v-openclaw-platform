@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Refuse a direct push to main; warn on a direct push to dev.
+#
+# This is a stand-in, not the real control. Server-side branch protection and
+# rulesets are both unavailable on this repository (private repo on GitHub
+# Free -- the API answers 403 "Upgrade to GitHub Pro"), so nothing on the
+# remote currently enforces that main only moves by release PR. A hook lives in
+# one clone, applies only to whoever installed it, and is bypassable with
+# --no-verify. It catches the reflex, not a determined push.
+#
+# main is refused because it is meant to describe what production runs, and it
+# only advances through a reviewed release PR. dev is a warning, not a refusal:
+# 437 commits landed on dev directly and cutting that off in one step would
+# break sessions that are mid-flight.
+#
+# Install: scripts/install-git-hooks.sh
+set -euo pipefail
+
+while read -r _local_ref local_sha remote_ref _remote_sha; do
+  # An all-zero local sha means the push deletes the remote branch.
+  case "$local_sha" in
+    *[!0]*) ;;
+    *)
+      if [ "$remote_ref" = refs/heads/main ] || [ "$remote_ref" = refs/heads/dev ]; then
+        echo >&2
+        echo "  refusing to delete $remote_ref." >&2
+        echo >&2
+        exit 1
+      fi
+      continue
+      ;;
+  esac
+
+  case "$remote_ref" in
+    refs/heads/main)
+      cat >&2 <<'MSG'
+
+  main only moves through a release PR.
+
+  A release PR carries the manifest and the vLab acceptance evidence for the
+  commit being promoted, so that main keeps describing what production runs:
+
+      gh pr create --base main --head dev
+
+  See docs/release-workflow-v2.md. If you are deliberately repairing main,
+  re-run with --no-verify and say so in the PR or the runbook.
+
+MSG
+      exit 1
+      ;;
+    refs/heads/dev)
+      cat >&2 <<'MSG'
+
+  note: pushing straight to dev. The workflow is one worktree per change ->
+  PR -> dev, so that CI runs before the merge rather than after it.
+  See docs/release-workflow-v2.md. Not blocking.
+
+MSG
+      ;;
+  esac
+done
+
+exit 0
