@@ -27,6 +27,11 @@ POOL_EMPTY_SAMPLES = 1
 # and users are waiting on replies that may never arrive.
 STALL_WARN = 8
 STALL_SAMPLES = 2
+# The pool is legitimately empty while the Gateway starts: measured twice at
+# about two minutes from `systemctl start` to five ready workers (2026-09-20
+# 23:02->23:04, 2026-09-22 13:41->13:43). A planned restart by another session
+# on 2026-09-22 fired a false outage alert at 13:42 without this grace.
+STARTUP_GRACE_S = 300
 DISK_MIN_MB = 15360
 MEM_MIN_MB = 2048
 
@@ -100,6 +105,14 @@ def sample():
                                  sh("ps -eo args")))
     out["active"] = sh("systemctl is-active %s" % UNIT).strip()
     out["nrestarts"] = sh("systemctl show %s -p NRestarts --value" % UNIT).strip()
+    # Seconds since the unit last entered active, from the monotonic clock so
+    # wall-clock changes cannot fake it.
+    try:
+        mono = int(sh("systemctl show %s -p ActiveEnterTimestampMonotonic --value" % UNIT).strip() or 0)
+        boot = float(open("/proc/uptime").read().split()[0])
+        out["gw_up_s"] = int(boot - mono / 1e6) if mono else None
+    except Exception:
+        out["gw_up_s"] = None
     j = sh("journalctl -u %s --since '-%ds' --no-pager -o cat" % (UNIT, WINDOW), timeout=60)
     out["closing"] = j.count("worker pool is closing")
     out["stall"] = (j.count("Worker stream acknowledgement timed out")
@@ -140,7 +153,8 @@ def main():
                 "这不会自愈，要 sudo systemctl restart openclaw-gateway 才能重建。"
                 if s["active"] == "active" else
                 "Worker 池空了（0 个 worker 进程），openclaw-gateway 状态为 %s。" % s["active"])
-    latch("pool_empty", s["pool"] == 0, pool_msg,
+    starting = s.get("gw_up_s") is not None and s["gw_up_s"] < STARTUP_GRACE_S
+    latch("pool_empty", s["pool"] == 0 and not starting, pool_msg,
           "Worker 池已恢复（%d 个 worker）。" % s["pool"],
           need=POOL_EMPTY_SAMPLES)
 

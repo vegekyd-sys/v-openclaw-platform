@@ -22,6 +22,7 @@ STALL_WARN = 3          # stalled requests per window; the measured normal is 0
 FAIL_RATE_WARN = 3.0    # rolling-hour user-facing failure %; daily noise sits under 1
 FAIL_BURST = 5          # failures in one window that count as a burst regardless of rate
 POOL_MAX = 15           # maxWorkers in production's worker-pool config
+STARTUP_GRACE_S = 300   # Gateway start -> ready pool measured at ~2 min, twice
 # A port that answers 403/404 is alive and routing; only no-answer or an
 # upstream failure is a fault. browser_broker's 2026-09-12 outage was a 502.
 HEALTH_BAD = {"000", "502", "503", "504"}
@@ -146,7 +147,14 @@ def handle(out):
                 emit("OOM", f"{n} kernel OOM kills in the last {WINDOW}s")
 
         elif kind == "poolsize":
-            n = int(rest.split()[-1])
+            parts = rest.split()
+            n = int(parts[0])
+            gw_up = int(parts[1]) if len(parts) > 1 else -1
+            # An empty pool during the first minutes after a start is normal:
+            # the pool takes about two minutes to build. Do not call it an outage.
+            if n == 0 and 0 <= gw_up < STARTUP_GRACE_S:
+                state["last_poolsize"] = n
+                continue
             ps = state.setdefault("pool", {"empty": 0, "reported": False})
             state["last_poolsize"] = n
             ps["empty"] = ps["empty"] + 1 if n == 0 else 0

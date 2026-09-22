@@ -30,7 +30,11 @@ ps -eo pid,rss,etimes,args 2>/dev/null | grep 'worker/worker' | grep -v grep \
 # without rebuilding it: the Gateway stayed active with a 200 health endpoint
 # and NRestarts=0 while every request died in 2ms on "worker pool is closing".
 # An empty pool is a total outage that no other signal here reports.
-ps -eo args 2>/dev/null | grep -c '[w]orker/worker.mjs' | awk '{print "poolsize " $1}'
+# Second field is seconds since the Gateway unit became active, so the rule
+# layer can ignore the ~2 minutes an empty pool is normal during startup.
+gw_mono=$(systemctl show openclaw-gateway -p ActiveEnterTimestampMonotonic --value 2>/dev/null)
+gw_up=$(awk -v m="${gw_mono:-0}" '{ if (m > 0) printf "%d", $1 - m/1e6; else print -1 }' /proc/uptime)
+echo "poolsize $(ps -eo args 2>/dev/null | grep -c '[w]orker/worker.mjs') ${gw_up}"
 # Pool closing, plus the saturation signals. Measured on 2026-09-20: all three
 # stall counters are exactly 0 across 10-11h, 14-15h and 18-19h of real traffic,
 # and jump to 18.9 / 0.4 / 3.0 per 70s window once the pool pins at maxWorkers.
