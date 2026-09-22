@@ -1,0 +1,12 @@
+{
+  "support": [
+    "lab/candidate/openclaw95-talk-native-probe.mjs",
+    "lab/candidate/private/openclaw-2026.9.5-talk-closure.tgz"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/openclaw95-talk-native-probe.mjs"
+  ],
+  "user": "lab-db91-parity",
+  "timeoutSeconds": 600
+}
