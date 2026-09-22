@@ -7,7 +7,8 @@
     "lab/rtc-h5/styles.css",
     "lab/rtc-h5/app.js",
     "lab/rtc-h5/app.test.mjs",
-    "lab/volcengine-rtc-managed-room-client.mjs"
+    "lab/volcengine-rtc-managed-room-client.mjs",
+    "lab/release-files/volcengine-rtc-agent/volcengine-rtc-4.68.1.esm.js"
   ],
   "files": [
     {

@@ -39,6 +39,7 @@ test("bridge stays loopback-only and isolates authenticated public visitors", as
   assert.match(source, /RTC_H5_ACCESS_TOKEN/u);
   assert.match(source, /RTC_H5_BASE_PATH/u);
   assert.match(source, /RTC_H5_PROVIDER_ID/u);
+  assert.match(source, /RTC_H5_SDK_PATH/u);
   assert.match(source, /RTC_H5_MAX_ACTIVE_SESSIONS/u);
   assert.match(source, /agent:makaron:voice-h5-/u);
   assert.match(source, /HttpOnly; SameSite=Strict/u);
