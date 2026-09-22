@@ -6,6 +6,7 @@
     "lab/rtc-h5/index.html",
     "lab/rtc-h5/styles.css",
     "lab/rtc-h5/app.js",
+    "lab/rtc-h5/app.test.mjs",
     "lab/volcengine-rtc-managed-room-client.mjs"
   ],
   "files": [
@@ -19,7 +20,8 @@
     "lab/candidate/xiaohe-v-prompt-h5.mjs"
   ],
   "env": {
-    "RTC_H5_PORT": "26252"
+    "RTC_H5_PORT": "26252",
+    "RTC_H5_PUBLIC_SELF_TEST": "1"
   },
   "user": "lab-db91-parity",
   "timeoutSeconds": 0

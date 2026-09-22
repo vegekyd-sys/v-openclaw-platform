@@ -16,7 +16,11 @@ Optional environment:
 
 - `RTC_H5_HOST` (default `127.0.0.1`)
 - `RTC_H5_PORT` (default `26242`)
-- `RTC_H5_SESSION_KEY` (default `agent:makaron:f0cf5055`)
+- `RTC_H5_SESSION_KEY` (private acceptance only; fixes every visitor to one session)
+- `RTC_H5_BASE_PATH` (for example `/voice`)
+- `RTC_H5_ACCESS_TOKEN` (at least 32 characters; enables public-link access control)
+- `RTC_H5_MAX_ACTIVE_SESSIONS` (default `8`)
+- `RTC_H5_MAX_ACTIVE_SESSIONS_PER_IP` (default `2`)
 
 The server must remain loopback-only. Reach it through an SSH local forward.
 
@@ -30,11 +34,18 @@ the multi-task portrait replaces it if the same busy period lasts longer than
 five seconds. The portrait returns to idle when all concurrent tool calls have
 completed or failed. `?avatar=idle|busy|very-busy` is available for visual QA.
 
-## Public deployment boundary
+## Public deployment
 
-The default `RTC_H5_SESSION_KEY` is suitable for a private acceptance link, not
-for a public multi-user URL. Before exposing the H5 on `tianyi.live`, issue an
-isolated OpenClaw session for each signed-in or anonymous visitor, add abuse
-limits, terminate HTTPS at the public edge, and keep the Gateway token and RTC
-credentials server-side. Deploy the H5 as a separate route or service so the
-existing Control UI bundle and its voice path remain unchanged.
+For a public URL, do not set `RTC_H5_SESSION_KEY`. Set a random
+`RTC_H5_ACCESS_TOKEN` and publish the first-use URL as
+`https://host.example/voice/#access=TOKEN`. The browser exchanges the fragment
+for a signed, `HttpOnly`, `SameSite=Strict` cookie and immediately removes the
+token from its address bar. Each browser receives a separate
+`agent:makaron:voice-h5-*` OpenClaw session. Concurrent-session, per-IP, and
+start-rate limits are enforced by the loopback bridge.
+
+Terminate HTTPS at the public edge and route only `/voice` and `/voice/*` to
+the bridge. Keep the bridge on `127.0.0.1`, and put the path-specific edge rule
+before the existing Control UI catch-all so the current Control UI and its
+voice path remain unchanged. `/voice` redirects to `/voice/` so relative static
+assets and API requests remain under the isolated route.
