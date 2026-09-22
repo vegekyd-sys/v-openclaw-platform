@@ -4,6 +4,9 @@ import test from "node:test";
 import {
   CANCEL_DRAIN_TIMEOUT_AFTER,
   CANCEL_SUPPRESSION_RESET_AFTER,
+  DIRECT_CONSULT_LIFECYCLE_SETUP_AFTER,
+  DIRECT_CONSULT_RUN_STARTED_AFTER,
+  DIRECT_CONSULT_TERMINAL_AFTER,
   OUTPUT_OWNERSHIP_CONTINUITY_AFTER,
   OUTPUT_OWNERSHIP_FINISH_AFTER,
   PLAYBACK_ONLY_CANCEL_AFTER,
@@ -26,11 +29,92 @@ test("gateway-relay Talk can use a provider-specific Agent model", () => {
   assert.equal(patched.includes(PLAYBACK_ONLY_CLEAR_AFTER), true);
   assert.equal(patched.includes(CANCEL_DRAIN_TIMEOUT_AFTER), true);
   assert.equal(patched.includes(CANCEL_SUPPRESSION_RESET_AFTER), true);
+  assert.equal(patched.includes(DIRECT_CONSULT_LIFECYCLE_SETUP_AFTER), true);
+  assert.equal(patched.includes(DIRECT_CONSULT_RUN_STARTED_AFTER), true);
+  assert.equal(patched.includes(DIRECT_CONSULT_TERMINAL_AFTER), true);
   assert.equal(patched.includes(OUTPUT_OWNERSHIP_FINISH_AFTER), true);
   assert.equal(patched.includes(OUTPUT_OWNERSHIP_CONTINUITY_AFTER), true);
   assert.match(patched, /providerConfig\?\.agentModel/u);
   assert.match(patched, /playbackOnlyCancellation/u);
   assert.equal(patchRealtimeTalkConsultModel(patched), patched);
+});
+
+test("direct provider consults report exact owner-scoped start and terminal events", async () => {
+  const patched = patchRealtimeTalkConsultModel(fixture);
+  const start = patched.indexOf("function createTalkClientAgentConsultRunner");
+  const end = patched.indexOf("function createTalkClientGatewayControlOwner", start);
+  const functionSource = patched.slice(start, end);
+  let finishConsult;
+  const consult = new Promise((resolve) => { finishConsult = resolve; });
+  const deliveries = [];
+  const createRunner = Function(
+    "resolveTalkAgentConsultAuthority",
+    "parseRealtimeVoiceAgentConsultArgs",
+    "assertClientVoiceSessionOpen",
+    "authorizeClientVoiceConfirmation",
+    "createTalkClientAgentRuntime",
+    "normalizeTalkSection",
+    "runOutsideGatewayRootWorkAdmission",
+    "tryBeginGatewayRootWorkAdmission",
+    "GatewayDrainingError",
+    "consultRealtimeVoiceAgent",
+    "registerClientVoiceConsultRun",
+    "bindAuthorizedClientVoiceConfirmation",
+    "registerChatAbortController",
+    "REALTIME_VOICE_AGENT_CONSULT_TOOL_NAME",
+    `${functionSource}; return createTalkClientAgentConsultRunner;`,
+  )(
+    () => ({}),
+    (args) => args,
+    () => {},
+    () => undefined,
+    () => ({}),
+    () => ({}),
+    () => ({ run: (fn) => fn(), release: () => {} }),
+    () => true,
+    class extends Error {},
+    (options) => {
+      options.onRunStarted({ runId: "run-exact", sessionId: "session-exact", timeoutMs: 60_000 });
+      return consult;
+    },
+    () => {},
+    () => {},
+    () => ({ controller: new AbortController(), cleanup: () => {} }),
+    "openclaw_agent_consult",
+  );
+  const runner = createRunner({
+    config: {},
+    context: {
+      chatAbortControllers: new Map(),
+      logGateway: {},
+      broadcastToConnIds: (event, payload, connIds, options) =>
+        deliveries.push({ event, payload, connIds: [...connIds], options }),
+    },
+    sessionTarget: {
+      agentId: "makaron",
+      sessionKey: "voice:test",
+      canonicalKey: "agent:makaron:voice:test",
+      storePath: "/tmp/test",
+    },
+    ownerConnId: "speaker-connection",
+    getVoiceSessionId: () => "voice-exact",
+    initialItems: [],
+  });
+  const pending = runner.runArgs({ question: "test" }, new AbortController().signal);
+  await Promise.resolve();
+  assert.equal(deliveries.length, 1);
+  assert.equal(deliveries[0].event, "talk.event");
+  assert.deepEqual(deliveries[0].connIds, ["speaker-connection"]);
+  assert.equal(deliveries[0].payload.voiceSessionId, "voice-exact");
+  assert.equal(deliveries[0].payload.talkEvent.type, "tool.call");
+  assert.equal(deliveries[0].payload.talkEvent.callId, "run-exact");
+  finishConsult({ text: "done" });
+  assert.deepEqual(await pending, { text: "done" });
+  assert.equal(deliveries.length, 2);
+  assert.equal(deliveries[1].payload.talkEvent.type, "tool.result");
+  assert.equal(deliveries[1].payload.talkEvent.callId, "run-exact");
+  assert.equal(deliveries[1].payload.talkEvent.final, true);
+  assert.equal(deliveries[1].options.dropIfSlow, false);
 });
 
 test("a missing provider cancel acknowledgement retires ownership before queued audio resumes", () => {
@@ -141,4 +225,3 @@ test("the playback-overflow patch fails closed when its anchor drifts", () => {
     /anchor drifted/u,
   );
 });
-
