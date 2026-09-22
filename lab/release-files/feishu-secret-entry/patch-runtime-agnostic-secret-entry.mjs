@@ -104,6 +104,15 @@ function vSecretEntryPayloadFromQuestion(record) {
 \t\t}
 \t};
 }
+function vSecretEntryRouteFromSessionKey(sessionKey, accountId) {
+\tconst normalizedAccountId = normalizeAccountId(accountId);
+\tconst group = /^agent:[^:]+:feishu:(group|channel):(.+)$/u.exec(sessionKey);
+\tif (group && normalizedAccountId === "default") return { to: group[2] };
+\tconst direct = /^agent:[^:]+:feishu:direct:(.+)$/u.exec(sessionKey);
+\tif (direct && normalizedAccountId === "default") return { to: direct[1] };
+\tconst accountDirect = /^agent:[^:]+:feishu:([^:]+):direct:(.+)$/u.exec(sessionKey);
+\tif (accountDirect && normalizeAccountId(accountDirect[1]) === normalizedAccountId) return { to: accountDirect[2] };
+}
 function vSecretEntryRouteFromQuestion(record, cfg, accountId) {
 \tconst sessionKey = typeof record?.sessionKey === "string" ? record.sessionKey.trim() : "";
 \tconst agentId = /^agent:([^:]+):/u.exec(sessionKey)?.[1];
@@ -113,19 +122,26 @@ function vSecretEntryRouteFromQuestion(record, cfg, accountId) {
 \t\tconst delivery = entry?.deliveryContext;
 \t\tconst channel = String(delivery?.channel ?? entry?.lastChannel ?? entry?.channel ?? "").trim().toLowerCase();
 \t\tconst to = String(delivery?.to ?? entry?.lastTo ?? "").trim();
-\t\tconst routeAccountId = normalizeAccountId(delivery?.accountId ?? entry?.lastAccountId);
-\t\tif (channel !== "feishu" || !to || routeAccountId !== normalizeAccountId(accountId)) return;
-\t\tconst threadId = String(delivery?.threadId ?? entry?.lastThreadId ?? "").trim();
-\t\treturn { to, ...(threadId ? { replyToMessageId: threadId, replyInThread: true } : {}) };
+\t\tconst rawRouteAccountId = delivery?.accountId ?? entry?.lastAccountId ?? entry?.accountId;
+\t\tif (rawRouteAccountId !== void 0 && normalizeAccountId(rawRouteAccountId) !== normalizeAccountId(accountId)) return;
+\t\tif (channel === "feishu" && to) {
+\t\t\tconst threadId = String(delivery?.threadId ?? entry?.lastThreadId ?? "").trim();
+\t\t\treturn { to, ...(threadId ? { replyToMessageId: threadId, replyInThread: true } : {}) };
+\t\t}
 \t} catch {
-\t\treturn;
+\t\t// DB-backed session stores do not expose legacy deliveryContext fields.
 \t}
+\treturn vSecretEntryRouteFromSessionKey(sessionKey, accountId);
 }
 function vSecretEntrySubscribeRequested(params) {
 \tconst unsubscribe = vSecretEntryQuestionRuntime.subscribeRequested((record) => {
 \t\tconst payload = vSecretEntryPayloadFromQuestion(record);
-\t\tconst route = payload ? vSecretEntryRouteFromQuestion(record, params.cfg, params.accountId) : void 0;
-\t\tif (!payload || !route) return;
+\t\tif (!payload) return;
+\t\tconst route = vSecretEntryRouteFromQuestion(record, params.cfg, params.accountId);
+\t\tif (!route) {
+\t\t\tparams.log?.(\`feishu[\${params.accountId}]: secret entry lifecycle route unavailable id=\${record.id}\`);
+\t\t\treturn;
+\t\t}
 \t\tvSecretEntryDeliver({
 \t\t\tcfg: params.cfg,
 \t\t\tpayload,
@@ -135,7 +151,7 @@ function vSecretEntrySubscribeRequested(params) {
 \t\t\tallowTopLevelReplyFallback: true,
 \t\t\taccountId: params.accountId,
 \t\t\tlog: params.log
-\t\t}).catch((error) => params.log?.(\`feishu[\${params.accountId}]: secret entry lifecycle delivery failed: \${String(error?.message ?? error)}\`));
+\t\t}).then(() => params.log?.(\`feishu[\${params.accountId}]: secret entry lifecycle delivered id=\${record.id}\`)).catch((error) => params.log?.(\`feishu[\${params.accountId}]: secret entry lifecycle delivery failed: \${String(error?.message ?? error)}\`));
 \t});
 \tparams.abortSignal?.addEventListener("abort", unsubscribe, { once: true });
 \treturn unsubscribe;
