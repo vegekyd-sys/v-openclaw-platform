@@ -14,6 +14,9 @@ const promptPath = path.join(inputRoot, "lab/xiaohe-v-realtime-prompt.md");
 const h5ServerPath = path.join(inputRoot, "lab/rtc-h5/server.mjs");
 const adapterPath = path.join(inputRoot, "lab/volcengine-rtc-managed-room-client.mjs");
 const h5Port = Number(process.env.RTC_H5_PORT ?? 26252);
+const publicSelfTest = process.env.RTC_H5_PUBLIC_SELF_TEST === "1";
+const publicBasePath = "/voice";
+const publicAccessToken = "vlab-candidate-public-access-token-20260922";
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function promptFromMarkdown(markdown) {
@@ -63,6 +66,89 @@ async function terminate(child) {
   child.kill("SIGTERM");
   await Promise.race([exited, sleep(10_000)]);
   if (child.exitCode === null) child.kill("SIGKILL");
+}
+
+async function request(pathname, { method = "GET", cookie, body } = {}) {
+  const response = await fetch(`http://127.0.0.1:${h5Port}${pathname}`, {
+    method,
+    redirect: "manual",
+    headers: {
+      ...(cookie ? { cookie } : {}),
+      ...(body ? { "content-type": "application/json" } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const contentType = response.headers.get("content-type") ?? "";
+  return {
+    status: response.status,
+    location: response.headers.get("location"),
+    cookie: response.headers.get("set-cookie")?.split(";", 1)[0] ?? "",
+    payload: contentType.includes("application/json") ? await response.json() : await response.text(),
+  };
+}
+
+async function runPublicSelfTest() {
+  const redirect = await request(publicBasePath);
+  assert.equal(redirect.status, 308);
+  assert.equal(redirect.location, `${publicBasePath}/`);
+
+  const page = await request(`${publicBasePath}/`);
+  assert.equal(page.status, 200);
+  assert.match(page.payload, /\.\/app\.js/u);
+
+  const unauthorized = await request(`${publicBasePath}/api/status`);
+  assert.equal(unauthorized.status, 401);
+  assert.equal(Object.hasOwn(unauthorized.payload, "sessionKey"), false);
+
+  const rejected = await request(`${publicBasePath}/api/access`, { method: "POST", body: { access: "wrong" } });
+  assert.equal(rejected.status, 403);
+
+  const firstAccess = await request(`${publicBasePath}/api/access`, { method: "POST", body: { access: publicAccessToken } });
+  const secondAccess = await request(`${publicBasePath}/api/access`, { method: "POST", body: { access: publicAccessToken } });
+  assert.equal(firstAccess.status, 200);
+  assert.equal(secondAccess.status, 200);
+  assert(firstAccess.cookie && secondAccess.cookie && firstAccess.cookie !== secondAccess.cookie, "visitors must receive distinct cookies");
+
+  let firstStatus;
+  const statusDeadline = Date.now() + 90_000;
+  do {
+    firstStatus = await request(`${publicBasePath}/api/status`, { cookie: firstAccess.cookie });
+    if (firstStatus.status === 200) break;
+    await sleep(1_000);
+  } while (Date.now() < statusDeadline);
+  assert.equal(firstStatus.status, 200, `H5 did not connect to candidate Gateway: ${JSON.stringify(firstStatus.payload)}`);
+  assert.deepEqual(firstStatus.payload, { connected: true, gateway: "V" });
+
+  const firstSession = await request(`${publicBasePath}/api/session`, { method: "POST", cookie: firstAccess.cookie, body: {} });
+  const secondSession = await request(`${publicBasePath}/api/session`, { method: "POST", cookie: secondAccess.cookie, body: {} });
+  assert.equal(firstSession.status, 200);
+  assert.equal(secondSession.status, 200);
+  assert(firstSession.payload.voiceSessionId, "first public visitor did not receive a voice session");
+  assert(secondSession.payload.voiceSessionId, "second public visitor did not receive a voice session");
+  assert.notEqual(firstSession.payload.voiceSessionId, secondSession.payload.voiceSessionId);
+  assert.equal(firstSession.payload.provider, "volcengine-rtc-agent");
+  assert.equal(firstSession.payload.transport, "managed-room");
+
+  const firstClose = await request(`${publicBasePath}/api/close`, {
+    method: "POST",
+    cookie: firstAccess.cookie,
+    body: { voiceSessionId: firstSession.payload.voiceSessionId },
+  });
+  const secondClose = await request(`${publicBasePath}/api/close`, {
+    method: "POST",
+    cookie: secondAccess.cookie,
+    body: { voiceSessionId: secondSession.payload.voiceSessionId },
+  });
+  assert.equal(firstClose.status, 200);
+  assert.equal(secondClose.status, 200);
+  console.log(JSON.stringify({
+    publicSelfTest: true,
+    route: `${publicBasePath}/`,
+    accessProtected: true,
+    isolatedVisitors: 2,
+    provider: firstSession.payload.provider,
+    transport: firstSession.payload.transport,
+  }));
 }
 
 const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
@@ -153,7 +239,14 @@ try {
       RTC_H5_PORT: String(h5Port),
       RTC_H5_RUNTIME_ROOT: `${runtime}/openclaw`,
       RTC_H5_ADAPTER_PATH: adapterPath,
-      RTC_H5_SESSION_KEY: "agent:makaron:f0cf5055",
+      ...(publicSelfTest ? {
+        RTC_H5_ACCESS_TOKEN: publicAccessToken,
+        RTC_H5_BASE_PATH: publicBasePath,
+        RTC_H5_MAX_ACTIVE_SESSIONS: "2",
+        RTC_H5_MAX_ACTIVE_SESSIONS_PER_IP: "2",
+      } : {
+        RTC_H5_SESSION_KEY: "agent:makaron:f0cf5055",
+      }),
       OPENCLAW_GATEWAY_PORT: String(gatewayPort),
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -169,6 +262,13 @@ try {
     backend: config.talk.realtime.providers["volcengine-rtc-agent"].agentModel,
     instructionsChars: config.talk.realtime.instructions.length,
   }));
+
+  if (publicSelfTest) {
+    await runPublicSelfTest();
+    await terminate(h5);
+    await terminate(gateway);
+    process.exit(0);
+  }
 
   gateway.once("exit", (code) => {
     if (!stopping) {

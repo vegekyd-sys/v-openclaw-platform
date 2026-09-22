@@ -1,4 +1,4 @@
-import { VolcengineRtcManagedRoomClient } from "/adapter.js";
+import { VolcengineRtcManagedRoomClient } from "./adapter.js";
 
 const elements = {
   avatar: document.querySelector("#vAvatar"),
@@ -13,9 +13,9 @@ const elements = {
 };
 
 const avatarSources = {
-  idle: "/assets/v-idle-nohat-20260922.png",
-  busy: "/assets/v-tool-busy-20260922.png",
-  "very-busy": "/assets/v-tool-very-busy-20260922.png",
+  idle: "./assets/v-idle-nohat-20260922.png",
+  busy: "./assets/v-tool-busy-20260922.png",
+  "very-busy": "./assets/v-tool-very-busy-20260922.png",
 };
 
 const stepStartedAt = new Map();
@@ -136,10 +136,18 @@ async function api(path, body) {
   return payload;
 }
 
+async function acceptSharedLink() {
+  const fragment = new URLSearchParams(window.location.hash.slice(1));
+  const access = fragment.get("access");
+  if (!access) return;
+  await api("api/access", { access });
+  window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+}
+
 async function persistTranscript(role, text) {
   if (!session?.voiceSessionId) return;
   transcriptSeq += 1;
-  await api("/api/transcript", {
+  await api("api/transcript", {
     voiceSessionId: session.voiceSessionId,
     entryId: `h5-${Date.now()}-${transcriptSeq}`,
     role,
@@ -153,8 +161,8 @@ async function executeToolCall({ callId, name, args, signal, submit }) {
   log(`工具调用 ${name}`, { callId });
   try {
     const result = name === "openclaw_agent_control"
-      ? await api("/api/steer", { text: args?.text, mode: args?.mode })
-      : await api("/api/tool-call", { callId, name, args, voiceSessionId: session?.voiceSessionId });
+      ? await api("api/steer", { text: args?.text, mode: args?.mode })
+      : await api("api/tool-call", { callId, name, args, voiceSessionId: session?.voiceSessionId });
     if (!signal?.aborted) await submit(callId, result);
     log(`工具完成 ${name}`);
   } catch (error) {
@@ -172,7 +180,7 @@ async function start() {
   setStep("gateway", "running");
   log("开始独立 H5 验收");
   try {
-    session = await api("/api/session", {});
+    session = await api("api/session", {});
     log("V 会话创建完成", { provider: session.provider, transport: session.transport });
     setStep("gateway", "done");
     client = new VolcengineRtcManagedRoomClient(session, {
@@ -215,7 +223,7 @@ async function stop({ keepStatus = false } = {}) {
   client?.stop();
   client = null;
   if (session?.voiceSessionId) {
-    await api("/api/close", { voiceSessionId: session.voiceSessionId }).catch((error) => log("会话关闭失败", error.message));
+    await api("api/close", { voiceSessionId: session.voiceSessionId }).catch((error) => log("会话关闭失败", error.message));
   }
   session = null;
   activeToolCalls.clear();
@@ -239,13 +247,13 @@ window.addEventListener("pagehide", () => {
   client?.stop();
   if (session?.voiceSessionId) {
     navigator.sendBeacon(
-      "/api/close",
+      "api/close",
       new Blob([JSON.stringify({ voiceSessionId: session.voiceSessionId })], { type: "application/json" }),
     );
   }
 });
 
-api("/api/status").then((status) => {
+acceptSharedLink().then(() => api("api/status")).then((status) => {
   log("H5 桥接已就绪", status);
   elements.badge.innerHTML = '<i aria-hidden="true"></i>随时在';
 }).catch((error) => {
