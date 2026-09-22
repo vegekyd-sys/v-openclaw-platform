@@ -339,7 +339,7 @@ export function buildVolcengineRtcAgentProvider(options = {}) {
 
   return {
     id: VOLC_RTC_AGENT_PROVIDER_ID,
-    label: "VolcEngine RTC Agent",
+    label: "volcenine-rtc",
     aliases: ["volc-rtc", "rtc-agent"],
     defaultModel: "xiaohe-agent",
     models: ["xiaohe-agent"],
