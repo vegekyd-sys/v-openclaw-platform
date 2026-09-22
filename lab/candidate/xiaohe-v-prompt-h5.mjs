@@ -165,7 +165,9 @@ config.talk = {
   consultFastMode: true,
   realtime: {
     ...(config.talk?.realtime ?? {}),
-    provider: "volcengine-rtc-agent",
+    // Public H5 must select Xiaohe per request instead of mutating the
+    // Control UI's configured default provider.
+    provider: publicSelfTest ? "openai" : "volcengine-rtc-agent",
     model: "xiaohe-agent",
     mode: "realtime",
     transport: "managed-room",
@@ -174,6 +176,7 @@ config.talk = {
     instructions: promptFromMarkdown(fs.readFileSync(promptPath, "utf8")),
     providers: {
       ...(config.talk?.realtime?.providers ?? {}),
+      ...(publicSelfTest ? { openai: {} } : {}),
       "volcengine-rtc-agent": {
         ...(config.talk?.realtime?.providers?.["volcengine-rtc-agent"] ?? {}),
         agentModel: "deepseek/deepseek-v4-flash",
@@ -239,6 +242,7 @@ try {
       RTC_H5_PORT: String(h5Port),
       RTC_H5_RUNTIME_ROOT: `${runtime}/openclaw`,
       RTC_H5_ADAPTER_PATH: adapterPath,
+      RTC_H5_PROVIDER_ID: "volcengine-rtc-agent",
       ...(publicSelfTest ? {
         RTC_H5_ACCESS_TOKEN: publicAccessToken,
         RTC_H5_BASE_PATH: publicBasePath,

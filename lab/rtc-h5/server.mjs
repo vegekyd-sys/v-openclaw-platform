@@ -12,6 +12,7 @@ const stateDir = process.env.OPENCLAW_STATE_DIR;
 const configPath = process.env.OPENCLAW_CONFIG_PATH ?? (stateDir ? join(stateDir, "openclaw.json") : undefined);
 const runtimeRoot = process.env.RTC_H5_RUNTIME_ROOT;
 const fixedSessionKey = process.env.RTC_H5_SESSION_KEY;
+const providerId = process.env.RTC_H5_PROVIDER_ID ?? "volcengine-rtc-agent";
 const accessToken = process.env.RTC_H5_ACCESS_TOKEN ?? "";
 const basePath = (process.env.RTC_H5_BASE_PATH ?? "").replace(/\/$/u, "");
 const maxActiveSessions = Number(process.env.RTC_H5_MAX_ACTIVE_SESSIONS ?? 8);
@@ -279,6 +280,7 @@ const server = createServer(async (request, response) => {
       }
       const result = await gateway.request("talk.client.create", {
         sessionKey,
+        provider: providerId,
         mode: "realtime",
         transport: "managed-room",
         brain: "agent-consult",
@@ -339,7 +341,7 @@ const cleanup = setInterval(() => {
 cleanup.unref();
 
 server.listen(port, host, () => {
-  console.log(JSON.stringify({ ready: true, host, port, basePath, accessProtected: Boolean(accessToken), maxActiveSessions }));
+  console.log(JSON.stringify({ ready: true, host, port, providerId, basePath, accessProtected: Boolean(accessToken), maxActiveSessions }));
 });
 
 for (const signal of ["SIGINT", "SIGTERM"]) {

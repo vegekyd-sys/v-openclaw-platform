@@ -17,6 +17,7 @@ Optional environment:
 - `RTC_H5_HOST` (default `127.0.0.1`)
 - `RTC_H5_PORT` (default `26242`)
 - `RTC_H5_SESSION_KEY` (private acceptance only; fixes every visitor to one session)
+- `RTC_H5_PROVIDER_ID` (default `volcengine-rtc-agent`; does not change the Control UI default)
 - `RTC_H5_BASE_PATH` (for example `/voice`)
 - `RTC_H5_ACCESS_TOKEN` (at least 32 characters; enables public-link access control)
 - `RTC_H5_MAX_ACTIVE_SESSIONS` (default `8`)
