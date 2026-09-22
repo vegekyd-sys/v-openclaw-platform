@@ -27,3 +27,5 @@ release/*.local.json
 # directory is excluded, so the directories are un-ignored first.
 !release/captured/*/dist/
 !release/captured/*/dist/**
+__pycache__/
+*.pyc

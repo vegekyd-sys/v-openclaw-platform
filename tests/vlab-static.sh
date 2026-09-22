@@ -14,6 +14,10 @@ bash -n "${REPO_ROOT}/scripts/apply-vlab-production-parity.sh"
 bash -n "${REPO_ROOT}/scripts/rollback-vlab-production-parity.sh"
 bash -n "${REPO_ROOT}/tests/vlab-production-parity.sh"
 node --test "${REPO_ROOT}/tests/patch-feishu-latest-snapshot-streaming.test.mjs"
+python3 "${REPO_ROOT}/tests/v-release-drift.test.py"
+bash -n "${REPO_ROOT}/scripts/install-v-release-drift.sh"
+node "${REPO_ROOT}/scripts/verify-release-reproducible.mjs" \
+  --manifest "${REPO_ROOT}/release/captured/v2026.9.1-db91.6/manifest.json" --quiet
 jq empty "${REPO_ROOT}/config/vlab-production-parity-v1.json"
 "${REPO_ROOT}/tests/vlab-agent-worker-static.sh"
 
