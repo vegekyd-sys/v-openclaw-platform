@@ -1,0 +1,20 @@
+{
+  "baseRelease": "xiaohe-v-prompt-v1",
+  "files": [
+    {
+      "source": "lab/release-files/volcengine-rtc-agent/volcengine-rtc-agent-provider.mjs",
+      "target": "production-worker/volcengine-rtc-agent-provider.mjs",
+      "before": "60827773ac751ea2cf8ff6d3b637d955b5f0516f0661091ee2e9a23cdeebdb63"
+    },
+    {
+      "source": "lab/release-files/volcengine-rtc-agent/volcengine-rtc-managed-room-client.js",
+      "target": "openclaw/dist/control-ui/assets/volcengine-rtc-managed-room-client.js",
+      "before": "d70b9f10c00330adbbf20a5d20c825ef22f0ceacde32cd5c38128b6d2c51963c"
+    },
+    {
+      "source": "lab/release-files/volcenine-rtc-provider/asset-manifest.json",
+      "target": "openclaw/dist/control-ui/asset-manifest.json",
+      "before": "0f6699b73d6492f5adc1505defa1549241d20ed4ef51a4868c42ece8116c9bff"
+    }
+  ]
+}
