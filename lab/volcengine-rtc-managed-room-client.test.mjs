@@ -10,6 +10,8 @@ class FakeRtcEngine {
   listeners = new Map();
   joined = [];
   sent = [];
+  sendAttempts = [];
+  maxMessageBytes = Infinity;
   offCalls = [];
   on(name, listener) {
     this.listeners.set(name, listener);
@@ -34,6 +36,10 @@ class FakeRtcEngine {
     this.left = true;
   }
   async sendUserBinaryMessage(userId, message) {
+    this.sendAttempts.push({ userId, message });
+    if (message.byteLength > this.maxMessageBytes) {
+      throw new Error("The message length must be less than 1KB");
+    }
     this.sent.push({ userId, message });
   }
 }
@@ -189,6 +195,77 @@ test("managed-room uses RTC for audio and forwards only control data to V", asyn
   assert.equal(harness.engine.captureStopped, true);
   assert.equal(harness.engine.left, true);
   assert.equal(harness.destroyed(), harness.engine);
+});
+
+test("managed-room keeps long UTF-8 tool results below the advanced RTS message limit", async () => {
+  const harness = makeHarness();
+  harness.context.executeToolCall = async (call) => {
+    await call.submit(call.callId, { result: `结论：${"特战项目正在推进。".repeat(5_000)}` });
+  };
+  const client = new VolcengineRtcManagedRoomClient(makeSession(), harness.context, {
+    loadSdk: async () => harness.sdk,
+    inputDeviceId: "mic-1",
+  });
+  await client.start();
+  client.activate();
+  harness.engine.emit("binary", {
+    userId: "xiaohe",
+    message: encodeRtcTlv(
+      "tool",
+      JSON.stringify({
+        tool_calls: [{
+          id: "call-long-result",
+          function: { name: "openclaw_agent_consult", arguments: "{}" },
+        }],
+      }),
+    ),
+  });
+  await tick();
+  await tick();
+  const payload = JSON.parse(decodeRtcTlv(harness.engine.sent[0].message).value);
+  assert.ok(Buffer.byteLength(payload.Content, "utf8") <= 60 * 1024);
+  assert.ok(Buffer.byteLength(JSON.stringify(payload), "utf8") < 64 * 1024);
+  assert.match(payload.Content, /结果较长，已截取关键部分/u);
+  assert.doesNotMatch(payload.Content, /�/u);
+  client.stop();
+});
+
+test("managed-room retries a compact result when the RTC app still enforces 1KB", async () => {
+  const harness = makeHarness();
+  harness.engine.maxMessageBytes = 1024;
+  harness.context.executeToolCall = async (call) => {
+    await call.submit(call.callId, { result: `结论：${"王心怡的公开信息。".repeat(300)}` });
+  };
+  const client = new VolcengineRtcManagedRoomClient(makeSession(), harness.context, {
+    loadSdk: async () => harness.sdk,
+    inputDeviceId: "mic-1",
+  });
+  await client.start();
+  client.activate();
+  harness.engine.emit("binary", {
+    userId: "xiaohe",
+    message: encodeRtcTlv(
+      "tool",
+      JSON.stringify({
+        tool_calls: [{
+          id: "call-basic-rts",
+          function: { name: "openclaw_agent_consult", arguments: "{}" },
+        }],
+      }),
+    ),
+  });
+  await tick();
+  await tick();
+  assert.equal(harness.engine.sendAttempts.length, 2);
+  assert.equal(harness.engine.sent.length, 1);
+  const payload = JSON.parse(decodeRtcTlv(harness.engine.sent[0].message).value);
+  assert.ok(Buffer.byteLength(payload.Content, "utf8") <= 768);
+  assert.ok(harness.engine.sent[0].message.byteLength < 1024);
+  assert.equal(
+    harness.events.some((event) => event.payload?.phase === "result-size-fallback"),
+    true,
+  );
+  client.stop();
 });
 
 test("managed-room obtains a concrete microphone before capture", async () => {

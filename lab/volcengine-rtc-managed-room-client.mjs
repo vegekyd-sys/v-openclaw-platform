@@ -1,6 +1,11 @@
 export const VOLC_RTC_SDK_ASSET = "./volcengine-rtc-4.68.1.esm.js";
 
 const MAX_BINARY_MESSAGE_BYTES = 64 * 1024;
+// Advanced RTS allows a 64 KiB user message. Keep 4 KiB for the JSON envelope,
+// tool-call id, TLV framing, and future protocol fields.
+const MAX_TOOL_RESULT_CONTENT_BYTES = 60 * 1024;
+const MAX_BASIC_TOOL_RESULT_CONTENT_BYTES = 768;
+const TOOL_RESULT_TRUNCATION_SUFFIX = "\n（结果较长，已截取关键部分。请基于以上内容简洁回答。）";
 const TALK_TOOL_NAMES = new Set(["openclaw_agent_consult", "openclaw_agent_control"]);
 const DEFAULT_STAGE_TIMEOUTS_MS = Object.freeze({
   // The first uncached SDK download is 1.45 MB. Remote VLab sessions can run
@@ -111,14 +116,37 @@ function parseToolArguments(value) {
   return parsed;
 }
 
-function toolResultContent(result) {
-  if (typeof result === "string") return result;
-  if (result && typeof result === "object" && !Array.isArray(result)) {
-    if (typeof result.result === "string") return result.result;
-    if (typeof result.text === "string") return result.text;
-    if (typeof result.error === "string") return `OpenClaw Agent 没有完成：${result.error}`;
+function truncateUtf8(value, maxBytes, suffix = "") {
+  const encoder = new TextEncoder();
+  if (encoder.encode(value).byteLength <= maxBytes) return value;
+  const suffixBytes = encoder.encode(suffix).byteLength;
+  const contentBudget = Math.max(0, maxBytes - suffixBytes);
+  let output = "";
+  let outputBytes = 0;
+  for (const char of value) {
+    const charBytes = encoder.encode(char).byteLength;
+    if (outputBytes + charBytes > contentBudget) break;
+    output += char;
+    outputBytes += charBytes;
   }
-  return JSON.stringify(result ?? null);
+  return `${output.trimEnd()}${suffix}`;
+}
+
+function toolResultContent(result, maxBytes = MAX_TOOL_RESULT_CONTENT_BYTES) {
+  let content;
+  if (typeof result === "string") content = result;
+  if (result && typeof result === "object" && !Array.isArray(result)) {
+    if (typeof result.result === "string") content = result.result;
+    else if (typeof result.text === "string") content = result.text;
+    else if (typeof result.error === "string") content = `OpenClaw Agent 没有完成：${result.error}`;
+  }
+  content ??= JSON.stringify(result ?? null);
+  return truncateUtf8(content, maxBytes, TOOL_RESULT_TRUNCATION_SUFFIX);
+}
+
+function isRtcMessageTooLong(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /message length|less than 1\s*KB|exceed(?:s|ed)?.*length|message.*too (?:large|long)/iu.test(message);
 }
 
 function stageStatus(code) {
@@ -420,13 +448,25 @@ export class VolcengineRtcManagedRoomClient {
 
   async submitToolResult(callId, result) {
     if (this.closed || this.completedToolCalls.has(callId)) return;
-    const content = toolResultContent(result);
-    await Promise.resolve(
+    const send = (content) => Promise.resolve(
       this.engine.sendUserBinaryMessage(
         this.room.agentUserId,
         encodeRtcTlv("func", JSON.stringify({ ToolCallID: callId, Content: content })),
       ),
     );
+    const content = toolResultContent(result);
+    try {
+      await send(content);
+    } catch (error) {
+      if (!isRtcMessageTooLong(error)) throw error;
+      this.context.callbacks.onTalkEvent?.({
+        type: "tool.progress",
+        callId,
+        payload: { phase: "result-size-fallback", maxBytes: MAX_BASIC_TOOL_RESULT_CONTENT_BYTES },
+        final: false,
+      });
+      await send(toolResultContent(result, MAX_BASIC_TOOL_RESULT_CONTENT_BYTES));
+    }
     this.completedToolCalls.add(callId);
     this.context.callbacks.onTalkEvent?.({
       type: result?.error ? "tool.error" : "tool.result",

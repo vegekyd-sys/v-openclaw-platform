@@ -104,6 +104,7 @@ test("provider starts and stops one managed RTC room without exposing server cre
     },
   });
   assert.equal(provider.id, VOLC_RTC_AGENT_PROVIDER_ID);
+  assert.equal(provider.label, "volcenine-rtc");
   assert.deepEqual(provider.capabilities.transports, ["managed-room"]);
   assert.equal(provider.isConfigured({ providerConfig: PROVIDER_CONFIG }), true);
 

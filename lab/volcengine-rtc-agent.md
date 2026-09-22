@@ -1,5 +1,10 @@
 # V × 小何 RTC Agent（OpenClaw 2026.9.1）
 
+Control UI 中显示为 `volcenine-rtc`，内部稳定 ID 仍为
+`volcengine-rtc-agent`。在 `/settings/talk` 选择该项后，新建的语音会话走小何 RTC；
+选择 GPT Live One 时仍走原来的 GPT Live 链路。Provider 选择不绑定固定 Session，
+启动语音时沿用当前 Control UI 会话的 `sessionKey`。
+
 这是现有 GPT Live One `provider-direct` 思路在火山 RTC 上的对应实现：浏览器直接加入
 火山 RTC 房间，音频采集、VAD、转录、打断、生成和播放都由火山 RTC/小何负责；OpenClaw
 Gateway 只签发房间、保存 Talk 会话，并在小何发起 Function Call 时调用 V。
