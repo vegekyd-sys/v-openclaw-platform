@@ -22,6 +22,7 @@ const cookieMaxAgeSeconds = 7 * 24 * 60 * 60;
 const sessionIdleMs = 30 * 60 * 1000;
 const localCookieSecret = randomBytes(32).toString("hex");
 const adapterPath = process.env.RTC_H5_ADAPTER_PATH ?? join(here, "../volcengine-rtc-managed-room-client.mjs");
+const sdkPath = process.env.RTC_H5_SDK_PATH ?? join(runtimeRoot, "dist/control-ui/assets/volcengine-rtc-4.68.1.esm.js");
 
 if (!stateDir || !configPath || !runtimeRoot) {
   throw new Error("OPENCLAW_STATE_DIR, OPENCLAW_CONFIG_PATH and RTC_H5_RUNTIME_ROOT are required");
@@ -217,7 +218,7 @@ const staticFiles = new Map([
   ["/assets/v-tool-busy-20260922.png", [join(here, "assets/v-tool-busy-20260922.png"), "image/png"]],
   ["/assets/v-tool-very-busy-20260922.png", [join(here, "assets/v-tool-very-busy-20260922.png"), "image/png"]],
   ["/adapter.js", [adapterPath, "text/javascript; charset=utf-8"]],
-  ["/volcengine-rtc-4.68.1.esm.js", [join(runtimeRoot, "dist/control-ui/assets/volcengine-rtc-4.68.1.esm.js"), "text/javascript; charset=utf-8"]],
+  ["/volcengine-rtc-4.68.1.esm.js", [sdkPath, "text/javascript; charset=utf-8"]],
 ]);
 
 const server = createServer(async (request, response) => {

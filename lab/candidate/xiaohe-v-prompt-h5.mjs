@@ -13,6 +13,7 @@ const inputRoot = process.cwd();
 const promptPath = path.join(inputRoot, "lab/xiaohe-v-realtime-prompt.md");
 const h5ServerPath = path.join(inputRoot, "lab/rtc-h5/server.mjs");
 const adapterPath = path.join(inputRoot, "lab/volcengine-rtc-managed-room-client.mjs");
+const sdkPath = path.join(inputRoot, "lab/release-files/volcengine-rtc-agent/volcengine-rtc-4.68.1.esm.js");
 const h5Port = Number(process.env.RTC_H5_PORT ?? 26252);
 const publicSelfTest = process.env.RTC_H5_PUBLIC_SELF_TEST === "1";
 const publicBasePath = "/voice";
@@ -95,6 +96,9 @@ async function runPublicSelfTest() {
   const page = await request(`${publicBasePath}/`);
   assert.equal(page.status, 200);
   assert.match(page.payload, /\.\/app\.js/u);
+  const sdk = await request(`${publicBasePath}/volcengine-rtc-4.68.1.esm.js`);
+  assert.equal(sdk.status, 200);
+  assert(sdk.payload.length > 1_000_000, "release-pinned RTC browser SDK was not served");
 
   const unauthorized = await request(`${publicBasePath}/api/status`);
   assert.equal(unauthorized.status, 401);
@@ -242,6 +246,7 @@ try {
       RTC_H5_PORT: String(h5Port),
       RTC_H5_RUNTIME_ROOT: `${runtime}/openclaw`,
       RTC_H5_ADAPTER_PATH: adapterPath,
+      RTC_H5_SDK_PATH: sdkPath,
       RTC_H5_PROVIDER_ID: "volcengine-rtc-agent",
       ...(publicSelfTest ? {
         RTC_H5_ACCESS_TOKEN: publicAccessToken,
