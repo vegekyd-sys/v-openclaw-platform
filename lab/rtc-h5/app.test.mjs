@@ -38,11 +38,13 @@ test("bridge stays loopback-only and isolates authenticated public visitors", as
   assert.match(source, /RTC_H5_HOST \?\? "127\.0\.0\.1"/u);
   assert.match(source, /RTC_H5_ACCESS_TOKEN/u);
   assert.match(source, /RTC_H5_BASE_PATH/u);
+  assert.match(source, /RTC_H5_PROVIDER_ID/u);
   assert.match(source, /RTC_H5_MAX_ACTIVE_SESSIONS/u);
   assert.match(source, /agent:makaron:voice-h5-/u);
   assert.match(source, /HttpOnly; SameSite=Strict/u);
   assert.match(source, /publicPath === basePath/u);
   assert.match(source, /talk\.client\.create/u);
+  assert.match(source, /provider: providerId/u);
   assert.match(source, /talk\.client\.toolCall/u);
   assert.doesNotMatch(source, /0\.0\.0\.0/u);
   assert.match(source, /max-age=31536000, immutable/u);
