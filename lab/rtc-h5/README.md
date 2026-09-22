@@ -24,6 +24,12 @@ For a fast Mac-side page, forward the remote bridge to local port `26243` and
 run `local-proxy.mjs` on port `26241`. Static H5 and the 1.45 MB SDK then stay
 local; only small `/api/*` requests cross SSH.
 
+The portrait is also a lightweight activity signal: the relaxed no-hat V is
+shown normally, the tablet portrait appears as soon as a tool call begins, and
+the multi-task portrait replaces it if the same busy period lasts longer than
+five seconds. The portrait returns to idle when all concurrent tool calls have
+completed or failed. `?avatar=idle|busy|very-busy` is available for visual QA.
+
 ## Public deployment boundary
 
 The default `RTC_H5_SESSION_KEY` is suitable for a private acceptance link, not

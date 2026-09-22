@@ -118,7 +118,9 @@ const staticFiles = new Map([
   ["/index.html", [join(here, "index.html"), "text/html; charset=utf-8"]],
   ["/styles.css", [join(here, "styles.css"), "text/css; charset=utf-8"]],
   ["/app.js", [join(here, "app.js"), "text/javascript; charset=utf-8"]],
-  ["/assets/v-listening-20260922.png", [join(here, "assets/v-listening-20260922.png"), "image/png"]],
+  ["/assets/v-idle-nohat-20260922.png", [join(here, "assets/v-idle-nohat-20260922.png"), "image/png"]],
+  ["/assets/v-tool-busy-20260922.png", [join(here, "assets/v-tool-busy-20260922.png"), "image/png"]],
+  ["/assets/v-tool-very-busy-20260922.png", [join(here, "assets/v-tool-very-busy-20260922.png"), "image/png"]],
   ["/adapter.js", [adapterPath, "text/javascript; charset=utf-8"]],
   ["/volcengine-rtc-4.68.1.esm.js", [join(runtimeRoot, "dist/control-ui/assets/volcengine-rtc-4.68.1.esm.js"), "text/javascript; charset=utf-8"]],
 ]);
@@ -129,7 +131,7 @@ const server = createServer(async (request, response) => {
     if (request.method === "GET" && staticFiles.has(url.pathname)) {
       const [path, contentType] = staticFiles.get(url.pathname);
       const info = await stat(path);
-      const versionedAsset = ["/volcengine-rtc-4.68.1.esm.js", "/assets/v-listening-20260922.png"].includes(url.pathname);
+      const versionedAsset = url.pathname === "/volcengine-rtc-4.68.1.esm.js" || url.pathname.startsWith("/assets/");
       response.writeHead(200, {
         "content-type": contentType,
         "content-length": info.size,

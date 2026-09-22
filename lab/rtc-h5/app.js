@@ -1,6 +1,7 @@
 import { VolcengineRtcManagedRoomClient } from "/adapter.js";
 
 const elements = {
+  avatar: document.querySelector("#vAvatar"),
   badge: document.querySelector("#connectionBadge"),
   copy: document.querySelector("#copyLogButton"),
   conversation: document.querySelector("#conversation"),
@@ -11,11 +12,55 @@ const elements = {
   stop: document.querySelector("#stopButton"),
 };
 
+const avatarSources = {
+  idle: "/assets/v-idle-nohat-20260922.png",
+  busy: "/assets/v-tool-busy-20260922.png",
+  "very-busy": "/assets/v-tool-very-busy-20260922.png",
+};
+
 const stepStartedAt = new Map();
+const activeToolCalls = new Set();
 let client = null;
 let session = null;
 let transcriptSeq = 0;
+let avatarEscalationTimer = null;
 const logLines = [];
+
+for (const source of Object.values(avatarSources)) {
+  const image = new Image();
+  image.src = source;
+}
+
+function setAvatarState(state) {
+  if (!avatarSources[state]) return;
+  document.body.dataset.avatarState = state;
+  if (elements.avatar.src.endsWith(avatarSources[state])) return;
+  elements.avatar.src = avatarSources[state];
+}
+
+function beginToolActivity(callId) {
+  const key = callId || `tool-${Date.now()}-${Math.random()}`;
+  activeToolCalls.add(key);
+  if (activeToolCalls.size === 1) {
+    setAvatarState("busy");
+    setStatus("thinking", "我去处理一下，很快回来");
+    window.clearTimeout(avatarEscalationTimer);
+    avatarEscalationTimer = window.setTimeout(() => {
+      if (activeToolCalls.size === 0) return;
+      setAvatarState("very-busy");
+      setStatus("thinking", "事情有点多，我还在认真处理");
+    }, 5_000);
+  }
+  return key;
+}
+
+function endToolActivity(key) {
+  activeToolCalls.delete(key);
+  if (activeToolCalls.size > 0) return;
+  window.clearTimeout(avatarEscalationTimer);
+  avatarEscalationTimer = null;
+  setAvatarState("idle");
+}
 
 function elapsed(startedAt) {
   return `${((performance.now() - startedAt) / 1000).toFixed(1)}s`;
@@ -104,6 +149,7 @@ async function persistTranscript(role, text) {
 
 async function executeToolCall({ callId, name, args, signal, submit }) {
   if (signal?.aborted) return;
+  const activityKey = beginToolActivity(callId);
   log(`工具调用 ${name}`, { callId });
   try {
     const result = name === "openclaw_agent_control"
@@ -114,6 +160,8 @@ async function executeToolCall({ callId, name, args, signal, submit }) {
   } catch (error) {
     if (!signal?.aborted) await submit(callId, { error: error.message });
     log(`工具失败 ${name}`, error.message);
+  } finally {
+    endToolActivity(activityKey);
   }
 }
 
@@ -170,6 +218,10 @@ async function stop({ keepStatus = false } = {}) {
     await api("/api/close", { voiceSessionId: session.voiceSessionId }).catch((error) => log("会话关闭失败", error.message));
   }
   session = null;
+  activeToolCalls.clear();
+  window.clearTimeout(avatarEscalationTimer);
+  avatarEscalationTimer = null;
+  setAvatarState("idle");
   elements.start.hidden = false;
   elements.start.disabled = false;
   elements.stop.hidden = true;
@@ -200,3 +252,6 @@ api("/api/status").then((status) => {
   log("H5 桥接不可用", error.message);
   setStatus("error", `桥接不可用：${error.message}`);
 });
+
+const avatarPreview = new URL(window.location.href).searchParams.get("avatar");
+if (avatarSources[avatarPreview]) setAvatarState(avatarPreview);
