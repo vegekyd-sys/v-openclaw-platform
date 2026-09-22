@@ -41,9 +41,43 @@ RTC after output becomes quiet.
 - The shared VLab PID remained unchanged; no integration lease or shared
   Gateway restart was used.
 
+## Physical speaker acceptance
+
+A private OpenClaw 2026.9.1 VLab candidate was connected to the physical
+ReSpeaker through temporary SSH forwarding. The production OpenClaw Gateway was
+left running; only `v-speaker.service` was paused while the device bridge used
+the candidate, then restored.
+
+- `talk.catalog` reported OpenAI realtime ready, and a preflight reservation
+  returned `gpt-live-1-codex`, voice `sol`, and the native WebRTC offer path.
+- A real acoustic `你好小V` wake reached media-ready in 5.909 seconds. The
+  device completed ICE/DTLS/SCTP, replayed buffered early speech, and played
+  provider audio.
+- The final 123.919-second call observed two complete owner-scoped terminal
+  sequences: `tool.call: 2`, `tool.result: 2`, plus 15 `chat.delta` progress
+  events. The RTC did not close at the 15-second silence boundary while either
+  consult was active. It closed with `reason=idle` after both final results and
+  subsequent audio/activity became quiet.
+- The device sent 354,035 encoded-media bytes and received 428,441 bytes
+  directly from OpenAI. The V bridge handled 38,201 bytes of device signaling
+  input and 1,676 bytes of signaling output; media did not transit V or VLab.
+- The temporary V bridge used 59 MB at sampling time and peaked at 62 MB. The
+  full private VLab candidate used 1.88 GB at sampling time and peaked at 2.48
+  GB because it retained the normal 5-worker VLab pool; this is acceptance
+  harness overhead, not added production V overhead. The candidate occupied
+  1.4 GB on disk and was removed after the run.
+
+An earlier physical attempt correctly surfaced `database or disk is full`
+before WebRTC creation when the VLab volume had only a few megabytes free. The
+private candidate copies were reduced and the final run had 13 GB free. This
+was a VLab host-capacity issue, not a Talk terminal-event failure.
+
 ## Deployment state
 
 This candidate is not merged into `dev` and is not deployed to production V.
 The temporary incorrect production file was restored to the original
 `bc7f7e15e211fc7669446b221222de980a355a042c4f8a40e301357186e5aa42`
-hash without another restart.
+hash without another restart. After physical acceptance, the temporary bridge,
+tunnels, credentials, and candidate runtime were removed. Production
+`v-speaker.service` was restored with `controlConnected=true` and
+`voiceActive=false`.
