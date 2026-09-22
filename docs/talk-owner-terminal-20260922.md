@@ -74,10 +74,13 @@ was a VLab host-capacity issue, not a Talk terminal-event failure.
 
 ## Deployment state
 
-This candidate is not merged into `dev` and is not deployed to production V.
-The temporary incorrect production file was restored to the original
-`bc7f7e15e211fc7669446b221222de980a355a042c4f8a40e301357186e5aa42`
-hash without another restart. After physical acceptance, the temporary bridge,
-tunnels, credentials, and candidate runtime were removed. Production
-`v-speaker.service` was restored with `controlConnected=true` and
+The accepted source was merged into `dev` by merge commit `52d6420`. After the
+user-operated production release, the active 2026.9.1 runtime contained the
+same owner-scoped `tool.call`, `tool.result`, and `tool.error` lifecycle code.
+The production Gateway remained on PID `2644837` throughout the final physical
+speaker acceptance; this acceptance work did not restart it.
+
+The final production speaker test used a temporary bridge service so the new
+three-state firmware/bridge logic could be accepted before promotion of the
+speaker repository itself. Standby remained non-billable with
 `voiceActive=false`.
