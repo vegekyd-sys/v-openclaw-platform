@@ -96,6 +96,30 @@ journalctl -u openclaw-gateway --since "-${WINDOW}s" --no-pager -o cat 2>/dev/nu
   | grep -o '\[firsttext-metrics\] {.*}' | sed 's/^\[firsttext-metrics\] //' \
   | awk '{print "ftm " $0}'
 
+# --- runs that began speaking and then died ---
+# A run that emitted first-nonempty-text and still ended isError=true means the
+# user watched a reply start and stop. This is the one shape that cannot be
+# confused with the agent deciding a message needs no reply: that path never
+# starts streaming. A 2026-09-20 rule keyed on "no reply" was removed for
+# exactly that confusion. Measured 2026-09-23: 5 user-facing occurrences in a
+# full day, every one a real truncated answer.
+journalctl -u openclaw-gateway --since "-${WINDOW}s" --no-pager -o cat 2>/dev/null \
+  | python3 -c '
+import sys, re
+streamed, failed, internal = set(), {}, ("workboard", "nightshift", "announce")
+for line in sys.stdin:
+    if "first-nonempty-text" in line:
+        m = re.search(r"\"runId\":\"([^\"]+)\"", line)
+        if m: streamed.add(m.group(1))
+    elif "isError=true" in line:
+        m = re.search(r"runId=([0-9a-zA-Z:_-]+)", line)
+        if m: failed[m.group(1)] = line
+hits = [r for r in streamed & set(failed)
+        if not r.startswith(internal)
+        and "internal-session-effects" not in r and "skill-workshop" not in r]
+print("cutoff %d %s" % (len(hits), (hits[0][:36] if hits else "-")))
+' 2>/dev/null
+
 # --- error signatures in the window (fixed patterns, bounded scan) ---
 journalctl -u openclaw-gateway --since "-${WINDOW}s" --no-pager -o cat 2>/dev/null \
   | grep -E '^[0-9T:+.-]+ \[[a-zA-Z0-9:_-]+\]' \

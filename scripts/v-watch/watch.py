@@ -18,7 +18,12 @@ WORKER_RSS_GB  = float(os.environ.get("VWATCH_WORKER_RSS_GB", "3.5"))
 DISK_WARN_MB   = int(os.environ.get("VWATCH_DISK_MB", "25600"))
 MEM_WARN_MB    = int(os.environ.get("VWATCH_MEM_MB", "4096"))
 EGRESS_WARN_MBPS = float(os.environ.get("VWATCH_EGRESS_MBPS", "30"))  # cap is 50
-STALL_WARN = 3          # stalled requests per window; the measured normal is 0
+STALL_WARN = 8          # stalled requests per window. Was 3; on 2026-09-23 it fired on
+                        # 61 windows of 1-7 stalls. Stall count does not predict user harm:
+                        # every 8+ burst that day (IO, CPU, DingTalk) hit only nightshift runs
+                        # and caused zero user cutoffs. User harm is now watched directly by
+                        # the CUTOFF rule, so this one is a capacity early warning only.
+                        # Matches the on-host sentinel's threshold.
 FAIL_RATE_WARN = 3.0    # rolling-hour user-facing failure %; daily noise sits under 1
 FAIL_BURST = 5          # failures in one window that count as a burst regardless of rate
 POOL_MAX = 15           # maxWorkers in production's worker-pool config
@@ -145,6 +150,19 @@ def handle(out):
             n = int(rest.split()[-1])
             if n > 0:
                 emit("OOM", f"{n} kernel OOM kills in the last {WINDOW}s")
+
+        elif kind == "cutoff":
+            parts = rest.split()
+            n = int(parts[0]); sample = parts[1] if len(parts) > 1 else "-"
+            cs = state.setdefault("cutoff", {"seen": 0})
+            # One is worth saying: it means a person watched an answer stop
+            # mid-sentence. Unlike CALLFAIL this needs no rate -- the measured
+            # rate is about five a day and every one was real.
+            if n > 0:
+                cs["seen"] += n
+                emit("CUTOFF", f"{n} reply(ies) began streaming and then failed in {WINDOW}s "
+                               f"(e.g. run={sample}) -- a user saw an answer start and stop. "
+                               f"This is not the agent choosing not to reply; that never starts streaming.")
 
         elif kind == "poolsize":
             parts = rest.split()
