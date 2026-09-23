@@ -1,0 +1,11 @@
+# Feishu session model switching (candidate)
+
+Scope: users already allowed to message V through Feishu may use `/model` in their own session. `vcodex` and `vcc` remain owner-only. No default model, model catalog, agent persona, or non-Feishu channel is changed.
+
+The current OpenClaw 2026.9.1 config has no per-sender model denylist. Setting `commands.allowFrom.feishu=["*"]` alone would authorize other command surfaces. The three-file patch narrows non-owner Feishu command admission to a whole-message `/model` prefix, then rejects protected models at both standalone and mixed-directive selection paths. Protected aliases are resolved to provider/model refs from the active configuration, so direct ref spelling is denied too. Existing owner authorization and `/new`/`/reset` behavior are preserved. Agent/global model-default writes remain restricted by OpenClaw's existing owner check.
+
+Preflight: resolve the active Gateway runtime and exact three target files; confirm the same filenames and source hashes in VLab and V. Run `patch-runtime.mjs CORE --check` before applying. Apply only to a candidate runtime or under a VLab integration lease with a complete backup. `--apply` must be followed by three `node --check` calls and a repeated `--check` showing all `already`. The configuration change must retain the existing `commands.ownerAllowFrom` list and add only `commands.allowFrom.feishu=["*"]`.
+
+Acceptance matrix: a non-owner Feishu sender can get `/model status`, switch to `vds` and another ordinary alias, and receive a visible response on the selected route; `/model vcc`, `/model vcodex`, and their full provider/model forms return the explicit owner-only rejection without changing the session; `/restart` and `/config` are not authorized; owner still switches to both protected models; ordinary chat and `/new` still work; direct or group conversations cannot modify agent/global defaults. Verify session metadata and runtime/harness, not only the acknowledgment text.
+
+Rollback: restore the three exact runtime files and config from pre-change backups. Runtime code requires a controlled Gateway restart because the current shared VLab has `reload=off`; do not claim a hot reload. Production release is gated on actual shared VLab Feishu acceptance and clean release fingerprint reconciliation.
