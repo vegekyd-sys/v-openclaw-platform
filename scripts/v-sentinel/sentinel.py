@@ -119,6 +119,24 @@ def sample():
                     + j.count("made no progress for")
                     + j.count("Request timed out before a response"))
     out["complete"] = j.count("dispatch complete")
+    # A user-facing run that emitted first-nonempty-text and still ended
+    # isError=true: someone watched an answer start and stop. This cannot be
+    # confused with the agent choosing not to reply, which never streams.
+    streamed, failed = set(), {}
+    for line in j.splitlines():
+        if "first-nonempty-text" in line:
+            m = re.search(r'"runId":"([^"]+)"', line)
+            if m: streamed.add(m.group(1))
+        elif "isError=true" in line:
+            m = re.search(r"runId=([0-9a-zA-Z:_-]+)", line)
+            if m:
+                cause = re.search(r"rawError=([^\"]{0,60})", line)
+                failed[m.group(1)] = cause.group(1).strip() if cause else "?"
+    hits = [r for r in streamed & set(failed)
+            if not r.startswith(("workboard", "nightshift", "announce"))
+            and "internal-session-effects" not in r and "skill-workshop" not in r]
+    out["cutoff"] = len(hits)
+    out["cutoff_cause"] = failed[hits[0]] if hits else ""
     out["received"] = j.count("received message from")
     df = sh("df -BM --output=avail / | tail -1")
     out["disk_mb"] = int(re.sub(r"\D", "", df) or 0)
@@ -180,7 +198,21 @@ def main():
           "主机可用内存只剩 %.1f GB。" % (s["mem_mb"] / 1024),
           "内存已恢复（%.1f GB）。" % (s["mem_mb"] / 1024))
 
-    st["last_run"] = int(time.time())
+    # Discrete events, not a state, so no latch. Measured 2026-09-23: about
+    # five a day. Say it at most once an hour, carrying the count, so a bad
+    # evening is one message rather than a stream of them.
+    now_s = int(time.time())
+    st["cutoff_pending"] = st.get("cutoff_pending", 0) + s.get("cutoff", 0)
+    if s.get("cutoff"):
+        st["cutoff_last_cause"] = s.get("cutoff_cause", "")
+    if st["cutoff_pending"] and now_s - st.get("cutoff_last_alert", 0) >= 3600:
+        alerts.append("%d 次回复说到一半断掉（用户看到了开头，没收到结尾）。最近一次原因：%s。"
+                      "这不是 V 选择不回复，那种情况不会开始输出。"
+                      % (st["cutoff_pending"], st.get("cutoff_last_cause") or "未知"))
+        st["cutoff_pending"] = 0
+        st["cutoff_last_alert"] = now_s
+
+    st["last_run"] = now_s
     st["last_sample"] = s
     save_state(st)
 
