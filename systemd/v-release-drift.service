@@ -1,0 +1,13 @@
+[Unit]
+Description=V release drift check (is production still the release we published?)
+Documentation=file:/opt/v-sentinel/release-drift.py
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Hashing ~8600 files on a host whose root filesystem sits at 88% must never
+# compete with the Gateway it is watching.
+Nice=19
+IOSchedulingClass=idle
+ExecStart=/usr/bin/python3 /opt/v-sentinel/release-drift.py
+TimeoutStartSec=900
