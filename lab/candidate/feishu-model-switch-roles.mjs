@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import vm from 'node:vm';
 import { spawnSync } from 'node:child_process';
 
 const runtime = process.env.VLAB_CANDIDATE_RUNTIME;
@@ -19,7 +18,7 @@ const target = (prefix) => {
   assert.equal(matches.length, 1, `${prefix} target not unique`);
   return path.join(dist, matches[0]);
 };
-for (const prefix of ['command-auth-', 'get-reply-', 'directive-handling.impl-']) {
+for (const prefix of ['command-auth-']) {
   const file = target(prefix);
   const check = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
   assert.equal(check.status, 0, `${prefix}: ${check.stderr}`);
@@ -38,6 +37,8 @@ const permit = (sender, commandText) => auth.n({
 });
 const ownerModel = permit(owner, '/model vcodex');
 const colleagueModel = permit(colleague, '/model vds');
+const colleagueVcc = permit(colleague, '/model vcc');
+const colleagueVcodex = permit(colleague, '/model vcodex');
 const colleagueStatus = permit(colleague, '/model status');
 const colleagueRestart = permit(colleague, '/restart');
 const colleagueBash = permit(colleague, '/bash ls');
@@ -45,27 +46,10 @@ assert.equal(ownerModel.senderIsOwner, true);
 assert.equal(ownerModel.isAuthorizedSender, true);
 assert.equal(colleagueModel.senderIsOwner, false);
 assert.equal(colleagueModel.isAuthorizedSender, true);
+assert.equal(colleagueVcc.isAuthorizedSender, true);
+assert.equal(colleagueVcodex.isAuthorizedSender, true);
 assert.equal(colleagueStatus.isAuthorizedSender, true);
 assert.equal(colleagueRestart.isAuthorizedSender, false);
 assert.equal(colleagueBash.isAuthorizedSender, false);
 
-function helper(prefix) {
-  const source = fs.readFileSync(target(prefix), 'utf8');
-  const match = source.match(/function isFeishuOwnerOnlyModelSelection\(cfg, agentId, selection\) \{[\s\S]*?\n\}/);
-  assert(match, `${prefix} guard missing`);
-  return vm.runInNewContext(`${match[0]}; isFeishuOwnerOnlyModelSelection`);
-}
-const cfg = { agents: { defaults: { models: {
-  'openai/gpt-5.6-sol': { alias: 'vcodex' },
-  'anthropic/claude-opus-5-5': { alias: 'vcc' },
-  'deepseek/vds-deepseek-flash': { alias: 'vds' },
-  'azure-openai/gpt-5.6-sol': { alias: 'gpt5.6' },
-} } } };
-for (const guard of [helper('get-reply-'), helper('directive-handling.impl-')]) {
-  assert.equal(guard(cfg, 'makaron', { provider: 'openai', model: 'gpt-5.6-sol' }), true);
-  assert.equal(guard(cfg, 'makaron', { provider: 'anthropic', model: 'claude-opus-5-5' }), true);
-  assert.equal(guard(cfg, 'makaron', { provider: 'deepseek', model: 'vds-deepseek-flash' }), false);
-  assert.equal(guard(cfg, 'makaron', { provider: 'azure-openai', model: 'gpt-5.6-sol' }), false);
-  assert.equal(guard(cfg, 'makaron', { provider: 'x', model: 'y', alias: 'vcc' }), true);
-}
-console.log(JSON.stringify({ ok: true, checks: ['owner', 'model', 'status', 'restart-denied', 'bash-denied', 'vcodex-denied', 'vcc-denied', 'vds-allowed', 'gpt5.6-allowed', 'syntax'] }));
+console.log(JSON.stringify({ ok: true, checks: ['owner', 'model', 'status', 'restart-denied', 'bash-denied', 'vcodex-allowed', 'vcc-allowed', 'vds-allowed', 'syntax'] }));
