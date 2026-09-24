@@ -5,11 +5,29 @@
 | Alias | Model | Status |
 |---|---|---|
 | `/grok` | `xai/grok-4.7` | **shipped**, verified with a real Feishu turn |
-| `/vcodex` | `openai/gpt-5.6-sol` | unchanged — GPT-6 Sol reverted, see below |
-| `/luna` | `openai/gpt-5.6-luna` | unchanged — GPT-6 Luna reverted, see below |
+| `/vcodex` | `openai/gpt-6-sol` | **shipped** via a runtime backport, verified in Feishu |
+| `/luna` | `openai/gpt-6-luna` | **shipped** via the same backport, verified in Feishu |
 
-`/grok46` also exists, pointing at the previous `xai/grok-4.6`, which is still
-the configured fallback for several agents.
+`/grok46`, `/vcodex56` and `/luna56` reach the previous models, so a rollback
+is an alias swap. `xai/grok-4.6` is also still the configured fallback for
+several agents.
+
+All five were confirmed with real Feishu turns; the reply card names the model,
+provider and runtime that actually served each one:
+
+```
+/vcodex   -> gpt-6-sol    | openai   | codex
+/luna     -> gpt-6-luna   | openai   | codex
+/grok     -> grok-4.7     | xai      | vlab-worker
+/astra    -> gpt-6-astra  | openai   | codex        (regression check)
+/vds      -> vds-deepseek-flash | deepseek | codex  (regression check)
+```
+
+The first `/vcodex` turn after the restart failed with `Cannot reap registered
+Codex process <pid>` against a pid that no longer existed, and the immediate
+retry succeeded. That is the cold-first-turn behaviour of
+[#156491](https://github.com/openclaw/openclaw/issues/156491): one failure
+right after a restart is not a reason to conclude the wiring is wrong.
 
 ## Grok 4.7
 
@@ -28,7 +46,7 @@ Two gotchas, both of which cost a restart:
 2. The allow list that actually decides lives in the *worker* config. See
    "Two config files" below.
 
-## GPT-6 Sol and Luna: not possible on 2026.9.1
+## GPT-6 Sol and Luna: why stock 2026.9.1 cannot run them
 
 Both preconditions are satisfied — the hosted catalog regenerated on
 2026-09-23 (upstream [#156122](https://github.com/openclaw/openclaw/issues/156122),
