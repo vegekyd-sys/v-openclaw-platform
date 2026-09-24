@@ -194,9 +194,6 @@
         "scripts/db91-production-plan.test.mjs",
         "scripts/db91-tool-directory.test.mjs",
         "scripts/deepseek-late-runtime-context.test.mjs",
-        "scripts/patch-openclaw94-cron-shared-management.test.mjs",
-        "scripts/patch-openclaw94-operational-parity.test.mjs",
-        "scripts/patch-openclaw94-sqlite-begin-contention.test.mjs",
         "scripts/release-affinity-production.test.mjs",
         "scripts/state-db-fastpath-production-plan.test.mjs",
         "tests/cron-shared-management/runtime.test.mjs",
@@ -214,7 +211,6 @@
         "lab/db91-session-admission-retry.test.mjs",
         "lab/db91-transaction-scope-acceptance.test.mjs",
         "lab/db91-writer-ab-analysis.test.mjs",
-        "lab/db91-writer-transaction-scope.test.mjs",
         "lab/deepseek-compaction-contract.test.mjs",
         "lab/dreaming-session-ingestion-build.test.mjs",
         "lab/exact-sharing-lookup.test.mjs",
@@ -276,6 +272,10 @@
     }
   ],
   "deferredTestFiles": [
+    {"file": "lab/db91-writer-transaction-scope.test.mjs", "reason": "读取只存在于 Tianyi 这台 Mac 上的 ~/v-upgrade-private/20260912-openclaw94-shared-vlab 9.4 fixture；本机离线通过，CI 干净环境 ENOENT。fixture 进仓库或改成显式环境变量之前不进 CI 套件。"},
+    {"file": "scripts/patch-openclaw94-sqlite-begin-contention.test.mjs", "reason": "读取只存在于 Tianyi 这台 Mac 上的 ~/v-upgrade-private/20260912-openclaw94-shared-vlab 9.4 fixture；本机离线通过，CI 干净环境 ENOENT。fixture 进仓库或改成显式环境变量之前不进 CI 套件。"},
+    {"file": "scripts/patch-openclaw94-operational-parity.test.mjs", "reason": "读取只存在于 Tianyi 这台 Mac 上的 ~/v-upgrade-private/20260912-openclaw94-shared-vlab 9.4 fixture；本机离线通过，CI 干净环境 ENOENT。fixture 进仓库或改成显式环境变量之前不进 CI 套件。"},
+    {"file": "scripts/patch-openclaw94-cron-shared-management.test.mjs", "reason": "读取只存在于 Tianyi 这台 Mac 上的 ~/v-upgrade-private/20260912-openclaw94-shared-vlab 9.4 fixture；本机离线通过，CI 干净环境 ENOENT。fixture 进仓库或改成显式环境变量之前不进 CI 套件。"},
     {"file": "lab/short-maintenance-transactions.test.mjs", "reason": "其中 WAL 快照一条需要 OPENCLAW_TEST_NATIVE_DIST 指向原生运行时，缺省时 skip；离线入口不把 skip 当通过。"},
     {"file": "tests/cron-shared-management/patcher.test.mjs", "reason": "需要真实 9.1 cron bundle fixture；缺 fixture 时 node:test 会 skip，离线入口不把 skip 当通过。"},
     {"file": "lab/cold-start-pipeline-contract.test.mjs", "reason": "钉的是 worker-pool.mjs 在 035ccb4（spawn-containment）时的内容哈希；之后 2da3eec（worker-memory-recycle，已上线）和 88380e9 改了该文件而未重钉，自 9/16 起失败、被未登记测试的目录错误掩盖。需要 worker 线负责人确认现内容后重钉，不由 2026-09-24 的登记整理代为声明。"},
