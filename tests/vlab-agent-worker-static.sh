@@ -219,8 +219,15 @@ jq -e \
   "${EXPERIMENT_DIR}/openclaw.plugin.json" >/dev/null
 jq -e '.openclaw.extensions == ["./index.mjs"]' \
   "${EXPERIMENT_DIR}/package.json" >/dev/null
-jq -e '.version == "0.2.8"' \
+# Two versions exist on purpose and both are pinned so neither drifts silently:
+# experiments/ is the development source (ahead of production: seeduplex,
+# harness model routing, runtime prewarm), and production V runs 0.2.11, whose
+# exact bytes live in release/captured/<release>.worker/. This used to assert
+# 0.2.8 and had been failing since the source moved on.
+jq -e '.version == "0.2.12-rc.1"' \
   "${EXPERIMENT_DIR}/package.json" >/dev/null
+jq -e '.version == "0.2.11"' \
+  "${REPO_ROOT}/release/captured/v2026.9.1-db91.6-feishu-model-20260924.worker/dist/package.json" >/dev/null
 grep -q 'requestTimeoutMs: attemptTimeoutMs' "${EXPERIMENT_DIR}/index.mjs"
 
 if rg -n \
