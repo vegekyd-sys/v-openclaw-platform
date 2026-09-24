@@ -144,12 +144,15 @@ node lab/vlab.mjs align --owner <o>
 
 一次上线的完整命令顺序：
 
+```bash
+node lab/vlab.mjs stage / deploy / accept ...                      # VLab 上验收
+node scripts/promote-to-v.mjs --release <VLab release> --name <V 发版名>     # 先看计划
+node scripts/promote-to-v.mjs --release <VLab release> --name <V 发版名> --owner <o> --apply
+# → 装同一份字节到 V（先备份，写 undo.json）→ 捕获 core/worker/飞书 → 更新哨兵 → vlab.mjs align
+git add release/captured/<V 发版名>* && 提交 PR；dev → main 发版 PR，打 tag <V 发版名>
 ```
-vlab.mjs stage → deploy → (测) → accept
-→ 把同一份文件装到 V（R 的 plan 里 before 就是 V 的字节）
-→ capture-production-runtime.mjs（core / worker / 飞书）+ install-v-release-drift.sh
-→ vlab.mjs align                         # parity 必须 ALIGNED，否则说明 V 装的不是同一份
-```
+
+`promote-to-v.mjs` 不重启 V：dist 文件在下次 Gateway 启动时才生效，什么时候重启由人决定。V 上的文件不是这个版本的"改动前"字节时，它拒绝执行；需要撤销用 `--undo <V 上的备份目录>`。
 
 不上线，就 `vlab.mjs rollback`：回到父版本，标志随之恢复为 aligned。
 
