@@ -1,63 +1,93 @@
-# Adding Grok 4.7, GPT-6 Sol and GPT-6 Luna to V (2026-09-25)
+# Grok 4.7, GPT-6 Sol and GPT-6 Luna on V (2026-09-25)
 
 ## Result
 
-| Alias | Model | Auth | Verified |
-|---|---|---|---|
-| `/grok` | `xai/grok-4.7` | xAI subscription (auth-profile) | yes — live turn through OpenClaw |
-| `/vcodex` | `openai/gpt-6-sol` | ChatGPT subscription via `codex` runtime | config only, see below |
-| `/luna` | `openai/gpt-6-luna` | ChatGPT subscription via `codex` runtime | config only, see below |
+| Alias | Model | Status |
+|---|---|---|
+| `/grok` | `xai/grok-4.7` | **shipped**, verified with a real Feishu turn |
+| `/vcodex` | `openai/gpt-5.6-sol` | unchanged — GPT-6 Sol reverted, see below |
+| `/luna` | `openai/gpt-5.6-luna` | unchanged — GPT-6 Luna reverted, see below |
 
-Legacy models stay reachable so a rollback is an alias swap, not a restore:
-`/grok46`, `/vcodex56`, `/luna56`.
+`/grok46` also exists, pointing at the previous `xai/grok-4.6`, which is still
+the configured fallback for several agents.
 
-## What had been blocking Sol and Luna
+## Grok 4.7
 
-Two independent gates, both cleared before this change:
+A pure config change. `models.providers.xai` is self-describing (baseUrl, api
+and a hand-written `models[]`), so the hosted catalog is not consulted and
+4.7 was missing only because nobody had added it to that list. It runs on the
+xAI subscription auth profile, like 4.6.
 
-1. The hosted model catalog was generated 2026-09-18 and the models shipped
-   2026-09-22, so OpenClaw reported `Unknown model`. Upstream
-   [#156122](https://github.com/openclaw/openclaw/issues/156122) closed
-   2026-09-23, superseded by
-   [PR #155989](https://github.com/openclaw/openclaw/pull/155989). The catalog
-   now carries both with full metadata.
-2. The account has to serve them. `codex debug models` on V lists
-   `gpt-6-sol` and `gpt-6-luna`.
+Two gotchas, both of which cost a restart:
 
-The embedded runtime still rejects both —
-[#155937](https://github.com/openclaw/openclaw/issues/155937), open. Measured on
-V: over the embedded path `gpt-6-astra` and `gpt-5.6-sol` answer while
-`gpt-6-sol` and `gpt-6-luna` both fail with
-`Explicit auth order for openai has no usable profiles`. That also verifies the
-"Luna needs verification" line in that issue's title: Luna fails exactly like
-Sol. So both must be bound to `agentRuntime: {id: "codex"}`, mirroring the
-already-proven `/astra` wiring.
+1. A new model must also be permitted by `agents.defaults.modelPolicy.allow`.
+   The exact key `xai/grok-4.7` is *not* enough — only the `xai/*` wildcard
+   admits it, because grok-4.7 exists solely in our authored provider and has
+   no hosted-catalog entry to supply the other provider spelling. Scope is
+   unchanged in practice: that provider declares a fixed list.
+2. The allow list that actually decides lives in the *worker* config. See
+   "Two config files" below.
 
-Watch [#156491](https://github.com/openclaw/openclaw/issues/156491) (open):
-codex-native GPT-6 can fail on a *cold* first turn. One failure right after a
-restart is not proof the wiring is wrong.
+## GPT-6 Sol and Luna: not possible on 2026.9.1
+
+Both preconditions are satisfied — the hosted catalog regenerated on
+2026-09-23 (upstream [#156122](https://github.com/openclaw/openclaw/issues/156122),
+superseded by [PR #155989](https://github.com/openclaw/openclaw/pull/155989)),
+and `codex debug models` on V lists `gpt-6-sol` and `gpt-6-luna` — and it still
+cannot work. Three attempts, each ruled out by measurement:
+
+- **Embedded path.** `Explicit auth order for openai has no usable profiles`.
+  The models live on the ChatGPT subscription the codex app-server holds, not
+  on the openai auth profile. This is
+  [#155937](https://github.com/openclaw/openclaw/issues/155937), still open.
+  Measured on V: over the same embedded path `gpt-6-astra` and `gpt-5.6-sol`
+  answer, while Sol and Luna both fail. That also settles the "Luna needs
+  verification" question in that issue's title — Luna fails exactly like Sol.
+- **`agentRuntime: {id: "codex"}` on the real ref.** Same failure. Now that the
+  catalog carries `openai/gpt-6-sol`, OpenClaw resolves it as a direct
+  openai-provider model and fails auth *before* reaching the runtime binding.
+  The catalog regeneration that unblocked discovery is what blocks execution.
+- **A synthetic ref plus `codexAppServerRuntimeModel`**, the trick that makes
+  `/vds` work. Refused: `Unknown model: openai/vcodex-gpt-6-sol`. It does not
+  transfer, because `/vds` hangs its synthetic id off the authored
+  `models.providers.deepseek`, and openai has no authored provider —
+  [#156193](https://github.com/openclaw/openclaw/issues/156193) says authoring
+  one would silently disable the Codex harness for every OpenAI model.
+
+The fix is upstream: `4ae133a994f feat(openai): support GPT-6 Sol and Luna
+(#155967)`, present in `v2026.9.6` and absent from `v2026.9.5`. It cherry-picks
+onto `versa/port-9.5-wip` with no conflicts (20 files, +386/-85), so the work
+is gated on the 9.1 → 9.x production upgrade, not on the OpenAI change itself.
+
+Ignore the `available` column when judging any of this. `openai/gpt-5.6-sol` —
+the model `/vcodex` serves today — has always reported `available=false`. The
+flag describes direct-provider credentials, not the harness.
 
 ## Two config files, not one
 
 `agentRuntime=vlab-worker` models are resolved inside the worker process, which
-loads its own config. Patching only the gateway's config leaves the worker
-rejecting the model while `openclaw models list` happily shows it as available.
-See `scripts/apply-v-model-additions-20260925-worker.py` and the memory note
-`v-worker-config-second-file`.
+loads its own config. Patch only the gateway's copy and the worker keeps
+rejecting the model while `openclaw models list` reports it available — and the
+rejection names `agents.defaults.modelPolicy.allow`, a path that exists in both
+files, so following the error message leads nowhere.
 
 ```
 gateway  /home/openclaw/.openclaw/openclaw.json
 worker   /home/openclaw/.openclaw/experiments/agent-worker-isolation-v1/worker-openclaw.json
 ```
 
-The two files are not copies of each other: the worker spells the embedded
-runtime `openclaw` where the gateway spells it `vlab-worker`, and the alias sets
-differ. Mirror by meaning, never by diff.
+They are not copies: the worker spells the embedded runtime `openclaw` where
+the gateway spells it `vlab-worker`, and the alias sets differ (`/vcodex` does
+not exist in the worker config at all). Mirror by meaning, never by diff.
+
+To tell a stale-config rejection from a genuine policy problem, request a model
+that only the *new* entry could admit — after adding `xai/*`, ask for
+`xai/grok-4.3`. If that is refused too, the deciding process does not have your
+config; go find the other file instead of adding more allow entries.
 
 ## Applying
 
-Each script dry-runs by default, is shape-gated (it refuses rather than guesses
-when a value is not what it expects) and is idempotent.
+Each script dry-runs by default, is shape-gated and is idempotent.
 
 ```bash
 M=/home/openclaw/.openclaw/openclaw.json
@@ -71,27 +101,21 @@ sudo -u openclaw openclaw config validate
 sudo systemctl restart openclaw-gateway
 ```
 
+The main and worker scripts still carry the GPT-6 wiring; on 2026.9.1 follow
+them with `revert-gpt6-aliases.py` against both files, which drops every GPT-6
+Sol/Luna ref and returns `/vcodex` and `/luna` to the 5.6 models. After the
+upgrade to a release containing #155967, skip the revert instead.
+
 A restart is required, not optional: a config hot reload tears down the worker
-pool without rebuilding it. Confirm `pgrep -cf worker/worker.mjs` is non-zero
-afterwards.
+pool without rebuilding it. Confirm `pgrep -cf worker/worker.mjs` afterwards.
 
 ## Verifying
 
 `--model <ref>` is only representative for plain API providers such as xAI. It
-forces the turn onto the embedded runner and ignores the model entry's
+forces the turn onto the embedded runner and ignores the entry's
 `agentRuntime`, so it can neither confirm nor refute the `codex` and
 `claude-cli` harnesses. The CLI does not parse inline model directives either —
-`/astra hello` reaches the model as literal text. Alias-to-harness wiring can
-only be verified by sending a real channel message.
-
-```bash
-# valid for xAI
-sudo -u openclaw openclaw agent --agent makaron --model xai/grok-4.7 \
-  --session-id probe -m "reply with: ok" --json
-# valid for /vcodex and /luna: send them in Feishu
-```
-
-Ignore the `available` column for harness-backed models. `openai/gpt-5.6-sol`
-— the model `/vcodex` served for months — has always reported
-`available=false`; the flag describes direct-provider credentials, not the
-harness.
+`/astra hello` reaches the model as literal text, because `extractModelDirective`
+only receives the alias list on the channel reply path. Alias-to-harness wiring
+can only be verified by sending a real channel message; the reply card names the
+model, provider and runtime that actually served the turn.
