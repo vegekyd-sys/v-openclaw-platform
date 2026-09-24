@@ -92,5 +92,38 @@ class ResidueClassification(unittest.TestCase):
             self.assertFalse(mod.is_residue(path), path)
 
 
+class WholeCaptureComponents(unittest.TestCase):
+    """Worker and Feishu plugins are captured whole (--base none)."""
+    COMPONENT = {
+        "release": "v2026.9.1-db91.6.feishu",
+        "capturedFrom": {"runtimeDir": "/opt/x/feishu", "baseDir": "none"},
+        "files": [{"path": "./dist/monitor.account.js", "sha256": "a" * 64}],
+        "residue": [],
+    }
+
+    def test_new_module_in_a_whole_capture_is_reported(self):
+        live = {"./dist/monitor.account.js": "a" * 64, "./dist/hot-fix.js": "e" * 64}
+        self.assertEqual(mod.find_drift(self.COMPONENT, live, check_process=False),
+                         [("added", "./dist/hot-fix.js")])
+
+    def test_in_place_edit_of_a_component_is_reported(self):
+        live = {"./dist/monitor.account.js": "f" * 64}
+        self.assertEqual(mod.find_drift(self.COMPONENT, live, check_process=False),
+                         [("drifted", "./dist/monitor.account.js")])
+
+    def test_components_do_not_check_the_gateway_process(self):
+        live = {"./dist/monitor.account.js": "a" * 64}
+        with mock.patch.object(mod, "sh", side_effect=AssertionError("must not run")):
+            self.assertEqual(mod.find_drift(self.COMPONENT, live, check_process=False), [])
+
+    def test_node_modules_is_skipped_when_hashing(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as root:
+            os.makedirs(os.path.join(root, "node_modules", "dep"))
+            open(os.path.join(root, "node_modules", "dep", "i.js"), "w").write("x")
+            open(os.path.join(root, "index.js"), "w").write("y")
+            self.assertEqual(sorted(mod.hash_tree(root, ("node_modules",))), ["./index.js"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
