@@ -117,7 +117,7 @@ for line in sys.stdin:
 hits = [r for r in streamed & set(failed)
         if not r.startswith(internal)
         and "internal-session-effects" not in r and "skill-workshop" not in r]
-print("cutoff %d %s" % (len(hits), (hits[0][:36] if hits else "-")))
+print("cutoff %d %s" % (len(hits), ",".join(hits) if hits else "-"))
 ' 2>/dev/null
 
 # --- error signatures in the window (fixed patterns, bounded scan) ---

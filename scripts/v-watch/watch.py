@@ -153,15 +153,22 @@ def handle(out):
 
         elif kind == "cutoff":
             parts = rest.split()
-            n = int(parts[0]); sample = parts[1] if len(parts) > 1 else "-"
-            cs = state.setdefault("cutoff", {"seen": 0})
+            ids = [x for x in (parts[1].split(",") if len(parts) > 1 else []) if x and x != "-"]
+            cs = state.setdefault("cutoff", {"reported": {}})
+            # The sample window (90s) is wider than the cycle (30s), so one run
+            # shows up in several consecutive samples. Report each run once;
+            # on 2026-09-24 the same run fired twice a minute apart.
+            fresh = [r for r in ids if r not in cs["reported"]]
+            for r in fresh:
+                cs["reported"][r] = now
+            for r in [r for r, t in cs["reported"].items() if now - t > 900]:
+                del cs["reported"][r]
             # One is worth saying: it means a person watched an answer stop
             # mid-sentence. Unlike CALLFAIL this needs no rate -- the measured
             # rate is about five a day and every one was real.
-            if n > 0:
-                cs["seen"] += n
-                emit("CUTOFF", f"{n} reply(ies) began streaming and then failed in {WINDOW}s "
-                               f"(e.g. run={sample}) -- a user saw an answer start and stop. "
+            if fresh:
+                emit("CUTOFF", f"{len(fresh)} reply(ies) began streaming and then failed "
+                               f"(run={','.join(r[:8] for r in fresh)}) -- a user saw an answer start and stop. "
                                f"This is not the agent choosing not to reply; that never starts streaming.")
 
         elif kind == "poolsize":

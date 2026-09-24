@@ -136,6 +136,7 @@ def sample():
             if not r.startswith(("workboard", "nightshift", "announce"))
             and "internal-session-effects" not in r and "skill-workshop" not in r]
     out["cutoff"] = len(hits)
+    out["cutoff_ids"] = hits
     out["cutoff_cause"] = failed[hits[0]] if hits else ""
     out["received"] = j.count("received message from")
     df = sh("df -BM --output=avail / | tail -1")
@@ -202,8 +203,16 @@ def main():
     # five a day. Say it at most once an hour, carrying the count, so a bad
     # evening is one message rather than a stream of them.
     now_s = int(time.time())
-    st["cutoff_pending"] = st.get("cutoff_pending", 0) + s.get("cutoff", 0)
-    if s.get("cutoff"):
+    # The journal window (180s) overlaps the 120s timer, so the same run can
+    # appear in two consecutive samples. Count each run once.
+    seen = st.setdefault("cutoff_seen", {})
+    fresh = [r for r in s.get("cutoff_ids", []) if r not in seen]
+    for r in fresh:
+        seen[r] = now_s
+    for r in [r for r, t in seen.items() if now_s - t > 900]:
+        del seen[r]
+    st["cutoff_pending"] = st.get("cutoff_pending", 0) + len(fresh)
+    if fresh:
         st["cutoff_last_cause"] = s.get("cutoff_cause", "")
     if st["cutoff_pending"] and now_s - st.get("cutoff_last_alert", 0) >= 3600:
         alerts.append("%d 次回复说到一半断掉（用户看到了开头，没收到结尾）。最近一次原因：%s。"
