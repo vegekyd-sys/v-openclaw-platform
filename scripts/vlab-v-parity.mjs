@@ -36,9 +36,15 @@ const vlabRuntime = args.vlabRuntime ?? '/srv/vlab-production-mirror/labs/instan
 // those prefixes to the directory that plays the same role on each host.
 const vCore = args.vCore ?? detectVCore();
 const vRelease = vCore.replace(/\/core$/, '');
+// V runs the Feishu channel plugin from an old experiment directory, not from
+// its npm project tree; VLab runs it from the npm project. Same role, so same
+// pair. (Found 2026-09-24: this is where the secret-card patch landed on V.)
+const vFeishu = args.vFeishu ?? '/opt/openclaw-experiments/worker-visible-progress-v2026.9.1-20260909/feishu';
+const vlabFeishu = args.vlabFeishu ?? detectVlabFeishu();
 const pairs = [
   { prefix: 'openclaw', v: vCore, vlab: `${vlabRuntime}/openclaw` },
   { prefix: 'production-worker', v: args.vWorker ?? `${vRelease}/worker`, vlab: `${vlabRuntime}/production-worker` },
+  { prefix: vlabFeishu.slice(vlabRuntime.length + 1), v: vFeishu, vlab: vlabFeishu },
 ];
 
 const RESIDUE = /(\.bak($|[-.])|\.orig$|\.staged$|\.before[-.]|\.pre-|\.predeploy-|\.postturn-|\.oc64-)/;
@@ -140,6 +146,14 @@ function detectVCore() {
   const m = /(\/\S+)\/dist\/index\.js/.exec(out);
   if (!m) throw new Error(`cannot find dist/index.js in ${vUnit} ExecStart`);
   return m[1];
+}
+
+function detectVlabFeishu() {
+  const out = execFileSync('ssh', ['-o', 'ConnectTimeout=15', vlabHost,
+    `sudo sh -c 'ls -d ${vlabRuntime}/npm/projects/openclaw-feishu-*/node_modules/@openclaw/feishu'`], { encoding: 'utf8' });
+  const dirs = out.split('\n').filter(Boolean);
+  if (dirs.length !== 1) throw new Error(`expected one Feishu plugin under ${vlabRuntime}/npm/projects, found ${dirs.length}`);
+  return dirs[0];
 }
 
 function sha256(bytes) {
