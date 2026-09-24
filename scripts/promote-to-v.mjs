@@ -150,7 +150,7 @@ console.log(ssh(V, `sudo ${V_NODE} - install ${sq(dir)}`, REMOTE).trim());
 const capture = (suffix, runtime, extra) => execFileSync('node', [join(repo, 'scripts/capture-production-runtime.mjs'),
   '--host', V, '--release', args.name + suffix, '--runtime', runtime, ...extra, '--out', `release/captured/${args.name}${suffix}`],
   { cwd: repo, stdio: 'inherit' });
-capture('', `${vCore}/dist`, ['--base', '/opt/openclaw-2026.9.1-v/openclaw/dist', '--upstream', '2026.9.1', '--sourceCheckout', `${vCore.replace(/\/core$/, '')}/source`]);
+capture('', `${vCore}/dist`, ['--base', 'npm:openclaw@2026.9.1', '--upstream', '2026.9.1', '--sourceCheckout', `${vCore.replace(/\/core$/, '')}/source`]);
 capture('.worker', vWorker, ['--base', 'none', '--exclude', 'node_modules']);
 capture('.feishu', V_FEISHU, ['--base', 'none', '--exclude', 'node_modules', '--upstream', '@openclaw/feishu 2026.9.1']);
 execFileSync(join(repo, 'scripts/install-v-release-drift.sh'), [V,
