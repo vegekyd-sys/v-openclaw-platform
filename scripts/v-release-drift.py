@@ -27,6 +27,10 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 EXPECTED_PATH = "/opt/v-sentinel/expected-release.json"
+# Components captured whole (--base none): the worker plugin and the Feishu
+# plugin. On 2026-09-23 the Feishu plugin was patched in place while this check
+# only looked at core dist, so it saw nothing.
+COMPONENTS_DIR = "/opt/v-sentinel/expected-release.d"
 STATE_PATH = "/var/lib/v-sentinel/release-drift.json"
 UNIT = "openclaw-gateway.service"
 # Leftover backups from in-place patching. Not part of the release, but they
@@ -47,14 +51,15 @@ def is_residue(path):
     return path.endswith(RESIDUE_SUFFIXES) or any(m in path for m in RESIDUE_MARKERS)
 
 
-def hash_tree(root):
+def hash_tree(root, skip_dirs=()):
     """sha256 every regular file under root, keyed by ./-prefixed relative path.
 
     Done in-process rather than by shelling out to find|xargs sha256sum so a
     path containing a newline cannot fabricate or hide an entry.
     """
     out = {}
-    for dirpath, _dirnames, filenames in os.walk(root):
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in skip_dirs]
         for name in filenames:
             full = os.path.join(dirpath, name)
             if os.path.islink(full) or not os.path.isfile(full):
@@ -70,7 +75,12 @@ def hash_tree(root):
     return out
 
 
-def find_drift(expected, live):
+def whole_capture(expected):
+    """A component captured with --base none declares every file it has."""
+    return expected.get("capturedFrom", {}).get("baseDir") == "none"
+
+
+def find_drift(expected, live, check_process=True):
     """Compare the live tree against the manifest. Returns ordered findings."""
     declared = {f["path"]: f["sha256"] for f in expected.get("files", [])}
     known_residue = {f["path"] for f in expected.get("residue", [])}
@@ -88,6 +98,11 @@ def find_drift(expected, live):
             continue
         if is_residue(path):
             findings.append(("new-residue", path))
+        elif whole_capture(expected):
+            findings.append(("added", path))
+
+    if not check_process:
+        return findings
 
     # A drop-in added after the capture can repoint ExecStart without touching
     # a byte of the release directory, so the bytes alone are not enough.
@@ -106,35 +121,53 @@ def find_drift(expected, live):
     return findings
 
 
+def load_manifests():
+    """The core manifest first, then every component manifest beside it."""
+    manifests = []
+    with open(EXPECTED_PATH) as f:
+        manifests.append(("core", json.load(f)))
+    if os.path.isdir(COMPONENTS_DIR):
+        for name in sorted(os.listdir(COMPONENTS_DIR)):
+            if name.endswith(".json"):
+                with open(os.path.join(COMPONENTS_DIR, name)) as f:
+                    manifests.append((name[:-5], json.load(f)))
+    return manifests
+
+
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else ""
 
     try:
-        with open(EXPECTED_PATH) as f:
-            expected = json.load(f)
+        manifests = load_manifests()
     except Exception as e:
-        print("cannot read %s: %s" % (EXPECTED_PATH, e), file=sys.stderr)
+        print("cannot read expected manifests: %s" % e, file=sys.stderr)
         return 2
 
-    runtime_dir = expected["capturedFrom"]["runtimeDir"]
-    if not os.path.isdir(runtime_dir):
-        print("runtime dir missing: %s" % runtime_dir, file=sys.stderr)
-        return 2
-
-    live = hash_tree(runtime_dir)
-    findings = find_drift(expected, live)
+    expected = manifests[0][1]
+    findings = []
+    total = 0
+    for label, manifest in manifests:
+        runtime_dir = manifest["capturedFrom"]["runtimeDir"]
+        if not os.path.isdir(runtime_dir):
+            findings.append(("root-missing", "%s %s" % (label, runtime_dir)))
+            continue
+        skip = ("node_modules",) if whole_capture(manifest) else ()
+        live = hash_tree(runtime_dir, skip)
+        total += len(live)
+        for kind, detail in find_drift(manifest, live, check_process=(label == "core")):
+            findings.append((kind, detail if label == "core" else "%s:%s" % (label, detail)))
 
     if mode == "--accept":
-        print("live tree has %d files; %d findings against the current manifest"
-              % (len(live), len(findings)))
+        print("live trees have %d files; %d findings against the current manifests"
+              % (total, len(findings)))
         print("re-run scripts/capture-production-runtime.mjs from the repo and "
               "ship the new manifest here; this script does not rewrite it")
         return 0
 
     report = "\n".join("  %-22s %s" % (kind, detail) for kind, detail in findings)
     if mode == "--check":
-        print("release %s: %d files live, %d findings"
-              % (expected.get("release"), len(live), len(findings)))
+        print("release %s: %d files live in %d roots, %d findings"
+              % (expected.get("release"), total, len(manifests), len(findings)))
         if report:
             print(report)
         return 1 if findings else 0
