@@ -230,11 +230,6 @@ jq -e '.version == "0.2.11"' \
   "${REPO_ROOT}/release/captured/v2026.9.1-db91.6-feishu-model-20260924.worker/dist/package.json" >/dev/null
 grep -q 'requestTimeoutMs: attemptTimeoutMs' "${EXPERIMENT_DIR}/index.mjs"
 
-if rg -n \
-  '(^|[^[:alnum:]_])(token|secret|password|api[_-]?key)[[:space:]]*[:=][[:space:]]*["'\''][^"'\'']+["'\'']' \
-  "$EXPERIMENT_DIR"; then
-  echo "possible secret-like literal found in experiment files" >&2
-  exit 1
-fi
+"${REPO_ROOT}/scripts/scan-secrets.sh" "${EXPERIMENT_DIR}"
 
 node "${EXPERIMENT_DIR}/self-test.mjs"

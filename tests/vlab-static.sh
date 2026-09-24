@@ -40,13 +40,6 @@ grep -q '"sessionsVisibility": "all"' \
 grep -q '"workerRelease": "8d3b75e' \
   "${REPO_ROOT}/config/vlab-production-parity-v1.json"
 
-if rg -n \
-  '(gho_|github_pat_|AKID|secret(id|key)?[[:space:]]*[:=]|app_secret[[:space:]]*[:=])' \
-  "$REPO_ROOT" \
-  -g '!.git' \
-  -g '!tests/vlab-static.sh'; then
-  echo "possible secret material detected" >&2
-  exit 1
-fi
+"${REPO_ROOT}/scripts/scan-secrets.sh"
 
 echo "vLab static checks passed"
