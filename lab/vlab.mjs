@@ -73,11 +73,20 @@ try {
   } else if(command==='stage') {
     const artifact=read(opts.artifact),d=dev();clean(d);
     assert.equal(artifact.command,'stage');assert.equal(artifact.sourceCommit,git(d,['rev-parse','HEAD']),'dev advanced since packaging; package merged result again');result=remote(artifact);
+  } else if(command==='align') {
+    // Mark shared VLab as equal to production V. Runs the parity check from dev
+    // here (it needs SSH to both hosts, which VLab itself must not have).
+    assert(opts.owner,'Owner required');const d=dev();
+    const before=remote({command:'status'}).current;
+    let out;try{out=run('node',[path.join(d,'scripts/vlab-v-parity.mjs'),'--json'],{timeout:1800000});}catch(e){out=e.stdout;}
+    const parity=JSON.parse(out);
+    if(parity.state!=='ALIGNED')throw Error(`Parity is ${parity.state}, not ALIGNED:\n`+parity.findings.map(f=>`  ${f.kind} ${f.target}`).join('\n'));
+    result=remote({command:'align',owner:opts.owner,parity:parity.state,runtimeSha:before.runtimeSha,vCore:parity.vCore,compared:String(parity.compared)});
   } else if(['deploy','rollback','accept','baseline'].includes(command)) {
     const {repo:unused,...params}=opts;result=remote({command,...params});
   } else if(command==='rpc')result=remote({command:'rpc',method:opts.method,params:opts.params?JSON.parse(opts.params):{}});
   else if(command==='read-code')result=remote({command:'read-code',target:opts.target});
   else if(command==='test')result=remote({command:'test',owner:opts.owner,task:opts.task,agent:opts.agent,sessionKey:opts.sessionKey,message:opts.message,idempotencyKey:opts.idempotencyKey});
-  else throw Error('Commands: candidate, init, new, merge, package, lease, status, read-code, stage, deploy, rollback, accept, rpc, test, sync, baseline. See lab/README.md');
+  else throw Error('Commands: candidate, init, new, merge, package, lease, status, read-code, stage, deploy, rollback, accept, align, rpc, test, sync, baseline. See lab/README.md');
   console.log(typeof result==='string'?result:JSON.stringify(result,null,2));
 } catch(e) {console.error(e.message);process.exitCode=1;}

@@ -115,7 +115,8 @@ async function cutover(req,rollback=false) {
     assertVersion(RUNTIME,m.files,to);assert.equal(live().configSha,m.configSha);
     const runtimeSha=fingerprint(RUNTIME).sha256;
     if(rollback)assert.equal(runtimeSha,m.parent.runtimeSha,'Rollback fingerprint mismatch');
-    const next=rollback?m.parent:{release:id,sourceCommit:m.sourceCommit,baseline:before.baseline,runtimeSha,accepted:false};
+    const next=rollback?m.parent:{release:id,sourceCommit:m.sourceCommit,baseline:before.baseline,runtimeSha,accepted:false,
+      v:{aligned:false,aheadBy:id,since:new Date().toISOString()}};
     replace(HOME+'/current.json',next);
     const receipt={id,rollback,at:new Date().toISOString(),beforePid:x.l.pid,afterPid:pid(),current:next,configSha:m.configSha,
       artifactSha:m.artifactSha,statePreserved:true,acceptance:'Gateway readiness only; functional evidence required'};
@@ -172,7 +173,12 @@ async function main(req) {
       return {devSource:source,sourceCommit:req.sourceCommit,bundleBytes:bytes.length,runtimeChanged:false};
     }
     if(req.command==='baseline') {
-      assert(!fs.existsSync(HOME+'/current.json'),'Baseline already registered');
+      // Re-basing onto production V retires the current record explicitly; it is
+      // kept as a receipt rather than overwritten.
+      if(fs.existsSync(HOME+'/current.json')) {
+        assert.equal(req.replaceCurrent,'true','Baseline already registered; pass --replaceCurrent true to re-base');
+        save(HOME+'/receipts/'+Date.now()+'-superseded-by-baseline.json',current());fs.unlinkSync(HOME+'/current.json');
+      }
       const id=name(req.id),dir=HOME+'/baselines/'+id;fs.mkdirSync(dir,{recursive:true,mode:0o700});
       const l=live(),archive=dir+'/runtime.tar.gz',inventory=fingerprint(RUNTIME);
       assert(free()>3*1024**3+64*1024**2,'Insufficient baseline headroom');
@@ -187,6 +193,10 @@ async function main(req) {
     if(req.command==='stage') {
       assert(!fs.existsSync(HOME+'/pending.json'),'Unresolved deployment');
       const id=name(req.id);assert(/^[0-9a-f]{40}$/.test(req.sourceCommit));assert.equal(req.branch,'dev','Only merged dev artifacts may deploy');
+      // Shared VLab is either production V or V plus the one release on its way
+      // there (docs/vlab-v-sync-flow.md). A second release on top of one that
+      // was never promoted or rolled back is how VLab drifted from V before.
+      assert.equal(current().v?.aligned,true,'Shared VLab is not production V: promote the current release to V and run `vlab.mjs align`, or roll it back, before staging another (docs/vlab-v-sync-flow.md)');
       assert.equal(req.baseRelease,current().release,'Stale base release');assert.equal(fingerprint(RUNTIME).sha256,current().runtimeSha,'Runtime drift since last release');validateFiles(RUNTIME,req.files);assertVersion(RUNTIME,req.files,'before');
       assert(free()>3*1024**3+2*Buffer.byteLength(JSON.stringify(req)),'Disk reserve');
       const dir=HOME+'/releases/'+id;assert(!fs.existsSync(dir),'Release ID is immutable; use a new ID');
@@ -202,6 +212,16 @@ async function main(req) {
       save(dir+'/manifest.json',m);return m;
     }
     if(req.command==='deploy'||req.command==='rollback')return cutover(req,req.command==='rollback');
+    if(req.command==='align') {
+      // Recorded only from a parity run (scripts/vlab-v-parity.mjs) that found
+      // every compared file identical to V, against this exact runtime.
+      const c=current();assert.equal(req.parity,'ALIGNED','Only a parity run that found VLab == V can mark it aligned');
+      assert.equal(req.runtimeSha,c.runtimeSha,'Parity ran against another release');
+      assert.equal(fingerprint(RUNTIME).sha256,c.runtimeSha,'Runtime drift since last release');
+      assert(typeof req.vCore==='string'&&req.vCore.startsWith('/'),'V runtime path required');
+      const next={...c,v:{aligned:true,at:new Date().toISOString(),vCore:req.vCore,compared:Number(req.compared),by:req.owner}};
+      save(HOME+'/receipts/'+Date.now()+'-align.json',next);replace(HOME+'/current.json',next);return next;
+    }
     if(req.command==='accept') {
       const c=current();assert.equal(c.release,name(req.id));assert.equal(req.artifactSha,read(HOME+'/releases/'+c.release+'/manifest.json').artifactSha);
       assert(typeof req.evidence==='string'&&req.evidence.length>=20,'Provide functional evidence reference and result');
