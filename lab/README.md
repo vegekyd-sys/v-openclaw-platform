@@ -4,6 +4,8 @@
 
 2026-09-15 用户更新：每个任务在自己的 worktree 执行自己的候选代码，复用 VLab 的数据来源；共享 VLab 是上线前的 Dev 集成门禁。默认用 [candidate](candidate/README.md) 直接执行 Agent 指定的测试，不创建常驻 Gateway；工具不限制网络、能力或资源，Agent 自主判断。配置快照与选定 SQLite 备份可并行使用，可写状态各自独立；在线数据库不共写。
 
+2026-09-24 用户更新：共享 VLab 只允许两种状态——**等于生产 V**，或者**等于 V 加一个正在走向上线的版本**。需要常驻 Gateway、真实渠道或真人访问的测试可以占用共享 VLab，但每次只能占一个，测完只有两个出口：上线 V（之后 `vlab.mjs align`），或者 `vlab.mjs rollback`。出口没走完之前，服务器会拒绝任何人 stage 下一个版本。流程、命令和原因见 [docs/vlab-v-sync-flow.md](../docs/vlab-v-sync-flow.md)。
+
 首次接手请先读 [给其他 agent 的操作入口](AGENT-QUICKSTART.md)。其中区分源码开发、共享验收占用与成功/失败两条收尾路径。
 
 ## 固定入口

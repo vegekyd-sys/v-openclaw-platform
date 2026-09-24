@@ -67,7 +67,7 @@ for (const pair of pairs) {
   const v = hashTree(vHost, pair.v, true);
   const vlab = hashTree(vlabHost, pair.vlab, false);
   for (const [side, tree] of [['v', v], ['vlab', vlab]]) {
-    for (const path of tree.keys()) if (RESIDUE.test(path)) residue[side].push(`${pair.prefix}/${path}`);
+    for (const [path, sha] of tree) if (RESIDUE.test(path)) residue[side].push({ target: `${pair.prefix}/${path}`, sha });
   }
   const paths = new Set([...v.keys(), ...vlab.keys()]);
   for (const path of [...paths].sort()) {
@@ -108,7 +108,7 @@ for (const target of pending.keys()) {
 
 const blocking = findings.filter((f) => f.kind !== 'pending');
 const state = findings.length === 0 ? 'ALIGNED' : blocking.length === 0 ? 'AHEAD' : 'DIVERGED';
-const report = { state, vCore, vlabRuntime, compared, pendingPlans: [].concat(args.pending ?? []), findings, residue };
+const report = { state, vCore, vlabRuntime, pairs, compared, pendingPlans: [].concat(args.pending ?? []), findings, residue };
 
 if (args.json) {
   console.log(JSON.stringify(report, null, 2));
