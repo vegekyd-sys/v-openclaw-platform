@@ -17,6 +17,8 @@
 //      backup directory next to the upload and installs V's bytes as a new
 //      inode (baseline archives may hardlink the old one), then starts the
 //      Gateway and waits for `health`.
+//      If it never becomes healthy the swap is undone automatically
+//      (--no-auto-undo to keep the broken state for inspection).
 //   4. Runs parity again. Anything but ALIGNED is reported and exits 1; the
 //      backup and undo.json stay on VLab for --undo.
 //
@@ -179,7 +181,24 @@ try {
 } finally {
   startGateway();
 }
-await waitHealthy();
+try {
+  await waitHealthy();
+} catch (e) {
+  // Never leave the shared instance down. On 2026-09-24 V's bytes could not
+  // boot on VLab (a 5-minute preflight budget VLab's disks cannot meet), and
+  // the first version of this script just exited. Put VLab back, then report.
+  console.error(`${e.message}\nputting VLab back from ${remoteDir}`);
+  if (args.noAutoUndo) throw e;
+  stopGateway();
+  try {
+    console.log(ssh(VLAB, `sudo node - undo ${sq(remoteDir)}`, Buffer.from(REMOTE)).toString().trim());
+  } finally {
+    startGateway();
+  }
+  await waitHealthy();
+  console.error('VLab restored to its previous bytes; nothing was aligned');
+  process.exit(1);
+}
 
 // ---- 4. prove it ---------------------------------------------------------------
 const after = runParity(true);
