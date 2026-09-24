@@ -25,7 +25,7 @@ const already = original.includes(marker);
 if (already) {
   assert(original.includes('commandText: ctx.commandText ?? ctx.Body ?? ""'), 'authorization context missing');
   assert(original.includes('params.providerId === "feishu" && !params.senderIsOwner'), 'Feishu guard missing');
-  assert(original.includes('/^\\s*\\/model(?:\\s|$)/i.test(params.commandText ?? "")'), 'exact /model prefix guard missing');
+  assert(original.includes('/^[ \\t]*\\/model(?:[ \\t]+[^\\r\\n]*)?[ \\t]*$/i.test(params.commandText ?? "")'), 'whole-line /model guard missing');
 } else {
   assert(!original.includes('FEISHU_MODEL_SWITCH_ROLES_V1'), 'older model-switch patch present; do not layer patches');
 }
@@ -36,7 +36,7 @@ let updated = replaceOnce(original,
   'return !params.providerResolutionError && (commandsAllowAll || Boolean(matchedCommandsAllowFrom)) ? "commands" : "denied";',
   `if (params.providerResolutionError || !(commandsAllowAll || Boolean(matchedCommandsAllowFrom))) return "denied";
         // ${marker}: non-owner Feishu senders may use /model, not the full command set.
-        if (params.providerId === "feishu" && !params.senderIsOwner) return /^\\s*\\/model(?:\\s|$)/i.test(params.commandText ?? "") ? "commands" : "reset-only";
+        if (params.providerId === "feishu" && !params.senderIsOwner) return /^[ \\t]*\\/model(?:[ \\t]+[^\\r\\n]*)?[ \\t]*$/i.test(params.commandText ?? "") ? "commands" : "reset-only";
         return "commands";`, 'command authorization');
 updated = replaceOnce(updated,
   'const access = resolveCommandSenderAuthorization({\n\t\tcommandAuthorized,',

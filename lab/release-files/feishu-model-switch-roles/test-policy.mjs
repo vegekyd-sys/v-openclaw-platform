@@ -19,7 +19,7 @@ const base = { enforceOwnerForCommands: false, isOwnerForCommands: true, command
   providerId: 'feishu', senderIsOwner: false, commandAuthorized: true };
 for (const model of ['vds', 'vcc', 'vcodex', 'ds-flash', 'status', 'openai/gpt-5.6-sol'])
   assert.equal(resolve({ ...base, commandText: `/model ${model}` }), 'commands', model);
-for (const commandText of ['/restart', '/config get gateway', '/bash ls', '/vcc', 'hi /model vds', '/modelx vds'])
+for (const commandText of ['/restart', '/config get gateway', '/bash ls', '/vcc', 'hi /model vds', '/modelx vds', '/model vds\n/restart'])
   assert.equal(resolve({ ...base, commandText }), 'reset-only', commandText);
 assert.equal(resolve({ ...base, senderIsOwner: true, commandText: '/restart' }), 'commands');
 assert.equal(resolve({ ...base, commandsAllowFromList: ['feishu:someone_else'], commandText: '/model vds' }), 'denied');
