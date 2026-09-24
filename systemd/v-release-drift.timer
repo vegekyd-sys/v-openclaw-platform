@@ -1,0 +1,13 @@
+[Unit]
+Description=Hourly V release drift check
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=1h
+# Deliberately not aligned to the hour: keeps the hash sweep off the same
+# minute as cron jobs and the nightly maintenance window.
+RandomizedDelaySec=10min
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

@@ -19,3 +19,13 @@ dist/
 tmp/
 release/*.local.json
 
+
+# release/captured/<release>/ holds the exact bytes a production host is
+# running, so that a live release can be rebuilt from git rather than from a
+# hand-carried patch. The generic dist/ and state/ rules above would otherwise
+# swallow the whole capture. Git cannot re-include a file whose parent
+# directory is excluded, so the directories are un-ignored first.
+!release/captured/*/dist/
+!release/captured/*/dist/**
+__pycache__/
+*.pyc
