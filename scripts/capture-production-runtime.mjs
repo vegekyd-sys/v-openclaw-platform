@@ -12,6 +12,11 @@
 //     --runtime /opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core/dist \
 //     --base    /opt/openclaw-2026.9.1-v/openclaw/dist \
 //     --out     release/captured/v2026.9.1-db91.6
+//
+// A component with no upstream install to diff against (the worker plugin, a
+// patched channel plugin) takes `--base none`: every file is captured. Use
+// `--exclude node_modules` (repeatable) to leave installed dependencies out.
+// Hashing runs at nice 19 / idle IO class: the host is production.
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -39,9 +44,14 @@ const ssh = (script) =>
 
 // `find -print0 | xargs -0 sha256sum` keeps paths with spaces intact and covers
 // every regular file, not just *.js -- a patched .json or .wasm counts too.
+const excludes = [].concat(args.exclude ?? []).filter((x) => typeof x === 'string');
+const prune = excludes.map((d) => `-path ${shq(`./${d}`)} -prune -o `).join('');
+const GENTLE = 'nice -n 19 ionice -c3';
+const listFiles = `find . ${prune}-type f -print0 | LC_ALL=C sort -z`;
 const hashDir = (dir) => {
+  if (dir === 'none') return new Map();
   const raw = ssh(
-    `cd ${shq(dir)} && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum`,
+    `cd ${shq(dir)} && ${GENTLE} ${listFiles} | ${GENTLE} xargs -0 -r sha256sum`,
   );
   const map = new Map();
   for (const line of raw.split('\n')) {
@@ -112,8 +122,7 @@ execFileSync('tar', ['-xzf', '-', '-C', distDir], { input: tar });
 // in place; keep them in the manifest rather than relying on memory.
 const mtimes = new Map();
 for (const line of ssh(
-  `cd ${shq(args.runtime)} && find . -type f -print0 | LC_ALL=C sort -z | ` +
-  `xargs -0 -r stat -c '%Y %n'`,
+  `cd ${shq(args.runtime)} && ${listFiles} | xargs -0 -r stat -c '%Y %n'`,
 ).split('\n')) {
   const m = /^(\d+) (.*)$/.exec(line);
   if (m) mtimes.set(m[2], Number(m[1]));
@@ -185,7 +194,7 @@ function parseArgs(argv) {
     const next = argv[i + 1];
     if (next === undefined || next.startsWith('--')) out[key] = true;
     else {
-      out[key] = next;
+      out[key] = key === 'exclude' ? [].concat(out[key] ?? [], next) : next;
       i += 1;
     }
   }
