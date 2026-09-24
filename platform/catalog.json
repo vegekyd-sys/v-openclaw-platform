@@ -177,6 +177,11 @@
       "id": "platform-contracts",
       "purpose": "发行清单、防漏、版本边界和严格验收入口自身的回归",
       "files": ["platform/platform.test.mjs"]
+    },
+    {
+      "id": "release-parity",
+      "purpose": "VLab 与生产 V 的字节对齐：残留判定、发版前后的最小差异",
+      "files": ["scripts/lib/runtime-residue.test.mjs", "lab/release-files/db91-preflight-timeout-env/bootstrap-timeout.test.mjs"]
     }
   ],
   "deferredTestFiles": [

@@ -24,6 +24,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { isResidue } from './lib/runtime-residue.mjs';
 
 const args = parseArgs(process.argv.slice(2));
 const vHost = args.vHost ?? 'v';
@@ -47,7 +48,7 @@ const pairs = [
   { prefix: vlabFeishu.slice(vlabRuntime.length + 1), v: vFeishu, vlab: vlabFeishu },
 ];
 
-const RESIDUE = /(\.bak($|[-.])|\.orig$|\.staged$|\.before[-.]|\.pre-|\.predeploy-|\.postturn-|\.oc64-)/;
+const RESIDUE = { test: isResidue };
 
 const pending = new Map();
 for (const planPath of [].concat(args.pending ?? [])) {
