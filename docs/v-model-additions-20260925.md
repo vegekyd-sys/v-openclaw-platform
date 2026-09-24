@@ -54,10 +54,51 @@ cannot work. Three attempts, each ruled out by measurement:
   [#156193](https://github.com/openclaw/openclaw/issues/156193) says authoring
   one would silently disable the Codex harness for every OpenAI model.
 
-The fix is upstream: `4ae133a994f feat(openai): support GPT-6 Sol and Luna
-(#155967)`, present in `v2026.9.6` and absent from `v2026.9.5`. It cherry-picks
-onto `versa/port-9.5-wip` with no conflicts (20 files, +386/-85), so the work
-is gated on the 9.1 → 9.x production upgrade, not on the OpenAI change itself.
+## The fix, and why it does not need the upgrade
+
+Upstream is `4ae133a994f feat(openai): support GPT-6 Sol and Luna (#155967)`,
+present in `v2026.9.6` and absent from `v2026.9.5`.
+
+It cherry-picks onto `versa/port-9.5-wip` with no conflicts, but onto
+`v2026.9.1` 19 of its 20 files conflict — 11,712 commits of drift — and
+production is not built from git anyway.
+
+That turns out not to matter, because the commit is far smaller than its
+diffstat. 9.1 already knows one GPT-6 model; upstream generalises the single
+`OPENAI_GPT_6_ASTRA_MODEL_ID` constant into a three-element list and swaps the
+use sites. That asymmetry is exactly what we measured: astra answers and
+Sol/Luna do not, because astra is the only id on the forward-compat Codex
+route.
+
+And astra is there because *we* put it there. `gpt-6-astra` is not native to
+2026.9.1 — it reached production through `patch-openclaw91-astra.mjs` on
+2026-09-05, whose markers (`vlab-astra-dual-route-v1`,
+`vlab-astra-subscription-model-v1`) are still live in the bundles. Adding two
+more ids is the same edit at the same anchors.
+
+`scripts/patch-openclaw91-gpt6-sol-luna.mjs` does that, modelled on the astra
+script: assertion-gated anchors, idempotent, with a backup directory and a
+rollback that refuses if the bundle changed underneath it. Metadata is taken
+verbatim from the 9.6 manifest, with one deliberate reduction — 9.6 gives both
+models a `none` reasoning effort that the 9.1 thinking policy does not know, so
+`off` maps to `low` as astra does.
+
+Verified against a copy of the production bundles (production untouched):
+applies to both targets, each passes `node --check`, a second apply refuses,
+and rollback restores both files byte-identically.
+
+```bash
+CORE=/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core
+node scripts/patch-openclaw91-gpt6-sol-luna.mjs dry-run "$CORE" /tmp/unused
+node scripts/patch-openclaw91-gpt6-sol-luna.mjs apply   "$CORE" /var/backups/gpt6-$(date +%Y%m%d-%H%M%S)
+sudo systemctl restart openclaw-gateway
+# then point /vcodex and /luna back at the GPT-6 refs and restart again
+```
+
+This is a dist patch, so it carries the usual debt: it will not survive an
+upgrade and must be re-applied or dropped when the runtime moves to a release
+that already contains #155967. It adds one model pair to an existing patch
+surface rather than opening a new one.
 
 Ignore the `available` column when judging any of this. `openai/gpt-5.6-sol` —
 the model `/vcodex` serves today — has always reported `available=false`. The
