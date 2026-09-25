@@ -165,7 +165,7 @@ def decide(state, service, brake, issues):
         if service:
             lines.append("⚠️ " + service)
         elif state.get("service"):
-            lines.append("✅ 已恢复: " + state["service"])
+            lines.append("✅ 已恢复正常（此前异常: %s）" % state["service"])
         state["service"] = service
 
     level = (brake or {}).get("level")
