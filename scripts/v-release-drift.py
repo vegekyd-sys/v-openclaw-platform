@@ -245,8 +245,11 @@ def main():
     shown = findings[:15]
     text = ("【V 发布漂移】%s\n线上 release 与 manifest 不一致，共 %d 处：\n%s%s\n"
             "manifest: %s（capturedAt %s）\n"
-            "核对：node scripts/verify-release-reproducible.mjs --manifest "
-            "release/captured/%s/manifest.json --host v --unit %s"
+            "V 被改了（热修或 V 自己改了自己）。先查谁改的：sudo journalctl | grep COMMAND=\n"
+            "要保留：capture-production-runtime.mjs → PR 进 dev → install-v-release-drift.sh → "
+            "sync-vlab-from-v.mjs --name <新发版> --apply\n"
+            "不保留：把 V 恢复回去（promote-to-v.mjs --undo，或热改留下的备份）\n"
+            "流程：docs/vlab-v-sync-flow.md；manifest release/captured/%s，unit %s"
             % (expected.get("release"), len(findings),
                "\n".join("  %s %s" % (k, d) for k, d in shown),
                "\n  ...另有 %d 处" % (len(findings) - len(shown)) if len(findings) > len(shown) else "",
