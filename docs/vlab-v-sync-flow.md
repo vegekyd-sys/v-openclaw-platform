@@ -1,8 +1,22 @@
 # VLab ↔ V 同步流程：共享 VLab 只有两种合法状态
 
-状态：提案（第 1 步已可执行）
+状态：已执行（2026-09-24 12:0x CST），见下方"当前状态"
 起草：2026-09-24 04:0x CST
 前置：PR #44 已合入 dev（`9c559c7`），生产 V 的运行时字节已在 `release/captured/v2026.9.1-db91.6/`。
+
+## 当前状态（2026-09-24 12:0x CST）
+
+- 共享 VLab = **V + R1**，parity `AHEAD --pending db91-preflight-timeout-env`：比了 9581 个文件，唯一的差异就是 R1；VLab 残留备份 0 个。
+- 新基线 `v-db91-6-plus-preflight-env-20260924`（dev `a73ea17`），旧 `current.json` 已作为 receipt 留档。
+- 服务器门禁已生效：`align` 因为 R1 被拒；探针 `stage` 被拒，也没留下任何目录。**在 R1 上 V 或者从 VLab 撤掉之前，谁都 stage 不了。**
+- 功能验收：真实模型 → exec 工具 → 结果写回会话库并读回（`agent:makaron:explicit:vlab-dev-rebase-to-v-accept-1790222390980`）。
+
+**R1 = `db91-preflight-timeout-env`**：V 版 `db91-integrity-bootstrap.mjs` 的启动前库校验时限写死 5 分钟。VLab 机器更慢，makaron 库 7.1G，实测要 512 秒，所以 V 的原字节在 VLab 上根本起不来（两次超时）。R1 让时限可以由 `OPENCLAW_DB91_PREFLIGHT_TIMEOUT_MS` 设置，默认值仍是 300000。VLab 用 drop-in `99-db91-preflight-timeout.conf` 设成 900000。**R1 装到 V 上，行为不变**（V 不设这个变量）。上 V 之后 parity 回到 ALIGNED，再 `vlab.mjs align`。
+
+**这次踩的坑**（工具已修）：
+1. 残留判定规则按单词 `.before-` 匹配，把 OpenClaw 自己的 `agent-tools.before-tool-call-*.js` 当成残留移走了，Gateway 报 ENOENT 起不来。已从备份恢复（字节与 V 一致），规则改成按形状判定，并加了测试（`scripts/lib/runtime-residue.mjs`）。
+2. 重建工具在 Gateway 起不来时直接退出，把 VLab 留在宕机状态。现在会自动撤销恢复。
+3. `nightshift-vlab-production-mirror` 从 9/23 07:43 起就是停止状态，在这次操作之前，不是这次带停的，没有去动它。
 
 ---
 
@@ -130,12 +144,15 @@ node lab/vlab.mjs align --owner <o>
 
 一次上线的完整命令顺序：
 
+```bash
+node lab/vlab.mjs stage / deploy / accept ...                      # VLab 上验收
+node scripts/promote-to-v.mjs --release <VLab release> --name <V 发版名>     # 先看计划
+node scripts/promote-to-v.mjs --release <VLab release> --name <V 发版名> --owner <o> --apply
+# → 装同一份字节到 V（先备份，写 undo.json）→ 捕获 core/worker/飞书 → 更新哨兵 → vlab.mjs align
+git add release/captured/<V 发版名>* && 提交 PR；dev → main 发版 PR，打 tag <V 发版名>
 ```
-vlab.mjs stage → deploy → (测) → accept
-→ 把同一份文件装到 V（R 的 plan 里 before 就是 V 的字节）
-→ capture-production-runtime.mjs（core / worker / 飞书）+ install-v-release-drift.sh
-→ vlab.mjs align                         # parity 必须 ALIGNED，否则说明 V 装的不是同一份
-```
+
+`promote-to-v.mjs` 不重启 V：dist 文件在下次 Gateway 启动时才生效，什么时候重启由人决定。V 上的文件不是这个版本的"改动前"字节时，它拒绝执行；需要撤销用 `--undo <V 上的备份目录>`。
 
 不上线，就 `vlab.mjs rollback`：回到父版本，标志随之恢复为 aligned。
 
