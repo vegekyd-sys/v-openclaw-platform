@@ -151,6 +151,7 @@
         "tests/patch-feishu-active-run-steering.test.mjs",
         "tests/patch-feishu-latest-snapshot-streaming.test.mjs",
         "tests/patch-openclaw-media-completion-relay.test.mjs",
+        "tests/media-completion-worker-relay-91.test.mjs",
         "tests/patch-openclaw91-sessions-send-owner.test.mjs",
         "tests/patch-openclaw-session-hotset.test.mjs",
         "tests/prune-openclaw-session-hotset.test.mjs"
@@ -688,13 +689,13 @@
       "id": "patch-openclaw-media-completion-relay",
       "file": "scripts/patch-openclaw-media-completion-relay.mjs",
       "component": "worker-runtime",
-      "reason": "媒体终态/完成回传；9.2 保留原生 pending/失败语义，仍需实机交付验收",
+      "reason": "媒体终态/完成回传；Worker 无 session delivery runtime，投递须交给 Gateway。9.1/9.2 保留原生 pending/失败语义，需配合修复后的 worker-gateway-events 路由器，仍需实机交付验收",
       "hostVersions": [
         "2026.9.1",
         "2026.9.2"
       ],
       "disposition": "needs-live-reconciliation",
-      "sourceSha256": "6cab05c9f89be1e35186f13e44fb30ec7a3ed4c267015d0f38971bee9f322107"
+      "sourceSha256": "497b9448fd75e9f8f34c164a575fe6a8a1bc89ada758a75fd1a432abb51d120c"
     },
     {
       "id": "patch-openclaw-session-hotset",
