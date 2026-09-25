@@ -1,0 +1,24 @@
+{
+  "baseRelease": "sync-from-v-v2026-9-1-db91-6-media-relay-20260925",
+  "support": [
+    "lab/candidate/feishu-progress-stream.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/feishu-progress-stream.mjs"
+  ],
+  "timeoutSeconds": 2400,
+  "user": "lab-db91-parity",
+  "files": [
+    {
+      "source": "lab/release-files/feishu-progress-stream/progress-card-CciYmFS8.js",
+      "target": "openclaw/dist/progress-card-CciYmFS8.js",
+      "before": "d32a0caa2ca870db121fde4b83b5c656378de76c63faebb8cba81d2550e57b28"
+    },
+    {
+      "source": "lab/release-files/feishu-progress-stream/monitor.account-WFdlCDhR.js",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js",
+      "before": "605b3124a155840b39538c66d0080a45e99d81cf65b98008fac5871cd77ada56"
+    }
+  ]
+}
