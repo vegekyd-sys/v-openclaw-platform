@@ -17,10 +17,17 @@
 // patched channel plugin) takes `--base none`: every file is captured. Use
 // `--exclude node_modules` (repeatable) to leave installed dependencies out.
 // Hashing runs at nice 19 / idle IO class: the host is production.
+//
+// `--base npm:openclaw@2026.9.1[:dist]` diffs against the pristine published
+// package, packed and hashed locally, instead of a directory on the host. Use
+// it whenever the host's own "base" install may have been patched in place:
+// V's /opt/openclaw-2026.9.1-v carried 18 production patches of its own, so a
+// capture against it left them out.
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 
 const args = parseArgs(process.argv.slice(2));
@@ -50,6 +57,7 @@ const GENTLE = 'nice -n 19 ionice -c3';
 const listFiles = `find . ${prune}-type f -print0 | LC_ALL=C sort -z`;
 const hashDir = (dir) => {
   if (dir === 'none') return new Map();
+  if (dir.startsWith('npm:')) return hashNpmPackage(dir.slice(4));
   const raw = ssh(
     `cd ${shq(dir)} && ${GENTLE} ${listFiles} | ${GENTLE} xargs -0 -r sha256sum`,
   );
@@ -67,6 +75,26 @@ console.error(`#   ${runtime.size} files`);
 
 console.error(`# hashing base ${args.base} on ${args.host}`);
 const base = hashDir(args.base);
+
+// A published package as base is not on the host, so the drift sentinel there
+// cannot compare undeclared files with it. Keep its inventory in the repo, one
+// file per package spec, for install-v-release-drift.sh to ship alongside.
+if (args.base.startsWith('npm:')) {
+  const inventoryPath = join(repoRoot, 'release/captured/base', `${baseInventoryName(args.base)}.json`);
+  const files = Object.fromEntries([...base].sort(([a], [b]) => (a < b ? -1 : 1)));
+  const body = `${JSON.stringify({ base: args.base, files }, null, 0)}\n`;
+  let existing = null;
+  try { existing = readFileSync(inventoryPath, 'utf8'); } catch {}
+  if (existing !== null && existing !== body) {
+    console.error(`FATAL: ${relative(repoRoot, inventoryPath)} already exists with different content; the published package changed?`);
+    process.exit(1);
+  }
+  if (existing === null) {
+    mkdirSync(dirname(inventoryPath), { recursive: true });
+    writeFileSync(inventoryPath, body);
+    console.error(`# wrote base inventory ${relative(repoRoot, inventoryPath)} (${base.size} files)`);
+  }
+}
 console.error(`#   ${base.size} files`);
 
 // Leftover backups from earlier in-place patching. They are not part of the
@@ -185,6 +213,40 @@ writeFileSync(join(outDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2
 console.error(`# wrote ${relative(repoRoot, join(outDir, 'manifest.json'))}`);
 console.error(`#   ${diff.length} files captured, ${reproducible} already in repo, ` +
   `${diff.length - reproducible} were server-only`);
+
+// Hash a published package exactly as the remote side hashes a directory:
+// "./"-relative paths, regular files only, the same --exclude prunes.
+function baseInventoryName(base) {
+  // npm:openclaw@2026.9.1 -> openclaw@2026.9.1 ; npm:@scope/p@1:dist -> scope__p@1__dist
+  return base.replace(/^npm:/, '').replace(/^@/, '').replace(/[/:]/g, '__');
+}
+
+function hashNpmPackage(spec) {
+  const at = spec.lastIndexOf(':');
+  const [pkg, sub] = at > spec.indexOf('@', 1) ? [spec.slice(0, at), spec.slice(at + 1)] : [spec, 'dist'];
+  const work = mkdtempSync(join(tmpdir(), 'capture-base-'));
+  try {
+    const tgz = execFileSync('npm', ['pack', pkg, '--silent', '--pack-destination', work], {
+      encoding: 'utf8',
+    }).trim().split('\n').pop();
+    execFileSync('tar', ['-xzf', join(work, tgz), '-C', work]);
+    const root = join(work, 'package', sub);
+    const skip = new Set(excludes.map((d) => join(root, d)));
+    const map = new Map();
+    const walk = (dir) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (skip.has(full)) continue;
+        if (entry.isDirectory()) walk(full);
+        else if (entry.isFile()) map.set(`./${relative(root, full)}`, sha256File(full));
+      }
+    };
+    walk(root);
+    return map;
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+}
 
 function parseArgs(argv) {
   const out = {};

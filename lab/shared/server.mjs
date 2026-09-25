@@ -116,7 +116,7 @@ async function cutover(req,rollback=false) {
     const runtimeSha=fingerprint(RUNTIME).sha256;
     if(rollback)assert.equal(runtimeSha,m.parent.runtimeSha,'Rollback fingerprint mismatch');
     const next=rollback?m.parent:{release:id,sourceCommit:m.sourceCommit,baseline:before.baseline,runtimeSha,accepted:false,
-      v:{aligned:false,aheadBy:id,since:new Date().toISOString()}};
+      v:{aligned:false,aheadBy:id,since:new Date().toISOString(),...(m.syncFromV?{syncFromV:m.syncFromV.vRelease}:{})}};
     replace(HOME+'/current.json',next);
     const receipt={id,rollback,at:new Date().toISOString(),beforePid:x.l.pid,afterPid:pid(),current:next,configSha:m.configSha,
       artifactSha:m.artifactSha,statePreserved:true,acceptance:'Gateway readiness only; functional evidence required'};
@@ -196,7 +196,13 @@ async function main(req) {
       // Shared VLab is either production V or V plus the one release on its way
       // there (docs/vlab-v-sync-flow.md). A second release on top of one that
       // was never promoted or rolled back is how VLab drifted from V before.
-      assert.equal(current().v?.aligned,true,'Shared VLab is not production V: promote the current release to V and run `vlab.mjs align`, or roll it back, before staging another (docs/vlab-v-sync-flow.md)');
+      // One exception: a release that only moves VLab toward V (V changed
+      // itself; scripts/sync-vlab-from-v.mjs checked with parity that every
+      // file's new bytes are V's live bytes). Blocking it would deadlock: the
+      // pending release cannot align while VLab lags V, and VLab cannot catch
+      // up while the pending release is unaligned. Recorded in the manifest.
+      const syncFromV=typeof req.syncFromV?.vRelease==='string'&&/^[\w.-]+$/.test(req.syncFromV.vRelease);
+      if(!syncFromV)assert.equal(current().v?.aligned,true,'Shared VLab is not production V: promote the current release to V and run `vlab.mjs align`, or roll it back, before staging another (docs/vlab-v-sync-flow.md)');
       assert.equal(req.baseRelease,current().release,'Stale base release');assert.equal(fingerprint(RUNTIME).sha256,current().runtimeSha,'Runtime drift since last release');validateFiles(RUNTIME,req.files);assertVersion(RUNTIME,req.files,'before');
       assert(free()>3*1024**3+2*Buffer.byteLength(JSON.stringify(req)),'Disk reserve');
       const dir=HOME+'/releases/'+id;assert(!fs.existsSync(dir),'Release ID is immutable; use a new ID');
@@ -207,7 +213,7 @@ async function main(req) {
         if(/\.[cm]?js$/.test(f.target))execFileSync(NODE,['--check','--input-type='+ (f.target.endsWith('.cjs')?'commonjs':'module')],{input:Buffer.from(f.content,'base64'),timeout:30000});
       }
       save(dir+'/artifact.json',req);
-      const m={id,baseRelease:req.baseRelease,parent:current(),sourceCommit:req.sourceCommit,branch:req.branch,
+      const m={id,baseRelease:req.baseRelease,parent:current(),sourceCommit:req.sourceCommit,branch:req.branch,syncFromV:syncFromV?req.syncFromV:undefined,
         artifactSha:hashFile(dir+'/artifact.json'),configSha:live().configSha,files:req.files.map(({content,...f})=>f),at:new Date().toISOString()};
       save(dir+'/manifest.json',m);return m;
     }

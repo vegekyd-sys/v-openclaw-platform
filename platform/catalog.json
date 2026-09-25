@@ -151,6 +151,7 @@
         "tests/patch-feishu-active-run-steering.test.mjs",
         "tests/patch-feishu-latest-snapshot-streaming.test.mjs",
         "tests/patch-openclaw-media-completion-relay.test.mjs",
+        "tests/media-completion-worker-relay-91.test.mjs",
         "tests/patch-openclaw91-sessions-send-owner.test.mjs",
         "tests/patch-openclaw-session-hotset.test.mjs",
         "tests/prune-openclaw-session-hotset.test.mjs"
@@ -567,6 +568,7 @@
     }
   ],
   "adaptations": [
+    {"id": "patch-openclaw91-gpt6-sol-luna", "file": "scripts/patch-openclaw91-gpt6-sol-luna.mjs", "component": "openclaw-core", "reason": "上游 4ae133a994f（v2026.9.6）GPT-6 Sol/Luna 回迁到 9.1；2026-09-25 04:01 已在生产 V 上（流程外热改），9/25 补登记", "hostVersions": ["2026.9.1"], "disposition": "needs-live-reconciliation", "sourceSha256": "d174c744963b26436c46e13de8564988355ee7a8cd9982bdac3a7f5fb9053c39"},
     {"id": "patch-db91-integrity-gate", "file": "scripts/patch-db91-integrity-gate.mjs", "component": "openclaw-core", "reason": "db91 启动前库完整性门；生产 V 在跑（db91.x）；2026-09-24 从未登记状态收拢", "hostVersions": ["2026.9.1"], "disposition": "needs-live-reconciliation", "sourceSha256": "b0c64ad7465c9f08cbd98d30fb52fff568127675a5b79904d41a5833e1b16c39"},
     {"id": "patch-db91-maintenance-throttle", "file": "scripts/patch-db91-maintenance-throttle.mjs", "component": "openclaw-core", "reason": "db91 维护节流；生产 V 在跑；2026-09-24 从未登记状态收拢", "hostVersions": ["2026.9.1"], "disposition": "needs-live-reconciliation", "sourceSha256": "6c59c8ec62b486e213b430dbcfb1ed3ad318099eaefe9f4fd51a0734254b4268"},
     {"id": "patch-db91-memory-provenance", "file": "scripts/patch-db91-memory-provenance.mjs", "component": "openclaw-core", "reason": "db91 记忆来源标注；生产 V 在跑；2026-09-24 从未登记状态收拢", "hostVersions": ["2026.9.1"], "disposition": "needs-live-reconciliation", "sourceSha256": "9fd5083939188dc3d9d5fdc1f343e6e1c4bc7e7e4e439960852f72894399d6b2"},
@@ -688,13 +690,13 @@
       "id": "patch-openclaw-media-completion-relay",
       "file": "scripts/patch-openclaw-media-completion-relay.mjs",
       "component": "worker-runtime",
-      "reason": "媒体终态/完成回传；9.2 保留原生 pending/失败语义，仍需实机交付验收",
+      "reason": "媒体终态/完成回传；Worker 无 session delivery runtime，投递须交给 Gateway。9.1/9.2 保留原生 pending/失败语义，需配合修复后的 worker-gateway-events 路由器，仍需实机交付验收",
       "hostVersions": [
         "2026.9.1",
         "2026.9.2"
       ],
       "disposition": "needs-live-reconciliation",
-      "sourceSha256": "6cab05c9f89be1e35186f13e44fb30ec7a3ed4c267015d0f38971bee9f322107"
+      "sourceSha256": "497b9448fd75e9f8f34c164a575fe6a8a1bc89ada758a75fd1a432abb51d120c"
     },
     {
       "id": "patch-openclaw-session-hotset",

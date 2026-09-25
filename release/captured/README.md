@@ -25,13 +25,19 @@ node scripts/capture-production-runtime.mjs \
   --host v \
   --release v2026.9.1-db91.6 \
   --runtime /opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core/dist \
-  --base    /opt/openclaw-2026.9.1-v/openclaw/dist \
+  --base    npm:openclaw@2026.9.1 \
   --upstream 2026.9.1 \
   --sourceCheckout /opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/source \
   --out release/captured/v2026.9.1-db91.6
 ```
 
 Read-only on the host, and safe to run while another line is deploying.
+
+Diff against the **published package** (`npm:openclaw@<version>`), not against
+an install directory on the host. V's `/opt/openclaw-2026.9.1-v` had been
+patched in place too, so the first captures against it missed 18 production
+patches (db91 gate/throttle/provenance, bash-tools, selection, reply-prefix,
+worker placement, ...). Against the pristine package the core diff is 96 files.
 
 ## Check it
 
