@@ -15,7 +15,12 @@ import json, os, re, subprocess, sys, time, urllib.request, urllib.error
 
 STATE_PATH = "/var/lib/v-sentinel/state.json"
 CONFIG_PATH = "/home/openclaw/.openclaw/openclaw.json"
-ALERT_TO = "ou_cb133fd4414f0607e8b46a3195c7b9d8"   # Tianyi
+# Alerts go to the dedicated "Heartbeat" group (Tianyi + the V bot only), not
+# Tianyi's main DM -- changed 2026-09-24 at his request. release-drift.py
+# imports feishu() from here, so it follows the same target.
+ALERT_CHAT = os.environ.get("V_SENTINEL_ALERT_CHAT", "oc_ff5076a27ba5aef6700721b8c7d69f10")
+# Fallback only used when ALERT_CHAT is empty: a Feishu open_id DM target.
+ALERT_TO = os.environ.get("V_SENTINEL_ALERT_TO", "")
 WINDOW = 180          # seconds of journal to scan each run
 UNIT = "openclaw-gateway"
 
@@ -90,8 +95,12 @@ def feishu(text):
     if not tok:
         print("no token: %s" % t, file=sys.stderr)
         return False
-    r = call("https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=open_id",
-             {"receive_id": ALERT_TO, "msg_type": "text",
+    id_type, receive_id = ("chat_id", ALERT_CHAT) if ALERT_CHAT else ("open_id", ALERT_TO)
+    if not receive_id:
+        print("no alert target configured", file=sys.stderr)
+        return False
+    r = call("https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=" + id_type,
+             {"receive_id": receive_id, "msg_type": "text",
               "content": json.dumps({"text": text}, ensure_ascii=False)}, tok)
     ok = r.get("code") == 0
     if not ok:

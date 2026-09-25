@@ -1,7 +1,9 @@
 # V production sentinel
 
 Runs on the production host itself, on a two-minute systemd timer, and alerts
-to Feishu. Installed at `/opt/v-sentinel/`, state in `/var/lib/v-sentinel/`.
+to Feishu. Alerts go to the dedicated Heartbeat group chat by default (set on
+2026-09-24 at Tianyi's request); override with `V_SENTINEL_ALERT_CHAT`, or set
+it empty and use `V_SENTINEL_ALERT_TO` for a direct message instead. Installed at `/opt/v-sentinel/`, state in `/var/lib/v-sentinel/`.
 
     sudo install -m 0755 sentinel.py /opt/v-sentinel/sentinel.py
     sudo install -m 0644 v-sentinel.{service,timer} /etc/systemd/system/
