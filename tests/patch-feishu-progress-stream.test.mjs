@@ -48,7 +48,7 @@ function createProgressCardHandlers(store) {
 }
 `;
 
-test("renders a plan as a checklist with a done count", () => {
+test("renders the plan as a work checklist", () => {
   const text = renderFeishuProgressMarkdown({
     steps: [
       { step: "核对 SAP 官方实施方法", status: "completed" },
@@ -59,28 +59,28 @@ test("renders a plan as a checklist with a done count", () => {
   assert.equal(
     text,
     [
-      "**📋 进度** ▰▰▰▱▱▱▱▱▱▱ 1/3",
-      "✅ <font color='grey'>核对 SAP 官方实施方法</font>",
-      "🔄 **升级讨论版为蓝图**",
-      "⬜ <font color='grey'>补示例流程</font>",
+      "☑️ <font color='grey'>~~核对 SAP 官方实施方法~~</font>",
+      "▶️ **升级讨论版为蓝图**　<font color='blue'>进行中</font>",
+      "◻️ <font color='grey'>补示例流程</font>",
     ].join("\n"),
   );
 });
 
-test("step text cannot open card markup or emphasis", () => {
+test("step text cannot open card markup, emphasis or strikethrough", () => {
   const text = renderFeishuProgressMarkdown({
-    steps: [{ step: "<at id=all></at> **boom** ~~x~~", status: "pending" }],
+    steps: [{ step: "<at id=all></at> **boom** ~~x~~", status: "completed" }],
   });
   assert.doesNotMatch(text, /<at/);
   assert.doesNotMatch(text, /\*\*boom/);
-  assert.match(text, /&#60;at id=all&#62;/);
+  assert.equal(text, "☑️ <font color='grey'>~~&#60;at id=all&#62;&#60;/at&#62; &#42;&#42;boom&#42;&#42; &#126;&#126;x&#126;&#126;~~</font>");
 });
 
-test("note keeps markdown, draws the progress bar and strips other tags", () => {
-  const text = renderFeishuProgressMarkdown({
-    markdown: '<progress aria-label="CI · 4/6" value="4" max="6"></progress>\n**构建中** <font color="red">x</font><at id=all></at>',
-  });
-  assert.equal(text, "**📋 进度**\n▰▰▰▰▰▰▰▱▱▱ CI · 4/6\n**构建中** x");
+test("the card's markdown note is never shown, so progress is not restated", () => {
+  assert.equal(renderFeishuProgressMarkdown({ markdown: '<progress value="1" max="4"></progress>\n① 时间：00:35' }), "");
+  assert.equal(
+    renderFeishuProgressMarkdown({ markdown: "① 时间：00:35", steps: [{ step: "查时间", status: "in_progress" }] }),
+    "▶️ **查时间**　<font color='blue'>进行中</font>",
+  );
 });
 
 test("long plans fold the finished head and keep the live window", () => {
@@ -89,18 +89,17 @@ test("long plans fold the finished head and keep the live window", () => {
     status: index < 15 ? "completed" : index === 15 ? "in_progress" : "pending",
   }));
   const lines = renderFeishuProgressMarkdown({ steps }).split("\n");
-  assert.equal(lines[0], "**📋 进度** ▰▰▰▰▰▰▰▰▱▱ 15/20");
-  assert.equal(lines[1], "✅ <font color='grey'>已完成 9 步</font>");
-  assert.ok(lines.includes("✅ <font color='grey'>s15</font>"), "last finished step stays visible");
-  assert.ok(lines.includes("🔄 **s16**"));
-  assert.ok(lines.includes("⬜ <font color='grey'>s20</font>"));
-  assert.ok(lines.length <= 14);
+  assert.equal(lines[0], "☑️ <font color='grey'>已完成 9 步</font>");
+  assert.ok(lines.includes("☑️ <font color='grey'>~~s15~~</font>"), "last finished step stays visible");
+  assert.ok(lines.includes("▶️ **s16**　<font color='blue'>进行中</font>"));
+  assert.ok(lines.includes("◻️ <font color='grey'>s20</font>"));
+  assert.ok(lines.length <= 13);
 });
 
 test("an empty or cleared card renders nothing", () => {
   assert.equal(renderFeishuProgressMarkdown(null), "");
   assert.equal(renderFeishuProgressMarkdown({ steps: [], markdown: "  " }), "");
-  assert.equal(renderFeishuProgressMarkdown({ markdown: "<br>" }), "");
+  assert.equal(renderFeishuProgressMarkdown({ markdown: "only a note" }), "");
 });
 
 test("progress-card tool names match across runtimes", () => {
@@ -147,7 +146,7 @@ globalThis.listenersWhileSubscribed = vProgressCardChangedListeners.size;
 unsubscribe();
 globalThis.listenersAfter = vProgressCardChangedListeners.size;
 vProgressCardNotifyChanged("agent:makaron:feishu:direct:ou_a", { steps: [{ step: "late", status: "pending" }] });`, context);
-  assert.deepEqual([...context.seen], ["**📋 进度** ▱▱▱▱▱▱▱▱▱▱ 0/1\n🔄 **one**", ""]);
+  assert.deepEqual([...context.seen], ["▶️ **one**　<font color='blue'>进行中</font>", ""]);
   assert.equal(context.listenersWhileSubscribed, 1);
   assert.equal(context.listenersAfter, 0, "last unsubscribe detaches from the Gateway set");
 });
@@ -162,7 +161,8 @@ test("patches the captured production Feishu monitor, idempotently and syntactic
   assert.match(first.source, /if \(isFeishuProgressCardToolName\(payload\.name\)\) return false;/);
   assert.match(first.source, /vProgressAttach\(\);\n\t\t\tif \(previewStreamingEnabled && renderMode === "card"\)/);
   assert.match(first.source, /vProgressDetach\(\);\n\t\t\ttypingCallbacks\?\.onCleanup/);
-  assert.match(first.source, /parts\.push\(parts\.length > 0 \? `\\n\\n---\\n\$\{vProgressText\}` : vProgressText\)/);
+  assert.match(first.source, /statusLine\);\n\t\tif \(vProgressText\) parts\.push\(parts\.length > 0 \? `\\n\\n---\\n\\n\$\{vProgressText\}` : vProgressText\);\n\t\treturn parts\.join/);
+  assert.match(first.source, /progress-stream dispatcher=\$\{vProgressDispatcherId\}/);
   assert.match(first.source, /statusLine = "";\n\t\t\t\tvProgressText = "";\n\t\t\t\tconst text = buildCombinedStreamText/);
 
   const dir = mkdtempSync(join(tmpdir(), "feishu-progress-stream-"));
