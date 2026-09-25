@@ -37,6 +37,25 @@ STALL_SAMPLES = 2
 # 23:02->23:04, 2026-09-22 13:41->13:43). A planned restart by another session
 # on 2026-09-22 fired a false outage alert at 13:42 without this grace.
 STARTUP_GRACE_S = 300
+# ...but not while the Gateway is crash-looping. On 2026-09-25 23:47-23:51 the
+# state database failed integrity_check on every start: each attempt lived
+# about 60s, both samples in the outage read "active, up 25s / 14s, pool 0",
+# the grace excused both, and no alert went out for four minutes of total
+# outage. After any crash the grace is off for this long.
+CRASH_SUSPENDS_GRACE_S = 900
+# What a crash looks like in the unit journal. Scanned from a saved cursor, so
+# each line is seen exactly once however the timer and the window line up.
+CRASH_PATTERNS = (
+    ("Main process exited", "进程退出"),
+    ('"level":"fatal"', "fatal"),
+    ("integrity_check failed", "数据库完整性检查失败"),
+    ("FATAL ERROR", "V8 FATAL"),
+    # The 2026-09-25 state database was already failing its fast integrity
+    # path at 23:22:46, 25 minutes before the crash: ensureSchema swallows the
+    # failure, falls through to a schema repair, and the fence refuses it
+    # while the Gateway owns the directory. Zero occurrences in the week before.
+    ("refused shared state schema mutation", "状态库结构修改被拒，库可能已损坏"),
+)
 DISK_MIN_MB = 15360
 MEM_MIN_MB = 2048
 
@@ -108,7 +127,26 @@ def feishu(text):
     return ok
 
 
-def sample():
+def scan_crashes(cursor):
+    """Crash lines written since the last run, and the cursor to resume from.
+
+    The first run has no cursor and looks back one window, like the other
+    journal rules."""
+    since = ("--after-cursor '%s'" % cursor) if cursor else ("--since '-%ds'" % WINDOW)
+    j = sh("journalctl -u %s %s --no-pager -o cat --show-cursor" % (UNIT, since), timeout=60)
+    lines, new_cursor = [], cursor
+    for line in j.splitlines():
+        if line.startswith("-- cursor: "):
+            new_cursor = line[len("-- cursor: "):].strip()
+            continue
+        for needle, label in CRASH_PATTERNS:
+            if needle in line:
+                lines.append("[%s] %s" % (label, line.strip()[:220]))
+                break
+    return lines, new_cursor
+
+
+def sample(cursor=None):
     out = {}
     out["pool"] = len(re.findall(r"worker/worker\.mjs",
                                  sh("ps -eo args")))
@@ -148,6 +186,7 @@ def sample():
     out["cutoff_ids"] = hits
     out["cutoff_cause"] = failed[hits[0]] if hits else ""
     out["received"] = j.count("received message from")
+    out["crash_lines"], out["journal_cursor"] = scan_crashes(cursor)
     df = sh("df -BM --output=avail / | tail -1")
     out["disk_mb"] = int(re.sub(r"\D", "", df) or 0)
     fr = sh("free -m | awk '/^Mem:/{print $7}'").strip()
@@ -157,9 +196,49 @@ def sample():
 
 def main():
     st = load_state()
-    s = sample()
+    s = sample(st.get("journal_cursor"))
+    st["journal_cursor"] = s.pop("journal_cursor")
     now = time.strftime("%H:%M")
-    alerts, recovers = [], []
+    now_s = int(time.time())
+    alerts, recovers, notices = [], [], []
+
+    # Crashes. The first one alerts at once; further ones within ten minutes
+    # are folded into the next message so a crash loop is not a message stream.
+    crash_lines = s.pop("crash_lines")
+    if crash_lines:
+        if not st.get("crash_pending"):
+            st["crash_first"] = now
+        st["last_crash_at"] = now_s
+        st["crash_pending"] = st.get("crash_pending", 0) + len(crash_lines)
+        st["crash_last_lines"] = crash_lines[-3:]
+        st["crash_last"] = now
+    if st.get("crash_pending") and now_s - st.get("crash_last_alert", 0) >= 600:
+        span = st.get("crash_first", now)
+        if st.get("crash_last", now) != span:
+            span += "–" + st["crash_last"]
+        alerts.append("Gateway 日志在 %s 出现 %d 条崩溃/损坏信号（当前 NRestarts=%s，已运行 %s 秒）：\n%s"
+                      % (span, st["crash_pending"], s["nrestarts"], s.get("gw_up_s"),
+                         "\n".join(st.get("crash_last_lines", []))))
+        st["crash_pending"] = 0
+        st["crash_last_alert"] = now_s
+    s["crashes"] = len(crash_lines)
+
+    # Restarts the unit-state rule cannot see: a restart finishing inside one
+    # timer interval leaves the unit "active" at both samples. NRestarts only
+    # counts automatic restarts, so also compare uptime with the time elapsed.
+    prev = st.get("last_sample") or {}
+    elapsed = now_s - st.get("last_run", now_s)
+    up = s.get("gw_up_s")
+    restarted = (up is not None and prev.get("gw_up_s") is not None and elapsed > 0
+                 and up + 5 < elapsed) or \
+                (prev.get("nrestarts", "").isdigit() and s["nrestarts"].isdigit()
+                 and int(s["nrestarts"]) > int(prev["nrestarts"]))
+    crashed_recently = now_s - st.get("last_crash_at", 0) <= CRASH_SUSPENDS_GRACE_S
+    if restarted and not crash_lines:
+        notices.append("openclaw-gateway 重启了（已运行 %s 秒，NRestarts %s→%s）。%s"
+                       % (up, prev.get("nrestarts", "?"), s["nrestarts"],
+                          "这是崩溃之后的重新启动。" if crashed_recently else
+                          "日志里没有崩溃信号，多半是手动或发版重启；若不是计划内的，请查是谁。"))
 
     def latch(key, bad, fire_msg, clear_msg, need=1):
         c = st.get(key + "_n", 0)
@@ -176,12 +255,17 @@ def main():
     # When the unit itself is down an empty pool is merely a consequence, and
     # the separate unit alert says so. The dangerous case is the one where
     # every ordinary signal stays green, so say that plainly only when it is true.
-    pool_msg = ("Worker 池空了（0 个 worker 进程），而 openclaw-gateway 仍显示 active、"
-                "health 200、NRestarts=0。服务看起来正常但一个请求都处理不了。"
-                "这不会自愈，要 sudo systemctl restart openclaw-gateway 才能重建。"
-                if s["active"] == "active" else
-                "Worker 池空了（0 个 worker 进程），openclaw-gateway 状态为 %s。" % s["active"])
-    starting = s.get("gw_up_s") is not None and s["gw_up_s"] < STARTUP_GRACE_S
+    if crashed_recently:
+        pool_msg = ("Worker 池空了（0 个 worker 进程），Gateway 在崩溃后反复重启"
+                    "（NRestarts=%s，本次只运行了 %s 秒）。重启解决不了，先看崩溃原因。"
+                    % (s["nrestarts"], up))
+    elif s["active"] == "active":
+        pool_msg = ("Worker 池空了（0 个 worker 进程），而 openclaw-gateway 仍显示 active、"
+                    "health 200、NRestarts=0。服务看起来正常但一个请求都处理不了。"
+                    "这不会自愈，要 sudo systemctl restart openclaw-gateway 才能重建。")
+    else:
+        pool_msg = "Worker 池空了（0 个 worker 进程），openclaw-gateway 状态为 %s。" % s["active"]
+    starting = (up is not None and up < STARTUP_GRACE_S and not crashed_recently)
     latch("pool_empty", s["pool"] == 0 and not starting, pool_msg,
           "Worker 池已恢复（%d 个 worker）。" % s["pool"],
           need=POOL_EMPTY_SAMPLES)
@@ -211,7 +295,6 @@ def main():
     # Discrete events, not a state, so no latch. Measured 2026-09-23: about
     # five a day. Say it at most once an hour, carrying the count, so a bad
     # evening is one message rather than a stream of them.
-    now_s = int(time.time())
     # The journal window (180s) overlaps the 120s timer, so the same run can
     # appear in two consecutive samples. Count each run once.
     seen = st.setdefault("cutoff_seen", {})
@@ -238,9 +321,11 @@ def main():
         feishu("V 线上告警 %s\n\n%s" % (now, m))
     for m in recovers:
         feishu("V 恢复 %s\n\n%s" % (now, m))
+    for m in notices:
+        feishu("V 通知 %s\n\n%s" % (now, m))
 
-    print(json.dumps({"at": now, **s,
-                      "alerts": len(alerts), "recovers": len(recovers)},
+    print(json.dumps({"at": now, **s, "alerts": len(alerts),
+                      "recovers": len(recovers), "notices": len(notices)},
                      ensure_ascii=False))
 
 

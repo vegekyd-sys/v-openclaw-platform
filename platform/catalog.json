@@ -150,6 +150,7 @@
         "scripts/patch-worker-channel-registry.test.mjs",
         "tests/patch-feishu-active-run-steering.test.mjs",
         "tests/patch-feishu-latest-snapshot-streaming.test.mjs",
+        "tests/patch-feishu-progress-stream.test.mjs",
         "tests/patch-openclaw-media-completion-relay.test.mjs",
         "tests/media-completion-worker-relay-91.test.mjs",
         "tests/patch-openclaw91-sessions-send-owner.test.mjs",
