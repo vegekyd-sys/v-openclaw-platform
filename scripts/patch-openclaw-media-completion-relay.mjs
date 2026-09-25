@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { createHash } from "node:crypto";
+import { constants as fsConstants } from "node:fs";
 import {
   chmod,
   copyFile,
@@ -12,10 +14,11 @@ import {
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-const SUPPORTED_PACKAGE_VERSIONS = new Set(["2026.7.1", "2026.8.1"]);
+const SUPPORTED_PACKAGE_VERSIONS = new Set(["2026.7.1", "2026.8.1", "2026.9.1", "2026.9.2"]);
 export const PATCH_MARKER = "versa-worker-media-completion-relay-v0.2.1";
 export const PATCH_MARKER_92 = "versa-worker-media-completion-relay-v0.3.0-92";
 const BACKUP_SUFFIX = ".pre-worker-media-completion-relay-v0.2.1";
+const BACKUP_SUFFIX_92 = `.pre-${PATCH_MARKER_92}`;
 const BRIDGE_SYMBOL = "versa.vlab-worker.gateway-event-bridge-v1";
 const CONTRACT_VERSION = "versa-worker-gateway-events-v1";
 
@@ -251,9 +254,41 @@ export function patchOpenClawMediaCompletionBundle(source) {
   return { changed: true, source: patched };
 }
 
-// 9.2 moved wake before schedule and changed its result from boolean to a
+const WAKE_FUNCTION = 'async function wakeMediaGenerationTaskCompletion(params)';
+const SCHEDULE_FUNCTION = 'function scheduleMediaGenerationTaskCompletion(params)';
+const LIFECYCLE_FUNCTION = 'function createMediaGenerationTaskLifecycle(params)';
+const SHARED_REGION = '//#region src/agents/tools/media-generate-background-shared.ts';
+
+function nextBoundary(source, from, candidates) {
+  const found = candidates.map((candidate) => source.indexOf(candidate, from)).filter((index) => index > from);
+  return found.length ? Math.min(...found) : -1;
+}
+
+function occurrences(source, needle) {
+  return source.split(needle).length - 1;
+}
+
+// 9.1 keeps schedule before wake inside the shared region; 9.2 moved wake into
+// its own module ahead of schedule. Both return delivered/pending/permanent_failure.
+function locateMediaWakeAndSchedule(source) {
+  if (occurrences(source, WAKE_FUNCTION) !== 1 || occurrences(source, SCHEDULE_FUNCTION) !== 1) {
+    throw new Error('9.2 media wake/schedule module boundaries drifted');
+  }
+  const wakeStart = source.indexOf(WAKE_FUNCTION);
+  const wakeEnd = nextBoundary(source, wakeStart, [SHARED_REGION, LIFECYCLE_FUNCTION]);
+  const scheduleStart = source.indexOf(SCHEDULE_FUNCTION);
+  const scheduleEnd = nextBoundary(source, scheduleStart, [WAKE_FUNCTION, LIFECYCLE_FUNCTION]);
+  const disjoint = wakeEnd <= scheduleStart || scheduleEnd <= wakeStart;
+  if (!(wakeEnd > wakeStart && scheduleEnd > scheduleStart && disjoint)) {
+    throw new Error('9.2 media wake/schedule module boundaries drifted');
+  }
+  return { wakeStart, wakeEnd, scheduleStart, scheduleEnd };
+}
+
+// 9.1/9.2 changed the wake result from boolean to a
 // delivered/pending/permanent_failure contract. Keep its payload and retry
-// logic verbatim; only move the actual native delivery call to the Gateway.
+// logic verbatim; only move the actual native delivery call to the Gateway,
+// which owns the durable session delivery runtime that Workers lack.
 export function patchOpenClaw92MediaCompletionBundle(source) {
   const markers=source.split(PATCH_MARKER_92).length-1;
   if(markers===2) {
@@ -265,13 +300,7 @@ export function patchOpenClaw92MediaCompletionBundle(source) {
     return {changed:false,source};
   }
   if(markers || source.includes(PATCH_MARKER))throw new Error('9.2 media completion bundle is partially or legacy patched');
-  const wakeStart=source.indexOf('async function wakeMediaGenerationTaskCompletion(params)');
-  const wakeEnd=source.indexOf('//#region src/agents/tools/media-generate-background-shared.ts',wakeStart);
-  const scheduleStart=source.indexOf('function scheduleMediaGenerationTaskCompletion(params)');
-  const scheduleEnd=source.indexOf('function createMediaGenerationTaskLifecycle(params)',scheduleStart);
-  if(!(wakeStart>=0&&wakeEnd>wakeStart&&scheduleStart>wakeEnd&&scheduleEnd>scheduleStart)) {
-    throw new Error('9.2 media wake/schedule module boundaries drifted');
-  }
+  const {wakeStart,wakeEnd,scheduleStart,scheduleEnd}=locateMediaWakeAndSchedule(source);
   const wake=source.slice(wakeStart,wakeEnd);
   for(const anchor of ['requesterAgentId: params.handle.requesterAgentId',
     'if (delivery.delivered) return { status: "delivered" };',
@@ -304,7 +333,8 @@ export function patchOpenClaw92MediaCompletionBundle(source) {
   schedule=replaceExactlyOnce(schedule,SQLITE_SCHEDULE_START,
     PATCHED_SQLITE_SCHEDULE_START.replaceAll(PATCH_MARKER,PATCH_MARKER_92),'9.2 detached schedule start');
   schedule=replaceExactlyOnce(schedule,SQLITE_SCHEDULE_END,PATCHED_SQLITE_SCHEDULE_END,'9.2 detached schedule end');
-  return {changed:true,source:source.slice(0,wakeStart)+patchedWake+source.slice(wakeEnd,scheduleStart)+schedule+source.slice(scheduleEnd)};
+  const [first,second]=[[wakeStart,wakeEnd,patchedWake],[scheduleStart,scheduleEnd,schedule]].sort((a,b)=>a[0]-b[0]);
+  return {changed:true,source:source.slice(0,first[0])+first[2]+source.slice(first[1],second[0])+second[2]+source.slice(second[1])};
 }
 
 async function resolveBundle(packageRoot) {
@@ -331,7 +361,8 @@ async function resolveBundle(packageRoot) {
       (
         source.includes(SCHEDULE_START) ||
         source.includes(SQLITE_SCHEDULE_START) ||
-        source.includes(PATCH_MARKER)
+        source.includes(PATCH_MARKER) ||
+        source.includes(PATCH_MARKER_92)
       )
     ) {
       matches.push(candidate);
@@ -343,48 +374,69 @@ async function resolveBundle(packageRoot) {
   return matches[0];
 }
 
+function sha256(text) {
+  return createHash("sha256").update(text).digest("hex");
+}
+
+function backupPathFor(bundlePath, source) {
+  return `${bundlePath}${source.includes(PATCH_MARKER_92) ? BACKUP_SUFFIX_92 : BACKUP_SUFFIX}`;
+}
+
+async function writeAtomically(bundlePath, content, label) {
+  const originalStat = await stat(bundlePath);
+  const temporaryPath = `${bundlePath}.worker-media-relay-${label}-${process.pid}.tmp`;
+  await writeFile(temporaryPath, content, { mode: originalStat.mode });
+  await chmod(temporaryPath, originalStat.mode);
+  await rename(temporaryPath, bundlePath);
+}
+
 async function patchPackage(packageRoot) {
   const bundlePath = await resolveBundle(path.resolve(packageRoot));
   const source = await readFile(bundlePath, "utf8");
   const result = patchOpenClawMediaCompletionBundle(source);
   if (!result.changed) return { bundlePath, changed: false };
-  const backupPath = `${bundlePath}${BACKUP_SUFFIX}`;
+  const backupPath = backupPathFor(bundlePath, result.source);
   try {
-    await stat(backupPath);
+    await copyFile(bundlePath, backupPath, fsConstants.COPYFILE_EXCL);
   } catch (error) {
-    if (error?.code !== "ENOENT") throw error;
-    await copyFile(bundlePath, backupPath);
+    if (error?.code !== "EEXIST") throw error;
   }
-  const originalStat = await stat(bundlePath);
-  const temporaryPath = `${bundlePath}.worker-media-relay-${process.pid}.tmp`;
-  await writeFile(temporaryPath, result.source, { mode: originalStat.mode });
-  await chmod(temporaryPath, originalStat.mode);
-  await rename(temporaryPath, bundlePath);
-  return { bundlePath, backupPath, changed: true };
+  // A stale backup from another runtime revision would make --restore a silent rollback.
+  if (sha256(await readFile(backupPath, "utf8")) !== sha256(source)) {
+    throw new Error(`existing backup ${backupPath} does not match the unpatched bundle; refusing to patch`);
+  }
+  await writeAtomically(bundlePath, result.source, "apply");
+  return {
+    bundlePath,
+    backupPath,
+    changed: true,
+    beforeSha256: sha256(source),
+    afterSha256: sha256(result.source),
+  };
 }
 
 async function restorePackage(packageRoot) {
   const bundlePath = await resolveBundle(path.resolve(packageRoot));
-  const backupPath = `${bundlePath}${BACKUP_SUFFIX}`;
+  const current = await readFile(bundlePath, "utf8");
+  const backupPath = backupPathFor(bundlePath, current);
   const backup = await readFile(backupPath, "utf8");
-  const originalStat = await stat(bundlePath);
-  const temporaryPath = `${bundlePath}.worker-media-relay-restore-${process.pid}.tmp`;
-  await writeFile(temporaryPath, backup, { mode: originalStat.mode });
-  await chmod(temporaryPath, originalStat.mode);
-  await rename(temporaryPath, bundlePath);
-  return { bundlePath, backupPath };
+  if (backup.includes(PATCH_MARKER) || backup.includes(PATCH_MARKER_92)) {
+    throw new Error(`backup ${backupPath} is itself patched; refusing to restore`);
+  }
+  await writeAtomically(bundlePath, backup, "restore");
+  return { bundlePath, backupPath, restoredSha256: sha256(backup) };
 }
 
 async function main(args) {
   if (args[0] === "--restore") {
     if (args.length !== 2) throw new Error("usage: patch-openclaw-media-completion-relay.mjs --restore <openclaw-package-root>");
     const result = await restorePackage(args[1]);
-    process.stdout.write(`restored ${result.bundlePath}\n`);
+    process.stdout.write(`${JSON.stringify({ status: "restored", ...result })}\n`);
     return;
   }
   if (args.length !== 1) throw new Error("usage: patch-openclaw-media-completion-relay.mjs <openclaw-package-root>");
   const result = await patchPackage(args[0]);
-  process.stdout.write(`${result.changed ? "patched" : "already-patched"} ${result.bundlePath}\n`);
+  process.stdout.write(`${JSON.stringify({ status: result.changed ? "patched" : "already-patched", ...result })}\n`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
