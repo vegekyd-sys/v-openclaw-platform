@@ -21,7 +21,7 @@ const runtime = process.env.VLAB_CANDIDATE_RUNTIME;
 const configPath = process.env.OPENCLAW_CONFIG_PATH;
 const stateDir = process.env.OPENCLAW_STATE_DIR;
 const expect = process.env.FEISHU_PROGRESS_EXPECT ?? "delivered";
-const only = (process.env.FEISHU_PROGRESS_SCENARIOS ?? "worker,claude-cli,codex").split(",").map((s) => s.trim()).filter(Boolean);
+const only = (process.env.FEISHU_PROGRESS_SCENARIOS ?? "worker,in-process,claude-cli,codex").split(",").map((s) => s.trim()).filter(Boolean);
 assert(runtime && configPath && stateDir, "candidate runtime environment is required");
 assert(["delivered", "absent"].includes(expect));
 
@@ -79,6 +79,16 @@ const workerConfig = fs
 fs.mkdirSync(path.dirname(workerPlugin.workerConfigPath), { recursive: true });
 fs.writeFileSync(workerPlugin.workerConfigPath, workerConfig, { mode: 0o600 });
 workerPlugin.gatewayConfigPath = configPath;
+// In-process scenario: the built-in runtime runs the tool inside the Gateway,
+// the same in-process call a Codex dynamic tool makes. Shared VLab has no
+// OpenAI login, so Codex itself cannot run here.
+config.agents.entries.makaron.models ??= {};
+config.agents.entries.makaron.models["deepseek/deepseek-v4-pro"] = {
+  ...config.agents.entries.makaron.models["deepseek/deepseek-v4-pro"],
+  agentRuntime: { id: "openclaw" },
+};
+const allow = config.agents.defaults.modelPolicy?.allow;
+if (Array.isArray(allow)) for (const ref of ["anthropic/claude-sonnet-5", "deepseek/deepseek-v4-pro"]) if (!allow.includes(ref)) allow.push(ref);
 fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
 
 // ---- probe preloaded into the Gateway process ----
@@ -172,6 +182,7 @@ const PROMPT = [
 
 const SCENARIOS = {
   worker: { model: "deepseek/deepseek-v4-flash", runtime: "vlab-worker" },
+  "in-process": { model: "deepseek/deepseek-v4-pro", runtime: "openclaw" },
   "claude-cli": { model: "anthropic/claude-sonnet-5", runtime: "claude-cli" },
   codex: { model: "openai/gpt-5.6-sol", runtime: "codex" },
 };
