@@ -25,10 +25,18 @@ case "$which" in
              --setenv=OPENCLAW_AGENT_DB_VALIDATION_EPOCH=$(cat /proc/sys/kernel/random/uuid)
              --setenv=OPENCLAW_SQLITE_STARTUP_INPLACE_READONLY=1 --setenv=OPENCLAW_SQLITE_INTEGRITY_READ_AHEAD=1
              --setenv=OPENCLAW_AGENT_DB_INTEGRITY_MAX_AGE_HOURS=24 --setenv=OPENCLAW_SQLITE_CLOSE_ON_SIGNAL=1
-             --setenv=OPENCLAW_SESSION_ROW_MATERIALIZE_COALESCE_MS=1000
-             --setenv=OPENCLAW_SESSION_MAINTENANCE_MIN_INTERVAL_MS=10000) ;;
+             --setenv=OPENCLAW_SESSION_ROW_MATERIALIZE_COALESCE_MS=1000) ;;
   *) echo "unknown $which"; exit 1 ;;
 esac
+# A/B: VERSA_DROP_ENV=NAME[,NAME] leaves those variables out of this start.
+# Profiling: VERSA_NODE_FLAGS="--cpu-prof --cpu-prof-dir=..." (children inherit execArgv).
+if [ -n "${VERSA_DROP_ENV:-}" ]; then
+  keep=(); for a in "${PROD_ENV[@]}" "${EXTRA[@]}"; do
+    drop=0; for n in ${VERSA_DROP_ENV//,/ }; do [[ "$a" == --setenv=$n=* ]] && drop=1; done
+    [ $drop = 1 ] || keep+=("$a")
+  done
+  PROD_ENV=("${keep[@]}"); EXTRA=()
+fi
 test -x "$NODE"; test -f "$CORE/dist/index.js"
 systemctl is-active --quiet $UNIT && { echo "$UNIT already active"; exit 1; }
 systemctl reset-failed $UNIT 2>/dev/null || true
@@ -43,7 +51,7 @@ systemd-run --unit=$UNIT --collect --uid=$U --gid=$U --working-directory=$R/work
   --setenv=XDG_CACHE_HOME=$R/cache --setenv=TMPDIR=$R/tmp --setenv=VLAB_OPENCLAW_AGENT_RUNTIME=$CORE/dist/plugin-sdk/agent-runtime.js \
   --setenv=npm_config_cache=$R/cache/npm --setenv=npm_config_prefix=$R/runtime/user-npm \
   "${PROD_ENV[@]}" "${EXTRA[@]}" \
-  $NODE --max-old-space-size=12288 $CORE/dist/index.js gateway --port $PORT
+  $NODE --max-old-space-size=12288 ${VERSA_NODE_FLAGS:-} $CORE/dist/index.js gateway --port $PORT
 start=$(date +%s)
 for _ in $(seq 1 1800); do
   if ! systemctl is-active --quiet $UNIT; then echo "unit exited"; journalctl -u $UNIT -n 40 --no-pager; exit 2; fi
