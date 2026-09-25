@@ -1,0 +1,29 @@
+{
+  "support": [
+    "lab/candidate/xiaohe-v-prompt-h5.mjs",
+    "lab/xiaohe-v-realtime-prompt.md",
+    "lab/rtc-h5/server.mjs",
+    "lab/rtc-h5/index.html",
+    "lab/rtc-h5/styles.css",
+    "lab/rtc-h5/app.js",
+    "lab/rtc-h5/app.test.mjs",
+    "lab/volcengine-rtc-managed-room-client.mjs",
+    "lab/release-files/volcengine-rtc-agent/volcengine-rtc-4.68.1.esm.js"
+  ],
+  "files": [
+    {
+      "source": "lab/release-files/volcengine-rtc-agent/volcengine-rtc-agent-provider.mjs",
+      "target": "production-worker/volcengine-rtc-agent-provider.mjs"
+    }
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/xiaohe-v-prompt-h5.mjs"
+  ],
+  "env": {
+    "RTC_H5_PORT": "26252",
+    "RTC_H5_PUBLIC_SELF_TEST": "1"
+  },
+  "user": "lab-db91-parity",
+  "timeoutSeconds": 0
+}

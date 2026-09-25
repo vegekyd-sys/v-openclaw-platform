@@ -1,0 +1,35 @@
+{
+  "baseRelease": "session-store-hotpaths-v1",
+  "files": [
+    {
+      "source": "lab/release-files/talk-input-stall/control-ui-boot-chat-DWTSrxxk.js",
+      "target": "openclaw/dist/control-ui/assets/control-ui-boot-chat-DWTSrxxk.js",
+      "before": "9d747515ee114f181899b848733c32d98c347b63ddf9b398e240deb6196fd3f6"
+    },
+    {
+      "source": "lab/release-files/talk-input-stall/asset-manifest.json",
+      "target": "openclaw/dist/control-ui/asset-manifest.json",
+      "before": "e9f318106f248a94613700ff38a2dfe105f791396ed372702f0c145ac630b13b"
+    }
+  ],
+  "support": [
+    "lab/candidate/talk-voice-browser.mjs",
+    "lab/candidate/fixtures/agent-consult.pcm",
+    "lab/worker-harness-model-routing.mjs"
+  ],
+  "env": {
+    "VLAB_TALK_AGENT_MODEL": "deepseek/deepseek-v4-flash",
+    "VLAB_TALK_CONSULT_THINKING_LEVEL": "off",
+    "VLAB_TALK_BACKPRESSURE_MIN_PEAK": "96",
+    "VLAB_TALK_BACKPRESSURE_MAX_PEAK": "192",
+    "VLAB_TALK_BACKPRESSURE_MIN_DELIVERED": "64",
+    "VLAB_TALK_BACKPRESSURE_MIN_APPEND_REQUESTS": "96",
+    "VLAB_TALK_BACKPRESSURE_MIN_APPEND_RESPONSES": "64"
+  },
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/talk-voice-browser.mjs"
+  ],
+  "user": "lab-db91-parity",
+  "timeoutSeconds": 900
+}

@@ -220,6 +220,19 @@ function createTalkClientAgentConsultRunner(params) {
 		const talkConfig = normalizeTalkSection(params.config.talk);
 		const admission = runOutsideGatewayRootWorkAdmission(tryBeginGatewayRootWorkAdmission);
 		if (!admission) throw new GatewayDrainingError();
+		let activeRunId;
+		const emitAgentLifecycle = (type, runId, final = false) => {
+			if (!params.ownerConnId) return;
+			params.context.broadcastToConnIds("talk.event", {
+				voiceSessionId,
+				talkEvent: {
+					type,
+					callId: runId,
+					payload: { name: REALTIME_VOICE_AGENT_CONSULT_TOOL_NAME },
+					...final ? { final: true } : {}
+				}
+			}, /* @__PURE__ */ new Set([params.ownerConnId]), { dropIfSlow: false });
+		};
 		return await admission.run(() => consultRealtimeVoiceAgent({
 			cfg: params.config,
 			agentRuntime: runtime,
@@ -242,6 +255,8 @@ function createTalkClientAgentConsultRunner(params) {
 			...authority,
 			abortSignal: signal,
 			onRunStarted: ({ runId, sessionId, timeoutMs }) => {
+				activeRunId = runId;
+				emitAgentLifecycle("tool.call", runId);
 				if (params.registerRun) params.registerRun({ runId });
 				else registerClientVoiceConsultRun({
 					agentId,
@@ -271,7 +286,13 @@ function createTalkClientAgentConsultRunner(params) {
 					cleanup: registration.cleanup
 				};
 			}
-		})).finally(admission.release);
+		})).then((result) => {
+			if (activeRunId) emitAgentLifecycle("tool.result", activeRunId, true);
+			return result;
+		}, (error) => {
+			if (activeRunId) emitAgentLifecycle("tool.error", activeRunId, true);
+			throw error;
+		}).finally(admission.release);
 	};
 	return {
 		runArgs,

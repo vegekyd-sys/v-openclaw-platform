@@ -1,0 +1,15 @@
+{
+  "tests": ["tests/dreaming-session-ingestion-candidate.test.mjs"],
+  "support": ["lab/dreaming-corpus-ab.mjs"],
+  "files": [
+    {"source": "lab/release-files/memory-core-host-engine-sessions-CAnvQ_5o.js", "target": "openclaw/dist/memory-core-host-engine-sessions-CAnvQ_5o.js"},
+    {"source": "lab/release-files/dreaming-phases-C5ItPb99.js", "target": "openclaw/dist/dreaming-phases-C5ItPb99.js"}
+  ],
+  "databases": [
+    "agents/dealclaw/agent/openclaw-agent.sqlite",
+    "agents/short-v/agent/openclaw-agent.sqlite",
+    "agents/xiaoai/agent/openclaw-agent.sqlite"
+  ],
+  "user": "lab-db91-parity",
+  "timeoutSeconds": 0
+}

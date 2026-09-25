@@ -1,0 +1,27 @@
+{
+  "baseRelease": "xiaohe-rtc-audio-startup-v1",
+  "tests": [
+    "lab/patch-xiaohe-rtc-audio-cache-bust.test.mjs"
+  ],
+  "support": [
+    "lab/patch-xiaohe-rtc-audio-cache-bust.mjs"
+  ],
+  "timeoutSeconds": 60,
+  "files": [
+    {
+      "source": "lab/release-files/xiaohe-rtc-audio-cache-bust/control-ui-DhD7PO_6.js",
+      "target": "openclaw/dist/control-ui-DhD7PO_6.js",
+      "before": "fb92c027f5789f3f8c2fffa76595aeec880e9a7da67c7e3347b5114ee8102085"
+    },
+    {
+      "source": "lab/release-files/xiaohe-rtc-audio-cache-bust/asset-manifest.json",
+      "target": "openclaw/dist/control-ui/asset-manifest.json",
+      "before": "3e359090a1ab840f7bd42a22560237d51bd7b036a0d43d01e8e04a47162254ab"
+    },
+    {
+      "source": "lab/release-files/xiaohe-rtc-audio-cache-bust/control-ui-boot-chat-DWTSrxxk-rtc-v5.js",
+      "target": "openclaw/dist/control-ui/assets/control-ui-boot-chat-DWTSrxxk-rtc-v5.js",
+      "before": null
+    }
+  ]
+}

@@ -1,0 +1,188 @@
+#!/usr/bin/env python3
+"""The Night Shift check must alert on each failure it exists for, once, and
+report recovery. The fixtures are the failures seen on V on 2026-09-23/24."""
+import copy
+import importlib.util
+import os
+import sys
+import unittest
+from unittest import mock
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+spec = importlib.util.spec_from_file_location("v_nightshift_check", os.path.join(HERE, "..", "scripts", "v-nightshift-check.py"))
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+NOW = 1_790_300_000_000
+MIN = 60_000
+HEALTHY = {"ok": True, "lastSchedulerError": None, "dispatchPressure": {
+    "dispatchAllowed": True, "targetMaxActive": 6,
+    "agentDbPressure": {"enabled": True, "level": "green", "coordinatorTimeouts": 0, "interactiveTimeouts": 0,
+                        "slowAdmissions": 0, "userHarm": False, "reason": None, "at": "2026-09-25T10:39:41Z"}}}
+
+
+def base():
+    return {"now_ms": NOW, "unit": "active", "health": copy.deepcopy(HEALTHY), "health_error": None,
+            "active": {"GEE-TIMED-PUB-20260925": True}, "faults": [], "blocked": [], "live_cards": [],
+            "paid_executing": [], "board_cards": 2550}
+
+
+def run(state, sample):
+    service, brake, issues = mod.evaluate(sample)
+    return mod.decide(state, service, brake, issues)
+
+
+class NightShiftCheck(unittest.TestCase):
+    def test_first_run_is_a_baseline(self):
+        s = base()
+        s["blocked"] = [{"instance": "GEE-TIMED-PUB-20260923-R8", "item": "rec1", "stage": "publish", "card": "87189a1a",
+                         "kind": "contract_error", "summary": "no succeeded checkpoint", "paid": "executing"}]
+        state = {}
+        self.assertEqual(run(state, s), [])
+        self.assertTrue(state["baseline"])
+        self.assertEqual(run(state, s), [])
+
+    def test_scheduler_failing_every_pass_alerts_once_then_recovery(self):
+        # 2026-09-24 03:39-10:05: service active, Gateway healthy, every pass 1006.
+        state = {}
+        run(state, base())
+        failing = base()
+        failing["health"]["lastSchedulerError"] = "gateway closed (1006): "
+        lines = run(state, failing)
+        self.assertEqual(len(lines), 1)
+        self.assertIn("1006", lines[0])
+        self.assertEqual(run(state, failing), [])
+        self.assertEqual(len(run(state, failing)), 0)
+        recovered = run(state, base())
+        self.assertEqual(len(recovered), 1)
+        self.assertIn("已恢复", recovered[0])
+
+    def test_stopped_service_and_unreachable_endpoint(self):
+        state = {}
+        run(state, base())
+        down = base()
+        down["unit"] = "inactive"
+        self.assertIn("inactive", run(state, down)[0])
+        unreachable = base()
+        unreachable["health"] = None
+        unreachable["health_error"] = "Connection refused"
+        self.assertIn("Connection refused", run(state, unreachable)[0])
+
+    def test_new_blocked_card_alerts_once_with_paid_status(self):
+        state = {}
+        run(state, base())
+        s = base()
+        s["blocked"] = [{"instance": "DL-0923-05", "item": "yt-dl-0923-05-05", "stage": "produce", "card": "d0826a54",
+                         "kind": "contract_error", "summary": "External side effect has no succeeded checkpoint", "paid": "executing"}]
+        lines = run(state, s)
+        self.assertEqual(len(lines), 1)
+        self.assertIn("付费=executing", lines[0])
+        self.assertEqual(run(state, s), [])
+
+    def test_retried_card_past_its_retry_budget(self):
+        # 2026-09-24: failureCount 3 > maxRetries 2, the board never started it.
+        state = {}
+        run(state, base())
+        s = base()
+        s["live_cards"] = [{"id": "e8ce3422-83d3", "status": "ready", "updated": NOW - 2 * MIN, "exec_updated": None,
+                            "failures": 3, "max_retries": 2, "instance": "GEE-TIMED-PUB-20260925", "item": "x"}]
+        lines = run(state, s)
+        self.assertEqual(len(lines), 1)
+        self.assertIn("重试预算已用尽", lines[0])
+
+    def test_stale_ready_needs_dispatch_allowed_and_an_active_project(self):
+        state = {}
+        run(state, base())
+        stale = {"id": "c1", "status": "ready", "updated": NOW - 50 * MIN, "exec_updated": None, "failures": 0,
+                 "max_retries": 2, "instance": "GEE-TIMED-PUB-20260925", "item": "x"}
+        s = base()
+        s["live_cards"] = [stale]
+        self.assertEqual(len(run(state, s)), 1)
+
+        state = {}
+        run(state, base())
+        held = base()
+        held["health"]["dispatchPressure"]["dispatchAllowed"] = False
+        held["live_cards"] = [stale]
+        self.assertEqual(run(state, held), [], "a braked scheduler is not a stuck card")
+        paused = base()
+        paused["live_cards"] = [dict(stale, instance="DL-0923-03")]
+        self.assertEqual(run(state, paused), [], "paused projects are not watched")
+
+    def test_running_card_without_execution_updates(self):
+        state = {}
+        run(state, base())
+        s = base()
+        s["live_cards"] = [{"id": "r1", "status": "running", "updated": NOW - 60 * MIN, "exec_updated": NOW - 45 * MIN,
+                            "failures": 0, "max_retries": 2, "instance": "GEE-TIMED-PUB-20260925", "item": "x"}]
+        lines = run(state, s)
+        self.assertEqual(len(lines), 1)
+        self.assertIn("45 分钟", lines[0])
+
+    def test_paid_operation_is_quiet_while_its_card_still_runs(self):
+        # 2026-09-23: a paid card looked failed while its Agent was still working.
+        state = {}
+        run(state, base())
+        s = base()
+        s["paid_executing"] = [{"key": "nightshift:abc", "instance": "GEE-TIMED-PUB-20260925", "item": "yt-05-05", "task": "t1"}]
+        s["live_cards"] = [{"id": "p1", "status": "running", "updated": NOW, "exec_updated": NOW, "failures": 0,
+                            "max_retries": 2, "instance": "GEE-TIMED-PUB-20260925", "item": "yt-05-05"}]
+        self.assertEqual(run(state, s), [])
+        s["live_cards"] = []
+        lines = run(state, s)
+        self.assertEqual(len(lines), 1)
+        self.assertIn("付费操作 executing", lines[0])
+
+    def test_lease_brake_reports_each_change_with_its_reading(self):
+        state = {}
+        self.assertEqual(run(state, base()), [], "green at start says nothing")
+        red = base()
+        red["health"]["dispatchPressure"]["targetMaxActive"] = 3
+        red["health"]["dispatchPressure"]["agentDbPressure"].update(
+            level="red", coordinatorTimeouts=2, interactiveTimeouts=2, userHarm=True,
+            reason="2 Agent DB lease timeout(s) in 120s, 2 in a person's conversation")
+        lines = run(state, red)
+        self.assertEqual(len(lines), 1)
+        self.assertIn("green → red", lines[0])
+        self.assertIn('"interactiveTimeouts": 2', lines[0])
+        self.assertIn('"targetMaxActive": 3', lines[0])
+        self.assertEqual(run(state, red), [])
+        back = run(state, base())
+        self.assertEqual(len(back), 1)
+        self.assertIn("red → green", back[0])
+
+    def test_board_size_and_fault(self):
+        state = {}
+        run(state, base())
+        s = base()
+        s["board_cards"] = 6838
+        s["faults"] = [("GEE-TIMED-PUB-20260925", '{"operation":"snapshot"}')]
+        lines = run(state, s)
+        self.assertEqual(len(lines), 2)
+
+    def test_failed_send_keeps_the_old_state(self):
+        failing = base()
+        failing["health"]["lastSchedulerError"] = "gateway closed (1006): "
+        saved = []
+        with mock.patch.object(mod, "sample", return_value=failing), \
+                mock.patch.object(mod, "load_state", return_value={"baseline": True, "seen": []}), \
+                mock.patch.object(mod, "save_state", side_effect=saved.append), \
+                mock.patch.dict(sys.modules, {"sentinel": mock.Mock(feishu=mock.Mock(return_value=False))}):
+            self.assertEqual(mod.main([]), 2)
+        self.assertEqual(saved, [], "an alert that did not go out must be retried next run")
+
+    def test_check_mode_sends_nothing(self):
+        failing = base()
+        failing["unit"] = "inactive"
+        sender = mock.Mock(feishu=mock.Mock(return_value=True))
+        with mock.patch.object(mod, "sample", return_value=failing), \
+                mock.patch.object(mod, "save_state") as save, \
+                mock.patch.dict(sys.modules, {"sentinel": sender}), \
+                mock.patch("builtins.print"):
+            self.assertEqual(mod.main(["--check"]), 1)
+        sender.feishu.assert_not_called()
+        save.assert_not_called()
+
+
+if __name__ == "__main__":
+    unittest.main()

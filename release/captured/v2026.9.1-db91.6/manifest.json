@@ -1,0 +1,808 @@
+{
+  "release": "v2026.9.1-db91.6",
+  "capturedAt": "2026-09-22T17:53:32.338Z",
+  "capturedFrom": {
+    "host": "v",
+    "runtimeDir": "/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core/dist",
+    "baseDir": "/opt/openclaw-2026.9.1-v/openclaw/dist"
+  },
+  "upstream": "2026.9.1",
+  "platformCommit": "f9f4a4b4f3e90768041bf7edbd502a8477b7a71c",
+  "note": "Point-in-time capture of how the live runtime diverges from its upstream base. These bytes are the existing production state, not a reviewed source build. Entries with alsoInRepo=null had no copy anywhere except the server.",
+  "counts": {
+    "runtimeFiles": 8613,
+    "baseFiles": 8591,
+    "modified": 61,
+    "added": 14,
+    "removedFromBase": 0,
+    "alreadyInRepo": 43,
+    "capturedOnly": 32,
+    "residue": 20
+  },
+  "removedFromBase": [],
+  "files": [
+    {
+      "path": "./agent-db-process-coordinator.mjs",
+      "sha256": "51c170d34fad2b5d0a6b0de8b10d0f32b57384b5db32e78dfd7b80eb7547650e",
+      "kind": "added",
+      "bytes": 5253,
+      "hostMtime": "2026-09-14T16:01:42.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./agent-runtime-identity-token-tbYOQmt6.js",
+      "sha256": "df78006506ed9aa892692ef3a4ddd11109132f48c0c50f3b2679b09150779d20",
+      "kind": "modified",
+      "baseSha256": "da0343df55d4fdb89b2a2f7b89991486f22f89302a697d627d8bebf94ebbf17e",
+      "bytes": 26916,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "lab/release-files/three-fixes-cron-agent-runtime-identity-token-tbYOQmt6.js"
+    },
+    {
+      "path": "./agent-tools-djVuP1H1.js",
+      "sha256": "50da97801599701494c39cd8ca285aa28c38fe6be5fe91a9dd0efeac02e9662a",
+      "kind": "modified",
+      "baseSha256": "1a9f16ecfeeb8a2ff4b5792182e3633f16e9b64161ca6dab29ac5f495af44e63",
+      "bytes": 37347,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "lab/release-files/cron-shared-tool-surface.js"
+    },
+    {
+      "path": "./attempt.model-diagnostic-events-B4dGIs0S.js",
+      "sha256": "8aa2ea92c8c55aecec9077659295765f9cddfaf608bf71ef82b460ad031cee9d",
+      "kind": "modified",
+      "baseSha256": "96b40a50b42ade32abe4c287aa49363e67e38e112731ebe8c3ddb445098e8696",
+      "bytes": 32220,
+      "hostMtime": "2026-09-09T14:43:18.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./automatic-maintenance-coordinator.mjs",
+      "sha256": "276b63f98c2b1432a3224ac27d033695aee062c7db31479a29223e77e6b956f1",
+      "kind": "added",
+      "bytes": 1623,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "lab/release-files/automatic-maintenance-coordinator.mjs"
+    },
+    {
+      "path": "./builtin-openclaw-zQV8Wwjr.js",
+      "sha256": "f121be943b9694cbc73a00529a38235df4f6ebdb652208fa103c44b7a8ca0e80",
+      "kind": "modified",
+      "baseSha256": "ee4db712ba53bb40b100b79befabc6d117d16b43dc15e9b62f056a8a7359f110",
+      "bytes": 861352,
+      "hostMtime": "2026-09-22T14:16:16.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./citation-resolution-budget.mjs",
+      "sha256": "93dabf446753b0ee346beea9935bcfc714913cb9b3e7abf626a9b67da3040e40",
+      "kind": "added",
+      "bytes": 1964,
+      "hostMtime": "2026-09-09T07:09:19.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./control-ui-DhD7PO_6.js",
+      "sha256": "22d45d6970a05a3bd57ad123803c6977a49d04f5746415d6e756948e768afe52",
+      "kind": "modified",
+      "baseSha256": "638fd21e36e1ed8b6b2d6d02608fd59485f1c3a7bb65d28276d7c860c264f205",
+      "bytes": 41927,
+      "hostMtime": "2026-09-22T17:47:15.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./control-ui/asset-manifest.json",
+      "sha256": "63fdae94b4f1f6b036430bcb161a02a926e7c9bd42bd280f988a507099d56837",
+      "kind": "modified",
+      "baseSha256": "a967daf8fe509bc38378f53ee9a1b8d7de8181e6adb7e3dc9c21c3ae3fe39dbc",
+      "bytes": 159310,
+      "hostMtime": "2026-09-22T17:47:15.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./control-ui/assets/control-ui-boot-chat-DWTSrxxk-rtc-v4.js",
+      "sha256": "7e4bcc734a656bd91d731fb1cfc8169e2b61a2a12f5745bf17c7ab70bb099a60",
+      "kind": "added",
+      "bytes": 786242,
+      "hostMtime": "2026-09-22T17:47:15.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./control-ui/assets/volcengine-rtc-4.68.1.esm.js",
+      "sha256": "5a66d63e574bd4858f8479fe73203780983e8f082b74cfd2da0dc1b3b1fa0c3d",
+      "kind": "added",
+      "bytes": 1453732,
+      "hostMtime": "2026-09-22T17:47:15.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./control-ui/assets/volcengine-rtc-managed-room-client.js",
+      "sha256": "cee065c7fbe8a3ca2cfa440fb78cb107f37e18592baa97e8e1f57b56597b08bc",
+      "kind": "added",
+      "bytes": 18346,
+      "hostMtime": "2026-09-22T17:47:15.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./cron-6EvXRcEQ.js",
+      "sha256": "bbffaa91c03e5671dbbdf769bfbd7673227eb1b466fc72b2fb8dfe3c7a824c88",
+      "kind": "modified",
+      "baseSha256": "f1c7a7db4bc046a42059e24329ae5788ab9efa470b20ea5f4bceeeaf7a675670",
+      "bytes": 63181,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "lab/release-files/three-fixes-cron-cron-6EvXRcEQ.js"
+    },
+    {
+      "path": "./cron-tool-CPu6etIM.js",
+      "sha256": "75ba8152b283631a0d71d26fecfeb80a871391a730c49c11d4596d0f6bfc5722",
+      "kind": "modified",
+      "baseSha256": "484906fd5b74c10114f07d2a9f7baeada7b22f341b815c85eedd32af08d36627",
+      "bytes": 70985,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "lab/release-files/three-fixes-cron-cron-tool-CPu6etIM.js"
+    },
+    {
+      "path": "./database-verify-resource-group.mjs",
+      "sha256": "87eda8ea396327d1474e1a59260b8189407d407062dcf3b3ba1df7e067b0983d",
+      "kind": "added",
+      "bytes": 3299,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "lab/release-files/database-verify-resource-group.mjs"
+    },
+    {
+      "path": "./db91-integrity-bootstrap.mjs",
+      "sha256": "3b0b3e2da8162faca7fba820e56392bf3b9817cc32cd166304730a834024caa3",
+      "kind": "modified",
+      "baseSha256": "a4c47736b401a2f9be8baa959295ba75092a86c57d5f1fcddb0814a524c68865",
+      "bytes": 6042,
+      "hostMtime": "2026-09-08T16:56:45.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./db91-read-ahead.mjs",
+      "sha256": "9d6cc4d80251c8627b0390fdddf01498f832bda75d6b4169717d1a53dfaed20c",
+      "kind": "added",
+      "bytes": 2848,
+      "hostMtime": "2026-09-08T16:56:45.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./db91-state-read-ahead.mjs",
+      "sha256": "b051c261177cdb358826c0b8e40248be4967b2eefb6552e379dc895ff10de9d8",
+      "kind": "added",
+      "bytes": 2098,
+      "hostMtime": "2026-09-08T16:56:45.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./db91-trajectory-sweep.mjs",
+      "sha256": "856ce3f8f0d98a79000a089f70ef3d18b592bc8b8d5162cfa7dcd4c2d8082d75",
+      "kind": "added",
+      "bytes": 3469,
+      "hostMtime": "2026-09-08T16:56:45.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./delivery-completion-Do3nBV6b.js",
+      "sha256": "d223a342ad217203dacac3fb6fc87b28e853b6f6f1afa0673e177cca1f1322d1",
+      "kind": "modified",
+      "baseSha256": "0c9f3a47d6a6ca7687a3cc1fae41b41b515942ac9617be3417f94d675392916c",
+      "bytes": 16100,
+      "hostMtime": "2026-09-11T16:33:36.000Z",
+      "alsoInRepo": "lab/release-files/dm-delivery-notice-delivery-completion-Do3nBV6b.js"
+    },
+    {
+      "path": "./dispatch-from-config-DOJq_7CI.js",
+      "sha256": "f150902ab3ebf2c9ccb19c4c5eb5158b469554553992a76b1c5e772fe7db39bd",
+      "kind": "modified",
+      "baseSha256": "f7b3f9dc52b54c295b417c83d9f12d2026d1571a524369635035211b288f81b2",
+      "bytes": 166719,
+      "hostMtime": "2026-09-22T14:16:16.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dreaming-phases-C5ItPb99.js",
+      "sha256": "a72386d36ce5fabdbf3b5efa170efccc1656118fd95a4ff11414a85c0487ba92",
+      "kind": "modified",
+      "baseSha256": "c6dca1a88c2a32eb22b00d55aff978810b6b0f51c30b48c4f1a0e390ddd70dbb",
+      "bytes": 40950,
+      "hostMtime": "2026-09-18T13:32:02.000Z",
+      "alsoInRepo": "lab/release-files/dreaming-phases-C5ItPb99.js"
+    },
+    {
+      "path": "./embedded-agent-helpers-CzpaLpCq.js",
+      "sha256": "342e6269ad41e2db113ed35ef4499e7a7ea051a8285ea68baf495d38c2ccbfc2",
+      "kind": "modified",
+      "baseSha256": "3a4f8bfcf483cf3402b4cb15e405531422839f53385438b21c9812e9dc5ccbae",
+      "bytes": 42468,
+      "hostMtime": "2026-09-09T12:10:33.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./engine-storage-C1hCjs4v.js",
+      "sha256": "feb18d0eb6416bf328784df96eab628b32a942d33aa751184801b7a15815f85a",
+      "kind": "modified",
+      "baseSha256": "e8ae645e690a5d190857c106a77b4cebe1405dd15a7bbd6b65f9c317e51c0909",
+      "bytes": 6327,
+      "hostMtime": "2026-09-09T07:09:19.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./exec-approvals-store-D159_AKa.js",
+      "sha256": "231279ca6aeea755bd63eb0c06219a254d11236c39e4a1a51ffe126fc452f5c1",
+      "kind": "modified",
+      "baseSha256": "173d3fecf20e9e8fe1e7da153292224391dea6f5afad0cdebea116c420653789",
+      "bytes": 11018,
+      "hostMtime": "2026-09-15T00:33:34.000Z",
+      "alsoInRepo": "lab/release-files/exec-approvals-store-D159_AKa.js"
+    },
+    {
+      "path": "./extensions/memory-core/manager-runtime.js",
+      "sha256": "115e5f41ab576192389c0d0282baccdf79ac7a8acbbea2b7873602bf89242f9d",
+      "kind": "modified",
+      "baseSha256": "22a5d934b4b970dc6232600df752a6c1a1ac6d95a20dff7254c1f26ac5ccb9d9",
+      "bytes": 263097,
+      "hostMtime": "2026-09-11T16:33:36.000Z",
+      "alsoInRepo": "lab/release-files/memory-vector-chunks-manager.js"
+    },
+    {
+      "path": "./extensions/workboard/index.js",
+      "sha256": "66e7b126907ccee1d6decb7c40b1a5ab80cbac7818a4ce2cc2e768f681d8f03f",
+      "kind": "modified",
+      "baseSha256": "6acf741573bb677c503228a68037d8826a02aba9f441a2ac7733470fa0c38ed7",
+      "bytes": 61381,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "lab/release-files/lifecycle-workboard-index.js"
+    },
+    {
+      "path": "./gateway-DVu5Urba.js",
+      "sha256": "e6e07ff7f43bc29124039984f7672adca49cd935272c76c0210e9b20274d864e",
+      "kind": "modified",
+      "baseSha256": "2beb3a88a1a0609e46b3f331473a73a63b1c8f10454359a5a3ed6c9582a68344",
+      "bytes": 20403,
+      "hostMtime": "2026-09-13T09:27:56.000Z",
+      "alsoInRepo": "lab/release-files/gateway-self-config-authority/gateway-DVu5Urba.js"
+    },
+    {
+      "path": "./gateway-caller-context-CRUBJj3M.js",
+      "sha256": "7c7a66ecc1c579ac1c4c0ac0617c6013b22eb284ab4b624e94784f4ee21c4cba",
+      "kind": "modified",
+      "baseSha256": "2514aa14791b88fbd3b12897a58ddc303f57a45cd2c6ce092c95b0286c2f7f0b",
+      "bytes": 9320,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "lab/release-files/three-fixes-cron-gateway-caller-context-CRUBJj3M.js"
+    },
+    {
+      "path": "./gemini-web-search-provider.runtime--94tDlhY.js",
+      "sha256": "d07766e2b99e1864b1b01390fec78fae145a68c196f338ec4181de400058cbaf",
+      "kind": "modified",
+      "baseSha256": "bac4d076c8fd3de180e103789f5cdd0c2de789f55315e1c942e94bb0a1f8baff",
+      "bytes": 13215,
+      "hostMtime": "2026-09-09T07:09:19.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./get-reply-CqW1y05D.js",
+      "sha256": "fcfca37fee6b490c0b6bf1848a8e591aaf2a043c9a41271e1e40050097239f36",
+      "kind": "modified",
+      "baseSha256": "d1e8f0f12a8a4507fba972f34723ecea1944a9a72962846a9a05d93ee8723648",
+      "bytes": 305373,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "lab/release-files/get-reply-CqW1y05D.js"
+    },
+    {
+      "path": "./host-capability-Dq3cEEWF.js",
+      "sha256": "4535cb192dff71e0d3602f19ebbba6191f98a2f21013c2fa33e0b87386eaa5ce",
+      "kind": "modified",
+      "baseSha256": "2f469e47f7a7ef6c7b8db0434360445c296fcfae4ff9c4491ab4a141510721c3",
+      "bytes": 24683,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "lab/release-files/three-fixes-cron-host-capability-Dq3cEEWF.js"
+    },
+    {
+      "path": "./inference-route-Bv_D48Z8.js",
+      "sha256": "11a127d159f836d09941eaf0abd760535d336d91c7a51ebee7a53fd8da5443d0",
+      "kind": "modified",
+      "baseSha256": "9d64dbf86259ecc8af74a7d55d34281b2c9253c7e91cd45fee9de1372f6b70f1",
+      "bytes": 9009,
+      "hostMtime": "2026-09-11T16:33:36.000Z",
+      "alsoInRepo": "lab/release-files/system-agent-flash/inference-route-Bv_D48Z8.js"
+    },
+    {
+      "path": "./lifecycle-YRwzpo9_.js",
+      "sha256": "82c249a02236215329b3b3bb747b7e58b94035d8c546e2296e1fe63372047aa4",
+      "kind": "modified",
+      "baseSha256": "fadb95ce09a408c0b8b45d81755f9803afd306c7ae421c1bb0b25c686275abb8",
+      "bytes": 34367,
+      "hostMtime": "2026-09-11T16:33:36.000Z",
+      "alsoInRepo": "lab/release-files/dm-delivery-notice-lifecycle-YRwzpo9_.js"
+    },
+    {
+      "path": "./list-snapshot-revision-B919xtbt.js",
+      "sha256": "ea5c9cfbe61b203bcf838e4bf0a1d1a43934b26b8598028e7bdae255f292833c",
+      "kind": "modified",
+      "baseSha256": "f0c04eff4dcd8eb70dcd76e99249de4bd22c98baa5f87c5e4d3187ecd5e68ff7",
+      "bytes": 76349,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "lab/release-files/three-fixes-cron-list-snapshot-revision-B919xtbt.js"
+    },
+    {
+      "path": "./memory-core-host-engine-sessions-CAnvQ_5o.js",
+      "sha256": "697381c0f781baae3a7d622b8156162192f820be6cf781cec0ff37bb08891f48",
+      "kind": "modified",
+      "baseSha256": "0b117c22162dc42db57ea50d6e940ce6a73f759cab05440f101573e722a51de4",
+      "bytes": 42304,
+      "hostMtime": "2026-09-18T13:32:02.000Z",
+      "alsoInRepo": "lab/release-files/memory-core-host-engine-sessions-CAnvQ_5o.js"
+    },
+    {
+      "path": "./memory-schema-BSs9MQgq.js",
+      "sha256": "7267571c87d05e1662a8277b86a22760d77679e7ff48474022983eec2238584b",
+      "kind": "modified",
+      "baseSha256": "826691c2d7cb634ed6762908e34f015aaf508eaaabc9936a73cafd83929f4da5",
+      "bytes": 37752,
+      "hostMtime": "2026-09-14T14:05:06.000Z",
+      "alsoInRepo": "lab/release-files/memory-schema-BSs9MQgq.js"
+    },
+    {
+      "path": "./openclaw-agent-db-CUTe8BX6.js",
+      "sha256": "046d7a8253f5a97b1887bdbe5ae5d3826b6bae53aa84d5240e2f1216f4421cc5",
+      "kind": "modified",
+      "baseSha256": "acbf762a26fcb52e6b6561b3258d4ad54ee7497ee29958bc6f01c445a609320b",
+      "bytes": 21374,
+      "hostMtime": "2026-09-14T16:01:42.000Z",
+      "alsoInRepo": "lab/release-files/openclaw-agent-db-CUTe8BX6.js"
+    },
+    {
+      "path": "./openclaw-agent-db-maintenance-DYSkzMMg.js",
+      "sha256": "b6c84c9a8cc7f98ca858f434c10c5c66d8fa253d11615ec90851b0729c123a9e",
+      "kind": "modified",
+      "baseSha256": "f93c7dc34047e4f37a4c418cd7268012e51d407d1d3270b43cf216c5cec3fa00",
+      "bytes": 151828,
+      "hostMtime": "2026-09-09T07:09:19.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./openclaw-database-verify-a3Yme38Y.js",
+      "sha256": "bace8934c1550e2219ac1c4085a16808c53e29d5b44f00c39ab70e48299edce9",
+      "kind": "modified",
+      "baseSha256": "4763d165dc8b34dc3eb973677f9bff488e55fec946ad69a18be07ad441b90458",
+      "bytes": 9184,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "lab/release-files/openclaw-database-verify-a3Yme38Y.js"
+    },
+    {
+      "path": "./openclaw-state-db-Bh3Bq87y.js",
+      "sha256": "0e366560308f226295f31ff4ecbedfbd9e700a9432b2a1935febc238a4d102db",
+      "kind": "modified",
+      "baseSha256": "2c93ad49def5b11f38606f33d5d0bec57a0a2059c2a28595e3791991b1f9b0f4",
+      "bytes": 196638,
+      "hostMtime": "2026-09-08T16:56:45.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./openclaw-tools-BODVdJQD.js",
+      "sha256": "b20468a24be539da4f7618ac1d82cc4c6708ba0dcee3f1e178f2a719c00e3527",
+      "kind": "modified",
+      "baseSha256": "bf54224a8e3a7f7017d067ba6cc4af10902acf3898243554f1e4e0b6daac1d18",
+      "bytes": 774193,
+      "hostMtime": "2026-09-22T14:16:16.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./payloads-Ch7RD6Ym.js",
+      "sha256": "d03cf80cdc443e8efaa23a99bac3f3595402c696e74f8877328011d49b10df5d",
+      "kind": "modified",
+      "baseSha256": "a570a6431794810da8f44ed67fb45cd8ae5a0c1d3db198b77bfcefae775bc804",
+      "bytes": 11048,
+      "hostMtime": "2026-09-09T12:10:33.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./project-memory-readonly.mjs",
+      "sha256": "2eb8daf953c52e500ea211b50a65f25a25f45b510828d664612a40013baf85ba",
+      "kind": "added",
+      "bytes": 3735,
+      "hostMtime": "2026-09-09T07:09:19.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./provider-policy-surface-bKCE_kaj.js",
+      "sha256": "faaf92510b5bd40ce767ee0640e69b97cce8698ad4922a1fc943fe2da3518c44",
+      "kind": "modified",
+      "baseSha256": "4711dae93f8bec59f1571d229f69167737376249624b7b75f92100ec0196b5e7",
+      "bytes": 2922,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "lab/release-files/optional-provider-policy-surface.js"
+    },
+    {
+      "path": "./provider-web-search-BBL3jMNu.js",
+      "sha256": "315728c200357f3451daa928b5661144c8bddd274621a7b25f8be54b4614431f",
+      "kind": "modified",
+      "baseSha256": "55bf64e40211d280b9a749b0418a0097df1540df2ff5d21b1917a0768652d0f2",
+      "bytes": 2494,
+      "hostMtime": "2026-09-09T07:09:19.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./public-surface-loader-V55JV4Jk.js",
+      "sha256": "dec325ae26f3f5e42ee86fc962f49b9d7edf05b9edc03c061555c98fb3d34bce",
+      "kind": "modified",
+      "baseSha256": "57794d0baea89de6f9fc7a1fc975ff7f3bdc230d895f88a9833c8da9108ba943",
+      "bytes": 5258,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "lab/release-files/optional-public-surface-loader.js"
+    },
+    {
+      "path": "./question-BdQvLMDb.js",
+      "sha256": "43ffe97b223a46c3ae411a80e98d9dcfb6e578526d8392aef897dcc46dc2504e",
+      "kind": "modified",
+      "baseSha256": "352b23f7dd3530ef69741bcf012568a9dc8f0b05cf8d317a45903ebfd0016ba6",
+      "bytes": 15625,
+      "hostMtime": "2026-09-22T14:16:16.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./realtime-session-harness-CEO5kVAJ.js",
+      "sha256": "b394e47d6ac125dc357a74732c15974cae05e392c72e2c8184c6f6db4bb839b0",
+      "kind": "modified",
+      "baseSha256": "ea7f772f4e383c58fed00ec7a0922ce73bd58173acfde5cebde869672279ce85",
+      "bytes": 79127,
+      "hostMtime": "2026-09-22T14:16:16.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./run-session-target-D4dx7X-Q.js",
+      "sha256": "c0776b3f63b998266be0306ce7708243ef7c8918a01fa9a358c80504105b51f1",
+      "kind": "modified",
+      "baseSha256": "50c3488067f7be0c836d503fd99cfceadb0ec9c8f4e4bfad7fe53fdca89f6970",
+      "bytes": 10567,
+      "hostMtime": "2026-09-09T23:32:03.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./runtime-api-1CCazqtv.js",
+      "sha256": "220fed4ca7b9316c50d42c9fcecbdaa7456a4197313c0268ed231a3e55296ebb",
+      "kind": "modified",
+      "baseSha256": "6e4bfe8509e71dd79a5adce1838a1ecbe1e1e62e68bd7ead22e9d7d76cacf1c6",
+      "bytes": 194162,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "lab/release-files/lifecycle-runtime-api.js"
+    },
+    {
+      "path": "./runtime-store.sqlite-D0DF2c9M.js",
+      "sha256": "ff4e9dc5b2295fbcb9da229b2546f4101844c72a0f91e0a7d49aa4dbbfbf6d50",
+      "kind": "modified",
+      "baseSha256": "abe31f350e2711ba1992b42f7e446e8b01c195a68c8c4b01a9355d63e38e5d2c",
+      "bytes": 10650,
+      "hostMtime": "2026-09-08T16:56:45.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./server-reload-handlers-DblQx0j4.js",
+      "sha256": "e566fd2554eb041d632c89fd1aa98fc47147eb27493aeb17d18295a50ff37951",
+      "kind": "modified",
+      "baseSha256": "2c97321c2adff17b58181e08fa8a4734030ef2799a9679cf7aeb52e2a3d6491e",
+      "bytes": 122915,
+      "hostMtime": "2026-09-13T09:27:56.000Z",
+      "alsoInRepo": "lab/release-files/gateway-self-config-realpath/server-reload-handlers-DblQx0j4.js"
+    },
+    {
+      "path": "./server-start-BNcm1gUN.js",
+      "sha256": "9b71ace5b596fffdaf4263d14fbc5ddac6c8d413dbd48253da7d69fc8bdb6205",
+      "kind": "modified",
+      "baseSha256": "845b97e1f276c426497fea21eedb8f7650d16e11dc70765e32e1ef4080e21864",
+      "bytes": 275082,
+      "hostMtime": "2026-09-14T16:01:42.000Z",
+      "alsoInRepo": "lab/release-files/server-start-BNcm1gUN.js"
+    },
+    {
+      "path": "./session-accessor-K0XuW6ln.js",
+      "sha256": "21f2a5695f1caa2f3c18784f92a6f2beb7f54f71ad1378c5125f0d1d0563ca77",
+      "kind": "modified",
+      "baseSha256": "3b18271baa0cc644ab805ab077db73f4f331bc6bd42a85707bfaadab52a7bc08",
+      "bytes": 261949,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./session-accessor.sqlite-entry-BlklNPKQ.js",
+      "sha256": "6b12190ca8e975ea6c8bce6703af805e01a1ef492e83f4829a6fe0f90669d96b",
+      "kind": "modified",
+      "baseSha256": "4e633822e4340b38a456dba3564aa0344661e24cad8b02baa0f24d58216e9cd1",
+      "bytes": 35945,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./session-accessor.sqlite-scope-BwPKGcgm.js",
+      "sha256": "caffb3629c5cbfb1fbf6027c8dccac7fa7d829d30bd8f4ddac8c4046a4dfbf34",
+      "kind": "modified",
+      "baseSha256": "193a84fe7518a8b83db2315acb0518653011087b17f14f3f9f01cc7aa8a6c834",
+      "bytes": 10744,
+      "hostMtime": "2026-09-14T16:01:42.000Z",
+      "alsoInRepo": "lab/release-files/session-accessor.sqlite-scope-BwPKGcgm.js"
+    },
+    {
+      "path": "./session-accessor.sqlite-transcript-state-Cz9g7S9v.js",
+      "sha256": "dd00be09cbeff5bbf3ffeb9b16d3a1205e3f3abc783bf6ffbc3594c97071c208",
+      "kind": "modified",
+      "baseSha256": "686ae2059ab36a85f9c93a9de9fdc8c75212b5fc978ebcb780c6abca1bd595e5",
+      "bytes": 33264,
+      "hostMtime": "2026-09-11T16:33:36.000Z",
+      "alsoInRepo": "lab/release-files/session-accessor.sqlite-transcript-state-Cz9g7S9v.js"
+    },
+    {
+      "path": "./session-history-eviction-d5aiCsHS.js",
+      "sha256": "014136ce2b566bc589490f89f6d2a4ce5d437f524c9ceb33453582496160fe2d",
+      "kind": "modified",
+      "baseSha256": "0a22916a13f09a4436c7f9bab3665920e4cba58fbc347b6d94fcaae772367566",
+      "bytes": 47324,
+      "hostMtime": "2026-09-14T16:01:42.000Z",
+      "alsoInRepo": "lab/release-files/session-history-eviction-d5aiCsHS.js"
+    },
+    {
+      "path": "./session-sharing-BlMqwMBH.js",
+      "sha256": "615cd9d6b87f11be7453c5c1fe46c75a6b1c7b9eebe97eceedc87ba2dd58f0bf",
+      "kind": "modified",
+      "baseSha256": "e2ce3c677502ce34ef66fe9d4b39adb8f8a1a2fdb7718592efe652bb36b97d22",
+      "bytes": 51841,
+      "hostMtime": "2026-09-17T03:45:10.000Z",
+      "alsoInRepo": "lab/release-files/exactread-vlab-parity/session-sharing-BlMqwMBH.js"
+    },
+    {
+      "path": "./session-transcript-reconcile-j5qhAafV.js",
+      "sha256": "b0200676ea135b981d2caff2b6ec08cd608a75e48858fcd333519b046e613e89",
+      "kind": "modified",
+      "baseSha256": "0c0461d43f9147aa6b8d7991466f5f3f1b07924306ccb7cf14cafcd0315b84f3",
+      "bytes": 11470,
+      "hostMtime": "2026-09-14T16:01:42.000Z",
+      "alsoInRepo": "lab/release-files/session-transcript-reconcile-j5qhAafV.js"
+    },
+    {
+      "path": "./session-utils-store-Dlphca2N.js",
+      "sha256": "26adfebaf50c68339e8f09456a8b03ed1382ad0e5938e007a1caa116e1c7dc39",
+      "kind": "modified",
+      "baseSha256": "e4b35b47a03fe8ebfc221a59c5c0040f96a89e7329177323cbfcf7266c0348a4",
+      "bytes": 27001,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "lab/release-files/session-utils-store-Dlphca2N.js"
+    },
+    {
+      "path": "./sessions-helpers-Bn_vDNby.js",
+      "sha256": "4c8dd6f402ee54ce0eee133cfefe25e01340a485d598390ad21d22fc8ed8206c",
+      "kind": "modified",
+      "baseSha256": "f88076204b3df1773c093e837f436c902a5fee899ebda1760be8b34d6ae5eb60",
+      "bytes": 32414,
+      "hostMtime": "2026-09-13T07:08:10.000Z",
+      "alsoInRepo": "lab/release-files/gateway-self-config-authority/sessions-helpers-Bn_vDNby.js"
+    },
+    {
+      "path": "./sessions-spawn-tool-1FQMTkIo.js",
+      "sha256": "52b6ea5448e758f6d764200d946853be80a0fe5b419629801ee761173741d848",
+      "kind": "modified",
+      "baseSha256": "30dd4e987276fc0b13e18a716a46e81cd9044a4362a8e8881642c783a4c6f9c3",
+      "bytes": 169791,
+      "hostMtime": "2026-09-13T04:31:51.000Z",
+      "alsoInRepo": "lab/release-files/sessions-send-owner-sessions-spawn-tool-1FQMTkIo.js"
+    },
+    {
+      "path": "./sqlite-begin-contention-retry.mjs",
+      "sha256": "0540c343e348045452d68ddeb8ca62bc9e46303a517011eb17ca516a3e85ce4d",
+      "kind": "added",
+      "bytes": 2558,
+      "hostMtime": "2026-09-14T16:01:42.000Z",
+      "alsoInRepo": "lab/release-files/sqlite-begin-contention-retry.mjs"
+    },
+    {
+      "path": "./sqlite-store-CH-caj1l.js",
+      "sha256": "603c906a9695a636bb331f8f3a6208a6c396f2b479771e748ec6e91bd2f644dd",
+      "kind": "modified",
+      "baseSha256": "3b091bc3da622e68ae5502e863ed71eea1c63bb73720f555542728cd78009e66",
+      "bytes": 49412,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "lab/release-files/lifecycle-sqlite-store.js"
+    },
+    {
+      "path": "./state/openclaw-database-verify.worker.js",
+      "sha256": "e9966af8c1ee78f6974b5dd00f95e291bdd4ffe6e38ebafeb718b5dbaa58ecc5",
+      "kind": "modified",
+      "baseSha256": "ab8ffeaedfa56059e919ae0320b3202ca7da33a3d2de78afcb3700c8656b6040",
+      "bytes": 3862,
+      "hostMtime": "2026-09-08T16:56:45.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./system-agent-BhnNvC3z.js",
+      "sha256": "50f9c3e48d5c2defacca72da0e5420f8b369095c511bdc148a0ad1791ad22c06",
+      "kind": "modified",
+      "baseSha256": "edce966071cb789c23d00f6b80757f4fcf91f7ecc877236da599a8430fa22442",
+      "bytes": 54232,
+      "hostMtime": "2026-09-13T09:27:56.000Z",
+      "alsoInRepo": "lab/release-files/gateway-self-config-authority/system-agent-BhnNvC3z.js"
+    },
+    {
+      "path": "./system-prompt-params-B645JcX8.js",
+      "sha256": "24d196636e47b585231ef18de8a4dbbafa8701aefb06c04b70b3c114f3fa1ec9",
+      "kind": "modified",
+      "baseSha256": "df80c676f3d6fd201212bd4c95db25898c6a00dd61f4b598f7e8c5db04d94750",
+      "bytes": 62144,
+      "hostMtime": "2026-09-09T07:09:19.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./talk-DkFuKRod.js",
+      "sha256": "8626acc98d1ea5076d7b4e455246a02f0f80372b9f38cc4161c83a2aa5da840b",
+      "kind": "modified",
+      "baseSha256": "bc7f7e15e211fc7669446b221222de980a355a042c4f8a40e301357186e5aa42",
+      "bytes": 184193,
+      "hostMtime": "2026-09-22T14:16:16.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./task-summary-qdovVAE7.js",
+      "sha256": "788de4765ce51bbe2eae0f09a9545e91f6e4822010fb5eed3493a775402a6d5b",
+      "kind": "modified",
+      "baseSha256": "f609dcbd5f8c080e692fa21f79ab86fe83b449138f3e7ff757c87f3bd1e12b32",
+      "bytes": 5241,
+      "hostMtime": "2026-09-17T13:42:18.000Z",
+      "alsoInRepo": "lab/release-files/task-access-storecache/task-summary-qdovVAE7.js"
+    },
+    {
+      "path": "./tasks-DNVtnKlS.js",
+      "sha256": "238760cc0681d00c5c13dd2bb942dc85cf43eb752bb5d43c00d3787d5641ec7a",
+      "kind": "modified",
+      "baseSha256": "5b918b48d82bfdbdeacf8b3062c0e387f196643832465bfa79ea4cd9a7043968",
+      "bytes": 7772,
+      "hostMtime": "2026-09-17T13:42:18.000Z",
+      "alsoInRepo": "lab/release-files/task-access-storecache/tasks-DNVtnKlS.js"
+    },
+    {
+      "path": "./tools-Byg09TOP.js",
+      "sha256": "091c318773a6bd3f4c332ef40c42d8ca10aa0c586346527dde986e2fb0433e30",
+      "kind": "modified",
+      "baseSha256": "cc33a6027e379008655ae73cab4973cdb62ef51af39afa209d478727bb3e0d4e",
+      "bytes": 36754,
+      "hostMtime": "2026-09-11T16:33:36.000Z",
+      "alsoInRepo": "lab/release-files/memory-search-timeout-tools.js"
+    },
+    {
+      "path": "./versa-cron-shared-management-v1.mjs",
+      "sha256": "8c0417d80b2a341285dee975767abfaf3c30f334a610970478767d61bf79244b",
+      "kind": "added",
+      "bytes": 7705,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "patches/cron-shared-management/runtime.mjs"
+    },
+    {
+      "path": "./workboard-lookup-cache.mjs",
+      "sha256": "8250ff78ec0baab63cb38f4e78dc71ee0f0cd9847f414b62491c191a6ccc3c4e",
+      "kind": "added",
+      "bytes": 2693,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "lab/release-files/workboard-lookup-cache.mjs"
+    }
+  ],
+  "residue": [
+    {
+      "path": "./agent-runner.runtime-CAdsMsQt.js.vlab91-runtime-footer-v1.bak",
+      "sha256": "02b7183a45a9f467bbc2afd548c4e01b04437ea4fa2f1b6707941515c1a087a0",
+      "alsoInBase": true,
+      "hostMtime": "2026-09-04T14:15:40.000Z"
+    },
+    {
+      "path": "./bash-tools-DiAfkLAC.js.pre-worker-exec-config-domain-openclaw81-v1",
+      "sha256": "9a040020b9de4dfe8aa37b29f2eafbf331ae476a4b08055dc759592cda4c1cf8",
+      "alsoInBase": true,
+      "hostMtime": "2026-09-04T13:33:49.000Z"
+    },
+    {
+      "path": "./builtin-openclaw-zQV8Wwjr.js.vlab91-native-attempt-bridge-v1.bak",
+      "sha256": "62599de51a360163f8020d3f2c9ffbf7481a2424b850363d77308a99056a5303",
+      "alsoInBase": true,
+      "hostMtime": "2026-09-04T17:06:50.000Z"
+    },
+    {
+      "path": "./dreaming-phases-C5ItPb99.js.predeploy-20260918-213202",
+      "sha256": "c6dca1a88c2a32eb22b00d55aff978810b6b0f51c30b48c4f1a0e390ddd70dbb",
+      "alsoInBase": false,
+      "hostMtime": "2026-09-04T13:24:41.000Z"
+    },
+    {
+      "path": "./gateway-DVu5Urba.js.vlab91-native-attempt-bridge-v1.bak",
+      "sha256": "5f8fcd95d473b7284a41e5ea66dbfdf2fc970f48f0ec52b3771aa6ed76bd932f",
+      "alsoInBase": true,
+      "hostMtime": "2026-09-04T17:23:18.000Z"
+    },
+    {
+      "path": "./host-capability-Dq3cEEWF.js.vlab91-native-attempt-bridge-v1.bak",
+      "sha256": "2b3ef96244cd4065d1141899179aa1b9b8a0ecdaedd93f80e9e851a385c8653c",
+      "alsoInBase": true,
+      "hostMtime": "2026-09-04T17:23:18.000Z"
+    },
+    {
+      "path": "./loader-UHuBXZwI.js.vlab91-native-attempt-bridge-v1.bak",
+      "sha256": "5b9a0239eb83d755aab9e6793cc3dd82749877ab86ef04a8698979593a56f56a",
+      "alsoInBase": true,
+      "hostMtime": "2026-09-04T17:55:40.000Z"
+    },
+    {
+      "path": "./memory-core-host-engine-sessions-CAnvQ_5o.js.predeploy-20260918-213202",
+      "sha256": "0b117c22162dc42db57ea50d6e940ce6a73f759cab05440f101573e722a51de4",
+      "alsoInBase": false,
+      "hostMtime": "2026-09-04T13:24:42.000Z"
+    },
+    {
+      "path": "./openclaw-tools-BODVdJQD.js.v-worker-sessions-yield-v0.2.8-v3.bak",
+      "sha256": "37238a5c31e6f21568ce9d7b398d4395c81ea36fea02c699eeacfcff8a22dd38",
+      "alsoInBase": true,
+      "hostMtime": "2026-09-04T13:33:49.000Z"
+    },
+    {
+      "path": "./openclaw-tools-BODVdJQD.js.v-worker-tool-proxy-v0.2.8-agent-owner.bak",
+      "sha256": "bd1a5fd5fd562a69b5341a1b4eb85a6ddd5621199264889d017a9e134ca96790",
+      "alsoInBase": true,
+      "hostMtime": "2026-09-04T13:33:49.000Z"
+    },
+    {
+      "path": "./openclaw-tools-BODVdJQD.js.vlab91-native-attempt-bridge-v1.bak",
+      "sha256": "35c873c5b372f687ca6adb6a62d9a5f2efec817153f0a35e58d9eef4694031b1",
+      "alsoInBase": true,
+      "hostMtime": "2026-09-04T17:06:50.000Z"
+    },
+    {
+      "path": "./reply-prefix-Ddn3qL_7.js.vlab91-runtime-footer-v1.bak",
+      "sha256": "9432da24d2064a063a1f3126c3144ef73c32009310e2a8cead02b13b11be00aa",
+      "alsoInBase": true,
+      "hostMtime": "2026-09-04T14:15:40.000Z"
+    },
+    {
+      "path": "./session-sharing-BlMqwMBH.js.predeploy-20260917-114510",
+      "sha256": "23202d57d2de0840847faaa8d19ae94d98a8b529fcee14a8607c30315bc0af89",
+      "alsoInBase": false,
+      "hostMtime": "2026-09-10T14:04:00.000Z"
+    },
+    {
+      "path": "./sessions-spawn-tool-1FQMTkIo.js.v-worker-sessions-spawn-v0.2.8-v4.bak",
+      "sha256": "a21770222831b6574680621577da6bb0727903117210f20968afdb59a83975b8",
+      "alsoInBase": true,
+      "hostMtime": "2026-09-04T13:33:49.000Z"
+    },
+    {
+      "path": "./sessions-spawn-tool-1FQMTkIo.js.v-worker-sessions-spawn-v0.2.9-v1.bak",
+      "sha256": "7c68921b2f04cf5f626156a7ddd7f164c43cebf13a197f8c9f0e66d2e5b97c1b",
+      "alsoInBase": true,
+      "hostMtime": "2026-09-04T14:15:40.000Z"
+    },
+    {
+      "path": "./talk-DkFuKRod.js.bak-owner-terminal-20260922-134058",
+      "sha256": "bc7f7e15e211fc7669446b221222de980a355a042c4f8a40e301357186e5aa42",
+      "alsoInBase": false,
+      "hostMtime": "2026-09-22T05:40:58.000Z"
+    },
+    {
+      "path": "./task-summary-qdovVAE7.js.predeploy-20260917-213003",
+      "sha256": "f609dcbd5f8c080e692fa21f79ab86fe83b449138f3e7ff757c87f3bd1e12b32",
+      "alsoInBase": false,
+      "hostMtime": "2026-09-04T13:24:44.000Z"
+    },
+    {
+      "path": "./task-summary-qdovVAE7.js.predeploy-20260917-214218",
+      "sha256": "f609dcbd5f8c080e692fa21f79ab86fe83b449138f3e7ff757c87f3bd1e12b32",
+      "alsoInBase": false,
+      "hostMtime": "2026-09-04T13:24:44.000Z"
+    },
+    {
+      "path": "./tasks-DNVtnKlS.js.predeploy-20260917-213003",
+      "sha256": "5b918b48d82bfdbdeacf8b3062c0e387f196643832465bfa79ea4cd9a7043968",
+      "alsoInBase": false,
+      "hostMtime": "2026-09-04T13:24:44.000Z"
+    },
+    {
+      "path": "./tasks-DNVtnKlS.js.predeploy-20260917-214218",
+      "sha256": "5b918b48d82bfdbdeacf8b3062c0e387f196643832465bfa79ea4cd9a7043968",
+      "alsoInBase": false,
+      "hostMtime": "2026-09-04T13:24:44.000Z"
+    }
+  ]
+}

@@ -14,6 +14,15 @@ bash -n "${REPO_ROOT}/scripts/apply-vlab-production-parity.sh"
 bash -n "${REPO_ROOT}/scripts/rollback-vlab-production-parity.sh"
 bash -n "${REPO_ROOT}/tests/vlab-production-parity.sh"
 node --test "${REPO_ROOT}/tests/patch-feishu-latest-snapshot-streaming.test.mjs"
+python3 "${REPO_ROOT}/tests/v-release-drift.test.py"
+bash -n "${REPO_ROOT}/scripts/install-v-release-drift.sh"
+python3 "${REPO_ROOT}/tests/v-nightshift-check.test.py"
+bash -n "${REPO_ROOT}/scripts/install-v-nightshift-check.sh"
+# The release production V runs now: core dist, worker plugin, Feishu plugin.
+for component in "" .worker .feishu; do
+  node "${REPO_ROOT}/scripts/verify-release-reproducible.mjs" \
+    --manifest "${REPO_ROOT}/release/captured/v2026.9.1-db91.6-feishu-model-20260924${component}/manifest.json" --quiet
+done
 jq empty "${REPO_ROOT}/config/vlab-production-parity-v1.json"
 "${REPO_ROOT}/tests/vlab-agent-worker-static.sh"
 
@@ -33,13 +42,6 @@ grep -q '"sessionsVisibility": "all"' \
 grep -q '"workerRelease": "8d3b75e' \
   "${REPO_ROOT}/config/vlab-production-parity-v1.json"
 
-if rg -n \
-  '(gho_|github_pat_|AKID|secret(id|key)?[[:space:]]*[:=]|app_secret[[:space:]]*[:=])' \
-  "$REPO_ROOT" \
-  -g '!.git' \
-  -g '!tests/vlab-static.sh'; then
-  echo "possible secret material detected" >&2
-  exit 1
-fi
+"${REPO_ROOT}/scripts/scan-secrets.sh"
 
 echo "vLab static checks passed"

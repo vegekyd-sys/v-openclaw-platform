@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f5edf7" />
+    <title>和 V 说说话</title>
+    <link rel="preload" as="image" href="./assets/v-idle-nohat-20260922.png" />
+    <link rel="preload" as="image" href="./assets/v-tool-busy-20260922.png" />
+    <link rel="preload" as="image" href="./assets/v-tool-very-busy-20260922.png" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body data-voice-state="idle" data-avatar-state="idle">
+    <main class="app-shell">
+      <header class="topbar">
+        <a class="wordmark" href="./" aria-label="V 语音主页">
+          <span class="wordmark-mark">V</span>
+          <span>V</span>
+        </a>
+        <span id="connectionBadge" class="connection-badge"><i aria-hidden="true"></i>准备中</span>
+      </header>
+
+      <div class="voice-layout">
+        <section class="voice-stage" aria-labelledby="voiceTitle">
+          <div class="ambient ambient-one" aria-hidden="true"></div>
+          <div class="ambient ambient-two" aria-hidden="true"></div>
+
+          <div class="portrait-wrap" id="orb" aria-hidden="true">
+            <span class="sound-ring ring-one"></span>
+            <span class="sound-ring ring-two"></span>
+            <span class="sound-ring ring-three"></span>
+            <img id="vAvatar" src="./assets/v-idle-nohat-20260922.png" alt="" />
+            <span class="presence-dot"></span>
+          </div>
+
+          <div class="voice-copy">
+            <p class="eyebrow">V 在这里</p>
+            <h1 id="voiceTitle">和 V 说说话</h1>
+            <p id="statusText" class="status-text">想说话的时候，我都在</p>
+          </div>
+
+          <div class="call-actions">
+            <button id="talkButton" class="talk-button" type="button">
+              <span class="mic-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M12 15.4a3.4 3.4 0 0 0 3.4-3.4V6.4a3.4 3.4 0 1 0-6.8 0V12a3.4 3.4 0 0 0 3.4 3.4Z"/><path d="M5.8 11.6v.5a6.2 6.2 0 0 0 12.4 0v-.5M12 18.3V22M8.8 22h6.4"/></svg>
+              </span>
+              <span class="button-label">开始通话</span>
+            </button>
+            <button id="stopButton" class="stop-button" type="button" hidden>
+              <span aria-hidden="true"></span>结束通话
+            </button>
+          </div>
+
+          <p class="privacy-note"><span aria-hidden="true">✦</span> 你的声音只用于这次对话</p>
+        </section>
+
+        <aside class="conversation-panel" aria-labelledby="conversationTitle" aria-live="polite">
+          <div class="conversation-heading">
+            <div>
+              <p class="eyebrow">此刻</p>
+              <h2 id="conversationTitle">我们的对话</h2>
+            </div>
+            <span class="wave-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+          </div>
+          <div id="conversation" class="conversation">
+            <div class="empty">
+              <span class="empty-spark" aria-hidden="true">✦</span>
+              <p>聊起来以后，我们说过的话会留在这里。</p>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      <details class="connection-details">
+        <summary>
+          <span><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6"/></svg>连接详情</span>
+          <span class="summary-state">仅在排查问题时需要</span>
+        </summary>
+        <div class="details-body">
+          <section class="pipeline" aria-label="连接步骤">
+            <div class="step" data-step="gateway"><span>1</span><div><strong>连接 V</strong><small>建立对话</small></div><em>等待</em></div>
+            <div class="step" data-step="sdk"><span>2</span><div><strong>准备声音</strong><small>加载语音能力</small></div><em>等待</em></div>
+            <div class="step" data-step="room"><span>3</span><div><strong>进入通话</strong><small>连接语音房间</small></div><em>等待</em></div>
+            <div class="step" data-step="audio"><span>4</span><div><strong>打开麦克风</strong><small>开始收听与播放</small></div><em>等待</em></div>
+          </section>
+          <div>
+            <div class="diagnostics-heading"><h3>诊断日志</h3><button id="copyLogButton" type="button">复制日志</button></div>
+            <pre id="diagnosticLog" class="diagnostic-log"></pre>
+          </div>
+        </div>
+      </details>
+    </main>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

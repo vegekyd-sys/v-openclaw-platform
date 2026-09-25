@@ -1,0 +1,16 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/memory-core-host-engine-sessions-CAnvQ_5o.js",
+      "target": "openclaw/dist/memory-core-host-engine-sessions-CAnvQ_5o.js",
+      "before": "0b117c22162dc42db57ea50d6e940ce6a73f759cab05440f101573e722a51de4",
+      "after": "697381c0f781baae3a7d622b8156162192f820be6cf781cec0ff37bb08891f48"
+    },
+    {
+      "source": "lab/release-files/dreaming-phases-C5ItPb99.js",
+      "target": "openclaw/dist/dreaming-phases-C5ItPb99.js",
+      "before": "c6dca1a88c2a32eb22b00d55aff978810b6b0f51c30b48c4f1a0e390ddd70dbb",
+      "after": "a72386d36ce5fabdbf3b5efa170efccc1656118fd95a4ff11414a85c0487ba92"
+    }
+  ]
+}

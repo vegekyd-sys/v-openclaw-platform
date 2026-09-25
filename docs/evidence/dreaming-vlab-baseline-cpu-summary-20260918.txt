@@ -1,0 +1,81 @@
+total 421.1s
+
+== self ==
+ 44.2%    186.1s  (idle) :-1
+  9.0%     37.8s  next :-1
+  8.6%     36.1s  (garbage collector) :-1
+  5.2%     22.1s  parseSqliteSessionEntryRecord openclaw-agent-db-maintenance-DYSkzMMg.js:815
+  2.9%     12.3s  (anon) kysely-sync-DKYGT267.js:144
+  2.6%     10.8s  iterateSqliteQuerySync kysely-sync-DKYGT267.js:191
+  2.1%      8.7s  structuredClone js_transferable:111
+  2.1%      8.7s  couldMatchDefaultRedactPatterns redact-Df68iObN.js:1256
+  1.5%      6.5s  formatMemoryDreamingDay dreaming-DIS78cO9.js:282
+  0.9%      4.0s  _propagate async_hooks:63
+  0.9%      3.9s  lstat :-1
+  0.6%      2.7s  projectCanonicalSessionEntryShape store-writer-state-_Y6b9Vjm.js:121
+  0.6%      2.4s  openSync node:fs:558
+  0.6%      2.4s  RegExp: (^|[\s:({\[,="'`])([\p{C}\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000\u115F\u1160\u3164\uFFA0+]*(?:[A-Za-z_]|%[0-9A-Fa-f]{2})(?:[A-Za-z0-9_.-]|%[0-9A-Fa-f]{2}|[\p{C}\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000\u115F\u1160\u3164\uFFA0+])*=[^&\s<>]*(?:&[\p{C}\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000\u115F\u1160\u3164\uFFA0+]*(?:[A-Za-z_]|%[0-9A-Fa-f]{2})(?:[A-Za-z0-9_.-]|%[0-9A-Fa-f]{2}|[\p{C}\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000\u115F\u1160\u3164\uFFA0+])*=[^&\s<>]*)+) :-1
+  0.5%      2.1s  parseAgentSessionKey session-key-CRjxKW0X.js:141
+  0.5%      2.0s  run :-1
+  0.5%      1.9s  (anon) session-accessor.sqlite-transcript-store-DV0WFe1a.js:933
+  0.4%      1.7s  replacePatternBounded redact-Df68iObN.js:583
+  0.4%      1.5s  prepare :-1
+  0.3%      1.4s  HasPropertyKey guard.mjs:190
+  0.3%      1.3s  redactEncodedFormPairs redact-Df68iObN.js:1074
+  0.3%      1.2s  get :-1
+  0.3%      1.2s  RegExp: \s+ :-1
+  0.3%      1.1s  all :-1
+  0.3%      1.1s  CheckSchema schema.mjs:256
+  0.3%      1.1s  exec :-1
+  0.2%      1.0s  open :-1
+  0.2%      1.0s  writev :-1
+  0.2%      0.9s  fromRow placement-row-codec-DmVeQZuK.js:93
+  0.2%      0.9s  freeze object-utils.js:61
+
+== inclusive ==
+100.0%    421.1s  (root) :-1
+ 44.2%    186.1s  (idle) :-1
+ 20.8%     87.7s  runMicrotasks :-1
+ 20.6%     86.6s  callbackTrampoline async_hooks:117
+ 20.3%     85.5s  processImmediate timers:435
+ 17.7%     74.5s  runNextTicks task_queues:61
+ 14.3%     60.0s  withOpenClawAgentDatabaseReadOnly openclaw-agent-db-readonly-wb-jdztx.js:85
+ 10.5%     44.3s  runSqliteTransactionSync node-sqlite-CL-d6drd.js:201
+  9.4%     39.4s  executeSqliteQuerySync kysely-sync-DKYGT267.js:173
+  9.0%     37.8s  next :-1
+  8.9%     37.3s  executeCompiledSqliteQuerySync kysely-sync-DKYGT267.js:141
+  8.9%     37.3s  executeWithCachedStatement kysely-sync-DKYGT267.js:98
+  8.6%     36.3s  (anon) kysely-sync-DKYGT267.js:144
+  8.6%     36.1s  (garbage collector) :-1
+  7.1%     29.7s  listSqliteSessionEntriesFromDatabase session-accessor.sqlite-entry-BlklNPKQ.js:463
+  6.9%     29.2s  buildSessionEntry memory-core-host-engine-sessions-CAnvQ_5o.js:661
+  6.7%     28.1s  readSessionEntryCache session-accessor.sqlite-transcript-state-Cz9g7S9v.js:250
+  6.7%     28.0s  loadSessionEntrySnapshot session-accessor.sqlite-transcript-state-Cz9g7S9v.js:235
+  6.6%     27.8s  iterateSqliteQuerySync kysely-sync-DKYGT267.js:191
+  6.5%     27.5s  runSqliteDeferredTransactionSync node-sqlite-CL-d6drd.js:259
+  6.1%     25.7s  run async_hooks:76
+  5.9%     25.0s  parseSessionEntryJson session-accessor.sqlite-transcript-state-Cz9g7S9v.js:158
+  5.6%     23.7s  resolveGatewaySessionStoreTargetWithStore session-utils-store-Dlphca2N.js:274
+  5.6%     23.6s  listVisibleSessions sessions-read-C6mAMxyQ.js:323
+  5.5%     23.1s  measureDiagnosticsTimelineSpan diagnostics-timeline-H3aAUCYk.js:238
+  5.4%     22.9s  resolveGatewaySessionStoreLookup session-utils-store-Dlphca2N.js:162
+  5.4%     22.5s  loadStore session-utils-store-Dlphca2N.js:173
+  5.3%     22.5s  loadGatewaySessionLookupStore session-utils-store-Dlphca2N.js:122
+  5.2%     22.1s  parseSqliteSessionEntryRecord openclaw-agent-db-maintenance-DYSkzMMg.js:815
+  5.1%     21.5s  scanSessionIngestionSource session-ingestion-7BUhTqC-.js:127
+  5.1%     21.4s  runInAsyncScope node:async_hooks:206
+  5.1%     21.4s  runQueuedStoreWrite store-writer-state-_Y6b9Vjm.js:81
+  5.1%     21.4s  (anon) async_hooks:39
+  5.1%     21.4s  bound node:async_hooks:242
+  5.1%     21.4s  runActiveStoreWriter store-writer-state-_Y6b9Vjm.js:23
+  5.1%     21.4s  fn store-writer-state-_Y6b9Vjm.js:88
+  5.1%     21.4s  drainStoreWriterQueue store-writer-state-_Y6b9Vjm.js:46
+  5.1%     21.4s  (anon) store-writer-state-_Y6b9Vjm.js:86
+  5.1%     21.4s  runExclusiveSqliteSessionWrite session-accessor.sqlite-scope-BwPKGcgm.js:18
+  5.1%     21.3s  runCriticalSection session-accessor.sqlite-scope-BwPKGcgm.js:24
+  5.1%     21.3s  fn session-accessor.sqlite-scope-BwPKGcgm.js:37
+  5.0%     20.9s  createWorkerPlacementSessionEvidenceResolver server-worker-placement-startup-BvPREvpr.js:2957
+  4.9%     20.5s  collectSessionIngestionBatches dreaming-phases-C5ItPb99.js:327
+  4.8%     20.3s  readSessionIdentityEvidenceBatch session-accessor-K0XuW6ln.js:397
+  4.8%     20.3s  executeSqliteQueryTakeFirstSync kysely-sync-DKYGT267.js:212
+

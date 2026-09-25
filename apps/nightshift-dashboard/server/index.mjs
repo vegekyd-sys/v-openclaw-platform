@@ -3,6 +3,7 @@ import { runSchedulerPass, instanceCardIds, visibleCardIds } from "../../../pack
 import { tickWithFaultProjection } from "../../../packages/nightshift-core/src/scheduler-state.mjs";
 import { createCompletionUrlChecker } from "./completion-url.mjs";
 import { SchedulerCircuit } from "./scheduler-circuit.mjs";
+import { createAgentDbPressureProbe } from "./agent-db-pressure-probe.mjs";
 import { createHostPressureProbe } from "./host-pressure-probe.mjs";
 import { DispatchPressureGuard } from "./dispatch-pressure-guard.mjs";
 import { WorkboardChangeScheduler } from "./workboard-change-scheduler.mjs";
@@ -24,14 +25,18 @@ import {
   auditNightShiftGovernance,
   findNightShiftExternalOperation,
   humanStageHandoff,
+  NightShiftNotificationCoordinator,
   NightShiftRuntime,
   NightShiftStore,
+  OpenClawFeishuNotificationSender,
   normalizeArtifactPath,
   normalizeProjectGovernance,
   normalizeDeliverablesManifest,
   normalizeStageHandoff,
   presentStageHandoff,
   redactSensitiveInputs,
+  missingCommands,
+  requiredCommands,
   requiredSkillsByRole,
   resolveNightShiftCardContext,
   resolveNightShiftOperationKeys,
@@ -55,6 +60,8 @@ const workflowPath = resolve(
 const board = process.env.NIGHTSHIFT_BOARD ?? "nightshift-lab";
 const publicHost = process.env.NIGHTSHIFT_PUBLIC_HOST ?? "";
 const publicBaseUrl = process.env.NIGHTSHIFT_PUBLIC_BASE_URL ?? "";
+// Feishu cards to the person a project belongs to (see packages/nightshift-core/src/notifications.mjs).
+const notificationsEnabled = process.env.NIGHTSHIFT_FEISHU_NOTIFICATIONS === "1";
 const schedulerDispatchMaxStarts = positiveInteger(process.env.NIGHTSHIFT_DISPATCH_MAX_STARTS_PER_PASS, 36, 36);
 const dispatchMaxStartsPerInstance = positiveInteger(process.env.NIGHTSHIFT_DISPATCH_MAX_STARTS_PER_INSTANCE, 8, 8);
 const dispatchStartBurst = positiveInteger(process.env.NIGHTSHIFT_DISPATCH_START_BURST, 3, 8);
@@ -75,6 +82,12 @@ const reservedInteractiveSlots = positiveInteger(process.env.NIGHTSHIFT_RESERVED
 const reservedInteractiveWorkers = positiveInteger(process.env.NIGHTSHIFT_RESERVED_INTERACTIVE_WORKERS, 3, 64);
 const hostMemoryReserveMiB = positiveInteger(process.env.NIGHTSHIFT_HOST_MEMORY_RESERVE_MIB, 4096, 262_144);
 const hostMemoryReservePercent = positiveInteger(process.env.NIGHTSHIFT_HOST_MEMORY_RESERVE_PERCENT, 40, 90);
+// The Agent DB write lease, read from the Gateway journal (see agent-db-pressure-probe.mjs).
+const agentDbPressureEnabled = process.env.NIGHTSHIFT_AGENT_DB_PRESSURE !== "0";
+const agentDbPressureUnit = process.env.NIGHTSHIFT_GATEWAY_UNIT || "openclaw-gateway";
+const agentDbPressureWindowSeconds = positiveInteger(process.env.NIGHTSHIFT_AGENT_DB_PRESSURE_WINDOW_SECONDS, 120, 900);
+const agentDbSlowAdmissionYellow = positiveInteger(process.env.NIGHTSHIFT_AGENT_DB_SLOW_ADMISSION_YELLOW, 3, 1_000);
+const userHarmCooldownMs = positiveInteger(process.env.NIGHTSHIFT_USER_HARM_COOLDOWN_MS, 900_000, 7_200_000);
 // How soon to retry after a scheduler pass fails, doubling up to the ceiling.
 const schedulerRetryMinMs = positiveInteger(process.env.NIGHTSHIFT_SCHEDULER_RETRY_MIN_MS, 10_000, 600_000);
 const schedulerRetryMaxMs = positiveInteger(process.env.NIGHTSHIFT_SCHEDULER_RETRY_MAX_MS, 120_000, 600_000);
@@ -111,8 +124,17 @@ let lastSchedulerAt = null;
 let schedulerStartedAt = null;
 let lastSchedulerDurationMs = null;
 let lastSchedulerError = null;
+let lastNotificationError = null;
+let lastNotificationAt = null;
 let lastSchedulerTrigger = null;
 let schedulerPromise = null;
+const notificationCoordinator = notificationsEnabled
+  ? new NightShiftNotificationCoordinator({
+      baseUrl: publicBaseUrl || `http://${host}:${port}`,
+      sender: new OpenClawFeishuNotificationSender(),
+      store,
+    })
+  : null;
 const schedulerCircuit = new SchedulerCircuit({ cooldownMs: schedulerFailureCooldownMs, startWithProbe: true });
 const dispatchPressureGuard = new DispatchPressureGuard({
   greenLatencyMs: gatewayGreenLatencyMs,
@@ -121,6 +143,14 @@ const dispatchPressureGuard = new DispatchPressureGuard({
   redLatencyMs: gatewayRedLatencyMs,
   reservedInteractiveSlots,
   reservedInteractiveWorkers,
+  userHarmCooldownMs,
+});
+const probeAgentDbPressure = createAgentDbPressureProbe({
+  enabled: agentDbPressureEnabled,
+  gatewayUrl: workboard.gatewayUrl,
+  slowAdmissionYellow: agentDbSlowAdmissionYellow,
+  unit: agentDbPressureUnit,
+  windowSeconds: agentDbPressureWindowSeconds,
 });
 const probeHostPressure = createHostPressureProbe({
   gatewayUrl: workboard.gatewayUrl,
@@ -195,6 +225,7 @@ async function handleApi(request, response, url) {
       cardsUpdatedAt,
       lastSchedulerAt,
       lastSchedulerError,
+      notifications: { enabled: notificationsEnabled, lastAt: lastNotificationAt, lastError: lastNotificationError },
       schedulerStartedAt,
       schedulerRunning: Boolean(schedulerPromise),
       lastSchedulerDurationMs,
@@ -505,7 +536,7 @@ async function handleApi(request, response, url) {
     try {
       validateProjectRequest(release?.manifest, body);
       const preflight = await preflightProjectSkills(release.manifest, body);
-      json(response, preflight.ok ? 200 : 422, preflight.ok ? preflight : { ...preflight, error: "Required Night Shift Skills are unavailable" });
+      json(response, preflight.ok ? 200 : 422, preflight.ok ? preflight : { ...preflight, error: preflightError(preflight) });
     } catch (error) {
       json(response, 422, { error: error.message, ok: false });
     }
@@ -517,7 +548,7 @@ async function handleApi(request, response, url) {
     validateProjectRequest(release?.manifest, body);
     const preflight = await preflightProjectSkills(release.manifest, body);
     if (!preflight.ok) {
-      json(response, 422, { ...preflight, error: "Required Night Shift Skills are unavailable" });
+      json(response, 422, { ...preflight, error: preflightError(preflight) });
       return;
     }
     if (body.automaticDispatch !== undefined && typeof body.automaticDispatch !== "boolean") throw new Error("automaticDispatch must be a boolean");
@@ -567,6 +598,16 @@ async function handleApi(request, response, url) {
       schedule: result,
       queuedForGuardedDispatch: store.getInstanceControl(instanceId).automaticDispatch,
     });
+    return;
+  }
+  const instanceCollaborationMatch = url.pathname.match(/^\/api\/instances\/([^/]+)\/collaboration$/);
+  if (request.method === "PATCH" && instanceCollaborationMatch) {
+    const body = await bodyJson(request);
+    const updated = runtime.updateInstanceCollaboration(
+      decodeURIComponent(instanceCollaborationMatch[1]),
+      body.collaboration ?? {},
+    );
+    json(response, 200, updated);
     return;
   }
   if (request.method === "PATCH" && instanceInputMatch) {
@@ -816,6 +857,7 @@ function runScheduler({ trigger = "manual" } = {}) {
     lastSchedulerDurationMs = Date.now() - started;
     lastSchedulerError = result.warnings.length ? result.warnings.join("; ") : null;
     schedulerCircuit.recordPass(result.warnings, { probe: circuitDecision.probe });
+    await announceTransitions();
     if (result.retryAfterMs > 0) changeScheduler.enqueueAfter("dispatch.window", result.retryAfterMs);
   })().catch((error) => {
     lastSchedulerAt = new Date().toISOString();
@@ -833,6 +875,27 @@ function runScheduler({ trigger = "manual" } = {}) {
 // schedule its own retry; the repair tick is five minutes away. This pass keeps
 // its own catch and never rejects, so the scheduler's onError alone was never
 // reached. Both paths call this now.
+// A Feishu send that fails is recorded here and retried on the next pass (up to
+// five attempts). It never becomes a scheduler warning: a notification outage
+// must not trip the scheduler circuit or mark Night Shift unhealthy.
+async function announceTransitions() {
+  if (!notificationCoordinator) return;
+  try {
+    const outcome = await notificationCoordinator.reconcile({
+      cards: cardCache,
+      instances: store.listInstances(),
+      releases: store.listReleases(),
+    });
+    const failed = outcome.delivered.filter((entry) => !entry.ok);
+    if (outcome.delivered.length > 0) lastNotificationAt = new Date().toISOString();
+    lastNotificationError = failed.length ? failed.map((entry) => entry.error).join("; ").slice(0, 500) : null;
+    for (const entry of failed) console.error(`Night Shift notification ${entry.id} failed: ${entry.error}`);
+  } catch (error) {
+    lastNotificationError = error.message;
+    console.error(`Night Shift notifications failed: ${error.message}`);
+  }
+}
+
 function scheduleSchedulerRetry() {
   schedulerRetryMs = Math.min(schedulerRetryMs ? schedulerRetryMs * 2 : schedulerRetryMinMs, schedulerRetryMaxMs);
   changeScheduler.enqueueAfter("scheduler.retry", schedulerRetryMs);
@@ -845,9 +908,9 @@ function probeDispatchCapacity() {
     const running = activeCardCount(cardCache);
     let pressure;
     try {
-      const hostPressure = await probeHostPressure();
+      const [hostPressure, agentDbPressure] = await Promise.all([probeHostPressure(), probeAgentDbPressure()]);
       const probe = hostPressure.blocked ? {} : await workboard.probeGatewayCapacity();
-      pressure = dispatchPressureGuard.recordProbe({ ...probe, hostPressure, running });
+      pressure = dispatchPressureGuard.recordProbe({ ...probe, hostPressure, agentDbPressure, running });
     } catch (error) {
       pressure = dispatchPressureGuard.recordProbe({ error: error.message, running });
     }
@@ -908,6 +971,14 @@ async function writeProjectInputsSnapshot(instance) {
   await rename(temporaryPath, snapshotPath);
 }
 
+function preflightError(preflight) {
+  const missingSkills = preflight.agents.some((entry) => entry.missingSkills.length > 0);
+  const missingCommands = preflight.commands?.missing?.length > 0;
+  if (missingSkills && missingCommands) return "Required Night Shift Skills and commands are unavailable";
+  if (missingCommands) return `Required commands are not on PATH for the worker host: ${preflight.commands.missing.join(", ")}`;
+  return "Required Night Shift Skills are unavailable";
+}
+
 async function preflightProjectSkills(release, project) {
   const agents = [];
   for (const [role, requiredSkills] of Object.entries(requiredSkillsByRole(release, project.inputs ?? {}))) {
@@ -925,9 +996,12 @@ async function preflightProjectSkills(release, project) {
       role,
     });
   }
+  const commands = requiredCommands(release, project.inputs ?? {});
+  const missing = missingCommands(commands);
   return {
     agents,
-    ok: agents.every((entry) => entry.missingSkills.length === 0),
+    commands: { missing, required: commands },
+    ok: agents.every((entry) => entry.missingSkills.length === 0) && missing.length === 0,
     workflowSha256: release.metadata.workflowSha256,
   };
 }
