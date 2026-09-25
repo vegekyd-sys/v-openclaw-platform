@@ -25,8 +25,12 @@
   needs the long-running shared Gateway may occupy that single slot, but it
   must end in promotion to V followed by `vlab.mjs align`, or in
   `vlab.mjs rollback`; the server refuses to stage anything else until then.
-- After any change to V, recapture it (`scripts/capture-production-runtime.mjs`)
-  and update the drift sentinel; `scripts/vlab-v-parity.mjs` must report ALIGNED.
+- Ship to V with `scripts/promote-to-v.mjs`, never by editing files on the host.
+  If V is changed on the host anyway (an emergency hotfix, or V's own agent),
+  the same day either put it back or keep it: capture V into git by PR, update
+  the drift sentinel, and run `scripts/sync-vlab-from-v.mjs` so VLab matches V
+  (`docs/vlab-v-sync-flow.md` section 4.5). `scripts/vlab-v-parity.mjs` must
+  end at ALIGNED either way.
 - Use shared VLab as the final Dev integration gate, not the default test runner.
   Preserve existing settings and conversations; use private writable snapshots
   for candidate tests and shared RPC for read-only history.
