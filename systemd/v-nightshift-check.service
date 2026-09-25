@@ -1,0 +1,13 @@
+[Unit]
+Description=V Night Shift check (scheduler, lease brake, stuck and paid cards)
+Documentation=file:/opt/v-sentinel/nightshift-check.py
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Read-only SQLite and journal reads; never compete with the Gateway.
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+ExecStart=/usr/bin/python3 /opt/v-sentinel/nightshift-check.py
+TimeoutStartSec=120
