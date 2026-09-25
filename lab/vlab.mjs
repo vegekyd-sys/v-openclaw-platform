@@ -55,7 +55,7 @@ try {
     const d=dev();clean(d);const id=name(opts.id),commit=git(d,['rev-parse','HEAD']);assert.equal(opts.commit,commit,'Use exact tested dev commit');
     const plan=read(opts.plan);assert(Array.isArray(plan.files));
     const files=plan.files.map(f=>{relative(f.source);relative(f.target);const content=execFileSync('git',['-C',d,'show',commit+':'+f.source],{maxBuffer:64*1024**2});return {...f,before:f.before,content:content.toString('base64'),after:sha(content)};});
-    result={command:'stage',id,sourceCommit:commit,branch:'dev',baseRelease:plan.baseRelease,owner:opts.owner,files};
+    result={command:'stage',id,sourceCommit:commit,branch:'dev',baseRelease:plan.baseRelease,owner:opts.owner,files,...(opts.syncFromV?{syncFromV:{vRelease:opts.syncFromV}}:{})};
     assert(opts.owner);const dest=path.resolve(opts.output??path.join(d,'tmp','vlab',id+'.json'));save(dest,result);
     result={artifact:dest,sourceCommit:commit,files:files.length};
   } else if(command==='sync') {
