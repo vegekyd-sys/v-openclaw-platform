@@ -122,7 +122,9 @@ const FEISHU_SITES = [
   {
     id: "combined-text-includes-progress",
     find: `\t\tif (answer) parts.push(answer);\n\t\tif (statusLine) parts.push(`,
-    replace: `\t\tif (answer) parts.push(answer);\n\t\tif (vProgressText) parts.push(parts.length > 0 ? \`\\n\\n\${vProgressText}\` : vProgressText);\n\t\tif (statusLine) parts.push(`,
+    // A markdown rule between the commentary and the block; Feishu renders it
+    // as spacing. Omitted when the block is the whole card.
+    replace: `\t\tif (answer) parts.push(answer);\n\t\tif (vProgressText) parts.push(parts.length > 0 ? \`\\n\\n---\\n\${vProgressText}\` : vProgressText);\n\t\tif (statusLine) parts.push(`,
   },
   {
     id: "reset-clears-progress",

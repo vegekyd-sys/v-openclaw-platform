@@ -29,6 +29,11 @@ function vProgressAttr(tag, name) {
   return match ? (match[1] ?? match[2] ?? match[3]) : undefined;
 }
 
+function vProgressCells(ratio) {
+  const filled = Math.round(Math.min(1, Math.max(0, ratio)) * V_PROGRESS_BAR_CELLS);
+  return "▰".repeat(filled) + "▱".repeat(V_PROGRESS_BAR_CELLS - filled);
+}
+
 /** `<progress value max aria-label>` has no Feishu equivalent; draw it as a text bar. */
 function vProgressBar(tag) {
   const value = Number(vProgressAttr(tag, "value"));
@@ -36,8 +41,7 @@ function vProgressBar(tag) {
   const label = vProgressAttr(tag, "aria-label");
   if (!Number.isFinite(value) || !Number.isFinite(max) || max <= 0) return label ? vProgressEscapeStep(label) : "";
   const ratio = Math.min(1, Math.max(0, value / max));
-  const filled = Math.round(ratio * V_PROGRESS_BAR_CELLS);
-  const bar = "▰".repeat(filled) + "▱".repeat(V_PROGRESS_BAR_CELLS - filled);
+  const bar = vProgressCells(ratio);
   return label ? `${bar} ${vProgressEscapeStep(label)}` : `${bar} ${Math.round(ratio * 100)}%`;
 }
 
@@ -96,7 +100,7 @@ function renderFeishuProgressMarkdown(card) {
   const lines = [];
   if (steps.length > 0) {
     const done = steps.filter((step) => step.status === "completed").length;
-    lines.push(`**📋 进度 ${done}/${steps.length}**`);
+    lines.push(`**📋 进度** ${vProgressCells(done / steps.length)} ${done}/${steps.length}`);
     const view = vProgressVisibleSteps(steps);
     if (view.folded > 0) lines.push(`✅ <font color='grey'>已完成 ${view.folded} 步</font>`);
     for (const step of view.steps) lines.push(vProgressStepLine(step));
@@ -2525,7 +2529,7 @@ function createFeishuReplyDispatcher(params) {
 		if (thinking) parts.push(formatReasoningPrefix(thinking));
 		if (thinking && answer) parts.push("\n\n---\n\n");
 		if (answer) parts.push(answer);
-		if (vProgressText) parts.push(parts.length > 0 ? `\n\n${vProgressText}` : vProgressText);
+		if (vProgressText) parts.push(parts.length > 0 ? `\n\n---\n${vProgressText}` : vProgressText);
 		if (statusLine) parts.push(parts.length > 0 ? `\n\n${statusLine}` : statusLine);
 		return parts.join("");
 	};

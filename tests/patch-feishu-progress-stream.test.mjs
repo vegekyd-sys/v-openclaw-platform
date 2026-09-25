@@ -59,7 +59,7 @@ test("renders a plan as a checklist with a done count", () => {
   assert.equal(
     text,
     [
-      "**📋 进度 1/3**",
+      "**📋 进度** ▰▰▰▱▱▱▱▱▱▱ 1/3",
       "✅ <font color='grey'>核对 SAP 官方实施方法</font>",
       "🔄 **升级讨论版为蓝图**",
       "⬜ <font color='grey'>补示例流程</font>",
@@ -89,7 +89,7 @@ test("long plans fold the finished head and keep the live window", () => {
     status: index < 15 ? "completed" : index === 15 ? "in_progress" : "pending",
   }));
   const lines = renderFeishuProgressMarkdown({ steps }).split("\n");
-  assert.equal(lines[0], "**📋 进度 15/20**");
+  assert.equal(lines[0], "**📋 进度** ▰▰▰▰▰▰▰▰▱▱ 15/20");
   assert.equal(lines[1], "✅ <font color='grey'>已完成 9 步</font>");
   assert.ok(lines.includes("✅ <font color='grey'>s15</font>"), "last finished step stays visible");
   assert.ok(lines.includes("🔄 **s16**"));
@@ -147,7 +147,7 @@ globalThis.listenersWhileSubscribed = vProgressCardChangedListeners.size;
 unsubscribe();
 globalThis.listenersAfter = vProgressCardChangedListeners.size;
 vProgressCardNotifyChanged("agent:makaron:feishu:direct:ou_a", { steps: [{ step: "late", status: "pending" }] });`, context);
-  assert.deepEqual([...context.seen], ["**📋 进度 0/1**\n🔄 **one**", ""]);
+  assert.deepEqual([...context.seen], ["**📋 进度** ▱▱▱▱▱▱▱▱▱▱ 0/1\n🔄 **one**", ""]);
   assert.equal(context.listenersWhileSubscribed, 1);
   assert.equal(context.listenersAfter, 0, "last unsubscribe detaches from the Gateway set");
 });
@@ -162,6 +162,7 @@ test("patches the captured production Feishu monitor, idempotently and syntactic
   assert.match(first.source, /if \(isFeishuProgressCardToolName\(payload\.name\)\) return false;/);
   assert.match(first.source, /vProgressAttach\(\);\n\t\t\tif \(previewStreamingEnabled && renderMode === "card"\)/);
   assert.match(first.source, /vProgressDetach\(\);\n\t\t\ttypingCallbacks\?\.onCleanup/);
+  assert.match(first.source, /parts\.push\(parts\.length > 0 \? `\\n\\n---\\n\$\{vProgressText\}` : vProgressText\)/);
   assert.match(first.source, /statusLine = "";\n\t\t\t\tvProgressText = "";\n\t\t\t\tconst text = buildCombinedStreamText/);
 
   const dir = mkdtempSync(join(tmpdir(), "feishu-progress-stream-"));

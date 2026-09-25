@@ -38,14 +38,23 @@ its `progressCard.changed` broadcast, and the Feishu monitor subscribes to it.
 - The block is working state: the closed card keeps only the answer, and a
   progress update after the reply went idle never opens a new card.
 
-Default rendering (style to be settled in VLab Feishu):
+Rendering is style C, chosen by Tianyi from three static previews sent by the
+V - Lab bot into `VLab 发布验收 A` on 2026-09-25 (A checklist, B single line,
+C rule + bar header):
 
 ```
-**📋 进度 1/3**
-✅ <font color='grey'>读需求</font>
-🔄 **写方案**
-⬜ <font color='grey'>复核</font>
+---
+**📋 进度** ▰▰▰▰▱▱▱▱▱▱ 2/5
+✅ <font color='grey'>核对 SAP B1 官方实施方法（AIP）</font>
+✅ <font color='grey'>梳理现有讨论版的缺口</font>
+🔄 **补每阶段交付物与判断门槛**
+⬜ <font color='grey'>写一条完整示例流程</font>
+⬜ <font color='grey'>整理成客户可读的调研与蓝图方案</font>
 ```
+
+In the Feishu desktop client the grey font, bold and emoji render; the `---`
+rule renders as spacing rather than a line, and is omitted when the block is
+the whole card.
 
 Plans over 12 steps fold the finished head into one line. The note keeps its
 markdown, draws `<progress>` as `▰▰▰▰▰▰▰▱▱▱ label`, and strips all other tags,
@@ -72,6 +81,8 @@ turns on `agent:makaron:feishu:direct:*` keys asking the model to call
 
 The patched Feishu monitor also imported cleanly against the real runtime.
 
-Not covered by the candidate: the Feishu card rendering itself (needs the
-shared VLab bot), and a real Codex turn. The in-process scenario exercises the
+Not covered by the candidate: live streaming in a Feishu reply (shared VLab
+currently has no Feishu channel configured; `channels` came back empty after
+the sync from V), and a real Codex turn. The Codex login lives in the makaron
+agent database, which the candidate did not copy. The in-process scenario exercises the
 same Gateway call a Codex dynamic tool makes, but not the Codex harness.
