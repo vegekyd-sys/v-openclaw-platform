@@ -1,0 +1,578 @@
+diff -ruN captured/v2026.9.1-db91.6-feishu-model-20260924.worker/dist/harness-event-contract.mjs components/worker-0.2.11-versa95.1/harness-event-contract.mjs
+--- captured/v2026.9.1-db91.6-feishu-model-20260924.worker/dist/harness-event-contract.mjs	2026-09-25 06:54:35
++++ components/worker-0.2.11-versa95.1/harness-event-contract.mjs	2026-09-25 02:54:56
+@@ -239,6 +239,10 @@
+   "deferTerminalLifecycleEnd",
+   "fallbackActive",
+   "fallbackReason",
++  // 2026.9.5 live plugin refresh: the Gateway's pending reload does not apply to
++  // the Worker's own plugin runtime generation.
++  "pluginRuntimeRefreshPending",
++  "registerPluginRuntimeRefreshConsumer",
+   "fastModeAuto",
+   "fastModeAutoProgressState",
+   "hasRepliedRef",
+diff -ruN captured/v2026.9.1-db91.6-feishu-model-20260924.worker/dist/index.mjs components/worker-0.2.11-versa95.1/index.mjs
+--- captured/v2026.9.1-db91.6-feishu-model-20260924.worker/dist/index.mjs	2026-09-25 06:54:35
++++ components/worker-0.2.11-versa95.1/index.mjs	2026-09-25 02:54:56
+@@ -40,13 +40,16 @@
+ const nativeParityReleaseHold = false; // 9.1 Steer: real Feishu Worker/Codex acceptance passed.
+ import { dirname, resolve } from "node:path";
+ import { pathToFileURL } from "node:url";
++import { readFileSync as readNativeRuntimeSource } from "node:fs";
+ import {
+   resolveOpenClawAgentRuntimePath,
+   resolveOpenClawAgentHarnessRuntimePath,
+   resolveOpenClawSubagentAnnounceRuntimePath,
+   resolveOpenClawSubagentAnnounceOriginRuntimePath,
+-  resolveOpenClawGatewayCallerContextRuntimePath,
+-  resolveOpenClawGatewayRequestScopeRuntimePath,
++  resolveGatewayCallerContract,
++  resolveGatewayScopeContract,
++  nativeExportBindings,
++  loadNativeRuntimeContract,
+ } from "./runtime-path.mjs";
+ import { createWorkerActiveRunProxy } from "./worker-active-run-proxy.mjs";
+ import { createGatewayMessageToolRelay } from "./gateway-message-tool.mjs";
+@@ -288,6 +291,12 @@
+     const warmSpareWorkers = Number(
+       api.pluginConfig?.warmSpareWorkers ?? 1,
+     );
++    const prewarmAgents = Array.isArray(api.pluginConfig?.prewarmAgents)
++      ? api.pluginConfig.prewarmAgents.filter(
++          (agentId) => typeof agentId === "string" && agentId.trim(),
++        )
++      : [];
++    const prewarmTimeoutMs = Number(api.pluginConfig?.prewarmTimeoutMs ?? 120_000);
+     const workerHeartbeatMs = Number(
+       api.pluginConfig?.workerHeartbeatMs ?? 15_000,
+     );
+@@ -394,12 +403,10 @@
+         resolve(dirname(openClawAgentRuntimePath), "session-transcript-runtime.js"),
+       ).href
+     );
+-    const gatewayCallerRuntimePromise = import(pathToFileURL(
+-      resolveOpenClawGatewayCallerContextRuntimePath({agentRuntimePath:openClawAgentRuntimePath}),
+-    ).href);
+-    const gatewayScopeRuntimePromise = import(pathToFileURL(
+-      resolveOpenClawGatewayRequestScopeRuntimePath({agentRuntimePath:openClawAgentRuntimePath}),
+-    ).href);
++    const gatewayCallerRuntimePromise = loadNativeRuntimeContract(
++      resolveGatewayCallerContract({agentRuntimePath:openClawAgentRuntimePath}));
++    const gatewayScopeRuntimePromise = loadNativeRuntimeContract(
++      resolveGatewayScopeContract({agentRuntimePath:openClawAgentRuntimePath}));
+     const agentHarnessTaskRuntimePromise = import(
+       pathToFileURL(
+         resolve(
+@@ -420,13 +427,13 @@
+         }),
+       ).href
+     );
+-    const nativeSubagentAnnounceOriginRuntimePromise = import(
+-      pathToFileURL(
+-        resolveOpenClawSubagentAnnounceOriginRuntimePath({
+-          agentRuntimePath: openClawAgentRuntimePath,
+-        }),
+-      ).href
+-    );
++    const nativeDeliveryPath = resolveOpenClawSubagentAnnounceOriginRuntimePath({
++      agentRuntimePath: openClawAgentRuntimePath,
++    });
++    const nativeSubagentAnnounceOriginRuntimePromise = loadNativeRuntimeContract({
++      path: nativeDeliveryPath,
++      bindings: nativeExportBindings(readNativeRuntimeSource(nativeDeliveryPath, 'utf8'), ['deliverSubagentAnnouncement']),
++    });
+     const mediaCompletionRelayStats = {};
+     const skillUsageRelayStats = {};
+     const routeWorkerGatewayEvent = createWorkerGatewayEventRouter({
+@@ -435,7 +442,7 @@
+       async deliverMediaCompletion(deliveryParams) {
+         const runtime = await nativeSubagentAnnounceOriginRuntimePromise;
+         const deliverSubagentAnnouncement =
+-          runtime.deliverSubagentAnnouncement ?? runtime.t ?? runtime.n;
++          runtime.deliverSubagentAnnouncement;
+         if (typeof deliverSubagentAnnouncement !== "function") {
+           throw new Error(
+             "OpenClaw native completion delivery runtime is unavailable",
+@@ -479,6 +486,8 @@
+         ),
+         VLAB_REQUIRE_OPENCLAW_AGENT_RUNTIME: "1",
+         VLAB_REQUIRE_SKILL_USAGE_TELEMETRY: "1",
++        VLAB_WORKER_PREWARM_AGENTS: prewarmAgents.join(","),
++        VLAB_WORKER_PREWARM_TIMEOUT_MS: String(prewarmTimeoutMs),
+         VLAB_WORKER_HEARTBEAT_MS: String(workerHeartbeatMs),
+         VLAB_WORKER_MEMORY_REPORT_MS: String(workerMemoryReportMs),
+         VLAB_GATEWAY_OWNED_TOOL_TIMEOUT_MS: String(
+@@ -922,8 +931,8 @@
+               outcome.error ??
+               `Child task ${outcome.status}`;
+             const runtime = await agentHarnessTaskRuntimePromise;
+-            const { o: withoutGatewayToolCallerIdentity } = await gatewayCallerRuntimePromise;
+-            const { r: getResolver, s: withResolver } = await gatewayScopeRuntimePromise;
++            const { withoutGatewayToolCallerIdentity } = await gatewayCallerRuntimePromise;
++            const { getGatewayContextResolver: getResolver, withPluginRuntimeGatewayContextResolver: withResolver } = await gatewayScopeRuntimePromise;
+             // Core's process-owned-work boundary releases only the expired
+             // initiating turn context. The native task scope still owns the
+             // requester and native delivery validates the completion lifecycle.
+diff -ruN captured/v2026.9.1-db91.6-feishu-model-20260924.worker/dist/native-attempt-bridge.mjs components/worker-0.2.11-versa95.1/native-attempt-bridge.mjs
+--- captured/v2026.9.1-db91.6-feishu-model-20260924.worker/dist/native-attempt-bridge.mjs	2026-09-25 06:54:35
++++ components/worker-0.2.11-versa95.1/native-attempt-bridge.mjs	2026-09-25 02:54:56
+@@ -58,8 +58,15 @@
+         };
+       }
+       c.prepared = true;
++      const prepared = applyNativeHarnessData(input, c.message.nativeHarnessData);
++      // 9.2 prepares execution authority before runEmbeddedAttempt. A Gateway
++      // fingerprint is not the Worker's process-local prepared authority.
++      if (input.toolAuthorityFingerprint) {
++        prepared.toolAuthorityFingerprint = input.toolAuthorityFingerprint;
++        c.localToolAuthorityFingerprint = input.toolAuthorityFingerprint;
++      }
+       return {
+-        ...applyNativeHarnessData(input, c.message.nativeHarnessData),
++        ...prepared,
+         // This is a derived handoff invariant, not an ordinary request option.
+         // Keep the admitted row and suppress exactly one native replay append.
+         ...(gatewayUserTurnPersisted ? {suppressNextUserMessagePersistence:true} : {}),
+@@ -111,9 +118,16 @@
+       if (!c.handle || !c.isCurrent?.() || c.handle.isStopped?.() || c.handle.isCompacting?.()) {
+         throw new Error('Native Worker is not ready for message injection');
+       }
+-      if (options.isInboundUserMessage === true && (!options.toolAuthorityFingerprint ||
+-          options.toolAuthorityFingerprint !== c.handle.toolAuthorityFingerprint)) {
+-        throw new Error('Native Worker Steer tool authority mismatch');
++      if (options.isInboundUserMessage === true) {
++        const gatewayFingerprint = c.message.nativeHarnessData?.toolAuthorityFingerprint;
++        const expected = c.localToolAuthorityFingerprint ? gatewayFingerprint : c.handle.toolAuthorityFingerprint;
++        if (!options.toolAuthorityFingerprint || options.toolAuthorityFingerprint !== expected ||
++            (c.localToolAuthorityFingerprint && c.handle.toolAuthorityFingerprint !== c.localToolAuthorityFingerprint)) {
++          throw new Error('Native Worker Steer tool authority mismatch');
++        }
++        // The trusted IPC owner has already validated Gateway authority. Core
++        // still validates its own exact current handle, policy and lifecycle.
++        options = {...options, toolAuthorityFingerprint: c.handle.toolAuthorityFingerprint};
+       }
+       return await c.handle.queueMessage(text, options);
+     },
+diff -ruN captured/v2026.9.1-db91.6-feishu-model-20260924.worker/dist/openclaw.plugin.json components/worker-0.2.11-versa95.1/openclaw.plugin.json
+--- captured/v2026.9.1-db91.6-feishu-model-20260924.worker/dist/openclaw.plugin.json	2026-09-25 06:54:35
++++ components/worker-0.2.11-versa95.1/openclaw.plugin.json	2026-09-25 02:54:56
+@@ -126,6 +126,17 @@
+       "workerMaxOldSpaceMb": {
+         "type": "integer",
+         "minimum": 0
++      },
++      "prewarmAgents": {
++        "type": "array",
++        "items": {
++          "type": "string"
++        },
++        "description": "Agents whose prepared model runtime a Worker builds before reporting ready."
++      },
++      "prewarmTimeoutMs": {
++        "type": "number",
++        "minimum": 1000
+       }
+     }
+   }
+diff -ruN captured/v2026.9.1-db91.6-feishu-model-20260924.worker/dist/package.json components/worker-0.2.11-versa95.1/package.json
+--- captured/v2026.9.1-db91.6-feishu-model-20260924.worker/dist/package.json	2026-09-25 06:54:35
++++ components/worker-0.2.11-versa95.1/package.json	2026-09-25 02:55:05
+@@ -1,6 +1,6 @@
+ {
+   "name": "@versa/vlab-agent-worker-isolation",
+-  "version": "0.2.11",
++  "version": "0.2.11-versa95.1",
+   "private": true,
+   "type": "module",
+   "peerDependencies": {
+diff -ruN captured/v2026.9.1-db91.6-feishu-model-20260924.worker/dist/runtime-path.mjs components/worker-0.2.11-versa95.1/runtime-path.mjs
+--- captured/v2026.9.1-db91.6-feishu-model-20260924.worker/dist/runtime-path.mjs	2026-09-25 06:54:35
++++ components/worker-0.2.11-versa95.1/runtime-path.mjs	2026-09-25 02:54:56
+@@ -1,6 +1,50 @@
+ import { existsSync, readFileSync, readdirSync } from "node:fs";
+ import { dirname, join, normalize, sep } from "node:path";
++import { pathToFileURL } from "node:url";
+ 
++// Resolve semantic exports, never guess minifier letters. In 9.2 the old `s`
++// slot is hasGatewayContextOwner, not withPluginRuntimeGatewayContextResolver.
++export function nativeExportBindings(source, names) {
++  const exports = [...source.matchAll(/export\s*\{([^}]+)\}\s*;?/gs)]
++    .flatMap(match => match[1].split(',').map(value => value.trim()))
++    .map(value => /^([\w$]+)(?:\s+as\s+([\w$]+))?$/.exec(value)).filter(Boolean);
++  return Object.fromEntries(names.map(name => {
++    const matches = exports.filter(entry => entry[1] === name);
++    if (matches.length !== 1) throw new Error(`Native export ${name} must resolve exactly once`);
++    return [name, matches[0][2] ?? name];
++  }));
++}
++
++export function resolveNativeRuntimeContract(options) {
++  const dist = dirname(dirname(options.agentRuntimePath ?? resolveOpenClawAgentRuntimePath(options)));
++  const readDirectory = options.readDirectory ?? readdirSync;
++  const readFile = options.readFile ?? (file => readFileSync(file, 'utf8'));
++  const candidates = readDirectory(dist).filter(name => options.filePattern.test(name)).flatMap(name => {
++    try { return [{path: join(dist, name), bindings: nativeExportBindings(readFile(join(dist, name)), options.exportNames)}]; }
++    catch { return []; }
++  });
++  if (candidates.length !== 1) throw new Error(`Native runtime contract must resolve uniquely; found ${candidates.length}`);
++  return candidates[0];
++}
++
++export async function loadNativeRuntimeContract(contract, importer = path => import(path)) {
++  const runtime = await importer(pathToFileURL(contract.path).href);
++  return Object.fromEntries(Object.entries(contract.bindings).map(([name, binding]) => {
++    if (typeof runtime[binding] !== 'function') throw new Error(`Native export ${name} is not a function`);
++    return [name, runtime[binding]];
++  }));
++}
++
++export function resolveGatewayCallerContract(options = {}) {
++  return resolveNativeRuntimeContract({...options, filePattern: /^gateway-caller-context-[\w-]+\.m?js$/,
++    exportNames: ['withoutGatewayToolCallerIdentity']});
++}
++
++export function resolveGatewayScopeContract(options = {}) {
++  return resolveNativeRuntimeContract({...options, filePattern: /^gateway-request-scope-[\w-]+\.m?js$/,
++    exportNames: ['getGatewayContextResolver', 'withPluginRuntimeGatewayContextResolver']});
++}
++
+ export function resolveOpenClawAgentRuntimePath(options = {}) {
+   const fileExists = options.fileExists ?? existsSync;
+   const explicitPath =
+@@ -63,7 +107,7 @@
+     .filter(
+       (name) =>
+         name === "subagent-announce.js" ||
+-        /^subagent-announce-[A-Za-z0-9_-]+\.js$/.test(name),
++        /^subagent-announce-[A-Za-z0-9_-]+\.m?js$/.test(name),
+     )
+     .sort();
+   const publicRuntimeCandidates = candidates.filter((name) => {
+@@ -86,7 +130,7 @@
+   const readFile = options.readFile ?? ((candidate) => readFileSync(candidate, "utf8"));
+   const legacyCandidates = readDirectory(distDir)
+     .filter((name) =>
+-      /^subagent-announce-origin-[A-Za-z0-9_-]+\.js$/.test(name),
++      /^subagent-announce-origin-[A-Za-z0-9_-]+\.m?js$/.test(name),
+     )
+     .sort();
+   if (legacyCandidates.length === 1) {
+@@ -98,7 +142,7 @@
+     );
+   }
+   const deliveryCandidates = readDirectory(distDir)
+-    .filter((name) => /^subagent-announce-delivery-[A-Za-z0-9_-]+\.js$/.test(name))
++    .filter((name) => /^subagent-announce-delivery-[A-Za-z0-9_-]+\.m?js$/.test(name))
+     .filter((name) => {
+       const source = readFile(join(distDir, name));
+       return /export\s*\{[^}]*\bdeliverSubagentAnnouncement\s+as\s+[A-Za-z_$][\w$]*[^}]*\}/s.test(
+@@ -144,7 +188,7 @@
+ export function resolveOpenClawAgentCommandRuntimePath(options = {}) {
+   return resolveNamedOpenClawRuntimePath({
+     ...options,
+-    filePattern: /^agent-command-[A-Za-z0-9_-]+\.js$/,
++    filePattern: /^agent-command-[A-Za-z0-9_-]+\.m?js$/,
+     exportNames: ["agentCommandFromGatewayIngress"],
+     label: "OpenClaw Gateway Agent command runtime",
+   });
+@@ -153,26 +197,16 @@
+ export function resolveOpenClawPreparedModelRuntimePath(options = {}) {
+   return resolveNamedOpenClawRuntimePath({
+     ...options,
+-    filePattern: /^prepared-model-runtime-[A-Za-z0-9_-]+\.js$/,
++    filePattern: /^prepared-model-runtime-[A-Za-z0-9_-]+\.m?js$/,
+     exportNames: ["acquireAgentRunPreparedModelRuntime"],
+     label: "OpenClaw prepared model runtime",
+   });
+ }
+ 
+ export function resolveOpenClawGatewayCallerContextRuntimePath(options = {}) {
+-  const agentRuntimePath = options.agentRuntimePath ?? resolveOpenClawAgentRuntimePath(options);
+-  const dist = dirname(dirname(agentRuntimePath));
+-  const candidates = readdirSync(dist).filter(name => /^gateway-caller-context-[\w-]+\.js$/.test(name) &&
+-    readFileSync(join(dist,name),'utf8').includes('withoutGatewayToolCallerIdentity as o'));
+-  if(candidates.length !== 1) throw new Error('Native process-owned Gateway context runtime is unavailable');
+-  return join(dist,candidates[0]);
++  return resolveGatewayCallerContract(options).path;
+ }
+ 
+ export function resolveOpenClawGatewayRequestScopeRuntimePath(options = {}) {
+-  const agentRuntimePath = options.agentRuntimePath ?? resolveOpenClawAgentRuntimePath(options);
+-  const dist = dirname(dirname(agentRuntimePath));
+-  const candidates = readdirSync(dist).filter(name => /^gateway-request-scope-[\w-]+\.js$/.test(name) &&
+-    readFileSync(join(dist,name),'utf8').includes('withPluginRuntimeGatewayContextResolver as s'));
+-  if(candidates.length !== 1) throw new Error('Native Gateway instance context runtime is unavailable');
+-  return join(dist,candidates[0]);
++  return resolveGatewayScopeContract(options).path;
+ }
+diff -ruN captured/v2026.9.1-db91.6-feishu-model-20260924.worker/dist/runtime-prewarm.mjs components/worker-0.2.11-versa95.1/runtime-prewarm.mjs
+--- captured/v2026.9.1-db91.6-feishu-model-20260924.worker/dist/runtime-prewarm.mjs	1970-01-01 08:00:00
++++ components/worker-0.2.11-versa95.1/runtime-prewarm.mjs	2026-09-25 02:54:56
+@@ -0,0 +1,61 @@
++// Opt-in startup preparation only. Never issue an Agent/model/tool request.
++export async function prewarmWorkerRuntime({
++  enabled,
++  agentId = "makaron",
++  loadAgentRuntime,
++  loadCompactionRuntime,
++  preloadBuiltin = async () => {},
++  signal,
++}) {
++  if (!enabled) return { status: "disabled" };
++  const start = performance.now();
++  let lease;
++  try {
++    const agentRuntime = await loadAgentRuntime();
++    const { commandRuntime, configRuntime, preparedRuntime } =
++      await loadCompactionRuntime();
++    const config = configRuntime.loadConfig();
++    const workspaceDir = agentRuntime.resolveAgentWorkspaceDir(config, agentId);
++    lease = await preparedRuntime.acquireAgentRunPreparedModelRuntime(
++      {
++        config,
++        agentId,
++        agentDir: agentRuntime.resolveAgentDir(config, agentId),
++        allowGatewaySubagentBinding: true,
++        workspaceDir,
++      },
++      // Workers are long-lived runtimes without a Gateway lifecycle; 2026.9.5
++      // retires idle run owners unless asked to retain them.
++      { abortSignal: signal, catalogMode: "static", retainIdleRunOwner: true },
++    );
++    // The prepared model runtime above is the expensive part on 2026.9.5
++    // (plugin generation capture, catalog, registries); the command runtime
++    // prewarm only exists on some releases.
++    const commandPreparation =
++      typeof commandRuntime.prewarmAgentCommandRuntimes === "function"
++        ? await commandRuntime.prewarmAgentCommandRuntimes({
++            config,
++            agentId,
++            workspaceDir,
++            pluginMetadataSnapshot:
++              lease.pluginGeneration?.pluginMetadataSnapshot,
++          })
++        : undefined;
++    await preloadBuiltin();
++    return {
++      status: "ready",
++      ms: Math.round(performance.now() - start),
++      skillSnapshotPrepared:
++        commandPreparation?.skillSnapshotPrepared === true,
++    };
++  } catch (error) {
++    return {
++      status: "deferred-to-normal-turn",
++      errorCategory: error?.name === "AbortError" ? "abort" : "other",
++      ms: Math.round(performance.now() - start),
++    };
++  } finally {
++    if (typeof lease?.[Symbol.asyncDispose] === "function") await lease[Symbol.asyncDispose]();
++    else lease?.release?.();
++  }
++}
+diff -ruN captured/v2026.9.1-db91.6-feishu-model-20260924.worker/dist/runtime-prewarm.test.mjs components/worker-0.2.11-versa95.1/runtime-prewarm.test.mjs
+--- captured/v2026.9.1-db91.6-feishu-model-20260924.worker/dist/runtime-prewarm.test.mjs	1970-01-01 08:00:00
++++ components/worker-0.2.11-versa95.1/runtime-prewarm.test.mjs	2026-09-25 02:54:56
+@@ -0,0 +1,76 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++
++import { prewarmWorkerRuntime } from "./runtime-prewarm.mjs";
++
++function fakeRuntimes({ commandPrewarm, acquireError } = {}) {
++  const calls = { acquire: [], disposed: 0, commandPrewarm: 0 };
++  const agentRuntime = {
++    resolveAgentWorkspaceDir: (_config, agentId) => `/workspaces/${agentId}`,
++    resolveAgentDir: (_config, agentId) => `/agents/${agentId}`,
++  };
++  const commandRuntime = commandPrewarm
++    ? {
++        prewarmAgentCommandRuntimes: async () => {
++          calls.commandPrewarm += 1;
++          return { skillSnapshotPrepared: true };
++        },
++      }
++    : {};
++  const preparedRuntime = {
++    acquireAgentRunPreparedModelRuntime: async (params, options) => {
++      if (acquireError) throw acquireError;
++      calls.acquire.push({ params, options });
++      return {
++        pluginGeneration: {},
++        [Symbol.asyncDispose]: async () => {
++          calls.disposed += 1;
++        },
++      };
++    },
++  };
++  return {
++    calls,
++    loadAgentRuntime: async () => agentRuntime,
++    loadCompactionRuntime: async () => ({
++      commandRuntime,
++      configRuntime: { loadConfig: () => ({}) },
++      preparedRuntime,
++    }),
++  };
++}
++
++test("prepares the agent's model runtime without a command runtime prewarm", async () => {
++  const runtimes = fakeRuntimes();
++  const result = await prewarmWorkerRuntime({ enabled: true, agentId: "main", ...runtimes });
++  assert.equal(result.status, "ready");
++  assert.equal(result.skillSnapshotPrepared, false);
++  assert.equal(runtimes.calls.acquire.length, 1);
++  assert.equal(runtimes.calls.acquire[0].params.agentId, "main");
++  assert.equal(runtimes.calls.acquire[0].params.workspaceDir, "/workspaces/main");
++  assert.equal(runtimes.calls.acquire[0].options.retainIdleRunOwner, true);
++  assert.equal(runtimes.calls.disposed, 1);
++});
++
++test("uses the command runtime prewarm when the release provides it", async () => {
++  const runtimes = fakeRuntimes({ commandPrewarm: true });
++  const result = await prewarmWorkerRuntime({ enabled: true, ...runtimes });
++  assert.equal(result.status, "ready");
++  assert.equal(result.skillSnapshotPrepared, true);
++  assert.equal(runtimes.calls.commandPrewarm, 1);
++});
++
++test("defers to the normal turn when preparation fails", async () => {
++  const runtimes = fakeRuntimes({ acquireError: new Error("catalog unavailable") });
++  const result = await prewarmWorkerRuntime({ enabled: true, ...runtimes });
++  assert.equal(result.status, "deferred-to-normal-turn");
++  assert.equal(result.errorCategory, "other");
++});
++
++test("does nothing when disabled", async () => {
++  const runtimes = fakeRuntimes();
++  assert.deepEqual(await prewarmWorkerRuntime({ enabled: false, ...runtimes }), {
++    status: "disabled",
++  });
++  assert.equal(runtimes.calls.acquire.length, 0);
++});
+diff -ruN captured/v2026.9.1-db91.6-feishu-model-20260924.worker/dist/worker-pool.mjs components/worker-0.2.11-versa95.1/worker-pool.mjs
+--- captured/v2026.9.1-db91.6-feishu-model-20260924.worker/dist/worker-pool.mjs	2026-09-25 06:54:35
++++ components/worker-0.2.11-versa95.1/worker-pool.mjs	2026-09-25 02:54:56
+@@ -32,6 +32,9 @@
+ 
+ import {sendLateWorkerReply} from "./late-worker-reply.mjs";
+ import { fork } from "node:child_process";
++import { mkdtempSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
+ import { fileURLToPath } from "node:url";
+ import { cloneWireData } from "./native-harness-data.mjs";
+ 
+@@ -312,8 +315,16 @@
+       return existing.startupPromise;
+     }
+ 
+-    const child = fork(this.workerPath, [], {
+-      env: this.workerEnv,
++    // OpenClaw 2026.9.5 copies every plugin's sources into TMPDIR before loading
++    // them (~2.4 GB per process here) and only its own compute workers' parents
++    // reclaim that scratch space. Give each Worker a private TMPDIR and remove
++    // it once the process has exited, or every recycle leaks one full copy.
++    const baseEnv = this.workerEnv ?? process.env;
++    const scratchDirectory = mkdtempSync(join(baseEnv.TMPDIR || tmpdir(), `vlab-worker-${slot}-`));
++    let child;
++    try {
++      child = fork(this.workerPath, [], {
++      env: { ...baseEnv, TMPDIR: scratchDirectory },
+       // A Gateway inspector port belongs to the Gateway process. Inheriting
+       // it into every Worker creates a collision per scale-out attempt.
+       execArgv: resolveWorkerExecArgv(
+@@ -321,6 +332,13 @@
+         this.workerMaxOldSpaceMb,
+       ),
+       stdio: ["ignore", "ignore", "pipe", "ipc"],
++    });
++    } catch (error) {
++      rmSync(scratchDirectory, { recursive: true, force: true });
++      throw error;
++    }
++    child.once("exit", () => {
++      rmSync(scratchDirectory, { recursive: true, force: true });
+     });
+     ocFirsttextWorkerMark("pool-spawn", undefined, {slot,workerPid:child.pid});
+     const handle = {
+diff -ruN captured/v2026.9.1-db91.6-feishu-model-20260924.worker/dist/worker.mjs components/worker-0.2.11-versa95.1/worker.mjs
+--- captured/v2026.9.1-db91.6-feishu-model-20260924.worker/dist/worker.mjs	2026-09-25 06:54:35
++++ components/worker-0.2.11-versa95.1/worker.mjs	2026-09-25 02:54:56
+@@ -37,6 +37,7 @@
+ import { readFastCompactionStats } from "./fast-compaction-provider.mjs";
+ import { isBridgedHarnessEventCallback } from "./harness-event-contract.mjs";
+ import { getSessionHotsetStatus } from "./session-hotset.mjs";
++import { prewarmWorkerRuntime } from "./runtime-prewarm.mjs";
+ import {
+   normalizeWorkerGatewayEvent,
+   WORKER_GATEWAY_EVENT_CONTRACT_VERSION,
+@@ -50,6 +51,11 @@
+   resolveOpenClawPreparedModelRuntimePath,
+ } from "./runtime-path.mjs";
+ 
++async function releasePreparedRuntimeLease(lease) {
++  if (typeof lease?.[Symbol.asyncDispose] === "function") return await lease[Symbol.asyncDispose]();
++  return lease?.release?.();
++}
++
+ let agentRuntimePromise;
+ let agentEventRuntimePromise;
+ let diagnosticRuntimePromise;
+@@ -723,6 +729,8 @@
+         {
+           abortSignal,
+           catalogMode: "static",
++          // See runtime-prewarm.mjs: keep the owner across this Worker's runs.
++          retainIdleRunOwner: true,
+         },
+       );
+     try {
+@@ -840,7 +848,8 @@
+         ...externalTaskContext.acceptedSessionSpawns,
+       ];
+     } finally {
+-      preparedRuntimeLease.release();
++      // 2026.9.5 leases are async-disposable; 9.1-9.4 leases expose release().
++      await releasePreparedRuntimeLease(preparedRuntimeLease);
+     }
+     ocFirsttextWorkerMark("worker-tail-enter", message.runId);
+     try { await streamState.tail; } finally { ocFirsttextWorkerMark("worker-tail-end", message.runId); }
+@@ -1122,8 +1131,36 @@
+   skillUsageTelemetryStats.unavailable = true;
+ }
+ 
++// On 2026.9.5 a Worker's first turn per agent prepares its model runtime
++// (plugin generation capture, registries, catalog): ~35 s of CPU. Doing it
++// before "ready" keeps that cost off the turn the pool routes here, and makes
++// the warm spare actually warm. A failure only defers the work to that turn.
++const prewarm = [];
++const prewarmAgents = (process.env.VLAB_WORKER_PREWARM_AGENTS ?? "")
++  .split(",")
++  .map((agentId) => agentId.trim())
++  .filter(Boolean);
++if (prewarmAgents.length > 0) {
++  const signal = AbortSignal.timeout(
++    Number(process.env.VLAB_WORKER_PREWARM_TIMEOUT_MS) || 120_000,
++  );
++  for (const agentId of prewarmAgents) {
++    prewarm.push({
++      agentId,
++      ...(await prewarmWorkerRuntime({
++        enabled: true,
++        agentId,
++        loadAgentRuntime,
++        loadCompactionRuntime,
++        signal,
++      })),
++    });
++  }
++}
++
+ process.send?.({
+   type: "ready",
++  prewarm,
+   gatewayOwnedToolProxy: gatewayOwnedToolProxy.status(),
+   pid: process.pid,
+   memory: memoryReport(),
