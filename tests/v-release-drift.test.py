@@ -125,5 +125,33 @@ class WholeCaptureComponents(unittest.TestCase):
             self.assertEqual(sorted(mod.hash_tree(root, ("node_modules",))), ["./index.js"])
 
 
+class UntouchedUpstreamFilesStayUpstream(unittest.TestCase):
+    """2026-09-25 04:01: two bundles that matched upstream at capture time were
+    patched in place (GPT-6 backport). The manifest never listed them, so the
+    check reported 0 findings. Undeclared files must still equal base."""
+
+    BASE = {"./talk.js": "0" * 64, "./state/verify.worker.js": "1" * 64,
+            "./untouched-upstream.js": "c" * 64, "./model-route-contract.js": "9" * 64}
+
+    def test_in_place_edit_of_an_undeclared_upstream_file_is_reported(self):
+        live = dict(CLEAN_LIVE, **{"./model-route-contract.js": "8" * 64})
+        kinds = run_with_base(live, self.BASE)
+        self.assertIn(("drifted-from-base", "./model-route-contract.js"), kinds)
+
+    def test_untouched_upstream_files_are_quiet(self):
+        live = dict(CLEAN_LIVE, **{"./model-route-contract.js": "9" * 64})
+        self.assertEqual(run_with_base(live, self.BASE), [])
+
+    def test_a_file_that_is_in_neither_manifest_nor_base_is_added(self):
+        live = dict(CLEAN_LIVE, **{"./model-route-contract.js": "9" * 64, "./hot-fix.mjs": "7" * 64})
+        self.assertIn(("added", "./hot-fix.mjs"), run_with_base(live, self.BASE))
+
+
+def run_with_base(live, base):
+    ok = "argv[]=/x %s/core/dist/index.js gateway --port 22793" % RELEASE_ROOT
+    with mock.patch.object(mod, "sh", side_effect=lambda cmd, timeout=600: ok):
+        return mod.find_drift(MANIFEST, live, base=base)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
