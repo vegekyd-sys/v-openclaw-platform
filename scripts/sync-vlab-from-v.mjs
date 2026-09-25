@@ -55,8 +55,8 @@ const captures = [
   { prefix: /^npm\/projects\/openclaw-feishu-[^/]+\/node_modules\/@openclaw\/feishu\//, dir: `release/captured/${args.name}.feishu/dist/` },
 ];
 for (const c of captures) {
-  try { git('cat-file', '-e', `${commit}:${c.dir}../manifest.json`); } catch {
-    fail(`${c.dir}../manifest.json is not in dev ${commit.slice(0, 12)}: capture V and merge it first`);
+  try { git('cat-file', '-e', `${commit}:${c.dir.replace(/dist\/$/, "manifest.json")}`); } catch {
+    fail(`${c.dir.replace(/dist\/$/, "manifest.json")} is not in dev ${commit.slice(0, 12)}: capture V and merge it first`);
   }
 }
 const sourceFor = (target) => {
@@ -91,6 +91,19 @@ if (refused.length) {
 }
 
 const status = JSON.parse(vlab('status'));
+// A release pending on VLab (deployed, not yet on V) also shows up as "VLab
+// differs from V". Syncing those files would silently revert it on VLab.
+// It has to reach V (promote-to-v) or be rolled back first.
+const pending = status.current?.v?.aligned === false && !status.current?.v?.syncFromV ? status.current.release : null;
+if (pending) {
+  const artifact = JSON.parse(execFileSync('ssh', ['-o', 'BatchMode=yes', 'vlab91',
+    `sudo cat /srv/vlab-production-mirror/labs/shared-workflow/releases/${pending}/artifact.json`], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }));
+  const overlap = files.filter((f) => artifact.files.some((a) => a.target === f.target)).map((f) => f.target);
+  if (overlap.length) {
+    fail(`VLab release ${pending} is deployed but not on V yet, and syncing would revert its files:\n  ${overlap.join('\n  ')}\n` +
+      `Promote it to V (scripts/promote-to-v.mjs) or roll it back first, then run this again.`);
+  }
+}
 console.log(`sync VLab to V release ${args.name} as VLab release ${id} (dev ${commit.slice(0, 12)}, base ${status.current.release})`);
 for (const f of files) console.log(`  ${f.before ? 'replace' : 'add    '} ${f.target}`);
 if (!args.apply) {
@@ -102,7 +115,7 @@ if (!args.apply) {
 const work = mkdtempSync(join(tmpdir(), 'sync-vlab-'));
 const planPath = join(work, 'plan.json');
 writeFileSync(planPath, JSON.stringify({ baseRelease: status.current.release, files }, null, 2));
-const packaged = JSON.parse(vlab('package', '--id', id, '--commit', commit, '--owner', args.owner, '--plan', planPath, '--output', join(work, `${id}.json`)));
+const packaged = JSON.parse(vlab('package', '--id', id, '--commit', commit, '--owner', args.owner, '--plan', planPath, '--output', join(work, `${id}.json`), '--syncFromV', args.name));
 console.log(`packaged ${packaged.files} files`);
 console.log(vlab('lease', '--owner', args.owner).trim());
 try {

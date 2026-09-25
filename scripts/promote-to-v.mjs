@@ -159,7 +159,27 @@ execFileSync(join(repo, 'scripts/install-v-release-drift.sh'), [V,
 try {
   console.log(vlab('align', '--owner', args.owner).trim().slice(0, 400));
 } catch (e) {
-  console.error(`align refused -- V does not match VLab after all:\n${e.stdout || e.message}`);
+  // Two different reasons, two different remedies. If this release's own files
+  // differ, V did not get the same bytes: undo. If only other files differ, V
+  // changed itself earlier and VLab has not caught up: this promotion is fine,
+  // VLab needs sync-vlab-from-v (it could not run while this release was
+  // pending, because it would have reverted it on VLab).
+  const mine = new Set(files.map((f) => f.target));
+  let parity;
+  try {
+    parity = JSON.parse(execFileSync('node', [join(repo, 'scripts/vlab-v-parity.mjs'), '--json'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }));
+  } catch (err) {
+    parity = err.stdout ? JSON.parse(err.stdout) : null;
+  }
+  const ours = parity?.findings.filter((f) => mine.has(f.target)) ?? [];
+  const others = parity?.findings.filter((f) => !mine.has(f.target)) ?? [];
+  if (parity && ours.length === 0 && others.every((f) => f.kind === 'differs' || f.kind === 'only-on-v')) {
+    console.log(`\n${args.name} is on V. VLab still lags V on files this release did not touch (V changed itself earlier):`);
+    for (const f of others) console.log(`  ${f.kind} ${f.target}`);
+    console.log(`Commit release/captured/${args.name}*, merge it, then: node scripts/sync-vlab-from-v.mjs --name ${args.name} --owner ${args.owner} --apply`);
+    process.exit(0);
+  }
+  console.error(`align refused -- V does not match VLab for this release's own files:\n${e.stdout || e.message}`);
   console.error(`undo with: node scripts/promote-to-v.mjs --undo ${dir}`);
   process.exit(1);
 }
