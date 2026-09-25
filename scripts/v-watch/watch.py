@@ -175,6 +175,17 @@ def handle(out):
             parts = rest.split()
             n = int(parts[0])
             gw_up = int(parts[1]) if len(parts) > 1 else -1
+            # A Gateway restart completes within a second, so a 30s sample
+            # almost never sees the unit in a deactivating state: on
+            # 2026-09-25 nine restarts between 03:09 and 04:14 produced one
+            # UNIT event. Uptime going backwards is the reliable signal.
+            prev_up = state.get("gw_up_last")
+            if gw_up >= 0:
+                if prev_up is not None and gw_up + 5 < prev_up:
+                    emit("RESTART", f"openclaw-gateway restarted about {gw_up}s ago "
+                                    f"(was up {prev_up // 60} min). NRestarts does not count "
+                                    f"manual restarts, so this is the only trace.")
+                state["gw_up_last"] = gw_up
             # An empty pool during the first minutes after a start is normal:
             # the pool takes about two minutes to build. Do not call it an outage.
             if n == 0 and 0 <= gw_up < STARTUP_GRACE_S:
