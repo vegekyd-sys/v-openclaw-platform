@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the V production sentinel every 2 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+AccuracySec=15s
+Unit=v-sentinel.service
+
+[Install]
+WantedBy=timers.target
