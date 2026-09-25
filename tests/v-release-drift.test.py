@@ -153,5 +153,19 @@ def run_with_base(live, base):
         return mod.find_drift(MANIFEST, live, base=base)
 
 
+class PublishedPackageBase(unittest.TestCase):
+    def test_npm_base_is_read_from_the_shipped_inventory(self):
+        import tempfile, json as _json
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "openclaw@2026.9.1.json"), "w") as f:
+                _json.dump({"base": "npm:openclaw@2026.9.1", "files": {"./a.js": "a" * 64}}, f)
+            with mock.patch.object(mod, "BASE_INVENTORY_DIR", d):
+                self.assertEqual(mod.base_hashes("npm:openclaw@2026.9.1"), {"./a.js": "a" * 64})
+
+    def test_missing_inventory_means_no_base_check_rather_than_a_crash(self):
+        with mock.patch.object(mod, "BASE_INVENTORY_DIR", "/nonexistent"):
+            self.assertIsNone(mod.base_hashes("npm:openclaw@2026.9.1"))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

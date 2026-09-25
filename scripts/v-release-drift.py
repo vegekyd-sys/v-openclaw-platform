@@ -21,6 +21,7 @@ watched.
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -135,11 +136,21 @@ def find_drift(expected, live, check_process=True, base=None):
 
 
 BASE_CACHE = "/var/lib/v-sentinel/base-hashes.json"
+BASE_INVENTORY_DIR = "/opt/v-sentinel/base"
 
 
 def base_hashes(base_dir):
     """Hashes of the upstream install. It never changes, so hash it once and
     reuse; a changed file count or newest mtime invalidates the cache."""
+    if base_dir and base_dir.startswith("npm:"):
+        # A published package is not on this host; its inventory is shipped
+        # from the repo (release/captured/base/) by install-v-release-drift.sh.
+        name = re.sub(r"[/:]", "__", base_dir[4:].lstrip("@"))
+        try:
+            with open(os.path.join(BASE_INVENTORY_DIR, name + ".json")) as f:
+                return json.load(f)["files"]
+        except Exception:
+            return None
     if not base_dir or base_dir == "none" or not os.path.isdir(base_dir):
         return None
     count, newest = 0, 0.0
