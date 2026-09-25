@@ -76,7 +76,7 @@ turns on `agent:makaron:feishu:direct:*` keys asking the model to call
 | V worker | deepseek-v4-flash | event in Gateway process, exact key, plan + note intact |
 | built-in (in-process, the Codex tool path) | deepseek-v4-pro, `agentRuntime: openclaw` | same |
 | claude-cli | claude-sonnet-5 | same |
-| codex | gpt-5.6-sol | **not covered**: VLab has no OpenAI auth profile |
+| codex | gpt-5.6-sol | **not covered**: the candidate state lacks the agent database holding the OpenAI auth profile |
 | baseline, unpatched core | worker + claude-cli | both replied OK, probe saw 0 events |
 
 The patched Feishu monitor also imported cleanly against the real runtime.
