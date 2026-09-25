@@ -6,16 +6,27 @@ import fs from "node:fs";
 const [secondsArg, outDir, ...pids] = process.argv.slice(2);
 const seconds = Number(secondsArg);
 const ss = execFileSync("ss", ["-ltnpH"], { encoding: "utf8" });
-const portOf = (pid) => {
+const portsOf = (pid) => {
+  const ports = [];
   for (const line of ss.split("\n")) if (line.includes(`pid=${pid},`)) {
-    const m = line.match(/127\.0\.0\.1:(\d+)/); if (m) return Number(m[1]);
+    const m = line.match(/127\.0\.0\.1:(\d+)/); if (m) ports.push(Number(m[1]));
+  }
+  return ports;
+};
+async function inspectorTargets(pid) {
+  for (const port of portsOf(pid)) {
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(2000) });
+      const targets = await response.json();
+      if (Array.isArray(targets)) return { port, targets };
+    } catch {}
   }
   return undefined;
-};
+}
 async function profile(pid) {
-  const port = portOf(pid);
-  if (!port) return { pid, error: "no inspector port" };
-  const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
+  const found = await inspectorTargets(pid);
+  if (!found) return { pid, error: "no inspector port" };
+  const { port, targets } = found;
   const target = targets.find((t) => t.webSocketDebuggerUrl);
   if (!target) return { pid, port, error: "no inspector target" };
   const ws = new WebSocket(target.webSocketDebuggerUrl);
