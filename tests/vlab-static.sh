@@ -21,7 +21,7 @@ bash -n "${REPO_ROOT}/scripts/install-v-nightshift-check.sh"
 # The release production V runs now: core dist, worker plugin, Feishu plugin.
 for component in "" .worker .feishu; do
   node "${REPO_ROOT}/scripts/verify-release-reproducible.mjs" \
-    --manifest "${REPO_ROOT}/release/captured/v2026.9.1-db91.6-gpt6-20260925${component}/manifest.json" --quiet
+    --manifest "${REPO_ROOT}/release/captured/v2026.9.1-db91.6-media-relay-20260925${component}/manifest.json" --quiet
 done
 jq empty "${REPO_ROOT}/config/vlab-production-parity-v1.json"
 "${REPO_ROOT}/tests/vlab-agent-worker-static.sh"

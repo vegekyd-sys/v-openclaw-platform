@@ -227,7 +227,7 @@ jq -e '.openclaw.extensions == ["./index.mjs"]' \
 jq -e '.version == "0.2.12-rc.1"' \
   "${EXPERIMENT_DIR}/package.json" >/dev/null
 jq -e '.version == "0.2.11"' \
-  "${REPO_ROOT}/release/captured/v2026.9.1-db91.6-gpt6-20260925.worker/dist/package.json" >/dev/null
+  "${REPO_ROOT}/release/captured/v2026.9.1-db91.6-media-relay-20260925.worker/dist/package.json" >/dev/null
 grep -q 'requestTimeoutMs: attemptTimeoutMs' "${EXPERIMENT_DIR}/index.mjs"
 
 "${REPO_ROOT}/scripts/scan-secrets.sh" "${EXPERIMENT_DIR}"
