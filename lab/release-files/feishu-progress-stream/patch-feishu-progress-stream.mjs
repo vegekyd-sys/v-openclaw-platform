@@ -31,7 +31,7 @@ import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const CORE_MARKER = "v-progress-card-changed-listeners-v1";
-export const FEISHU_MARKER = "v-feishu-progress-stream-v1";
+export const FEISHU_MARKER = "v-feishu-progress-stream-v2";
 export const LISTENERS_SYMBOL = "openclaw.v.progressCardChangedListeners";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -82,6 +82,7 @@ const V_PROGRESS_LISTENERS_KEY = Symbol.for("${LISTENERS_SYMBOL}");
 const V_PROGRESS_MAX_HANDLERS_PER_SESSION = 4;
 const vProgressHandlers = new Map();
 let vProgressGlobalListener = null;
+let vProgressDispatcherSeq = 0;
 function vProgressSessionKey(sessionKey) {
 	return typeof sessionKey === "string" ? sessionKey.trim().toLowerCase() : "";
 }
@@ -120,11 +121,11 @@ const FEISHU_SITES = [
     replace: `\tlet statusLine = "";\n\tlet vProgressText = "";\n`,
   },
   {
+    // The checklist sits at the very bottom, under the commentary and the tool
+    // status line, below a markdown rule. Omitted rule when it is the whole card.
     id: "combined-text-includes-progress",
-    find: `\t\tif (answer) parts.push(answer);\n\t\tif (statusLine) parts.push(`,
-    // A markdown rule between the commentary and the block; Feishu renders it
-    // as spacing. Omitted when the block is the whole card.
-    replace: `\t\tif (answer) parts.push(answer);\n\t\tif (vProgressText) parts.push(parts.length > 0 ? \`\\n\\n---\\n\${vProgressText}\` : vProgressText);\n\t\tif (statusLine) parts.push(`,
+    find: `\t\tif (statusLine) parts.push(parts.length > 0 ? \`\\n\\n\${statusLine}\` : statusLine);\n\t\treturn parts.join("");`,
+    replace: `\t\tif (statusLine) parts.push(parts.length > 0 ? \`\\n\\n\${statusLine}\` : statusLine);\n\t\tif (vProgressText) parts.push(parts.length > 0 ? \`\\n\\n---\\n\\n\${vProgressText}\` : vProgressText);\n\t\treturn parts.join("");`,
   },
   {
     id: "reset-clears-progress",
@@ -142,13 +143,15 @@ const FEISHU_SITES = [
     id: "dispatcher-listener",
     find: `\tconst sendChunkedTextReply = async (paramsLocal) => {`,
     replace: `\tlet vProgressUnsubscribe = null;
+\tconst vProgressDispatcherId = ++vProgressDispatcherSeq;
 \tconst vProgressAttach = () => {
 \t\tif (vProgressUnsubscribe || !previewStreamingEnabled) return;
 \t\tvProgressUnsubscribe = vProgressSubscribe(params.sessionKey, (card) => {
 \t\t\tconst next = renderFeishuProgressMarkdown(card);
+\t\t\tconst live = Boolean(streaming?.isActive() || streamingStartPromise);
+\t\t\tparams.runtime.log?.(\`feishu[\${account.accountId}] progress-stream dispatcher=\${vProgressDispatcherId} rev=\${card?.revision ?? "cleared"} steps=\${card?.steps?.length ?? 0} live=\${live} idle=\${idleRequestedForReply} changed=\${next !== vProgressText}\`);
 \t\t\tif (next === vProgressText) return;
 \t\t\tvProgressText = next;
-\t\t\tconst live = Boolean(streaming?.isActive() || streamingStartPromise);
 \t\t\t// Never open a fresh card for progress once this reply has gone idle.
 \t\t\tif (!live && (!next || idleRequestedForReply)) return;
 \t\t\tstartStreaming();

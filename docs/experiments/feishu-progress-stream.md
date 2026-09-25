@@ -38,27 +38,28 @@ its `progressCard.changed` broadcast, and the Feishu monitor subscribes to it.
 - The block is working state: the closed card keeps only the answer, and a
   progress update after the reply went idle never opens a new card.
 
-Rendering is style C, chosen by Tianyi from three static previews sent by the
-V - Lab bot into `VLab 发布验收 A` on 2026-09-25 (A checklist, B single line,
-C rule + bar header):
+Rendering, 2026-09-26 revision. Style C (count + bar header, plus the card's
+markdown note) read like a status report and looked duplicated in live
+Feishu replies: agents restate progress in the note, so the reply showed the
+checklist and a second progress block. Tianyi then chose preview ② from a
+second round: commentary streams on top as before, a rule, and only the plan
+as a work checklist at the very bottom of the card (after the tool status
+line). The note is no longer shown.
 
 ```
 ---
-**📋 进度** ▰▰▰▰▱▱▱▱▱▱ 2/5
-✅ <font color='grey'>核对 SAP B1 官方实施方法（AIP）</font>
-✅ <font color='grey'>梳理现有讨论版的缺口</font>
-🔄 **补每阶段交付物与判断门槛**
-⬜ <font color='grey'>写一条完整示例流程</font>
-⬜ <font color='grey'>整理成客户可读的调研与蓝图方案</font>
+
+☑️ <font color='grey'>~~核对 SAP B1 官方实施方法（AIP）~~</font>
+▶️ **补每阶段交付物与判断门槛**　<font color='blue'>进行中</font>
+◻️ <font color='grey'>写一条完整示例流程</font>
 ```
 
-In the Feishu desktop client the grey font, bold and emoji render; the `---`
-rule renders as spacing rather than a line, and is omitted when the block is
-the whole card.
+Each render logs `feishu[<account>] progress-stream dispatcher=<n> rev=<r>
+steps=<k> live=<bool> idle=<bool> changed=<bool>`, so a double subscription
+would show as two dispatcher ids for one revision.
 
-Plans over 12 steps fold the finished head into one line. The note keeps its
-markdown, draws `<progress>` as `▰▰▰▰▰▰▰▱▱▱ label`, and strips all other tags,
-so agent text cannot forge `<at>` mentions or colours.
+Plans over 12 steps fold the finished head into one line. Step text is
+escaped, so agent text cannot forge `<at>` mentions, colours or strikethrough.
 
 ## Evidence
 
