@@ -183,7 +183,7 @@ try {
   console.error(`undo with: node scripts/promote-to-v.mjs --undo ${dir}`);
   process.exit(1);
 }
-console.log(`\nDone. Commit release/captured/${args.name}* and open the release PR (dev -> main, tag ${args.name}).`);
+console.log(`\nDone. Commit release/captured/${args.name}*, add its CHANGELOG.md section\n(node scripts/release-notes.mjs --from <previous V release> --to ${args.name}, then write the summary),\nand open the release PR (dev -> main, tag ${args.name}).`);
 
 function packFiles(p, list) {
   // A tiny tar of plan.json + files/<i>, built with the system tar from a temp dir.
