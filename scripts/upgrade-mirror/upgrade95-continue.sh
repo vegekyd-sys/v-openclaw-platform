@@ -17,6 +17,7 @@ N22=/opt/vlab/node-v22.23.1-linux-x64/bin/node
 MI=$R/capability-alignment-20260911/plugin-sources/home/openclaw/makaron-openclaw/.openclaw-local/workspace/plugins/makaron-image/index.js
 
 CORE=$R/runtime/openclaw95/node_modules/openclaw; CLI=$CORE/dist/index.js; t0=$(date +%s)
+PV=$($N24 -p "require('$CORE/package.json').version")
 set -a; . $R/secrets.env; set +a
 common=(HOME=$R OPENCLAW_HOME=$R OPENCLAW_STATE_DIR=$R/state OPENCLAW_CONFIG_PATH=$C OPENCLAW_WORKSPACE_DIR=$R/workspace
   XDG_CACHE_HOME=$R/cache TMPDIR=$R/tmp CODEX_HOME=$R/codex OPENCLAW_SKIP_CHANNELS=1 OPENCLAW_GATEWAY_PORT=25096
@@ -26,7 +27,7 @@ cd $R/workspace
 overlay() { # <tgz> <package-name>
   local tgz=$1 name=$2 dir src
   dir=$(ls -dt $R/state/npm/projects/*/node_modules/$name $R/npm/projects/*/node_modules/$name 2>/dev/null | head -1 || true)
-  test -n "$dir" && grep -q '"version": "2026.9.5"' $dir/package.json || { log "   no official $name install found"; exit 1; }
+  test -n "$dir" && grep -q "\"version\": \"$PV\"" $dir/package.json || { log "   no official $name install found"; exit 1; }
   src=$(mktemp -d); tar -xzf $tgz -C $src
   rsync -a --delete --exclude=/node_modules/ $src/package/ $dir/
   (cd $src/package && find . -path ./node_modules -prune -o -type f -print0 | xargs -0 sha256sum | sort -k2) > $EV/overlay-$(basename $tgz).want

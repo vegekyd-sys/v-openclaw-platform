@@ -28,6 +28,10 @@ export function resolveNativeRuntimeContract(options) {
 }
 
 export async function loadNativeRuntimeContract(contract, importer = path => import(path)) {
+  if (Array.isArray(contract.parts)) {
+    const loaded = await Promise.all(contract.parts.map(part => loadNativeRuntimeContract(part, importer)));
+    return Object.assign({}, ...loaded);
+  }
   const runtime = await importer(pathToFileURL(contract.path).href);
   return Object.fromEntries(Object.entries(contract.bindings).map(([name, binding]) => {
     if (typeof runtime[binding] !== 'function') throw new Error(`Native export ${name} is not a function`);
@@ -41,8 +45,20 @@ export function resolveGatewayCallerContract(options = {}) {
 }
 
 export function resolveGatewayScopeContract(options = {}) {
-  return resolveNativeRuntimeContract({...options, filePattern: /^gateway-request-scope-[\w-]+\.m?js$/,
-    exportNames: ['getGatewayContextResolver', 'withPluginRuntimeGatewayContextResolver']});
+  const requestScope = /^gateway-request-scope-[\w-]+\.m?js$/;
+  try {
+    // 9.5: both exports live in the request-scope chunk.
+    return resolveNativeRuntimeContract({...options, filePattern: requestScope,
+      exportNames: ['getGatewayContextResolver', 'withPluginRuntimeGatewayContextResolver']});
+  } catch {
+    // 9.6 moved the resolver lookup into gateway-context-binding; resolve each
+    // export in the chunk that defines it.
+    const binding = resolveNativeRuntimeContract({...options,
+      filePattern: /^gateway-context-binding-[\w-]+\.m?js$/, exportNames: ['getGatewayContextResolver']});
+    const scope = resolveNativeRuntimeContract({...options, filePattern: requestScope,
+      exportNames: ['withPluginRuntimeGatewayContextResolver']});
+    return {path: scope.path, bindings: {...binding.bindings, ...scope.bindings}, parts: [binding, scope]};
+  }
 }
 
 export function resolveOpenClawAgentRuntimePath(options = {}) {

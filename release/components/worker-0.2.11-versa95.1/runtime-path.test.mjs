@@ -6,6 +6,8 @@ import {
   resolveOpenClawPreparedModelRuntimePath,
   resolveOpenClawSubagentAnnounceOriginRuntimePath,
   resolveOpenClawSubagentAnnounceRuntimePath,
+  loadNativeRuntimeContract,
+  resolveGatewayScopeContract,
 } from "./runtime-path.mjs";
 
 const vlabRuntime =
@@ -175,4 +177,31 @@ assert.throws(() => resolveOpenClawSubagentAnnounceRuntimePath({
   readDirectory: () => ["subagent-announce-D-7rIufL.js", "subagent-announce-another.js"],
   readFile: () => "export { runSubagentAnnounceFlow };",
 }), /was not uniquely resolved/);
-console.log(JSON.stringify({ ok: true, cases: 15 }));
+// 9.6 splits the gateway scope contract across two chunks; 9.5 keeps it in one.
+const scopeFiles = {
+  "gateway-context-binding-VqB7gkMe.mjs": "export { getGatewayContextResolver as a, bindGatewayContextResolver as t };",
+  "gateway-context-binding-owner-bQvbtsTz.mjs": "export { getGatewayContextBindingSlot as t };",
+  "gateway-request-scope-BLBH-Gpf.mjs": "export { withPluginRuntimeGatewayContextResolver as o, createRegistryScope as t };",
+  "gateway-request-scope-YnkE23gw.mjs": "export { withPluginRuntimeRegistryScope };",
+};
+const split = resolveGatewayScopeContract({
+  agentRuntimePath: vlabRuntime,
+  readDirectory: () => Object.keys(scopeFiles),
+  readFile: file => scopeFiles[file.split("/").pop()],
+});
+assert.deepEqual(split.parts.map(part => part.path.split("/").pop()), [
+  "gateway-context-binding-VqB7gkMe.mjs",
+  "gateway-request-scope-BLBH-Gpf.mjs",
+]);
+const loaded = await loadNativeRuntimeContract(split, async href =>
+  href.includes("gateway-context-binding") ? { a: () => "resolver" } : { o: () => "scope" });
+assert.equal(loaded.getGatewayContextResolver(), "resolver");
+assert.equal(loaded.withPluginRuntimeGatewayContextResolver(), "scope");
+const single = resolveGatewayScopeContract({
+  agentRuntimePath: vlabRuntime,
+  readDirectory: () => ["gateway-request-scope-CVb8Vezy.mjs"],
+  readFile: () => "export { getGatewayContextResolver as a, withPluginRuntimeGatewayContextResolver as f };",
+});
+assert.equal(single.parts, undefined);
+assert.deepEqual(single.bindings, { getGatewayContextResolver: "a", withPluginRuntimeGatewayContextResolver: "f" });
+console.log(JSON.stringify({ ok: true, cases: 17 }));

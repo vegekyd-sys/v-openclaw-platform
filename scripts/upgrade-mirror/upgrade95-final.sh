@@ -37,6 +37,8 @@ rm -rf $R/runtime/openclaw95; mkdir -p $R/runtime/openclaw95
 t0=$(date +%s)
 (cd $R/runtime/openclaw95 && PATH=$(dirname $N24):/usr/bin:/bin npm_config_cache=$R/cache/npm $(dirname $N24)/npm install --no-audit --no-fund --omit=dev "$PKG") > $EV/npm-install.log 2>&1
 CORE=$R/runtime/openclaw95/node_modules/openclaw; CLI=$CORE/dist/index.js
+# Official plugins are installed at the core's own version (9.5, 9.6, ...).
+PV=$($N24 -p "require('$CORE/package.json').version")
 log "   npm install $(( $(date +%s)-t0 ))s; version: $($N24 $CLI --version | head -1)"
 
 log "4/9 worker plugin $WORKER_SRC"
@@ -44,13 +46,19 @@ W=$R/runtime/worker-95-final; rm -rf $W; cp -a $WORKER_SRC $W
 log "   worker version $(grep -o '"version": *"[^"]*"' $W/package.json)"
 
 log "5/9 convert plugin paths, fix makaron-image SDK import"
-$N24 - $C $WC $R/prod91/worker $W <<'NODE' | tee -a $EV/upgrade.log
+OFFICIAL_LIST=$EV/official-plugins.txt $N24 - $C $WC $R/prod91/worker $W <<'NODE' | tee -a $EV/upgrade.log
 const fs = require('node:fs');
 const [main, worker, oldW, newW] = process.argv.slice(2);
-const managed = (p) => /openclaw-codex-|\/@openclaw\/codex$|feishu-project|\/@openclaw\/feishu$|openclaw-moonshot-provider-|\/@openclaw\/moonshot-provider$/.test(p);
+// Every official @openclaw/* package loaded by path is reinstalled from npm at the
+// core's version: 9.6's doctor imports each plugin's own doctor contract natively,
+// and a 9.1 package there cannot resolve "openclaw" (production V: msteams).
+const official = (p) => p.match(/\/node_modules\/@openclaw\/([a-z0-9-]+)$/)?.[1];
+const managed = (p) => Boolean(official(p)) || /openclaw-codex-|feishu-project|openclaw-moonshot-provider-/.test(p);
+const names = new Set(['feishu', 'codex', 'moonshot-provider']);
 for (const file of [main, worker]) {
   const c = JSON.parse(fs.readFileSync(file, 'utf8'));
   const before = c.plugins.load.paths;
+  for (const p of before) if (official(p)) names.add(official(p));
   const next = before.filter((p) => !managed(p)).map((p) => (p === oldW ? newW : p));
   c.plugins.load.paths = next;
   // Production 9.1 has no swarm; 9.5 enables it by default and its collector
@@ -62,6 +70,7 @@ for (const file of [main, worker]) {
   fs.writeFileSync(file, JSON.stringify(c, null, 2) + '\n');
   console.log(JSON.stringify({ file, removed: before.filter(managed).length, worker: next.includes(newW) }));
 }
+fs.writeFileSync(process.env.OFFICIAL_LIST, [...names].sort().join('\n') + '\n');
 NODE
 sed -i -E "s#$R/[a-z0-9/_.-]*node_modules/openclaw/dist/plugin-sdk/#$CORE/dist/plugin-sdk/#; s#$R/runtime/openclaw/dist/plugin-sdk/#$CORE/dist/plugin-sdk/#" $MI
 log "   makaron-image import -> $(grep -c "$CORE/dist/plugin-sdk/" $MI)"
@@ -73,19 +82,20 @@ common=(HOME=$R OPENCLAW_HOME=$R OPENCLAW_STATE_DIR=$R/state OPENCLAW_CONFIG_PAT
   VLAB_OPENCLAW_AGENT_RUNTIME=$CORE/dist/plugin-sdk/agent-runtime.js npm_config_cache=$R/cache/npm
   PATH=$(dirname $N24):/usr/local/bin:/usr/bin:/bin)
 cd $R/workspace
-log "6/9 plugins: official Feishu/Codex/moonshot @2026.9.5 from npm, then our Feishu/Codex builds over them"
+log "6/9 plugins: every official @openclaw plugin @$PV from npm, then our Feishu/Codex builds over them"
 # Only an official npm install record carries trusted-plugin status in 9.5; local
 # archives never do. Install the official package, then replace its files
 # (node_modules kept) with the same-version package built from the fork.
 t0=$(date +%s)
-for spec in @openclaw/feishu@2026.9.5 @openclaw/codex@2026.9.5 @openclaw/moonshot-provider@2026.9.5; do
+log "   official plugins: $(tr '\n' ' ' < $EV/official-plugins.txt)"
+for spec in $(sed "s#^#@openclaw/#; s#\$#@$PV#" $EV/official-plugins.txt); do
   runuser --preserve-environment -u $U -- env "${common[@]}" $N24 $CLI plugins install --force --accept-capabilities --acknowledge-install-policy-warning $spec >>$EV/plugins-install.log 2>&1 \
     && log "   installed $spec" || { log "   FAILED $spec"; tail -15 $EV/plugins-install.log | tee -a $EV/upgrade.log; exit 1; }
 done
 overlay() { # <tgz> <package-name>
   local tgz=$1 name=$2 dir src
   dir=$(ls -dt $R/state/npm/projects/*/node_modules/$name $R/npm/projects/*/node_modules/$name 2>/dev/null | head -1 || true)
-  test -n "$dir" && grep -q '"version": "2026.9.5"' $dir/package.json || { log "   no official $name install found"; exit 1; }
+  test -n "$dir" && grep -q "\"version\": \"$PV\"" $dir/package.json || { log "   no official $name install found"; exit 1; }
   src=$(mktemp -d); tar -xzf $tgz -C $src
   rsync -a --delete --exclude=/node_modules/ $src/package/ $dir/
   (cd $src/package && find . -path ./node_modules -prune -o -type f -print0 | xargs -0 sha256sum | sort -k2) > $EV/overlay-$(basename $tgz).want

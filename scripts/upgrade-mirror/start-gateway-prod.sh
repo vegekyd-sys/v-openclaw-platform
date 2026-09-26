@@ -25,7 +25,9 @@ case "$which" in
              --setenv=OPENCLAW_AGENT_DB_VALIDATION_EPOCH=$(cat /proc/sys/kernel/random/uuid)
              --setenv=OPENCLAW_SQLITE_STARTUP_INPLACE_READONLY=1 --setenv=OPENCLAW_SQLITE_INTEGRITY_READ_AHEAD=1
              --setenv=OPENCLAW_AGENT_DB_INTEGRITY_MAX_AGE_HOURS=24 --setenv=OPENCLAW_SQLITE_CLOSE_ON_SIGNAL=1
-             --setenv=OPENCLAW_SESSION_ROW_MATERIALIZE_COALESCE_MS=1000) ;;
+             --setenv=OPENCLAW_SESSION_ROW_MATERIALIZE_COALESCE_MS=1000
+             --setenv=OPENCLAW_STARTUP_MIGRATION_LEASE_TTL_MS=7200000
+             --setenv=OPENCLAW_STARTUP_MIGRATION_EXTERNAL_BACKUP=$R/rollback-state-before-95.tar.zst) ;;
   *) echo "unknown $which"; exit 1 ;;
 esac
 # A/B: VERSA_DROP_ENV=NAME[,NAME] leaves those variables out of this start.
@@ -53,7 +55,7 @@ systemd-run --unit=$UNIT --collect --uid=$U --gid=$U --working-directory=$R/work
   "${PROD_ENV[@]}" "${EXTRA[@]}" ${VERSA_NODE_OPTIONS:+--setenv=NODE_OPTIONS=$VERSA_NODE_OPTIONS} \
   $NODE --max-old-space-size=12288 ${VERSA_NODE_FLAGS:-} $CORE/dist/index.js gateway --port $PORT
 start=$(date +%s)
-for _ in $(seq 1 1800); do
+for _ in $(seq 1 3600); do
   if ! systemctl is-active --quiet $UNIT; then echo "unit exited"; journalctl -u $UNIT -n 40 --no-pager; exit 2; fi
   if ss -ltn | awk "{print \$4}" | grep -c ":$PORT\$" >/dev/null 2>&1; then
     if VERSA_UNIT=$UNIT.service runuser --preserve-environment -u $U -- $NODE $R/scripts/probe.mjs > $R/evidence/probe-$which.json 2> $R/evidence/probe-$which.stderr; then
