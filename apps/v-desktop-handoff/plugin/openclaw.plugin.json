@@ -1,0 +1,30 @@
+{
+  "id": "v-desktop-handoff",
+  "name": "V Desktop Handoff",
+  "description": "Lets the agent hand its own desktop browser to a human through a one-time link: watch, take over to log in, hand back.",
+  "activation": {
+    "onStartup": true
+  },
+  "contracts": {
+    "tools": ["desktop_handoff_request", "desktop_handoff_status", "desktop_handoff_end"]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["adminTokenFile"],
+    "properties": {
+      "adminUrl": { "type": "string" },
+      "adminTokenFile": { "type": "string" },
+      "claimTtlMs": { "type": "integer", "minimum": 60000, "maximum": 3600000 },
+      "sessionTtlMs": { "type": "integer", "minimum": 60000, "maximum": 14400000 },
+      "blockBrowserWhileControlled": { "type": "boolean" },
+      "cliActorUserId": { "type": "string" },
+      "trustCliAsDirect": { "type": "boolean" },
+      "sessionKeyActorFallback": { "type": "boolean" },
+      "principalAliases": {
+        "type": "object",
+        "additionalProperties": { "type": "string" }
+      }
+    }
+  }
+}

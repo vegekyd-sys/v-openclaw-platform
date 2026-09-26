@@ -1,0 +1,25 @@
+# One-time share links onto the host desktop (PRODUCTION - not VLab).
+# Public side 127.0.0.1:23950 is reached through cloudflared path ^/desktop-handoff(?:/.*)?$;
+# admin side 127.0.0.1:23951 is loopback + bearer only (the plugin reads the same token file).
+[Unit]
+Description=V desktop handoff: shareable viewer/takeover links for the host desktop (PRODUCTION - not VLab)
+After=network.target openclaw-desktop.service
+Wants=openclaw-desktop.service
+
+[Service]
+Type=simple
+User=openclaw
+Group=openclaw
+Environment=HOME=/home/openclaw
+ExecStart=/usr/bin/env node /opt/v-desktop-handoff/service/server.mjs /etc/v-desktop-handoff/config.json
+Restart=always
+RestartSec=3
+MemoryMax=256M
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/v-desktop-handoff
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

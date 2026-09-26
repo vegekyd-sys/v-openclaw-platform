@@ -1,0 +1,24 @@
+{
+  "bind": "127.0.0.1",
+  "publicPort": 23950,
+  "adminPort": 23951,
+  "publicBaseUrl": "https://openclaw.tianyi.live",
+  "pathPrefix": "/desktop-handoff",
+  "novncDir": "/usr/share/novnc",
+  "stateDir": "/var/lib/v-desktop-handoff",
+  "adminTokenFile": "/etc/v-desktop-handoff/admin-token",
+  "title": "V 的桌面",
+  "serverSideCursor": true,
+  "vnc": {
+    "host": "127.0.0.1",
+    "port": 5900,
+    "passwordFile": "/home/openclaw/.openclaw/desktop/vnc-password.txt"
+  },
+  "limits": {
+    "claimTtlMs": 600000,
+    "sessionTtlMs": 1800000,
+    "idleControlMs": 300000,
+    "maxViewers": 3,
+    "maxClaims": 5
+  }
+}
