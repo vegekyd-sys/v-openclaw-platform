@@ -43,6 +43,15 @@ grep -q '"sessionsVisibility": "all"' \
 grep -q '"workerRelease": "8d3b75e' \
   "${REPO_ROOT}/config/vlab-production-parity-v1.json"
 
+# Every production release captured in git has a CHANGELOG.md section.
+for dir in "${REPO_ROOT}"/release/captured/v*/; do
+  name=$(basename "$dir")
+  case "$name" in *.worker|*.feishu) continue;; esac
+  grep -qxF "## ${name}" "${REPO_ROOT}/CHANGELOG.md" || {
+    echo "CHANGELOG.md has no section for ${name}: node scripts/release-notes.mjs --from <previous> --to ${name}" >&2
+    exit 1
+  }
+done
 "${REPO_ROOT}/scripts/scan-secrets.sh"
 
 echo "vLab static checks passed"

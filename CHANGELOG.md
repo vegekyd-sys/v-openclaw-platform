@@ -1,0 +1,113 @@
+# 生产 V 变更记录
+
+每一节对应一个生产 V 的发版。标题就是 V 上的发版名，也是 git tag，对应 `release/captured/<发版名>{,.worker,.feishu}` 下的完整存档。最新的在最前面。
+
+- **文件变化**：由 `node scripts/release-notes.mjs --from <上一版> --to <这一版>` 生成。它把两个发版在 V 上的完整文件集合逐一比对，所以列出的就是 V 上真实变化的文件，不依赖谁的记忆。
+- **来源**：每个变化的文件，都追溯到产生这份字节的 VLab 发版（负责人、dev 提交、验收证据）。追溯不到的，标为**流程外改动**，也就是在 V 上直接改的。
+- **摘要**：由上线的人写一两句：为什么上，用户能感知到什么。
+- **规则**：发版 PR（dev → main）必须包含这一节。CI（`tests/vlab-static.sh`）会检查：`release/captured/` 下每个发版在这里都要有章节。
+
+流程见 `docs/vlab-v-sync-flow.md`。
+
+---
+
+## v2026.9.1-db91.6-feishu-progress-20260926
+
+上线：2026-09-26 01:30 CST  ·  tag `v2026.9.1-db91.6-feishu-progress-20260926`
+
+**摘要**：飞书回复卡片里直接显示会话的进度清单（worker、/vcodex、/vcc 三种运行方式都已验证）。由 `claude-feishu-progress-stream` 按 VLab → V 流程上线。*（摘要由 Claude 根据 PR #67/#68 与验收记录补写）*
+
+相对上一版 `v2026.9.1-db91.6-media-relay-20260925`：2 个文件变化。
+
+**经 VLab 发版 `feishu-progress-stream-v2`**（claude-feishu-progress-stream，dev `cb44ce5e`）
+> 验收：Live Feishu DM to V - Lab on shared VLab, 2026-09-26 01:00-01:23 CST, same task on three runtimes: worker (deepseek-v4-flash), codex (/model vcodex, gpt-5.6-sol), claude-cli (/model vcc, claude-opus-5, mcp__openclaw__progress_card). Each run: one streaming card, every progress-card revision rendered exactly once by one dispatcher (progress-stream log lines), commentary present in session history. …
+- `core` progress-card-CciYmFS8.js  d32a0caa → b579f12f
+- `feishu` dist/monitor.account-WFdlCDhR.js  605b3124 → 7ea5490f
+
+**这期间合入 dev 的 PR**（4 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #69 release: capture V after promoting feishu-progress-stream-v2
+- #68 feat(feishu): show the progress card as a plain work checklist
+- #67 feat(feishu): stream the session progress card into the reply card
+- #66 fix(ops): alert on Gateway crashes and crash loops the sentinel slept through
+
+## v2026.9.1-db91.6-media-relay-20260925
+
+上线：2026-09-25 23:17 CST  ·  tag `v2026.9.1-db91.6-media-relay-20260925`
+
+**摘要**：修复生图完成后不自动回图：worker 里的生图完成通知转交给 Gateway 投递。Tianyi 批准，22:47 在 V 空闲时重启生效，第一次线上生图验证（23:19）正常回图。当晚 23:22 状态库损坏的事故与本次上线无关，结论见 `docs/vlab-v-sync-flow.md` 相关记录和 Monitor 事故报告。
+
+相对上一版 `v2026.9.1-db91.6-gpt6-20260925`：2 个文件变化。
+
+**经 VLab 发版 `media-completion-worker-relay-v1`**（media-completion-wake-fix，dev `6d05c55c`）
+> 验收：Shared VLab 2026-09-25 22:06 CST, 5 workers, real deepseek-v4-flash turn + real makaron-image render: session agent:makaron:explicit:vlab-dev-media-completion-relay-2-1790345155128, image_generate started 22:06:09, image posted to session 22:06:29 with no follow-up message; failure-notice path also delivered (vlab-dev-media-completion-relay-1790344473466, 22 s). journal since deploy: 0 "wake faile…
+- `core` openclaw-tools-BODVdJQD.js  b20468a2 → 336aab63
+- `worker` worker-gateway-events.mjs  fbda3387 → acbb8ed1
+
+**这期间合入 dev 的 PR**（2 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #64 fix(vlab): deploy/rollback 超时从 10 分钟放宽到 30 分钟
+- #63 release: 捕获上线 media-completion-worker-relay-v1 后的 V
+
+## v2026.9.1-db91.6-gpt6-20260925
+
+上线：2026-09-25 22:15 CST  ·  tag `v2026.9.1-db91.6-gpt6-20260925`
+
+**摘要**：上线 GPT-6 Sol / Luna（/vcodex、/luna）。**这是一次流程外热修**：9/25 04:01 有会话直接在 V 上运行回迁补丁并重启，来源分支事后才补进 dev（PR #60）。同一版还把 V 上 31 个残留备份移到了 `/opt/v-release-backups/residue-20260925T135800`（不影响运行，没有文件内容变化）。
+
+相对上一版 `v2026.9.1-db91.6-feishu-model-20260924`：2 个文件变化。
+
+**流程外改动**（这些字节没有由任何 VLab 发版产生，是在 V 上直接改的）：
+- `core` model-route-contract-B2Q_03Gg.js  b5742a35 → 0524626e
+- `core` openai-chatgpt-provider-BApw3_oy.js  f31ddb3e → b464def9
+
+**这期间合入 dev 的 PR**（12 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #61 fix(vlab): 待上线版本和 V 自己的改动并存时不再死锁
+- #60 补齐 GPT-6（及 /vcc、飞书过程可见等已上线工作）+ V→VLab 反向同步工具
+- #59 fix(release): 哨兵发现对『未声明文件』的原地修改（GPT-6 回迁漏报）
+- #58 fix(media): relay Worker media completions to the Gateway on 9.1
+- #54 ops: put the V on-host sentinel and production watch tooling in git
+- #57 fix(nightshift): accept a group chat as V sees it
+- #56 fix(nightshift): give the Feishu sender a writable cache under ProtectHome
+- #55 feat(nightshift): tell a project's requester in Feishu when it finishes
+- #53 feat(ops): watch Night Shift from the host, beside the sentinel
+- #52 fix(nightshift): read a card scope in bounded requests
+- #47 fix(nightshift): stop dispatch when the Agent DB lease saturates; reset retry budgets
+- #51 fix(release): capture V against the published package, not its patched base
+
+## v2026.9.1-db91.6-feishu-model-20260924
+
+上线：2026-09-24 14:15 CST  ·  tag `v2026.9.1-db91.6-feishu-model-20260924`
+
+**摘要**：第一个有完整存档、可以从 git 重建的 V 发版，也是 main 第一次代表生产。内容等于此前一直在线上运行的 db91.6，加上 9/17 到 9/24 期间原地做过的所有改动（见下方补记）。
+
+首个带完整存档的发版，作为之后比对的起点。
+- core：相对 npm:openclaw@2026.9.1 修改 77、新增 19
+- worker：94 个文件（整目录存档）
+- feishu：47 个文件（整目录存档）
+
+## 事后补记：v2026.9.1-db91.1 → v2026.9.1-db91.6（2026-09-09 ~ 2026-09-24）
+
+> 这段时间 V 的发版没有存档，也没有 tag（db91.1 除外）。以下根据 V 上发版目录的创建时间、目录里记录的来源提交、systemd drop-in 名称、`docs/release-workflow-v2.md` 的体检结果和各线记忆整理而成。**不是逐文件的精确记录**；精确的起点是上面的 `v2026.9.1-db91.6-feishu-model-20260924`。
+
+| 版本 | 上线时间（目录创建） | 来源提交 | 内容 |
+| --- | --- | --- | --- |
+| db91.1 | 2026-09-09 00:55 | `ffadb2a9` | 数据库顺序预读、锁外轨迹统计、表达式索引查询、Worker IPC 关闭保护；原生 restart intent 作为受控重启入口。详见 `docs/v2026.9.1-db91.1-release.md`（tag `v2026.9.1-db91.1`） |
+| db91.2 | 2026-09-14 20:57 | `0eb72065` | 进程级全局写入协调（`db91-process-global-writer-v2`）。之前两次尝试预检失败，目录保留为 `.failed-preflight-20260914-2054/2100` |
+| db91.3 | 2026-09-14 21:23 | `0eb72065` | 与 db91.2 同源，目录重建（无独立 drop-in） |
+| db91.4 | 2026-09-14 22:05 | 目录记录为 `ffadb2a9`（疑为复用旧 source） | 记忆库 FTS 准入（`db91-memory-fts-v3`） |
+| db91.5 | 2026-09-15 00:00 | `de711b5` | 写事务范围收窄（`db91-writer-transaction-scope-v5`） |
+| db91.6 | 2026-09-15 08:32 | `f9f4a4b` | 状态库写协调与 fast path（`db91-state-db-fastpath-v6`） |
+
+**db91.6 上线后在原地做过的修改**（没有新版本号，发版目录被直接改写；时间为文件 mtime）：
+- 2026-09-16：worker 内存回收（worker-memory-recycle，worker 插件）
+- 2026-09-17 11:45：`session-sharing`（会话精确查找，避免全量读 148MB）
+- 2026-09-17 21:42：`tasks` / `task-summary`（任务列表存储缓存）
+- 2026-09-18 21:32：`dreaming-phases` / `memory-core-host-engine-sessions`（dreaming 会话摄入）
+- 2026-09-20：dreaming 通过配置开关关闭（配置层，不是代码）
+- 2026-09-22 22:16：`builtin-openclaw`、`dispatch-from-config`、`openclaw-tools`、`question`（飞书密钥卡片），`realtime-session-harness`、`talk`（小何语音、owner-terminal）
+- 2026-09-23 01:35–01:55：`control-ui` 与火山 RTC 前端资产（体检过程中被原地修改）
+- 2026-09-23 08:24：飞书插件 `monitor.account`（密钥卡片，改在 `/opt/openclaw-experiments/worker-visible-progress-v2026.9.1-20260909/feishu`）
+- 2026-09-23 ~ 09-24：`/vcc`（Claude Code harness）、飞书过程可见白名单、飞书模型切换权限（配置 + 代码，来源分支见 PR #60 及 `e9411ae`）
+
+## v2026.9.1-db91.6
+
+最早的一次存档（2026-09-23，仅 core，基准是 V 上被改过的原版目录），用于体检，已被上面 `feishu-model-20260924` 的完整存档取代。

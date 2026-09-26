@@ -152,7 +152,7 @@ node lab/vlab.mjs stage / deploy / accept ...                      # VLab 上验
 node scripts/promote-to-v.mjs --release <VLab release> --name <V 发版名>     # 先看计划
 node scripts/promote-to-v.mjs --release <VLab release> --name <V 发版名> --owner <o> --apply
 # → 装同一份字节到 V（先备份，写 undo.json）→ 捕获 core/worker/飞书 → 更新哨兵 → vlab.mjs align
-git add release/captured/<V 发版名>* && 提交 PR；dev → main 发版 PR，打 tag <V 发版名>
+git add release/captured/<V 发版名>*；node scripts/release-notes.mjs --from <上一版> --to <V 发版名> 生成 CHANGELOG.md 一节并写摘要；提交 PR；dev → main 发版 PR，打 tag <V 发版名>
 ```
 
 `promote-to-v.mjs` 不重启 V：dist 文件在下次 Gateway 启动时才生效，什么时候重启由人决定。V 上的文件不是这个版本的"改动前"字节时，它拒绝执行；需要撤销用 `--undo <V 上的备份目录>`。
