@@ -1,0 +1,19 @@
+[Unit]
+Description=Shape public egress with CAKE just under the 50 Mbps Lighthouse cap
+Documentation=https://github.com/vegekyd-sys/v-openclaw-platform
+# The 50 Mbps limit is enforced by a policer outside this host, so without
+# local shaping the NIC queue never builds and fq_codel never acts: packets
+# are dropped upstream indiscriminately and one bulk upload starves every
+# model request. Shaping to 45 Mbps here keeps the queue on this host, where
+# CAKE shares it fairly per flow. Installed 2026-09-21.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/tc qdisc replace dev eth0 root cake bandwidth 45mbit besteffort triple-isolate rtt 100ms
+ExecStop=/usr/sbin/tc qdisc del dev eth0 root
+
+[Install]
+WantedBy=multi-user.target

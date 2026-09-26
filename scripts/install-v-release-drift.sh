@@ -33,7 +33,16 @@ trap 'ssh "$host" "rm -rf -- $stage"' EXIT
 
 scp -q "${repo_root}/scripts/v-release-drift.py" "$host:$stage/release-drift.py"
 scp -q "$manifest" "$host:$stage/expected-release.json"
-ssh "$host" "mkdir $stage/components"
+ssh "$host" "mkdir $stage/components $stage/base"
+# A capture against a published package (--base npm:...) needs that package's
+# inventory on the host, or undeclared files cannot be checked against it.
+base_dir=$(jq -r '.capturedFrom.baseDir' "$manifest")
+if [[ "$base_dir" == npm:* ]]; then
+  inv_name=$(printf '%s' "${base_dir#npm:}" | sed -e 's/^@//' -e 's#[/:]#__#g')
+  inventory="${repo_root}/release/captured/base/${inv_name}.json"
+  [ -f "$inventory" ] || { echo "missing base inventory $inventory" >&2; exit 1; }
+  scp -q "$inventory" "$host:$stage/base/"
+fi
 for c in ${components[@]+"${components[@]}"}; do
   # <rel>.worker/manifest.json -> worker.json
   name=$(basename "$(dirname "$c")"); name=${name##*.}
@@ -44,6 +53,8 @@ scp -q "${repo_root}/systemd/v-release-drift.service" \
 
 ssh "$host" "sudo install -m 0755 -o root -g root $stage/release-drift.py /opt/v-sentinel/release-drift.py
 sudo install -m 0644 -o root -g root $stage/expected-release.json /opt/v-sentinel/expected-release.json
+sudo rm -rf /opt/v-sentinel/base && sudo install -d -m 0755 -o root -g root /opt/v-sentinel/base
+for f in $stage/base/*.json; do [ -e \"\$f\" ] && sudo install -m 0644 -o root -g root \"\$f\" /opt/v-sentinel/base/; done
 sudo rm -rf /opt/v-sentinel/expected-release.d && sudo install -d -m 0755 -o root -g root /opt/v-sentinel/expected-release.d
 for f in $stage/components/*.json; do [ -e \"\$f\" ] && sudo install -m 0644 -o root -g root \"\$f\" /opt/v-sentinel/expected-release.d/; done
 sudo install -m 0644 -o root -g root $stage/v-release-drift.service /etc/systemd/system/v-release-drift.service

@@ -1,0 +1,15 @@
+{
+  "baseRelease": "feishu-model-switch-roles-v1",
+  "files": [
+    {
+      "source": "lab/release-files/media-completion-worker-relay/openclaw-tools-BODVdJQD.js",
+      "target": "openclaw/dist/openclaw-tools-BODVdJQD.js",
+      "before": "b20468a24be539da4f7618ac1d82cc4c6708ba0dcee3f1e178f2a719c00e3527"
+    },
+    {
+      "source": "lab/release-files/media-completion-worker-relay/worker-gateway-events.mjs",
+      "target": "production-worker/worker-gateway-events.mjs",
+      "before": "fbda3387757c56b33631e8a8ee8059cab79637e9c162afac028962ad5e9cd329"
+    }
+  ]
+}

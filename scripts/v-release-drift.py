@@ -21,6 +21,7 @@ watched.
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -80,8 +81,15 @@ def whole_capture(expected):
     return expected.get("capturedFrom", {}).get("baseDir") == "none"
 
 
-def find_drift(expected, live, check_process=True):
-    """Compare the live tree against the manifest. Returns ordered findings."""
+def find_drift(expected, live, check_process=True, base=None):
+    """Compare the live tree against the manifest. Returns ordered findings.
+
+    `base` is the hash map of the upstream install the manifest was captured
+    against. The manifest only declares files that differ from it, so every
+    other live file must still equal base. Without this, a file that matched
+    upstream at capture time could be patched in place unseen -- which is what
+    happened on 2026-09-25 04:01 (GPT-6 backport into two untouched bundles).
+    """
     declared = {f["path"]: f["sha256"] for f in expected.get("files", [])}
     known_residue = {f["path"] for f in expected.get("residue", [])}
     findings = []
@@ -100,6 +108,12 @@ def find_drift(expected, live, check_process=True):
             findings.append(("new-residue", path))
         elif whole_capture(expected):
             findings.append(("added", path))
+        elif base is not None:
+            base_sha = base.get(path)
+            if base_sha is None:
+                findings.append(("added", path))
+            elif base_sha != live[path]:
+                findings.append(("drifted-from-base", path))
 
     if not check_process:
         return findings
@@ -119,6 +133,50 @@ def find_drift(expected, live, check_process=True):
         findings.append(("running-process-elsewhere", running.strip().splitlines()[0][:400]))
 
     return findings
+
+
+BASE_CACHE = "/var/lib/v-sentinel/base-hashes.json"
+BASE_INVENTORY_DIR = "/opt/v-sentinel/base"
+
+
+def base_hashes(base_dir):
+    """Hashes of the upstream install. It never changes, so hash it once and
+    reuse; a changed file count or newest mtime invalidates the cache."""
+    if base_dir and base_dir.startswith("npm:"):
+        # A published package is not on this host; its inventory is shipped
+        # from the repo (release/captured/base/) by install-v-release-drift.sh.
+        name = re.sub(r"[/:]", "__", base_dir[4:].lstrip("@"))
+        try:
+            with open(os.path.join(BASE_INVENTORY_DIR, name + ".json")) as f:
+                return json.load(f)["files"]
+        except Exception:
+            return None
+    if not base_dir or base_dir == "none" or not os.path.isdir(base_dir):
+        return None
+    count, newest = 0, 0.0
+    for dirpath, _d, filenames in os.walk(base_dir):
+        for name in filenames:
+            full = os.path.join(dirpath, name)
+            try:
+                newest = max(newest, os.lstat(full).st_mtime)
+            except OSError:
+                continue
+            count += 1
+    key = "%s|%d|%.3f" % (base_dir, count, newest)
+    try:
+        with open(BASE_CACHE) as f:
+            cached = json.load(f)
+        if cached.get("key") == key:
+            return cached["hashes"]
+    except Exception:
+        pass
+    hashes = hash_tree(base_dir)
+    os.makedirs(os.path.dirname(BASE_CACHE), exist_ok=True)
+    tmp = BASE_CACHE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump({"key": key, "hashes": hashes}, f)
+    os.replace(tmp, BASE_CACHE)
+    return hashes
 
 
 def load_manifests():
@@ -154,7 +212,8 @@ def main():
         skip = ("node_modules",) if whole_capture(manifest) else ()
         live = hash_tree(runtime_dir, skip)
         total += len(live)
-        for kind, detail in find_drift(manifest, live, check_process=(label == "core")):
+        base = base_hashes(manifest.get("capturedFrom", {}).get("baseDir")) if not whole_capture(manifest) else None
+        for kind, detail in find_drift(manifest, live, check_process=(label == "core"), base=base):
             findings.append((kind, detail if label == "core" else "%s:%s" % (label, detail)))
 
     if mode == "--accept":
@@ -186,8 +245,11 @@ def main():
     shown = findings[:15]
     text = ("【V 发布漂移】%s\n线上 release 与 manifest 不一致，共 %d 处：\n%s%s\n"
             "manifest: %s（capturedAt %s）\n"
-            "核对：node scripts/verify-release-reproducible.mjs --manifest "
-            "release/captured/%s/manifest.json --host v --unit %s"
+            "V 被改了（热修或 V 自己改了自己）。先查谁改的：sudo journalctl | grep COMMAND=\n"
+            "要保留：capture-production-runtime.mjs → PR 进 dev → install-v-release-drift.sh → "
+            "sync-vlab-from-v.mjs --name <新发版> --apply\n"
+            "不保留：把 V 恢复回去（promote-to-v.mjs --undo，或热改留下的备份）\n"
+            "流程：docs/vlab-v-sync-flow.md；manifest release/captured/%s，unit %s"
             % (expected.get("release"), len(findings),
                "\n".join("  %s %s" % (k, d) for k, d in shown),
                "\n  ...另有 %d 处" % (len(findings) - len(shown)) if len(findings) > len(shown) else "",

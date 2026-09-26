@@ -1,0 +1,15 @@
+{
+  "baseRelease": "feishu-model-switch-roles-v1",
+  "support": [
+    "lab/candidate/media-completion-worker-relay.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/media-completion-worker-relay.mjs"
+  ],
+  "timeoutSeconds": 1800,
+  "user": "lab-db91-parity",
+  "env": {
+    "MEDIA_RELAY_EXPECT": "failure"
+  }
+}

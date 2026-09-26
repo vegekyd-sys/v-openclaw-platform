@@ -12,7 +12,12 @@ const SSH=['-F','/Users/tianyicai/v-upgrade-private/20260904/ssh-config','-o','B
 const REMOTE='sudo /opt/vlab/node-v22.23.1-linux-x64/bin/node /srv/vlab-production-mirror/labs/shared-workflow/tool/server.mjs';
 const run=(bin,args,opts={})=>execFileSync(bin,args,{encoding:'utf8',maxBuffer:96*1024**2,timeout:600000,...opts}).trim();
 const git=(dir,args)=>run('git',['-C',dir,...args]);
-const remote=req=>JSON.parse(os.hostname()==='VM-0-4-ubuntu' ? run('/opt/vlab/node-v22.23.1-linux-x64/bin/node',['/srv/vlab-production-mirror/labs/shared-workflow/tool/server.mjs'],{input:JSON.stringify(req)}) : run('ssh',[...SSH,REMOTE],{input:JSON.stringify(req)}));
+// deploy/rollback wait on the server for the Gateway to become ready (up to
+// 900 s there), and a cold start with the db91 preflight has taken 640 s on its
+// own. The 10-minute default cut the SSH call while the server finished the
+// deploy (2026-09-25), which reads as a failure here although it succeeded.
+const remoteTimeout=req=>['deploy','rollback'].includes(req.command)?1800000:600000;
+const remote=req=>JSON.parse(os.hostname()==='VM-0-4-ubuntu' ? run('/opt/vlab/node-v22.23.1-linux-x64/bin/node',['/srv/vlab-production-mirror/labs/shared-workflow/tool/server.mjs'],{input:JSON.stringify(req),timeout:remoteTimeout(req)}) : run('ssh',[...SSH,REMOTE],{input:JSON.stringify(req),timeout:remoteTimeout(req)}));
 const [command,...args]=process.argv.slice(2);const opts={};
 for(let i=0;i<args.length;i+=2){assert(args[i].startsWith('--')&&args[i+1],'Use --option value');opts[args[i].slice(2)]=args[i+1];}
 function repo() {return path.resolve(git(opts.repo??process.cwd(),['rev-parse','--path-format=absolute','--git-common-dir']));}
@@ -55,7 +60,7 @@ try {
     const d=dev();clean(d);const id=name(opts.id),commit=git(d,['rev-parse','HEAD']);assert.equal(opts.commit,commit,'Use exact tested dev commit');
     const plan=read(opts.plan);assert(Array.isArray(plan.files));
     const files=plan.files.map(f=>{relative(f.source);relative(f.target);const content=execFileSync('git',['-C',d,'show',commit+':'+f.source],{maxBuffer:64*1024**2});return {...f,before:f.before,content:content.toString('base64'),after:sha(content)};});
-    result={command:'stage',id,sourceCommit:commit,branch:'dev',baseRelease:plan.baseRelease,owner:opts.owner,files};
+    result={command:'stage',id,sourceCommit:commit,branch:'dev',baseRelease:plan.baseRelease,owner:opts.owner,files,...(opts.syncFromV?{syncFromV:{vRelease:opts.syncFromV}}:{})};
     assert(opts.owner);const dest=path.resolve(opts.output??path.join(d,'tmp','vlab',id+'.json'));save(dest,result);
     result={artifact:dest,sourceCommit:commit,files:files.length};
   } else if(command==='sync') {

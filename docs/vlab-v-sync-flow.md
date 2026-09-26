@@ -127,6 +127,9 @@ node scripts/vlab-rebase-to-v.mjs --owner <lease-owner> --undo <VLab 上的目�
 ```bash
 node lab/vlab.mjs baseline --id <新基线> --owner <o> --sourceCommit <dev 提交> --replaceCurrent true
 node lab/vlab.mjs align --owner <o>
+node scripts/promote-to-v.mjs --release <VLab release> --name <V 发版名> [--owner <o> --apply]   # VLab → V
+node scripts/sync-vlab-from-v.mjs --name <V 发版名> --owner <o> [--apply]                       # V → VLab
+node scripts/clean-v-residue.mjs [--apply | --undo <dir>]                                          # V 上的 .bak 残留
 ```
 
 `baseline` 把当前运行时登记为新基线，旧的 `current.json` 作为 receipt 留档。`align` 在本机跑 parity，只有 `ALIGNED` 才会在服务器上记下"VLab = V"。
@@ -155,6 +158,26 @@ git add release/captured/<V 发版名>* && 提交 PR；dev → main 发版 PR，
 `promote-to-v.mjs` 不重启 V：dist 文件在下次 Gateway 启动时才生效，什么时候重启由人决定。V 上的文件不是这个版本的"改动前"字节时，它拒绝执行；需要撤销用 `--undo <V 上的备份目录>`。
 
 不上线，就 `vlab.mjs rollback`：回到父版本，标志随之恢复为 aligned。
+
+## 4.5 反方向：V 自己改了自己
+
+第 0 节的闭环只管"VLab 先改，再上 V"。V 也会自己变：
+
+- 有人在 V 上直接热修（2026-09-25 04:01 的 GPT-6 回迁就是这样）；
+- V 自己的 agent 通过 exec 工具改了自己的运行时。
+
+两种情况都一样处理。**先被发现**：漂移哨兵每小时比对 core / worker / 飞书三个目录；清单里没声明的文件也必须等于原版（`release/captured/base/`），否则告警。告警到飞书，不经过 Gateway。**然后二选一**：
+
+| 决定 | 做什么 |
+| --- | --- |
+| **保留** | 1. `capture-production-runtime.mjs` 捕获 V（core 以 `npm:openclaw@2026.9.1` 为基准，加 worker、飞书），提交并开 PR 合入 dev，把改动来源的提交也一起带进来。<br>2. `install-v-release-drift.sh` 用新清单更新哨兵。<br>3. `node scripts/sync-vlab-from-v.mjs --name <新发版> --owner <o> --apply`：从 dev 里的捕获取字节（必须等于 V 的线上字节），走正常的 package → stage → deploy，parity 必须是 ALIGNED 才会 accept，然后 align。VLab 因此留有发版记录，也可以回滚。<br>4. 开 dev → main 发版 PR，打 tag。 |
+| **不保留** | 把 V 恢复回去：`promote-to-v.mjs --undo <备份目录>`，或者热改自己留下的备份；然后确认哨兵回到 0。 |
+
+`sync-vlab-from-v.mjs` 故意不处理两种情况：只存在于 VLab 的文件（stage 不能删文件），以及 V 上等于原版、因而不在捕获里的文件。这两种都说明 VLab 带着 V 没有的东西，应该用 `vlab-rebase-to-v.mjs`。
+
+**热修本身是允许的**，线上出事时先止血。但当天必须把它走完上面"保留"那一行，否则第二天它就会变成下一个没人知道来源的补丁。
+
+**范围**：这里管的是代码（三个运行时目录）。V 的配置、skills、workspace、会话数据本来就和 VLab 分开，不在 parity 范围内。例如 2026-09-25 21:56，V 的 `secrets.egressProxy` 配置变更触发了一次自动重启，这不属于代码漂移。
 
 ## 5. 工具
 
