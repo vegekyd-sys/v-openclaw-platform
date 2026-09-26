@@ -4,7 +4,7 @@
 
 ## worker-0.2.11-versa95.1
 
-生产 worker 插件 0.2.11（字节见 `release/captured/v2026.9.1-db91.6-feishu-model-20260924.worker/dist`）
+生产 worker 插件 0.2.11（字节见 `release/captured/v2026.9.1-db91.6-feishu-progress-20260926.worker/dist`，含 9/25 的媒体完成回传路由修复）
 为适配 OpenClaw 9.5 所做的改动。9.1 继续用 0.2.11 原样；这个目录只给 9.5 用。
 
 与 0.2.11 的完整差异：`worker-0.2.11-versa95.1.diff`（`diff -ruN`，以 0.2.11 为基准）。改动归类：
