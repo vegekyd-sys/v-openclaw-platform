@@ -242,7 +242,7 @@ const allow = config.agents.defaults.modelPolicy?.allow;
 if (Array.isArray(allow)) for (const ref of ["deepseek/deepseek-v4-flash"]) if (!allow.includes(ref)) allow.push(ref);
 
 // Layer A wiring: the desktop is attached, the browser is headed on that display.
-config.desktop = { host: { enabled: true, port: rfbPort, passwordFile: path.join(desktopState, "vncpasswd") } };
+config.desktop = { host: { enabled: true, port: rfbPort, passwordFile: path.join(desktopState, "vnc-password.txt") } };
 config.browser = {
   ...(config.browser ?? {}),
   enabled: true,

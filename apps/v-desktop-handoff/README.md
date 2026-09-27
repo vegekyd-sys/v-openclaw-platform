@@ -18,7 +18,7 @@
 - 审计 `stateDir/audit.jsonl`，令牌本体永不出现。
 - 页面 `public/`，noVNC 从主机 `/usr/share/novnc` 直接提供。
 
-配置见 `config.example.json`。VNC 密码用 `desktop/start-desktop.sh` 生成的明文文件 `vnc-password.txt`（0600），Gateway 的 `desktop.host.passwordFile` 用同目录的 `vncpasswd`。
+配置见 `config.example.json`。VNC 密码用 `desktop/start-desktop.sh` 生成的明文文件 `vnc-password.txt`（0600）；**Gateway 的 `desktop.host.passwordFile` 也指向这个明文文件**（上游按 utf8 读进去当密码，指向 TigerVNC 混淆格式的 `vncpasswd` 会让 Control UI 面板报 Authentication failure；`vncpasswd` 只给 Xtigervnc 用）。
 
 管理 API：`POST /v1/handoffs {kind, ownerId, sessionKey, reason}` → `{id, url}`；`GET/DELETE /v1/handoffs/:id`；`GET /v1/state`；`GET /v1/audit`。
 

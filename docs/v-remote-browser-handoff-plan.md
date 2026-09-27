@@ -70,7 +70,7 @@
 - Gateway 单元 drop-in：`Environment=DISPLAY=:99`。**同时给 worker 子进程**（V 上 agent 回合在 vlab-agent-worker 子进程里跑，Chrome 由它拉起）；核对 worker 是否透传 env，这是候选测试第一项。
 - 配置（先 `openclaw config set --dry-run` 过 strict schema，教训见 [[vlab-shared-instance-traps]]）：
   ```json
-  "desktop": { "host": { "enabled": true, "port": 5900, "passwordFile": "/home/openclaw/.openclaw/desktop/vncpasswd" } },
+  "desktop": { "host": { "enabled": true, "port": 5900, "passwordFile": "/home/openclaw/.openclaw/desktop/vnc-password.txt" } },
   "browser": { "defaultProfile": "openclaw", "headless": false, "extraArgs": ["--window-position=0,0", "--window-size=1280,760"] }
   ```
   （内置的 `openclaw` 托管 profile 不能在 `browser.profiles` 里声明，会被 schema 拒绝；它的 user-data 默认在状态目录 `browser/openclaw/user-data`。）
@@ -214,3 +214,7 @@ VLab 已回滚到 2026.9.1（release `feishu-progress-stream-v2`）。安装走 
 - cloudflared：`openclaw.tianyi.live` 加 `^/desktop-handoff(?:/.*)?$ → 127.0.0.1:23950`，`ingress validate` OK，重启 `cloudflared-v-dashboard`；公网 `/desktop-handoff/healthz` 与 noVNC 均 200。备份 `v-dashboard.yml.bak-desktop-handoff-*`。
 - **意外**：`openclaw config set desktop.host` 一写入，Gateway 就自己判定「requires gateway restart (desktop)」并整体重启（16:43:53 → 16:46:30 就绪，停机约 2.5 分钟，比计划的低峰 stop→start 提前）。重启后 30 个插件加载、无 suspicious ownership、worker 池 5–15 重建、`desktop.observe` 返回 rfb/vnc-password。下次改这类键要先 stop 再写。
 - 未在 V 上做的：飞书私聊真实验收（由 Tianyi 执行）；`/opt/v-desktop-handoff` 与两个单元不在漂移哨兵的三个运行时目录范围内，来源以本仓库 `apps/`、`systemd/`、`scripts/install-desktop-host.sh` 为准。
+
+### 12.1 修正：`desktop.host.passwordFile` 要指向明文（2026-09-27 17:0x CST）
+
+Control UI 的桌面面板首次在 V 上连接报「桌面安全协商失败：Authentication failure」。原因：上游 `host-source.ts` 把 `passwordFile` 按 utf8 读入直接当 VncAuth 密码（`fs.readFile(..., "utf8")`），我配的是 TigerVNC 混淆格式的 `vncpasswd`。改为 `vnc-password.txt` 后（V 按 stop→写→start 重启一次），面板可连。候选测试没抓到这一点，因为它只调了 `desktop.observe` 拿 wsPath，没有真的用返回的密码去做 VNC 认证——又一个「验收必须证明功能成立」的例子。

@@ -13,8 +13,9 @@
 #
 # The password is generated once (8 chars, VNC's limit), kept in plain text at
 # $DESKTOP_STATE_DIR/vnc-password.txt (0600) for the handoff service, and in
-# TigerVNC's obfuscated form at $DESKTOP_STATE_DIR/vncpasswd for Xtigervnc and
-# for the Gateway's desktop.host.passwordFile. Flags mirror the upstream
+# TigerVNC's obfuscated form at $DESKTOP_STATE_DIR/vncpasswd for Xtigervnc only.
+# The Gateway's desktop.host.passwordFile must point at the PLAIN TEXT file:
+# upstream reads it as utf8 and hands it to noVNC as the VncAuth password. Flags mirror the upstream
 # OpenClaw managed desktop (src/gateway/desktop/managed-linux.ts).
 set -euo pipefail
 
