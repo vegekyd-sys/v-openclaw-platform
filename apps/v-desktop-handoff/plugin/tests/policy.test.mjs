@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { decideToolCall } from "../core/policy.js";
-import { isControlAnywhereActor, isTrustedDirectSession, resolveTrustedActor } from "../core/identity.js";
+import { isControlAnywhereActor, isTrustedDirectSession, resolveOwnerActor, resolveTrustedActor } from "../core/identity.js";
 import { deliverPrivately } from "../core/deliver.js";
 import { HandoffAdminClient } from "../core/admin-client.js";
 import fs from "node:fs";
@@ -35,6 +35,25 @@ test("identity: channel sender wins, CLI falls back to the configured actor, dir
   assert.equal(isTrustedDirectSession({ sessionKey: "agent:makaron:feishu:group:oc_1" }), false);
   assert.equal(isTrustedDirectSession({ oneShotCliRun: true, sessionKey: "agent:makaron:feishu:direct:x" }), false);
   assert.equal(isTrustedDirectSession({ oneShotCliRun: true }, { trustCliAsDirect: true }), true);
+});
+
+test("identity: harness runtimes without requesterSenderId fall back to the Gateway-verified owner", () => {
+  const cfg = { commands: { ownerAllowFrom: ["feishu:ou_owner", "telegram:123"] } };
+  const dm = { senderIsOwner: true, messageChannel: "feishu", config: cfg, deliveryContext: { channel: "feishu", to: "user:ou_owner" } };
+  const group = { senderIsOwner: true, messageChannel: "feishu", config: cfg, deliveryContext: { channel: "feishu", to: "chat:oc_room" } };
+  assert.equal(resolveTrustedActor(dm), "feishu:ou_owner");
+  assert.equal(resolveTrustedActor(group), "feishu:ou_owner", "single owner on the channel is unambiguous in a group");
+  assert.equal(resolveTrustedActor({ ...dm, requesterSenderId: "ou_other" }), "feishu:ou_other", "channel sender still wins");
+  assert.equal(resolveTrustedActor({ ...dm, senderIsOwner: false }), null, "non-owners never get a derived identity");
+  assert.equal(resolveTrustedActor({ ...dm, senderIsOwner: undefined }), null);
+  assert.equal(resolveTrustedActor({ ...dm, config: undefined, runtimeConfig: cfg }), "feishu:ou_owner", "runtimeConfig is accepted");
+  assert.equal(resolveTrustedActor({ ...dm, messageChannel: "telegram" }), "telegram:123");
+  const two = { commands: { ownerAllowFrom: ["feishu:ou_a", "feishu:ou_b"] } };
+  assert.equal(resolveOwnerActor({ ...dm, config: two, deliveryContext: { to: "user:ou_b" } }), "feishu:ou_b", "DM peer picks among several owners");
+  assert.equal(resolveOwnerActor({ ...group, config: two }), null, "ambiguous owners in a group are refused");
+  assert.equal(resolveOwnerActor({ ...dm, config: two, deliveryContext: { to: "user:ou_stranger" } }), null, "DM with a non-owner peer is refused");
+  assert.equal(resolveOwnerActor({ ...dm, config: { commands: {} } }), null);
+  assert.equal(resolveOwnerActor({ ...dm, messageChannel: undefined }), null);
 });
 
 test("admin client: bearer from file, state cached for 2 s, errors surface", async () => {

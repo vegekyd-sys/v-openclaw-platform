@@ -17,6 +17,10 @@ export function resolveTrustedActor(context = {}, config = {}) {
   if (context.oneShotCliRun === true && typeof config.cliActorUserId === "string" && config.cliActorUserId.trim()) {
     return config.cliActorUserId.trim();
   }
+  const owner = resolveOwnerActor(context);
+  if (owner) {
+    return owner;
+  }
   // Test-only: `openclaw agent --session-key agent:<a>:<channel>:direct:<sender>` runs carry no
   // sender identity into the worker's tool context; derive it from the key when enabled.
   if (config.sessionKeyActorFallback === true && typeof context.sessionKey === "string") {
@@ -26,6 +30,42 @@ export function resolveTrustedActor(context = {}, config = {}) {
     }
   }
   return null;
+}
+
+/**
+ * Harness runtimes (Claude Code / Codex via the MCP loopback) hand the plugin
+ * `senderIsOwner` but no `requesterSenderId`. `senderIsOwner` is decided by the
+ * Gateway from `commands.ownerAllowFrom`, so when it is true the actor is one of
+ * the configured owners of this channel: the DM peer when the conversation is a
+ * direct chat with an owner, otherwise the only owner configured for the channel.
+ * Never guesses for non-owners or when several owners share the channel.
+ */
+export function resolveOwnerActor(context = {}) {
+  if (context.senderIsOwner !== true) {
+    return null;
+  }
+  const channel =
+    typeof context.messageChannel === "string" && context.messageChannel.trim() ? context.messageChannel.trim() : null;
+  if (!channel) {
+    return null;
+  }
+  const cfg = context.config && typeof context.config === "object" ? context.config : context.runtimeConfig;
+  const raw = cfg?.commands?.ownerAllowFrom;
+  const owners = (Array.isArray(raw) ? raw : []).filter(
+    (id) => typeof id === "string" && id.toLowerCase().startsWith(`${channel.toLowerCase()}:`),
+  );
+  if (owners.length === 0) {
+    return null;
+  }
+  const to = typeof context.deliveryContext?.to === "string" ? context.deliveryContext.to.trim() : "";
+  const peer = to.replace(/^user:/iu, "");
+  if (peer && !/^chat:/iu.test(to)) {
+    const match = owners.find((id) => id.toLowerCase() === `${channel.toLowerCase()}:${peer.toLowerCase()}`);
+    if (match) {
+      return match;
+    }
+  }
+  return owners.length === 1 ? owners[0] : null;
 }
 
 /** Non-sensitive shape of the tool context, for diagnostics when identity is missing. */
