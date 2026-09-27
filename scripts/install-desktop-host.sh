@@ -114,7 +114,7 @@ cat <<EOF
 
 == next (manual, needs a Gateway restart window) ==
 1. openclaw.json (validate each with: openclaw config set --dry-run):
-   desktop.host = {"enabled": true, "port": $RFB_PORT, "passwordFile": "$DESKTOP_STATE/vncpasswd"}
+   desktop.host = {"enabled": true, "port": $RFB_PORT, "passwordFile": "$DESKTOP_STATE/vnc-password.txt"}   # PLAIN TEXT: the Gateway reads it as utf8; the tigervnc-format vncpasswd is only for Xtigervnc
    browser.defaultProfile = "openclaw"; browser.headless = false   # the managed profile is built in; do not add it under browser.profiles
    browser.extraArgs = ["--window-position=0,0", "--window-size=1280,760"]
    plugins.load.paths += "$INSTALL_DIR/plugin"; plugins.allow += "v-desktop-handoff"
