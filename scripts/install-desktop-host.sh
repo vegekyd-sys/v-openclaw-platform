@@ -76,6 +76,7 @@ chown root:"$OPENCLAW_USER" "$ETC_DIR/admin-token"; chmod 640 "$ETC_DIR/admin-to
 if [ ! -s "$ETC_DIR/config.json" ]; then
   sed -e "s#https://openclaw.tianyi.live#$PUBLIC_BASE_URL#" \
       -e "s#/home/openclaw/.openclaw/desktop#$DESKTOP_STATE#" \
+      -e "s#/var/lib/v-desktop-handoff#$STATE_DIR#" -e "s#/etc/v-desktop-handoff#$ETC_DIR#" \
       -e "s#\"publicPort\": 23950#\"publicPort\": $PUBLIC_PORT#" \
       -e "s#\"adminPort\": 23951#\"adminPort\": $ADMIN_PORT#" \
       -e "s#\"port\": 5900#\"port\": $RFB_PORT#" \
