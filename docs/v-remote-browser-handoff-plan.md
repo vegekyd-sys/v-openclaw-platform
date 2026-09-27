@@ -184,3 +184,25 @@ VLab 候选 `candidate-75ebbe91-5876-4c28-9536-abe5afc7c10a`（基线 `feishu-pr
 候选里踩到并已修的坑记在项目记忆 `desktop-handoff-candidate-traps`：unix socket 108 字节上限让 dbus 与 Chrome 在候选目录下瞬退（生产 TMPDIR=/tmp 不受影响）、内置 `openclaw` profile 不能在 `browser.profiles` 声明、默认 SSRF 拦回环、worker 第二份配置必须同样声明插件、CLI 回合没有发送者身份（候选用 `sessionKeyActorFallback`，生产不开）、增量帧请求在静止桌面上不回复。
 
 未覆盖、留给共享 VLab 集成验收：真实飞书私聊里的端到端（`requesterSenderId` 来自渠道）、手机端 noVNC 触控体验、cloudflared 路径与 Control UI 同域共存。
+
+## 11. 共享 VLab 集成验收（2026-09-27 15:10–16:10 CST，lease owner `claude-desktop-handoff`）
+
+VLab 已回滚到 2026.9.1（release `feishu-progress-stream-v2`）。安装走 `scripts/install-desktop-host.sh`，参数 `UNIT_PREFIX=vlab-`：单元 `vlab-openclaw-desktop.service`（Xtigervnc :99 + XFCE，用户 lab-db91-parity）、`vlab-v-desktop-handoff.service`（23950/23951），文件在 `/opt/vlab-v-desktop-handoff`，配置 `/etc/vlab-v-desktop-handoff/`，Gateway drop-in `openclaw-vlab-production-mirror-v8.service.d/desktop-display.conf`。配置改动全部先 `config set --dry-run` 再写入，主配置与 `worker-openclaw.json` 各一份，备份在 `db91-parity/config-backups/*.pre-desktop-handoff-*`。Gateway 按 stop→start 重启（约 10 分钟就绪），之后 `nightshift-vlab-production-mirror` 手动拉回。
+
+**链接暴露（VLab 专有）**：`tailscale serve --set-path /desktop-handoff http://127.0.0.1:23950/desktop-handoff` 与 `--tcp=23950`。本机 Mac 的 MagicDNS 只回 IPv4 而 Tailscale IPv4 不通（与 V 一致），所以验收链接用 IPv6 直达 `http://[fd7a:115c:a1e0::e539:be40]:23950/desktop-handoff/#…`。生产用 cloudflared 域名，没有这个问题。
+
+在共享 Gateway 上实测（`vlab.mjs test` 的 vlab-dev 会话 + 内置浏览器打开真实页面）：
+
+| 步骤 | 结果 |
+|---|---|
+| agent `browser open https://example.com` | OPENED Example Domain；`:99` 上出现 1280x760 的 Chrome 窗口，Chrome 进程 `DISPLAY=:99` |
+| 打开控制链接（IPv6 tailnet） | 页面显示 XFCE 桌面与 Chrome（含 agent 打开的标签页），状态「观看中 · 剩余约 30 分钟」，画面里可见指针 |
+| 点「接管控制」→ 点 Chrome 标签页 | 状态变「你正在控制」，V 的 Chrome 切到 Example Domain（输入真实到达） |
+| 控制中 agent `browser open https://example.org` | 被拒，回复原文即插件的 blockReason |
+| 点「交还给 V」→ 同样回合 | OPENED；`/v1/state.controlActive=false` |
+| vlab-dev 会话调用 `desktop_handoff_request` | 拒绝「only issued in a direct/private conversation」：RPC 会话有可信身份但不是私聊，走的是预期的拒绝路径 |
+| 30 分钟未打开的链接 | 页面提示「这次接管已经结束」，审计 `claim_window_expired` |
+
+发现并已修：页面只换 fragment 不会重新加载（加 `hashchange` → reload）；owner 列表改为可随时读取的文件 `/etc/vlab-v-desktop-handoff/control-anywhere-actors`，加人不用重启。
+
+**未覆盖**：真实飞书私聊端到端（渠道 `requesterSenderId` → 签发 → 手机/电脑打开）、群里 owner 请求时私聊投递、手机端触控。
