@@ -23,6 +23,7 @@
       "sessionKeyActorFallback": { "type": "boolean" },
       "controlAnywhereActors": { "type": "array", "items": { "type": "string" } },
       "openclawCommand": { "type": "string" },
+      "openclawEntry": { "type": "string" },
       "messageAccountId": { "type": "string" },
       "principalAliases": {
         "type": "object",

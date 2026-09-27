@@ -4,12 +4,16 @@ import { execFile } from "node:child_process";
 // uses for its Feishu cards). A control link issued in a group must never be
 // posted into the group: the link is a bearer token, so it goes to the
 // requester's DM instead.
-export function deliverPrivately({ channel, target, text, command = "openclaw", accountId, env = process.env, runner = defaultRunner, timeoutMs = 30_000 }) {
+export function deliverPrivately({ channel, target, text, command, entry, accountId, env = process.env, runner = defaultRunner, timeoutMs = 30_000 }) {
   if (!channel || !target) {
     return Promise.reject(new Error("private delivery needs the channel and the requester id"));
   }
   const args = ["message", "send", "--channel", channel, "--target", target, "--message", text, "--json", ...(accountId ? ["--account", accountId] : [])];
-  return runner(command, args, { env, timeoutMs });
+  // `entry` = path to the runtime's dist/index.js (hosts without an `openclaw` on PATH); it runs under this Node.
+  if (entry) {
+    return runner(process.execPath, [entry, ...args], { env, timeoutMs });
+  }
+  return runner(command ?? "openclaw", args, { env, timeoutMs });
 }
 
 function defaultRunner(command, args, { env, timeoutMs }) {

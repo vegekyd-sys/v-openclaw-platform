@@ -78,4 +78,7 @@ test("private delivery goes through `openclaw message send` to the requester, ne
   assert.equal(calls[0].command, "openclaw");
   assert.deepEqual(calls[0].args.slice(0, 6), ["message", "send", "--channel", "feishu", "--target", "ou_owner"]);
   await assert.rejects(deliverPrivately({ channel: "feishu", target: "", text: "x", runner }), /requester id/u);
+  await deliverPrivately({ channel: "feishu", target: "ou_owner", text: "link", entry: "/rt/dist/index.js", runner });
+  assert.equal(calls[1].command, process.execPath);
+  assert.equal(calls[1].args[0], "/rt/dist/index.js");
 });

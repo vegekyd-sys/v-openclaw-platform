@@ -69,6 +69,7 @@ export default definePluginEntry({
                 target: senderId,
                 text: `V 需要你接管它的桌面浏览器：${params.reason}\n${issued.url}\n${openWithinMinutes} 分钟内打开，接管会话约 ${sessionMinutes} 分钟。打开后点「接管控制」，做完点「交还给 V」，再回群里告诉我一声。`,
                 command: config.openclawCommand,
+                entry: config.openclawEntry,
                 accountId: config.messageAccountId,
               });
             } catch (error) {

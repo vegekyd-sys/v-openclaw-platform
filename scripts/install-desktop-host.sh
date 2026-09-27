@@ -24,17 +24,25 @@ DISPLAY_NUM="${DISPLAY_NUM:-99}"
 RFB_PORT="${RFB_PORT:-5900}"
 PUBLIC_PORT="${PUBLIC_PORT:-23950}"
 ADMIN_PORT="${ADMIN_PORT:-23951}"
-INSTALL_DIR=/opt/v-desktop-handoff
-ETC_DIR=/etc/v-desktop-handoff
-STATE_DIR=/var/lib/v-desktop-handoff
-DESKTOP_STATE="$OPENCLAW_HOME/.openclaw/desktop"
+# On VLab hosts pass UNIT_PREFIX=vlab- so the units, dirs and ports never look like production ones.
+UNIT_PREFIX="${UNIT_PREFIX:-}"
+DESKTOP_UNIT="${UNIT_PREFIX}openclaw-desktop.service"
+HANDOFF_UNIT="${UNIT_PREFIX}v-desktop-handoff.service"
+INSTALL_DIR="${INSTALL_DIR:-/opt/${UNIT_PREFIX}v-desktop-handoff}"
+ETC_DIR="${ETC_DIR:-/etc/${UNIT_PREFIX}v-desktop-handoff}"
+STATE_DIR="${STATE_DIR:-/var/lib/${UNIT_PREFIX}v-desktop-handoff}"
+DESKTOP_STATE="${DESKTOP_STATE:-$OPENCLAW_HOME/.openclaw/desktop}"
+TYPEBOX_DIR="${TYPEBOX_DIR:-}"
+SKIP_APT="${SKIP_APT:-0}"
 
 [ "$(id -u)" = 0 ] || { echo "run as root" >&2; exit 1; }
 id "$OPENCLAW_USER" >/dev/null
 
 echo "== packages"
-export DEBIAN_FRONTEND=noninteractive
-apt-get install -y --no-install-recommends tigervnc-standalone-server tigervnc-tools xfce4-session xfwm4 xfce4-panel xfdesktop4 dbus x11-utils x11-xserver-utils novnc >/dev/null
+if [ "$SKIP_APT" != 1 ]; then
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get install -y --no-install-recommends tigervnc-standalone-server tigervnc-tools xfce4-session xfwm4 xfce4-panel xfdesktop4 dbus x11-utils x11-xserver-utils novnc >/dev/null
+fi
 for bin in Xtigervnc tigervncpasswd xfce4-session dbus-daemon xdpyinfo google-chrome; do command -v "$bin" >/dev/null || { echo "missing $bin" >&2; exit 1; }; done
 [ -d /usr/share/novnc/core ] || { echo "/usr/share/novnc/core missing" >&2; exit 1; }
 
@@ -45,7 +53,10 @@ rsync -a --delete --exclude tests --exclude node_modules "$REPO/apps/v-desktop-h
 rsync -a --delete "$REPO/apps/v-desktop-handoff/desktop/" "$INSTALL_DIR/desktop/"
 chmod 755 "$INSTALL_DIR/desktop/start-desktop.sh"
 # The plugin imports typebox; point it at the runtime's copy so nothing is vendored.
-TYPEBOX="$(dirname "$(readlink -f "$(command -v openclaw)")")/../node_modules/typebox"
+TYPEBOX="$TYPEBOX_DIR"
+if [ -z "$TYPEBOX" ] && command -v openclaw >/dev/null; then
+  TYPEBOX="$(dirname "$(readlink -f "$(command -v openclaw)")")/../node_modules/typebox"
+fi
 if [ ! -d "$TYPEBOX" ]; then
   TYPEBOX="$(find /opt -maxdepth 6 -type d -path '*openclaw*/node_modules/typebox' 2>/dev/null | head -1)"
 fi
@@ -76,21 +87,26 @@ echo 'd /tmp/.X11-unix 1777 root root 10d' > /etc/tmpfiles.d/x11-unix.conf
 systemd-tmpfiles --create /etc/tmpfiles.d/x11-unix.conf
 
 echo "== units"
-sed -e "s#^User=openclaw#User=$OPENCLAW_USER#" -e "s#^Group=openclaw#Group=$OPENCLAW_USER#" \
-    -e "s#/home/openclaw#$OPENCLAW_HOME#g" -e "s#DESKTOP_DISPLAY=99#DESKTOP_DISPLAY=$DISPLAY_NUM#" -e "s#DESKTOP_RFB_PORT=5900#DESKTOP_RFB_PORT=$RFB_PORT#" \
-    -e "s#Before=openclaw-gateway.service#Before=$GATEWAY_UNIT#" \
-    "$REPO/systemd/openclaw-desktop.service" > /etc/systemd/system/openclaw-desktop.service
-sed -e "s#^User=openclaw#User=$OPENCLAW_USER#" -e "s#^Group=openclaw#Group=$OPENCLAW_USER#" -e "s#/home/openclaw#$OPENCLAW_HOME#g" \
-    -e "s#/usr/bin/env node#$NODE_BIN/node#" \
-    "$REPO/systemd/v-desktop-handoff.service" > /etc/systemd/system/v-desktop-handoff.service
+GROUP_NAME="$(id -gn "$OPENCLAW_USER")"
+sed -e "s#^User=openclaw#User=$OPENCLAW_USER#" -e "s#^Group=openclaw#Group=$GROUP_NAME#" \
+    -e "s#/home/openclaw/.openclaw/desktop#$DESKTOP_STATE#g" -e "s#/home/openclaw#$OPENCLAW_HOME#g" \
+    -e "s#DESKTOP_DISPLAY=99#DESKTOP_DISPLAY=$DISPLAY_NUM#" -e "s#DESKTOP_RFB_PORT=5900#DESKTOP_RFB_PORT=$RFB_PORT#" \
+    -e "s#/opt/v-desktop-handoff#$INSTALL_DIR#g" -e "s#Before=openclaw-gateway.service#Before=$GATEWAY_UNIT#" \
+    -e "s#(PRODUCTION - not VLab)#(${UNIT_PREFIX:-PRODUCTION - not VLab})#" \
+    "$REPO/systemd/openclaw-desktop.service" > "/etc/systemd/system/$DESKTOP_UNIT"
+sed -e "s#^User=openclaw#User=$OPENCLAW_USER#" -e "s#^Group=openclaw#Group=$GROUP_NAME#" -e "s#/home/openclaw#$OPENCLAW_HOME#g" \
+    -e "s#/usr/bin/env node#$NODE_BIN/node#" -e "s#/opt/v-desktop-handoff#$INSTALL_DIR#g" -e "s#/etc/v-desktop-handoff#$ETC_DIR#g" \
+    -e "s#/var/lib/v-desktop-handoff#$STATE_DIR#g" -e "s#openclaw-desktop.service#$DESKTOP_UNIT#g" \
+    -e "s#(PRODUCTION - not VLab)#(${UNIT_PREFIX:-PRODUCTION - not VLab})#" \
+    "$REPO/systemd/v-desktop-handoff.service" > "/etc/systemd/system/$HANDOFF_UNIT"
 mkdir -p "/etc/systemd/system/$GATEWAY_UNIT.d"
 sed -e "s#DISPLAY=:99#DISPLAY=:$DISPLAY_NUM#" "$REPO/systemd/openclaw-gateway.service.d/desktop-display.conf" > "/etc/systemd/system/$GATEWAY_UNIT.d/desktop-display.conf"
 systemctl daemon-reload
-systemctl enable --now openclaw-desktop.service
+systemctl enable --now "$DESKTOP_UNIT"
 sleep 3
-systemctl enable --now v-desktop-handoff.service
+systemctl enable --now "$HANDOFF_UNIT"
 sleep 1
-systemctl --no-pager --lines=3 status openclaw-desktop.service v-desktop-handoff.service || true
+systemctl --no-pager --lines=3 status "$DESKTOP_UNIT" "$HANDOFF_UNIT" || true
 curl -fsS "http://127.0.0.1:$PUBLIC_PORT/desktop-handoff/healthz" && echo
 
 cat <<EOF
