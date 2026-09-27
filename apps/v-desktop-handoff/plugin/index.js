@@ -21,7 +21,21 @@ export default definePluginEntry({
       adminTokenFile: config.adminTokenFile,
     });
     const blockWhileControlled = config.blockBrowserWhileControlled ?? true;
-    const bySession = new Map(); // sessionKey -> last handoff id
+    const bySession = new Map(); // sessionKey -> last handoff id (this process); the service is the source of truth
+    const resolveHandoff = async (handoffId, sessionKey, signal) => {
+      const id = handoffId ?? (sessionKey ? bySession.get(sessionKey) : null);
+      if (id) {
+        return client.status(id, { signal });
+      }
+      if (sessionKey) {
+        try {
+          return await client.latestForSession(sessionKey, { signal });
+        } catch {
+          /* none for this session */
+        }
+      }
+      throw new Error("No handoff has been issued in this session");
+    };
 
     const trusted = (context) => {
       const actorUserId = resolveTrustedActor(context, config);
@@ -95,7 +109,7 @@ export default definePluginEntry({
             sessionMinutes,
             instruction:
               kind === "control"
-                ? "Send this url to the user in this private conversation. They open it, press 接管控制, do the login on V's own browser, press 交还给 V, then tell you they are done. While they are in control, your browser tool is limited to read-only actions. Do not store the url in memory or logs."
+                ? "Send exactly this url to the user in this private conversation, and no other address or 'equivalent' link (other hostnames may not resolve for them). They open it, press 接管控制, do the login on V's own browser, press 交还给 V, then tell you they are done. While they are in control, your browser tool is limited to read-only actions. Do not store the url in memory or logs."
                 : "Send this view-only url. Viewers can watch V's desktop but cannot type or click.",
           });
         },
@@ -112,11 +126,7 @@ export default definePluginEntry({
           handoffId: Type.Optional(Type.String({ description: "Handoff id returned by desktop_handoff_request; defaults to the latest one in this session" })),
         }),
         async execute(_toolCallId, params, signal) {
-          const id = params.handoffId ?? (context.sessionKey ? bySession.get(context.sessionKey) : null);
-          if (!id) {
-            throw new Error("No handoff has been issued in this session");
-          }
-          const status = await client.status(id, { signal });
+          const status = await resolveHandoff(params.handoffId, context.sessionKey, signal);
           return textResult({
             handoffId: status.id,
             kind: status.kind,
@@ -147,10 +157,7 @@ export default definePluginEntry({
           handoffId: Type.Optional(Type.String()),
         }),
         async execute(_toolCallId, params, signal) {
-          const id = params.handoffId ?? (context.sessionKey ? bySession.get(context.sessionKey) : null);
-          if (!id) {
-            throw new Error("No handoff has been issued in this session");
-          }
+          const id = (await resolveHandoff(params.handoffId, context.sessionKey, signal)).id;
           await client.revoke(id, { signal });
           if (context.sessionKey && bySession.get(context.sessionKey) === id) {
             bySession.delete(context.sessionKey);

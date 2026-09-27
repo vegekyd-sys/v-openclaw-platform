@@ -41,6 +41,10 @@ export class HandoffAdminClient {
     return this.request("POST", "/v1/handoffs", { kind, ownerId, sessionKey, reason, claimTtlMs, sessionTtlMs }, options);
   }
 
+  latestForSession(sessionKey, options) {
+    return this.request("GET", `/v1/handoffs?sessionKey=${encodeURIComponent(sessionKey)}`, undefined, options);
+  }
+
   status(id, options) {
     return this.request("GET", `/v1/handoffs/${encodeURIComponent(id)}`, undefined, options);
   }

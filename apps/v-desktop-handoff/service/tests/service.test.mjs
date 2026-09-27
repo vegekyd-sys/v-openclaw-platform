@@ -74,6 +74,17 @@ test("admin API requires the bearer token and issues a link with the token in th
   assert.doesNotMatch(audit, new RegExp(tokenOf(issued.body.url)), "raw token must never reach the audit log");
 });
 
+test("latest handoff for a session is found by sessionKey", async () => {
+  const a = await admin("POST", "/v1/handoffs", { kind: "control", ownerId: "u", sessionKey: "agent:x:feishu:direct:u" });
+  await sleep(5);
+  const b = await admin("POST", "/v1/handoffs", { kind: "control", ownerId: "u", sessionKey: "agent:x:feishu:direct:u" });
+  const latest = await admin("GET", "/v1/handoffs?sessionKey=agent%3Ax%3Afeishu%3Adirect%3Au");
+  assert.equal(latest.status, 200);
+  assert.equal(latest.body.id, b.body.id);
+  assert.notEqual(latest.body.id, a.body.id);
+  assert.equal((await admin("GET", "/v1/handoffs?sessionKey=nobody")).status, 404);
+});
+
 test("observer input is dropped server-side, controller input reaches the VNC server, cursor encodings are stripped", async () => {
   const issued = await admin("POST", "/v1/handoffs", { kind: "control", ownerId: "feishu:ou_ctl" });
   const claim = await pub("POST", "/api/claim", { token: tokenOf(issued.body.url) });

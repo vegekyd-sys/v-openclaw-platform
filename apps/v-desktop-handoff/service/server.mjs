@@ -316,6 +316,9 @@ export function createService(config, { log = console } = {}) {
           sessionTtlMs: body.sessionTtlMs,
         });
         json(res, 201, { id: issued.id, kind: issued.kind, url: linkFor(issued.token), claimExpiresAt: issued.claimExpiresAt, sessionTtlMs: issued.sessionTtlMs });
+      } else if (req.method === "GET" && url.pathname === "/v1/handoffs" && url.searchParams.get("sessionKey")) {
+        const status = registry.latestHandoffForSession(url.searchParams.get("sessionKey"));
+        json(res, status ? 200 : 404, status ?? { error: "not_found" });
       } else if (req.method === "GET" && match) {
         const status = registry.handoffStatus(match[1]);
         json(res, status ? 200 : 404, status ?? { error: "not_found" });

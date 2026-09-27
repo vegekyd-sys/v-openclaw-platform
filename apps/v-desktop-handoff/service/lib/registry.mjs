@@ -343,6 +343,16 @@ export class HandoffRegistry {
     };
   }
 
+  latestHandoffForSession(sessionKey) {
+    let latest = null;
+    for (const handoff of this.handoffs.values()) {
+      if (handoff.sessionKey === sessionKey && (!latest || handoff.createdAt > latest.createdAt)) {
+        latest = handoff;
+      }
+    }
+    return latest ? this.handoffStatus(latest.id) : null;
+  }
+
   handoffStatus(id) {
     const handoff = this.handoffs.get(id);
     if (!handoff) {
