@@ -9,6 +9,7 @@ import {
   loadNativeRuntimeContract,
   resolveGatewayScopeContract,
   resolveHostGatewayBridge,
+  createMediaCompletionDelivery,
 } from "./runtime-path.mjs";
 
 const vlabRuntime =
@@ -216,4 +217,16 @@ assert.equal(resolveHostGatewayBridge({ [bridgeKey]: complete }), complete);
 const admitting = { ...complete, runWithGatewayDetachedWorkContinuation: fn };
 assert.equal(resolveHostGatewayBridge({ [bridgeKey]: admitting })?.runWithGatewayDetachedWorkContinuation, fn);
 assert.equal(resolveHostGatewayBridge({ [bridgeKey]: { ...complete, runWithGatewayDetachedWorkContinuation: 1 } }), undefined);
-console.log(JSON.stringify({ ok: true, cases: 22 }));
+// Media completion delivery (9.6 fork bridge): the host's own delivery wins over
+// the captured-copy native import, which never schedules the queued row.
+const mediaDelivering = { ...admitting, deliverWorkerMediaCompletion: async (d) => ({ host: d }) };
+assert.equal(resolveHostGatewayBridge({ [bridgeKey]: mediaDelivering }), mediaDelivering);
+assert.equal(resolveHostGatewayBridge({ [bridgeKey]: { ...admitting, deliverWorkerMediaCompletion: 1 } }), undefined);
+let nativeLoads = 0;
+const nativeDeliver = async () => { nativeLoads++; return async (d) => ({ copy: d }); };
+assert.deepEqual(await createMediaCompletionDelivery(mediaDelivering, nativeDeliver)({ id: 1 }), { host: { id: 1 } });
+assert.equal(nativeLoads, 0);
+assert.deepEqual(await createMediaCompletionDelivery(admitting, nativeDeliver)({ id: 2 }), { copy: { id: 2 } });
+assert.deepEqual(await createMediaCompletionDelivery(undefined, nativeDeliver)({ id: 3 }), { copy: { id: 3 } });
+await assert.rejects(createMediaCompletionDelivery(undefined, async () => undefined)({}), /delivery runtime is unavailable/);
+console.log(JSON.stringify({ ok: true, cases: 29 }));

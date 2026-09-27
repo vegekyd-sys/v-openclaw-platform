@@ -52,6 +52,7 @@ import {
   nativeExportBindings,
   loadNativeRuntimeContract,
   resolveHostGatewayBridge,
+  createMediaCompletionDelivery,
 } from "./runtime-path.mjs";
 import { createWorkerActiveRunProxy } from "./worker-active-run-proxy.mjs";
 import { createGatewayMessageToolRelay } from "./gateway-message-tool.mjs";
@@ -414,6 +415,11 @@ const plugin = {
         "host gateway bridge lacks runWithGatewayDetachedWorkContinuation; subagent completions after sessions_yield will be refused as draining",
       );
     }
+    if (hostGatewayBridge && !hostGatewayBridge.deliverWorkerMediaCompletion) {
+      api.logger.warn?.(
+        "host gateway bridge lacks deliverWorkerMediaCompletion; Worker media completions will stay queued until a Gateway restart",
+      );
+    }
     const gatewayCallerRuntimePromise = observeEagerRuntimeLoad("gateway caller runtime", hostGatewayBridge
       ? Promise.resolve({
         withoutGatewayToolCallerIdentity: hostGatewayBridge.withoutGatewayToolCallerIdentity,
@@ -460,17 +466,12 @@ const plugin = {
     const routeWorkerGatewayEvent = createWorkerGatewayEventRouter({
       stats: mediaCompletionRelayStats,
       skillUsageStats: skillUsageRelayStats,
-      async deliverMediaCompletion(deliveryParams) {
-        const runtime = await nativeSubagentAnnounceOriginRuntimePromise;
-        const deliverSubagentAnnouncement =
-          runtime.deliverSubagentAnnouncement;
-        if (typeof deliverSubagentAnnouncement !== "function") {
-          throw new Error(
-            "OpenClaw native completion delivery runtime is unavailable",
-          );
-        }
-        return await deliverSubagentAnnouncement(deliveryParams);
-      },
+      deliverMediaCompletion: createMediaCompletionDelivery(
+        hostGatewayBridge,
+        async () =>
+          (await nativeSubagentAnnounceOriginRuntimePromise)
+            .deliverSubagentAnnouncement,
+      ),
       async recordSkillUsage(usage) {
         const runtime = await diagnosticRuntimePromise;
         if (

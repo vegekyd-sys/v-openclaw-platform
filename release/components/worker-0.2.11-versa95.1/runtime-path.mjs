@@ -235,7 +235,28 @@ export function resolveHostGatewayBridge(registry = globalThis) {
     typeof bridge.getGatewayContextResolver === "function" &&
     typeof bridge.withPluginRuntimeGatewayContextResolver === "function" &&
     (bridge.runWithGatewayDetachedWorkContinuation === undefined ||
-      typeof bridge.runWithGatewayDetachedWorkContinuation === "function")
+      typeof bridge.runWithGatewayDetachedWorkContinuation === "function") &&
+    (bridge.deliverWorkerMediaCompletion === undefined ||
+      typeof bridge.deliverWorkerMediaCompletion === "function")
     ? bridge
     : undefined;
+}
+
+// 9.6 (versa fork): the native delivery chunk this plugin imports is a captured
+// core copy whose session delivery runtime never starts, so its queued media
+// completion is never scheduled (wake times out after 120 s). Prefer the host's
+// own delivery from the bridge; the native import stays the fallback for hosts
+// whose bridge predates it.
+export function createMediaCompletionDelivery(bridge, loadNativeDelivery) {
+  const hostDeliver = bridge?.deliverWorkerMediaCompletion;
+  if (typeof hostDeliver === "function") {
+    return (deliveryParams) => hostDeliver(deliveryParams);
+  }
+  return async (deliveryParams) => {
+    const deliver = await loadNativeDelivery();
+    if (typeof deliver !== "function") {
+      throw new Error("OpenClaw native completion delivery runtime is unavailable");
+    }
+    return await deliver(deliveryParams);
+  };
 }
