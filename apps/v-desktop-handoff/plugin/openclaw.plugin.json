@@ -21,6 +21,7 @@
       "cliActorUserId": { "type": "string" },
       "trustCliAsDirect": { "type": "boolean" },
       "sessionKeyActorFallback": { "type": "boolean" },
+      "controlAnywhere": { "type": "boolean" },
       "controlAnywhereActors": { "type": "array", "items": { "type": "string" } },
       "controlAnywhereActorsFile": { "type": "string" },
       "openclawCommand": { "type": "string" },

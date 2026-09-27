@@ -51,7 +51,7 @@ export default definePluginEntry({
         name: "desktop_handoff_request",
         label: "Desktop Handoff Request",
         description:
-          "Use when V's own desktop browser (the `browser` tool) hits a login page, captcha, 2FA or a payment/consent step that only the user can complete. Issues a one-time link to V's desktop. kind=control (default) lets the requesting user watch and take over the mouse and keyboard; it only works in a direct/private conversation. kind=watch gives a view-only link that is safe for a group; configured owners may ask for control from a group too, in which case the link is delivered to their private chat. Put the returned url (if any) in your reply, tell the user what to do there and that the link expires, then end your turn and wait for the user to say they are done. Never type or guess credentials yourself.",
+          "Use when V's own desktop browser (the `browser` tool) hits a login page, captcha, 2FA or a payment/consent step that only the user can complete. Issues a one-time link to V's desktop. kind=control (default) lets the requesting user watch and take over the mouse and keyboard. kind=watch gives a view-only link. Depending on configuration a control link is issued in any conversation, or only in private chats (owners may then ask from a group and receive it privately). Put the returned url (if any) in your reply, tell the user what to do there and that the link expires, then end your turn and wait for the user to say they are done. Never type or guess credentials yourself.",
         parameters: Type.Object({
           reason: Type.String({ description: "Short, user-facing reason, e.g. 'need you to log in to Xiaohongshu'" }),
           kind: Type.Optional(Type.Union([Type.Literal("control"), Type.Literal("watch")], { description: "control (default) or watch" })),
@@ -59,7 +59,8 @@ export default definePluginEntry({
         async execute(_toolCallId, params, signal) {
           const { actorUserId, sessionKey } = trusted(context);
           const kind = params.kind === "watch" ? "watch" : "control";
-          const direct = isTrustedDirectSession(context, config);
+          // controlAnywhere: control links may be issued in any conversation and are posted in place.
+          const direct = config.controlAnywhere === true || isTrustedDirectSession(context, config);
           const anywhere = isControlAnywhereActor(actorUserId, config);
           if (kind === "control" && !direct && !anywhere) {
             throw new Error("A control handoff is only issued in a direct/private conversation. Ask the user to message V privately, or issue kind=watch here.");
@@ -109,7 +110,7 @@ export default definePluginEntry({
             sessionMinutes,
             instruction:
               kind === "control"
-                ? "Send exactly this url to the user in this private conversation, and no other address or 'equivalent' link (other hostnames may not resolve for them). They open it, press 接管控制, do the login on V's own browser, press 交还给 V, then tell you they are done. While they are in control, your browser tool is limited to read-only actions. Do not store the url in memory or logs."
+                ? "Send exactly this url to the user in this conversation, and no other address or 'equivalent' link (other hostnames may not resolve for them). They open it, press 接管控制, do the login on V's own browser, press 交还给 V, then tell you they are done. While they are in control, your browser tool is limited to read-only actions. Do not store the url in memory or logs."
                 : "Send this view-only url. Viewers can watch V's desktop but cannot type or click.",
           });
         },

@@ -1,0 +1,13 @@
+{
+  "baseRelease": "feishu-progress-stream-v2",
+  "tests": ["lab/candidate/computer-frame-prune.test.mjs"],
+  "files": [
+    {
+      "source": "lab/release-files/computer-frame-prune/history-image-prune-Dg0CDQ4a.js",
+      "target": "openclaw/dist/history-image-prune-Dg0CDQ4a.js",
+      "before": "a4261a044f88060be7d9412186c8b7df02710d1138a9eb836056ee63123b820f"
+    }
+  ],
+  "timeoutSeconds": 600,
+  "user": "lab-db91-parity"
+}

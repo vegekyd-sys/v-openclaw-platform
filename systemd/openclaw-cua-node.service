@@ -1,0 +1,31 @@
+# A second OpenClaw node on the Gateway host itself, bound to the host desktop
+# (DISPLAY=:99 from openclaw-desktop.service), so the 9.1 `computer` tool can
+# drive a real mouse and keyboard there through cua-computer (PRODUCTION - not VLab).
+# Its config/state live in /home/openclaw/.openclaw/node-cua/ and are separate from
+# the Gateway's; pairing: `openclaw devices approve` (auto on the same host) then
+# `openclaw nodes approve <id>`.
+[Unit]
+Description=OpenClaw host node for computer use on the host desktop (PRODUCTION - not VLab)
+After=network.target openclaw-desktop.service openclaw-gateway.service
+Wants=openclaw-desktop.service
+
+[Service]
+Type=simple
+User=openclaw
+Group=openclaw
+Environment=HOME=/home/openclaw
+Environment=DISPLAY=:99
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/.v-desktop-99/bus
+Environment=XDG_RUNTIME_DIR=/tmp/.v-desktop-99/runtime
+Environment=TMPDIR=/tmp
+Environment=OPENCLAW_CONFIG_PATH=/home/openclaw/.openclaw/node-cua/openclaw.json
+Environment=OPENCLAW_STATE_DIR=/home/openclaw/.openclaw/node-cua/state
+Environment=PATH=/opt/node-v22.23.1/bin:/usr/local/bin:/usr/bin:/bin
+WorkingDirectory=/home/openclaw/.openclaw/node-cua
+ExecStart=/opt/node-v22.23.1/bin/node /opt/openclaw-2026.9.1-v/openclaw/dist/index.js node run --host 127.0.0.1 --port 22793 --display-name "V host desktop"
+Restart=always
+RestartSec=5
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target

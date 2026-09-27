@@ -218,3 +218,40 @@ VLab 已回滚到 2026.9.1（release `feishu-progress-stream-v2`）。安装走 
 ### 12.1 修正：`desktop.host.passwordFile` 要指向明文（2026-09-27 17:0x CST）
 
 Control UI 的桌面面板首次在 V 上连接报「桌面安全协商失败：Authentication failure」。原因：上游 `host-source.ts` 把 `passwordFile` 按 utf8 读入直接当 VncAuth 密码（`fs.readFile(..., "utf8")`），我配的是 TigerVNC 混淆格式的 `vncpasswd`。改为 `vnc-password.txt` 后（V 按 stop→写→start 重启一次），面板可连。候选测试没抓到这一点，因为它只调了 `desktop.observe` 拿 wsPath，没有真的用返回的密码去做 VNC 认证——又一个「验收必须证明功能成立」的例子。
+
+## 13. 9.1 上的真实鼠标：本机 node 路线（2026-09-27 20:30–21:00 CST，VLab 实跑）
+
+不升级核心也能拿到 `computer` 工具：9.1 的 `computer` 只能操作已配对 node，那就在 Gateway 主机上再跑一个 node 进程，`DISPLAY=:99` 指向我们的桌面。这是上游 9.1 自带的 live-proof 拓扑（`scripts/dev/computer-use-macos-live-rig.sh`：同机 Gateway + `node run --host 127.0.0.1`），文档明说独立状态目录的 node 即使同机也是独立节点。
+
+**VLab 实跑**
+- node 配置（独立目录 `db91-parity/node-cua/`）：`gateway.mode=remote` → `ws://127.0.0.1:24993`，`browser.enabled=false`，`nodeHost.browserProxy.enabled=false`，`plugins.entries.cua-computer.enabled=true`。以 transient unit `vlab-cua-node` 运行，环境 `DISPLAY=:99`、`DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/.v-desktop-99/bus`、`XDG_RUNTIME_DIR=/tmp/.v-desktop-99/runtime`。
+- Gateway 侧：`plugins.entries.cua-computer.enabled=true`、`plugins.allow` 加 `cua-computer`、`tools.alsoAllow` 加 `computer`（主配置 + worker 副本），重启一次。Gateway 侧必须启用 cua-computer，它注册 node-invoke 策略。
+- 配对：设备配对自动通过（同机），命令面用 `openclaw nodes approve <id>`。之后 `nodes describe` 显示 `Caps: computer, screen`，命令 `computer.act`、`screen.snapshot`。
+- RPC 层证明（`node.invoke`）：`screen.snapshot` 返回 1280x800 JPEG 与 `displayFrameId`；`get_cursor_position` 源 x11；三次 `mouse_move` 后光标从 (29,58) 到 (400,300)；`left_click` ok；观看页面里指针位置随之改变。
+- 参数细节（都是踩出来的）：`executionId` 必须是 UUID，截图与动作共用；坐标字段是 `x`/`y` 不是 `coordinate`；动作要带 `screenIndex` 与 `refWidth`（等于截图 `maxWidth`），否则 `COMPUTER_STALE_FRAME`；每次动作后要重新截图拿新 `displayFrameId`；执行结束用 `action:"__close_execution"` 释放，否则下一个执行会 `COMPUTER_HOST_BUSY`。工具层（`computer-tool-node.ts`）已经封装了这些。
+- 模型限制：工具只在模型有视觉时挂载。VLab 只有 DeepSeek，`deepseek-v4-flash` 是纯文本，要用 `deepseek/deepseek-v4-flash-vision-exp`（需加进 `modelPolicy.allow`，改动要重启）。V 上 grok-4.6 有视觉，不受此限。
+- 与接管的配合：handoff 插件的 `before_tool_call` 已把 `computer` 纳入「有人控制时只读」。
+
+**上 V 的步骤**：装 node 单元（用户 openclaw，独立 `~/.openclaw/node-cua/` 配置与状态，env 同上但 D-Bus 路径为 `/tmp/.v-desktop-99/bus`），Gateway 侧三处配置 + worker 副本，一次 stop→start，两步审批。9.5/9.6 升级后可换成 `target:"gateway"` 或保留 node，互不冲突。
+
+**模型层在 VLab 上没有跑通，原因是 VLab 的模型面**：`computer` 只挂给有视觉的模型；VLab 唯一的 provider 是 DeepSeek，`deepseek-v4-flash/pro` 纯文本；`deepseek-flash`（V4.1，有视觉）被全局绑到 Codex harness，走不了 worker；`deepseek-v4-flash-vision-exp` 加进 `modelPolicy.allow` 和 provider 清单后，worker 子进程仍报 `Agent harness runtime "vlab-worker" is unavailable (owner-plugin-not-activatable)`，而同一会话切回 `deepseek-v4-pro` 立刻正常——worker 子进程对清单外新增模型的激活逻辑没有继续深挖。生产 V 的 makaron 默认模型是 `xai/grok-4.6`（有视觉，runtime=vlab-worker），不受此限；模型层验证只能在 V 上做，或者给 VLab 加一个视觉 provider。
+
+VLab 遗留：transient unit `vlab-cua-node`（重启机器后不会自启）、Gateway 侧 cua-computer/`computer` 放行、`modelPolicy.allow` 与 DeepSeek 清单多了 vision-exp。都不影响其他功能。
+
+### 13.1 三个 runtime 都通了（2026-09-27 21:40–22:10 CST，VLab）
+
+- **worker**：`deepseek-v4-flash` 在 provider 目录里 `input` 标成 `["text","image"]` 后，`computer` 出现在 worker 的工具清单（"unknown entries (computer)" 警告消失），默认模型的回合里 screenshot → mouse_move → left_click 全部成功（坐标 (600,375)，node.invoke 五次）。Tianyi 指出 v4-flash 本来就有视觉，标记只是目录没写。
+- **Codex harness**（`/model deepseek/deepseek-flash`，即 vds）：`computer` 以 `openclaw_direct` 命名空间下发（direct-only 工具的固定位置），三次调用成功，CUA_OK。
+- **Claude Code harness**（`/model vcc`，claude-opus-5）：MCP 回环拿到 `computer`，图片块透传，CUA_OK。
+- 桥接的两个前提（源码 `extensions/codex/src/app-server/dynamic-tool-build.ts:283`、`src/agents/openclaw-tools.ts:339`）：模型定义 `input` 含 `image`（Codex 侧缺省按 false），且 `tools.alsoAllow` 含 `computer`（它不在任何内置 profile）。
+- **V 上 Codex 会话为什么找不到**：会话跑在别名 `deepseek/vds-deepseek-flash`，provider 目录里没有这个 id，`input` 为空 → Codex 桥判无视觉 → 静默去掉。V 的 agent 转而用 `nodes` 工具直接调 `screen.snapshot`/`computer.act` 也成功了（22:04），说明 node 路线在 V 上通，只差目录条目。**修法（待授权，需重启）**：给 V 的 DeepSeek provider 加 `vds-deepseek-flash` 条目（克隆 deepseek-flash，`input: ["text","image"]`），主配置与 worker 副本各一份。
+
+`controlAnywhere` 在 VLab 实测：群里 @V - Lab 要控制链接，链接直接发在群里（审计 sessionKey 为 group）。
+
+### 13.2 飞书私聊/群聊里拿不到 `computer` 的根因与修复（2026-09-27 23:55 CST，VLab）
+
+现象：explicit 测试会话工具清单里有 `computer`、`nodes`、`gateway`、`terminal`，飞书私聊（worker）和群聊（Codex）的清单里这几项全没有，模型如实回 NO_COMPUTER。
+根因：`nodes`/`computer` 属于 owner-only 的危险工具集（`src/security/dangerous-tools.ts:61-74`），`src/agents/agent-tools.ts:697-701` 在 `senderIsOwner === false` 时一起拒绝；RPC/webchat 的发起者默认是 owner，飞书发送者要在 `commands.ownerAllowFrom` 里才算 owner。VLab 的 `commands.ownerAllowFrom` 是空的（V 上早已配 `feishu:ou_cb133f…`，所以 V 的私聊会话一直看得到 `nodes`）。
+修复：VLab `commands.ownerAllowFrom = ["feishu:ou_775a78…"]`（主配置 + worker 副本），需重启。之后私聊（deepseek-v4-flash / worker）回 `CUA_DM_OK OpenClaw - Wikipedia`，群聊（deepseek-flash / Codex）回 `CUA_GROUP_OK`，两边都真实截图并点击。
+附带观察：两个会话同时调用时只有一个能持有桌面执行，另一个先报 `COMPUTER_HOST_BUSY`，模型重试后成功。桌面是单例，这是预期行为。
+之前两次"修复"（把 vision-exp 加进清单、`/new`）都不是原因；`/new` 在私聊里还触发过一次 "Persisted legacy session transcripts require doctor/import migration" 的瞬时错误，重发即恢复。

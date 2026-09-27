@@ -24,7 +24,7 @@
 
 ## 插件（层 C）
 
-工具默认只在私聊里签发 `control` 链接（`kind=watch` 群里可用），签发者取渠道可信 `requesterSenderId`，不信模型参数。`controlAnywhereActors`（如 `["feishu:ou_xxx"]`）里列出的人在群里也能要控制链接，但链接是不记名的，所以群里签发时**通过 `openclaw message send` 私聊投递**，工具结果里不含 url；投递失败则撤销签发并报错。自己的规范身份可从任一次 `desktop_handoff_request` 结果的 `requestedBy` 字段读到。`blockBrowserWhileControlled`（默认开）下，`/v1/state.controlActive` 为真时 `browser` 只放行 status / tabs / snapshot / screenshot，`computer` 只放行截图类；服务不可达时放行并记 warn，不让分享服务拖垮浏览器。
+`controlAnywhere: true`（V 与 VLab 当前设置）时任何群和私聊都能签发 `control` 链接并直接发在当场；链接是不记名的，群里谁点都能接管，这是 Tianyi 明确选择的策略。关掉时退回严格模式：只在私聊签发（`kind=watch` 群里可用），签发者取渠道可信 `requesterSenderId`，不信模型参数。`controlAnywhereActors`（如 `["feishu:ou_xxx"]`）里列出的人在群里也能要控制链接，但链接是不记名的，所以群里签发时**通过 `openclaw message send` 私聊投递**，工具结果里不含 url；投递失败则撤销签发并报错。自己的规范身份可从任一次 `desktop_handoff_request` 结果的 `requestedBy` 字段读到。`blockBrowserWhileControlled`（默认开）下，`/v1/state.controlActive` 为真时 `browser` 只放行 status / tabs / snapshot / screenshot，`computer` 只放行截图类；服务不可达时放行并记 warn，不让分享服务拖垮浏览器。
 
 插件依赖 `typebox`，安装脚本把 `node_modules/typebox` 软链到 OpenClaw runtime 里的那份。
 
