@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { decideToolCall } from "../core/policy.js";
-import { isTrustedDirectSession, resolveTrustedActor } from "../core/identity.js";
+import { isControlAnywhereActor, isTrustedDirectSession, resolveTrustedActor } from "../core/identity.js";
+import { deliverPrivately } from "../core/deliver.js";
 import { HandoffAdminClient } from "../core/admin-client.js";
 import fs from "node:fs";
 import os from "node:os";
@@ -60,4 +61,21 @@ test("admin client: bearer from file, state cached for 2 s, errors surface", asy
   assert.equal(calls[0].url, "http://h/v1/state");
   await assert.rejects(client.status("h_x"), /404: not_found/u);
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("owner list: only listed canonical actors may control from a group", () => {
+  const config = { controlAnywhereActors: ["feishu:ou_owner"] };
+  assert.equal(isControlAnywhereActor("feishu:ou_owner", config), true);
+  assert.equal(isControlAnywhereActor("feishu:ou_other", config), false);
+  assert.equal(isControlAnywhereActor("feishu:ou_owner", {}), false);
+  assert.equal(isControlAnywhereActor(resolveTrustedActor({ requesterSenderId: "ou_owner", messageChannel: "feishu" }), config), true);
+});
+
+test("private delivery goes through `openclaw message send` to the requester, never without a target", async () => {
+  const calls = [];
+  const runner = async (command, args) => { calls.push({ command, args }); return "{\"messageId\":\"m1\"}"; };
+  await deliverPrivately({ channel: "feishu", target: "ou_owner", text: "link", command: "openclaw", runner });
+  assert.equal(calls[0].command, "openclaw");
+  assert.deepEqual(calls[0].args.slice(0, 6), ["message", "send", "--channel", "feishu", "--target", "ou_owner"]);
+  await assert.rejects(deliverPrivately({ channel: "feishu", target: "", text: "x", runner }), /requester id/u);
 });

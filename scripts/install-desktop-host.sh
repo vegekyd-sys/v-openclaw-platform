@@ -102,7 +102,8 @@ cat <<EOF
    browser.extraArgs = ["--window-position=0,0", "--window-size=1280,760"]
    plugins.load.paths += "$INSTALL_DIR/plugin"; plugins.allow += "v-desktop-handoff"
    plugins.entries.v-desktop-handoff = {"enabled": true, "hooks": {"allowConversationAccess": true},
-     "config": {"adminUrl": "http://127.0.0.1:$ADMIN_PORT", "adminTokenFile": "$ETC_DIR/admin-token"}}
+     "config": {"adminUrl": "http://127.0.0.1:$ADMIN_PORT", "adminTokenFile": "$ETC_DIR/admin-token",
+                "controlAnywhereActors": ["feishu:ou_<owner open_id>"]}}   # owner may request control from groups; link is DM'd
    Repeat plugins.load.paths / plugins.allow / plugins.entries.v-desktop-handoff, desktop and browser in the
    worker config copy (plugins.entries.vlab-agent-worker-isolation.config.workerConfigPath): the model runs in
    the worker child and only sees tools declared there (candidate run 7 proved this).

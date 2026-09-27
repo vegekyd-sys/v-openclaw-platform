@@ -43,3 +43,9 @@ export function isTrustedDirectSession(context = {}, config = {}) {
   const sessionKey = typeof context.sessionKey === "string" ? context.sessionKey.trim().toLowerCase() : "";
   return sessionKey.includes(":direct:") || sessionKey.includes(":dm:");
 }
+
+/** Actors allowed to request a control link from any conversation (the owner). */
+export function isControlAnywhereActor(actorUserId, config = {}) {
+  const list = Array.isArray(config.controlAnywhereActors) ? config.controlAnywhereActors : [];
+  return typeof actorUserId === "string" && list.includes(actorUserId);
+}
