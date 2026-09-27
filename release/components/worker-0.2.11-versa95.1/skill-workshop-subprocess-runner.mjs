@@ -1,7 +1,8 @@
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { writeSync } from "node:fs";
-import { readFile, readdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
+import { resolveOpenClawToolsModule } from "./openclaw-tools-module.mjs";
 
 async function readRequest() {
   let raw = "";
@@ -20,24 +21,10 @@ async function resolveToolsModule() {
   if (!runtimePath) {
     throw new Error("VLAB_OPENCLAW_AGENT_RUNTIME is required");
   }
-  const distDir = dirname(dirname(runtimePath));
-  const candidates = (await readdir(distDir))
-    .filter((name) => /^openclaw-tools-.*\.js$/.test(name))
-    .sort();
-  const matches = [];
-  for (const name of candidates) {
-    const path = join(distDir, name);
-    const source = await readFile(path, "utf8");
-    if (source.includes("Create the Skill Workshop tool for proposal discovery")) {
-      matches.push(path);
-    }
-  }
-  if (matches.length !== 1) {
-    throw new Error(
-      `expected one OpenClaw tools module with Skill Workshop, found ${matches.length}`,
-    );
-  }
-  return matches[0];
+  return await resolveOpenClawToolsModule(dirname(dirname(runtimePath)), {
+    marker: "Create the Skill Workshop tool for proposal discovery",
+    label: "Skill Workshop",
+  });
 }
 
 function writeEnvelope(envelope, exitCode) {

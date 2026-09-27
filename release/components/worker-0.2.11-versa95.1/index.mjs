@@ -32,6 +32,7 @@ function ocFirsttextWorkerMark(stage, runId, fields = {}) {
 
 import { buildVolcengineRtcAgentProvider } from "./volcengine-rtc-agent-provider.mjs";
 import { WorkerPool } from "./worker-pool.mjs";
+import { observeEagerRuntimeLoad } from "./eager-runtime-load.mjs";
 import { performance } from "node:perf_hooks";
 import { buildNativeHarnessData } from './native-harness-data.mjs';
 import { gatewayOwnedEventArgs } from './gateway-owned-terminal.mjs';
@@ -390,20 +391,20 @@ const plugin = {
       return;
     }
     const openClawAgentRuntimePath = resolveOpenClawAgentRuntimePath();
-    const agentHarnessActiveRunRuntimePromise = import(
+    const agentHarnessActiveRunRuntimePromise = observeEagerRuntimeLoad("agent harness active-run runtime", import(
       pathToFileURL(
         resolveOpenClawAgentHarnessRuntimePath({
           agentRuntimePath: openClawAgentRuntimePath,
         }),
       ).href
-    );
+    ), api.logger);
     const compactNativeOpenClawSession =
       createGatewayNativeCompactionPassthrough();
-    const transcriptRuntimePromise = import(
+    const transcriptRuntimePromise = observeEagerRuntimeLoad("session transcript runtime", import(
       pathToFileURL(
         resolve(dirname(openClawAgentRuntimePath), "session-transcript-runtime.js"),
       ).href
-    );
+    ), api.logger);
     // 9.6 (versa fork): plugins run on a captured core copy whose caller store
     // and brand-checked bindings are not the Gateway's; use the host's own
     // functions from the fork's host bridge, else resolve the native chunks (9.5).
@@ -413,47 +414,47 @@ const plugin = {
         "host gateway bridge lacks runWithGatewayDetachedWorkContinuation; subagent completions after sessions_yield will be refused as draining",
       );
     }
-    const gatewayCallerRuntimePromise = hostGatewayBridge
+    const gatewayCallerRuntimePromise = observeEagerRuntimeLoad("gateway caller runtime", hostGatewayBridge
       ? Promise.resolve({
         withoutGatewayToolCallerIdentity: hostGatewayBridge.withoutGatewayToolCallerIdentity,
       })
       : loadNativeRuntimeContract(
-        resolveGatewayCallerContract({agentRuntimePath:openClawAgentRuntimePath}));
-    const gatewayScopeRuntimePromise = hostGatewayBridge
+        resolveGatewayCallerContract({agentRuntimePath:openClawAgentRuntimePath})), api.logger);
+    const gatewayScopeRuntimePromise = observeEagerRuntimeLoad("gateway scope runtime", hostGatewayBridge
       ? Promise.resolve({
         getGatewayContextResolver: hostGatewayBridge.getGatewayContextResolver,
         withPluginRuntimeGatewayContextResolver:
           hostGatewayBridge.withPluginRuntimeGatewayContextResolver,
       })
       : loadNativeRuntimeContract(
-        resolveGatewayScopeContract({agentRuntimePath:openClawAgentRuntimePath}));
-    const agentHarnessTaskRuntimePromise = import(
+        resolveGatewayScopeContract({agentRuntimePath:openClawAgentRuntimePath})), api.logger);
+    const agentHarnessTaskRuntimePromise = observeEagerRuntimeLoad("agent harness task runtime", import(
       pathToFileURL(
         resolve(
           dirname(openClawAgentRuntimePath),
           "agent-harness-task-runtime.js",
         ),
       ).href
-    );
-    const diagnosticRuntimePromise = import(
+    ), api.logger);
+    const diagnosticRuntimePromise = observeEagerRuntimeLoad("diagnostic runtime", import(
       pathToFileURL(
         resolve(dirname(openClawAgentRuntimePath), "diagnostic-runtime.js"),
       ).href
-    );
-    const nativeSubagentAnnounceRuntimePromise = import(
+    ), api.logger);
+    const nativeSubagentAnnounceRuntimePromise = observeEagerRuntimeLoad("subagent announce runtime", import(
       pathToFileURL(
         resolveOpenClawSubagentAnnounceRuntimePath({
           agentRuntimePath: openClawAgentRuntimePath,
         }),
       ).href
-    );
+    ), api.logger);
     const nativeDeliveryPath = resolveOpenClawSubagentAnnounceOriginRuntimePath({
       agentRuntimePath: openClawAgentRuntimePath,
     });
-    const nativeSubagentAnnounceOriginRuntimePromise = loadNativeRuntimeContract({
+    const nativeSubagentAnnounceOriginRuntimePromise = observeEagerRuntimeLoad("subagent announce origin runtime", loadNativeRuntimeContract({
       path: nativeDeliveryPath,
       bindings: nativeExportBindings(readNativeRuntimeSource(nativeDeliveryPath, 'utf8'), ['deliverSubagentAnnouncement']),
-    });
+    }), api.logger);
     const mediaCompletionRelayStats = {};
     const skillUsageRelayStats = {};
     const routeWorkerGatewayEvent = createWorkerGatewayEventRouter({

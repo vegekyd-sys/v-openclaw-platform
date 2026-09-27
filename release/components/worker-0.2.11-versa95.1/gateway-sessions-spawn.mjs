@@ -1,30 +1,18 @@
-import { readdir, readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
+import { resolveOpenClawToolsModule } from "./openclaw-tools-module.mjs";
 
 let createOpenClawToolsPromise;
 
 async function resolveCreateOpenClawTools(agentRuntimePath) {
   if (!createOpenClawToolsPromise) {
     createOpenClawToolsPromise = (async () => {
-      const distDir = dirname(dirname(agentRuntimePath));
-      const candidates = (await readdir(distDir))
-        .filter((name) => /^openclaw-tools-.*\.js$/.test(name))
-        .sort();
-      const matches = [];
-      for (const name of candidates) {
-        const modulePath = join(distDir, name);
-        const source = await readFile(modulePath, "utf8");
-        if (source.includes("sessions_spawn built-in tool")) {
-          matches.push(modulePath);
-        }
-      }
-      if (matches.length !== 1) {
-        throw new Error(
-          `OpenClaw sessions_spawn tools module was not uniquely resolved; found ${matches.length}`,
-        );
-      }
-      const module = await import(pathToFileURL(matches[0]).href);
+      // 9.6 moved the sessions_spawn description into its own chunk; the
+      // factory that builds the tool is what this executor needs.
+      const modulePath = await resolveOpenClawToolsModule(dirname(dirname(agentRuntimePath)), {
+        label: "createOpenClawTools",
+      });
+      const module = await import(pathToFileURL(modulePath).href);
       const createOpenClawTools = Object.values(module).find(
         (value) =>
           typeof value === "function" && value.name === "createOpenClawTools",
