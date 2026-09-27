@@ -218,3 +218,18 @@ VLab 已回滚到 2026.9.1（release `feishu-progress-stream-v2`）。安装走 
 ### 12.1 修正：`desktop.host.passwordFile` 要指向明文（2026-09-27 17:0x CST）
 
 Control UI 的桌面面板首次在 V 上连接报「桌面安全协商失败：Authentication failure」。原因：上游 `host-source.ts` 把 `passwordFile` 按 utf8 读入直接当 VncAuth 密码（`fs.readFile(..., "utf8")`），我配的是 TigerVNC 混淆格式的 `vncpasswd`。改为 `vnc-password.txt` 后（V 按 stop→写→start 重启一次），面板可连。候选测试没抓到这一点，因为它只调了 `desktop.observe` 拿 wsPath，没有真的用返回的密码去做 VNC 认证——又一个「验收必须证明功能成立」的例子。
+
+## 13. 9.1 上的真实鼠标：本机 node 路线（2026-09-27 20:30–21:00 CST，VLab 实跑）
+
+不升级核心也能拿到 `computer` 工具：9.1 的 `computer` 只能操作已配对 node，那就在 Gateway 主机上再跑一个 node 进程，`DISPLAY=:99` 指向我们的桌面。这是上游 9.1 自带的 live-proof 拓扑（`scripts/dev/computer-use-macos-live-rig.sh`：同机 Gateway + `node run --host 127.0.0.1`），文档明说独立状态目录的 node 即使同机也是独立节点。
+
+**VLab 实跑**
+- node 配置（独立目录 `db91-parity/node-cua/`）：`gateway.mode=remote` → `ws://127.0.0.1:24993`，`browser.enabled=false`，`nodeHost.browserProxy.enabled=false`，`plugins.entries.cua-computer.enabled=true`。以 transient unit `vlab-cua-node` 运行，环境 `DISPLAY=:99`、`DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/.v-desktop-99/bus`、`XDG_RUNTIME_DIR=/tmp/.v-desktop-99/runtime`。
+- Gateway 侧：`plugins.entries.cua-computer.enabled=true`、`plugins.allow` 加 `cua-computer`、`tools.alsoAllow` 加 `computer`（主配置 + worker 副本），重启一次。Gateway 侧必须启用 cua-computer，它注册 node-invoke 策略。
+- 配对：设备配对自动通过（同机），命令面用 `openclaw nodes approve <id>`。之后 `nodes describe` 显示 `Caps: computer, screen`，命令 `computer.act`、`screen.snapshot`。
+- RPC 层证明（`node.invoke`）：`screen.snapshot` 返回 1280x800 JPEG 与 `displayFrameId`；`get_cursor_position` 源 x11；三次 `mouse_move` 后光标从 (29,58) 到 (400,300)；`left_click` ok；观看页面里指针位置随之改变。
+- 参数细节（都是踩出来的）：`executionId` 必须是 UUID，截图与动作共用；坐标字段是 `x`/`y` 不是 `coordinate`；动作要带 `screenIndex` 与 `refWidth`（等于截图 `maxWidth`），否则 `COMPUTER_STALE_FRAME`；每次动作后要重新截图拿新 `displayFrameId`；执行结束用 `action:"__close_execution"` 释放，否则下一个执行会 `COMPUTER_HOST_BUSY`。工具层（`computer-tool-node.ts`）已经封装了这些。
+- 模型限制：工具只在模型有视觉时挂载。VLab 只有 DeepSeek，`deepseek-v4-flash` 是纯文本，要用 `deepseek/deepseek-v4-flash-vision-exp`（需加进 `modelPolicy.allow`，改动要重启）。V 上 grok-4.6 有视觉，不受此限。
+- 与接管的配合：handoff 插件的 `before_tool_call` 已把 `computer` 纳入「有人控制时只读」。
+
+**上 V 的步骤**：装 node 单元（用户 openclaw，独立 `~/.openclaw/node-cua/` 配置与状态，env 同上但 D-Bus 路径为 `/tmp/.v-desktop-99/bus`），Gateway 侧三处配置 + worker 副本，一次 stop→start，两步审批。9.5/9.6 升级后可换成 `target:"gateway"` 或保留 node，互不冲突。
