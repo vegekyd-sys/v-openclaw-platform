@@ -97,7 +97,7 @@ overlay() { # <tgz> <package-name>
   dir=$(ls -dt $R/state/npm/projects/*/node_modules/$name $R/npm/projects/*/node_modules/$name 2>/dev/null | head -1 || true)
   test -n "$dir" && grep -q "\"version\": \"$PV\"" $dir/package.json || { log "   no official $name install found"; exit 1; }
   src=$(mktemp -d); tar -xzf $tgz -C $src
-  rsync -a --delete --exclude=/node_modules/ $src/package/ $dir/
+  rsync -a --checksum --delete --exclude=/node_modules/ $src/package/ $dir/
   (cd $src/package && find . -path ./node_modules -prune -o -type f -print0 | xargs -0 sha256sum | sort -k2) > $EV/overlay-$(basename $tgz).want
   (cd $dir && find . -path ./node_modules -prune -o -type f -print0 | xargs -0 sha256sum | sort -k2) > $EV/overlay-$(basename $tgz).have
   cmp -s $EV/overlay-$(basename $tgz).want $EV/overlay-$(basename $tgz).have && log "   $name <- $(basename $tgz) (files verified) at $dir" || { log "   overlay mismatch for $name"; exit 1; }

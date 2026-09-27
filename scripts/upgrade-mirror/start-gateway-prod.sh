@@ -53,6 +53,7 @@ systemd-run --unit=$UNIT --collect --uid=$U --gid=$U --working-directory=$R/work
   --setenv=XDG_CACHE_HOME=$R/cache --setenv=TMPDIR=$R/tmp --setenv=VLAB_OPENCLAW_AGENT_RUNTIME=$CORE/dist/plugin-sdk/agent-runtime.js \
   --setenv=npm_config_cache=$R/cache/npm --setenv=npm_config_prefix=$R/runtime/user-npm \
   "${PROD_ENV[@]}" "${EXTRA[@]}" ${VERSA_NODE_OPTIONS:+--setenv=NODE_OPTIONS=$VERSA_NODE_OPTIONS} \
+  ${VERSA_LIFECYCLE_TRACE:+--setenv=OPENCLAW_STATE_LIFECYCLE_HOLDER_TRACE=1} \
   $NODE --max-old-space-size=12288 ${VERSA_NODE_FLAGS:-} $CORE/dist/index.js gateway --port $PORT
 start=$(date +%s)
 for _ in $(seq 1 3600); do
