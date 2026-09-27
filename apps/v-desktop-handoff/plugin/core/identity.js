@@ -44,8 +44,30 @@ export function isTrustedDirectSession(context = {}, config = {}) {
   return sessionKey.includes(":direct:") || sessionKey.includes(":dm:");
 }
 
-/** Actors allowed to request a control link from any conversation (the owner). */
+import fs from "node:fs";
+
+/**
+ * Actors allowed to request a control link from any conversation (the owner).
+ * `controlAnywhereActors` is read from the plugin config at startup;
+ * `controlAnywhereActorsFile` (one canonical id per line, # comments) is read
+ * on every call so an owner can be added without restarting the Gateway.
+ */
 export function isControlAnywhereActor(actorUserId, config = {}) {
-  const list = Array.isArray(config.controlAnywhereActors) ? config.controlAnywhereActors : [];
-  return typeof actorUserId === "string" && list.includes(actorUserId);
+  if (typeof actorUserId !== "string") {
+    return false;
+  }
+  const list = Array.isArray(config.controlAnywhereActors) ? [...config.controlAnywhereActors] : [];
+  if (typeof config.controlAnywhereActorsFile === "string" && config.controlAnywhereActorsFile) {
+    try {
+      for (const line of fs.readFileSync(config.controlAnywhereActorsFile, "utf8").split(/\r?\n/u)) {
+        const id = line.replace(/#.*$/u, "").trim();
+        if (id) {
+          list.push(id);
+        }
+      }
+    } catch {
+      /* missing file = nobody extra */
+    }
+  }
+  return list.includes(actorUserId);
 }

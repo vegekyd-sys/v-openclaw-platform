@@ -178,6 +178,8 @@ async function control(take) {
   await poll();
 }
 
+// A new link differs only in the fragment; the browser would not reload the page by itself.
+window.addEventListener("hashchange", () => location.reload());
 $("take").addEventListener("click", () => control(true));
 $("release").addEventListener("click", () => control(false));
 $("reconnect").addEventListener("click", () => connect());

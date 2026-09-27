@@ -69,6 +69,12 @@ test("owner list: only listed canonical actors may control from a group", () => 
   assert.equal(isControlAnywhereActor("feishu:ou_other", config), false);
   assert.equal(isControlAnywhereActor("feishu:ou_owner", {}), false);
   assert.equal(isControlAnywhereActor(resolveTrustedActor({ requesterSenderId: "ou_owner", messageChannel: "feishu" }), config), true);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "handoff-owners-"));
+  const file = path.join(dir, "owners");
+  assert.equal(isControlAnywhereActor("feishu:ou_late", { controlAnywhereActorsFile: file }), false, "missing file adds nobody");
+  fs.writeFileSync(file, "# owners\nfeishu:ou_late   # added without restart\n\n");
+  assert.equal(isControlAnywhereActor("feishu:ou_late", { controlAnywhereActorsFile: file }), true);
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test("private delivery goes through `openclaw message send` to the requester, never without a target", async () => {
