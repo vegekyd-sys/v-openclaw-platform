@@ -218,3 +218,29 @@ test("OpenClaw AgentHarnessTaskRuntime can own external Worker completion", asyn
   assert.equal(stats.delivered, 1);
   assert.equal(stats.failed, 0);
 });
+
+test("relay runs outside the initiating turn's caller identity (9.6)", async () => {
+  const { AsyncLocalStorage } = await import("node:async_hooks");
+  const caller = new AsyncLocalStorage();
+  const seen = [];
+  const stats = {};
+  const promises = caller.run({ sessionKey: "agent:makaron:parent" }, () =>
+    startSubagentCompletionRelays({
+      spawns: [{ status: "accepted", runId: "child-run", childSessionKey: "agent:makaron:subagent:child", mode: "run" }],
+      requesterSessionKey: "agent:makaron:parent",
+      requesterOrigin: { channel: "feishu", accountId: "default", to: "oc_parent" },
+      withoutCaller: run => caller.exit(run),
+      stats,
+      async waitForRun() {
+        seen.push(["wait", caller.getStore()]);
+        return { status: "ok" };
+      },
+      async runNativeAnnounce() {
+        seen.push(["announce", caller.getStore()]);
+        return { delivered: true };
+      },
+    }));
+  await Promise.all(promises);
+  assert.deepEqual(seen, [["wait", undefined], ["announce", undefined]]);
+  assert.equal(stats.delivered, 1);
+});

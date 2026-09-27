@@ -8,6 +8,7 @@ import {
   resolveOpenClawSubagentAnnounceRuntimePath,
   loadNativeRuntimeContract,
   resolveGatewayScopeContract,
+  resolveHostGatewayBridge,
 } from "./runtime-path.mjs";
 
 const vlabRuntime =
@@ -204,4 +205,15 @@ const single = resolveGatewayScopeContract({
 });
 assert.equal(single.parts, undefined);
 assert.deepEqual(single.bindings, { getGatewayContextResolver: "a", withPluginRuntimeGatewayContextResolver: "f" });
-console.log(JSON.stringify({ ok: true, cases: 17 }));
+// The fork's host bridge wins when complete; older cores have none.
+const fn = () => {};
+const bridgeKey = Symbol.for("versa.openclaw.host-gateway-bridge.v1");
+assert.equal(resolveHostGatewayBridge({}), undefined);
+assert.equal(resolveHostGatewayBridge({ [bridgeKey]: { contract: "versa-host-gateway-bridge-v1", withoutGatewayToolCallerIdentity: fn } }), undefined);
+const complete = { contract: "versa-host-gateway-bridge-v1", withoutGatewayToolCallerIdentity: fn, getGatewayContextResolver: fn, withPluginRuntimeGatewayContextResolver: fn };
+assert.equal(resolveHostGatewayBridge({ [bridgeKey]: complete }), complete);
+// Detached work admission (cb03bd0 lacks it; later bridges carry the host's).
+const admitting = { ...complete, runWithGatewayDetachedWorkContinuation: fn };
+assert.equal(resolveHostGatewayBridge({ [bridgeKey]: admitting })?.runWithGatewayDetachedWorkContinuation, fn);
+assert.equal(resolveHostGatewayBridge({ [bridgeKey]: { ...complete, runWithGatewayDetachedWorkContinuation: 1 } }), undefined);
+console.log(JSON.stringify({ ok: true, cases: 22 }));

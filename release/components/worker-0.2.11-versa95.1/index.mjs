@@ -50,6 +50,7 @@ import {
   resolveGatewayScopeContract,
   nativeExportBindings,
   loadNativeRuntimeContract,
+  resolveHostGatewayBridge,
 } from "./runtime-path.mjs";
 import { createWorkerActiveRunProxy } from "./worker-active-run-proxy.mjs";
 import { createGatewayMessageToolRelay } from "./gateway-message-tool.mjs";
@@ -403,10 +404,29 @@ const plugin = {
         resolve(dirname(openClawAgentRuntimePath), "session-transcript-runtime.js"),
       ).href
     );
-    const gatewayCallerRuntimePromise = loadNativeRuntimeContract(
-      resolveGatewayCallerContract({agentRuntimePath:openClawAgentRuntimePath}));
-    const gatewayScopeRuntimePromise = loadNativeRuntimeContract(
-      resolveGatewayScopeContract({agentRuntimePath:openClawAgentRuntimePath}));
+    // 9.6 (versa fork): plugins run on a captured core copy whose caller store
+    // and brand-checked bindings are not the Gateway's; use the host's own
+    // functions from the fork's host bridge, else resolve the native chunks (9.5).
+    const hostGatewayBridge = resolveHostGatewayBridge();
+    if (hostGatewayBridge && !hostGatewayBridge.runWithGatewayDetachedWorkContinuation) {
+      api.logger.warn?.(
+        "host gateway bridge lacks runWithGatewayDetachedWorkContinuation; subagent completions after sessions_yield will be refused as draining",
+      );
+    }
+    const gatewayCallerRuntimePromise = hostGatewayBridge
+      ? Promise.resolve({
+        withoutGatewayToolCallerIdentity: hostGatewayBridge.withoutGatewayToolCallerIdentity,
+      })
+      : loadNativeRuntimeContract(
+        resolveGatewayCallerContract({agentRuntimePath:openClawAgentRuntimePath}));
+    const gatewayScopeRuntimePromise = hostGatewayBridge
+      ? Promise.resolve({
+        getGatewayContextResolver: hostGatewayBridge.getGatewayContextResolver,
+        withPluginRuntimeGatewayContextResolver:
+          hostGatewayBridge.withPluginRuntimeGatewayContextResolver,
+      })
+      : loadNativeRuntimeContract(
+        resolveGatewayScopeContract({agentRuntimePath:openClawAgentRuntimePath}));
     const agentHarnessTaskRuntimePromise = import(
       pathToFileURL(
         resolve(
@@ -883,7 +903,10 @@ const plugin = {
             ? result.attempt.acceptedSessionSpawns
             : []),
         ];
+        const { withoutGatewayToolCallerIdentity: relayWithoutCaller } =
+          await gatewayCallerRuntimePromise.catch(() => ({}));
         startSubagentCompletionRelays({
+          withoutCaller: relayWithoutCaller,
           // Gateway-owned sessions_spawn already registered the native
           // completion lifecycle in the Gateway. Only legacy Worker-owned
           // spawns need the compatibility relay.
@@ -940,6 +963,8 @@ const plugin = {
               scope: params.agentHarnessTaskRuntimeScope,
               subagentRuntime: api.runtime.subagent,
               getResolver, withResolver, withoutCaller: withoutGatewayToolCallerIdentity,
+              // Own root admission (host's), not the yielded turn's released root.
+              runDetached: hostGatewayBridge?.runWithGatewayDetachedWorkContinuation,
             }, () => runtime.deliverAgentHarnessTaskCompletion({
               scope: params.agentHarnessTaskRuntimeScope,
               childSessionKey,

@@ -226,3 +226,16 @@ export function resolveOpenClawGatewayCallerContextRuntimePath(options = {}) {
 export function resolveOpenClawGatewayRequestScopeRuntimePath(options = {}) {
   return resolveGatewayScopeContract(options).path;
 }
+
+/** The versa fork's host-owned gateway functions (9.6+), or undefined on older cores. */
+export function resolveHostGatewayBridge(registry = globalThis) {
+  const bridge = registry[Symbol.for("versa.openclaw.host-gateway-bridge.v1")];
+  return bridge?.contract === "versa-host-gateway-bridge-v1" &&
+    typeof bridge.withoutGatewayToolCallerIdentity === "function" &&
+    typeof bridge.getGatewayContextResolver === "function" &&
+    typeof bridge.withPluginRuntimeGatewayContextResolver === "function" &&
+    (bridge.runWithGatewayDetachedWorkContinuation === undefined ||
+      typeof bridge.runWithGatewayDetachedWorkContinuation === "function")
+    ? bridge
+    : undefined;
+}

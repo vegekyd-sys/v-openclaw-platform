@@ -56,6 +56,12 @@ export function startSubagentCompletionRelays(options) {
     ? Math.max(1_000, Number(options.timeoutMs))
     : DEFAULT_WAIT_TIMEOUT_MS;
   const promises = [];
+  // 9.6 closes the initiating turn's tool-caller authority when the parent
+  // yields; the relay is process-owned work, so it must not inherit that turn
+  // (waitForRun/getSessionMessages would fail "authority is no longer active").
+  const detached = typeof options.withoutCaller === "function"
+    ? options.withoutCaller
+    : run => run();
 
   for (const spawn of acceptedSubagentRuns(options.spawns)) {
     const runId = spawn.runId.trim();
@@ -66,7 +72,7 @@ export function startSubagentCompletionRelays(options) {
       active.delete(active.keys().next().value);
     }
     increment(stats, "started");
-    const relay = (async () => {
+    const relay = detached(() => (async () => {
       try {
         const wait = await options.waitForRun({ runId, timeoutMs });
         let delivered = false;
@@ -132,7 +138,7 @@ export function startSubagentCompletionRelays(options) {
           }`,
         );
       }
-    })();
+    })());
     active.set(runId, relay);
     promises.push(relay);
   }
