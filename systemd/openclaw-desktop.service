@@ -1,0 +1,25 @@
+# The Gateway host's own display: loopback-only TigerVNC + XFCE (PRODUCTION - not VLab).
+# The Gateway and its workers get DISPLAY=:99 from a drop-in so the browser tool's
+# Chrome appears here; desktop.host attaches to port 5900 with the password file.
+[Unit]
+Description=OpenClaw host desktop: loopback TigerVNC + XFCE (PRODUCTION - not VLab)
+After=network.target
+Before=openclaw-gateway.service
+
+[Service]
+Type=simple
+User=openclaw
+Group=openclaw
+Environment=HOME=/home/openclaw
+Environment=DESKTOP_STATE_DIR=/home/openclaw/.openclaw/desktop
+Environment=DESKTOP_DISPLAY=99
+Environment=DESKTOP_RFB_PORT=5900
+Environment=DESKTOP_GEOMETRY=1280x800
+ExecStart=/opt/v-desktop-handoff/desktop/start-desktop.sh
+KillMode=control-group
+Restart=on-failure
+RestartSec=5
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target
