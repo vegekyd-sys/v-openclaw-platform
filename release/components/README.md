@@ -16,3 +16,7 @@
 
 测试：`node --test *.test.mjs`（2026-09-25：151/152 通过。唯一失败的 `native-setup-probe-owner.test.mjs` 引用了实验目录里的补丁脚本，在 0.2.11 原件上同样失败，属于目录环境问题）。
 演练机验收记录见 `docs/openclaw-2026.9.5-rehearsal-20260922.md`。
+
+## versa-runtime-providers-0.1.0
+
+9.6 无 worker 模式用（agent 回合在 Gateway 内原生运行，`vlab-agent-worker-isolation` 停用）。它只注册配置里仍然指向的两个 provider：`volcengine-rtc-agent`（`talk.realtime.provider`）和 `versa-fast-quality-v1`（`agents.defaults.compaction.provider`）。两个 provider 的文件与 worker 组件逐字节相同。配置切换用 `scripts/upgrade-mirror/noworker96-config.mjs`。详见该目录的 README。

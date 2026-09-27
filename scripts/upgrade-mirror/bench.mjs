@@ -8,6 +8,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import { execFileSync } from "node:child_process";
+import { runtimeMode } from "./runtime-mode.mjs";
 
 const [owner, countArg, label, outDir, modelArg] = process.argv.slice(2);
 const count = Number(countArg);
@@ -43,7 +44,8 @@ const env = Object.fromEntries(
 Object.assign(process.env, env);
 const config = readJson(env.OPENCLAW_CONFIG_PATH);
 assert.equal(config.gateway.port, 25096);
-const workerSettings = config.plugins.entries["vlab-agent-worker-isolation"].config;
+const mode = runtimeMode(config);
+const workerSettings = mode === "worker" ? config.plugins.entries["vlab-agent-worker-isolation"].config : undefined;
 
 const controlGroup = run("systemctl", ["show", unit, "-p", "ControlGroup", "--value"]);
 const cgroup = `/sys/fs/cgroup${controlGroup}`;
@@ -99,7 +101,7 @@ function save(failure) {
       degradedSamples: health.filter((h) => h.eventLoop?.degraded).length,
       rpcLatencyMs: { p50: pct(latency, 50), max: pct(latency, 100) }, healthErrors: health.filter((h) => h.error).length,
     },
-    peakActive, peakWorkers, workerSettings: { minWorkers: workerSettings.minWorkers, maxWorkers: workerSettings.maxWorkers, sessionsPerWorker: workerSettings.sessionsPerWorker, requestStallTimeoutMs: workerSettings.requestStallTimeoutMs },
+    peakActive, peakWorkers, mode, workerSettings: workerSettings && { minWorkers: workerSettings.minWorkers, maxWorkers: workerSettings.maxWorkers, sessionsPerWorker: workerSettings.sessionsPerWorker, requestStallTimeoutMs: workerSettings.requestStallTimeoutMs },
     before, after: readResources(), rows, health, workerSamples,
     ...(failure ? { failure: String(failure?.stack ?? failure) } : {}),
   };
@@ -146,6 +148,7 @@ async function sampleHealth() {
 }
 
 async function sampleWorkers() {
+  if (mode !== "worker") return;
   try {
     const s = await client.request("vlab.workers.status", {}, { timeoutMs: 20_000 });
     const active = s.workers.reduce((sum, w) => sum + (w.activeCount ?? 0), 0);
@@ -164,9 +167,11 @@ async function sampleWorkers() {
 try {
   await connect();
   await sampleHealth();
-  const idle = await client.request("vlab.workers.status", {}, { timeoutMs: 20_000 });
-  assert.equal(idle.pending, 0, "worker pool has pending work");
-  assert(idle.workers.every((w) => !w.activeCount && !w.queued && !w.detachedTaskCount), "worker pool not idle");
+  if (mode === "worker") {
+    const idle = await client.request("vlab.workers.status", {}, { timeoutMs: 20_000 });
+    assert.equal(idle.pending, 0, "worker pool has pending work");
+    assert(idle.workers.every((w) => !w.activeCount && !w.queued && !w.detachedTaskCount), "worker pool not idle");
+  }
 
   const stamp = Date.now();
   for (let i = 0; i < count; i += 1) {

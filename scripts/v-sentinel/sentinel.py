@@ -10,6 +10,12 @@ Nobody noticed until a user asked why their groups had gone quiet.
 So this deliberately does NOT ask the Gateway whether it is healthy. It counts
 worker processes, reads the journal, and sends its alerts straight to Feishu
 over HTTPS. Nothing in the alert path goes through the thing being watched.
+
+From OpenClaw 9.6 V can run without the Worker pool ("no-worker" mode: agent
+turns run in the Gateway on the native runtime, the vlab-agent-worker-isolation
+plugin is disabled). There, zero worker processes is the expected state, so the
+pool rules stand down; the mode is read from the same config file the alerts
+already use (see worker_mode()).
 """
 import json, os, re, subprocess, sys, time, urllib.request, urllib.error
 
@@ -23,6 +29,10 @@ ALERT_CHAT = os.environ.get("V_SENTINEL_ALERT_CHAT", "oc_ff5076a27ba5aef6700721b
 ALERT_TO = os.environ.get("V_SENTINEL_ALERT_TO", "")
 WINDOW = 180          # seconds of journal to scan each run
 UNIT = "openclaw-gateway"
+WORKER_PLUGIN_ID = "vlab-agent-worker-isolation"
+WORKER_RUNTIME_ID = "vlab-worker"
+# "worker" / "no-worker" forces the mode; anything else reads it from config.
+MODE_OVERRIDE = os.environ.get("V_SENTINEL_MODE", "").strip()
 
 # A pool that reports zero workers is a total outage. One reading is enough to
 # act on: close() is terminal, so the pool will not come back without a restart.
@@ -127,6 +137,39 @@ def feishu(text):
     return ok
 
 
+def _routes_to_worker(value):
+    """True if any agentRuntime in the config still names the Worker runtime."""
+    if isinstance(value, dict):
+        rt = value.get("agentRuntime")
+        if isinstance(rt, dict) and rt.get("id") == WORKER_RUNTIME_ID:
+            return True
+        return any(_routes_to_worker(v) for v in value.values())
+    if isinstance(value, list):
+        return any(_routes_to_worker(v) for v in value)
+    return False
+
+
+def worker_mode(config_path=None):
+    """Whether this Gateway is expected to run a Worker pool.
+
+    Worker mode when the Worker plugin entry is not disabled, or when any
+    agentRuntime still routes to it. No-worker mode only when the config says
+    so positively; an unreadable config keeps the stricter worker-mode rules,
+    because a false "pool empty" is cheaper than a missed one."""
+    if MODE_OVERRIDE in ("worker", "no-worker"):
+        return MODE_OVERRIDE == "worker"
+    try:
+        with open(config_path or CONFIG_PATH) as f:
+            cfg = json.load(f)
+    except Exception:
+        return True
+    entries = ((cfg.get("plugins") or {}).get("entries") or {}) if isinstance(cfg, dict) else {}
+    entry = entries.get(WORKER_PLUGIN_ID)
+    if isinstance(entry, dict) and entry.get("enabled", True) is not False:
+        return True
+    return _routes_to_worker(cfg)
+
+
 def scan_crashes(cursor):
     """Crash lines written since the last run, and the cursor to resume from.
 
@@ -148,6 +191,7 @@ def scan_crashes(cursor):
 
 def sample(cursor=None):
     out = {}
+    out["mode"] = "worker" if worker_mode() else "no-worker"
     out["pool"] = len(re.findall(r"worker/worker\.mjs",
                                  sh("ps -eo args")))
     out["active"] = sh("systemctl is-active %s" % UNIT).strip()
@@ -240,6 +284,23 @@ def main():
                           "这是崩溃之后的重新启动。" if crashed_recently else
                           "日志里没有崩溃信号，多半是手动或发版重启；若不是计划内的，请查是谁。"))
 
+    # Mode. In no-worker mode the pool rules have nothing to watch: zero
+    # worker processes and no "pool is closing" are the normal state. A latch
+    # left over from worker mode is cleared without a "recovered" message
+    # (nothing recovered), and the switch itself is announced once.
+    mode = s.get("mode", "worker")
+    no_worker = mode == "no-worker"
+    prev_mode = st.get("mode")
+    if prev_mode is not None and prev_mode != mode:
+        notices.append("哨兵切换到 %s 模式：%s" % (
+            mode, "Worker 池检查已停用（Agent 回合在 Gateway 内原生运行，0 个 worker 进程是正常状态）。"
+            if no_worker else "Worker 池检查重新启用。"))
+    st["mode"] = mode
+    if no_worker:
+        for key in ("pool_empty", "pool_closing"):
+            st[key] = False
+            st[key + "_n"] = 0
+
     def latch(key, bad, fire_msg, clear_msg, need=1):
         c = st.get(key + "_n", 0)
         c = c + 1 if bad else 0
@@ -266,22 +327,26 @@ def main():
     else:
         pool_msg = "Worker 池空了（0 个 worker 进程），openclaw-gateway 状态为 %s。" % s["active"]
     starting = (up is not None and up < STARTUP_GRACE_S and not crashed_recently)
-    latch("pool_empty", s["pool"] == 0 and not starting, pool_msg,
-          "Worker 池已恢复（%d 个 worker）。" % s["pool"],
-          need=POOL_EMPTY_SAMPLES)
+    if not no_worker:
+        latch("pool_empty", s["pool"] == 0 and not starting, pool_msg,
+              "Worker 池已恢复（%d 个 worker）。" % s["pool"],
+              need=POOL_EMPTY_SAMPLES)
 
-    latch("pool_closing", s["closing"] > 0,
-          "%d 个请求被 'worker pool is closing' 拒绝。用户会看到「Agent couldn't generate a response」。"
-          "池子已关闭且不会自己重建，需要重启 Gateway。" % s["closing"],
-          "'pool is closing' 已停止出现。")
+        latch("pool_closing", s["closing"] > 0,
+              "%d 个请求被 'worker pool is closing' 拒绝。用户会看到「Agent couldn't generate a response」。"
+              "池子已关闭且不会自己重建，需要重启 Gateway。" % s["closing"],
+              "'pool is closing' 已停止出现。")
 
     latch("unit_down", s["active"] != "active",
           "openclaw-gateway 不在运行（状态 %s）。" % s["active"],
           "openclaw-gateway 恢复运行。")
 
     latch("stalled", s["stall"] >= STALL_WARN,
-          "%d 个请求卡住（%d 分钟内）。Worker 池 %d 个，可能被一个大批次占满，"
-          "普通消息排不上。正常值是 0。" % (s["stall"], WINDOW // 60, s["pool"]),
+          ("%d 个请求卡住（%d 分钟内）。Gateway 内原生运行（no-worker 模式），"
+           "可能被一个大批次占满，普通消息排不上。正常值是 0。" % (s["stall"], WINDOW // 60))
+          if no_worker else
+          ("%d 个请求卡住（%d 分钟内）。Worker 池 %d 个，可能被一个大批次占满，"
+           "普通消息排不上。正常值是 0。" % (s["stall"], WINDOW // 60, s["pool"])),
           "卡住的请求已清零。", need=STALL_SAMPLES)
 
     latch("disk", s["disk_mb"] and s["disk_mb"] < DISK_MIN_MB,

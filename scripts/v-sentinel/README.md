@@ -41,6 +41,31 @@ HTTPS. When the Gateway is the broken component, the alert still goes out.
 Every rule latches: it fires once on the way in, stays quiet while the condition
 persists, and sends a recovery message on the way out.
 
+## No-worker mode (OpenClaw 9.6+)
+
+On 9.6 V can run without the Worker pool: agent turns run inside the Gateway on
+the native `openclaw` runtime and `vlab-agent-worker-isolation` is disabled
+(converted by `scripts/upgrade-mirror/noworker96-config.mjs`). Zero worker
+processes is then the normal state, so **pool empty** and **pool closing** stand
+down; unit down, stalled, crashes, restarts, cut-off replies, disk and memory are
+unchanged.
+
+The mode is read from the same `openclaw.json` the alerts already read: worker
+mode while `plugins.entries.vlab-agent-worker-isolation` is not
+`enabled: false` or any `agentRuntime.id` is still `vlab-worker`; no-worker
+mode only when the config positively says so. An unreadable config keeps the
+worker rules. `V_SENTINEL_MODE=worker|no-worker` overrides. A mode switch sends
+one notice and clears any pool latch without a false "recovered" message.
+
+What no-worker mode gives up: the pool-empty rule was the detector for "every
+signal green, nothing served" (2026-09-20). That exact failure cannot happen
+without a pool, but nothing yet replaces it for other causes of the same shape.
+`received` and `complete` are already sampled (see the JSON line each run) and
+are the candidates for a replacement rule once their no-worker baseline is
+measured.
+
+Tests: `python3 -m unittest discover -s scripts/v-sentinel -p 'test_*.py'`.
+
 ## Verifying it without breaking production
 
 The rule layer takes its sample from one function, so it can be driven with

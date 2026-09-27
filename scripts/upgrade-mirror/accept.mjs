@@ -1,5 +1,5 @@
-// Functional acceptance on the upgrade mirror: real Gateway, real worker pool,
-// real model. Each scenario opens its own session, asks for one specific tool,
+// Functional acceptance on the upgrade mirror: real Gateway, real worker pool
+// (or in-process turns in 9.6 no-worker mode, see runtime-mode.mjs), real model. Each scenario opens its own session, asks for one specific tool,
 // then checks the history for that tool call and the expected reply marker.
 // Also exercises a few Gateway RPCs. Writes one JSON receipt.
 //   node accept.mjs <label> <outDir>
@@ -8,6 +8,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import { execFileSync } from "node:child_process";
+import { acceptanceRpcs, runtimeMode } from "./runtime-mode.mjs";
 
 const [label, outDir] = process.argv.slice(2);
 assert.equal(os.hostname(), "VM-0-4-ubuntu");
@@ -24,6 +25,7 @@ const env = Object.fromEntries(fs.readFileSync(`/proc/${pid}/environ`, "utf8").s
   .map((e) => [e.slice(0, e.indexOf("=")), e.slice(e.indexOf("=") + 1)]));
 Object.assign(process.env, env);
 const config = JSON.parse(fs.readFileSync(env.OPENCLAW_CONFIG_PATH, "utf8"));
+const mode = runtimeMode(config);
 const { GatewayClient } = await import(`${core}/dist/plugin-sdk/gateway-runtime.js`);
 const model = "deepseek/deepseek-v4-flash";
 const byRunId = new Map();
@@ -107,7 +109,7 @@ for (const s of scenarios) {
   console.error(`${s.id}: ${row.pass ? "PASS" : "FAIL"} terminal=${row.terminal} tools=${row.tools.join(",")} ${Math.round((row.totalMs ?? 0) / 1000)}s`);
 }
 const rpcs = [];
-for (const [method, params] of [["health", {}], ["sessions.list", { limit: 20 }], ["tasks.list", {}], ["cron.list", {}], ["vlab.workers.status", {}], ["models.list", {}]]) {
+for (const [method, params] of acceptanceRpcs(mode)) {
   const at = Date.now();
   try { await client.request(method, params, { timeoutMs: 60_000 }); rpcs.push({ method, ok: true, ms: Date.now() - at }); }
   catch (error) { rpcs.push({ method, ok: false, ms: Date.now() - at, error: String(error?.message ?? error).slice(0, 200) }); }
@@ -115,7 +117,7 @@ for (const [method, params] of [["health", {}], ["sessions.list", { limit: 20 }]
 }
 client.stop();
 const out = `${outDir}/accept-${label}-${Date.now()}.json`;
-const summary = { label, version, core, at: new Date().toISOString(), pass: rows.every((r) => r.pass) && rpcs.every((r) => r.ok),
+const summary = { label, version, core, mode, at: new Date().toISOString(), pass: rows.every((r) => r.pass) && rpcs.every((r) => r.ok),
   passed: rows.filter((r) => r.pass).length, total: rows.length, rows, rpcs };
 fs.writeFileSync(out, JSON.stringify(summary, null, 2) + "\n", { flag: "wx" });
 console.log(JSON.stringify({ out, pass: summary.pass, passed: summary.passed, total: summary.total, rpcsOk: rpcs.filter((r) => r.ok).length }));
