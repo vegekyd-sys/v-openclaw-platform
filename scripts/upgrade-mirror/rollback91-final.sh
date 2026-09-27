@@ -9,7 +9,10 @@ log() { printf '%s %s\n' "$(date --iso-8601=seconds)" "$*"; }
 test -f $R/rollback-state-before-95.tar.zst
 t0=$(date +%s)
 systemctl stop $UNIT 2>/dev/null || true
-mv $R/state $R/state.after-95-$(date +%Y%m%dT%H%M%S)
+# Production keeps the upgraded state for forensics. The mirror host cannot
+# hold two full state trees next to the shared VLab: ROLLBACK_DISCARD_AFTER=1
+# deletes it instead (mirror only).
+if [ "${ROLLBACK_DISCARD_AFTER:-0}" = 1 ]; then rm -rf $R/state; else mv $R/state $R/state.after-95-$(date +%Y%m%dT%H%M%S); fi
 zstd -q -dc $R/rollback-state-before-95.tar.zst | tar -C $R -xf -
 C=$R/state/shared-vlab-20260909-v3/openclaw.json; WC=$R/state/shared-vlab-20260909-v3/worker-openclaw.json
 cp -a $R/rollback-openclaw.json $C; cp -a $R/rollback-worker-openclaw.json $WC

@@ -48,7 +48,15 @@ const HEAP = `(() => { const m = process.memoryUsage(); const v8 = process.getBu
 function processes() {
   const kinds = {};
   let n = 0;
-  for (const p of fs.readFileSync(`${cg}/cgroup.procs`, "utf8").split("\n").filter(Boolean)) {
+  // Delegated units keep no process in the service cgroup itself (the Gateway
+  // is in foreground/, the verifier in database-verifier/): walk the subtree.
+  const procs = [];
+  const walk = (dir) => {
+    try { procs.push(...fs.readFileSync(`${dir}/cgroup.procs`, "utf8").split("\n").filter(Boolean)); } catch {}
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) if (e.isDirectory()) walk(`${dir}/${e.name}`);
+  };
+  walk(cg);
+  for (const p of procs) {
     let args = "";
     try { args = fs.readFileSync(`/proc/${p}/cmdline`, "utf8").replace(/\0/g, " "); } catch { continue; }
     n += 1;

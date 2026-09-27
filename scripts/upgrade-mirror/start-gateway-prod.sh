@@ -45,7 +45,18 @@ systemctl reset-failed $UNIT 2>/dev/null || true
 rm -rf $R/tmp/openclaw-plugin-build-* $R/tmp/openclaw-model-catalog-* $R/tmp/vlab-worker-*
 mkdir -p $R/state/experiments/agent-worker-isolation-v1 && chown $U: $R/state/experiments $R/state/experiments/agent-worker-isolation-v1
 C=$R/state/shared-vlab-20260909-v3/openclaw.json
-systemd-run --unit=$UNIT --collect --uid=$U --gid=$U --working-directory=$R/workspace \
+# OPENCLAW_DATABASE_VERIFY_RESOURCE_GROUP=1 (production V, shared VLab) needs the
+# unit delegated with the Gateway in the "foreground" subgroup, as V's and the
+# shared VLab's units are (Delegate=memory, DelegateSubgroup=foreground).
+# Without it the background database verifier fails on every run ("Expected
+# systemd DelegateSubgroup=foreground"), receipts are only ever refreshed by a
+# synchronous full check on the next open, and a 224 s check of an 8 GB agent
+# database stalled the no-worker Gateway (2026-09-28 rehearsal).
+DELEGATE=()
+for a in "${PROD_ENV[@]}"; do
+  if [ "$a" = --setenv=OPENCLAW_DATABASE_VERIFY_RESOURCE_GROUP=1 ]; then DELEGATE=(-p Delegate=memory -p DelegateSubgroup=foreground); fi
+done
+systemd-run --unit=$UNIT --collect "${DELEGATE[@]}" --uid=$U --gid=$U --working-directory=$R/workspace \
   -p MemoryMax=12G -p CPUQuota=400% -p Nice=5 -p TasksMax=4096 -p LimitNOFILE=1048576 -p EnvironmentFile=$R/secrets.env \
   --setenv=PATH="$(dirname $NODE):/usr/local/bin:/usr/bin:/bin" --setenv=HOME=$R --setenv=USER=$U --setenv=LOGNAME=$U \
   --setenv=OPENCLAW_HOME=$R --setenv=OPENCLAW_STATE_DIR=$R/state --setenv=OPENCLAW_CONFIG_PATH=$C \

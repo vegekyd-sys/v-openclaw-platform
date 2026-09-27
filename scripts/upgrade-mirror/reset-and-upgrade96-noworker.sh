@@ -27,4 +27,5 @@ sha256sum -c --quiet $R/rollback-configs.sha256 && log "configs restored"
 sqlite3 $R/state/state/openclaw.sqlite "DELETE FROM agent_database_leases WHERE path NOT LIKE '$R/%' AND path LIKE '/%'; SELECT 'leases left: '||count(*) FROM agent_database_leases;"
 chown -R $U: $R/state
 df -h /srv | tail -1
-bash $R/scripts/upgrade96-noworker.sh "$CORE_TGZ" $P/openclaw-feishu-2026.9.6.tgz $P/openclaw-codex-2026.9.6.tgz $P/versa-runtime-providers
+MIRROR_MAKARON_IMAGE_WORKSPACE=${MIRROR_MAKARON_IMAGE_WORKSPACE-$R/workspace/makaron-image} bash $R/scripts/upgrade96-noworker.sh "$CORE_TGZ" $P/openclaw-feishu-2026.9.6.tgz $P/openclaw-codex-2026.9.6.tgz $P/versa-runtime-providers \
+  $(ls $P/openclaw-deepseek-provider-*.tgz 2>/dev/null | head -1)

@@ -2,7 +2,7 @@
 # Rehearsal of the production upgrade 9.1 -> Versa 9.6 WITHOUT the Worker pool
 # (agent turns in-process on 9.6's native "openclaw" runtime), on the mirror,
 # production profile throughout:
-#   upgrade96-noworker.sh <core.tgz> <feishu.tgz> <codex.tgz> <versa-runtime-providers-dir>
+#   upgrade96-noworker.sh <core.tgz> <feishu.tgz> <codex.tgz> <versa-runtime-providers-dir> [deepseek-provider.tgz]
 # Same flow as upgrade95-final.sh except step 4/5: instead of the Worker
 # component, versa-runtime-providers is installed and noworker96-config.mjs
 # converts both configs (Worker off, vlab-worker runtimes -> openclaw, the two
@@ -14,6 +14,11 @@ set -euo pipefail
 test "$(id -u)" = 0
 R=/srv/versa-mirror95; U=versa-rehearsal; UNIT=versa-mirror95-gateway
 PKG=${1:?core tgz}; FEISHU=${2:?feishu tgz}; CODEX=${3:?codex tgz}; PROVIDERS_SRC=${4:?versa-runtime-providers dir}
+# 9.6 does not bundle DeepSeek in core: @openclaw/deepseek-provider is an npm
+# plugin, so fork fixes in extensions/deepseek (the v4-flash -> deepseek-flash
+# response-model equivalence behind "Model route changed") only reach the
+# Gateway through this overlay, like Feishu and Codex.
+DEEPSEEK=${5:-}
 EV=$R/evidence/upgrade-nw-$(date +%Y%m%dT%H%M%S); mkdir -p $EV; chown $U: $EV
 log() { printf '%s %s\n' "$(date --iso-8601=seconds)" "$*" | tee -a $EV/upgrade.log; }
 C=$R/state/shared-vlab-20260909-v3/openclaw.json; WC=$R/state/shared-vlab-20260909-v3/worker-openclaw.json
@@ -92,6 +97,15 @@ log "   worker config left untouched: $(grep -c '"vlab-worker"' $WC || true) ine
 again=$($N24 $CONVERT --config $C --plugin-path $P --disable-mcp voice-memory --dry-run)
 log "   re-run: $(echo "$again" | sed -n 2p)"
 case "$(echo "$again" | sed -n 2p)" in "0 change"*) ;; *) log "converter not idempotent"; exit 1 ;; esac
+# Mirror-only: makaron-image writes to its default workspace
+# /home/openclaw/makaron-openclaw/.openclaw-local/workspace, which exists on V
+# but not on this host (image_generate fails with EACCES mkdir). Point it at a
+# mirror directory. Not part of the production flow.
+if [ -n "${MIRROR_MAKARON_IMAGE_WORKSPACE:-}" ]; then
+  mkdir -p $MIRROR_MAKARON_IMAGE_WORKSPACE && chown $U: $MIRROR_MAKARON_IMAGE_WORKSPACE
+  $N24 -e 'const fs=require("fs");const [f,w]=process.argv.slice(1);const c=JSON.parse(fs.readFileSync(f,"utf8"));const e=c.plugins.entries["makaron-image"];if(!e)throw new Error("no makaron-image entry");e.config={...(e.config||{}),workspace:w};fs.writeFileSync(f,JSON.stringify(c,null,2)+"\n")' $C $MIRROR_MAKARON_IMAGE_WORKSPACE
+  log "   mirror-only: plugins.entries.makaron-image.config.workspace -> $MIRROR_MAKARON_IMAGE_WORKSPACE"
+fi
 chown -R $U: $R/runtime $R/state $R/capability-alignment-20260911 $R/cache
 
 set -a; . $R/secrets.env; set +a
@@ -120,6 +134,7 @@ overlay() { # <tgz> <package-name>
 }
 overlay $FEISHU @openclaw/feishu
 overlay $CODEX @openclaw/codex
+if [ -n "$DEEPSEEK" ]; then overlay $DEEPSEEK @openclaw/deepseek-provider; fi
 log "   plugins $(( $(date +%s)-t0 ))s"
 
 log "8/10 config validate"

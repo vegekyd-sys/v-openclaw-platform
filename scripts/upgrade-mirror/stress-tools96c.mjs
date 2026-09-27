@@ -62,7 +62,7 @@ const REPEAT = Number(process.env.STRESS_REPEAT ?? 3);
 const base = [
   { id: "openclaw", tools: ["openclaw"], marker: `OC_${nonce}`, followUpMs: 60_000,
     prompt: (m) => `必须调用 openclaw 工具，请系统代理只读地检查并报告当前默认模型和推理设置（不要修改任何东西），最后只回复 ${m}。` },
-  { id: "image", tools: ["image_generate"], marker: `IMG_${nonce}`, followUpMs: 300_000,
+  { id: "image", tools: ["image_generate"], marker: `IMG_${nonce}`, followUpMs: 300_000, failurePattern: /EACCES|permission denied|没法|无法|失败|未能|没有产出|failed/i,
     prompt: (m) => `必须调用 image_generate 工具生成一张简单的小图：白底上一个红色圆形（不要用其他工具，不要用 makaron）。调用后本回合只回复 WAIT。图片生成完成后你会收到完成通知，届时只回复 ${m}。` },
   { id: "skill_workshop", tools: ["skill_workshop"], marker: `SW_${nonce}`,
     prompt: (m) => `必须调用 skill_workshop 工具（action=list）列出现有提案，不管结果如何，最后只回复 ${m}。` },
@@ -105,11 +105,19 @@ async function runScenario(s) {
   row.bodyHasMarker = body.includes(s.marker);
   const matches = (want) => want.endsWith("*") ? [...toolNames].some((n) => n.startsWith(want.slice(0, -1))) : toolNames.has(want);
   row.toolOk = s.tools.length === 0 ? toolNames.size === 0 : s.tools.some(matches);
-  row.pass = row.terminal === "final" && row.bodyHasMarker && row.toolOk;
+  // The marker alone is not proof: a failed image run answers "我没法回 IMG_x"
+  // (2026-09-28, EACCES on the makaron workspace, scored PASS). A failure
+  // explanation in the reply fails the row.
+  row.failureText = s.failurePattern ? (body.match(s.failurePattern)?.[0] ?? null) : null;
+  row.pass = row.terminal === "final" && row.bodyHasMarker && row.toolOk && !row.failureText;
   row.bodyTail = body.slice(-160);
   console.error(`${s.id}: ${row.pass ? "PASS" : "FAIL"} terminal=${row.terminal} tools=${row.tools.join(",")} ${Math.round((row.totalMs ?? 0) / 1000)}s`);
 }
-await Promise.all(scenarios.map((s, i) => sleep(i * Number(process.env.STRESS_GAP_MS ?? 3000)).then(() => runScenario(s).catch((e) => console.error(s.id, "ERROR", e?.message)))));
+// A scenario that throws before its row exists (e.g. sessions.patch timing
+// out) must still fail the run: 2026-09-28 a stalled Gateway timed out 11 of
+// 12 scenarios and the summary read pass=true, passed=1/1.
+const scenarioErrors = [];
+await Promise.all(scenarios.map((s, i) => sleep(i * Number(process.env.STRESS_GAP_MS ?? 3000)).then(() => runScenario(s).catch((e) => { scenarioErrors.push({ id: s.id, error: String(e?.message ?? e).slice(0, 200) }); console.error(s.id, "ERROR", e?.message); }))));
 const rpcs = [];
 for (const [method, params] of acceptanceRpcs(mode)) {
   const at = Date.now();
@@ -119,7 +127,7 @@ for (const [method, params] of acceptanceRpcs(mode)) {
 }
 client.stop();
 const out = `${outDir}/stress-${label}-${Date.now()}.json`;
-const summary = { label, version, core, mode, at: new Date().toISOString(), pass: rows.every((r) => r.pass) && rpcs.every((r) => r.ok),
-  passed: rows.filter((r) => r.pass).length, total: rows.length, rows, rpcs };
+const summary = { label, version, core, mode, at: new Date().toISOString(), pass: scenarioErrors.length === 0 && rows.length === scenarios.length && rows.every((r) => r.pass) && rpcs.every((r) => r.ok),
+  passed: rows.filter((r) => r.pass).length, total: scenarios.length, scenarioErrors, rows, rpcs };
 fs.writeFileSync(out, JSON.stringify(summary, null, 2) + "\n", { flag: "wx" });
 console.log(JSON.stringify({ out, pass: summary.pass, passed: summary.passed, total: summary.total, rpcsOk: rpcs.filter((r) => r.ok).length }));
