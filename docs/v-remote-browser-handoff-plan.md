@@ -233,3 +233,7 @@ Control UI 的桌面面板首次在 V 上连接报「桌面安全协商失败：
 - 与接管的配合：handoff 插件的 `before_tool_call` 已把 `computer` 纳入「有人控制时只读」。
 
 **上 V 的步骤**：装 node 单元（用户 openclaw，独立 `~/.openclaw/node-cua/` 配置与状态，env 同上但 D-Bus 路径为 `/tmp/.v-desktop-99/bus`），Gateway 侧三处配置 + worker 副本，一次 stop→start，两步审批。9.5/9.6 升级后可换成 `target:"gateway"` 或保留 node，互不冲突。
+
+**模型层在 VLab 上没有跑通，原因是 VLab 的模型面**：`computer` 只挂给有视觉的模型；VLab 唯一的 provider 是 DeepSeek，`deepseek-v4-flash/pro` 纯文本；`deepseek-flash`（V4.1，有视觉）被全局绑到 Codex harness，走不了 worker；`deepseek-v4-flash-vision-exp` 加进 `modelPolicy.allow` 和 provider 清单后，worker 子进程仍报 `Agent harness runtime "vlab-worker" is unavailable (owner-plugin-not-activatable)`，而同一会话切回 `deepseek-v4-pro` 立刻正常——worker 子进程对清单外新增模型的激活逻辑没有继续深挖。生产 V 的 makaron 默认模型是 `xai/grok-4.6`（有视觉，runtime=vlab-worker），不受此限；模型层验证只能在 V 上做，或者给 VLab 加一个视觉 provider。
+
+VLab 遗留：transient unit `vlab-cua-node`（重启机器后不会自启）、Gateway 侧 cua-computer/`computer` 放行、`modelPolicy.allow` 与 DeepSeek 清单多了 vision-exp。都不影响其他功能。
