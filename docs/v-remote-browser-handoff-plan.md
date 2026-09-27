@@ -247,3 +247,11 @@ VLab 遗留：transient unit `vlab-cua-node`（重启机器后不会自启）、
 - **V 上 Codex 会话为什么找不到**：会话跑在别名 `deepseek/vds-deepseek-flash`，provider 目录里没有这个 id，`input` 为空 → Codex 桥判无视觉 → 静默去掉。V 的 agent 转而用 `nodes` 工具直接调 `screen.snapshot`/`computer.act` 也成功了（22:04），说明 node 路线在 V 上通，只差目录条目。**修法（待授权，需重启）**：给 V 的 DeepSeek provider 加 `vds-deepseek-flash` 条目（克隆 deepseek-flash，`input: ["text","image"]`），主配置与 worker 副本各一份。
 
 `controlAnywhere` 在 VLab 实测：群里 @V - Lab 要控制链接，链接直接发在群里（审计 sessionKey 为 group）。
+
+### 13.2 飞书私聊/群聊里拿不到 `computer` 的根因与修复（2026-09-27 23:55 CST，VLab）
+
+现象：explicit 测试会话工具清单里有 `computer`、`nodes`、`gateway`、`terminal`，飞书私聊（worker）和群聊（Codex）的清单里这几项全没有，模型如实回 NO_COMPUTER。
+根因：`nodes`/`computer` 属于 owner-only 的危险工具集（`src/security/dangerous-tools.ts:61-74`），`src/agents/agent-tools.ts:697-701` 在 `senderIsOwner === false` 时一起拒绝；RPC/webchat 的发起者默认是 owner，飞书发送者要在 `commands.ownerAllowFrom` 里才算 owner。VLab 的 `commands.ownerAllowFrom` 是空的（V 上早已配 `feishu:ou_cb133f…`，所以 V 的私聊会话一直看得到 `nodes`）。
+修复：VLab `commands.ownerAllowFrom = ["feishu:ou_775a78…"]`（主配置 + worker 副本），需重启。之后私聊（deepseek-v4-flash / worker）回 `CUA_DM_OK OpenClaw - Wikipedia`，群聊（deepseek-flash / Codex）回 `CUA_GROUP_OK`，两边都真实截图并点击。
+附带观察：两个会话同时调用时只有一个能持有桌面执行，另一个先报 `COMPUTER_HOST_BUSY`，模型重试后成功。桌面是单例，这是预期行为。
+之前两次"修复"（把 vision-exp 加进清单、`/new`）都不是原因；`/new` 在私聊里还触发过一次 "Persisted legacy session transcripts require doctor/import migration" 的瞬时错误，重发即恢复。
