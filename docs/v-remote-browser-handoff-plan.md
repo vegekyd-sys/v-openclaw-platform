@@ -206,3 +206,11 @@ VLab 已回滚到 2026.9.1（release `feishu-progress-stream-v2`）。安装走 
 发现并已修：页面只换 fragment 不会重新加载（加 `hashchange` → reload）；owner 列表改为可随时读取的文件 `/etc/vlab-v-desktop-handoff/control-anywhere-actors`，加人不用重启。
 
 **未覆盖**：真实飞书私聊端到端（渠道 `requesterSenderId` → 签发 → 手机/电脑打开）、群里 owner 请求时私聊投递、手机端触控。
+
+## 12. 生产 V 上线记录（2026-09-27 16:42–16:47 CST，Tianyi 授权「合入 dev，上线 V」）
+
+- PR #72 合入 dev（`4b918dd`）。V 上按 `scripts/install-desktop-host.sh` 安装（apt 装 tigervnc/xfce4/novnc，文件到 `/opt/v-desktop-handoff`，token 与配置在 `/etc/v-desktop-handoff/`，owner 文件 `control-anywhere-actors` 已含 Tianyi），单元 `openclaw-desktop.service`、`v-desktop-handoff.service` 均 active，桌面 :99 1280x800，Gateway drop-in `DISPLAY=:99`。
+- 配置：`desktop.host`、`browser.defaultProfile/headless/extraArgs`、`plugins.load.paths/allow/entries.v-desktop-handoff`，全部先 `--dry-run` 后写入；worker 那份 `experiments/agent-worker-isolation-v1/worker-openclaw.json` 同步。备份 `~/.openclaw/config-backups/*.pre-desktop-handoff-20260927T164336`。
+- cloudflared：`openclaw.tianyi.live` 加 `^/desktop-handoff(?:/.*)?$ → 127.0.0.1:23950`，`ingress validate` OK，重启 `cloudflared-v-dashboard`；公网 `/desktop-handoff/healthz` 与 noVNC 均 200。备份 `v-dashboard.yml.bak-desktop-handoff-*`。
+- **意外**：`openclaw config set desktop.host` 一写入，Gateway 就自己判定「requires gateway restart (desktop)」并整体重启（16:43:53 → 16:46:30 就绪，停机约 2.5 分钟，比计划的低峰 stop→start 提前）。重启后 30 个插件加载、无 suspicious ownership、worker 池 5–15 重建、`desktop.observe` 返回 rfb/vnc-password。下次改这类键要先 stop 再写。
+- 未在 V 上做的：飞书私聊真实验收（由 Tianyi 执行）；`/opt/v-desktop-handoff` 与两个单元不在漂移哨兵的三个运行时目录范围内，来源以本仓库 `apps/`、`systemd/`、`scripts/install-desktop-host.sh` 为准。
