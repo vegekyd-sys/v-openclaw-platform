@@ -255,3 +255,11 @@ VLab 遗留：transient unit `vlab-cua-node`（重启机器后不会自启）、
 修复：VLab `commands.ownerAllowFrom = ["feishu:ou_775a78…"]`（主配置 + worker 副本），需重启。之后私聊（deepseek-v4-flash / worker）回 `CUA_DM_OK OpenClaw - Wikipedia`，群聊（deepseek-flash / Codex）回 `CUA_GROUP_OK`，两边都真实截图并点击。
 附带观察：两个会话同时调用时只有一个能持有桌面执行，另一个先报 `COMPUTER_HOST_BUSY`，模型重试后成功。桌面是单例，这是预期行为。
 之前两次"修复"（把 vision-exp 加进清单、`/new`）都不是原因；`/new` 在私聊里还触发过一次 "Persisted legacy session transcripts require doctor/import migration" 的瞬时错误，重发即恢复。
+
+### 13.3 长任务把上下文撑爆：回合内截图裁剪补丁（2026-09-28 01:04–01:36 CST）
+
+现象：Tianyi 在 VLab 私聊里让 V 做"进 makaron.app 点多个模板"，第二步就报 "Auto-compaction could not recover this turn"。日志：33 条消息、providerPayloadBytes=2,005,660，`V_DEEPSEEK_CONTEXT_BUDGET_EXHAUSTED`，压缩 provider `versa-fast-quality-v1` 未注册回退 LLM 后仍失败。
+根因：`history-image-prune.ts` 只裁"已完成回合"的图片且保留最近 3 回合；一个 computer 回合里的十几张截图全属当前未完成回合，每次模型调用整份重发。上游 9.6 同样。
+修复：dist 补丁 `lab/release-files/computer-frame-prune/history-image-prune-Dg0CDQ4a.js`（V 与 VLab 同字节 `a4261a04…` → 补丁后 `2811753f…`）：当前回合只保留最近 2 个带截图的工具结果，旧帧替换为 `[screenshot removed - superseded by a newer frame in this turn]`；文本块、用户图片、非截图工具结果不动。标记 `v-computer-frame-prune-v1`。
+证据：候选 `candidate-ed0b81e2`（补丁）5/5、`candidate-91c7a740`（基线）5/5 断言上游行为；PR #75 合 dev（`1148f35`），release `computer-frame-prune-v1` 经 package→stage→deploy 上共享 VLab（01:24–01:32），飞书新会话长任务：7 个模板、21 次 node.invoke、零溢出，回复 LONG_OK；已 accept。
+待办：源码级把同一逻辑提进 fork（`src/agents/embedded-agent-runner/run/history-image-prune.ts`），供 9.5/9.6 线使用；上 V 用 `promote-to-v` 同一 release（V 字节相同）。
