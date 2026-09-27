@@ -237,3 +237,13 @@ Control UI 的桌面面板首次在 V 上连接报「桌面安全协商失败：
 **模型层在 VLab 上没有跑通，原因是 VLab 的模型面**：`computer` 只挂给有视觉的模型；VLab 唯一的 provider 是 DeepSeek，`deepseek-v4-flash/pro` 纯文本；`deepseek-flash`（V4.1，有视觉）被全局绑到 Codex harness，走不了 worker；`deepseek-v4-flash-vision-exp` 加进 `modelPolicy.allow` 和 provider 清单后，worker 子进程仍报 `Agent harness runtime "vlab-worker" is unavailable (owner-plugin-not-activatable)`，而同一会话切回 `deepseek-v4-pro` 立刻正常——worker 子进程对清单外新增模型的激活逻辑没有继续深挖。生产 V 的 makaron 默认模型是 `xai/grok-4.6`（有视觉，runtime=vlab-worker），不受此限；模型层验证只能在 V 上做，或者给 VLab 加一个视觉 provider。
 
 VLab 遗留：transient unit `vlab-cua-node`（重启机器后不会自启）、Gateway 侧 cua-computer/`computer` 放行、`modelPolicy.allow` 与 DeepSeek 清单多了 vision-exp。都不影响其他功能。
+
+### 13.1 三个 runtime 都通了（2026-09-27 21:40–22:10 CST，VLab）
+
+- **worker**：`deepseek-v4-flash` 在 provider 目录里 `input` 标成 `["text","image"]` 后，`computer` 出现在 worker 的工具清单（"unknown entries (computer)" 警告消失），默认模型的回合里 screenshot → mouse_move → left_click 全部成功（坐标 (600,375)，node.invoke 五次）。Tianyi 指出 v4-flash 本来就有视觉，标记只是目录没写。
+- **Codex harness**（`/model deepseek/deepseek-flash`，即 vds）：`computer` 以 `openclaw_direct` 命名空间下发（direct-only 工具的固定位置），三次调用成功，CUA_OK。
+- **Claude Code harness**（`/model vcc`，claude-opus-5）：MCP 回环拿到 `computer`，图片块透传，CUA_OK。
+- 桥接的两个前提（源码 `extensions/codex/src/app-server/dynamic-tool-build.ts:283`、`src/agents/openclaw-tools.ts:339`）：模型定义 `input` 含 `image`（Codex 侧缺省按 false），且 `tools.alsoAllow` 含 `computer`（它不在任何内置 profile）。
+- **V 上 Codex 会话为什么找不到**：会话跑在别名 `deepseek/vds-deepseek-flash`，provider 目录里没有这个 id，`input` 为空 → Codex 桥判无视觉 → 静默去掉。V 的 agent 转而用 `nodes` 工具直接调 `screen.snapshot`/`computer.act` 也成功了（22:04），说明 node 路线在 V 上通，只差目录条目。**修法（待授权，需重启）**：给 V 的 DeepSeek provider 加 `vds-deepseek-flash` 条目（克隆 deepseek-flash，`input: ["text","image"]`），主配置与 worker 副本各一份。
+
+`controlAnywhere` 在 VLab 实测：群里 @V - Lab 要控制链接，链接直接发在群里（审计 sessionKey 为 group）。
