@@ -15,7 +15,8 @@ const gwFirstText = rows.map((r) => {
   return s?.firstText && recv ? s.firstText - recv : NaN;
 });
 const sendToGwFirstText = rows.map((r) => { const s = col.per[`agent:makaron:feishu:group:${r.chat}`]; return s?.firstText ? s.firstText - r.sentMs : NaN; });
-const t0 = load.summary.t0, t1 = Math.max(...rows.map((r) => Math.max(r.completedMs ?? 0, r.imageMs ?? 0)), t0 + 60_000);
+// Health window = the monitored load window (loadmon start..end).
+const t0 = Date.parse(mon.startIso), t1 = Date.parse(mon.endIso);
 const health = fs.readFileSync(healthFile, "utf8").trim().split("\n").map((l) => JSON.parse(l)).filter((h) => h.at && Date.parse(h.at) >= t0 && Date.parse(h.at) <= t1);
 const out = {
   label, N: load.summary.N, completed: `${load.summary.completed}/${load.summary.sent}`,

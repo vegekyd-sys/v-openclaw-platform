@@ -11,8 +11,8 @@ R=/srv/vlab-upgrade96-backups/regress-nw; RO=$R/results/fs-$L
 GROUPS_JSON=$(node -e 'const s=require("fs").readFileSync(process.argv[1],"utf8");const m=[...s.matchAll(/"(oc_[0-9a-f]{32})"/g)].map(x=>x[1]);console.log(m.slice(0,Number(process.argv[2])).join(","))' $HERE/fs-load.mjs $N)
 KEYS=$(echo $GROUPS_JSON | tr ',' '\n' | sed 's#^#agent:makaron:feishu:group:#' | paste -sd, -)
 ssh vlab91 "sudo mkdir -p $RO && sudo rm -f $RO/stop-$L $RO/collector-$L.ready && \
-  sudo systemd-run --unit=versa-fscol-$L --collect --working-directory=$R /opt/vlab/node-v24.17.0-linux-x64/bin/node $R/fs-collector.mjs $L 1800 $RO $KEYS >/dev/null && \
-  sudo systemd-run --unit=versa-fsmon-$L --collect --working-directory=$R /opt/vlab/node-v24.17.0-linux-x64/bin/node $R/loadmon.mjs $L 1800 $RO >/dev/null && \
+  sudo systemd-run --unit=versa-fscol-$L --collect --working-directory=$R /opt/vlab/node-v24.17.0-linux-x64/bin/node $R/fs-collector.mjs $L 1000 $RO $KEYS >/dev/null && \
+  sudo systemd-run --unit=versa-fsmon-$L --collect --working-directory=$R /opt/vlab/node-v24.17.0-linux-x64/bin/node $R/loadmon.mjs $L 1000 $RO >/dev/null && \
   for i in \$(seq 1 60); do sudo test -f $RO/collector-$L.ready && break; sleep 1; done; sudo test -f $RO/collector-$L.ready && echo collector-ready"
 node $HERE/fs-load.mjs $L $N $OUT $SC | tee $OUT/fs-load-$L.summary.json
 sleep 10

@@ -12,14 +12,17 @@ const pexec = promisify(execFile);
 const BOT_APP = "cli_aae2c999c7789bd9";
 const BOT_AT = "ou_b4c17dbac69b0aff77bac433448dc0f6";
 const TIANYI = "ou_8c7aa8fd7ab017c71a44a8e32b8d9766";
+// 2026-09-28: groups 02-08 ("VLab 压测 02..08") are excluded: their 9.1-era sessions start with a
+// "reset" event and no transcript header, which 9.6 refuses ("Persisted legacy session transcripts
+// require doctor/import migration"); see the final report. 19-25 were created for c20.
 const GROUPS = [
-  "oc_abfb8965c3dd0f8d089c7346a98b4ce5", "oc_8a26f79c82cae92bf11ca117ee7e6ad3", "oc_6307020423c4c30f82d4aa5eee331add",
-  "oc_3f76e4ae6207ee05e1137ed360feeb94", "oc_d30a9235b1a3acad4e01dc856ad5152c", "oc_482e9f40871004c4b24fcb542509de5e",
-  "oc_b206250697fef4e0a8edbdbe1ada5cf2", "oc_223bf5209f183e157f368c5dc70b729e", "oc_5a467a0cab47dd7063b4a2d4df2c03c7",
-  "oc_9e2b7d4b9e4034007fe0506493a80274", "oc_a2bcb2867168dfb668cf893db25fca38", "oc_5600e1c44241aca4a943c62b78b003a3",
-  "oc_b2752fc3886efe08c578f44484bdaf23", "oc_f49782f49ce7113cb43fe1ef530c0241", "oc_29eb6bc7e97e8c32395019084005a78c",
-  "oc_346d0dd2c7fe532be069460d9ba49525", "oc_5afced473a29eb6f5fed3ba9966aa9ff", "oc_8d5950febfa650e02b5463499491f45a",
-  "oc_b97eb6438421ab8d0a29b80b4ca02a4d", "oc_4a5c4fd8fe1d5c9a787ab5769cd409b1",
+  "oc_abfb8965c3dd0f8d089c7346a98b4ce5", "oc_5a467a0cab47dd7063b4a2d4df2c03c7", "oc_9e2b7d4b9e4034007fe0506493a80274",
+  "oc_a2bcb2867168dfb668cf893db25fca38", "oc_5600e1c44241aca4a943c62b78b003a3", "oc_b2752fc3886efe08c578f44484bdaf23",
+  "oc_f49782f49ce7113cb43fe1ef530c0241", "oc_29eb6bc7e97e8c32395019084005a78c", "oc_346d0dd2c7fe532be069460d9ba49525",
+  "oc_5afced473a29eb6f5fed3ba9966aa9ff", "oc_8d5950febfa650e02b5463499491f45a", "oc_b97eb6438421ab8d0a29b80b4ca02a4d",
+  "oc_4a5c4fd8fe1d5c9a787ab5769cd409b1", "oc_6308a8f077936d02063fcdb05c7e381a", "oc_45ab15cc75e153fa517903808cf99a34",
+  "oc_4b8d656665ec70061f7abdf997d44882", "oc_785187c16f6590bd7ad523a18f9f6e22", "oc_8acf39a70a07c192d511dcb3424fa38f",
+  "oc_742e476df43c7f65de4cc55810b95f7d", "oc_687769f34c2094087d5b2e9f7bb48086",
 ];
 const [label, nArg, outDir, scenArg] = process.argv.slice(2);
 const N = Number(nArg);
