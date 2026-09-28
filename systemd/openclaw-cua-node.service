@@ -22,7 +22,11 @@ Environment=OPENCLAW_CONFIG_PATH=/home/openclaw/.openclaw/node-cua/openclaw.json
 Environment=OPENCLAW_STATE_DIR=/home/openclaw/.openclaw/node-cua/state
 Environment=PATH=/opt/node-v22.23.1/bin:/usr/local/bin:/usr/bin:/bin
 WorkingDirectory=/home/openclaw/.openclaw/node-cua
-ExecStart=/opt/node-v22.23.1/bin/node /opt/openclaw-2026.9.1-v/openclaw/dist/index.js node run --host 127.0.0.1 --port 22793 --display-name "V host desktop"
+# Must be the SAME dist the Gateway runs (the root promote-to-v / the drift
+# sentinel manage). The computer-use contract (execution lock, idle expiry)
+# executes inside this node process, so a node started from another copy of
+# 2026.9.1 silently runs without the release patches (found 2026-09-28).
+ExecStart=/opt/node-v22.23.1/bin/node /opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core/dist/index.js node run --host 127.0.0.1 --port 22793 --display-name "V host desktop"
 Restart=always
 RestartSec=5
 MemoryMax=1G
