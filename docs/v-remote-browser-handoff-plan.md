@@ -255,3 +255,31 @@ VLab 遗留：transient unit `vlab-cua-node`（重启机器后不会自启）、
 修复：VLab `commands.ownerAllowFrom = ["feishu:ou_775a78…"]`（主配置 + worker 副本），需重启。之后私聊（deepseek-v4-flash / worker）回 `CUA_DM_OK OpenClaw - Wikipedia`，群聊（deepseek-flash / Codex）回 `CUA_GROUP_OK`，两边都真实截图并点击。
 附带观察：两个会话同时调用时只有一个能持有桌面执行，另一个先报 `COMPUTER_HOST_BUSY`，模型重试后成功。桌面是单例，这是预期行为。
 之前两次"修复"（把 vision-exp 加进清单、`/new`）都不是原因；`/new` 在私聊里还触发过一次 "Persisted legacy session transcripts require doctor/import migration" 的瞬时错误，重发即恢复。
+
+### 13.3 长任务把上下文撑爆：回合内截图裁剪补丁（2026-09-28 01:04–01:36 CST）
+
+现象：Tianyi 在 VLab 私聊里让 V 做"进 makaron.app 点多个模板"，第二步就报 "Auto-compaction could not recover this turn"。日志：33 条消息、providerPayloadBytes=2,005,660，`V_DEEPSEEK_CONTEXT_BUDGET_EXHAUSTED`，压缩 provider `versa-fast-quality-v1` 未注册回退 LLM 后仍失败。
+根因：`history-image-prune.ts` 只裁"已完成回合"的图片且保留最近 3 回合；一个 computer 回合里的十几张截图全属当前未完成回合，每次模型调用整份重发。上游 9.6 同样。
+修复：dist 补丁 `lab/release-files/computer-frame-prune/history-image-prune-Dg0CDQ4a.js`（V 与 VLab 同字节 `a4261a04…` → 补丁后 `2811753f…`）：当前回合只保留最近 2 个带截图的工具结果，旧帧替换为 `[screenshot removed - superseded by a newer frame in this turn]`；文本块、用户图片、非截图工具结果不动。标记 `v-computer-frame-prune-v1`。
+证据：候选 `candidate-ed0b81e2`（补丁）5/5、`candidate-91c7a740`（基线）5/5 断言上游行为；PR #75 合 dev（`1148f35`），release `computer-frame-prune-v1` 经 package→stage→deploy 上共享 VLab（01:24–01:32），飞书新会话长任务：7 个模板、21 次 node.invoke、零溢出，回复 LONG_OK；已 accept。
+待办：源码级把同一逻辑提进 fork（`src/agents/embedded-agent-runner/run/history-image-prune.ts`），供 9.5/9.6 线使用；上 V 用 `promote-to-v` 同一 release（V 字节相同）。
+
+### 13.4 生产 V 三 runtime 验收 + 两个新缺陷（2026-09-28 01:43–02:03 CST，V 实跑）
+
+用 lark-cli 以 Tianyi 身份在 V 私聊/群里逐个 runtime 跑同一任务（computer 截图→中心点击→截图→回复 CUA_OK），回合结束以 `sessions.list` 的 `hasActiveRun=false` 为准（早先的脚本把流式卡片当最终回复，会把下一条消息塞进正在跑的回合）：
+
+| 会话 | runtime / 模型 | computer | 接管链接 | node.invoke | 溢出 |
+|---|---|---|---|---|---|
+| 私聊 | claude-cli / claude-opus-5-5（vcc） | CUA_OK | **失败**：`no trusted channel sender identity` | 2 | 0 |
+| 私聊 | codex / gpt-6-sol（vcodex） | 首次 CUA_BLOCKED（见缺陷 B），重启 node 后 CUA_OK | 链接发在私聊 | 4 | 0 |
+| 私聊 | codex / vds-deepseek-flash（vds，新目录条目） | CUA_OK | 链接发在私聊 | 3 | 0 |
+| 私聊 | vlab-worker / deepseek-flash（默认） | CUA_OK | 链接发在私聊 | 3 | 0 |
+| 群 | vlab-worker / grok-4.6 | CUA_OK | 链接直接发在群里（controlAnywhere） | 2 | 0 |
+
+`computer-frame-prune-v1` 在 V 上生效（marker 在，全程零 `CONTEXT_BUDGET_EXHAUSTED`）。
+
+**缺陷 A：claude-cli 私聊拿不到接管链接。** MCP 回环（`mcp-http`）构造的插件工具上下文只带 `senderIsOwner`（由 Gateway 按 `commands.ownerAllowFrom` 判定）和 `deliveryContext`，没有 `requesterSenderId`；Codex 与 worker 路径都带。修复在插件层（`apps/v-desktop-handoff/plugin/core/identity.js` `resolveOwnerActor`）：仅当 `senderIsOwner === true` 时，从上下文里的 `config.commands.ownerAllowFrom` 取该渠道的 owner；私聊用 `deliveryContext.to`（`user:<open_id>`）匹配，群聊只在该渠道恰有一个 owner 时才用，多 owner 群聊仍拒绝。非 owner 永远不派生身份。单元测试 7/7（`node --test apps/v-desktop-handoff/plugin/tests/policy.test.mjs`）。
+
+**缺陷 B：claude-cli 回合用完 computer 不释放执行，桌面被永久占用。** node 侧 `registerComputerUseProvider` 只在收到 `__close_execution`、Gateway 断连或 node 停止时释放；worker/embedded/Codex 路径在回合结束时会 dispose，MCP 回环的工具实例没有 `registerRunCleanup`（`hasCleanupOwner=false`），也没有任何 TTL（cua-driver 的 `maxIdleTtlSeconds=300` 只管驱动会话，不清 `execution`）。实测 01:44 vcc 回合结束后到 01:56 仍 `COMPUTER_HOST_BUSY`，vcodex 直接放弃；`systemctl restart openclaw-cua-node` 才解锁。修复是 dist 补丁 `lab/release-files/computer-execution-idle/computer-use-contract-CisZRwLE.js`（marker `v-computer-execution-idle-v1`）：执行空闲超过 `OPENCLAW_COMPUTER_EXECUTION_IDLE_MS`（默认 300 s）自动 close（reason `idle-expired`），同一 executionId 下次调用透明重开（旧帧会被 `COMPUTER_STALE_FRAME` 逼着重新截图）。before-sha `1043716b…3061`，after-sha `1f51021f…46be`，V 与 VLab 同字节。候选 `candidate-bb973637`（补丁）4/4、`candidate-542f4d64`（基线）4/4 断言上游永不释放。同一补丁也兜住任何异常退出的回合（此前只能重启 node）。
+
+状态：两处修复都在分支上，等 Tianyi 授权合 dev → package/stage/deploy 共享 VLab（Gateway 重启同时加载新插件；VLab 的 `/opt/vlab-v-desktop-handoff/plugin` 已同步新文件，重启前不生效）→ 飞书 vcc 私聊要链接 + vcc→vcodex 连续用 computer 验证 → `promote-to-v`（V 上还要 rsync 插件目录，走 `install-desktop-host.sh`）。
