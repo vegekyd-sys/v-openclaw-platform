@@ -63,6 +63,10 @@ fi
 
 log "1/11 stop (graceful drain via SIGTERM budget); companion stays stopped"
 if systemctl is-active --quiet $COMPANION; then echo active > $B/companion.state; else echo inactive > $B/companion.state; fi
+# vlab-cua-node runs the instance core (runtime/openclaw) with Node 22; it is
+# recreated on Node 24 by open-traffic96-shared-vlab.sh (cua-node-shared-vlab.sh).
+if systemctl is-active --quiet vlab-cua-node; then echo active > $B/cua-node.state; else echo inactive > $B/cua-node.state; fi
+bash $SCRIPTS/cua-node-shared-vlab.sh stop
 systemctl stop $COMPANION 2>/dev/null || true; systemctl stop $UNIT
 log "   gateway down (downtime starts)"; date +%s > $B/down.epoch
 

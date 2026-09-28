@@ -23,6 +23,9 @@ for _ in $(seq 1 1800); do
   sleep 2
 done
 test -f $B/open-ready.epoch || { log "NOT READY"; exit 3; }
+if [ "$(cat $B/cua-node.state 2>/dev/null)" = active ]; then
+  bash "$(dirname "$0")/cua-node-shared-vlab.sh" start /opt/vlab/node-v24.17.0-linux-x64/bin/node && log "vlab-cua-node started on Node 24"
+fi
 if [ "$(cat $B/companion.state)" = active ] || [ "$START_COMPANION" = --start-companion ]; then
   systemctl start $COMPANION && log "$COMPANION started ($(systemctl is-active $COMPANION))"
 fi

@@ -11,7 +11,7 @@
    首启**不开流量**：`99zz-versa-traffic-closed.conf` 设 `OPENCLAW_SKIP_CHANNELS=1`、`OPENCLAW_SKIP_CRON=1`，伴随单元不启动。
 3. `planned-restart96-shared-vlab.sh <备份目录>`，再用 `READY_EPOCH` 跑
    `VERSA_ROOT=<实例> VERSA_UNIT_NAME=openclaw-vlab-production-mirror-v8 post-restart-check.mjs <READY_EPOCH>`：8 个当前回执、无 verification-failed、无 slow open。
-4. 通过后 `open-traffic96-shared-vlab.sh <备份目录> [--start-companion]`，然后 `vlab.mjs baseline --replaceCurrent true` 登记新基线
+4. 通过后 `open-traffic96-shared-vlab.sh <备份目录> [--start-companion]`（也用 Node 24 重建 `vlab-cua-node`，见 `cua-node-shared-vlab.sh`），然后 `vlab.mjs baseline --replaceCurrent true` 登记新基线
    （旧 `current.json` 由工具留成 `receipts/<ts>-superseded-by-baseline.json`）。
 
 worker 模式的旧脚本 `upgrade96-shared-vlab.sh` 保留（2026-09-27 那次用的就是它）。

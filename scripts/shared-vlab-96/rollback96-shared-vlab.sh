@@ -23,6 +23,7 @@ for f in state.tar.zst openclaw.json worker-openclaw.json openclaw-9.1 productio
 zstd -q -t $B/state.tar.zst || { echo "pre-upgrade state archive fails zstd -t"; exit 1; }
 TS=$(date +%Y%m%dT%H%M%S); t0=$(date +%s)
 log "stop"
+bash "$(dirname "$0")/cua-node-shared-vlab.sh" stop
 systemctl stop $COMPANION 2>/dev/null || true; systemctl stop $UNIT
 log "core, worker, drop-ins, versa-runtime-providers"
 mv $I/runtime/openclaw $B/openclaw-9.6-rolledback-$TS
@@ -55,5 +56,6 @@ for _ in $(seq 1 1800); do
 done
 test $ready = 1 || { log "NOT READY after $(( $(date +%s)-start ))s"; exit 3; }
 if [ "$(cat $B/companion.state 2>/dev/null)" = active ]; then systemctl start $COMPANION; log "companion started"; fi
+if [ "$(cat $B/cua-node.state 2>/dev/null)" = active ]; then bash "$(dirname "$0")/cua-node-shared-vlab.sh" start /opt/vlab/node-v22.23.1-linux-x64/bin/node && log "vlab-cua-node started on Node 22"; fi
 log "rollback total $(( $(date +%s)-t0 ))s"
 log "next: restore labs/shared-workflow/current.json from the pre-upgrade copy (see README), then vlab.mjs status: runtimeSha + configSha must match the pre-upgrade record"
