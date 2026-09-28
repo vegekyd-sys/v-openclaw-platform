@@ -1,0 +1,13 @@
+{
+  "baseRelease": "computer-execution-idle-v1",
+  "tests": ["lab/candidate/deepseek-budget-image.test.mjs"],
+  "files": [
+    {
+      "source": "lab/release-files/deepseek-budget-image/transports.mjs",
+      "target": "openclaw/node_modules/@openclaw/ai/dist/transports.mjs",
+      "before": "78223d1200ba522129b070b8dedfe44ddfab8c9922a5d2d58662fbad505fe215"
+    }
+  ],
+  "timeoutSeconds": 600,
+  "user": "lab-db91-parity"
+}
