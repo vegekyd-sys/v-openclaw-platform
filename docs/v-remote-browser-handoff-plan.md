@@ -295,3 +295,4 @@ VLab 遗留：transient unit `vlab-cua-node`（重启机器后不会自启）、
 - **V 的 cua node 一直跑的是另一份 dist。** 单元 ExecStart 指向 `/opt/openclaw-2026.9.1-v/openclaw/dist`，Gateway 实际跑 `/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core/dist`（promote/哨兵管理的那份）。补丁装好后 node 仍是老代码：09:51 vcc 回合后 12 分钟桌面仍 BUSY。已把 `systemd/openclaw-cua-node.service` 改成 Gateway 同一份 dist 并装到 V（10:02）。VLab 单元本来就指向 runtime 同一份，所以 VLab 通过、V 不通过。
 - V 上的证据：09:51 vcc（claude-cli/opus-5-5）computer CUA_OK，私聊要链接**成功**（缺陷 A 修复生效）。node 单元修正后，10:02:52 用 RPC 留一个不关闭的执行，立刻探针 BUSY，10:08:49 探针 ok（`idle-expired` 释放，缺陷 B 修复生效）。端到端（vcc 用完 → 5.5 分钟后 vcodex CUA_OK）见下一条记录。
 - 中途 Tianyi 从链接接管了桌面（09:56），期间 vcodex 报 CUA_BUSY 有人工接管的成分；判定时以 RPC 探针为准。
+- 端到端（V 私聊，10:09–10:16）：vcc（claude-cli）computer CUA_OK 后不释放；5 分 20 秒后切 vcodex 同一任务 CUA_OK。两处修复在 V 上全部验收通过，会话模型已重置回 deepseek-flash。
