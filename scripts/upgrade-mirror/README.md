@@ -18,6 +18,7 @@
 | `talk-compact-check.mjs` | 无 worker 下两个迁出的 provider：`talk.catalog` + `talk.client.create/close`（火山托管房间，真实 StartVoiceChat/StopVoiceChat，无音频）；长会话 `sessions.compact` 走快速压缩 |
 | `stress-tools96c.mjs` | 12 个并行工具回合（skill_workshop、openclaw、sessions_spawn、image），按模式决定 RPC 列表 |
 | `soak.mjs <label> <min> <out>` | 轻量混合流量（每轮 bench c3 + accept 工具回合）下每 5 分钟采样 RSS/堆/任务数/进程分类/liveness 与哨兵计数 |
+| `health-rtt.mjs <label> <min> <out> [s=30]` | Gateway 进程外的健康探针：每隔 s 秒新建一次 WS 连接并调一次 `health`，分别计握手和 RPC 耗时，标出超过 5 s 和 30 s 的次数。主线程卡死时，Gateway 自己的 liveness 计时器也停了，要靠它才看得见 |
 | `runtime-mode.mjs` | worker / no-worker 模式判定（与 V 哨兵同一规则），`probe.mjs`、`accept.mjs`、`bench.mjs` 据此决定是否检查 worker 池、是否调用 `vlab.workers.status` |
 | 其余 | 9.1 基线、9.5 生产配置测速、状态切换、诊断 |
 
