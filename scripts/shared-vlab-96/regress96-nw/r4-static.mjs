@@ -112,7 +112,8 @@ const M = [
   ["34214bce5a7 execution idle (V computer-execution-idle)", "OPENCLAW_COMPUTER_EXECUTION_IDLE_MS", ["core"], true],
   ["0b1236bb257 MCP loopback scope", "runOutsidePluginRuntimeGatewayRequestScope", ["core"], true],
   ["7a33ec3815c E3 image allowance(ai)", "withoutInlineImageBytes", ["ai"], true],
-  ["549f28190e8 variant-only native fallback", "observationMissing", ["core"], true],
+  ["b82243e4733 stale Azure OpenAI catalog rows", "withoutForeignOpenAITransports", ["core"], true],
+  ["549f28190e8 reverted by 9fbf4a96448", "observationMissing", ["core"], false],
   ["no-worker providers: realtime", "volcengine-rtc-agent", ["providers"], true],
   ["no-worker providers: compaction", "versa-fast-quality-v1", ["providers"], true],
 ];

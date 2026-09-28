@@ -33,7 +33,10 @@ const members = async (chat) => {
   const j = await lark(["im", "+chat-members-list", "--as", "user", "--chat-id", chat, "--format", "json"]);
   return { users: (j.data.users ?? []).map((u) => u.member_id), bots: (j.data.bots ?? []).map((b) => b.app_id) };
 };
-const groups = GROUPS.slice(0, N);
+// FS_GROUPS=oc_a,oc_b picks specific groups from the allow-list (functional tests).
+const picked = process.env.FS_GROUPS ? process.env.FS_GROUPS.split(",") : null;
+if (picked && picked.some((g) => !GROUPS.includes(g))) throw new Error("FS_GROUPS outside the VLab allow-list");
+const groups = (picked ?? GROUPS).slice(0, N);
 for (const g of groups) {
   const m = await members(g);
   if (m.users.length !== 1 || m.users[0] !== TIANYI || m.bots.length !== 1 || m.bots[0] !== BOT_APP) throw new Error(`group ${g} is not VLab-only; stopping`);
