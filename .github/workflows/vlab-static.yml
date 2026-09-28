@@ -29,5 +29,9 @@ jobs:
         run: npm ci
       - name: Test Night Shift core
         run: npm test
+      # npm test runs the platform catalog, which lists no Night Shift engine or
+      # dashboard test; without this step they never ran in CI after 2026-09-17.
+      - name: Test Night Shift engine and dashboard
+        run: npm run test:nightshift
       - name: Validate vLab release assets
         run: ./tests/vlab-static.sh
