@@ -5,6 +5,11 @@
 # Everything replaced is kept under /srv/vlab-upgrade96-backups/upgrade96-<ts>/ for
 # rollback96-shared-vlab.sh <that dir>.
 set -euo pipefail
+# systemctl has no is-activating verb; a unit counts as gone only when failed, or
+# inactive for more than 30 s (a restart passes through inactive briefly).
+unit_gone() { local s; s=$(systemctl show -p ActiveState --value $1); if [ "$s" = failed ]; then return 0; fi
+  if [ "$s" = inactive ]; then UNIT_INACTIVE_SINCE=${UNIT_INACTIVE_SINCE:-$(date +%s)}; [ $(( $(date +%s) - UNIT_INACTIVE_SINCE )) -gt 30 ]; return; fi
+  UNIT_INACTIVE_SINCE=; return 1; }
 test "$(id -u)" = 0
 I=/srv/vlab-production-mirror/labs/instances/db91-parity; U=lab-db91-parity
 UNIT=openclaw-vlab-production-mirror-v8; COMPANION=nightshift-vlab-production-mirror; PORT=24993
@@ -129,7 +134,7 @@ start=$(date +%s)
 systemctl start --no-block $UNIT
 ready=0
 for _ in $(seq 1 3600); do
-  if ! systemctl is-active --quiet $UNIT && ! systemctl is-activating --quiet $UNIT; then log "unit exited"; journalctl -u $UNIT -n 40 --no-pager -o cat | tee -a $EV/upgrade.log; exit 2; fi
+  if unit_gone $UNIT; then log "unit exited"; journalctl -u $UNIT -n 40 --no-pager -o cat | tee -a $EV/upgrade.log; exit 2; fi
   if journalctl -u $UNIT --since "@$start" --no-pager -o cat 2>/dev/null | grep -q "\[gateway\] ready"; then ready=1; log "   ready after $(( $(date +%s)-start ))s"; break; fi
   sleep 2
 done

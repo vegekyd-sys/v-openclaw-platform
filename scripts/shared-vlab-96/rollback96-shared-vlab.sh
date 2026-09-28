@@ -12,6 +12,11 @@
 # therefore archived (zstd, verified) into the backup dir and then removed; nothing
 # is lost. ROLLBACK_96_STATE=move keeps the old behaviour (raw move to the backup dir).
 set -euo pipefail
+# systemctl has no is-activating verb; a unit counts as gone only when failed, or
+# inactive for more than 30 s (a restart passes through inactive briefly).
+unit_gone() { local s; s=$(systemctl show -p ActiveState --value $1); if [ "$s" = failed ]; then return 0; fi
+  if [ "$s" = inactive ]; then UNIT_INACTIVE_SINCE=${UNIT_INACTIVE_SINCE:-$(date +%s)}; [ $(( $(date +%s) - UNIT_INACTIVE_SINCE )) -gt 30 ]; return; fi
+  UNIT_INACTIVE_SINCE=; return 1; }
 test "$(id -u)" = 0
 B=${1:?backup dir from upgrade96-*-shared-vlab.sh}
 I=/srv/vlab-production-mirror/labs/instances/db91-parity; U=lab-db91-parity
@@ -51,7 +56,7 @@ start=$(date +%s); systemctl start --no-block $UNIT
 ready=0
 for _ in $(seq 1 1800); do
   if journalctl -u $UNIT --since "@$start" --no-pager -o cat 2>/dev/null | grep -c "\[gateway\] ready" >/dev/null; then ready=1; log "ready after $(( $(date +%s)-start ))s"; break; fi
-  if ! systemctl is-active --quiet $UNIT && ! systemctl is-activating --quiet $UNIT; then log "unit exited"; exit 2; fi
+  if unit_gone $UNIT; then log "unit exited"; exit 2; fi
   sleep 2
 done
 test $ready = 1 || { log "NOT READY after $(( $(date +%s)-start ))s"; exit 3; }

@@ -4,6 +4,11 @@
 #   planned-restart96-shared-vlab.sh <backup dir>
 # Prints READY_EPOCH (feed to post-restart-check.mjs) and the downtime.
 set -euo pipefail
+# systemctl has no is-activating verb; a unit counts as gone only when failed, or
+# inactive for more than 30 s (a restart passes through inactive briefly).
+unit_gone() { local s; s=$(systemctl show -p ActiveState --value $1); if [ "$s" = failed ]; then return 0; fi
+  if [ "$s" = inactive ]; then UNIT_INACTIVE_SINCE=${UNIT_INACTIVE_SINCE:-$(date +%s)}; [ $(( $(date +%s) - UNIT_INACTIVE_SINCE )) -gt 30 ]; return; fi
+  UNIT_INACTIVE_SINCE=; return 1; }
 test "$(id -u)" = 0
 B=${1:?backup dir}
 UNIT=openclaw-vlab-production-mirror-v8
@@ -17,7 +22,7 @@ for _ in $(seq 1 1800); do
     t2=$(date +%s); echo $t2 > $B/planned-ready.epoch
     log "READY_EPOCH=$t2 start $((t2-t1))s downtime $((t2-t0))s"; exit 0
   fi
-  if ! systemctl is-active --quiet $UNIT && ! systemctl is-activating --quiet $UNIT; then log "unit exited"; journalctl -u $UNIT -n 30 --no-pager -o cat | cut -c1-300; exit 2; fi
+  if unit_gone $UNIT; then log "unit exited"; journalctl -u $UNIT -n 30 --no-pager -o cat | cut -c1-300; exit 2; fi
   sleep 2
 done
 log "NOT READY after $(( $(date +%s)-t1 ))s"; exit 3

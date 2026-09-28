@@ -5,6 +5,11 @@
 # The companion (nightshift-vlab-production-mirror) is started only if it was
 # active before the upgrade or --start-companion is given.
 set -euo pipefail
+# systemctl has no is-activating verb; a unit counts as gone only when failed, or
+# inactive for more than 30 s (a restart passes through inactive briefly).
+unit_gone() { local s; s=$(systemctl show -p ActiveState --value $1); if [ "$s" = failed ]; then return 0; fi
+  if [ "$s" = inactive ]; then UNIT_INACTIVE_SINCE=${UNIT_INACTIVE_SINCE:-$(date +%s)}; [ $(( $(date +%s) - UNIT_INACTIVE_SINCE )) -gt 30 ]; return; fi
+  UNIT_INACTIVE_SINCE=; return 1; }
 test "$(id -u)" = 0
 B=${1:?backup dir}; START_COMPANION=${2:-}
 UNIT=openclaw-vlab-production-mirror-v8; COMPANION=nightshift-vlab-production-mirror
@@ -19,7 +24,7 @@ for _ in $(seq 1 1800); do
   if journalctl -u $UNIT --since "@$t1" --no-pager -o cat 2>/dev/null | grep -c "\[gateway\] ready" >/dev/null; then
     t2=$(date +%s); echo $t2 > $B/open-ready.epoch; log "READY_EPOCH=$t2 downtime $((t2-t0))s (traffic open)"; break
   fi
-  if ! systemctl is-active --quiet $UNIT && ! systemctl is-activating --quiet $UNIT; then log "unit exited"; exit 2; fi
+  if unit_gone $UNIT; then log "unit exited"; exit 2; fi
   sleep 2
 done
 test -f $B/open-ready.epoch || { log "NOT READY"; exit 3; }
