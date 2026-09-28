@@ -307,6 +307,27 @@ test("capacity probe includes foreground occupancy and fails closed on invalid t
   }
 });
 
+// 9.6 no-worker mode (shared VLab 2026-09-28): the Gateway has no Worker pool,
+// vlab.workers.status is unknown, and every probe used to be red forever.
+test("capacity probe falls back to Gateway health latency when there is no Worker pool", async () => {
+  let now = 1_000;
+  const adapter = new WorkboardGatewayAdapter({ now: () => now });
+  const calls = [];
+  adapter.call = async (method) => {
+    calls.push(method);
+    if (method === "vlab.workers.status") throw new Error("unknown method: vlab.workers.status");
+    now += 40;
+    return { ok: true };
+  };
+  assert.deepEqual(await adapter.probeGatewayCapacity(), { latencyMs: 40 });
+  assert.deepEqual(await adapter.probeGatewayCapacity(), { latencyMs: 40 });
+  assert.deepEqual(calls, ["vlab.workers.status", "health", "health"]);
+  // Any other failure still fails closed.
+  const other = new WorkboardGatewayAdapter();
+  other.call = async () => { throw new Error("gateway timeout"); };
+  await assert.rejects(other.probeGatewayCapacity(), /gateway timeout/);
+});
+
 // On V at 03:00 on 2026-09-17 a cards.list timeout put the adapter into
 // recovery, and the next read scanned all 2,386 cards on a Gateway that was
 // already stalling. Recovery must widen to the projects the service can act
