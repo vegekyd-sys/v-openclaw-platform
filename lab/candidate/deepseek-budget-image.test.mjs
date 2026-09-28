@@ -13,8 +13,11 @@ import { test } from "node:test";
 import fs from "node:fs";
 import path from "node:path";
 
+// In a VLab candidate the runtime copy is tested; offline (CI) the committed release file.
 const file = process.env.DEEPSEEK_BUDGET_FILE
-  ?? path.join(process.env.VLAB_CANDIDATE_RUNTIME ?? "", "openclaw", "node_modules", "@openclaw", "ai", "dist", "transports.mjs");
+  ?? (process.env.VLAB_CANDIDATE_RUNTIME
+    ? path.join(process.env.VLAB_CANDIDATE_RUNTIME, "openclaw", "node_modules", "@openclaw", "ai", "dist", "transports.mjs")
+    : new URL("../release-files/deepseek-budget-image/transports.mjs", import.meta.url).pathname);
 assert(fs.existsSync(file), `transports.mjs not found at ${file}`);
 const source = fs.readFileSync(file, "utf8");
 const patched = source.includes("deepseek-budget-image-v1");
