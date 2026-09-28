@@ -42,7 +42,7 @@ const env = Object.fromEntries(
 );
 Object.assign(process.env, env);
 const config = readJson(env.OPENCLAW_CONFIG_PATH);
-assert.equal(config.gateway.port, 25096);
+assert.equal(config.gateway.port, Number(process.env.VERSA_PORT ?? 25096));
 const workerSettings = config.plugins.entries["vlab-agent-worker-isolation"]?.config ?? {};
 // bench96: the same benchmark, but the worker RPC is optional so it also runs
 // against a Gateway without the vlab-agent-worker-isolation plugin.

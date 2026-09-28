@@ -15,7 +15,10 @@ import fs from "node:fs";
 const [label, minutesArg, outDir, cycleArg] = process.argv.slice(2);
 const minutes = Number(minutesArg), cycleS = Number(cycleArg ?? 240);
 if (!/^[a-z0-9-]+$/.test(label ?? "") || !(minutes > 0) || !fs.existsSync(outDir ?? "")) throw new Error("usage");
-const R = "/srv/versa-mirror95", UNIT = "versa-mirror95-gateway", NODE = `${R}/runtime/node-v24.17.0-linux-x64/bin/node`;
+// Shared VLab: VERSA_UNIT_NAME, VERSA_SCRIPTS, VERSA_RUN_USER, VERSA_NODE override the mirror defaults.
+const R = "/srv/versa-mirror95", UNIT = process.env.VERSA_UNIT_NAME ?? "versa-mirror95-gateway";
+const NODE = process.env.VERSA_NODE ?? `${R}/runtime/node-v24.17.0-linux-x64/bin/node`;
+const SCRIPTS = process.env.VERSA_SCRIPTS ?? `${R}/scripts`, RUN_USER = process.env.VERSA_RUN_USER ?? "versa-rehearsal";
 const run = (c, a, t = 60_000) => execFileSync(c, a, { encoding: "utf8", timeout: t, maxBuffer: 256 << 20 }).trim();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const pid = Number(run("systemctl", ["show", UNIT, "-p", "MainPID", "--value"]));
@@ -85,7 +88,7 @@ async function sample(windowStartedAt) {
 const traffic = { cycles: 0, benchOk: 0, benchRuns: 0, acceptPass: 0, acceptRuns: 0, errors: [] };
 function runAs(script, args) {
   return new Promise((resolve) => {
-    const child = spawn("runuser", ["--preserve-environment", "-u", "versa-rehearsal", "--", NODE, `${R}/scripts/${script}`, ...args],
+    const child = spawn("runuser", ["--preserve-environment", "-u", RUN_USER, "--", NODE, `${SCRIPTS}/${script}`, ...args],
       { cwd: "/tmp", env: { ...process.env, VERSA_UNIT: `${UNIT}.service` }, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     child.stdout.on("data", (d) => { stdout += d; });
@@ -96,7 +99,7 @@ function runAs(script, args) {
 }
 const startedAt = Date.now();
 const endAt = startedAt + minutes * 60_000;
-fs.mkdirSync(`${outDir}/soak-traffic`, { recursive: true }); run("chown", ["versa-rehearsal:", `${outDir}/soak-traffic`]);
+fs.mkdirSync(`${outDir}/soak-traffic`, { recursive: true }); run("chown", [`${RUN_USER}:`, `${outDir}/soak-traffic`]);
 log({ event: "start", label, pid, minutes, cycleS, sample: await sample(Date.now() - 300_000) });
 let nextSample = startedAt + 300_000, windowStart = startedAt;
 const sampler = (async () => {

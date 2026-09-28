@@ -11,7 +11,9 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-const R = "/srv/versa-mirror95", UNIT = "versa-mirror95-gateway";
+// Shared VLab: VERSA_ROOT, VERSA_UNIT_NAME, VERSA_EXPECT_RECEIPTS override the mirror defaults.
+const R = process.env.VERSA_ROOT ?? "/srv/versa-mirror95", UNIT = process.env.VERSA_UNIT_NAME ?? "versa-mirror95-gateway";
+const EXPECT = Number(process.env.VERSA_EXPECT_RECEIPTS ?? 8);
 const readyAt = Number(process.argv[2]);
 if (!(readyAt > 0)) throw new Error("usage: post-restart-check.mjs <readyEpochSeconds>");
 const run = (c, a) => execFileSync(c, a, { encoding: "utf8", timeout: 120_000, maxBuffer: 256 << 20 }).trim();
@@ -58,6 +60,6 @@ out.journalSinceReady = {
   compactionFallback: count("falling back to LLM") + count("configured but not registered"),
   modelRouteChanged: count("Model route changed"),
 };
-out.pass = out.receipts === 8 && out.current === 8 && out.failures.length === 0 &&
+out.pass = out.receipts === EXPECT && out.current === EXPECT && out.failures.length === 0 &&
   out.journalSinceReady.slowAgentDbOpen === 0 && out.journalSinceReady.unhandledRejection === 0;
 console.log(JSON.stringify(out, null, 2));

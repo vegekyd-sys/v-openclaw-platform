@@ -43,7 +43,7 @@ const env = Object.fromEntries(
 );
 Object.assign(process.env, env);
 const config = readJson(env.OPENCLAW_CONFIG_PATH);
-assert.equal(config.gateway.port, 25096);
+assert.equal(config.gateway.port, Number(process.env.VERSA_PORT ?? 25096));
 const mode = runtimeMode(config);
 const workerSettings = mode === "worker" ? config.plugins.entries["vlab-agent-worker-isolation"].config : undefined;
 

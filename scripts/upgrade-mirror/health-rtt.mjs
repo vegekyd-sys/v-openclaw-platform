@@ -9,7 +9,7 @@ import fs from "node:fs";
 const [label, minutesArg, outDir, intervalArg] = process.argv.slice(2);
 const minutes = Number(minutesArg), intervalS = Number(intervalArg ?? 30);
 if (!/^[a-z0-9-]+$/.test(label ?? "") || !(minutes > 0) || !fs.existsSync(outDir ?? "")) throw new Error("usage");
-const UNIT = "versa-mirror95-gateway.service";
+const UNIT = process.env.VERSA_UNIT ?? "versa-mirror95-gateway.service";
 const out = `${outDir}/health-${label}.jsonl`;
 const log = (o) => fs.appendFileSync(out, JSON.stringify(o) + "\n");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
