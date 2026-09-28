@@ -36,6 +36,8 @@ t0=$(date +%s)
 tar -C $I -cf - state | zstd -q -T2 -o $B/state.tar.zst
 cp -a $C $B/openclaw.json; cp -a $WC $B/worker-openclaw.json
 cp -a $I/runtime/production-worker $B/production-worker
+# 9.6 migrates the CUA node's own state database on its first start; 9.1 cannot open it.
+test -d $I/node-cua/state && cp -a $I/node-cua/state $B/node-cua-state
 mv $I/runtime/openclaw $B/openclaw-9.1
 log "   backup $(du -h $B/state.tar.zst | cut -f1) in $(( $(date +%s)-t0 ))s"
 

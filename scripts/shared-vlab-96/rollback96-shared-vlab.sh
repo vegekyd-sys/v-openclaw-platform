@@ -5,7 +5,8 @@
 # Restores core, worker, both configs (the no-worker conversion is undone by
 # restoring the pre-upgrade files) and the pre-upgrade state archive, removes the
 # 9.6 drop-ins (incl. the traffic-closed one) and versa-runtime-providers, and
-# starts 9.1. The companion is started again only if it was active before.
+# starts 9.1. The companion is started again only if it was active before. vlab-cua-node
+# gets a 9.1-compatible node-cua/state (cua-node-shared-vlab.sh fit-91-state) and Node 22.
 #
 # Disk: the instance disk (/dev/vdb) cannot hold the 9.6 state next to the restored
 # 9.1 state, and moving it to the root disk copies ~18 GB raw. The 9.6 state is
@@ -60,7 +61,14 @@ for _ in $(seq 1 1800); do
   sleep 2
 done
 test $ready = 1 || { log "NOT READY after $(( $(date +%s)-start ))s"; exit 3; }
-if [ "$(cat $B/companion.state 2>/dev/null)" = active ]; then systemctl start $COMPANION; log "companion started"; fi
-if [ "$(cat $B/cua-node.state 2>/dev/null)" = active ]; then bash "$(dirname "$0")/cua-node-shared-vlab.sh" start /opt/vlab/node-v22.23.1-linux-x64/bin/node && log "vlab-cua-node started on Node 22"; fi
+# companion.state is the state before the upgrade; start it by hand if it should run anyway.
+if [ "$(cat $B/companion.state 2>/dev/null)" = active ]; then systemctl start $COMPANION; log "companion started"; else log "companion left stopped (was $(cat $B/companion.state 2>/dev/null) before the upgrade)"; fi
+if [ "$(cat $B/cua-node.state 2>/dev/null)" = active ]; then
+  # 9.6 migrated node-cua/state to a schema 9.1 refuses (2026-09-28 rollback: the unit
+  # failed 3 s after start); fit it to 9.1 first, keeping the node's paired identity.
+  bash "$(dirname "$0")/cua-node-shared-vlab.sh" fit-91-state $B 2>&1 | tee -a $B/evidence/rollback.log || log "fit-91-state failed"
+  if bash "$(dirname "$0")/cua-node-shared-vlab.sh" start /opt/vlab/node-v22.23.1-linux-x64/bin/node; then log "vlab-cua-node started on Node 22"
+  else log "vlab-cua-node FAILED to start: journalctl -u vlab-cua-node"; fi
+fi
 log "rollback total $(( $(date +%s)-t0 ))s"
 log "next: restore labs/shared-workflow/current.json from the pre-upgrade copy (see README), then vlab.mjs status: runtimeSha + configSha must match the pre-upgrade record"

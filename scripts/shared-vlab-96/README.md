@@ -22,6 +22,12 @@ worker 模式的旧脚本 `upgrade96-shared-vlab.sh` 保留（2026-09-27 那次�
 删掉 9.6 drop-in 和 `runtime/versa-runtime-providers`（移进备份目录）。9.6 的 state 默认压缩成
 `state-9.6-rolledback-<ts>.tar.zst`（校验后再删目录），因为两个盘都放不下一份原样的 18 GB。
 
+`vlab-cua-node` 的 `node-cua/state` 在 9.6 第一次起 node 时被迁到 schema 18，9.1 只认 15，会直接拒绝启动
+（2026-09-28 回滚时单元 3 秒退出）。脚本在起 node 之前跑 `cua-node-shared-vlab.sh fit-91-state <备份目录>`：
+有升级时留的 `node-cua-state` 就还原它；没有（09-28 那次升级之前的脚本不备份它）就用 9.1 新建一个 schema 15 的库，
+把设备身份、node 令牌和 `nodeHost.config` 拷过去，Gateway 那边已配对的设备仍然认得它。9.6 的原库留在
+`node-cua-state-9.6-rolledback-<ts>`。伴随单元按升级前的状态决定起不起，要起就手动 `systemctl start`。
+
 之后恢复 `labs/shared-workflow/current.json`：先把当前的另存为 `receipts/<ms>-superseded-by-rollback-to-91.json`，
 再用升级时留下的 `receipts/<ms>-superseded-by-baseline.json` 覆盖回去；`vlab.mjs status` 的 `runtimeSha` 和 `configSha`
 必须等于升级前记录的值。
