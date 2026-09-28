@@ -287,3 +287,11 @@ VLab 遗留：transient unit `vlab-cua-node`（重启机器后不会自启）、
 部署时踩的两个坑（都只在启动日志里有一行）：`rsync -a` 从本机同步插件目录把属主变成 uid 501，Gateway 报 `suspicious ownership` 拒载；`--delete --exclude node_modules` 删掉了 `plugin/node_modules/typebox` 软链，报 `Cannot find module 'typebox'`。修法：`chown -R root:root` + 重建指向运行时 `node_modules/typebox` 的软链，看 `http server listening (N plugins` 的 N 是否少 1。
 
 上 V 的注意点：contract 补丁在 **node 进程**里生效，`promote-to-v` 放好文件后重启 `openclaw-cua-node` 即可（不用重启 Gateway）；插件 owner 兜底要等 Gateway 下次重启才生效，且 V 上同步插件目录后同样要 chown + 保留 typebox 软链。VLab 现处于 AHEAD(computer-execution-idle-v1)，在 promote+align 或 rollback 之前服务器拒绝任何新的 stage（含 9.6 升级线）。
+
+### 13.5 上 V（2026-09-28 09:34–10:09 CST）
+
+- `promote-to-v --release computer-execution-idle-v1 --name computer-execution-idle-20260928 --apply`：V 持有 before 字节，装 1 个文件，备份在 `/opt/v-release-backups/computer-execution-idle-20260928-20260928T013419`；捕获三目录、哨兵 0 findings；`vlab.mjs align` → aligned:true（PR #77 带捕获）。
+- 插件目录 rsync 到 `/opt/v-desktop-handoff/plugin`（chown root、typebox 软链保留）。Gateway 在活跃回合归零的 09:47:51 重启，31 个插件全载，worker 池 5 个就绪。
+- **V 的 cua node 一直跑的是另一份 dist。** 单元 ExecStart 指向 `/opt/openclaw-2026.9.1-v/openclaw/dist`，Gateway 实际跑 `/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core/dist`（promote/哨兵管理的那份）。补丁装好后 node 仍是老代码：09:51 vcc 回合后 12 分钟桌面仍 BUSY。已把 `systemd/openclaw-cua-node.service` 改成 Gateway 同一份 dist 并装到 V（10:02）。VLab 单元本来就指向 runtime 同一份，所以 VLab 通过、V 不通过。
+- V 上的证据：09:51 vcc（claude-cli/opus-5-5）computer CUA_OK，私聊要链接**成功**（缺陷 A 修复生效）。node 单元修正后，10:02:52 用 RPC 留一个不关闭的执行，立刻探针 BUSY，10:08:49 探针 ok（`idle-expired` 释放，缺陷 B 修复生效）。端到端（vcc 用完 → 5.5 分钟后 vcodex CUA_OK）见下一条记录。
+- 中途 Tianyi 从链接接管了桌面（09:56），期间 vcodex 报 CUA_BUSY 有人工接管的成分；判定时以 RPC 探针为准。
