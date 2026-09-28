@@ -114,6 +114,8 @@ const M = [
   ["7a33ec3815c E3 image allowance(ai)", "withoutInlineImageBytes", ["ai"], true],
   ["b82243e4733 stale Azure OpenAI catalog rows", "withoutForeignOpenAITransports", ["core"], true],
   ["549f28190e8 reverted by 9fbf4a96448", "observationMissing", ["core"], false],
+  ["431e3e27d15 G1 DeepSeek turn does not inherit bound OpenAI profile", "turnUsesOpenAIAccountAuth", ["codex"], true],
+  ["174bb5d0e60 non-hosted computer caller keeps node route", "implicitNonHostedCaller", ["core"], true],
   ["no-worker providers: realtime", "volcengine-rtc-agent", ["providers"], true],
   ["no-worker providers: compaction", "versa-fast-quality-v1", ["providers"], true],
 ];
