@@ -110,6 +110,9 @@ const M = [
   ["6c9a1549915 refresh-loop park", "session row refresh made no progress in", ["core"], true],
   ["34214bce5a7 frame prune (V computer-frame-prune)", "superseded by a newer frame in this turn", ["core"], true],
   ["34214bce5a7 execution idle (V computer-execution-idle)", "OPENCLAW_COMPUTER_EXECUTION_IDLE_MS", ["core"], true],
+  ["0b1236bb257 MCP loopback scope", "runOutsidePluginRuntimeGatewayRequestScope", ["core"], true],
+  ["7a33ec3815c E3 image allowance(ai)", "withoutInlineImageBytes", ["ai"], true],
+  ["549f28190e8 variant-only native fallback", "observationMissing", ["core"], true],
   ["no-worker providers: realtime", "volcengine-rtc-agent", ["providers"], true],
   ["no-worker providers: compaction", "versa-fast-quality-v1", ["providers"], true],
 ];
