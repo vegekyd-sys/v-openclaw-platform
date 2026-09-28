@@ -741,6 +741,7 @@ export class NightShiftRuntime {
     dryRun = false,
     inspectSessions = true,
     now: nowMs = Date.now(),
+    perInstanceLimit = null,
   } = {}) {
     const currentCards = cards ?? await this.workboard.listCards({ cardIds: this.instanceCardIds(instanceId) });
     await this.reconcile(instanceId, currentCards, { inspectSessions });
@@ -758,6 +759,7 @@ export class NightShiftRuntime {
       contentItems,
       contentItemRuns,
       now: new Date(nowMs),
+      perInstanceLimit,
     });
     // A card the board holds for a timed release must wake the scheduler at
     // exactly that moment. Two sources, because the card can be planned in this
@@ -860,7 +862,7 @@ export class NightShiftRuntime {
           this.dispatchMaxStarts,
           normalizeDispatchBudget(dispatchMaxStarts),
           Math.max(0, this.maxWorkboardActive - activeAcrossBoard),
-          Math.max(0, (savedRelease.manifest.spec.concurrency?.perInstance ?? 1) - active.length),
+          Math.max(0, (perInstanceLimit ?? savedRelease.manifest.spec.concurrency?.perInstance ?? 1) - active.length),
           cardIds.length,
         );
         if (maxStarts > 0) {

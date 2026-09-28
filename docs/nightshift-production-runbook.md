@@ -44,6 +44,7 @@ Night Shift starts new native cards only while the Gateway host has headroom, an
 | `NIGHTSHIFT_AGENT_DB_PRESSURE_WINDOW_SECONDS` | 120 | How far back each reading looks. |
 | `NIGHTSHIFT_AGENT_DB_SLOW_ADMISSION_YELLOW` | 3 | Slow lease admissions in the window that stop new starts. |
 | `NIGHTSHIFT_USER_HARM_COOLDOWN_MS` | 900000 | Hold after a lease timeout cut a person's reply. Quiet probes cannot end it early. |
+| `NIGHTSHIFT_BURST_FACTOR` | 3 | A project may borrow idle capacity up to its Workflow's `perInstance` × this; `1` turns borrowing off. A Workflow's `concurrency.maxPerInstance` pins its own cap. |
 | `NIGHTSHIFT_ORPHANED_SESSION_MS` | 2700000 | A blocked card whose Agent Session has written nothing for this long is failed as `agent_interrupted` and handed to the stage's retry policy. |
 | `NIGHTSHIFT_DISPATCH_INITIAL_MAX_ACTIVE` | 3 | Concurrency the ramp starts from after a restart or a red probe. |
 | `NIGHTSHIFT_GATEWAY_GREEN_LATENCY_MS` / `_RED_LATENCY_MS` | 250 / 1000 | Worker status RPC latency that pauses growth or halves the target. |
@@ -66,6 +67,20 @@ Night Shift therefore reads the Gateway journal (`journalctl -u $NIGHTSHIFT_GATE
 | unknown | journal unreadable, empty for the unit, or failing | Recorded with a reason; does not block. The other probes still gate. |
 
 A cut reply also sets a ceiling, `dispatchPressure.harmCeiling` in `/api/health`, at 70% of the Night Shift cards running when it happened. Recovery is capped there, including the rule that admits one card beyond those still running, so it cannot jump straight back to the level that caused the harm. The ceiling starts rising when the hold ends: one card per 5 quiet minutes. It lowers again at the next separate cut reply and disappears once it climbs back to `maxActive`. It is held in memory, so a service restart forgets it. On 2026-09-28, without it, recovery at 15:10 returned to the ten cards that had cut a reply at 14:55, and two more replies were cut at 15:22.
+
+## Per-project concurrency
+
+A Workflow's `concurrency.perInstance` is a project's guaranteed share, not a ceiling.
+
+**How the limit is worked out, each pass**
+1. The board's target is split among the projects that have work. A project has work when it has a card running or ready, or no card yet.
+2. Each such project may run up to that fair share. It never goes below `perInstance`.
+3. It never goes above `perInstance × NIGHTSHIFT_BURST_FACTOR`, or the Workflow's `concurrency.maxPerInstance` when set.
+4. A project waiting only on timed releases or on people keeps `perInstance`.
+
+The board target itself stays with the dispatch-pressure guard, so the lease, host-memory and harm-ceiling brakes still bound the total. Each pass's limits are in the scheduler result as `perInstanceLimits`.
+
+**When to pin the cap.** Use `maxPerInstance` when a stage is bound by something outside Night Shift, such as cloud-phone devices or publishing accounts.
 
 ## Orphaned runs
 

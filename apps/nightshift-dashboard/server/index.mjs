@@ -93,6 +93,8 @@ const agentDbPressureWindowSeconds = positiveInteger(process.env.NIGHTSHIFT_AGEN
 const agentDbSlowAdmissionYellow = positiveInteger(process.env.NIGHTSHIFT_AGENT_DB_SLOW_ADMISSION_YELLOW, 3, 1_000);
 const userHarmCooldownMs = positiveInteger(process.env.NIGHTSHIFT_USER_HARM_COOLDOWN_MS, 900_000, 7_200_000);
 const orphanedSessionMs = positiveInteger(process.env.NIGHTSHIFT_ORPHANED_SESSION_MS, 2_700_000, 86_400_000);
+// Idle capacity a project may borrow beyond its Workflow's perInstance; 1 turns it off.
+const burstFactor = positiveInteger(process.env.NIGHTSHIFT_BURST_FACTOR, 3, 12);
 // How soon to retry after a scheduler pass fails, doubling up to the ceiling.
 const schedulerRetryMinMs = positiveInteger(process.env.NIGHTSHIFT_SCHEDULER_RETRY_MIN_MS, 10_000, 600_000);
 const schedulerRetryMaxMs = positiveInteger(process.env.NIGHTSHIFT_SCHEDULER_RETRY_MAX_MS, 120_000, 600_000);
@@ -955,6 +957,7 @@ function runScheduler({ trigger = "manual" } = {}) {
       dispatchEnabled: circuitDecision.dispatch && pressure.dispatchAllowed && dispatchMaxStarts > 0,
       inspectSessions: trigger === "repair",
       maxWorkboardActive: pressure.targetMaxActive,
+      burstFactor,
       store, runtime, workboard, refreshCards, syncContentItemsManifest,
     }));
     dispatchPressureGuard.consumeStarts(result.dispatched);

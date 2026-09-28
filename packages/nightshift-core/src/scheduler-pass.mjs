@@ -1,3 +1,4 @@
+import { effectivePerInstance, fairShareOf } from "./concurrency.mjs";
 import { tickWithFaultProjection } from "./scheduler-state.mjs";
 
 export async function runSchedulerPass({
@@ -8,6 +9,8 @@ export async function runSchedulerPass({
   // what can still change.
   fullSweep = inspectSessions,
   maxWorkboardActive = 36,
+  // Idle capacity a project may borrow beyond perInstance (concurrency.mjs); 1 turns it off.
+  burstFactor = 3,
   store,
   runtime,
   workboard,
@@ -46,6 +49,15 @@ export async function runSchedulerPass({
   let remainingStarts = Math.min(dispatchMaxStarts, Math.max(0, maxWorkboardActive - activeAtStart));
   let retryAfterMs = null;
   let dispatched = 0;
+  // Projects with work right now: a card running or ready to start, or no card
+  // yet (just started). A project waiting only on timed releases or people does
+  // not take a share.
+  const busy = eligible.filter((instance) => {
+    const own = cards.filter((card) => (card.labels ?? []).includes(`instance:${instance.id}`));
+    return own.length === 0 || own.some((card) => cardConsumesDispatchSlot(card) || card.status === "ready");
+  });
+  const fairShare = fairShareOf(maxWorkboardActive, busy.length);
+  const limits = {};
   for (const instance of eligible) {
     try {
       await syncContentItemsManifest(instance);
@@ -56,7 +68,13 @@ export async function runSchedulerPass({
     try {
       const result = await tickWithFaultProjection({
         instanceId: instance.id,
-        options: { dispatch: dispatchEnabled, dispatchMaxStarts: dispatchEnabled ? remainingStarts : 0, cards, inspectSessions },
+        options: {
+          dispatch: dispatchEnabled,
+          dispatchMaxStarts: dispatchEnabled ? remainingStarts : 0,
+          cards,
+          inspectSessions,
+          perInstanceLimit: (limits[instance.id] = perInstanceLimitFor(store, instance, busy.includes(instance) ? fairShare : null, burstFactor)),
+        },
         runtime,
         store,
         workboard,
@@ -87,6 +105,7 @@ export async function runSchedulerPass({
     warnings,
     instances: eligible.length,
     pausedInstances: instances.length - eligible.length,
+    perInstanceLimits: limits,
     retryAfterMs,
   };
 }
@@ -138,6 +157,11 @@ export function schedulerCardIds(store, activeInstances = null, { fullSweep = tr
     }
   }
   return [...new Set(ids)];
+}
+
+function perInstanceLimitFor(store, instance, fairShare, burstFactor) {
+  const release = store.getRelease?.(instance.workflowSha256)?.manifest;
+  return release ? effectivePerInstance(release, { fairShare, burstFactor }) : null;
 }
 
 function mergeCards(cards, updates) {

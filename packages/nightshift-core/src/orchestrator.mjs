@@ -26,6 +26,8 @@ export function planNextActions({
   contentItems = [],
   contentItemRuns = [],
   now = new Date(),
+  // This pass's limit for the project (concurrency.mjs); defaults to perInstance.
+  perInstanceLimit = null,
 }) {
   assertInstance(release, instance);
   if (instance.status !== "active") return [];
@@ -37,7 +39,7 @@ export function planNextActions({
   const activeCount = [...latestRuns.values(), ...latestItemRuns.values()].filter((run) =>
     ACTIVE_STATUSES.has(run.status),
   ).length;
-  const limit = release.spec.concurrency?.perInstance ?? 1;
+  const limit = perInstanceLimit ?? release.spec.concurrency?.perInstance ?? 1;
   if (activeCount >= limit) return [];
   const itemById = new Map(contentItems.map((item) => [item.id, item]));
   const reservedResources = activeResourceLocks({ instance, itemById, latestItemRuns, latestRuns, stageById });
