@@ -438,7 +438,11 @@ test("automatically reopens a due retryable infrastructure failure on the same c
   store.close();
 });
 
-test("does not auto-retry a side-effect stage without a resumable external task", async () => {
+// A substrate fault (here a SQLite lock) on a paid stage retries when the
+// ledger holds nothing this card left in flight: Agents reserve before a paid
+// call, so nothing was spent. Before 2026-09-29 such a card always waited for a
+// person, and eight system stops reached people that day.
+test("a side-effect stage retries a substrate fault when its ledger holds nothing in flight", async () => {
   const source = await readFile(workflowPath, "utf8");
   const store = new NightShiftStore();
   const workboard = new FakeWorkboard();
@@ -464,6 +468,46 @@ test("does not auto-retry a side-effect stage without a resumable external task"
   await runtime.reconcile("NS-PAID-UNCERTAIN");
 
   const run = store.listContentItemRuns("NS-PAID-UNCERTAIN")[0];
+  assert.equal(run.failure.retryable, true);
+  assert.equal(run.failure.automaticRetry, true);
+  assert.ok(run.failure.nextRetryAt);
+  store.close();
+});
+
+test("does not auto-retry a side-effect stage whose ledger holds an unresolved reservation", async () => {
+  const source = await readFile(workflowPath, "utf8");
+  const store = new NightShiftStore();
+  const workboard = new FakeWorkboard();
+  const runtime = new NightShiftRuntime({ store, workboard });
+  const release = runtime.publish(source);
+  runtime.startInstance({
+    id: "NS-PAID-RESERVED",
+    workflowSha256: release.workflowSha256,
+    contentItems: [{ id: "video-1", title: "Paid video", route: "AI_GENERATE" }],
+  });
+  workboard.cards.push({
+    id: "card-paid-reserved",
+    status: "review",
+    sessionKey: "agent:main:subagent:paid-reserved",
+    runId: "run-paid-reserved",
+    execution: { status: "blocked", startedAt: 100 },
+    labels: ["instance:NS-PAID-RESERVED", "content-item:video-1", "stage:produce"],
+  });
+  workboard.sessions.set("agent:main:subagent:paid-reserved", {
+    messages: [{ role: "assistant", errorMessage: "database is locked", stopReason: "error", timestamp: 200 }],
+  });
+  store.reserveExternalOperation({
+    idempotencyKey: "NS-PAID-RESERVED:video-1:produce",
+    instanceId: "NS-PAID-RESERVED",
+    contentItemId: "video-1",
+    stageId: "produce",
+    ownerCardId: "card-paid-reserved",
+    requestHash: "request-sha",
+  });
+
+  await runtime.reconcile("NS-PAID-RESERVED");
+
+  const run = store.listContentItemRuns("NS-PAID-RESERVED")[0];
   assert.equal(run.failure.retryable, true);
   assert.equal(run.failure.automaticRetry, false);
   assert.equal(run.failure.nextRetryAt, null);
@@ -1922,5 +1966,75 @@ test("a run that ended normally is judged on its outputs even when the transcrip
   await runtime.reconcile("NS-RUN-DONE-MIDTOOL", null, { inspectSessions: true });
   assert.equal(workboard.cards[0].status, "done");
   assert.equal(attemptFailures(store, "NS-RUN-DONE-MIDTOOL").length, 0);
+  store.close();
+});
+
+// A project's own session limit, set while it runs (nightshiftctl projects
+// concurrency). Unset, the Workflow's perInstance applies as before.
+async function limitedProject({ id, workflowLimit, running }) {
+  const store = new NightShiftStore();
+  const workboard = new FakeWorkboard();
+  const runtime = new NightShiftRuntime({ store, workboard });
+  const source = (await readFile(workflowPath, "utf8")).replace("concurrency: {perInstance: 8}", `concurrency: {perInstance: ${workflowLimit}}`);
+  const release = runtime.publish(source);
+  runtime.startInstance({ id, workflowSha256: release.workflowSha256, agentBindings: { "content-operator": "main" } });
+  for (let index = 0; index < running; index++) {
+    workboard.cards.push({ id: `${id}-running-${index}`, status: "running", labels: [`instance:${id}`] });
+  }
+  return { runtime, store, workboard };
+}
+
+test("a project's own limit lowers its concurrency below the Workflow's", async () => {
+  const { runtime, store, workboard } = await limitedProject({ id: "NS-LIMIT-LOW", workflowLimit: 8, running: 1 });
+  store.setInstanceControl("NS-LIMIT-LOW", { perInstanceLimit: 1 });
+  await runtime.tick("NS-LIMIT-LOW", { dispatch: true });
+  assert.deepEqual(workboard.dispatchCalls, [], "one card already runs and the project allows one");
+  store.close();
+});
+
+test("a project's own limit raises its concurrency above the Workflow's, and default restores it", async () => {
+  const { runtime, store, workboard } = await limitedProject({ id: "NS-LIMIT-HIGH", workflowLimit: 1, running: 1 });
+  await runtime.tick("NS-LIMIT-HIGH", { dispatch: true });
+  assert.deepEqual(workboard.dispatchCalls, [], "the Workflow allows one");
+  store.setInstanceControl("NS-LIMIT-HIGH", { perInstanceLimit: 3 });
+  await runtime.tick("NS-LIMIT-HIGH", { dispatch: true });
+  assert.equal(workboard.dispatchCalls.length, 1);
+  assert.ok(workboard.dispatchCalls[0].maxStarts >= 1 && workboard.dispatchCalls[0].maxStarts <= 2);
+  store.setInstanceControl("NS-LIMIT-HIGH", { perInstanceLimit: null });
+  workboard.dispatchCalls.length = 0;
+  await runtime.tick("NS-LIMIT-HIGH", { dispatch: true });
+  assert.deepEqual(workboard.dispatchCalls, [], "back to the Workflow's one");
+  store.close();
+});
+
+test("a paid card whose transcript ends on a lease timeout retries when its ledger holds nothing", async () => {
+  // V, 2026-09-29 20:21: read while the board still showed the card running,
+  // so the Gateway's run record was not consulted; the transcript's own error
+  // is the same substrate fault and gets the same ledger rule.
+  const { card, runtime, store, workboard } = await stoppedRun({
+    id: "NS-TRANSCRIPT-LEASE", stageId: "produce", outcome: null,
+    session: { messages: [{ role: "assistant", stopReason: "error", errorMessage: "Agent DB process coordinator wait exceeded 5000ms", timestamp: Date.now() - 60_000, content: [] }] },
+  });
+  card.status = "running";
+  card.execution.status = "running";
+  await runtime.reconcile("NS-TRANSCRIPT-LEASE", null, { inspectSessions: true });
+  const [event] = attemptFailures(store, "NS-TRANSCRIPT-LEASE");
+  assert.equal(event.payload.failure.kind, "database_lock");
+  assert.equal(event.payload.failure.automaticRetry, true);
+  assert.equal(openRequests(store, "NS-TRANSCRIPT-LEASE").length, 0);
+  store.close();
+});
+
+test("an Agent error read from the transcript is not a substrate fault: a paid card still waits for a person", async () => {
+  const { card, runtime, store } = await stoppedRun({
+    id: "NS-TRANSCRIPT-AGENT", stageId: "produce", outcome: null,
+    session: { messages: [{ role: "assistant", stopReason: "error", errorMessage: "tool refused the request", timestamp: Date.now() - 60_000, content: [] }] },
+  });
+  card.status = "running";
+  card.execution.status = "running";
+  await runtime.reconcile("NS-TRANSCRIPT-AGENT", null, { inspectSessions: true });
+  const [event] = attemptFailures(store, "NS-TRANSCRIPT-AGENT");
+  assert.equal(event.payload.failure.kind, "agent_error");
+  assert.equal(event.payload.failure.automaticRetry, false);
   store.close();
 });
