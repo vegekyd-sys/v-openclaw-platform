@@ -283,6 +283,7 @@
     {"file": "tests/cron-shared-management/patcher.test.mjs", "reason": "需要真实 9.1 cron bundle fixture；缺 fixture 时 node:test 会 skip，离线入口不把 skip 当通过。"},
     {"file": "lab/cold-start-pipeline-contract.test.mjs", "reason": "钉的是 worker-pool.mjs 在 035ccb4（spawn-containment）时的内容哈希；之后 2da3eec（worker-memory-recycle，已上线）和 88380e9 改了该文件而未重钉，自 9/16 起失败、被未登记测试的目录错误掩盖。需要 worker 线负责人确认现内容后重钉，不由 2026-09-24 的登记整理代为声明。"},
     {"file": "tests/dreaming-session-ingestion-candidate.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
+    {"file": "lab/candidate/view-image-bytes-cap.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
     {"file": "lab/candidate/examples/config.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
     {"file": "lab/candidate/computer-execution-idle.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
     {"file": "lab/candidate/computer-frame-prune.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
