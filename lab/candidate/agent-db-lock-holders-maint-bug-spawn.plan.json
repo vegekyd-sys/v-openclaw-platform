@@ -1,0 +1,15 @@
+{
+  "support": [
+    "lab/candidate/agent-db-lock-holders.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/agent-db-lock-holders.mjs"
+  ],
+  "timeoutSeconds": 3600,
+  "user": "lab-db91-parity",
+  "env": {
+    "MODE": "maint-bug",
+    "SPAWN": "1"
+  }
+}
