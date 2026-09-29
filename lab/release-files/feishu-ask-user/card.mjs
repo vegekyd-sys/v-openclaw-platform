@@ -12,34 +12,37 @@ export function isFeishuAskQuestion(record) {
       q.options.every((o) => typeof o.label === "string"));
 }
 
-export function buildFeishuAskCard(record, state = "pending", selections = {}) {
-  const titles = { pending: "V 需要你的选择", answered: "已收到回答", expired: "问题已过期", cancelled: "问题已取消" };
+export function buildFeishuAskCard(record, state = "pending", selections = {}, answers) {
   const elements = [];
   const fields = [];
   const immediate = record.questions.length === 1 && !record.questions[0].multiSelect;
+  if (state !== "pending") {
+    const summary = record.questions.map(q => (answers?.answers?.[q.questionId] ?? []).join("、")).filter(Boolean).join("；");
+    const text = state === "answered" ? summary ? `✓ 已选择：${summary}` : "✓ 已收到回答" : state === "expired" ? "问题已过期" : "问题已取消";
+    return { schema: "2.0", config: { update_multi: true, width_mode: "default" }, body: { elements: [{ tag: "markdown", content: `<font color='grey'>${vAskEscape(text)}</font>` }] } };
+  }
   record.questions.forEach((q, i) => {
-    elements.push({ tag: "markdown", content: `${record.questions.length > 1 ? `**${vAskEscape(q.header ?? `问题 ${i + 1}`)}**\n` : ""}${vAskEscape(q.question)}${q.multiSelect ? "（可多选）" : ""}` });
-    if (state !== "pending") return;
+    elements.push({ tag: "markdown", content: `**${vAskEscape(q.question)}**${q.multiSelect ? "\n<font color='grey'>可多选，选好后确认</font>" : ""}` });
     q.options.forEach((o, j) => {
       const selected = (selections[`choice_${i}`] ?? []).includes(String(j));
-      elements.push({ tag: "button", name: `v_ask_choice_${i}_${j}`, text: vAskPlain(`${selected ? "✓ " : ""}${o.label}`),
-        type: selected ? "primary" : "default", width: "fill",
-        behaviors: [{ type: "callback", value: { a: V_ASK_ACTION, q: record.id, qi: i, oi: j } }] });
-      if (o.description) elements.push({ tag: "markdown", text_size: "notation", content: `<font color='grey'>${vAskEscape(o.description)}</font>` });
+      elements.push({ tag: "interactive_container", width: "fill", has_border: true,
+        border_color: selected ? "blue-500" : "grey-200", background_style: selected ? "blue-50" : "default",
+        corner_radius: "8px", padding: "12px 12px 12px 12px",
+        behaviors: [{ type: "callback", value: { a: V_ASK_ACTION, q: record.id, qi: i, oi: j } }],
+        elements: [{ tag: "markdown", content: `**${selected ? "✓ " : ""}${vAskEscape(o.label)}**` },
+          ...(o.description ? [{ tag: "markdown", text_size: "notation", content: `<font color='grey'>${vAskEscape(o.description)}</font>` }] : [])] });
     });
     if (q.isOther || !q.options.length) fields.push({
       tag: "input", name: `other_${i}`, width: "fill", max_length: 1000,
-      required: immediate || !q.options.length, placeholder: vAskPlain(`${record.questions.length > 1 ? `${q.header}：` : ""}或输入其他回答`),
+      required: immediate || !q.options.length, placeholder: vAskPlain(`${record.questions.length > 1 ? `${q.header ?? `问题 ${i + 1}`}：` : ""}说说你的想法`),
     });
   });
-  if (state === "pending" && (fields.length || !immediate)) {
-    fields.push({ tag: "button", name: `v_ask_submit_${record.id}`, text: vAskPlain(immediate ? "提交其他回答" : "确认选择"), type: immediate ? "default" : "primary", width: "fill",
-      form_action_type: "submit" });
-    elements.push({ tag: "form", name: "v_ask_form", elements: fields });
+  const submit = { tag: "button", name: `v_ask_submit_${record.id}`, text: vAskPlain(immediate ? "按这个想法继续" : "按这些选择继续"), type: "primary", form_action_type: "submit" };
+  if (fields.length || !immediate) {
+    const custom = fields.length ? [{ tag: "collapsible_panel", expanded: record.questions.some(q => !q.options.length), header: { title: vAskPlain("我有其他想法"), width: "auto_when_fold" }, elements: [...fields, ...(immediate ? [submit] : [])] }] : [];
+    elements.push({ tag: "form", name: "v_ask_form", elements: [...custom, ...(!immediate ? [submit] : [])] });
   }
-  if (state !== "pending") elements.push({ tag: "markdown", content: state === "answered" ? "✅ 已提交，V 会继续当前任务。" : "这个问题已结束，需要时请让 V 重新提问。" });
-  return { schema: "2.0", config: { update_multi: true, width_mode: "default" },
-    header: { title: vAskPlain(titles[state]), template: state === "pending" ? "blue" : state === "answered" ? "green" : "grey" }, body: { elements } };
+  return { schema: "2.0", config: { update_multi: true, width_mode: "default" }, body: { padding: "12px 12px 12px 12px", vertical_spacing: "12px", elements } };
 }
 
 export function parseFeishuAskSubmission(data) {

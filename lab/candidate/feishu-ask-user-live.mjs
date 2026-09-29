@@ -35,7 +35,7 @@ const monitor = path.join(feishuDir, "dist", fs.readdirSync(path.join(feishuDir,
 const probe = path.join(state, "ask-probe.jsonl"), inbox = path.join(state, "ask-inbox.json"), outcome = path.join(state, "ask-outcome.json");
 let patched = patchFeishuAskUser(fs.readFileSync(monitor, "utf8"));
 patched = patched.replace("send: sendCardFeishu,", `send: async (p) => { const r = await sendCardFeishu(p); process.getBuiltinModule("node:fs").appendFileSync(process.env.V_ASK_PROBE, JSON.stringify({kind:"sent",...r,card:p.card})+"\\n"); return r; },`);
-patched += "\nexport { vSecretEntrySubscribeRequested as candidateSubscribe, vFeishuAsk as candidateAsk };\n";
+patched += "\nexport { vSecretEntrySubscribeRequested as candidateSubscribe, vFeishuAsk as candidateAsk, FeishuStreamingSession as CandidateStream, createFeishuClient as candidateClient, createFeishuReplyDispatcher as candidateDispatcher };\n";
 fs.writeFileSync(monitor, patched);
 const channelPath = path.join(state, "ask-channel-config.json");
 fs.writeFileSync(channelPath, JSON.stringify(channelCfg), { mode: 0o600 });
@@ -54,8 +54,35 @@ const hook = path.join(state, "ask-hook.mjs");
 fs.writeFileSync(hook, `import fs from "node:fs";
 if(process.argv.includes("gateway")) {
  const cfg=JSON.parse(fs.readFileSync(${JSON.stringify(channelPath)},"utf8"));
- const {candidateSubscribe,candidateAsk}=await import(${JSON.stringify(monitor)});
+ const {candidateSubscribe,candidateAsk,CandidateStream,candidateClient,candidateDispatcher}=await import(${JSON.stringify(monitor)});
  candidateSubscribe({cfg,accountId:"default",log:console.log});
+ const prefix="B 方案 · 独立 candidate 同卡片实测\\n收到，我先确认重做方式。";
+ let dispatcher, messageId, initialized=false;
+ const originalUpdate=CandidateStream.prototype.vAskUpdate;
+ CandidateStream.prototype.vAskUpdate=async function(card,owner){
+   const result=await originalUpdate.call(this,card,owner);
+   if(!owner && result){messageId=result.messageId;fs.appendFileSync(${JSON.stringify(probe)},JSON.stringify({kind:"sent",messageId,card,inline:true})+"\\n");}
+   return result;
+ };
+ let finalized=false;
+ setInterval(async()=>{
+   if(!initialized && fs.existsSync(${JSON.stringify(path.join(state,"ask-ready"))})){
+     initialized=true;
+     try { dispatcher=candidateDispatcher({cfg,agentId:"makaron",sessionKey:${JSON.stringify(`agent:makaron:feishu:group:${chat}`)},chatId:${JSON.stringify(chat)},sendTarget:${JSON.stringify(chat)},accountId:"default",runtime:{log:console.log,error:console.error},skipReplyToInMessages:true});
+       dispatcher.replyOptions.onPartialReply({text:prefix});
+       fs.writeFileSync(${JSON.stringify(path.join(state,"ask-dispatcher-ready"))},"ok");
+     } catch(e) {fs.writeFileSync(${JSON.stringify(path.join(state,"ask-dispatcher-error"))},String(e));}
+   }
+   const file=${JSON.stringify(path.join(state,"ask-final.json"))};
+   if(finalized || !dispatcher || !fs.existsSync(file))return;
+   finalized=true;
+   try {const text=prefix+"\\n\\n"+JSON.parse(fs.readFileSync(file,"utf8")).text;
+     dispatcher.replyOptions.onPartialReply({text});
+     await dispatcher.dispatcherOptions.onIdle();
+     dispatcher.dispatcherOptions.onCleanup();
+     fs.writeFileSync(${JSON.stringify(path.join(state,"ask-final-outcome.json"))},JSON.stringify({messageId}));
+   } catch(e){fs.writeFileSync(${JSON.stringify(path.join(state,"ask-final-outcome.json"))},JSON.stringify({error:String(e)}));}
+ },200).unref();
  let processing=false;
  setInterval(async()=>{
   if(processing || !fs.existsSync(${JSON.stringify(inbox)})) return;
@@ -100,6 +127,13 @@ try {
     } catch { client?.stop(); await sleep(1000); }
   }
   assert(ready, "candidate readiness failed");
+  fs.writeFileSync(path.join(state,"ask-ready"),"ok");
+  for(let i=0;i<100&&!fs.existsSync(path.join(state,"ask-dispatcher-ready"));i++){
+    const error=path.join(state,"ask-dispatcher-error");
+    assert(!fs.existsSync(error),fs.existsSync(error)?fs.readFileSync(error,"utf8"):"");
+    await sleep(200);
+  }
+  assert(fs.existsSync(path.join(state,"ask-dispatcher-ready")),"actual dispatcher not ready");
   const sessionKey = `agent:makaron:feishu:group:${chat}`;
   let stdout = "", stderr = "";
   const agent = spawn(process.execPath, [`${dist}/index.js`, "agent", "--agent", "makaron", "--session-key", sessionKey, "--model", "deepseek/deepseek-v4-flash", "--message", prompt, "--json", "--timeout", "360"], { env, stdio: ["ignore", "pipe", "pipe"] });
@@ -112,7 +146,7 @@ try {
     if (!delivery) await sleep(1000);
   }
   assert(delivery?.messageId, `no real question card delivered: ${stdout.slice(-1000)} ${stderr.slice(-300)}`);
-  const button = delivery.card.body.elements.filter(e => e.tag === "button")[1];
+  const button = delivery.card.body.elements.filter(e => e.tag === "interactive_container")[1];
   assert(button?.behaviors?.[0]?.value?.q);
   const questionId = button.behaviors[0].value.q;
   // Human-originated CLI answer must arrive AFTER the actual question card.
@@ -140,8 +174,24 @@ try {
   assert(reply?.includes("ASK_CANDIDATE_0929_DONE") && reply.includes("重画"), `unexpected final answer ${reply}`);
   const callbackResult = JSON.parse(fs.readFileSync(outcome, "utf8"));
   assert.equal(callbackResult.toast.type, "success");
-  const sent = await feishu("im/v1/messages?receive_id_type=chat_id", { receive_id: chat, msg_type: "text", content: JSON.stringify({ text: `[独立 candidate 实测]\n${reply}\n输入与回答来自飞书；表单回调在 candidate 注入，未接管共享机器人。` }) });
-  console.log(JSON.stringify({ ok: true, sessionKey, inputMessageId: inputId, questionId, cardMessageId: delivery.messageId, answerMessageId: answer.message_id, finalMessageId: sent.message_id, reply, agentMeta: result.result?.meta?.agentMeta ?? result.meta?.agentMeta, callback: "injected into actual candidate handler from real Feishu text", sharedChannelConsumerStarted: false }));
+  assert(delivery.inline, "question must reuse the existing streaming message");
+  fs.writeFileSync(path.join(state,"ask-final.json"),JSON.stringify({text:reply}));
+  const finalPath=path.join(state,"ask-final-outcome.json");
+  for(let i=0;i<100&&!fs.existsSync(finalPath);i++)await sleep(200);
+  assert(fs.existsSync(finalPath),"inline continuation timed out");
+  const finalOutcome=JSON.parse(fs.readFileSync(finalPath,"utf8"));
+  assert(!finalOutcome.error,JSON.stringify(finalOutcome));
+  assert.equal(finalOutcome.messageId,delivery.messageId,"must keep the same message id");
+  let received;
+  for(let i=0;i<40;i++) {
+    received=(await feishu(`im/v1/messages/mget?card_msg_content_type=raw_card_content&message_ids=${delivery.messageId}`)).items[0];
+    if(received.body.content.includes("ASK_CANDIDATE_0929_DONE") && received.body.content.includes("已选择"))break;
+    await sleep(500);
+  }
+  assert(received.body.content.includes("ASK_CANDIDATE_0929_DONE"), "final model output missing from original card");
+  assert(received.body.content.includes("已选择"), "answer record missing from original card");
+  const sent={message_id:delivery.messageId};
+  console.log(JSON.stringify({ ok: true, sessionKey, inputMessageId: inputId, questionId, cardMessageId: delivery.messageId, answerMessageId: answer.message_id, finalMessageId: sent.message_id, reply, agentMeta: result.result?.meta?.agentMeta ?? result.meta?.agentMeta, callback: "injected into actual candidate handler from real Feishu text", sameMessageContinuation: true, actualReplyDispatcher: true, sharedChannelConsumerStarted: false }));
 } catch (error) {
   console.error(logs.join("").slice(-14000).replace(/(token|api.?key|authorization|secret|bearer)([=: ]+)[^\s"]+/gi, "$1$2[redacted]"));
   throw error;
