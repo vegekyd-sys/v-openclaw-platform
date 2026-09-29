@@ -18,13 +18,34 @@ function harness(overrides = {}) {
 test("render complete single/multi/custom forms without default answers; hide terminal controls", () => {
   const r = record(); r.questions.push({ ...r.questions[0], questionId: "multi", multiSelect: true });
   const c = api.buildFeishuAskCard(r);
-  const fields = c.body.elements[0].elements;
-  assert(fields.some(f => f.tag === "select_static"));
-  assert(fields.some(f => f.tag === "multi_select_static"));
+  const fields = c.body.elements.find(e => e.tag === "form").elements;
+  assert(!JSON.stringify(c).includes("select_static"));
+  assert.equal(c.body.elements.filter(e => e.tag === "button").length, 4);
   assert.equal(fields.filter(f => f.tag === "input").length, 2);
   assert.equal(fields.at(-1).behaviors, undefined);
   assert(!JSON.stringify(c).includes("initial_option"));
   for (const state of ["answered", "expired", "cancelled"]) assert(!JSON.stringify(api.buildFeishuAskCard(r, state)).includes('"tag":"form"'));
+});
+test("single-choice button resolves immediately without a submit step", async () => {
+  const h = harness(); await h.runtime.requested(h.r, h.params);
+  const button = h.sent[0].card.body.elements.filter(e => e.tag === "button")[1];
+  const e = event(h.r, {}); e.event.action = { tag: "button", value: button.behaviors[0].value };
+  assert.equal((await h.runtime.submit(e, h.params)).toast.type, "success");
+  assert.deepEqual({ ...h.calls[0].p.answers.answers }, { scope: ["重新绘制"] });
+});
+test("multi-select buttons toggle per sender and only resolve after confirmation", async () => {
+  const h = harness(); h.r.questions[0].multiSelect = true; await h.runtime.requested(h.r, h.params);
+  const click = async (index, operator = "ou_test") => {
+    const e = event(h.r, {}); e.event.operator.open_id = operator;
+    e.event.action = { tag: "button", value: { a: api.V_ASK_ACTION, q: h.r.id, qi: 0, oi: index } };
+    return h.runtime.submit(e, h.params);
+  };
+  await click(0); await click(1); const toggle = await click(0);
+  assert.equal(toggle.toast.type, "info");
+  assert.equal(h.calls.length, 0);
+  await click(0, "ou_other");
+  assert.equal((await h.runtime.submit(event(h.r, {}), h.params)).toast.type, "success");
+  assert.deepEqual({ ...h.calls[0].p.answers.answers }, { scope: ["重新绘制"] });
 });
 test("answers map to authoritative labels and accept custom overrides / multi-select", () => {
   const r = record();

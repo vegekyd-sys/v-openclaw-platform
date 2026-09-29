@@ -4,13 +4,17 @@ The Worker registers `question.request` in the Gateway while its Feishu tool-pro
 reply can contain only “Ask User”. The existing runtime-v2 channel listener renders
 secret-entry requests only. Ordinary questions consequently have no usable prompt.
 
-This patch extends that listener to deliver ordinary questions as Card 2.0 forms.
-It supports 1–3 questions, single/multiple choices and custom answers. The form
+This patch extends that listener to deliver ordinary questions as Card 2.0 buttons.
+It supports 1–3 questions, single/multiple choices and custom answers. One
+single-choice question resolves on the option click. Multiple questions or a
+multi-select question stage selections per sender, then resolve on confirmation.
+Custom answers use a separate input form. There are no dropdowns. The card
 callback resolves the original Gateway question directly, outside the busy session's
 chat queue. No bot message is synthesized as a user answer.
 
-The form button uses `form_action_type: submit` and a question-bound `name`;
-`action.name` identifies the request and `action.form_value` carries the answers.
+Option buttons carry question-bound `behaviors.callback.value`; the custom/confirm
+form button uses `form_action_type: submit` and a question-bound `name`.
+`action.name` identifies that form and `action.form_value` carries custom answers.
 Only a callback for the account and exact message delivered by this process is
 accepted. Option indices are checked against the original labels. Empty/incomplete
 forms stay open, concurrent submissions are serialized, transient RPC errors allow
@@ -27,17 +31,38 @@ node /Users/tianyicai/vlab-dev/lab/vlab.mjs candidate \
   --plan "$PWD/lab/candidate/feishu-ask-user.plan.json"
 ```
 
-2026-09-29: 10 local tests pass. Candidate
-`candidate-45d32285-a19e-4a5a-8bfe-4332106b9cb6` passes against release
+2026-09-29: 12 local tests pass. Button candidate
+`candidate-9fe53922-8ab7-44a1-bc82-0b197a76e676` passes against release
 `view-image-overflow-signal-v1`, input SHA256
-`1676e35ec3088009b4bb2bbe1966d00e24d401365ac03b79d7b7b0363654556a`.
+`8cb07a76b6d08fb8e28a6a3c5495ed027fe0239a20a69212b93bd13df0a84444`.
 The candidate shape-patches the actual private monitor bundle, checks JS syntax,
 uses the runtime's real QuestionManager to prove wait -> answered for multi-question,
 multi-select and custom input, and validates the card JSON by creating one unshared
-Feishu CardKit entity. No message is sent. Server time 15.4s; shared PID unchanged.
+Feishu CardKit entity. No message is sent by this test. Server time 8.3s; shared PID unchanged.
 
 This does not establish a live Feishu click -> callback -> Worker/model continuation.
 That is the final shared integration acceptance after the user approves merging.
+
+`feishu-ask-user-live.plan.json` runs an isolated real Gateway/Worker with channels
+disabled, importing the actual patched Feishu monitor's requested listener. Input
+and answers are real lark-cli messages in the dedicated test group. The candidate
+reads exact message IDs through REST (the bot lacks group-wide listing scope),
+sends the real card, and injects its button callback into the actual candidate
+handler. This validates real model/tool waiting and subsequent model continuation,
+but deliberately does not attach a second WebSocket consumer or claim native
+Feishu callback transport acceptance. The test driver needs its CLI answer ID in
+the private state's `ask-answer-id.json` after the card is visible.
+
+Button live candidate `candidate-c68b7072-eb22-4ffa-93e0-9ce4aefc147e` passed
+in 140.7s server time. DeepSeek Flash ran through `vlab-worker`, registered a real
+pending question, delivered a card with `原图` / `重画` option buttons (confirmed
+in the Feishu desktop accessibility tree), accepted the candidate-injected callback
+for `重画`, and returned `ASK_CANDIDATE_0929_DONE 重画`. lark-cli read back both the
+terminal card and the posted final result. Shared PID remained 711121 throughout.
+Input SHA256: `19e63fcb6b7c80fe6518b843c20df6d4414f6d98c5a18160a612ac893f86d84f`.
+The earlier dropdown run was stopped when the model added an extra question;
+its empty receipt stdout is not a passed live test even though systemd stop
+caused the runner to report exit 0. Only the explicit button result above passed.
 
 ## Release and rollback
 

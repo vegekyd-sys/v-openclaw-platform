@@ -12,45 +12,48 @@ export function isFeishuAskQuestion(record) {
       q.options.every((o) => typeof o.label === "string"));
 }
 
-export function buildFeishuAskCard(record, state = "pending") {
+export function buildFeishuAskCard(record, state = "pending", selections = {}) {
   const titles = { pending: "V 需要你的选择", answered: "已收到回答", expired: "问题已过期", cancelled: "问题已取消" };
   const elements = [];
   const fields = [];
+  const immediate = record.questions.length === 1 && !record.questions[0].multiSelect;
   record.questions.forEach((q, i) => {
-    const content = state === "pending" ? fields : elements;
-    content.push({ tag: "markdown", content: `**${vAskEscape(q.header ?? `问题 ${i + 1}`)}**\n${vAskEscape(q.question)}` });
-    q.options.forEach((o, j) => content.push({ tag: "markdown", content: `${j + 1}. **${vAskEscape(o.label)}**${o.description ? `：${vAskEscape(o.description)}` : ""}` }));
+    elements.push({ tag: "markdown", content: `${record.questions.length > 1 ? `**${vAskEscape(q.header ?? `问题 ${i + 1}`)}**\n` : ""}${vAskEscape(q.question)}${q.multiSelect ? "（可多选）" : ""}` });
     if (state !== "pending") return;
-    if (q.options.length) fields.push({
-      tag: q.multiSelect ? "multi_select_static" : "select_static",
-      name: `choice_${i}`, width: "fill", required: !q.isOther,
-      placeholder: vAskPlain(`${q.header ?? `问题 ${i + 1}`}：${q.multiSelect ? "可多选" : "请选择"}`),
-      options: q.options.map((o, j) => ({ text: vAskPlain(o.label), value: String(j) })),
+    q.options.forEach((o, j) => {
+      const selected = (selections[`choice_${i}`] ?? []).includes(String(j));
+      elements.push({ tag: "button", name: `v_ask_choice_${i}_${j}`, text: vAskPlain(`${selected ? "✓ " : ""}${o.label}`),
+        type: selected ? "primary" : "default", width: "fill",
+        behaviors: [{ type: "callback", value: { a: V_ASK_ACTION, q: record.id, qi: i, oi: j } }] });
+      if (o.description) elements.push({ tag: "markdown", text_size: "notation", content: `<font color='grey'>${vAskEscape(o.description)}</font>` });
     });
     if (q.isOther || !q.options.length) fields.push({
       tag: "input", name: `other_${i}`, width: "fill", max_length: 1000,
-      required: !q.options.length, placeholder: vAskPlain(`${q.header ?? `问题 ${i + 1}`}：自定义回答${q.multiSelect ? "（可补充选项）" : "（填写后以此为准）"}`),
+      required: immediate || !q.options.length, placeholder: vAskPlain(`${record.questions.length > 1 ? `${q.header}：` : ""}或输入其他回答`),
     });
   });
-  if (state === "pending") {
-    fields.push({ tag: "button", name: `v_ask_submit_${record.id}`, text: vAskPlain("提交回答"), type: "primary", width: "fill",
+  if (state === "pending" && (fields.length || !immediate)) {
+    fields.push({ tag: "button", name: `v_ask_submit_${record.id}`, text: vAskPlain(immediate ? "提交其他回答" : "确认选择"), type: immediate ? "default" : "primary", width: "fill",
       form_action_type: "submit" });
     elements.push({ tag: "form", name: "v_ask_form", elements: fields });
-    elements.push({ tag: "markdown", content: "请选择或填写每个问题，再点击提交。提交后 V 会继续当前任务。" });
-  } else elements.push({ tag: "markdown", content: state === "answered" ? "✅ 已提交，V 会继续当前任务。" : "这个问题已结束，需要时请让 V 重新提问。" });
-  return { schema: "2.0", config: { update_multi: true, width_mode: "fill" },
+  }
+  if (state !== "pending") elements.push({ tag: "markdown", content: state === "answered" ? "✅ 已提交，V 会继续当前任务。" : "这个问题已结束，需要时请让 V 重新提问。" });
+  return { schema: "2.0", config: { update_multi: true, width_mode: "default" },
     header: { title: vAskPlain(titles[state]), template: state === "pending" ? "blue" : state === "answered" ? "green" : "grey" }, body: { elements } };
 }
 
 export function parseFeishuAskSubmission(data) {
   const event = vAskRecord(data?.event) ? data.event : data;
   const name = event?.action?.name;
-  if (typeof name !== "string" || !name.startsWith("v_ask_submit_")) return;
-  const id = name.slice("v_ask_submit_".length);
+  const value = event?.action?.value;
+  const choice = value?.a === V_ASK_ACTION;
+  if (!choice && (typeof name !== "string" || !name.startsWith("v_ask_submit_"))) return;
+  const id = choice ? value.q : name.slice("v_ask_submit_".length);
   const operator = event.operator?.open_id;
   const messageId = event.context?.open_message_id ?? event.open_message_id;
   if (!/^ask_[a-f0-9]{32}$/.test(id ?? "") || !/^ou_[A-Za-z0-9]+$/.test(operator ?? "") || typeof messageId !== "string" || !messageId) return { invalid: true };
-  return { id, operator, messageId, form: vAskRecord(event.action.form_value) ? event.action.form_value : {} };
+  if (choice && (!Number.isInteger(value.qi) || !Number.isInteger(value.oi))) return { invalid: true };
+  return { id, operator, messageId, ...(choice ? { choice: { questionIndex: value.qi, optionIndex: value.oi } } : {}), form: vAskRecord(event.action.form_value) ? event.action.form_value : {} };
 }
 
 export function readFeishuAskAnswers(record, form) {

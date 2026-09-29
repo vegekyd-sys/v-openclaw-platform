@@ -1,0 +1,7 @@
+{
+  "support": ["lab/candidate/feishu-ask-user-live.mjs", "lab/release-files/feishu-ask-user/card.mjs", "lab/release-files/feishu-ask-user/runtime.mjs", "lab/release-files/feishu-ask-user/patch.mjs"],
+  "command": ["/opt/vlab/node-v22.23.1-linux-x64/bin/node", "lab/candidate/feishu-ask-user-live.mjs"],
+  "timeoutSeconds": 720,
+  "user": "lab-db91-parity",
+  "env": {"FEISHU_ASK_CHAT": "oc_5afced473a29eb6f5fed3ba9966aa9ff", "FEISHU_ASK_INPUT": "om_x100b6488245da4a0b038d3a54aab25b"}
+}

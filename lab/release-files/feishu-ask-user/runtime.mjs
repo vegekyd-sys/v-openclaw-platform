@@ -8,7 +8,7 @@ export function createFeishuAskRuntime(deps) {
     if (!isFeishuAskQuestion(record) || record.status !== "pending") return;
     const k = key(record.id, params.accountId);
     if (deliveries.has(k)) return deliveries.get(k).promise;
-    const entry = { record, params, state: "pending" };
+    const entry = { record, params, state: "pending", selections: new Map() };
     deliveries.set(k, entry);
     entry.promise = Promise.resolve().then(async () => {
       const result = await deps.send({ ...params, card: buildFeishuAskCard(record) });
@@ -53,8 +53,21 @@ export function createFeishuAskRuntime(deps) {
     if (!entry || submission.messageId !== entry.messageId) return reply("error", "这张卡片已失效，请让 V 重新提问。");
     if (entry.state !== "pending") return reply("info", "这个问题已经结束了。", buildFeishuAskCard(entry.record, entry.state));
     if (entry.submitting) return reply("info", "正在提交，请稍候。");
+    const draft = { ...entry.selections.get(submission.operator) };
+    if (submission.choice) {
+      const { questionIndex: i, optionIndex: j } = submission.choice;
+      const question = entry.record.questions[i];
+      if (i < 0 || j < 0 || !question?.options[j]) return reply("error", "选项无效，请重新选择。");
+      const field = `choice_${i}`;
+      const existing = draft[field] ?? [];
+      draft[field] = question.multiSelect ? existing.includes(String(j)) ? existing.filter(v => v !== String(j)) : [...existing, String(j)] : [String(j)];
+      entry.selections.set(submission.operator, draft);
+      if (entry.record.questions.length > 1 || question.multiSelect) {
+        return reply("info", "已选择，完成后点击确认选择。", buildFeishuAskCard(entry.record, "pending", draft));
+      }
+    }
     let answers;
-    try { answers = readFeishuAskAnswers(entry.record, submission.form); }
+    try { answers = readFeishuAskAnswers(entry.record, { ...draft, ...submission.form }); }
     catch (error) { return reply("warning", error.message); }
     entry.submitting = true;
     try {
