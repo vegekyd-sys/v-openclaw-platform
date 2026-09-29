@@ -107,3 +107,40 @@ test("private delivery goes through `openclaw message send` to the requester, ne
   assert.equal(calls[1].command, process.execPath);
   assert.equal(calls[1].args[0], "/rt/dist/index.js");
 });
+
+test("card: login and payment cards carry the url behind 接管电脑 / 付款 buttons", async () => {
+  const { handoffCard, inPlaceTarget } = await import("../core/card.js");
+  const login = handoffCard({ reason: "需要你登录小红书", url: "https://h/x#t", openWithinMinutes: 10, sessionMinutes: 30 });
+  const btn = login.presentation.blocks.find((b) => b.type === "buttons").buttons[0];
+  assert.deepEqual([btn.label, btn.url], ["接管电脑", "https://h/x#t"]);
+  assert.match(login.fallback, /https:\/\/h\/x#t/u, "fallback text still carries the link");
+  assert.doesNotMatch(login.text, /https:/u, "card body does not repeat the raw url");
+  assert.doesNotMatch(login.text, /分钟内打开/u, "steps live in the blocks, not duplicated in the body");
+  const pay = handoffCard({ purpose: "payment", reason: "请确认付款", url: "https://h/p#t", openWithinMinutes: 10, sessionMinutes: 30, payment: { item: "Card Magic 年卡", amount: "129.00", currency: "CNY", merchant: "Makaron" } });
+  assert.equal(pay.presentation.blocks.find((b) => b.type === "buttons").buttons[0].label, "付款");
+  assert.match(pay.presentation.title, /Makaron/u);
+  assert.match(pay.text, /129\.00 CNY/u);
+  assert.match(pay.text, /商户：Makaron/u);
+  assert.equal(pay.presentation.tone, "warning");
+  assert.equal(handoffCard({ kind: "watch", url: "https://h/w", openWithinMinutes: 10, sessionMinutes: 30 }).presentation.blocks.at(-1).buttons[0].label, "观看桌面");
+  assert.deepEqual(login.presentation.blocks.map((b) => b.type), ["context", "buttons"]);
+  assert.deepEqual(inPlaceTarget({ messageChannel: "feishu", deliveryContext: { to: "chat:oc_1", accountId: "default" } }), { channel: "feishu", target: "chat:oc_1", accountId: "default" });
+  assert.equal(inPlaceTarget({ messageChannel: "webchat", deliveryContext: { to: "x" } }), null, "no card outside card channels");
+  assert.equal(inPlaceTarget({ messageChannel: "feishu" }), null, "no conversation, no card");
+});
+
+test("card delivery passes --presentation to openclaw message send", async () => {
+  const calls = [];
+  await deliverPrivately({ channel: "feishu", target: "user:ou_1", text: "fb", presentation: { title: "t", blocks: [] }, command: "openclaw", runner: async (cmd, args) => { calls.push(args); return "{}"; } });
+  const args = calls[0];
+  assert.equal(args[args.indexOf("--presentation") + 1], JSON.stringify({ title: "t", blocks: [] }));
+  assert.equal(args[args.indexOf("--target") + 1], "user:ou_1");
+});
+
+test("end: the agent cannot revoke a handoff a person is connected to or controlling", async () => {
+  const { refuseEnd } = await import("../core/policy.js");
+  assert.match(refuseEnd({ ended: false, controlActive: true, connectedViewers: 1 }), /Refused: a person is connected to this handoff and controlling/u);
+  assert.match(refuseEnd({ ended: false, controlActive: false, connectedViewers: 1 }), /Refused/u, "a connected viewer is enough");
+  assert.equal(refuseEnd({ ended: false, controlActive: false, connectedViewers: 0 }), null, "unused handoff may be revoked");
+  assert.equal(refuseEnd({ ended: true, controlActive: true, connectedViewers: 1 }), null, "already ended");
+});

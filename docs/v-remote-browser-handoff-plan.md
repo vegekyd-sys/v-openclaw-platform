@@ -296,3 +296,10 @@ VLab 遗留：transient unit `vlab-cua-node`（重启机器后不会自启）、
 - V 上的证据：09:51 vcc（claude-cli/opus-5-5）computer CUA_OK，私聊要链接**成功**（缺陷 A 修复生效）。node 单元修正后，10:02:52 用 RPC 留一个不关闭的执行，立刻探针 BUSY，10:08:49 探针 ok（`idle-expired` 释放，缺陷 B 修复生效）。端到端（vcc 用完 → 5.5 分钟后 vcodex CUA_OK）见下一条记录。
 - 中途 Tianyi 从链接接管了桌面（09:56），期间 vcodex 报 CUA_BUSY 有人工接管的成分；判定时以 RPC 探针为准。
 - 端到端（V 私聊，10:09–10:16）：vcc（claude-cli）computer CUA_OK 后不释放；5 分 20 秒后切 vcodex 同一任务 CUA_OK。两处修复在 V 上全部验收通过，会话模型已重置回 deepseek-flash。
+
+### 13.6 接管卡片与付款接管卡（2026-09-29 CST，VLab）
+
+- 链接不再是裸 URL：插件自己用 `openclaw message send --presentation` 在当前会话发飞书卡片（群里需私发时也发卡片），发送失败才退回把链接交给模型。登录卡按钮「接管电脑」；`purpose=payment` 的付款卡标题「付款确认 · 商户」，正文列商品、金额、商户，按钮「付款」，由用户自己填支付信息并确认。V 的回复只说「接管卡片已发出」，不说上方/下方（飞书流式回复卡在回合开始就占位，接管卡总在它下面）。
+- 飞书会把 `--message` 文本渲染成卡片正文，所以正文只放原因和商品信息，说明和按钮放 blocks，避免重复。
+- 验收中发现：用户接管后 V 的点击被拦，V 就自己调用 `desktop_handoff_end` 把用户踢掉。现在有人连着或正在控制时结束接管会被拒绝（`refuseEnd`）。复验：模拟用户认领付款卡并接管，让 V 点屏幕中央，V 回复"交还控制权后才能执行"，控制保持 4 分钟未被断开。
+- 群聊卡片未在 VLab 验：VLab 上 /new 过的会话报 legacy transcript 迁移错误（VLab 状态问题，V 无）。手机飞书内打开接管页未测。
