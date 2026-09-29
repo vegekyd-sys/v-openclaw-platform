@@ -1,6 +1,7 @@
-// v-feishu-ask-user-v2
+// v-feishu-ask-user-v3
 // Inlined into the Feishu monitor. Keep this module dependency-free.
 const V_ASK_ACTION = "v.ask_user.submit";
+const V_ASK_CONFIRM_ACTION = "v.ask_user.confirm";
 const vAskRecord = (v) => v && typeof v === "object" && !Array.isArray(v);
 const vAskPlain = (content) => ({ tag: "plain_text", content });
 const vAskEscape = (text) => String(text).replace(/[\\`*_~[\]()<>#|]/g, (c) => `\\${c}`);
@@ -38,7 +39,8 @@ function buildFeishuAskCard(record, state = "pending", selections = {}, answers)
       required: immediate || !q.options.length, placeholder: vAskPlain(`${record.questions.length > 1 ? `${q.header ?? `问题 ${i + 1}`}：` : ""}说说你的想法`),
     });
   });
-  const submit = { tag: "button", name: `v_ask_submit_${record.id}`, text: vAskPlain(immediate ? "按这个想法继续" : "按这些选择继续"), type: "primary", form_action_type: "submit" };
+  const submit = { tag: "button", name: `v_ask_submit_${record.id}`, text: vAskPlain(immediate ? "按这个想法继续" : "按这些选择继续"), type: "primary", form_action_type: "submit",
+    behaviors: [{ type: "callback", value: { a: V_ASK_CONFIRM_ACTION, q: record.id } }] };
   if (fields.length || !immediate) {
     const custom = fields.length ? [{ tag: "collapsible_panel", expanded: record.questions.some(q => !q.options.length), header: { title: vAskPlain("我有其他想法"), width: "auto_when_fold" }, elements: [...fields, ...(immediate ? [submit] : [])] }] : [];
     elements.push({ tag: "form", name: "v_ask_form", elements: [...custom, ...(!immediate ? [submit] : [])] });
@@ -51,8 +53,9 @@ function parseFeishuAskSubmission(data) {
   const name = event?.action?.name;
   const value = event?.action?.value;
   const choice = value?.a === V_ASK_ACTION;
-  if (!choice && (typeof name !== "string" || !name.startsWith("v_ask_submit_"))) return;
-  const id = choice ? value.q : name.slice("v_ask_submit_".length);
+  const confirm = value?.a === V_ASK_CONFIRM_ACTION;
+  if (!choice && !confirm && (typeof name !== "string" || !name.startsWith("v_ask_submit_"))) return;
+  const id = choice || confirm ? value.q : name.slice("v_ask_submit_".length);
   const operator = event.operator?.open_id;
   const messageId = event.context?.open_message_id ?? event.open_message_id;
   if (!/^ask_[a-f0-9]{32}$/.test(id ?? "") || !/^ou_[A-Za-z0-9]+$/.test(operator ?? "") || typeof messageId !== "string" || !messageId) return { invalid: true };
@@ -83,19 +86,24 @@ function createFeishuAskRuntime(deps) {
   const deliveries = new Map();
   const streams = new Map();
   const streamKey = (sessionKey, accountId) => `${accountId ?? "default"}:${sessionKey}`;
-  function bindStream(sessionKey, accountId, send) {
+  function bindStream(sessionKey, accountId, send, isActive = () => true) {
     if (!sessionKey) return () => {};
     const k = streamKey(sessionKey, accountId);
-    const entries = streams.get(k) ?? new Set(); entries.add(send); streams.set(k, entries);
-    return () => { entries.delete(send); if (!entries.size) streams.delete(k); };
+    const entry = { send, isActive };
+    const entries = streams.get(k) ?? new Set(); entries.add(entry); streams.set(k, entries);
+    return () => { entries.delete(entry); if (!entries.size) streams.delete(k); };
   }
   const cardFor = (entry, state = entry.state, selections = {}) => buildFeishuAskCard(entry.record, state, selections, entry.answers);
-  const update = (entry, card) => entry.updateCard ? entry.updateCard(card) : deps.patch({ ...entry.params, messageId: entry.messageId, card });
+  const update = (entry, card) => {
+    const task = (entry.paintQueue ?? Promise.resolve()).then(() => entry.updateCard ? entry.updateCard(card) : deps.patch({ ...entry.params, messageId: entry.messageId, card }));
+    entry.paintQueue = task.catch(() => {});
+    return task;
+  };
   async function respond(entry, type, content, card) {
-    if (entry.updateCard && card) {
+    if (card) {
       // Feishu requires a callback acknowledgement within 3s. The answer RPC is
       // bounded; a separate CardKit write must not extend that deadline.
-      Promise.resolve().then(() => update(entry, card)).catch(() => entry.params.log?.("feishu: inline question refresh failed"));
+      update(entry, card).catch(() => entry.params.log?.("feishu: question refresh failed"));
       return reply(type, content);
     }
     return reply(type, content, card);
@@ -111,9 +119,11 @@ function createFeishuAskRuntime(deps) {
     deliveries.set(k, entry);
     entry.promise = Promise.resolve().then(async () => {
       const card = buildFeishuAskCard(record);
-      const candidates = streams.get(streamKey(record.sessionKey, params.accountId));
-      const inlineSend = candidates?.size === 1 ? [...candidates][0] : undefined;
+      const registered = streams.get(streamKey(record.sessionKey, params.accountId));
+      const candidates = [...(registered ?? [])].filter(entry => entry.isActive());
+      const inlineSend = candidates.length === 1 ? candidates[0].send : undefined;
       const result = await inlineSend?.(card) ?? await deps.send({ ...params, card });
+      params.log?.(`feishu: ask_user delivery id=${record.id} registered=${registered?.size ?? 0} active=${candidates.length} inline=${Boolean(result?.updateCard)}`);
       entry.updateCard = result?.updateCard;
       if (!result?.messageId) throw new Error("ask_user card delivery returned no message id");
       entry.messageId = result.messageId;
@@ -2846,7 +2856,7 @@ function createFeishuReplyDispatcher(params) {
       const result = await session.vAskUpdate(card);
       markVisibleReplySent();
       return result;
-    });
+    }, () => previewStreamingEnabled && !idleRequestedForReply && Boolean(replyLifecycleStateInitialized || streaming?.isActive() || streamingStartPromise));
     const resetStreamingState = () => {
 		streaming = null;
 		streamingStartPromise = null;

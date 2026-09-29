@@ -3,19 +3,24 @@ export function createFeishuAskRuntime(deps) {
   const deliveries = new Map();
   const streams = new Map();
   const streamKey = (sessionKey, accountId) => `${accountId ?? "default"}:${sessionKey}`;
-  function bindStream(sessionKey, accountId, send) {
+  function bindStream(sessionKey, accountId, send, isActive = () => true) {
     if (!sessionKey) return () => {};
     const k = streamKey(sessionKey, accountId);
-    const entries = streams.get(k) ?? new Set(); entries.add(send); streams.set(k, entries);
-    return () => { entries.delete(send); if (!entries.size) streams.delete(k); };
+    const entry = { send, isActive };
+    const entries = streams.get(k) ?? new Set(); entries.add(entry); streams.set(k, entries);
+    return () => { entries.delete(entry); if (!entries.size) streams.delete(k); };
   }
   const cardFor = (entry, state = entry.state, selections = {}) => buildFeishuAskCard(entry.record, state, selections, entry.answers);
-  const update = (entry, card) => entry.updateCard ? entry.updateCard(card) : deps.patch({ ...entry.params, messageId: entry.messageId, card });
+  const update = (entry, card) => {
+    const task = (entry.paintQueue ?? Promise.resolve()).then(() => entry.updateCard ? entry.updateCard(card) : deps.patch({ ...entry.params, messageId: entry.messageId, card }));
+    entry.paintQueue = task.catch(() => {});
+    return task;
+  };
   async function respond(entry, type, content, card) {
-    if (entry.updateCard && card) {
+    if (card) {
       // Feishu requires a callback acknowledgement within 3s. The answer RPC is
       // bounded; a separate CardKit write must not extend that deadline.
-      Promise.resolve().then(() => update(entry, card)).catch(() => entry.params.log?.("feishu: inline question refresh failed"));
+      update(entry, card).catch(() => entry.params.log?.("feishu: question refresh failed"));
       return reply(type, content);
     }
     return reply(type, content, card);
@@ -31,9 +36,11 @@ export function createFeishuAskRuntime(deps) {
     deliveries.set(k, entry);
     entry.promise = Promise.resolve().then(async () => {
       const card = buildFeishuAskCard(record);
-      const candidates = streams.get(streamKey(record.sessionKey, params.accountId));
-      const inlineSend = candidates?.size === 1 ? [...candidates][0] : undefined;
+      const registered = streams.get(streamKey(record.sessionKey, params.accountId));
+      const candidates = [...(registered ?? [])].filter(entry => entry.isActive());
+      const inlineSend = candidates.length === 1 ? candidates[0].send : undefined;
       const result = await inlineSend?.(card) ?? await deps.send({ ...params, card });
+      params.log?.(`feishu: ask_user delivery id=${record.id} registered=${registered?.size ?? 0} active=${candidates.length} inline=${Boolean(result?.updateCard)}`);
       entry.updateCard = result?.updateCard;
       if (!result?.messageId) throw new Error("ask_user card delivery returned no message id");
       entry.messageId = result.messageId;

@@ -23,7 +23,7 @@ test("render complete single/multi/custom forms without default answers; hide te
   assert(!JSON.stringify(c).includes("select_static"));
   assert.equal(c.body.elements.filter(e => e.tag === "interactive_container").length, 4);
   assert.equal(fields.filter(f => f.tag === "input").length, 2);
-  assert.equal(form.elements.at(-1).behaviors, undefined);
+  assert.equal(form.elements.at(-1).behaviors[0].value.a, api.V_ASK_CONFIRM_ACTION);
   assert(!JSON.stringify(c).includes("initial_option"));
   for (const state of ["answered", "expired", "cancelled"]) assert(!JSON.stringify(api.buildFeishuAskCard(r, state)).includes('"tag":"form"'));
 });
@@ -142,6 +142,39 @@ test("ambiguous active session owners fall back without crossing replies", async
   h.runtime.bindStream(h.r.sessionKey, 'default', async c => send(c));
   await h.runtime.requested(h.r, h.params);
   assert.equal(h.sent.length, 1);
+});
+
+test("idle or command-only dispatchers do not make the current stream ambiguous", async () => {
+  const h = harness();
+  const unused = () => { throw Error('inactive dispatcher must never send'); };
+  h.runtime.bindStream(h.r.sessionKey, 'default', unused, () => false);
+  let running = true;
+  h.runtime.bindStream(h.r.sessionKey, 'default', async () => ({messageId:'om_active',updateCard:async()=>{}}), () => running);
+  await h.runtime.requested(h.r, h.params);
+  assert.equal(h.sent.length, 0);
+  assert.equal((await h.runtime.submit(event(h.r,{choice_0:'0'},'om_active'),h.params)).toast.type,'success');
+  running = false;
+  await h.runtime.requested({...h.r,id:'ask_'+'c'.repeat(32)},h.params);
+  assert.equal(h.sent.length,1);
+});
+
+test("standalone multi-choice refreshes are ordered and acknowledge without raw card replacement", async () => {
+  const writes=[]; let release;
+  const h=harness({patch:async p=>{writes.push(p.card);if(writes.length===1)await new Promise(r=>{release=r})}});
+  h.r.questions[0].multiSelect=true;
+  await h.runtime.requested(h.r,h.params);
+  const click=async i=>{const e=event(h.r,{});e.event.action={value:{a:api.V_ASK_ACTION,q:h.r.id,qi:0,oi:i}};return h.runtime.submit(e,h.params)};
+  const first=await click(0),second=await click(1);
+  assert.equal(first.card,undefined);assert.equal(second.card,undefined);
+  assert.equal(writes.length,1);
+  release(); await new Promise(r=>setImmediate(r));
+  assert.equal(writes.length,2);
+  const labels=writes[1].body.elements.filter(e=>e.tag==='interactive_container').map(e=>e.elements[0].content);
+  assert(labels.every(label=>label.includes('✓')));
+  const submit=event(h.r,{});
+  submit.event.action={tag:'button',value:{a:api.V_ASK_CONFIRM_ACTION,q:h.r.id},form_value:{}};
+  assert.equal((await h.runtime.submit(submit,h.params)).toast.type,'success');
+  assert.deepEqual({...h.calls[0].p.answers.answers},{scope:['重做动态','重新绘制']});
 });
 
 test("stream question preserves prefix/note, appends continuation, survives closure and rejects stale question writes", async () => {

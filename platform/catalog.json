@@ -147,6 +147,7 @@
       "id": "channel-patches",
       "purpose": "飞书显示、Steer、媒体和 Session 补丁的确定性回归",
       "files": [
+        "tests/feishu-ask-user.test.mjs",
         "scripts/patch-worker-channel-registry.test.mjs",
         "tests/patch-feishu-active-run-steering.test.mjs",
         "tests/patch-feishu-latest-snapshot-streaming.test.mjs",
