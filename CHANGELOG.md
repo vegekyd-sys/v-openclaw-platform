@@ -11,6 +11,47 @@
 
 ---
 
+## v2026.9.1-db91.6-deepseek-budget-image-20260929
+
+上线：2026-09-29 09:10 CST  ·  tag `v2026.9.1-db91.6-deepseek-budget-image-20260929`
+
+**摘要**：DeepSeek v4（deepseek-v4-pro / deepseek-v4-flash）的上下文预算不再把内嵌图片的 base64 当文本计数，每张图固定按 8192 token 计；此前一张生成图片会被估成 80–120 万 token，请求还没发出就报 `V_DEEPSEEK_CONTEXT_BUDGET_EXHAUSTED`（V 2026-09-28 14:20，回复中途中断）。默认的 deepseek-flash 不经过这段检查、不受影响。改动文件是 `core/node_modules/@openclaw/ai/dist/transports.mjs`（78223d12 → 9b5ab8ff，VLab 发版 `deepseek-budget-image-v1`，PR #94）；它在 node_modules 下，不在上面的自动文件比对里。**文件已于 09:07 装到 V，下一次 Gateway 重启后生效。** 本节同时补记了 9/28 两次没有单独成节的发版（computer-frame-prune、computer-execution-idle）。
+
+相对上一版 `v2026.9.1-db91.6-feishu-progress-20260926`：2 个文件变化。
+
+**经 VLab 发版 `computer-execution-idle-v1`**（v-remote-browser-control-d13c58，dev `15ea7f3f`）
+> 验收：Feishu DM to V - Lab as Tianyi (lark-cli), fresh /new session, 2026-09-28 08:45-08:53 CST, after restarting vlab-cua-node so the node process runs the patched contract: /model vcc (claude-cli, claude-opus-5) computer task CUA_OK, then desktop_handoff_request in the DM issued a control link (before: denied, no trusted channel sender identity; plugin owner fallback from PR #76). /model vcodex (codex…
+- `core` computer-use-contract-CisZRwLE.js  1043716b → 1f51021f
+
+**经 VLab 发版 `computer-frame-prune-v1`**（claude-desktop-handoff，dev `1148f35a`）
+> 验收：Feishu DM to V - Lab (fresh /new session, deepseek-v4-flash on vlab-worker), 2026-09-28 01:34-01:35 CST: long computer-use task on makaron.app, 7 templates clicked with a screenshot after each (21 node.invoke), reply LONG_OK, zero context-overflow/compaction errors. Before the patch the same kind of task died at ~15 screenshots with V_DEEPSEEK_CONTEXT_BUDGET_EXHAUSTED (2 MB payload, 33 messages). …
+- `core` history-image-prune-Dg0CDQ4a.js  a4261a04 → 2811753f
+
+**这期间合入 dev 的 PR**（23 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #97 release: capture V after promoting deepseek-budget-image-v1
+- #95 fix(nightshift): a fan-in card keeps at most 20 parents so 30-item projects can deliver
+- #94 fix(core-patch): the DeepSeek budget must not count inline image base64 as text
+- #92 fix(nightshift): what the engine saw leads a 需要你 card unless the Agent filed a report
+- #91 style(nightshift): drop the AGENT WORKING label on running tasks
+- #90 fix(nightshift): 需要你 reasons a person can read, from the Agent when it said why
+- #89 feat(nightshift): 需要你 reads the engine's queue, with a decide drawer
+- #86 feat(nightshift): 需要你 — cards that stop for good become decisions a person answers
+- #87 style(nightshift): phones get room to breathe, and menus open as sheets
+- #84 test(nightshift): make the Session-inspection budget test deterministic
+- #85 fix(nightshift): paused projects are not 在产
+- #83 feat(nightshift): play the finished video again, and show project times
+- #82 style(nightshift): the drawer's handoff block, as a quiet list
+- #81 feat(nightshift): a lights-out factory view for the Night Shift dashboard
+- #80 fix(nightshift): recover cards whose Agent run died without a terminal message
+- #79 fix(nightshift): remember the concurrency that cut a person's reply
+- #77 release: computer-execution-idle-20260928 on V; cua-node unit runs from the Gateway dist; docs
+- #76 release: capture V after computer-frame-prune; fix claude-cli handoff links and desktop lock
+- #75 fix(core-patch): prune stale computer screenshots within the current turn
+- #74 fix(v): stop Claude Code background tasks from swallowing /vcc replies
+- #73 docs: desktop handoff production V deployment record
+- #72 feat: V desktop handoff — host desktop, shareable takeover links, agent tool
+- #71 docs(release): 生产 V 的 CHANGELOG（按存档自动生成 + 补齐已有 tag）
+
 ## v2026.9.1-db91.6-feishu-progress-20260926
 
 上线：2026-09-26 01:30 CST  ·  tag `v2026.9.1-db91.6-feishu-progress-20260926`
