@@ -1,5 +1,6 @@
 // Inlined into the Feishu monitor. Keep this module dependency-free.
 export const V_ASK_ACTION = "v.ask_user.submit";
+export const V_ASK_CONFIRM_ACTION = "v.ask_user.confirm";
 const vAskRecord = (v) => v && typeof v === "object" && !Array.isArray(v);
 const vAskPlain = (content) => ({ tag: "plain_text", content });
 const vAskEscape = (text) => String(text).replace(/[\\`*_~[\]()<>#|]/g, (c) => `\\${c}`);
@@ -37,7 +38,8 @@ export function buildFeishuAskCard(record, state = "pending", selections = {}, a
       required: immediate || !q.options.length, placeholder: vAskPlain(`${record.questions.length > 1 ? `${q.header ?? `问题 ${i + 1}`}：` : ""}说说你的想法`),
     });
   });
-  const submit = { tag: "button", name: `v_ask_submit_${record.id}`, text: vAskPlain(immediate ? "按这个想法继续" : "按这些选择继续"), type: "primary", form_action_type: "submit" };
+  const submit = { tag: "button", name: `v_ask_submit_${record.id}`, text: vAskPlain(immediate ? "按这个想法继续" : "按这些选择继续"), type: "primary", form_action_type: "submit",
+    behaviors: [{ type: "callback", value: { a: V_ASK_CONFIRM_ACTION, q: record.id } }] };
   if (fields.length || !immediate) {
     const custom = fields.length ? [{ tag: "collapsible_panel", expanded: record.questions.some(q => !q.options.length), header: { title: vAskPlain("我有其他想法"), width: "auto_when_fold" }, elements: [...fields, ...(immediate ? [submit] : [])] }] : [];
     elements.push({ tag: "form", name: "v_ask_form", elements: [...custom, ...(!immediate ? [submit] : [])] });
@@ -50,8 +52,9 @@ export function parseFeishuAskSubmission(data) {
   const name = event?.action?.name;
   const value = event?.action?.value;
   const choice = value?.a === V_ASK_ACTION;
-  if (!choice && (typeof name !== "string" || !name.startsWith("v_ask_submit_"))) return;
-  const id = choice ? value.q : name.slice("v_ask_submit_".length);
+  const confirm = value?.a === V_ASK_CONFIRM_ACTION;
+  if (!choice && !confirm && (typeof name !== "string" || !name.startsWith("v_ask_submit_"))) return;
+  const id = choice || confirm ? value.q : name.slice("v_ask_submit_".length);
   const operator = event.operator?.open_id;
   const messageId = event.context?.open_message_id ?? event.open_message_id;
   if (!/^ask_[a-f0-9]{32}$/.test(id ?? "") || !/^ou_[A-Za-z0-9]+$/.test(operator ?? "") || typeof messageId !== "string" || !messageId) return { invalid: true };

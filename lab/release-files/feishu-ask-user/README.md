@@ -15,8 +15,8 @@ mode, and later content writes target a separate continuation element. Answered
 controls collapse into a compact selection record. Headers/notes are preserved.
 No active stream (or ambiguous owners) falls back to a separate native card.
 Cleanup unregisters only its own dispatcher. Old question callbacks cannot repaint
-a newer question in the same stream. Inline callbacks return only a toast and
-refresh CardKit asynchronously to avoid replacing the whole reply or missing the
+a newer question in the same stream. Callbacks return only a toast and
+refresh the message asynchronously to avoid replacing the whole reply or missing the
 3-second acknowledgement deadline.
 
 This patch extends the lifecycle listener to deliver ordinary questions.
@@ -28,7 +28,7 @@ callback resolves the original Gateway question directly, outside the busy sessi
 chat queue. No bot message is synthesized as a user answer.
 
 Clickable option rows carry question-bound `behaviors.callback.value`; the custom/confirm
-form button uses `form_action_type: submit` and a question-bound `name`.
+form button uses `form_action_type: submit` and question-bound callback metadata plus `name`, matching the existing credential form.
 `action.name` identifies that form and `action.form_value` carries custom answers.
 Only a callback for the account and exact message delivered by this process is
 accepted. Option indices are checked against the original labels. Empty/incomplete
@@ -138,3 +138,18 @@ Limitations: callback bindings are intentionally process-local, matching the
 Gateway question lifetime. A Gateway restart invalidates old cards; it does not
 replay previously expired questions. The pending question's original answer must
 come from a human; this patch does not infer or select one during incident recovery.
+
+## Shared v2 findings and follow-up
+
+On 2026-09-29, native Feishu clicks passed single-choice and custom input with
+Claude CLI. DeepSeek Worker delivered a usable separate choice card, but its
+multi-select form submit returned client error 100000. That run was cancelled
+for cleanup and v2 was rolled back; it was not accepted as a complete release.
+
+The follow-up uses the existing credential-card pattern: explicit question-bound
+callback metadata on form submit, one Gateway resolver for every runtime, and
+toast-only ACKs with serialized message updates. Dispatcher eligibility excludes
+idle/unstarted owners when selecting an inline carrier. Native acceptance must
+cover /vds, /vcc and /vcodex; standalone fallback is an accepted presentation.
+18 focused tests cover idle carriers, ordered standalone repaint and metadata-only
+form callbacks, in addition to the previous question/stream checks.

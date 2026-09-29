@@ -1,11 +1,11 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-export const MARKER = "v-feishu-ask-user-v2";
+export const MARKER = "v-feishu-ask-user-v3";
 const inline = (name) => readFileSync(new URL(name, import.meta.url), "utf8").replace(/^export /gm, "");
 export function patchFeishuAskUser(source) {
   if (source.includes(`// ${MARKER}\n`)) return source;
   if (!source.includes("v-feishu-secret-entry-runtime-v2")) throw new Error("Requires runtime-agnostic question lifecycle v2");
-  if (source.includes("// v-feishu-ask-user-v1\n")) throw new Error("Rebuild v2 from the unpatched runtime baseline");
+  if (/\/\/ v-feishu-ask-user-v[12]\n/.test(source)) throw new Error("Rebuild v3 from the unpatched runtime baseline");
   const sites = [
     ['const resetStreamingState = () => {', `const vAskUnregister = vFeishuAsk.bindStream(params.sessionKey, accountId, async (card) => {
       if (!previewStreamingEnabled) return;
@@ -20,7 +20,7 @@ export function patchFeishuAskUser(source) {
       const result = await session.vAskUpdate(card);
       markVisibleReplySent();
       return result;
-    });
+    }, () => previewStreamingEnabled && !idleRequestedForReply && Boolean(replyLifecycleStateInitialized || streaming?.isActive() || streamingStartPromise));
     const resetStreamingState = () => {`],
     ['typingCallbacks?.onCleanup?.();', 'vAskUnregister();\n\t\t\ttypingCallbacks?.onCleanup?.();'],
     ['const payload = vSecretEntryPayloadFromQuestion(record);', `void vFeishuAsk.requested(record, params).catch(() => params.log?.("feishu: ask_user delivery cancellation failed"));\n\t\tconst payload = vSecretEntryPayloadFromQuestion(record);`],
