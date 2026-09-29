@@ -1,0 +1,22 @@
+{
+  "support": [
+    "lab/candidate/completions-overflow-signal.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/completions-overflow-signal.mjs"
+  ],
+  "timeoutSeconds": 5400,
+  "user": "lab-db91-parity",
+  "files": [
+    {
+      "source": "lab/release-files/completions-overflow-signal/transports.mjs",
+      "target": "openclaw/node_modules/@openclaw/ai/dist/transports.mjs",
+      "before": "9b5ab8ffaf9b0111878bba73191660d090bd2081b72eff81c098a0f14fb0fcf4"
+    }
+  ],
+  "env": {
+    "CTX_CAP": "700000",
+    "CTX_EXPECT": "fixed"
+  }
+}
