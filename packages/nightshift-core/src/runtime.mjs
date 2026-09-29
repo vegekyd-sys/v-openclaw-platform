@@ -315,7 +315,15 @@ export class NightShiftRuntime {
     const terminalAt = timestampMs(latest?.timestamp ?? latest?.__openclaw?.recordTimestampMs ?? 0);
     const stopReason = String(latest?.stopReason ?? "").toLowerCase();
     const silentMs = this.now() - Math.max(terminalAt, startedAt);
-    if (card.status === "blocked" && startedAt > 0 && messages.length === 0 && silentMs >= NOT_STARTED_GRACE_MS) {
+    if (card.status === "blocked" && startedAt > 0 && messages.length === 0 && silentMs < NOT_STARTED_GRACE_MS) {
+      // Too early to call it a start failure, and too early for artifact
+      // recovery: on V (2026-09-29 16:22) a card read 52 s after dispatch went
+      // to recovery, failed the output contract and reached 需要你 anyway.
+      // Read it again on the next pass, without marking it inspected.
+      this.deferredSessionInspections.add(card.id);
+      return { deferred: true };
+    }
+    if (card.status === "blocked" && startedAt > 0 && messages.length === 0) {
       // On V (2026-09-29) a brief card was blocked 7 s after dispatch, during
       // Agent DB lease contention, with an empty Session. Read as "not terminal",
       // it fell through to artifact recovery and reached a person as "the handoff

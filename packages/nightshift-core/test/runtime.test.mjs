@@ -1678,8 +1678,8 @@ test("an orphaned paid card whose provider task is on the ledger resumes automat
 
 // On V (2026-09-29) a brief card was blocked 7 s after dispatch with an empty
 // Session, and reached a person as "the handoff is missing".
-async function notStartedFixture({ id, stageId, startedMinutesAgo = 5 }) {
-  const fixture = await orphanFixture({ id, stageId });
+async function notStartedFixture({ id, stageId, startedMinutesAgo = 5, runtimeOptions = {} }) {
+  const fixture = await orphanFixture({ id, stageId, runtimeOptions });
   fixture.card.execution.startedAt = Date.now() - startedMinutesAgo * 60_000;
   fixture.workboard.sessions.set(fixture.card.sessionKey, { messages: [] });
   return fixture;
@@ -1698,9 +1698,20 @@ test("a blocked card whose Agent never took a turn is retried as a start failure
 });
 
 test("an empty Session is not read as a start failure while its transcript may still be arriving", async () => {
-  const { runtime, store } = await notStartedFixture({ id: "NS-NOT-STARTED-FRESH", stageId: "plan", startedMinutesAgo: 1 });
-  await runtime.reconcile("NS-NOT-STARTED-FRESH");
+  let clock = Date.now();
+  const { runtime, store, workboard } = await notStartedFixture({
+    id: "NS-NOT-STARTED-FRESH", stageId: "plan", startedMinutesAgo: 1, runtimeOptions: { now: () => clock },
+  });
+  await runtime.reconcile("NS-NOT-STARTED-FRESH", null, { inspectSessions: true });
   assert.equal(attemptFailures(store, "NS-NOT-STARTED-FRESH").length, 0);
+  // Not marked inspected: on V (2026-09-29 16:22) a card read inside the grace
+  // was recorded as inspected and handed to artifact recovery instead.
+  assert.equal(store.listEvents("NS-NOT-STARTED-FRESH").some((entry) => entry.type === "stage.session.inspected"), false);
+  clock += 2 * 60_000;
+  await runtime.reconcile("NS-NOT-STARTED-FRESH", null, { inspectSessions: false });
+  assert.equal(workboard.sessionCalls.length, 2, "the card is read again on the next ordinary pass");
+  const [event] = attemptFailures(store, "NS-NOT-STARTED-FRESH");
+  assert.equal(event?.payload.failure.kind, "agent_not_started");
   store.close();
 });
 
