@@ -11,6 +11,33 @@
 
 ---
 
+## v2026.9.1-db91.6-view-image-overflow-signal-20260929
+
+上线：2026-09-29 22:05 CST  ·  tag `v2026.9.1-db91.6-view-image-overflow-signal-20260929`
+
+**摘要**：三项修复，21:50 重启 V 生效（21:52:35 就绪）。① `view_image` 每张图在存入会话记录前压到 1 MB 以内（`core/dist/openclaw-tools-BODVdJQD.js` 336aab63 → 637c86f3，PR #105）：此前 1200 px 的 PNG 以 3–4 MB 原样存进会话，单条事件 5–19 MB，拖慢每次整会话读取和写锁；VLab 实测 4.3 MB PNG 存储从 5.6 MB 降到 1.25 MB。② 上下文放不下时报溢出而不是发 `max_tokens=1`（`core/node_modules/@openclaw/ai/dist/transports.mjs` 9b5ab8ff → 7d7ae7a8，PR #108，在 node_modules 下、不在上面的自动比对里）：中文会话估算偏高一倍，48–90 万 token 的会话被钳成 1 个输出 token，DeepSeek 回 length、回退 grok 再真溢出、历史丢失；现在走 OpenClaw 自带的溢出→自动压缩→重试。③ 同时生效的还有 9/29 09:07 已装上的 E3（DeepSeek 图片预算）。**流程外改动（主机上直接改的配置）**：worker 配置 `experiments/agent-worker-isolation-v1/worker-openclaw.json` 的 `session.maintenance.mode` 由 `enforce` 改为 `warn`（备份 `.bak-maint-warn-20260929T214*`）。这份配置与主配置漂移（maxEntries 2000、无 maxDiskBytes→默认 10 GiB，主配置 6000 / 32gb），导致每个 worker 在写锁里做磁盘清理、驱逐会话和全库 ANALYZE（9/29 18:01 一次占锁 24.7 s）；现在只由 Gateway 按主配置维护。VLab 复现与对照见 `lab/candidate/agent-db-lock-holders.mjs`。**已知遗留**：重启时正有一轮在跑的飞书群 `oc_b4346bd5…` 卡在重启恢复中间态（条目 running + 恢复标记、无进程），之后消息全部报 `restart recovery claim changed before agent adoption`，待处理。
+
+相对上一版 `v2026.9.1-db91.6-deepseek-budget-image-20260929`：1 个文件变化。
+
+**经 VLab 发版 `view-image-overflow-signal-v1`**（claude-release-0929，dev `b020cd43`）
+> 验收：shared VLab 2026-09-29 21:4x CST: runtime markers view-image-bytes-cap-v1, completions-overflow-signal-v1, deepseek-budget-image-v1 present; real turn makaron default model + exec tool -> reply "accept-ok" (session agent:makaron:explicit:vlab-accept-chat-1790689047); real openai/gpt-6-luna view_image on a 1200x1200 4.3 MB PNG -> correct description, stored view_image event 1245362 bytes (before fi…
+- `core` openclaw-tools-BODVdJQD.js  336aab63 → 637c86f3
+
+**这期间合入 dev 的 PR**（13 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #108 fix(release): report a full context as an overflow instead of max_tokens=1
+- #105 fix(core-patch): cap each view_image image at 1 MB before it is stored
+- #110 fix(nightshift): a substrate fault read from the transcript follows the ledger rule too
+- #109 fix(nightshift): the ⋯ menu and Archive send who is acting
+- #107 feat(nightshift): a project's queue place and concurrency, in a quiet ⋯ menu
+- #106 feat(nightshift): an operator or an Agent sets a project's session limit and its place in the queue
+- #103 feat(nightshift): first come, first delivered across all projects
+- #104 fix(nightshift): only stops a person can act on reach 需要你
+- #101 fix(nightshift): accept a handoff artifact cited by absolute path inside its instance
+- #100 fix(nightshift): a card blocked before its Agent's first turn retries as a start failure
+- #99 feat(nightshift): open on Workflows, and on 已交付 when nothing is in production
+- #98 docs(release): CHANGELOG section for the deepseek-budget-image release
+- #97 release: capture V after promoting deepseek-budget-image-v1
+
 ## v2026.9.1-db91.6-deepseek-budget-image-20260929
 
 上线：2026-09-29 09:10 CST  ·  tag `v2026.9.1-db91.6-deepseek-budget-image-20260929`
