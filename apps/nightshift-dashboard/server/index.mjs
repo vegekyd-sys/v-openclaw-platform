@@ -1,4 +1,4 @@
-import { activeCardCount } from "./active-card-count.mjs";
+import { activeCardCount, warmupAdmission } from "./active-card-count.mjs";
 import { buildOverview } from "./overview.mjs";
 import { runSchedulerPass, instanceCardIds, visibleCardIds } from "../../../packages/nightshift-core/src/scheduler-pass.mjs";
 import { tickWithFaultProjection } from "../../../packages/nightshift-core/src/scheduler-state.mjs";
@@ -32,6 +32,7 @@ import {
   NightShiftRuntime,
   NightShiftStore,
   OpenClawFeishuNotificationSender,
+  artifactFromHandoffDirectory,
   instanceRelativeArtifactPath,
   normalizeArtifactPath,
   normalizeProjectGovernance,
@@ -100,6 +101,10 @@ const agentDbSlowAdmissionYellow = positiveInteger(process.env.NIGHTSHIFT_AGENT_
 const userHarmCooldownMs = positiveInteger(process.env.NIGHTSHIFT_USER_HARM_COOLDOWN_MS, 900_000, 7_200_000);
 const orphanedSessionMs = positiveInteger(process.env.NIGHTSHIFT_ORPHANED_SESSION_MS, 2_700_000, 86_400_000);
 // How soon to retry after a scheduler pass fails, doubling up to the ceiling.
+// New cards still in their first minutes, the heaviest on the agent database.
+// At most this many at once; a start waits for one to leave its window.
+const warmupWindowMs = positiveInteger(process.env.NIGHTSHIFT_WARMUP_WINDOW_MS, 90_000, 1_800_000);
+const warmupMaxStarts = positiveInteger(process.env.NIGHTSHIFT_WARMUP_MAX_CARDS, 3, 36);
 const schedulerRetryMinMs = positiveInteger(process.env.NIGHTSHIFT_SCHEDULER_RETRY_MIN_MS, 10_000, 600_000);
 const schedulerRetryMaxMs = positiveInteger(process.env.NIGHTSHIFT_SCHEDULER_RETRY_MAX_MS, 120_000, 600_000);
 // An explicit refresh=1 read is served from the cache when the last board read
@@ -259,6 +264,7 @@ async function handleApi(request, response, url) {
       schedulerMode: "workboard-events",
       schedulerRepairIntervalMs,
       dispatchPressure: dispatchPressureGuard.snapshot(activeCardCount(cardCache)),
+      dispatchWarmup: warmupAdmission(cardCache, { windowMs: warmupWindowMs, maxWarming: warmupMaxStarts }),
       gatewayCapacityProbeIntervalMs,
       reservedInteractiveSlots,
       reservedInteractiveWorkers,
@@ -1043,7 +1049,8 @@ function runScheduler({ trigger = "manual" } = {}) {
     lastSchedulerTrigger = trigger;
     const started = Date.now();
     const pressure = dispatchPressureGuard.snapshot(activeCardCount(cardCache));
-    const dispatchMaxStarts = Math.min(schedulerDispatchMaxStarts, pressure.availableStarts);
+    const warmup = warmupAdmission(cardCache, { windowMs: warmupWindowMs, maxWarming: warmupMaxStarts });
+    const dispatchMaxStarts = Math.min(schedulerDispatchMaxStarts, pressure.availableStarts, warmup.available);
     // One serialized round shares one authoritative board snapshot. API mutations
     // cannot interleave a takeover with a later tick using an older snapshot.
     const result = await serializedOperation(() => runSchedulerPass({
@@ -1062,6 +1069,8 @@ function runScheduler({ trigger = "manual" } = {}) {
     schedulerCircuit.recordPass(result.warnings, { probe: circuitDecision.probe });
     await announceTransitions();
     if (result.retryAfterMs > 0) changeScheduler.enqueueAfter("dispatch.window", result.retryAfterMs);
+    // Starts held back by warm-up resume when a warming card leaves its window.
+    if (warmup.retryAfterMs > 0 && pressure.availableStarts > 0) changeScheduler.enqueueAfter("dispatch.warmup", warmup.retryAfterMs);
   })().catch((error) => {
     lastSchedulerAt = new Date().toISOString();
     lastSchedulerError = error.message;
@@ -1441,12 +1450,15 @@ async function validateCompletion({ card, contentItemId, instance, release, reus
     }
   }
   if (release?.spec?.completion?.mode === "strict-v1") {
+    const handoffDir = handoff
+      ? dirname(stageHandoffPath({ instanceDir: instance.inputs?.nightshift?.instanceDir ?? resolve(dataDir, "instances", instance.id), contentItemId, release, stageId }))
+      : null;
     try {
       evidence.outputs = (await validateDeclaredCompletion({
         checkUrl: checkCompletionUrl,
         instanceCreatedAt: instance.createdAt,
         loadArtifact: async (artifact) => {
-          const loaded = await loadInstanceArtifact({ artifact, contentItemId, instance, hash: Boolean(human) });
+          const loaded = await loadInstanceArtifact({ artifact, contentItemId, instance, hash: Boolean(human), handoffDir });
           if (human) (evidence.artifacts ??= []).push({ artifact, sha256: loaded.sha256 });
           return loaded;
         },
@@ -1513,10 +1525,10 @@ async function validateDuplicateCheck(manifest, contentItemId) {
   };
 }
 
-async function loadInstanceArtifact({ artifact, contentItemId = null, instance, hash = false }) {
+async function loadInstanceArtifact({ artifact, contentItemId = null, instance, hash = false, handoffDir = null }) {
   const configuredRoot = instance.inputs?.nightshift?.instanceDir ?? resolve(dataDir, "instances", instance.id);
   const instanceRoot = await realpath(configuredRoot);
-  const normalizedPath = normalizeArtifactPath(instanceRelativeArtifactPath(artifact, [configuredRoot, instanceRoot]));
+  const normalizedPath = normalizeArtifactPath(instanceRelativeArtifactPath(artifactFromHandoffDirectory(artifact, handoffDir), [configuredRoot, instanceRoot]));
   const roots = contentItemId ? [resolve(instanceRoot, "content-items", contentItemId), instanceRoot] : [instanceRoot];
   let candidate = null;
   for (const root of roots) {

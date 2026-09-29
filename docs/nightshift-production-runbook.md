@@ -45,6 +45,7 @@ Night Shift starts new native cards only while the Gateway host has headroom, an
 | `NIGHTSHIFT_AGENT_DB_SLOW_ADMISSION_YELLOW` | 3 | Slow lease admissions in the window that stop new starts. |
 | `NIGHTSHIFT_USER_HARM_COOLDOWN_MS` | 900000 | Hold after a lease timeout cut a person's reply. Quiet probes cannot end it early. |
 | `NIGHTSHIFT_ORPHANED_SESSION_MS` | 2700000 | A blocked card whose Agent Session has written nothing for this long is failed as `agent_interrupted` and handed to the stage's retry policy. |
+| `NIGHTSHIFT_WARMUP_WINDOW_MS` / `NIGHTSHIFT_WARMUP_MAX_CARDS` | 90000 / 3 | At most this many Night Shift cards in their first minutes at once; a start waits until one leaves its window (see below). |
 | `NIGHTSHIFT_DISPATCH_INITIAL_MAX_ACTIVE` | 3 | Concurrency the ramp starts from after a restart or a red probe. |
 | `NIGHTSHIFT_GATEWAY_GREEN_LATENCY_MS` / `_RED_LATENCY_MS` | 250 / 1000 | Worker status RPC latency that pauses growth or halves the target. |
 | `NIGHTSHIFT_CARD_REFRESH_MIN_INTERVAL_MS` | 30000 | An explicit `refresh=1` read younger than this is served from the cache. |
@@ -52,6 +53,14 @@ Night Shift starts new native cards only while the Gateway host has headroom, an
 | `NIGHTSHIFT_CARD_LABEL_MAX` | 40 | Longest card label the Gateway accepts. A content item id gets this minus `content-item:`. Raise it here once the Gateway's own limit is raised. |
 | `NIGHTSHIFT_SCHEDULER_RETRY_MIN_MS` / `_MAX_MS` | 10000 / 120000 | Backoff between retries after a failed scheduler pass. |
 | `NIGHTSHIFT_SCHEDULER_EVENT_MIN_INTERVAL_MS` | 5000 | Floor between event-driven scheduler passes. Raising it trades stage handoff latency for Gateway main-thread time; 15000 is a reasonable production setting. |
+
+### Warm-up slots
+
+A card's first minutes are its heaviest on the agent database: its Session is built, context and Skills load, and the first turns are written. On V on 2026-09-29, 10 of the 14 Night Shift runs cut by Agent DB lease timeouts were in their first 5 minutes, and the worst clusters followed 5 to 7 starts within 5 minutes. The start budget (3 per 15 s) allowed that, because it spaces starts but does not see how many new cards are still warming up.
+
+A scheduler pass therefore starts at most `NIGHTSHIFT_WARMUP_MAX_CARDS` minus the running cards started within `NIGHTSHIFT_WARMUP_WINDOW_MS`. When that is zero, the next pass is scheduled for the moment the oldest warming card leaves its window. `/api/health` reports it as `dispatchWarmup { warming, maxWarming, windowMs, available, retryAfterMs }`. The other brakes apply on top; this one only spreads starts out.
+
+The default, 3 cards per 90 s, is Tianyi's choice for throughput (2026-09-29). Most cut runs were 2 to 5 minutes into their run, so a longer window protects more; if lease timeouts stay frequent, lengthen `NIGHTSHIFT_WARMUP_WINDOW_MS` in the drop-in and restart only Night Shift.
 
 ### Agent DB lease pressure
 
@@ -126,6 +135,10 @@ A blocked card is first explained by how its run ended, as the Gateway records i
 - **`failed`, `timed_out`**: the substrate stopped the run (Agent DB lease timeouts, provider errors, timeouts). It records `stage.attempt.failed` with the kind the error names (`database_lock`, `connection_reset`, …, otherwise `agent_interrupted`) and retries by the stage's policy. A paid stage retries too, unless its ledger holds an operation this card left `reserved`, or `executing` without an external task id: that may have been charged, so it goes to a person. Agents reserve on the ledger before any paid call.
 - **`cancelled`**: recorded as `run_cancelled`, not retried.
 - **Ended normally**: the Agent's own transcript and outputs decide, as below. Every stop that needed a person on V from 2026-09-26 to 09-29 had a run that ended normally.
+
+A card still shown `running` is asked too when its transcript ends on an error (`stopReason` error or aborted): a run the Gateway still has running is left alone, and a failed run is classified from the Gateway's record. On 2026-09-29 a transcript ending on "incomplete or malformed tool call", from a run the Gateway recorded as a failed provider request, had been classified as the Agent's own error.
+
+Faults of the substrate have their own retry allowance: up to 5 attempts (backoff 1, 5, 15, 15, 30 minutes) or the stage's `retry.maxAttempts`, whichever is larger. Before, lease timeouts and a Gateway restart could use up a produce card's three attempts and open a request.
 
 When the Gateway has no entry for the run, the transcript rules below apply.
 

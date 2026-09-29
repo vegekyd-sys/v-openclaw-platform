@@ -8,7 +8,7 @@ The selected B layout uses native Card 2.0 clickable rows: bold option title plu
 an optional grey explanation inside one bordered area. Custom input is folded
 inside a root form; a text-only question expands that section automatically.
 
-The v2 patch binds the active reply dispatcher by exact session and account. When
+The patch binds the active reply dispatcher by exact session and account. When
 there is one active owner, the question is inserted into its existing CardKit
 entity/message. The preceding text is retained, the entity exits typing animation
 mode, and later content writes target a separate continuation element. Answered
@@ -29,7 +29,7 @@ chat queue. No bot message is synthesized as a user answer.
 
 Clickable option rows carry question-bound `behaviors.callback.value`; the custom/confirm
 form button uses `form_action_type: submit` and question-bound callback metadata plus `name`, matching the existing credential form.
-`action.name` identifies that form and `action.form_value` carries custom answers.
+`action.value` identifies the question-bound form (with `action.name` as fallback), and `action.form_value` carries custom answers.
 Only a callback for the account and exact message delivered by this process is
 accepted. Option indices are checked against the original labels. Empty/incomplete
 forms stay open, concurrent submissions are serialized, transient RPC errors allow
@@ -153,3 +153,35 @@ idle/unstarted owners when selecting an inline carrier. Native acceptance must
 cover /vds, /vcc and /vcodex; standalone fallback is an accepted presentation.
 18 focused tests cover idle carriers, ordered standalone repaint and metadata-only
 form callbacks, in addition to the previous question/stream checks.
+
+## Shared v3 native acceptance (2026-09-29)
+
+The same runtime-neutral credential-style callback path passed native Feishu
+click/input -> Gateway answer -> model continuation for all requested entries:
+
+| Entry | Observed model / runtime | Native interaction | Visible final output |
+| --- | --- | --- | --- |
+| Worker | deepseek-v4-flash / vlab-worker | select 灯光 + 色彩, confirm | `ASK_V3_WORKER_DONE 灯光、色彩` |
+| /vds | deepseek-flash / codex | select 构图 + 色彩, confirm | `ASK_V3_VDS_DONE 构图、色彩` |
+| /vcc | claude-opus-5 / claude-cli | expand custom input, submit | `ASK_V3_VCC_DONE 保留构图，只柔化灯光` |
+| /vcodex | gpt-5.6-sol / codex | select 构图 | `ASK_V3_VCODEX_DONE 构图` |
+
+All four retained the original streaming message ID and compact answer record.
+The server recorded one eligible inline owner, successful `question.waitAnswer`,
+and final dispatch for each run. No callback injection was used in this matrix.
+Two interactions required retry: /vds first option click showed client error -356;
+/vcodex first option click did not resolve and its second did. Their root cause is
+not established; this is functional acceptance with retries, not evidence of
+error-free first-click delivery. Worker multi-submit and Claude custom-submit
+completed without the earlier v2 form error 100000.
+
+Accepted artifact `feishu-ask-user-inline-v3`, SHA256
+`70bc0cc00ded5cf8939a880833cbc7ffb8d3f0594904f85437a72b3dfecc9634`,
+source integration commit `6c51739c689e7f3108bba3dc8b19555ca06491f2`
+(task source `d4f4a27b68bb1f84945f00ab8c1d3d14bd689fe6`).
+Accepted at 2026-09-29T15:41:34Z. Candidate
+`candidate-1efd79f8-52c2-4669-a177-ffb702d06907`, 18 question tests,
+17 catalog tests and GitHub static CI passed. The native read-backs, screenshots
+and detailed receipt are retained locally under `tmp/vlab` and task `tmp/design`.
+Production V has not been deployed; shared VLab returns to its aligned parent
+`view-image-overflow-signal-v1` after acceptance to release the integration slot.
