@@ -329,6 +329,7 @@ async function handleApi(request, response, url) {
         cards: visibleCards(cardCache, visible).map(withCardLinks),
         releases: store.listReleases().map(withWorkflowLinks),
         operationsFor: (instanceId) => store.listExternalOperations(instanceId),
+        skippedFor: (instanceId) => store.listSkippedContentItems(instanceId),
       }),
       // 需要你 is scope-independent: every project that is not shelved.
       needsYou: buildNeedsYou({
@@ -998,6 +999,8 @@ async function handleApi(request, response, url) {
         applyToGroup: body.applyToGroup === true,
       }));
       if (result.affectedCardIds.length) await refreshCards({ cardIds: result.affectedCardIds });
+      // A skip can leave the rest of the project ready for delivery.
+      changeScheduler.enqueue("decision.decided");
       json(response, 200, result);
     } catch (error) {
       json(response, error.statusCode ?? 500, { error: error.message, errors: error.errors });

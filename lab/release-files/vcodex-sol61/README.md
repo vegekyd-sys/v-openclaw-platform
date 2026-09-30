@@ -38,11 +38,13 @@ node /Users/tianyicai/vlab-dev/lab/vlab.mjs candidate --repo "$PWD" --owner TASK
 - 运行时基线 `feishu-ask-user-inline-v4` / `104e6efcf47bda3d96e7cc329a1a4400b01d46e3ea579d00a30372130d22ef39`；共享进程前后 PID 都为 `808138`，receipt 的 `sharedUnchanged=true`。
 - 两个修改后 runtime 文件 SHA256：contract `efb465d2bc7f474f7173bfbc6586d5a767e8970b7aa4031e6358543cb6f0384e`，provider `46bc8cc01badf720ab5d3443bf66cc2885b998f90a072b3588d6694566935df2`。已核对产物与补丁重建结果逐字节一致，并通过 `node --check`。
 
-结果仅证明独立候选 CLI 的真实模型/工具路径。共享 Gateway、飞书接收和可见卡片、生产 V 均未部署或验收。
+上述结果仅证明独立候选 CLI 的真实模型/工具路径。
+
+2026-09-30 共享 VLab 集成验收已通过：版本 `vcodex-sol61-v1`，产物 SHA256 `3894a443e7e2e7b3d8b017f852df4842ae0d2a7835356f57ae8d430f71f60fbc`。Codex 0.159.2 安装到独立版本目录，Gateway/Worker 配置分别备份和迁移，并完成受控重启。lark CLI 在既有 V - Lab 验收群发送 `/vcodex`，可见回复与真实会话元数据均为 `gpt-6.1-sol / openai / codex`。模型实际写入、读回唯一测试文件并回复 `TOOL_OK`；下一轮不重述标记、无工具调用而回复 `CONTEXT_OK`。旧 `/vcodex56` 也完成真实模型回复，验收群最后切回 Sol 6.1。生产发布与生产验收另行记录。
 
 ## 合入与上线
 
-当前为候选，需 Tianyi 明确批准才合入 dev。之后获取空闲 integration lease，基于当前 release 重新核对 before hashes，package/stage/deploy；在 lease 内将 `@openai/codex@0.159.2` 安装到新的 tools 版本目录，核对 npm integrity 与候选二进制 SHA256，再迁移 Gateway/Worker 配置并协调重启。按新版别名做真实飞书 receive → dispatch → visible reply 验收，同时核对模型 `gpt-6.1-sol`、provider `openai`、runtime `codex`。检查生产 `/vcodex60` 回退入口及其他别名保留。
+源码经 PR 合入 dev，共享集成与生产发布均按 Tianyi 的本次授权执行。共享发布须获取空闲 integration lease，基于当前 release 核对 before hashes，package/stage/deploy；在 lease 内将 `@openai/codex@0.159.2` 安装到新的 tools 版本目录，核对 npm integrity 与候选二进制 SHA256，分别迁移 Gateway/Worker 配置并协调重启。按新版别名做真实飞书 receive → dispatch → visible reply 验收，同时核对模型 `gpt-6.1-sol`、provider `openai`、runtime `codex`。检查生产 `/vcodex60` 回退入口及其他别名保留。
 
 通过后按授权使用 `scripts/promote-to-v.mjs` 部署同一精确产物；在生产新版本目录独立安装并核对相同 Codex 0.159.2 二进制，迁移生产 Gateway/Worker 配置，等待业务 drain 后协调重启，再做生产真实消息验收及 align。生产只通过 `ssh v`。不能把候选 CLI 回复写成共享飞书或生产验收。
 
