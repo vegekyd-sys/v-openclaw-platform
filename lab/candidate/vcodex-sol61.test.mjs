@@ -59,4 +59,11 @@ test('real candidate configuration moves alias once and preserves other settings
     fixture.agents.defaults.models['openai/custom'] = {alias: old.includes('5.6') ? 'vcodex56' : 'vcodex60'};
     assert.throws(() => configureVcodex(fixture), /occupied/);
   }
+  const worker = {agents:{defaults:{modelPolicy:{allow:['openai/*']},models:{'openai/gpt-5.6-sol':{alias:'openai-gpt5.6',params:{thinking:'medium'},agentRuntime:{id:'openclaw'}}}},entries:{makaron:{model:{primary:'deepseek/deepseek-v4-flash'},models:{'openai/gpt-6-astra':{alias:'vastra'}}}}}};
+  const migratedWorker = configureVcodex(worker);
+  assert.equal(migratedWorker.agents.defaults.models['openai/gpt-5.6-sol'].alias,'openai-gpt5.6');
+  assert.equal(migratedWorker.agents.entries.makaron.models[target].alias,'vcodex');
+  assert.equal(migratedWorker.agents.entries.makaron.models[target].agentRuntime.id,'codex');
+  assert.deepEqual(migratedWorker.agents.entries.makaron.model,worker.agents.entries.makaron.model);
+  assert.deepEqual(configureVcodex(migratedWorker),migratedWorker);
 });
