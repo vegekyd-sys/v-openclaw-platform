@@ -11,6 +11,24 @@
 
 ---
 
+## v2026.9.1-db91.6-feishu-ask-user-20260930
+
+上线：2026-09-30 08:32 CST  ·  tag `v2026.9.1-db91.6-feishu-ask-user-20260930`
+
+**摘要**：飞书里的 `ask_user` 现在会在回复卡片中出现可点击的提问（单选、多选、折叠的自定义回答），提交后直接回答原问题、会话继续输出；此前只显示工具名，用户无从回答。vCodex / Claude Code / VLab Worker 共用一套实现（PR #114）。只替换飞书插件 `monitor.account-WFdlCDhR.js`（7ea5490f → 4d3ea59b），无配置或依赖变更。08:26 重启 V 生效（08:29 就绪；重启前确认飞书无进行中的对话，4 张夜班卡被打断后由引擎重派）。VLab 验收沿用 PR #114 作者 9/29 在共享 VLab 的四入口真实点击（同一字节）；作者记录过 /vds 首次点击客户端 -356、/vcodex 首次点击未完成，重试成功，根因未定位。V 上飞书实测（08:35–08:38，Tianyi 私聊，lark-cli 以 Tianyi 身份发消息 + 飞书桌面客户端真实点击）：codex / gpt-6-sol 调用 ask_user → `question.request` 成功、`ask_user delivery … inline=true`，卡片出现「灯光 (Recommended)」「色彩」可点选项与「我有其他想法」；两个选项由自动化在客户端点选（每次点击即时勾选并提示「已选择，选好后继续」）；自动化 08:37:13 对「按这些选择继续」的按下没有生效，最终由 Tianyi 手动点击提交 → 08:38:04 `question.waitAnswer` 成功，同一张卡片更新为「✓ 已选择：灯光 (Recommended)、色彩」并续写 `ASK_PROD_0930_DONE 灯光、色彩`。人工点击路径一次成功；自动化按下提交按钮未生效的原因未查（可能是后台 AXPress 未触发卡片回调）。
+
+相对上一版 `v2026.9.1-db91.6-view-image-overflow-signal-20260929`：1 个文件变化。
+
+**经 VLab 发版 `feishu-ask-user-inline-v4`**（claude-release-0930，dev `eeb197af`）
+> 验收：Byte-identical to feishu-ask-user-inline-v3 (monitor.account-WFdlCDhR.js 4d3ea59b, same base view-image-overflow-signal-v1), accepted on shared VLab 2026-09-29 by PR #114 author with real Feishu clicks: Worker deepseek-v4-flash multi-select -> ASK_V3_WORKER_DONE; /vds codex single+multi -> ASK_V3_VDS_DONE; /vcc claude-cli custom answer -> ASK_V3_VCC_DONE; /vcodex single -> ASK_V3_VCODEX_DONE (ques…
+- `feishu` dist/monitor.account-WFdlCDhR.js  7ea5490f → 4d3ea59b
+
+**这期间合入 dev 的 PR**（4 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #114 feat(feishu): 在流式回复卡片中回答 Ask User 并继续会话
+- #113 fix(nightshift): three more ways a system stop reached a person
+- #111 feat(nightshift): starts wait while too many new cards are warming up
+- #112 release: capture V after view-image-overflow-signal-v1, with CHANGELOG
+
 ## v2026.9.1-db91.6-view-image-overflow-signal-20260929
 
 上线：2026-09-29 22:05 CST  ·  tag `v2026.9.1-db91.6-view-image-overflow-signal-20260929`
