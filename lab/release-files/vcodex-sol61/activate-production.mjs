@@ -16,6 +16,8 @@ const unit='openclaw-gateway.service';
 const stopDropin='/etc/systemd/system/'+unit+'.d/zzzzzzzzzzzzzz-vcodex-sol61-controlled-stop.conf';
 const stopPolicy='[Service]\nKillMode=mixed\nKillSignal=SIGUSR1\nTimeoutStopSec=180\nSendSIGKILL=no\n';
 let installedStopPolicy=false;
+let timerWasActive=false,activationReady=false;
+const companionTimer='openclaw-gateway-memory-snapshot.timer';
 function cleanupStopPolicy(){if(!installedStopPolicy)return;assert.equal(fs.readFileSync(stopDropin,'utf8'),stopPolicy);fs.unlinkSync(stopDropin);run('systemctl',['daemon-reload']);installedStopPolicy=false;}
 const core='/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core';
 const root='/home/openclaw/.openclaw';
@@ -72,6 +74,8 @@ try{
   assert.equal(pid(),beforePid);
   for(const c of configs)assert.equal(fs.readFileSync(c.file,'utf8'),c.text,'Concurrent configuration change');
   console.log(JSON.stringify({phase:preserveInflight?'native-preserve-fence-held':'idle-fence-ready',beforePid,suspensionId:held.suspensionId}));
+  timerWasActive=run('systemctl',['show',companionTimer,'-p','ActiveState','--value'])==='active';
+  if(timerWasActive)run('systemctl',['stop',companionTimer]);
   // Keep configuration writes out of the live watcher: stop after idle or the explicitly authorized native preserve handoff.
   if(preserveInflight){
     assert(!fs.existsSync(stopDropin),'Concurrent controlled stop policy');
@@ -106,13 +110,18 @@ try{
     if(ready)break;
     assert(pid()>1,'Gateway exited during startup');await delay(2000);
   }
-  assert(ready,'Gateway readiness timeout; inspect logs and preserve backups');
+  assert(ready,'Gateway readiness timeout; inspect logs and preserve backups');activationReady=true;
   assert.notEqual(pid(),beforePid);
   for(const c of configs)assert.deepEqual(JSON.parse(fs.readFileSync(c.file)),c.after);
   console.log(JSON.stringify({phase:'activated',beforePid,afterPid:pid(),ready:true,configurations:configs.map(c=>({file:c.file,sha256:hash(c.file)})),model:'openai/gpt-6.1-sol',runtime:'codex',codexVersion:'0.159.2',functionalAcceptance:'Real Feishu acceptance still required'}));
 }finally{
-  cleanupStopPolicy();
+  // A canceled systemd stop can still be shutting down. Keep the safe policy
+  // until that process exits; restoring the old 45 s deadline here would kill it.
+  const deactivating=run('systemctl',['show',unit,'-p','ActiveState','--value'])==='deactivating';
+  if(!deactivating)cleanupStopPolicy();
+  else if(installedStopPolicy)console.error(JSON.stringify({phase:'stop-still-in-progress',safeStopPolicyRetained:stopDropin,companionTimerPaused:timerWasActive}));
   if(stopped)run('systemctl',['start',unit]);
   if(!applied&&held?.suspensionId&&pid()===beforePid)await client.request('gateway.suspend.resume',{suspensionId:held.suspensionId}).catch(()=>{});
   client.stop();
+  if(timerWasActive&&(activationReady||(!deactivating&&pid()===beforePid)))run('systemctl',['start',companionTimer]);
 }
