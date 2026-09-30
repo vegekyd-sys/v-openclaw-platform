@@ -161,35 +161,28 @@ class NightShiftCheck(unittest.TestCase):
         lines = run(state, s)
         self.assertEqual(len(lines), 2)
 
-    def test_retried_approval_card_left_in_ready_says_what_to_do(self):
-        # 2026-09-30: a retry aimed at three approval cards left them in ready,
-        # which neither the scheduler nor the Needs You view ever picks up.
+    def test_approval_cards_are_business_flow_not_alerts(self):
+        # 2026-09-30: three approval cards in ready were reported as undispatched.
         state = {}
         run(state, base())
         s = base()
         s["live_cards"] = [{"id": "0c93fd70-%d" % i, "status": "ready", "updated": NOW - 200 * MIN, "exec_updated": None,
                             "failures": 0, "max_retries": None, "instance": "GEE-TIMED-PUB-20260925",
                             "item": "ref%d" % i, "stage": "produce", "approval": True} for i in (1, 2, 3)]
-        lines = run(state, s)
-        self.assertEqual(len(lines), 1, "one block per project, not one line per card")
-        self.assertIn("审批卡被当成执行卡重试", lines[0])
-        self.assertIn("ref2 / produce 已停 3 小时 20 分", lines[0])
-        self.assertIn("→ 在看板上重试", lines[0])
-        self.assertIn("project=GEE-TIMED-PUB-20260925", lines[0])
-        self.assertNotIn("没被派出", lines[0])
+        self.assertEqual(run(state, s), [])
 
-    def test_approvals_waiting_on_a_person_are_one_line_per_project(self):
+    def test_stale_ready_cards_of_one_project_are_one_block(self):
         state = {}
         run(state, base())
         s = base()
-        s["live_cards"] = [{"id": "a%d" % i, "status": "review", "updated": NOW - m * MIN, "exec_updated": None,
-                            "failures": 0, "max_retries": None, "instance": "GEE-TIMED-PUB-20260925",
-                            "item": "v%d" % i, "stage": "produce", "approval": True} for i, m in ((1, 50), (2, 130), (3, 5))]
+        s["live_cards"] = [{"id": "s%d" % i, "status": "ready", "updated": NOW - 200 * MIN, "exec_updated": None,
+                            "failures": 0, "max_retries": 2, "instance": "GEE-TIMED-PUB-20260925",
+                            "item": "v%d" % i, "stage": "brief"} for i in (1, 2)]
         lines = run(state, s)
         self.assertEqual(len(lines), 1)
-        self.assertTrue(lines[0].startswith("⏳"))
-        self.assertIn("2 条等你确认，最早的已等 2 小时 10 分", lines[0])
-        self.assertEqual(run(state, s), [])
+        self.assertIn("v2 / brief 已等 3 小时 20 分", lines[0])
+        self.assertIn("→ 多半是调度器的问题", lines[0])
+        self.assertIn("project=GEE-TIMED-PUB-20260925", lines[0])
 
     def test_stuck_threshold_follows_the_stage(self):
         # Healthy paid renders go quiet for up to ~100 minutes.

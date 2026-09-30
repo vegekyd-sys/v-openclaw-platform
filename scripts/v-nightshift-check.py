@@ -39,8 +39,6 @@ BOARD = "nightshift"
 DASHBOARD = "https://nightshift.tianyi.live/?project=%s&view=workflows"
 
 STALE_READY_MIN = 45        # ready this long while dispatch is allowed
-APPROVAL_WAIT_MIN = 45      # approval card waiting on a person this long
-ORPHAN_APPROVAL_MIN = 10    # approval card in ready: a state nothing ever picks up
 # Running with no execution update this long. Measured on V over the 14 days
 # to 2026-09-30, the longest silence inside runs that went on to succeed:
 # produce p99 97 min (39 runs past 40), brief p99 46 min (15 past 40), every
@@ -101,19 +99,15 @@ def sample(now_ms=None):
     out["live_cards"] = []
     for cid, status, updated, exec_updated, failures, automation in wb.execute(
             "select id, status, updated_at, execution_updated_at, coalesce(failure_count,0), automation_json "
-            "from workboard_cards where board_id=? and archived_at is null and status in ('ready','running','review')",
-            (BOARD,)):
+            "from workboard_cards where board_id=? and archived_at is null and status in ('ready','running')", (BOARD,)):
         labels = [row[0] for row in wb.execute("select label from workboard_card_labels where card_id=?", (cid,))]
-        approval = "nightshift:approval" in labels
-        if status == "review" and not approval:
-            continue
         out["live_cards"].append({
             "id": cid, "status": status, "updated": updated, "exec_updated": exec_updated,
             "failures": failures, "max_retries": (json.loads(automation or "{}") or {}).get("maxRetries"),
             "instance": next((l[9:] for l in labels if l.startswith("instance:")), None),
             "item": next((l[13:] for l in labels if l.startswith("content-item:")), None),
             "stage": next((l[6:] for l in labels if l.startswith("stage:")), None),
-            "approval": approval,
+            "approval": "nightshift:approval" in labels,
         })
     out["paid_executing"] = [
         {"key": key, "instance": iid, "item": item, "task": task}
@@ -158,21 +152,14 @@ def evaluate(s):
     dispatch_allowed = pressure.get("dispatchAllowed")
     now_ms = s["now_ms"]
     running_items = {c["item"] for c in s.get("live_cards", []) if c["status"] == "running" and c.get("item")}
-    waiting = {}
     for c in s.get("live_cards", []):
-        if c["instance"] not in active:
+        # Approval cards wait on people by design and the scheduler never
+        # starts them; how long they wait is business flow, not an alert
+        # (Tianyi, 2026-09-30).
+        if c["instance"] not in active or c.get("approval"):
             continue
         idle = now_ms - c["updated"] if c.get("updated") else 0
-        if c.get("approval"):
-            # The scheduler never starts an approval card and the Needs You
-            # view only lists ones in review, so one in ready waits forever.
-            # A retry aimed at the approval card instead of its stage's card
-            # left three there on 2026-09-30.
-            if c["status"] == "ready" and idle > ORPHAN_APPROVAL_MIN * 60_000:
-                issues["orphan:%s" % c["id"]] = (("orphan", c["instance"]), "%s 已停 %s" % (where(c), minutes(idle)))
-            elif c["status"] == "review" and idle > APPROVAL_WAIT_MIN * 60_000:
-                waiting.setdefault(c["instance"], []).append(idle)
-        elif c["status"] == "ready":
+        if c["status"] == "ready":
             if c.get("max_retries") and c["failures"] > c["max_retries"]:
                 issues["budget:%s" % c["id"]] = (("budget", c["instance"]), "%s 失败 %d 次，上限 %d" % (
                     where(c), c["failures"], c["max_retries"]))
@@ -184,9 +171,6 @@ def evaluate(s):
             if last and now_ms - last > limit * 60_000:
                 issues["stuck:%s" % c["id"]] = (("stuck", c["instance"]), "%s 已 %s 没有进展（这个阶段按 %d 分钟算异常）" % (
                     where(c), minutes(now_ms - last), limit))
-    for iid, idles in waiting.items():
-        issues["approval:%s" % iid] = (None, "⏳ 项目 %s 有 %d 条等你确认，最早的已等 %s\n  %s" % (
-            iid, len(idles), minutes(max(idles)), DASHBOARD % iid))
     # A blocked line already tells whoever reads it to check the paid task.
     reported = {(b["instance"], b.get("item")) for b in s.get("blocked", [])
                 if "blocked:%s" % b["card"] in issues and b.get("paid")}
@@ -201,8 +185,6 @@ def evaluate(s):
 
 # kind -> (what happened, what to do). None: each line carries its own action.
 GROUPS = {
-    "orphan": ("审批卡被当成执行卡重试了，停在 ready：调度器不会跑它，「需要你」面板也看不到，这条内容实际没人在做",
-               "在看板上重试这条内容对应阶段的执行卡（不是审批卡），或者重新发起审批"),
     "stale": ("调度器允许派工，卡却一直停在 ready 没被派出", "多半是调度器的问题，查 nightshift-workboard 日志"),
     "budget": ("重试次数已用完，不会再自动跑", "人工重试（会重置次数）或者跳过这条"),
     "stuck": ("在跑，但很久没有进展", "Agent 可能挂了。付费阶段先核对外部任务再重试，免得重复付费"),
@@ -269,7 +251,7 @@ def decide(state, service, brake, issues):
             if key in seen:
                 continue
             if group is None:
-                lines.append(line if line.startswith("⏳") else "⚠️ " + line)
+                lines.append("⚠️ " + line)
             else:
                 groups.setdefault(group, []).append(line)
         for (kind, iid), members in sorted(groups.items()):
