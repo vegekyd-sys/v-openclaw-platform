@@ -1,0 +1,17 @@
+[Unit]
+Description=Daily online image of V's system disk (keep newest 3)
+Documentation=file:/opt/v-sentinel/daily-image.py
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# TENCENTCLOUD_SECRET_ID/KEY/REGION: the same account the Gateway already uses.
+# Nothing in this repo holds the values.
+EnvironmentFile=/home/openclaw/.openclaw/gateway.systemd.env
+# The image is taken on the cloud side; this process only calls the API and
+# polls, so it never competes with the Gateway for CPU or disk.
+Nice=19
+ExecStart=/usr/bin/python3 /opt/v-sentinel/daily-image.py
+# Creating a 380 GB image took 6 minutes on 2026-09-30; the script waits up to 90.
+TimeoutStartSec=2h

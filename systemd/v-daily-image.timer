@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily V system disk image at 05:20 CST
+
+[Timer]
+# Low-traffic hour; clear of dreaming (03:00) and storage lifecycle (04:40).
+OnCalendar=*-*-* 05:20:00 Asia/Shanghai
+RandomizedDelaySec=10min
+# If V was down at 05:20, take the image once it is back rather than skip a day.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
