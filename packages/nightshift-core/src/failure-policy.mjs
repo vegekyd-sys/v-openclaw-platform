@@ -28,7 +28,15 @@ export function classifyRunOutcome(outcome) {
   const rawError = boundedFailureText(errorText(outcome?.error)) || `Agent run ${status}`;
   // The Session finished; only the registry lagged. The transcript decides.
   if (/session completed before registry settled/i.test(rawError)) return null;
-  if (status === "cancelled") return { kind: "run_cancelled", source: "gateway", rawError, retryable: false };
+  // Night Shift never cancels a run, and a person stops a card by pausing its
+  // project or cancelling the card. "subagent run terminated" is how the
+  // Gateway ends the runs it kills on its way down: on V on 2026-09-30 two
+  // restarts at 12:53 and 13:01 ended two produce runs in the same millisecond
+  // and both reached a person as if they had to decide something.
+  if (status === "cancelled") {
+    const terminated = /subagent run terminated/i.test(rawError);
+    return { kind: terminated ? "run_terminated" : "run_cancelled", source: "gateway", rawError, retryable: terminated };
+  }
   const failure = classifyFailureText(rawError, status === "timed_out" ? "timeout" : "error");
   // A failed run is never the Agent's own verdict: an Agent that cannot go on
   // blocks its card and ends its turn normally.
@@ -100,6 +108,7 @@ export function infrastructureFailureSummary(failure) {
     provider_error: "模型返回异常",
     agent_interrupted: "Agent 运行被中断",
     agent_not_started: "Agent 没能启动",
+    run_terminated: "Gateway 重启或停机中断了这次运行",
     run_cancelled: "Agent 运行被取消",
     agent_error: "Agent 运行失败",
   }[failure?.kind] ?? "Agent 运行失败";

@@ -1898,6 +1898,29 @@ test("a paid card whose run failed with a reservation still open asks a person: 
   store.close();
 });
 
+test("a paid card whose run the Gateway killed on restart is retried and never announced: its task is already on the ledger", async () => {
+  // V, 2026-09-30 12:53: a Gateway restart ended two produce runs in the same
+  // millisecond with "subagent run terminated"; both reached a person.
+  const { card, runtime, store } = await stoppedRun({
+    id: "NS-RUN-KILLED", stageId: "produce", outcome: { status: "cancelled", error: "subagent run terminated" },
+  });
+  const operation = store.reserveExternalOperation({
+    idempotencyKey: "NS-RUN-KILLED:video-1:produce",
+    instanceId: "NS-RUN-KILLED",
+    contentItemId: "video-1",
+    stageId: "produce",
+    ownerCardId: card.id,
+    requestHash: "request-sha",
+  });
+  store.checkpointExternalOperation(operation.idempotencyKey, { status: "executing", externalTaskId: "makaron-task-1" });
+  await runtime.reconcile("NS-RUN-KILLED", null, { inspectSessions: true });
+  const [event] = attemptFailures(store, "NS-RUN-KILLED");
+  assert.equal(event.payload.failure.kind, "run_terminated");
+  assert.equal(event.payload.failure.automaticRetry, true);
+  assert.equal(openRequests(store, "NS-RUN-KILLED").length, 0);
+  store.close();
+});
+
 test("a blocked card whose run is still going is left alone: not failed, not salvaged, not announced", async () => {
   // DL-0929-01 item 9: blocked at 16:38 while its Agent kept working; it
   // finished the video at 16:41, three minutes after reaching a person.

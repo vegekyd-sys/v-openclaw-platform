@@ -115,6 +115,12 @@ test("a cancelled run is not retried by itself", () => {
   assert.equal(failure.retryable, false);
 });
 
+test("a run the Gateway killed on its way down is retried", () => {
+  const failure = classifyRunOutcome({ status: "cancelled", error: "subagent run terminated" });
+  assert.equal(failure.kind, "run_terminated");
+  assert.equal(failure.retryable, true);
+});
+
 test("a run ended normally when the Gateway completed it, or only its registry lagged", () => {
   assert.equal(runEndedNormally({ status: "completed" }), true);
   assert.equal(runEndedNormally({ status: "succeeded" }), true);
