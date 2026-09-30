@@ -27,7 +27,7 @@ test("creates and reuses native cards through Gateway RPC", async () => {
     if (method === "tasks.list") {
       return JSON.stringify({ tasks: [
         { runId: "workboard:card-1:2", status: "completed", childSessionKey: params.sessionKey },
-        { runId: "workboard:card-1:1", status: "failed", error: "Agent run failed", endedAt: 1790668529796 },
+        { runId: "workboard:card-1:1", status: "failed", error: "Agent run failed", endedAt: 1790668529796, updatedAt: 1790668529796 },
       ] });
     }
     if (method === "skills.status") {
@@ -76,7 +76,7 @@ test("creates and reuses native cards through Gateway RPC", async () => {
     limit: 25,
   });
   const outcome = await adapter.getRunOutcome({ sessionKey: "agent:main:subagent:workboard-card-1", runId: "workboard:card-1:1" });
-  assert.deepEqual(outcome, { status: "failed", error: "Agent run failed", endedAt: 1790668529796 });
+  assert.deepEqual(outcome, { status: "failed", error: "Agent run failed", endedAt: 1790668529796, updatedAt: 1790668529796 });
   const tasksCall = calls.find(({ args }) => args[2] === "tasks.list");
   assert.deepEqual(JSON.parse(tasksCall.args[tasksCall.args.indexOf("--params") + 1]), {
     sessionKey: "agent:main:subagent:workboard-card-1",

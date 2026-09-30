@@ -2156,3 +2156,61 @@ test("a stop on a project-wide stage cannot be skipped", async () => {
   await assert.rejects(runtime.decide({ decisionId: request.id, optionId: "skip", actor: "local:Tianyi" }), /Unknown option skip/);
   store.close();
 });
+
+// V, 2026-09-30 08:26: a Gateway restart left two produce runs "running" in the
+// task registry while their Workers were gone; the board showed the cards
+// running with an idle execution, and nothing ended them.
+async function lostRun({ id, cardStatus, executionStatus, quietMinutes, stageId = "produce" }) {
+  let clock = Date.now();
+  const fixture = await stoppedRun({
+    id, stageId, runtimeOptions: { now: () => clock },
+    outcome: { status: "running", updatedAt: clock - quietMinutes * 60_000 },
+  });
+  fixture.card.status = cardStatus;
+  fixture.card.execution.status = executionStatus;
+  const operation = {
+    idempotencyKey: `${id}:video-1:produce`, instanceId: id, contentItemId: "video-1", stageId: "produce",
+    ownerCardId: fixture.card.id, requestHash: "request-sha",
+  };
+  if (stageId === "produce") {
+    fixture.store.reserveExternalOperation(operation);
+    fixture.store.checkpointExternalOperation(operation.idempotencyKey, { status: "executing", externalTaskId: "makaron-run-1" });
+  }
+  return fixture;
+}
+
+test("a card running with an idle execution and a run quiet for 10 minutes is retried as a lost run", async () => {
+  const { runtime, store } = await lostRun({ id: "NS-LOST-IDLE", cardStatus: "running", executionStatus: "idle", quietMinutes: 20 });
+  await runtime.reconcile("NS-LOST-IDLE", null, { inspectSessions: true });
+  const [event] = attemptFailures(store, "NS-LOST-IDLE");
+  assert.equal(event.payload.failure.kind, "agent_interrupted");
+  assert.match(event.payload.failure.rawError, /Run lost: the board shows execution idle and the Gateway recorded no activity for 20 min/);
+  assert.equal(event.payload.failure.automaticRetry, true, "the provider task is on the ledger, so the retry only reads it");
+  assert.equal(openRequests(store, "NS-LOST-IDLE").length, 0);
+  store.close();
+});
+
+test("a recently active run behind an idle execution is left alone", async () => {
+  const { runtime, store } = await lostRun({ id: "NS-LOST-RECENT", cardStatus: "running", executionStatus: "idle", quietMinutes: 3 });
+  await runtime.reconcile("NS-LOST-RECENT", null, { inspectSessions: true });
+  assert.equal(attemptFailures(store, "NS-LOST-RECENT").length, 0);
+  store.close();
+});
+
+test("a quiet run with a running execution is working, not lost (a long tool call)", async () => {
+  const { runtime, store } = await lostRun({ id: "NS-LOST-WORKING", cardStatus: "running", executionStatus: "running", quietMinutes: 30 });
+  await runtime.reconcile("NS-LOST-WORKING", null, { inspectSessions: true });
+  assert.equal(attemptFailures(store, "NS-LOST-WORKING").length, 0);
+  store.close();
+});
+
+test("a blocked card whose run stays 'running' with no activity past the orphan window is retried", async () => {
+  const quiet = await lostRun({ id: "NS-LOST-BLOCKED", cardStatus: "blocked", executionStatus: "blocked", quietMinutes: 50 });
+  await quiet.runtime.reconcile("NS-LOST-BLOCKED", null, { inspectSessions: true });
+  assert.equal(attemptFailures(quiet.store, "NS-LOST-BLOCKED")[0]?.payload.failure.kind, "agent_interrupted");
+  quiet.store.close();
+  const recent = await lostRun({ id: "NS-LOST-BLOCKED-RECENT", cardStatus: "blocked", executionStatus: "blocked", quietMinutes: 10 });
+  await recent.runtime.reconcile("NS-LOST-BLOCKED-RECENT", null, { inspectSessions: true });
+  assert.equal(attemptFailures(recent.store, "NS-LOST-BLOCKED-RECENT").length, 0, "a blocked card whose run moved recently is still left alone");
+  recent.store.close();
+});

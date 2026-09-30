@@ -219,7 +219,14 @@ export class WorkboardGatewayAdapter {
     const result = await this.call("tasks.list", { sessionKey, limit: 20 });
     const task = (result?.tasks ?? []).find((entry) => entry?.runId === runId || entry?.sourceId === runId);
     if (!task) return null;
-    return { status: task.status ?? null, error: task.error ?? null, endedAt: task.endedAt ?? null };
+    return {
+      status: task.status ?? null,
+      error: task.error ?? null,
+      endedAt: task.endedAt ?? null,
+      // The run's last recorded activity: a run the registry still calls
+      // running but that has not moved for long is lost, not working.
+      updatedAt: task.updatedAt ?? task.lastEventAt ?? null,
+    };
   }
 
   async completeCard(id, input = {}) {
