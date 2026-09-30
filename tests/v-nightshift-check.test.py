@@ -72,6 +72,7 @@ class NightShiftCheck(unittest.TestCase):
         state = {}
         run(state, base())
         s = base()
+        s["active"]["DL-0923-05"] = True
         s["blocked"] = [{"instance": "DL-0923-05", "item": "yt-dl-0923-05-05", "stage": "produce", "card": "d0826a54",
                          "kind": "contract_error", "summary": "External side effect has no succeeded checkpoint", "paid": "executing"}]
         lines = run(state, s)
@@ -88,7 +89,7 @@ class NightShiftCheck(unittest.TestCase):
                             "failures": 3, "max_retries": 2, "instance": "GEE-TIMED-PUB-20260925", "item": "x"}]
         lines = run(state, s)
         self.assertEqual(len(lines), 1)
-        self.assertIn("重试预算已用尽", lines[0])
+        self.assertIn("重试次数已用完", lines[0])
 
     def test_stale_ready_needs_dispatch_allowed_and_an_active_project(self):
         state = {}
@@ -131,7 +132,7 @@ class NightShiftCheck(unittest.TestCase):
         s["live_cards"] = []
         lines = run(state, s)
         self.assertEqual(len(lines), 1)
-        self.assertIn("付费操作 executing", lines[0])
+        self.assertIn("付费任务还在执行", lines[0])
 
     def test_lease_brake_reports_each_change_with_its_reading(self):
         state = {}
@@ -159,6 +160,89 @@ class NightShiftCheck(unittest.TestCase):
         s["faults"] = [("GEE-TIMED-PUB-20260925", '{"operation":"snapshot"}')]
         lines = run(state, s)
         self.assertEqual(len(lines), 2)
+
+    def test_retried_approval_card_left_in_ready_says_what_to_do(self):
+        # 2026-09-30: a retry aimed at three approval cards left them in ready,
+        # which neither the scheduler nor the Needs You view ever picks up.
+        state = {}
+        run(state, base())
+        s = base()
+        s["live_cards"] = [{"id": "0c93fd70-%d" % i, "status": "ready", "updated": NOW - 200 * MIN, "exec_updated": None,
+                            "failures": 0, "max_retries": None, "instance": "GEE-TIMED-PUB-20260925",
+                            "item": "ref%d" % i, "stage": "produce", "approval": True} for i in (1, 2, 3)]
+        lines = run(state, s)
+        self.assertEqual(len(lines), 1, "one block per project, not one line per card")
+        self.assertIn("审批卡被当成执行卡重试", lines[0])
+        self.assertIn("ref2 / produce 已停 3 小时 20 分", lines[0])
+        self.assertIn("→ 在看板上重试", lines[0])
+        self.assertIn("project=GEE-TIMED-PUB-20260925", lines[0])
+        self.assertNotIn("没被派出", lines[0])
+
+    def test_approvals_waiting_on_a_person_are_one_line_per_project(self):
+        state = {}
+        run(state, base())
+        s = base()
+        s["live_cards"] = [{"id": "a%d" % i, "status": "review", "updated": NOW - m * MIN, "exec_updated": None,
+                            "failures": 0, "max_retries": None, "instance": "GEE-TIMED-PUB-20260925",
+                            "item": "v%d" % i, "stage": "produce", "approval": True} for i, m in ((1, 50), (2, 130), (3, 5))]
+        lines = run(state, s)
+        self.assertEqual(len(lines), 1)
+        self.assertTrue(lines[0].startswith("⏳"))
+        self.assertIn("2 条等你确认，最早的已等 2 小时 10 分", lines[0])
+        self.assertEqual(run(state, s), [])
+
+    def test_stuck_threshold_follows_the_stage(self):
+        # Healthy paid renders go quiet for up to ~100 minutes.
+        state = {}
+        run(state, base())
+        card = {"id": "p1", "status": "running", "updated": NOW - 90 * MIN, "exec_updated": NOW - 90 * MIN,
+                "failures": 0, "max_retries": 2, "instance": "GEE-TIMED-PUB-20260925", "item": "x", "stage": "produce"}
+        s = base()
+        s["live_cards"] = [card]
+        self.assertEqual(run(state, s), [])
+        s["live_cards"] = [dict(card, exec_updated=NOW - 125 * MIN)]
+        lines = run(state, s)
+        self.assertEqual(len(lines), 1)
+        self.assertIn("2 小时 5 分 没有进展（这个阶段按 120 分钟算异常）", lines[0])
+        s["live_cards"] = [dict(card, id="b1", stage="publish", exec_updated=NOW - 45 * MIN)]
+        self.assertEqual(len(run(state, s)), 1)
+
+    def test_blocked_says_why_and_skips_work_a_person_sent_back(self):
+        state = {}
+        run(state, base())
+        s = base()
+        s["blocked"] = [
+            {"instance": "GEE-TIMED-PUB-20260925", "item": "r1", "stage": "review", "card": "c1", "kind": "?",
+             "summary": "", "paid": None, "verdict": "changes_requested"},
+            {"instance": "GEE-TIMED-PUB-20260925", "item": "r2", "stage": "brief", "card": "c2",
+             "kind": "gateway_unavailable", "summary": "", "paid": None, "verdict": None},
+            {"instance": "GEE-TIMED-PUB-20260925", "item": "r3", "stage": "publish", "card": "c3",
+             "kind": "contract_error", "summary": "Artifact path must stay inside", "paid": None, "verdict": None},
+            {"instance": "PAUSED-PROJECT", "item": "r4", "stage": "brief", "card": "c4",
+             "kind": "agent_error", "summary": "", "paid": None, "verdict": None},
+        ]
+        lines = run(state, s)
+        self.assertEqual(len(lines), 1)
+        self.assertNotIn("r1", lines[0])
+        self.assertNotIn("r4", lines[0])
+        self.assertIn("r2 / brief：基础设施或上游临时故障 [gateway_unavailable] → 通常直接重试就行", lines[0])
+        self.assertIn("r3 / publish：产物没通过交付校验 → 要人看一下（Artifact path must stay inside）", lines[0])
+
+    def test_paid_failure_and_one_report_per_paid_item(self):
+        state = {}
+        run(state, base())
+        s = base()
+        s["blocked"] = [
+            {"instance": "GEE-TIMED-PUB-20260925", "item": "f1", "stage": "publish", "card": "c1", "kind": "contract_error",
+             "summary": "", "paid": "failed", "verdict": None},
+            {"instance": "GEE-TIMED-PUB-20260925", "item": "e1", "stage": "produce", "card": "c2", "kind": "contract_error",
+             "summary": "", "paid": "executing", "verdict": None},
+        ]
+        s["paid_executing"] = [{"key": "k1", "instance": "GEE-TIMED-PUB-20260925", "item": "e1", "task": "t1"}]
+        lines = run(state, s)
+        self.assertEqual(len(lines), 1, "the paid item is reported once, in its blocked line")
+        self.assertIn("f1 / publish：付费任务失败了", lines[0])
+        self.assertIn("e1 / produce：付费任务已发出，但成功记录没回写（付费=executing）→ 先核对外部任务，别重试", lines[0])
 
     def test_failed_send_keeps_the_old_state(self):
         failing = base()
