@@ -5,9 +5,15 @@ import {
   validateWorkflow,
   WorkflowValidationError,
 } from "./workflow.mjs";
-import { actionKey, buildAgentBrief, nativeActionKey, planNextActions, requiredApproval, resolveApprovalBinding, stageTimeoutSeconds } from "./orchestrator.mjs";
-import { classifyTerminalFailure, infrastructureFailureSummary, scheduleAutomaticRetry } from "./failure-policy.mjs";
+import { actionKey, buildAgentBrief, nativeActionKey, planNextActions, projectConcurrencyLimit, requiredApproval, resolveApprovalBinding, stageTimeoutSeconds, WORKBOARD_NOTES_LIMIT } from "./orchestrator.mjs";
+import { classifyRunOutcome, classifyTerminalFailure, infrastructureFailureSummary, runEndedNormally, scheduleAutomaticRetry } from "./failure-policy.mjs";
 import { normalizeProjectCollaboration } from "./project.mjs";
+
+// A blocked card with an empty Session is read as never started only after this
+// long, so a transcript still being written is not mistaken for one.
+const NOT_STARTED_GRACE_MS = 2 * 60_000;
+// Attempts a card may spend on faults of the substrate before a person hears.
+const SUBSTRATE_MAX_ATTEMPTS = 5;
 
 export class NightShiftRuntime {
   constructor({
@@ -17,6 +23,13 @@ export class NightShiftRuntime {
     maxWorkboardActive = 36,
     terminalInspectionMaxStarts = 3,
     terminalInspectionWindowMs = 30_000,
+    // A blocked card whose Agent Session has written nothing for this long has
+    // lost its run: the Worker that carried it exited without a terminal message.
+    orphanedSessionMs = 45 * 60_000,
+    // The 需要你 queue: turns a card that stopped for good into a decision request.
+    needsYou = null,
+    // The clock behind the inspection budgets and the orphaned-Session age.
+    now = () => Date.now(),
     store,
     workboard,
   }) {
@@ -29,6 +42,12 @@ export class NightShiftRuntime {
     this.terminalInspectionMaxStarts = positiveDispatchLimit(terminalInspectionMaxStarts, "terminalInspectionMaxStarts");
     this.terminalInspectionWindowMs = positiveInteger(terminalInspectionWindowMs, "terminalInspectionWindowMs");
     this.terminalInspectionStarts = [];
+    this.sessionInspectionStarts = [];
+    this.deferredSessionInspections = new Set();
+    this.orphanedSessionMs = positiveInteger(orphanedSessionMs, "orphanedSessionMs");
+    this.needsYou = needsYou;
+    this.reportReads = new Set();
+    this.now = now;
     this.nextReconcileAt = 0;
     this.store = store;
     this.workboard = workboard;
@@ -123,6 +142,7 @@ export class NightShiftRuntime {
       let completionValidationDeferred = false;
       let terminalReconciliationDeferred = false;
       let terminalSession = null;
+      let salvageable = false;
       if (status === "blocked" && failure) {
         const recovered = await this.maybeAutoRetryFailure({ card, contentItemId, failure, instance, stageId });
         status = recovered.status;
@@ -131,11 +151,12 @@ export class NightShiftRuntime {
       }
       const hasNativeTerminalEvidence = nativeAttemptIsTerminal(card);
       if (!failure && ["running", "review", "blocked"].includes(status) && stage.actor === "agent" && card.sessionKey &&
-        (inspectSessions || hasNativeTerminalEvidence)) {
+        (inspectSessions || hasNativeTerminalEvidence || this.deferredSessionInspections.has(card.id))) {
         const recovered = await this.recoverTerminalCard({ card, contentItemId, instance, release, stageId });
         if (recovered?.deferred) {
           terminalReconciliationDeferred = true;
           terminalSession = recovered.terminalSession ?? null;
+          salvageable = Boolean(recovered.salvageable);
         } else if (recovered) {
           status = recovered.status;
           summary = recovered.summary;
@@ -143,13 +164,13 @@ export class NightShiftRuntime {
           completionAlreadyValidated = recovered.status === "done";
         }
       }
-      if ((!terminalReconciliationDeferred || terminalSession) && status === "blocked" && (!failure || recoverableContractFailure(failure)) && stage.actor === "agent" && card.sessionKey && !this.store.getHumanAttempt?.(card.id)) {
+      if ((!terminalReconciliationDeferred || terminalSession || salvageable) && status === "blocked" && (!failure || recoverableContractFailure(failure)) && stage.actor === "agent" && card.sessionKey && !this.store.getHumanAttempt?.(card.id)) {
         const recovered = await this.recoverWrittenArtifacts({ card, cards: currentCards, contentItemId, failure, instance, release, stageId, terminalSession });
         if (recovered) {
           status = recovered.status;
           summary = recovered.summary;
           failure = recovered.failure ?? null;
-          completionAlreadyValidated = true;
+          completionAlreadyValidated = !recovered.unrecovered;
         }
       }
       const completionValidationEventId = `completion-validation:${card.id}:${card.metadata?.automation?.attempt ?? 1}`;
@@ -196,6 +217,31 @@ export class NightShiftRuntime {
             release,
           });
         }
+      }
+      if (this.needsYou && status === "blocked" && failure && !failure.agentReport && !failure.automaticRetry &&
+        stage.actor === "agent" && card.sessionKey && typeof this.workboard.getSession === "function" &&
+        this.needsYou.wantsReport({ card, instance }) && !this.reportReads.has(`${card.id}:${terminalAttempt(card)}`) &&
+        this.consumeSessionInspectionBudget()) {
+        // Stops recorded before the Agent's report was kept (and reports lost
+        // with a Session's last turn): read the Agent's final words once.
+        this.reportReads.add(`${card.id}:${terminalAttempt(card)}`);
+        try {
+          const session = await this.workboard.getSession(card.sessionKey, { limit: 12 });
+          const report = lastAssistantText(session);
+          if (report) failure = { ...failure, agentReport: boundedSummary(report) };
+        } catch {
+          // The request opens with the engine's explanation; the next attempt may read it.
+        }
+      }
+      if (this.needsYou && contentItemId && this.isContentItemSkipped(instanceId, contentItemId)) {
+        // A person already decided this item is not delivered; its stopped
+        // cards are nobody's matter.
+        this.store.supersedeDecisionRequests(card.id);
+      } else if (this.needsYou) {
+        const operation = stage.sideEffects?.length
+          ? this.store.listExternalOperations(instanceId).filter((entry) => entry.ownerCardId === card.id).at(-1) ?? null
+          : null;
+        this.needsYou.observe({ card, instance, stage, stageId, contentItemId, status, failure, summary, operation });
       }
       const run = {
         instanceId,
@@ -247,8 +293,64 @@ export class NightShiftRuntime {
     const inspectionEventId = card.status === "running"
       ? null
       : terminalInspectionEventId(card, attempt);
-    if (inspectionEventId && this.store.getEvent?.(inspectionEventId)) return { deferred: true };
-    if (inspectionEventId && !this.consumeTerminalInspectionBudget()) return { deferred: true };
+    const inspected = inspectionEventId ? this.store.getEvent?.(inspectionEventId) : null;
+    // Read in this five-minute window already. Written outputs may still be
+    // salvaged, unless the Gateway said the run was still going.
+    if (inspected) return { deferred: true, salvageable: inspected.type !== "stage.run.active" };
+    // Blocked-card Sessions have their own budget. Sharing one with completion
+    // validation starved them on V (2026-09-28): 70 validations in two hours
+    // used every repair pass's budget, and no blocked card was read at all.
+    // A card deferred here is read on the next pass, not the next repair tick.
+    if (inspectionEventId && !this.consumeSessionInspectionBudget()) {
+      this.deferredSessionInspections.add(card.id);
+      return { deferred: true };
+    }
+    this.deferredSessionInspections.delete(card.id);
+    // Ask the Gateway how the run ended before reading anything into the
+    // transcript. On V (2026-09-29) six cards whose runs had failed or timed out
+    // (Agent DB lease timeouts) left transcripts with no terminal message; read
+    // as unfinished, they reached a person as missing handoffs, and one whose
+    // run was still going reached a person while its Agent finished the video.
+    let endedNormally = false;
+    let runEndedAt = 0;
+    let runOutcomeRead = false;
+    if (card.status === "blocked" && typeof this.workboard.getRunOutcome === "function") {
+      const runId = card.runId ?? card.execution?.runId;
+      let outcome = null;
+      try {
+        outcome = runId ? await this.workboard.getRunOutcome({ sessionKey: card.sessionKey, runId }) : null;
+      } catch {
+        // The transcript below is the fallback.
+      }
+      if (outcome && ["queued", "running"].includes(String(outcome.status).toLowerCase())) {
+        if (inspectionEventId) {
+          this.store.appendEvent({
+            eventId: inspectionEventId,
+            instanceId: instance.id,
+            type: "stage.run.active",
+            payload: { cardId: card.id, contentItemId, stageId, runId },
+          });
+        }
+        return { deferred: true };
+      }
+      const runFailure = classifyRunOutcome(outcome);
+      if (runFailure) {
+        return this.failTerminalAttempt({
+          attempt,
+          card,
+          contentItemId,
+          failure: runFailure,
+          instance,
+          ledgerDecides: true,
+          release,
+          stageId,
+          terminalAt: timestampMs(outcome.endedAt ?? 0) || this.now(),
+        });
+      }
+      endedNormally = runEndedNormally(outcome);
+      runEndedAt = timestampMs(outcome?.endedAt ?? 0);
+      runOutcomeRead = true;
+    }
     let session;
     try {
       session = await this.workboard.getSession(card.sessionKey, { limit: 12 });
@@ -266,9 +368,59 @@ export class NightShiftRuntime {
     const messages = Array.isArray(session?.messages) ? session.messages : [];
     const latest = messages.at(-1);
     const startedAt = timestampMs(card.execution?.startedAt ?? card.metadata?.attempts?.at(-1)?.startedAt ?? 0);
-    const terminalAt = timestampMs(latest?.timestamp ?? latest?.__openclaw?.recordTimestampMs ?? 0);
+    let terminalAt = timestampMs(latest?.timestamp ?? latest?.__openclaw?.recordTimestampMs ?? 0);
     const stopReason = String(latest?.stopReason ?? "").toLowerCase();
-    if (latest?.role !== "assistant" || !["stop", "error", "aborted"].includes(stopReason) || terminalAt < startedAt) {
+    const silentMs = this.now() - Math.max(terminalAt, startedAt);
+    // The rules below infer a stopped run from the transcript. They apply only
+    // when the Gateway has not said the run ended normally: on the shared VLab
+    // (2026-09-29) a completed run's transcript read back empty and the first
+    // rule failed it as never started, sending the Agent's own stop to a person
+    // as a start failure.
+    if (!endedNormally && card.status === "blocked" && startedAt > 0 && messages.length === 0 && silentMs >= NOT_STARTED_GRACE_MS) {
+      // On V (2026-09-29) a brief card was blocked 7 s after dispatch, during
+      // Agent DB lease contention, with an empty Session. Read as "not terminal",
+      // it fell through to artifact recovery and reached a person as "the handoff
+      // is missing". The Agent never took a turn: that is the execution substrate.
+      return this.failTerminalAttempt({
+        attempt,
+        card,
+        contentItemId,
+        failure: {
+          kind: "agent_not_started",
+          source: "gateway",
+          rawError: "The Worker blocked this card before the Agent's first turn: its Session has no messages",
+          retryable: true,
+        },
+        instance,
+        ledgerDecides: true,
+        release,
+        stageId,
+        terminalAt: this.now(),
+      });
+    }
+    if (!endedNormally && card.status === "blocked" && startedAt > 0 && silentMs >= this.orphanedSessionMs &&
+      (latest?.role !== "assistant" || !["stop", "error", "aborted"].includes(stopReason) || terminalAt < startedAt)) {
+      // On V two paid produce cards sat blocked for two hours after their Worker
+      // exited mid-poll: no terminal message ever arrives for such a run, so it
+      // is failed here as interrupted and handed to the ordinary retry policy.
+      // A paid stage still retries only when its ledger holds an external task.
+      return this.failTerminalAttempt({
+        attempt,
+        card,
+        contentItemId,
+        failure: {
+          kind: "agent_interrupted",
+          source: "runtime",
+          rawError: `Agent Session silent for ${Math.round(silentMs / 60_000)} min while its card is blocked`,
+          retryable: true,
+        },
+        instance,
+        release,
+        stageId,
+        terminalAt: this.now(),
+      });
+    }
+    if (!endedNormally && (latest?.role !== "assistant" || !["stop", "error", "aborted"].includes(stopReason) || terminalAt < startedAt)) {
       if (inspectionEventId) {
         this.store.appendEvent({
           eventId: inspectionEventId,
@@ -279,43 +431,52 @@ export class NightShiftRuntime {
       }
       return inspectionEventId ? { deferred: true, terminalSession: session } : null;
     }
-    const terminalFailure = classifyTerminalFailure({ message: latest, session });
-    if (terminalFailure) {
-      const eventId = `attempt-failure:${card.id}:${attempt}`;
-      const previousFailures = this.store.listEvents(instance.id, 1000).filter((event) =>
-        event.type === "stage.attempt.failed" && event.payload?.cardId === card.id);
-      const safeToRetry = this.safeToAutomaticallyRetry({ card, contentItemId, instance, release, stageId });
-      const retry = scheduleAutomaticRetry({
-        failure: terminalFailure,
-        failureCount: previousFailures.length + 1,
-        maxAttempts: release.spec.stages.find((entry) => entry.id === stageId)?.retry?.maxAttempts ?? 1,
-        safeToRetry,
-      });
-      const failure = {
-        ...terminalFailure,
-        ...retry,
-        attempt,
-        occurredAt: new Date(terminalAt || Date.now()).toISOString(),
-      };
-      const summary = boundedReason(infrastructureFailureSummary(failure));
-      const blocked = await this.workboard.blockCard(card.id, { reason: summary });
-      Object.assign(card, blocked);
-      this.store.appendEvent({
-        eventId,
-        instanceId: instance.id,
-        type: "stage.attempt.failed",
-        payload: { cardId: card.id, contentItemId, failure, stageId, summary, terminalAt },
-      });
-      return { status: "blocked", summary, failure };
+    // A transcript that ends on an error is read against the Gateway's run
+    // record too when the card was still shown running, so the check above did
+    // not run. On V (2026-09-29 21:05) a run the Gateway recorded as a failed
+    // provider request ended its transcript on "incomplete or malformed tool
+    // call", was classified as the Agent's own error and reached a person.
+    let runFailure = null;
+    if (!endedNormally && !runOutcomeRead && ["error", "aborted"].includes(stopReason) &&
+      typeof this.workboard.getRunOutcome === "function") {
+      const runId = card.runId ?? card.execution?.runId;
+      let outcome = null;
+      try {
+        outcome = runId ? await this.workboard.getRunOutcome({ sessionKey: card.sessionKey, runId }) : null;
+      } catch {
+        // The transcript's own error is the fallback.
+      }
+      if (outcome && ["queued", "running"].includes(String(outcome.status).toLowerCase())) return null;
+      if (runEndedNormally(outcome)) {
+        endedNormally = true;
+        runEndedAt = timestampMs(outcome?.endedAt ?? 0);
+      } else {
+        runFailure = classifyRunOutcome(outcome);
+      }
     }
-    const terminalText = messageText(latest);
+    const terminalFailure = endedNormally ? null : runFailure ?? classifyTerminalFailure({ message: latest, session });
+    if (terminalFailure) {
+      // A retryable kind is a fault of the substrate read from the transcript
+      // (a lease timeout, a lost connection), the same fault the Gateway's run
+      // record would report. It gets the same ledger rule. On V (2026-09-29
+      // 20:21) a paid card whose run failed on an Agent DB lease was read while
+      // the board still showed it running, so the Gateway was not asked; with
+      // nothing on its ledger it went to a person instead of retrying.
+      return this.failTerminalAttempt({
+        attempt, card, contentItemId, failure: terminalFailure, instance,
+        ledgerDecides: terminalFailure.retryable === true, release, stageId, terminalAt,
+      });
+    }
+    if (endedNormally) terminalAt = runEndedAt || terminalAt;
+    const terminalText = endedNormally ? lastAssistantText(session) : messageText(latest);
     try {
       if (this.completionValidator) {
         await this.completionValidator({ card, contentItemId, instance, release, stageId, terminalSession: session });
       }
     } catch (error) {
       const reason = boundedReason(`Terminal Agent Session did not satisfy the Workflow output contract: ${error.message}`);
-      const failure = contractFailure(error);
+      // The Agent's own closing words: when it stopped on purpose, they say why.
+      const failure = { ...contractFailure(error), ...(terminalText ? { agentReport: boundedSummary(terminalText) } : {}) };
       const blocked = await this.workboard.blockCard(card.id, { reason });
       Object.assign(card, blocked);
       this.store.appendEvent({
@@ -355,7 +516,148 @@ export class NightShiftRuntime {
     }
   }
 
-  consumeTerminalInspectionBudget(now = Date.now()) {
+  // ledgerDecides: the run ended by a fault of the substrate (it failed, timed
+  // out, or never took a turn), so a paid stage may retry unless the ledger
+  // shows an operation this card left unresolved. Agents reserve on the ledger
+  // before any paid call.
+  async failTerminalAttempt({ attempt, card, contentItemId, failure: terminalFailure, instance, ledgerDecides = false, release, stageId, terminalAt }) {
+    const eventId = `attempt-failure:${card.id}:${attempt}`;
+    const previousFailures = this.store.listEvents(instance.id, 1000).filter((event) =>
+      event.type === "stage.attempt.failed" && event.payload?.cardId === card.id);
+    const safeToRetry = this.safeToAutomaticallyRetry({ card, contentItemId, instance, release, stageId }) ||
+      (ledgerDecides && this.ledgerSettledFor({ card, contentItemId, instance, stageId }));
+    const retry = scheduleAutomaticRetry({
+      failure: terminalFailure,
+      failureCount: previousFailures.length + 1,
+      // A fault of the substrate is not the stage failing: it gets its own,
+      // larger allowance, so a card is not handed to a person because lease
+      // timeouts and a Gateway restart used up its ordinary retries (V,
+      // 2026-09-29: e3f71162's third interruption opened a request).
+      maxAttempts: terminalFailure.retryable
+        ? Math.max(SUBSTRATE_MAX_ATTEMPTS, release.spec.stages.find((entry) => entry.id === stageId)?.retry?.maxAttempts ?? 1)
+        : release.spec.stages.find((entry) => entry.id === stageId)?.retry?.maxAttempts ?? 1,
+      safeToRetry,
+    });
+    const failure = {
+      ...terminalFailure,
+      ...retry,
+      attempt,
+      occurredAt: new Date(terminalAt || Date.now()).toISOString(),
+    };
+    const summary = boundedReason(infrastructureFailureSummary(failure));
+    const blocked = await this.workboard.blockCard(card.id, { reason: summary });
+    Object.assign(card, blocked);
+    this.store.appendEvent({
+      eventId,
+      instanceId: instance.id,
+      type: "stage.attempt.failed",
+      payload: { cardId: card.id, contentItemId, failure, stageId, summary, terminalAt },
+    });
+    return { status: "blocked", summary, failure };
+  }
+
+  // A person's answer to a 需要你 request. Retry carries their choice and note
+  // into the next attempt's brief; pause stops the project and leaves the
+  // request open until someone restarts it and decides. Deciding twice returns
+  // the first decision.
+  async decide({ decisionId, optionId, note = null, actor, applyToGroup = false }) {
+    const request = this.store.getDecisionRequest(decisionId);
+    if (!request) throw Object.assign(new Error(`Unknown decision request ${decisionId}`), { statusCode: 404 });
+    if (request.status !== "open") return { request, affectedCardIds: [], alreadyDecided: true };
+    const option = request.options.find((entry) => entry.id === optionId);
+    if (!option) throw Object.assign(new Error(`Unknown option ${optionId}`), { statusCode: 400 });
+    if (!actor) throw Object.assign(new Error("actor is required"), { statusCode: 400 });
+    if (option.effect === "pause") {
+      this.store.updateInstanceStatus(request.instanceId, "paused");
+      this.store.appendEvent({
+        instanceId: request.instanceId,
+        type: "decision.paused",
+        payload: { decisionId, actor, note },
+      });
+      return { request: this.store.getDecisionRequest(decisionId), affectedCardIds: [], alreadyDecided: false };
+    }
+    if (option.effect === "skip") {
+      const targets = applyToGroup
+        ? this.store.listDecisionRequests({ instanceId: request.instanceId, status: "open" }).filter((entry) => entry.groupKey === request.groupKey)
+        : [request];
+      const affectedCardIds = [];
+      for (const target of targets) {
+        if (!target.contentItemId) continue;
+        this.store.skipContentItem({
+          instanceId: target.instanceId,
+          contentItemId: target.contentItemId,
+          reason: note || target.problem,
+          actor,
+          decisionId: target.id,
+        });
+        this.store.decideRequest(target.id, { optionId, note, actor });
+        this.store.appendEvent({
+          instanceId: target.instanceId,
+          type: "decision.skipped",
+          payload: { decisionId: target.id, cardId: target.cardId, contentItemId: target.contentItemId, actor, note },
+        });
+        affectedCardIds.push(target.cardId);
+      }
+      if (affectedCardIds.length === 0) {
+        throw Object.assign(new Error("Only a stop on one content item can be skipped"), { statusCode: 400 });
+      }
+      return { request: this.store.getDecisionRequest(decisionId), affectedCardIds, alreadyDecided: false, errors: [] };
+    }
+    if (option.effect !== "retry") throw Object.assign(new Error(`Option effect ${option.effect} is not supported yet`), { statusCode: 400 });
+    const targets = applyToGroup
+      ? this.store.listDecisionRequests({ instanceId: request.instanceId, status: "open" }).filter((entry) => entry.groupKey === request.groupKey)
+      : [request];
+    const affectedCardIds = [];
+    const errors = [];
+    for (const target of targets) {
+      const decisionNote = [`${actor} 的决定：${option.label}`, option.note, note].filter(Boolean).join("\n");
+      try {
+        await this.retry({
+          actor,
+          cardId: target.cardId,
+          contentItemId: target.contentItemId,
+          evidence: `需要你 ${target.id}：${option.label}${note ? `（${note}）` : ""}`,
+          instanceId: target.instanceId,
+          stageId: target.stageId,
+          decisionNote,
+        });
+        this.store.decideRequest(target.id, { optionId, note, actor });
+        affectedCardIds.push(target.cardId);
+      } catch (error) {
+        errors.push({ decisionId: target.id, cardId: target.cardId, error: error.message });
+      }
+    }
+    if (affectedCardIds.length === 0 && errors.length) {
+      throw Object.assign(new Error(errors[0].error), { statusCode: 409, errors });
+    }
+    return { request: this.store.getDecisionRequest(decisionId), affectedCardIds, alreadyDecided: false, errors };
+  }
+
+  // Items a person decided not to deliver, with the title and reason the
+  // delivery brief and the completion notice show.
+  skippedContentItems(instanceId) {
+    const skipped = this.store.listSkippedContentItems?.(instanceId) ?? [];
+    if (skipped.length === 0) return [];
+    const items = new Map(this.store.listContentItems(instanceId).map((item) => [item.id, item]));
+    return skipped.map((entry) => ({ id: entry.contentItemId, title: items.get(entry.contentItemId)?.title ?? entry.contentItemId, reason: entry.reason, actor: entry.actor }));
+  }
+
+  isContentItemSkipped(instanceId, contentItemId) {
+    return (this.store.listSkippedContentItems?.(instanceId) ?? []).some((entry) => entry.contentItemId === contentItemId);
+  }
+
+  consumeSessionInspectionBudget(now = this.now()) {
+    const cutoff = now - this.terminalInspectionWindowMs;
+    this.sessionInspectionStarts = this.sessionInspectionStarts.filter((startedAt) => startedAt > cutoff);
+    if (this.sessionInspectionStarts.length >= this.terminalInspectionMaxStarts) {
+      this.nextReconcileAt = this.sessionInspectionStarts[0] + this.terminalInspectionWindowMs;
+      return false;
+    }
+    this.sessionInspectionStarts.push(now);
+    return true;
+  }
+
+  consumeTerminalInspectionBudget(now = this.now()) {
     const cutoff = now - this.terminalInspectionWindowMs;
     this.terminalInspectionStarts = this.terminalInspectionStarts.filter((startedAt) => startedAt > cutoff);
     if (this.terminalInspectionStarts.length >= this.terminalInspectionMaxStarts) {
@@ -376,6 +678,17 @@ export class NightShiftRuntime {
       (operation.contentItemId ?? null) === (contentItemId ?? null) &&
       ["executing", "succeeded"].includes(operation.status) &&
       Boolean(operation.externalTaskId));
+  }
+
+  // Agents reserve on the ledger before a paid call, so a card with nothing in
+  // flight there has not started one; an earlier attempt of the same card may
+  // still have reserved an operation it never resolved. Only a ledger with
+  // nothing in flight for this card lets a paid stage retry after a fault.
+  ledgerSettledFor({ card, contentItemId, instance, stageId }) {
+    if (this.hasHumanTakeover({ cardId: card.id, contentItemId, instanceId: instance.id, stageId })) return false;
+    return !this.store.listExternalOperations(instance.id).some((operation) =>
+      operation.ownerCardId === card.id &&
+      (operation.status === "reserved" || (operation.status === "executing" && !operation.externalTaskId)));
   }
 
   hasHumanTakeover({ cardId, contentItemId, instanceId, stageId }) {
@@ -446,6 +759,13 @@ export class NightShiftRuntime {
         terminalSession,
       });
     } catch (error) {
+      // Recovery only salvages outputs a finished attempt left behind. Without
+      // a recorded failure there is no verdict to keep: nobody claimed these
+      // outputs, so their absence says nothing about the Agent's work. Turning
+      // it into a contract failure sent eight stopped runs to 需要你 on V
+      // (2026-09-28/29) as missing handoffs and unrecorded payments.
+      // The board still shows what is missing.
+      if (!failure) return { status: "blocked", summary: `Outputs not found yet: ${error.message}`, failure: null, unrecovered: true };
       return { status: "blocked", summary: `Completion validation failed: ${error.message}`, failure: contractFailure(error) };
     }
     const attempt = card.runId ?? card.execution?.runId ?? card.metadata?.automation?.attempt ?? 1;
@@ -554,7 +874,7 @@ export class NightShiftRuntime {
     }
   }
 
-  async retry({ actor, cardId, contentItemId, evidence, instanceId, stageId }) {
+  async retry({ actor, cardId, contentItemId, evidence, instanceId, stageId, decisionNote = null }) {
     const instance = this.store.getInstance(instanceId);
     if (!instance) throw new Error(`Unknown instance ${instanceId}`);
     const release = this.store.getRelease(instance.workflowSha256)?.manifest;
@@ -571,7 +891,9 @@ export class NightShiftRuntime {
     if (contentItemId && !contentItem) throw new Error(`Unknown content item ${contentItemId}`);
     await this.workboard.updateCard(cardId, {
       idempotencyKey: nativeActionKey(actionKey(release, instance, stage, "run", contentItem)),
-      notes: buildAgentBrief(release, instance, stage, contentItem, this.store.listContentItems(instanceId)),
+      notes: withDecisionNote(buildAgentBrief(release, instance, stage, contentItem,
+        this.store.listContentItems(instanceId).filter((item) => !this.isContentItemSkipped(instanceId, item.id)),
+        this.skippedContentItems(instanceId)), decisionNote),
       maxRetries: stage.retry?.maxAttempts ?? 1,
       maxRuntimeSeconds: stageTimeoutSeconds(stage.timeout),
     });
@@ -618,8 +940,13 @@ export class NightShiftRuntime {
     const savedRelease = this.store.getRelease(instance.workflowSha256);
     if (!savedRelease) throw new Error(`Missing release ${instance.workflowSha256}`);
     const runs = this.store.listStageRuns(instanceId);
-    const contentItems = this.store.listContentItems(instanceId);
-    const contentItemRuns = this.store.listContentItemRuns(instanceId);
+    // A skipped item is out of the project: nothing more is planned for it, and
+    // stages that wait on every item (delivery) wait only on the rest.
+    const skippedContentItems = this.skippedContentItems(instanceId);
+    const skippedIds = new Set(skippedContentItems.map((entry) => entry.id));
+    const contentItems = this.store.listContentItems(instanceId).filter((item) => !skippedIds.has(item.id));
+    const contentItemRuns = this.store.listContentItemRuns(instanceId).filter((run) => !skippedIds.has(run.contentItemId));
+    const perInstanceLimit = projectConcurrencyLimit(savedRelease.manifest, this.store.getInstanceControl?.(instanceId));
     const actions = planNextActions({
       release: savedRelease.manifest,
       instance,
@@ -627,6 +954,8 @@ export class NightShiftRuntime {
       contentItems,
       contentItemRuns,
       now: new Date(nowMs),
+      perInstanceLimit,
+      skippedContentItems,
     });
     // A card the board holds for a timed release must wake the scheduler at
     // exactly that moment. Two sources, because the card can be planned in this
@@ -729,7 +1058,7 @@ export class NightShiftRuntime {
           this.dispatchMaxStarts,
           normalizeDispatchBudget(dispatchMaxStarts),
           Math.max(0, this.maxWorkboardActive - activeAcrossBoard),
-          Math.max(0, (savedRelease.manifest.spec.concurrency?.perInstance ?? 1) - active.length),
+          Math.max(0, perInstanceLimit - active.length),
           cardIds.length,
         );
         if (maxStarts > 0) {
@@ -918,6 +1247,16 @@ function inferContractFailurePhase(error) {
   return "unknown";
 }
 
+// The person's decision goes on top of the regenerated brief, inside the
+// native Workboard note limit.
+function withDecisionNote(brief, note) {
+  if (!note) return brief;
+  const block = `## 人工决定\n${note}\n\n`;
+  const room = WORKBOARD_NOTES_LIMIT - brief.length;
+  if (room <= 40) return brief;
+  return `${block.length <= room ? block : `${block.slice(0, room - 2)}\n\n`}${brief}`;
+}
+
 function timestampMs(value) {
   const numeric = Number(value);
   if (Number.isFinite(numeric)) return numeric;
@@ -937,6 +1276,16 @@ function terminalAttempt(card) {
 function terminalInspectionEventId(card, attempt, now = Date.now()) {
   const fiveMinuteBucket = Math.floor(now / 300_000);
   return `session-inspection:${card.id}:${attempt}:${fiveMinuteBucket}`;
+}
+
+function lastAssistantText(session) {
+  const messages = Array.isArray(session?.messages) ? session.messages : [];
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role !== "assistant") continue;
+    const text = messageText(messages[index]);
+    if (text) return text;
+  }
+  return "";
 }
 
 function messageText(message) {

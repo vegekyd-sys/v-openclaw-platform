@@ -1,0 +1,14 @@
+{
+  "support": [
+    "lab/candidate/vcc-background-tasks.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/vcc-background-tasks.mjs"
+  ],
+  "timeoutSeconds": 1800,
+  "user": "lab-db91-parity",
+  "env": {
+    "VCC_BG_EXPECT": "held"
+  }
+}

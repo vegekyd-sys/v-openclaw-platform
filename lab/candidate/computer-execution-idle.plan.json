@@ -1,0 +1,14 @@
+{
+  "baseRelease": "computer-frame-prune-v1",
+  "tests": ["lab/candidate/computer-execution-idle.test.mjs"],
+  "files": [
+    {
+      "source": "lab/release-files/computer-execution-idle/computer-use-contract-CisZRwLE.js",
+      "target": "openclaw/dist/computer-use-contract-CisZRwLE.js",
+      "before": "1043716bb021ba47f2985841eeff88297e07c695c1dbc24376cdcd82372f3061"
+    }
+  ],
+  "env": { "OPENCLAW_COMPUTER_EXECUTION_IDLE_MS": "400" },
+  "timeoutSeconds": 600,
+  "user": "lab-db91-parity"
+}

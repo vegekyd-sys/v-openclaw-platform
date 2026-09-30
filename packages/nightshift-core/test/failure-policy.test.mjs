@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { classifyTerminalFailure, scheduleAutomaticRetry } from "../src/failure-policy.mjs";
+import { classifyRunOutcome, classifyTerminalFailure, runEndedNormally, scheduleAutomaticRetry } from "../src/failure-policy.mjs";
 
 test("classifies Gateway SQLite lock failures as retryable infrastructure failures", () => {
   assert.deepEqual(classifyTerminalFailure({
@@ -19,13 +19,16 @@ test("does not mistake a normal terminal stop for an infrastructure failure", ()
   }), null);
 });
 
-test("uses bounded one, five and fifteen minute retry backoff", () => {
+test("uses bounded one, five, fifteen, fifteen and thirty minute retry backoff", () => {
   const failure = { retryable: true };
   assert.equal(scheduleAutomaticRetry({ failure, failureCount: 1, maxAttempts: 4, nowMs: 0, safeToRetry: true }).nextRetryAt, "1970-01-01T00:01:00.000Z");
   assert.equal(scheduleAutomaticRetry({ failure, failureCount: 2, maxAttempts: 4, nowMs: 0, safeToRetry: true }).nextRetryAt, "1970-01-01T00:05:00.000Z");
   assert.equal(scheduleAutomaticRetry({ failure, failureCount: 3, maxAttempts: 4, nowMs: 0, safeToRetry: true }).nextRetryAt, "1970-01-01T00:15:00.000Z");
   assert.equal(scheduleAutomaticRetry({ failure, failureCount: 4, maxAttempts: 4, nowMs: 0, safeToRetry: true }).automaticRetry, false);
-  assert.equal(scheduleAutomaticRetry({ failure, failureCount: 4, maxAttempts: 10, nowMs: 0, safeToRetry: true }).automaticRetry, false);
+  // Substrate faults get up to five attempts (runtime SUBSTRATE_MAX_ATTEMPTS).
+  assert.equal(scheduleAutomaticRetry({ failure, failureCount: 4, maxAttempts: 10, nowMs: 0, safeToRetry: true }).nextRetryAt, "1970-01-01T00:15:00.000Z");
+  assert.equal(scheduleAutomaticRetry({ failure, failureCount: 5, maxAttempts: 10, nowMs: 0, safeToRetry: true }).nextRetryAt, "1970-01-01T00:30:00.000Z");
+  assert.equal(scheduleAutomaticRetry({ failure, failureCount: 6, maxAttempts: 10, nowMs: 0, safeToRetry: true }).automaticRetry, false);
   assert.equal(scheduleAutomaticRetry({ failure, failureCount: 1, maxAttempts: 4, nowMs: 0, safeToRetry: false }).automaticRetry, false);
 });
 
@@ -80,4 +83,49 @@ test("the transient failures seen in production are retryable, and real Agent fa
     assert.equal(failure.kind, "agent_error", rawError);
     assert.equal(failure.retryable, false, rawError);
   }
+});
+
+test("a run that ended normally yields no failure: the Agent's own words decide", () => {
+  for (const status of ["completed", "succeeded", "running", "queued", undefined]) {
+    assert.equal(classifyRunOutcome({ status }), null, String(status));
+  }
+  assert.equal(classifyRunOutcome(null), null);
+  // Seen once on V: the Session ended normally and only the registry lagged.
+  assert.equal(classifyRunOutcome({ status: "failed", error: "session completed before registry settled" }), null);
+});
+
+test("every failed or timed-out run seen on V (2026-09-26 to 09-29) is retryable", () => {
+  const seen = [
+    ["failed", "⚠️ deepseek/deepseek-flash request failed.", "provider_error"],
+    ["failed", "Agent run failed", "agent_interrupted"],
+    ["failed", "Agent DB process coordinator wait exceeded 5000ms | V_AGENT_DB_PROCESS_COORDINATOR_TIMEOUT", "database_lock"],
+    ["timed_out", "Request timed out before a response was generated. Please try again", "connection_reset"],
+    ["timed_out", undefined, "agent_interrupted"],
+  ];
+  for (const [status, error, kind] of seen) {
+    const failure = classifyRunOutcome({ status, error });
+    assert.equal(failure.kind, kind, `${status}: ${error}`);
+    assert.equal(failure.retryable, true, `${status}: ${error}`);
+  }
+});
+
+test("a cancelled run is not retried by itself", () => {
+  const failure = classifyRunOutcome({ status: "cancelled", error: "cancelled by operator" });
+  assert.equal(failure.kind, "run_cancelled");
+  assert.equal(failure.retryable, false);
+});
+
+test("a run ended normally when the Gateway completed it, or only its registry lagged", () => {
+  assert.equal(runEndedNormally({ status: "completed" }), true);
+  assert.equal(runEndedNormally({ status: "succeeded" }), true);
+  assert.equal(runEndedNormally({ status: "failed", error: "session completed before registry settled" }), true);
+  for (const outcome of [{ status: "failed", error: "Agent run failed" }, { status: "timed_out" }, { status: "running" }, null]) {
+    assert.equal(runEndedNormally(outcome), false, JSON.stringify(outcome));
+  }
+});
+
+test("a broken tool call from the model is a provider fault, not the Agent's own error", () => {
+  const failure = classifyTerminalFailure({ message: { stopReason: "error", errorMessage: "Provider returned an incomplete or malformed tool call" } });
+  assert.equal(failure.kind, "provider_error");
+  assert.equal(failure.retryable, true);
 });

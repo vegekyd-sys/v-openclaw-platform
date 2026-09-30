@@ -19,6 +19,18 @@ const PRESENT_STATUSES = new Set([
   "cancelled",
 ]);
 
+// How many cards of one project may run at once. A project's own limit, set
+// while it runs by an operator or an Agent (nightshiftctl projects concurrency),
+// wins; otherwise the Workflow's perInstance, which is what every project got
+// before the limit could be set. The board-wide brakes still apply on top.
+export const PROJECT_CONCURRENCY_MAX = 8;
+
+export function projectConcurrencyLimit(release, control = {}) {
+  const own = control?.perInstanceLimit;
+  if (Number.isSafeInteger(own) && own >= 1) return Math.min(own, PROJECT_CONCURRENCY_MAX);
+  return release?.spec?.concurrency?.perInstance ?? 1;
+}
+
 export function planNextActions({
   release,
   instance,
@@ -26,6 +38,8 @@ export function planNextActions({
   contentItems = [],
   contentItemRuns = [],
   now = new Date(),
+  perInstanceLimit = null,
+  skippedContentItems = [],
 }) {
   assertInstance(release, instance);
   if (instance.status !== "active") return [];
@@ -37,7 +51,8 @@ export function planNextActions({
   const activeCount = [...latestRuns.values(), ...latestItemRuns.values()].filter((run) =>
     ACTIVE_STATUSES.has(run.status),
   ).length;
-  const limit = release.spec.concurrency?.perInstance ?? 1;
+  // The caller passes the project's effective limit; alone, the Workflow's.
+  const limit = Number.isSafeInteger(perInstanceLimit) && perInstanceLimit >= 1 ? perInstanceLimit : projectConcurrencyLimit(release);
   if (activeCount >= limit) return [];
   const itemById = new Map(contentItems.map((item) => [item.id, item]));
   const reservedResources = activeResourceLocks({ instance, itemById, latestItemRuns, latestRuns, stageById });
@@ -154,6 +169,7 @@ export function planNextActions({
           contentItems,
           dependencyCardIdsForProject(stage, stageById, latestRuns, latestItemRuns, contentItems),
           now,
+          skippedContentItems,
         ),
       });
       continue;
@@ -177,6 +193,7 @@ export function planNextActions({
           contentItems,
           dependencyCardIdsForProject(stage, stageById, latestRuns, latestItemRuns, contentItems),
           now,
+          skippedContentItems,
         ),
       });
       if (resourceKey) reservedResources.add(resourceKey);
@@ -186,7 +203,14 @@ export function planNextActions({
   return actions;
 }
 
-function cardPayload(release, instance, stage, status, contentItem = null, resourceKey = null, contentItems = [], parents = [], now = new Date()) {
+// The native board refuses a card with more than 20 parents ("parents supports
+// at most 20 entries"). On V (2026-09-29) a 30-item project finished every
+// produce card and then could not create its delivery card. Parents only draw
+// lineage on the board: Night Shift itself creates a fan-in stage after all of
+// its dependencies are done. So the list is capped and the full count kept.
+export const WORKBOARD_PARENTS_LIMIT = 20;
+
+function cardPayload(release, instance, stage, status, contentItem = null, resourceKey = null, contentItems = [], parents = [], now = new Date(), skippedContentItems = []) {
   const inputHash = instance.inputHash ?? hashJson(instance.inputs ?? {});
   const agentRole = stage.agentRole ?? release.spec.ownerAgentRole;
   const assignedAgent = stage.actor === "agent" ? instance.agentBindings?.[agentRole] : null;
@@ -208,7 +232,7 @@ function cardPayload(release, instance, stage, status, contentItem = null, resou
       : `${instance.name ?? instance.id}｜${stage.title}`,
     status,
     assignedAgent,
-    notes: buildAgentBrief(release, instance, stage, contentItem, contentItems),
+    notes: buildAgentBrief(release, instance, stage, contentItem, contentItems, skippedContentItems),
     labels: [
       `workflow:${release.metadata.id}`,
       `release:${release.metadata.workflowSha256.slice(0, 12)}`,
@@ -216,8 +240,9 @@ function cardPayload(release, instance, stage, status, contentItem = null, resou
       `stage:${stage.id}`,
       ...(contentItem ? [`content-item:${contentItem.id}`, `route:${contentItem.route ?? "UNROUTED"}`] : []),
     ],
-    parents,
+    parents: parents.slice(0, WORKBOARD_PARENTS_LIMIT),
     automation: {
+      ...(parents.length > WORKBOARD_PARENTS_LIMIT ? { dependencyCount: parents.length } : {}),
       workflowId: release.metadata.id,
       workflowVersion: release.metadata.version,
       workflowSha256: release.metadata.workflowSha256,
@@ -302,7 +327,7 @@ export function stageTimeoutSeconds(value) {
 const DUPLICATE_CHECK_SCRIPT = fileURLToPath(new URL("../../../scripts/check-video-duplicates.mjs", import.meta.url));
 const NIGHTSHIFTCTL_SCRIPT = fileURLToPath(new URL("../../../scripts/nightshiftctl.mjs", import.meta.url));
 
-export function buildAgentBrief(release, instance, stage, contentItem = null, contentItems = []) {
+export function buildAgentBrief(release, instance, stage, contentItem = null, contentItems = [], skippedContentItems = []) {
   const safeInputs = redactSensitiveInputs(instance.inputs ?? {});
   const projectInputsPath = instance.inputs?.nightshift?.projectInputsPath;
   const inlineInputs = projectInputsPath ? summarizeInputs(safeInputs) : safeInputs;
@@ -375,6 +400,11 @@ export function buildAgentBrief(release, instance, stage, contentItem = null, co
     ...(release.spec?.completion?.mode === "strict-v1"
       ? Object.entries(stage.outputContracts ?? {}).map(([name, contract]) => `Output contract ${name}: ${JSON.stringify(contract)}`)
       : []),
+    // A project-wide stage (delivery, packaging) must not wait for or include
+    // items a person decided to skip; content-items.json still lists them.
+    ...((stage.scope ?? "project") === "project" && skippedContentItems.length ? [
+      `Skipped content items (a person decided these are not delivered; content-items.json still lists them): ${skippedContentItems.map((entry) => `${entry.id} 「${entry.title}」${entry.reason ? ` — ${String(entry.reason).slice(0, 160)}` : ""}`).join("; ")}. Do not wait for them, do not package or count them: this delivery has ${contentItems.length} items.`,
+    ] : []),
     ...(stage.id === "deliver-download" && instanceDir ? [
       `Download delivery contract: aggregate every validated ContentItem deliverables.json and produce handoff into ${instanceDir}/deliver-download/delivery-package.zip; upload that exact package once under a stable instance-bound OSS object key; upsert one Base delivery row keyed by instance ${instance.id}; write ${instanceDir}/deliver-download/oss-delivery.json with uploaded=true and ${instanceDir}/deliver-download/base-delivery-receipt.json with recorded=true; and reference those concrete artifacts from the stage handoff.`,
       "This branch must not create human review work, request external-publication approval, publish content, call GeeLark, or invoke geelark-cloud-phone.",

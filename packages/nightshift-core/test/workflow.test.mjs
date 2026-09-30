@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import test from "node:test";
-import { buildAgentBrief, compileWorkflow, loadWorkflow, planNextActions, validateWorkflow, WORKBOARD_NOTES_LIMIT } from "../src/index.mjs";
+import { buildAgentBrief, compileWorkflow, loadWorkflow, planNextActions, PROJECT_CONCURRENCY_MAX, projectConcurrencyLimit, validateWorkflow, WORKBOARD_NOTES_LIMIT } from "../src/index.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixture = resolve(here, "../../../examples/workflows/xingqing-content-delivery.workflow.md");
@@ -19,7 +19,6 @@ test("compiles the branched workflow.md deterministically", async () => {
   assert.equal(first.spec.stages[1].scope, "content-item");
   assert.deepEqual(first.spec.contentItems.routes, ["AI_GENERATE", "SCENE_EDIT"]);
   assert.equal(first.spec.concurrency.perInstance, 8);
-  assert.equal(first.spec.concurrency.maxActiveInstances, 3);
   assert.equal(first.spec.completion.mode, "strict-v1");
   assert.deepEqual(first.spec.stages.find((stage) => stage.id === "publish-feedback").outputContracts.publicUrl, { type: "https-url", allowedHosts: ["tiktok.com"] });
   assert.deepEqual(first.spec.inputs.deliveryMode.enum, ["publish", "download"]);
@@ -30,6 +29,15 @@ test("the same compiler accepts a non-Xingqing workflow without content items", 
   assert.equal(release.metadata.id, "generic-agent-delivery");
   assert.deepEqual(release.spec.stages.map((stage) => stage.id), ["understand", "execute", "review"]);
   assert.equal(release.spec.contentItems, undefined);
+});
+
+test("refuses maxActiveInstances: every project shares one first-come queue", async () => {
+  const workflow = await loadWorkflow(genericFixture);
+  workflow.spec.concurrency = { perInstance: 1, maxActiveInstances: 3 };
+  const issues = validateWorkflow(workflow);
+  assert.ok(issues.some((entry) => entry.code === "concurrency.maxActiveInstances.removed"), JSON.stringify(issues));
+  workflow.spec.concurrency = { perInstance: 1 };
+  assert.equal(validateWorkflow(workflow).some((entry) => entry.code === "concurrency.maxActiveInstances.removed"), false);
 });
 
 test("rejects duplicate IDs, cycles, and unapproved side effects", async () => {
@@ -634,4 +642,15 @@ test("a Workflow may name who hears when its projects finish", async () => {
   assert.deepEqual(codes({ instanceCompleted: { enabled: true, to: "Tianyi" } }), ["notifications.to.invalid spec.notifications.instanceCompleted.to"]);
   assert.deepEqual(codes({ instanceCompleted: { to: "oc_1" } }), ["notifications.event.config.invalid spec.notifications.instanceCompleted"]);
   assert.deepEqual(codes({ onFailure: { enabled: true } }), ["notifications.event.invalid spec.notifications.onFailure"]);
+});
+
+test("a project's own limit wins over the Workflow's, within 1 to the maximum", () => {
+  const release = { spec: { concurrency: { perInstance: 2 } } };
+  assert.equal(projectConcurrencyLimit(release), 2);
+  assert.equal(projectConcurrencyLimit(release, { perInstanceLimit: null }), 2);
+  assert.equal(projectConcurrencyLimit(release, { perInstanceLimit: 5 }), 5);
+  assert.equal(projectConcurrencyLimit(release, { perInstanceLimit: 1 }), 1);
+  assert.equal(projectConcurrencyLimit(release, { perInstanceLimit: 50 }), PROJECT_CONCURRENCY_MAX);
+  assert.equal(projectConcurrencyLimit(release, { perInstanceLimit: 0 }), 2);
+  assert.equal(projectConcurrencyLimit({ spec: {} }), 1);
 });

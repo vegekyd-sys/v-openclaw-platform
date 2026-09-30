@@ -1,4 +1,5 @@
-import { activeCardCount } from "./active-card-count.mjs";
+import { activeCardCount, warmupAdmission } from "./active-card-count.mjs";
+import { buildOverview } from "./overview.mjs";
 import { runSchedulerPass, instanceCardIds, visibleCardIds } from "../../../packages/nightshift-core/src/scheduler-pass.mjs";
 import { tickWithFaultProjection } from "../../../packages/nightshift-core/src/scheduler-state.mjs";
 import { createCompletionUrlChecker } from "./completion-url.mjs";
@@ -12,13 +13,15 @@ import { HumanAttemptController, humanCompletionEvidence, publicHumanAttempt, ev
 import { createServer } from "node:http";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
 import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadPublicAuth, requiresPublicAuth, verifyPublicAuth, resolveOperatorIdentity } from "./public-auth.mjs";
 import { resolveCardDecisionContext } from "./decision-context.mjs";
 import { sendJson } from "./http-json.mjs";
 import {
+  NeedsYouTracker,
+  buildNeedsYou,
   CARD_LABEL_MAX,
   cardIsStartable,
   deliverableArtifactPaths,
@@ -29,9 +32,17 @@ import {
   NightShiftRuntime,
   NightShiftStore,
   OpenClawFeishuNotificationSender,
+  artifactFromHandoffDirectory,
+  instanceRelativeArtifactPath,
   normalizeArtifactPath,
   normalizeProjectGovernance,
+  PRIORITY_MAX,
+  PRIORITY_MIN,
+  PROJECT_CONCURRENCY_MAX,
+  projectConcurrencyLimit,
+  projectPriority,
   normalizeDeliverablesManifest,
+  deliverablesFromHandoffs,
   normalizeStageHandoff,
   presentStageHandoff,
   redactSensitiveInputs,
@@ -88,7 +99,12 @@ const agentDbPressureUnit = process.env.NIGHTSHIFT_GATEWAY_UNIT || "openclaw-gat
 const agentDbPressureWindowSeconds = positiveInteger(process.env.NIGHTSHIFT_AGENT_DB_PRESSURE_WINDOW_SECONDS, 120, 900);
 const agentDbSlowAdmissionYellow = positiveInteger(process.env.NIGHTSHIFT_AGENT_DB_SLOW_ADMISSION_YELLOW, 3, 1_000);
 const userHarmCooldownMs = positiveInteger(process.env.NIGHTSHIFT_USER_HARM_COOLDOWN_MS, 900_000, 7_200_000);
+const orphanedSessionMs = positiveInteger(process.env.NIGHTSHIFT_ORPHANED_SESSION_MS, 2_700_000, 86_400_000);
 // How soon to retry after a scheduler pass fails, doubling up to the ceiling.
+// New cards still in their first minutes, the heaviest on the agent database.
+// At most this many at once; a start waits for one to leave its window.
+const warmupWindowMs = positiveInteger(process.env.NIGHTSHIFT_WARMUP_WINDOW_MS, 90_000, 1_800_000);
+const warmupMaxStarts = positiveInteger(process.env.NIGHTSHIFT_WARMUP_MAX_CARDS, 3, 36);
 const schedulerRetryMinMs = positiveInteger(process.env.NIGHTSHIFT_SCHEDULER_RETRY_MIN_MS, 10_000, 600_000);
 const schedulerRetryMaxMs = positiveInteger(process.env.NIGHTSHIFT_SCHEDULER_RETRY_MAX_MS, 120_000, 600_000);
 // An explicit refresh=1 read is served from the cache when the last board read
@@ -105,11 +121,14 @@ const workboard = new WorkboardGatewayAdapter({
   startBurst: dispatchStartBurst,
   startIntervalMs: dispatchStartIntervalMs,
 });
+const needsYou = new NeedsYouTracker({ store });
 const runtime = new NightShiftRuntime({
   board,
   completionValidator: validateCompletion,
   dispatchMaxStarts: dispatchMaxStartsPerInstance,
   maxWorkboardActive: schedulerMaxWorkboardActive,
+  orphanedSessionMs,
+  needsYou,
   store,
   workboard,
 });
@@ -128,6 +147,8 @@ let lastNotificationError = null;
 let lastNotificationAt = null;
 let lastSchedulerTrigger = null;
 let schedulerPromise = null;
+// Each project's place in its Workflow's queue, as of the last scheduler pass.
+let projectQueue = new Map();
 const notificationCoordinator = notificationsEnabled
   ? new NightShiftNotificationCoordinator({
       baseUrl: publicBaseUrl || `http://${host}:${port}`,
@@ -205,10 +226,13 @@ const server = createServer(async (request, response) => {
     }
     await serveStatic(response, url.pathname);
   } catch (error) {
+    // A refused Workflow says why: publish used to answer only "failed with 1
+    // issue(s)", so an author could not tell what to change.
+    const issues = Array.isArray(error.issues) ? error.issues : null;
     const statusCode = Number.isInteger(error.statusCode) && error.statusCode >= 400 && error.statusCode <= 599
       ? error.statusCode
-      : 500;
-    json(response, statusCode, { error: error.message });
+      : issues ? 422 : 500;
+    json(response, statusCode, issues ? { error: error.message, issues } : { error: error.message });
   }
 });
 
@@ -240,6 +264,7 @@ async function handleApi(request, response, url) {
       schedulerMode: "workboard-events",
       schedulerRepairIntervalMs,
       dispatchPressure: dispatchPressureGuard.snapshot(activeCardCount(cardCache)),
+      dispatchWarmup: warmupAdmission(cardCache, { windowMs: warmupWindowMs, maxWarming: warmupMaxStarts }),
       gatewayCapacityProbeIntervalMs,
       reservedInteractiveSlots,
       reservedInteractiveWorkers,
@@ -267,6 +292,13 @@ async function handleApi(request, response, url) {
       contentItems: store.listContentItems(instance.id),
       contentItemRuns: store.listContentItemRuns(instance.id),
       stageRuns: store.listStageRuns(instance.id),
+      // A card can read blocked while its paid provider call is still running;
+      // the board needs this to tell that apart from a card waiting on a person.
+      operations: store.listExternalOperations(instance.id).map((operation) => ({
+        ownerCardId: operation.ownerCardId,
+        status: operation.status,
+        updatedAt: operation.updatedAt,
+      })),
     }));
     json(response, 200, {
       board,
@@ -277,6 +309,59 @@ async function handleApi(request, response, url) {
       links: dashboardLinks(),
       workflows: store.listReleases().map(withWorkflowLinks),
     }, { revalidate: true });
+    return;
+  }
+  if (request.method === "GET" && url.pathname === "/api/overview") {
+    if (url.searchParams.get("refresh") === "1") await refreshVisibleCards();
+    const instances = store.listInstances().map((instance) => instance.status === "archived" ? instance : withInstanceLinks({
+      ...instance,
+      contentItems: store.listContentItems(instance.id),
+      contentItemRuns: store.listContentItemRuns(instance.id),
+      stageRuns: store.listStageRuns(instance.id),
+    }));
+    const visible = instances.filter((instance) => instance.status !== "archived");
+    json(response, 200, {
+      board,
+      cardsUpdatedAt,
+      ...buildOverview({
+        scope: url.searchParams.get("scope") ?? "live",
+        instances,
+        cards: visibleCards(cardCache, visible).map(withCardLinks),
+        releases: store.listReleases().map(withWorkflowLinks),
+        operationsFor: (instanceId) => store.listExternalOperations(instanceId),
+        skippedFor: (instanceId) => store.listSkippedContentItems(instanceId),
+      }),
+      // 需要你 is scope-independent: every project that is not shelved.
+      needsYou: buildNeedsYou({
+        store,
+        instances: visible,
+        cards: visibleCards(cardCache, visible),
+        releases: store.listReleases(),
+        pending: needsYou.pendingList(),
+      }),
+    }, { revalidate: true });
+    return;
+  }
+  const fullCardMatch = url.pathname.match(/^\/api\/cards\/([^/]+)$/);
+  if (request.method === "GET" && fullCardMatch) {
+    // The overview carries a lean card; the drawer asks for the whole one.
+    const cardId = decodeURIComponent(fullCardMatch[1]);
+    const card = cardCache.find((entry) => entry.id === cardId) ?? (await refreshCards({ cardIds: [cardId] })).find((entry) => entry.id === cardId);
+    if (!card) {
+      json(response, 404, { error: "Workboard card not found" });
+      return;
+    }
+    json(response, 200, { card: withCardLinks(card) });
+    return;
+  }
+  const workflowSourceMatch = url.pathname.match(/^\/api\/workflows\/([a-f0-9]{64})\/source$/);
+  if (request.method === "GET" && workflowSourceMatch) {
+    const release = store.getRelease(workflowSourceMatch[1]);
+    if (!release) {
+      json(response, 404, { error: "Workflow release not found" });
+      return;
+    }
+    json(response, 200, { workflowSha256: release.workflowSha256, sourceMarkdown: release.sourceMarkdown ?? null, sourceYaml: release.sourceYaml ?? null });
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/workflows") {
@@ -774,6 +859,91 @@ async function handleApi(request, response, url) {
     json(response, 200, result);
     return;
   }
+  // A project's own session limit, for an operator or an Agent to raise when
+  // the host is quiet and lower when it is busy. null (or "default") returns
+  // the project to its Workflow's perInstance. The board-wide brakes (Agent DB
+  // pressure, host memory, maxActive) still cap every start.
+  const concurrencyMatch = url.pathname.match(/^\/api\/instances\/([^/]+)\/concurrency$/);
+  if (request.method === "POST" && concurrencyMatch) {
+    const instanceId = decodeURIComponent(concurrencyMatch[1]);
+    const body = await bodyJson(request);
+    const actor = operatorIdentity(request, body);
+    const instance = store.getInstance(instanceId);
+    if (!instance) throw new Error(`Unknown project ${instanceId}`);
+    const requested = body.perInstance === "default" ? null : body.perInstance ?? null;
+    if (requested !== null && (!Number.isSafeInteger(requested) || requested < 1 || requested > PROJECT_CONCURRENCY_MAX)) {
+      throw new Error(`perInstance must be an integer from 1 to ${PROJECT_CONCURRENCY_MAX}, or null / "default" for the Workflow's own limit`);
+    }
+    const reason = typeof body.reason === "string" ? body.reason.slice(0, 500) : null;
+    const result = await serializedOperation(async () => {
+      const before = projectConcurrency(instance);
+      store.setInstanceControl(instanceId, { perInstanceLimit: requested });
+      const after = projectConcurrency(instance);
+      store.appendEvent({ instanceId, type: "concurrency.control.changed", payload: { actor, reason, from: before, to: after } });
+      return { instanceId, concurrency: after };
+    });
+    if (store.getInstanceControl(instanceId).automaticDispatch) changeScheduler.enqueue("concurrency.changed");
+    json(response, 200, result);
+    return;
+  }
+  // A project's place in the queue. Higher priority takes the free starts
+  // first; equal priorities (every project nobody set) keep first come, first
+  // delivered. "first" and "last" place it ahead of or behind every other
+  // active project; "default" (or null) returns it to arrival order.
+  const priorityMatch = url.pathname.match(/^\/api\/instances\/([^/]+)\/priority$/);
+  if (request.method === "POST" && priorityMatch) {
+    const instanceId = decodeURIComponent(priorityMatch[1]);
+    const body = await bodyJson(request);
+    const actor = operatorIdentity(request, body);
+    if (!store.getInstance(instanceId)) throw new Error(`Unknown project ${instanceId}`);
+    const reason = typeof body.reason === "string" ? body.reason.slice(0, 500) : null;
+    const result = await serializedOperation(async () => {
+      const others = store.listInstances().filter((entry) => entry.status === "active" && entry.id !== instanceId)
+        .map((entry) => projectPriority(store, entry.id));
+      const requested = body.priority === "default" || body.priority === null || body.priority === undefined ? null
+        : body.priority === "first" ? Math.max(0, ...others) + 1
+          : body.priority === "last" ? Math.min(0, ...others) - 1
+            : body.priority;
+      if (requested !== null && (!Number.isSafeInteger(requested) || requested < PRIORITY_MIN || requested > PRIORITY_MAX)) {
+        throw new Error(`priority must be an integer from ${PRIORITY_MIN} to ${PRIORITY_MAX}, "first", "last", or "default"`);
+      }
+      const from = store.getInstanceControl(instanceId).priority;
+      store.setInstanceControl(instanceId, { priority: requested });
+      store.appendEvent({ instanceId, type: "queue.priority.changed", payload: { actor, reason, from, to: requested, requested: body.priority ?? null } });
+      return { instanceId, priority: requested };
+    });
+    changeScheduler.enqueue("queue.priority.changed");
+    json(response, 200, result);
+    return;
+  }
+  // An Agent's own order: the listed projects go ahead of every other active
+  // project, in the order given. Projects not listed keep their priority.
+  if (request.method === "POST" && url.pathname === "/api/queue/order") {
+    const body = await bodyJson(request);
+    const actor = operatorIdentity(request, body);
+    const ids = Array.isArray(body.instanceIds) ? body.instanceIds : [];
+    if (ids.length === 0 || new Set(ids).size !== ids.length) throw new Error("instanceIds must list each project once");
+    for (const id of ids) if (!store.getInstance(id)) throw new Error(`Unknown project ${id}`);
+    const reason = typeof body.reason === "string" ? body.reason.slice(0, 500) : null;
+    const result = await serializedOperation(async () => {
+      const listed = new Set(ids);
+      const others = store.listInstances().filter((entry) => entry.status === "active" && !listed.has(entry.id))
+        .map((entry) => projectPriority(store, entry.id));
+      const top = Math.max(0, ...others) + ids.length;
+      if (top > PRIORITY_MAX) throw new Error(`the order would exceed priority ${PRIORITY_MAX}; reset some priorities to default first`);
+      const order = ids.map((id, index) => {
+        const from = store.getInstanceControl(id).priority;
+        const to = top - index;
+        store.setInstanceControl(id, { priority: to });
+        store.appendEvent({ instanceId: id, type: "queue.priority.changed", payload: { actor, reason, from, to, order: ids } });
+        return { instanceId: id, priority: to };
+      });
+      return { order };
+    });
+    changeScheduler.enqueue("queue.priority.changed");
+    json(response, 200, result);
+    return;
+  }
   const takeoverMatch = url.pathname.match(/^\/api\/instances\/([^/]+)\/cards\/([^/]+)\/human-(takeover|complete)$/);
   if (request.method === "POST" && takeoverMatch) {
     const body = await bodyJson(request);
@@ -794,6 +964,47 @@ async function handleApi(request, response, url) {
     const result = await serializedTick(instanceId, { dispatch: true });
     await refreshCards({ cardIds: instanceCardIds(store, instanceId) });
     json(response, 200, result);
+    return;
+  }
+  if (request.method === "GET" && url.pathname === "/api/decisions") {
+    json(response, 200, {
+      decisions: store.listDecisionRequests({
+        instanceId: url.searchParams.get("instanceId") || null,
+        status: url.searchParams.get("status") ?? "open",
+      }),
+    });
+    return;
+  }
+  const decisionRequestMatch = url.pathname.match(/^\/api\/decisions\/([^/]+)$/);
+  if (decisionRequestMatch && request.method === "GET") {
+    const decision = store.getDecisionRequest(decodeURIComponent(decisionRequestMatch[1]));
+    if (!decision) {
+      json(response, 404, { error: "Decision request not found" });
+      return;
+    }
+    json(response, 200, decision);
+    return;
+  }
+  if (decisionRequestMatch && request.method === "POST") {
+    const body = await bodyJson(request);
+    try {
+      // The same identity rule as takeover and dispatch control: the signed-in
+      // operator on the public host, local:<name> on the loopback.
+      const actor = operatorIdentity(request, body);
+      const result = await serializedOperation(() => runtime.decide({
+        decisionId: decodeURIComponent(decisionRequestMatch[1]),
+        optionId: body.optionId,
+        note: body.note ?? null,
+        actor,
+        applyToGroup: body.applyToGroup === true,
+      }));
+      if (result.affectedCardIds.length) await refreshCards({ cardIds: result.affectedCardIds });
+      // A skip can leave the rest of the project ready for delivery.
+      changeScheduler.enqueue("decision.decided");
+      json(response, 200, result);
+    } catch (error) {
+      json(response, error.statusCode ?? 500, { error: error.message, errors: error.errors });
+    }
     return;
   }
   const retryMatch = url.pathname.match(/^\/api\/cards\/([^/]+)\/retry$/);
@@ -841,7 +1052,8 @@ function runScheduler({ trigger = "manual" } = {}) {
     lastSchedulerTrigger = trigger;
     const started = Date.now();
     const pressure = dispatchPressureGuard.snapshot(activeCardCount(cardCache));
-    const dispatchMaxStarts = Math.min(schedulerDispatchMaxStarts, pressure.availableStarts);
+    const warmup = warmupAdmission(cardCache, { windowMs: warmupWindowMs, maxWarming: warmupMaxStarts });
+    const dispatchMaxStarts = Math.min(schedulerDispatchMaxStarts, pressure.availableStarts, warmup.available);
     // One serialized round shares one authoritative board snapshot. API mutations
     // cannot interleave a takeover with a later tick using an older snapshot.
     const result = await serializedOperation(() => runSchedulerPass({
@@ -852,6 +1064,7 @@ function runScheduler({ trigger = "manual" } = {}) {
       store, runtime, workboard, refreshCards, syncContentItemsManifest,
     }));
     dispatchPressureGuard.consumeStarts(result.dispatched);
+    projectQueue = result.queue ?? new Map();
     schedulerRetryMs = 0;
     lastSchedulerAt = new Date().toISOString();
     lastSchedulerDurationMs = Date.now() - started;
@@ -859,6 +1072,8 @@ function runScheduler({ trigger = "manual" } = {}) {
     schedulerCircuit.recordPass(result.warnings, { probe: circuitDecision.probe });
     await announceTransitions();
     if (result.retryAfterMs > 0) changeScheduler.enqueueAfter("dispatch.window", result.retryAfterMs);
+    // Starts held back by warm-up resume when a warming card leaves its window.
+    if (warmup.retryAfterMs > 0 && pressure.availableStarts > 0) changeScheduler.enqueueAfter("dispatch.warmup", warmup.retryAfterMs);
   })().catch((error) => {
     lastSchedulerAt = new Date().toISOString();
     lastSchedulerError = error.message;
@@ -1132,8 +1347,44 @@ async function loadDeliverables(instanceId, contentItemId = null) {
   const manifestPath = contentItemId
     ? resolve(dataDir, "instances", instanceId, "content-items", contentItemId, "deliverables.json")
     : resolve(dataDir, "instances", instanceId, "deliverables.json");
-  const source = JSON.parse(await readFile(manifestPath, "utf8"));
+  let source;
+  try {
+    source = JSON.parse(await readFile(manifestPath, "utf8"));
+  } catch (error) {
+    if (error.code !== "ENOENT" || !contentItemId) throw error;
+    source = await deliverablesFromItemHandoffs(instanceId, contentItemId);
+    if (!source) throw error;
+  }
   return normalizeDeliverablesManifest(source, { instanceId, contentItemId });
+}
+
+// No deliverables.json: fall back to the video the item's stage handoffs
+// record (星擎夜班 D writes produce/final.mp4 and no manifest).
+async function deliverablesFromItemHandoffs(instanceId, contentItemId) {
+  const itemRoot = resolve(dataDir, "instances", instanceId, "content-items", contentItemId);
+  let names;
+  try {
+    names = (await readdir(resolve(itemRoot, "handoffs"))).filter((name) => name.endsWith(".json")).sort();
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+  const handoffs = [];
+  for (const name of names) {
+    try { handoffs.push(JSON.parse(await readFile(resolve(itemRoot, "handoffs", name), "utf8"))); } catch { /* an unreadable handoff is skipped */ }
+  }
+  // Completion accepts an absolute path inside the instance; the video link must too.
+  const instanceRoot = resolve(dataDir, "instances", instanceId);
+  for (const handoff of handoffs) {
+    for (const output of handoff?.outputs ?? []) {
+      if (output && typeof output.artifact === "string") output.artifact = instanceRelativeArtifactPath(output.artifact, [instanceRoot]);
+    }
+  }
+  const item = store.listContentItems(instanceId).find((entry) => entry.id === contentItemId);
+  const draft = deliverablesFromHandoffs(handoffs, { instanceId, contentItemId, title: item?.title ?? null });
+  if (!draft) return null;
+  const asset = await readFile(resolve(itemRoot, dirname(draft.video.path), "finishedAsset.json"), "utf8").then(JSON.parse).catch(() => null);
+  return asset ? deliverablesFromHandoffs(handoffs, { instanceId, contentItemId, title: item?.title ?? null, asset }) : draft;
 }
 
 async function validateCompletion({ card, contentItemId, instance, release, reuseExecutionEvidence = false, stageId, submittedAttempt, terminalSession }) {
@@ -1202,12 +1453,15 @@ async function validateCompletion({ card, contentItemId, instance, release, reus
     }
   }
   if (release?.spec?.completion?.mode === "strict-v1") {
+    const handoffDir = handoff
+      ? dirname(stageHandoffPath({ instanceDir: instance.inputs?.nightshift?.instanceDir ?? resolve(dataDir, "instances", instance.id), contentItemId, release, stageId }))
+      : null;
     try {
       evidence.outputs = (await validateDeclaredCompletion({
         checkUrl: checkCompletionUrl,
         instanceCreatedAt: instance.createdAt,
         loadArtifact: async (artifact) => {
-          const loaded = await loadInstanceArtifact({ artifact, contentItemId, instance, hash: Boolean(human) });
+          const loaded = await loadInstanceArtifact({ artifact, contentItemId, instance, hash: Boolean(human), handoffDir });
           if (human) (evidence.artifacts ??= []).push({ artifact, sha256: loaded.sha256 });
           return loaded;
         },
@@ -1274,10 +1528,10 @@ async function validateDuplicateCheck(manifest, contentItemId) {
   };
 }
 
-async function loadInstanceArtifact({ artifact, contentItemId = null, instance, hash = false }) {
-  const normalizedPath = normalizeArtifactPath(artifact);
+async function loadInstanceArtifact({ artifact, contentItemId = null, instance, hash = false, handoffDir = null }) {
   const configuredRoot = instance.inputs?.nightshift?.instanceDir ?? resolve(dataDir, "instances", instance.id);
   const instanceRoot = await realpath(configuredRoot);
+  const normalizedPath = normalizeArtifactPath(instanceRelativeArtifactPath(artifactFromHandoffDirectory(artifact, handoffDir), [configuredRoot, instanceRoot]));
   const roots = contentItemId ? [resolve(instanceRoot, "content-items", contentItemId), instanceRoot] : [instanceRoot];
   let candidate = null;
   for (const root of roots) {
@@ -1580,8 +1834,20 @@ function withWorkflowLinks(release) {
   return { ...release, links: workflowLinks(release) };
 }
 
+function projectConcurrency(instance) {
+  const release = store.getRelease(instance.workflowSha256)?.manifest;
+  const own = store.getInstanceControl(instance.id).perInstanceLimit;
+  return {
+    effective: projectConcurrencyLimit(release, { perInstanceLimit: own }),
+    project: own,
+    workflow: release?.spec?.concurrency?.perInstance ?? 1,
+    max: PROJECT_CONCURRENCY_MAX,
+  };
+}
+
 function withInstanceLinks(instance) {
-  return { ...instance, governance: normalizeProjectGovernance(instance), control: store.getInstanceControl(instance.id), links: projectLinks(instance.id) };
+  const control = { ...store.getInstanceControl(instance.id), queue: projectQueue.get(instance.id) ?? null, concurrency: projectConcurrency(instance) };
+  return { ...instance, governance: normalizeProjectGovernance(instance), control, links: projectLinks(instance.id) };
 }
 
 function countCardsByStatus(cards) {

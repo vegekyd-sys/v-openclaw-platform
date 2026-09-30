@@ -44,6 +44,8 @@ Night Shift starts new native cards only while the Gateway host has headroom, an
 | `NIGHTSHIFT_AGENT_DB_PRESSURE_WINDOW_SECONDS` | 120 | How far back each reading looks. |
 | `NIGHTSHIFT_AGENT_DB_SLOW_ADMISSION_YELLOW` | 3 | Slow lease admissions in the window that stop new starts. |
 | `NIGHTSHIFT_USER_HARM_COOLDOWN_MS` | 900000 | Hold after a lease timeout cut a person's reply. Quiet probes cannot end it early. |
+| `NIGHTSHIFT_ORPHANED_SESSION_MS` | 2700000 | A blocked card whose Agent Session has written nothing for this long is failed as `agent_interrupted` and handed to the stage's retry policy. |
+| `NIGHTSHIFT_WARMUP_WINDOW_MS` / `NIGHTSHIFT_WARMUP_MAX_CARDS` | 90000 / 3 | At most this many Night Shift cards in their first minutes at once; a start waits until one leaves its window (see below). |
 | `NIGHTSHIFT_DISPATCH_INITIAL_MAX_ACTIVE` | 3 | Concurrency the ramp starts from after a restart or a red probe. |
 | `NIGHTSHIFT_GATEWAY_GREEN_LATENCY_MS` / `_RED_LATENCY_MS` | 250 / 1000 | Worker status RPC latency that pauses growth or halves the target. |
 | `NIGHTSHIFT_CARD_REFRESH_MIN_INTERVAL_MS` | 30000 | An explicit `refresh=1` read younger than this is served from the cache. |
@@ -51,6 +53,14 @@ Night Shift starts new native cards only while the Gateway host has headroom, an
 | `NIGHTSHIFT_CARD_LABEL_MAX` | 40 | Longest card label the Gateway accepts. A content item id gets this minus `content-item:`. Raise it here once the Gateway's own limit is raised. |
 | `NIGHTSHIFT_SCHEDULER_RETRY_MIN_MS` / `_MAX_MS` | 10000 / 120000 | Backoff between retries after a failed scheduler pass. |
 | `NIGHTSHIFT_SCHEDULER_EVENT_MIN_INTERVAL_MS` | 5000 | Floor between event-driven scheduler passes. Raising it trades stage handoff latency for Gateway main-thread time; 15000 is a reasonable production setting. |
+
+### Warm-up slots
+
+A card's first minutes are its heaviest on the agent database: its Session is built, context and Skills load, and the first turns are written. On V on 2026-09-29, 10 of the 14 Night Shift runs cut by Agent DB lease timeouts were in their first 5 minutes, and the worst clusters followed 5 to 7 starts within 5 minutes. The start budget (3 per 15 s) allowed that, because it spaces starts but does not see how many new cards are still warming up.
+
+A scheduler pass therefore starts at most `NIGHTSHIFT_WARMUP_MAX_CARDS` minus the running cards started within `NIGHTSHIFT_WARMUP_WINDOW_MS`. When that is zero, the next pass is scheduled for the moment the oldest warming card leaves its window. `/api/health` reports it as `dispatchWarmup { warming, maxWarming, windowMs, available, retryAfterMs }`. The other brakes apply on top; this one only spreads starts out.
+
+The default, 3 cards per 90 s, is Tianyi's choice for throughput (2026-09-29). Most cut runs were 2 to 5 minutes into their run, so a longer window protects more; if lease timeouts stay frequent, lengthen `NIGHTSHIFT_WARMUP_WINDOW_MS` in the drop-in and restart only Night Shift.
 
 ### Agent DB lease pressure
 
@@ -64,7 +74,128 @@ Night Shift therefore reads the Gateway journal (`journalctl -u $NIGHTSHIFT_GATE
 | yellow | slow admissions ≥ threshold | No new starts; running cards continue. |
 | unknown | journal unreadable, empty for the unit, or failing | Recorded with a reason; does not block. The other probes still gate. |
 
+A cut reply also sets a ceiling, `dispatchPressure.harmCeiling` in `/api/health`, at 70% of the Night Shift cards running when it happened. Recovery is capped there, including the rule that admits one card beyond those still running, so it cannot jump straight back to the level that caused the harm. The ceiling starts rising when the hold ends: one card per 5 quiet minutes. It lowers again at the next separate cut reply and disappears once it climbs back to `maxActive`. It is held in memory, so a service restart forgets it. On 2026-09-28, without it, recovery at 15:10 returned to the ten cards that had cut a reply at 14:55, and two more replies were cut at 15:22.
+
+### First come, first delivered
+
+The starts that admission allows in one scheduler pass are shared by every project, whatever its Workflow. Projects take them in the order they were created:
+- The earliest project takes as many as its Workflow lets one project run (`concurrency.perInstance`).
+- The next project takes what is left, and so on.
+- A project that arrives when nothing is left waits.
+
+How many projects move together follows from how much admission allows. No fixed count applies. `concurrency.maxActiveInstances`, which was declared in Workflows but never enforced, is now refused at publish; releases published before keep it and it is ignored.
+
+A project waiting only on a person or on a release time has nothing to start, so it holds no place in the queue. Once it can start again, it takes the next free start ahead of any project that arrived after it. Cards already running elsewhere finish; only new starts go to the earlier project.
+
+Each project's place is reported as `control.queue` in `/api/overview`:
+- `running`: it has cards running.
+- `queued`, with `position`: it has cards ready to start and got no start in the last pass. The board shows 「排队第 N 位」.
+- `waiting`: it has nothing to start.
+
+Before this, the scheduler visited projects by last update. On 2026-09-29 that gave the few free starts to the newest batches: DL-0929-01, started at 11:49, sat queued behind projects that arrived four hours later, and all seven batches were heading to finish together late at night.
+
+### A project's own session limit
+
+How many cards one project may run at once can be set while it runs, by an operator or by an Agent. V sets it through the CLI:
+
+```bash
+nightshiftctl projects concurrency <project>                                 # show
+nightshiftctl projects concurrency <project> 6 --actor V --reason "机器空闲，加快"
+nightshiftctl projects concurrency <project> default --reason "高峰结束"
+```
+
+- The limit is 1 to 8 (`PROJECT_CONCURRENCY_MAX`). `default` clears it, and the project runs by its Workflow's `concurrency.perInstance` again. A project nobody set runs exactly as before.
+- It is stored in `instance_controls.per_instance_limit`. The column is added at startup; a database from before it is upgraded in place, and an older release ignores it.
+- It only changes that project's share. The board-wide brakes still cap every start: Agent DB pressure, host memory, `maxActive`, and the first-come queue. Raising one project while the host is braking starts nothing new.
+- Every change is an audit event `concurrency.control.changed` with the actor, the reason and the limits before and after. `/api/instances/:id` and `/api/overview` report `control.concurrency { effective, project, workflow, max }`.
+- API: `POST /api/instances/:id/concurrency { perInstance: 1–8 | null | "default", reason, actor }`.
+
+### Jumping the queue
+
+A project's place in the queue can be changed while it runs, by an operator or by an Agent on its own judgement (a delivery promise, a customer waiting, a project whose materials need fixing first):
+
+```bash
+nightshiftctl projects queue                                              # the order now
+nightshiftctl projects priority <project> first --actor V --reason "客户明早要"
+nightshiftctl projects priority <project> last  --reason "素材有问题，先放后面"
+nightshiftctl projects priority <project> default
+nightshiftctl projects order <a> <b> <c> --actor V --reason "按交付承诺排"
+```
+
+- The queue orders by priority, higher first, then by arrival. A project nobody set has priority 0, so with no priorities set the order is exactly first come, first delivered.
+- `first` sets one above every other active project and `last` one below. A number from -1000 to 1000 sets it directly. `order` puts the listed projects ahead of every other, in the order given; projects not listed keep theirs. `default` clears it.
+- It orders only new starts. Cards already running finish. Together with the project's session limit it decides how many of the free starts each project takes, and the board-wide brakes still decide how many there are.
+- Stored in `instance_controls.priority` and reported as `control.priority`, and as `priority` in `control.queue`. Each change is an audit event `queue.priority.changed` with the actor, the reason, and the priority before and after.
+- API: `POST /api/instances/:id/priority { priority: n | "first" | "last" | "default", reason, actor }` and `POST /api/queue/order { instanceIds: [...], reason, actor }`.
+
+## Why a blocked card stopped
+
+A blocked card is first explained by how its run ended, as the Gateway records it (`tasks.list` for the card's Session, matched by run id). The Workboard keeps no reason for a blocked attempt; the Gateway's task registry does.
+- **Still `running` or `queued`**: the Agent is alive. The card is not failed, not salvaged and not announced; it is asked again in the next five-minute window. On 2026-09-29 a produce card blocked at 16:38 while its Agent kept working reached a person, and the Agent finished the video at 16:41.
+- **`failed`, `timed_out`**: the substrate stopped the run (Agent DB lease timeouts, provider errors, timeouts). It records `stage.attempt.failed` with the kind the error names (`database_lock`, `connection_reset`, …, otherwise `agent_interrupted`) and retries by the stage's policy. A paid stage retries too, unless its ledger holds an operation this card left `reserved`, or `executing` without an external task id: that may have been charged, so it goes to a person. Agents reserve on the ledger before any paid call.
+- **`cancelled`**: recorded as `run_cancelled`, not retried.
+- **Ended normally**: the Agent's own transcript and outputs decide, as below. Every stop that needed a person on V from 2026-09-26 to 09-29 had a run that ended normally.
+
+A card still shown `running` is asked too when its transcript ends on an error (`stopReason` error or aborted): a run the Gateway still has running is left alone, and a failed run is classified from the Gateway's record. On 2026-09-29 a transcript ending on "incomplete or malformed tool call", from a run the Gateway recorded as a failed provider request, had been classified as the Agent's own error.
+
+Faults of the substrate have their own retry allowance: up to 5 attempts (backoff 1, 5, 15, 15, 30 minutes) or the stage's `retry.maxAttempts`, whichever is larger. Before, lease timeouts and a Gateway restart could use up a produce card's three attempts and open a request.
+
+When the Gateway has no entry for the run, the transcript rules below apply.
+
+**Written outputs are salvaged, never judged.** A blocked card with no recorded failure is checked for outputs a finished attempt may have left behind; when they satisfy the contract the card completes. When they do not, nothing is recorded: the board shows "Outputs not found yet: …" and the card waits. Before this, a failed salvage became a contract failure, and eight stopped runs on 2026-09-28/29 reached 需要你 as missing handoffs and unrecorded payments.
+
+## Orphaned runs
+
+A card can sit blocked after its Agent is gone. Usually its Worker exited mid-run, for example while polling a provider, and the Session never gets a terminal message. The scheduler checks blocked cards' Sessions on repair passes. When a blocked card's Session has written nothing for `NIGHTSHIFT_ORPHANED_SESSION_MS` (45 minutes), it records `stage.attempt.failed` with kind `agent_interrupted`, and the stage's ordinary retry policy takes over:
+- A stage with side effects retries automatically only when the external-operation ledger holds an `executing` or `succeeded` entry with an external task id for that card. The retried Agent then resumes the existing provider task instead of paying again.
+- Without such an entry the card stays blocked with "需要人工检查后重试".
+
+A blocked card whose Session has no messages at all, two minutes after its attempt started, never ran: the Worker blocked it before the Agent's first turn. It records `stage.attempt.failed` with kind `agent_not_started` ("Agent 没能启动") and retries automatically, paid stages included, since an attempt that never took a turn cannot have spent anything. The exception is a paid card whose ledger still holds a `reserved` entry, or an `executing` one without an external task id, from an earlier attempt: that one waits for a person. On 2026-09-29 such a brief card, blocked 7 s after dispatch during Agent DB lease contention, had been checked for written artifacts instead and reached 需要你 as "the handoff is missing".
+
+Blocked-card Session checks have their own budget, separate from completion validation. A card deferred for budget is checked on the next ordinary pass rather than at the next repair tick. On 2026-09-28, sharing that budget left two paid produce cards unread and blocked for two hours, while Makaron had finished both videos 3 minutes after their Agents died.
+
 Running cards are never stopped by this guard. A retried card also gets its native failure budget reset (`workboard.cards.reassign`), because the board refuses to start a card whose failure count exceeds `maxRetries`.
+
+## 需要你 (cards that need a person)
+
+A card that stops and will not recover by itself becomes a decision request (`decision_requests`), owned by the engine. The design is in `docs/nightshift-needs-human-design.md`.
+
+**Only what a person can act on is announced.** A card may block for many reasons; a request says what someone has to do. A stop of the substrate (a failed, timed-out or interrupted run) is retried, never announced. Only these open a request:
+- the Agent stopped on purpose and said why (a filed problem or its closing words);
+- the Agent finished and its outputs fail the contract;
+- a paid or external operation failed, or may have been charged and cannot be retried safely;
+- automatic retries are used up;
+- approvals and reviews.
+
+**What opens a request**
+- A blocked card with a recorded failure and no automatic retry due opens a request on the same pass.
+- A blocked card with no failure has no verdict yet. It waits 60 minutes, longer than the orphan rule below (45 minutes), so the engine's own verdict always comes first. The board shows it as pending (「正在判定是否需要你」).
+- The problem text is the Agent's own closing words (`failure.agentReport`) when the Agent stopped on purpose, otherwise the engine's reason.
+
+**What never opens one**
+- Cards the engine retries by itself.
+- Paid work still `executing` with no recorded stop.
+- Shelved projects: paused and untouched for more than 3 days.
+Cards blocked before the first run (baseline `needs-you-v1.baseline` in `notification_metadata`) still enter the queue, so the board shows them, but they are not announced.
+
+**The queue.** 需要你 is open decision requests plus review cards waiting on a person, both approvals and human-review stages. `GET /api/overview` returns it as `needsYou { items, pending, countsByInstance }` for every project that is not shelved, whatever the scope.
+
+**Deciding.** `POST /api/decisions/:id { optionId, note, actor, applyToGroup }`, or `nightshiftctl decisions decide <id> --option retry|skip|pause [--note …] [--apply-to-group]`.
+- **retry** re-runs the card with `## 人工决定` and the note on top of its brief.
+- **skip** (「跳过这一条」, offered only on a stop of one content item) takes that item out of the project. Nothing more is planned for it; stages that wait on every item, such as delivery, wait only on the rest, and their brief lists the skipped items with the reason so the Agent neither waits for nor packages them. The project stays active and completes without it; the completion notice lists what was skipped and why. It is stored in `skipped_content_items` (the note, or the request's problem, is the reason) with an audit event `content-item.skipped`; `content-items.json` is not rewritten. A stopped card of a skipped item stays on the board but never opens a request again. Requests opened before skip existed offer it too.
+- **pause** pauses the whole project (no new cards at all) and leaves the request open. It is not a way to deliver the rest; use skip for that.
+- A second decision returns the first (`alreadyDecided`).
+
+**What a request says.** Each request carries the text of the accepted card layout:
+- `problem`: what happened;
+- `cause`: why;
+- `impact`: the engine adds "N 张卡停在「stage」";
+- `suggestion`: what to do;
+- options, each with a one-line description.
+
+An Agent that stops writes its closing report under the labels 问题 / 原因 / 影响 / 建议, and each label fills its field. Unlabeled reports fall back to their sentences, and a missing suggestion falls back to one that fits the kind of stop.
+
+**Notice.** The `needsYou` event goes to the project's `collaboration.sourceChatId`, else to the Workflow's `notifications.needsYou.to`, else to the `instanceCompleted` target. There is one notice per project per 2-minute batch, grouped by root cause (`groupKey`). Review cards already waiting when the notice first runs are not announced (`needs-you-notice-v1.bootstrap`).
 
 ## Feishu completion notices
 

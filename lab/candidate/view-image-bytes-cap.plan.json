@@ -1,0 +1,13 @@
+{
+  "baseRelease": "deepseek-budget-image-v1",
+  "tests": ["lab/candidate/view-image-bytes-cap.test.mjs"],
+  "files": [
+    {
+      "source": "lab/release-files/view-image-bytes-cap/openclaw-tools-BODVdJQD.js",
+      "target": "openclaw/dist/openclaw-tools-BODVdJQD.js",
+      "before": "336aab63e22d81cd56065797b1a4ec76a2d9653434d9e72e0f30dca7942b15f3"
+    }
+  ],
+  "timeoutSeconds": 600,
+  "user": "lab-db91-parity"
+}

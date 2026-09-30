@@ -1,4 +1,4 @@
-import { isAbsolute, normalize, sep } from "node:path";
+import { isAbsolute, normalize, relative, resolve, sep } from "node:path";
 
 const PATH_FIELDS = [
   ["proposal", "summaryPath"],
@@ -35,6 +35,41 @@ export function normalizeDeliverablesManifest(input, { instanceId, contentItemId
   return manifest;
 }
 
+const VIDEO_ARTIFACT = /\.(mp4|webm|mov)$/i;
+
+// Workflows that stopped writing deliverables.json (星擎夜班 D 0.3.x) still
+// record the finished video in the stage handoff. Build the same manifest from
+// it, so the drawer can play what the Agent delivered. Only the recorded
+// artifact is exposed; QC is "none" because nothing here attests to it.
+export function deliverablesFromHandoffs(handoffs, { instanceId, contentItemId, title = null, asset = null }) {
+  const prefix = `content-items/${contentItemId}/`;
+  let video = null;
+  for (const handoff of handoffs) {
+    for (const output of handoff?.outputs ?? []) {
+      if (typeof output?.artifact === "string" && VIDEO_ARTIFACT.test(output.artifact)) video = output;
+    }
+  }
+  if (!video) return null;
+  const path = video.artifact.startsWith(prefix) ? video.artifact.slice(prefix.length) : video.artifact;
+  return {
+    version: 1,
+    instanceId,
+    contentItemId,
+    title: title ?? "最终成片",
+    proposal: {},
+    video: {
+      title: title ?? "最终成片",
+      path,
+      mimeType: /\.webm$/i.test(path) ? "video/webm" : "video/mp4",
+      durationSeconds: asset?.video?.durationSeconds,
+      width: asset?.video?.width,
+      height: asset?.video?.height,
+      sha256: asset?.sha256,
+    },
+    qc: { status: "none", summary: [] },
+  };
+}
+
 export function deliverableArtifactPaths(manifest) {
   const paths = new Set();
   for (const path of PATH_FIELDS) {
@@ -56,6 +91,37 @@ export function normalizeArtifactPath(value) {
     throw new Error("Artifact path must stay inside the instance directory");
   }
   return normalized.split(sep).join("/");
+}
+
+// Agents often cite their outputs by absolute path. On V (2026-09-29) a
+// plan-route handoff listed four files, all inside DL-0929-02, as absolute
+// paths and was rejected as "outside the instance directory". A path under one
+// of the instance roots is made relative; anything else is left for
+// normalizeArtifactPath to refuse. Callers still check the resolved file.
+export function instanceRelativeArtifactPath(value, roots = []) {
+  if (typeof value !== "string" || !isAbsolute(value.trim())) return value;
+  const absolute = normalize(value.trim());
+  for (const root of roots) {
+    if (typeof root !== "string" || !root) continue;
+    const path = relative(normalize(root), absolute);
+    if (path && path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path)) return path;
+  }
+  return value;
+}
+
+// A handoff lives in <root>/handoffs/<stage>.json, and an Agent sometimes cites
+// an output relative to that file: on the shared VLab (2026-09-29) two handoffs
+// listed "../result.json" for content-items/wN/result.json and were refused as
+// outside the project. A path that climbs out of the handoff directory is read
+// from there and returned absolute; instanceRelativeArtifactPath and the
+// resolved-file check still refuse anything that leaves the instance.
+export function artifactFromHandoffDirectory(value, handoffDir) {
+  if (typeof value !== "string" || !handoffDir) return value;
+  const trimmed = value.trim();
+  if (!trimmed || isAbsolute(trimmed) || /^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return value;
+  const normalized = normalize(trimmed);
+  if (normalized !== ".." && !normalized.startsWith(`..${sep}`)) return value;
+  return resolve(handoffDir, normalized);
 }
 
 function normalizeProposal(value = {}) {
@@ -83,7 +149,7 @@ function normalizeVideo(value = {}) {
 
 function normalizeQc(value = {}) {
   return {
-    status: ["passed", "failed", "warning"].includes(value.status) ? value.status : "warning",
+    status: ["passed", "failed", "warning", "none"].includes(value.status) ? value.status : "warning",
     reportPath: optionalText(value.reportPath),
     duplicateCheck: normalizeDuplicateCheck(value.duplicateCheck),
     summary: Array.isArray(value.summary)

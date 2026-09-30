@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import test from "node:test";
 import {
+  NeedsYouTracker,
   NightShiftRuntime,
   NightShiftStore,
 } from "../src/index.mjs";
@@ -242,11 +243,12 @@ test("throttles repeated Session inspection and artifact recovery for a blocked 
     status: "blocked",
     sessionKey: "agent:main:subagent:review-nonterminal",
     runId: "run-review-nonterminal",
-    execution: { status: "running", startedAt: 100 },
+    // Recent activity: the Agent is still working, not orphaned.
+    execution: { status: "running", startedAt: Date.now() - 60_000 },
     labels: ["instance:NS-REVIEW-NONTERMINAL", "stage:plan"],
   });
   workboard.sessions.set("agent:main:subagent:review-nonterminal", {
-    messages: [{ role: "assistant", content: "Still working", timestamp: 200 }],
+    messages: [{ role: "assistant", content: "Still working", timestamp: Date.now() - 1_000 }],
   });
 
   await runtime.reconcile("NS-REVIEW-NONTERMINAL");
@@ -436,7 +438,11 @@ test("automatically reopens a due retryable infrastructure failure on the same c
   store.close();
 });
 
-test("does not auto-retry a side-effect stage without a resumable external task", async () => {
+// A substrate fault (here a SQLite lock) on a paid stage retries when the
+// ledger holds nothing this card left in flight: Agents reserve before a paid
+// call, so nothing was spent. Before 2026-09-29 such a card always waited for a
+// person, and eight system stops reached people that day.
+test("a side-effect stage retries a substrate fault when its ledger holds nothing in flight", async () => {
   const source = await readFile(workflowPath, "utf8");
   const store = new NightShiftStore();
   const workboard = new FakeWorkboard();
@@ -462,6 +468,46 @@ test("does not auto-retry a side-effect stage without a resumable external task"
   await runtime.reconcile("NS-PAID-UNCERTAIN");
 
   const run = store.listContentItemRuns("NS-PAID-UNCERTAIN")[0];
+  assert.equal(run.failure.retryable, true);
+  assert.equal(run.failure.automaticRetry, true);
+  assert.ok(run.failure.nextRetryAt);
+  store.close();
+});
+
+test("does not auto-retry a side-effect stage whose ledger holds an unresolved reservation", async () => {
+  const source = await readFile(workflowPath, "utf8");
+  const store = new NightShiftStore();
+  const workboard = new FakeWorkboard();
+  const runtime = new NightShiftRuntime({ store, workboard });
+  const release = runtime.publish(source);
+  runtime.startInstance({
+    id: "NS-PAID-RESERVED",
+    workflowSha256: release.workflowSha256,
+    contentItems: [{ id: "video-1", title: "Paid video", route: "AI_GENERATE" }],
+  });
+  workboard.cards.push({
+    id: "card-paid-reserved",
+    status: "review",
+    sessionKey: "agent:main:subagent:paid-reserved",
+    runId: "run-paid-reserved",
+    execution: { status: "blocked", startedAt: 100 },
+    labels: ["instance:NS-PAID-RESERVED", "content-item:video-1", "stage:produce"],
+  });
+  workboard.sessions.set("agent:main:subagent:paid-reserved", {
+    messages: [{ role: "assistant", errorMessage: "database is locked", stopReason: "error", timestamp: 200 }],
+  });
+  store.reserveExternalOperation({
+    idempotencyKey: "NS-PAID-RESERVED:video-1:produce",
+    instanceId: "NS-PAID-RESERVED",
+    contentItemId: "video-1",
+    stageId: "produce",
+    ownerCardId: "card-paid-reserved",
+    requestHash: "request-sha",
+  });
+
+  await runtime.reconcile("NS-PAID-RESERVED");
+
+  const run = store.listContentItemRuns("NS-PAID-RESERVED")[0];
   assert.equal(run.failure.retryable, true);
   assert.equal(run.failure.automaticRetry, false);
   assert.equal(run.failure.nextRetryAt, null);
@@ -1158,6 +1204,8 @@ class FakeWorkboard {
     this.updateCalls = [];
     this.sessions = new Map();
     this.sessionCalls = [];
+    this.runOutcomes = new Map();
+    this.runOutcomeCalls = [];
   }
 
   async listCards() {
@@ -1267,6 +1315,11 @@ class FakeWorkboard {
   }
 
 
+
+  async getRunOutcome({ runId }) {
+    this.runOutcomeCalls.push(runId);
+    return this.runOutcomes.get(runId) ?? null;
+  }
 
   async getSession(sessionKey) {
     this.sessionCalls.push(sessionKey);
@@ -1589,5 +1642,517 @@ test("a human stage cannot be given a release time it would never come back from
   // is the only thing that promotes a held card. A human stage with a release
   // time would sit in scheduled forever, so refuse it at publish time.
   assert.throws(() => runtime.publish(source), (error) => (error.issues ?? []).some((issue) => issue.code === "stage.releaseAt.actor"));
+  store.close();
+});
+
+// On V (2026-09-28) two paid produce cards sat blocked for two hours: their
+// Worker exited while the Agent was polling Makaron, so the Session never got a
+// terminal message and every inspection read "not terminal".
+function orphanedCard({ id, instanceId, stageId, contentItemId, silentMinutes }) {
+  const now = Date.now();
+  return {
+    card: {
+      id,
+      status: "blocked",
+      sessionKey: `agent:main:subagent:${id}`,
+      runId: `run-${id}`,
+      execution: { status: "running", startedAt: now - (silentMinutes + 10) * 60_000 },
+      labels: [`instance:${instanceId}`, `stage:${stageId}`, ...(contentItemId ? [`content-item:${contentItemId}`] : [])],
+    },
+    session: { messages: [{ role: "toolResult", content: "still running", timestamp: now - silentMinutes * 60_000 }] },
+  };
+}
+
+async function orphanFixture({ id, stageId, contentItemId = "video-1", silentMinutes = 50, runtimeOptions = {} }) {
+  const store = new NightShiftStore();
+  const workboard = new FakeWorkboard();
+  const runtime = new NightShiftRuntime({ store, workboard, ...runtimeOptions });
+  const release = runtime.publish(await readFile(workflowPath, "utf8"));
+  runtime.startInstance({ id, workflowSha256: release.workflowSha256, agentBindings: { "content-operator": "main" } });
+  const item = stageId === "plan" ? null : contentItemId;
+  if (item) runtime.setContentItems(id, [{ id: item, title: "Orphaned video", route: "SCENE_EDIT" }]);
+  const { card, session } = orphanedCard({ id: `card-${id}`, instanceId: id, stageId, contentItemId: item, silentMinutes });
+  workboard.cards.push(card);
+  workboard.sessions.set(card.sessionKey, session);
+  return { card, runtime, store, workboard };
+}
+
+function attemptFailures(store, instanceId) {
+  return store.listEvents(instanceId).filter((event) => event.type === "stage.attempt.failed");
+}
+
+test("a blocked card whose Session has gone silent is failed as interrupted and scheduled for retry", async () => {
+  const { runtime, store } = await orphanFixture({ id: "NS-ORPHAN-PLAN", stageId: "plan" });
+  await runtime.reconcile("NS-ORPHAN-PLAN");
+  const [event] = attemptFailures(store, "NS-ORPHAN-PLAN");
+  assert.equal(event.payload.failure.kind, "agent_interrupted");
+  assert.match(event.payload.failure.rawError, /silent for 50 min/);
+  assert.equal(event.payload.failure.automaticRetry, true);
+  assert.ok(event.payload.failure.nextRetryAt);
+  store.close();
+});
+
+test("a recently active blocked Session is left alone", async () => {
+  const { runtime, store, workboard } = await orphanFixture({ id: "NS-ORPHAN-RECENT", stageId: "plan", silentMinutes: 10 });
+  await runtime.reconcile("NS-ORPHAN-RECENT");
+  assert.equal(attemptFailures(store, "NS-ORPHAN-RECENT").length, 0);
+  assert.equal(workboard.cards[0].status, "blocked");
+  store.close();
+});
+
+test("an orphaned paid card is not retried automatically without a ledger entry", async () => {
+  const { runtime, store } = await orphanFixture({ id: "NS-ORPHAN-UNPAID", stageId: "produce" });
+  await runtime.reconcile("NS-ORPHAN-UNPAID");
+  const [event] = attemptFailures(store, "NS-ORPHAN-UNPAID");
+  assert.equal(event.payload.failure.kind, "agent_interrupted");
+  assert.equal(event.payload.failure.automaticRetry, false);
+  assert.match(event.payload.summary, /需要人工检查后重试/);
+  store.close();
+});
+
+test("an orphaned paid card whose provider task is on the ledger resumes automatically", async () => {
+  const { card, runtime, store } = await orphanFixture({ id: "NS-ORPHAN-PAID", stageId: "produce" });
+  const operation = {
+    idempotencyKey: "NS-ORPHAN-PAID:video-1:produce",
+    instanceId: "NS-ORPHAN-PAID",
+    contentItemId: "video-1",
+    stageId: "produce",
+    ownerCardId: card.id,
+    requestHash: "request-sha",
+  };
+  store.reserveExternalOperation(operation);
+  store.checkpointExternalOperation(operation.idempotencyKey, { status: "executing", externalTaskId: "makaron-task-1" });
+  await runtime.reconcile("NS-ORPHAN-PAID");
+  const [event] = attemptFailures(store, "NS-ORPHAN-PAID");
+  assert.equal(event.payload.failure.automaticRetry, true);
+  store.close();
+});
+
+// On V (2026-09-29) a brief card was blocked 7 s after dispatch with an empty
+// Session, and reached a person as "the handoff is missing".
+async function notStartedFixture({ id, stageId, startedMinutesAgo = 5 }) {
+  const fixture = await orphanFixture({ id, stageId });
+  fixture.card.execution.startedAt = Date.now() - startedMinutesAgo * 60_000;
+  fixture.workboard.sessions.set(fixture.card.sessionKey, { messages: [] });
+  return fixture;
+}
+
+test("a blocked card whose Agent never took a turn is retried as a start failure, not sent to a person", async () => {
+  const { runtime, store, workboard } = await notStartedFixture({ id: "NS-NOT-STARTED", stageId: "plan" });
+  await runtime.reconcile("NS-NOT-STARTED");
+  const [event] = attemptFailures(store, "NS-NOT-STARTED");
+  assert.equal(event.payload.failure.kind, "agent_not_started");
+  assert.equal(event.payload.failure.automaticRetry, true);
+  assert.match(event.payload.summary, /Agent 没能启动/);
+  assert.equal(store.listEvents("NS-NOT-STARTED").some((entry) => entry.type === "stage.completion.rejected"), false);
+  assert.equal(workboard.cards[0].status, "blocked");
+  store.close();
+});
+
+test("an empty Session is not read as a start failure while its transcript may still be arriving", async () => {
+  const { runtime, store } = await notStartedFixture({ id: "NS-NOT-STARTED-FRESH", stageId: "plan", startedMinutesAgo: 1 });
+  await runtime.reconcile("NS-NOT-STARTED-FRESH");
+  assert.equal(attemptFailures(store, "NS-NOT-STARTED-FRESH").length, 0);
+  store.close();
+});
+
+test("a paid card that never started retries without a ledger entry: it cannot have spent anything", async () => {
+  const { runtime, store } = await notStartedFixture({ id: "NS-NOT-STARTED-PAID", stageId: "produce" });
+  await runtime.reconcile("NS-NOT-STARTED-PAID");
+  const [event] = attemptFailures(store, "NS-NOT-STARTED-PAID");
+  assert.equal(event.payload.failure.kind, "agent_not_started");
+  assert.equal(event.payload.failure.automaticRetry, true);
+  store.close();
+});
+
+test("a paid card that never started still waits for a person when an earlier attempt left a reservation open", async () => {
+  const { card, runtime, store } = await notStartedFixture({ id: "NS-NOT-STARTED-RESERVED", stageId: "produce" });
+  store.reserveExternalOperation({
+    idempotencyKey: "NS-NOT-STARTED-RESERVED:video-1:produce",
+    instanceId: "NS-NOT-STARTED-RESERVED",
+    contentItemId: "video-1",
+    stageId: "produce",
+    ownerCardId: card.id,
+    requestHash: "request-sha",
+  });
+  await runtime.reconcile("NS-NOT-STARTED-RESERVED");
+  const [event] = attemptFailures(store, "NS-NOT-STARTED-RESERVED");
+  assert.equal(event.payload.failure.automaticRetry, false);
+  assert.match(event.payload.summary, /需要人工检查后重试/);
+  store.close();
+});
+
+test("blocked-card inspection has its own budget and a deferred card is read on the next ordinary pass", async () => {
+  // An injected clock: a 1 ms real-time window let a slow machine reset the
+  // budget between the two cards of one pass and read both (flaky on CI).
+  let clock = Date.now();
+  const store = new NightShiftStore();
+  const workboard = new FakeWorkboard();
+  const runtime = new NightShiftRuntime({
+    store, workboard, terminalInspectionMaxStarts: 1, terminalInspectionWindowMs: 30_000, now: () => clock,
+  });
+  const release = runtime.publish(await readFile(workflowPath, "utf8"));
+  runtime.startInstance({ id: "NS-ORPHAN-BUDGET", workflowSha256: release.workflowSha256 });
+  for (const suffix of ["a", "b"]) {
+    const { card, session } = orphanedCard({ id: `budget-${suffix}`, instanceId: "NS-ORPHAN-BUDGET", stageId: "plan", silentMinutes: 50 });
+    workboard.cards.push(card);
+    workboard.sessions.set(card.sessionKey, session);
+  }
+  // Completion validation exhausting its budget does not touch this one.
+  runtime.consumeTerminalInspectionBudget();
+  await runtime.reconcile("NS-ORPHAN-BUDGET", null, { inspectSessions: true });
+  assert.equal(workboard.sessionCalls.length, 1);
+  clock += 31_000;
+  await runtime.reconcile("NS-ORPHAN-BUDGET", null, { inspectSessions: false });
+  assert.equal(workboard.sessionCalls.length, 2, "the deferred card is read without waiting for a repair pass");
+  assert.equal(attemptFailures(store, "NS-ORPHAN-BUDGET").length, 2);
+  store.close();
+});
+
+// Only stops a person can act on reach 需要你. On V (2026-09-28/29) eight of ten
+// requests were runs the Gateway had recorded as failed, timed out or still
+// running; the engine read the transcripts instead and sent them to people.
+async function stoppedRun({ id, stageId, outcome, session, runtimeOptions = {}, validator = async () => { throw new Error("Stage handoff is required: plan"); } }) {
+  const store = new NightShiftStore();
+  const workboard = new FakeWorkboard();
+  let clock = Date.now();
+  const needsYou = new NeedsYouTracker({ store, now: () => clock });
+  const runtime = new NightShiftRuntime({ store, workboard, needsYou, completionValidator: validator, now: () => clock, ...runtimeOptions });
+  const release = runtime.publish(await readFile(workflowPath, "utf8"));
+  runtime.startInstance({ id, workflowSha256: release.workflowSha256, agentBindings: { "content-operator": "main" } });
+  const item = stageId === "plan" ? null : "video-1";
+  if (item) runtime.setContentItems(id, [{ id: item, title: "Video", route: "SCENE_EDIT" }]);
+  const card = {
+    id: `card-${id}`,
+    status: "blocked",
+    sessionKey: `agent:main:subagent:${id}`,
+    runId: `run-${id}`,
+    execution: { status: "blocked", startedAt: clock - 5 * 60_000 },
+    labels: [`instance:${id}`, `stage:${stageId}`, ...(item ? [`content-item:${item}`] : [])],
+  };
+  workboard.cards.push(card);
+  workboard.sessions.set(card.sessionKey, session ?? { messages: [
+    { role: "assistant", content: [{ type: "text", text: "Now let me build the four outputs + handoff." }], stopReason: "toolUse", timestamp: clock - 3 * 60_000 },
+    { role: "toolResult", content: "wrote content-items.json", timestamp: clock - 3 * 60_000 },
+  ] });
+  if (outcome) workboard.runOutcomes.set(card.runId, outcome);
+  return { card, needsYou, runtime, store, workboard, advance: (ms) => { clock += ms; } };
+}
+
+function openRequests(store, instanceId) {
+  return store.listDecisionRequests({ instanceId });
+}
+
+test("a run the Gateway recorded as failed on an Agent DB lease is retried and never announced", async () => {
+  const { runtime, store } = await stoppedRun({
+    id: "NS-RUN-LEASE", stageId: "plan",
+    outcome: { status: "failed", error: "Agent DB process coordinator wait exceeded 5000ms | V_AGENT_DB_PROCESS_COORDINATOR_TIMEOUT" },
+  });
+  await runtime.reconcile("NS-RUN-LEASE", null, { inspectSessions: true });
+  const [event] = attemptFailures(store, "NS-RUN-LEASE");
+  assert.equal(event.payload.failure.kind, "database_lock");
+  assert.equal(event.payload.failure.automaticRetry, true);
+  assert.equal(store.listEvents("NS-RUN-LEASE").some((entry) => entry.type === "stage.completion.rejected"), false);
+  assert.equal(openRequests(store, "NS-RUN-LEASE").length, 0);
+  store.close();
+});
+
+test("a run that failed with no named cause is an interruption, not the Agent's verdict", async () => {
+  const { runtime, store } = await stoppedRun({ id: "NS-RUN-FAILED", stageId: "plan", outcome: { status: "failed", error: "Agent run failed" } });
+  await runtime.reconcile("NS-RUN-FAILED", null, { inspectSessions: true });
+  const [event] = attemptFailures(store, "NS-RUN-FAILED");
+  assert.equal(event.payload.failure.kind, "agent_interrupted");
+  assert.equal(event.payload.failure.automaticRetry, true);
+  assert.equal(openRequests(store, "NS-RUN-FAILED").length, 0);
+  store.close();
+});
+
+test("a paid card whose run timed out before any reservation is retried: the ledger says nothing was spent", async () => {
+  const { runtime, store } = await stoppedRun({
+    id: "NS-RUN-PAID-TIMEOUT", stageId: "produce",
+    outcome: { status: "timed_out", error: "Request timed out before a response was generated." },
+  });
+  await runtime.reconcile("NS-RUN-PAID-TIMEOUT", null, { inspectSessions: true });
+  const [event] = attemptFailures(store, "NS-RUN-PAID-TIMEOUT");
+  assert.equal(event.payload.failure.automaticRetry, true);
+  assert.equal(openRequests(store, "NS-RUN-PAID-TIMEOUT").length, 0);
+  store.close();
+});
+
+test("a paid card whose run failed with a reservation still open asks a person: it may have been charged", async () => {
+  const { card, runtime, store } = await stoppedRun({
+    id: "NS-RUN-PAID-OPEN", stageId: "produce", outcome: { status: "failed", error: "Agent run failed" },
+  });
+  store.reserveExternalOperation({
+    idempotencyKey: "NS-RUN-PAID-OPEN:video-1:produce",
+    instanceId: "NS-RUN-PAID-OPEN",
+    contentItemId: "video-1",
+    stageId: "produce",
+    ownerCardId: card.id,
+    requestHash: "request-sha",
+  });
+  await runtime.reconcile("NS-RUN-PAID-OPEN", null, { inspectSessions: true });
+  const [event] = attemptFailures(store, "NS-RUN-PAID-OPEN");
+  assert.equal(event.payload.failure.automaticRetry, false);
+  assert.equal(openRequests(store, "NS-RUN-PAID-OPEN").length, 1);
+  store.close();
+});
+
+test("a blocked card whose run is still going is left alone: not failed, not salvaged, not announced", async () => {
+  // DL-0929-01 item 9: blocked at 16:38 while its Agent kept working; it
+  // finished the video at 16:41, three minutes after reaching a person.
+  const { runtime, store, workboard, advance } = await stoppedRun({ id: "NS-RUN-ACTIVE", stageId: "produce", outcome: { status: "running" } });
+  let validations = 0;
+  runtime.completionValidator = async () => { validations += 1; throw new Error("External side effect has no succeeded Night Shift operation checkpoint"); };
+  await runtime.reconcile("NS-RUN-ACTIVE", null, { inspectSessions: true });
+  await runtime.reconcile("NS-RUN-ACTIVE", null, { inspectSessions: false });
+  assert.equal(attemptFailures(store, "NS-RUN-ACTIVE").length, 0);
+  assert.equal(validations, 0);
+  assert.equal(workboard.sessionCalls.length, 0, "the Gateway's answer is enough; the transcript is not read");
+  advance(10 * 60_000);
+  await runtime.reconcile("NS-RUN-ACTIVE", null, { inspectSessions: true });
+  assert.equal(openRequests(store, "NS-RUN-ACTIVE").length, 0);
+  store.close();
+});
+
+test("a run that ended normally is still judged by the Agent's report and reaches a person", async () => {
+  // DL-0928-07 item 1: the Agent blocked because Makaron failed twice; its run
+  // ended normally. This is what 需要你 is for.
+  const { runtime, store } = await stoppedRun({
+    id: "NS-RUN-REPORT", stageId: "plan", outcome: { status: "completed" },
+    session: { messages: [{ role: "assistant", stopReason: "stop", timestamp: Date.now() - 60_000, content: [{ type: "text", text: "问题：素材撑不起 30 条混剪\n原因：只有 1 段视频\n影响：出片会失败\n建议：补素材后重新执行" }] }] },
+  });
+  await runtime.reconcile("NS-RUN-REPORT", null, { inspectSessions: true });
+  const [request] = openRequests(store, "NS-RUN-REPORT");
+  assert.ok(request, "the Agent's own stop is announced");
+  assert.match(request.problem, /素材撑不起/);
+  store.close();
+});
+
+test("without the Gateway's answer, outputs that are not there are no verdict: the card waits, the board says what is missing", async () => {
+  const { runtime, store, advance } = await stoppedRun({ id: "NS-RUN-UNKNOWN", stageId: "plan", outcome: null });
+  await runtime.reconcile("NS-RUN-UNKNOWN", null, { inspectSessions: true });
+  assert.equal(attemptFailures(store, "NS-RUN-UNKNOWN").length, 0);
+  assert.equal(store.listEvents("NS-RUN-UNKNOWN").some((entry) => entry.type === "stage.completion.rejected"), false);
+  assert.match(store.listStageRuns("NS-RUN-UNKNOWN")[0].summary, /Outputs not found yet: Stage handoff is required/);
+  advance(10 * 60_000);
+  await runtime.reconcile("NS-RUN-UNKNOWN", null, { inspectSessions: true });
+  assert.equal(openRequests(store, "NS-RUN-UNKNOWN").length, 0, "no request while the engine can still explain it");
+  store.close();
+});
+
+test("a run the Gateway saw end normally is never read as a start failure, even with an empty transcript", async () => {
+  // Shared VLab, 2026-09-29 (NS-S4-STOP-0929): the run completed at 09:40:13
+  // after three model calls, the transcript read back empty, and the empty-Session
+  // rule failed it as never started. The Agent had stopped on purpose.
+  const { runtime, store } = await stoppedRun({
+    id: "NS-RUN-EMPTY-DONE", stageId: "plan", outcome: { status: "completed", endedAt: Date.now() - 4 * 60_000 },
+    session: { messages: [] },
+  });
+  await runtime.reconcile("NS-RUN-EMPTY-DONE", null, { inspectSessions: true });
+  assert.equal(attemptFailures(store, "NS-RUN-EMPTY-DONE").length, 0, "not a failure of the substrate");
+  assert.ok(store.listEvents("NS-RUN-EMPTY-DONE").some((entry) => entry.type === "stage.terminal.blocked"));
+  const [request] = openRequests(store, "NS-RUN-EMPTY-DONE");
+  assert.equal(request?.evidence.failure.kind, "contract_error");
+  store.close();
+});
+
+test("a run that ended normally is judged on its outputs even when the transcript stops mid-tool", async () => {
+  let complete = true;
+  const { runtime, store, workboard } = await stoppedRun({
+    id: "NS-RUN-DONE-MIDTOOL", stageId: "plan", outcome: { status: "succeeded" },
+    validator: async () => { if (!complete) throw new Error("Stage handoff is required: plan"); },
+  });
+  await runtime.reconcile("NS-RUN-DONE-MIDTOOL", null, { inspectSessions: true });
+  assert.equal(workboard.cards[0].status, "done");
+  assert.equal(attemptFailures(store, "NS-RUN-DONE-MIDTOOL").length, 0);
+  store.close();
+});
+
+// A project's own session limit, set while it runs (nightshiftctl projects
+// concurrency). Unset, the Workflow's perInstance applies as before.
+async function limitedProject({ id, workflowLimit, running }) {
+  const store = new NightShiftStore();
+  const workboard = new FakeWorkboard();
+  const runtime = new NightShiftRuntime({ store, workboard });
+  const source = (await readFile(workflowPath, "utf8")).replace("concurrency: {perInstance: 8}", `concurrency: {perInstance: ${workflowLimit}}`);
+  const release = runtime.publish(source);
+  runtime.startInstance({ id, workflowSha256: release.workflowSha256, agentBindings: { "content-operator": "main" } });
+  for (let index = 0; index < running; index++) {
+    workboard.cards.push({ id: `${id}-running-${index}`, status: "running", labels: [`instance:${id}`] });
+  }
+  return { runtime, store, workboard };
+}
+
+test("a project's own limit lowers its concurrency below the Workflow's", async () => {
+  const { runtime, store, workboard } = await limitedProject({ id: "NS-LIMIT-LOW", workflowLimit: 8, running: 1 });
+  store.setInstanceControl("NS-LIMIT-LOW", { perInstanceLimit: 1 });
+  await runtime.tick("NS-LIMIT-LOW", { dispatch: true });
+  assert.deepEqual(workboard.dispatchCalls, [], "one card already runs and the project allows one");
+  store.close();
+});
+
+test("a project's own limit raises its concurrency above the Workflow's, and default restores it", async () => {
+  const { runtime, store, workboard } = await limitedProject({ id: "NS-LIMIT-HIGH", workflowLimit: 1, running: 1 });
+  await runtime.tick("NS-LIMIT-HIGH", { dispatch: true });
+  assert.deepEqual(workboard.dispatchCalls, [], "the Workflow allows one");
+  store.setInstanceControl("NS-LIMIT-HIGH", { perInstanceLimit: 3 });
+  await runtime.tick("NS-LIMIT-HIGH", { dispatch: true });
+  assert.equal(workboard.dispatchCalls.length, 1);
+  assert.ok(workboard.dispatchCalls[0].maxStarts >= 1 && workboard.dispatchCalls[0].maxStarts <= 2);
+  store.setInstanceControl("NS-LIMIT-HIGH", { perInstanceLimit: null });
+  workboard.dispatchCalls.length = 0;
+  await runtime.tick("NS-LIMIT-HIGH", { dispatch: true });
+  assert.deepEqual(workboard.dispatchCalls, [], "back to the Workflow's one");
+  store.close();
+});
+
+test("a paid card whose transcript ends on a lease timeout retries when its ledger holds nothing", async () => {
+  // V, 2026-09-29 20:21: read while the board still showed the card running,
+  // so the Gateway's run record was not consulted; the transcript's own error
+  // is the same substrate fault and gets the same ledger rule.
+  const { card, runtime, store, workboard } = await stoppedRun({
+    id: "NS-TRANSCRIPT-LEASE", stageId: "produce", outcome: null,
+    session: { messages: [{ role: "assistant", stopReason: "error", errorMessage: "Agent DB process coordinator wait exceeded 5000ms", timestamp: Date.now() - 60_000, content: [] }] },
+  });
+  card.status = "running";
+  card.execution.status = "running";
+  await runtime.reconcile("NS-TRANSCRIPT-LEASE", null, { inspectSessions: true });
+  const [event] = attemptFailures(store, "NS-TRANSCRIPT-LEASE");
+  assert.equal(event.payload.failure.kind, "database_lock");
+  assert.equal(event.payload.failure.automaticRetry, true);
+  assert.equal(openRequests(store, "NS-TRANSCRIPT-LEASE").length, 0);
+  store.close();
+});
+
+test("an Agent error read from the transcript is not a substrate fault: a paid card still waits for a person", async () => {
+  const { card, runtime, store } = await stoppedRun({
+    id: "NS-TRANSCRIPT-AGENT", stageId: "produce", outcome: null,
+    session: { messages: [{ role: "assistant", stopReason: "error", errorMessage: "tool refused the request", timestamp: Date.now() - 60_000, content: [] }] },
+  });
+  card.status = "running";
+  card.execution.status = "running";
+  await runtime.reconcile("NS-TRANSCRIPT-AGENT", null, { inspectSessions: true });
+  const [event] = attemptFailures(store, "NS-TRANSCRIPT-AGENT");
+  assert.equal(event.payload.failure.kind, "agent_error");
+  assert.equal(event.payload.failure.automaticRetry, false);
+  store.close();
+});
+
+test("a transcript that ends on an error is read against the Gateway's run record when the card still shows running", async () => {
+  // V, 2026-09-29 21:05: the transcript said "incomplete or malformed tool call",
+  // the Gateway said the provider request failed; either way a substrate fault.
+  const { card, runtime, store, workboard } = await stoppedRun({
+    id: "NS-RUNNING-ERROR", stageId: "plan",
+    outcome: { status: "failed", error: "⚠️ deepseek/deepseek-flash request failed." },
+    session: { messages: [{ role: "assistant", stopReason: "error", errorMessage: "Provider returned an incomplete or malformed tool call", timestamp: Date.now() - 60_000, content: [] }] },
+  });
+  card.status = "running";
+  card.execution.status = "running";
+  await runtime.reconcile("NS-RUNNING-ERROR", null, { inspectSessions: true });
+  const [event] = attemptFailures(store, "NS-RUNNING-ERROR");
+  assert.equal(event.payload.failure.kind, "provider_error");
+  assert.equal(event.payload.failure.source, "provider");
+  assert.equal(event.payload.failure.automaticRetry, true);
+  assert.ok(workboard.runOutcomeCalls.includes(card.runId));
+  assert.equal(openRequests(store, "NS-RUNNING-ERROR").length, 0);
+  store.close();
+});
+
+test("an error in the transcript of a run the Gateway still has running is left alone", async () => {
+  const { card, runtime, store } = await stoppedRun({
+    id: "NS-RUNNING-RETRYING", stageId: "plan", outcome: { status: "running" },
+    session: { messages: [{ role: "assistant", stopReason: "error", errorMessage: "Connection error.", timestamp: Date.now() - 60_000, content: [] }] },
+  });
+  card.status = "running";
+  card.execution.status = "running";
+  await runtime.reconcile("NS-RUNNING-RETRYING", null, { inspectSessions: true });
+  assert.equal(attemptFailures(store, "NS-RUNNING-RETRYING").length, 0);
+  store.close();
+});
+
+test("faults of the substrate do not use up a stage's own retries", async () => {
+  // V, 2026-09-29: e3f71162's third interruption (a Gateway restart) exhausted
+  // produce's three attempts and opened a request.
+  const { card, runtime, store } = await stoppedRun({
+    id: "NS-SUBSTRATE-BUDGET", stageId: "produce",
+    outcome: { status: "failed", error: "subagent run lost active execution context" },
+  });
+  for (const n of [1, 2, 3]) {
+    store.appendEvent({ instanceId: "NS-SUBSTRATE-BUDGET", type: "stage.attempt.failed",
+      payload: { cardId: card.id, stageId: "produce", failure: { kind: "database_lock", retryable: true, attempt: `old-${n}` } } });
+  }
+  await runtime.reconcile("NS-SUBSTRATE-BUDGET", null, { inspectSessions: true });
+  const failures = attemptFailures(store, "NS-SUBSTRATE-BUDGET");
+  const latest = failures.find((event) => event.payload.failure.attempt === card.runId);
+  assert.equal(latest.payload.failure.automaticRetry, true, "a fourth substrate fault still retries");
+  assert.equal(openRequests(store, "NS-SUBSTRATE-BUDGET").length, 0);
+  store.close();
+});
+
+// A person may skip one content item: the rest of the project delivers
+// without it (Tianyi, 2026-09-30, DL-0929-10's missing smoke-test footage).
+async function deliveryProject(id) {
+  const store = new NightShiftStore();
+  const workboard = new FakeWorkboard();
+  const runtime = new NightShiftRuntime({ store, workboard });
+  const release = runtime.publish(await readFile(workflowPath, "utf8"));
+  runtime.startInstance({ id, workflowSha256: release.workflowSha256, agentBindings: { "content-operator": "main" }, inputs: { deliveryMode: "download" } });
+  runtime.setContentItems(id, [
+    { id: "kept", title: "Kept video", route: "SCENE_EDIT" },
+    { id: "gone", title: "Smoke test video", route: "SCENE_EDIT" },
+  ]);
+  store.upsertStageRun({ instanceId: id, stageId: "plan", attempt: 1, cardId: `${id}-plan`, status: "done", summary: null });
+  for (const stageId of ["route", "materials", "brief", "produce"]) {
+    store.upsertContentItemRun({ instanceId: id, contentItemId: "kept", stageId, attempt: 1, cardId: `${id}-kept-${stageId}`, status: "done", summary: null });
+  }
+  for (const stageId of ["route", "materials"]) {
+    store.upsertContentItemRun({ instanceId: id, contentItemId: "gone", stageId, attempt: 1, cardId: `${id}-gone-${stageId}`, status: "done", summary: null });
+  }
+  store.upsertContentItemRun({ instanceId: id, contentItemId: "gone", stageId: "brief", attempt: 1, cardId: `${id}-gone-brief`, status: "blocked", summary: "no footage" });
+  return { release, runtime, store, workboard };
+}
+
+test("delivery waits for every item until one is skipped, then goes ahead without it", async () => {
+  const { runtime, store } = await deliveryProject("NS-SKIP-DELIVER");
+  let result = await runtime.tick("NS-SKIP-DELIVER", { dispatch: false });
+  assert.equal(result.actions.some((action) => action.stageId === "deliver-download"), false, "the skipped-to-be item still holds delivery");
+  store.skipContentItem({ instanceId: "NS-SKIP-DELIVER", contentItemId: "gone", reason: "素材库没有烟雾测试画面", actor: "local:Tianyi" });
+  result = await runtime.tick("NS-SKIP-DELIVER", { dispatch: false });
+  const delivery = result.actions.find((action) => action.stageId === "deliver-download");
+  assert.ok(delivery, "delivery is planned once the only unfinished item is skipped");
+  assert.equal(result.actions.some((action) => action.contentItemId === "gone"), false, "nothing more is planned for the skipped item");
+  assert.match(delivery.card.notes, /Skipped content items.*gone 「Smoke test video」 — 素材库没有烟雾测试画面.*this delivery has 1 items/s);
+  store.close();
+});
+
+test("skipping from a request records the item, closes the request and does not reopen it", async () => {
+  const { card, runtime, store } = await stoppedRun({
+    id: "NS-SKIP-DECIDE", stageId: "produce", outcome: { status: "completed" },
+    session: { messages: [{ role: "assistant", stopReason: "stop", timestamp: Date.now() - 60_000, content: [{ type: "text", text: "问题：素材库里没有这条要的画面\n原因：Scene 检索为 0\n影响：出不了片\n建议：补素材或跳过" }] }] },
+  });
+  await runtime.reconcile("NS-SKIP-DECIDE", null, { inspectSessions: true });
+  const [request] = openRequests(store, "NS-SKIP-DECIDE");
+  assert.deepEqual(request.options.map((option) => option.id), ["retry", "skip", "pause"]);
+  const decided = await runtime.decide({ decisionId: request.id, optionId: "skip", note: "没有素材，这条不做", actor: "local:Tianyi" });
+  assert.equal(decided.request.status, "decided");
+  assert.deepEqual(store.listSkippedContentItems("NS-SKIP-DECIDE").map((entry) => [entry.contentItemId, entry.reason]), [["video-1", "没有素材，这条不做"]]);
+  assert.ok(store.listEvents("NS-SKIP-DECIDE").some((event) => event.type === "decision.skipped"));
+  assert.equal(store.getInstance("NS-SKIP-DECIDE").status, "active", "skipping does not pause the project");
+  await runtime.reconcile("NS-SKIP-DECIDE", null, { inspectSessions: true });
+  assert.equal(openRequests(store, "NS-SKIP-DECIDE").length, 0, "the stopped card of a skipped item is nobody's matter");
+  assert.equal(card.status, "blocked");
+  store.close();
+});
+
+test("a stop on a project-wide stage cannot be skipped", async () => {
+  const { runtime, store } = await stoppedRun({
+    id: "NS-SKIP-PROJECT", stageId: "plan", outcome: { status: "completed" },
+    session: { messages: [{ role: "assistant", stopReason: "stop", timestamp: Date.now() - 60_000, content: [{ type: "text", text: "问题：策划案读不到\n原因：链接无权限\n影响：无法拆条目\n建议：开权限" }] }] },
+  });
+  await runtime.reconcile("NS-SKIP-PROJECT", null, { inspectSessions: true });
+  const [request] = openRequests(store, "NS-SKIP-PROJECT");
+  assert.deepEqual(request.options.map((option) => option.id), ["retry", "pause"]);
+  await assert.rejects(runtime.decide({ decisionId: request.id, optionId: "skip", actor: "local:Tianyi" }), /Unknown option skip/);
   store.close();
 });

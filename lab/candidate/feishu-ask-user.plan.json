@@ -1,0 +1,15 @@
+{
+  "support": [
+    "lab/candidate/feishu-ask-user.mjs",
+    "lab/release-files/feishu-ask-user/card.mjs",
+    "lab/release-files/feishu-ask-user/runtime.mjs",
+    "lab/release-files/feishu-ask-user/patch.mjs",
+    "lab/release-files/feishu-ask-user/stream.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/feishu-ask-user.mjs"
+  ],
+  "timeoutSeconds": 300,
+  "user": "lab-db91-parity"
+}

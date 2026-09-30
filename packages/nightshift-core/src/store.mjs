@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { normalizeContentItems } from "./content-items.mjs";
+import { currentOptions } from "./needs-you.mjs";
 
 export class NightShiftStore {
   constructor(path = ":memory:") {
@@ -163,6 +164,41 @@ export class NightShiftStore {
         value_json TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
+      -- 需要你: a card attempt that stopped and will not move without a person.
+      CREATE TABLE IF NOT EXISTS decision_requests (
+        id TEXT PRIMARY KEY,
+        instance_id TEXT NOT NULL,
+        card_id TEXT NOT NULL,
+        content_item_id TEXT,
+        stage_id TEXT NOT NULL,
+        attempt TEXT NOT NULL,
+        source TEXT NOT NULL,
+        problem TEXT NOT NULL,
+        cause TEXT NOT NULL DEFAULT '',
+        impact TEXT NOT NULL DEFAULT '',
+        suggestion TEXT NOT NULL DEFAULT '',
+        detail TEXT NOT NULL DEFAULT '',
+        evidence_json TEXT NOT NULL DEFAULT '{}',
+        scope TEXT NOT NULL,
+        options_json TEXT NOT NULL,
+        group_key TEXT NOT NULL,
+        status TEXT NOT NULL,
+        decision_json TEXT,
+        announced_at TEXT,
+        created_at TEXT NOT NULL,
+        decided_at TEXT,
+        UNIQUE(card_id, attempt)
+      );
+      CREATE INDEX IF NOT EXISTS decision_requests_open ON decision_requests(status, instance_id);
+      CREATE TABLE IF NOT EXISTS skipped_content_items (
+        instance_id TEXT NOT NULL,
+        content_item_id TEXT NOT NULL,
+        reason TEXT,
+        actor TEXT NOT NULL,
+        decision_id TEXT,
+        skipped_at TEXT NOT NULL,
+        PRIMARY KEY (instance_id, content_item_id)
+      );
     `);
     // Production databases created by the 2026-08-25 notification build already
     // carry this column and these tables; newer ones gain them here.
@@ -180,6 +216,16 @@ export class NightShiftStore {
     if (!approvalColumns.some((column) => column.name === "binding_hash")) {
       this.db.exec("ALTER TABLE approvals ADD COLUMN binding_hash TEXT");
     }
+    // A project's own session limit, set by an operator or an Agent while it
+    // runs; null keeps the Workflow's perInstance.
+    const controlColumns = this.db.prepare("PRAGMA table_info(instance_controls)").all();
+    if (!controlColumns.some((column) => column.name === "per_instance_limit")) {
+      this.db.exec("ALTER TABLE instance_controls ADD COLUMN per_instance_limit INTEGER");
+    }
+    // Its place in the queue: higher goes first; null keeps first come, first delivered.
+    if (!controlColumns.some((column) => column.name === "priority")) {
+      this.db.exec("ALTER TABLE instance_controls ADD COLUMN priority INTEGER");
+    }
     for (const table of ["stage_runs", "content_item_runs"]) {
       const columns = this.db.prepare(`PRAGMA table_info(${table})`).all();
       if (!columns.some((column) => column.name === "failure_json")) {
@@ -188,17 +234,149 @@ export class NightShiftStore {
     }
   }
 
+  // One request per card attempt. Reopening the same attempt returns the row it
+  // already has, so repeated passes never duplicate a request.
+  openDecisionRequest(request, now = new Date()) {
+    const existing = this.getDecisionRequestForCard(request.cardId, request.attempt);
+    if (existing) return { ...existing, reused: true };
+    const id = request.id ?? randomUUID();
+    this.db.prepare(`
+      INSERT INTO decision_requests(
+        id, instance_id, card_id, content_item_id, stage_id, attempt, source, problem, cause, impact, suggestion,
+        detail, evidence_json, scope, options_json, group_key, status, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)
+    `).run(
+      id,
+      request.instanceId,
+      request.cardId,
+      request.contentItemId ?? null,
+      request.stageId,
+      String(request.attempt),
+      request.source,
+      request.problem,
+      request.cause ?? "",
+      request.impact ?? "",
+      request.suggestion ?? "",
+      request.detail ?? "",
+      JSON.stringify(request.evidence ?? {}),
+      request.scope,
+      JSON.stringify(request.options),
+      request.groupKey,
+      now.toISOString(),
+    );
+    this.appendEvent({
+      instanceId: request.instanceId,
+      type: "decision.requested",
+      payload: { decisionId: id, cardId: request.cardId, stageId: request.stageId, source: request.source, groupKey: request.groupKey },
+      now,
+    });
+    return { ...this.getDecisionRequest(id), reused: false };
+  }
+
+  updateDecisionRequestText(id, { problem, cause = "", impact = "", suggestion = "", detail = "", evidence }, now = new Date()) {
+    this.db.prepare(`UPDATE decision_requests SET problem = ?, cause = ?, impact = ?, suggestion = ?, detail = ?, evidence_json = ? WHERE id = ? AND status = 'open'`)
+      .run(problem, cause, impact, suggestion, detail, JSON.stringify(evidence ?? {}), id);
+    const current = this.getDecisionRequest(id);
+    this.appendEvent({ instanceId: current?.instanceId, type: "decision.described", payload: { decisionId: id }, now });
+    return current;
+  }
+
+  getDecisionRequest(id) {
+    const row = this.db.prepare("SELECT * FROM decision_requests WHERE id = ?").get(id);
+    return row ? decisionRequestRow(row) : null;
+  }
+
+  getDecisionRequestForCard(cardId, attempt) {
+    const row = this.db.prepare("SELECT * FROM decision_requests WHERE card_id = ? AND attempt = ?").get(cardId, String(attempt));
+    return row ? decisionRequestRow(row) : null;
+  }
+
+  listDecisionRequests({ instanceId = null, status = "open" } = {}) {
+    const clauses = [];
+    const values = [];
+    if (status) { clauses.push("status = ?"); values.push(status); }
+    if (instanceId) { clauses.push("instance_id = ?"); values.push(instanceId); }
+    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    return this.db.prepare(`SELECT * FROM decision_requests ${where} ORDER BY created_at`).all(...values).map(decisionRequestRow);
+  }
+
+  // A decision is written once; a later call returns the decided row unchanged.
+  decideRequest(id, decision, now = new Date()) {
+    const current = this.getDecisionRequest(id);
+    if (!current) throw new Error(`Unknown decision request ${id}`);
+    if (current.status !== "open") return { ...current, alreadyDecided: true };
+    const recorded = { ...decision, at: now.toISOString() };
+    this.db.prepare("UPDATE decision_requests SET status = 'decided', decision_json = ?, decided_at = ? WHERE id = ? AND status = 'open'")
+      .run(JSON.stringify(recorded), now.toISOString(), id);
+    this.appendEvent({
+      instanceId: current.instanceId,
+      type: "decision.decided",
+      payload: { decisionId: id, cardId: current.cardId, optionId: decision.optionId, actor: decision.actor, note: decision.note ?? null },
+      now,
+    });
+    return { ...this.getDecisionRequest(id), alreadyDecided: false };
+  }
+
+  // A new attempt, or a card that moved on by itself, no longer needs the old decision.
+  // A person decided this content item will not be delivered. Its remaining
+  // stages are never planned, and the project completes without it.
+  skipContentItem({ instanceId, contentItemId, reason = null, actor, decisionId = null }, now = new Date()) {
+    if (!instanceId || !contentItemId || !actor) throw new Error("skipContentItem needs instanceId, contentItemId and actor");
+    const result = this.db.prepare(`INSERT OR IGNORE INTO skipped_content_items
+      (instance_id, content_item_id, reason, actor, decision_id, skipped_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run(instanceId, contentItemId, reason, actor, decisionId, now.toISOString());
+    if (result.changes > 0) {
+      this.appendEvent({ instanceId, type: "content-item.skipped", payload: { contentItemId, reason, actor, decisionId }, now });
+    }
+    return this.listSkippedContentItems(instanceId).find((entry) => entry.contentItemId === contentItemId);
+  }
+
+  listSkippedContentItems(instanceId) {
+    return this.db.prepare("SELECT * FROM skipped_content_items WHERE instance_id = ? ORDER BY skipped_at")
+      .all(instanceId)
+      .map((row) => ({
+        contentItemId: row.content_item_id,
+        reason: row.reason,
+        actor: row.actor,
+        decisionId: row.decision_id,
+        skippedAt: row.skipped_at,
+      }));
+  }
+
+  supersedeDecisionRequests(cardId, { exceptAttempt = null } = {}, now = new Date()) {
+    const rows = this.db.prepare("SELECT * FROM decision_requests WHERE card_id = ? AND status = 'open'").all(cardId).map(decisionRequestRow);
+    for (const row of rows) {
+      if (exceptAttempt !== null && row.attempt === String(exceptAttempt)) continue;
+      this.db.prepare("UPDATE decision_requests SET status = 'superseded', decided_at = ? WHERE id = ?").run(now.toISOString(), row.id);
+    }
+    return rows.filter((row) => exceptAttempt === null || row.attempt !== String(exceptAttempt)).length;
+  }
+
+  markDecisionRequestsAnnounced(ids, now = new Date()) {
+    const statement = this.db.prepare("UPDATE decision_requests SET announced_at = ? WHERE id = ? AND announced_at IS NULL");
+    for (const id of ids) statement.run(now.toISOString(), id);
+  }
+
   getInstanceControl(instanceId) {
     const row = this.db.prepare("SELECT * FROM instance_controls WHERE instance_id = ?").get(instanceId);
-    return { automaticDispatch: row ? Boolean(row.automatic_dispatch) : true, fault: row?.fault_json ? JSON.parse(row.fault_json) : null };
+    return {
+      automaticDispatch: row ? Boolean(row.automatic_dispatch) : true,
+      fault: row?.fault_json ? JSON.parse(row.fault_json) : null,
+      perInstanceLimit: Number.isSafeInteger(row?.per_instance_limit) ? row.per_instance_limit : null,
+      priority: Number.isSafeInteger(row?.priority) ? row.priority : null,
+    };
   }
 
   setInstanceControl(instanceId, patch) {
     const control = { ...this.getInstanceControl(instanceId), ...patch };
-    this.db.prepare(`INSERT INTO instance_controls VALUES (?, ?, ?, ?)
+    this.db.prepare(`INSERT INTO instance_controls (instance_id, automatic_dispatch, fault_json, updated_at, per_instance_limit, priority)
+      VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(instance_id) DO UPDATE SET automatic_dispatch=excluded.automatic_dispatch,
-      fault_json=excluded.fault_json, updated_at=excluded.updated_at`).run(
-      instanceId, control.automaticDispatch ? 1 : 0, control.fault ? JSON.stringify(control.fault) : null, new Date().toISOString());
+      fault_json=excluded.fault_json, updated_at=excluded.updated_at, per_instance_limit=excluded.per_instance_limit,
+      priority=excluded.priority`).run(
+      instanceId, control.automaticDispatch ? 1 : 0, control.fault ? JSON.stringify(control.fault) : null, new Date().toISOString(),
+      Number.isSafeInteger(control.perInstanceLimit) ? control.perInstanceLimit : null,
+      Number.isSafeInteger(control.priority) ? control.priority : null);
     return control;
   }
 
@@ -822,6 +1000,33 @@ function externalOperationRow(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function decisionRequestRow(row) {
+  const request = {
+    id: row.id,
+    instanceId: row.instance_id,
+    cardId: row.card_id,
+    contentItemId: row.content_item_id,
+    stageId: row.stage_id,
+    attempt: row.attempt,
+    source: row.source,
+    problem: row.problem,
+    cause: row.cause,
+    impact: row.impact,
+    suggestion: row.suggestion,
+    detail: row.detail,
+    evidence: JSON.parse(row.evidence_json || "{}"),
+    scope: row.scope,
+    options: JSON.parse(row.options_json),
+    groupKey: row.group_key,
+    status: row.status,
+    decision: row.decision_json ? JSON.parse(row.decision_json) : null,
+    announcedAt: row.announced_at,
+    createdAt: row.created_at,
+    decidedAt: row.decided_at,
+  };
+  return { ...request, options: currentOptions(request) };
 }
 
 function auditEventRow(row) {

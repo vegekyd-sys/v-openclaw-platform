@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex">
+<title>V 的桌面</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header id="bar">
+  <div id="title">V 的桌面</div>
+  <div id="status">连接中…</div>
+  <div id="actions">
+    <button id="take" hidden>接管控制</button>
+    <button id="release" hidden>交还给 V</button>
+    <button id="reconnect" hidden>重新连接</button>
+  </div>
+</header>
+<main id="screen"></main>
+<div id="notice" hidden></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
