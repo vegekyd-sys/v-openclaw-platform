@@ -13,9 +13,9 @@
 
 ## v2026.9.1-db91.6-vcodex-sol61-20260930
 
-产物安装：2026-09-30 12:40 CST；启用与生产飞书验收待业务排空。最终发布 tag 将在 dev → main 发版 PR 合入后创建。
+产物安装：2026-09-30 12:40 CST；启用与生产飞书验收待原生恢复交接。最终发布 tag 将在 dev → main 发版 PR 合入后创建。
 
-**摘要**：`/vcodex` 接入 `openai/gpt-6.1-sol`，使用 Native Codex 与独立安装的 Codex CLI 0.159.2。配置启用脚本保留默认模型和其余设置，将生产旧 Sol 6 路由保留为 `/vcodex60`；在 Gateway 空闲 fence 就绪后停稳服务，再备份并更新 Gateway/Worker 配置、启动和检查就绪，避免在线配置监听提前重启。当前仍运行原 Gateway 进程；未把安装字节视为新模型已经生效。
+**摘要**：`/vcodex` 接入 `openai/gpt-6.1-sol`，使用 Native Codex 与独立安装的 Codex CLI 0.159.2。配置启用脚本保留默认模型和其余设置，将生产旧 Sol 6 路由保留为 `/vcodex60`；默认在 Gateway 空闲 fence 就绪后停稳服务；用户明确授权暂停现有夜班并重启后，使用原生 preserve restart intent 交接在跑任务，停稳服务，再备份并更新 Gateway/Worker 配置、启动和检查就绪，避免在线配置监听提前重启。当前仍运行原 Gateway 进程；未把安装字节视为新模型已经生效。
 
 相对上一版 `v2026.9.1-db91.6-feishu-ask-user-20260930`：2 个 core 文件变化，Worker 与飞书插件字节无变化。完整捕获逐文件对比已核对。
 
@@ -28,7 +28,7 @@
 - VLab 真实飞书验收：`/vcodex` 返回 GPT 6.1 Sol；工具写入并回读 nonce，卡片 `om_x100b64f3ef9b9080b03537b4cd7ffc2`，服务端文件 SHA-256 独立核对；下一轮无工具回复 CONTEXT_OK，卡片 `om_x100b64f3e9d8fcacb107e9aec6b4cb3`；旧 `/vcodex56` 实际回复通过。
 - 仓库捕获可重建检查：core 99、Worker 94、飞书 47 个文件，0 缺失、0 字节差异；V 漂移哨兵 8734 个文件，0 findings。
 - 运行文件备份与 undo.json：`/opt/v-release-backups/v2026.9.1-db91.6-vcodex-sol61-20260930-20260930T044045`。
-- 暂停新增 Night Shift 调度以等待现有任务结束，未取消在跑任务。原项目状态保存在 V 的私有运维记录中；启用后恢复。
+- 暂停新增 Night Shift 调度；用户随后明确授权暂停现有夜班、重启后恢复。原生恢复交接不取消外部 Makaron 出片，不清空任务状态，临时 SIGUSR1 停机策略禁止 SIGKILL，启用结束删除临时策略。原项目状态保存在 V 的私有运维记录中；启用后恢复。
 
 ## v2026.9.1-db91.6-feishu-ask-user-20260930
 
