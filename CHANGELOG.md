@@ -30,6 +30,8 @@
 - 运行文件备份与 undo.json：`/opt/v-release-backups/v2026.9.1-db91.6-vcodex-sol61-20260930-20260930T044045`。
 - 暂停新增 Night Shift 调度；用户随后明确授权暂停现有夜班、重启后恢复。原生恢复交接不取消外部 Makaron 出片，不清空任务状态，临时 SIGUSR1 停机策略禁止 SIGKILL，启用结束删除临时策略。5 个项目已恢复 active 与原 automaticDispatch；两个被重启中断的卡片由现有监控重派，一个 running、一个 ready 等待项目名额。第一次停机被依赖 timer 的启动请求取消，异常清理过早还原策略导致旧进程被 systemd SIGKILL；已暂停 companion timer 完成第二次正常停机，修正脚本的 timer 与异常清理边界，详见验收记录。
 
+**发版后配置改动（2026-09-30 21:17 CST，不改运行字节，代码仓库有迁移脚本）**：关掉 Codex 应用插件 canva（`plugins.entries.codex.config.codexPlugins.enabled` 从 true 改为 false，插件列表保留），Gateway `openclaw.json` 和 Worker `experiments/agent-worker-isolation-v1/worker-openclaw.json` 两份都改（备份 `.before-codex-plugins-off-1790774237*`）。原因：每个 `/vcodex` 回合开始前，都要先查 canva 的插件与应用清单（`plugin/read` 联网 → `app/installed` → 再一次 `plugin/read`），每轮多花 3–6 秒；清单一直缺失所以从不缓存，而 Canva 从未被调用过。经 PR #129（dev `1d4db3b`）的 `lab/release-files/codex-plugins-off/activate-production.mjs` 受控重启生效：`--preserve-inflight` 原生交接，停服后才写配置，Gateway PID 635943 → 1141805，就绪后 worker 池 5、夜班按 #125 自动暂停并接上。共享 VLab 同步改动，用真实 ChatGPT 登录测了改前改后：用户消息 → Codex 线程就绪从 4.8 / 6.2 s 降到 0.3 s（热）。生产验收：回合开始前不再有任何插件请求，run 开始 → 线程就绪从 4.2 s 降到 1.8 s（热，剩下的是 80 MB 大私聊的本地计算）。[验收记录](docs/acceptance/codex-plugins-off-20260930.md)。
+
 ## v2026.9.1-db91.6-feishu-ask-user-20260930
 
 上线：2026-09-30 08:32 CST  ·  tag `v2026.9.1-db91.6-feishu-ask-user-20260930`
