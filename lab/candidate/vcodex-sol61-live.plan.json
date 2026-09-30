@@ -1,0 +1,24 @@
+{
+  "tests": [],
+  "support": [
+    "lab/candidate/vcodex-sol61-live.mjs",
+    "lab/release-files/vcodex-sol61/config.mjs"
+  ],
+  "files": [
+    {
+      "source": "lab/release-files/vcodex-sol61/model-route-contract-B2Q_03Gg.js",
+      "target": "openclaw/dist/model-route-contract-B2Q_03Gg.js",
+      "before": "0524626e3b05900198dbdd9deed28c3752eeab1bec1dec2eefd14aed8969f145"
+    },
+    {
+      "source": "lab/release-files/vcodex-sol61/openai-chatgpt-provider-BApw3_oy.js",
+      "target": "openclaw/dist/openai-chatgpt-provider-BApw3_oy.js",
+      "before": "b464def9a0cd1e8e982a21aaf8c63924a798740b1c9c187cd87f1deaa561025b"
+    }
+  ],
+  "timeoutSeconds": 720,
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/vcodex-sol61-live.mjs"
+  ]
+}
