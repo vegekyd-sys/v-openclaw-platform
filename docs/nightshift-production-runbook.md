@@ -140,6 +140,13 @@ A card still shown `running` is asked too when its transcript ends on an error (
 
 Faults of the substrate have their own retry allowance: up to 5 attempts (backoff 1, 5, 15, 15, 30 minutes) or the stage's `retry.maxAttempts`, whichever is larger. Before, lease timeouts and a Gateway restart could use up a produce card's three attempts and open a request.
 
+**Lost runs.** The task registry can keep a run `running` after its Worker is gone. On 2026-09-30 a Gateway restart at 08:26 marked two runs `failed` ("subagent run lost active execution context") and left two others `running`; their cards sat `running` on the board with an idle execution, and nothing ended them until an operator blocked and retried them. A run is therefore treated as lost, recorded as `agent_interrupted`, and retried by the ledger rule, when all of these hold:
+- the registry says it is `running` or `queued`;
+- the board's execution for the card is not `running`;
+- the registry has recorded no activity for 10 minutes on a card shown `running` with an idle execution, or for `NIGHTSHIFT_ORPHANED_SESSION_MS` (45 minutes) on a blocked card.
+
+A quiet run whose execution is still `running`, such as a long tool call, is left alone.
+
 When the Gateway has no entry for the run, the transcript rules below apply.
 
 **Written outputs are salvaged, never judged.** A blocked card with no recorded failure is checked for outputs a finished attempt may have left behind; when they satisfy the contract the card completes. When they do not, nothing is recorded: the board shows "Outputs not found yet: …" and the card waits. Before this, a failed salvage became a contract failure, and eight stopped runs on 2026-09-28/29 reached 需要你 as missing handoffs and unrecorded payments.

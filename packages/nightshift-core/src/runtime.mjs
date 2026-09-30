@@ -12,6 +12,11 @@ import { normalizeProjectCollaboration } from "./project.mjs";
 // A blocked card with an empty Session is read as never started only after this
 // long, so a transcript still being written is not mistaken for one.
 const NOT_STARTED_GRACE_MS = 2 * 60_000;
+// A card the board shows running with an idle execution, whose run the Gateway
+// has recorded nothing for this long, lost its run. On V (2026-09-30 08:26) a
+// Gateway restart left two produce runs marked running in the task registry
+// while their Workers were gone; their cards sat running with nothing to end them.
+const LOST_RUN_IDLE_MS = 10 * 60_000;
 // Attempts a card may spend on faults of the substrate before a person hears.
 const SUBSTRATE_MAX_ATTEMPTS = 5;
 
@@ -310,7 +315,9 @@ export class NightShiftRuntime {
     let endedNormally = false;
     let runEndedAt = 0;
     let runOutcomeRead = false;
-    if (card.status === "blocked" && typeof this.workboard.getRunOutcome === "function") {
+    const executionStatus = String(card.execution?.status ?? "").toLowerCase();
+    const runningButIdle = card.status === "running" && executionStatus === "idle";
+    if ((card.status === "blocked" || runningButIdle) && typeof this.workboard.getRunOutcome === "function") {
       const runId = card.runId ?? card.execution?.runId;
       let outcome = null;
       try {
@@ -319,6 +326,31 @@ export class NightShiftRuntime {
         // The transcript below is the fallback.
       }
       if (outcome && ["queued", "running"].includes(String(outcome.status).toLowerCase())) {
+        // The registry can keep a run "running" after its Worker is gone. When
+        // the board shows no execution either and the run has not moved for
+        // long, the run is lost: the same substrate fault as a failed one.
+        const lastActivity = timestampMs(outcome.updatedAt ?? 0);
+        const quietMs = lastActivity > 0 ? this.now() - lastActivity : 0;
+        const lostAfter = runningButIdle ? LOST_RUN_IDLE_MS : this.orphanedSessionMs;
+        if (executionStatus !== "running" && lastActivity > 0 && quietMs >= lostAfter) {
+          return this.failTerminalAttempt({
+            attempt,
+            card,
+            contentItemId,
+            failure: {
+              kind: "agent_interrupted",
+              source: "gateway",
+              rawError: `Run lost: the board shows execution ${executionStatus || "none"} and the Gateway recorded no activity for ${Math.round(quietMs / 60_000)} min`,
+              retryable: true,
+            },
+            instance,
+            ledgerDecides: true,
+            release,
+            stageId,
+            terminalAt: this.now(),
+          });
+        }
+        if (runningButIdle) return null;
         if (inspectionEventId) {
           this.store.appendEvent({
             eventId: inspectionEventId,
