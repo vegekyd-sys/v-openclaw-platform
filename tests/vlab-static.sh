@@ -19,6 +19,8 @@ python3 "${REPO_ROOT}/tests/v-release-drift.test.py"
 bash -n "${REPO_ROOT}/scripts/install-v-release-drift.sh"
 python3 "${REPO_ROOT}/tests/v-nightshift-check.test.py"
 bash -n "${REPO_ROOT}/scripts/install-v-nightshift-check.sh"
+python3 "${REPO_ROOT}/tests/v-daily-image.test.py"
+bash -n "${REPO_ROOT}/scripts/install-v-daily-image.sh"
 # The release production V runs now: core dist, worker plugin, Feishu plugin.
 for component in "" .worker .feishu; do
   node "${REPO_ROOT}/scripts/verify-release-reproducible.mjs" \
