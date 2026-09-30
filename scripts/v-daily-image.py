@@ -138,9 +138,11 @@ def wait_normal(blueprint_id):
 
 
 def create(name):
+    # The API rejects a Description of 60 characters or more (found on the first real run).
     params = {"BlueprintName": name, "InstanceId": INSTANCE_ID, "ForcePowerOff": False,
-              "Description": "daily online image of V system disk (v-daily-image.timer); keep %d" % KEEP}
+              "Description": "v-daily-image.timer, keep newest %d" % KEEP}
     assert params["ForcePowerOff"] is False  # True would shut production down first
+    assert len(params["Description"]) < 60 and len(name) < 60
     return call("CreateBlueprint", params)["BlueprintId"]
 
 

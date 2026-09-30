@@ -102,6 +102,7 @@ class Run(unittest.TestCase):
         (create,) = self.actions("CreateBlueprint")
         self.assertIs(create["ForcePowerOff"], False)
         self.assertEqual(create["BlueprintName"], "v-daily-20261001")
+        self.assertLess(len(create["Description"]), 60)  # API limit, InvalidParameterValue.TooLong
         deleted = [i for p in self.actions("DeleteBlueprints") for i in p["BlueprintIds"]]
         self.assertEqual(deleted, ["lhbp-20260928"])
         self.assertNotIn("lhbp-incident", deleted)
