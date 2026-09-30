@@ -1,0 +1,12 @@
+{
+  "version": "0.159.2",
+  "package": "@openai/codex@0.159.2",
+  "integrity": "sha512-SE13C3nZCYoVL569BdegoOl6vwjb7o2sXOo7ivwVzaVoY0cswwi0/6pIE0TyO/C0vIkQh3jslExitET7PBTfIg==",
+  "linuxX64": {
+    "package": "@openai/codex@0.159.2-linux-x64",
+    "integrity": "sha512-RrCZ1X52wpa1lOsXtCtSyhjOFdQPh7LH5Ccv8HsKmd/2UXbUwxXFqWXFK3JzatquUNGtW/TLox5Y7qVOGkV0/Q==",
+    "binary": "node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex",
+    "binarySha256": "1748767b230ebfc3d4ab7e4e254920d0c0ad9691fd8c11f190e7d44511a4a92e"
+  },
+  "officialRelease": "https://learn.chatgpt.com/docs/changelog"
+}
