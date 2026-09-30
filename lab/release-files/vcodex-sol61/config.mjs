@@ -21,7 +21,7 @@ export function configureVcodex(input, {codexCommand} = {}) {
       assert(!Object.entries(models).some(([key, value]) => key !== ref && value?.alias?.toLowerCase() === fallback), `Alias /${fallback} is already occupied`);
       row.alias = fallback;
     }
-    const previous = models[target] ?? models['openai/gpt-6-sol'] ?? models['openai/gpt-5.6-sol'];
+    const previous = models[target] ?? models['openai/gpt-6-sol'] ?? models['openai/gpt-5.6-sol'] ?? defaults.models[target];
     assert(previous, 'No existing Sol configuration to inherit');
     models[target] = {...structuredClone(previous), alias: 'vcodex', params: {...previous.params, thinking: 'medium'}, agentRuntime: {id: 'codex'}};
   }
