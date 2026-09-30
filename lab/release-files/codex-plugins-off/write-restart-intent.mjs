@@ -1,0 +1,13 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
+assert.equal(os.hostname(),'VM-8-2-ubuntu');
+assert.equal(process.getuid(),fs.statSync('/home/openclaw/.openclaw').uid);
+assert(process.getuid()>0);
+const pid=Number(process.argv.at(-1));
+assert(pid>1);
+assert.equal(Number(execFileSync('systemctl',['show','openclaw-gateway.service','-p','MainPID','--value'],{encoding:'utf8'})),pid);
+const {a:writeIntent}=await import('/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core/dist/restart-intent-BYVo1227.js');
+assert(writeIntent({targetPid:pid,reason:'codex-plugins-off-user-authorized-preserve-restart',intent:{waitMs:5000},env:process.env}));
+console.log(JSON.stringify({nativeRestartIntentWritten:true,targetPid:pid,waitMs:5000,terminalPolicy:'preserve',serviceUser:true}));

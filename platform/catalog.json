@@ -206,6 +206,7 @@
         "lab/candidate/candidate.test.mjs",
         "lab/candidate/deepseek-budget-image.test.mjs",
         "lab/candidate/completions-overflow-signal.test.mjs",
+        "lab/release-files/codex-plugins-off/config.test.mjs",
         "lab/canonical-session-scan.test.mjs",
         "lab/cron-shared-tool-surface.test.mjs",
         "lab/db91-benchmark-profile.test.mjs",

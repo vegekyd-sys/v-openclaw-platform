@@ -1,0 +1,17 @@
+{
+  "tests": [],
+  "support": [
+    "lab/candidate/vcodex-preturn-profile.mjs",
+    "lab/release-files/codex-plugins-off/config.mjs"
+  ],
+  "timeoutSeconds": 1800,
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/vcodex-preturn-profile.mjs"
+  ],
+  "env": {
+    "BIG_SESSION_KEY": "agent:makaron:feishu:group:oc_ecabb6515bef5df53bf5fd1dbeca79db",
+    "CODEX_ALIAS": "vds",
+    "ALL_SESSION_METADATA": "1"
+  }
+}
