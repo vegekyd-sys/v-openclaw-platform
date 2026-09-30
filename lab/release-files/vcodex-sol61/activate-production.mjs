@@ -11,7 +11,12 @@ import {configureVcodex} from './config.mjs';
 
 assert.equal(os.hostname(),'VM-8-2-ubuntu');
 assert.equal(process.getuid(),0);
+const preserveInflight=process.argv.includes('--preserve-inflight');
 const unit='openclaw-gateway.service';
+const stopDropin='/etc/systemd/system/'+unit+'.d/zzzzzzzzzzzzzz-vcodex-sol61-controlled-stop.conf';
+const stopPolicy='[Service]\nKillMode=mixed\nKillSignal=SIGUSR1\nTimeoutStopSec=180\nSendSIGKILL=no\n';
+let installedStopPolicy=false;
+function cleanupStopPolicy(){if(!installedStopPolicy)return;assert.equal(fs.readFileSync(stopDropin,'utf8'),stopPolicy);fs.unlinkSync(stopDropin);run('systemctl',['daemon-reload']);installedStopPolicy=false;}
 const core='/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core';
 const root='/home/openclaw/.openclaw';
 const binary='/opt/codex-0.159.2-v/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex';
@@ -50,12 +55,31 @@ async function connect(){
 const client=await connect();let held,stopped=false,applied=false;
 try{
   assert.equal((await client.request('health',{})).ok,true);
-  held=await acquireIdleFence((method,params)=>client.request(method,params,{timeoutMs:30000}),'vcodex-sol61-production-'+Date.now());
+  if(preserveInflight){
+    // Explicit operator authorization permits a native recoverable handoff.
+    // Preserve all in-flight turns; never SIGKILL a Worker or clear its state.
+    const workers=await client.request('vlab.workers.status',{});
+    assert.equal(workers.pending,0);assert(workers.workers.every(w=>!w.queued));
+    const maintenance=JSON.parse(fs.readFileSync('/opt/v-release-backups/vcodex-sol61-20260930-config/nightshift-maintenance.json'));
+    const projects=(await(await fetch('http://127.0.0.1:24879/api/instances')).json()).instances;
+    for(const item of maintenance.projects.filter(x=>x.paused))assert.equal(projects.find(x=>x.id===item.id)?.status,'paused','Night Shift scheduling resumed before handoff');
+    held=await client.request('gateway.suspend.prepare',{requestId:'vcodex-sol61-preserve-'+Date.now(),drain:true,terminalPolicy:'preserve'});
+    assert(held.suspensionId);
+    const status=await client.request('gateway.suspend.status',{suspensionId:held.suspensionId});
+    assert(['ready','draining'].includes(status.status));assert(status.expiresAtMs>Date.now()+5000);assert.equal(status.queuedCount??0,0);
+    console.log(JSON.stringify({phase:'preserve-inflight-handoff',active:workers.workers.reduce((n,w)=>n+w.activeCount,0),runs:workers.workers.flatMap(w=>w.active.map(x=>({runId:x.runId,sessionKey:x.sessionKey}))),suspensionStatus:status.status}));
+  }else held=await acquireIdleFence((method,params)=>client.request(method,params,{timeoutMs:30000}),'vcodex-sol61-production-'+Date.now());
   assert.equal(pid(),beforePid);
   for(const c of configs)assert.equal(fs.readFileSync(c.file,'utf8'),c.text,'Concurrent configuration change');
-  console.log(JSON.stringify({phase:'idle-fence-ready',beforePid,suspensionId:held.suspensionId}));
-  // Keep configuration writes out of the live watcher: stop only after idle.
-  run('systemctl',['stop',unit]);stopped=true;assert.equal(pid(),0);client.stop();
+  console.log(JSON.stringify({phase:preserveInflight?'native-preserve-fence-held':'idle-fence-ready',beforePid,suspensionId:held.suspensionId}));
+  // Keep configuration writes out of the live watcher: stop after idle or the explicitly authorized native preserve handoff.
+  if(preserveInflight){
+    assert(!fs.existsSync(stopDropin),'Concurrent controlled stop policy');
+    fs.writeFileSync(stopDropin,stopPolicy,{flag:'wx',mode:0o644});installedStopPolicy=true;
+    run('systemctl',['daemon-reload']);assert.equal(run('systemctl',['show',unit,'-p','KillSignal','--value']),'10');
+    console.log(run('/usr/sbin/runuser',['-u','openclaw','--',process.execPath,'--input-type=module','-e',fs.readFileSync(new URL('write-restart-intent.mjs',import.meta.url),'utf8'),String(beforePid)]));
+  }
+  execFileSync('systemctl',['stop',unit],{encoding:'utf8',timeout:190000});stopped=true;assert.equal(pid(),0);client.stop();cleanupStopPolicy();
   try{
     for(const c of configs){
       const output=run(process.execPath,[fileURLToPath(new URL('config.mjs',import.meta.url)),c.file,'--codex-bin',binary,'--apply']);
@@ -87,6 +111,7 @@ try{
   for(const c of configs)assert.deepEqual(JSON.parse(fs.readFileSync(c.file)),c.after);
   console.log(JSON.stringify({phase:'activated',beforePid,afterPid:pid(),ready:true,configurations:configs.map(c=>({file:c.file,sha256:hash(c.file)})),model:'openai/gpt-6.1-sol',runtime:'codex',codexVersion:'0.159.2',functionalAcceptance:'Real Feishu acceptance still required'}));
 }finally{
+  cleanupStopPolicy();
   if(stopped)run('systemctl',['start',unit]);
   if(!applied&&held?.suspensionId&&pid()===beforePid)await client.request('gateway.suspend.resume',{suspensionId:held.suspensionId}).catch(()=>{});
   client.stop();
