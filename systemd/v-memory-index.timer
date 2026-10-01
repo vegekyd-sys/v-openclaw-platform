@@ -1,0 +1,14 @@
+[Unit]
+Description=Sync V's memory_search index twice a day
+
+[Timer]
+# After the Librarian's 21:00 compile, and once in the early-morning low.
+# A run can make a concurrent Gateway write wait up to ~5 s (VLab 2026-10-02),
+# so keep it to low-traffic hours.
+OnCalendar=*-*-* 05:40:00 Asia/Shanghai
+OnCalendar=*-*-* 21:40:00 Asia/Shanghai
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

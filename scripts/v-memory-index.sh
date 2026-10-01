@@ -14,14 +14,17 @@
 # with a different OpenClaw build than the one that serves memory_search.
 #
 #   v-memory-index.sh [agent...]      default agent: makaron
+#   GATEWAY_UNIT=<unit>   Gateway service to mirror (default openclaw-gateway.service)
+#   DRY_RUN=1             print what would run (no environment values), run nothing
 set -euo pipefail
 
 agents=("$@")
 [ ${#agents[@]} -gt 0 ] || agents=(makaron)
 
-pid=$(systemctl show -p MainPID --value openclaw-gateway.service)
+unit=${GATEWAY_UNIT:-openclaw-gateway.service}
+pid=$(systemctl show -p MainPID --value "$unit")
 if [ -z "$pid" ] || [ "$pid" = 0 ] || [ ! -r "/proc/$pid/cmdline" ]; then
-  echo "openclaw-gateway is not running; skipping memory index" >&2
+  echo "$unit is not running; skipping memory index" >&2
   exit 0
 fi
 
@@ -47,6 +50,10 @@ done
 user=$(stat -c %U "/proc/$pid")
 rc=0
 for agent in "${agents[@]}"; do
+  if [ "${DRY_RUN:-}" = 1 ]; then
+    echo "would run as $user: $node $entry memory index --agent $agent (env: ${#cli_env[@]} vars incl. $(printf '%s\n' "${cli_env[@]}" | cut -d= -f1 | grep -E '^OPENCLAW_(CONFIG_PATH|STATE_DIR)$' | paste -sd, -))"
+    continue
+  fi
   started=$(date +%s)
   if runuser -u "$user" -- env -i "${cli_env[@]}" "$node" "$entry" memory index --agent "$agent"; then
     echo "memory index $agent ok in $(( $(date +%s) - started ))s"
