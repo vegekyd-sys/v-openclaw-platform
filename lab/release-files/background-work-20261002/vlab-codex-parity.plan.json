@@ -1,0 +1,8 @@
+{
+  "baseRelease": "vcodex-sol61-v1",
+  "files": [
+    {"source": "lab/release-files/background-work-20261002/vlab-codex-parity/harness-DXVZ5II5.js", "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/harness-DXVZ5II5.js", "before": "9eff1736dbb884d409e034ff4387134fa01c38d8f25ef5fa40eaa51af69a5fba"},
+    {"source": "lab/release-files/background-work-20261002/vlab-codex-parity/run-attempt-D1hJO4fX.js", "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/run-attempt-D1hJO4fX.js", "before": "1f6ab7d5d37190b25a4c672b46d94ed90b5db5372e310468f9ce478ade15d7cc"},
+    {"source": "lab/release-files/background-work-20261002/vlab-codex-parity/thread-lifecycle-DAcEJ_Om.js", "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/thread-lifecycle-DAcEJ_Om.js", "before": "739b39f7558ad8701d60ea605c579ec257144fcbfe6d82b33b379026d8729b10"}
+  ]
+}

@@ -12,7 +12,9 @@
 //   1. The release must be VLab's current release and accepted there.
 //   2. Its files come from VLab's own release record (the bytes VLab runs), are
 //      checked against the recorded after-hash, and are mapped to V's paths
-//      (core dist, worker plugin, Feishu plugin; anything else is refused).
+//      (core dist, worker plugin, Feishu plugin, the npm-managed Codex plugin;
+//      anything else is refused). The Codex plugin is not in the recapture of
+//      step 5, so the drift sentinel does not watch it.
 //   3. Every target on V must still hold the release's `before` bytes, i.e. V
 //      is exactly what VLab was before this release. Otherwise refuse.
 //   4. Old files go to /opt/v-release-backups/<name>/ with undo.json; new bytes
@@ -38,6 +40,8 @@ const VLAB_TOOL = args.vlabTool ?? '/Users/tianyicai/vlab-dev/lab/vlab.mjs';
 const RELEASES = '/srv/vlab-production-mirror/labs/shared-workflow/releases';
 const V_UNIT = 'openclaw-gateway.service';
 const V_FEISHU = args.vFeishu ?? '/opt/openclaw-experiments/worker-visible-progress-v2026.9.1-20260909/feishu';
+// npm-managed plugin projects (the Codex harness); same project directory names on VLab and V.
+const V_NPM_PROJECTS = args.vNpmProjects ?? '/home/openclaw/.openclaw/npm/projects';
 const BACKUPS = '/opt/v-release-backups';
 const V_NODE = args.vNode ?? '/opt/node-v22.23.1/bin/node';
 
@@ -109,6 +113,8 @@ const mapTarget = (t) => {
   if (t.startsWith('production-worker/')) return `${vWorker}/${t.slice('production-worker/'.length)}`;
   const m = /^npm\/projects\/openclaw-feishu-[^/]+\/node_modules\/@openclaw\/feishu\/(.+)$/.exec(t);
   if (m) return `${V_FEISHU}/${m[1]}`;
+  const codex = /^npm\/projects\/(openclaw-codex-[^/]+)\/node_modules\/@openclaw\/codex\/(.+)$/.exec(t);
+  if (codex) return `${V_NPM_PROJECTS}/${codex[1]}/node_modules/@openclaw/codex/${codex[2]}`;
   return null;
 };
 const files = artifact.files.map((f) => {

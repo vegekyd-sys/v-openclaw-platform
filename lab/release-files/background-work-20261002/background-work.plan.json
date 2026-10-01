@@ -1,0 +1,11 @@
+{
+  "baseRelease": "vlab-codex-parity-20261002",
+  "files": [
+    {"source": "lab/release-files/feishu-task-status/task-registry-activity-DSlVVJwD.js", "target": "openclaw/dist/task-registry-activity-DSlVVJwD.js", "before": "65d88753fd63011eaa0f01f83f168417277aec5cc38087edb112e1e4d851313b"},
+    {"source": "lab/release-files/feishu-task-status/task-registry.store.sqlite-paxOzi9K.js", "target": "openclaw/dist/task-registry.store.sqlite-paxOzi9K.js", "before": "e0e43ff1cc80363ebe3432c29614d76ebc4c05cf9c0d5d6d9c4459c74b4021ff"},
+    {"source": "lab/release-files/feishu-task-status/monitor.account-WFdlCDhR.js", "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js", "before": "4d3ea59b4dcabdef412c7bb3fc58b53f92ab4cc7f0522265f069f1ddd7662ce0"},
+    {"source": "lab/release-files/background-work-20261002/codex-native-subagent/subagent-registry-C24yr_PF.js", "target": "openclaw/dist/subagent-registry-C24yr_PF.js", "before": "f0b833de66236db51c7feac999ba7229a6559fbd16a581a40b19f8ee6d752bec"},
+    {"source": "lab/release-files/background-work-20261002/codex-native-subagent/plugin-sdk/agent-harness-task-runtime.js", "target": "openclaw/dist/plugin-sdk/agent-harness-task-runtime.js", "before": "04f713bc2f269afe0906db54317e64f545749a02dd86a8f31d7be955c311fa71"},
+    {"source": "lab/release-files/background-work-20261002/codex-native-subagent/thread-lifecycle-DAcEJ_Om.js", "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/thread-lifecycle-DAcEJ_Om.js", "before": "0e575c99edb63a52de51712393986cd5b7566155cf1b484bda4bdcbf494bd053"}
+  ]
+}
