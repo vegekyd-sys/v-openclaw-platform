@@ -1,0 +1,17 @@
+{
+  "support": [
+    "lab/candidate/v-browser-cross-harness.mjs",
+    "<scratch>/fixed/v-browser-plugin.tgz",
+    "<scratch>/fixed/v-browser-src.tgz"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/v-browser-cross-harness.mjs"
+  ],
+  "timeoutSeconds": 3600,
+  "user": "lab-db91-parity",
+  "env": {
+    "VB_EXPECT": "fixed",
+    "VB_HARNESSES": "worker,vds,vcc"
+  }
+}
