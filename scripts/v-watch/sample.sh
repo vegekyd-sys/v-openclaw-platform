@@ -32,6 +32,25 @@ ps -eo pid,rss,etimes,args 2>/dev/null | grep 'worker/worker' | grep -v grep \
 # An empty pool is a total outage that no other signal here reports.
 # Second field is seconds since the Gateway unit became active, so the rule
 # layer can ignore the ~2 minutes an empty pool is normal during startup.
+# Runtime mode, printed before poolsize so the rule layer knows whether an
+# empty pool is an outage. Same rule as v-sentinel's worker_mode(): 9.6
+# no-worker mode (agent turns in the Gateway, Worker plugin disabled) has no
+# pool at all. "unknown" (config unreadable) keeps the worker rules.
+runtime_mode=$(python3 -c '
+import json, sys
+try:
+    c = json.load(open("/home/openclaw/.openclaw/openclaw.json"))
+except Exception:
+    print("unknown"); sys.exit()
+def routes(v):
+    if isinstance(v, dict):
+        rt = v.get("agentRuntime")
+        return (isinstance(rt, dict) and rt.get("id") == "vlab-worker") or any(routes(x) for x in v.values())
+    return isinstance(v, list) and any(routes(x) for x in v)
+e = ((c.get("plugins") or {}).get("entries") or {}).get("vlab-agent-worker-isolation")
+print("worker" if (isinstance(e, dict) and e.get("enabled", True) is not False) or routes(c) else "no-worker")
+' 2>/dev/null)
+echo "runtime_mode ${runtime_mode:-unknown}"
 gw_mono=$(systemctl show openclaw-gateway -p ActiveEnterTimestampMonotonic --value 2>/dev/null)
 gw_up=$(awk -v m="${gw_mono:-0}" '{ if (m > 0) printf "%d", $1 - m/1e6; else print -1 }' /proc/uptime)
 echo "poolsize $(ps -eo args 2>/dev/null | grep -c '[w]orker/worker.mjs') ${gw_up}"

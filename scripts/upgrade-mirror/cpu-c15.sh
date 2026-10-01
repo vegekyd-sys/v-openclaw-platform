@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# CPU seconds per process class during c15 runs, same procedure for any core.
+#   cpu-c15.sh <label> <core-dir>      (Feishu stays prod91's for both)
+set -uo pipefail
+R=/srv/versa-mirror95; UNIT=versa-mirror95-gateway; N=/opt/vlab/node-v22.23.1-linux-x64/bin/node
+LABEL=${1:?label}; CORE=${2:?core dir}
+MI=$R/capability-alignment-20260911/plugin-sources/home/openclaw/makaron-openclaw/.openclaw-local/workspace/plugins/makaron-image/index.js
+log() { echo "$(date +%T) $*"; }
+systemctl stop $UNIT 2>/dev/null; sleep 3
+sed -i -E "s#$R/[a-z0-9/_.-]*node_modules/openclaw/dist/plugin-sdk/#$CORE/dist/plugin-sdk/#" $MI
+VERSA_CORE_DIR=$CORE bash $R/scripts/start-gateway-prod.sh prod91 | grep -oE "ready version=prod91 startSeconds=[0-9]+|NOT READY.*|unit exited"
+P=$(systemctl show -p MainPID --value $UNIT)
+while [ $(ps -o etimes= -p $P | tr -d " ") -lt 300 ]; do sleep 10; done
+cd $R/workspace
+b() { VERSA_UNIT=$UNIT.service runuser --preserve-environment -u versa-rehearsal -- $N $R/scripts/bench.mjs mirror $1 $2 $R/evidence/bench 2>&1 | tee $R/evidence/raw-$2.log | tail -1 | grep -oE "\"(label|totalMs|firstTextMs)\":(\{[^}]*\}|[^,]*)" | tr "\n" " "; echo; }
+snap() { # pid class ticks
+  for p in $(cat /sys/fs/cgroup/system.slice/$UNIT.service/cgroup.procs); do
+    [ -r /proc/$p/stat ] || continue
+    t=$(awk '{print $14+$15}' /proc/$p/stat 2>/dev/null) || continue
+    if [ "$p" = "$P" ]; then c=gateway; elif tr '\0' ' ' < /proc/$p/cmdline 2>/dev/null | grep -q "worker"; then c=worker; else c=other; fi
+    echo "$p $c $t"
+  done
+}
+b 10 $LABEL-warm1; sleep 30; b 10 $LABEL-warm2; sleep 30
+for i in 1 2 3; do
+  snap > /tmp/cpu-a; b 15 $LABEL-c15-$i; snap > /tmp/cpu-b
+  awk -v hz=$(getconf CLK_TCK) 'NR==FNR{a[$1]=$3;next}{d=$3-($1 in a?a[$1]:0); s[$2]+=d} END{for(k in s) printf "  cpu %s %.1fs\n", k, s[k]/hz}' /tmp/cpu-a /tmp/cpu-b
+  sleep 45
+done
+systemctl stop $UNIT
+log done

@@ -1,0 +1,316 @@
+{
+  "meta": {
+    "lastTouchedVersion": "2026.9.6"
+  },
+  "gateway": {
+    "port": 25096,
+    "auth": {
+      "mode": "token",
+      "token": "${OPENCLAW_GATEWAY_TOKEN}"
+    }
+  },
+  "auth": {
+    "profiles": {
+      "deepseek:default": {
+        "provider": "deepseek",
+        "mode": "api_key"
+      }
+    }
+  },
+  "models": {
+    "providers": {
+      "deepseek": {
+        "baseUrl": "https://api.deepseek.com",
+        "apiKey": "${DEEPSEEK_API_KEY}",
+        "api": "openai-completions",
+        "agentRuntime": {
+          "id": "vlab-worker"
+        },
+        "models": [
+          {
+            "id": "deepseek-v4-flash",
+            "name": "DeepSeek V4 Flash"
+          },
+          {
+            "id": "deepseek-v4-pro",
+            "name": "DeepSeek V4 Pro"
+          },
+          {
+            "id": "deepseek-flash",
+            "name": "DeepSeek V4.1 Flash"
+          }
+        ]
+      }
+    }
+  },
+  "agents": {
+    "ownership": "explicit",
+    "defaults": {
+      "model": {
+        "primary": "deepseek/deepseek-v4-pro",
+        "fallbacks": []
+      },
+      "models": {
+        "deepseek/deepseek-v4-pro": {
+          "agentRuntime": {
+            "id": "vlab-worker"
+          }
+        },
+        "deepseek/deepseek-v4-flash": {
+          "agentRuntime": {
+            "id": "vlab-worker"
+          },
+          "alias": "ds-flash"
+        },
+        "openrouter/x-ai/grok-4.3": {
+          "agentRuntime": {
+            "id": "vlab-worker"
+          }
+        },
+        "google/gemini-3.5-flash": {
+          "agentRuntime": {
+            "id": "vlab-worker"
+          },
+          "params": {
+            "temperature": 0.7
+          }
+        },
+        "anthropic/claude-sonnet-4-6": {
+          "agentRuntime": {
+            "id": "vlab-worker"
+          },
+          "alias": "sonnet"
+        },
+        "azure-openai/gpt-5.5": {
+          "agentRuntime": {
+            "id": "vlab-worker"
+          },
+          "alias": "gpt5.5"
+        },
+        "openai/*": {
+          "agentRuntime": {
+            "id": "vlab-worker"
+          }
+        },
+        "openai/gpt-5.6-sol": {
+          "agentRuntime": {
+            "id": "vlab-worker"
+          },
+          "alias": "vcodex",
+          "params": {
+            "fastMode": true
+          }
+        },
+        "moonshot/kimi-k3": {
+          "agentRuntime": {
+            "id": "vlab-worker"
+          },
+          "alias": "kimi-k3"
+        },
+        "anthropic/claude-opus-5": {
+          "agentRuntime": {
+            "id": "claude-cli"
+          },
+          "alias": "vcc",
+          "params": {
+            "effort": "high"
+          }
+        },
+        "anthropic/claude-sonnet-5": {
+          "agentRuntime": {
+            "id": "claude-cli"
+          }
+        },
+        "openai/gpt-6-astra": {
+          "agentRuntime": {
+            "id": "vlab-worker"
+          },
+          "alias": "astra",
+          "params": {
+            "fastMode": true
+          }
+        },
+        "deepseek/deepseek-flash": {
+          "agentRuntime": {
+            "id": "vlab-worker"
+          },
+          "alias": "DeepSeek V4.1 Flash"
+        }
+      },
+      "compaction": {
+        "mode": "safeguard",
+        "keepRecentTokens": 24000,
+        "model": "deepseek/deepseek-v4-pro",
+        "provider": "versa-fast-quality-v1",
+        "notifyUser": true
+      },
+      "subagents": {
+        "maxConcurrent": 45,
+        "runTimeoutSeconds": 21600
+      },
+      "workspace": "/srv/example/workspace"
+    },
+    "entries": {
+      "makaron": {
+        "models": {
+          "openai/gpt-5.6-sol": {
+            "agentRuntime": {
+              "id": "codex"
+            }
+          },
+          "openai/gpt-6-astra": {
+            "agentRuntime": {
+              "id": "codex"
+            }
+          },
+          "anthropic/claude-opus-5": {
+            "agentRuntime": {
+              "id": "claude-cli"
+            }
+          }
+        },
+        "name": "makaron",
+        "workspace": "/srv/example/makaron"
+      },
+      "v-codex": {
+        "models": {
+          "openai/gpt-5.6-sol": {
+            "agentRuntime": {
+              "id": "codex"
+            }
+          },
+          "openai/gpt-6-astra": {
+            "agentRuntime": {
+              "id": "codex"
+            }
+          }
+        },
+        "name": "v-codex",
+        "workspace": "/srv/example/v-codex"
+      }
+    }
+  },
+  "channels": {
+    "feishu": {
+      "enabled": true,
+      "appId": "cli_synthetic_placeholder",
+      "appSecret": "synthetic-placeholder-not-a-secret",
+      "renderMode": "card"
+    }
+  },
+  "plugins": {
+    "allow": [
+      "admin-http-rpc",
+      "vlab-agent-worker-isolation",
+      "codex",
+      "deepseek",
+      "feishu",
+      "memory-core",
+      "talk-voice",
+      "workboard"
+    ],
+    "load": {
+      "paths": [
+        "/srv/example/plugins/makaron-image",
+        "/srv/example/runtime/worker-95-final",
+        "/srv/example/plugins/v-browser/openclaw-plugin"
+      ]
+    },
+    "entries": {
+      "vlab-agent-worker-isolation": {
+        "enabled": true,
+        "config": {
+          "minWorkers": 5,
+          "maxWorkers": 15,
+          "sessionsPerWorker": 3,
+          "idleTimeoutMs": 180000,
+          "requestTimeoutMs": 600000,
+          "requestStallTimeoutMs": 120000,
+          "gatewayOwnedToolTimeoutMs": 310000,
+          "fastCompactionModel": "azure-openai/gpt-5.5",
+          "fastCompactionMaxInputChars": 420000,
+          "fastCompactionMaxOutputTokens": 12000,
+          "fastCompactionMaxQualityRetries": 1,
+          "workerConfigPath": "/srv/example/state/worker-openclaw.json",
+          "gatewayConfigPath": "/srv/example/state/openclaw.json",
+          "nativeRequestTimeoutMs": 21600000,
+          "warmSpareWorkers": 0,
+          "prewarmAgents": [
+            "main",
+            "makaron"
+          ]
+        }
+      },
+      "codex": {
+        "enabled": true,
+        "config": {
+          "appServer": {
+            "mode": "guardian"
+          }
+        }
+      },
+      "deepseek": {
+        "enabled": true
+      },
+      "feishu": {
+        "enabled": true,
+        "config": {}
+      },
+      "memory-core": {
+        "enabled": true,
+        "config": {
+          "dreaming": {
+            "enabled": false
+          }
+        }
+      },
+      "feishu-link-guard": {
+        "enabled": false
+      }
+    }
+  },
+  "talk": {
+    "consultFastMode": true,
+    "consultThinkingLevel": "low",
+    "realtime": {
+      "provider": "volcengine-rtc-agent",
+      "transport": "managed-room",
+      "model": "xiaohe-agent",
+      "speakerVoice": "xiaohe",
+      "instructions": "synthetic instructions",
+      "mode": "realtime",
+      "brain": "agent-consult",
+      "providers": {
+        "volcengine-rtc-agent": {
+          "appId": "synthetic-app",
+          "appKey": "synthetic-placeholder-app-key",
+          "accessKeyId": "synthetic-placeholder-ak",
+          "secretAccessKey": "synthetic-placeholder-sk",
+          "botId": "synthetic-bot"
+        }
+      }
+    }
+  },
+  "mcp": {
+    "servers": {
+      "universal-memory": {
+        "enabled": false
+      },
+      "voice-memory": {
+        "enabled": true,
+        "transport": "stdio",
+        "command": "node",
+        "args": [
+          "/srv/example/voice-memory/server.mjs"
+        ],
+        "env": {
+          "VOICE_MEMORY_TOKEN": "synthetic-placeholder-token"
+        },
+        "requestTimeoutMs": 30000
+      }
+    }
+  },
+  "session": {
+    "dmScope": "per-channel-peer"
+  }
+}

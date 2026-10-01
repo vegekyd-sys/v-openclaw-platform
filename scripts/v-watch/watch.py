@@ -171,6 +171,13 @@ def handle(out):
                                f"(run={','.join(r[:8] for r in fresh)}) -- a user saw an answer start and stop. "
                                f"This is not the agent choosing not to reply; that never starts streaming.")
 
+        elif kind == "runtime_mode":
+            mode = rest.strip()
+            if state.get("runtime_mode") not in (None, mode):
+                emit("MODE", f"runtime mode {state['runtime_mode']} -> {mode}"
+                             + (" (no Worker pool: empty-pool checks off)" if mode == "no-worker" else ""))
+            state["runtime_mode"] = mode
+
         elif kind == "poolsize":
             parts = rest.split()
             n = int(parts[0])
@@ -186,6 +193,11 @@ def handle(out):
                                     f"(was up {prev_up // 60} min). NRestarts does not count "
                                     f"manual restarts, so this is the only trace.")
                 state["gw_up_last"] = gw_up
+            # 9.6 no-worker mode has no pool: zero workers is the normal state.
+            if state.get("runtime_mode") == "no-worker":
+                state["last_poolsize"] = n
+                state.pop("pool", None)
+                continue
             # An empty pool during the first minutes after a start is normal:
             # the pool takes about two minutes to build. Do not call it an outage.
             if n == 0 and 0 <= gw_up < STARTUP_GRACE_S:

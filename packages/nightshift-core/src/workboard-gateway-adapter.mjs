@@ -253,8 +253,21 @@ export class WorkboardGatewayAdapter {
     // limit caps the response, not the cost of loading and merging the stores.
     // This RPC still waits on the shared Gateway event loop and validates the
     // live Worker occupancy, so overload and queued foreground work fail closed.
+    // OpenClaw 9.6 no-worker mode has no Worker pool and no vlab.workers.status:
+    // the probe then times the Gateway's own health RPC (same event loop, same
+    // admission path) and reports no pool, so the guard runs on latency, host
+    // and agent-database pressure. Without this every probe was red ("unknown
+    // method") and Night Shift never started a card (shared VLab, 2026-09-28).
+    if (this.gatewayWithoutWorkerPool) return this.probeGatewayHealthLatency();
     const started = this.now();
-    const status = await this.call("vlab.workers.status", {});
+    let status;
+    try {
+      status = await this.call("vlab.workers.status", {});
+    } catch (error) {
+      if (!/unknown method: vlab\.workers\.status/.test(String(error?.message ?? error))) throw error;
+      this.gatewayWithoutWorkerPool = true;
+      return this.probeGatewayHealthLatency();
+    }
     const latencyMs = Math.max(0, this.now() - started);
     const capacity = status.maxActiveSessions;
     if (!Number.isSafeInteger(capacity) || capacity < 1 || !Array.isArray(status.workers)) throw new Error("Worker pool capacity is unavailable");
@@ -274,6 +287,12 @@ export class WorkboardGatewayAdapter {
       queued: count(status.pending) + status.workers.reduce((sum, worker) => sum + count(worker.queued), 0),
       ...(workerCapacity === undefined ? {} : { workerCapacity, workersBusy }),
     }};
+  }
+
+  async probeGatewayHealthLatency() {
+    const started = this.now();
+    await this.call("health", {});
+    return { latencyMs: Math.max(0, this.now() - started) };
   }
 
   onChange(listener) {

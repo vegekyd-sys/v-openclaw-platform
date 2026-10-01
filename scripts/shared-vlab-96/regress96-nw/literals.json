@@ -1,0 +1,944 @@
+[
+ {
+  "sha": "eb465f005ab",
+  "subject": "fix(plugins): expose detached work admission on the host gateway bridge",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "cb03bd052bd",
+  "subject": "feat(plugins): host gateway bridge for the worker isolation plugin",
+  "candidates": 2,
+  "literals": [
+   "versa.openclaw.host-gateway-bridge.v1",
+   "versa-host-gateway-bridge-v1"
+  ]
+ },
+ {
+  "sha": "8b19aa58a58",
+  "subject": "Revert \"fix(plugins): share caller identity and context bindings with plugin core copies\"",
+  "literals": [],
+  "skipped": true
+ },
+ {
+  "sha": "accfae53e4a",
+  "subject": "fix(plugins): share caller identity and context bindings with plugin core copies",
+  "candidates": 4,
+  "literals": []
+ },
+ {
+  "sha": "511f94c1e63",
+  "subject": "docs(versa): ledger entry for catalog worker discovery reuse",
+  "literals": [],
+  "skipped": true
+ },
+ {
+  "sha": "79e127b74fa",
+  "subject": "fix(catalog): share worker discovery registrations across agents and provider scopes",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "c37c060513d",
+  "subject": "fix(codex): release idle catalog decoder memory (#156202)",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "ff3f092bb5f",
+  "subject": "fix(catalog): keep one catalog worker generation per loader workspace",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "2aaf8c3af52",
+  "subject": "fix(state): revoke A9 receipts per rewritten database, not per maintenance lease",
+  "candidates": 1,
+  "literals": [
+   "maintenance-mutation"
+  ]
+ },
+ {
+  "sha": "3cce8b21848",
+  "subject": "fix(state): publish an A9 receipt when 9.6's own proof admits a database",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "c7879215b95",
+  "subject": "fix(startup): configurable migration lease TTL and external pre-migration backup",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "192851b7f6d",
+  "subject": "fix(memory): A7 fast path must not skip 9.6's body FTS identity rebuild",
+  "candidates": 1,
+  "literals": [
+   "SELECT 1 FROM sqlite_schema WHERE type = 'trigger' AND name = ?"
+  ]
+ },
+ {
+  "sha": "8bfe6b324e1",
+  "subject": "feat(feishu): stream the session progress card into the reply card as a work checklist (F7)",
+  "candidates": 6,
+  "literals": [
+   "progress-card-changed",
+   "openclaw.v.progressCardChangedListeners",
+   " ? record.step.trim() : ",
+   " || record.status === ",
+   " ? record.status : ",
+   " ? sessionKey.trim().toLowerCase() : "
+  ]
+ },
+ {
+  "sha": "06b17b5aa8b",
+  "subject": "fix(media): relay Worker media completions to the Gateway (B10)",
+  "candidates": 6,
+  "literals": [
+   "versa.vlab-worker.gateway-event-bridge-v1",
+   "versa-worker-gateway-events-v1",
+   "detached_task_started",
+   "detached_task_settled",
+   "media_generation_completion",
+   "Worker media completion was not handled by Gateway"
+  ]
+ },
+ {
+  "sha": "1a2cea992e1",
+  "subject": "docs(versa): ledger for the 9.5 merge, its decisions and the 9.5-only fixes",
+  "literals": [],
+  "skipped": true
+ },
+ {
+  "sha": "c6893114d11",
+  "subject": "perf(gateway): refresh only rows that can resolve to a changed catalog provider",
+  "candidates": 1,
+  "literals": [
+   " ? provider.trim().toLowerCase() : "
+  ]
+ },
+ {
+  "sha": "0276902722f",
+  "subject": "refactor(gateway): listings request current rows through a hook, not a second wait",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "6d89e0b262d",
+  "subject": "perf(gateway): only listings bypass the catalog refresh spacing",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "901e9770d13",
+  "subject": "perf(gateway): space catalog-driven refreshes of every session row",
+  "candidates": 1,
+  "literals": [
+   "OPENCLAW_SESSION_ROW_CATALOG_REFRESH_MIN_MS"
+  ]
+ },
+ {
+  "sha": "8650b591828",
+  "subject": "perf(gateway): bound the sessions.list wait for dirty rows; recompute catalog signatures per read",
+  "candidates": 1,
+  "literals": [
+   "OPENCLAW_SESSION_LIST_MATERIALIZE_WAIT_MS"
+  ]
+ },
+ {
+  "sha": "6922864aa54",
+  "subject": "perf(gateway): re-materialize session rows only when the model catalog changed",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "ff302cbcf62",
+  "subject": "perf(state): keep A9 connection checks off the per-row hot path",
+  "candidates": 2,
+  "literals": [
+   "OPENCLAW_DB91_CONNECTION_CHECK_TTL_MS",
+   "openclaw.agentDbIntegrityGateCaches"
+  ]
+ },
+ {
+  "sha": "469d5e946ff",
+  "subject": "fix(state): share A9 connection files and A2 held leases across core copies",
+  "candidates": 2,
+  "literals": [
+   "openclaw.agentDbIntegrityConnectionFiles",
+   "openclaw.agentDbProcessHeldLeases"
+  ]
+ },
+ {
+  "sha": "5b5cab546d7",
+  "subject": "test: guard an optional row in the in-place snapshot test",
+  "literals": [],
+  "skipped": true
+ },
+ {
+  "sha": "8ad9deea948",
+  "subject": "feat(ui/talk): volcengine RTC managed-room voice in Control UI source (voice)",
+  "candidates": 3,
+  "literals": [
+   "VolcEngine RTC managed-room client failed to load"
+  ]
+ },
+ {
+  "sha": "1ecd1f0e7c0",
+  "subject": "test: fit the 9.5 merge's tests to 9.5 behavior",
+  "literals": [],
+  "skipped": true
+ },
+ {
+  "sha": "856371f4d91",
+  "subject": "Revert \"perf(sessions): optional minimum spacing between automatic maintenance passes\"",
+  "literals": [],
+  "skipped": true
+ },
+ {
+  "sha": "c17331d293f",
+  "subject": "Revert \"perf(sessions): let reply initialization defer its configured maintenance\"",
+  "literals": [],
+  "skipped": true
+ },
+ {
+  "sha": "6cdfe54b6b6",
+  "subject": "test: register the lint suppressions added by C and E4",
+  "literals": [],
+  "skipped": true
+ },
+ {
+  "sha": "925716201fd",
+  "subject": "test: keep B5 tests in the isolated unit-fast lane and list openai's source catalog (E2)",
+  "literals": [],
+  "skipped": true
+ },
+ {
+  "sha": "8a86101f019",
+  "subject": "feat(codex): run DeepSeek through the Codex harness for /vds (G1)",
+  "candidates": 2,
+  "literals": [
+   " && provider !== ",
+   " || normalizedId.startsWith("
+  ]
+ },
+ {
+  "sha": "2198ab5954b",
+  "subject": "build(versa): use the official Control UI before the voice overlay",
+  "literals": [],
+  "skipped": true
+ },
+ {
+  "sha": "e097bef34cd",
+  "subject": "test(gateway): allow zero lookup-store listings once sharing uses exact keys (A13)",
+  "literals": [],
+  "skipped": true
+ },
+ {
+  "sha": "926f4a34dd5",
+  "subject": "versa: ledger — every production patch has a source commit (M1)",
+  "literals": [],
+  "skipped": true
+ },
+ {
+  "sha": "124ce48c6ca",
+  "subject": "test(gateway): run back-to-back placement maintenance without the A4 cooldown (A4)",
+  "literals": [],
+  "skipped": true
+ },
+ {
+  "sha": "062f3e6f181",
+  "subject": "fix(agents): keep production's DeepSeek budget error text check (E3)",
+  "candidates": 1,
+  "literals": [
+   "上下文剩余空间不足，已停止本次生成。"
+  ]
+ },
+ {
+  "sha": "e3ab0a575a5",
+  "subject": "perf(memory-core): bound sqlite-vec chunk blobs below the page cache (A19)",
+  "candidates": 1,
+  "literals": [
+   "Invalid memory vector dimensions"
+  ]
+ },
+ {
+  "sha": "1153825acfc",
+  "subject": "feat(ai): log first-text stages of the ChatGPT Responses WebSocket path (E7)",
+  "candidates": 10,
+  "literals": [
+   "[firsttext-ws-metrics] ",
+   "ws-acquire-start",
+   "ws-cache-reused",
+   "ws-connect-start",
+   "ws-socket-created",
+   "ws-send-return",
+   "ws-first-inbound",
+   "ws-first-provider-event"
+  ]
+ },
+ {
+  "sha": "090874a1126",
+  "subject": "fix(ai): cap DeepSeek v4 output to the room left in its context (E3)",
+  "candidates": 4,
+  "literals": [
+   "V_DEEPSEEK_CONTEXT_BUDGET_EXHAUSTED",
+   " ? value : JSON.stringify(value ?? ",
+   "max_completion_tokens",
+   "Context overflow: [V_DEEPSEEK_CONTEXT_BUDGET_EXHAUSTED]"
+  ]
+ },
+ {
+  "sha": "809369d742c",
+  "subject": "perf(web-search): resolve Gemini citation redirects within one shared budget (A20)",
+  "candidates": 1,
+  "literals": [
+   "Citation enrichment budget exceeded"
+  ]
+ },
+ {
+  "sha": "c87ed5117fb",
+  "subject": "perf(memory): read-only project memory for prompts; transient search handle (A18)",
+  "candidates": 6,
+  "literals": [
+   "Project memory candidate budget exceeded",
+   "## Project Memory",
+   "getMemorySearchManager",
+   "Project memory preparation budget exceeded",
+   "PRAGMA busy_timeout = 250"
+  ]
+ },
+ {
+  "sha": "b1165481041",
+  "subject": "fix(agents): show the output-limit truncation notice in Chinese (E6)",
+  "candidates": 1,
+  "literals": [
+   "⚠️ 回答达到输出限制，以上正文尚未完成，可以要求继续。"
+  ]
+ },
+ {
+  "sha": "3be82345b2e",
+  "subject": "fix(agents): stop, don't continue, a turn that hit the output limit with no reply text (E3)",
+  "candidates": 4,
+  "literals": [
+   "上下文剩余空间不足，已停止本次生成。",
+   "上下文剩余空间不足，已停止本次生成。请先压缩上下文后再继续；历史和任务状态未清空，恢复前请核对已执行操作，避免重复执行。",
+   " || assistant?.stopReason === ",
+   "⚠️ 模型提前结束，未生成正文。已停止自动续写；请先检查输出预算并压缩上下文。历史和任务状态保留，恢复前请核对已执行操作，避免重复执行。"
+  ]
+ },
+ {
+  "sha": "69668c55ca5",
+  "subject": "feat(control-ui): carry V's volcengine RTC voice assets and swap them in (voice)",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "a545fed94f4",
+  "subject": "fix(talk): volcengine RTC voice — managed rooms, owner lifecycle, playback-safe cancel (voice)",
+  "candidates": 9,
+  "literals": [
+   "provider-websocket",
+   "broadcastToConnIds",
+   "chatAbortControllers",
+   "client-cancelled",
+   "playback-overflow",
+   "providerConfig",
+   " ? providerConfig.agentModel.trim() : ",
+   "cancelBrowserSession"
+  ]
+ },
+ {
+  "sha": "1e15ee0c36e",
+  "subject": "feat(feishu): non-owner Feishu senders may run /model only (feishu-model-switch-roles)",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "67572d93f6e",
+  "subject": "feat(secrets): Feishu in-chat secret entry card and host-script mirror (v-openclaw91-secret-entry)",
+  "candidates": 2,
+  "literals": [
+   ").trim().toLowerCase() === ",
+   "openclaw.questionChannelRequestedListeners"
+  ]
+ },
+ {
+  "sha": "fa2db71e9b6",
+  "subject": "fix(gateway): announce authored config changes that return to the runtime baseline (E5)",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "4802c2991b1",
+  "subject": "perf(plugins): load bundled provider policy artifacts optionally (E4)",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "52fba154dff",
+  "subject": "feat(agents): emit [firsttext-metrics] stage lines per model call (E7)",
+  "candidates": 14,
+  "literals": [
+   "[firsttext-metrics] ",
+   " ? event.type : ",
+   "first-decoded-event",
+   " && typeof event?.delta === ",
+   "first-nonempty-text",
+   "thinking_delta",
+   "first-thinking-event",
+   "toolcall_start"
+  ]
+ },
+ {
+  "sha": "593e8c63b6b",
+  "subject": "feat(openai): route gpt-6-sol, gpt-6-luna and gpt-6-astra (E2)",
+  "candidates": 1,
+  "literals": [
+   "openai-chatgpt-responses"
+  ]
+ },
+ {
+  "sha": "0449e492da8",
+  "subject": "fix(sessions): type the automatic maintenance cooldown timer for every tsconfig (A4)",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "47335a0cf02",
+  "subject": "perf(workboard): cache single-card lookups per SQLite connection (D3)",
+  "candidates": 5,
+  "literals": [
+   "SELECT * FROM workboard_cards WHERE id = ?",
+   "PRAGMA data_version",
+   "PRAGMA schema_version",
+   "schema_version",
+   "SELECT total_changes() AS changes"
+  ]
+ },
+ {
+  "sha": "a24c091fe2d",
+  "subject": "feat(workboard): Night Shift dispatch limits and longer notes (D2)",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "7be7699e824",
+  "subject": "perf(workboard): card-id range reads and a lifecycle link index (D1)",
+  "candidates": 5,
+  "literals": [
+   ") ? { agentId: stringValue(row, ",
+   ") ? { sessionKey: stringValue(row, ",
+   ") ? { runId: stringValue(row, ",
+   "execution_session_key",
+   "execution_run_id"
+  ]
+ },
+ {
+  "sha": "0994c4d0b48",
+  "subject": "perf(memory-core): list the dreaming session corpus once per sweep, lean (A17)",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "191a4caa0f1",
+  "subject": "feat(cron): shared Cron management for policy-named agent namespaces (C)",
+  "candidates": 9,
+  "literals": [
+   "OPENCLAW_CRON_SHARED_POLICY",
+   "Shared Cron policy must use an absolute path",
+   "Shared Cron policy is too large",
+   "Invalid Shared Cron policy",
+   "Invalid Shared Cron namespace or principal",
+   "Shared Cron management authorization was revoked",
+   "Shared Cron authority changed before update",
+   "Invalid Cron management principal"
+  ]
+ },
+ {
+  "sha": "583e2ac7e63",
+  "subject": "feat(system-agent): apply the owner's own delegated change from their direct message (B8)",
+  "candidates": 10,
+  "literals": [
+   "operationalRunInstance",
+   " ? delegation.agentId.trim() : ",
+   " ? delegation.sessionKey.trim() : ",
+   "resolveOperatorApproval",
+   "system-agent approval authority is no longer active",
+   "system-agent:task",
+   "delegated owner OpenClaw approval could not be resolved while the run was active",
+   "delegated owner OpenClaw change was approved but not applied"
+  ]
+ },
+ {
+  "sha": "65734ce8105",
+  "subject": "feat(gateway): report the event-loop median delay in health (A21)",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "697c81298da",
+  "subject": "fix(feishu): keep a chat's turn in order for ten minutes, not five",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "7490709cbe8",
+  "subject": "feat(feishu): opt-in lane to steer messages into a chat's active run",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "78690c020eb",
+  "subject": "feat(feishu): masked credential entry cards for the secrets tool (F3)",
+  "candidates": 18,
+  "literals": [
+   "v.secret_entry.submit",
+   " && raw.controlUiUrl.startsWith(",
+   "v_secret_entry_form",
+   "粘贴密钥，提交后不会出现在聊天里",
+   "v_secret_entry_submit",
+   "🔒 值直接存进 V 的凭据库，不进聊天记录，也不经过模型。请不要在聊天里直接发送密钥。",
+   "没有在时限内录入，V 已跳过这一步。还需要的话，让 V 重新发起。",
+   "这次请求已取消，没有保存任何值。"
+  ]
+ },
+ {
+  "sha": "a74223e4e9c",
+  "subject": "feat(feishu): render working progress of chosen runtimes into the card (F1)",
+  "candidates": 516,
+  "literals": [
+   "📦 **Compacting context...**",
+   "visibleProgressRuntimes",
+   " && entry.trim() !== ",
+   "additionalProperties",
+   "reactionNotifications",
+   "typingIndicator",
+   "resolveSenderNames",
+   "modelOverrides"
+  ]
+ },
+ {
+  "sha": "a174a557258",
+  "subject": "perf(sessions): validate canonical session keys without the skills catalog (A16)",
+  "candidates": 3,
+  "literals": [
+   "$.skillsSnapshot",
+   "$.systemPromptReport",
+   "session_nodes.entry_json"
+  ]
+ },
+ {
+  "sha": "ffacb30f5a2",
+  "subject": "feat(feishu): show codex working commentary in the streaming card (F2)",
+  "candidates": 1,
+  "literals": [
+   " && payload.itemId ? payload.itemId : "
+  ]
+ },
+ {
+  "sha": "115e09052ec",
+  "subject": "fix(feishu): coalesce streaming card writes and replace content mid-stream",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "6c2e1be262c",
+  "subject": "perf(agents): resolve explicit session targets by exact key (A15)",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "f22569c8fa1",
+  "subject": "fix(agents): pin isolated-worker exec to the Gateway control-plane config (B7)",
+  "candidates": 1,
+  "literals": [
+   " ? process.env.VLAB_GATEWAY_CONFIG_PATH?.trim() : "
+  ]
+ },
+ {
+  "sha": "97a9a00afc1",
+  "subject": "fix(system-agent): run the default agent's deepseek-flash natively when it is routed to the isolated worker (B6)",
+  "candidates": 1,
+  "literals": [
+   "deepseek-flash"
+  ]
+ },
+ {
+  "sha": "cd7615c70f6",
+  "subject": "feat(auto-reply): report the candidate's agent runtime to reply-prefix context (B5)",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "7127c63ab2c",
+  "subject": "feat(agents): run skill_workshop in the Gateway when called from an isolated worker (B3)",
+  "candidates": 2,
+  "literals": [
+   "versa.vlab.gateway-owned-tool-proxy-v1",
+   "skill_workshop"
+  ]
+ },
+ {
+  "sha": "2f060bb2be9",
+  "subject": "fix(agents): sessions_send keeps an unbound DM requester with its own agent (B2)",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "ca4002409dd",
+  "subject": "feat(agents): hand sessions_spawn completion to an external task bridge and let sessions_yield claim it (B2)",
+  "candidates": 4,
+  "literals": [
+   "versa.vlab.external-harness-task-bridge-v1",
+   "versa.vlab.external-harness-task-record-v1",
+   "versa.vlab.external-harness-task-yield-v1",
+   "versa.vlab.external-harness-task-owners-v1"
+  ]
+ },
+ {
+  "sha": "88038137da2",
+  "subject": "feat(agents): keep setup-inference probes native and give worker runs their own channel registry (B4)",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "a0ffe100dff",
+  "subject": "feat(agents): native bridge for plugins that run embedded attempts in isolated worker processes (B1)",
+  "candidates": 4,
+  "literals": [
+   "Permission change is not supported by this run.",
+   "versa.vlab.native-attempt-91-v1",
+   "Invalid Worker Gateway method",
+   "Native Gateway subagent context is not ready"
+  ]
+ },
+ {
+  "sha": "3dd50e411a7",
+  "subject": "perf(trajectory): plan the global retention sweep outside the write lock (A12)",
+  "candidates": 3,
+  "literals": [
+   "trajectory_runtime_events",
+   "newest_created_at",
+   "PRAGMA main.data_version"
+  ]
+ },
+ {
+  "sha": "50cb4292565",
+  "subject": "perf(gateway): share store lookups across one tasks.list page attempt (A14)",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "5ffdf1377ab",
+  "subject": "perf(memory): skip memory schema ensures that cannot change anything (A7)",
+  "candidates": 6,
+  "literals": [
+   "SELECT name FROM sqlite_schema WHERE type = 'trigger' AND name LIKE 'memory_index_paths_fts_after_%'",
+   "memory.fts.ensure-body",
+   "memory.fts.ensure-path",
+   "SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = ?",
+   "memory_index_chunk_provenance_after_insert",
+   "${MEMORY_INDEX_CHUNK_PROVENANCE_TABLE}"
+  ]
+ },
+ {
+  "sha": "ed661fa0924",
+  "subject": "perf(gateway): resolve session sharing targets by exact key when warm (A13)",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "5f0153095ea",
+  "subject": "perf(state): read large databases sequentially before their full scans (A11)",
+  "candidates": 4,
+  "literals": [
+   "Read-ahead must stay inside explicit agent state",
+   "Database replaced during read-ahead",
+   "Database device changed during read-ahead",
+   "openclaw.sqlite"
+  ]
+ },
+ {
+  "sha": "2ad61f0d263",
+  "subject": "fix(state): run the database verifier in its own memory cgroup (A10)",
+  "candidates": 13,
+  "literals": [
+   "Invalid verifier resource group opt-in",
+   "Verifier resource group requires a non-root delegated service",
+   ").trim().split(",
+   "Expected unified cgroup v2",
+   ") && !relative.split(",
+   "Expected systemd DelegateSubgroup=foreground",
+   "Expected a delegated service scope",
+   "Expected cgroup2 filesystem"
+  ]
+ },
+ {
+  "sha": "57370f379c9",
+  "subject": "fix(state): verify agent databases once per Gateway lifecycle (A9)",
+  "candidates": 41,
+  "literals": [
+   "--openclaw-database-verify-child",
+   "--raw-stream-path",
+   "unexpected agent directory size",
+   "openclaw-agent.sqlite",
+   "preflight requires explicit absolute agentDir",
+   "preflight target must be an explicit regular database",
+   "OpenClaw agent database",
+   "--max-old-space-size=256"
+  ]
+ },
+ {
+  "sha": "c8c7a7427e1",
+  "subject": "feat(feishu): log the phases of closing a streaming card",
+  "candidates": 1,
+  "literals": [
+   "partial-update-queue"
+  ]
+ },
+ {
+  "sha": "f3a45f26a29",
+  "subject": "feat(feishu): name the agent runtime in the card footer (F5)",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "413a2473a81",
+  "subject": "perf(sessions): run reply-setup maintenance after the write, not inside it (A6)",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "f7e714bffd1",
+  "subject": "feat(feishu): let agents drop the card header (F4)",
+  "candidates": 1,
+  "literals": [
+   " ? identity.theme.trim().toLowerCase() : "
+  ]
+ },
+ {
+  "sha": "ab4c8e1162e",
+  "subject": "fix(feishu): never send the \"delivery uncertain\" sentence to Feishu (E1)",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "f2e729b8684",
+  "subject": "perf(feishu): cache a nameless sender lookup for a minute (F6)",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "715e7f505f8",
+  "subject": "perf(sessions): plan automatic maintenance read-only, once per store per minute (A4, A5)",
+  "candidates": 10,
+  "literals": [
+   "OPENCLAW_AUTOMATIC_MAINTENANCE_COOLDOWN_MS",
+   " || !database.path.startsWith(",
+   "Automatic maintenance requires an owned absolute database path",
+   "Invalid automatic maintenance cooldown",
+   "Unsafe automatic maintenance coordinator file",
+   "session-sqlite",
+   "SQLite automatic maintenance coordinator release failed",
+   "SQLite automatic maintenance coordinator failed"
+  ]
+ },
+ {
+  "sha": "02ed6b63e0b",
+  "subject": "fix(state): one agent-database writer at a time across processes (A2)",
+  "candidates": 13,
+  "literals": [
+   "PRAGMA freelist_count",
+   "session-sqlite",
+   "SQLite free-page coordinator release failed",
+   ".transcript-reconcile-coordinator",
+   ".session-writer-coordinator",
+   "Unsafe Agent DB process coordinator file",
+   " || !databasePath.startsWith(",
+   "Agent DB process coordination requires an absolute database path"
+  ]
+ },
+ {
+  "sha": "b5353a6d934",
+  "subject": "fix(sqlite): retry a write transaction whose BEGIN lost the lock (A1)",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "16b9f00231c",
+  "subject": "versa: ledger — B9 is on versa/main",
+  "literals": [],
+  "skipped": true
+ },
+ {
+  "sha": "f509fe6423f",
+  "subject": "fix(agents): retry session persistence after a cross-process CAS conflict (B9)",
+  "candidates": 2,
+  "literals": [
+   "SqliteSessionMutationConflictError",
+   "SQLite session state changed while preparing session-entry.patch"
+  ]
+ },
+ {
+  "sha": "e33d274193e",
+  "subject": "versa: maintenance guide, patch ledger and upstream import script",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "100b1f4b06f",
+  "subject": "perf(sessions): let reply initialization defer its configured maintenance",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "25953ff7564",
+  "subject": "perf(sessions): hand automatic lifecycle maintenance to the spaced pass",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "569bf6f4101",
+  "subject": "perf(plugins): skip override trust checks when no bundled override is set",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "cd4c8216cb4",
+  "subject": "perf(sessions): optional minimum spacing between automatic maintenance passes",
+  "candidates": 1,
+  "literals": []
+ },
+ {
+  "sha": "25b375ae682",
+  "subject": "perf(trajectory): share the global retention sweep cadence across processes",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "0bd14e1a56d",
+  "subject": "perf(claws): defer consent provenance reads to the first consent decision",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "e94f36191fd",
+  "subject": "fix(state): hand admission the live source path, not a SQLite URI",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "cbb07bd932f",
+  "subject": "perf(gateway): gate a sessions.changed broadcast on its own row only",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "13331f424c1",
+  "subject": "perf(gateway): coalesce background session-row materialization",
+  "candidates": 1,
+  "literals": [
+   "OPENCLAW_SESSION_ROW_MATERIALIZE_COALESCE_MS"
+  ]
+ },
+ {
+  "sha": "213a6e33bef",
+  "subject": "fix(state): only hand an immutable URI to callers that asked for one",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "0aec101e297",
+  "subject": "perf(sessions): read identity evidence without the entry's bulky payloads",
+  "candidates": 1,
+  "literals": [
+   "current_session_id"
+  ]
+ },
+ {
+  "sha": "e70ab466adb",
+  "subject": "perf(exec): read the exec approvals socket instead of opening a write transaction",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "930dfe462ee",
+  "subject": "fix(state): adopt a clean shutdown's proof instead of re-checking it while writing",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "6e3f6f7a7c1",
+  "subject": "fix(state): treat a closed WAL database as unwritten, not as pending work",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "67139fe28bc",
+  "subject": "fix(state): close agent databases on SIGTERM instead of leaving their WAL",
+  "candidates": 1,
+  "literals": [
+   "OPENCLAW_SQLITE_CLOSE_ON_SIGNAL"
+  ]
+ },
+ {
+  "sha": "fb677d1d3ea",
+  "subject": "perf(state): let a clean shutdown carry its integrity proof into the next start",
+  "candidates": 1,
+  "literals": [
+   "OPENCLAW_AGENT_DB_INTEGRITY_MAX_AGE_HOURS"
+  ]
+ },
+ {
+  "sha": "c383f3e27b3",
+  "subject": "perf(state): stream an agent database before its startup integrity check",
+  "candidates": 1,
+  "literals": [
+   "OPENCLAW_SQLITE_INTEGRITY_READ_AHEAD"
+  ]
+ },
+ {
+  "sha": "e11cf7384fe",
+  "subject": "perf(state): share one agent integrity proof across startup admission and the Gateway",
+  "candidates": 0,
+  "literals": []
+ },
+ {
+  "sha": "146275874bd",
+  "subject": "perf(state): honour validation receipts within one start, read admission sources in place",
+  "candidates": 2,
+  "literals": [
+   "OPENCLAW_SQLITE_STARTUP_INPLACE_READONLY",
+   "OPENCLAW_AGENT_DB_VALIDATION_EPOCH"
+  ]
+ },
+ {
+  "sha": "100834da738",
+  "subject": "feat(agents): hook points for plugins that run embedded attempts in isolated processes",
+  "candidates": 4,
+  "literals": [
+   "versa.vlab.native-attempt-91-v1",
+   "Invalid Worker Gateway method",
+   "Gateway identity relay expects a signed token",
+   "Native Gateway subagent context is not ready"
+  ]
+ },
+ {
+  "sha": "78dbe94b3c2",
+  "subject": "perf(state): let isolated agent processes borrow the Gateway's integrity proof",
+  "candidates": 3,
+  "literals": [
+   "openclaw.agentDatabaseValidationReceipts",
+   "OPENCLAW_AGENT_DB_VALIDATION_RECEIPT_DIR",
+   ").update(path.resolve(pathname)).digest("
+  ]
+ },
+ {
+  "sha": "472990d289f",
+  "subject": "perf(sessions): resolve an explicit run target key with one exact row read",
+  "candidates": 0,
+  "literals": []
+ }
+]

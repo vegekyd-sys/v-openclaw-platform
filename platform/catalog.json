@@ -187,6 +187,17 @@
       "files": ["scripts/lib/runtime-residue.test.mjs", "lab/release-files/db91-preflight-timeout-env/bootstrap-timeout.test.mjs"]
     },
     {
+      "id": "noworker96",
+      "purpose": "9.6 无 worker 模式：versa-runtime-providers 插件（两个 provider 与 worker 组件逐字节一致）、配置转换、worker/no-worker 模式判定",
+      "files": [
+        "release/components/versa-runtime-providers-0.1.0/index.test.mjs",
+        "release/components/versa-runtime-providers-0.1.0/fast-compaction-provider.test.mjs",
+        "release/components/versa-runtime-providers-0.1.0/volcengine-rtc-agent-provider.test.mjs",
+        "scripts/upgrade-mirror/noworker96-config.test.mjs",
+        "scripts/upgrade-mirror/runtime-mode.test.mjs"
+      ]
+    },
+    {
       "id": "lab-and-release-regressions",
       "purpose": "各条线在 lab/、scripts/、tests/、worker 实验目录下的离线回归；2026-09-24 从未登记状态收拢，全部离线通过",
       "files": [
@@ -279,6 +290,7 @@
     }
   ],
   "deferredTestFiles": [
+    {"file": "scripts/upgrade-mirror/noworker96-config.real96.test.mjs", "reason": "需要已构建的 OpenClaw 9.6 源码目录（OPENCLAW96_ROOT）来跑真实的配置校验；本机对 ~/openclaw-versa-wt/merge96 通过。"},
     {"file": "lab/db91-writer-transaction-scope.test.mjs", "reason": "读取只存在于 Tianyi 这台 Mac 上的 ~/v-upgrade-private/20260912-openclaw94-shared-vlab 9.4 fixture；本机离线通过，CI 干净环境 ENOENT。fixture 进仓库或改成显式环境变量之前不进 CI 套件。"},
     {"file": "scripts/patch-openclaw94-sqlite-begin-contention.test.mjs", "reason": "读取只存在于 Tianyi 这台 Mac 上的 ~/v-upgrade-private/20260912-openclaw94-shared-vlab 9.4 fixture；本机离线通过，CI 干净环境 ENOENT。fixture 进仓库或改成显式环境变量之前不进 CI 套件。"},
     {"file": "scripts/patch-openclaw94-operational-parity.test.mjs", "reason": "读取只存在于 Tianyi 这台 Mac 上的 ~/v-upgrade-private/20260912-openclaw94-shared-vlab 9.4 fixture；本机离线通过，CI 干净环境 ENOENT。fixture 进仓库或改成显式环境变量之前不进 CI 套件。"},

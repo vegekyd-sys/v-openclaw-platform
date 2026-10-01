@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Open traffic on the shared VLab 9.6 Gateway once post-restart-check.mjs passed:
+# remove the traffic-closed drop-in (channels + cron), restart, wait for ready.
+#   open-traffic96-shared-vlab.sh <backup dir> [--start-companion]
+# The companion (nightshift-vlab-production-mirror) is started only if it was
+# active before the upgrade or --start-companion is given.
+set -euo pipefail
+# systemctl has no is-activating verb; a unit counts as gone only when failed, or
+# inactive for more than 30 s (a restart passes through inactive briefly).
+unit_gone() { local s; s=$(systemctl show -p ActiveState --value $1); if [ "$s" = failed ]; then return 0; fi
+  if [ "$s" = inactive ]; then UNIT_INACTIVE_SINCE=${UNIT_INACTIVE_SINCE:-$(date +%s)}; [ $(( $(date +%s) - UNIT_INACTIVE_SINCE )) -gt 30 ]; return; fi
+  UNIT_INACTIVE_SINCE=; return 1; }
+test "$(id -u)" = 0
+B=${1:?backup dir}; START_COMPANION=${2:-}
+UNIT=openclaw-vlab-production-mirror-v8; COMPANION=nightshift-vlab-production-mirror
+CLOSED=/etc/systemd/system/$UNIT.service.d/99zz-versa-traffic-closed.conf
+log() { printf '%s %s\n' "$(date --iso-8601=seconds)" "$*" | tee -a $B/evidence/restart.log; }
+test -e $CLOSED || { log "$CLOSED is already gone; nothing to open"; exit 1; }
+rm -f $CLOSED; systemctl daemon-reload
+if systemctl show -p Environment $UNIT | tr ' ' '\n' | grep -c '^OPENCLAW_SKIP_\(CHANNELS\|CRON\)=' >/dev/null; then log "skip env still present"; exit 1; fi
+t0=$(date +%s); log "open traffic: restart"
+systemctl restart --no-block $UNIT; t1=$(date +%s)
+for _ in $(seq 1 1800); do
+  if journalctl -u $UNIT --since "@$t1" --no-pager -o cat 2>/dev/null | grep -c "\[gateway\] ready" >/dev/null; then
+    t2=$(date +%s); echo $t2 > $B/open-ready.epoch; log "READY_EPOCH=$t2 downtime $((t2-t0))s (traffic open)"; break
+  fi
+  if unit_gone $UNIT; then log "unit exited"; exit 2; fi
+  sleep 2
+done
+test -f $B/open-ready.epoch || { log "NOT READY"; exit 3; }
+if [ "$(cat $B/cua-node.state 2>/dev/null)" = active ]; then
+  bash "$(dirname "$0")/cua-node-shared-vlab.sh" start /opt/vlab/node-v24.17.0-linux-x64/bin/node && log "vlab-cua-node started on Node 24"
+fi
+if [ "$(cat $B/companion.state)" = active ] || [ "$START_COMPANION" = --start-companion ]; then
+  systemctl start $COMPANION && log "$COMPANION started ($(systemctl is-active $COMPANION))"
+fi
