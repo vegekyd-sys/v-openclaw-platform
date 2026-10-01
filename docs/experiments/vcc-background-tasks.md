@@ -21,9 +21,25 @@ answered `NO_REPLY`, and the child never ran.
 ## Cause
 
 OpenClaw's claude-cli bridge delivers a reply on the CLI's terminal result.
-Claude Code keeps the turn open while a background task is alive, so a reply
-written in seconds is held for as long as the background work runs — and once
-that exceeds the stuck-session threshold, it is lost.
+The reply written in seconds is held for as long as the background work runs —
+and once that exceeds the stuck-session threshold, it is lost.
+
+**Correction (2026-10-01):** it is OpenClaw, not Claude Code, that holds the
+turn. OpenClaw runs claude through the Agent SDK (`--input-format stream-json`,
+one live process per session), and in that mode Claude Code 2.1.280 emits
+`result` right at `end_turn`, then later emits `task_notification`, a follow-up
+assistant turn and a second `result` on its own. The hold is
+`acceptClaudeAgentSdkMessage` in `dist/extensions/anthropic/agent-sdk.runtime.js`:
+a `background_tasks_changed` listing `local_agent`/`local_workflow` sets
+`hasResultHoldingBackgroundTasks`, and the turn is not completed on `result`.
+Output arriving after a turn has ended is dropped (`if (!turn) return;`), and
+the CLI run owner has no `ownsLiveness`, so the stuck detector aborts at
+max(300 s, 3 × 120 s). Only `-p` with the prompt as an argument withholds the
+first `result` in Claude Code itself; OpenClaw does not use that mode.
+
+The cross-harness route for background work is OpenClaw's own mechanisms
+(`sessions_spawn` + `sessions_yield`, automations `stream`/`at`), measured in
+`lab/candidate/bg-matrix.mjs`; Claude Code's own background stays disabled.
 
 OpenClaw already launches claude with
 `--disallowedTools ScheduleWakeup,CronCreate,Bash(run_in_background:true),Monitor`
