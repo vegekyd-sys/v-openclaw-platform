@@ -133,23 +133,36 @@ if (parts.includes("cardkit")) {
       }).then((r) => r.json());
       return { code: r.code, msg: r.msg, data: r.data };
     };
-    const note = (lines) => JSON.stringify({ tag: "markdown", element_id: "note", content: lines.map((l) => `<font color='grey'>${l}</font>`).join("\n") });
-    const created = await call("POST", "cardkit/v1/cards", { type: "card_json", data: JSON.stringify({
-      schema: "2.0",
-      config: { streaming_mode: true, summary: { content: "[Generating...]" } },
-      body: { elements: [{ tag: "markdown", content: "", element_id: "content" }, { tag: "hr" }, { tag: "markdown", content: "<font color='grey'>Agent: candidate</font>", element_id: "note" }] },
-    }) });
-    result.create = created.code;
-    const cardId = created.data?.card_id;
-    assert(cardId, `card create failed: ${created.code} ${created.msg}`);
+    const line = (text) => JSON.stringify({ tag: "markdown", element_id: "v_bg_tasks", text_size: "notation", content: `<font color='grey'>${text}</font>` });
+    const makeCard = async () => {
+      const created = await call("POST", "cardkit/v1/cards", { type: "card_json", data: JSON.stringify({
+        schema: "2.0",
+        config: { streaming_mode: true, summary: { content: "[Generating...]" } },
+        body: { elements: [{ tag: "markdown", content: "", element_id: "content" }, { tag: "hr" }, { tag: "markdown", content: "<font color='grey'>Agent: candidate</font>", element_id: "note" }] },
+      }) });
+      assert(created.data?.card_id, `card create failed: ${created.code} ${created.msg}`);
+      return created.data.card_id;
+    };
+    const cardId = await makeCard();
+    result.create = 0;
     let seq = 1;
+    const tag = (id) => ({ sequence: ++seq, uuid: `t_${id}_${seq}` });
     const steps = [
-      ["stream-text", "PUT", `cardkit/v1/cards/${cardId}/elements/content/content`, () => ({ content: "实验已启动。", sequence: ++seq, uuid: `t_${cardId}_${seq}` })],
-      ["note-while-streaming", "PUT", `cardkit/v1/cards/${cardId}/elements/note`, () => ({ element: note(["Agent: candidate", "⏳ 后台 1 个任务进行中：子 agent"]), sequence: ++seq, uuid: `t_${cardId}_${seq}` })],
-      ["close", "PATCH", `cardkit/v1/cards/${cardId}/settings`, () => ({ settings: JSON.stringify({ config: { streaming_mode: false, summary: { content: "实验已启动。" } } }), sequence: ++seq, uuid: `t_${cardId}_${seq}` })],
-      ["note-after-close", "PUT", `cardkit/v1/cards/${cardId}/elements/note`, () => ({ element: note(["Agent: candidate", "⏳ 后台 2 个任务进行中：子 agent 1、后台命令 1"]), sequence: ++seq, uuid: `t_${cardId}_${seq}` })],
-      ["note-done", "PUT", `cardkit/v1/cards/${cardId}/elements/note`, () => ({ element: note(["Agent: candidate", "☑️ 后台任务已结束"]), sequence: ++seq, uuid: `t_${cardId}_${seq}` })],
+      ["stream-text", "PUT", `cardkit/v1/cards/${cardId}/elements/content/content`, () => ({ content: "实验已启动。", ...tag(cardId) })],
+      ["insert-while-streaming", "POST", `cardkit/v1/cards/${cardId}/elements`, () => ({ type: "insert_after", target_element_id: "content", elements: `[${line("⏳ 后台 1 项进行中 · 子 agent")}]`, ...tag(cardId) })],
+      ["close", "PATCH", `cardkit/v1/cards/${cardId}/settings`, () => ({ settings: JSON.stringify({ config: { streaming_mode: false, summary: { content: "实验已启动。" } } }), ...tag(cardId) })],
+      ["final-body-after-insert", "PUT", `cardkit/v1/cards/${cardId}/elements/content`, () => ({ element: JSON.stringify({ tag: "markdown", element_id: "content", content: "实验已启动。最终版。" }), ...tag(cardId) })],
+      ["update-after-close", "PUT", `cardkit/v1/cards/${cardId}/elements/v_bg_tasks`, () => ({ element: line("⏳ 后台 2 项进行中 · 子 agent 1 · 后台命令 1"), ...tag(cardId) })],
+      ["update-done", "PUT", `cardkit/v1/cards/${cardId}/elements/v_bg_tasks`, () => ({ element: line("☑️ 后台任务已结束"), ...tag(cardId) })],
+      ["delete-after-close", "DELETE", `cardkit/v1/cards/${cardId}/elements/v_bg_tasks`, () => tag(cardId)],
     ];
+    const closedFirst = await makeCard();
+    let seq2 = 1;
+    const tag2 = () => ({ sequence: ++seq2, uuid: `t_${closedFirst}_${seq2}` });
+    steps.push(
+      ["b-close", "PATCH", `cardkit/v1/cards/${closedFirst}/settings`, () => ({ settings: JSON.stringify({ config: { streaming_mode: false } }), ...tag2() })],
+      ["b-insert-after-close", "POST", `cardkit/v1/cards/${closedFirst}/elements`, () => ({ type: "insert_after", target_element_id: "content", elements: `[${line("⏳ 后台 1 项进行中 · 后台命令")}]`, ...tag2() })],
+    );
     result.steps = {};
     for (const [name, method, url, body] of steps) {
       const r = await call(method, url, body());

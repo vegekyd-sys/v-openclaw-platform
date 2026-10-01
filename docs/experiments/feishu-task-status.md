@@ -62,19 +62,24 @@ no per-runtime adapters. Three files:
   `… COVERING INDEX idx_subagent_runs_requester_session_key`).
   Tasks the Gateway's registry knows are decided by the registry; a subagent
   that is also a task is counted once.
-- feishu `monitor.account-*.js`: every reply card that has a footer registers
-  for its session. One line goes under the footer:
-  `⏳ 后台 2 个任务进行中：子 agent 1、后台命令 1`, and `☑️ 后台任务已结束` once
-  the work it showed is done. Content of the work is not shown.
+- feishu `monitor.account-*.js`: every reply card registers for its session.
+  When the session has background work, one small grey line (markdown
+  `text_size: notation`, own element `v_bg_tasks`) is inserted right after the
+  reply text, so it is the last thing in the card above the divider and footer:
+  `⏳ 后台 2 项进行中 · 子 agent 1 · 后台命令 1`, and `☑️ 后台任务已结束` once the
+  work it showed is done. Content of the work is not shown. (Tianyi 2026-10-02:
+  above the footer, not under it.)
   - Refreshes on registry events (800 ms debounce) and every 5 s while the card
     is tracked, because worker-owned work raises no event in the Gateway.
-  - The line keeps updating after the card closes (CardKit element PUT on the
-    `note` element, same sequence counter as the stream).
+  - CardKit element calls: insert (`POST /elements`, `insert_after content`),
+    update (`PUT /elements/v_bg_tasks`), delete. All accepted on streaming and
+    on closed cards; the final body rewrite at close leaves the element in place.
   - Only the newest card of a session carries the live line; when a new reply
-    starts, the previous card goes back to its plain footer.
+    starts, the previous card's element is deleted.
   - A card is released when it is closed and nothing is running, or after 24 h.
-    Ordinary replies with no background work cost no extra CardKit writes
-    (one indexed read per 5 s while they stream).
+    Ordinary replies with no background work get no element and no extra
+    CardKit writes (one indexed read per 5 s while they stream).
+  - A failed write is retried on the next refresh.
 - Counted: the session's own background work. Not counted: a run of the
   session itself (`openclaw agent` registers its turn as a kindless cli task
   whose child is the session), and a subagent's own commands (owned by the
@@ -98,7 +103,7 @@ inputs byte-identical to V; receipt `candidate-f45bf238`, input
 | --- | --- |
 | link | patched activity, store and monitor import against the runtime |
 | sdk (Codex native path) | `createAgentHarnessTaskRuntime` (runtime `subagent`, kind `codex-native`): listed while running, empty after finalize, 2 notices |
-| cardkit | VLab bot created a card entity (never sent), streamed, closed, rewrote the footer twice after close: 5/5 writes code 0 |
+| cardkit | VLab bot created card entities (never sent): insert while streaming, close, final body rewrite, update ×2 after close, delete after close, insert into an already closed card — 9/9 code 0 (receipt `candidate-dc3126ef`) |
 | worker / deepseek-v4-flash | called `sessions_spawn` + background `exec`; answered at 14 s; visible 13 s: 2 (exec + subagent) → 53 s: 1 → 66 s: 0 |
 | worker / deepseek-v4-pro | same; answered at 6 s; 2 → 1 at 45 s → 0 at 59 s |
 | claude-cli / claude-sonnet-5 | answered at 28 s; subagent visible 26 s → 0 at 79 s |
@@ -119,6 +124,5 @@ although the model called both tools.
   check. A visible check in a real chat belongs to the shared VLab gate.
 - A real Codex native subagent turn (no OpenAI login in VLab; the mirror's
   SDK path is covered).
-- How the two-line grey footer renders on desktop and mobile Feishu.
 - The `ask_user` inline card rewrites the footer from its own copy; while a
   question card is up the line can disappear until the next change.

@@ -4,8 +4,8 @@ import test from "node:test";
 import vm from "node:vm";
 
 import {
-  composeFeishuTaskStatusNote,
   feishuBackgroundTasks,
+  feishuTaskStatusElement,
   feishuTaskStatusKind,
   renderFeishuTaskStatusLine,
 } from "../lab/release-files/feishu-task-status/feishu-task-status-render.mjs";
@@ -61,17 +61,18 @@ test("the session's own run is not background work", () => {
 test("renders a count, the kinds, and a closing line", () => {
   assert.equal(renderFeishuTaskStatusLine([]), "");
   assert.equal(renderFeishuTaskStatusLine([], { shownActive: true }), "☑️ 后台任务已结束");
-  assert.equal(renderFeishuTaskStatusLine([{ runtime: "subagent" }]), "⏳ 后台 1 个任务进行中：子 agent");
+  assert.equal(renderFeishuTaskStatusLine([{ runtime: "subagent" }]), "⏳ 后台 1 项进行中 · 子 agent");
   assert.equal(
     renderFeishuTaskStatusLine([
       { runtime: "cli", taskKind: "exec" },
       { runtime: "subagent" },
       { runtime: "subagent", taskKind: "codex-native" },
     ]),
-    "⏳ 后台 3 个任务进行中：子 agent 2、后台命令 1",
+    "⏳ 后台 3 项进行中 · 子 agent 2 · 后台命令 1",
   );
-  assert.equal(composeFeishuTaskStatusNote("Agent: V", ""), "Agent: V");
-  assert.equal(composeFeishuTaskStatusNote("Agent: V", "⏳ x"), "Agent: V\n⏳ x");
+  assert.deepEqual(feishuTaskStatusElement("⏳ x"), {
+    tag: "markdown", element_id: "v_bg_tasks", text_size: "notation", content: "<font color='grey'>⏳ x</font>",
+  });
 });
 
 test("patches the live V core and monitor exactly once", () => {
@@ -85,8 +86,8 @@ test("patches the live V core and monitor exactly once", () => {
   const patched = patchFeishuTaskStatus(monitor);
   assert.equal(patched.changed, true);
   assert.ok(patched.source.includes(FEISHU_MARKER));
-  assert.ok(patched.source.includes("vTaskStatusAttach(params.sessionKey, session, cardNote"));
-  assert.ok(patched.source.includes("note: vTaskStatusFinalNote(streamingToClose, finalNote)"));
+  assert.ok(patched.source.includes("vTaskStatusAttach(params.sessionKey, session, (message)"));
+  assert.ok(patched.source.includes("vTaskStatusClosing(streamingToClose);\n\t\t\t\t\t\tclosed = await streamingToClose.closeWithResult(text, { note: finalNote });"));
   assert.equal(patchFeishuTaskStatus(patched.source).changed, false);
   // Must coexist with the patches already on V.
   assert.ok(patched.source.includes("v-feishu-progress-stream-v2"));
@@ -207,6 +208,7 @@ test("core bridge notifies listeners even when the Gateway has no observer", asy
 // ---- Feishu glue, evaluated against a streaming-session double ----
 function loadFeishu({ withBridge = true } = {}) {
   const writes = [];
+  const fail = { next: 0 };
   const bridge = { listeners: new Set(), active: new Map() };
   bridge.listActive = (key) => bridge.active.get(key) ?? [];
   const context = vm.createContext({
@@ -217,10 +219,10 @@ function loadFeishu({ withBridge = true } = {}) {
     getFeishuUserAgent: () => "ua",
     resolveAllowedHostnames: () => ["open.feishu.cn"],
     fetchWithSsrFGuard: async ({ url, init }) => {
-      writes.push({ url, body: JSON.parse(init.body) });
-      return { response: { ok: true }, release: async () => {} };
+      writes.push({ url, method: init.method, body: JSON.parse(init.body) });
+      return { response: { ok: !(fail.next > 0 && fail.next--) }, release: async () => {} };
     },
-    assertSuccessfulCardKitResponse: async () => {},
+    assertSuccessfulCardKitResponse: async (response) => { if (!response.ok) throw new Error("CardKit 500"); },
   });
   if (withBridge) vm.runInContext(`globalThis[Symbol.for("${BRIDGE_SYMBOL}")] = bridge`, Object.assign(context, { bridge }));
   vm.runInContext(`
@@ -239,42 +241,50 @@ function loadFeishu({ withBridge = true } = {}) {
     }
     ${inlineRenderModule()}
     ${FEISHU_GLUE}
-    globalThis.api = { FeishuStreamingSession, vTaskStatusAttach, vTaskStatusFinalNote, entries: vTaskStatusEntries };
+    globalThis.api = { FeishuStreamingSession, vTaskStatusAttach, vTaskStatusClosing, entries: vTaskStatusEntries };
   `, context);
   const notify = (sessionKey) => { for (const listener of bridge.listeners) listener({ kind: "upserted", sessionKeys: [sessionKey] }); };
-  return { api: context.api, bridge, writes, notify };
+  return { api: context.api, bridge, writes, notify, fail };
 }
 
 const settle = (ms = 900) => new Promise((resolve) => setTimeout(resolve, ms));
-const noteWrites = (writes, cardId) => writes.filter((w) => w.url.endsWith(`/cards/${cardId}/elements/note`)).map((w) => JSON.parse(w.body.element).content);
+// The line's history on one card: what the reader saw, in order ("" = removed).
+const lineWrites = (writes, cardId) => writes.filter((w) => w.url.includes(`/cards/${cardId}/elements`) && !w.url.endsWith("/content/content") && !w.url.endsWith("/elements/content")).map((w) => {
+  if (w.method === "DELETE") return "";
+  const element = w.method === "POST" ? JSON.parse(w.body.elements)[0] : JSON.parse(w.body.element);
+  assert.equal(element.element_id, "v_bg_tasks");
+  if (w.method === "POST") assert.equal(w.body.target_element_id, "content");
+  return `${w.method} ${element.content.replace(/<\/?font[^>]*>/gu, "")}`;
+});
+const closeCard = (api, card, text) => { api.vTaskStatusClosing(card); return card.closeWithResult(text, { note: "Agent: V" }); };
 
 test("a card shows its session's running work and keeps updating after it closes", async () => {
   const { api, bridge, writes, notify } = loadFeishu();
   const key = "agent:makaron:feishu:group:oc_x";
   const card = new api.FeishuStreamingSession("c1");
   await card.start();
-  api.vTaskStatusAttach(key, card, "Agent: V | Runtime: codex", () => {});
+  api.vTaskStatusAttach(key, card, () => {});
   await settle(50);
-  assert.equal(noteWrites(writes, "c1").length, 0, "no work, no write");
+  assert.equal(lineWrites(writes, "c1").length, 0, "no work, no element");
 
   bridge.active.set(key, [{ runtime: "subagent", taskKind: "codex-native" }]);
   notify(key);
   await settle();
-  assert.deepEqual(noteWrites(writes, "c1"), [
-    "<font color='grey'>Agent: V | Runtime: codex</font>\n<font color='grey'>⏳ 后台 1 个任务进行中：子 agent</font>",
-  ]);
+  assert.deepEqual(lineWrites(writes, "c1"), ["POST ⏳ 后台 1 项进行中 · 子 agent"]);
 
-  // The turn ends while the subagent is still running.
-  await card.closeWithResult("实验已启动", { note: api.vTaskStatusFinalNote(card, "Agent: V | Runtime: codex") });
-  await settle(50);
-  const afterClose = noteWrites(writes, "c1");
-  assert.equal(afterClose.length, 2, "line re-applied after the close rewrote the footer");
-  assert.match(afterClose[1], /后台 1 个任务进行中/);
-
+  // The turn ends while the subagent is still running; the line stays.
+  await closeCard(api, card, "实验已启动");
+  bridge.active.set(key, [{ runtime: "subagent" }, { runtime: "cli", taskKind: "exec" }]);
+  notify(key);
+  await settle();
   bridge.active.set(key, []);
   notify(key);
   await settle();
-  assert.match(noteWrites(writes, "c1").at(-1), /☑️ 后台任务已结束/);
+  assert.deepEqual(lineWrites(writes, "c1"), [
+    "POST ⏳ 后台 1 项进行中 · 子 agent",
+    "PUT ⏳ 后台 2 项进行中 · 子 agent 1 · 后台命令 1",
+    "PUT ☑️ 后台任务已结束",
+  ]);
   assert.equal(api.entries.size, 0, "closed card with nothing running is released");
 
   const sequences = writes.map((w) => w.body.sequence);
@@ -288,24 +298,23 @@ test("a new reply takes the live line over from the previous card", async () => 
   bridge.active.set(key, [{ runtime: "cli", taskKind: "exec" }, { runtime: "subagent" }]);
   const first = new api.FeishuStreamingSession("c1");
   await first.start();
-  api.vTaskStatusAttach(key, first, "Agent: V", () => {});
+  api.vTaskStatusAttach(key, first, () => {});
   await settle(50);
-  await first.closeWithResult("ok", { note: api.vTaskStatusFinalNote(first, "Agent: V") });
+  await closeCard(api, first, "ok");
   await settle(50);
-  assert.match(noteWrites(writes, "c1").at(-1), /后台 2 个任务进行中：子 agent 1、后台命令 1/);
 
   const second = new api.FeishuStreamingSession("c2");
   await second.start();
-  api.vTaskStatusAttach(key, second, "Agent: V", () => {});
+  api.vTaskStatusAttach(key, second, () => {});
   await settle(50);
-  assert.equal(noteWrites(writes, "c1").at(-1), "<font color='grey'>Agent: V</font>", "old card back to its footer");
-  assert.match(noteWrites(writes, "c2").at(-1), /后台 2 个任务进行中/);
+  assert.deepEqual(lineWrites(writes, "c1"), ["POST ⏳ 后台 2 项进行中 · 子 agent 1 · 后台命令 1", ""], "old card loses its line");
+  assert.deepEqual(lineWrites(writes, "c2"), ["POST ⏳ 后台 2 项进行中 · 子 agent 1 · 后台命令 1"]);
 
   bridge.active.set(key, []);
   notify(key);
   await settle();
-  assert.match(noteWrites(writes, "c2").at(-1), /已结束/);
-  assert.equal(noteWrites(writes, "c1").length, 3, "old card is no longer touched");
+  assert.equal(lineWrites(writes, "c2").at(-1), "PUT ☑️ 后台任务已结束");
+  assert.equal(lineWrites(writes, "c1").length, 2, "old card is no longer touched");
 });
 
 test("work that raises no event here (V worker) still shows up by polling", async () => {
@@ -313,26 +322,38 @@ test("work that raises no event here (V worker) still shows up by polling", asyn
   const key = "agent:makaron:feishu:group:oc_poll";
   const card = new api.FeishuStreamingSession("c1");
   await card.start();
-  api.vTaskStatusAttach(key, card, "Agent: V", () => {});
+  api.vTaskStatusAttach(key, card, () => {});
   await settle(50);
   bridge.active.set(key, [{ runtime: "cli", taskKind: "exec" }]);
   await settle(5_300);
-  assert.match(noteWrites(writes, "c1").at(-1) ?? "", /后台 1 个任务进行中：后台命令/);
+  assert.deepEqual(lineWrites(writes, "c1"), ["POST ⏳ 后台 1 项进行中 · 后台命令"]);
   bridge.active.set(key, []);
-  await card.closeWithResult("ok", { note: api.vTaskStatusFinalNote(card, "Agent: V") });
+  await closeCard(api, card, "ok");
   await settle(200);
-  assert.match(noteWrites(writes, "c1").at(-1), /已结束/);
+  assert.equal(lineWrites(writes, "c1").at(-1), "PUT ☑️ 后台任务已结束");
   assert.equal(api.entries.size, 0);
+});
+
+test("a failed write is retried on the next refresh", async () => {
+  const { api, bridge, writes, fail } = loadFeishu();
+  const key = "agent:makaron:feishu:group:oc_retry";
+  const card = new api.FeishuStreamingSession("c1");
+  await card.start();
+  fail.next = 1;
+  bridge.active.set(key, [{ runtime: "subagent" }]);
+  api.vTaskStatusAttach(key, card, () => {});
+  await settle(5_300);
+  assert.deepEqual(lineWrites(writes, "c1"), ["POST ⏳ 后台 1 项进行中 · 子 agent", "POST ⏳ 后台 1 项进行中 · 子 agent"]);
 });
 
 test("ordinary replies cost no extra writes and are released at close", async () => {
   const { api, writes } = loadFeishu();
   const card = new api.FeishuStreamingSession("c1");
   await card.start();
-  api.vTaskStatusAttach("agent:makaron:feishu:direct:ou_1", card, "Agent: V", () => {});
-  await card.closeWithResult("hi", { note: api.vTaskStatusFinalNote(card, "Agent: V") });
+  api.vTaskStatusAttach("agent:makaron:feishu:direct:ou_1", card, () => {});
+  await closeCard(api, card, "hi");
   await settle(50);
-  assert.equal(noteWrites(writes, "c1").length, 0);
+  assert.equal(lineWrites(writes, "c1").length, 0);
   assert.equal(api.entries.size, 0);
 });
 
@@ -340,9 +361,9 @@ test("does nothing when the core bridge is absent", async () => {
   const { api, writes } = loadFeishu({ withBridge: false });
   const card = new api.FeishuStreamingSession("c1");
   await card.start();
-  api.vTaskStatusAttach("agent:makaron:feishu:group:oc_z", card, "Agent: V", () => {});
-  await card.closeWithResult("hi", { note: api.vTaskStatusFinalNote(card, "Agent: V") });
+  api.vTaskStatusAttach("agent:makaron:feishu:group:oc_z", card, () => {});
+  await closeCard(api, card, "hi");
   await settle(50);
-  assert.equal(noteWrites(writes, "c1").length, 0);
+  assert.equal(lineWrites(writes, "c1").length, 0);
   assert.equal(api.entries.size, 0);
 });

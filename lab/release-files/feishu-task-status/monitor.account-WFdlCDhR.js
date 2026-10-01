@@ -2832,7 +2832,7 @@ function createFeishuReplyDispatcher(params) {
 					note: cardNote
 				});
 				streamingStartBackoffUntilByAccount.delete(account.accountId);
-				vTaskStatusAttach(params.sessionKey, session, cardNote, (message) => params.runtime.log?.(`feishu[${account.accountId}] ${message}`));
+				vTaskStatusAttach(params.sessionKey, session, (message) => params.runtime.log?.(`feishu[${account.accountId}] ${message}`));
 			} catch (error) {
 				rememberStreamingStartFailure(account.accountId);
 				params.runtime.error?.(`feishu[${account.accountId}]: streaming start failed; using non-streaming card fallback for ${STREAMING_START_FAILURE_BACKOFF_MS / 1e3}s: ${String(error)}`);
@@ -2911,7 +2911,8 @@ function createFeishuReplyDispatcher(params) {
 					if (disposition === "discarded") closed = await streamingToClose.discard();
 					else {
 						const finalNote = resolveCardNote(agentId, identity, responsePrefixContextProvider());
-						closed = await streamingToClose.closeWithResult(text, { note: vTaskStatusFinalNote(streamingToClose, finalNote) });
+						vTaskStatusClosing(streamingToClose);
+						closed = await streamingToClose.closeWithResult(text, { note: finalNote });
 					}
 				} catch (error) {
 					if (!(error instanceof FeishuStreamingFinalizationError)) throw error;
@@ -8201,8 +8202,9 @@ const vFeishuAsk = createFeishuAskRuntime({
 // media generation, automation runs) lives in the OpenClaw task registry, and
 // usually outlives the reply that started it. `patch-feishu-task-status.mjs`
 // exposes that registry to the Feishu monitor; this module turns a session's
-// active tasks into one line under the card footer, so a reader can see that
-// work is still going on and how much, without its content.
+// active tasks into one quiet line at the end of the reply card, above the
+// footer, so a reader can see that work is still going on and how much,
+// without its content.
 //
 // Pure functions only (no imports): the patcher inlines this file into the
 // Feishu monitor bundle, so it must stay self-contained.
@@ -8248,15 +8250,18 @@ function renderFeishuTaskStatusLine(tasks, { shownActive = false } = {}) {
     counts.set(kind, (counts.get(kind) ?? 0) + 1);
   }
   const kinds = V_TASK_STATUS_KIND_ORDER.filter((kind) => counts.has(kind));
-  const detail = kinds.length === 1 ? kinds[0] : kinds.map((kind) => `${kind} ${counts.get(kind)}`).join("、");
-  return `⏳ 后台 ${active.length} 个任务进行中：${detail}`;
+  const detail = kinds.length === 1 ? kinds[0] : kinds.map((kind) => `${kind} ${counts.get(kind)}`).join(" · ");
+  return `⏳ 后台 ${active.length} 项进行中 · ${detail}`;
 }
 
-/** The card footer with the background-work line under it. */
-function composeFeishuTaskStatusNote(baseNote, line) {
-  const base = typeof baseNote === "string" ? baseNote : "";
-  if (!line) return base;
-  return base ? `${base}\n${line}` : line;
+/** The card element that carries the line: small grey text above the footer. */
+function feishuTaskStatusElement(line) {
+  return {
+    tag: "markdown",
+    element_id: "v_bg_tasks",
+    text_size: "notation",
+    content: `<font color='grey'>${line}</font>`,
+  };
 }
 
 const V_TASK_BRIDGE_KEY = Symbol.for("openclaw.v.taskRegistryBridge");
@@ -8304,29 +8309,37 @@ function vTaskStatusSchedule(entry, delayMs = V_TASK_STATUS_DEBOUNCE_MS) {
 	entry.timer = setTimeout(() => vTaskStatusRefresh(entry), delayMs);
 	entry.timer.unref?.();
 }
-async function vTaskStatusPutNote(session, state, note) {
+async function vTaskStatusCardKit(session, state, method, suffix, payload) {
 	const apiBase = resolveApiBase(session.creds.domain);
 	state.sequence += 1;
-	const lines = note.split("\n").map((line) => "<font color='grey'>" + line + "</font>").join("\n");
 	const { response, release } = await fetchWithSsrFGuard({
-		url: apiBase + "/cardkit/v1/cards/" + state.cardId + "/elements/note",
-		init: { method: "PUT", headers: {
+		url: apiBase + "/cardkit/v1/cards/" + state.cardId + suffix,
+		init: { method, headers: {
 			Authorization: "Bearer " + await getToken(session.creds, { fetchImpl: session.fetchImpl, lookupFn: session.lookupFn }),
-			"Content-Type": "application/json", "User-Agent": getFeishuUserAgent()
-		}, body: JSON.stringify({
-			element: JSON.stringify({ tag: "markdown", element_id: "note", content: lines }),
-			sequence: state.sequence,
-			uuid: "task_" + state.cardId + "_" + state.sequence
-		}) },
+			"Content-Type": "application/json; charset=utf-8", "User-Agent": getFeishuUserAgent()
+		}, body: JSON.stringify({ ...payload, sequence: state.sequence, uuid: "task_" + state.cardId + "_" + state.sequence }) },
 		fetchImpl: session.fetchImpl, lookupFn: session.lookupFn,
 		policy: { allowedHostnames: resolveAllowedHostnames(session.creds.domain) },
-		auditContext: "feishu.task-status.note", timeoutMs: session.creds.httpTimeoutMs ?? 3e4
+		auditContext: "feishu.task-status", timeoutMs: session.creds.httpTimeoutMs ?? 3e4
 	});
 	try {
-		await assertSuccessfulCardKitResponse(response, "feishu.task-status.note", "Update background task line");
+		await assertSuccessfulCardKitResponse(response, "feishu.task-status", "Update background task line");
 	} finally {
 		await release();
 	}
+}
+// The line is its own element right after the reply text, so it sits at the
+// end of the card above the footer. Inserted on first use, removed on handoff.
+async function vTaskStatusWriteLine(card, line) {
+	const { session, state } = card;
+	const element = JSON.stringify(feishuTaskStatusElement(line));
+	if (!line) {
+		if (card.inserted) await vTaskStatusCardKit(session, state, "DELETE", "/elements/v_bg_tasks", {});
+		card.inserted = false;
+	} else if (!card.inserted) {
+		await vTaskStatusCardKit(session, state, "POST", "/elements", { type: "insert_after", target_element_id: "content", elements: "[" + element + "]" });
+		card.inserted = true;
+	} else await vTaskStatusCardKit(session, state, "PUT", "/elements/v_bg_tasks", { element });
 }
 // Writes share the card's sequence counter: while the card streams they join
 // its write queue; once it closes they wait for the close and run in order.
@@ -8345,16 +8358,18 @@ function vTaskStatusEnqueue(card, write) {
 	return task;
 }
 function vTaskStatusShow(entry, card, line) {
-	card.line = line;
-	const note = composeFeishuTaskStatusNote(card.baseNote, line);
-	if (note === card.wantedNote) return;
-	card.wantedNote = note;
+	if (line === card.wantedLine) return;
+	card.wantedLine = line;
 	vTaskStatusEnqueue(card, async () => {
-		if (card.session.vTaskDiscarded || card.wantedNote !== note || card.writtenNote === note) return;
-		await vTaskStatusPutNote(card.session, card.state, note);
-		card.writtenNote = note;
+		if (card.session.vTaskDiscarded || card.wantedLine !== line || card.writtenLine === line) return;
+		await vTaskStatusWriteLine(card, line);
+		card.writtenLine = line;
 		entry.log?.("task-status card=" + card.state.cardId + " line=" + JSON.stringify(line));
-	}).catch((error) => entry.log?.("task-status card=" + card.state.cardId + " write failed: " + String(error)));
+	}).catch((error) => {
+		// Let the next refresh try again.
+		if (card.wantedLine === line) card.wantedLine = card.writtenLine;
+		entry.log?.("task-status card=" + card.state.cardId + " write failed: " + String(error));
+	});
 }
 function vTaskStatusRefresh(entry) {
 	entry.timer = null;
@@ -8379,20 +8394,19 @@ function vTaskStatusRefresh(entry) {
 	else vTaskStatusSchedule(entry, V_TASK_STATUS_POLL_MS);
 }
 /** A reply card started for this session: it carries the line from now on. */
-function vTaskStatusAttach(sessionKey, session, baseNote, log) {
+function vTaskStatusAttach(sessionKey, session, log) {
 	const bridge = vTaskStatusBridge();
 	const key = vTaskStatusKey(sessionKey);
 	const state = session?.state;
-	if (!bridge || !key || !state?.cardId || !state.hasNote) return;
+	if (!bridge || !key || !state?.cardId) return;
 	let entry = vTaskStatusEntries.get(key);
 	if (!entry) vTaskStatusEntries.set(key, entry = { key, sessionKey, card: null, timer: null, log });
 	entry.log = log;
 	const previous = entry.card;
-	const note = baseNote ?? "";
-	const card = { key, session, state, baseNote: note, wantedNote: note, writtenNote: note, line: "", lineActive: false, shownActive: false, startedAt: Date.now(), chain: null };
+	const card = { key, session, state, wantedLine: "", writtenLine: "", inserted: false, lineActive: false, shownActive: false, startedAt: Date.now(), chain: null };
 	session.vTaskStatusCard = card;
 	entry.card = card;
-	// One live line per session: the previous card goes back to its footer.
+	// One live line per session: the previous card's line is removed.
 	if (previous && previous !== card && previous.lineActive) {
 		previous.lineActive = false;
 		vTaskStatusShow(entry, previous, "");
@@ -8400,16 +8414,12 @@ function vTaskStatusAttach(sessionKey, session, baseNote, log) {
 	vTaskStatusListen(bridge);
 	vTaskStatusSchedule(entry, 0);
 }
-/** The footer a closing card is finalized with; the line is re-applied after. */
-function vTaskStatusFinalNote(session, finalNote) {
+/** A card is closing: re-check soon, and release it if nothing runs. */
+function vTaskStatusClosing(session) {
 	const card = session?.vTaskStatusCard;
-	if (!card) return finalNote;
-	card.baseNote = finalNote ?? "";
-	card.wantedNote = card.baseNote;
-	card.writtenNote = card.baseNote;
+	if (!card) return;
 	const entry = vTaskStatusEntries.get(card.key);
 	if (entry?.card === card) vTaskStatusSchedule(entry, 0);
-	return finalNote;
 }
 function installFeishuTaskStatus(Session) {
 	const close = Session.prototype.closeWithResult;

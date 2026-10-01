@@ -4,8 +4,9 @@
 // media generation, automation runs) lives in the OpenClaw task registry, and
 // usually outlives the reply that started it. `patch-feishu-task-status.mjs`
 // exposes that registry to the Feishu monitor; this module turns a session's
-// active tasks into one line under the card footer, so a reader can see that
-// work is still going on and how much, without its content.
+// active tasks into one quiet line at the end of the reply card, above the
+// footer, so a reader can see that work is still going on and how much,
+// without its content.
 //
 // Pure functions only (no imports): the patcher inlines this file into the
 // Feishu monitor bundle, so it must stay self-contained.
@@ -51,13 +52,16 @@ export function renderFeishuTaskStatusLine(tasks, { shownActive = false } = {}) 
     counts.set(kind, (counts.get(kind) ?? 0) + 1);
   }
   const kinds = V_TASK_STATUS_KIND_ORDER.filter((kind) => counts.has(kind));
-  const detail = kinds.length === 1 ? kinds[0] : kinds.map((kind) => `${kind} ${counts.get(kind)}`).join("、");
-  return `⏳ 后台 ${active.length} 个任务进行中：${detail}`;
+  const detail = kinds.length === 1 ? kinds[0] : kinds.map((kind) => `${kind} ${counts.get(kind)}`).join(" · ");
+  return `⏳ 后台 ${active.length} 项进行中 · ${detail}`;
 }
 
-/** The card footer with the background-work line under it. */
-export function composeFeishuTaskStatusNote(baseNote, line) {
-  const base = typeof baseNote === "string" ? baseNote : "";
-  if (!line) return base;
-  return base ? `${base}\n${line}` : line;
+/** The card element that carries the line: small grey text above the footer. */
+export function feishuTaskStatusElement(line) {
+  return {
+    tag: "markdown",
+    element_id: "v_bg_tasks",
+    text_size: "notation",
+    content: `<font color='grey'>${line}</font>`,
+  };
 }
