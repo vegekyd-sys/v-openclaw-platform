@@ -11,6 +11,38 @@
 
 ---
 
+## v2026.9.1-db91.6-background-work-20261002
+
+上线：2026-10-02 03:13 CST 安装并重启 Gateway（03:15 就绪）  ·  tag `v2026.9.1-db91.6-background-work-20261002`；03:16–03:40 生产飞书回归通过。
+
+**摘要**：飞书回复卡片最后（footer 上面）多一行灰色小字，显示这个会话还有几个后台任务在跑、是什么类型（`⏳ 后台 2 项进行中 · 子 agent 1 · 后台命令 1`），卡片关了也会继续更新，全部结束后变成 `☑️ 后台任务已结束`；worker、/vds、/vcc、/vcodex 四个 harness 都可见。同时修好 Codex 原生子 agent：父会话来了新消息后子 agent 不再丢失工具中继（生产 10/02 00:15 的故障），子 agent 结束后会自动唤醒父会话把结果发回群里。[完整验收](docs/acceptance/background-work-20261002.md)。
+
+相对上一版 `v2026.9.1-db91.6-vcodex-sol61-20260930`：捕获内 5 个文件变化；另有捕获外 1 个文件：Codex 插件 `~/.openclaw/npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/thread-lifecycle-DAcEJ_Om.js` `0e575c99 → 94d5420f`（npm 管理的目录，不在捕获与漂移哨兵里）。
+
+**经 VLab 发版 `background-work-20261002`**（feishu-task-status，dev `84eceb39`）
+> 验收：2026-10-02 02:35-03:12 CST real Feishu via lark-cli (user identity), VLab group B oc_5afced47 and 'VLab 压测 01' oc_abfb8965. Background-work line (own element above footer, after body) on all four harnesses, each: visible during streaming, still visible after the reply, ended with ☑️: /vcodex sessions_spawn+exec peak 2 (2->1->done 104s); /vcodex native spawn_agent; /vcc sessions_spawn (done 86s); /…
+- `core` plugin-sdk/agent-harness-task-runtime.js  04f713bc → 60913341
+- `core` subagent-registry-C24yr_PF.js  f0b833de → c2c0c840
+- `core` task-registry-activity-DSlVVJwD.js  65d88753 → 8a89045a
+- `core` task-registry.store.sqlite-paxOzi9K.js  e0e43ff1 → 81c9d4b2
+- `feishu` dist/monitor.account-WFdlCDhR.js  4d3ea59b → 69230132
+
+- 运行文件备份与 undo.json：`/opt/v-release-backups/v2026.9.1-db91.6-background-work-20261002-*`。
+- 共享 VLab 先上了只在 VLab 的 `vlab-codex-parity-20261002`，把 VLab 的 Codex 插件对齐到 V（V 不变）。
+
+**这期间合入 dev 的 PR**（11 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #136 feat(feishu): show a session's running background work on its reply card
+- #137 fix(codex): native subagents keep their tool relay across parent turns and wake the parent
+- #135 V Browser 0.4.7: cross-harness candidate, shared VLab parity, release record
+- #133 ops(v): V 系统盘每日在线镜像，保留最新 3 份
+- #132 fix(nightshift): 重做的卡按自己的第几次记账，付费台账不再认成上一次
+- #130 docs: 记录关掉 Codex canva 插件的配置改动与验收
+- #131 fix(nightshift): Gateway 一进入暂停就让夜班暂停，不等重启广播
+- #128 feat(nightshift): 要求修改后自动重做这一条；审批卡不能重试
+- #129 fix(codex): 关掉从没用过的 Canva 插件，/vcodex 每轮省 3–4 秒
+- #127 feat(nightshift): the board says when Night Shift holds for a Gateway restart
+- #125 feat(nightshift): Gateway 重启时夜班自动暂停，回来后自动接上被打断的卡
+
 ## v2026.9.1-db91.6-vcodex-sol61-20260930
 
 上线：2026-09-30 13:01 CST  ·  tag `v2026.9.1-db91.6-vcodex-sol61-20260930`；13:04–13:10 生产飞书验收通过。
