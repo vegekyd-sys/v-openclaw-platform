@@ -133,7 +133,7 @@ nightshiftctl projects order <a> <b> <c> --actor V --reason "按交付承诺排"
 A blocked card is first explained by how its run ended, as the Gateway records it (`tasks.list` for the card's Session, matched by run id). The Workboard keeps no reason for a blocked attempt; the Gateway's task registry does.
 - **Still `running` or `queued`**: the Agent is alive. The card is not failed, not salvaged and not announced; it is asked again in the next five-minute window. On 2026-09-29 a produce card blocked at 16:38 while its Agent kept working reached a person, and the Agent finished the video at 16:41.
 - **`failed`, `timed_out`**: the substrate stopped the run (Agent DB lease timeouts, provider errors, timeouts). It records `stage.attempt.failed` with the kind the error names (`database_lock`, `connection_reset`, …, otherwise `agent_interrupted`) and retries by the stage's policy. A paid stage retries too, unless its ledger holds an operation this card left `reserved`, or `executing` without an external task id: that may have been charged, so it goes to a person. Agents reserve on the ledger before any paid call.
-- **`cancelled`**: recorded as `run_cancelled`, not retried.
+- **`cancelled`**: recorded as `run_cancelled`, not retried. A run the Gateway killed while restarting is not judged here: see *Gateway restarts*.
 - **Ended normally**: the Agent's own transcript and outputs decide, as below. Every stop that needed a person on V from 2026-09-26 to 09-29 had a run that ended normally.
 
 A card still shown `running` is asked too when its transcript ends on an error (`stopReason` error or aborted): a run the Gateway still has running is left alone, and a failed run is classified from the Gateway's record. On 2026-09-29 a transcript ending on "incomplete or malformed tool call", from a run the Gateway recorded as a failed provider request, had been classified as the Agent's own error.
@@ -143,6 +143,29 @@ Faults of the substrate have their own retry allowance: up to 5 attempts (backof
 When the Gateway has no entry for the run, the transcript rules below apply.
 
 **Written outputs are salvaged, never judged.** A blocked card with no recorded failure is checked for outputs a finished attempt may have left behind; when they satisfy the contract the card completes. When they do not, nothing is recorded: the board shows "Outputs not found yet: …" and the card waits. Before this, a failed salvage became a contract failure, and eight stopped runs on 2026-09-28/29 reached 需要你 as missing handoffs and unrecorded payments.
+
+## Gateway restarts
+
+Night Shift pauses by itself while the Gateway restarts and picks its work back up afterwards. Whoever restarts the Gateway does not need to tell anyone. On 2026-09-30 two restarts by a release session (12:53, 13:01) ended two produce runs, one reached the group as a decision, and three sessions had to message each other to recover them.
+
+What starts the hold (`packages/nightshift-core/src/gateway-restart-hold.mjs`), whichever comes first:
+- the Gateway's own `shutdown` broadcast, sent when it restarts itself (SIGUSR1, release scripts, a config change that restarts), whoever asked;
+- the persistent connection dropping: a crash, SIGKILL, or a stop that ran past systemd's 45 s timeout never broadcasts, and a SIGTERM stop (systemctl) closes the socket before its broadcast reaches clients;
+- a different Gateway `bootId` in the next hello, which also catches a restart that happened while Night Shift itself was down.
+
+While held, no scheduler pass runs: nothing is dispatched, no card is judged, nothing reaches 需要你, and the capacity probe is skipped (a restarting Gateway would read as overload and brake dispatch). The hold survives a Night Shift restart.
+
+When the Gateway is back, Night Shift waits `NIGHTSHIFT_GATEWAY_RESTART_SETTLE_MS` (60 s) for the new process to warm up, then resumes every card the restart interrupted (`runtime.resumeAfterGatewayRestart`):
+- a run that ended `cancelled`, `failed`, `timed_out` or `error` between 3 minutes before the hold and the Gateway's return (the drain kills runs with "subagent run terminated" just before the broadcast);
+- when the boot id changed, a run the registry still lists as `running` with no activity since the return: a run cannot outlive the process that ran it (2026-09-30 08:26).
+
+Such a card is blocked if it still shows running, then retried. It records `stage.gateway-restart.resumed`, not `stage.attempt.failed`, so it does not spend the card's retries however many restarts there are. A paid card resumes only when its ledger holds nothing `reserved`, or `executing` without an external task id; an already submitted task is only read back. Otherwise it records `gateway_restart` and goes to a person, because it may have been charged. After the pickup, normal scheduling resumes with the usual warm-up slots.
+
+`/api/health` shows the whole state as `gatewayRestart`; `/api/overview` shows `gatewayRestart.status` (`up`, `holding`, `resuming`) for the board, plus what the last pickup did. A shutdown broadcast whose process never went away releases the hold after 5 minutes.
+
+Checked on VLab (candidate, 2026-09-30, `lab/candidate/nightshift-gateway-restart.mjs`) against a private Gateway with a real Workboard card whose Agent was running `sleep 900`: SIGUSR1 broadcast `shutdown` ("gateway restarting") and Night Shift held at once; the process took 5.5 minutes to exit and the run was recorded `cancelled` ("Subagent run killed."); after the new boot and the settle, the pickup put the card back to ready with no failure recorded. SIGTERM and SIGKILL were held through the dropped connection and found the new boot id.
+
+A run that is still in flight when the Gateway stops is always lost: the Gateway kills it during its drain and cannot wait for a produce run to finish. The resumed card runs its stage again from the start; a paid task already submitted is only read back.
 
 ## Orphaned runs
 
@@ -185,6 +208,17 @@ Cards blocked before the first run (baseline `needs-you-v1.baseline` in `notific
 - **skip** (「跳过这一条」, offered only on a stop of one content item) takes that item out of the project. Nothing more is planned for it; stages that wait on every item, such as delivery, wait only on the rest, and their brief lists the skipped items with the reason so the Agent neither waits for nor packages them. The project stays active and completes without it; the completion notice lists what was skipped and why. It is stored in `skipped_content_items` (the note, or the request's problem, is the reason) with an audit event `content-item.skipped`; `content-items.json` is not rewritten. A stopped card of a skipped item stays on the board but never opens a request again. Requests opened before skip existed offer it too.
 - **pause** pauses the whole project (no new cards at all) and leaves the request open. It is not a way to deliver the rest; use skip for that.
 - A second decision returns the first (`alreadyDecided`).
+
+**Reviews: 要求修改 redoes the item.** A review card offers approve, request-changes (「要求修改」) and reject (`POST /api/cards/:id/request-changes { evidence }`, or `nightshiftctl cards changes <card> --evidence …`). Request-changes on a content item's review redoes that item (`runtime.redoForChanges`):
+- The redone stages are the Agent stages the review checks, from the first of them (the one that depends on no other stage the review checks), every content-item stage between, and the review itself. For `produce → qc-learn → review` that is produce, qc-learn and review; for xingqing's `produce → review`, produce and review. Project-scope stages are not redone for one item.
+- Each gets a new attempt (a run in status `redo`, no card yet). A card's attempt is read back from Night Shift's own run rows by card id: the native board drops unknown automation fields, so `metadata.automation.attempt` never comes back. The planner makes a fresh card for it, in order, when its dependencies are done; the old cards stay as they were. The item's revision (`content_item_revisions`) is part of the new cards' idempotency key, so they are never matched to the old ones.
+- A redone paid stage reserves a new ledger operation: the revision is part of the operation key the reserve endpoint and completion validation resolve, so it is never told its first attempt's paid call already settled it.
+- The new cards' brief carries the person's note verbatim ("Redo requested (revision N) …"). A paid stage pays again: the existing approval of that item still covers it, and asking for changes is asking for that.
+- The old review card stays blocked but never opens a request: a card a newer attempt of its stage replaced is nobody's matter. On V on 2026-09-30 the review a person had sent back reached 需要你 itself.
+- A second request while the redo is under way (a redone stage ready, running or waiting) records the decision and does not stack another redo.
+- Audit event `content-item.redo.requested`.
+
+Before this, nothing could redo a finished item: the done cards could not be retried and the review sat blocked. On V on 2026-09-30 ref1 and ref2 of NS-BATCHV2-0929-01 waited five hours after a person asked for changes, while the operator retried their approval cards and approved again. **An approval card cannot be retried** now: it is a gate, not work. Approve it to let its stage run; to redo a finished item, request changes on its review.
 
 **What a request says.** Each request carries the text of the accepted card layout:
 - `problem`: what happened;

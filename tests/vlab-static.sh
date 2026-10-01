@@ -15,10 +15,13 @@ bash -n "${REPO_ROOT}/scripts/rollback-vlab-production-parity.sh"
 bash -n "${REPO_ROOT}/tests/vlab-production-parity.sh"
 node --test "${REPO_ROOT}/tests/patch-feishu-latest-snapshot-streaming.test.mjs"
 node --test "${REPO_ROOT}/tests/patch-feishu-progress-stream.test.mjs"
+node --test "${REPO_ROOT}/tests/patch-feishu-task-status.test.mjs"
 python3 "${REPO_ROOT}/tests/v-release-drift.test.py"
 bash -n "${REPO_ROOT}/scripts/install-v-release-drift.sh"
 python3 "${REPO_ROOT}/tests/v-nightshift-check.test.py"
 bash -n "${REPO_ROOT}/scripts/install-v-nightshift-check.sh"
+python3 "${REPO_ROOT}/tests/v-daily-image.test.py"
+bash -n "${REPO_ROOT}/scripts/install-v-daily-image.sh"
 # The release production V runs now: core dist, worker plugin, Feishu plugin.
 for component in "" .worker .feishu; do
   node "${REPO_ROOT}/scripts/verify-release-reproducible.mjs" \

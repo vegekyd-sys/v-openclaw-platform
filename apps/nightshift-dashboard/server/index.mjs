@@ -8,6 +8,7 @@ import { createAgentDbPressureProbe } from "./agent-db-pressure-probe.mjs";
 import { createHostPressureProbe } from "./host-pressure-probe.mjs";
 import { DispatchPressureGuard } from "./dispatch-pressure-guard.mjs";
 import { WorkboardChangeScheduler } from "./workboard-change-scheduler.mjs";
+import { GatewayRestartHold, isGatewayRestartError } from "../../../packages/nightshift-core/src/gateway-restart-hold.mjs";
 import { createSessionReader } from "./session-reader.mjs";
 import { HumanAttemptController, humanCompletionEvidence, publicHumanAttempt, evidenceHash } from "../../../packages/nightshift-core/src/human-attempt.mjs";
 import { createServer } from "node:http";
@@ -107,6 +108,9 @@ const warmupWindowMs = positiveInteger(process.env.NIGHTSHIFT_WARMUP_WINDOW_MS, 
 const warmupMaxStarts = positiveInteger(process.env.NIGHTSHIFT_WARMUP_MAX_CARDS, 3, 36);
 const schedulerRetryMinMs = positiveInteger(process.env.NIGHTSHIFT_SCHEDULER_RETRY_MIN_MS, 10_000, 600_000);
 const schedulerRetryMaxMs = positiveInteger(process.env.NIGHTSHIFT_SCHEDULER_RETRY_MAX_MS, 120_000, 600_000);
+// After the Gateway returns from a restart, Night Shift waits this long before it
+// resumes the interrupted runs and dispatches again: the new process is cold.
+const gatewayRestartSettleMs = positiveInteger(process.env.NIGHTSHIFT_GATEWAY_RESTART_SETTLE_MS, 60_000, 600_000);
 // An explicit refresh=1 read is served from the cache when the last board read
 // is younger than this. Pollers cannot turn the API into a board scan loop.
 const cardRefreshMinIntervalMs = positiveInteger(process.env.NIGHTSHIFT_CARD_REFRESH_MIN_INTERVAL_MS, 30_000, 600_000);
@@ -122,6 +126,7 @@ const workboard = new WorkboardGatewayAdapter({
   startIntervalMs: dispatchStartIntervalMs,
 });
 const needsYou = new NeedsYouTracker({ store });
+const gatewayRestart = new GatewayRestartHold({ store, settleMs: gatewayRestartSettleMs });
 const runtime = new NightShiftRuntime({
   board,
   completionValidator: validateCompletion,
@@ -200,6 +205,12 @@ const changeScheduler = new WorkboardChangeScheduler({
 });
 workboard.needsFullSnapshot = true; // Recover cards committed before a prior Scheduler crash.
 changeScheduler.start();
+workboard.onGatewayLifecycle((event) => {
+  const before = gatewayRestart.snapshot().status;
+  const after = gatewayRestart.observe(event);
+  if (after.status !== before) console.log(`Night Shift Gateway ${event.type}: ${before} -> ${after.status}`);
+  if (after.status === "resuming") changeScheduler.enqueueAfter("gateway.resume", Math.max(0, Date.parse(after.resume.resumeAt) - Date.now()));
+});
 workboard.connect()
   .then(() => probeDispatchCapacity())
   .catch((error) => {
@@ -265,6 +276,7 @@ async function handleApi(request, response, url) {
       schedulerRepairIntervalMs,
       dispatchPressure: dispatchPressureGuard.snapshot(activeCardCount(cardCache)),
       dispatchWarmup: warmupAdmission(cardCache, { windowMs: warmupWindowMs, maxWarming: warmupMaxStarts }),
+      gatewayRestart: gatewayRestart.snapshot(),
       gatewayCapacityProbeIntervalMs,
       reservedInteractiveSlots,
       reservedInteractiveWorkers,
@@ -323,6 +335,8 @@ async function handleApi(request, response, url) {
     json(response, 200, {
       board,
       cardsUpdatedAt,
+      // The board shows "Gateway 重启中，夜班已暂停" while this is not "up".
+      gatewayRestart: gatewayRestartForBoard(gatewayRestart.snapshot()),
       ...buildOverview({
         scope: url.searchParams.get("scope") ?? "live",
         instances,
@@ -752,8 +766,11 @@ async function handleApi(request, response, url) {
       json(response, 422, { error: "Card does not declare an external side effect" });
       return;
     }
+    // With its revision: a redone item's paid call is a new operation, not the
+    // one its first attempt already settled (V, 2026-09-30: a redo was told its
+    // video had been paid for and completed, and failed validation).
     const contentItem = context.contentItemId
-      ? store.listContentItems(instance.id).find((entry) => entry.id === context.contentItemId)
+      ? runtime.contentItemsWithRevisions(instance.id).find((entry) => entry.id === context.contentItemId)
       : null;
     if (context.contentItemId && !contentItem) {
       json(response, 422, { error: "Card references an unknown Night Shift content item" });
@@ -1045,6 +1062,13 @@ async function ensureSeedInstance() {
 
 function runScheduler({ trigger = "manual" } = {}) {
   if (schedulerPromise) return schedulerPromise;
+  // The Gateway is restarting: nothing is dispatched or judged until it is back.
+  const restartGate = gatewayRestart.gate({ connected: workboard.connected, bootId: workboard.bootId });
+  if (restartGate.hold) {
+    changeScheduler.enqueueAfter("gateway.resume", restartGate.retryAfterMs);
+    return Promise.resolve({ skipped: "gateway-restart-hold", ...gatewayRestart.snapshot() });
+  }
+  if (restartGate.pickup) return resumeAfterGatewayRestart(restartGate.pickup);
   const circuitDecision = schedulerCircuit.beforePass();
   if (!circuitDecision.run) return Promise.resolve({ skipped: "scheduler-circuit-open", ...circuitDecision });
   schedulerPromise = (async () => {
@@ -1064,6 +1088,13 @@ function runScheduler({ trigger = "manual" } = {}) {
       store, runtime, workboard, refreshCards, syncContentItemsManifest,
     }));
     dispatchPressureGuard.consumeStarts(result.dispatched);
+    // A project read refused mid-pass because the Gateway began suspending:
+    // hold now, and do not count it against the scheduler.
+    const restartWarnings = result.warnings.filter(isGatewayRestartError);
+    if (restartWarnings.length) {
+      holdForGateway(restartWarnings[0]);
+      result.warnings = result.warnings.filter((warning) => !isGatewayRestartError(warning));
+    }
     projectQueue = result.queue ?? new Map();
     schedulerRetryMs = 0;
     lastSchedulerAt = new Date().toISOString();
@@ -1076,12 +1107,57 @@ function runScheduler({ trigger = "manual" } = {}) {
     if (warmup.retryAfterMs > 0 && pressure.availableStarts > 0) changeScheduler.enqueueAfter("dispatch.warmup", warmup.retryAfterMs);
   })().catch((error) => {
     lastSchedulerAt = new Date().toISOString();
+    if (isGatewayRestartError(error)) {
+      holdForGateway(error.message);
+      return;
+    }
     lastSchedulerError = error.message;
     schedulerCircuit.recordFailure(error.message);
     console.error(`Night Shift scheduler failed: ${error.message}`);
     scheduleSchedulerRetry();
   }).finally(() => {
     schedulerPromise = null;
+  });
+  return schedulerPromise;
+}
+
+// An RPC refused with "unavailable during gateway suspension|restart": the
+// Gateway is going down even if its broadcast has not reached us.
+function holdForGateway(message) {
+  const before = gatewayRestart.snapshot().status;
+  const after = gatewayRestart.observe({ type: "suspended", phase: String(message).match(/during gateway (\w+)/i)?.[1] ?? "refused" });
+  if (after.status !== before) console.log(`Night Shift Gateway refused work (${String(message).slice(0, 120)}): ${before} -> ${after.status}`);
+  changeScheduler.enqueueAfter("gateway.resume", gatewayRestartSettleMs);
+}
+
+function gatewayRestartForBoard(state) {
+  return {
+    status: state.status,
+    since: state.hold?.since ?? null,
+    reason: state.hold?.reason ?? null,
+    resumeAt: state.resume?.resumeAt ?? null,
+    last: state.last ? { from: state.last.from, to: state.last.to, resumedAt: state.last.resumedAt,
+      resumed: state.last.resumed.length, handedOver: state.last.handedOver.length } : null,
+  };
+}
+
+function resumeAfterGatewayRestart(window) {
+  schedulerPromise = (async () => {
+    schedulerStartedAt = new Date().toISOString();
+    lastSchedulerTrigger = "gateway.resume";
+    const outcome = await serializedOperation(() => runtime.resumeAfterGatewayRestart(window));
+    gatewayRestart.complete(window, outcome);
+    console.log(`Night Shift resumed after Gateway restart: ${outcome.resumed.length} resumed, ${outcome.handedOver.length} handed to a person, ${outcome.skipped.length} skipped`);
+    for (const entry of outcome.skipped) console.error(`Night Shift restart pickup skipped ${entry.cardId}: ${entry.why}`);
+  })().catch((error) => {
+    // The Gateway is back but the pickup failed: try again shortly. The hold
+    // stays, so nothing is judged in the meantime.
+    lastSchedulerError = `Gateway restart pickup failed: ${error.message}`;
+    console.error(`Night Shift ${lastSchedulerError}`);
+  }).finally(() => {
+    schedulerPromise = null;
+    const state = gatewayRestart.snapshot();
+    changeScheduler.enqueueAfter(state.status === "up" ? "gateway.resumed" : "gateway.resume", state.status === "up" ? 0 : schedulerRetryMinMs);
   });
   return schedulerPromise;
 }
@@ -1118,6 +1194,8 @@ function scheduleSchedulerRetry() {
 
 function probeDispatchCapacity() {
   if (capacityProbePromise || shuttingDown) return capacityProbePromise;
+  // A probe of a restarting Gateway would read as overload and brake dispatch.
+  if (gatewayRestart.snapshot().status !== "up") return;
   if (dispatchPressureGuard.lastProbe && !cardCache.some(card => cardIsStartable(card, Date.now()))) return;
   capacityProbePromise = (async () => {
     const running = activeCardCount(cardCache);
@@ -1127,6 +1205,10 @@ function probeDispatchCapacity() {
       const probe = hostPressure.blocked ? {} : await workboard.probeGatewayCapacity();
       pressure = dispatchPressureGuard.recordProbe({ ...probe, hostPressure, agentDbPressure, running });
     } catch (error) {
+      if (isGatewayRestartError(error)) {
+        holdForGateway(error.message);
+        return;
+      }
       pressure = dispatchPressureGuard.recordProbe({ error: error.message, running });
     }
     if (pressure.dispatchAllowed && pressure.availableStarts > 0 && cardCache.some((card) => cardIsStartable(card, Date.now()))) {
@@ -1420,7 +1502,7 @@ async function validateCompletion({ card, contentItemId, instance, release, reus
   if ((stage?.sideEffects ?? []).length > 0) {
     try {
       const contentItem = contentItemId
-        ? store.listContentItems(instance.id).find((entry) => entry.id === contentItemId)
+        ? runtime.contentItemsWithRevisions(instance.id).find((entry) => entry.id === contentItemId)
         : null;
       const operationKeys = resolveNightShiftOperationKeys({ card, release, instance, contentItem });
       const operation = findNightShiftExternalOperation({
