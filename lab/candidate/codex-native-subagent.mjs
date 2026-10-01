@@ -378,7 +378,9 @@ try {
   assert.equal(t1.exit, 0, `turn 1 failed: ${t1.stderr}`);
   assert(childRollouts.length >= 1, "the parent did not spawn a Codex native child");
   if (followup) assert(summary.turn2.parentToolOk, `turn 2: the parent's own tool call did not run: ${summary.turn2.reply}`);
-  assert(summary.turn3.parentToolOk, `turn 3: the parent's own tool call did not run: ${summary.turn3.reply}`);
+  // With delivery broken, turn 3 is where the stranded child result finally surfaces (V at
+  // 00:25) and the model may answer that instead of the prompt; only judge it otherwise.
+  if (fixParts.includes("core") || !dropScopeResolver) assert(summary.turn3.parentToolOk, `turn 3: the parent's own tool call did not run: ${summary.turn3.reply}`);
   const row = summary.result.tasks.at(-1);
   const relayFixed = fixParts.includes("codex");
   const deliveryFixed = fixParts.includes("core") || !dropScopeResolver;
