@@ -348,6 +348,10 @@ try {
   }
   const messages = await history(sessionKey);
   // Turn 3, after the child is done: the parent's own tools still work.
+  // Snapshot before turn 3: a new user turn makes Codex hand the child's notification to
+  // the parent thread, and the monitor then marks the task delivered (V at 00:25) even
+  // though the parent was never woken. The verdict judges the state before that.
+  const tasksBeforeTurn3 = taskRows();
   const t3 = await runTurn(sessionKey, parentPrompt(parentTokens[1]), 180);
   summary.turn3 = { exit: t3.exit, secs: t3.secs, reply: t3.reply, stderr: t3.stderr, parentToolOk: t3.reply.includes(parentTokens[1].token) };
   const outputPath = path.join(workspace, outputName);
@@ -360,7 +364,8 @@ try {
     wantShort,
     parentWokeWithHash: woke ?? null,
     parentMessagesAfterTurns: messages.slice(afterTurns.length).map((m) => ({ role: m.role, text: m.text.slice(0, 300) })),
-    tasks: taskRows(),
+    tasks: tasksBeforeTurn3,
+    tasksAfterTurn3: taskRows().map((r) => ({ status: r.status, deliveryStatus: r.deliveryStatus })),
     nativeChildren: childRollouts.length,
     relayRefusalsInCodexTranscript: relayRefusals,
     gatewayRelayNotFound: logMatches(/native hook relay not found/u).length,
