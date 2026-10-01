@@ -73,7 +73,19 @@ node patch-codex-native-subagent.mjs --codex <@openclaw/codex 目录> --core <co
 
 `NSA_DROP_SCOPE_RESOLVER=1`（仅测试）按 V 的条件投递：task scope 不带 resolver，投递时也不在请求 scope 内。
 
-结果见下节（由最终提交跑出）。
+### 结果（提交 `5c61a35`，工作区干净，2026-10-02 02:2x CST）
+
+| plan | candidate | 子线程工具 | 哈希文件 | 父会话自己醒来 | 任务行（第 3 回合前） | 父线程工具（回合 2/3） |
+|---|---|---|---|---|---|---|
+| `codex-native-subagent-baseline-noscope`（V 字节） | `candidate-c5a00212-386f-41e0-b58d-81d56dfa91b8` | 2 次 `Native hook relay unavailable`，Gateway `not found` ×2 | 缺失 | 否 | succeeded / pending / `In-process gateway dispatch requires … (method: agent).` | ✓ / 被迟到的子结果占用 |
+| `codex-native-subagent-relay-only`（只打插件） | `candidate-f59b2caa-352b-4289-a45b-cb5c189480a9` | 0 拒绝 | 正确 | 否 | succeeded / pending / 同上错误 | ✓ / ✓ |
+| `codex-native-subagent`（全部修复，V 式投递） | `candidate-e76cc8d5-b133-437c-b6f4-e07fe575a316` | 0 拒绝 | 正确 | 是，安静后 75 s：`PARENT_GOT NSA_HASH 8fe61978…` | succeeded / delivered | ✓ / ✓ |
+| `codex-native-subagent-cli-scope`（全部修复，CLI 正常路径） | `candidate-3f8137ec-ff3a-4539-8609-5ab5fb28c619` | 0 拒绝 | 正确 | 是，70 s | succeeded / delivered | ✓ / ✓ |
+
+- 基线逐项复现生产：子线程在追问回合结束后被拒，任务仍记 succeeded，投递报同一句错误，父会话不醒。
+- 只打插件的那一组，子线程能干活，但结果仍送不回父会话。这说明唤醒靠的是 core 那一半；反过来，基线说明子线程能否干活取决于插件那一半。
+- 基线和只打插件的两组，在第 3 个用户回合之后，任务都被改记为 `delivered`：Codex 把子线程的通知塞进了这个新回合。这与 V 在 00:25 的情况相同。所以“delivered”不能作为父会话被唤醒的证据，判定一律以第 3 回合之前的状态为准。
+- 父线程在回合 2 走的是回合级中继 id，自己的 `cat` 照常成功，说明父线程的 hook 跟着本回合的中继走。回合 3 时子线程已经结束，回到会话 id，同样成功。
 
 ## 未覆盖
 
