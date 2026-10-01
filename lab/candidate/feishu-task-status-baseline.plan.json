@@ -1,0 +1,17 @@
+{
+  "support": [
+    "lab/candidate/feishu-task-status.mjs",
+    "lab/release-files/feishu-task-status/feishu-task-status-render.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/feishu-task-status.mjs"
+  ],
+  "env": {
+    "TASK_STATUS_EXPECT": "absent",
+    "TASK_STATUS_PARTS": "sdk,gateway",
+    "TASK_STATUS_SCENARIOS": "worker"
+  },
+  "timeoutSeconds": 2400,
+  "user": "lab-db91-parity"
+}
