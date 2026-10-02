@@ -1,0 +1,20 @@
+{
+  "baseRelease": "memory-search-mixed-20261002",
+  "files": [
+    {
+      "source": "lab/release-files/gpt-live-native-progress/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
+      "target": "openclaw/dist/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
+      "before": "e7a27df564dc8296dba853e27752f592f68ebf660736176793ede1bbb2762679"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/realtime-session-harness-CEO5kVAJ.js",
+      "target": "openclaw/dist/realtime-session-harness-CEO5kVAJ.js",
+      "before": "b394e47d6ac125dc357a74732c15974cae05e392c72e2c8184c6f6db4bb839b0"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/talk-DkFuKRod.js",
+      "target": "openclaw/dist/talk-DkFuKRod.js",
+      "before": "8626acc98d1ea5076d7b4e455246a02f0f80372b9f38cc4161c83a2aa5da840b"
+    }
+  ]
+}
