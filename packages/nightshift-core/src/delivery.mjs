@@ -61,9 +61,10 @@ export function ledgerVideoUrl(operations, contentItemId, stageId = "produce") {
 // the caller (the delivery stage's Agent) uploads that file and passes its URL
 // in `sources`.
 //
-// readAsset(itemId) -> { asset, bytes, ledgerUrl } | null
+// readAsset(itemId) -> { asset, bytes, file, ledgerUrl } | null
 //   asset: finishedAsset.json beside the video, if any; bytes: the validated
-//   video's size on disk; ledgerUrl: the URL its paid call recorded.
+//   video's size on disk and path (file); ledgerUrl: the URL its paid call
+//   recorded. A miss the stage can fix by uploading carries that path.
 // probe(url) -> { ok, bytes, status }            (a HEAD request)
 export async function buildDeliveryManifest({
   instance,
@@ -87,28 +88,28 @@ export async function buildDeliveryManifest({
     const asset = found.asset ?? {};
     const url = sources[item.id] ?? finishedAssetUrl(asset) ?? found.ledgerUrl ?? null;
     if (!url) {
-      missing.push({ id: item.id, title: item.title, reason: "the finished video has no public URL: upload it and pass --source" });
+      missing.push({ id: item.id, title: item.title, file: found.file ?? null, reason: "the finished video has no public URL: upload it (--upload-missing) or pass --source" });
       continue;
     }
     let host;
     try {
       host = new URL(url).hostname.toLowerCase();
     } catch {
-      missing.push({ id: item.id, title: item.title, reason: `not a URL: ${url}` });
+      missing.push({ id: item.id, title: item.title, file: found.file ?? null, reason: `not a URL: ${url}` });
       continue;
     }
     if (!url.startsWith("https://") || !allowedHosts.includes(host)) {
-      missing.push({ id: item.id, title: item.title, reason: `host ${host} is not an allowed delivery host (${allowedHosts.join(", ")})` });
+      missing.push({ id: item.id, title: item.title, file: found.file ?? null, reason: `host ${host} is not an allowed delivery host (${allowedHosts.join(", ")})` });
       continue;
     }
     const expected = Number(found.bytes ?? asset.bytes);
     const head = await probe(url);
     if (!head?.ok) {
-      missing.push({ id: item.id, title: item.title, reason: `the URL does not answer (${head?.status ?? "no response"})` });
+      missing.push({ id: item.id, title: item.title, file: found.file ?? null, reason: `the URL does not answer (${head?.status ?? "no response"})` });
       continue;
     }
     if (Number.isFinite(expected) && expected > 0 && Number(head.bytes) !== expected) {
-      missing.push({ id: item.id, title: item.title, reason: `the URL serves ${head.bytes} bytes, the finished video is ${expected}: it is not the same file, upload the finished video` });
+      missing.push({ id: item.id, title: item.title, file: found.file ?? null, reason: `the URL serves ${head.bytes} bytes, the finished video is ${expected}: it is not the same file (edited after the provider rendered it), upload the finished video` });
       continue;
     }
     items.push({

@@ -124,3 +124,46 @@ test("the completion notice opens the delivery page first", () => {
   assert.deepEqual(buttons.map((button) => button.label), ["打开交付页", "查看项目"]);
   assert.equal(buttons[0].url, "https://board/d/token");
 });
+
+test("--upload-missing puts the validated file on the CDN once and links it", async () => {
+  const { uploadMissingVideos, deliveryObjectKey } = await import("../src/delivery-upload.mjs");
+  const files = new Map([["/v/a.mp4", Buffer.from("edited-video")], ["/v/b.mp4", Buffer.from("already-there")]]);
+  const stored = new Map();
+  const calls = [];
+  const fetchImpl = async (url, options = {}) => {
+    calls.push([options.method ?? "GET", url]);
+    if (options.method === "POST") {
+      assert.equal(options.headers["x-upsert"], "true");
+      assert.equal(options.headers.Authorization, "Bearer service-key");
+      stored.set(url.replace("/storage/v1/object/images/", "/storage/v1/object/public/images/").replace("https://store", "https://cdn.makaron.app"), options.body.length);
+      return new Response("{}", { status: 200 });
+    }
+    const size = stored.get(url);
+    return size ? new Response(null, { status: 200, headers: { "content-length": String(size) } }) : new Response(null, { status: 404 });
+  };
+  const shaB = (await import("node:crypto")).createHash("sha256").update(files.get("/v/b.mp4")).digest("hex");
+  stored.set(`https://cdn.makaron.app/storage/v1/object/public/images/${deliveryObjectKey("DL-1", "b", shaB)}`, files.get("/v/b.mp4").length);
+  const { sources, failed } = await uploadMissingVideos({
+    missing: [
+      { id: "a", file: "/v/a.mp4", reason: "edited" },
+      { id: "b", file: "/v/b.mp4", reason: "no URL" },
+      { id: "c", file: null, reason: "no finished video" },
+    ],
+    instanceId: "DL-1",
+    env: { MAKARON_SUPABASE_URL: "https://store", MAKARON_SUPABASE_SERVICE_ROLE_KEY: "service-key" },
+    fetchImpl,
+    readFile: async (path) => files.get(path),
+  });
+  assert.deepEqual(Object.keys(sources).sort(), ["a", "b"]);
+  assert.match(sources.a, /^https:\/\/cdn\.makaron\.app\/storage\/v1\/object\/public\/images\/nightshift\/DL-1\/videos\/a-[0-9a-f]{12}\.mp4$/);
+  assert.equal(calls.filter(([method]) => method === "POST").length, 1, "the copy already on the CDN is not uploaded again");
+  assert.deepEqual(failed, [{ id: "c", reason: "no finished video" }]);
+});
+
+test("--upload-missing refuses to run without the storage key", async () => {
+  const { uploadMissingVideos } = await import("../src/delivery-upload.mjs");
+  await assert.rejects(
+    uploadMissingVideos({ missing: [{ id: "a", file: "/v/a.mp4" }], instanceId: "DL-1", env: {} }),
+    /run it where the delivery stage runs/,
+  );
+});

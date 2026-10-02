@@ -785,7 +785,7 @@ async function handleApi(request, response, url) {
       allowedHosts: deliveryHosts,
     });
     if (missing.length > 0) {
-      json(response, 409, { error: `${missing.length} video(s) cannot be delivered yet`, missing, ready: manifest.items.length });
+      json(response, 409, { error: `${missing.length} video(s) cannot be delivered yet`, instanceId: instance.id, missing, ready: manifest.items.length });
       return;
     }
     const delivery = store.upsertDelivery({ instanceId: instance.id, cardId, manifest, token: newDeliveryToken() });
@@ -2053,6 +2053,7 @@ async function readFinishedAsset(instance, contentItemId) {
   return {
     asset,
     bytes,
+    file: bytes ? video : null,
     ledgerUrl: ledgerVideoUrl(store.listExternalOperations(instance.id), contentItemId),
     durationSec: Number(probe?.format?.duration) || null,
     resolution: stream?.width && stream?.height ? `${stream.width}x${stream.height}` : null,

@@ -220,15 +220,33 @@ async function run(input) {
       if (split <= 0) throw new Error("--source takes <contentItemId>=<https URL>");
       sources[pair.slice(0, split)] = pair.slice(split + 1);
     });
-    const response = await fetch(new URL(`/api/cards/${encodeURIComponent(subject)}/delivery`, baseUrl), {
-      body: JSON.stringify({ sources }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    });
-    const body = await response.json().catch(() => ({}));
-    if (response.status === 409) return { ok: false, ...body };
-    if (!response.ok) throw new Error(body.error ?? `Night Shift API returned HTTP ${response.status}`);
-    return body;
+    const publish = async () => {
+      const response = await fetch(new URL(`/api/cards/${encodeURIComponent(subject)}/delivery`, baseUrl), {
+        body: JSON.stringify({ sources }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const body = await response.json().catch(() => ({}));
+      if (response.status === 409) return { ok: false, ...body };
+      if (!response.ok) throw new Error(body.error ?? `Night Shift API returned HTTP ${response.status}`);
+      return body;
+    };
+    let result = await publish();
+    // --upload-missing: put each finished video the page cannot link to yet on
+    // the CDN (the validated file, edited or not), then publish again.
+    if (!result.published && input.includes("--upload-missing") && Array.isArray(result.missing)) {
+      const { uploadMissingVideos } = await import("../packages/nightshift-core/src/delivery-upload.mjs");
+      const uploaded = await uploadMissingVideos({
+        missing: result.missing,
+        instanceId: result.instanceId,
+        log: (line) => process.stderr.write(`${line}\n`),
+      });
+      Object.assign(sources, uploaded.sources);
+      result = await publish();
+      if (!result.published) result.uploadFailures = uploaded.failed;
+      else result.uploaded = Object.keys(uploaded.sources).length;
+    }
+    return result;
   }
   if (resource === "deliveries" && action === "get" && subject) {
     return api(`/api/instances/${encodeURIComponent(subject)}/delivery`);
@@ -278,7 +296,7 @@ async function run(input) {
       method: "POST",
     });
   }
-  throw new Error("Usage: nightshiftctl health | workflows list|validate|import|publish | projects list|get|monitor|preflight|create|start|pause|archive|restore | projects concurrency <id> [<1-8>|default] [--reason <text>] | projects priority <id> [<n>|first|last|default] [--reason <text>] | projects order <id> [<id> …] [--reason <text>] | projects queue | projects inputs <id> --file <json> | projects collaboration <id> --to <oc_…|user:ou_…> [--by <ou_…>] | decisions list [--project <id>] [--status open|decided] | decisions get <id> | decisions decide <id> --option <id> [--note <text>] [--apply-to-group] | governance audit [--refresh] | governance archive|restore <manifest.json> [--apply] | operations reserve|checkpoint <card-id> | deliveries publish <card-id> [--source <contentItemId>=<https URL> …] | deliveries get <project> | cards list|session|approve|changes|reject|retry");
+  throw new Error("Usage: nightshiftctl health | workflows list|validate|import|publish | projects list|get|monitor|preflight|create|start|pause|archive|restore | projects concurrency <id> [<1-8>|default] [--reason <text>] | projects priority <id> [<n>|first|last|default] [--reason <text>] | projects order <id> [<id> …] [--reason <text>] | projects queue | projects inputs <id> --file <json> | projects collaboration <id> --to <oc_…|user:ou_…> [--by <ou_…>] | decisions list [--project <id>] [--status open|decided] | decisions get <id> | decisions decide <id> --option <id> [--note <text>] [--apply-to-group] | governance audit [--refresh] | governance archive|restore <manifest.json> [--apply] | operations reserve|checkpoint <card-id> | deliveries publish <card-id> [--upload-missing] [--source <contentItemId>=<https URL> …] | deliveries get <project> | cards list|session|approve|changes|reject|retry");
 }
 
 async function resolveWorkflow(project) {
