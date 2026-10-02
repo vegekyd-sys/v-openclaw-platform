@@ -79,7 +79,7 @@ test("public incomplete progress arrives before final through the native protoco
   assert.deepEqual(run.continuationIdentity, { delegationItemId: "d1", delegationGeneration: 1 });
   run.onProgress({ kind: "commentary", text: "已找到三条" });
   assert.deepEqual(f.texts(), ["已找到三条"]);
-  assert.deepEqual(f.frames[0], { type: "delegation.context.append", delegation_item_id: "d1", channel: "speakable", content: [{ type: "input_text", text: "[BACKEND_PROGRESS_PENDING 1/1]\nParent task remains pending. Relay stated facts only; never guess missing values or announce whole-task completion.\n\n已找到三条" }] });
+  assert.deepEqual(f.frames[0], { type: "delegation.context.append", delegation_item_id: "d1", channel: "speakable", content: [{ type: "input_text", text: "[BACKEND_PROGRESS_PENDING 1/1]\nParent task remains pending. One short fact when idle; stop for caller. Never guess values or claim completion.\n\n已找到三条" }] });
   run.resolve({ text: "最终确认是两条。" }); await settle();
   assert.deepEqual(f.texts(), ["已找到三条", "最终确认是两条。"]);
   assert.equal(f.fatal.length, 0);
@@ -90,6 +90,18 @@ test("final-only consult remains one terminal result", async () => {
   f.calls[0].resolve({ text: "完成" }); await settle();
   assert.deepEqual(f.texts(), ["完成"]);
   assert.equal(f.controller.activeDelegationId, undefined);
+});
+
+test("successive delegations share the speech interval while finals remain intact", async () => {
+  const f = fixture();
+  f.controller.startDelegation("first", "request");
+  f.calls[0].onProgress({ kind: "commentary", text: "已找到第一条" });
+  f.calls[0].resolve({ text: "第一项完成" }); await settle();
+  f.controller.startDelegation("second", "request");
+  f.calls[1].onProgress({ kind: "commentary", text: "已找到第二条" });
+  f.calls[1].resolve({ text: "第二项完成" }); await settle();
+  assert.deepEqual(f.frames.map(frame => frame.channel), ["speakable", "speakable", "commentary", "speakable"]);
+  assert.deepEqual(f.texts(), ["已找到第一条", "第一项完成", "已找到第二条", "第二项完成"]);
 });
 
 test("only explicit public commentary with nonempty text enters voice", async () => {
@@ -308,7 +320,7 @@ test("actual native wire distinguishes child progress from parent final completi
   const childText = "Task complete. 测试码等于 2773。子任务日期是2026年10月2日20时58分48秒。";
   f.calls[0].onProgress({ kind: "commentary", text: childText });
   assert.match(f.frames[0].content[0].text, /^\[BACKEND_PROGRESS_PENDING 1\/1\]\nParent task remains pending\./u);
-  assert.match(f.frames[0].content[0].text, /never guess missing values or announce whole-task completion/u);
+  assert.match(f.frames[0].content[0].text, /Never guess values or claim completion/u);
   assert.equal(f.texts()[0], childText, "Child wording is preserved as a body fact, not promoted to parent completion");
   const final = "父任务最终结果：测试码等于 2773。" + "核验日期2026年10月2日20时58分48秒；值应精确复述。".repeat(12);
   f.calls[0].resolve({ text: final }); await settle();
@@ -452,4 +464,51 @@ test("trusted cancellation after terminal resolution or stopped session cannot a
   assert.equal(f.calls[1].signal.aborted, false, "Detached accepted backend work stays independent");
   f.calls[1].resolve({text:"late"}); await settle();
   assert.deepEqual(f.texts(), ["done"]);
+});
+
+
+test("burst progress is kept silently while a single short fact is spoken", async () => {
+  const f = fixture(); f.controller.startDelegation("d1", "request");
+  for (const text of ["已找到三个文件。", "已核对来源。", "正在查看下一段。"])
+    f.calls[0].onProgress({kind: "commentary", text});
+  assert.deepEqual(f.frames.map(frame => frame.channel), ["speakable", "commentary", "commentary"]);
+  assert.deepEqual(f.texts(), ["已找到三个文件。", "已核对来源。", "正在查看下一段。"]);
+  f.calls[0].onProgress({kind: "commentary", text: "已核对来源。"});
+  assert.equal(f.frames.length, 3, "Exact repeats do not re-enter voice context");
+  f.calls[0].resolve({text: "最终值2773。"}); await settle();
+  assert.equal(f.frames.at(-1).channel, "speakable");
+  assert.equal(f.texts().at(-1), "最终值2773。");
+});
+
+test("progress cooldown allows a new verified fact after fifteen seconds", async t => {
+  t.mock.timers.enable({apis: ["Date"], now: 100000});
+  const f = fixture(); f.controller.startDelegation("d1", "request");
+  f.calls[0].onProgress({kind: "commentary", text: "第一阶段完成。"});
+  t.mock.timers.tick(14999);
+  f.calls[0].onProgress({kind: "commentary", text: "第二阶段完成。"});
+  t.mock.timers.tick(1);
+  f.calls[0].onProgress({kind: "commentary", text: "第三阶段完成。"});
+  assert.deepEqual(f.frames.map(frame => frame.channel), ["speakable", "commentary", "speakable"]);
+  f.calls[0].resolve({text: "完成。"}); await settle();
+});
+
+test("long streamed articles stay silent and final facts remain byte-exact", async () => {
+  const f = fixture(); f.controller.startDelegation("d1", "request");
+  const text = "完整数字2773、日期2026-10-03、时间00:00:00 CST。".repeat(8);
+  f.calls[0].onProgress({kind: "commentary", text});
+  assert(f.frames.length > 1); assert(f.frames.every(frame => frame.channel === "commentary"));
+  assert.equal(f.texts().join(""), text);
+  const count = f.frames.length;
+  f.calls[0].resolve({text}); await settle();
+  assert(f.frames.slice(count).every(frame => frame.channel === "speakable"));
+  assert.equal(f.texts().slice(count).join(""), text);
+});
+
+
+test("waiting plans are quiet and do not delay the first verified fact", async () => {
+  const f = fixture(); f.controller.startDelegation("d1", "request");
+  for (const text of ["我在看相关文件，马上就好。", "我先核对一下，稍等。", "Let me check the records.", "已找到三个相关文件。"])
+    f.calls[0].onProgress({kind: "commentary", text});
+  assert.deepEqual(f.frames.map(frame => frame.channel), ["commentary", "commentary", "commentary", "speakable"]);
+  f.calls[0].resolve({text: "完成。"}); await settle();
 });

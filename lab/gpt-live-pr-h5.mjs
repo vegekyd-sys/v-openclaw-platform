@@ -14,7 +14,7 @@ const git=(...args)=>run('git',['-C',root,...args]);
 assert.equal(git('branch','--show-current'),PR_BRANCH);assert.equal(git('rev-parse','HEAD'),policy.sourceCommit);assert.equal(git('status','--porcelain'),'');
 const pr=JSON.parse(run('gh',['pr','view','154','--repo','vegekyd-sys/v-openclaw-platform','--json','url,state,headRefOid']));
 assert.equal(pr.url,PR_URL);assert.equal(pr.state,'OPEN');assert.equal(pr.headRefOid,policy.sourceCommit);
-const paths=['lab/gpt-live-h5/server.mjs','lab/gpt-live-h5/events.mjs','lab/gpt-live-h5/index.html','lab/gpt-live-h5/app.js','lab/rtc-h5/styles.css','lab/rtc-h5/assets/v-idle-nohat-20260922.png','lab/rtc-h5/assets/v-tool-busy-20260922.png'];
+const paths=['lab/gpt-live-h5/server.mjs','lab/gpt-live-h5/events.mjs','lab/gpt-live-h5/duplex-playback.mjs','lab/gpt-live-h5/index.html','lab/gpt-live-h5/app.js','lab/rtc-h5/styles.css','lab/rtc-h5/assets/v-idle-nohat-20260922.png','lab/rtc-h5/assets/v-tool-busy-20260922.png'];
 const files=paths.map(name=>{const bytes=execFileSync('git',['-C',root,'show',policy.sourceCommit+':'+name],{maxBuffer:64*1024**2});return {name,content:bytes.toString('base64'),sha:createHash('sha256').update(bytes).digest('hex')}});
 const input={owner:policy.owner,commit:policy.sourceCommit,release:artifact.id,files};
 const script=String.raw`import fs from 'node:fs';import path from 'node:path';import assert from 'node:assert/strict';import {execFileSync} from 'node:child_process';import {createHash} from 'node:crypto';import os from 'node:os';

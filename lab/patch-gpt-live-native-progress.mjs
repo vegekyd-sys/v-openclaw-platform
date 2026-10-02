@@ -15,7 +15,7 @@ const diagnosticMethods = `\ttracePublicProgress(stage, delegationId, text, deta
 \t\t\ttextSha256: createHash("sha256").update(text).digest("hex"),
 \t\t\ttextChars: text.length
 \t\t};
-\t\tfor (const key of ["kind", "appendId", "chunkIndex", "chunkCount", "wireTextChars"]) {
+\t\tfor (const key of ["kind", "appendId", "chunkIndex", "chunkCount", "wireTextChars", "channel"]) {
 \t\t\tif (typeof details[key] === "string" || Number.isSafeInteger(details[key])) event[key] = details[key];
 \t\t}
 \t\tif (["progress_pending", "final_part", "final_complete"].includes(details.role)) event.role = details.role;
@@ -65,7 +65,7 @@ const publicWireMethods = `\tchunkPublicAppendText(text) {
 \t\tlet role, header;
 \t\tif (kind === "progress") {
 \t\t\trole = "progress_pending";
-\t\t\theader = \`[BACKEND_PROGRESS_PENDING \${position}]\\nParent task remains pending. Relay stated facts only; never guess missing values or announce whole-task completion.\\n\\n\`;
+\t\t\theader = \`[BACKEND_PROGRESS_PENDING \${position}]\\nParent task remains pending. One short fact when idle; stop for caller. Never guess values or claim completion.\\n\\n\`;
 \t\t} else if (chunkIndex + 1 < chunkCount) {
 \t\t\trole = "final_part";
 \t\t\theader = \`[BACKEND_FINAL_PART \${position}]\\nPartial parent final. Wait for BACKEND_FINAL_COMPLETE before answering; preserve all facts and values exactly.\\n\\n\`;
@@ -94,7 +94,7 @@ const sendAppendBefore = `\tsendAppend(delegationId, text, channel) {
 
 const sendAppendAfter = `\tsendAppend(delegationId, text, channel, diagnostic = {}) {
 \t\tconst socket = this.options.getSocket();
-\t\tif (this.stopped || !socket || socket.readyState !== WEBSOCKET_OPEN) return;
+\t\tif (this.stopped || !socket || socket.readyState !== WEBSOCKET_OPEN) return false;
 \t\tconst isPublic = ["progress", "final"].includes(diagnostic.kind);
 \t\tconst chunks = isPublic ? this.chunkPublicAppendText(text) : chunkOpenAIQuicksilverAppendText(text);
 \t\tconst appendId = ++this.publicProgressAppendSequence;
@@ -110,11 +110,12 @@ const sendAppendAfter = `\tsendAppend(delegationId, text, channel, diagnostic = 
 \t\t\t// Fingerprint the content of the actual successfully sent frame. The
 \t\t\t// body hash remains joinable to public callback provenance.
 \t\t\tthis.tracePublicProgress("context-append-sent", delegationId, chunk, {
-\t\t\t\t...diagnostic, appendId, chunkIndex, chunkCount: chunks.length, role,
+\t\t\t\t...diagnostic, channel, appendId, chunkIndex, chunkCount: chunks.length, role,
 \t\t\t\twireTextSha256: createHash("sha256").update(frame.content[0].text).digest("hex"),
 \t\t\t\twireTextChars: frame.content[0].text.length
 \t\t\t});
 \t\t}
+\t\treturn chunks.length > 0;
 \t}`;
 
 const runDelegationBefore = `\tasync runDelegation(delegation, signal) {
@@ -141,6 +142,7 @@ const runDelegationAfter = `\tisCurrentDelegation(delegation, signal) {
 \tasync runDelegation(delegation, signal) {
 \t\tlet text;
 \t\tlet finished = false;
+\t\tconst seenProgress = new Set();
 \t\t// Only an exact, authorized host cancellation can revoke this delivery
 \t\t// owner. Never infer cancellation from generic worker error strings.
 \t\tconst onCanceled = (reason) => {
@@ -158,8 +160,21 @@ const runDelegationAfter = `\tisCurrentDelegation(delegation, signal) {
 \t\t\t\ttypeof progress?.text !== "string" || !progress.text.trim()) return;
 \t\t\tconst publicText = progress.text.trim();
 \t\t\tthis.tracePublicProgress("public-progress-received", delegation.id, publicText, { kind: "progress", provenance: progress.provenance });
+\t\t\tconst fingerprint = createHash("sha256").update(publicText).digest("hex");
+\t\t\tif (seenProgress.has(fingerprint)) return;
+\t\t\t// Keep burst fragments and long articles as silent context, with their
+\t\t\t// exact public facts intact. The final answer is never throttled.
+\t\t\tconst now = Date.now();
+\t\t\t// Obvious waiting-only plans never consume the first fact's speech slot.
+\t\t\t// This is a chatter filter, not a claim that arbitrary text is verified.
+\t\t\tconst waitingPlan = /^(?:我(?:这边)?(?:会|将|先|正在|在)|我们(?:先|会|正在)|正在|先(?:查|看|确认|核对)|(?:好|行)[，,]?我(?:先)?(?:查|看)|稍等|请稍等|等一下|让我|这边(?:正在|在|先)|I(?:'m| am| will|['’]ll)|Let me|Please wait|One (?:sec|moment))/iu.test(publicText);
+\t\t\tconst hasStatedResult = /(?:已(?:经)?(?:找到|查到|确认|核对|完成|收到)|找到了|查到了|确认了|核对出|记录显示|结果(?:是|为)|(?:found|confirmed|completed|finished|done|result)\\b)/iu.test(publicText);
+\t\t\tconst channel = !(waitingPlan && !hasStatedResult) && Buffer.byteLength(publicText, "utf8") <= 320 && now - this.lastSpokenProgressAt >= 15000 ? "speakable" : "commentary";
 \t\t\ttry {
-\t\t\t\tthis.sendAppend(delegation.id, publicText, "speakable", { kind: "progress", provenance: progress.provenance });
+\t\t\t\tif (!this.sendAppend(delegation.id, publicText, channel, { kind: "progress", provenance: progress.provenance })) return;
+\t\t\t\tseenProgress.add(fingerprint);
+\t\t\t\tif (seenProgress.size > 256) seenProgress.delete(seenProgress.values().next().value);
+\t\t\t\tif (channel === "speakable") this.lastSpokenProgressAt = now;
 \t\t\t} catch (error) {
 \t\t\t\t// A dropped progress update must not abort accepted backend work or
 \t\t\t\t// turn its eventual final answer into a failed consult.
@@ -202,7 +217,8 @@ export function patchGptLiveNativeProgress(source) {
 \t\tthis.publicProgressTraceEnabled = this.publicProgressTraceLogEnabled || typeof options.onPublicProgressDiagnostic === "function";
 \t\tthis.publicProgressTraceId = this.publicProgressTraceEnabled ? randomUUID() : void 0;
 \t\tthis.publicProgressTraceSequence = 0;
-\t\tthis.publicProgressAppendSequence = 0;`, "delegation generation and opt-in diagnostic initialization");
+\t\tthis.publicProgressAppendSequence = 0;
+\t\tthis.lastSpokenProgressAt = -Infinity;`, "delegation generation and opt-in diagnostic initialization");
   patched = replaceOnce(patched, "\t\tconst delegation = {\n\t\t\tid,", "\t\tconst delegation = {\n\t\t\tid,\n\t\t\tgeneration: ++this.delegationGeneration,", "delegation generation ownership");
   patched = replaceOnce(patched, runDelegationBefore, `${diagnosticMethods}${publicWireMethods}${runDelegationAfter}`, "native consult progress and terminal delivery");
   return replaceOnce(patched, sendAppendBefore, sendAppendAfter, "native public append roles and successful wire boundary");

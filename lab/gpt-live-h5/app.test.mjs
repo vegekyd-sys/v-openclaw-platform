@@ -3,9 +3,10 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 import { transcriptEvent } from "./events.mjs";
+import { createH5DuplexPlaybackGate } from "./duplex-playback.mjs";
 
 const appSource = readFileSync(new URL("./app.js", import.meta.url), "utf8")
-  .replace(/^import \{ transcriptEvent \} from "\.\/events\.mjs";\n/u, "");
+  .replace(/^import \{ (?:transcriptEvent|createH5DuplexPlaybackGate) \} from "[^"]+";\n/gmu, "");
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const deferred = () => {
   let resolve;
@@ -26,6 +27,7 @@ async function fixture(t, options = {}) {
     hidden = false;
     disabled = false;
     srcObject = null;
+    muted = false;
     addEventListener(type, listener) { this.listeners.set(type, listener); }
     append(child) { this.children.push(child); }
     querySelector() { return null; }
@@ -46,6 +48,8 @@ async function fixture(t, options = {}) {
   const timeouts = new Map();
   let timerId = 0;
   let sessionId = 0;
+  let now = 0;
+  const levels = { microphone: 0, remote: 0 };
   class Peer {
     iceGatheringState = "complete";
     connectionState = "new";
@@ -64,9 +68,13 @@ async function fixture(t, options = {}) {
     state = "running";
     closeCount = 0;
     constructor() { contexts.push(this); }
+    analyserCount = 0;
     resume() { return options.resume?.() ?? Promise.resolve(); }
     async close() { this.state = "closed"; this.closeCount++; }
-    createAnalyser() { return { fftSize: 1024, getFloatTimeDomainData: (values) => values.fill(0) }; }
+    createAnalyser() {
+      const kind = this.analyserCount++ === 0 ? "remote" : "microphone";
+      return { fftSize: 1024, getFloatTimeDomainData: (values) => values.fill(levels[kind]) };
+    }
     createMediaStreamSource() { return { connect() {} }; }
   }
   class EventSource {
@@ -76,6 +84,8 @@ async function fixture(t, options = {}) {
   }
   const context = vm.createContext({
     transcriptEvent,
+    createH5DuplexPlaybackGate,
+    performance: { now: () => now },
     document: { body, getElementById: element, createElement: () => new Element() },
     window: { addEventListener() {} },
     navigator: { mediaDevices: { getUserMedia: () => options.getUserMedia?.() ?? Promise.resolve(stream([track()])) }, sendBeacon() {} },
@@ -102,7 +112,11 @@ async function fixture(t, options = {}) {
   vm.runInContext(appSource, context, { filename: "gpt-live-h5/app.js" });
   await tick();
   t.after(() => context.stopCall());
-  return { context, element, body, requests, peers, contexts, eventSources, intervals, timeouts };
+  const meter = (at, microphone, remote) => {
+    now = at; levels.microphone = microphone; levels.remote = remote;
+    for (const value of intervals.values()) if (value.delay === 50) value.callback();
+  };
+  return { context, element, body, requests, peers, contexts, eventSources, intervals, timeouts, meter, setNow: value => {now = value;} };
 }
 
 test("stopping before microphone permission returns releases every late track without creating a session", async (t) => {
@@ -303,4 +317,155 @@ test("old disconnected-call cleanup cannot replace a new connected call status",
   assert.equal(f.element("status").textContent, status);
   assert.equal(f.element("badge").textContent, "通话中");
   assert.equal(peer.closed, false);
+});
+
+test("real app microphone gate mutes playback while leaving the call and backend active", async (t) => {
+  const f = await fixture(t); await f.context.startCall();
+  const peer = f.peers[0]; await peer.ontrack({track: track()});
+  const incoming = f.element("remoteAudio").srcObject;
+  f.eventSources[0].onmessage({data: JSON.stringify({voiceSessionId: "voice-1", type: "tool.call", callId: "backend-work"})});
+  const before = f.requests.length;
+  f.meter(0, .04, .2); f.meter(50, .04, .2); f.meter(100, .04, .2);
+  assert.equal(f.element("remoteAudio").muted, true);
+  assert.equal(f.element("remoteAudio").srcObject, incoming);
+  assert.equal(peer.closed, false);
+  assert(peer.tracks.every(value => value.stopped === 0));
+  assert.equal(f.element("cancel").disabled, false, "Accepted backend request remains pending");
+  assert.equal(f.requests.length, before, "Local speech does not send a cancel/steer/close API call");
+  assert.equal(f.body.dataset.voiceState, "listening");
+  assert.equal(f.context.__gptLiveDuplexDiagnostics.events.at(-1).remoteActive, true,
+    "The upstream signal remains observable while local playback is muted");
+});
+
+test("real app resumes only after the frozen assistant ends and queued inbound audio drains", async (t) => {
+  const f = await fixture(t); await f.context.startCall(); await f.peers[0].ontrack({track: track()});
+  f.peers[0].channel.onmessage({data: JSON.stringify({type: "turn.created", turn: {role: "assistant", id: "old"}})});
+  f.meter(0, .04, .2); f.meter(50, .04, .2); f.meter(100, .04, .2);
+  for (let at = 150; at <= 600; at += 50) f.meter(at, 0, .2);
+  assert.equal(f.element("remoteAudio").muted, true);
+  f.setNow(625);
+  f.peers[0].channel.onmessage({data: JSON.stringify({type: "turn.done", turn: {role: "assistant", id: "old"}})});
+  assert.equal(f.element("remoteAudio").muted, true, "turn.done alone is not audio clear");
+  for (let at = 650; at <= 900; at += 50) f.meter(at, 0, 0);
+  assert.equal(f.element("remoteAudio").muted, false);
+  f.meter(950, 0, .2);
+  assert.equal(f.body.dataset.voiceState, "speaking");
+});
+
+test("native user turn provides a local fallback without claiming or sending model interruption", async (t) => {
+  const f = await fixture(t); await f.context.startCall(); await f.peers[0].ontrack({track: track()});
+  f.meter(0, .005, .2);
+  f.setNow(20);
+  f.peers[0].channel.onmessage({data: JSON.stringify({type: "turn.created", turn: {role: "user", id: "private-turn"}})});
+  assert.equal(f.element("remoteAudio").muted, true);
+  const diagnostics = f.context.__gptLiveDuplexDiagnostics;
+  assert(diagnostics.events.some(value => value.type === "native-turn-created" && value.role === "user"));
+  assert(diagnostics.events.some(value => value.type === "local-playback-gate" && value.reason === "provider-user-turn-start"));
+  f.peers[0].channel.onmessage({data: JSON.stringify({type: "output_audio_buffer.cleared"})});
+  assert(diagnostics.events.some(value => value.type === "native-output-audio-cleared"));
+  assert.doesNotMatch(JSON.stringify(diagnostics), /private-turn|transcript|model.?interrupted/u);
+  assert(!f.requests.some(({route}) => route === "steer" || route === "close"));
+});
+
+test("first caller speech without old output leaves the first answer audible", async (t) => {
+  const f = await fixture(t); await f.context.startCall(); await f.peers[0].ontrack({track: track()});
+  for (let at = 0; at <= 100; at += 50) f.meter(at, .04, 0);
+  for (let at = 150; at <= 600; at += 50) f.meter(at, 0, 0);
+  f.setNow(625);
+  f.peers[0].channel.onmessage({data: JSON.stringify({type: "turn.created", turn: {role: "assistant", id: "first"}})});
+  f.meter(650, 0, .2);
+  assert.equal(f.element("remoteAudio").muted, false);
+  assert.equal(f.body.dataset.voiceState, "speaking");
+  assert(!f.context.__gptLiveDuplexDiagnostics.events.some(value => value.type === "local-playback-gate"));
+});
+
+test("a long old-answer pause, context ack, captions and new created event do not unlock playback", async (t) => {
+  const f = await fixture(t); await f.context.startCall(); await f.peers[0].ontrack({track: track()});
+  const send = payload => f.peers[0].channel.onmessage({data: JSON.stringify(payload)});
+  send({type: "turn.created", turn: {role: "assistant", id: "private-old"}});
+  f.meter(0, .04, .2); f.meter(50, .04, .2); f.meter(100, .04, .2);
+  for (let at = 150; at <= 600; at += 50) f.meter(at, 0, 0);
+  f.setNow(625);
+  send({type: "session.context.appended"});
+  send({type: "output_transcript.added", item: {id: "private-caption", text: "旧回答后续"}});
+  send({type: "turn.created", turn: {role: "assistant", id: "private-new"}});
+  send({type: "turn.done", turn: {role: "assistant", id: "private-new"}});
+  for (let at = 650; at <= 1100; at += 50) f.meter(at, 0, 0);
+  assert.equal(f.element("remoteAudio").muted, true);
+  const sample = f.context.__gptLiveDuplexDiagnostics.events.at(-1);
+  assert.equal(sample.oldTurnTerminal, false);
+  assert.equal(sample.outputDrained, false);
+  f.meter(1150, 0, .2);
+  assert.equal(f.element("remoteAudio").muted, true, "The resumed old tail stays muted");
+  f.setNow(1175); send({type: "turn.done", turn: {role: "assistant", id: "private-old"}});
+  for (let at = 1200; at <= 1450; at += 50) f.meter(at, 0, 0);
+  assert.equal(f.element("remoteAudio").muted, false);
+  assert.doesNotMatch(JSON.stringify(f.context.__gptLiveDuplexDiagnostics), /private-|旧回答后续/u);
+});
+
+test("late assistant metadata needs a real terminal and fresh drain before unknown output can recover", async (t) => {
+  const f = await fixture(t); await f.context.startCall(); await f.peers[0].ontrack({track: track()});
+  const send = payload => f.peers[0].channel.onmessage({data: JSON.stringify(payload)});
+  f.meter(0, .04, .2); f.meter(50, .04, .2); f.meter(100, .04, .2);
+  for (let at = 150; at <= 600; at += 50) f.meter(at, 0, 0);
+  f.setNow(625); send({type: "turn.created", turn: {role: "assistant", id: "delayed"}});
+  for (let at = 650; at <= 1000; at += 50) f.meter(at, 0, 0);
+  assert.equal(f.element("remoteAudio").muted, true);
+  f.setNow(1025); send({type: "turn.done", turn: {role: "assistant", id: "delayed"}});
+  f.meter(1050, 0, 0);
+  assert.equal(f.context.__gptLiveDuplexDiagnostics.events.at(-1).oldTurnTerminal, true);
+  assert.equal(f.context.__gptLiveDuplexDiagnostics.events.at(-1).outputDrained, false);
+  for (let at = 1100; at <= 1300; at += 50) f.meter(at, 0, 0);
+  assert.equal(f.element("remoteAudio").muted, false);
+});
+
+test("app preserves a drain proved during caller speech and releases the fresh reply when the caller finishes", async (t) => {
+  const f = await fixture(t); await f.context.startCall(); await f.peers[0].ontrack({track: track()});
+  const send = payload => f.peers[0].channel.onmessage({data: JSON.stringify(payload)});
+  send({type: "turn.created", turn: {role: "assistant", id: "old"}});
+  f.meter(0, .04, .2); f.meter(50, .04, .2); f.meter(100, .04, .2);
+  f.setNow(125); send({type: "turn.done", turn: {role: "assistant", id: "old"}});
+  for (let at = 150; at <= 400; at += 50) f.meter(at, .04, 0);
+  assert.equal(f.context.__gptLiveDuplexDiagnostics.events.at(-1).outputDrained, true);
+  assert.equal(f.element("remoteAudio").muted, true);
+  f.setNow(425); send({type: "turn.created", turn: {role: "assistant", id: "fresh"}});
+  for (let at = 450; at <= 1000; at += 50) f.meter(at, .04, .2);
+  for (let at = 1050; at <= 1500; at += 50) f.meter(at, 0, .2);
+  assert.equal(f.element("remoteAudio").muted, false);
+  const finalGate = [...f.context.__gptLiveDuplexDiagnostics.events].reverse().find(value => value.type === "local-playback-gate");
+  assert.equal(finalGate.oldTurnTerminal, true);
+  assert.equal(finalGate.outputDrained, true);
+  assert(!f.context.__gptLiveDuplexDiagnostics.events.some(value => value.type === "native-output-audio-cleared"),
+    "The app distinguishes an assistant terminal from a native clear");
+});
+
+test("missing terminal proof offers a restart without timing out into old playback", async (t) => {
+  const f = await fixture(t); await f.context.startCall(); await f.peers[0].ontrack({track: track()});
+  f.meter(0, .04, .2); f.meter(50, .04, .2); f.meter(100, .04, .2);
+  for (let at = 150; at <= 4600; at += 50) f.meter(at, 0, 0);
+  assert.equal(f.element("remoteAudio").muted, true);
+  assert.match(f.element("status").textContent, /结束通话后重新开始/u);
+  assert(!f.requests.some(({route}) => route === "steer" || route === "close"));
+  f.setNow(4625);
+  f.peers[0].channel.onmessage({data: JSON.stringify({type: "turn.done", turn: {role: "assistant", id: "delayed"}})});
+  for (let at = 4650; at <= 4900; at += 50) f.meter(at, 0, 0);
+  assert.equal(f.element("remoteAudio").muted, false);
+  assert.equal(f.element("status").textContent, "V 正在听，直接说话就好");
+});
+
+test("stopping a muted call clears its meter and gate without muting the replacement call", async (t) => {
+  const f = await fixture(t); await f.context.startCall();
+  const old = f.peers[0]; await old.ontrack({track: track()});
+  const oldMeter = [...f.intervals.values()].find(value => value.delay === 50).callback;
+  f.meter(0, .04, .2); f.meter(50, .04, .2); f.meter(100, .04, .2);
+  const diagnostics = f.context.__gptLiveDuplexDiagnostics;
+  await f.context.stopCall();
+  assert.equal(diagnostics.closed, true);
+  assert.equal(f.element("remoteAudio").muted, false);
+  assert.equal(f.intervals.size, 0);
+  await f.context.startCall(); await f.peers[1].ontrack({track: track()});
+  oldMeter();
+  old.channel.onmessage({data: JSON.stringify({type: "turn.created", turn: {role: "user"}})});
+  assert.equal(f.element("remoteAudio").muted, false);
+  assert.equal(f.peers[1].closed, false);
 });

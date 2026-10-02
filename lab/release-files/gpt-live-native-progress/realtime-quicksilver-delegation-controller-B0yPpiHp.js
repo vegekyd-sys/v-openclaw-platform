@@ -35,6 +35,7 @@ var OpenAIQuicksilverDelegationController = class {
 		this.publicProgressTraceId = this.publicProgressTraceEnabled ? randomUUID() : void 0;
 		this.publicProgressTraceSequence = 0;
 		this.publicProgressAppendSequence = 0;
+		this.lastSpokenProgressAt = -Infinity;
 		this.transcript = [];
 		if (options.signal.aborted) this.onSessionAbort();
 		else options.signal.addEventListener("abort", this.onSessionAbort, { once: true });
@@ -169,7 +170,7 @@ var OpenAIQuicksilverDelegationController = class {
 			textSha256: createHash("sha256").update(text).digest("hex"),
 			textChars: text.length
 		};
-		for (const key of ["kind", "appendId", "chunkIndex", "chunkCount", "wireTextChars"]) {
+		for (const key of ["kind", "appendId", "chunkIndex", "chunkCount", "wireTextChars", "channel"]) {
 			if (typeof details[key] === "string" || Number.isSafeInteger(details[key])) event[key] = details[key];
 		}
 		if (["progress_pending", "final_part", "final_complete"].includes(details.role)) event.role = details.role;
@@ -217,7 +218,7 @@ var OpenAIQuicksilverDelegationController = class {
 		let role, header;
 		if (kind === "progress") {
 			role = "progress_pending";
-			header = `[BACKEND_PROGRESS_PENDING ${position}]\nParent task remains pending. Relay stated facts only; never guess missing values or announce whole-task completion.\n\n`;
+			header = `[BACKEND_PROGRESS_PENDING ${position}]\nParent task remains pending. One short fact when idle; stop for caller. Never guess values or claim completion.\n\n`;
 		} else if (chunkIndex + 1 < chunkCount) {
 			role = "final_part";
 			header = `[BACKEND_FINAL_PART ${position}]\nPartial parent final. Wait for BACKEND_FINAL_COMPLETE before answering; preserve all facts and values exactly.\n\n`;
@@ -235,6 +236,7 @@ var OpenAIQuicksilverDelegationController = class {
 	async runDelegation(delegation, signal) {
 		let text;
 		let finished = false;
+		const seenProgress = new Set();
 		// Only an exact, authorized host cancellation can revoke this delivery
 		// owner. Never infer cancellation from generic worker error strings.
 		const onCanceled = (reason) => {
@@ -252,8 +254,21 @@ var OpenAIQuicksilverDelegationController = class {
 				typeof progress?.text !== "string" || !progress.text.trim()) return;
 			const publicText = progress.text.trim();
 			this.tracePublicProgress("public-progress-received", delegation.id, publicText, { kind: "progress", provenance: progress.provenance });
+			const fingerprint = createHash("sha256").update(publicText).digest("hex");
+			if (seenProgress.has(fingerprint)) return;
+			// Keep burst fragments and long articles as silent context, with their
+			// exact public facts intact. The final answer is never throttled.
+			const now = Date.now();
+			// Obvious waiting-only plans never consume the first fact's speech slot.
+			// This is a chatter filter, not a claim that arbitrary text is verified.
+			const waitingPlan = /^(?:我(?:这边)?(?:会|将|先|正在|在)|我们(?:先|会|正在)|正在|先(?:查|看|确认|核对)|(?:好|行)[，,]?我(?:先)?(?:查|看)|稍等|请稍等|等一下|让我|这边(?:正在|在|先)|I(?:'m| am| will|['’]ll)|Let me|Please wait|One (?:sec|moment))/iu.test(publicText);
+			const hasStatedResult = /(?:已(?:经)?(?:找到|查到|确认|核对|完成|收到)|找到了|查到了|确认了|核对出|记录显示|结果(?:是|为)|(?:found|confirmed|completed|finished|done|result)\b)/iu.test(publicText);
+			const channel = !(waitingPlan && !hasStatedResult) && Buffer.byteLength(publicText, "utf8") <= 320 && now - this.lastSpokenProgressAt >= 15000 ? "speakable" : "commentary";
 			try {
-				this.sendAppend(delegation.id, publicText, "speakable", { kind: "progress", provenance: progress.provenance });
+				if (!this.sendAppend(delegation.id, publicText, channel, { kind: "progress", provenance: progress.provenance })) return;
+				seenProgress.add(fingerprint);
+				if (seenProgress.size > 256) seenProgress.delete(seenProgress.values().next().value);
+				if (channel === "speakable") this.lastSpokenProgressAt = now;
 			} catch (error) {
 				// A dropped progress update must not abort accepted backend work or
 				// turn its eventual final answer into a failed consult.
@@ -284,7 +299,7 @@ var OpenAIQuicksilverDelegationController = class {
 	}
 	sendAppend(delegationId, text, channel, diagnostic = {}) {
 		const socket = this.options.getSocket();
-		if (this.stopped || !socket || socket.readyState !== WEBSOCKET_OPEN) return;
+		if (this.stopped || !socket || socket.readyState !== WEBSOCKET_OPEN) return false;
 		const isPublic = ["progress", "final"].includes(diagnostic.kind);
 		const chunks = isPublic ? this.chunkPublicAppendText(text) : chunkOpenAIQuicksilverAppendText(text);
 		const appendId = ++this.publicProgressAppendSequence;
@@ -300,11 +315,12 @@ var OpenAIQuicksilverDelegationController = class {
 			// Fingerprint the content of the actual successfully sent frame. The
 			// body hash remains joinable to public callback provenance.
 			this.tracePublicProgress("context-append-sent", delegationId, chunk, {
-				...diagnostic, appendId, chunkIndex, chunkCount: chunks.length, role,
+				...diagnostic, channel, appendId, chunkIndex, chunkCount: chunks.length, role,
 				wireTextSha256: createHash("sha256").update(frame.content[0].text).digest("hex"),
 				wireTextChars: frame.content[0].text.length
 			});
 		}
+		return chunks.length > 0;
 	}
 	fail(error) {
 		if (this.stopped) return;

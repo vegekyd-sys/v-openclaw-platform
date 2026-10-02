@@ -96,7 +96,7 @@ function pendingFixture() {
   return {marker:"4303",currentOwnerId:"owner-2",pcIndex:0,now:100,
     backendPublicTexts:[text],diagnostics:[
       {stage:"public-progress-received",kind:"progress",at:50,traceId:"trace",generation:2,delegationId:"owner-2",textSha256,textChars:text.length,provenance:{emittedAt:49}},
-      {stage:"context-append-sent",kind:"progress",at:51,traceId:"trace",generation:2,delegationId:"owner-2",textSha256,textChars:text.length}],
+      {stage:"context-append-sent",kind:"progress",channel:"speakable",at:51,traceId:"trace",generation:2,delegationId:"owner-2",textSha256,textChars:text.length}],
     events:[{pcIndex:0,type:"turn.done",role:"user",turnId:"user",at:10,text:"请生成一个随机测试码。"},
       {pcIndex:0,type:"turn.created",role:"assistant",turnId:"ongoing",at:20,startMs:1000,endMs:1200},
       {pcIndex:0,type:"output_transcript.added",at:60,startMs:1400,endMs:1600,text:"测试码是430"},
@@ -108,6 +108,31 @@ test("ongoing native assistant stream can ground control before its future turn.
   assert.equal(result.status,"observed-pending");
   assert.equal(result.association,"ongoing native output stream, final pending");
   assert.equal(result.progressTranscriptAt,70);
+  assert.equal(result.nativeAppendChannel,"speakable");
+});
+test("completed and ongoing control speech require an explicitly speakable append", () => {
+  for (const completed of [false,true]) {
+    for (const channel of ["speakable","commentary","unknown","SPEAKABLE",null,undefined]) {
+      const data=pendingFixture();
+      if (completed) data.events.push({pcIndex:0,type:"turn.done",role:"assistant",turnId:"ongoing",
+        at:90,startMs:1000,endMs:1800,text:"测试码是4303。"});
+      if (channel === undefined) delete data.diagnostics[1].channel;
+      else data.diagnostics[1].channel=channel;
+      const actual=assessControlPendingProgress(data);
+      if (channel === "speakable") {
+        assert.equal(actual.status,"observed-pending");
+        assert.equal(actual.nativeAppendChannel,"speakable");
+        assert.equal(actual.association,completed ? "completed native progress turn, final pending" :
+          "ongoing native output stream, final pending");
+      } else assert.notEqual(actual.status,"observed-pending",`${completed}:${channel}`);
+    }
+  }
+});
+test("a speakable receive label cannot upgrade an actual commentary append for controls", () => {
+  const data=pendingFixture();
+  data.diagnostics[0].channel="speakable";
+  data.diagnostics[1].channel="commentary";
+  assert.notEqual(assessControlPendingProgress(data).status,"observed-pending");
 });
 test("completed old turn and an unrelated open turn cannot supply pending control speech", () => {
   const data=pendingFixture();

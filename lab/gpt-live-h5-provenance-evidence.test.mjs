@@ -15,8 +15,8 @@ function evidence() {
     markerToolResultReceivedAt: 90,
     diagnostics: [
       { ...common, stage: "public-progress-received", at: 101, provenance: { emittedAt: 100, runId: "run-1", source: "reply", sequence: 1 } },
-      { ...common, stage: "context-append-sent", at: 102, appendId: 1, chunkIndex: 0, chunkCount: 1 },
-      { ...common, stage: "context-append-sent", kind: "final", at: 200, appendId: 2 },
+      { ...common, stage: "context-append-sent", channel: "speakable", at: 102, appendId: 1, chunkIndex: 0, chunkCount: 1 },
+      { ...common, stage: "context-append-sent", kind: "final", channel: "speakable", at: 200, appendId: 2 },
     ],
     events: [
       { type: "output_transcript.added", at: 110, startMs: 0, endMs: 100, text: "后台测试码是 " },
@@ -33,12 +33,37 @@ test("grounding joins actual public fingerprint, emit/send, transcript prefix an
   assert.equal(actual.backendPublicText, publicText);
   assert.equal(actual.emittedAt, 100);
   assert.equal(actual.nativeAppendSentAt, 102);
+  assert.equal(actual.nativeAppendChannel, "speakable");
   assert.equal(actual.progressTranscriptAt, 120);
   assert.equal(actual.strictNonzeroPcmWindows, 1);
   assert.equal(actual.firstStrictPcmBeforeFinalMs, 75);
   assert.equal(actual.actualExecTimingVerified, true);
   // A turn can contain progress and final; its completion need not precede final.
   assert.equal(actual.assistantTurnAt, 220);
+});
+
+test("only an explicitly speakable successful append can support native speech provenance", () => {
+  for (const channel of ["commentary", "unknown", "SPEAKABLE", null, undefined]) {
+    const data = evidence();
+    if (channel === undefined) delete data.diagnostics[1].channel;
+    else data.diagnostics[1].channel = channel;
+    // Even a matching caption and real nonzero PCM cannot turn a silent or
+    // legacy channel-less context append into the new speakable causal gate.
+    assert.equal(assessH5ProgressProvenance(data).status, "missing", String(channel));
+    assert.equal(assessH5PendingProgress({ ...data, now: 150 }).status, "missing", String(channel));
+  }
+});
+
+test("the channel belongs to the actual append rather than the public receive callback", () => {
+  const data = evidence();
+  data.diagnostics[0].channel = "speakable";
+  data.diagnostics[1].channel = "commentary";
+  assert.equal(assessH5ProgressProvenance(data).status, "missing");
+  assert.equal(assessH5PendingProgress({ ...data, now: 150 }).status, "missing");
+  data.diagnostics[0].channel = "commentary";
+  data.diagnostics[1].channel = "speakable";
+  assert.equal(assessH5ProgressProvenance(data).status, "observed");
+  assert.equal(assessH5PendingProgress({ ...data, now: 150 }).status, "observed-pending");
 });
 
 test("initial instruction echo, guessed early speech and missing emit boundaries are rejected", () => {
@@ -148,9 +173,21 @@ test("diagnostic parser ignores malformed/unrelated logs without accepting inten
   assert.deepEqual(parsePublicProgressDiagnostics(JSON.stringify({ message: "GPT_LIVE_PUBLIC_PROGRESS " + JSON.stringify(event) })), [event]);
 });
 
+test("diagnostic parser preserves explicit channels without inventing one for legacy events", () => {
+  const base = { version: 1, at: 100, textSha256: hash(publicText),
+    stage: "context-append-sent", kind: "progress" };
+  const entries = [{ ...base, channel: "speakable" }, { ...base, channel: "commentary" },
+    { ...base, channel: "unknown" }, base];
+  const parsed = parsePublicProgressDiagnostics(entries.map((entry) =>
+    "GPT_LIVE_PUBLIC_PROGRESS " + JSON.stringify(entry)).join("\n"));
+  assert.deepEqual(parsed, entries);
+  assert.equal(Object.hasOwn(parsed.at(-1), "channel"), false);
+});
+
 test("control preview requires grounded progress with PCM while the real final is still pending", () => {
   const data = evidence(); data.now = 150;
   assert.equal(assessH5PendingProgress(data).status, "observed-pending");
+  assert.equal(assessH5PendingProgress(data).nativeAppendChannel, "speakable");
   data.now = 210;
   assert.equal(assessH5PendingProgress(data).status, "missing");
   data.now = 150; data.energyWindows = [];

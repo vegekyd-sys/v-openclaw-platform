@@ -134,7 +134,8 @@ function matchPublicFingerprint(event, publicTexts, marker) {
 export function assessH5PendingProgress({ diagnostics = [], events = [], energyWindows = [],
   backendPublicTexts = [], marker, now = Date.now() }) {
   if (!/^[0-9]{4}$/u.test(marker ?? "")) return { status: "missing" };
-  for (const append of diagnostics.filter((event) => event.stage === "context-append-sent" && event.kind === "progress")) {
+  for (const append of diagnostics.filter((event) => event.stage === "context-append-sent" &&
+    event.kind === "progress" && event.channel === "speakable")) {
     const publicText = matchPublicFingerprint(append, backendPublicTexts, marker);
     if (!publicText) continue;
     const receive = diagnostics.find((event) => event.stage === "public-progress-received" &&
@@ -157,7 +158,8 @@ export function assessH5PendingProgress({ diagnostics = [], events = [], energyW
         if (!containsMarker(prefix, marker)) continue;
         const pcm = energyWindows.filter((window) => window.at >= part.at && window.at <= now && window.rms > 2);
         return { status: pcm.length ? "observed-pending" : "transcript-only", publicText,
-          emittedAt: receive.provenance.emittedAt, nativeAppendSentAt: append.at, progressTranscriptAt: part.at,
+          emittedAt: receive.provenance.emittedAt, nativeAppendSentAt: append.at,
+          nativeAppendChannel: append.channel, progressTranscriptAt: part.at,
           strictNonzeroPcmWindows: pcm.length, progressPrefix: prefix, marker,
           traceId: append.traceId, delegationId: append.delegationId, generation: append.generation };
       }
@@ -170,7 +172,8 @@ export function assessH5ProgressProvenance({ diagnostics = [], events = [], ener
   backendPublicTexts = [], marker, initialUserText = "", markerToolResultReceivedAt = null }) {
   if (!/^[0-9]{4}$/u.test(marker ?? "")) return { status: "missing", reason: "Real exec marker absent" };
   if (containsMarker(initialUserText, marker)) return { status: "invalid-fixture", reason: "Initial input contains the generated marker" };
-  for (const append of diagnostics.filter((event) => event.stage === "context-append-sent" && event.kind === "progress")) {
+  for (const append of diagnostics.filter((event) => event.stage === "context-append-sent" &&
+    event.kind === "progress" && event.channel === "speakable")) {
     const publicText = matchPublicFingerprint(append, backendPublicTexts, marker);
     if (!publicText) continue;
     const received = diagnostics.find((event) => event.stage === "public-progress-received" &&
@@ -201,6 +204,7 @@ export function assessH5ProgressProvenance({ diagnostics = [], events = [], ener
           status: pcm.length ? "observed" : "transcript-only",
           marker, backendPublicText: publicText, publicTextSha256: append.textSha256,
           emittedAt, nativeReceivedAt: received.at, nativeAppendSentAt: append.at,
+          nativeAppendChannel: append.channel,
           progressTranscriptAt: part.at, finalAppendSentAt: final.at,
           progressPrefix: prefix, assistantTurnText: turn.text, assistantTurnAt: turn.at,
           strictNonzeroPcmWindows: pcm.length,

@@ -156,7 +156,8 @@ export function assessControlPendingProgress({diagnostics = [], events = [], ene
       .some(event => matchesExactControlMarker(event.text, marker))) return {status: "unproven", reason: "Initial user speech already contains marker"};
   if (trace.some(event => event.kind === "final" && event.stage === "context-append-sent" && event.at <= now))
     return {status: "final-already-sent"};
-  const earliestAppendAt = trace.filter(event => event.kind === "progress" && event.stage === "context-append-sent").at(0)?.at ?? Infinity;
+  const earliestAppendAt = trace.filter(event => event.kind === "progress" &&
+    event.stage === "context-append-sent" && event.channel === "speakable").at(0)?.at ?? Infinity;
   const completed = assessH5PendingProgress({diagnostics: trace,
     events: local.filter(event => event.type !== "turn.done" || event.role !== "assistant" || event.at >= earliestAppendAt),
     energyWindows: energyWindows.filter(window => window.pcIndex === pcIndex), backendPublicTexts, marker, now});
@@ -167,7 +168,8 @@ export function assessControlPendingProgress({diagnostics = [], events = [], ene
     !local.some(end => end.type === "turn.done" && end.turnId === event.turnId && end.at <= now)).at(-1);
   if (!open) return {...completed, reason: "No attributable completed or ongoing assistant turn"};
   const following = local.filter(event => event.type === "turn.created" && event.at > open.at).at(0);
-  for (const append of trace.filter(event => event.stage === "context-append-sent" && event.kind === "progress" && event.at <= now)) {
+  for (const append of trace.filter(event => event.stage === "context-append-sent" &&
+    event.kind === "progress" && event.channel === "speakable" && event.at <= now)) {
     const receive = trace.find(event => event.stage === "public-progress-received" && event.textSha256 === append.textSha256 &&
       event.at <= append.at && Number.isSafeInteger(event.provenance?.emittedAt) && event.provenance.emittedAt <= event.at);
     if (!receive || !Number.isSafeInteger(append.textChars) || append.textChars < 1 || append.textChars > 20000) continue;
@@ -193,7 +195,8 @@ export function assessControlPendingProgress({diagnostics = [], events = [], ene
       if (!matchesExactControlMarker(prefix,marker)) continue;
       const pcm = energyWindows.filter(window => window.pcIndex === pcIndex && window.at >= part.at && window.at <= now && window.rms > 2);
       return {status: pcm.length ? "observed-pending" : "transcript-only", publicText, marker,
-        emittedAt: receive.provenance.emittedAt, nativeAppendSentAt: append.at, progressTranscriptAt: part.at,
+        emittedAt: receive.provenance.emittedAt, nativeAppendSentAt: append.at,
+        nativeAppendChannel: append.channel, progressTranscriptAt: part.at,
         strictNonzeroPcmWindows: pcm.length, progressPrefix: prefix, traceId: append.traceId,
         delegationId: append.delegationId, generation: append.generation, turnId: open.turnId,
         association: "ongoing native output stream, final pending"};

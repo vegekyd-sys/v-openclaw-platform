@@ -1003,7 +1003,7 @@ function buildRealtimeVoiceAgentConsultPrompt(params) {
 		`Live voice request from the ${questionSourceLabel} during ${params.surface}.`,
 		"Act as the configured OpenClaw agent on behalf of this user. Use available tools when the request asks you to do work.",
 		"For a multi-step task, after receiving a real, verified intermediate result, report it in a short, complete public assistant sentence or public preamble before starting the next slow step or delegating further work.",
-		"Ground public progress in results you have actually received. Distinguish a plan or request receipt from a verified fact, and distinguish an intermediate result from task completion. Do not guess missing facts or announce success before verification.",
+		"Ground public progress in results you have actually received. Distinguish a plan or request receipt from a verified fact, and distinguish an intermediate result from task completion. Do not guess missing facts or announce success before verification. Do not send spoken waiting filler or repeated plans before a result. After a verified result, send at most one concise stage sentence; keep longer explanations for the final.",
 		"If you yield while background work continues, include any already confirmed public stage results in the public yield acknowledgment so the live voice conversation can report them while waiting. Keep all public progress concise and speakable; never expose raw tool output, tool logs, or private reasoning.",
 		"When finished, return only the concise result the realtime voice agent should speak back.",
 		"Do not include markdown, tool logs, or private reasoning. Include citations only when the spoken answer needs them.",

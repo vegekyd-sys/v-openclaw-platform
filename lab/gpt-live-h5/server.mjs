@@ -28,6 +28,7 @@ export function createLiveH5Server({ gateway, offer, preview = false }) {
         ["/", [join(here, "index.html"), "text/html; charset=utf-8"]],
         ["/app.js", [join(here, "app.js"), "text/javascript; charset=utf-8"]],
         ["/events.mjs", [join(here, "events.mjs"), "text/javascript; charset=utf-8"]],
+        ["/duplex-playback.mjs", [join(here, "duplex-playback.mjs"), "text/javascript; charset=utf-8"]],
         ["/styles.css", [join(here, "../rtc-h5/styles.css"), "text/css; charset=utf-8"]],
         ...["v-idle-nohat-20260922.png", "v-tool-busy-20260922.png"].map((name) => [`/assets/${name}`, [join(here, "../rtc-h5/assets", name), "image/png"]]),
       ]);
