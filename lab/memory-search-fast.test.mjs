@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
-import { patchKnnChild, patchKnnQueryModule, patchSearchEmbeddingOverlap, patchSessionVisibilityFastPath, patchSpareKnnChild } from './patch-memory-search-fast.mjs';
+import { patchKnnChild, patchKnnQueryModule, patchSearchEmbeddingOverlap, patchSessionVisibilityFastPath, patchSpareKnnChild, patchHybridRescoring } from './patch-memory-search-fast.mjs';
 
 const read = (rel) => fs.readFileSync(new URL(rel, import.meta.url), 'utf8');
 const sha = (value) => createHash('sha256').update(value).digest('hex');
@@ -53,4 +53,35 @@ test('session visibility returns transcript-free hits without loading the sessio
   const catalog = visibility1s.indexOf('loadCombinedSessionStoreForGateway(', entry);
   assert(entry > 0 && fast > entry && catalog > fast);
   assert.throws(() => patchSessionVisibilityFastPath(visibility1s), /session visibility filter entry/);
+});
+
+const managerMixed = read('./release-files/memory-search-mixed/manager-runtime.js');
+
+test('memory-search-mixed adds only hybrid rescoring to memory-search-1s', () => {
+  assert.equal(patchHybridRescoring(manager1s), managerMixed);
+  assert.throws(() => patchHybridRescoring(managerMixed), /manager hybrid merge|hybrid merge call/);
+});
+
+test('hybrid rescoring: coverage keyword score, gated vector backfill, any-term candidates', () => {
+  assert.match(managerMixed, /params = rescoreHybridCandidates\(this\.db, params, this\.vector\.available === true\);/);
+  assert.match(managerMixed, /merged: await this\.mergeHybridResults\(\{\n\t+query: cleaned,\n\t+queryVec,/);
+  // Single-term queries keep upstream scoring; backfill needs half of the terms.
+  assert.match(managerMixed, /if \(terms\.length < 2\) return params;/);
+  assert.match(managerMixed, /if \(seen\.has\(hit\.id\) \|\| hit\.textScore < \.5\) continue;/);
+  assert.match(managerMixed, /const anyTermResults = await this\.searchKeywordAnyTerm\(query, limit, sourceFilterList\)\.catch\(\(\) => \[\]\);/);
+  assert.match(managerMixed, /join\(" OR "\)/);
+});
+
+test('rescoreHybridCandidates scores coverage and backfills cosine for strong keyword-only hits', async () => {
+  const start = managerMixed.indexOf('function rescoreHybridCandidates(db, params, vectorAvailable) {');
+  const end = managerMixed.indexOf('\n}\n', start) + 2;
+  const fn = new Function('VECTOR_TABLE', 'vectorToBlob', `${managerMixed.slice(start, end)}; return rescoreHybridCandidates;`)('memory_index_chunks_vec', (v) => v);
+  const texts = { a: 'DAM 策划案 docx 中纺 项目', b: '只有 项目 两个字', c: 'vector hit' };
+  const db = { prepare: (sql) => ({ get: (...args) => (sql.includes('vec_distance_cosine') ? { dist: args[1] === 'a' ? 0.4 : 0.9 } : { text: texts[args[0]] }) }) };
+  const out = fn(db, { query: '中纺 DAM 项目 ID 策划案 docx', queryVec: [1], vector: [{ id: 'c', path: 'c.md', score: 0.6 }], keyword: [{ id: 'a', path: 'a.md' }, { id: 'b', path: 'b.md' }] }, true);
+  const byId = Object.fromEntries(out.keyword.map((hit) => [hit.id, hit.textScore]));
+  assert.equal(byId.a, 5 / 6);
+  assert.equal(byId.b, 1 / 6);
+  assert.deepEqual(out.vector.map((hit) => [hit.id, Number(hit.score.toFixed(2))]), [['c', 0.6], ['a', 0.6]]);
+  assert.equal(fn(db, { query: '康浩源', queryVec: [1], vector: [], keyword: [{ id: 'a', path: 'a.md' }] }, true).keyword[0].textScore, undefined);
 });
