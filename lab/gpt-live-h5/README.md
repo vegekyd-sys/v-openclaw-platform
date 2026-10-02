@@ -10,8 +10,10 @@
 GPT_LIVE_H5_PREVIEW=1 node lab/gpt-live-h5/server.mjs
 ```
 
-真实候选运行需要 `OPENCLAW_CONFIG_PATH` 和 `GPT_LIVE_H5_RUNTIME_ROOT`，且候选配置的 `talk.realtime.provider` 必须为 `openai`。该 server 不修改 Gateway 配置；候选脚本只在自己的配置副本指定 provider、exact model、voice。`GPT_LIVE_H5_PORT` 默认 `26244`。通过 SSH local forward 后打开 localhost。
+真实候选运行需要 `OPENCLAW_CONFIG_PATH` 和 `GPT_LIVE_H5_RUNTIME_ROOT`。H5 的 `talk.client.create` 明确指定 `openai` provider、exact model 和 voice，Gateway 必须支持这些会话参数；共享 Talk 全局 provider 可以保留原值。该 server 不修改 Gateway 配置。`GPT_LIVE_H5_PORT` 默认 `26244`。通过 SSH local forward 后打开 localhost。
 
 实验语音指令见 `instructions.mjs`；在候选配置副本的 `talk.realtime.instructions` 使用相同值。它要求进度只描述真实步骤，日期、时间、数字与时区等待完整后台结果并保留原值。此提示词是模型约束，不能代替结果保真验收；共享配置更新仍按批准与 lease 流程执行。
 
 先检查开始/结束/重新开始、麦克风权限拒绝和连接失败恢复；再验收后台阶段结果真的播出、说话中插话、补充条件被采纳、取消后无旧结果播出。文字补充和取消调用现有 `talk.client.steer`，服务端失败时不会伪装成功。声音插话依赖 GPT Live 原生能力，尚待真实浏览器和真人听感验收。
+
+2026-10-02 共享试跑发现子任务 yield 后的 completion 权限与原语音 delegation 续传均未通过；不能把“已交办”的第一次 tool.result 当成完整终态。完整记录见 [共享试跑记录](../../docs/gpt-live-shared-trial-20261002.md)。
