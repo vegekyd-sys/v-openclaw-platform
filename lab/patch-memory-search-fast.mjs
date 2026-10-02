@@ -18,6 +18,71 @@ function replaceExactlyOnce(source, before, after, label) {
   return source.replace(before, after);
 }
 
+// 3. Session visibility (upstream 2026.9.5 fix, backported): filtering memory_search
+//    hits by session visibility loaded the agent's whole session catalog on the
+//    Gateway loop for every call, even when no hit came from a session transcript.
+//    Measured inside the VLab Gateway 2026-10-02: 0.82-0.99 s per call for 3,743
+//    makaron sessions; makaron indexes memory files only, so it was pure overhead.
+//    The result for transcript-free hits does not depend on the catalog.
+export function patchSessionVisibilityFastPath(source) {
+  return replaceExactlyOnce(
+    source,
+    'async function filterMemorySearchHitsBySessionVisibility(params) {\n\tconst visibility = resolveEffectiveSessionToolsVisibility({',
+    'async function filterMemorySearchHitsBySessionVisibility(params) {\n' +
+      '\t// Session visibility owns transcript hits only; memory-only results never need the session catalog.\n' +
+      '\tif (!params.hits.some((hit) => hit.source === "sessions")) return params.conversationRecall?.corpus === "sessions" ? [] : params.hits;\n' +
+      '\tconst visibility = resolveEffectiveSessionToolsVisibility({',
+    'session visibility filter entry',
+  );
+}
+
+// 4. Spare KNN child: every vector search started a fresh Node child (~0.2 s even
+//    after the import fix). Keep one pre-spawned child waiting on stdin and take it
+//    for the next search; the child opens the database only after it reads a request,
+//    and exits on its own when the parent goes away (stdin closes).
+export function patchSpareKnnChild(source) {
+  let out = replaceExactlyOnce(
+    source,
+    '/** Run one file-backed KNN query in a bounded, OS-killable child process. */\nasync function runVectorKnnInSubprocess(params) {',
+    '// One pre-spawned child waits on stdin so a search skips the Node start of a fresh one.\n' +
+      'let spareVectorKnnChild;\n' +
+      'function spawnVectorKnnChild() {\n' +
+      '\tconst childUrl = resolveRuntimeWorkerUrl(vectorKnnProcessEntrypoint);\n' +
+      '\treturn spawn(process.execPath, resolveRuntimeWorkerArgv(childUrl), {\n' +
+      '\t\tenv: buildChildEnv(),\n\t\tshell: false,\n\t\tstdio: [\n\t\t\t"pipe",\n\t\t\t"pipe",\n\t\t\t"pipe"\n\t\t],\n\t\twindowsHide: true\n\t});\n' +
+      '}\n' +
+      'function takeSpareVectorKnnChild() {\n' +
+      '\tconst child = spareVectorKnnChild;\n' +
+      '\tspareVectorKnnChild = void 0;\n' +
+      '\tif (!child || child.exitCode !== null || child.signalCode !== null || child.killed) return void 0;\n' +
+      '\tchild.ref();\n' +
+      '\tfor (const stream of [child.stdin, child.stdout, child.stderr]) stream?.ref?.();\n' +
+      '\treturn child;\n' +
+      '}\n' +
+      'function prepareSpareVectorKnnChild() {\n' +
+      '\tif (spareVectorKnnChild) return;\n' +
+      '\ttry {\n' +
+      '\t\tconst child = spawnVectorKnnChild();\n' +
+      '\t\tconst forget = () => {\n\t\t\tif (spareVectorKnnChild === child) spareVectorKnnChild = void 0;\n\t\t};\n' +
+      '\t\tchild.on("error", forget);\n' +
+      '\t\tchild.on("exit", forget);\n' +
+      '\t\tchild.unref();\n' +
+      '\t\tfor (const stream of [child.stdin, child.stdout, child.stderr]) stream?.unref?.();\n' +
+      '\t\tspareVectorKnnChild = child;\n' +
+      '\t} catch {}\n' +
+      '}\n' +
+      '/** Run one file-backed KNN query in a bounded, OS-killable child process. */\nasync function runVectorKnnInSubprocess(params) {',
+    'KNN subprocess runner',
+  );
+  out = replaceExactlyOnce(
+    out,
+    '\ttry {\n\t\tconst childUrl = resolveRuntimeWorkerUrl(vectorKnnProcessEntrypoint);\n\t\tchild = spawn(process.execPath, resolveRuntimeWorkerArgv(childUrl), {\n\t\t\tenv: buildChildEnv(),\n\t\t\tshell: false,\n\t\t\tstdio: [\n\t\t\t\t"pipe",\n\t\t\t\t"pipe",\n\t\t\t\t"pipe"\n\t\t\t],\n\t\t\twindowsHide: true\n\t\t});\n\t} catch (error) {',
+    '\ttry {\n\t\tchild = takeSpareVectorKnnChild() ?? spawnVectorKnnChild();\n\t\tprepareSpareVectorKnnChild();\n\t} catch (error) {',
+    'KNN child spawn',
+  );
+  return out;
+}
+
 export function patchKnnQueryModule(source) {
   return replaceExactlyOnce(
     source,
