@@ -1,5 +1,5 @@
 {
-  "baseRelease": "memory-search-mixed-20261002",
+  "baseRelease": "memory-search-guards-20261002",
   "files": [
     {
       "source": "lab/release-files/gpt-live-native-progress/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
@@ -15,6 +15,41 @@
       "source": "lab/release-files/gpt-live-call/talk-DkFuKRod.js",
       "target": "openclaw/dist/talk-DkFuKRod.js",
       "before": "8626acc98d1ea5076d7b4e455246a02f0f80372b9f38cc4161c83a2aa5da840b"
+    },
+    {
+      "source": "lab/release-files/gpt-live-completion-context/index.mjs",
+      "target": "production-worker/index.mjs",
+      "before": "c047f3df1f730b4eacb2db0ec64cd0e0281bc4f8388c8032768192a204222259"
+    },
+    {
+      "source": "lab/release-files/gpt-live-completion-context/gateway-completion-context.mjs",
+      "target": "production-worker/gateway-completion-context.mjs",
+      "before": "e958ff1cd75cd28d0af3cd93d3e5d729c9a5d9108416c1a0652bdbbf3f38ff09"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/subagent-registry-C24yr_PF.js",
+      "target": "openclaw/dist/subagent-registry-C24yr_PF.js",
+      "before": "c2c0c840f014a67156d40949cdbfa148607c8cffed349feef7be629fd24a056b"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/subagent-announce.requester-settle-wake-B2NSziIo.js",
+      "target": "openclaw/dist/subagent-announce.requester-settle-wake-B2NSziIo.js",
+      "before": "e42fc319a6d079e6e4dc4aba39afdf85a605740189d3ed00b8cb6b4cb91df149"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/subagent-announce-delivery-Dosep7Zr.js",
+      "target": "openclaw/dist/subagent-announce-delivery-Dosep7Zr.js",
+      "before": "c14b886cb8852d528de58cfdef28d45de42267e1dd372166b6075a74929c41bc"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/agent-harness-task-runtime.js",
+      "target": "openclaw/dist/plugin-sdk/agent-harness-task-runtime.js",
+      "before": "60913341429e7b6811d2dead24e0c9eaff49408f66d7049f026840f22fef9086"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/gpt-live-consult-continuation.js",
+      "target": "openclaw/dist/gpt-live-consult-continuation.js",
+      "before": null
     }
   ]
 }

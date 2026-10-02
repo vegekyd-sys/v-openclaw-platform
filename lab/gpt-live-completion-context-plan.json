@@ -1,0 +1,15 @@
+{
+  "baseRelease": "db91-shrink-reuse-20261002",
+  "files": [
+    {
+      "source": "lab/release-files/gpt-live-completion-context/index.mjs",
+      "target": "production-worker/index.mjs",
+      "before": "c047f3df1f730b4eacb2db0ec64cd0e0281bc4f8388c8032768192a204222259"
+    },
+    {
+      "source": "lab/release-files/gpt-live-completion-context/gateway-completion-context.mjs",
+      "target": "production-worker/gateway-completion-context.mjs",
+      "before": "e958ff1cd75cd28d0af3cd93d3e5d729c9a5d9108416c1a0652bdbbf3f38ff09"
+    }
+  ]
+}

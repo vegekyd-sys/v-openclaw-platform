@@ -1,0 +1,24 @@
+{
+  "baseRelease": "db91-shrink-reuse-20261002",
+  "files": [
+    {
+      "target": "production-worker/index.mjs",
+      "capture": "release/captured/v2026.9.1-db91.6-db91-shrink-reuse-20261002.worker/dist/index.mjs",
+      "before": "c047f3df1f730b4eacb2db0ec64cd0e0281bc4f8388c8032768192a204222259"
+    },
+    {
+      "target": "production-worker/gateway-completion-context.mjs",
+      "capture": "release/captured/v2026.9.1-db91.6-db91-shrink-reuse-20261002.worker/dist/gateway-completion-context.mjs",
+      "before": "e958ff1cd75cd28d0af3cd93d3e5d729c9a5d9108416c1a0652bdbbf3f38ff09"
+    }
+  ],
+  "fixtureSha256": {
+    "agent-harness-task-runtime-scope-BNJRhh_H.js": "9b5403adb4375744a9d14afef1b0fe9a3b9f4051ce5a3fb3428d65fba6c8a073",
+    "gateway-caller-context-CRUBJj3M.js": "7c7a66ecc1c579ac1c4c0ac0617c6013b22eb284ab4b624e94784f4ee21c4cba",
+    "gateway-request-scope-CmMd3nUp.js": "7a0b33d95299c96598f5f6dac26fd4ef3695a796487240a7c9ceab5bdedf1c1d",
+    "plugins-http-aNik4RkL.js": "f5bf994f8233939b7dd7502d9feccf93d1f84dce75798e311f480749a08e32c3",
+    "server-plugin-in-process-dispatch-BirRDL7L.js": "4ef47b70c598819c8c42c7b9fd991e3666eddd0ccc3bcb15bed4b03c400954b6",
+    "server-plugin-runtime-client-CXu_O7BH.js": "9b7aee59d6da3613305f6dac4b20029aeb0d6ec84769b027fb7cfd180e2af866",
+    "server-plugins-Dr-GcAg-.js": "59abce7e091e0685a2643ca47677fe2b704d7ca64be2921619c1e35ed8c8f7e6"
+  }
+}

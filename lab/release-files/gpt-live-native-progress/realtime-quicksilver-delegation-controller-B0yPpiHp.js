@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from "node:crypto";
 import { l as toErrorObject } from "./error-coercion-CwcmpTBO.js";
 import { t as formatErrorMessage } from "./errors-u9zSVTak.js";
 import "./error-runtime-BmBsU1OI.js";
@@ -29,6 +30,11 @@ var OpenAIQuicksilverDelegationController = class {
 		};
 		this.stopped = false;
 		this.delegationGeneration = 0;
+		this.publicProgressTraceLogEnabled = process.env.OPENCLAW_GPT_LIVE_PROGRESS_TRACE === "1";
+		this.publicProgressTraceEnabled = this.publicProgressTraceLogEnabled || typeof options.onPublicProgressDiagnostic === "function";
+		this.publicProgressTraceId = this.publicProgressTraceEnabled ? randomUUID() : void 0;
+		this.publicProgressTraceSequence = 0;
+		this.publicProgressAppendSequence = 0;
 		this.transcript = [];
 		if (options.signal.aborted) this.onSessionAbort();
 		else options.signal.addEventListener("abort", this.onSessionAbort, { once: true });
@@ -148,6 +154,44 @@ var OpenAIQuicksilverDelegationController = class {
 		this.partialTranscriptRole = void 0;
 		this.transcript = [];
 	}
+	tracePublicProgress(stage, delegationId, text, details = {}) {
+		if (!this.publicProgressTraceEnabled) return;
+		// Diagnostics carry public text fingerprints only. Do not copy arbitrary
+		// callback fields, prompts, reasoning, credentials or account metadata.
+		const event = {
+			version: 1,
+			stage,
+			at: Date.now(),
+			traceId: this.publicProgressTraceId,
+			sequence: ++this.publicProgressTraceSequence,
+			delegationId,
+			generation: this.delegationGeneration,
+			textSha256: createHash("sha256").update(text).digest("hex"),
+			textChars: text.length
+		};
+		for (const key of ["kind", "appendId", "chunkIndex", "chunkCount"]) {
+			if (typeof details[key] === "string" || Number.isSafeInteger(details[key])) event[key] = details[key];
+		}
+		const provenance = details.provenance;
+		if (provenance && typeof provenance === "object") {
+			event.provenance = {};
+			for (const key of ["runId", "source", "itemId"]) {
+				const value = provenance[key];
+				if (typeof value === "string" && /^[a-zA-Z0-9_.:@/-]{1,160}$/.test(value)) event.provenance[key] = value;
+			}
+			for (const key of ["emittedAt", "sequence"]) {
+				if (Number.isSafeInteger(provenance[key]) && provenance[key] >= 0) event.provenance[key] = provenance[key];
+			}
+		}
+		// An observer must never change delivery or cancel accepted backend work.
+		try {
+			const pending = this.options.onPublicProgressDiagnostic?.(event);
+			if (pending && typeof pending.catch === "function") pending.catch(() => {});
+		} catch {}
+		if (this.publicProgressTraceLogEnabled) {
+			try { this.options.logger.info?.(`GPT_LIVE_PUBLIC_PROGRESS ${JSON.stringify(event)}`); } catch {}
+		}
+	}
 	isCurrentDelegation(delegation, signal) {
 		return !this.stopped && !this.options.signal.aborted && !signal.aborted &&
 			this.activeDelegationId === delegation.id && this.delegationGeneration === delegation.generation;
@@ -162,8 +206,10 @@ var OpenAIQuicksilverDelegationController = class {
 			if (finished || !this.isCurrentDelegation(delegation, signal) ||
 				progress?.kind !== "commentary" || progress?.isReasoning === true ||
 				typeof progress?.text !== "string" || !progress.text.trim()) return;
+			const publicText = progress.text.trim();
+			this.tracePublicProgress("public-progress-received", delegation.id, publicText, { kind: "progress", provenance: progress.provenance });
 			try {
-				this.sendAppend(delegation.id, progress.text.trim(), "speakable");
+				this.sendAppend(delegation.id, publicText, "speakable", { kind: "progress", provenance: progress.provenance });
 			} catch (error) {
 				// A dropped progress update must not abort accepted backend work or
 				// turn its eventual final answer into a failed consult.
@@ -174,6 +220,7 @@ var OpenAIQuicksilverDelegationController = class {
 			const result = await this.options.runAgentConsult({
 				prompt: delegation.prompt,
 				signal,
+				continuationIdentity: { delegationItemId: delegation.id, delegationGeneration: delegation.generation },
 				onProgress
 			});
 			if (!this.isCurrentDelegation(delegation, signal)) return;
@@ -185,12 +232,18 @@ var OpenAIQuicksilverDelegationController = class {
 		} finally {
 			finished = true;
 		}
-		if (this.isCurrentDelegation(delegation, signal)) this.sendAppend(delegation.id, text, "speakable");
+		if (this.isCurrentDelegation(delegation, signal)) {
+			this.tracePublicProgress("backend-final-received", delegation.id, text, { kind: "final" });
+			this.sendAppend(delegation.id, text, "speakable", { kind: "final" });
+		}
 	}
-	sendAppend(delegationId, text, channel) {
+	sendAppend(delegationId, text, channel, diagnostic = {}) {
 		const socket = this.options.getSocket();
 		if (this.stopped || !socket || socket.readyState !== WEBSOCKET_OPEN) return;
-		for (const chunk of chunkOpenAIQuicksilverAppendText(text)) socket.send(JSON.stringify({
+		const chunks = chunkOpenAIQuicksilverAppendText(text);
+		const appendId = ++this.publicProgressAppendSequence;
+		for (const [chunkIndex, chunk] of chunks.entries()) {
+			socket.send(JSON.stringify({
 			type: "delegation.context.append",
 			delegation_item_id: delegationId,
 			channel,
@@ -198,7 +251,10 @@ var OpenAIQuicksilverDelegationController = class {
 				type: "input_text",
 				text: chunk
 			}]
-		}));
+			}));
+			// Successful send is the native append boundary, not an intention log.
+			this.tracePublicProgress("context-append-sent", delegationId, chunk, { ...diagnostic, appendId, chunkIndex, chunkCount: chunks.length });
+		}
 	}
 	fail(error) {
 		if (this.stopped) return;

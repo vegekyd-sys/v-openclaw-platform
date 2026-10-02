@@ -1,3 +1,5 @@
+// gpt-live-consult-continuation-v1: harness
+import { createGptLiveConsultContinuationOwner } from "./gpt-live-consult-continuation.js";
 import { F as resolveTimerTimeoutMs, l as asNonNegativeFiniteNumber } from "./number-coercion-CLj0HTDM.js";
 import { a as asOptionalRecord, c as isRecord } from "./record-coerce-DItp3I4t.js";
 import { c as normalizeOptionalLowercaseString, l as normalizeOptionalString } from "./string-coerce-CIXf7egm.js";
@@ -1178,8 +1180,9 @@ async function resolveRealtimeVoiceAgentConsultSessionEntry(params) {
 * Runs an embedded agent consult and returns concise speakable text for realtime voice playback.
 */
 // gpt-live-consult-progress-v1: public replies only; never reasoning.
-function createGptLiveConsultProgressObserver({ onProgress, abortSignal, logger }) {
+function createGptLiveConsultProgressObserver({ onProgress, abortSignal, logger, runId }) {
   let closed = false;
+  let sequence = 0;
   let lastPublicSnapshot = "";
   let lastPublicDeliveredLength = 0;
   const previousTextBySource = new Map();
@@ -1217,7 +1220,7 @@ function createGptLiveConsultProgressObserver({ onProgress, abortSignal, logger 
       logger?.warn?.(`[talk] public consult progress failed: ${error instanceof Error ? error.message : String(error)}`);
     } catch {}
   };
-  const observe = (source, value, messageComplete = false) => {
+  const observe = (source, value, messageComplete = false, itemId) => {
     if (closed || abortSignal?.aborted || typeof onProgress !== "function") return false;
     // Retain trailing paragraph whitespace until after boundary detection.
     const text = typeof value === "string" ? value.trimStart() : "";
@@ -1243,7 +1246,10 @@ function createGptLiveConsultProgressObserver({ onProgress, abortSignal, logger 
     // Late closing quotes or punctuation must not become standalone speech.
     if (!progressText || !/[\p{L}\p{N}]/u.test(progressText)) return false;
     try {
-      const pending = onProgress({ text: progressText, kind: "commentary" });
+      const pending = onProgress({ text: progressText, kind: "commentary", ...(runId ? {
+        provenance: { emittedAt: Date.now(), sequence: ++sequence, runId, source,
+          ...(typeof itemId === "string" && itemId ? { itemId } : {}) },
+      } : {}) });
       if (pending && typeof pending.then === "function") Promise.resolve(pending).catch(reportFailure);
     } catch (error) {
       reportFailure(error);
@@ -1256,12 +1262,12 @@ function createGptLiveConsultProgressObserver({ onProgress, abortSignal, logger 
       if (payload?.isReasoning) return false;
       // Native streaming omits itemId; builtin completion reconciliation adds
       // one for the same cumulative reply. Keep their progress cursor shared.
-      return observe("reply", payload?.text);
+      return observe("reply", payload?.text, false, payload?.itemId);
     },
     onAgentEvent: (event) => {
       const data = event?.data;
       if (event?.stream !== "item" || data?.kind !== "preamble" || data.phase !== "update" && data.phase !== "end") return false;
-      return observe(`preamble:${typeof data.itemId === "string" ? data.itemId : ""}`, data.progressText, data.phase === "end");
+      return observe(`preamble:${typeof data.itemId === "string" ? data.itemId : ""}`, data.progressText, data.phase === "end", data.itemId);
     },
     close: () => { closed = true; },
   };
@@ -1314,7 +1320,7 @@ async function consultRealtimeVoiceAgent(params) {
 	if (params.abortSignal?.aborted) abortFromCaller();
 	else params.abortSignal?.addEventListener("abort", abortFromCaller, { once: true });
 	try {
-		return await sessionWorkAdmission.run(async () => {
+		const consultResult = await sessionWorkAdmission.run(async () => {
 			await params.agentRuntime.ensureAgentWorkspace({ dir: workspaceDir });
 			const resolvedDeliveryContext = resolveRealtimeVoiceAgentDeliveryContext({
 				cfg: params.cfg,
@@ -1346,7 +1352,14 @@ async function consultRealtimeVoiceAgent(params) {
 				timeoutMs
 			});
 			const abortSignal = runRegistration?.abortSignal ? AbortSignal.any([lifecycleAbortController.signal, runRegistration.abortSignal]) : lifecycleAbortController.signal;
-			const progressObserver = createGptLiveConsultProgressObserver({ onProgress: params.onProgress, abortSignal, logger: params.logger });
+			const continuationOwner = createGptLiveConsultContinuationOwner({
+				continuationContext: params.continuationContext, runId, sessionId, sessionKey: params.sessionKey, agentId,
+				isSessionCurrent: () => params.agentRuntime.session.getSessionEntry({ agentId, storePath, sessionKey: params.sessionKey, readConsistency: "latest" })?.sessionId === sessionId,
+				abortSignal: params.abortSignal ? AbortSignal.any([abortSignal, params.abortSignal]) : abortSignal, timeoutMs, runRegistration, onProgress: params.onProgress,
+				onResumeRunStarted: params.onResumeRunStarted, collectVisibleText: collectRealtimeVoiceAgentConsultVisibleText, logger: params.logger
+			});
+			const executionAbortSignal = continuationOwner ? AbortSignal.any([abortSignal, continuationOwner.signal]) : abortSignal;
+			const progressObserver = createGptLiveConsultProgressObserver({ onProgress: continuationOwner ? continuationOwner.onProgress : params.onProgress, abortSignal: executionAbortSignal, logger: params.logger, runId });
 			const result = await params.agentRuntime.runEmbeddedAgent({
 				sessionId,
 				sessionKey: params.sessionKey,
@@ -1390,13 +1403,20 @@ async function consultRealtimeVoiceAgent(params) {
 				lane: params.lane,
 				extraSystemPrompt: params.extraSystemPrompt ?? "You are the configured OpenClaw agent receiving delegated requests from a live voice bridge. Act on behalf of the user, use available tools when appropriate, and return a brief speakable result.",
 				agentDir,
-				abortSignal,
+				abortSignal: executionAbortSignal,
 				onPartialReply: progressObserver.onPartialReply,
 				onAgentEvent: progressObserver.onAgentEvent
+			}).catch((error) => {
+				continuationOwner?.abort(error);
+				throw error;
 			}).finally(() => {
 				progressObserver.close();
-				runRegistration?.cleanup?.();
+				if (!continuationOwner) runRegistration?.cleanup?.();
 			});
+			if (continuationOwner) {
+				continuationOwner.finishInitial(result);
+				return { continuationOwner };
+			}
 			const text = collectRealtimeVoiceAgentConsultVisibleText(result.payloads ?? []);
 			if (!text) {
 				const reason = result.meta?.aborted ? "agent run aborted" : "agent returned no speakable text";
@@ -1405,6 +1425,8 @@ async function consultRealtimeVoiceAgent(params) {
 			}
 			return { text };
 		});
+		// Return the promise without awaiting here: turn admission must release after yield.
+		return consultResult.continuationOwner ? consultResult.continuationOwner.wait() : consultResult;
 	} finally {
 		params.abortSignal?.removeEventListener("abort", abortFromCaller);
 		sessionWorkAdmission.release();

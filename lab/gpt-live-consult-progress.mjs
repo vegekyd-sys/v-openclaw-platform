@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 
 /** Observe only public assistant replies. Provider ownership decides how to speak them. */
-export function createGptLiveConsultProgressObserver({ onProgress, abortSignal, logger }) {
+export function createGptLiveConsultProgressObserver({ onProgress, abortSignal, logger, runId }) {
   let closed = false;
+  let sequence = 0;
   let lastPublicSnapshot = "";
   let lastPublicDeliveredLength = 0;
   const previousTextBySource = new Map();
@@ -40,7 +41,7 @@ export function createGptLiveConsultProgressObserver({ onProgress, abortSignal, 
       logger?.warn?.(`[talk] public consult progress failed: ${error instanceof Error ? error.message : String(error)}`);
     } catch {}
   };
-  const observe = (source, value, messageComplete = false) => {
+  const observe = (source, value, messageComplete = false, itemId) => {
     if (closed || abortSignal?.aborted || typeof onProgress !== "function") return false;
     // Retain trailing paragraph whitespace until after boundary detection.
     const text = typeof value === "string" ? value.trimStart() : "";
@@ -66,7 +67,10 @@ export function createGptLiveConsultProgressObserver({ onProgress, abortSignal, 
     // Late closing quotes or punctuation must not become standalone speech.
     if (!progressText || !/[\p{L}\p{N}]/u.test(progressText)) return false;
     try {
-      const pending = onProgress({ text: progressText, kind: "commentary" });
+      const pending = onProgress({ text: progressText, kind: "commentary", ...(runId ? {
+        provenance: { emittedAt: Date.now(), sequence: ++sequence, runId, source,
+          ...(typeof itemId === "string" && itemId ? { itemId } : {}) },
+      } : {}) });
       if (pending && typeof pending.then === "function") Promise.resolve(pending).catch(reportFailure);
     } catch (error) {
       reportFailure(error);
@@ -79,12 +83,12 @@ export function createGptLiveConsultProgressObserver({ onProgress, abortSignal, 
       if (payload?.isReasoning) return false;
       // Native streaming omits itemId; builtin completion reconciliation adds
       // one for the same cumulative reply. Keep their progress cursor shared.
-      return observe("reply", payload?.text);
+      return observe("reply", payload?.text, false, payload?.itemId);
     },
     onAgentEvent: (event) => {
       const data = event?.data;
       if (event?.stream !== "item" || data?.kind !== "preamble" || data.phase !== "update" && data.phase !== "end") return false;
-      return observe(`preamble:${typeof data.itemId === "string" ? data.itemId : ""}`, data.progressText, data.phase === "end");
+      return observe(`preamble:${typeof data.itemId === "string" ? data.itemId : ""}`, data.progressText, data.phase === "end", data.itemId);
     },
     close: () => { closed = true; },
   };
@@ -102,7 +106,7 @@ export const GPT_LIVE_CONSULT_PROGRESS_HARNESS_ANCHORS = [
   {
     label: "observer lifetime",
     before: "\t\t\tconst result = await params.agentRuntime.runEmbeddedAgent({\n\t\t\t\tsessionId,",
-    after: "\t\t\tconst progressObserver = createGptLiveConsultProgressObserver({ onProgress: params.onProgress, abortSignal, logger: params.logger });\n\t\t\tconst result = await params.agentRuntime.runEmbeddedAgent({\n\t\t\t\tsessionId,",
+    after: "\t\t\tconst progressObserver = createGptLiveConsultProgressObserver({ onProgress: params.onProgress, abortSignal, logger: params.logger, runId });\n\t\t\tconst result = await params.agentRuntime.runEmbeddedAgent({\n\t\t\t\tsessionId,",
   },
   {
     label: "public partial callback",

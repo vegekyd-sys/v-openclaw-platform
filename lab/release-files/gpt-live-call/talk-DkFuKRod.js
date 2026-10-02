@@ -1,3 +1,4 @@
+// gpt-live-consult-continuation-v1: Talk
 import { D as resolveExpiresAtMsFromDurationMs, E as resolveDateTimestampMs, b as parseFiniteNumber, g as isFutureDateTimestampMs, o as asDateTimestampMs } from "./number-coercion-CLj0HTDM.js";
 import { n as resolveGlobalMap } from "./global-singleton-Dc_stLtU.js";
 import { a as asOptionalRecord } from "./record-coerce-DItp3I4t.js";
@@ -198,7 +199,7 @@ function createTalkClientAgentConsultRunner(params) {
 	const { agentId, sessionKey, canonicalKey, storePath } = params.sessionTarget;
 	const authority = params.authority ?? resolveTalkAgentConsultAuthority(void 0);
 	let agentRuntime;
-	const runArgs = async (args, signal, onProgress) => {
+	const runArgs = async (args, signal, onProgress, continuationContext) => {
 		const parsedArgs = parseRealtimeVoiceAgentConsultArgs(args);
 		const voiceSessionId = params.getVoiceSessionId();
 		if (!voiceSessionId) throw new Error("Realtime browser voice session is not ready for agent consult");
@@ -255,6 +256,17 @@ function createTalkClientAgentConsultRunner(params) {
 			...authority,
 			abortSignal: signal,
 			onProgress,
+			continuationContext,
+			onResumeRunStarted: ({ runId, sessionId, timeoutMs }) => {
+				if (params.registerRun) params.registerRun({ runId });
+				else registerClientVoiceConsultRun({ agentId, sessionKey, voiceSessionId, runId, config: params.config });
+				if (!params.ownerConnId) return;
+				const registration = registerChatAbortController({
+					chatAbortControllers: params.context.chatAbortControllers, runId, sessionId, sessionKey: canonicalKey,
+					agentId, timeoutMs, ownerConnId: params.ownerConnId, controlUiVisible: false, kind: "chat-send"
+				});
+				return { abortSignal: registration.controller.signal, cleanup: registration.cleanup };
+			},
 			onRunStarted: ({ runId, sessionId, timeoutMs }) => {
 				activeRunId = runId;
 				emitAgentLifecycle("tool.call", runId);
@@ -297,7 +309,7 @@ function createTalkClientAgentConsultRunner(params) {
 	};
 	return {
 		runArgs,
-		runPrompt: async ({ prompt, signal, onProgress }) => await runArgs({ question: prompt }, signal, onProgress)
+		runPrompt: async ({ prompt, signal, onProgress, continuationContext }) => await runArgs({ question: prompt }, signal, onProgress, continuationContext)
 	};
 }
 function createTalkClientGatewayControlOwner(params) {
@@ -450,10 +462,14 @@ function createTalkClientGatewayControlOwner(params) {
 			signal.throwIfAborted();
 			params.assertConnectionOpen?.();
 		},
-		runAgentConsult: async ({ prompt, signal: consultSignal = new AbortController().signal, onProgress }) => {
+		runAgentConsult: async ({ prompt, signal: consultSignal = new AbortController().signal, onProgress, continuationIdentity }) => {
 			owner.assertOpen();
 			if (owners.get(params.voiceSessionId) !== owner) throw new Error("Realtime voice session is not active");
-			return await params.runAgentConsult({ question: prompt }, consultSignal, onProgress);
+			const continuationContext = continuationIdentity ? {
+				identity: continuationIdentity, ownerConnId: params.connId, voiceSessionId: params.voiceSessionId, ownerGeneration: entryPrefix,
+				isCurrent: () => { owner.assertOpen(); return owners.get(params.voiceSessionId) === owner; }
+			} : void 0;
+			return await params.runAgentConsult({ question: prompt }, AbortSignal.any([consultSignal, signal]), onProgress, continuationContext);
 		},
 		control: {
 			bindBridge: (nextBridge) => {

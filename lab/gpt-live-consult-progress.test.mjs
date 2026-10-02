@@ -125,9 +125,13 @@ test("consult forwards complete public facts before final and leaves unfinished 
   partial({ text: "我已经找到了三个相关文件。后面还有" });
   partial({ text: "内部推理。", isReasoning: true });
   partial({ delta: "不是完整公开 payload" });
-  assert.deepEqual(progress, [
+  assert.deepEqual(progress.map(({ text, kind }) => ({ text, kind })), [
     { text: "我已经找到了三个相关文件。", kind: "commentary" },
   ]);
+  assert.match(progress[0].provenance.runId, /^test:/);
+  assert.equal(progress[0].provenance.source, "reply");
+  assert.equal(progress[0].provenance.sequence, 1);
+  assert.equal(typeof progress[0].provenance.emittedAt, "number");
   finish({ payloads: [{ text: "最后的结果。" }] });
   assert.deepEqual(await pending, { text: "最后的结果。" });
   partial({ text: "完成后的迟到输出。" });
@@ -300,7 +304,7 @@ test("actual Codex date and time fragments reach Live as one complete fact befor
     assert.deepEqual(progress, [], `unfinished timestamp must not be spoken after ${JSON.stringify(delta)}`);
   }
   await projection.handleAssistantDelta({ itemId, delta: "。" });
-  assert.deepEqual(progress, [{ text: "当前时间是 2026-10-02 14:22:15，时区 UTC+08:00。", kind: "commentary" }]);
+  assert.deepEqual(progress.map(({ text, kind }) => ({ text, kind })), [{ text: "当前时间是 2026-10-02 14:22:15，时区 UTC+08:00。", kind: "commentary" }]);
   // The public fact is delivered while the consult promise is still pending.
   finish({ payloads: [{ text: "后台已经完成全部检查。" }] });
   assert.deepEqual(await pending, { text: "后台已经完成全部检查。" });
@@ -380,7 +384,7 @@ test("aborted consult ignores late public partials even when its agent finishes 
   agentEvent({ stream: "item", data: { kind: "preamble", phase: "update", progressText: "旧请求迟到播报。" } });
   finish({ payloads: [{ text: "旧请求最后结果" }] });
   await pending;
-  assert.deepEqual(progress, [{ text: "已经开始。", kind: "commentary" }]);
+  assert.deepEqual(progress.map(({ text, kind }) => ({ text, kind })), [{ text: "已经开始。", kind: "commentary" }]);
 });
 
 test("throwing, rejecting, or pending progress observers cannot delay or fail the final result", async () => {
