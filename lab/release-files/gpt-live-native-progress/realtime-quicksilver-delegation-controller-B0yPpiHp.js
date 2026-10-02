@@ -235,6 +235,14 @@ var OpenAIQuicksilverDelegationController = class {
 	async runDelegation(delegation, signal) {
 		let text;
 		let finished = false;
+		// Only an exact, authorized host cancellation can revoke this delivery
+		// owner. Never infer cancellation from generic worker error strings.
+		const onCanceled = (reason) => {
+			if (finished || !this.isCurrentDelegation(delegation, signal) ||
+				this.consultController?.signal !== signal) return;
+			finished = true;
+			this.consultController.abort(reason ?? new Error("Realtime voice consult cancelled"));
+		};
 		// The host supplies public assistant replies only. Reasoning streams never
 		// enter this callback; commentary here is a host kind, not the native silent
 		// commentary channel. Public progress must use native speakable context.
@@ -257,7 +265,8 @@ var OpenAIQuicksilverDelegationController = class {
 				prompt: delegation.prompt,
 				signal,
 				continuationIdentity: { delegationItemId: delegation.id, delegationGeneration: delegation.generation },
-				onProgress
+				onProgress,
+				onCanceled
 			});
 			if (!this.isCurrentDelegation(delegation, signal)) return;
 			text = boundOpenAIQuicksilverDelegationResult(result.text);

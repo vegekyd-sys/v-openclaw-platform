@@ -75,6 +75,7 @@ test("public incomplete progress arrives before final through the native protoco
   const f = fixture(); f.controller.startDelegation("d1", "查一下");
   const run = f.calls[0];
   assert.equal(typeof run.onProgress, "function");
+  assert.equal(typeof run.onCanceled, "function");
   assert.deepEqual(run.continuationIdentity, { delegationItemId: "d1", delegationGeneration: 1 });
   run.onProgress({ kind: "commentary", text: "已找到三条" });
   assert.deepEqual(f.texts(), ["已找到三条"]);
@@ -374,4 +375,81 @@ test("wire diagnostic hash comes only from successful sends and includes the fix
   assert.equal(sent.textSha256, createHash("sha256").update("已发出。").digest("hex"));
   assert.doesNotMatch(JSON.stringify(sent), /BACKEND_PROGRESS_PENDING|已发出/u);
   f.calls[0].resolve({ text: "完成。" }); await settle();
+});
+
+
+test("trusted exact cancellation revokes current delivery before generic continuation failure", async () => {
+  const diagnostics = [];
+  const f = fixture({onPublicProgressDiagnostic: event => diagnostics.push(event)});
+  f.controller.startDelegation("owner", "request");
+  const run = f.calls[0];
+  run.onProgress({kind: "commentary", text: "测试码等于4323。"});
+  const cancellation = new Error("Authorized run cancelled");
+  run.onCanceled(cancellation);
+  assert.equal(run.signal.aborted, true);
+  assert.equal(run.signal.reason, cancellation);
+  assert.equal(f.controller.stopped, false, "Whole RTC/session remains open");
+  assert.equal(f.sessionAbort.signal.aborted, false);
+  await Promise.resolve().then(() => run.onProgress({kind: "commentary", text: "queued old progress"}));
+  run.reject(new Error("Voice requester continuation ended without a successful final result"));
+  await settle();
+  run.onProgress({kind: "commentary", text: "late old progress"});
+  assert.deepEqual(f.texts(), ["测试码等于4323。"]);
+  assert.equal(f.warnings.length, 0);
+  assert.equal(diagnostics.filter(event => event.kind === "final").length, 0);
+  assert.equal(f.fatal.length, 0);
+});
+
+test("late or duplicate old cancellation cannot revoke a reused-id new delegation", async () => {
+  const f = fixture(); f.controller.startDelegation("same", "first request");
+  const old = f.calls[0], reason = new Error("first exact cancellation");
+  old.onCanceled(reason); old.onCanceled(new Error("duplicate"));
+  assert.equal(old.signal.reason, reason);
+  f.controller.startDelegation("same", "new request");
+  old.onCanceled(new Error("late old cancellation while new task is queued"));
+  old.reject(new Error("generic old wrapper failure")); await settle();
+  assert.equal(f.calls.length, 2);
+  const current = f.calls[1];
+  assert.equal(current.signal.aborted, false);
+  old.onCanceled(new Error("late old cancellation after new task starts"));
+  assert.equal(current.signal.aborted, false);
+  current.onProgress({kind:"commentary",text:"new task progress"});
+  current.resolve({text:"new task final"}); await settle();
+  assert.deepEqual(f.texts(), ["new task progress", "new task final"]);
+  assert.equal(f.controller.stopped, false);
+  assert.equal(f.warnings.length, 0);
+});
+
+test("trusted cancellation also blocks a successful old result and allows a subsequent new call", async () => {
+  const f = fixture(); f.controller.startDelegation("old", "request");
+  const old = f.calls[0]; old.onCanceled();
+  old.resolve({text:"stale success"}); await settle();
+  assert.deepEqual(f.frames, []);
+  f.controller.startDelegation("new", "fresh request");
+  assert.equal(f.calls.length, 2);
+  old.onCanceled(new Error("too late"));
+  assert.equal(f.calls[1].signal.aborted, false);
+  f.calls[1].resolve({text:"fresh final"}); await settle();
+  assert.deepEqual(f.texts(), ["fresh final"]);
+});
+
+test("cancellation-like worker strings remain honest failures without a trusted cancellation callback", async () => {
+  const f = fixture(); f.controller.startDelegation("owner", "request");
+  f.calls[0].reject(new Error("worker request request-1 was cancelled")); await settle();
+  assert.equal(f.texts().length, 1);
+  assert.equal(f.texts()[0], "The agent task failed. Tell the user it did not complete and offer to try again.");
+  assert.equal(f.warnings.length, 1);
+});
+
+test("trusted cancellation after terminal resolution or stopped session cannot affect another owner", async () => {
+  const f = fixture(); f.controller.startDelegation("old", "request");
+  const old = f.calls[0]; old.resolve({text:"done"}); await settle();
+  f.controller.startDelegation("new", "request");
+  old.onCanceled(new Error("cancel terminal old task"));
+  assert.equal(f.calls[1].signal.aborted, false);
+  f.controller.detach();
+  f.calls[1].onCanceled(new Error("cancel detached owner"));
+  assert.equal(f.calls[1].signal.aborted, false, "Detached accepted backend work stays independent");
+  f.calls[1].resolve({text:"late"}); await settle();
+  assert.deepEqual(f.texts(), ["done"]);
 });

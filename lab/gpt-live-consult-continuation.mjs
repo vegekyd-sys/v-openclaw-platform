@@ -2,6 +2,7 @@
 export function createGptLiveConsultContinuationRegistry(deps) {
   const byRun = new Map();
   const byBatch = new Map();
+  const settledVoiceBatches = new Set();
   const byVoice = new Map();
   const voiceGenerations = new Map();
   const byChildTask = new Map();
@@ -30,6 +31,8 @@ export function createGptLiveConsultContinuationRegistry(deps) {
     const batches = new Set();
     const cleanups = new Set();
     let done = false;
+    let cancellationNotified = false;
+    let cancellationAccepted = false;
     let resolve;
     let reject;
     const pending = new Promise((ok, fail) => { resolve = ok; reject = fail; });
@@ -54,7 +57,13 @@ export function createGptLiveConsultContinuationRegistry(deps) {
         if (byRun.get(runId) === binding) byRun.delete(runId);
         if (binding.taskRunId && byChildTask.get(binding.taskRunId) === binding) byChildTask.delete(binding.taskRunId);
       }
-      for (const batch of batches) if (byBatch.get(batch.key) === batch) byBatch.delete(batch.key);
+      for (const batch of batches) {
+        if (byBatch.get(batch.key) === batch) byBatch.delete(batch.key);
+        // A known voice batch must never degrade into ordinary nonvoice
+        // announcement after cancellation or final settlement.
+        settledVoiceBatches.add(batch.key);
+        if (settledVoiceBatches.size > 1024) settledVoiceBatches.delete(settledVoiceBatches.values().next().value);
+      }
       if (byVoice.get(voiceKey) === owner) byVoice.delete(voiceKey);
       owners.delete(owner);
     };
@@ -65,6 +74,19 @@ export function createGptLiveConsultContinuationRegistry(deps) {
       if (failure) { controller.abort(failure); reject(failure); } else resolve(result);
       return true;
     };
+    const cancel = (reason, source = "owner_signal") => {
+      if (done) return false;
+      cancellationAccepted = true;
+      if (!cancellationNotified) {
+        cancellationNotified = true;
+        // This is a host-issued capability, never a string classifier. Revoke
+        // native delivery before rejecting the pending consult or its Worker.
+        try { context.onCanceled?.({ ...owner.identity, source }); } catch {}
+      }
+      const failure = error(reason instanceof Error ? reason.message : "Voice consult cancelled");
+      settle(undefined, failure);
+      return true;
+    };
     const report = (progress, binding) => {
       if (!isCurrent() || binding.isCurrent?.() === false) return;
       const { emittedAt, runId, source, itemId } = progress.provenance ?? {};
@@ -73,20 +95,20 @@ export function createGptLiveConsultContinuationRegistry(deps) {
         role: binding.role };
       return params.onProgress?.({ text: progress.text, kind: "commentary", provenance });
     };
-    const attachRun = ({ runId, sessionKey, sessionId, agentId, role, batch, isCurrent: check, taskRunId, registration }) => {
+    const attachRun = ({ runId, sessionKey, sessionId, agentId, role, batch, isCurrent: check, isTerminal, taskRunId, registration }) => {
       assertCurrent();
       const existing = byRun.get(runId);
       if (existing) {
         if (existing.owner !== owner || existing.role !== role || existing.sessionKey !== sessionKey) throw error("Voice continuation run ownership conflict");
         return existing;
       }
-      const binding = { owner, runId, sessionKey, sessionId, agentId, role, batch, isCurrent: check, taskRunId, sequence: 0 };
+      const binding = { owner, runId, sessionKey, sessionId, agentId, role, batch, isCurrent: check, isTerminal, taskRunId, sequence: 0 };
       bindings.set(runId, binding);
       byRun.set(runId, binding);
       if (taskRunId) byChildTask.set(taskRunId, binding);
       if (registration?.cleanup) cleanups.add(registration.cleanup);
       if (registration?.abortSignal) {
-        const abort = () => owner.abort(registration.abortSignal.reason ?? error("Voice continuation task cancelled"));
+        const abort = () => cancel(registration.abortSignal.reason, "owned_run_signal");
         if (registration.abortSignal.aborted) abort();
         else {
           registration.abortSignal.addEventListener("abort", abort, { once: true });
@@ -113,7 +135,12 @@ export function createGptLiveConsultContinuationRegistry(deps) {
     };
     const finishResult = (result, binding) => {
       assertCurrent();
+      if (result?.meta?.aborted === true) {
+        cancel(error("Voice requester run was aborted"), "aborted_result");
+        return;
+      }
       if (result?.meta?.yielded === true) {
+        binding.yielded = true;
         // Only the actual public yield acknowledgment is eligible; no manufactured progress.
         const acknowledgment = clean(result.meta.yieldAcknowledgment);
         if (acknowledgment) deps.createProgressObserver({ onProgress: (progress) => report({ ...progress,
@@ -122,7 +149,7 @@ export function createGptLiveConsultContinuationRegistry(deps) {
         if (!binding.pendingBatch) throw new Error("Yielded voice consult has no causally accepted requester batch");
         return;
       }
-      if (result?.meta?.aborted || result?.meta?.error || !result || !Array.isArray(result.payloads)) throw new Error("Voice requester continuation ended without a successful final result");
+      if (result?.meta?.error || !result || !Array.isArray(result.payloads)) throw new Error("Voice requester continuation ended without a successful final result");
       if (binding.role === "child") return;
       const text = params.collectVisibleText(result.payloads);
       if (!text) throw new Error("Voice requester continuation returned no speakable final");
@@ -137,15 +164,52 @@ export function createGptLiveConsultContinuationRegistry(deps) {
       onProgress: (progress) => report(progress, bindings.get(params.runId)),
       wait: () => pending,
       abort: (reason) => settle(undefined, reason instanceof Error ? reason : error(String(reason ?? "Voice continuation cancelled"))),
+      cancel,
       finishInitial: (result) => {
         if (done) return pending;
         try { finishResult(result, bindings.get(params.runId)); } catch (failure) { owner.abort(failure); }
         return pending;
       },
     };
+    owner.matchesControl = (target) => context.ownerConnId === target.ownerConnId && params.sessionKey === target.sessionKey &&
+      (target.agentId === undefined || params.agentId === target.agentId) &&
+      (target.runId === undefined || bindings.has(target.runId)) && isCurrent();
+    owner.cancelOwnedRuns = async (executeCancel) => {
+      assertCurrent();
+      // Mint exact run capabilities before revocation. They remain usable only
+      // for this accepted cancellation, this transport and this generation.
+      const terminal = (binding) => binding.yielded === true || binding.completed === true || binding.isTerminal?.() === true;
+      const controlCurrent = (binding, resolvedSessionId) => {
+        if (resolvedSessionId !== undefined && binding.sessionId && binding.sessionId !== resolvedSessionId) return false;
+        if (!deps.isLifecycleCurrent(lifecycleGeneration) || voiceGenerations.get(voiceKey) !== identity.delegationGeneration || binding.isCurrent?.() === false) return false;
+        try { return context.isCurrent() === true && params.isSessionCurrent?.() !== false &&
+          (isCurrent() || cancellationAccepted); } catch { return false; }
+      };
+      const targets = [...bindings.values()].filter((binding) => !terminal(binding)).map((binding) => ({
+        binding, sessionKey: binding.sessionKey,
+        runTarget: { runId: binding.runId, signal: new AbortController().signal,
+          isCurrent: (sessionId) => controlCurrent(binding, sessionId) },
+      }));
+      let aborted = 0;
+      const failures = [];
+      for (const target of targets) {
+        if (terminal(target.binding)) continue;
+        const result = await executeCancel(target, () => cancel(error("Voice consult explicitly cancelled"), "explicit_control"));
+        if (result?.ok === true && result.mode === "cancel" && result.aborted === true) aborted++;
+        else if (!(result?.reason === "no_active_run" && terminal(target.binding))) failures.push(result?.reason ?? "abort_rejected");
+      }
+      if (failures.length) return { ok: false, mode: "cancel", sessionKey: params.sessionKey, active: true, aborted: aborted > 0,
+        reason: "owned_cancel_incomplete", message: "OpenClaw could not confirm cancellation of every owned run.", speak: true, show: true, suppress: false };
+      if (!cancellationAccepted && !cancel(error("Voice continuation wait explicitly cancelled"), "explicit_control")) {
+        return { ok: false, mode: "cancel", sessionKey: params.sessionKey, active: false, aborted: false,
+          reason: "owner_changed", message: "The voice task changed before cancellation.", speak: true, show: true, suppress: false };
+      }
+      return { ok: true, mode: "cancel", sessionKey: params.sessionKey, active: true, aborted: true,
+        message: "Cancelled the active OpenClaw voice task.", speak: true, show: true, suppress: false };
+    };
     byVoice.set(voiceKey, owner);
     owners.add(owner);
-    const abortFromCaller = () => owner.abort(params.abortSignal.reason);
+    const abortFromCaller = () => cancel(params.abortSignal.reason, "owner_signal");
     const timer = setTimeout(() => owner.abort(new Error("Voice requester continuation timed out")), params.timeoutMs);
     timer.unref?.();
     try {
@@ -171,6 +235,7 @@ export function createGptLiveConsultContinuationRegistry(deps) {
     if (previous && previous.runId !== runId) { previous.unsubscribe?.(); byRun.delete(previous.runId); }
     const binding = parent.owner.attachRun({ runId, sessionKey: entry.childSessionKey, sessionId: entry.childSessionId,
       taskRunId: entry.taskRunId ?? runId, role: "child", batch: parent.pendingBatch,
+      isTerminal: () => getCurrentEntry(runId) === entry && (typeof entry.execution?.endedAt === "number" || entry.execution?.status === "terminal"),
       isCurrent: () => getCurrentEntry(runId) === entry && entry.runId === runId && entry.generation === generation &&
         entry.execution?.lifecycleGeneration === lifecycleGeneration && entry.killIntent === undefined && entry.pauseReason !== "sessions_yield" });
     binding.parent = parent;
@@ -189,12 +254,26 @@ export function createGptLiveConsultContinuationRegistry(deps) {
     for (const runId of batchRunIds) byRun.get(runId).batch = batch;
     byBatch.set(batch.key, batch);
   };
+  const assertAcceptedChildBindingsCurrent = (batch) => {
+    if (!batch.accepted) return;
+    for (const { binding } of batch.accepted.values()) {
+      let current = false;
+      try { current = binding.isCurrent?.() !== false; } catch {}
+      if (!current) {
+        const failure = error("Voice harness completion accepted child identity changed");
+        batch.owner.abort(failure);
+        throw failure;
+      }
+    }
+  };
   const capabilityForBatch = (batch) => {
     if (!batch || batch.parent.pendingBatch !== batch || !batch.owner.isCurrent()) return;
+    assertAcceptedChildBindingsCurrent(batch);
     return {
       signal: batch.owner.signal,
       assertCurrent: ({ sessionKey, sessionId }) => {
         batch.owner.assertCurrent();
+        assertAcceptedChildBindingsCurrent(batch);
         if (batch.parent.pendingBatch !== batch || sessionKey !== batch.requesterSessionKey ||
             batch.parent.sessionId && sessionId !== batch.parent.sessionId) {
           const failure = error("Voice requester wake causal ownership changed"); batch.owner.abort(failure); throw failure;
@@ -202,6 +281,7 @@ export function createGptLiveConsultContinuationRegistry(deps) {
       },
       onAccepted: (accepted) => {
         batch.owner.assertCurrent();
+        assertAcceptedChildBindingsCurrent(batch);
         const runId = clean(accepted?.runId);
         if (!runId || batch.acceptedRunId && batch.acceptedRunId !== runId) throw error("Voice requester wake accepted a different replay run");
         batch.acceptedRunId = runId;
@@ -210,12 +290,19 @@ export function createGptLiveConsultContinuationRegistry(deps) {
           registration: batch.resumed ? undefined : batch.owner._registerResume?.({ runId, sessionId: batch.parent.sessionId, timeoutMs: batch.owner._timeoutMs }) });
       },
       finish: (result) => {
-        if (!batch.resumed) { batch.owner.abort(new Error("Voice requester final arrived without an accepted causal run")); return; }
-        try { batch.owner._finish(result, batch.resumed); } catch (failure) { batch.owner.abort(failure); }
+        try {
+          assertAcceptedChildBindingsCurrent(batch);
+          if (!batch.resumed) { batch.owner.abort(new Error("Voice requester final arrived without an accepted causal run")); return; }
+          batch.owner._finish(result, batch.resumed);
+        } catch (failure) { batch.owner.abort(failure); }
       },
     };
   };
-  const resolveWake = (params) => capabilityForBatch(byBatch.get(batchKey(params)));
+  const resolveWake = (params) => {
+    const key = batchKey(params), batch = byBatch.get(key);
+    if (!batch && settledVoiceBatches.has(key)) throw error("Voice requester batch has already settled or been cancelled");
+    return capabilityForBatch(batch);
+  };
   const bindHarnessSpawns = ({ scope, requesterSessionKey, requesterSessionId, requesterTurnRunId, acceptedSessionSpawns, requesterYielded, getChildSessionId }) => {
     const parent = byRun.get(requesterTurnRunId);
     if (!parent || !parent.owner.isCurrent()) return false;
@@ -254,7 +341,8 @@ export function createGptLiveConsultContinuationRegistry(deps) {
   const resolveHarnessCompletion = ({ scope, requesterSessionKey, requesterSessionId, requesterTurnRunId, childRunId, childSessionKey, childSessionId }) => {
     const batch = externalScopes.get(scope);
     if (!batch) return;
-    if (!batch.owner.isCurrent()) return;
+    if (!batch.owner.isCurrent()) throw error("Voice harness completion owner has already settled or been cancelled");
+    assertAcceptedChildBindingsCurrent(batch);
     const child = batch.accepted.get(childRunId);
     if (batch.parent.runId !== requesterTurnRunId || batch.requesterSessionKey !== requesterSessionKey ||
         batch.parent.sessionId && batch.parent.sessionId !== requesterSessionId || !child || !child.legacy ||
@@ -262,6 +350,7 @@ export function createGptLiveConsultContinuationRegistry(deps) {
     // More than one legacy completion is steered into one pending parent turn. A genuine
     // final is accepted only after every accepted child has reported its completion.
     (batch.completedChildren ??= new Set()).add(childRunId);
+    child.binding.completed = true;
     const resolved = capabilityForBatch(batch);
     if (!resolved) return;
     const finish = resolved.finish;
@@ -272,5 +361,10 @@ export function createGptLiveConsultContinuationRegistry(deps) {
       finish(result);
     } };
   };
-  return { createOwner, attachAcceptedChild, bindYieldBatch, resolveWake, bindHarnessSpawns, resolveHarnessCompletion };
+  const resolveOwnedControl = (target) => {
+    const matching = [...owners].filter((owner) => owner.matchesControl(target));
+    if (matching.length > 1) throw error("Voice cancellation owner is ambiguous");
+    return matching[0];
+  };
+  return { createOwner, attachAcceptedChild, bindYieldBatch, resolveWake, bindHarnessSpawns, resolveHarnessCompletion, resolveOwnedControl };
 }

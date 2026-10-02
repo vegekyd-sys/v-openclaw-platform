@@ -1,4 +1,5 @@
 // gpt-live-consult-continuation-v1: Talk
+import { resolveGptLiveVoiceConsultControl } from "./gpt-live-consult-continuation.js";
 import { D as resolveExpiresAtMsFromDurationMs, E as resolveDateTimestampMs, b as parseFiniteNumber, g as isFutureDateTimestampMs, o as asDateTimestampMs } from "./number-coercion-CLj0HTDM.js";
 import { n as resolveGlobalMap } from "./global-singleton-Dc_stLtU.js";
 import { a as asOptionalRecord } from "./record-coerce-DItp3I4t.js";
@@ -48,6 +49,29 @@ import { t as inferSpeechMimeType } from "./speech-mime-DVntQu9L.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import { Buffer as Buffer$1 } from "node:buffer";
 //#region src/gateway/server-methods/talk-client-run-ownership.ts
+async function cancelOwnedGptLiveVoiceConsult(params) {
+	if (params.mode !== "cancel") return;
+	params.assertCurrent?.();
+	const voice = resolveGptLiveVoiceConsultControl({ ownerConnId: params.ownerConnId, sessionKey: params.sessionTarget.canonicalKey,
+		agentId: params.sessionTarget.agentId });
+	if (!voice) return;
+	const runtime = params.controlRuntime ?? (await import("./agent-run-control.runtime.js")).realtimeVoiceControlRuntime;
+	return await voice.cancelOwnedRuns(async ({ sessionKey, runTarget }, onAccepted) => {
+		params.assertCurrent?.();
+		const wrap = (candidate) => candidate && ({ ...candidate, abort: () => {
+			const accepted = candidate.abort();
+			// Notify in the exact abort's synchronous stack, before a Worker
+			// rejection can be mistaken for a new speakable backend failure.
+			if (accepted === true) onAccepted();
+			return accepted;
+		} });
+		return await controlRealtimeVoiceAgentRun({ sessionKey, runTarget, text: params.text, mode: "cancel" }, {
+			...runtime,
+			resolveActiveEmbeddedRunOwnerByRunId: (id) => wrap(runtime.resolveActiveEmbeddedRunOwnerByRunId?.(id)),
+			resolveActiveReplyRunOwnerForSignal: (signal) => wrap(runtime.resolveActiveReplyRunOwnerForSignal?.(signal))
+		});
+	});
+}
 function resolveOwnedActiveTalkRunTarget(params) {
 	const connId = normalizeOptionalString(params.clientConnId);
 	if (!connId) return null;
@@ -364,6 +388,9 @@ function createTalkClientGatewayControlOwner(params) {
 	};
 	const applyControl = async (args) => {
 		const parsed = parseRealtimeVoiceAgentControlToolArgs(args);
+		const voiceCancel = await cancelOwnedGptLiveVoiceConsult({ ...parsed, ownerConnId: params.connId, sessionTarget: params.sessionTarget,
+			assertCurrent: () => { owner.assertOpen(); if (owners.get(params.voiceSessionId) !== owner) throw new Error("Realtime voice session is not active"); } });
+		if (voiceCancel) return voiceCancel;
 		const runTarget = resolveOwnedActiveTalkRunTarget({
 			context: params.context,
 			clientConnId: params.connId,
@@ -462,11 +489,12 @@ function createTalkClientGatewayControlOwner(params) {
 			signal.throwIfAborted();
 			params.assertConnectionOpen?.();
 		},
-		runAgentConsult: async ({ prompt, signal: consultSignal = new AbortController().signal, onProgress, continuationIdentity }) => {
+		runAgentConsult: async ({ prompt, signal: consultSignal = new AbortController().signal, onProgress, continuationIdentity, onCanceled }) => {
 			owner.assertOpen();
 			if (owners.get(params.voiceSessionId) !== owner) throw new Error("Realtime voice session is not active");
 			const continuationContext = continuationIdentity ? {
 				identity: continuationIdentity, ownerConnId: params.connId, voiceSessionId: params.voiceSessionId, ownerGeneration: entryPrefix,
+				onCanceled,
 				isCurrent: () => { owner.assertOpen(); return owners.get(params.voiceSessionId) === owner; }
 			} : void 0;
 			return await params.runAgentConsult({ question: prompt }, AbortSignal.any([consultSignal, signal]), onProgress, continuationContext);
@@ -3063,6 +3091,9 @@ const talkClientHandlers = {
 		if (!assertValidParams(params, validateTalkClientSteerParams, "talk.client.steer", respond)) return;
 		try {
 			const target = sessionMutationAuthorization?.talkSessionTarget ?? prepareTalkSessionTarget(context.getRuntimeConfig(), params.sessionKey);
+			const voiceCancel = await cancelOwnedGptLiveVoiceConsult({ mode: params.mode, text: params.text, ownerConnId: client?.connId,
+				sessionTarget: target, assertCurrent: sessionMutationAuthorization?.assertCurrent });
+			if (voiceCancel) { respond(true, voiceCancel, void 0); return; }
 			const runTarget = resolveOwnedActiveTalkRunTarget({
 				context,
 				clientConnId: client?.connId,

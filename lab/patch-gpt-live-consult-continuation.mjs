@@ -22,8 +22,33 @@ export function createGptLiveContinuationRuntimeSource() {
     ` subscribeRun: onAgentEventForRun, createProgressObserver: createGptLiveConsultProgressObserver,\n` +
     ` getLifecycleGeneration: getAgentEventLifecycleGeneration, isLifecycleCurrent: isAgentEventLifecycleGenerationCurrent,\n` +
     ` onLifecycleRotation: (callback) => registerAgentEventLifecycleRotationHandler("gpt-live-consult-continuation", callback),\n` +
-    `});\nexport const { createOwner: createGptLiveConsultContinuationOwner, attachAcceptedChild: attachGptLiveConsultAcceptedChild, bindYieldBatch: bindGptLiveConsultYieldBatch, resolveWake: resolveGptLiveConsultRequesterWake, bindHarnessSpawns: bindGptLiveHarnessVoiceSpawns, resolveHarnessCompletion: resolveGptLiveHarnessVoiceCompletion } = registry;\n`;
+    `});\nexport const { createOwner: createGptLiveConsultContinuationOwner, attachAcceptedChild: attachGptLiveConsultAcceptedChild, bindYieldBatch: bindGptLiveConsultYieldBatch, resolveWake: resolveGptLiveConsultRequesterWake, bindHarnessSpawns: bindGptLiveHarnessVoiceSpawns, resolveHarnessCompletion: resolveGptLiveHarnessVoiceCompletion, resolveOwnedControl: resolveGptLiveVoiceConsultControl } = registry;\n`;
 }
+
+const cancelVoiceHelper = `async function cancelOwnedGptLiveVoiceConsult(params) {
+\tif (params.mode !== "cancel") return;
+\tparams.assertCurrent?.();
+\tconst voice = resolveGptLiveVoiceConsultControl({ ownerConnId: params.ownerConnId, sessionKey: params.sessionTarget.canonicalKey,
+\t\tagentId: params.sessionTarget.agentId });
+\tif (!voice) return;
+\tconst runtime = params.controlRuntime ?? (await import("./agent-run-control.runtime.js")).realtimeVoiceControlRuntime;
+\treturn await voice.cancelOwnedRuns(async ({ sessionKey, runTarget }, onAccepted) => {
+\t\tparams.assertCurrent?.();
+\t\tconst wrap = (candidate) => candidate && ({ ...candidate, abort: () => {
+\t\t\tconst accepted = candidate.abort();
+\t\t\t// Notify in the exact abort's synchronous stack, before a Worker
+\t\t\t// rejection can be mistaken for a new speakable backend failure.
+\t\t\tif (accepted === true) onAccepted();
+\t\t\treturn accepted;
+\t\t} });
+\t\treturn await controlRealtimeVoiceAgentRun({ sessionKey, runTarget, text: params.text, mode: "cancel" }, {
+\t\t\t...runtime,
+\t\t\tresolveActiveEmbeddedRunOwnerByRunId: (id) => wrap(runtime.resolveActiveEmbeddedRunOwnerByRunId?.(id)),
+\t\t\tresolveActiveReplyRunOwnerForSignal: (signal) => wrap(runtime.resolveActiveReplyRunOwnerForSignal?.(signal))
+\t\t});
+\t});
+}
+`;
 
 export function patchGptLiveContinuationHarness(source) {
   if (source.includes("// gpt-live-consult-continuation-v1: harness")) return source;
@@ -39,13 +64,17 @@ export function patchGptLiveContinuationHarness(source) {
 }
 
 export function patchGptLiveContinuationTalk(source) {
+  if (source.includes("// gpt-live-consult-continuation-v1: Talk")) return source;
   return patch(source, [
+    ["function resolveOwnedActiveTalkRunTarget(params) {", `${cancelVoiceHelper}function resolveOwnedActiveTalkRunTarget(params) {`],
     ["\tconst runArgs = async (args, signal, onProgress) => {", "\tconst runArgs = async (args, signal, onProgress, continuationContext) => {"],
     ["\t\t\tonProgress,\n\t\t\tonRunStarted: ({ runId, sessionId, timeoutMs }) => {", `\t\t\tonProgress,\n\t\t\tcontinuationContext,\n\t\t\tonResumeRunStarted: ({ runId, sessionId, timeoutMs }) => {\n\t\t\t\tif (params.registerRun) params.registerRun({ runId });\n\t\t\t\telse registerClientVoiceConsultRun({ agentId, sessionKey, voiceSessionId, runId, config: params.config });\n\t\t\t\tif (!params.ownerConnId) return;\n\t\t\t\tconst registration = registerChatAbortController({\n\t\t\t\t\tchatAbortControllers: params.context.chatAbortControllers, runId, sessionId, sessionKey: canonicalKey,\n\t\t\t\t\tagentId, timeoutMs, ownerConnId: params.ownerConnId, controlUiVisible: false, kind: "chat-send"\n\t\t\t\t});\n\t\t\t\treturn { abortSignal: registration.controller.signal, cleanup: registration.cleanup };\n\t\t\t},\n\t\t\tonRunStarted: ({ runId, sessionId, timeoutMs }) => {`],
     ["\t\trunPrompt: async ({ prompt, signal, onProgress }) => await runArgs({ question: prompt }, signal, onProgress)", "\t\trunPrompt: async ({ prompt, signal, onProgress, continuationContext }) => await runArgs({ question: prompt }, signal, onProgress, continuationContext)"],
-    ["\t\trunAgentConsult: async ({ prompt, signal: consultSignal = new AbortController().signal, onProgress }) => {", "\t\trunAgentConsult: async ({ prompt, signal: consultSignal = new AbortController().signal, onProgress, continuationIdentity }) => {"],
-    ["\t\t\treturn await params.runAgentConsult({ question: prompt }, consultSignal, onProgress);", `\t\t\tconst continuationContext = continuationIdentity ? {\n\t\t\t\tidentity: continuationIdentity, ownerConnId: params.connId, voiceSessionId: params.voiceSessionId, ownerGeneration: entryPrefix,\n\t\t\t\tisCurrent: () => { owner.assertOpen(); return owners.get(params.voiceSessionId) === owner; }\n\t\t\t} : void 0;\n\t\t\treturn await params.runAgentConsult({ question: prompt }, AbortSignal.any([consultSignal, signal]), onProgress, continuationContext);`],
-  ], "Talk");
+    ["\t\trunAgentConsult: async ({ prompt, signal: consultSignal = new AbortController().signal, onProgress }) => {", "\t\trunAgentConsult: async ({ prompt, signal: consultSignal = new AbortController().signal, onProgress, continuationIdentity, onCanceled }) => {"],
+    ["\t\t\treturn await params.runAgentConsult({ question: prompt }, consultSignal, onProgress);", `\t\t\tconst continuationContext = continuationIdentity ? {\n\t\t\t\tidentity: continuationIdentity, ownerConnId: params.connId, voiceSessionId: params.voiceSessionId, ownerGeneration: entryPrefix,\n\t\t\t\tonCanceled,\n\t\t\t\tisCurrent: () => { owner.assertOpen(); return owners.get(params.voiceSessionId) === owner; }\n\t\t\t} : void 0;\n\t\t\treturn await params.runAgentConsult({ question: prompt }, AbortSignal.any([consultSignal, signal]), onProgress, continuationContext);`],
+    ["\t\tconst parsed = parseRealtimeVoiceAgentControlToolArgs(args);\n\t\tconst runTarget = resolveOwnedActiveTalkRunTarget({", `\t\tconst parsed = parseRealtimeVoiceAgentControlToolArgs(args);\n\t\tconst voiceCancel = await cancelOwnedGptLiveVoiceConsult({ ...parsed, ownerConnId: params.connId, sessionTarget: params.sessionTarget,\n\t\t\tassertCurrent: () => { owner.assertOpen(); if (owners.get(params.voiceSessionId) !== owner) throw new Error("Realtime voice session is not active"); } });\n\t\tif (voiceCancel) return voiceCancel;\n\t\tconst runTarget = resolveOwnedActiveTalkRunTarget({`],
+    ["\t\t\tconst target = sessionMutationAuthorization?.talkSessionTarget ?? prepareTalkSessionTarget(context.getRuntimeConfig(), params.sessionKey);\n\t\t\tconst runTarget = resolveOwnedActiveTalkRunTarget({", `\t\t\tconst target = sessionMutationAuthorization?.talkSessionTarget ?? prepareTalkSessionTarget(context.getRuntimeConfig(), params.sessionKey);\n\t\t\tconst voiceCancel = await cancelOwnedGptLiveVoiceConsult({ mode: params.mode, text: params.text, ownerConnId: client?.connId,\n\t\t\t\tsessionTarget: target, assertCurrent: sessionMutationAuthorization?.assertCurrent });\n\t\t\tif (voiceCancel) { respond(true, voiceCancel, void 0); return; }\n\t\t\tconst runTarget = resolveOwnedActiveTalkRunTarget({`],
+  ], "Talk").replace("// gpt-live-consult-continuation-v1: Talk\n", `// gpt-live-consult-continuation-v1: Talk\nimport { resolveGptLiveVoiceConsultControl } from "${MODULE}";\n`);
 }
 
 export function patchGptLiveContinuationRegistry(source) {

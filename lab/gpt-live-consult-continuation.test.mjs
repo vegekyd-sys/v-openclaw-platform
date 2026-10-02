@@ -7,11 +7,67 @@ import { createGptLiveConsultProgressObserver, patchGptLiveConsultProgressHarnes
 import * as patches from "./patch-gpt-live-consult-continuation.mjs";
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
+
+function setupTwoHarnessChildren() {
+  const f = setup(); const scope = {};
+  const sessions = new Map([["child-session-a", "child-canonical-a"], ["child-session-b", "child-canonical-b"]]);
+  f.registry.bindHarnessSpawns({ scope, requesterSessionKey: f.params.sessionKey, requesterSessionId: f.params.sessionId,
+    requesterTurnRunId: f.params.runId, requesterYielded: true,
+    acceptedSessionSpawns: [{ runId: "child-a", childSessionKey: "child-session-a" }, { runId: "child-b", childSessionKey: "child-session-b" }],
+    getChildSessionId: (key) => sessions.get(key) });
+  f.owner.finishInitial({ meta: { yielded: true }, payloads: [] });
+  const complete = (runId) => f.registry.resolveHarnessCompletion({ scope, requesterSessionKey: f.params.sessionKey,
+    requesterSessionId: f.params.sessionId, requesterTurnRunId: f.params.runId, childRunId: runId,
+    childSessionKey: runId === "child-a" ? "child-session-a" : "child-session-b",
+    childSessionId: runId === "child-a" ? "child-canonical-a" : "child-canonical-b" });
+  return { ...f, sessions, complete };
+}
+
+test("minting a later child completion revokes the owner if an already-completed child identity changed", async () => {
+  const f = setupTwoHarnessChildren();
+  const first = f.complete("child-a"); first.onAccepted({ runId: "parent-resumed" });
+  f.sessions.set("child-session-a", "replacement-a");
+  assert.throws(() => f.complete("child-b"), /accepted child identity changed/);
+  await assert.rejects(f.owner.wait(), /accepted child identity changed/);
+  assert.equal(first.signal.aborted, true); assert.equal(f.listeners.size, 0);
+  first.finish({ meta: {}, payloads: [{ text: "Late final must never pass." }] });
+  assert.equal(f.owner.isCurrent(), false); assert.equal(f.cancellations.length, 0);
+});
+
+test("an already-minted multi-child token rechecks every accepted child before parent final", async () => {
+  const f = setupTwoHarnessChildren();
+  f.complete("child-a").onAccepted({ runId: "parent-resumed" });
+  const last = f.complete("child-b"); last.onAccepted({ runId: "parent-resumed" });
+  f.sessions.set("child-session-a", "replacement-a");
+  last.finish({ meta: {}, payloads: [{ text: "Late final must never pass." }] });
+  await assert.rejects(f.owner.wait(), /accepted child identity changed/);
+  assert.equal(last.signal.aborted, true); assert.equal(f.listeners.size, 0); assert.equal(f.owner.isCurrent(), false);
+});
+
+test("accepted multi-child token rechecks all identities before dispatch and accepted resume", async () => {
+  for (const phase of ["assertCurrent", "onAccepted"]) {
+    const f = setupTwoHarnessChildren(); f.complete("child-a").onAccepted({ runId: "parent-resumed" });
+    const token = f.complete("child-b"); f.sessions.set("child-session-a", "replacement-a");
+    assert.throws(() => phase === "assertCurrent" ? token.assertCurrent({ sessionKey: f.params.sessionKey, sessionId: f.params.sessionId }) :
+      token.onAccepted({ runId: "parent-resumed" }), /accepted child identity changed/);
+    await assert.rejects(f.owner.wait(), /accepted child identity changed/);
+    assert.equal(token.signal.aborted, true); assert.equal(f.listeners.size, 0);
+  }
+});
+
+test("unchanged multi-child identities still return the one causal parent final", async () => {
+  const f = setupTwoHarnessChildren(); f.complete("child-a").onAccepted({ runId: "parent-resumed" });
+  const token = f.complete("child-b"); token.onAccepted({ runId: "parent-resumed" });
+  token.finish({ meta: {}, payloads: [{ text: "Both accepted children verified; same parent final." }] });
+  assert.deepEqual(await f.owner.wait(), { text: "Both accepted children verified; same parent final." });
+  assert.equal(f.listeners.size, 0);
+});
 const fixtureRoot = new URL("./fixtures/gpt-live-continuation/", import.meta.url);
 const registrySource = readFileSync(new URL("subagent-registry-C24yr_PF.js", fixtureRoot), "utf8");
 const wakeSource = readFileSync(new URL("subagent-announce.requester-settle-wake-B2NSziIo.js", fixtureRoot), "utf8");
 const deliverySource = readFileSync(new URL("subagent-announce-delivery-Dosep7Zr.js", fixtureRoot), "utf8");
 const sdkSource = readFileSync(new URL("plugin-sdk/agent-harness-task-runtime.js", fixtureRoot), "utf8");
+const controlSource = readFileSync(new URL("agent-run-control-BeeIeTBf.js", fixtureRoot), "utf8");
 const execute = (source, start, end, deps) => {
   const from = source.indexOf(start); const to = source.indexOf(end, from);
   assert(from >= 0 && to > from, `captured ${start} boundary drifted`);
@@ -21,6 +77,7 @@ const execute = (source, start, end, deps) => {
 
 function setup({ generation = 1, delegationGeneration = 1 } = {}) {
   const listeners = new Map(); const progress = []; const runs = new Map(); const cleanups = [];
+  const cancellations = [];
   const caller = new AbortController(); let current = true; let liveGeneration = generation; let rotate;
   const registry = createGptLiveConsultContinuationRegistry({
     subscribeRun: (runId, callback) => { listeners.set(runId, callback); return () => listeners.delete(runId); },
@@ -30,7 +87,7 @@ function setup({ generation = 1, delegationGeneration = 1 } = {}) {
     onLifecycleRotation: (callback) => { rotate = callback; },
   });
   const context = { identity: { delegationItemId: "delegate-a", delegationGeneration }, ownerConnId: "conn", voiceSessionId: "voice",
-    ownerGeneration: "transport-generation", isCurrent: () => current };
+    ownerGeneration: "transport-generation", isCurrent: () => current, onCanceled: (event) => cancellations.push(event) };
   const params = { continuationContext: context, runId: "parent-a", sessionId: "canonical-a", sessionKey: "agent:makaron:voice", agentId: "makaron",
     abortSignal: caller.signal, timeoutMs: 60000, onProgress: (value) => progress.push(value),
     collectVisibleText: (payloads) => payloads.filter((item) => !item.isReasoning && !item.isCommentary && !item.isError).map((item) => item.text ?? "").join("\n\n"),
@@ -55,8 +112,25 @@ function setup({ generation = 1, delegationGeneration = 1 } = {}) {
   const emit = (runId, text, extra = {}) => listeners.get(runId)?.({ runId, lifecycleGeneration: generation, stream: "assistant", data: { text }, ...extra });
   const wake = (entry = runs.get("child-a")) => registry.resolveWake({ requesterSessionKey: params.sessionKey, requesterAgentId: "makaron",
     batchRunIds: entry.requesterSettleWake.batchRunIds, rearmGeneration: entry.requesterSettleWake.rearmGeneration });
-  return { registry, owner, params, caller, progress, runs, attach, settleTurn, emit, wake, listeners, cleanups,
+  return { registry, owner, params, caller, progress, runs, attach, settleTurn, emit, wake, listeners, cleanups, cancellations,
     replaceOwner: () => { current = false; }, rotate: () => { liveGeneration++; rotate(); } };
+}
+
+function actualCancel(f, active = new Map()) {
+  const control = execute(controlSource, "async function controlRealtimeVoiceAgentRun", "//#endregion", {
+    resolveRealtimeVoiceAgentControlIntent: ({ mode }) => ({ mode }),
+    buildRealtimeVoiceAgentCancelProviderResult: (message) => ({ cancelled: true, message }),
+  });
+  const original = readFileSync(new URL("../release/captured/v2026.9.1-db91.6-background-work-20261002/dist/talk-DkFuKRod.js", import.meta.url), "utf8");
+  const patched = patches.patchGptLiveContinuationTalk(patchGptLiveConsultProgressTalk(original));
+  const helper = execute(patched, "async function cancelOwnedGptLiveVoiceConsult", "function resolveOwnedActiveTalkRunTarget", {
+    resolveGptLiveVoiceConsultControl: f.registry.resolveOwnedControl,
+    controlRealtimeVoiceAgentRun: control,
+  });
+  const controlRuntime = { resolveActiveEmbeddedRunOwnerByRunId: (id) => active.get(id), getDiagnosticSessionActivitySnapshot: () => undefined };
+  const params = { mode: "cancel", text: "Cancel this task", ownerConnId: "conn",
+    sessionTarget: { canonicalKey: f.params.sessionKey, agentId: "makaron" }, controlRuntime };
+  return { helper, control, patched, params, run: (extra = {}) => helper({ ...params, ...extra }) };
 }
 
 function realWake(f, announce) {
@@ -179,13 +253,16 @@ test("actual Worker host SDK completion direct path binds scope + accepted child
   assert.equal((await pendingDelivery).delivered, true);
   assert.deepEqual(await f.owner.wait(), { text: "4928 / 2026 / 10 / 2 / 20 / 43 / 43" });
   assert.equal(f.progress.some((value) => value.text.includes("PRIVATE")), false);
+  await assert.rejects(deliver({ scope, requesterTurnRunId: "parent-a", childRunId: "worker-child-run", childSessionKey, childSessionId,
+    status: "succeeded", result: "duplicate final" }), /already settled/);
 });
 
 test("actual patched harness releases turn admission after yield while keeping voice promise and caller cancellation alive", async () => {
-  for (const cancel of [false, true]) {
+  for (const cancel of [false, true, "aborted", "error"]) {
     const caller = new AbortController(); const scope = {}; const context = { identity: { delegationItemId: "d", delegationGeneration: 1 },
       ownerConnId: "conn", voiceSessionId: "voice", ownerGeneration: "transport", isCurrent: () => true };
-    const observations = { release: 0, cleanup: 0 }; let rootRunId; const registry = createGptLiveConsultContinuationRegistry({
+    const observations = { release: 0, cleanup: 0, canceled: 0 }; context.onCanceled = () => observations.canceled++;
+    let rootRunId; const registry = createGptLiveConsultContinuationRegistry({
       subscribeRun: () => () => {}, createProgressObserver: createGptLiveConsultProgressObserver,
       getLifecycleGeneration: () => 1, isLifecycleCurrent: () => true,
     });
@@ -209,20 +286,31 @@ test("actual patched harness releases turn admission after yield while keeping v
         resolveAgentTimeoutMs: () => 60000, session: { resolveStorePath: () => "/tmp/store", getSessionEntry: () => ({ sessionId: "canonical" }) },
         runEmbeddedAgent: async (params) => {
           rootRunId = params.runId;
+          if (cancel === "aborted") return { payloads: [], meta: { aborted: true } };
+          if (cancel === "error") throw new Error("worker request was cancelled");
           registry.bindHarnessSpawns({ scope, requesterSessionKey: params.sessionKey, requesterSessionId: params.sessionId, requesterTurnRunId: params.runId,
             requesterYielded: true, acceptedSessionSpawns: [{ runId: "child", childSessionKey: "agent:makaron:child" }], getChildSessionId: () => "child-session" });
           return { payloads: [{ text: "已交办" }], meta: { yielded: true } };
         } },
     });
-    await tick(); assert.equal(observations.release, 1); assert.equal(observations.cleanup, 0);
+    pending.catch(() => {});
+    await tick(); assert.equal(observations.release, 1);
+    if (cancel === "aborted" || cancel === "error") {
+      await assert.rejects(pending, cancel === "aborted" ? { name: "AbortError" } : /worker request was cancelled/);
+      assert.equal(observations.canceled, cancel === "aborted" ? 1 : 0); assert.equal(observations.cleanup, 1);
+      continue;
+    }
+    assert.equal(observations.cleanup, 0);
     const token = registry.resolveHarnessCompletion({ scope, requesterSessionKey: "agent:makaron:voice", requesterSessionId: "canonical",
       requesterTurnRunId: rootRunId, childRunId: "child", childSessionKey: "agent:makaron:child", childSessionId: "child-session" });
     if (cancel) {
       caller.abort(new Error("close after yielded admission released"));
       await assert.rejects(pending, /close after yielded admission released/); assert.equal(token.signal.aborted, true);
+      assert.equal(observations.canceled, 1);
     } else {
       token.onAccepted({ runId: "resumed" }); token.finish({ meta: {}, payloads: [{ text: "真正最终结果。" }] });
       assert.deepEqual(await pending, { text: "真正最终结果。" });
+      assert.equal(observations.canceled, 0);
     }
     assert.equal(observations.cleanup, 1);
   }
@@ -248,7 +336,7 @@ test("abort after yield removes all subscriptions and prevents later completion/
   f.caller.abort(new Error("explicit user cancel")); await assert.rejects(f.owner.wait(), /explicit user cancel/);
   assert.equal(token.signal.aborted, true); assert.equal(f.listeners.size, 0);
   f.emit("resume-a", "迟到结果。"); token.finish({ meta: {}, payloads: [{ text: "迟到 final" }] });
-  assert.equal(f.progress.length, 0); assert.equal(f.wake(), undefined);
+  assert.equal(f.progress.length, 0); assert.throws(() => f.wake(), /already settled|cancelled/);
 });
 
 test("canonical requester session reset after yield closes the owner before any child public output", async () => {
@@ -328,7 +416,149 @@ test("actual voice prompt requires verified public stage facts before the next s
   assert.throws(() => prompt({ ...params, args: {} }), /question required/);
 });
 
+test("captured exact run abort revokes Native synchronously before generic Worker error and ignores late output", async () => {
+  const f = setup(); const order = [];
+  f.params.continuationContext.onCanceled = (event) => { order.push("native-revoked"); f.cancellations.push(event); };
+  const candidate = { sessionKey: f.params.sessionKey, sessionId: f.params.sessionId, abort: () => {
+    order.push("exact-abort"); queueMicrotask(() => { order.push("worker-error"); f.owner.abort(new Error("worker request was cancelled")); }); return true;
+  } };
+  const cancel = actualCancel(f, new Map([["parent-a", candidate]]));
+  const pending = assert.rejects(f.owner.wait(), { name: "AbortError" });
+  const result = await cancel.run();
+  assert.equal(result.ok, true); await pending;
+  assert.deepEqual(order, ["exact-abort", "native-revoked", "worker-error"]);
+  assert.equal(f.cancellations.length, 1); assert.equal(f.cancellations[0].source, "explicit_control");
+  assert.equal(f.cancellations[0].delegationItemId, "delegate-a"); assert.equal(f.cancellations[0].delegationGeneration, 1);
+  f.owner.onProgress({ text: "late Worker output", provenance: {} }); f.owner.finishInitial({ meta: {}, payloads: [{ text: "late final" }] });
+  assert.equal(f.progress.length, 0); assert.equal(f.registry.resolveOwnedControl({ ownerConnId: "conn", sessionKey: f.params.sessionKey }), undefined);
+});
+
+test("actual Talk RPC uses the causal cancel helper before the released Harness run selector", async () => {
+  const f = setup(); const cancel = actualCancel(f); const start = cancel.patched.indexOf('\t"talk.client.steer": async');
+  const end = cancel.patched.indexOf('\n\t}\n};', start);
+  assert(start > 0 && end > start);
+  let helperCalls = 0; let legacyCalls = 0; const replies = [];
+  const body = cancel.patched.slice(start, end + 3).replace('"talk.client.steer": async', 'async');
+  const handler = new Function("deps", `with(deps) { return (${body.trim()}); }`)({
+    assertValidParams: () => true, validateTalkClientSteerParams: {}, prepareTalkSessionTarget: () => cancel.params.sessionTarget,
+    cancelOwnedGptLiveVoiceConsult: async (args) => { helperCalls++; assert.equal(args.ownerConnId, "conn"); return { ok: true, mode: "cancel" }; },
+    resolveOwnedActiveTalkRunTarget: () => { legacyCalls++; throw new Error("released admission must not be selected"); },
+  });
+  await handler({ params: { sessionKey: f.params.sessionKey, mode: "cancel", text: "cancel" }, client: { connId: "conn" },
+    context: { getRuntimeConfig: () => ({}) }, respond: (...args) => replies.push(args) });
+  assert.equal(helperCalls, 1); assert.equal(legacyCalls, 0); assert.equal(replies[0][0], true);
+  assert.deepEqual(replies[0][1], { ok: true, mode: "cancel" });
+  f.owner.abort(new Error("test cleanup")); await assert.rejects(f.owner.wait());
+});
+
+test("post-yield cancellation targets only the accepted running child, then revokes the original wait", async () => {
+  const f = setup(); const child = f.attach(); f.settleTurn(); f.owner.finishInitial({ meta: { yielded: true }, payloads: [] });
+  const requested = [];
+  const candidate = { sessionKey: child.childSessionKey, sessionId: "child-session", abort: () => { requested.push("child-a"); return true; } };
+  const cancel = actualCancel(f, new Map([["child-a", candidate]]));
+  const pending = assert.rejects(f.owner.wait(), { name: "AbortError" });
+  const result = await cancel.run(); assert.equal(result.ok, true); await pending;
+  assert.deepEqual(requested, ["child-a"]); assert.equal(f.cancellations.length, 1);
+  assert.equal(f.listeners.size, 0); assert.throws(() => f.wake(), /already settled|cancelled/);
+  f.emit("child-a", "late child fact."); assert.equal(f.progress.length, 0);
+});
+
+test("resumed parent cancellation uses its accepted run instead of the still-registered original run", async () => {
+  const f = setup(); const child = f.attach(); f.settleTurn(); f.owner.finishInitial({ meta: { yielded: true }, payloads: [] });
+  child.execution.status = "terminal"; child.execution.endedAt = Date.now();
+  const wake = f.wake(); wake.onAccepted({ runId: "resumed-parent" });
+  const aborted = [];
+  const cancel = actualCancel(f, new Map([["resumed-parent", { sessionKey: f.params.sessionKey, sessionId: f.params.sessionId,
+    abort: () => { aborted.push("resumed-parent"); return true; } }]]));
+  const pending = assert.rejects(f.owner.wait(), { name: "AbortError" });
+  assert.equal((await cancel.run()).ok, true); await pending;
+  assert.deepEqual(aborted, ["resumed-parent"]); assert.equal(f.cancellations.length, 1);
+  wake.finish({ meta: {}, payloads: [{ text: "late final" }] }); assert.equal(f.progress.length, 0);
+});
+
+test("completed child plus pending parent wake can cancel its wait without a fabricated active backend abort", async () => {
+  const f = setup(); const child = f.attach(); f.settleTurn(); f.owner.finishInitial({ meta: { yielded: true }, payloads: [] });
+  child.execution.status = "terminal"; child.execution.endedAt = Date.now();
+  const pending = assert.rejects(f.owner.wait(), { name: "AbortError" });
+  const result = await actualCancel(f).run(); assert.equal(result.ok, true); await pending;
+  assert.equal(f.cancellations.length, 1); assert.throws(() => f.wake(), /already settled|cancelled/);
+});
+
+test("rejected and unresolved exact aborts stay failed and do not revoke a valid Native delegation", async () => {
+  for (const active of [new Map(), new Map([["parent-a", { sessionKey: "agent:makaron:voice", sessionId: "canonical-a", abort: () => false }]])]) {
+    const f = setup(); const result = await actualCancel(f, active).run();
+    assert.equal(result.ok, false); assert.equal(result.aborted, false); assert.equal(result.reason, "owned_cancel_incomplete");
+    assert.equal(f.cancellations.length, 0); assert.equal(f.owner.isCurrent(), true);
+    f.owner.finishInitial({ meta: {}, payloads: [{ text: "仍可正常完成。" }] }); assert.deepEqual(await f.owner.wait(), { text: "仍可正常完成。" });
+  }
+});
+
+test("trusted aborted results and owned signals notify once; ordinary cancellation-looking errors do not", async () => {
+  for (const source of ["aborted_result", "owned_run_signal", "owner_signal"]) {
+    const f = setup(); const pending = assert.rejects(f.owner.wait(), { name: "AbortError" });
+    if (source === "aborted_result") f.owner.finishInitial({ meta: { aborted: true }, payloads: [] });
+    else if (source === "owner_signal") f.caller.abort(new Error("actual owned signal"));
+    else {
+      const owned = new AbortController(); f.owner.attachRun({ runId: "owned-resume", sessionKey: f.params.sessionKey,
+        sessionId: f.params.sessionId, role: "resumed", registration: { abortSignal: owned.signal } }); owned.abort();
+    }
+    await pending; assert.equal(f.cancellations.length, 1); assert.equal(f.cancellations[0].source, source);
+  }
+  for (const failure of [new Error("worker request was cancelled"), { meta: { error: "cancelled" }, payloads: [] }]) {
+    const f = setup(); if (failure instanceof Error) f.owner.abort(failure); else f.owner.finishInitial(failure);
+    await assert.rejects(f.owner.wait()); assert.equal(f.cancellations.length, 0);
+  }
+});
+
+test("causal cancel rejects wrong connection, unowned run, ambiguous voice and replaced generation", async () => {
+  const f = setup(); const cancel = actualCancel(f);
+  assert.equal(await cancel.run({ ownerConnId: "other-client" }), undefined);
+  assert.equal(f.registry.resolveOwnedControl({ ownerConnId: "conn", sessionKey: f.params.sessionKey, runId: "unrelated-run" }), undefined);
+  assert.equal(await cancel.run({ mode: "steer" }), undefined);
+  const second = f.registry.createOwner({ ...f.params, runId: "other-parent", continuationContext: { ...f.params.continuationContext, voiceSessionId: "other-voice" } });
+  await assert.rejects(cancel.run(), /ambiguous/);
+  second.abort(new Error("test cleanup")); await assert.rejects(second.wait());
+  const newer = f.registry.createOwner({ ...f.params, runId: "new-parent", continuationContext: { ...f.params.continuationContext,
+    identity: { delegationItemId: "new-delegate", delegationGeneration: 2 } } });
+  await assert.rejects(f.owner.wait(), /superseded/); assert.equal(f.cancellations.length, 0);
+  await assert.rejects(f.owner.cancelOwnedRuns(() => { throw new Error("must not run"); }), /no longer current/);
+  newer.abort(new Error("test cleanup")); await assert.rejects(newer.wait());
+});
+
+test("cancelled Native callback recursion is exactly once and a still-running accepted child cannot be silently ignored", async () => {
+  const f = setup(); f.params.continuationContext.onCanceled = (event) => { f.cancellations.push(event); f.caller.abort(); };
+  const pending = assert.rejects(f.owner.wait(), { name: "AbortError" });
+  assert.equal(f.owner.cancel(new Error("explicit"), "explicit_control"), true); await pending;
+  assert.equal(f.cancellations.length, 1);
+  const childCase = setup(); childCase.attach(); childCase.settleTurn(); childCase.owner.finishInitial({ meta: { yielded: true }, payloads: [] });
+  const result = await actualCancel(childCase).run(); assert.equal(result.ok, false); assert.equal(result.reason, "owned_cancel_incomplete");
+  assert.equal(childCase.cancellations.length, 0);
+  childCase.owner.abort(new Error("test cleanup")); await assert.rejects(childCase.owner.wait());
+});
+
+test("actual SDK late completion from a cancelled known voice scope cannot fall through to ordinary announcement", async () => {
+  const f = setup(); const scope = {}; const childSessionKey = "agent:makaron:child"; const childSessionId = "canonical-child";
+  f.registry.bindHarnessSpawns({ scope, requesterSessionKey: f.params.sessionKey, requesterSessionId: f.params.sessionId,
+    requesterTurnRunId: "parent-a", requesterYielded: true,
+    acceptedSessionSpawns: [{ runId: "child-a", childSessionKey }], getChildSessionId: () => childSessionId });
+  f.owner.finishInitial({ meta: { yielded: true }, payloads: [] });
+  const pending = assert.rejects(f.owner.wait(), { name: "AbortError" }); f.caller.abort(); await pending;
+  let ordinaryAnnouncements = 0;
+  const patched = patches.patchGptLiveContinuationTaskSdk(sdkSource);
+  const deliver = execute(patched, "async function deliverAgentHarnessTaskCompletion", "function mapHarnessCompletionStatus", {
+    assertAgentHarnessTaskRuntimeScope: (value) => value, loadRequesterSessionEntry: () => ({ entry: { sessionId: f.params.sessionId } }),
+    resolveGptLiveHarnessVoiceCompletion: f.registry.resolveHarnessCompletion,
+    deliverSubagentAnnouncement: () => { ordinaryAnnouncements++; },
+  });
+  await assert.rejects(deliver({ scope, requesterTurnRunId: "parent-a", childRunId: "child-a", childSessionKey, childSessionId,
+    status: "aborted", result: "cancelled child" }), /already settled|cancelled/);
+  assert.equal(ordinaryAnnouncements, 0);
+  assert.equal(f.registry.resolveHarnessCompletion({ scope: {}, requesterSessionKey: "ordinary-session" }), undefined,
+    "unbound nonvoice scopes retain the original SDK path");
+});
+
 test("captured byte checks, strict patch drift checks and idempotent transforms cover all continuation runtime files", () => {
+  assert.equal(createHash("sha256").update(controlSource).digest("hex"), "03402763a265f7671f8dc932f1c148421ebe7a9a0c19c51cf23239a2628b993b");
   const baseline = JSON.parse(readFileSync(new URL("./gpt-live-consult-continuation-baseline.json", import.meta.url), "utf8"));
   for (const file of baseline.files) {
     const original = readFileSync(new URL(`../${file.source}`, import.meta.url), "utf8");

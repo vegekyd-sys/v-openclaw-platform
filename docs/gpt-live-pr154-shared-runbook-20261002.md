@@ -6,6 +6,10 @@
 
 新版完整 workflow 和 controls 的共享实测目前 **pending**。已有私有样本的父任务恢复证据不能代替提前进度保真、最终数字保真及全部控制案例。最终 source commit、release、hash、receipt 和状态由本轮负责人在本文末尾落定。
 
+用户随后明确共享 VLab 优先交给记忆任务处理线上故障。本任务继续使用独立 candidate，不获取共享 lease、不部署、不重启共享服务；等记忆任务完成并明确交接后再恢复共享接入。私有 v3 的真实 cancel 接口成功后仍出现一次旧 owner 的通用失败播报；该样本保留失败状态。修复以可信取消通知同步撤销 Native 播报资格，并让失效的 voice completion 禁止回落到普通父任务唤醒；真实复验通过前不将取消列为已验收。
+
+取消与多 child 身份轮换修复后的相关回归为 189/189。私有 v4 完整通话的长语音产生了同一 user turn 下两次分阶段委托，第一次先完成随机码，后续走嵌套子任务；固定单父子路径的来源 gate 未通过，保留失败状态，不据此认定产品路径整体失败或强制延迟合法提前委托。独立 cancel v4 完整听到请求但仅口头确认、未 consult；取消按钮未触发，仍属于未覆盖取消。新的通用实时指令要求实际发起工具请求，避免停在口头准备。短单段语音复验仍 pending，验收 gate 不降低。
+
 ## 操作顺序
 
 1. 在任务 worktree 生成候选产物并完成相应回归；先通过真正 H5 的私有完整案例。冻结并推送同一个 PR commit，确认本机 clean HEAD、PR head 与待部署 artifact 一致。真实用例运行期间不修改其代码、指令或产物。
@@ -59,4 +63,3 @@ canonical rollback 不包含本轮 C1 与 trace 事务，不能用于此次成�
 | controls receipt 与未覆盖项 | pending |
 | 用户亲耳验收 | pending |
 | 回退或暂留状态、最终 current、pending 和 lease 交接 | pending |
-

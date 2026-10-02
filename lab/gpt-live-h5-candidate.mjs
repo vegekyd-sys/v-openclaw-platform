@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import net from 'node:net';
-import {spawn} from 'node:child_process';
+import {spawn,execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
+import {gunzipSync} from 'node:zlib';
 import {setTimeout as delay} from 'node:timers/promises';
 import {configureCandidateOpenAIAuth,installCandidateOpenAIAuth} from './gpt-live-call-live-auth.mjs';
 import {GPT_LIVE_CALL_INSTRUCTIONS} from './gpt-live-h5/instructions.mjs';
@@ -15,6 +16,29 @@ const runtime=process.env.VLAB_CANDIDATE_RUNTIME,state=process.env.OPENCLAW_STAT
 assert(runtime&&state&&configPath,'Disposable candidate environment required');
 const scratch=path.join(state,'tmp');fs.mkdirSync(scratch,{recursive:true,mode:0o700});
 for(const key of ['TMPDIR','TMP','TEMP'])process.env[key]=scratch;
+if(process.env.GPT_LIVE_CALL_AUDIO_FIXTURE_GZIP) {
+  const audio=gunzipSync(fs.readFileSync(path.resolve(process.env.GPT_LIVE_CALL_AUDIO_FIXTURE_GZIP)),{maxOutputLength:32*1024**2});
+  assert(audio.subarray(0,4).toString()==='RIFF'&&audio.subarray(8,12).toString()==='WAVE','Synthetic input must be a WAV');
+  const fixture=path.join(state,'synthetic-main-input.wav');fs.writeFileSync(fixture,audio,{mode:0o600,flag:'wx'});
+  process.env.GPT_LIVE_CALL_AUDIO_FIXTURE=fixture;
+}
+const clipsArchive=process.env.GPT_LIVE_H5_USER_CLIPS_ARCHIVE;
+if(clipsArchive) {
+  const names=execFileSync('tar',['-tzf',path.resolve(clipsArchive)],{encoding:'utf8'}).trim().split('\n');
+  const allowed=new Set(['silence.wav',...['long-request','long-child-request','chat','barge','new-greeting'].flatMap(name=>[name+'.wav',name+'.txt'])]);
+  assert(names.length===allowed.size&&names.every(name=>allowed.has(name))&&new Set(names).size===names.length,'Unexpected or missing synthetic clip archive member');
+  const entries=execFileSync('tar',['-tvzf',path.resolve(clipsArchive)],{encoding:'utf8'}).trim().split('\n');
+  let expandedBytes=0;
+  for(const entry of entries) {
+    const fields=entry.trim().split(/\s+/u),size=Number(fields[2]);
+    assert(fields[0].startsWith('-')&&Number.isSafeInteger(size)&&size>=0&&size<=24*1024**2,'Synthetic clip must be a bounded regular file');
+    expandedBytes+=size;
+  }
+  assert(entries.length===names.length&&expandedBytes<=40*1024**2,'Synthetic clip archive size mismatch');
+  const clips=path.join(state,'synthetic-user-clips');fs.mkdirSync(clips,{mode:0o700});
+  execFileSync('tar',['-xzf',path.resolve(clipsArchive),'--no-same-owner','--no-same-permissions','-C',clips]);
+  process.env.GPT_LIVE_H5_USER_CLIPS_DIR=clips;
+}
 process.env.XDG_CACHE_HOME=path.join(state,'cache');fs.mkdirSync(process.env.XDG_CACHE_HOME,{recursive:true,mode:0o700});
 const config=JSON.parse(fs.readFileSync(configPath));
 config.channels={};config.cron={...(config.cron??{}),enabled:false};
@@ -88,17 +112,22 @@ try {
   const cases=(process.env.GPT_LIVE_H5_CASE??'workflow').split(',');
   assert(cases.every(value=>['workflow','cancel','close-reopen','barge-chat'].includes(value)),'Unknown candidate H5 case');
   const evidenceBase=process.env.GPT_LIVE_H5_EVIDENCE_DIR;
+  assert(evidenceBase&&path.isAbsolute(evidenceBase),'Absolute candidate evidence directory required');
+  fs.mkdirSync(evidenceBase,{recursive:true,mode:0o700});
+  const results=[];
   for(const testCase of cases) {
     const helper=testCase==='workflow'?'lab/gpt-live-h5-provenance-smoke.mjs':'lab/gpt-live-h5-control-smoke.mjs';
     const clips=process.env.GPT_LIVE_H5_USER_CLIPS_DIR;
     smoke=spawn(process.execPath,[helper],{env:{...process.env,
       GPT_LIVE_H5_CASE:testCase,GPT_LIVE_H5_EVIDENCE_DIR:cases.length>1?path.join(evidenceBase,testCase):evidenceBase,
-      ...(clips?{GPT_LIVE_H5_USER_CLIPS_DIR:path.resolve(clips)}:{}),
+      ...(clips?{GPT_LIVE_H5_USER_CLIPS_DIR:path.resolve(clips),...(testCase!=='workflow'?{GPT_LIVE_CALL_AUDIO_FIXTURE:path.join(path.resolve(clips),'silence.wav')}:{})}:{}),
       GPT_LIVE_H5_READY:'1',GPT_LIVE_H5_URL:`http://127.0.0.1:${h5port}`,GPT_LIVE_H5_APP_SHA:appSha,GPT_LIVE_H5_GATEWAY_PID:String(gateway.pid),
       GPT_LIVE_H5_RUNTIME_ROOT:runtime+'/openclaw',GPT_LIVE_H5_TRACE_PATH:tracePath,GPT_LIVE_H5_SESSION_PATH:sessionPath},stdio:'inherit'});
     const code=await new Promise((resolve,reject)=>{smoke.once('error',reject);smoke.once('exit',code=>resolve(code));});
-    assert.equal(code,0,'Full native H5 '+testCase+' test failed');
+    results.push({case:testCase,code,passed:code===0});
   }
+  fs.writeFileSync(path.join(evidenceBase,'case-results.json'),JSON.stringify(results,null,2)+'\n',{mode:0o600});
+  assert(results.every(result=>result.passed),'Full native H5 cases failed: '+results.filter(result=>!result.passed).map(result=>result.case).join(', '));
 } catch(error) {
   console.error(JSON.stringify({candidateFailed:error.message,gatewayExit:gateway?.exitCode??null,
     gatewayRecent:recent.slice(-8).map(line=>line.replace(/(token|api.?key|authorization|secret|password)[=: ]+[^\s]+/giu,'$1=[redacted]').replace(/https?:\/\/\S+/giu,'[endpoint]').slice(0,300))}));process.exitCode=1;

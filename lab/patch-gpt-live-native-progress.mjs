@@ -141,6 +141,14 @@ const runDelegationAfter = `\tisCurrentDelegation(delegation, signal) {
 \tasync runDelegation(delegation, signal) {
 \t\tlet text;
 \t\tlet finished = false;
+\t\t// Only an exact, authorized host cancellation can revoke this delivery
+\t\t// owner. Never infer cancellation from generic worker error strings.
+\t\tconst onCanceled = (reason) => {
+\t\t\tif (finished || !this.isCurrentDelegation(delegation, signal) ||
+\t\t\t\tthis.consultController?.signal !== signal) return;
+\t\t\tfinished = true;
+\t\t\tthis.consultController.abort(reason ?? new Error("Realtime voice consult cancelled"));
+\t\t};
 \t\t// The host supplies public assistant replies only. Reasoning streams never
 \t\t// enter this callback; commentary here is a host kind, not the native silent
 \t\t// commentary channel. Public progress must use native speakable context.
@@ -163,7 +171,8 @@ const runDelegationAfter = `\tisCurrentDelegation(delegation, signal) {
 \t\t\t\tprompt: delegation.prompt,
 \t\t\t\tsignal,
 \t\t\t\tcontinuationIdentity: { delegationItemId: delegation.id, delegationGeneration: delegation.generation },
-\t\t\t\tonProgress
+\t\t\t\tonProgress,
+\t\t\t\tonCanceled
 \t\t\t});
 \t\t\tif (!this.isCurrentDelegation(delegation, signal)) return;
 \t\t\ttext = boundOpenAIQuicksilverDelegationResult(result.text);
