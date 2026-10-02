@@ -1,0 +1,16 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/gpt-live-native-progress/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
+      "target": "openclaw/dist/realtime-quicksilver-delegation-controller-B0yPpiHp.js"
+    }
+  ],
+  "tests": [
+    "lab/gpt-live-native-progress.test.mjs"
+  ],
+  "support": [
+    "lab/patch-gpt-live-native-progress.mjs",
+    "lab/fixtures/gpt-live-native-progress/realtime-quicksilver-delegation-controller-B0yPpiHp.js"
+  ],
+  "timeoutSeconds": 120
+}
