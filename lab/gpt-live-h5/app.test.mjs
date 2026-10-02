@@ -60,6 +60,7 @@ async function fixture(t, options = {}) {
   const eventSources = [];
   const contexts = [];
   const sounds = [];
+  const pageEvents = new Map(), beacons = [];
   const intervals = new Map();
   const timeouts = new Map();
   let timerId = 0;
@@ -108,8 +109,8 @@ async function fixture(t, options = {}) {
     createH5DuplexPlaybackGate,
     performance: { now: () => now },
     document: { body, getElementById: element, createElement: () => new Element() },
-    window: { addEventListener() {} },
-    navigator: { mediaDevices: { getUserMedia: () => options.getUserMedia?.() ?? Promise.resolve(stream([track()])) }, sendBeacon() {} },
+    window: { addEventListener: (type, listener) => pageEvents.set(type, listener) },
+    navigator: { mediaDevices: { getUserMedia: () => options.getUserMedia?.() ?? Promise.resolve(stream([track()])) }, sendBeacon: (url, body) => { beacons.push({url,body}); return true; } },
     RTCPeerConnection: Peer,
     AudioContext,
     EventSource,
@@ -137,7 +138,7 @@ async function fixture(t, options = {}) {
     now = at; levels.microphone = microphone; levels.remote = remote;
     for (const value of intervals.values()) if (value.delay === 50) value.callback();
   };
-  return { context, element, body, requests, peers, contexts, sounds, eventSources, intervals, timeouts, meter, setNow: value => {now = value;} };
+  return { context, element, body, requests, peers, contexts, sounds, pageEvents, beacons, eventSources, intervals, timeouts, meter, setNow: value => {now = value;} };
 }
 
 test("stopping before microphone permission returns releases every late track without creating a session", async (t) => {
@@ -567,4 +568,21 @@ test("unrelated wire activity does not rewrite or move unchanged history text", 
   parent.insertBefore = () => {moves++;};
   send({type:"session.context.appended"});
   assert.equal(writes,0); assert.equal(moves,0);
+});
+
+
+test("page navigation closes the active call, meter, event stream, mic, sound and heartbeat", async t => {
+  const f = await fixture(t); await f.context.startCall();
+  const peer=f.peers[0]; peer.connectionState="connected"; peer.onconnectionstatechange();
+  await peer.ontrack({track:track()}); assert(f.intervals.size>0);
+  f.pageEvents.get("pagehide")(); await tick();
+  assert.equal(f.beacons.length,1); assert.equal(f.beacons[0].url,"./api/close");
+  assert.deepEqual(JSON.parse(await f.beacons[0].body.text()),{voiceSessionId:"voice-1"});
+  assert.equal(f.intervals.size,0); assert.equal(f.timeouts.size,0);
+  assert.equal(peer.closed,true); assert.equal(peer.channel.closed,true);
+  assert(peer.tracks.every(value=>value.readyState==="ended"));
+  assert(f.contexts.every(value=>value.state==="closed"));
+  assert.equal(f.sounds[0].disposed,1); assert.equal(f.eventSources[0].closed,true);
+  assert.equal(f.element("remoteAudio").srcObject,null);
+  assert.equal(f.context.__gptLiveDuplexDiagnostics.closed,true);
 });

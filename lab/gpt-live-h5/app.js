@@ -250,9 +250,11 @@ $("cancel").addEventListener("click", async () => {
   catch (error) { if (call === active) setStatus(error.message); }
 });
 window.addEventListener("pagehide", () => {
-  call?.captureAbort?.abort(); call?.capture?.dispose(); void call?.sounds?.dispose();
-  call?.duplex?.dispose();
-  if (!call?.capture) call?.stream?.getTracks().forEach((track) => track.stop()); call?.pc?.close();
-  if (call) navigator.sendBeacon("./api/close", new Blob([JSON.stringify({ voiceSessionId: call.voiceSessionId })], { type: "application/json" }));
+  const active = call;
+  if (!active) return;
+  // Beacon survives navigation; stopCall synchronously releases every local
+  // resource and dial owner before its best-effort asynchronous API cleanup.
+  if (active.voiceSessionId) navigator.sendBeacon("./api/close", new Blob([JSON.stringify({ voiceSessionId: active.voiceSessionId })], { type: "application/json" }));
+  void stopCall();
 });
 fetch("./api/status").then((r) => r.json()).then((s) => { liveReady = s.ready === true; $("badge").textContent = s.ready ? "可以拨号" : "页面预览"; if (!s.ready) setStatus("这是页面预览，真实通话需连接 VLab 候选服务。"); }).catch(() => setStatus("暂时无法连接 VLab，请稍后重试。"));
