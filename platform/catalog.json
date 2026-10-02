@@ -294,6 +294,7 @@
     {"file": "lab/candidate/examples/config.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
     {"file": "lab/candidate/computer-execution-idle.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
     {"file": "lab/candidate/memory-search-fast.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
+    {"file": "lab/candidate/memory-indexer-burst.test.mjs", "reason": "需要 VLab 候选运行时和共享 makaron 记忆文件副本，并要带入 V 上旧版 indexer（support），只能在 vlab.mjs candidate 里跑。"},
     {"file": "lab/candidate/computer-frame-prune.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
     {"file": "lab/candidate/talk-input-stall-static.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
     {"file": "lab/candidate/talk-owner-terminal.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
