@@ -14,7 +14,7 @@
     "test": "node platform/cli.mjs test",
     "check": "node platform/cli.mjs audit",
     "release:check": "node platform/cli.mjs release-check",
-    "dashboard:build": "vite build --config apps/nightshift-dashboard/vite.config.mjs",
+    "dashboard:build": "vite build --config apps/nightshift-dashboard/vite.config.mjs && vite build --config apps/nightshift-dashboard/vite.delivery.config.mjs",
     "dashboard:dev": "vite --config apps/nightshift-dashboard/vite.config.mjs",
     "dashboard:start": "node apps/nightshift-dashboard/server/index.mjs",
     "nightshift:auth": "node scripts/create-nightshift-auth.mjs",
@@ -28,6 +28,7 @@
     "test:nightshift": "node --test packages/nightshift-core/test/*.test.mjs apps/nightshift-dashboard/server/*.test.mjs apps/nightshift-dashboard/client/src/*.test.mjs"
   },
   "dependencies": {
+    "client-zip": "2.5.1",
     "lucide-react": "0.468.0",
     "react": "19.1.1",
     "react-dom": "19.1.1",
