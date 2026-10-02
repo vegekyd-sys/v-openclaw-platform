@@ -1,19 +1,19 @@
 # GPT Live 与 V 的实时通话实验
 
-2026-10-02。本文保留候选阶段的设计与证据。用户随后已授权合入 dev 并共享试跑；最新部署、真实 H5 失败项与回退状态见 [共享试跑记录](gpt-live-shared-trial-20261002.md)。生产 V 与真人听觉验收尚未通过。
+2026-10-02。实验源码已撤回 dev，现为 `codex/gpt-live-streaming-call-pr` 的独立 PR 候选。共享试跑未通过，运行时与配置已回退，本任务占用已释放；共享现由其他任务使用。PR 新基线的 62 项相关测试通过，但完整 yield 续传与进度保真未通过，尚不满足重新合入门槛。历史部署、失败与回退证据见 [共享试跑记录](gpt-live-shared-trial-20261002.md)。
 
 目标是让用户与 GPT Live 连续交谈时，V 能在后台办事，并把可公开的进度和已确认的部分结果及时带回谈话。用户可以在播报中补充、纠正或取消需求，不必等待一次完整的后台回答才能再次开口。首版先验证浏览器通话，再验证手机浏览器；电话接入留给下一阶段。
 
-## 场地判断与当前基线
+## 场地判断与历史基线
 
 本实验需要修改 consult 的输出桥接、任务状态与语音交互代码，属于 V 运行链路改动，应在任务 worktree 开发和独立 candidate 中测试，然后经用户明确授权合入 dev，再进入共享 VLab 最后验收。现有线上网页可用于观察和对照，不应直接热改生产实现。
 
-本任务开始时（2026-10-02）的现场核对结果如下。运行状态会变化，共享写入前重新核对；后续并行部署变化记录在阶段边界。
+本任务开始时（2026-10-02）的现场核对结果如下，仅作历史证据。表内 release、配置、hash 和占用状态不能直接用作未来重试基线；重试前须重新核对现场、当前产物与占用，并取得新一轮改动和共享验收的明确授权。后续并行部署变化记录在阶段边界。
 
-| 项目 | 已核实状态 | 对本实验的影响 |
+| 项目 | 当时已核实状态 | 对本实验的影响 |
 | --- | --- | --- |
 | 共享 VLab | 开始时 `memory-search-1s-20261002` 已 accepted，与 V 为 ALIGNED，当时无 integration lease | 此状态来自本任务现场核对；候选开发不占共享槽位，部署与重启仍需取得 lease |
-| 线上 H5 | `https://openclaw.tianyi.live/voice/`；`openclaw-rtc-h5.service` 活跃，当前 release 为 `65051986429b3b06df199ba520481facde9c2093` | 网页强制使用 `volcengine-rtc-agent` 的 managed room；不是 Gateway 默认模型的直接前端 |
+| 线上 H5 | `https://openclaw.tianyi.live/voice/`；`openclaw-rtc-h5.service` 活跃，当时 release 为 `65051986429b3b06df199ba520481facde9c2093` | 网页强制使用 `volcengine-rtc-agent` 的 managed room；不是 Gateway 默认模型的直接前端 |
 | V 默认 Talk | OpenAI native，exact model 为 `gpt-live-1-codex`，voice 与 speakerVoice 为 `sol` | 首版沿用已有 OAuth、模型、声音与 direct WebRTC 路径，不默换为 `gpt-realtime` 或 API 模型 |
 | H5 consult | 每个浏览器专用 voice H5 session，token 留在服务端；等待最终结果后 HTTP 返回 | 需要改造输出流，不能只替换前端模型名称 |
 | native consult | sideband controller 同样等待完整 `runAgentConsult` 结果后 append | 首版从这里补可公开的流式回调 |
@@ -40,7 +40,7 @@
 
 候选补丁为 consult runner 增加公开输出回调：观察 `onPartialReply.text`，以及严格匹配的公开 `onAgentEvent` preamble（`stream: "item"`，`kind: "preamble"`，`phase: "update" | "end"`，`progressText`）。不接 thought、tool 或 reasoning；公开累计文本先组成完整句子或空白段落事实块，再发送尚未播过的块，不等待整个 consult 结束。内部 `onProgress({ text, kind: "commentary" })` 经 runner 与 owner 传到 native provider，再以 `delegation.context.append` 的 `speakable` 通道回传。
 
-native provider 已对 supersede、generation、abort 和终止后的迟到回调作保护；回调异常不破坏最终答复，旧 caller 的 final 路径保留。2026-10-02 最新 VLab 私有 candidate 实际执行六个测试文件，62/62 通过；receipt 为 `candidate-094bd6c0-fbfe-4141-945c-f42487bb3c50`，base 为 `memory-search-mixed-20261002`，`sharedUnchanged=true`，shared PID 保持 `1302337`。三项 runtime overlay 的 SHA-256 分别为 native `c23c174d6e208dc9af0c3ad252b6eb00ad34e3ff950934bd08d4f381eb4b4d2c`、harness `9101f93860b175145c833d545a0d3602bbd8474cc2395d2c26e43d4d4ad6a47b`、Talk `e8b2df8d97d5351c3d07e95a03388c56bec1699f604b6edf977d73c9cf090c82`。这证明局部执行链路、事实块与镜像回归、H5 生命周期及临时访问凭据处理，不单独证明真实模型已接收更新或用户已听到；完整事实块的真实语音 smoke 仍在运行，暂不记结果。
+native provider 已对 supersede、generation、abort 和终止后的迟到回调作保护；回调异常不破坏最终答复，旧 caller 的 final 路径保留。2026-10-02 VLab 私有 candidate 曾实际执行六个测试文件，62/62 通过；receipt 为 `candidate-094bd6c0-fbfe-4141-945c-f42487bb3c50`，base 为 `memory-search-mixed-20261002`，`sharedUnchanged=true`，当时 shared PID 保持 `1302337`。三项 runtime overlay 的 SHA-256 分别为 native `c23c174d6e208dc9af0c3ad252b6eb00ad34e3ff950934bd08d4f381eb4b4d2c`、harness `9101f93860b175145c833d545a0d3602bbd8474cc2395d2c26e43d4d4ad6a47b`、Talk `e8b2df8d97d5351c3d07e95a03388c56bec1699f604b6edf977d73c9cf090c82`。这证明当时局部执行链路、事实块与镜像回归、H5 生命周期及临时访问凭据处理，不单独证明完整后台委派或用户已听到正确结果；后续真实模型样本见下一节，完整 H5 的失败证据见共享试跑记录。
 
 真实运行暴露了完成镜像的去重边界：native token 流有时没有 itemId，完成时 builtin 产生新 ID；部分输出的 commentary phase 也可能迟到，同一全文由 partial 与 preamble 两个公开 hook 回传。现在 partial 共享累计游标，所有公开 snapshot 额外按规范化空白的全文作相邻去重；两个 source 各自的游标仍推进，以保留后续新增文字和真实修订。回归使用实际 Codex projector 与 builtin delivery，不把这个修复解释成最终语音复述已经解决。
 
@@ -133,10 +133,13 @@ GA 示例仅供将来明确选择 API 路线时参考，不直接发送到当前
 
 以下数值是首版实验目标，不是模型保证或已有成绩。记录客户端播放与服务器任务时间，并报告样本量、p50/p95 和未通过案例。先用可控延迟及已知事实块验证桥接，再用真实 V 的只读 consult 验证完整用户路径。
 
+重新合入前的必过门槛是完整 H5 的 `sessions_spawn → sessions_yield → 子任务完成 → 父任务恢复汇总 → 同一有效 Live 会话收到并播放最终结果`，且提前播报的内容有后台公开输出与真实执行阶段的因果证据。当前这两项均未通过。第一次交办 ack、子任务 completed、字幕或非零 PCM、直接 exec 成功均不能代替这项验收；还须覆盖讲话打断不取消任务、明确取消、owner/generation 失效、迟到结果和重复 completion 不重复发送。
+
 | 案例 | 必须看到的结果 |
 | --- | --- |
 | 普通聊天 | 无需后台时自然接话，不强制每句 consult |
 | 慢后台查询 | 后台尚未结束，用户已听到一个有用的部分结果；进度内容与真实步骤一致 |
+| 子任务 yield 后续传 | 父任务恢复后的真实最终结果回到原 Live 会话；交办 ack 不作 final，旁聊不串入该任务 |
 | 边说边补充 | 播报期间用户补充条件，被理解并用于后续结果 |
 | 纠正需求 | 旧 revision 的迟到结果不播报；最终结果符合纠正后的需求 |
 | 明确取消 | 可取消任务已停止；没有继续吐出旧结果；不可取消状态说清楚 |
@@ -149,6 +152,8 @@ GA 示例仅供将来明确选择 API 路线时参考，不直接发送到当前
 自动测试覆盖公开回调过滤、句子事实块、数字分片、跨 source 镜像去重、supersede、abort、迟到结果、最终发送次数、失败和旧 caller 兼容；H5 还覆盖会话并发创建、凭据留在服务端、失败取消与清理重试。事实块不使用 timer，不 flush 无句尾的数字尾段，不延迟最终答复；底层仍复用现有 native chunk helper。真实验收至少保存一组脱敏时间记录、播放证据与对应后台结果；连接成功、append 发送成功、字幕出现均不能单独证明用户听到了正确内容。
 
 ## 阶段与上线边界
+
+以下流程是后续计划，不能沿用历史基线或本轮原候选的合入批准。当前源码已经撤回 dev，本实验已释放共享槽位，其他任务正在使用；先在独立 PR 候选中修复并通过上述完整续传与进度保真门槛，再由用户决定是否重新合入。重试前重新采集当前 runtime/config/model/插件与共享占用状态，按新授权安排共享最后验收。
 
 1. worktree 完成 native streaming callback、相关候选测试及可审阅补丁。报告分支、commit/hash、测试和未覆盖项，等待用户决定是否合入 dev。2026-10-02 14:22 CST 现场已观察到另一项 `memory-search-mixed-20261002` 由 `claude-memsearch-20261002` 持 lease 进入共享部署并正常重启；本实验的独立 candidate receipt 如实保留 `sharedUnchanged=false` 的观察，不据此声称共享未变化，也不抢占其槽位。阶段状态更正：14:45 CST 后再次核对，共享 accepted release 已为 `memory-search-mixed-20261002`，`pending=null`、integration `lease=null`；最新私有 candidate 在这一新基线上验证且 `sharedUnchanged=true`，此前另一任务部署时的变化证据仍保留。
 2. 获准后取得 integration lease，部署同一候选到共享 VLab，验证真实桌面与手机浏览器交谈、部分播报、纠正、取消和最终结果。保留回滚；结束按平台流程 promotion/alignment 或 rollback。
