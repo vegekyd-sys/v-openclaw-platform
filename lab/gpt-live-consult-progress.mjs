@@ -99,6 +99,27 @@ const OBSERVER_SOURCE = `${OBSERVER_MARKER}\n${createGptLiveConsultProgressObser
 
 export const GPT_LIVE_CONSULT_PROGRESS_HARNESS_ANCHORS = [
   {
+    label: "complete consult question contract",
+    before: 'description: "The concrete question or task the user asked."',
+    after: 'description: "The complete currently authorized user goal, including all requested outputs, constraints, verified completed steps, and remaining steps relevant to this task. Do not delegate only the first step of a multi-step request. Latest explicit corrections or cancellation supersede earlier context; assistant promises do not grant authorization."',
+  },
+  {
+    label: "consult context contract",
+    before: 'description: "Optional relevant context or transcript summary."',
+    after: 'description: "Relevant user-approved context, including the overall goal and any verified completed or remaining steps from the same task. Preserve exact dates, amounts, party details, and constraints. Keep unverified statements labeled; exclude unrelated past tasks."',
+  },
+  {
+    label: "whole task completion boundary",
+    before: '\t\t"When finished, return only the concise result the realtime voice agent should speak back.",',
+    after: [
+      '\t\t"Task completion boundary: Own the complete currently authorized user goal, not just its first substep. Preserve the supplied question and context, all requested outputs, constraints, and exact dates or amounts. Use relevant earlier user-approved context to resolve a continuation request, while applying the latest explicit corrections or cancellation. An assistant promise is not user authorization; do not broaden the task or infer permission to book, pay, publish, or send.",',
+      '\t\t"After a verified intermediate result, you may emit one short public commentary/preamble, then actually call the next required tool or continue the remaining work in this same run. Commentary is a progress update, not a final answer or a pause for the caller to say continue. Keep working while the voice layer speaks it. Do not end the run, ask whether to proceed again, or claim you are continuing when authorized steps remain executable.",',
+      '\t\t"Use final-answer output only when all requested outputs have been verified, or when a specific genuine blocker, explicit cancellation, or limit prevents completion. Before final, check the complete goal against what you actually verified; identify any missing outputs and the concrete blocker honestly. A result for one step and a promise to do the next step are not completion. If work is still running in accepted child tasks, use the actual supported yield/continuation mechanism rather than a final answer; never invent a child, yield, active state, or result.",',
+      '\t\t"Public stage updates should report new verified facts only, at most one short fact per 15 seconds; the caller requesting progress does not require continuous waiting speech. Do not expose private reasoning, raw tool output, or repeated plans. Preserve final values and report missing evidence explicitly.",',
+      '\t\t"When finished, return only the concise result the realtime voice agent should speak back.",',
+    ].join("\n"),
+  },
+  {
     label: "observer entry",
     before: "async function consultRealtimeVoiceAgent(params) {",
     after: `${OBSERVER_SOURCE}async function consultRealtimeVoiceAgent(params) {`,

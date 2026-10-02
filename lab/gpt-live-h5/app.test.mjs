@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
-import { transcriptEvent } from "./events.mjs";
+import { createTranscriptPresentation } from "./transcript-presentation.mjs";
+import { captureDuplexMicrophone } from "./microphone-capture.mjs";
 import { createH5DuplexPlaybackGate } from "./duplex-playback.mjs";
 
 const appSource = readFileSync(new URL("./app.js", import.meta.url), "utf8")
-  .replace(/^import \{ (?:transcriptEvent|createH5DuplexPlaybackGate) \} from "[^"]+";\n/gmu, "");
+  .replace(/^import \{[^\n]+\} from "[^"]+";\n/gmu, "");
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const deferred = () => {
   let resolve;
@@ -14,7 +15,7 @@ const deferred = () => {
   const promise = new Promise((accept, fail) => { resolve = accept; reject = fail; });
   return { promise, resolve, reject };
 };
-const track = (kind = "audio") => ({ kind, stopped: 0, stop() { this.stopped++; } });
+const track = (kind = "audio") => ({ kind, readyState: "live", enabled: true, getSettings: () => ({echoCancellation: true, noiseSuppression: true, autoGainControl: true}), stopped: 0, stop() { this.stopped++; this.readyState = "ended"; } });
 const stream = (tracks) => ({ getTracks: () => tracks, getAudioTracks: () => tracks.filter((item) => item.kind === "audio") });
 
 async function fixture(t, options = {}) {
@@ -29,7 +30,21 @@ async function fixture(t, options = {}) {
     srcObject = null;
     muted = false;
     addEventListener(type, listener) { this.listeners.set(type, listener); }
-    append(child) { this.children.push(child); }
+    scrollTop = 0;
+    clientHeight = 100;
+    append(...children) {
+      for (const child of children) {
+        if (child.parent) child.parent.children = child.parent.children.filter(value => value !== child);
+        this.children.push(child); child.parent = this;
+      }
+    }
+    insertBefore(child, before) {
+      if (child.parent) child.parent.children = child.parent.children.filter(value => value !== child);
+      const index = before ? this.children.indexOf(before) : this.children.length;
+      this.children.splice(index, 0, child); child.parent = this;
+    }
+    remove() { if (this.parent) this.parent.children = this.parent.children.filter(value => value !== this); this.parent = null; }
+    replaceChildren(...children) { for (const child of this.children) child.parent = null; this.children = []; this.append(...children); }
     querySelector() { return null; }
     get scrollHeight() { return this.children.length; }
     play() { return options.play?.() ?? Promise.resolve(); }
@@ -44,6 +59,7 @@ async function fixture(t, options = {}) {
   const peers = [];
   const eventSources = [];
   const contexts = [];
+  const sounds = [];
   const intervals = new Map();
   const timeouts = new Map();
   let timerId = 0;
@@ -83,7 +99,12 @@ async function fixture(t, options = {}) {
     close() { this.closed = true; }
   }
   const context = vm.createContext({
-    transcriptEvent,
+    createTranscriptPresentation, captureDuplexMicrophone,
+    AbortController,
+    createCallSounds: () => {
+      const value = { dialing: 0, pickups: 0, disposed: 0, dial() { this.dialing++; }, connected() { this.pickups++; }, dispose() { this.disposed++; } };
+      sounds.push(value); return value;
+    },
     createH5DuplexPlaybackGate,
     performance: { now: () => now },
     document: { body, getElementById: element, createElement: () => new Element() },
@@ -116,7 +137,7 @@ async function fixture(t, options = {}) {
     now = at; levels.microphone = microphone; levels.remote = remote;
     for (const value of intervals.values()) if (value.delay === 50) value.callback();
   };
-  return { context, element, body, requests, peers, contexts, eventSources, intervals, timeouts, meter, setNow: value => {now = value;} };
+  return { context, element, body, requests, peers, contexts, sounds, eventSources, intervals, timeouts, meter, setNow: value => {now = value;} };
 }
 
 test("stopping before microphone permission returns releases every late track without creating a session", async (t) => {
@@ -206,16 +227,19 @@ test("native transcript added and turn.done update a single row and repeated fin
   const send = (payload) => f.peers[0].channel.onmessage({ data: JSON.stringify(payload) });
   send({ type: "input_transcript.added", item: { id: "fragment-1", text: "请查" } });
   send({ type: "input_transcript.added", item: { id: "fragment-2", text: "周四" } });
-  const conversation = f.element("conversation");
-  assert.equal(conversation.children.length, 1);
-  assert.equal(conversation.children[0].textContent, "你：请查周四");
+  const current = f.element("transcriptCurrentRows"), history = f.element("transcriptHistory");
+  const row = current.children[0];
+  assert.equal(current.children.length, 1);
+  assert.equal(row.parts.text.textContent, "请查周四");
   send({ type: "turn.done", turn: { id: "turn-user-1", role: "user", transcript: "请查周四的日程" } });
   send({ type: "turn.done", turn: { id: "turn-user-1", role: "user", transcript: "请查周四的日程" } });
-  assert.equal(conversation.children.length, 1);
-  assert.equal(conversation.children[0].textContent, "你：请查周四的日程");
+  assert.equal(history.children.length, 1);
+  assert.equal(current.children.length, 0);
+  assert.equal(history.children[0], row, "The same row moves from live content to completed history");
+  assert.equal(row.parts.text.textContent, "请查周四的日程");
   send({ type: "output_transcript.added", item: { id: "assistant-fragment", text: "正在查询" } });
   send({ type: "turn.done", turn: { id: "turn-assistant-1", role: "assistant", transcript: "正在查询你的日程" } });
-  assert.deepEqual(conversation.children.map((row) => row.textContent), ["你：请查周四的日程", "V：正在查询你的日程"]);
+  assert.deepEqual(history.children.map((row) => [row.parts.speaker.textContent, row.parts.text.textContent]), [["你", "请查周四的日程"], ["V", "正在查询你的日程"]]);
 });
 
 test("data channel and event stream callbacks from an old call cannot alter the new call UI", async (t) => {
@@ -236,10 +260,10 @@ test("data channel and event stream callbacks from an old call cannot alter the 
   oldPeer.onconnectionstatechange();
   await tick();
   assert.deepEqual({ status: f.element("status").textContent, badge: f.element("badge").textContent, taskStatus: f.element("taskStatus").textContent }, before);
-  assert.equal(f.element("conversation").children.length, 0);
+  assert.equal(f.element("transcriptHistory").children.length + f.element("transcriptCurrentRows").children.length, 0);
   assert.equal(currentPeer.closed, false);
   currentPeer.channel.onmessage({ data: JSON.stringify({ type: "output_transcript.added", item: { text: "新通话字幕" } }) });
-  assert.equal(f.element("conversation").children[0].textContent, "V：新通话字幕");
+  assert.equal(f.element("transcriptCurrentRows").children[0].parts.text.textContent, "新通话字幕");
 });
 
 test("an old close response cannot reset a new connected call UI or its remote audio", async (t) => {
@@ -468,4 +492,79 @@ test("stopping a muted call clears its meter and gate without muting the replace
   old.channel.onmessage({data: JSON.stringify({type: "turn.created", turn: {role: "user"}})});
   assert.equal(f.element("remoteAudio").muted, false);
   assert.equal(f.peers[1].closed, false);
+});
+
+
+test("dialing can be canceled and pickup is triggered by a real connected state only", async t => {
+  const permission = deferred();
+  let requests = 0;
+  const f = await fixture(t, {getUserMedia: () => requests++ === 0 ? permission.promise : stream([track()])});
+  const pending = f.context.startCall(); await tick();
+  assert.equal(f.body.dataset.callState, "dialing");
+  assert.equal(f.element("stopLabel").textContent, "取消拨号");
+  assert.equal(f.sounds[0].dialing, 1); assert.equal(f.sounds[0].pickups, 0);
+  await f.context.stopCall(); await pending;
+  assert.equal(f.body.dataset.callState, "idle"); assert.equal(f.sounds[0].disposed, 1);
+  const mic = track(); permission.resolve(stream([mic])); await tick();
+  assert.equal(mic.stopped, 1); assert.equal(f.sounds[0].pickups, 0);
+  await f.context.startCall();
+  const next = f.peers[1]; assert.equal(f.sounds[1].pickups, 0, "A completed SDP handshake does not mean pickup");
+  next.connectionState = "connected"; next.onconnectionstatechange();
+  assert.equal(f.body.dataset.callState, "connected");
+  assert.equal(f.element("stopLabel").textContent, "结束通话");
+  assert.equal(f.sounds[1].pickups, 1);
+  await f.context.stopCall();
+  next.onconnectionstatechange(); assert.equal(f.sounds[1].pickups, 1, "Late connection callbacks cannot sound after hangup");
+});
+
+test("a reported disabled AEC track rejects before a paid reservation; metadata excludes device identity", async t => {
+  const mic = track(); mic.getSettings = () => ({echoCancellation: false, deviceId: "private-device", groupId: "private-group"});
+  const f = await fixture(t, {getUserMedia: () => stream([mic])}); await f.context.startCall();
+  assert.equal(f.requests.filter(value => value.route === "session").length, 0);
+  assert(mic.stopped >= 1); assert.equal(f.peers[0].closed, true);
+  assert.match(f.element("status").textContent, /回声消除/u);
+  assert.equal(f.context.__gptLiveDuplexDiagnostics.microphone.processing.echoCancellation, "disabled");
+  assert.doesNotMatch(JSON.stringify(f.context.__gptLiveDuplexDiagnostics), /private-device|private-group/u);
+});
+
+test("transcript renders real text safely and reading history prevents auto scroll", async t => {
+  const f = await fixture(t); await f.context.startCall();
+  const log = f.element("conversation"); Object.defineProperty(log, "scrollHeight", {get: () => 1000}); log.scrollTop = 100;
+  f.peers[0].channel.onmessage({data: JSON.stringify({type:"output_transcript.added", item:{id:"s",text:"<img src=x onerror=alert(1)>"}})});
+  const row = f.element("transcriptCurrentRows").children[0];
+  assert.equal(row.parts.text.textContent, "<img src=x onerror=alert(1)>");
+  assert.equal(row.parts.text.children.length, 0); assert.equal(log.scrollTop, 100);
+  log.scrollTop = 880;
+  f.peers[0].channel.onmessage({data: JSON.stringify({type:"turn.done",turn:{role:"assistant",id:"a",transcript:"安全正文"}})});
+  assert.equal(log.scrollTop, 1000);
+});
+
+
+test("hangup releases the dial owner while an old reservation is still pending", async t => {
+  const old = deferred(), replacement = deferred(); let reservations = 0;
+  const f = await fixture(t, {api: (route, payload, result) => route === "session" ? ++reservations === 1 ? old.promise : replacement.promise : result});
+  const first = f.context.startCall(); await tick();
+  await f.context.stopCall();
+  const second = f.context.startCall(); await tick();
+  assert.equal(f.peers.length, 2, "The visible dial button really starts a replacement without waiting for the old request");
+  old.resolve({voiceSessionId: "voice-1"}); await first;
+  assert.equal(f.peers[1].closed, false); assert.equal(f.body.dataset.callState, "dialing");
+  assert.equal(f.sounds[1].disposed, 0);
+  assert(f.requests.some(value => value.route === "close" && value.payload.voiceSessionId === "voice-1"));
+  await f.context.startCall(); assert.equal(f.peers.length, 2, "The old finally must not unlock the active replacement dial owner");
+  replacement.resolve({voiceSessionId: "voice-2"}); await second;
+  f.peers[1].connectionState = "connected"; f.peers[1].onconnectionstatechange();
+  assert.equal(f.element("badge").textContent, "通话中");
+});
+
+test("unrelated wire activity does not rewrite or move unchanged history text", async t => {
+  const f = await fixture(t); await f.context.startCall();
+  const send = data => f.peers[0].channel.onmessage({data: JSON.stringify(data)});
+  send({type:"turn.done",turn:{role:"assistant",id:"a",transcript:"完成的正文"}});
+  const parent = f.element("transcriptHistory"), row = parent.children[0]; let writes=0, moves=0;
+  const value = row.parts.text.textContent;
+  Object.defineProperty(row.parts.text,"textContent",{get:()=>value,set:()=>{writes++;}});
+  parent.insertBefore = () => {moves++;};
+  send({type:"session.context.appended"});
+  assert.equal(writes,0); assert.equal(moves,0);
 });

@@ -69,3 +69,6 @@ canonical rollback 不包含本轮 C1 与 trace 事务，不能用于此次成�
 | controls receipt 与未覆盖项 | pending |
 | 用户亲耳验收 | pending |
 | 回退或暂留状态、最终 current、pending 和 lease 交接 | pending |
+
+
+第一版 `b9c9bc8` 的真人阶段反馈、第二版改动及已完成的共享回退见 [第二版复核](gpt-live-pr154-revision2-20261003.md)。原入口已到期；不要根据历史 current 表或网页缓存重启体验。expiry 不使用 `TimeoutStartSec=0`，下次采用明确 `1800s` 并验证 actual TimeoutStartUSec。第二版验收必须补充一次请求的实际两步继续执行，以及真实扬声器的回录测试。

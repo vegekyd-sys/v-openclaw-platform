@@ -181,7 +181,7 @@ try{
  const debugPort=fs.readFileSync(debugFile,'utf8').split(/\r?\n/u)[0],targets=await fetch('http://127.0.0.1:'+debugPort+'/json/list',{signal:AbortSignal.timeout(10000)}).then(r=>r.json()),target=targets.find(item=>item.type==='page');
  cdp=new CdpClient(target.webSocketDebuggerUrl);await cdp.connect();await cdp.request('Page.enable');await cdp.request('Runtime.enable');await cdp.request('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
  await cdp.request('Page.addScriptToEvaluateOnNewDocument',{source:probe});await cdp.request('Page.addScriptToEvaluateOnNewDocument',{source:USER_PCM_SOURCE});await cdp.request('Page.navigate',{url:String(url)});
- await waitFor(async()=>evaluate(`document.querySelector('#badge')?.textContent==='可开始通话'`),10000,'Ready H5 page');
+ await waitFor(async()=>evaluate(`document.querySelector('#badge')?.textContent==='可以拨号' && document.body.dataset.callState==='idle'`),10000,'Ready H5 page');
  firstSession=await beginCall();firstPcIndex=firstSession.pcIndex;sessionKey=firstSession.sessionKey;
  const firstClip=await play(controlCase==='close-reopen'?'long-child-request':'long-request');
  let pending,workflow,diagnostics;

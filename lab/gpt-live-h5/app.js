@@ -1,13 +1,15 @@
-import { transcriptEvent } from "./events.mjs";
+import { createTranscriptPresentation } from "./transcript-presentation.mjs";
+import { captureDuplexMicrophone } from "./microphone-capture.mjs";
+import { createCallSounds } from "./call-sounds.mjs";
 import { createH5DuplexPlaybackGate } from "./duplex-playback.mjs";
 
 const $ = (id) => document.getElementById(id);
 let call = null;
-let starting = false;
+let starting = null;
 let liveReady = false;
 const duplexRecoveryMessage = "上一段语音还没确认结束。若仍无声音，请结束通话后重新开始。";
-const rows = new Map();
-const finalIds = new Set();
+const presentation = createTranscriptPresentation();
+const renderedTurns = new Map();
 const tasks = new Set();
 const setStatus = (text) => { $("status").textContent = text; };
 function duplexDiagnostic(active, entry) {
@@ -24,25 +26,51 @@ async function api(route, payload) {
   return result;
 }
 function taskState() {
-  $("taskStatus").textContent = tasks.size ? `V 正在处理 ${tasks.size} 个后台请求，你可以继续说话。` : "";
+  $("taskStatus").textContent = tasks.size ? "后台任务正在继续" : "";
   $("cancel").disabled = tasks.size === 0;
+  $("cancel").hidden = tasks.size === 0;
   $("avatar").src = tasks.size ? "./assets/v-tool-busy-20260922.png" : "./assets/v-idle-nohat-20260922.png";
-  document.body.dataset.avatarState = tasks.size ? "busy" : "idle";
+  document.body.dataset.avatarState = tasks.size > 1 ? "very-busy" : tasks.size ? "busy" : "idle";
 }
-function appendTranscript(item) {
-  if (item.final && item.id && finalIds.has(`${item.role}:${item.id}`)) return;
-  const key = item.role;
-  let row = rows.get(key);
-  if (!row) {
-    $("conversation").querySelector(".empty")?.remove();
-    row = document.createElement("p"); row.className = item.role; rows.set(key, row);
-    $("conversation").append(row);
+function renderTranscript(snapshot) {
+  const log = $("conversation");
+  const follow = log.scrollHeight - log.scrollTop - log.clientHeight < 64;
+  const all = [...snapshot.history, ...snapshot.current];
+  const visibleKeys = new Set(all.map(item => item.key));
+  for (const [key, row] of renderedTurns) if (!visibleKeys.has(key)) { row.remove(); renderedTurns.delete(key); }
+  $("currentLabel").textContent = call ? "正在说" : "最后的片段";
+  $("conversationEmpty").hidden = all.length > 0;
+  $("transcriptCurrent").hidden = snapshot.current.length === 0;
+  for (const [items, parent] of [[snapshot.history, $("transcriptHistory")], [snapshot.current, $("transcriptCurrentRows")]]) {
+    for (const [index, item] of items.entries()) {
+      let row = renderedTurns.get(item.key);
+      if (!row) {
+        row = document.createElement("article");
+        row.className = `transcript-turn ${item.role}`;
+        const meta = document.createElement("div"); meta.className = "transcript-meta";
+        const speaker = document.createElement("span"); speaker.className = "transcript-speaker";
+        const time = document.createElement("time"); time.className = "transcript-time";
+        const text = document.createElement("p"); text.className = "transcript-text";
+        meta.append(speaker, time); row.append(meta, text);
+        row.parts = { speaker, time, text };
+        renderedTurns.set(item.key, row);
+      }
+      const streaming = String(Boolean(call) && !item.complete);
+      if (row.dataset.streaming !== streaming) row.dataset.streaming = streaming;
+      if (row.parts.speaker.textContent !== item.speaker) row.parts.speaker.textContent = item.speaker;
+      if (row.parts.time.textContent !== item.time) row.parts.time.textContent = item.time;
+      const dateTime = new Date(item.at).toISOString();
+      if (row.parts.time.dateTime !== dateTime) row.parts.time.dateTime = dateTime;
+      if (row.parts.text.textContent !== item.text) row.parts.text.textContent = item.text;
+      if (parent.children[index] !== row) parent.insertBefore(row, parent.children[index] ?? null);
+    }
   }
-  const text = item.final ? item.text : (row.dataset.text ?? "") + item.text;
-  row.dataset.text = text;
-  row.textContent = `${item.role === "user" ? "你" : "V"}：${text}`;
-  if (item.final) { rows.delete(key); if (item.id) finalIds.add(`${item.role}:${item.id}`); }
-  $("conversation").scrollTop = $("conversation").scrollHeight;
+  if (follow) log.scrollTop = log.scrollHeight;
+}
+function resetTranscript() {
+  presentation.reset(); renderedTurns.clear();
+  $("transcriptHistory").replaceChildren(); $("transcriptCurrentRows").replaceChildren();
+  renderTranscript(presentation.snapshot());
 }
 function providerMessage(event) {
   let data;
@@ -66,25 +94,30 @@ function providerMessage(event) {
     duplexDiagnostic(active, { type: "native-output-audio-cleared", at });
     active.duplex.notifyOutputAudioCleared(at);
   }
-  const item = transcriptEvent(data);
-  if (item) appendTranscript(item);
+  renderTranscript(presentation.consume(data, Date.now()));
   if (data.type === "error") setStatus("语音服务报告错误，请结束通话后重试。");
 }
 async function stopCall() {
   const active = call; call = null;
+  if (starting === active) starting = null;
   if (active) {
     clearInterval(active.levelTimer); clearInterval(active.heartbeat);
+    active.captureAbort?.abort(); active.capture?.dispose();
+    void active.sounds?.dispose();
     active.duplex?.dispose(); active.duplexDiagnostics.closed = true;
     active.events?.close(); active.channel?.close(); active.pc?.close();
-    active.stream?.getTracks().forEach((track) => track.stop());
+    if (!active.capture) active.stream?.getTracks().forEach((track) => track.stop());
   }
   $("remoteAudio").srcObject = null;
   $("remoteAudio").muted = false;
   tasks.clear(); taskState(); document.body.dataset.voiceState = "idle";
-  rows.clear(); finalIds.clear();
+  document.body.dataset.callState = "idle";
+  renderTranscript(presentation.snapshot());
   $("start").hidden = false; $("start").disabled = false; $("stop").hidden = true;
   $("steerText").disabled = true; $("steer").disabled = true;
-  $("badge").textContent = "可开始通话"; setStatus("可以边聊边补充，也可以随时打断");
+  $("badge").textContent = liveReady ? "可以拨号" : "页面预览";
+  $("startLabel").textContent = "拨号"; $("stopLabel").textContent = "结束通话";
+  setStatus("拨号后，直接说话。");
   if (active) {
     await active.context?.close().catch(() => {});
     if (active.voiceSessionId) await api("close", { voiceSessionId: active.voiceSessionId }).catch(() => {});
@@ -93,8 +126,17 @@ async function stopCall() {
 async function startCall() {
   if (starting || call) return;
   if (!liveReady) { setStatus("当前页面仅作预览，真实通话还未连接 VLab 候选服务。"); return; }
-  starting = true; $("start").disabled = true; $("stop").hidden = false; setStatus("正在打开麦克风并连接 V…");
-  const active = { pc: new RTCPeerConnection() }; call = active;
+  $("start").disabled = true; $("start").hidden = true; $("stop").hidden = false;
+  $("stopLabel").textContent = "取消拨号"; $("badge").textContent = "拨号中";
+  document.body.dataset.callState = "dialing"; setStatus("正在连接 V…");
+  resetTranscript();
+  const active = { pc: new RTCPeerConnection(), captureAbort: new AbortController() }; call = active; starting = active;
+  // Each call owns its sound element; a late play() from an older call cannot
+  // pause or replace the next call's pickup. The page element configures assets.
+  active.soundElement = document.createElement("audio"); active.soundElement.playsInline = true;
+  for (const key of ["ringSrc", "pickupSrc"]) if ($("callSound").dataset[key]) active.soundElement.dataset[key] = $("callSound").dataset[key];
+  active.sounds = createCallSounds({ audioElement: active.soundElement });
+  void active.sounds.dial();
   // Activity metadata stays in this page's memory only. It contains no audio,
   // transcript, session identifiers or claim that the model was interrupted.
   active.duplexDiagnostics = { kind: "local-playback-gate", closed: false, events: [] };
@@ -107,7 +149,12 @@ async function startCall() {
       oldTurnTerminal: entry.oldTurnTerminal, outputDrained: entry.outputDrained });
   } });
   try {
-    active.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    active.capture = await captureDuplexMicrophone({
+      mediaDevices: navigator.mediaDevices, signal: active.captureAbort.signal,
+      isCurrent: () => call === active,
+      onDiagnostics: (metadata) => { if (call === active) active.duplexDiagnostics.microphone = metadata; },
+    });
+    active.stream = active.capture.stream;
     if (call !== active) { active.stream.getTracks().forEach((track) => track.stop()); return; }
     for (const track of active.stream.getAudioTracks()) active.pc.addTrack(track, active.stream);
     const reservation = await api("session"); active.voiceSessionId = reservation.voiceSessionId;
@@ -161,6 +208,9 @@ async function startCall() {
     active.pc.onconnectionstatechange = () => {
       if (call !== active) return;
       if (active.pc.connectionState === "connected") {
+        document.body.dataset.callState = "connected";
+        void active.sounds.connected();
+        $("stopLabel").textContent = "结束通话";
         $("badge").textContent = "通话中"; setStatus("V 正在听，直接说话就好");
         $("start").hidden = true; $("stop").hidden = false;
         $("steerText").disabled = false; $("steer").disabled = false;
@@ -183,7 +233,7 @@ async function startCall() {
     if (call !== active) return;
     active.heartbeat = setInterval(() => { if (call === active) void api("heartbeat", { voiceSessionId: active.voiceSessionId }).catch(() => {}); }, 15000);
   } catch (error) { if (call === active) { await stopCall(); if (!call) setStatus(error.name === "NotAllowedError" ? "请允许麦克风访问后重试。" : error.message); } }
-  finally { starting = false; if (!call) $("start").disabled = false; }
+  finally { if (starting === active) starting = null; if (!call) $("start").disabled = false; }
 }
 $("start").addEventListener("click", startCall);
 $("stop").addEventListener("click", () => void stopCall());
@@ -200,8 +250,9 @@ $("cancel").addEventListener("click", async () => {
   catch (error) { if (call === active) setStatus(error.message); }
 });
 window.addEventListener("pagehide", () => {
+  call?.captureAbort?.abort(); call?.capture?.dispose(); void call?.sounds?.dispose();
   call?.duplex?.dispose();
-  call?.stream?.getTracks().forEach((track) => track.stop()); call?.pc?.close();
+  if (!call?.capture) call?.stream?.getTracks().forEach((track) => track.stop()); call?.pc?.close();
   if (call) navigator.sendBeacon("./api/close", new Blob([JSON.stringify({ voiceSessionId: call.voiceSessionId })], { type: "application/json" }));
 });
-fetch("./api/status").then((r) => r.json()).then((s) => { liveReady = s.ready === true; $("badge").textContent = s.ready ? "可开始通话" : "页面预览"; if (!s.ready) setStatus("这是页面预览，真实通话需连接 VLab 候选服务。"); }).catch(() => setStatus("暂时无法连接 VLab，请稍后重试。"));
+fetch("./api/status").then((r) => r.json()).then((s) => { liveReady = s.ready === true; $("badge").textContent = s.ready ? "可以拨号" : "页面预览"; if (!s.ready) setStatus("这是页面预览，真实通话需连接 VLab 候选服务。"); }).catch(() => setStatus("暂时无法连接 VLab，请稍后重试。"));

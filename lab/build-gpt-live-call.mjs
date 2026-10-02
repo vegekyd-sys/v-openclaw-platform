@@ -48,7 +48,7 @@ export function build({ baseRelease = "memory-search-guards-20261002" } = {}) {
   fixtures('lab/fixtures/gpt-live-native-progress');fixtures('lab/fixtures/gpt-live-completion-context');fixtures('lab/fixtures/gpt-live-continuation');
   const completionCandidate=JSON.parse(readFileSync(resolve(root,'lab/candidate/gpt-live-completion-context.plan.json')));
   writeFileSync(resolve(root, "lab/candidate/gpt-live-call.plan.json"), JSON.stringify({
-    baseRelease, files, tests: ["lab/gpt-live-consult-progress.test.mjs", "lab/gpt-live-native-progress.test.mjs", "lab/gpt-live-h5/server.test.mjs", "lab/gpt-live-h5/app.test.mjs", "lab/gpt-live-h5/duplex-playback.test.mjs", "lab/gpt-live-call-live-auth.test.mjs", "lab/gpt-live-call-live-evidence.test.mjs",
+    baseRelease, files, tests: ["lab/gpt-live-consult-progress.test.mjs", "lab/gpt-live-native-progress.test.mjs", "lab/gpt-live-h5/server.test.mjs", "lab/gpt-live-h5/app.test.mjs", "lab/gpt-live-h5/duplex-playback.test.mjs", "lab/gpt-live-h5/microphone-capture.test.mjs", "lab/gpt-live-h5/transcript-presentation.test.mjs", "lab/gpt-live-h5/call-sounds.test.mjs", "lab/gpt-live-call-live-auth.test.mjs", "lab/gpt-live-call-live-evidence.test.mjs",
       "lab/gpt-live-consult-continuation.test.mjs", "lab/gpt-live-pr-provenance.test.mjs", "lab/gpt-live-pr-config.test.mjs", "lab/gpt-live-pr-trace.test.mjs", "lab/gpt-live-h5-provenance-evidence.test.mjs", "lab/gpt-live-h5-control-evidence.test.mjs", "lab/gpt-live-h5-user-pcm.test.mjs", "lab/gpt-live-h5-control-probe.test.mjs",...completionCandidate.tests],
     support: [...new Set([
       "lab/gpt-live-consult-progress.mjs", "lab/patch-gpt-live-native-progress.mjs",
@@ -57,7 +57,7 @@ export function build({ baseRelease = "memory-search-guards-20261002" } = {}) {
       "release/captured/v2026.9.1-db91.6-background-work-20261002/dist/talk-DkFuKRod.js",
       "release/captured/v2026.9.1-db91.6-background-work-20261002/dist/builtin-openclaw-zQV8Wwjr.js",
       "lab/release-files/background-work-20261002/vlab-codex-parity/run-attempt-D1hJO4fX.js",
-      "lab/gpt-live-h5/server.mjs", "lab/gpt-live-h5/events.mjs", "lab/gpt-live-h5/duplex-playback.mjs", "lab/gpt-live-h5/index.html", "lab/gpt-live-h5/app.js",
+      "lab/gpt-live-h5/server.mjs", "lab/gpt-live-h5/events.mjs", "lab/gpt-live-h5/duplex-playback.mjs", "lab/gpt-live-h5/index.html", "lab/gpt-live-h5/app.js", "lab/gpt-live-h5/styles.css", "lab/gpt-live-h5/microphone-capture.mjs", "lab/gpt-live-h5/transcript-presentation.mjs", "lab/gpt-live-h5/call-sounds.mjs",
       "lab/gpt-live-call-live-auth.mjs",
       "lab/gpt-live-call-live-evidence.mjs",
       "lab/gpt-live-pr-provenance.mjs","lab/gpt-live-pr-config.mjs","lab/gpt-live-pr-trace.mjs","lab/shared/server.mjs","lab/shared/files.mjs","lab/shared/lifecycle.mjs",

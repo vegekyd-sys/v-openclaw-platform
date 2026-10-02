@@ -1,30 +1,70 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#f5edf7"><title>和 V 通话 · GPT Live 实验</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f6f1f8">
+  <title>和 V 通话</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='28'%3EV%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="./styles.css">
-  <style>.live-controls{display:grid;gap:12px;margin-top:16px}.live-controls input{min-width:0;flex:1;border:1px solid #d9cfe0;border-radius:12px;padding:12px;font:inherit;background:#fff}.live-controls form{display:flex;gap:8px}.live-controls button{border:1px solid #d9cfe0;border-radius:12px;padding:10px 14px;font:inherit;background:#fff;color:#513b5c}.live-controls button:disabled{opacity:.45}.task-status{min-height:1.5em;color:#6b477a}.conversation p{white-space:pre-wrap}.conversation .user{color:#775b86}.conversation .assistant{color:#31213d}.experiment-note{font-size:12px;color:#81638e;text-align:center}.call-actions button[hidden]{display:none}@media(max-width:480px){.live-controls form{flex-wrap:wrap}.live-controls input{flex-basis:100%}}</style>
 </head>
-<body data-voice-state="idle" data-avatar-state="idle">
+<body data-voice-state="idle" data-avatar-state="idle" data-call-state="idle">
   <main class="app-shell">
-    <header class="topbar"><a class="wordmark" href="./"><span class="wordmark-mark">V</span><span>V</span></a><span id="badge" class="connection-badge">实验准备中</span></header>
+    <header class="topbar">
+      <a class="wordmark" href="./" aria-label="V 通话首页"><span class="wordmark-mark" aria-hidden="true">V</span><span>V</span></a>
+      <span id="badge" class="connection-badge" role="status">连接中</span>
+    </header>
     <div class="voice-layout">
       <section class="voice-stage" aria-labelledby="voiceTitle">
-        <div class="ambient ambient-one" aria-hidden="true"></div><div class="ambient ambient-two" aria-hidden="true"></div>
-        <div class="portrait-wrap" aria-hidden="true"><span class="sound-ring ring-one"></span><span class="sound-ring ring-two"></span><img id="avatar" src="./assets/v-idle-nohat-20260922.png" alt=""><span class="presence-dot"></span></div>
-        <div class="voice-copy"><p class="eyebrow">V 在这里</p><h1 id="voiceTitle">和 V 通话</h1><p id="status" class="status-text" role="status">可以边聊边补充，也可以随时打断</p></div>
-        <div class="call-actions"><button id="start" class="talk-button" type="button"><span class="mic-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 15.4a3.4 3.4 0 0 0 3.4-3.4V6.4a3.4 3.4 0 1 0-6.8 0V12a3.4 3.4 0 0 0 3.4 3.4Z"/><path d="M5.8 11.6v.5a6.2 6.2 0 0 0 12.4 0v-.5M12 18.3V22M8.8 22h6.4"/></svg></span><span class="button-label">开始通话</span></button><button id="stop" class="stop-button" type="button" hidden><span aria-hidden="true"></span>结束通话</button></div>
-        <p class="experiment-note">GPT Live one · VLab 候选实验</p>
+        <div class="ambient ambient-one" aria-hidden="true"></div>
+        <div class="ambient ambient-two" aria-hidden="true"></div>
+        <div class="portrait-wrap" aria-hidden="true">
+          <span class="sound-ring ring-one"></span><span class="sound-ring ring-two"></span>
+          <img id="avatar" src="./assets/v-idle-nohat-20260922.png" alt="">
+          <span class="presence-dot"></span>
+        </div>
+        <div class="voice-copy">
+          <h1 id="voiceTitle">和 V 通话</h1>
+          <p id="status" class="status-text" role="status">拨号后，直接说话。</p>
+        </div>
+        <div class="call-actions">
+          <button id="start" class="call-button call-start talk-button" type="button">
+            <span class="call-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="m8.5 3.5 2.1 4.4-2.3 2.3a15.5 15.5 0 0 0 5.5 5.5l2.3-2.3 4.4 2.1v3a2 2 0 0 1-2.2 2C10.4 20 4 13.6 3.5 5.7a2 2 0 0 1 2-2.2h3Z"/></svg></span>
+            <span id="startLabel" class="button-label">拨号</span>
+          </button>
+          <button id="stop" class="call-button call-stop stop-button" type="button" hidden>
+            <span class="call-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M3 11.8c5.1-4.4 12.9-4.4 18 0v3.7l-4.5.5-.7-3.2a12.3 12.3 0 0 0-7.6 0l-.7 3.2-4.5-.5v-3.7Z"/></svg></span>
+            <span id="stopLabel" class="button-label">结束通话</span>
+          </button>
+        </div>
       </section>
       <aside class="conversation-panel" aria-labelledby="conversationTitle">
-        <div class="conversation-heading"><div><p class="eyebrow">此刻</p><h2 id="conversationTitle">我们的对话</h2></div></div>
+        <div class="conversation-heading">
+          <h2 id="conversationTitle">对话</h2>
+          <span class="wave-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+        </div>
         <p id="taskStatus" class="task-status" role="status"></p>
-        <div id="conversation" class="conversation"><div class="empty"><p>开始通话后，可以直接说话。</p></div></div>
-        <div class="live-controls"><form id="steerForm"><input id="steerText" aria-label="补充条件" placeholder="也可以在这里补充条件" maxlength="2000" disabled><button id="steer" disabled>补充</button></form><button id="cancel" type="button" disabled>取消后台任务</button></div>
+        <div id="conversation" class="conversation" role="log" aria-label="通话内容" aria-live="polite" aria-relevant="additions text">
+          <div id="conversationEmpty" class="empty"><p>拨号后，对话会显示在这里。</p></div>
+          <div id="transcriptHistory" class="transcript-history"></div>
+          <section id="transcriptCurrent" class="transcript-current" aria-label="正在说的内容" hidden>
+            <h3 id="currentLabel" class="current-label">正在说</h3>
+            <div id="transcriptCurrentRows" class="transcript-current-rows"></div>
+          </section>
+        </div>
+        <div class="live-controls">
+          <form id="steerForm" class="steer-form">
+            <label class="sr-only" for="steerText">补充内容</label>
+            <input id="steerText" placeholder="输入补充内容" maxlength="2000" autocomplete="off" disabled>
+            <button id="steer" class="steer-button" type="submit" disabled>补充</button>
+          </form>
+          <button id="cancel" class="cancel-task" type="button" hidden disabled>取消后台任务</button>
+        </div>
       </aside>
     </div>
     <audio id="remoteAudio" autoplay playsinline></audio>
-  </main><script type="module" src="./app.js"></script>
-</body></html>
+    <audio id="callSound" preload="none" playsinline></audio>
+  </main>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

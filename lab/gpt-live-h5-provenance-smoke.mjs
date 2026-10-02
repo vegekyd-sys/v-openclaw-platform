@@ -124,7 +124,7 @@ try{
   const debugFile=path.join(browserDir,'profile/DevToolsActivePort');const debugDeadline=Date.now()+20000;while(!fs.existsSync(debugFile)&&Date.now()<debugDeadline)await sleep(100);assert(fs.existsSync(debugFile),'Chrome debugger unavailable');
   const debugPort=fs.readFileSync(debugFile,'utf8').split(/\r?\n/u)[0];const targets=await fetch(`http://127.0.0.1:${debugPort}/json/list`,{signal:AbortSignal.timeout(10000)}).then(r=>r.json());const target=targets.find(item=>item.type==='page');assert(target?.webSocketDebuggerUrl);
   cdp=new CdpClient(target.webSocketDebuggerUrl);await cdp.connect();await cdp.request('Page.enable');await cdp.request('Runtime.enable');await cdp.request('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});await cdp.request('Page.addScriptToEvaluateOnNewDocument',{source:probe});await cdp.request('Page.navigate',{url:String(url)});
-  const readyDeadline=Date.now()+10000;let ready=false;while(Date.now()<readyDeadline){ready=await evaluate(`document.querySelector('#badge')?.textContent==='可开始通话'`);if(ready)break;await sleep(200)}assert(ready,'H5 is not connected to ready deployment');
+  const readyDeadline=Date.now()+10000;let ready=false;while(Date.now()<readyDeadline){ready=await evaluate(`document.querySelector('#badge')?.textContent==='可以拨号' && document.body.dataset.callState==='idle'`);if(ready)break;await sleep(200)}assert(ready,'H5 is not connected to ready deployment');
   await evaluate(`document.getElementById('start').click()`);
   const deadline=Date.now()+180000;let state,workflow,diagnostics=[],early,finalProof;
   while(Date.now()<deadline){

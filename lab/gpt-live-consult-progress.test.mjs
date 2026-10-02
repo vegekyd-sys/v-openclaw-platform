@@ -25,6 +25,13 @@ function executeFunction(source, startAnchor, endAnchor, dependencies) {
 }
 
 const patchedObserver = executeFunction(patchedHarness, "function createGptLiveConsultProgressObserver", "async function consultRealtimeVoiceAgent", {});
+const readConsultStringArg = executeFunction(harnessSource, "function readConsultStringArg", "//#endregion", {
+  normalizeOptionalString: (value) => typeof value === "string" && value.trim() ? value.trim() : undefined,
+});
+const parseConsultArgs = executeFunction(harnessSource, "function parseRealtimeVoiceAgentConsultArgs", "/** Build the plain chat message", { readConsultStringArg });
+const actualConsultPrompt = executeFunction(patchedHarness, "function buildRealtimeVoiceAgentConsultPrompt", "/** Collect only visible answer text", {
+  parseRealtimeVoiceAgentConsultArgs: parseConsultArgs,
+});
 
 function createNativeProjection(emit) {
   const start = nativeProjectionSource.indexOf("var CodexAssistantProjection = class {");
@@ -49,7 +56,8 @@ function createBuiltinDelivery(emit, state = { assistantTexts: [], assistantMess
   return createDelivery({ params: { runId: "same-consult" }, state, log: {} });
 }
 
-function createHarnessRuntime({ onProgress, runEmbeddedAgent, signal = new AbortController().signal }) {
+function createHarnessRuntime({ onProgress, runEmbeddedAgent, signal = new AbortController().signal,
+  args = { question: "Consult question" }, transcript = [] }) {
   // Replace only dynamic import boundaries. All patched consult and observer logic executes unchanged.
   const source = patchedHarness.replace(
     'const [{ beginSessionWorkAdmission }, { resolveSessionWorkStartError }] = await Promise.all([import("./session-lifecycle-admission-DCnoxd2o.js"), import("./lifecycle-7GS52a1a.js")]);',
@@ -67,7 +75,7 @@ function createHarnessRuntime({ onProgress, runEmbeddedAgent, signal = new Abort
     resolveRealtimeVoiceAgentConsultSessionEntry: async () => ({ sessionId: "session" }),
     deliveryContextFromSession: () => undefined,
     resolveRealtimeVoiceAgentSandboxSessionKey: () => "sandbox",
-    buildRealtimeVoiceAgentConsultPrompt: () => "Consult question",
+    buildRealtimeVoiceAgentConsultPrompt: actualConsultPrompt,
     collectRealtimeVoiceAgentConsultVisibleText: (payloads) => payloads.map((payload) => payload.text ?? "").join(""),
     randomUUID: () => "uuid",
   };
@@ -76,6 +84,10 @@ function createHarnessRuntime({ onProgress, runEmbeddedAgent, signal = new Abort
     observations,
     run: () => consult({
       cfg: {},
+      args,
+      transcript,
+      surface: "a browser Talk session",
+      userLabel: "User",
       sessionKey: "voice:test",
       runIdPrefix: "test",
       abortSignal: signal,
@@ -99,6 +111,48 @@ test("patch applies to current captured runtime, is idempotent, and rejects part
   assert.equal(patchGptLiveConsultProgressTalk(patchedTalk), patchedTalk);
   assert.throws(() => patchGptLiveConsultProgressHarness(harnessSource.replace("\t\t\t\tagentDir,", "\t\t\t\tagentDir: changed,")), /anchor drifted/);
   assert.throws(() => patchGptLiveConsultProgressTalk(patchedTalk.replace("runArgs({ question: prompt }, signal, onProgress)", "runArgs({ question: prompt }, signal)")), /partial/);
+});
+
+test("captured consult owns both authorized steps; public stage delivery does not settle before the next tool and final", async () => {
+  const question = "请比较 2026-10-08 去程与 2026-10-10 回程；两名成人、一名儿童；逐步查完后给含税合计，不预订。";
+  const context = "完整目标：去程 + 回程 + 合计。已验证：去程 590 CNY/人。剩余：回程含税实价及全家合计；不能把单程作为整体完成。";
+  const events = [];
+  let releaseSecondTool;
+  const secondTool = new Promise((resolve) => { releaseSecondTool = resolve; });
+  let settled = false;
+  const runtime = createHarnessRuntime({
+    args: { question, context, responseStyle: "简短中文，保留 CNY 数字" },
+    transcript: [{ role: "user", text: "查完整去回程，不要付款。" }, { role: "assistant", text: "先查去程。" }],
+    onProgress: (value) => {
+      events.push(["public-stage", value.text]);
+      return true;
+    },
+    runEmbeddedAgent: async (options) => {
+      assert(options.prompt.includes(`User request:\n${question}`));
+      assert(options.prompt.includes(`Additional realtime context:\n${context}`));
+      assert(options.prompt.includes("User: 查完整去回程，不要付款。"));
+      assert.match(options.prompt, /Own the complete currently authorized user goal/);
+      assert.match(options.prompt, /actually call the next required tool.*same run/);
+      assert.match(options.prompt, /final-answer output only when all requested outputs have been verified/);
+      assert.equal(options.runId.startsWith("test:"), true);
+      options.onAgentEvent({ stream: "item", data: { kind: "preamble", phase: "end", itemId: "outbound-fact", progressText: "去程含税 590 CNY/人已核对。" } });
+      events.push(["next-tool-started", options.runId]);
+      const returnPrice = await secondTool;
+      events.push(["next-tool-result", returnPrice]);
+      return { payloads: [{ text: `去程 590 CNY/人，回程 ${returnPrice} CNY/人；三人含税合计 4140 CNY。` }] };
+    },
+  });
+  const pending = runtime.run().then((value) => { settled = true; return value; });
+  await nextTick();
+  assert.equal(settled, false, "a delivered stage sentence must not complete the consult");
+  assert.equal(runtime.observations.cleanup, 0);
+  assert.equal(runtime.observations.releases, 0);
+  assert.deepEqual(events.map(([name]) => name), ["public-stage", "next-tool-started"]);
+  releaseSecondTool(790);
+  assert.deepEqual(await pending, { text: "去程 590 CNY/人，回程 790 CNY/人；三人含税合计 4140 CNY。" });
+  assert.deepEqual(events.map(([name]) => name), ["public-stage", "next-tool-started", "next-tool-result"]);
+  assert.equal(runtime.observations.cleanup, 1);
+  assert.equal(runtime.observations.releases, 1);
 });
 
 test("consult forwards complete public facts before final and leaves unfinished text for final delivery", async () => {
@@ -452,6 +506,21 @@ test("Talk runArgs and runPrompt preserve the progress callback and abort signal
   assert.deepEqual(calls.map((call) => call.args.question), ["first", "second"]);
   assert(calls.every((call) => call.abortSignal === signal && call.onProgress === onProgress));
   assert.equal(progress.length, 2);
+});
+
+test("actual Talk consult transport preserves the full authorized goal and context rather than extracting the first step", async () => {
+  const calls = [];
+  const runner = createRunner(async (options) => { calls.push(options); return { text: "真实已结束结果，原样保留" }; });
+  const signal = new AbortController().signal;
+  const question = "比较 2026-10-08 上海到台北去程 + 2026-10-10 回程 + 十月八至十日酒店，2 成人 / 1 儿童。";
+  const context = "已授权整体目标：机票和酒店的具体实价；去程已验证 590 CNY；剩余回程与酒店，不付款或预订。";
+  const args = { question, context, responseStyle: "中文，保留精确数字、日期和币种", confirmationId: "server-issued" };
+  assert.deepEqual(await runner.runArgs(args, signal), { text: "真实已结束结果，原样保留" });
+  assert.deepEqual(calls[0].args, args);
+  const nativePrompt = `${question}\n\nContext:\n${context}\n\n剩余步骤：核对回程、核对酒店、合并结果。`;
+  await runner.runPrompt({ prompt: nativePrompt, signal });
+  assert.equal(calls[1].args.question, nativePrompt, "the native provider's complete delegation input must remain intact");
+  assert(calls.every((call) => call.abortSignal === signal));
 });
 
 test("Gateway owner forwards the same native-delegation observer through the actual Talk runner", async () => {
