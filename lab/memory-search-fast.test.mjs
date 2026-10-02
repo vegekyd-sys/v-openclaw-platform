@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
-import { patchKnnChild, patchKnnQueryModule, patchSearchEmbeddingOverlap, patchSessionVisibilityFastPath, patchSpareKnnChild, patchHybridRescoring, patchWeightedTermCoverage } from './patch-memory-search-fast.mjs';
+import { patchKnnChild, patchKnnQueryModule, patchSearchEmbeddingOverlap, patchSessionVisibilityFastPath, patchSpareKnnChild, patchHybridRescoring, patchWeightedTermCoverage, patchCoverageGuards } from './patch-memory-search-fast.mjs';
 
 const read = (rel) => fs.readFileSync(new URL(rel, import.meta.url), 'utf8');
 const sha = (value) => createHash('sha256').update(value).digest('hex');
@@ -111,4 +111,30 @@ test('coverage terms are Han bigrams plus letter runs, weighted by sampled IDF',
   assert(wMemory < 0.01 && wTianyi > wMemory && wRare > wTianyi);
   const weights = [wMemory, wTianyi, wRare];
   assert(lib.weightedTermCoverage(terms, weights, docs[7]) > lib.weightedTermCoverage(terms, weights, docs[0]));
+});
+
+const managerGuards = read('./release-files/memory-search-guards/manager-runtime.js');
+
+test('memory-search-guards adds only the coverage guards to memory-search-weighted', () => {
+  assert.equal(patchCoverageGuards(managerWeighted), managerGuards);
+  assert.throws(() => patchCoverageGuards(managerGuards), /fallback coverage terms/);
+  // Ties among full-coverage hits keep a quarter of the BM25 score.
+  assert.match(managerGuards, /const coverage = \.75 \* weightedTermCoverage\(terms, weights, text\) \+ \.25 \* Math\.max\(0, Math\.min\(1, hit\.textScore \?\? 0\)\);/);
+  // With no fallback terms the any-term query still runs.
+  assert.match(managerGuards, /if \(fallbackTerms\.length === 0\) \{\n\t+const anyTermResults = await this\.searchKeywordAnyTerm\(/);
+});
+
+test('one-word queries keep upstream scoring; spaceless Chinese falls back to Han trigrams', () => {
+  const start = managerGuards.indexOf('function coverageUnits(query) {');
+  const units = new Function(`${managerGuards.slice(start, managerGuards.indexOf('function coverageTerms(query) {'))}; return coverageUnits;`)();
+  assert.equal(units('康浩源'), 1);
+  assert.equal(units('夜班D'), 1);
+  assert.equal(units('Tianyi 有没有养法斗'), 2);
+  const body = managerGuards.slice(managerGuards.indexOf('\tasync searchKeywordAnyTerm(query, limit, sourceFilterList) {'));
+  const termsOf = new Function('query', `${body.slice(body.indexOf('\t\tlet terms ='), body.indexOf('\t\tif (terms.length < 2) return [];'))}; return terms;`);
+  assert.deepEqual(termsOf('营销项目的原图谁来生成').slice(0, 3), ['营销项', '销项目', '项目的']);
+  // Two or more letter/Han runs of 3+ characters keep the original terms, no trigrams.
+  assert.deepEqual(termsOf('memory.tianyi.live 是什么服务'), ['memory', 'tianyi', 'live', '是什么服务']);
+  // A single name yields one term, so the any-term query is skipped.
+  assert.deepEqual(termsOf('康浩源'), ['康浩源']);
 });
