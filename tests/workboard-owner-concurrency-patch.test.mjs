@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 
-const script = new URL("../../../scripts/apply-workboard-owner-concurrency-patch.mjs", import.meta.url);
+const script = new URL("../scripts/apply-workboard-owner-concurrency-patch.mjs", import.meta.url);
 
 test("patches same-owner Workboard concurrency from one to eight and is idempotent", () => {
   const root = mkdtempSync(join(tmpdir(), "workboard-owner-concurrency-"));

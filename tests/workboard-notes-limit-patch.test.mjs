@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 
-const script = new URL("../../../scripts/apply-workboard-notes-limit-patch.mjs", import.meta.url);
+const script = new URL("../scripts/apply-workboard-notes-limit-patch.mjs", import.meta.url);
 
 test("raises the native Workboard notes limit to twelve thousand and is idempotent", () => {
   const root = mkdtempSync(join(tmpdir(), "workboard-notes-limit-"));

@@ -25,13 +25,13 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Install Night Shift dependencies
+      - name: Install dependencies
         run: npm ci
-      - name: Test Night Shift core
+      - name: Test platform catalog
         run: npm test
-      # npm test runs the platform catalog, which lists no Night Shift engine or
-      # dashboard test; without this step they never ran in CI after 2026-09-17.
-      - name: Test Night Shift engine and dashboard
-        run: npm run test:nightshift
+      # Night Shift moved to vegekyd-sys/v-nightshift on 2026-10-02; the
+      # Workboard dist patches it relies on stay here with their tests.
+      - name: Test Workboard dist patches
+        run: node --test tests/workboard-*-patch.test.mjs
       - name: Validate vLab release assets
         run: ./tests/vlab-static.sh
