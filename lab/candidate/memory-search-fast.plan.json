@@ -1,0 +1,22 @@
+{
+  "tests": ["lab/candidate/memory-search-fast.test.mjs"],
+  "files": [
+    {
+      "source": "lab/release-files/memory-search-fast/manager-runtime.js",
+      "target": "openclaw/dist/extensions/memory-core/manager-runtime.js",
+      "before": "115e5f41ab576192389c0d0282baccdf79ac7a8acbbea2b7873602bf89242f9d"
+    },
+    {
+      "source": "lab/release-files/memory-search-fast/manager-search-knn-NiSMMJUM.js",
+      "target": "openclaw/dist/manager-search-knn-NiSMMJUM.js",
+      "before": "124e05bd8aecdcf05f39826d72f9764bbcbab608f96c308df8eb0a906afcd520"
+    },
+    {
+      "source": "lab/release-files/memory-search-fast/memory-search-knn.child.js",
+      "target": "openclaw/dist/extensions/memory-core/memory-search-knn.child.js",
+      "before": "a106f83918b30675b911e5fc071a12ef70d0ebdecf05d5130b78df8cf0748fc0"
+    }
+  ],
+  "timeoutSeconds": 1800,
+  "user": "lab-db91-parity"
+}
