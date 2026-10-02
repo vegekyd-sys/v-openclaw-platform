@@ -6,7 +6,7 @@ import path from 'node:path';
 import {spawn,spawnSync,execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {parseCompleteTimestamps} from './gpt-live-call-live-evidence.mjs';
-import {assessH5BargeInterruption,extractControlExecWitness,assessControlFinalFacts} from './gpt-live-h5-control-evidence.mjs';
+import {assessH5BargeInterruption,extractControlExecWitness,assessControlFinalFacts,assessControlExecPending,assessControlPendingProgress} from './gpt-live-h5-control-evidence.mjs';
 import {parsePublicProgressDiagnostics,extractGeneratedMarker,publicMessageText,extractH5WorkflowWitness,assessH5ProgressProvenance,assessH5FinalAndMirrors,assessH5PendingProgress,matchesGeneratedMarker} from './gpt-live-h5-provenance-evidence.mjs';
 
 assert.equal(process.env.GPT_LIVE_H5_READY,'1','Root deployment-ready handoff required');
@@ -122,7 +122,7 @@ const probe=String.raw`(()=>{
 
 import {USER_PCM_SOURCE} from './gpt-live-h5-user-pcm.mjs';
 
-let control,firstSession,secondSession,firstPcIndex,secondPcIndex,originalTrace,originalWitness,lastState;
+let control,firstSession,secondSession,firstPcIndex,secondPcIndex,originalTrace,originalWitness,lastState,lastWorkflow,lastPending,lastGate,lastDiagnostics;
 async function browserState(){
  return evaluate(`(()=>{const p=globalThis.__sharedH5Smoke;if(!p)return null;return {events:p.events,tools:p.tools,apis:p.apis,ui:p.ui,energyWindows:p.energyWindows,allRemoteEnergyWindows:p.allRemoteEnergyWindows,userClips:p.userClips,syntheticMicrophoneEnergyWindows:p.syntheticMicrophoneEnergyWindows,pcStates:p.pcs.map(pc=>pc.connectionState),channelState:p.channel?.readyState,trackMuted:p.track?.muted,audioPaused:document.querySelector('#remoteAudio')?.paused,auxiliaryUserTracksEnded:p.syntheticMicrophoneSources.every(source=>!source.track||source.track.readyState==='ended'),auxiliaryUserContextsClosed:p.syntheticMicrophoneSources.every(source=>source.context.state==='closed'),probeResourcesDisposed:p.probeResources.every(owned=>owned.disposed&&owned.context.state==='closed')}})()`);
 }
@@ -149,17 +149,6 @@ async function workflowAt(key){
  const preliminary=extractH5WorkflowWitness(parent),children={};
  if(preliminary.childKey)children[preliminary.childKey]=await gateway.request('chat.history',{sessionKey:preliminary.childKey,limit:80},{timeoutMs:15000});
  return {parent,children,witness:extractH5WorkflowWitness(parent,children)};
-}
-function sleepCallPending(history){
- const messages=history.messages??[];
- for(const message of messages){
-  for(const call of Array.isArray(message.content)?message.content:[]){
-   if(call.type!=='toolCall'||call.name!=='exec'||!/\bsleep\s+45\b/u.test(call.arguments?.command??''))continue;
-   const result=messages.find(row=>(row.toolCallId??row.tool_call_id)===call.id);
-   if(!parseCompleteTimestamps(publicMessageText(result)).length)return {callId:call.id,command:call.arguments.command,awaitingTrueTimestamp:true};
-  }
- }
- return null;
 }
 async function stopCall(){
  const prior=(await browserState()).apis.filter(api=>api.route==='/api/close'&&api.status===200).length;
@@ -198,10 +187,15 @@ try{
  let pending,workflow,diagnostics;
  await waitFor(async state=>{
   workflow=await workflowAt(firstSession.sessionKey);diagnostics=readDiagnostics();
-  pending=assessH5PendingProgress({diagnostics,events:state.events.filter(event=>event.pcIndex===firstPcIndex),energyWindows:state.energyWindows.filter(window=>window.pcIndex===firstPcIndex),backendPublicTexts:workflow.witness.backendPublicTexts,marker:workflow.witness.marker});
+  const currentOwnerId=state.events.filter(event=>event.pcIndex===firstPcIndex&&event.type==='delegation.created').at(-1)?.delegationId;
+  pending=assessControlPendingProgress({diagnostics,events:state.events,energyWindows:state.energyWindows,backendPublicTexts:workflow.witness.backendPublicTexts,marker:workflow.witness.marker,currentOwnerId,pcIndex:firstPcIndex});
   const targetHistory=controlCase==='close-reopen'?workflow.children[workflow.witness.childKey]:workflow.parent;
-  const pendingExec=sleepCallPending(targetHistory??{});
-  return workflow.witness.markerGeneratedByExec&&pending.status==='observed-pending'&&pendingExec&&(controlCase!=='close-reopen'||workflow.witness.spawnAccepted&&workflow.witness.yielded)?pendingExec:null;
+  const pendingExec=assessControlExecPending(targetHistory??{});
+  lastWorkflow=workflow;lastPending=pending;lastDiagnostics=diagnostics;
+  lastGate={at:Date.now(),currentOwnerId,marker:workflow.witness.marker,markerGeneratedByExec:workflow.witness.markerGeneratedByExec,
+    progressStatus:pending.status,progressReason:pending.reason??null,pendingExec,spawnAccepted:workflow.witness.spawnAccepted,yielded:workflow.witness.yielded,
+    ownerHasFinal:diagnostics.some(event=>event.delegationId===currentOwnerId&&event.kind==='final'&&event.stage==='context-append-sent')};
+  return workflow.witness.markerGeneratedByExec&&pending.status==='observed-pending'&&pendingExec.pending&&(controlCase!=='close-reopen'||workflow.witness.spawnAccepted&&workflow.witness.yielded)?pendingExec:null;
  },100000,'Real long-running tool and grounded early speech');
  originalTrace={traceId:pending.traceId,delegationId:pending.delegationId,generation:pending.generation};originalWitness=workflow.witness;
  await screenshot('before-control.png');
@@ -257,7 +251,8 @@ try{
 }catch(error){
  const message=error.message.replace(/(token|api.?key|authorization|secret|password)[=: ]+[^\s]+/giu,'$1=[redacted]').replace(/[A-Za-z0-9_-]{30,}\.[A-Za-z0-9_-]{30,}\.[A-Za-z0-9_-]{10,}/gu,'[redacted JWT]');
  const partial=cdp?await browserState().catch(()=>null):null;
- fs.writeFileSync(path.join(evidenceDir,'failure.json'),JSON.stringify({error:message,control,firstSession,secondSession,originalWitness,partial,summaryWritten:Boolean(summary),chromeErrors},null,2)+'\n',{mode:0o600});
+ fs.writeFileSync(path.join(evidenceDir,'workflow-history.json'),JSON.stringify({workflow:lastWorkflow,pending:lastPending,gate:lastGate,diagnostics:lastDiagnostics},null,2)+'\n',{mode:0o600});
+ fs.writeFileSync(path.join(evidenceDir,'failure.json'),JSON.stringify({error:message,control,firstSession,secondSession,originalWitness,lastGate,lastPending,partial,summaryWritten:Boolean(summary),chromeErrors},null,2)+'\n',{mode:0o600});
  process.stderr.write(JSON.stringify({error:message,failureEvidence:path.join(evidenceDir,'failure.json')})+'\n');process.exitCode=1;
 }finally{
  if(cdp){

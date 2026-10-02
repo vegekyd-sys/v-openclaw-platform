@@ -1,5 +1,6 @@
 import {parseCompleteTimestamps} from "./gpt-live-call-live-evidence.mjs";
-import {publicMessageText,matchesGeneratedMarker} from "./gpt-live-h5-provenance-evidence.mjs";
+import {createHash} from "node:crypto";
+import {publicMessageText,matchesGeneratedMarker,assessH5PendingProgress} from "./gpt-live-h5-provenance-evidence.mjs";
 
 // Link the real date result to the requested sleep+date exec, including an
 // exec-owned process session. Persisted history time never supplies execution
@@ -93,7 +94,110 @@ export function assessControlFinalFacts({events = [], marker, execWitness, final
   const spoken = parseCompleteTimestamps(text), expected = execWitness?.fields;
   const sixFieldsMatch = Boolean(expected && spoken.length && spoken.every(time =>
     ["year", "month", "day", "hour", "minute", "second"].every(key => time[key] === expected[key])));
-  const markerMatches = Boolean(marker && matchesGeneratedMarker(text, marker));
+  const markerMatches = Boolean(marker && matchesExactControlMarker(text, marker));
   return {status: sixFieldsMatch && markerMatches ? "match" : "unproven", sixFieldsMatch, markerMatches,
     expected: expected ?? null, spoken, nativeFinalText: text, humanListeningAccepted: false};
+}
+
+
+export function assessControlExecPending(history = {}, seconds = 45) {
+  const messages = history.messages ?? [];
+  const calls = messages.flatMap(message => (Array.isArray(message.content) ? message.content : [])
+    .filter(part => part.type === "toolCall"));
+  const resultFor = call => messages.find(message => message.role === "toolResult" &&
+    (message.toolCallId ?? message.tool_call_id) === call.id);
+  const exec = calls.filter(call => call.name === "exec" &&
+    new RegExp("\\bsleep\\s+[\"']?" + seconds + "(?:s)?[\"']?(?=\\s|[;&|]|$)", "u").test(call.arguments?.command ?? "") &&
+    /\bdate\b/u.test(call.arguments?.command ?? "")).at(-1);
+  if (!exec) return {status: "missing-exec", pending: false};
+  const result = resultFor(exec), text = publicMessageText(result);
+  const sessionId = result?.details?.sessionId ??
+    /(?:session ID\s+|\(session\s+)([a-zA-Z0-9_-]+)/iu.exec(text)?.[1] ?? null;
+  const linked = sessionId ? calls.filter(call => call.name === "process" &&
+    (call.arguments?.sessionId ?? call.arguments?.session_id) === sessionId) : [];
+  const ownedResults = [result, ...linked.map(resultFor)].filter(Boolean);
+  const completed = ownedResults.find(row => parseCompleteTimestamps(publicMessageText(row)).length ||
+    /Process exited|exited with code|Session .*not found/iu.test(publicMessageText(row)) ||
+    row.isError || ["exited", "completed", "failed", "cancelled", "error"].includes(row.details?.status));
+  const base = {execCallId: exec.id, command: exec.arguments.command, processSessionId: sessionId,
+    linkedProcessCallIds: linked.map(call => call.id)};
+  if (completed) return {...base, status: "completed-or-failed", pending: false};
+  if (linked.some(call => ["kill", "remove"].includes(call.arguments?.action))) return {...base, status: "termination-requested", pending: false};
+  if (!result) return {...base, status: "requested-awaiting-tool-result", pending: true};
+  const running = Boolean(sessionId && (result.details?.status === "running" || /still running|process running|running with session/iu.test(text)));
+  return {...base, status: running ? "running-owned-process" : "unproven-tool-state", pending: running};
+}
+
+// Exact numeric tokens prevent 43034303 from counting as the four-digit 4303.
+export function matchesExactControlMarker(text, marker) {
+  const digits = {零:"0",〇:"0",一:"1",二:"2",两:"2",三:"3",四:"4",五:"5",六:"6",七:"7",八:"8",九:"9"};
+  const normalized = String(text).replace(/[零〇一二两三四五六七八九]/gu, value => digits[value]);
+  if ([...normalized.matchAll(/[0-9]+/gu)].some(match => match[0] === marker)) return true;
+  for (const match of String(text).matchAll(/[零〇一二两三四五六七八九十百千]{2,12}/gu)) {
+    let sum = 0, digit = 0;
+    for (const char of match[0]) {
+      if (char in digits) digit = Number(digits[char]);
+      else {sum += (digit || 1) * ({十:10,百:100,千:1000}[char]); digit = 0;}
+    }
+    if (sum + digit === Number(marker) && /[十百千]/u.test(match[0])) return true;
+  }
+  return false;
+}
+
+export function assessControlPendingProgress({diagnostics = [], events = [], energyWindows = [],
+  backendPublicTexts = [], marker, currentOwnerId, pcIndex = 0, now = Date.now()}) {
+  if (!/^[0-9]{4}$/u.test(marker ?? "") || !currentOwnerId) return {status: "missing", reason: "Current owner and real generated marker required"};
+  const owned = diagnostics.filter(event => event.delegationId === currentOwnerId);
+  const current = owned.at(-1);
+  if (!current) return {status: "missing", reason: "No current owner public diagnostic"};
+  const trace = owned.filter(event => event.traceId === current.traceId && event.generation === current.generation);
+  const local = events.filter(event => event.pcIndex === pcIndex);
+  if (local.filter(event => event.role === "user" && event.type === "turn.done")
+      .some(event => matchesExactControlMarker(event.text, marker))) return {status: "unproven", reason: "Initial user speech already contains marker"};
+  if (trace.some(event => event.kind === "final" && event.stage === "context-append-sent" && event.at <= now))
+    return {status: "final-already-sent"};
+  const earliestAppendAt = trace.filter(event => event.kind === "progress" && event.stage === "context-append-sent").at(0)?.at ?? Infinity;
+  const completed = assessH5PendingProgress({diagnostics: trace,
+    events: local.filter(event => event.type !== "turn.done" || event.role !== "assistant" || event.at >= earliestAppendAt),
+    energyWindows: energyWindows.filter(window => window.pcIndex === pcIndex), backendPublicTexts, marker, now});
+  if (completed.status === "observed-pending" && matchesExactControlMarker(completed.progressPrefix, marker))
+    return {...completed, association: "completed native progress turn, final pending"};
+  const open = local.filter(event => event.type === "turn.created" && event.role === "assistant" &&
+    Number.isFinite(event.startMs) && event.at <= now &&
+    !local.some(end => end.type === "turn.done" && end.turnId === event.turnId && end.at <= now)).at(-1);
+  if (!open) return {...completed, reason: "No attributable completed or ongoing assistant turn"};
+  const following = local.filter(event => event.type === "turn.created" && event.at > open.at).at(0);
+  for (const append of trace.filter(event => event.stage === "context-append-sent" && event.kind === "progress" && event.at <= now)) {
+    const receive = trace.find(event => event.stage === "public-progress-received" && event.textSha256 === append.textSha256 &&
+      event.at <= append.at && Number.isSafeInteger(event.provenance?.emittedAt) && event.provenance.emittedAt <= event.at);
+    if (!receive || !Number.isSafeInteger(append.textChars) || append.textChars < 1 || append.textChars > 20000) continue;
+    let publicText = null;
+    for (const original of backendPublicTexts) {
+      for (const text of new Set([String(original), String(original).replace(/\s+/gu," ").trim()])) {
+        for (let at = 0; at + append.textChars <= Math.min(text.length,20000); at++) {
+          const part = text.slice(at, at + append.textChars);
+          if (matchesExactControlMarker(part, marker) && createHash("sha256").update(part).digest("hex") === append.textSha256) {publicText = part; break;}
+        }
+        if (publicText) break;
+      }
+      if (publicText) break;
+    }
+    if (!publicText) continue;
+    const parts = local.filter(event => event.type === "output_transcript.added" && event.at >= append.at && event.at <= now &&
+      Number.isFinite(event.startMs) && Number.isFinite(event.endMs) && event.startMs >= open.startMs &&
+      event.endMs >= event.startMs && (!following || event.endMs <= following.startMs));
+    let prefix = "", previousEnd = open.startMs;
+    for (const part of parts) {
+      if (part.startMs < previousEnd) break;
+      previousEnd = part.endMs; prefix += part.text;
+      if (!matchesExactControlMarker(prefix,marker)) continue;
+      const pcm = energyWindows.filter(window => window.pcIndex === pcIndex && window.at >= part.at && window.at <= now && window.rms > 2);
+      return {status: pcm.length ? "observed-pending" : "transcript-only", publicText, marker,
+        emittedAt: receive.provenance.emittedAt, nativeAppendSentAt: append.at, progressTranscriptAt: part.at,
+        strictNonzeroPcmWindows: pcm.length, progressPrefix: prefix, traceId: append.traceId,
+        delegationId: append.delegationId, generation: append.generation, turnId: open.turnId,
+        association: "ongoing native output stream, final pending"};
+    }
+  }
+  return {...completed, reason: "Ongoing stream lacks exact public SHA/nonce/PCM chain"};
 }
