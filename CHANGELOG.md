@@ -11,6 +11,30 @@
 
 ---
 
+## v2026.9.1-db91.6-memory-search-weighted-20261002
+
+上线：2026-10-02 19:17 CST 安装，19:18:52 停 Gateway、打开 midTurnPrecheck、启动（19:20:19 就绪）  ·  tag `v2026.9.1-db91.6-memory-search-weighted-20261002`
+
+**摘要**：两项改动合在一个停机窗口里上线，只重启了一次 Gateway。
+- **#153 memory_search 打分**：关键词覆盖率按词的罕见程度（IDF）加权，中文按两字切词，中文和字母数字之间自动断开。修的是 #147 的副作用：`memory`、`tianyi` 这类到处都有的词会把正确页面挤出前五，没有空格的中文整句关键词得分全是 0。V 的 54 题基准（离线跑，同一份 dist）：第一名 50.0%（#147 之前）/ 46.3%（#147）→ 53.7–55.6%，前五 70.4% / 68.5% → 72.2%，MRR 0.573 / 0.549 → 0.60–0.61。
+- **#152 midTurnPrecheck**：配置开关，不改运行时文件，所以下面的文件变化里没有它。在 Gateway 停止时用 `/opt/v-ops/configure-v-midturn-precheck.mjs apply` 把两份配置里的 `agents.defaults.compaction.midTurnPrecheck.enabled` 改成 true，备份是 `*.bak-midturn-precheck-20261002T111852`。回滚：停掉 Gateway 后运行 `restore`。
+  - 为什么要改：一轮开始时上下文没超限，但同一轮里工具输出把它推过了上限。这时 PR #108 的 BUDGET_EXHAUSTED 在工具执行之后才抛出，不能安全重放（replaySafe=no），所以不会压缩，用户看到的是「Agent couldn't generate a response」（9/30 出现 3 次，10/02 17:41 oc_fab91abe 出现 1 次）。打开开关后，每拿到一个工具结果、调用模型之前会先检查上下文，必要时先压缩或截断再继续。
+  - 证据：candidate `lab/candidate/midturn-precheck-{off,on}.plan.json`。off 的收据 b0e304dd 复现了故障：2 个工具、0 次压缩、只回了报错提示。on 的收据 4ae2af0a 在估算约 65.4 万 token 时走了 route=compact_then_truncate，压缩 1 次，摘要有真实内容，3 个工具都跑完并正常回答。共享 VLab 18:38 打开开关，跑了一轮真实工具回合，结果 ok。
+  - 操作注意：apply/restore 在 Gateway 运行时会拒绝执行，因为运行中写配置会触发热加载，热加载会关掉 worker 池。
+- VLab 发版打包用的是 vlab-dev 本地提交 685a6387，它的内容与 origin/dev `4dfa4a3` 逐字节相同（Codex 的合并和回退互相抵消了）。
+
+相对上一版 `v2026.9.1-db91.6-db91-shrink-reuse-20261002`：1 个文件变化。
+
+**经 VLab 发版 `memory-search-weighted-20261002`**（claude-memsearch-20261002，dev `685a6387`）
+> 验收：2026-10-02 19:15-19:25 CST, shared VLab with #152 midTurnPrecheck enabled (both configs). Gateway preflight passed (213.6 s), ready 19:14:04, 5 workers. Three real agent turns (vlab.mjs test, makaron) calling memory_search 8 times: all ok, warm toolMs 1.4-2.1 s, one cold 9.7 s that repeated at 1.55 s; first two after restart 12.9-13.1 s (cold cache). Integrity stage 23-28 ms, no host timing gap or…
+- `core` extensions/memory-core/manager-runtime.js  9594ce28 → 9f9d763c
+
+**这期间合入 dev 的 PR**（4 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #153 fix(memory): 关键词覆盖率按词的罕见程度加权，中文按两字切词
+- #152 Turn on mid-turn context precheck on V
+- #151 refactor(nightshift): 交付页改成模板，引擎不参与交付
+- #150 release: capture V after memory-search-mixed and db91-shrink-reuse
+
 ## v2026.9.1-db91.6-db91-shrink-reuse-20261002
 
 上线：2026-10-02 15:25 CST 安装并重启 Gateway（15:26 恢复）  ·  tag `v2026.9.1-db91.6-db91-shrink-reuse-20261002`
