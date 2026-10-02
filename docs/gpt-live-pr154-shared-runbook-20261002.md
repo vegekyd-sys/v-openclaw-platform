@@ -10,6 +10,8 @@
 
 取消与多 child 身份轮换修复后的相关回归为 189/189。私有 v4 完整通话的长语音产生了同一 user turn 下两次分阶段委托，第一次先完成随机码，后续走嵌套子任务；固定单父子路径的来源 gate 未通过，保留失败状态，不据此认定产品路径整体失败或强制延迟合法提前委托。独立 cancel v4 完整听到请求但仅口头确认、未 consult；取消按钮未触发，仍属于未覆盖取消。新的通用实时指令要求实际发起工具请求，避免停在口头准备。短单段语音复验仍 pending，验收 gate 不降低。
 
+私有 v5 已实际完成，source `3783217ee392d9bc51d6aabd6bf9db6866770e8b`、clean，candidate `bd901d2d-29d7-4944-b6b2-20ea8c2fd619`、10 overlay、`ok=false/sharedUnchanged=true`。workflow 把生成 1394 与 sleep/date 合成一次 exec，没有指定 child/yield/resume，也没有提前事实链；最终数字与实际时间一致仅证明该直接路径。cancel 的第一次 process.poll 已取得真实 `TESTCODE=7930`，但模型继续 poll，直到最终结果前 179 ms 才公开；Native 字幕晚于 final，提前播报未通过。取消按钮仍未触发，不能据此证明取消修复通过或失败。两用例的真实 RTC、音频和私有进程已清理。下一步应核对用户条件转交、后台阶段指令的实际传递与执行，独立验证真实 pending run 的取消隔离；不降低原完整体验门槛，不把只改音频后偶发成功当稳定验收。
+
 ## 操作顺序
 
 1. 在任务 worktree 生成候选产物并完成相应回归；先通过真正 H5 的私有完整案例。冻结并推送同一个 PR commit，确认本机 clean HEAD、PR head 与待部署 artifact 一致。真实用例运行期间不修改其代码、指令或产物。
