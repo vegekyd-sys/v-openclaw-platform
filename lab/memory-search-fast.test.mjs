@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
-import { patchKnnChild, patchKnnQueryModule, patchSearchEmbeddingOverlap } from './patch-memory-search-fast.mjs';
+import { patchKnnChild, patchKnnQueryModule, patchSearchEmbeddingOverlap, patchSessionVisibilityFastPath, patchSpareKnnChild } from './patch-memory-search-fast.mjs';
 
 const read = (rel) => fs.readFileSync(new URL(rel, import.meta.url), 'utf8');
 const sha = (value) => createHash('sha256').update(value).digest('hex');
@@ -32,4 +32,25 @@ test('KNN child and query module carry no bare side-effect imports', () => {
   assert.match(child, /^import \{ n as runVectorKnnQuery \} from "\.\.\/\.\.\/manager-search-knn-NiSMMJUM\.js";$/m);
   assert.throws(() => patchKnnQueryModule(knn), /foundation side-effect import/);
   assert.throws(() => patchKnnChild(child), /schema side-effect import/);
+});
+
+const manager1s = read('./release-files/memory-search-1s/manager-runtime.js');
+const visibility1s = read('./release-files/memory-search-1s/session-search-visibility-H6aL2Pcb.js');
+
+test('memory-search-1s manager adds only the spare KNN child to memory-search-fast', () => {
+  assert.equal(patchSpareKnnChild(manager), manager1s);
+  assert.throws(() => patchSpareKnnChild(manager1s), /KNN child spawn/);
+  const run = manager1s.slice(manager1s.indexOf('async function runVectorKnnInSubprocess(params) {'));
+  assert.match(run, /child = takeSpareVectorKnnChild\(\) \?\? spawnVectorKnnChild\(\);\n\t\tprepareSpareVectorKnnChild\(\);/);
+  // A spare child is unref'd while idle and re-ref'd when a search takes it.
+  assert.match(manager1s, /child\.unref\(\);\n\t\tfor \(const stream of \[child\.stdin, child\.stdout, child\.stderr\]\) stream\?\.unref\?\.\(\);/);
+  assert.match(manager1s, /child\.ref\(\);\n\tfor \(const stream of \[child\.stdin, child\.stdout, child\.stderr\]\) stream\?\.ref\?\.\(\);/);
+});
+
+test('session visibility returns transcript-free hits without loading the session catalog', () => {
+  const entry = visibility1s.indexOf('async function filterMemorySearchHitsBySessionVisibility(params) {');
+  const fast = visibility1s.indexOf('if (!params.hits.some((hit) => hit.source === "sessions")) return params.conversationRecall?.corpus === "sessions" ? [] : params.hits;', entry);
+  const catalog = visibility1s.indexOf('loadCombinedSessionStoreForGateway(', entry);
+  assert(entry > 0 && fast > entry && catalog > fast);
+  assert.throws(() => patchSessionVisibilityFastPath(visibility1s), /session visibility filter entry/);
 });
