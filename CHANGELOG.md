@@ -11,6 +11,22 @@
 
 ---
 
+## v2026.9.1-db91.6-memory-search-guards-20261002
+
+上线：2026-10-02 20:00 CST 安装，20:00:41 重启 Gateway（20:02:17 就绪）  ·  tag `v2026.9.1-db91.6-memory-search-guards-20261002`
+
+**摘要**：修 V 第三次验收在 #153 上发现的三个问题。（1）只搜一个人名时，人物卡排到日志后面：单个词查询恢复原来的打分，12 道人名题 10/12 → 12/12。（2）没有空格的中文整句搜出 0 条（S12）：拆不出两个词时，改用三字组合查全文索引，现在 S12 的正确答案排第 1。（3）满分打平时排序随意：关键词分保留 1/4 的 BM25。V 的 54 题（同口径，线上索引）：第一名 50.0 → 48–50%，前三 59.3 → 63.0%，前五 68.5 → 72.2%，MRR 0.556 → 0.57–0.58。另外更正 #153 的离线预估：那次每题取 10 条再筛成 5 条，和 V 取 5 条的口径不同，数字偏高。
+
+相对上一版 `v2026.9.1-db91.6-memory-search-weighted-20261002`：1 个文件变化。
+
+**经 VLab 发版 `memory-search-guards-20261002`**（claude-memsearch-20261002，dev `aaeb8840`）
+> 验收：2026-10-02 19:56-20:00 CST shared VLab (midTurnPrecheck on). Gateway preflight 158 s, ready 19:55:41. Two real agent turns (vlab.mjs test, makaron), 8 memory_search calls, all ok: name query 康浩源 ranks people/kang-haoyuan.md first; the spaceless question that returned 0 results now returns 5; warm toolMs 1.6-2.3 s, first turn after restart 15.6-16.2 s (cold). Integrity 22-31 ms, no host timing gap.…
+- `core` extensions/memory-core/manager-runtime.js  9f9d763c → 134cc6f6
+
+**这期间合入 dev 的 PR**（2 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #157 fix(memory): 单个词查询恢复原打分；中文整句无结果时用三字组合兜底
+- #155 release: capture V after memory-search-weighted and midturn-precheck
+
 ## v2026.9.1-db91.6-memory-search-weighted-20261002
 
 上线：2026-10-02 19:17 CST 安装，19:18:52 停 Gateway、打开 midTurnPrecheck、启动（19:20:19 就绪）  ·  tag `v2026.9.1-db91.6-memory-search-weighted-20261002`
