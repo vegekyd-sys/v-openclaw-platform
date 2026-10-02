@@ -11,6 +11,24 @@
 
 ---
 
+## v2026.9.1-db91.6-memory-search-1s-20261002
+
+上线：2026-10-02 13:16 CST 安装，13:17 重启 Gateway（13:18:28 恢复，约 86 秒）  ·  tag `v2026.9.1-db91.6-memory-search-1s-20261002`
+
+**摘要**：memory_search 返回结果前不再每次加载整个会话目录（上游 9.5 修复的回移），并预先启动一个向量查找子进程备用。V 上通过 Gateway 端到端实测（同一组 48 条查询）：中位数 3.31 → 1.07 秒，1.5 秒以内 41/48，结果 48/48 一致。重启后的头一分钟内搜索可能超时：测试中前 23 条失败，原因是冷缓存加上“超时后暂停重试一分钟”的机制，之后恢复正常。
+
+相对上一版 `v2026.9.1-db91.6-memory-search-fast-20261002`：2 个文件变化。
+
+**经 VLab 发版 `memory-search-1s-20261002`**（claude-memsearch-20261002，dev `ea8faac9`）
+> 验收：2026-10-02 13:00 CST end-to-end through the shared VLab Gateway (tools.invoke memory_search, 48 real queries, sequential, 1 s apart, same harness before/after): toolMs p50 2813 -> 1255 ms, p90 3338 -> 1613 ms, max 4282 -> 1808 ms; top-3 results identical 48/48. First search after restart 21.0 s (cold cache, DB open 55 ms, no integrity pass). Mechanism measured inside the Gateway via inspector befo…
+- `core` extensions/memory-core/manager-runtime.js  c6f97543 → a94e2079
+- `core` session-search-visibility-H6aL2Pcb.js  badc3d4c → 566d4e58
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #143 perf(memory): memory_search toward 1 s end to end
+- #142 docs(memory): V before/after for the memory_search upgrade
+- #141 release: capture V after memory-search-fast-20261002
+
 ## v2026.9.1-db91.6-memory-search-fast-20261002
 
 上线：2026-10-02 09:58 CST 安装，未重启（KNN 子进程文件对新搜索立即生效；manager-runtime.js 待下次 Gateway 启动）  ·  tag `v2026.9.1-db91.6-memory-search-fast-20261002`
