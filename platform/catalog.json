@@ -224,6 +224,7 @@
         "lab/gateway-concurrency-profiler.test.mjs",
         "lab/gateway-self-config-authority.test.mjs",
         "lab/gateway-self-config-realpath.test.mjs",
+        "lab/db91-shrink-reuse.test.mjs",
         "lab/memory-search-fast.test.mjs",
         "lab/memory-search-query-isolation.test.mjs",
         "lab/memory-search-timeout.test.mjs",
