@@ -299,6 +299,35 @@ test("provenance is created at public emission, monotonic per actual run, and ex
   }
 });
 
+test("actual voice prompt requires verified public stage facts before the next slow step and leaves the plain chat prompt unchanged", () => {
+  const source = readFileSync(new URL("../release/captured/v2026.9.1-db91.6-background-work-20261002/dist/realtime-session-harness-CEO5kVAJ.js", import.meta.url), "utf8");
+  const patched = patches.patchGptLiveContinuationHarness(patchGptLiveConsultProgressHarness(source));
+  const readConsultStringArg = execute(source, "function readConsultStringArg", "//#endregion", {
+    normalizeOptionalString: (value) => typeof value === "string" && value.trim() ? value.trim() : undefined,
+  });
+  const parseRealtimeVoiceAgentConsultArgs = execute(source, "function parseRealtimeVoiceAgentConsultArgs", "/** Build the plain chat message", { readConsultStringArg });
+  const deps = { parseRealtimeVoiceAgentConsultArgs };
+  const prompt = execute(patched, "function buildRealtimeVoiceAgentConsultPrompt", "/** Collect only visible answer text", deps);
+  const params = { args: { question: "先核验一个阶段，再完成后续步骤。", context: "真实上下文", responseStyle: "简短中文" },
+    transcript: [{ role: "user", text: "之前的用户请求" }, { role: "assistant", text: "之前的公开回复" }], surface: "a browser Talk session", userLabel: "User" };
+  const value = prompt(params);
+  assert.match(value, /after receiving a real, verified intermediate result/);
+  assert.match(value, /complete public assistant sentence or public preamble before starting the next slow step/);
+  assert.match(value, /Distinguish a plan or request receipt from a verified fact/);
+  assert.match(value, /distinguish an intermediate result from task completion/);
+  assert.match(value, /Do not guess missing facts or announce success before verification/);
+  assert.match(value, /include any already confirmed public stage results in the public yield acknowledgment/);
+  assert.match(value, /never expose raw tool output, tool logs, or private reasoning/);
+  assert.match(value, /When finished, return only the concise result/);
+  assert(value.includes(params.args.question) && value.includes(params.args.context));
+  assert(value.includes("User: 之前的用户请求") && value.includes("Agent: 之前的公开回复"));
+  const before = execute(source, "function buildRealtimeVoiceAgentConsultChatMessage", "/** Build the delegated OpenClaw agent prompt", deps);
+  const after = execute(patched, "function buildRealtimeVoiceAgentConsultChatMessage", "/** Build the delegated OpenClaw agent prompt", deps);
+  assert.equal(before.toString(), after.toString(), "the non-delegated plain chat prompt must remain byte-for-byte unchanged");
+  assert.equal(after(params.args), before(params.args));
+  assert.throws(() => prompt({ ...params, args: {} }), /question required/);
+});
+
 test("captured byte checks, strict patch drift checks and idempotent transforms cover all continuation runtime files", () => {
   const baseline = JSON.parse(readFileSync(new URL("./gpt-live-consult-continuation-baseline.json", import.meta.url), "utf8"));
   for (const file of baseline.files) {

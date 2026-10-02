@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { stageTrialConfig, assertTrialConfig, installTrialConfig, installTrialRelease, validateTrialInstructions } from "./gpt-live-pr-config.mjs";
+import { stageTrialTrace, assertTrialTrace, installTrialTrace, restoreTrialTrace, TRIAL_TRACE_ENV } from "./gpt-live-pr-trace.mjs";
 import { digest, PR_URL, PR_BRANCH, validatePrCandidate, buildPrController } from "./gpt-live-pr-provenance.mjs";
 import { read, save, replace, name, sha, fingerprint, installFiles, assertVersion } from "./shared/files.mjs";
 
@@ -130,40 +131,60 @@ test("external config drift during recovery is preserved and reported for journa
 
 // Execute the actual generated cutover against real temporary config/runtime
 // bytes. Only systemd, Gateway readiness and the idle-fence transport are fake.
-function controllerFixture(t) {
+function controllerFixture(t, { traceEnabled = false, existingTrace = false, failEnvironment = false } = {}) {
   const f = setup(t), workflow = path.join(f.dir, "workflow"), runtime = path.join(f.dir, "runtime");
   const id = "gpt-live-trial", releaseDir = path.join(workflow, "releases", id);
   fs.mkdirSync(path.dirname(releaseDir), { recursive: true }); fs.renameSync(f.releaseDir, releaseDir); f.releaseDir = releaseDir;
   fs.mkdirSync(path.join(runtime, "openclaw/dist"), { recursive: true });
   fs.mkdirSync(path.join(releaseDir, "before")); fs.mkdirSync(path.join(releaseDir, "after"));
+  const unit = "test-unit.service", systemdRoot = path.join(f.dir, "systemd"); fs.mkdirSync(systemdRoot);
+  const dropin = path.join(systemdRoot, unit + ".d", "90-gpt-live-pr154.conf");
+  const originalTraceBytes = Buffer.from('[Service]\r\nEnvironment="OPENCLAW_GPT_LIVE_PROGRESS_TRACE=0"\r\n');
+  if (existingTrace) { fs.mkdirSync(path.dirname(dropin)); fs.writeFileSync(dropin, originalTraceBytes, { mode: 0o640 }); }
+  const baselineEnvironment = existingTrace ? { [TRIAL_TRACE_ENV]: "0" } : {};
+  const trialTrace = stageTrialTrace({ unit, releaseDir, enabled: traceEnabled, environment: baselineEnvironment, systemdRoot });
   const codeBefore = Buffer.from("export const value=0;\n"), codeAfter = Buffer.from("export const value=1;\n");
   fs.writeFileSync(path.join(runtime, "openclaw/dist/test.mjs"), codeBefore, { mode: 0o644 });
   fs.writeFileSync(path.join(releaseDir, "before/0"), codeBefore); fs.writeFileSync(path.join(releaseDir, "after/0"), codeAfter);
   const files = [{ target: "openclaw/dist/test.mjs", before: digest(codeBefore), after: digest(codeAfter), content: codeAfter.toString("base64") }];
-  const policy = { prUrl: PR_URL, branch: PR_BRANCH, owner: "trial-owner", releaseId: id, sourceCommit: "a".repeat(40), baseRelease: "parent", filesSha: digest(JSON.stringify(files)), trialInstructionsSha: digest(instructions) };
-  const artifact = { command: "stage", owner: policy.owner, id, branch: PR_BRANCH, sourceCommit: policy.sourceCommit, baseRelease: "parent", candidatePr: { url: PR_URL, head: policy.sourceCommit, productionAuthorized: false }, files, trialInstructions: instructions };
+  const policy = { prUrl: PR_URL, branch: PR_BRANCH, owner: "trial-owner", releaseId: id, sourceCommit: "a".repeat(40), baseRelease: "parent", filesSha: digest(JSON.stringify(files)), trialInstructionsSha: digest(instructions), trialMetadataTrace: traceEnabled };
+  const artifact = { command: "stage", owner: policy.owner, id, branch: PR_BRANCH, sourceCommit: policy.sourceCommit, baseRelease: "parent", candidatePr: { url: PR_URL, head: policy.sourceCommit, productionAuthorized: false }, files, trialInstructions: instructions, trialMetadataTrace: traceEnabled };
   save(path.join(releaseDir, "artifact.json"), artifact);
   const parent = { release: "parent", runtimeSha: fingerprint(runtime).sha256, accepted: true, v: { aligned: true } };
-  const manifest = { id, baseRelease: "parent", parent, sourceCommit: policy.sourceCommit, candidatePr: artifact.candidatePr, artifactSha: digest(fs.readFileSync(path.join(releaseDir, "artifact.json"))), configSha: f.transaction.before, trialConfig: f.transaction, files: files.map(({ content, ...file }) => file) };
+  const manifest = { id, baseRelease: "parent", parent, sourceCommit: policy.sourceCommit, candidatePr: artifact.candidatePr, artifactSha: digest(fs.readFileSync(path.join(releaseDir, "artifact.json"))), configSha: f.transaction.before, trialConfig: f.transaction, trialTrace, files: files.map(({ content, ...file }) => file) };
   save(path.join(releaseDir, "manifest.json"), manifest); save(path.join(workflow, "current.json"), parent);
   const source = buildPrController(fs.readFileSync(new URL("./shared/server.mjs", import.meta.url), "utf8"));
   const start = source.indexOf("async function cutover("), end = source.indexOf("\nasync function main(", start);
-  const build = new Function("deps", `const {fs,assert,HOME,RUNTIME,UNIT,PR_POLICY,read,save,replace,name,sha,fingerprint,installFiles,assertVersion,validatePrCandidate,assertTrialConfig,installTrialRelease,lease,current,live,pid,connect,acquireIdleFence,run,rpc,delay,Date}=deps;\n${source.slice(start, end)}\nreturn cutover;`);
+  const build = new Function("deps", `const {fs,assert,HOME,RUNTIME,UNIT,PR_POLICY,read,save,replace,name,sha,fingerprint,installFiles,assertVersion,validatePrCandidate,assertTrialConfig,installTrialRelease,assertTrialTrace,installTrialTrace,restoreTrialTrace,lease,current,live,pid,connect,acquireIdleFence,run,rpc,delay,Date}=deps;\n${source.slice(start, end)}\nreturn cutover;`);
   let running = 123, clock = 1_000_000, targetHealthFails = false;
   const trace = [];
+  let loadedEnvironment = { ...baselineEnvironment }, processEnvironment = { ...baselineEnvironment }, starts = 0;
   class Clock extends Date { constructor() { super(clock); } static now() { return clock++; } }
-  const live = () => ({ pid: running, configSha: digest(fs.readFileSync(f.configPath)), env: { OPENCLAW_CONFIG_PATH: f.configPath } });
-  const cutover = build({ fs, assert, HOME: workflow, RUNTIME: runtime, UNIT: "test-unit", PR_POLICY: policy,
+  const live = () => ({ pid: running, configSha: digest(fs.readFileSync(f.configPath)), env: { OPENCLAW_CONFIG_PATH: f.configPath, ...processEnvironment } });
+  const cutover = build({ fs, assert, HOME: workflow, RUNTIME: runtime, UNIT: unit, PR_POLICY: policy,
     read, save, replace, name, sha, fingerprint, installFiles, assertVersion, validatePrCandidate, assertTrialConfig, installTrialRelease,
+    assertTrialTrace: options => assertTrialTrace({ ...options, systemdRoot }),
+    installTrialTrace: (...args) => installTrialTrace(...args, { systemdRoot }),
+    restoreTrialTrace: (...args) => restoreTrialTrace(...args, { systemdRoot }),
     lease: owner => { assert.equal(owner, policy.owner); trace.push("lease"); },
     current: () => read(path.join(workflow, "current.json")), live, pid: () => running,
     connect: async () => ({ l: live(), c: { stop: () => trace.push("close") }, call: async () => ({}) }),
     acquireIdleFence: async () => { trace.push("fence"); return { suspensionId: "fixture-fence" }; },
-    run: (bin, args) => { assert.equal(bin, "systemctl"); assert.equal(args[1], "test-unit"); trace.push(args[0]); running = args[0] === "stop" ? 0 : 124; },
+    run: (bin, args) => {
+      assert.equal(bin, "systemctl"); trace.push(args[0]);
+      if (args[0] === "daemon-reload") {
+        assert.equal(running, 0, "environment reload must be in the stopped window");
+        loadedEnvironment = { ...baselineEnvironment };
+        if (fs.existsSync(dropin)) loadedEnvironment[TRIAL_TRACE_ENV] = /OPENCLAW_GPT_LIVE_PROGRESS_TRACE=([01])/u.exec(fs.readFileSync(dropin, "utf8"))[1];
+        return;
+      }
+      assert.equal(args[1], unit); running = args[0] === "stop" ? 0 : 124;
+      if (args[0] === "start") { processEnvironment = { ...loadedEnvironment }; if (failEnvironment && starts++ === 0) delete processEnvironment[TRIAL_TRACE_ENV]; }
+    },
     rpc: async () => { if (targetHealthFails && live().configSha === f.transaction.after) throw new Error("fixture cold failure"); return { ok: true }; },
     delay: async () => { clock += 900001; }, Date: Clock,
   });
-  return { ...f, workflow, runtime, trace, cutover, id, policy, failHealth: () => { targetHealthFails = true; } };
+  return { ...f, workflow, runtime, trace, cutover, id, policy, dropin, trialTrace, originalTraceBytes, live, failHealth: () => { targetHealthFails = true; } };
 }
 
 test("generated private controller deploy/rollback uses target config SHA and restores parent fingerprint", async t => {
@@ -186,4 +207,31 @@ test("generated controller cold failure restores source code/config and retains 
   assert.equal(fingerprint(f.runtime).sha256, read(path.join(f.workflow, "current.json")).runtimeSha);
   assert.equal(fs.existsSync(path.join(f.workflow, "pending.json")), true);
   assert(f.trace.includes("close"));
+});
+
+for (const existingTrace of [false, true]) {
+  test(`generated controller switches trace in the same stop window and restores ${existingTrace ? "original bytes" : "absence"}`, async t => {
+    const f = controllerFixture(t, { traceEnabled: true, existingTrace });
+    const deployed = await f.cutover({ owner: f.policy.owner, id: f.id });
+    assert.equal(deployed.trialMetadataTrace, true); assert.equal(deployed.traceDropinSha, f.trialTrace.after.sha256);
+    assert.equal(f.live().env[TRIAL_TRACE_ENV], "1");
+    assert.deepEqual(f.trace.filter(step => ["stop", "daemon-reload", "start"].includes(step)), ["stop", "daemon-reload", "start"]);
+    await f.cutover({ owner: f.policy.owner, id: f.id }, true);
+    if (existingTrace) assert.deepEqual(fs.readFileSync(f.dropin), f.originalTraceBytes);
+    else assert.equal(fs.existsSync(f.dropin), false);
+    assert.equal(f.live().env[TRIAL_TRACE_ENV], existingTrace ? "0" : undefined);
+    assert.deepEqual(fs.readFileSync(f.configPath), f.original);
+    assert.equal(f.trace.filter(step => step === "fence").length, 2);
+  });
+}
+
+test("generated controller treats a process trace environment mismatch as a failed cutover and restores source", async t => {
+  const f = controllerFixture(t, { traceEnabled: true, failEnvironment: true });
+  await assert.rejects(f.cutover({ owner: f.policy.owner, id: f.id }), /process environment mismatch/);
+  assert.equal(fs.existsSync(f.dropin), false); assert.equal(f.live().env[TRIAL_TRACE_ENV], undefined);
+  assert.deepEqual(fs.readFileSync(f.configPath), f.original);
+  assert.equal(fingerprint(f.runtime).sha256, read(path.join(f.workflow, "current.json")).runtimeSha);
+  assert.equal(read(path.join(f.workflow, "current.json")).release, "parent");
+  assert.equal(fs.existsSync(path.join(f.workflow, "pending.json")), true);
+  assert.deepEqual(f.trace.filter(step => ["stop", "daemon-reload", "start"].includes(step)), ["stop", "daemon-reload", "start", "stop", "daemon-reload", "start"]);
 });

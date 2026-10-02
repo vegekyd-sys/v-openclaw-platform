@@ -6,7 +6,7 @@ export const PR_URL='https://github.com/vegekyd-sys/v-openclaw-platform/pull/154
 export const PR_BRANCH='codex/gpt-live-streaming-call-pr';
 export const digest=value=>createHash('sha256').update(value).digest('hex');
 export function validatePrCandidate(req, policy) {
-  const fields=new Set(['command','id','owner','branch','sourceCommit','baseRelease','files','candidatePr','trialInstructions']);
+  const fields=new Set(['command','id','owner','branch','sourceCommit','baseRelease','files','candidatePr','trialInstructions','trialMetadataTrace']);
   assert(Object.keys(req).every(key=>fields.has(key)),'PR artifact contains unsupported settings');
   assert.equal(policy.prUrl,PR_URL);
   assert.equal(policy.branch,PR_BRANCH);
@@ -23,6 +23,8 @@ export function validatePrCandidate(req, policy) {
   assert.equal(req.baseRelease,policy.baseRelease,'Candidate baseline changed');
   assert.equal(digest(JSON.stringify(req.files)),policy.filesSha,'Candidate bytes changed after verification');
   validateTrialInstructions(req.trialInstructions,policy.trialInstructionsSha);
+  assert.equal(typeof req.trialMetadataTrace,'boolean','Trial metadata trace must be explicitly boolean');
+  assert.equal(req.trialMetadataTrace,policy.trialMetadataTrace,'Trial metadata trace policy changed');
   return {url:policy.prUrl,head:policy.sourceCommit,productionAuthorized:false};
 }
 
@@ -33,17 +35,18 @@ export function buildPrController(source) {
     assert.equal(source.split(before).length,2,'Shared controller layout changed; review before rebuilding');
     source=source.replace(before,after);
   }
-  replaceOnce("const LAB='/srv/vlab-production-mirror/labs';", "import {validatePrCandidate} from './gpt-live-pr-provenance.mjs';\nimport {stageTrialConfig,assertTrialConfig,installTrialRelease} from './gpt-live-pr-config.mjs';\nconst PR_POLICY=JSON.parse(fs.readFileSync(new URL('./policy.json',import.meta.url)));\nconst LAB='/srv/vlab-production-mirror/labs';");
+  replaceOnce("const LAB='/srv/vlab-production-mirror/labs';", "import {validatePrCandidate} from './gpt-live-pr-provenance.mjs';\nimport {stageTrialConfig,assertTrialConfig,installTrialRelease} from './gpt-live-pr-config.mjs';\nimport {stageTrialTrace,assertTrialTrace,installTrialTrace,restoreTrialTrace} from './gpt-live-pr-trace.mjs';\nconst PR_POLICY=JSON.parse(fs.readFileSync(new URL('./policy.json',import.meta.url)));\nconst LAB='/srv/vlab-production-mirror/labs';");
   replaceOnce("  assert.equal(os.hostname(),'VM-0-4-ubuntu');assert.equal(process.getuid(),0);", "  assert.equal(os.hostname(),'VM-0-4-ubuntu');assert.equal(process.getuid(),0);\n  assert(['status','read-code','rpc','test','stage','deploy','rollback'].includes(req.command),'PR controller only supports a reversible VLab trial');\n  if(['test','stage','deploy','rollback'].includes(req.command))assert.equal(req.owner,PR_POLICY.owner,'PR controller owner changed');");
   replaceOnce("assert.equal(req.branch,'dev','Only merged dev artifacts may deploy');", 'const candidatePr=validatePrCandidate(req,PR_POLICY);');
   replaceOnce('branch:req.branch,syncFromV:syncFromV?req.syncFromV:undefined,', 'branch:req.branch,candidatePr,syncFromV:syncFromV?req.syncFromV:undefined,');
   replaceOnce("      save(dir+'/artifact.json',req);", `      const stagedLive=live();
       const trialConfig=stageTrialConfig({configPath:stagedLive.env.OPENCLAW_CONFIG_PATH,releaseDir:dir,
         instructions:req.trialInstructions,instructionsSha:PR_POLICY.trialInstructionsSha,beforeSha:stagedLive.configSha});
+      const trialTrace=stageTrialTrace({unit:UNIT,releaseDir:dir,enabled:req.trialMetadataTrace,environment:stagedLive.env});
       assert.equal(live().configSha,trialConfig.before,'Configuration changed during staging');
       assert.equal(pid(),stagedLive.pid,'Gateway changed during staging');
       save(dir+'/artifact.json',req);`);
-  replaceOnce("artifactSha:hashFile(dir+'/artifact.json'),configSha:live().configSha,files:", "artifactSha:hashFile(dir+'/artifact.json'),configSha:trialConfig.before,trialConfig,files:");
+  replaceOnce("artifactSha:hashFile(dir+'/artifact.json'),configSha:live().configSha,files:", "artifactSha:hashFile(dir+'/artifact.json'),configSha:trialConfig.before,trialConfig,trialTrace,files:");
   const start=source.indexOf('async function cutover(req,rollback=false) {');
   const end=source.indexOf('\nasync function main(req) {',start);
   assert(start>=0&&end>start,'Shared cutover layout changed; review before rebuilding');
@@ -63,7 +66,9 @@ async function cutoverPrTrial(req,rollback=false) {
   assert.equal(m.configSha,m.trialConfig?.before,'Trial configuration baseline changed');
   const assertConfig=side=>assertTrialConfig({transaction:m.trialConfig,releaseDir:dir,configPath:live().env.OPENCLAW_CONFIG_PATH,
     instructions:artifact.trialInstructions,instructionsSha:PR_POLICY.trialInstructionsSha,side});
-  assertConfig(from);
+  const assertTrace=side=>assertTrialTrace({transaction:m.trialTrace,releaseDir:dir,unit:UNIT,
+    enabled:artifact.trialMetadataTrace,environment:live().env,side});
+  assertConfig(from);assertTrace(from);
   assert.equal(fingerprint(RUNTIME).sha256,before.runtimeSha,'Runtime changed outside workflow; reconcile before deploying');
   assertVersion(RUNTIME,m.files,from);
   const x=await connect();let suspension,stopped=false,installed=false;
@@ -74,17 +79,20 @@ async function cutoverPrTrial(req,rollback=false) {
       try{const h=await rpc('health',{});assert.equal(h.ok,true);ready=true;break;}catch{await delay(2000);}
     }
     assert(ready,'Installed but Gateway not ready; source recovery required');
-    assertVersion(RUNTIME,m.files,side);assertConfig(side);
+    assertVersion(RUNTIME,m.files,side);assertConfig(side);assertTrace(side);
     assert.equal(live().configSha,m.trialConfig[side],'Trial configuration readiness mismatch');
   };
   try {
     suspension=await acquireIdleFence(x.call,'vlab-workflow-'+Date.now());
-    assert.equal(pid(),x.l.pid);lease(req.owner);assertConfig(from);assertVersion(RUNTIME,m.files,from);
+    assert.equal(pid(),x.l.pid);lease(req.owner);assertConfig(from);assertTrace(from);assertVersion(RUNTIME,m.files,from);
     save(HOME+'/pending.json',{id,rollback,before,at:new Date().toISOString(),owner:req.owner});
     await installTrialRelease({transaction:m.trialConfig,releaseDir:dir,from,to,
       stop:()=>{stopped=true;run('systemctl',['stop',UNIT]);assert.equal(pid(),0);},
       start:()=>{run('systemctl',['start',UNIT]);stopped=false;},
-      installCode:side=>installFiles(RUNTIME,m.files,dir,side),waitReady});
+      installCode:side=>installFiles(RUNTIME,m.files,dir,side),waitReady,
+      installEnvironment:(source,target)=>installTrialTrace(m.trialTrace,dir,source,target),
+      restoreEnvironment:(source,target)=>restoreTrialTrace(m.trialTrace,dir,source,target),
+      reloadEnvironment:()=>{if(m.trialTrace.enabled)run('systemctl',['daemon-reload']);}});
     installed=true;x.c.stop();
     const runtimeSha=fingerprint(RUNTIME).sha256;
     if(rollback)assert.equal(runtimeSha,m.parent.runtimeSha,'Rollback fingerprint mismatch');
@@ -92,6 +100,7 @@ async function cutoverPrTrial(req,rollback=false) {
       candidatePr:m.candidatePr,v:{aligned:false,aheadBy:id,since:new Date().toISOString()}};
     replace(HOME+'/current.json',next);
     const receipt={id,rollback,at:new Date().toISOString(),beforePid:x.l.pid,afterPid:pid(),current:next,configSha:m.trialConfig[to],
+      trialMetadataTrace:m.trialTrace.enabled,traceDropinSha:m.trialTrace.enabled?m.trialTrace[to].sha256:null,
       artifactSha:m.artifactSha,statePreserved:true,acceptance:'Gateway readiness only; functional evidence required'};
     save(HOME+'/receipts/'+Date.now()+'-'+id+'.json',receipt);fs.unlinkSync(HOME+'/pending.json');return receipt;
   } finally {

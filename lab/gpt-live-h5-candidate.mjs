@@ -9,6 +9,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {configureCandidateOpenAIAuth,installCandidateOpenAIAuth} from './gpt-live-call-live-auth.mjs';
 import {GPT_LIVE_CALL_INSTRUCTIONS} from './gpt-live-h5/instructions.mjs';
 import {createLiveH5Server} from './gpt-live-h5/server.mjs';
+import {parsePublicProgressDiagnostics} from './gpt-live-h5-provenance-evidence.mjs';
 
 const runtime=process.env.VLAB_CANDIDATE_RUNTIME,state=process.env.OPENCLAW_STATE_DIR,configPath=process.env.OPENCLAW_CONFIG_PATH;
 assert(runtime&&state&&configPath,'Disposable candidate environment required');
@@ -84,12 +85,34 @@ try {
   }});
   const h5port=await port();await new Promise(resolve=>bridge.server.listen(h5port,'127.0.0.1',resolve));
   const appSha=createHash('sha256').update(fs.readFileSync('lab/gpt-live-h5/app.js')).digest('hex');
-  smoke=spawn(process.execPath,['lab/gpt-live-h5-provenance-smoke.mjs'],{env:{...process.env,
-    GPT_LIVE_H5_READY:'1',GPT_LIVE_H5_URL:`http://127.0.0.1:${h5port}`,GPT_LIVE_H5_APP_SHA:appSha,GPT_LIVE_H5_GATEWAY_PID:String(gateway.pid),
-    GPT_LIVE_H5_RUNTIME_ROOT:runtime+'/openclaw',GPT_LIVE_H5_TRACE_PATH:tracePath,GPT_LIVE_H5_SESSION_PATH:sessionPath},stdio:'inherit'});
-  const code=await new Promise((resolve,reject)=>{smoke.once('error',reject);smoke.once('exit',code=>resolve(code));});
-  assert.equal(code,0,'Full native H5 provenance test failed');
+  const cases=(process.env.GPT_LIVE_H5_CASE??'workflow').split(',');
+  assert(cases.every(value=>['workflow','cancel','close-reopen','barge-chat'].includes(value)),'Unknown candidate H5 case');
+  const evidenceBase=process.env.GPT_LIVE_H5_EVIDENCE_DIR;
+  for(const testCase of cases) {
+    const helper=testCase==='workflow'?'lab/gpt-live-h5-provenance-smoke.mjs':'lab/gpt-live-h5-control-smoke.mjs';
+    const clips=process.env.GPT_LIVE_H5_USER_CLIPS_DIR;
+    smoke=spawn(process.execPath,[helper],{env:{...process.env,
+      GPT_LIVE_H5_CASE:testCase,GPT_LIVE_H5_EVIDENCE_DIR:cases.length>1?path.join(evidenceBase,testCase):evidenceBase,
+      ...(clips?{GPT_LIVE_H5_USER_CLIPS_DIR:path.resolve(clips)}:{}),
+      GPT_LIVE_H5_READY:'1',GPT_LIVE_H5_URL:`http://127.0.0.1:${h5port}`,GPT_LIVE_H5_APP_SHA:appSha,GPT_LIVE_H5_GATEWAY_PID:String(gateway.pid),
+      GPT_LIVE_H5_RUNTIME_ROOT:runtime+'/openclaw',GPT_LIVE_H5_TRACE_PATH:tracePath,GPT_LIVE_H5_SESSION_PATH:sessionPath},stdio:'inherit'});
+    const code=await new Promise((resolve,reject)=>{smoke.once('error',reject);smoke.once('exit',code=>resolve(code));});
+    assert.equal(code,0,'Full native H5 '+testCase+' test failed');
+  }
 } catch(error) {
   console.error(JSON.stringify({candidateFailed:error.message,gatewayExit:gateway?.exitCode??null,
     gatewayRecent:recent.slice(-8).map(line=>line.replace(/(token|api.?key|authorization|secret|password)[=: ]+[^\s]+/giu,'$1=[redacted]').replace(/https?:\/\/\S+/giu,'[endpoint]').slice(0,300))}));process.exitCode=1;
-} finally {await stop(smoke);try{await bridge?.dispose();}finally{client?.stop();await stop(gateway);}}
+} finally {
+  await stop(smoke);
+  try { await bridge?.dispose(); } finally {
+    client?.stop(); await stop(gateway);
+    // Preserve only structured, metadata-only public trace events. The private
+    // Gateway stdout/config/auth are removed by the candidate runner.
+    const evidence=process.env.GPT_LIVE_H5_EVIDENCE_DIR;
+    if(evidence&&path.isAbsolute(evidence)&&fs.existsSync(tracePath)) {
+      fs.mkdirSync(evidence,{recursive:true,mode:0o700});
+      fs.writeFileSync(path.join(evidence,'native-public-diagnostics.json'),
+        JSON.stringify(parsePublicProgressDiagnostics(fs.readFileSync(tracePath,'utf8')),null,2)+'\n',{mode:0o600});
+    }
+  }
+}

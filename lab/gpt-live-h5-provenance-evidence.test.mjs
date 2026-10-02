@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
 import { parsePublicProgressDiagnostics, extractH5WorkflowWitness,
-  assessH5ProgressProvenance, assessH5FinalAndMirrors, assessH5PendingProgress } from "./gpt-live-h5-provenance-evidence.mjs";
+  assessH5ProgressProvenance, assessH5FinalAndMirrors, assessH5PendingProgress, extractGeneratedMarker } from "./gpt-live-h5-provenance-evidence.mjs";
 
 const hash = (text) => createHash("sha256").update(text).digest("hex");
 const publicText = "真实测试码是 7231。";
@@ -144,6 +144,8 @@ test("diagnostic parser ignores malformed/unrelated logs without accepting inten
   const parsed = parsePublicProgressDiagnostics("noise\n[info] GPT_LIVE_PUBLIC_PROGRESS " + JSON.stringify(event) + "\nGPT_LIVE_PUBLIC_PROGRESS bad json\n");
   assert.deepEqual(parsed, [event]);
   assert.equal(parsed.some((entry) => entry.stage === "context-append-sent"), false);
+  assert.deepEqual(parsePublicProgressDiagnostics("\u001b[32m[info] GPT_LIVE_PUBLIC_PROGRESS " + JSON.stringify(event) + "\u001b[0m"), [event]);
+  assert.deepEqual(parsePublicProgressDiagnostics(JSON.stringify({ message: "GPT_LIVE_PUBLIC_PROGRESS " + JSON.stringify(event) })), [event]);
 });
 
 test("control preview requires grounded progress with PCM while the real final is still pending", () => {
@@ -153,4 +155,28 @@ test("control preview requires grounded progress with PCM while the real final i
   assert.equal(assessH5PendingProgress(data).status, "missing");
   data.now = 150; data.energyWindows = [];
   assert.equal(assessH5PendingProgress(data).status, "transcript-only");
+});
+
+test("real v1 command shapes parse without converting parent completion into early nonce proof", () => {
+  const { parent, child } = historyFixture();
+  parent.messages[0].content[0].arguments.command = 'echo "测试码等于 $(( $(od -An -N2 -tu2 /dev/urandom) % 9000 + 1000 ))"';
+  parent.messages[1].content[0].text = "测试码等于 2773";
+  parent.messages[2].content[0].text = "I'll do this in the background.";
+  parent.messages.at(-1).content[0].text = "测试码等于2773，真实时间2026年10月2日20时58分48秒，CST。";
+  child.messages[0].content[0].arguments.command = "sleep 8 && date";
+  child.messages[1].content[0].text = "Fri Oct  2 08:58:48 PM CST 2026";
+  child.messages[2].content[0].text = "Fri Oct  2 08:58:48 PM CST 2026";
+  const witness = extractH5WorkflowWitness(parent, { "child-1": child });
+  assert.equal(witness.marker, "2773");
+  assert(witness.markerGeneratedByExec && witness.parentResumedWithResult);
+  assert.deepEqual(witness.childTimestamp, { year: 2026, month: 10, day: 2, hour: 20, minute: 58, second: 48 });
+  assert.equal(extractGeneratedMarker("TASK_MARKER=2773"), "2773");
+  assert.equal(extractGeneratedMarker("测试码等于 2773"), "2773");
+  const data = evidence(); data.marker = "2773"; data.backendPublicTexts = witness.backendPublicTexts;
+  // Old planned-work progress has a different hash and no actual nonce.
+  assert.equal(assessH5ProgressProvenance(data).status, "missing");
+  data.events.at(-1).text = "生成的测试码是4837，2026年10月2日20时58分48秒，CST。";
+  const proof = assessH5FinalAndMirrors(witness, data.diagnostics, data.events);
+  assert.equal(proof.finalTimestampStatus, "match");
+  assert.equal(proof.finalMarkerMatches, false);
 });

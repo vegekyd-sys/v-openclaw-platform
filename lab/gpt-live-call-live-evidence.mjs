@@ -38,6 +38,21 @@ export function parseCompleteTimestamps(text){
     if(check.getUTCFullYear()!==year||check.getUTCMonth()!==month-1||check.getUTCDate()!==day)continue;
     found.push(value);
   }
+  // The tool may use GNU date's default English output. Accept its complete
+  // fields, including explicit AM/PM, without asking the model to rewrite it.
+  const english=/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})\s+(\d{1,2}):(\d{2}):(\d{2})(?:\s*(AM|PM))?\s+([A-Za-z][A-Za-z0-9_+:/-]*|[+-]\d{4})\s+(\d{4})\b/gu;
+  const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  for(const match of text.matchAll(english)){
+    const year=Number(match[8]),month=months.indexOf(match[1])+1,day=Number(match[2]);
+    let hour=Number(match[3]);const minute=Number(match[4]),second=Number(match[5]),period=match[6];
+    if(period&&(hour<1||hour>12))continue;
+    if(period==='PM'&&hour<12)hour+=12;
+    if(period==='AM'&&hour===12)hour=0;
+    if(year<2000||year>2100||hour>23||minute>59||second>59)continue;
+    const check=new Date(Date.UTC(year,month-1,day));
+    if(check.getUTCFullYear()!==year||check.getUTCMonth()!==month-1||check.getUTCDate()!==day)continue;
+    found.push({year,month,day,hour,minute,second});
+  }
   return found;
 }
 

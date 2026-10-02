@@ -6,7 +6,7 @@ import path from 'node:path';
 import {spawn,spawnSync,execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {parseCompleteTimestamps} from './gpt-live-call-live-evidence.mjs';
-import {parsePublicProgressDiagnostics,publicMessageText,extractH5WorkflowWitness,assessH5ProgressProvenance,assessH5FinalAndMirrors} from './gpt-live-h5-provenance-evidence.mjs';
+import {parsePublicProgressDiagnostics,extractGeneratedMarker,publicMessageText,extractH5WorkflowWitness,assessH5ProgressProvenance,assessH5FinalAndMirrors,matchesGeneratedMarker} from './gpt-live-h5-provenance-evidence.mjs';
 
 assert.equal(process.env.GPT_LIVE_H5_READY,'1','Root deployment-ready handoff required');
 const url=new URL(process.env.GPT_LIVE_H5_URL??'http://127.0.0.1:26244/');
@@ -82,7 +82,7 @@ function observeGateway(event){
  }
  // Agent event schema has runId, not always sessionKey. Store only hashes of
  // tagged synthetic marker results, then match the public observer's runId.
- const markerCandidates=candidates.filter(value=>/(?:TASK_MARKER|任务标记|测试码)[=:：\s]+[0-9]{4}(?![0-9])/u.test(value));
+ const markerCandidates=candidates.filter(value=>extractGeneratedMarker(value));
  if(!markerCandidates.length)return;
  toolCompletionReceipts.push({at:Date.now(),runId:payload.runId??null,callId:data.toolCallId??data.callId??null,hashes:[...new Set(markerCandidates.flatMap(value=>[hash(value),hash(value.trim())]))]});
 }
@@ -155,7 +155,7 @@ try{
   fs.writeFileSync(path.join(evidenceDir,'workflow-history.json'),JSON.stringify(workflow,null,2)+'\n',{mode:0o600});
   const call=state.tools.find(item=>item.type==='tool.call');
   const initialUserText=state.events.find(event=>event.type==='turn.done'&&event.role==='user')?.text??'';
-  const visible=state.ui.find(item=>item.at>=early?.progressTranscriptAt&&item.at<(early?.finalAppendSentAt??0)&&String(item.conversation??'').includes(workflow.witness.marker??'not-a-marker'));
+  const visible=state.ui.find(item=>item.at>=early?.progressTranscriptAt&&item.at<(early?.finalAppendSentAt??0)&&matchesGeneratedMarker(item.conversation??'',workflow.witness.marker??'not-a-marker'));
   const rtcStats=await evaluate(`(async()=>{const stats=await globalThis.__sharedH5Smoke.pcs[0]?.getStats();return [...(stats?.values()??[])].filter(row=>['inbound-rtp','outbound-rtp','codec'].includes(row.type)&&(!row.kind||row.kind==='audio')).map(row=>Object.fromEntries(['type','kind','bytesSent','bytesReceived','packetsSent','packetsReceived','totalSamplesReceived','totalAudioEnergy','audioLevel','mimeType','clockRate','channels'].filter(key=>row[key]!==undefined).map(key=>[key,row[key]])))})()`);
   const recording=await evaluate(`(async()=>{const p=globalThis.__sharedH5Smoke;if(!p.recorder)return {error:'No remote recorder'};if(p.recorder.state!=='inactive')await new Promise(resolve=>{p.recorder.addEventListener('stop',resolve,{once:true});p.recorder.stop()});clearInterval(p.energyTimer);clearInterval(p.microphoneEnergyTimer);await p.context?.close();await p.microphoneContext?.close();const blob=new Blob(p.chunks,{type:'audio/webm;codecs=opus'}),bytes=new Uint8Array(await blob.arrayBuffer());let binary='';for(let at=0;at<bytes.length;at+=16384)binary+=String.fromCharCode(...bytes.subarray(at,at+16384));return {blobBytes:blob.size,base64:btoa(binary)}})()`);assert(!recording.error,recording.error);fs.writeFileSync(path.join(evidenceDir,'answer.webm'),Buffer.from(recording.base64,'base64'),{mode:0o600});
   const ff=spawnSync('/usr/bin/ffmpeg',['-v','error','-i',path.join(evidenceDir,'answer.webm'),'-f','s16le','-ar','48000','-ac','1','pipe:1'],{maxBuffer:20*1024*1024});assert.equal(ff.status,0,'Captured H5 audio failed to decode');const pcm=ff.stdout;let peak=0,energy=0;for(let at=0;at+1<pcm.length;at+=2){const sample=pcm.readInt16LE(at);peak=Math.max(peak,Math.abs(sample));energy+=sample**2}const rms=Math.sqrt(energy/(pcm.length/2));fs.writeFileSync(path.join(evidenceDir,'answer.pcm'),pcm,{mode:0o600});const wav=spawnSync('/usr/bin/ffmpeg',['-v','error','-y','-f','s16le','-ar','48000','-ac','1','-i',path.join(evidenceDir,'answer.pcm'),path.join(evidenceDir,'answer.wav')],{encoding:'utf8'});assert.equal(wav.status,0);

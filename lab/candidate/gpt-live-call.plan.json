@@ -62,6 +62,7 @@
     "lab/gpt-live-consult-continuation.test.mjs",
     "lab/gpt-live-pr-provenance.test.mjs",
     "lab/gpt-live-pr-config.test.mjs",
+    "lab/gpt-live-pr-trace.test.mjs",
     "lab/gpt-live-h5-provenance-evidence.test.mjs",
     "lab/gpt-live-completion-context.test.mjs",
     "release/captured/v2026.9.1-db91.6-db91-shrink-reuse-20261002.worker/dist/subagent-completion-relay.test.mjs"
@@ -82,6 +83,7 @@
     "lab/gpt-live-call-live-evidence.mjs",
     "lab/gpt-live-pr-provenance.mjs",
     "lab/gpt-live-pr-config.mjs",
+    "lab/gpt-live-pr-trace.mjs",
     "lab/shared/server.mjs",
     "lab/shared/files.mjs",
     "lab/shared/lifecycle.mjs",

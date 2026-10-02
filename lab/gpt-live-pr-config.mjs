@@ -107,11 +107,14 @@ function restoreSourceConfig(transaction, releaseDir, from, to) {
 
 // The caller holds the existing shared lease, operation lock and idle fence.
 // Recovery performs another stop before restoring; it never hot-writes config.
-export async function installTrialRelease({ transaction, releaseDir, from, to, stop, start, installCode, waitReady }) {
+export async function installTrialRelease({ transaction, releaseDir, from, to, stop, start, installCode, waitReady,
+  installEnvironment = () => {}, restoreEnvironment = () => {}, reloadEnvironment = () => {} }) {
   try {
     await stop();
     await installCode(to);
     installTrialConfig(transaction, releaseDir, from, to);
+    await installEnvironment(from, to);
+    await reloadEnvironment();
     await start();
     await waitReady(to);
   } catch (error) {
@@ -120,6 +123,8 @@ export async function installTrialRelease({ transaction, releaseDir, from, to, s
       const failures = [];
       try { restoreSourceConfig(transaction, releaseDir, from, to); } catch (failure) { failures.push(failure); }
       try { await installCode(from); } catch (failure) { failures.push(failure); }
+      try { await restoreEnvironment(from, to); } catch (failure) { failures.push(failure); }
+      await reloadEnvironment();
       await start();
       if (failures.length) throw new AggregateError(failures, "PR trial source restoration failed");
       await waitReady(from);

@@ -4,6 +4,9 @@ import { createHash } from "node:crypto";
 import { parseCompleteTimestamps } from "./gpt-live-call-live-evidence.mjs";
 
 const hash = (text) => createHash("sha256").update(text).digest("hex");
+export function extractGeneratedMarker(text) {
+  return /(?:TASK_MARKER|任务标记|测试码)(?:\s*(?:等于|为|是|[=:：])\s*|\s+)([0-9]{4})(?![0-9])/u.exec(String(text))?.[1] ?? null;
+}
 export function publicMessageText(message) {
   if (typeof message?.content === "string") return message.content;
   return (Array.isArray(message?.content) ? message.content : [])
@@ -11,14 +14,24 @@ export function publicMessageText(message) {
 }
 export function parsePublicProgressDiagnostics(log) {
   const events = [];
-  for (const line of String(log).split(/\r?\n/u)) {
-    const at = line.indexOf("GPT_LIVE_PUBLIC_PROGRESS ");
-    if (at < 0) continue;
+  for (const rawLine of String(log).split(/\r?\n/u)) {
+    const line = rawLine.replace(/\u001b\[[0-9;]*m/gu, "");
+    const messages = [line];
     try {
-      const event = JSON.parse(line.slice(at + "GPT_LIVE_PUBLIC_PROGRESS ".length));
-      if (event.version === 1 && Number.isSafeInteger(event.at) &&
-          /^[a-f0-9]{64}$/u.test(event.textSha256 ?? "")) events.push(event);
+      const wrapped = JSON.parse(line);
+      for (const key of ["message", "msg", "0", "1"]) {
+        if (typeof wrapped?.[key] === "string") messages.push(wrapped[key]);
+      }
     } catch {}
+    for (const message of messages) {
+      const at = message.indexOf("GPT_LIVE_PUBLIC_PROGRESS ");
+      if (at < 0) continue;
+      try {
+        const event = JSON.parse(message.slice(at + "GPT_LIVE_PUBLIC_PROGRESS ".length));
+        if (event.version === 1 && Number.isSafeInteger(event.at) &&
+            /^[a-f0-9]{64}$/u.test(event.textSha256 ?? "")) { events.push(event); break; }
+      } catch {}
+    }
   }
   return events;
 }
@@ -44,7 +57,7 @@ export function extractH5WorkflowWitness(parentHistory, childHistories = {}) {
   const markerCall = calls.find((call) => call.name === "exec" &&
     /(?:TASK_MARKER|任务标记|测试码)/u.test(publicMessageText(toolResult(parentHistory, call))));
   const markerResult = publicMessageText(toolResult(parentHistory, markerCall));
-  const marker = /(?:TASK_MARKER|任务标记|测试码)[=:：\s]+([0-9]{4})(?![0-9])/u.exec(markerResult)?.[1] ?? null;
+  const marker = extractGeneratedMarker(markerResult);
   const spawn = calls.find((call) => call.name === "sessions_spawn");
   const spawnResult = structuredResult(parentHistory, spawn);
   const yielded = calls.find((call) => call.name === "sessions_yield" &&

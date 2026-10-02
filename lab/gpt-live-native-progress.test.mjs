@@ -57,7 +57,7 @@ function fixture(options = {}) {
     },
     ...options,
   });
-  const texts = () => frames.map((frame) => frame.content[0].text);
+  const texts = () => frames.map((frame) => frame.content[0].text.replace(/^\[BACKEND_(?:PROGRESS_PENDING|FINAL_PART|FINAL_COMPLETE) \d+\/\d+\]\n[^\n]+\n\n/u, ""));
   return { controller, socket, sessionAbort, calls, frames, texts, warnings, fatal, logs };
 }
 
@@ -78,7 +78,7 @@ test("public incomplete progress arrives before final through the native protoco
   assert.deepEqual(run.continuationIdentity, { delegationItemId: "d1", delegationGeneration: 1 });
   run.onProgress({ kind: "commentary", text: "已找到三条" });
   assert.deepEqual(f.texts(), ["已找到三条"]);
-  assert.deepEqual(f.frames[0], { type: "delegation.context.append", delegation_item_id: "d1", channel: "speakable", content: [{ type: "input_text", text: "已找到三条" }] });
+  assert.deepEqual(f.frames[0], { type: "delegation.context.append", delegation_item_id: "d1", channel: "speakable", content: [{ type: "input_text", text: "[BACKEND_PROGRESS_PENDING 1/1]\nParent task remains pending. Relay stated facts only; never guess missing values or announce whole-task completion.\n\n已找到三条" }] });
   run.resolve({ text: "最终确认是两条。" }); await settle();
   assert.deepEqual(f.texts(), ["已找到三条", "最终确认是两条。"]);
   assert.equal(f.fatal.length, 0);
@@ -207,7 +207,7 @@ test("progress feature preserves original transcript context and decoded event e
   assert.deepEqual(f.texts(), ["progress", "final"]);
 });
 
-test("diagnostics are off by default without changing the native wire", async () => {
+test("diagnostics are off by default while public append roles remain active", async () => {
   const f = fixture(); f.controller.startDelegation("d1", "request");
   assert.equal(f.controller.publicProgressTraceEnabled, false);
   f.calls[0].onProgress({ kind: "commentary", text: "公开进度。" });
@@ -259,6 +259,18 @@ test("diagnostics do not claim failed or closed socket appends and ignore late c
   assert.equal(diagnostics.filter((event) => event.stage === "context-append-sent").length, 0);
 });
 
+test("host steering context preserves its native channel without public-output diagnostics", async () => {
+  const diagnostics = [];
+  const f = fixture({ onPublicProgressDiagnostic: (event) => diagnostics.push(event) });
+  f.controller.startDelegation("d1", "request");
+  f.controller.sendToActiveDelegation("private host context", "commentary");
+  assert.equal(f.frames[0].channel, "commentary");
+  assert.equal(f.frames[0].content[0].text, "private host context");
+  assert.deepEqual(diagnostics, []);
+  f.calls[0].resolve({ text: "final." }); await settle();
+  assert.deepEqual(diagnostics.map((event) => event.kind), ["final", "final"]);
+});
+
 test("sync and asynchronous diagnostic failures cannot affect accepted work", async () => {
   for (const onPublicProgressDiagnostic of [() => { throw new Error("observer failed"); }, async () => { throw new Error("observer failed"); }]) {
     const f = fixture({ onPublicProgressDiagnostic });
@@ -285,4 +297,81 @@ test("explicit experiment environment logs only structured metadata", async () =
     if (previous === undefined) delete process.env.OPENCLAW_GPT_LIVE_PROGRESS_TRACE;
     else process.env.OPENCLAW_GPT_LIVE_PROGRESS_TRACE = previous;
   }
+});
+
+
+test("actual native wire distinguishes child progress from parent final completion", async () => {
+  const diagnostics = [];
+  const f = fixture({ onPublicProgressDiagnostic: (event) => diagnostics.push(event) });
+  f.controller.startDelegation("d1", "request");
+  const childText = "Task complete. 测试码等于 2773。子任务日期是2026年10月2日20时58分48秒。";
+  f.calls[0].onProgress({ kind: "commentary", text: childText });
+  assert.match(f.frames[0].content[0].text, /^\[BACKEND_PROGRESS_PENDING 1\/1\]\nParent task remains pending\./u);
+  assert.match(f.frames[0].content[0].text, /never guess missing values or announce whole-task completion/u);
+  assert.equal(f.texts()[0], childText, "Child wording is preserved as a body fact, not promoted to parent completion");
+  const final = "父任务最终结果：测试码等于 2773。" + "核验日期2026年10月2日20时58分48秒；值应精确复述。".repeat(12);
+  f.calls[0].resolve({ text: final }); await settle();
+  const finalFrames = f.frames.slice(1);
+  assert(finalFrames.length > 1);
+  assert.equal(f.texts().slice(1).join(""), final);
+  for (const [index, frame] of finalFrames.entries()) {
+    const label = index + 1 === finalFrames.length ? "FINAL_COMPLETE" : "FINAL_PART";
+    assert(frame.content[0].text.startsWith(`[BACKEND_${label} ${index + 1}/${finalFrames.length}]\n`));
+    if (label === "FINAL_PART") assert.match(frame.content[0].text, /Wait for BACKEND_FINAL_COMPLETE before answering/u);
+  }
+  const sent = diagnostics.filter((event) => event.stage === "context-append-sent");
+  assert.equal(new Set(sent.slice(1).map((event) => event.appendId)).size, 1, "Chunked final is one logical append");
+  assert.deepEqual(sent.map((event) => event.role), ["progress_pending", ...finalFrames.slice(0, -1).map(() => "final_part"), "final_complete"]);
+  assert.equal(sent.filter((event) => event.role === "final_complete").length, 1);
+});
+
+test("public append chunk budgets include role headers and preserve Unicode and whitespace", async () => {
+  const diagnostics = [];
+  const f = fixture({ onPublicProgressDiagnostic: (event) => diagnostics.push(event) });
+  f.controller.startDelegation("utf8", "request");
+  const text = ("😀中文A e\u0301\n字段：2773，20:58:48； ").repeat(35).trim();
+  f.calls[0].onProgress({ kind: "commentary", text });
+  assert(f.frames.length > 2);
+  assert.equal(f.texts().join(""), text);
+  const sends = diagnostics.filter((event) => event.stage === "context-append-sent");
+  for (const [index, frame] of f.frames.entries()) {
+    assert.equal(frame.content.length, 1);
+    assert.equal(frame.content[0].type, "input_text");
+    const wire = frame.content[0].text;
+    const body = f.texts()[index];
+    assert(Buffer.byteLength(wire, "utf8") <= 500);
+    assert(Buffer.byteLength(body, "utf8") <= 320);
+    assert(Buffer.byteLength(wire.slice(0, wire.length - body.length), "utf8") <= 180);
+    assert.equal(Buffer.from(body, "utf8").toString("utf8"), body, "No split surrogate or malformed UTF-8");
+    assert.equal(sends[index].textSha256, createHash("sha256").update(body).digest("hex"));
+    assert.equal(sends[index].wireTextSha256, createHash("sha256").update(wire).digest("hex"));
+    assert.equal(sends[index].wireTextChars, wire.length);
+    assert.equal(sends[index].chunkIndex, index);
+    assert.equal(sends[index].chunkCount, f.frames.length);
+    assert.notEqual(sends[index].textSha256, sends[index].wireTextSha256);
+  }
+  for (const kind of ["progress", "final"]) {
+    const maximum = Number.MAX_SAFE_INTEGER;
+    for (const index of [maximum - 2, maximum - 1]) {
+      const { wireText } = f.controller.formatPublicAppendChunk("", kind, index, maximum);
+      assert(Buffer.byteLength(wireText, "utf8") <= 180, "Header budget holds even for maximal safe chunk positions");
+    }
+  }
+  f.calls[0].resolve({ text: "完成。" }); await settle();
+});
+
+test("wire diagnostic hash comes only from successful sends and includes the fixed role", async () => {
+  const diagnostics = [];
+  const f = fixture({ onPublicProgressDiagnostic: (event) => diagnostics.push(event) });
+  f.controller.startDelegation("d1", "request");
+  f.socket.failNextSend = true;
+  f.calls[0].onProgress({ kind: "commentary", text: "未发出。" });
+  assert.equal(diagnostics.filter((event) => event.wireTextSha256).length, 0);
+  f.calls[0].onProgress({ kind: "commentary", text: "已发出。" });
+  const sent = diagnostics.find((event) => event.stage === "context-append-sent");
+  assert.equal(sent.wireTextSha256, createHash("sha256").update(f.frames[0].content[0].text).digest("hex"));
+  assert.equal(sent.role, "progress_pending");
+  assert.equal(sent.textSha256, createHash("sha256").update("已发出。").digest("hex"));
+  assert.doesNotMatch(JSON.stringify(sent), /BACKEND_PROGRESS_PENDING|已发出/u);
+  f.calls[0].resolve({ text: "完成。" }); await settle();
 });

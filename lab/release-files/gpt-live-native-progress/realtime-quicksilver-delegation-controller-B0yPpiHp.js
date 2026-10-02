@@ -155,7 +155,7 @@ var OpenAIQuicksilverDelegationController = class {
 		this.transcript = [];
 	}
 	tracePublicProgress(stage, delegationId, text, details = {}) {
-		if (!this.publicProgressTraceEnabled) return;
+		if (!this.publicProgressTraceEnabled || !["progress", "final"].includes(details.kind)) return;
 		// Diagnostics carry public text fingerprints only. Do not copy arbitrary
 		// callback fields, prompts, reasoning, credentials or account metadata.
 		const event = {
@@ -169,9 +169,11 @@ var OpenAIQuicksilverDelegationController = class {
 			textSha256: createHash("sha256").update(text).digest("hex"),
 			textChars: text.length
 		};
-		for (const key of ["kind", "appendId", "chunkIndex", "chunkCount"]) {
+		for (const key of ["kind", "appendId", "chunkIndex", "chunkCount", "wireTextChars"]) {
 			if (typeof details[key] === "string" || Number.isSafeInteger(details[key])) event[key] = details[key];
 		}
+		if (["progress_pending", "final_part", "final_complete"].includes(details.role)) event.role = details.role;
+		if (typeof details.wireTextSha256 === "string" && /^[a-f0-9]{64}$/.test(details.wireTextSha256)) event.wireTextSha256 = details.wireTextSha256;
 		const provenance = details.provenance;
 		if (provenance && typeof provenance === "object") {
 			event.provenance = {};
@@ -191,6 +193,40 @@ var OpenAIQuicksilverDelegationController = class {
 		if (this.publicProgressTraceLogEnabled) {
 			try { this.options.logger.info?.(`GPT_LIVE_PUBLIC_PROGRESS ${JSON.stringify(event)}`); } catch {}
 		}
+	}
+	chunkPublicAppendText(text) {
+		// Leave 180 UTF-8 bytes for the role header within the native 500-byte
+		// append limit. Iteration by code point never splits a surrogate pair.
+		const chunks = [];
+		let chunk = "", bytes = 0;
+		for (const character of text) {
+			const characterBytes = Buffer.byteLength(character, "utf8");
+			if (bytes + characterBytes > 320) {
+				chunks.push(chunk);
+				chunk = "";
+				bytes = 0;
+			}
+			chunk += character;
+			bytes += characterBytes;
+		}
+		if (chunk) chunks.push(chunk);
+		return chunks;
+	}
+	formatPublicAppendChunk(text, kind, chunkIndex, chunkCount) {
+		const position = `${chunkIndex + 1}/${chunkCount}`;
+		let role, header;
+		if (kind === "progress") {
+			role = "progress_pending";
+			header = `[BACKEND_PROGRESS_PENDING ${position}]\nParent task remains pending. Relay stated facts only; never guess missing values or announce whole-task completion.\n\n`;
+		} else if (chunkIndex + 1 < chunkCount) {
+			role = "final_part";
+			header = `[BACKEND_FINAL_PART ${position}]\nPartial parent final. Wait for BACKEND_FINAL_COMPLETE before answering; preserve all facts and values exactly.\n\n`;
+		} else {
+			role = "final_complete";
+			header = `[BACKEND_FINAL_COMPLETE ${position}]\nParent final is complete. Relay collected final parts faithfully; never replace numbers or invent missing facts.\n\n`;
+		}
+		if (Buffer.byteLength(header, "utf8") > 180) throw new Error("Native public append role header exceeds byte budget");
+		return { role, wireText: header + text };
 	}
 	isCurrentDelegation(delegation, signal) {
 		return !this.stopped && !this.options.signal.aborted && !signal.aborted &&
@@ -240,20 +276,25 @@ var OpenAIQuicksilverDelegationController = class {
 	sendAppend(delegationId, text, channel, diagnostic = {}) {
 		const socket = this.options.getSocket();
 		if (this.stopped || !socket || socket.readyState !== WEBSOCKET_OPEN) return;
-		const chunks = chunkOpenAIQuicksilverAppendText(text);
+		const isPublic = ["progress", "final"].includes(diagnostic.kind);
+		const chunks = isPublic ? this.chunkPublicAppendText(text) : chunkOpenAIQuicksilverAppendText(text);
 		const appendId = ++this.publicProgressAppendSequence;
 		for (const [chunkIndex, chunk] of chunks.entries()) {
-			socket.send(JSON.stringify({
-			type: "delegation.context.append",
-			delegation_item_id: delegationId,
-			channel,
-			content: [{
-				type: "input_text",
-				text: chunk
-			}]
-			}));
-			// Successful send is the native append boundary, not an intention log.
-			this.tracePublicProgress("context-append-sent", delegationId, chunk, { ...diagnostic, appendId, chunkIndex, chunkCount: chunks.length });
+			const { role, wireText } = isPublic ? this.formatPublicAppendChunk(chunk, diagnostic.kind, chunkIndex, chunks.length) : { wireText: chunk };
+			const frame = {
+				type: "delegation.context.append",
+				delegation_item_id: delegationId,
+				channel,
+				content: [{ type: "input_text", text: wireText }]
+			};
+			socket.send(JSON.stringify(frame));
+			// Fingerprint the content of the actual successfully sent frame. The
+			// body hash remains joinable to public callback provenance.
+			this.tracePublicProgress("context-append-sent", delegationId, chunk, {
+				...diagnostic, appendId, chunkIndex, chunkCount: chunks.length, role,
+				wireTextSha256: createHash("sha256").update(frame.content[0].text).digest("hex"),
+				wireTextChars: frame.content[0].text.length
+			});
 		}
 	}
 	fail(error) {

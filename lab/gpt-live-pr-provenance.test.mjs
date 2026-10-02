@@ -4,11 +4,15 @@ import fs from 'node:fs';
 import {PR_URL,PR_BRANCH,digest,validatePrCandidate,buildPrController} from './gpt-live-pr-provenance.mjs';
 const files=[{target:'openclaw/dist/example.js',before:null,content:'ZXhhbXBsZQ=='}];
 const instructions='Only report complete backend facts.';
-const policy={prUrl:PR_URL,branch:PR_BRANCH,owner:'trial-owner',releaseId:'gpt-live-trial',sourceCommit:'a'.repeat(40),baseRelease:'aligned-baseline',filesSha:digest(JSON.stringify(files)),trialInstructionsSha:digest(instructions)};
-const req={owner:policy.owner,id:policy.releaseId,branch:PR_BRANCH,sourceCommit:policy.sourceCommit,candidatePr:{url:PR_URL,head:policy.sourceCommit,productionAuthorized:false},baseRelease:policy.baseRelease,files,trialInstructions:instructions};
+const policy={prUrl:PR_URL,branch:PR_BRANCH,owner:'trial-owner',releaseId:'gpt-live-trial',sourceCommit:'a'.repeat(40),baseRelease:'aligned-baseline',filesSha:digest(JSON.stringify(files)),trialInstructionsSha:digest(instructions),trialMetadataTrace:false};
+const req={owner:policy.owner,id:policy.releaseId,branch:PR_BRANCH,sourceCommit:policy.sourceCommit,candidatePr:{url:PR_URL,head:policy.sourceCommit,productionAuthorized:false},baseRelease:policy.baseRelease,files,trialInstructions:instructions,trialMetadataTrace:false};
 test('PR provenance binds exact owner, head, baseline and artifact bytes',()=>assert.deepEqual(validatePrCandidate(req,policy),req.candidatePr));
 test('mismatched provenance and production claims fail closed',()=>{
   for(const patch of [{owner:'other'}, {id:'different-release'}, {branch:'dev'}, {sourceCommit:'b'.repeat(40)}, {candidatePr:{...req.candidatePr,productionAuthorized:true}}, {baseRelease:'stale'}, {files:[]}, {syncFromV:{vRelease:'fake'}}, {trialInstructions:'changed'}, {trialInstructions:{}}, {config:{gateway:{port:0}}}])assert.throws(()=>validatePrCandidate({...req,...patch},policy));
+});
+test('metadata trace is a policy-bound boolean and never permits arbitrary environment',()=>{
+  assert.deepEqual(validatePrCandidate({...req,trialMetadataTrace:true},{...policy,trialMetadataTrace:true}),req.candidatePr);
+  for(const patch of [{trialMetadataTrace:true},{trialMetadataTrace:'true'},{trialMetadataTrace:undefined},{environment:{OPENCLAW_GPT_LIVE_PROGRESS_TRACE:'1'}},{dropinPath:'/run/systemd/system/other.service.d/override.conf'}])assert.throws(()=>validatePrCandidate({...req,...patch},policy));
 });
 test('private controller retains shared concurrency, fingerprint, idle fence and rollback guards',()=>{
   const original=fs.readFileSync(new URL('./shared/server.mjs',import.meta.url),'utf8');const source=buildPrController(original);

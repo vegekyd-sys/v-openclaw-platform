@@ -31,14 +31,16 @@ try {
     assert.equal(git('branch','--show-current'),PR_BRANCH);
     const commit=git('rev-parse','HEAD');assert.equal(opts.commit,commit);prHead(commit);
     assert(/^[\w-]+$/.test(opts.owner??''));
+    assert(opts['metadata-trace']===undefined||['true','false'].includes(opts['metadata-trace']),'Metadata trace accepts only true or false');
+    const trialMetadataTrace=opts['metadata-trace']==='true';
     const plan=JSON.parse(fs.readFileSync(opts.plan));
     const files=plan.files.map(f=>{
       relative(f.source);relative(f.target);
       const content=execFileSync('git',['-C',root,'show',commit+':'+f.source],{maxBuffer:64*1024**2});
       return {...f,content:content.toString('base64'),after:digest(content)};
     });
-    const artifact={command:'stage',id:name(opts.id),owner:opts.owner,branch:PR_BRANCH,sourceCommit:commit,baseRelease:plan.baseRelease,files,candidatePr:{url:PR_URL,head:commit,productionAuthorized:false},trialInstructions:GPT_LIVE_CALL_INSTRUCTIONS};
-    const policy={owner:opts.owner,releaseId:artifact.id,prUrl:PR_URL,branch:PR_BRANCH,sourceCommit:commit,baseRelease:plan.baseRelease,filesSha:digest(JSON.stringify(files)),trialInstructionsSha:digest(GPT_LIVE_CALL_INSTRUCTIONS)};
+    const artifact={command:'stage',id:name(opts.id),owner:opts.owner,branch:PR_BRANCH,sourceCommit:commit,baseRelease:plan.baseRelease,files,candidatePr:{url:PR_URL,head:commit,productionAuthorized:false},trialInstructions:GPT_LIVE_CALL_INSTRUCTIONS,trialMetadataTrace};
+    const policy={owner:opts.owner,releaseId:artifact.id,prUrl:PR_URL,branch:PR_BRANCH,sourceCommit:commit,baseRelease:plan.baseRelease,filesSha:digest(JSON.stringify(files)),trialInstructionsSha:digest(GPT_LIVE_CALL_INSTRUCTIONS),trialMetadataTrace};
     validatePrCandidate(artifact,policy);
     save(opts.output,{artifact,policy});result={artifact:opts.output,sourceCommit:commit,files:files.length};
   } else {
@@ -51,6 +53,7 @@ try {
       files.push({name:'server.mjs',content:Buffer.from(buildPrController(fs.readFileSync(path.join(root,'lab/shared/server.mjs'),'utf8'))).toString('base64')},
         {name:'gpt-live-pr-provenance.mjs',content:fs.readFileSync(path.join(root,'lab/gpt-live-pr-provenance.mjs')).toString('base64')},
         {name:'gpt-live-pr-config.mjs',content:fs.readFileSync(path.join(root,'lab/gpt-live-pr-config.mjs')).toString('base64')},
+        {name:'gpt-live-pr-trace.mjs',content:fs.readFileSync(path.join(root,'lab/gpt-live-pr-trace.mjs')).toString('base64')},
         {name:'policy.json',content:Buffer.from(JSON.stringify(policy)).toString('base64')});
       const input={dir,owner:policy.owner,files,globalHashes:Object.fromEntries(['server.mjs','files.mjs','lifecycle.mjs'].map(f=>[f,digest(fs.readFileSync(path.join(root,'lab/shared',f)))]))};
       const bootstrap=`import fs from 'node:fs';import assert from 'node:assert/strict';import {createHash} from 'node:crypto';let s='';for await(const b of process.stdin)s+=b;const r=JSON.parse(s);const home='${HOME}';assert.equal(process.getuid(),0);assert.equal(JSON.parse(fs.readFileSync('/srv/vlab-production-mirror/labs/control/integration.json')).owner,r.owner);for(const [f,h]of Object.entries(r.globalHashes))assert.equal(createHash('sha256').update(fs.readFileSync(home+'/tool/'+f)).digest('hex'),h,'Platform controller changed; review first');assert(!fs.existsSync(r.dir),'Private controller already installed');fs.mkdirSync(r.dir,{recursive:true,mode:0o700});for(const f of r.files)fs.writeFileSync(r.dir+'/'+f.name,Buffer.from(f.content,'base64'),{mode:0o600,flag:'wx'});console.log(JSON.stringify({dir:r.dir,globalControllerChanged:false}));`;

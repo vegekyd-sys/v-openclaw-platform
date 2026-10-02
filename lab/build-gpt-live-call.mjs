@@ -49,7 +49,7 @@ export function build({ baseRelease = "memory-search-guards-20261002" } = {}) {
   const completionCandidate=JSON.parse(readFileSync(resolve(root,'lab/candidate/gpt-live-completion-context.plan.json')));
   writeFileSync(resolve(root, "lab/candidate/gpt-live-call.plan.json"), JSON.stringify({
     baseRelease, files, tests: ["lab/gpt-live-consult-progress.test.mjs", "lab/gpt-live-native-progress.test.mjs", "lab/gpt-live-h5/server.test.mjs", "lab/gpt-live-h5/app.test.mjs", "lab/gpt-live-call-live-auth.test.mjs", "lab/gpt-live-call-live-evidence.test.mjs",
-      "lab/gpt-live-consult-continuation.test.mjs", "lab/gpt-live-pr-provenance.test.mjs", "lab/gpt-live-pr-config.test.mjs", "lab/gpt-live-h5-provenance-evidence.test.mjs",...completionCandidate.tests],
+      "lab/gpt-live-consult-continuation.test.mjs", "lab/gpt-live-pr-provenance.test.mjs", "lab/gpt-live-pr-config.test.mjs", "lab/gpt-live-pr-trace.test.mjs", "lab/gpt-live-h5-provenance-evidence.test.mjs",...completionCandidate.tests],
     support: [...new Set([
       "lab/gpt-live-consult-progress.mjs", "lab/patch-gpt-live-native-progress.mjs",
       "lab/fixtures/gpt-live-native-progress/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
@@ -60,7 +60,7 @@ export function build({ baseRelease = "memory-search-guards-20261002" } = {}) {
       "lab/gpt-live-h5/server.mjs", "lab/gpt-live-h5/events.mjs", "lab/gpt-live-h5/index.html", "lab/gpt-live-h5/app.js",
       "lab/gpt-live-call-live-auth.mjs",
       "lab/gpt-live-call-live-evidence.mjs",
-      "lab/gpt-live-pr-provenance.mjs","lab/gpt-live-pr-config.mjs","lab/shared/server.mjs","lab/shared/files.mjs","lab/shared/lifecycle.mjs",
+      "lab/gpt-live-pr-provenance.mjs","lab/gpt-live-pr-config.mjs","lab/gpt-live-pr-trace.mjs","lab/shared/server.mjs","lab/shared/files.mjs","lab/shared/lifecycle.mjs",
       "lab/gpt-live-consult-continuation.mjs","lab/patch-gpt-live-consult-continuation.mjs","lab/gpt-live-consult-continuation-baseline.json",
       "lab/gpt-live-h5-provenance-evidence.mjs",...completionCandidate.support,...fixtureFiles,...files.map(f=>f.source),
     ])], timeoutSeconds: 120,

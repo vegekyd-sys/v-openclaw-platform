@@ -2,6 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {parseCompleteTimestamps,assessFinalTimestamp,assessEarlyProgress} from './gpt-live-call-live-evidence.mjs';
 
+test('real GNU date English output preserves month, AM/PM and all six fields',()=>{
+  assert.deepEqual(parseCompleteTimestamps('Fri Oct  2 08:58:48 PM CST 2026'),[{year:2026,month:10,day:2,hour:20,minute:58,second:48}]);
+  assert.deepEqual(parseCompleteTimestamps('Fri Oct  2 20:58:48 CST 2026'),[{year:2026,month:10,day:2,hour:20,minute:58,second:48}]);
+  assert.deepEqual(parseCompleteTimestamps('Fri Oct  2 12:00:00 AM CST 2026'),[{year:2026,month:10,day:2,hour:0,minute:0,second:0}]);
+  assert.deepEqual(parseCompleteTimestamps('Fri Oct  2 12:00:00 PM CST 2026'),[{year:2026,month:10,day:2,hour:12,minute:0,second:0}]);
+  assert.deepEqual(parseCompleteTimestamps('Fri Feb  30 20:58:48 CST 2026'),[]);
+  assert.deepEqual(parseCompleteTimestamps('Fri Oct  2 13:58:48 PM CST 2026'),[]);
+});
+
 test('Arabic backend and mixed spoken timestamp preserve all six fields',()=>{
   const expected={year:2026,month:10,day:2,hour:13,minute:58,second:9};
   assert.deepEqual(parseCompleteTimestamps('2026-10-02 13:58:09 CST'),[expected]);
