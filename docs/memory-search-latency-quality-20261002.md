@@ -26,7 +26,7 @@
 | `lab/patch-memory-search-fast.mjs`、`lab/build-memory-search-fast.mjs` | 从 V 线上字节生成补丁（输入 sha 校验） |
 | `lab/release-files/memory-search-fast/` | 三个补丁后的 dist 文件：KNN 子进程去掉 3 个裸 import；`search()` 先发 embedding 再跑关键词搜索 |
 | `lab/candidate/memory-search-fast.{plan.json,test.mjs}` | 正式候选测试 |
-| `scripts/v-memory-index.sh` | 增量 `openclaw memory index`，用正在运行的 Gateway 自己的 node、dist、配置、用户和环境（从 /proc 读），保证与提供搜索的代码一致 |
+| `scripts/v-memory-indexer.mjs`、`scripts/v-memory-indexer-run.py`、`systemd/v-memory-indexer.service`、`scripts/install-v-memory-indexer.sh` | 实时索引进程：在 Gateway 之外常驻，用 OpenClaw 原生的 watcher 同步变动的文件。node、dist、用户和环境都从 Gateway 的 systemd unit 解析（Gateway 停着也能用）；`--cli` 模式用同一套环境跑 OpenClaw CLI |
 
 dist 补丁只改启动和并发顺序，不改排序；所有对照测试结果逐条一致。
 
@@ -60,26 +60,36 @@ dist 补丁只改启动和并发顺序，不改排序；所有对照测试结果
 
 新结构本身比旧结构好得多（0.32 → 0.64）。但 V 现在只拿到了一部分好处，因为一半的新页面和新改动没进索引。旧记忆的分数还受时效影响：9/11 的数据里没有后来的事。
 
-**增量同步的代价**（副本，同时跑一个每 200 ms 写一次的探针，模拟 Gateway 的 5 秒写租约）：
-- 一小时量级的变动（当天日志、15 个项目页、5 个新页、3 个移走）用时 23 s，写等待最长 0.73 s；
-- 无变动的同步 50–88 s，大部分是打开库时的完整性检查（V 上 12 GB 约 90 s，9/28 有记录）；
-- 4 次里有 2 次，写探针最长等了 4.2–5.1 s，单独跑时 schema 步骤只要 0.72 s。在 V 上这可能让一次 Gateway 写入撞到 5 秒租约，所以同步只排在低峰。
+**实时同步**（副本，`v-memory-indexer` 常驻；同时跑一个每 200 ms 写一次的探针，模拟 Gateway 的 5 秒写租约）：
 
-## 上 V 的步骤（需要 Tianyi 批准，按 review → 合 dev → 从 dev 打包 → 部署的顺序）
+| 变动 | 能被搜到的时间 |
+|---|---|
+| 新建文件 | 2.8–3.0 s |
+| 编辑文件 | 2.8–3.6 s |
+| 删除或移走文件 | 2.2 s |
+| 一次改 200 个文件 | 50 s 全部完成；写探针最长等待 0.74 s，没有超过 1 s |
 
-1. **合入 dev**，从 dev 提交打包补丁，用 `scripts/promote-to-v.mjs` 发布（3 个 dist 文件；需要重启 Gateway 才生效）。
-2. **同一个维护窗口里重建 makaron 索引**（低峰，约 20–25 分钟停机）：
+进程常驻内存约 350 MB。代价集中在启动：完整性检查 2–4 分钟（V 上约 90 s），schema 步骤会持写锁 4–8.5 s。所以它不随 Gateway 重启，只在维护窗口里 Gateway 停着时启动一次。
+- 进程外跑索引，是因为原生 watcher 原本跑在 Gateway 里，写库会卡住 Gateway 的事件循环（9/11 补丁正是为此把搜索改成只读）。
+- 脱离插件宿主运行时，要手动给 memory-core 配置 plugin state store（`createPluginStateKeyedStore("memory-core")`，与宿主给的一样），否则文件一变，同步就会报 `dreaming SQLite state store is not configured`。
+- 每 60 分钟再做一次全量对账，防止 inotify 事件丢失。
+
+## 上 V 的步骤（Tianyi 2026-10-02 已批准；顺序：review → 合 dev → 从 dev 打包 → 部署）
+
+1. **合入 dev**，从 dev 提交打包补丁：先在共享 VLab 上 stage、deploy、accept，再用 `scripts/promote-to-v.mjs` 装到 V（3 个 dist 文件；不重启，下次 Gateway 启动时生效）。`scripts/install-v-memory-indexer.sh v` 安装实时索引服务，只 enable 不启动。
+2. **维护窗口**（低峰，约 25 分钟停机）：
    1. Gateway 在线时先做 `backup sqlite create --agent makaron`，留作回滚；
    2. 停 `openclaw-gateway-memory-snapshot.timer`（它 `Requires=` Gateway，会把 Gateway 拉起来），再停 Gateway；
-   3. 用 Gateway 同一份代码和环境跑 `openclaw memory index --force --agent makaron`（9/28 实测 11 分钟）。不要包 `timeout`，否则会在提交阶段被杀掉回滚；
-   4. 启动 Gateway；恢复 snapshot timer、`openclaw-rtc-h5.service`。
+   3. `python3 /opt/v-sentinel/v-memory-indexer-run.py --cli memory index --force --agent makaron`（9/28 实测 11 分钟）。不要包 `timeout`，否则会在提交阶段被杀掉回滚；
+   4. `systemctl start v-memory-indexer`，等日志里出现 `indexer-startup` 那一行同步（启动时持写锁的那几秒落在停机期内）；
+   5. 启动 Gateway（这次重启也让 dist 补丁生效）；恢复 snapshot timer、`openclaw-rtc-h5.service`。
 
    重建一次解决三件事：补上 9/28 之后的所有变动、换成新的 64 条/块布局（V 上省约 1.4 s）、消除碎片。不在 Gateway 运行时做，因为 9/28 那次在线 `--force` 锁库 5–6 分钟，丢了两条群消息。
-3. **安装定时同步**：把 `scripts/v-memory-index.sh` 装成 systemd timer（root 运行，Nice=10，IOSchedulingClass=idle）。建议每天 05:40 和 21:40 各一次，21:40 排在 Librarian 21:00 编译之后。频率要权衡：越频繁，当天的新内容越早能搜到，但每次约 90 s 的完整性检查和偶发的写等待也越多。
-4. **验收**：
+3. **验收**：
    - `memory status --agent makaron` 不再 dirty，files 等于 eligible；
+   - 在 memory 里写一个带唯一字符串的测试页，几秒内能用 memory_search 搜到，删掉后几秒内搜不到；
    - 用 `/root/claude-memsearch-20261002/probe.mjs` 跑同一组 48 条查询（只读、status purpose、间隔 3 s），看 searchMs；
-   - 观察 1–2 天线上 toolResult 里的 `debug.searchMs` 分布（之前 p50 7–9 s）。
+   - 观察 1–2 天线上 toolResult 里的 `debug.searchMs` 分布（之前 p50 7–9 s），以及 `journalctl -u v-memory-indexer` 里有没有 `sync-failed`。
 
 **V 上的预期**：低峰 p50 约 1.3–1.6 s（V 的 CPU 比 VLab 快，副本补丁后是 1.59 s）。这是按分阶段测量推算的，要等上线后实测确认。
 
@@ -92,9 +102,9 @@ dist 补丁只改启动和并发顺序，不改排序；所有对照测试结果
 
 ## 其他 agent
 
-dealclaw、xiaoai、short-v、v-codex 各有自己的 agent 库，大概率也没在同步。`v-memory-index.sh` 支持传多个 agent，要不要一起同步待定。
+dealclaw、xiaoai、short-v、v-codex 各有自己的 agent 库，大概率也没在同步。`v-memory-indexer-run.py` 支持传多个 agent，要不要一起同步待定。
 
 ## 运维提醒
 
 - VLab 私有实验目录 `/var/tmp/claude-memsearch-20261002` 约 14 GB，验收结束后删除。
-- V 上 `/root/claude-memsearch-20261002/`（V 记忆导出约 1.2 GB，root 700）和 `/root/claude-memsearch-evidence/gw.env`（Gateway 环境副本，含密钥）用完即删。
+- V 上 `/root/claude-memsearch-20261002/`（V 记忆导出约 1.2 GB，root 700）验收后删除。探测用的 Gateway 环境副本已于 2026-10-02 删除。
