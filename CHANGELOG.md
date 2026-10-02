@@ -11,6 +11,23 @@
 
 ---
 
+## v2026.9.1-db91.6-memory-search-fast-20261002
+
+上线：2026-10-02 09:58 CST 安装，未重启（KNN 子进程文件对新搜索立即生效；manager-runtime.js 待下次 Gateway 启动）  ·  tag `v2026.9.1-db91.6-memory-search-fast-20261002`
+
+**摘要**：memory_search 的向量检索子进程不再每次加载用不到的模块，启动从 1.37 s 降到 0.19 s，安装后立即生效。查询向量改为与关键词搜索同时进行，这一处要等下次 Gateway 重启。搜索结果不变。makaron 索引重建与实时索引服务 `v-memory-indexer` 在后续维护窗口上线。详见 docs/memory-search-latency-quality-20261002.md。
+
+相对上一版 `v2026.9.1-db91.6-background-work-20261002`：3 个文件变化。
+
+**经 VLab 发版 `memory-search-fast-20261002`**（claude-memsearch-20261002，dev `48aa6142`）
+> 验收：2026-10-02 10:0x CST real makaron agent turns via vlab.mjs test (deliver:false): memory_search 5 calls all ok (6 hits each, correct top paths, provider gemini); sequential warm searchMs 3510/2738/2886 on the shared (old 1024-layout, unsynced) index right after cold start; first concurrent pair right after start 18.4/19.5 s (cold cache). 0 vector/KNN errors in Gateway log since deploy. Speed and re…
+- `core` extensions/memory-core/manager-runtime.js  115e5f41 → c6f97543
+- `core` extensions/memory-core/memory-search-knn.child.js  a106f839 → 97c542fb
+- `core` manager-search-knn-NiSMMJUM.js  124e05bd → a9bd4092
+
+**这期间合入 dev 的 PR**（1 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #140 perf(memory): memory_search p50 2.8s→1.6s, sync the frozen index
+
 ## v2026.9.1-db91.6-background-work-20261002
 
 上线：2026-10-02 03:13 CST 安装并重启 Gateway（03:15 就绪）  ·  tag `v2026.9.1-db91.6-background-work-20261002`；03:16–03:40 生产飞书回归通过。
