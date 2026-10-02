@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
-import { patchKnnChild, patchKnnQueryModule, patchSearchEmbeddingOverlap, patchSessionVisibilityFastPath, patchSpareKnnChild, patchHybridRescoring } from './patch-memory-search-fast.mjs';
+import { patchKnnChild, patchKnnQueryModule, patchSearchEmbeddingOverlap, patchSessionVisibilityFastPath, patchSpareKnnChild, patchHybridRescoring, patchWeightedTermCoverage } from './patch-memory-search-fast.mjs';
 
 const read = (rel) => fs.readFileSync(new URL(rel, import.meta.url), 'utf8');
 const sha = (value) => createHash('sha256').update(value).digest('hex');
@@ -84,4 +84,31 @@ test('rescoreHybridCandidates scores coverage and backfills cosine for strong ke
   assert.equal(byId.b, 1 / 6);
   assert.deepEqual(out.vector.map((hit) => [hit.id, Number(hit.score.toFixed(2))]), [['c', 0.6], ['a', 0.6]]);
   assert.equal(fn(db, { query: '康浩源', queryVec: [1], vector: [], keyword: [{ id: 'a', path: 'a.md' }] }, true).keyword[0].textScore, undefined);
+});
+
+const managerWeighted = read('./release-files/memory-search-weighted/manager-runtime.js');
+
+test('memory-search-weighted adds only weighted term coverage to memory-search-mixed', () => {
+  assert.equal(patchWeightedTermCoverage(managerMixed), managerWeighted);
+  assert.throws(() => patchWeightedTermCoverage(managerWeighted), /coverage fallback keyword score/);
+  assert.match(managerWeighted, /scoreFallbackKeywordResult\(\{\n\t+db: params\.db,/);
+  assert.match(managerWeighted, /const weights = coverageTermWeights\(db, terms\);/);
+});
+
+test('coverage terms are Han bigrams plus letter runs, weighted by sampled IDF', () => {
+  const start = managerWeighted.indexOf('const COVERAGE_SAMPLE_SIZE = 2048;');
+  const end = managerWeighted.indexOf('function scoreFallbackKeywordResult(params) {');
+  const lib = new Function(`${managerWeighted.slice(start, end)}; return { coverageTerms, coverageTermWeights, weightedTermCoverage };`)();
+  assert.deepEqual(lib.coverageTerms('Tianyi 有没有养法斗'), ['tianyi', '有没', '没有', '有养', '养法', '法斗']);
+  // A script change splits a run, so "夜班D" and "夜班 D" give the same terms.
+  assert.deepEqual(lib.coverageTerms('夜班D 的 QC'), lib.coverageTerms('夜班 D 的 QC'));
+  assert.deepEqual(lib.coverageTerms('夜班D 的 QC'), ['夜班', 'qc']);
+  // "memory" sits in every chunk path, "法斗" in one chunk: the rare word dominates.
+  const docs = Array.from({ length: 100 }, (_, i) => `memory/people/${i % 4 ? 'x' : 'tianyi'}.md\n${i === 7 ? '养了一只法斗' : '日常记录'}`);
+  const db = { location: () => '/a.sqlite', prepare: (sql) => ({ get: (id) => (sql.includes('max(rowid)') ? { m: docs.length } : { doc: docs[id - 1] }) }) };
+  const terms = ['memory', 'tianyi', '法斗'];
+  const [wMemory, wTianyi, wRare] = lib.coverageTermWeights(db, terms);
+  assert(wMemory < 0.01 && wTianyi > wMemory && wRare > wTianyi);
+  const weights = [wMemory, wTianyi, wRare];
+  assert(lib.weightedTermCoverage(terms, weights, docs[7]) > lib.weightedTermCoverage(terms, weights, docs[0]));
 });

@@ -195,6 +195,114 @@ export function patchHybridRescoring(source) {
   return out;
 }
 
+// 5. Weighted term coverage (on top of 4). Two faults in 4's coverage, found by V's
+//    54-question benchmark 2026-10-02 (top-1 41% -> 46% but top-5 70% -> 67%):
+//    - Every term counted the same. "memory" is in the path of all 36,929 chunks and
+//      "tianyi"/"history"/"main" in thousands, so a chunk holding only those common words
+//      outranked the one holding the rare word the question was about.
+//    - Terms were runs of letters, so a Chinese clause without spaces was one term
+//      ("米奥业务小场景太多") that no chunk contains, the coverage of every hit was 0 and
+//      the BM25 signal was thrown away; "夜班D" never matched "夜班 D".
+//    Terms are now Han character bigrams plus runs of other letters/digits (a script change
+//    splits a run), each weighted by BM25 IDF. Document frequencies come from a random
+//    sample of ~2,000 chunks per index, read once an hour (~25 ms); scanning all 35 MB of
+//    chunk text per query would cost ~100 ms per term on the Gateway loop.
+export function patchWeightedTermCoverage(source) {
+  let out = replaceExactlyOnce(
+    source,
+    'function scoreFallbackKeywordResult(params) {\n' +
+      '\tconst coverageTerms = [...new Set((params.query.toLowerCase().match(/[\\p{L}\\p{N}_]+/gu) ?? []).filter((term) => Array.from(term).length >= 2))];\n' +
+      '\tif (coverageTerms.length > 1) {\n' +
+      '\t\tconst haystack = `${params.path}\\n${params.text}`.toLowerCase();\n' +
+      '\t\treturn .75 * (coverageTerms.filter((term) => haystack.includes(term)).length / coverageTerms.length) + .25 * Math.max(0, Math.min(1, params.ftsScore));\n' +
+      '\t}\n',
+    '// Query terms for coverage scoring: Han character bigrams, and runs of other letters or\n' +
+      '// digits of 2+ characters. Each is weighted by BM25 IDF estimated on a chunk sample.\n' +
+      'const COVERAGE_SAMPLE_SIZE = 2048;\n' +
+      'const COVERAGE_SAMPLE_TTL_MS = 36e5;\n' +
+      'const coverageSamples = /* @__PURE__ */ new Map();\n' +
+      'function coverageTerms(query) {\n' +
+      '\tconst terms = /* @__PURE__ */ new Set();\n' +
+      '\tfor (const run of query.toLowerCase().match(/\\p{Script=Han}+|(?:(?!\\p{Script=Han})[\\p{L}\\p{N}_])+/gu) ?? []) {\n' +
+      '\t\tconst chars = Array.from(run);\n' +
+      '\t\tif (/\\p{Script=Han}/u.test(chars[0])) for (let i = 0; i + 1 < chars.length; i++) terms.add(chars[i] + chars[i + 1]);\n' +
+      '\t\telse if (chars.length >= 2) terms.add(run);\n' +
+      '\t}\n' +
+      '\treturn [...terms];\n' +
+      '}\n' +
+      'function coverageTermWeights(db, terms) {\n' +
+      '\tlet key = "";\n' +
+      '\ttry {\n\t\tkey = String(db.location?.() ?? "");\n\t} catch {}\n' +
+      '\tconst now = Date.now();\n' +
+      '\tlet sample = coverageSamples.get(key);\n' +
+      '\tif (!sample || now - sample.at > COVERAGE_SAMPLE_TTL_MS) {\n' +
+      '\t\tconst docs = [];\n' +
+      '\t\ttry {\n' +
+      '\t\t\tconst maxRowid = db.prepare("SELECT max(rowid) AS m FROM memory_index_chunks").get()?.m ?? 0;\n' +
+      '\t\t\tconst read = db.prepare("SELECT lower(path || char(10) || text) AS doc FROM memory_index_chunks WHERE rowid = ?");\n' +
+      '\t\t\tif (maxRowid > 0) for (let i = 0; i < COVERAGE_SAMPLE_SIZE; i++) {\n' +
+      '\t\t\t\tconst doc = read.get(1 + Math.floor(Math.random() * maxRowid))?.doc;\n' +
+      '\t\t\t\tif (typeof doc === "string") docs.push(doc);\n' +
+      '\t\t\t}\n' +
+      '\t\t} catch {}\n' +
+      '\t\tsample = { at: now, docs, weights: /* @__PURE__ */ new Map() };\n' +
+      '\t\tcoverageSamples.set(key, sample);\n' +
+      '\t}\n' +
+      '\treturn terms.map((term) => {\n' +
+      '\t\tlet weight = sample.weights.get(term);\n' +
+      '\t\tif (weight === void 0) {\n' +
+      '\t\t\tconst n = sample.docs.length;\n' +
+      '\t\t\tlet df = 0;\n' +
+      '\t\t\tfor (const doc of sample.docs) if (doc.includes(term)) df++;\n' +
+      '\t\t\tweight = n > 0 ? Math.log(1 + (n - df + .5) / (df + .5)) : 1;\n' +
+      '\t\t\tsample.weights.set(term, weight);\n' +
+      '\t\t}\n' +
+      '\t\treturn weight;\n' +
+      '\t});\n' +
+      '}\n' +
+      'function weightedTermCoverage(terms, weights, haystack) {\n' +
+      '\tlet total = 0;\n' +
+      '\tlet found = 0;\n' +
+      '\tfor (let i = 0; i < terms.length; i++) {\n' +
+      '\t\ttotal += weights[i];\n' +
+      '\t\tif (haystack.includes(terms[i])) found += weights[i];\n' +
+      '\t}\n' +
+      '\treturn total > 0 ? found / total : 0;\n' +
+      '}\n' +
+      'function scoreFallbackKeywordResult(params) {\n' +
+      '\tconst coverageTermList = params.db ? coverageTerms(params.query) : [];\n' +
+      '\tif (coverageTermList.length > 1) {\n' +
+      '\t\tconst haystack = `${params.path}\\n${params.text}`.toLowerCase();\n' +
+      '\t\treturn .75 * weightedTermCoverage(coverageTermList, coverageTermWeights(params.db, coverageTermList), haystack) + .25 * Math.max(0, Math.min(1, params.ftsScore));\n' +
+      '\t}\n',
+    'coverage fallback keyword score',
+  );
+  out = replaceExactlyOnce(
+    out,
+    '\t\tconst score = params.boostFallbackRanking ? scoreFallbackKeywordResult({\n\t\t\tquery: params.rankingQuery ?? params.query,',
+    '\t\tconst score = params.boostFallbackRanking ? scoreFallbackKeywordResult({\n\t\t\tdb: params.db,\n\t\t\tquery: params.rankingQuery ?? params.query,',
+    'fallback keyword score call',
+  );
+  out = replaceExactlyOnce(
+    out,
+    '\tconst terms = [...new Set((params.query.toLowerCase().match(/[\\p{L}\\p{N}_]+/gu) ?? []).filter((term) => Array.from(term).length >= 2))];\n' +
+      '\tif (terms.length < 2) return params;\n' +
+      '\tlet readText;\n',
+    '\tconst terms = coverageTerms(params.query);\n' +
+      '\tif (terms.length < 2) return params;\n' +
+      '\tconst weights = coverageTermWeights(db, terms);\n' +
+      '\tlet readText;\n',
+    'hybrid rescoring terms',
+  );
+  out = replaceExactlyOnce(
+    out,
+    '\t\tconst coverage = terms.filter((term) => text.includes(term)).length / terms.length;\n',
+    '\t\tconst coverage = weightedTermCoverage(terms, weights, text);\n',
+    'hybrid rescoring coverage',
+  );
+  return out;
+}
+
 export function patchKnnQueryModule(source) {
   return replaceExactlyOnce(
     source,
