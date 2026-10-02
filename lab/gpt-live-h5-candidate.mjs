@@ -61,6 +61,11 @@ openAgentDatabase({agentId:'makaron',path:privateAgentDb,env:process.env});close
 const tracePath=path.join(state,'gateway-stdout.log'),sessionPath=path.join(state,'h5-session.json');
 fs.writeFileSync(tracePath,'',{flag:'wx',mode:0o600});
 let gateway,client,bridge,smoke;let recent=[];
+const experience=process.env.GPT_LIVE_H5_INTERACTIVE==='1';
+const shutdown=new AbortController();
+const requestShutdown=()=>shutdown.abort();
+if(experience){process.once('SIGTERM',requestShutdown);process.once('SIGINT',requestShutdown);}
+let experienceMetadata,experienceReadyPath,experienceReadyWritten=false,experienceOutcome='failed';
 function launch() {
   gateway=spawn(process.execPath,['--max-old-space-size=4096',`${runtime}/openclaw/dist/index.js`,'gateway','--port',String(config.gateway.port)],{env:{...process.env,OPENCLAW_GATEWAY_PORT:String(config.gateway.port),OPENCLAW_GPT_LIVE_PROGRESS_TRACE:'1'},stdio:['ignore','pipe','pipe']});
   for(const stream of [gateway.stdout,gateway.stderr])stream.on('data',chunk=>{fs.appendFileSync(tracePath,chunk);recent.push(String(chunk));if(recent.length>30)recent.shift();});
@@ -79,6 +84,7 @@ try {
   launch();let ready=false,migrationRestarted=false;
   const token=String(config.gateway.auth.token).replace(/\$\{([^}]+)\}/gu,(_,key)=>{assert(process.env[key]);return process.env[key];});
   for(const deadline=Date.now()+300000;Date.now()<deadline;) {
+    assert(!shutdown.signal.aborted,'Candidate experience stopped during startup');
     try {
       await new Promise((resolve,reject)=>{
         const timer=setTimeout(()=>reject(Error('Private Gateway connection deadline')),5000);
@@ -109,6 +115,23 @@ try {
   }});
   const h5port=await port();await new Promise(resolve=>bridge.server.listen(h5port,'127.0.0.1',resolve));
   const appSha=createHash('sha256').update(fs.readFileSync('lab/gpt-live-h5/app.js')).digest('hex');
+  if(experience) {
+    const {waitForExperience}=await import('./gpt-live-h5-experience-lifecycle.mjs');
+    const durationSeconds=Number(process.env.GPT_LIVE_H5_EXPERIENCE_SECONDS??7200);
+    assert(Number.isSafeInteger(durationSeconds)&&durationSeconds>=1&&durationSeconds<=14400,'Candidate experience duration must be 1–14400 seconds');
+    experienceReadyPath=process.env.GPT_LIVE_H5_EXPERIENCE_READY;
+    assert(experienceReadyPath&&path.isAbsolute(experienceReadyPath),'Absolute candidate experience readiness path required');
+    assert(process.env.VLAB_CANDIDATE_ID&&process.env.VLAB_CANDIDATE_UNIT,'Candidate experience identity required');
+    assert(!shutdown.signal.aborted,'Candidate experience stopped before readiness');
+    const readyAt=Date.now();
+    experienceMetadata={candidateId:process.env.VLAB_CANDIDATE_ID,unit:process.env.VLAB_CANDIDATE_UNIT,
+      remotePort:h5port,gatewayPid:gateway.pid,appSha,sourceCommit:process.env.GPT_LIVE_H5_SOURCE_COMMIT??null,
+      readyAt:new Date(readyAt).toISOString(),expiresAt:new Date(readyAt+durationSeconds*1000).toISOString(),state:'ready'};
+    fs.mkdirSync(path.dirname(experienceReadyPath),{recursive:true,mode:0o700});
+    fs.writeFileSync(experienceReadyPath,JSON.stringify(experienceMetadata,null,2)+'\n',{mode:0o600,flag:'wx'});
+    experienceReadyWritten=true;
+    experienceOutcome=await waitForExperience({durationMs:durationSeconds*1000,gateway,signal:shutdown.signal});
+  } else {
   const cases=(process.env.GPT_LIVE_H5_CASE??'workflow').split(',');
   assert(cases.every(value=>['workflow','cancel','close-reopen','barge-chat'].includes(value)),'Unknown candidate H5 case');
   const evidenceBase=process.env.GPT_LIVE_H5_EVIDENCE_DIR;
@@ -128,10 +151,12 @@ try {
   }
   fs.writeFileSync(path.join(evidenceBase,'case-results.json'),JSON.stringify(results,null,2)+'\n',{mode:0o600});
   assert(results.every(result=>result.passed),'Full native H5 cases failed: '+results.filter(result=>!result.passed).map(result=>result.case).join(', '));
+  }
 } catch(error) {
   console.error(JSON.stringify({candidateFailed:error.message,gatewayExit:gateway?.exitCode??null,
     gatewayRecent:recent.slice(-8).map(line=>line.replace(/(token|api.?key|authorization|secret|password)[=: ]+[^\s]+/giu,'$1=[redacted]').replace(/https?:\/\/\S+/giu,'[endpoint]').slice(0,300))}));process.exitCode=1;
 } finally {
+  process.removeListener('SIGTERM',requestShutdown);process.removeListener('SIGINT',requestShutdown);
   await stop(smoke);
   try { await bridge?.dispose(); } finally {
     client?.stop(); await stop(gateway);
@@ -143,5 +168,7 @@ try {
       fs.writeFileSync(path.join(evidence,'native-public-diagnostics.json'),
         JSON.stringify(parsePublicProgressDiagnostics(fs.readFileSync(tracePath,'utf8')),null,2)+'\n',{mode:0o600});
     }
+    if(experienceReadyWritten)fs.writeFileSync(experienceReadyPath,
+      JSON.stringify({...experienceMetadata,state:'closed',outcome:experienceOutcome,closedAt:new Date().toISOString()},null,2)+'\n',{mode:0o600});
   }
 }
