@@ -11,6 +11,37 @@
 
 ---
 
+## v2026.9.1-db91.6-db91-shrink-reuse-20261002
+
+上线：2026-10-02 15:25 CST 安装并重启 Gateway（15:26 恢复）  ·  tag `v2026.9.1-db91.6-db91-shrink-reuse-20261002`
+
+**摘要**：修复 Gateway 冻结。WAL 维护定时器的增量清理会缩小 agent 库文件，原来文件一缩小，下一次 memory_search 打开数据库时，就在 Gateway 主线程上同步重做整库完整性检查（13:19 卡 106.6 s，14:50 卡 122.1 s，之后进入 host thaw 循环）。现在，如果文件变小是 SQLite 自己做的（主文件头里的页数 × 页大小 = 文件大小），就继续复用证明；被外部截断的文件仍然拒绝复用。
+
+相对上一版 `v2026.9.1-db91.6-memory-search-mixed-20261002`：1 个文件变化。
+
+**经 VLab 发版 `db91-shrink-reuse-20261002`**（claude-memsearch-20261002，dev `ddc07669`）
+> 验收：2026-10-02 15:23 CST. Shared VLab Gateway restarted on the patched db91 gate: preflight passed (224 s), health 200; three end-to-end memory_search calls via tools.invoke each reused the integrity proof (stage integrity 23-24 ms), no host timing gap. Shrink reuse proven by lab/db91-shrink-reuse.test.mjs: original gate refuses reuse after incremental_vacuum + truncating checkpoint, patched reuses; b…
+- `core` db91-integrity-gate.mjs  3d6807a3 → aa68547b
+
+## v2026.9.1-db91.6-memory-search-mixed-20261002
+
+上线：2026-10-02 14:44 CST 安装，14:45 重启 Gateway  ·  tag `v2026.9.1-db91.6-memory-search-mixed-20261002`
+
+**摘要**：中英混合、多关键词的查询，现在会优先返回同时包含多个查询词的页面。改动包括：额外的“任意词命中”候选检索、按查询词覆盖率打关键词分、给强关键词命中补算真实向量分。62 条真实查询盲评：第一条有用 68% → 76%；V 在群里验收通过，上一轮没搜准的两条都排到了第一。
+
+相对上一版 `v2026.9.1-db91.6-memory-search-1s-20261002`：1 个文件变化。
+
+**经 VLab 发版 `memory-search-mixed-20261002`**（claude-memsearch-20261002，dev `8c4be526`）
+> 验收：2026-10-02 14:3x CST. Quality (VLab replica of V current memory, 62 real queries, blind-judged 0-3): nDCG@8 0.486 -> 0.558, top hit useful 68% -> 76%, top-5 useful 0.526 -> 0.584; mixed CN/EN many-keyword (49): top hit 71% -> 80%; both V acceptance queries rank the right page first (client-material-libraries.md; SCHEMA.md + memory-librarian/main.md). Latency: replica interleaved A/B p50 +12 ms; sh…
+- `core` extensions/memory-core/manager-runtime.js  a94e2079 → 9594ce28
+
+**这期间合入 dev 的 PR**（5 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #149 fix(db91): SQLite 正常缩小文件后，不再在 Gateway 主线程上重做整库检查
+- #147 fix(memory): 中英混合多关键词查询找不到真正含这些词的页面
+- #146 feat(nightshift): 交付改成网页，不再打 zip
+- #145 fix(nightshift): Gateway 自己重新开放接活时立刻恢复，不再被短暂 suspension 卡住
+- #144 release: capture V after memory-search-1s-20261002
+
 ## v2026.9.1-db91.6-memory-search-1s-20261002
 
 上线：2026-10-02 13:16 CST 安装，13:17 重启 Gateway（13:18:28 恢复，约 86 秒）  ·  tag `v2026.9.1-db91.6-memory-search-1s-20261002`
