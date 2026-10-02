@@ -3,6 +3,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
+import {vlabSsh} from '../shared/ssh.mjs';
 
 const hash = b => createHash('sha256').update(b).digest('hex');
 export function buildRequest(root, plan, owner) {
@@ -39,8 +40,7 @@ export function candidate(opts) {
   const shellQuote = s => "'" + s.replaceAll("'", "'\\''") + "'";
   const command = 'sudo /opt/vlab/node-v22.23.1-linux-x64/bin/node --input-type=module -e ' + shellQuote(bootstrap);
   const start = performance.now();
-  const result = JSON.parse(execFileSync('ssh', ['-F', '/Users/tianyicai/v-upgrade-private/20260904/ssh-config',
-    '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', 'vlab91', command], {
+  const result = JSON.parse(execFileSync('ssh', [...vlabSsh, command], {
     input: JSON.stringify({runner: runner.toString('base64'), request: {...req, runnerSha256: hash(runner)}}),
     encoding: 'utf8', maxBuffer: Infinity,
   }));

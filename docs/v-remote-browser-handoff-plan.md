@@ -92,7 +92,7 @@
 ### 层 C：handoff 工具（agent 侧）
 
 - OpenClaw 插件 `v-desktop-handoff`，形态照 `/opt/v-browser/…/openclaw-plugin`（v-browser-device 0.4.6，用 `before_tool_call` 拿可信发送者）。工具 `desktop_handoff_request({reason, url?})`：调管理 API 签发 → 返回链接与有效期 → agent 在回复里附上。跨渠道通用，不依赖飞书卡片。
-- 飞书按钮卡片可选：复用 `packages/nightshift-core/src/notifications.mjs:124-140` 的 `openclaw message send --presentation` 格式（`buttons{label,url}`）。
+- 飞书按钮卡片可选：复用 `vegekyd-sys/v-nightshift` 的 `packages/nightshift-core/src/notifications.mjs:124-140` 的 `openclaw message send --presentation` 格式（`buttons{label,url}`）。
 - 「用户做完了」的信号，一期用聊天：agent 结束本回合，用户回一句后继续；Chrome 由 Gateway 持有，跨回合存活，登录态在 profile 里。二期再让 handoff 服务在 controller 断开时回调唤醒会话（唤醒链路此前有坑，见 [[worker-media-completion-never-drained]]，不在一期做）。
 - skill 里写明触发条件：登录页、验证码、2FA、支付确认；写明不要自己猜密码、不要把用户输入的东西复述出来。
 
