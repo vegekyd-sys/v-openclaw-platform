@@ -303,6 +303,74 @@ export function patchWeightedTermCoverage(source) {
   return out;
 }
 
+// 6. Guards for 5, from V's third acceptance on the live build (2026-10-02 19:27).
+//    - A single word ("康浩源", a person's name) became two bigrams, every chunk naming
+//      the person covered both, all tied at 1 and the person card fell below logs. Queries
+//      of one word (one Han run or one letter run) keep the upstream scoring again.
+//    - Coverage alone discards BM25, so ties among chunks holding every term fell by
+//      candidate order. The hybrid keyword score keeps a quarter of the BM25 score, as the
+//      fallback keyword score already does.
+//    - A Chinese question without spaces ("营销项目的原图谁来生成") has no fallback terms
+//      and one any-term term, so the keyword stage found nothing and the search returned 0
+//      results. The any-term query now falls back to the question's Han trigrams, which the
+//      trigram index matches directly (1-2 ms), and also runs when there are no fallback terms.
+//      Trigrams only replace the terms when fewer than two remain: added to every query,
+//      common phrases such as 是什么 pulled in unrelated chunks.
+export function patchCoverageGuards(source) {
+  let out = replaceExactlyOnce(
+    source,
+    'function coverageTerms(query) {',
+    'function coverageUnits(query) {\n' +
+      '\treturn (query.toLowerCase().match(/\\p{Script=Han}{2,}|(?:(?!\\p{Script=Han})[\\p{L}\\p{N}_]){2,}/gu) ?? []).length;\n' +
+      '}\n' +
+      'function coverageTerms(query) {',
+    'coverage terms function',
+  );
+  out = replaceExactlyOnce(
+    out,
+    'const coverageTermList = params.db ? coverageTerms(params.query) : [];',
+    'const coverageTermList = params.db && coverageUnits(params.query) > 1 ? coverageTerms(params.query) : [];',
+    'fallback coverage terms',
+  );
+  out = replaceExactlyOnce(
+    out,
+    '\tconst terms = coverageTerms(params.query);\n\tif (terms.length < 2) return params;',
+    '\tif (coverageUnits(params.query) < 2) return params;\n\tconst terms = coverageTerms(params.query);\n\tif (terms.length < 2) return params;',
+    'hybrid rescoring guard',
+  );
+  out = replaceExactlyOnce(
+    out,
+    '\t\tconst coverage = weightedTermCoverage(terms, weights, text);\n',
+    '\t\tconst coverage = .75 * weightedTermCoverage(terms, weights, text) + .25 * Math.max(0, Math.min(1, hit.textScore ?? 0));\n',
+    'hybrid rescoring blend',
+  );
+  out = replaceExactlyOnce(
+    out,
+    '\t\tconst terms = [...new Set((query.match(/[\\p{L}\\p{N}_]+/gu) ?? []).filter((term) => Array.from(term).length >= 3))];\n\t\tif (terms.length < 2) return [];\n\t\tconst results = await searchKeyword({',
+    '\t\tlet terms = [...new Set((query.match(/[\\p{L}\\p{N}_]+/gu) ?? []).filter((term) => Array.from(term).length >= 3))];\n' +
+      '\t\tif (terms.length < 2) terms = [...new Set((query.toLowerCase().match(/\\p{Script=Han}+|(?:(?!\\p{Script=Han})[\\p{L}\\p{N}_])+/gu) ?? []).flatMap((run) => {\n' +
+      '\t\t\tconst chars = Array.from(run);\n' +
+      '\t\t\tif (!/\\p{Script=Han}/u.test(chars[0])) return chars.length >= 3 ? [run] : [];\n' +
+      '\t\t\tconst grams = [];\n' +
+      '\t\t\tfor (let i = 0; i + 2 < chars.length; i++) grams.push(chars.slice(i, i + 3).join(""));\n' +
+      '\t\t\treturn grams;\n' +
+      '\t\t}))];\n' +
+      '\t\tif (terms.length < 2) return [];\n\t\tconst results = await searchKeyword({',
+    'any-term terms',
+  );
+  out = replaceExactlyOnce(
+    out,
+    '\t\tconst fallbackTerms = this.resolveKeywordFallbackTerms(query);\n\t\tif (fallbackTerms.length === 0) return fullQueryResults;\n',
+    '\t\tconst fallbackTerms = this.resolveKeywordFallbackTerms(query);\n' +
+      '\t\tif (fallbackTerms.length === 0) {\n' +
+      '\t\t\tconst anyTermResults = await this.searchKeywordAnyTerm(query, limit, sourceFilterList).catch(() => []);\n' +
+      '\t\t\treturn anyTermResults.length === 0 ? fullQueryResults : this.limitKeywordSearchHits(this.mergeKeywordSearchHits([fullQueryResults, anyTermResults], query), limit);\n' +
+      '\t\t}\n',
+    'no fallback terms return',
+  );
+  return out;
+}
+
 export function patchKnnQueryModule(source) {
   return replaceExactlyOnce(
     source,
