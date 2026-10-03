@@ -168,3 +168,56 @@ test("card: control cards carry 接管电脑 + 交还给 V (callback), watch car
   const watch = handoffCard({ kind: "watch", url: "https://h/w", openWithinMinutes: 10, sessionMinutes: 30, handoffId: "h_w" });
   assert.deepEqual(watch.presentation.blocks.at(-1).buttons.map((b) => b.label), ["观看桌面"]);
 });
+
+test("native card: 接管 / 我完成了 / 跳过 while pending, swaps buttons as the state changes", async () => {
+  const { nativeHandoffCard, quickCommand } = await import("../core/native-card.js");
+  const base = { reason: "登录携程", url: "https://h/x#t", imageKey: "img_1", handoffId: "h_1", owner: { userOpenId: "ou_me", expiresAt: 5 } };
+  const buttonsOf = (card) => JSON.stringify(card).match(/"content":"(接管|我完成了|跳过|回到电脑|付款|观看)"/gu)?.map((m) => m.split('"')[3]) ?? [];
+  const pending = nativeHandoffCard({ ...base, state: "pending" });
+  assert.equal(pending.header.title.content, "电脑");
+  assert.equal(pending.header.text_tag_list[0].text.content, "需要操作");
+  assert.equal(pending.config.update_multi, true, "the card can be patched later");
+  assert.ok(pending.body.elements.some((e) => e.tag === "img" && e.img_key === "img_1"));
+  assert.deepEqual(buttonsOf(pending), ["接管", "我完成了", "跳过"]);
+  const take = JSON.stringify(pending);
+  assert.ok(take.includes('"default_url":"https://h/x#t"') && take.includes('"q":"/v-takeover h_1"'), "接管 opens the desktop and reports the takeover");
+  assert.ok(take.includes('"q":"/v-handback h_1"') && take.includes('"q":"/v-skip h_1"'));
+  assert.deepEqual(quickCommand("/x", { userOpenId: "ou_me", expiresAt: 5 }).c, { u: "ou_me", e: 5 }, "only the owner can press");
+  const active = nativeHandoffCard({ ...base, state: "active" });
+  assert.equal(active.header.text_tag_list[0].text.content, "操作中");
+  assert.deepEqual(buttonsOf(active), ["我完成了", "回到电脑"], "接管 is gone once taken over");
+  for (const [state, tag] of [["done", "已完成"], ["skipped", "已跳过"], ["ended", "已结束"]]) {
+    const card = nativeHandoffCard({ ...base, state });
+    assert.equal(card.header.text_tag_list[0].text.content, tag);
+    assert.deepEqual(buttonsOf(card), [], `${state} has no buttons`);
+  }
+  assert.deepEqual(buttonsOf(nativeHandoffCard({ ...base, purpose: "payment", state: "pending" })).slice(0, 1), ["付款"]);
+  assert.ok(!nativeHandoffCard({ ...base, imageKey: null }).body.elements.some((e) => e.tag === "img"), "no picture, no img element");
+});
+
+test("feishu api: credentials, receivers, token cache, send and patch", async () => {
+  const { FeishuApi, feishuCredentials, feishuReceiver } = await import("../core/feishu-api.js");
+  assert.deepEqual(feishuCredentials({ channels: { feishu: { appId: "a", appSecret: "s", domain: "feishu" } } }), { appId: "a", appSecret: "s", host: "https://open.feishu.cn" });
+  assert.equal(feishuCredentials({ channels: { feishu: { appId: "a", appSecret: { source: "env" } } } }), null, "unresolved secret refs are not used");
+  assert.equal(feishuCredentials({ channels: { feishu: { appId: "a", appSecret: "s", accounts: { b: { appId: "b", appSecret: "t" } } } } }, "b").appId, "b");
+  assert.deepEqual(feishuReceiver("user:ou_1"), { receiveIdType: "open_id", receiveId: "ou_1" });
+  assert.deepEqual(feishuReceiver("chat:oc_1"), { receiveIdType: "chat_id", receiveId: "oc_1" });
+  assert.equal(feishuReceiver("webchat:x"), null);
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push([init.method, url.replace("https://h", "")]);
+    if (url.endsWith("/tenant_access_token/internal")) return { ok: true, status: 200, json: async () => ({ code: 0, tenant_access_token: "t", expire: 7200 }) };
+    if (init.method === "POST" && url.includes("/im/v1/messages")) return { ok: true, status: 200, json: async () => ({ code: 0, data: { message_id: "om_1" } }) };
+    return { ok: true, status: 200, json: async () => ({ code: 0, data: {} }) };
+  };
+  const api = new FeishuApi({ appId: "a", appSecret: "s", host: "https://h", fetchImpl });
+  assert.equal(await api.sendCard({ receiveIdType: "open_id", receiveId: "ou_1" }, { schema: "2.0" }), "om_1");
+  await api.patchCard("om_1", { schema: "2.0" });
+  assert.deepEqual(calls.map((c) => c.join(" ")), [
+    "POST /open-apis/auth/v3/tenant_access_token/internal",
+    "POST /open-apis/im/v1/messages?receive_id_type=open_id",
+    "PATCH /open-apis/im/v1/messages/om_1",
+  ], "token fetched once and reused");
+  const failing = new FeishuApi({ appId: "a", appSecret: "s", host: "https://h", fetchImpl: async (url) => (url.endsWith("internal") ? { ok: true, json: async () => ({ code: 0, tenant_access_token: "t" }) } : { ok: true, status: 200, json: async () => ({ code: 230002, msg: "bot not in chat" }) }) });
+  await assert.rejects(failing.sendCard({ receiveIdType: "chat_id", receiveId: "oc_1" }, {}), /230002 bot not in chat/u);
+});

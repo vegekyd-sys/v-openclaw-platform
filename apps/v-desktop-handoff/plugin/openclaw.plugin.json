@@ -28,6 +28,10 @@
       "openclawEntry": { "type": "string" },
       "messageAccountId": { "type": "string" },
       "cards": { "type": "boolean" },
+      "nativeCard": { "type": "boolean" },
+      "cardImage": { "type": "string", "enum": ["cover", "screenshot"] },
+      "coverImage": { "type": "string" },
+      "desktopDisplay": { "type": "string" },
       "cardChannels": { "type": "array", "items": { "type": "string" } },
       "principalAliases": {
         "type": "object",

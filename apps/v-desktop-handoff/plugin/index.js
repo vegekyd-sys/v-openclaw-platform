@@ -4,7 +4,15 @@ import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { HandoffAdminClient } from "./core/admin-client.js";
 import { describeContext, isControlAnywhereActor, isTrustedDirectSession, resolveTrustedActor } from "./core/identity.js";
 import { deliverPrivately } from "./core/deliver.js";
-import { handoffCard, inPlaceTarget } from "./core/card.js";
+import { handoffCard, inPlaceTarget, normalizePayment } from "./core/card.js";
+import { FeishuApi, captureDesktop, feishuCredentials, feishuReceiver, loadCover } from "./core/feishu-api.js";
+import { nativeHandoffCard } from "./core/native-card.js";
+
+// V's picture for the card (generated media stays out of git; fetched once per app and uploaded to Feishu).
+const DEFAULT_COVER = "https://cdn.makaron.app/storage/v1/object/public/images/5955d413-cad2-4814-b094-7fdf62d20400/0bc9ae1f-59b7-45a7-9e73-bf7c9951afdd/snapshot-d2ec2e6c-240d-4400-b0ad-4fce335e2e8c.jpg";
+
+const NATIVE_CARD_INSTRUCTION =
+  "A card titled 电脑 with three buttons has been posted in this conversation: 接管 (the user takes over V's desktop), 我完成了 (hands it back) and 跳过 (the user will not do this step). Do NOT repeat or paraphrase the url and do not say where the card is. Reply with one short sentence such as 卡片已发出，接管后完成登录，做完点「我完成了」, then end your turn. When `/v-handback <id>` arrives, the desktop is already back with you: continue the task right away without asking. When `/v-skip <id>` arrives, the user skipped this step: do not issue another handoff for it; say briefly what you can do instead or where the task is blocked.";
 import { decideHandBack, decideToolCall, refuseEnd } from "./core/policy.js";
 
 function textResult(value) {
@@ -23,6 +31,71 @@ export default definePluginEntry({
     });
     const blockWhileControlled = config.blockBrowserWhileControlled ?? true;
     const bySession = new Map(); // sessionKey -> last handoff id (this process); the service is the source of truth
+    const cards = new Map(); // handoff id -> { feishu, messageId, view, state } for native Feishu cards
+    const feishuApis = new Map(); // appId -> FeishuApi
+    const coverKeys = new Map(); // appId -> uploaded image_key of the cover
+
+    const postNativeCard = async ({ cfg, accountId, target, issued, kind, purpose, params, actorUserId }) => {
+      if (config.nativeCard === false) {
+        return null;
+      }
+      const creds = feishuCredentials(cfg, accountId);
+      const receiver = feishuReceiver(target);
+      if (!creds || !receiver) {
+        return null;
+      }
+      let feishu = feishuApis.get(creds.appId);
+      if (!feishu) {
+        feishu = new FeishuApi(creds);
+        feishuApis.set(creds.appId, feishu);
+      }
+      let imageKey = null;
+      try {
+        if (config.cardImage === "screenshot") {
+          const shot = await captureDesktop({ display: config.desktopDisplay ?? ":99" });
+          imageKey = shot ? await feishu.uploadImage(shot, "desktop.jpg") : null;
+        }
+        if (!imageKey) {
+          imageKey = coverKeys.get(creds.appId) ?? null;
+          if (!imageKey) {
+            const bytes = await loadCover(config.coverImage ?? DEFAULT_COVER);
+            if (bytes) {
+              imageKey = await feishu.uploadImage(bytes, "v-cover.jpg");
+              coverKeys.set(creds.appId, imageKey);
+            }
+          }
+        }
+      } catch (error) {
+        api.logger?.warn?.(`desktop handoff card image unavailable: ${error.message}`);
+      }
+      const ownerOpenId = typeof actorUserId === "string" && actorUserId.startsWith("feishu:ou_") ? actorUserId.slice("feishu:".length) : undefined;
+      const view = {
+        kind,
+        purpose,
+        reason: params.reason,
+        url: issued.url,
+        imageKey,
+        handoffId: issued.id,
+        payment: normalizePayment(params.payment),
+        owner: { userOpenId: ownerOpenId, expiresAt: issued.claimExpiresAt + issued.sessionTtlMs },
+      };
+      const messageId = await feishu.sendCard(receiver, nativeHandoffCard({ ...view, state: "pending" }));
+      cards.set(issued.id, { feishu, messageId, view, state: "pending" });
+      return messageId;
+    };
+
+    const setCardState = async (id, state) => {
+      const card = cards.get(id);
+      if (!card || card.state === state) {
+        return;
+      }
+      card.state = state;
+      try {
+        await card.feishu.patchCard(card.messageId, nativeHandoffCard({ ...card.view, state }));
+      } catch (error) {
+        api.logger?.warn?.(`desktop handoff card ${id} not updated to ${state}: ${error.message}`);
+      }
+    };
     const resolveHandoff = async (handoffId, sessionKey, signal) => {
       const id = handoffId ?? (sessionKey ? bySession.get(sessionKey) : null);
       if (id) {
@@ -90,8 +163,14 @@ export default definePluginEntry({
             const senderId = typeof context.requesterSenderId === "string" ? context.requesterSenderId.trim() : "";
             const channel = typeof context.messageChannel === "string" ? context.messageChannel.trim() : "";
             try {
+              const sentNative = channel === "feishu"
+                ? await postNativeCard({ cfg: context.config ?? context.runtimeConfig, accountId: context.deliveryContext?.accountId, target: senderId, issued, kind, purpose, params, actorUserId }).catch((error) => {
+                    api.logger?.warn?.(`desktop handoff native card failed, using the plain card: ${error.message}`);
+                    return null;
+                  })
+                : null;
               const card = handoffCard({ purpose, kind, reason: params.reason, url: issued.url, openWithinMinutes, sessionMinutes, payment: params.payment, handoffId: issued.id });
-              await deliverPrivately({
+              if (!sentNative) await deliverPrivately({
                 channel,
                 target: senderId,
                 ...((config.cardChannels ?? ["feishu"]).includes(channel)
@@ -117,6 +196,26 @@ export default definePluginEntry({
           }
           // In a chat channel, post the link as a card with a button in this conversation.
           const place = config.cards === false ? null : inPlaceTarget(context, config);
+          if (place && place.channel === "feishu") {
+            try {
+              if (await postNativeCard({ cfg: context.config ?? context.runtimeConfig, accountId: place.accountId, target: place.target, issued, kind, purpose, params, actorUserId })) {
+                return textResult({
+                  handoffId: issued.id,
+                  kind,
+                  purpose,
+                  requestedBy: actorUserId,
+                  postedAsCard: true,
+                  openWithinMinutes,
+                  sessionMinutes,
+                  instruction:
+                    NATIVE_CARD_INSTRUCTION +
+                    (purpose === "payment" ? " Do not click any pay/confirm button yourself; after the user is done, check the order result on the page and report it." : ""),
+                });
+              }
+            } catch (error) {
+              api.logger?.warn?.(`desktop handoff native card failed, using the plain card: ${error.message}`);
+            }
+          }
           if (place) {
             const card = handoffCard({ purpose, kind, reason: params.reason, url: issued.url, openWithinMinutes, sessionMinutes, payment: params.payment, handoffId: issued.id });
             try {
@@ -218,22 +317,48 @@ export default definePluginEntry({
       { name: "desktop_handoff_end" },
     );
 
-    // 「交还给 V」 on the card: a Feishu callback that posts `/v-handback <id>` as the clicking user.
+    // Card buttons are Feishu callbacks that post a command as the clicking user:
+    // 接管 -> /v-takeover, 我完成了 -> /v-handback, 跳过 -> /v-skip.
     const handedBack = new Set(); // handoff ids already handed back since the last takeover
+    const resolveFromCommand = async (ctx) => {
+      const actor = resolveTrustedActor({ requesterSenderId: ctx.senderId, messageChannel: ctx.channel }, config);
+      const requested = String(ctx.args ?? "").trim().split(/\s+/u)[0];
+      let status = null;
+      try {
+        status = requested && /^h_[\w-]+$/u.test(requested) ? await client.status(requested) : ctx.sessionKey ? await client.latestForSession(ctx.sessionKey) : null;
+      } catch {
+        status = null;
+      }
+      const allowed = !status || actor === status.ownerId || isControlAnywhereActor(actor, config) || ctx.senderIsOwner === true;
+      return { actor, status, allowed };
+    };
+
     api.registerCommand?.({
-      name: "v-handback",
-      description: "Hand V's desktop back to V after a takeover (the 交还给 V card button).",
+      name: "v-takeover",
+      description: "Mark V's desktop as taken over (the 接管 card button; the button also opens the desktop).",
       acceptsArgs: true,
       handler: async (ctx) => {
-        const actor = resolveTrustedActor({ requesterSenderId: ctx.senderId, messageChannel: ctx.channel }, config);
-        const requested = String(ctx.args ?? "").trim().split(/\s+/u)[0];
-        let status = null;
-        try {
-          status = requested && /^h_[\w-]+$/u.test(requested) ? await client.status(requested) : ctx.sessionKey ? await client.latestForSession(ctx.sessionKey) : null;
-        } catch {
-          status = null;
+        const { status, allowed } = await resolveFromCommand(ctx);
+        if (!allowed) {
+          return { text: "只有收到这张卡片的人能接管。" };
         }
-        if (status && actor !== status.ownerId && !isControlAnywhereActor(actor, config) && ctx.senderIsOwner !== true) {
+        if (!status || status.ended) {
+          if (status) await setCardState(status.id, "ended");
+          return { text: "这次接管已经结束，让 V 重新发一张卡片。" };
+        }
+        handedBack.delete(status.id);
+        await setCardState(status.id, "active");
+        return {};
+      },
+    });
+
+    api.registerCommand?.({
+      name: "v-handback",
+      description: "Hand V's desktop back to V after a takeover (the 我完成了 card button).",
+      acceptsArgs: true,
+      handler: async (ctx) => {
+        const { actor, status, allowed } = await resolveFromCommand(ctx);
+        if (!allowed) {
           return { text: "只有接管电脑的人能交还。" };
         }
         if (status?.controlActive) {
@@ -251,8 +376,34 @@ export default definePluginEntry({
           return { text: decision.text };
         }
         handedBack.add(status.id);
+        await setCardState(status.id, "done");
         api.logger?.info?.(`desktop handoff ${status.id} handed back from chat by ${actor} (${decision.action})`);
-        return { text: decision.text, continueAgent: true };
+        return cards.has(status.id) ? { continueAgent: true } : { text: decision.text, continueAgent: true };
+      },
+    });
+
+    api.registerCommand?.({
+      name: "v-skip",
+      description: "Skip the step V asked the user to do on its desktop (the 跳过 card button).",
+      acceptsArgs: true,
+      handler: async (ctx) => {
+        const { actor, status, allowed } = await resolveFromCommand(ctx);
+        if (!allowed) {
+          return { text: "只有收到这张卡片的人能跳过。" };
+        }
+        if (!status || status.ended || handedBack.has(status.id)) {
+          return { text: "这一步已经结束了。" };
+        }
+        try {
+          if (status.controlActive) await client.handBack(status.id);
+          await client.revoke(status.id);
+        } catch (error) {
+          return { text: `跳过失败：${error.message}` };
+        }
+        handedBack.add(status.id);
+        await setCardState(status.id, "skipped");
+        api.logger?.info?.(`desktop handoff ${status.id} skipped by ${actor}`);
+        return { continueAgent: true };
       },
     });
 
