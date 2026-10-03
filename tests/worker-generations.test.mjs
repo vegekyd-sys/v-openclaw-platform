@@ -293,3 +293,38 @@ test("a late stop from an older owner cannot drain the current generation", asyn
     assert.equal(current.pool.status().workers.length, 0);
   } finally { f.cleanup(); }
 });
+
+test("the Gateway config watch derives once per quiet change and rolls only on a real Worker change", async () => {
+  const { createWorkerConfigWatch } = await import(pathToFileURL(path.join(dir, "worker-config-watch.mjs")).href);
+  const { writeFileSync, utimesSync } = await import("node:fs");
+  const gatewayConfigPath = path.join(dir, "watch-gateway.json");
+  writeFileSync(gatewayConfigPath, "{}");
+  let derives = 0;
+  let changed = true;
+  const rolls = [];
+  const watch = createWorkerConfigWatch({
+    gatewayConfigPath,
+    intervalMs: 1_000_000, // driven by tick() below
+    derive: () => { derives += 1; return { ok: true, changed, changedPaths: ["agents.defaults.models"] }; },
+    onWorkerConfigChanged: async (result) => { rolls.push(result.changedPaths); },
+  });
+  watch.start();
+  await watch.tick();
+  assert.equal(derives, 0, "no change, no derive");
+  writeFileSync(gatewayConfigPath, '{"a":1}');
+  utimesSync(gatewayConfigPath, new Date(), new Date(Date.now() + 1_000));
+  await watch.tick();
+  assert.equal(derives, 0, "waits one quiet interval");
+  await watch.tick();
+  assert.equal(derives, 1);
+  assert.deepEqual(rolls, [["agents.defaults.models"]]);
+  await watch.tick();
+  assert.equal(derives, 1, "the same change is handled once");
+  changed = false;
+  writeFileSync(gatewayConfigPath, '{"a":22}');
+  await watch.tick();
+  await watch.tick();
+  assert.equal(derives, 2);
+  assert.equal(rolls.length, 1, "a change Workers do not read does not roll");
+  watch.stop();
+});

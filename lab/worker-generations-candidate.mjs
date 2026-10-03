@@ -233,6 +233,30 @@ try {
   assert.ok(await finishTurn(r3), "the turn admitted before the roll must finish");
   assert.ok(await finishTurn(await startTurn("after-roll")), "a new turn after the roll must succeed");
   await waitFor("rolled generation drained", async () => (await status()).predecessor === null, 300_000);
+
+  // --- 3. a Gateway config change 9.1 applies without a plugin reload ------
+  // Only candidate builds watch the Gateway config; the control already failed.
+  const r5 = await startTurn("config-inflight", 1500);
+  await waitForActive("config-inflight");
+  const generationBeforeConfig = (await status()).generation;
+  const edited = JSON.parse(readFileSync(CONFIG, "utf8"));
+  const alias = `wg-${Date.now()}`;
+  edited.agents.defaults.models[MODEL] = { ...edited.agents.defaults.models[MODEL], alias };
+  writeConfig(edited);
+  step("gateway-config-written", { key: `agents.defaults.models.${MODEL}.alias`, generationBefore: generationBeforeConfig });
+  const autoRolled = await waitFor("automatic roll on Worker config change",
+    async () => { const s = await status(); return s.generation > generationBeforeConfig ? s : null; }, 120_000);
+  const derivedWorker = JSON.parse(readFileSync(workerConfigPath, "utf8"));
+  step("auto-rolled", {
+    generation: autoRolled.generation,
+    predecessor: autoRolled.predecessor,
+    workerConfigAlias: derivedWorker.agents?.defaults?.models?.[MODEL]?.alias === alias,
+
+  });
+  assert.equal(derivedWorker.agents.defaults.models[MODEL].alias, alias, "Workers read the new Gateway config");
+  assert.ok(await finishTurn(r5), "the turn admitted before the config change must finish");
+  assert.ok(await finishTurn(await startTurn("after-config")), "a new turn after the config change must succeed");
+  await waitFor("config-rolled generation drained", async () => (await status()).predecessor === null, 300_000);
   const final = await status();
   step("final", { generation: final.generation, workers: liveWorkers(final) });
 

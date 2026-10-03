@@ -33,6 +33,7 @@ function ocFirsttextWorkerMark(stage, runId, fields = {}) {
 import { buildVolcengineRtcAgentProvider } from "./volcengine-rtc-agent-provider.mjs";
 import { WorkerPool } from "./worker-pool.mjs";
 import { acquireWorkerRuntime, awaitWorkerRuntime, createWorkerRuntimeLifecycle, rollWorkerRuntime } from "./worker-runtime-lifecycle.mjs";
+import { createWorkerConfigWatch } from "./worker-config-watch.mjs";
 import { performance } from "node:perf_hooks";
 import { buildNativeHarnessData } from './native-harness-data.mjs';
 import { gatewayOwnedEventArgs } from './gateway-owned-terminal.mjs';
@@ -86,7 +87,7 @@ import {
   resolveNativeRequestTimeoutMs,
 } from "./native-request-timeout.mjs";
 import { NativeLaneProgressBridge } from "./native-lane-progress.mjs";
-import { syncWorkerRuntimeConfigFile } from "./worker-config-sync.mjs";
+import { deriveWorkerConfigFile } from "./worker-config-derive.mjs";
 import { createGatewayNativeCompactionPassthrough } from "./gateway-native-compaction.mjs";
 import { resolveHarnessMessageChannel } from "./harness-channel.mjs";
 
@@ -337,17 +338,18 @@ const plugin = {
     if (!gatewayConfigPath) {
       throw new Error("gatewayConfigPath is required");
     }
-    const workerRuntimeConfigSync = syncWorkerRuntimeConfigFile({
-      gatewayConfigPath,
-      workerConfigPath,
-    });
-    if (workerRuntimeConfigSync.changed) {
-      api.logger.info(
-        `Synchronized Worker runtime policy from Gateway config: ${workerRuntimeConfigSync.paths.join(
-          ", ",
-        )}`,
-      );
-    }
+    // Workers read workerConfigPath, derived from the Gateway config plus a
+    // small versioned overlay (worker-config-derive.mjs). Only the Gateway
+    // writes it; a failure keeps the previous file and is logged, it never
+    // fails plugin registration. New Worker spawns read the result.
+    const workerRuntimeConfigSync =
+      process.env.VLAB_WORKER_CHILD === "1"
+        ? { ok: true, changed: false, skipped: "worker-child" }
+        : deriveWorkerConfigFile({
+            gatewayConfigPath,
+            workerConfigPath,
+            logger: api.logger,
+          });
     const fastCompactionModel =
       typeof api.pluginConfig?.fastCompactionModel === "string" &&
       api.pluginConfig.fastCompactionModel.trim()
@@ -563,6 +565,43 @@ const plugin = {
     const poolLifecycle = createWorkerRuntimeLifecycle({
       acquire: () => acquireSharedPool(poolOptions),
       bind: bindPoolRuntime,
+    });
+    // One roll at a time; callers that arrive during a roll share its result.
+    let rollInFlight = null;
+    const rollGeneration = (reason) => {
+      rollInFlight ??= (async () => {
+        const previousGeneration = sharedPool.generation;
+        const runtime = await rollWorkerRuntime(
+          SHARED_POOL_KEY,
+          () => acquireSharedPool(poolOptions),
+          bindPoolRuntime,
+        );
+        api.logger.info(
+          `vLab Agent Worker Isolation rolled generation ${String(previousGeneration)} -> ${String(runtime.generation)} reason=${reason}`,
+        );
+        return { previousGeneration, runtime };
+      })().finally(() => {
+        rollInFlight = null;
+      });
+      return rollInFlight;
+    };
+    const deriveCurrentWorkerConfig = () =>
+      deriveWorkerConfigFile({ gatewayConfigPath, workerConfigPath, logger: api.logger });
+    const workerConfigWatch = createWorkerConfigWatch({
+      gatewayConfigPath,
+      derive: deriveCurrentWorkerConfig,
+      logger: api.logger,
+      async onWorkerConfigChanged(result) {
+        try {
+          await rollGeneration(
+            `worker-config ${result.changedPaths.slice(0, 5).join(",")}`,
+          );
+        } catch (error) {
+          api.logger.warn(
+            `Worker config changed but the generation did not roll: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      },
     });
 
     function configuredAgentModelRuntimes() {
@@ -1377,11 +1416,13 @@ const plugin = {
       id: "vlab-agent-worker-isolation",
       async start(context) {
         await poolLifecycle.start(context);
+        workerConfigWatch.start();
         api.logger.info(
           `vLab Agent Worker Isolation started with ${minWorkers}-${maxWorkers} elastic workers and ${sessionsPerWorker} sessions per worker`,
         );
       },
       async stop(context) {
+        workerConfigWatch.stop();
         await poolLifecycle.stop(context);
       },
     });
@@ -1415,18 +1456,18 @@ const plugin = {
       async ({ params, respond }) => {
         try {
           const reason = readString(params, "reason") ?? "operator";
-          const previousGeneration = sharedPool.generation;
-          const runtime = await rollWorkerRuntime(
-            SHARED_POOL_KEY,
-            () => acquireSharedPool(poolOptions),
-            bindPoolRuntime,
-          );
-          api.logger.info(
-            `vLab Agent Worker Isolation rolled generation ${String(previousGeneration)} -> ${String(runtime.generation)} reason=${reason}`,
-          );
+          // New Workers read the Worker config; bring it up to date first.
+          const derived = deriveCurrentWorkerConfig();
+          const { previousGeneration, runtime } = await rollGeneration(reason);
           respond(true, {
             rolled: true,
             reason,
+            workerConfig: {
+              ok: derived.ok,
+              changed: derived.changed,
+              changedPaths: derived.changedPaths,
+              error: derived.error,
+            },
             previousGeneration,
             generation: runtime.generation,
             predecessor: runtime.pool.predecessor?.drainStatus() ?? null,

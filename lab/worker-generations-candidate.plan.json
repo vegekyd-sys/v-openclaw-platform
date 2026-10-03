@@ -1,12 +1,41 @@
 {
-  "command": ["/opt/vlab/node-v22.23.1-linux-x64/bin/node", "lab/worker-generations-candidate.mjs"],
-  "support": ["lab/worker-generations-candidate.mjs"],
-  "files": [
-    {"source": "lab/release-files/worker-generations/index.mjs", "target": "production-worker/index.mjs", "before": "c047f3df1f730b4eacb2db0ec64cd0e0281bc4f8388c8032768192a204222259"},
-    {"source": "lab/release-files/worker-generations/worker-pool.mjs", "target": "production-worker/worker-pool.mjs", "before": "a9f718d0c9ca1f209aba9a9a55d86181b84f2ab1afa8b65cc86bde96bc3b5ea3"},
-    {"source": "lab/release-files/worker-generations/worker-runtime-lifecycle.mjs", "target": "production-worker/worker-runtime-lifecycle.mjs", "before": null}
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/worker-generations-candidate.mjs"
   ],
-  "env": {"WG_MODE": "candidate"},
+  "support": [
+    "lab/worker-generations-candidate.mjs"
+  ],
+  "files": [
+    {
+      "source": "lab/release-files/worker-generations/index.mjs",
+      "target": "production-worker/index.mjs",
+      "before": "c047f3df1f730b4eacb2db0ec64cd0e0281bc4f8388c8032768192a204222259"
+    },
+    {
+      "source": "lab/release-files/worker-generations/worker-pool.mjs",
+      "target": "production-worker/worker-pool.mjs",
+      "before": "a9f718d0c9ca1f209aba9a9a55d86181b84f2ab1afa8b65cc86bde96bc3b5ea3"
+    },
+    {
+      "source": "lab/release-files/worker-generations/worker-runtime-lifecycle.mjs",
+      "target": "production-worker/worker-runtime-lifecycle.mjs",
+      "before": null
+    },
+    {
+      "source": "lab/release-files/worker-generations/worker-config-derive.mjs",
+      "target": "production-worker/worker-config-derive.mjs",
+      "before": null
+    },
+    {
+      "source": "lab/release-files/worker-generations/worker-config-watch.mjs",
+      "target": "production-worker/worker-config-watch.mjs",
+      "before": null
+    }
+  ],
+  "env": {
+    "WG_MODE": "candidate"
+  },
   "user": "lab-db91-parity",
   "timeoutSeconds": 3600
 }
