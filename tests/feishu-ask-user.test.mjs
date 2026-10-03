@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import { patchFeishuAskUser } from "../lab/release-files/feishu-ask-user/patch.mjs";
 const root = new URL("../lab/release-files/feishu-ask-user/", import.meta.url);
-const source = ["card.mjs", "runtime.mjs", "stream.mjs"].map(n => readFileSync(new URL(n, root), "utf8")).join("\n");
+const source = ["card.mjs", "chat.mjs", "runtime.mjs", "stream.mjs"].map(n => readFileSync(new URL(n, root), "utf8")).join("\n");
 export const api = await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
 export const record = (questions) => ({ id: "ask_" + "a".repeat(32), status: "pending", sessionKey: "agent:makaron:feishu:group:oc_test", expiresAtMs: Date.now() + 60000,
   questions: questions ?? [{ questionId: "scope", header: "范围", question: "如何重做？", options: [{ label: "重做动态", description: "保持原图" }, { label: "重新绘制" }], isOther: true }] });
@@ -215,4 +215,98 @@ test("slow CardKit repaint cannot block the native callback acknowledgement", as
   const result=await h.runtime.submit(event(h.r,{choice_0:'0'},'om_stream'),h.params);
   assert.equal(result.toast.type,'success'); assert.equal(result.card,undefined);
   release();
+});
+
+const chatInput = (h, extra = {}) => ({id:h.r.id,sessionKey:h.r.sessionKey,chatId:'oc_test',senderOpenId:'ou_test',messageId:'om_answer',timestamp:Date.now()+100,...extra});
+function ownChat(h, active = () => true) {
+  return h.runtime.bindStream(h.r.sessionKey, 'default', async () => undefined, () => false, {chatId:'oc_test',senderOpenId:'ou_test',isActive:active});
+}
+test('a plain chat answer resolves the same question and closes the old card', async () => {
+  const h=harness();ownChat(h);await h.runtime.requested(h.r,h.params);
+  assert.equal(h.runtime.chatCandidate(chatInput(h)),h.r.id);
+  const r=await h.runtime.answerFromChat(chatInput(h,{text:'保留原图，只改灯光'}),h.params);
+  assert.equal(r.handled,true);assert(!r.notice);
+  assert.deepEqual({...h.calls[0].p.answers.answers},{scope:['保留原图，只改灯光']});
+  assert.match(h.calls[0].p.resolvedBy,/feishu:chat:ou_test:om_answer/);
+  assert.equal(h.runtime.chatCandidate(chatInput(h,{messageId:'om_new'})),undefined);
+  assert.equal((await h.runtime.answerFromChat(chatInput(h,{text:'保留原图，只改灯光'}),h.params)).handled,true);
+  assert.equal((await h.runtime.submit(event(h.r,{choice_0:'0'}),h.params)).toast.type,'info');
+  assert.equal(h.calls.length,1);
+});
+test('chat answers respect author, account, chat, routed session, timestamp and expiration', async () => {
+  const h=harness();ownChat(h);await h.runtime.requested(h.r,h.params);
+  for(const extra of [{senderOpenId:'ou_other'},{accountId:'other'},{chatId:'oc_other'},{sessionKey:'other'},{timestamp:1}]) {
+    assert.equal((await h.runtime.answerFromChat(chatInput(h,{text:'1',...extra}),{...h.params,...(extra.accountId?{accountId:extra.accountId}:{})})).handled,false);
+  }
+  assert.equal(h.calls.length,0);
+  h.r.expiresAtMs=1;assert.equal(h.runtime.chatCandidate(chatInput(h)),undefined);
+});
+test('a standalone question without an origin requires an exact card quote', async () => {
+  const h=harness();await h.runtime.requested(h.r,h.params);
+  assert.equal(h.runtime.chatCandidate(chatInput(h)),undefined);
+  assert.equal(h.runtime.chatCandidate(chatInput(h,{parentId:'om_other'})),undefined);
+  assert.equal(h.runtime.chatCandidate(chatInput(h,{parentId:'om_test'})),h.r.id);
+  assert.equal((await h.runtime.answerFromChat(chatInput(h,{text:'2',parentId:'om_test',sessionKey:'quoted-card-topic'}),h.params)).handled,true);
+  assert.deepEqual({...h.calls[0].p.answers.answers},{scope:['重新绘制']});
+});
+test('multiple pending questions require a unique candidate or an exact quote', async () => {
+  const h=harness();ownChat(h);await h.runtime.requested(h.r,h.params);
+  await h.runtime.deliver({...h.r,id:'ask_'+'d'.repeat(32)},{...h.params,to:'oc_test'});
+  assert.equal(h.runtime.chatCandidate(chatInput(h)),undefined);
+  assert.equal(h.calls.length,0);
+});
+test('option names/numbers and multi-select labels map exactly; other text is preserved', () => {
+  const r=record();
+  for(const text of ['2','B','重新绘制']) assert.deepEqual({...api.readFeishuAskChatAnswers(r,text).answers},{scope:['重新绘制']});
+  r.questions[0].multiSelect=true;
+  assert.deepEqual({...api.readFeishuAskChatAnswers(r,'1、2').answers},{scope:['重做动态','重新绘制']});
+  assert.deepEqual({...api.readFeishuAskChatAnswers(r,'重做动态，重新绘制').answers},{scope:['重做动态','重新绘制']});
+  r.questions[0].isOther=false;
+  assert.deepEqual({...api.readFeishuAskChatAnswers(r,'不做了，先保留原图').answers},{scope:['不做了，先保留原图']});
+});
+test('multiple questions accept sequential chat answers or numbered lines', async () => {
+  const h=harness();h.r.questions.push({...h.r.questions[0],questionId:'other',question:'然后呢？'});ownChat(h);await h.runtime.requested(h.r,h.params);
+  const first=await h.runtime.answerFromChat(chatInput(h,{text:'保留原图'}),h.params);
+  assert.equal(first.handled,true);assert.match(first.notice,/然后呢/);assert.equal(h.calls.length,0);
+  await new Promise(r=>setImmediate(r));
+  assert(JSON.stringify(h.patches.at(-1).card).includes('已回答：保留原图'));
+  const second=await h.runtime.answerFromChat(chatInput(h,{messageId:'om_second',text:'2'}),h.params);
+  assert.equal(second.handled,true);
+  assert.deepEqual({...h.calls[0].p.answers.answers},{scope:['保留原图'],other:['重新绘制']});
+  const r=record();r.questions.push({...r.questions[0],questionId:'next'});
+  assert.deepEqual({...api.readFeishuAskChatAnswers(r,'1. 保留原图\n2. 2').answers},{scope:['保留原图'],next:['重新绘制']});
+  assert.throws(()=>api.readFeishuAskChatAnswers(r,'1. 原图\n1. 2'));
+});
+test('chat and card can complete different questions without losing the human answer', async () => {
+  const h=harness();h.r.questions.push({...h.r.questions[0],questionId:'next'});ownChat(h);await h.runtime.requested(h.r,h.params);
+  await h.runtime.answerFromChat(chatInput(h,{text:'自由回答'}),h.params);
+  const e=event(h.r,{});e.event.action={value:{a:api.V_ASK_ACTION,q:h.r.id,qi:1,oi:1}};
+  await h.runtime.submit(e,h.params);
+  assert.equal((await h.runtime.submit(event(h.r,{}),h.params)).toast.type,'success');
+  assert.deepEqual({...h.calls[0].p.answers.answers},{scope:['自由回答'],next:['重新绘制']});
+});
+test('chat and callback compete for one resolver; failure stays retryable', async () => {
+  let release;
+  const h=harness({call:async()=>await new Promise(r=>{release=r})});ownChat(h);await h.runtime.requested(h.r,h.params);
+  const answering=h.runtime.answerFromChat(chatInput(h,{text:'2'}),h.params);
+  assert.equal((await h.runtime.submit(event(h.r,{choice_0:'0'}),h.params)).toast.type,'info');
+  release();assert.equal((await answering).handled,true);
+  const failing=harness({call:async()=>{throw Error('offline')}});ownChat(failing);await failing.runtime.requested(failing.r,failing.params);
+  assert.match((await failing.runtime.answerFromChat(chatInput(failing,{text:'2'}),failing.params)).notice,/失败/);
+  assert.equal(failing.runtime.chatCandidate(chatInput(failing)),failing.r.id);
+});
+test('chat ingress sends only candidate human answers through authorization and never commands/bots', async () => {
+  const calls=[];
+  let senderType='user';
+  const ingress=api.createFeishuAskChatIngress({questionRuntime:{chatCandidate:()=>record().id},parse:()=>({content:'2',senderType,chatId:'oc_test',senderOpenId:'ou_test',messageId:'om_answer'}),handleMessage:async p=>{calls.push(p);return true}});
+  const p={cfg:{},accountId:'default',event:{message:{message_type:'text',create_time:String(Date.now())}},channelRuntime:{commands:{isControlCommandMessage:()=>false}}};
+  assert.equal(await ingress(p),true);assert.equal(calls[0].askUserAnswerOnly,true);assert(calls[0].askUserQuestionId);
+  p.channelRuntime.commands.isControlCommandMessage=()=>true;
+  assert.equal(await ingress(p),false);assert.equal(calls.length,1);
+  p.channelRuntime.commands.isControlCommandMessage=()=>false;p.event.message.message_type='image';
+  assert.equal(await ingress(p),false);assert.equal(calls.length,1);
+  p.event.message.message_type='text';senderType='bot';
+  assert.equal(await ingress(p),false);assert.equal(calls.length,1);
+  senderType='user';p.turnAdoptionLifecycle={abortSignal:{aborted:true}};
+  assert.equal(await ingress(p),false);assert.equal(calls.length,1);
 });

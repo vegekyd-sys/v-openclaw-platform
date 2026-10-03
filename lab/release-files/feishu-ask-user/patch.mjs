@@ -1,9 +1,13 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-export const MARKER = "v-feishu-ask-user-v3";
+export const MARKER = "v-feishu-ask-user-v4";
 const inline = (name) => readFileSync(new URL(name, import.meta.url), "utf8").replace(/^export /gm, "");
 export function patchFeishuAskUser(source) {
   if (source.includes(`// ${MARKER}\n`)) return source;
+  return installChatAnswers(patchV3(source));
+}
+function patchV3(source) {
+  if (source.includes("// v-feishu-ask-user-v3\n")) return source;
   if (!source.includes("v-feishu-secret-entry-runtime-v2")) throw new Error("Requires runtime-agnostic question lifecycle v2");
   if (/\/\/ v-feishu-ask-user-v[12]\n/.test(source)) throw new Error("Rebuild v3 from the unpatched runtime baseline");
   const sites = [
@@ -66,7 +70,62 @@ const vFeishuAsk = createFeishuAskRuntime({
   call: (method, cfg, params) => vSecretEntryCallGateway(method, { config: cfg }, params, { scopes: ["operator.questions"], progress: false, timeoutMs: 2000 })
 });
 `;
-  return `// ${MARKER}\n${inline("card.mjs")}\n${inline("runtime.mjs")}\n${inline("stream.mjs")}\n${source}\n${glue}`;
+  return `// v-feishu-ask-user-v3\n${inline("card.mjs")}\n${inline("runtime.mjs")}\n${inline("stream.mjs")}\n${source}\n${glue}`;
+}
+function installChatAnswers(source) {
+  const replaceOne = (from, to) => {
+    if (source.split(from).length !== 2) throw new Error(`Expected exactly one chat-answer anchor: ${from}`);
+    source = source.replace(from, () => to);
+  };
+  const cardStart = "// Inlined into the Feishu monitor. Keep this module dependency-free.";
+  const runtimeStart = "// Dependency injection keeps the exact inlined lifecycle testable without a live bot.";
+  const streamStart = "// Keep the same CardKit entity/message. Normal stream writes keep targeting";
+  for (const anchor of [cardStart, runtimeStart, streamStart]) if (source.split(anchor).length !== 2) throw new Error(`Expected one module boundary: ${anchor}`);
+  const start = source.indexOf(cardStart), end = source.indexOf(streamStart);
+  if (start >= end) throw new Error("Invalid Ask User module boundaries");
+  source = source.slice(0, start) + inline("card.mjs") + "\n" + inline("chat.mjs") + "\n" + inline("runtime.mjs") + "\n" + source.slice(end);
+  replaceOne("// v-feishu-ask-user-v3\n", `// ${MARKER}\n`);
+  replaceOne(
+    '}, () => previewStreamingEnabled && !idleRequestedForReply && Boolean(replyLifecycleStateInitialized || streaming?.isActive() || streamingStartPromise));',
+    `}, () => previewStreamingEnabled && !idleRequestedForReply && Boolean(replyLifecycleStateInitialized || streaming?.isActive() || streamingStartPromise), {
+      chatId: params.chatId, senderOpenId: params.askUserSenderOpenId,
+      isActive: () => !idleRequestedForReply && Boolean(replyLifecycleStateInitialized || streaming?.isActive() || streamingStartPromise)
+    });`
+  );
+  for (const indent of ["\t\t\t\t", "\t\t\t\t\t\t\t\t"]) replaceOne(`runtime,\n${indent}chatId: ctx.chatId,`, `runtime,\n${indent}chatId: ctx.chatId,\n${indent}askUserSenderOpenId: ctx.senderOpenId,`);
+  replaceOne("if (!turnAdoptionLifecycle && !await finalizeFeishuMessageProcessing({", "if (!params.askUserAnswerOnly && !turnAdoptionLifecycle && !await finalizeFeishuMessageProcessing({");
+  replaceOne("if (feishuCfg?.resolveSenderNames ?? true) {", "if (!params.askUserAnswerOnly && (feishuCfg?.resolveSenderNames ?? true)) {");
+  replaceOne("\t\t\tsenderUserId,\n\t\t\trequireMention,\n\t\t\tmentionedBot: ctx.mentionedBot", "\t\t\tsenderUserId,\n\t\t\trequireMention,\n\t\t\tmentionedBot: ctx.mentionedBot || params.askUserAnswerOnly === true");
+  replaceOne('const preview = truncateUtf16Safe(ctx.content.replace(/\\s+/g, " "), 160);', `if (params.askUserAnswerOnly) {
+      const outcome = await vFeishuAsk.answerFromChat({
+        id: params.askUserQuestionId, sessionKey: route.sessionKey,
+        chatId: ctx.chatId, senderOpenId: ctx.senderOpenId, messageId: ctx.messageId,
+        parentId: ctx.parentId, timestamp: messageCreateTimeMs, text: commandProbeBody
+      }, { cfg: effectiveCfg, accountId: account.accountId, log });
+      if (outcome.handled && outcome.notice) await sendMessageFeishu({
+        cfg: effectiveCfg, to: feishuReplyTarget, accountId: account.accountId,
+        replyToMessageId: ctx.messageId, replyInThread, text: outcome.notice
+      }).catch(() => log("feishu: question answer notice failed"));
+      return outcome.handled;
+    }
+    const preview = truncateUtf16Safe(ctx.content.replace(/\\s+/g, " "), 160);`);
+  replaceOne("if (turnAdoptionLifecycle) throw err;", "if (turnAdoptionLifecycle || params.askUserAnswerOnly) throw err;");
+  replaceOne("fireAndForget, handleMessage, resolveDebounceText: resolveText,", "fireAndForget, handleMessage, tryQuestionAnswer, resolveDebounceText: resolveText,");
+  replaceOne("\t\t\thandleMessage: handleFeishuMessage,\n\t\t\tresolveDebounceText:", "\t\t\thandleMessage: handleFeishuMessage,\n\t\t\ttryQuestionAnswer: vAskTryChatAnswer,\n\t\t\tresolveDebounceText:");
+  replaceOne("const processMessage = async () => {\n\t\t\tawait inboundDebouncer.enqueue(debounceEntry);", `const processMessage = async () => {
+      if (tryQuestionAnswer && !turnAdoptionLifecycle?.abortSignal.aborted && await tryQuestionAnswer({
+        cfg, event, botOpenId: getBotOpenId(accountId), botName: getBotName(accountId),
+        runtime, channelRuntime, chatHistories, accountId,
+        processingClaim: debounceEntry.processingClaim, turnAdoptionLifecycle
+      })) {
+        if (claim.kind === "claimed") await claim.handle.commit();
+        await completeSuppressedIngress();
+        return;
+      }
+\t\t\tawait inboundDebouncer.enqueue(debounceEntry);`);
+  return source + `\nconst vAskTryChatAnswer = createFeishuAskChatIngress({
+    questionRuntime: vFeishuAsk, parse: parseFeishuMessageEvent, handleMessage: handleFeishuMessage
+  });\n`;
 }
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const [, , input, output] = process.argv;

@@ -13,7 +13,7 @@ export function isFeishuAskQuestion(record) {
       q.options.every((o) => typeof o.label === "string"));
 }
 
-export function buildFeishuAskCard(record, state = "pending", selections = {}, answers) {
+export function buildFeishuAskCard(record, state = "pending", selections = {}, answers, chatAnswers = {}) {
   const elements = [];
   const fields = [];
   const immediate = record.questions.length === 1 && !record.questions[0].multiSelect;
@@ -24,6 +24,7 @@ export function buildFeishuAskCard(record, state = "pending", selections = {}, a
   }
   record.questions.forEach((q, i) => {
     elements.push({ tag: "markdown", content: `**${vAskEscape(q.question)}**${q.multiSelect ? "\n<font color='grey'>可多选，选好后确认</font>" : ""}` });
+    if (chatAnswers[q.questionId]?.length) elements.push({ tag: "markdown", content: `<font color='grey'>已回答：${vAskEscape(chatAnswers[q.questionId].join("、"))}</font>` });
     q.options.forEach((o, j) => {
       const selected = (selections[`choice_${i}`] ?? []).includes(String(j));
       elements.push({ tag: "interactive_container", width: "fill", has_border: true,
@@ -44,6 +45,7 @@ export function buildFeishuAskCard(record, state = "pending", selections = {}, a
     const custom = fields.length ? [{ tag: "collapsible_panel", expanded: record.questions.some(q => !q.options.length), header: { title: vAskPlain("我有其他想法"), width: "auto_when_fold" }, elements: [...fields, ...(immediate ? [submit] : [])] }] : [];
     elements.push({ tag: "form", name: "v_ask_form", elements: [...custom, ...(!immediate ? [submit] : [])] });
   }
+  elements.push({ tag: "markdown", text_size: "notation", content: "<font color='grey'>也可以直接在聊天中回复答案</font>" });
   return { schema: "2.0", config: { update_multi: true, width_mode: "default" }, body: { padding: "12px 12px 12px 12px", vertical_spacing: "12px", elements } };
 }
 
@@ -62,7 +64,7 @@ export function parseFeishuAskSubmission(data) {
   return { id, operator, messageId, ...(choice ? { choice: { questionIndex: value.qi, optionIndex: value.oi } } : {}), form: vAskRecord(event.action.form_value) ? event.action.form_value : {} };
 }
 
-export function readFeishuAskAnswers(record, form) {
+export function readFeishuAskAnswers(record, form, chatAnswers = {}) {
   const answers = Object.create(null);
   for (const [i, q] of record.questions.entries()) {
     const raw = form[`choice_${i}`];
@@ -74,8 +76,8 @@ export function readFeishuAskAnswers(record, form) {
     if (other && !q.isOther && q.options.length) throw new Error("这个问题不支持自定义回答。");
     const selected = [...new Set(choices)].map((v) => q.options[Number(v)].label);
     const values = other ? q.multiSelect ? [...selected, other] : [other] : selected;
-    if (!values.length) throw new Error(`请回答「${q.header ?? `问题 ${i + 1}`}」。`);
-    answers[q.questionId] = values;
+    if (!values.length && !chatAnswers[q.questionId]?.length) throw new Error(`请回答「${q.header ?? `问题 ${i + 1}`}」。`);
+    answers[q.questionId] = values.length ? values : chatAnswers[q.questionId];
   }
   return { answers };
 }
