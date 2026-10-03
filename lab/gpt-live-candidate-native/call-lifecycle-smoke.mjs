@@ -119,10 +119,14 @@ function ownedGatewayEvents() {
  return gatewayEvents.filter(e=>keys.has(e.payload?.sessionKey??e.payload?.session?.key)||voices.has(e.payload?.voiceSessionId));
 }
 async function inputConverged(pcIndex,input,label) {
- const proof=await waitFor(async()=>{const s=await snapshot(true),lastSpeechAt=s.micFrames.filter(f=>f.pcIndex===pcIndex&&f.at>=input.startedAt&&f.at<=input.completedAt&&f.rms>.02).at(-1)?.at;
-   if(!Number.isFinite(lastSpeechAt))return null;
-   return assessIndependentInputConvergence({events:s.events,micFrames:s.micFrames,pcIndex,input,lastSpeechAt,observedAt:Date.now()});
- },label,15000);check(label,true,{proof});return proof;
+ // This runs after the complete USER and actual reply have been observed.
+ // Missing historical input samples cannot be repaired by repeatedly copying
+ // the recording. Keep this independent strict FAIL and still observe the
+ // newly requested lifecycle features; the overall receipt remains failed.
+ const s=await snapshot(true),lastSpeechAt=s.micFrames.filter(f=>f.pcIndex===pcIndex&&f.at>=input.startedAt&&f.at<=input.completedAt&&f.rms>.02).at(-1)?.at;
+ const proof=Number.isFinite(lastSpeechAt)?assessIndependentInputConvergence({events:s.events,micFrames:s.micFrames,pcIndex,input,lastSpeechAt,observedAt:Date.now()}):null;
+ check(label,Boolean(proof),{proof,input,lastSpeechAt:lastSpeechAt??null,strictFailurePreserved:true,
+   failureDoesNotSkipRemainingLifecycleObservations:true});return proof;
 }
 async function basicTools(pcIndex) {
  const owner=owners.get(pcIndex),input=play('memory-web');await input.done;assert.equal(input.row.exitCode,0);
