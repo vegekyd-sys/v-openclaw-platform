@@ -10,7 +10,7 @@ import {createPrivatePulseMicrophone} from './private-pulse.mjs';
 import {BROWSER_PROBE,SNAPSHOT_EXPRESSION} from './browser-probe.mjs';
 import {assessDecodedPlaybackWindow,assessCompletePlaybackWindow,assessIndependentInputConvergence} from './evidence.mjs';
 import {resolveEndCallToolWitness,resolveLifecycleUserTurn,assessLifecycleSpeech,hasLifecyclePlaybackTail,assessLifecycleFarewell,assessProactiveGreeting,assessAutomaticEnd,
-  resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult} from './call-lifecycle-evidence.mjs';
+  resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult,readLifecycleHistoryOrRetry} from './call-lifecycle-evidence.mjs';
 import {inspectLifecycleValidationTarget,readLifecycleVoiceOwner,preflightLifecycleMedia} from './call-lifecycle-target.mjs';
 
 const validationTarget=process.env.GPT_LIVE_H5_VALIDATION_TARGET??'candidate';
@@ -131,10 +131,20 @@ async function inputConverged(pcIndex,input,label) {
 async function basicTools(pcIndex) {
  const owner=owners.get(pcIndex),input=play('memory-web');await input.done;assert.equal(input.row.exitCode,0);
  const user=await waitFor(s=>resolveLifecycleMemoryUser(s.events,{pcIndex,after:input.row.startedAt,memoryQuery}),'Complete ordered Memory/Web USER transcript',20000);
- let nextHistoryAt=0,lastHistory;
+ let nextHistoryAt=0,lastHistory;const historyReads=[];
  const chain=await waitFor(async()=>{
   if(Date.now()<nextHistoryAt)return null;nextHistoryAt=Date.now()+2000;
-  lastHistory=await gateway.request('chat.history',{sessionKey:owner.sessionKey,limit:120},{timeoutMs:20000});
+  const attemptedAt=Date.now();
+  const history=await readLifecycleHistoryOrRetry(
+    ()=>gateway.request('chat.history',{sessionKey:owner.sessionKey,limit:120},{timeoutMs:20000}),
+    error=>{
+      historyReads.push({attemptedAt,completedAt:Date.now(),status:'temporary-rebuilding',message:error.message});
+      save('memory-web-owned-backend-history-read-attempts.json',{sessionKey:owner.sessionKey,attempts:historyReads});
+    });
+  if(history===null)return null;
+  historyReads.push({attemptedAt,completedAt:Date.now(),status:'success'});
+  save('memory-web-owned-backend-history-read-attempts.json',{sessionKey:owner.sessionKey,attempts:historyReads});
+  lastHistory=history;
   save('memory-web-owned-backend-history.json',{sessionKey:owner.sessionKey,observedAt:Date.now(),history:lastHistory});
   return resolveLifecycleMemoryWeb({events:ownedGatewayEvents(),history:lastHistory,sessionKey:owner.sessionKey,memoryQuery,after:input.row.startedAt});
  },'Actual nonempty memory result before owned web search and result',120000);

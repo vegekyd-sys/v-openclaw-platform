@@ -5,6 +5,16 @@ const messageText=m=>typeof m?.content==='string'?m.content:(m?.content??[]).fil
 const timestamp=value=>typeof value==='number'?value<1e11?value*1000:value:Date.parse(value);
 const queryIncluded=(text,query)=>normalize(text).toLowerCase().includes(normalize(query).toLowerCase());
 
+/** This exact temporary read failure may retry within the caller's existing budget. */
+export async function readLifecycleHistoryOrRetry(read,onRebuilding=()=>{}) {
+  try {return await read();}
+  catch(error) {
+    if(error?.message!=='session history is rebuilding; retry shortly')throw error;
+    onRebuilding(error);
+    return null;
+  }
+}
+
 /** Same read-only history projection used by native-smoke; clocks stay native. */
 export function extractLifecycleToolPairs(history) {
   const messages=history?.messages??[],rows=[];

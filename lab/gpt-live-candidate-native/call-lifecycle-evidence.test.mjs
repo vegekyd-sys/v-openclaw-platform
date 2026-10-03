@@ -1,7 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {resolveEndCallToolWitness,resolveLifecycleUserTurn,assessLifecycleSpeech,hasLifecyclePlaybackTail,assessLifecycleFarewell,assessProactiveGreeting,assessAutomaticEnd,
-  extractLifecycleToolPairs,resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult} from './call-lifecycle-evidence.mjs';
+  extractLifecycleToolPairs,resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult,readLifecycleHistoryOrRetry} from './call-lifecycle-evidence.mjs';
+
+test('the exact temporary rebuilding failure yields a retry without inventing or replacing history',async()=>{
+ const history={messages:[{role:'assistant',content:'Actual stored result'}]},observed=[];
+ let latest=await readLifecycleHistoryOrRetry(async()=>history,error=>observed.push(error));
+ assert.equal(latest,history);assert.deepEqual(observed,[]);
+ const failure=Error('session history is rebuilding; retry shortly');
+ const rebuilding=await readLifecycleHistoryOrRetry(async()=>{throw failure},error=>observed.push(error));
+ if(rebuilding!==null)latest=rebuilding;
+ assert.equal(rebuilding,null);assert.equal(latest,history);assert.deepEqual(observed,[failure]);
+ const newer={messages:[{role:'toolResult',content:'Actual completed tool result'}]};
+ assert.equal(await readLifecycleHistoryOrRetry(async()=>newer),newer);
+});
+
+test('history rebuilding retry matches only the exact error message and propagates every other failure',async()=>{
+ for(const message of ['chat.history timeout','session history is rebuilding; retry shortly later',
+   'Error: session history is rebuilding; retry shortly','session history is rebuilding; retry shortly\n',
+   'session history is unavailable; retry shortly']) {
+  const failure=Error(message);let observed=false;
+  await assert.rejects(readLifecycleHistoryOrRetry(async()=>{throw failure},()=>{observed=true}),error=>error===failure);
+  assert.equal(observed,false);
+ }
+ const raw='session history is rebuilding; retry shortly';
+ await assert.rejects(readLifecycleHistoryOrRetry(async()=>{throw raw}),error=>error===raw);
+});
 
 const delegation=(text='{"name":"openclaw_end_call","arguments":{}}')=>({pcIndex:0,at:1000,type:'delegation.created',raw:{item:{id:'item-1',type:'delegation',target:'client',user_bidi_turn_id:'user-1',content:[{type:'input_text',text}]}}});
 const tool=(type,at)=>({at,raw:{voiceSessionId:'voice-1',type,name:'openclaw_end_call',callId:'item-1',requestId:'item-1',...(type==='tool.result'?{closeAfterPlayback:true}:{})}});
