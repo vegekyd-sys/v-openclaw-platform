@@ -29,6 +29,14 @@ test('staged shared release may be tested but pending or unrelated canonical art
   const v=fixture();alter(v.actual.release);assert.throws(()=>validateLifecycleTargetIdentity(v.expected,v.actual));
  }
 });
+test('actual canonical unaccepted current binds the manifest and artifact before acceptance adds artifactSha',()=>{
+ const f=fixture();delete f.actual.release.current.artifactSha;
+ assert.equal(validateLifecycleTargetIdentity(f.expected,f.actual).release.artifactSha,f.expected.artifactSha);
+ for(const change of [r=>r.current.accepted=true,r=>delete r.current.accepted,r=>r.manifest.artifactSha='f'.repeat(64),
+   r=>r.artifactSha='f'.repeat(64),r=>r.manifest.sourceCommit='f'.repeat(40),r=>r.manifest.runtimeFiles=[]]){
+  const value=structuredClone(f);change(value.actual.release);assert.throws(()=>validateLifecycleTargetIdentity(value.expected,value.actual));
+ }
+});
 test('V must retain the same shared accepted runtime and H5 proof',()=>{
  const f=fixture('v');assert(validateLifecycleReleaseIdentity(f.expected,f.actual.release));
  for(const alter of [v=>v.expected.sharedAccepted=null,v=>v.expected.sharedAccepted.h5FilesSha='e'.repeat(64),
