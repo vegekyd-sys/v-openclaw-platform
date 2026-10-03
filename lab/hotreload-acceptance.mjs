@@ -273,15 +273,23 @@ async function stepApproval() {
   await useWorkerModel("vcc");
   try {
     const at = Date.now();
-    const id = send(`这是审批卡验收 ${tag}。请用 openclaw 的配置工具把 messages.ackReaction 设置为 "👀"（这是一个不需要重启的键）。需要审批就发起审批，等批准后完成修改，然后只回复 ${tag}-APPROVAL-DONE。`);
+    // 9.1 cancels a system-agent approval when the run that raised it ends
+    // (cancelAgentRuntimeBoundApprovals), and the openclaw tool returns
+    // needsApproval at once. Keep the run open with Bash sleeps so the owner
+    // has time to tap. Judge by the journal and the config value, never by
+    // the reply text: the bot may repeat the marker before anything happened.
+    const id = send(`这是飞书私聊审批卡的线上验收 ${tag}。请用 openclaw 工具提交一处配置改动：把 messages.ackReaction 设为 "👀"，只改这一处。提交后不要结束这一轮：用 Bash 执行 sleep 60，然后用 openclaw 工具（同一个 sessionId）查询 messages.ackReaction 的当前值，没变就继续 sleep 60 再查，最多等 9 分钟。值变成 👀 就立刻告诉我「已批准并写入」；9 分钟还没变就告诉我「超时」。不要重新提交，不要改其他配置。`);
     note("approval:sent", { message: id });
     await waitFor("approval card delivered to the owner DM",
-      () => journalCount("feishu approvals: delivered") > 0, 300_000, 5_000);
-    note("approval:card-delivered", { telegramDeliveries: journalCount("telegram.*(approval|exec-approval)") });
-    console.error(`\n>>> 请在手机飞书里打开与机器人的私聊，点审批卡上的「批准」（${tag}）。等待中，最多 30 分钟…\n`);
-    await waitFor("owner tapped 批准", () => journalCount("feishu approvals: resolved") > 0, 1_800_000, 5_000);
-    note("approval:resolved");
-    const card = await awaitReply(id, `${tag}-APPROVAL-DONE`, at, 600_000);
+      () => journalCount("feishu approvals: delivered system-agent") > 0, 300_000, 5_000);
+    note("approval:card-delivered", { telegramApprovalLines: journalCount("telegram.*approv") });
+    console.error(`\n>>> 请在手机飞书私聊里点审批卡「批准」（${tag}），这一轮最多等 9 分钟…\n`);
+    await waitFor("approval resolved", () => journalCount("feishu approvals: resolved system-agent") > 0, 600_000, 5_000);
+    const value = () => JSON.parse(remote(`sudo cat ${sq(path)}`)).messages?.ackReaction ?? null;
+    const written = await waitFor("config written", () => (value() === "👀" ? "👀" : null), 120_000, 5_000).catch(() => null);
+    note("approval:resolved", { written, cancelled: journalCount("cancelled because its run ended") });
+    assert.equal(written, "👀", "the approved change was written (not cancelled)");
+    const card = await waitFor("turn reports success", () => botCards(at).find((m) => m.content.includes("已批准并写入")) ?? null, 600_000, 5_000);
     note("approval:turn-continued", { reply: card.id });
   } finally {
     await useWorkerModel("default").catch(() => {});
