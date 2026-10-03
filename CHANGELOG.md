@@ -30,10 +30,14 @@
 - roll 通过：在途回合的 1–3000 计数在旧一代完整输出，之后排空。
 - config 通过：改 `wizard.lastRunCommand` 后 worker 自动换代，在途回合完成，配置按字节还原。
 - 全程 `worker pool is closing` 0 次，worker 请求失败 0 次。
-- `/vcc` 发起的 OpenClaw 改动审批：卡片到了飞书私聊，Telegram 0 条；但 5 秒后随发起回合结束被**取消**，卡片改写为「已取消」，**真人批准未完成，待跟进**。
+- OpenClaw 改动审批：
+  - 00:00 第一次，`/vcc` 发起后这一轮立即结束，审批随之取消，卡片如实改写为「已取消」。这是 9.1 原有行为：审批绑定在发起它的那一轮上（`cancelAgentRuntimeBoundApprovals`）。
+  - 00:35 第二次，让 `/vcc` 在这一轮里用 sleep 轮询，把回合撑住。卡片到了 Tianyi 的飞书私聊，Telegram 0 条。00:42 Tianyi 在手机上点「批准」，卡片改为「已批准：OpenClaw 改动……改动已经写入」，配置真实写入；验完按字节还原。
 - 共享 VLab 上，插件审批卡已由 Tianyi 真人点「批准」通过。
 
-**已知**：共享 VLab 上 openclaw 系统 agent 工具报 "verified inference owner changed"，是原有问题，与本次无关。
+**已知**：
+- 共享 VLab 上，openclaw 系统 agent 工具报 "verified inference owner changed"，是原有问题，与本次无关。
+- 在群里发起的 OpenClaw 改动，如果 agent 的这一轮先结束，审批就会作废。卡片能到私聊，但已经点不了。
 
 相对上一版 `feishu-ask-chat-answer-20261003`：8 个文件变化。
 
