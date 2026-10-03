@@ -20,6 +20,9 @@ const specs = [
   { target: "production-worker/index.mjs", expectedBefore: "c047f3df1f730b4eacb2db0ec64cd0e0281bc4f8388c8032768192a204222259" },
   { target: "production-worker/worker-pool.mjs", expectedBefore: "a9f718d0c9ca1f209aba9a9a55d86181b84f2ab1afa8b65cc86bde96bc3b5ea3" },
   { target: "production-worker/worker-runtime-lifecycle.mjs", expectedBefore: null },
+  // From PR #170 (worker-config-derive), unchanged.
+  { target: "production-worker/worker-config-derive.mjs", expectedBefore: null },
+  { target: "production-worker/worker-config-watch.mjs", expectedBefore: null },
 ];
 
 const files = [];
@@ -47,6 +50,8 @@ for (const spec of specs) {
     const before = Buffer.from(result.content, "base64").toString();
     const projected = promoteWorkerLifecycle(before);
     assert.ok(projected.includes("createWorkerRuntimeLifecycle"), "lifecycle projection still applies");
+    assert.ok(after.includes("deriveWorkerConfigFile") && !after.includes("syncWorkerRuntimeConfigFile"),
+      "the release index derives the Worker config");
   }
   files.push({ source, target: spec.target, before: result ? result.sha256 : null });
   console.log(JSON.stringify({ target: spec.target, before: result?.sha256 ?? null, after: sha256(after) }));

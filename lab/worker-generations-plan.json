@@ -15,6 +15,16 @@
       "source": "lab/release-files/worker-generations/worker-runtime-lifecycle.mjs",
       "target": "production-worker/worker-runtime-lifecycle.mjs",
       "before": null
+    },
+    {
+      "source": "lab/release-files/worker-generations/worker-config-derive.mjs",
+      "target": "production-worker/worker-config-derive.mjs",
+      "before": null
+    },
+    {
+      "source": "lab/release-files/worker-generations/worker-config-watch.mjs",
+      "target": "production-worker/worker-config-watch.mjs",
+      "before": null
     }
   ]
 }

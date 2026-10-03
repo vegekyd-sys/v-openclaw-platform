@@ -17,9 +17,16 @@ Worker on reload, active runs included: SIGTERM, then SIGKILL after 2 s.
 
 | Target | Before (V = VLab) | After |
 |---|---|---|
-| `production-worker/index.mjs` | `c047f3df…` | `2e7ccdb0…` |
+| `production-worker/index.mjs` | `c047f3df…` | `b5f315bb…` |
 | `production-worker/worker-pool.mjs` | `a9f718d0…` | `58558773…` |
 | `production-worker/worker-runtime-lifecycle.mjs` | — (new) | `5e29a54b…` |
+| `production-worker/worker-config-derive.mjs` | — (new, PR #170) | `b202a9a8…` |
+| `production-worker/worker-config-watch.mjs` | — (new) | `b1b59375…` |
+
+This release supersedes the separate `worker-config-derive` release plan
+(PR #170): both rewrite `production-worker/index.mjs` from the same V bytes, so
+they ship together. See `lab/release-files/worker-config-derive/README.md` for
+the derivation rules and the 68 paths the first derivation changes on V.
 
 1. **0.2.12 lifecycle.** `index.mjs` starts as `lab/worker-lifecycle-promotion.mjs`
    applied to V's exact bytes: a closing pool is never reused, and each request
@@ -55,6 +62,13 @@ Worker on reload, active runs included: SIGTERM, then SIGKILL after 2 s.
 
 4. Turns admitted during the reload gap wait for the next generation
    (`awaitWorkerRuntime`, up to 60 s) instead of failing.
+5. **Gateway config changes reach Workers.** The Worker config is derived from
+   the Gateway config (PR #170). 9.1 applies most Gateway config changes, such
+   as models, agents, tools and policy, without a plugin reload, so the plugin
+   would never re-derive. The Gateway now checks its config every 5 s. After
+   one quiet interval it re-derives, and when what Workers read changed it
+   rolls the generation itself. Hand edits to `worker-openclaw.json` are
+   overwritten; change the Gateway config instead.
 
 `vlab.workers.status` now reports:
 - `generation`;
@@ -78,7 +92,7 @@ Workers plus the new generation's `minWorkers`. Idle old Workers exit at once.
 
 ## Tests
 
-- `node --test tests/worker-generations.test.mjs`: 13 tests, real child
+- `node --test tests/worker-generations.test.mjs`: 14 tests, real child
   processes, V's 0.2.11 bytes plus these files.
 - The plugin's own 147 production tests and the 0.2.12 pool-lifecycle tests
   pass on the overlaid tree.
@@ -87,7 +101,17 @@ Workers plus the new generation's `minWorkers`. Idle old Workers exit at once.
 - Real runtime: `lab/worker-generations-candidate.mjs`. It boots a private 9.1
   Gateway from the candidate runtime, with channels and outbound plugins off.
   While a real model turn streams through a Worker, it rewrites a `plugins.*`
-  key and later calls `vlab.workers.roll`.
+  key, then calls `vlab.workers.roll`, then edits a Gateway-only key
+  (`agents.defaults.models.<model>.alias`). Candidate
+  `candidate-fcc3e187` at `2e1e0739`:
+  - all three in-flight turns finished in the old generation (4740 / 11689 /
+    10155 chars), and every turn after each change succeeded;
+  - the config edit rolled generation 3 → 4 about 9 s later;
+  - zero `worker pool is closing` errors.
+
+  Control `candidate-af69b8cc` (V's 0.2.11) fails at the first reload: the
+  in-flight turn ends in "Agent couldn't generate a response", then
+  `worker pool is closing`, with 0 Workers left.
   - Plans: `lab/worker-generations-candidate.plan.json`, and
     `lab/worker-generations-control.plan.json`, which runs V's 0.2.11 and must
     fail.
