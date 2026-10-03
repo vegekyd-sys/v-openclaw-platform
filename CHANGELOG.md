@@ -11,6 +11,48 @@
 
 ---
 
+## hotreload-feishu-approvals-20261003
+
+上线：2026-10-03 23:44 CST 安装，23:44:55 停 Gateway，停机时写入两项 Telegram 审批配置，23:47:14 就绪  ·  tag `hotreload-feishu-approvals-20261003`
+
+**摘要**：两件事一起上。
+
+（1）**worker 层不再需要重启**（#172/#173）：
+- 改插件配置、改主配置（模型、白名单、agent），或者执行 `openclaw gateway call vlab.workers.roll`，worker 会换一代新进程。
+- 旧一代把手上的回合、排队的回合、后台生图做完再退。
+- worker 配置改为从主配置自动推导，不再手工维护，首次推导在 V 上改写了 70 处。
+- 9/20、9/23 那种"热重载后 worker 池永久关闭"的停摆被修掉。
+
+（2）**OpenClaw 改动、插件、命令执行审批改发到 Tianyi 的飞书私聊**（#171），带 批准 / 总是允许 / 拒绝 按钮；同时关闭 Telegram 审批（`channels.telegram.execApprovals.enabled=false`、`approvals.plugin.enabled=false`，停机时写入）。
+
+**V 线上验收**（lark-cli，「V 生产发布验收 0910」群）：
+- base 通过：0.2.12-generations.1，5 个 worker。
+- roll 通过：在途回合的 1–3000 计数在旧一代完整输出，之后排空。
+- config 通过：改 `wizard.lastRunCommand` 后 worker 自动换代，在途回合完成，配置按字节还原。
+- 全程 `worker pool is closing` 0 次，worker 请求失败 0 次。
+- `/vcc` 发起的 OpenClaw 改动审批：卡片到了飞书私聊，Telegram 0 条；但 5 秒后随发起回合结束被**取消**，卡片改写为「已取消」，**真人批准未完成，待跟进**。
+- 共享 VLab 上，插件审批卡已由 Tianyi 真人点「批准」通过。
+
+**已知**：共享 VLab 上 openclaw 系统 agent 工具报 "verified inference owner changed"，是原有问题，与本次无关。
+
+相对上一版 `feishu-ask-chat-answer-20261003`：8 个文件变化。
+
+**经 VLab 发版 `hotreload-feishu-approvals-v2`**（worker-generations，dev `06d330f4`）
+> 验收：Shared VLab 2026-10-03 22:51-23:38 CST, release hotreload-feishu-approvals-v2 (dev 06d330f4: #171 + #172 + #173), real Feishu via Tianyi lark-cli in VLab 发布验收 B, driver lab/hotreload-acceptance.mjs. #172: base (worker 0.2.12-generations.1, generation 1, 5 workers, Worker config derived 33 paths, reply on vlab-worker); roll (vlab.workers.roll while a 1-3000 counting reply streamed in the old genera…
+- `worker` index.mjs  c047f3df → b5f315bb
+- `worker` worker-pool.mjs  a9f718d0 → 58558773
+- `worker` worker-config-derive.mjs  — → b202a9a8
+- `worker` worker-config-watch.mjs  — → 88354155
+- `worker` worker-runtime-lifecycle.mjs  — → 5e29a54b
+- `feishu` dist/channel-DSYCNah8.js  fbbcd86b → bb71f2d4
+- `feishu` dist/monitor.account-WFdlCDhR.js  b68229ec → b9ba9fc8
+- `feishu` dist/v-feishu-approvals.js  — → 2905c12f
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #173 worker：只改 meta 不触发换代；#171+#172 合并发布计划
+- #172 worker 层不重启更新：排空式换代、手动换代、主配置自动传到 worker
+- #171 feat(feishu): 审批卡发到 owner 的飞书私聊
+
 ## feishu-ask-chat-answer-20261003
 
 上线：2026-10-03 11:04 CST 安装，11:24:52 重启 Gateway（11:27:56 就绪）  ·  tag `feishu-ask-chat-answer-20261003`
