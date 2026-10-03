@@ -66,11 +66,11 @@ function fixture(t, sharedProfile = validProfile()) {
   return { root, shared, state, sharedDb, templateDb, privateDb };
 }
 
-function install(f, accessFixture) {
+function install(f, accessFixture, absolute = false) {
   const values = {
     VLAB_SHARED_STATE_DIR: f.shared,
     OPENCLAW_STATE_DIR: f.state,
-    GPT_LIVE_CALL_ACCESS_FIXTURE: accessFixture ? path.relative(process.cwd(), accessFixture) : undefined,
+    GPT_LIVE_CALL_ACCESS_FIXTURE: accessFixture ? absolute ? accessFixture : path.relative(process.cwd(), accessFixture) : undefined,
   };
   const previous = Object.fromEntries(Object.keys(values).map((key) => [key, process.env[key]]));
   try {
@@ -144,4 +144,18 @@ test("a valid synthetic access-only fixture initializes the private profile with
   assert.deepEqual(result.store.profiles, { "openai:gpt-live-call-private": profile });
   assert.deepEqual(result.state.order, { openai: ["openai:gpt-live-call-private"] });
   assert.equal(fs.existsSync(f.sharedDb), false);
+});
+
+test('an absolute private server fixture works without carrying credentials in Candidate inputs', t=>{
+  const f=fixture(t),profile=validProfile(),file=path.join(f.root,'server-access.json');
+  fs.writeFileSync(file,JSON.stringify(profile),{mode:0o600});fs.rmSync(f.sharedDb);
+  install(f,file,true);assert.deepEqual(readDatabase(f.privateDb).store.profiles,{'openai:gpt-live-call-private':profile});
+});
+
+test('public or symlink access fixtures are rejected before private auth is written',t=>{
+  const f=fixture(t),file=path.join(f.root,'server-access.json'),link=path.join(f.root,'link.json');
+  fs.writeFileSync(file,JSON.stringify(validProfile()),{mode:0o644});
+  assert.throws(()=>install(f,file,true),/private regular file/);assert.equal(fs.existsSync(f.privateDb),false);
+  fs.chmodSync(file,0o600);fs.symlinkSync(file,link);
+  assert.throws(()=>install(f,link,true),/private regular file/);assert.equal(fs.existsSync(f.privateDb),false);
 });
