@@ -231,6 +231,7 @@ try {
   const tail = logText().split("\n").filter((line) =>
     /vlab-worker-pool|Worker Isolation|reload|worker pool|generation|Worker Agent request failed/i.test(line)).slice(-60);
   evidence.logTail = tail;
+  if (failure) evidence.rawTail = logText().split("\n").slice(-40);
   evidence.ok = !failure;
   console.log(JSON.stringify(evidence, null, 1));
 }
