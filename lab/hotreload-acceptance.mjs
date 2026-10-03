@@ -142,13 +142,18 @@ const shortTurn = async (label) => {
   const at = Date.now();
   const id = send(`只回复 ${marker}，不要调用任何工具。`);
   const card = await awaitReply(id, marker, at, 180_000);
-  return note(`${label}:reply`, { message: id, reply: card.id, seconds: Math.round((Date.now() - at) / 1000) });
+  const runtime = footerRuntime(card.content);
+  note(`${label}:reply`, { message: id, reply: card.id, runtime, seconds: Math.round((Date.now() - at) / 1000) });
+  assert.ok(!["codex", "claude-cli"].includes(runtime), `turn ran on ${runtime}, not through the Worker pool`);
+  return card;
 };
 // A reply long enough to be mid-stream when the generation changes.
 const longTurn = (label) => {
   const marker = `${tag}-${label}-END`;
   const at = Date.now();
-  const id = send(`请写一篇约 1500 字的中文散文，题目是“灯塔的历史”，不要调用任何工具，不要分节标题。最后单独一行写 ${marker}`);
+  // Counting streams steadily for a minute or more; an essay can finish before
+  // a config change is even detected.
+  const id = send(`请按顺序输出从 1 到 1200 的阿拉伯数字，每行一个数字，不要省略任何一个，不要调用任何工具，不要加别的文字。全部输出完后单独一行写 ${marker}`);
   note(`${label}:sent`, { message: id });
   return { id, marker, at };
 };
@@ -176,7 +181,20 @@ function restoreConfig(path, backup) {
 }
 
 // --- steps -------------------------------------------------------------------
+// The group's session may have been switched to a harness that never uses the
+// Worker pool (e.g. /vcodex runs on Codex). Put it back on the default model
+// and require a footer that is not a Codex or Claude CLI runtime.
+const footerRuntime = (content) => content.match(/Runtime:\s*([\w-]+)/u)?.[1] ?? null;
+async function useWorkerModel() {
+  const at = Date.now();
+  const id = send("/model default");
+  const reply = await waitFor("model switch reply",
+    () => botCards(at).find((m) => m.replyTo === id) ?? null, 120_000, 4_000);
+  note("model:default", { reply: reply.id, text: reply.content.slice(0, 160) });
+}
+
 async function stepBase() {
+  await useWorkerModel();
   const s = status();
   const version = s.diagnostics?.workerIsolationVersion ?? s.workerIsolationVersion
     ?? JSON.stringify(s).match(/0\.2\.\d+[-\w.]*/u)?.[0];
@@ -251,8 +269,8 @@ async function stepApproval() {
     await waitFor("approval card delivered to the owner DM",
       () => journalCount("feishu approvals: delivered") > 0, 300_000, 5_000);
     note("approval:card-delivered", { telegramDeliveries: journalCount("telegram.*(approval|exec-approval)") });
-    console.error(`\n>>> 请在手机飞书里打开与机器人的私聊，点审批卡上的「批准」（${tag}）。等待中，最多 10 分钟…\n`);
-    await waitFor("owner tapped 批准", () => journalCount("feishu approvals: resolved") > 0, 600_000, 5_000);
+    console.error(`\n>>> 请在手机飞书里打开与机器人的私聊，点审批卡上的「批准」（${tag}）。等待中，最多 30 分钟…\n`);
+    await waitFor("owner tapped 批准", () => journalCount("feishu approvals: resolved") > 0, 1_800_000, 5_000);
     note("approval:resolved");
     const card = await awaitReply(id, `${tag}-APPROVAL-DONE`, at, 600_000);
     note("approval:turn-continued", { reply: card.id });
