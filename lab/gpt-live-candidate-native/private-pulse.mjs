@@ -44,7 +44,9 @@ export async function createPrivatePulseMicrophone(scratch,{validationTarget='ca
   const plays=[],children=[];
   function play(file,label) {
     assert(fs.existsSync(file)&&path.isAbsolute(file),'Actual synthetic WAV path required');
-    const child=spawn(executables.paplay??'/usr/bin/paplay',['--server=unix:'+socket,'--device='+name,'--latency-msec=20',file],{env:mediaEnvironment,stdio:['ignore','ignore','pipe']});
+    // The verified executable can resolve paplay's symlink to pacat. Select
+    // WAV decoding explicitly so argv[0] cannot turn the input into raw PCM.
+    const child=spawn(executables.paplay??'/usr/bin/paplay',['--file-format','--server=unix:'+socket,'--device='+name,'--latency-msec=20',file],{env:mediaEnvironment,stdio:['ignore','ignore','pipe']});
     children.push(child);
     const row={label,startedAt:Date.now(),completedAt:null,exitCode:null};plays.push(row);
     let error='';child.stderr.on('data',chunk=>{error+=String(chunk)});
