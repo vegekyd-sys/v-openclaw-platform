@@ -10,9 +10,19 @@ import { build as buildCompletion } from "./build-gpt-live-completion-context.mj
 import { patchGptLiveContinuationHarness, patchGptLiveContinuationTalk, patchGptLiveContinuationRegistry,
   patchGptLiveContinuationWake, patchGptLiveContinuationDelivery, patchGptLiveContinuationTaskSdk, createGptLiveContinuationRuntimeSource } from "./patch-gpt-live-consult-continuation.mjs";
 import { patchSessionsSpawnGatewayProxy } from "../experiments/agent-worker-isolation-v1/patch-openclaw-sessions-spawn-gateway-proxy.mjs";
+import { createGptLiveVoiceExecLifetimeRuntimeSource } from "./gpt-live-voice-exec-lifetime.mjs";
+import { patchGptLiveVoiceExecHostCapability, patchGptLiveVoiceExecBashTools, patchGptLiveVoiceExecNativeAttemptBridge,
+  patchGptLiveVoiceExecGatewayRelay, patchGptLiveVoiceExecWorkerPool } from "./patch-gpt-live-voice-exec-lifetime.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const hash = (source) => createHash("sha256").update(source).digest("hex");
+const voiceExecBaseline = [
+  { name: "host-capability-Dq3cEEWF.js", directory: "release/captured/v2026.9.1-db91.6-memory-search-guards-20261002/dist", target: "openclaw/dist/host-capability-Dq3cEEWF.js", before: "4535cb192dff71e0d3602f19ebbba6191f98a2f21013c2fa33e0b87386eaa5ce", transform: patchGptLiveVoiceExecHostCapability },
+  { name: "bash-tools-DiAfkLAC.js", directory: "release/captured/v2026.9.1-db91.6-memory-search-guards-20261002/dist", target: "openclaw/dist/bash-tools-DiAfkLAC.js", before: "8bda4a91e8e742308d2aecbd8914996b4ddd0f1af0cfc1018064f4a7a3cd8d28", transform: patchGptLiveVoiceExecBashTools },
+  { name: "native-attempt-bridge.mjs", directory: "release/captured/v2026.9.1-db91.6-memory-search-weighted-20261002.worker/dist", target: "production-worker/native-attempt-bridge.mjs", before: "6482f3d27a0f7e019a1f65faaa6e7bbdb28a999250ff5d1d6ab871d9ba65a813", transform: patchGptLiveVoiceExecNativeAttemptBridge },
+  { name: "gateway-message-tool.mjs", directory: "release/captured/v2026.9.1-db91.6-memory-search-weighted-20261002.worker/dist", target: "production-worker/gateway-message-tool.mjs", before: "2ae673d4eae9dfd0f350e07d1106a78c95c9259d698e2a9b42fdbaeab2078472", transform: patchGptLiveVoiceExecGatewayRelay },
+  { name: "worker-pool.mjs", directory: "release/captured/v2026.9.1-db91.6-memory-search-weighted-20261002.worker/dist", target: "production-worker/worker-pool.mjs", before: "a9f718d0c9ca1f209aba9a9a55d86181b84f2ab1afa8b65cc86bde96bc3b5ea3", transform: patchGptLiveVoiceExecWorkerPool },
+];
 export function build({ baseRelease = "memory-search-guards-20261002" } = {}) {
   buildNative();
   const native = JSON.parse(readFileSync(resolve(root, "lab/gpt-live-native-progress-plan.json")));
@@ -60,6 +70,17 @@ export function build({ baseRelease = "memory-search-guards-20261002" } = {}) {
   const spawnAfter = patchSessionsSpawnGatewayProxy(spawnBefore.toString("utf8")).source;
   writeFileSync(resolve(root, spawnSource), spawnAfter);
   files.push({ source: spawnSource, target: "openclaw/dist/sessions-spawn-tool-1FQMTkIo.js", before: spawnBeforeSha });
+  for (const item of voiceExecBaseline) {
+    const before = readFileSync(resolve(root, item.directory, item.name));
+    assert.equal(hash(before), item.before, "captured voice exec baseline drifted: " + item.name);
+    assert(!files.some(file => file.target === item.target), "voice exec target would overwrite another transform");
+    const source = "lab/release-files/gpt-live-call/" + item.name;
+    writeFileSync(resolve(root, source), item.transform(before.toString("utf8")));
+    files.push({ source, target: item.target, before: item.before });
+  }
+  const voiceExecSource = "lab/release-files/gpt-live-call/gpt-live-voice-exec-lifetime.js";
+  writeFileSync(resolve(root, voiceExecSource), createGptLiveVoiceExecLifetimeRuntimeSource());
+  files.push({ source: voiceExecSource, target: "openclaw/dist/gpt-live-voice-exec-lifetime.js", before: null });
   writeFileSync(resolve(root, "lab/gpt-live-call-plan.json"), JSON.stringify({ baseRelease, files }, null, 2) + "\n");
   const fixtureFiles=[];
   function fixtures(dir){for(const entry of readdirSync(resolve(root,dir),{withFileTypes:true})){const file=dir+'/'+entry.name;if(entry.isDirectory())fixtures(file);else fixtureFiles.push(file);}}
@@ -67,7 +88,7 @@ export function build({ baseRelease = "memory-search-guards-20261002" } = {}) {
   const completionCandidate=JSON.parse(readFileSync(resolve(root,'lab/candidate/gpt-live-completion-context.plan.json')));
   writeFileSync(resolve(root, "lab/candidate/gpt-live-call.plan.json"), JSON.stringify({
     baseRelease, files, tests: ["lab/gpt-live-consult-progress.test.mjs", "lab/gpt-live-public-progress-bridge.test.mjs", "lab/gpt-live-native-progress.test.mjs", "lab/gpt-live-h5/server.test.mjs", "lab/gpt-live-h5/app.test.mjs", "lab/gpt-live-h5/duplex-playback.test.mjs", "lab/gpt-live-h5/microphone-capture.test.mjs", "lab/gpt-live-h5/transcript-presentation.test.mjs", "lab/gpt-live-h5/call-sounds.test.mjs", "lab/gpt-live-call-live-auth.test.mjs", "lab/gpt-live-call-live-evidence.test.mjs",
-      "lab/gpt-live-consult-continuation.test.mjs", "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-spawn-gateway-proxy.test.mjs", "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-yield-external-task.test.mjs", "lab/gpt-live-pr-provenance.test.mjs", "lab/gpt-live-pr-config.test.mjs", "lab/gpt-live-pr-trace.test.mjs", "lab/gpt-live-h5-provenance-evidence.test.mjs", "lab/gpt-live-h5-control-evidence.test.mjs", "lab/gpt-live-h5-user-pcm.test.mjs", "lab/gpt-live-h5-control-probe.test.mjs",...completionCandidate.tests],
+      "lab/gpt-live-consult-continuation.test.mjs", "lab/gpt-live-voice-exec-lifetime.test.mjs", "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-spawn-gateway-proxy.test.mjs", "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-yield-external-task.test.mjs", "lab/gpt-live-pr-provenance.test.mjs", "lab/gpt-live-pr-config.test.mjs", "lab/gpt-live-pr-trace.test.mjs", "lab/gpt-live-h5-provenance-evidence.test.mjs", "lab/gpt-live-h5-control-evidence.test.mjs", "lab/gpt-live-h5-user-pcm.test.mjs", "lab/gpt-live-h5-control-probe.test.mjs",...completionCandidate.tests],
     support: [...new Set([
       "lab/gpt-live-consult-progress.mjs", "lab/gpt-live-public-progress-bridge.mjs", publicBridgeBaseline, "lab/patch-gpt-live-native-progress.mjs",
       "lab/fixtures/gpt-live-native-progress/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
@@ -80,6 +101,7 @@ export function build({ baseRelease = "memory-search-guards-20261002" } = {}) {
       "lab/gpt-live-call-live-evidence.mjs",
       "lab/gpt-live-pr-provenance.mjs","lab/gpt-live-pr-config.mjs","lab/gpt-live-pr-trace.mjs","lab/shared/server.mjs","lab/shared/files.mjs","lab/shared/lifecycle.mjs",
       "lab/gpt-live-consult-continuation.mjs","lab/patch-gpt-live-consult-continuation.mjs","lab/gpt-live-consult-continuation-baseline.json",
+      "lab/gpt-live-voice-exec-lifetime.mjs", "lab/patch-gpt-live-voice-exec-lifetime.mjs", ...voiceExecBaseline.map(item => item.directory + "/" + item.name),
       "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-spawn-gateway-proxy.mjs", spawnBaseline,
       "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-yield-external-task.mjs",
       "release/captured/v2026.9.1-db91.6-background-work-20261002/dist/openclaw-tools-BODVdJQD.js",

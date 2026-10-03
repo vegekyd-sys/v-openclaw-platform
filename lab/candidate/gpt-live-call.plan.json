@@ -1,5 +1,5 @@
 {
-  "baseRelease": "memory-search-guards-20261002",
+  "baseRelease": "feishu-dm-approvals-v1",
   "files": [
     {
       "source": "lab/release-files/gpt-live-native-progress/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
@@ -60,6 +60,36 @@
       "source": "lab/release-files/gpt-live-call/sessions-spawn-tool-1FQMTkIo.js",
       "target": "openclaw/dist/sessions-spawn-tool-1FQMTkIo.js",
       "before": "52b6ea5448e758f6d764200d946853be80a0fe5b419629801ee761173741d848"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/host-capability-Dq3cEEWF.js",
+      "target": "openclaw/dist/host-capability-Dq3cEEWF.js",
+      "before": "4535cb192dff71e0d3602f19ebbba6191f98a2f21013c2fa33e0b87386eaa5ce"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/bash-tools-DiAfkLAC.js",
+      "target": "openclaw/dist/bash-tools-DiAfkLAC.js",
+      "before": "8bda4a91e8e742308d2aecbd8914996b4ddd0f1af0cfc1018064f4a7a3cd8d28"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/native-attempt-bridge.mjs",
+      "target": "production-worker/native-attempt-bridge.mjs",
+      "before": "6482f3d27a0f7e019a1f65faaa6e7bbdb28a999250ff5d1d6ab871d9ba65a813"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/gateway-message-tool.mjs",
+      "target": "production-worker/gateway-message-tool.mjs",
+      "before": "2ae673d4eae9dfd0f350e07d1106a78c95c9259d698e2a9b42fdbaeab2078472"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/worker-pool.mjs",
+      "target": "production-worker/worker-pool.mjs",
+      "before": "a9f718d0c9ca1f209aba9a9a55d86181b84f2ab1afa8b65cc86bde96bc3b5ea3"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/gpt-live-voice-exec-lifetime.js",
+      "target": "openclaw/dist/gpt-live-voice-exec-lifetime.js",
+      "before": null
     }
   ],
   "tests": [
@@ -75,6 +105,7 @@
     "lab/gpt-live-call-live-auth.test.mjs",
     "lab/gpt-live-call-live-evidence.test.mjs",
     "lab/gpt-live-consult-continuation.test.mjs",
+    "lab/gpt-live-voice-exec-lifetime.test.mjs",
     "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-spawn-gateway-proxy.test.mjs",
     "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-yield-external-task.test.mjs",
     "lab/gpt-live-pr-provenance.test.mjs",
@@ -118,6 +149,13 @@
     "lab/gpt-live-consult-continuation.mjs",
     "lab/patch-gpt-live-consult-continuation.mjs",
     "lab/gpt-live-consult-continuation-baseline.json",
+    "lab/gpt-live-voice-exec-lifetime.mjs",
+    "lab/patch-gpt-live-voice-exec-lifetime.mjs",
+    "release/captured/v2026.9.1-db91.6-memory-search-guards-20261002/dist/host-capability-Dq3cEEWF.js",
+    "release/captured/v2026.9.1-db91.6-memory-search-guards-20261002/dist/bash-tools-DiAfkLAC.js",
+    "release/captured/v2026.9.1-db91.6-memory-search-weighted-20261002.worker/dist/native-attempt-bridge.mjs",
+    "release/captured/v2026.9.1-db91.6-memory-search-weighted-20261002.worker/dist/gateway-message-tool.mjs",
+    "release/captured/v2026.9.1-db91.6-memory-search-weighted-20261002.worker/dist/worker-pool.mjs",
     "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-spawn-gateway-proxy.mjs",
     "release/captured/v2026.9.1-db91.6-background-work-20261002/dist/sessions-spawn-tool-1FQMTkIo.js",
     "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-yield-external-task.mjs",
@@ -160,7 +198,13 @@
     "lab/release-files/gpt-live-call/subagent-announce-delivery-Dosep7Zr.js",
     "lab/release-files/gpt-live-call/agent-harness-task-runtime.js",
     "lab/release-files/gpt-live-call/gpt-live-consult-continuation.js",
-    "lab/release-files/gpt-live-call/sessions-spawn-tool-1FQMTkIo.js"
+    "lab/release-files/gpt-live-call/sessions-spawn-tool-1FQMTkIo.js",
+    "lab/release-files/gpt-live-call/host-capability-Dq3cEEWF.js",
+    "lab/release-files/gpt-live-call/bash-tools-DiAfkLAC.js",
+    "lab/release-files/gpt-live-call/native-attempt-bridge.mjs",
+    "lab/release-files/gpt-live-call/gateway-message-tool.mjs",
+    "lab/release-files/gpt-live-call/worker-pool.mjs",
+    "lab/release-files/gpt-live-call/gpt-live-voice-exec-lifetime.js"
   ],
   "timeoutSeconds": 120
 }

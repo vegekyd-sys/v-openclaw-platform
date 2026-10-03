@@ -17,13 +17,16 @@ function patch(source, replacements, label) {
 export function createGptLiveContinuationRuntimeSource() {
   return `// gpt-live-consult-continuation-v1: process-local causal capabilities only\n` +
     `import { createHash } from "node:crypto";\n` +
+    `import { a as loadRequesterSessionEntry } from "./subagent-announce-delivery-Dosep7Zr.js";\n` +
+    `import { f as resolveAgentIdFromSessionKey } from "./session-key-CRjxKW0X.js";\n` +
     `import { f as onAgentEventForRun, c as getAgentEventLifecycleGeneration, l as isAgentEventLifecycleGenerationCurrent, m as registerAgentEventLifecycleRotationHandler } from "./agent-events-Con5xUCM.js";\n` +
     `${createGptLiveConsultProgressObserver.toString()}\n${createGptLiveConsultContinuationRegistry.toString()}\n` +
     `const registry = createGptLiveConsultContinuationRegistry({\n` +
     ` subscribeRun: onAgentEventForRun, createProgressObserver: createGptLiveConsultProgressObserver,\n` +
+    ` resolveSessionIdentity: (sessionKey) => ({ sessionId: loadRequesterSessionEntry(sessionKey).entry?.sessionId, agentId: resolveAgentIdFromSessionKey(sessionKey) }),\n` +
     ` getLifecycleGeneration: getAgentEventLifecycleGeneration, isLifecycleCurrent: isAgentEventLifecycleGenerationCurrent,\n` +
     ` onLifecycleRotation: (callback) => registerAgentEventLifecycleRotationHandler("gpt-live-consult-continuation", callback),\n` +
-    `});\nexport const { createOwner: createGptLiveConsultContinuationOwner, attachAcceptedChild: attachGptLiveConsultAcceptedChild, bindYieldBatch: bindGptLiveConsultYieldBatch, resolveWake: resolveGptLiveConsultRequesterWake, bindHarnessSpawns: bindGptLiveHarnessVoiceSpawns, resolveHarnessCompletion: resolveGptLiveHarnessVoiceCompletion, resolveOwnedControl: resolveGptLiveVoiceConsultControl } = registry;\n`;
+    `});\nexport const { createOwner: createGptLiveConsultContinuationOwner, attachAcceptedChild: attachGptLiveConsultAcceptedChild, bindYieldBatch: bindGptLiveConsultYieldBatch, resolveWake: resolveGptLiveConsultRequesterWake, bindHarnessSpawns: bindGptLiveHarnessVoiceSpawns, resolveHarnessCompletion: resolveGptLiveHarnessVoiceCompletion, resolveOwnedControl: resolveGptLiveVoiceConsultControl, resolveOwnedExecSource: resolveGptLiveVoiceExecSource } = registry;\n`;
 }
 
 const cancelVoiceHelper = `async function cancelOwnedGptLiveVoiceConsult(params) {

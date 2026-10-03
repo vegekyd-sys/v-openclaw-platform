@@ -10,7 +10,7 @@ import {createPrivatePulseMicrophone} from './private-pulse.mjs';
 import {BROWSER_PROBE,SNAPSHOT_EXPRESSION} from './browser-probe.mjs';
 import {parsePublicProgressDiagnostics,assessH5ProgressProvenance} from '../gpt-live-h5-provenance-evidence.mjs';
 import {parseCompleteTimestamps} from '../gpt-live-call-live-evidence.mjs';
-import {indexNativeToolPairs,mergeExactToolBodies,mergeSessionToolEvidence,extractExecDateFromPairs,continuousPlaybackQuiet,explicitSpokenOffsets,resolveNativeControlOwner,resolveCanonicalFinalTrace,toolResultSucceeded,isExactTwoPlusTwoReply,nativeCountRequestsEighty,hasOrderedCountBeginning,resolveNativeTurnTranscriptWindow,assessCompletePlaybackWindow,assessDecodedPlaybackWindow,assessEarlySpeechBoundary,resolveEarlyPlaybackTail,assessNativeResponseDrain,assessIndependentInputConvergence,matchesConsumedConditionBatch,extractQueuedConditionResume} from './evidence.mjs';
+import {indexNativeToolPairs,mergeExactToolBodies,mergeSessionToolEvidence,extractExecDateFromPairs,continuousPlaybackQuiet,explicitSpokenOffsets,resolveNativeControlOwner,resolveCanonicalFinalTrace,toolResultSucceeded,isExactTwoPlusTwoReply,nativeCountRequestsEighty,hasOrderedCountBeginning,resolveOwnedChildExecPending,resolveOwnedBargeTerminal,resolveNativeTurnTranscriptWindow,assessCompletePlaybackWindow,assessDecodedPlaybackWindow,assessEarlySpeechBoundary,resolveEarlyPlaybackTail,assessNativeResponseDrain,assessIndependentInputConvergence,matchesConsumedConditionBatch,extractQueuedConditionResume} from './evidence.mjs';
 import {readPrivateChildTranscript,activeTranscriptMessages} from './read-child-transcript.mjs';
 import {extractControlExecWitness,assessControlExecPending,matchesExactControlMarker} from '../gpt-live-h5-control-evidence.mjs';
 assert(process.env.VLAB_CANDIDATE_ID&&process.env.GPT_LIVE_H5_READY==='1','Ready private Candidate H5 required');
@@ -290,7 +290,8 @@ async function controls() {
  const attack=microphone[0]?.at??null;
  const oldActiveAtAttack=oldTurn&&attack!==null&&oldTurn.at<=attack&&!state.events.some(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.turnId===oldTurn.turnId&&e.at<attack);
  const overlap=attack!==null?microphone.filter(m=>m.at<=attack+500&&audible(state,m.at-100,m.at+100,pcIndex).length>0):[];
- const terminal=state.events.find(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='assistant'&&e.turnId===oldTurn?.turnId&&attack!==null&&e.at>=attack&&e.at<=Math.min(attack+3000,barge.row.completedAt+200)&&microphone.some(m=>Math.abs(m.at-e.at)<=100));
+ const terminal=resolveOwnedBargeTerminal(state.events,{pcIndex,oldTurn,input:barge.row,attack,
+   micFrames:state.micFrames,audioFrames:state.audioFrames});
  const activeCountInput=replay?.row??count.row;
  const oldCaptionWindow=terminal&&resolveNativeTurnTranscriptWindow(state.events,{pcIndex,turnId:terminal.turnId,after:activeCountInput.startedAt});
  const prefix=oldCaptionWindow?.captions.filter(e=>e.at<attack).map(e=>e.text).join('')??'';
@@ -365,11 +366,13 @@ async function queuedSteer() {
    if(accepted?.status!=='accepted'||!accepted.runId||!accepted.childSessionKey)continue;
    const yielded=exact.find(p=>p.runId===spawn.runId&&p.name==='sessions_yield'&&p.results.some(r=>toolResultSucceeded(r)&&JSON.parse(r.text)?.status==='yielded'));
    const child=indexNativeToolPairs(toolEvents,{runId:accepted.runId,sessionKey:accepted.childSessionKey});
-   const wait=child.find(p=>p.name==='exec'&&new RegExp('\\bsleep\\s+'+childWaitSeconds+'(?:\\D|$)','u').test(p.args?.command??'')&&p.results.some(r=>toolResultSucceeded(r)&&r.details?.status==='running'));
-   const terminal=lastHistory.childTerminals?.[accepted.childSessionKey]?.response;
+   const pending=resolveOwnedChildExecPending(child,{runId:accepted.runId,sessionKey:accepted.childSessionKey,
+     waitSeconds:childWaitSeconds,observedAt:Date.now(),agentWait:lastHistory.childTerminals?.[accepted.childSessionKey]});
+   const wait=pending?.pair;
    const owner=resolveNativeControlOwner({diagnostics:diagnostics(),events:s.events,tools:s.tools,backendRunId:spawn.runId,voiceSessionId:callOwners.get(pcIndex).voiceSessionId,pcIndex});
-   if(yielded&&wait&&owner&&Number.isFinite(wait.calledAt)&&!terminal?.terminalReceipt&&Date.now()<wait.calledAt+childWaitSeconds*1000) {
-    binding={accepted,spawn,yielded,wait,owner,observedPendingAt:Date.now()};return true;
+   if(yielded&&wait&&owner) {
+    binding={accepted,spawn,yielded,wait,owner,pendingStatus:pending.status,
+      agentWaitWitness:pending.agentWait,observedPendingAt:pending.observedPendingAt};return true;
    }
   }
  },'Real yielded requester and same owned child still executing the slow step',90000);

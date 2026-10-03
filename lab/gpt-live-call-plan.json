@@ -1,5 +1,5 @@
 {
-  "baseRelease": "memory-search-guards-20261002",
+  "baseRelease": "feishu-dm-approvals-v1",
   "files": [
     {
       "source": "lab/release-files/gpt-live-native-progress/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
@@ -60,6 +60,36 @@
       "source": "lab/release-files/gpt-live-call/sessions-spawn-tool-1FQMTkIo.js",
       "target": "openclaw/dist/sessions-spawn-tool-1FQMTkIo.js",
       "before": "52b6ea5448e758f6d764200d946853be80a0fe5b419629801ee761173741d848"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/host-capability-Dq3cEEWF.js",
+      "target": "openclaw/dist/host-capability-Dq3cEEWF.js",
+      "before": "4535cb192dff71e0d3602f19ebbba6191f98a2f21013c2fa33e0b87386eaa5ce"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/bash-tools-DiAfkLAC.js",
+      "target": "openclaw/dist/bash-tools-DiAfkLAC.js",
+      "before": "8bda4a91e8e742308d2aecbd8914996b4ddd0f1af0cfc1018064f4a7a3cd8d28"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/native-attempt-bridge.mjs",
+      "target": "production-worker/native-attempt-bridge.mjs",
+      "before": "6482f3d27a0f7e019a1f65faaa6e7bbdb28a999250ff5d1d6ab871d9ba65a813"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/gateway-message-tool.mjs",
+      "target": "production-worker/gateway-message-tool.mjs",
+      "before": "2ae673d4eae9dfd0f350e07d1106a78c95c9259d698e2a9b42fdbaeab2078472"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/worker-pool.mjs",
+      "target": "production-worker/worker-pool.mjs",
+      "before": "a9f718d0c9ca1f209aba9a9a55d86181b84f2ab1afa8b65cc86bde96bc3b5ea3"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/gpt-live-voice-exec-lifetime.js",
+      "target": "openclaw/dist/gpt-live-voice-exec-lifetime.js",
+      "before": null
     }
   ]
 }

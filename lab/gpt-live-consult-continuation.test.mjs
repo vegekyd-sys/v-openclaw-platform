@@ -75,11 +75,12 @@ const execute = (source, start, end, deps) => {
   return new Function("deps", `with (deps) { ${source.slice(from, to)}; return ${name}; }`)(deps);
 };
 
-function setup({ generation = 1, delegationGeneration = 1 } = {}) {
+function setup({ generation = 1, delegationGeneration = 1, resolveSessionIdentity } = {}) {
   const listeners = new Map(); const progress = []; const runs = new Map(); const cleanups = [];
   const cancellations = []; const resumeExecutions = [];
   const caller = new AbortController(); let current = true; let liveGeneration = generation; let rotate;
   const registry = createGptLiveConsultContinuationRegistry({
+    resolveSessionIdentity,
     subscribeRun: (runId, callback) => { listeners.set(runId, callback); return () => listeners.delete(runId); },
     createProgressObserver: createGptLiveConsultProgressObserver,
     getLifecycleGeneration: () => liveGeneration,
@@ -122,6 +123,55 @@ function setup({ generation = 1, delegationGeneration = 1 } = {}) {
   return { registry, owner, params, caller, progress, runs, attach, settleTurn, emit, wake, listeners, cleanups, cancellations, resumeExecutions,
     replaceOwner: () => { current = false; }, rotate: () => { liveGeneration++; rotate(); } };
 }
+
+test("exec authority resolves exact voice run and rejects canonical identity conflicts instead of nonvoice fallback", async () => {
+  const f = setup();
+  const authority = f.registry.resolveOwnedExecSource(f.params);
+  authority.assertCurrent();
+  assert.equal(f.registry.resolveOwnedExecSource({ ...f.params, runId: "ordinary" }), undefined);
+  for (const field of ["sessionKey", "sessionId", "agentId"]) {
+    assert.throws(() => f.registry.resolveOwnedExecSource({ ...f.params, [field]: "wrong" }), /canonical source identity mismatch/);
+  }
+  f.owner.abort(new Error("test done"));
+  assert.throws(() => authority.assertCurrent(), /no longer current/);
+  assert.throws(() => f.registry.resolveOwnedExecSource(f.params), /already settled or been cancelled/);
+  await assert.rejects(f.owner.wait());
+});
+
+test("accepted cross-agent child pins only core canonical identity and rechecks later session rotation", async () => {
+  const canonical = new Map([["agent:other:child", { sessionId: "other-canonical", agentId: "other" }]]);
+  const f = setup({ resolveSessionIdentity: key => canonical.get(key) });
+  const entry = { runId: "cross-child", taskRunId: "cross-child", childSessionKey: "agent:other:child", requesterSessionKey: f.params.sessionKey,
+    requesterAgentId: f.params.agentId, requesterTurnRunId: f.params.runId, generation: 1, execution: { status: "running", lifecycleGeneration: 1 }, delivery: { status: "pending" } };
+  f.runs.set(entry.runId, entry); f.registry.attachAcceptedChild({ entry, getCurrentEntry: id => f.runs.get(id) });
+  const source = { runId: entry.runId, sessionKey: entry.childSessionKey, sessionId: "other-canonical", agentId: "other" };
+  assert.throws(() => f.registry.resolveOwnedExecSource({ ...source, agentId: "makaron" }), /identity mismatch/);
+  const capability = f.registry.resolveOwnedExecSource(source); capability.assertCurrent();
+  canonical.set(entry.childSessionKey, { sessionId: "replacement-canonical", agentId: "other" });
+  assert.throws(() => capability.assertCurrent(), /identity mismatch/);
+  assert.throws(() => f.registry.resolveOwnedExecSource({ ...source, sessionId: "replacement-canonical" }), /identity mismatch/);
+  f.owner.abort(new Error("test done")); await assert.rejects(f.owner.wait());
+});
+
+test("voice exec denies unresolvable accepted child, completed child and yielded parent", async () => {
+  const f = setup(); const entry = f.attach();
+  assert.throws(() => f.registry.resolveOwnedExecSource({ runId: entry.runId, sessionKey: entry.childSessionKey, sessionId: "invented", agentId: "makaron" }), /identity mismatch/);
+  f.settleTurn(); f.owner.finishInitial({ meta: { yielded: true }, payloads: [] });
+  assert.throws(() => f.registry.resolveOwnedExecSource(f.params), /run is no longer current/);
+  entry.execution = { ...entry.execution, status: "terminal", endedAt: Date.now() };
+  assert.throws(() => f.registry.resolveOwnedExecSource({ runId: entry.runId }), /run is no longer current/);
+  f.owner.abort(new Error("test done")); await assert.rejects(f.owner.wait());
+});
+
+test("causally accepted parent resume gets its original canonical exec owner; lifecycle rotation revokes it", async () => {
+  const f = setup(); f.attach(); f.settleTurn(); f.owner.finishInitial({ meta: { yielded: true }, payloads: [] });
+  const resumed = f.wake(); resumed.onAccepted({ runId: "causal-resume" });
+  const source = { ...f.params, runId: "causal-resume" };
+  const capability = f.registry.resolveOwnedExecSource(source); capability.assertCurrent();
+  f.rotate(); assert.throws(() => capability.assertCurrent(), /no longer current/);
+  assert.throws(() => f.registry.resolveOwnedExecSource(source), /already settled/);
+  await assert.rejects(f.owner.wait());
+});
 
 function actualCancel(f, active = new Map()) {
   const control = execute(controlSource, "async function controlRealtimeVoiceAgentRun", "//#endregion", {

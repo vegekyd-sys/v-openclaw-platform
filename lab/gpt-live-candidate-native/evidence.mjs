@@ -38,6 +38,57 @@ export function hasOrderedCountBeginning(text) {
   return /^(?:一[、，,。.!！;；\s]+二|1[、，,。.!！;；\s]+2)(?=[、，,。.!！;；\s]|$)/u.test(String(text??'').trim());
 }
 
+// A blocking exec can be pending before it returns a "running" tool body.
+// Require its real start envelope and the same live agent.wait observation;
+// absence of a result or a caller-supplied run label alone is not evidence.
+export function resolveOwnedChildExecPending(pairs,{runId,sessionKey,waitSeconds,observedAt,agentWait}={}) {
+  if(!runId||!sessionKey||!Number.isFinite(waitSeconds)||waitSeconds<=0||!Number.isFinite(observedAt)||
+    agentWait?.runId!==runId||agentWait.childSessionKey!==sessionKey||
+    !Number.isFinite(agentWait.observedAt)||agentWait.observedAt>observedAt||observedAt-agentWait.observedAt>10000||
+    agentWait.response?.runId!==runId||agentWait.response?.status!=='timeout'||
+    agentWait.response?.terminalReceipt||agentWait.response?.observerError||agentWait.response?.error||
+    agentWait.response?.isError===true)return null;
+  const matching=pairs.filter(pair=>pair.name==='exec'&&pair.runId===runId&&pair.sessionKey===sessionKey&&
+    pair.sourceExecutionTimingVerified===true&&Number.isFinite(pair.calledAt)&&
+    Number.isFinite(pair.startObservedAt)&&pair.startObservedAt<=observedAt&&
+    pair.calledAt<=observedAt&&observedAt<pair.calledAt+waitSeconds*1000&&
+    new RegExp('\\bsleep\\s+'+waitSeconds+'(?:\\D|$)','u').test(pair.args?.command??'')&&
+    pair.rawEnvelopes?.some(e=>['agent','session.tool'].includes(e.event)&&e.payload?.stream==='tool'&&
+      e.payload.runId===runId&&e.payload.sessionKey===sessionKey&&e.payload.ts===pair.calledAt&&
+      e.payload.data?.name==='exec'&&e.payload.data?.phase==='start'&&e.payload.data?.toolCallId===pair.id));
+  const pending=matching.filter(pair=>{
+    if(pair.results.some(result=>!toolResultSucceeded(result)||result.details?.status!=='running'||
+      result.details?.exitCode!=null&&result.details.exitCode!==0))return false;
+    const processIds=pair.results.map(result=>result.details?.sessionId).filter(id=>typeof id==='string'&&id);
+    return !pairs.some(link=>link.name==='process'&&link.runId===runId&&link.sessionKey===sessionKey&&
+      processIds.includes((link.completeArgs??link.args)?.sessionId)&&link.results.some(result=>
+        !toolResultSucceeded(result)||result.details?.status!=='running'));
+  });
+  if(pending.length!==1)return null;
+  return {pair:pending[0],status:pending[0].results.length?'running-tool-result':'blocking-tool-start',
+    observedPendingAt:observedAt,agentWait,source:'exact-native-child-tool-start-and-live-agent-wait'};
+}
+
+// A user's short pause inside a complete interruption does not erase a real
+// old-turn terminal. Bind it to the original active turn and actual mic/audio
+// overlap, rather than requiring voice energy within 100 ms of the metadata.
+export function resolveOwnedBargeTerminal(events,{pcIndex,oldTurn,input,attack,micFrames=[],audioFrames=[]}={}) {
+  if(!oldTurn?.turnId||oldTurn.pcIndex!==pcIndex||oldTurn.type!=='turn.created'||oldTurn.role!=='assistant'||
+    ![oldTurn.at,input?.startedAt,input?.completedAt,attack].every(Number.isFinite)||
+    input.exitCode!==0||input.completedAt<input.startedAt||attack<input.startedAt||attack>input.completedAt||
+    oldTurn.at>attack||events.some(e=>e.pcIndex===pcIndex&&e.turnId===oldTurn.turnId&&
+      e.type==='turn.done'&&Number.isFinite(e.at)&&e.at<attack))return null;
+  const mic=micFrames.filter(frame=>frame.pcIndex===pcIndex&&Number.isFinite(frame.at)&&
+    frame.at>=attack&&frame.at<=Math.min(attack+500,input.completedAt)&&frame.rms>.02);
+  const overlap=mic.some(frame=>audioFrames.some(audio=>audio.pcIndex===pcIndex&&
+    Number.isFinite(audio.at)&&Math.abs(audio.at-frame.at)<=100&&audio.digitalAudible===true));
+  if(!overlap)return null;
+  const terminals=events.filter(e=>e.pcIndex===pcIndex&&e.turnId===oldTurn.turnId&&
+    e.type==='turn.done'&&e.role==='assistant'&&Number.isFinite(e.at)&&
+    e.at>=attack&&e.at<=input.completedAt+200);
+  return terminals.length===1?terminals[0]:null;
+}
+
 const normalizedTranscript = text=>String(text??'').replace(/\s+/gu,'').replace(/，/gu,',');
 
 // Native turn.created is a summary and can arrive after the first spoken words.

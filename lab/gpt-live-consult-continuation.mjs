@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 /** Process-local voice capabilities. Nothing in this registry is persisted or supplied by a client. */
 export function createGptLiveConsultContinuationRegistry(deps) {
   const byRun = new Map();
+  const settledVoiceRuns = new Set();
   const byBatch = new Map();
   const settledVoiceBatches = new Set();
   const byVoice = new Map();
@@ -70,6 +71,8 @@ export function createGptLiveConsultContinuationRegistry(deps) {
       activeInputReservations.length = 0;
       for (const [runId, binding] of bindings) {
         if (byRun.get(runId) === binding) byRun.delete(runId);
+        settledVoiceRuns.add(runId);
+        if (settledVoiceRuns.size > 2048) settledVoiceRuns.delete(settledVoiceRuns.values().next().value);
         if (binding.taskRunId && byChildTask.get(binding.taskRunId) === binding) byChildTask.delete(binding.taskRunId);
       }
       for (const batch of batches) {
@@ -513,5 +516,30 @@ export function createGptLiveConsultContinuationRegistry(deps) {
     if (matching.length > 1) throw error("Voice cancellation owner is ambiguous");
     return matching[0];
   };
-  return { createOwner, attachAcceptedChild, bindYieldBatch, resolveWake, bindHarnessSpawns, resolveHarnessCompletion, resolveOwnedControl };
+  // Called only by the admitted host closure. An accepted child record has a
+  // canonical session key but need not contain the transcript's session id.
+  // Resolve that id through core's session store, never Worker request fields.
+  const resolveOwnedExecSource = (source) => {
+    const binding = byRun.get(source.runId);
+    if (!binding) {
+      if (settledVoiceRuns.has(source.runId)) throw error("Voice exec run has already settled or been cancelled");
+      return;
+    }
+    const assertCurrent = () => {
+      binding.owner.assertCurrent();
+      if (byRun.get(source.runId) !== binding || binding.controlSignal.aborted || binding.isCurrent?.() === false ||
+          binding.yielded === true || binding.completed === true || binding.isTerminal?.() === true) throw error("Voice exec run is no longer current");
+      const canonical = deps.resolveSessionIdentity?.(binding.sessionKey);
+      const sessionId = binding.sessionId ?? canonical?.sessionId;
+      const agentId = binding.agentId ?? canonical?.agentId;
+      if (!sessionId || !agentId || binding.sessionKey !== source.sessionKey || sessionId !== source.sessionId || agentId !== source.agentId ||
+          canonical && (canonical.sessionId !== sessionId || canonical.agentId !== agentId)) throw error("Voice exec canonical source identity mismatch");
+      // Pin only a trusted core-store identity after every admission check.
+      binding.sessionId ??= sessionId;
+      binding.agentId ??= agentId;
+    };
+    assertCurrent();
+    return Object.freeze({ assertCurrent, signal: binding.controlSignal, ownerSignal: binding.owner.signal });
+  };
+  return { createOwner, attachAcceptedChild, bindYieldBatch, resolveWake, bindHarnessSpawns, resolveHarnessCompletion, resolveOwnedControl, resolveOwnedExecSource };
 }

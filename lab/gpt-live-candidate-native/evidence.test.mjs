@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {indexNativeToolPairs,mergeExactToolBodies,mergeSessionToolEvidence,selectCommandLocalTimestamp,extractExecDateFromPairs,continuousPlaybackQuiet,explicitSpokenOffsets,resolveNativeControlOwner,resolveCanonicalFinalTrace,toolResultSucceeded,isExactTwoPlusTwoReply,nativeCountRequestsEighty,hasOrderedCountBeginning,resolveNativeTurnTranscriptWindow,assessCompletePlaybackWindow,assessDecodedPlaybackWindow,assessEarlySpeechBoundary,resolveEarlyPlaybackTail,assessNativeResponseDrain,assessIndependentInputConvergence,matchesConsumedConditionBatch,extractQueuedConditionResume} from './evidence.mjs';
+import {indexNativeToolPairs,mergeExactToolBodies,mergeSessionToolEvidence,selectCommandLocalTimestamp,extractExecDateFromPairs,continuousPlaybackQuiet,explicitSpokenOffsets,resolveNativeControlOwner,resolveCanonicalFinalTrace,toolResultSucceeded,isExactTwoPlusTwoReply,nativeCountRequestsEighty,hasOrderedCountBeginning,resolveOwnedChildExecPending,resolveOwnedBargeTerminal,resolveNativeTurnTranscriptWindow,assessCompletePlaybackWindow,assessDecodedPlaybackWindow,assessEarlySpeechBoundary,resolveEarlyPlaybackTail,assessNativeResponseDrain,assessIndependentInputConvergence,matchesConsumedConditionBatch,extractQueuedConditionResume} from './evidence.mjs';
 import {assessControlExecPending} from '../gpt-live-h5-control-evidence.mjs';
 
 test('actual child envelopes keep source and observer clocks and exact identity',()=>{
@@ -62,6 +62,54 @@ test('standalone sleep is pending evidence only when explicitly requested by the
   assert.equal(assessControlExecPending(history,60,{requireDateInCommand:false}).pending,true);
   history.messages.push({role:'toolResult',toolCallId:'wait',content:[{type:'text',text:'wait-done'}],details:{status:'completed'}});
   assert.equal(assessControlExecPending(history,60,{requireDateInCommand:false}).pending,false);
+});
+
+test('blocking child exec is pending only with exact native start and a fresh live agent observation',()=>{
+  const envelope={event:'session.tool',at:1040,payload:{runId:'child',sessionKey:'child-key',stream:'tool',ts:1000,
+    seq:1,data:{phase:'start',name:'exec',toolCallId:'wait',args:{command:'sleep 75; echo done',yieldMs:90000}}}};
+  const pairs=indexNativeToolPairs([envelope]);
+  const options={runId:'child',sessionKey:'child-key',waitSeconds:75,observedAt:72734,
+    agentWait:{runId:'child',childSessionKey:'child-key',observedAt:72720,response:{runId:'child',status:'timeout'}}};
+  assert.equal(resolveOwnedChildExecPending(pairs,options).status,'blocking-tool-start');
+  for(const bad of [{runId:'neighbor'},{sessionKey:'neighbor'},{sourceExecutionTimingVerified:false},
+    {calledAt:null},{rawEnvelopes:[]},{startObservedAt:null}])
+    assert.equal(resolveOwnedChildExecPending([{...pairs[0],...bad}],options),null);
+  for(const bad of [{status:'ok'},{status:'error'},{status:'timeout',error:'unknown run'},
+    {status:'timeout',terminalReceipt:{runId:'child'}},{status:'timeout',runId:'neighbor'}])
+    assert.equal(resolveOwnedChildExecPending(pairs,{...options,agentWait:{...options.agentWait,
+      response:{...options.agentWait.response,...bad}}}),null);
+  assert.equal(resolveOwnedChildExecPending(pairs,{...options,observedAt:76000}),null);
+  assert.equal(resolveOwnedChildExecPending(pairs,{...options,agentWait:{...options.agentWait,observedAt:1000}}),null);
+  for(const result of [{isError:false,text:'done',details:{status:'completed',exitCode:0}},
+    {isError:true,text:'failed',details:{status:'running'}},
+    {isError:false,text:'{"status":"error"}',details:{status:'running'}},
+    {isError:false,text:'still running',details:{status:'running',exitCode:1}},
+    {isError:false,text:'unknown',details:{}}])
+    assert.equal(resolveOwnedChildExecPending([{...pairs[0],results:[result]}],options),null);
+  const running={...pairs[0],results:[{isError:false,text:'still running',details:{status:'running',sessionId:'process-id'}}]};
+  assert.equal(resolveOwnedChildExecPending([running],options).status,'running-tool-result');
+  const complete={id:'poll',name:'process',runId:'child',sessionKey:'child-key',args:{sessionId:'process-id'},
+    results:[{isError:false,text:'done',details:{status:'completed',exitCode:0}}]};
+  assert.equal(resolveOwnedChildExecPending([running,complete],options),null);
+  assert.equal(resolveOwnedChildExecPending([running,{...complete,runId:'neighbor'}],options).status,'running-tool-result');
+});
+
+test('an old native terminal during the whole barge input is not lost to a 105 ms speech pause',()=>{
+  const oldTurn={pcIndex:0,turnId:'count',type:'turn.created',role:'assistant',at:500,text:'一,二,三'};
+  const terminal={pcIndex:0,turnId:'count',type:'turn.done',role:'assistant',at:2495,text:'一,二,三'};
+  const input={startedAt:1000,completedAt:11000,exitCode:0};
+  const micFrames=[{pcIndex:0,at:1250,rms:.1},{pcIndex:0,at:2490,rms:.001},{pcIndex:0,at:2600,rms:.1}];
+  const audioFrames=[{pcIndex:0,at:1250,digitalAudible:true}];
+  const options={pcIndex:0,oldTurn,input,attack:1250,micFrames,audioFrames};
+  assert.equal(micFrames.some(m=>m.rms>.02&&Math.abs(m.at-terminal.at)<=100),false);
+  assert.equal(resolveOwnedBargeTerminal([oldTurn,terminal],options),terminal);
+  for(const bad of [{turnId:'neighbor'},{pcIndex:1},{role:'user'},{at:1249},{at:11201}])
+    assert.equal(resolveOwnedBargeTerminal([oldTurn,{...terminal,...bad}],options),null);
+  assert.equal(resolveOwnedBargeTerminal([oldTurn,terminal],{...options,input:{...input,exitCode:1}}),null);
+  assert.equal(resolveOwnedBargeTerminal([oldTurn,terminal],{...options,audioFrames:[]}),null);
+  assert.equal(resolveOwnedBargeTerminal([oldTurn,terminal],{...options,micFrames:[]}),null);
+  assert.equal(resolveOwnedBargeTerminal([oldTurn,terminal,{...terminal,at:2600}],options),null);
+  assert.equal(resolveOwnedBargeTerminal([oldTurn,{...terminal,at:900},terminal],options),null);
 });
 
 test('control owner joins real callback hash with distinct native and H5 identifiers',()=>{

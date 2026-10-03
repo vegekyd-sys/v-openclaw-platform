@@ -107,6 +107,33 @@ export function scopeCandidateAgentToAgentAllow(config, { agentId = "makaron" } 
   };
 }
 
+/** Provider request setting only; actual tool ordering still requires native evidence. */
+export function disableCandidateParallelToolCalls(config, { agentId = "makaron", label = "Candidate" } = {}) {
+  const ids = Object.keys(config.agents?.entries ?? {});
+  assert.deepEqual(ids, [agentId], "Candidate provider setting requires a sole configured agent");
+  const scoped = structuredClone(config), changes = [];
+  const scopes = [["agents", "entries", agentId], ...(scoped.agents.list ?? [])
+    .filter((agent) => agent.id === agentId).map(() => ["agents", "list", agentId])];
+  assert((scoped.agents.list ?? []).every((agent) => agent.id === agentId), "Candidate provider setting has an excluded list agent");
+  for (const keys of scopes) {
+    const agent = read(scoped, keys), params = agent.params;
+    assert(params === undefined || (params && typeof params === "object" && !Array.isArray(params)), "Candidate agent params must be a record");
+    const original = (key) => {
+      const present = Object.hasOwn(params ?? {}, key), value = params?.[key];
+      // Do not serialize malformed string/object values into public diagnostics.
+      return { present, type: value === null ? "null" : typeof value,
+        ...((typeof value === "boolean" || value === null) ? { value } : {}) };
+    };
+    const before = { parallel_tool_calls: original("parallel_tool_calls"), parallelToolCalls: original("parallelToolCalls") };
+    agent.params = { ...params, parallel_tool_calls: false };
+    changes.push({ path: displayPath([...keys, "params", "parallel_tool_calls"]), before, after: false });
+  }
+  const preservedSelectedModels = assertCandidateSelectedModelsPreserved(config, scoped, { agentId });
+  return { config: scoped, diagnostic: { label, agentId, scope: "Disposable Candidate Makaron parent and same-agent child",
+    providerParameter: "parallel_tool_calls", configuredValue: false, changes, preservedSelectedModels,
+    dispatcherChanged: false, providerBehaviorVerified: false, toolOrderVerified: false } };
+}
+
 /** No defaults, plugin metadata discovery, database access, or Gateway admission. */
 export function validateCandidateConfigPure(config, schema, { label = "Candidate" } = {}) {
   assert(typeof schema?.safeParse === "function", "Native Candidate schema.safeParse unavailable");

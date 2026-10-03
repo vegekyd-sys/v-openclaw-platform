@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import {
   assertCandidateSelectedModelsPreserved, collectCandidateSelectedModelReferences,
-  preflightCandidateConfig, scopeCandidateAgentToAgentAllow, validateCandidateConfigPure,
+  disableCandidateParallelToolCalls, preflightCandidateConfig, scopeCandidateAgentToAgentAllow, validateCandidateConfigPure,
 } from "./gpt-live-candidate-config-guard.mjs";
 
 function fixtureConfig() {
@@ -99,6 +99,52 @@ test("scope rejects another roster or a list that would grant new permission", (
   assert.throws(() => scopeCandidateAgentToAgentAllow(notAllowed), /does not permit/u);
   const noPolicy = fixtureConfig(); delete noPolicy.tools.agentToAgent;
   assert.equal(scopeCandidateAgentToAgentAllow(noPolicy).changed, false);
+});
+
+test("Candidate provider flag changes only Makaron agent params and preserves source/model/other params", () => {
+  const before = fixtureConfig();
+  before.agents.defaults.params = { parallel_tool_calls: true, temperature: 0.25 };
+  before.agents.defaults.models["deepseek/pro"].params = { parallel_tool_calls: true, maxTokens: 1234 };
+  before.agents.entries.makaron.params = { parallelToolCalls: true, maxTokens: 987, response_format: { type: "json_object" } };
+  const original = structuredClone(before), result = disableCandidateParallelToolCalls(before, { label: "main" });
+  assert.deepEqual(before, original);
+  const expected = structuredClone(original);
+  expected.agents.entries.makaron.params.parallel_tool_calls = false;
+  assert.deepEqual(result.config, expected);
+  assertCandidateSelectedModelsPreserved(before, result.config);
+  assert.deepEqual(result.diagnostic.changes[0].before.parallel_tool_calls, { present: false, type: "undefined" });
+  assert.deepEqual(result.diagnostic.changes[0].before.parallelToolCalls, { present: true, type: "boolean", value: true });
+  assert.equal(result.diagnostic.configuredValue, false);
+  assert.equal(result.diagnostic.providerBehaviorVerified, false);
+  assert.equal(result.diagnostic.toolOrderVerified, false);
+  assert.equal(result.diagnostic.dispatcherChanged, false);
+});
+
+test("Candidate provider flag covers both native agent representations without rewriting defaults", () => {
+  const before = fixtureConfig();
+  before.agents.entries.makaron.params = { parallel_tool_calls: null, temperature: 0.15 };
+  before.agents.list = [{ id: "makaron", model: "deepseek/flash", params: { parallel_tool_calls: true, parallelToolCalls: true, topP: 0.9 } }];
+  const result = disableCandidateParallelToolCalls(before, { label: "worker" });
+  assert.equal(result.config.agents.entries.makaron.params.parallel_tool_calls, false);
+  assert.equal(result.config.agents.list[0].params.parallel_tool_calls, false);
+  assert.equal(result.config.agents.list[0].params.parallelToolCalls, true);
+  assert.deepEqual(result.config.agents.defaults, before.agents.defaults);
+  assert.equal(result.diagnostic.changes.length, 2);
+  assert.deepEqual(result.diagnostic.changes[0].before.parallel_tool_calls, { present: true, type: "null", value: null });
+});
+
+test("Candidate provider flag rejects unrelated agents and malformed params, and diagnostics exclude arbitrary values", () => {
+  const other = fixtureConfig(); other.agents.entries.other = {};
+  assert.throws(() => disableCandidateParallelToolCalls(other), /sole configured agent/u);
+  const otherList = fixtureConfig(); otherList.agents.list = [{ id: "other" }];
+  assert.throws(() => disableCandidateParallelToolCalls(otherList), /excluded list agent/u);
+  const malformed = fixtureConfig(); malformed.agents.entries.makaron.params = [];
+  assert.throws(() => disableCandidateParallelToolCalls(malformed), /must be a record/u);
+  const diagnostic = fixtureConfig(); diagnostic.agents.entries.makaron.params = { parallel_tool_calls: "private-invalid-value", unrelated: "private-param" };
+  const result = disableCandidateParallelToolCalls(diagnostic);
+  assert(!JSON.stringify(result.diagnostic).includes("private-invalid-value"));
+  assert(!JSON.stringify(result.diagnostic).includes("private-param"));
+  assert.equal(result.config.agents.entries.makaron.params.unrelated, "private-param");
 });
 
 test("pure schema preflight surfaces native issue paths without replacing or serializing config", () => {

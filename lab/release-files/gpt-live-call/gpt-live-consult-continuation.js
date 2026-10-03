@@ -1,5 +1,7 @@
 // gpt-live-consult-continuation-v1: process-local causal capabilities only
 import { createHash } from "node:crypto";
+import { a as loadRequesterSessionEntry } from "./subagent-announce-delivery-Dosep7Zr.js";
+import { f as resolveAgentIdFromSessionKey } from "./session-key-CRjxKW0X.js";
 import { f as onAgentEventForRun, c as getAgentEventLifecycleGeneration, l as isAgentEventLifecycleGenerationCurrent, m as registerAgentEventLifecycleRotationHandler } from "./agent-events-Con5xUCM.js";
 function createGptLiveConsultProgressObserver({ onProgress, abortSignal, logger, runId }) {
   let closed = false;
@@ -96,6 +98,7 @@ function createGptLiveConsultProgressObserver({ onProgress, abortSignal, logger,
 }
 function createGptLiveConsultContinuationRegistry(deps) {
   const byRun = new Map();
+  const settledVoiceRuns = new Set();
   const byBatch = new Map();
   const settledVoiceBatches = new Set();
   const byVoice = new Map();
@@ -163,6 +166,8 @@ function createGptLiveConsultContinuationRegistry(deps) {
       activeInputReservations.length = 0;
       for (const [runId, binding] of bindings) {
         if (byRun.get(runId) === binding) byRun.delete(runId);
+        settledVoiceRuns.add(runId);
+        if (settledVoiceRuns.size > 2048) settledVoiceRuns.delete(settledVoiceRuns.values().next().value);
         if (binding.taskRunId && byChildTask.get(binding.taskRunId) === binding) byChildTask.delete(binding.taskRunId);
       }
       for (const batch of batches) {
@@ -606,11 +611,37 @@ function createGptLiveConsultContinuationRegistry(deps) {
     if (matching.length > 1) throw error("Voice cancellation owner is ambiguous");
     return matching[0];
   };
-  return { createOwner, attachAcceptedChild, bindYieldBatch, resolveWake, bindHarnessSpawns, resolveHarnessCompletion, resolveOwnedControl };
+  // Called only by the admitted host closure. An accepted child record has a
+  // canonical session key but need not contain the transcript's session id.
+  // Resolve that id through core's session store, never Worker request fields.
+  const resolveOwnedExecSource = (source) => {
+    const binding = byRun.get(source.runId);
+    if (!binding) {
+      if (settledVoiceRuns.has(source.runId)) throw error("Voice exec run has already settled or been cancelled");
+      return;
+    }
+    const assertCurrent = () => {
+      binding.owner.assertCurrent();
+      if (byRun.get(source.runId) !== binding || binding.controlSignal.aborted || binding.isCurrent?.() === false ||
+          binding.yielded === true || binding.completed === true || binding.isTerminal?.() === true) throw error("Voice exec run is no longer current");
+      const canonical = deps.resolveSessionIdentity?.(binding.sessionKey);
+      const sessionId = binding.sessionId ?? canonical?.sessionId;
+      const agentId = binding.agentId ?? canonical?.agentId;
+      if (!sessionId || !agentId || binding.sessionKey !== source.sessionKey || sessionId !== source.sessionId || agentId !== source.agentId ||
+          canonical && (canonical.sessionId !== sessionId || canonical.agentId !== agentId)) throw error("Voice exec canonical source identity mismatch");
+      // Pin only a trusted core-store identity after every admission check.
+      binding.sessionId ??= sessionId;
+      binding.agentId ??= agentId;
+    };
+    assertCurrent();
+    return Object.freeze({ assertCurrent, signal: binding.controlSignal, ownerSignal: binding.owner.signal });
+  };
+  return { createOwner, attachAcceptedChild, bindYieldBatch, resolveWake, bindHarnessSpawns, resolveHarnessCompletion, resolveOwnedControl, resolveOwnedExecSource };
 }
 const registry = createGptLiveConsultContinuationRegistry({
  subscribeRun: onAgentEventForRun, createProgressObserver: createGptLiveConsultProgressObserver,
+ resolveSessionIdentity: (sessionKey) => ({ sessionId: loadRequesterSessionEntry(sessionKey).entry?.sessionId, agentId: resolveAgentIdFromSessionKey(sessionKey) }),
  getLifecycleGeneration: getAgentEventLifecycleGeneration, isLifecycleCurrent: isAgentEventLifecycleGenerationCurrent,
  onLifecycleRotation: (callback) => registerAgentEventLifecycleRotationHandler("gpt-live-consult-continuation", callback),
 });
-export const { createOwner: createGptLiveConsultContinuationOwner, attachAcceptedChild: attachGptLiveConsultAcceptedChild, bindYieldBatch: bindGptLiveConsultYieldBatch, resolveWake: resolveGptLiveConsultRequesterWake, bindHarnessSpawns: bindGptLiveHarnessVoiceSpawns, resolveHarnessCompletion: resolveGptLiveHarnessVoiceCompletion, resolveOwnedControl: resolveGptLiveVoiceConsultControl } = registry;
+export const { createOwner: createGptLiveConsultContinuationOwner, attachAcceptedChild: attachGptLiveConsultAcceptedChild, bindYieldBatch: bindGptLiveConsultYieldBatch, resolveWake: resolveGptLiveConsultRequesterWake, bindHarnessSpawns: bindGptLiveHarnessVoiceSpawns, resolveHarnessCompletion: resolveGptLiveHarnessVoiceCompletion, resolveOwnedControl: resolveGptLiveVoiceConsultControl, resolveOwnedExecSource: resolveGptLiveVoiceExecSource } = registry;

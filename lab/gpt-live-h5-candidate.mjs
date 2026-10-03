@@ -11,7 +11,7 @@ import {configureCandidateOpenAIAuth,installCandidateOpenAIAuth} from './gpt-liv
 import {GPT_LIVE_CALL_INSTRUCTIONS} from './gpt-live-h5/instructions.mjs';
 import {createLiveH5Server} from './gpt-live-h5/server.mjs';
 import {parsePublicProgressDiagnostics} from './gpt-live-h5-provenance-evidence.mjs';
-import {collectCandidateSelectedModelReferences,assertCandidateSelectedModelsPreserved,scopeCandidateAgentToAgentAllow,preflightCandidateConfig} from './gpt-live-candidate-config-guard.mjs';
+import {collectCandidateSelectedModelReferences,assertCandidateSelectedModelsPreserved,scopeCandidateAgentToAgentAllow,disableCandidateParallelToolCalls,preflightCandidateConfig} from './gpt-live-candidate-config-guard.mjs';
 
 const runtime=process.env.VLAB_CANDIDATE_RUNTIME,state=process.env.OPENCLAW_STATE_DIR,configPath=process.env.OPENCLAW_CONFIG_PATH;
 assert(runtime&&state&&configPath,'Disposable candidate environment required');
@@ -91,6 +91,9 @@ function isolateMakaronModelScope(cfg,label) {
   modelIsolation.push({preservedSelectedModels,agentToAgentScope:{changed:scopedPolicy.changed,excludedAgentIds:scopedPolicy.excludedAgentIds},label,scope:'Makaron parent and same-agent child',excludedAgentIds,excludedBindings,retainedBindingAgentIds:(cfg.bindings??[]).map(binding=>binding.agentId),beforeSelections,afterSelections:{defaults:agents.defaults.model,makaron:{model:main.model,subagents:main.subagents}},selectedModels:[...selected],selectedRuntimeProof,removedAliases});
 }
 isolateMakaronModelScope(config,'main');
+const providerRequestPolicy=[];
+const mainProviderPolicy=disableCandidateParallelToolCalls(config,{label:'main'});
+config.agents=mainProviderPolicy.config.agents;providerRequestPolicy.push(mainProviderPolicy.diagnostic);
 config.channels={};config.cron={...(config.cron??{}),enabled:false};
 config.browser={...(config.browser??{}),enabled:false};
 config.agents.defaults.heartbeat={...(config.agents.defaults.heartbeat??{}),every:'0m'};
@@ -151,6 +154,8 @@ const workerBytes=fs.readFileSync(path.join(process.env.VLAB_SHARED_STATE_DIR,re
  .replaceAll(process.env.VLAB_SHARED_STATE_DIR,state).replaceAll('/srv/vlab-production-mirror/labs/instances/db91-parity/runtime',runtime);
 const workerConfig=JSON.parse(workerBytes);
 isolateMakaronModelScope(workerConfig,'worker');
+const workerProviderPolicy=disableCandidateParallelToolCalls(workerConfig,{label:'worker'});
+workerConfig.agents=workerProviderPolicy.config.agents;providerRequestPolicy.push(workerProviderPolicy.diagnostic);
 workerConfig.agents??={};workerConfig.agents.defaults??={};
 workerConfig.agents.defaults.workspace=config.agents.defaults.workspace;
 for(const [agentId,agent] of Object.entries(workerConfig.agents.entries??{})) {
@@ -215,7 +220,7 @@ db.close()`,privateAgentDb],{encoding:'utf8'}));
     fs.mkdirSync(path.dirname(destination),{recursive:true,mode:0o700});
     fs.copyFileSync(source,destination);fs.chmodSync(destination,0o600);copied++;bytes+=fs.statSync(destination).size;
   }
-  toolsEnvironment={schemaPreflight,npmPrivate,pluginIsolation,modelIsolation,actualMemorySnapshot:true,memorySources:inventory.sourceCount,memoryChunks:inventory.chunkCount,copiedMemoryFiles:copied,missingMemoryFiles:missing,copiedMemoryBytes:bytes,
+  toolsEnvironment={schemaPreflight,npmPrivate,pluginIsolation,modelIsolation,providerRequestPolicy,actualMemorySnapshot:true,memorySources:inventory.sourceCount,memoryChunks:inventory.chunkCount,copiedMemoryFiles:copied,missingMemoryFiles:missing,copiedMemoryBytes:bytes,
     snapshotSchemaProof:{requiredTablesPresent:inventory.requiredTablesPresent,snapshotAgentId:inventory.snapshotAgentId,schemaSqlSha256:inventory.schemaSqlSha256,memorySourcesSha256:inventory.memorySourcesSha256,
       userVersion:inventory.userVersion,snapshotReadMode:inventory.snapshotReadMode},
     memoryDatabaseBytes:fs.statSync(privateAgentDb).size,plugins:[...allowed],webSearchEnabled:config.tools?.web?.search?.enabled===true,webSearchProvider:config.tools?.web?.search?.provider??null,
@@ -234,7 +239,7 @@ installCandidateOpenAIAuth();
 if(process.env.GPT_LIVE_H5_EVIDENCE_DIR) {
   const evidenceBase=process.env.GPT_LIVE_H5_EVIDENCE_DIR;assert(path.isAbsolute(evidenceBase),'Absolute evidence path required');
   fs.mkdirSync(evidenceBase,{recursive:true,mode:0o700});
-  fs.writeFileSync(path.join(evidenceBase,'bootstrap-isolation.json'),JSON.stringify({candidateId:process.env.VLAB_CANDIDATE_ID,createdAt:new Date().toISOString(),...toolsEnvironment,mainPluginAllow:config.plugins.allow,workerPluginAllow:workerConfig.plugins.allow,mainEnabledPlugins:Object.keys(config.plugins.entries??{}),workerEnabledPlugins:Object.keys(workerConfig.plugins.entries??{}),nativeVoiceStarted:false},null,2)+'\n',{mode:0o600});
+  fs.writeFileSync(path.join(evidenceBase,'bootstrap-isolation.json'),JSON.stringify({candidateId:process.env.VLAB_CANDIDATE_ID,createdAt:new Date().toISOString(),...toolsEnvironment,providerRequestPolicy,mainPluginAllow:config.plugins.allow,workerPluginAllow:workerConfig.plugins.allow,mainEnabledPlugins:Object.keys(config.plugins.entries??{}),workerEnabledPlugins:Object.keys(workerConfig.plugins.entries??{}),nativeVoiceStarted:false},null,2)+'\n',{mode:0o600});
 }
 const tracePath=path.join(state,'gateway-stdout.log'),sessionPath=path.join(state,'h5-session.json');
 fs.writeFileSync(tracePath,'',{flag:'wx',mode:0o600});
