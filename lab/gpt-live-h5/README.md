@@ -1,5 +1,9 @@
 # GPT Live one 通话候选
 
+当前状态（2026-10-03）：用户已要求退出共享 VLab，原环境恢复、自己的 lease 归还，其他任务已接手。本轮只在 Candidate 修复失声并接入真实 Memory / Web 工具验证。共享试用 d3cd1fe 出现前端静音锁；新版修复和真实长任务尚在验证，不能继承下面历史样本为当前已通过。验收清单见 [Candidate 验证计划](../../docs/gpt-live-pr154-candidate-validation-20261003.md)。未获新授权不得再次申请共享 lease 或部署共享，未合 dev、未部署生产。
+
+以下为历史实验记录：
+
 2026-10-02：源码保留在独立 PR #154（`codex/gpt-live-streaming-call-pr`），未合入 dev。原共享试跑失败并已回退。修复后的候选在真实 H5/WebRTC 路径通过一次严格私有验证：exec 随机码 9959 在最终结果前约 19 秒实际播出；子任务完成、父任务自动恢复，同一通电话最终准确播报码值及六字段时间；一份 final、无重复镜像，关闭后麦克风与 RTC 清理。143 项相关测试通过，控制路径的 14 项本地回归通过，真实插话/取消/重连仍待运行。共享部署与用户亲耳验收尚未完成。
 
 独立 H5 使用现有 V 头像和样式，通过 `gpt-live-1-codex` / `sol` 的原生 WebRTC 连续传输音频。后台 consult 由同一个 Gateway 的原生 sideband 执行；网页不轮询完整答案，也不另外生成 TTS。临时 client secret 只保留在本机 bridge，浏览器交换 SDP。
@@ -22,4 +26,4 @@ GPT_LIVE_H5_PREVIEW=1 node lab/gpt-live-h5/server.mjs
 
 重新合入前必须用完整 H5 验证 `sessions_spawn → sessions_yield → 子任务完成 → 父任务恢复最终结果 → 同一有效 Live 会话实际播放`，并核实提前进度确实来自后台公开输出、符合真实执行阶段；私有主链路已通过，共享主链路与真实 controls 仍待运行。还须覆盖讲话打断不等于任务取消，以及 owner/generation 失效、关闭、改口、迟到结果和重复 completion 的保护。
 
-现有 plan baseline、receipt、部署 hash 和收尾状态仅是历史记录。用户已授权在 PR 中继续开发；用户本轮已明确授权接入共享 VLab 供验收；执行时重新核对 runtime、配置、认证、插件与占用，不合入 dev、不部署生产。受控 PR 试运行与回退见 [运行手册](../../docs/gpt-live-pr154-shared-runbook-20261002.md)。
+现有 plan baseline、receipt、部署 hash 和收尾状态仅是历史记录。用户已授权在 PR 中继续开发；原共享授权已被本轮退出共享、Candidate 修复要求更新。受控 PR 试运行与回退见 [运行手册](../../docs/gpt-live-pr154-shared-runbook-20261002.md)。

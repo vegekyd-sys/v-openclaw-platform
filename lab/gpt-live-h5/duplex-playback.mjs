@@ -1,9 +1,12 @@
 /**
- * Local playback suppression only: this never interrupts the model or cancels
- * accepted backend work. Keep consuming RTP while HTML playback is muted.
- * Measure remoteRms upstream of the gate; our own silence is not a drain proof.
+ * Native owns turn taking on the single WebRTC audio stream. Local RMS and
+ * turn metadata cannot associate individual RTP frames with an assistant turn.
+ * Defaulting to local suppression can therefore hide the next answer forever.
+ * The strict-local mode is retained for diagnostic comparisons only. It never
+ * interrupts the model or cancels work, and still requires a real output drain.
  */
 export function createH5DuplexPlaybackGate({
+  mode = 'native',
   onGateChange = () => {},
   micStartRms = 0.02,
   micEndRms = 0.01,
@@ -14,6 +17,7 @@ export function createH5DuplexPlaybackGate({
   maxFrameGapMs = 150,
   recoveryAfterMs = 4000,
 } = {}) {
+  if (!['native', 'strict-local'].includes(mode)) throw new RangeError('Unknown duplex playback mode');
   if (typeof onGateChange !== 'function') throw new TypeError('Playback gate callback must be a function');
   for (const [name, value] of Object.entries({micStartRms, micEndRms, remoteQuietRms}))
     if (!Number.isFinite(value) || value < 0) throw new RangeError(`${name} must be a nonnegative finite RMS`);
@@ -30,6 +34,7 @@ export function createH5DuplexPlaybackGate({
   let blockedTurnId = null, gateAt = null, oldTurnTerminal = false, drainQuietSince = null, outputDrained = false;
   let waitingSince = null;
   const snapshot = () => ({
+    mode, interruptionOwner: mode === 'native' ? 'provider' : 'local-playback-only',
     localUserSpeaking, localPlaybackMuted, disposed, oldTurnTerminal, outputDrained,
     recoverySuggested: waitingSince !== null && lastAt - waitingSince >= recoveryAfterMs,
     phase: disposed ? 'disposed' : !localPlaybackMuted ? 'open' : localUserSpeaking ? 'user-speaking'
@@ -49,6 +54,7 @@ export function createH5DuplexPlaybackGate({
     onGateChange({...snapshot(), reason, at});
   };
   const freezeOutput = (reason, at, previousOutput = outputOutstanding, previousTurnId = assistantTurnId) => {
+    if (mode === 'native') return;
     // Initial speech with no previous audio is not a barge-in. In particular,
     // it must not lock the first reply waiting for that reply's own turn.done.
     if (!previousOutput || (localPlaybackMuted && !outputDrained)) return;
@@ -146,7 +152,9 @@ export function createH5DuplexPlaybackGate({
           if (at - drainQuietSince >= remoteGapMs) outputDrained = true;
         }
       }
-      const voiced = localUserSpeaking ? microphoneRms > micEndRms : microphoneRms >= micStartRms;
+      // Native mode observes speech but never latches the lower release RMS
+      // into playback. A residual room/echo level is not a local mute command.
+      const voiced = mode === 'strict-local' && localUserSpeaking ? microphoneRms > micEndRms : microphoneRms >= micStartRms;
       if (voiced) {
         micQuietSince = waitingSince = null;
         if (voicedSince === null) {

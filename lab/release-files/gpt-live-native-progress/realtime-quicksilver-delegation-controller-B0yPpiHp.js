@@ -148,6 +148,7 @@ var OpenAIQuicksilverDelegationController = class {
 		});
 	}
 	markStopped() {
+		this.cancelQueuedProgress?.();
 		this.stopped = true;
 		this.options.signal.removeEventListener("abort", this.onSessionAbort);
 		this.pendingDelegation = void 0;
@@ -156,7 +157,7 @@ var OpenAIQuicksilverDelegationController = class {
 		this.transcript = [];
 	}
 	tracePublicProgress(stage, delegationId, text, details = {}) {
-		if (!this.publicProgressTraceEnabled || !["progress", "final"].includes(details.kind)) return;
+		if (!this.publicProgressTraceEnabled || !["progress", "final", "failure"].includes(details.kind)) return;
 		// Diagnostics carry public text fingerprints only. Do not copy arbitrary
 		// callback fields, prompts, reasoning, credentials or account metadata.
 		const event = {
@@ -173,7 +174,7 @@ var OpenAIQuicksilverDelegationController = class {
 		for (const key of ["kind", "appendId", "chunkIndex", "chunkCount", "wireTextChars", "channel"]) {
 			if (typeof details[key] === "string" || Number.isSafeInteger(details[key])) event[key] = details[key];
 		}
-		if (["progress_pending", "final_part", "final_complete"].includes(details.role)) event.role = details.role;
+		if (["progress_pending", "progress_context", "final_part", "final_complete", "failure"].includes(details.role)) event.role = details.role;
 		if (typeof details.wireTextSha256 === "string" && /^[a-f0-9]{64}$/.test(details.wireTextSha256)) event.wireTextSha256 = details.wireTextSha256;
 		const provenance = details.provenance;
 		if (provenance && typeof provenance === "object") {
@@ -213,10 +214,16 @@ var OpenAIQuicksilverDelegationController = class {
 		if (chunk) chunks.push(chunk);
 		return chunks;
 	}
-	formatPublicAppendChunk(text, kind, chunkIndex, chunkCount) {
+	formatPublicAppendChunk(text, kind, chunkIndex, chunkCount, channel = "speakable") {
 		const position = `${chunkIndex + 1}/${chunkCount}`;
 		let role, header;
-		if (kind === "progress") {
+		if (kind === "failure") {
+			role = "failure";
+			header = `[BACKEND_FAILURE ${position}]\nNo complete result. Explain this limitation honestly; do not claim task completion or invent missing values.\n\n`;
+		} else if (kind === "progress" && channel !== "speakable") {
+			role = "progress_context";
+			header = `[BACKEND_CONTEXT_ONLY ${position}]\nPublic context only. Do not speak or reply. Parent task pending; wait for speakable progress or final.\n\n`;
+		} else if (kind === "progress") {
 			role = "progress_pending";
 			header = `[BACKEND_PROGRESS_PENDING ${position}]\nParent task remains pending. One short fact when idle; stop for caller. Never guess values or claim completion.\n\n`;
 		} else if (chunkIndex + 1 < chunkCount) {
@@ -235,8 +242,42 @@ var OpenAIQuicksilverDelegationController = class {
 	}
 	async runDelegation(delegation, signal) {
 		let text;
+		let terminalKind = "final";
 		let finished = false;
 		const seenProgress = new Set();
+		let queuedProgress;
+		let progressTimer;
+		const clearQueuedProgress = () => {
+			clearTimeout(progressTimer);
+			progressTimer = void 0;
+			queuedProgress = void 0;
+		};
+		this.cancelQueuedProgress = clearQueuedProgress;
+		signal.addEventListener("abort", clearQueuedProgress, { once: true });
+		const deliverProgress = (progress, channel) => {
+			try {
+				if (!this.sendAppend(delegation.id, progress.text, channel, { kind: "progress", provenance: progress.provenance })) return false;
+				if (channel === "speakable") this.lastSpokenProgressAt = Date.now();
+				return true;
+			} catch (error) {
+				this.options.logger.warn(`OpenAI GPT-Live progress delivery failed: ${shortFailureReason(error)}`);
+				return false;
+			}
+		};
+		const queueProgress = (progress) => {
+			// Retain one latest public fact rather than reading a backlog. It has not
+			// been appended yet, so its later speech is not a duplicated context body.
+			queuedProgress = progress;
+			if (progressTimer) return;
+			progressTimer = setTimeout(() => {
+				progressTimer = void 0;
+				const latest = queuedProgress;
+				queuedProgress = void 0;
+				if (!latest || finished || !this.isCurrentDelegation(delegation, signal)) return;
+				deliverProgress(latest, "speakable");
+			}, Math.max(1, 15000 - (Date.now() - this.lastSpokenProgressAt)));
+			progressTimer.unref?.();
+		};
 		// Only an exact, authorized host cancellation can revoke this delivery
 		// owner. Never infer cancellation from generic worker error strings.
 		const onCanceled = (reason) => {
@@ -246,8 +287,9 @@ var OpenAIQuicksilverDelegationController = class {
 			this.consultController.abort(reason ?? new Error("Realtime voice consult cancelled"));
 		};
 		// The host supplies public assistant replies only. Reasoning streams never
-		// enter this callback; commentary here is a host kind, not the native silent
-		// commentary channel. Public progress must use native speakable context.
+		// enter this callback. Host commentary is public assistant output; the native
+		// commentary channel is not proof of silence. Withhold chatter and long
+		// public articles from the native wire; append only selected short facts.
 		const onProgress = (progress) => {
 			if (finished || !this.isCurrentDelegation(delegation, signal) ||
 				progress?.kind !== "commentary" || progress?.isReasoning === true ||
@@ -256,24 +298,30 @@ var OpenAIQuicksilverDelegationController = class {
 			this.tracePublicProgress("public-progress-received", delegation.id, publicText, { kind: "progress", provenance: progress.provenance });
 			const fingerprint = createHash("sha256").update(publicText).digest("hex");
 			if (seenProgress.has(fingerprint)) return;
-			// Keep burst fragments and long articles as silent context, with their
-			// exact public facts intact. The final answer is never throttled.
+			// Backend work retains its own context. Sending an ineligible article on
+			// commentary can still provoke speech, despite a context-only instruction.
+			// Backend result grounding is a prompt/acceptance contract; this semantic
+			// chatter filter does not prove arbitrary assistant text is verified.
 			const now = Date.now();
-			// Obvious waiting-only plans never consume the first fact's speech slot.
-			// This is a chatter filter, not a claim that arbitrary text is verified.
-			const waitingPlan = /^(?:我(?:这边)?(?:会|将|先|正在|在)|我们(?:先|会|正在)|正在|先(?:查|看|确认|核对)|(?:好|行)[，,]?我(?:先)?(?:查|看)|稍等|请稍等|等一下|让我|这边(?:正在|在|先)|I(?:'m| am| will|['’]ll)|Let me|Please wait|One (?:sec|moment))/iu.test(publicText);
-			const hasStatedResult = /(?:已(?:经)?(?:找到|查到|确认|核对|完成|收到)|找到了|查到了|确认了|核对出|记录显示|结果(?:是|为)|(?:found|confirmed|completed|finished|done|result)\b)/iu.test(publicText);
-			const channel = !(waitingPlan && !hasStatedResult) && Buffer.byteLength(publicText, "utf8") <= 320 && now - this.lastSpokenProgressAt >= 15000 ? "speakable" : "commentary";
-			try {
-				if (!this.sendAppend(delegation.id, publicText, channel, { kind: "progress", provenance: progress.provenance })) return;
-				seenProgress.add(fingerprint);
-				if (seenProgress.size > 256) seenProgress.delete(seenProgress.values().next().value);
-				if (channel === "speakable") this.lastSpokenProgressAt = now;
-			} catch (error) {
-				// A dropped progress update must not abort accepted backend work or
-				// turn its eventual final answer into a failed consult.
-				this.options.logger.warn(`OpenAI GPT-Live progress delivery failed: ${shortFailureReason(error)}`);
+			// Ordinary short public facts need no special wording. Suppress clear
+			// waiting/setup statements; an actual result within one takes priority.
+			const waitingPlan = /^(?:我(?:这边)?(?:会|将|先|正在|在)|我们(?:先|会|正在)|正在|现在(?:开始)?(?:等|等待|查|看|核对|执行)|(?:下一步|接下来|然后)(?:我|我们)?(?:会|将|先|去|开始|等|查|看)|先(?:查|看|确认|核对)|(?:好|行)[，,]?我(?:先)?(?:查|看)|稍等|请稍等|等一下|让我|这边(?:正在|在|先)|I(?:'m| am| will|['’]ll)|(?:Now|Next)(?:[,:]?\s+)(?:I(?: will|['’]ll)|we(?: will|['’]ll)|start|wait|waiting|check)|Let me|Please wait|One (?:sec|moment))/iu.test(publicText);
+			const setupOnly = /^(?:Read-only\b|All read-only\b|No (?:files? (?:written|were written)|external)|Sub-?task spawned\b|子(?:任务|代理)(?:已)?(?:启动|派发|交办))/iu.test(publicText);
+			const hasStatedResult = /(?:已(?:经)?(?:找到|查到|确认|核对|完成|收到|得到|生成|发出|测得|读到|验证)|找到了|查到了|确认了|核对出|记录显示|结果(?:是|为)|等于|完成(?:了|[。.!]|$)|(?:当前|测得|核验)(?:时间|值)(?:是|为)|(?:found|confirmed|completed|complete|finished|done|generated|verified)\b|results?(?: (?:is|are)|:)|(?:value|time|price|cost) is\b)/iu.test(publicText);
+			// A streamed markdown fragment is not an independent stage sentence.
+			// In particular, a child result's bare "— YES**" must not displace a fact.
+			const structuralFragment = /```|(?:^|\n)\s*(?:#{1,6}\s|[-*+]\s|>\s|\d+[.)]\s)|^\s*[-—–*`#\s]*(?:YES|NO|TRUE|FALSE|DONE|OK|MATCH)[-—–*`#.!\s]*$|^\s*\*\*/iu.test(publicText);
+			const speechEligible = !structuralFragment && (!(waitingPlan || setupOnly) || hasStatedResult) && Buffer.byteLength(publicText, "utf8") <= 320;
+			const selected = { text: publicText, provenance: progress.provenance };
+			if (speechEligible) {
+				if (now - this.lastSpokenProgressAt < 15000) queueProgress(selected);
+				else {
+					clearQueuedProgress();
+					if (!deliverProgress(selected, "speakable")) return;
+				}
 			}
+			seenProgress.add(fingerprint);
+			if (seenProgress.size > 256) seenProgress.delete(seenProgress.values().next().value);
 		};
 		try {
 			const result = await this.options.runAgentConsult({
@@ -284,27 +332,40 @@ var OpenAIQuicksilverDelegationController = class {
 				onCanceled
 			});
 			if (!this.isCurrentDelegation(delegation, signal)) return;
-			text = boundOpenAIQuicksilverDelegationResult(result.text);
+			if (typeof result?.text !== "string" || !result.text.trim()) throw new Error("Backend returned no complete public result");
+			text = result.text;
+			// Preserve the original public result before applying the delivery limit.
+			// Byte-safe native chunks already bound individual frames; truncating the
+			// whole result would lose late facts while falsely labeling it complete.
+			this.tracePublicProgress("backend-final-received", delegation.id, text, { kind: "final" });
+			if (Buffer.byteLength(text, "utf8") > 16 * 1024) {
+				terminalKind = "failure";
+				text = "The backend result is too long to deliver completely. Tell the user it has not been fully delivered; do not claim completion, summarize unseen parts or invent missing values.";
+				this.options.logger.warn("OpenAI GPT-Live complete public result exceeded the 16 KiB delivery limit");
+			}
 		} catch (error) {
 			if (!this.isCurrentDelegation(delegation, signal) || this.options.isCanceledError?.(error)) return;
 			this.options.logger.warn(`OpenAI GPT-Live delegation consult failed: ${shortFailureReason(error)}`);
 			text = CONSULT_FAILURE_TEXT;
+			terminalKind = "failure";
 		} finally {
 			finished = true;
+			clearQueuedProgress();
+			signal.removeEventListener("abort", clearQueuedProgress);
+			if (this.cancelQueuedProgress === clearQueuedProgress) this.cancelQueuedProgress = void 0;
 		}
 		if (this.isCurrentDelegation(delegation, signal)) {
-			this.tracePublicProgress("backend-final-received", delegation.id, text, { kind: "final" });
-			this.sendAppend(delegation.id, text, "speakable", { kind: "final" });
+			this.sendAppend(delegation.id, text, "speakable", { kind: terminalKind });
 		}
 	}
 	sendAppend(delegationId, text, channel, diagnostic = {}) {
 		const socket = this.options.getSocket();
 		if (this.stopped || !socket || socket.readyState !== WEBSOCKET_OPEN) return false;
-		const isPublic = ["progress", "final"].includes(diagnostic.kind);
+		const isPublic = ["progress", "final", "failure"].includes(diagnostic.kind);
 		const chunks = isPublic ? this.chunkPublicAppendText(text) : chunkOpenAIQuicksilverAppendText(text);
 		const appendId = ++this.publicProgressAppendSequence;
 		for (const [chunkIndex, chunk] of chunks.entries()) {
-			const { role, wireText } = isPublic ? this.formatPublicAppendChunk(chunk, diagnostic.kind, chunkIndex, chunks.length) : { wireText: chunk };
+			const { role, wireText } = isPublic ? this.formatPublicAppendChunk(chunk, diagnostic.kind, chunkIndex, chunks.length, channel) : { wireText: chunk };
 			const frame = {
 				type: "delegation.context.append",
 				delegation_item_id: delegationId,

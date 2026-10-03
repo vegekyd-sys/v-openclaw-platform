@@ -29,6 +29,9 @@ async function fixture(t, options = {}) {
     disabled = false;
     srcObject = null;
     muted = false;
+    paused = true;
+    volume = 1;
+    readyState = 4;
     addEventListener(type, listener) { this.listeners.set(type, listener); }
     scrollTop = 0;
     clientHeight = 100;
@@ -47,7 +50,10 @@ async function fixture(t, options = {}) {
     replaceChildren(...children) { for (const child of this.children) child.parent = null; this.children = []; this.append(...children); }
     querySelector() { return null; }
     get scrollHeight() { return this.children.length; }
-    play() { return options.play?.() ?? Promise.resolve(); }
+    async play() {
+      try { await (options.play?.() ?? Promise.resolve()); this.paused = false; }
+      catch (error) { this.paused = true; throw error; }
+    }
   }
   const elements = new Map();
   const element = (id) => {
@@ -106,7 +112,7 @@ async function fixture(t, options = {}) {
       const value = { dialing: 0, pickups: 0, disposed: 0, dial() { this.dialing++; }, connected() { this.pickups++; }, dispose() { this.disposed++; } };
       sounds.push(value); return value;
     },
-    createH5DuplexPlaybackGate,
+    createH5DuplexPlaybackGate: values => createH5DuplexPlaybackGate({...values, mode: options.playbackMode ?? values.mode}),
     performance: { now: () => now },
     document: { body, getElementById: element, createElement: () => new Element() },
     window: { addEventListener: (type, listener) => pageEvents.set(type, listener) },
@@ -345,7 +351,7 @@ test("old disconnected-call cleanup cannot replace a new connected call status",
 });
 
 test("real app microphone gate mutes playback while leaving the call and backend active", async (t) => {
-  const f = await fixture(t); await f.context.startCall();
+  const f = await fixture(t, {playbackMode: "strict-local"}); await f.context.startCall();
   const peer = f.peers[0]; await peer.ontrack({track: track()});
   const incoming = f.element("remoteAudio").srcObject;
   f.eventSources[0].onmessage({data: JSON.stringify({voiceSessionId: "voice-1", type: "tool.call", callId: "backend-work"})});
@@ -363,7 +369,7 @@ test("real app microphone gate mutes playback while leaving the call and backend
 });
 
 test("real app resumes only after the frozen assistant ends and queued inbound audio drains", async (t) => {
-  const f = await fixture(t); await f.context.startCall(); await f.peers[0].ontrack({track: track()});
+  const f = await fixture(t, {playbackMode: "strict-local"}); await f.context.startCall(); await f.peers[0].ontrack({track: track()});
   f.peers[0].channel.onmessage({data: JSON.stringify({type: "turn.created", turn: {role: "assistant", id: "old"}})});
   f.meter(0, .04, .2); f.meter(50, .04, .2); f.meter(100, .04, .2);
   for (let at = 150; at <= 600; at += 50) f.meter(at, 0, .2);
@@ -378,7 +384,7 @@ test("real app resumes only after the frozen assistant ends and queued inbound a
 });
 
 test("native user turn provides a local fallback without claiming or sending model interruption", async (t) => {
-  const f = await fixture(t); await f.context.startCall(); await f.peers[0].ontrack({track: track()});
+  const f = await fixture(t, {playbackMode: "strict-local"}); await f.context.startCall(); await f.peers[0].ontrack({track: track()});
   f.meter(0, .005, .2);
   f.setNow(20);
   f.peers[0].channel.onmessage({data: JSON.stringify({type: "turn.created", turn: {role: "user", id: "private-turn"}})});
@@ -393,7 +399,7 @@ test("native user turn provides a local fallback without claiming or sending mod
 });
 
 test("first caller speech without old output leaves the first answer audible", async (t) => {
-  const f = await fixture(t); await f.context.startCall(); await f.peers[0].ontrack({track: track()});
+  const f = await fixture(t, {playbackMode: "strict-local"}); await f.context.startCall(); await f.peers[0].ontrack({track: track()});
   for (let at = 0; at <= 100; at += 50) f.meter(at, .04, 0);
   for (let at = 150; at <= 600; at += 50) f.meter(at, 0, 0);
   f.setNow(625);
@@ -405,7 +411,7 @@ test("first caller speech without old output leaves the first answer audible", a
 });
 
 test("a long old-answer pause, context ack, captions and new created event do not unlock playback", async (t) => {
-  const f = await fixture(t); await f.context.startCall(); await f.peers[0].ontrack({track: track()});
+  const f = await fixture(t, {playbackMode: "strict-local"}); await f.context.startCall(); await f.peers[0].ontrack({track: track()});
   const send = payload => f.peers[0].channel.onmessage({data: JSON.stringify(payload)});
   send({type: "turn.created", turn: {role: "assistant", id: "private-old"}});
   f.meter(0, .04, .2); f.meter(50, .04, .2); f.meter(100, .04, .2);
@@ -429,7 +435,7 @@ test("a long old-answer pause, context ack, captions and new created event do no
 });
 
 test("late assistant metadata needs a real terminal and fresh drain before unknown output can recover", async (t) => {
-  const f = await fixture(t); await f.context.startCall(); await f.peers[0].ontrack({track: track()});
+  const f = await fixture(t, {playbackMode: "strict-local"}); await f.context.startCall(); await f.peers[0].ontrack({track: track()});
   const send = payload => f.peers[0].channel.onmessage({data: JSON.stringify(payload)});
   f.meter(0, .04, .2); f.meter(50, .04, .2); f.meter(100, .04, .2);
   for (let at = 150; at <= 600; at += 50) f.meter(at, 0, 0);
@@ -445,7 +451,7 @@ test("late assistant metadata needs a real terminal and fresh drain before unkno
 });
 
 test("app preserves a drain proved during caller speech and releases the fresh reply when the caller finishes", async (t) => {
-  const f = await fixture(t); await f.context.startCall(); await f.peers[0].ontrack({track: track()});
+  const f = await fixture(t, {playbackMode: "strict-local"}); await f.context.startCall(); await f.peers[0].ontrack({track: track()});
   const send = payload => f.peers[0].channel.onmessage({data: JSON.stringify(payload)});
   send({type: "turn.created", turn: {role: "assistant", id: "old"}});
   f.meter(0, .04, .2); f.meter(50, .04, .2); f.meter(100, .04, .2);
@@ -465,7 +471,7 @@ test("app preserves a drain proved during caller speech and releases the fresh r
 });
 
 test("missing terminal proof offers a restart without timing out into old playback", async (t) => {
-  const f = await fixture(t); await f.context.startCall(); await f.peers[0].ontrack({track: track()});
+  const f = await fixture(t, {playbackMode: "strict-local"}); await f.context.startCall(); await f.peers[0].ontrack({track: track()});
   f.meter(0, .04, .2); f.meter(50, .04, .2); f.meter(100, .04, .2);
   for (let at = 150; at <= 4600; at += 50) f.meter(at, 0, 0);
   assert.equal(f.element("remoteAudio").muted, true);
@@ -479,7 +485,7 @@ test("missing terminal proof offers a restart without timing out into old playba
 });
 
 test("stopping a muted call clears its meter and gate without muting the replacement call", async (t) => {
-  const f = await fixture(t); await f.context.startCall();
+  const f = await fixture(t, {playbackMode: "strict-local"}); await f.context.startCall();
   const old = f.peers[0]; await old.ontrack({track: track()});
   const oldMeter = [...f.intervals.values()].find(value => value.delay === 50).callback;
   f.meter(0, .04, .2); f.meter(50, .04, .2); f.meter(100, .04, .2);
@@ -585,4 +591,81 @@ test("page navigation closes the active call, meter, event stream, mic, sound an
   assert.equal(f.sounds[0].disposed,1); assert.equal(f.eventSources[0].closed,true);
   assert.equal(f.element("remoteAudio").srcObject,null);
   assert.equal(f.context.__gptLiveDuplexDiagnostics.closed,true);
+});
+
+test("default native playback leaves a continuous new reply audible after caller speech and residual room noise", async t => {
+  const f = await fixture(t); await f.context.startCall();
+  const peer = f.peers[0]; await peer.ontrack({track:track()});
+  const send = payload => peer.channel.onmessage({data:JSON.stringify(payload)});
+  f.eventSources[0].onmessage({data:JSON.stringify({voiceSessionId:"voice-1",type:"tool.call",callId:"accepted-task"})});
+  const before = f.requests.length;
+  send({type:"turn.created",turn:{role:"assistant",id:"old"}});
+  f.meter(0,.04,.2); f.meter(50,.04,.2); f.meter(100,.04,.2);
+  f.setNow(125); send({type:"turn.done",turn:{role:"assistant",id:"old"}});
+  f.setNow(130); send({type:"turn.created",turn:{role:"assistant",id:"new"}});
+  f.setNow(135); send({type:"turn.created",turn:{role:"user",id:"late-user"}});
+  for(let at=150;at<=6000;at+=50) f.meter(at,.015,.2);
+  assert.equal(f.element("remoteAudio").muted,false);
+  assert.equal(f.element("remoteAudio").paused,false);
+  assert.equal(f.body.dataset.voiceState,"speaking");
+  assert(peer.tracks.every(value=>value.stopped===0&&value.enabled));
+  assert.equal(f.requests.length,before,"The client has not cancelled backend work or sent undocumented controls");
+  assert.equal(f.element("cancel").disabled,false);
+  const diagnostics=f.context.__gptLiveDuplexDiagnostics;
+  assert.equal(diagnostics.playbackMode,"native"); assert.equal(diagnostics.interruptionOwner,"provider");
+  assert(!diagnostics.events.some(value=>value.type==="local-playback-gate"));
+  const sample=diagnostics.events.at(-1);
+  assert(Math.abs(sample.microphoneRms-.015)<1e-8); assert(Math.abs(sample.remoteRms-.2)<1e-8);
+  assert.equal(sample.microphoneAboveAttack,false); assert.equal(sample.microphoneAboveRelease,true);
+  assert.equal(sample.microphoneVoiced,false); assert.equal(sample.requestedMuted,false); assert.equal(sample.appliedMuted,false);
+  assert.equal(sample.audioContextState,"running");
+  assert.equal(sample.oldTurnTerminal,false); assert.equal(sample.outputDrained,false,"Native ownership does not fabricate old RTP drain proof");
+});
+
+test("autoplay rejection stays visible after connect and a fresh gesture actually restarts playback", async t => {
+  let attempts=0;
+  const f=await fixture(t,{play:()=>++attempts===1?Promise.reject(Object.assign(new Error("blocked"),{name:"NotAllowedError"})):Promise.resolve()});
+  await f.context.startCall(); const peer=f.peers[0]; await peer.ontrack({track:track()});
+  assert.equal(f.element("remoteAudio").paused,true);
+  peer.connectionState="connected"; peer.onconnectionstatechange();
+  assert.match(f.element("status").textContent,/恢复声音/u);
+  const before=f.requests.length;
+  f.pageEvents.get("pointerdown")(); await tick();
+  assert.equal(attempts,2); assert.equal(f.element("remoteAudio").paused,false);
+  assert.equal(f.element("status").textContent,"V 正在听，直接说话就好");
+  assert.equal(f.requests.length,before);
+  const events=f.context.__gptLiveDuplexDiagnostics.events;
+  assert(events.some(value=>value.type==="playback-rejected"&&value.errorName==="NotAllowedError"&&value.source==="track"));
+  assert(events.some(value=>value.type==="playback-started"&&value.source==="gesture"&&value.paused===false));
+  assert(peer.tracks.every(value=>value.stopped===0));
+});
+
+test("an AudioContext rejection has its own visible recovery and does not leave the incoming track setup unhandled", async t => {
+  let resumes=0;
+  const f=await fixture(t,{resume:()=>++resumes===1?Promise.reject(Object.assign(new Error("blocked"),{name:"NotAllowedError"})):Promise.resolve()});
+  await f.context.startCall(); const peer=f.peers[0]; await peer.ontrack({track:track()});
+  peer.connectionState="connected"; peer.onconnectionstatechange();
+  assert.match(f.element("status").textContent,/恢复声音/u);
+  assert(f.context.__gptLiveDuplexDiagnostics.events.some(value=>value.type==="context-resume-rejected"));
+  f.pageEvents.get("keydown")(); await tick();
+  assert.equal(resumes,2); assert.equal(f.element("status").textContent,"V 正在听，直接说话就好");
+});
+
+test("an unexpected playback pause is diagnosed while a gesture recovery from an ended call cannot touch its replacement", async t => {
+  const pending=deferred(); let attempts=0;
+  const f=await fixture(t,{play:()=>++attempts===2?pending.promise:Promise.resolve()});
+  await f.context.startCall(); const old=f.peers[0]; await old.ontrack({track:track()});
+  f.element("remoteAudio").paused=true; f.meter(0,0,.2);
+  assert.match(f.element("status").textContent,/恢复声音/u);
+  f.pageEvents.get("pointerdown")(); await tick();
+  const diagnostics=f.context.__gptLiveDuplexDiagnostics;
+  await f.context.stopCall(); await f.context.startCall();
+  const replacement=f.peers[1]; replacement.connectionState="connected"; replacement.onconnectionstatechange();
+  await replacement.ontrack({track:track()});
+  const status=f.element("status").textContent;
+  pending.reject(Object.assign(new Error("late blocked"),{name:"NotAllowedError"})); await tick();
+  assert.equal(f.element("status").textContent,status); assert.equal(replacement.closed,false);
+  assert.equal(diagnostics.closed,true);
+  assert(diagnostics.events.some(value=>value.type==="playback-not-running"&&value.paused));
+  assert(!diagnostics.events.some(value=>value.type==="playback-rejected"&&value.source==="gesture"));
 });

@@ -4,7 +4,7 @@ import {createH5DuplexPlaybackGate} from './duplex-playback.mjs';
 
 function fixture(options = {}) {
   const changes = [];
-  const gate = createH5DuplexPlaybackGate({onGateChange: change => changes.push(change), ...options});
+  const gate = createH5DuplexPlaybackGate({mode: 'strict-local', onGateChange: change => changes.push(change), ...options});
   const sample = (at, microphoneRms = 0, remoteRms = 0.2) => gate.observe({at, microphoneRms, remoteRms});
   const speak = (at = 0) => {sample(at, 0.04); sample(at + 50, 0.04); return sample(at + 100, 0.04);};
   const frames = (start, end, microphone = 0, remote = 0) => {
@@ -232,7 +232,7 @@ test('missing terminal evidence suggests a separate restart without timeout unmu
 
 test('invalid thresholds, turns, observations and backwards timestamps reject', () => {
   for (const option of [{micStartRms: NaN}, {micEndRms: 0.02}, {remoteQuietRms: -1}, {attackMs: 0},
-    {releaseMs: Infinity}, {recoveryAfterMs: 0}, {onGateChange: null}]) assert.throws(() => createH5DuplexPlaybackGate(option));
+    {releaseMs: Infinity}, {recoveryAfterMs: 0}, {onGateChange: null}, {mode: 'unsupported'}]) assert.throws(() => createH5DuplexPlaybackGate(option));
   const f = fixture(); f.sample(100);
   assert.throws(() => f.sample(99), /monotonic/u);
   assert.throws(() => f.sample(101, NaN), /RMS/u);
@@ -240,4 +240,35 @@ test('invalid thresholds, turns, observations and backwards timestamps reject', 
   assert.throws(() => f.gate.notifyAssistantTurnCreated('', 101), /turn ID/u);
   assert.throws(() => f.gate.notifyAssistantTurnDone(null, 101), /turn ID/u);
   assert.throws(() => f.gate.notifyOutputAudioCleared(99), /monotonic/u);
+});
+
+test('native is the default and does not convert local speech or delayed user metadata into playback muting', () => {
+  const changes = [];
+  const gate = createH5DuplexPlaybackGate({onGateChange: value => changes.push(value)});
+  assert.equal(gate.snapshot().mode, 'native');
+  assert.equal(gate.snapshot().interruptionOwner, 'provider');
+  gate.notifyAssistantTurnCreated('old', 0);
+  for (let at = 0; at <= 100; at += 50) gate.observe({at, microphoneRms: .04, remoteRms: .2});
+  gate.notifyAssistantTurnDone('old', 125);
+  gate.notifyAssistantTurnCreated('next', 130);
+  gate.notifyUserTurnStarted(135);
+  // The stream need not contain a gap between two replies. No client gate can
+  // identify which decoded PCM frames belong to which assistant turn.
+  for (let at = 150; at <= 6000; at += 50) gate.observe({at, microphoneRms: .015, remoteRms: .2});
+  assert.equal(gate.snapshot().localPlaybackMuted, false);
+  assert.equal(gate.snapshot().localUserSpeaking, false, 'Residual RMS below speech attack is not latched forever');
+  assert.equal(gate.snapshot().oldTurnTerminal, false, 'The monitor does not manufacture interrupted-turn proof');
+  assert.equal(gate.snapshot().outputDrained, false, 'Continuous remote energy is not called a drain');
+  assert.deepEqual(changes, []);
+});
+
+test('native keeps full-duplex observation across sustained speech and missing frames without a hidden local mute', () => {
+  const f = fixture({mode: 'native'});
+  f.speak(); f.frames(150, 5000, .04, .2);
+  assert.equal(f.gate.snapshot().localUserSpeaking, true);
+  assert.equal(f.gate.snapshot().localPlaybackMuted, false);
+  f.sample(10000, 0, .2); f.frames(10050, 10500, 0, .2);
+  assert.equal(f.gate.snapshot().localUserSpeaking, false);
+  assert.equal(f.gate.snapshot().recoverySuggested, false);
+  assert.deepEqual(f.changes, []);
 });

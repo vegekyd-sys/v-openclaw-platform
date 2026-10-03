@@ -195,6 +195,17 @@ test("consult forwards complete public facts before final and leaves unfinished 
   assert.equal(runtime.observations.releases, 1);
 });
 
+test("a reasoning flag cannot masquerade as a public preamble even with a visible sentence boundary", () => {
+  const progress = [];
+  const observer = patchedObserver({ onProgress: value => progress.push(value) });
+  observer.onAgentEvent({stream:"item",data:{kind:"preamble",phase:"end",isReasoning:true,progressText:"PRIVATE_REASONING。"}});
+  observer.onPartialReply({isReasoning:true,text:"PRIVATE_THOUGHT。"});
+  observer.onAgentEvent({stream:"tool",data:{kind:"preamble",phase:"end",progressText:"PRIVATE_TOOL_LOG。"}});
+  assert.deepEqual(progress, []);
+  observer.onAgentEvent({stream:"item",data:{kind:"preamble",phase:"end",progressText:"公开核验已完成。"}});
+  assert.deepEqual(progress.map(value => value.text), ["公开核验已完成。"]);
+});
+
 test("actual builtin public preamble contract reaches the observer without exposing thoughts or tools", () => {
   const progress = [];
   const observer = patchedObserver({ onProgress: (payload) => { progress.push(payload); return true; } });

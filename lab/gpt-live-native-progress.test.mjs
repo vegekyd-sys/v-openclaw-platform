@@ -57,7 +57,7 @@ function fixture(options = {}) {
     },
     ...options,
   });
-  const texts = () => frames.map((frame) => frame.content[0].text.replace(/^\[BACKEND_(?:PROGRESS_PENDING|FINAL_PART|FINAL_COMPLETE) \d+\/\d+\]\n[^\n]+\n\n/u, ""));
+  const texts = () => frames.map((frame) => frame.content[0].text.replace(/^\[BACKEND_(?:PROGRESS_PENDING|CONTEXT_ONLY|FINAL_PART|FINAL_COMPLETE|FAILURE) \d+\/\d+\]\n[^\n]+\n\n/u, ""));
   return { controller, socket, sessionAbort, calls, frames, texts, warnings, fatal, logs };
 }
 
@@ -100,8 +100,8 @@ test("successive delegations share the speech interval while finals remain intac
   f.controller.startDelegation("second", "request");
   f.calls[1].onProgress({ kind: "commentary", text: "已找到第二条" });
   f.calls[1].resolve({ text: "第二项完成" }); await settle();
-  assert.deepEqual(f.frames.map(frame => frame.channel), ["speakable", "speakable", "commentary", "speakable"]);
-  assert.deepEqual(f.texts(), ["已找到第一条", "第一项完成", "已找到第二条", "第二项完成"]);
+  assert.deepEqual(f.frames.map(frame => frame.channel), ["speakable", "speakable", "speakable"]);
+  assert.deepEqual(f.texts(), ["已找到第一条", "第一项完成", "第二项完成"], "A complete final discards pending progress for that task");
 });
 
 test("only explicit public commentary with nonempty text enters voice", async () => {
@@ -343,7 +343,7 @@ test("public append chunk budgets include role headers and preserve Unicode and 
   const f = fixture({ onPublicProgressDiagnostic: (event) => diagnostics.push(event) });
   f.controller.startDelegation("utf8", "request");
   const text = ("😀中文A e\u0301\n字段：2773，20:58:48； ").repeat(35).trim();
-  f.calls[0].onProgress({ kind: "commentary", text });
+  f.controller.sendAppend("utf8", text, "commentary", {kind: "progress"});
   assert(f.frames.length > 2);
   assert.equal(f.texts().join(""), text);
   const sends = diagnostics.filter((event) => event.stage === "context-append-sent");
@@ -363,11 +363,13 @@ test("public append chunk budgets include role headers and preserve Unicode and 
     assert.equal(sends[index].chunkCount, f.frames.length);
     assert.notEqual(sends[index].textSha256, sends[index].wireTextSha256);
   }
-  for (const kind of ["progress", "final"]) {
+  for (const kind of ["progress", "final", "failure"]) {
     const maximum = Number.MAX_SAFE_INTEGER;
     for (const index of [maximum - 2, maximum - 1]) {
-      const { wireText } = f.controller.formatPublicAppendChunk("", kind, index, maximum);
-      assert(Buffer.byteLength(wireText, "utf8") <= 180, "Header budget holds even for maximal safe chunk positions");
+      for (const channel of ["speakable", "commentary"]) {
+        const { wireText } = f.controller.formatPublicAppendChunk("", kind, index, maximum, channel);
+        assert(Buffer.byteLength(wireText, "utf8") <= 180, "Header budget holds even for maximal safe chunk positions");
+      }
     }
   }
   f.calls[0].resolve({ text: "完成。" }); await settle();
@@ -467,37 +469,145 @@ test("trusted cancellation after terminal resolution or stopped session cannot a
 });
 
 
-test("burst progress is kept silently while a single short fact is spoken", async () => {
+test("burst facts retain one latest stage for a timed update and final discards the backlog", async t => {
+  t.mock.timers.enable({apis: ["Date", "setTimeout"], now: 100000});
   const f = fixture(); f.controller.startDelegation("d1", "request");
   for (const text of ["已找到三个文件。", "已核对来源。", "正在查看下一段。"])
     f.calls[0].onProgress({kind: "commentary", text});
-  assert.deepEqual(f.frames.map(frame => frame.channel), ["speakable", "commentary", "commentary"]);
-  assert.deepEqual(f.texts(), ["已找到三个文件。", "已核对来源。", "正在查看下一段。"]);
+  assert.deepEqual(f.frames.map(frame => frame.channel), ["speakable"]);
+  assert.deepEqual(f.texts(), ["已找到三个文件。"]);
   f.calls[0].onProgress({kind: "commentary", text: "已核对来源。"});
-  assert.equal(f.frames.length, 3, "Exact repeats do not re-enter voice context");
+  assert.equal(f.frames.length, 1, "An exact queued repeat is neither appended nor queued twice");
   f.calls[0].resolve({text: "最终值2773。"}); await settle();
+  t.mock.timers.tick(30000);
+  assert.deepEqual(f.texts(), ["已找到三个文件。", "最终值2773。"]);
   assert.equal(f.frames.at(-1).channel, "speakable");
-  assert.equal(f.texts().at(-1), "最终值2773。");
 });
 
-test("progress cooldown allows a new verified fact after fifteen seconds", async t => {
-  t.mock.timers.enable({apis: ["Date"], now: 100000});
-  const f = fixture(); f.controller.startDelegation("d1", "request");
-  f.calls[0].onProgress({kind: "commentary", text: "第一阶段完成。"});
-  t.mock.timers.tick(14999);
-  f.calls[0].onProgress({kind: "commentary", text: "第二阶段完成。"});
+test("cooldown emits the latest fact automatically even without another backend callback", async t => {
+  t.mock.timers.enable({apis: ["Date", "setTimeout"], now: 100000});
+  const diagnostics = [];
+  const f = fixture({onPublicProgressDiagnostic: value => diagnostics.push(value)}); f.controller.startDelegation("d1", "request");
+  f.calls[0].onProgress({kind: "commentary", text: "第一阶段已完成。"});
+  t.mock.timers.tick(2000);
+  f.calls[0].onProgress({kind: "commentary", text: "第二阶段已核对。"});
+  t.mock.timers.tick(2000);
+  f.calls[0].onProgress({kind: "commentary", text: "第三阶段已确认。"});
+  t.mock.timers.tick(10999);
+  assert.deepEqual(f.texts(), ["第一阶段已完成。"]);
   t.mock.timers.tick(1);
-  f.calls[0].onProgress({kind: "commentary", text: "第三阶段完成。"});
-  assert.deepEqual(f.frames.map(frame => frame.channel), ["speakable", "commentary", "speakable"]);
-  f.calls[0].resolve({text: "完成。"}); await settle();
+  assert.deepEqual(f.texts(), ["第一阶段已完成。", "第三阶段已确认。"]);
+  assert(f.frames.every(frame => frame.channel === "speakable"));
+  const sent = diagnostics.filter(value => value.stage === "context-append-sent");
+  assert.equal(sent.length, 2);
+  assert.equal(sent[1].at - sent[0].at, 15000);
+  f.calls[0].resolve({text: "全部完成。"}); await settle();
+});
+
+test("queued facts do not outlive cancellation, session detach or a superseding generation", async t => {
+  t.mock.timers.enable({apis: ["Date", "setTimeout"], now: 100000});
+  for (const action of ["cancel", "stop", "detach", "supersede"]) {
+    const f = fixture(); f.controller.startDelegation("old", "request");
+    const old = f.calls[0];
+    old.onProgress({kind: "commentary", text: "已核对第一项。"});
+    old.onProgress({kind: "commentary", text: "已核对第二项。"});
+    assert.equal(f.frames.length, 1);
+    if (action === "cancel") old.onCanceled(new Error("explicit caller cancellation"));
+    if (action === "stop") f.sessionAbort.abort(new Error("caller left"));
+    if (action === "detach") f.controller.detach();
+    if (action === "supersede") f.controller.startDelegation("new", "new request");
+    t.mock.timers.tick(30000);
+    assert.deepEqual(f.texts(), ["已核对第一项。"], action);
+    if (action === "detach") assert.equal(old.signal.aborted, false);
+    old.resolve({text: "old final"}); await settle();
+    if (action === "supersede") { f.calls[1].resolve({text:"new final"}); await settle(); }
+  }
+});
+
+test("setup metadata and waiting language cannot spend the first result speech slot", async () => {
+  const f = fixture(); f.controller.startDelegation("d1", "request");
+  for (const text of ["Read-only, no files written and nothing sent externally.", "Sub-task spawned; awaiting its completion.", "Let me check the records."])
+    f.calls[0].onProgress({kind: "commentary", text});
+  const fact = "The weather check completed: rain is expected this afternoon.";
+  f.calls[0].onProgress({kind: "commentary", text: fact});
+  assert.deepEqual(f.frames.map(frame => frame.channel), ["speakable"]);
+  assert.equal(f.texts().at(-1), fact);
+  f.calls[0].resolve({text: "完整结果。"}); await settle();
+});
+
+test("short natural public facts need no result keyword in either language", async () => {
+  for (const fact of ["林夏是你的同事，负责产品设计。", "OpenAI 文档建议保持麦克风输入连续。", "The library opens at nine on weekdays.", "Your colleague handles product design."]) {
+    const f = fixture(); f.controller.startDelegation("d1", "lookup");
+    f.calls[0].onProgress({kind:"commentary",text:"我先检查一下，稍等。"});
+    f.calls[0].onProgress({kind:"commentary",text:fact});
+    assert.deepEqual(f.frames.map(frame => frame.channel), ["speakable"], fact);
+    assert.equal(f.texts().at(-1), fact);
+    f.calls[0].resolve({text:"完整结果。"}); await settle();
+  }
+});
+
+test("a deferred send failure does not abort the running backend or change its final", async t => {
+  t.mock.timers.enable({apis: ["Date", "setTimeout"], now: 100000});
+  const f = fixture(); f.controller.startDelegation("d1", "request");
+  f.calls[0].onProgress({kind: "commentary", text: "已核对第一项。"});
+  f.calls[0].onProgress({kind: "commentary", text: "已核对第二项。"});
+  f.socket.failNextSend = true;
+  t.mock.timers.tick(15000);
+  assert.equal(f.calls[0].signal.aborted, false);
+  assert.equal(f.fatal.length, 0);
+  assert.match(f.warnings[0], /progress delivery failed/u);
+  f.calls[0].resolve({text: "第二项准确结果：来源甲为 1.25 EUR，来源乙为 9.50 EUR。"}); await settle();
+  assert.equal(f.texts().at(-1), "第二项准确结果：来源甲为 1.25 EUR，来源乙为 9.50 EUR。");
+});
+
+test("different source values retain their labels and bytes throughout the final wire parts", async () => {
+  const f = fixture(); f.controller.startDelegation("d1", "compare specified sources");
+  f.calls[0].onProgress({kind: "commentary", text: "第一次采样已核对：来源甲为 02:10:30 CST。"});
+  const final = "用户指定 sleep 后的来源乙：2026-10-03 02:10:38 CST。独立校验来源甲：2026-10-03 02:10:30 CST。两次采样不同，不可以互换。";
+  f.calls[0].resolve({text:final}); await settle();
+  const complete = f.frames.filter(frame => frame.content[0].text.startsWith("[BACKEND_FINAL"));
+  const body = complete.map(frame => frame.content[0].text.split("\n\n").slice(1).join("\n\n")).join("");
+  assert.equal(body, final, "The controller does not choose, recalculate or substitute either value");
+});
+
+test("a long public final retains Unicode and the requested result after the old 1800-character cutoff", async () => {
+  const diagnostics = [];
+  const f = fixture({onPublicProgressDiagnostic:value => diagnostics.push(value)}); f.controller.startDelegation("d1", "long comparison");
+  const final = "已核对的比较依据：😀𠮷，费用单位 CNY。\n".repeat(90) + "最后请求的关键结果：回程含税 790 CNY/人，全家总计 4140 CNY。";
+  assert(final.length > 1800);
+  assert(Buffer.byteLength(final, "utf8") < 16 * 1024);
+  f.calls[0].resolve({text:final}); await settle();
+  assert.equal(f.texts().join(""), final);
+  assert(f.frames.every(frame => Buffer.byteLength(frame.content[0].text, "utf8") <= 500));
+  assert(f.frames.at(-1).content[0].text.startsWith("[BACKEND_FINAL_COMPLETE "));
+  assert.equal(diagnostics.find(value => value.stage === "backend-final-received").textSha256, createHash("sha256").update(final).digest("hex"));
+  assert.equal(diagnostics.filter(value => value.role === "final_complete").length, 1);
+});
+
+test("the final delivery limit uses UTF-8 bytes and never marks a truncated oversized result complete", async () => {
+  for (const final of ["x".repeat(16 * 1024 + 1), "中".repeat(5500) + "末尾关键结果不得被截断。", "x".repeat(16 * 1024 - 3) + "😀"]) {
+    const diagnostics = [];
+    const f = fixture({onPublicProgressDiagnostic:value => diagnostics.push(value)}); f.controller.startDelegation("d1", "long request");
+    assert(Buffer.byteLength(final, "utf8") > 16 * 1024);
+    f.calls[0].resolve({text:final}); await settle();
+    assert.equal(diagnostics.find(value => value.stage === "backend-final-received").textSha256, createHash("sha256").update(final).digest("hex"));
+    assert.equal(diagnostics.filter(value => value.role === "final_complete").length, 0);
+    assert(f.frames.every(frame => frame.content[0].text.startsWith("[BACKEND_FAILURE ")));
+    assert.match(f.texts().join(""), /too long to deliver completely/u);
+    assert.doesNotMatch(f.texts().join(""), /\[truncated\]/u);
+  }
+  const f = fixture(); f.controller.startDelegation("limit", "exact limit");
+  const exactLimit = "x".repeat(16 * 1024 - 4) + "😀";
+  f.calls[0].resolve({text:exactLimit}); await settle();
+  assert.equal(f.texts().join(""), exactLimit);
+  assert(f.frames.at(-1).content[0].text.startsWith("[BACKEND_FINAL_COMPLETE "));
 });
 
 test("long streamed articles stay silent and final facts remain byte-exact", async () => {
   const f = fixture(); f.controller.startDelegation("d1", "request");
   const text = "完整数字2773、日期2026-10-03、时间00:00:00 CST。".repeat(8);
   f.calls[0].onProgress({kind: "commentary", text});
-  assert(f.frames.length > 1); assert(f.frames.every(frame => frame.channel === "commentary"));
-  assert.equal(f.texts().join(""), text);
+  assert.equal(f.frames.length, 0, "An ineligible article is not sent on a channel that can still cause speech");
   const count = f.frames.length;
   f.calls[0].resolve({text}); await settle();
   assert(f.frames.slice(count).every(frame => frame.channel === "speakable"));
@@ -509,6 +619,20 @@ test("waiting plans are quiet and do not delay the first verified fact", async (
   const f = fixture(); f.controller.startDelegation("d1", "request");
   for (const text of ["我在看相关文件，马上就好。", "我先核对一下，稍等。", "Let me check the records.", "已找到三个相关文件。"])
     f.calls[0].onProgress({kind: "commentary", text});
-  assert.deepEqual(f.frames.map(frame => frame.channel), ["commentary", "commentary", "commentary", "speakable"]);
+  assert.deepEqual(f.frames.map(frame => frame.channel), ["speakable"]);
   f.calls[0].resolve({text: "完成。"}); await settle();
+});
+
+test("actual child markdown fragments and next-step plans cannot enter or replace the fact queue", async t => {
+  t.mock.timers.enable({apis: ["Date", "setTimeout"], now: 100000});
+  const f = fixture(); f.controller.startDelegation("d1", "request");
+  f.calls[0].onProgress({kind: "commentary", text: "目录已确认。"});
+  f.calls[0].onProgress({kind: "commentary", text: "校验数为3968。"});
+  for (const text of ["— YES**", "**Raw results:**", "```\n3968\n```", "1. Working directory", "现在开始等四十五秒，然后读取完整的日期、时间和时区。", "下一步去查返回日期。", "Now wait forty-five seconds, then read the date."])
+    f.calls[0].onProgress({kind: "commentary", text});
+  assert.deepEqual(f.texts(), ["目录已确认。"]);
+  t.mock.timers.tick(15000);
+  assert.deepEqual(f.texts(), ["目录已确认。", "校验数为3968。"]);
+  assert(f.frames.every(frame => frame.channel === "speakable"));
+  f.calls[0].resolve({text: "校验数3968，完整结果已交付。"}); await settle();
 });

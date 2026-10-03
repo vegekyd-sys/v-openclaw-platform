@@ -86,7 +86,7 @@ function createGptLiveConsultProgressObserver({ onProgress, abortSignal, logger,
     },
     onAgentEvent: (event) => {
       const data = event?.data;
-      if (event?.stream !== "item" || data?.kind !== "preamble" || data.phase !== "update" && data.phase !== "end") return false;
+      if (event?.stream !== "item" || data?.kind !== "preamble" || data?.isReasoning === true || data.phase !== "update" && data.phase !== "end") return false;
       return observe(`preamble:${typeof data.itemId === "string" ? data.itemId : ""}`, data.progressText, data.phase === "end", data.itemId);
     },
     close: () => { closed = true; },

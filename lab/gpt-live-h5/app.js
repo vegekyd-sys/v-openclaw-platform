@@ -8,14 +8,82 @@ let call = null;
 let starting = null;
 let liveReady = false;
 const duplexRecoveryMessage = "上一段语音还没确认结束。若仍无声音，请结束通话后重新开始。";
+const playbackRecoveryMessage = "声音播放被暂停了，点一下页面恢复声音。";
 const presentation = createTranscriptPresentation();
 const renderedTurns = new Map();
 const tasks = new Set();
 const setStatus = (text) => { $("status").textContent = text; };
 function duplexDiagnostic(active, entry) {
   if (call !== active) return;
+  const counts = active.duplexDiagnostics.counts;
+  counts[entry.type] = (counts[entry.type] ?? 0) + 1;
+  if (entry.type === "activity-window") {
+    if (entry.remoteActive) counts.remoteActiveFrames = (counts.remoteActiveFrames ?? 0) + 1;
+    if (entry.appliedMuted) counts.appliedMutedFrames = (counts.appliedMutedFrames ?? 0) + 1;
+    if (entry.remoteActive && entry.appliedMuted) counts.remoteActiveWhileMutedFrames = (counts.remoteActiveWhileMutedFrames ?? 0) + 1;
+    active.duplexDiagnostics.latestActivity = entry;
+  } else {
+    active.duplexDiagnostics.transitions.push(entry);
+    if (active.duplexDiagnostics.transitions.length > 128) active.duplexDiagnostics.transitions.shift();
+  }
   active.duplexDiagnostics.events.push(entry);
   if (active.duplexDiagnostics.events.length > 1200) active.duplexDiagnostics.events.shift();
+}
+function playbackState(active) {
+  const audio = $("remoteAudio");
+  return { requestedMuted: active.duplex.snapshot().localPlaybackMuted,
+    appliedMuted: audio.muted, paused: audio.paused, volume: audio.volume,
+    readyState: audio.readyState, audioContextState: active.context?.state ?? "absent",
+    mode: active.duplex.snapshot().mode, interruptionOwner: active.duplex.snapshot().interruptionOwner };
+}
+function connectedStatus(active) {
+  if (active.playbackNeedsGesture) setStatus(playbackRecoveryMessage);
+  else if (active.duplexRecoveryNotice) setStatus(duplexRecoveryMessage);
+  else setStatus("V 正在听，直接说话就好");
+}
+async function startRemotePlayback(active, source) {
+  if (call !== active) return false;
+  const audio = $("remoteAudio");
+  // Invoke play in the gesture's synchronous stack; awaiting context.resume
+  // first can lose browser user activation. This does not unmute a local gate.
+  try {
+    const playing = audio.play();
+    await playing;
+    if (call !== active) return false;
+    active.playbackAudioBlocked = false;
+    active.playbackNeedsGesture = Boolean(active.playbackContextBlocked);
+    duplexDiagnostic(active, { type: "playback-started", at: performance.now(), source, ...playbackState(active) });
+    if (source === "gesture" || $("status").textContent === playbackRecoveryMessage) connectedStatus(active);
+    return true;
+  } catch (error) {
+    if (call !== active) return false;
+    active.playbackAudioBlocked = true;
+    active.playbackNeedsGesture = true;
+    duplexDiagnostic(active, { type: "playback-rejected", at: performance.now(), source,
+      errorName: error?.name ?? "Error", ...playbackState(active) });
+    setStatus(playbackRecoveryMessage);
+    return false;
+  }
+}
+async function recoverPlaybackGesture() {
+  const active = call;
+  if (!active || !$("remoteAudio").srcObject || !active.playbackNeedsGesture) return;
+  const playing = startRemotePlayback(active, "gesture");
+  try {
+    await active.context?.resume();
+    if (call !== active) return;
+    active.playbackContextBlocked = active.context?.state === "suspended";
+    active.playbackNeedsGesture = Boolean(active.playbackAudioBlocked || active.playbackContextBlocked);
+    duplexDiagnostic(active, { type: "context-resumed", at: performance.now(), source: "gesture", ...playbackState(active) });
+    if (!active.playbackNeedsGesture) connectedStatus(active);
+  } catch (error) {
+    if (call !== active) return;
+    active.playbackContextBlocked = true;
+    active.playbackNeedsGesture = true;
+    duplexDiagnostic(active, { type: "context-resume-rejected", at: performance.now(), source: "gesture", errorName: error?.name ?? "Error", ...playbackState(active) });
+    setStatus(playbackRecoveryMessage);
+  }
+  await playing;
 }
 async function api(route, payload) {
   const response = await fetch(`./api/${route}`, {
@@ -139,15 +207,18 @@ async function startCall() {
   void active.sounds.dial();
   // Activity metadata stays in this page's memory only. It contains no audio,
   // transcript, session identifiers or claim that the model was interrupted.
-  active.duplexDiagnostics = { kind: "local-playback-gate", closed: false, events: [] };
+  active.duplexDiagnostics = { kind: "duplex-playback", schemaVersion: 2, closed: false,
+    counts: {}, transitions: [], events: [] };
   globalThis.__gptLiveDuplexDiagnostics = active.duplexDiagnostics;
-  active.duplex = createH5DuplexPlaybackGate({ onGateChange: (entry) => {
+  active.duplex = createH5DuplexPlaybackGate({ mode: "native", onGateChange: (entry) => {
     if (call !== active) return;
     $("remoteAudio").muted = entry.localPlaybackMuted;
     duplexDiagnostic(active, { type: "local-playback-gate", at: entry.at,
       muted: entry.localPlaybackMuted, reason: entry.reason,
-      oldTurnTerminal: entry.oldTurnTerminal, outputDrained: entry.outputDrained });
+      oldTurnTerminal: entry.oldTurnTerminal, outputDrained: entry.outputDrained, ...playbackState(active) });
   } });
+  active.duplexDiagnostics.playbackMode = active.duplex.snapshot().mode;
+  active.duplexDiagnostics.interruptionOwner = active.duplex.snapshot().interruptionOwner;
   try {
     active.capture = await captureDuplexMicrophone({
       mediaDevices: navigator.mediaDevices, signal: active.captureAbort.signal,
@@ -172,10 +243,23 @@ async function startCall() {
     active.pc.ontrack = async (event) => {
       if (call !== active) return;
       const stream = new MediaStream([event.track]); $("remoteAudio").srcObject = stream;
-      try { await $("remoteAudio").play(); } catch { if (call === active) setStatus("请点一下页面，允许播放 V 的声音。"); }
+      await startRemotePlayback(active, "track");
       if (call !== active) return;
-      active.context = new AudioContext(); await active.context.resume();
+      active.context = new AudioContext();
+      try { await active.context.resume(); }
+      catch (error) {
+        if (call !== active) return;
+        active.playbackContextBlocked = true;
+        active.playbackNeedsGesture = true;
+        duplexDiagnostic(active, { type: "context-resume-rejected", at: performance.now(), source: "track", errorName: error?.name ?? "Error", ...playbackState(active) });
+        setStatus(playbackRecoveryMessage);
+      }
       if (call !== active) { await active.context.close().catch(() => {}); return; }
+      if (active.context.state !== "running") {
+        active.playbackContextBlocked = true;
+        active.playbackNeedsGesture = true;
+        setStatus(playbackRecoveryMessage);
+      }
       const analyser = active.context.createAnalyser(); analyser.fftSize = 1024;
       active.context.createMediaStreamSource(stream).connect(analyser);
       const microphoneAnalyser = active.context.createAnalyser(); microphoneAnalyser.fftSize = 1024;
@@ -192,17 +276,26 @@ async function startCall() {
         // This analyser reads the inbound stream before HTML playback muting,
         // so a local gate cannot manufacture evidence of a provider audio gap.
         const duplex = active.duplex.observe({ at, microphoneRms: microphoneEnergy, remoteRms: energy });
-        duplexDiagnostic(active, { type: "activity-window", at, microphoneVoiced: microphoneEnergy >= .02,
+        duplexDiagnostic(active, { type: "activity-window", at, microphoneRms: microphoneEnergy, remoteRms: energy,
+          microphoneAboveAttack: microphoneEnergy >= .02, microphoneAboveRelease: microphoneEnergy > .01,
+          microphoneVoiced: duplex.localUserSpeaking,
           remoteActive: energy > .008, muted: duplex.localPlaybackMuted,
-          oldTurnTerminal: duplex.oldTurnTerminal, outputDrained: duplex.outputDrained });
+          oldTurnTerminal: duplex.oldTurnTerminal, outputDrained: duplex.outputDrained, ...playbackState(active) });
+        if (energy > .008 && ($("remoteAudio").paused || active.context.state !== "running") && !active.playbackNeedsGesture) {
+          active.playbackNeedsGesture = true;
+          active.playbackAudioBlocked = $("remoteAudio").paused;
+          active.playbackContextBlocked = active.context.state !== "running";
+          duplexDiagnostic(active, { type: "playback-not-running", at, ...playbackState(active) });
+          setStatus(playbackRecoveryMessage);
+        }
         if (duplex.recoverySuggested && !active.duplexRecoveryNotice) {
           active.duplexRecoveryNotice = true;
           setStatus(duplexRecoveryMessage);
         } else if (!duplex.localPlaybackMuted && active.duplexRecoveryNotice) {
           active.duplexRecoveryNotice = false;
-          if ($("status").textContent === duplexRecoveryMessage) setStatus("V 正在听，直接说话就好");
+          if ($("status").textContent === duplexRecoveryMessage) connectedStatus(active);
         }
-        document.body.dataset.voiceState = energy > .008 && !duplex.localPlaybackMuted ? "speaking" : "listening";
+        document.body.dataset.voiceState = energy > .008 && !duplex.localPlaybackMuted && !active.playbackNeedsGesture ? "speaking" : "listening";
       }, 50);
     };
     active.pc.onconnectionstatechange = () => {
@@ -211,7 +304,7 @@ async function startCall() {
         document.body.dataset.callState = "connected";
         void active.sounds.connected();
         $("stopLabel").textContent = "结束通话";
-        $("badge").textContent = "通话中"; setStatus("V 正在听，直接说话就好");
+        $("badge").textContent = "通话中"; connectedStatus(active);
         $("start").hidden = true; $("stop").hidden = false;
         $("steerText").disabled = false; $("steer").disabled = false;
       } else if (["failed", "disconnected"].includes(active.pc.connectionState)) {
@@ -237,6 +330,10 @@ async function startCall() {
 }
 $("start").addEventListener("click", startCall);
 $("stop").addEventListener("click", () => void stopCall());
+// A tap anywhere can restore browser playback. Never gate/stop the microphone
+// or cancel accepted work while requesting this user gesture.
+window.addEventListener("pointerdown", () => void recoverPlaybackGesture());
+window.addEventListener("keydown", () => void recoverPlaybackGesture());
 $("steerForm").addEventListener("submit", async (event) => {
   event.preventDefault(); const text = $("steerText").value.trim(); if (!text || !call) return;
   const active = call;
