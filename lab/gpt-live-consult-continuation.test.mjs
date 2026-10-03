@@ -59,7 +59,7 @@ test("unchanged multi-child identities still return the one causal parent final"
   const f = setupTwoHarnessChildren(); f.complete("child-a").onAccepted({ runId: "parent-resumed" });
   const token = f.complete("child-b"); token.onAccepted({ runId: "parent-resumed" });
   token.finish({ meta: {}, payloads: [{ text: "Both accepted children verified; same parent final." }] });
-  assert.deepEqual(await f.owner.wait(), { text: "Both accepted children verified; same parent final." });
+  assert.equal((await f.owner.wait()).text, "Both accepted children verified; same parent final.");
   assert.equal(f.listeners.size, 0);
 });
 const fixtureRoot = new URL("./fixtures/gpt-live-continuation/", import.meta.url);
@@ -110,9 +110,15 @@ function setup({ generation = 1, delegationGeneration = 1 } = {}) {
     requesterSessionKey: params.sessionKey, requesterAgentId: "makaron", requesterTurnRunId: parentRunId, requesterYielded: true,
     acceptedSessionSpawns: entries.map((entry) => ({ runId: entry.taskRunId, childSessionKey: entry.childSessionKey })), runs, persistOrThrow, schedule: () => {},
   });
-  const emit = (runId, text, extra = {}) => listeners.get(runId)?.({ runId, lifecycleGeneration: generation, stream: "assistant", data: { text }, ...extra });
-  const wake = (entry = runs.get("child-a")) => registry.resolveWake({ requesterSessionKey: params.sessionKey, requesterAgentId: "makaron",
-    batchRunIds: entry.requesterSettleWake.batchRunIds, rearmGeneration: entry.requesterSettleWake.rearmGeneration });
+  const emit = (runId, text, extra = {}) => listeners.get(runId)?.({ runId, lifecycleGeneration: generation, stream: "item", data: { kind: "preamble", phase: "end", itemId: `${runId}-public`, progressText: text }, ...extra });
+  const wake = (entry = runs.get("child-a")) => {
+    // A real registry wake is scheduled only after this batch's children ended.
+    for (const id of entry.requesterSettleWake.batchRunIds) {
+      const child = runs.get(id); child.execution = { ...child.execution, status: "terminal", endedAt: Date.now() };
+    }
+    return registry.resolveWake({ requesterSessionKey: params.sessionKey, requesterAgentId: "makaron",
+      batchRunIds: entry.requesterSettleWake.batchRunIds, rearmGeneration: entry.requesterSettleWake.rearmGeneration });
+  };
   return { registry, owner, params, caller, progress, runs, attach, settleTurn, emit, wake, listeners, cleanups, cancellations, resumeExecutions,
     replaceOwner: () => { current = false; }, rotate: () => { liveGeneration++; rotate(); } };
 }
@@ -211,7 +217,7 @@ test("captured registry → actual wake → delivery holds yield open and return
   assert(f.progress.some((value) => value.provenance.runId === "parent-resumed-a" && value.text.includes("2026-10-02")));
   release({ status: "ok", runId: "parent-resumed-a", result: { payloads: [{ text: "7264 / 2026-10-02 / 20:10:59 / UTC+08:00" }], meta: {} } });
   assert.equal(await waking, true);
-  assert.deepEqual(await pending, { text: "7264 / 2026-10-02 / 20:10:59 / UTC+08:00" });
+  assert.equal((await pending).text, "7264 / 2026-10-02 / 20:10:59 / UTC+08:00");
   assert.equal(f.listeners.size, 0); assert.deepEqual(f.cleanups.sort(), ["initial", "parent-resumed-a"]);
 });
 
@@ -222,7 +228,7 @@ test("next parent yield binds another accepted batch and does not treat its ackn
   first.finish({ meta: { yielded: true, yieldAcknowledgment: "还在验证第二阶段。" }, payloads: [{ text: "第二阶段已交办" }] });
   let done = false; f.owner.wait().then(() => { done = true; }); await tick(); assert.equal(done, false);
   const next = f.wake(secondChild); next.onAccepted({ runId: "resume-b" }); next.finish({ meta: {}, payloads: [{ text: "两个阶段已全部验证。" }] });
-  assert.deepEqual(await f.owner.wait(), { text: "两个阶段已全部验证。" });
+  assert.equal((await f.owner.wait()).text, "两个阶段已全部验证。");
 });
 
 test("actual Worker host SDK completion direct path binds scope + accepted child receipts before yield and returns to the same voice", async () => {
@@ -271,7 +277,7 @@ test("actual Worker host SDK completion direct path binds scope + accepted child
   assert(f.progress.some((value) => value.provenance.runId === "worker-parent-resumed" && value.text.includes("4928")));
   finish({ status: "ok", result: { payloads: [{ text: "4928 / 2026 / 10 / 2 / 20 / 43 / 43" }], meta: {} } });
   assert.equal((await pendingDelivery).delivered, true);
-  assert.deepEqual(await f.owner.wait(), { text: "4928 / 2026 / 10 / 2 / 20 / 43 / 43" });
+  assert.equal((await f.owner.wait()).text, "4928 / 2026 / 10 / 2 / 20 / 43 / 43");
   assert.equal(f.progress.some((value) => value.text.includes("PRIVATE")), false);
   await assert.rejects(deliver({ scope, requesterTurnRunId: "parent-a", childRunId: "worker-child-run", childSessionKey, childSessionId,
     status: "succeeded", result: "duplicate final" }), /already settled/);
@@ -329,7 +335,7 @@ test("actual patched harness releases turn admission after yield while keeping v
       assert.equal(observations.canceled, 1);
     } else {
       token.onAccepted({ runId: "resumed" }); token.finish({ meta: {}, payloads: [{ text: "真正最终结果。" }] });
-      assert.deepEqual(await pending, { text: "真正最终结果。" });
+      assert.equal((await pending).text, "真正最终结果。");
       assert.equal(observations.canceled, 0);
     }
     assert.equal(observations.cleanup, 1);
@@ -379,7 +385,7 @@ test("owner replacement, gateway rotation and repeated accepted run are fenced",
   const token = f.wake(); token.onAccepted({ runId: "resume-a" }); token.onAccepted({ runId: "resume-a" });
   assert.equal(f.listeners.size, 2); assert.throws(() => token.onAccepted({ runId: "different-replay" }), /different replay run/);
   token.finish({ meta: {}, payloads: [{ text: "唯一结果。" }] }); token.finish({ meta: {}, payloads: [{ text: "重复结果。" }] });
-  assert.deepEqual(await f.owner.wait(), { text: "唯一结果。" });
+  assert.equal((await f.owner.wait()).text, "唯一结果。");
   assert.throws(() => f.registry.createOwner(f.params), /Repeated or stale/);
 });
 
@@ -394,10 +400,10 @@ test("registry persistence rollback creates no voice wake binding; missing accep
 test("provenance is created at public emission, monotonic per actual run, and excludes supplied metadata", () => {
   const emitted = []; const before = Date.now();
   const observer = createGptLiveConsultProgressObserver({ runId: "real-parent-run", onProgress: (value) => emitted.push(value) });
-  observer.onPartialReply({ text: "等待的事实尚未完整", itemId: "public-item", emittedAt: 1, secret: "private" });
+  observer.onPartialReply({ phase: "commentary", text: "等待的事实尚未完整", itemId: "public-item", emittedAt: 1, secret: "private" });
   assert.equal(emitted.length, 0);
-  observer.onPartialReply({ text: "等待的事实尚未完整。第二句还没", itemId: "public-item", emittedAt: 1, secret: "private" });
-  observer.onPartialReply({ text: "等待的事实尚未完整。第二句还没结束。", itemId: "public-item" });
+  observer.onPartialReply({ phase: "commentary", text: "等待的事实尚未完整。第二句还没", itemId: "public-item", emittedAt: 1, secret: "private" });
+  observer.onPartialReply({ phase: "commentary", text: "等待的事实尚未完整。第二句还没结束。", itemId: "public-item" });
   const after = Date.now();
   assert.deepEqual(emitted.map((value) => value.provenance.sequence), [1, 2]);
   for (const { provenance } of emitted) {
@@ -526,7 +532,7 @@ test("captured stale-first Talk selector fails while trusted status, steer and f
   assert.equal(queued.length, 2); assert(queued.every((input) => input.sessionId === f.params.sessionId));
   assert.match(queued[1].text, /Spoken follow-up/); assert.match(queued[1].text, /compare both dates/);
   assert.equal(f.cancellations.length, 0); wake.finish({ meta: {}, payloads: [{ text: "Corrected final." }] });
-  assert.deepEqual(await f.owner.wait(), { text: "Corrected final." });
+  assert.equal((await f.owner.wait()).text, "Corrected final.");
 });
 
 test("yield-gap conditions stay on the exact owner and enter the actual captured resume prompt, not any child or new task", async () => {
@@ -553,7 +559,7 @@ test("yield-gap conditions stay on the exact owner and enter the actual captured
   });
   await run({ voiceContinuation: voice, agentParams: { sessionKey: f.params.sessionKey, message: "Original safe child completion text" },
     getRequesterSessionId: () => f.params.sessionId, isExecutionAllowed: () => true, expectFinal: true, timeoutMs: 1000 });
-  assert.equal(dispatched, 1); assert.equal(queued.length, 0); assert.deepEqual(await f.owner.wait(), { text: "Corrected dates and prices." });
+  assert.equal(dispatched, 1); assert.equal(queued.length, 0); assert.equal((await f.owner.wait()).text, "Corrected dates and prices.");
   assert.deepEqual(f.resumeExecutions, [{ runId: 'real-resumed-parent', steeringConsumed: { sequence: 2, count: 2,
     textSha256: createHash('sha256').update(JSON.stringify(['Change the outbound date to October 8', 'Then compare the return prices'])).digest('hex') } }]);
 });
@@ -604,7 +610,7 @@ test("captured execution authorization rejects before pending condition consumpt
     getRequesterSessionId: () => f.params.sessionId, isExecutionAllowed: () => allowed, timeoutMs: 1000 };
   await assert.rejects(run(params)); assert.equal(starts, 0); assert.equal(f.resumeExecutions.length, 0);
   allowed = true; await run(params);
-  assert.equal(starts, 1); assert.deepEqual(await f.owner.wait(), { text: 'Condition preserved in legitimate resumed input.' });
+  assert.equal(starts, 1); assert.equal((await f.owner.wait()).text, 'Condition preserved in legitimate resumed input.');
   assert.equal(f.resumeExecutions.length, 1); assert.equal(f.resumeExecutions[0].steeringConsumed.count, 1);
 });
 
@@ -727,6 +733,7 @@ test("nested child continuation preserves its own requester input and never cons
   f.runs.set(grandchild.runId, grandchild); f.registry.attachAcceptedChild({ entry: grandchild, getCurrentEntry: (id) => f.runs.get(id) });
   f.registry.bindYieldBatch({ requesterSessionKey: child.childSessionKey, requesterAgentId: 'makaron', requesterTurnRunId: child.runId,
     batchRunIds: [grandchild.runId], rearmGeneration: 1, requesterYielded: true });
+  grandchild.execution = { ...grandchild.execution, status: 'terminal', endedAt: Date.now() };
   const nested = f.registry.resolveWake({ requesterSessionKey: child.childSessionKey, requesterAgentId: 'makaron',
     batchRunIds: [grandchild.runId], rearmGeneration: 1 });
   assert.throws(() => nested.prepareResumeInput({ sessionKey: f.params.sessionKey, message: 'Cannot cross requester identity' }), /does not own its batch/);
@@ -740,7 +747,7 @@ test("nested child continuation preserves its own requester input and never cons
   parent.onAccepted({ runId: 'real-resumed-parent' }); parent.onExecutionStarted();
   assert.equal(f.resumeExecutions.length, 1); assert.equal(f.resumeExecutions[0].runId, 'real-resumed-parent');
   parent.finish({ meta: {}, payloads: [{ text: 'Original parent applied complete task correction' }] });
-  assert.deepEqual(await f.owner.wait(), { text: 'Original parent applied complete task correction' });
+  assert.equal((await f.owner.wait()).text, 'Original parent applied complete task correction');
 });
 
 test("trusted control uses the actual registration signal fallback and fails closed for two current parents", async () => {
@@ -782,7 +789,7 @@ test("rejected and unresolved exact aborts stay failed and do not revoke a valid
     const f = setup(); const result = await actualCancel(f, active).run();
     assert.equal(result.ok, false); assert.equal(result.aborted, false); assert.equal(result.reason, "owned_cancel_incomplete");
     assert.equal(f.cancellations.length, 0); assert.equal(f.owner.isCurrent(), true);
-    f.owner.finishInitial({ meta: {}, payloads: [{ text: "仍可正常完成。" }] }); assert.deepEqual(await f.owner.wait(), { text: "仍可正常完成。" });
+    f.owner.finishInitial({ meta: {}, payloads: [{ text: "仍可正常完成。" }] }); assert.equal((await f.owner.wait()).text, "仍可正常完成。");
   }
 });
 
@@ -811,9 +818,13 @@ test("causal cancel rejects wrong connection, unowned run, ambiguous voice and r
   const second = f.registry.createOwner({ ...f.params, runId: "other-parent", continuationContext: { ...f.params.continuationContext, voiceSessionId: "other-voice" } });
   await assert.rejects(cancel.run(), /ambiguous/);
   second.abort(new Error("test cleanup")); await assert.rejects(second.wait());
-  const newer = f.registry.createOwner({ ...f.params, runId: "new-parent", continuationContext: { ...f.params.continuationContext,
-    identity: { delegationItemId: "new-delegate", delegationGeneration: 2 } } });
-  await assert.rejects(f.owner.wait(), /superseded/); assert.equal(f.cancellations.length, 0);
+  const nextParams = { ...f.params, runId: "new-parent", continuationContext: { ...f.params.continuationContext,
+    identity: { delegationItemId: "new-delegate", delegationGeneration: 2 } } };
+  assert.throws(() => f.registry.createOwner(nextParams), /still active; queue/);
+  assert.equal(f.owner.isCurrent(), true); assert.equal(f.cancellations.length, 0);
+  f.owner.finishInitial({ meta: {}, payloads: [{ text: "Original task survived the overlapping speech turn." }] });
+  assert.equal((await f.owner.wait()).text, "Original task survived the overlapping speech turn.");
+  const newer = f.registry.createOwner(nextParams);
   await assert.rejects(f.owner.cancelOwnedRuns(() => { throw new Error("must not run"); }), /no longer current/);
   newer.abort(new Error("test cleanup")); await assert.rejects(newer.wait());
 });
@@ -864,4 +875,41 @@ test("captured byte checks, strict patch drift checks and idempotent transforms 
     const source = readFileSync(new URL(name === "Harness" ? "realtime-session-harness-CEO5kVAJ.js" : "talk-DkFuKRod.js", root), "utf8");
     const apply = patches[`patchGptLiveContinuation${name}`]; const patched = apply(applyProgress(source)); assert.equal(apply(patched), patched);
   }
+});
+
+
+test("canonical final carries the actual accepted terminal parent run, never supplied result metadata", async () => {
+  const initial = setup();
+  initial.owner.finishInitial({ meta: { runId: "forged-run" }, payloads: [{ text: "Verified original final." }] });
+  assert.deepEqual(await initial.owner.wait(), { text: "Verified original final.", provenance: {
+    runId: "parent-a", ownerRunId: "parent-a", source: "canonical_final", role: "initial" } });
+  const resumed = setup(); resumed.attach(); resumed.settleTurn();
+  resumed.owner.finishInitial({ meta: { yielded: true }, payloads: [] });
+  const token = resumed.wake(); token.onAccepted({ runId: "actual-accepted-resume" });
+  token.finish({ meta: { runId: "different-result-label" }, payloads: [{ text: "Verified continued final." }] });
+  assert.deepEqual(await resumed.owner.wait(), { text: "Verified continued final.", provenance: {
+    runId: "actual-accepted-resume", ownerRunId: "parent-a", source: "canonical_final", role: "parent" } });
+});
+
+test("unclassified or final parent text cannot trigger early progress but canonical completion remains available", async () => {
+  const f = setup(); f.attach(); f.settleTurn(); f.owner.finishInitial({ meta: { yielded: true }, payloads: [] });
+  const token = f.wake(); token.onAccepted({ runId: "accepted-parent" });
+  for (const phase of [undefined, "final", "final_answer"]) {
+    f.emit("accepted-parent", "全部完成。", { stream: "assistant", data: { text: "全部完成。", phase } });
+  }
+  assert.equal(f.progress.length, 0);
+  f.emit("child-a", "四位码已核验为 5731。");
+  assert.equal(f.progress.length, 1); assert.equal(f.progress[0].provenance.runId, "child-a");
+  token.finish({ meta: {}, payloads: [{ text: "All requested facts verified; final complete." }] });
+  assert.equal((await f.owner.wait()).text, "All requested facts verified; final complete.");
+});
+
+
+test("a nonyield parent cannot label ongoing accepted child work as a complete final or cancel that child", async () => {
+  const f = setup(); const child = f.attach();
+  const failure = assert.rejects(f.owner.wait(), /accepted child tasks completed/);
+  f.owner.finishInitial({ meta: {}, payloads: [{ text: "Child accepted; still running." }] }); await failure;
+  assert.equal(child.execution.status, "running"); assert.equal(child.killIntent, undefined);
+  assert.equal(f.cancellations.length, 0); assert.equal(f.owner.isCurrent(), false);
+  assert.equal(f.listeners.size, 0);
 });

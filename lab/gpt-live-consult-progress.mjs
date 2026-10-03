@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-/** Observe only public assistant replies. Provider ownership decides how to speak them. */
+/** Observe only classified public progress. Final answers retain their canonical owner. */
 export function createGptLiveConsultProgressObserver({ onProgress, abortSignal, logger, runId }) {
   let closed = false;
   let sequence = 0;
@@ -80,14 +80,15 @@ export function createGptLiveConsultProgressObserver({ onProgress, abortSignal, 
   };
   return {
     onPartialReply: (payload) => {
-      if (payload?.isReasoning) return false;
-      // Native streaming omits itemId; builtin completion reconciliation adds
-      // one for the same cumulative reply. Keep their progress cursor shared.
+      // An unfinished or unphased assistant answer is not a progress fact.
+      // Native late phase reconciliation reaches onAgentEvent as a preamble;
+      // final/legacy text remains available through the canonical final path.
+      if (payload?.isReasoning || payload?.phase !== "commentary") return false;
       return observe("reply", payload?.text, false, payload?.itemId);
     },
     onAgentEvent: (event) => {
       const data = event?.data;
-      if (event?.stream !== "item" || data?.kind !== "preamble" || data?.isReasoning === true || data.phase !== "update" && data.phase !== "end") return false;
+      if (event?.stream !== "item" || data?.kind !== "preamble" || data?.isReasoning || data.phase !== "update" && data.phase !== "end") return false;
       return observe(`preamble:${typeof data.itemId === "string" ? data.itemId : ""}`, data.progressText, data.phase === "end", data.itemId);
     },
     close: () => { closed = true; },
@@ -118,8 +119,8 @@ export const GPT_LIVE_CONSULT_PROGRESS_HARNESS_ANCHORS = [
       '\t\t"Use final-answer output only when all requested outputs have been verified, or when a specific genuine blocker, explicit cancellation, or limit prevents completion. Before final, check the complete goal against what you actually verified; identify any missing outputs and the concrete blocker honestly. A result for one step and a promise to do the next step are not completion. If work is still running in accepted child tasks, use the actual supported yield/continuation mechanism rather than a final answer; never invent a child, yield, active state, or result.",',
       '\t\t"Public stage updates should report new verified facts only, at most one short fact per 15 seconds; the caller requesting progress does not require continuous waiting speech. Do not expose private reasoning, raw tool output, or repeated plans. Preserve final values and report missing evidence explicitly.",',
       '\t\t"Final result selection: Return the requested outputs in the user language, as concise labeled conclusions grounded in their actual tool results. Preserve the association between each requested output and its source command, query, date, party, currency, and unit. If multiple checks produced different values, keep them distinct; a later or more readable value is not permission to replace the specified source result. For an exact command result, report that command\'s exact returned value, not a nearby verification command or a separate time sample. For comparisons, compare like-for-like inputs and explicitly identify unmatched samples. Do not include unrelated raw outputs, epoch values, session identifiers, or execution metadata unless the user asked for them. If the requested source is missing or inconsistent, state that limitation instead of choosing another sample.",',
-      '\t\t"实名归属：涉及多个人的职责和关系时，结果按“姓名或源结果中的明确角色：该主体的职责；与另一实名主体的关系”逐项输出，每项对应源结果中的实际主体。不要用‘你/他们’替代已知姓名或角色，也不要把一个主体的职责或关系移给另一个主体。主体或关系无法确认就标为未核实；不因其他步骤完成而补齐此事实。",',
-      '\t\t"Source verification: Search summaries, synthesized search answers, snippets, and their citation lists are discovery leads, not verified primary-source content. For official documentation, current API behavior, or best practices, actually fetch and read the relevant primary pages before stating their claims. Check the exact product, version, transport, event name, and configuration hierarchy; do not treat an SDK convenience event as a wire event or apply one transport\'s behavior to every transport. GPT Live and Realtime are distinct interfaces; do not infer available GPT Live controls from Realtime documentation. If the primary content cannot be obtained or does not support the claim, say what remains unverified rather than presenting the search synthesis as official guidance.",',
+      '\t\t"实名归属：涉及多个人的职责和关系时，结果按“姓名或源结果中的明确角色：该主体的职责；与另一实名主体的关系”逐项输出，每项对应源结果中的实际主体。不要用‘你/他们’替代已知姓名或角色，也不要把一个主体的职责或关系移给另一个主体。源卡只说明一个人的组织或职责，不代表已证实其与提问者或另一个人的关系；缺少明确关系证据时，按授权范围扩展检索，仍无证据则标为未核实，推断必须明示为推断。主体或关系无法确认就标为未核实；不因其他步骤完成而补齐此事实。",',
+      '\t\t"Source verification: Search summaries, synthesized search answers, snippets, and their citation lists are discovery leads, not verified primary-source content. For official documentation, current API behavior, or best practices, actually fetch and read the relevant primary pages before stating their claims. Check the exact product, version, transport, event name, and configuration hierarchy; do not treat an SDK convenience event as a wire event or apply one transport\'s behavior to every transport. Preserve the source\'s product and model applicability, only/except conditions, exact versions and units; a scoped claim is not evidence for every model or mode. GPT Live and Realtime are distinct interfaces; do not infer available GPT Live controls from Realtime documentation. If the primary content cannot be obtained or does not support the claim, say what remains unverified rather than presenting the search synthesis as official guidance.",',
       '\t\t"When finished, return only the concise result the realtime voice agent should speak back.",',
     ].join("\n"),
   },

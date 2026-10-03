@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {indexNativeToolPairs,mergeExactToolBodies,extractExecDateFromPairs,continuousPlaybackQuiet,explicitSpokenOffsets,resolveNativeControlOwner,toolResultSucceeded,isExactTwoPlusTwoReply,nativeCountRequestsEighty,matchesConsumedConditionBatch,extractQueuedConditionResume} from './evidence.mjs';
+import {indexNativeToolPairs,mergeExactToolBodies,mergeSessionToolEvidence,selectCommandLocalTimestamp,extractExecDateFromPairs,continuousPlaybackQuiet,explicitSpokenOffsets,resolveNativeControlOwner,resolveCanonicalFinalTrace,toolResultSucceeded,isExactTwoPlusTwoReply,nativeCountRequestsEighty,assessIndependentInputConvergence,matchesConsumedConditionBatch,extractQueuedConditionResume} from './evidence.mjs';
 import {assessControlExecPending} from '../gpt-live-h5-control-evidence.mjs';
 
 test('actual child envelopes keep source and observer clocks and exact identity',()=>{
@@ -88,10 +88,86 @@ test('tool transport success cannot hide a structured spawn or yield failure',()
 });
 
 test('actual native math sentence can include a follow-up without accepting uncertainty or counting',()=>{
-  for(const text of ['四。你要我顺便把数数也开始吗?','二加二等于四。','答案是4。','四'])
+  for(const text of ['四。你要我顺便把数数也开始吗?','二加二等于四。','答案是4。','四',
+    '会告诉你结果。好的,我停下不数了,后台任务会继续跑。四。'])
     assert.equal(isExactTwoPlusTwoReply(text),true,text);
-  for(const text of ['不是四。','可能四。','四？','一、二、三、四。','四、五、六。','四。不是四，刚才错了。','四。可能不对。','四。还是五？'])
+  for(const text of ['不是四。','可能四。','四？','一、二、三、四。','四、五、六。','一。二。三。四。',
+    '四。不是四，刚才错了。','四。可能不对。','四。还是五？','四。答案是五。','四。其实是五。','先停下。二加二不等于四。'])
     assert.equal(isExactTwoPlusTwoReply(text),false,text);
+});
+
+test('parent body joins preserve actual result-before-web clocks, not generation timestamps',()=>{
+  const event=(id,name,phase,ts,extra={})=>({event:'session.tool',at:ts+50,
+    payload:{runId:'parent-run',sessionKey:'parent-key',stream:'tool',ts,seq:ts,data:{toolCallId:id,name,phase,...extra}}});
+  const events=[event('memory','memory_search','start',1000,{args:{query:'Example'}}),
+    event('memory','memory_search','result',2000,{isError:false,result:{content:[{type:'text',text:'redacted'}]}}),
+    event('web','web_search','start',2500,{args:{query:'Official docs'}}),
+    event('web','web_search','result',3000,{isError:false,result:{content:[{type:'text',text:'redacted'}]}})];
+  const body=(id,name,calledAt,resultAt,text)=>({id,name,calledAt,args:{query:'Original complete query'},
+    results:[{at:resultAt,isError:false,text}]});
+  const pairs=mergeSessionToolEvidence(events,[body('memory','memory_search',500,3500,'Original memory result'),
+    body('web','web_search',500,3600,'Original official source result')],'parent-key');
+  assert.equal(pairs.length,2);assert.equal(pairs[0].results[0].text,'Original memory result');
+  assert.equal(pairs[0].results[0].at,2000);assert.equal(pairs[1].calledAt,2500);
+  assert.equal(pairs[0].results[0].persistedAt,3500);assert.equal(pairs[1].sourceExecutionTimingVerified,true);
+  const missing=mergeSessionToolEvidence([], [body('memory','memory_search',500,3500,'Original memory result')],'parent-key');
+  assert.equal(missing[0].calledAt,null);assert.equal(missing[0].results[0].at,null);assert.equal(missing[0].sourceExecutionTimingVerified,false);
+  const neighbor=events.map(e=>({...e,payload:{...e.payload,runId:'neighbor'}}));
+  const ambiguous=mergeSessionToolEvidence([...events,...neighbor],[body('memory','memory_search',500,3500,'Must not bind')],'parent-key');
+  assert.equal(ambiguous.find(p=>p.runId===null).sourceExecutionTimingVerified,false);
+});
+
+test('the designated same-child local date is selected from multi-clock command output',()=>{
+  const output='Sat Oct 3 18:40:35 CST 2026\n---\n2026-10-03 18:40:35 CST +0800\n---\n'+
+    'Local time: Sat 2026-10-03 18:40:35 CST\nUniversal time: Sat 2026-10-03 10:40:35 UTC\nRTC time: Sat 2026-10-03 10:40:36';
+  const selected=selectCommandLocalTimestamp(output);
+  assert.equal(selected.fields.hour,18);assert.equal(selected.offsetMinutes,480);
+  assert.equal(selected.originalLine,'2026-10-03 18:40:35 CST +0800');
+  assert.equal(selectCommandLocalTimestamp(output+'\n2026-10-03 18:40:36 CST +0800'),null);
+  const wait={id:'wait',name:'exec',runId:'child',sessionKey:'child-key',sourceExecutionTimingVerified:true,
+    calledAt:1000,args:{command:'sleep 75; echo done'},results:[{at:76001,isError:false,text:'done',details:{status:'completed',exitCode:0}}]};
+  const date={id:'date',name:'exec',runId:'child',sessionKey:'child-key',sourceExecutionTimingVerified:true,
+    calledAt:76200,args:{command:'date; date +"%Y-%m-%d %H:%M:%S %Z %z"; timedatectl'},
+    results:[{at:76300,isError:false,text:output,details:{status:'completed',exitCode:0}}]};
+  const proof=extractExecDateFromPairs([wait,date],75);
+  assert.equal(proof.execCallId,'date');assert.equal(proof.selectedDateOutputLine,selected.originalLine);
+  assert.equal(extractExecDateFromPairs([wait,{...date,runId:'parent'}],75),null);
+});
+
+test('canonical final joins the actual terminal callback and every chunk to the same native owner',()=>{
+  const initial='a'.repeat(64),resume='b'.repeat(64),owner={traceId:'trace',delegationId:'native-item',generation:2,sourceRunIdSha256:initial};
+  const base={traceId:owner.traceId,delegationId:owner.delegationId,generation:owner.generation,sourceRunIdSha256:resume};
+  const provenance={source:'canonical_final',role:'resume'};
+  const started={...base,stage:'backend-run-started',at:100};
+  const received={...base,stage:'backend-final-received',kind:'final',at:200,ownerRunIdSha256:initial,provenance,textSha256:'c'.repeat(64)};
+  const chunk={...base,stage:'context-append-sent',kind:'final',at:220,ownerRunIdSha256:initial,provenance,appendId:'append',chunkCount:2,chunkIndex:0,role:'final_part'};
+  const final={...chunk,at:230,chunkIndex:1,role:'final_complete'};
+  const rows=[started,received,chunk,final];
+  assert.equal(resolveCanonicalFinalTrace(rows,owner,resume).received,received);
+  for(const changed of [{sourceRunIdSha256:null,provenance:{...provenance,sourceRunIdSha256:resume}},
+    {ownerRunIdSha256:'d'.repeat(64)},{generation:3},{provenance:{source:'commentary'}},{at:null}])
+    assert.equal(resolveCanonicalFinalTrace([started,{...received,...changed},chunk,final],owner),null);
+  assert.equal(resolveCanonicalFinalTrace([received,chunk,final],owner),null);
+  assert.equal(resolveCanonicalFinalTrace([started,received,final],owner),null);
+  assert.equal(resolveCanonicalFinalTrace([started,received,{...chunk,chunkIndex:3},final],owner),null);
+  assert.equal(resolveCanonicalFinalTrace(rows,owner,'d'.repeat(64)),null);
+});
+
+test('independent PCM inputs wait for native completion after actual speech, not a fixed pause',()=>{
+  const input={startedAt:1000,completedAt:2000,exitCode:0};
+  const events=[{pcIndex:0,type:'turn.done',role:'user',turnId:'first',at:2100}];
+  const micFrames=Array.from({length:8},(_,i)=>({pcIndex:0,at:2000+i*50,rms:.001,trackState:'live',trackEnabled:true,trackId:'mic',senderTrackId:'mic'}));
+  const params={input,events,micFrames,lastSpeechAt:1900,observedAt:2370};
+  assert.equal(assessIndependentInputConvergence(params).turnId,'first');
+  assert.equal(assessIndependentInputConvergence({...params,input:{...input,completedAt:null}}),null);
+  assert.equal(assessIndependentInputConvergence({...params,events:[]}),null);
+  assert.equal(assessIndependentInputConvergence({...params,events:[{...events[0],at:1800}]}),null);
+  assert.equal(assessIndependentInputConvergence({...params,events:[...events,{pcIndex:0,type:'input_transcript.added',at:2150,text:'remaining tail'}]}),null);
+  assert.equal(assessIndependentInputConvergence({...params,events:[...events,{pcIndex:0,type:'turn.created',role:'user',turnId:'tail',at:2150}]}),null);
+  assert.equal(assessIndependentInputConvergence({...params,observedAt:2600}),null);
+  for(const changed of [{rms:.01},{trackEnabled:false},{senderTrackId:null}])
+    assert.equal(assessIndependentInputConvergence({...params,micFrames:micFrames.map((frame,i)=>i===4?{...frame,...changed}:frame)}),null);
+  assert.equal(assessIndependentInputConvergence({...params,micFrames:micFrames.filter((_,i)=>i<3||i>5)}),null);
 });
 
 test('truncated count proof first requires the native user to request eighty, never ten',()=>{

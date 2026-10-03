@@ -203,6 +203,8 @@ test("actual backend prompt preserves named source subjects and the exact final 
   assert.match(capturedPrompt, /不要用‘你\/他们’替代已知姓名或角色/);
   assert.match(capturedPrompt, /不要把一个主体的职责或关系移给另一个主体/);
   assert.match(capturedPrompt, /主体或关系无法确认就标为未核实/);
+  assert.match(capturedPrompt, /源卡只说明一个人的组织或职责，不代表已证实其与提问者或另一个人的关系/);
+  assert.match(capturedPrompt, /按授权范围扩展检索，仍无证据则标为未核实，推断必须明示为推断/);
 });
 
 test("execution and subject checks remain conditional and preserve authorization, exact-value, and primary-source boundaries", () => {
@@ -216,6 +218,8 @@ test("execution and subject checks remain conditional and preserve authorization
   assert.match(prompt, /that command's exact returned value, not a nearby verification command or a separate time sample/);
   assert.match(prompt, /actually fetch and read the relevant primary pages/);
   assert.match(prompt, /GPT Live and Realtime are distinct interfaces/);
+  assert.match(prompt, /Preserve the source's product and model applicability, only\/except conditions, exact versions and units/);
+  assert.match(prompt, /a scoped claim is not evidence for every model or mode/);
   assert.match(prompt, /at most one short fact per 15 seconds/);
   assert.match(prompt, /Use final-answer output only when all requested outputs have been verified/);
   assert.match(prompt, /If work is still running in accepted child tasks, use the actual supported yield\/continuation mechanism/);
@@ -237,13 +241,13 @@ test("consult forwards complete public facts before final and leaves unfinished 
   });
   const pending = runtime.run();
   await nextTick();
-  partial({ text: "  正在查看今天的安排  " });
-  partial({ text: "正在查看今天的安排" });
-  partial({ text: "" });
-  partial({ text: "  " });
-  partial({ text: "我已经找到了" });
-  partial({ text: "我已经找到了三个相关文件。后面还有" });
-  partial({ text: "内部推理。", isReasoning: true });
+  partial({ phase: "commentary", text: "  正在查看今天的安排  " });
+  partial({ phase: "commentary", text: "正在查看今天的安排" });
+  partial({ phase: "commentary", text: "" });
+  partial({ phase: "commentary", text: "  " });
+  partial({ phase: "commentary", text: "我已经找到了" });
+  partial({ phase: "commentary", text: "我已经找到了三个相关文件。后面还有" });
+  partial({ phase: "commentary", text: "内部推理。", isReasoning: true });
   partial({ delta: "不是完整公开 payload" });
   assert.deepEqual(progress.map(({ text, kind }) => ({ text, kind })), [
     { text: "我已经找到了三个相关文件。", kind: "commentary" },
@@ -254,11 +258,35 @@ test("consult forwards complete public facts before final and leaves unfinished 
   assert.equal(typeof progress[0].provenance.emittedAt, "number");
   finish({ payloads: [{ text: "最后的结果。" }] });
   assert.deepEqual(await pending, { text: "最后的结果。" });
-  partial({ text: "完成后的迟到输出。" });
+  partial({ phase: "commentary", text: "完成后的迟到输出。" });
   agentEvent({ stream: "item", data: { kind: "preamble", phase: "update", progressText: "完成后的迟到播报。" } });
   assert.equal(progress.length, 1);
   assert.equal(runtime.observations.cleanup, 1);
   assert.equal(runtime.observations.releases, 1);
+});
+
+test("unknown and final assistant sentences wait for canonical completion while classified progress continues", async () => {
+  const progress = [];
+  let finish;
+  const runtime = createHarnessRuntime({
+    onProgress: value => progress.push(value),
+    runEmbeddedAgent: options => {
+      for (const phase of [undefined, "final", "final_answer", "unrecognized"]) {
+        options.onPartialReply({ text: "全部完成。", ...(phase ? { phase } : {}) });
+        options.onAgentEvent({ stream: "assistant", data: { text: "全部完成。", ...(phase ? { phase } : {}) } });
+      }
+      options.onPartialReply({ phase: "commentary", text: "第一项事实已核对。后续尚未结束" });
+      return new Promise(resolve => { finish = resolve; });
+    },
+  });
+  let settled = false;
+  const pending = runtime.run().then(result => { settled = true; return result; });
+  await nextTick();
+  assert.equal(settled, false);
+  assert.deepEqual(progress.map(value => value.text), ["第一项事实已核对。"]);
+  finish({ payloads: [{ text: "全部完成。\n\n完整的核验结果保留在最终正文。" }] });
+  assert.deepEqual(await pending, { text: "全部完成。\n\n完整的核验结果保留在最终正文。" });
+  assert.equal(progress.length, 1, "canonical final is returned without a second progress claim");
 });
 
 test("a reasoning flag cannot masquerade as a public preamble even with a visible sentence boundary", () => {
@@ -312,10 +340,10 @@ test("actual builtin public preamble contract reaches the observer without expos
     { stream: "item", data: { kind: "preamble", phase: "update", text: "wrong field." } },
   ]) assert.equal(observer.onAgentEvent(event), false);
   assert.equal(progress.length, 1);
-  assert.equal(observer.onPartialReply({ text: "公开答案。" }), false, "the observer does not claim final delivery even if downstream returns true");
+  assert.equal(observer.onPartialReply({ phase: "commentary", text: "公开答案。" }), false, "the observer does not claim final delivery even if downstream returns true");
 });
 
-test("actual Codex deltas and builtin completion mirrors share one reply cursor despite different item identities", async () => {
+test("actual Codex final deltas and builtin final completion stay silent until canonical delivery", async () => {
   const progress = [];
   const assistantSnapshots = [];
   const observer = patchedObserver({ onProgress: (payload) => progress.push(payload) });
@@ -340,7 +368,7 @@ test("actual Codex deltas and builtin completion mirrors share one reply cursor 
   delivery.emitAssistantStreamData({ text: english, delta: "", phase: "final_answer" }, { finalMessage: true });
   assert.equal(assistantSnapshots.at(-1).itemId, "builtin-stream:0");
   assert.equal(assistantSnapshots.at(-1).text, english);
-  assert.deepEqual(progress.map(({ text }) => text), [english], "the builtin mirror must not resend the complete native fact");
+  assert.deepEqual(progress, [], "a full sentence in a native or builtin final answer is not public progress");
 
   // A later distinct assistant message must still stream and suppress only its own mirror.
   const second = ["八", "秒", "等待", "完成", "。"];
@@ -349,7 +377,7 @@ test("actual Codex deltas and builtin completion mirrors share one reply cursor 
   builtinState.assistantMessageIndex = builtinState.assistantMessageStartIndex = 1;
   delivery.emitAssistantStreamData({ text: "八秒等待完成。", delta: "", phase: "final_answer" }, { finalMessage: true });
   assert.equal(assistantSnapshots.at(-1).itemId, "builtin-stream:1");
-  assert.deepEqual(progress.map(({ text }) => text), [english, "八秒等待完成。"]);
+  assert.deepEqual(progress, [], "a later distinct final message must also remain with its canonical owner");
   assert(progress.every(({ kind }) => kind === "commentary"));
 });
 
@@ -370,6 +398,7 @@ test("actual late native commentary phase and builtin commentary mirrors do not 
   // The streaming item can lack a phase until item/completed identifies it as commentary.
   projection.recordItemStarted({ id: itemId, type: "agentMessage" }, itemId);
   for (const delta of deltas) await projection.handleAssistantDelta({ itemId, delta });
+  assert.deepEqual(progress, [], "unphased native deltas stay silent until a real public phase is known");
   projection.recordItemCompleted({ id: itemId, type: "agentMessage", phase: "commentary", text }, itemId, new Set());
   delivery.emitAssistantStreamData({ text: "I'll  run the sleep test now.\n", delta: "", replace: true, phase: "commentary", itemId: "builtin-commentary" }, { finalMessage: true });
   assert(events.some(({ stream, data }) => stream === "assistant" && data.text === text));
@@ -407,7 +436,7 @@ test("actual native commentary updates and builtin completion/reply hooks share 
   delivery.emitAssistantStreamData({ text: "正在 检查 结果。", delta: "", phase: "final_answer" }, { finalMessage: true });
   assert.deepEqual(progress.map(({ text }) => text), ["正在 检查 结果。"]);
   // A subsequent true extension of the suppressed reply source must append only its suffix.
-  observer.onPartialReply({ text: "正在 检查 结果。 已完成。" });
+  observer.onPartialReply({ phase: "commentary", text: "正在 检查 结果。 已完成。" });
   assert.equal(progress.at(-1).text, "已完成。");
 });
 
@@ -428,7 +457,7 @@ test("actual Codex date and time fragments reach Live as one complete fact befor
   const pending = runtime.run();
   await nextTick();
   const itemId = "native-exact-time";
-  projection.recordItemStarted({ id: itemId, type: "agentMessage" }, itemId);
+  projection.recordItemStarted({ id: itemId, type: "agentMessage", phase: "commentary" }, itemId);
   const fragments = ["当前时间是 ", "202", "6", "-", "10", "-", "02", " ", "14", ":", "22", ":", "15", "，时区 ", "UTC", "+", "08", ":", "00"];
   for (const delta of fragments) {
     await projection.handleAssistantDelta({ itemId, delta });
@@ -472,21 +501,21 @@ test("actual native and builtin completion hooks confirm an English numeric sent
 test("sentence and blank-paragraph boundaries coalesce facts while single newlines and final tails remain buffered", () => {
   const progress = [];
   const observer = patchedObserver({ onProgress: (payload) => progress.push(payload) });
-  observer.onPartialReply({ text: "The scale is 3." });
-  observer.onPartialReply({ text: "The scale is 3.14" });
+  observer.onPartialReply({ phase: "commentary", text: "The scale is 3." });
+  observer.onPartialReply({ phase: "commentary", text: "The scale is 3.14" });
   assert.deepEqual(progress, []);
-  observer.onPartialReply({ text: "The scale is 3.14. Next fact" });
+  observer.onPartialReply({ phase: "commentary", text: "The scale is 3.14. Next fact" });
   assert.deepEqual(progress.map(({ text }) => text), ["The scale is 3.14."]);
-  observer.onPartialReply({ text: "The scale is 3.14. Next fact! Still checking" });
+  observer.onPartialReply({ phase: "commentary", text: "The scale is 3.14. Next fact! Still checking" });
   assert.deepEqual(progress.map(({ text }) => text), ["The scale is 3.14.", "Next fact!"]);
 
-  observer.onPartialReply({ text: "当前时间是\n2026-10-02 14:22:15" });
+  observer.onPartialReply({ phase: "commentary", text: "当前时间是\n2026-10-02 14:22:15" });
   assert.equal(progress.length, 2, "a title and single newline are not a complete public fact");
-  observer.onPartialReply({ text: "当前时间是\n2026-10-02 14:22:15\n \n下一段未完成" });
+  observer.onPartialReply({ phase: "commentary", text: "当前时间是\n2026-10-02 14:22:15\n \n下一段未完成" });
   assert.equal(progress.at(-1).text, "当前时间是 2026-10-02 14:22:15");
   observer.onAgentEvent({ stream: "item", data: { kind: "preamble", phase: "update", itemId: "paragraph-mirror", progressText: "当前时间是\n2026-10-02 14:22:15\n\n下一段未完成" } });
   assert.equal(progress.length, 3, "paragraph whitespace variants must not mirror a delivered fact");
-  observer.onPartialReply({ text: "完整中文问题？接着完整回答！剩余未结束" });
+  observer.onPartialReply({ phase: "commentary", text: "完整中文问题？接着完整回答！剩余未结束" });
   assert.equal(progress.at(-1).text, "完整中文问题？接着完整回答！");
   observer.close();
   assert.equal(progress.length, 4, "close must not flush the unfinished final tail or schedule a timer");
@@ -509,9 +538,9 @@ test("aborted consult ignores late public partials even when its agent finishes 
   });
   const pending = runtime.run();
   await nextTick();
-  partial({ text: "已经开始。" });
+  partial({ phase: "commentary", text: "已经开始。" });
   controller.abort(new Error("user changed their request"));
-  partial({ text: "旧请求迟到进度。" });
+  partial({ phase: "commentary", text: "旧请求迟到进度。" });
   agentEvent({ stream: "item", data: { kind: "preamble", phase: "update", progressText: "旧请求迟到播报。" } });
   finish({ payloads: [{ text: "旧请求最后结果" }] });
   await pending;
@@ -528,7 +557,7 @@ test("throwing, rejecting, or pending progress observers cannot delay or fail th
     const runtime = createHarnessRuntime({
       onProgress: (payload) => { progressCalls++; return onProgress(payload); },
       runEmbeddedAgent: async (options) => {
-        options.onPartialReply({ text: "正在核对。" });
+        options.onPartialReply({ phase: "commentary", text: "正在核对。" });
         return { payloads: [{ text: "核对完成" }] };
       },
     });
@@ -672,7 +701,7 @@ test("gateway relay wrapper preserves its native observer and rejects a closed r
 test("older callers without a progress observer retain their final reply", async () => {
   const runtime = createHarnessRuntime({
     runEmbeddedAgent: async (options) => {
-      options.onPartialReply({ text: "public partial" });
+      options.onPartialReply({ phase: "commentary", text: "public partial" });
       return { payloads: [{ text: "old caller final" }] };
     },
   });

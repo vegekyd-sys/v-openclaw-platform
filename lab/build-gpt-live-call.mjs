@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { patchGptLiveConsultProgressHarness, patchGptLiveConsultProgressTalk } from "./gpt-live-consult-progress.mjs";
+import { patchGptLivePublicProgressBridge } from "./gpt-live-public-progress-bridge.mjs";
 import { build as buildNative } from "./build-gpt-live-native-progress.mjs";
 import { build as buildCompletion } from "./build-gpt-live-completion-context.mjs";
 import { patchGptLiveContinuationHarness, patchGptLiveContinuationTalk, patchGptLiveContinuationRegistry,
@@ -17,6 +18,14 @@ export function build({ baseRelease = "memory-search-guards-20261002" } = {}) {
   const native = JSON.parse(readFileSync(resolve(root, "lab/gpt-live-native-progress-plan.json")));
   const baseline = JSON.parse(readFileSync(resolve(root, "lab/gpt-live-consult-baseline.json")));
   const files = [...native.files];
+  const publicBridgeBaseline = "release/captured/v2026.9.1-db91.6-memory-search-guards-20261002.worker/dist/gateway-public-stream.mjs";
+  const publicBridgeBefore = readFileSync(resolve(root, publicBridgeBaseline));
+  const publicBridgeBeforeSha = "5440eadbfe1e6bf40824bd389e9cd3fb87326cc3c75b1a158cfe107799300fdf";
+  assert.equal(hash(publicBridgeBefore), publicBridgeBeforeSha, "captured public stream bridge baseline drifted");
+  const publicBridgeSource = "lab/release-files/gpt-live-call/gateway-public-stream.mjs";
+  mkdirSync(dirname(resolve(root, publicBridgeSource)), { recursive: true });
+  writeFileSync(resolve(root, publicBridgeSource), patchGptLivePublicProgressBridge(publicBridgeBefore.toString("utf8")));
+  files.push({ source: publicBridgeSource, target: "production-worker/gateway-public-stream.mjs", before: publicBridgeBeforeSha });
   const artifacts = [];
   for (const item of baseline) {
     const before = readFileSync(resolve(root, "release/captured/v2026.9.1-db91.6-memory-search-fast-20261002/dist", item.name));
@@ -54,19 +63,19 @@ export function build({ baseRelease = "memory-search-guards-20261002" } = {}) {
   writeFileSync(resolve(root, "lab/gpt-live-call-plan.json"), JSON.stringify({ baseRelease, files }, null, 2) + "\n");
   const fixtureFiles=[];
   function fixtures(dir){for(const entry of readdirSync(resolve(root,dir),{withFileTypes:true})){const file=dir+'/'+entry.name;if(entry.isDirectory())fixtures(file);else fixtureFiles.push(file);}}
-  fixtures('lab/fixtures/gpt-live-native-progress');fixtures('lab/fixtures/gpt-live-completion-context');fixtures('lab/fixtures/gpt-live-continuation');
+  fixtures('lab/fixtures/gpt-live-native-progress');fixtures('lab/fixtures/gpt-live-completion-context');fixtures('lab/fixtures/gpt-live-continuation');fixtures('lab/fixtures/gpt-live-public-progress');
   const completionCandidate=JSON.parse(readFileSync(resolve(root,'lab/candidate/gpt-live-completion-context.plan.json')));
   writeFileSync(resolve(root, "lab/candidate/gpt-live-call.plan.json"), JSON.stringify({
-    baseRelease, files, tests: ["lab/gpt-live-consult-progress.test.mjs", "lab/gpt-live-native-progress.test.mjs", "lab/gpt-live-h5/server.test.mjs", "lab/gpt-live-h5/app.test.mjs", "lab/gpt-live-h5/duplex-playback.test.mjs", "lab/gpt-live-h5/microphone-capture.test.mjs", "lab/gpt-live-h5/transcript-presentation.test.mjs", "lab/gpt-live-h5/call-sounds.test.mjs", "lab/gpt-live-call-live-auth.test.mjs", "lab/gpt-live-call-live-evidence.test.mjs",
+    baseRelease, files, tests: ["lab/gpt-live-consult-progress.test.mjs", "lab/gpt-live-public-progress-bridge.test.mjs", "lab/gpt-live-native-progress.test.mjs", "lab/gpt-live-h5/server.test.mjs", "lab/gpt-live-h5/app.test.mjs", "lab/gpt-live-h5/duplex-playback.test.mjs", "lab/gpt-live-h5/microphone-capture.test.mjs", "lab/gpt-live-h5/transcript-presentation.test.mjs", "lab/gpt-live-h5/call-sounds.test.mjs", "lab/gpt-live-call-live-auth.test.mjs", "lab/gpt-live-call-live-evidence.test.mjs",
       "lab/gpt-live-consult-continuation.test.mjs", "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-spawn-gateway-proxy.test.mjs", "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-yield-external-task.test.mjs", "lab/gpt-live-pr-provenance.test.mjs", "lab/gpt-live-pr-config.test.mjs", "lab/gpt-live-pr-trace.test.mjs", "lab/gpt-live-h5-provenance-evidence.test.mjs", "lab/gpt-live-h5-control-evidence.test.mjs", "lab/gpt-live-h5-user-pcm.test.mjs", "lab/gpt-live-h5-control-probe.test.mjs",...completionCandidate.tests],
     support: [...new Set([
-      "lab/gpt-live-consult-progress.mjs", "lab/patch-gpt-live-native-progress.mjs",
+      "lab/gpt-live-consult-progress.mjs", "lab/gpt-live-public-progress-bridge.mjs", publicBridgeBaseline, "lab/patch-gpt-live-native-progress.mjs",
       "lab/fixtures/gpt-live-native-progress/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
       "release/captured/v2026.9.1-db91.6-background-work-20261002/dist/realtime-session-harness-CEO5kVAJ.js",
       "release/captured/v2026.9.1-db91.6-background-work-20261002/dist/talk-DkFuKRod.js",
       "release/captured/v2026.9.1-db91.6-background-work-20261002/dist/builtin-openclaw-zQV8Wwjr.js",
       "lab/release-files/background-work-20261002/vlab-codex-parity/run-attempt-D1hJO4fX.js",
-      "lab/gpt-live-h5/server.mjs", "lab/gpt-live-h5/events.mjs", "lab/gpt-live-h5/duplex-playback.mjs", "lab/gpt-live-h5/index.html", "lab/gpt-live-h5/app.js", "lab/gpt-live-h5/styles.css", "lab/gpt-live-h5/microphone-capture.mjs", "lab/gpt-live-h5/transcript-presentation.mjs", "lab/gpt-live-h5/call-sounds.mjs",
+      "lab/gpt-live-h5/server.mjs", "lab/gpt-live-h5/events.mjs", "lab/gpt-live-h5/instructions.mjs", "lab/gpt-live-h5/duplex-playback.mjs", "lab/gpt-live-h5/index.html", "lab/gpt-live-h5/app.js", "lab/gpt-live-h5/styles.css", "lab/gpt-live-h5/microphone-capture.mjs", "lab/gpt-live-h5/transcript-presentation.mjs", "lab/gpt-live-h5/call-sounds.mjs",
       "lab/gpt-live-call-live-auth.mjs",
       "lab/gpt-live-call-live-evidence.mjs",
       "lab/gpt-live-pr-provenance.mjs","lab/gpt-live-pr-config.mjs","lab/gpt-live-pr-trace.mjs","lab/shared/server.mjs","lab/shared/files.mjs","lab/shared/lifecycle.mjs",

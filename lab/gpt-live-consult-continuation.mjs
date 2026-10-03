@@ -24,9 +24,13 @@ export function createGptLiveConsultContinuationRegistry(deps) {
     const voiceKey = JSON.stringify([context.ownerConnId, context.voiceSessionId, context.ownerGeneration]);
     const previous = byVoice.get(voiceKey);
     if (identity.delegationGeneration <= (voiceGenerations.get(voiceKey) ?? 0)) throw error("Repeated or stale voice delegation");
+    // A new speech turn is not authority to cancel already accepted work.
+    // Native delegations are serialized before owner creation. Reject an
+    // overlapping owner without changing the old owner's generation or state.
+    if (previous?.isCurrent()) throw error("Voice task is still active; queue the new delegation");
+    previous?.abort(error("Voice owner became stale before the next accepted task"));
     voiceGenerations.set(voiceKey, identity.delegationGeneration);
     if (voiceGenerations.size > 1024) voiceGenerations.delete(voiceGenerations.keys().next().value);
-    previous?.abort(error("Voice delegation superseded"));
     const controller = new AbortController();
     const lifecycleGeneration = deps.getLifecycleGeneration();
     const bindings = new Map();
@@ -130,8 +134,7 @@ export function createGptLiveConsultContinuationRegistry(deps) {
               event.lifecycleGeneration && event.lifecycleGeneration !== lifecycleGeneration ||
               event.sessionKey && event.sessionKey !== sessionKey || sessionId && event.sessionId && event.sessionId !== sessionId) return;
           // The assistant stream is the public text projection. No thought/tool/error stream is accepted.
-          if (event.stream === "assistant" && typeof event.data?.text === "string" && event.data.isReasoning !== true &&
-              (event.data.phase === undefined || event.data.phase === "final")) observer.onPartialReply(event.data);
+          if (event.stream === "assistant" && typeof event.data?.text === "string" && event.data.isReasoning !== true) observer.onPartialReply(event.data);
           else observer.onAgentEvent(event);
         });
         binding.unsubscribe = unsubscribe;
@@ -151,16 +154,20 @@ export function createGptLiveConsultContinuationRegistry(deps) {
         const acknowledgment = clean(result.meta.yieldAcknowledgment);
         if (acknowledgment) deps.createProgressObserver({ onProgress: (progress) => report({ ...progress,
           provenance: { ...progress.provenance, source: "yield_ack" } }, binding), runId: binding.runId,
-          abortSignal: controller.signal, logger: params.logger }).onPartialReply({ text: acknowledgment });
+          abortSignal: controller.signal, logger: params.logger }).onPartialReply({ text: acknowledgment, phase: "commentary" });
         if (!binding.pendingBatch) throw new Error("Yielded voice consult has no causally accepted requester batch");
         return;
       }
       if (result?.meta?.error || !result || !Array.isArray(result.payloads)) throw new Error("Voice requester continuation ended without a successful final result");
-      if (binding.role === "child") return;
+      if (binding.role === "child") { binding.completed = true; return; }
+      if ([...bindings.values()].some((child) => child.role === "child" && child.completed !== true && child.isTerminal?.() !== true)) {
+        throw new Error("Voice requester ended before its accepted child tasks completed; no complete final is available");
+      }
       if (pendingInputs.length) throw new Error("Voice requester ended before its pending user conditions reached a continuation checkpoint");
       const text = params.collectVisibleText(result.payloads);
       if (!text) throw new Error("Voice requester continuation returned no speakable final");
-      settle({ text });
+      settle({ text, provenance: { runId: binding.runId, ownerRunId: params.runId,
+        source: "canonical_final", role: binding.role } });
     };
     const owner = {
       identity: { delegationItemId: identity.delegationItemId, delegationGeneration: identity.delegationGeneration },

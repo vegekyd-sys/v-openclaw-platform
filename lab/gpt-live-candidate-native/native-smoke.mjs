@@ -10,7 +10,7 @@ import {createPrivatePulseMicrophone} from './private-pulse.mjs';
 import {BROWSER_PROBE,SNAPSHOT_EXPRESSION} from './browser-probe.mjs';
 import {parsePublicProgressDiagnostics,assessH5ProgressProvenance} from '../gpt-live-h5-provenance-evidence.mjs';
 import {parseCompleteTimestamps} from '../gpt-live-call-live-evidence.mjs';
-import {indexNativeToolPairs,mergeExactToolBodies,extractExecDateFromPairs,continuousPlaybackQuiet,explicitSpokenOffsets,resolveNativeControlOwner,toolResultSucceeded,isExactTwoPlusTwoReply,nativeCountRequestsEighty,matchesConsumedConditionBatch,extractQueuedConditionResume} from './evidence.mjs';
+import {indexNativeToolPairs,mergeExactToolBodies,mergeSessionToolEvidence,extractExecDateFromPairs,continuousPlaybackQuiet,explicitSpokenOffsets,resolveNativeControlOwner,resolveCanonicalFinalTrace,toolResultSucceeded,isExactTwoPlusTwoReply,nativeCountRequestsEighty,assessIndependentInputConvergence,matchesConsumedConditionBatch,extractQueuedConditionResume} from './evidence.mjs';
 import {readPrivateChildTranscript,activeTranscriptMessages} from './read-child-transcript.mjs';
 import {extractControlExecWitness,assessControlExecPending,matchesExactControlMarker} from '../gpt-live-h5-control-evidence.mjs';
 assert(process.env.VLAB_CANDIDATE_ID&&process.env.GPT_LIVE_H5_READY==='1','Ready private Candidate H5 required');
@@ -99,6 +99,9 @@ function childEvidencePairs(history=lastHistory) {
  }
  return out;
 }
+function parentEvidencePairs(history=lastHistory.parent) {
+ return mergeSessionToolEvidence(toolEvents,extractToolPairs(history),currentSession);
+}
 function diagnostics(){return parsePublicProgressDiagnostics(fs.readFileSync(process.env.GPT_LIVE_H5_TRACE_PATH,'utf8'));}
 async function startCall() {
  const pcIndex=(await snapshot()).pcStates.length;
@@ -114,6 +117,18 @@ function play(name){
  save('actual-input-clip-schedule.json',pulse.plays);
  input.done.then(()=>save('actual-input-clip-schedule.json',pulse.plays),()=>save('actual-input-clip-schedule.json',pulse.plays));
  return input;
+}
+// Independent requests start only after the preceding feed has really ended
+// and its native user turn is complete. The live capture track stays enabled.
+// The acknowledgement and deliberate barge-in retain their overlap paths.
+async function convergeInputTurn(input,pcIndex,label) {
+ await input.done;
+ const complete=await snapshot(true),speech=complete.micFrames.filter(f=>f.pcIndex===pcIndex&&
+   f.at>=input.row.startedAt&&f.at<=input.row.completedAt&&f.rms>.02);
+ const lastSpeechAt=speech.at(-1)?.at;assert(Number.isFinite(lastSpeechAt),'Original input microphone speech witness required');
+ const result=await waitFor(s=>assessIndependentInputConvergence({events:s.events,micFrames:s.micFrames,pcIndex,
+   input:input.row,lastSpeechAt,observedAt:Date.now()}),label+' native user completion and continuous microphone quiet',15000);
+ check('independent-input-convergence-'+input.row.label,true,{proof:result});return result;
 }
 const audible=(s,from,to=Infinity,pcIndex=0)=>s.audioFrames.filter(f=>f.pcIndex===pcIndex&&f.at>=from&&f.at<=to&&f.digitalAudible);
 function check(name,passed,details={}){checks.push({name,passed:Boolean(passed),...details});}
@@ -144,7 +159,7 @@ async function longTask() {
   const finalTurn=final&&s.events.filter(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='assistant'&&e.at>final.at).at(-1);
   if(finalTurn&&continuousPlaybackQuiet(s.audioFrames,{pcIndex,after:finalTurn.at,durationMs:750})){finished=true;break;}
  }
- const s=await snapshot(true),pairs=extractToolPairs(lastHistory.parent),childPairs=childEvidencePairs(),d=diagnostics().filter(row=>row.at>=initialAt);
+ const s=await snapshot(true),pairs=parentEvidencePairs(),childPairs=childEvidencePairs(),d=diagnostics().filter(row=>row.at>=initialAt);
  const userTurns=s.events.filter(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='user'&&e.at>=initialAt);
  const memory=pairs.find(p=>p.name==='memory_search'&&JSON.stringify(p.args).includes(memoryQuery)&&p.results.some(r=>!r.isError&&r.text.length>40));
  const web=pairs.find(p=>p.name==='web_search'&&/openai|realtime/iu.test(JSON.stringify(p.args))&&p.results.some(r=>!r.isError&&/https:\/\/[^\s"<>]*openai\.com/iu.test(r.text)));
@@ -155,7 +170,10 @@ async function longTask() {
  const cwd=chosenChildPairs.find(p=>p.name==='exec'&&/\bpwd\b|process\.cwd/iu.test(JSON.stringify(p.args))&&p.results.some(r=>!r.isError&&r.text.includes(candidateData+'/workspace/')));
  const slowDate=extractExecDateFromPairs(chosenChildPairs,childWaitSeconds);
  const expected=slowDate?[slowDate.fields]:[];
- const final=d.filter(row=>row.stage==='context-append-sent'&&row.kind==='final'&&row.role==='final_complete').at(-1);
+ const owner=resolveNativeControlOwner({diagnostics:d,events:s.events,tools:s.tools,backendRunId:spawnPair?.runId,
+   voiceSessionId:callOwners.get(pcIndex)?.voiceSessionId,pcIndex});
+ const canonical=resolveCanonicalFinalTrace(d,owner);
+ const final=canonical?.final;
  const nativeFinal=s.events.filter(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='assistant'&&e.at>=(final?.at??Infinity)).at(-1);
  const actual=parseCompleteTimestamps(nativeFinal?.text??'');
  const parentFinals=(lastHistory.parent.messages??[]).filter(m=>m.role==='assistant'&&messageText(m).trim()&&(m.stopReason==='stop'||m.stopReason==='end_turn'));
@@ -172,12 +190,23 @@ async function longTask() {
  check('memory-real-call-result',Boolean(memory),{callId:memory?.id,resultAt:memory?.results[0]?.at});
  check('web-primary-page-actually-fetched',Boolean(primary),{callId:primary?.id,url:primary?.args?.url??null,resultAt:primary?.results[0]?.at,independentOfficialConclusionReviewRequired:true});
  check('web-real-official-call-result',Boolean(web),{callId:web?.id,resultAt:web?.results[0]?.at});
- check('memory-then-web-without-user-followup',memory&&web&&web.calledAt>=memory.results[0].at&&userTurns.length===1,{memoryAt:memory?.results[0]?.at,webAt:web?.calledAt});
+ const memoryResult=memory?.results.find(toolResultSucceeded);
+ const memoryBeforeWeb=memory?.sourceExecutionTimingVerified===true&&web?.sourceExecutionTimingVerified===true&&
+   [memoryResult?.at,web?.calledAt].every(Number.isFinite)&&web.calledAt>=memoryResult.at;
+ check('memory-source-result-before-web-start',memoryBeforeWeb,{memorySourceAt:memoryResult?.at,webSourceAt:web?.calledAt,
+   memoryObservedAt:memoryResult?.observedAt,memoryPersistedAt:memoryResult?.persistedAt});
+ check('memory-then-web-without-user-followup',memoryBeforeWeb&&userTurns.length===1,{memoryAt:memoryResult?.at,webAt:web?.calledAt,userTurnCount:userTurns.length});
  const realTerminals=Object.values(lastHistory.childTerminals??{}).filter(row=>row.runId===acceptedSpawn?.runId&&row.childSessionKey===acceptedSpawn?.childSessionKey&&row.response?.runId===acceptedSpawn?.runId&&row.response?.terminalReceipt?.runId===acceptedSpawn?.runId&&['ok','completed','complete','done'].includes(row.response?.status)&&
    Number.isFinite(row.response?.endedAt));
  const childFinalAt=Math.max(0,...realTerminals.map(row=>row.response.endedAt));
- const resumedFinal=parentFinals.find(m=>timestamp(m.timestamp??m.at)>=childFinalAt&&childFinalAt>=(yieldPair?.calledAt??Infinity)&&marker&&matchesExactControlMarker(messageText(m),marker)&&expected.length===1&&parseCompleteTimestamps(messageText(m)).some(value=>JSON.stringify(value)===JSON.stringify(expected[0])));
- check('actual-parent-spawn-yield-child-resume',spawnPair&&yieldPair&&realTerminals.length&&resumedFinal,{spawnCallId:spawnPair?.id,yieldCallId:yieldPair?.id,childSessions:Object.keys(lastHistory.children),childTerminals:lastHistory.childTerminals,childFinalAt,parentFinalAt:resumedFinal?timestamp(resumedFinal.timestamp??resumedFinal.at):null});
+ const resumedFinal=canonical&&canonical.sourceRunIdSha256!==owner.sourceRunIdSha256&&
+   canonical.started.at>=childFinalAt&&childFinalAt>=(yieldPair?.calledAt??Infinity)&&parentFinals.find(m=>
+     hash(messageText(m).trim())===canonical.received.textSha256&&marker&&matchesExactControlMarker(messageText(m),marker)&&
+     expected.length===1&&parseCompleteTimestamps(messageText(m)).some(value=>JSON.stringify(value)===JSON.stringify(expected[0])));
+ check('actual-parent-spawn-yield-child-resume',spawnPair&&yieldPair&&realTerminals.length&&resumedFinal,
+   {spawnCallId:spawnPair?.id,yieldCallId:yieldPair?.id,childSessions:Object.keys(lastHistory.children),childTerminals:lastHistory.childTerminals,
+    childFinalAt,parentFinalAt:resumedFinal?canonical.received.at:null,canonicalFinal:canonical,
+    source:'actual canonical terminal callback and complete body hash; history generation stamps are not execution clocks'});
  const cwdResultAt=cwd?.results.find(r=>!r.isError&&r.text.includes(candidateData+'/workspace/'))?.at;
  const markerResultAt=childMarkerPair?.results.find(r=>!r.isError&&/\b[1-9]\d{3}\b/u.test(r.text))?.at;
  const childDatePair=chosenChildPairs.find(p=>p.id===slowDate?.execCallId),childWaitPair=chosenChildPairs.find(p=>p.id===slowDate?.waitExecCallId);
@@ -212,8 +241,10 @@ async function longTask() {
 }
 async function controls() {
  const pcIndex=await startCall(),cancelInput=play('cancel-task');await cancelInput.done;
- const accepted=await waitFor(async()=>{await readHistory();const pending=assessControlExecPending(lastHistory.parent,60,{requireDateInCommand:false});return pending.pending&&extractToolPairs(lastHistory.parent).find(p=>p.id===pending.execCallId);},'Actual pending backend sleep60 in the requested wait-then-date task',90000);
- const execStartEvent=toolEvents.find(event=>['agent','session.tool'].includes(event.event)&&event.payload?.stream==='tool'&&event.payload.data?.phase==='start'&&(event.payload.data?.toolCallId??event.payload.data?.callId)===accepted.id);
+ const accepted=await waitFor(async()=>{await readHistory();const pending=assessControlExecPending(lastHistory.parent,60,{requireDateInCommand:false});return pending.pending&&parentEvidencePairs().find(p=>p.id===pending.execCallId&&p.sourceExecutionTimingVerified===true);},'Actual pending backend sleep60 in the requested wait-then-date task',90000);
+ const execStartEvent=toolEvents.find(event=>['agent','session.tool'].includes(event.event)&&event.payload?.stream==='tool'&&
+   event.payload?.runId===accepted.runId&&event.payload?.sessionKey===currentSession&&event.payload.data?.phase==='start'&&
+   (event.payload.data?.toolCallId??event.payload.data?.callId)===accepted.id);
  const actualExecStartedAt=execStartEvent?.payload?.ts??null,backendRunId=execStartEvent?.payload?.runId??null;
  check('control-original-exec-start-witness',Boolean(execStartEvent)&&Number.isFinite(actualExecStartedAt),{callId:accepted.id,actualExecStartedAt,backendRunId,execSourceTs:execStartEvent?.payload?.ts??null,execObservedAt:execStartEvent?.at??null,sourceObserverDeltaMs:execStartEvent?execStartEvent.at-execStartEvent.payload.ts:null});
  const beforeControl=await snapshot();
@@ -221,6 +252,7 @@ async function controls() {
    backendRunId,voiceSessionId:callOwners.get(pcIndex)?.voiceSessionId,pcIndex});
  let pendingAfterBarge;
  try {
+ await convergeInputTurn(cancelInput,pcIndex,'Original background request before the separate count input');
  const count=play('count');await count.done;
  const activeTurn=s=>s.events.filter(e=>e.pcIndex===pcIndex&&e.type==='turn.created'&&e.role==='assistant'&&e.at>=count.row.startedAt&&!s.events.some(done=>done.pcIndex===pcIndex&&done.type==='turn.done'&&done.turnId===e.turnId)).at(-1);
  await waitFor(s=>activeTurn(s)&&audible(s,Date.now()-300,Infinity,pcIndex).length>=2,'Native count actively speaking',60000);
@@ -230,7 +262,7 @@ async function controls() {
  // A brief acknowledgement can itself end a provider turn. Acquire a fresh
  // actual count turn if necessary; never call a completed historical turn barge.
  let replay=null,preBarge=await snapshot(),oldTurn=activeTurn(preBarge);
- if(!oldTurn||audible(preBarge,Date.now()-250,Infinity,pcIndex).length<2){replay=play('count');await replay.done;oldTurn=await waitFor(s=>activeTurn(s)&&audible(s,Date.now()-250,Infinity,pcIndex).length>=2?activeTurn(s):false,'Fresh count after acknowledgement',45000);}
+ if(!oldTurn||audible(preBarge,Date.now()-250,Infinity,pcIndex).length<2){await convergeInputTurn(ack,pcIndex,'Acknowledgement before a fresh count request');replay=play('count');await replay.done;oldTurn=await waitFor(s=>activeTurn(s)&&audible(s,Date.now()-250,Infinity,pcIndex).length>=2?activeTurn(s):false,'Fresh count after acknowledgement',45000);}
  preBarge=await snapshot();await readHistory();
  const beforePending=assessControlExecPending(lastHistory.parent,60,{requireDateInCommand:false});
  check('backend-pending-at-barge',beforePending.pending&&beforePending.execCallId===accepted.id,{pending:beforePending,backendRunId});
@@ -297,8 +329,7 @@ async function queuedSteer() {
  let binding;
  await waitFor(async s=>{
   await readHistory();
-  const ordinary=extractToolPairs(lastHistory.parent);
-  const exact=mergeExactToolBodies(indexNativeToolPairs(toolEvents,{sessionKey:currentSession}),ordinary);
+  const exact=parentEvidencePairs();
   for(const spawn of exact.filter(p=>p.name==='sessions_spawn'))for(const result of spawn.results.filter(toolResultSucceeded)) {
    let accepted;try{accepted=JSON.parse(result.text)}catch{continue}
    if(accepted?.status!=='accepted'||!accepted.runId||!accepted.childSessionKey)continue;
@@ -349,7 +380,10 @@ async function queuedSteer() {
  check('queued-steer-same-child-successful-wait-date-terminal',terminalOk&&date&&date.runId===binding.accepted.runId&&date.sessionKey===binding.accepted.childSessionKey&&terminal.response.endedAt>=date.resultAt,{terminal,date});
  check('queued-steer-trusted-condition-consumption',Boolean(resumed)&&Boolean(actualResumeRun)&&matchesConsumedConditionBatch(consumed,[condition],binding.owner,hash(actualResumeRun??'')),{consumed,resumed,actualResumeRun,status:consumed?'observed':'missing-real-consumption-callback'});
  check('queued-steer-actual-parent-resume-input',Boolean(rawResume)&&Boolean(consumed)&&Boolean(actualResumeRun),{rawResume:rawResume??null,actualResumeRun,unboundOriginalResumeCandidates:rawResumeCandidates.length,reason:rawResume?null:'No original requester input has the original child completion, exact condition JSON batch and an actual declared resume run identity; observer labels and metadata alone are not raw resume.message'});
- const final=ds.filter(d=>owned(d)&&d.stage==='context-append-sent'&&d.kind==='final'&&d.role==='final_complete'&&d.sourceRunIdSha256===consumed?.sourceRunIdSha256).at(-1);
+ const canonical=resolveCanonicalFinalTrace(ds,binding.owner,consumed?.sourceRunIdSha256);
+ const final=canonical?.final;
+ check('queued-steer-trusted-canonical-final-source',Boolean(canonical)&&canonical.sourceRunIdSha256===consumed?.sourceRunIdSha256,
+   {canonical,consumedSourceRunIdSha256:consumed?.sourceRunIdSha256??null});
  const nativeFinal=final&&s.events.find(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='assistant'&&e.at>=final.at&&e.text.includes(marker));
  const finalFields=parseCompleteTimestamps(nativeFinal?.text??''),offsets=explicitSpokenOffsets(nativeFinal?.text??'');
  const conditionDelivered=nativeFinal?.text.trim().replace(/[。.!！]$/u,'').endsWith(marker)&&nativeFinal.text.split(/[。!?！？]/u).filter(part=>part.trim()).length===1;
@@ -372,9 +406,17 @@ try {
  if(testCase==='comprehensive-long')await longTask();else if(testCase==='comprehensive-controls')await controls();else await queuedSteer();
 } catch(error) {check('test-exception',false,{message:String(error.message).replace(/(token|secret|api.?key|authorization)[=: ]+[^\s]+/giu,'$1=[redacted]')});}
 finally {
- if(cdp){lastState=await snapshot(true).catch(()=>lastState);save('browser-native-evidence.json',lastState);save('backend-history.json',lastHistory);save('backend-tool-events.json',toolEvents);save('native-public-diagnostics.json',diagnostics());
+ if(cdp){const preCloseFull=await snapshot(true).catch(()=>null);
+  if(preCloseFull)save('browser-pre-close-native-evidence.json',preCloseFull);
   const screenshot=await cdp.request('Page.captureScreenshot',{format:'png'}).catch(()=>null);if(screenshot)fs.writeFileSync(path.join(base,'h5.png'),Buffer.from(screenshot.data,'base64'),{mode:0o600});
    for(const [pcIndex] of callOwners)if(!checks.some(c=>c.name==='end-call-'+pcIndex&&c.passed))await stopCall(pcIndex).catch(error=>check('finally-end-call-'+pcIndex,false,{message:error.message}));
+  const postCloseFull=await snapshot(true).catch(()=>null);
+  check('complete-observation-through-original-close',Boolean(postCloseFull)&&[...callOwners.values()].every(owner=>
+    postCloseFull.api.some(a=>a.route==='/api/close'&&a.status===200&&a.request?.voiceSessionId===owner.voiceSessionId)),
+   {preCloseFullAvailable:Boolean(preCloseFull),postCloseFullAvailable:Boolean(postCloseFull),
+    reason:postCloseFull?null:'Post-close full capture unavailable; a lightweight polling tail cannot replace original raw evidence'});
+  lastState=postCloseFull??preCloseFull;
+  save('browser-native-evidence.json',lastState);save('backend-history.json',lastHistory);save('backend-tool-events.json',toolEvents);save('native-public-diagnostics.json',diagnostics());
   await evaluate(`globalThis.__candidateLiveProbe.dispose()`).catch(()=>{});
   const audio=await evaluate(`(async()=>{const p=globalThis.__candidateLiveProbe,rows=[];for(const recording of p.recordings){const blob=new Blob(recording.chunks,{type:'audio/webm;codecs=opus'}),bytes=new Uint8Array(await blob.arrayBuffer());let binary='';for(let at=0;at<bytes.length;at+=16384)binary+=String.fromCharCode(...bytes.subarray(at,at+16384));rows.push({pcIndex:recording.pcIndex,startedAt:recording.startedAt,blobBytes:blob.size,base64:btoa(binary),error:recording.error??null});}return rows})()`).catch(()=>[]);
   const decoded=[];for(const recording of audio){const prefix='native-'+recording.pcIndex,webm=path.join(base,prefix+'.webm');fs.writeFileSync(webm,Buffer.from(recording.base64,'base64'),{mode:0o600});const ff=spawnSync('/usr/bin/ffmpeg',['-v','error','-i',webm,'-f','s16le','-ar','48000','-ac','1','pipe:1'],{maxBuffer:80*1024**2});let rms=0,peak=0;if(ff.status===0){let sum=0;for(let at=0;at+1<ff.stdout.length;at+=2){const n=ff.stdout.readInt16LE(at);sum+=n*n;peak=Math.max(peak,Math.abs(n));}rms=Math.sqrt(sum/(ff.stdout.length/2));fs.writeFileSync(path.join(base,prefix+'.pcm'),ff.stdout,{mode:0o600});}decoded.push({pcIndex:recording.pcIndex,startedAt:recording.startedAt,blobBytes:recording.blobBytes,decodeSuccess:ff.status===0,pcmBytes:ff.stdout?.length??0,pcmSha256:ff.status===0?hash(ff.stdout):null,durationSeconds:(ff.stdout?.length??0)/96000,rms,peak});}
@@ -391,8 +433,8 @@ finally {
   const allowedOldMute=f=>oldGate?.passed&&drainGate?.passed&&f.at>=checks.find(c=>c.name==='barge-actual-old-turn-overlap')?.attack&&f.at<=drainGate.drainAt;
   const unexpectedMuted=digitalFrames.filter(f=>f.rms>.005&&f.muted&&!allowedOldMute(f));
   check('playback-not-persistently-muted',digitalFrames.some(f=>f.digitalAudible)&&unexpectedMuted.length===0,{audibleFrames:digitalFrames.filter(f=>f.digitalAudible).length,unexpectedMutedFrames:unexpectedMuted.length,playRejections:lastState?.playRejections});
-  const captureWindows=[...callOwners].map(([pcIndex,owner])=>{const close=lastState.api.find(a=>a.route==='/api/close'&&a.status===200&&a.request?.voiceSessionId===owner.voiceSessionId),initial=lastState.micDiagnostics.find(d=>d.pcIndex===pcIndex),from=owner.connectedAt,to=close?.requestedAt??Date.now();
-    const frames=lastState.micFrames.filter(f=>f.pcIndex===pcIndex&&f.at>=from&&f.at<to),gaps=frames.slice(1).filter((f,i)=>f.at-frames[i].at>100);
+  const captureWindows=[...callOwners].map(([pcIndex,owner])=>{const close=lastState?.api?.find(a=>a.route==='/api/close'&&a.status===200&&a.request?.voiceSessionId===owner.voiceSessionId),initial=lastState?.micDiagnostics?.find(d=>d.pcIndex===pcIndex),from=owner.connectedAt,to=close?.requestedAt??Date.now();
+    const frames=(lastState?.micFrames??[]).filter(f=>f.pcIndex===pcIndex&&f.at>=from&&f.at<to),gaps=frames.slice(1).filter((f,i)=>f.at-frames[i].at>100);
     const valid=Number.isFinite(from)&&frames.length>0&&frames[0].at-from<=100&&to-frames.at(-1).at<=100&&gaps.length===0&&frames.every(f=>f.trackState==='live'&&f.trackEnabled===true&&f.trackId===initial?.trackId&&f.senderTrackId===initial?.trackId);
     return {pcIndex,from,to,initialTrackId:initial?.trackId,frameCount:frames.length,gaps:gaps.map(f=>f.at),valid};});
   check('original-processed-microphone-sender-identity',captureWindows.length>0&&captureWindows.every(w=>w.valid),{captureWindows,diagnostics:lastState?.micDiagnostics,excludedIntervals:'pre-connection and at/after original close request'});

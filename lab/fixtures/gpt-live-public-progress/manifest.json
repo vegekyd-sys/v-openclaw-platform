@@ -1,0 +1,14 @@
+[
+  {
+    "path": "chat-message-content-Dws_XUEQ.js",
+    "bytes": 5630,
+    "sha256": "769d9dc2339db1af98d25238e649cf95c23e60f3fb0b1835d15adb8c805956cc",
+    "actualSource": "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-01915422-11dd-4765-9936-310ac6fc65b4/runtime/openclaw/dist/chat-message-content-Dws_XUEQ.js"
+  },
+  {
+    "path": "string-coerce-CIXf7egm.js",
+    "bytes": 4647,
+    "sha256": "db70aa59f984a63935d147b6ac11b50a90f21b726998853ef3455451f1e622e7",
+    "actualSource": "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-01915422-11dd-4765-9936-310ac6fc65b4/runtime/openclaw/dist/string-coerce-CIXf7egm.js"
+  }
+]

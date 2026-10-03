@@ -7,6 +7,11 @@
       "before": "e7a27df564dc8296dba853e27752f592f68ebf660736176793ede1bbb2762679"
     },
     {
+      "source": "lab/release-files/gpt-live-call/gateway-public-stream.mjs",
+      "target": "production-worker/gateway-public-stream.mjs",
+      "before": "5440eadbfe1e6bf40824bd389e9cd3fb87326cc3c75b1a158cfe107799300fdf"
+    },
+    {
       "source": "lab/release-files/gpt-live-call/realtime-session-harness-CEO5kVAJ.js",
       "target": "openclaw/dist/realtime-session-harness-CEO5kVAJ.js",
       "before": "b394e47d6ac125dc357a74732c15974cae05e392c72e2c8184c6f6db4bb839b0"

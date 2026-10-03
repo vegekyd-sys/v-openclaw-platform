@@ -113,8 +113,9 @@ test("completed same-turn replay cannot restart work while changed conditions an
   const early = f.calls[0];
   appendUserTurn(f, "turn-original", "，最终原样报告数字和时间，不要写记忆或发消息");
   f.controller.handleFrame(frame("tail", "最终原样报告数字和时间，不要写记忆或发消息"), false);
-  assert.equal(early.signal.aborted, true, "Changed conditions from the same spoken turn still supersede its prefix");
-  early.resolve({ text: "stale" }); await settle();
+  assert.equal(early.signal.aborted, false, "Later conditions cannot cancel an already accepted prefix task");
+  assert.equal(f.calls.length, 1, "The changed condition is retained until the accepted task settles");
+  early.resolve({ text: "first accepted result" }); await settle();
   const current = f.calls[1];
   f.controller.handleFrame(JSON.stringify({ type: "turn.done", turn: {
     id: "turn-original", role: "user", transcript: "请查记忆，再执行完整长任务，最终原样报告数字和时间，不要写记忆或发消息",
@@ -126,7 +127,7 @@ test("completed same-turn replay cannot restart work while changed conditions an
   assert.equal(f.calls.length, 2);
   assert.equal(f.controller.delegationGeneration, 2);
   assert.deepEqual(f.controller.transcript, remaining, "Ignoring replay does not consume remaining conversation context");
-  assert.deepEqual(f.texts(), ["完整结果 3396 / 14:05:12 CST +0800"]);
+  assert.deepEqual(f.texts(), ["first accepted result", "完整结果 3396 / 14:05:12 CST +0800"]);
   f.controller.handleFrame(frame("changed", "补查明天的安排"), false);
   assert.equal(f.calls.length, 3, "Changed conditions on the same turn do not match the completed input version");
   f.calls[2].resolve({ text: "补查完成" }); await settle();
@@ -156,7 +157,7 @@ test("missing provider turn identity preserves delegation behavior and stop clea
 });
 
 test("replay protection does not swallow pending, failed, cancelled, incomplete or changed-transcript requests", async t => {
-  for (const scenario of ["pending", "failure", "cancel", "partial-send", "no-user-done", "new-transcript"]) await t.test(scenario, async () => {
+  for (const scenario of ["pending", "failure", "cancel", "no-user-done", "new-transcript"]) await t.test(scenario, async () => {
     const f = fixture();
     beginUserTurn(f, "turn-one", "request");
     if (scenario !== "no-user-done") finishUserTurn(f, "turn-one", "request");
@@ -165,7 +166,6 @@ test("replay protection does not swallow pending, failed, cancelled, incomplete 
     if (scenario === "failure") first.reject(new Error("provider failed"));
     else if (scenario === "cancel") { first.onCanceled({ runId: "host-run" }); first.resolve({ text: "stale" }); }
     else if (scenario !== "pending") {
-      if (scenario === "partial-send") f.socket.failNextSend = true;
       first.resolve({ text: "completed" });
     }
     await settle();
@@ -329,39 +329,196 @@ test("progress delivery exception does not fail or cancel backend completion", a
   assert.equal(f.fatal.length, 0);
 });
 
-test("superseded delegation drops both old progress and old final", async () => {
+test("a new delegation preserves accepted background work and its original item final", async () => {
   const f = fixture(); f.controller.startDelegation("old", "旧任务");
   const old = f.calls[0];
   f.controller.startDelegation("new", "新任务");
-  assert.equal(old.signal.aborted, true);
+  assert.equal(old.signal.aborted, false);
+  assert.equal(f.controller.activeDelegationId, "old");
+  assert.equal(f.controller.delegationGeneration, 1);
+  assert.equal(f.controller.issuedDelegationGeneration, 2);
+  assert.equal(f.calls.length, 1);
   old.onProgress({ kind: "commentary", text: "旧进展" });
   old.resolve({ text: "旧结果" }); await settle();
   assert.equal(f.calls.length, 2);
   f.calls[1].onProgress({ kind: "commentary", text: "新进展" });
   f.calls[1].resolve({ text: "新结果" }); await settle();
-  assert.deepEqual(f.texts(), ["新进展", "新结果"]);
-  assert(f.frames.every((frame) => frame.delegation_item_id === "new"));
+  assert.deepEqual(f.texts(), ["旧进展", "旧结果", "新结果"]);
+  assert.deepEqual(f.frames.map(frame => frame.delegation_item_id), ["old", "old", "new"]);
 });
 
-test("generation guard invalidates callbacks even when delegation id is reused", async () => {
-  const f = fixture(); f.controller.startDelegation("same", "旧任务");
+test("duplicate item ids cannot replace accepted or queued work or mix result streams", async () => {
+  const diagnostics = [];
+  const f = fixture({ onPublicProgressDiagnostic: event => diagnostics.push(event) });
+  f.controller.startDelegation("same", "旧任务");
   const old = f.calls[0]; f.controller.startDelegation("same", "新任务");
+  f.controller.startDelegation("queued", "下一项");
+  f.controller.startDelegation("queued", "不同的下一项");
+  assert.equal(old.signal.aborted, false);
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.controller.pendingDelegations.length, 1);
+  assert.equal(diagnostics.filter(d => d.stage === "delegation-rejected").length, 2);
+  assert.deepEqual(f.frames, [], "A same-id rejection cannot be appended into the original task");
   old.onProgress({ kind: "commentary", text: "旧进展" });
   old.resolve({ text: "旧结果" }); await settle();
-  f.calls[1].resolve({ text: "新结果" }); await settle();
-  assert.deepEqual(f.texts(), ["新结果"]);
+  assert.equal(f.calls[1].prompt, "下一项");
+  f.calls[1].resolve({ text: "下一结果" }); await settle();
+  f.controller.startDelegation("same", "终态后也不能复用该item");
+  assert.equal(f.calls.length, 2);
+  assert.deepEqual(f.texts(), ["旧进展", "旧结果", "下一结果"]);
   assert.equal(f.controller.delegationGeneration, 2);
 });
 
-test("rapid superseding runs starts only the latest pending delegation", async () => {
+test("FIFO retains every independent request and starts each after its preceding terminal", async () => {
   const f = fixture(); f.controller.startDelegation("d1", "one");
   f.controller.startDelegation("d2", "two"); f.controller.startDelegation("d3", "three");
-  f.calls[0].reject(new Error("stale backend failure")); await settle();
-  assert.equal(f.calls.length, 2); assert.match(f.calls[1].prompt, /three/u);
-  assert.doesNotMatch(f.calls[1].prompt, /two/u);
-  f.calls[1].resolve({ text: "three complete" }); await settle();
-  assert.deepEqual(f.texts(), ["three complete"]);
-  assert.equal(f.warnings.length, 0);
+  assert.equal(f.calls.length, 1);
+  f.calls[0].reject(new Error("real first backend failure")); await settle();
+  assert.equal(f.calls.length, 2); assert.equal(f.calls[1].prompt, "two");
+  assert.match(f.texts()[0], /task failed/u);
+  f.calls[1].resolve({ text: "two complete" }); await settle();
+  assert.equal(f.calls.length, 3); assert.equal(f.calls[2].prompt, "three");
+  f.calls[2].resolve({ text: "three complete" }); await settle();
+  assert.deepEqual(f.texts().slice(1), ["two complete", "three complete"]);
+  assert.deepEqual(f.frames.map(frame => frame.delegation_item_id), ["d1", "d2", "d3"]);
+  assert.equal(f.controller.pendingDelegations.length, 0);
+});
+
+test("queue limits fail the matching item visibly without canceling or invalidating the accepted task", async () => {
+  const diagnostics = [], f = fixture({ onPublicProgressDiagnostic: event => diagnostics.push(event) });
+  f.controller.startDelegation("active", "accepted work");
+  for (let index = 1; index <= 8; index++) f.controller.startDelegation(`q${index}`, `request ${index}`);
+  f.controller.appendTranscript({ kind: "transcript-delta", role: "user", text: "条件不可丢失" });
+  const remaining = structuredClone(f.controller.transcript);
+  f.controller.startDelegation("overflow", "one request too many");
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.calls[0].signal.aborted, false);
+  assert.equal(f.controller.activeDelegationId, "active");
+  assert.equal(f.controller.delegationGeneration, 1);
+  assert.equal(f.controller.pendingDelegations.length, 8);
+  assert.deepEqual(f.controller.transcript, remaining, "Rejected requests do not consume the next conversation context");
+  assert.equal(f.frames[0].delegation_item_id, "overflow");
+  assert.match(f.texts()[0], /not started/u);
+  assert.match(f.frames[0].content[0].text, /^\[BACKEND_FAILURE/u);
+  assert.equal(diagnostics.find(d => d.stage === "delegation-rejected").generation, 10);
+  f.controller.startDelegation("overflow", "retry under ambiguous same item");
+  assert.equal(f.frames.length, 1, "The rejected item id cannot later acquire a second meaning");
+  f.calls[0].resolve({ text: "完整原结果" }); await settle();
+  for (let index = 1; index <= 8; index++) {
+    assert.equal(f.calls.at(-1).prompt, `request ${index}`);
+    assert.equal(f.calls.at(-1).continuationIdentity.delegationGeneration, index + 1);
+    f.calls.at(-1).resolve({ text: `结果${index}` }); await settle();
+  }
+  assert.equal(f.calls.length, 9);
+  assert.equal(f.fatal.length, 0);
+});
+
+test("retained delegation identities and prompt bytes are bounded without revoking current work", async () => {
+  const f = fixture(); f.controller.startDelegation("active", "accepted");
+  f.controller.startDelegation("oversize", "汉".repeat(23000));
+  assert.equal(f.controller.pendingDelegations.length, 0);
+  assert.equal(f.calls[0].signal.aborted, false);
+  assert.match(f.texts()[0], /not started/u);
+  for (let index = 0; index < 1100; index++) f.controller.startDelegation(`overflow-${index}`, "request");
+  assert.equal(f.controller.observedDelegationIds.size, 1024);
+  assert.equal(f.controller.pendingDelegations.length, 8);
+  assert.equal(f.calls.length, 1);
+  f.controller.detach();
+  assert.equal(f.controller.pendingDelegations.length, 0);
+  assert.equal(f.controller.observedDelegationIds.size, 0);
+  f.calls[0].resolve({ text: "late" }); await settle();
+  assert.equal(f.calls.length, 1);
+});
+
+test("all original final chunks are sent before the next backend request can start", async () => {
+  const f = fixture(), sends = [];
+  const send = f.socket.send.bind(f.socket);
+  f.socket.send = payload => { sends.push({ frame: JSON.parse(payload), backendCalls: f.calls.length }); send(payload); };
+  f.controller.startDelegation("old", "long result");
+  f.controller.startDelegation("next", "next request");
+  const final = "来源完整结果：" + "汉🙂".repeat(500);
+  f.calls[0].resolve({ text: final }); await settle();
+  assert(sends.length > 2);
+  assert(sends.every(row => row.frame.delegation_item_id === "old" && row.backendCalls === 1));
+  assert.match(sends.at(-1).frame.content[0].text, /^\[BACKEND_FINAL_COMPLETE/u);
+  assert.equal(f.texts().join(""), final);
+  assert.equal(f.calls.length, 2);
+  f.calls[1].resolve({ text: "next" }); await settle();
+});
+
+test("terminal false or partial-send throw closes only delivery and never launches queued work", async t => {
+  for (const action of ["false", "throw-after-first-chunk"]) await t.test(action, async () => {
+    const f = fixture();
+    f.controller.startDelegation("old", "request");
+    f.controller.startDelegation("queued", "must not start after incomplete delivery");
+    const accepted = f.calls[0];
+    if (action === "false") f.socket.readyState = 3;
+    else {
+      const send = f.socket.send.bind(f.socket); let sends = 0;
+      f.socket.send = payload => { if (++sends === 2) throw new Error("partial terminal send failure"); send(payload); };
+    }
+    accepted.resolve({ text: "汉🙂".repeat(500) }); await settle();
+    assert.equal(f.controller.stopped, true);
+    assert.equal(f.controller.pendingDelegations.length, 0);
+    assert.equal(accepted.signal.aborted, false, "Transport failure is not permission to cancel accepted app work");
+    assert.equal(f.calls.length, 1);
+    assert.equal(f.fatal.length, 1);
+    assert(!f.frames.some(frame => /^\[BACKEND_FINAL_COMPLETE/u.test(frame.content[0].text)));
+  });
+});
+
+test("stop and detach discard unstarted FIFO entries and isolate late callbacks", async t => {
+  for (const action of ["stop", "detach"]) await t.test(action, async () => {
+    const f = fixture(); f.controller.startDelegation("active", "accepted");
+    f.controller.startDelegation("queued", "unstarted");
+    const active = f.calls[0];
+    if (action === "stop") f.controller.stop(new Error("call stopped"));
+    else f.controller.detach();
+    assert.equal(active.signal.aborted, action === "stop");
+    assert.equal(f.controller.pendingDelegations.length, 0);
+    active.onProgress({ kind: "commentary", text: "late fact" });
+    active.resolve({ text: "late final" }); await settle();
+    assert.equal(f.calls.length, 1);
+    assert.deepEqual(f.frames, []);
+  });
+});
+
+test("canonical final diagnostics retain the actual resumed source but failure cannot borrow it", async t => {
+  const provenance = { runId: "announce:worker:child:ok", ownerRunId: "initial-host-run", source: "canonical_final", role: "parent" };
+  for (const action of ["final", "over-limit"]) await t.test(action, async () => {
+    const diagnostics = [], f = fixture({ onPublicProgressDiagnostic: event => diagnostics.push(event) });
+    f.controller.startDelegation("owned", "request");
+    f.calls[0].resolve({ text: action === "final" ? "完整日期2026-10-03 18:40:35 CST +0800。" : "汉".repeat(6000), provenance });
+    await settle();
+    const actual = diagnostics.find(d => d.stage === "backend-final-received");
+    assert.equal(actual.sourceRunIdSha256, createHash("sha256").update(provenance.runId).digest("hex"));
+    assert.equal(actual.ownerRunIdSha256, createHash("sha256").update(provenance.ownerRunId).digest("hex"));
+    assert.equal(actual.provenance.role, "parent");
+    const terminal = diagnostics.filter(d => d.stage === "context-append-sent").at(-1);
+    if (action === "final") {
+      assert.equal(terminal.role, "final_complete");
+      assert.equal(terminal.sourceRunIdSha256, actual.sourceRunIdSha256);
+    } else {
+      assert.equal(terminal.role, "failure");
+      assert.equal(terminal.sourceRunIdSha256, undefined);
+    }
+  });
+});
+
+test("a call ending between actual terminal chunks cannot send a complete result or launch the FIFO", async () => {
+  const f = fixture(); f.controller.startDelegation("active", "result");
+  f.controller.startDelegation("queued", "unstarted");
+  const send = f.socket.send.bind(f.socket); let sends = 0;
+  f.socket.send = payload => {
+    send(payload);
+    if (++sends === 1) f.sessionAbort.abort(new Error("caller ended during send"));
+  };
+  f.calls[0].resolve({ text: "汉🙂".repeat(500) }); await settle();
+  assert.equal(f.frames.length, 1);
+  assert.match(f.frames[0].content[0].text, /^\[BACKEND_FINAL_PART/u);
+  assert.equal(f.controller.pendingDelegations.length, 0);
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.fatal.length, 0, "Normal caller cancellation is not a delivery failure");
 });
 
 test("session abort drops progress and final and aborts the accepted run", async () => {
@@ -398,13 +555,15 @@ test("recognized cancellation does not claim failure or completion", async () =>
   assert.equal(f.warnings.length, 0);
 });
 
-test("closed socket silently discards progress and final without changing accepted work", async () => {
+test("closed socket stops unstarted delivery after an undelivered final without aborting accepted work", async () => {
   const f = fixture(); f.controller.startDelegation("d1", "request");
   f.socket.readyState = 3;
   f.calls[0].onProgress({ kind: "commentary", text: "progress" });
   f.calls[0].resolve({ text: "final" }); await settle();
   assert.deepEqual(f.frames, []);
-  assert.equal(f.fatal.length, 0);
+  assert.equal(f.fatal.length, 1);
+  assert.equal(f.controller.stopped, true);
+  assert.equal(f.calls[0].signal.aborted, false);
 });
 
 test("progress feature preserves original transcript context and decoded event entry point", async () => {
@@ -476,8 +635,9 @@ test("diagnostics do not claim failed appends and separately witness an actual l
 test("real stale public callback keeps its original generation and never becomes a new owner's speech", async () => {
   const diagnostics = [];
   const f = fixture({ onPublicProgressDiagnostic: event => diagnostics.push(event) });
-  f.controller.startDelegation("reused", "first"); const first = f.calls[0];
-  f.controller.startDelegation("reused", "second");
+  f.controller.startDelegation("old", "first"); const first = f.calls[0];
+  f.controller.startDelegation("new", "second");
+  first.onCanceled({ runId: "original-host-run", source: "explicit_control" });
   first.onProgress({ kind: "commentary", text: "旧公开事实", provenance: { runId: "original-host-run" } });
   assert.equal(diagnostics.at(-1).stage, "stale-public-progress-dropped");
   assert.equal(diagnostics.at(-1).generation, 1);
@@ -631,12 +791,12 @@ test("trusted exact cancellation revokes current delivery before generic continu
   assert.equal(f.fatal.length, 0);
 });
 
-test("late or duplicate old cancellation cannot revoke a reused-id new delegation", async () => {
+test("late or duplicate old cancellation cannot revoke an independent queued delegation", async () => {
   const f = fixture(); f.controller.startDelegation("same", "first request");
   const old = f.calls[0], reason = new Error("first exact cancellation");
   old.onCanceled(reason); old.onCanceled(new Error("duplicate"));
   assert.equal(old.signal.reason, reason);
-  f.controller.startDelegation("same", "new request");
+  f.controller.startDelegation("new", "new request");
   old.onCanceled(new Error("late old cancellation while new task is queued"));
   old.reject(new Error("generic old wrapper failure")); await settle();
   assert.equal(f.calls.length, 2);
@@ -738,9 +898,9 @@ test("real waiting continuation cannot replace a queued child fact", async t => 
   run.resolve({text: "完整结果。"}); await settle();
 });
 
-test("queued facts do not outlive cancellation, session detach or a superseding generation", async t => {
+test("queued facts do not outlive explicit cancellation, stop or detach", async t => {
   t.mock.timers.enable({apis: ["Date", "setTimeout"], now: 100000});
-  for (const action of ["cancel", "stop", "detach", "supersede"]) {
+  for (const action of ["cancel", "stop", "detach"]) {
     const f = fixture(); f.controller.startDelegation("old", "request");
     const old = f.calls[0];
     old.onProgress({kind: "commentary", text: "已核对第一项。"});
@@ -749,12 +909,10 @@ test("queued facts do not outlive cancellation, session detach or a superseding 
     if (action === "cancel") old.onCanceled(new Error("explicit caller cancellation"));
     if (action === "stop") f.sessionAbort.abort(new Error("caller left"));
     if (action === "detach") f.controller.detach();
-    if (action === "supersede") f.controller.startDelegation("new", "new request");
     t.mock.timers.tick(30000);
     assert.deepEqual(f.texts(), ["已核对第一项。"], action);
     if (action === "detach") assert.equal(old.signal.aborted, false);
     old.resolve({text: "old final"}); await settle();
-    if (action === "supersede") { f.calls[1].resolve({text:"new final"}); await settle(); }
   }
 });
 

@@ -30,6 +30,9 @@ var OpenAIQuicksilverDelegationController = class {
 		};
 		this.stopped = false;
 		this.delegationGeneration = 0;
+		this.issuedDelegationGeneration = 0;
+		this.pendingDelegations = [];
+		this.observedDelegationIds = new Set();
 		this.publicProgressTraceLogEnabled = process.env.OPENCLAW_GPT_LIVE_PROGRESS_TRACE === "1";
 		this.publicProgressTraceEnabled = this.publicProgressTraceLogEnabled || typeof options.onPublicProgressDiagnostic === "function";
 		this.publicProgressTraceId = this.publicProgressTraceEnabled ? randomUUID() : void 0;
@@ -136,6 +139,13 @@ var OpenAIQuicksilverDelegationController = class {
 	}
 	startDelegation(id, input, userBidiTurnId) {
 		if (this.stopped || this.options.signal.aborted || !input.trim()) return;
+		// A duplicate item cannot denote two tasks. Preserve its accepted work and
+		// reject replay without sending failure into that item's original result.
+		if (this.observedDelegationIds.has(id)) {
+			this.options.logger.warn("OpenAI GPT-Live duplicate delegation item rejected");
+			this.tracePublicProgress("delegation-rejected", id, "", { kind: "failure", provenance: { source: "duplicate_item" } });
+			return;
+		}
 		let inputKey;
 		if (typeof userBidiTurnId === "string" && /^[a-zA-Z0-9_.:-]{1,160}$/.test(userBidiTurnId)) {
 			inputKey = userBidiTurnId + ":" + createHash("sha256").update(input.trim()).digest("hex");
@@ -149,23 +159,33 @@ var OpenAIQuicksilverDelegationController = class {
 				proof?.complete === true && completed.text === proof.text) return;
 		}
 		const transcript = this.transcript;
-		this.transcript = [];
-		this.partialTranscriptRole = void 0;
 		const delegation = {
 			id,
 			userBidiTurnId, inputKey,
 			userTranscriptRevision: this.userTranscriptRevision,
 			userTurnTranscriptText: this.nativeUserTurnText.get(userBidiTurnId)?.text,
-			generation: ++this.delegationGeneration,
+			generation: ++this.issuedDelegationGeneration,
 			prompt: buildOpenAIQuicksilverDelegationPrompt({
 				input,
 				transcript
 			})
 		};
-		this.activeDelegationId = id;
+		// New provider speech is not authorization to cancel an accepted app task.
+		// Keep one owner through its complete final and admit other ids in order.
+		const identityLimit = this.observedDelegationIds.size >= 1024;
+		if (!identityLimit) this.observedDelegationIds.add(id);
+		if (identityLimit || Buffer.byteLength(delegation.prompt, "utf8") > 64 * 1024 ||
+			this.consultController && this.pendingDelegations.length >= 8) {
+			const failure = "The backend task queue could not accept this request. It was not started. Report that limitation honestly; do not claim work is running or complete.";
+			this.tracePublicProgress("delegation-rejected", id, failure, { kind: "failure", delegationGeneration: delegation.generation, provenance: { source: "queue_limit" } });
+			try { this.sendAppend(id, failure, "speakable", { kind: "failure", delegationGeneration: delegation.generation }); }
+			catch (error) { this.options.logger.warn(`OpenAI GPT-Live delegation rejection delivery failed: ${shortFailureReason(error)}`); }
+			return;
+		}
+		this.transcript = [];
+		this.partialTranscriptRole = void 0;
 		if (this.consultController) {
-			this.pendingDelegation = delegation;
-			this.consultController.abort(/* @__PURE__ */ new Error("GPT-Live delegation superseded"));
+			this.pendingDelegations.push(delegation);
 			return;
 		}
 		this.launchDelegation(delegation);
@@ -175,11 +195,11 @@ var OpenAIQuicksilverDelegationController = class {
 		const controller = new AbortController();
 		this.consultController = controller;
 		this.activeDelegationId = delegation.id;
-		this.runDelegation(delegation, controller.signal).catch((error) => this.fail(toErrorObject(error, "OpenAI GPT-Live delegation failed"))).finally(() => {
+		this.delegationGeneration = delegation.generation;
+		this.runDelegation(delegation, controller.signal).catch((error) => this.failTerminalDelivery(toErrorObject(error, "OpenAI GPT-Live delegation failed"))).finally(() => {
 			if (this.consultController !== controller) return;
 			this.consultController = void 0;
-			const pending = this.pendingDelegation;
-			this.pendingDelegation = void 0;
+			const pending = this.pendingDelegations.shift();
 			if (pending) this.launchDelegation(pending);
 			else this.activeDelegationId = void 0;
 		});
@@ -189,6 +209,8 @@ var OpenAIQuicksilverDelegationController = class {
 		this.delegationInputsByUserTurn.clear();
 		this.completedUserTurns.clear();
 		this.nativeUserTurnText.clear();
+		this.pendingDelegations.length = 0;
+		this.observedDelegationIds.clear();
 		this.stopped = true;
 		this.options.signal.removeEventListener("abort", this.onSessionAbort);
 		this.pendingDelegation = void 0;
@@ -255,6 +277,7 @@ var OpenAIQuicksilverDelegationController = class {
 		const provenance = details.provenance;
 		if (provenance && typeof provenance === "object") {
 			event.provenance = {};
+			if (["initial", "parent", "child"].includes(provenance.role)) event.provenance.role = provenance.role;
 			// Hash the actual host callback identity before structured logging can
 			// redact it. Join to the original SSE/tool run; never infer ownership
 			// by equating a provider delegation item with a backend run id.
@@ -280,6 +303,13 @@ var OpenAIQuicksilverDelegationController = class {
 		if (this.publicProgressTraceLogEnabled) {
 			try { this.options.logger.info?.(`GPT_LIVE_PUBLIC_PROGRESS ${JSON.stringify(event)}`); } catch {}
 		}
+	}
+	failTerminalDelivery(error) {
+		// The current task already ended; close only this delivery owner and its
+		// unstarted queue. Do not invent completion or abort unrelated app work.
+		this.options.logger.warn(error.message);
+		this.markStopped();
+		this.options.onFatalError(error);
 	}
 	chunkPublicAppendText(text) {
 		// Leave 180 UTF-8 bytes for the role header within the native 500-byte
@@ -328,6 +358,7 @@ var OpenAIQuicksilverDelegationController = class {
 	async runDelegation(delegation, signal) {
 		let text;
 		let terminalKind = "final";
+		let terminalProvenance;
 		let finished = false;
 		const seenProgress = new Set();
 		let queuedProgress;
@@ -434,12 +465,14 @@ var OpenAIQuicksilverDelegationController = class {
 			if (!this.isCurrentDelegation(delegation, signal)) return;
 			if (typeof result?.text !== "string" || !result.text.trim()) throw new Error("Backend returned no complete public result");
 			text = result.text;
+			terminalProvenance = result.provenance;
 			// Preserve the original public result before applying the delivery limit.
 			// Byte-safe native chunks already bound individual frames; truncating the
 			// whole result would lose late facts while falsely labeling it complete.
-			this.tracePublicProgress("backend-final-received", delegation.id, text, { kind: "final" });
+			this.tracePublicProgress("backend-final-received", delegation.id, text, { kind: "final", provenance: terminalProvenance });
 			if (Buffer.byteLength(text, "utf8") > 16 * 1024) {
 				terminalKind = "failure";
+				terminalProvenance = void 0;
 				text = "The backend result is too long to deliver completely. Tell the user it has not been fully delivered; do not claim completion, summarize unseen parts or invent missing values.";
 				this.options.logger.warn("OpenAI GPT-Live complete public result exceeded the 16 KiB delivery limit");
 			}
@@ -448,6 +481,7 @@ var OpenAIQuicksilverDelegationController = class {
 			this.options.logger.warn(`OpenAI GPT-Live delegation consult failed: ${shortFailureReason(error)}`);
 			text = CONSULT_FAILURE_TEXT;
 			terminalKind = "failure";
+			terminalProvenance = void 0;
 		} finally {
 			finished = true;
 			clearQueuedProgress();
@@ -455,7 +489,12 @@ var OpenAIQuicksilverDelegationController = class {
 			if (this.cancelQueuedProgress === clearQueuedProgress) this.cancelQueuedProgress = void 0;
 		}
 		if (this.isCurrentDelegation(delegation, signal)) {
-			const sent = this.sendAppend(delegation.id, text, "speakable", { kind: terminalKind });
+			const sent = this.sendAppend(delegation.id, text, "speakable", { kind: terminalKind, provenance: terminalProvenance });
+			if (!sent) {
+				if (this.stopped || this.options.signal.aborted) return;
+				this.failTerminalDelivery(new Error("OpenAI GPT-Live terminal result was not delivered"));
+				return;
+			}
 			const proof = this.nativeUserTurnText.get(delegation.userBidiTurnId);
 			if (sent && terminalKind === "final" && delegation.inputKey && this.completedUserTurns.has(delegation.userBidiTurnId) &&
 				proof?.complete === true && proof.text === delegation.userTurnTranscriptText &&
@@ -473,6 +512,7 @@ var OpenAIQuicksilverDelegationController = class {
 		const chunks = isPublic ? this.chunkPublicAppendText(text) : chunkOpenAIQuicksilverAppendText(text);
 		const appendId = ++this.publicProgressAppendSequence;
 		for (const [chunkIndex, chunk] of chunks.entries()) {
+			if (this.stopped || this.options.signal.aborted || socket.readyState !== WEBSOCKET_OPEN) return false;
 			const { role, wireText } = isPublic ? this.formatPublicAppendChunk(chunk, diagnostic.kind, chunkIndex, chunks.length, channel) : { wireText: chunk };
 			const frame = {
 				type: "delegation.context.append",

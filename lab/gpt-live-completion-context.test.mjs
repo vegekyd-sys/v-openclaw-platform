@@ -340,7 +340,8 @@ test("actual SDK binder and voice registry receive Worker parent/child identitie
     },
   } }));
   assert.equal(result.stats.delivered, 1, result.warnings.join("\n"));
-  assert.deepEqual(await final, { text: "2026-10-02 17:53:36 CST +0800" });
+  assert.deepEqual(await final, { text: "2026-10-02 17:53:36 CST +0800", provenance: {
+    runId: "resumed-parent-run", ownerRunId: "parent-run", source: "canonical_final", role: "parent" } });
   assert.deepEqual(h.trace.map(row => row.method), ["agent.wait", "sessions.get", "agent"]);
   assert.equal(listeners.size, 0, "completed voice removes accepted child/resumed listeners");
 });
