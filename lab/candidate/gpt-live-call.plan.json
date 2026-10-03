@@ -2,9 +2,19 @@
   "baseRelease": "hotreload-feishu-approvals-v2",
   "files": [
     {
-      "source": "lab/release-files/gpt-live-native-progress/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
+      "source": "lab/release-files/gpt-live-call/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
       "target": "openclaw/dist/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
       "before": "e7a27df564dc8296dba853e27752f592f68ebf660736176793ede1bbb2762679"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/realtime-quicksilver-session-B3HKftDE.js",
+      "target": "openclaw/dist/realtime-quicksilver-session-B3HKftDE.js",
+      "before": "0f98f3d3a6cf947106f9bc0ae589d34571f822b0407c57cf38bb08e4fa0379ee"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/gpt-live-call-lifecycle.mjs",
+      "target": "openclaw/dist/gpt-live-call-lifecycle.mjs",
+      "before": null
     },
     {
       "source": "lab/release-files/gpt-live-call/gateway-public-stream.mjs",
@@ -103,6 +113,7 @@
     }
   ],
   "tests": [
+    "lab/gpt-live-call-lifecycle.test.mjs",
     "lab/gpt-live-consult-progress.test.mjs",
     "lab/gpt-live-public-progress-bridge.test.mjs",
     "lab/gpt-live-native-progress.test.mjs",
@@ -121,6 +132,8 @@
     "lab/gpt-live-voice-tool-order.test.mjs",
     "lab/gpt-live-candidate-native/confirmation-evidence.test.mjs",
     "lab/gpt-live-candidate-native/os-observer-lifecycle.test.mjs",
+    "lab/gpt-live-candidate-native/call-lifecycle-evidence.test.mjs",
+    "lab/gpt-live-candidate-native/call-lifecycle-target.test.mjs",
     "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-spawn-gateway-proxy.test.mjs",
     "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-yield-external-task.test.mjs",
     "lab/gpt-live-pr-provenance.test.mjs",
@@ -134,6 +147,9 @@
     "release/captured/v2026.9.1-db91.6-db91-shrink-reuse-20261002.worker/dist/subagent-completion-relay.test.mjs"
   ],
   "support": [
+    "lab/gpt-live-call-lifecycle.mjs",
+    "lab/patch-gpt-live-call-lifecycle.mjs",
+    "lab/gpt-live-h5/instructions.mjs",
     "lab/gpt-live-consult-progress.mjs",
     "lab/gpt-live-public-progress-bridge.mjs",
     "release/captured/v2026.9.1-db91.6-memory-search-guards-20261002.worker/dist/gateway-public-stream.mjs",
@@ -146,7 +162,6 @@
     "lab/release-files/background-work-20261002/vlab-codex-parity/run-attempt-D1hJO4fX.js",
     "lab/gpt-live-h5/server.mjs",
     "lab/gpt-live-h5/events.mjs",
-    "lab/gpt-live-h5/instructions.mjs",
     "lab/gpt-live-h5/duplex-playback.mjs",
     "lab/gpt-live-h5/index.html",
     "lab/gpt-live-h5/app.js",
@@ -184,6 +199,12 @@
     "lab/fixtures/gpt-live-voice-tool-order/capture-provenance.json",
     "lab/gpt-live-candidate-native/confirmation-evidence.mjs",
     "lab/gpt-live-candidate-native/evidence.mjs",
+    "lab/gpt-live-candidate-native/call-lifecycle-smoke.mjs",
+    "lab/gpt-live-candidate-native/call-lifecycle-evidence.mjs",
+    "lab/gpt-live-candidate-native/call-lifecycle-evidence.test.mjs",
+    "lab/gpt-live-candidate-native/call-lifecycle-target.mjs",
+    "lab/gpt-live-candidate-native/call-lifecycle-target.test.mjs",
+    "lab/gpt-live-h5-release.mjs",
     "lab/gpt-live-candidate-native/os-observer-lifecycle.mjs",
     "lab/gpt-live-candidate-native/owned-proc-witness.py",
     "release/captured/v2026.9.1-db91.6-memory-search-weighted-20261002.worker/dist/worker-pool.mjs",
@@ -219,7 +240,12 @@
     "lab/fixtures/gpt-live-public-progress/chat-message-content-Dws_XUEQ.js",
     "lab/fixtures/gpt-live-public-progress/manifest.json",
     "lab/fixtures/gpt-live-public-progress/string-coerce-CIXf7egm.js",
-    "lab/release-files/gpt-live-native-progress/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
+    "lab/fixtures/gpt-live-call-lifecycle/realtime-quicksilver-bridge-BlvG9Zkq.js",
+    "lab/fixtures/gpt-live-call-lifecycle/realtime-quicksilver-session-B3HKftDE.js",
+    "lab/fixtures/gpt-live-call-lifecycle/realtime-quicksilver-wire-C2tdaxFV.js",
+    "lab/release-files/gpt-live-call/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
+    "lab/release-files/gpt-live-call/realtime-quicksilver-session-B3HKftDE.js",
+    "lab/release-files/gpt-live-call/gpt-live-call-lifecycle.mjs",
     "lab/release-files/gpt-live-call/gateway-public-stream.mjs",
     "lab/release-files/gpt-live-call/realtime-session-harness-CEO5kVAJ.js",
     "lab/release-files/gpt-live-call/talk-DkFuKRod.js",

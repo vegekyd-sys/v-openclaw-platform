@@ -5,8 +5,15 @@ import {spawn} from 'node:child_process';
 import {randomBytes} from 'node:crypto';
 import {setTimeout as sleep} from 'node:timers/promises';
 
-export async function createPrivatePulseMicrophone(scratch) {
-  assert(process.env.VLAB_CANDIDATE_ID&&path.resolve(scratch).startsWith(path.resolve(process.env.OPENCLAW_STATE_DIR)+'/'),'Private Candidate pulse directory required');
+export async function createPrivatePulseMicrophone(scratch,{validationTarget='candidate',privateScratchRoot,executables={},moduleDirectory,libraryPath}={}) {
+  if(validationTarget==='candidate')assert(process.env.VLAB_CANDIDATE_ID&&path.resolve(scratch).startsWith(path.resolve(process.env.OPENCLAW_STATE_DIR)+'/'),'Private Candidate pulse directory required');
+  else {
+    assert(['shared','v'].includes(validationTarget)&&process.env.GPT_LIVE_H5_VALIDATION_TARGET===validationTarget&&
+      path.isAbsolute(privateScratchRoot??'')&&path.isAbsolute(scratch)&&!fs.existsSync(scratch),
+      'Live target PulseAudio must use a fresh validation-owned scratch directory');
+    const root=fs.realpathSync(privateScratchRoot),parent=fs.realpathSync(path.dirname(scratch));
+    assert(parent===root||parent.startsWith(root+'/'),'Live target PulseAudio escaped the unique validation evidence scratch');
+  }
   fs.mkdirSync(scratch,{recursive:true,mode:0o700});
   // Linux AF_UNIX limits socket paths to 107 bytes; Candidate roots are longer.
   const socketRoot=fs.mkdtempSync('/tmp/gpt-live-pulse-');fs.chmodSync(socketRoot,0o700);
@@ -20,15 +27,24 @@ export async function createPrivatePulseMicrophone(scratch) {
   const environment={...process.env,XDG_RUNTIME_DIR:runtime,XDG_CONFIG_HOME:configHome,XDG_DATA_HOME:dataHome,
     PULSE_RUNTIME_PATH:runtime,PULSE_STATE_PATH:pulseState,PULSE_CONFIG_PATH:configHome,PULSE_COOKIE:cookie,
     PULSE_SERVER:'unix:'+socket,PULSE_SOURCE:sourceName,PULSE_SINK:outputName};
-  let stderr='';
-  const daemon=spawn('/usr/bin/pulseaudio',['--system=false','--daemonize=no','--use-pid-file=no','--exit-idle-time=-1','--log-target=stderr','-n','--file='+config],{env:environment,stdio:['ignore','ignore','pipe']});
+  // Only these private media children need the extracted apt libraries. The
+  // returned Chrome environment and parent Node process are left unchanged.
+  const mediaEnvironment=libraryPath?{...environment,LD_LIBRARY_PATH:libraryPath}:environment;
+  let stderr='',daemonError;
+  const daemon=spawn(executables.pulseaudio??'/usr/bin/pulseaudio',['--system=false','--daemonize=no','--use-pid-file=no','--exit-idle-time=-1','--log-target=stderr',
+    ...(moduleDirectory?['--dl-search-path='+moduleDirectory]:[]),'-n','--file='+config],{env:mediaEnvironment,stdio:['ignore','ignore','pipe']});
   daemon.stderr.on('data',chunk=>{stderr=(stderr+chunk).slice(-4000)});
-  for(const deadline=Date.now()+10000;Date.now()<deadline&&!fs.existsSync(socket)&&daemon.exitCode===null;)await sleep(50);
-  assert(fs.existsSync(socket),'Private PulseAudio startup failed: '+stderr.slice(-1200));
+  daemon.once('error',error=>{daemonError=error});
+  for(const deadline=Date.now()+10000;Date.now()<deadline&&!fs.existsSync(socket)&&daemon.exitCode===null&&!daemonError;)await sleep(50);
+  if(!fs.existsSync(socket)) {
+    if(daemon.pid&&daemon.exitCode===null&&daemon.signalCode===null){daemon.kill('SIGTERM');await sleep(100);if(daemon.exitCode===null&&daemon.signalCode===null)daemon.kill('SIGKILL');}
+    fs.rmSync(socketRoot,{recursive:true,force:true});fs.rmSync(scratch,{recursive:true,force:true});
+    throw Error('Private PulseAudio startup failed: '+String(daemonError?.message??stderr).slice(-1200));
+  }
   const plays=[],children=[];
   function play(file,label) {
     assert(fs.existsSync(file)&&path.isAbsolute(file),'Actual synthetic WAV path required');
-    const child=spawn('/usr/bin/paplay',['--server=unix:'+socket,'--device='+name,'--latency-msec=20',file],{env:environment,stdio:['ignore','ignore','pipe']});
+    const child=spawn(executables.paplay??'/usr/bin/paplay',['--server=unix:'+socket,'--device='+name,'--latency-msec=20',file],{env:mediaEnvironment,stdio:['ignore','ignore','pipe']});
     children.push(child);
     const row={label,startedAt:Date.now(),completedAt:null,exitCode:null};plays.push(row);
     let error='';child.stderr.on('data',chunk=>{error+=String(chunk)});

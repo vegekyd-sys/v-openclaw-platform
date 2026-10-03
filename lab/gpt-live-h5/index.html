@@ -40,10 +40,12 @@
       </section>
       <aside class="conversation-panel" aria-labelledby="conversationTitle">
         <div class="conversation-heading">
-          <h2 id="conversationTitle">对话</h2>
+          <div class="conversation-title">
+            <h2 id="conversationTitle">对话</h2>
+            <span id="taskStatus" class="task-status" role="status"></span>
+          </div>
           <span class="wave-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
         </div>
-        <p id="taskStatus" class="task-status" role="status"></p>
         <div id="conversation" class="conversation" role="log" aria-label="通话内容" aria-live="polite" aria-relevant="additions text">
           <div id="conversationEmpty" class="empty"><p>拨号后，对话会显示在这里。</p></div>
           <div id="transcriptHistory" class="transcript-history"></div>

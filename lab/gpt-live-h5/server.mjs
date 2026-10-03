@@ -40,7 +40,9 @@ export function createLiveH5Server({ gateway, offer, preview = false }) {
         res.writeHead(200, { "content-type": type, "cache-control": "no-store" }); res.end(contents); return;
       }
       if (!String(req.headers.cookie ?? "").split(/;\s*/u).includes(`v_live_experiment=${cookie}`)) return json(res, 401, { error: "请先打开实验页面" });
-      if (req.method === "GET" && url.pathname === "/api/status") return json(res, 200, { ready: !preview, model: "gpt-live-1-codex" });
+      if (req.method === "GET" && url.pathname === "/api/status") return json(res, 200, {
+        ready: !preview, model: "gpt-live-1-codex", activeCall: Boolean(active), creatingSession,
+      });
       if (preview) return json(res, 503, { error: "当前是页面预览，还未连接 VLab 候选服务。" });
       if (req.method === "GET" && url.pathname === "/api/events") {
         res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
@@ -74,6 +76,14 @@ export function createLiveH5Server({ gateway, offer, preview = false }) {
         const sdp = await offer(active.reservation, params.sdp);
         return json(res, 200, { sdp });
       }
+      if (url.pathname === "/api/ready") {
+        const result = await gateway.request("talk.client.toolCall", {
+          sessionKey: active.sessionKey, voiceSessionId: active.reservation.voiceSessionId,
+          callId: `host-ready-${randomUUID()}`, name: "openclaw_live_call_control", args: { action: "ready" },
+        });
+        if (result?.ok !== true) return json(res, 409, { error: "接通问候还未就绪，你可以直接说话。" });
+        return json(res, 200, { ok: true });
+      }
       if (url.pathname === "/api/steer") {
         if (!["steer", "cancel"].includes(params.mode) || typeof params.text !== "string" || !params.text.trim() || params.text.length > 2000) return json(res, 400, { error: "补充内容无效" });
         const result = await gateway.request("talk.client.steer", { sessionKey: active.sessionKey, text: params.text, mode: params.mode });
@@ -94,6 +104,15 @@ export function createLiveH5Server({ gateway, offer, preview = false }) {
     const item = event.payload.talkEvent;
     if (!["tool.call", "tool.result", "tool.error"].includes(item?.type)) return;
     const message = { voiceSessionId: active.reservation.voiceSessionId, type: item.type, callId: item.callId };
+    if (item.payload?.name === "openclaw_end_call") {
+      message.name = "openclaw_end_call";
+      if (typeof item.payload.requestId === "string") message.requestId = item.payload.requestId;
+      if (typeof item.payload.originUserTurnId === "string") message.originUserTurnId = item.payload.originUserTurnId;
+      if (item.type === "tool.result" && item.payload.closeAfterPlayback === true
+        && typeof item.payload.requestId === "string" && item.payload.requestId) {
+        message.closeAfterPlayback = true;
+      }
+    }
     for (const response of listeners) response.write(`data: ${JSON.stringify(message)}\n\n`);
   };
   return { server, emit, dispose: async () => { clearInterval(timer); for (const response of listeners) response.end(); await close().catch(() => {}); server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); } };

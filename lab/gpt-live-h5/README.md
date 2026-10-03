@@ -1,6 +1,6 @@
 # GPT Live one 通话候选
 
-当前状态（2026-10-03）：用户已要求退出共享 VLab，原环境恢复、自己的 lease 归还，其他任务已接手。本轮只在 Candidate 修复失声并接入真实 Memory / Web 工具验证。共享试用 d3cd1fe 出现前端静音锁；新版修复和真实长任务尚在验证，不能继承下面历史样本为当前已通过。验收清单见 [Candidate 验证计划](../../docs/gpt-live-pr154-candidate-validation-20261003.md)。未获新授权不得再次申请共享 lease 或部署共享，未合 dev、未部署生产。
+当前状态（2026-10-04）：用户真人体验后已明确授权完成 UI、主动问候与模型挂断工具，再经 VLab 验收并上线 V。原实验未通过项保留，在 Candidate 中继续。本轮交付、重启和分阶段验收边界见 [首版发布计划](../../docs/gpt-live-call-release-20261004.md)。实际部署与验收以新发布 receipt 为准，不继承历史 current/PID/hash。
 
 以下为历史实验记录：
 

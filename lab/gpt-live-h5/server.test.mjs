@@ -121,3 +121,41 @@ test("the frozen H5 serves its own stylesheet and every browser module", async t
   const css = await (await fetch(`${f.url}/styles.css`)).text(); assert.match(css, /\.transcript-turn/u);
   assert.equal(f.calls.length, 0, "Static preview does not create a model session");
 });
+
+test('pickup readiness uses an exact owned host operation without exposing broker fields', async t => {
+  const f=await fixture(t); await f.request('session');
+  const r=await f.request('ready',{voiceSessionId:'voice-private'});
+  assert.equal(r.status,200); assert.deepEqual(await r.json(),{ok:true});
+  const invocation=f.calls.find(row=>row.method==='talk.client.toolCall');
+  assert.equal(invocation.params.name,'openclaw_live_call_control');
+  assert.equal(invocation.params.voiceSessionId,'voice-private');
+  assert.deepEqual(invocation.params.args,{action:'ready'});
+  assert.match(invocation.params.callId,/^host-ready-/u);
+  assert.match(invocation.params.sessionKey,/^agent:makaron:explicit:/u);
+  assert.equal((await f.request('ready',{voiceSessionId:'old'})).status,409);
+  assert.equal(f.calls.filter(row=>row.method==='talk.client.toolCall').length,1);
+});
+
+test('a rejected native readiness does not claim a greeting was sent or close the session',async t=>{
+  const f=await fixture(t,{request:(method,params,reservation)=>method==='talk.client.create'?reservation:method==='talk.client.toolCall'?{ok:false}:{ok:true}});
+  await f.request('session');
+  const r=await f.request('ready',{voiceSessionId:'voice-private'});
+  assert.equal(r.status,409); assert.match((await r.json()).error,/未就绪/u);
+  assert.equal(f.calls.filter(row=>row.method==='talk.client.close').length,0);
+});
+
+test('only the owned end-call tool can carry closing metadata over SSE',async t=>{
+  const f=await fixture(t); await f.request('session');
+  const stop=new AbortController();
+  const response=await fetch(f.url+'/api/events',{headers:{cookie:f.cookie},signal:stop.signal});
+  const reader=response.body.getReader(); await reader.read();
+  const emit=(voice,type,payload)=>f.bridge.emit({event:'talk.event',payload:{voiceSessionId:voice,talkEvent:{type,callId:'tool-id',payload}}});
+  emit('other','tool.result',{name:'openclaw_end_call',requestId:'wrong',closeAfterPlayback:true});
+  emit('voice-private','tool.result',{name:'openclaw_agent_consult',requestId:'fake',closeAfterPlayback:true,hidden:'not-for-browser'});
+  const ordinary=new TextDecoder().decode((await reader.read()).value);
+  assert.doesNotMatch(ordinary,/requestId|closeAfterPlayback|hidden|wrong/u);
+  emit('voice-private','tool.result',{name:'openclaw_end_call',requestId:'end-id',originUserTurnId:'native-user-id',closeAfterPlayback:true,hidden:'not-for-browser'});
+  const ended=new TextDecoder().decode((await reader.read()).value);
+  assert.match(ended,/openclaw_end_call/u); assert.match(ended,/end-id/u); assert.match(ended,/closeAfterPlayback/u); assert.match(ended,/native-user-id/u); assert.doesNotMatch(ended,/hidden/u);
+  stop.abort(); await reader.cancel().catch(()=>{});
+});

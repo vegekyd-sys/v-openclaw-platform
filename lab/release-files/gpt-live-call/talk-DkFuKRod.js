@@ -1,3 +1,5 @@
+// gpt-live-call-lifecycle-talk-v1
+import { resolveGptLiveCallInstructions } from "./gpt-live-call-lifecycle.mjs";
 // gpt-live-native-confirmation-v1: durable caller affirmation
 import { authorizeGptLiveClientVoicePendingConfirmation } from "./agent-tools.before-tool-call-g2OT63u5.js";
 // gpt-live-consult-continuation-v1: Talk
@@ -367,6 +369,7 @@ function createTalkClientAgentConsultRunner(params) {
 	};
 }
 function createTalkClientGatewayControlOwner(params) {
+	let callLifecycle;
 	let bridge;
 	let closeProvider;
 	let closing;
@@ -548,7 +551,26 @@ function createTalkClientGatewayControlOwner(params) {
 				...spokenGrant ? { confirmationId: spokenGrant.confirmationId } : {}
 			}, AbortSignal.any([consultSignal, signal]), onProgress, continuationContext);
 		},
+		requestCallReady: () => {
+			owner.assertOpen();
+			if (owners.get(params.voiceSessionId) !== owner) throw new Error("Realtime voice session is not active");
+			if (!callLifecycle) throw new Error("GPT Live call lifecycle is not available");
+			return callLifecycle.ready();
+		},
 		control: {
+			bindCallLifecycle: (nextLifecycle) => {
+				owner.assertOpen();
+				if (callLifecycle && callLifecycle !== nextLifecycle) throw new Error("GPT Live call lifecycle is already bound");
+				if (typeof nextLifecycle?.ready !== "function" || typeof nextLifecycle?.close !== "function") throw new Error("Invalid GPT Live call lifecycle");
+				callLifecycle = nextLifecycle;
+			},
+			onCallLifecycleEvent: (event) => {
+				owner.assertOpen();
+				if (owners.get(params.voiceSessionId) !== owner) throw new Error("Realtime voice session is not active");
+				if (!["tool.call", "tool.result", "tool.error"].includes(event.type) || event.payload?.name !== "openclaw_end_call") throw new Error("Unsupported native call lifecycle event");
+				harness.emit({ type: event.type, callId: event.callId, turnId: harness.ensureTurn(),
+					payload: { ...event.payload, ...talkPayload() }, final: event.type !== "tool.call" });
+			},
 			bindBridge: (nextBridge) => {
 				bridge = nextBridge;
 			},
@@ -639,6 +661,7 @@ function createTalkClientGatewayControlOwner(params) {
 				if (!options?.preserveLogicalSession) await params.closeLogicalSession();
 				if (providerResult?.status === "rejected") throw providerResult.reason;
 			});
+			callLifecycle?.close();
 			lifetime.abort(/* @__PURE__ */ new Error("Realtime voice session closed"));
 			return closing;
 		}
@@ -2816,7 +2839,9 @@ const createTalkClient = async ({ params, respond, context, client, sessionMutat
 			}, REALTIME_VOICE_CONTEXT_MAX_ITEMS, REALTIME_VOICE_CONTEXT_MAX_ITEM_CHARS).filter((item) => item.role === "user" || item.role === "assistant")) : [];
 			const tools = providerCapabilities?.supportsToolCalls === false ? [] : [REALTIME_VOICE_AGENT_CONSULT_TOOL, REALTIME_VOICE_AGENT_CONTROL_TOOL];
 			if (wantsCameraFrames && tools.length > 0) tools.push(REALTIME_VOICE_DESCRIBE_VIEW_TOOL);
-			const instructions = providerCapabilities?.handlesAgentConsult === true ? normalizeOptionalString(providerInstructions) : buildRealtimeInstructions(providerInstructions);
+			const instructions = resolveGptLiveCallInstructions(providerCapabilities?.handlesAgentConsult === true ? normalizeOptionalString(providerInstructions) : buildRealtimeInstructions(providerInstructions), {
+				providerId: resolution.provider.id, model: launchOptions.model, transport, brain: "agent-consult", capabilities: providerCapabilities
+			});
 			const requestedVoiceSessionId = normalizeOptionalString(params.voiceSessionId);
 			const ownsProvider = wantsGatewayControl || providerCapabilities?.handlesAgentConsult === true;
 			let activeVoiceSessionId = ownsProvider ? requestedVoiceSessionId ?? randomUUID() : void 0;
@@ -2986,6 +3011,22 @@ const talkClientHandlers = {
 	"talk.client.toolCall": async (request) => {
 		const { params, respond } = request;
 		if (!assertValidParams(params, validateTalkClientToolCallParams, "talk.client.toolCall", respond)) return;
+		if (params.name === "openclaw_live_call_control") {
+			try {
+				const target = requirePreparedTalkSessionTarget(request.sessionMutationAuthorization?.talkSessionTarget);
+				if (typeof request.sessionMutationAuthorization?.assertCurrent !== "function") throw new Error("Talk session authorization is required");
+				request.sessionMutationAuthorization.assertCurrent();
+				const connId = normalizeOptionalString(request.client?.connId);
+				const voiceSessionId = normalizeOptionalString(params.voiceSessionId);
+				if (!connId || !voiceSessionId || params.relaySessionId || !params.args || Array.isArray(params.args) || Object.keys(params.args).length !== 1 || params.args.action !== "ready") throw new Error("Invalid GPT Live call ready request");
+				const owner = owners.get(voiceSessionId);
+				if (!owner || owner.connId !== connId || owner.sessionTarget.canonicalKey !== target.canonicalKey || owner.sessionTarget.agentId !== target.agentId || owner.sessionTarget.storePath !== target.storePath) throw new Error("GPT Live call is not owned by this client");
+				respond(true, owner.requestCallReady(), void 0);
+			} catch (error) {
+				respond(false, void 0, errorShape(ErrorCodes.INVALID_REQUEST, formatErrorMessage(error)));
+			}
+			return;
+		}
 		if (params.name !== "openclaw_agent_consult") {
 			respond(false, void 0, errorShape(ErrorCodes.INVALID_REQUEST, `unsupported realtime Talk tool: ${params.name}`));
 			return;

@@ -6,6 +6,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { pathToFileURL } from "node:url";
 import { patchGptLiveNativeProgress } from "./patch-gpt-live-native-progress.mjs";
+import { patchGptLiveCallLifecycleController } from "./patch-gpt-live-call-lifecycle.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const baseline = readFileSync(resolve(here, "fixtures/gpt-live-native-progress/realtime-quicksilver-delegation-controller-B0yPpiHp.js"), "utf8");
@@ -79,7 +80,7 @@ test("baseline patch rejects source drift and a second application", () => {
 
 test("generated artifact and candidate overlay exactly match the tested patch", () => {
   const artifact = runtimeFile ?? resolve(here, "release-files/gpt-live-native-progress/realtime-quicksilver-delegation-controller-B0yPpiHp.js");
-  assert.equal(readFileSync(artifact, "utf8"), patched);
+  assert.equal(readFileSync(artifact, "utf8"), runtimeFile ? patchGptLiveCallLifecycleController(patched) : patched);
 });
 
 test("public incomplete progress arrives before final through the native protocol", async () => {

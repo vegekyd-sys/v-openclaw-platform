@@ -28,7 +28,9 @@ if(process.env.GPT_LIVE_CALL_AUDIO_FIXTURE_GZIP) {
 const clipsArchive=process.env.GPT_LIVE_H5_USER_CLIPS_ARCHIVE;
 if(clipsArchive) {
   const names=execFileSync('tar',['-tzf',path.resolve(clipsArchive)],{encoding:'utf8'}).trim().split('\n');
-  const allowed=process.env.GPT_LIVE_H5_COMPREHENSIVE_CLIPS==='1'
+  const allowed=process.env.GPT_LIVE_H5_CASE==='call-lifecycle'
+    ?new Set(['manifest.json',...['keep-call','memory-web','end-call'].flatMap(name=>[name+'.wav',name+'.txt'])])
+    :process.env.GPT_LIVE_H5_COMPREHENSIVE_CLIPS==='1'
     ?new Set(['manifest.json',...['long-task','barge','cancel-task','new-greeting','count','ack','followup',
       ...((process.env.GPT_LIVE_H5_CASE??'').split(',').includes('comprehensive-queued-steer')?['queued-task']:[]),
       ...(process.env.GPT_LIVE_H5_CONTROL_CONFIRMATION==='1'?['confirmation']:[])].flatMap(name=>[name+'.wav',name+'.txt'])])
@@ -353,7 +355,7 @@ try {
   }
   if(experience)await holdForExperience();else {
   const cases=(process.env.GPT_LIVE_H5_CASE??'workflow').split(',');
-  assert(cases.every(value=>['workflow','cancel','close-reopen','barge-chat','comprehensive-long','comprehensive-controls','comprehensive-queued-steer'].includes(value)),'Unknown candidate H5 case');
+  assert(cases.every(value=>['workflow','cancel','close-reopen','barge-chat','comprehensive-long','comprehensive-controls','comprehensive-queued-steer','call-lifecycle'].includes(value)),'Unknown candidate H5 case');
   const evidenceBase=process.env.GPT_LIVE_H5_EVIDENCE_DIR;
   assert(evidenceBase&&path.isAbsolute(evidenceBase),'Absolute candidate evidence directory required');
   fs.mkdirSync(evidenceBase,{recursive:true,mode:0o700});
@@ -367,11 +369,11 @@ try {
   const results=[];
   for(const testCase of cases) {
     if(osObserver)assert(osObserver.exitCode===null&&osObserver.signalCode===null,'OS witness must still cover this original native case');
-    const helper=testCase.startsWith('comprehensive-')?'lab/gpt-live-candidate-native/native-smoke.mjs':testCase==='workflow'?'lab/gpt-live-h5-provenance-smoke.mjs':'lab/gpt-live-h5-control-smoke.mjs';
+    const helper=testCase==='call-lifecycle'?'lab/gpt-live-candidate-native/call-lifecycle-smoke.mjs':testCase.startsWith('comprehensive-')?'lab/gpt-live-candidate-native/native-smoke.mjs':testCase==='workflow'?'lab/gpt-live-h5-provenance-smoke.mjs':'lab/gpt-live-h5-control-smoke.mjs';
     const clips=process.env.GPT_LIVE_H5_USER_CLIPS_DIR;
     smoke=spawn(process.execPath,[helper],{env:{...process.env,
       GPT_LIVE_H5_CASE:testCase,GPT_LIVE_H5_EVIDENCE_DIR:cases.length>1?path.join(evidenceBase,testCase):evidenceBase,
-      ...(clips?{GPT_LIVE_H5_USER_CLIPS_DIR:path.resolve(clips),...(!testCase.startsWith('comprehensive-')&&testCase!=='workflow'?{GPT_LIVE_CALL_AUDIO_FIXTURE:path.join(path.resolve(clips),'silence.wav')}:{})}:{}),
+      ...(clips?{GPT_LIVE_H5_USER_CLIPS_DIR:path.resolve(clips),...(!testCase.startsWith('comprehensive-')&&testCase!=='workflow'&&testCase!=='call-lifecycle'?{GPT_LIVE_CALL_AUDIO_FIXTURE:path.join(path.resolve(clips),'silence.wav')}:{})}:{}),
       GPT_LIVE_H5_READY:'1',GPT_LIVE_H5_URL:`http://127.0.0.1:${h5port}`,GPT_LIVE_H5_APP_SHA:appSha,GPT_LIVE_H5_GATEWAY_PID:String(gateway.pid),
       GPT_LIVE_H5_RUNTIME_ROOT:runtime+'/openclaw',GPT_LIVE_H5_TRACE_PATH:tracePath,GPT_LIVE_H5_SESSION_PATH:sessionPath},stdio:'inherit'});
     const code=await new Promise((resolve,reject)=>{smoke.once('error',reject);smoke.once('exit',code=>resolve(code));});

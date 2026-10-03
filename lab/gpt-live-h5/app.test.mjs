@@ -633,7 +633,7 @@ test("autoplay rejection stays visible after connect and a fresh gesture actuall
   f.pageEvents.get("pointerdown")(); await tick();
   assert.equal(attempts,2); assert.equal(f.element("remoteAudio").paused,false);
   assert.equal(f.element("status").textContent,"V 正在听，直接说话就好");
-  assert.equal(f.requests.length,before);
+  assert.deepEqual(f.requests.slice(before).map(value=>value.route), ['ready']);
   const events=f.context.__gptLiveDuplexDiagnostics.events;
   assert(events.some(value=>value.type==="playback-rejected"&&value.errorName==="NotAllowedError"&&value.source==="track"));
   assert(events.some(value=>value.type==="playback-started"&&value.source==="gesture"&&value.paused===false));
@@ -668,4 +668,124 @@ test("an unexpected playback pause is diagnosed while a gesture recovery from an
   assert.equal(diagnostics.closed,true);
   assert(diagnostics.events.some(value=>value.type==="playback-not-running"&&value.paused));
   assert(!diagnostics.events.some(value=>value.type==="playback-rejected"&&value.source==="gesture"));
+});
+
+test('pickup requests the native greeting only after connection and audible playback are ready, once per call', async t => {
+  const f = await fixture(t);
+  await f.context.startCall();
+  const peer = f.peers[0];
+  peer.connectionState = 'connected'; peer.onconnectionstatechange();
+  await tick();
+  assert.equal(f.requests.filter(r => r.route === 'ready').length, 0);
+  await peer.ontrack({track:track()}); await tick();
+  assert.equal(f.requests.filter(r => r.route === 'ready').length, 1);
+  peer.onconnectionstatechange(); await tick();
+  assert.equal(f.requests.filter(r => r.route === 'ready').length, 1);
+  assert.equal(f.requests.find(r => r.route === 'ready').payload.voiceSessionId, 'voice-1');
+});
+
+test('a user farewell transcript alone never hangs up the call', async t => {
+  const f = await fixture(t); await f.context.startCall();
+  const peer = f.peers[0]; await peer.ontrack({track:track()});
+  peer.channel.onmessage({data:JSON.stringify({type:'turn.done',turn:{role:'user',id:'u',transcript:'就聊到这，谢谢'}})});
+  for (let at=0;at<2000;at+=50) f.meter(at,0,0);
+  assert.equal(peer.closed,false);
+  assert.equal(f.requests.filter(r=>r.route==='close').length,0);
+});
+
+async function endCallFixture(t) {
+  const f = await fixture(t); await f.context.startCall();
+  const peer = f.peers[0]; peer.connectionState='connected'; peer.onconnectionstatechange();
+  await peer.ontrack({track:track()}); await tick();
+  const send = value => peer.channel.onmessage({data:JSON.stringify(value)});
+  const tool = value => f.eventSources[0].onmessage({data:JSON.stringify({voiceSessionId:'voice-1',type:'tool.result',name:'openclaw_end_call',callId:'end',requestId:'end',originUserTurnId:'u',closeAfterPlayback:true,...value})});
+  const native = (requestId='end', userId='u') => send({type:'delegation.created',item:{type:'delegation',target:'client',id:requestId,user_bidi_turn_id:userId,content:[{type:'input_text',text:'{"name":"openclaw_end_call","arguments":{}}'}]}});
+  send({type:'turn.created',turn:{role:'user',id:'u'}}); native();
+  return {...f,peer,send,tool,native};
+}
+
+test('model end-call requires the exact current voice, a new native terminal and played audio before tail drain', async t => {
+  const f=await endCallFixture(t);
+  f.tool({voiceSessionId:'other'});
+  assert.equal(f.body.dataset.callState,'connected');
+  f.tool({}); assert.equal(f.body.dataset.callState,'ending');
+  for(let at=0;at<=1000;at+=50) f.meter(at,0,0);
+  assert.equal(f.peer.closed,false,'silence after tool acceptance alone is not a delivered farewell');
+  f.setNow(1050); f.send({type:'turn.created',turn:{role:'assistant',id:'bye'}});
+  for(let at=1100;at<=1300;at+=50) f.meter(at,0,.12);
+  f.setNow(1320); f.send({type:'turn.done',turn:{role:'assistant',id:'bye'}});
+  for(let at=1350;at<=1600;at+=50) f.meter(at,0,.12);
+  for(let at=1650;at<=2350;at+=50) f.meter(at,0,0);
+  assert.equal(f.peer.closed,false,'terminal event alone cannot cut a queued tail');
+  f.meter(2400,0,0); await tick();
+  assert.equal(f.peer.closed,true);
+  assert.equal(f.requests.filter(r=>r.route==='close').length,1);
+  assert.equal(f.body.dataset.callState,'idle');
+  assert.equal(f.intervals.size,0); assert.equal(f.timeouts.size,0);
+});
+
+test('sampling gaps and blocked playback never stand in for end-call audio drain', async t => {
+  const f=await endCallFixture(t); f.tool({});
+  f.send({type:'turn.created',turn:{role:'assistant',id:'bye'}});
+  f.meter(50,0,.12); f.setNow(75); f.send({type:'turn.done',turn:{role:'assistant',id:'bye'}});
+  f.meter(100,0,0); f.meter(1000,0,0);
+  assert.equal(f.peer.closed,false,'a timer gap resets the continuous observation');
+  f.element('remoteAudio').paused=true;
+  for(let at=1050;at<=2000;at+=50) f.meter(at,0,0);
+  assert.equal(f.peer.closed,false,'paused output is not silence proof');
+});
+
+test('native caller speech or exact failed hangup tool keeps the line open during farewell', async t => {
+  const f=await endCallFixture(t); f.tool({});
+  f.send({type:'turn.created',turn:{role:'user',id:'wait'}});
+  assert.equal(f.body.dataset.callState,'connected');
+  f.native('again','wait'); f.tool({requestId:'again',callId:'again',originUserTurnId:'wait'});
+  f.tool({type:'tool.error',requestId:'old'}); assert.equal(f.body.dataset.callState,'ending');
+  f.tool({type:'tool.error',requestId:'again',callId:'again',originUserTurnId:'wait'}); assert.equal(f.body.dataset.callState,'connected');
+  assert.equal(f.peer.closed,false); assert.equal(f.timeouts.size,0);
+});
+
+
+test('late end acceptance cannot hang up a newer native USER turn, even after a new answer', async t => {
+  const f=await endCallFixture(t);
+  f.send({type:'turn.created',turn:{role:'user',id:'wait'}});
+  f.tool({}); assert.equal(f.body.dataset.callState,'connected');
+  f.send({type:'turn.created',turn:{role:'assistant',id:'new-topic'}});
+  f.meter(50,0,.12); f.setNow(75);
+  f.send({type:'turn.done',turn:{role:'assistant',id:'new-topic'}});
+  for(let at=100;at<=1200;at+=50) f.meter(at,0,0);
+  assert.equal(f.peer.closed,false); assert.equal(f.requests.filter(r=>r.route==='close').length,0);
+});
+
+test('farewell arriving ahead of host acceptance retains actual audio proof and closes after joining both channels', async t => {
+  const f=await endCallFixture(t);
+  f.send({type:'turn.created',turn:{role:'assistant',id:'bye'}});
+  f.meter(50,0,.12); f.meter(100,0,.12); f.setNow(125);
+  f.send({type:'turn.done',turn:{role:'assistant',id:'bye'}});
+  for(let at=150;at<=950;at+=50) f.meter(at,0,0);
+  assert.equal(f.peer.closed,false,'native delegation/audio cannot close without the host tool result');
+  f.tool({}); f.meter(1000,0,0); await tick();
+  assert.equal(f.peer.closed,true); assert.equal(f.requests.filter(r=>r.route==='close').length,1);
+});
+
+test('host acceptance arriving ahead of the real delegation waits for the exact native tool witness', async t => {
+  const f=await endCallFixture(t);
+  f.tool({requestId:'other',callId:'other'}); assert.equal(f.body.dataset.callState,'connected');
+  f.native('other'); assert.equal(f.body.dataset.callState,'ending');
+  f.send({type:'turn.created',turn:{role:'user',id:'continue'}});
+  f.native('other','u'); f.tool({requestId:'other',callId:'other'});
+  assert.equal(f.body.dataset.callState,'connected'); assert.equal(f.peer.closed,false);
+});
+
+
+test('native readiness racing session start retries within a bound and ends with its original call', async t => {
+  let ready=0;
+  const f=await fixture(t,{api:(route,payload,value)=>{if(route==='ready'&&++ready===1)throw Error('Native session not ready');return value;}});
+  await f.context.startCall(); const peer=f.peers[0]; peer.connectionState='connected'; peer.onconnectionstatechange();
+  await peer.ontrack({track:track()}); await tick();
+  assert.equal(ready,1); assert.equal(f.timeouts.size,1);
+  const timer=[...f.timeouts.entries()][0]; f.timeouts.delete(timer[0]); timer[1].callback(); await tick();
+  assert.equal(ready,2); assert.equal(f.timeouts.size,0);
+  peer.onconnectionstatechange(); await tick(); assert.equal(ready,2);
+  await f.context.stopCall(); assert.equal(f.timeouts.size,0);
 });

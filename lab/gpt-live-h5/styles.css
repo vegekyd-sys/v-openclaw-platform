@@ -117,14 +117,16 @@ body[data-call-state="dialing"] .call-stop .call-icon { animation: dial-pulse 1.
   padding: 29px 30px 23px; border: 1px solid rgba(255, 255, 255, .9); border-radius: 30px;
   background: rgba(255, 253, 254, .86); box-shadow: 0 24px 70px rgba(87, 58, 104, .09);
 }
-.conversation-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-bottom: 21px; border-bottom: 1px solid var(--line); }
+.conversation-heading { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 16px; padding-bottom: 21px; border-bottom: 1px solid var(--line); }
+.conversation-title { display: flex; min-width: 0; align-items: center; flex-wrap: wrap; gap: 6px 12px; }
 .conversation-heading h2 { font-size: 20px; font-weight: 600; letter-spacing: -.03em; }
-.wave-mark { display: flex; align-items: center; gap: 3px; height: 20px; color: #c9b8d0; }
+.wave-mark { display: flex; flex: none; align-items: center; gap: 3px; height: 20px; color: #c9b8d0; }
 .wave-mark i { width: 2px; height: 6px; border-radius: 2px; background: currentColor; }
 .wave-mark i:nth-child(2), .wave-mark i:nth-child(4) { height: 12px; }
 .wave-mark i:nth-child(3) { height: 18px; }
 body[data-voice-state="speaking"] .wave-mark { color: var(--accent); }
-.task-status { color: #715b80; font-size: 12px; line-height: 1.6; margin-top: 14px; padding: 9px 12px; border-radius: 10px; background: #f1ebf5; }
+.task-status { display: inline-flex; align-items: center; gap: 6px; color: #715b80; font-size: 11px; line-height: 1.5; }
+.task-status::before { content: ""; flex: none; width: 5px; height: 5px; border-radius: 50%; background: #aa87bc; }
 .task-status:empty { display: none; }
 .conversation {
   flex: 1; min-height: 385px; max-height: 500px; overflow-y: auto;
@@ -175,6 +177,41 @@ body[data-voice-state="speaking"] .wave-mark { color: var(--accent); }
   .conversation-panel { justify-self: center; width: min(100%, 640px); min-height: 460px; }
   .conversation { min-height: 260px; max-height: 400px; }
   .empty { min-height: 235px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .app-shell {
+    height: 100svh; height: 100dvh; display: flex; flex-direction: column;
+    padding-block: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-bottom));
+  }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .topbar { flex: none; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .voice-layout {
+    display: flex; flex: 1; min-height: 0; flex-direction: column; align-items: center;
+    gap: 16px; padding: 18px 0 0;
+  }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .voice-stage {
+    display: grid; flex: none; width: min(100%, 640px); min-height: 100px;
+    grid-template-columns: 88px minmax(0, 1fr) auto; gap: 18px; align-items: center;
+    padding: 6px 8px; text-align: left;
+  }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .ambient-one { width: 190px; top: -45px; left: 40px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .ambient-two { display: none; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .portrait-wrap { width: 88px; padding: 4px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .portrait-wrap::before,
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .sound-ring { inset: -7px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .portrait-wrap::after { inset: -13px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .presence-dot { width: 14px; height: 14px; border-width: 3px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .voice-copy { width: auto; min-width: 0; margin: 0; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .voice-copy h1 { font-size: 21px; letter-spacing: -.025em; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .status-text { min-height: 0; max-width: none; margin: 6px 0 0; font-size: 12px; line-height: 1.5; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .call-actions { min-height: 0; margin: 0; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .call-button { gap: 6px; padding: 4px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .call-icon { width: 46px; height: 46px; box-shadow: 0 6px 16px rgba(178, 48, 89, .16); }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .call-icon svg { width: 22px; height: 22px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .button-label { font-size: 11px; white-space: nowrap; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .conversation-panel {
+    flex: 1; min-height: 0; width: min(100%, 640px); padding: 22px 24px 18px;
+  }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .conversation { min-height: 0; max-height: none; padding-top: 18px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .empty { min-height: 0; height: 100%; padding-block: 16px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .live-controls { flex: none; }
 }
 @media (max-width: 560px) {
   .app-shell { padding: max(17px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom)); }
@@ -204,6 +241,35 @@ body[data-voice-state="speaking"] .wave-mark { color: var(--accent); }
   .transcript-text { font-size: 14px; }
   .transcript-history, .transcript-current-rows { gap: 21px; }
   .steer-form input { height: 43px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .app-shell {
+    padding: max(12px, env(safe-area-inset-top)) 14px max(12px, env(safe-area-inset-bottom));
+  }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .voice-layout { gap: 12px; padding-top: 12px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .voice-stage { min-height: 86px; grid-template-columns: 72px minmax(0, 1fr) auto; gap: 12px; padding-inline: 4px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .portrait-wrap { width: 72px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .voice-copy h1 { font-size: 18px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .status-text { margin-top: 4px; font-size: 11px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .call-icon { width: 44px; height: 44px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .conversation-panel { padding: 18px 18px 14px; border-radius: 22px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .conversation-heading { padding-bottom: 13px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .conversation { padding: 16px 0; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .live-controls { gap: 8px; padding-top: 12px; }
+}
+@media (max-width: 900px) and (max-height: 500px) {
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .app-shell { padding-block: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-bottom)); }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .topbar { min-height: 34px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .voice-layout { gap: 8px; padding-top: 8px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .voice-stage { min-height: 66px; grid-template-columns: 56px minmax(0, 1fr) auto; padding-block: 3px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .portrait-wrap { width: 56px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .call-button { display: flex; align-items: center; gap: 8px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .conversation-panel { padding-top: 13px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .conversation-heading { padding-bottom: 10px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .conversation { padding-block: 12px; }
+}
+@media (min-width: 561px) and (max-width: 900px) and (max-height: 500px) {
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .live-controls { display: flex; align-items: center; gap: 12px; padding-top: 10px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .steer-form { flex: 1; min-width: 0; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .cancel-task { flex: none; min-height: 44px; white-space: nowrap; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition-duration: .01ms !important; }
