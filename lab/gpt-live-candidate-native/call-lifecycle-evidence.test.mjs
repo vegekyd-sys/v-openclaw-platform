@@ -75,6 +75,135 @@ test('natural goodbye fixture is verified as complete input, not used to fabrica
  assert.equal(resolveLifecycleUserTurn([e('今天就先这样')],params),null);
  assert.equal(resolveEndCallToolWitness({events:[e(params.expectedText)],tools:[],pcIndex:0,voiceSessionId:'voice-1'}),null);
 });
+
+// Actual client-tool adapter contract: jsonResult stores the same pending
+// object in details and a text block; the live global result also has terminate.
+function backendEndFixture() {
+ const sessionKey='agent:makaron:explicit:gpt-live-h5-experiment-own',backendRunId='talk-realtime-consult:actual-end',
+   backendToolCallId='call_00_actualEnd',nativeDelegationId='item_actualEnd',userTurnId='turn_actualEnd';
+ const marker={status:'pending',tool:'openclaw_end_call',message:'Tool execution delegated to client'};
+ const receipt={voiceSessionId:'voice-1',name:'openclaw_end_call',source:'backend_model_client_tool',
+   callId:backendToolCallId,backendToolCallId,backendRunId,requestId:nativeDelegationId,nativeDelegationId,
+   originUserTurnId:userTurnId,delegationGeneration:1,status:'accepted'};
+ const native=delegation('今天就先这样，谢谢你，拜拜。');native.raw.item.id=nativeDelegationId;native.raw.item.user_bidi_turn_id=userTurnId;
+ const toolEvent=(phase,ts,data)=>({event:'session.tool',at:ts+80,payload:{sessionKey,runId:backendRunId,stream:'tool',ts,seq:ts,
+   data:{phase,name:'openclaw_end_call',toolCallId:backendToolCallId,...data}}});
+ return {pcIndex:0,voiceSessionId:'voice-1',sessionKey,userTurnId,after:800,before:2350,
+  events:[{pcIndex:0,at:900,type:'turn.created',role:'user',turnId:userTurnId},
+    {pcIndex:0,at:980,type:'turn.done',role:'user',turnId:userTurnId,text:'今天就先这样，谢谢你，拜拜。'},native],
+  tools:[{at:1030,raw:{voiceSessionId:'voice-1',type:'tool.call',callId:backendRunId}},
+    {at:1170,raw:{...receipt,type:'tool.call'}},{at:1190,raw:{...receipt,type:'tool.result',closeAfterPlayback:true}}],
+  backendEvents:[toolEvent('start',1070,{args:{}}),toolEvent('result',1150,{isError:false,
+    result:{details:marker,content:[{type:'text',text:JSON.stringify(marker)}],terminate:true}})],
+  backendHistory:{sessionKey,observedAt:1210,history:{sessionKey,messages:[{role:'assistant',timestamp:1,content:[
+    {type:'toolCall',id:backendToolCallId,name:'openclaw_end_call',arguments:{}}]},
+    {role:'toolResult',toolCallId:backendToolCallId,toolName:'openclaw_end_call',timestamp:2,isError:false,
+      details:marker,content:[{type:'text',text:JSON.stringify(marker)}]}]}}};
+}
+test('plain native delegation closes only through real model tool start/result plus durable same-owner history',()=>{
+ const input=backendEndFixture(),proof=resolveEndCallToolWitness(input);assert(proof);
+ assert.equal(proof.requestId,'item_actualEnd');assert.equal(proof.backendToolCallId,'call_00_actualEnd');
+ assert.equal(proof.backendRunId,'talk-realtime-consult:actual-end');assert.equal(proof.userTurnId,'turn_actualEnd');
+ assert.equal(proof.backendResult.payload.ts,1150);assert.equal(proof.farewellAfter,1150);
+ assert.equal(proof.historyObservedBeforeClose,true);assert.equal(proof.historyObservationPhase,'pre-close');
+ // Both genuine subscribed channels can deliver exactly the same envelope.
+ input.backendEvents.push({...structuredClone(input.backendEvents[1]),event:'agent'});
+ assert(resolveEndCallToolWitness(input));
+ // The persisted adapter marker can be its original JSON text if details were
+ // not serialized. It remains a toolResult with the exact real toolCallId.
+ delete input.backendHistory.history.messages[1].details;
+ input.backendHistory.history.messages[0].content[0].arguments='{}';
+ assert(resolveEndCallToolWitness(input));
+});
+test('a late durable history read may corroborate pre-close source events without inventing a later tool execution',()=>{
+ const input=backendEndFixture();input.backendHistory.observedAt=3000;
+ const proof=resolveEndCallToolWitness(input);assert(proof);
+ assert.equal(proof.historyObservedBeforeClose,false);assert.equal(proof.historyObservationPhase,'post-close');
+ assert.equal(proof.historyObservedAt,3000);assert.equal(proof.backendResult.payload.ts,1150);
+ input.backendEvents[1].payload.ts=2400;assert.equal(resolveEndCallToolWitness(input),null);
+});
+test('promises, quoted JSON, wrong run/child/session and missing full source cannot pass the backend path',()=>{
+ const mutations=[
+  ['ordinary spoken bye',f=>{f.tools=[];f.backendEvents=[];}],
+  ['fabricated JSON declaration',f=>f.events[2].raw.item.content[0].text='{"name":"openclaw_end_call","arguments":{}}'],
+  ['metadata-only hook',f=>delete f.backendEvents[1].payload.data.result],
+  ['no global stream',f=>f.backendEvents=[]],
+  ['child run',f=>f.backendEvents.forEach(e=>e.payload.runId='child-actual')],
+  ['wrong canonical session',f=>f.backendEvents[1].payload.sessionKey='agent:makaron:subagent:child'],
+  ['foreign persisted session',f=>f.backendHistory.sessionKey='neighbor'],
+  ['history response session mismatch',f=>f.backendHistory.history.sessionKey='neighbor'],
+  ['history response session missing',f=>delete f.backendHistory.history.sessionKey],
+  ['no original consult run',f=>f.tools[0].raw.callId='another-parent'],
+  ['wrong backend id',f=>f.tools[2].raw.backendToolCallId='call_other'],
+  ['wrong native id',f=>f.tools[2].raw.nativeDelegationId='item_other'],
+  ['wrong original USER',f=>f.tools[2].raw.originUserTurnId='turn_other'],
+  ['foreign voice owner',f=>f.tools[2].raw.voiceSessionId='neighbor'],
+  ['unaccepted host result',f=>f.tools[2].raw.status='pending'],
+  ['no close-after-playback',f=>f.tools[2].raw.closeAfterPlayback=false],
+  ['generation mismatch',f=>f.tools[2].raw.delegationGeneration=2],
+  ['tool error',f=>f.tools.push({at:1200,raw:{...f.tools[2].raw,type:'tool.error'}})],
+  ['only USER caption',f=>f.events.splice(2,1)],
+  ['no complete original USER',f=>f.events.splice(1,1)],
+ ];
+ for(const [name,mutate] of mutations){const input=backendEndFixture();mutate(input);assert.equal(resolveEndCallToolWitness(input),null,name);}
+});
+test('adapter and history require strict empty arguments, nonerror pending marker and single exact invocation',()=>{
+ const mutations=[
+  ['source args extra',f=>f.backendEvents[0].payload.data.args={voiceSessionId:'voice-1'}],
+  ['source args string',f=>f.backendEvents[0].payload.data.args='{}'],
+  ['source args absent',f=>delete f.backendEvents[0].payload.data.args],
+  ['source error',f=>f.backendEvents[1].payload.data.isError=true],
+  ['source unknown error state',f=>delete f.backendEvents[1].payload.data.isError],
+  ['missing terminate',f=>delete f.backendEvents[1].payload.data.result.terminate],
+  ['nonpending result',f=>f.backendEvents[1].payload.data.result.details.status='success'],
+  ['wrong tool marker',f=>f.backendEvents[1].payload.data.result.details.tool='web_fetch'],
+  ['wrong adapter message',f=>f.backendEvents[1].payload.data.result.details.message='Assistant promised to hang up'],
+  ['content-only source',f=>delete f.backendEvents[1].payload.data.result.details],
+  ['no durable result',f=>f.backendHistory.history.messages.pop()],
+  ['persisted error',f=>f.backendHistory.history.messages[1].isError=true],
+  ['persisted unknown error state',f=>delete f.backendHistory.history.messages[1].isError],
+  ['wrong persisted result id',f=>f.backendHistory.history.messages[1].toolCallId='call_other'],
+  ['wrong persisted call name',f=>f.backendHistory.history.messages[0].content[0].name='web_fetch'],
+  ['wrong persisted result name',f=>f.backendHistory.history.messages[1].toolName='web_fetch'],
+  ['persisted arguments extra',f=>f.backendHistory.history.messages[0].content[0].arguments={requestId:'item_actualEnd'}],
+  ['webpage mention',f=>f.backendHistory.history.messages[0].content=[{type:'text',text:'openclaw_end_call({})'}]],
+  ['ordinary result text',f=>{delete f.backendHistory.history.messages[1].details;f.backendHistory.history.messages[1].content[0].text='再见。';}],
+  ['conflicting result marker',f=>f.backendHistory.history.messages[1].details={status:'blocked'}],
+  ['duplicate stored result',f=>f.backendHistory.history.messages.push(structuredClone(f.backendHistory.history.messages[1]))],
+  ['distinct duplicate source result',f=>{const duplicate=structuredClone(f.backendEvents[1]);duplicate.payload.seq++;f.backendEvents.push(duplicate);}],
+  ['source result before start',f=>f.backendEvents[1].payload.ts=1060],
+  ['source result after host accepted',f=>f.backendEvents[1].payload.ts=1180],
+  ['history observed before actual tool',f=>f.backendHistory.observedAt=1100],
+ ];
+ for(const [name,mutate] of mutations){const input=backendEndFixture();mutate(input);assert.equal(resolveEndCallToolWitness(input),null,name);}
+});
+test('a new USER invalidates a late old backend end request, including a new incomplete turn',()=>{
+ for(const type of ['turn.created','turn.done']){
+  const input=backendEndFixture();input.events.push({pcIndex:0,at:1100,type,role:'user',turnId:'turn_new',text:'先别挂'});
+  assert.equal(resolveEndCallToolWitness(input),null);
+ }
+ const input=backendEndFixture();input.before=1180;assert.equal(resolveEndCallToolWitness(input),null,'Missing pre-close accepted result remains a failure');
+});
+test('backend farewell excludes an early consult acknowledgment and joins the exact model-tool drain',()=>{
+ const input=backendEndFixture(),tool=resolveEndCallToolWitness(input),state=speechState();
+ state.duplex.transitions[0]={...state.duplex.transitions[0],requestId:tool.requestId,originUserTurnId:tool.userTurnId,
+   source:'backend_model_client_tool',backendToolCallId:tool.backendToolCallId,backendRunId:tool.backendRunId,nativeDelegationId:tool.requestId};
+ state.events.unshift({pcIndex:0,at:1040,type:'turn.created',role:'assistant',turnId:'ack'},
+   {pcIndex:0,at:1050,type:'output_transcript.added',turnId:'ack',text:'好的，我来处理。'},
+   {pcIndex:0,at:1130,type:'turn.done',role:'assistant',turnId:'ack',text:'好的，我来处理。'});
+ const farewell=assessLifecycleFarewell(state,{pcIndex:0,tool,before:2350});assert(farewell);
+ assert.equal(farewell.terminal.turnId,'bye-1');assert(farewell.window.created.at>tool.farewellAfter);
+ state.pcStates[0]='closed';state.remoteAudio.attached=false;
+ state.api=[{route:'/api/close',status:200,requestedAt:2350,request:{voiceSessionId:'voice-1'}}];
+ assert.equal(assessAutomaticEnd(state,{pcIndex:0,owner:{voiceSessionId:'voice-1'},tool,farewell}).passed,true);
+ for(const mutate of [s=>s.duplex.transitions[0].backendToolCallId='call_other',s=>s.duplex.transitions[0].backendRunId='another-run',
+   s=>s.duplex.transitions[0].source='assistant-promise',s=>s.duplex.transitions[0].nativeDelegationId='item_other']){
+  const value=structuredClone(state);mutate(value);const proof=assessLifecycleFarewell(value,{pcIndex:0,tool,before:2350});
+  assert.equal(assessAutomaticEnd(value,{pcIndex:0,owner:{voiceSessionId:'voice-1'},tool,farewell:proof}).passed,false);
+ }
+ const early=speechState();early.events[0].at=1040;early.events[1].at=1050;
+ assert.equal(assessLifecycleFarewell(early,{pcIndex:0,tool,before:2350}),null,'A turn already speaking before the real end tool is not farewell');
+});
 test('farewell requires complete player state and post-terminal 750ms real RTP quiet',()=>{
  const state=speechState(),proof=assessLifecycleSpeech(state,{pcIndex:0,after:1200,requireCreatedAfter:true});assert(proof);
  assert(proof.window.to>proof.terminal.at);assert(proof.quiet.durationMs>=750);

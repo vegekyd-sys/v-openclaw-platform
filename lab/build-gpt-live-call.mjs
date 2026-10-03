@@ -21,6 +21,7 @@ import { patchGptLiveVoiceToolOrderGatewayIndex, patchGptLiveVoiceToolOrderWorke
 import { createGptLiveCallLifecycleRuntimeSource } from "./gpt-live-call-lifecycle.mjs";
 import { patchGptLiveCallLifecycleController, patchGptLiveCallLifecycleBroker, patchGptLiveCallLifecycleTalk,
   GPT_LIVE_CALL_BROKER_BEFORE } from "./patch-gpt-live-call-lifecycle.mjs";
+import { patchGptLiveBackendCallControlTalk, patchGptLiveBackendCallControlHarness } from "./patch-gpt-live-backend-call-control.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const hash = (source) => createHash("sha256").update(source).digest("hex");
@@ -66,7 +67,9 @@ export function build({ baseRelease = "hotreload-feishu-approvals-v2" } = {}) {
     const transform = item.name.startsWith("talk-") ? patchGptLiveConsultProgressTalk : patchGptLiveConsultProgressHarness;
     const continuation = item.name.startsWith("talk-") ? patchGptLiveContinuationTalk : patchGptLiveContinuationHarness;
     const continued = continuation(transform(before.toString("utf8")));
-    const after = item.name.startsWith("talk-") ? patchGptLiveCallLifecycleTalk(patchGptLiveNativeConfirmationTalk(continued)) : continued;
+    const after = item.name.startsWith("talk-")
+      ? patchGptLiveBackendCallControlTalk(patchGptLiveCallLifecycleTalk(patchGptLiveNativeConfirmationTalk(continued)))
+      : patchGptLiveBackendCallControlHarness(continued);
     const source = `lab/release-files/gpt-live-call/${item.name}`;
     mkdirSync(dirname(resolve(root, source)), { recursive: true }); writeFileSync(resolve(root, source), after);
     files.push({ source, target: `openclaw/dist/${item.name}`, before: item.sha256 });
@@ -133,10 +136,10 @@ export function build({ baseRelease = "hotreload-feishu-approvals-v2" } = {}) {
   fixtures('lab/fixtures/gpt-live-native-progress');fixtures('lab/fixtures/gpt-live-completion-context');fixtures('lab/fixtures/gpt-live-continuation');fixtures('lab/fixtures/gpt-live-public-progress');fixtures('lab/fixtures/gpt-live-call-lifecycle');
   const completionCandidate=JSON.parse(readFileSync(resolve(root,'lab/candidate/gpt-live-completion-context.plan.json')));
   writeFileSync(resolve(root, "lab/candidate/gpt-live-call.plan.json"), JSON.stringify({
-    baseRelease, files, tests: ["lab/gpt-live-call-lifecycle.test.mjs", "lab/gpt-live-consult-progress.test.mjs", "lab/gpt-live-public-progress-bridge.test.mjs", "lab/gpt-live-native-progress.test.mjs", "lab/gpt-live-h5/server.test.mjs", "lab/gpt-live-h5/app.test.mjs", "lab/gpt-live-h5/duplex-playback.test.mjs", "lab/gpt-live-h5/microphone-capture.test.mjs", "lab/gpt-live-h5/transcript-presentation.test.mjs", "lab/gpt-live-h5/call-sounds.test.mjs", "lab/gpt-live-call-live-auth.test.mjs", "lab/gpt-live-call-live-evidence.test.mjs",
+    baseRelease, files, tests: ["lab/gpt-live-backend-call-control.test.mjs", "lab/gpt-live-call-lifecycle.test.mjs", "lab/gpt-live-consult-progress.test.mjs", "lab/gpt-live-public-progress-bridge.test.mjs", "lab/gpt-live-native-progress.test.mjs", "lab/gpt-live-h5/server.test.mjs", "lab/gpt-live-h5/app.test.mjs", "lab/gpt-live-h5/duplex-playback.test.mjs", "lab/gpt-live-h5/microphone-capture.test.mjs", "lab/gpt-live-h5/transcript-presentation.test.mjs", "lab/gpt-live-h5/call-sounds.test.mjs", "lab/gpt-live-call-live-auth.test.mjs", "lab/gpt-live-call-live-evidence.test.mjs",
       "lab/gpt-live-consult-continuation.test.mjs", "lab/gpt-live-voice-exec-lifetime.test.mjs", "lab/gpt-live-voice-confirmation.test.mjs", "lab/gpt-live-native-confirmation.test.mjs", "lab/gpt-live-voice-tool-order.test.mjs", "lab/gpt-live-candidate-native/confirmation-evidence.test.mjs", "lab/gpt-live-candidate-native/os-observer-lifecycle.test.mjs", "lab/gpt-live-candidate-native/call-lifecycle-evidence.test.mjs", "lab/gpt-live-candidate-native/call-lifecycle-target.test.mjs", "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-spawn-gateway-proxy.test.mjs", "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-yield-external-task.test.mjs", "lab/gpt-live-pr-provenance.test.mjs", "lab/gpt-live-pr-config.test.mjs", "lab/gpt-live-pr-trace.test.mjs", "lab/gpt-live-h5-provenance-evidence.test.mjs", "lab/gpt-live-h5-control-evidence.test.mjs", "lab/gpt-live-h5-user-pcm.test.mjs", "lab/gpt-live-h5-control-probe.test.mjs",...completionCandidate.tests],
     support: [...new Set([
-      "lab/gpt-live-call-lifecycle.mjs", "lab/patch-gpt-live-call-lifecycle.mjs", "lab/gpt-live-h5/instructions.mjs",
+      "lab/gpt-live-call-lifecycle.mjs", "lab/patch-gpt-live-call-lifecycle.mjs", "lab/patch-gpt-live-backend-call-control.mjs", "lab/gpt-live-h5/instructions.mjs",
       "lab/gpt-live-consult-progress.mjs", "lab/gpt-live-public-progress-bridge.mjs", publicBridgeBaseline, "lab/patch-gpt-live-native-progress.mjs",
       "lab/fixtures/gpt-live-native-progress/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
       "release/captured/v2026.9.1-db91.6-background-work-20261002/dist/realtime-session-harness-CEO5kVAJ.js",

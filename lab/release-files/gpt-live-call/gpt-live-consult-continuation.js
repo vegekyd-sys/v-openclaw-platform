@@ -117,6 +117,13 @@ function createGptLiveConsultContinuationRegistry(deps) {
     const context = params.continuationContext;
     if (!clean(identity?.delegationItemId) || !Number.isSafeInteger(identity?.delegationGeneration) || identity.delegationGeneration < 1 ||
         !clean(context?.ownerConnId) || !clean(context?.voiceSessionId) || !clean(context?.ownerGeneration) || typeof context.isCurrent !== "function") return;
+    const callControl = context.callControl;
+    if (callControl && (callControl.nativeDelegationId !== identity.delegationItemId ||
+        callControl.delegationGeneration !== identity.delegationGeneration || !clean(callControl.originUserTurnId) ||
+        !clean(callControl.userTurnText) || callControl.tool?.function?.name !== "openclaw_end_call" ||
+        typeof callControl.isCurrent !== "function" || typeof callControl.accept !== "function")) {
+      throw error("Voice call control lost its native source identity");
+    }
     const voiceKey = JSON.stringify([context.ownerConnId, context.voiceSessionId, context.ownerGeneration]);
     const previous = byVoice.get(voiceKey);
     if (identity.delegationGeneration <= (voiceGenerations.get(voiceKey) ?? 0)) throw error("Repeated or stale voice delegation");
@@ -140,6 +147,8 @@ function createGptLiveConsultContinuationRegistry(deps) {
     let done = false;
     let cancellationNotified = false;
     let cancellationAccepted = false;
+    let callControlReceipt;
+    const callControlStarts = new Set();
     let resolve;
     let reject;
     const pending = new Promise((ok, fail) => { resolve = ok; reject = fail; });
@@ -164,6 +173,7 @@ function createGptLiveConsultContinuationRegistry(deps) {
       consumedInputs.length = 0;
       acceptedActiveInputs.length = 0;
       activeInputReservations.length = 0;
+      callControlStarts.clear();
       for (const [runId, binding] of bindings) {
         if (byRun.get(runId) === binding) byRun.delete(runId);
         settledVoiceRuns.add(runId);
@@ -201,12 +211,45 @@ function createGptLiveConsultContinuationRegistry(deps) {
       return true;
     };
     const report = (progress, binding) => {
+      if (callControlReceipt) return;
       if (!isCurrent() || binding.isCurrent?.() === false) return;
       const { emittedAt, runId, source, itemId } = progress.provenance ?? {};
       const provenance = { emittedAt, sequence: ++binding.sequence, runId, source, ...(itemId ? { itemId } : {}),
         parentRunId: params.runId, ...(binding.batch ? { batchRunIds: [...binding.batch.batchRunIds], rearmGeneration: binding.batch.rearmGeneration } : {}),
         role: binding.role };
       return params.onProgress?.({ text: progress.text, kind: "commentary", provenance });
+    };
+    const observeCallControl = (event, binding) => {
+      // Only the original parent receives this schema. A child, resumed run,
+      // partial callback, assistant text or metadata-only result has no control authority.
+      if (!callControl || callControlReceipt || binding.role !== "initial" || binding.runId !== params.runId ||
+          binding.yielded || binding.completed || binding.controlSignal.aborted || callControl.isCurrent() !== true ||
+          event.stream !== "tool" || event.data?.name !== "openclaw_end_call") return;
+      const data = event.data;
+      const id = data.toolCallId;
+      if (typeof id !== "string" || !/^[a-zA-Z0-9_.:-]{1,160}$/.test(id)) return;
+      if (data.phase === "start") {
+        if (data.args && typeof data.args === "object" && !Array.isArray(data.args) && Object.keys(data.args).length === 0) {
+          if (callControlStarts.size >= 32) throw error("Voice call control tool request limit exceeded");
+          callControlStarts.add(id);
+        }
+        return;
+      }
+      if (data.phase !== "result" || !callControlStarts.delete(id) || data.isError !== false ||
+          data.result?.terminate !== true || data.result?.details?.status !== "pending" ||
+          data.result.details.tool !== "openclaw_end_call" ||
+          data.result.details.message !== "Tool execution delegated to client") return;
+      assertCurrent();
+      const receipt = callControl.accept({ backendRunId: binding.runId, backendToolCallId: id });
+      assertCurrent();
+      if (!receipt || receipt.then || receipt.source !== "backend_model_client_tool" || receipt.status !== "accepted" ||
+          receipt.closeAfterPlayback !== true || receipt.backendRunId !== binding.runId || receipt.backendToolCallId !== id ||
+          receipt.callId !== id || receipt.requestId !== identity.delegationItemId ||
+          receipt.nativeDelegationId !== identity.delegationItemId || receipt.delegationGeneration !== identity.delegationGeneration ||
+          receipt.originUserTurnId !== callControl.originUserTurnId || callControl.isCurrent() !== true) {
+        throw error("Voice call control acceptance was not confirmed by its original host");
+      }
+      callControlReceipt = receipt;
     };
     const attachRun = ({ runId, sessionKey, sessionId, agentId, role, batch, isCurrent: check, isTerminal, taskRunId, registration }) => {
       assertCurrent();
@@ -231,12 +274,16 @@ function createGptLiveConsultContinuationRegistry(deps) {
       }
       const observer = deps.createProgressObserver({ onProgress: (progress) => report(progress, binding), abortSignal: controller.signal, logger: params.logger, runId });
       cleanups.add(observer.close);
-      if (role !== "initial") {
+      if (role !== "initial" || callControl) {
         const unsubscribe = deps.subscribeRun(runId, (event) => {
           if (!isCurrent()) { owner.abort(error("Voice continuation owner changed before public progress")); return; }
           if (check?.() === false || event.runId !== runId ||
               event.lifecycleGeneration && event.lifecycleGeneration !== lifecycleGeneration ||
               event.sessionKey && event.sessionKey !== sessionKey || sessionId && event.sessionId && event.sessionId !== sessionId) return;
+          if (role === "initial") {
+            try { observeCallControl(event, binding); } catch (failure) { owner.abort(failure); }
+            return;
+          }
           // The assistant stream is the public text projection. No thought/tool/error stream is accepted.
           if (event.stream === "assistant" && typeof event.data?.text === "string" && event.data.isReasoning !== true) observer.onPartialReply(event.data);
           else observer.onAgentEvent(event);
@@ -250,6 +297,16 @@ function createGptLiveConsultContinuationRegistry(deps) {
       assertCurrent();
       if (result?.meta?.aborted === true) {
         cancel(error("Voice requester run was aborted"), "aborted_result");
+        return;
+      }
+      if (binding.role === "initial" && callControlReceipt) {
+        if (!result || !Array.isArray(result.payloads) || result?.meta?.error ||
+            result?.meta?.yielded === true || callControl.isCurrent() !== true) {
+          throw error("Voice call control source changed before its terminal result");
+        }
+        // A real client-tool termination has no final text. Keep this host
+        // acceptance out of ordinary BACKEND_FINAL/BACKEND_FAILURE speech.
+        settle({ callControl: callControlReceipt });
         return;
       }
       if (result?.meta?.yielded === true) {

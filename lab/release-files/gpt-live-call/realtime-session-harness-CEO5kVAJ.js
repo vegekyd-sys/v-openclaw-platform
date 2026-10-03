@@ -1,3 +1,4 @@
+// gpt-live-backend-call-control-v1: harness
 // gpt-live-consult-continuation-v1: harness
 import { createGptLiveConsultContinuationOwner } from "./gpt-live-consult-continuation.js";
 import { F as resolveTimerTimeoutMs, l as asNonNegativeFiniteNumber } from "./number-coercion-CLj0HTDM.js";
@@ -1412,6 +1413,11 @@ async function consultRealtimeVoiceAgent(params) {
 				reasoningLevel: "off",
 				toolResultFormat: "plain",
 				toolsAllow: params.toolsAllow,
+				// No schema is inherited by child/resume dispatches. Its callbacks are
+				// process-local in the exact continuation owner, never IPC tool args.
+				...(continuationOwner && params.continuationContext?.callControl ? {
+					clientTools: [params.continuationContext.callControl.tool],
+				} : {}),
 				timeoutMs,
 				runId,
 				lane: params.lane,

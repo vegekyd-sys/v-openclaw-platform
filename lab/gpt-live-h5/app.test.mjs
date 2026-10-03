@@ -882,3 +882,80 @@ test('the readiness deadline aborts a hung ready fetch and prevents a late succe
   assert.equal(f.context.__gptLiveDuplexDiagnostics.counts['greeting-ready-accepted'],undefined);
   assert.equal(peer.closed,false);
 });
+
+async function backendEndCallFixture(t) {
+  const f = await fixture(t); await f.context.startCall();
+  const peer = f.peers[0]; peer.connectionState = 'connected'; peer.onconnectionstatechange();
+  await peer.ontrack({ track: track() }); await tick();
+  const send = value => peer.channel.onmessage({ data: JSON.stringify(value) });
+  const tool = value => f.eventSources[0].onmessage({ data: JSON.stringify({ voiceSessionId: 'voice-1', type: 'tool.result',
+    name: 'openclaw_end_call', source: 'backend_model_client_tool', status: 'accepted', callId: 'call_end_real',
+    backendToolCallId: 'call_end_real', backendRunId: 'talk-realtime-consult:actual:parent',
+    requestId: 'item_end_real', nativeDelegationId: 'item_end_real', delegationGeneration: 1,
+    originUserTurnId: 'turn_end_real', closeAfterPlayback: true, ...value }) });
+  const native = () => send({ type: 'delegation.created', item: { type: 'delegation', target: 'client',
+    id: 'item_end_real', user_bidi_turn_id: 'turn_end_real', content: [{ type: 'input_text', text: '今天就先这样，谢谢你，拜拜' }] } });
+  send({ type: 'turn.created', turn: { role: 'user', id: 'turn_end_real' } });
+  send({ type: 'turn.done', turn: { role: 'user', id: 'turn_end_real', transcript: '今天就先这样，谢谢你，拜拜' } });
+  return { ...f, peer, send, tool, native };
+}
+
+test('plain native farewell never ends until host accepts the genuine backend model tool and a fresh farewell actually plays', async t => {
+  const f = await backendEndCallFixture(t); f.native();
+  f.send({ type: 'turn.created', turn: { role: 'assistant', id: 'ordinary-consult-ack' } });
+  f.meter(50, 0, .12); f.setNow(75);
+  f.send({ type: 'turn.done', turn: { role: 'assistant', id: 'ordinary-consult-ack' } });
+  for (let at = 100; at <= 900; at += 50) f.meter(at, 0, 0);
+  assert.equal(f.peer.closed, false); assert.equal(f.body.dataset.callState, 'connected');
+  f.tool({}); assert.equal(f.body.dataset.callState, 'ending');
+  for (let at = 950; at <= 1800; at += 50) f.meter(at, 0, 0);
+  assert.equal(f.peer.closed, false, 'earlier ordinary acknowledgment PCM is not farewell');
+  f.setNow(1825); f.send({ type: 'turn.created', turn: { role: 'assistant', id: 'accepted-farewell' } });
+  f.meter(1850, 0, .12); f.meter(1900, 0, .12); f.setNow(1925);
+  f.send({ type: 'turn.done', turn: { role: 'assistant', id: 'accepted-farewell' } });
+  for (let at = 1950; at <= 2700; at += 50) f.meter(at, 0, 0);
+  await tick(); assert.equal(f.peer.closed, true);
+  const drain = f.context.__gptLiveDuplexDiagnostics.events.find(row => row.type === 'model-end-call-playback-drained');
+  assert.equal(drain.source, 'backend_model_client_tool'); assert.equal(drain.backendToolCallId, 'call_end_real');
+  assert.equal(drain.nativeDelegationId, 'item_end_real');
+});
+
+test('backend model acceptance joins the actual native item and rejects incomplete or mismatched receipts', async t => {
+  const f = await backendEndCallFixture(t);
+  for (const bad of [{ voiceSessionId: 'other' }, { backendToolCallId: 'call_other' }, { nativeDelegationId: 'item_other' },
+    { status: 'pending' }, { backendRunId: '' }, { delegationGeneration: 0 }, { originUserTurnId: 'turn_other' }]) {
+    f.tool(bad); assert.equal(f.body.dataset.callState, 'connected');
+  }
+  f.tool({}); assert.equal(f.body.dataset.callState, 'connected', 'host result alone is not the original native item');
+  f.native(); assert.equal(f.body.dataset.callState, 'ending');
+  f.send({ type: 'turn.created', turn: { role: 'assistant', id: 'bye' } });
+  f.meter(50, 0, .12); f.setNow(75); f.send({ type: 'turn.done', turn: { role: 'assistant', id: 'bye' } });
+  for (let at = 100; at <= 900; at += 50) f.meter(at, 0, 0);
+  await tick(); assert.equal(f.peer.closed, true);
+});
+
+test('new USER and failed actual backend end tool revoke an accepted farewell without ending the line', async t => {
+  const f = await backendEndCallFixture(t); f.native(); f.tool({});
+  f.tool({ type: 'tool.error', backendRunId: 'talk-realtime-consult:wrong:parent' });
+  assert.equal(f.body.dataset.callState, 'ending', 'a wrong backend run cannot revoke this receipt');
+  f.tool({ type: 'tool.error' }); assert.equal(f.body.dataset.callState, 'connected');
+  f.send({ type: 'turn.created', turn: { role: 'user', id: 'turn_keep_open' } });
+  f.tool({}); assert.equal(f.body.dataset.callState, 'connected');
+  f.send({ type: 'turn.created', turn: { role: 'assistant', id: 'new-topic' } });
+  f.meter(50, 0, .12); f.setNow(75); f.send({ type: 'turn.done', turn: { role: 'assistant', id: 'new-topic' } });
+  for (let at = 100; at <= 1500; at += 50) f.meter(at, 0, 0);
+  assert.equal(f.peer.closed, false); assert.equal(f.requests.filter(row => row.route === 'close').length, 0);
+});
+
+test('backend end host acceptance does not use an unfinished USER prefix', async t => {
+  const f = await fixture(t); await f.context.startCall(); const peer = f.peers[0];
+  peer.connectionState = 'connected'; peer.onconnectionstatechange(); await peer.ontrack({ track: track() });
+  peer.channel.onmessage({ data: JSON.stringify({ type: 'turn.created', turn: { role: 'user', id: 'turn_pending' } }) });
+  peer.channel.onmessage({ data: JSON.stringify({ type: 'delegation.created', item: { type: 'delegation', target: 'client',
+    id: 'item_pending', user_bidi_turn_id: 'turn_pending', content: [{ type: 'input_text', text: '先这样' }] } }) });
+  f.eventSources[0].onmessage({ data: JSON.stringify({ voiceSessionId: 'voice-1', type: 'tool.result', name: 'openclaw_end_call',
+    source: 'backend_model_client_tool', status: 'accepted', callId: 'call_pending', backendToolCallId: 'call_pending',
+    backendRunId: 'talk-realtime-consult:actual:parent', requestId: 'item_pending', nativeDelegationId: 'item_pending',
+    delegationGeneration: 1, originUserTurnId: 'turn_pending', closeAfterPlayback: true }) });
+  assert.equal(f.body.dataset.callState, 'connected'); assert.equal(peer.closed, false);
+});

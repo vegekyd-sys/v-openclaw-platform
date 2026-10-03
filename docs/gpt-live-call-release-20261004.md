@@ -7,7 +7,7 @@
 - 后台任务状态紧邻「对话」标题，无任务时不占位。
 - 手机接通后收起大头像与大拨号区域，保留会变化的小头像、通话状态和挂断按钮，使对话成为主画面；桌面和拨号页保留原结构。
 - 真正接通且浏览器可播放后，由模型主动说一句问候。通过现有 native `session.context.append`，不制造用户输入、assistant 事件或另一路 TTS。
-- 模型理解结束意图后调用 `openclaw_end_call`。GPT Live 当前 native browser broker 使用真实 client delegation 路由 host tool，不发送不受支持的 GA function-call/response-create 控制，不按用户字幕关键词自动挂断。
+- 模型理解结束意图后，通过 native client delegation 交给后台模型选择真正的零参数 `openclaw_end_call` 工具。工具只在当前通话的完整原用户发言已结束、原委派与当前 owner 仍有效时暴露给最初父任务；子任务、续传和外部搜索内容不获得挂断权限。宿主交叉核对实际 backend tool start/result、runId、callId 和原 native turn/delegation，再安排告别。不会按字幕关键词自动挂断，也不把普通委派文字改造成工具调用。
 - 工具接纳只表示进入结束流程。网页在真实告别语音、对应 assistant terminal 和连续音频尾部排空后关闭原通话。用户在告别中再次开始说话时保留通话；工具失败、播放受阻或缺少证据时，保留手动挂断按钮。
 
 ## 新增验收
@@ -17,6 +17,8 @@
 原 H5/WebRTC 的针对性真实案例覆盖：无用户输入的主动问候与声音；包含结束措辞但明确「先别挂」时持续通话；「今天就先这样，谢谢你，拜拜」这类自然告别触发真实 native delegation、host tool、告别声音、原 H5 关闭与麦克风释放；重新拨号后新 owner 问候。共享 VLab 对同一冻结产物重复核心新功能与实际工具返回。健康检查或本地测试不能替代这些验收。
 
 共享首轮已经观察到问候、否定挂断及同一次后台执行中的 Memory Search → Web Search → 真实语音返回，原严格麦克风连续性 FAIL 保留。下一轮发现 native WebRTC 已连接时，后台的生命周期控制尚未观察到 `session.started`，四次快速 ready 请求均被拒绝，问候因此没有发出；随后测试浏览器清理的 ENOTEMPTY 错误遮住了回执。原始零 PCM、四次失败、原会话真实关闭的证据保留。该版本未接受、未上线 V，先回退共享候选再修复并重新冻结产物。修复采用 native browser broker 已实际持有的当前会话、开放侧线 socket 及未取消信号来验证接通就绪；保留真实 `session.started` 的观测与有效期处理，不制造该事件。前端 ready 请求保留 15 秒有界重试，用户先开口或换通话时停止。
+
+共享 `a64bf6b` 的实际原 H5 复验已经取得主动问候、明确「先别挂」持续通话、同一后台父任务的 Memory Search → Web Search/web_fetch 和原 Live 语音返回。自然告别仍失败：原 native USER 完整说了「今天就先这样，谢谢你，拜拜」，Live 只发送了普通自然语言 client delegation，没有生成此前提示约定的 JSON，也没有真正的挂断工具执行。不能把口头「马上结束」当挂断成功。该候选 H5 与 Gateway 已成对回退到 `hotreload-feishu-approvals-v2`，配置 hash 与已验收基线一致，自己的 integration lease 已归还；生产 V 未改动。后续真实 backend-model tool 修复在 Candidate 验证，未验收前不推广这个失败产物。
 
 ## 发布边界
 

@@ -159,3 +159,24 @@ test('only the owned end-call tool can carry closing metadata over SSE',async t=
   assert.match(ended,/openclaw_end_call/u); assert.match(ended,/end-id/u); assert.match(ended,/closeAfterPlayback/u); assert.match(ended,/native-user-id/u); assert.doesNotMatch(ended,/hidden/u);
   stop.abort(); await reader.cancel().catch(()=>{});
 });
+
+test('owned backend model end receipts preserve real tool/run and native identity without leaking arbitrary data', async t => {
+  const f = await fixture(t); await f.request('session');
+  const stop = new AbortController();
+  const response = await fetch(f.url + '/api/events', { headers: { cookie: f.cookie }, signal: stop.signal });
+  const reader = response.body.getReader(); await reader.read();
+  f.bridge.emit({ event: 'talk.event', payload: { voiceSessionId: 'voice-private', talkEvent: {
+    type: 'tool.result', callId: 'call_real_end', payload: { name: 'openclaw_end_call', source: 'backend_model_client_tool',
+      status: 'accepted', requestId: 'item_native', nativeDelegationId: 'item_native', originUserTurnId: 'turn_native',
+      delegationGeneration: 3, backendToolCallId: 'call_real_end', backendRunId: 'talk-realtime-consult:actual:parent',
+      closeAfterPlayback: true, userTurnText: 'private caller phrase', args: { secret: 'must not leak' }, hidden: 'not-for-browser' } } } });
+  const body = new TextDecoder().decode((await reader.read()).value);
+  const value = JSON.parse(body.slice(body.indexOf('data: ') + 6).trim());
+  assert.equal(value.source, 'backend_model_client_tool'); assert.equal(value.status, 'accepted');
+  assert.equal(value.callId, 'call_real_end'); assert.equal(value.backendToolCallId, 'call_real_end');
+  assert.equal(value.requestId, 'item_native'); assert.equal(value.nativeDelegationId, 'item_native');
+  assert.equal(value.originUserTurnId, 'turn_native'); assert.equal(value.delegationGeneration, 3);
+  assert.equal(value.backendRunId, 'talk-realtime-consult:actual:parent');
+  assert.doesNotMatch(body, /private caller|secret|hidden|not-for-browser/u);
+  stop.abort(); await reader.cancel().catch(() => {});
+});

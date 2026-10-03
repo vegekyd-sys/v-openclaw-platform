@@ -130,16 +130,47 @@ function armAutomaticEnd(active, request) {
   }, 15000);
 }
 function requestAutomaticEnd(active, value) {
-  if (call !== active || value.name !== "openclaw_end_call" || value.closeAfterPlayback !== true
-    || value.callId !== value.requestId) return;
+  if (call !== active || value.name !== "openclaw_end_call" || value.closeAfterPlayback !== true) return;
+  const backendPath = value.source === "backend_model_client_tool";
+  if (backendPath) {
+    if (value.status !== "accepted" || value.nativeDelegationId !== value.requestId ||
+      value.backendToolCallId !== value.callId || !/^call_[a-zA-Z0-9_.:-]{1,155}$/.test(value.callId ?? "") ||
+      !/^[a-zA-Z0-9_.:-]{1,256}$/.test(value.backendRunId ?? "") ||
+      !Number.isSafeInteger(value.delegationGeneration) || value.delegationGeneration < 1 ||
+      !active.completedNativeUserTurns?.has(value.originUserTurnId)) return;
+  } else if (value.callId !== value.requestId) return;
   const request = endCallRequest(active, value.requestId, value.originUserTurnId);
   if (!request) return;
+  if (request.accepted && request.backendPath &&
+    (request.backendToolCallId !== value.backendToolCallId || request.backendRunId !== value.backendRunId)) return;
+  if (backendPath && !request.accepted) {
+    request.backendPath = true; request.source = value.source;
+    request.backendToolCallId = value.backendToolCallId; request.backendRunId = value.backendRunId;
+    request.delegationGeneration = value.delegationGeneration;
+    // An ordinary consult acknowledgment before host acceptance is not farewell.
+    request.turnId = null; request.terminalAt = null; request.audioObserved = false; request.quietSince = null;
+    const observed = active.nativeCallControlDelegations?.get(value.nativeDelegationId);
+    request.providerObserved = observed?.originUserTurnId === value.originUserTurnId;
+    if (request.providerObserved) active.endNativeRequestId = request.requestId;
+  }
   request.accepted = true;
   armAutomaticEnd(active, request);
 }
 function observeNativeEndDelegation(active, item) {
   if (item?.type !== "delegation" || item.target !== "client" || !Array.isArray(item.content)
-    || item.content.length !== 1 || item.content[0].type !== "input_text") return;
+    || item.content.length !== 1 || item.content[0].type !== "input_text" ||
+    typeof item.content[0].text !== "string" || typeof item.id !== "string" ||
+    typeof item.user_bidi_turn_id !== "string") return;
+  active.nativeCallControlDelegations ??= new Map();
+  active.nativeCallControlDelegations.set(item.id, { originUserTurnId: item.user_bidi_turn_id });
+  if (active.nativeCallControlDelegations.size > 256) active.nativeCallControlDelegations.delete(active.nativeCallControlDelegations.keys().next().value);
+  const backendRequest = active.endRequests?.get(item.id);
+  if (backendRequest?.backendPath && backendRequest.accepted && !backendRequest.invalidated &&
+    backendRequest.originUserTurnId === item.user_bidi_turn_id && active.latestNativeUserTurnId === item.user_bidi_turn_id) {
+    backendRequest.providerObserved = true; active.endNativeRequestId = backendRequest.requestId;
+    armAutomaticEnd(active, backendRequest);
+    return;
+  }
   let input;
   try { input = JSON.parse(item.content[0].text); } catch { return; }
   if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).length !== 2
@@ -167,7 +198,9 @@ function observeAutomaticEnd(active, at, energy) {
   ending.quietSince ??= at;
   if (at - ending.quietSince < 750 || !ending.accepted || active.ending !== ending) return;
   duplexDiagnostic(active, { type: "model-end-call-playback-drained", at,
-    requestId: ending.requestId, originUserTurnId: ending.originUserTurnId, turnId: ending.turnId });
+    requestId: ending.requestId, originUserTurnId: ending.originUserTurnId, turnId: ending.turnId,
+    ...(ending.backendPath ? { source: ending.source, backendToolCallId: ending.backendToolCallId,
+      backendRunId: ending.backendRunId, nativeDelegationId: ending.requestId } : {}) });
   void stopCall();
 }
 async function startRemotePlayback(active, source) {
@@ -279,6 +312,11 @@ function providerMessage(event) {
   if (active && ((["turn.created", "turn.done"].includes(data.type) && data.turn?.role === "user")
     || (data.type === "input_transcript.added" && typeof data.item?.text === "string" && data.item.text.trim()))) suppressGreetingForCaller(active);
   if (active && data.type === "delegation.created") observeNativeEndDelegation(active, data.item);
+  if (active && data.type === "turn.done" && data.turn?.role === "user" &&
+    data.turn.id === active.latestNativeUserTurnId && typeof data.turn.transcript === "string" && data.turn.transcript.trim()) {
+    active.completedNativeUserTurns ??= new Set(); active.completedNativeUserTurns.add(data.turn.id);
+    if (active.completedNativeUserTurns.size > 256) active.completedNativeUserTurns.delete(active.completedNativeUserTurns.values().next().value);
+  }
   if (active && data.type === "turn.created" && ["user", "assistant"].includes(data.turn?.role)) {
     const at = performance.now();
     duplexDiagnostic(active, { type: "native-turn-created", at, role: data.turn.role });
@@ -293,7 +331,7 @@ function providerMessage(event) {
     } else if (typeof data.turn.id === "string" && data.turn.id.trim()) {
       active.duplex.notifyAssistantTurnCreated(data.turn.id, at);
       const request = active.endRequests?.get(active.endNativeRequestId);
-      if (request && !request.invalidated) {
+      if (request && !request.invalidated && (!request.backendPath || request.accepted && request.providerObserved)) {
         request.turnId = data.turn.id; request.terminalAt = null;
         request.audioObserved = false; request.quietSince = null;
       }
@@ -391,10 +429,15 @@ async function startCall() {
       if (value.type === "tool.call" && value.name !== "openclaw_end_call") tasks.add(value.callId);
       if (["tool.result", "tool.error"].includes(value.type)) tasks.delete(value.callId);
       if (value.type === "tool.result") requestAutomaticEnd(active, value);
-      if (value.type === "tool.error" && value.name === "openclaw_end_call" && value.callId === value.requestId) {
+      if (value.type === "tool.error" && value.name === "openclaw_end_call" &&
+        (value.callId === value.requestId || value.source === "backend_model_client_tool" &&
+          value.callId === value.backendToolCallId && value.nativeDelegationId === value.requestId)) {
         const request = endCallRequest(active, value.requestId, value.originUserTurnId);
-        if (request) request.invalidated = true;
-        if (active.ending?.requestId === value.requestId) cancelAutomaticEnd(active);
+        if (request && (!request.backendPath || request.backendToolCallId === value.backendToolCallId &&
+          request.backendRunId === value.backendRunId)) {
+          request.invalidated = true;
+          if (active.ending?.requestId === value.requestId) cancelAutomaticEnd(active);
+        }
       }
       taskState();
     };

@@ -188,11 +188,45 @@ async function runLifecycle(){
  const expectedEndText=fs.readFileSync(path.join(clips,'end-call.txt'),'utf8');
  const endUser=await waitFor(s=>resolveLifecycleUserTurn(s.events,{pcIndex,after:end.row.startedAt,intent:'end',expectedText:expectedEndText}),
    'Complete frozen goodbye USER native transcript',15000);
- const tool=await waitFor(s=>resolveEndCallToolWitness({events:s.events,tools:s.tools,pcIndex,voiceSessionId:owner.voiceSessionId,after:end.row.startedAt}),'Actual native delegation and exact host end-call call/result',20000);
+ let endHistory,nextEndHistoryAt=0;const endHistoryReads=[];
+ const endClose=s=>s.api.find(a=>a.route==='/api/close'&&a.request?.voiceSessionId===owner.voiceSessionId&&Number.isFinite(a.requestedAt));
+ const endWitness=s=>resolveEndCallToolWitness({events:s.events,tools:s.tools,backendEvents:ownedGatewayEvents(),backendHistory:endHistory,
+   sessionKey:owner.sessionKey,userTurnId:endUser.turnId,pcIndex,voiceSessionId:owner.voiceSessionId,after:end.row.startedAt,
+   before:endClose(s)?.requestedAt??Infinity});
+ let tool=await waitFor(async s=>{
+  const direct=endWitness(s);if(direct)return direct;
+  const backendRequested=s.tools.some(e=>e.raw?.voiceSessionId===owner.voiceSessionId&&e.raw?.source==='backend_model_client_tool'&&
+    e.raw.name==='openclaw_end_call'&&e.raw.type==='tool.result'&&e.raw.originUserTurnId===endUser.turnId);
+  if(!backendRequested||Date.now()<nextEndHistoryAt)return null;
+  nextEndHistoryAt=Date.now()+500;const attemptedAt=Date.now();
+  const history=await readLifecycleHistoryOrRetry(
+    ()=>gateway.request('chat.history',{sessionKey:owner.sessionKey,limit:120},{timeoutMs:10000}),
+    error=>{endHistoryReads.push({attemptedAt,completedAt:Date.now(),status:'temporary-rebuilding',message:error.message});
+      save('end-call-owned-backend-history-read-attempts.json',{sessionKey:owner.sessionKey,attempts:endHistoryReads});});
+  if(history===null)return null;
+  // Durable storage may settle after the original product has closed the call.
+  // Read exactly that original session, without postponing close or inventing
+  // a result. All actual tool/source clocks must still precede acceptance/close.
+  const observedAt=Date.now(),current=await snapshot(),close=endClose(current);
+  endHistory={sessionKey:owner.sessionKey,observedAt,history};
+  const phase=close?observedAt<close.requestedAt?'pre-close':'post-close':'close-not-yet-observed';
+  endHistoryReads.push({attemptedAt,completedAt:observedAt,status:'success',historyObservationPhase:phase,
+    originalCloseRequestedAt:close?.requestedAt??null});
+  save('end-call-owned-backend-history-read-attempts.json',{sessionKey:owner.sessionKey,attempts:endHistoryReads});
+  save('end-call-owned-backend-history.json',{...endHistory,historyObservationPhase:phase,originalCloseRequestedAt:close?.requestedAt??null});
+  return endWitness(current);
+ },'Actual model end-call tool, exact owned host receipt and durable backend result',20000);
+ save('model-end-call-tool-witness.json',{endUser,tool,backendHistoryObservedAt:endHistory?.observedAt??null,
+   durableHistoryDoesNotReplaceActualPreCloseToolSource:true});
  coreCheck('model-real-end-call-tool-after-complete-USER',tool.userTurnId===endUser.turnId,{endUser,tool,inputCompletedAt:end.row.completedAt,
    causalBinding:'Actual delegation user_bidi_turn_id equals the complete original USER turn; reception timestamps are retained, not treated as cross-stream execution order'});
  const closed=await waitFor(s=>s.pcStates[pcIndex]==='closed'&&s.api.some(a=>a.route==='/api/close'&&a.status===200&&a.request?.voiceSessionId===owner.voiceSessionId),'Original H5 automatic model-requested close',25000);
  const state=await snapshot(true),close=state.api.find(a=>a.route==='/api/close'&&a.status===200&&a.request?.voiceSessionId===owner.voiceSessionId);
+ const finalTool=endWitness(state);
+ check('end-call-witness-current-through-original-close',Boolean(finalTool),{
+   requestId:tool.requestId,backendRunId:tool.backendRunId??null,historyObservedAt:endHistory?.observedAt??null,
+   originalCloseRequestedAt:close.requestedAt,newUSERMustInvalidateOldRequest:true});
+ assert(finalTool,'End-call causal witness invalidated before the original close');tool=finalTool;
  const farewell=assessLifecycleFarewell(state,{pcIndex,tool,before:close.requestedAt});
  const automatic=assessAutomaticEnd(state,{pcIndex,owner,tool,farewell}),capture=await readCaptureClosed(pcIndex);
  coreCheck('automatic-close-after-real-farewell-and750ms-tail',automatic?.passed&&capture.captureEnded&&capture.pcClosed,{automatic,capture,closed:true,manualButtonUsed:false,farewellContentManualReviewRequired:true});

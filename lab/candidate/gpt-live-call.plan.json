@@ -113,6 +113,7 @@
     }
   ],
   "tests": [
+    "lab/gpt-live-backend-call-control.test.mjs",
     "lab/gpt-live-call-lifecycle.test.mjs",
     "lab/gpt-live-consult-progress.test.mjs",
     "lab/gpt-live-public-progress-bridge.test.mjs",
@@ -149,6 +150,7 @@
   "support": [
     "lab/gpt-live-call-lifecycle.mjs",
     "lab/patch-gpt-live-call-lifecycle.mjs",
+    "lab/patch-gpt-live-backend-call-control.mjs",
     "lab/gpt-live-h5/instructions.mjs",
     "lab/gpt-live-consult-progress.mjs",
     "lab/gpt-live-public-progress-bridge.mjs",

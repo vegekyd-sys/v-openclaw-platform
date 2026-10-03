@@ -25,11 +25,71 @@ export function patchGptLiveCallLifecycleController(source) {
 \t\t\t},
 \t\t\tsendDelegationContext: (id, text) => this.sendAppend(id, text, "speakable")
 \t\t}) : void 0;`, "native lifecycle constructor");
+  source = once(source, "\t\tthis.delegationGeneration = 0;", `\t\tthis.callControlUserTurnWaiters = new Set();
+\t\tthis.completedCallControlUserTurns = new Map();
+\t\tthis.delegationGeneration = 0;`, "call control finalized turn storage");
+  source = once(source, "\t\t\t\tevent.userClosingTranscriptUnchanged = this.observeNativeUserTurn(raw);", "\t\t\t\tthis.observeCallControlUserTurn(raw);\n\t\t\t\tevent.userClosingTranscriptUnchanged = this.observeNativeUserTurn(raw);", "call control genuine turn observation");
   source = once(source, '\t\tif (event.kind === "session-started") {', '\t\tif (event.kind === "session-started") {\n\t\t\tthis.callLifecycle?.started();', "native session started");
-  source = once(source, "\t\tthis.startDelegation(event.id, event.prompt, event.userBidiTurnId);", `\t\tif (this.callLifecycle?.handleDelegation(event.id, event.prompt, event.userBidiTurnId)) return;
-\t\tthis.startDelegation(event.id, event.prompt, event.userBidiTurnId);`, "native actual delegation");
-  source = once(source, "\t\tthis.stopped = true;", "\t\tthis.stopped = true;\n\t\tthis.callLifecycle?.close();", "native lifecycle stop");
-  return `${marker}\nimport { createGptLiveCallLifecycle } from "./gpt-live-call-lifecycle.mjs";\n` + source;
+  source = once(source, "\t\tthis.stopped = true;", "\t\tthis.stopped = true;\n\t\tthis.callLifecycle?.close();\n\t\tthis.completedCallControlUserTurns.clear();\n\t\tfor (const notify of this.callControlUserTurnWaiters) notify();", "native lifecycle stop");
+  source = once(source, "\tobserveNativeUserTurn(raw) {", `\tobserveCallControlUserTurn(raw) {
+\t\tif (!this.callLifecycle || this.stopped) return;
+\t\tconst turnId = raw.type === "turn.delta" ? raw.turn_id : raw.turn?.id;
+\t\tif (typeof turnId !== "string" || !/^[a-zA-Z0-9_.:-]{1,160}$/.test(turnId)) return;
+\t\tif (raw.type === "turn.created" && raw.turn?.role === "user") {
+\t\t\tthis.latestCallControlUserTurnId = turnId;
+\t\t\tthis.completedCallControlUserTurns.delete(turnId);
+\t\t} else if (raw.type === "turn.done" && raw.turn?.role === "user") {
+\t\t\tif (!this.latestCallControlUserTurnId) this.latestCallControlUserTurnId = turnId;
+\t\t\tconst text = raw.turn.transcript;
+\t\t\tif (typeof text === "string" && text.trim() && Buffer.byteLength(text, "utf8") <= 16 * 1024) {
+\t\t\t\tthis.completedCallControlUserTurns.set(turnId, text);
+\t\t\t\tif (this.completedCallControlUserTurns.size > 256) this.completedCallControlUserTurns.delete(this.completedCallControlUserTurns.keys().next().value);
+\t\t\t}
+\t\t}
+\t\tfor (const notify of this.callControlUserTurnWaiters) notify();
+\t}
+\tasync prepareBackendCallControl(delegation, signal) {
+\t\tconst originUserTurnId = delegation.userBidiTurnId;
+\t\tif (!this.callLifecycle || typeof originUserTurnId !== "string" || !/^[a-zA-Z0-9_.:-]{1,160}$/.test(originUserTurnId)) return;
+\t\tconst ownerCurrent = () => this.isCurrentDelegation(delegation, signal) && this.options.isCallCurrent?.() === true &&
+\t\t\tthis.options.getSocket()?.readyState === WEBSOCKET_OPEN;
+\t\tconst turnCurrent = () => ownerCurrent() && (!this.latestCallControlUserTurnId || this.latestCallControlUserTurnId === originUserTurnId);
+\t\tif (!turnCurrent()) return;
+\t\tlet userTurnText = this.completedCallControlUserTurns.get(originUserTurnId);
+\t\tif (!userTurnText) userTurnText = await new Promise((resolve) => {
+\t\t\tlet timer;
+\t\t\tconst finish = (value) => { clearTimeout(timer); this.callControlUserTurnWaiters.delete(notify); signal.removeEventListener("abort", notify); resolve(value); };
+\t\t\tconst notify = () => {
+\t\t\t\tif (!turnCurrent()) return finish(void 0);
+\t\t\t\tconst finalText = this.completedCallControlUserTurns.get(originUserTurnId);
+\t\t\t\tif (finalText) finish(finalText);
+\t\t\t};
+\t\t\tthis.callControlUserTurnWaiters.add(notify);
+\t\t\tsignal.addEventListener("abort", notify, { once: true });
+\t\t\ttimer = setTimeout(() => finish(void 0), 15000);
+\t\t\ttimer.unref?.();
+\t\t\t// No completed USER means no model end tool, never a timed hangup.
+\t\t\tnotify();
+\t\t});
+\t\tif (!userTurnText || !turnCurrent()) return;
+\t\tconst isCurrent = () => ownerCurrent() && this.latestCallControlUserTurnId === originUserTurnId &&
+\t\t\tthis.completedCallControlUserTurns.get(originUserTurnId) === userTurnText;
+\t\treturn { nativeDelegationId: delegation.id, originUserTurnId, delegationGeneration: delegation.generation,
+\t\t\tuserTurnText, tool: createGptLiveEndCallClientTool(), isCurrent,
+\t\t\taccept: ({ backendRunId, backendToolCallId } = {}) => {
+\t\t\t\tif (!isCurrent()) return false;
+\t\t\t\tconst receipt = this.callLifecycle.acceptBackendTool({ nativeDelegationId: delegation.id, originUserTurnId,
+\t\t\t\t\tdelegationGeneration: delegation.generation, backendRunId, backendToolCallId });
+\t\t\t\tif (receipt) { delegation.callControlReceipt = receipt; this.cancelQueuedProgress?.(); }
+\t\t\t\treturn receipt;
+\t\t\t} };
+\t}
+\tobserveNativeUserTurn(raw) {`, "actual full caller call control capability");
+  source = once(source, "\t\t\tconst result = await this.options.runAgentConsult({", "\t\t\tconst callControl = this.callLifecycle ? await this.prepareBackendCallControl(delegation, signal) : void 0;\n\t\t\tif (!this.isCurrentDelegation(delegation, signal)) return;\n\t\t\tconst result = await this.options.runAgentConsult({\n\t\t\t\t...(callControl ? { callControl } : {}),", "host-only model call control context");
+  source = once(source, '\t\t\tif (typeof result?.text !== "string" || !result.text.trim()) throw new Error("Backend returned no complete public result");', '\t\t\tif (delegation.callControlReceipt) {\n\t\t\t\tif (result?.callControl !== delegation.callControlReceipt) throw new Error("Backend call control returned an unowned receipt");\n\t\t\t\treturn;\n\t\t\t}\n\t\t\tif (typeof result?.text !== "string" || !result.text.trim()) throw new Error("Backend returned no complete public result");', "accepted call control is not a spoken final");
+  source = once(source, '\t\t\tthis.options.logger.warn(`OpenAI GPT-Live delegation consult failed: ${shortFailureReason(error)}`);', '\t\t\tif (delegation.callControlReceipt) return;\n\t\t\tthis.options.logger.warn(`OpenAI GPT-Live delegation consult failed: ${shortFailureReason(error)}`);', "accepted farewell prevents duplicate failure speech");
+  source = once(source, "\t\t\tif (finished || !this.isCurrentDelegation(delegation, signal)) {", "\t\t\tif (finished || delegation.callControlReceipt || !this.isCurrentDelegation(delegation, signal)) {", "accepted control stops ordinary progress");
+  return `${marker}\nimport { createGptLiveCallLifecycle, createGptLiveEndCallClientTool } from "./gpt-live-call-lifecycle.mjs";\n` + source;
 }
 
 export function patchGptLiveCallLifecycleBroker(source) {
