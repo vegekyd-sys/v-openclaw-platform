@@ -20,6 +20,14 @@
 
 共享 `a64bf6b` 的实际原 H5 复验已经取得主动问候、明确「先别挂」持续通话、同一后台父任务的 Memory Search → Web Search/web_fetch 和原 Live 语音返回。自然告别仍失败：原 native USER 完整说了「今天就先这样，谢谢你，拜拜」，Live 只发送了普通自然语言 client delegation，没有生成此前提示约定的 JSON，也没有真正的挂断工具执行。不能把口头「马上结束」当挂断成功。该候选 H5 与 Gateway 已成对回退到 `hotreload-feishu-approvals-v2`，配置 hash 与已验收基线一致，自己的 integration lease 已归还；生产 V 未改动。后续真实 backend-model tool 修复在 Candidate 验证，未验收前不推广这个失败产物。
 
+## 当前 Candidate 证据
+
+真实模型工具版本 `009d06f` 已观察到后台父模型调用零参数 `openclaw_end_call`、实际工具结果、同 owner 宿主接纳、原 Live 告别声音、750ms 以上尾部排空、自动关闭原通话和不同 owner 重拨。重拨问候的原始完整声音也存在；旧观察器第二次复制快照时把已完成窗口之后的采样空隙算入，原 FAIL 保留，另行记录独立复核。
+
+仅修观察器的 `b5a1bee` 与前版 22 个运行时文件和 11 个 H5 文件逐字节一致。新一轮实际 Memory → Web 成功，Live 在同一 assistant turn 中先播阶段事实，再播最终两项结果。原观察器按 Web 完成时间裁掉同一 turn 的前缀，导致严格全文匹配超时；原录音独立复核证明完整声音、无静音、755ms 尾部排空。修复把完整语音起点与「终态必须晚于真实 Web 结果」的因果条件分别检验，保留完整字幕、原播放器、750ms 和采样连续性门槛。
+
+两轮原始失败回执均不修改。组合证据仅允许进入共享 VLab 的完整原 H5 复验；共享新功能仍须实际验证后才接受产物并推广。原严格完整 PCM、麦克风连续性等延期项继续单独记录。
+
 ## 发布边界
 
 需要重启 Gateway，才能加载 Core/Worker 代码；H5 也需安装同一版本并重新启动。切换前检查并排空活跃任务，不强杀业务。V 和 VLab 的配置、会话、Memory 与认证保留独立，不复制 Candidate 私有配置或诊断 trace。GPT Live 专属新指令随代码在精确 native client 路由生效，其他语音 provider 保持原配置。

@@ -97,12 +97,12 @@ async function manualCleanup(pcIndex){const owner=owners.get(pcIndex);if(!owner)
  await waitFor(s=>s.pcStates[pcIndex]==='closed'&&s.api.some(a=>a.route==='/api/close'&&a.status===200&&a.request?.voiceSessionId===owner.voiceSessionId),'Original exact-owner manual cleanup',15000);
  const capture=await readCaptureClosed(pcIndex);check('manual-cleanup-'+pcIndex,capture.captureEnded&&capture.pcClosed,{...capture,manual:true});
 }
-async function waitSpeech(pcIndex,after,label,before=Infinity){
+async function waitSpeech(pcIndex,after,label,before=Infinity,{terminalAfter=after}={}){
  // Polling uses tails, so an earlier speech onset is not discarded. Once a
  // candidate terminal/quiet exists, take full raw before evaluating its window.
  const proof=await waitFor(async s=>{
-  if(!hasLifecyclePlaybackTail(s,{pcIndex,after,before}))return null;
-  const full=await snapshot(true);return assessLifecycleSpeech(full,{pcIndex,after,before,requireCreatedAfter:true});
+  if(!hasLifecyclePlaybackTail(s,{pcIndex,after,terminalAfter,before}))return null;
+  const full=await snapshot(true);return assessLifecycleSpeech(full,{pcIndex,after,terminalAfter,before,requireCreatedAfter:true});
  },label,45000);
  return proof;
 }
@@ -159,7 +159,10 @@ async function basicTools(pcIndex) {
  check('requested-read-only-memory-web-tool-scope',unexpected.length===0,{unexpectedTools:unexpected.map(p=>({name:p.name,id:p.id})),requestedWrites:false,requestedMessages:false});
  const host=await waitFor(s=>resolveLifecycleConsultResult(s,{pcIndex,voiceSessionId:owner.voiceSessionId,userTurnId:user.turnId,toolChain:chain,after:input.row.startedAt}),
   'Original native USER delegation and real owned consult result',30000);
- const speech=await waitSpeech(pcIndex,chain.webResult.at,'Native spoken Memory/Web result after actual backend completion');
+ // One actual native turn may speak a Memory stage before the Web result and
+ // finish with both results. Preserve that complete turn; require its terminal
+ // to follow the actual Web result rather than clipping its earlier prefix.
+ const speech=await waitSpeech(pcIndex,input.row.startedAt,'Native spoken Memory/Web result after actual backend completion',Infinity,{terminalAfter:chain.webResult.at});
  coreCheck('actual-memory-web-backend-result-returned-in-native-speech',Boolean(host&&speech),{host,speech,semanticResultIndependentReviewRequired:true});
  recordSpeech('memory-web-result-complete-digital-playback',speech);
  save('memory-web-evidence.json',{input:input.row,user,owner,chain,host,speech,semanticResultIndependentReviewRequired:true,

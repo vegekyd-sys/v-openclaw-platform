@@ -242,6 +242,57 @@ test('whole-speech sampling gaps remain strict FAIL while retaining actual funct
  assert(proof);assert.equal(proof.strictCompletePlaybackPassed,false);assert.equal(proof.playback.passed,false);
  assert.equal(proof.playback.gaps.length,1);assert(proof.quiet.durationMs>=750);
 });
+test('a Memory stage and later Web final in one native turn retain the entire caption and playback window',()=>{
+ const state=speechState(),after=1200,terminalAfter=1400;
+ state.events[1].text='记忆结果已找到。';
+ state.events.splice(2,0,{pcIndex:0,at:1450,type:'output_transcript.added',text:'官方网页结果也已确认。',turnId:'bye-1'});
+ state.events.at(-1).text='记忆结果已找到。官方网页结果也已确认。';
+ state.events.unshift({pcIndex:0,at:1210,type:'turn.created',role:'assistant',turnId:'early-ack'},
+   {pcIndex:0,at:1220,type:'output_transcript.added',text:'我来查询。',turnId:'early-ack'},
+   {pcIndex:0,at:1240,type:'turn.done',role:'assistant',text:'我来查询。',turnId:'early-ack'});
+ assert.equal(assessLifecycleSpeech(state,{pcIndex:0,after:terminalAfter,requireCreatedAfter:true}),null,'The Web clock must not clip the Memory prefix');
+ const proof=assessLifecycleSpeech(state,{pcIndex:0,after,terminalAfter,requireCreatedAfter:true});assert(proof);
+ assert.equal(proof.terminal.turnId,'bye-1');assert.equal(proof.window.captions.length,2);
+ assert.equal(proof.window.firstCaptionAt,1300);assert(proof.window.from<terminalAfter);
+ assert.equal(proof.playback.passed,true);assert(proof.quiet.durationMs>=750);
+ assert.equal(hasLifecyclePlaybackTail(state,{pcIndex:0,after,terminalAfter}),true);
+ for(const terminalClock of [proof.terminal.at,proof.terminal.at+1]) {
+  assert.equal(assessLifecycleSpeech(state,{pcIndex:0,after,terminalAfter:terminalClock,requireCreatedAfter:true}),null);
+  assert.equal(hasLifecyclePlaybackTail(state,{pcIndex:0,after,terminalAfter:terminalClock}),false);
+ }
+ const earlyOnly=structuredClone(state);earlyOnly.events=earlyOnly.events.filter(e=>e.turnId==='early-ack');
+ assert.equal(assessLifecycleSpeech(earlyOnly,{pcIndex:0,after,terminalAfter,requireCreatedAfter:true}),null,'An earlier acknowledgment cannot substitute for the completed result');
+ assert.equal(hasLifecyclePlaybackTail(earlyOnly,{pcIndex:0,after,terminalAfter}),false);
+ for(const mutate of [s=>s.audioFrames[3].paused=true,s=>s.audioFrames[4].volume=0,
+   s=>s.audioFrames=s.audioFrames.slice(0,-4),s=>s.events.find(e=>e.turnId==='bye-1'&&e.type==='output_transcript.added').text='字幕前缀不完整']) {
+  const input=structuredClone(state);mutate(input);
+  assert.equal(assessLifecycleSpeech(input,{pcIndex:0,after,terminalAfter,requireCreatedAfter:true}),null);
+ }
+ const gap=structuredClone(state);gap.audioFrames=gap.audioFrames.filter(f=>![1300,1350].includes(f.at));
+ assert.equal(assessLifecycleSpeech(gap,{pcIndex:0,after,terminalAfter,requireCreatedAfter:true}).playback.passed,false,'The complete pre-Web window still retains sampling FAIL');
+});
+test('actual smoke waitSpeech passes an independent terminal boundary without changing defaults or exceptions',async()=>{
+ const source=readFileSync(new URL('./call-lifecycle-smoke.mjs',import.meta.url),'utf8');
+ const from=source.indexOf('async function waitSpeech('),to=source.indexOf('\nfunction recordSpeech(',from);
+ assert(from>=0&&to>from,'Execute the actual observer function');
+ const state=speechState(),calls=[];
+ const waitSpeech=vm.runInNewContext('('+source.slice(from,to)+')',{
+  hasLifecyclePlaybackTail,assessLifecycleSpeech,snapshot:async full=>{assert.equal(full,true);return state;},
+  waitFor:async(predicate,label,max)=>{calls.push({label,max});return predicate(state);},
+ });
+ const params=[0,1200,'actual complete native speech'];
+ assert.equal((await waitSpeech(...params)).terminal.turnId,'bye-1');
+ assert.equal((await waitSpeech(...params,Infinity,{terminalAfter:1400})).terminal.turnId,'bye-1');
+ assert.equal(await waitSpeech(...params,Infinity,{terminalAfter:1500}),null);
+ assert(calls.every(c=>c.max===45000),'The original timeout is unchanged');
+ const failure=Error('Native spoken Memory/Web result after actual backend completion deadline');
+ for(const error of [failure,Error('CDP Runtime.evaluate timeout')]) {
+  const run=vm.runInNewContext('('+source.slice(from,to)+')',{
+   hasLifecyclePlaybackTail,assessLifecycleSpeech,snapshot:async()=>state,waitFor:async()=>{throw error;},
+  });
+  await assert.rejects(run(...params,Infinity,{terminalAfter:1400}),e=>e===error,'No broad deadline or transport catch');
+ }
+});
 test('proactive greeting requires silent original microphone and no USER/delegation',()=>{
  const state=speechState(),params={pcIndex:0,owner:{connectedAt:1200},readyAt:1200};
  assert.equal(assessProactiveGreeting(state,params).passed,true);
@@ -321,6 +372,37 @@ function toolsFixture() {
     isError:false,content:[{type:'text',text:JSON.stringify(result(name))}]}))]};
  return {events,history,sessionKey,memoryQuery,after:199000};
 }
+test('actual basicTools preserves the complete USER-start speech window and requires a post-Web terminal',async()=>{
+ const source=readFileSync(new URL('./call-lifecycle-smoke.mjs',import.meta.url),'utf8');
+ const from=source.indexOf('async function basicTools(pcIndex) {'),to=source.indexOf('\nasync function runLifecycle()',from);
+ assert(from>=0&&to>from,'Execute the actual Memory/Web runner');
+ const f=toolsFixture(),owner={voiceSessionId:'voice-own',sessionKey:f.sessionKey};
+ const user={pcIndex:0,at:199900,role:'user',type:'turn.done',turnId:'u-tools',text:'先用 memory search 查某同事，再用 web search 查 OpenAI Realtime API，不要写入，也不要发消息。'};
+ const state={events:[user,{pcIndex:0,at:200000,type:'delegation.created',raw:{item:{id:'native-owner',target:'client',user_bidi_turn_id:user.turnId}}}],
+  tools:[{at:200050,raw:{voiceSessionId:owner.voiceSessionId,callId:f.events[0].payload.runId,type:'tool.call'}},
+   {at:204000,raw:{voiceSessionId:owner.voiceSessionId,callId:f.events[0].payload.runId,type:'tool.result'}}]};
+ const speech={window:{pcIndex:0,from:202000,to:205000},playback:{passed:true}},input={row:{exitCode:0,startedAt:f.after,completedAt:199500},done:Promise.resolve()};
+ const run=async fail=>{
+  const checks=[],records=[],saved=new Map(),boundaries=[];
+  const basicTools=vm.runInNewContext('('+source.slice(from,to)+')',{
+   assert,owners:new Map([[0,owner]]),memoryQuery:f.memoryQuery,play:()=>input,
+   waitFor:async predicate=>{const value=await predicate(state);assert(value,'All real tool/host prerequisites remain required');return value;},
+   resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult,readLifecycleHistoryOrRetry,
+   ownedGatewayEvents:()=>f.events,gateway:{request:async(method,params)=>{assert.equal(method,'chat.history');assert.equal(params.sessionKey,owner.sessionKey);return f.history;}},
+   waitSpeech:async(...args)=>{boundaries.push(args);if(fail)throw fail;return speech;},
+   coreCheck:(name,passed,details)=>checks.push({name,passed:Boolean(passed),details}),
+   check:(name,passed,details)=>checks.push({name,passed:Boolean(passed),details}),
+   recordSpeech:(name,proof)=>records.push({name,proof}),save:(name,value)=>saved.set(name,value),inputConverged:async()=>{},
+  });
+  await basicTools(0);return {checks,records,saved,boundaries};
+ };
+ const result=await run();assert.equal(result.boundaries[0][1],input.row.startedAt);
+ assert.equal(result.boundaries[0][4].terminalAfter,203000);assert.equal(result.boundaries[0][3],Infinity);
+ assert.equal(result.records[0].proof,speech);assert.equal(result.saved.get('memory-web-evidence.json').speech,speech);
+ assert.equal(result.checks.find(c=>c.name==='actual-memory-web-backend-result-returned-in-native-speech').passed,true);
+ for(const failure of [Error('Native spoken Memory/Web result after actual backend completion deadline'),Error('CDP Runtime.evaluate timeout')])
+  await assert.rejects(run(failure),error=>error===failure,'Selection fixes do not swallow failed observations');
+});
 test('Memory/Web tool chain uses actual native source clocks and current complete results',()=>{
  const f=toolsFixture(),p=resolveLifecycleMemoryWeb(f);assert(p);
  assert.equal(p.memoryResult.at,201000);assert.equal(p.web.calledAt,201100);

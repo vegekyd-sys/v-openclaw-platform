@@ -195,9 +195,9 @@ export function resolveLifecycleUserTurn(events,{pcIndex,after,before=Infinity,i
   return matches.length===1?matches[0]:null;
 }
 
-export function assessLifecycleSpeech(state,{pcIndex,after,before=Infinity,turnId,requireCreatedAfter=false}={}) {
+export function assessLifecycleSpeech(state,{pcIndex,after,terminalAfter=after,before=Infinity,turnId,requireCreatedAfter=false}={}) {
   const endings=(state?.events??[]).filter(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='assistant'&&
-    Number.isFinite(e.at)&&e.at>after&&e.at<before&&e.turnId&&normalize(e.text)&&(!turnId||e.turnId===turnId));
+    Number.isFinite(e.at)&&e.at>terminalAfter&&e.at<before&&e.turnId&&normalize(e.text)&&(!turnId||e.turnId===turnId));
   for(const terminal of endings) {
     const window=resolveNativeTurnTranscriptWindow(state.events,{pcIndex,turnId:terminal.turnId,after,before});
     if(!window||requireCreatedAfter&&(!window.created||window.created.at<after||window.created.at>terminal.at))continue;
@@ -218,9 +218,9 @@ export function assessLifecycleSpeech(state,{pcIndex,after,before=Infinity,turnI
 // A cheap readiness check for the observer's bounded frame tail. Do not copy
 // the entire recording every poll: that stalls the original browser sampler.
 // The final proof still checks the complete raw caption and playback window.
-export function hasLifecyclePlaybackTail(state,{pcIndex,after,before=Infinity}={}) {
+export function hasLifecyclePlaybackTail(state,{pcIndex,after,terminalAfter=after,before=Infinity}={}) {
   return (state?.events??[]).some(terminal=>terminal.pcIndex===pcIndex&&terminal.type==='turn.done'&&terminal.role==='assistant'&&
-    terminal.turnId&&normalize(terminal.text)&&Number.isFinite(terminal.at)&&terminal.at>after&&terminal.at<before&&
+    terminal.turnId&&normalize(terminal.text)&&Number.isFinite(terminal.at)&&terminal.at>terminalAfter&&terminal.at<before&&
     Boolean(continuousPlaybackQuiet((state.audioFrames??[]).filter(f=>f.at<before),{
       pcIndex,after:terminal.at,durationMs:750,threshold:.003,maxGapMs:100,requireTail:true})?.rtp.length));
 }
