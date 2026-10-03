@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
 
 /** Configure OAuth, then copy only a valid access token after the private DB initializes. */
 export const CANDIDATE_OPENAI_ACCESS_FIELDS = ['type', 'provider', 'access', 'expires', 'accountId'];
@@ -13,6 +15,8 @@ export function installCandidateOpenAIAuth(){
   const state=process.env.OPENCLAW_STATE_DIR;
   assert(shared&&state,'candidate state paths required');
   const accessFixture=process.env.GPT_LIVE_CALL_ACCESS_FIXTURE;
+  const fixturePath=accessFixture?path.resolve(accessFixture):'';
+  if(fixturePath){const stat=fs.lstatSync(fixturePath);assert(stat.isFile()&&(stat.mode&0o077)===0,'Access fixture must be a private regular file');}
   const profileId=accessFixture?'openai:gpt-live-call-private':'openai:vlab-gpt-subscription';
   const python=`import base64,json,os,shutil,sqlite3,sys,time
 shared,state,profile_id,access_fixture=sys.argv[1:]
@@ -51,6 +55,6 @@ dst.execute('insert or replace into auth_profile_state(state_key,state_json,upda
 dst.commit();dst.close()
 if src:src.close()
 print('candidate_openai_access_copied_no_refresh')`;
-  const output=execFileSync('python3',['-c',python,shared,state,profileId,accessFixture?process.cwd()+'/'+accessFixture:''],{encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
+  const output=execFileSync('python3',['-c',python,shared,state,profileId,fixturePath],{encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
   assert.equal(output,'candidate_openai_access_copied_no_refresh');
 }
