@@ -185,3 +185,78 @@ Accepted at 2026-09-29T15:41:34Z. Candidate
 and detailed receipt are retained locally under `tmp/vlab` and task `tmp/design`.
 Production V has not been deployed; shared VLab returns to its aligned parent
 `view-image-overflow-signal-v1` after acceptance to release the integration slot.
+
+## Chat answers candidate (2026-10-03)
+
+When Ask User is pending, its original human sender can now type an answer in the
+same chat. The receive handler checks for that pending question before the
+inbound debounce/sequential chat queue, reuses the existing group/DM permission
+and session-routing checks, and resolves the same Gateway question. The waiting
+model resumes; the answer is not dispatched as a second agent turn. Only the
+mention requirement is waived for a matching answer to the bot's pending question.
+
+Exact option labels and numbers 1–4 / A–D map to their original labels. Other human
+text is passed intact, including a change of mind outside the card's choices.
+Multiple questions accept sequential answers or numbered lines; card selections
+and chat answers can be combined. Partial answers are shown on the card, with a
+notice naming the next unanswered question. A card click and chat answer share one
+resolver; message replay, expiry, account/chat/author mismatch and ambiguous
+pending questions cannot silently create an extra answer. Control commands,
+bots, media and secret-entry requests keep their existing paths. Without an
+originating sender binding, answering requires an explicit quote of the exact card.
+
+Run the real-model candidate with:
+
+```sh
+node /Users/tianyicai/vlab-dev/lab/vlab.mjs candidate \
+  --repo "$PWD" --owner YOUR_TASK_ID \
+  --plan "$PWD/lab/candidate/feishu-ask-chat-answer.plan.json"
+```
+
+The candidate starts a private Gateway, leaves its Feishu channel consumer disabled,
+and holds the actual Feishu per-chat queue while each real model waits for an
+Ask User answer. Synthetic human IM events enter the actual patched receive and
+authorization handlers. Cards use a local sink. It checks original question
+resolution, exact answer text, model continuation, terminal card closure,
+logical replay suppression and dispatch of the next ordinary message. Its extra
+permission/durable checks verify that the existing sender allowlist blocks an
+answer and that both the answer and its replay complete ingress adoption.
+Codex uses a private plugin install and an unexpired access-token-only snapshot:
+shared refresh credentials are never copied or rotated, and no conversation
+store is copied.
+
+Focused tests: 27 pass; the platform offline suite passes all 821 tests. Candidate
+`candidate-8d1dc989-4630-478e-859d-981fa9cdc780` passes real QuestionManager/card JSON
+regression, input SHA256
+`26fed005a9952c2cccdbfdb47b4bd2f17c78d15fd72093f844e1dc9a9107bd2d`.
+Initial four-model queue/continuation matrix
+`candidate-4a063eb7-bc67-4b70-a74b-24cba4cf85b4` passes, input SHA256
+`468cf9127dd367ed97f38a413238131f092e1dc3b92fdca6c8f9ee3ba139f5d6`.
+Observed runtimes: Worker DeepSeek v4 Flash, /vds DeepSeek Flash through Codex,
+/vcc Claude Opus 5 through Claude CLI, /vcodex GPT 6.1 Sol through Codex.
+Answers were ingested in 101–200 ms; this excludes model continuation latency.
+Both receipts report shared PID 1423532 unchanged. This patch is candidate-only;
+native Feishu receive → answer → visible reply remains for VLab acceptance.
+
+Earlier candidate attempts failed and are not acceptance: private native Codex
+plugin registration was missing; a synthetic uppercase chat ID mismatched the
+normalized session; then the private agent had no OpenAI auth profile. The driver
+now registers the exact native plugin, uses canonical chat IDs, and uses only a
+valid non-refreshable access-token snapshot. None of those attempts changed the
+shared instance or production V.
+
+The generated v4 monitor is based on live `memory-search-guards-20261002`, preimage
+SHA256 `69230132cee9d099ba211aa5442ca44e6ca6cab57128a450fe112f7cace7b5f8`,
+preserving its existing task-status changes. Release planning pins that exact
+preimage; a changed shared baseline requires regeneration before deployment.
+
+Final permission/durable regression matrix
+`candidate-0caf5e99-c096-4d28-abc4-6550ef59e13c` passes all four entries, input SHA256
+`155571aae05f6c60460f02cc17dcedb22204e0cb16f349de5c2b1eaa1a1f676f`.
+Each run blocks the allowlist-denied answer while the question remains pending,
+then accepts the legitimate chat answer, adopts both its initial event and replay,
+resumes the model, closes the card and dispatches the following ordinary message.
+Answer ingress takes 100–201 ms. Server time 157.7s, shared PID 1423532 unchanged.
+`chat-answer-candidate-evidence.json` records the results and hashes of every tested
+support file. Generated monitor SHA256:
+`b68229ec369962edae5c9f5ba078ca4e24b63ed4aab6fa3fb23c537784ddfd60`.

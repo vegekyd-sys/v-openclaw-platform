@@ -3,14 +3,14 @@ export function createFeishuAskRuntime(deps) {
   const deliveries = new Map();
   const streams = new Map();
   const streamKey = (sessionKey, accountId) => `${accountId ?? "default"}:${sessionKey}`;
-  function bindStream(sessionKey, accountId, send, isActive = () => true) {
+  function bindStream(sessionKey, accountId, send, isActive = () => true, origin) {
     if (!sessionKey) return () => {};
     const k = streamKey(sessionKey, accountId);
-    const entry = { send, isActive };
+    const entry = { send, isActive, origin };
     const entries = streams.get(k) ?? new Set(); entries.add(entry); streams.set(k, entries);
     return () => { entries.delete(entry); if (!entries.size) streams.delete(k); };
   }
-  const cardFor = (entry, state = entry.state, selections = {}) => buildFeishuAskCard(entry.record, state, selections, entry.answers);
+  const cardFor = (entry, state = entry.state, selections = {}, chatAnswers = {}) => buildFeishuAskCard(entry.record, state, selections, entry.answers, chatAnswers);
   const update = (entry, card) => {
     const task = (entry.paintQueue ?? Promise.resolve()).then(() => entry.updateCard ? entry.updateCard(card) : deps.patch({ ...entry.params, messageId: entry.messageId, card }));
     entry.paintQueue = task.catch(() => {});
@@ -32,12 +32,14 @@ export function createFeishuAskRuntime(deps) {
     if (!isFeishuAskQuestion(record) || record.status !== "pending") return;
     const k = key(record.id, params.accountId);
     if (deliveries.has(k)) return deliveries.get(k).promise;
-    const entry = { record, params, state: "pending", selections: new Map() };
+    const entry = { record, params, state: "pending", selections: new Map(), chatAnswers: new Map(), chatResponses: new Map(), createdAtMs: record.createdAtMs ?? Date.now() };
     deliveries.set(k, entry);
     entry.promise = Promise.resolve().then(async () => {
       const card = buildFeishuAskCard(record);
       const registered = streams.get(streamKey(record.sessionKey, params.accountId));
       const candidates = [...(registered ?? [])].filter(entry => entry.isActive());
+      const owners = [...(registered ?? [])].filter(entry => entry.origin?.isActive?.() ?? entry.isActive());
+      if (owners.length === 1 && owners[0].origin) entry.origin = { ...owners[0].origin };
       const inlineSend = candidates.length === 1 ? candidates[0].send : undefined;
       const result = await inlineSend?.(card) ?? await deps.send({ ...params, card });
       params.log?.(`feishu: ask_user delivery id=${record.id} registered=${registered?.size ?? 0} active=${candidates.length} inline=${Boolean(result?.updateCard)}`);
@@ -75,6 +77,73 @@ export function createFeishuAskRuntime(deps) {
     if (question.status !== "pending") return { messageId: undefined }; // already closed; don't re-send stale controls
     return await deliver(question, params);
   }
+  function matchingChatEntries(input) {
+    return [...deliveries.values()].filter(entry => {
+      if (!entry.chatResponses.has(input.messageId) && (entry.state !== "pending" || (entry.record.expiresAtMs ?? Infinity) <= Date.now())) return false;
+      if ((entry.params.accountId ?? "default") !== (input.accountId ?? "default")) return false;
+      const chat = entry.origin?.chatId ?? entry.params.to?.replace(/^(?:feishu:|lark:)?(?:chat:|user:)?/, "");
+      if (chat !== input.chatId || !input.senderOpenId || !input.messageId) return false;
+      if (!Number.isFinite(input.timestamp) || input.timestamp < entry.createdAtMs) return false;
+      // Without an originating sender, require an explicit reply to this card.
+      if (entry.origin?.senderOpenId ? entry.origin.senderOpenId !== input.senderOpenId : input.parentId !== entry.messageId) return false;
+      return !input.sessionKey || input.sessionKey === entry.record.sessionKey || input.parentId === entry.messageId;
+    });
+  }
+  function chatCandidate(input) {
+    const entries = matchingChatEntries(input);
+    const quoted = entries.filter(entry => entry.messageId === input.parentId);
+    const matches = quoted.length ? quoted : entries;
+    return matches.length === 1 ? matches[0].record.id : undefined;
+  }
+  async function resolveAnswer(entry, answers, resolvedBy, cfg = entry.params.cfg) {
+    entry.submitting = true;
+    entry.answers = answers;
+    try {
+      await deps.call("question.resolve", cfg, { id: entry.record.id, answers, resolvedBy });
+      entry.state = "answered";
+      return "answered";
+    } catch (error) {
+      const reason = error?.details?.reason;
+      if (reason !== "QUESTION_ALREADY_TERMINAL" && reason !== "QUESTION_NOT_FOUND") throw error;
+      let state = "expired";
+      try {
+        const r = await deps.call("question.get", cfg, { id: entry.record.id });
+        if (["answered", "expired", "cancelled"].includes(r.question?.status)) state = r.question.status;
+        if (r.question?.answers) entry.answers = r.question.answers;
+      } catch {}
+      entry.state = state;
+      return "terminal";
+    } finally { entry.submitting = false; }
+  }
+  async function answerFromChat(input, params) {
+    const entry = matchingChatEntries({ ...input, accountId: params.accountId }).find(entry => entry.record.id === input.id);
+    if (!entry) return { handled: false };
+    const respond = (outcome) => { entry.chatResponses.set(input.messageId, outcome); return outcome; };
+    if (entry.chatResponses.has(input.messageId)) return entry.chatResponses.get(input.messageId);
+    if (entry.submitting) return respond({ handled: true, notice: "正在提交当前问题的回答，请稍候。" });
+    const staged = { ...entry.chatAnswers.get(input.senderOpenId) };
+    const choices = entry.selections.get(input.senderOpenId) ?? {};
+    for (const q of entry.record.questions) {
+      try { Object.assign(staged, readFeishuAskAnswers({ questions: [q] }, { choice_0: choices[`choice_${entry.record.questions.indexOf(q)}`] }).answers); } catch {}
+    }
+    let result;
+    try { result = readFeishuAskChatAnswers(entry.record, input.text, staged); }
+    catch (error) { return respond({ handled: true, notice: error.message }); }
+    for (const id of result.updated) delete choices[`choice_${entry.record.questions.findIndex(q => q.questionId === id)}`];
+    if (result.remaining.length) {
+      entry.chatAnswers.set(input.senderOpenId, result.answers);
+      update(entry, cardFor(entry, "pending", choices, result.answers)).catch(() => entry.params.log?.("feishu: question refresh failed"));
+      return respond({ handled: true, notice: `已记下回答。请继续回复「${result.remaining[0].question}」，也可以在卡片里选择。` });
+    }
+    try {
+      const state = await resolveAnswer(entry, { answers: result.answers }, `feishu:chat:${input.senderOpenId}:${input.messageId}`, params.cfg);
+      update(entry, cardFor(entry)).catch(() => entry.params.log?.("feishu: question refresh failed"));
+      params.log?.(`feishu: ask_user chat answer id=${entry.record.id} message=${input.messageId} state=${state}`);
+      return respond({ handled: true, ...(state === "terminal" ? { notice: "这个问题已经结束了。" } : {}) });
+    } catch {
+      return respond({ handled: true, notice: "回答提交失败，请再回复一次，或使用卡片重试。" });
+    }
+  }
   async function submit(data, params) {
     const submission = parseFeishuAskSubmission(data);
     if (!submission) return;
@@ -92,32 +161,25 @@ export function createFeishuAskRuntime(deps) {
       const existing = draft[field] ?? [];
       draft[field] = question.multiSelect ? existing.includes(String(j)) ? existing.filter(v => v !== String(j)) : [...existing, String(j)] : [String(j)];
       entry.selections.set(submission.operator, draft);
+      const chatAnswers = { ...entry.chatAnswers.get(submission.operator) };
+      delete chatAnswers[question.questionId];
+      entry.chatAnswers.set(submission.operator, chatAnswers);
       if (entry.record.questions.length > 1 || question.multiSelect) {
-        return respond(entry, "info", "已选择，选好后继续。", cardFor(entry, "pending", draft));
+        return respond(entry, "info", "已选择，选好后继续。", cardFor(entry, "pending", draft, chatAnswers));
       }
     }
     let answers;
-    try { answers = readFeishuAskAnswers(entry.record, { ...draft, ...submission.form }); }
+    try { answers = readFeishuAskAnswers(entry.record, { ...draft, ...submission.form }, entry.chatAnswers.get(submission.operator)); }
     catch (error) { return reply("warning", error.message); }
-    entry.submitting = true;
-    entry.answers = answers;
     try {
-      await deps.call("question.resolve", params.cfg, { id: submission.id, answers, resolvedBy: `feishu:${submission.operator}` });
-      entry.state = "answered";
+      const state = await resolveAnswer(entry, answers, `feishu:${submission.operator}`, params.cfg);
+      if (state === "terminal") return respond(entry, "info", "这个问题已经结束了。", cardFor(entry));
     } catch (error) {
-      const reason = error?.details?.reason;
-      if (reason === "QUESTION_ALREADY_TERMINAL" || reason === "QUESTION_NOT_FOUND") {
-        // A different client may have answered; read the authoritative state.
-        let state = "expired";
-        try { const r = await deps.call("question.get", params.cfg, { id: submission.id }); if (["answered", "expired", "cancelled"].includes(r.question?.status)) state = r.question.status; } catch {}
-        entry.state = state;
-        return respond(entry, "info", "这个问题已经结束了。", cardFor(entry, state));
-      }
       return reply("error", "提交失败，请稍后重试。");
-    } finally { entry.submitting = false; }
+    }
     const card = cardFor(entry, "answered");
     try { return await respond(entry, "success", "已收到回答，V 会继续处理。", card); }
     catch { return reply("success", "回答已收到，卡片更新稍有延迟。"); }
   }
-  return { requested, payload, submit, deliver, bindStream };
+  return { requested, payload, submit, deliver, bindStream, chatCandidate, answerFromChat };
 }

@@ -2,6 +2,8 @@
 
 Private release and sandbox infrastructure for V.
 
+Night Shift (夜班模式) moved to its own repository, [`vegekyd-sys/v-nightshift`](https://github.com/vegekyd-sys/v-nightshift), on 2026-10-02, with its history. Change it by that repository's `docs/change-flow.md`. The Workboard dist patches it relies on (`scripts/apply-workboard-*-patch.mjs`) stay here.
+
 ## V-Platform installation-package initiative (2026-09-06)
 
 The versioned [V-Platform controller](platform/README.md) now owns the component,
