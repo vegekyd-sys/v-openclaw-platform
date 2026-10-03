@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
 import {resolveEndCallToolWitness,resolveLifecycleUserTurn,assessLifecycleSpeech,hasLifecyclePlaybackTail,assessLifecycleFarewell,assessProactiveGreeting,assessAutomaticEnd,
   extractLifecycleToolPairs,resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult,readLifecycleHistoryOrRetry} from './call-lifecycle-evidence.mjs';
 
@@ -247,6 +249,35 @@ test('proactive greeting requires silent original microphone and no USER/delegat
  const input=speechState();input.events.push({pcIndex:0,at:1400,type:'turn.done',role:'user',turnId:'u',text:'你好'});
  assert.equal(assessProactiveGreeting(input,params).passed,false);
  const other=speechState();other.events.push({...delegation(),at:1400});assert.equal(assessProactiveGreeting(other,params).passed,false);
+});
+test('actual smoke greeting retains its completed strict window when a later full snapshot has a new gap',async()=>{
+ const source=readFileSync(new URL('./call-lifecycle-smoke.mjs',import.meta.url),'utf8');
+ const from=source.indexOf('async function greeting(pcIndex){'),to=source.indexOf('\nfunction ownedGatewayEvents()',from);
+ assert(from>=0&&to>from,'Execute the actual smoke function, not a copied implementation');
+ const run=async(state,proof)=>{
+  const checks=[],records=[],owner={connectedAt:1200},ready={requestedAt:1200},greeting=vm.runInNewContext('('+source.slice(from,to)+')',{
+   owners:new Map([[0,owner]]),waitFor:async()=>ready,waitSpeech:async()=>proof,snapshot:async()=>state,
+   assessProactiveGreeting,pulse:{plays:[]},coreCheck:(name,passed,details)=>checks.push({name,passed:Boolean(passed),details}),
+   recordSpeech:(name,value)=>records.push({name,value}),save(){}});
+  await greeting(0);return {check:checks[0],record:records[0]};
+ };
+ const original=speechState(),proof=assessLifecycleSpeech(original,{pcIndex:0,after:1200,requireCreatedAfter:true});
+ assert(proof.playback.passed);assert(proof.quiet.durationMs>=750);
+ const later=structuredClone(original);later.audioFrames.push(frame(proof.quiet.to+131,0));
+ assert.equal(assessProactiveGreeting(later,{pcIndex:0,owner:{connectedAt:1200},readyAt:1200}),null);
+ const observed=await run(later,proof);assert.equal(observed.check.passed,true);
+ assert.equal(observed.check.details.greeting.speech.window.to,proof.quiet.to);
+ assert.equal(observed.record.value,proof,'Keep the original actual full-window playback proof');
+ const user=structuredClone(later);user.events.push({pcIndex:0,at:1400,type:'turn.done',role:'user',turnId:'u',text:'你好'});
+ assert.equal((await run(user,proof)).check.passed,false,'A USER inside the proved greeting window remains disqualifying');
+ const wrong=structuredClone(proof);wrong.terminal.turnId='another-turn';
+ assert.equal((await run(later,wrong)).check.passed,false,'Never borrow the next complete terminal');
+ const gap=structuredClone(later);gap.audioFrames=gap.audioFrames.filter(f=>![1850,1900].includes(f.at));
+ assert.equal((await run(gap,proof)).check.passed,false,'A gap in the original 750ms quiet window cannot be repaired by bounding');
+ const speechGap=speechState();speechGap.audioFrames=speechGap.audioFrames.filter(f=>![1300,1350].includes(f.at));
+ const failedWhole=assessLifecycleSpeech(speechGap,{pcIndex:0,after:1200,requireCreatedAfter:true});
+ assert.equal(failedWhole.playback.passed,false,'A whole-speech sampling gap retains its strict FAIL');
+ const unchanged=await run(speechGap,failedWhole);assert.equal(unchanged.record.value.playback.passed,false);
 });
 test('tool accepted alone does not mean closed; same owner must close after entire farewell drain',()=>{
  const state=speechState(),tool=resolveEndCallToolWitness(witness()),farewell=assessLifecycleFarewell(state,{pcIndex:0,tool,before:2350});

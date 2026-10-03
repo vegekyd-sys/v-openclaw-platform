@@ -110,8 +110,12 @@ function recordSpeech(name,proof){check(name,proof?.playback?.passed===true&&pro
 async function greeting(pcIndex){
  const owner=owners.get(pcIndex);const ready=await waitFor(s=>s.api.find(a=>a.route==='/api/ready'&&a.status===200&&a.at>=owner.createdAt),'Original ready host operation',15000);
  const proof=await waitSpeech(pcIndex,ready.requestedAt,'Proactive native greeting with complete audible playback');
- const state=await snapshot(true),g=assessProactiveGreeting(state,{pcIndex,owner,readyAt:ready.requestedAt});
- coreCheck('proactive-greeting-before-any-USER-'+pcIndex,g?.passed&&pulse.plays.length===(pcIndex===0?0:3),{ready,greeting:g,USERClipsFed:pulse.plays.length,greetingContentManualReviewRequired:true});
+ // The completed proof owns its full caption/player/750ms quiet window. A
+ // later full snapshot may introduce a new sampling gap while copying it;
+ // that cannot erase an already observed greeting or extend its proof window.
+ const state=await snapshot(true),g=assessProactiveGreeting(state,{pcIndex,owner,readyAt:ready.requestedAt,before:proof.quiet.to+1});
+ const sameSpeech=g?.speech?.terminal.turnId===proof.terminal.turnId&&g?.speech?.window.from===proof.window.from&&g?.speech?.window.to===proof.quiet.to;
+ coreCheck('proactive-greeting-before-any-USER-'+pcIndex,g?.passed&&sameSpeech&&pulse.plays.length===(pcIndex===0?0:3),{ready,greeting:g,USERClipsFed:pulse.plays.length,greetingContentManualReviewRequired:true});
  recordSpeech('proactive-greeting-complete-digital-playback-'+pcIndex,proof);save('greeting-'+pcIndex+'-evidence.json',{owner,ready,greeting:g});return proof;
 }
 function ownedGatewayEvents() {
