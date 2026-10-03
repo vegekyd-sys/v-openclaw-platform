@@ -250,10 +250,20 @@ finally {
  }
  cdp?.close();gateway?.stop();if(chrome?.exitCode===null&&chrome.signalCode===null)chrome.kill('SIGTERM');if(chrome)await Promise.race([new Promise(resolve=>chrome.once('exit',resolve)),sleep(2000)]);
  if(chrome?.exitCode===null&&chrome.signalCode===null){chrome.kill('SIGKILL');await Promise.race([new Promise(resolve=>chrome.once('exit',resolve)),sleep(1000)]);}
- cleanup={...(await pulse?.dispose()),chromeExited:Boolean(chrome&&(chrome.exitCode!==null||chrome.signalCode!==null))};
- if(chromeTemp){fs.rmSync(chromeTemp,{recursive:true,force:true});cleanup.chromePrivateTempRemoved=!fs.existsSync(chromeTemp);}
+ // Preserve the actual run outcome before asynchronous browser filesystem
+ // cleanup. A transient profile write must not hide a failed native operation.
+ save('run-observations-before-cleanup.json',{checks,owners:[...owners],speechWindows});
+ cleanup={chromeExited:Boolean(chrome&&(chrome.exitCode!==null||chrome.signalCode!==null))};
+ try {Object.assign(cleanup,await pulse?.dispose());}
+ catch(error){check('private-media-cleanup',false,{code:error.code??null,message:error.message});}
+ if(chromeTemp){try {fs.rmSync(chromeTemp,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
+  catch(error){check('private-browser-temp-cleanup',false,{code:error.code??null,message:error.message});}
+  cleanup.chromePrivateTempRemoved=!fs.existsSync(chromeTemp);}
  // Entire scratch is unique and owned by this observer; profiles are never reused.
- fs.rmSync(scratch,{recursive:true,force:true});cleanup.privateScratchRemoved=!fs.existsSync(scratch);
+ try {fs.rmSync(scratch,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
+ catch(error){check('private-scratch-cleanup',false,{code:error.code??null,message:error.message});}
+ cleanup.privateScratchRemoved=!fs.existsSync(scratch);
+ check('owned-browser-and-scratch-cleanup',cleanup.chromeExited&&cleanup.chromePrivateTempRemoved&&cleanup.privateScratchRemoved);
  check('actual-'+validationTarget+'-config-unchanged',hash(fs.readFileSync(configPath))===configSha);
  if(validationTarget!=='candidate') {
   try {const after=await inspectLifecycleValidationTarget({target:validationTarget,proofPath:process.env.GPT_LIVE_H5_TARGET_PROOF,configPath,corePath:runtime,stateRoot,url});
