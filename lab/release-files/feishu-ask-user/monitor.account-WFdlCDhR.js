@@ -1,4 +1,4 @@
-// v-feishu-ask-user-v3
+// v-feishu-ask-user-v4
 // Inlined into the Feishu monitor. Keep this module dependency-free.
 const V_ASK_ACTION = "v.ask_user.submit";
 const V_ASK_CONFIRM_ACTION = "v.ask_user.confirm";
@@ -14,7 +14,7 @@ function isFeishuAskQuestion(record) {
       q.options.every((o) => typeof o.label === "string"));
 }
 
-function buildFeishuAskCard(record, state = "pending", selections = {}, answers) {
+function buildFeishuAskCard(record, state = "pending", selections = {}, answers, chatAnswers = {}) {
   const elements = [];
   const fields = [];
   const immediate = record.questions.length === 1 && !record.questions[0].multiSelect;
@@ -25,6 +25,7 @@ function buildFeishuAskCard(record, state = "pending", selections = {}, answers)
   }
   record.questions.forEach((q, i) => {
     elements.push({ tag: "markdown", content: `**${vAskEscape(q.question)}**${q.multiSelect ? "\n<font color='grey'>可多选，选好后确认</font>" : ""}` });
+    if (chatAnswers[q.questionId]?.length) elements.push({ tag: "markdown", content: `<font color='grey'>已回答：${vAskEscape(chatAnswers[q.questionId].join("、"))}</font>` });
     q.options.forEach((o, j) => {
       const selected = (selections[`choice_${i}`] ?? []).includes(String(j));
       elements.push({ tag: "interactive_container", width: "fill", has_border: true,
@@ -45,6 +46,7 @@ function buildFeishuAskCard(record, state = "pending", selections = {}, answers)
     const custom = fields.length ? [{ tag: "collapsible_panel", expanded: record.questions.some(q => !q.options.length), header: { title: vAskPlain("我有其他想法"), width: "auto_when_fold" }, elements: [...fields, ...(immediate ? [submit] : [])] }] : [];
     elements.push({ tag: "form", name: "v_ask_form", elements: [...custom, ...(!immediate ? [submit] : [])] });
   }
+  elements.push({ tag: "markdown", text_size: "notation", content: "<font color='grey'>也可以直接在聊天中回复答案</font>" });
   return { schema: "2.0", config: { update_multi: true, width_mode: "default" }, body: { padding: "12px 12px 12px 12px", vertical_spacing: "12px", elements } };
 }
 
@@ -63,7 +65,7 @@ function parseFeishuAskSubmission(data) {
   return { id, operator, messageId, ...(choice ? { choice: { questionIndex: value.qi, optionIndex: value.oi } } : {}), form: vAskRecord(event.action.form_value) ? event.action.form_value : {} };
 }
 
-function readFeishuAskAnswers(record, form) {
+function readFeishuAskAnswers(record, form, chatAnswers = {}) {
   const answers = Object.create(null);
   for (const [i, q] of record.questions.entries()) {
     const raw = form[`choice_${i}`];
@@ -75,10 +77,74 @@ function readFeishuAskAnswers(record, form) {
     if (other && !q.isOther && q.options.length) throw new Error("这个问题不支持自定义回答。");
     const selected = [...new Set(choices)].map((v) => q.options[Number(v)].label);
     const values = other ? q.multiSelect ? [...selected, other] : [other] : selected;
-    if (!values.length) throw new Error(`请回答「${q.header ?? `问题 ${i + 1}`}」。`);
-    answers[q.questionId] = values;
+    if (!values.length && !chatAnswers[q.questionId]?.length) throw new Error(`请回答「${q.header ?? `问题 ${i + 1}`}」。`);
+    answers[q.questionId] = values.length ? values : chatAnswers[q.questionId];
   }
   return { answers };
+}
+
+// Chat answers enter the same Gateway question as card callbacks. No model routing.
+function readFeishuAskChatAnswers(record, text, staged = {}) {
+  const answer = text.trim();
+  if (!answer || answer.length > 3000) throw new Error("回答为空或太长，请重新回复。");
+  const valuesFor = (q, value) => {
+    const option = (s) => {
+      const exact = q.options.find(o => o.label === s);
+      if (exact) return exact.label;
+      const index = /^[1-4]$/.test(s) ? Number(s) - 1 : /^[A-Da-d]$/.test(s) ? s.toUpperCase().charCodeAt(0) - 65 : -1;
+      return q.options[index]?.label;
+    };
+    const exact = option(value);
+    if (exact) return [exact];
+    if (q.multiSelect) {
+      const parts = value.split(/[、，,；;\n]+/).map(s => s.trim()).filter(Boolean);
+      const selected = parts.map(option);
+      if (selected.length && selected.every(Boolean)) return [...new Set(selected)];
+    }
+    // A human can change their mind in chat even when the card has closed choices.
+    // Preserve the complete text for the model rather than guessing an option.
+    return [value];
+  };
+  const answers = Object.assign(Object.create(null), staged);
+  const updated = [];
+  if (record.questions.length === 1) {
+    answers[record.questions[0].questionId] = valuesFor(record.questions[0], answer);
+    updated.push(record.questions[0].questionId);
+  } else {
+    const numbered = [...answer.matchAll(/(?:^|\n)\s*([1-3])[.、．:)）]\s*([^\n]+)/g)];
+    if (numbered.length) {
+      if (numbered.length !== answer.split(/\n/).filter(s => s.trim()).length || new Set(numbered.map(m => m[1])).size !== numbered.length) throw new Error("请按问题编号逐行回复，或先回复当前未回答的问题。");
+      for (const [, number, value] of numbered) {
+        const q = record.questions[Number(number) - 1];
+        if (!q || !value.trim()) throw new Error("问题编号或回答无效，请重新回复。");
+        answers[q.questionId] = valuesFor(q, value.trim());
+        updated.push(q.questionId);
+      }
+    } else if (!/^(确认|继续|就这些)$/.test(answer) || record.questions.some(q => !answers[q.questionId]?.length)) {
+      const q = record.questions.find(q => !answers[q.questionId]?.length) ?? record.questions[0];
+      answers[q.questionId] = valuesFor(q, answer);
+      updated.push(q.questionId);
+    }
+  }
+  return { answers, updated, remaining: record.questions.filter(q => !answers[q.questionId]?.length) };
+}
+
+function createFeishuAskChatIngress({ questionRuntime, parse, handleMessage }) {
+  return async (params) => {
+    const { event, channelRuntime, cfg } = params;
+    if (event.message.message_type !== "text" || params.turnAdoptionLifecycle?.abortSignal.aborted) return false;
+    const ctx = parse(event, params.botOpenId, params.botName);
+    const text = ctx.content?.trim();
+    if (!text || ctx.senderType === "bot" || channelRuntime.commands.isControlCommandMessage(text, cfg)) return false;
+    const questionId = questionRuntime.chatCandidate({
+      accountId: params.accountId, chatId: ctx.chatId, senderOpenId: ctx.senderOpenId,
+      messageId: ctx.messageId, parentId: ctx.parentId, timestamp: Number(event.message.create_time),
+    });
+    if (!questionId) return false;
+    // Reuse the actual handler's sender/group/DM authorization and session routing.
+    // Answer-only mode returns before model dispatch and cannot start another turn.
+    return await handleMessage({ ...params, askUserAnswerOnly: true, askUserQuestionId: questionId }) === true;
+  };
 }
 
 // Dependency injection keeps the exact inlined lifecycle testable without a live bot.
@@ -86,14 +152,14 @@ function createFeishuAskRuntime(deps) {
   const deliveries = new Map();
   const streams = new Map();
   const streamKey = (sessionKey, accountId) => `${accountId ?? "default"}:${sessionKey}`;
-  function bindStream(sessionKey, accountId, send, isActive = () => true) {
+  function bindStream(sessionKey, accountId, send, isActive = () => true, origin) {
     if (!sessionKey) return () => {};
     const k = streamKey(sessionKey, accountId);
-    const entry = { send, isActive };
+    const entry = { send, isActive, origin };
     const entries = streams.get(k) ?? new Set(); entries.add(entry); streams.set(k, entries);
     return () => { entries.delete(entry); if (!entries.size) streams.delete(k); };
   }
-  const cardFor = (entry, state = entry.state, selections = {}) => buildFeishuAskCard(entry.record, state, selections, entry.answers);
+  const cardFor = (entry, state = entry.state, selections = {}, chatAnswers = {}) => buildFeishuAskCard(entry.record, state, selections, entry.answers, chatAnswers);
   const update = (entry, card) => {
     const task = (entry.paintQueue ?? Promise.resolve()).then(() => entry.updateCard ? entry.updateCard(card) : deps.patch({ ...entry.params, messageId: entry.messageId, card }));
     entry.paintQueue = task.catch(() => {});
@@ -115,12 +181,14 @@ function createFeishuAskRuntime(deps) {
     if (!isFeishuAskQuestion(record) || record.status !== "pending") return;
     const k = key(record.id, params.accountId);
     if (deliveries.has(k)) return deliveries.get(k).promise;
-    const entry = { record, params, state: "pending", selections: new Map() };
+    const entry = { record, params, state: "pending", selections: new Map(), chatAnswers: new Map(), chatResponses: new Map(), createdAtMs: record.createdAtMs ?? Date.now() };
     deliveries.set(k, entry);
     entry.promise = Promise.resolve().then(async () => {
       const card = buildFeishuAskCard(record);
       const registered = streams.get(streamKey(record.sessionKey, params.accountId));
       const candidates = [...(registered ?? [])].filter(entry => entry.isActive());
+      const owners = [...(registered ?? [])].filter(entry => entry.origin?.isActive?.() ?? entry.isActive());
+      if (owners.length === 1 && owners[0].origin) entry.origin = { ...owners[0].origin };
       const inlineSend = candidates.length === 1 ? candidates[0].send : undefined;
       const result = await inlineSend?.(card) ?? await deps.send({ ...params, card });
       params.log?.(`feishu: ask_user delivery id=${record.id} registered=${registered?.size ?? 0} active=${candidates.length} inline=${Boolean(result?.updateCard)}`);
@@ -158,6 +226,73 @@ function createFeishuAskRuntime(deps) {
     if (question.status !== "pending") return { messageId: undefined }; // already closed; don't re-send stale controls
     return await deliver(question, params);
   }
+  function matchingChatEntries(input) {
+    return [...deliveries.values()].filter(entry => {
+      if (!entry.chatResponses.has(input.messageId) && (entry.state !== "pending" || (entry.record.expiresAtMs ?? Infinity) <= Date.now())) return false;
+      if ((entry.params.accountId ?? "default") !== (input.accountId ?? "default")) return false;
+      const chat = entry.origin?.chatId ?? entry.params.to?.replace(/^(?:feishu:|lark:)?(?:chat:|user:)?/, "");
+      if (chat !== input.chatId || !input.senderOpenId || !input.messageId) return false;
+      if (!Number.isFinite(input.timestamp) || input.timestamp < entry.createdAtMs) return false;
+      // Without an originating sender, require an explicit reply to this card.
+      if (entry.origin?.senderOpenId ? entry.origin.senderOpenId !== input.senderOpenId : input.parentId !== entry.messageId) return false;
+      return !input.sessionKey || input.sessionKey === entry.record.sessionKey || input.parentId === entry.messageId;
+    });
+  }
+  function chatCandidate(input) {
+    const entries = matchingChatEntries(input);
+    const quoted = entries.filter(entry => entry.messageId === input.parentId);
+    const matches = quoted.length ? quoted : entries;
+    return matches.length === 1 ? matches[0].record.id : undefined;
+  }
+  async function resolveAnswer(entry, answers, resolvedBy, cfg = entry.params.cfg) {
+    entry.submitting = true;
+    entry.answers = answers;
+    try {
+      await deps.call("question.resolve", cfg, { id: entry.record.id, answers, resolvedBy });
+      entry.state = "answered";
+      return "answered";
+    } catch (error) {
+      const reason = error?.details?.reason;
+      if (reason !== "QUESTION_ALREADY_TERMINAL" && reason !== "QUESTION_NOT_FOUND") throw error;
+      let state = "expired";
+      try {
+        const r = await deps.call("question.get", cfg, { id: entry.record.id });
+        if (["answered", "expired", "cancelled"].includes(r.question?.status)) state = r.question.status;
+        if (r.question?.answers) entry.answers = r.question.answers;
+      } catch {}
+      entry.state = state;
+      return "terminal";
+    } finally { entry.submitting = false; }
+  }
+  async function answerFromChat(input, params) {
+    const entry = matchingChatEntries({ ...input, accountId: params.accountId }).find(entry => entry.record.id === input.id);
+    if (!entry) return { handled: false };
+    const respond = (outcome) => { entry.chatResponses.set(input.messageId, outcome); return outcome; };
+    if (entry.chatResponses.has(input.messageId)) return entry.chatResponses.get(input.messageId);
+    if (entry.submitting) return respond({ handled: true, notice: "正在提交当前问题的回答，请稍候。" });
+    const staged = { ...entry.chatAnswers.get(input.senderOpenId) };
+    const choices = entry.selections.get(input.senderOpenId) ?? {};
+    for (const q of entry.record.questions) {
+      try { Object.assign(staged, readFeishuAskAnswers({ questions: [q] }, { choice_0: choices[`choice_${entry.record.questions.indexOf(q)}`] }).answers); } catch {}
+    }
+    let result;
+    try { result = readFeishuAskChatAnswers(entry.record, input.text, staged); }
+    catch (error) { return respond({ handled: true, notice: error.message }); }
+    for (const id of result.updated) delete choices[`choice_${entry.record.questions.findIndex(q => q.questionId === id)}`];
+    if (result.remaining.length) {
+      entry.chatAnswers.set(input.senderOpenId, result.answers);
+      update(entry, cardFor(entry, "pending", choices, result.answers)).catch(() => entry.params.log?.("feishu: question refresh failed"));
+      return respond({ handled: true, notice: `已记下回答。请继续回复「${result.remaining[0].question}」，也可以在卡片里选择。` });
+    }
+    try {
+      const state = await resolveAnswer(entry, { answers: result.answers }, `feishu:chat:${input.senderOpenId}:${input.messageId}`, params.cfg);
+      update(entry, cardFor(entry)).catch(() => entry.params.log?.("feishu: question refresh failed"));
+      params.log?.(`feishu: ask_user chat answer id=${entry.record.id} message=${input.messageId} state=${state}`);
+      return respond({ handled: true, ...(state === "terminal" ? { notice: "这个问题已经结束了。" } : {}) });
+    } catch {
+      return respond({ handled: true, notice: "回答提交失败，请再回复一次，或使用卡片重试。" });
+    }
+  }
   async function submit(data, params) {
     const submission = parseFeishuAskSubmission(data);
     if (!submission) return;
@@ -175,34 +310,27 @@ function createFeishuAskRuntime(deps) {
       const existing = draft[field] ?? [];
       draft[field] = question.multiSelect ? existing.includes(String(j)) ? existing.filter(v => v !== String(j)) : [...existing, String(j)] : [String(j)];
       entry.selections.set(submission.operator, draft);
+      const chatAnswers = { ...entry.chatAnswers.get(submission.operator) };
+      delete chatAnswers[question.questionId];
+      entry.chatAnswers.set(submission.operator, chatAnswers);
       if (entry.record.questions.length > 1 || question.multiSelect) {
-        return respond(entry, "info", "已选择，选好后继续。", cardFor(entry, "pending", draft));
+        return respond(entry, "info", "已选择，选好后继续。", cardFor(entry, "pending", draft, chatAnswers));
       }
     }
     let answers;
-    try { answers = readFeishuAskAnswers(entry.record, { ...draft, ...submission.form }); }
+    try { answers = readFeishuAskAnswers(entry.record, { ...draft, ...submission.form }, entry.chatAnswers.get(submission.operator)); }
     catch (error) { return reply("warning", error.message); }
-    entry.submitting = true;
-    entry.answers = answers;
     try {
-      await deps.call("question.resolve", params.cfg, { id: submission.id, answers, resolvedBy: `feishu:${submission.operator}` });
-      entry.state = "answered";
+      const state = await resolveAnswer(entry, answers, `feishu:${submission.operator}`, params.cfg);
+      if (state === "terminal") return respond(entry, "info", "这个问题已经结束了。", cardFor(entry));
     } catch (error) {
-      const reason = error?.details?.reason;
-      if (reason === "QUESTION_ALREADY_TERMINAL" || reason === "QUESTION_NOT_FOUND") {
-        // A different client may have answered; read the authoritative state.
-        let state = "expired";
-        try { const r = await deps.call("question.get", params.cfg, { id: submission.id }); if (["answered", "expired", "cancelled"].includes(r.question?.status)) state = r.question.status; } catch {}
-        entry.state = state;
-        return respond(entry, "info", "这个问题已经结束了。", cardFor(entry, state));
-      }
       return reply("error", "提交失败，请稍后重试。");
-    } finally { entry.submitting = false; }
+    }
     const card = cardFor(entry, "answered");
     try { return await respond(entry, "success", "已收到回答，V 会继续处理。", card); }
     catch { return reply("success", "回答已收到，卡片更新稍有延迟。"); }
   }
-  return { requested, payload, submit, deliver, bindStream };
+  return { requested, payload, submit, deliver, bindStream, chatCandidate, answerFromChat };
 }
 
 // Keep the same CardKit entity/message. Normal stream writes keep targeting
@@ -2832,6 +2960,7 @@ function createFeishuReplyDispatcher(params) {
 					note: cardNote
 				});
 				streamingStartBackoffUntilByAccount.delete(account.accountId);
+				vTaskStatusAttach(params.sessionKey, session, (message) => params.runtime.log?.(`feishu[${account.accountId}] ${message}`));
 			} catch (error) {
 				rememberStreamingStartFailure(account.accountId);
 				params.runtime.error?.(`feishu[${account.accountId}]: streaming start failed; using non-streaming card fallback for ${STREAMING_START_FAILURE_BACKOFF_MS / 1e3}s: ${String(error)}`);
@@ -2856,7 +2985,10 @@ function createFeishuReplyDispatcher(params) {
       const result = await session.vAskUpdate(card);
       markVisibleReplySent();
       return result;
-    }, () => previewStreamingEnabled && !idleRequestedForReply && Boolean(replyLifecycleStateInitialized || streaming?.isActive() || streamingStartPromise));
+    }, () => previewStreamingEnabled && !idleRequestedForReply && Boolean(replyLifecycleStateInitialized || streaming?.isActive() || streamingStartPromise), {
+      chatId: params.chatId, senderOpenId: params.askUserSenderOpenId,
+      isActive: () => !idleRequestedForReply && Boolean(replyLifecycleStateInitialized || streaming?.isActive() || streamingStartPromise)
+    });
     const resetStreamingState = () => {
 		streaming = null;
 		streamingStartPromise = null;
@@ -2910,6 +3042,7 @@ function createFeishuReplyDispatcher(params) {
 					if (disposition === "discarded") closed = await streamingToClose.discard();
 					else {
 						const finalNote = resolveCardNote(agentId, identity, responsePrefixContextProvider());
+						vTaskStatusClosing(streamingToClose);
 						closed = await streamingToClose.closeWithResult(text, { note: finalNote });
 					}
 				} catch (error) {
@@ -3726,7 +3859,7 @@ async function handleFeishuMessage(params) {
 	const error = runtime?.error ?? console.error;
 	const messageId = event.message.message_id;
 	const messageDedupeKey = messageDedupeKeyOverride ?? resolveFeishuMessageDedupeKey(event);
-	if (!turnAdoptionLifecycle && !await finalizeFeishuMessageProcessing({
+	if (!params.askUserAnswerOnly && !turnAdoptionLifecycle && !await finalizeFeishuMessageProcessing({
 		messageId: messageDedupeKey,
 		namespace: account.accountId,
 		log,
@@ -3827,7 +3960,7 @@ async function handleFeishuMessage(params) {
 		}
 	}
 	let permissionErrorForAgent;
-	if (feishuCfg?.resolveSenderNames ?? true) {
+	if (!params.askUserAnswerOnly && (feishuCfg?.resolveSenderNames ?? true)) {
 		if (ctx.senderType === "bot") {
 			const senderName = await resolveFeishuBotName({
 				account,
@@ -3959,7 +4092,7 @@ async function handleFeishuMessage(params) {
 			senderOpenId: ctx.senderOpenId,
 			senderUserId,
 			requireMention,
-			mentionedBot: ctx.mentionedBot
+			mentionedBot: ctx.mentionedBot || params.askUserAnswerOnly === true
 		});
 		if (groupSenderActivationIngress.senderAccess.decision !== "allow") {
 			log(`feishu: sender ${ctx.senderOpenId} not in group ${ctx.chatId} sender allowlist`);
@@ -4190,7 +4323,19 @@ async function handleFeishuMessage(params) {
 				return;
 			}
 		}
-		const preview = truncateUtf16Safe(ctx.content.replace(/\s+/g, " "), 160);
+		if (params.askUserAnswerOnly) {
+      const outcome = await vFeishuAsk.answerFromChat({
+        id: params.askUserQuestionId, sessionKey: route.sessionKey,
+        chatId: ctx.chatId, senderOpenId: ctx.senderOpenId, messageId: ctx.messageId,
+        parentId: ctx.parentId, timestamp: messageCreateTimeMs, text: commandProbeBody
+      }, { cfg: effectiveCfg, accountId: account.accountId, log });
+      if (outcome.handled && outcome.notice) await sendMessageFeishu({
+        cfg: effectiveCfg, to: feishuReplyTarget, accountId: account.accountId,
+        replyToMessageId: ctx.messageId, replyInThread, text: outcome.notice
+      }).catch(() => log("feishu: question answer notice failed"));
+      return outcome.handled;
+    }
+    const preview = truncateUtf16Safe(ctx.content.replace(/\s+/g, " "), 160);
 		const inboundLabel = isGroup ? `Feishu[${account.accountId}] message in group ${ctx.chatId}` : `Feishu[${account.accountId}] DM from ${ctx.senderOpenId}`;
 		const contextVisibilityMode = resolveChannelContextVisibilityMode({
 			cfg: effectiveCfg,
@@ -4692,6 +4837,7 @@ async function handleFeishuMessage(params) {
 								agentId,
 								runtime,
 								chatId: ctx.chatId,
+								askUserSenderOpenId: ctx.senderOpenId,
 								sendTarget: feishuReplyTarget,
 								allowReasoningPreview,
 								replyToMessageId: replyTargetMessageId,
@@ -4782,6 +4928,7 @@ async function handleFeishuMessage(params) {
 				agentId: route.agentId,
 				runtime,
 				chatId: ctx.chatId,
+				askUserSenderOpenId: ctx.senderOpenId,
 				sendTarget: feishuReplyTarget,
 				allowReasoningPreview,
 				replyToMessageId: replyTargetMessageId,
@@ -4854,7 +5001,7 @@ async function handleFeishuMessage(params) {
 		}
 	} catch (err) {
 		error(`feishu[${account.accountId}]: failed to dispatch message: ${String(err)}`);
-		if (turnAdoptionLifecycle) throw err;
+		if (turnAdoptionLifecycle || params.askUserAnswerOnly) throw err;
 	}
 }
 //#endregion
@@ -7079,7 +7226,7 @@ function resolveFeishuDebounceMentions(params) {
 	const botMentions = merged.filter((mention) => mention.id.open_id?.trim() === normalizedBotOpenId);
 	return botMentions.length > 0 ? botMentions : void 0;
 }
-function createFeishuMessageReceiveHandler({ cfg, channelRuntime, accountId, runtime, chatHistories, fireAndForget, handleMessage, resolveDebounceText: resolveText, hasProcessedMessage, getBotOpenId = () => void 0, getBotName = () => void 0, resolveSequentialKey = ({ accountId: accountIdLocal, event }) => `feishu:${accountIdLocal}:${event.message.chat_id?.trim() || "unknown"}`, statusSink, resolveIngressLifecycle }) {
+function createFeishuMessageReceiveHandler({ cfg, channelRuntime, accountId, runtime, chatHistories, fireAndForget, handleMessage, tryQuestionAnswer, resolveDebounceText: resolveText, hasProcessedMessage, getBotOpenId = () => void 0, getBotName = () => void 0, resolveSequentialKey = ({ accountId: accountIdLocal, event }) => `feishu:${accountIdLocal}:${event.message.chat_id?.trim() || "unknown"}`, statusSink, resolveIngressLifecycle }) {
 	const inboundDebounceMs = channelRuntime.debounce.resolveInboundDebounceMs({
 		cfg,
 		channel: "feishu"
@@ -7270,6 +7417,15 @@ function createFeishuMessageReceiveHandler({ cfg, channelRuntime, accountId, run
 			claim.handle.release({ error: /* @__PURE__ */ new Error("feishu-ingress-abandoned-before-flush") });
 		});
 		const processMessage = async () => {
+      if (tryQuestionAnswer && !turnAdoptionLifecycle?.abortSignal.aborted && await tryQuestionAnswer({
+        cfg, event, botOpenId: getBotOpenId(accountId), botName: getBotName(accountId),
+        runtime, channelRuntime, chatHistories, accountId,
+        processingClaim: debounceEntry.processingClaim, turnAdoptionLifecycle
+      })) {
+        if (claim.kind === "claimed") await claim.handle.commit();
+        await completeSuppressedIngress();
+        return;
+      }
 			await inboundDebouncer.enqueue(debounceEntry);
 		};
 		if (turnAdoptionLifecycle) try {
@@ -7931,6 +8087,7 @@ function registerEventHandlers(eventDispatcher, context) {
 			chatHistories,
 			fireAndForget,
 			handleMessage: handleFeishuMessage,
+			tryQuestionAnswer: vAskTryChatAnswer,
 			resolveDebounceText: ({ event, botOpenId, botName }) => parseFeishuMessageEvent(event, botOpenId, botName).content,
 			hasProcessedMessage: hasProcessedFeishuMessage,
 			getBotOpenId: (id) => botOpenIds.get(id),
@@ -8192,3 +8349,248 @@ const vFeishuAsk = createFeishuAskRuntime({
   register: (params) => vSecretEntryQuestionRuntime.registerChannelDelivery(params),
   call: (method, cfg, params) => vSecretEntryCallGateway(method, { config: cfg }, params, { scopes: ["operator.questions"], progress: false, timeoutMs: 2000 })
 });
+
+// v-feishu-task-status-v1
+// The background-work line of a Feishu reply card.
+//
+// A session's background work (subagents of any runtime, background commands,
+// media generation, automation runs) lives in the OpenClaw task registry, and
+// usually outlives the reply that started it. `patch-feishu-task-status.mjs`
+// exposes that registry to the Feishu monitor; this module turns a session's
+// active tasks into one quiet line at the end of the reply card, above the
+// footer, so a reader can see that work is still going on and how much,
+// without its content.
+//
+// Pure functions only (no imports): the patcher inlines this file into the
+// Feishu monitor bundle, so it must stay self-contained.
+
+const V_TASK_STATUS_KIND_ORDER = ["子 agent", "后台命令", "生图", "生成视频", "生成音乐", "自动化", "后台任务"];
+
+/** What a task is, in the words the card uses. */
+function feishuTaskStatusKind(task) {
+  const runtime = task?.runtime;
+  const kind = typeof task?.taskKind === "string" ? task.taskKind : "";
+  if (runtime === "subagent" || runtime === "acp") return "子 agent";
+  if (runtime === "cron") return "自动化";
+  if (kind === "exec") return "后台命令";
+  if (kind === "image_generation") return "生图";
+  if (kind === "video_generation") return "生成视频";
+  if (kind === "music_generation") return "生成音乐";
+  return "后台任务";
+}
+
+/**
+ * The session's background work among its active tasks. A run of the session
+ * itself (an `openclaw agent` turn is registered as a cli task without a kind,
+ * whose child is the session) is foreground, not background.
+ */
+function feishuBackgroundTasks(tasks, sessionKey) {
+  const key = typeof sessionKey === "string" ? sessionKey.trim().toLowerCase() : "";
+  return (Array.isArray(tasks) ? tasks : []).filter((task) => {
+    const child = typeof task?.childSessionKey === "string" ? task.childSessionKey.trim().toLowerCase() : "";
+    return !(task?.runtime === "cli" && !task.taskKind && child === key);
+  });
+}
+
+/**
+ * The line for a session's active tasks. "" when nothing is running and the
+ * card never showed running work; a closing line once work it showed is done.
+ */
+function renderFeishuTaskStatusLine(tasks, { shownActive = false } = {}) {
+  const active = Array.isArray(tasks) ? tasks : [];
+  if (active.length === 0) return shownActive ? "☑️ 后台任务已结束" : "";
+  const counts = new Map();
+  for (const task of active) {
+    const kind = feishuTaskStatusKind(task);
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  }
+  const kinds = V_TASK_STATUS_KIND_ORDER.filter((kind) => counts.has(kind));
+  const detail = kinds.length === 1 ? kinds[0] : kinds.map((kind) => `${kind} ${counts.get(kind)}`).join(" · ");
+  return `⏳ 后台 ${active.length} 项进行中 · ${detail}`;
+}
+
+/** The card element that carries the line: small grey text above the footer. */
+function feishuTaskStatusElement(line) {
+  return {
+    tag: "markdown",
+    element_id: "v_bg_tasks",
+    text_size: "notation",
+    content: `<font color='grey'>${line}</font>`,
+  };
+}
+
+const V_TASK_BRIDGE_KEY = Symbol.for("openclaw.v.taskRegistryBridge");
+const V_TASK_STATUS_DEBOUNCE_MS = 800;
+// Worker-owned work raises no event in this process; a tracked card re-reads.
+const V_TASK_STATUS_POLL_MS = 5e3;
+const V_TASK_STATUS_MAX_CARD_AGE_MS = 24 * 60 * 60 * 1e3;
+const vTaskStatusEntries = new Map();
+let vTaskStatusListener = null;
+function vTaskStatusKey(sessionKey) {
+	return typeof sessionKey === "string" ? sessionKey.trim().toLowerCase() : "";
+}
+function vTaskStatusBridge() {
+	const bridge = globalThis[V_TASK_BRIDGE_KEY];
+	return bridge && typeof bridge.listActive === "function" && bridge.listeners instanceof Set ? bridge : null;
+}
+function vTaskStatusListen(bridge) {
+	if (vTaskStatusListener) return;
+	vTaskStatusListener = (notice) => {
+		if (notice?.kind === "restored") {
+			for (const entry of vTaskStatusEntries.values()) vTaskStatusSchedule(entry);
+			return;
+		}
+		for (const sessionKey of notice?.sessionKeys ?? []) {
+			const entry = vTaskStatusEntries.get(vTaskStatusKey(sessionKey));
+			if (entry) vTaskStatusSchedule(entry);
+		}
+	};
+	bridge.listeners.add(vTaskStatusListener);
+}
+function vTaskStatusDrop(entry) {
+	if (entry.timer) clearTimeout(entry.timer);
+	entry.timer = null;
+	if (vTaskStatusEntries.get(entry.key) === entry) vTaskStatusEntries.delete(entry.key);
+	if (vTaskStatusEntries.size === 0 && vTaskStatusListener) {
+		vTaskStatusBridge()?.listeners.delete(vTaskStatusListener);
+		vTaskStatusListener = null;
+	}
+}
+function vTaskStatusSchedule(entry, delayMs = V_TASK_STATUS_DEBOUNCE_MS) {
+	const dueAt = Date.now() + delayMs;
+	if (entry.timer && entry.dueAt <= dueAt) return;
+	if (entry.timer) clearTimeout(entry.timer);
+	entry.dueAt = dueAt;
+	entry.timer = setTimeout(() => vTaskStatusRefresh(entry), delayMs);
+	entry.timer.unref?.();
+}
+async function vTaskStatusCardKit(session, state, method, suffix, payload) {
+	const apiBase = resolveApiBase(session.creds.domain);
+	state.sequence += 1;
+	const { response, release } = await fetchWithSsrFGuard({
+		url: apiBase + "/cardkit/v1/cards/" + state.cardId + suffix,
+		init: { method, headers: {
+			Authorization: "Bearer " + await getToken(session.creds, { fetchImpl: session.fetchImpl, lookupFn: session.lookupFn }),
+			"Content-Type": "application/json; charset=utf-8", "User-Agent": getFeishuUserAgent()
+		}, body: JSON.stringify({ ...payload, sequence: state.sequence, uuid: "task_" + state.cardId + "_" + state.sequence }) },
+		fetchImpl: session.fetchImpl, lookupFn: session.lookupFn,
+		policy: { allowedHostnames: resolveAllowedHostnames(session.creds.domain) },
+		auditContext: "feishu.task-status", timeoutMs: session.creds.httpTimeoutMs ?? 3e4
+	});
+	try {
+		await assertSuccessfulCardKitResponse(response, "feishu.task-status", "Update background task line");
+	} finally {
+		await release();
+	}
+}
+// The line is its own element right after the reply text, so it sits at the
+// end of the card above the footer. Inserted on first use, removed on handoff.
+async function vTaskStatusWriteLine(card, line) {
+	const { session, state } = card;
+	const element = JSON.stringify(feishuTaskStatusElement(line));
+	if (!line) {
+		if (card.inserted) await vTaskStatusCardKit(session, state, "DELETE", "/elements/v_bg_tasks", {});
+		card.inserted = false;
+	} else if (!card.inserted) {
+		await vTaskStatusCardKit(session, state, "POST", "/elements", { type: "insert_after", target_element_id: "content", elements: "[" + element + "]" });
+		card.inserted = true;
+	} else await vTaskStatusCardKit(session, state, "PUT", "/elements/v_bg_tasks", { element });
+}
+// Writes share the card's sequence counter: while the card streams they join
+// its write queue; once it closes they wait for the close and run in order.
+function vTaskStatusEnqueue(card, write) {
+	const session = card.session;
+	if (session.state === card.state && !session.closed) {
+		const task = session.queue.then(write);
+		session.queue = task.catch(() => {});
+		return task;
+	}
+	const task = (card.chain ?? Promise.resolve()).then(async () => {
+		if (session.vTaskClosing) await session.vTaskClosing.catch(() => {});
+		return write();
+	});
+	card.chain = task.catch(() => {});
+	return task;
+}
+function vTaskStatusShow(entry, card, line) {
+	if (line === card.wantedLine) return;
+	card.wantedLine = line;
+	vTaskStatusEnqueue(card, async () => {
+		if (card.session.vTaskDiscarded || card.wantedLine !== line || card.writtenLine === line) return;
+		await vTaskStatusWriteLine(card, line);
+		card.writtenLine = line;
+		entry.log?.("task-status card=" + card.state.cardId + " line=" + JSON.stringify(line));
+	}).catch((error) => {
+		// Let the next refresh try again.
+		if (card.wantedLine === line) card.wantedLine = card.writtenLine;
+		entry.log?.("task-status card=" + card.state.cardId + " write failed: " + String(error));
+	});
+}
+function vTaskStatusRefresh(entry) {
+	entry.timer = null;
+	const card = entry.card;
+	const bridge = vTaskStatusBridge();
+	if (!card || !bridge || card.session.vTaskDiscarded || Date.now() - card.startedAt > V_TASK_STATUS_MAX_CARD_AGE_MS) {
+		vTaskStatusDrop(entry);
+		return;
+	}
+	let active = [];
+	try {
+		active = feishuBackgroundTasks(bridge.listActive(entry.sessionKey), entry.sessionKey);
+	} catch (error) {
+		entry.log?.("task-status list failed: " + String(error));
+	}
+	const line = renderFeishuTaskStatusLine(active, { shownActive: card.shownActive });
+	if (active.length > 0) card.shownActive = true;
+	card.lineActive = active.length > 0;
+	vTaskStatusShow(entry, card, line);
+	// A closed card with nothing running will not change again.
+	if (card.session.closed && active.length === 0) vTaskStatusDrop(entry);
+	else vTaskStatusSchedule(entry, V_TASK_STATUS_POLL_MS);
+}
+/** A reply card started for this session: it carries the line from now on. */
+function vTaskStatusAttach(sessionKey, session, log) {
+	const bridge = vTaskStatusBridge();
+	const key = vTaskStatusKey(sessionKey);
+	const state = session?.state;
+	if (!bridge || !key || !state?.cardId) return;
+	let entry = vTaskStatusEntries.get(key);
+	if (!entry) vTaskStatusEntries.set(key, entry = { key, sessionKey, card: null, timer: null, log });
+	entry.log = log;
+	const previous = entry.card;
+	const card = { key, session, state, wantedLine: "", writtenLine: "", inserted: false, lineActive: false, shownActive: false, startedAt: Date.now(), chain: null };
+	session.vTaskStatusCard = card;
+	entry.card = card;
+	// One live line per session: the previous card's line is removed.
+	if (previous && previous !== card && previous.lineActive) {
+		previous.lineActive = false;
+		vTaskStatusShow(entry, previous, "");
+	}
+	vTaskStatusListen(bridge);
+	vTaskStatusSchedule(entry, 0);
+}
+/** A card is closing: re-check soon, and release it if nothing runs. */
+function vTaskStatusClosing(session) {
+	const card = session?.vTaskStatusCard;
+	if (!card) return;
+	const entry = vTaskStatusEntries.get(card.key);
+	if (entry?.card === card) vTaskStatusSchedule(entry, 0);
+}
+function installFeishuTaskStatus(Session) {
+	const close = Session.prototype.closeWithResult;
+	const discard = Session.prototype.discard;
+	Session.prototype.closeWithResult = function (...args) {
+		const pending = close.apply(this, args);
+		this.vTaskClosing = pending;
+		return pending;
+	};
+	Session.prototype.discard = function (...args) {
+		this.vTaskDiscarded = true;
+		return discard.apply(this, args);
+	};
+}
+installFeishuTaskStatus(FeishuStreamingSession);
+
+const vAskTryChatAnswer = createFeishuAskChatIngress({
+    questionRuntime: vFeishuAsk, parse: parseFeishuMessageEvent, handleMessage: handleFeishuMessage
+  });

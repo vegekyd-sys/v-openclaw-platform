@@ -11,6 +11,137 @@
 
 ---
 
+## feishu-ask-chat-answer-20261003
+
+上线：2026-10-03 11:04 CST 安装，11:24:52 重启 Gateway（11:27:56 就绪）  ·  tag `feishu-ask-chat-answer-20261003`
+
+**摘要**：两件事一起上。（1）Ask User 等你回答时，直接在聊天里打字回答也算数（#162）：以前普通消息会排在等待中的对话后面，任务卡住。（2）V 需要你接管电脑时，发一张「电脑」卡片（#96/#161/#163）：中间是 V 电脑的实时截图，点图片或「接管」直接进电脑并自动接管，做完点「我完成了」V 接着干，「跳过」则让 V 换个办法；卡片状态原地变成 操作中 / 已完成 / 已跳过；接管页适配手机。接管插件与接管服务在 `/opt/v-desktop-handoff/`（不在捕获范围内，11:23 同步，旧版备份在 `/opt/v-release-backups/desktop-handoff-card-20261003-*`）。V 上线后验收：Ask User 聊天回答在 Worker、vcodex、vds、vcc 四个入口均通过；接管卡片四个入口均能发卡，交还后 V 自动继续。
+
+**同日补丁（不在捕获范围内）**：13:26 只更新了接管插件（#166），13:26:34 重启 Gateway（13:28:53 就绪）。手机飞书对同时带链接和回调的「接管」按钮只执行回调，电脑打不开，还会冒出一条「No reply was generated」；现在「接管」只打开链接，旧卡片的回调改回一句提示。13:53 手机实测：打开 → 接管 → 收到触摸操作 → 「我完成了」→ 卡片「已完成」。插件备份在 `/opt/v-release-backups/desktop-handoff-mobile-20261003-*`。
+
+相对上一版 `v2026.9.1-db91.6-memory-search-guards-20261002`：1 个文件变化。
+
+**经 VLab 发版 `feishu-ask-chat-answer-v1`**（handoff-and-ask-20261003，dev `e141e7c5`）
+> 验收：Feishu DM to V - Lab as Tianyi, 2026-10-03 10:54-10:55 CST, deepseek-v4-flash on vlab-worker: V asked a native ask_user question (面条/米饭/饺子, inline in the active reply card, "也可以直接在聊天中回复答案"); Tianyi answered with a plain chat message 饺子; Gateway logged "ask_user chat answer ... state=answered", question.waitAnswer resolved, the question collapsed to ✓ 已选择：饺子 and V continued with 午饭定了：饺子. Same deplo…
+- `feishu` dist/monitor.account-WFdlCDhR.js  69230132 → b68229ec
+
+**这期间合入 dev 的 PR**（9 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #164 release: capture V after feishu-ask-chat-answer-20261003
+- #163 fix(desktop-handoff): 卡片默认放电脑实时截图；「已跳过」不再被改成「已结束」
+- #162 fix(feishu): accept chat replies while Ask User waits
+- #161 feat(desktop-handoff): 「电脑」卡片（图片 + 接管/我完成了/跳过）+ 手机版接管页
+- #96 feat(desktop-handoff): Feishu card with 接管电脑 / 付款 buttons; agent cannot end an active takeover
+- #159 fix(memory-indexer): 不再全量重建，文件变动只增量重试（修 21:16 冻结）
+- #160 chore: 夜班拆到独立仓库 vegekyd-sys/v-nightshift
+- #158 release: capture V after memory-search-guards
+- #156 refactor(nightshift): delivery page takes every name from the manifest
+
+## v2026.9.1-db91.6-memory-search-guards-20261002
+
+上线：2026-10-02 20:00 CST 安装，20:00:41 重启 Gateway（20:02:17 就绪）  ·  tag `v2026.9.1-db91.6-memory-search-guards-20261002`
+
+**摘要**：修 V 第三次验收在 #153 上发现的三个问题。（1）只搜一个人名时，人物卡排到日志后面：单个词查询恢复原来的打分，12 道人名题 10/12 → 12/12。（2）没有空格的中文整句搜出 0 条（S12）：拆不出两个词时，改用三字组合查全文索引，现在 S12 的正确答案排第 1。（3）满分打平时排序随意：关键词分保留 1/4 的 BM25。V 的 54 题（同口径，线上索引）：第一名 50.0 → 48–50%，前三 59.3 → 63.0%，前五 68.5 → 72.2%，MRR 0.556 → 0.57–0.58。另外更正 #153 的离线预估：那次每题取 10 条再筛成 5 条，和 V 取 5 条的口径不同，数字偏高。
+
+相对上一版 `v2026.9.1-db91.6-memory-search-weighted-20261002`：1 个文件变化。
+
+**经 VLab 发版 `memory-search-guards-20261002`**（claude-memsearch-20261002，dev `aaeb8840`）
+> 验收：2026-10-02 19:56-20:00 CST shared VLab (midTurnPrecheck on). Gateway preflight 158 s, ready 19:55:41. Two real agent turns (vlab.mjs test, makaron), 8 memory_search calls, all ok: name query 康浩源 ranks people/kang-haoyuan.md first; the spaceless question that returned 0 results now returns 5; warm toolMs 1.6-2.3 s, first turn after restart 15.6-16.2 s (cold). Integrity 22-31 ms, no host timing gap.…
+- `core` extensions/memory-core/manager-runtime.js  9f9d763c → 134cc6f6
+
+**这期间合入 dev 的 PR**（2 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #157 fix(memory): 单个词查询恢复原打分；中文整句无结果时用三字组合兜底
+- #155 release: capture V after memory-search-weighted and midturn-precheck
+
+## v2026.9.1-db91.6-memory-search-weighted-20261002
+
+上线：2026-10-02 19:17 CST 安装，19:18:52 停 Gateway、打开 midTurnPrecheck、启动（19:20:19 就绪）  ·  tag `v2026.9.1-db91.6-memory-search-weighted-20261002`
+
+**摘要**：两项改动合在一个停机窗口里上线，只重启了一次 Gateway。
+- **#153 memory_search 打分**：关键词覆盖率按词的罕见程度（IDF）加权，中文按两字切词，中文和字母数字之间自动断开。修的是 #147 的副作用：`memory`、`tianyi` 这类到处都有的词会把正确页面挤出前五，没有空格的中文整句关键词得分全是 0。V 的 54 题基准（离线跑，同一份 dist）：第一名 50.0%（#147 之前）/ 46.3%（#147）→ 53.7–55.6%，前五 70.4% / 68.5% → 72.2%，MRR 0.573 / 0.549 → 0.60–0.61。
+- **#152 midTurnPrecheck**：配置开关，不改运行时文件，所以下面的文件变化里没有它。在 Gateway 停止时用 `/opt/v-ops/configure-v-midturn-precheck.mjs apply` 把两份配置里的 `agents.defaults.compaction.midTurnPrecheck.enabled` 改成 true，备份是 `*.bak-midturn-precheck-20261002T111852`。回滚：停掉 Gateway 后运行 `restore`。
+  - 为什么要改：一轮开始时上下文没超限，但同一轮里工具输出把它推过了上限。这时 PR #108 的 BUDGET_EXHAUSTED 在工具执行之后才抛出，不能安全重放（replaySafe=no），所以不会压缩，用户看到的是「Agent couldn't generate a response」（9/30 出现 3 次，10/02 17:41 oc_fab91abe 出现 1 次）。打开开关后，每拿到一个工具结果、调用模型之前会先检查上下文，必要时先压缩或截断再继续。
+  - 证据：candidate `lab/candidate/midturn-precheck-{off,on}.plan.json`。off 的收据 b0e304dd 复现了故障：2 个工具、0 次压缩、只回了报错提示。on 的收据 4ae2af0a 在估算约 65.4 万 token 时走了 route=compact_then_truncate，压缩 1 次，摘要有真实内容，3 个工具都跑完并正常回答。共享 VLab 18:38 打开开关，跑了一轮真实工具回合，结果 ok。
+  - 操作注意：apply/restore 在 Gateway 运行时会拒绝执行，因为运行中写配置会触发热加载，热加载会关掉 worker 池。
+- VLab 发版打包用的是 vlab-dev 本地提交 685a6387，它的内容与 origin/dev `4dfa4a3` 逐字节相同（Codex 的合并和回退互相抵消了）。
+
+相对上一版 `v2026.9.1-db91.6-db91-shrink-reuse-20261002`：1 个文件变化。
+
+**经 VLab 发版 `memory-search-weighted-20261002`**（claude-memsearch-20261002，dev `685a6387`）
+> 验收：2026-10-02 19:15-19:25 CST, shared VLab with #152 midTurnPrecheck enabled (both configs). Gateway preflight passed (213.6 s), ready 19:14:04, 5 workers. Three real agent turns (vlab.mjs test, makaron) calling memory_search 8 times: all ok, warm toolMs 1.4-2.1 s, one cold 9.7 s that repeated at 1.55 s; first two after restart 12.9-13.1 s (cold cache). Integrity stage 23-28 ms, no host timing gap or…
+- `core` extensions/memory-core/manager-runtime.js  9594ce28 → 9f9d763c
+
+**这期间合入 dev 的 PR**（4 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #153 fix(memory): 关键词覆盖率按词的罕见程度加权，中文按两字切词
+- #152 Turn on mid-turn context precheck on V
+- #151 refactor(nightshift): 交付页改成模板，引擎不参与交付
+- #150 release: capture V after memory-search-mixed and db91-shrink-reuse
+
+## v2026.9.1-db91.6-db91-shrink-reuse-20261002
+
+上线：2026-10-02 15:25 CST 安装并重启 Gateway（15:26 恢复）  ·  tag `v2026.9.1-db91.6-db91-shrink-reuse-20261002`
+
+**摘要**：修复 Gateway 冻结。WAL 维护定时器的增量清理会缩小 agent 库文件，原来文件一缩小，下一次 memory_search 打开数据库时，就在 Gateway 主线程上同步重做整库完整性检查（13:19 卡 106.6 s，14:50 卡 122.1 s，之后进入 host thaw 循环）。现在，如果文件变小是 SQLite 自己做的（主文件头里的页数 × 页大小 = 文件大小），就继续复用证明；被外部截断的文件仍然拒绝复用。
+
+相对上一版 `v2026.9.1-db91.6-memory-search-mixed-20261002`：1 个文件变化。
+
+**经 VLab 发版 `db91-shrink-reuse-20261002`**（claude-memsearch-20261002，dev `ddc07669`）
+> 验收：2026-10-02 15:23 CST. Shared VLab Gateway restarted on the patched db91 gate: preflight passed (224 s), health 200; three end-to-end memory_search calls via tools.invoke each reused the integrity proof (stage integrity 23-24 ms), no host timing gap. Shrink reuse proven by lab/db91-shrink-reuse.test.mjs: original gate refuses reuse after incremental_vacuum + truncating checkpoint, patched reuses; b…
+- `core` db91-integrity-gate.mjs  3d6807a3 → aa68547b
+
+## v2026.9.1-db91.6-memory-search-mixed-20261002
+
+上线：2026-10-02 14:44 CST 安装，14:45 重启 Gateway  ·  tag `v2026.9.1-db91.6-memory-search-mixed-20261002`
+
+**摘要**：中英混合、多关键词的查询，现在会优先返回同时包含多个查询词的页面。改动包括：额外的“任意词命中”候选检索、按查询词覆盖率打关键词分、给强关键词命中补算真实向量分。62 条真实查询盲评：第一条有用 68% → 76%；V 在群里验收通过，上一轮没搜准的两条都排到了第一。
+
+相对上一版 `v2026.9.1-db91.6-memory-search-1s-20261002`：1 个文件变化。
+
+**经 VLab 发版 `memory-search-mixed-20261002`**（claude-memsearch-20261002，dev `8c4be526`）
+> 验收：2026-10-02 14:3x CST. Quality (VLab replica of V current memory, 62 real queries, blind-judged 0-3): nDCG@8 0.486 -> 0.558, top hit useful 68% -> 76%, top-5 useful 0.526 -> 0.584; mixed CN/EN many-keyword (49): top hit 71% -> 80%; both V acceptance queries rank the right page first (client-material-libraries.md; SCHEMA.md + memory-librarian/main.md). Latency: replica interleaved A/B p50 +12 ms; sh…
+- `core` extensions/memory-core/manager-runtime.js  a94e2079 → 9594ce28
+
+**这期间合入 dev 的 PR**（5 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #149 fix(db91): SQLite 正常缩小文件后，不再在 Gateway 主线程上重做整库检查
+- #147 fix(memory): 中英混合多关键词查询找不到真正含这些词的页面
+- #146 feat(nightshift): 交付改成网页，不再打 zip
+- #145 fix(nightshift): Gateway 自己重新开放接活时立刻恢复，不再被短暂 suspension 卡住
+- #144 release: capture V after memory-search-1s-20261002
+
+## v2026.9.1-db91.6-memory-search-1s-20261002
+
+上线：2026-10-02 13:16 CST 安装，13:17 重启 Gateway（13:18:28 恢复，约 86 秒）  ·  tag `v2026.9.1-db91.6-memory-search-1s-20261002`
+
+**摘要**：memory_search 返回结果前不再每次加载整个会话目录（上游 9.5 修复的回移），并预先启动一个向量查找子进程备用。V 上通过 Gateway 端到端实测（同一组 48 条查询）：中位数 3.31 → 1.07 秒，1.5 秒以内 41/48，结果 48/48 一致。重启后的头一分钟内搜索可能超时：测试中前 23 条失败，原因是冷缓存加上“超时后暂停重试一分钟”的机制，之后恢复正常。
+
+相对上一版 `v2026.9.1-db91.6-memory-search-fast-20261002`：2 个文件变化。
+
+**经 VLab 发版 `memory-search-1s-20261002`**（claude-memsearch-20261002，dev `ea8faac9`）
+> 验收：2026-10-02 13:00 CST end-to-end through the shared VLab Gateway (tools.invoke memory_search, 48 real queries, sequential, 1 s apart, same harness before/after): toolMs p50 2813 -> 1255 ms, p90 3338 -> 1613 ms, max 4282 -> 1808 ms; top-3 results identical 48/48. First search after restart 21.0 s (cold cache, DB open 55 ms, no integrity pass). Mechanism measured inside the Gateway via inspector befo…
+- `core` extensions/memory-core/manager-runtime.js  c6f97543 → a94e2079
+- `core` session-search-visibility-H6aL2Pcb.js  badc3d4c → 566d4e58
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #143 perf(memory): memory_search toward 1 s end to end
+- #142 docs(memory): V before/after for the memory_search upgrade
+- #141 release: capture V after memory-search-fast-20261002
+
+## v2026.9.1-db91.6-memory-search-fast-20261002
+
+上线：2026-10-02 09:58 CST 安装，未重启（KNN 子进程文件对新搜索立即生效；manager-runtime.js 待下次 Gateway 启动）  ·  tag `v2026.9.1-db91.6-memory-search-fast-20261002`
+
+**摘要**：memory_search 的向量检索子进程不再每次加载用不到的模块，启动从 1.37 s 降到 0.19 s，安装后立即生效。查询向量改为与关键词搜索同时进行，这一处要等下次 Gateway 重启。搜索结果不变。makaron 索引重建与实时索引服务 `v-memory-indexer` 在后续维护窗口上线。详见 docs/memory-search-latency-quality-20261002.md。
+
+相对上一版 `v2026.9.1-db91.6-background-work-20261002`：3 个文件变化。
+
+**经 VLab 发版 `memory-search-fast-20261002`**（claude-memsearch-20261002，dev `48aa6142`）
+> 验收：2026-10-02 10:0x CST real makaron agent turns via vlab.mjs test (deliver:false): memory_search 5 calls all ok (6 hits each, correct top paths, provider gemini); sequential warm searchMs 3510/2738/2886 on the shared (old 1024-layout, unsynced) index right after cold start; first concurrent pair right after start 18.4/19.5 s (cold cache). 0 vector/KNN errors in Gateway log since deploy. Speed and re…
+- `core` extensions/memory-core/manager-runtime.js  115e5f41 → c6f97543
+- `core` extensions/memory-core/memory-search-knn.child.js  a106f839 → 97c542fb
+- `core` manager-search-knn-NiSMMJUM.js  124e05bd → a9bd4092
+
+**这期间合入 dev 的 PR**（1 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #140 perf(memory): memory_search p50 2.8s→1.6s, sync the frozen index
+
 ## v2026.9.1-db91.6-background-work-20261002
 
 上线：2026-10-02 03:13 CST 安装并重启 Gateway（03:15 就绪）  ·  tag `v2026.9.1-db91.6-background-work-20261002`；03:16–03:40 生产飞书回归通过。

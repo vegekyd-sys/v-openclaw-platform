@@ -2,23 +2,26 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="robots" content="noindex">
-<title>V 的桌面</title>
+<meta name="theme-color" content="#0b0d12">
+<title>V 的电脑</title>
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
 <header id="bar">
-  <div id="title">V 的桌面</div>
+  <div id="title">V 的电脑</div>
   <div id="status">连接中…</div>
-  <div id="actions">
-    <button id="take" hidden>接管控制</button>
-    <button id="release" hidden>交还给 V</button>
-    <button id="reconnect" hidden>重新连接</button>
-  </div>
+  <button id="reconnect" class="ghost" hidden>重新连接</button>
 </header>
 <main id="screen"></main>
 <div id="notice" hidden></div>
+<footer id="dock">
+  <button id="zoom" class="tool" hidden aria-label="放大或适应屏幕">放大</button>
+  <button id="toggle" class="primary" hidden>接管电脑</button>
+  <button id="keyboard" class="tool" hidden aria-label="打开键盘">键盘</button>
+</footer>
+<input id="kbd" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-hidden="true" tabindex="-1">
 <script type="module" src="app.js"></script>
 </body>
 </html>

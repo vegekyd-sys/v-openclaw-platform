@@ -1,0 +1,88 @@
+{
+  "id": "candidate-0caf5e99-c096-4d28-abc4-6550ef59e13c",
+  "ok": true,
+  "sourceCommit": "2f2788c8599a77715db2c2a2785643575e1d5a4f",
+  "branch": "codex/feishu-ask-chat-answer",
+  "dirty": true,
+  "inputSha256": "155571aae05f6c60460f02cc17dcedb22204e0cb16f349de5c2b1eaa1a1f676f",
+  "baseRelease": "memory-search-guards-20261002",
+  "runtimeSha": "3bd552c190bc835e6652f525853f9b31f4cf29bf0142d1f4546ad0c934dc4f81",
+  "configSha256": "9a8419243b832116e22b52283457586ed8f1a94e0fb235a095e9f7411ce150c7",
+  "sharedBeforePid": 1423532,
+  "sharedAfterPid": 1423532,
+  "sharedUnchanged": true,
+  "totalServerMs": 157670,
+  "transport": "synthetic Feishu IM events through actual patched receive and authorization handler",
+  "cardTransport": "local candidate sink",
+  "sharedBotConsumerStarted": false,
+  "matrix": [
+    {
+      "entry": "worker",
+      "model": "deepseek/deepseek-v4-flash",
+      "questionId": "ask_60d35e6da21a60508e1db587436bb5b4",
+      "answerMs": 201,
+      "answer": "保留原图，只调整灯光",
+      "reply": "ASK_CHAT_WORKER_DONE 保留原图，只调整灯光",
+      "queueWasWaiting": true,
+      "senderAllowlistEnforced": true,
+      "durableIngressAdopted": true,
+      "logicalReplaySuppressed": true,
+      "nextMessageDispatched": true
+    },
+    {
+      "entry": "vds",
+      "model": "deepseek/deepseek-flash",
+      "questionId": "ask_5c8d6888a084a4897cf8b6095a28846e",
+      "answerMs": 100,
+      "answer": "重画",
+      "reply": "ASK_CHAT_VDS_DONE 重画",
+      "queueWasWaiting": true,
+      "senderAllowlistEnforced": true,
+      "durableIngressAdopted": true,
+      "logicalReplaySuppressed": true,
+      "nextMessageDispatched": true
+    },
+    {
+      "entry": "vcc",
+      "model": "anthropic/claude-opus-5",
+      "questionId": "ask_3b99d573499cdcdde9fd17cbbdf43379",
+      "answerMs": 101,
+      "answer": "保留构图，只柔化灯光",
+      "reply": "ASK_CHAT_VCC_DONE 保留构图，只柔化灯光",
+      "queueWasWaiting": true,
+      "senderAllowlistEnforced": true,
+      "durableIngressAdopted": true,
+      "logicalReplaySuppressed": true,
+      "nextMessageDispatched": true
+    },
+    {
+      "entry": "vcodex",
+      "model": "openai/gpt-6.1-sol",
+      "questionId": "ask_3d7ebf2dce10d9ad9fd0c609231b120f",
+      "answerMs": 100,
+      "answer": "重画",
+      "reply": "ASK_CHAT_VCODEX_DONE 重画",
+      "queueWasWaiting": true,
+      "senderAllowlistEnforced": true,
+      "durableIngressAdopted": true,
+      "logicalReplaySuppressed": true,
+      "nextMessageDispatched": true
+    }
+  ],
+  "testedFilesSha256": {
+    "lab/candidate/feishu-ask-chat-answer.mjs": "1e4ea73075736162a8fd3c5ee406596700d52fc8116fedb503261b957d01b007",
+    "lab/release-files/feishu-ask-user/card.mjs": "87a56ad6072fa0ff421f3db79234b61a46f6c695b0049d840c3dfba0640b565d",
+    "lab/release-files/feishu-ask-user/chat.mjs": "21cc6645fb07d0f60129633d767c4d20d59331029fcd4b975a699ddc676d65d8",
+    "lab/release-files/feishu-ask-user/runtime.mjs": "6c13951ea3ea3ce842882431790260b616534687c2df3d42c3aad931b19b5757",
+    "lab/release-files/feishu-ask-user/patch.mjs": "f2d52abe80c39506eda58ff8398e4a5b8c1190f92b517781f6351b5c99c7e5d7",
+    "lab/release-files/feishu-ask-user/stream.mjs": "174ce86bb99c22309c3195757819664167f28631b032dfaad1f1a5c88b808eec"
+  },
+  "generatedMonitorSha256": "b68229ec369962edae5c9f5ba078ca4e24b63ed4aab6fa3fb23c537784ddfd60",
+  "localTests": {
+    "focused": 27,
+    "platformOffline": 821,
+    "passed": true
+  },
+  "nativeFeishuTransportAccepted": false,
+  "productionDeployed": false
+}

@@ -1,7 +1,11 @@
 // Viewer page: claims the link token, shows the desktop through noVNC, and
 // lets an authorised viewer take or release control. The server enforces
 // who may send input; the viewOnly flag here is only for the local UX.
+// Mobile first: opening a control link takes control right away, one big
+// button toggles 接管电脑 / 交还给 V, and a hidden input brings up the phone
+// keyboard.
 import RFB from "./novnc/core/rfb.js";
+import keysyms from "./novnc/core/input/keysymdef.js";
 
 const $ = (id) => document.getElementById(id);
 const base = new URL(".", location.href);
@@ -27,9 +31,20 @@ function notice(text) {
   el.textContent = text;
   el.hidden = false;
 }
+const touch = matchMedia("(pointer: coarse)").matches;
+let autoTakeDone = false;
+let lastRole = null;
+let releasingLocally = false;
+let zoomed = false;
+
 function showButtons({ take = false, release = false, reconnect = false }) {
-  $("take").hidden = !take;
-  $("release").hidden = !release;
+  const toggle = $("toggle");
+  toggle.hidden = !take && !release;
+  toggle.textContent = release ? "交还给 V" : "接管电脑";
+  toggle.classList.toggle("back", release);
+  toggle.dataset.take = take ? "1" : "";
+  $("keyboard").hidden = !(release && touch);
+  $("zoom").hidden = !rfb;
   $("reconnect").hidden = !reconnect;
 }
 
@@ -77,6 +92,18 @@ async function claim() {
   return body;
 }
 
+function applyZoom() {
+  if (!rfb) {
+    return;
+  }
+  // Fit the whole desktop, or show it 1:1 and pan by dragging (a tap still clicks).
+  rfb.scaleViewport = !zoomed;
+  rfb.clipViewport = zoomed;
+  rfb.dragViewport = zoomed;
+  $("zoom").textContent = zoomed ? "适应" : "放大";
+  $("zoom").classList.toggle("on", zoomed);
+}
+
 function connect() {
   notice("");
   if (rfb) {
@@ -86,12 +113,12 @@ function connect() {
   const wsUrl = new URL(`${viewer.wsPath}?viewer=${encodeURIComponent(viewer.viewer)}`, location.href);
   wsUrl.protocol = wsUrl.protocol === "https:" ? "wss:" : "ws:";
   rfb = new RFB($("screen"), wsUrl.toString(), { shared: true, wsProtocols: ["binary"], credentials: {} });
-  rfb.scaleViewport = true;
   rfb.resizeSession = false;
   rfb.viewOnly = true;
   rfb.background = "#000";
+  applyZoom();
   rfb.addEventListener("connect", () => {
-    setStatus(viewer.canControl ? "已连接 · 正在观看，点「接管控制」后可以操作" : "已连接 · 只能观看");
+    setStatus(viewer.canControl ? "已连接" : "已连接 · 只能观看");
     showButtons({ take: viewer.canControl });
     poll();
   });
@@ -105,7 +132,7 @@ function connect() {
       4002: "V 已结束这次接管。",
       4003: "连接出现协议错误，已断开。",
       4004: "你在别处重新打开了这个页面，这里已断开。",
-      4005: "V 的桌面暂时不可用。",
+      4005: "V 的电脑暂时不可用。",
     };
     setStatus(messages[code] ?? (detail.clean ? "已断开" : "连接中断"), "warn");
     showButtons({ reconnect: ![4001, 4002].includes(code) });
@@ -129,11 +156,18 @@ async function poll() {
     }
     status = await res.json();
     render();
+    // A control link takes control as soon as it opens: one tap in the chat, then just work.
+    if (!autoTakeDone && rfb && status.canControl && status.role !== "controller" && !status.controlledByOther) {
+      autoTakeDone = true;
+      await control(true);
+      return;
+    }
+    autoTakeDone = true;
   } catch {
     /* transient */
   } finally {
     if (rfb) {
-      setTimeout(poll, 4000);
+      setTimeout(poll, status?.role === "controller" ? 2000 : 4000);
     }
   }
 }
@@ -143,24 +177,32 @@ function render() {
     return;
   }
   const remaining = status.sessionExpiresAt ? Math.max(0, Math.round((status.sessionExpiresAt - status.now) / 60000)) : null;
-  const tail = remaining !== null ? ` · 剩余约 ${remaining} 分钟` : "";
+  const tail = remaining !== null ? ` · 剩约 ${remaining} 分钟` : "";
   if (status.role === "controller") {
     rfb.viewOnly = false;
-    setStatus(`你正在控制 V 的桌面${tail}`, "controller");
+    setStatus(`你在操作${tail}`, "controller");
     showButtons({ release: true });
-    rfb.focus();
+    if (!touch) {
+      rfb.focus();
+    }
   } else {
     rfb.viewOnly = true;
+    if (lastRole === "controller" && !releasingLocally) {
+      notice("控制权已回到 V 手里。要再操作就点「接管电脑」。");
+      setTimeout(() => notice(""), 6000);
+    }
     if (status.controlledByOther) {
-      setStatus(`另一个窗口正在控制${tail}`);
+      setStatus(`另一个窗口正在操作${tail}`);
     } else {
-      setStatus(status.canControl ? `观看中 · 点「接管控制」后可以操作${tail}` : `观看中${tail}`);
+      setStatus(status.canControl ? `V 在用${tail}` : `观看中${tail}`);
     }
     showButtons({ take: status.canControl });
   }
+  lastRole = status.role;
 }
 
 async function control(take) {
+  releasingLocally = !take;
   const res = await fetch(api("control"), {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -168,25 +210,69 @@ async function control(take) {
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    notice(body.error === "watch_only" ? "这个链接只能观看" : `操作失败：${body.error ?? res.status}`);
+    notice(body.error === "watch_only" ? "这个链接只能观看" : body.error === "not_connected" ? "还没连上桌面，稍等再点" : `操作失败：${body.error ?? res.status}`);
+    releasingLocally = false;
     return;
   }
   if (take) {
-    notice("现在你在操作 V 的浏览器。登录完成后点「交还给 V」，再回到聊天里告诉 V 一声。");
-    setTimeout(() => notice(""), 6000);
+    notice(touch ? "现在你在操作 V 的电脑：点一下就是点击，需要打字点「键盘」。做完回飞书点「交还给 V」。" : "现在你在操作 V 的电脑。做完点「交还给 V」，或回飞书点卡片上的「交还给 V」。");
+    setTimeout(() => notice(""), 7000);
+  } else {
+    $("kbd").blur();
+    notice("已交还。回到飞书点卡片上的「交还给 V」，V 就会接着做。");
   }
   await poll();
+  releasingLocally = false;
 }
+
+// ---- phone keyboard: a hidden input whose text is forwarded as key presses ----
+const SPECIAL_KEYS = { Backspace: 0xff08, Enter: 0xff0d, Tab: 0xff09, Escape: 0xff1b, ArrowLeft: 0xff51, ArrowUp: 0xff52, ArrowRight: 0xff53, ArrowDown: 0xff54 };
+function typeText(text) {
+  if (!rfb || rfb.viewOnly || !text) {
+    return;
+  }
+  for (const ch of text) {
+    const keysym = ch === "\n" ? 0xff0d : keysyms.lookup(ch.codePointAt(0));
+    if (keysym) {
+      rfb.sendKey(keysym);
+    }
+  }
+}
+const kbd = $("kbd");
+kbd.addEventListener("keydown", (e) => {
+  const keysym = SPECIAL_KEYS[e.key];
+  if (keysym && rfb && !rfb.viewOnly) {
+    e.preventDefault();
+    rfb.sendKey(keysym);
+  }
+});
+kbd.addEventListener("input", (e) => {
+  if (e.isComposing) {
+    return; // wait for the IME to finish (Chinese input)
+  }
+  typeText(kbd.value);
+  kbd.value = "";
+});
+kbd.addEventListener("compositionend", () => {
+  typeText(kbd.value);
+  kbd.value = "";
+});
 
 // A new link differs only in the fragment; the browser would not reload the page by itself.
 window.addEventListener("hashchange", () => location.reload());
-$("take").addEventListener("click", () => control(true));
-$("release").addEventListener("click", () => control(false));
+$("toggle").addEventListener("click", () => control($("toggle").dataset.take === "1"));
+$("keyboard").addEventListener("click", () => {
+  kbd.focus();
+});
+$("zoom").addEventListener("click", () => {
+  zoomed = !zoomed;
+  applyZoom();
+});
 $("reconnect").addEventListener("click", () => connect());
 
 viewer = await claim();
 if (viewer) {
   document.title = viewer.title ?? document.title;
-  $("title").textContent = viewer.title ?? "V 的桌面";
+  $("title").textContent = viewer.title ?? "V 的电脑";
   connect();
 }

@@ -5,6 +5,8 @@
   databases, browser profiles, generated media, or server snapshots.
 - Develop changes on a dedicated branch and worktree.
 - First read `lab/AGENT-QUICKSTART.md` for the copyable task workflow.
+- Night Shift (夜班) code lives in `vegekyd-sys/v-nightshift` since 2026-10-02. Change
+  and ship it by that repository's `docs/change-flow.md`, not from here.
 - For VLab work, follow `lab/README.md`: one lightweight source worktree per task,
   complete development and pre-merge tests there, then report the branch, exact
   commit and results to Tianyi. Only Tianyi decides whether to merge into `dev`.

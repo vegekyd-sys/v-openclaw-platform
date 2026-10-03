@@ -1,0 +1,20 @@
+[Unit]
+Description=Keep V's memory_search index current in real time (outside the Gateway)
+Documentation=file:/opt/v-sentinel/v-memory-indexer.mjs
+# Deliberately not PartOf/Requires the Gateway: the indexer's startup holds the
+# agent DB write lock for several seconds (schema check), so it should start once,
+# in a maintenance window, and keep running across Gateway restarts.
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/python3 /opt/v-sentinel/v-memory-indexer-run.py makaron
+Restart=on-failure
+RestartSec=60
+Nice=5
+MemoryHigh=1G
+# Startup runs the agent DB integrity pass (~90 s on V's 12 GB makaron DB).
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

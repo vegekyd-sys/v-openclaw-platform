@@ -2,6 +2,7 @@
   "support": [
     "lab/candidate/feishu-ask-user.mjs",
     "lab/release-files/feishu-ask-user/card.mjs",
+    "lab/release-files/feishu-ask-user/chat.mjs",
     "lab/release-files/feishu-ask-user/runtime.mjs",
     "lab/release-files/feishu-ask-user/patch.mjs",
     "lab/release-files/feishu-ask-user/stream.mjs"
