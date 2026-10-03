@@ -156,3 +156,15 @@ voice 子任务需继承完整阶段事实要求，公开实际值后继续执�
 27 个测试文件的 **454 项本地回归通过**，18 个生成 overlay 语法及差异检查通过。回归使用实际补丁的原 exec promise、yield 与 abort 路径，以及真实 OS 子进程，覆盖终态后续做、实际进程终止、超时、两种工具表面、内部 prepared execution、普通任务、跨 agent 子任务及失效身份拒绝；本地结果不等于真实 H5 验收。
 
 新 Candidate 准备时，共享已由其他任务更新为 `feishu-dm-approvals-v1`。18 个目标的实际 before 值、外部插件源码与本轮补丁前置匹配；只更新候选的基线元数据，生成的可执行源码字节未变。本任务不申请共享 lease，也不覆盖其他任务的更新。新实际语音复验尚未开始，原三份 FAIL 保持不变。
+
+## 共享热更新后的 Candidate 基线适配
+
+新一轮在创建 Candidate 前发现其他任务正在热更新 Worker，旧冻结未派发，也未创建付费通话。随后共享登记稳定为 `hotreload-feishu-approvals-v1`，全量 61,338 项运行时指纹与登记值一致，pending 为空。只读保全新的 index 与 worker-pool 实际字节，在新 capture 目录适配两个前置 hash，保留此前基线及冻结文件。其余 16 个目标与外部源码未变化。
+
+新 Worker 的配置派生、监视与 generation 切换按传入的私有路径工作；completion/public stream 和原 ownerRequestId 路由保留。源码核对不能替代启动后实际 Worker 配置、模型及 provider 参数读回。生成的 18 个 overlay 继续使用原有限命令生命周期修复，兼容测试同时保留旧与新 Worker capture。
+
+取消证据单独分层：当前内部 tool promise 的 settled 或取消 ACK 仅表明工具封装已返回，真实 abort wrapper 可能先返回而底层命令仍在收尾。本地 OS fixture 证明其回归场景；下一轮需在本任务私有 cgroup 内读取精确 PID/starttime 和父子链，证明原命令在自然 60 秒终态前灭绝，才能标真实进程退出。service marker 仅选择本进程本地 relay，不按共享地址调用 supervisor。
+
+真实语音三路径复验尚未开始，原 FAIL 保留；没有共享写入、共享 lease、dev 合并或生产部署。
+
+本次适配后统一本地验证：27 个文件 **458/458 通过**，18 个 overlay 语法通过。新 index 和 pool 对应精确的已登记运行时字节；其余 16 个 overlay 的 before/after 均未变化。新旧 Worker fixture 同时保留，独立打包依赖核对继续检查私有复制材料，随后才冻结下一轮真实测试。

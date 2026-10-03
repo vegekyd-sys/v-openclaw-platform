@@ -14,6 +14,8 @@ const base = "../release/captured/v2026.9.1-db91.6-db91-shrink-reuse-20261002.wo
 const fixture = name => readFileSync(new URL(`./fixtures/gpt-live-completion-context/${name}`, import.meta.url), "utf8");
 const before = readFileSync(new URL(base + "index.mjs", import.meta.url), "utf8");
 const patched = patchGptLiveCompletionContextWorker(before);
+const hotReloadBefore = readFileSync(new URL("../release/captured/v2026.9.1-db91.6-hotreload-feishu-approvals-20261003.worker/dist/index.mjs", import.meta.url), "utf8");
+const hotReloadPatched = patchGptLiveCompletionContextWorker(hotReloadBefore);
 const parent = "agent:makaron:explicit:voice-fixture";
 const child = "agent:makaron:subagent:child-fixture";
 const spawn = { status: "accepted", runId: "child-run", childSessionKey: child, cleanup: "keep" };
@@ -121,19 +123,21 @@ function nativeHarness() {
 }
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-const workerBoundary = new AsyncFunction(
+const createWorkerBoundary = source => new AsyncFunction(
   "params", "sessionKey", "acceptedSessionSpawns", "api", "agentHarnessTaskScopeRuntimePromise",
   "gatewayCallerRuntimePromise", "gatewayScopeRuntimePromise", "agentHarnessTaskRuntimePromise",
   "nativeSubagentCompletionRelays", "nativeHarnessStats", "startSubagentCompletionRelays",
   "withGatewayCompletionContext", "readNativeSession", "lastAssistantText", "messageChannel", "result",
-  range(patched, "        // gpt-live-host-owned-completion-context-v2", "        workerMessagesSnapshot = result.attempt.messagesSnapshot;")
+  range(source, "        // gpt-live-host-owned-completion-context-v2", "        workerMessagesSnapshot = result.attempt.messagesSnapshot;")
 );
+const workerBoundary = createWorkerBoundary(patched);
+const hotReloadWorkerBoundary = createWorkerBoundary(hotReloadPatched);
 
 async function runWorker(harness, { scope = harness.scope, sessionKey = parent, spawns = [spawn], onRead,
-  attempt = { yieldDetected: true }, runtime } = {}) {
+  attempt = { yieldDetected: true }, runtime, boundary = workerBoundary } = {}) {
   const stats = {}, warnings = [];
   let promises;
-  await workerBoundary(
+  await boundary(
     { agentHarnessTaskRuntimeScope: scope, agentId: "makaron", runId: "parent-run" }, sessionKey, spawns,
     { runtime: { subagent: harness.subagent }, logger: { warn: text => warnings.push(text) } },
     Promise.resolve({ t: harness.api.assertAgentHarnessTaskRuntimeScope }),
@@ -349,10 +353,34 @@ test("actual SDK binder and voice registry receive Worker parent/child identitie
 test("patch and generated artifacts preserve all other Worker source", () => {
   assert.equal(patchGptLiveCompletionContextWorker(patched), patched);
   assert.throws(() => patchGptLiveCompletionContextWorker(before.replace("        startSubagentCompletionRelays({", "        drifted({")), /anchor drifted/);
-  assert.equal(readFileSync(new URL("./release-files/gpt-live-completion-context/index.mjs", import.meta.url), "utf8"), patched);
+  assert.equal(readFileSync(new URL("./release-files/gpt-live-completion-context/index.mjs", import.meta.url), "utf8"), hotReloadPatched);
   assert.equal(readFileSync(new URL("./release-files/gpt-live-completion-context/gateway-completion-context.mjs", import.meta.url), "utf8"), readFileSync(new URL("./gpt-live-completion-context.mjs", import.meta.url), "utf8"));
   const baseline = JSON.parse(readFileSync(new URL("./gpt-live-completion-context-baseline.json", import.meta.url)));
   for (const [name, hash] of Object.entries(baseline.fixtureSha256)) {
     assert.equal(createHash("sha256").update(fixture(name)).digest("hex"), hash);
   }
+});
+
+test("actual hotreload Worker completion keeps the admitted generation and owner route", async () => {
+  const h = nativeHarness();
+  const result = await h.enter(() => runWorker(h, { boundary: hotReloadWorkerBoundary }));
+  assert.equal(result.stats.delivered, 1, result.warnings.join("\n"));
+  assert.deepEqual(h.trace.map(row => row.method), ["agent.wait", "sessions.get", "agent"]);
+  assert.equal(h.trace.every(row => row.instance === h.instance), true);
+  for (const [start, end] of [
+    ["    async function dispatchNativeHarnessAttempt(params)", "        // gpt-live-host-owned-completion-context-v2"],
+    ["                onGatewayToolRequest: gatewayMessageRelay?.execute,", "        // gpt-live-host-owned-completion-context-v2"],
+    ["        workerMessagesSnapshot = result.attempt.messagesSnapshot;", "    // worker-generations.1:"],
+  ]) {
+    const originalEnd = end.includes("host-owned") ? "        startSubagentCompletionRelays({" : end;
+    assert.equal(range(hotReloadPatched, start, end), range(hotReloadBefore, start, originalEnd));
+  }
+});
+
+test("new captured hotreload Worker matches its registered baseline and patch is idempotent", () => {
+  assert.equal(createHash("sha256").update(hotReloadBefore).digest("hex"), "b5f315bb20cb5eb5a3e30bec32e9bfe365b948bd7ce271298fbd53516bf4c315");
+  assert.equal(patchGptLiveCompletionContextWorker(hotReloadPatched), hotReloadPatched);
+  const baseline = JSON.parse(readFileSync(new URL("./gpt-live-completion-context-baseline.json", import.meta.url)));
+  assert.equal(baseline.baseRelease, "hotreload-feishu-approvals-v1");
+  assert.equal(baseline.files[0].before, createHash("sha256").update(hotReloadBefore).digest("hex"));
 });

@@ -32,6 +32,8 @@ function ocFirsttextWorkerMark(stage, runId, fields = {}) {
 
 import { buildVolcengineRtcAgentProvider } from "./volcengine-rtc-agent-provider.mjs";
 import { WorkerPool } from "./worker-pool.mjs";
+import { acquireWorkerRuntime, awaitWorkerRuntime, createWorkerRuntimeLifecycle, rollWorkerRuntime } from "./worker-runtime-lifecycle.mjs";
+import { createWorkerConfigWatch } from "./worker-config-watch.mjs";
 import { performance } from "node:perf_hooks";
 import { buildNativeHarnessData } from './native-harness-data.mjs';
 import { gatewayOwnedEventArgs } from './gateway-owned-terminal.mjs';
@@ -85,7 +87,7 @@ import {
   resolveNativeRequestTimeoutMs,
 } from "./native-request-timeout.mjs";
 import { NativeLaneProgressBridge } from "./native-lane-progress.mjs";
-import { syncWorkerRuntimeConfigFile } from "./worker-config-sync.mjs";
+import { deriveWorkerConfigFile } from "./worker-config-derive.mjs";
 import { createGatewayNativeCompactionPassthrough } from "./gateway-native-compaction.mjs";
 import { resolveHarnessMessageChannel } from "./harness-channel.mjs";
 
@@ -168,9 +170,12 @@ function operationSnapshot(operation) {
 }
 
 function acquireSharedPool(options) {
-  if (!globalThis[SHARED_POOL_KEY]) {
-    globalThis[SHARED_POOL_KEY] = {
-      pool: new WorkerPool(options),
+  const shared = acquireWorkerRuntime(SHARED_POOL_KEY, () => {
+    const runtime = {
+      pool: new WorkerPool({
+        ...options,
+        onProgress: progress => options.onProgress?.(progress, runtime.nativeLaneProgressBridge),
+      }),
       nativeHarnessStats: {
         admitted: 0,
         completed: 0,
@@ -216,9 +221,10 @@ function acquireSharedPool(options) {
         unclassifiedOptions: new Set(),
       },
     };
-  }
-  if (!globalThis[SHARED_POOL_KEY].harnessEventParity) {
-    globalThis[SHARED_POOL_KEY].harnessEventParity = {
+    return runtime;
+  });
+  if (!shared.harnessEventParity) {
+    shared.harnessEventParity = {
       observedCallbacks: new Set(),
       bridgedCallbacks: new Set(),
       gatewayOwnedCallbacks: new Set(),
@@ -233,12 +239,12 @@ function acquireSharedPool(options) {
       unclassifiedOptions: new Set(),
     };
   }
-  if (!globalThis[SHARED_POOL_KEY].nativeLaneProgressBridge) {
-    globalThis[SHARED_POOL_KEY].nativeLaneProgressBridge =
+  if (!shared.nativeLaneProgressBridge) {
+    shared.nativeLaneProgressBridge =
       new NativeLaneProgressBridge();
   }
-  if (!globalThis[SHARED_POOL_KEY].harnessEventParity.eventsByCallback) {
-    globalThis[SHARED_POOL_KEY].harnessEventParity.eventsByCallback = new Map();
+  if (!shared.harnessEventParity.eventsByCallback) {
+    shared.harnessEventParity.eventsByCallback = new Map();
   }
   for (const name of [
     "observedOptions",
@@ -247,11 +253,11 @@ function acquireSharedPool(options) {
     "processLocalOptions",
     "unclassifiedOptions",
   ]) {
-    if (!globalThis[SHARED_POOL_KEY].harnessEventParity[name]) {
-      globalThis[SHARED_POOL_KEY].harnessEventParity[name] = new Set();
+    if (!shared.harnessEventParity[name]) {
+      shared.harnessEventParity[name] = new Set();
     }
   }
-  return globalThis[SHARED_POOL_KEY];
+  return shared;
 }
 
 const plugin = {
@@ -332,17 +338,18 @@ const plugin = {
     if (!gatewayConfigPath) {
       throw new Error("gatewayConfigPath is required");
     }
-    const workerRuntimeConfigSync = syncWorkerRuntimeConfigFile({
-      gatewayConfigPath,
-      workerConfigPath,
-    });
-    if (workerRuntimeConfigSync.changed) {
-      api.logger.info(
-        `Synchronized Worker runtime policy from Gateway config: ${workerRuntimeConfigSync.paths.join(
-          ", ",
-        )}`,
-      );
-    }
+    // Workers read workerConfigPath, derived from the Gateway config plus a
+    // small versioned overlay (worker-config-derive.mjs). Only the Gateway
+    // writes it; a failure keeps the previous file and is logged, it never
+    // fails plugin registration. New Worker spawns read the result.
+    const workerRuntimeConfigSync =
+      process.env.VLAB_WORKER_CHILD === "1"
+        ? { ok: true, changed: false, skipped: "worker-child" }
+        : deriveWorkerConfigFile({
+            gatewayConfigPath,
+            workerConfigPath,
+            logger: api.logger,
+          });
     const fastCompactionModel =
       typeof api.pluginConfig?.fastCompactionModel === "string" &&
       api.pluginConfig.fastCompactionModel.trim()
@@ -493,7 +500,7 @@ const plugin = {
         workerConfigPath,
       },
     );
-    const sharedPool = acquireSharedPool({
+    const poolOptions = {
       minWorkers,
       maxWorkers,
       sessionsPerWorker,
@@ -510,9 +517,7 @@ const plugin = {
       workerMaxOldSpaceMb: Math.trunc(workerMaxOldSpaceMb),
       warmSpareWorkers,
       workerEnv,
-      async onProgress(progress) {
-        const nativeLaneProgressBridge =
-          globalThis[SHARED_POOL_KEY]?.nativeLaneProgressBridge;
+      async onProgress(progress, nativeLaneProgressBridge) {
         if (nativeLaneProgressBridge) {
           try {
             await nativeLaneProgressBridge.relay(progress);
@@ -539,19 +544,68 @@ const plugin = {
           throw error;
         }
       },
-    });
-    const pool = sharedPool.pool;
-    const nativeRequestsByRunId = sharedPool.nativeRequestsByRunId;
-    const nativeLaneProgressBridge = sharedPool.nativeLaneProgressBridge;
-    const nativeSubagentCompletionRelays =
+    };
+    let sharedPool = acquireSharedPool(poolOptions);
+    let pool = sharedPool.pool;
+    let nativeRequestsByRunId = sharedPool.nativeRequestsByRunId;
+    let nativeLaneProgressBridge = sharedPool.nativeLaneProgressBridge;
+    let nativeSubagentCompletionRelays =
       sharedPool.nativeSubagentCompletionRelays;
-    const fastCompactionWorkerStats = sharedPool.fastCompactionWorkerStats;
-    const harnessEventParity = sharedPool.harnessEventParity;
+    let fastCompactionWorkerStats = sharedPool.fastCompactionWorkerStats;
+    let harnessEventParity = sharedPool.harnessEventParity;
     const operationsById = new Map();
     const operationsByIdempotencyKey = new Map();
     let nextOperationId = 1;
     let nativeSessionWriteTail = Promise.resolve();
-    const nativeHarnessStats = sharedPool.nativeHarnessStats;
+    let nativeHarnessStats = sharedPool.nativeHarnessStats;
+
+    const bindPoolRuntime = (runtime) => {
+      sharedPool = runtime;
+      ({ pool, nativeRequestsByRunId, nativeLaneProgressBridge,
+        nativeSubagentCompletionRelays, fastCompactionWorkerStats,
+        harnessEventParity, nativeHarnessStats } = runtime);
+    };
+    const poolLifecycle = createWorkerRuntimeLifecycle({
+      acquire: () => acquireSharedPool(poolOptions),
+      bind: bindPoolRuntime,
+    });
+    // One roll at a time; callers that arrive during a roll share its result.
+    let rollInFlight = null;
+    const rollGeneration = (reason) => {
+      rollInFlight ??= (async () => {
+        const previousGeneration = sharedPool.generation;
+        const runtime = await rollWorkerRuntime(
+          SHARED_POOL_KEY,
+          () => acquireSharedPool(poolOptions),
+          bindPoolRuntime,
+        );
+        api.logger.info(
+          `vLab Agent Worker Isolation rolled generation ${String(previousGeneration)} -> ${String(runtime.generation)} reason=${reason}`,
+        );
+        return { previousGeneration, runtime };
+      })().finally(() => {
+        rollInFlight = null;
+      });
+      return rollInFlight;
+    };
+    const deriveCurrentWorkerConfig = () =>
+      deriveWorkerConfigFile({ gatewayConfigPath, workerConfigPath, logger: api.logger });
+    const workerConfigWatch = createWorkerConfigWatch({
+      gatewayConfigPath,
+      derive: deriveCurrentWorkerConfig,
+      logger: api.logger,
+      async onWorkerConfigChanged(result) {
+        try {
+          await rollGeneration(
+            `worker-config ${result.changedPaths.slice(0, 5).join(",")}`,
+          );
+        } catch (error) {
+          api.logger.warn(
+            `Worker config changed but the generation did not roll: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      },
+    });
 
     function configuredAgentModelRuntimes() {
       return Object.values(api.config.agents?.defaults?.models ?? {})
@@ -563,6 +617,11 @@ const plugin = {
       ocFirsttextWorkerMark("gateway-harness-enter", params.runId);
       // Validate before creating a relay or admitting any side effects.
       const nativeHarnessData = buildNativeHarnessData(params);
+      // Resolve a cached harness registration only at request admission, then
+      // keep this generation's pool and ownership maps for the whole attempt.
+      const { pool, nativeRequestsByRunId, nativeLaneProgressBridge,
+        nativeSubagentCompletionRelays, fastCompactionWorkerStats,
+        harnessEventParity, nativeHarnessStats } = await awaitWorkerRuntime(SHARED_POOL_KEY, sharedPool);
       const harnessAttemptStartedAt = Date.now();
       const messageChannel = resolveHarnessMessageChannel(params);
       const sessionKey =
@@ -1264,6 +1323,7 @@ const plugin = {
     }
 
     async function startOperation(params) {
+      const { pool } = await awaitWorkerRuntime(SHARED_POOL_KEY, sharedPool);
       const idempotencyKey = readString(params, "idempotencyKey", {
         required: true,
       });
@@ -1377,14 +1437,16 @@ const plugin = {
 
     api.registerService({
       id: "vlab-agent-worker-isolation",
-      async start() {
-        await pool.start();
+      async start(context) {
+        await poolLifecycle.start(context);
+        workerConfigWatch.start();
         api.logger.info(
           `vLab Agent Worker Isolation started with ${minWorkers}-${maxWorkers} elastic workers and ${sessionsPerWorker} sessions per worker`,
         );
       },
-      async stop() {
-        await pool.close();
+      async stop(context) {
+        workerConfigWatch.stop();
+        await poolLifecycle.stop(context);
       },
     });
 
@@ -1409,11 +1471,43 @@ const plugin = {
       compact: compactNativeOpenClawSession,
     });
 
+    // worker-generations.1: replace the Worker generation without a Gateway
+    // restart. New Workers re-read worker code, worker-openclaw.json and the
+    // plugins it lists; runs already in the old Workers finish there.
+    api.registerGatewayMethod(
+      "vlab.workers.roll",
+      async ({ params, respond }) => {
+        try {
+          const reason = readString(params, "reason") ?? "operator";
+          // New Workers read the Worker config; bring it up to date first.
+          const derived = deriveCurrentWorkerConfig();
+          const { previousGeneration, runtime } = await rollGeneration(reason);
+          respond(true, {
+            rolled: true,
+            reason,
+            workerConfig: {
+              ok: derived.ok,
+              changed: derived.changed,
+              changedPaths: derived.changedPaths,
+              error: derived.error,
+            },
+            previousGeneration,
+            generation: runtime.generation,
+            predecessor: runtime.pool.predecessor?.drainStatus() ?? null,
+          });
+        } catch (error) {
+          respondError(respond, error);
+        }
+      },
+      { scope: "operator.write" },
+    );
+
     api.registerGatewayMethod(
       "vlab.workers.status",
       async ({ respond }) => {
         respond(true, {
           ...pool.status(),
+          generation: sharedPool.generation,
           openClawConcurrency: {
             maxConcurrent: api.config.agents?.defaults?.maxConcurrent,
             subagentsMaxConcurrent:
@@ -1426,7 +1520,7 @@ const plugin = {
             nativeAgentHarnessDispatchAttached: true,
             nestedGatewayHarnessRouting: true,
             workerUsesIngressAgentCommand: true,
-            workerIsolationVersion: "0.2.11",
+            workerIsolationVersion: "0.2.12-generations.1",
             nativeDataTransport: {
               contract: "native-harness-data-v1",
               ordinaryDataPassthrough: true,

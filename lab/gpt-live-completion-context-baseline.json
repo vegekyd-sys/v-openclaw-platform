@@ -1,10 +1,10 @@
 {
-  "baseRelease": "db91-shrink-reuse-20261002",
+  "baseRelease": "hotreload-feishu-approvals-v1",
   "files": [
     {
       "target": "production-worker/index.mjs",
-      "capture": "release/captured/v2026.9.1-db91.6-db91-shrink-reuse-20261002.worker/dist/index.mjs",
-      "before": "c047f3df1f730b4eacb2db0ec64cd0e0281bc4f8388c8032768192a204222259"
+      "capture": "release/captured/v2026.9.1-db91.6-hotreload-feishu-approvals-20261003.worker/dist/index.mjs",
+      "before": "b5f315bb20cb5eb5a3e30bec32e9bfe365b948bd7ce271298fbd53516bf4c315"
     },
     {
       "target": "production-worker/gateway-completion-context.mjs",

@@ -21,9 +21,9 @@ const voiceExecBaseline = [
   { name: "bash-tools-DiAfkLAC.js", directory: "release/captured/v2026.9.1-db91.6-memory-search-guards-20261002/dist", target: "openclaw/dist/bash-tools-DiAfkLAC.js", before: "8bda4a91e8e742308d2aecbd8914996b4ddd0f1af0cfc1018064f4a7a3cd8d28", transform: patchGptLiveVoiceExecBashTools },
   { name: "native-attempt-bridge.mjs", directory: "release/captured/v2026.9.1-db91.6-memory-search-weighted-20261002.worker/dist", target: "production-worker/native-attempt-bridge.mjs", before: "6482f3d27a0f7e019a1f65faaa6e7bbdb28a999250ff5d1d6ab871d9ba65a813", transform: patchGptLiveVoiceExecNativeAttemptBridge },
   { name: "gateway-message-tool.mjs", directory: "release/captured/v2026.9.1-db91.6-memory-search-weighted-20261002.worker/dist", target: "production-worker/gateway-message-tool.mjs", before: "2ae673d4eae9dfd0f350e07d1106a78c95c9259d698e2a9b42fdbaeab2078472", transform: patchGptLiveVoiceExecGatewayRelay },
-  { name: "worker-pool.mjs", directory: "release/captured/v2026.9.1-db91.6-memory-search-weighted-20261002.worker/dist", target: "production-worker/worker-pool.mjs", before: "a9f718d0c9ca1f209aba9a9a55d86181b84f2ab1afa8b65cc86bde96bc3b5ea3", transform: patchGptLiveVoiceExecWorkerPool },
+  { name: "worker-pool.mjs", directory: "release/captured/v2026.9.1-db91.6-hotreload-feishu-approvals-20261003.worker/dist", target: "production-worker/worker-pool.mjs", before: "58558773884404e99b50e8a2916dc62f6c18a7b2d9360301340dcd61511c50c6", transform: patchGptLiveVoiceExecWorkerPool },
 ];
-export function build({ baseRelease = "memory-search-guards-20261002" } = {}) {
+export function build({ baseRelease = "hotreload-feishu-approvals-v1" } = {}) {
   buildNative();
   const native = JSON.parse(readFileSync(resolve(root, "lab/gpt-live-native-progress-plan.json")));
   const baseline = JSON.parse(readFileSync(resolve(root, "lab/gpt-live-consult-baseline.json")));
@@ -102,6 +102,7 @@ export function build({ baseRelease = "memory-search-guards-20261002" } = {}) {
       "lab/gpt-live-pr-provenance.mjs","lab/gpt-live-pr-config.mjs","lab/gpt-live-pr-trace.mjs","lab/shared/server.mjs","lab/shared/files.mjs","lab/shared/lifecycle.mjs",
       "lab/gpt-live-consult-continuation.mjs","lab/patch-gpt-live-consult-continuation.mjs","lab/gpt-live-consult-continuation-baseline.json",
       "lab/gpt-live-voice-exec-lifetime.mjs", "lab/patch-gpt-live-voice-exec-lifetime.mjs", ...voiceExecBaseline.map(item => item.directory + "/" + item.name),
+      "release/captured/v2026.9.1-db91.6-memory-search-weighted-20261002.worker/dist/worker-pool.mjs",
       "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-spawn-gateway-proxy.mjs", spawnBaseline,
       "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-yield-external-task.mjs",
       "release/captured/v2026.9.1-db91.6-background-work-20261002/dist/openclaw-tools-BODVdJQD.js",

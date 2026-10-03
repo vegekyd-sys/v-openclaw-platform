@@ -38,6 +38,8 @@ export function build() {
       "lab/gpt-live-consult-continuation.mjs", "lab/patch-gpt-live-consult-continuation.mjs",
       "lab/fixtures/gpt-live-continuation/plugin-sdk/agent-harness-task-runtime.js",
       "release/captured/v2026.9.1-db91.6-db91-shrink-reuse-20261002.worker/dist/subagent-completion-relay.mjs",
+      // Retain the older runtime fixture exercised by compatibility tests.
+      "release/captured/v2026.9.1-db91.6-db91-shrink-reuse-20261002.worker/dist/index.mjs",
       ...baseline.files.map(item => item.capture),
       ...Object.keys(baseline.fixtureSha256).map(name => `lab/fixtures/gpt-live-completion-context/${name}`),
     ], timeoutSeconds: 120,

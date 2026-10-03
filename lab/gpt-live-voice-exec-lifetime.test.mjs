@@ -10,6 +10,11 @@ import * as patch from "./patch-gpt-live-voice-exec-lifetime.mjs";
 
 const openclaw = new URL("../release/captured/v2026.9.1-db91.6-memory-search-guards-20261002/dist/", import.meta.url);
 const worker = new URL("../release/captured/v2026.9.1-db91.6-memory-search-weighted-20261002.worker/dist/", import.meta.url);
+const hotreloadWorker = new URL("../release/captured/v2026.9.1-db91.6-hotreload-feishu-approvals-20261003.worker/dist/", import.meta.url);
+const hotreloadPoolSource = readFileSync(new URL("worker-pool.mjs", hotreloadWorker), "utf8");
+assert.equal(createHash("sha256").update(hotreloadPoolSource).digest("hex"),
+  "58558773884404e99b50e8a2916dc62f6c18a7b2d9360301340dcd61511c50c6", "hotreload worker-pool captured identity");
+const hotreloadPoolPatched = patch.patchGptLiveVoiceExecWorkerPool(hotreloadPoolSource);
 const targets = [
   [openclaw, "host-capability-Dq3cEEWF.js", "4535cb192dff71e0d3602f19ebbba6191f98a2f21013c2fa33e0b87386eaa5ce", "patchGptLiveVoiceExecHostCapability"],
   [openclaw, "bash-tools-DiAfkLAC.js", "8bda4a91e8e742308d2aecbd8914996b4ddd0f1af0cfc1018064f4a7a3cd8d28", "patchGptLiveVoiceExecBashTools"],
@@ -300,6 +305,56 @@ test("actual Worker pool routes exec to exact admitted relay; cancelled owner ca
   assert.equal((await call("native-voice-exec-cancel")).ok, true);
   assert.equal((await call("native-voice-exec-cancel", "other-owner")).ok, false);
   assert.equal(globalCalls, 0); assert.equal(routed.length, 3);
+});
+
+test("actual hotreload Worker pool has unique strict anchors and an idempotent transform", () => {
+  assert.equal(patch.patchGptLiveVoiceExecWorkerPool(hotreloadPoolPatched), hotreloadPoolPatched);
+  const anchors = [
+    '        if (["native-message", "native-gateway-identity"].includes(message.request?.kind)) {',
+    '          if (!owner || owner.cancelRequested || owner.timeoutError || !owner.onGatewayToolRequest) {',
+  ];
+  for (const anchor of anchors) {
+    assert.equal(hotreloadPoolSource.split(anchor).length - 1, 1);
+    assert.throws(() => patch.patchGptLiveVoiceExecWorkerPool(hotreloadPoolSource.replace(anchor, "// changed anchor")), /anchor drifted/);
+    assert.throws(() => patch.patchGptLiveVoiceExecWorkerPool(`${hotreloadPoolSource}\n${anchor}`), /anchor drifted/);
+  }
+});
+
+test("actual hotreload Worker pool keeps six owner routes scoped to the original relay", async () => {
+  const start = hotreloadPoolPatched.indexOf('    if (message?.type === "gateway-tool-request"');
+  const end = hotreloadPoolPatched.indexOf('    if (message?.type === "stream-event"', start);
+  assert(start >= 0 && end > start, "actual hotreload pool handler boundary");
+  const handle = new Function("message", "worker", "sendLateWorkerReply", "toError", hotreloadPoolPatched.slice(start, end));
+  const replies = [], routed = []; let globalCalls = 0, requestSequence = 0;
+  const owner = { onGatewayToolRequest: request => { routed.push(request); return { result: request.kind }; } };
+  const workerState = { active: new Map([["original-owner", owner]]), child: {} };
+  const call = async (kind, ownerRequestId = "original-owner") => {
+    const requestId = `rpc-${++requestSequence}`, before = replies.length;
+    const request = { kind, ownerRequestId, toolCallId: "original-call" };
+    handle.call({ onGatewayToolRequest: () => { globalCalls++; } }, { type: "gateway-tool-request", requestId, request }, workerState,
+      (child, reply) => { assert.equal(child, workerState.child); replies.push(reply); }, error => error);
+    await tick();
+    assert.equal(replies.length, before + 1, "exactly one original RPC response");
+    assert.equal(replies.at(-1).requestId, requestId);
+    if (replies.at(-1).ok) assert.equal(routed.at(-1), request, "same original request reaches only its relay");
+    return replies.at(-1);
+  };
+  assert.equal((await call("native-voice-exec")).ok, true, "active exec uses its exact owner relay");
+  owner.cancelRequested = true;
+  assert.equal((await call("native-voice-exec")).ok, false, "cancelled owner cannot start exec");
+  assert.equal(routed.length, 1);
+  assert.equal((await call("native-gateway-identity")).ok, false, "cancelled owner cannot query identity");
+  assert.equal(routed.length, 1);
+  assert.equal((await call("native-voice-exec-cancel")).ok, true, "cancelled owner can only revoke its existing call");
+  owner.cancelRequested = false;
+  owner.timeoutError = new Error("original owner timeout");
+  assert.equal((await call("native-voice-exec-cancel")).ok, true, "timed-out owner can revoke");
+  assert.equal((await call("native-voice-exec")).ok, false, "timed-out owner cannot start exec");
+  assert.equal(routed.length, 3);
+  assert.equal((await call("native-voice-exec-cancel", "other-owner")).ok, false, "another owner cannot fall back to the global handler");
+  assert.equal(routed.length, 3);
+  assert.equal(globalCalls, 0);
+  assert.deepEqual(routed.map(request => request.kind), ["native-voice-exec", "native-voice-exec-cancel", "native-voice-exec-cancel"]);
 });
 
 test("a Gateway policy denial or IPC failure does not execute a local background fallback", async t => {
