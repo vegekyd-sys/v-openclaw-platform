@@ -414,7 +414,8 @@ export default definePluginEntry({
         }
         handedBack.delete(status.id);
         await setCardState(status.id, "active", ctx.config);
-        return {};
+        // Older cards still post this; an empty result shows up as "No reply was generated".
+        return { text: "如果电脑没有自动打开，点卡片上的截图进入。" };
       },
     });
 

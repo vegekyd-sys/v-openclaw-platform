@@ -70,7 +70,9 @@ export function nativeHandoffCard({ state = "pending", kind = "control", purpose
     elements.push(
       row(
         [
-          button(takeLabel, "primary_filled", { url, command: `/v-takeover ${handoffId}`, owner }),
+          // Link only: Feishu mobile runs just the callback of a button that has both, so the
+          // desktop never opened. The card turns 操作中 from the plugin's watcher instead.
+          button(takeLabel, "primary_filled", { url }),
           button("我完成了", "default", { command: `/v-handback ${handoffId}`, owner }),
         ],
         button("跳过", "text", { command: `/v-skip ${handoffId}`, owner }),
