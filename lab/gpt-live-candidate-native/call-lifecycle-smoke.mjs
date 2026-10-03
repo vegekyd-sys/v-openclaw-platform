@@ -171,7 +171,9 @@ async function runLifecycle(){
  await inputConverged(pcIndex,keep.row,'independent-full-USER-input-convergence');
  await basicTools(pcIndex);
  const end=play('end-call');await end.done;assert.equal(end.row.exitCode,0);
- const endUser=await waitFor(s=>resolveLifecycleUserTurn(s.events,{pcIndex,after:end.row.startedAt,intent:'end'}),'Complete explicit hang-up USER native transcript',15000);
+ const expectedEndText=fs.readFileSync(path.join(clips,'end-call.txt'),'utf8');
+ const endUser=await waitFor(s=>resolveLifecycleUserTurn(s.events,{pcIndex,after:end.row.startedAt,intent:'end',expectedText:expectedEndText}),
+   'Complete frozen goodbye USER native transcript',15000);
  const tool=await waitFor(s=>resolveEndCallToolWitness({events:s.events,tools:s.tools,pcIndex,voiceSessionId:owner.voiceSessionId,after:end.row.startedAt}),'Actual native delegation and exact host end-call call/result',20000);
  coreCheck('model-real-end-call-tool-after-complete-USER',tool.userTurnId===endUser.turnId,{endUser,tool,inputCompletedAt:end.row.completedAt,
    causalBinding:'Actual delegation user_bidi_turn_id equals the complete original USER turn; reception timestamps are retained, not treated as cross-stream execution order'});
