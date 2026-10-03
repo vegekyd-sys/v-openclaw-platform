@@ -1,0 +1,7 @@
+{
+  "command": ["/opt/vlab/node-v22.23.1-linux-x64/bin/node", "lab/worker-generations-candidate.mjs"],
+  "support": ["lab/worker-generations-candidate.mjs"],
+  "env": {"WG_MODE": "control"},
+  "user": "lab-db91-parity",
+  "timeoutSeconds": 3600
+}

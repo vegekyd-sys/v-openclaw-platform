@@ -1,0 +1,286 @@
+// Candidate acceptance for worker-generations.1 against the real 9.1 runtime.
+//
+// Boots a private Gateway from the candidate runtime (own port, own state, every
+// channel and outbound plugin disabled), then, while a real model turn is
+// streaming through a Worker:
+//   1. rewrites a plugins.* key, which on 9.1 takes the plugin-reload path that
+//      killed V's pool on 2026-09-20 and 2026-09-23;
+//   2. calls vlab.workers.roll.
+// Each time the in-flight turn must finish with a real reply, a new turn must
+// succeed on the next generation, and the old generation must drain to zero.
+// Run with no release files (V's 0.2.11) as the control: it must fail at the
+// first reload, otherwise this test proves nothing.
+import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+
+const RUNTIME = process.env.VLAB_CANDIDATE_RUNTIME;
+const DATA = process.env.VLAB_CANDIDATE_DATA;
+const CONFIG = process.env.OPENCLAW_CONFIG_PATH;
+const SHARED_STATE = process.env.VLAB_SHARED_STATE_DIR;
+const MODE = process.env.WG_MODE ?? "candidate"; // "candidate" | "control"
+assert(RUNTIME && DATA && CONFIG && SHARED_STATE, "run through vlab.mjs candidate");
+
+const SHARED_INSTANCE = path.dirname(SHARED_STATE);
+const STATE = path.dirname(CONFIG);
+const logPath = path.join(DATA, "gateway.log");
+const started = Date.now();
+const evidence = { mode: MODE, steps: [] };
+const step = (name, detail = {}) => {
+  const entry = { name, atMs: Date.now() - started, ...detail };
+  evidence.steps.push(entry);
+  console.error(`[wg] ${JSON.stringify(entry)}`);
+};
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// --- private configuration ----------------------------------------------
+// Minimal private Gateway (the worker-config-derive candidate's recipe): only
+// the Worker plugin and DeepSeek, one agent, no channels, cron or bindings, so
+// nothing can reach a real user and no unrelated plugin can block startup.
+const SECRETS = path.join(SHARED_INSTANCE, "secrets.env");
+const secret = (name) => {
+  for (const line of readFileSync(SECRETS, "utf8").split(/\r?\n/u)) {
+    const m = line.match(/^\s*(?:export\s+)?([A-Z0-9_]+)=(.*)$/u);
+    if (m?.[1] === name) return m[2].replace(/^["']|["']$/gu, "");
+  }
+  throw new Error(`${name} missing from shared secrets.env`);
+};
+const MODEL = "deepseek/deepseek-v4-flash";
+const config = JSON.parse(readFileSync(CONFIG, "utf8"));
+const port = config.gateway.port;
+assert(port && port !== 24993, "candidate config must use a private port");
+config.channels = {};
+config.cron = { ...(config.cron ?? {}), enabled: false };
+config.bindings = [];
+const keep = new Set(["vlab-agent-worker-isolation", "deepseek"]);
+config.plugins.entries = Object.fromEntries(Object.entries(config.plugins.entries ?? {}).filter(([id]) => keep.has(id)));
+if (Array.isArray(config.plugins.allow)) config.plugins.allow = config.plugins.allow.filter((id) => keep.has(id));
+for (const node of [config.agents.defaults, config.agents.entries?.makaron]) {
+  for (const [key, entry] of Object.entries(node?.models ?? {})) {
+    const id = typeof entry?.agentRuntime === "string" ? entry.agentRuntime : entry?.agentRuntime?.id;
+    if (id && id !== "vlab-worker" && id !== "openclaw") delete node.models[key];
+  }
+}
+config.agents.entries = { makaron: { ...config.agents.entries.makaron, model: { primary: MODEL, fallbacks: [] } } };
+config.gateway.reload = { ...(config.gateway.reload ?? {}), mode: "hybrid" };
+const workerEntry = config.plugins.entries["vlab-agent-worker-isolation"];
+Object.assign(workerEntry.config, {
+  minWorkers: 2, maxWorkers: 4, sessionsPerWorker: 2, warmSpareWorkers: 0, gatewayConfigPath: CONFIG,
+});
+const workerRuntime = (id) => {
+  const entry = config.agents.defaults.models?.[id];
+  return typeof entry?.agentRuntime === "string" ? entry.agentRuntime : entry?.agentRuntime?.id;
+};
+assert.equal(workerRuntime(MODEL), "vlab-worker", `${MODEL} must route to the Worker pool`);
+
+// Worker config: the Gateway config with the Gateway-only runtime id mapped to
+// the runtime that runs inside a Worker.
+const workerConfigPath = workerEntry.config.workerConfigPath;
+assert(!path.relative(STATE, workerConfigPath).startsWith(".."), "worker config escaped candidate state");
+const workerConfig = JSON.parse(JSON.stringify(config), (key, value) => {
+  if (key === "agentRuntime" && value === "vlab-worker") return "openclaw";
+  if (key === "agentRuntime" && value?.id === "vlab-worker") return { ...value, id: "openclaw" };
+  return value;
+});
+workerConfig.session = { ...(workerConfig.session ?? {}), maintenance: { ...(workerConfig.session?.maintenance ?? {}), mode: "warn" } };
+mkdirSync(path.dirname(workerConfigPath), { recursive: true });
+writeFileSync(workerConfigPath, JSON.stringify(workerConfig, null, 2), { mode: 0o600 });
+
+const writeConfig = (next) => {
+  const tmp = `${CONFIG}.wg-${process.pid}`;
+  writeFileSync(tmp, JSON.stringify(next, null, 2), { mode: 0o600 });
+  renameSync(tmp, CONFIG);
+};
+writeConfig(config);
+for (const dir of ["tmp", "cache"]) mkdirSync(path.join(DATA, dir), { recursive: true });
+
+// --- private Gateway ------------------------------------------------------
+const log = createWriteStream(logPath);
+const gatewayEnv = {
+  ...process.env,
+  DEEPSEEK_API_KEY: secret("DEEPSEEK_API_KEY"),
+  HOME: DATA, TMPDIR: path.join(DATA, "tmp"), XDG_CACHE_HOME: path.join(DATA, "cache"),
+  // Never let the private Gateway touch the shared instance's npm cache.
+  npm_config_cache: path.join(DATA, "cache/npm"), npm_config_prefix: path.join(DATA, "user-npm"),
+  OPENCLAW_GATEWAY_PORT: String(port),
+};
+let gateway;
+let gatewayExit = null;
+let gatewayStarts = 0;
+function startGateway() {
+  gatewayStarts += 1;
+  gatewayExit = null;
+  gateway = spawn(process.execPath, [
+    "--max-old-space-size=8192", path.join(RUNTIME, "openclaw/dist/index.js"), "gateway", "--port", String(port),
+  ], { env: gatewayEnv, stdio: ["ignore", "pipe", "pipe"] });
+  gateway.stdout.pipe(log, { end: false });
+  gateway.stderr.pipe(log, { end: false });
+  gateway.on("exit", (code, signal) => { gatewayExit = { code, signal }; });
+}
+startGateway();
+const logText = () => readFileSync(logPath, "utf8");
+
+const { GatewayClient } = await import(pathToFileURL(path.join(RUNTIME, "openclaw/dist/plugin-sdk/gateway-runtime.js")).href);
+let client;
+async function connect() {
+  client?.stop();
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("Gateway connect deadline")), 20_000);
+    client = new GatewayClient({
+      url: `ws://127.0.0.1:${port}`, token: config.gateway.auth.token, deviceIdentity: null,
+      clientName: "cli", mode: "cli", scopes: ["operator.read", "operator.write", "operator.admin"],
+      onHelloOk: () => { clearTimeout(timer); resolve(); },
+      onConnectError: (error) => { clearTimeout(timer); reject(error); },
+    });
+    client.start();
+  });
+}
+const call = (method, params = {}, timeoutMs = 60_000) => client.request(method, params, { timeoutMs });
+
+async function waitFor(label, fn, timeoutMs, intervalMs = 1_000) {
+  const deadline = Date.now() + timeoutMs;
+  let last;
+  while (Date.now() < deadline) {
+    if (gatewayExit) {
+      if (gatewayStarts === 1 && /Restart OpenClaw so state migrations run/u.test(logText())) {
+        step("gateway-restart-after-migration");
+        startGateway();
+        await delay(1_000);
+        continue;
+      }
+      throw new Error(`Gateway exited during ${label}: ${JSON.stringify(gatewayExit)}`);
+    }
+    try {
+      last = await fn();
+      if (last) return last;
+    } catch (error) { last = error; }
+    await delay(intervalMs);
+  }
+  throw new Error(`${label} timed out; last=${last instanceof Error ? last.message : JSON.stringify(last)}`);
+}
+
+const status = () => call("vlab.workers.status");
+const liveWorkers = (s) => s.workers.filter((worker) => worker.ready && !worker.retiring).length;
+const activeIn = (s) => s.workers.reduce((sum, worker) => sum + worker.activeCount, 0);
+
+let turn = 0;
+async function startTurn(label, words) {
+  turn += 1;
+  const sessionKey = `agent:makaron:explicit:wg-${MODE}-${Date.now()}-${turn}`;
+  const sent = await call("chat.send", {
+    agentId: "makaron", sessionKey, deliver: false, thinking: "low", timeoutMs: 300_000,
+    idempotencyKey: `wg-${MODE}-${Date.now()}-${turn}`,
+    message: words
+      ? `Write an English essay of about ${words} words on the history of lighthouses. Plain prose, no tools, no headings. End with the exact line WG-${turn}-END.`
+      : `Reply with exactly: WG-${turn}-END`,
+  }, 120_000);
+  step(`${label}:sent`, { sessionKey, runId: sent?.runId });
+  return { label, sessionKey, runId: sent?.runId, marker: `WG-${turn}-END` };
+}
+async function finishTurn(t) {
+  const waited = await call("agent.wait", { runId: t.runId, timeoutMs: 280_000 }, 300_000);
+  const history = await call("chat.history", { agentId: "makaron", sessionKey: t.sessionKey, limit: 6 });
+  // Only the assistant's reply counts: the prompt itself contains the marker.
+  const messages = Array.isArray(history?.messages) ? history.messages : [];
+  const replies = messages.filter((message) => message?.role === "assistant").map((message) => JSON.stringify(message.content ?? message));
+  const reply = replies.find((text) => text.includes(t.marker)) ?? "";
+  const ok = waited?.status === "ok" && reply.length > 0;
+  step(`${t.label}:finished`, { status: waited?.status, error: waited?.error, assistantReplies: replies.length, replyHasMarker: reply.length > 0, replyChars: reply.length });
+  return ok;
+}
+async function waitForActive(label) {
+  return await waitFor(`${label} active in a Worker`, async () => activeIn(await status()) > 0, 60_000, 250);
+}
+
+let failure = null;
+try {
+  await waitFor("Gateway ready", async () => { await connect(); return (await call("health"))?.ok; }, 600_000, 3_000);
+  const first = await waitFor("Workers ready", async () => {
+    const s = await status();
+    return liveWorkers(s) >= 2 ? s : null;
+  }, 300_000);
+  step("ready", { generation: first.generation ?? null, workers: liveWorkers(first), version: first.workerIsolationVersion });
+
+  assert.ok(await finishTurn(await startTurn("warmup")), "warm-up turn must succeed");
+
+  // --- 1. config hot reload during a streaming turn -------------------------
+  const r1 = await startTurn("reload-inflight", 600);
+  await waitForActive("reload-inflight");
+  const before = await status();
+  const next = JSON.parse(readFileSync(CONFIG, "utf8"));
+  next.plugins.entries["vlab-agent-worker-isolation"].config.idleTimeoutMs += 1;
+  writeConfig(next);
+  step("config-written", { key: "plugins.entries.vlab-agent-worker-isolation.config.idleTimeoutMs", generationBefore: before.generation ?? null });
+  await waitFor("plugin reload applied", async () => /config hot reload applied \(plugins/.test(logText()), 600_000);
+  step("reload-applied", { pluginReloadLogged: /before plugin reload/.test(logText()) });
+  await connect().catch(() => {});
+  assert.ok(await finishTurn(r1), "the turn admitted before the reload must finish");
+  const r2 = await startTurn("after-reload");
+  assert.ok(await finishTurn(r2), "a new turn after the reload must succeed");
+  const afterReload = await status();
+  step("after-reload-status", { generation: afterReload.generation ?? null, workers: liveWorkers(afterReload), predecessor: afterReload.predecessor ?? null });
+  assert.ok((afterReload.generation ?? 1) > (before.generation ?? 1), "a new Worker generation is serving");
+  await waitFor("old generation drained", async () => (await status()).predecessor === null, 300_000);
+  step("reload-drained");
+
+  // --- 2. operator roll during a streaming turn ------------------------------
+  const r3 = await startTurn("roll-inflight", 600);
+  await waitForActive("roll-inflight");
+  const rolled = await call("vlab.workers.roll", { reason: "candidate" });
+  step("rolled", rolled);
+  assert.ok(await finishTurn(r3), "the turn admitted before the roll must finish");
+  assert.ok(await finishTurn(await startTurn("after-roll")), "a new turn after the roll must succeed");
+  await waitFor("rolled generation drained", async () => (await status()).predecessor === null, 300_000);
+
+  // --- 3. a Gateway config change 9.1 applies without a plugin reload ------
+  // Only candidate builds watch the Gateway config; the control already failed.
+  const r5 = await startTurn("config-inflight", 1500);
+  await waitForActive("config-inflight");
+  const generationBeforeConfig = (await status()).generation;
+  const edited = JSON.parse(readFileSync(CONFIG, "utf8"));
+  const alias = `wg-${Date.now()}`;
+  edited.agents.defaults.models[MODEL] = { ...edited.agents.defaults.models[MODEL], alias };
+  writeConfig(edited);
+  step("gateway-config-written", { key: `agents.defaults.models.${MODEL}.alias`, generationBefore: generationBeforeConfig });
+  const autoRolled = await waitFor("automatic roll on Worker config change",
+    async () => { const s = await status(); return s.generation > generationBeforeConfig ? s : null; }, 120_000);
+  const derivedWorker = JSON.parse(readFileSync(workerConfigPath, "utf8"));
+  step("auto-rolled", {
+    generation: autoRolled.generation,
+    predecessor: autoRolled.predecessor,
+    workerConfigAlias: derivedWorker.agents?.defaults?.models?.[MODEL]?.alias === alias,
+
+  });
+  assert.equal(derivedWorker.agents.defaults.models[MODEL].alias, alias, "Workers read the new Gateway config");
+  assert.ok(await finishTurn(r5), "the turn admitted before the config change must finish");
+  assert.ok(await finishTurn(await startTurn("after-config")), "a new turn after the config change must succeed");
+  await waitFor("config-rolled generation drained", async () => (await status()).predecessor === null, 300_000);
+  const final = await status();
+  step("final", { generation: final.generation, workers: liveWorkers(final) });
+
+  const closing = (logText().match(/worker pool is closing/g) ?? []).length;
+  step("log-check", { poolClosingErrors: closing });
+  assert.equal(closing, 0, "no request may hit a closing pool");
+} catch (error) {
+  failure = error;
+  step("failed", { error: error.message });
+} finally {
+  client?.stop();
+  gateway.kill("SIGTERM");
+  await Promise.race([new Promise((resolve) => gateway.once("exit", resolve)), delay(60_000)]);
+  if (!gatewayExit) gateway.kill("SIGKILL");
+  const tail = logText().split("\n").filter((line) =>
+    /vlab-worker-pool|Worker Isolation|reload|worker pool|generation|Worker Agent request failed/i.test(line)).slice(-60);
+  evidence.logTail = tail;
+  if (failure) evidence.rawTail = logText().split("\n").slice(-40);
+  evidence.ok = !failure;
+  console.log(JSON.stringify(evidence, null, 1));
+}
+if (MODE === "control") {
+  // The control must hit the fault: V's 0.2.11 cannot survive a plugin reload.
+  assert.ok(failure, "control run passed: the test does not trigger the reload fault");
+} else if (failure) {
+  throw failure;
+}
