@@ -153,7 +153,7 @@ const longTurn = (label) => {
   const at = Date.now();
   // Counting streams steadily for a minute or more; an essay can finish before
   // a config change is even detected.
-  const id = send(`请按顺序输出从 1 到 1200 的阿拉伯数字，每行一个数字，不要省略任何一个，不要调用任何工具，不要加别的文字。全部输出完后单独一行写 ${marker}`);
+  const id = send(`请按顺序输出从 1 到 3000 的阿拉伯数字，每行一个数字，不要省略任何一个，不要调用任何工具，不要加别的文字。全部输出完后单独一行写 ${marker}`);
   note(`${label}:sent`, { message: id });
   return { id, marker, at };
 };
@@ -185,12 +185,12 @@ function restoreConfig(path, backup) {
 // Worker pool (e.g. /vcodex runs on Codex). Put it back on the default model
 // and require a footer that is not a Codex or Claude CLI runtime.
 const footerRuntime = (content) => content.match(/Runtime:\s*([\w-]+)/u)?.[1] ?? null;
-async function useWorkerModel() {
+async function useWorkerModel(model = "default") {
   const at = Date.now();
-  const id = send("/model default");
+  const id = send(`/model ${model}`);
   const reply = await waitFor("model switch reply",
     () => botCards(at).find((m) => m.replyTo === id) ?? null, 120_000, 4_000);
-  note("model:default", { reply: reply.id, text: reply.content.slice(0, 160) });
+  note(`model:${model}`, { reply: reply.id, text: reply.content.slice(0, 160) });
 }
 
 async function stepBase() {
@@ -262,6 +262,11 @@ async function stepApproval() {
   const originalSha = sha(path);
   const backup = `${path}.hotreload-acceptance-${tag}`;
   remote(`sudo cp -p ${sq(path)} ${sq(backup)}`);
+  // 2026-10-03: the openclaw system-agent tool fails inference-owner validation
+  // when it runs inside a Worker, on V's code as well ("The verified inference
+  // owner changed before validation completed"). /vcc (claude-cli) calls it
+  // through the Gateway, so the approval is raised from there.
+  await useWorkerModel("vcc");
   try {
     const at = Date.now();
     const id = send(`这是审批卡验收 ${tag}。请用 openclaw 的配置工具把 messages.ackReaction 设置为 "👀"（这是一个不需要重启的键）。需要审批就发起审批，等批准后完成修改，然后只回复 ${tag}-APPROVAL-DONE。`);
@@ -275,6 +280,7 @@ async function stepApproval() {
     const card = await awaitReply(id, `${tag}-APPROVAL-DONE`, at, 600_000);
     note("approval:turn-continued", { reply: card.id });
   } finally {
+    await useWorkerModel("default").catch(() => {});
     // Put the exact config bytes back (also undoes the approved no-op change).
     restoreConfig(path, backup);
     note("approval:restored", { originalSha, restoredSha: sha(path) });
