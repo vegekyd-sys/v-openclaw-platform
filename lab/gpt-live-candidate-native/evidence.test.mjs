@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {indexNativeToolPairs,mergeExactToolBodies,extractExecDateFromPairs,continuousPlaybackQuiet,explicitSpokenOffsets,resolveNativeControlOwner,toolResultSucceeded} from './evidence.mjs';
+import {indexNativeToolPairs,mergeExactToolBodies,extractExecDateFromPairs,continuousPlaybackQuiet,explicitSpokenOffsets,resolveNativeControlOwner,toolResultSucceeded,isExactTwoPlusTwoReply,nativeCountRequestsEighty,matchesConsumedConditionBatch,extractQueuedConditionResume} from './evidence.mjs';
 import {assessControlExecPending} from '../gpt-live-h5-control-evidence.mjs';
 
 test('actual child envelopes keep source and observer clocks and exact identity',()=>{
@@ -85,4 +85,49 @@ test('tool transport success cannot hide a structured spawn or yield failure',()
     assert.equal(toolResultSucceeded({isError:false,text:JSON.stringify(body)}),false);
   assert.equal(toolResultSucceeded({isError:true,text:'{"status":"yielded"}'}),false);
   assert.equal(toolResultSucceeded({isError:false,text:'{"status":"accepted","runId":"child"}'}),true);
+});
+
+test('actual native math sentence can include a follow-up without accepting uncertainty or counting',()=>{
+  for(const text of ['四。你要我顺便把数数也开始吗?','二加二等于四。','答案是4。','四'])
+    assert.equal(isExactTwoPlusTwoReply(text),true,text);
+  for(const text of ['不是四。','可能四。','四？','一、二、三、四。','四、五、六。','四。不是四，刚才错了。','四。可能不对。','四。还是五？'])
+    assert.equal(isExactTwoPlusTwoReply(text),false,text);
+});
+
+test('truncated count proof first requires the native user to request eighty, never ten',()=>{
+  for(const text of ['后台继续做，别取消。先慢慢从一数到八十，中间不要停。','从1数到80','现在请直接慢慢数数。从一开始，数到八十。目标是八十，不是十。','从 一 开始， 数 到 八十'])
+    assert.equal(nativeCountRequestsEighty(text),true,text);
+  for(const text of ['别 取消,先 从 一数 到十','从一数到十','数到八十','从一数到八十一','从1数到800'])
+    assert.equal(nativeCountRequestsEighty(text),false,text);
+});
+
+test('a new seventy-five-second case cannot borrow forty-five seconds or another actor',()=>{
+  const wait={id:'wait',name:'exec',runId:'child',sessionKey:'child-key',sourceExecutionTimingVerified:true,calledAt:1000,
+    args:{command:'sleep 75'},results:[{at:76001,isError:false,text:'wait completed',details:{status:'completed',exitCode:0}}]};
+  const date={id:'date',name:'exec',runId:'child',sessionKey:'child-key',sourceExecutionTimingVerified:true,calledAt:76200,
+    args:{command:'date +"%Y-%m-%d %H:%M:%S %Z %z"'},results:[{at:76300,isError:false,text:'2026-10-03 18:05:12 CST +0800',details:{status:'completed',exitCode:0}}]};
+  assert.equal(extractExecDateFromPairs([wait,date],75).waitDurationMs,75001);
+  assert.equal(extractExecDateFromPairs([{...wait,args:{command:'sleep 45'}},date],75),null);
+  assert.equal(extractExecDateFromPairs([{...wait,results:[{...wait.results[0],at:75000}]},date],75),null);
+  assert.equal(extractExecDateFromPairs([wait,{...date,runId:'parent'}],75),null);
+});
+
+test('retained steering is consumed only by the exact accepted owner and ordered original condition batch',()=>{
+  const texts=['Use one sentence.','Finish with the test marker.'],owner={traceId:'trace',delegationId:'native-item',generation:3},source='a'.repeat(64);
+  const event={...owner,stage:'backend-steering-consumed',sourceRunIdSha256:source,steeringConsumed:{sequence:2,count:2,textSha256:createHash('sha256').update(JSON.stringify(texts)).digest('hex')}};
+  assert.equal(matchesConsumedConditionBatch(event,texts,owner,source),true);
+  for(const changed of [{stage:'backend-run-started'},{stage:'backend-cancel-accepted'},{generation:4},{sourceRunIdSha256:'b'.repeat(64)},{steeringConsumed:{...event.steeringConsumed,count:1}},{steeringConsumed:{...event.steeringConsumed,sequence:1}},{steeringConsumed:{...event.steeringConsumed,textSha256:createHash('sha256').update(texts.join('')).digest('hex')}}])
+    assert.equal(matchesConsumedConditionBatch({...event,...changed},texts,owner,source),false);
+  assert.equal(matchesConsumedConditionBatch(event,[...texts].reverse(),owner,source),false);
+});
+
+test('a typed user message cannot stand in for the original child-completion resume input',()=>{
+  const text='Use the requested output marker.',input={sequence:1,mode:'steer',text,receivedAt:1000};
+  const batch={sequence:1,count:1,textSha256:createHash('sha256').update(JSON.stringify([text])).digest('hex')},child='Actual child completion date: 2026-10-03 18:05:12 CST +0800';
+  const resume=child+'\n\nAdditional user conditions for this same authorized voice task (not child results).\nApply these in sequence; a later correction takes priority.\n'+JSON.stringify(input);
+  assert.deepEqual(extractQueuedConditionResume(resume,batch,child).inputs,[input]);
+  assert.equal(extractQueuedConditionResume(text,batch,child),null);
+  assert.equal(extractQueuedConditionResume(resume,batch,'Neighbor child completion'),null);
+  assert.equal(extractQueuedConditionResume(resume,{...batch,count:2},child),null);
+  assert.equal(extractQueuedConditionResume(resume.replace(text,'Changed condition'),batch,child),null);
 });

@@ -243,6 +243,13 @@ var OpenAIQuicksilverDelegationController = class {
 		for (const key of ["kind", "appendId", "chunkIndex", "chunkCount", "wireTextChars", "channel"]) {
 			if (typeof details[key] === "string" || Number.isSafeInteger(details[key])) event[key] = details[key];
 		}
+		const consumed = details.steeringConsumed;
+		if (stage === "backend-steering-consumed" && consumed &&
+			Number.isSafeInteger(consumed.sequence) && consumed.sequence > 0 &&
+			Number.isSafeInteger(consumed.count) && consumed.count > 0 && consumed.count <= 16 &&
+			typeof consumed.textSha256 === "string" && /^[a-f0-9]{64}$/.test(consumed.textSha256)) {
+			event.steeringConsumed = { sequence: consumed.sequence, count: consumed.count, textSha256: consumed.textSha256 };
+		}
 		if (["progress_pending", "progress_context", "final_part", "final_complete", "failure"].includes(details.role)) event.role = details.role;
 		if (typeof details.wireTextSha256 === "string" && /^[a-f0-9]{64}$/.test(details.wireTextSha256)) event.wireTextSha256 = details.wireTextSha256;
 		const provenance = details.provenance;
@@ -393,12 +400,12 @@ var OpenAIQuicksilverDelegationController = class {
 			const now = Date.now();
 			// Ordinary short public facts need no special wording. Suppress clear
 			// waiting/setup statements; an actual result within one takes priority.
-			const waitingPlan = /^(?:我(?:这边)?(?:也|还|仍)?(?:会|将|先|正在|在)|我们(?:先|会|正在)|(?:子(?:任务|代理)|后台)(?:那边|这边)?(?:还|仍|也)?(?:在|正在|等待|待)|正在|现在(?:开始)?(?:等|等待|查|看|核对|执行)|(?:下一步|接下来|然后)(?:我|我们)?(?:会|将|先|去|开始|等|查|看)|先(?:查|看|确认|核对)|(?:好|行)[，,]?我(?:先)?(?:查|看)|稍等|请稍等|等一下|让我|这边(?:正在|在|先)|I(?:'m| am| will|['’]ll)|(?:Now|Next)(?:[,:]?\s+)(?:I(?: will|['’]ll)|we(?: will|['’]ll)|start|wait|waiting|check)|Let me|Please wait|One (?:sec|moment))/iu.test(publicText);
-			const setupOnly = /^(?:Read-only\b|All read-only\b|No (?:files? (?:written|were written)|external)|Sub-?task spawned\b|子(?:任务|代理)(?:已)?(?:启动|派发|交办))/iu.test(publicText);
-			const hasStatedResult = /(?:已(?:经)?(?:找到|查到|确认|核对|完成|收到|得到|生成|发出|测得|读到|验证)|找到了|查到了|确认了|核对出|记录显示|结果(?:是|为)|等于|完成(?:了|[。.!]|$)|(?:当前|测得|核验)(?:时间|值)(?:是|为)|(?:found|confirmed|completed|complete|finished|done|generated|verified)\b|results?(?: (?:is|are)|:)|(?:value|time|price|cost) is\b)/iu.test(publicText);
+			const waitingPlan = /^(?:我(?:这边)?(?:也|还|仍)?(?:现在)?(?:会|将|先|正在|在|开始|等待|等)|我们(?:先|会|正在)|(?:子(?:任务|代理)|后台)(?:那边|这边)?(?:还|仍|也)?(?:在|正在|等待|待)|正在|现在(?:开始)?(?:等|等待|查|看|核对|执行)|(?:下一步|接下来|然后)(?:我|我们)?(?:会|将|先|去|开始|等|查|看)|先(?:查|看|确认|核对)|(?:好|行)[，,]?我(?:先)?(?:查|看)|稍等|请稍等|等一下|让我|这边(?:正在|在|先)|I(?:'m| am| will|['’]ll)|(?:Now|Next)(?:[,:]?\s+)(?:I(?: will|['’]ll)|we(?: will|['’]ll)|start|wait|waiting|check)|Let me|Please wait|One (?:sec|moment))/iu.test(publicText);
+			const setupOnly = /^(?:Read-only\b|All read-only\b|No (?:files? (?:written|were written)|external)|Sub-?task spawned\b|子(?:任务|代理)(?:已经|已)?(?:在后台)?(?:启动|派发|交办|受理|执行|运行))/iu.test(publicText);
+			const hasStatedResult = /(?:已(?:经)?(?:找到|查到|确认|核对|完成|收到|得到|生成|发出|测得|读到|验证)|找到了|查到了|确认了|核对出|记录显示|结果(?:是|为)|等于|(?:当前|测得|核验)(?:时间|值)(?:是|为)|(?:found|confirmed|completed|complete|finished|done|generated|verified)\b|results?(?: (?:is|are)|:)|(?:value|time|price|cost) is\b)/iu.test(publicText);
 			// A streamed markdown fragment is not an independent stage sentence.
 			// In particular, a child result's bare "— YES**" must not displace a fact.
-			const structuralFragment = /```|(?:^|\n)\s*(?:#{1,6}\s|[-*+]\s|>\s|\d+[.)]\s)|^\s*[-—–*`#\s]*(?:YES|NO|TRUE|FALSE|DONE|OK|MATCH)[-—–*`#.!\s]*$|^\s*\*\*/iu.test(publicText);
+			const structuralFragment = /^(?:全部|所有步骤)(?:已)?完成[，,]以下是[^：:。.]*[：:]$|```|(?:^|\n)\s*(?:#{1,6}\s|[-*+]\s|>\s|\d+[.)]\s)|^\s*[-—–*`#\s]*(?:YES|NO|TRUE|FALSE|DONE|OK|MATCH)[-—–*`#.!\s]*$|^\s*\*\*/iu.test(publicText);
 			const speechEligible = !structuralFragment && (!(waitingPlan || setupOnly) || hasStatedResult) && Buffer.byteLength(publicText, "utf8") <= 320;
 			const selected = { text: publicText, provenance: progress.provenance };
 			if (speechEligible) {
@@ -416,9 +423,9 @@ var OpenAIQuicksilverDelegationController = class {
 				prompt: delegation.prompt,
 				signal,
 				continuationIdentity: { delegationItemId: delegation.id, delegationGeneration: delegation.generation },
-				onRunStarted: ({ runId }) => {
+				onRunStarted: ({ runId, steeringConsumed }) => {
 					if (!finished && this.isCurrentDelegation(delegation, signal)) {
-						this.tracePublicProgress("backend-run-started", delegation.id, "", { kind: "progress", provenance: { runId } });
+						this.tracePublicProgress(steeringConsumed ? "backend-steering-consumed" : "backend-run-started", delegation.id, "", { kind: "progress", provenance: { runId }, steeringConsumed });
 					}
 				},
 				onProgress,

@@ -50,6 +50,7 @@ export const BROWSER_PROBE = String.raw`(()=>{
   if(url.origin===location.origin&&url.pathname.startsWith('/api/')){const row={at:Date.now(),requestedAt,route:url.pathname,status:response.status};p.api.push(row);
    if(url.pathname==='/api/session')void response.clone().json().then(data=>{row.model=data.model;row.voiceSessionId=data.voiceSessionId});
    if(['/api/steer','/api/close'].includes(url.pathname))try{row.request=JSON.parse(args[1]?.body??'{}')}catch{}
+   if(url.pathname==='/api/steer')void response.clone().json().then(data=>{row.responseBody=data;row.responseObservedAt=Date.now()}).catch(error=>{row.responseReadError=error.message});
   }return response;
  };
  document.addEventListener('DOMContentLoaded',()=>{

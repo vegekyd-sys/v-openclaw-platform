@@ -15,6 +15,45 @@ export function toolResultSucceeded(result) {
   return true;
 }
 
+// The factual first sentence may be followed by a conversational question.
+// Counting fragments, negations, estimates and later retractions do not qualify.
+export function isExactTwoPlusTwoReply(text) {
+  const [first,...rest]=String(text??'').trim().split(/[。.!！]/u);
+  const statement=first.replace(/\s+/gu,'');
+  const exact=/^(?:(?:二加二|2[+＋]2)(?:(?:的)?(?:答案|结果))?(?:等于|就是|是|为)?|(?:答案|结果)(?:就是|是|为)|(?:等于|是))?(?:四|4)$/u.test(statement);
+  return exact && !/(?:不是|不等于|不对|错了|可能|也许|大概|不确定|还是[五5])/u.test(rest.join('。'));
+}
+
+export function nativeCountRequestsEighty(text) {
+  const transcript=String(text??'').replace(/\s+/gu,'');
+  return /(?:从|先)?(?:一|1)(?:开始)?(?:[，,、]*)(?:慢慢)?数(?:到|至)(?:八十|80)(?![零一二三四五六七八九十百\d])/u.test(transcript) ||
+    /从(?:一|1)[，,、]*数[，,、]*到[，,、]*(?:八十|80)(?![零一二三四五六七八九十百\d])/u.test(transcript);
+}
+
+export function matchesConsumedConditionBatch(event,texts,owner,sourceRunIdSha256) {
+  if (!texts.length || !texts.every(text=>typeof text==='string') || !/^[a-f0-9]{64}$/u.test(sourceRunIdSha256??'')) return false;
+  const batch=event?.steeringConsumed;
+  return event?.stage==='backend-steering-consumed' && event.traceId===owner?.traceId &&
+    event.delegationId===owner?.delegationId && event.generation===owner?.generation &&
+    event.sourceRunIdSha256===sourceRunIdSha256 && batch?.count===texts.length &&
+    Number.isSafeInteger(batch?.sequence) && batch.sequence>=batch.count &&
+    batch.textSha256===createHash('sha256').update(JSON.stringify(texts),'utf8').digest('hex');
+}
+
+export function extractQueuedConditionResume(text,batch,childCompletionText) {
+  const header='Additional user conditions for this same authorized voice task (not child results).';
+  const at=String(text??'').indexOf(header);
+  if (at<0 || !childCompletionText?.trim() || !text.slice(0,at).includes(childCompletionText.trim())) return null;
+  const lines=text.slice(at+header.length).trim().split('\n');
+  if (!lines.shift()?.startsWith('Apply these in sequence;')) return null;
+  let inputs;try{inputs=lines.filter(line=>line.trim()).map(line=>JSON.parse(line))}catch{return null}
+  if (!inputs.length || inputs.some((input,index)=>!Number.isSafeInteger(input.sequence)||input.sequence<1||
+      !['steer','followup'].includes(input.mode)||typeof input.text!=='string'||!Number.isFinite(input.receivedAt)||
+      index>0&&input.sequence<=inputs[index-1].sequence)) return null;
+  if(batch?.count!==inputs.length||batch.sequence!==inputs.at(-1).sequence||batch.textSha256!==createHash('sha256').update(JSON.stringify(inputs.map(input=>input.text)),'utf8').digest('hex'))return null;
+  return {originalChildCompletion:text.slice(0,at).trim(),inputs};
+}
+
 // This is an index of actual envelopes, not a synthesized session transcript.
 // payload.ts is the source clock; the outer at is observer receipt time.
 export function indexNativeToolPairs(events, {runId, sessionKey} = {}) {

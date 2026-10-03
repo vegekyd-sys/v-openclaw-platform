@@ -1077,7 +1077,8 @@ async function runAnnounceAgentCall(params) {
 	};
 	armDeadline();
 	try {
-		const response = await dispatchSubagentAnnounceAgent(params.agentParams, {
+		const agentParams = voice?.prepareResumeInput?.(params.agentParams) ?? params.agentParams;
+		const response = await dispatchSubagentAnnounceAgent(agentParams, {
 			cancelOnDeadline: true,
 			expectFinal: params.expectFinal,
 			forceSyntheticClient: shouldPreserveUserFacingSessionStateForInputProvenance(params.agentParams.inputProvenance),
@@ -1093,6 +1094,7 @@ async function runAnnounceAgentCall(params) {
 				assertVoiceCurrent();
 				signal.throwIfAborted();
 				if (!params.isExecutionAllowed()) throw new SourceOwnerChangedError();
+				voice?.onExecutionStarted?.();
 				executionStarted = true;
 				armDeadline();
 			},

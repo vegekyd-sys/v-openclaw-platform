@@ -77,7 +77,7 @@ const execute = (source, start, end, deps) => {
 
 function setup({ generation = 1, delegationGeneration = 1 } = {}) {
   const listeners = new Map(); const progress = []; const runs = new Map(); const cleanups = [];
-  const cancellations = [];
+  const cancellations = []; const resumeExecutions = [];
   const caller = new AbortController(); let current = true; let liveGeneration = generation; let rotate;
   const registry = createGptLiveConsultContinuationRegistry({
     subscribeRun: (runId, callback) => { listeners.set(runId, callback); return () => listeners.delete(runId); },
@@ -92,7 +92,8 @@ function setup({ generation = 1, delegationGeneration = 1 } = {}) {
     abortSignal: caller.signal, timeoutMs: 60000, onProgress: (value) => progress.push(value),
     collectVisibleText: (payloads) => payloads.filter((item) => !item.isReasoning && !item.isCommentary && !item.isError).map((item) => item.text ?? "").join("\n\n"),
     runRegistration: { cleanup: () => cleanups.push("initial") },
-    onResumeRunStarted: ({ runId }) => ({ cleanup: () => cleanups.push(runId) }) };
+    onResumeRunStarted: ({ runId }) => ({ cleanup: () => cleanups.push(runId) }),
+    onResumeExecutionStarted: (event) => resumeExecutions.push(event) };
   const owner = registry.createOwner(params);
   const attach = (runId = "child-a", parentRunId = "parent-a") => {
     const entry = { runId, taskRunId: runId, childSessionKey: `agent:makaron:${runId}`, requesterSessionKey: params.sessionKey, requesterAgentId: "makaron",
@@ -112,7 +113,7 @@ function setup({ generation = 1, delegationGeneration = 1 } = {}) {
   const emit = (runId, text, extra = {}) => listeners.get(runId)?.({ runId, lifecycleGeneration: generation, stream: "assistant", data: { text }, ...extra });
   const wake = (entry = runs.get("child-a")) => registry.resolveWake({ requesterSessionKey: params.sessionKey, requesterAgentId: "makaron",
     batchRunIds: entry.requesterSettleWake.batchRunIds, rearmGeneration: entry.requesterSettleWake.rearmGeneration });
-  return { registry, owner, params, caller, progress, runs, attach, settleTurn, emit, wake, listeners, cleanups, cancellations,
+  return { registry, owner, params, caller, progress, runs, attach, settleTurn, emit, wake, listeners, cleanups, cancellations, resumeExecutions,
     replaceOwner: () => { current = false; }, rotate: () => { liveGeneration++; rotate(); } };
 }
 
@@ -131,6 +132,25 @@ function actualCancel(f, active = new Map()) {
   const params = { mode: "cancel", text: "Cancel this task", ownerConnId: "conn",
     sessionTarget: { canonicalKey: f.params.sessionKey, agentId: "makaron" }, controlRuntime };
   return { helper, control, patched, params, run: (extra = {}) => helper({ ...params, ...extra }) };
+}
+
+function actualControl(f, active = new Map(), queue = async (sessionId) => ({ queued: true, sessionId })) {
+  const control = execute(controlSource, "async function controlRealtimeVoiceAgentRun", "//#endregion", {
+    resolveRealtimeVoiceAgentControlIntent: ({ mode }) => ({ mode }),
+    buildRealtimeVoiceAgentFollowupSteeringText: execute(controlSource, "function buildRealtimeVoiceAgentFollowupSteeringText", "/** User-facing message", {}),
+    formatRealtimeVoiceAgentQueueRejection: execute(controlSource, "function formatRealtimeVoiceAgentQueueRejection", "function isRealtimeVoiceAgentControlToolEvent", {}),
+    formatRealtimeVoiceAgentStatus: execute(controlSource, "function formatRealtimeVoiceAgentStatus", "//#endregion", {}),
+  });
+  const original = readFileSync(new URL("../release/captured/v2026.9.1-db91.6-background-work-20261002/dist/talk-DkFuKRod.js", import.meta.url), "utf8");
+  const patched = patches.patchGptLiveContinuationTalk(patchGptLiveConsultProgressTalk(original));
+  const helper = execute(patched, "async function controlOwnedGptLiveVoiceConsult", "function resolveOwnedActiveTalkRunTarget", {
+    resolveGptLiveVoiceConsultControl: f.registry.resolveOwnedControl, controlRealtimeVoiceAgentRun: control,
+  });
+  const runtime = { resolveActiveEmbeddedRunOwnerByRunId: (id) => active.get(id),
+    getDiagnosticSessionActivitySnapshot: () => undefined, queueEmbeddedAgentMessageWithOutcomeAsync: queue };
+  const params = { mode: "steer", text: "Only use the corrected date", ownerConnId: "conn",
+    sessionTarget: { canonicalKey: f.params.sessionKey, agentId: "makaron" }, controlRuntime: runtime };
+  return { control, patched, run: (extra = {}) => helper({ ...params, ...extra }) };
 }
 
 function realWake(f, announce) {
@@ -477,6 +497,276 @@ test("resumed parent cancellation uses its accepted run instead of the still-reg
   assert.equal(f.cancellations[0].ownerRunId, f.params.runId);
   assert.equal(f.cancellations[0].source, "explicit_control");
   wake.finish({ meta: {}, payloads: [{ text: "late final" }] }); assert.equal(f.progress.length, 0);
+});
+
+test("captured stale-first Talk selector fails while trusted status, steer and followup use the actual resumed parent", async () => {
+  const f = setup(); const child = f.attach(); f.settleTurn(); f.owner.finishInitial({ meta: { yielded: true }, payloads: [] });
+  child.execution.status = "terminal"; child.execution.endedAt = Date.now();
+  const wake = f.wake(); wake.onAccepted({ runId: "actual-resume" });
+  const queued = [];
+  const actual = { sessionKey: f.params.sessionKey, sessionId: f.params.sessionId };
+  const c = actualControl(f, new Map([["actual-resume", actual]]), async (sessionId, text) => {
+    queued.push({ sessionId, text }); return { queued: true, sessionId };
+  });
+  const entry = () => ({ agentId: "makaron", sessionKey: f.params.sessionKey, sessionId: f.params.sessionId,
+    ownerConnId: "conn", controller: new AbortController(), lifecycleGeneration: 1, kind: "chat-send" });
+  const registrations = new Map([["parent-a", entry()], ["actual-resume", entry()]]);
+  const selector = execute(c.patched, "function resolveOwnedActiveTalkRunTarget", "//#endregion", {
+    normalizeOptionalString: (text) => text?.trim(), isAgentEventLifecycleGenerationCurrent: () => true,
+  });
+  const stale = selector({ clientConnId: "conn", sessionTarget: { agentId: "makaron", sessionKey: f.params.sessionKey, canonicalKey: f.params.sessionKey }, context: { chatAbortControllers: registrations } });
+  assert.equal(stale.runId, "parent-a", "reproduces actual Map's stale original registration before its live resume");
+  const before = await c.control({ sessionKey: f.params.sessionKey, runTarget: stale, text: "Correct date", mode: "steer" }, {
+    resolveActiveEmbeddedRunOwnerByRunId: (id) => id === "actual-resume" ? actual : undefined,
+  });
+  assert.equal(before.reason, "no_active_run"); assert.equal(queued.length, 0);
+  assert.equal((await c.run()).queued, true);
+  const status = await c.run({ mode: "status" }); assert.equal(status.active, true); assert.equal(status.sessionId, f.params.sessionId);
+  assert.equal((await c.run({ mode: "followup", text: "After that, compare both dates" })).queued, true);
+  assert.equal(queued.length, 2); assert(queued.every((input) => input.sessionId === f.params.sessionId));
+  assert.match(queued[1].text, /Spoken follow-up/); assert.match(queued[1].text, /compare both dates/);
+  assert.equal(f.cancellations.length, 0); wake.finish({ meta: {}, payloads: [{ text: "Corrected final." }] });
+  assert.deepEqual(await f.owner.wait(), { text: "Corrected final." });
+});
+
+test("yield-gap conditions stay on the exact owner and enter the actual captured resume prompt, not any child or new task", async () => {
+  const f = setupTwoHarnessChildren(); const queued = [];
+  const active = new Map([['child-a', { sessionKey: 'child-session-a', sessionId: 'child-canonical-a' }],
+    ['child-b', { sessionKey: 'child-session-b', sessionId: 'child-canonical-b' }]]);
+  const c = actualControl(f, active, async (...args) => { queued.push(args); return { queued: true }; });
+  const retained = await c.run({ text: "Change the outbound date to October 8" });
+  assert.equal(retained.ok, true); assert.equal(retained.queued, true); assert.equal(retained.applied, false);
+  assert.equal(retained.target, "owned_continuation_checkpoint"); assert.equal(queued.length, 0);
+  await c.run({ mode: "followup", text: "Then compare the return prices" });
+  const voice = f.complete("child-a"); f.complete("child-b");
+  let dispatched = 0;
+  const run = execute(patches.patchGptLiveContinuationDelivery(deliverySource), "async function runAnnounceAgentCall", "async function sendSubagentAnnounceDirectly", {
+    shouldPreserveUserFacingSessionStateForInputProvenance: () => false, getGatewayAgentResult: (response) => response.result,
+    dispatchSubagentAnnounceAgent: async (args, options) => {
+      dispatched++;
+      assert.equal(args.sessionKey, f.params.sessionKey); assert.match(args.message, /^Original safe child completion text\n\n/);
+      assert.match(args.message, /not child results/); assert.match(args.message, /October 8/); assert.match(args.message, /return prices/);
+      assert(args.message.indexOf('October 8') < args.message.indexOf('return prices'));
+      options.onAccepted({ runId: "real-resumed-parent" }); options.onExecutionStarted();
+      return { result: { meta: {}, payloads: [{ text: "Corrected dates and prices." }] } };
+    },
+  });
+  await run({ voiceContinuation: voice, agentParams: { sessionKey: f.params.sessionKey, message: "Original safe child completion text" },
+    getRequesterSessionId: () => f.params.sessionId, isExecutionAllowed: () => true, expectFinal: true, timeoutMs: 1000 });
+  assert.equal(dispatched, 1); assert.equal(queued.length, 0); assert.deepEqual(await f.owner.wait(), { text: "Corrected dates and prices." });
+  assert.deepEqual(f.resumeExecutions, [{ runId: 'real-resumed-parent', steeringConsumed: { sequence: 2, count: 2,
+    textSha256: createHash('sha256').update(JSON.stringify(['Change the outbound date to October 8', 'Then compare the return prices'])).digest('hex') } }]);
+});
+
+test("accepted-to-started input snapshots consume only injected conditions and cannot silently settle a later correction", async () => {
+  const f = setup(); const child = f.attach(); f.settleTurn(); f.owner.finishInitial({ meta: { yielded: true }, payloads: [] });
+  const c = actualControl(f); await c.run({ text: "Use October 7" });
+  const voice = f.wake(); const agentParams = voice.prepareResumeInput({ sessionKey: f.params.sessionKey, message: "Child terminal facts." });
+  assert.match(agentParams.message, /October 7/); voice.onAccepted({ runId: "real-resume" });
+  await c.run({ text: "Correction: use October 8" }); voice.onExecutionStarted();
+  assert.deepEqual(f.resumeExecutions, [{ runId: 'real-resume', steeringConsumed: { sequence: 1, count: 1,
+    textSha256: createHash('sha256').update(JSON.stringify(['Use October 7'])).digest('hex') } }]);
+  voice.onExecutionStarted(); assert.equal(f.resumeExecutions.length, 1, 'reentrant callback cannot report a second consumption');
+  const pending = assert.rejects(f.owner.wait(), /pending user conditions/);
+  voice.finish({ meta: {}, payloads: [{ text: "Old October 7 result must not pass." }] }); await pending;
+  assert.equal(f.cancellations.length, 0);
+});
+
+test("resume retries preserve their input snapshot and cannot reuse another token's accepted run as consumption proof", async () => {
+  const f = setup(); f.attach(); f.settleTurn(); f.owner.finishInitial({ meta: { yielded: true }, payloads: [] });
+  const c = actualControl(f); const previous = f.wake(); previous.onAccepted({ runId: 'real-resume' });
+  await c.run({ text: 'First retained condition' });
+  const voice = f.wake(); const original = { sessionKey: f.params.sessionKey, message: 'Original child terminal facts' };
+  const prepared = voice.prepareResumeInput(original);
+  await c.run({ text: 'Later condition remains separate' });
+  assert.equal(voice.prepareResumeInput(original), prepared);
+  assert(!prepared.message.includes('Later condition'));
+  assert.throws(() => voice.prepareResumeInput({ ...original, message: 'Changed child facts' }), /changed after checkpoint snapshot/);
+  assert.throws(() => voice.onExecutionStarted(), /without its accepted run/);
+  voice.onAccepted({ runId: 'real-resume' }); voice.onExecutionStarted();
+  const pending = assert.rejects(f.owner.wait(), /pending user conditions/);
+  voice.finish({ meta: {}, payloads: [{ text: 'Must not erase later condition.' }] }); await pending;
+});
+
+test("captured execution authorization rejects before pending condition consumption and a legitimate retry preserves it", async () => {
+  const f = setup(); f.attach(); f.settleTurn(); f.owner.finishInitial({ meta: { yielded: true }, payloads: [] });
+  await actualControl(f).run({ text: 'Condition must survive refused execution' }); const voice = f.wake();
+  let allowed = false; let starts = 0;
+  const run = execute(patches.patchGptLiveContinuationDelivery(deliverySource), 'async function runAnnounceAgentCall', 'async function sendSubagentAnnounceDirectly', {
+    SourceOwnerChangedError: class extends Error {}, shouldPreserveUserFacingSessionStateForInputProvenance: () => false,
+    getGatewayAgentResult: (response) => response.result,
+    dispatchSubagentAnnounceAgent: async (args, options) => {
+      assert.match(args.message, /Condition must survive/); options.onAccepted({ runId: 'real-resume' }); options.onExecutionStarted(); starts++;
+      return { result: { meta: {}, payloads: [{ text: 'Condition preserved in legitimate resumed input.' }] } };
+    },
+  });
+  const params = { voiceContinuation: voice, agentParams: { sessionKey: f.params.sessionKey, message: 'Original child facts' },
+    getRequesterSessionId: () => f.params.sessionId, isExecutionAllowed: () => allowed, timeoutMs: 1000 };
+  await assert.rejects(run(params)); assert.equal(starts, 0); assert.equal(f.resumeExecutions.length, 0);
+  allowed = true; await run(params);
+  assert.equal(starts, 1); assert.deepEqual(await f.owner.wait(), { text: 'Condition preserved in legitimate resumed input.' });
+  assert.equal(f.resumeExecutions.length, 1); assert.equal(f.resumeExecutions[0].steeringConsumed.count, 1);
+});
+
+test("captured Talk forwards the actual consumed-resume callback without re-registering its accepted run", async () => {
+  const f = setup(); const c = actualControl(f); const events = []; const registered = [];
+  const steeringConsumed = { sequence: 2, count: 2,
+    textSha256: createHash('sha256').update(JSON.stringify(['First user condition', 'Later user correction'])).digest('hex') };
+  const context = { onRunStarted: (event) => events.push(event) };
+  const createRunner = execute(c.patched, 'function createTalkClientAgentConsultRunner', 'function createTalkClientGatewayControlOwner', {
+    parseRealtimeVoiceAgentConsultArgs: (args) => args,
+    createTalkClientAgentRuntime: () => ({}), normalizeTalkSection: () => ({}),
+    tryBeginGatewayRootWorkAdmission: () => undefined,
+    runOutsideGatewayRootWorkAdmission: () => ({ run: (callback) => callback(), release: () => {} }),
+    consultRealtimeVoiceAgent: async (params) => {
+      assert.equal(params.continuationContext, context);
+      params.onResumeRunStarted({ runId: 'accepted-resume', sessionId: f.params.sessionId, timeoutMs: 60000 });
+      assert.deepEqual(events, [{ runId: 'accepted-resume' }]);
+      params.onResumeExecutionStarted({ runId: 'accepted-resume', steeringConsumed });
+      assert.deepEqual(events.at(-1), { runId: 'accepted-resume', steeringConsumed });
+      return { text: 'Actual request result' };
+    },
+  });
+  const runner = createRunner({ authority: {}, config: { talk: {} }, sessionTarget: { agentId: 'makaron', sessionKey: f.params.sessionKey,
+    canonicalKey: f.params.sessionKey, storePath: '/private/store' }, getVoiceSessionId: () => 'voice', registerRun: (run) => registered.push(run),
+    context: { logGateway: {} } });
+  assert.deepEqual(await runner.runPrompt({ prompt: 'Original task', signal: new AbortController().signal, continuationContext: context }),
+    { text: 'Actual request result' });
+  assert.deepEqual(registered, [{ runId: 'accepted-resume' }]);
+  assert.equal(events.length, 2); assert(!JSON.stringify(events).includes('First user condition'));
+  assert.match(patches.createGptLiveContinuationRuntimeSource(), /import \{ createHash \} from "node:crypto";/);
+});
+
+test("actual Talk RPC sends noncancel controls through the trusted continuation before stale registration selection", async () => {
+  const f = setup(); const child = f.attach(); f.settleTurn(); f.owner.finishInitial({ meta: { yielded: true }, payloads: [] });
+  child.execution.status = 'terminal'; child.execution.endedAt = Date.now(); const voice = f.wake(); voice.onAccepted({ runId: 'active-resume' });
+  const queue = [];
+  const c = actualControl(f, new Map([['active-resume', { sessionKey: f.params.sessionKey, sessionId: f.params.sessionId }]]), async (sessionId, text) => {
+    queue.push({ sessionId, text }); return { queued: true, sessionId };
+  });
+  const start = c.patched.indexOf('\t"talk.client.steer": async'); const end = c.patched.indexOf('\n\t}\n};', start);
+  const body = c.patched.slice(start, end + 3).replace('"talk.client.steer": async', 'async');
+  let legacy = 0; const replies = [];
+  const handler = new Function('deps', `with(deps) { return (${body.trim()}); }`)({
+    assertValidParams: () => true, validateTalkClientSteerParams: {}, prepareTalkSessionTarget: () => c.params?.sessionTarget ?? { canonicalKey: f.params.sessionKey, agentId: 'makaron' },
+    cancelOwnedGptLiveVoiceConsult: async () => undefined,
+    controlOwnedGptLiveVoiceConsult: (params) => c.run({ ...params }),
+    resolveOwnedActiveTalkRunTarget: () => { legacy++; throw new Error('Must not select stale original'); },
+  });
+  await handler({ params: { sessionKey: f.params.sessionKey, mode: 'steer', text: 'Actually use October 8' }, client: { connId: 'conn' },
+    context: { getRuntimeConfig: () => ({}) }, respond: (...args) => replies.push(args) });
+  assert.equal(legacy, 0); assert.equal(queue.length, 1); assert.equal(replies[0][0], true); assert.equal(replies[0][1].queued, true);
+  assert.equal(queue[0].text, 'Actually use October 8');
+  voice.finish({ meta: {}, payloads: [{ text: 'Corrected final.' }] }); await f.owner.wait();
+});
+
+test("unstarted resume, rejected active steering, replaced owner and unowned neighbors do not consume or receive conditions", async () => {
+  {
+    const f = setup(); const c = actualControl(f, new Map([['parent-a', { sessionKey: f.params.sessionKey, sessionId: f.params.sessionId }]]),
+      async (sessionId) => ({ queued: false, sessionId, reason: "not_streaming" }));
+    const result = await c.run(); assert.equal(result.ok, false); assert.equal(result.queued, false); assert.equal(result.reason, "not_streaming");
+    f.owner.finishInitial({ meta: {}, payloads: [{ text: "Unchanged goal." }] }); await f.owner.wait();
+  }
+  {
+    const f = setup(); f.attach(); f.settleTurn(); f.owner.finishInitial({ meta: { yielded: true }, payloads: [] });
+    let writes = 0; const c = actualControl(f, new Map([['unowned-neighbor', { sessionKey: f.params.sessionKey, sessionId: f.params.sessionId }]]), async () => { writes++; });
+    assert.equal(await c.run({ ownerConnId: "other-connection" }), undefined);
+    const retained = await c.run({ text: "Keep this exact owner's constraint" }); assert.equal(retained.applied, false); assert.equal(writes, 0);
+    const voice = f.wake(); const args = voice.prepareResumeInput({ sessionKey: f.params.sessionKey, message: "Original terminal facts." });
+    assert.match(args.message, /exact owner's constraint/); voice.onAccepted({ runId: "accepted-but-not-started" });
+    const pending = assert.rejects(f.owner.wait(), /pending user conditions/);
+    voice.finish({ meta: {}, payloads: [{ text: "Never injected." }] }); await pending;
+  }
+  {
+    const f = setup(); f.attach(); f.settleTurn(); f.owner.finishInitial({ meta: { yielded: true }, payloads: [] });
+    await actualControl(f).run({ text: "Old owner condition" }); const voice = f.wake(); f.replaceOwner();
+    assert.throws(() => voice.prepareResumeInput({ sessionKey: f.params.sessionKey, message: "Child facts" }), /no longer current/);
+    await assert.rejects(f.owner.wait());
+  }
+});
+
+test("pending conditions are bounded, rejected overflow leaves accepted conditions intact, and cancellation clears the exact owner", async () => {
+  const f = setup(); f.attach(); f.settleTurn(); f.owner.finishInitial({ meta: { yielded: true }, payloads: [] });
+  const c = actualControl(f);
+  for (let i = 0; i < 8; i++) assert.equal((await c.run({ text: `Condition ${i}` })).queued, true);
+  const overflow = await c.run({ text: "Overflow must be rejected" }); assert.equal(overflow.ok, false); assert.equal(overflow.reason, "pending_input_limit");
+  const voice = f.wake(); const args = voice.prepareResumeInput({ sessionKey: f.params.sessionKey, message: "Child result." });
+  for (let i = 0; i < 8; i++) assert(args.message.includes(`Condition ${i}`)); assert(!args.message.includes("Overflow must be rejected"));
+  const pending = assert.rejects(f.owner.wait(), { name: "AbortError" }); f.caller.abort(new Error("Cancel accepted conditions")); await pending;
+  assert.throws(() => voice.onAccepted({ runId: "late-resume" }), /no longer current/);
+  assert.equal(await c.run(), undefined); assert.equal(f.cancellations.length, 1);
+});
+
+test("pending condition byte limit, child identity and failed prepare retain exact owner isolation", async () => {
+  {
+    const f = setup(); f.attach(); f.settleTurn(); f.owner.finishInitial({ meta: { yielded: true }, payloads: [] });
+    const c = actualControl(f); const original = '限'.repeat(2500);
+    assert.equal((await c.run({ text: original })).queued, true);
+    assert.equal((await c.run({ text: '限'.repeat(200) })).reason, 'pending_input_limit');
+    const voice = f.wake();
+    assert.throws(() => voice.prepareResumeInput({ sessionKey: 'neighbor-session', message: 'Wrong source' }), /does not own/);
+    assert.throws(() => voice.prepareResumeInput({ sessionKey: f.params.sessionKey }), /no requester message/);
+    const valid = voice.prepareResumeInput({ sessionKey: f.params.sessionKey, message: 'Actual child facts' });
+    assert(valid.message.includes(original)); voice.onAccepted({ runId: 'valid-resume' }); voice.onExecutionStarted();
+    voice.finish({ meta: {}, payloads: [{ text: 'Completed the retained exact condition.' }] }); await f.owner.wait();
+  }
+  {
+    const f = setupTwoHarnessChildren(); await actualControl(f).run({ text: 'Belongs to original children' });
+    const voice = f.complete('child-a'); f.sessions.set('child-session-b', 'replaced-child');
+    assert.throws(() => voice.prepareResumeInput({ sessionKey: f.params.sessionKey, message: 'Old child findings' }), /accepted child identity changed/);
+    await assert.rejects(f.owner.wait());
+  }
+});
+
+test("nested child continuation preserves its own requester input and never consumes whole-task parent conditions", async () => {
+  const f = setup(); const child = f.attach(); f.settleTurn(); f.owner.finishInitial({ meta: { yielded: true }, payloads: [] });
+  await actualControl(f).run({ text: 'Whole-task user correction belongs only to original parent' });
+  const grandchild = { runId: 'grandchild', taskRunId: 'grandchild', childSessionKey: 'grandchild-session', requesterSessionKey: child.childSessionKey,
+    requesterAgentId: 'makaron', requesterTurnRunId: child.runId, requesterTurnYielded: true, generation: 1,
+    execution: { lifecycleGeneration: 1, status: 'running' } };
+  f.runs.set(grandchild.runId, grandchild); f.registry.attachAcceptedChild({ entry: grandchild, getCurrentEntry: (id) => f.runs.get(id) });
+  f.registry.bindYieldBatch({ requesterSessionKey: child.childSessionKey, requesterAgentId: 'makaron', requesterTurnRunId: child.runId,
+    batchRunIds: [grandchild.runId], rearmGeneration: 1, requesterYielded: true });
+  const nested = f.registry.resolveWake({ requesterSessionKey: child.childSessionKey, requesterAgentId: 'makaron',
+    batchRunIds: [grandchild.runId], rearmGeneration: 1 });
+  assert.throws(() => nested.prepareResumeInput({ sessionKey: f.params.sessionKey, message: 'Cannot cross requester identity' }), /does not own its batch/);
+  const original = { sessionKey: child.childSessionKey, message: 'Safe original grandchild result' };
+  assert.equal(nested.prepareResumeInput(original), original);
+  nested.onAccepted({ runId: 'resumed-child' }); nested.onExecutionStarted();
+  assert.equal(f.resumeExecutions.length, 0);
+  nested.finish({ meta: {}, payloads: [{ text: 'Child subtask completion' }] });
+  const parent = f.wake(); const resumed = parent.prepareResumeInput({ sessionKey: f.params.sessionKey, message: 'Safe completed child facts' });
+  assert.match(resumed.message, /Whole-task user correction/);
+  parent.onAccepted({ runId: 'real-resumed-parent' }); parent.onExecutionStarted();
+  assert.equal(f.resumeExecutions.length, 1); assert.equal(f.resumeExecutions[0].runId, 'real-resumed-parent');
+  parent.finish({ meta: {}, payloads: [{ text: 'Original parent applied complete task correction' }] });
+  assert.deepEqual(await f.owner.wait(), { text: 'Original parent applied complete task correction' });
+});
+
+test("trusted control uses the actual registration signal fallback and fails closed for two current parents", async () => {
+  {
+    const f = setup(); const registration = new AbortController();
+    f.owner.attachRun({ runId: 'registered-reply-parent', sessionKey: f.params.sessionKey, sessionId: f.params.sessionId,
+      role: 'parent', registration: { abortSignal: registration.signal } });
+    const actual = { sessionKey: f.params.sessionKey, sessionId: f.params.sessionId };
+    const writes = [];
+    const c = actualControl(f); const runtime = {
+      resolveActiveEmbeddedRunOwnerByRunId: () => undefined,
+      resolveActiveReplyRunOwnerForSignal: (signal) => signal === registration.signal ? actual : undefined,
+      getDiagnosticSessionActivitySnapshot: () => undefined,
+      queueEmbeddedAgentMessageWithOutcomeAsync: async (sessionId, text) => { writes.push({ sessionId, text }); return { queued: true, sessionId }; },
+    };
+    assert.equal((await c.run({ controlRuntime: runtime })).queued, true); assert.equal(writes.length, 1);
+    const pending = assert.rejects(f.owner.wait()); f.owner.abort(new Error('Cleanup')); await pending;
+  }
+  {
+    const f = setup(); f.owner.attachRun({ runId: 'second-parent', sessionKey: f.params.sessionKey, sessionId: f.params.sessionId, role: 'parent' });
+    let writes = 0;
+    const actual = { sessionKey: f.params.sessionKey, sessionId: f.params.sessionId };
+    const c = actualControl(f, new Map([['parent-a', actual], ['second-parent', actual]]), async () => { writes++; });
+    await assert.rejects(c.run(), /active parent is ambiguous/); assert.equal(writes, 0);
+    const pending = assert.rejects(f.owner.wait()); f.owner.abort(new Error('Cleanup')); await pending;
+  }
 });
 
 test("completed child plus pending parent wake can cancel its wait without a fabricated active backend abort", async () => {

@@ -247,6 +247,27 @@ test("actual host run start and accepted cancellation are fingerprinted under th
   assert.deepEqual(f.frames, []);
 });
 
+test("actual steering consumption trace is separate from run start and carries only bounded fingerprints", async () => {
+  const diagnostics = [];
+  const f = fixture({onPublicProgressDiagnostic: event => diagnostics.push(event)});
+  f.controller.startDelegation("d1", "request"); const run = f.calls[0];
+  const textSha256 = createHash("sha256").update(JSON.stringify(["private condition one", "private condition two"])).digest("hex");
+  run.onRunStarted({runId: "accepted-resume"});
+  run.onRunStarted({runId: "accepted-resume", steeringConsumed: {sequence: 3, count: 2, textSha256, text: "private condition one"}});
+  assert.deepEqual(diagnostics.map(event => event.stage), ["backend-run-started", "backend-steering-consumed"]);
+  assert.equal(diagnostics[1].sourceRunIdSha256, createHash("sha256").update("accepted-resume").digest("hex"));
+  assert.deepEqual(diagnostics[1].steeringConsumed, {sequence: 3, count: 2, textSha256});
+  assert.doesNotMatch(JSON.stringify(diagnostics), /private condition/u);
+  for (const steeringConsumed of [{sequence: -1, count: 1, textSha256}, {sequence: 4, count: 17, textSha256}, {sequence: 4, count: 1, textSha256: "invalid"}]) {
+    run.onRunStarted({runId: "accepted-resume", steeringConsumed});
+    assert.equal(diagnostics.at(-1).steeringConsumed, undefined);
+  }
+  run.resolve({text: "complete"}); await settle();
+  const before = diagnostics.length;
+  run.onRunStarted({runId: "late-resume", steeringConsumed: {sequence: 4, count: 1, textSha256}});
+  assert.equal(diagnostics.length, before);
+});
+
 test("parent waiting chatter cannot occupy the speech slot before a real child stage", async () => {
   const f = fixture(); f.controller.startDelegation("one", "request");
   for (const text of ["我这边也在查官方文档和子代理那部分。", "子代理那边还在跑，我等它出结果再同步。", "后台仍在等待，请稍等。"])
@@ -698,6 +719,23 @@ test("cooldown emits the latest fact automatically even without another backend 
   assert.equal(sent.length, 2);
   assert.equal(sent[1].at - sent[0].at, 15000);
   f.calls[0].resolve({text: "全部完成。"}); await settle();
+});
+
+test("real waiting continuation cannot replace a queued child fact", async t => {
+  t.mock.timers.enable({apis: ["Date", "setTimeout"], now: 100000});
+  const f = fixture(); f.controller.startDelegation("d1", "request");
+  const run = f.calls[0];
+  run.onProgress({kind: "commentary", text: "官方原文已核对。"});
+  run.onProgress({kind: "commentary", text: "工作目录命中，随机校验数为 9331。"});
+  for (const text of ["我现在等待四十五秒，然后读取日期。", "我现在开始等四十五秒，随后读取日期。", "子代理已在后台执行这些步骤，我先等它回来。", "子代理已受理，我先等它完成。", "全部完成，以下是四项真实结果："])
+    run.onProgress({kind: "commentary", text});
+  t.mock.timers.tick(15000);
+  assert.deepEqual(f.texts(), ["官方原文已核对。", "工作目录命中，随机校验数为 9331。"]);
+  assert.equal(run.signal.aborted, false, "Filtering speech does not stop the remaining work");
+  run.onProgress({kind: "commentary", text: "子代理已完成，日期是2026年10月3日17时17分11秒。"});
+  t.mock.timers.tick(15000);
+  assert.equal(f.texts().at(-1), "子代理已完成，日期是2026年10月3日17时17分11秒。");
+  run.resolve({text: "完整结果。"}); await settle();
 });
 
 test("queued facts do not outlive cancellation, session detach or a superseding generation", async t => {

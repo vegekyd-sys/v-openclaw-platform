@@ -72,6 +72,29 @@ async function cancelOwnedGptLiveVoiceConsult(params) {
 		});
 	});
 }
+async function controlOwnedGptLiveVoiceConsult(params) {
+	if (!["status", "steer", "followup"].includes(params.mode)) return;
+	params.assertCurrent?.();
+	const voice = resolveGptLiveVoiceConsultControl({ ownerConnId: params.ownerConnId, sessionKey: params.sessionTarget.canonicalKey,
+		agentId: params.sessionTarget.agentId });
+	if (!voice) return;
+	const runtime = params.controlRuntime ?? (await import("./agent-run-control.runtime.js")).realtimeVoiceControlRuntime;
+	return await voice.controlOwnedRun({ mode: params.mode, text: params.text,
+		resolveRun: (runId, signal) => { params.assertCurrent?.(); return runtime.resolveActiveEmbeddedRunOwnerByRunId?.(runId) ?? runtime.resolveActiveReplyRunOwnerForSignal?.(signal); },
+		executeControl: async ({ sessionKey, runTarget }) => {
+			params.assertCurrent?.();
+			return await controlRealtimeVoiceAgentRun({ sessionKey, runTarget, text: params.text, mode: params.mode }, {
+				...runtime,
+				queueEmbeddedAgentMessageWithOutcomeAsync: async (sessionId, text, options) => {
+					params.assertCurrent?.();
+					const actual = runtime.resolveActiveEmbeddedRunOwnerByRunId?.(runTarget.runId) ?? runtime.resolveActiveReplyRunOwnerForSignal?.(runTarget.signal);
+					if (!runTarget.isCurrent(sessionId) || actual?.sessionKey !== sessionKey || actual.sessionId !== sessionId) return { queued: false, sessionId, reason: "owner_changed" };
+					return await runtime.queueEmbeddedAgentMessageWithOutcomeAsync(sessionId, text, options);
+				}
+			});
+		}
+	});
+}
 function resolveOwnedActiveTalkRunTarget(params) {
 	const connId = normalizeOptionalString(params.clientConnId);
 	if (!connId) return null;
@@ -281,6 +304,9 @@ function createTalkClientAgentConsultRunner(params) {
 			abortSignal: signal,
 			onProgress,
 			continuationContext,
+			onResumeExecutionStarted: ({ runId, steeringConsumed }) => {
+				try { continuationContext?.onRunStarted?.({ runId, steeringConsumed }); } catch {}
+			},
 			onResumeRunStarted: ({ runId, sessionId, timeoutMs }) => {
 				try { continuationContext?.onRunStarted?.({ runId }); } catch {}
 				if (params.registerRun) params.registerRun({ runId });
@@ -390,9 +416,12 @@ function createTalkClientGatewayControlOwner(params) {
 	};
 	const applyControl = async (args) => {
 		const parsed = parseRealtimeVoiceAgentControlToolArgs(args);
-		const voiceCancel = await cancelOwnedGptLiveVoiceConsult({ ...parsed, ownerConnId: params.connId, sessionTarget: params.sessionTarget,
-			assertCurrent: () => { owner.assertOpen(); if (owners.get(params.voiceSessionId) !== owner) throw new Error("Realtime voice session is not active"); } });
+		const controlParams = { ...parsed, ownerConnId: params.connId, sessionTarget: params.sessionTarget,
+			assertCurrent: () => { owner.assertOpen(); if (owners.get(params.voiceSessionId) !== owner) throw new Error("Realtime voice session is not active"); } };
+		const voiceCancel = await cancelOwnedGptLiveVoiceConsult(controlParams);
 		if (voiceCancel) return voiceCancel;
+		const voiceControl = await controlOwnedGptLiveVoiceConsult(controlParams);
+		if (voiceControl) return voiceControl;
 		const runTarget = resolveOwnedActiveTalkRunTarget({
 			context: params.context,
 			clientConnId: params.connId,
@@ -3093,9 +3122,11 @@ const talkClientHandlers = {
 		if (!assertValidParams(params, validateTalkClientSteerParams, "talk.client.steer", respond)) return;
 		try {
 			const target = sessionMutationAuthorization?.talkSessionTarget ?? prepareTalkSessionTarget(context.getRuntimeConfig(), params.sessionKey);
-			const voiceCancel = await cancelOwnedGptLiveVoiceConsult({ mode: params.mode, text: params.text, ownerConnId: client?.connId,
-				sessionTarget: target, assertCurrent: sessionMutationAuthorization?.assertCurrent });
+			const controlParams = { mode: params.mode, text: params.text, ownerConnId: client?.connId, sessionTarget: target, assertCurrent: sessionMutationAuthorization?.assertCurrent };
+			const voiceCancel = await cancelOwnedGptLiveVoiceConsult(controlParams);
 			if (voiceCancel) { respond(true, voiceCancel, void 0); return; }
+			const voiceControl = await controlOwnedGptLiveVoiceConsult(controlParams);
+			if (voiceControl) { respond(true, voiceControl, void 0); return; }
 			const runTarget = resolveOwnedActiveTalkRunTarget({
 				context,
 				clientConnId: client?.connId,

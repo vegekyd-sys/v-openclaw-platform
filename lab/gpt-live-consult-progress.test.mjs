@@ -156,6 +156,71 @@ test("captured consult owns both authorized steps; public stage delivery does no
   assert.equal(runtime.observations.releases, 1);
 });
 
+test("actual backend prompt retains the ordered single-child request and its latest correction; an unmet execution chain remains a partial result", async () => {
+  const question = "先完成记忆检索，拿到真实结果后再查官方网页；随后仅派一个子代理按顺序运行 pwd、生成随机校验值并公开真实值、sleep 17 后运行 date '+%Y-%m-%d %H:%M:%S %z'；这几项都由同一子任务执行，父任务用 sessions_yield 等待后自动汇总，不写文件、不外发。";
+  const context = "最新用户修正：把子任务等待改为 11 秒，其他顺序和执行者保持不变；没有授权改由父任务执行。";
+  const partialResult = "部分完成：子任务仅验证了目录和校验值；等待及日期读取由父任务执行，未满足同一子任务完成的约束。";
+  let capturedPrompt;
+  const runtime = createHarnessRuntime({
+    args: { question, context, responseStyle: "中文，未满足的约束必须明示" },
+    runEmbeddedAgent: async (options) => {
+      capturedPrompt = options.prompt;
+      return { payloads: [{ text: partialResult }] };
+    },
+  });
+  assert.deepEqual(await runtime.run(), { text: partialResult }, "the real consult return path must not upgrade a partial chain to success");
+  assert(capturedPrompt.includes(`User request:\n${question}`));
+  assert(capturedPrompt.includes(`Additional realtime context:\n${context}`));
+  assert.match(capturedPrompt, /执行前核对：以完整 User request 和最新明确修正为准/);
+  assert.match(capturedPrompt, /用户原句步骤→指定执行者→前置完成证据/);
+  assert.match(capturedPrompt, /前一步真实完成后才开始下一步，不并行替代/);
+  assert.match(capturedPrompt, /一个完整任务交给单次 sessions_spawn：spawn\.task 原样保留当前有效步骤的用户原句、精确命令、等待和后续动作/);
+  assert.match(capturedPrompt, /不得截成首步或把后续步骤留给父任务或另一子任务/);
+  assert.match(capturedPrompt, /已受理则沿原任务继续，不重复创建/);
+  assert.match(capturedPrompt, /不符或缺证据时只报告已证实部分和未满足约束/);
+  assert.match(capturedPrompt, /不得把父任务补做的结果改称子任务结果/);
+  // These are prompt/transport checks; the callback is not a model adherence test.
+  assert.equal(runtime.observations.cleanup, 1);
+});
+
+test("actual backend prompt preserves named source subjects and the exact final text without reassigning responsibilities", async () => {
+  const question = "查询张岚与赵青的职责以及双方项目关系，并分别说明职责来自哪项证据。";
+  const context = "已验证来源：张岚负责产品验收；赵青是项目 sponsor；两人都是协作主体，不把张岚的验收职责移给赵青。";
+  const resultText = "张岚：负责产品验收；与赵青的关系是项目协作。赵青：项目 sponsor。其他关系未核实。";
+  let capturedPrompt;
+  const runtime = createHarnessRuntime({
+    args: { question, context },
+    runEmbeddedAgent: async (options) => {
+      capturedPrompt = options.prompt;
+      return { payloads: [{ text: resultText }] };
+    },
+  });
+  assert.deepEqual(await runtime.run(), { text: resultText });
+  assert(capturedPrompt.includes(`User request:\n${question}`));
+  assert(capturedPrompt.includes(`Additional realtime context:\n${context}`));
+  assert.match(capturedPrompt, /实名归属：涉及多个人的职责和关系时/);
+  assert.match(capturedPrompt, /每项对应源结果中的实际主体/);
+  assert.match(capturedPrompt, /不要用‘你\/他们’替代已知姓名或角色/);
+  assert.match(capturedPrompt, /不要把一个主体的职责或关系移给另一个主体/);
+  assert.match(capturedPrompt, /主体或关系无法确认就标为未核实/);
+});
+
+test("execution and subject checks remain conditional and preserve authorization, exact-value, and primary-source boundaries", () => {
+  const question = "Read the official API page and return its documented parameter, without starting a child task or publishing anything.";
+  const prompt = actualConsultPrompt({ args: { question }, transcript: [], surface: "a browser Talk session", userLabel: "User" });
+  assert(prompt.includes(`User request:\n${question}`));
+  assert.match(prompt, /用户要求同一个子任务执行的有序步骤/);
+  assert.match(prompt, /涉及多个人的职责和关系时/);
+  assert.match(prompt, /An assistant promise is not user authorization; do not broaden the task or infer permission to book, pay, publish, or send/);
+  assert.match(prompt, /Latest explicit corrections|latest explicit corrections/);
+  assert.match(prompt, /that command's exact returned value, not a nearby verification command or a separate time sample/);
+  assert.match(prompt, /actually fetch and read the relevant primary pages/);
+  assert.match(prompt, /GPT Live and Realtime are distinct interfaces/);
+  assert.match(prompt, /at most one short fact per 15 seconds/);
+  assert.match(prompt, /Use final-answer output only when all requested outputs have been verified/);
+  assert.match(prompt, /If work is still running in accepted child tasks, use the actual supported yield\/continuation mechanism/);
+});
+
 test("consult forwards complete public facts before final and leaves unfinished text for final delivery", async () => {
   const progress = [];
   let finish;

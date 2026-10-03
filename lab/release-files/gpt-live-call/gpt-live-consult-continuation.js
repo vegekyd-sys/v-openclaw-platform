@@ -1,4 +1,5 @@
 // gpt-live-consult-continuation-v1: process-local causal capabilities only
+import { createHash } from "node:crypto";
 import { f as onAgentEventForRun, c as getAgentEventLifecycleGeneration, l as isAgentEventLifecycleGenerationCurrent, m as registerAgentEventLifecycleRotationHandler } from "./agent-events-Con5xUCM.js";
 function createGptLiveConsultProgressObserver({ onProgress, abortSignal, logger, runId }) {
   let closed = false;
@@ -123,6 +124,8 @@ function createGptLiveConsultContinuationRegistry(deps) {
     const bindings = new Map();
     const batches = new Set();
     const cleanups = new Set();
+    const pendingInputs = [];
+    let inputSequence = 0;
     let done = false;
     let cancellationNotified = false;
     let cancellationAccepted = false;
@@ -146,6 +149,7 @@ function createGptLiveConsultContinuationRegistry(deps) {
       params.abortSignal?.removeEventListener("abort", abortFromCaller);
       for (const fn of cleanups) { try { fn(); } catch {} }
       cleanups.clear();
+      pendingInputs.length = 0;
       for (const [runId, binding] of bindings) {
         if (byRun.get(runId) === binding) byRun.delete(runId);
         if (binding.taskRunId && byChildTask.get(binding.taskRunId) === binding) byChildTask.delete(binding.taskRunId);
@@ -195,7 +199,8 @@ function createGptLiveConsultContinuationRegistry(deps) {
         if (existing.owner !== owner || existing.role !== role || existing.sessionKey !== sessionKey) throw error("Voice continuation run ownership conflict");
         return existing;
       }
-      const binding = { owner, runId, sessionKey, sessionId, agentId, role, batch, isCurrent: check, isTerminal, taskRunId, sequence: 0 };
+      const binding = { owner, runId, sessionKey, sessionId, agentId, role, batch, isCurrent: check, isTerminal, taskRunId, sequence: 0,
+        controlSignal: registration?.abortSignal ?? controller.signal };
       bindings.set(runId, binding);
       byRun.set(runId, binding);
       if (taskRunId) byChildTask.set(taskRunId, binding);
@@ -244,6 +249,7 @@ function createGptLiveConsultContinuationRegistry(deps) {
       }
       if (result?.meta?.error || !result || !Array.isArray(result.payloads)) throw new Error("Voice requester continuation ended without a successful final result");
       if (binding.role === "child") return;
+      if (pendingInputs.length) throw new Error("Voice requester ended before its pending user conditions reached a continuation checkpoint");
       const text = params.collectVisibleText(result.payloads);
       if (!text) throw new Error("Voice requester continuation returned no speakable final");
       settle({ text });
@@ -267,6 +273,68 @@ function createGptLiveConsultContinuationRegistry(deps) {
     owner.matchesControl = (target) => context.ownerConnId === target.ownerConnId && params.sessionKey === target.sessionKey &&
       (target.agentId === undefined || params.agentId === target.agentId) &&
       (target.runId === undefined || bindings.has(target.runId)) && isCurrent();
+    owner.controlOwnedRun = async ({ mode, text, resolveRun, executeControl }) => {
+      assertCurrent();
+      if (!["status", "steer", "followup"].includes(mode)) return;
+      const terminal = (binding) => binding.yielded === true || binding.completed === true || binding.isTerminal?.() === true;
+      const makeTarget = (binding) => ({
+        sessionKey: binding.sessionKey,
+        runTarget: { runId: binding.runId, signal: binding.controlSignal,
+          isCurrent: (sessionId) => isCurrent() && !binding.controlSignal.aborted && !terminal(binding) && binding.isCurrent?.() !== false &&
+            (sessionId === undefined || !binding.sessionId || binding.sessionId === sessionId) },
+      });
+      const actualTargets = (predicate) => [...bindings.values()].filter((binding) => predicate(binding) && !terminal(binding)).flatMap((binding) => {
+        const target = makeTarget(binding);
+        if (!target.runTarget.isCurrent()) return [];
+        const actual = resolveRun(binding.runId, binding.controlSignal);
+        return actual?.sessionKey === binding.sessionKey && target.runTarget.isCurrent(actual.sessionId) ? [target] : [];
+      });
+      const parents = actualTargets((binding) => binding.role !== "child" && binding.sessionKey === params.sessionKey);
+      if (parents.length > 1) throw error("Voice continuation active parent is ambiguous");
+      if (parents.length) return await executeControl(parents[0]);
+      // Child execution is evidence of this owner's pending work, never permission
+      // to send a whole-task redirect to whichever child happens to be first.
+      if (mode === "status") {
+        const children = actualTargets((binding) => binding.role === "child");
+        if (children.length === 1) return await executeControl(children[0]);
+        return { ok: true, mode, sessionKey: params.sessionKey, active: true,
+          continuationPending: true, message: children.length ? `The voice task is waiting on ${children.length} owned child runs.` : "The voice task is waiting for its owned continuation.",
+          speak: true, show: true, suppress: false };
+      }
+      const waiting = [...bindings.values()].some((binding) => binding.yielded === true && binding.pendingBatch?.owner === owner &&
+        binding.pendingBatch.parent === binding && binding.isCurrent?.() !== false);
+      if (!waiting) return { ok: false, mode, sessionKey: params.sessionKey, active: true, queued: false,
+        reason: "not_streaming", message: "The owned voice task is not currently accepting steering.", speak: true, show: true, suppress: false };
+      const inputText = clean(text);
+      if (!inputText || pendingInputs.length >= 8 ||
+          pendingInputs.reduce((bytes, input) => bytes + Buffer.byteLength(input.text, "utf8"), 0) + Buffer.byteLength(inputText, "utf8") > 8000) {
+        return { ok: false, mode, sessionKey: params.sessionKey, active: true, queued: false,
+          reason: "pending_input_limit", message: "The voice continuation could not retain that condition; please shorten it or wait for the current step.", speak: true, show: true, suppress: false };
+      }
+      pendingInputs.push({ sequence: ++inputSequence, mode, text: inputText, receivedAt: Date.now() });
+      return { ok: true, mode, sessionKey: params.sessionKey, active: true, queued: true, applied: false,
+        target: "owned_continuation_checkpoint", message: "That condition is retained for this voice task's next continuation checkpoint; it has not been applied yet.",
+        speak: true, show: true, suppress: false };
+    };
+    owner._prepareResumeInput = (agentParams) => {
+      assertCurrent();
+      if (agentParams.sessionKey !== params.sessionKey) throw error("Voice continuation input does not own the requester message");
+      const inputs = pendingInputs.map((input) => ({ ...input }));
+      if (!inputs.length) return { agentParams, sequences: [] };
+      if (typeof agentParams.message !== "string") throw error("Voice continuation input has no requester message to preserve");
+      const message = `${agentParams.message}\n\nAdditional user conditions for this same authorized voice task (not child results).\nApply these in sequence; a later correction takes priority. Follow-up work belongs after the current step unless it changes the current task. Do not start an unrelated task.\n${inputs.map((input) => JSON.stringify(input)).join("\n")}`;
+      return { agentParams: { ...agentParams, message }, sequences: inputs.map((input) => input.sequence) };
+    };
+    owner._consumeResumeInput = (sequences) => {
+      assertCurrent();
+      const consumed = new Set(sequences);
+      const inputs = pendingInputs.filter((input) => consumed.has(input.sequence));
+      if (!inputs.length) return;
+      const steeringConsumed = { sequence: inputs.at(-1).sequence, count: inputs.length,
+        textSha256: createHash("sha256").update(JSON.stringify(inputs.map((input) => input.text))).digest("hex") };
+      for (let index = pendingInputs.length - 1; index >= 0; index--) if (consumed.has(pendingInputs[index].sequence)) pendingInputs.splice(index, 1);
+      return steeringConsumed;
+    };
     owner.cancelOwnedRuns = async (executeCancel) => {
       assertCurrent();
       // Mint exact run capabilities before revocation. They remain usable only
@@ -313,6 +381,7 @@ function createGptLiveConsultContinuationRegistry(deps) {
     owner._bindBatch = (batch, binding) => { binding.pendingBatch = batch; batches.add(batch); };
     owner._finish = finishResult;
     owner._registerResume = params.onResumeRunStarted;
+    owner._notifyResumeExecutionStarted = params.onResumeExecutionStarted;
     owner._timeoutMs = params.timeoutMs;
     return owner;
   };
@@ -362,6 +431,9 @@ function createGptLiveConsultContinuationRegistry(deps) {
   const capabilityForBatch = (batch) => {
     if (!batch || batch.parent.pendingBatch !== batch || !batch.owner.isCurrent()) return;
     assertAcceptedChildBindingsCurrent(batch);
+    let preparedSequences = [];
+    let preparedInput;
+    let acceptedInputRunId;
     return {
       signal: batch.owner.signal,
       assertCurrent: ({ sessionKey, sessionId }) => {
@@ -378,9 +450,38 @@ function createGptLiveConsultContinuationRegistry(deps) {
         const runId = clean(accepted?.runId);
         if (!runId || batch.acceptedRunId && batch.acceptedRunId !== runId) throw error("Voice requester wake accepted a different replay run");
         batch.acceptedRunId = runId;
+        acceptedInputRunId = runId;
         batch.resumed = batch.owner.attachRun({ runId, sessionKey: batch.requesterSessionKey, sessionId: batch.parent.sessionId, agentId: batch.requesterAgentId,
           role: batch.parent.role === "child" ? "child" : "parent", batch,
           registration: batch.resumed ? undefined : batch.owner._registerResume?.({ runId, sessionId: batch.parent.sessionId, timeoutMs: batch.owner._timeoutMs }) });
+      },
+      prepareResumeInput: (agentParams) => {
+        batch.owner.assertCurrent();
+        assertAcceptedChildBindingsCurrent(batch);
+        if (batch.parent.pendingBatch !== batch) throw error("Voice continuation input checkpoint changed");
+        if (agentParams.sessionKey !== batch.requesterSessionKey) throw error("Voice continuation input does not own its batch requester message");
+        if (preparedInput) {
+          if (preparedInput.sessionKey !== agentParams.sessionKey || preparedInput.message !== agentParams.message) throw error("Voice continuation input changed after checkpoint snapshot");
+          return preparedInput.agentParams;
+        }
+        // Whole-task conditions belong to the original requester. A nested
+        // child's own continuation preserves its message without consuming them.
+        const prepared = batch.parent.role === "child" ? { agentParams, sequences: [] } : batch.owner._prepareResumeInput(agentParams);
+        preparedSequences = prepared.sequences;
+        preparedInput = { sessionKey: agentParams.sessionKey, message: agentParams.message, agentParams: prepared.agentParams };
+        return prepared.agentParams;
+      },
+      onExecutionStarted: () => {
+        batch.owner.assertCurrent();
+        assertAcceptedChildBindingsCurrent(batch);
+        if (!acceptedInputRunId || !batch.resumed || batch.acceptedRunId !== acceptedInputRunId || acceptedInputRunId !== batch.resumed.runId || batch.parent.pendingBatch !== batch) throw error("Voice continuation input started without its accepted run");
+        const steeringConsumed = batch.owner._consumeResumeInput(preparedSequences);
+        preparedSequences = [];
+        // This callback is diagnostic evidence of the exact accepted dispatch
+        // input being consumed, never an acknowledgment that the model obeyed it.
+        if (steeringConsumed) {
+          try { batch.owner._notifyResumeExecutionStarted?.({ runId: acceptedInputRunId, steeringConsumed }); } catch {}
+        }
       },
       finish: (result) => {
         try {

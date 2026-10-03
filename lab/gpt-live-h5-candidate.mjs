@@ -27,7 +27,8 @@ const clipsArchive=process.env.GPT_LIVE_H5_USER_CLIPS_ARCHIVE;
 if(clipsArchive) {
   const names=execFileSync('tar',['-tzf',path.resolve(clipsArchive)],{encoding:'utf8'}).trim().split('\n');
   const allowed=process.env.GPT_LIVE_H5_COMPREHENSIVE_CLIPS==='1'
-    ?new Set(['manifest.json',...['long-task','barge','cancel-task','new-greeting','count','ack','followup'].flatMap(name=>[name+'.wav',name+'.txt'])])
+    ?new Set(['manifest.json',...['long-task','barge','cancel-task','new-greeting','count','ack','followup',
+      ...((process.env.GPT_LIVE_H5_CASE??'').split(',').includes('comprehensive-queued-steer')?['queued-task']:[])].flatMap(name=>[name+'.wav',name+'.txt'])])
     :new Set(['silence.wav',...['long-request','long-child-request','chat','barge','new-greeting'].flatMap(name=>[name+'.wav',name+'.txt'])]);
   assert(names.length===allowed.size&&names.every(name=>allowed.has(name))&&new Set(names).size===names.length,'Unexpected or missing synthetic clip archive member');
   const entries=execFileSync('tar',['-tvzf',path.resolve(clipsArchive)],{encoding:'utf8'}).trim().split('\n');
@@ -344,7 +345,7 @@ try {
   }
   if(experience)await holdForExperience();else {
   const cases=(process.env.GPT_LIVE_H5_CASE??'workflow').split(',');
-  assert(cases.every(value=>['workflow','cancel','close-reopen','barge-chat','comprehensive-long','comprehensive-controls'].includes(value)),'Unknown candidate H5 case');
+  assert(cases.every(value=>['workflow','cancel','close-reopen','barge-chat','comprehensive-long','comprehensive-controls','comprehensive-queued-steer'].includes(value)),'Unknown candidate H5 case');
   const evidenceBase=process.env.GPT_LIVE_H5_EVIDENCE_DIR;
   assert(evidenceBase&&path.isAbsolute(evidenceBase),'Absolute candidate evidence directory required');
   fs.mkdirSync(evidenceBase,{recursive:true,mode:0o700});

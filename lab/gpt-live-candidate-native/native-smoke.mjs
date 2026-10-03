@@ -10,13 +10,15 @@ import {createPrivatePulseMicrophone} from './private-pulse.mjs';
 import {BROWSER_PROBE,SNAPSHOT_EXPRESSION} from './browser-probe.mjs';
 import {parsePublicProgressDiagnostics,assessH5ProgressProvenance} from '../gpt-live-h5-provenance-evidence.mjs';
 import {parseCompleteTimestamps} from '../gpt-live-call-live-evidence.mjs';
-import {indexNativeToolPairs,mergeExactToolBodies,extractExecDateFromPairs,continuousPlaybackQuiet,explicitSpokenOffsets,resolveNativeControlOwner,toolResultSucceeded} from './evidence.mjs';
+import {indexNativeToolPairs,mergeExactToolBodies,extractExecDateFromPairs,continuousPlaybackQuiet,explicitSpokenOffsets,resolveNativeControlOwner,toolResultSucceeded,isExactTwoPlusTwoReply,nativeCountRequestsEighty,matchesConsumedConditionBatch,extractQueuedConditionResume} from './evidence.mjs';
 import {readPrivateChildTranscript,activeTranscriptMessages} from './read-child-transcript.mjs';
 import {extractControlExecWitness,assessControlExecPending,matchesExactControlMarker} from '../gpt-live-h5-control-evidence.mjs';
 assert(process.env.VLAB_CANDIDATE_ID&&process.env.GPT_LIVE_H5_READY==='1','Ready private Candidate H5 required');
-const testCase=process.env.GPT_LIVE_H5_CASE;assert(['comprehensive-long','comprehensive-controls'].includes(testCase));
+const testCase=process.env.GPT_LIVE_H5_CASE;assert(['comprehensive-long','comprehensive-controls','comprehensive-queued-steer'].includes(testCase));
 const base=process.env.GPT_LIVE_H5_EVIDENCE_DIR;assert(path.isAbsolute(base));fs.mkdirSync(base,{recursive:true,mode:0o700});
 const memoryQuery=process.env.GPT_LIVE_H5_MEMORY_QUERY?.trim();assert(memoryQuery,'Explicit private memory query required');
+const childWaitSeconds=Number(process.env.GPT_LIVE_H5_CHILD_WAIT_SECONDS??45);
+assert(Number.isSafeInteger(childWaitSeconds)&&childWaitSeconds>=45&&childWaitSeconds<=180,'Explicit child wait must preserve the 45-second minimum');
 const configPath=process.env.OPENCLAW_CONFIG_PATH,stateRoot=process.env.OPENCLAW_STATE_DIR,candidateData=process.env.VLAB_CANDIDATE_DATA;
 const config=JSON.parse(fs.readFileSync(configPath));const configHash=hash(fs.readFileSync(configPath));
 const runtime=process.env.GPT_LIVE_H5_RUNTIME_ROOT,clips=process.env.GPT_LIVE_H5_USER_CLIPS_DIR,url=process.env.GPT_LIVE_H5_URL;
@@ -107,7 +109,12 @@ async function startCall() {
  assert.equal(meta.voiceSessionId,created.voiceSessionId,'Exact H5 session ownership');assert.equal(created.model,'gpt-live-1-codex');
  currentSession=meta.sessionKey;callOwners.set(pcIndex,{voiceSessionId:meta.voiceSessionId,sessionKey:meta.sessionKey,createdAt:created.at,connectedAt:(await snapshot()).pcTransitions.find(t=>t.pcIndex===pcIndex&&t.state==='connected')?.at??null});sessionKeys.push(meta.sessionKey);await subscribeSession(currentSession);const started={candidateId:process.env.VLAB_CANDIDATE_ID,testCase,pcIndex,paidVoiceStarted:true,sessionKey:meta.sessionKey,voiceSessionId:meta.voiceSessionId,apiStatus:created.status,connectedAt:callOwners.get(pcIndex).connectedAt,observedAt:Date.now()};save('native-voice-started-'+pcIndex+'.json',started);console.log(JSON.stringify({nativeVoiceStarted:started}));return pcIndex;
 }
-function play(name){const file=path.join(clips,name+'.wav');assert(fs.existsSync(file));return pulse.play(file,name);}
+function play(name){
+ const file=path.join(clips,name+'.wav');assert(fs.existsSync(file));const input=pulse.play(file,name);
+ save('actual-input-clip-schedule.json',pulse.plays);
+ input.done.then(()=>save('actual-input-clip-schedule.json',pulse.plays),()=>save('actual-input-clip-schedule.json',pulse.plays));
+ return input;
+}
 const audible=(s,from,to=Infinity,pcIndex=0)=>s.audioFrames.filter(f=>f.pcIndex===pcIndex&&f.at>=from&&f.at<=to&&f.digitalAudible);
 function check(name,passed,details={}){checks.push({name,passed:Boolean(passed),...details});}
 async function waitForPlaybackDrain(pcIndex,after,label) {
@@ -133,7 +140,7 @@ async function longTask() {
   const d=diagnostics().filter(row=>row.at>=initialAt);
   const final=d.filter(row=>row.stage==='context-append-sent'&&row.kind==='final'&&row.role==='final_complete').at(-1);
   const childPairs=childEvidencePairs();
-  const slowDate=extractExecDateFromPairs(childPairs,45);
+  const slowDate=extractExecDateFromPairs(childPairs,childWaitSeconds);
   const finalTurn=final&&s.events.filter(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='assistant'&&e.at>final.at).at(-1);
   if(finalTurn&&continuousPlaybackQuiet(s.audioFrames,{pcIndex,after:finalTurn.at,durationMs:750})){finished=true;break;}
  }
@@ -146,7 +153,7 @@ async function longTask() {
  const acceptedSpawn=spawnPair?.results.filter(toolResultSucceeded).map(r=>{try{return JSON.parse(r.text)}catch{return null}}).find(v=>v?.status==='accepted'&&typeof v?.runId==='string'&&typeof v?.childSessionKey==='string');
  const chosenChildPairs=childPairs.filter(p=>p.runId===acceptedSpawn?.runId&&p.sessionKey===acceptedSpawn?.childSessionKey);
  const cwd=chosenChildPairs.find(p=>p.name==='exec'&&/\bpwd\b|process\.cwd/iu.test(JSON.stringify(p.args))&&p.results.some(r=>!r.isError&&r.text.includes(candidateData+'/workspace/')));
- const slowDate=extractExecDateFromPairs(chosenChildPairs,45);
+ const slowDate=extractExecDateFromPairs(chosenChildPairs,childWaitSeconds);
  const expected=slowDate?[slowDate.fields]:[];
  const final=d.filter(row=>row.stage==='context-append-sent'&&row.kind==='final'&&row.role==='final_complete').at(-1);
  const nativeFinal=s.events.filter(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='assistant'&&e.at>=(final?.at??Infinity)).at(-1);
@@ -176,7 +183,7 @@ async function longTask() {
  const childDatePair=chosenChildPairs.find(p=>p.id===slowDate?.execCallId),childWaitPair=chosenChildPairs.find(p=>p.id===slowDate?.waitExecCallId);
  check('single-child-private-random-wait-date-in-requested-order',acceptedSpawn&&cwd?.sourceExecutionTimingVerified===true&&childMarkerPair?.sourceExecutionTimingVerified===true&&childDatePair?.sourceExecutionTimingVerified===true&&childWaitPair?.sourceExecutionTimingVerified===true&&[cwdResultAt,childMarkerPair?.calledAt,markerResultAt,slowDate?.waitCalledAt,slowDate?.waitResultAt,childDatePair?.calledAt,slowDate?.resultAt].every(Number.isFinite)&&cwdResultAt<=childMarkerPair.calledAt&&markerResultAt<=slowDate.waitCalledAt&&(slowDate.combinedCommand||slowDate.waitResultAt<=childDatePair.calledAt)&&realTerminals.some(t=>t.response.endedAt>=slowDate.resultAt),{acceptedSpawn,cwdCallId:cwd?.id,cwdResultAt,markerCallId:childMarkerPair?.id,markerResultAt,waitCallId:slowDate?.waitExecCallId,waitCalledAt:slowDate?.waitCalledAt,waitResultAt:slowDate?.waitResultAt,waitDurationMs:slowDate?.waitDurationMs,dateCallId:slowDate?.execCallId,dateCalledAt:childDatePair?.calledAt,dateResultAt:slowDate?.resultAt});
  check('actual-child-private-workspace',Boolean(cwd),{callId:cwd?.id});
- check('child-wait45-then-exact-date',Boolean(slowDate)&&expected.length===1,{callId:slowDate?.execCallId,resultCallId:slowDate?.resultCallId,expected});
+ check('child-wait'+childWaitSeconds+'-then-exact-date',Boolean(slowDate)&&expected.length===1,{requiredWaitSeconds:childWaitSeconds,callId:slowDate?.execCallId,resultCallId:slowDate?.resultCallId,expected});
  const markerTurn=s.events.find(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='assistant'&&e.at===early.assistantTurnAt);
  const markerCreated=markerTurn&&s.events.find(e=>e.pcIndex===pcIndex&&e.type==='turn.created'&&e.role==='assistant'&&e.turnId===markerTurn.turnId);
  const markerWindow=markerCreated&&markerTurn?{from:Math.max(markerCreated.at-100,early.progressTranscriptAt-400),to:Math.min(markerTurn.at,early.progressTranscriptAt+400,early.finalAppendSentAt-1),pcIndex}:null;
@@ -228,15 +235,21 @@ async function controls() {
  const beforePending=assessControlExecPending(lastHistory.parent,60,{requireDateInCommand:false});
  check('backend-pending-at-barge',beforePending.pending&&beforePending.execCallId===accepted.id,{pending:beforePending,backendRunId});
  const barge=play('barge');await barge.done;
- const newTurn=await waitFor(s=>s.events.find(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='assistant'&&e.turnId!==oldTurn?.turnId&&e.at>=barge.row.startedAt&&/(?:二加二|2\s*[+＋]\s*2).*(?:四|4)|^(?:是|等于|答案是)?[，,\s]*(?:四|4)[。.!！\s]*$/u.test(e.text)),'Actual new-topic 2+2 answer',45000);
+ const newTurn=await waitFor(s=>s.events.find(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='assistant'&&e.turnId!==oldTurn?.turnId&&e.at>=barge.row.startedAt&&isExactTwoPlusTwoReply(e.text)),'Actual new-topic 2+2 answer',45000);
  const state=await snapshot(true),microphone=state.micFrames.filter(f=>f.pcIndex===pcIndex&&f.at>=barge.row.startedAt&&f.at<=barge.row.completedAt+200&&f.rms>.02);
  const attack=microphone[0]?.at??null;
  const oldActiveAtAttack=oldTurn&&attack!==null&&oldTurn.at<=attack&&!state.events.some(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.turnId===oldTurn.turnId&&e.at<attack);
  const overlap=attack!==null?microphone.filter(m=>m.at<=attack+500&&audible(state,m.at-100,m.at+100,pcIndex).length>0):[];
  const terminal=state.events.find(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='assistant'&&e.turnId===oldTurn?.turnId&&attack!==null&&e.at>=attack&&e.at<=Math.min(attack+3000,barge.row.completedAt+200)&&microphone.some(m=>Math.abs(m.at-e.at)<=100));
  const prefix=oldTurn?state.events.filter(e=>e.pcIndex===pcIndex&&e.type==='output_transcript.added'&&e.at>=oldTurn.at&&e.at<barge.row.startedAt).map(e=>e.text).join(''):'';
+ const activeCountInput=replay?.row??count.row;
+ const countUser=state.events.find(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='user'&&
+   e.at>=activeCountInput.startedAt&&e.at<=barge.row.startedAt&&nativeCountRequestsEighty(e.text));
+ const actualCountingPrefix=/(?:一[、，,\s]*二|1[、，,\s]*2)/u.test(prefix);
+ check('barge-native-count80-request-and-actual-count-turn',Boolean(countUser)&&actualCountingPrefix,
+   {countInput:activeCountInput,countUserTurnId:countUser?.turnId??null,countUserText:countUser?.text??null,oldTurnId:oldTurn?.turnId,prefix});
  const interruptedReason=terminal&&/interrupt|cancel|barge|truncat/iu.test(JSON.stringify(terminal.raw));
- const truncated=terminal&&/(?:一[、，,\s]*二|1[、，,\s]*2)/u.test(prefix)&&!/(?:七十九[、，,\s]*八十|79[、，,\s]*80|八十|\b80\b)/u.test(terminal.text);
+ const truncated=terminal&&countUser&&actualCountingPrefix&&!/(?:七十九[、，,\s]*八十|79[、，,\s]*80|八十|\b80\b)/u.test(terminal.text);
  check('barge-actual-old-turn-overlap',Boolean(oldActiveAtAttack)&&overlap.length>0,{oldTurnId:oldTurn?.turnId,attack,strictOverlapFrames:overlap.length,replayedAfterAck:Boolean(replay)});
  check('barge-old-native-turn-terminal',Boolean(terminal)&&Boolean(interruptedReason||truncated),{oldTurnId:oldTurn?.turnId,terminalAt:terminal?.at??null,rawTerminal:terminal?.raw??null,explicitReason:Boolean(interruptedReason),countPrefix:prefix,truncatedDuringInput:Boolean(truncated)});
  const newCreated=state.events.find(e=>e.pcIndex===pcIndex&&e.type==='turn.created'&&e.role==='assistant'&&e.turnId===newTurn.turnId);
@@ -251,7 +264,7 @@ async function controls() {
  const localMuted=attack===null?null:state.audioFrames.find(f=>f.pcIndex===pcIndex&&f.at>=attack&&f.at<=attack+100&&f.muted);
  check('barge-local-attenuation-within100ms',Boolean(localMuted),{microphoneAttackAt:attack,localMuteAt:localMuted?.at??null,gate:'Separate required client attenuation; provider-native default does not implement HTML mute'});
  check('barge-original-track-stays-live',microphone.length>0&&microphone.every(f=>f.trackState==='live'&&f.trackEnabled&&f.senderTrackId===f.trackId));
- const correctNewText=/(?:二加二|2\s*[+＋]\s*2).*(?:四|4)|^(?:是|等于|答案是)?[，,\s]*(?:四|4)[。.!！\s]*$/u.test(newTurn.text);
+ const correctNewText=isExactTwoPlusTwoReply(newTurn.text);
  check('barge-correct-new-topic-after-drain-digital-audio',newTurn.turnId!==oldTurn?.turnId&&drainAt!==null&&correctNewText&&audible(state,Math.max(drainAt,newCreated?.at??Infinity),newTurn.at,pcIndex).length>3,{oldTurnId:oldTurn?.turnId,newTurnId:newTurn.turnId,newCreatedAt:newCreated?.at,drainAt,text:newTurn.text});
  await readHistory();pendingAfterBarge=assessControlExecPending(lastHistory.parent,60,{requireDateInCommand:false});
  check('same-backend-remains-pending-after-barge',pendingAfterBarge.pending&&pendingAfterBarge.execCallId===accepted.id,{pending:pendingAfterBarge});
@@ -277,6 +290,73 @@ async function controls() {
  check('new-session-on-reconnect',sessionKeys.at(-1)!==sessionKeys.at(-2),{sessionCount:sessionKeys.length});
  check('reconnect-original-h5-unmuted-native-audio',audible(await snapshot(),greeting.row.startedAt,greetingReply.at,reopened).length>3,{turnId:greetingReply.turnId});await waitForPlaybackDrain(reopened,greetingReply.at,'Reconnected reply actual playback drain');await stopCall(reopened);
 }
+async function queuedSteer() {
+ const marker=process.env.GPT_LIVE_H5_STEER_MARKER?.trim();assert(marker&&marker.length<=40,'Explicit supplemental output condition required');
+ const condition=`最终只说一句话，包含子代理查到的完整日期时间和时区，并在末尾加上：${marker}。`;
+ const pcIndex=await startCall(),input=play('queued-task');await input.done;
+ let binding;
+ await waitFor(async s=>{
+  await readHistory();
+  const ordinary=extractToolPairs(lastHistory.parent);
+  const exact=mergeExactToolBodies(indexNativeToolPairs(toolEvents,{sessionKey:currentSession}),ordinary);
+  for(const spawn of exact.filter(p=>p.name==='sessions_spawn'))for(const result of spawn.results.filter(toolResultSucceeded)) {
+   let accepted;try{accepted=JSON.parse(result.text)}catch{continue}
+   if(accepted?.status!=='accepted'||!accepted.runId||!accepted.childSessionKey)continue;
+   const yielded=exact.find(p=>p.runId===spawn.runId&&p.name==='sessions_yield'&&p.results.some(r=>toolResultSucceeded(r)&&JSON.parse(r.text)?.status==='yielded'));
+   const child=indexNativeToolPairs(toolEvents,{runId:accepted.runId,sessionKey:accepted.childSessionKey});
+   const wait=child.find(p=>p.name==='exec'&&new RegExp('\\bsleep\\s+'+childWaitSeconds+'(?:\\D|$)','u').test(p.args?.command??'')&&p.results.some(r=>toolResultSucceeded(r)&&r.details?.status==='running'));
+   const terminal=lastHistory.childTerminals?.[accepted.childSessionKey]?.response;
+   const owner=resolveNativeControlOwner({diagnostics:diagnostics(),events:s.events,tools:s.tools,backendRunId:spawn.runId,voiceSessionId:callOwners.get(pcIndex).voiceSessionId,pcIndex});
+   if(yielded&&wait&&owner&&Number.isFinite(wait.calledAt)&&!terminal?.terminalReceipt&&Date.now()<wait.calledAt+childWaitSeconds*1000) {
+    binding={accepted,spawn,yielded,wait,owner,observedPendingAt:Date.now()};return true;
+   }
+  }
+ },'Real yielded requester and same owned child still executing the slow step',90000);
+ save('queued-steer-pending-binding.json',binding);
+ check('queued-steer-real-child-pending-after-yield',Boolean(binding),{acceptedSpawn:binding.accepted,childWaitCallId:binding.wait.id,childWaitSourceAt:binding.wait.calledAt,pendingObservedAt:binding.observedPendingAt,owner:binding.owner});
+ const submittedAt=Date.now();await clickOriginalButton('steerText');await cdp.request('Input.insertText',{text:condition});await clickOriginalButton('steer');
+ const response=await waitFor(s=>s.api.find(a=>a.route==='/api/steer'&&a.requestedAt>=submittedAt&&a.request?.voiceSessionId===binding.owner.voiceSessionId&&a.request?.mode==='steer'&&a.request?.text===condition&&a.responseBody),'Original H5 supplemental input response body',15000);
+ save('queued-steer-original-api-receipt.json',{submittedAt,condition,marker,response,owner:binding.owner});
+ check('queued-steer-original-api-retained-not-applied',response.status===200&&response.responseBody.ok===true&&response.responseBody.queued===true&&response.responseBody.applied===false&&response.responseBody.target==='owned_continuation_checkpoint',{response,submittedAt,conditionSha256:hash(condition)});
+ let finished=false;
+ await waitFor(async s=>{
+  await readHistory();const ds=diagnostics();
+  const final=ds.filter(d=>d.stage==='context-append-sent'&&d.kind==='final'&&d.role==='final_complete'&&d.traceId===binding.owner.traceId&&d.delegationId===binding.owner.delegationId&&d.generation===binding.owner.generation).at(-1);
+  const turn=final&&s.events.find(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='assistant'&&e.at>=final.at&&e.text.includes(marker));
+  if(turn&&continuousPlaybackQuiet(s.audioFrames,{pcIndex,after:turn.at,durationMs:750})){finished=true;return true}
+  return false;
+ },'Same owner natural continuation delivers the newly submitted output condition',240000);
+ const s=await snapshot(true),ds=diagnostics(),chosen=childEvidencePairs().filter(p=>p.runId===binding.accepted.runId&&p.sessionKey===binding.accepted.childSessionKey),date=extractExecDateFromPairs(chosen,childWaitSeconds);
+ const terminal=lastHistory.childTerminals?.[binding.accepted.childSessionKey];
+ const terminalOk=terminal?.response?.runId===binding.accepted.runId&&terminal?.response?.terminalReceipt?.runId===binding.accepted.runId&&['ok','completed','complete','done'].includes(terminal.response.status)&&Number.isFinite(terminal.response.endedAt);
+ const owned=d=>d.traceId===binding.owner.traceId&&d.delegationId===binding.owner.delegationId&&d.generation===binding.owner.generation;
+ const consumed=ds.filter(d=>owned(d)&&d.stage==='backend-steering-consumed'&&d.at>=response.at).at(-1);
+ const resumed=consumed&&terminalOk&&ds.find(d=>owned(d)&&d.stage==='backend-run-started'&&d.sourceRunIdSha256===consumed.sourceRunIdSha256&&d.sourceRunIdSha256!==binding.owner.sourceRunIdSha256&&d.at>=terminal.response.endedAt&&d.at<=consumed.at);
+ const actualResumeRun=consumed&&toolEvents.map(e=>e.payload?.runId).find(id=>id&&hash(id)===consumed.sourceRunIdSha256);
+ let privateParentTranscript;
+ if(actualResumeRun&&lastHistory.parent?.sessionId)try{privateParentTranscript=readPrivateChildTranscript({state:stateRoot,candidateData,sessionId:lastHistory.parent.sessionId,runId:actualResumeRun,requestedSessionKey:currentSession})}catch(error){privateParentTranscript={observerError:error.message}}
+ save('queued-steer-actual-parent-transcript.json',privateParentTranscript??{status:'missing-actual-resume-run-or-session'});
+ const rawCandidates=[...(lastHistory.parent.messages??[]).map(message=>({source:'chat.history',message})),...(privateParentTranscript?.rawEvents??[]).map(row=>({source:'private-sqlite-raw-transcript',...row}))];
+ const rawResumeCandidates=rawCandidates.flatMap(row=>{const message=row.message??row.event?.message;
+  const parsed=message?.role==='user'&&extractQueuedConditionResume(messageText(message),consumed?.steeringConsumed,terminal?.response?.terminalReply?.text);
+  if(!parsed||!parsed.inputs.some(input=>input.mode==='steer'&&input.text===condition)||timestamp(message.timestamp??row.createdAt)<response.requestedAt)return [];
+  const declaredRunIds=[message.runId,message.__openclaw?.runId,row.event?.runId,row.event?.data?.runId].filter(id=>typeof id==='string');
+  return [{...row,parsedOriginalResume:parsed,declaredRunIds,actualSourceRunBound:declaredRunIds.includes(actualResumeRun)}];
+ });
+ const rawResume=rawResumeCandidates.find(row=>row.actualSourceRunBound);
+ save('queued-steer-raw-resume-candidates.json',rawResumeCandidates);
+ check('queued-steer-same-child-successful-wait-date-terminal',terminalOk&&date&&date.runId===binding.accepted.runId&&date.sessionKey===binding.accepted.childSessionKey&&terminal.response.endedAt>=date.resultAt,{terminal,date});
+ check('queued-steer-trusted-condition-consumption',Boolean(resumed)&&Boolean(actualResumeRun)&&matchesConsumedConditionBatch(consumed,[condition],binding.owner,hash(actualResumeRun??'')),{consumed,resumed,actualResumeRun,status:consumed?'observed':'missing-real-consumption-callback'});
+ check('queued-steer-actual-parent-resume-input',Boolean(rawResume)&&Boolean(consumed)&&Boolean(actualResumeRun),{rawResume:rawResume??null,actualResumeRun,unboundOriginalResumeCandidates:rawResumeCandidates.length,reason:rawResume?null:'No original requester input has the original child completion, exact condition JSON batch and an actual declared resume run identity; observer labels and metadata alone are not raw resume.message'});
+ const final=ds.filter(d=>owned(d)&&d.stage==='context-append-sent'&&d.kind==='final'&&d.role==='final_complete'&&d.sourceRunIdSha256===consumed?.sourceRunIdSha256).at(-1);
+ const nativeFinal=final&&s.events.find(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='assistant'&&e.at>=final.at&&e.text.includes(marker));
+ const finalFields=parseCompleteTimestamps(nativeFinal?.text??''),offsets=explicitSpokenOffsets(nativeFinal?.text??'');
+ const conditionDelivered=nativeFinal?.text.trim().replace(/[。.!！]$/u,'').endsWith(marker)&&nativeFinal.text.split(/[。!?！？]/u).filter(part=>part.trim()).length===1;
+ check('queued-steer-same-owner-final-satisfies-condition',finished&&date&&nativeFinal&&finalFields.length===1&&JSON.stringify(finalFields[0])===JSON.stringify(date.fields)&&offsets.length>0&&offsets.every(x=>x===date.offsetMinutes)&&conditionDelivered,{nativeFinal,final,date});
+ check('queued-steer-original-final-digital-audio',nativeFinal&&audible(s,final.at,nativeFinal.at,pcIndex).length>3,{audibleFrames:nativeFinal?audible(s,final.at,nativeFinal.at,pcIndex).length:0});
+ if(nativeFinal)await waitForPlaybackDrain(pcIndex,nativeFinal.at,'Supplemental same-owner final actual playback drain');
+ await stopCall(pcIndex);
+}
 try {
  const {GatewayClient}=await import(path.join(runtime,'dist/plugin-sdk/gateway-runtime.js'));
  await new Promise((resolve,reject)=>{const timeout=setTimeout(()=>reject(Error('Private Gateway observer hello deadline')),15000);gateway=new GatewayClient({url:'ws://127.0.0.1:'+config.gateway.port,token,deviceIdentity:null,clientName:'cli',mode:'cli',scopes:['operator.read','operator.write'],caps:['tool-events'],onHelloOk:()=>{clearTimeout(timeout);resolve()},onConnectError:reject,onEvent:event=>{if(['agent','session.tool','talk.event','chat'].includes(event.event))toolEvents.push({at:Date.now(),event:event.event,payload:event.payload});}});gateway.start();});
@@ -288,7 +368,7 @@ try {
  const debugFile=path.join(profile,'DevToolsActivePort');for(const until=Date.now()+15000;Date.now()<until&&!fs.existsSync(debugFile);)await sleep(100);assert(fs.existsSync(debugFile),'Task-owned Chrome debugger unavailable: '+chromeStderr.slice(-1000));
  const port=fs.readFileSync(debugFile,'utf8').split('\n')[0];const targets=await fetch('http://127.0.0.1:'+port+'/json/list').then(r=>r.json());cdp=new CdpClient(targets.find(t=>t.type==='page').webSocketDebuggerUrl);await cdp.connect();await cdp.request('Page.enable');await cdp.request('Runtime.enable');await cdp.request('Page.addScriptToEvaluateOnNewDocument',{source:BROWSER_PROBE});await cdp.request('Page.navigate',{url});
  await waitFor(s=>s?.callState==='idle'&&s.badge==='可以拨号','Ready original H5 rendered',10000);
- if(testCase==='comprehensive-long')await longTask();else await controls();
+ if(testCase==='comprehensive-long')await longTask();else if(testCase==='comprehensive-controls')await controls();else await queuedSteer();
 } catch(error) {check('test-exception',false,{message:String(error.message).replace(/(token|secret|api.?key|authorization)[=: ]+[^\s]+/giu,'$1=[redacted]')});}
 finally {
  if(cdp){lastState=await snapshot(true).catch(()=>lastState);save('browser-native-evidence.json',lastState);save('backend-history.json',lastHistory);save('backend-tool-events.json',toolEvents);save('native-public-diagnostics.json',diagnostics());
@@ -320,5 +400,5 @@ finally {
  cleanup={...(await pulse?.dispose()),chromeExited:Boolean(chrome&&(chrome.exitCode!==null||chrome.signalCode!==null))};
  if(chromeTemp){fs.rmSync(chromeTemp,{recursive:true,force:true});cleanup.chromePrivateTempRemoved=!fs.existsSync(chromeTemp);}
  check('private-config-unchanged',hash(fs.readFileSync(configPath))===configHash);
- summary={case:testCase,candidateId:process.env.VLAB_CANDIDATE_ID,h5AppSha256:process.env.GPT_LIVE_H5_APP_SHA,model:'gpt-live-1-codex',checks,passed:checks.length>0&&checks.every(c=>c.passed),sessionKeys,syntheticUserPCM:true,syntheticAssistantEvents:false,syntheticBackendResults:false,continuousOriginalCaptureTrack:checks.find(c=>c.name==='original-processed-microphone-sender-identity')?.passed===true,digitalPlaybackAcceptanceOnly:true,physicalEchoAccepted:false,humanListeningAccepted:false,cleanup,evidenceDir:base};save('receipt.json',summary);console.log(JSON.stringify({nativeComprehensive:{case:testCase,candidateId:summary.candidateId,passed:summary.passed,checks:checks.map(c=>({name:c.name,passed:c.passed})),evidenceDir:base,physicalEchoAccepted:false}}));if(!summary.passed)process.exitCode=1;
+ summary={case:testCase,candidateId:process.env.VLAB_CANDIDATE_ID,h5AppSha256:process.env.GPT_LIVE_H5_APP_SHA,model:'gpt-live-1-codex',childWaitSeconds,checks,passed:checks.length>0&&checks.every(c=>c.passed),sessionKeys,syntheticUserPCM:true,syntheticAssistantEvents:false,syntheticBackendResults:false,continuousOriginalCaptureTrack:checks.find(c=>c.name==='original-processed-microphone-sender-identity')?.passed===true,digitalPlaybackAcceptanceOnly:true,physicalEchoAccepted:false,humanListeningAccepted:false,cleanup,evidenceDir:base};save('receipt.json',summary);console.log(JSON.stringify({nativeComprehensive:{case:testCase,candidateId:summary.candidateId,passed:summary.passed,checks:checks.map(c=>({name:c.name,passed:c.passed})),evidenceDir:base,physicalEchoAccepted:false}}));if(!summary.passed)process.exitCode=1;
 }
