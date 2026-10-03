@@ -180,7 +180,8 @@ test("native card: 接管 / 我完成了 / 跳过 while pending, swaps buttons a
   assert.ok(JSON.stringify(pending.body.elements).includes('"img_key":"img_1"'));
   assert.deepEqual(buttonsOf(pending), ["接管", "我完成了", "跳过"]);
   const take = JSON.stringify(pending);
-  assert.ok(take.includes('"default_url":"https://h/x#t"') && take.includes('"q":"/v-takeover h_1"'), "接管 opens the desktop and reports the takeover");
+  assert.ok(take.includes('"default_url":"https://h/x#t"'), "接管 opens the desktop");
+  assert.ok(!take.includes("/v-takeover"), "接管 carries no callback (mobile Feishu would run only the callback)");
   assert.ok(take.includes('"q":"/v-handback h_1"') && take.includes('"q":"/v-skip h_1"'));
   assert.deepEqual(quickCommand("/x", { userOpenId: "ou_me", expiresAt: 5 }).c, { u: "ou_me", e: 5 }, "only the owner can press");
   const active = nativeHandoffCard({ ...base, state: "active" });
