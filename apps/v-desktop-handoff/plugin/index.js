@@ -81,7 +81,33 @@ export default definePluginEntry({
       };
       const messageId = await feishu.sendCard(receiver, nativeHandoffCard({ ...view, state: "pending" }));
       cards.set(issued.id, { feishu, messageId, view, state: "pending" });
+      watchCard(issued.id, issued.claimExpiresAt + issued.sessionTtlMs);
       return messageId;
+    };
+
+    // Feishu runs only the link of a button that has both a link and a callback,
+    // so the card follows the desktop itself: someone in control -> 操作中, the
+    // handoff over -> 已结束. 我完成了 / 跳过 still arrive as callbacks.
+    const watchCard = (id, until) => {
+      const timer = setInterval(async () => {
+        const card = cards.get(id);
+        if (!card || ["done", "skipped", "ended"].includes(card.state) || Date.now() > until + 60_000) {
+          clearInterval(timer);
+          return;
+        }
+        let status;
+        try {
+          status = await client.status(id);
+        } catch {
+          return;
+        }
+        if (status.ended) {
+          await setCardState(id, "ended");
+        } else if (status.controlActive && card.state === "pending") {
+          await setCardState(id, "active");
+        }
+      }, config.cardPollMs ?? 3_000);
+      timer.unref?.();
     };
 
     const setCardState = async (id, state) => {
