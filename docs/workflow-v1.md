@@ -77,4 +77,4 @@ Validation rejects duplicate stages, cycles, unknown routes, unsafe side effects
 
 Paid production and publication use per-content-item idempotency and approvals. Base, Scene, Makaron, GeeLark, and Apify remain adapters and evidence sources; Workboard is the human-facing control surface.
 
-See [`../examples/workflows/xingqing-content-delivery.workflow.md`](../examples/workflows/xingqing-content-delivery.workflow.md) for the first complete template.
+See `examples/workflows/xingqing-content-delivery.workflow.md` in [`vegekyd-sys/v-nightshift`](https://github.com/vegekyd-sys/v-nightshift) (moved there on 2026-10-02) for the first complete template.

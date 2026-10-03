@@ -72,6 +72,7 @@ export class HandoffRegistry {
       revokedAt: null,
       endedAt: null,
       endReason: null,
+      card: null, // the chat card that carries this link (opaque to the service), so any process can update it
     };
     this.handoffs.set(id, handoff);
     this.byTokenHash.set(handoff.tokenHash, id);
@@ -263,6 +264,41 @@ export class HandoffRegistry {
     return { role: "observer" };
   }
 
+  /**
+   * The user handed the desktop back from the chat (card button), not from the
+   * viewer page: demote whoever controls it through this handoff. The handoff
+   * itself stays open so "接管电脑" works again until it expires.
+   */
+  handBack(id) {
+    const handoff = this.handoffs.get(id);
+    if (!handoff) {
+      return null;
+    }
+    const controller = this.controllerSecret ? this.viewers.get(this.controllerSecret) : null;
+    const released = Boolean(controller && controller.handoffId === id);
+    if (released) {
+      this.controllerSecret = null;
+      controller.role = "observer";
+      this.audit("control_released", { id, viewer: controller.secret.slice(0, 6), reason: "handed_back_from_chat" });
+      controller.link?.notify?.({ type: "role", role: "observer", reason: "handed-back" });
+    }
+    return { id, released, ended: Boolean(handoff.endedAt) };
+  }
+
+  /** Remember (or update) the chat card of a handoff. Opaque JSON, size-capped. */
+  setCard(id, card) {
+    const handoff = this.handoffs.get(id);
+    if (!handoff) {
+      return null;
+    }
+    const json = JSON.stringify(card ?? null);
+    if (json.length > 16_384) {
+      throw new Error("card too large");
+    }
+    handoff.card = JSON.parse(json);
+    return { id, ok: true };
+  }
+
   noteInput(secret) {
     const viewer = this.viewers.get(secret);
     if (viewer) {
@@ -376,6 +412,7 @@ export class HandoffRegistry {
       lastInputAt: viewers.reduce((max, v) => Math.max(max, v.lastInputAt ?? 0), 0) || null,
       ended: Boolean(handoff.endedAt),
       endReason: handoff.endReason,
+      card: handoff.card,
     };
   }
 

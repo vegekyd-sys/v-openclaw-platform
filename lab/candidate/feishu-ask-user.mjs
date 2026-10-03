@@ -16,7 +16,7 @@ const original = fs.readFileSync(file, "utf8");
 const patched = patchFeishuAskUser(original);
 fs.writeFileSync(file, patched);
 assert.equal(spawnSync(process.execPath, ["--check", file]).status, 0);
-const helpers = ["card.mjs", "runtime.mjs"].map(n => fs.readFileSync(new URL(`../release-files/feishu-ask-user/${n}`, import.meta.url), "utf8")).join("\n");
+const helpers = ["card.mjs", "chat.mjs", "runtime.mjs"].map(n => fs.readFileSync(new URL(`../release-files/feishu-ask-user/${n}`, import.meta.url), "utf8")).join("\n");
 const { createFeishuAskRuntime, buildFeishuAskCard } = await import(`data:text/javascript;base64,${Buffer.from(helpers).toString("base64")}`);
 const core = path.join(runtime, "openclaw/dist");
 const managerFile = fs.readdirSync(core).find(n => /^question-manager-.*\.js$/.test(n));

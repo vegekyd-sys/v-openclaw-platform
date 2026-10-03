@@ -1,10 +1,10 @@
 {
-  "baseRelease": "view-image-overflow-signal-v1",
+  "baseRelease": "memory-search-guards-20261002",
   "files": [
     {
       "source": "lab/release-files/feishu-ask-user/monitor.account-WFdlCDhR.js",
       "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js",
-      "before": "7ea5490f718e168493fc550a86fe8e5cbcde3b21436e73fb3089bc0a09d3e3d9"
+      "before": "69230132cee9d099ba211aa5442ca44e6ca6cab57128a450fe112f7cace7b5f8"
     }
   ]
 }

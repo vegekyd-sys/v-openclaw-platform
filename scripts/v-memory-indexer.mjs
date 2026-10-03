@@ -12,6 +12,18 @@
 // Environment and config are the Gateway's (see v-memory-indexer.sh). Besides the
 // watcher, a reconcile sync runs every RECONCILE_MINUTES (default 60) in case an
 // inotify event was lost.
+//
+// This process writes the same agent database the Gateway writes, and the Gateway waits
+// for that write lock synchronously on its main thread (busy timeout 5 s, then retry).
+// On 2026-10-02 21:16 a Librarian commit burst made one file change while it was being
+// indexed; upstream then escalates the next sync to a full in-place reindex, whose final
+// table publish held the write lock for 327 s and froze the Gateway for 127 s. So here:
+// - no full reindex, ever: it is refused and logged (run it deliberately with the CLI);
+// - a file that changes while being indexed only leaves the index dirty, and the next
+//   watch event re-indexes that file incrementally;
+// - watch syncs wait for QUIET_SECONDS (default 15) without file events, so a burst of
+//   writes to one large file is indexed once, not once per write;
+// - every file write logs its duration, so long lock holds are visible per file.
 import fs from "node:fs";
 import path from "node:path";
 
@@ -19,6 +31,8 @@ const dist = process.env.OPENCLAW_DIST;
 if (!dist) throw new Error("OPENCLAW_DIST is required");
 const agents = process.argv.slice(2).length ? process.argv.slice(2) : ["makaron"];
 const reconcileMs = Number(process.env.RECONCILE_MINUTES || 60) * 60_000;
+const quietMs = Number(process.env.QUIET_SECONDS || 15) * 1000;
+const slowWriteMs = Number(process.env.SLOW_WRITE_MS || 500);
 const log = (event) => console.log(JSON.stringify({ ts: new Date().toISOString(), ...event }));
 
 const { loadConfig } = await import(path.join(dist, "plugin-sdk/config-runtime.js"));
@@ -58,10 +72,39 @@ MemoryIndexManager.prototype.sync = async function (params) {
   }
 };
 
+// Refuse the full in-place reindex and never schedule one after a failed memory sync.
+let lastRefusalLog = 0;
+MemoryIndexManager.prototype.runInPlaceReindex = async function (params) {
+  if (Date.now() - lastRefusalLog > 10 * 60_000) {
+    lastRefusalLog = Date.now();
+    log({ event: "full-reindex-refused", agent: this.agentId, reason: params?.reason, fix: "run `openclaw memory index --force` deliberately, off-peak" });
+  }
+  throw new Error("v-memory-indexer does not run full reindexes");
+};
+const originalMarkFailed = MemoryIndexManager.prototype.markFailedFullReindexRetry;
+MemoryIndexManager.prototype.markFailedFullReindexRetry = function (params) {
+  if (params?.memory) this.dirty = true;
+  if (params?.sessions) originalMarkFailed.call(this, { memory: false, sessions: true });
+};
+
+// Per-file write duration; writes are one SQLite IMMEDIATE transaction each.
+const originalWriteChunks = MemoryIndexManager.prototype.writeChunks;
+MemoryIndexManager.prototype.writeChunks = async function (item, ...rest) {
+  const started = performance.now();
+  try {
+    return await originalWriteChunks.call(this, item, ...rest);
+  } finally {
+    const ms = Math.round(performance.now() - started);
+    if (ms >= slowWriteMs) log({ event: "slow-write", agent: this.agentId, path: item?.entry?.path, chunks: item?.chunks?.length, ms });
+  }
+};
+
 const cfg = loadConfig();
 const managers = [];
 for (const agentId of agents) {
   const manager = await MemoryIndexManager.get({ cfg, agentId });
+  // The watcher re-arms its debounce timer on every event, so this is a quiet period.
+  manager.settings.sync.watchDebounceMs = Math.max(manager.settings.sync.watchDebounceMs ?? 0, quietMs);
   managers.push(manager);
   log({ event: "watching", agent: agentId, workspace: manager.workspaceDir });
   await manager.sync({ reason: "indexer-startup" }).catch(() => {});

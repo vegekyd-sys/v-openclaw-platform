@@ -174,7 +174,7 @@ CI（`.github/workflows/vlab-static.yml`）只在 `pull_request` 和 `push: main
                                         current/RELEASE_COMMIT = d962aea…   ← 自证身份
 ```
 
-`scripts/package-nightshift-release.sh <commit>` 用 `git archive` 从 commit 构建，写入
+`scripts/package-nightshift-release.sh <commit>`（2026-10-02 起在 `vegekyd-sys/v-nightshift`，由它的 `scripts/ship.sh` 调用）用 `git archive` 从 commit 构建，写入
 `RELEASE_COMMIT`，输出 tarball 和 sha256。`d962aea` 确实在 `origin/dev` 上。
 
 **这就是目标形态。** core 那条线要做的，是被拉到同一个模型里来。

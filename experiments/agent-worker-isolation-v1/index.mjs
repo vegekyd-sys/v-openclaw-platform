@@ -56,7 +56,7 @@ import {
   resolveNativeRequestTimeoutMs,
 } from "./native-request-timeout.mjs";
 import { NativeLaneProgressBridge } from "./native-lane-progress.mjs";
-import { syncWorkerRuntimeConfigFile } from "./worker-config-sync.mjs";
+import { deriveWorkerConfigFile } from "./worker-config-derive.mjs";
 import { createGatewayNativeCompactionPassthrough } from "./gateway-native-compaction.mjs";
 import { resolveHarnessMessageChannel } from "./harness-channel.mjs";
 
@@ -306,17 +306,18 @@ const plugin = {
     if (!gatewayConfigPath) {
       throw new Error("gatewayConfigPath is required");
     }
-    const workerRuntimeConfigSync = syncWorkerRuntimeConfigFile({
-      gatewayConfigPath,
-      workerConfigPath,
-    });
-    if (workerRuntimeConfigSync.changed) {
-      api.logger.info(
-        `Synchronized Worker runtime policy from Gateway config: ${workerRuntimeConfigSync.paths.join(
-          ", ",
-        )}`,
-      );
-    }
+    // Workers read workerConfigPath, derived from the Gateway config plus a
+    // small versioned overlay (worker-config-derive.mjs). Only the Gateway
+    // writes it; a failure keeps the previous file and is logged, it never
+    // fails plugin registration. New Worker spawns read the result.
+    const workerRuntimeConfigSync =
+      process.env.VLAB_WORKER_CHILD === "1"
+        ? { ok: true, changed: false, skipped: "worker-child" }
+        : deriveWorkerConfigFile({
+            gatewayConfigPath,
+            workerConfigPath,
+            logger: api.logger,
+          });
     const fastCompactionModel =
       typeof api.pluginConfig?.fastCompactionModel === "string" &&
       api.pluginConfig.fastCompactionModel.trim()

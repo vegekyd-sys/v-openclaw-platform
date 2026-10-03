@@ -122,6 +122,7 @@
         "experiments/agent-worker-isolation-v1/worker-active-run-proxy.test.mjs",
         "experiments/agent-worker-isolation-v1/worker-agent.test.mjs",
         "experiments/agent-worker-isolation-v1/worker-config-sync.test.mjs",
+        "experiments/agent-worker-isolation-v1/worker-config-derive.test.mjs",
         "experiments/agent-worker-isolation-v1/worker-detached-event.test.mjs",
         "experiments/agent-worker-isolation-v1/worker-exec-argv.test.mjs",
         "experiments/agent-worker-isolation-v1/worker-gateway-events.test.mjs",
@@ -140,7 +141,9 @@
         "lab/worker-coldstart-longterm.test.mjs",
         "lab/worker-command-readiness.test.mjs",
         "lab/worker-session-readiness.test.mjs",
-        "lab/worker-runtime-readiness.test.mjs"
+        "lab/worker-runtime-readiness.test.mjs",
+        "tests/worker-config-derive-release.test.mjs",
+        "tests/worker-generations.test.mjs"
       ]
     },
     {
@@ -148,6 +151,7 @@
       "purpose": "飞书显示、Steer、媒体和 Session 补丁的确定性回归",
       "files": [
         "tests/feishu-ask-user.test.mjs",
+        "tests/feishu-dm-approvals.test.mjs",
         "scripts/patch-worker-channel-registry.test.mjs",
         "tests/patch-feishu-active-run-steering.test.mjs",
         "tests/patch-feishu-latest-snapshot-streaming.test.mjs",
@@ -191,6 +195,8 @@
       "purpose": "各条线在 lab/、scripts/、tests/、worker 实验目录下的离线回归；2026-09-24 从未登记状态收拢，全部离线通过",
       "files": [
         "scripts/bundle-prep-observer.test.mjs",
+        "tests/workboard-notes-limit-patch.test.mjs",
+        "tests/workboard-owner-concurrency-patch.test.mjs",
         "scripts/db91-firstword-files.test.mjs",
         "scripts/db91-hi-trace.test.mjs",
         "scripts/db91-prepared-scope.test.mjs",
@@ -329,6 +335,7 @@
     {"file": "lab/candidate/examples/config.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
     {"file": "lab/candidate/computer-execution-idle.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
     {"file": "lab/candidate/memory-search-fast.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
+    {"file": "lab/candidate/memory-indexer-burst.test.mjs", "reason": "需要 VLab 候选运行时和共享 makaron 记忆文件副本，并要带入 V 上旧版 indexer（support），只能在 vlab.mjs candidate 里跑。"},
     {"file": "lab/candidate/computer-frame-prune.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
     {"file": "lab/candidate/talk-input-stall-static.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
     {"file": "lab/candidate/talk-owner-terminal.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
@@ -522,7 +529,7 @@
         "worker-runtime"
       ],
       "offlineSuites": [],
-      "offlineGap": "Night Shift 独立包测试尚未导入当前来源树。",
+      "offlineGap": "Night Shift 自 2026-10-02 在 vegekyd-sys/v-nightshift 独立发版，测试在那个仓库的 CI 里跑；本仓库只留它依赖的 Workboard dist 补丁及其测试。",
       "liveAssertions": [
         "独立测试账号或独占集成内，同 Agent 两个任务完成并回到各自所有者",
         "并发预算明确且主对话仍可回复，任务取消和错误回传可见"
@@ -816,7 +823,7 @@
     {
       "id": "nightshift-release",
       "status": "unresolved",
-      "reason": "Night Shift 9.1 调度、cardIds、预算和 data-selection 改动在独立来源。"
+      "reason": "Night Shift 在 vegekyd-sys/v-nightshift 独立发版（2026-10-02 拆出），用它的 scripts/ship.sh 部署。"
     },
     {
       "id": "host-startup-chain",

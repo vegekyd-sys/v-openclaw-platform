@@ -11,6 +11,77 @@
 
 ---
 
+## hotreload-feishu-approvals-20261003
+
+上线：2026-10-03 23:44 CST 安装，23:44:55 停 Gateway，停机时写入两项 Telegram 审批配置，23:47:14 就绪  ·  tag `hotreload-feishu-approvals-20261003`
+
+**摘要**：两件事一起上。
+
+（1）**worker 层不再需要重启**（#172/#173）：
+- 改插件配置、改主配置（模型、白名单、agent），或者执行 `openclaw gateway call vlab.workers.roll`，worker 会换一代新进程。
+- 旧一代把手上的回合、排队的回合、后台生图做完再退。
+- worker 配置改为从主配置自动推导，不再手工维护，首次推导在 V 上改写了 70 处。
+- 9/20、9/23 那种"热重载后 worker 池永久关闭"的停摆被修掉。
+
+（2）**OpenClaw 改动、插件、命令执行审批改发到 Tianyi 的飞书私聊**（#171），带 批准 / 总是允许 / 拒绝 按钮；同时关闭 Telegram 审批（`channels.telegram.execApprovals.enabled=false`、`approvals.plugin.enabled=false`，停机时写入）。
+
+**V 线上验收**（lark-cli，「V 生产发布验收 0910」群）：
+- base 通过：0.2.12-generations.1，5 个 worker。
+- roll 通过：在途回合的 1–3000 计数在旧一代完整输出，之后排空。
+- config 通过：改 `wizard.lastRunCommand` 后 worker 自动换代，在途回合完成，配置按字节还原。
+- 全程 `worker pool is closing` 0 次，worker 请求失败 0 次。
+- OpenClaw 改动审批：
+  - 00:00 第一次，`/vcc` 发起后这一轮立即结束，审批随之取消，卡片如实改写为「已取消」。这是 9.1 原有行为：审批绑定在发起它的那一轮上（`cancelAgentRuntimeBoundApprovals`）。
+  - 00:35 第二次，让 `/vcc` 在这一轮里用 sleep 轮询，把回合撑住。卡片到了 Tianyi 的飞书私聊，Telegram 0 条。00:42 Tianyi 在手机上点「批准」，卡片改为「已批准：OpenClaw 改动……改动已经写入」，配置真实写入；验完按字节还原。
+- 共享 VLab 上，插件审批卡已由 Tianyi 真人点「批准」通过。
+
+**已知**：
+- 共享 VLab 上，openclaw 系统 agent 工具报 "verified inference owner changed"，是原有问题，与本次无关。
+- 在群里发起的 OpenClaw 改动，如果 agent 的这一轮先结束，审批就会作废。卡片能到私聊，但已经点不了。
+
+相对上一版 `feishu-ask-chat-answer-20261003`：8 个文件变化。
+
+**经 VLab 发版 `hotreload-feishu-approvals-v2`**（worker-generations，dev `06d330f4`）
+> 验收：Shared VLab 2026-10-03 22:51-23:38 CST, release hotreload-feishu-approvals-v2 (dev 06d330f4: #171 + #172 + #173), real Feishu via Tianyi lark-cli in VLab 发布验收 B, driver lab/hotreload-acceptance.mjs. #172: base (worker 0.2.12-generations.1, generation 1, 5 workers, Worker config derived 33 paths, reply on vlab-worker); roll (vlab.workers.roll while a 1-3000 counting reply streamed in the old genera…
+- `worker` index.mjs  c047f3df → b5f315bb
+- `worker` worker-pool.mjs  a9f718d0 → 58558773
+- `worker` worker-config-derive.mjs  — → b202a9a8
+- `worker` worker-config-watch.mjs  — → 88354155
+- `worker` worker-runtime-lifecycle.mjs  — → 5e29a54b
+- `feishu` dist/channel-DSYCNah8.js  fbbcd86b → bb71f2d4
+- `feishu` dist/monitor.account-WFdlCDhR.js  b68229ec → b9ba9fc8
+- `feishu` dist/v-feishu-approvals.js  — → 2905c12f
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #173 worker：只改 meta 不触发换代；#171+#172 合并发布计划
+- #172 worker 层不重启更新：排空式换代、手动换代、主配置自动传到 worker
+- #171 feat(feishu): 审批卡发到 owner 的飞书私聊
+
+## feishu-ask-chat-answer-20261003
+
+上线：2026-10-03 11:04 CST 安装，11:24:52 重启 Gateway（11:27:56 就绪）  ·  tag `feishu-ask-chat-answer-20261003`
+
+**摘要**：两件事一起上。（1）Ask User 等你回答时，直接在聊天里打字回答也算数（#162）：以前普通消息会排在等待中的对话后面，任务卡住。（2）V 需要你接管电脑时，发一张「电脑」卡片（#96/#161/#163）：中间是 V 电脑的实时截图，点图片或「接管」直接进电脑并自动接管，做完点「我完成了」V 接着干，「跳过」则让 V 换个办法；卡片状态原地变成 操作中 / 已完成 / 已跳过；接管页适配手机。接管插件与接管服务在 `/opt/v-desktop-handoff/`（不在捕获范围内，11:23 同步，旧版备份在 `/opt/v-release-backups/desktop-handoff-card-20261003-*`）。V 上线后验收：Ask User 聊天回答在 Worker、vcodex、vds、vcc 四个入口均通过；接管卡片四个入口均能发卡，交还后 V 自动继续。
+
+**同日补丁（不在捕获范围内）**：13:26 只更新了接管插件（#166），13:26:34 重启 Gateway（13:28:53 就绪）。手机飞书对同时带链接和回调的「接管」按钮只执行回调，电脑打不开，还会冒出一条「No reply was generated」；现在「接管」只打开链接，旧卡片的回调改回一句提示。13:53 手机实测：打开 → 接管 → 收到触摸操作 → 「我完成了」→ 卡片「已完成」。插件备份在 `/opt/v-release-backups/desktop-handoff-mobile-20261003-*`。
+
+相对上一版 `v2026.9.1-db91.6-memory-search-guards-20261002`：1 个文件变化。
+
+**经 VLab 发版 `feishu-ask-chat-answer-v1`**（handoff-and-ask-20261003，dev `e141e7c5`）
+> 验收：Feishu DM to V - Lab as Tianyi, 2026-10-03 10:54-10:55 CST, deepseek-v4-flash on vlab-worker: V asked a native ask_user question (面条/米饭/饺子, inline in the active reply card, "也可以直接在聊天中回复答案"); Tianyi answered with a plain chat message 饺子; Gateway logged "ask_user chat answer ... state=answered", question.waitAnswer resolved, the question collapsed to ✓ 已选择：饺子 and V continued with 午饭定了：饺子. Same deplo…
+- `feishu` dist/monitor.account-WFdlCDhR.js  69230132 → b68229ec
+
+**这期间合入 dev 的 PR**（9 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #164 release: capture V after feishu-ask-chat-answer-20261003
+- #163 fix(desktop-handoff): 卡片默认放电脑实时截图；「已跳过」不再被改成「已结束」
+- #162 fix(feishu): accept chat replies while Ask User waits
+- #161 feat(desktop-handoff): 「电脑」卡片（图片 + 接管/我完成了/跳过）+ 手机版接管页
+- #96 feat(desktop-handoff): Feishu card with 接管电脑 / 付款 buttons; agent cannot end an active takeover
+- #159 fix(memory-indexer): 不再全量重建，文件变动只增量重试（修 21:16 冻结）
+- #160 chore: 夜班拆到独立仓库 vegekyd-sys/v-nightshift
+- #158 release: capture V after memory-search-guards
+- #156 refactor(nightshift): delivery page takes every name from the manifest
+
 ## v2026.9.1-db91.6-memory-search-guards-20261002
 
 上线：2026-10-02 20:00 CST 安装，20:00:41 重启 Gateway（20:02:17 就绪）  ·  tag `v2026.9.1-db91.6-memory-search-guards-20261002`
