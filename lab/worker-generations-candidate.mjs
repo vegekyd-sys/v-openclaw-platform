@@ -41,6 +41,9 @@ const OUTBOUND_PLUGINS = [
   "msteams", "nightshift-feishu", "openclaw-plugin-xiaoai-cloud",
   "respeaker-agent-bridge", "v-desktop-handoff", "cua-computer",
   "v-browser-device", "landing-chat", "workboard", "openclaw-deck",
+  // npm-managed on V/VLab and absent from the candidate runtime; startup would
+  // try to install it. Not needed for this test.
+  "codex",
 ];
 const config = JSON.parse(readFileSync(CONFIG, "utf8"));
 const port = config.gateway.port;
@@ -104,6 +107,8 @@ const gateway = spawn(process.execPath, [
   env: {
     ...process.env,
     HOME: DATA, TMPDIR: path.join(DATA, "tmp"), XDG_CACHE_HOME: path.join(DATA, "cache"),
+    // Never let the private Gateway touch the shared instance's npm cache.
+    npm_config_cache: path.join(DATA, "cache/npm"), npm_config_prefix: path.join(DATA, "user-npm"),
     OPENCLAW_GATEWAY_PORT: String(port),
   },
   stdio: ["ignore", "pipe", "pipe"],
