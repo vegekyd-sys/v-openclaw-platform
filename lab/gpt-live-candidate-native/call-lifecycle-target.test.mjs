@@ -22,6 +22,12 @@ test('shared and production retain distinct service/core/config/H5 provenance',(
  for(const target of ['shared','v']){const f=fixture(target);assert.equal(validateLifecycleTargetIdentity(f.expected,f.actual).target,target);}
  const f=fixture();f.actual.target='candidate';assert.throws(()=>validateLifecycleTargetIdentity(f.expected,f.actual));
 });
+test('canonical foreground subgroup remains inside the exact MainPID service',()=>{
+ const f=fixture();f.actual.gateway.cgroup+='\/foreground';assert(validateLifecycleTargetIdentity(f.expected,f.actual));
+ for(const cgroup of ['0::/other.service/foreground','0::/system.slice/'+f.expected.gateway.unit+'-neighbor/foreground']){
+  const other=fixture();other.actual.gateway.cgroup=cgroup;assert.throws(()=>validateLifecycleTargetIdentity(other.expected,other.actual));
+ }
+});
 test('staged shared release may be tested but pending or unrelated canonical artifact cannot',()=>{
  const f=fixture();assert.equal(validateLifecycleTargetIdentity(f.expected,f.actual).release.accepted,false);
  for(const alter of [r=>r.pendingPresent=true,r=>r.current.release='neighbor',r=>r.current.sourceCommit='f'.repeat(40),

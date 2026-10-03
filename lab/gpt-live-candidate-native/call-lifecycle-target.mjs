@@ -65,7 +65,10 @@ export function validateLifecycleTargetIdentity(expected,actual) {
     assert(unit(wanted.unit)&&Number.isSafeInteger(wanted.pid)&&wanted.pid>1&&typeof wanted.startTicks==='string'&&/^\d+$/u.test(wanted.startTicks));
     for(const key of ['unit','pid','startTicks'])assert.equal(observed[key],wanted[key],label+' process identity changed');
     assert.equal(observed.activeState,'active');assert.equal(observed.subState,'running');
-    assert(observed.cgroup.split('\n').some(line=>line.endsWith('/'+wanted.unit)),label+' process is outside its expected service');
+    // The canonical Gateway moves its MainPID into the service's foreground
+    // child cgroup. Match the exact unit path segment, including its children.
+    assert(observed.cgroup.split('\n').some(line=>line.endsWith('/'+wanted.unit)||line.includes('/'+wanted.unit+'/')),
+      label+' process is outside its expected service');
   }
   for(const key of ['corePath','configPath','stateRoot']) {
     assert(absolute(expected.gateway[key]));assert.equal(actual.gateway[key],expected.gateway[key],'Gateway '+key+' changed');
