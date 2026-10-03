@@ -72,6 +72,7 @@ export class HandoffRegistry {
       revokedAt: null,
       endedAt: null,
       endReason: null,
+      card: null, // the chat card that carries this link (opaque to the service), so any process can update it
     };
     this.handoffs.set(id, handoff);
     this.byTokenHash.set(handoff.tokenHash, id);
@@ -284,6 +285,20 @@ export class HandoffRegistry {
     return { id, released, ended: Boolean(handoff.endedAt) };
   }
 
+  /** Remember (or update) the chat card of a handoff. Opaque JSON, size-capped. */
+  setCard(id, card) {
+    const handoff = this.handoffs.get(id);
+    if (!handoff) {
+      return null;
+    }
+    const json = JSON.stringify(card ?? null);
+    if (json.length > 16_384) {
+      throw new Error("card too large");
+    }
+    handoff.card = JSON.parse(json);
+    return { id, ok: true };
+  }
+
   noteInput(secret) {
     const viewer = this.viewers.get(secret);
     if (viewer) {
@@ -397,6 +412,7 @@ export class HandoffRegistry {
       lastInputAt: viewers.reduce((max, v) => Math.max(max, v.lastInputAt ?? 0), 0) || null,
       ended: Boolean(handoff.endedAt),
       endReason: handoff.endReason,
+      card: handoff.card,
     };
   }
 

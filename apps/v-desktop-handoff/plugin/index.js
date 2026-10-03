@@ -80,15 +80,18 @@ export default definePluginEntry({
         owner: { userOpenId: ownerOpenId, expiresAt: issued.claimExpiresAt + issued.sessionTtlMs },
       };
       const messageId = await feishu.sendCard(receiver, nativeHandoffCard({ ...view, state: "pending" }));
-      cards.set(issued.id, { feishu, messageId, view, state: "pending" });
-      watchCard(issued.id, issued.claimExpiresAt + issued.sessionTtlMs);
+      const record = { messageId, appId: creds.appId, accountId: accountId ?? null, view, state: "pending" };
+      cards.set(issued.id, { ...record, feishu });
+      // The button commands run in the Gateway, the tool may run in a worker: keep the card with the handoff.
+      await client.setCard(issued.id, record).catch((error) => api.logger?.warn?.(`desktop handoff card not recorded: ${error.message}`));
+      watchCard(issued.id, issued.claimExpiresAt + issued.sessionTtlMs, cfg);
       return messageId;
     };
 
     // Feishu runs only the link of a button that has both a link and a callback,
     // so the card follows the desktop itself: someone in control -> 操作中, the
     // handoff over -> 已结束. 我完成了 / 跳过 still arrive as callbacks.
-    const watchCard = (id, until) => {
+    const watchCard = (id, until, cfg) => {
       const timer = setInterval(async () => {
         const card = cards.get(id);
         if (!card || ["done", "skipped", "ended"].includes(card.state) || Date.now() > until + 60_000) {
@@ -102,22 +105,42 @@ export default definePluginEntry({
           return;
         }
         if (status.ended) {
-          await setCardState(id, "ended");
+          await setCardState(id, "ended", cfg);
         } else if (status.controlActive && card.state === "pending") {
-          await setCardState(id, "active");
+          await setCardState(id, "active", cfg);
         }
       }, config.cardPollMs ?? 3_000);
       timer.unref?.();
     };
 
-    const setCardState = async (id, state) => {
-      const card = cards.get(id);
-      if (!card || card.state === state) {
+    const setCardState = async (id, state, cfg) => {
+      let card = cards.get(id);
+      if (!card) {
+        const record = (await client.status(id).catch(() => null))?.card;
+        if (!record?.messageId) {
+          return;
+        }
+        const creds = feishuCredentials(cfg, record.accountId);
+        if (!creds || creds.appId !== record.appId) {
+          api.logger?.warn?.(`desktop handoff card ${id}: no Feishu credentials for app ${record.appId}`);
+          return;
+        }
+        let feishu = feishuApis.get(creds.appId);
+        if (!feishu) {
+          feishu = new FeishuApi(creds);
+          feishuApis.set(creds.appId, feishu);
+        }
+        card = { ...record, feishu };
+        cards.set(id, card);
+      }
+      if (card.state === state) {
         return;
       }
       card.state = state;
       try {
         await card.feishu.patchCard(card.messageId, nativeHandoffCard({ ...card.view, state }));
+        const { feishu: _feishu, ...record } = card;
+        await client.setCard(id, record).catch(() => {});
       } catch (error) {
         api.logger?.warn?.(`desktop handoff card ${id} not updated to ${state}: ${error.message}`);
       }
@@ -369,11 +392,11 @@ export default definePluginEntry({
           return { text: "只有收到这张卡片的人能接管。" };
         }
         if (!status || status.ended) {
-          if (status) await setCardState(status.id, "ended");
+          if (status) await setCardState(status.id, "ended", ctx.config);
           return { text: "这次接管已经结束，让 V 重新发一张卡片。" };
         }
         handedBack.delete(status.id);
-        await setCardState(status.id, "active");
+        await setCardState(status.id, "active", ctx.config);
         return {};
       },
     });
@@ -402,9 +425,9 @@ export default definePluginEntry({
           return { text: decision.text };
         }
         handedBack.add(status.id);
-        await setCardState(status.id, "done");
+        await setCardState(status.id, "done", ctx.config);
         api.logger?.info?.(`desktop handoff ${status.id} handed back from chat by ${actor} (${decision.action})`);
-        return cards.has(status.id) ? { continueAgent: true } : { text: decision.text, continueAgent: true };
+        return status.card || cards.has(status.id) ? { continueAgent: true } : { text: decision.text, continueAgent: true };
       },
     });
 
@@ -427,7 +450,7 @@ export default definePluginEntry({
           return { text: `跳过失败：${error.message}` };
         }
         handedBack.add(status.id);
-        await setCardState(status.id, "skipped");
+        await setCardState(status.id, "skipped", ctx.config);
         api.logger?.info?.(`desktop handoff ${status.id} skipped by ${actor}`);
         return { continueAgent: true };
       },

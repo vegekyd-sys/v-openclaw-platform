@@ -301,6 +301,7 @@ export function createService(config, { log = console } = {}) {
     const url = new URL(req.url, "http://localhost");
     const match = url.pathname.match(/^\/v1\/handoffs\/([\w-]+)$/u);
     const handBackMatch = url.pathname.match(/^\/v1\/handoffs\/([\w-]+)\/handback$/u);
+    const cardMatch = url.pathname.match(/^\/v1\/handoffs\/([\w-]+)\/card$/u);
     try {
       if (req.method === "GET" && url.pathname === "/health") {
         json(res, 200, { ok: true, ...registry.state() });
@@ -323,6 +324,10 @@ export function createService(config, { log = console } = {}) {
       } else if (req.method === "GET" && match) {
         const status = registry.handoffStatus(match[1]);
         json(res, status ? 200 : 404, status ?? { error: "not_found" });
+      } else if (req.method === "PUT" && cardMatch) {
+        const body = await readJsonBody(req, 20 * 1024);
+        const result = registry.setCard(cardMatch[1], body.card);
+        json(res, result ? 200 : 404, result ?? { error: "not_found" });
       } else if (req.method === "POST" && handBackMatch) {
         const result = registry.handBack(handBackMatch[1]);
         json(res, result ? 200 : 404, result ?? { error: "not_found" });

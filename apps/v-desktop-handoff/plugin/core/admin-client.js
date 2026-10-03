@@ -49,6 +49,10 @@ export class HandoffAdminClient {
     return this.request("GET", `/v1/handoffs/${encodeURIComponent(id)}`, undefined, options);
   }
 
+  setCard(id, card, options) {
+    return this.request("PUT", `/v1/handoffs/${encodeURIComponent(id)}/card`, { card }, options);
+  }
+
   handBack(id, options) {
     return this.request("POST", `/v1/handoffs/${encodeURIComponent(id)}/handback`, {}, options);
   }

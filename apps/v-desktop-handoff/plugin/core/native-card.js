@@ -58,7 +58,10 @@ export function nativeHandoffCard({ state = "pending", kind = "control", purpose
   if (note ?? notes[state]) lines.push(`<font color='grey'>${note ?? notes[state]}</font>`);
   elements.push({ tag: "markdown", content: lines.join("\n") || "V 需要你接管电脑。" });
   if (imageKey) {
-    elements.push({ tag: "img", img_key: imageKey, alt: plain("V 的电脑"), scale_type: "fit_horizontal", corner_radius: "8px", preview: true });
+    const img = { tag: "img", img_key: imageKey, alt: plain("V 的电脑"), scale_type: "fit_horizontal", corner_radius: "8px", preview: false };
+    const open = url && (state === "pending" || state === "active");
+    // Tapping the picture opens the desktop, like 接管.
+    elements.push(open ? { tag: "interactive_container", width: "fill", corner_radius: "8px", has_border: false, padding: "0px", behaviors: [{ type: "open_url", default_url: url }], elements: [img] } : img);
   }
   const takeLabel = kind === "watch" ? "观看" : purpose === "payment" ? "付款" : "接管";
   if (kind === "watch" && (state === "pending" || state === "active")) {

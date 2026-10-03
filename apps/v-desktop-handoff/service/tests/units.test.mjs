@@ -109,3 +109,13 @@ test("registry: hand back from the chat demotes only this handoff's controller a
   assert.equal(registry.takeControl(ca.viewer).role, "controller", "can take control again");
   assert.ok(audit.some((e) => e.event === "control_released" && e.reason === "handed_back_from_chat"));
 });
+
+test("registry: a handoff keeps its chat card so any process can update it", () => {
+  const registry = new HandoffRegistry();
+  const issued = registry.issue({ kind: "control", ownerId: "u1" });
+  assert.equal(registry.handoffStatus(issued.id).card, null);
+  assert.deepEqual(registry.setCard(issued.id, { messageId: "om_1", state: "pending" }), { id: issued.id, ok: true });
+  assert.deepEqual(registry.handoffStatus(issued.id).card, { messageId: "om_1", state: "pending" });
+  assert.equal(registry.setCard("missing", {}), null);
+  assert.throws(() => registry.setCard(issued.id, { big: "x".repeat(20_000) }), /too large/u);
+});

@@ -177,7 +177,7 @@ test("native card: 接管 / 我完成了 / 跳过 while pending, swaps buttons a
   assert.equal(pending.header.title.content, "电脑");
   assert.equal(pending.header.text_tag_list[0].text.content, "需要操作");
   assert.equal(pending.config.update_multi, true, "the card can be patched later");
-  assert.ok(pending.body.elements.some((e) => e.tag === "img" && e.img_key === "img_1"));
+  assert.ok(JSON.stringify(pending.body.elements).includes('"img_key":"img_1"'));
   assert.deepEqual(buttonsOf(pending), ["接管", "我完成了", "跳过"]);
   const take = JSON.stringify(pending);
   assert.ok(take.includes('"default_url":"https://h/x#t"') && take.includes('"q":"/v-takeover h_1"'), "接管 opens the desktop and reports the takeover");
@@ -192,7 +192,7 @@ test("native card: 接管 / 我完成了 / 跳过 while pending, swaps buttons a
     assert.deepEqual(buttonsOf(card), [], `${state} has no buttons`);
   }
   assert.deepEqual(buttonsOf(nativeHandoffCard({ ...base, purpose: "payment", state: "pending" })).slice(0, 1), ["付款"]);
-  assert.ok(!nativeHandoffCard({ ...base, imageKey: null }).body.elements.some((e) => e.tag === "img"), "no picture, no img element");
+  assert.ok(!JSON.stringify(nativeHandoffCard({ ...base, imageKey: null }).body.elements).includes('"img"'), "no picture, no img element");
 });
 
 test("feishu api: credentials, receivers, token cache, send and patch", async () => {
@@ -220,4 +220,13 @@ test("feishu api: credentials, receivers, token cache, send and patch", async ()
   ], "token fetched once and reused");
   const failing = new FeishuApi({ appId: "a", appSecret: "s", host: "https://h", fetchImpl: async (url) => (url.endsWith("internal") ? { ok: true, json: async () => ({ code: 0, tenant_access_token: "t" }) } : { ok: true, status: 200, json: async () => ({ code: 230002, msg: "bot not in chat" }) }) });
   await assert.rejects(failing.sendCard({ receiveIdType: "chat_id", receiveId: "oc_1" }, {}), /230002 bot not in chat/u);
+});
+
+test("native card: the picture opens the desktop while the handoff is live", async () => {
+  const { nativeHandoffCard } = await import("../core/native-card.js");
+  const base = { url: "https://h/x#t", imageKey: "img_1", handoffId: "h_1" };
+  const pic = (card) => card.body.elements.find((e) => e.tag === "interactive_container" || e.tag === "img");
+  assert.equal(pic(nativeHandoffCard({ ...base, state: "pending" })).tag, "interactive_container");
+  assert.equal(pic(nativeHandoffCard({ ...base, state: "pending" })).behaviors[0].default_url, "https://h/x#t");
+  assert.equal(pic(nativeHandoffCard({ ...base, state: "done" })).tag, "img", "finished cards are just a picture");
 });
