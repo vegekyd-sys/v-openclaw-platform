@@ -74,14 +74,14 @@ export function createGptLiveConsultContinuationRegistry(deps) {
       if (failure) { controller.abort(failure); reject(failure); } else resolve(result);
       return true;
     };
-    const cancel = (reason, source = "owner_signal") => {
+    const cancel = (reason, source = "owner_signal", sourceRunId = params.runId) => {
       if (done) return false;
       cancellationAccepted = true;
       if (!cancellationNotified) {
         cancellationNotified = true;
         // This is a host-issued capability, never a string classifier. Revoke
         // native delivery before rejecting the pending consult or its Worker.
-        try { context.onCanceled?.({ ...owner.identity, source }); } catch {}
+        try { context.onCanceled?.({ ...owner.identity, ownerRunId: params.runId, runId: sourceRunId, source }); } catch {}
       }
       const failure = error(reason instanceof Error ? reason.message : "Voice consult cancelled");
       settle(undefined, failure);
@@ -108,7 +108,7 @@ export function createGptLiveConsultContinuationRegistry(deps) {
       if (taskRunId) byChildTask.set(taskRunId, binding);
       if (registration?.cleanup) cleanups.add(registration.cleanup);
       if (registration?.abortSignal) {
-        const abort = () => cancel(registration.abortSignal.reason, "owned_run_signal");
+        const abort = () => cancel(registration.abortSignal.reason, "owned_run_signal", binding.runId);
         if (registration.abortSignal.aborted) abort();
         else {
           registration.abortSignal.addEventListener("abort", abort, { once: true });
@@ -194,7 +194,7 @@ export function createGptLiveConsultContinuationRegistry(deps) {
       const failures = [];
       for (const target of targets) {
         if (terminal(target.binding)) continue;
-        const result = await executeCancel(target, () => cancel(error("Voice consult explicitly cancelled"), "explicit_control"));
+        const result = await executeCancel(target, () => cancel(error("Voice consult explicitly cancelled"), "explicit_control", target.binding.runId));
         if (result?.ok === true && result.mode === "cancel" && result.aborted === true) aborted++;
         else if (!(result?.reason === "no_active_run" && terminal(target.binding))) failures.push(result?.reason ?? "abort_rejected");
       }

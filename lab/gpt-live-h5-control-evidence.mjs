@@ -100,7 +100,7 @@ export function assessControlFinalFacts({events = [], marker, execWitness, final
 }
 
 
-export function assessControlExecPending(history = {}, seconds = 45) {
+export function assessControlExecPending(history = {}, seconds = 45, {requireDateInCommand = true} = {}) {
   const messages = history.messages ?? [];
   const calls = messages.flatMap(message => (Array.isArray(message.content) ? message.content : [])
     .filter(part => part.type === "toolCall"));
@@ -108,7 +108,7 @@ export function assessControlExecPending(history = {}, seconds = 45) {
     (message.toolCallId ?? message.tool_call_id) === call.id);
   const exec = calls.filter(call => call.name === "exec" &&
     new RegExp("\\bsleep\\s+[\"']?" + seconds + "(?:s)?[\"']?(?=\\s|[;&|]|$)", "u").test(call.arguments?.command ?? "") &&
-    /\bdate\b/u.test(call.arguments?.command ?? "")).at(-1);
+    (!requireDateInCommand || /\bdate\b/u.test(call.arguments?.command ?? ""))).at(-1);
   if (!exec) return {status: "missing-exec", pending: false};
   const result = resultFor(exec), text = publicMessageText(result);
   const sessionId = result?.details?.sessionId ??

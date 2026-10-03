@@ -473,6 +473,9 @@ test("resumed parent cancellation uses its accepted run instead of the still-reg
   const pending = assert.rejects(f.owner.wait(), { name: "AbortError" });
   assert.equal((await cancel.run()).ok, true); await pending;
   assert.deepEqual(aborted, ["resumed-parent"]); assert.equal(f.cancellations.length, 1);
+  assert.equal(f.cancellations[0].runId, "resumed-parent");
+  assert.equal(f.cancellations[0].ownerRunId, f.params.runId);
+  assert.equal(f.cancellations[0].source, "explicit_control");
   wake.finish({ meta: {}, payloads: [{ text: "late final" }] }); assert.equal(f.progress.length, 0);
 });
 

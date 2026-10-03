@@ -50,6 +50,11 @@
       "source": "lab/release-files/gpt-live-call/gpt-live-consult-continuation.js",
       "target": "openclaw/dist/gpt-live-consult-continuation.js",
       "before": null
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/sessions-spawn-tool-1FQMTkIo.js",
+      "target": "openclaw/dist/sessions-spawn-tool-1FQMTkIo.js",
+      "before": "52b6ea5448e758f6d764200d946853be80a0fe5b419629801ee761173741d848"
     }
   ]
 }

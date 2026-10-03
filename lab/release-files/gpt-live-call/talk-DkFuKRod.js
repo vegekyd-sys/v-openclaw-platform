@@ -282,6 +282,7 @@ function createTalkClientAgentConsultRunner(params) {
 			onProgress,
 			continuationContext,
 			onResumeRunStarted: ({ runId, sessionId, timeoutMs }) => {
+				try { continuationContext?.onRunStarted?.({ runId }); } catch {}
 				if (params.registerRun) params.registerRun({ runId });
 				else registerClientVoiceConsultRun({ agentId, sessionKey, voiceSessionId, runId, config: params.config });
 				if (!params.ownerConnId) return;
@@ -293,6 +294,7 @@ function createTalkClientAgentConsultRunner(params) {
 			},
 			onRunStarted: ({ runId, sessionId, timeoutMs }) => {
 				activeRunId = runId;
+				try { continuationContext?.onRunStarted?.({ runId }); } catch {}
 				emitAgentLifecycle("tool.call", runId);
 				if (params.registerRun) params.registerRun({ runId });
 				else registerClientVoiceConsultRun({
@@ -489,12 +491,12 @@ function createTalkClientGatewayControlOwner(params) {
 			signal.throwIfAborted();
 			params.assertConnectionOpen?.();
 		},
-		runAgentConsult: async ({ prompt, signal: consultSignal = new AbortController().signal, onProgress, continuationIdentity, onCanceled }) => {
+		runAgentConsult: async ({ prompt, signal: consultSignal = new AbortController().signal, onProgress, continuationIdentity, onCanceled, onRunStarted }) => {
 			owner.assertOpen();
 			if (owners.get(params.voiceSessionId) !== owner) throw new Error("Realtime voice session is not active");
 			const continuationContext = continuationIdentity ? {
 				identity: continuationIdentity, ownerConnId: params.connId, voiceSessionId: params.voiceSessionId, ownerGeneration: entryPrefix,
-				onCanceled,
+				onCanceled, onRunStarted,
 				isCurrent: () => { owner.assertOpen(); return owners.get(params.voiceSessionId) === owner; }
 			} : void 0;
 			return await params.runAgentConsult({ question: prompt }, AbortSignal.any([consultSignal, signal]), onProgress, continuationContext);

@@ -1,7 +1,19 @@
 import {parseCompleteTimestamps} from '../gpt-live-call-live-evidence.mjs';
+import {createHash} from 'node:crypto';
 
 const textOf = value => typeof value === 'string' ? value : (value?.content ?? [])
   .filter(part => part?.type === 'text').map(part => part.text ?? '').join('\n');
+
+export function toolResultSucceeded(result) {
+  if (!result || result.isError===true) return false;
+  try {
+    const body=JSON.parse(result.text);
+    if (body && typeof body==='object' && !Array.isArray(body)) {
+      if (body.error || body.isError===true || ['error','failed','cancelled','blocked','rejected'].includes(body.status)) return false;
+    }
+  } catch {}
+  return true;
+}
 
 // This is an index of actual envelopes, not a synthesized session transcript.
 // payload.ts is the source clock; the outer at is observer receipt time.
@@ -48,25 +60,62 @@ export function mergeExactToolBodies(native, stored) {
 }
 
 export function extractExecDateFromPairs(pairs, seconds=45) {
-  for (const exec of pairs.filter(row => row.name === 'exec' && row.sourceExecutionTimingVerified===true && Number.isFinite(row.calledAt) &&
-      new RegExp('\\bsleep\\s+'+seconds+'\\b', 'u').test(row.args?.command ?? '') && /\bdate\b/u.test(row.args?.command ?? ''))) {
-    for (const first of exec.results) {
-      const processSessionId=first.details?.sessionId ?? /session ID\s+([\w-]+)/iu.exec(first.text)?.[1] ?? null;
-      const candidates=[{call:exec,result:first}, ...pairs.filter(row => row.name === 'process' &&
-        processSessionId && (row.args?.sessionId ?? row.args?.session_id) === processSessionId)
-        .flatMap(call => call.results.map(result => ({call,result})))];
-      for (const {call,result} of candidates) {
+  const isVerified=row=>row.sourceExecutionTimingVerified===true && Number.isFinite(row.calledAt) &&
+    typeof row.runId==='string' && row.runId.length>0 && typeof row.sessionKey==='string' && row.sessionKey.length>0;
+  const sameActor=(a,b)=>a.runId===b.runId && a.sessionKey===b.sessionKey;
+  const candidatesFor=exec=>exec.results.flatMap(first=>{
+    const processSessionId=first.details?.sessionId ?? /session ID\s+([\w-]+)/iu.exec(first.text)?.[1] ?? null;
+    return [{call:exec,result:first,processSessionId},...pairs.filter(row=>row.name==='process' && isVerified(row) && sameActor(exec,row) &&
+      processSessionId && (row.args?.sessionId ?? row.args?.session_id)===processSessionId)
+      .flatMap(call=>call.results.map(result=>({call,result,processSessionId})))];
+  });
+  const waits=pairs.filter(row=>row.name==='exec' && isVerified(row) &&
+    new RegExp('\\bsleep\\s+["\']?'+seconds+'(?:s)?["\']?(?=\\s|[;&|]|$)','u').test(row.args?.command ?? ''));
+  for (const wait of waits) {
+    const command=wait.args?.command ?? '';
+    const hasDate=/\bdate\b/u.test(command);
+    // Combined commands are only eligible when their source text places the
+    // requested sleep before date. Reversed/ambiguous source is not proof.
+    const combined=hasDate && command.search(/\bsleep\b/u)<command.search(/\bdate\b/u);
+    if(hasDate && !combined) continue;
+    const waitTerminal=candidatesFor(wait).find(({result})=>toolResultSucceeded(result) && Number.isFinite(result.at) && result.at-wait.calledAt>=seconds*1000 &&
+      ['completed','exited'].includes(result.details?.status) && (!Number.isFinite(result.details?.exitCode) || result.details.exitCode===0));
+    const dateExecs=combined?[wait]:waitTerminal?pairs.filter(row=>row.name==='exec' && isVerified(row) && sameActor(wait,row) &&
+      row.calledAt>=waitTerminal.result.at && /\bdate\b/u.test(row.args?.command ?? '') && !/\bsleep\b/u.test(row.args?.command ?? '')):[];
+    for (const exec of dateExecs) {
+      for (const {call,result,processSessionId} of candidatesFor(exec)) {
         const fields=parseCompleteTimestamps(result.text), offset=/([+-])(\d{2}):?(\d{2})\b/u.exec(result.text);
-        if (call.sourceExecutionTimingVerified!==true || !Number.isFinite(result.at) || result.isError || fields.length !== 1 || !offset || +offset[2]>23 || +offset[3]>59) continue;
+        if (!isVerified(call) || !sameActor(wait,call) || !Number.isFinite(result.at) || !toolResultSucceeded(result) ||
+            !['completed','exited'].includes(result.details?.status) || (Number.isFinite(result.details?.exitCode) && result.details.exitCode!==0) ||
+            result.at-wait.calledAt<seconds*1000 || result.at<exec.calledAt || fields.length!==1 || !offset || +offset[2]>23 || +offset[3]>59) continue;
         const offsetMinutes=(+offset[2]*60 + +offset[3])*(offset[1]==='-'?-1:1), f=fields[0];
         return {command:exec.args.command,execCallId:exec.id,resultCallId:call.id,processSessionId,
           source:exec.source ?? 'session-history',runId:exec.runId,sessionKey:exec.sessionKey,
           resultText:result.text,fields:f,offsetMinutes,resultAt:result.at,resultObservedAt:result.observedAt ?? null,
+          waitExecCallId:wait.id,waitCalledAt:wait.calledAt,waitResultAt:combined?result.at:waitTerminal.result.at,
+          waitDurationMs:(combined?result.at:waitTerminal.result.at)-wait.calledAt,combinedCommand:combined,
           actualCommandTime:Date.UTC(f.year,f.month-1,f.day,f.hour,f.minute,f.second)-offsetMinutes*60000};
       }
     }
   }
   return null;
+}
+
+// Callback hashes link distinct identifiers without unredacting logs or treating
+// the native item id as the bridge's real backend call id.
+export function resolveNativeControlOwner({diagnostics=[],events=[],tools=[],backendRunId,voiceSessionId,pcIndex=0}) {
+  if (!backendRunId || !voiceSessionId) return null;
+  const sourceRunIdSha256=createHash('sha256').update(backendRunId).digest('hex');
+  const bridgeCall=tools.find(e=>e.raw?.type==='tool.call' && e.raw.callId===backendRunId && e.raw.voiceSessionId===voiceSessionId);
+  if (!bridgeCall) return null;
+  const candidates=diagnostics.filter(d=>d.stage==='backend-run-started' && d.sourceRunIdSha256===sourceRunIdSha256 &&
+    events.some(e=>e.pcIndex===pcIndex && e.type==='delegation.created' && e.raw?.item?.id===d.delegationId));
+  const owners=new Set(candidates.map(d=>`${d.traceId}\0${d.delegationId}\0${d.generation}`));
+  if (owners.size!==1) return null;
+  const owner=candidates[0];
+  return {traceId:owner.traceId,delegationId:owner.delegationId,generation:owner.generation,
+    backendRunId,sourceRunIdSha256,voiceSessionId,bridgeCallId:bridgeCall.raw.callId,
+    bridgeCallObservedAt:bridgeCall.at,publicOwnerObservedAt:owner.at,proof:'actual-callback-source-hash+exact-native-item+exact-H5-call'};
 }
 
 // All frames, including non-quiet ones, must be present. Metadata completion,

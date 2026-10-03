@@ -8,6 +8,7 @@ import { build as buildNative } from "./build-gpt-live-native-progress.mjs";
 import { build as buildCompletion } from "./build-gpt-live-completion-context.mjs";
 import { patchGptLiveContinuationHarness, patchGptLiveContinuationTalk, patchGptLiveContinuationRegistry,
   patchGptLiveContinuationWake, patchGptLiveContinuationDelivery, patchGptLiveContinuationTaskSdk, createGptLiveContinuationRuntimeSource } from "./patch-gpt-live-consult-continuation.mjs";
+import { patchSessionsSpawnGatewayProxy } from "../experiments/agent-worker-isolation-v1/patch-openclaw-sessions-spawn-gateway-proxy.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const hash = (source) => createHash("sha256").update(source).digest("hex");
@@ -42,6 +43,14 @@ export function build({ baseRelease = "memory-search-guards-20261002" } = {}) {
   const continuationSource='lab/release-files/gpt-live-call/gpt-live-consult-continuation.js';
   writeFileSync(resolve(root,continuationSource),createGptLiveContinuationRuntimeSource());
   files.push({source:continuationSource,target:continuationBaseline.newModuleTarget,before:null});
+  const spawnBaseline = "release/captured/v2026.9.1-db91.6-background-work-20261002/dist/sessions-spawn-tool-1FQMTkIo.js";
+  const spawnBefore = readFileSync(resolve(root, spawnBaseline));
+  const spawnBeforeSha = "52b6ea5448e758f6d764200d946853be80a0fe5b419629801ee761173741d848";
+  assert.equal(hash(spawnBefore), spawnBeforeSha, "captured external spawn bridge baseline drifted");
+  const spawnSource = "lab/release-files/gpt-live-call/sessions-spawn-tool-1FQMTkIo.js";
+  const spawnAfter = patchSessionsSpawnGatewayProxy(spawnBefore.toString("utf8")).source;
+  writeFileSync(resolve(root, spawnSource), spawnAfter);
+  files.push({ source: spawnSource, target: "openclaw/dist/sessions-spawn-tool-1FQMTkIo.js", before: spawnBeforeSha });
   writeFileSync(resolve(root, "lab/gpt-live-call-plan.json"), JSON.stringify({ baseRelease, files }, null, 2) + "\n");
   const fixtureFiles=[];
   function fixtures(dir){for(const entry of readdirSync(resolve(root,dir),{withFileTypes:true})){const file=dir+'/'+entry.name;if(entry.isDirectory())fixtures(file);else fixtureFiles.push(file);}}
@@ -49,7 +58,7 @@ export function build({ baseRelease = "memory-search-guards-20261002" } = {}) {
   const completionCandidate=JSON.parse(readFileSync(resolve(root,'lab/candidate/gpt-live-completion-context.plan.json')));
   writeFileSync(resolve(root, "lab/candidate/gpt-live-call.plan.json"), JSON.stringify({
     baseRelease, files, tests: ["lab/gpt-live-consult-progress.test.mjs", "lab/gpt-live-native-progress.test.mjs", "lab/gpt-live-h5/server.test.mjs", "lab/gpt-live-h5/app.test.mjs", "lab/gpt-live-h5/duplex-playback.test.mjs", "lab/gpt-live-h5/microphone-capture.test.mjs", "lab/gpt-live-h5/transcript-presentation.test.mjs", "lab/gpt-live-h5/call-sounds.test.mjs", "lab/gpt-live-call-live-auth.test.mjs", "lab/gpt-live-call-live-evidence.test.mjs",
-      "lab/gpt-live-consult-continuation.test.mjs", "lab/gpt-live-pr-provenance.test.mjs", "lab/gpt-live-pr-config.test.mjs", "lab/gpt-live-pr-trace.test.mjs", "lab/gpt-live-h5-provenance-evidence.test.mjs", "lab/gpt-live-h5-control-evidence.test.mjs", "lab/gpt-live-h5-user-pcm.test.mjs", "lab/gpt-live-h5-control-probe.test.mjs",...completionCandidate.tests],
+      "lab/gpt-live-consult-continuation.test.mjs", "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-spawn-gateway-proxy.test.mjs", "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-yield-external-task.test.mjs", "lab/gpt-live-pr-provenance.test.mjs", "lab/gpt-live-pr-config.test.mjs", "lab/gpt-live-pr-trace.test.mjs", "lab/gpt-live-h5-provenance-evidence.test.mjs", "lab/gpt-live-h5-control-evidence.test.mjs", "lab/gpt-live-h5-user-pcm.test.mjs", "lab/gpt-live-h5-control-probe.test.mjs",...completionCandidate.tests],
     support: [...new Set([
       "lab/gpt-live-consult-progress.mjs", "lab/patch-gpt-live-native-progress.mjs",
       "lab/fixtures/gpt-live-native-progress/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
@@ -62,6 +71,10 @@ export function build({ baseRelease = "memory-search-guards-20261002" } = {}) {
       "lab/gpt-live-call-live-evidence.mjs",
       "lab/gpt-live-pr-provenance.mjs","lab/gpt-live-pr-config.mjs","lab/gpt-live-pr-trace.mjs","lab/shared/server.mjs","lab/shared/files.mjs","lab/shared/lifecycle.mjs",
       "lab/gpt-live-consult-continuation.mjs","lab/patch-gpt-live-consult-continuation.mjs","lab/gpt-live-consult-continuation-baseline.json",
+      "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-spawn-gateway-proxy.mjs", spawnBaseline,
+      "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-yield-external-task.mjs",
+      "release/captured/v2026.9.1-db91.6-background-work-20261002/dist/openclaw-tools-BODVdJQD.js",
+      "release/captured/v2026.9.1-db91.6-db91-shrink-reuse-20261002.worker/dist/subagent-completion-relay.mjs",
       "lab/gpt-live-h5-provenance-evidence.mjs","lab/gpt-live-h5-control-evidence.mjs","lab/gpt-live-h5-user-pcm.mjs","lab/gpt-live-h5-control-smoke.mjs",...completionCandidate.support,...fixtureFiles,...files.map(f=>f.source),
     ])], timeoutSeconds: 120,
   }, null, 2) + "\n");

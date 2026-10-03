@@ -35,6 +35,10 @@ var OpenAIQuicksilverDelegationController = class {
 		this.publicProgressTraceId = this.publicProgressTraceEnabled ? randomUUID() : void 0;
 		this.publicProgressTraceSequence = 0;
 		this.publicProgressAppendSequence = 0;
+		this.delegationInputsByUserTurn = new Map();
+		this.completedUserTurns = new Set();
+		this.nativeUserTurnText = new Map();
+		this.userTranscriptRevision = 0;
 		this.lastSpokenProgressAt = -Infinity;
 		this.transcript = [];
 		if (options.signal.aborted) this.onSessionAbort();
@@ -51,7 +55,18 @@ var OpenAIQuicksilverDelegationController = class {
 			if (eventType) this.options.onWireEventType(eventType);
 		}
 		const event = parseOpenAIQuicksilverEvent(payload);
-		if (event) this.handleEvent(event);
+		if (event) {
+			// The native parser currently omits this observed provider identity.
+			// Preserve it at the wire boundary without altering any control frame.
+			try {
+				const raw = JSON.parse(payload);
+				event.userClosingTranscriptUnchanged = this.observeNativeUserTurn(raw);
+				const turnId = raw.type === "delegation.created" ? raw.item?.user_bidi_turn_id :
+					raw.type === "turn.done" && raw.turn?.role === "user" ? raw.turn.id : void 0;
+				if (typeof turnId === "string" && /^[a-zA-Z0-9_.:-]{1,160}$/.test(turnId)) event.userBidiTurnId = turnId;
+			} catch {}
+			this.handleEvent(event);
+		}
 	}
 	handleEvent(event) {
 		if (this.stopped || event.kind === "ignored") return;
@@ -76,7 +91,7 @@ var OpenAIQuicksilverDelegationController = class {
 			return;
 		}
 		if (event.kind === "audio") return;
-		this.startDelegation(event.id, event.prompt);
+		this.startDelegation(event.id, event.prompt, event.userBidiTurnId);
 	}
 	sendToActiveDelegation(text, channel) {
 		const content = text.trim();
@@ -94,6 +109,13 @@ var OpenAIQuicksilverDelegationController = class {
 		this.markStopped();
 	}
 	appendTranscript(event) {
+		if (event.role === "user") {
+			if (event.kind !== "transcript-done" || event.userClosingTranscriptUnchanged !== true) this.userTranscriptRevision++;
+			if (event.kind === "transcript-done" && typeof event.userBidiTurnId === "string" && /^[a-zA-Z0-9_.:-]{1,160}$/.test(event.userBidiTurnId)) {
+				this.completedUserTurns.add(event.userBidiTurnId);
+				if (this.completedUserTurns.size > 256) this.completedUserTurns.delete(this.completedUserTurns.values().next().value);
+			}
+		}
 		const last = this.transcript.at(-1);
 		if (event.kind === "transcript-delta") {
 			if (last?.role === event.role && this.partialTranscriptRole === event.role) last.text += event.text;
@@ -112,13 +134,28 @@ var OpenAIQuicksilverDelegationController = class {
 		}
 		this.transcript = boundOpenAIQuicksilverContextItems(this.transcript);
 	}
-	startDelegation(id, input) {
+	startDelegation(id, input, userBidiTurnId) {
 		if (this.stopped || this.options.signal.aborted || !input.trim()) return;
+		let inputKey;
+		if (typeof userBidiTurnId === "string" && /^[a-zA-Z0-9_.:-]{1,160}$/.test(userBidiTurnId)) {
+			inputKey = userBidiTurnId + ":" + createHash("sha256").update(input.trim()).digest("hex");
+			// A single spoken turn can delegate an early prefix and then changed
+			// conditions. Suppress only an identical completed replay after the
+			// entire user turn ended and with no later caller transcript. Failed,
+			// cancelled and partially delivered work remains eligible for retry.
+			const completed = this.delegationInputsByUserTurn.get(inputKey);
+			const proof = this.nativeUserTurnText.get(userBidiTurnId);
+			if (this.completedUserTurns.has(userBidiTurnId) && completed?.revision === this.userTranscriptRevision &&
+				proof?.complete === true && completed.text === proof.text) return;
+		}
 		const transcript = this.transcript;
 		this.transcript = [];
 		this.partialTranscriptRole = void 0;
 		const delegation = {
 			id,
+			userBidiTurnId, inputKey,
+			userTranscriptRevision: this.userTranscriptRevision,
+			userTurnTranscriptText: this.nativeUserTurnText.get(userBidiTurnId)?.text,
 			generation: ++this.delegationGeneration,
 			prompt: buildOpenAIQuicksilverDelegationPrompt({
 				input,
@@ -149,12 +186,44 @@ var OpenAIQuicksilverDelegationController = class {
 	}
 	markStopped() {
 		this.cancelQueuedProgress?.();
+		this.delegationInputsByUserTurn.clear();
+		this.completedUserTurns.clear();
+		this.nativeUserTurnText.clear();
 		this.stopped = true;
 		this.options.signal.removeEventListener("abort", this.onSessionAbort);
 		this.pendingDelegation = void 0;
 		this.activeDelegationId = void 0;
 		this.partialTranscriptRole = void 0;
 		this.transcript = [];
+	}
+	observeNativeUserTurn(raw) {
+		if (this.stopped) return false;
+		const turnId = raw.type === "turn.delta" ? raw.turn_id : raw.turn?.id;
+		if (typeof turnId !== "string" || !/^[a-zA-Z0-9_.:-]{1,160}$/.test(turnId)) return false;
+		if (raw.type === "turn.created" && raw.turn?.role === "user" && typeof raw.turn.transcript === "string") {
+			// Independent raw proof only; leave the host transcript projection intact.
+			// A new caller turn invalidates old input even if its other projection is late.
+			this.userTranscriptRevision++;
+			if (Buffer.byteLength(raw.turn.transcript, "utf8") <= 16 * 1024) {
+				this.nativeUserTurnText.set(turnId, { text: raw.turn.transcript, complete: false });
+				if (this.nativeUserTurnText.size > 256) this.nativeUserTurnText.delete(this.nativeUserTurnText.keys().next().value);
+			} else this.nativeUserTurnText.delete(turnId);
+		} else if (raw.type === "turn.delta" && typeof raw.delta === "string") {
+			const proof = this.nativeUserTurnText.get(turnId);
+			if (proof) {
+				if (raw.delta) this.userTranscriptRevision++;
+				const text = proof.text + raw.delta;
+				if (Buffer.byteLength(text, "utf8") <= 16 * 1024) { proof.text = text; proof.complete = false; }
+				else this.nativeUserTurnText.delete(turnId);
+			}
+		} else if (raw.type === "turn.done" && raw.turn?.role === "user" && typeof raw.turn.transcript === "string") {
+			const proof = this.nativeUserTurnText.get(turnId);
+			// Exact full strings, including whitespace, must agree. A missing prefix,
+			// correction or additional condition cannot become a harmless closing done.
+			if (proof && proof.text === raw.turn.transcript) { proof.complete = true; return true; }
+			this.nativeUserTurnText.delete(turnId);
+		}
+		return false;
 	}
 	tracePublicProgress(stage, delegationId, text, details = {}) {
 		if (!this.publicProgressTraceEnabled || !["progress", "final", "failure"].includes(details.kind)) return;
@@ -167,7 +236,7 @@ var OpenAIQuicksilverDelegationController = class {
 			traceId: this.publicProgressTraceId,
 			sequence: ++this.publicProgressTraceSequence,
 			delegationId,
-			generation: this.delegationGeneration,
+			generation: Number.isSafeInteger(details.delegationGeneration) && details.delegationGeneration > 0 ? details.delegationGeneration : this.delegationGeneration,
 			textSha256: createHash("sha256").update(text).digest("hex"),
 			textChars: text.length
 		};
@@ -179,6 +248,15 @@ var OpenAIQuicksilverDelegationController = class {
 		const provenance = details.provenance;
 		if (provenance && typeof provenance === "object") {
 			event.provenance = {};
+			// Hash the actual host callback identity before structured logging can
+			// redact it. Join to the original SSE/tool run; never infer ownership
+			// by equating a provider delegation item with a backend run id.
+			if (typeof provenance.runId === "string" && /^[a-zA-Z0-9_.:@/-]{1,160}$/.test(provenance.runId)) {
+				event.sourceRunIdSha256 = createHash("sha256").update(provenance.runId).digest("hex");
+			}
+			if (typeof provenance.ownerRunId === "string" && /^[a-zA-Z0-9_.:@/-]{1,160}$/.test(provenance.ownerRunId)) {
+				event.ownerRunIdSha256 = createHash("sha256").update(provenance.ownerRunId).digest("hex");
+			}
 			for (const key of ["runId", "source", "itemId"]) {
 				const value = provenance[key];
 				if (typeof value === "string" && /^[a-zA-Z0-9_.:@/-]{1,160}$/.test(value)) event.provenance[key] = value;
@@ -283,6 +361,9 @@ var OpenAIQuicksilverDelegationController = class {
 		const onCanceled = (reason) => {
 			if (finished || !this.isCurrentDelegation(delegation, signal) ||
 				this.consultController?.signal !== signal) return;
+			this.tracePublicProgress("backend-cancel-accepted", delegation.id, "", { kind: "progress", provenance: {
+				runId: reason?.runId, ownerRunId: reason?.ownerRunId, source: reason?.source
+			} });
 			finished = true;
 			this.consultController.abort(reason ?? new Error("Realtime voice consult cancelled"));
 		};
@@ -291,10 +372,17 @@ var OpenAIQuicksilverDelegationController = class {
 		// commentary channel is not proof of silence. Withhold chatter and long
 		// public articles from the native wire; append only selected short facts.
 		const onProgress = (progress) => {
-			if (finished || !this.isCurrentDelegation(delegation, signal) ||
-				progress?.kind !== "commentary" || progress?.isReasoning === true ||
+			if (progress?.kind !== "commentary" || progress?.isReasoning === true ||
 				typeof progress?.text !== "string" || !progress.text.trim()) return;
 			const publicText = progress.text.trim();
+			if (finished || !this.isCurrentDelegation(delegation, signal)) {
+				// This is an actual late public host callback, not a cancel ACK or
+				// inferred silent interval. Observe its old owner without appending it.
+				this.tracePublicProgress("stale-public-progress-dropped", delegation.id, publicText, {
+					kind: "progress", provenance: progress.provenance, delegationGeneration: delegation.generation
+				});
+				return;
+			}
 			this.tracePublicProgress("public-progress-received", delegation.id, publicText, { kind: "progress", provenance: progress.provenance });
 			const fingerprint = createHash("sha256").update(publicText).digest("hex");
 			if (seenProgress.has(fingerprint)) return;
@@ -305,7 +393,7 @@ var OpenAIQuicksilverDelegationController = class {
 			const now = Date.now();
 			// Ordinary short public facts need no special wording. Suppress clear
 			// waiting/setup statements; an actual result within one takes priority.
-			const waitingPlan = /^(?:我(?:这边)?(?:会|将|先|正在|在)|我们(?:先|会|正在)|正在|现在(?:开始)?(?:等|等待|查|看|核对|执行)|(?:下一步|接下来|然后)(?:我|我们)?(?:会|将|先|去|开始|等|查|看)|先(?:查|看|确认|核对)|(?:好|行)[，,]?我(?:先)?(?:查|看)|稍等|请稍等|等一下|让我|这边(?:正在|在|先)|I(?:'m| am| will|['’]ll)|(?:Now|Next)(?:[,:]?\s+)(?:I(?: will|['’]ll)|we(?: will|['’]ll)|start|wait|waiting|check)|Let me|Please wait|One (?:sec|moment))/iu.test(publicText);
+			const waitingPlan = /^(?:我(?:这边)?(?:也|还|仍)?(?:会|将|先|正在|在)|我们(?:先|会|正在)|(?:子(?:任务|代理)|后台)(?:那边|这边)?(?:还|仍|也)?(?:在|正在|等待|待)|正在|现在(?:开始)?(?:等|等待|查|看|核对|执行)|(?:下一步|接下来|然后)(?:我|我们)?(?:会|将|先|去|开始|等|查|看)|先(?:查|看|确认|核对)|(?:好|行)[，,]?我(?:先)?(?:查|看)|稍等|请稍等|等一下|让我|这边(?:正在|在|先)|I(?:'m| am| will|['’]ll)|(?:Now|Next)(?:[,:]?\s+)(?:I(?: will|['’]ll)|we(?: will|['’]ll)|start|wait|waiting|check)|Let me|Please wait|One (?:sec|moment))/iu.test(publicText);
 			const setupOnly = /^(?:Read-only\b|All read-only\b|No (?:files? (?:written|were written)|external)|Sub-?task spawned\b|子(?:任务|代理)(?:已)?(?:启动|派发|交办))/iu.test(publicText);
 			const hasStatedResult = /(?:已(?:经)?(?:找到|查到|确认|核对|完成|收到|得到|生成|发出|测得|读到|验证)|找到了|查到了|确认了|核对出|记录显示|结果(?:是|为)|等于|完成(?:了|[。.!]|$)|(?:当前|测得|核验)(?:时间|值)(?:是|为)|(?:found|confirmed|completed|complete|finished|done|generated|verified)\b|results?(?: (?:is|are)|:)|(?:value|time|price|cost) is\b)/iu.test(publicText);
 			// A streamed markdown fragment is not an independent stage sentence.
@@ -328,6 +416,11 @@ var OpenAIQuicksilverDelegationController = class {
 				prompt: delegation.prompt,
 				signal,
 				continuationIdentity: { delegationItemId: delegation.id, delegationGeneration: delegation.generation },
+				onRunStarted: ({ runId }) => {
+					if (!finished && this.isCurrentDelegation(delegation, signal)) {
+						this.tracePublicProgress("backend-run-started", delegation.id, "", { kind: "progress", provenance: { runId } });
+					}
+				},
 				onProgress,
 				onCanceled
 			});
@@ -355,7 +448,15 @@ var OpenAIQuicksilverDelegationController = class {
 			if (this.cancelQueuedProgress === clearQueuedProgress) this.cancelQueuedProgress = void 0;
 		}
 		if (this.isCurrentDelegation(delegation, signal)) {
-			this.sendAppend(delegation.id, text, "speakable", { kind: terminalKind });
+			const sent = this.sendAppend(delegation.id, text, "speakable", { kind: terminalKind });
+			const proof = this.nativeUserTurnText.get(delegation.userBidiTurnId);
+			if (sent && terminalKind === "final" && delegation.inputKey && this.completedUserTurns.has(delegation.userBidiTurnId) &&
+				proof?.complete === true && proof.text === delegation.userTurnTranscriptText &&
+				delegation.userTranscriptRevision === this.userTranscriptRevision) {
+				// Never absorb caller conditions that arrived after this consult accepted.
+				this.delegationInputsByUserTurn.set(delegation.inputKey, { revision: delegation.userTranscriptRevision, text: proof.text });
+				if (this.delegationInputsByUserTurn.size > 256) this.delegationInputsByUserTurn.delete(this.delegationInputsByUserTurn.keys().next().value);
+			}
 		}
 	}
 	sendAppend(delegationId, text, channel, diagnostic = {}) {

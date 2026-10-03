@@ -10,7 +10,7 @@ import {createPrivatePulseMicrophone} from './private-pulse.mjs';
 import {BROWSER_PROBE,SNAPSHOT_EXPRESSION} from './browser-probe.mjs';
 import {parsePublicProgressDiagnostics,assessH5ProgressProvenance} from '../gpt-live-h5-provenance-evidence.mjs';
 import {parseCompleteTimestamps} from '../gpt-live-call-live-evidence.mjs';
-import {indexNativeToolPairs,mergeExactToolBodies,extractExecDateFromPairs,continuousPlaybackQuiet,explicitSpokenOffsets} from './evidence.mjs';
+import {indexNativeToolPairs,mergeExactToolBodies,extractExecDateFromPairs,continuousPlaybackQuiet,explicitSpokenOffsets,resolveNativeControlOwner,toolResultSucceeded} from './evidence.mjs';
 import {readPrivateChildTranscript,activeTranscriptMessages} from './read-child-transcript.mjs';
 import {extractControlExecWitness,assessControlExecPending,matchesExactControlMarker} from '../gpt-live-h5-control-evidence.mjs';
 assert(process.env.VLAB_CANDIDATE_ID&&process.env.GPT_LIVE_H5_READY==='1','Ready private Candidate H5 required');
@@ -24,7 +24,7 @@ assert(path.isAbsolute(clips)&&url?.startsWith('http://127.0.0.1:'),'Candidate c
 const app=await fetch(new URL('app.js',url)).then(r=>r.arrayBuffer());assert.equal(hash(Buffer.from(app)),process.env.GPT_LIVE_H5_APP_SHA,'Actual served app hash');
 const deadline=Date.now()+Number(process.env.GPT_LIVE_H5_NATIVE_CASE_SECONDS??600)*1000;
 const token=String(config.gateway.auth.token).replace(/\$\{([^}]+)\}/gu,(_,key)=>{assert(process.env[key]);return process.env[key]});
-const scratch=path.join(stateRoot,'tmp',testCase);fs.mkdirSync(scratch,{recursive:true,mode:0o700});
+const scratch=fs.mkdtempSync(path.join(stateRoot,'tmp',testCase+'-'));fs.chmodSync(scratch,0o700);
 let pulse,chrome,chromeTemp,chromeStderr='',cdp,gateway,lastState,lastHistory={},currentSession,summary,cleanup;
 const checks=[],sessionKeys=[],toolEvents=[],subscribedSessions=new Set(),callOwners=new Map();
 function hash(value){return createHash('sha256').update(value).digest('hex')}
@@ -61,7 +61,7 @@ async function clickOriginalButton(id) {
  await cdp.request('Input.dispatchMouseEvent',{type:'mousePressed',x:rect.x,y:rect.y,button:'left',clickCount:1});
  await cdp.request('Input.dispatchMouseEvent',{type:'mouseReleased',x:rect.x,y:rect.y,button:'left',clickCount:1});
 }
-async function snapshot(){return lastState=await evaluate(SNAPSHOT_EXPRESSION);}
+async function snapshot(full=false){const expression=full?SNAPSHOT_EXPRESSION:SNAPSHOT_EXPRESSION.replace('audioFrames:p.audioFrames,micFrames:p.micFrames','audioFrames:p.audioFrames.slice(-80),micFrames:p.micFrames.slice(-80)').replace('duplex:globalThis.__gptLiveDuplexDiagnostics??null','duplex:null');return lastState=await evaluate(expression);}
 async function waitFor(predicate,label,max=120000) {
  const until=Math.min(deadline,Date.now()+max);
  while(Date.now()<until){const state=await snapshot();const result=await predicate(state);if(result)return result;await sleep(250);}
@@ -105,7 +105,7 @@ async function startCall() {
  await waitFor(s=>s.api.filter(x=>x.route==='/api/session'&&x.status===200).length>pcIndex,'Native session handoff',15000);
  const meta=JSON.parse(fs.readFileSync(process.env.GPT_LIVE_H5_SESSION_PATH));const created=(await snapshot()).api.filter(x=>x.route==='/api/session'&&x.status===200).at(-1);
  assert.equal(meta.voiceSessionId,created.voiceSessionId,'Exact H5 session ownership');assert.equal(created.model,'gpt-live-1-codex');
- currentSession=meta.sessionKey;callOwners.set(pcIndex,{voiceSessionId:meta.voiceSessionId,sessionKey:meta.sessionKey,createdAt:created.at,connectedAt:(await snapshot()).pcTransitions.find(t=>t.pcIndex===pcIndex&&t.state==='connected')?.at??null});sessionKeys.push(meta.sessionKey);await subscribeSession(currentSession);console.log(JSON.stringify({nativeVoiceStarted:{candidateId:process.env.VLAB_CANDIDATE_ID,testCase,pcIndex,paidVoiceStarted:true,sessionKey:meta.sessionKey}}));return pcIndex;
+ currentSession=meta.sessionKey;callOwners.set(pcIndex,{voiceSessionId:meta.voiceSessionId,sessionKey:meta.sessionKey,createdAt:created.at,connectedAt:(await snapshot()).pcTransitions.find(t=>t.pcIndex===pcIndex&&t.state==='connected')?.at??null});sessionKeys.push(meta.sessionKey);await subscribeSession(currentSession);const started={candidateId:process.env.VLAB_CANDIDATE_ID,testCase,pcIndex,paidVoiceStarted:true,sessionKey:meta.sessionKey,voiceSessionId:meta.voiceSessionId,apiStatus:created.status,connectedAt:callOwners.get(pcIndex).connectedAt,observedAt:Date.now()};save('native-voice-started-'+pcIndex+'.json',started);console.log(JSON.stringify({nativeVoiceStarted:started}));return pcIndex;
 }
 function play(name){const file=path.join(clips,name+'.wav');assert(fs.existsSync(file));return pulse.play(file,name);}
 const audible=(s,from,to=Infinity,pcIndex=0)=>s.audioFrames.filter(f=>f.pcIndex===pcIndex&&f.at>=from&&f.at<=to&&f.digitalAudible);
@@ -137,13 +137,13 @@ async function longTask() {
   const finalTurn=final&&s.events.filter(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='assistant'&&e.at>final.at).at(-1);
   if(finalTurn&&continuousPlaybackQuiet(s.audioFrames,{pcIndex,after:finalTurn.at,durationMs:750})){finished=true;break;}
  }
- const s=await snapshot(),pairs=extractToolPairs(lastHistory.parent),childPairs=childEvidencePairs(),d=diagnostics().filter(row=>row.at>=initialAt);
+ const s=await snapshot(true),pairs=extractToolPairs(lastHistory.parent),childPairs=childEvidencePairs(),d=diagnostics().filter(row=>row.at>=initialAt);
  const userTurns=s.events.filter(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='user'&&e.at>=initialAt);
  const memory=pairs.find(p=>p.name==='memory_search'&&JSON.stringify(p.args).includes(memoryQuery)&&p.results.some(r=>!r.isError&&r.text.length>40));
  const web=pairs.find(p=>p.name==='web_search'&&/openai|realtime/iu.test(JSON.stringify(p.args))&&p.results.some(r=>!r.isError&&/https:\/\/[^\s"<>]*openai\.com/iu.test(r.text)));
  const primary=pairs.find(p=>p.name==='web_fetch'&&/https:\/\/(?:developers|platform|help|www)\.openai\.com\//iu.test(JSON.stringify(p.args))&&p.results.some(r=>!r.isError&&r.text.length>500));
- const spawnPair=pairs.find(p=>p.name==='sessions_spawn'&&p.results.some(r=>!r.isError)),yieldPair=pairs.find(p=>p.name==='sessions_yield'&&p.results.some(r=>!r.isError));
- const acceptedSpawn=spawnPair?.results.map(r=>{try{return JSON.parse(r.text)}catch{return null}}).find(v=>typeof v?.runId==='string'&&typeof v?.childSessionKey==='string');
+ const spawnPair=pairs.find(p=>p.name==='sessions_spawn'&&p.results.some(toolResultSucceeded)),yieldPair=pairs.find(p=>p.name==='sessions_yield'&&p.results.some(toolResultSucceeded));
+ const acceptedSpawn=spawnPair?.results.filter(toolResultSucceeded).map(r=>{try{return JSON.parse(r.text)}catch{return null}}).find(v=>v?.status==='accepted'&&typeof v?.runId==='string'&&typeof v?.childSessionKey==='string');
  const chosenChildPairs=childPairs.filter(p=>p.runId===acceptedSpawn?.runId&&p.sessionKey===acceptedSpawn?.childSessionKey);
  const cwd=chosenChildPairs.find(p=>p.name==='exec'&&/\bpwd\b|process\.cwd/iu.test(JSON.stringify(p.args))&&p.results.some(r=>!r.isError&&r.text.includes(candidateData+'/workspace/')));
  const slowDate=extractExecDateFromPairs(chosenChildPairs,45);
@@ -173,8 +173,8 @@ async function longTask() {
  check('actual-parent-spawn-yield-child-resume',spawnPair&&yieldPair&&realTerminals.length&&resumedFinal,{spawnCallId:spawnPair?.id,yieldCallId:yieldPair?.id,childSessions:Object.keys(lastHistory.children),childTerminals:lastHistory.childTerminals,childFinalAt,parentFinalAt:resumedFinal?timestamp(resumedFinal.timestamp??resumedFinal.at):null});
  const cwdResultAt=cwd?.results.find(r=>!r.isError&&r.text.includes(candidateData+'/workspace/'))?.at;
  const markerResultAt=childMarkerPair?.results.find(r=>!r.isError&&/\b[1-9]\d{3}\b/u.test(r.text))?.at;
- const childDatePair=chosenChildPairs.find(p=>p.id===slowDate?.execCallId);
- check('single-child-private-random-wait-date-in-requested-order',acceptedSpawn&&cwd?.sourceExecutionTimingVerified===true&&childMarkerPair?.sourceExecutionTimingVerified===true&&childDatePair?.sourceExecutionTimingVerified===true&&[cwdResultAt,childMarkerPair?.calledAt,markerResultAt,childDatePair?.calledAt,slowDate?.resultAt].every(Number.isFinite)&&cwdResultAt<=childMarkerPair.calledAt&&markerResultAt<=childDatePair.calledAt&&realTerminals.some(t=>t.response.endedAt>=slowDate.resultAt),{acceptedSpawn,cwdCallId:cwd?.id,cwdResultAt,markerCallId:childMarkerPair?.id,markerResultAt,dateCallId:slowDate?.execCallId,dateCalledAt:childDatePair?.calledAt,dateResultAt:slowDate?.resultAt});
+ const childDatePair=chosenChildPairs.find(p=>p.id===slowDate?.execCallId),childWaitPair=chosenChildPairs.find(p=>p.id===slowDate?.waitExecCallId);
+ check('single-child-private-random-wait-date-in-requested-order',acceptedSpawn&&cwd?.sourceExecutionTimingVerified===true&&childMarkerPair?.sourceExecutionTimingVerified===true&&childDatePair?.sourceExecutionTimingVerified===true&&childWaitPair?.sourceExecutionTimingVerified===true&&[cwdResultAt,childMarkerPair?.calledAt,markerResultAt,slowDate?.waitCalledAt,slowDate?.waitResultAt,childDatePair?.calledAt,slowDate?.resultAt].every(Number.isFinite)&&cwdResultAt<=childMarkerPair.calledAt&&markerResultAt<=slowDate.waitCalledAt&&(slowDate.combinedCommand||slowDate.waitResultAt<=childDatePair.calledAt)&&realTerminals.some(t=>t.response.endedAt>=slowDate.resultAt),{acceptedSpawn,cwdCallId:cwd?.id,cwdResultAt,markerCallId:childMarkerPair?.id,markerResultAt,waitCallId:slowDate?.waitExecCallId,waitCalledAt:slowDate?.waitCalledAt,waitResultAt:slowDate?.waitResultAt,waitDurationMs:slowDate?.waitDurationMs,dateCallId:slowDate?.execCallId,dateCalledAt:childDatePair?.calledAt,dateResultAt:slowDate?.resultAt});
  check('actual-child-private-workspace',Boolean(cwd),{callId:cwd?.id});
  check('child-wait45-then-exact-date',Boolean(slowDate)&&expected.length===1,{callId:slowDate?.execCallId,resultCallId:slowDate?.resultCallId,expected});
  const markerTurn=s.events.find(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='assistant'&&e.at===early.assistantTurnAt);
@@ -205,12 +205,13 @@ async function longTask() {
 }
 async function controls() {
  const pcIndex=await startCall(),cancelInput=play('cancel-task');await cancelInput.done;
- const accepted=await waitFor(async()=>{await readHistory();const pending=assessControlExecPending(lastHistory.parent,60);return pending.pending&&extractToolPairs(lastHistory.parent).find(p=>p.id===pending.execCallId);},'Actual pending backend sleep60+date exec',90000);
+ const accepted=await waitFor(async()=>{await readHistory();const pending=assessControlExecPending(lastHistory.parent,60,{requireDateInCommand:false});return pending.pending&&extractToolPairs(lastHistory.parent).find(p=>p.id===pending.execCallId);},'Actual pending backend sleep60 in the requested wait-then-date task',90000);
  const execStartEvent=toolEvents.find(event=>['agent','session.tool'].includes(event.event)&&event.payload?.stream==='tool'&&event.payload.data?.phase==='start'&&(event.payload.data?.toolCallId??event.payload.data?.callId)===accepted.id);
  const actualExecStartedAt=execStartEvent?.payload?.ts??null,backendRunId=execStartEvent?.payload?.runId??null;
  check('control-original-exec-start-witness',Boolean(execStartEvent)&&Number.isFinite(actualExecStartedAt),{callId:accepted.id,actualExecStartedAt,backendRunId,execSourceTs:execStartEvent?.payload?.ts??null,execObservedAt:execStartEvent?.at??null,sourceObserverDeltaMs:execStartEvent?execStartEvent.at-execStartEvent.payload.ts:null});
  const beforeControl=await snapshot();
- const originalOwner=diagnostics().find(d=>d.stage==='public-progress-received'&&d.provenance?.runId===backendRunId&&beforeControl.tools.some(tool=>tool.raw?.type==='tool.call'&&tool.raw.callId===d.delegationId));
+ const originalOwner=resolveNativeControlOwner({diagnostics:diagnostics(),events:beforeControl.events,tools:beforeControl.tools,
+   backendRunId,voiceSessionId:callOwners.get(pcIndex)?.voiceSessionId,pcIndex});
  let pendingAfterBarge;
  try {
  const count=play('count');await count.done;
@@ -224,11 +225,11 @@ async function controls() {
  let replay=null,preBarge=await snapshot(),oldTurn=activeTurn(preBarge);
  if(!oldTurn||audible(preBarge,Date.now()-250,Infinity,pcIndex).length<2){replay=play('count');await replay.done;oldTurn=await waitFor(s=>activeTurn(s)&&audible(s,Date.now()-250,Infinity,pcIndex).length>=2?activeTurn(s):false,'Fresh count after acknowledgement',45000);}
  preBarge=await snapshot();await readHistory();
- const beforePending=assessControlExecPending(lastHistory.parent,60);
+ const beforePending=assessControlExecPending(lastHistory.parent,60,{requireDateInCommand:false});
  check('backend-pending-at-barge',beforePending.pending&&beforePending.execCallId===accepted.id,{pending:beforePending,backendRunId});
  const barge=play('barge');await barge.done;
  const newTurn=await waitFor(s=>s.events.find(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='assistant'&&e.turnId!==oldTurn?.turnId&&e.at>=barge.row.startedAt&&/(?:二加二|2\s*[+＋]\s*2).*(?:四|4)|^(?:是|等于|答案是)?[，,\s]*(?:四|4)[。.!！\s]*$/u.test(e.text)),'Actual new-topic 2+2 answer',45000);
- const state=await snapshot(),microphone=state.micFrames.filter(f=>f.pcIndex===pcIndex&&f.at>=barge.row.startedAt&&f.at<=barge.row.completedAt+200&&f.rms>.02);
+ const state=await snapshot(true),microphone=state.micFrames.filter(f=>f.pcIndex===pcIndex&&f.at>=barge.row.startedAt&&f.at<=barge.row.completedAt+200&&f.rms>.02);
  const attack=microphone[0]?.at??null;
  const oldActiveAtAttack=oldTurn&&attack!==null&&oldTurn.at<=attack&&!state.events.some(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.turnId===oldTurn.turnId&&e.at<attack);
  const overlap=attack!==null?microphone.filter(m=>m.at<=attack+500&&audible(state,m.at-100,m.at+100,pcIndex).length>0):[];
@@ -252,9 +253,9 @@ async function controls() {
  check('barge-original-track-stays-live',microphone.length>0&&microphone.every(f=>f.trackState==='live'&&f.trackEnabled&&f.senderTrackId===f.trackId));
  const correctNewText=/(?:二加二|2\s*[+＋]\s*2).*(?:四|4)|^(?:是|等于|答案是)?[，,\s]*(?:四|4)[。.!！\s]*$/u.test(newTurn.text);
  check('barge-correct-new-topic-after-drain-digital-audio',newTurn.turnId!==oldTurn?.turnId&&drainAt!==null&&correctNewText&&audible(state,Math.max(drainAt,newCreated?.at??Infinity),newTurn.at,pcIndex).length>3,{oldTurnId:oldTurn?.turnId,newTurnId:newTurn.turnId,newCreatedAt:newCreated?.at,drainAt,text:newTurn.text});
- await readHistory();pendingAfterBarge=assessControlExecPending(lastHistory.parent,60);
+ await readHistory();pendingAfterBarge=assessControlExecPending(lastHistory.parent,60,{requireDateInCommand:false});
  check('same-backend-remains-pending-after-barge',pendingAfterBarge.pending&&pendingAfterBarge.execCallId===accepted.id,{pending:pendingAfterBarge});
- }catch(error){check('barge-scenario-exception',false,{message:error.message});await readHistory();pendingAfterBarge=assessControlExecPending(lastHistory.parent,60);}
+ }catch(error){check('barge-scenario-exception',false,{message:error.message});await readHistory();pendingAfterBarge=assessControlExecPending(lastHistory.parent,60,{requireDateInCommand:false});}
  // Only after the pending-task interruption do we cancel that exact owner.
  const cancelAt=Date.now();await clickOriginalButton('cancel');
  await waitFor(s=>s.api.some(a=>a.route==='/api/steer'&&a.at>=cancelAt&&a.status===200&&a.request?.mode==='cancel'),'Original H5 backend cancel API',15000);
@@ -265,9 +266,10 @@ async function controls() {
  const ownerMatches=d=>Boolean(originalOwner)&&d.traceId===originalOwner.traceId&&d.delegationId===originalOwner.delegationId&&d.generation===originalOwner.generation;
  const afterDiagnostics=diagnostics().filter(d=>d.at>=cancelAt),lateAppends=afterDiagnostics.filter(d=>d.stage==='context-append-sent'&&ownerMatches(d));
  const voiceSessionId=JSON.parse(fs.readFileSync(process.env.GPT_LIVE_H5_SESSION_PATH)).voiceSessionId;
- const nativeCancel=(await snapshot()).tools.find(e=>e.at>=cancelAt&&e.raw?.type==='tool.error'&&e.raw.callId===originalOwner?.delegationId&&e.raw.voiceSessionId===voiceSessionId&&/cancel|abort|取消/iu.test(JSON.stringify(e.raw)));
- const droppedLate=afterDiagnostics.filter(d=>ownerMatches(d)&&/drop|late|stale|cancel/iu.test(d.stage));
- check('real-cancel-terminal-and-observation-window',Boolean(originalOwner)&&Boolean(nativeCancel)&&actualExecStartedAt!==null&&Date.now()>=actualExecStartedAt+65000&&lateAppends.length===0,{observeUntil,checkedAt:Date.now(),nativeCancel:nativeCancel??null,lateAppends});
+ const nativeCancel=(await snapshot()).tools.find(e=>e.at>=cancelAt&&e.raw?.type==='tool.error'&&e.raw.callId===originalOwner?.bridgeCallId&&e.raw.voiceSessionId===voiceSessionId);
+ const trustedCancel=afterDiagnostics.find(d=>ownerMatches(d)&&d.at>=cancelAt&&d.stage==='backend-cancel-accepted'&&d.sourceRunIdSha256===originalOwner.sourceRunIdSha256);
+ const droppedLate=afterDiagnostics.filter(d=>ownerMatches(d)&&d.stage==='stale-public-progress-dropped'&&d.sourceRunIdSha256===originalOwner.sourceRunIdSha256);
+ check('real-cancel-terminal-and-observation-window',Boolean(originalOwner)&&Boolean(nativeCancel)&&Boolean(trustedCancel)&&Number.isFinite(actualExecStartedAt)&&Date.now()>=actualExecStartedAt+65000&&lateAppends.length===0,{observeUntil,checkedAt:Date.now(),nativeCancel:nativeCancel??null,trustedCancel:trustedCancel??null,lateAppends});
  check('cancelled-real-late-callback-isolation',Boolean(originalOwner)&&droppedLate.length>0&&lateAppends.length===0,{lateCallbackWitness:droppedLate,status:droppedLate.length?'witnessed':'missing-real-late-callback',reason:'Quiet observation alone does not prove a late callback was rejected'});
  await stopCall(pcIndex);
  const reopened=await startCall(),greeting=play('new-greeting');await greeting.done;
@@ -289,7 +291,7 @@ try {
  if(testCase==='comprehensive-long')await longTask();else await controls();
 } catch(error) {check('test-exception',false,{message:String(error.message).replace(/(token|secret|api.?key|authorization)[=: ]+[^\s]+/giu,'$1=[redacted]')});}
 finally {
- if(cdp){lastState=await snapshot().catch(()=>lastState);save('browser-native-evidence.json',lastState);save('backend-history.json',lastHistory);save('backend-tool-events.json',toolEvents);save('native-public-diagnostics.json',diagnostics());
+ if(cdp){lastState=await snapshot(true).catch(()=>lastState);save('browser-native-evidence.json',lastState);save('backend-history.json',lastHistory);save('backend-tool-events.json',toolEvents);save('native-public-diagnostics.json',diagnostics());
   const screenshot=await cdp.request('Page.captureScreenshot',{format:'png'}).catch(()=>null);if(screenshot)fs.writeFileSync(path.join(base,'h5.png'),Buffer.from(screenshot.data,'base64'),{mode:0o600});
    for(const [pcIndex] of callOwners)if(!checks.some(c=>c.name==='end-call-'+pcIndex&&c.passed))await stopCall(pcIndex).catch(error=>check('finally-end-call-'+pcIndex,false,{message:error.message}));
   await evaluate(`globalThis.__candidateLiveProbe.dispose()`).catch(()=>{});

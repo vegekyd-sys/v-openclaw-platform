@@ -27,7 +27,14 @@ const NativeFixtureController = new Function(
   (error) => error instanceof Error ? error.message : String(error),
   (data) => String(data),
   ({ input }) => input,
-  (data) => JSON.parse(data),
+  (data) => {
+    const event = JSON.parse(data);
+    if (event.type === "delegation.created") return { kind: "delegation", id: event.item.id, prompt: event.item.content[0].text };
+    if (event.type === "turn.done") return { kind: "transcript-done", role: event.turn.role, text: event.turn.transcript };
+    if (event.type === "turn.created" || event.type === "turn.delta") return { kind: "ignored", eventType: event.type };
+    if (event.type === "input_transcript.added") return { kind: "transcript-delta", role: "user", text: event.item.text };
+    return event;
+  },
   (text) => text.length <= 1800 ? text : `${text.slice(0, 1784)} [truncated]`,
   (text) => [text],
   (items) => items,
@@ -36,6 +43,10 @@ const runtimeFile = process.env.VLAB_CANDIDATE_RUNTIME && resolve(process.env.VL
 const Controller = runtimeFile ? (await import(pathToFileURL(runtimeFile).href)).t : NativeFixtureController;
 
 const settle = async () => { for (let i = 0; i < 8; i += 1) await Promise.resolve(); };
+const nativeFrame = (f, raw) => f.controller.handleFrame(JSON.stringify(raw), false);
+const beginUserTurn = (f, id, text) => nativeFrame(f, { type: "turn.created", turn: { id, role: "user", transcript: text } });
+const appendUserTurn = (f, id, delta) => nativeFrame(f, { type: "turn.delta", turn_id: id, delta });
+const finishUserTurn = (f, id, text) => nativeFrame(f, { type: "turn.done", turn: { id, role: "user", transcript: text } });
 function fixture(options = {}) {
   const frames = [], calls = [], warnings = [], fatal = [], logs = [];
   const sessionAbort = new AbortController();
@@ -90,6 +101,172 @@ test("final-only consult remains one terminal result", async () => {
   f.calls[0].resolve({ text: "完成" }); await settle();
   assert.deepEqual(f.texts(), ["完成"]);
   assert.equal(f.controller.activeDelegationId, undefined);
+});
+
+test("completed same-turn replay cannot restart work while changed conditions and new caller turns remain valid", async () => {
+  const f = fixture();
+  const frame = (id, text, turn = "turn-original") => JSON.stringify({ type: "delegation.created", item: {
+    id, type: "delegation", content: [{ type: "input_text", text }], user_bidi_turn_id: turn,
+  } });
+  beginUserTurn(f, "turn-original", "请查记忆，再执行完整长任务");
+  f.controller.handleFrame(frame("early", "请查记忆，再执行完整长任务"), false);
+  const early = f.calls[0];
+  appendUserTurn(f, "turn-original", "，最终原样报告数字和时间，不要写记忆或发消息");
+  f.controller.handleFrame(frame("tail", "最终原样报告数字和时间，不要写记忆或发消息"), false);
+  assert.equal(early.signal.aborted, true, "Changed conditions from the same spoken turn still supersede its prefix");
+  early.resolve({ text: "stale" }); await settle();
+  const current = f.calls[1];
+  f.controller.handleFrame(JSON.stringify({ type: "turn.done", turn: {
+    id: "turn-original", role: "user", transcript: "请查记忆，再执行完整长任务，最终原样报告数字和时间，不要写记忆或发消息",
+  } }), false);
+  f.controller.appendTranscript({ kind: "transcript-done", role: "assistant", text: "当前上下文" });
+  current.resolve({ text: "完整结果 3396 / 14:05:12 CST +0800" }); await settle();
+  const remaining = structuredClone(f.controller.transcript);
+  f.controller.handleFrame(frame("after-final-replay", "最终原样报告数字和时间，不要写记忆或发消息"), false);
+  assert.equal(f.calls.length, 2);
+  assert.equal(f.controller.delegationGeneration, 2);
+  assert.deepEqual(f.controller.transcript, remaining, "Ignoring replay does not consume remaining conversation context");
+  assert.deepEqual(f.texts(), ["完整结果 3396 / 14:05:12 CST +0800"]);
+  f.controller.handleFrame(frame("changed", "补查明天的安排"), false);
+  assert.equal(f.calls.length, 3, "Changed conditions on the same turn do not match the completed input version");
+  f.calls[2].resolve({ text: "补查完成" }); await settle();
+  f.controller.handleFrame(frame("genuine-repeat", "最终原样报告数字和时间，不要写记忆或发消息", "turn-new"), false);
+  assert.equal(f.calls.length, 4, "A new caller turn may genuinely repeat the same instruction");
+  f.calls[3].resolve({ text: "new task" }); await settle();
+});
+
+test("missing provider turn identity preserves delegation behavior and stop clears replay state", async () => {
+  const f = fixture();
+  f.controller.startDelegation("one", "request"); f.calls[0].resolve({ text: "first" }); await settle();
+  f.controller.startDelegation("two", "request"); f.calls[1].resolve({ text: "second" }); await settle();
+  assert.equal(f.calls.length, 2);
+  for (let index = 0; index < 270; index += 1) {
+    beginUserTurn(f, `turn-${index}`, "request");
+    finishUserTurn(f, `turn-${index}`, "request");
+    f.controller.startDelegation(`d-${index}`, "request", `turn-${index}`);
+    f.calls.at(-1).resolve({ text: "done" }); await settle();
+  }
+  assert.equal(f.controller.delegationInputsByUserTurn.size, 256);
+  assert.equal(f.controller.completedUserTurns.size, 256);
+  assert.equal(f.controller.nativeUserTurnText.size, 256);
+  f.controller.detach();
+  assert.equal(f.controller.delegationInputsByUserTurn.size, 0);
+  assert.equal(f.controller.completedUserTurns.size, 0);
+  assert.equal(f.controller.nativeUserTurnText.size, 0);
+});
+
+test("replay protection does not swallow pending, failed, cancelled, incomplete or changed-transcript requests", async t => {
+  for (const scenario of ["pending", "failure", "cancel", "partial-send", "no-user-done", "new-transcript"]) await t.test(scenario, async () => {
+    const f = fixture();
+    beginUserTurn(f, "turn-one", "request");
+    if (scenario !== "no-user-done") finishUserTurn(f, "turn-one", "request");
+    f.controller.startDelegation("one", "request", "turn-one");
+    const first = f.calls[0];
+    if (scenario === "failure") first.reject(new Error("provider failed"));
+    else if (scenario === "cancel") { first.onCanceled({ runId: "host-run" }); first.resolve({ text: "stale" }); }
+    else if (scenario !== "pending") {
+      if (scenario === "partial-send") f.socket.failNextSend = true;
+      first.resolve({ text: "completed" });
+    }
+    await settle();
+    if (scenario === "new-transcript") f.controller.appendTranscript({ kind: "transcript-delta", role: "user", text: "另外加个条件" });
+    f.controller.startDelegation("two", "request", "turn-one");
+    if (scenario === "pending") { first.resolve({ text: "stale" }); await settle(); }
+    assert.equal(f.calls.length, 2, scenario);
+    f.calls[1].resolve({ text: "second result" }); await settle();
+  });
+});
+
+test("exact native closing done preserves the accepted v7c-shaped full input version", async () => {
+  const f = fixture(), turn = "turn-v7c", tail = "数和等待后的,不要写记忆或发消息";
+  // Same raw 218-character projection shape; the private person's name is replaced.
+  const full = "请完成一个后台只读长任务,先用记忆搜索检索“联系人是谁,与我有什么关系”,再用网络搜索查 OpenAI 官方 Realtime 打断机制,再让一个子代理先执行工作目录查询,确认在候选私有目录里,然后用系统命令产生一个四位随机校验数,播报这个数,然后等待四十五秒,再读取完整的日期、时间和时区,每步有真实结果时简短播报,并自行继续,最终给我记忆事实、官方网页结论 同一 子代理 的 校 验 数 和 等待 后的,不要 写 记忆 或 发 消息";
+  assert.equal(full.length, 218);
+  beginUserTurn(f, turn, "请");
+  nativeFrame(f, { type: "input_transcript.added", item: { text: "旧的另一路输入投影" } });
+  appendUserTurn(f, turn, full.slice(1));
+  f.controller.startDelegation("gen2", tail, turn);
+  const acceptedRevision = f.controller.userTranscriptRevision;
+  finishUserTurn(f, turn, full);
+  assert.equal(f.controller.userTranscriptRevision, acceptedRevision, "Exact closing done adds no new content");
+  f.calls[0].resolve({ text: "原样结果 3396 / 14:05:12 CST +0800" }); await settle();
+  f.controller.startDelegation("gen3-replay", tail, turn);
+  assert.equal(f.calls.length, 1, "Full-string proof permits the observed post-final replay to be suppressed");
+});
+
+test("final cannot cache unconsumed caller conditions or infer closing equality from a suffix", async t => {
+  for (const scenario of ["input-and-native-delta", "native-delta-only", "done-correction", "whitespace-correction", "missing-created", "another-turn"]) await t.test(scenario, async () => {
+    const f = fixture(), turn = "turn-one", initial = "查机票，等待后给日期", input = "最终给日期";
+    if (scenario !== "missing-created") beginUserTurn(f, turn, initial);
+    f.controller.startDelegation("accepted", input, turn);
+    let closing = initial;
+    if (scenario === "input-and-native-delta" || scenario === "native-delta-only") {
+      if (scenario === "input-and-native-delta") nativeFrame(f, { type: "input_transcript.added", item: { text: "，另外查酒店" } });
+      appendUserTurn(f, turn, "，另外查酒店"); closing += "，另外查酒店";
+    } else if (scenario === "done-correction") closing = "还要查酒店，" + initial;
+    else if (scenario === "whitespace-correction") closing = "查 机票，等待后给日期";
+    else if (scenario === "another-turn") beginUserTurn(f, "turn-new", "另外查酒店");
+    finishUserTurn(f, turn, closing);
+    f.calls[0].resolve({ text: "旧任务完成" }); await settle();
+    assert.equal(f.controller.delegationInputsByUserTurn.size, 0, "No proof that the original consult consumed the new conditions");
+    f.controller.startDelegation("repeat-with-context", input, turn);
+    assert.equal(f.calls.length, 2, scenario);
+    f.calls[1].resolve({ text: "条件已更新" }); await settle();
+  });
+});
+
+test("raw caller proof is bounded and late raw changes invalidate a completed replay", async () => {
+  const f = fixture(); beginUserTurn(f, "one", "request"); finishUserTurn(f, "one", "request");
+  f.controller.startDelegation("first", "request", "one"); f.calls[0].resolve({ text: "done" }); await settle();
+  appendUserTurn(f, "one", " new condition");
+  f.controller.startDelegation("new-condition", "request", "one");
+  assert.equal(f.calls.length, 2); f.calls[1].resolve({ text: "next" }); await settle();
+  beginUserTurn(f, "large", "x".repeat(16 * 1024)); appendUserTurn(f, "large", "x");
+  assert.equal(f.controller.nativeUserTurnText.has("large"), false);
+  finishUserTurn(f, "large", "x".repeat(16 * 1024 + 1));
+  f.controller.startDelegation("large-input", "request", "large"); f.calls[2].resolve({ text: "done" }); await settle();
+  assert.equal(f.controller.delegationInputsByUserTurn.has("large:" + createHash("sha256").update("request").digest("hex")), false);
+});
+
+test("actual host run start and accepted cancellation are fingerprinted under their native owner", async () => {
+  const diagnostics = [];
+  const f = fixture({ onPublicProgressDiagnostic: event => diagnostics.push(event) });
+  f.controller.startDelegation("provider-item", "request");
+  const run = f.calls[0];
+  run.onRunStarted({ runId: "talk-realtime-consult:host-run" });
+  run.onCanceled({ runId: "talk-realtime-consult:host-run", source: "owned_run_signal" });
+  assert.equal(run.signal.aborted, true);
+  assert.deepEqual(diagnostics.map(event => event.stage), ["backend-run-started", "backend-cancel-accepted"]);
+  for (const event of diagnostics) {
+    assert.equal(event.delegationId, "provider-item");
+    assert.equal(event.generation, 1);
+    assert.equal(event.sourceRunIdSha256, createHash("sha256").update("talk-realtime-consult:host-run").digest("hex"));
+  }
+  run.onRunStarted({ runId: "late-run" }); run.resolve({ text: "late final" }); await settle();
+  assert.equal(diagnostics.length, 2);
+  assert.deepEqual(f.frames, []);
+});
+
+test("parent waiting chatter cannot occupy the speech slot before a real child stage", async () => {
+  const f = fixture(); f.controller.startDelegation("one", "request");
+  for (const text of ["我这边也在查官方文档和子代理那部分。", "子代理那边还在跑，我等它出结果再同步。", "后台仍在等待，请稍等。"])
+    f.calls[0].onProgress({ kind: "commentary", text });
+  assert.deepEqual(f.frames, []);
+  f.calls[0].onProgress({ kind: "commentary", text: "四位随机校验数是3396。接下来等待45秒。" });
+  assert.deepEqual(f.texts(), ["四位随机校验数是3396。接下来等待45秒。"]);
+  f.calls[0].resolve({ text: "完整任务结果。" }); await settle();
+});
+
+test("resumed cancellation keeps the actual source distinct from its initial voice owner", async () => {
+  const diagnostics = [];
+  const f = fixture({ onPublicProgressDiagnostic: event => diagnostics.push(event) });
+  f.controller.startDelegation("native-item", "request");
+  f.calls[0].onCanceled({ runId: "resumed-run", ownerRunId: "initial-run", source: "owned_run_signal" });
+  assert.equal(diagnostics[0].sourceRunIdSha256, createHash("sha256").update("resumed-run").digest("hex"));
+  assert.equal(diagnostics[0].ownerRunIdSha256, createHash("sha256").update("initial-run").digest("hex"));
+  assert.notEqual(diagnostics[0].sourceRunIdSha256, diagnostics[0].ownerRunIdSha256);
+  f.calls[0].resolve({ text: "late" }); await settle();
+  assert.deepEqual(f.frames, []);
 });
 
 test("successive delegations share the speech interval while finals remain intact", async () => {
@@ -245,6 +422,7 @@ test("opt-in diagnostics join emitted metadata with successful append fingerprin
   assert(diagnostics.every((event) => event.delegationId === "d1" && event.generation === 1));
   assert.equal(diagnostics[0].textSha256, createHash("sha256").update("后台标记 7231。").digest("hex"));
   assert.equal(diagnostics[1].textSha256, diagnostics[0].textSha256);
+  assert.equal(diagnostics[0].sourceRunIdSha256, createHash("sha256").update("run-1").digest("hex"));
   assert.deepEqual(diagnostics[0].provenance, { emittedAt, sequence: 7, runId: "run-1", source: "preamble:item-2", itemId: "item-2" });
   assert.equal(diagnostics[1].appendId, 1);
   assert.equal(diagnostics[3].appendId, 2);
@@ -256,7 +434,7 @@ test("opt-in diagnostics join emitted metadata with successful append fingerprin
   assert.deepEqual(f.logs, []);
 });
 
-test("diagnostics do not claim failed or closed socket appends and ignore late callbacks", async () => {
+test("diagnostics do not claim failed appends and separately witness an actual late public callback", async () => {
   const diagnostics = [];
   const f = fixture({ onPublicProgressDiagnostic: (event) => diagnostics.push(event) });
   f.controller.startDelegation("d1", "request");
@@ -268,8 +446,26 @@ test("diagnostics do not claim failed or closed socket appends and ignore late c
   f.calls[0].resolve({ text: "final." }); await settle();
   const beforeLate = diagnostics.length;
   f.calls[0].onProgress({ kind: "commentary", text: "late." });
-  assert.equal(diagnostics.length, beforeLate);
+  assert.equal(diagnostics.length, beforeLate + 1);
+  assert.equal(diagnostics.at(-1).stage, "stale-public-progress-dropped");
+  assert.equal(diagnostics.at(-1).textSha256, createHash("sha256").update("late.").digest("hex"));
   assert.equal(diagnostics.filter((event) => event.stage === "context-append-sent").length, 0);
+});
+
+test("real stale public callback keeps its original generation and never becomes a new owner's speech", async () => {
+  const diagnostics = [];
+  const f = fixture({ onPublicProgressDiagnostic: event => diagnostics.push(event) });
+  f.controller.startDelegation("reused", "first"); const first = f.calls[0];
+  f.controller.startDelegation("reused", "second");
+  first.onProgress({ kind: "commentary", text: "旧公开事实", provenance: { runId: "original-host-run" } });
+  assert.equal(diagnostics.at(-1).stage, "stale-public-progress-dropped");
+  assert.equal(diagnostics.at(-1).generation, 1);
+  assert.equal(diagnostics.at(-1).sourceRunIdSha256, createHash("sha256").update("original-host-run").digest("hex"));
+  assert.deepEqual(f.frames, []);
+  first.resolve({ text: "old" }); await settle();
+  f.calls[1].resolve({ text: "new" }); await settle();
+  assert.equal(diagnostics.at(-1).generation, 2);
+  assert.deepEqual(f.texts(), ["new"]);
 });
 
 test("host steering context preserves its native channel without public-output diagnostics", async () => {

@@ -1,5 +1,36 @@
 import assert from "node:assert/strict";
 
+const userTurnProofMethods = `\tobserveNativeUserTurn(raw) {
+\t\tif (this.stopped) return false;
+\t\tconst turnId = raw.type === "turn.delta" ? raw.turn_id : raw.turn?.id;
+\t\tif (typeof turnId !== "string" || !/^[a-zA-Z0-9_.:-]{1,160}$/.test(turnId)) return false;
+\t\tif (raw.type === "turn.created" && raw.turn?.role === "user" && typeof raw.turn.transcript === "string") {
+\t\t\t// Independent raw proof only; leave the host transcript projection intact.
+\t\t\t// A new caller turn invalidates old input even if its other projection is late.
+\t\t\tthis.userTranscriptRevision++;
+\t\t\tif (Buffer.byteLength(raw.turn.transcript, "utf8") <= 16 * 1024) {
+\t\t\t\tthis.nativeUserTurnText.set(turnId, { text: raw.turn.transcript, complete: false });
+\t\t\t\tif (this.nativeUserTurnText.size > 256) this.nativeUserTurnText.delete(this.nativeUserTurnText.keys().next().value);
+\t\t\t} else this.nativeUserTurnText.delete(turnId);
+\t\t} else if (raw.type === "turn.delta" && typeof raw.delta === "string") {
+\t\t\tconst proof = this.nativeUserTurnText.get(turnId);
+\t\t\tif (proof) {
+\t\t\t\tif (raw.delta) this.userTranscriptRevision++;
+\t\t\t\tconst text = proof.text + raw.delta;
+\t\t\t\tif (Buffer.byteLength(text, "utf8") <= 16 * 1024) { proof.text = text; proof.complete = false; }
+\t\t\t\telse this.nativeUserTurnText.delete(turnId);
+\t\t\t}
+\t\t} else if (raw.type === "turn.done" && raw.turn?.role === "user" && typeof raw.turn.transcript === "string") {
+\t\t\tconst proof = this.nativeUserTurnText.get(turnId);
+\t\t\t// Exact full strings, including whitespace, must agree. A missing prefix,
+\t\t\t// correction or additional condition cannot become a harmless closing done.
+\t\t\tif (proof && proof.text === raw.turn.transcript) { proof.complete = true; return true; }
+\t\t\tthis.nativeUserTurnText.delete(turnId);
+\t\t}
+\t\treturn false;
+\t}
+`;
+
 const diagnosticMethods = `\ttracePublicProgress(stage, delegationId, text, details = {}) {
 \t\tif (!this.publicProgressTraceEnabled || !["progress", "final", "failure"].includes(details.kind)) return;
 \t\t// Diagnostics carry public text fingerprints only. Do not copy arbitrary
@@ -11,7 +42,7 @@ const diagnosticMethods = `\ttracePublicProgress(stage, delegationId, text, deta
 \t\t\ttraceId: this.publicProgressTraceId,
 \t\t\tsequence: ++this.publicProgressTraceSequence,
 \t\t\tdelegationId,
-\t\t\tgeneration: this.delegationGeneration,
+\t\t\tgeneration: Number.isSafeInteger(details.delegationGeneration) && details.delegationGeneration > 0 ? details.delegationGeneration : this.delegationGeneration,
 \t\t\ttextSha256: createHash("sha256").update(text).digest("hex"),
 \t\t\ttextChars: text.length
 \t\t};
@@ -23,6 +54,15 @@ const diagnosticMethods = `\ttracePublicProgress(stage, delegationId, text, deta
 \t\tconst provenance = details.provenance;
 \t\tif (provenance && typeof provenance === "object") {
 \t\t\tevent.provenance = {};
+\t\t\t// Hash the actual host callback identity before structured logging can
+\t\t\t// redact it. Join to the original SSE/tool run; never infer ownership
+\t\t\t// by equating a provider delegation item with a backend run id.
+\t\t\tif (typeof provenance.runId === "string" && /^[a-zA-Z0-9_.:@/-]{1,160}$/.test(provenance.runId)) {
+\t\t\t\tevent.sourceRunIdSha256 = createHash("sha256").update(provenance.runId).digest("hex");
+\t\t\t}
+\t\t\tif (typeof provenance.ownerRunId === "string" && /^[a-zA-Z0-9_.:@/-]{1,160}$/.test(provenance.ownerRunId)) {
+\t\t\t\tevent.ownerRunIdSha256 = createHash("sha256").update(provenance.ownerRunId).digest("hex");
+\t\t\t}
 \t\t\tfor (const key of ["runId", "source", "itemId"]) {
 \t\t\t\tconst value = provenance[key];
 \t\t\t\tif (typeof value === "string" && /^[a-zA-Z0-9_.:@/-]{1,160}$/.test(value)) event.provenance[key] = value;
@@ -188,6 +228,9 @@ const runDelegationAfter = `\tisCurrentDelegation(delegation, signal) {
 \t\tconst onCanceled = (reason) => {
 \t\t\tif (finished || !this.isCurrentDelegation(delegation, signal) ||
 \t\t\t\tthis.consultController?.signal !== signal) return;
+\t\t\tthis.tracePublicProgress("backend-cancel-accepted", delegation.id, "", { kind: "progress", provenance: {
+\t\t\t\trunId: reason?.runId, ownerRunId: reason?.ownerRunId, source: reason?.source
+\t\t\t} });
 \t\t\tfinished = true;
 \t\t\tthis.consultController.abort(reason ?? new Error("Realtime voice consult cancelled"));
 \t\t};
@@ -196,10 +239,17 @@ const runDelegationAfter = `\tisCurrentDelegation(delegation, signal) {
 \t\t// commentary channel is not proof of silence. Withhold chatter and long
 \t\t// public articles from the native wire; append only selected short facts.
 \t\tconst onProgress = (progress) => {
-\t\t\tif (finished || !this.isCurrentDelegation(delegation, signal) ||
-\t\t\t\tprogress?.kind !== "commentary" || progress?.isReasoning === true ||
+\t\t\tif (progress?.kind !== "commentary" || progress?.isReasoning === true ||
 \t\t\t\ttypeof progress?.text !== "string" || !progress.text.trim()) return;
 \t\t\tconst publicText = progress.text.trim();
+\t\t\tif (finished || !this.isCurrentDelegation(delegation, signal)) {
+\t\t\t\t// This is an actual late public host callback, not a cancel ACK or
+\t\t\t\t// inferred silent interval. Observe its old owner without appending it.
+\t\t\t\tthis.tracePublicProgress("stale-public-progress-dropped", delegation.id, publicText, {
+\t\t\t\t\tkind: "progress", provenance: progress.provenance, delegationGeneration: delegation.generation
+\t\t\t\t});
+\t\t\t\treturn;
+\t\t\t}
 \t\t\tthis.tracePublicProgress("public-progress-received", delegation.id, publicText, { kind: "progress", provenance: progress.provenance });
 \t\t\tconst fingerprint = createHash("sha256").update(publicText).digest("hex");
 \t\t\tif (seenProgress.has(fingerprint)) return;
@@ -210,7 +260,7 @@ const runDelegationAfter = `\tisCurrentDelegation(delegation, signal) {
 \t\t\tconst now = Date.now();
 \t\t\t// Ordinary short public facts need no special wording. Suppress clear
 \t\t\t// waiting/setup statements; an actual result within one takes priority.
-\t\t\tconst waitingPlan = /^(?:我(?:这边)?(?:会|将|先|正在|在)|我们(?:先|会|正在)|正在|现在(?:开始)?(?:等|等待|查|看|核对|执行)|(?:下一步|接下来|然后)(?:我|我们)?(?:会|将|先|去|开始|等|查|看)|先(?:查|看|确认|核对)|(?:好|行)[，,]?我(?:先)?(?:查|看)|稍等|请稍等|等一下|让我|这边(?:正在|在|先)|I(?:'m| am| will|['’]ll)|(?:Now|Next)(?:[,:]?\\s+)(?:I(?: will|['’]ll)|we(?: will|['’]ll)|start|wait|waiting|check)|Let me|Please wait|One (?:sec|moment))/iu.test(publicText);
+\t\t\tconst waitingPlan = /^(?:我(?:这边)?(?:也|还|仍)?(?:会|将|先|正在|在)|我们(?:先|会|正在)|(?:子(?:任务|代理)|后台)(?:那边|这边)?(?:还|仍|也)?(?:在|正在|等待|待)|正在|现在(?:开始)?(?:等|等待|查|看|核对|执行)|(?:下一步|接下来|然后)(?:我|我们)?(?:会|将|先|去|开始|等|查|看)|先(?:查|看|确认|核对)|(?:好|行)[，,]?我(?:先)?(?:查|看)|稍等|请稍等|等一下|让我|这边(?:正在|在|先)|I(?:'m| am| will|['’]ll)|(?:Now|Next)(?:[,:]?\\s+)(?:I(?: will|['’]ll)|we(?: will|['’]ll)|start|wait|waiting|check)|Let me|Please wait|One (?:sec|moment))/iu.test(publicText);
 \t\t\tconst setupOnly = /^(?:Read-only\\b|All read-only\\b|No (?:files? (?:written|were written)|external)|Sub-?task spawned\\b|子(?:任务|代理)(?:已)?(?:启动|派发|交办))/iu.test(publicText);
 \t\t\tconst hasStatedResult = /(?:已(?:经)?(?:找到|查到|确认|核对|完成|收到|得到|生成|发出|测得|读到|验证)|找到了|查到了|确认了|核对出|记录显示|结果(?:是|为)|等于|完成(?:了|[。.!]|$)|(?:当前|测得|核验)(?:时间|值)(?:是|为)|(?:found|confirmed|completed|complete|finished|done|generated|verified)\\b|results?(?: (?:is|are)|:)|(?:value|time|price|cost) is\\b)/iu.test(publicText);
 \t\t\t// A streamed markdown fragment is not an independent stage sentence.
@@ -233,6 +283,11 @@ const runDelegationAfter = `\tisCurrentDelegation(delegation, signal) {
 \t\t\t\tprompt: delegation.prompt,
 \t\t\t\tsignal,
 \t\t\t\tcontinuationIdentity: { delegationItemId: delegation.id, delegationGeneration: delegation.generation },
+\t\t\t\tonRunStarted: ({ runId }) => {
+\t\t\t\t\tif (!finished && this.isCurrentDelegation(delegation, signal)) {
+\t\t\t\t\t\tthis.tracePublicProgress("backend-run-started", delegation.id, "", { kind: "progress", provenance: { runId } });
+\t\t\t\t\t}
+\t\t\t\t},
 \t\t\t\tonProgress,
 \t\t\t\tonCanceled
 \t\t\t});
@@ -260,7 +315,15 @@ const runDelegationAfter = `\tisCurrentDelegation(delegation, signal) {
 \t\t\tif (this.cancelQueuedProgress === clearQueuedProgress) this.cancelQueuedProgress = void 0;
 \t\t}
 \t\tif (this.isCurrentDelegation(delegation, signal)) {
-\t\t\tthis.sendAppend(delegation.id, text, "speakable", { kind: terminalKind });
+\t\t\tconst sent = this.sendAppend(delegation.id, text, "speakable", { kind: terminalKind });
+\t\t\tconst proof = this.nativeUserTurnText.get(delegation.userBidiTurnId);
+\t\t\tif (sent && terminalKind === "final" && delegation.inputKey && this.completedUserTurns.has(delegation.userBidiTurnId) &&
+\t\t\t\tproof?.complete === true && proof.text === delegation.userTurnTranscriptText &&
+\t\t\t\tdelegation.userTranscriptRevision === this.userTranscriptRevision) {
+\t\t\t\t// Never absorb caller conditions that arrived after this consult accepted.
+\t\t\t\tthis.delegationInputsByUserTurn.set(delegation.inputKey, { revision: delegation.userTranscriptRevision, text: proof.text });
+\t\t\t\tif (this.delegationInputsByUserTurn.size > 256) this.delegationInputsByUserTurn.delete(this.delegationInputsByUserTurn.keys().next().value);
+\t\t\t}
 \t\t}
 \t}`;
 
@@ -278,9 +341,49 @@ export function patchGptLiveNativeProgress(source) {
 \t\tthis.publicProgressTraceId = this.publicProgressTraceEnabled ? randomUUID() : void 0;
 \t\tthis.publicProgressTraceSequence = 0;
 \t\tthis.publicProgressAppendSequence = 0;
+\t\tthis.delegationInputsByUserTurn = new Map();
+\t\tthis.completedUserTurns = new Set();
+\t\tthis.nativeUserTurnText = new Map();
+\t\tthis.userTranscriptRevision = 0;
 \t\tthis.lastSpokenProgressAt = -Infinity;`, "delegation generation and opt-in diagnostic initialization");
-  patched = replaceOnce(patched, "\t\tconst delegation = {\n\t\t\tid,", "\t\tconst delegation = {\n\t\t\tid,\n\t\t\tgeneration: ++this.delegationGeneration,", "delegation generation ownership");
-  patched = replaceOnce(patched, runDelegationBefore, `${diagnosticMethods}${publicWireMethods}${runDelegationAfter}`, "native consult progress and terminal delivery");
-  patched = replaceOnce(patched, "\tmarkStopped() {\n\t\tthis.stopped = true;", "\tmarkStopped() {\n\t\tthis.cancelQueuedProgress?.();\n\t\tthis.stopped = true;", "stop queued progress without canceling detached work");
+  patched = replaceOnce(patched, "\t\tif (event) this.handleEvent(event);", `\t\tif (event) {
+\t\t\t// The native parser currently omits this observed provider identity.
+\t\t\t// Preserve it at the wire boundary without altering any control frame.
+\t\t\ttry {
+\t\t\t\tconst raw = JSON.parse(payload);
+\t\t\t\tevent.userClosingTranscriptUnchanged = this.observeNativeUserTurn(raw);
+\t\t\t\tconst turnId = raw.type === "delegation.created" ? raw.item?.user_bidi_turn_id :
+\t\t\t\t\traw.type === "turn.done" && raw.turn?.role === "user" ? raw.turn.id : void 0;
+\t\t\t\tif (typeof turnId === "string" && /^[a-zA-Z0-9_.:-]{1,160}$/.test(turnId)) event.userBidiTurnId = turnId;
+\t\t\t} catch {}
+\t\t\tthis.handleEvent(event);
+\t\t}`, "preserve observed native user-turn identity");
+  patched = replaceOnce(patched, "\t\tthis.startDelegation(event.id, event.prompt);", "\t\tthis.startDelegation(event.id, event.prompt, event.userBidiTurnId);", "native delegation input identity");
+  patched = replaceOnce(patched, "\tappendTranscript(event) {\n\t\tconst last", `\tappendTranscript(event) {
+\t\tif (event.role === "user") {
+\t\t\tif (event.kind !== "transcript-done" || event.userClosingTranscriptUnchanged !== true) this.userTranscriptRevision++;
+\t\t\tif (event.kind === "transcript-done" && typeof event.userBidiTurnId === "string" && /^[a-zA-Z0-9_.:-]{1,160}$/.test(event.userBidiTurnId)) {
+\t\t\t\tthis.completedUserTurns.add(event.userBidiTurnId);
+\t\t\t\tif (this.completedUserTurns.size > 256) this.completedUserTurns.delete(this.completedUserTurns.values().next().value);
+\t\t\t}
+\t\t}
+\t\tconst last`, "record complete user turn without merging new caller input");
+  patched = replaceOnce(patched, "\tstartDelegation(id, input) {\n\t\tif (this.stopped || this.options.signal.aborted || !input.trim()) return;", `\tstartDelegation(id, input, userBidiTurnId) {
+\t\tif (this.stopped || this.options.signal.aborted || !input.trim()) return;
+\t\tlet inputKey;
+\t\tif (typeof userBidiTurnId === "string" && /^[a-zA-Z0-9_.:-]{1,160}$/.test(userBidiTurnId)) {
+\t\t\tinputKey = userBidiTurnId + ":" + createHash("sha256").update(input.trim()).digest("hex");
+\t\t\t// A single spoken turn can delegate an early prefix and then changed
+\t\t\t// conditions. Suppress only an identical completed replay after the
+\t\t\t// entire user turn ended and with no later caller transcript. Failed,
+\t\t\t// cancelled and partially delivered work remains eligible for retry.
+\t\t\tconst completed = this.delegationInputsByUserTurn.get(inputKey);
+\t\t\tconst proof = this.nativeUserTurnText.get(userBidiTurnId);
+\t\t\tif (this.completedUserTurns.has(userBidiTurnId) && completed?.revision === this.userTranscriptRevision &&
+\t\t\t\tproof?.complete === true && completed.text === proof.text) return;
+\t\t}`, "idempotent same-input provider replay");
+  patched = replaceOnce(patched, "\t\tconst delegation = {\n\t\t\tid,", "\t\tconst delegation = {\n\t\t\tid,\n\t\t\tuserBidiTurnId, inputKey,\n\t\t\tuserTranscriptRevision: this.userTranscriptRevision,\n\t\t\tuserTurnTranscriptText: this.nativeUserTurnText.get(userBidiTurnId)?.text,\n\t\t\tgeneration: ++this.delegationGeneration,", "delegation generation ownership");
+  patched = replaceOnce(patched, runDelegationBefore, `${userTurnProofMethods}${diagnosticMethods}${publicWireMethods}${runDelegationAfter}`, "native consult progress and terminal delivery");
+  patched = replaceOnce(patched, "\tmarkStopped() {\n\t\tthis.stopped = true;", "\tmarkStopped() {\n\t\tthis.cancelQueuedProgress?.();\n\t\tthis.delegationInputsByUserTurn.clear();\n\t\tthis.completedUserTurns.clear();\n\t\tthis.nativeUserTurnText.clear();\n\t\tthis.stopped = true;", "stop queued progress without canceling detached work");
   return replaceOnce(patched, sendAppendBefore, sendAppendAfter, "native public append roles and successful wire boundary");
 }

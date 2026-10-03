@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { patchGptLiveContinuationTalk } from "./patch-gpt-live-consult-continuation.mjs";
 import {
   patchGptLiveConsultProgressHarness,
   patchGptLiveConsultProgressTalk,
@@ -480,7 +481,7 @@ test("throwing, rejecting, or pending progress observers cannot delay or fail th
   }
 });
 
-function createRunner(consult) {
+function createRunner(consult, source = patchedTalk) {
   const dependencies = {
     resolveTalkAgentConsultAuthority: () => ({}),
     parseRealtimeVoiceAgentConsultArgs: (args) => args,
@@ -497,7 +498,7 @@ function createRunner(consult) {
     registerChatAbortController: () => ({ controller: new AbortController(), cleanup: () => {} }),
     REALTIME_VOICE_AGENT_CONSULT_TOOL_NAME: "openclaw_agent_consult",
   };
-  return executeFunction(patchedTalk, "function createTalkClientAgentConsultRunner", "function createTalkClientGatewayControlOwner", dependencies)({
+  return executeFunction(source, "function createTalkClientAgentConsultRunner", "function createTalkClientGatewayControlOwner", dependencies)({
     config: {},
     context: { logGateway: {} },
     sessionTarget: { agentId: "agent", sessionKey: "voice", canonicalKey: "agent:voice", storePath: "/tmp/store" },
@@ -505,6 +506,21 @@ function createRunner(consult) {
     initialItems: [],
   });
 }
+
+test("actual patched Talk host callbacks bind initial and resumed backend identities without depending on progress", async () => {
+  const starts = [], progress = [];
+  const runner = createRunner(async options => {
+    options.onRunStarted({ runId: "talk-realtime-consult:initial", sessionId: "session", timeoutMs: 60000 });
+    options.onResumeRunStarted({ runId: "talk-realtime-consult:resumed", sessionId: "session", timeoutMs: 60000 });
+    return { text: "final" };
+  }, patchGptLiveContinuationTalk(patchedTalk));
+  const context = { onRunStarted: event => starts.push(event) };
+  assert.deepEqual(await runner.runArgs({ question: "后台等待任务" }, new AbortController().signal, event => progress.push(event), context), { text: "final" });
+  assert.deepEqual(starts, [{ runId: "talk-realtime-consult:initial" }, { runId: "talk-realtime-consult:resumed" }]);
+  assert.deepEqual(progress, [], "A silent sleeping task still has its real owner binding");
+  assert.deepEqual(await runner.runArgs({ question: "repeat" }, new AbortController().signal, undefined,
+    { onRunStarted: () => { throw new Error("observer failed"); } }), { text: "final" });
+});
 
 test("Talk runArgs and runPrompt preserve the progress callback and abort signal", async () => {
   const calls = [];
