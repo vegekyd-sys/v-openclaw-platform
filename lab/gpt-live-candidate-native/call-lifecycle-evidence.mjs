@@ -123,6 +123,16 @@ export function assessLifecycleSpeech(state,{pcIndex,after,before=Infinity,turnI
   return null;
 }
 
+// A cheap readiness check for the observer's bounded frame tail. Do not copy
+// the entire recording every poll: that stalls the original browser sampler.
+// The final proof still checks the complete raw caption and playback window.
+export function hasLifecyclePlaybackTail(state,{pcIndex,after,before=Infinity}={}) {
+  return (state?.events??[]).some(terminal=>terminal.pcIndex===pcIndex&&terminal.type==='turn.done'&&terminal.role==='assistant'&&
+    terminal.turnId&&normalize(terminal.text)&&Number.isFinite(terminal.at)&&terminal.at>after&&terminal.at<before&&
+    Boolean(continuousPlaybackQuiet((state.audioFrames??[]).filter(f=>f.at<before),{
+      pcIndex,after:terminal.at,durationMs:750,threshold:.003,maxGapMs:100,requireTail:true})?.rtp.length));
+}
+
 export function assessProactiveGreeting(state,{pcIndex,owner,readyAt,before=Infinity}={}) {
   if(!owner||!Number.isFinite(readyAt))return null;
   const speech=assessLifecycleSpeech(state,{pcIndex,after:readyAt,before,requireCreatedAfter:true});
