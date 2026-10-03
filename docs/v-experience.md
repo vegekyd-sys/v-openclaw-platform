@@ -2,6 +2,7 @@
 
 2026-10-04 CST 起草。基线：生产 V 跑的 OpenClaw 2026.9.1（db91.6 + V 补丁）。
 渠道顺序（Tianyi 10/04 定）：Telegram → 钉钉 → 企业微信 → Teams。
+10/04 凌晨更新：Telegram 只用原生功能、开配置即可；主力是钉钉和企业微信。
 基于 9.1 做，但新代码要能原样搬到以后的升级线。
 
 ## 1. 体验清单
@@ -32,10 +33,10 @@
 |---|---|---|---|---|---|
 | 回复文字流式 | 原生 | 原生（编辑消息，V 上默认 progress 模式） | 有（AI 卡片，800 ms） | 有（流消息，**6 分钟后不能再改**） | 仅 1:1 |
 | B1 过程流式 | V | 原生（共享 progress compositor：💬 说明、🧠 推理、工具行） | — | — | 仅 1:1 progress 模式 |
-| B2 进度清单 | V（订阅 `progressCard.put`） | 半原生：认 `onPlanUpdate`，**不认 V 的 `progress_card` 工具** | — | — | 半原生（同 Telegram，仅 1:1） |
+| B2 进度清单 | V（订阅 `progressCard.put`） | 原生（实测：worker 的 `progress_card` 经 `onPlanUpdate` 显示为 ▸/▢/✅） | — | — | 半原生（同 Telegram，仅 1:1） |
 | B3 后台任务行 | V | — | — | — | — |
 | B4 Runtime 页脚 | V | — | — | — | — |
-| A1 Ask User | V（1–3 题、多选、自定义） | 半原生：**仅单题单选**按钮；打字回答原生可用 | — | — | 只能打字回答 |
+| A1 Ask User | V（1–3 题、多选、自定义） | **实测卡死**：worker 的问题不显示选项，打字回答要等问题超时才被处理 | **实测卡死**：问题被丢弃 | **实测卡死**：问题不显示，回答排在等待的回合后面 | 只能打字回答 |
 | A2 审批卡 | V | 原生（V 上 10/03 已关） | — | — | 原生（仅默认账号） |
 | A3 密钥录入 | V | —（只发 Control UI 链接，V 没配 publicOrigin → 报错） | — | — | — |
 | A4 接管卡 | V | 走插件的 `message send --presentation` 通用回退，待实测 | 同左 | 同左 | 同左 |
@@ -164,3 +165,37 @@ Gateway 挂点（progressCard / taskRegistry / question / approval / 回复回�
 
 钉钉和企业微信两个插件都把 `CommandAuthorized` 写死为 `true`；企业微信的私聊和群聊策略又都是 `open`。
 任何能给机器人发消息的人都能执行本应只有 owner 能用的命令。这和体验工作无关，应单独修。
+
+## 7. 实测结果（2026-10-04）
+
+做法：真实的钉钉 / 企业微信 / Telegram 插件跑在 VLab candidate 的私有 Gateway 里，
+平台换成本地假服务器（`lab/candidate/*-fake-*.mjs`），每个场景都是 VLab Worker 上的真实模型回合
+（deepseek-v4-flash）。插件代码按字节取自 V（`apps/v-experience/*/fetch-*.sh`）。
+
+| 场景 | 钉钉 改前 | 钉钉 改后 | 企微 改前 | 企微 改后 | Telegram 原生 |
+|---|---|---|---|---|---|
+| 工作清单（progress_card + 工具） | 只有最终答案 | ✅ ▶️/✅ 计划 + ⚙️ 当前工具，结束只留答案 | 只有最终答案，无流式 | ✅ 同左，且正文流式输出（7 帧） | ✅ 原生（工具名英文） |
+| 单选题 | ❌ 问题被丢弃，卡到超时 | ✅ 单独发中文问题，回「3」14 s 内继续 | ❌ 卡住 | ✅ 回「3」1 s 内继续 | ❌ 无选项，卡到测试超时 |
+| 多选题 | ❌ 卡住 | ✅ 回「1、3」13 s 内继续 | ❌ 卡住 | ✅ 13 s | ❌ 问题超时后才把回答当新消息处理 |
+| 凭据请求 | ❌ 卡住 | ✅ 提示本渠道不能安全输入并取消，V 立即回复 | ❌ 卡住 | ✅ 同左 | ❌ 停在 running |
+| 后台任务行 | 无 | ✅ 卡片内 ⏳ → ☑️ | 无 | ✅ 回复内 ⏳，结束另发 ☑️ | 无 |
+
+Candidate：钉钉改后 `49f7b919`、改前 `d0f2e11d`；企微改后 `6ea201be`、改前 `a81c684e`；
+Telegram 原生 `503fe11b`。
+
+实现要点（踩过的坑）：
+
+- Worker 的提问不走回复 payload，要订阅 V 核心的 `Symbol.for("openclaw.questionChannelRequestedListeners")`；
+  这个 Set 由核心在第一次提问时才创建，v-experience 要先建好，否则第一个问题收不到。
+- 工具进度回调要通道声明 `allowToolLifecycleWhenProgressHidden`（飞书也是这样），否则核心不转发。
+- 回答绕过插件自己的队列，直接 `question.resolve`（与飞书 #162 同一思路）。
+- VLab 测新通道要把插件加进 `plugins.allow`，并加 `bindings → makaron`（与 V 一致），否则插件不加载或通道启动即退出。
+
+没覆盖的：
+
+- 钉钉 / 企微 App 里的实际渲染（AI 卡片 markdown、`<br>`、完成后再改卡片、企微 6 分钟限制下的长回合）——需要测试 bot。
+- `/vcodex`、`/vds`、`/vcc` 三个 harness：candidate 只跑了 Worker。补丁不依赖 runtime（同飞书的挂点），但未实测。
+- 群聊：补丁对群聊同样生效（按提问人匹配回答），未实测。
+- Telegram 的提问卡死：修法同上，但要改核心里的 Telegram 代码，待 Tianyi 决定。
+
+上 V 前还要做：合入 dev（需 Tianyi 授权）→ 共享 VLab 集成验收 → 两个第三方插件目录纳入捕获与漂移哨兵 → promote。
