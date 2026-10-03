@@ -21,7 +21,7 @@ Worker on reload, active runs included: SIGTERM, then SIGKILL after 2 s.
 | `production-worker/worker-pool.mjs` | `a9f718d0…` | `58558773…` |
 | `production-worker/worker-runtime-lifecycle.mjs` | — (new) | `5e29a54b…` |
 | `production-worker/worker-config-derive.mjs` | — (new, PR #170) | `b202a9a8…` |
-| `production-worker/worker-config-watch.mjs` | — (new) | `b1b59375…` |
+| `production-worker/worker-config-watch.mjs` | — (new) | `88354155…` |
 
 This release supersedes the separate `worker-config-derive` release plan
 (PR #170): both rewrite `production-worker/index.mjs` from the same V bytes, so

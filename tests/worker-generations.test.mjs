@@ -328,3 +328,12 @@ test("the Gateway config watch derives once per quiet change and rolls only on a
   assert.equal(rolls.length, 1, "a change Workers do not read does not roll");
   watch.stop();
 });
+
+test("Gateway bookkeeping under meta is written through but does not roll Workers", async () => {
+  const { workerConfigChangeNeedsRoll } = await import(pathToFileURL(path.join(dir, "worker-config-watch.mjs")).href);
+  assert.equal(workerConfigChangeNeedsRoll(["meta.lastTouchedVersion"]), false);
+  assert.equal(workerConfigChangeNeedsRoll(["meta"]), false);
+  assert.equal(workerConfigChangeNeedsRoll(["meta.migrations[0]", "agents.defaults.models"]), true);
+  assert.equal(workerConfigChangeNeedsRoll(["metadata"]), true);
+  assert.equal(workerConfigChangeNeedsRoll(["(root)"]), true);
+});
