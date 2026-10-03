@@ -93,7 +93,8 @@ const liveWorkers = (s) => s.workers.filter((w) => w.ready && !w.retiring).lengt
 const ourActive = (s, sessionPart) =>
   s.workers.some((w) => w.active.some((a) => String(a.sessionKey ?? "").includes(sessionPart)));
 function journalCount(pattern) {
-  const since = new Date(startedAt - 5_000).toISOString().replace("T", " ").slice(0, 19);
+  // An epoch timestamp: an ISO string is UTC but journalctl reads it as local time.
+  const since = `@${Math.floor((startedAt - 5_000) / 1000)}`;
   const out = remote(`sudo journalctl -u ${target.unit} --since ${sq(since)} --no-pager -o cat | grep -c -E ${sq(pattern)} || true`);
   return Number(out.trim() || 0);
 }
@@ -120,8 +121,11 @@ async function awaitReply(requestId, marker, sinceMs, timeoutMs = 300_000) {
   const deadline = Date.now() + timeoutMs;
   let last = null;
   while (Date.now() < deadline) {
-    const cards = botCards(sinceMs).filter((m) => m.replyTo === requestId);
-    last = cards.find((m) => m.content.includes(marker)) ?? cards.at(-1) ?? last;
+    // V splits a long reply into several plain messages that carry no
+    // reply_to; any bot message after the request may hold the marker.
+    const all = botCards(sinceMs);
+    const cards = all.filter((m) => m.replyTo === requestId);
+    last = all.find((m) => m.content.includes(marker)) ?? cards.at(-1) ?? last;
     if (last?.content.includes(marker)) return last;
     if (last && /couldn't generate a response|worker pool is closing/u.test(last.content)) break;
     await sleep(4_000);
