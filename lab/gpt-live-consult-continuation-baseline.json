@@ -1,0 +1,31 @@
+{
+  "baselineRelease": "memory-search-guards-20261002",
+  "files": [
+    {
+      "target": "openclaw/dist/subagent-registry-C24yr_PF.js",
+      "source": "lab/fixtures/gpt-live-continuation/subagent-registry-C24yr_PF.js",
+      "capturedSha256": "c2c0c840f014a67156d40949cdbfa148607c8cffed349feef7be629fd24a056b",
+      "patch": "registry"
+    },
+    {
+      "target": "openclaw/dist/subagent-announce.requester-settle-wake-B2NSziIo.js",
+      "source": "lab/fixtures/gpt-live-continuation/subagent-announce.requester-settle-wake-B2NSziIo.js",
+      "capturedSha256": "e42fc319a6d079e6e4dc4aba39afdf85a605740189d3ed00b8cb6b4cb91df149",
+      "patch": "wake"
+    },
+    {
+      "target": "openclaw/dist/subagent-announce-delivery-Dosep7Zr.js",
+      "source": "lab/fixtures/gpt-live-continuation/subagent-announce-delivery-Dosep7Zr.js",
+      "capturedSha256": "c14b886cb8852d528de58cfdef28d45de42267e1dd372166b6075a74929c41bc",
+      "patch": "delivery"
+    },
+    {
+      "target": "openclaw/dist/plugin-sdk/agent-harness-task-runtime.js",
+      "source": "lab/fixtures/gpt-live-continuation/plugin-sdk/agent-harness-task-runtime.js",
+      "capturedSha256": "60913341429e7b6811d2dead24e0c9eaff49408f66d7049f026840f22fef9086",
+      "patch": "taskSdk"
+    }
+  ],
+  "newModuleTarget": "openclaw/dist/gpt-live-consult-continuation.js",
+  "note": "Read-only 2026-10-02 code capture. Fresh integration baseline and explicit candidate authorization required before deployment."
+}
