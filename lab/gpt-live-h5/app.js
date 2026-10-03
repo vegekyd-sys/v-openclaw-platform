@@ -9,6 +9,7 @@ let starting = null;
 let liveReady = false;
 const duplexRecoveryMessage = "上一段语音还没确认结束。若仍无声音，请结束通话后重新开始。";
 const playbackRecoveryMessage = "声音播放被暂停了，点一下页面恢复声音。";
+const greetingGraceMs = 15000;
 const presentation = createTranscriptPresentation();
 const renderedTurns = new Map();
 const tasks = new Set();
@@ -43,22 +44,55 @@ function connectedStatus(active) {
   else setStatus("V 正在听，直接说话就好");
 }
 async function greetWhenReady(active) {
-  if (call !== active || active.greetingPending || active.greetingRequested || active.ending
+  if (call !== active || active.greetingPending || active.greetingRequested || active.greetingSuppressed
+    || active.greetingExpired || active.ending
     || active.pc.connectionState !== "connected" || active.context?.state !== "running"
-    || $("remoteAudio").paused || active.playbackNeedsGesture || (active.greetingAttempts ?? 0) >= 4) return;
+    || $("remoteAudio").paused || active.playbackNeedsGesture) return;
+  // WebRTC may be connected before the backend's native sideband sees
+  // session.started. Bound elapsed readiness time, not a handful of retries.
+  const now = performance.now();
+  if (active.greetingDeadlineAt === undefined) {
+    active.greetingDeadlineAt = now + greetingGraceMs;
+    active.greetingDeadlineTimer = setTimeout(() => {
+      if (call !== active || active.greetingRequested || active.greetingSuppressed) return;
+      active.greetingExpired = true;
+      clearTimeout(active.greetingRetryTimer);
+      active.greetingAbort?.abort();
+      duplexDiagnostic(active, { type: "greeting-ready-expired", at: performance.now(), attempts: active.greetingAttempts ?? 0 });
+    }, greetingGraceMs);
+  }
+  if (now >= active.greetingDeadlineAt) return;
   clearTimeout(active.greetingRetryTimer);
+  active.greetingRetryTimer = null;
   active.greetingPending = true; active.greetingAttempts = (active.greetingAttempts ?? 0) + 1;
+  const controller = new AbortController(); active.greetingAbort = controller;
+  duplexDiagnostic(active, { type: "greeting-ready-attempt", at: now, attempt: active.greetingAttempts });
   try {
-    const result = await api("ready", { voiceSessionId: active.voiceSessionId });
-    if (call === active && result.ok === true) active.greetingRequested = true;
+    const result = await api("ready", { voiceSessionId: active.voiceSessionId }, { signal: controller.signal });
+    if (call === active && !active.greetingSuppressed && !active.greetingExpired && !active.ending
+      && performance.now() < active.greetingDeadlineAt && result.ok === true) {
+      active.greetingRequested = true;
+      clearTimeout(active.greetingDeadlineTimer);
+      duplexDiagnostic(active, { type: "greeting-ready-accepted", at: performance.now(), attempt: active.greetingAttempts });
+    }
   } catch {
     // A rejected readiness request cannot manufacture a greeting or close a
     // working call. The user can still speak; the host operation is idempotent.
   } finally {
     active.greetingPending = false;
-    if (call === active && !active.greetingRequested && active.greetingAttempts < 4)
-      active.greetingRetryTimer = setTimeout(() => void greetWhenReady(active), 250 * active.greetingAttempts);
+    if (active.greetingAbort === controller) active.greetingAbort = null;
+    if (call === active && !active.greetingRequested && !active.greetingSuppressed && !active.greetingExpired && !active.ending) {
+      const remaining = active.greetingDeadlineAt - performance.now();
+      if (remaining > 0) active.greetingRetryTimer = setTimeout(() => void greetWhenReady(active), Math.min(1000, 250 * active.greetingAttempts, remaining));
+    }
   }
+}
+function suppressGreetingForCaller(active) {
+  if (active.greetingRequested || active.greetingSuppressed) return;
+  active.greetingSuppressed = true;
+  clearTimeout(active.greetingRetryTimer); clearTimeout(active.greetingDeadlineTimer);
+  active.greetingAbort?.abort();
+  duplexDiagnostic(active, { type: "greeting-suppressed-caller-start", at: performance.now() });
 }
 function cancelAutomaticEnd(active) {
   if (!active.ending) return;
@@ -182,9 +216,9 @@ async function recoverPlaybackGesture() {
   }
   await playing;
 }
-async function api(route, payload) {
+async function api(route, payload, { signal } = {}) {
   const response = await fetch(`./api/${route}`, {
-    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload ?? {}),
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload ?? {}), signal,
   });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error ?? "连接暂时不可用");
@@ -241,6 +275,9 @@ function providerMessage(event) {
   let data;
   try { data = JSON.parse(event.data); } catch { return; }
   const active = call;
+  if (active && data.type === "session.started") void greetWhenReady(active);
+  if (active && ((["turn.created", "turn.done"].includes(data.type) && data.turn?.role === "user")
+    || (data.type === "input_transcript.added" && typeof data.item?.text === "string" && data.item.text.trim()))) suppressGreetingForCaller(active);
   if (active && data.type === "delegation.created") observeNativeEndDelegation(active, data.item);
   if (active && data.type === "turn.created" && ["user", "assistant"].includes(data.turn?.role)) {
     const at = performance.now();
@@ -284,6 +321,7 @@ async function stopCall() {
   if (active) {
     clearInterval(active.levelTimer); clearInterval(active.heartbeat);
     clearTimeout(active.ending?.timeout); clearTimeout(active.greetingRetryTimer);
+    clearTimeout(active.greetingDeadlineTimer); active.greetingAbort?.abort();
     active.captureAbort?.abort(); active.capture?.dispose();
     void active.sounds?.dispose();
     active.duplex?.dispose(); active.duplexDiagnostics.closed = true;
