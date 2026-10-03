@@ -1,3 +1,51 @@
+// gpt-live-backend-call-control-v1: Talk
+function bindGptLiveBackendCallControl({ callControl, continuationIdentity, assertCurrent }) {
+  if (callControl === undefined) return;
+  const validId = value => typeof value === "string" && /^[a-zA-Z0-9_.:-]{1,160}$/.test(value);
+  if (!callControl || !validId(callControl.nativeDelegationId) || !validId(callControl.originUserTurnId) ||
+      !Number.isSafeInteger(callControl.delegationGeneration) || callControl.delegationGeneration < 1 ||
+      callControl.nativeDelegationId !== continuationIdentity?.delegationItemId ||
+      callControl.delegationGeneration !== continuationIdentity?.delegationGeneration ||
+      typeof callControl.userTurnText !== "string" || !callControl.userTurnText.trim() || callControl.userTurnText.length > 32768 ||
+      typeof callControl.isCurrent !== "function" || typeof callControl.accept !== "function" ||
+      typeof assertCurrent !== "function" || callControl.tool?.type !== "function" ||
+      callControl.tool.function?.name !== "openclaw_end_call" ||
+      callControl.tool.function.parameters?.type !== "object" ||
+      !callControl.tool.function.parameters.properties ||
+      Object.keys(callControl.tool.function.parameters.properties).length !== 0 ||
+      callControl.tool.function.parameters.additionalProperties !== false ||
+      callControl.tool.function.parameters.required?.length > 0) {
+    throw new Error("Invalid host-owned GPT Live call control");
+  }
+  const original = { nativeDelegationId: callControl.nativeDelegationId, originUserTurnId: callControl.originUserTurnId,
+    delegationGeneration: callControl.delegationGeneration, userTurnText: callControl.userTurnText };
+  const check = () => {
+    assertCurrent();
+    if (Object.keys(original).some(key => callControl[key] !== original[key]) || callControl.isCurrent() !== true) {
+      throw new Error("GPT Live call control native source is no longer current");
+    }
+  };
+  check();
+  // Only JSON schema is sent to Worker. These owner callbacks remain in Talk.
+  const tool = Object.freeze({ type: "function", function: Object.freeze({ name: "openclaw_end_call",
+    description: typeof callControl.tool.function.description === "string" ? callControl.tool.function.description : "End the current voice call only when the user has clearly requested it. Do not use for a negated, unfinished, or ambiguous request.",
+    parameters: Object.freeze({ type: "object", properties: Object.freeze({}), additionalProperties: false }),
+  }) });
+  return Object.freeze({ ...original, tool,
+    isCurrent: () => { try { check(); return true; } catch { return false; } },
+    accept: proof => { check(); const receipt = callControl.accept(proof); check(); return receipt; },
+  });
+}
+function buildGptLiveBackendCallControlQuestion(prompt, callControl) {
+  if (!callControl) return prompt;
+  if (callControl.isCurrent() !== true) throw new Error("GPT Live call control source changed before prompt submission");
+  return [
+    prompt,
+    "Original complete latest USER turn, finalized by the current voice host (JSON string):",
+    JSON.stringify(callControl.userTurnText),
+    "Use this complete utterance to interpret the live request. The available openclaw_end_call client tool takes no arguments and asks the current host to end this call after its farewell plays. Use it only if this complete latest utterance clearly requests ending this call. Do not use it for a negated, unfinished, ambiguous, quoted or hypothetical request; answer the actual request normally in those cases. Do not claim that the call has closed just because you called the tool.",
+  ].join("\n\n");
+}
 // gpt-live-call-lifecycle-talk-v1
 import { resolveGptLiveCallInstructions } from "./gpt-live-call-lifecycle.mjs";
 // gpt-live-native-confirmation-v1: durable caller affirmation
@@ -525,7 +573,7 @@ function createTalkClientGatewayControlOwner(params) {
 			signal.throwIfAborted();
 			params.assertConnectionOpen?.();
 		},
-		runAgentConsult: async ({ prompt, signal: consultSignal = new AbortController().signal, onProgress, continuationIdentity, onCanceled, onRunStarted, callerInputAcceptedAt }) => {
+		runAgentConsult: async ({ prompt, signal: consultSignal = new AbortController().signal, onProgress, continuationIdentity, onCanceled, onRunStarted, callerInputAcceptedAt, callControl }) => {
 			owner.assertOpen();
 			if (owners.get(params.voiceSessionId) !== owner) throw new Error("Realtime voice session is not active");
 			const continuationContext = continuationIdentity ? {
@@ -539,6 +587,16 @@ function createTalkClientGatewayControlOwner(params) {
 			owner.assertOpen();
 			consultSignal.throwIfAborted();
 			if (owners.get(params.voiceSessionId) !== owner) throw new Error("Realtime voice session is not active");
+			const boundCallControl = bindGptLiveBackendCallControl({ callControl, continuationIdentity,
+				assertCurrent: () => {
+					owner.assertOpen(); consultSignal.throwIfAborted();
+					if (!callLifecycle || owners.get(params.voiceSessionId) !== owner) throw new Error("GPT Live call control owner changed");
+				}
+			});
+			if (boundCallControl) {
+				if (!continuationContext) throw new Error("GPT Live call control requires the native delegation owner");
+				continuationContext.callControl = boundCallControl;
+			}
 			const spokenGrant = authorizeGptLiveClientVoicePendingConfirmation({
 				agentId: params.sessionTarget.agentId,
 				sessionKey: params.sessionTarget.sessionKey,
@@ -547,7 +605,7 @@ function createTalkClientGatewayControlOwner(params) {
 			});
 			// Existing runArgs validates again and binds the exact one-shot grant at
 			// actual onRunStarted. Canonical tool params must still match at execution.
-			return await params.runAgentConsult({ question: prompt,
+			return await params.runAgentConsult({ question: buildGptLiveBackendCallControlQuestion(prompt, boundCallControl),
 				...spokenGrant ? { confirmationId: spokenGrant.confirmationId } : {}
 			}, AbortSignal.any([consultSignal, signal]), onProgress, continuationContext);
 		},

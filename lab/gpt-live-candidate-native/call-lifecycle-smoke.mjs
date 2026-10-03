@@ -10,7 +10,7 @@ import {createPrivatePulseMicrophone} from './private-pulse.mjs';
 import {BROWSER_PROBE,SNAPSHOT_EXPRESSION} from './browser-probe.mjs';
 import {assessDecodedPlaybackWindow,assessCompletePlaybackWindow,assessIndependentInputConvergence} from './evidence.mjs';
 import {resolveEndCallToolWitness,resolveLifecycleUserTurn,assessLifecycleSpeech,hasLifecyclePlaybackTail,assessLifecycleFarewell,assessProactiveGreeting,assessAutomaticEnd,
-  resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult} from './call-lifecycle-evidence.mjs';
+  resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult,readLifecycleHistoryOrRetry} from './call-lifecycle-evidence.mjs';
 import {inspectLifecycleValidationTarget,readLifecycleVoiceOwner,preflightLifecycleMedia} from './call-lifecycle-target.mjs';
 
 const validationTarget=process.env.GPT_LIVE_H5_VALIDATION_TARGET??'candidate';
@@ -97,12 +97,12 @@ async function manualCleanup(pcIndex){const owner=owners.get(pcIndex);if(!owner)
  await waitFor(s=>s.pcStates[pcIndex]==='closed'&&s.api.some(a=>a.route==='/api/close'&&a.status===200&&a.request?.voiceSessionId===owner.voiceSessionId),'Original exact-owner manual cleanup',15000);
  const capture=await readCaptureClosed(pcIndex);check('manual-cleanup-'+pcIndex,capture.captureEnded&&capture.pcClosed,{...capture,manual:true});
 }
-async function waitSpeech(pcIndex,after,label,before=Infinity){
+async function waitSpeech(pcIndex,after,label,before=Infinity,{terminalAfter=after}={}){
  // Polling uses tails, so an earlier speech onset is not discarded. Once a
  // candidate terminal/quiet exists, take full raw before evaluating its window.
  const proof=await waitFor(async s=>{
-  if(!hasLifecyclePlaybackTail(s,{pcIndex,after,before}))return null;
-  const full=await snapshot(true);return assessLifecycleSpeech(full,{pcIndex,after,before,requireCreatedAfter:true});
+  if(!hasLifecyclePlaybackTail(s,{pcIndex,after,terminalAfter,before}))return null;
+  const full=await snapshot(true);return assessLifecycleSpeech(full,{pcIndex,after,terminalAfter,before,requireCreatedAfter:true});
  },label,45000);
  return proof;
 }
@@ -110,8 +110,12 @@ function recordSpeech(name,proof){check(name,proof?.playback?.passed===true&&pro
 async function greeting(pcIndex){
  const owner=owners.get(pcIndex);const ready=await waitFor(s=>s.api.find(a=>a.route==='/api/ready'&&a.status===200&&a.at>=owner.createdAt),'Original ready host operation',15000);
  const proof=await waitSpeech(pcIndex,ready.requestedAt,'Proactive native greeting with complete audible playback');
- const state=await snapshot(true),g=assessProactiveGreeting(state,{pcIndex,owner,readyAt:ready.requestedAt});
- coreCheck('proactive-greeting-before-any-USER-'+pcIndex,g?.passed&&pulse.plays.length===(pcIndex===0?0:3),{ready,greeting:g,USERClipsFed:pulse.plays.length,greetingContentManualReviewRequired:true});
+ // The completed proof owns its full caption/player/750ms quiet window. A
+ // later full snapshot may introduce a new sampling gap while copying it;
+ // that cannot erase an already observed greeting or extend its proof window.
+ const state=await snapshot(true),g=assessProactiveGreeting(state,{pcIndex,owner,readyAt:ready.requestedAt,before:proof.quiet.to+1});
+ const sameSpeech=g?.speech?.terminal.turnId===proof.terminal.turnId&&g?.speech?.window.from===proof.window.from&&g?.speech?.window.to===proof.quiet.to;
+ coreCheck('proactive-greeting-before-any-USER-'+pcIndex,g?.passed&&sameSpeech&&pulse.plays.length===(pcIndex===0?0:3),{ready,greeting:g,USERClipsFed:pulse.plays.length,greetingContentManualReviewRequired:true});
  recordSpeech('proactive-greeting-complete-digital-playback-'+pcIndex,proof);save('greeting-'+pcIndex+'-evidence.json',{owner,ready,greeting:g});return proof;
 }
 function ownedGatewayEvents() {
@@ -131,10 +135,20 @@ async function inputConverged(pcIndex,input,label) {
 async function basicTools(pcIndex) {
  const owner=owners.get(pcIndex),input=play('memory-web');await input.done;assert.equal(input.row.exitCode,0);
  const user=await waitFor(s=>resolveLifecycleMemoryUser(s.events,{pcIndex,after:input.row.startedAt,memoryQuery}),'Complete ordered Memory/Web USER transcript',20000);
- let nextHistoryAt=0,lastHistory;
+ let nextHistoryAt=0,lastHistory;const historyReads=[];
  const chain=await waitFor(async()=>{
   if(Date.now()<nextHistoryAt)return null;nextHistoryAt=Date.now()+2000;
-  lastHistory=await gateway.request('chat.history',{sessionKey:owner.sessionKey,limit:120},{timeoutMs:20000});
+  const attemptedAt=Date.now();
+  const history=await readLifecycleHistoryOrRetry(
+    ()=>gateway.request('chat.history',{sessionKey:owner.sessionKey,limit:120},{timeoutMs:20000}),
+    error=>{
+      historyReads.push({attemptedAt,completedAt:Date.now(),status:'temporary-rebuilding',message:error.message});
+      save('memory-web-owned-backend-history-read-attempts.json',{sessionKey:owner.sessionKey,attempts:historyReads});
+    });
+  if(history===null)return null;
+  historyReads.push({attemptedAt,completedAt:Date.now(),status:'success'});
+  save('memory-web-owned-backend-history-read-attempts.json',{sessionKey:owner.sessionKey,attempts:historyReads});
+  lastHistory=history;
   save('memory-web-owned-backend-history.json',{sessionKey:owner.sessionKey,observedAt:Date.now(),history:lastHistory});
   return resolveLifecycleMemoryWeb({events:ownedGatewayEvents(),history:lastHistory,sessionKey:owner.sessionKey,memoryQuery,after:input.row.startedAt});
  },'Actual nonempty memory result before owned web search and result',120000);
@@ -145,7 +159,10 @@ async function basicTools(pcIndex) {
  check('requested-read-only-memory-web-tool-scope',unexpected.length===0,{unexpectedTools:unexpected.map(p=>({name:p.name,id:p.id})),requestedWrites:false,requestedMessages:false});
  const host=await waitFor(s=>resolveLifecycleConsultResult(s,{pcIndex,voiceSessionId:owner.voiceSessionId,userTurnId:user.turnId,toolChain:chain,after:input.row.startedAt}),
   'Original native USER delegation and real owned consult result',30000);
- const speech=await waitSpeech(pcIndex,chain.webResult.at,'Native spoken Memory/Web result after actual backend completion');
+ // One actual native turn may speak a Memory stage before the Web result and
+ // finish with both results. Preserve that complete turn; require its terminal
+ // to follow the actual Web result rather than clipping its earlier prefix.
+ const speech=await waitSpeech(pcIndex,input.row.startedAt,'Native spoken Memory/Web result after actual backend completion',Infinity,{terminalAfter:chain.webResult.at});
  coreCheck('actual-memory-web-backend-result-returned-in-native-speech',Boolean(host&&speech),{host,speech,semanticResultIndependentReviewRequired:true});
  recordSpeech('memory-web-result-complete-digital-playback',speech);
  save('memory-web-evidence.json',{input:input.row,user,owner,chain,host,speech,semanticResultIndependentReviewRequired:true,
@@ -178,11 +195,45 @@ async function runLifecycle(){
  const expectedEndText=fs.readFileSync(path.join(clips,'end-call.txt'),'utf8');
  const endUser=await waitFor(s=>resolveLifecycleUserTurn(s.events,{pcIndex,after:end.row.startedAt,intent:'end',expectedText:expectedEndText}),
    'Complete frozen goodbye USER native transcript',15000);
- const tool=await waitFor(s=>resolveEndCallToolWitness({events:s.events,tools:s.tools,pcIndex,voiceSessionId:owner.voiceSessionId,after:end.row.startedAt}),'Actual native delegation and exact host end-call call/result',20000);
+ let endHistory,nextEndHistoryAt=0;const endHistoryReads=[];
+ const endClose=s=>s.api.find(a=>a.route==='/api/close'&&a.request?.voiceSessionId===owner.voiceSessionId&&Number.isFinite(a.requestedAt));
+ const endWitness=s=>resolveEndCallToolWitness({events:s.events,tools:s.tools,backendEvents:ownedGatewayEvents(),backendHistory:endHistory,
+   sessionKey:owner.sessionKey,userTurnId:endUser.turnId,pcIndex,voiceSessionId:owner.voiceSessionId,after:end.row.startedAt,
+   before:endClose(s)?.requestedAt??Infinity});
+ let tool=await waitFor(async s=>{
+  const direct=endWitness(s);if(direct)return direct;
+  const backendRequested=s.tools.some(e=>e.raw?.voiceSessionId===owner.voiceSessionId&&e.raw?.source==='backend_model_client_tool'&&
+    e.raw.name==='openclaw_end_call'&&e.raw.type==='tool.result'&&e.raw.originUserTurnId===endUser.turnId);
+  if(!backendRequested||Date.now()<nextEndHistoryAt)return null;
+  nextEndHistoryAt=Date.now()+500;const attemptedAt=Date.now();
+  const history=await readLifecycleHistoryOrRetry(
+    ()=>gateway.request('chat.history',{sessionKey:owner.sessionKey,limit:120},{timeoutMs:10000}),
+    error=>{endHistoryReads.push({attemptedAt,completedAt:Date.now(),status:'temporary-rebuilding',message:error.message});
+      save('end-call-owned-backend-history-read-attempts.json',{sessionKey:owner.sessionKey,attempts:endHistoryReads});});
+  if(history===null)return null;
+  // Durable storage may settle after the original product has closed the call.
+  // Read exactly that original session, without postponing close or inventing
+  // a result. All actual tool/source clocks must still precede acceptance/close.
+  const observedAt=Date.now(),current=await snapshot(),close=endClose(current);
+  endHistory={sessionKey:owner.sessionKey,observedAt,history};
+  const phase=close?observedAt<close.requestedAt?'pre-close':'post-close':'close-not-yet-observed';
+  endHistoryReads.push({attemptedAt,completedAt:observedAt,status:'success',historyObservationPhase:phase,
+    originalCloseRequestedAt:close?.requestedAt??null});
+  save('end-call-owned-backend-history-read-attempts.json',{sessionKey:owner.sessionKey,attempts:endHistoryReads});
+  save('end-call-owned-backend-history.json',{...endHistory,historyObservationPhase:phase,originalCloseRequestedAt:close?.requestedAt??null});
+  return endWitness(current);
+ },'Actual model end-call tool, exact owned host receipt and durable backend result',20000);
+ save('model-end-call-tool-witness.json',{endUser,tool,backendHistoryObservedAt:endHistory?.observedAt??null,
+   durableHistoryDoesNotReplaceActualPreCloseToolSource:true});
  coreCheck('model-real-end-call-tool-after-complete-USER',tool.userTurnId===endUser.turnId,{endUser,tool,inputCompletedAt:end.row.completedAt,
    causalBinding:'Actual delegation user_bidi_turn_id equals the complete original USER turn; reception timestamps are retained, not treated as cross-stream execution order'});
  const closed=await waitFor(s=>s.pcStates[pcIndex]==='closed'&&s.api.some(a=>a.route==='/api/close'&&a.status===200&&a.request?.voiceSessionId===owner.voiceSessionId),'Original H5 automatic model-requested close',25000);
  const state=await snapshot(true),close=state.api.find(a=>a.route==='/api/close'&&a.status===200&&a.request?.voiceSessionId===owner.voiceSessionId);
+ const finalTool=endWitness(state);
+ check('end-call-witness-current-through-original-close',Boolean(finalTool),{
+   requestId:tool.requestId,backendRunId:tool.backendRunId??null,historyObservedAt:endHistory?.observedAt??null,
+   originalCloseRequestedAt:close.requestedAt,newUSERMustInvalidateOldRequest:true});
+ assert(finalTool,'End-call causal witness invalidated before the original close');tool=finalTool;
  const farewell=assessLifecycleFarewell(state,{pcIndex,tool,before:close.requestedAt});
  const automatic=assessAutomaticEnd(state,{pcIndex,owner,tool,farewell}),capture=await readCaptureClosed(pcIndex);
  coreCheck('automatic-close-after-real-farewell-and750ms-tail',automatic?.passed&&capture.captureEnded&&capture.pcClosed,{automatic,capture,closed:true,manualButtonUsed:false,farewellContentManualReviewRequired:true});

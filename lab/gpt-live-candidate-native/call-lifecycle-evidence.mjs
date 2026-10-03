@@ -5,6 +5,16 @@ const messageText=m=>typeof m?.content==='string'?m.content:(m?.content??[]).fil
 const timestamp=value=>typeof value==='number'?value<1e11?value*1000:value:Date.parse(value);
 const queryIncluded=(text,query)=>normalize(text).toLowerCase().includes(normalize(query).toLowerCase());
 
+/** This exact temporary read failure may retry within the caller's existing budget. */
+export async function readLifecycleHistoryOrRetry(read,onRebuilding=()=>{}) {
+  try {return await read();}
+  catch(error) {
+    if(error?.message!=='session history is rebuilding; retry shortly')throw error;
+    onRebuilding(error);
+    return null;
+  }
+}
+
 /** Same read-only history projection used by native-smoke; clocks stay native. */
 export function extractLifecycleToolPairs(history) {
   const messages=history?.messages??[],rows=[];
@@ -64,8 +74,86 @@ export function resolveLifecycleConsultResult(state,{pcIndex,voiceSessionId,user
   return {delegation:delegations[0],call,result,source:'actual-native-USER-delegation-and-owned-consult-run-SSE-result'};
 }
 
-/** An actual client delegation item is the tool source, never USER captions. */
-export function resolveEndCallToolWitness({events=[],tools=[],pcIndex,voiceSessionId,after=-Infinity,before=Infinity}={}) {
+const emptyArguments=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===0;
+const pendingClientMarker=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&
+  value.status==='pending'&&value.tool==='openclaw_end_call'&&value.message==='Tool execution delegated to client';
+function storedPendingClientMarker(result) {
+  if(result?.isError!==false)return false;
+  if(result.details!==undefined)return pendingClientMarker(result.details);
+  if(!Array.isArray(result.content)||result.content.length!==1||result.content[0]?.type!=='text')return false;
+  try{return pendingClientMarker(JSON.parse(result.content[0].text));}catch{return false;}
+}
+
+/** A model tool must be visible in the real global tool stream AND durable history. */
+function resolveBackendEndCallWitness(event,{events,tools,backendEvents,backendHistory,sessionKey,userTurnId,pcIndex,voiceSessionId,after,before}) {
+  const item=event.raw.item;
+  if(!sessionKey||!userTurnId||item.user_bidi_turn_id!==userTurnId||typeof item.content[0].text!=='string'||!item.content[0].text.trim()||
+    backendHistory?.sessionKey!==sessionKey||!Number.isFinite(backendHistory.observedAt)||backendHistory.observedAt<after||
+    backendHistory.history?.sessionKey!==sessionKey||!Array.isArray(backendHistory.history.messages))return null;
+  // Keep the old strict JSON route independent. A quoted/fake JSON example
+  // cannot be treated as a plain native consult declaration on this route.
+  try{JSON.parse(item.content[0].text);return null;}catch{}
+  const users=events.filter(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='user'&&e.turnId===userTurnId&&
+    Number.isFinite(e.at)&&e.at>=after&&e.at<before&&normalize(e.text));
+  if(users.length!==1)return null;
+  const originStart=events.filter(e=>e.pcIndex===pcIndex&&e.role==='user'&&e.turnId===userTurnId&&
+    ['turn.created','turn.done'].includes(e.type)&&Number.isFinite(e.at)).reduce((at,e)=>Math.min(at,e.at),users[0].at);
+  if(events.some(e=>e.pcIndex===pcIndex&&e.role==='user'&&e.turnId&&e.turnId!==userTurnId&&
+    ['turn.created','turn.done'].includes(e.type)&&Number.isFinite(e.at)&&e.at>originStart&&e.at<before))return null;
+  const owned=row=>row.raw?.voiceSessionId===voiceSessionId&&row.raw.name==='openclaw_end_call'&&
+    row.raw.source==='backend_model_client_tool'&&row.raw.requestId===item.id&&row.raw.nativeDelegationId===item.id&&
+    row.raw.originUserTurnId===userTurnId&&row.raw.callId===row.raw.backendToolCallId&&
+    /^call_[a-zA-Z0-9_.:-]{1,155}$/.test(row.raw.callId??'')&&/^[a-zA-Z0-9_.:-]{1,256}$/.test(row.raw.backendRunId??'')&&
+    Number.isSafeInteger(row.raw.delegationGeneration)&&row.raw.delegationGeneration>=1&&
+    Number.isFinite(row.at)&&row.at>=after&&row.at<before;
+  const calls=tools.filter(row=>owned(row)&&row.raw.type==='tool.call'&&row.raw.status==='accepted');
+  const results=tools.filter(row=>owned(row)&&row.raw.type==='tool.result'&&row.raw.status==='accepted'&&row.raw.closeAfterPlayback===true);
+  if(calls.length!==1||results.length!==1||tools.some(row=>row.raw?.voiceSessionId===voiceSessionId&&row.raw?.requestId===item.id&&row.raw.type==='tool.error'))return null;
+  const call=calls[0],result=results[0],receipt=result.raw,runId=receipt.backendRunId,id=receipt.backendToolCallId;
+  if(result.at<call.at||call.raw.backendRunId!==runId||call.raw.backendToolCallId!==id||
+    call.raw.delegationGeneration!==receipt.delegationGeneration)return null;
+  // Only the original consult's host call binds this run to the native owner.
+  // A child/resume run or another call in the same session has no such receipt.
+  const consultCalls=tools.filter(row=>row.raw?.voiceSessionId===voiceSessionId&&row.raw.type==='tool.call'&&
+    row.raw.name===undefined&&row.raw.callId===runId&&Number.isFinite(row.at)&&row.at>=after&&row.at<=call.at);
+  if(consultCalls.length!==1)return null;
+  const nativeRows=new Map();
+  for(const row of backendEvents??[]) {
+    const p=row.payload,d=p?.data;
+    if(!['agent','session.tool'].includes(row.event)||p?.stream!=='tool'||p.sessionKey!==sessionKey||p.runId!==runId||
+      d?.name!=='openclaw_end_call'||d.toolCallId!==id||!Number.isFinite(p.ts)||p.ts<after||p.ts>=before)continue;
+    // The same genuine envelope may be delivered on both subscribed channels.
+    const key=JSON.stringify({runId:p.runId,sessionKey:p.sessionKey,ts:p.ts,seq:p.seq,data:d});
+    if(!nativeRows.has(key))nativeRows.set(key,row);
+  }
+  const starts=[...nativeRows.values()].filter(row=>row.payload.data.phase==='start');
+  const finishes=[...nativeRows.values()].filter(row=>row.payload.data.phase==='result');
+  if(starts.length!==1||finishes.length!==1)return null;
+  const start=starts[0],finish=finishes[0],data=finish.payload.data;
+  if(!emptyArguments(start.payload.data.args)||data.isError!==false||data.result?.terminate!==true||
+    !pendingClientMarker(data.result.details)||finish.payload.ts<start.payload.ts||
+    finish.payload.ts>call.at||backendHistory.observedAt<finish.payload.ts)return null;
+  const storedCalls=[];
+  for(const message of backendHistory.history.messages)if(message.role==='assistant'&&Array.isArray(message.content))
+    for(const block of message.content)if(block.type==='toolCall'&&block.id===id)storedCalls.push(block);
+  if(storedCalls.length!==1||storedCalls[0].name!=='openclaw_end_call')return null;
+  let args=storedCalls[0].arguments;try{if(typeof args==='string')args=JSON.parse(args);}catch{return null;}
+  const storedResults=backendHistory.history.messages.filter(message=>message.role==='toolResult'&&message.toolCallId===id);
+  if(!emptyArguments(args)||storedResults.length!==1||
+    storedResults[0].toolName!==undefined&&storedResults[0].toolName!=='openclaw_end_call'||!storedPendingClientMarker(storedResults[0]))return null;
+  return {delegation:event,call,result,requestId:item.id,voiceSessionId,userTurnId,pcIndex,sessionKey,backendRunId:runId,
+    backendToolCallId:id,backendStart:start,backendResult:finish,historyObservedAt:backendHistory.observedAt,
+    historyObservedBeforeClose:Number.isFinite(before)?backendHistory.observedAt<before:null,
+    historyObservationPhase:Number.isFinite(before)?backendHistory.observedAt<before?'pre-close':'post-close':'close-not-yet-observed',
+    storedCall:storedCalls[0],storedResult:storedResults[0],consultCall:consultCalls[0],finalizedUser:users[0],
+    farewellAfter:finish.payload.ts,receiptClockOrder:{nativeDelegationAt:event.at,hostCallAt:call.at,hostResultAt:result.at,
+      backendToolStartAt:start.payload.ts,backendToolResultAt:finish.payload.ts,SSEBeforeNativeFrame:call.at<event.at},
+    source:'exact-backend-model-tool-global-stream-and-durable-history-with-native-USER-and-host-owner'};
+}
+
+/** Native JSON tool or real backend model tool, never a USER caption/promise. */
+export function resolveEndCallToolWitness({events=[],tools=[],backendEvents=[],backendHistory,sessionKey,userTurnId,
+  pcIndex,voiceSessionId,after=-Infinity,before=Infinity}={}) {
   if(!voiceSessionId)return null;
   const candidates=[];
   for(const event of events) {
@@ -73,6 +161,9 @@ export function resolveEndCallToolWitness({events=[],tools=[],pcIndex,voiceSessi
     const item=event.raw?.item;
     if(item?.type!=='delegation'||item.target!=='client'||typeof item.id!=='string'||!item.id||
       !Array.isArray(item.content)||item.content.length!==1||item.content[0].type!=='input_text')continue;
+    const backend=resolveBackendEndCallWitness(event,{events,tools,backendEvents,backendHistory,sessionKey,userTurnId,
+      pcIndex,voiceSessionId,after,before});
+    if(backend)candidates.push(backend);
     let input;try{input=JSON.parse(item.content[0].text)}catch{continue}
     if(input===null||typeof input!=='object'||Array.isArray(input)||Object.keys(input).length!==2||
       input.name!=='openclaw_end_call'||!Object.hasOwn(input,'arguments')||input.arguments===null||
@@ -104,9 +195,9 @@ export function resolveLifecycleUserTurn(events,{pcIndex,after,before=Infinity,i
   return matches.length===1?matches[0]:null;
 }
 
-export function assessLifecycleSpeech(state,{pcIndex,after,before=Infinity,turnId,requireCreatedAfter=false}={}) {
+export function assessLifecycleSpeech(state,{pcIndex,after,terminalAfter=after,before=Infinity,turnId,requireCreatedAfter=false}={}) {
   const endings=(state?.events??[]).filter(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='assistant'&&
-    Number.isFinite(e.at)&&e.at>after&&e.at<before&&e.turnId&&normalize(e.text)&&(!turnId||e.turnId===turnId));
+    Number.isFinite(e.at)&&e.at>terminalAfter&&e.at<before&&e.turnId&&normalize(e.text)&&(!turnId||e.turnId===turnId));
   for(const terminal of endings) {
     const window=resolveNativeTurnTranscriptWindow(state.events,{pcIndex,turnId:terminal.turnId,after,before});
     if(!window||requireCreatedAfter&&(!window.created||window.created.at<after||window.created.at>terminal.at))continue;
@@ -127,9 +218,9 @@ export function assessLifecycleSpeech(state,{pcIndex,after,before=Infinity,turnI
 // A cheap readiness check for the observer's bounded frame tail. Do not copy
 // the entire recording every poll: that stalls the original browser sampler.
 // The final proof still checks the complete raw caption and playback window.
-export function hasLifecyclePlaybackTail(state,{pcIndex,after,before=Infinity}={}) {
+export function hasLifecyclePlaybackTail(state,{pcIndex,after,terminalAfter=after,before=Infinity}={}) {
   return (state?.events??[]).some(terminal=>terminal.pcIndex===pcIndex&&terminal.type==='turn.done'&&terminal.role==='assistant'&&
-    terminal.turnId&&normalize(terminal.text)&&Number.isFinite(terminal.at)&&terminal.at>after&&terminal.at<before&&
+    terminal.turnId&&normalize(terminal.text)&&Number.isFinite(terminal.at)&&terminal.at>terminalAfter&&terminal.at<before&&
     Boolean(continuousPlaybackQuiet((state.audioFrames??[]).filter(f=>f.at<before),{
       pcIndex,after:terminal.at,durationMs:750,threshold:.003,maxGapMs:100,requireTail:true})?.rtp.length));
 }
@@ -151,9 +242,11 @@ export function assessProactiveGreeting(state,{pcIndex,owner,readyAt,before=Infi
 
 export function assessLifecycleFarewell(state,{pcIndex,tool,before=Infinity}={}) {
   if(!tool||tool.pcIndex!==pcIndex)return null;
-  const after=tool.delegation.at;
+  const after=tool.farewellAfter??tool.delegation.at;
   const exactDrain=terminal=>(state.duplex?.transitions??[]).find(e=>e.type==='model-end-call-playback-drained'&&
     e.requestId===tool.requestId&&e.originUserTurnId===tool.userTurnId&&e.turnId===terminal.turnId&&Number.isFinite(e.at)&&
+    (!tool.backendToolCallId||e.source==='backend_model_client_tool'&&e.backendToolCallId===tool.backendToolCallId&&
+      e.backendRunId===tool.backendRunId&&e.nativeDelegationId===tool.requestId)&&
     Number.isFinite(state.browserTimeOrigin)&&state.browserTimeOrigin+e.at>=terminal.at&&state.browserTimeOrigin+e.at<=before);
   const strict=assessLifecycleSpeech(state,{pcIndex,after,before,requireCreatedAfter:true});
   if(strict){const appDrain=exactDrain(strict.terminal);return {...strict,appDrain:appDrain??null,strictTailPassed:true};}
@@ -176,9 +269,10 @@ export function assessLifecycleFarewell(state,{pcIndex,tool,before=Infinity}={})
 
 export function assessAutomaticEnd(state,{pcIndex,owner,tool,farewell}={}) {
   if(!tool||!farewell||!owner||tool.voiceSessionId!==owner.voiceSessionId||tool.pcIndex!==pcIndex)return null;
+  const after=tool.farewellAfter??tool.delegation.at;
   const close=(state.api??[]).find(a=>a.route==='/api/close'&&a.status===200&&a.request?.voiceSessionId===owner.voiceSessionId&&
-    Number.isFinite(a.requestedAt)&&a.requestedAt>=tool.delegation.at);
-  const exactSpeech=farewell.window.created?.at>=tool.delegation.at&&farewell.terminal.at>=tool.delegation.at&&
+    Number.isFinite(a.requestedAt)&&a.requestedAt>=after);
+  const exactSpeech=farewell.window.created?.at>=after&&farewell.terminal.at>=after&&
     farewell.window.to>=farewell.terminal.at&&farewell.appDrain?.requestId===tool.requestId&&farewell.appDrain.originUserTurnId===tool.userTurnId&&
     farewell.appDrain.turnId===farewell.terminal.turnId;
   const appDrainAt=Number.isFinite(state.browserTimeOrigin)&&Number.isFinite(farewell.appDrain?.at)?state.browserTimeOrigin+farewell.appDrain.at:null;

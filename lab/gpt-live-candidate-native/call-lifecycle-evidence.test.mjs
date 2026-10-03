@@ -1,7 +1,33 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
 import {resolveEndCallToolWitness,resolveLifecycleUserTurn,assessLifecycleSpeech,hasLifecyclePlaybackTail,assessLifecycleFarewell,assessProactiveGreeting,assessAutomaticEnd,
-  extractLifecycleToolPairs,resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult} from './call-lifecycle-evidence.mjs';
+  extractLifecycleToolPairs,resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult,readLifecycleHistoryOrRetry} from './call-lifecycle-evidence.mjs';
+
+test('the exact temporary rebuilding failure yields a retry without inventing or replacing history',async()=>{
+ const history={messages:[{role:'assistant',content:'Actual stored result'}]},observed=[];
+ let latest=await readLifecycleHistoryOrRetry(async()=>history,error=>observed.push(error));
+ assert.equal(latest,history);assert.deepEqual(observed,[]);
+ const failure=Error('session history is rebuilding; retry shortly');
+ const rebuilding=await readLifecycleHistoryOrRetry(async()=>{throw failure},error=>observed.push(error));
+ if(rebuilding!==null)latest=rebuilding;
+ assert.equal(rebuilding,null);assert.equal(latest,history);assert.deepEqual(observed,[failure]);
+ const newer={messages:[{role:'toolResult',content:'Actual completed tool result'}]};
+ assert.equal(await readLifecycleHistoryOrRetry(async()=>newer),newer);
+});
+
+test('history rebuilding retry matches only the exact error message and propagates every other failure',async()=>{
+ for(const message of ['chat.history timeout','session history is rebuilding; retry shortly later',
+   'Error: session history is rebuilding; retry shortly','session history is rebuilding; retry shortly\n',
+   'session history is unavailable; retry shortly']) {
+  const failure=Error(message);let observed=false;
+  await assert.rejects(readLifecycleHistoryOrRetry(async()=>{throw failure},()=>{observed=true}),error=>error===failure);
+  assert.equal(observed,false);
+ }
+ const raw='session history is rebuilding; retry shortly';
+ await assert.rejects(readLifecycleHistoryOrRetry(async()=>{throw raw}),error=>error===raw);
+});
 
 const delegation=(text='{"name":"openclaw_end_call","arguments":{}}')=>({pcIndex:0,at:1000,type:'delegation.created',raw:{item:{id:'item-1',type:'delegation',target:'client',user_bidi_turn_id:'user-1',content:[{type:'input_text',text}]}}});
 const tool=(type,at)=>({at,raw:{voiceSessionId:'voice-1',type,name:'openclaw_end_call',callId:'item-1',requestId:'item-1',...(type==='tool.result'?{closeAfterPlayback:true}:{})}});
@@ -51,6 +77,135 @@ test('natural goodbye fixture is verified as complete input, not used to fabrica
  assert.equal(resolveLifecycleUserTurn([e('今天就先这样')],params),null);
  assert.equal(resolveEndCallToolWitness({events:[e(params.expectedText)],tools:[],pcIndex:0,voiceSessionId:'voice-1'}),null);
 });
+
+// Actual client-tool adapter contract: jsonResult stores the same pending
+// object in details and a text block; the live global result also has terminate.
+function backendEndFixture() {
+ const sessionKey='agent:makaron:explicit:gpt-live-h5-experiment-own',backendRunId='talk-realtime-consult:actual-end',
+   backendToolCallId='call_00_actualEnd',nativeDelegationId='item_actualEnd',userTurnId='turn_actualEnd';
+ const marker={status:'pending',tool:'openclaw_end_call',message:'Tool execution delegated to client'};
+ const receipt={voiceSessionId:'voice-1',name:'openclaw_end_call',source:'backend_model_client_tool',
+   callId:backendToolCallId,backendToolCallId,backendRunId,requestId:nativeDelegationId,nativeDelegationId,
+   originUserTurnId:userTurnId,delegationGeneration:1,status:'accepted'};
+ const native=delegation('今天就先这样，谢谢你，拜拜。');native.raw.item.id=nativeDelegationId;native.raw.item.user_bidi_turn_id=userTurnId;
+ const toolEvent=(phase,ts,data)=>({event:'session.tool',at:ts+80,payload:{sessionKey,runId:backendRunId,stream:'tool',ts,seq:ts,
+   data:{phase,name:'openclaw_end_call',toolCallId:backendToolCallId,...data}}});
+ return {pcIndex:0,voiceSessionId:'voice-1',sessionKey,userTurnId,after:800,before:2350,
+  events:[{pcIndex:0,at:900,type:'turn.created',role:'user',turnId:userTurnId},
+    {pcIndex:0,at:980,type:'turn.done',role:'user',turnId:userTurnId,text:'今天就先这样，谢谢你，拜拜。'},native],
+  tools:[{at:1030,raw:{voiceSessionId:'voice-1',type:'tool.call',callId:backendRunId}},
+    {at:1170,raw:{...receipt,type:'tool.call'}},{at:1190,raw:{...receipt,type:'tool.result',closeAfterPlayback:true}}],
+  backendEvents:[toolEvent('start',1070,{args:{}}),toolEvent('result',1150,{isError:false,
+    result:{details:marker,content:[{type:'text',text:JSON.stringify(marker)}],terminate:true}})],
+  backendHistory:{sessionKey,observedAt:1210,history:{sessionKey,messages:[{role:'assistant',timestamp:1,content:[
+    {type:'toolCall',id:backendToolCallId,name:'openclaw_end_call',arguments:{}}]},
+    {role:'toolResult',toolCallId:backendToolCallId,toolName:'openclaw_end_call',timestamp:2,isError:false,
+      details:marker,content:[{type:'text',text:JSON.stringify(marker)}]}]}}};
+}
+test('plain native delegation closes only through real model tool start/result plus durable same-owner history',()=>{
+ const input=backendEndFixture(),proof=resolveEndCallToolWitness(input);assert(proof);
+ assert.equal(proof.requestId,'item_actualEnd');assert.equal(proof.backendToolCallId,'call_00_actualEnd');
+ assert.equal(proof.backendRunId,'talk-realtime-consult:actual-end');assert.equal(proof.userTurnId,'turn_actualEnd');
+ assert.equal(proof.backendResult.payload.ts,1150);assert.equal(proof.farewellAfter,1150);
+ assert.equal(proof.historyObservedBeforeClose,true);assert.equal(proof.historyObservationPhase,'pre-close');
+ // Both genuine subscribed channels can deliver exactly the same envelope.
+ input.backendEvents.push({...structuredClone(input.backendEvents[1]),event:'agent'});
+ assert(resolveEndCallToolWitness(input));
+ // The persisted adapter marker can be its original JSON text if details were
+ // not serialized. It remains a toolResult with the exact real toolCallId.
+ delete input.backendHistory.history.messages[1].details;
+ input.backendHistory.history.messages[0].content[0].arguments='{}';
+ assert(resolveEndCallToolWitness(input));
+});
+test('a late durable history read may corroborate pre-close source events without inventing a later tool execution',()=>{
+ const input=backendEndFixture();input.backendHistory.observedAt=3000;
+ const proof=resolveEndCallToolWitness(input);assert(proof);
+ assert.equal(proof.historyObservedBeforeClose,false);assert.equal(proof.historyObservationPhase,'post-close');
+ assert.equal(proof.historyObservedAt,3000);assert.equal(proof.backendResult.payload.ts,1150);
+ input.backendEvents[1].payload.ts=2400;assert.equal(resolveEndCallToolWitness(input),null);
+});
+test('promises, quoted JSON, wrong run/child/session and missing full source cannot pass the backend path',()=>{
+ const mutations=[
+  ['ordinary spoken bye',f=>{f.tools=[];f.backendEvents=[];}],
+  ['fabricated JSON declaration',f=>f.events[2].raw.item.content[0].text='{"name":"openclaw_end_call","arguments":{}}'],
+  ['metadata-only hook',f=>delete f.backendEvents[1].payload.data.result],
+  ['no global stream',f=>f.backendEvents=[]],
+  ['child run',f=>f.backendEvents.forEach(e=>e.payload.runId='child-actual')],
+  ['wrong canonical session',f=>f.backendEvents[1].payload.sessionKey='agent:makaron:subagent:child'],
+  ['foreign persisted session',f=>f.backendHistory.sessionKey='neighbor'],
+  ['history response session mismatch',f=>f.backendHistory.history.sessionKey='neighbor'],
+  ['history response session missing',f=>delete f.backendHistory.history.sessionKey],
+  ['no original consult run',f=>f.tools[0].raw.callId='another-parent'],
+  ['wrong backend id',f=>f.tools[2].raw.backendToolCallId='call_other'],
+  ['wrong native id',f=>f.tools[2].raw.nativeDelegationId='item_other'],
+  ['wrong original USER',f=>f.tools[2].raw.originUserTurnId='turn_other'],
+  ['foreign voice owner',f=>f.tools[2].raw.voiceSessionId='neighbor'],
+  ['unaccepted host result',f=>f.tools[2].raw.status='pending'],
+  ['no close-after-playback',f=>f.tools[2].raw.closeAfterPlayback=false],
+  ['generation mismatch',f=>f.tools[2].raw.delegationGeneration=2],
+  ['tool error',f=>f.tools.push({at:1200,raw:{...f.tools[2].raw,type:'tool.error'}})],
+  ['only USER caption',f=>f.events.splice(2,1)],
+  ['no complete original USER',f=>f.events.splice(1,1)],
+ ];
+ for(const [name,mutate] of mutations){const input=backendEndFixture();mutate(input);assert.equal(resolveEndCallToolWitness(input),null,name);}
+});
+test('adapter and history require strict empty arguments, nonerror pending marker and single exact invocation',()=>{
+ const mutations=[
+  ['source args extra',f=>f.backendEvents[0].payload.data.args={voiceSessionId:'voice-1'}],
+  ['source args string',f=>f.backendEvents[0].payload.data.args='{}'],
+  ['source args absent',f=>delete f.backendEvents[0].payload.data.args],
+  ['source error',f=>f.backendEvents[1].payload.data.isError=true],
+  ['source unknown error state',f=>delete f.backendEvents[1].payload.data.isError],
+  ['missing terminate',f=>delete f.backendEvents[1].payload.data.result.terminate],
+  ['nonpending result',f=>f.backendEvents[1].payload.data.result.details.status='success'],
+  ['wrong tool marker',f=>f.backendEvents[1].payload.data.result.details.tool='web_fetch'],
+  ['wrong adapter message',f=>f.backendEvents[1].payload.data.result.details.message='Assistant promised to hang up'],
+  ['content-only source',f=>delete f.backendEvents[1].payload.data.result.details],
+  ['no durable result',f=>f.backendHistory.history.messages.pop()],
+  ['persisted error',f=>f.backendHistory.history.messages[1].isError=true],
+  ['persisted unknown error state',f=>delete f.backendHistory.history.messages[1].isError],
+  ['wrong persisted result id',f=>f.backendHistory.history.messages[1].toolCallId='call_other'],
+  ['wrong persisted call name',f=>f.backendHistory.history.messages[0].content[0].name='web_fetch'],
+  ['wrong persisted result name',f=>f.backendHistory.history.messages[1].toolName='web_fetch'],
+  ['persisted arguments extra',f=>f.backendHistory.history.messages[0].content[0].arguments={requestId:'item_actualEnd'}],
+  ['webpage mention',f=>f.backendHistory.history.messages[0].content=[{type:'text',text:'openclaw_end_call({})'}]],
+  ['ordinary result text',f=>{delete f.backendHistory.history.messages[1].details;f.backendHistory.history.messages[1].content[0].text='再见。';}],
+  ['conflicting result marker',f=>f.backendHistory.history.messages[1].details={status:'blocked'}],
+  ['duplicate stored result',f=>f.backendHistory.history.messages.push(structuredClone(f.backendHistory.history.messages[1]))],
+  ['distinct duplicate source result',f=>{const duplicate=structuredClone(f.backendEvents[1]);duplicate.payload.seq++;f.backendEvents.push(duplicate);}],
+  ['source result before start',f=>f.backendEvents[1].payload.ts=1060],
+  ['source result after host accepted',f=>f.backendEvents[1].payload.ts=1180],
+  ['history observed before actual tool',f=>f.backendHistory.observedAt=1100],
+ ];
+ for(const [name,mutate] of mutations){const input=backendEndFixture();mutate(input);assert.equal(resolveEndCallToolWitness(input),null,name);}
+});
+test('a new USER invalidates a late old backend end request, including a new incomplete turn',()=>{
+ for(const type of ['turn.created','turn.done']){
+  const input=backendEndFixture();input.events.push({pcIndex:0,at:1100,type,role:'user',turnId:'turn_new',text:'先别挂'});
+  assert.equal(resolveEndCallToolWitness(input),null);
+ }
+ const input=backendEndFixture();input.before=1180;assert.equal(resolveEndCallToolWitness(input),null,'Missing pre-close accepted result remains a failure');
+});
+test('backend farewell excludes an early consult acknowledgment and joins the exact model-tool drain',()=>{
+ const input=backendEndFixture(),tool=resolveEndCallToolWitness(input),state=speechState();
+ state.duplex.transitions[0]={...state.duplex.transitions[0],requestId:tool.requestId,originUserTurnId:tool.userTurnId,
+   source:'backend_model_client_tool',backendToolCallId:tool.backendToolCallId,backendRunId:tool.backendRunId,nativeDelegationId:tool.requestId};
+ state.events.unshift({pcIndex:0,at:1040,type:'turn.created',role:'assistant',turnId:'ack'},
+   {pcIndex:0,at:1050,type:'output_transcript.added',turnId:'ack',text:'好的，我来处理。'},
+   {pcIndex:0,at:1130,type:'turn.done',role:'assistant',turnId:'ack',text:'好的，我来处理。'});
+ const farewell=assessLifecycleFarewell(state,{pcIndex:0,tool,before:2350});assert(farewell);
+ assert.equal(farewell.terminal.turnId,'bye-1');assert(farewell.window.created.at>tool.farewellAfter);
+ state.pcStates[0]='closed';state.remoteAudio.attached=false;
+ state.api=[{route:'/api/close',status:200,requestedAt:2350,request:{voiceSessionId:'voice-1'}}];
+ assert.equal(assessAutomaticEnd(state,{pcIndex:0,owner:{voiceSessionId:'voice-1'},tool,farewell}).passed,true);
+ for(const mutate of [s=>s.duplex.transitions[0].backendToolCallId='call_other',s=>s.duplex.transitions[0].backendRunId='another-run',
+   s=>s.duplex.transitions[0].source='assistant-promise',s=>s.duplex.transitions[0].nativeDelegationId='item_other']){
+  const value=structuredClone(state);mutate(value);const proof=assessLifecycleFarewell(value,{pcIndex:0,tool,before:2350});
+  assert.equal(assessAutomaticEnd(value,{pcIndex:0,owner:{voiceSessionId:'voice-1'},tool,farewell:proof}).passed,false);
+ }
+ const early=speechState();early.events[0].at=1040;early.events[1].at=1050;
+ assert.equal(assessLifecycleFarewell(early,{pcIndex:0,tool,before:2350}),null,'A turn already speaking before the real end tool is not farewell');
+});
 test('farewell requires complete player state and post-terminal 750ms real RTP quiet',()=>{
  const state=speechState(),proof=assessLifecycleSpeech(state,{pcIndex:0,after:1200,requireCreatedAfter:true});assert(proof);
  assert(proof.window.to>proof.terminal.at);assert(proof.quiet.durationMs>=750);
@@ -87,6 +242,57 @@ test('whole-speech sampling gaps remain strict FAIL while retaining actual funct
  assert(proof);assert.equal(proof.strictCompletePlaybackPassed,false);assert.equal(proof.playback.passed,false);
  assert.equal(proof.playback.gaps.length,1);assert(proof.quiet.durationMs>=750);
 });
+test('a Memory stage and later Web final in one native turn retain the entire caption and playback window',()=>{
+ const state=speechState(),after=1200,terminalAfter=1400;
+ state.events[1].text='记忆结果已找到。';
+ state.events.splice(2,0,{pcIndex:0,at:1450,type:'output_transcript.added',text:'官方网页结果也已确认。',turnId:'bye-1'});
+ state.events.at(-1).text='记忆结果已找到。官方网页结果也已确认。';
+ state.events.unshift({pcIndex:0,at:1210,type:'turn.created',role:'assistant',turnId:'early-ack'},
+   {pcIndex:0,at:1220,type:'output_transcript.added',text:'我来查询。',turnId:'early-ack'},
+   {pcIndex:0,at:1240,type:'turn.done',role:'assistant',text:'我来查询。',turnId:'early-ack'});
+ assert.equal(assessLifecycleSpeech(state,{pcIndex:0,after:terminalAfter,requireCreatedAfter:true}),null,'The Web clock must not clip the Memory prefix');
+ const proof=assessLifecycleSpeech(state,{pcIndex:0,after,terminalAfter,requireCreatedAfter:true});assert(proof);
+ assert.equal(proof.terminal.turnId,'bye-1');assert.equal(proof.window.captions.length,2);
+ assert.equal(proof.window.firstCaptionAt,1300);assert(proof.window.from<terminalAfter);
+ assert.equal(proof.playback.passed,true);assert(proof.quiet.durationMs>=750);
+ assert.equal(hasLifecyclePlaybackTail(state,{pcIndex:0,after,terminalAfter}),true);
+ for(const terminalClock of [proof.terminal.at,proof.terminal.at+1]) {
+  assert.equal(assessLifecycleSpeech(state,{pcIndex:0,after,terminalAfter:terminalClock,requireCreatedAfter:true}),null);
+  assert.equal(hasLifecyclePlaybackTail(state,{pcIndex:0,after,terminalAfter:terminalClock}),false);
+ }
+ const earlyOnly=structuredClone(state);earlyOnly.events=earlyOnly.events.filter(e=>e.turnId==='early-ack');
+ assert.equal(assessLifecycleSpeech(earlyOnly,{pcIndex:0,after,terminalAfter,requireCreatedAfter:true}),null,'An earlier acknowledgment cannot substitute for the completed result');
+ assert.equal(hasLifecyclePlaybackTail(earlyOnly,{pcIndex:0,after,terminalAfter}),false);
+ for(const mutate of [s=>s.audioFrames[3].paused=true,s=>s.audioFrames[4].volume=0,
+   s=>s.audioFrames=s.audioFrames.slice(0,-4),s=>s.events.find(e=>e.turnId==='bye-1'&&e.type==='output_transcript.added').text='字幕前缀不完整']) {
+  const input=structuredClone(state);mutate(input);
+  assert.equal(assessLifecycleSpeech(input,{pcIndex:0,after,terminalAfter,requireCreatedAfter:true}),null);
+ }
+ const gap=structuredClone(state);gap.audioFrames=gap.audioFrames.filter(f=>![1300,1350].includes(f.at));
+ assert.equal(assessLifecycleSpeech(gap,{pcIndex:0,after,terminalAfter,requireCreatedAfter:true}).playback.passed,false,'The complete pre-Web window still retains sampling FAIL');
+});
+test('actual smoke waitSpeech passes an independent terminal boundary without changing defaults or exceptions',async()=>{
+ const source=readFileSync(new URL('./call-lifecycle-smoke.mjs',import.meta.url),'utf8');
+ const from=source.indexOf('async function waitSpeech('),to=source.indexOf('\nfunction recordSpeech(',from);
+ assert(from>=0&&to>from,'Execute the actual observer function');
+ const state=speechState(),calls=[];
+ const waitSpeech=vm.runInNewContext('('+source.slice(from,to)+')',{
+  hasLifecyclePlaybackTail,assessLifecycleSpeech,snapshot:async full=>{assert.equal(full,true);return state;},
+  waitFor:async(predicate,label,max)=>{calls.push({label,max});return predicate(state);},
+ });
+ const params=[0,1200,'actual complete native speech'];
+ assert.equal((await waitSpeech(...params)).terminal.turnId,'bye-1');
+ assert.equal((await waitSpeech(...params,Infinity,{terminalAfter:1400})).terminal.turnId,'bye-1');
+ assert.equal(await waitSpeech(...params,Infinity,{terminalAfter:1500}),null);
+ assert(calls.every(c=>c.max===45000),'The original timeout is unchanged');
+ const failure=Error('Native spoken Memory/Web result after actual backend completion deadline');
+ for(const error of [failure,Error('CDP Runtime.evaluate timeout')]) {
+  const run=vm.runInNewContext('('+source.slice(from,to)+')',{
+   hasLifecyclePlaybackTail,assessLifecycleSpeech,snapshot:async()=>state,waitFor:async()=>{throw error;},
+  });
+  await assert.rejects(run(...params,Infinity,{terminalAfter:1400}),e=>e===error,'No broad deadline or transport catch');
+ }
+});
 test('proactive greeting requires silent original microphone and no USER/delegation',()=>{
  const state=speechState(),params={pcIndex:0,owner:{connectedAt:1200},readyAt:1200};
  assert.equal(assessProactiveGreeting(state,params).passed,true);
@@ -94,6 +300,35 @@ test('proactive greeting requires silent original microphone and no USER/delegat
  const input=speechState();input.events.push({pcIndex:0,at:1400,type:'turn.done',role:'user',turnId:'u',text:'你好'});
  assert.equal(assessProactiveGreeting(input,params).passed,false);
  const other=speechState();other.events.push({...delegation(),at:1400});assert.equal(assessProactiveGreeting(other,params).passed,false);
+});
+test('actual smoke greeting retains its completed strict window when a later full snapshot has a new gap',async()=>{
+ const source=readFileSync(new URL('./call-lifecycle-smoke.mjs',import.meta.url),'utf8');
+ const from=source.indexOf('async function greeting(pcIndex){'),to=source.indexOf('\nfunction ownedGatewayEvents()',from);
+ assert(from>=0&&to>from,'Execute the actual smoke function, not a copied implementation');
+ const run=async(state,proof)=>{
+  const checks=[],records=[],owner={connectedAt:1200},ready={requestedAt:1200},greeting=vm.runInNewContext('('+source.slice(from,to)+')',{
+   owners:new Map([[0,owner]]),waitFor:async()=>ready,waitSpeech:async()=>proof,snapshot:async()=>state,
+   assessProactiveGreeting,pulse:{plays:[]},coreCheck:(name,passed,details)=>checks.push({name,passed:Boolean(passed),details}),
+   recordSpeech:(name,value)=>records.push({name,value}),save(){}});
+  await greeting(0);return {check:checks[0],record:records[0]};
+ };
+ const original=speechState(),proof=assessLifecycleSpeech(original,{pcIndex:0,after:1200,requireCreatedAfter:true});
+ assert(proof.playback.passed);assert(proof.quiet.durationMs>=750);
+ const later=structuredClone(original);later.audioFrames.push(frame(proof.quiet.to+131,0));
+ assert.equal(assessProactiveGreeting(later,{pcIndex:0,owner:{connectedAt:1200},readyAt:1200}),null);
+ const observed=await run(later,proof);assert.equal(observed.check.passed,true);
+ assert.equal(observed.check.details.greeting.speech.window.to,proof.quiet.to);
+ assert.equal(observed.record.value,proof,'Keep the original actual full-window playback proof');
+ const user=structuredClone(later);user.events.push({pcIndex:0,at:1400,type:'turn.done',role:'user',turnId:'u',text:'你好'});
+ assert.equal((await run(user,proof)).check.passed,false,'A USER inside the proved greeting window remains disqualifying');
+ const wrong=structuredClone(proof);wrong.terminal.turnId='another-turn';
+ assert.equal((await run(later,wrong)).check.passed,false,'Never borrow the next complete terminal');
+ const gap=structuredClone(later);gap.audioFrames=gap.audioFrames.filter(f=>![1850,1900].includes(f.at));
+ assert.equal((await run(gap,proof)).check.passed,false,'A gap in the original 750ms quiet window cannot be repaired by bounding');
+ const speechGap=speechState();speechGap.audioFrames=speechGap.audioFrames.filter(f=>![1300,1350].includes(f.at));
+ const failedWhole=assessLifecycleSpeech(speechGap,{pcIndex:0,after:1200,requireCreatedAfter:true});
+ assert.equal(failedWhole.playback.passed,false,'A whole-speech sampling gap retains its strict FAIL');
+ const unchanged=await run(speechGap,failedWhole);assert.equal(unchanged.record.value.playback.passed,false);
 });
 test('tool accepted alone does not mean closed; same owner must close after entire farewell drain',()=>{
  const state=speechState(),tool=resolveEndCallToolWitness(witness()),farewell=assessLifecycleFarewell(state,{pcIndex:0,tool,before:2350});
@@ -137,6 +372,37 @@ function toolsFixture() {
     isError:false,content:[{type:'text',text:JSON.stringify(result(name))}]}))]};
  return {events,history,sessionKey,memoryQuery,after:199000};
 }
+test('actual basicTools preserves the complete USER-start speech window and requires a post-Web terminal',async()=>{
+ const source=readFileSync(new URL('./call-lifecycle-smoke.mjs',import.meta.url),'utf8');
+ const from=source.indexOf('async function basicTools(pcIndex) {'),to=source.indexOf('\nasync function runLifecycle()',from);
+ assert(from>=0&&to>from,'Execute the actual Memory/Web runner');
+ const f=toolsFixture(),owner={voiceSessionId:'voice-own',sessionKey:f.sessionKey};
+ const user={pcIndex:0,at:199900,role:'user',type:'turn.done',turnId:'u-tools',text:'先用 memory search 查某同事，再用 web search 查 OpenAI Realtime API，不要写入，也不要发消息。'};
+ const state={events:[user,{pcIndex:0,at:200000,type:'delegation.created',raw:{item:{id:'native-owner',target:'client',user_bidi_turn_id:user.turnId}}}],
+  tools:[{at:200050,raw:{voiceSessionId:owner.voiceSessionId,callId:f.events[0].payload.runId,type:'tool.call'}},
+   {at:204000,raw:{voiceSessionId:owner.voiceSessionId,callId:f.events[0].payload.runId,type:'tool.result'}}]};
+ const speech={window:{pcIndex:0,from:202000,to:205000},playback:{passed:true}},input={row:{exitCode:0,startedAt:f.after,completedAt:199500},done:Promise.resolve()};
+ const run=async fail=>{
+  const checks=[],records=[],saved=new Map(),boundaries=[];
+  const basicTools=vm.runInNewContext('('+source.slice(from,to)+')',{
+   assert,owners:new Map([[0,owner]]),memoryQuery:f.memoryQuery,play:()=>input,
+   waitFor:async predicate=>{const value=await predicate(state);assert(value,'All real tool/host prerequisites remain required');return value;},
+   resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult,readLifecycleHistoryOrRetry,
+   ownedGatewayEvents:()=>f.events,gateway:{request:async(method,params)=>{assert.equal(method,'chat.history');assert.equal(params.sessionKey,owner.sessionKey);return f.history;}},
+   waitSpeech:async(...args)=>{boundaries.push(args);if(fail)throw fail;return speech;},
+   coreCheck:(name,passed,details)=>checks.push({name,passed:Boolean(passed),details}),
+   check:(name,passed,details)=>checks.push({name,passed:Boolean(passed),details}),
+   recordSpeech:(name,proof)=>records.push({name,proof}),save:(name,value)=>saved.set(name,value),inputConverged:async()=>{},
+  });
+  await basicTools(0);return {checks,records,saved,boundaries};
+ };
+ const result=await run();assert.equal(result.boundaries[0][1],input.row.startedAt);
+ assert.equal(result.boundaries[0][4].terminalAfter,203000);assert.equal(result.boundaries[0][3],Infinity);
+ assert.equal(result.records[0].proof,speech);assert.equal(result.saved.get('memory-web-evidence.json').speech,speech);
+ assert.equal(result.checks.find(c=>c.name==='actual-memory-web-backend-result-returned-in-native-speech').passed,true);
+ for(const failure of [Error('Native spoken Memory/Web result after actual backend completion deadline'),Error('CDP Runtime.evaluate timeout')])
+  await assert.rejects(run(failure),error=>error===failure,'Selection fixes do not swallow failed observations');
+});
 test('Memory/Web tool chain uses actual native source clocks and current complete results',()=>{
  const f=toolsFixture(),p=resolveLifecycleMemoryWeb(f);assert(p);
  assert.equal(p.memoryResult.at,201000);assert.equal(p.web.calledAt,201100);

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { GPT_LIVE_CALL_INSTRUCTIONS } from "./gpt-live-h5/instructions.mjs";
-import { createGptLiveCallLifecycle, parseGptLiveEndCallDelegation, resolveGptLiveCallInstructions,
+import { createGptLiveCallLifecycle, createGptLiveEndCallClientTool, parseGptLiveEndCallDelegation, resolveGptLiveCallInstructions,
   createGptLiveCallLifecycleRuntimeSource } from "./gpt-live-call-lifecycle.mjs";
 import { patchGptLiveCallLifecycleController, patchGptLiveCallLifecycleBroker, patchGptLiveCallLifecycleTalk,
   GPT_LIVE_CALL_BROKER_BEFORE } from "./patch-gpt-live-call-lifecycle.mjs";
@@ -33,11 +33,11 @@ const parseNative = new Function("eventEnvelopeSchema", "sessionStartedSchema", 
   (schema, schema, schema, schema, schema, schema, (v) => v.error?.message ?? "error", () => false);
 const chunkSource = wire.slice(wire.indexOf("function chunkOpenAIQuicksilverAppendText("), wire.indexOf("/** Bound completed delegation output"));
 const chunkNative = new Function("Buffer", "OPENAI_QUICKSILVER_APPEND_MAX_BYTES", chunkSource + "return chunkOpenAIQuicksilverAppendText;")(Buffer, 500);
-const Controller = new Function("createHash", "randomUUID", "createGptLiveCallLifecycle", "toErrorObject", "formatErrorMessage", "rawDataToString", "buildOpenAIQuicksilverDelegationPrompt", "parseOpenAIQuicksilverEvent", "boundOpenAIQuicksilverDelegationResult", "chunkOpenAIQuicksilverAppendText", "boundOpenAIQuicksilverContextItems",
+const Controller = new Function("createHash", "randomUUID", "createGptLiveCallLifecycle", "createGptLiveEndCallClientTool", "toErrorObject", "formatErrorMessage", "rawDataToString", "buildOpenAIQuicksilverDelegationPrompt", "parseOpenAIQuicksilverEvent", "boundOpenAIQuicksilverDelegationResult", "chunkOpenAIQuicksilverAppendText", "boundOpenAIQuicksilverContextItems",
   controllerSource.replace(/^import[^\n]*\n/gmu, "").replace(/export \{ OpenAIQuicksilverDelegationController as t \};\s*$/u, "") + "return OpenAIQuicksilverDelegationController;")
-  (createHash, randomUUID, createGptLiveCallLifecycle, (v) => v instanceof Error ? v : new Error(String(v)), (v) => v.message, String, ({ input }) => input, parseNative, (v) => v, chunkNative, (v) => v);
+  (createHash, randomUUID, createGptLiveCallLifecycle, createGptLiveEndCallClientTool, (v) => v instanceof Error ? v : new Error(String(v)), (v) => v.message, String, ({ input }) => input, parseNative, (v) => v, chunkNative, (v) => v);
 
-function nativeFixture({ enabled = true, onToolEvent, adopted = true } = {}) {
+function nativeFixture({ enabled = true, onToolEvent, adopted = true, runAgentConsult } = {}) {
   const order = [], errors = [], calls = [], abort = new AbortController();
   let currentLease = adopted;
   const socket = { readyState: 1, fail: false, send(value) {
@@ -48,11 +48,11 @@ function nativeFixture({ enabled = true, onToolEvent, adopted = true } = {}) {
     callLifecycle: enabled, isCallCurrent: () => currentLease,
     onCallLifecycleEvent: (event) => { order.push({ kind: "tool", ...event }); onToolEvent?.(event); },
     onError: (error) => errors.push(error), onFatalError: (error) => errors.push(error),
-    runAgentConsult: (params) => { calls.push(params); return new Promise(() => {}); } });
+    runAgentConsult: (params) => { calls.push(params); return runAgentConsult ? runAgentConsult(params) : new Promise(() => {}); } });
   const frame = (event) => controller.handleFrame(JSON.stringify(event), false);
   const start = () => frame({ type: "session.started", session: {} });
   const end = (id = "native-end-1", origin = "actual-user-turn") => frame({ type: "delegation.created", item: { type: "delegation", target: "client", id, ...(origin ? { user_bidi_turn_id: origin } : {}), content: [{ type: "input_text", text: endPrompt }] } });
-  return { controller, abort, socket, order, errors, calls, frame, start, end,
+  return { controller, abort, socket, order, errors, calls, frame, start, end, legacyEnd: (id = "native-end-1", origin = "actual-user-turn") => controller.callLifecycle.handleDelegation(id, endPrompt, origin),
     setCurrentLease: value => { currentLease = value; } };
 }
 
@@ -63,7 +63,7 @@ test("captured broker/wire/bridge bytes pin the supported native protocol", () =
   assert.match(bridge, /triggerGreeting\(instructions\) \{\s*this\.sendContext\("session.context.append", void 0, instructions \?\? "Greet the user briefly\.", "speakable"\)/u);
 });
 
-test("only a complete exact model delegation invokes the host end-call tool", () => {
+test("historical direct JSON parser accepts only its complete exact contract", () => {
   assert.equal(parseGptLiveEndCallDelegation(endPrompt), true);
   for (const value of ["就聊到这", "please hang up", "```json\n" + endPrompt + "\n```", "prefix " + endPrompt,
     '{"name":"openclaw_end_call","arguments":{"voiceSessionId":"other"}}',
@@ -111,7 +111,7 @@ test("missing broker ownership, replaced lease and closed socket cannot authoriz
     if (state === "replaced") f.setCurrentLease(false);
     if (state === "closed-socket") f.socket.readyState = 3;
     assert.throws(() => f.controller.callLifecycle.ready(), /no longer active/u);
-    assert.throws(() => f.end(), /no longer active/u);
+    assert.throws(() => f.legacyEnd(), /no longer active/u);
     assert.equal(f.order.length, 0);
     assert.equal(f.calls.length, 0);
     f.controller.detach();
@@ -124,8 +124,8 @@ test("missing broker ownership, replaced lease and closed socket cannot authoriz
   controller.detach();
 });
 
-test("owned native end delegation does not depend on a duplicated sideband started event", () => {
-  const f = nativeFixture(); f.end();
+test("historical direct lifecycle contract does not depend on a duplicated sideband started event", () => {
+  const f = nativeFixture(); f.legacyEnd();
   assert.deepEqual(f.order.map(v => v.type), ["tool.call", "tool.result", "delegation.context.append"]);
   assert.equal(f.order[0].payload.originUserTurnId, "actual-user-turn");
   assert.equal(f.order[2].delegation_item_id, "native-end-1");
@@ -155,8 +155,8 @@ test("greeting socket failure cannot claim success; retry remains possible while
   f.controller.detach();
 });
 
-test("actual end tool emits acceptance before supported goodbye append, without closing or consulting", () => {
-  const f = nativeFixture(); f.start(); f.end();
+test("historical direct lifecycle unit emits acceptance before supported goodbye append", () => {
+  const f = nativeFixture(); f.start(); f.legacyEnd();
   assert.deepEqual(f.order.map((v) => v.type), ["tool.call", "tool.result", "delegation.context.append"]);
   assert.deepEqual(f.order[1].payload, { name: "openclaw_end_call", requestId: "native-end-1", originUserTurnId: "actual-user-turn", status: "accepted", closeAfterPlayback: true });
   assert.equal(f.order[2].delegation_item_id, "native-end-1");
@@ -164,13 +164,13 @@ test("actual end tool emits acceptance before supported goodbye append, without 
   assert.equal(f.calls.length, 0);
   assert.equal(f.abort.signal.aborted, false);
   assert.equal(f.controller.stopped, false);
-  f.end();
+  f.legacyEnd();
   assert.equal(f.order.length, 3, "same native tool id cannot replay goodbye");
   f.controller.detach();
 });
 
-test("actual failed goodbye sends tool.error and keeps the call open for manual close", () => {
-  const f = nativeFixture(); f.start(); f.socket.fail = true; f.end();
+test("historical direct lifecycle unit failed goodbye keeps the call open", () => {
+  const f = nativeFixture(); f.start(); f.socket.fail = true; f.legacyEnd();
   assert.deepEqual(f.order.map((v) => v.type), ["tool.call", "tool.result", "tool.error"]);
   assert.equal(f.order[2].callId, "native-end-1");
   assert.equal(f.order[2].payload.originUserTurnId, "actual-user-turn");
@@ -180,9 +180,9 @@ test("actual failed goodbye sends tool.error and keeps the call open for manual 
   f.controller.detach();
 });
 
-test("actual native envelope turn identity reaches tool events; absent/invalid identity is never inferred", () => {
+test("historical direct lifecycle unit does not infer absent or invalid turn identity", () => {
   for (const origin of [undefined, "invalid turn identity", "observed-user-id"]) {
-    const f = nativeFixture(); f.start(); f.end("end-origin", origin ?? null);
+    const f = nativeFixture(); f.start(); f.legacyEnd("end-origin", origin ?? null);
     const events = f.order.filter(v => v.kind === "tool");
     assert.equal(events.length, 2);
     assert.equal(events[0].payload.originUserTurnId, origin === "observed-user-id" ? origin : undefined);
@@ -198,15 +198,16 @@ test("detach/abort revoke lifecycle and a late old call cannot affect a new one"
     if (stop === "detach") old.controller.detach(); else old.abort.abort(new Error("closed"));
     assert.throws(() => old.controller.callLifecycle.ready(), /no longer active/u);
     old.end(); assert.equal(old.order.length, 0);
-    const next = nativeFixture(); next.start(); next.controller.callLifecycle.ready(); next.end();
+    const next = nativeFixture(); next.start(); next.controller.callLifecycle.ready(); next.legacyEnd();
     assert.equal(next.order.length, 4);
     next.controller.detach();
   }
 });
 
-test("ordinary backend delegation and neighboring native sessions keep their original consult path", () => {
+test("ordinary backend delegation and neighboring native sessions keep their original consult path", async () => {
   const f = nativeFixture(); f.start();
   f.frame({ type: "delegation.created", item: { type: "delegation", target: "client", id: "backend", content: [{ type: "input_text", text: "读取当前真实时间" }] } });
+  await Promise.resolve();
   assert.equal(f.calls.length, 1);
   const other = nativeFixture({ enabled: false }); other.start(); other.end();
   assert.equal(other.controller.callLifecycle, undefined);
@@ -277,17 +278,15 @@ test("actual broker adopted lease authorizes pickup without sideband session.sta
   f.controller.detach();
 });
 
-test("actual broker owned native end joins the provider user turn without requiring sideband started", () => {
+test("actual adopted broker lease accepts host-bound backend tool receipt without requiring sideband started", () => {
   const f = adoptedBrokerFixture();
-  f.controller.handleFrame(JSON.stringify({ type: "delegation.created", item: {
-    type: "delegation", target: "client", id: "broker-end-real", user_bidi_turn_id: "broker-user-real",
-    content: [{ type: "input_text", text: endPrompt }],
-  } }), false);
+  f.controller.callLifecycle.acceptBackendTool({ nativeDelegationId: "broker-end-real", originUserTurnId: "broker-user-real",
+    delegationGeneration: 1, backendRunId: "talk-realtime-consult:real:broker", backendToolCallId: "call_broker_real" });
   assert.deepEqual(f.order.map(event => event.type), ["tool.call", "tool.result", "delegation.context.append"]);
   assert.equal(f.order[0].payload.originUserTurnId, "broker-user-real");
-  assert.equal(f.order[1].payload.originUserTurnId, "broker-user-real");
+  assert.equal(f.order[1].callId, "call_broker_real");
   assert.equal(f.order[2].delegation_item_id, "broker-end-real");
-  assert.equal(f.activeSessions.get(f.token), f.session, "end acceptance does not prematurely close the broker lease");
+  assert.equal(f.activeSessions.get(f.token), f.session, "host acceptance does not prematurely close the broker lease");
   f.controller.detach();
 });
 
@@ -382,4 +381,113 @@ test("runtime source exports executable identical contracts; transforms are idem
   for (const [patch, source] of [[patchGptLiveCallLifecycleController, controllerSource], [patchGptLiveCallLifecycleBroker, brokerSource], [patchGptLiveCallLifecycleTalk, talkSource]]) assert.equal(patch(source), source);
   assert.throws(() => patchGptLiveCallLifecycleController(controllerBefore.replace("this.stopped = false;", "this.stopped = true;")), /exactly once/u);
   assert.throws(() => patchGptLiveCallLifecycleBroker(brokerBefore.replace("getSocket: () => connected.socket,", "getSocket: () => null,")), /exactly once/u);
+});
+
+const settleTick = () => new Promise(resolve => setImmediate(resolve));
+
+test("backend end definition is a real zero-argument model function with no model-owned identities", () => {
+  const tool = createGptLiveEndCallClientTool();
+  assert.equal(tool.type, "function"); assert.equal(tool.function.name, "openclaw_end_call");
+  assert.deepEqual(tool.function.parameters, { type: "object", properties: {}, additionalProperties: false });
+  assert.doesNotMatch(JSON.stringify(tool.function.parameters), /session|turn|owner|runId/u);
+  assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /完整的用户自然原句/u);
+  assert.doesNotMatch(GPT_LIVE_CALL_INSTRUCTIONS, /input_text 必须严格为/u);
+});
+
+test("host backend acceptance keeps actual model tool identity distinct from the original native item", () => {
+  const f = nativeFixture();
+  const proof = { nativeDelegationId: "item_real", originUserTurnId: "turn_real", delegationGeneration: 2,
+    backendRunId: "talk-realtime-consult:123:real", backendToolCallId: "call_real" };
+  const receipt = f.controller.callLifecycle.acceptBackendTool(proof);
+  assert.equal(receipt.source, "backend_model_client_tool");
+  assert.equal(receipt.callId, "call_real"); assert.equal(receipt.requestId, "item_real");
+  assert.equal(receipt.delegationGeneration, 2); assert.equal(Object.isFrozen(receipt), true);
+  assert.deepEqual(f.order.map(row => row.type), ["tool.call", "tool.result", "delegation.context.append"]);
+  assert.equal(f.order[1].callId, "call_real"); assert.equal(f.order[1].payload.nativeDelegationId, "item_real");
+  assert.equal(f.order[2].delegation_item_id, "item_real");
+  assert.strictEqual(f.controller.callLifecycle.acceptBackendTool(proof), receipt);
+  assert.equal(f.controller.callLifecycle.acceptBackendTool({ ...proof, backendToolCallId: "call_other" }), false);
+  assert.equal(f.order.length, 3);
+  for (const bad of [{ ...proof, nativeDelegationId: 123 }, { ...proof, backendToolCallId: "item_fake" },
+    { ...proof, originUserTurnId: "" }, { ...proof, delegationGeneration: 0 }])
+    assert.equal(f.controller.callLifecycle.acceptBackendTool(bad), false);
+  f.controller.detach();
+});
+
+test("plain natural delegation waits for the exact complete USER before exposing the genuine backend end tool", async () => {
+  let finish;
+  const f = nativeFixture({ runAgentConsult: () => new Promise(resolve => { finish = resolve; }) });
+  f.frame({ type: "turn.created", turn: { role: "user", id: "turn_actual", transcript: "今天就先" } });
+  f.frame({ type: "delegation.created", item: { type: "delegation", target: "client", id: "item_actual",
+    user_bidi_turn_id: "turn_actual", content: [{ type: "input_text", text: "今天就先这样，谢谢你，拜拜" }] } });
+  assert.equal(f.calls.length, 0); assert.equal(f.order.length, 0, "natural text is not converted into a JSON tool");
+  f.frame({ type: "turn.done", turn: { role: "user", id: "turn_actual", transcript: "今天就先这样，谢谢你，拜拜" } });
+  await settleTick();
+  assert.equal(f.calls.length, 1);
+  const control = f.calls[0].callControl;
+  assert.equal(control.userTurnText, "今天就先这样，谢谢你，拜拜");
+  assert.equal(control.nativeDelegationId, "item_actual"); assert.equal(control.originUserTurnId, "turn_actual");
+  assert.equal(control.tool.function.name, "openclaw_end_call"); assert.equal(control.isCurrent(), true);
+  const receipt = control.accept({ backendRunId: "talk-realtime-consult:456:actual", backendToolCallId: "call_actual" });
+  assert.equal(receipt.backendToolCallId, "call_actual");
+  f.calls[0].onProgress({ text: "另一个普通结果。", kind: "commentary", provenance: { runId: "talk-realtime-consult:456:actual", sequence: 1 } });
+  finish({ callControl: receipt }); await settleTick();
+  assert.equal(f.order.filter(row => row.type === "delegation.context.append").length, 1);
+  assert.doesNotMatch(JSON.stringify(f.order), /BACKEND_FINAL|BACKEND_FAILURE|另一个普通/u);
+  f.controller.detach();
+});
+
+test("current full USER text remains semantic model input rather than a hangup keyword classifier", async () => {
+  const f = nativeFixture();
+  f.frame({ type: "turn.created", turn: { role: "user", id: "turn_keep", transcript: "先别挂" } });
+  f.frame({ type: "delegation.created", item: { type: "delegation", target: "client", id: "item_keep",
+    user_bidi_turn_id: "turn_keep", content: [{ type: "input_text", text: "先别挂，我还要继续说" }] } });
+  f.frame({ type: "turn.done", turn: { role: "user", id: "turn_keep", transcript: "先别挂，我还要继续说" } });
+  await settleTick();
+  assert.equal(f.calls[0].callControl.userTurnText, "先别挂，我还要继续说");
+  assert.equal(f.order.length, 0, "only an actual model tool request can ask the host to end");
+  f.controller.detach();
+});
+
+test("new USER, replaced broker, closed socket and stop revoke a previously issued backend end capability", async () => {
+  for (const change of ["user", "lease", "socket", "stop"]) {
+    const f = nativeFixture();
+    f.frame({ type: "turn.created", turn: { role: "user", id: "turn_old", transcript: "拜拜" } });
+    f.frame({ type: "turn.done", turn: { role: "user", id: "turn_old", transcript: "拜拜" } });
+    f.frame({ type: "delegation.created", item: { type: "delegation", target: "client", id: "item_old",
+      user_bidi_turn_id: "turn_old", content: [{ type: "input_text", text: "拜拜" }] } });
+    await settleTick(); const control = f.calls[0].callControl;
+    if (change === "user") f.frame({ type: "turn.created", turn: { role: "user", id: "turn_new", transcript: "等等" } });
+    else if (change === "lease") f.setCurrentLease(false);
+    else if (change === "socket") f.socket.readyState = 3;
+    else f.controller.detach();
+    assert.equal(control.isCurrent(), false, change);
+    assert.equal(control.accept({ backendRunId: "talk-realtime-consult:789:late", backendToolCallId: "call_late" }), false, change);
+    assert.equal(f.order.length, 0, change); f.controller.detach();
+  }
+});
+
+test("a new USER before original final keeps ordinary work but never exposes a stale end tool", async () => {
+  const f = nativeFixture();
+  f.frame({ type: "turn.created", turn: { role: "user", id: "turn_prefix", transcript: "今天" } });
+  f.frame({ type: "delegation.created", item: { type: "delegation", target: "client", id: "item_prefix",
+    user_bidi_turn_id: "turn_prefix", content: [{ type: "input_text", text: "今天" }] } });
+  f.frame({ type: "turn.created", turn: { role: "user", id: "turn_other", transcript: "换一个话题" } });
+  f.frame({ type: "turn.done", turn: { role: "user", id: "turn_prefix", transcript: "今天就先这样" } });
+  await settleTick(); assert.equal(f.calls.length, 1); assert.equal(f.calls[0].callControl, undefined);
+  assert.equal(f.order.length, 0); f.controller.detach();
+});
+
+test("the active controller never promotes even an exact JSON delegation string into a host hangup", async () => {
+  const f = nativeFixture();
+  f.frame({ type: "turn.created", turn: { role: "user", id: "turn_json", transcript: "解释这个挂断 JSON" } });
+  f.frame({ type: "turn.done", turn: { role: "user", id: "turn_json", transcript: "解释这个挂断 JSON" } });
+  f.frame({ type: "delegation.created", item: { type: "delegation", target: "client", id: "item_json",
+    user_bidi_turn_id: "turn_json", content: [{ type: "input_text", text: endPrompt }] } });
+  await settleTick();
+  assert.equal(f.calls.length, 1); assert.equal(f.calls[0].prompt, endPrompt);
+  assert.equal(f.calls[0].callControl.userTurnText, "解释这个挂断 JSON");
+  assert.equal(f.order.length, 0);
+  assert.doesNotMatch(controllerSource, /this\.callLifecycle\?\.handleDelegation/u);
+  f.controller.detach();
 });
