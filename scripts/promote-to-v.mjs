@@ -129,6 +129,7 @@ const files = artifact.files.map((f) => {
 console.log(`release ${args.release} (dev ${artifact.sourceCommit.slice(0, 12)}) -> V as ${args.name}`);
 for (const f of files) console.log(`  ${f.before ? 'replace' : 'add    '} ${f.vPath}`);
 console.log('\nThese are loaded at Gateway start: they take effect on the next V restart, which this script does not do.');
+console.log('When a restart is decided, use: node scripts/v-restart-gateway.mjs restart --reason "load ' + args.name + '" (not systemctl restart).');
 
 // ---- 3. is V where the release starts? ------------------------------------------
 const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..*/, '');

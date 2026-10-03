@@ -262,7 +262,9 @@ def main():
     elif s["active"] == "active":
         pool_msg = ("Worker 池空了（0 个 worker 进程），而 openclaw-gateway 仍显示 active、"
                     "health 200、NRestarts=0。服务看起来正常但一个请求都处理不了。"
-                    "这不会自愈，要 sudo systemctl restart openclaw-gateway 才能重建。")
+                    "这不会自愈，要重启 Gateway 才能重建：在 Mac 上运行 "
+                    "node scripts/v-restart-gateway.mjs restart --reason worker-pool-empty"
+                    "（不要直接 systemctl restart，那会立刻杀掉进行中的回复）。")
     else:
         pool_msg = "Worker 池空了（0 个 worker 进程），openclaw-gateway 状态为 %s。" % s["active"]
     starting = (up is not None and up < STARTUP_GRACE_S and not crashed_recently)

@@ -155,7 +155,7 @@ node scripts/promote-to-v.mjs --release <VLab release> --name <V 发版名> --ow
 git add release/captured/<V 发版名>*；node scripts/release-notes.mjs --from <上一版> --to <V 发版名> 生成 CHANGELOG.md 一节并写摘要；提交 PR；dev → main 发版 PR，打 tag <V 发版名>
 ```
 
-`promote-to-v.mjs` 不重启 V：dist 文件在下次 Gateway 启动时才生效，什么时候重启由人决定。V 上的文件不是这个版本的"改动前"字节时，它拒绝执行；需要撤销用 `--undo <V 上的备份目录>`。
+`promote-to-v.mjs` 不重启 V：dist 文件在下次 Gateway 启动时才生效，什么时候重启由人决定。决定重启时用 `node scripts/v-restart-gateway.mjs restart --reason <原因>`：先等用户可见的工作空闲，再用原生 restart intent 做有上限的排空；不要用 `systemctl restart`（QQBot 的 SIGTERM 钩子会让进程立刻退出）或 `kill -USR1`/改需重启的配置（9.1 内部延期 300 s 后强制 0 ms 排空）。V 上的文件不是这个版本的"改动前"字节时，它拒绝执行；需要撤销用 `--undo <V 上的备份目录>`。
 
 不上线，就 `vlab.mjs rollback`：回到父版本，标志随之恢复为 aligned。
 
