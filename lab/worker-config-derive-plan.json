@@ -1,0 +1,15 @@
+{
+  "baseRelease": "feishu-ask-chat-answer-v1",
+  "files": [
+    {
+      "source": "lab/release-files/worker-config-derive/index.mjs",
+      "target": "production-worker/index.mjs",
+      "before": "c047f3df1f730b4eacb2db0ec64cd0e0281bc4f8388c8032768192a204222259"
+    },
+    {
+      "source": "lab/release-files/worker-config-derive/worker-config-derive.mjs",
+      "target": "production-worker/worker-config-derive.mjs",
+      "before": null
+    }
+  ]
+}
