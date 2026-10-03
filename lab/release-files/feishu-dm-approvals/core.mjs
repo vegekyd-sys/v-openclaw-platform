@@ -280,7 +280,7 @@ export function createFeishuApprovalCallbackHandler(deps) {
     let timer;
     const outcome = await Promise.race([
       settled,
-      new Promise((resolve) => { timer = setTimeout(() => resolve({ pending: true }), waitMs); timer.unref?.(); }),
+      new Promise((resolve) => { timer = setTimeout(() => resolve({ pending: true }), waitMs); }),
     ]);
     clearTimeout(timer);
     if (outcome.pending) return feishuApprovalCallbackResponse("info", "已提交，正在处理。");
