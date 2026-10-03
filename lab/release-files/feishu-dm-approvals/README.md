@@ -42,7 +42,7 @@ implementation:
   secret-entry handlers, and each monitored account registers the native approval
   runtime context.
 
-Anchors must match exactly once. A patched input is left unchanged. `dist/` holds
+Anchors must match exactly once. A patched input is left unchanged. `generated/` holds
 the output generated from VLab release `feishu-ask-chat-answer-v1` (which is
 aligned with V). The candidate fails if regeneration from the live baseline
 differs from it.

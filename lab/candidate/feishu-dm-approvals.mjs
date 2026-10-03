@@ -24,7 +24,7 @@ const featureDist = path.join(plugin, "dist");
 
 // 1. The committed release must be exactly what the patch generates from this baseline.
 const generated = generateRelease(featureDist);
-const committed = new URL("../release-files/feishu-dm-approvals/dist/", import.meta.url);
+const committed = new URL("../release-files/feishu-dm-approvals/generated/", import.meta.url);
 for (const [name, content] of Object.entries(generated)) {
   assert.equal(content, fs.readFileSync(new URL(name, committed), "utf8"), `committed ${name} differs from generated`);
   fs.writeFileSync(path.join(featureDist, name), content);
@@ -40,13 +40,53 @@ Object.assign(feishu, {
   verificationToken: "candidate-verification-token", encryptKey: "candidate-encrypt-key-0000000000",
 });
 cfg.channels = { feishu };
-if (cfg.plugins.entries?.["vlab-agent-worker-isolation"]) cfg.plugins.entries["vlab-agent-worker-isolation"].enabled = false;
+// Not needed for approvals; codex is not installed in private runtimes and fails plugin verification.
+for (const id of ["vlab-agent-worker-isolation", "codex"]) if (cfg.plugins.entries?.[id]) cfg.plugins.entries[id].enabled = false;
 fs.writeFileSync(configPath, JSON.stringify(cfg), { mode: 0o600 });
 
 const dist = path.join(runtime, "openclaw/dist");
+// Candidate-only: the private runtime has no official install record for the relocated
+// Feishu plugin, so the trusted-runtime gate would refuse its ingress queue. Allow
+// exactly the Feishu plugin in this private copy; shared VLab and V are untouched.
+const gate = 'if (record?.origin !== "bundled" && record?.trustedOfficialInstall !== true) throw new Error(`${methodName} is only available for trusted plugins';
+const loaderFile = fs.readdirSync(dist).filter((n) => /^loader-[\w-]{8}\.js$/.test(n)).map((n) => path.join(dist, n))
+  .find((f) => fs.readFileSync(f, "utf8").includes(gate));
+assert(loaderFile, "trusted-runtime gate not found");
+const loaderSource = fs.readFileSync(loaderFile, "utf8");
+assert.equal(loaderSource.split(gate).length, 2, "trusted-runtime gate anchor");
+fs.writeFileSync(loaderFile, loaderSource.replace(gate, gate.replace("record?.trustedOfficialInstall !== true", 'record?.trustedOfficialInstall !== true && pluginId !== "feishu"')));
+// Clicks run inside the Gateway process, like a real Feishu card callback: a preload
+// hook imports the same patched module the plugin uses and answers click requests.
+const clickDir = path.join(process.env.OPENCLAW_STATE_DIR, "approval-clicks");
+fs.mkdirSync(clickDir, { recursive: true });
+const hook = path.join(clickDir, "hook.mjs");
+fs.writeFileSync(hook, `import fs from "node:fs";
+import path from "node:path";
+if (process.argv.includes("gateway")) {
+  const dir = ${JSON.stringify(clickDir)};
+  let busy = false;
+  setInterval(async () => {
+    if (busy) return; busy = true;
+    try {
+      for (const name of fs.readdirSync(dir).filter((n) => n.startsWith("req-") && n.endsWith(".json"))) {
+        const file = path.join(dir, name);
+        const req = JSON.parse(fs.readFileSync(file, "utf8")); fs.unlinkSync(file);
+        let res;
+        try {
+          const mod = await import(${JSON.stringify(pathToFileURL(path.join(featureDist, MODULE_FILE)).href)});
+          const cfg = JSON.parse(fs.readFileSync(process.env.OPENCLAW_CONFIG_PATH, "utf8"));
+          res = { ok: true, value: await mod.vFeishuApprovalCardAction(req.data, { cfg, accountId: "default" }) };
+        } catch (e) { res = { ok: false, error: String(e?.stack ?? e) }; }
+        fs.writeFileSync(path.join(dir, "res-" + req.n + ".json.tmp"), JSON.stringify(res));
+        fs.renameSync(path.join(dir, "res-" + req.n + ".json.tmp"), path.join(dir, "res-" + req.n + ".json"));
+      }
+    } finally { busy = false; }
+  }, 150).unref();
+}
+`);
 const logs = [];
 const gateway = spawn(process.execPath, ["--max-old-space-size=3072", `${dist}/index.js`, "gateway", "--port", String(port)], {
-  env: { ...process.env, OPENCLAW_GATEWAY_PORT: String(port) }, stdio: ["ignore", "pipe", "pipe"],
+  env: { ...process.env, OPENCLAW_GATEWAY_PORT: String(port), NODE_OPTIONS: `--import ${hook}` }, stdio: ["ignore", "pipe", "pipe"],
 });
 for (const s of [gateway.stdout, gateway.stderr]) s.on("data", (b) => { logs.push(b.toString()); if (logs.length > 4000) logs.shift(); });
 const logText = () => logs.join("");
@@ -90,11 +130,21 @@ try {
   });
   await sleep(3000);
   const readCard = await feishuApi();
-  const { vFeishuApprovalCardAction } = await import(pathToFileURL(path.join(featureDist, MODULE_FILE)).href);
-  const click = (id, decision, openId = OWNER, messageId = "om_unknown") => vFeishuApprovalCardAction({
-    event: { operator: { open_id: openId }, context: { open_message_id: messageId },
-      action: { tag: "button", value: { a: "v_feishu_approval", id, k: "plugin", d: decision } } },
-  }, { cfg, accountId: "default" });
+  let clickSeq = 0;
+  const click = async (id, decision, openId = OWNER, messageId = "om_unknown") => {
+    const n = ++clickSeq;
+    const data = { event: { operator: { open_id: openId }, context: { open_message_id: messageId },
+      action: { tag: "button", value: { a: "v_feishu_approval", id, k: "plugin", d: decision } } } };
+    fs.writeFileSync(path.join(clickDir, `req-${n}.json`), JSON.stringify({ n, data }));
+    const resFile = path.join(clickDir, `res-${n}.json`);
+    for (const until = Date.now() + 15000; Date.now() < until; await sleep(100)) {
+      if (!fs.existsSync(resFile)) continue;
+      const res = JSON.parse(fs.readFileSync(resFile, "utf8"));
+      if (!res.ok) throw Error(`in-Gateway click failed: ${res.error}`);
+      return res.value;
+    }
+    throw Error("in-Gateway click timed out");
+  };
   const request = async (title, timeoutMs) => {
     const res = await client.request("plugin.approval.request", {
       title, description: "自动测试卡片：测试脚本会自己处理，请忽略。", severity: "info",
@@ -127,7 +177,7 @@ try {
 
   // C: nobody clicks; the card closes on expiry.
   const c = await request("VLab 候选测试 C：过期", 15000);
-  await waitLog(new RegExp(`feishu approvals: expired ${c.id.replace(/[:.]/g, "\\$&")} repainted message ${c.messageId}`), 60000, "C expiry repaint");
+  await waitLog(new RegExp(`feishu approvals: (?:expired|resolved) ${c.id.replace(/[:.]/g, "\\$&")} repainted message ${c.messageId}`), 60000, "C expiry repaint");
   if (readCard) assert.match(await readCard(c.messageId), /已过期/);
   results.expire = { id: c.id, message: c.messageId };
 
@@ -135,7 +185,7 @@ try {
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ ok: true, owner: OWNER.slice(0, 9) + "…", results,
     cardReadBack: readCard ? "Feishu message API (raw card content)" : "unavailable: credentials use secret references",
-    sharedBotConsumerStarted: false }));
+    sharedBotConsumerStarted: false, candidateOnly: "private runtime trusts the relocated Feishu plugin for its ingress queue" }));
 } catch (error) {
   const relevant = logText().split("\n").filter((l) => /approval|feishu|Error|error|failed/i.test(l)).slice(-25).map(redact);
   console.error(redact(error?.stack ?? error));

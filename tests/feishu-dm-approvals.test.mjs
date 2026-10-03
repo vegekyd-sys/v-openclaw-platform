@@ -65,7 +65,8 @@ test("terminal cards carry no buttons and say what happened", () => {
   const states = [
     [{ phase: "resolved", decision: "allow-once", resolvedBy: `Chat approval (feishu ${OWNER})`, applicationStatus: "applied" }, "已批准：OpenClaw 改动", /改动已经写入/],
     [{ phase: "resolved", decision: "allow-once", applicationStatus: "not-applied" }, "已批准：OpenClaw 改动", /没有写入/],
-    [{ phase: "resolved", decision: "deny" }, "已拒绝：OpenClaw 改动", /什么也没有执行/],
+    [{ phase: "resolved", decision: "deny", resolvedBy: `Chat approval (feishu ${OWNER})` }, "已拒绝：OpenClaw 改动", /什么也没有执行/],
+    [{ phase: "resolved", decision: "deny", resolvedBy: null }, "已过期：OpenClaw 改动", /时限/],
     [{ phase: "expired" }, "已过期：OpenClaw 改动", /时限/],
     [{ phase: "resolved", decision: "deny", terminalStatus: "cancelled" }, "已取消：OpenClaw 改动", /已取消/],
   ];
@@ -148,7 +149,7 @@ test("patches require exact anchors and are idempotent", () => {
 });
 
 test("committed release files are generated from this patch", () => {
-  const dir = new URL("../lab/release-files/feishu-dm-approvals/dist/", import.meta.url);
+  const dir = new URL("../lab/release-files/feishu-dm-approvals/generated/", import.meta.url);
   for (const name of ["v-feishu-approvals.js", "channel-DSYCNah8.js", "monitor.account-WFdlCDhR.js"]) {
     assert(readFileSync(new URL(name, dir), "utf8").startsWith(`// ${MARKER}\n`), name);
   }

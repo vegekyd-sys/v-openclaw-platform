@@ -4,9 +4,9 @@
     "lab/release-files/feishu-dm-approvals/core.mjs",
     "lab/release-files/feishu-dm-approvals/module.mjs",
     "lab/release-files/feishu-dm-approvals/patch.mjs",
-    "lab/release-files/feishu-dm-approvals/dist/v-feishu-approvals.js",
-    "lab/release-files/feishu-dm-approvals/dist/channel-DSYCNah8.js",
-    "lab/release-files/feishu-dm-approvals/dist/monitor.account-WFdlCDhR.js"
+    "lab/release-files/feishu-dm-approvals/generated/v-feishu-approvals.js",
+    "lab/release-files/feishu-dm-approvals/generated/channel-DSYCNah8.js",
+    "lab/release-files/feishu-dm-approvals/generated/monitor.account-WFdlCDhR.js"
   ],
   "command": [
     "/opt/vlab/node-v22.23.1-linux-x64/bin/node",

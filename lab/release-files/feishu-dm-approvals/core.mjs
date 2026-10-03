@@ -189,7 +189,9 @@ export function buildFeishuApprovalTerminalCard({ request, view }) {
   let title;
   let template = "grey";
   let status;
-  if (view.phase === "expired" || view.terminalStatus === "expired") {
+  // Exec/plugin timeouts arrive as a resolved deny with no reviewer; a human deny always has one.
+  const timedOut = view.phase === "resolved" && view.decision === "deny" && !vFaText(view.resolvedBy) && view.terminalStatus !== "cancelled";
+  if (view.phase === "expired" || view.terminalStatus === "expired" || timedOut) {
     title = `已过期：${kindLabel}`;
     status = "没有在时限内审批，什么也没有执行。";
   } else if (view.terminalStatus === "cancelled") {
