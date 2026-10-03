@@ -1,5 +1,13 @@
 import { statSync } from "node:fs";
 
+// Bookkeeping the Gateway writes into its own config (version stamps,
+// migration markers) reaches the Worker config too, but is no reason to pay
+// for a new Worker generation's cold first turns.
+const ROLL_EXEMPT = /^meta(?:[.[]|$)/u;
+export function workerConfigChangeNeedsRoll(changedPaths) {
+  return changedPaths.some((path) => !ROLL_EXEMPT.test(path));
+}
+
 // worker-generations.1: 9.1 applies most Gateway config changes (models,
 // agents, tools, policy) without a plugin reload, so this plugin is never
 // registered again and the Worker config is never re-derived. Poll the Gateway
@@ -42,7 +50,9 @@ export function createWorkerConfigWatch({
     pending = null;
     try {
       const result = derive();
-      if (result?.ok && result.changed) await onWorkerConfigChanged(result);
+      if (result?.ok && result.changed && workerConfigChangeNeedsRoll(result.changedPaths ?? ["(unknown)"])) {
+        await onWorkerConfigChanged(result);
+      }
     } catch (error) {
       logger?.warn?.(
         `Worker config watch failed: ${error instanceof Error ? error.message : String(error)}`,

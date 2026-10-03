@@ -1,5 +1,5 @@
 {
-  "baseRelease": "feishu-ask-chat-answer-v1",
+  "baseRelease": "feishu-dm-approvals-v1",
   "files": [
     {
       "source": "lab/release-files/worker-generations/index.mjs",
