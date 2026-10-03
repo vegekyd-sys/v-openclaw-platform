@@ -79,6 +79,8 @@ config.channels = {
 config.plugins.load = { ...(config.plugins.load ?? {}), paths: [...(config.plugins.load?.paths ?? []).filter((p) => !/wecom/u.test(p)), pluginDir] };
 config.plugins.entries = { ...(config.plugins.entries ?? {}), "wecom-openclaw-plugin": { enabled: true } };
 if (Array.isArray(config.plugins.allow) && !config.plugins.allow.includes("wecom-openclaw-plugin")) config.plugins.allow.push("wecom-openclaw-plugin");
+// Same routing as V: the channel belongs to the makaron agent.
+config.bindings = [...(config.bindings ?? []).filter((b) => b?.match?.channel !== "wecom"), { agentId: "makaron", match: { channel: "wecom" } }];
 config.cron = { ...(config.cron ?? {}), enabled: false };
 if (config.plugins.entries?.codex) config.plugins.entries.codex.enabled = false;
 const workerPlugin = config.plugins.entries?.["vlab-agent-worker-isolation"]?.config;

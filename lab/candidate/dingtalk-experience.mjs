@@ -101,6 +101,8 @@ config.channels = {
 config.plugins.load = { ...(config.plugins.load ?? {}), paths: [...(config.plugins.load?.paths ?? []).filter((p) => !/dingtalk/u.test(p)), pluginDir] };
 config.plugins.entries = { ...(config.plugins.entries ?? {}), "dingtalk-connector": { enabled: true } };
 if (Array.isArray(config.plugins.allow) && !config.plugins.allow.includes("dingtalk-connector")) config.plugins.allow.push("dingtalk-connector");
+// Same routing as V: the channel belongs to the makaron agent.
+config.bindings = [...(config.bindings ?? []).filter((b) => b?.match?.channel !== "dingtalk-connector"), { agentId: "makaron", match: { channel: "dingtalk-connector" } }];
 config.cron = { ...(config.cron ?? {}), enabled: false };
 if (config.plugins.entries?.codex) config.plugins.entries.codex.enabled = false;
 const workerPlugin = config.plugins.entries?.["vlab-agent-worker-isolation"]?.config;

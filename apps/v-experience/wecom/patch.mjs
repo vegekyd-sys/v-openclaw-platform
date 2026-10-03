@@ -57,12 +57,13 @@ import { callGatewayFromCli as vCallGateway } from "openclaw/plugin-sdk/gateway-
         vTimer = setTimeout(vFlush, Math.max(50, 1000 - (Date.now() - vLastFrame)));
         vTimer.unref?.();
     };
-    const vWork = vExperience.createWorkView({ sessionKey: vSessionKey, onChange: vSchedule });
+    const vWork = vExperience.createWorkView({ sessionKey: vSessionKey, onChange: vSchedule, log: (message) => runtime.log?.(message) });
     const vStop = async () => {
         state.vFinished = true;
         if (vTimer) clearTimeout(vTimer);
         vTimer = null;
         vWork.dispose();
+        vUnrouteQuestions();
         await vSending;
         const line = vExperience.currentBackgroundLine(vSessionKey);
         if (line && state.accumulatedText) {
@@ -77,38 +78,50 @@ import { callGatewayFromCli as vCallGateway } from "openclaw/plugin-sdk/gateway-
             });
         }
     };
-    // ${MARKER}: questions come as tool or block payloads. Show them as their own
-    // message, in Chinese, and remember them so the next message answers them.
+    // ${MARKER}: show a question as its own message, in Chinese, and remember it
+    // so the next message answers it. Worker runs announce questions on the
+    // Gateway question listener; other runtimes send a payload. Shown once.
+    const vSend = (markdown) => wsClient.sendMessage(chatId, { msgtype: "markdown", markdown: { content: markdown } });
+    const vDeliverQuestionRecord = async (question) => {
+        if (!question?.id) return false;
+        const secret = question.questions?.some((q) => q.isSecret || q.secretStore);
+        if (!secret && !vExperience.isRenderableAsk(question)) return false;
+        if (!vExperience.claimQuestionDelivery(question.id)) return true;
+        try {
+            if (secret) {
+                await vSend(vExperience.secretQuestionNotice(question));
+                await vCallGateway("question.resolve", { config }, { id: question.id, cancel: true, resolvedBy: "wecom:credential-unsupported" }, { scopes: ["operator.questions"], progress: false, timeoutMs: 5000 }).catch(() => { });
+            }
+            else {
+                await vSend(vExperience.askPromptMarkdown(question));
+                vExperience.trackChatQuestion({ channel: "wecom", chatKey: \`\${account.accountId}:\${chatId}\`, senderId: vSender, record: question });
+                vWork.questionPending(true);
+            }
+            runtime.log?.(\`[wecom][v-experience] delivered question \${question.id}\${secret ? " (credential, cancelled)" : ""}\`);
+        }
+        catch (err) {
+            runtime.error?.(\`[wecom][v-experience] question delivery failed: \${String(err)}\`);
+        }
+        return true;
+    };
     const vDeliverQuestion = async (payload) => {
         const questionId = payload?.channelData?.askUser?.questionId;
-        const secretRequest = payload?.channelData?.vSecretEntry || /^\\s*🔑/u.test(String(payload?.text ?? ""));
-        if (!questionId && !secretRequest) return false;
-        let markdown;
-        let question;
         if (questionId) {
             try {
-                ({ question } = await vCallGateway("question.get", { config }, { id: questionId }, { scopes: ["operator.questions"], progress: false, timeoutMs: 3000 }));
+                const { question } = await vCallGateway("question.get", { config }, { id: questionId }, { scopes: ["operator.questions"], progress: false, timeoutMs: 3000 });
                 if (question?.status && question.status !== "pending") return true;
-                if (vExperience.isRenderableAsk(question)) markdown = vExperience.askPromptMarkdown(question);
+                if (await vDeliverQuestionRecord(question)) return true;
             }
             catch (err) {
                 runtime.error?.(\`[wecom][v-experience] question.get failed: \${String(err)}\`);
             }
-            vWork.questionPending(true);
+            if (!vExperience.claimQuestionDelivery(questionId)) return true;
         }
-        markdown ??= payload.text;
-        if (!String(markdown ?? "").trim()) return true;
-        try {
-            await wsClient.sendMessage(chatId, { msgtype: "markdown", markdown: { content: markdown } });
-            if (question) vExperience.trackChatQuestion({ channel: "wecom", chatKey: \`\${account.accountId}:\${chatId}\`, senderId: vSender, record: question });
-            runtime.log?.(\`[wecom][v-experience] delivered \${questionId ? "question " + questionId : "credential request"}\`);
-        }
-        catch (err) {
-            runtime.error?.(\`[wecom][v-experience] question delivery failed: \${String(err)}\`);
-            return false;
-        }
+        else if (!payload?.channelData?.vSecretEntry && !/^\\s*🔑/u.test(String(payload?.text ?? ""))) return false;
+        if (String(payload?.text ?? "").trim()) await vSend(payload.text).catch((err) => runtime.error?.(\`[wecom][v-experience] question delivery failed: \${String(err)}\`));
         return true;
     };
+    const vUnrouteQuestions = vExperience.onQuestionRequested(vSessionKey, (record) => vDeliverQuestionRecord(record));
     try {
         // 记录 inbound session 元数据（session 追踪）
 `,
@@ -117,7 +130,10 @@ import { callGatewayFromCli as vCallGateway } from "openclaw/plugin-sdk/gateway-
     name: "reply-options",
     anchor: "            replyOptions: {\n",
     insert: "after",
-    code: `                onPartialReply: (payload) => {
+    code: `                allowToolLifecycleWhenProgressHidden: true,
+                commentaryProgressEnabled: true,
+                suppressDefaultToolProgressMessages: true,
+                onPartialReply: (payload) => {
                     if (!payload?.text) return;
                     vPartial = payload.text;
                     vSchedule();

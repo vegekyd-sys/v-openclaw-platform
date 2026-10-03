@@ -44,7 +44,7 @@ import { callGatewayFromCli as vCallGateway } from "openclaw/plugin-sdk/gateway-
 \t\t}, Math.max(50, 800 - (Date.now() - lastUpdateTime)));
 \t\tvRefreshTimer.unref?.();
 \t};
-\tconst vWork = vExperience.createWorkView({ sessionKey: params.vSessionKey, onChange: () => vScheduleRefresh() });
+\tconst vWork = vExperience.createWorkView({ sessionKey: params.vSessionKey, onChange: () => vScheduleRefresh(), log: (message) => log.info(message) });
 `,
   },
   {
@@ -69,39 +69,49 @@ import { callGatewayFromCli as vCallGateway } from "openclaw/plugin-sdk/gateway-
 \t\t\tlog.warn(\`[DingTalk][v-experience] work refresh failed: \${err?.message || err}\`);
 \t\t}
 \t};
-\t// ${MARKER}: questions and credential requests arrive as tool payloads, which
-\t// the connector used to drop, leaving the agent waiting for an answer nobody saw.
+\t// ${MARKER}: show a question as its own message. Worker runs announce it on the
+\t// Gateway question listener; other runtimes also send it as a payload, which
+\t// the connector used to drop. Either way it is shown once.
+\tconst vSend = async (markdown) => {
+\t\tawait sendMessage(account.config, sessionWebhook, markdown, { useMarkdown: true, log: params.runtime.log, cfg });
+\t\toutboundUserVisibleThisTurn = true;
+\t};
+\tconst vDeliverQuestionRecord = async (question) => {
+\t\tif (!question?.id) return false;
+\t\tconst secret = question.questions?.some((q) => q.isSecret || q.secretStore);
+\t\tif (!secret && !vExperience.isRenderableAsk(question)) return false;
+\t\tif (!vExperience.claimQuestionDelivery(question.id)) return true;
+\t\ttry {
+\t\t\tif (secret) {
+\t\t\t\tawait vSend(vExperience.secretQuestionNotice(question));
+\t\t\t\tawait vCallGateway("question.resolve", { config: cfg }, { id: question.id, cancel: true, resolvedBy: "dingtalk:credential-unsupported" }, { scopes: ["operator.questions"], progress: false, timeoutMs: 5000 }).catch(() => {});
+\t\t\t} else {
+\t\t\t\tawait vSend(vExperience.askPromptMarkdown(question));
+\t\t\t\tvExperience.trackChatQuestion({ channel: "dingtalk", chatKey: \`\${accountId ?? "default"}:\${conversationId}\`, senderId, record: question });
+\t\t\t\tvWork.questionPending(true);
+\t\t\t}
+\t\t\tlog.info(\`[DingTalk][v-experience] delivered question \${question.id}\${secret ? " (credential, cancelled)" : ""}\`);
+\t\t} catch (err) {
+\t\t\tlog.error(\`[DingTalk][v-experience] question delivery failed: \${err?.message || err}\`);
+\t\t}
+\t\treturn true;
+\t};
 \tconst vDeliverToolPayload = async (payload) => {
 \t\tconst questionId = payload?.channelData?.askUser?.questionId;
-\t\tlet markdown;
-\t\tlet vQuestion;
 \t\tif (questionId) {
 \t\t\ttry {
 \t\t\t\tconst { question } = await vCallGateway("question.get", { config: cfg }, { id: questionId }, { scopes: ["operator.questions"], progress: false, timeoutMs: 3000 });
 \t\t\t\tif (question?.status && question.status !== "pending") return true;
-\t\t\t\tif (vExperience.isRenderableAsk(question)) {
-\t\t\t\t\tvQuestion = question;
-\t\t\t\t\tmarkdown = vExperience.askPromptMarkdown(question);
-\t\t\t\t}
+\t\t\t\tif (await vDeliverQuestionRecord(question)) return true;
 \t\t\t} catch (err) {
 \t\t\t\tlog.warn(\`[DingTalk][v-experience] question.get failed: \${err?.message || err}\`);
 \t\t\t}
-\t\t\tmarkdown ??= payload.text;
-\t\t\tvWork.questionPending(true);
-\t\t} else if (payload?.channelData?.vSecretEntry || /^\\s*🔑/u.test(String(payload?.text ?? ""))) {
-\t\t\tmarkdown = payload.text;
-\t\t} else return false;
-\t\tif (!String(markdown ?? "").trim()) return true;
-\t\ttry {
-\t\t\tawait sendMessage(account.config, sessionWebhook, markdown, { useMarkdown: true, log: params.runtime.log, cfg });
-\t\t\toutboundUserVisibleThisTurn = true;
-\t\t\tif (vQuestion) vExperience.trackChatQuestion({ channel: "dingtalk", chatKey: \`\${accountId ?? "default"}:\${conversationId}\`, senderId, record: vQuestion });
-\t\t\tlog.info(\`[DingTalk][v-experience] delivered \${questionId ? "question " + questionId : "credential request"}\`);
-\t\t} catch (err) {
-\t\t\tlog.error(\`[DingTalk][v-experience] tool payload delivery failed: \${err?.message || err}\`);
-\t\t}
+\t\t\tif (!vExperience.claimQuestionDelivery(questionId)) return true;
+\t\t} else if (!payload?.channelData?.vSecretEntry && !/^\\s*🔑/u.test(String(payload?.text ?? ""))) return false;
+\t\tif (String(payload?.text ?? "").trim()) await vSend(payload.text).catch((err) => log.error(\`[DingTalk][v-experience] tool payload delivery failed: \${err?.message || err}\`));
 \t\treturn true;
 \t};
+\tconst vUnrouteQuestions = vExperience.onQuestionRequested(params.vSessionKey, (record) => vDeliverQuestionRecord(record));
 \t// ${MARKER}: after the answer, one line for the session's background work.
 \tconst vStartBackground = (card, finalText) => {
 \t\tvWork.dispose();
@@ -167,7 +177,7 @@ import { callGatewayFromCli as vCallGateway } from "openclaw/plugin-sdk/gateway-
     name: "cleanup",
     anchor: "\t\t\t\tlog.info(`[DingTalk][onCleanup] 清理回调`);\n",
     insert: "after",
-    code: "\t\t\t\tvWork.dispose();\n",
+    code: "\t\t\t\tvWork.dispose();\n\t\t\t\tvUnrouteQuestions();\n",
   },
   {
     name: "partial-text",
@@ -189,7 +199,10 @@ import { callGatewayFromCli as vCallGateway } from "openclaw/plugin-sdk/gateway-
     name: "progress-callbacks",
     anchor: "\t\t\tonCommandOutput: (payload) => {\n\t\t\t\tif (watchdogCard) armCardWatchdog();\n",
     insert: "before",
-    code: `\t\t\tonToolStart: (payload) => {
+    code: `\t\t\tallowToolLifecycleWhenProgressHidden: true,
+\t\t\tcommentaryProgressEnabled: true,
+\t\t\tsuppressDefaultToolProgressMessages: true,
+\t\t\tonToolStart: (payload) => {
 \t\t\t\tif (watchdogCard) armCardWatchdog();
 \t\t\t\tvWork.toolStart(payload);
 \t\t\t},

@@ -58,6 +58,8 @@ config.channels = {
 config.commands = { ...(config.commands ?? {}), ownerAllowFrom: USERS.map((u) => `telegram:${u}`) };
 config.plugins.entries = { ...(config.plugins.entries ?? {}), telegram: { ...(config.plugins.entries?.telegram ?? {}), enabled: true } };
 if (Array.isArray(config.plugins.allow) && !config.plugins.allow.includes("telegram")) config.plugins.allow.push("telegram");
+// Same routing as V: the channel belongs to the makaron agent.
+config.bindings = [...(config.bindings ?? []).filter((b) => b?.match?.channel !== "telegram"), { agentId: "makaron", match: { channel: "telegram" } }];
 config.cron = { ...(config.cron ?? {}), enabled: false };
 if (config.plugins.entries?.codex) config.plugins.entries.codex.enabled = false;
 const workerPlugin = config.plugins.entries?.["vlab-agent-worker-isolation"]?.config;

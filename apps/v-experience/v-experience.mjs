@@ -91,17 +91,20 @@ export function toolActivityLabel(name) {
  * Per-reply work state. `onChange()` is called whenever what should be shown
  * changes; `markdown()` renders it (standard markdown, no HTML).
  */
-export function createWorkView({ sessionKey, onChange = () => {}, maxCommentary = 2 } = {}) {
+export function createWorkView({ sessionKey, onChange = () => {}, maxCommentary = 2, log } = {}) {
   let steps = [];
+  const seen = { card: 0, tool: 0, item: 0, plan: 0 };
   let tool = "";
   let compacting = false;
   let question = false;
   const commentary = new Map(); // itemId -> text
   let disposed = false;
   const changed = () => { if (!disposed) try { onChange(); } catch {} };
-  const unsubscribe = subscribeProgressCard(sessionKey, (next) => { steps = next; changed(); });
+  const unsubscribe = subscribeProgressCard(sessionKey, (next) => { seen.card += 1; steps = next; changed(); });
   return {
     toolStart(payload) {
+      seen.tool += 1;
+      question = false;
       const name = payload?.name;
       if (!name || isProgressCardToolName(name)) return false;
       if (payload.phase && payload.phase !== "start") return false;
@@ -112,6 +115,7 @@ export function createWorkView({ sessionKey, onChange = () => {}, maxCommentary 
       return true;
     },
     itemEvent(payload) {
+      seen.item += 1;
       if (payload?.kind !== "preamble" && payload?.kind !== "commentary") return false;
       const text = String(payload.progressText ?? payload.text ?? "").replace(/[\u0000-\u0008\u000b-\u001f]/g, "").replace(/\s+/g, " ").trim();
       if (!text) return false;
@@ -123,6 +127,7 @@ export function createWorkView({ sessionKey, onChange = () => {}, maxCommentary 
       return true;
     },
     planUpdate(payload) {
+      seen.plan += 1;
       if (payload?.phase && payload.phase !== "update") return false;
       const next = normalizePlanSteps(payload?.steps);
       if (!next.length) return false;
@@ -157,7 +162,12 @@ export function createWorkView({ sessionKey, onChange = () => {}, maxCommentary 
       if (!work) return text;
       return text ? `${text}\n\n---\n\n${work}` : work;
     },
-    dispose() { disposed = true; unsubscribe(); },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      unsubscribe();
+      log?.(`v-experience: work view ${sessionKey} events card=${seen.card} tool=${seen.tool} item=${seen.item} plan=${seen.plan}`);
+    },
   };
 }
 
@@ -493,6 +503,62 @@ export function createAskRuntime({ getQuestion, resolve, log }) {
       return entry;
     },
   };
+}
+
+// ------------------------------------------------- question delivery
+//
+// A Worker run registers its question with the Gateway (`question.request`);
+// no reply payload carries it to the channel. V's core announces every new
+// question on a global listener set (secret-entry runtime v2), which Feishu
+// already uses. A reply that is in progress claims its session's questions
+// here; the payload path (`channelData.askUser`) stays as a fallback, and a
+// question is shown once whichever path sees it first.
+
+const QUESTION_LISTENERS = Symbol.for("openclaw.questionChannelRequestedListeners");
+const questionRoutes = new Map(); // lower(sessionKey) -> [{deliver}], newest last
+const deliveredQuestions = new Map(); // question id -> at
+let questionListener;
+
+function ensureQuestionListener() {
+  const listeners = globalThis[QUESTION_LISTENERS];
+  if (!(listeners instanceof Set)) return false;
+  questionListener ??= (record) => {
+    if (record?.status && record.status !== "pending") return;
+    const routes = questionRoutes.get(lower(record?.sessionKey));
+    const route = routes?.at(-1);
+    if (route) return route.deliver(record);
+  };
+  // The core clears this set when it restarts in process; join again.
+  if (!listeners.has(questionListener)) listeners.add(questionListener);
+  return true;
+}
+
+/** While a reply runs, new questions of its session are handed to `deliver`. */
+export function onQuestionRequested(sessionKey, deliver) {
+  const key = lower(sessionKey);
+  if (!key) return () => {};
+  ensureQuestionListener();
+  const route = { deliver };
+  questionRoutes.set(key, [...(questionRoutes.get(key) ?? []), route]);
+  return () => {
+    const left = (questionRoutes.get(key) ?? []).filter((r) => r !== route);
+    if (left.length) questionRoutes.set(key, left);
+    else questionRoutes.delete(key);
+  };
+}
+
+/** True the first time a question id is claimed for showing; false after. */
+export function claimQuestionDelivery(id) {
+  if (!id || deliveredQuestions.has(id)) return false;
+  deliveredQuestions.set(id, Date.now());
+  if (deliveredQuestions.size > 500) for (const [k, at] of deliveredQuestions) if (Date.now() - at > 24 * 3600_000) deliveredQuestions.delete(k);
+  return true;
+}
+
+/** Text for a question this channel cannot take (a credential). */
+export function secretQuestionNotice(record) {
+  const name = record?.questions?.[0]?.secretStore?.name ?? record?.questions?.[0]?.header ?? "凭据";
+  return `🔑 V 需要一个凭据（${name}）。这个聊天渠道不能安全地输入凭据，请在飞书私聊里让 V 重新索取。`;
 }
 
 // ------------------------------------------------- questions asked in chat
