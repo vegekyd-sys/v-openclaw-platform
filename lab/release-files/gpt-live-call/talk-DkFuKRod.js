@@ -1,3 +1,5 @@
+// gpt-live-native-confirmation-v1: durable caller affirmation
+import { authorizeGptLiveClientVoicePendingConfirmation } from "./agent-tools.before-tool-call-g2OT63u5.js";
 // gpt-live-consult-continuation-v1: Talk
 import { resolveGptLiveVoiceConsultControl } from "./gpt-live-consult-continuation.js";
 import { D as resolveExpiresAtMsFromDurationMs, E as resolveDateTimestampMs, b as parseFiniteNumber, g as isFutureDateTimestampMs, o as asDateTimestampMs } from "./number-coercion-CLj0HTDM.js";
@@ -520,7 +522,7 @@ function createTalkClientGatewayControlOwner(params) {
 			signal.throwIfAborted();
 			params.assertConnectionOpen?.();
 		},
-		runAgentConsult: async ({ prompt, signal: consultSignal = new AbortController().signal, onProgress, continuationIdentity, onCanceled, onRunStarted }) => {
+		runAgentConsult: async ({ prompt, signal: consultSignal = new AbortController().signal, onProgress, continuationIdentity, onCanceled, onRunStarted, callerInputAcceptedAt }) => {
 			owner.assertOpen();
 			if (owners.get(params.voiceSessionId) !== owner) throw new Error("Realtime voice session is not active");
 			const continuationContext = continuationIdentity ? {
@@ -528,7 +530,23 @@ function createTalkClientGatewayControlOwner(params) {
 				onCanceled, onRunStarted,
 				isCurrent: () => { owner.assertOpen(); return owners.get(params.voiceSessionId) === owner; }
 			} : void 0;
-			return await params.runAgentConsult({ question: prompt }, AbortSignal.any([consultSignal, signal]), onProgress, continuationContext);
+			// Only the host's durable finalized USER transcript can authorize this.
+			// Neither the native prompt nor a model-supplied id is an affirmation.
+			await params.flushTranscript();
+			owner.assertOpen();
+			consultSignal.throwIfAborted();
+			if (owners.get(params.voiceSessionId) !== owner) throw new Error("Realtime voice session is not active");
+			const spokenGrant = authorizeGptLiveClientVoicePendingConfirmation({
+				agentId: params.sessionTarget.agentId,
+				sessionKey: params.sessionTarget.sessionKey,
+				voiceSessionId: params.voiceSessionId,
+				callerInputAcceptedAt
+			});
+			// Existing runArgs validates again and binds the exact one-shot grant at
+			// actual onRunStarted. Canonical tool params must still match at execution.
+			return await params.runAgentConsult({ question: prompt,
+				...spokenGrant ? { confirmationId: spokenGrant.confirmationId } : {}
+			}, AbortSignal.any([consultSignal, signal]), onProgress, continuationContext);
 		},
 		control: {
 			bindBridge: (nextBridge) => {

@@ -164,6 +164,7 @@ var OpenAIQuicksilverDelegationController = class {
 			userBidiTurnId, inputKey,
 			userTranscriptRevision: this.userTranscriptRevision,
 			userTurnTranscriptText: this.nativeUserTurnText.get(userBidiTurnId)?.text,
+			callerInputAcceptedAt: Date.now(),
 			generation: ++this.issuedDelegationGeneration,
 			prompt: buildOpenAIQuicksilverDelegationPrompt({
 				input,
@@ -478,6 +479,7 @@ var OpenAIQuicksilverDelegationController = class {
 			const result = await this.options.runAgentConsult({
 				prompt: delegation.prompt,
 				signal,
+				callerInputAcceptedAt: delegation.callerInputAcceptedAt,
 				continuationIdentity: { delegationItemId: delegation.id, delegationGeneration: delegation.generation },
 				onRunStarted: ({ runId, steeringConsumed }) => {
 					if (!finished && this.isCurrentDelegation(delegation, signal)) {

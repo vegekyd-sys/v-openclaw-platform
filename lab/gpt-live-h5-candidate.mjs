@@ -12,6 +12,8 @@ import {GPT_LIVE_CALL_INSTRUCTIONS} from './gpt-live-h5/instructions.mjs';
 import {createLiveH5Server} from './gpt-live-h5/server.mjs';
 import {parsePublicProgressDiagnostics} from './gpt-live-h5-provenance-evidence.mjs';
 import {collectCandidateSelectedModelReferences,assertCandidateSelectedModelsPreserved,scopeCandidateAgentToAgentAllow,disableCandidateParallelToolCalls,preflightCandidateConfig} from './gpt-live-candidate-config-guard.mjs';
+import {startOwnedProcObserver} from './gpt-live-candidate-native/os-observer-lifecycle.mjs';
+import {parseVoiceConfirmationDiagnostics} from './gpt-live-candidate-native/confirmation-evidence.mjs';
 
 const runtime=process.env.VLAB_CANDIDATE_RUNTIME,state=process.env.OPENCLAW_STATE_DIR,configPath=process.env.OPENCLAW_CONFIG_PATH;
 assert(runtime&&state&&configPath,'Disposable candidate environment required');
@@ -28,7 +30,8 @@ if(clipsArchive) {
   const names=execFileSync('tar',['-tzf',path.resolve(clipsArchive)],{encoding:'utf8'}).trim().split('\n');
   const allowed=process.env.GPT_LIVE_H5_COMPREHENSIVE_CLIPS==='1'
     ?new Set(['manifest.json',...['long-task','barge','cancel-task','new-greeting','count','ack','followup',
-      ...((process.env.GPT_LIVE_H5_CASE??'').split(',').includes('comprehensive-queued-steer')?['queued-task']:[])].flatMap(name=>[name+'.wav',name+'.txt'])])
+      ...((process.env.GPT_LIVE_H5_CASE??'').split(',').includes('comprehensive-queued-steer')?['queued-task']:[]),
+      ...(process.env.GPT_LIVE_H5_CONTROL_CONFIRMATION==='1'?['confirmation']:[])].flatMap(name=>[name+'.wav',name+'.txt'])])
     :new Set(['silence.wav',...['long-request','long-child-request','chat','barge','new-greeting'].flatMap(name=>[name+'.wav',name+'.txt'])]);
   assert(names.length===allowed.size&&names.every(name=>allowed.has(name))&&new Set(names).size===names.length,'Unexpected or missing synthetic clip archive member');
   const entries=execFileSync('tar',['-tvzf',path.resolve(clipsArchive)],{encoding:'utf8'}).trim().split('\n');
@@ -243,7 +246,7 @@ if(process.env.GPT_LIVE_H5_EVIDENCE_DIR) {
 }
 const tracePath=path.join(state,'gateway-stdout.log'),sessionPath=path.join(state,'h5-session.json');
 fs.writeFileSync(tracePath,'',{flag:'wx',mode:0o600});
-let gateway,client,bridge,smoke;let recent=[];
+let gateway,client,bridge,smoke,osObserver;let recent=[];
 const experience=process.env.GPT_LIVE_H5_INTERACTIVE==='1';
 const experienceAfterTests=process.env.GPT_LIVE_H5_EXPERIENCE_AFTER_TESTS==='1';
 const shutdown=new AbortController();
@@ -354,8 +357,16 @@ try {
   const evidenceBase=process.env.GPT_LIVE_H5_EVIDENCE_DIR;
   assert(evidenceBase&&path.isAbsolute(evidenceBase),'Absolute candidate evidence directory required');
   fs.mkdirSync(evidenceBase,{recursive:true,mode:0o700});
+  if(cases.some(testCase=>testCase.startsWith('comprehensive-'))) {
+    assert(process.env.GPT_LIVE_H5_OS_OBSERVER_CONFIG,'Comprehensive native cases require a frozen first-case OS observer barrier');
+    const started=await startOwnedProcObserver({configPath:process.env.GPT_LIVE_H5_OS_OBSERVER_CONFIG,
+      candidateId:process.env.VLAB_CANDIDATE_ID,unit:process.env.VLAB_CANDIDATE_UNIT,
+      sourceCommit:process.env.GPT_LIVE_H5_SOURCE_COMMIT,gatewayPid:gateway.pid,candidateRuntime:runtime,evidenceDir:evidenceBase,
+      signal:shutdown.signal});osObserver=started.child;
+  }
   const results=[];
   for(const testCase of cases) {
+    if(osObserver)assert(osObserver.exitCode===null&&osObserver.signalCode===null,'OS witness must still cover this original native case');
     const helper=testCase.startsWith('comprehensive-')?'lab/gpt-live-candidate-native/native-smoke.mjs':testCase==='workflow'?'lab/gpt-live-h5-provenance-smoke.mjs':'lab/gpt-live-h5-control-smoke.mjs';
     const clips=process.env.GPT_LIVE_H5_USER_CLIPS_DIR;
     smoke=spawn(process.execPath,[helper],{env:{...process.env,
@@ -383,6 +394,7 @@ try {
 } finally {
   process.removeListener('SIGTERM',requestShutdown);process.removeListener('SIGINT',requestShutdown);
   await stop(smoke);
+  await stop(osObserver);
   try { await bridge?.dispose(); } finally {
     client?.stop(); await stop(gateway);
     // Preserve only structured, metadata-only public trace events. The private
@@ -392,6 +404,8 @@ try {
       fs.mkdirSync(evidence,{recursive:true,mode:0o700});
       fs.writeFileSync(path.join(evidence,'native-public-diagnostics.json'),
         JSON.stringify(parsePublicProgressDiagnostics(fs.readFileSync(tracePath,'utf8')),null,2)+'\n',{mode:0o600});
+      fs.writeFileSync(path.join(evidence,'voice-confirmation-core-diagnostics.json'),
+        JSON.stringify(parseVoiceConfirmationDiagnostics(fs.readFileSync(tracePath,'utf8')),null,2)+'\n',{mode:0o600});
     }
     if(experienceReadyWritten)fs.writeFileSync(experienceReadyPath,
       JSON.stringify({...experienceMetadata,state:'closed',outcome:experienceOutcome,closedAt:new Date().toISOString()},null,2)+'\n',{mode:0o600});

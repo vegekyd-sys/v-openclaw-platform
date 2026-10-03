@@ -1,5 +1,5 @@
 {
-  "baseRelease": "hotreload-feishu-approvals-v1",
+  "baseRelease": "hotreload-feishu-approvals-v2",
   "files": [
     {
       "source": "lab/release-files/gpt-live-native-progress/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
@@ -22,7 +22,7 @@
       "before": "8626acc98d1ea5076d7b4e455246a02f0f80372b9f38cc4161c83a2aa5da840b"
     },
     {
-      "source": "lab/release-files/gpt-live-completion-context/index.mjs",
+      "source": "lab/release-files/gpt-live-call/worker-index.mjs",
       "target": "production-worker/index.mjs",
       "before": "b5f315bb20cb5eb5a3e30bec32e9bfe365b948bd7ce271298fbd53516bf4c315"
     },
@@ -62,6 +62,11 @@
       "before": "52b6ea5448e758f6d764200d946853be80a0fe5b419629801ee761173741d848"
     },
     {
+      "source": "lab/release-files/gpt-live-call/agent-tools.before-tool-call-g2OT63u5.js",
+      "target": "openclaw/dist/agent-tools.before-tool-call-g2OT63u5.js",
+      "before": "e61b81d47b1dfb30ae42c6ee49607e5a2ba8935d8ad2389b8eec11f950079bfc"
+    },
+    {
       "source": "lab/release-files/gpt-live-call/host-capability-Dq3cEEWF.js",
       "target": "openclaw/dist/host-capability-Dq3cEEWF.js",
       "before": "4535cb192dff71e0d3602f19ebbba6191f98a2f21013c2fa33e0b87386eaa5ce"
@@ -90,6 +95,11 @@
       "source": "lab/release-files/gpt-live-call/gpt-live-voice-exec-lifetime.js",
       "target": "openclaw/dist/gpt-live-voice-exec-lifetime.js",
       "before": null
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/builtin-openclaw-zQV8Wwjr.js",
+      "target": "openclaw/dist/builtin-openclaw-zQV8Wwjr.js",
+      "before": "f121be943b9694cbc73a00529a38235df4f6ebdb652208fa103c44b7a8ca0e80"
     }
   ],
   "tests": [
@@ -106,6 +116,11 @@
     "lab/gpt-live-call-live-evidence.test.mjs",
     "lab/gpt-live-consult-continuation.test.mjs",
     "lab/gpt-live-voice-exec-lifetime.test.mjs",
+    "lab/gpt-live-voice-confirmation.test.mjs",
+    "lab/gpt-live-native-confirmation.test.mjs",
+    "lab/gpt-live-voice-tool-order.test.mjs",
+    "lab/gpt-live-candidate-native/confirmation-evidence.test.mjs",
+    "lab/gpt-live-candidate-native/os-observer-lifecycle.test.mjs",
     "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-spawn-gateway-proxy.test.mjs",
     "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-yield-external-task.test.mjs",
     "lab/gpt-live-pr-provenance.test.mjs",
@@ -126,6 +141,7 @@
     "lab/fixtures/gpt-live-native-progress/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
     "release/captured/v2026.9.1-db91.6-background-work-20261002/dist/realtime-session-harness-CEO5kVAJ.js",
     "release/captured/v2026.9.1-db91.6-background-work-20261002/dist/talk-DkFuKRod.js",
+    "release/captured/v2026.9.1-db91.6-memory-search-fast-20261002/dist/talk-DkFuKRod.js",
     "release/captured/v2026.9.1-db91.6-background-work-20261002/dist/builtin-openclaw-zQV8Wwjr.js",
     "lab/release-files/background-work-20261002/vlab-codex-parity/run-attempt-D1hJO4fX.js",
     "lab/gpt-live-h5/server.mjs",
@@ -156,6 +172,20 @@
     "release/captured/v2026.9.1-db91.6-memory-search-weighted-20261002.worker/dist/native-attempt-bridge.mjs",
     "release/captured/v2026.9.1-db91.6-memory-search-weighted-20261002.worker/dist/gateway-message-tool.mjs",
     "release/captured/v2026.9.1-db91.6-hotreload-feishu-approvals-20261003.worker/dist/worker-pool.mjs",
+    "lab/gpt-live-voice-confirmation.mjs",
+    "lab/patch-gpt-live-voice-confirmation.mjs",
+    "lab/patch-gpt-live-native-confirmation.mjs",
+    "lab/release-files/gpt-live-completion-context/index.mjs",
+    "lab/fixtures/gpt-live-voice-confirmation/agent-tools.before-tool-call-g2OT63u5.js",
+    "lab/fixtures/gpt-live-voice-confirmation/tool-mutation-7Z6dWuA8.js",
+    "lab/patch-gpt-live-voice-tool-order.mjs",
+    "lab/fixtures/gpt-live-voice-tool-order/builtin-openclaw-zQV8Wwjr.js",
+    "lab/fixtures/gpt-live-voice-tool-order/agent-core-BxgCPa8O.js",
+    "lab/fixtures/gpt-live-voice-tool-order/capture-provenance.json",
+    "lab/gpt-live-candidate-native/confirmation-evidence.mjs",
+    "lab/gpt-live-candidate-native/evidence.mjs",
+    "lab/gpt-live-candidate-native/os-observer-lifecycle.mjs",
+    "lab/gpt-live-candidate-native/owned-proc-witness.py",
     "release/captured/v2026.9.1-db91.6-memory-search-weighted-20261002.worker/dist/worker-pool.mjs",
     "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-spawn-gateway-proxy.mjs",
     "release/captured/v2026.9.1-db91.6-background-work-20261002/dist/sessions-spawn-tool-1FQMTkIo.js",
@@ -193,7 +223,7 @@
     "lab/release-files/gpt-live-call/gateway-public-stream.mjs",
     "lab/release-files/gpt-live-call/realtime-session-harness-CEO5kVAJ.js",
     "lab/release-files/gpt-live-call/talk-DkFuKRod.js",
-    "lab/release-files/gpt-live-completion-context/index.mjs",
+    "lab/release-files/gpt-live-call/worker-index.mjs",
     "lab/release-files/gpt-live-completion-context/gateway-completion-context.mjs",
     "lab/release-files/gpt-live-call/subagent-registry-C24yr_PF.js",
     "lab/release-files/gpt-live-call/subagent-announce.requester-settle-wake-B2NSziIo.js",
@@ -201,12 +231,14 @@
     "lab/release-files/gpt-live-call/agent-harness-task-runtime.js",
     "lab/release-files/gpt-live-call/gpt-live-consult-continuation.js",
     "lab/release-files/gpt-live-call/sessions-spawn-tool-1FQMTkIo.js",
+    "lab/release-files/gpt-live-call/agent-tools.before-tool-call-g2OT63u5.js",
     "lab/release-files/gpt-live-call/host-capability-Dq3cEEWF.js",
     "lab/release-files/gpt-live-call/bash-tools-DiAfkLAC.js",
     "lab/release-files/gpt-live-call/native-attempt-bridge.mjs",
     "lab/release-files/gpt-live-call/gateway-message-tool.mjs",
     "lab/release-files/gpt-live-call/worker-pool.mjs",
-    "lab/release-files/gpt-live-call/gpt-live-voice-exec-lifetime.js"
+    "lab/release-files/gpt-live-call/gpt-live-voice-exec-lifetime.js",
+    "lab/release-files/gpt-live-call/builtin-openclaw-zQV8Wwjr.js"
   ],
   "timeoutSeconds": 120
 }

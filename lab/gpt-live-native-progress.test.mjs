@@ -103,6 +103,24 @@ test("final-only consult remains one terminal result", async () => {
   assert.equal(f.controller.activeDelegationId, undefined);
 });
 
+test("queued native caller checkpoint stays at acceptance and cannot borrow a later caller's affirmation", async t => {
+  let now = 1000;
+  t.mock.method(Date, "now", () => now);
+  const f = fixture();
+  f.controller.startDelegation("current", "first request");
+  assert.equal(f.calls[0].callerInputAcceptedAt, 1000);
+  now = 1100;
+  f.controller.startDelegation("queued-earlier", "an unrelated queued request");
+  assert.equal(f.calls.length, 1);
+  now = 1900;
+  f.calls[0].resolve({ text: "first result" });
+  await settle();
+  assert.equal(f.calls[1].callerInputAcceptedAt, 1100, "launch time cannot rebind old queued work to a newer USER confirmation");
+  f.calls[1].resolve({ text: "second result" });
+  await settle();
+  f.controller.detach();
+});
+
 test("completed same-turn replay cannot restart work while changed conditions and new caller turns remain valid", async () => {
   const f = fixture();
   const frame = (id, text, turn = "turn-original") => JSON.stringify({ type: "delegation.created", item: {

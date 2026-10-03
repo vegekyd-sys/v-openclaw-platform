@@ -13,6 +13,9 @@ import {parseCompleteTimestamps} from '../gpt-live-call-live-evidence.mjs';
 import {indexNativeToolPairs,mergeExactToolBodies,mergeSessionToolEvidence,extractExecDateFromPairs,continuousPlaybackQuiet,explicitSpokenOffsets,resolveNativeControlOwner,resolveCanonicalFinalTrace,toolResultSucceeded,isExactTwoPlusTwoReply,nativeCountRequestsEighty,hasOrderedCountBeginning,resolveOwnedChildExecPending,resolveOwnedBargeTerminal,resolveNativeTurnTranscriptWindow,assessCompletePlaybackWindow,assessDecodedPlaybackWindow,assessEarlySpeechBoundary,resolveEarlyPlaybackTail,assessNativeResponseDrain,assessIndependentInputConvergence,matchesConsumedConditionBatch,extractQueuedConditionResume} from './evidence.mjs';
 import {readPrivateChildTranscript,activeTranscriptMessages} from './read-child-transcript.mjs';
 import {extractControlExecWitness,assessControlExecPending,matchesExactControlMarker} from '../gpt-live-h5-control-evidence.mjs';
+import {resolveControlExecConfirmationChallenge,resolveConfirmationUserTurn,resolveConfirmedControlExec,
+  confirmationArgsFingerprint,findDurableConfirmationUserMessage,parseVoiceConfirmationDiagnostics,
+  assessControlConfirmationCoreReceipt} from './confirmation-evidence.mjs';
 assert(process.env.VLAB_CANDIDATE_ID&&process.env.GPT_LIVE_H5_READY==='1','Ready private Candidate H5 required');
 const testCase=process.env.GPT_LIVE_H5_CASE;assert(['comprehensive-long','comprehensive-controls','comprehensive-queued-steer'].includes(testCase));
 const base=process.env.GPT_LIVE_H5_EVIDENCE_DIR;assert(path.isAbsolute(base));fs.mkdirSync(base,{recursive:true,mode:0o700});
@@ -27,7 +30,7 @@ const app=await fetch(new URL('app.js',url)).then(r=>r.arrayBuffer());assert.equ
 const deadline=Date.now()+Number(process.env.GPT_LIVE_H5_NATIVE_CASE_SECONDS??600)*1000;
 const token=String(config.gateway.auth.token).replace(/\$\{([^}]+)\}/gu,(_,key)=>{assert(process.env[key]);return process.env[key]});
 const scratch=fs.mkdtempSync(path.join(stateRoot,'tmp',testCase+'-'));fs.chmodSync(scratch,0o700);
-let pulse,chrome,chromeTemp,chromeStderr='',cdp,gateway,lastState,lastHistory={},currentSession,summary,cleanup;
+let pulse,chrome,chromeTemp,chromeStderr='',cdp,gateway,lastState,lastHistory={},currentSession,summary,cleanup,controlConfirmation;
 const checks=[],sessionKeys=[],toolEvents=[],subscribedSessions=new Set(),callOwners=new Map(),speechPlaybackWindows=[];
 function hash(value){return createHash('sha256').update(value).digest('hex')}
 function save(name,value){fs.writeFileSync(path.join(base,name),JSON.stringify(value,null,2)+'\n',{mode:0o600});}
@@ -103,6 +106,7 @@ function parentEvidencePairs(history=lastHistory.parent) {
  return mergeSessionToolEvidence(toolEvents,extractToolPairs(history),currentSession);
 }
 function diagnostics(){return parsePublicProgressDiagnostics(fs.readFileSync(process.env.GPT_LIVE_H5_TRACE_PATH,'utf8'));}
+function confirmationDiagnostics(){return parseVoiceConfirmationDiagnostics(fs.readFileSync(process.env.GPT_LIVE_H5_TRACE_PATH,'utf8'));}
 async function startCall() {
  const pcIndex=(await snapshot()).pcStates.length;
  await clickOriginalButton('start');
@@ -259,7 +263,84 @@ async function longTask() {
 }
 async function controls() {
  const pcIndex=await startCall(),cancelInput=play('cancel-task');await cancelInput.done;
- const accepted=await waitFor(async()=>{await readHistory();const pending=assessControlExecPending(lastHistory.parent,60,{requireDateInCommand:false});return pending.pending&&parentEvidencePairs().find(p=>p.id===pending.execCallId&&p.sourceExecutionTimingVerified===true);},'Actual pending backend sleep60 in the requested wait-then-date task',90000);
+ let confirmationAttempted=false;
+ const accepted=await waitFor(async state=>{
+  await readHistory();const pairs=parentEvidencePairs(),pending=assessControlExecPending(lastHistory.parent,60,{requireDateInCommand:false});
+  const candidate=pending.pending&&pairs.find(p=>p.id===pending.execCallId&&p.sourceExecutionTimingVerified===true);
+  if(candidate) {
+   if(!confirmationAttempted)return candidate;
+   const userTurn=resolveConfirmationUserTurn(state.events,{pcIndex,input:controlConfirmation.input,challenge:controlConfirmation.challenge});
+   const owner=resolveNativeControlOwner({diagnostics:diagnostics(),events:state.events,tools:state.tools,
+    backendRunId:candidate.runId,voiceSessionId:callOwners.get(pcIndex)?.voiceSessionId,pcIndex});
+   const confirmed=resolveConfirmedControlExec(pairs,{challenge:controlConfirmation.challenge,userTurn,owner,input:controlConfirmation.input});
+   if(confirmed?.id!==candidate.id)return false;
+   controlConfirmation.userTurn=userTurn;controlConfirmation.newOwner=owner;
+   controlConfirmation.actualNewExec={callId:confirmed.id,runId:confirmed.runId,sessionKey:confirmed.sessionKey,
+    calledAt:confirmed.calledAt,args:confirmed.args,argsObservationSha256:confirmationArgsFingerprint(confirmed.args),rawStart:confirmed.rawEnvelopes.find(e=>e.payload.data.phase==='start')};
+   controlConfirmation.newNativeDelegation=state.events.find(e=>e.pcIndex===pcIndex&&e.type==='delegation.created'&&e.raw?.item?.id===owner.delegationId);
+   controlConfirmation.newBackendStarted=diagnostics().find(d=>d.stage==='backend-run-started'&&d.sourceRunIdSha256===owner.sourceRunIdSha256&&
+    d.traceId===owner.traceId&&d.delegationId===owner.delegationId&&d.generation===owner.generation);
+   save('control-confirmation-evidence.json',controlConfirmation);return confirmed;
+  }
+  if(confirmationAttempted)return false;
+  if(process.env.GPT_LIVE_H5_CONTROL_CONFIRMATION!=='1')return false;
+  const challenge=resolveControlExecConfirmationChallenge(pairs,{sessionKey:currentSession,
+   voiceSessionId:callOwners.get(pcIndex)?.voiceSessionId,pcIndex,diagnostics:diagnostics(),events:state.events,tools:state.tools,
+   initialInput:cancelInput.row,alreadyAttempted:confirmationAttempted});
+  if(!challenge)return false;
+  // Mark the one allowed attempt before awaiting anything. A later challenge,
+  // timeout or unrelated tool failure can never replay this USER utterance.
+  confirmationAttempted=true;controlConfirmation={attempted:true,playbackLimit:1,challenge,
+   originalRequestInput:cancelInput.row,syntheticUserPCM:true,syntheticGrant:false,confirmationIdSentByObserver:false};
+  save('control-confirmation-evidence.json',controlConfirmation);
+  const original=await convergeInputTurn(cancelInput,pcIndex,'Original request before explicit action confirmation');
+  const originalState=await snapshot(true),originalTurn=originalState.events.find(e=>e.pcIndex===pcIndex&&
+   e.type==='turn.done'&&e.role==='user'&&e.turnId===original.turnId);
+  assert(originalTurn&&/(?:六十|60)/u.test(originalTurn.text)&&/等待|等|睡眠|sleep/iu.test(originalTurn.text)&&
+   /时间|日期|date/iu.test(originalTurn.text),'The actual original USER must request this sleep60/time task');
+  controlConfirmation.originalRequestConvergence=original;controlConfirmation.originalRequestUserTurn=originalTurn;
+  assert(fs.readFileSync(path.join(clips,'confirmation.txt'),'utf8').trim()==='确认执行。','Frozen explicit USER confirmation fixture required');
+  const input=play('confirmation');controlConfirmation.input=input.row;save('control-confirmation-evidence.json',controlConfirmation);
+  await input.done;controlConfirmation.confirmationInputConvergence=await convergeInputTurn(input,pcIndex,'Explicit action confirmation USER');
+  controlConfirmation.userTurn=resolveConfirmationUserTurn((await snapshot(true)).events,{pcIndex,input:input.row,challenge});
+  save('control-confirmation-evidence.json',controlConfirmation);
+  return false;
+ },'Actual pending backend sleep60 in the requested wait-then-date task, with at most one exact challenged USER confirmation',90000);
+ if(controlConfirmation?.attempted) {
+  let transcript;
+  if(lastHistory.parent?.sessionId)try{transcript=readPrivateChildTranscript({state:stateRoot,candidateData,
+   sessionId:lastHistory.parent.sessionId,runId:accepted.runId,requestedSessionKey:currentSession})}catch(error){transcript={observerError:error.message}}
+  save('control-confirmation-actual-user-transcript.json',transcript??{status:'missing-actual-parent-session'});
+  controlConfirmation.durableUserMessage=findDurableConfirmationUserMessage(transcript,
+   {sessionKey:currentSession,userTurn:controlConfirmation.userTurn,input:controlConfirmation.input});
+  controlConfirmation.durableTranscriptReadback={source:transcript?.source,canonicalSessionKey:transcript?.canonicalSessionKey,
+   sessionId:transcript?.sessionId,queryOnly:transcript?.queryOnly,observerError:transcript?.observerError??null,
+   runIdLabelIsNotSourceProof:true};
+  controlConfirmation.coreDiagnostics=confirmationDiagnostics();
+  controlConfirmation.coreReceipt=assessControlConfirmationCoreReceipt(controlConfirmation.coreDiagnostics,
+   {challenge:controlConfirmation.challenge,userTurn:controlConfirmation.userTurn,input:controlConfirmation.input,
+    owner:controlConfirmation.newOwner,execPair:accepted,durableUserMessage:controlConfirmation.durableUserMessage});
+  check('control-confirmation-exact-blocked-challenge',Boolean(controlConfirmation.challenge),{challenge:controlConfirmation.challenge});
+  check('control-confirmation-one-complete-user-input',Boolean(controlConfirmation.userTurn)&&
+   pulse.plays.filter(p=>p.label==='confirmation').length===1,{input:controlConfirmation.input,userTurn:controlConfirmation.userTurn,
+    source:'original native finalized USER event after one synthetic USER PCM; no model-supplied approval'});
+  check('control-confirmation-user-durable-sqlite-message',Boolean(controlConfirmation.durableUserMessage),
+   {message:controlConfirmation.durableUserMessage??null,readback:controlConfirmation.durableTranscriptReadback,
+    reason:controlConfirmation.durableUserMessage?null:'No exact finalized USER message is present in the same private canonical transcript'});
+  check('control-confirmation-new-native-run-and-exact-params',Boolean(controlConfirmation.newOwner)&&
+   Boolean(controlConfirmation.newNativeDelegation)&&Boolean(controlConfirmation.newBackendStarted)&&
+   confirmationArgsFingerprint(accepted.args)===controlConfirmation.challenge.argsObservationSha256,
+   {newOwner:controlConfirmation.newOwner,newNativeDelegation:controlConfirmation.newNativeDelegation,
+    newBackendStarted:controlConfirmation.newBackendStarted,actualNewExec:controlConfirmation.actualNewExec,
+    argsFingerprintScope:'sorted original actual tool args; an observation fingerprint, not a grant'});
+  check('control-confirmation-core-eligible-bind-consume',controlConfirmation.coreReceipt.identityValid,
+   {coreReceipt:controlConfirmation.coreReceipt,source:'actual private Gateway core trace; no observer grant or provider-supplied confirmation id'});
+  check('control-confirmation-core-durable-user-hash',controlConfirmation.coreReceipt.rawUserTextHashVerified,
+   {coreReceipt:controlConfirmation.coreReceipt,rawUser:controlConfirmation.durableUserMessage??null,
+    reason:controlConfirmation.coreReceipt.reason});
+  save('control-confirmation-evidence.json',controlConfirmation);
+ }else check('control-confirmation-not-injected-without-challenge',pulse.plays.every(p=>p.label!=='confirmation'),
+  {status:'not-triggered',approvalPathAccepted:false});
  const execStartEvent=toolEvents.find(event=>['agent','session.tool'].includes(event.event)&&event.payload?.stream==='tool'&&
    event.payload?.runId===accepted.runId&&event.payload?.sessionKey===currentSession&&event.payload.data?.phase==='start'&&
    (event.payload.data?.toolCallId??event.payload.data?.callId)===accepted.id);
@@ -270,7 +351,7 @@ async function controls() {
    backendRunId,voiceSessionId:callOwners.get(pcIndex)?.voiceSessionId,pcIndex});
  let pendingAfterBarge;
  try {
- await convergeInputTurn(cancelInput,pcIndex,'Original background request before the separate count input');
+ if(!controlConfirmation?.input)await convergeInputTurn(cancelInput,pcIndex,'Original background request before the separate count input');
  const count=play('count');await count.done;
  const activeTurn=s=>s.events.filter(e=>e.pcIndex===pcIndex&&e.type==='turn.created'&&e.role==='assistant'&&e.at>=count.row.startedAt&&!s.events.some(done=>done.pcIndex===pcIndex&&done.type==='turn.done'&&done.turnId===e.turnId)).at(-1);
  await waitFor(s=>activeTurn(s)&&audible(s,Date.now()-300,Infinity,pcIndex).length>=2,'Native count actively speaking',60000);
@@ -451,6 +532,9 @@ finally {
    {preCloseFullAvailable:Boolean(preCloseFull),postCloseFullAvailable:Boolean(postCloseFull),
     reason:postCloseFull?null:'Post-close full capture unavailable; a lightweight polling tail cannot replace original raw evidence'});
   lastState=postCloseFull??preCloseFull;
+  if(testCase==='comprehensive-controls')save('control-confirmation-evidence.json',controlConfirmation??
+   {attempted:false,status:'no exact native exec60 confirmation challenge selected',syntheticGrant:false});
+  save('voice-confirmation-core-diagnostics.json',confirmationDiagnostics());
   save('browser-native-evidence.json',lastState);save('backend-history.json',lastHistory);save('backend-tool-events.json',toolEvents);save('native-public-diagnostics.json',diagnostics());
   await evaluate(`globalThis.__candidateLiveProbe.dispose()`).catch(()=>{});
   const audio=await evaluate(`(async()=>{const p=globalThis.__candidateLiveProbe,rows=[];for(const recording of p.recordings){const blob=new Blob(recording.chunks,{type:'audio/webm;codecs=opus'}),bytes=new Uint8Array(await blob.arrayBuffer());let binary='';for(let at=0;at<bytes.length;at+=16384)binary+=String.fromCharCode(...bytes.subarray(at,at+16384));rows.push({pcIndex:recording.pcIndex,startedAt:recording.startedAt,blobBytes:blob.size,base64:btoa(binary),error:recording.error??null});}return rows})()`).catch(()=>[]);

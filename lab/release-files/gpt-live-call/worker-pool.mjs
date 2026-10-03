@@ -1,3 +1,4 @@
+// gpt-live-voice-tool-order-v1: worker-pool
 // gpt-live-voice-exec-lifetime-v1: worker-pool
 import {Console as FirsttextMetricConsole} from "node:console";
 const ocFirsttextMetricConsole = new FirsttextMetricConsole({stdout: process.stdout, stderr: process.stderr, ignoreErrors: true});
@@ -444,6 +445,13 @@ export class WorkerPool {
         ? options.sessionOwnerKey
         : sessionKey;
 
+    // A request/prompt/nativeHarnessData boolean cannot mint this mode.
+    const { gptLiveVoiceToolOrder: untrustedVoiceToolOrder, ...toolOrderRequest } = request;
+    const voiceSequential = request.nativeAttempt91 === true &&
+      typeof options.authorizeNativeVoiceToolOrder === "function" &&
+      options.authorizeNativeVoiceToolOrder() === true;
+    const admittedToolOrderRequest = voiceSequential
+      ? { ...toolOrderRequest, gptLiveVoiceToolOrder: "sequential-v1" } : toolOrderRequest;
     const requestId = `request-${nextPoolRequestId}`;
     nextPoolRequestId += 1;
     const promise = new Promise((resolve, reject) => {
@@ -451,7 +459,7 @@ export class WorkerPool {
         id: requestId,
         sessionKey,
         sessionOwnerKey,
-        request,
+        request: admittedToolOrderRequest,
         onEvent:
           typeof options.onEvent === "function" ? options.onEvent : undefined,
         onGatewayToolRequest: options.onGatewayToolRequest,

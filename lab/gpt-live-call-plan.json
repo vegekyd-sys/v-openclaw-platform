@@ -1,5 +1,5 @@
 {
-  "baseRelease": "hotreload-feishu-approvals-v1",
+  "baseRelease": "hotreload-feishu-approvals-v2",
   "files": [
     {
       "source": "lab/release-files/gpt-live-native-progress/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
@@ -22,7 +22,7 @@
       "before": "8626acc98d1ea5076d7b4e455246a02f0f80372b9f38cc4161c83a2aa5da840b"
     },
     {
-      "source": "lab/release-files/gpt-live-completion-context/index.mjs",
+      "source": "lab/release-files/gpt-live-call/worker-index.mjs",
       "target": "production-worker/index.mjs",
       "before": "b5f315bb20cb5eb5a3e30bec32e9bfe365b948bd7ce271298fbd53516bf4c315"
     },
@@ -62,6 +62,11 @@
       "before": "52b6ea5448e758f6d764200d946853be80a0fe5b419629801ee761173741d848"
     },
     {
+      "source": "lab/release-files/gpt-live-call/agent-tools.before-tool-call-g2OT63u5.js",
+      "target": "openclaw/dist/agent-tools.before-tool-call-g2OT63u5.js",
+      "before": "e61b81d47b1dfb30ae42c6ee49607e5a2ba8935d8ad2389b8eec11f950079bfc"
+    },
+    {
       "source": "lab/release-files/gpt-live-call/host-capability-Dq3cEEWF.js",
       "target": "openclaw/dist/host-capability-Dq3cEEWF.js",
       "before": "4535cb192dff71e0d3602f19ebbba6191f98a2f21013c2fa33e0b87386eaa5ce"
@@ -90,6 +95,11 @@
       "source": "lab/release-files/gpt-live-call/gpt-live-voice-exec-lifetime.js",
       "target": "openclaw/dist/gpt-live-voice-exec-lifetime.js",
       "before": null
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/builtin-openclaw-zQV8Wwjr.js",
+      "target": "openclaw/dist/builtin-openclaw-zQV8Wwjr.js",
+      "before": "f121be943b9694cbc73a00529a38235df4f6ebdb652208fa103c44b7a8ca0e80"
     }
   ]
 }

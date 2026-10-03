@@ -1,3 +1,4 @@
+// gpt-live-voice-tool-order-v1: worker-native
 // gpt-live-voice-exec-lifetime-v1: worker-native
 // Worker-only hooks. Contexts are registered by trusted IPC admission, never by
 // tool arguments. Native run ownership and permission checks remain in core.
@@ -96,17 +97,31 @@ export function createNativeAttemptBridge() {
     assertPrepared(runId) {
       if (!current(runId).prepared) throw new Error("OpenClaw 9.1 native Worker adapter patch was not executed");
     },
-    bind(attempt, handle, isCurrent, applyAuthorized) {
+    bind(attempt, handle, isCurrent, applyAuthorized, applyVoiceToolOrder) {
       const c = current(attempt.runId);
       if (attempt.sessionId !== c.message.sessionId) throw new Error("Worker native owner mismatch");
       const instance = attempt.admittedRunContext?.operationalRunInstance;
       if (!instance || instance.runId !== attempt.runId || attempt.agentId !== c.message.agentId || attempt.sessionKey !== c.message.sessionKey) {
         throw new Error("Worker exec admitted source mismatch");
       }
+      if (c.message.gptLiveVoiceToolOrder === "sequential-v1" && c.operationalRunInstance && c.operationalRunInstance !== instance) {
+        throw new Error("Worker voice tool-order admitted instance changed");
+      }
       c.operationalRunInstance = instance;
       c.handle = handle;
       c.isCurrent = isCurrent;
       c.applyAuthorized = applyAuthorized;
+      if (c.message.gptLiveVoiceToolOrder !== undefined && c.message.gptLiveVoiceToolOrder !== "sequential-v1") {
+        throw new Error("Unknown Worker voice tool-order admission");
+      }
+      if (c.message.gptLiveVoiceToolOrder === "sequential-v1") {
+        if (c.message.nativeAttempt91 !== true || !c.isCurrent?.() || c.handle?.isStopped?.() ||
+            typeof applyVoiceToolOrder !== "function") throw new Error("Worker voice tool-order owner is unavailable");
+        if (applyVoiceToolOrder() !== true || current(attempt.runId) !== c || !c.isCurrent() || c.handle.isStopped?.()) {
+          throw new Error("Worker voice tool-order was not applied to the admitted Agent");
+        }
+        c.voiceToolOrderApplied = true;
+      }
     },
     async applyPermission(runId, mode) {
       const c = current(runId);

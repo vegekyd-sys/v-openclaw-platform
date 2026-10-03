@@ -324,6 +324,7 @@ const runDelegationAfter = `\tisCurrentDelegation(delegation, signal) {
 \t\t\tconst result = await this.options.runAgentConsult({
 \t\t\t\tprompt: delegation.prompt,
 \t\t\t\tsignal,
+\t\t\t\tcallerInputAcceptedAt: delegation.callerInputAcceptedAt,
 \t\t\t\tcontinuationIdentity: { delegationItemId: delegation.id, delegationGeneration: delegation.generation },
 \t\t\t\tonRunStarted: ({ runId, steeringConsumed }) => {
 \t\t\t\t\tif (!finished && this.isCurrentDelegation(delegation, signal)) {
@@ -446,7 +447,7 @@ export function patchGptLiveNativeProgress(source) {
 \t\t\t\tproof?.complete === true && completed.text === proof.text) return;
 \t\t}`, "idempotent same-input provider replay");
   patched = replaceOnce(patched, "\t\tconst transcript = this.transcript;\n\t\tthis.transcript = [];\n\t\tthis.partialTranscriptRole = void 0;", "\t\tconst transcript = this.transcript;", "retain transcript until the queued request is admitted");
-  patched = replaceOnce(patched, "\t\tconst delegation = {\n\t\t\tid,", "\t\tconst delegation = {\n\t\t\tid,\n\t\t\tuserBidiTurnId, inputKey,\n\t\t\tuserTranscriptRevision: this.userTranscriptRevision,\n\t\t\tuserTurnTranscriptText: this.nativeUserTurnText.get(userBidiTurnId)?.text,\n\t\t\tgeneration: ++this.issuedDelegationGeneration,", "delegation generation ownership");
+  patched = replaceOnce(patched, "\t\tconst delegation = {\n\t\t\tid,", "\t\tconst delegation = {\n\t\t\tid,\n\t\t\tuserBidiTurnId, inputKey,\n\t\t\tuserTranscriptRevision: this.userTranscriptRevision,\n\t\t\tuserTurnTranscriptText: this.nativeUserTurnText.get(userBidiTurnId)?.text,\n\t\t\tcallerInputAcceptedAt: Date.now(),\n\t\t\tgeneration: ++this.issuedDelegationGeneration,", "delegation generation ownership");
   patched = replaceOnce(patched, "\t\tthis.activeDelegationId = id;\n\t\tif (this.consultController) {\n\t\t\tthis.pendingDelegation = delegation;\n\t\t\tthis.consultController.abort(/* @__PURE__ */ new Error(\"GPT-Live delegation superseded\"));\n\t\t\treturn;\n\t\t}\n\t\tthis.launchDelegation(delegation);", `\t\t// New provider speech is not authorization to cancel an accepted app task.
 \t\t// Keep one owner through its complete final and admit other ids in order.
 \t\tconst identityLimit = this.observedDelegationIds.size >= 1024;
