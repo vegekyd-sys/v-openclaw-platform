@@ -15,7 +15,19 @@ export const BROWSER_READ_ONLY_ACTIONS = new Set([
 
 export const COMPUTER_READ_ONLY_ACTIONS = new Set(["screenshot", "get_browser_state", "get_recording_state", "list_apps", "list_windows", "get_window_state", "get_accessibility_tree", "wait"]);
 
-export function decideToolCall({ toolName, params, controlActive }) {
+export function decideToolCall({ toolName, params, controlActive, paymentPending = false }) {
+  if (!controlActive && paymentPending) {
+    const action = params && typeof params === "object" && typeof params.action === "string" ? params.action : null;
+    const readOnly = toolName === "browser" ? BROWSER_READ_ONLY_ACTIONS : toolName === "computer" ? COMPUTER_READ_ONLY_ACTIONS : null;
+    if (!readOnly || (action && readOnly.has(action))) {
+      return undefined;
+    }
+    return {
+      block: true,
+      blockReason:
+        "A payment card is waiting for the user. Do not click, type or submit anything until they press 我完成了 or 跳过 on it; only read-only actions (screenshot, snapshot, tabs) are allowed. End your turn and wait.",
+    };
+  }
   if (!controlActive) {
     return undefined;
   }
@@ -71,6 +83,10 @@ export function decideHandBack(status, { alreadyHandedBack = false } = {}) {
   }
   if (status.claims > 0 && !alreadyHandedBack) {
     return { action: "resume", text: "✅ 电脑已在 V 手里，V 接着做。" };
+  }
+  // Paid by scanning the QR code: the desktop was never opened, V still has to check the order.
+  if (status.card?.view?.purpose === "payment" && !alreadyHandedBack) {
+    return { action: "resume", text: "✅ V 去核对订单。" };
   }
   if (status.claims === 0) {
     return { action: "noop", text: "你还没有接管电脑，点「接管电脑」才能操作。" };

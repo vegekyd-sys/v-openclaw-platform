@@ -63,6 +63,9 @@ fi
 [ -d "$TYPEBOX" ] || { echo "typebox not found in the OpenClaw runtime" >&2; exit 1; }
 mkdir -p "$INSTALL_DIR/plugin/node_modules"
 ln -sfn "$TYPEBOX" "$INSTALL_DIR/plugin/node_modules/typebox"
+# The payment card re-renders checkout QR codes with the runtime's own qrcode package.
+QRCODE="$(dirname "$TYPEBOX")/qrcode"
+[ -d "$QRCODE" ] && ln -sfn "$QRCODE" "$INSTALL_DIR/plugin/node_modules/qrcode" || echo "warning: qrcode not found next to typebox; payment cards fall back to screenshots" >&2
 chown -R root:root "$INSTALL_DIR"
 
 echo "== state, token, config"

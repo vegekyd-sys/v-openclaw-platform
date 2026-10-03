@@ -426,6 +426,10 @@ export class HandoffRegistry {
       controlLastInputAt: controller?.lastInputAt ?? null,
       viewers: this.activeViewerCount(),
       activeHandoffs: [...this.handoffs.values()].filter((h) => !h.endedAt).map((h) => this.handoffStatus(h.id)),
+      // A payment card is waiting for the person: the agent must not click or type meanwhile.
+      paymentPending: [...this.handoffs.values()].some(
+        (h) => !h.endedAt && h.card?.view?.purpose === "payment" && (h.card.state === "pending" || h.card.state === "active"),
+      ),
     };
   }
 

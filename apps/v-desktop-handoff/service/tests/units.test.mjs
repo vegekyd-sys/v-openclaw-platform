@@ -119,3 +119,18 @@ test("registry: a handoff keeps its chat card so any process can update it", () 
   assert.equal(registry.setCard("missing", {}), null);
   assert.throws(() => registry.setCard(issued.id, { big: "x".repeat(20_000) }), /too large/u);
 });
+
+test("registry: state reports a waiting payment card so the agent's clicks can be locked", () => {
+  const registry = new HandoffRegistry();
+  const pay = registry.issue({ kind: "control", ownerId: "u1" });
+  const login = registry.issue({ kind: "control", ownerId: "u1" });
+  registry.setCard(login.id, { state: "pending", view: { purpose: "login" } });
+  assert.equal(registry.state().paymentPending, false, "login cards do not lock");
+  registry.setCard(pay.id, { state: "pending", view: { purpose: "payment" } });
+  assert.equal(registry.state().paymentPending, true);
+  registry.setCard(pay.id, { state: "done", view: { purpose: "payment" } });
+  assert.equal(registry.state().paymentPending, false, "answered card releases the lock");
+  registry.setCard(pay.id, { state: "pending", view: { purpose: "payment" } });
+  registry.revoke(pay.id, "test");
+  assert.equal(registry.state().paymentPending, false, "an ended handoff never locks");
+});

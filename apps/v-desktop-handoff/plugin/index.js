@@ -7,6 +7,8 @@ import { deliverPrivately } from "./core/deliver.js";
 import { handoffCard, inPlaceTarget, normalizePayment } from "./core/card.js";
 import { FeishuApi, captureDesktop, feishuCredentials, feishuReceiver, loadCover } from "./core/feishu-api.js";
 import { nativeHandoffCard } from "./core/native-card.js";
+import { captureDesktopRgba, findQr, renderQrPng } from "./core/qr.js";
+import crypto from "node:crypto";
 
 // V's picture for the card (generated media stays out of git; fetched once per app and uploaded to Feishu).
 const DEFAULT_COVER = "https://cdn.makaron.app/storage/v1/object/public/images/5955d413-cad2-4814-b094-7fdf62d20400/0bc9ae1f-59b7-45a7-9e73-bf7c9951afdd/snapshot-d2ec2e6c-240d-4400-b0ad-4fce335e2e8c.jpg";
@@ -34,6 +36,24 @@ export default definePluginEntry({
     const cards = new Map(); // handoff id -> { feishu, messageId, view, state } for native Feishu cards
     const feishuApis = new Map(); // appId -> FeishuApi
     const coverKeys = new Map(); // appId -> uploaded image_key of the cover
+
+    // The payment QR on V's screen, re-rendered large and uploaded; null when there is none.
+    const paymentQr = async (feishu) => {
+      try {
+        const qr = findQr(await captureDesktopRgba({ display: config.desktopDisplay ?? ":99" }));
+        if (!qr) {
+          return null;
+        }
+        const png = await renderQrPng(qr.data);
+        if (!png) {
+          return null;
+        }
+        return { key: await feishu.uploadImage(png, "pay-qr.png"), hash: crypto.createHash("sha256").update(qr.data).digest("hex").slice(0, 16) };
+      } catch (error) {
+        api.logger?.warn?.(`desktop handoff payment QR unavailable: ${error.message}`);
+        return null;
+      }
+    };
 
     const postNativeCard = async ({ cfg, accountId, target, issued, kind, purpose, params, actorUserId }) => {
       if (config.nativeCard === false) {
@@ -68,6 +88,7 @@ export default definePluginEntry({
       } catch (error) {
         api.logger?.warn?.(`desktop handoff card image unavailable: ${error.message}`);
       }
+      const qr = purpose === "payment" ? await paymentQr(feishu) : null;
       const ownerOpenId = typeof actorUserId === "string" && actorUserId.startsWith("feishu:ou_") ? actorUserId.slice("feishu:".length) : undefined;
       const view = {
         kind,
@@ -75,6 +96,8 @@ export default definePluginEntry({
         reason: params.reason,
         url: issued.url,
         imageKey,
+        qrImageKey: qr?.key ?? null,
+        qrHash: qr?.hash ?? null,
         handoffId: issued.id,
         payment: normalizePayment(params.payment),
         owner: { userOpenId: ownerOpenId, expiresAt: issued.claimExpiresAt + issued.sessionTtlMs },
@@ -92,7 +115,9 @@ export default definePluginEntry({
     // so the card follows the desktop itself: someone in control -> 操作中, the
     // handoff over -> 已结束. 我完成了 / 跳过 still arrive as callbacks.
     const watchCard = (id, until, cfg) => {
+      let ticks = 0;
       const timer = setInterval(async () => {
+        ticks += 1;
         const card = cards.get(id);
         if (!card || ["done", "skipped", "ended"].includes(card.state) || Date.now() > until + 60_000) {
           clearInterval(timer);
@@ -118,6 +143,19 @@ export default definePluginEntry({
           await setCardState(id, "ended", cfg);
         } else if (status.controlActive && card.state === "pending") {
           await setCardState(id, "active", cfg);
+        } else if (card.view?.purpose === "payment" && card.state === "pending" && ticks % 10 === 0) {
+          // Checkout QR codes expire and the page swaps in a new one: keep the card's copy current.
+          const qr = await paymentQr(card.feishu);
+          if (qr && qr.hash !== card.view.qrHash) {
+            card.view = { ...card.view, qrImageKey: qr.key, qrHash: qr.hash };
+            try {
+              await card.feishu.patchCard(card.messageId, nativeHandoffCard({ ...card.view, state: card.state }));
+              const { feishu: _feishu, ...record } = card;
+              await client.setCard(id, record).catch(() => {});
+            } catch (error) {
+              api.logger?.warn?.(`desktop handoff payment QR not refreshed: ${error.message}`);
+            }
+          }
         }
       }, config.cardPollMs ?? 3_000);
       timer.unref?.();
@@ -216,7 +254,15 @@ export default definePluginEntry({
             throw new Error("A control handoff is only issued in a direct/private conversation. Ask the user to message V privately, or issue kind=watch here.");
           }
           const issued = await client.issue(
-            { kind, ownerId: actorUserId, sessionKey, reason: params.reason, claimTtlMs: config.claimTtlMs, sessionTtlMs: config.sessionTtlMs },
+            {
+              kind,
+              ownerId: actorUserId,
+              sessionKey,
+              reason: params.reason,
+              // Paying by QR takes a while and never opens the link; keep a payment card usable for 30 min.
+              claimTtlMs: purpose === "payment" ? Math.max(config.claimTtlMs ?? 0, 30 * 60_000) : config.claimTtlMs,
+              sessionTtlMs: config.sessionTtlMs,
+            },
             { signal },
           );
           if (sessionKey) {
@@ -275,7 +321,7 @@ export default definePluginEntry({
                   sessionMinutes,
                   instruction:
                     NATIVE_CARD_INSTRUCTION +
-                    (purpose === "payment" ? " Do not click any pay/confirm button yourself; after the user is done, check the order result on the page and report it." : ""),
+                    (purpose === "payment" ? " This is a payment card: your browser and computer clicks are locked until the user answers it. Never click a pay/confirm button yourself. `/v-handback` means the user has paid (by scanning the QR code or on the desktop): check the order result on the page and report it. `/v-skip` means they decided not to pay: stop the purchase." : ""),
                 });
               }
             } catch (error) {
@@ -488,7 +534,7 @@ export default definePluginEntry({
           api.logger?.warn?.(`desktop handoff state unavailable, allowing ${event.toolName}: ${error.message}`);
           return undefined;
         }
-        return decideToolCall({ toolName: event.toolName, params: event.params, controlActive: state.controlActive === true });
+        return decideToolCall({ toolName: event.toolName, params: event.params, controlActive: state.controlActive === true, paymentPending: state.paymentPending === true });
       },
       { priority: 90, timeoutMs: 5_000 },
     );

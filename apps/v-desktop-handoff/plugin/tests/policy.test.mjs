@@ -231,3 +231,33 @@ test("native card: the picture opens the desktop while the handoff is live", asy
   assert.equal(pic(nativeHandoffCard({ ...base, state: "pending" })).behaviors[0].default_url, "https://h/x#t");
   assert.equal(pic(nativeHandoffCard({ ...base, state: "done" })).tag, "img", "finished cards are just a picture");
 });
+
+test("payment: a waiting payment card locks clicks, 我完成了 resumes even when paid by QR", async () => {
+  const { decideToolCall, decideHandBack } = await import("../core/policy.js");
+  assert.equal(decideToolCall({ toolName: "browser", params: { action: "act" }, controlActive: false, paymentPending: true }).block, true);
+  assert.equal(decideToolCall({ toolName: "computer", params: { action: "left_click" }, controlActive: false, paymentPending: true }).block, true);
+  assert.equal(decideToolCall({ toolName: "browser", params: { action: "screenshot" }, controlActive: false, paymentPending: true }), undefined, "looking is allowed");
+  assert.equal(decideToolCall({ toolName: "exec", params: {}, controlActive: false, paymentPending: true }), undefined, "other tools are not affected");
+  assert.equal(decideToolCall({ toolName: "browser", params: { action: "act" }, controlActive: false, paymentPending: false }), undefined);
+  const pay = { claims: 0, controlActive: false, ended: false, card: { view: { purpose: "payment" } } };
+  assert.equal(decideHandBack(pay).action, "resume", "paid by QR: desktop never opened, V still checks the order");
+  assert.equal(decideHandBack({ ...pay, ended: true }).action, "resume", "even after the link window closed");
+  assert.equal(decideHandBack(pay, { alreadyHandedBack: true }).action, "noop", "only once");
+  assert.equal(decideHandBack({ claims: 0, controlActive: false, card: { view: { purpose: "login" } } }).action, "noop", "login cards unchanged");
+});
+
+test("payment card: QR replaces the screenshot while waiting, wording says scan or pay on the desktop", async () => {
+  const { nativeHandoffCard } = await import("../core/native-card.js");
+  const base = { purpose: "payment", url: "https://h/p#t", imageKey: "img_shot", qrImageKey: "img_qr", handoffId: "h_p", payment: { item: "makaron.si", amount: "20.42", currency: "USD", merchant: "Porkbun" } };
+  const pending = JSON.stringify(nativeHandoffCard({ ...base, state: "pending" }));
+  assert.ok(pending.includes('"img_key":"img_qr"') && !pending.includes('"img_key":"img_shot"'));
+  assert.match(pending, /扫下面的码付款/u);
+  assert.match(pending, /20\.42 USD/u);
+  assert.ok(/"content":"付款"/u.test(pending), "付款 button and title");
+  const noQr = JSON.stringify(nativeHandoffCard({ ...base, qrImageKey: null, state: "pending" }));
+  assert.ok(noQr.includes('"img_key":"img_shot"'));
+  assert.match(noQr, /在 V 的电脑上完成支付/u);
+  const done = JSON.stringify(nativeHandoffCard({ ...base, state: "done" }));
+  assert.ok(!done.includes("img_qr"), "no stale QR on a finished card");
+  assert.match(done, /V 去核对订单/u);
+});
