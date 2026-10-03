@@ -32,7 +32,7 @@ function ocFirsttextWorkerMark(stage, runId, fields = {}) {
 
 import { buildVolcengineRtcAgentProvider } from "./volcengine-rtc-agent-provider.mjs";
 import { WorkerPool } from "./worker-pool.mjs";
-import { acquireWorkerRuntime, createWorkerRuntimeLifecycle, resolveWorkerRuntime } from "./worker-runtime-lifecycle.mjs";
+import { acquireWorkerRuntime, awaitWorkerRuntime, createWorkerRuntimeLifecycle, rollWorkerRuntime } from "./worker-runtime-lifecycle.mjs";
 import { performance } from "node:perf_hooks";
 import { buildNativeHarnessData } from './native-harness-data.mjs';
 import { gatewayOwnedEventArgs } from './gateway-owned-terminal.mjs';
@@ -554,14 +554,15 @@ const plugin = {
     let nativeSessionWriteTail = Promise.resolve();
     let nativeHarnessStats = sharedPool.nativeHarnessStats;
 
+    const bindPoolRuntime = (runtime) => {
+      sharedPool = runtime;
+      ({ pool, nativeRequestsByRunId, nativeLaneProgressBridge,
+        nativeSubagentCompletionRelays, fastCompactionWorkerStats,
+        harnessEventParity, nativeHarnessStats } = runtime);
+    };
     const poolLifecycle = createWorkerRuntimeLifecycle({
       acquire: () => acquireSharedPool(poolOptions),
-      bind(runtime) {
-        sharedPool = runtime;
-        ({ pool, nativeRequestsByRunId, nativeLaneProgressBridge,
-          nativeSubagentCompletionRelays, fastCompactionWorkerStats,
-          harnessEventParity, nativeHarnessStats } = runtime);
-      },
+      bind: bindPoolRuntime,
     });
 
     function configuredAgentModelRuntimes() {
@@ -578,7 +579,7 @@ const plugin = {
       // keep this generation's pool and ownership maps for the whole attempt.
       const { pool, nativeRequestsByRunId, nativeLaneProgressBridge,
         nativeSubagentCompletionRelays, fastCompactionWorkerStats,
-        harnessEventParity, nativeHarnessStats } = resolveWorkerRuntime(SHARED_POOL_KEY, sharedPool);
+        harnessEventParity, nativeHarnessStats } = await awaitWorkerRuntime(SHARED_POOL_KEY, sharedPool);
       const harnessAttemptStartedAt = Date.now();
       const messageChannel = resolveHarnessMessageChannel(params);
       const sessionKey =
@@ -1260,7 +1261,7 @@ const plugin = {
     }
 
     async function startOperation(params) {
-      const { pool } = resolveWorkerRuntime(SHARED_POOL_KEY, sharedPool);
+      const { pool } = await awaitWorkerRuntime(SHARED_POOL_KEY, sharedPool);
       const idempotencyKey = readString(params, "idempotencyKey", {
         required: true,
       });
@@ -1406,6 +1407,37 @@ const plugin = {
       compact: compactNativeOpenClawSession,
     });
 
+    // worker-generations.1: replace the Worker generation without a Gateway
+    // restart. New Workers re-read worker code, worker-openclaw.json and the
+    // plugins it lists; runs already in the old Workers finish there.
+    api.registerGatewayMethod(
+      "vlab.workers.roll",
+      async ({ params, respond }) => {
+        try {
+          const reason = readString(params, "reason") ?? "operator";
+          const previousGeneration = sharedPool.generation;
+          const runtime = await rollWorkerRuntime(
+            SHARED_POOL_KEY,
+            () => acquireSharedPool(poolOptions),
+            bindPoolRuntime,
+          );
+          api.logger.info(
+            `vLab Agent Worker Isolation rolled generation ${String(previousGeneration)} -> ${String(runtime.generation)} reason=${reason}`,
+          );
+          respond(true, {
+            rolled: true,
+            reason,
+            previousGeneration,
+            generation: runtime.generation,
+            predecessor: runtime.pool.predecessor?.drainStatus() ?? null,
+          });
+        } catch (error) {
+          respondError(respond, error);
+        }
+      },
+      { scope: "operator.write" },
+    );
+
     api.registerGatewayMethod(
       "vlab.workers.status",
       async ({ respond }) => {
@@ -1424,7 +1456,7 @@ const plugin = {
             nativeAgentHarnessDispatchAttached: true,
             nestedGatewayHarnessRouting: true,
             workerUsesIngressAgentCommand: true,
-            workerIsolationVersion: "0.2.12-rc.1",
+            workerIsolationVersion: "0.2.12-generations.1",
             nativeDataTransport: {
               contract: "native-harness-data-v1",
               ordinaryDataPassthrough: true,

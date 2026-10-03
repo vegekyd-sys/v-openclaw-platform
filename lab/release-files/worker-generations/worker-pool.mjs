@@ -36,6 +36,10 @@ import { fileURLToPath } from "node:url";
 import { cloneWireData } from "./native-harness-data.mjs";
 
 const DEFAULT_WORKER_PATH = fileURLToPath(new URL("./worker.mjs", import.meta.url));
+// worker-generations.1: request ids must stay unique across pool generations,
+// because a caller that admitted work in one generation may cancel or steer it
+// after the job was handed to the next one.
+let nextPoolRequestId = 1;
 
 export function resolveWorkerExecArgv(
   execArgv = process.execArgv,
@@ -155,6 +159,13 @@ export class WorkerPool {
       readIntEnv(this.configEnv, "VLAB_WORKER_RECYCLE_MIN_AGE_MS", 300_000);
     this.workerMaxOldSpaceMb = options.workerMaxOldSpaceMb ??
       readIntEnv(this.configEnv, "VLAB_WORKER_MAX_OLD_SPACE_MB", 0);
+    // worker-generations.1: a replaced generation stops admitting work but lets
+    // admitted runs, queued turns and detached tasks finish. This bounds how
+    // long it may keep processes alive before the old hard close applies.
+    this.generationDrainTimeoutMs = options.generationDrainTimeoutMs ??
+      readIntEnv(this.configEnv, "VLAB_WORKER_GENERATION_DRAIN_MS",
+        30 * 60 * 1_000);
+    this.successorWaitMs = options.successorWaitMs ?? 30_000;
     this.workerPath = options.workerPath ?? DEFAULT_WORKER_PATH;
     this.workerEnv = options.workerEnv ?? process.env;
     this.onProgress =
@@ -186,7 +197,17 @@ export class WorkerPool {
     this.pendingControls = new Map();
     this.nextControlId = 1;
     this.started = false;
+    this.startPromise = null;
+    this.closePromise = null;
     this.closing = false;
+    this.draining = false;
+    this.handoffExpected = false;
+    this.successor = null;
+    this.predecessor = null;
+    this.drainedPromise = null;
+    this.resolveDrained = null;
+    this.drainTimer = null;
+    this.orphanTimer = null;
     this.pumping = false;
     this.reapTimer = null;
     this.recyclingSlot = null;
@@ -270,18 +291,38 @@ export class WorkerPool {
     ) {
       throw new Error("workerMaxOldSpaceMb must be an integer >= 0");
     }
+    if (
+      !Number.isFinite(this.generationDrainTimeoutMs) ||
+      this.generationDrainTimeoutMs < 10
+    ) {
+      throw new Error("generationDrainTimeoutMs must be >= 10");
+    }
   }
 
-  async start() {
-    if (this.started) {
-      return;
-    }
+  // Ported from the 0.2.12 pool: concurrent starts share one startup, a
+  // closed pool cannot be restarted, and a failed startup closes the pool.
+  start() {
+    if (this.closing) return Promise.reject(new Error("worker pool is closing"));
+    if (this.startPromise) return this.startPromise;
+    this.startPromise = this.startWorkers().catch(async (error) => {
+      await this.close();
+      throw error;
+    });
+    return this.startPromise;
+  }
+
+  async startWorkers() {
     this.started = true;
-    await Promise.all(
-      Array.from({ length: this.minWorkers }, () =>
-        this.spawn(this.findAvailableSlot()),
-      ),
+    // Turns handed over by a draining generation may already have started a
+    // Worker here; top up to minWorkers instead of assuming an empty pool.
+    const startups = [...this.workers.values()].map(
+      (worker) => worker.startupPromise ?? Promise.resolve(worker),
     );
+    while (this.workers.size < this.minWorkers) {
+      startups.push(this.spawn(this.findAvailableSlot()));
+    }
+    await Promise.all(startups);
+    if (this.closing) throw new Error("worker pool is closing");
     this.reapTimer = setInterval(() => {
       this.reapIdleWorkers();
       // A rejected recycle attempt must never take the sweep timer down with
@@ -301,6 +342,8 @@ export class WorkerPool {
   }
 
   async spawn(slot) {
+    // Neither a draining nor a closed generation may fork new Workers.
+    if (this.closing) throw new Error("worker pool is closing");
     if (slot === undefined) {
       throw new Error("worker pool is at capacity");
     }
@@ -375,6 +418,16 @@ export class WorkerPool {
 
   async submit(sessionKey, request, options = {}) {
     ocFirsttextWorkerMark("pool-submit-enter", request.runId);
+    // A caller that resolved this generation before a reload still holds it;
+    // its new turns belong to the generation that replaced it.
+    // During a plugin reload the old service stops before the new one is
+    // registered; wait briefly for it rather than failing the turn.
+    if (this.handoffExpected && !this.successor) {
+      await this.waitForSuccessor(this.successorWaitMs);
+    }
+    if (this.closing && this.successor) {
+      return await this.successor.submit(sessionKey, request, options);
+    }
     if (!this.started) {
       await this.start();
     }
@@ -390,8 +443,8 @@ export class WorkerPool {
         ? options.sessionOwnerKey
         : sessionKey;
 
-    const requestId = `request-${this.nextRequestId}`;
-    this.nextRequestId += 1;
+    const requestId = `request-${nextPoolRequestId}`;
+    nextPoolRequestId += 1;
     const promise = new Promise((resolve, reject) => {
       this.pending.push({
         id: requestId,
@@ -430,6 +483,7 @@ export class WorkerPool {
         job.reject(cancellationError(requestId));
         this.releaseSessionOwner(worker, job.sessionOwnerKey);
         this.requestPump();
+        this.retireIfDrained(worker);
         return {
           cancelled: true,
           state: "queued",
@@ -450,6 +504,8 @@ export class WorkerPool {
         };
       }
     }
+    // Pending work moves to the next generation when this one drains.
+    if (this.successor) return this.successor.cancel(requestId);
     return { cancelled: false, state: "not_found", requestId };
   }
 
@@ -468,6 +524,7 @@ export class WorkerPool {
         worker.child.send({ type: "permission-change", controlId, requestId, mode });
       });
     }
+    if (this.successor) return await this.successor.applyPermission(requestId, mode);
     return false;
   }
 
@@ -567,6 +624,7 @@ export class WorkerPool {
       }
       return await promise;
     }
+    if (this.successor) return await this.successor.steer(requestId, text, options);
     return {
       steered: false,
       state: "not_active",
@@ -685,8 +743,15 @@ export class WorkerPool {
     }
     this.pumping = true;
     try {
-      while (this.pending.length > 0 && !this.closing) {
-        const job = this.pending[0];
+      let index = 0;
+      while (index < this.pending.length && !this.closing) {
+        const job = this.pending[index];
+        // One transcript has one writer: a Session still running or queued in
+        // a draining generation waits for it instead of starting here.
+        if (this.predecessor?.holdsSessionOwner(job.sessionOwnerKey)) {
+          index += 1;
+          continue;
+        }
         let worker = this.sessionOwners.get(job.sessionOwnerKey);
         if (
           worker &&
@@ -719,7 +784,7 @@ export class WorkerPool {
           break;
         }
 
-        this.pending.shift();
+        this.pending.splice(index, 1);
         this.rememberSessionWorker(job.sessionOwnerKey, worker);
         if (!worker.ownerSessionKeys.has(job.sessionOwnerKey)) {
           worker.ownerSessionKeys.add(job.sessionOwnerKey);
@@ -775,7 +840,8 @@ export class WorkerPool {
         this.releaseSessionOwner(worker, queuedJob.sessionOwnerKey);
       }
       if (queued.length > 0) {
-        this.pending.unshift(...queued);
+        if (this.draining) this.handOff(queued);
+        else this.pending.unshift(...queued);
       }
       if (worker.active.size === 0) {
         this.retire(worker);
@@ -872,6 +938,7 @@ export class WorkerPool {
       ) {
         worker.lastIdleAt = Date.now();
       }
+      this.successor?.requestPump();
     }
   }
 
@@ -1005,6 +1072,7 @@ export class WorkerPool {
             ) {
               worker.lastIdleAt = Date.now();
             }
+            this.retireIfDrained(worker);
           }
           sendLateWorkerReply(worker.child,{
             type: "worker-gateway-event-ack",
@@ -1176,6 +1244,7 @@ export class WorkerPool {
       this.retire(worker);
     } else {
       this.drain(worker);
+      this.retireIfDrained(worker);
     }
     this.requestPump();
   }
@@ -1208,11 +1277,15 @@ export class WorkerPool {
     worker.active.clear();
     if (!this.closing && worker.queue.length > 0) {
       this.pending.unshift(...worker.queue);
+    } else if (this.draining && this.successor && worker.queue.length > 0) {
+      this.successor.adoptPending(worker.queue.splice(0));
     } else {
       for (const queued of worker.queue) {
         queued.reject(error);
       }
     }
+    this.successor?.requestPump();
+    this.checkDrained();
 
     if (!this.closing) {
       void this.ensureMinimumWorkers()
@@ -1464,6 +1537,10 @@ export class WorkerPool {
       recycleMinAgeMs: this.recycleMinAgeMs,
       recycledWorkerCount: this.recycledWorkerCount,
       recyclingSlot: this.recyclingSlot,
+      closing: this.closing,
+      draining: this.draining,
+      generationDrainTimeoutMs: this.generationDrainTimeoutMs,
+      predecessor: this.predecessor ? this.predecessor.drainStatus() : null,
       pending: this.pending.length,
       workers: [...this.workers.values()]
         .sort((left, right) => left.slot - right.slot)
@@ -1506,11 +1583,199 @@ export class WorkerPool {
     };
   }
 
-  async close() {
+  // worker-generations.1 --------------------------------------------------
+  // A replaced generation drains: it admits nothing new, hands unassigned turns
+  // to its successor, lets every admitted run, queued turn and detached task
+  // finish in the process that owns it, and retires each Worker once it is
+  // free. close() remains the hard stop and also ends a drain that outlives
+  // generationDrainTimeoutMs.
+  beginDrain(successor) {
+    if (successor && successor !== this && !this.successor && (this.draining || !this.closing)) {
+      this.successor = successor;
+      successor.predecessor = this;
+    }
+    if (this.draining) {
+      if (this.successor && this.orphanTimer) {
+        clearTimeout(this.orphanTimer);
+        this.orphanTimer = null;
+      }
+      this.handOff(this.pending.splice(0));
+      this.checkDrained();
+      return this.drainedPromise;
+    }
     if (this.closing) {
-      return;
+      return this.drainedPromise ?? Promise.resolve();
     }
     this.closing = true;
+    this.draining = true;
+    this.handoffExpected = true;
+    if (this.reapTimer) {
+      clearInterval(this.reapTimer);
+      this.reapTimer = null;
+    }
+    this.drainedPromise = new Promise((resolve) => {
+      this.resolveDrained = resolve;
+    });
+    this.drainTimer = setTimeout(() => {
+      this.drainTimer = null;
+      const status = this.drainStatus();
+      process.stderr.write(
+        `[vlab-worker-pool] generation drain timed out after ` +
+          `${String(this.generationDrainTimeoutMs)}ms; closing ` +
+          `workers=${String(status.workers)} active=${String(status.active)} ` +
+          `detached=${String(status.detached)}\n`,
+      );
+      void this.close().catch(() => {});
+    }, this.generationDrainTimeoutMs);
+    this.drainTimer.unref?.();
+    if (!this.successor) {
+      this.orphanTimer = setTimeout(() => {
+        this.orphanTimer = null;
+        this.rejectOrphanedTurns();
+      }, this.successorWaitMs);
+      this.orphanTimer.unref?.();
+    }
+    this.handOff(this.pending.splice(0));
+    const status = this.drainStatus();
+    process.stderr.write(
+      `[vlab-worker-pool] generation draining workers=${String(status.workers)} ` +
+        `active=${String(status.active)} queued=${String(status.queued)} ` +
+        `detached=${String(status.detached)} successor=${String(Boolean(this.successor))}\n`,
+    );
+    for (const worker of [...this.workers.values()]) {
+      this.retireIfDrained(worker);
+    }
+    this.checkDrained();
+    return this.drainedPromise;
+  }
+
+  async waitForSuccessor(timeoutMs) {
+    const deadline = Date.now() + timeoutMs;
+    while (this.handoffExpected && !this.successor && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+
+  // Unassigned turns of a draining generation start in its successor. 9.1
+  // stops the old service before it registers the new one, so they are held
+  // for successorWaitMs; without a successor by then (a real shutdown) nothing
+  // can run them.
+  handOff(jobs) {
+    if (jobs.length === 0) return;
+    if (this.successor) {
+      this.successor.adoptPending(jobs);
+      return;
+    }
+    if (this.handoffExpected && this.draining) {
+      this.pending.push(...jobs);
+      return;
+    }
+    const closeError = new Error("worker pool is closing");
+    for (const job of jobs) job.reject(closeError);
+  }
+
+  rejectOrphanedTurns() {
+    if (this.successor) return;
+    this.handoffExpected = false;
+    const closeError = new Error("worker pool is closing");
+    for (const job of this.pending.splice(0)) job.reject(closeError);
+    this.checkDrained();
+  }
+
+  adoptPending(jobs) {
+    if (this.closing) {
+      this.handOff(jobs);
+      return;
+    }
+    this.pending.unshift(...jobs);
+    this.requestPump();
+  }
+
+  holdsSessionOwner(sessionOwnerKey) {
+    const worker = this.sessionOwners.get(sessionOwnerKey);
+    if (worker && this.workers.get(worker.slot) === worker) return true;
+    return this.predecessor?.holdsSessionOwner(sessionOwnerKey) ?? false;
+  }
+
+  retireIfDrained(worker) {
+    if (
+      !this.draining ||
+      this.workers.get(worker.slot) !== worker ||
+      (worker.retiring && worker.retireTimer)
+    ) {
+      return;
+    }
+    if (
+      !worker.ready ||
+      (worker.active.size === 0 &&
+        worker.queue.length === 0 &&
+        worker.ownerSessionKeys.size === 0 &&
+        worker.detachedTaskKeys.size === 0)
+    ) {
+      this.retire(worker);
+    }
+  }
+
+  checkDrained() {
+    // Held turns still wait for a successor; the process count alone does not
+    // end the drain.
+    if (this.draining && this.workers.size === 0 && this.pending.length === 0) {
+      this.draining = false;
+      this.finishDrain();
+    }
+  }
+
+  finishDrain() {
+    this.started = false;
+    if (this.drainTimer) {
+      clearTimeout(this.drainTimer);
+      this.drainTimer = null;
+    }
+    if (this.orphanTimer) {
+      clearTimeout(this.orphanTimer);
+      this.orphanTimer = null;
+    }
+    if (this.successor?.predecessor === this) {
+      this.successor.predecessor = this.predecessor;
+    }
+    if (this.predecessor?.successor === this) {
+      this.predecessor.successor = this.successor;
+    }
+    this.successor?.requestPump();
+    this.resolveDrained?.();
+    this.resolveDrained = null;
+  }
+
+  drainStatus() {
+    const workers = [...this.workers.values()];
+    return {
+      draining: this.draining,
+      workers: workers.length,
+      active: workers.reduce((sum, worker) => sum + worker.active.size, 0),
+      queued: workers.reduce((sum, worker) => sum + worker.queue.length, 0),
+      detached: workers.reduce(
+        (sum, worker) => sum + worker.detachedTaskKeys.size,
+        0,
+      ),
+      sessionOwners: this.sessionOwners.size,
+    };
+  }
+
+  close() {
+    if (this.closePromise) return this.closePromise;
+    // A hard close also ends a drain that is still running.
+    this.closing = true;
+    this.draining = false;
+    this.started = false;
+    this.closePromise = this.closeWorkers();
+    return this.closePromise;
+  }
+
+  async closeWorkers() {
+    if (this.drainTimer) {
+      clearTimeout(this.drainTimer);
+      this.drainTimer = null;
+    }
     if (this.reapTimer) {
       clearInterval(this.reapTimer);
       this.reapTimer = null;
@@ -1521,9 +1786,7 @@ export class WorkerPool {
       pending.reject(closeError);
       this.pendingControls.delete(id);
     }
-    for (const pending of this.pending.splice(0)) {
-      pending.reject(closeError);
-    }
+    this.handOff(this.pending.splice(0));
     for (const [steerId, pending] of this.pendingSteers) {
       clearTimeout(pending.timer);
       pending.reject(closeError);
@@ -1560,5 +1823,6 @@ export class WorkerPool {
     this.workers.clear();
     this.sessionOwners.clear();
     this.sessionAffinity.clear();
+    this.finishDrain();
   }
 }
