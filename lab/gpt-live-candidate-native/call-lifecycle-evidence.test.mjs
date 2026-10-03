@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {resolveEndCallToolWitness,resolveLifecycleUserTurn,assessLifecycleSpeech,assessLifecycleFarewell,assessProactiveGreeting,assessAutomaticEnd,
+import {resolveEndCallToolWitness,resolveLifecycleUserTurn,assessLifecycleSpeech,hasLifecyclePlaybackTail,assessLifecycleFarewell,assessProactiveGreeting,assessAutomaticEnd,
   extractLifecycleToolPairs,resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult} from './call-lifecycle-evidence.mjs';
 
 const delegation=(text='{"name":"openclaw_end_call","arguments":{}}')=>({pcIndex:0,at:1000,type:'delegation.created',raw:{item:{id:'item-1',type:'delegation',target:'client',user_bidi_turn_id:'user-1',content:[{type:'input_text',text}]}}});
@@ -56,6 +56,23 @@ test('farewell requires complete player state and post-terminal 750ms real RTP q
 test('a required same-stream speech boundary cannot accept an earlier created turn',()=>{
  const state=speechState();state.events[0].at=1100;
  assert.equal(assessLifecycleSpeech(state,{pcIndex:0,after:1200,requireCreatedAfter:true}),null);
+});
+test('tail readiness retains strict quiet and cannot replace full caption/player validation',()=>{
+ const state=speechState();assert.equal(hasLifecyclePlaybackTail(state,{pcIndex:0,after:1200}),true);
+ for(const change of [s=>s.audioFrames=s.audioFrames.slice(0,-4),s=>s.audioFrames[21].rms=.02,
+   s=>s.audioFrames=s.audioFrames.filter(f=>![1800,1850].includes(f.at)),s=>s.audioFrames[21].paused=true,
+   s=>s.audioFrames=s.audioFrames.map(f=>({...f,rtp:[]}))]){
+  const input=speechState();change(input);assert.equal(hasLifecyclePlaybackTail(input,{pcIndex:0,after:1200}),false);
+ }
+ state.events=state.events.filter(e=>e.type!=='output_transcript.added');
+ assert.equal(hasLifecyclePlaybackTail(state,{pcIndex:0,after:1200}),true);
+ assert.equal(assessLifecycleSpeech(state,{pcIndex:0,after:1200,requireCreatedAfter:true}),null);
+});
+test('input-start boundary preserves response prefix received before complete USER terminal',()=>{
+ const state=speechState();state.events.push({pcIndex:0,at:1400,type:'turn.done',role:'user',turnId:'u',text:'今天先聊到这里，不过先别挂，我还想问你一件事。'});
+ assert(resolveLifecycleUserTurn(state.events,{pcIndex:0,after:1200,intent:'keep'}));
+ assert(assessLifecycleSpeech(state,{pcIndex:0,after:1200,requireCreatedAfter:true}));
+ assert.equal(assessLifecycleSpeech(state,{pcIndex:0,after:1400,requireCreatedAfter:true}),null);
 });
 test('whole-speech sampling gaps remain strict FAIL while retaining actual functional speech and tail',()=>{
  const state=speechState();state.audioFrames=state.audioFrames.filter(f=>![1300,1350].includes(f.at));

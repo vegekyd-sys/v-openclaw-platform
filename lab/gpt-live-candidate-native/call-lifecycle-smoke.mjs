@@ -9,7 +9,7 @@ import {setTimeout as sleep} from 'node:timers/promises';
 import {createPrivatePulseMicrophone} from './private-pulse.mjs';
 import {BROWSER_PROBE,SNAPSHOT_EXPRESSION} from './browser-probe.mjs';
 import {assessDecodedPlaybackWindow,assessCompletePlaybackWindow,assessIndependentInputConvergence} from './evidence.mjs';
-import {resolveEndCallToolWitness,resolveLifecycleUserTurn,assessLifecycleSpeech,assessLifecycleFarewell,assessProactiveGreeting,assessAutomaticEnd,
+import {resolveEndCallToolWitness,resolveLifecycleUserTurn,assessLifecycleSpeech,hasLifecyclePlaybackTail,assessLifecycleFarewell,assessProactiveGreeting,assessAutomaticEnd,
   resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult} from './call-lifecycle-evidence.mjs';
 import {inspectLifecycleValidationTarget,readLifecycleVoiceOwner,preflightLifecycleMedia} from './call-lifecycle-target.mjs';
 
@@ -101,8 +101,8 @@ async function waitSpeech(pcIndex,after,label,before=Infinity){
  // Polling uses tails, so an earlier speech onset is not discarded. Once a
  // candidate terminal/quiet exists, take full raw before evaluating its window.
  const proof=await waitFor(async s=>{
-  const ending=s.events.some(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='assistant'&&e.at>after&&e.at<before);
-  if(!ending)return null;const full=await snapshot(true);return assessLifecycleSpeech(full,{pcIndex,after,before,requireCreatedAfter:true});
+  if(!hasLifecyclePlaybackTail(s,{pcIndex,after,before}))return null;
+  const full=await snapshot(true);return assessLifecycleSpeech(full,{pcIndex,after,before,requireCreatedAfter:true});
  },label,45000);
  return proof;
 }
@@ -159,7 +159,10 @@ async function runLifecycle(){
  await cdp.request('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
  const keep=play('keep-call');await keep.done;assert.equal(keep.row.exitCode,0);
  const keepUser=await waitFor(s=>resolveLifecycleUserTurn(s.events,{pcIndex,after:keep.row.startedAt,intent:'keep'}),'Complete keep-call USER native transcript',15000);
- const keepReply=await waitSpeech(pcIndex,keepUser.at,'Model replies while the same call stays connected');
+ // Native USER terminal and assistant caption receipt clocks may overlap.
+ // Keep the independently verified complete USER turn, and retain all reply
+ // captions after this exact input started instead of cutting off its prefix.
+ const keepReply=await waitSpeech(pcIndex,keep.row.startedAt,'Model replies while the same call stays connected');
  const keepState=await snapshot(true),owner=owners.get(pcIndex);
  const keepBadTools=keepState.tools.filter(e=>e.at>=keep.row.startedAt&&e.raw?.voiceSessionId===owner.voiceSessionId&&e.raw?.name==='openclaw_end_call');
  const keepBadClose=keepState.api.filter(e=>e.route==='/api/close'&&e.request?.voiceSessionId===owner.voiceSessionId&&e.requestedAt>=keep.row.startedAt);
