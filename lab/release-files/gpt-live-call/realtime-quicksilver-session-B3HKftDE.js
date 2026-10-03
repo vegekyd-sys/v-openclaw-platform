@@ -364,6 +364,9 @@ function createOpenAIQuicksilverBrowserSessionBroker(params) {
 			const abortController = new AbortController();
 			const delegations = new OpenAIQuicksilverDelegationController({
 				callLifecycle: offer.request.model === "gpt-live-1-codex" && typeof offer.request.gatewayControl?.bindCallLifecycle === "function",
+				isCallCurrent: () => Boolean(session) && activeSessions.get(token) === session &&
+					!session.closing && session.socket === connected.socket &&
+					!lifecycleSignal.aborted && !abortController.signal.aborted && connected.socket.readyState === WEBSOCKET_OPEN,
 				onCallLifecycleEvent: (event) => offer.request.gatewayControl?.onCallLifecycleEvent?.(event),
 				onTranscript: (role, text, final) => offer.request.gatewayControl?.onTranscript?.(role, text, final),
 				getSocket: () => connected.socket,

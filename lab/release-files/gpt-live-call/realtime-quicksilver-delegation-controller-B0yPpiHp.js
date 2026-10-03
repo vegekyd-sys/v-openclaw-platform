@@ -33,12 +33,13 @@ var OpenAIQuicksilverDelegationController = class {
 		this.stopped = false;
 		this.callLifecycle = options.callLifecycle === true ? createGptLiveCallLifecycle({
 			signal: options.signal,
-			isCurrent: () => !this.stopped && !options.signal.aborted,
+			isCurrent: () => !this.stopped && !options.signal.aborted &&
+				options.isCallCurrent?.() === true && options.getSocket()?.readyState === WEBSOCKET_OPEN,
 			onToolEvent: (event) => options.onCallLifecycleEvent(event),
 			onError: (error) => options.onError?.(error),
 			sendSessionContext: (text) => {
 				const socket = options.getSocket();
-				if (socket.readyState !== WEBSOCKET_OPEN) return false;
+				if (socket?.readyState !== WEBSOCKET_OPEN) return false;
 				socket.send(JSON.stringify({ type: "session.context.append", channel: "speakable", content: [{ type: "input_text", text }] }));
 				return true;
 			},
