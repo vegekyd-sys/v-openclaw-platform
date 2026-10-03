@@ -21,6 +21,7 @@ test("work view: progress card plan, tool line, commentary; answer stays on top"
   ] } });
   for (const fn of globalThis[PROGRESS]) fn({ sessionKey: "agent:other", card: { steps: [{ step: "别人的", status: "pending" }] } });
   assert.equal(view.toolStart({ name: "mcp__openclaw__progress_card", phase: "start" }), false, "progress_card is not a visible tool");
+  view.compose("草稿如下");
   view.toolStart({ name: "exec", phase: "start" });
   view.itemEvent({ kind: "preamble", itemId: "i1", progressText: "先查一下资料" });
   const md = view.compose("草稿如下");
@@ -156,4 +157,30 @@ test("tracked chat question: answer, partial answer, and ended elsewhere", async
   vx.trackChatQuestion({ channel: "t", chatKey: "c2", record: { ...record, questions: [record.questions[0]] } });
   const ended = await vx.answerTrackedQuestion({ channel: "t", chatKey: "c2", senderId: "u9", text: "红", resolve: async () => { const e = new Error("x"); e.details = { reason: "QUESTION_ALREADY_TERMINAL" }; throw e; } });
   assert.deepEqual(ended, { handled: false }, "a question answered elsewhere lets the message through");
+});
+
+test("work view drops the tool and question line once the answer moves on", () => {
+  const view = vx.createWorkView({ sessionKey: "s-move" });
+  view.compose("");
+  view.toolStart({ name: "exec", phase: "start" });
+  assert.match(view.compose(""), /⚙️ 正在运行命令/u);
+  assert.doesNotMatch(view.compose("结果是"), /⚙️/u);
+  view.questionPending(true);
+  assert.match(view.compose("结果是"), /❓/u);
+  assert.equal(view.compose("结果是 42"), "结果是 42");
+  view.dispose();
+});
+
+test("question listener set is created before the core's lazy module", () => {
+  const key = Symbol.for("openclaw.questionChannelRequestedListeners");
+  delete globalThis[key];
+  const got = [];
+  const off = vx.onQuestionRequested("agent:a:x", (r) => got.push(r.id));
+  assert(globalThis[key] instanceof Set && globalThis[key].size === 1);
+  for (const fn of globalThis[key]) fn({ id: "q1", sessionKey: "AGENT:a:x", status: "pending" });
+  for (const fn of globalThis[key]) fn({ id: "q2", sessionKey: "agent:b", status: "pending" });
+  assert.deepEqual(got, ["q1"]);
+  off();
+  assert.equal(vx.claimQuestionDelivery("q9"), true);
+  assert.equal(vx.claimQuestionDelivery("q9"), false);
 });

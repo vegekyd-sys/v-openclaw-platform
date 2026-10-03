@@ -77,6 +77,7 @@ const TOOL_LABELS = [
   [/^(ask_user|question)$/i, "向你提问"],
   [/^(message|send_message)$/i, "发送消息"],
   [/^(cron|schedule)/i, "设置定时任务"],
+  [/^secrets?$/i, "索取凭据"],
 ];
 
 /** "运行命令" for exec, the bare name for anything unknown. */
@@ -94,9 +95,11 @@ export function toolActivityLabel(name) {
 export function createWorkView({ sessionKey, onChange = () => {}, maxCommentary = 2, log } = {}) {
   let steps = [];
   const seen = { card: 0, tool: 0, item: 0, plan: 0 };
+  let lastAnswerLength = 0;
   let tool = "";
   let compacting = false;
   let question = false;
+  let answerLength = 0; // answer length when the status line was set
   const commentary = new Map(); // itemId -> text
   let disposed = false;
   const changed = () => { if (!disposed) try { onChange(); } catch {} };
@@ -111,6 +114,7 @@ export function createWorkView({ sessionKey, onChange = () => {}, maxCommentary 
       const label = toolActivityLabel(name);
       if (label === tool) return false;
       tool = label;
+      answerLength = lastAnswerLength;
       changed();
       return true;
     },
@@ -136,7 +140,7 @@ export function createWorkView({ sessionKey, onChange = () => {}, maxCommentary 
       return true;
     },
     compaction(active) { compacting = active; changed(); },
-    questionPending(active) { question = active; changed(); },
+    questionPending(active) { question = active; answerLength = lastAnswerLength; changed(); },
     hasContent: () => steps.length > 0 || Boolean(tool) || commentary.size > 0 || compacting || question,
     markdown() {
       const lines = [];
@@ -157,8 +161,11 @@ export function createWorkView({ sessionKey, onChange = () => {}, maxCommentary 
     },
     /** The streaming content: the answer so far, then the work under a rule. */
     compose(answer) {
-      const work = this.markdown();
       const text = String(answer ?? "").trimEnd();
+      // Once the answer moves on, the tool or question it was waiting for is over.
+      lastAnswerLength = text.length;
+      if ((tool || question) && text.length > answerLength) { tool = ""; question = false; }
+      const work = this.markdown();
       if (!work) return text;
       return text ? `${text}\n\n---\n\n${work}` : work;
     },
@@ -520,6 +527,9 @@ const deliveredQuestions = new Map(); // question id -> at
 let questionListener;
 
 function ensureQuestionListener() {
+  // The core creates this set lazily, on its first question; create it first
+  // so the core's own lookup (Object.hasOwn on globalThis) reuses it.
+  if (!Object.hasOwn(globalThis, QUESTION_LISTENERS)) globalThis[QUESTION_LISTENERS] = new Set();
   const listeners = globalThis[QUESTION_LISTENERS];
   if (!(listeners instanceof Set)) return false;
   questionListener ??= (record) => {
