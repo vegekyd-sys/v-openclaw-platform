@@ -94,12 +94,13 @@ export function resolveEndCallToolWitness({events=[],tools=[],pcIndex,voiceSessi
   return candidates.length===1?candidates[0]:null;
 }
 
-export function resolveLifecycleUserTurn(events,{pcIndex,after,before=Infinity,intent}={}) {
+export function resolveLifecycleUserTurn(events,{pcIndex,after,before=Infinity,intent,expectedText}={}) {
   const rows=events.filter(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='user'&&
     Number.isFinite(e.at)&&e.at>=after&&e.at<before&&e.turnId&&normalize(e.text));
   const matches=rows.filter(e=>intent==='keep'
     ?normalize(e.text).includes('今天先聊到这里')&&normalize(e.text).includes('先别挂')&&normalize(e.text).includes('还想问你一件事')
-    :intent==='end'&&normalize(e.text).includes('今天就先这样')&&normalize(e.text).includes('帮我把电话挂掉'));
+    :intent==='end'&&(expectedText?normalize(e.text)===normalize(expectedText):
+      normalize(e.text).includes('今天就先这样')&&normalize(e.text).includes('帮我把电话挂掉')));
   return matches.length===1?matches[0]:null;
 }
 

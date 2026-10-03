@@ -44,6 +44,13 @@ test('complete keep and explicit hang-up USER turns remain distinct',()=>{
  assert(resolveLifecycleUserTurn([e('今天就先这样，你帮我把电话挂掉吧。')],{pcIndex:0,after:1000,intent:'end'}));
  assert.equal(resolveLifecycleUserTurn([e('今天先聊到这里，不过先别挂，我还想问你一件事。')],{pcIndex:0,after:1000,intent:'end'}),null);
 });
+test('natural goodbye fixture is verified as complete input, not used to fabricate an end tool',()=>{
+ const e=text=>({pcIndex:0,at:2000,type:'turn.done',role:'user',turnId:'user-1',text});
+ const params={pcIndex:0,after:1000,intent:'end',expectedText:'今天就先这样，谢谢你，拜拜。'};
+ assert(resolveLifecycleUserTurn([e('今天就先这样,谢谢你,拜拜。')],params));
+ assert.equal(resolveLifecycleUserTurn([e('今天就先这样')],params),null);
+ assert.equal(resolveEndCallToolWitness({events:[e(params.expectedText)],tools:[],pcIndex:0,voiceSessionId:'voice-1'}),null);
+});
 test('farewell requires complete player state and post-terminal 750ms real RTP quiet',()=>{
  const state=speechState(),proof=assessLifecycleSpeech(state,{pcIndex:0,after:1200,requireCreatedAfter:true});assert(proof);
  assert(proof.window.to>proof.terminal.at);assert(proof.quiet.durationMs>=750);

@@ -119,10 +119,14 @@ function ownedGatewayEvents() {
  return gatewayEvents.filter(e=>keys.has(e.payload?.sessionKey??e.payload?.session?.key)||voices.has(e.payload?.voiceSessionId));
 }
 async function inputConverged(pcIndex,input,label) {
- const proof=await waitFor(async()=>{const s=await snapshot(true),lastSpeechAt=s.micFrames.filter(f=>f.pcIndex===pcIndex&&f.at>=input.startedAt&&f.at<=input.completedAt&&f.rms>.02).at(-1)?.at;
-   if(!Number.isFinite(lastSpeechAt))return null;
-   return assessIndependentInputConvergence({events:s.events,micFrames:s.micFrames,pcIndex,input,lastSpeechAt,observedAt:Date.now()});
- },label,15000);check(label,true,{proof});return proof;
+ // This runs after the complete USER and actual reply have been observed.
+ // Missing historical input samples cannot be repaired by repeatedly copying
+ // the recording. Keep this independent strict FAIL and still observe the
+ // newly requested lifecycle features; the overall receipt remains failed.
+ const s=await snapshot(true),lastSpeechAt=s.micFrames.filter(f=>f.pcIndex===pcIndex&&f.at>=input.startedAt&&f.at<=input.completedAt&&f.rms>.02).at(-1)?.at;
+ const proof=Number.isFinite(lastSpeechAt)?assessIndependentInputConvergence({events:s.events,micFrames:s.micFrames,pcIndex,input,lastSpeechAt,observedAt:Date.now()}):null;
+ check(label,Boolean(proof),{proof,input,lastSpeechAt:lastSpeechAt??null,strictFailurePreserved:true,
+   failureDoesNotSkipRemainingLifecycleObservations:true});return proof;
 }
 async function basicTools(pcIndex) {
  const owner=owners.get(pcIndex),input=play('memory-web');await input.done;assert.equal(input.row.exitCode,0);
@@ -171,7 +175,9 @@ async function runLifecycle(){
  await inputConverged(pcIndex,keep.row,'independent-full-USER-input-convergence');
  await basicTools(pcIndex);
  const end=play('end-call');await end.done;assert.equal(end.row.exitCode,0);
- const endUser=await waitFor(s=>resolveLifecycleUserTurn(s.events,{pcIndex,after:end.row.startedAt,intent:'end'}),'Complete explicit hang-up USER native transcript',15000);
+ const expectedEndText=fs.readFileSync(path.join(clips,'end-call.txt'),'utf8');
+ const endUser=await waitFor(s=>resolveLifecycleUserTurn(s.events,{pcIndex,after:end.row.startedAt,intent:'end',expectedText:expectedEndText}),
+   'Complete frozen goodbye USER native transcript',15000);
  const tool=await waitFor(s=>resolveEndCallToolWitness({events:s.events,tools:s.tools,pcIndex,voiceSessionId:owner.voiceSessionId,after:end.row.startedAt}),'Actual native delegation and exact host end-call call/result',20000);
  coreCheck('model-real-end-call-tool-after-complete-USER',tool.userTurnId===endUser.turnId,{endUser,tool,inputCompletedAt:end.row.completedAt,
    causalBinding:'Actual delegation user_bidi_turn_id equals the complete original USER turn; reception timestamps are retained, not treated as cross-stream execution order'});
@@ -244,10 +250,20 @@ finally {
  }
  cdp?.close();gateway?.stop();if(chrome?.exitCode===null&&chrome.signalCode===null)chrome.kill('SIGTERM');if(chrome)await Promise.race([new Promise(resolve=>chrome.once('exit',resolve)),sleep(2000)]);
  if(chrome?.exitCode===null&&chrome.signalCode===null){chrome.kill('SIGKILL');await Promise.race([new Promise(resolve=>chrome.once('exit',resolve)),sleep(1000)]);}
- cleanup={...(await pulse?.dispose()),chromeExited:Boolean(chrome&&(chrome.exitCode!==null||chrome.signalCode!==null))};
- if(chromeTemp){fs.rmSync(chromeTemp,{recursive:true,force:true});cleanup.chromePrivateTempRemoved=!fs.existsSync(chromeTemp);}
+ // Preserve the actual run outcome before asynchronous browser filesystem
+ // cleanup. A transient profile write must not hide a failed native operation.
+ save('run-observations-before-cleanup.json',{checks,owners:[...owners],speechWindows});
+ cleanup={chromeExited:Boolean(chrome&&(chrome.exitCode!==null||chrome.signalCode!==null))};
+ try {Object.assign(cleanup,await pulse?.dispose());}
+ catch(error){check('private-media-cleanup',false,{code:error.code??null,message:error.message});}
+ if(chromeTemp){try {fs.rmSync(chromeTemp,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
+  catch(error){check('private-browser-temp-cleanup',false,{code:error.code??null,message:error.message});}
+  cleanup.chromePrivateTempRemoved=!fs.existsSync(chromeTemp);}
  // Entire scratch is unique and owned by this observer; profiles are never reused.
- fs.rmSync(scratch,{recursive:true,force:true});cleanup.privateScratchRemoved=!fs.existsSync(scratch);
+ try {fs.rmSync(scratch,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
+ catch(error){check('private-scratch-cleanup',false,{code:error.code??null,message:error.message});}
+ cleanup.privateScratchRemoved=!fs.existsSync(scratch);
+ check('owned-browser-and-scratch-cleanup',cleanup.chromeExited&&cleanup.chromePrivateTempRemoved&&cleanup.privateScratchRemoved);
  check('actual-'+validationTarget+'-config-unchanged',hash(fs.readFileSync(configPath))===configSha);
  if(validationTarget!=='candidate') {
   try {const after=await inspectLifecycleValidationTarget({target:validationTarget,proofPath:process.env.GPT_LIVE_H5_TARGET_PROOF,configPath,corePath:runtime,stateRoot,url});

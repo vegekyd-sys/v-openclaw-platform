@@ -31,30 +31,41 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
 
-const args = parseArgs(process.argv.slice(2));
-const repo = resolve(dirname(new URL(import.meta.url).pathname), '..');
-const V = args.vHost ?? 'v';
-const VLAB = args.vlabHost ?? 'vlab91';
-const VLAB_TOOL = args.vlabTool ?? '/Users/tianyicai/vlab-dev/lab/vlab.mjs';
-const RELEASES = '/srv/vlab-production-mirror/labs/shared-workflow/releases';
-const V_UNIT = 'openclaw-gateway.service';
-const V_FEISHU = args.vFeishu ?? '/opt/openclaw-experiments/worker-visible-progress-v2026.9.1-20260909/feishu';
-// npm-managed plugin projects (the Codex harness); same project directory names on VLab and V.
-const V_NPM_PROJECTS = args.vNpmProjects ?? '/home/openclaw/.openclaw/npm/projects';
-const BACKUPS = '/opt/v-release-backups';
-const V_NODE = args.vNode ?? '/opt/node-v22.23.1/bin/node';
-
-const ssh = (host, script, input) => execFileSync('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=20', host, script], {
-  input, maxBuffer: 512 * 1024 * 1024, encoding: 'utf8',
-});
 const sha = (buf) => createHash('sha256').update(buf).digest('hex');
 const sq = (s) => `'${String(s).replaceAll("'", `'\\''`)}'`;
-const vlab = (...a) => execFileSync('node', [VLAB_TOOL, ...a], { encoding: 'utf8', cwd: dirname(dirname(VLAB_TOOL)), maxBuffer: 64 * 1024 * 1024 });
+
+export function assertAcceptedReleaseBinding(current, release, manifestBytes, artifactBytes) {
+  assert(/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(release), 'Plain release ID required');
+  assert.equal(current?.release, release, 'VLab current release changed');
+  assert.equal(current.accepted, true, 'Release has not been accepted on VLab');
+  assert(/^[a-f0-9]{40}$/.test(current.sourceCommit ?? ''), 'Accepted source commit unavailable');
+  assert(/^[a-f0-9]{64}$/.test(current.artifactSha ?? ''), 'Accepted artifact SHA unavailable');
+  const manifest = JSON.parse(manifestBytes);
+  const artifact = JSON.parse(artifactBytes);
+  assert.equal(manifest.id, release, 'Manifest release changed');
+  assert.equal(artifact.id, release, 'Artifact release changed');
+  for (const record of [manifest, artifact]) {
+    assert.equal(record.sourceCommit, current.sourceCommit, 'Accepted source commit differs from release bytes');
+    assert.equal(record.branch, 'dev', 'Only canonical dev bytes may be promoted');
+  }
+  assert.equal(manifest.artifactSha, current.artifactSha, 'Accepted artifact differs from manifest');
+  // The server hashes its exact artifact file, including formatting and newline.
+  assert.equal(sha(artifactBytes), current.artifactSha, 'Artifact raw bytes differ from accepted SHA');
+  return artifact;
+}
+
+export function assertPromotionLease(status, owner) {
+  assert(typeof owner === 'string' && owner.length > 0, '--owner is required with --apply');
+  assert.equal(status.lease?.owner, owner, 'Integration lease belongs to another task');
+  assert.equal(status.pending, null, 'Unresolved shared deployment');
+}
 
 // Runs as root on V. install: check before-hashes, back up, install, undo.json.
 // undo: reverse.
-const REMOTE = String.raw`
+export const REMOTE = String.raw`
 const fs=require('fs'),path=require('path'),crypto=require('crypto');
 const [mode,dir]=process.argv.slice(2);
 const hash=p=>{try{return crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex')}catch(e){if(e.code==='ENOENT')return null;throw e}};
@@ -67,8 +78,8 @@ if(mode==='check'||mode==='install'){
   const undo=[];
   for(const [i,f] of plan.files.entries()){
     const st=f.before===null?null:fs.statSync(f.vPath),backup=path.join(dir,'backup',String(i));
-    if(st){fs.mkdirSync(path.dirname(backup),{recursive:true});fs.copyFileSync(f.vPath,backup)}
-    undo.push({vPath:f.vPath,backup:st?backup:null});
+    if(st){fs.mkdirSync(path.dirname(backup),{recursive:true});fs.copyFileSync(f.vPath,backup);fs.chownSync(backup,st.uid,st.gid);fs.chmodSync(backup,st.mode&0o7777)}
+    undo.push({vPath:f.vPath,backup:st?backup:null,...(st?{uid:st.uid,gid:st.gid,mode:st.mode&0o7777}:{})});
     fs.writeFileSync(path.join(dir,'undo.json'),JSON.stringify(undo,null,1));
     const tmp=f.vPath+'.promote-tmp-'+process.pid;
     fs.mkdirSync(path.dirname(f.vPath),{recursive:true});
@@ -82,7 +93,13 @@ if(mode==='check'||mode==='install'){
 if(mode==='undo'){
   const undo=JSON.parse(fs.readFileSync(path.join(dir,'undo.json')));
   for(const u of undo.reverse()){
-    if(u.backup){const tmp=u.vPath+'.undo-tmp-'+process.pid;fs.copyFileSync(u.backup,tmp);const st=fs.statSync(u.backup);fs.chownSync(tmp,st.uid,st.gid);fs.chmodSync(tmp,st.mode&0o7777);fs.renameSync(tmp,u.vPath)}
+    if(u.backup){
+      const explicit=['uid','gid','mode'].every(k=>Number.isSafeInteger(u[k])&&u[k]>=0)&&(u.mode<=0o7777);
+      if(!explicit&&['uid','gid','mode'].some(k=>Object.hasOwn(u,k)))throw Error('Invalid undo file metadata');
+      const st=explicit?u:fs.statSync(u.backup);
+      if(!explicit)console.error('legacy undo: using backup metadata; original owner cannot be certified: '+u.vPath);
+      const tmp=u.vPath+'.undo-tmp-'+process.pid;fs.copyFileSync(u.backup,tmp);fs.chownSync(tmp,st.uid,st.gid);fs.chmodSync(tmp,st.mode&0o7777);fs.renameSync(tmp,u.vPath)
+    }
     else fs.rmSync(u.vPath,{force:true});
   }
   console.log('restored '+undo.length+' files');process.exit(0);
@@ -90,21 +107,41 @@ if(mode==='undo'){
 console.error('mode?');process.exit(2);
 `;
 
+export function main(argv) {
+const args = parseArgs(argv);
+const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const V = args.vHost ?? 'v';
+const VLAB = args.vlabHost ?? 'vlab91';
+const VLAB_TOOL = args.vlabTool ?? '/Users/tianyicai/vlab-dev/lab/vlab.mjs';
+const RELEASES = '/srv/vlab-production-mirror/labs/shared-workflow/releases';
+const V_UNIT = 'openclaw-gateway.service';
+const V_FEISHU = args.vFeishu ?? '/opt/openclaw-experiments/worker-visible-progress-v2026.9.1-20260909/feishu';
+const V_NPM_PROJECTS = args.vNpmProjects ?? '/home/openclaw/.openclaw/npm/projects';
+const BACKUPS = '/opt/v-release-backups';
+const V_NODE = args.vNode ?? '/opt/node-v22.23.1/bin/node';
+const sshBytes = (host, script, input) => execFileSync('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=20', host, script], {
+  input, maxBuffer: 512 * 1024 * 1024,
+});
+const ssh = (host, script, input) => sshBytes(host, script, input).toString('utf8');
+const vlab = (...a) => execFileSync('node', [VLAB_TOOL, ...a], { encoding: 'utf8', cwd: dirname(dirname(VLAB_TOOL)), maxBuffer: 64 * 1024 * 1024 });
+
 if (args.undo) {
   console.log(ssh(V, `sudo ${V_NODE} - undo ${sq(args.undo)}`, REMOTE).trim());
   console.log('V files restored. Recapture and reinstall the sentinel expectations for the release V is back on.');
   process.exit(0);
 }
 if (!args.release || !args.name) usage('--release and --name are required');
+if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(args.release)) usage('--release must be a plain release ID');
 if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(args.name)) usage('--name must be a plain release name');
 
 // ---- 1. the release VLab accepted ----------------------------------------------
 const status = JSON.parse(vlab('status'));
-if (status.current?.release !== args.release) fail(`VLab's current release is ${status.current?.release}, not ${args.release}`);
-if (status.current.accepted !== true) fail(`${args.release} is not accepted on VLab; accept it there first`);
+if (args.apply) assertPromotionLease(status, args.owner);
 
 // ---- 2. its bytes, mapped onto V -----------------------------------------------
-const artifact = JSON.parse(ssh(VLAB, `sudo cat ${sq(`${RELEASES}/${args.release}/artifact.json`)}`));
+const manifestBytes = sshBytes(VLAB, `sudo cat ${sq(`${RELEASES}/${args.release}/manifest.json`)}`);
+const artifactBytes = sshBytes(VLAB, `sudo cat ${sq(`${RELEASES}/${args.release}/artifact.json`)}`);
+const artifact = assertAcceptedReleaseBinding(status.current, args.release, manifestBytes, artifactBytes);
 const vCore = /(\/\S+)\/dist\/index\.js/.exec(ssh(V, `systemctl show ${V_UNIT} -p ExecStart --value`))?.[1];
 if (!vCore) fail('cannot find V core from ExecStart');
 const vWorker = vCore.replace(/\/core$/, '/worker');
@@ -150,6 +187,9 @@ if (!args.apply) {
 if (!args.owner) usage('--owner is required with --apply');
 
 // ---- 4. install ------------------------------------------------------------------
+const installStatus = JSON.parse(vlab('status'));
+assertPromotionLease(installStatus, args.owner);
+assertAcceptedReleaseBinding(installStatus.current, args.release, manifestBytes, artifactBytes);
 console.log(ssh(V, `sudo ${V_NODE} - install ${sq(dir)}`, REMOTE).trim());
 
 // ---- 5. bookkeeping: capture, sentinel, align --------------------------------------
@@ -190,6 +230,7 @@ try {
   process.exit(1);
 }
 console.log(`\nDone. Commit release/captured/${args.name}*, add its CHANGELOG.md section\n(node scripts/release-notes.mjs --from <previous V release> --to ${args.name}, then write the summary),\nand open the release PR (dev -> main, tag ${args.name}).`);
+}
 
 function packFiles(p, list) {
   // A tiny tar of plan.json + files/<i>, built with the system tar from a temp dir.
@@ -223,3 +264,5 @@ function parseArgs(argv) {
   }
   return out;
 }
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main(process.argv.slice(2));

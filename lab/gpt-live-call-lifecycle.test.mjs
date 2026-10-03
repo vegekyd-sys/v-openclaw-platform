@@ -37,20 +37,23 @@ const Controller = new Function("createHash", "randomUUID", "createGptLiveCallLi
   controllerSource.replace(/^import[^\n]*\n/gmu, "").replace(/export \{ OpenAIQuicksilverDelegationController as t \};\s*$/u, "") + "return OpenAIQuicksilverDelegationController;")
   (createHash, randomUUID, createGptLiveCallLifecycle, (v) => v instanceof Error ? v : new Error(String(v)), (v) => v.message, String, ({ input }) => input, parseNative, (v) => v, chunkNative, (v) => v);
 
-function nativeFixture({ enabled = true, onToolEvent } = {}) {
+function nativeFixture({ enabled = true, onToolEvent, adopted = true } = {}) {
   const order = [], errors = [], calls = [], abort = new AbortController();
+  let currentLease = adopted;
   const socket = { readyState: 1, fail: false, send(value) {
     if (this.fail) throw new Error("socket send failed");
     order.push({ kind: "frame", ...JSON.parse(value) });
   } };
   const controller = new Controller({ signal: abort.signal, getSocket: () => socket, logger: { warn() {} },
-    callLifecycle: enabled, onCallLifecycleEvent: (event) => { order.push({ kind: "tool", ...event }); onToolEvent?.(event); },
+    callLifecycle: enabled, isCallCurrent: () => currentLease,
+    onCallLifecycleEvent: (event) => { order.push({ kind: "tool", ...event }); onToolEvent?.(event); },
     onError: (error) => errors.push(error), onFatalError: (error) => errors.push(error),
     runAgentConsult: (params) => { calls.push(params); return new Promise(() => {}); } });
   const frame = (event) => controller.handleFrame(JSON.stringify(event), false);
   const start = () => frame({ type: "session.started", session: {} });
   const end = (id = "native-end-1", origin = "actual-user-turn") => frame({ type: "delegation.created", item: { type: "delegation", target: "client", id, ...(origin ? { user_bidi_turn_id: origin } : {}), content: [{ type: "input_text", text: endPrompt }] } });
-  return { controller, abort, socket, order, errors, calls, frame, start, end };
+  return { controller, abort, socket, order, errors, calls, frame, start, end,
+    setCurrentLease: value => { currentLease = value; } };
 }
 
 test("captured broker/wire/bridge bytes pin the supported native protocol", () => {
@@ -79,12 +82,60 @@ test("exact native client profile uses the new code contract and leaves all neig
   assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /End-call host tool/u);
 });
 
-test("actual controller requests one greeting only after native started and host ready", () => {
-  const f = nativeFixture();
-  assert.throws(() => f.controller.callLifecycle.ready(), /not ready/u);
+test("actual controller accepts owned browser ready without a sideband started event and sends greeting once", () => {
+  const f = nativeFixture({ adopted: false });
+  assert.throws(() => f.controller.callLifecycle.ready(), /no longer active/u);
   assert.equal(f.order.length, 0);
   f.start();
   assert.equal(f.order.length, 0, "session.started alone cannot race browser playback readiness");
+  assert.throws(() => f.controller.callLifecycle.ready(), /no longer active/u);
+  f.setCurrentLease(true);
+  assert.deepEqual(f.controller.callLifecycle.ready(), { ok: true, greetingRequested: true });
+  assert.equal(f.order.length, 1);
+  f.controller.detach();
+  const withoutStarted = nativeFixture();
+  assert.deepEqual(withoutStarted.controller.callLifecycle.ready(), { ok: true, greetingRequested: true });
+  assert.deepEqual(withoutStarted.controller.callLifecycle.ready(), { ok: true, greetingRequested: true });
+  assert.equal(withoutStarted.order.length, 1);
+  assert.equal(withoutStarted.order[0].type, "session.context.append");
+  assert.equal(withoutStarted.order[0].channel, "speakable");
+  assert.equal(withoutStarted.order[0].content[0].type, "input_text");
+  assert.equal(withoutStarted.calls.length, 0);
+  withoutStarted.controller.detach();
+});
+
+test("missing broker ownership, replaced lease and closed socket cannot authorize greeting or native end", () => {
+  for (const state of ["unadopted", "replaced", "closed-socket"]) {
+    const f = nativeFixture({ adopted: state !== "unadopted" });
+    f.start();
+    if (state === "replaced") f.setCurrentLease(false);
+    if (state === "closed-socket") f.socket.readyState = 3;
+    assert.throws(() => f.controller.callLifecycle.ready(), /no longer active/u);
+    assert.throws(() => f.end(), /no longer active/u);
+    assert.equal(f.order.length, 0);
+    assert.equal(f.calls.length, 0);
+    f.controller.detach();
+  }
+  const socket = { readyState: 1, send() { throw new Error("must not send"); } };
+  const abort = new AbortController();
+  const controller = new Controller({ signal: abort.signal, getSocket: () => socket, callLifecycle: true,
+    logger: { warn() {} }, onCallLifecycleEvent() {}, runAgentConsult() {} });
+  assert.throws(() => controller.callLifecycle.ready(), /no longer active/u, "local !stopped is insufficient ownership");
+  controller.detach();
+});
+
+test("owned native end delegation does not depend on a duplicated sideband started event", () => {
+  const f = nativeFixture(); f.end();
+  assert.deepEqual(f.order.map(v => v.type), ["tool.call", "tool.result", "delegation.context.append"]);
+  assert.equal(f.order[0].payload.originUserTurnId, "actual-user-turn");
+  assert.equal(f.order[2].delegation_item_id, "native-end-1");
+  assert.equal(f.calls.length, 0);
+  f.controller.detach();
+});
+
+test("a real native started observation does not request greeting before host ready", () => {
+  const f = nativeFixture(); f.start();
+  assert.equal(f.order.length, 0);
   assert.deepEqual(f.controller.callLifecycle.ready(), { ok: true, greetingRequested: true });
   assert.deepEqual(f.controller.callLifecycle.ready(), { ok: true, greetingRequested: true });
   assert.equal(f.order.length, 1);
@@ -181,6 +232,94 @@ test("actual broker binds only its native exact-model lifecycle and forwards act
   const gaEnd = brokerBefore.indexOf("\t\t\tconst runAgentConsult", gaStart);
   assert(gaStart > 0 && gaEnd > gaStart);
   assert(brokerSource.includes(brokerBefore.slice(gaStart, gaEnd)), "GA sideband code remains byte-for-byte unchanged");
+});
+
+// Run the actual patched broker's construction and adoption. The host map and
+// socket are bounded stand-ins; the current-lease closure and lifecycle are the
+// transformed runtime code, including its before-adoption binding order.
+function adoptedBrokerFixture({ model = "gpt-live-1-codex" } = {}) {
+  const from = brokerSource.indexOf("\t\t\tconst abortController = new AbortController();", brokerSource.indexOf("const connected = await connectOpenAIQuicksilverSideband"));
+  const to = brokerSource.indexOf("\n\t\t\tactiveSessionLease.expireIn(session,", from);
+  assert(from > 0 && to > from);
+  const construct = new Function("offer", "connected", "params", "activeSessionLease", "session", "OPENAI_QUICKSILVER_SESSION_TTL_MS",
+    "OpenAIQuicksilverDelegationController", "runAgentConsult", "activeSessions", "token", "lifecycleSignal", "WEBSOCKET_OPEN", "reportTerminal",
+    brokerSource.slice(from, to) + "return { controller: delegations, session };");
+  const activeSessions = new Map(), token = "private-broker-token", lifetime = new AbortController();
+  const order = [], beforeAdoption = [], expiry = [];
+  const socket = { readyState: 1, send: value => order.push(JSON.parse(value)), close() { this.readyState = 3; } };
+  const gatewayControl = {
+    bindCallLifecycle(value) {
+      assert.throws(() => value.ready(), /no longer active/u);
+      beforeAdoption.push(true);
+    },
+    onCallLifecycleEvent: event => order.push(event),
+  };
+  const lease = {
+    adopt(key, wire) { const value = { token: key, ...wire }; activeSessions.set(key, value); return value; },
+    expireIn: (session, ttl) => expiry.push({ session, ttl }), close() {},
+  };
+  const value = construct({ request: { model, gatewayControl } }, { socket }, { logger: { warn() {}, debug() {} } }, lease, undefined,
+    1800000, Controller, () => new Promise(() => {}), activeSessions, token, lifetime.signal, 1, () => {});
+  return { ...value, activeSessions, token, lifetime, socket, order, beforeAdoption, expiry };
+}
+
+test("actual broker adopted lease authorizes pickup without sideband session.started", () => {
+  const f = adoptedBrokerFixture();
+  assert.deepEqual(f.beforeAdoption, [true]);
+  assert.equal(f.activeSessions.get(f.token), f.session);
+  assert.equal(f.controller.options.isCallCurrent(), true);
+  assert.deepEqual(f.controller.callLifecycle.ready(), { ok: true, greetingRequested: true });
+  assert.deepEqual(f.controller.callLifecycle.ready(), { ok: true, greetingRequested: true });
+  assert.equal(f.order.length, 1);
+  assert.equal(f.order[0].type, "session.context.append");
+  assert.equal(f.order[0].channel, "speakable");
+  assert(!f.order.some(event => event.type === "session.started"), "no native event is manufactured");
+  f.controller.detach();
+});
+
+test("actual broker owned native end joins the provider user turn without requiring sideband started", () => {
+  const f = adoptedBrokerFixture();
+  f.controller.handleFrame(JSON.stringify({ type: "delegation.created", item: {
+    type: "delegation", target: "client", id: "broker-end-real", user_bidi_turn_id: "broker-user-real",
+    content: [{ type: "input_text", text: endPrompt }],
+  } }), false);
+  assert.deepEqual(f.order.map(event => event.type), ["tool.call", "tool.result", "delegation.context.append"]);
+  assert.equal(f.order[0].payload.originUserTurnId, "broker-user-real");
+  assert.equal(f.order[1].payload.originUserTurnId, "broker-user-real");
+  assert.equal(f.order[2].delegation_item_id, "broker-end-real");
+  assert.equal(f.activeSessions.get(f.token), f.session, "end acceptance does not prematurely close the broker lease");
+  f.controller.detach();
+});
+
+test("actual broker lease replacement, closing, socket replacement/close and lifecycle abort revoke controls", () => {
+  for (const change of ["replace-lease", "closing", "replace-socket", "close-socket", "abort-lifecycle", "dispose"]) {
+    const f = adoptedBrokerFixture();
+    if (change === "replace-lease") f.activeSessions.set(f.token, { ...f.session });
+    if (change === "closing") f.session.closing = Promise.resolve();
+    if (change === "replace-socket") f.session.socket = { readyState: 1 };
+    if (change === "close-socket") f.socket.readyState = 3;
+    if (change === "abort-lifecycle") f.lifetime.abort(new Error("closed"));
+    if (change === "dispose") f.session.dispose();
+    assert.equal(f.controller.options.isCallCurrent(), false, change);
+    assert.throws(() => f.controller.callLifecycle.ready(), /no longer active/u, change);
+    const afterChange = f.order.length;
+    assert.throws(() => f.controller.callLifecycle.handleDelegation("real-end", endPrompt, "actual-user-turn"), /no longer active/u, change);
+    assert.equal(f.order.length, afterChange, "revoked control cannot emit or send goodbye");
+    f.controller.detach();
+  }
+});
+
+test("actual broker preserves native expiry handling and rejects controls after an aborted lease", () => {
+  const f = adoptedBrokerFixture();
+  const expiresAt = Math.floor(Date.now() / 1000) + 60;
+  f.controller.handleFrame(JSON.stringify({ type: "session.started", session: { expires_at: expiresAt } }), false);
+  assert.equal(f.expiry.length, 1);
+  assert.equal(f.expiry[0].session, f.session);
+  assert(f.expiry[0].ttl > 0 && f.expiry[0].ttl <= 60000);
+  assert.equal(f.order.length, 0, "an observed event does not itself authorize pickup");
+  f.controller.callLifecycle.ready();
+  assert.equal(f.order[0].type, "session.context.append");
+  f.controller.detach();
 });
 
 // Execute the whole actual transformed owner. DOM/RTC/agent operations are not

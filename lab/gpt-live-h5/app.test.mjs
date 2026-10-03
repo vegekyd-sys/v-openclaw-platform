@@ -129,12 +129,12 @@ async function fixture(t, options = {}) {
       const defaultResult = route === "status" ? { ready: true }
         : route === "session" ? { voiceSessionId: `voice-${++sessionId}` }
         : route === "offer" ? { sdp: "v=0\r\nanswer" } : { ok: true };
-      const result = await (options.api?.(route, payload, defaultResult) ?? defaultResult);
+      const result = await (options.api?.(route, payload, defaultResult, init) ?? defaultResult);
       return { ok: true, json: async () => result };
     },
     setInterval: (callback, delay) => { const id = ++timerId; intervals.set(id, { callback, delay }); return id; },
     clearInterval: (id) => intervals.delete(id),
-    setTimeout: (callback, delay) => { const id = ++timerId; timeouts.set(id, { callback, delay }); return id; },
+    setTimeout: (callback, delay) => { const id = ++timerId; timeouts.set(id, { callback, delay, at: now }); return id; },
     clearTimeout: (id) => timeouts.delete(id),
   });
   vm.runInContext(appSource, context, { filename: "gpt-live-h5/app.js" });
@@ -783,9 +783,102 @@ test('native readiness racing session start retries within a bound and ends with
   const f=await fixture(t,{api:(route,payload,value)=>{if(route==='ready'&&++ready===1)throw Error('Native session not ready');return value;}});
   await f.context.startCall(); const peer=f.peers[0]; peer.connectionState='connected'; peer.onconnectionstatechange();
   await peer.ontrack({track:track()}); await tick();
-  assert.equal(ready,1); assert.equal(f.timeouts.size,1);
-  const timer=[...f.timeouts.entries()][0]; f.timeouts.delete(timer[0]); timer[1].callback(); await tick();
+  assert.equal(ready,1); assert.equal(f.timeouts.size,2);
+  const timer=[...f.timeouts.entries()].find(([,value])=>value.delay<15000); f.timeouts.delete(timer[0]); timer[1].callback(); await tick();
   assert.equal(ready,2); assert.equal(f.timeouts.size,0);
   peer.onconnectionstatechange(); await tick(); assert.equal(ready,2);
   await f.context.stopCall(); assert.equal(f.timeouts.size,0);
+});
+
+async function fireNextTimeout(f) {
+  const entry=[...f.timeouts.entries()].sort((a,b)=>(a[1].at+a[1].delay)-(b[1].at+b[1].delay))[0];
+  assert(entry,'Expected an owned timer');
+  f.timeouts.delete(entry[0]); f.setNow(entry[1].at+entry[1].delay); entry[1].callback(); await tick();
+}
+
+test('greeting retries past four early backend failures and still accepts exactly once inside the readiness grace', async t => {
+  let ready=0;
+  const f=await fixture(t,{api:(route,payload,value)=>{if(route==='ready'&&++ready<=4)throw Error('Sideband session has not started');return value;}});
+  await f.context.startCall(); const peer=f.peers[0]; peer.connectionState='connected'; peer.onconnectionstatechange();
+  await peer.ontrack({track:track()}); await tick();
+  for(let index=0;index<4;index++) await fireNextTimeout(f);
+  assert.equal(ready,5); assert.equal(f.timeouts.size,0);
+  peer.onconnectionstatechange(); peer.channel.onmessage({data:JSON.stringify({type:'session.started'})}); await tick();
+  assert.equal(ready,5);
+  assert.equal(f.context.__gptLiveDuplexDiagnostics.counts['greeting-ready-accepted'],1);
+  assert.equal(f.element('transcriptHistory').children.length+f.element('transcriptCurrentRows').children.length,0,'Acceptance never creates synthetic greeting text');
+  assert.equal(peer.closed,false);
+});
+
+test('native session.started nudges the idempotent readiness retry but a slower backend still gets the original bounded grace', async t => {
+  let ready=0;
+  const f=await fixture(t,{api:(route,payload,value)=>{if(route==='ready'&&++ready<6)throw Error('Backend sideband is still pending');return value;}});
+  await f.context.startCall(); const peer=f.peers[0]; peer.connectionState='connected'; peer.onconnectionstatechange();
+  await peer.ontrack({track:track()}); await tick();
+  f.setNow(100); peer.channel.onmessage({data:JSON.stringify({type:'session.started'})}); await tick();
+  assert.equal(ready,2);
+  assert.equal([...f.timeouts.values()].find(value=>value.delay===15000).at,0,'A started notification never extends the grace');
+  for(let index=0;index<4;index++) await fireNextTimeout(f);
+  assert.equal(ready,6); assert.equal(f.timeouts.size,0); assert.equal(peer.closed,false);
+});
+
+test('readiness grace expires after fifteen seconds without closing the working call or allowing later greeting retries', async t => {
+  let ready=0;
+  const f=await fixture(t,{api:(route,payload,value)=>{if(route==='ready'){ready++;throw Error('Still not started');}return value;}});
+  await f.context.startCall(); const peer=f.peers[0]; peer.connectionState='connected'; peer.onconnectionstatechange();
+  await peer.ontrack({track:track()}); await tick();
+  while(f.timeouts.size) await fireNextTimeout(f);
+  assert(ready>4); const attempts=ready;
+  peer.channel.onmessage({data:JSON.stringify({type:'session.started'})}); peer.onconnectionstatechange(); await tick();
+  assert.equal(ready,attempts); assert.equal(f.timeouts.size,0); assert.equal(peer.closed,false);
+  assert(peer.tracks.every(value=>value.enabled&&value.stopped===0));
+  assert.equal(f.context.__gptLiveDuplexDiagnostics.counts['greeting-ready-expired'],1);
+  assert.equal(f.context.__gptLiveDuplexDiagnostics.counts['greeting-ready-accepted'],undefined);
+});
+
+for(const input of [{type:'turn.created',turn:{role:'user',id:'u'}},{type:'turn.done',turn:{role:'user',id:'u'}},
+  {type:'input_transcript.added',item:{id:'input',text:'我先说一下'}}]) {
+  test(`actual caller ${input.type} prevents a late readiness retry from inserting a pickup greeting`,async t=>{
+    let ready=0;
+    const f=await fixture(t,{api:(route,payload,value)=>{if(route==='ready'){ready++;throw Error('Not started yet');}return value;}});
+    await f.context.startCall(); const peer=f.peers[0]; peer.connectionState='connected'; peer.onconnectionstatechange();
+    await peer.ontrack({track:track()}); await tick();
+    const queued=[...f.timeouts.values()];
+    f.setNow(200); peer.channel.onmessage({data:JSON.stringify(input)}); await tick();
+    assert.equal(f.timeouts.size,0);
+    for(const timer of queued) timer.callback();
+    peer.channel.onmessage({data:JSON.stringify({type:'session.started'})}); await tick();
+    assert.equal(ready,1); assert.equal(peer.closed,false);
+    assert.equal(f.context.__gptLiveDuplexDiagnostics.counts['greeting-suppressed-caller-start'],1);
+  });
+}
+
+test('a stopped call clears readiness timers and cannot retry against the replacement voice session',async t=>{
+  const f=await fixture(t,{api:(route,payload,value)=>{if(route==='ready'&&payload.voiceSessionId==='voice-1')throw Error('Not ready');return value;}});
+  await f.context.startCall(); const old=f.peers[0]; old.connectionState='connected'; old.onconnectionstatechange();
+  await old.ontrack({track:track()}); await tick(); const queued=[...f.timeouts.values()];
+  await f.context.stopCall(); assert.equal(f.timeouts.size,0); await f.context.startCall();
+  const replacement=f.peers[1]; replacement.connectionState='connected'; replacement.onconnectionstatechange();
+  await replacement.ontrack({track:track()}); await tick(); const before=f.requests.length;
+  for(const timer of queued) timer.callback(); old.channel.onmessage({data:JSON.stringify({type:'session.started'})}); await tick();
+  assert.equal(f.requests.length,before); assert.equal(f.requests.filter(value=>value.route==='ready'&&value.payload.voiceSessionId==='voice-2').length,1);
+});
+
+test('the readiness deadline aborts a hung ready fetch and prevents a late success from claiming greeting acceptance',async t=>{
+  const reply=deferred(); let signal;
+  const f=await fixture(t,{api:(route,payload,value,init)=>{
+    if(route!=='ready')return value;
+    signal=init.signal;
+    return new Promise((resolve,reject)=>{
+      signal.addEventListener('abort',()=>reject(Object.assign(Error('aborted'),{name:'AbortError'})),{once:true});
+      reply.promise.then(resolve,reject);
+    });
+  }});
+  await f.context.startCall(); const peer=f.peers[0]; peer.connectionState='connected'; peer.onconnectionstatechange();
+  await peer.ontrack({track:track()}); await tick();
+  assert.equal(f.requests.filter(value=>value.route==='ready').length,1); assert.equal(f.timeouts.size,1);
+  await fireNextTimeout(f); assert.equal(signal.aborted,true); assert.equal(f.timeouts.size,0);
+  reply.resolve({ok:true}); await tick();
+  assert.equal(f.context.__gptLiveDuplexDiagnostics.counts['greeting-ready-accepted'],undefined);
+  assert.equal(peer.closed,false);
 });

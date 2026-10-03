@@ -36,10 +36,12 @@ export function createGptLiveCallLifecycle(options) {
       ...(originUserTurnId ? { originUserTurnId } : {}), ...payload } });
   };
   return {
+    // Record an actual native observation only. The browser broker adopts an
+    // authenticated live sideband before handing SDP to the caller, and that
+    // path does not require session.started to be repeated on the sideband.
     started() { if (!closed && !options.signal?.aborted) started = true; },
     ready() {
       assertCurrent();
-      if (!started) throw new Error("GPT Live native session is not ready");
       if (!greetingRequested) {
         // Same supported frame as the native bridge's triggerGreeting method.
         const sent = options.sendSessionContext("通话音频已经就绪。现在用一句简短中文主动问候用户并邀请他说话，然后安静听；不要委托后台，不重复问候。");
@@ -51,7 +53,7 @@ export function createGptLiveCallLifecycle(options) {
     handleDelegation(id, prompt, userBidiTurnId) {
       if (!parseGptLiveEndCallDelegation(prompt)) return false;
       assertCurrent();
-      if (!started || typeof id !== "string" || !/^[a-zA-Z0-9_.:-]{1,160}$/.test(id)) throw new Error("Invalid GPT Live end-call delegation");
+      if (typeof id !== "string" || !/^[a-zA-Z0-9_.:-]{1,160}$/.test(id)) throw new Error("Invalid GPT Live end-call delegation");
       if (endedRequestIds.has(id)) return true;
       endedRequestIds.add(id);
       if (endedRequestIds.size > 256) endedRequestIds.delete(endedRequestIds.values().next().value);

@@ -28,7 +28,12 @@ export function validateLifecycleReleaseIdentity(expected,observed) {
     const {current,manifest,artifactSha}=observed;
     assert(current&&manifest);
     assert.equal(current.release,expected.release);assert.equal(current.sourceCommit,expected.sourceCommit);
-    assert.equal(current.artifactSha,expected.artifactSha);assert.equal(manifest.artifactSha,artifactSha);
+    // Canonical deploy records the new source/runtime but deliberately adds
+    // artifactSha to current only when functional acceptance is recorded.
+    // Before acceptance, bind the registered manifest to actual artifact bytes.
+    if(current.artifactSha!==undefined)assert.equal(current.artifactSha,expected.artifactSha);
+    else assert.equal(current.accepted,false,'An accepted current must carry its artifact identity');
+    assert.equal(manifest.artifactSha,artifactSha);
     assert.equal(artifactSha,expected.artifactSha);assert.equal(manifest.sourceCommit,expected.sourceCommit);assert.equal(manifest.branch,'dev');
     assert.deepEqual(manifest.runtimeFiles,expected.runtimeFiles,'Live registered artifact differs from the expected runtime');
     return {release:current.release,sourceCommit:current.sourceCommit,artifactSha,accepted:current.accepted===true,pendingPresent:false,
@@ -60,7 +65,10 @@ export function validateLifecycleTargetIdentity(expected,actual) {
     assert(unit(wanted.unit)&&Number.isSafeInteger(wanted.pid)&&wanted.pid>1&&typeof wanted.startTicks==='string'&&/^\d+$/u.test(wanted.startTicks));
     for(const key of ['unit','pid','startTicks'])assert.equal(observed[key],wanted[key],label+' process identity changed');
     assert.equal(observed.activeState,'active');assert.equal(observed.subState,'running');
-    assert(observed.cgroup.split('\n').some(line=>line.endsWith('/'+wanted.unit)),label+' process is outside its expected service');
+    // The canonical Gateway moves its MainPID into the service's foreground
+    // child cgroup. Match the exact unit path segment, including its children.
+    assert(observed.cgroup.split('\n').some(line=>line.endsWith('/'+wanted.unit)||line.includes('/'+wanted.unit+'/')),
+      label+' process is outside its expected service');
   }
   for(const key of ['corePath','configPath','stateRoot']) {
     assert(absolute(expected.gateway[key]));assert.equal(actual.gateway[key],expected.gateway[key],'Gateway '+key+' changed');

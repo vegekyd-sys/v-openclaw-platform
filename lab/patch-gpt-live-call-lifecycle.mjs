@@ -13,12 +13,13 @@ export function patchGptLiveCallLifecycleController(source) {
   source = once(source, "\t\tthis.stopped = false;", `\t\tthis.stopped = false;
 \t\tthis.callLifecycle = options.callLifecycle === true ? createGptLiveCallLifecycle({
 \t\t\tsignal: options.signal,
-\t\t\tisCurrent: () => !this.stopped && !options.signal.aborted,
+\t\t\tisCurrent: () => !this.stopped && !options.signal.aborted &&
+\t\t\t\toptions.isCallCurrent?.() === true && options.getSocket()?.readyState === WEBSOCKET_OPEN,
 \t\t\tonToolEvent: (event) => options.onCallLifecycleEvent(event),
 \t\t\tonError: (error) => options.onError?.(error),
 \t\t\tsendSessionContext: (text) => {
 \t\t\t\tconst socket = options.getSocket();
-\t\t\t\tif (socket.readyState !== WEBSOCKET_OPEN) return false;
+\t\t\t\tif (socket?.readyState !== WEBSOCKET_OPEN) return false;
 \t\t\t\tsocket.send(JSON.stringify({ type: "session.context.append", channel: "speakable", content: [{ type: "input_text", text }] }));
 \t\t\t\treturn true;
 \t\t\t},
@@ -37,6 +38,9 @@ export function patchGptLiveCallLifecycleBroker(source) {
   source = once(source, `\t\t\tconst delegations = new OpenAIQuicksilverDelegationController({
 \t\t\t\tgetSocket: () => connected.socket,`, `\t\t\tconst delegations = new OpenAIQuicksilverDelegationController({
 \t\t\t\tcallLifecycle: offer.request.model === "gpt-live-1-codex" && typeof offer.request.gatewayControl?.bindCallLifecycle === "function",
+\t\t\t\tisCallCurrent: () => Boolean(session) && activeSessions.get(token) === session &&
+\t\t\t\t\t!session.closing && session.socket === connected.socket &&
+\t\t\t\t\t!lifecycleSignal.aborted && !abortController.signal.aborted && connected.socket.readyState === WEBSOCKET_OPEN,
 \t\t\t\tonCallLifecycleEvent: (event) => offer.request.gatewayControl?.onCallLifecycleEvent?.(event),
 \t\t\t\tonTranscript: (role, text, final) => offer.request.gatewayControl?.onTranscript?.(role, text, final),
 \t\t\t\tgetSocket: () => connected.socket,`, "native browser broker options");

@@ -22,11 +22,25 @@ test('shared and production retain distinct service/core/config/H5 provenance',(
  for(const target of ['shared','v']){const f=fixture(target);assert.equal(validateLifecycleTargetIdentity(f.expected,f.actual).target,target);}
  const f=fixture();f.actual.target='candidate';assert.throws(()=>validateLifecycleTargetIdentity(f.expected,f.actual));
 });
+test('canonical foreground subgroup remains inside the exact MainPID service',()=>{
+ const f=fixture();f.actual.gateway.cgroup+='\/foreground';assert(validateLifecycleTargetIdentity(f.expected,f.actual));
+ for(const cgroup of ['0::/other.service/foreground','0::/system.slice/'+f.expected.gateway.unit+'-neighbor/foreground']){
+  const other=fixture();other.actual.gateway.cgroup=cgroup;assert.throws(()=>validateLifecycleTargetIdentity(other.expected,other.actual));
+ }
+});
 test('staged shared release may be tested but pending or unrelated canonical artifact cannot',()=>{
  const f=fixture();assert.equal(validateLifecycleTargetIdentity(f.expected,f.actual).release.accepted,false);
  for(const alter of [r=>r.pendingPresent=true,r=>r.current.release='neighbor',r=>r.current.sourceCommit='f'.repeat(40),
   r=>r.manifest.branch='other',r=>r.artifactSha='f'.repeat(64),r=>r.current.artifactSha=null,r=>r.manifest.runtimeFiles=[]]){
   const v=fixture();alter(v.actual.release);assert.throws(()=>validateLifecycleTargetIdentity(v.expected,v.actual));
+ }
+});
+test('actual canonical unaccepted current binds the manifest and artifact before acceptance adds artifactSha',()=>{
+ const f=fixture();delete f.actual.release.current.artifactSha;
+ assert.equal(validateLifecycleTargetIdentity(f.expected,f.actual).release.artifactSha,f.expected.artifactSha);
+ for(const change of [r=>r.current.accepted=true,r=>delete r.current.accepted,r=>r.manifest.artifactSha='f'.repeat(64),
+   r=>r.artifactSha='f'.repeat(64),r=>r.manifest.sourceCommit='f'.repeat(40),r=>r.manifest.runtimeFiles=[]]){
+  const value=structuredClone(f);change(value.actual.release);assert.throws(()=>validateLifecycleTargetIdentity(value.expected,value.actual));
  }
 });
 test('V must retain the same shared accepted runtime and H5 proof',()=>{
