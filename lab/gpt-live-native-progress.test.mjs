@@ -446,6 +446,42 @@ test("all original final chunks are sent before the next backend request can sta
   f.calls[1].resolve({ text: "next" }); await settle();
 });
 
+test("actual host caller conditions travel with bounded final chunks and never enter an unrelated queued result", async () => {
+  const diagnostics = [], f = fixture({ onPublicProgressDiagnostic: row => diagnostics.push(row) });
+  f.controller.startDelegation("owned", "long task"); f.controller.startDelegation("other", "independent next task");
+  const condition = { ownerRunId: "host-owner", sequence: 2, inputs: [
+    { sequence: 1, mode: "steer", text: "只说一句话。" },
+    { sequence: 2, mode: "steer", text: "结尾保留我指定的称呼，不能省略。" },
+  ] };
+  const provenance = { runId: "actual-resume", ownerRunId: "host-owner", source: "canonical_final", role: "parent" };
+  f.calls[0].resolve({ text: "完整已核验结果。", provenance, callerConditions: condition }); await settle();
+  const envelope = f.texts().join("");
+  assert.match(envelope, /Caller instructions for this same task/); assert.match(envelope, /不能省略/);
+  assert.match(envelope, /Canonical backend result/); assert(envelope.endsWith("完整已核验结果。"));
+  assert(f.frames.every(frame => frame.type === "delegation.context.append" && Buffer.byteLength(frame.content[0].text, "utf8") <= 500));
+  const source = diagnostics.find(row => row.stage === "backend-final-received");
+  assert.equal(source.textSha256, createHash("sha256").update("完整已核验结果。").digest("hex"));
+  const attached = diagnostics.find(row => row.stage === "caller-conditions-attached");
+  assert.equal(attached.textSha256, createHash("sha256").update(JSON.stringify(condition.inputs)).digest("hex"));
+  assert(!JSON.stringify(diagnostics).includes("指定的称呼"));
+  assert.equal(f.calls.length, 2); const boundary = f.frames.length;
+  f.calls[1].resolve({ text: "下一项独立结果。" }); await settle();
+  assert.equal(f.frames.length, boundary + 1); assert.equal(f.texts().at(-1), "下一项独立结果。");
+});
+
+test("caller condition owner mismatch and invalid order fail honestly instead of attaching instructions", async t => {
+  for (const [name, callerConditions] of [
+    ["other owner", { ownerRunId: "other", sequence: 1, inputs: [{ sequence: 1, mode: "steer", text: "wrong owner" }] }],
+    ["nonmonotonic", { ownerRunId: "owner", sequence: 1, inputs: [{ sequence: 2, mode: "steer", text: "new" }, { sequence: 1, mode: "steer", text: "old" }] }],
+    ["unstarted batch", { ownerRunId: "owner", sequence: 3, inputs: [{ sequence: 2, mode: "steer", text: "unconsumed" }] }],
+  ]) await t.test(name, async () => {
+    const f = fixture(); f.controller.startDelegation("d", "task");
+    f.calls[0].resolve({ text: "result", provenance: { ownerRunId: "owner", runId: "real", source: "canonical_final", role: "parent" }, callerConditions });
+    await settle(); assert(f.frames.length); assert(f.frames.every(frame => frame.content[0].text.startsWith("[BACKEND_FAILURE")));
+    assert(!f.texts().join("").includes("wrong owner"));
+  });
+});
+
 test("terminal false or partial-send throw closes only delivery and never launches queued work", async t => {
   for (const action of ["false", "throw-after-first-chunk"]) await t.test(action, async () => {
     const f = fixture();
@@ -1027,4 +1063,76 @@ test("actual child markdown fragments and next-step plans cannot enter or replac
   assert.deepEqual(f.texts(), ["目录已确认。", "校验数为3968。"]);
   assert(f.frames.every(frame => frame.channel === "speakable"));
   f.calls[0].resolve({text: "校验数3968，完整结果已交付。"}); await settle();
+});
+
+test("English running and polling updates are silent before the first fact", async () => {
+  const f = fixture(); f.controller.startDelegation("d1", "request");
+  const run = f.calls[0];
+  for (const text of [
+    "The sleep is still running. Let me poll until it completes.",
+    "Still sleeping. Polling again.",
+    "Polling again.",
+    "The process remains running.",
+    "This job is pending.",
+    "It's still waiting.",
+    "Continuing to poll.",
+    "Task accepted; waiting for the worker.",
+    "The sleep is still running. Let me wait for it to complete.",
+    "Still sleeping. I will poll until the task is completed.",
+    "Task accepted; waiting until the result is confirmed.",
+    "The process is still running; we will have processed the remaining records.",
+  ]) run.onProgress({ kind: "commentary", text });
+  assert.deepEqual(f.texts(), [], "waiting updates cannot consume the first fact's speech slot");
+  assert.equal(run.signal.aborted, false);
+  run.onProgress({ kind: "commentary", text: "Sleep completed with exit code 0." });
+  assert.deepEqual(f.texts(), ["Sleep completed with exit code 0."]);
+  run.resolve({ text: "The requested result is complete." }); await settle();
+  assert.equal(f.texts().at(-1), "The requested result is complete.");
+});
+
+test("English waiting updates cannot replace a queued value while mixed verified facts remain eligible", async t => {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 100000 });
+  const f = fixture(); f.controller.startDelegation("d1", "request");
+  const run = f.calls[0];
+  run.onProgress({ kind: "commentary", text: "The source document was verified." });
+  run.onProgress({ kind: "commentary", text: "The measured latency is 2.75 ms." });
+  for (const text of ["The sleep is still running. Let me poll until it completes.", "Still sleeping.", "Polling again.",
+    "The sleep is still running. Let me wait for it to complete.",
+    "Still sleeping. I will poll until the task is completed.",
+    "Task accepted; waiting until the result is confirmed."])
+    run.onProgress({ kind: "commentary", text });
+  t.mock.timers.tick(15000);
+  assert.deepEqual(f.texts(), ["The source document was verified.", "The measured latency is 2.75 ms."]);
+  run.onProgress({ kind: "commentary", text: "The process is still running; the verified value is 18.5 ms." });
+  t.mock.timers.tick(15000);
+  assert.equal(f.texts().at(-1), "The process is still running; the verified value is 18.5 ms.");
+  run.onProgress({ kind: "commentary", text: "The process is still running; 12 of 20 records have been processed." });
+  t.mock.timers.tick(15000);
+  assert.equal(f.texts().at(-1), "The process is still running; 12 of 20 records have been processed.");
+  run.resolve({ text: "The complete values are 2.75 ms and 18.5 ms." }); await settle();
+  assert.equal(f.texts().at(-1), "The complete values are 2.75 ms and 18.5 ms.");
+});
+
+test("a completed clause remains eligible before a separate future-dependent clause", async () => {
+  const f = fixture(); f.controller.startDelegation("d1", "request");
+  const run = f.calls[0];
+  const text = "The process is still running; the first batch has been processed. I will wait until the final result is verified.";
+  run.onProgress({ kind: "commentary", text });
+  assert.deepEqual(f.texts(), [text], "eligibility must retain the already completed clause without rewriting the payload");
+  run.resolve({ text: "The backend's original final." }); await settle();
+  assert.equal(f.texts().at(-1), "The backend's original final.");
+});
+
+test("finite until-now phrases preserve already completed progress without allowing future until clauses", async () => {
+  for (const prefix of ["until now", "until this point"]) {
+    const f = fixture(); f.controller.startDelegation("d1", "request");
+    const run = f.calls[0];
+    run.onProgress({ kind: "commentary", text: "The process is still running; waiting until the remaining records have been processed." });
+    assert.deepEqual(f.texts(), [], "future completion remains silent");
+    const fact = `The process is still running; ${prefix}, 12 of 20 records have been processed.`;
+    run.onProgress({ kind: "commentary", text: fact });
+    assert.deepEqual(f.texts(), [fact], prefix);
+    run.resolve({ text: "The backend's original final." }); await settle();
+    assert.equal(f.texts().at(-1), "The backend's original final.");
+  }
 });

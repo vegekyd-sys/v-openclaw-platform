@@ -130,6 +130,9 @@ function createGptLiveConsultContinuationRegistry(deps) {
     const batches = new Set();
     const cleanups = new Set();
     const pendingInputs = [];
+    const consumedInputs = [];
+    const acceptedActiveInputs = [];
+    const activeInputReservations = [];
     let inputSequence = 0;
     let done = false;
     let cancellationNotified = false;
@@ -155,6 +158,9 @@ function createGptLiveConsultContinuationRegistry(deps) {
       for (const fn of cleanups) { try { fn(); } catch {} }
       cleanups.clear();
       pendingInputs.length = 0;
+      consumedInputs.length = 0;
+      acceptedActiveInputs.length = 0;
+      activeInputReservations.length = 0;
       for (const [runId, binding] of bindings) {
         if (byRun.get(runId) === binding) byRun.delete(runId);
         if (binding.taskRunId && byChildTask.get(binding.taskRunId) === binding) byChildTask.delete(binding.taskRunId);
@@ -257,10 +263,20 @@ function createGptLiveConsultContinuationRegistry(deps) {
         throw new Error("Voice requester ended before its accepted child tasks completed; no complete final is available");
       }
       if (pendingInputs.length) throw new Error("Voice requester ended before its pending user conditions reached a continuation checkpoint");
+      if (activeInputReservations.length) throw new Error("Voice requester ended before its caller input acceptance was confirmed");
       const text = params.collectVisibleText(result.payloads);
       if (!text) throw new Error("Voice requester continuation returned no speakable final");
+      // The voice model did not hear conditions entered through the H5 form.
+      // Keep these host-owned instructions distinct from the model's result.
+      // Checkpoint inputs require actual dispatch/start; active inputs require
+      // the original queue's real acceptance (not proof of model consumption).
+      const deliveredInputs = [...consumedInputs, ...acceptedActiveInputs].sort((a, b) => a.sequence - b.sequence);
+      const callerConditions = deliveredInputs.length ? {
+        ownerRunId: params.runId, sequence: deliveredInputs.at(-1).sequence,
+        inputs: deliveredInputs.map(({ sequence, mode, text }) => ({ sequence, mode, text })),
+      } : undefined;
       settle({ text, provenance: { runId: binding.runId, ownerRunId: params.runId,
-        source: "canonical_final", role: binding.role } });
+        source: "canonical_final", role: binding.role }, ...(callerConditions ? { callerConditions } : {}) });
     };
     const owner = {
       identity: { delegationItemId: identity.delegationItemId, delegationGeneration: identity.delegationGeneration },
@@ -299,7 +315,33 @@ function createGptLiveConsultContinuationRegistry(deps) {
       });
       const parents = actualTargets((binding) => binding.role !== "child" && binding.sessionKey === params.sessionKey);
       if (parents.length > 1) throw error("Voice continuation active parent is ambiguous");
-      if (parents.length) return await executeControl(parents[0]);
+      const inputText = clean(text);
+      const retainedInputs = [...consumedInputs, ...acceptedActiveInputs, ...pendingInputs, ...activeInputReservations];
+      const canRetain = inputText && retainedInputs.length < 8 &&
+        retainedInputs.reduce((bytes, input) => bytes + Buffer.byteLength(input.text, "utf8"), 0) + Buffer.byteLength(inputText, "utf8") <= 8000;
+      const inputLimit = () => ({ ok: false, mode, sessionKey: params.sessionKey, active: true, queued: false,
+        reason: "pending_input_limit", message: "The voice continuation could not retain that condition; please shorten it or wait for the current step.",
+        speak: true, show: true, suppress: false });
+      if (parents.length) {
+        if (mode !== "status" && !canRetain) return inputLimit();
+        const input = mode === "status" ? undefined : { sequence: ++inputSequence, mode, text: inputText, receivedAt: Date.now() };
+        if (input) activeInputReservations.push(input);
+        try {
+          const result = await executeControl(parents[0]);
+          // Queue acceptance is caller authority, not proof of model consumption.
+          if (input && result?.ok === true && result.queued === true) {
+            if (!isCurrent()) return { ok: false, mode, sessionKey: params.sessionKey, active: false, queued: false,
+              queueAcceptedBeforeOwnerChanged: true, reason: "owner_changed",
+              message: "That voice task ended or changed before its output condition could be retained. Please add the condition to the current task.",
+              speak: true, show: true, suppress: false };
+            acceptedActiveInputs.push(input);
+          }
+          return result;
+        } finally {
+          const index = activeInputReservations.indexOf(input);
+          if (index >= 0) activeInputReservations.splice(index, 1);
+        }
+      }
       // Child execution is evidence of this owner's pending work, never permission
       // to send a whole-task redirect to whichever child happens to be first.
       if (mode === "status") {
@@ -313,12 +355,7 @@ function createGptLiveConsultContinuationRegistry(deps) {
         binding.pendingBatch.parent === binding && binding.isCurrent?.() !== false);
       if (!waiting) return { ok: false, mode, sessionKey: params.sessionKey, active: true, queued: false,
         reason: "not_streaming", message: "The owned voice task is not currently accepting steering.", speak: true, show: true, suppress: false };
-      const inputText = clean(text);
-      if (!inputText || pendingInputs.length >= 8 ||
-          pendingInputs.reduce((bytes, input) => bytes + Buffer.byteLength(input.text, "utf8"), 0) + Buffer.byteLength(inputText, "utf8") > 8000) {
-        return { ok: false, mode, sessionKey: params.sessionKey, active: true, queued: false,
-          reason: "pending_input_limit", message: "The voice continuation could not retain that condition; please shorten it or wait for the current step.", speak: true, show: true, suppress: false };
-      }
+      if (!canRetain) return inputLimit();
       pendingInputs.push({ sequence: ++inputSequence, mode, text: inputText, receivedAt: Date.now() });
       return { ok: true, mode, sessionKey: params.sessionKey, active: true, queued: true, applied: false,
         target: "owned_continuation_checkpoint", message: "That condition is retained for this voice task's next continuation checkpoint; it has not been applied yet.",
@@ -340,6 +377,7 @@ function createGptLiveConsultContinuationRegistry(deps) {
       if (!inputs.length) return;
       const steeringConsumed = { sequence: inputs.at(-1).sequence, count: inputs.length,
         textSha256: createHash("sha256").update(JSON.stringify(inputs.map((input) => input.text))).digest("hex") };
+      consumedInputs.push(...inputs.map((input) => ({ ...input })));
       for (let index = pendingInputs.length - 1; index >= 0; index--) if (consumed.has(pendingInputs[index].sequence)) pendingInputs.splice(index, 1);
       return steeringConsumed;
     };

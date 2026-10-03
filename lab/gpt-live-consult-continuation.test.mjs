@@ -533,6 +533,10 @@ test("captured stale-first Talk selector fails while trusted status, steer and f
   assert.match(queued[1].text, /Spoken follow-up/); assert.match(queued[1].text, /compare both dates/);
   assert.equal(f.cancellations.length, 0); wake.finish({ meta: {}, payloads: [{ text: "Corrected final." }] });
   assert.equal((await f.owner.wait()).text, "Corrected final.");
+  assert.deepEqual((await f.owner.wait()).callerConditions.inputs, [
+    { sequence: 1, mode: "steer", text: "Only use the corrected date" },
+    { sequence: 2, mode: "followup", text: "After that, compare both dates" },
+  ]);
 });
 
 test("yield-gap conditions stay on the exact owner and enter the actual captured resume prompt, not any child or new task", async () => {
@@ -560,6 +564,10 @@ test("yield-gap conditions stay on the exact owner and enter the actual captured
   await run({ voiceContinuation: voice, agentParams: { sessionKey: f.params.sessionKey, message: "Original safe child completion text" },
     getRequesterSessionId: () => f.params.sessionId, isExecutionAllowed: () => true, expectFinal: true, timeoutMs: 1000 });
   assert.equal(dispatched, 1); assert.equal(queued.length, 0); assert.equal((await f.owner.wait()).text, "Corrected dates and prices.");
+  assert.deepEqual((await f.owner.wait()).callerConditions, { ownerRunId: "parent-a", sequence: 2, inputs: [
+    { sequence: 1, mode: "steer", text: "Change the outbound date to October 8" },
+    { sequence: 2, mode: "followup", text: "Then compare the return prices" },
+  ] });
   assert.deepEqual(f.resumeExecutions, [{ runId: 'real-resumed-parent', steeringConsumed: { sequence: 2, count: 2,
     textSha256: createHash('sha256').update(JSON.stringify(['Change the outbound date to October 8', 'Then compare the return prices'])).digest('hex') } }]);
 });
@@ -666,12 +674,39 @@ test("actual Talk RPC sends noncancel controls through the trusted continuation 
   voice.finish({ meta: {}, payloads: [{ text: 'Corrected final.' }] }); await f.owner.wait();
 });
 
+test("concurrent active caller inputs keep receipt order and cannot bypass retained limits or race a final", async t => {
+  await t.test("actual accepted responses may arrive out of order", async () => {
+    const f = setup(), releases = [];
+    const active = new Map([["parent-a", { sessionKey: f.params.sessionKey, sessionId: f.params.sessionId }]]);
+    const c = actualControl(f, active, sessionId => new Promise(resolve => releases.push(() => resolve({ queued: true, sessionId }))));
+    const requests = Array.from({ length: 8 }, (_, index) => c.run({ text: `Caller correction ${index}` }));
+    await tick(); assert.equal(releases.length, 8);
+    const overflow = await c.run({ text: "must not enter another queue" });
+    assert.equal(overflow.ok, false); assert.equal(overflow.reason, "pending_input_limit"); assert.equal(releases.length, 8);
+    for (const release of releases.toReversed()) release(); await Promise.all(requests);
+    f.owner.finishInitial({ meta: {}, payloads: [{ text: "Verified final." }] });
+    assert.deepEqual((await f.owner.wait()).callerConditions.inputs.map(input => input.text),
+      Array.from({ length: 8 }, (_, index) => `Caller correction ${index}`));
+  });
+  await t.test("unconfirmed active queue cannot silently complete an older result", async () => {
+    const f = setup(); let release;
+    const c = actualControl(f, new Map([["parent-a", { sessionKey: f.params.sessionKey, sessionId: f.params.sessionId }]]),
+      sessionId => new Promise(resolve => { release = () => resolve({ queued: true, sessionId }); }));
+    const request = c.run({ text: "Use the new output format" }); await tick();
+    const result = assert.rejects(f.owner.wait(), /caller input acceptance was confirmed/);
+    f.owner.finishInitial({ meta: {}, payloads: [{ text: "Older result must not be delivered." }] }); await result;
+    release(); const late = await request; assert.equal(late.ok, false); assert.equal(late.queued, false);
+    assert.equal(late.reason, "owner_changed"); assert.equal(late.queueAcceptedBeforeOwnerChanged, true);
+    assert.equal(f.cancellations.length, 0);
+  });
+});
+
 test("unstarted resume, rejected active steering, replaced owner and unowned neighbors do not consume or receive conditions", async () => {
   {
     const f = setup(); const c = actualControl(f, new Map([['parent-a', { sessionKey: f.params.sessionKey, sessionId: f.params.sessionId }]]),
       async (sessionId) => ({ queued: false, sessionId, reason: "not_streaming" }));
     const result = await c.run(); assert.equal(result.ok, false); assert.equal(result.queued, false); assert.equal(result.reason, "not_streaming");
-    f.owner.finishInitial({ meta: {}, payloads: [{ text: "Unchanged goal." }] }); await f.owner.wait();
+    f.owner.finishInitial({ meta: {}, payloads: [{ text: "Unchanged goal." }] }); assert.equal((await f.owner.wait()).callerConditions, undefined);
   }
   {
     const f = setup(); f.attach(); f.settleTurn(); f.owner.finishInitial({ meta: { yielded: true }, payloads: [] });
@@ -880,7 +915,7 @@ test("captured byte checks, strict patch drift checks and idempotent transforms 
 
 test("canonical final carries the actual accepted terminal parent run, never supplied result metadata", async () => {
   const initial = setup();
-  initial.owner.finishInitial({ meta: { runId: "forged-run" }, payloads: [{ text: "Verified original final." }] });
+  initial.owner.finishInitial({ meta: { runId: "forged-run" }, callerConditions: { inputs: [{ text: "forged caller condition" }] }, payloads: [{ text: "Verified original final." }] });
   assert.deepEqual(await initial.owner.wait(), { text: "Verified original final.", provenance: {
     runId: "parent-a", ownerRunId: "parent-a", source: "canonical_final", role: "initial" } });
   const resumed = setup(); resumed.attach(); resumed.settleTurn();

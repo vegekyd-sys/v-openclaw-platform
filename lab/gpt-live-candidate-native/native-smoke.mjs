@@ -10,7 +10,7 @@ import {createPrivatePulseMicrophone} from './private-pulse.mjs';
 import {BROWSER_PROBE,SNAPSHOT_EXPRESSION} from './browser-probe.mjs';
 import {parsePublicProgressDiagnostics,assessH5ProgressProvenance} from '../gpt-live-h5-provenance-evidence.mjs';
 import {parseCompleteTimestamps} from '../gpt-live-call-live-evidence.mjs';
-import {indexNativeToolPairs,mergeExactToolBodies,mergeSessionToolEvidence,extractExecDateFromPairs,continuousPlaybackQuiet,explicitSpokenOffsets,resolveNativeControlOwner,resolveCanonicalFinalTrace,toolResultSucceeded,isExactTwoPlusTwoReply,nativeCountRequestsEighty,assessIndependentInputConvergence,matchesConsumedConditionBatch,extractQueuedConditionResume} from './evidence.mjs';
+import {indexNativeToolPairs,mergeExactToolBodies,mergeSessionToolEvidence,extractExecDateFromPairs,continuousPlaybackQuiet,explicitSpokenOffsets,resolveNativeControlOwner,resolveCanonicalFinalTrace,toolResultSucceeded,isExactTwoPlusTwoReply,nativeCountRequestsEighty,hasOrderedCountBeginning,resolveNativeTurnTranscriptWindow,assessCompletePlaybackWindow,assessDecodedPlaybackWindow,assessEarlySpeechBoundary,resolveEarlyPlaybackTail,assessNativeResponseDrain,assessIndependentInputConvergence,matchesConsumedConditionBatch,extractQueuedConditionResume} from './evidence.mjs';
 import {readPrivateChildTranscript,activeTranscriptMessages} from './read-child-transcript.mjs';
 import {extractControlExecWitness,assessControlExecPending,matchesExactControlMarker} from '../gpt-live-h5-control-evidence.mjs';
 assert(process.env.VLAB_CANDIDATE_ID&&process.env.GPT_LIVE_H5_READY==='1','Ready private Candidate H5 required');
@@ -28,7 +28,7 @@ const deadline=Date.now()+Number(process.env.GPT_LIVE_H5_NATIVE_CASE_SECONDS??60
 const token=String(config.gateway.auth.token).replace(/\$\{([^}]+)\}/gu,(_,key)=>{assert(process.env[key]);return process.env[key]});
 const scratch=fs.mkdtempSync(path.join(stateRoot,'tmp',testCase+'-'));fs.chmodSync(scratch,0o700);
 let pulse,chrome,chromeTemp,chromeStderr='',cdp,gateway,lastState,lastHistory={},currentSession,summary,cleanup;
-const checks=[],sessionKeys=[],toolEvents=[],subscribedSessions=new Set(),callOwners=new Map();
+const checks=[],sessionKeys=[],toolEvents=[],subscribedSessions=new Set(),callOwners=new Map(),speechPlaybackWindows=[];
 function hash(value){return createHash('sha256').update(value).digest('hex')}
 function save(name,value){fs.writeFileSync(path.join(base,name),JSON.stringify(value,null,2)+'\n',{mode:0o600});}
 const messageText=m=>typeof m?.content==='string'?m.content:(m?.content??[]).filter?.(v=>v?.type==='text').map(v=>v.text??'').join('\n')??'';
@@ -132,6 +132,16 @@ async function convergeInputTurn(input,pcIndex,label) {
 }
 const audible=(s,from,to=Infinity,pcIndex=0)=>s.audioFrames.filter(f=>f.pcIndex===pcIndex&&f.at>=from&&f.at<=to&&f.digitalAudible);
 function check(name,passed,details={}){checks.push({name,passed:Boolean(passed),...details});}
+function checkCompleteSpeechPlayback(name,state,window,details={}) {
+ const playback=window&&assessCompletePlaybackWindow(state.audioFrames,window);
+ const requiresNativeSpeech=Object.hasOwn(details,'nativeSpeechWindow'),nativeSpeechPlayback=details.nativeSpeechWindow&&
+   assessCompletePlaybackWindow(state.audioFrames,details.nativeSpeechWindow);
+ check(name,playback?.passed===true&&(!requiresNativeSpeech||nativeSpeechPlayback?.passed===true),
+   {...details,window:window??null,playback,nativeSpeechPlayback:requiresNativeSpeech?nativeSpeechPlayback??null:undefined});
+ if(window)speechPlaybackWindows.push({name,window});
+ if(details.nativeSpeechWindow)speechPlaybackWindows.push({name:name+'-terminal-speech',gateName:name,window:details.nativeSpeechWindow});
+ return playback;
+}
 async function waitForPlaybackDrain(pcIndex,after,label) {
  const proof=await waitFor(s=>{const owner=callOwners.get(pcIndex),closed=s.api.find(a=>a.route==='/api/close'&&a.status===200&&a.request?.voiceSessionId===owner?.voiceSessionId);
   const frames=closed?s.audioFrames.filter(f=>f.at<closed.at):s.audioFrames;return continuousPlaybackQuiet(frames,{pcIndex,after,durationMs:750});},label,15000);
@@ -214,13 +224,18 @@ async function longTask() {
  check('actual-child-private-workspace',Boolean(cwd),{callId:cwd?.id});
  check('child-wait'+childWaitSeconds+'-then-exact-date',Boolean(slowDate)&&expected.length===1,{requiredWaitSeconds:childWaitSeconds,callId:slowDate?.execCallId,resultCallId:slowDate?.resultCallId,expected});
  const markerTurn=s.events.find(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='assistant'&&e.at===early.assistantTurnAt);
- const markerCreated=markerTurn&&s.events.find(e=>e.pcIndex===pcIndex&&e.type==='turn.created'&&e.role==='assistant'&&e.turnId===markerTurn.turnId);
- const markerWindow=markerCreated&&markerTurn?{from:Math.max(markerCreated.at-100,early.progressTranscriptAt-400),to:Math.min(markerTurn.at,early.progressTranscriptAt+400,early.finalAppendSentAt-1),pcIndex}:null;
- const markerFrames=markerWindow?s.audioFrames.filter(f=>f.pcIndex===pcIndex&&f.at>=markerWindow.from&&f.at<=markerWindow.to):[];
- const markerTurnFrames=markerCreated&&markerTurn?s.audioFrames.filter(f=>f.pcIndex===pcIndex&&f.at>=markerCreated.at-100&&f.at<=markerTurn.at):[];
+ const markerCaptionWindow=markerTurn&&resolveNativeTurnTranscriptWindow(s.events,{pcIndex,turnId:markerTurn.turnId,after:early.nativeAppendSentAt??initialAt});
+ const markerWindow=markerCaptionWindow&&resolveEarlyPlaybackTail(s.audioFrames,s.events,
+   {window:markerCaptionWindow,waitResultAt:slowDate?.waitResultAt,finalAppendAt:early.finalAppendSentAt});
+ const markerPlayback=markerWindow&&assessCompletePlaybackWindow(s.audioFrames,markerWindow);
+ const markerBeforeWaitEnd=assessEarlySpeechBoundary({window:markerWindow,markerResultAt:markerResultEvent?.payload?.ts,
+   captionAt:early.progressTranscriptAt,waitResultAt:slowDate?.waitResultAt,finalAppendAt:early.finalAppendSentAt});
  check('early-speakable-fact-and-digital-audio-before-final',early.status==='observed'&&early.actualExecTimingVerified===true&&
-   markerFrames.filter(f=>f.digitalAudible).length>=3&&!markerTurnFrames.some(f=>f.muted||f.paused||f.contextState!=='running'),
-   {early,markerResultSourceAt:markerResultEvent?.payload?.ts??null,markerResultObservedAt:markerResultEvent?.at??null,markerSpeechWindow:markerWindow,markerTurnId:markerTurn?.turnId,actualMarkerAudibleFrames:markerFrames.filter(f=>f.digitalAudible).length});
+   markerBeforeWaitEnd&&markerPlayback?.passed===true,
+   {early,markerResultSourceAt:markerResultEvent?.payload?.ts??null,markerResultObservedAt:markerResultEvent?.at??null,
+    markerSpeechWindow:markerWindow,markerTurnId:markerTurn?.turnId,markerCaptionWindow,markerPlayback,
+    metadataTerminalAloneIsNotAudioEnd:true,
+    actualMarkerAudibleFrames:markerPlayback?.audibleFrames??0,designatedChildWaitResultAt:slowDate?.waitResultAt??null,wholeSpeechBeforeWaitComplete:Boolean(markerBeforeWaitEnd)});
  check('long-task-completes-autonomously',finished&&nativeFinal&&userTurns.length===1&&memory&&web&&primary&&slowDate&&resumedFinal,{nativeFinalTurnId:nativeFinal?.turnId});
  check('final-designated-date-faithful',expected.length===1&&actual.length>0&&actual.every(value=>JSON.stringify(value)===JSON.stringify(expected[0])),{expected,actual});
  const explicitOffsets=explicitSpokenOffsets(nativeFinal?.text??'');
@@ -235,8 +250,11 @@ async function longTask() {
  check('final-requested-memory-relation-delivered',groundedMemory,{relationshipTerms:[...new Set(relationshipTerms)],independentFactReviewRequired:true,sourceCallId:memory?.id,nativeFinalTurnId:nativeFinal?.turnId});
  check('final-requested-web-conclusion-delivered',Boolean(web)&&Boolean(primary)&&finalWeb,{sourceCallId:web?.id,nativeFinalTurnId:nativeFinal?.turnId,independentOfficialConclusionReviewRequired:true});
  check('final-memory-web-exact-source-review',false,{status:'requires-independent-content-review',sourceCallIds:[memory?.id,web?.id,primary?.id],nativeFinalTurnId:nativeFinal?.turnId,reason:'Lexical delivery gates do not establish exact relation and official conclusion truth; full real sources retained'});
- check('native-answer-digital-audible',nativeFinal&&audible(s,(final?.at??Infinity),nativeFinal.at,pcIndex).length>3,{audibleFrames:audible(s,(final?.at??Infinity),nativeFinal?.at??0,pcIndex).length});
- if(nativeFinal)await waitForPlaybackDrain(pcIndex,nativeFinal.at,'Full final actual native playback drain');
+ const finalDrain=nativeFinal?await waitForPlaybackDrain(pcIndex,nativeFinal.at,'Full final actual native playback drain'):null;
+ checkCompleteSpeechPlayback('native-answer-digital-audible',await snapshot(true),nativeFinal&&canonical&&finalDrain?
+   {pcIndex,from:canonical.received.at,to:finalDrain.to}:null,
+   {turnId:nativeFinal?.turnId,canonicalFinalReceivedAt:canonical?.received.at??null,includesPlaybackTail:Boolean(finalDrain),
+    nativeSpeechWindow:nativeFinal&&canonical&&resolveNativeTurnTranscriptWindow(s.events,{pcIndex,turnId:nativeFinal.turnId,after:canonical.received.at})});
  await stopCall(pcIndex);
 }
 async function controls() {
@@ -273,31 +291,39 @@ async function controls() {
  const oldActiveAtAttack=oldTurn&&attack!==null&&oldTurn.at<=attack&&!state.events.some(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.turnId===oldTurn.turnId&&e.at<attack);
  const overlap=attack!==null?microphone.filter(m=>m.at<=attack+500&&audible(state,m.at-100,m.at+100,pcIndex).length>0):[];
  const terminal=state.events.find(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='assistant'&&e.turnId===oldTurn?.turnId&&attack!==null&&e.at>=attack&&e.at<=Math.min(attack+3000,barge.row.completedAt+200)&&microphone.some(m=>Math.abs(m.at-e.at)<=100));
- const prefix=oldTurn?state.events.filter(e=>e.pcIndex===pcIndex&&e.type==='output_transcript.added'&&e.at>=oldTurn.at&&e.at<barge.row.startedAt).map(e=>e.text).join(''):'';
  const activeCountInput=replay?.row??count.row;
+ const oldCaptionWindow=terminal&&resolveNativeTurnTranscriptWindow(state.events,{pcIndex,turnId:terminal.turnId,after:activeCountInput.startedAt});
+ const prefix=oldCaptionWindow?.captions.filter(e=>e.at<attack).map(e=>e.text).join('')??'';
  const countUser=state.events.find(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='user'&&
    e.at>=activeCountInput.startedAt&&e.at<=barge.row.startedAt&&nativeCountRequestsEighty(e.text));
- const actualCountingPrefix=/(?:一[、，,\s]*二|1[、，,\s]*2)/u.test(prefix);
+ const actualCountingPrefix=hasOrderedCountBeginning(prefix)||hasOrderedCountBeginning(oldTurn?.text)||
+   Boolean(oldCaptionWindow&&hasOrderedCountBeginning(terminal?.text));
  check('barge-native-count80-request-and-actual-count-turn',Boolean(countUser)&&actualCountingPrefix,
-   {countInput:activeCountInput,countUserTurnId:countUser?.turnId??null,countUserText:countUser?.text??null,oldTurnId:oldTurn?.turnId,prefix});
+   {countInput:activeCountInput,countUserTurnId:countUser?.turnId??null,countUserText:countUser?.text??null,
+    oldTurnId:oldTurn?.turnId,prefix,createdText:oldTurn?.text??null,oldCaptionWindow,
+    terminalText:terminal?.text??null,requiresSeparateActualAttackOverlap:true});
  const interruptedReason=terminal&&/interrupt|cancel|barge|truncat/iu.test(JSON.stringify(terminal.raw));
  const truncated=terminal&&countUser&&actualCountingPrefix&&!/(?:七十九[、，,\s]*八十|79[、，,\s]*80|八十|\b80\b)/u.test(terminal.text);
  check('barge-actual-old-turn-overlap',Boolean(oldActiveAtAttack)&&overlap.length>0,{oldTurnId:oldTurn?.turnId,attack,strictOverlapFrames:overlap.length,replayedAfterAck:Boolean(replay)});
  check('barge-old-native-turn-terminal',Boolean(terminal)&&Boolean(interruptedReason||truncated),{oldTurnId:oldTurn?.turnId,terminalAt:terminal?.at??null,rawTerminal:terminal?.raw??null,explicitReason:Boolean(interruptedReason),countPrefix:prefix,truncatedDuringInput:Boolean(truncated)});
  const newCreated=state.events.find(e=>e.pcIndex===pcIndex&&e.type==='turn.created'&&e.role==='assistant'&&e.turnId===newTurn.turnId);
  // A sentence pause after new-topic playback cannot prove old-output drain.
- const firstPossibleNewPlayback=newCreated&&terminal?audible(state,Math.max(newCreated.at,terminal.at),newTurn.at,pcIndex)[0]?.at:null;
- const firstNewTranscript=state.events.find(e=>e.pcIndex===pcIndex&&e.type==='output_transcript.added'&&e.at>=(newCreated?.at??Infinity)&&e.at<=newTurn.at&&(!e.turnId||e.turnId===newTurn.turnId))?.at??Infinity;
- const drainUpperBound=firstPossibleNewPlayback?Math.min(firstPossibleNewPlayback,firstNewTranscript):null;
- const quiet=terminal&&drainUpperBound?continuousPlaybackQuiet(state.audioFrames.filter(f=>f.at<drainUpperBound),{pcIndex,after:terminal.at,durationMs:250,requireTail:false}):null;
+ const drain=terminal&&assessNativeResponseDrain(state.audioFrames,state.events,{pcIndex,terminalAt:terminal.at,newTurnId:newTurn.turnId});
+ const newCaptionWindow=drain?.response??(terminal&&resolveNativeTurnTranscriptWindow(state.events,{pcIndex,turnId:newTurn.turnId,after:terminal.at}));
+ const firstPossibleNewPlayback=drain?.firstPossibleNewPlayback??null,firstNewTranscript=drain?.firstNewTranscript??null,
+   drainUpperBound=drain?.drainUpperBound??null,quiet=drain?.quiet??null;
  const quietStart=quiet?.from??null,drainAt=quiet?.to??null;
- const rtpAtDrain=drainAt===null?null:state.audioFrames.filter(f=>f.pcIndex===pcIndex&&f.at>=terminal.at&&f.at<=drainAt&&f.rtp?.length).map(f=>({at:f.at,rtp:f.rtp}));
- check('barge-old-terminal-then-continuous250ms-rtp-drain',Boolean(terminal)&&drainAt!==null&&Boolean(rtpAtDrain?.length),{terminalAt:terminal?.at??null,quietStart,drainAt,providerQuietLatencyMs:attack!==null&&quietStart!==null?quietStart-attack:null,rtpAtDrain,firstPossibleNewPlayback,firstNewTranscript,drainUpperBound,quietThresholdFloatRms:.003,digitalAudibleThresholdFloatRms:.005});
+ const rtpAtDrain=quiet?.rtp??null;
+ check('barge-old-terminal-then-continuous250ms-rtp-drain',Boolean(drain),{terminalAt:terminal?.at??null,quietStart,drainAt,providerQuietLatencyMs:attack!==null&&quietStart!==null?quietStart-attack:null,rtpAtDrain,firstPossibleNewPlayback,firstNewTranscript,drainUpperBound,newCaptionWindow,quietThresholdFloatRms:.003,digitalAudibleThresholdFloatRms:.005,requiresIndependentTurnAudioAttribution:true,rtpAttribution:drain?.rtpAttribution??'Native turn attribution unproved; raw receiver samples retained'});
  const localMuted=attack===null?null:state.audioFrames.find(f=>f.pcIndex===pcIndex&&f.at>=attack&&f.at<=attack+100&&f.muted);
  check('barge-local-attenuation-within100ms',Boolean(localMuted),{microphoneAttackAt:attack,localMuteAt:localMuted?.at??null,gate:'Separate required client attenuation; provider-native default does not implement HTML mute'});
  check('barge-original-track-stays-live',microphone.length>0&&microphone.every(f=>f.trackState==='live'&&f.trackEnabled&&f.senderTrackId===f.trackId));
  const correctNewText=isExactTwoPlusTwoReply(newTurn.text);
- check('barge-correct-new-topic-after-drain-digital-audio',newTurn.turnId!==oldTurn?.turnId&&drainAt!==null&&correctNewText&&audible(state,Math.max(drainAt,newCreated?.at??Infinity),newTurn.at,pcIndex).length>3,{oldTurnId:oldTurn?.turnId,newTurnId:newTurn.turnId,newCreatedAt:newCreated?.at,drainAt,text:newTurn.text});
+ const newPlayback=newCaptionWindow&&assessCompletePlaybackWindow(state.audioFrames,newCaptionWindow);
+ check('barge-correct-new-topic-after-drain-digital-audio',newTurn.turnId!==oldTurn?.turnId&&drainAt!==null&&correctNewText&&
+   newCaptionWindow?.from>=drainAt&&newPlayback?.passed===true,
+   {oldTurnId:oldTurn?.turnId,newTurnId:newTurn.turnId,newCreatedAt:newCreated?.at,drainAt,text:newTurn.text,newCaptionWindow,newPlayback});
+ if(newCaptionWindow)speechPlaybackWindows.push({name:'barge-correct-new-topic-after-drain-digital-audio',window:newCaptionWindow});
  await readHistory();pendingAfterBarge=assessControlExecPending(lastHistory.parent,60,{requireDateInCommand:false});
  check('same-backend-remains-pending-after-barge',pendingAfterBarge.pending&&pendingAfterBarge.execCallId===accepted.id,{pending:pendingAfterBarge});
  }catch(error){check('barge-scenario-exception',false,{message:error.message});await readHistory();pendingAfterBarge=assessControlExecPending(lastHistory.parent,60,{requireDateInCommand:false});}
@@ -320,7 +346,11 @@ async function controls() {
  const reopened=await startCall(),greeting=play('new-greeting');await greeting.done;
  const greetingReply=await waitFor(s=>s.events.find(e=>e.pcIndex===reopened&&e.type==='turn.done'&&e.role==='assistant'&&e.at>=greeting.row.startedAt&&/(听|清楚|重连|连接)/u.test(e.text)),'Reconnect spoken greeting',45000);
  check('new-session-on-reconnect',sessionKeys.at(-1)!==sessionKeys.at(-2),{sessionCount:sessionKeys.length});
- check('reconnect-original-h5-unmuted-native-audio',audible(await snapshot(),greeting.row.startedAt,greetingReply.at,reopened).length>3,{turnId:greetingReply.turnId});await waitForPlaybackDrain(reopened,greetingReply.at,'Reconnected reply actual playback drain');await stopCall(reopened);
+ const reconnectDrain=await waitForPlaybackDrain(reopened,greetingReply.at,'Reconnected reply actual playback drain'),reconnectState=await snapshot(true);
+ const reconnectCaptionWindow=resolveNativeTurnTranscriptWindow(reconnectState.events,{pcIndex:reopened,turnId:greetingReply.turnId,after:greeting.row.startedAt});
+ checkCompleteSpeechPlayback('reconnect-original-h5-unmuted-native-audio',reconnectState,reconnectCaptionWindow?
+   {...reconnectCaptionWindow,to:reconnectDrain.to}:null,{turnId:greetingReply.turnId,reconnectCaptionWindow,includesPlaybackTail:true});
+ await stopCall(reopened);
 }
 async function queuedSteer() {
  const marker=process.env.GPT_LIVE_H5_STEER_MARKER?.trim();assert(marker&&marker.length<=40,'Explicit supplemental output condition required');
@@ -388,8 +418,10 @@ async function queuedSteer() {
  const finalFields=parseCompleteTimestamps(nativeFinal?.text??''),offsets=explicitSpokenOffsets(nativeFinal?.text??'');
  const conditionDelivered=nativeFinal?.text.trim().replace(/[。.!！]$/u,'').endsWith(marker)&&nativeFinal.text.split(/[。!?！？]/u).filter(part=>part.trim()).length===1;
  check('queued-steer-same-owner-final-satisfies-condition',finished&&date&&nativeFinal&&finalFields.length===1&&JSON.stringify(finalFields[0])===JSON.stringify(date.fields)&&offsets.length>0&&offsets.every(x=>x===date.offsetMinutes)&&conditionDelivered,{nativeFinal,final,date});
- check('queued-steer-original-final-digital-audio',nativeFinal&&audible(s,final.at,nativeFinal.at,pcIndex).length>3,{audibleFrames:nativeFinal?audible(s,final.at,nativeFinal.at,pcIndex).length:0});
- if(nativeFinal)await waitForPlaybackDrain(pcIndex,nativeFinal.at,'Supplemental same-owner final actual playback drain');
+ const finalDrain=nativeFinal?await waitForPlaybackDrain(pcIndex,nativeFinal.at,'Supplemental same-owner final actual playback drain'):null;
+ checkCompleteSpeechPlayback('queued-steer-original-final-digital-audio',await snapshot(true),nativeFinal&&canonical&&finalDrain?
+   {pcIndex,from:canonical.received.at,to:finalDrain.to}:null,{turnId:nativeFinal?.turnId,canonicalFinalReceivedAt:canonical?.received.at??null,includesPlaybackTail:Boolean(finalDrain),
+    nativeSpeechWindow:nativeFinal&&canonical&&resolveNativeTurnTranscriptWindow(s.events,{pcIndex,turnId:nativeFinal.turnId,after:canonical.received.at})});
  await stopCall(pcIndex);
 }
 try {
@@ -421,18 +453,30 @@ finally {
   const audio=await evaluate(`(async()=>{const p=globalThis.__candidateLiveProbe,rows=[];for(const recording of p.recordings){const blob=new Blob(recording.chunks,{type:'audio/webm;codecs=opus'}),bytes=new Uint8Array(await blob.arrayBuffer());let binary='';for(let at=0;at<bytes.length;at+=16384)binary+=String.fromCharCode(...bytes.subarray(at,at+16384));rows.push({pcIndex:recording.pcIndex,startedAt:recording.startedAt,blobBytes:blob.size,base64:btoa(binary),error:recording.error??null});}return rows})()`).catch(()=>[]);
   const decoded=[];for(const recording of audio){const prefix='native-'+recording.pcIndex,webm=path.join(base,prefix+'.webm');fs.writeFileSync(webm,Buffer.from(recording.base64,'base64'),{mode:0o600});const ff=spawnSync('/usr/bin/ffmpeg',['-v','error','-i',webm,'-f','s16le','-ar','48000','-ac','1','pipe:1'],{maxBuffer:80*1024**2});let rms=0,peak=0;if(ff.status===0){let sum=0;for(let at=0;at+1<ff.stdout.length;at+=2){const n=ff.stdout.readInt16LE(at);sum+=n*n;peak=Math.max(peak,Math.abs(n));}rms=Math.sqrt(sum/(ff.stdout.length/2));fs.writeFileSync(path.join(base,prefix+'.pcm'),ff.stdout,{mode:0o600});}decoded.push({pcIndex:recording.pcIndex,startedAt:recording.startedAt,blobBytes:recording.blobBytes,decodeSuccess:ff.status===0,pcmBytes:ff.stdout?.length??0,pcmSha256:ff.status===0?hash(ff.stdout):null,durationSeconds:(ff.stdout?.length??0)/96000,rms,peak});}
   check('recorded-real-native-pcm',decoded.length>0&&decoded.every(row=>row.decodeSuccess&&row.rms>30),{decoded});
-  const markerGate=checks.find(c=>c.name==='early-speakable-fact-and-digital-audio-before-final'),window=markerGate?.markerSpeechWindow;
-  if(window){const recording=decoded.find(row=>row.pcIndex===window.pcIndex&&row.decodeSuccess),pcmPath=path.join(base,'native-'+window.pcIndex+'.pcm');let segment=null;
-    if(recording&&fs.existsSync(pcmPath)&&window.to>window.from){const bytes=fs.readFileSync(pcmPath),begin=Math.max(0,Math.floor((window.from-recording.startedAt)*48)*2),end=Math.min(bytes.length,Math.floor((window.to-recording.startedAt)*48)*2),slice=bytes.subarray(begin,end);let sum=0,peak=0;for(let at=0;at+1<slice.length;at+=2){const n=slice.readInt16LE(at);sum+=n*n;peak=Math.max(peak,Math.abs(n));}
-      const rms=slice.length?Math.sqrt(sum/(slice.length/2)):0;fs.writeFileSync(path.join(base,'marker-speech-window.pcm'),slice,{mode:0o600});segment={window,recordingStartedAt:recording.startedAt,pcmBytes:slice.length,sha256:hash(slice),rms,peak,mediaRecorderTimeAlignmentToleranceMs:100};}
-    const frames=(lastState?.audioFrames??[]).filter(f=>f.pcIndex===window.pcIndex&&f.at>=window.from&&f.at<=window.to);
-    const decodedAudible=Boolean(segment&&segment.rms>30&&frames.filter(f=>f.digitalAudible).length>=3&&!frames.some(f=>f.muted||f.paused||!f.receiverAttachedToPlayback));
-    check('early-exact-marker-window-decoded-digital-pcm',decodedAudible,{markerTurnId:markerGate.markerTurnId,segment,originalGatePassed:markerGate.passed});if(!decodedAudible)markerGate.passed=false;
+  const markerGate=checks.find(c=>c.name==='early-speakable-fact-and-digital-audio-before-final');
+  if(markerGate?.markerSpeechWindow)speechPlaybackWindows.push({name:markerGate.name,window:markerGate.markerSpeechWindow});
+  for(const {name,window,gateName} of speechPlaybackWindows) {
+    const recording=decoded.find(row=>row.pcIndex===window.pcIndex&&row.decodeSuccess),pcmPath=path.join(base,'native-'+window.pcIndex+'.pcm');
+    const pcm=recording&&fs.existsSync(pcmPath)?fs.readFileSync(pcmPath):null;
+    const segment=pcm&&assessDecodedPlaybackWindow(pcm,{recordingStartedAt:recording.startedAt,...window});
+    const playback=assessCompletePlaybackWindow(lastState?.audioFrames??[],window),gate=checks.find(c=>c.name===(gateName??name));
+    const decodedAudible=segment?.passed===true&&playback?.passed===true;
+    if(segment)fs.writeFileSync(path.join(base,name+'-whole-window.pcm'),pcm.subarray(segment.fromByte,segment.toByte),{mode:0o600});
+    check(name+'-decoded-complete-window',decodedAudible,{window,segment,playback,originalGatePassed:gate?.passed??false});
+    if(gate&&!decodedAudible)gate.passed=false;
   }
   const digitalFrames=lastState?.audioFrames??[];const oldGate=checks.find(c=>c.name==='barge-old-native-turn-terminal'),drainGate=checks.find(c=>c.name==='barge-old-terminal-then-continuous250ms-rtp-drain');
-  const allowedOldMute=f=>oldGate?.passed&&drainGate?.passed&&f.at>=checks.find(c=>c.name==='barge-actual-old-turn-overlap')?.attack&&f.at<=drainGate.drainAt;
-  const unexpectedMuted=digitalFrames.filter(f=>f.rms>.005&&f.muted&&!allowedOldMute(f));
-  check('playback-not-persistently-muted',digitalFrames.some(f=>f.digitalAudible)&&unexpectedMuted.length===0,{audibleFrames:digitalFrames.filter(f=>f.digitalAudible).length,unexpectedMutedFrames:unexpectedMuted.length,playRejections:lastState?.playRejections});
+  const allowedOldMute=f=>f.muted===true&&f.paused===false&&Number.isFinite(f.volume)&&f.volume>0&&
+    f.contextState==='running'&&f.receiverAttachedToPlayback===true&&f.trackState==='live'&&
+    oldGate?.passed&&drainGate?.passed&&f.at>=checks.find(c=>c.name==='barge-actual-old-turn-overlap')?.attack&&f.at<=drainGate.drainAt;
+  const connectedFrames=digitalFrames.filter(f=>{const owner=callOwners.get(f.pcIndex),close=lastState?.api?.find(a=>a.route==='/api/close'&&a.status===200&&a.request?.voiceSessionId===owner?.voiceSessionId);
+    return owner&&f.at>=owner.connectedAt&&f.at<(close?.requestedAt??Infinity);});
+  const blockedFrames=connectedFrames.filter(f=>f.rms>.005&&
+    (f.muted!==false||f.paused!==false||!Number.isFinite(f.volume)||f.volume<=0||f.contextState!=='running'||
+      !f.receiverAttachedToPlayback||f.trackState!=='live')&& !allowedOldMute(f));
+  check('playback-not-persistently-muted',connectedFrames.some(f=>f.digitalAudible)&&blockedFrames.length===0&&Array.isArray(lastState?.playRejections)&&lastState.playRejections.length===0,
+    {audibleFrames:connectedFrames.filter(f=>f.digitalAudible).length,unexpectedBlockedFrames:blockedFrames,playRejections:lastState?.playRejections,
+     excludedIntervals:'pre-connection and at/after original close request; whole-final state gaps are checked independently'});
   const captureWindows=[...callOwners].map(([pcIndex,owner])=>{const close=lastState?.api?.find(a=>a.route==='/api/close'&&a.status===200&&a.request?.voiceSessionId===owner.voiceSessionId),initial=lastState?.micDiagnostics?.find(d=>d.pcIndex===pcIndex),from=owner.connectedAt,to=close?.requestedAt??Date.now();
     const frames=(lastState?.micFrames??[]).filter(f=>f.pcIndex===pcIndex&&f.at>=from&&f.at<to),gaps=frames.slice(1).filter((f,i)=>f.at-frames[i].at>100);
     const valid=Number.isFinite(from)&&frames.length>0&&frames[0].at-from<=100&&to-frames.at(-1).at<=100&&gaps.length===0&&frames.every(f=>f.trackState==='live'&&f.trackEnabled===true&&f.trackId===initial?.trackId&&f.senderTrackId===initial?.trackId);

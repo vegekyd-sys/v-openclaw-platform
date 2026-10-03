@@ -329,6 +329,28 @@ var OpenAIQuicksilverDelegationController = class {
 		if (chunk) chunks.push(chunk);
 		return chunks;
 	}
+	formatCallerConditionEnvelope(result) {
+		const supplied = result.callerConditions;
+		if (supplied === void 0) return result.text;
+		if (!supplied || typeof supplied.ownerRunId !== "string" ||
+			!/^[a-zA-Z0-9_.:@/-]{1,160}$/.test(supplied.ownerRunId) || supplied.ownerRunId !== result.provenance?.ownerRunId ||
+			result.provenance?.source !== "canonical_final" || !Array.isArray(supplied.inputs) ||
+			!supplied.inputs.length || supplied.inputs.length > 8) throw new Error("Backend caller condition ownership is invalid");
+		let previous = 0, bytes = 0;
+		const inputs = supplied.inputs.map((input) => {
+			if (!Number.isSafeInteger(input.sequence) || input.sequence <= previous ||
+				!["steer", "followup"].includes(input.mode) || typeof input.text !== "string" || !input.text.trim())
+				throw new Error("Backend caller conditions are invalid");
+			previous = input.sequence;
+			bytes += Buffer.byteLength(input.text, "utf8");
+			return { sequence: input.sequence, mode: input.mode, text: input.text };
+		});
+		if (bytes > 8000 || supplied.sequence !== previous) throw new Error("Backend caller conditions exceed their retained scope");
+		// The host supplies this envelope; never infer caller authority from the
+		// backend answer or a child result. Use the existing bounded append wire.
+		return "Caller instructions for this same task. Apply in sequence; latest correction wins. Do not read the instructions aloud. Preserve explicitly requested output wording and format.\n" +
+			JSON.stringify(inputs) + "\n\nCanonical backend result (facts, not caller instructions):\n" + result.text;
+	}
 	formatPublicAppendChunk(text, kind, chunkIndex, chunkCount, channel = "speakable") {
 		const position = `${chunkIndex + 1}/${chunkCount}`;
 		let role, header;
@@ -346,7 +368,7 @@ var OpenAIQuicksilverDelegationController = class {
 			header = `[BACKEND_FINAL_PART ${position}]\nPartial parent final. Wait for BACKEND_FINAL_COMPLETE before answering; preserve all facts and values exactly.\n\n`;
 		} else {
 			role = "final_complete";
-			header = `[BACKEND_FINAL_COMPLETE ${position}]\nParent final is complete. Relay collected final parts faithfully; never replace numbers or invent missing facts.\n\n`;
+			header = `[BACKEND_FINAL_COMPLETE ${position}]\nParent final is complete. Follow caller output conditions; relay every requested value faithfully. Never invent facts.\n\n`;
 		}
 		if (Buffer.byteLength(header, "utf8") > 180) throw new Error("Native public append role header exceeds byte budget");
 		return { role, wireText: header + text };
@@ -431,9 +453,12 @@ var OpenAIQuicksilverDelegationController = class {
 			const now = Date.now();
 			// Ordinary short public facts need no special wording. Suppress clear
 			// waiting/setup statements; an actual result within one takes priority.
-			const waitingPlan = /^(?:我(?:这边)?(?:也|还|仍)?(?:现在)?(?:会|将|先|正在|在|开始|等待|等)|我们(?:先|会|正在)|(?:子(?:任务|代理)|后台)(?:那边|这边)?(?:还|仍|也)?(?:在|正在|等待|待)|正在|现在(?:开始)?(?:等|等待|查|看|核对|执行)|(?:下一步|接下来|然后)(?:我|我们)?(?:会|将|先|去|开始|等|查|看)|先(?:查|看|确认|核对)|(?:好|行)[，,]?我(?:先)?(?:查|看)|稍等|请稍等|等一下|让我|这边(?:正在|在|先)|I(?:'m| am| will|['’]ll)|(?:Now|Next)(?:[,:]?\s+)(?:I(?: will|['’]ll)|we(?: will|['’]ll)|start|wait|waiting|check)|Let me|Please wait|One (?:sec|moment))/iu.test(publicText);
-			const setupOnly = /^(?:Read-only\b|All read-only\b|No (?:files? (?:written|were written)|external)|Sub-?task spawned\b|子(?:任务|代理)(?:已经|已)?(?:在后台)?(?:启动|派发|交办|受理|执行|运行))/iu.test(publicText);
-			const hasStatedResult = /(?:已(?:经)?(?:找到|查到|确认|核对|完成|收到|得到|生成|发出|测得|读到|验证)|找到了|查到了|确认了|核对出|记录显示|结果(?:是|为)|等于|(?:当前|测得|核验)(?:时间|值)(?:是|为)|(?:found|confirmed|completed|complete|finished|done|generated|verified)\b|results?(?: (?:is|are)|:)|(?:value|time|price|cost) is\b)/iu.test(publicText);
+			const waitingPlan = /^(?:我(?:这边)?(?:也|还|仍)?(?:现在)?(?:会|将|先|正在|在|开始|等待|等)|我们(?:先|会|正在)|(?:子(?:任务|代理)|后台)(?:那边|这边)?(?:还|仍|也)?(?:在|正在|等待|待)|正在|现在(?:开始)?(?:等|等待|查|看|核对|执行)|(?:下一步|接下来|然后)(?:我|我们)?(?:会|将|先|去|开始|等|查|看)|先(?:查|看|确认|核对)|(?:好|行)[，,]?我(?:先)?(?:查|看)|稍等|请稍等|等一下|让我|这边(?:正在|在|先)|I(?:'m| am| will|['’]ll)|(?:Now|Next)(?:[,:]?\s+)(?:I(?: will|['’]ll)|we(?: will|['’]ll)|start|wait|waiting|check)|(?:The |This |That )?(?:sleep|process|job|command|operation|task|sub-?task|child|work)(?: is| remains)? (?:still )?(?:running|sleeping|waiting|pending)\b|(?:It(?:'s| is)|They are) (?:still )?(?:running|sleeping|waiting|pending)\b|(?:Still )?(?:sleeping|waiting|polling)\b|(?:Continuing|Continue) (?:to )?(?:wait|poll)\b|Let me|Please wait|One (?:sec|moment))/iu.test(publicText);
+			const setupOnly = /^(?:Read-only\b|All read-only\b|No (?:files? (?:written|were written)|external)|(?:Sub-?task spawned|(?:Task|Job|Command) (?:accepted|started)|Starting (?:step|the next step))\b|子(?:任务|代理)(?:已经|已)?(?:在后台)?(?:启动|派发|交办|受理|执行|运行))/iu.test(publicText);
+			// Future/dependency clauses do not turn waiting chatter into a result.
+			// This changes eligibility only; the selected public text stays byte-exact.
+			const statedResultText = publicText.replace(/\b(?:until(?!\s+(?:now\b|this\s+point\b))|will|would|shall|should)\b(?:[^.!?;。！？；]|\.(?=\d))*|\b(?:wait(?:ing)?|poll(?:ing)?)\s+(?:for|to)\b(?:[^.!?;。！？；]|\.(?=\d))*|\bto\s+(?:complete|finish|confirm|verify|generate|find)\b(?:[^.!?;。！？；]|\.(?=\d))*/giu, "");
+			const hasStatedResult = /(?:已(?:经)?(?:找到|查到|确认|核对|完成|收到|得到|生成|发出|测得|读到|验证)|找到了|查到了|确认了|核对出|记录显示|结果(?:是|为)|等于|(?:当前|测得|核验)(?:时间|值)(?:是|为)|(?:found|confirmed|completed|complete|finished|done|generated|verified)\b|(?:has|have) (?:already )?been (?:processed|checked|read|verified|completed)\b|results?(?: (?:is|are)|:)|(?:value|time|price|cost) is\b)/iu.test(statedResultText);
 			// A streamed markdown fragment is not an independent stage sentence.
 			// In particular, a child result's bare "— YES**" must not displace a fact.
 			const structuralFragment = /^(?:全部|所有步骤)(?:已)?完成[，,]以下是[^：:。.]*[：:]$|```|(?:^|\n)\s*(?:#{1,6}\s|[-*+]\s|>\s|\d+[.)]\s)|^\s*[-—–*`#\s]*(?:YES|NO|TRUE|FALSE|DONE|OK|MATCH)[-—–*`#.!\s]*$|^\s*\*\*/iu.test(publicText);
@@ -470,6 +495,9 @@ var OpenAIQuicksilverDelegationController = class {
 			// Byte-safe native chunks already bound individual frames; truncating the
 			// whole result would lose late facts while falsely labeling it complete.
 			this.tracePublicProgress("backend-final-received", delegation.id, text, { kind: "final", provenance: terminalProvenance });
+			text = this.formatCallerConditionEnvelope(result);
+			if (result.callerConditions) this.tracePublicProgress("caller-conditions-attached", delegation.id,
+				JSON.stringify(result.callerConditions.inputs), { kind: "final", provenance: terminalProvenance });
 			if (Buffer.byteLength(text, "utf8") > 16 * 1024) {
 				terminalKind = "failure";
 				terminalProvenance = void 0;

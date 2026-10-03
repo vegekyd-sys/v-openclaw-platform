@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {indexNativeToolPairs,mergeExactToolBodies,mergeSessionToolEvidence,selectCommandLocalTimestamp,extractExecDateFromPairs,continuousPlaybackQuiet,explicitSpokenOffsets,resolveNativeControlOwner,resolveCanonicalFinalTrace,toolResultSucceeded,isExactTwoPlusTwoReply,nativeCountRequestsEighty,assessIndependentInputConvergence,matchesConsumedConditionBatch,extractQueuedConditionResume} from './evidence.mjs';
+import {indexNativeToolPairs,mergeExactToolBodies,mergeSessionToolEvidence,selectCommandLocalTimestamp,extractExecDateFromPairs,continuousPlaybackQuiet,explicitSpokenOffsets,resolveNativeControlOwner,resolveCanonicalFinalTrace,toolResultSucceeded,isExactTwoPlusTwoReply,nativeCountRequestsEighty,hasOrderedCountBeginning,resolveNativeTurnTranscriptWindow,assessCompletePlaybackWindow,assessDecodedPlaybackWindow,assessEarlySpeechBoundary,resolveEarlyPlaybackTail,assessNativeResponseDrain,assessIndependentInputConvergence,matchesConsumedConditionBatch,extractQueuedConditionResume} from './evidence.mjs';
 import {assessControlExecPending} from '../gpt-live-h5-control-evidence.mjs';
 
 test('actual child envelopes keep source and observer clocks and exact identity',()=>{
   const event=(phase,ts,at,extra={})=>({event:'session.tool',at,payload:{runId:'child',sessionKey:'key',stream:'tool',ts,seq:ts,data:{phase,name:'exec',toolCallId:'id',...extra}}});
   const rows=indexNativeToolPairs([event('start',1000,1040,{args:{command:'sleep 45; date'}}),
-    event('result',46000,46100,{isError:false,result:{content:[{type:'text',text:'2026-10-03 12:51:52 CST +0800'}],details:{status:'completed'}}})],{runId:'child',sessionKey:'key'});
+    event('result',46000,46100,{isError:false,result:{content:[{type:'text',text:'2026-10-03 12:51:52 CST +0800'}],details:{status:'completed',exitCode:0}}})],{runId:'child',sessionKey:'key'});
   assert.equal(rows[0].calledAt,1000);assert.equal(rows[0].results[0].observedAt,46100);
   assert.equal(rows[0].results[0].at,46000);assert.equal(extractExecDateFromPairs(rows).offsetMinutes,480);
   assert.equal(indexNativeToolPairs(rows[0].rawEnvelopes,{runId:'other'}).length,0);
@@ -20,10 +20,10 @@ test('complete persisted bodies cannot replace native execution clocks or anothe
   assert.equal(rows[0].results[0].text,'/private');assert.equal(rows[1].calledAt,null);assert.equal(rows[1].sourceExecutionTimingVerified,false);
 });
 test('final drain requires actual unmuted attached continuous tail; no filtered gaps',()=>{
-  const frames=Array.from({length:17},(_,i)=>({pcIndex:0,at:1000+i*50,rms:.001,muted:false,paused:false,contextState:'running',receiverAttachedToPlayback:true,trackState:'live',connected:'connected',rtp:[{packetsReceived:i}]}));
+  const frames=Array.from({length:17},(_,i)=>({pcIndex:0,at:1000+i*50,rms:.001,muted:false,paused:false,volume:1,contextState:'running',receiverAttachedToPlayback:true,trackState:'live',connected:'connected',rtp:[{packetsReceived:i}]}));
   const assess=rows=>continuousPlaybackQuiet(rows,{pcIndex:0,after:1000,durationMs:750});
   assert.equal(assess(frames).durationMs,800);
-  for(const bad of [{muted:true},{paused:true},{receiverAttachedToPlayback:false},{rms:.006}])assert.equal(assess(frames.map((f,i)=>i===10?{...f,...bad}:f)),null);
+  for(const bad of [{muted:true},{paused:true},{volume:0},{volume:null},{receiverAttachedToPlayback:false},{rms:.006},{rms:null}])assert.equal(assess(frames.map((f,i)=>i===10?{...f,...bad}:f)),null);
   assert.equal(assess(frames.filter((_,i)=>i<5||i>10)),null);
 });
 test('explicit spoken timezone is checked independently; CST alone is ambiguous',()=>{
@@ -41,7 +41,7 @@ test('same child split wait and date requires actual successful clocks and actor
   assert.equal(proof.waitExecCallId,'wait');assert.equal(proof.execCallId,'date');assert.equal(proof.waitDurationMs,45016);assert.equal(proof.combinedCommand,false);
   for(const bad of [{runId:'other'},{sessionKey:'other'},{calledAt:45000},{sourceExecutionTimingVerified:false},{calledAt:null}])
     assert.equal(extractExecDateFromPairs([wait,{...date,...bad}]),null);
-  for(const bad of [{at:45999},{at:null},{isError:true},{details:{status:'failed',exitCode:1}},{details:{status:'completed',exitCode:1}},{text:'{"status":"error"}'}])
+  for(const bad of [{at:45999},{at:null},{isError:true},{details:{status:'failed',exitCode:1}},{details:{status:'completed',exitCode:1}},{details:{status:'completed'}},{text:'{"status":"error"}'}])
     assert.equal(extractExecDateFromPairs([{...wait,results:[{...wait.results[0],...bad}]},date]),null);
   assert.equal(extractExecDateFromPairs([{...date,calledAt:1000,args:{command:'date; sleep 45'},results:[{...date.results[0],at:46016}]}]),null);
 });
@@ -50,7 +50,7 @@ test('linked process completion cannot borrow a date from another actor',()=>{
   const exec={id:'exec',name:'exec',runId:'child',sessionKey:'child-key',sourceExecutionTimingVerified:true,
     calledAt:1000,args:{command:'sleep 45; date'},results:[{at:2000,isError:false,text:'still running',details:{status:'running',sessionId:'process1'}}]};
   const process={id:'poll',name:'process',runId:'other',sessionKey:'child-key',sourceExecutionTimingVerified:true,
-    calledAt:46000,args:{sessionId:'process1'},results:[{at:47000,isError:false,text:'2026-10-03 14:05:12 CST +0800',details:{status:'completed'}}]};
+    calledAt:46000,args:{sessionId:'process1'},results:[{at:47000,isError:false,text:'2026-10-03 14:05:12 CST +0800',details:{status:'completed',exitCode:0}}]};
   assert.equal(extractExecDateFromPairs([exec,process]),null);
   assert.equal(extractExecDateFromPairs([exec,{...process,runId:'child'}]).resultCallId,'poll');
 });
@@ -206,4 +206,133 @@ test('a typed user message cannot stand in for the original child-completion res
   assert.equal(extractQueuedConditionResume(resume,batch,'Neighbor child completion'),null);
   assert.equal(extractQueuedConditionResume(resume,{...batch,count:2},child),null);
   assert.equal(extractQueuedConditionResume(resume.replace(text,'Changed condition'),batch,child),null);
+});
+
+const playerFrame=(at,extra={})=>({pcIndex:0,at,rms:.01,digitalAudible:true,muted:false,paused:false,volume:1,
+  contextState:'running',receiverAttachedToPlayback:true,trackState:'live',connected:'connected',rtp:[{packetsReceived:at}],...extra});
+const caption=(at,text,extra={})=>({pcIndex:0,at,type:'output_transcript.added',text,...extra});
+const assistantDone=(at,turnId,text)=>({pcIndex:0,at,type:'turn.done',role:'assistant',turnId,text});
+
+test('exact caption sequences include actual speech before a late turn-created summary',()=>{
+  const events=[assistantDone(800,'previous','旧内容。'),caption(1000,'听得到,'),caption(1100,'很清楚。'),
+    {pcIndex:0,at:2000,type:'turn.created',role:'assistant',turnId:'reply'},assistantDone(2200,'reply','听得到,很清楚。')];
+  const window=resolveNativeTurnTranscriptWindow(events,{pcIndex:0,turnId:'reply',after:700});
+  assert.equal(window.firstCaptionAt,1000);assert.equal(window.from,900);assert.equal(window.created.at,2000);
+  assert.equal(window.to,2200);assert.deepEqual(window.captions.map(e=>e.text),['听得到,','很清楚。']);
+  assert.equal(resolveNativeTurnTranscriptWindow(events.map(e=>e.type==='output_transcript.added'?{...e,turnId:'neighbor'}:e),{pcIndex:0,turnId:'reply'}),null);
+  assert.equal(resolveNativeTurnTranscriptWindow([...events,caption(1500,'听得到,'),caption(1600,'很清楚。')],{pcIndex:0,turnId:'reply'}),null);
+  assert.equal(resolveNativeTurnTranscriptWindow(events.filter(e=>e.text!=='很清楚。'),{pcIndex:0,turnId:'reply'}),null);
+  const nearPrior=[assistantDone(980,'previous','旧内容。'),...events.filter(e=>e.turnId!=='previous')];
+  assert.equal(resolveNativeTurnTranscriptWindow(nearPrior,{pcIndex:0,turnId:'reply'}).from,980);
+});
+
+test('same-turn count terminal punctuation supplies content evidence, never attack overlap',()=>{
+  for(const text of ['一。二。三。','1.2.3.','一、二','一，二。'])assert.equal(hasOrderedCountBeginning(text),true,text);
+  for(const text of ['不是一。二。','现在一。二。','二。一。','一。二十。','一二三。'])assert.equal(hasOrderedCountBeginning(text),false,text);
+  const events=[caption(1000,'一。'),caption(1100,'二。'),caption(1200,'三。'),assistantDone(1400,'count','一。二。三。')];
+  const window=resolveNativeTurnTranscriptWindow(events,{pcIndex:0,turnId:'count'});
+  assert.equal(hasOrderedCountBeginning(window.terminal.text),true);
+  assert.equal(assessCompletePlaybackWindow([],window).passed,false,'terminal text does not manufacture actual audio samples');
+});
+
+test('whole final playback requires every player state and complete sample coverage',()=>{
+  const frames=Array.from({length:11},(_,i)=>playerFrame(1000+i*50));
+  const window={pcIndex:0,from:1000,to:1500};
+  assert.equal(assessCompletePlaybackWindow(frames,window).passed,true);
+  for(const bad of [{muted:true},{paused:true},{volume:0},{volume:null},{contextState:'suspended'},
+    {receiverAttachedToPlayback:false},{trackState:'ended'},{connected:'closed'}])
+    assert.equal(assessCompletePlaybackWindow(frames.map((f,i)=>i===9?{...f,...bad}:f),window).passed,false,JSON.stringify(bad));
+  const threeGoodThenPaused=frames.map((f,i)=>i>=3?{...f,rms:0,digitalAudible:false,paused:true}:f);
+  assert.equal(assessCompletePlaybackWindow(threeGoodThenPaused,window).passed,false,'three early audible frames cannot mask a silent blocked tail');
+  assert.equal(assessCompletePlaybackWindow(frames.filter((_,i)=>i<4||i>6),window).passed,false);
+  assert.equal(assessCompletePlaybackWindow(frames.slice(3),window).passed,false);
+  assert.equal(assessCompletePlaybackWindow(frames,{...window,to:1700}).passed,false);
+  assert.equal(assessCompletePlaybackWindow(frames.map(f=>({...f,rms:0,digitalAudible:false})),window).passed,false);
+  const earlierSpeechOnly=frames.map((f,i)=>i<3?f:{...f,rms:0,digitalAudible:false});
+  assert.equal(assessCompletePlaybackWindow(earlierSpeechOnly,window).passed,true,'complete-state window alone only establishes some audio');
+  assert.equal(assessCompletePlaybackWindow(earlierSpeechOnly,{...window,from:1200}).passed,false,'the desired final speech window must have its own real audio');
+  assert.equal(assessCompletePlaybackWindow(frames,{...window,from:null}),null);
+});
+
+test('decoded native PCM must contain the whole original playback interval',()=>{
+  const pcm=Buffer.alloc(96000);for(let at=0;at<pcm.length;at+=2)pcm.writeInt16LE(at%4?700:-700,at);
+  const window={recordingStartedAt:1000,from:1100,to:1600};
+  const proof=assessDecodedPlaybackWindow(pcm,window);
+  assert.equal(proof.passed,true);assert.equal(proof.pcmBytes,48000);assert.equal(proof.coversWholeWindow,true);
+  assert.equal(proof.sha256,createHash('sha256').update(pcm.subarray(9600,57600)).digest('hex'));
+  assert.equal(assessDecodedPlaybackWindow(Buffer.alloc(96000),window).passed,false);
+  for(const changed of [{from:999},{to:2001},{from:1600},{recordingStartedAt:null}])
+    assert.equal(assessDecodedPlaybackWindow(pcm,{...window,...changed}),null);
+  assert.equal(assessDecodedPlaybackWindow(pcm.subarray(0,1000),window),null);
+});
+
+test('early fact requires its entire utterance before the same child wait result and canonical final',()=>{
+  const window={from:1100,to:2000,metadataTerminalAt:1600,quiet:{from:1750,to:2000,rtp:[{at:2000}]},observedQuietThrough:2950,childOrFinalBoundary:3000};
+  const input={window,markerResultAt:1000,captionAt:1500,waitResultAt:3000,finalAppendAt:4000};
+  assert.equal(assessEarlySpeechBoundary(input),true);
+  for(const changed of [{waitResultAt:1900},{waitResultAt:2000},{waitResultAt:null},{captionAt:null},{markerResultAt:1200},
+    {finalAppendAt:1999},{window:{...window,to:3100}},{window:{...window,from:900}},{window:{from:1100,to:2000}}])
+    assert.equal(assessEarlySpeechBoundary({...input,...changed}),false,JSON.stringify(changed));
+});
+
+test('early metadata completion cannot hide receiver tail after the child wait or a later sentence pause',()=>{
+  const window={pcIndex:0,turnId:'marker',from:1500,to:2000};
+  const params={window,waitResultAt:3500,finalAppendAt:4000};
+  const frames=Array.from({length:30},(_,i)=>playerFrame(2000+i*50,
+    {rms:i<9?.01:.001,digitalAudible:i<9}));
+  const proof=resolveEarlyPlaybackTail(frames,[],params);
+  assert.equal(proof.metadataTerminalAt,2000);assert.equal(proof.to,2700);assert.equal(proof.quiet.from,2450);
+  assert.equal(proof.observedQuietThrough,3450);
+  assert.equal(assessEarlySpeechBoundary({window:proof,markerResultAt:1400,captionAt:1600,waitResultAt:3500,finalAppendAt:4000}),true);
+  const metadataOnlyEarly={window,markerResultAt:1400,captionAt:1600,waitResultAt:2100,finalAppendAt:4000};
+  assert.equal(window.to<metadataOnlyEarly.waitResultAt,true,'old metadata-only comparison would accept this case');
+  assert.equal(assessEarlySpeechBoundary(metadataOnlyEarly),false,'metadata-only window is no longer accepted as full audio proof');
+  assert.equal(resolveEarlyPlaybackTail(frames,[],{...params,waitResultAt:2100}),null,'actual audible tail continues to 2400 after the wait completed');
+  const laterEnergy=frames.map(f=>f.at>=2750&&f.at<=2800?{...f,rms:.02,digitalAudible:true}:f);
+  assert.equal(resolveEarlyPlaybackTail(laterEnergy,[],params),null,'a later quiet interval cannot replace first quiet followed by unattributed energy');
+  const neighbor=caption(2600,'另一个回答。');
+  assert.equal(resolveEarlyPlaybackTail(frames,[neighbor],params),null);
+  for(const changed of [{volume:0},{paused:true},{muted:true},{contextState:'suspended'},{receiverAttachedToPlayback:false}])
+    assert.equal(resolveEarlyPlaybackTail(frames.map((f,i)=>i===12?{...f,...changed}:f),[],params),null);
+  assert.equal(resolveEarlyPlaybackTail(frames.filter(f=>f.at<3100||f.at>3300),[],params),null);
+  assert.equal(resolveEarlyPlaybackTail(frames.slice(0,-4),[],params),null);
+  assert.equal(resolveEarlyPlaybackTail(frames.map(f=>({...f,rtp:[]})),[],params),null);
+  assert.equal(resolveEarlyPlaybackTail(frames,[],{...params,waitResultAt:null}),null);
+});
+
+test('old output drain must stay quiet until the earliest new speech, not a later sentence pause',()=>{
+  const events=[assistantDone(1000,'old','一。二。三。'),caption(2000,'四。'),
+    {pcIndex:0,at:3000,type:'turn.created',role:'assistant',turnId:'new'},assistantDone(3200,'new','四。')];
+  const frames=Array.from({length:45},(_,i)=>playerFrame(1000+i*50,{rms:i<18?.001:.01,digitalAudible:i>=18}));
+  const proof=assessNativeResponseDrain(frames,events,{pcIndex:0,terminalAt:1000,newTurnId:'new'});
+  assert.equal(proof.drainUpperBound,1900);assert.equal(proof.quiet.to,1850);assert.equal(proof.response.created.at,3000);
+  assert.equal(proof.requiresIndependentTurnAudioAttribution,true,'receiver stats alone do not attribute native turn audio');
+  // New output already began at 1950; its later quiet pause before created
+  // would have passed the old created-bounded search.
+  const phrasePause=frames.map(f=>f.at>=2200&&f.at<3000?{...f,rms:.001,digitalAudible:false}:f);
+  const oldEnergyUntilNew=phrasePause.map(f=>f.at<1900?{...f,rms:.01,digitalAudible:true}:f);
+  assert.equal(assessNativeResponseDrain(oldEnergyUntilNew,events,{pcIndex:0,terminalAt:1000,newTurnId:'new'}),null);
+  const quietThenOldTail=frames.map(f=>f.at>=1750&&f.at<1900?{...f,rms:.01,digitalAudible:true}:f);
+  assert.equal(assessNativeResponseDrain(quietThenOldTail,events,{pcIndex:0,terminalAt:1000,newTurnId:'new'}),null);
+  for(const changed of [{volume:0},{muted:true},{paused:true},{contextState:'suspended'},{receiverAttachedToPlayback:false}])
+    assert.equal(assessNativeResponseDrain(frames.map(f=>f.at<1900?{...f,...changed}:f),events,{pcIndex:0,terminalAt:1000,newTurnId:'new'}),null);
+  assert.equal(assessNativeResponseDrain(frames.filter(f=>f.at<1650||f.at>1750),events,{pcIndex:0,terminalAt:1000,newTurnId:'new'}),null);
+  assert.equal(assessNativeResponseDrain(frames.map(f=>({...f,rtp:[]})),events,{pcIndex:0,terminalAt:1000,newTurnId:'new'}),null);
+});
+
+test('the designated GNU date keeps exact calendar fields without inventing an ambiguous zone offset',()=>{
+  const text='Sat Oct  3 07:42:57 PM CST 2026',selected=selectCommandLocalTimestamp(text);
+  assert.deepEqual(selected.fields,{year:2026,month:10,day:3,hour:19,minute:42,second:57});
+  assert.equal(selected.offsetMinutes,null);assert.equal(selected.zoneLiteral,'CST');assert.equal(selected.originalLine,text);
+  assert.equal(selectCommandLocalTimestamp('Sat Oct  3 07:42:57 PM UTC 2026').offsetMinutes,0);
+  assert.equal(selectCommandLocalTimestamp(text+'\nSat Oct  3 07:42:58 PM CST 2026'),null);
+  for(const bad of ['Sat Feb 30 07:42:57 PM CST 2026','Sat Oct 3 13:42:57 PM CST 2026','Sat Oct 3 07:62:57 PM CST 2026','Sat Oct 3 07:42:57 PM CST 1926'])
+    assert.equal(selectCommandLocalTimestamp(bad),null,bad);
+  const base={name:'exec',runId:'child',sessionKey:'key',sourceExecutionTimingVerified:true};
+  const wait={...base,id:'wait',calledAt:1000,args:{command:'sleep 75'},results:[{at:76000,isError:false,text:'done',details:{status:'completed',exitCode:0}}]};
+  const date={...base,id:'date',calledAt:76100,args:{command:'date'},results:[{at:76200,isError:false,text,details:{status:'completed',exitCode:0}}]};
+  const neighbor={...date,id:'other-date',runId:'parent',results:[{...date.results[0],text:'2026-10-03 19:42:57 CST +0800'}]};
+  const proof=extractExecDateFromPairs([wait,date,neighbor],75);
+  assert.equal(proof.execCallId,'date');assert.equal(proof.offsetMinutes,null);assert.equal(proof.actualCommandTime,null);
+  assert.equal(extractExecDateFromPairs([wait,{...date,results:[{...date.results[0],details:{status:'completed'}}]}],75),null);
 });

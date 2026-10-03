@@ -34,6 +34,132 @@ export function nativeCountRequestsEighty(text) {
     /从(?:一|1)[，,、]*数[，,、]*到[，,、]*(?:八十|80)(?![零一二三四五六七八九十百\d])/u.test(transcript);
 }
 
+export function hasOrderedCountBeginning(text) {
+  return /^(?:一[、，,。.!！;；\s]+二|1[、，,。.!！;；\s]+2)(?=[、，,。.!！;；\s]|$)/u.test(String(text??'').trim());
+}
+
+const normalizedTranscript = text=>String(text??'').replace(/\s+/gu,'').replace(/，/gu,',');
+
+// Native turn.created is a summary and can arrive after the first spoken words.
+// Associate a consecutive sequence of real caption items with one terminal body;
+// never move a receipt timestamp or borrow a neighboring assistant response.
+export function resolveNativeTurnTranscriptWindow(events,{pcIndex,turnId,after=-Infinity,before=Infinity}={}) {
+  const terminal=events.find(e=>e.pcIndex===pcIndex&&e.turnId===turnId&&e.type==='turn.done'&&e.role==='assistant');
+  if(!terminal||!Number.isFinite(terminal.at)||terminal.at>=before||!normalizedTranscript(terminal.text))return null;
+  const preceding=events.filter(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='assistant'&&
+    e.turnId!==turnId&&Number.isFinite(e.at)&&e.at<terminal.at).sort((a,b)=>a.at-b.at).at(-1);
+  const bound=Math.max(after,preceding?.at??-Infinity),body=normalizedTranscript(terminal.text);
+  const captions=events.filter(e=>e.pcIndex===pcIndex&&e.type==='output_transcript.added'&&
+    Number.isFinite(e.at)&&e.at>bound&&e.at<=terminal.at&&(!e.turnId||e.turnId===turnId))
+    .sort((a,b)=>a.at-b.at);
+  const matches=[];
+  for(let first=0;first<captions.length;first++) {
+    let text='';
+    for(let last=first;last<captions.length;last++) {
+      text+=normalizedTranscript(captions[last].text);
+      if(!body.startsWith(text))break;
+      if(text===body){matches.push(captions.slice(first,last+1));break;}
+    }
+  }
+  if(matches.length!==1)return null;
+  const sequence=matches[0];
+  return {pcIndex,turnId,from:Math.max(bound,sequence[0].at-100),to:terminal.at,
+    firstCaptionAt:sequence[0].at,lastCaptionAt:sequence.at(-1).at,terminal,
+    created:events.find(e=>e.pcIndex===pcIndex&&e.turnId===turnId&&e.type==='turn.created'&&e.role==='assistant')??null,
+    captions:sequence,alignmentToleranceMs:100,source:'exact-consecutive-native-caption-items-and-terminal-body'};
+}
+
+// Validate every sampled player state over the complete speech window. Three
+// audible samples alone cannot prove that the remainder was played normally.
+export function assessCompletePlaybackWindow(frames,{pcIndex,from,to,maxGapMs=100}={}) {
+  if(![from,to,maxGapMs].every(Number.isFinite)||to<=from||maxGapMs<=0)return null;
+  const rows=frames.filter(f=>f.pcIndex===pcIndex&&Number.isFinite(f.at)&&f.at>=from&&f.at<=to).sort((a,b)=>a.at-b.at);
+  const valid=f=>f.muted===false&&f.paused===false&&Number.isFinite(f.volume)&&f.volume>0&&
+    f.contextState==='running'&&f.receiverAttachedToPlayback===true&&f.trackState==='live'&&f.connected==='connected';
+  const invalid=rows.filter(f=>!valid(f)),gaps=rows.slice(1).flatMap((f,i)=>f.at-rows[i].at>maxGapMs?[{from:rows[i].at,to:f.at}]:[]);
+  const covered=rows.length>0&&rows[0].at-from<=maxGapMs&&to-rows.at(-1).at<=maxGapMs;
+  const audibleRows=rows.filter(f=>valid(f)&&Number.isFinite(f.rms)&&f.rms>.005);
+  return {passed:covered&&gaps.length===0&&invalid.length===0&&audibleRows.length>=3,
+    pcIndex,from,to,frameCount:rows.length,audibleFrames:audibleRows.length,covered,
+    invalidFrames:invalid,gaps,maxGapMs,source:'all-original-player-samples-in-complete-window'};
+}
+
+export function assessDecodedPlaybackWindow(pcm,{recordingStartedAt,from,to,sampleRate=48000}={}) {
+  if(!Buffer.isBuffer(pcm)||![recordingStartedAt,from,to,sampleRate].every(Number.isFinite)||
+    sampleRate<=0||to<=from)return null;
+  const fromByte=Math.floor((from-recordingStartedAt)*sampleRate/1000)*2,
+    toByte=Math.ceil((to-recordingStartedAt)*sampleRate/1000)*2;
+  if(fromByte<0||toByte>pcm.length||toByte<=fromByte)return null;
+  const segment=pcm.subarray(fromByte,toByte);let sum=0,peak=0;
+  for(let at=0;at+1<segment.length;at+=2){const n=segment.readInt16LE(at);sum+=n*n;peak=Math.max(peak,Math.abs(n));}
+  const rms=Math.sqrt(sum/(segment.length/2));
+  return {passed:rms>30,from,to,recordingStartedAt,sampleRate,fromByte,toByte,pcmBytes:segment.length,
+    sha256:createHash('sha256').update(segment).digest('hex'),rms,peak,coversWholeWindow:true,
+    mediaRecorderTimeAlignmentToleranceMs:100,source:'original-native-receiver-decoded-s16-PCM'};
+}
+
+export function assessEarlySpeechBoundary({window,markerResultAt,captionAt,waitResultAt,finalAppendAt}={}) {
+  return Boolean(window)&&[window.from,window.to,window.metadataTerminalAt,window.quiet?.from,window.quiet?.to,
+    window.observedQuietThrough,window.childOrFinalBoundary,markerResultAt,captionAt,waitResultAt,finalAppendAt].every(Number.isFinite)&&
+    window.metadataTerminalAt>=captionAt&&window.quiet.from>=window.metadataTerminalAt&&window.quiet.to===window.to&&
+    window.quiet.to-window.quiet.from>=250&&window.quiet.rtp?.length>0&&window.observedQuietThrough>=window.to&&
+    window.childOrFinalBoundary===Math.min(waitResultAt,finalAppendAt)&&window.observedQuietThrough<window.childOrFinalBoundary&&
+    window.childOrFinalBoundary-window.observedQuietThrough<=100&&
+    window.from>=markerResultAt&&captionAt>=markerResultAt&&window.to>=captionAt&&
+    window.to<waitResultAt&&window.to<finalAppendAt;
+}
+
+// turn.done does not identify the end of received audio. The first continuous
+// quiet period after that metadata must occur before the child finishes, and
+// must remain quiet through the observed child/final boundary. Later energy or
+// a neighboring response cannot be replaced with its subsequent sentence pause.
+export function resolveEarlyPlaybackTail(frames,events,{window,waitResultAt,finalAppendAt}={}) {
+  if(!window||![window.from,window.to,waitResultAt,finalAppendAt].every(Number.isFinite))return null;
+  const bound=Math.min(waitResultAt,finalAppendAt);
+  if(window.to>=bound)return null;
+  const rows=frames.filter(f=>f.pcIndex===window.pcIndex&&Number.isFinite(f.at)&&f.at>=window.to&&f.at<bound).sort((a,b)=>a.at-b.at);
+  if(!rows.length||rows[0].at-window.to>100||bound-rows.at(-1).at>100)return null;
+  const valid=f=>f.muted===false&&f.paused===false&&Number.isFinite(f.volume)&&f.volume>0&&
+    f.contextState==='running'&&f.receiverAttachedToPlayback===true&&f.trackState==='live'&&f.connected==='connected';
+  let run=[],firstQuiet=null;
+  for(let index=0;index<rows.length;index++) {
+    const f=rows[index];
+    if(!valid(f)||!Number.isFinite(f.rms)||index>0&&f.at-rows[index-1].at>100)return null;
+    const quiet=f.rms<=.003;
+    if(firstQuiet&&!quiet)return null;
+    if(!quiet)run=[];else run.push(f);
+    if(!firstQuiet&&run.length&&f.at-run[0].at>=250)firstQuiet={from:run[0].at,to:f.at,frameCount:run.length,
+      rtp:run.filter(row=>row.rtp?.length).map(row=>({at:row.at,rtp:row.rtp}))};
+  }
+  if(!firstQuiet||!firstQuiet.rtp.length)return null;
+  if(events.some(e=>e.pcIndex===window.pcIndex&&Number.isFinite(e.at)&&e.at>window.to&&e.at<=firstQuiet.to&&
+    (e.type==='output_transcript.added'&&e.turnId!==window.turnId||
+      ['turn.created','turn.done'].includes(e.type)&&e.role==='assistant'&&e.turnId!==window.turnId)))return null;
+  return {...window,to:firstQuiet.to,metadataTerminalAt:window.to,quiet:firstQuiet,
+    observedQuietThrough:rows.at(-1).at,childOrFinalBoundary:bound,thresholdFloatRms:.003,
+    rtpAttribution:'Continuous original receiver quiet; metadata alone is not a native audio termination acknowledgement'};
+}
+
+export function assessNativeResponseDrain(frames,events,{pcIndex,terminalAt,newTurnId}={}) {
+  if(!Number.isFinite(terminalAt))return null;
+  const response=resolveNativeTurnTranscriptWindow(events,{pcIndex,turnId:newTurnId,after:terminalAt});
+  if(!response)return null;
+  const possibleNewAudio=frames.filter(f=>f.pcIndex===pcIndex&&Number.isFinite(f.at)&&f.at>=response.from&&
+    f.at<=response.to&&f.digitalAudible).sort((a,b)=>a.at-b.at)[0]?.at;
+  if(!Number.isFinite(possibleNewAudio))return null;
+  const upperBound=Math.min(possibleNewAudio,response.firstCaptionAt);
+  const bounded=frames.filter(f=>f.pcIndex===pcIndex&&f.at<upperBound);
+  // Quiet must continue to the first possible new speech boundary. A pause
+  // after that response started, or a quiet interval followed by old energy,
+  // cannot be used to declare the old output drained.
+  const quiet=continuousPlaybackQuiet(bounded,{pcIndex,after:terminalAt,durationMs:250,requireTail:true});
+  if(!quiet||upperBound-quiet.to>100||quiet.rtp.length===0)return null;
+  return {pcIndex,terminalAt,quiet,response,firstPossibleNewPlayback:possibleNewAudio,
+    firstNewTranscript:response.firstCaptionAt,drainUpperBound:upperBound,
+    alignmentToleranceMs:100,requiresIndependentTurnAudioAttribution:true,
+    rtpAttribution:'Receiver stats have no native turn identity; this is continuous observed track quiet, not a protocol clear acknowledgement'};
+}
+
 // This observes completion of an independent input. A fixed delay or a quiet
 // microphone by itself does not mean that the provider accepted the whole turn.
 export function assessIndependentInputConvergence({events=[],micFrames=[],pcIndex=0,input,lastSpeechAt,observedAt}) {
@@ -158,6 +284,25 @@ export function selectCommandLocalTimestamp(text) {
   const unique=new Map(candidates.map(value=>[JSON.stringify([value.fields,value.offsetMinutes]),value]));
   if(unique.size===1)return [...unique.values()][0];
   if(unique.size>1)return null;
+  // GNU date's default form may omit a numeric offset. Preserve its exact
+  // calendar value, while leaving an ambiguous abbreviation such as CST unproved.
+  const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],gnu=[];
+  for(const line of String(text??'').split(/\r?\n/u)) {
+    const m=/^\s*(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s+([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{1,2}):(\d{2}):(\d{2})\s+(?:(AM|PM)\s+)?(\S+)\s+(\d{4})\s*$/u.exec(line);
+    if(!m||!months.includes(m[1]))continue;
+    let hour=+m[3];if(m[6]){if(hour<1||hour>12)continue;hour=hour%12+(m[6]==='PM'?12:0);}
+    const fields={year:+m[8],month:months.indexOf(m[1])+1,day:+m[2],hour,minute:+m[4],second:+m[5]};
+    const date=new Date(Date.UTC(fields.year,fields.month-1,fields.day,hour,fields.minute,fields.second));
+    if(fields.year<2000||fields.year>2100||date.getUTCFullYear()!==fields.year||date.getUTCMonth()+1!==fields.month||date.getUTCDate()!==fields.day||
+      hour>23||fields.minute>59||fields.second>59)continue;
+    const explicit=/^([+-])(\d{2}):?(\d{2})$/u.exec(m[7]);
+    const offsetMinutes=['UTC','GMT'].includes(m[7])?0:explicit&&+explicit[2]<=23&&+explicit[3]<=59?
+      (+explicit[2]*60 + +explicit[3])*(explicit[1]==='-'?-1:1):null;
+    gnu.push({fields,offsetMinutes,zoneLiteral:m[7],originalLine:line,sourceFormat:'GNU-date'});
+  }
+  const gnuUnique=new Map(gnu.map(value=>[JSON.stringify([value.fields,value.zoneLiteral]),value]));
+  if(gnuUnique.size===1)return [...gnuUnique.values()][0];
+  if(gnuUnique.size>1)return null;
   const fields=parseCompleteTimestamps(text),offset=/([+-])(\d{2}):?(\d{2})\b/u.exec(text);
   if(fields.length!==1||!offset||+offset[2]>23||+offset[3]>59)return null;
   return {fields:fields[0],offsetMinutes:(+offset[2]*60 + +offset[3])*(offset[1]==='-'?-1:1),originalLine:String(text)};
@@ -183,22 +328,22 @@ export function extractExecDateFromPairs(pairs, seconds=45) {
     const combined=hasDate && command.search(/\bsleep\b/u)<command.search(/\bdate\b/u);
     if(hasDate && !combined) continue;
     const waitTerminal=candidatesFor(wait).find(({result})=>toolResultSucceeded(result) && Number.isFinite(result.at) && result.at-wait.calledAt>=seconds*1000 &&
-      ['completed','exited'].includes(result.details?.status) && (!Number.isFinite(result.details?.exitCode) || result.details.exitCode===0));
+      ['completed','exited'].includes(result.details?.status) && result.details?.exitCode===0);
     const dateExecs=combined?[wait]:waitTerminal?pairs.filter(row=>row.name==='exec' && isVerified(row) && sameActor(wait,row) &&
       row.calledAt>=waitTerminal.result.at && /\bdate\b/u.test(row.args?.command ?? '') && !/\bsleep\b/u.test(row.args?.command ?? '')):[];
     for (const exec of dateExecs) {
       for (const {call,result,processSessionId} of candidatesFor(exec)) {
         const selected=selectCommandLocalTimestamp(result.text);
         if (!isVerified(call) || !sameActor(wait,call) || !Number.isFinite(result.at) || !toolResultSucceeded(result) ||
-            !['completed','exited'].includes(result.details?.status) || (Number.isFinite(result.details?.exitCode) && result.details.exitCode!==0) ||
+            !['completed','exited'].includes(result.details?.status) || result.details?.exitCode!==0 ||
             result.at-wait.calledAt<seconds*1000 || result.at<exec.calledAt || !selected) continue;
         const {offsetMinutes,fields:f}=selected;
         return {command:exec.args.command,execCallId:exec.id,resultCallId:call.id,processSessionId,
           source:exec.source ?? 'session-history',runId:exec.runId,sessionKey:exec.sessionKey,
-          resultText:result.text,selectedDateOutputLine:selected.originalLine,fields:f,offsetMinutes,resultAt:result.at,resultObservedAt:result.observedAt ?? null,
+          resultText:result.text,selectedDateOutputLine:selected.originalLine,fields:f,offsetMinutes,zoneLiteral:selected.zoneLiteral??null,resultAt:result.at,resultObservedAt:result.observedAt ?? null,
           waitExecCallId:wait.id,waitCalledAt:wait.calledAt,waitResultAt:combined?result.at:waitTerminal.result.at,
           waitDurationMs:(combined?result.at:waitTerminal.result.at)-wait.calledAt,combinedCommand:combined,
-          actualCommandTime:Date.UTC(f.year,f.month-1,f.day,f.hour,f.minute,f.second)-offsetMinutes*60000};
+          actualCommandTime:Number.isFinite(offsetMinutes)?Date.UTC(f.year,f.month-1,f.day,f.hour,f.minute,f.second)-offsetMinutes*60000:null};
       }
     }
   }
@@ -261,8 +406,8 @@ export function continuousPlaybackQuiet(frames,{pcIndex,after,durationMs=750,thr
   const source=frames.filter(f => f.pcIndex===pcIndex && f.at>=after).sort((a,b)=>a.at-b.at);
   let run=[],found=null;
   for (const f of source) {
-    const eligible=f.rms<=threshold && !f.muted && !f.paused && f.contextState==='running' &&
-      f.receiverAttachedToPlayback && f.trackState==='live' && f.connected==='connected';
+    const eligible=Number.isFinite(f.rms)&&f.rms<=threshold && f.muted===false && f.paused===false && Number.isFinite(f.volume)&&f.volume>0&&f.contextState==='running' &&
+      f.receiverAttachedToPlayback===true && f.trackState==='live' && f.connected==='connected';
     if (!eligible || (run.length && f.at-run.at(-1).at>maxGapMs)) run=[];
     if (eligible) run.push(f);
     if (run.length && f.at-run[0].at>=durationMs) found={from:run[0].at,to:f.at,

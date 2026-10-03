@@ -225,6 +225,38 @@ test("execution and subject checks remain conditional and preserve authorization
   assert.match(prompt, /If work is still running in accepted child tasks, use the actual supported yield\/continuation mechanism/);
 });
 
+test("voice consult carries child stage values and read-before-claim obligations without substituting tool text for progress", async () => {
+  const question = "先检索合同来源，再读取官方文档相关段落；同一子任务依次测量延迟并公开带单位的实际值，再检查文件版本后汇总；保持只读，只公开测量值和版本。";
+  const stage = "已测得延迟为 2.75 ms。";
+  const progress = [];
+  let capturedPrompt;
+  const runtime = createHarnessRuntime({
+    args: { question },
+    onProgress: value => progress.push(value),
+    runEmbeddedAgent: async options => {
+      capturedPrompt = options.prompt;
+      options.onAgentEvent({ stream: "tool", data: { phase: "result", result: { text: "2.75 ms" } } });
+      assert.equal(progress.length, 0, "a tool result cannot manufacture an assistant stage fact");
+      options.onAgentEvent({ stream: "item", data: { kind: "preamble", phase: "end", itemId: "measured-stage", progressText: stage } });
+      return { payloads: [{ text: "部分完成：已测得延迟；文档返回被截断，相关控制未核实。" }] };
+    },
+  });
+  assert.deepEqual(await runtime.run(), { text: "部分完成：已测得延迟；文档返回被截断，相关控制未核实。" });
+  assert(capturedPrompt.includes(`User request:\n${question}`));
+  assert.match(capturedPrompt, /spawn\.task 必须继承本次有效的完整目标、指定执行者、步骤依赖、公开范围/);
+  assert.match(capturedPrompt, /若用户要求阶段播报，明确交给子任务/);
+  assert.match(capturedPrompt, /给出实际值及其主体、单位或时区，再调用后续工具继续同一任务/);
+  assert.match(capturedPrompt, /不要以 Step done、正在等待或轮询计划替代实际事实/);
+  assert.match(capturedPrompt, /未取得或不允许公开的值不要猜测或披露/);
+  assert.match(capturedPrompt, /不为补播创建替代任务/);
+  assert.match(capturedPrompt, /前一步真实完成后才开始下一步，不并行替代/);
+  assert.match(capturedPrompt, /returned page is truncated or lacks the supporting section/);
+  assert.match(capturedPrompt, /locate and read that primary section within the authorized task/);
+  assert.match(capturedPrompt, /otherwise report it as unverified/);
+  assert.deepEqual(progress.map(value => value.text), [stage]);
+  // Actual prompt/callback transport is verified; model adherence needs a real voice case.
+});
+
 test("consult forwards complete public facts before final and leaves unfinished text for final delivery", async () => {
   const progress = [];
   let finish;
