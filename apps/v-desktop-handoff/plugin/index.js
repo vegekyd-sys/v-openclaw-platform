@@ -51,7 +51,7 @@ export default definePluginEntry({
       }
       let imageKey = null;
       try {
-        if (config.cardImage === "screenshot") {
+        if (config.cardImage !== "cover") {
           const shot = await captureDesktop({ display: config.desktopDisplay ?? ":99" });
           imageKey = shot ? await feishu.uploadImage(shot, "desktop.jpg") : null;
         }
@@ -104,6 +104,16 @@ export default definePluginEntry({
         } catch {
           return;
         }
+        // The button commands run in another process and record their final state with the
+        // handoff: 已完成 / 已跳过 must never be overwritten by this watcher's 已结束.
+        const recorded = status.card?.state;
+        if (recorded && recorded !== card.state) {
+          card.state = recorded;
+        }
+        if (["done", "skipped", "ended"].includes(card.state)) {
+          clearInterval(timer);
+          return;
+        }
         if (status.ended) {
           await setCardState(id, "ended", cfg);
         } else if (status.controlActive && card.state === "pending") {
@@ -138,6 +148,13 @@ export default definePluginEntry({
       }
       card.state = state;
       try {
+        // Show what the desktop looks like now (the person's result after 已完成), not the picture from when the card was sent.
+        if (config.cardImage !== "cover" && (state === "active" || state === "done")) {
+          const shot = await captureDesktop({ display: config.desktopDisplay ?? ":99" });
+          if (shot) {
+            card.view = { ...card.view, imageKey: await card.feishu.uploadImage(shot, "desktop.jpg") };
+          }
+        }
         await card.feishu.patchCard(card.messageId, nativeHandoffCard({ ...card.view, state }));
         const { feishu: _feishu, ...record } = card;
         await client.setCard(id, record).catch(() => {});
@@ -443,14 +460,14 @@ export default definePluginEntry({
         if (!status || status.ended || handedBack.has(status.id)) {
           return { text: "这一步已经结束了。" };
         }
+        handedBack.add(status.id);
+        await setCardState(status.id, "skipped", ctx.config);
         try {
           if (status.controlActive) await client.handBack(status.id);
           await client.revoke(status.id);
         } catch (error) {
           return { text: `跳过失败：${error.message}` };
         }
-        handedBack.add(status.id);
-        await setCardState(status.id, "skipped", ctx.config);
         api.logger?.info?.(`desktop handoff ${status.id} skipped by ${actor}`);
         return { continueAgent: true };
       },
