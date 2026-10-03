@@ -1,0 +1,17 @@
+{
+  "baseRelease": "feishu-ask-chat-answer-v1",
+  "support": [
+    "lab/candidate/worker-config-derive.mjs",
+    "lab/release-files/worker-config-derive/worker-config-derive.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/worker-config-derive.mjs"
+  ],
+  "timeoutSeconds": 1800,
+  "user": "lab-db91-parity",
+  "files": [],
+  "env": {
+    "WORKER_CONFIG_EXPECT": "stale"
+  }
+}
