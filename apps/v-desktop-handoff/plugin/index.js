@@ -4,7 +4,8 @@ import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { HandoffAdminClient } from "./core/admin-client.js";
 import { describeContext, isControlAnywhereActor, isTrustedDirectSession, resolveTrustedActor } from "./core/identity.js";
 import { deliverPrivately } from "./core/deliver.js";
-import { decideToolCall } from "./core/policy.js";
+import { handoffCard, inPlaceTarget } from "./core/card.js";
+import { decideToolCall, refuseEnd } from "./core/policy.js";
 
 function textResult(value) {
   return { content: [{ type: "text", text: JSON.stringify(value, null, 2) }] };
@@ -51,14 +52,24 @@ export default definePluginEntry({
         name: "desktop_handoff_request",
         label: "Desktop Handoff Request",
         description:
-          "Use when V's own desktop browser (the `browser` tool) hits a login page, captcha, 2FA or a payment/consent step that only the user can complete. Issues a one-time link to V's desktop. kind=control (default) lets the requesting user watch and take over the mouse and keyboard. kind=watch gives a view-only link. Depending on configuration a control link is issued in any conversation, or only in private chats (owners may then ask from a group and receive it privately). Put the returned url (if any) in your reply, tell the user what to do there and that the link expires, then end your turn and wait for the user to say they are done. Never type or guess credentials yourself.",
+          "Use when V's own desktop browser (the `browser` tool) hits a login page, captcha, 2FA or a payment/consent step that only the user can complete. Issues a one-time link to V's desktop. kind=control (default) lets the requesting user watch and take over the mouse and keyboard. kind=watch gives a view-only link. Depending on configuration a control link is issued in any conversation, or only in private chats (owners may then ask from a group and receive it privately). In chat channels the link is posted as a card with a button; follow the returned instruction about whether to repeat the url. Then end your turn and wait for the user to say they are done. Use purpose=payment when a checkout needs the user's payment details or final confirmation: first fill the cart and go to the payment page yourself, then call this with payment.item/amount/currency/merchant exactly as shown on the page. Never type, guess or read back card numbers, passwords or verification codes yourself.",
         parameters: Type.Object({
           reason: Type.String({ description: "Short, user-facing reason, e.g. 'need you to log in to Xiaohongshu'" }),
           kind: Type.Optional(Type.Union([Type.Literal("control"), Type.Literal("watch")], { description: "control (default) or watch" })),
+          purpose: Type.Optional(Type.Union([Type.Literal("login"), Type.Literal("payment")], { description: "login (default: login, captcha, 2FA, consent) or payment (the user enters payment details and confirms the purchase)" })),
+          payment: Type.Optional(
+            Type.Object({
+              item: Type.Optional(Type.String({ description: "What is being bought, as shown at checkout" })),
+              amount: Type.Optional(Type.String({ description: "Total to pay, exactly as shown at checkout, e.g. '129.00'" })),
+              currency: Type.Optional(Type.String({ description: "e.g. CNY, USD" })),
+              merchant: Type.Optional(Type.String({ description: "Shop or site name" })),
+            }),
+          ),
         }),
         async execute(_toolCallId, params, signal) {
           const { actorUserId, sessionKey } = trusted(context);
           const kind = params.kind === "watch" ? "watch" : "control";
+          const purpose = params.purpose === "payment" ? "payment" : "login";
           // controlAnywhere: control links may be issued in any conversation and are posted in place.
           const direct = config.controlAnywhere === true || isTrustedDirectSession(context, config);
           const anywhere = isControlAnywhereActor(actorUserId, config);
@@ -79,10 +90,13 @@ export default definePluginEntry({
             const senderId = typeof context.requesterSenderId === "string" ? context.requesterSenderId.trim() : "";
             const channel = typeof context.messageChannel === "string" ? context.messageChannel.trim() : "";
             try {
+              const card = handoffCard({ purpose, kind, reason: params.reason, url: issued.url, openWithinMinutes, sessionMinutes, payment: params.payment });
               await deliverPrivately({
                 channel,
                 target: senderId,
-                text: `V 需要你接管它的桌面浏览器：${params.reason}\n${issued.url}\n${openWithinMinutes} 分钟内打开，接管会话约 ${sessionMinutes} 分钟。打开后点「接管控制」，做完点「交还给 V」，再回群里告诉我一声。`,
+                ...((config.cardChannels ?? ["feishu"]).includes(channel)
+                  ? { text: card.text, presentation: card.presentation }
+                  : { text: card.fallback }),
                 command: config.openclawCommand,
                 entry: config.openclawEntry,
                 accountId: config.messageAccountId,
@@ -101,9 +115,39 @@ export default definePluginEntry({
               instruction: "The control link was sent to the user in a private message, not here. Tell them in this conversation to check their private chat with V, then end your turn and wait until they say they are done. Do not repeat or guess the url here.",
             });
           }
+          // In a chat channel, post the link as a card with a button in this conversation.
+          const place = config.cards === false ? null : inPlaceTarget(context, config);
+          if (place) {
+            const card = handoffCard({ purpose, kind, reason: params.reason, url: issued.url, openWithinMinutes, sessionMinutes, payment: params.payment });
+            try {
+              await deliverPrivately({
+                ...place,
+                accountId: place.accountId ?? config.messageAccountId,
+                text: card.text,
+                presentation: card.presentation,
+                command: config.openclawCommand,
+                entry: config.openclawEntry,
+              });
+              return textResult({
+                handoffId: issued.id,
+                kind,
+                purpose,
+                requestedBy: actorUserId,
+                postedAsCard: true,
+                openWithinMinutes,
+                sessionMinutes,
+                instruction:
+                  "A card with the link button has been posted in this conversation. Do NOT repeat or paraphrase the url, and do not say where the card is (above/below): reply with one short sentence such as 接管卡片已发出，登录完成后告诉我一声, then end your turn and wait until the user says they are done; then call desktop_handoff_status." +
+                  (purpose === "payment" ? " Do not click any pay/confirm button yourself; after the user is done, check the order result on the page and report it." : ""),
+              });
+            } catch (error) {
+              api.logger?.warn?.(`desktop handoff card not delivered, falling back to the url in the reply: ${error.message}`);
+            }
+          }
           return textResult({
             handoffId: issued.id,
             kind,
+            purpose,
             requestedBy: actorUserId,
             url: issued.url,
             openWithinMinutes,
@@ -153,12 +197,17 @@ export default definePluginEntry({
       (context) => ({
         name: "desktop_handoff_end",
         label: "Desktop Handoff End",
-        description: "Revoke a handoff link and disconnect its viewers. Use after the user confirms they are done, or if the link was sent by mistake.",
+        description: "Revoke a handoff link that nobody is using (sent by mistake, or the user said they are done and handed back). It is refused while a person is connected or in control: never use it to get the desktop back from the user.",
         parameters: Type.Object({
           handoffId: Type.Optional(Type.String()),
         }),
         async execute(_toolCallId, params, signal) {
-          const id = (await resolveHandoff(params.handoffId, context.sessionKey, signal)).id;
+          const current = await resolveHandoff(params.handoffId, context.sessionKey, signal);
+          const id = current.id;
+          const refusal = refuseEnd(current);
+          if (refusal) {
+            throw new Error(refusal);
+          }
           await client.revoke(id, { signal });
           if (context.sessionKey && bySession.get(context.sessionKey) === id) {
             bySession.delete(context.sessionKey);

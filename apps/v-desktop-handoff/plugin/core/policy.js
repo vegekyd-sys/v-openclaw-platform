@@ -27,7 +27,7 @@ export function decideToolCall({ toolName, params, controlActive }) {
     return {
       block: true,
       blockReason:
-        "A person is currently controlling V's desktop browser through the handoff link. Only read-only browser actions (status, tabs, snapshot, screenshot) are allowed until they hand it back. Ask them to finish and tell you, or call desktop_handoff_status.",
+        "A person is currently controlling V's desktop browser through the handoff link. Only read-only browser actions (status, tabs, snapshot, screenshot) are allowed until they hand it back. Ask them to finish and tell you, or call desktop_handoff_status. Never end their handoff to get the browser back.",
     };
   }
   if (toolName === "computer") {
@@ -36,8 +36,20 @@ export function decideToolCall({ toolName, params, controlActive }) {
     }
     return {
       block: true,
-      blockReason: "A person is currently controlling V's desktop through the handoff link. Wait until they hand it back before using the computer tool.",
+      blockReason: "A person is currently controlling V's desktop through the handoff link. Wait until they hand it back before using the computer tool; never end their handoff to get the desktop back.",
     };
   }
   return undefined;
+}
+
+/** Why the agent may not revoke this handoff now, or null when it may. */
+export function refuseEnd(status) {
+  if (!status || status.ended || !(status.controlActive || status.connectedViewers > 0)) {
+    return null;
+  }
+  return (
+    "Refused: a person is connected to this handoff" +
+    (status.controlActive ? " and controlling the desktop" : "") +
+    ". Do not end it and do not work around it. Tell the user you are waiting, end your turn, and continue only after they hand back and tell you they are done."
+  );
 }

@@ -27,6 +27,8 @@
       "openclawCommand": { "type": "string" },
       "openclawEntry": { "type": "string" },
       "messageAccountId": { "type": "string" },
+      "cards": { "type": "boolean" },
+      "cardChannels": { "type": "array", "items": { "type": "string" } },
       "principalAliases": {
         "type": "object",
         "additionalProperties": { "type": "string" }
