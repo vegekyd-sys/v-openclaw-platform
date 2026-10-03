@@ -36,58 +36,55 @@ const step = (name, detail = {}) => {
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // --- private configuration ----------------------------------------------
-const OUTBOUND_PLUGINS = [
-  "feishu", "openclaw-qqbot", "wecom-openclaw-plugin", "dingtalk-connector",
-  "msteams", "nightshift-feishu", "openclaw-plugin-xiaoai-cloud",
-  "respeaker-agent-bridge", "v-desktop-handoff", "cua-computer",
-  "v-browser-device", "landing-chat", "workboard", "openclaw-deck",
-  // npm-managed on V/VLab and absent from the candidate runtime; startup would
-  // try to install it. Not needed for this test.
-  "codex",
-];
+// Minimal private Gateway (the worker-config-derive candidate's recipe): only
+// the Worker plugin and DeepSeek, one agent, no channels, cron or bindings, so
+// nothing can reach a real user and no unrelated plugin can block startup.
+const SECRETS = path.join(SHARED_INSTANCE, "secrets.env");
+const secret = (name) => {
+  for (const line of readFileSync(SECRETS, "utf8").split(/\r?\n/u)) {
+    const m = line.match(/^\s*(?:export\s+)?([A-Z0-9_]+)=(.*)$/u);
+    if (m?.[1] === name) return m[2].replace(/^["']|["']$/gu, "");
+  }
+  throw new Error(`${name} missing from shared secrets.env`);
+};
+const MODEL = "deepseek/deepseek-v4-flash";
 const config = JSON.parse(readFileSync(CONFIG, "utf8"));
 const port = config.gateway.port;
 assert(port && port !== 24993, "candidate config must use a private port");
-for (const channel of Object.values(config.channels ?? {})) {
-  if (channel && typeof channel === "object") channel.enabled = false;
-}
-for (const id of OUTBOUND_PLUGINS) {
-  if (config.plugins?.entries?.[id]) config.plugins.entries[id].enabled = false;
-}
+config.channels = {};
 config.cron = { ...(config.cron ?? {}), enabled: false };
+config.bindings = [];
+const keep = new Set(["vlab-agent-worker-isolation", "deepseek"]);
+config.plugins.entries = Object.fromEntries(Object.entries(config.plugins.entries ?? {}).filter(([id]) => keep.has(id)));
+if (Array.isArray(config.plugins.allow)) config.plugins.allow = config.plugins.allow.filter((id) => keep.has(id));
+for (const node of [config.agents.defaults, config.agents.entries?.makaron]) {
+  for (const [key, entry] of Object.entries(node?.models ?? {})) {
+    const id = typeof entry?.agentRuntime === "string" ? entry.agentRuntime : entry?.agentRuntime?.id;
+    if (id && id !== "vlab-worker" && id !== "openclaw") delete node.models[key];
+  }
+}
+config.agents.entries = { makaron: { ...config.agents.entries.makaron, model: { primary: MODEL, fallbacks: [] } } };
 config.gateway.reload = { ...(config.gateway.reload ?? {}), mode: "hybrid" };
 const workerEntry = config.plugins.entries["vlab-agent-worker-isolation"];
 Object.assign(workerEntry.config, {
-  minWorkers: 2, maxWorkers: 4, sessionsPerWorker: 2, warmSpareWorkers: 0,
+  minWorkers: 2, maxWorkers: 4, sessionsPerWorker: 2, warmSpareWorkers: 0, gatewayConfigPath: CONFIG,
 });
-config.plugins.entries["memory-core"] ??= { enabled: true };
-config.plugins.entries["memory-core"].config ??= {};
-config.plugins.entries["memory-core"].config.dreaming ??= {};
-config.plugins.entries["memory-core"].config.dreaming.enabled = false;
+const workerRuntime = (id) => {
+  const entry = config.agents.defaults.models?.[id];
+  return typeof entry?.agentRuntime === "string" ? entry.agentRuntime : entry?.agentRuntime?.id;
+};
+assert.equal(workerRuntime(MODEL), "vlab-worker", `${MODEL} must route to the Worker pool`);
 
-// The Worker reads its own config; the candidate snapshot does not carry it.
+// Worker config: the Gateway config with the Gateway-only runtime id mapped to
+// the runtime that runs inside a Worker.
 const workerConfigPath = workerEntry.config.workerConfigPath;
-const sharedWorkerConfig = path.join(SHARED_STATE, path.relative(STATE, workerConfigPath));
-assert(existsSync(sharedWorkerConfig), `shared worker config missing: ${sharedWorkerConfig}`);
-let workerText = readFileSync(sharedWorkerConfig, "utf8");
-workerText = workerText
-  .replaceAll(path.join(SHARED_INSTANCE, "runtime"), RUNTIME)
-  .replaceAll(SHARED_STATE, STATE)
-  .replaceAll(path.join(SHARED_INSTANCE, "workspace"), process.env.OPENCLAW_WORKSPACE_DIR ?? path.join(DATA, "workspace"));
-// Read-only plugin sources may stay shared (the main candidate config uses the
-// same ones); nothing writable may.
-const sharedRefs = [...new Set(workerText.match(new RegExp(`${SHARED_INSTANCE.replaceAll("/", "\\/")}/[^/"]+`, "g")) ?? [])];
-step("worker-config-shared-refs", { sharedRefs });
-for (const ref of sharedRefs) {
-  assert(!/\/(state|workspace|runtime|tmp|cache)$/.test(ref), `worker config still writes into the shared instance: ${ref}`);
-}
-const workerConfig = JSON.parse(workerText);
-for (const channel of Object.values(workerConfig.channels ?? {})) {
-  if (channel && typeof channel === "object") channel.enabled = false;
-}
-for (const id of OUTBOUND_PLUGINS) {
-  if (workerConfig.plugins?.entries?.[id]) workerConfig.plugins.entries[id].enabled = false;
-}
+assert(!path.relative(STATE, workerConfigPath).startsWith(".."), "worker config escaped candidate state");
+const workerConfig = JSON.parse(JSON.stringify(config), (key, value) => {
+  if (key === "agentRuntime" && value === "vlab-worker") return "openclaw";
+  if (key === "agentRuntime" && value?.id === "vlab-worker") return { ...value, id: "openclaw" };
+  return value;
+});
+workerConfig.session = { ...(workerConfig.session ?? {}), maintenance: { ...(workerConfig.session?.maintenance ?? {}), mode: "warn" } };
 mkdirSync(path.dirname(workerConfigPath), { recursive: true });
 writeFileSync(workerConfigPath, JSON.stringify(workerConfig, null, 2), { mode: 0o600 });
 
@@ -101,22 +98,28 @@ for (const dir of ["tmp", "cache"]) mkdirSync(path.join(DATA, dir), { recursive:
 
 // --- private Gateway ------------------------------------------------------
 const log = createWriteStream(logPath);
-const gateway = spawn(process.execPath, [
-  "--max-old-space-size=8192", path.join(RUNTIME, "openclaw/dist/index.js"), "gateway", "--port", String(port),
-], {
-  env: {
-    ...process.env,
-    HOME: DATA, TMPDIR: path.join(DATA, "tmp"), XDG_CACHE_HOME: path.join(DATA, "cache"),
-    // Never let the private Gateway touch the shared instance's npm cache.
-    npm_config_cache: path.join(DATA, "cache/npm"), npm_config_prefix: path.join(DATA, "user-npm"),
-    OPENCLAW_GATEWAY_PORT: String(port),
-  },
-  stdio: ["ignore", "pipe", "pipe"],
-});
-gateway.stdout.pipe(log);
-gateway.stderr.pipe(log);
+const gatewayEnv = {
+  ...process.env,
+  DEEPSEEK_API_KEY: secret("DEEPSEEK_API_KEY"),
+  HOME: DATA, TMPDIR: path.join(DATA, "tmp"), XDG_CACHE_HOME: path.join(DATA, "cache"),
+  // Never let the private Gateway touch the shared instance's npm cache.
+  npm_config_cache: path.join(DATA, "cache/npm"), npm_config_prefix: path.join(DATA, "user-npm"),
+  OPENCLAW_GATEWAY_PORT: String(port),
+};
+let gateway;
 let gatewayExit = null;
-gateway.on("exit", (code, signal) => { gatewayExit = { code, signal }; });
+let gatewayStarts = 0;
+function startGateway() {
+  gatewayStarts += 1;
+  gatewayExit = null;
+  gateway = spawn(process.execPath, [
+    "--max-old-space-size=8192", path.join(RUNTIME, "openclaw/dist/index.js"), "gateway", "--port", String(port),
+  ], { env: gatewayEnv, stdio: ["ignore", "pipe", "pipe"] });
+  gateway.stdout.pipe(log, { end: false });
+  gateway.stderr.pipe(log, { end: false });
+  gateway.on("exit", (code, signal) => { gatewayExit = { code, signal }; });
+}
+startGateway();
 const logText = () => readFileSync(logPath, "utf8");
 
 const { GatewayClient } = await import(pathToFileURL(path.join(RUNTIME, "openclaw/dist/plugin-sdk/gateway-runtime.js")).href);
@@ -140,7 +143,15 @@ async function waitFor(label, fn, timeoutMs, intervalMs = 1_000) {
   const deadline = Date.now() + timeoutMs;
   let last;
   while (Date.now() < deadline) {
-    if (gatewayExit) throw new Error(`Gateway exited during ${label}: ${JSON.stringify(gatewayExit)}`);
+    if (gatewayExit) {
+      if (gatewayStarts === 1 && /Restart OpenClaw so state migrations run/u.test(logText())) {
+        step("gateway-restart-after-migration");
+        startGateway();
+        await delay(1_000);
+        continue;
+      }
+      throw new Error(`Gateway exited during ${label}: ${JSON.stringify(gatewayExit)}`);
+    }
     try {
       last = await fn();
       if (last) return last;
@@ -196,9 +207,9 @@ try {
   await waitForActive("reload-inflight");
   const before = await status();
   const next = JSON.parse(readFileSync(CONFIG, "utf8"));
-  next.plugins.entries["memory-core"].config.dreaming.enabled = true;
+  next.plugins.entries["vlab-agent-worker-isolation"].config.idleTimeoutMs += 1;
   writeConfig(next);
-  step("config-written", { key: "plugins.entries.memory-core.config.dreaming.enabled", generationBefore: before.generation ?? null });
+  step("config-written", { key: "plugins.entries.vlab-agent-worker-isolation.config.idleTimeoutMs", generationBefore: before.generation ?? null });
   await waitFor("plugin reload applied", async () => /config hot reload applied \(plugins/.test(logText()), 600_000);
   step("reload-applied", { pluginReloadLogged: /before plugin reload/.test(logText()) });
   await connect().catch(() => {});
