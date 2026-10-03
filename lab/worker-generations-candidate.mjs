@@ -71,7 +71,13 @@ workerText = workerText
   .replaceAll(path.join(SHARED_INSTANCE, "runtime"), RUNTIME)
   .replaceAll(SHARED_STATE, STATE)
   .replaceAll(path.join(SHARED_INSTANCE, "workspace"), process.env.OPENCLAW_WORKSPACE_DIR ?? path.join(DATA, "workspace"));
-assert(!workerText.includes(SHARED_INSTANCE + "/"), "worker config still points into the shared instance");
+// Read-only plugin sources may stay shared (the main candidate config uses the
+// same ones); nothing writable may.
+const sharedRefs = [...new Set(workerText.match(new RegExp(`${SHARED_INSTANCE.replaceAll("/", "\\/")}/[^/"]+`, "g")) ?? [])];
+step("worker-config-shared-refs", { sharedRefs });
+for (const ref of sharedRefs) {
+  assert(!/\/(state|workspace|runtime|tmp|cache)$/.test(ref), `worker config still writes into the shared instance: ${ref}`);
+}
 const workerConfig = JSON.parse(workerText);
 for (const channel of Object.values(workerConfig.channels ?? {})) {
   if (channel && typeof channel === "object") channel.enabled = false;
