@@ -93,7 +93,8 @@ const liveWorkers = (s) => s.workers.filter((w) => w.ready && !w.retiring).lengt
 const ourActive = (s, sessionPart) =>
   s.workers.some((w) => w.active.some((a) => String(a.sessionKey ?? "").includes(sessionPart)));
 function journalCount(pattern) {
-  const since = new Date(startedAt - 5_000).toISOString().replace("T", " ").slice(0, 19);
+  // An epoch timestamp: an ISO string is UTC but journalctl reads it as local time.
+  const since = `@${Math.floor((startedAt - 5_000) / 1000)}`;
   const out = remote(`sudo journalctl -u ${target.unit} --since ${sq(since)} --no-pager -o cat | grep -c -E ${sq(pattern)} || true`);
   return Number(out.trim() || 0);
 }
@@ -120,8 +121,11 @@ async function awaitReply(requestId, marker, sinceMs, timeoutMs = 300_000) {
   const deadline = Date.now() + timeoutMs;
   let last = null;
   while (Date.now() < deadline) {
-    const cards = botCards(sinceMs).filter((m) => m.replyTo === requestId);
-    last = cards.find((m) => m.content.includes(marker)) ?? cards.at(-1) ?? last;
+    // V splits a long reply into several plain messages that carry no
+    // reply_to; any bot message after the request may hold the marker.
+    const all = botCards(sinceMs);
+    const cards = all.filter((m) => m.replyTo === requestId);
+    last = all.find((m) => m.content.includes(marker)) ?? cards.at(-1) ?? last;
     if (last?.content.includes(marker)) return last;
     if (last && /couldn't generate a response|worker pool is closing/u.test(last.content)) break;
     await sleep(4_000);
@@ -142,13 +146,18 @@ const shortTurn = async (label) => {
   const at = Date.now();
   const id = send(`只回复 ${marker}，不要调用任何工具。`);
   const card = await awaitReply(id, marker, at, 180_000);
-  return note(`${label}:reply`, { message: id, reply: card.id, seconds: Math.round((Date.now() - at) / 1000) });
+  const runtime = footerRuntime(card.content);
+  note(`${label}:reply`, { message: id, reply: card.id, runtime, seconds: Math.round((Date.now() - at) / 1000) });
+  assert.ok(!["codex", "claude-cli"].includes(runtime), `turn ran on ${runtime}, not through the Worker pool`);
+  return card;
 };
 // A reply long enough to be mid-stream when the generation changes.
 const longTurn = (label) => {
   const marker = `${tag}-${label}-END`;
   const at = Date.now();
-  const id = send(`请写一篇约 1500 字的中文散文，题目是“灯塔的历史”，不要调用任何工具，不要分节标题。最后单独一行写 ${marker}`);
+  // Counting streams steadily for a minute or more; an essay can finish before
+  // a config change is even detected.
+  const id = send(`请按顺序输出从 1 到 3000 的阿拉伯数字，每行一个数字，不要省略任何一个，不要调用任何工具，不要加别的文字。全部输出完后单独一行写 ${marker}`);
   note(`${label}:sent`, { message: id });
   return { id, marker, at };
 };
@@ -176,7 +185,20 @@ function restoreConfig(path, backup) {
 }
 
 // --- steps -------------------------------------------------------------------
+// The group's session may have been switched to a harness that never uses the
+// Worker pool (e.g. /vcodex runs on Codex). Put it back on the default model
+// and require a footer that is not a Codex or Claude CLI runtime.
+const footerRuntime = (content) => content.match(/Runtime:\s*([\w-]+)/u)?.[1] ?? null;
+async function useWorkerModel(model = "default") {
+  const at = Date.now();
+  const id = send(`/model ${model}`);
+  const reply = await waitFor("model switch reply",
+    () => botCards(at).find((m) => m.replyTo === id) ?? null, 120_000, 4_000);
+  note(`model:${model}`, { reply: reply.id, text: reply.content.slice(0, 160) });
+}
+
 async function stepBase() {
+  await useWorkerModel();
   const s = status();
   const version = s.diagnostics?.workerIsolationVersion ?? s.workerIsolationVersion
     ?? JSON.stringify(s).match(/0\.2\.\d+[-\w.]*/u)?.[0];
@@ -244,19 +266,33 @@ async function stepApproval() {
   const originalSha = sha(path);
   const backup = `${path}.hotreload-acceptance-${tag}`;
   remote(`sudo cp -p ${sq(path)} ${sq(backup)}`);
+  // 2026-10-03: the openclaw system-agent tool fails inference-owner validation
+  // when it runs inside a Worker, on V's code as well ("The verified inference
+  // owner changed before validation completed"). /vcc (claude-cli) calls it
+  // through the Gateway, so the approval is raised from there.
+  await useWorkerModel("vcc");
   try {
     const at = Date.now();
-    const id = send(`这是审批卡验收 ${tag}。请用 openclaw 的配置工具把 messages.ackReaction 设置为 "👀"（这是一个不需要重启的键）。需要审批就发起审批，等批准后完成修改，然后只回复 ${tag}-APPROVAL-DONE。`);
+    // 9.1 cancels a system-agent approval when the run that raised it ends
+    // (cancelAgentRuntimeBoundApprovals), and the openclaw tool returns
+    // needsApproval at once. Keep the run open with Bash sleeps so the owner
+    // has time to tap. Judge by the journal and the config value, never by
+    // the reply text: the bot may repeat the marker before anything happened.
+    const id = send(`这是飞书私聊审批卡的线上验收 ${tag}。请用 openclaw 工具提交一处配置改动：把 messages.ackReaction 设为 "👀"，只改这一处。提交后不要结束这一轮：用 Bash 执行 sleep 60，然后用 openclaw 工具（同一个 sessionId）查询 messages.ackReaction 的当前值，没变就继续 sleep 60 再查，最多等 9 分钟。值变成 👀 就立刻告诉我「已批准并写入」；9 分钟还没变就告诉我「超时」。不要重新提交，不要改其他配置。`);
     note("approval:sent", { message: id });
     await waitFor("approval card delivered to the owner DM",
-      () => journalCount("feishu approvals: delivered") > 0, 300_000, 5_000);
-    note("approval:card-delivered", { telegramDeliveries: journalCount("telegram.*(approval|exec-approval)") });
-    console.error(`\n>>> 请在手机飞书里打开与机器人的私聊，点审批卡上的「批准」（${tag}）。等待中，最多 10 分钟…\n`);
-    await waitFor("owner tapped 批准", () => journalCount("feishu approvals: resolved") > 0, 600_000, 5_000);
-    note("approval:resolved");
-    const card = await awaitReply(id, `${tag}-APPROVAL-DONE`, at, 600_000);
+      () => journalCount("feishu approvals: delivered system-agent") > 0, 300_000, 5_000);
+    note("approval:card-delivered", { telegramApprovalLines: journalCount("telegram.*approv") });
+    console.error(`\n>>> 请在手机飞书私聊里点审批卡「批准」（${tag}），这一轮最多等 9 分钟…\n`);
+    await waitFor("approval resolved", () => journalCount("feishu approvals: resolved system-agent") > 0, 600_000, 5_000);
+    const value = () => JSON.parse(remote(`sudo cat ${sq(path)}`)).messages?.ackReaction ?? null;
+    const written = await waitFor("config written", () => (value() === "👀" ? "👀" : null), 120_000, 5_000).catch(() => null);
+    note("approval:resolved", { written, cancelled: journalCount("cancelled because its run ended") });
+    assert.equal(written, "👀", "the approved change was written (not cancelled)");
+    const card = await waitFor("turn reports success", () => botCards(at).find((m) => m.content.includes("已批准并写入")) ?? null, 600_000, 5_000);
     note("approval:turn-continued", { reply: card.id });
   } finally {
+    await useWorkerModel("default").catch(() => {});
     // Put the exact config bytes back (also undoes the approved no-op change).
     restoreConfig(path, backup);
     note("approval:restored", { originalSha, restoredSha: sha(path) });
