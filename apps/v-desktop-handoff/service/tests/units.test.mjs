@@ -89,3 +89,23 @@ test("vnc DES key bit order matches the VNC convention", () => {
   assert.equal(vncAuthResponse("secret", Buffer.alloc(16)).length, 16);
   assert.throws(() => vncAuthResponse("x", Buffer.alloc(8)));
 });
+
+test("registry: hand back from the chat demotes only this handoff's controller and keeps the handoff open", () => {
+  let now = 1_000_000;
+  const audit = [];
+  const registry = new HandoffRegistry({ now: () => now, onAudit: (e) => audit.push(e) });
+  const a = registry.issue({ kind: "control", ownerId: "u1", sessionKey: "s1" });
+  const b = registry.issue({ kind: "control", ownerId: "u1", sessionKey: "s2" });
+  const ca = registry.claim(a.token);
+  registry.attachViewer(ca.viewer, { close() {} });
+  assert.equal(registry.handBack("missing"), null);
+  assert.deepEqual(registry.handBack(a.id), { id: a.id, released: false, ended: false }, "nobody controls yet");
+  registry.takeControl(ca.viewer);
+  assert.equal(registry.handBack(b.id).released, false, "another handoff cannot release this controller");
+  assert.equal(registry.isController(ca.viewer), true);
+  assert.equal(registry.handBack(a.id).released, true);
+  assert.equal(registry.isController(ca.viewer), false);
+  assert.equal(registry.handoffStatus(a.id).ended, false, "handoff stays open so 接管电脑 works again");
+  assert.equal(registry.takeControl(ca.viewer).role, "controller", "can take control again");
+  assert.ok(audit.some((e) => e.event === "control_released" && e.reason === "handed_back_from_chat"));
+});

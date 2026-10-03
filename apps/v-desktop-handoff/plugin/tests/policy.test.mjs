@@ -144,3 +144,27 @@ test("end: the agent cannot revoke a handoff a person is connected to or control
   assert.equal(refuseEnd({ ended: false, controlActive: false, connectedViewers: 0 }), null, "unused handoff may be revoked");
   assert.equal(refuseEnd({ ended: true, controlActive: true, connectedViewers: 1 }), null, "already ended");
 });
+
+test("hand back: 接管电脑 and 交还给 V are mutually exclusive and wake V once per takeover", async () => {
+  const { decideHandBack } = await import("../core/policy.js");
+  assert.equal(decideHandBack(null).action, "noop");
+  assert.equal(decideHandBack({ claims: 0, controlActive: false }).action, "noop", "never opened: nothing to hand back");
+  assert.equal(decideHandBack({ claims: 1, controlActive: true }).action, "release");
+  assert.equal(decideHandBack({ claims: 1, controlActive: true }, { alreadyHandedBack: true }).action, "release", "a new takeover is always released");
+  assert.equal(decideHandBack({ claims: 1, controlActive: false }).action, "resume", "page closed or released there: V still gets woken");
+  assert.equal(decideHandBack({ claims: 1, controlActive: false }, { alreadyHandedBack: true }).action, "noop", "second click does nothing");
+});
+
+test("card: control cards carry 接管电脑 + 交还给 V (callback), watch cards only the link", async () => {
+  const { handoffCard } = await import("../core/card.js");
+  const card = handoffCard({ reason: "登录携程", url: "https://h/x#t", openWithinMinutes: 10, sessionMinutes: 30, handoffId: "h_abc" });
+  const buttons = card.presentation.blocks.find((b) => b.type === "buttons").buttons;
+  assert.deepEqual(buttons.map((b) => b.label), ["接管电脑", "交还给 V"]);
+  assert.equal(buttons[0].url, "https://h/x#t");
+  assert.equal(buttons[1].value, "/v-handback h_abc");
+  assert.equal(buttons[1].url, undefined, "交还给 V opens nothing");
+  const pay = handoffCard({ purpose: "payment", url: "https://h/p", openWithinMinutes: 10, sessionMinutes: 30, handoffId: "h_p" });
+  assert.deepEqual(pay.presentation.blocks.at(-1).buttons.map((b) => b.label), ["付款", "交还给 V"]);
+  const watch = handoffCard({ kind: "watch", url: "https://h/w", openWithinMinutes: 10, sessionMinutes: 30, handoffId: "h_w" });
+  assert.deepEqual(watch.presentation.blocks.at(-1).buttons.map((b) => b.label), ["观看桌面"]);
+});

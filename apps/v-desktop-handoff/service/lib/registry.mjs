@@ -263,6 +263,27 @@ export class HandoffRegistry {
     return { role: "observer" };
   }
 
+  /**
+   * The user handed the desktop back from the chat (card button), not from the
+   * viewer page: demote whoever controls it through this handoff. The handoff
+   * itself stays open so "接管电脑" works again until it expires.
+   */
+  handBack(id) {
+    const handoff = this.handoffs.get(id);
+    if (!handoff) {
+      return null;
+    }
+    const controller = this.controllerSecret ? this.viewers.get(this.controllerSecret) : null;
+    const released = Boolean(controller && controller.handoffId === id);
+    if (released) {
+      this.controllerSecret = null;
+      controller.role = "observer";
+      this.audit("control_released", { id, viewer: controller.secret.slice(0, 6), reason: "handed_back_from_chat" });
+      controller.link?.notify?.({ type: "role", role: "observer", reason: "handed-back" });
+    }
+    return { id, released, ended: Boolean(handoff.endedAt) };
+  }
+
   noteInput(secret) {
     const viewer = this.viewers.get(secret);
     if (viewer) {

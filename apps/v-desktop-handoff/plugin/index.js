@@ -5,7 +5,7 @@ import { HandoffAdminClient } from "./core/admin-client.js";
 import { describeContext, isControlAnywhereActor, isTrustedDirectSession, resolveTrustedActor } from "./core/identity.js";
 import { deliverPrivately } from "./core/deliver.js";
 import { handoffCard, inPlaceTarget } from "./core/card.js";
-import { decideToolCall, refuseEnd } from "./core/policy.js";
+import { decideHandBack, decideToolCall, refuseEnd } from "./core/policy.js";
 
 function textResult(value) {
   return { content: [{ type: "text", text: JSON.stringify(value, null, 2) }] };
@@ -90,7 +90,7 @@ export default definePluginEntry({
             const senderId = typeof context.requesterSenderId === "string" ? context.requesterSenderId.trim() : "";
             const channel = typeof context.messageChannel === "string" ? context.messageChannel.trim() : "";
             try {
-              const card = handoffCard({ purpose, kind, reason: params.reason, url: issued.url, openWithinMinutes, sessionMinutes, payment: params.payment });
+              const card = handoffCard({ purpose, kind, reason: params.reason, url: issued.url, openWithinMinutes, sessionMinutes, payment: params.payment, handoffId: issued.id });
               await deliverPrivately({
                 channel,
                 target: senderId,
@@ -118,7 +118,7 @@ export default definePluginEntry({
           // In a chat channel, post the link as a card with a button in this conversation.
           const place = config.cards === false ? null : inPlaceTarget(context, config);
           if (place) {
-            const card = handoffCard({ purpose, kind, reason: params.reason, url: issued.url, openWithinMinutes, sessionMinutes, payment: params.payment });
+            const card = handoffCard({ purpose, kind, reason: params.reason, url: issued.url, openWithinMinutes, sessionMinutes, payment: params.payment, handoffId: issued.id });
             try {
               await deliverPrivately({
                 ...place,
@@ -137,7 +137,7 @@ export default definePluginEntry({
                 openWithinMinutes,
                 sessionMinutes,
                 instruction:
-                  "A card with the link button has been posted in this conversation. Do NOT repeat or paraphrase the url, and do not say where the card is (above/below): reply with one short sentence such as 接管卡片已发出，登录完成后告诉我一声, then end your turn and wait until the user says they are done; then call desktop_handoff_status." +
+                  "A card with two buttons has been posted in this conversation: 接管电脑 (the user takes over V's desktop) and 交还给 V (hands it back; it arrives here as a `/v-handback <id>` message, and by then the plugin has already returned the desktop to you, so just continue the task without asking). Do NOT repeat or paraphrase the url, and do not say where the card is (above/below): reply with one short sentence such as 接管卡片已发出，登录完成后告诉我一声, then end your turn and wait until the user says they are done; then call desktop_handoff_status." +
                   (purpose === "payment" ? " Do not click any pay/confirm button yourself; after the user is done, check the order result on the page and report it." : ""),
               });
             } catch (error) {
@@ -217,6 +217,44 @@ export default definePluginEntry({
       }),
       { name: "desktop_handoff_end" },
     );
+
+    // 「交还给 V」 on the card: a Feishu callback that posts `/v-handback <id>` as the clicking user.
+    const handedBack = new Set(); // handoff ids already handed back since the last takeover
+    api.registerCommand?.({
+      name: "v-handback",
+      description: "Hand V's desktop back to V after a takeover (the 交还给 V card button).",
+      acceptsArgs: true,
+      handler: async (ctx) => {
+        const actor = resolveTrustedActor({ requesterSenderId: ctx.senderId, messageChannel: ctx.channel }, config);
+        const requested = String(ctx.args ?? "").trim().split(/\s+/u)[0];
+        let status = null;
+        try {
+          status = requested && /^h_[\w-]+$/u.test(requested) ? await client.status(requested) : ctx.sessionKey ? await client.latestForSession(ctx.sessionKey) : null;
+        } catch {
+          status = null;
+        }
+        if (status && actor !== status.ownerId && !isControlAnywhereActor(actor, config) && ctx.senderIsOwner !== true) {
+          return { text: "只有接管电脑的人能交还。" };
+        }
+        if (status?.controlActive) {
+          handedBack.delete(status.id);
+        }
+        const decision = decideHandBack(status, { alreadyHandedBack: status ? handedBack.has(status.id) : false });
+        if (decision.action === "release") {
+          try {
+            await client.handBack(status.id);
+          } catch (error) {
+            return { text: `交还失败：${error.message}。可以在接管页面里点「交还给 V」。` };
+          }
+        }
+        if (decision.action === "noop") {
+          return { text: decision.text };
+        }
+        handedBack.add(status.id);
+        api.logger?.info?.(`desktop handoff ${status.id} handed back from chat by ${actor} (${decision.action})`);
+        return { text: decision.text, continueAgent: true };
+      },
+    });
 
     api.on(
       "before_tool_call",

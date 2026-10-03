@@ -18,7 +18,7 @@ export function normalizePayment(payment) {
   return out.item || out.amount || out.merchant ? out : null;
 }
 
-export function handoffCard({ purpose = "login", kind = "control", reason, url, openWithinMinutes, sessionMinutes, payment }) {
+export function handoffCard({ purpose = "login", kind = "control", reason, url, openWithinMinutes, sessionMinutes, payment, handoffId }) {
   const pay = purpose === "payment" ? normalizePayment(payment) : null;
   const watch = kind === "watch";
   const title = watch
@@ -42,11 +42,16 @@ export function handoffCard({ purpose = "login", kind = "control", reason, url, 
   const steps = watch
     ? `${openWithinMinutes} 分钟内打开，只能观看，不能点击或输入。`
     : purpose === "payment"
-      ? `${openWithinMinutes} 分钟内打开，点「接管控制」，核对金额后自己填写支付信息并确认付款，V 不会替你输入卡号。付完点「交还给 V」，再回我一句。接管最长 ${sessionMinutes} 分钟。`
-      : `${openWithinMinutes} 分钟内打开，点「接管控制」完成登录，做完点「交还给 V」，再回我一句。接管最长 ${sessionMinutes} 分钟。`;
+      ? `点「付款」打开 V 的电脑，核对金额后自己填写支付信息并确认付款，V 不会替你输入卡号。付完点「交还给 V」，V 接着做。${openWithinMinutes} 分钟内有效，接管最长 ${sessionMinutes} 分钟。`
+      : `点「接管电脑」打开 V 的电脑直接操作，做完点「交还给 V」，V 接着做。${openWithinMinutes} 分钟内有效，接管最长 ${sessionMinutes} 分钟。`;
+  const buttons = [{ label: watch ? "观看桌面" : purpose === "payment" ? "付款" : "接管电脑", style: "primary", url }];
+  if (!watch && handoffId) {
+    // A Feishu callback button: posts /v-handback as the clicking user, handled by this plugin.
+    buttons.push({ label: "交还给 V", value: `/v-handback ${handoffId}` });
+  }
   const blocks = [
     { type: "context", text: steps },
-    { type: "buttons", buttons: [{ label: watch ? "观看桌面" : purpose === "payment" ? "付款" : "接管电脑", style: "primary", url }] },
+    { type: "buttons", buttons },
   ];
   const cardText = body.length ? body.join("\n") : title;
   const fallback = [title, ...body, url, steps].join("\n");
