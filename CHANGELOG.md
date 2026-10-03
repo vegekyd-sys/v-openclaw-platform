@@ -11,6 +11,31 @@
 
 ---
 
+## feishu-ask-chat-answer-20261003
+
+上线：2026-10-03 11:04 CST 安装，11:24:52 重启 Gateway（11:27:56 就绪）  ·  tag `feishu-ask-chat-answer-20261003`
+
+**摘要**：两件事一起上。（1）Ask User 等你回答时，直接在聊天里打字回答也算数（#162）：以前普通消息会排在等待中的对话后面，任务卡住。（2）V 需要你接管电脑时，发一张「电脑」卡片（#96/#161/#163）：中间是 V 电脑的实时截图，点图片或「接管」直接进电脑并自动接管，做完点「我完成了」V 接着干，「跳过」则让 V 换个办法；卡片状态原地变成 操作中 / 已完成 / 已跳过；接管页适配手机。接管插件与接管服务在 `/opt/v-desktop-handoff/`（不在捕获范围内，11:23 同步，旧版备份在 `/opt/v-release-backups/desktop-handoff-card-20261003-*`）。V 上线后验收：Ask User 聊天回答在 Worker、vcodex、vds、vcc 四个入口均通过；接管卡片四个入口均能发卡，交还后 V 自动继续。
+
+**同日补丁（不在捕获范围内）**：13:26 只更新了接管插件（#166），13:26:34 重启 Gateway（13:28:53 就绪）。手机飞书对同时带链接和回调的「接管」按钮只执行回调，电脑打不开，还会冒出一条「No reply was generated」；现在「接管」只打开链接，旧卡片的回调改回一句提示。13:53 手机实测：打开 → 接管 → 收到触摸操作 → 「我完成了」→ 卡片「已完成」。插件备份在 `/opt/v-release-backups/desktop-handoff-mobile-20261003-*`。
+
+相对上一版 `v2026.9.1-db91.6-memory-search-guards-20261002`：1 个文件变化。
+
+**经 VLab 发版 `feishu-ask-chat-answer-v1`**（handoff-and-ask-20261003，dev `e141e7c5`）
+> 验收：Feishu DM to V - Lab as Tianyi, 2026-10-03 10:54-10:55 CST, deepseek-v4-flash on vlab-worker: V asked a native ask_user question (面条/米饭/饺子, inline in the active reply card, "也可以直接在聊天中回复答案"); Tianyi answered with a plain chat message 饺子; Gateway logged "ask_user chat answer ... state=answered", question.waitAnswer resolved, the question collapsed to ✓ 已选择：饺子 and V continued with 午饭定了：饺子. Same deplo…
+- `feishu` dist/monitor.account-WFdlCDhR.js  69230132 → b68229ec
+
+**这期间合入 dev 的 PR**（9 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #164 release: capture V after feishu-ask-chat-answer-20261003
+- #163 fix(desktop-handoff): 卡片默认放电脑实时截图；「已跳过」不再被改成「已结束」
+- #162 fix(feishu): accept chat replies while Ask User waits
+- #161 feat(desktop-handoff): 「电脑」卡片（图片 + 接管/我完成了/跳过）+ 手机版接管页
+- #96 feat(desktop-handoff): Feishu card with 接管电脑 / 付款 buttons; agent cannot end an active takeover
+- #159 fix(memory-indexer): 不再全量重建，文件变动只增量重试（修 21:16 冻结）
+- #160 chore: 夜班拆到独立仓库 vegekyd-sys/v-nightshift
+- #158 release: capture V after memory-search-guards
+- #156 refactor(nightshift): delivery page takes every name from the manifest
+
 ## v2026.9.1-db91.6-memory-search-guards-20261002
 
 上线：2026-10-02 20:00 CST 安装，20:00:41 重启 Gateway（20:02:17 就绪）  ·  tag `v2026.9.1-db91.6-memory-search-guards-20261002`
