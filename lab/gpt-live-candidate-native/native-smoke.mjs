@@ -339,7 +339,8 @@ async function queuedSteer() {
  const rawCandidates=[...(lastHistory.parent.messages??[]).map(message=>({source:'chat.history',message})),...(privateParentTranscript?.rawEvents??[]).map(row=>({source:'private-sqlite-raw-transcript',...row}))];
  const rawResumeCandidates=rawCandidates.flatMap(row=>{const message=row.message??row.event?.message;
   const parsed=message?.role==='user'&&extractQueuedConditionResume(messageText(message),consumed?.steeringConsumed,terminal?.response?.terminalReply?.text);
-  if(!parsed||!parsed.inputs.some(input=>input.mode==='steer'&&input.text===condition)||timestamp(message.timestamp??row.createdAt)<response.requestedAt)return [];
+  const rawAt=timestamp(message?.timestamp??row.createdAt);
+  if(!parsed||!parsed.inputs.some(input=>input.mode==='steer'&&input.text===condition)||!Number.isFinite(rawAt)||rawAt<response.requestedAt)return [];
   const declaredRunIds=[message.runId,message.__openclaw?.runId,row.event?.runId,row.event?.data?.runId].filter(id=>typeof id==='string');
   return [{...row,parsedOriginalResume:parsed,declaredRunIds,actualSourceRunBound:declaredRunIds.includes(actualResumeRun)}];
  });
