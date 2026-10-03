@@ -182,9 +182,12 @@ async function startTurn(label, words) {
 async function finishTurn(t) {
   const waited = await call("agent.wait", { runId: t.runId, timeoutMs: 280_000 }, 300_000);
   const history = await call("chat.history", { agentId: "makaron", sessionKey: t.sessionKey, limit: 6 });
-  const text = JSON.stringify(history?.messages ?? history ?? "");
-  const ok = text.includes(t.marker);
-  step(`${t.label}:finished`, { status: waited?.status, error: waited?.error, replyHasMarker: ok, chars: text.length });
+  // Only the assistant's reply counts: the prompt itself contains the marker.
+  const messages = Array.isArray(history?.messages) ? history.messages : [];
+  const replies = messages.filter((message) => message?.role === "assistant").map((message) => JSON.stringify(message.content ?? message));
+  const reply = replies.find((text) => text.includes(t.marker)) ?? "";
+  const ok = waited?.status === "ok" && reply.length > 0;
+  step(`${t.label}:finished`, { status: waited?.status, error: waited?.error, assistantReplies: replies.length, replyHasMarker: reply.length > 0, replyChars: reply.length });
   return ok;
 }
 async function waitForActive(label) {
