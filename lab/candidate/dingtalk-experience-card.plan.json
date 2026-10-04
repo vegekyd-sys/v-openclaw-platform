@@ -2,6 +2,8 @@
   "support": [
     "lab/candidate/dingtalk-experience.mjs",
     "lab/candidate/dingtalk-fake-open-api.mjs",
+    "lab/release-files/feishu-model-switch-roles/patch-runtime.mjs",
+    "lab/candidate/model-roles.mjs",
     "apps/v-experience/v-experience.mjs",
     "apps/v-experience/dingtalk/patch.mjs",
     "tmp/inputs/dingtalk-connector-0.8.26-v.tgz"
