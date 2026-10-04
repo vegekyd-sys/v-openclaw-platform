@@ -194,3 +194,58 @@ for (const [name, end] of [
     next?.ws?.close?.();
   });
 }
+
+test("hand-back and revoke answer only after the desktop is restored (slow window manager)", async () => {
+  const slowX = fakeX();
+  const slowLayout = createDisplayLayout({ execFile: slowX.execFile, log: {}, settleMs: 150 });
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "v-desktop-layout-slow-"));
+  fs.writeFileSync(path.join(dir, "admin-token"), `${adminToken}\n`);
+  fs.writeFileSync(path.join(dir, "vnc-password"), "pw123456\n");
+  const svc = createService(
+    {
+      bind: "127.0.0.1",
+      publicPort: 0,
+      adminPort: 0,
+      publicBaseUrl: "https://example.test",
+      pathPrefix: "/desktop-handoff",
+      novncDir: dir,
+      stateDir: path.join(dir, "state"),
+      adminTokenFile: path.join(dir, "admin-token"),
+      vnc: { host: "127.0.0.1", port: vnc.port, passwordFile: path.join(dir, "vnc-password") },
+      limits: { claimTtlMs: 60_000, sessionTtlMs: 60_000, idleControlMs: 60_000, maxViewers: 8, maxClaims: 4 },
+    },
+    { log: { error() {}, info() {} }, layout: slowLayout },
+  );
+  const p = await svc.listen();
+  const call = async (port, method, route, body, auth) => {
+    const res = await fetch(`http://127.0.0.1:${port}${route}`, {
+      method,
+      headers: { "content-type": "application/json", ...(auth ? { authorization: `Bearer ${adminToken}` } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    return { status: res.status, body: await res.json() };
+  };
+  try {
+    for (const end of ["handback", "revoke"]) {
+      const issued = await call(p.adminPort, "POST", "/v1/handoffs", { kind: "control", ownerId: "feishu:ou_slow" }, true);
+      const claim = await call(p.publicPort, "POST", "/desktop-handoff/api/claim", { token: new URL(issued.body.url).hash.slice(1) });
+      const ws = await openViewer(`ws://127.0.0.1:${p.publicPort}/desktop-handoff/ws?viewer=${encodeURIComponent(claim.body.viewer)}`);
+      await ws.handshake();
+      await call(p.publicPort, "POST", "/desktop-handoff/api/control", { viewer: claim.body.viewer, take: true });
+      await call(p.publicPort, "POST", "/desktop-handoff/api/layout", { viewer: claim.body.viewer, mode: "phone", width: 600, height: 800 });
+      assert.deepEqual(slowX.current, { width: 600, height: 800 });
+      if (end === "handback") {
+        assert.equal((await call(p.adminPort, "POST", `/v1/handoffs/${issued.body.id}/handback`, undefined, true)).status, 200);
+      } else {
+        assert.equal((await call(p.adminPort, "DELETE", `/v1/handoffs/${issued.body.id}`, undefined, true)).status, 200);
+      }
+      // No polling: the answer itself must mean "restored".
+      assert.deepEqual(slowX.current, { width: 1280, height: 800 }, `${end} answered before the desktop was restored`);
+      assert.ok(slowX.calls.includes("wmctrl -i -r 0x02a00004 -e 0,10,37,1050,753"), "windows are back in place too");
+      ws.close();
+    }
+  } finally {
+    await svc.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

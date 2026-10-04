@@ -164,9 +164,12 @@ export function createService(config, { log = console, layout: layoutOverride } 
   function syncLayout() {
     const owner = layout?.state.owner;
     if (owner && registry.controllerSecret !== owner) {
-      layout.restore("controller-changed").catch((error) => log.error?.(`layout restore failed: ${error.message}`));
+      return layout.restore("controller-changed").catch((error) => log.error?.(`layout restore failed: ${error.message}`));
     }
+    return Promise.resolve();
   }
+  /** Answers only once the desktop is back to its own size, so V resumes on the screen it knows. */
+  const layoutSettled = () => syncLayout();
   try {
     registry.importHandoffs(JSON.parse(fs.readFileSync(stateFile, "utf8")));
   } catch {
@@ -232,6 +235,7 @@ export function createService(config, { log = console, layout: layoutOverride } 
         const body = await readJsonBody(req);
         const secret = typeof body.viewer === "string" ? body.viewer : "";
         const result = body.take ? registry.takeControl(secret) : registry.releaseControl(secret);
+        await layoutSettled();
         json(res, result.error ? 403 : 200, result);
       } else if (req.method === "POST" && route === "/api/layout") {
         const body = await readJsonBody(req);
@@ -369,9 +373,12 @@ export function createService(config, { log = console, layout: layoutOverride } 
         json(res, result ? 200 : 404, result ?? { error: "not_found" });
       } else if (req.method === "POST" && handBackMatch) {
         const result = registry.handBack(handBackMatch[1]);
+        await layoutSettled();
         json(res, result ? 200 : 404, result ?? { error: "not_found" });
       } else if (req.method === "DELETE" && match) {
-        json(res, registry.revoke(match[1], "revoked_by_agent") ? 200 : 404, { ok: true });
+        const revoked = registry.revoke(match[1], "revoked_by_agent");
+        await layoutSettled();
+        json(res, revoked ? 200 : 404, { ok: true });
       } else if (req.method === "GET" && url.pathname === "/v1/audit") {
         const limit = Math.min(Number(url.searchParams.get("limit")) || 100, 1000);
         let lines = [];
