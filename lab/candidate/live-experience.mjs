@@ -149,5 +149,10 @@ await sleep(3000);
 if (gateway.exitCode === null) gateway.kill("SIGKILL");
 const lines = fs.readFileSync(logFile, "utf8").split("\n");
 report.experienceLog = lines.filter((l) => /v-experience/u.test(l)).map((l) => redact(l).slice(0, 300)).slice(-80);
+if (gateway.exitCode !== null && Date.now() < deadline) {
+  report.gatewayExitedEarly = gateway.exitCode;
+  report.gatewayTail = lines.filter(Boolean).slice(-80).map((l) => redact(l).slice(0, 300));
+  process.exitCode = 1;
+}
 report.channelErrors = lines.filter((l) => /(dingtalk|wecom|telegram)/iu.test(l) && /error|failed|exited/iu.test(l)).map((l) => redact(l).slice(0, 300)).slice(-40);
 console.log(JSON.stringify(report, null, 1));
