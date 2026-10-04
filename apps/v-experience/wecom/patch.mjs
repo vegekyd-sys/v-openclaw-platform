@@ -60,6 +60,8 @@ import { resolveWecomCommandAuthorization as vResolveCommandAuthorization } from
     replace: `    let isShowThink = !(account.sendThinkingMessage ?? true);
     // ${MARKER}: stream the answer as it is written, with the work under it.
     const vSessionKey = ctxPayload.SessionKey ?? route.sessionKey;
+    // A card button tap cannot be answered in reply to its event; send instead.
+    if (frame.body?.vFromCardEvent) state.streamExpired = true;
     const vSender = frame.body?.from?.userid;
     let vPartial = "";
     let vLastFrame = 0;
@@ -296,7 +298,9 @@ import { resolveWecomCommandAuthorization as vResolveCommandAuthorization } from
                         await wsClient.updateTemplateCard(frame, vExperience.wecomButtonCard(card, { taskId: vTaskId }), vTapper ? [vTapper] : undefined);
                         runtime.log?.(\`[\${account.accountId}] [v-experience] card \${vTaskId} updated after \${vCardCommand.command.split(" ")[0]}\`);
                     });
-                    frame.body = { ...eventBody, msgtype: "text", text: { content: vCardCommand.command } };
+                    // WeCom refuses replies to a card event (846605 invalid req_id): the
+                    // reply to this command goes out as a new message (vFromCardEvent).
+                    frame.body = { ...eventBody, msgtype: "text", text: { content: vCardCommand.command }, vFromCardEvent: true };
                     runtime.log?.(\`[\${account.accountId}] [v-experience] card button \${vCardCommand.command.split(" ")[0]} from \${vTapper ?? "?"}\`);
                 }
                 else if (eventType === "template_card_event") {
