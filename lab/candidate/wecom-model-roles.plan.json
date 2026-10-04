@@ -2,6 +2,7 @@
   "support": [
     "lab/candidate/wecom-experience.mjs",
     "lab/candidate/wecom-fake-aibot.mjs",
+    "lab/candidate/channel-cards-support.mjs",
     "lab/candidate/model-roles.mjs",
     "lab/release-files/feishu-model-switch-roles/patch-runtime.mjs",
     "apps/v-experience/v-experience.mjs",

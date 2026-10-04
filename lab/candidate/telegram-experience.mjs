@@ -13,7 +13,10 @@
 // command roles (lab/candidate/model-roles.mjs).
 // The `secret-link` scenario also runs apps/v-secret-entry next to the
 // Gateway, widens the core secret-entry patch to Telegram, follows the link
-// the bot sends and submits a value over HTTP, like a person would.
+// the bot sends and submits a value over HTTP, like a person would. The links
+// name a hostname, so the fake accepts the 填写凭据 button; with
+// TG_SECRET_LINK_BASE=loopback they name 127.0.0.1, which Telegram (and the
+// fake) refuse as a button url, so the link arrives as text.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import crypto from "node:crypto";
@@ -85,7 +88,7 @@ if (SECRET_LINK) {
   const [publicPort, adminPort] = [await freePort(), await freePort()];
   const serviceConfig = {
     bind: "127.0.0.1", publicBind: "127.0.0.1", publicPort, adminPort,
-    publicBaseUrl: `http://127.0.0.1:${publicPort}`, pathPrefix: "/secret-entry",
+    publicBaseUrl: process.env.TG_SECRET_LINK_BASE === "loopback" ? `http://127.0.0.1:${publicPort}` : `http://secret-entry.vlab.test:${publicPort}`, pathPrefix: "/secret-entry",
     stateDir: path.join(dir, "state"), adminTokenFile: path.join(dir, "admin-token"), openclawDist: dist,
   };
   fs.writeFileSync(path.join(dir, "config.json"), JSON.stringify(serviceConfig, null, 2), { mode: 0o600 });
@@ -399,8 +402,11 @@ const SCENARIOS = {
     const value = `vsl-${crypto.randomBytes(12).toString("hex")}`;
     fake.sendUserText({ chatId: chat, userId: chat, text: `这是自动化测试。请用 secrets 工具的 request 动作，向我索取一个名为 ${name} 的凭据（说明写：测试用，可以随便填）。拿到后只回复 SECRET_SAVED；如果没法索取，就回复 SECRET_UNAVAILABLE 并说明原因。` });
     const linkRe = /(https?:\/\/\S+\/secret-entry\/#([\w-]+))/u;
-    const linkMessage = await waitFor(() => chatMessages(chat, since).find((m) => linkRe.test(m.text ?? "")), 300_000, "secret link message");
-    const [, url, token] = linkRe.exec(linkMessage.text);
+    // Behind the 填写凭据 button, or (refused button) in the text.
+    const linkOf = (m) => inlineButtons(m).find((b) => linkRe.test(b.url ?? ""))?.url ?? (linkRe.test(m.text ?? "") ? m.text : undefined);
+    const linkMessage = await waitFor(() => chatMessages(chat, since).find(linkOf), 300_000, "secret link message");
+    const [, url, token] = linkRe.exec(linkOf(linkMessage));
+    const linkButton = inlineButtons(linkMessage).find((b) => linkRe.test(b.url ?? ""));
     const base = `http://127.0.0.1:${secretEntry.publicPort}/secret-entry`;
     const post = async (route, body) => { const r = await fetch(`${base}/api/${route}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); return { status: r.status, body: await r.json().catch(() => ({})) }; };
     const page = await fetch(`${base}/`);
@@ -419,9 +425,11 @@ const SCENARIOS = {
     const after = questionId ? await getQuestion() : undefined;
     const mirror = path.join(stateDir, "secrets", "store", name);
     await sleep(3000);
-    const linkSend = fake.calls.find((c) => c.method === "sendMessage" && String(c.params?.text ?? "").includes("/secret-entry/"));
+    const linkSend = fake.calls.find((c) => c.method === "sendMessage" && !c.error && JSON.stringify(c.params ?? {}).includes("/secret-entry/"));
     return {
       chat, messages: describe(msgs).map((m) => JSON.parse(JSON.stringify(m).replaceAll(token, "[token]"))), linkMessage: linkMessage.text.replace(token, "[token]"),
+      linkVia: linkButton ? "button" : "text", linkButton: linkButton ? { text: linkButton.text, url: linkButton.url.replace(token, "[token]") } : null,
+      linkParseMode: linkMessage.parseMode ?? null, refusedButtons: fake.calls.filter((c) => /BUTTON_URL_INVALID/u.test(c.error ?? "")).length,
       linkHost: new URL(url).host, linkSendOptions: linkSend ? Object.keys(linkSend.params).filter((k) => k !== "text") : null,
       linkPreviewDisabled: Boolean(linkSend && JSON.stringify(linkSend.params).includes("is_disabled")),
       pageHasPasswordInput: /type="password"/u.test(pageText), pageStatus: page.status, info: { status: info.status, name: info.body.name, reason: info.body.reason },
@@ -536,6 +544,16 @@ if (EXPECT === "patched") {
     const r = s["secret-link"];
     assert.equal(r.error, undefined, r.error);
     assert(r.pageHasPasswordInput, "entry page has no password input");
+    if (process.env.TG_SECRET_LINK_BASE === "loopback") {
+      assert.equal(r.linkVia, "text", "a refused button must fall back to the text link");
+      assert(r.refusedButtons >= 1, "the button was never tried");
+    } else {
+      assert.equal(r.linkVia, "button", "the link is not behind a button");
+      assert.equal(r.linkButton.text, "填写凭据");
+      assert.match(r.linkMessage, /^<b>🔑 V 需要凭据 V_CANDIDATE_DEMO_TOKEN<\/b>\n\n/u, "card title");
+      assert.equal(r.linkParseMode, "HTML");
+      assert.doesNotMatch(r.linkMessage, /secret-entry/u, "the url is only behind the button");
+    }
     assert.equal(r.info.status, 200, "link info not readable");
     assert.equal(r.before?.status, "pending", "question was not waiting when the link was used");
     assert.equal(r.submit.status, 200, `submit failed: ${JSON.stringify(r.submit)}`);

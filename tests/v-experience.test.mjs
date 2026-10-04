@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import * as vx from "../apps/v-experience/v-experience.mjs";
-import { patchReplyChunk, patchDingtalkConnector, MARKER } from "../apps/v-experience/dingtalk/patch.mjs";
+import { patchReplyChunk, patchRuntimeChunk, patchDingtalkConnector, MARKER } from "../apps/v-experience/dingtalk/patch.mjs";
 
 const PROGRESS = Symbol.for("openclaw.v.progressCardChangedListeners");
 const BRIDGE = Symbol.for("openclaw.v.taskRegistryBridge");
@@ -178,11 +178,14 @@ test("dingtalk patch applies to V's connector chunk exactly once", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vx-ding-"));
   fs.writeFileSync(path.join(dir, "message-handler-BUoLSylZ.mjs"), baseline);
   fs.copyFileSync(new URL("../apps/v-experience/dingtalk/baseline/connection-DCvu-l09.mjs", import.meta.url), path.join(dir, "connection-DCvu-l09.mjs"));
+  fs.copyFileSync(new URL("../apps/v-experience/dingtalk/baseline/runtime-C81EKBS1.mjs", import.meta.url), path.join(dir, "runtime-C81EKBS1.mjs"));
   const result = patchDingtalkConnector(dir, { experienceSource: new URL("../apps/v-experience/v-experience.mjs", import.meta.url).pathname });
   assert.equal(result.changed, true);
   assert(fs.readFileSync(path.join(dir, "message-handler-BUoLSylZ.mjs"), "utf8").includes(MARKER));
   assert(fs.readFileSync(path.join(dir, "connection-DCvu-l09.mjs"), "utf8").includes("/v1.0/card/instances/callback"));
   assert(fs.existsSync(path.join(dir, "v-experience.mjs")));
+  assert(fs.readFileSync(path.join(dir, "runtime-C81EKBS1.mjs"), "utf8").includes("renderPresentation:"));
+  assert.equal(patchDingtalkConnector(dir, { experienceSource: new URL("../apps/v-experience/v-experience.mjs", import.meta.url).pathname }).changed, false, "second run changes nothing");
 });
 
 test("wecom patch applies to V's monitor exactly once", async () => {
@@ -413,5 +416,192 @@ test("core secret-entry patch CLI: takes the dist argument, finds the right chun
   assert.equal(fs.readFileSync(path.join(dir, "builtin-openclaw-zQV8Wwjr.js.bak-v-openclaw91-secret-entry-v1"), "utf8"), "pristine", "v1 backup untouched");
   assert(fs.existsSync(path.join(dir, "builtin-openclaw-zQV8Wwjr.js.bak-v-openclaw91-secret-entry-channels-v1")));
   assert(JSON.parse(run().stdout).files.every((f) => !f.changed), "second run changes nothing");
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// ---------------------------------------------------------------- link cards
+
+const HANDOFF_PRESENTATION = { title: "需要你接管 V 的电脑", tone: "info", blocks: [
+  { type: "context", text: "点「接管电脑」打开 V 的电脑直接操作，做完在聊天里回复「好了」，V 接着做。10 分钟内打开有效，接管最长 30 分钟。" },
+  { type: "buttons", buttons: [{ label: "接管电脑", style: "primary", url: "https://openclaw.example.test/desktop-handoff/#tok_1" }, { label: "交还给 V", value: "/v-handback h_1" }] },
+] };
+
+test("link card from a presentation: title, lines, URL buttons only", () => {
+  const card = vx.linkCardFromPresentation(HANDOFF_PRESENTATION, "**需要你登录小红书**");
+  assert.deepEqual(card, {
+    title: "需要你接管 V 的电脑",
+    lines: ["**需要你登录小红书**", HANDOFF_PRESENTATION.blocks[0].text],
+    buttons: [{ label: "接管电脑", url: "https://openclaw.example.test/desktop-handoff/#tok_1" }],
+  });
+  assert.equal(vx.linkCardFromPresentation({ title: "t", blocks: [{ type: "buttons", buttons: [{ label: "交还给 V", value: "/v-handback h_1" }] }] }, "x"), undefined, "callbacks only: no card");
+  assert.equal(vx.linkCardFromPresentation({ title: "t", blocks: [{ type: "buttons", buttons: [{ label: "x", url: "javascript:alert(1)" }] }] }), undefined, "only http(s) links");
+  assert.equal(vx.linkCardFromPresentation({ title: "t", blocks: [{ type: "buttons", buttons: [{ label: "开", action: { type: "url", url: "https://a.test/" } }] }] }).buttons[0].url, "https://a.test/", "typed url action");
+  assert.equal(vx.linkCardFromPresentation(undefined), undefined);
+  assert.match(vx.linkCardText(card), /^需要你接管 V 的电脑\n需要你登录小红书\n[\s\S]*\n接管电脑：https:\/\/openclaw\.example\.test\/desktop-handoff\/#tok_1$/u);
+});
+
+test("link card renderers: DingTalk actionCard, WeCom text_notice, Telegram inline keyboard", () => {
+  const card = vx.linkCardFromPresentation(HANDOFF_PRESENTATION, "**需要你登录小红书**");
+  const url = "https://openclaw.example.test/desktop-handoff/#tok_1";
+  assert.equal(vx.dingtalkOpenUrl(url), "dingtalk://dingtalkclient/page/link?url=https%3A%2F%2Fopenclaw.example.test%2Fdesktop-handoff%2F%23tok_1&pc_slide=false");
+  const ac = vx.dingtalkActionCard(card);
+  assert.deepEqual(Object.keys(ac), ["title", "text", "singleTitle", "singleURL"]);
+  assert.equal(ac.title, "需要你接管 V 的电脑");
+  assert.match(ac.text, /^### 需要你接管 V 的电脑\n\n\*\*需要你登录小红书\*\*\n\n点「接管电脑」/u);
+  assert.equal(ac.singleTitle, "接管电脑");
+  assert.equal(new URL(ac.singleURL).searchParams.get("url"), url);
+  const two = vx.dingtalkActionCard({ title: "t", lines: [], buttons: [{ label: "a", url: "https://a.test/" }, { label: "b", url: "https://b.test/" }] });
+  assert.equal(two.singleTitle, "a");
+  assert.match(two.text, /\[b\]\(dingtalk:\/\/dingtalkclient\/page\/link\?url=https%3A%2F%2Fb\.test%2F&pc_slide=false\)/u);
+
+  const tn = vx.wecomTextNotice(card, { taskId: "v_task" });
+  assert.deepEqual(tn, {
+    card_type: "text_notice",
+    main_title: { title: "需要你接管 V 的电脑", desc: "需要你登录小红书" },
+    sub_title_text: HANDOFF_PRESENTATION.blocks[0].text,
+    jump_list: [{ type: 1, title: "接管电脑", url }],
+    card_action: { type: 1, url },
+    task_id: "v_task",
+  });
+  assert.match(vx.wecomTextNotice(card).task_id, /^v_\d+_[a-z0-9]+$/u, "task ids are unique per card");
+
+  const tg = vx.telegramLinkCard(card);
+  assert.equal(tg.text.split("\n\n")[0], "<b>需要你接管 V 的电脑</b>");
+  assert.deepEqual(tg.options, { parse_mode: "HTML", reply_markup: { inline_keyboard: [[{ text: "接管电脑", url }]] } });
+});
+
+test("credential link card: name, reason, hosts, validity, one 填写凭据 button", () => {
+  const card = vx.secretLinkCard(SECRET_RECORD, { url: "https://v.example.test/secret-entry/#tok", expiresAtMs: Date.now() + 10 * 60_000 });
+  assert.deepEqual(card, {
+    title: "🔑 V 需要凭据 V_DEMO_TOKEN",
+    lines: ["测试用", "只用于：api.example.com", "链接只能用一次、10 分钟内有效；值不会出现在聊天记录里。"],
+    buttons: [{ label: "填写凭据", url: "https://v.example.test/secret-entry/#tok" }],
+  });
+  const ac = vx.dingtalkActionCard(card);
+  assert.equal(ac.singleTitle, "填写凭据");
+  assert.equal(new URL(ac.singleURL).searchParams.get("url"), "https://v.example.test/secret-entry/#tok");
+  assert.equal(new URL(ac.singleURL).searchParams.get("pc_slide"), "false");
+  const tn = vx.wecomTextNotice(card);
+  assert.equal(tn.main_title.desc, "测试用");
+  assert.equal(tn.sub_title_text, "只用于：api.example.com\n链接只能用一次、10 分钟内有效；值不会出现在聊天记录里。");
+});
+
+test("card or text: a refused card falls back to the text", async () => {
+  const sent = [];
+  const logs = [];
+  await vx.sendCardOrText({ card: { title: "t" }, text: "plain", sendCard: async (c) => sent.push(["card", c.title]), sendText: async (t) => sent.push(["text", t]) });
+  await vx.sendCardOrText({ card: { title: "t" }, text: "plain", log: (m) => logs.push(m), sendCard: async () => { throw Object.assign(new Error("400"), { description: "Bad Request: BUTTON_URL_INVALID" }); }, sendText: async (t) => sent.push(["text", t]) });
+  await vx.sendCardOrText({ card: undefined, text: "only text", sendCard: async () => assert.fail("no card"), sendText: async (t) => sent.push(["text", t]) });
+  assert.deepEqual(sent, [["card", "t"], ["text", "plain"], ["text", "only text"]]);
+  assert.match(logs[0], /BUTTON_URL_INVALID/u);
+});
+
+test("credential link on Telegram: a 填写凭据 button; BUTTON_URL_INVALID falls back to the text link", async () => {
+  await withSecretService(async ({ env }) => {
+    const before = Object.fromEntries(Object.keys(env).map((k) => [k, process.env[k]]));
+    Object.assign(process.env, env);
+    try {
+      const calls = [];
+      const makeApi = (refuseButtons) => ({
+        sendMessage: async (chatId, text, options = {}) => {
+          calls.push({ chatId, text, options });
+          if (refuseButtons && options.reply_markup) throw Object.assign(new Error("Call to 'sendMessage' failed! (400: Bad Request: BUTTON_URL_INVALID)"), { description: "Bad Request: BUTTON_URL_INVALID" });
+          return { message_id: calls.length };
+        },
+      });
+      const tg = vx.createTelegramExperience({ call: async () => ({}) });
+      const record = (n) => ({ ...SECRET_RECORD, id: "ask_" + String(n).repeat(32) });
+      assert.equal(await tg.deliverQuestion({ api: makeApi(false), chatId: 70000001, senderId: 70000001, record: record(1) }), true);
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0].options.parse_mode, "HTML");
+      assert.match(calls[0].text, /^<b>🔑 V 需要凭据 V_DEMO_TOKEN<\/b>\n\n测试用\n\n只用于：api\.example\.com/u);
+      const button = calls[0].options.reply_markup.inline_keyboard[0][0];
+      assert.equal(button.text, "填写凭据");
+      assert.match(button.url, /^https:\/\/v\.example\.test\/secret-entry\/#[\w-]{40,}$/u);
+      assert.doesNotMatch(calls[0].text, /secret-entry/u, "the link is only behind the button");
+      calls.length = 0;
+      assert.equal(await tg.deliverQuestion({ api: makeApi(true), chatId: 70000002, senderId: 70000002, record: record(2) }), true);
+      assert.equal(calls.length, 2, "card refused, then the text link");
+      assert.equal(calls[1].options.reply_markup, undefined);
+      assert.match(calls[1].text, /^🔑 V 需要凭据 V_DEMO_TOKEN：请点开这个一次性链接填写[\s\S]*\nhttps:\/\/v\.example\.test\/secret-entry\/#[\w-]{40,}$/u);
+      assert.deepEqual(calls[1].options.link_preview_options, { is_disabled: true });
+    } finally {
+      for (const [k, v] of Object.entries(before)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    }
+  });
+});
+
+test("dingtalk channel patch: presentation with a link button goes out as an actionCard", async () => {
+  const baseline = fs.readFileSync(new URL("../apps/v-experience/dingtalk/baseline/runtime-C81EKBS1.mjs", import.meta.url), "utf8");
+  const patched = patchRuntimeChunk(baseline);
+  assert.equal(patchRuntimeChunk(patched), patched, "idempotent");
+  assert.match(patched, /^import \{ i as vSendProactive \} from "\.\/messaging-JY5zinFJ\.mjs";$/mu);
+  // The inserted adapter methods, run against stubs.
+  const start = patched.indexOf("\t\trenderPresentation:");
+  const snippet = patched.slice(start, patched.indexOf("\t\tchunker:", start));
+  const sent = [];
+  const plain = [];
+  const outbound = { textChunkLimit: 2000, chunker: (t) => [t], sendText: async (ctx) => { plain.push(ctx.text); return { channel: "dingtalk-connector", messageId: "t" }; }, sendMedia: async () => assert.fail("no media") };
+  const build = (sendProactive) => new Function("vExperience", "dingtalkPlugin", "vSendTextAndMedia", "resolveDingtalkAccount", "vSendProactive", "CHANNEL_ID", `return {${snippet}};`)(
+    vx, { outbound },
+    async ({ ctx, sendText }) => sendText({ ...ctx, text: ctx.payload.text }),
+    () => ({ config: { clientId: "ding1" }, clientSecret: "s" }),
+    sendProactive,
+    "dingtalk-connector",
+  );
+  const methods = build(async (config, target, content, options) => { sent.push({ config, target, content: JSON.parse(content), options }); return { ok: true, processQueryKey: "pqk" }; });
+  const rendered = methods.renderPresentation({ payload: { text: "**需要你登录小红书**" }, presentation: HANDOFF_PRESENTATION });
+  assert.equal(rendered.channelData.vLinkCard.buttons.length, 1);
+  assert.match(rendered.text, /接管电脑：https:/u);
+  assert.equal(methods.renderPresentation({ payload: { text: "x" }, presentation: { blocks: [{ type: "text", text: "no buttons" }] } }), null, "no link: core fallback");
+  const result = await methods.sendPayload({ cfg: {}, to: "staff1", payload: rendered });
+  assert.deepEqual(result, { channel: "dingtalk-connector", messageId: "pqk", target: { kind: "conversation", id: "staff1" } });
+  assert.deepEqual(sent[0].target, { userId: "staff1" });
+  assert.deepEqual(sent[0].options, { msgType: "actionCard", useAICard: false });
+  assert.equal(sent[0].content.singleTitle, "接管电脑");
+  assert.equal(sent[0].config.clientSecret, "s");
+  await methods.sendPayload({ cfg: {}, to: "cidGroup1", payload: rendered });
+  assert.deepEqual(sent[1].target, { openConversationId: "cidGroup1" });
+  await methods.sendPayload({ cfg: {}, to: "user:u1", payload: { text: "hello", channelData: { other: 1 } } });
+  assert.deepEqual(plain, ["hello"], "other payloads keep the text path");
+  await assert.rejects(build(async () => ({ ok: false, error: "403" })).sendPayload({ cfg: {}, to: "staff1", payload: rendered }), /403/u, "a refused card is a failed delivery (the plugin then puts the link in the reply)");
+});
+
+test("wecom channel patch: presentation with a link button goes out as a text_notice card", async () => {
+  const { patchChannel, patchWeComPlugin, MARKER: WECOM_MARKER } = await import("../apps/v-experience/wecom/patch.mjs");
+  const baseline = fs.readFileSync(new URL("../apps/v-experience/wecom/baseline/channel.js", import.meta.url), "utf8");
+  const patched = patchChannel(baseline);
+  assert(patched.includes(WECOM_MARKER));
+  assert.equal(patchChannel(patched), patched, "idempotent");
+  const start = patched.indexOf("        renderPresentation:");
+  const snippet = patched.slice(start, patched.indexOf("        chunker:", start));
+  const frames = [];
+  let connected = true;
+  const plain = [];
+  const outbound = { textChunkLimit: 4000, chunker: (t) => [t], sendText: async (ctx) => { plain.push(ctx.text); return { channel: "wecom", messageId: "t" }; }, sendMedia: async () => assert.fail("no media") };
+  const methods = new Function("vExperience", "wecomPlugin", "getWeComWebSocket", "DEFAULT_ACCOUNT_ID", "vSendTextAndMedia", "CHANNEL_ID", `return {${snippet}};`)(
+    vx, { outbound },
+    () => ({ get isConnected() { return connected; }, sendMessage: async (chatId, body) => { frames.push({ chatId, body }); return { headers: { req_id: "r1" } }; } }),
+    "default",
+    async ({ ctx, sendText }) => sendText({ ...ctx, text: ctx.payload.text }),
+    "wecom",
+  );
+  const rendered = methods.renderPresentation({ payload: { text: "**需要你登录小红书**" }, presentation: HANDOFF_PRESENTATION });
+  assert.deepEqual(await methods.sendPayload({ to: "wecom:zhangsan", payload: rendered }), { channel: "wecom", messageId: "r1", chatId: "zhangsan" });
+  assert.equal(frames[0].chatId, "zhangsan");
+  assert.equal(frames[0].body.msgtype, "template_card");
+  assert.equal(frames[0].body.template_card.card_type, "text_notice");
+  assert.equal(frames[0].body.template_card.main_title.title, "需要你接管 V 的电脑");
+  assert.match(frames[0].body.template_card.card_action.url, /\/desktop-handoff\/#tok_1$/u);
+  connected = false;
+  await methods.sendPayload({ to: "zhangsan", payload: rendered });
+  assert.match(plain[0], /^需要你接管 V 的电脑\n/u, "no robot socket: the card's text");
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vx-wecom-"));
+  fs.copyFileSync(new URL("../apps/v-experience/wecom/baseline/monitor.js", import.meta.url), path.join(dir, "monitor.js"));
+  fs.writeFileSync(path.join(dir, "channel.js"), baseline);
+  const experienceSource = new URL("../apps/v-experience/v-experience.mjs", import.meta.url).pathname;
+  assert.deepEqual(patchWeComPlugin(dir, { experienceSource }).files, { "monitor.js": true, "channel.js": true });
+  assert.equal(patchWeComPlugin(dir, { experienceSource }).changed, false, "second run changes nothing");
   fs.rmSync(dir, { recursive: true, force: true });
 });

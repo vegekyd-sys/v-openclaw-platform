@@ -4,7 +4,7 @@ import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { HandoffAdminClient } from "./core/admin-client.js";
 import { describeContext, isControlAnywhereActor, isTrustedDirectSession, resolveTrustedActor } from "./core/identity.js";
 import { deliverPrivately } from "./core/deliver.js";
-import { DEFAULT_CARD_CHANNELS, handoffCard, inPlaceTarget, normalizePayment } from "./core/card.js";
+import { CALLBACK_CARD_CHANNELS, DEFAULT_CARD_CHANNELS, GATEWAY_ACTION_CHANNELS, handoffCard, inPlaceTarget, normalizePayment } from "./core/card.js";
 import { FeishuApi, captureDesktop, feishuCredentials, feishuReceiver, loadCover } from "./core/feishu-api.js";
 import { nativeHandoffCard } from "./core/native-card.js";
 
@@ -235,12 +235,12 @@ export default definePluginEntry({
                     return null;
                   })
                 : null;
-              const card = handoffCard({ purpose, kind, reason: params.reason, url: issued.url, openWithinMinutes, sessionMinutes, payment: params.payment, handoffId: issued.id });
+              const card = handoffCard({ purpose, kind, reason: params.reason, url: issued.url, openWithinMinutes, sessionMinutes, payment: params.payment, handoffId: issued.id, callbacks: CALLBACK_CARD_CHANNELS.includes(channel) });
               if (!sentNative) await deliverPrivately({
                 channel,
                 target: senderId,
                 ...((config.cardChannels ?? DEFAULT_CARD_CHANNELS).includes(channel)
-                  ? { text: card.text, presentation: card.presentation }
+                  ? { text: card.text, presentation: card.presentation, gatewayAction: GATEWAY_ACTION_CHANNELS.includes(channel) }
                   : { text: card.fallback }),
                 command: config.openclawCommand,
                 entry: config.openclawEntry,
@@ -283,13 +283,16 @@ export default definePluginEntry({
             }
           }
           if (place) {
-            const card = handoffCard({ purpose, kind, reason: params.reason, url: issued.url, openWithinMinutes, sessionMinutes, payment: params.payment, handoffId: issued.id });
+            // DingTalk and WeCom cards cannot post 交还给 V back: the card asks for 好了 in the chat.
+            const callbacks = CALLBACK_CARD_CHANNELS.includes(place.channel);
+            const card = handoffCard({ purpose, kind, reason: params.reason, url: issued.url, openWithinMinutes, sessionMinutes, payment: params.payment, handoffId: issued.id, callbacks });
             try {
               await deliverPrivately({
                 ...place,
                 accountId: place.accountId ?? config.messageAccountId,
                 text: card.text,
                 presentation: card.presentation,
+                gatewayAction: GATEWAY_ACTION_CHANNELS.includes(place.channel),
                 command: config.openclawCommand,
                 entry: config.openclawEntry,
               });
@@ -302,7 +305,9 @@ export default definePluginEntry({
                 openWithinMinutes,
                 sessionMinutes,
                 instruction:
-                  "A card with two buttons has been posted in this conversation: 接管电脑 (the user takes over V's desktop) and 交还给 V (hands it back; it arrives here as a `/v-handback <id>` message, and by then the plugin has already returned the desktop to you, so just continue the task without asking). Do NOT repeat or paraphrase the url, and do not say where the card is (above/below): reply with one short sentence such as 接管卡片已发出，登录完成后告诉我一声, then end your turn and wait until the user says they are done; then call desktop_handoff_status." +
+                  (callbacks
+                    ? "A card with two buttons has been posted in this conversation: 接管电脑 (the user takes over V's desktop) and 交还给 V (hands it back; it arrives here as a `/v-handback <id>` message, and by then the plugin has already returned the desktop to you, so just continue the task without asking). Do NOT repeat or paraphrase the url, and do not say where the card is (above/below): reply with one short sentence such as 接管卡片已发出，登录完成后告诉我一声, then end your turn and wait until the user says they are done; then call desktop_handoff_status."
+                    : "A card with a 接管电脑 button has been posted in this conversation (the user takes over V's desktop there); the card asks them to reply 好了 here when they are done. Do NOT repeat or paraphrase the url, and do not say where the card is (above/below): reply with one short sentence such as 接管卡片已发出，完成后回复「好了」, then end your turn and wait until the user says they are done; then call desktop_handoff_status (if it still shows them in control, ask them to press 交还给 V on the takeover page).") +
                   (purpose === "payment" ? " Do not click any pay/confirm button yourself; after the user is done, check the order result on the page and report it." : ""),
               });
             } catch (error) {
