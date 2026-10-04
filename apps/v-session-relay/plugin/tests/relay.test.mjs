@@ -80,7 +80,11 @@ test("text: attribution card and transcript reply extraction", () => {
   const card = attributionCard({ label: "A 群", folded: "hello" });
   assert.equal(card.schema, "2.0");
   assert.match(card.body.elements[0].content, /消息来自 \*\*A 群\*\*/u);
-  assert.equal(card.body.elements[1].tag, "collapsible_panel");
+  assert.equal(card.body.elements[0].text_align, "center");
+  assert.deepEqual(card.body.elements[1], { tag: "markdown", content: "hello" }, "short messages are shown, not folded");
+  const long = attributionCard({ label: "A", folded: "x".repeat(2000) });
+  assert.equal(long.body.elements[2].tag, "collapsible_panel");
+  assert.equal(long.body.elements[2].header.title.text_align, "center");
   assert.equal(attributionCard({ label: "A" }).body.elements.length, 1);
   const messages = [
     { role: "user", content: "q", timestamp: 10 },
@@ -186,4 +190,14 @@ test("sessions: agents.entries as an object keyed by id", () => {
   assert.equal(agentForFeishuGroup(cfg, "oc_x"), "makaron");
   assert.equal(agentForFeishuGroup({ agents: { entries: { makaron: {}, other: {} } } }, "oc_x", "makaron"), "makaron");
   assert.equal(agentForFeishuGroup({}, "oc_x"), "main");
+});
+
+test("text: a follow-up in a thread tells the target it is a reply, and the origin how to answer", async () => {
+  const { requestTurn, resultTurn } = await import("../core/text.js");
+  const first = requestTurn({ id: "r_1", chainId: "r_1", from: { label: "私聊" }, message: "写公告" });
+  assert.match(first.extraSystemPrompt, /handed this task/u);
+  assert.match(first.extraSystemPrompt, /ask for it in your reply/u);
+  const next = requestTurn({ id: "r_2", chainId: "r_1", from: { label: "私聊" }, message: "版本 v2.3" });
+  assert.match(next.extraSystemPrompt, /is answering you/u);
+  assert.match(resultTurn({ id: "r_1", chainId: "r_1", to: { label: "B 群" }, message: "写公告", reply: "版本号？" }).extraSystemPrompt, /session_relay_send with target 「B 群」/u);
 });

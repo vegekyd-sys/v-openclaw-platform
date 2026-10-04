@@ -191,16 +191,21 @@ try {
   if (only.includes("relay")) {
     const dmKey = `agent:makaron:feishu:direct:${OWNER}`;
     const since = Date.now() - 2_000;
-    const seed = agentTurn(null, "【候选测试·准备】只回复两个字：就绪", { deliverTo: `chat:${GROUP}`, timeout: 300 });
+    const seed = agentTurn(null, "【候选测试·准备】记住本群的规矩：任何上线通知都必须写明回滚负责人（小王）和灰度比例；灰度比例要先向发起方确认，不能自己假设。只回复：记住了", { deliverTo: `chat:${GROUP}`, timeout: 300 });
     summary.scenarios.seed = { seed, groupRows: await sessionRows(GROUP) };
     const mark = lines.length;
-    const ask = `【候选测试，可忽略】请用 session_relay_send 让「${GROUP_NAME}」群里的 V 回答：今天是几月几号、星期几（按上海时间），一句话回答即可。交出去后跟我说一声就行。`;
+    const ask = `【候选测试】让「${GROUP_NAME}」群里的 V 按它们群的规矩起草 v2.3 的上线通知：周四 20:00 上线，主要改动是飞书里的「电脑」接管卡片。它问什么你就答，灰度比例是 20%（等它问了再告诉它）。最后把定稿给我。`;
     const coordinator = agentTurn(dmKey, ask, { deliverTo: `user:${OWNER}` });
     let records = ledger();
     const deadline = Date.now() + 900_000;
-    while (Date.now() < deadline && !(records.length && records.every((r) => ["done", "failed", "interrupted"].includes(r.status)))) {
+    // A thread is finished when every relay in it is finished and nothing new appeared for a while.
+    let quietSince = Date.now(), seen = 0;
+    while (Date.now() < deadline) {
       await sleep(2_000);
       records = ledger();
+      const settled = records.length && records.every((r) => ["done", "failed", "interrupted"].includes(r.status));
+      if (records.length !== seen) { seen = records.length; quietSince = Date.now(); }
+      if (settled && Date.now() - quietSince > 20_000) break;
     }
     await sleep(8_000); // let the last delivery reach Feishu
     const cardText = async (id) => (id ? JSON.stringify((await feishuGet(`im/v1/messages/${id}?card_msg_content_type=raw_card_content`)).items?.[0]?.body ?? {}).slice(0, 300) : null);
@@ -214,11 +219,16 @@ try {
       relayLog: logSince(mark, /session relay|v-session-relay|deliver|feishu.*(send|sent|message)/iu).slice(-40),
     };
     assert.equal(coordinator.exit, 0, `coordinator turn failed: ${coordinator.stderr}`);
-    assert.equal(records.length, 1, `expected one relay, got ${records.length}`);
-    const [rec] = records;
+    records.sort((a, b) => a.createdAt - b.createdAt);
+    summary.scenarios.relay.thread = records.map((r) => ({ round: r.id, chain: r.chainId, via: r.via, from: r.from.label, to: r.to.label, said: String(r.message).slice(0, 400), answered: String(r.reply ?? "").slice(0, 600), status: r.status }));
+    assert(records.length >= 2, `expected the two V's to go back and forth, got ${records.length} relay(s)`);
+    assert(records.every((r) => r.chainId === records[0].chainId), "relays are not one thread");
+    assert(records.slice(1).every((r) => r.via === "reply"), "follow-ups did not come from the woken origin");
+    assert.match(records.map((r) => r.message).join("\n"), /20\s*%/u, "the origin never passed on the rollout percentage");
+    const rec = records[0];
     assert.equal(rec.to.sessionKey, `agent:makaron:feishu:group:${GROUP}`);
     assert(rec.requestCardId && rec.resultCardId, "a 「消息来自」 card was not posted");
-    assert.equal(rec.status, "done", `relay ended ${rec.status}: ${rec.error ?? ""}`);
+    for (const r of records) assert.equal(r.status, "done", `relay ${r.id} ended ${r.status}: ${r.error ?? ""}`);
     assert.match(rec.reply, /\S/u, "the group's reply was not captured");
     assert.match(groupMsgs[0].requestCard ?? "", /消息来自/u, "request card not readable in the group");
   }

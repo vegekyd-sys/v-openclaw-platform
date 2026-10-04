@@ -14,8 +14,14 @@ function escapeMd(text) {
   return String(text ?? "").replace(/[*_`<>[\]]/gu, (c) => `\\${c}`);
 }
 
-/** Feishu card 2.0: one centred grey attribution line, the content folded under it. */
-export function attributionCard({ label, folded, foldedTitle = "查看内容" }) {
+const SHOW_INLINE = 600;
+
+/**
+ * Feishu card 2.0: a centred grey 「消息来自」 line, then what the other side said.
+ * Short messages are shown as they are, so the exchange between the two V's can be
+ * read in the chat; long ones show the opening and fold the rest.
+ */
+export function attributionCard({ label, folded, foldedTitle = "查看全文" }) {
   const elements = [
     {
       tag: "markdown",
@@ -24,41 +30,56 @@ export function attributionCard({ label, folded, foldedTitle = "查看内容" })
       text_size: "notation",
     },
   ];
-  if (folded && String(folded).trim()) {
+  const body = String(folded ?? "").trim();
+  if (body && body.length <= SHOW_INLINE) {
+    elements.push({ tag: "markdown", content: body });
+  } else if (body) {
+    elements.push({ tag: "markdown", content: `${body.slice(0, 160).trim()}…` });
     elements.push({
       tag: "collapsible_panel",
       expanded: false,
       header: {
-        title: { tag: "markdown", content: `<font color='grey'>${foldedTitle}</font>` },
+        title: { tag: "markdown", content: `<font color='grey'>${foldedTitle}</font>`, text_align: "center" },
+        width: "fill",
         vertical_align: "center",
         icon: { tag: "standard_icon", token: "down-small-ccm_outlined", size: "16px 16px" },
-        icon_position: "right",
+        icon_position: "follow_text",
         icon_expanded_angle: -180,
       },
-      elements: [{ tag: "markdown", content: clip(folded), text_size: "notation" }],
+      elements: [{ tag: "markdown", content: clip(body) }],
     });
   }
   return { schema: "2.0", config: { update_multi: true }, body: { elements } };
 }
 
-export function requestTurn({ id, from, message }) {
+// The two V's take turns in one thread: whatever the target replies goes back to the
+// origin; the origin either answers (another relay to the same target, same chain)
+// or, when the target delivered, continues with the owner.
+export function requestTurn({ id, from, message, chainId }) {
+  const followUp = chainId && chainId !== id;
   return {
     message: `消息来自「${from.label}」：\n\n${message}`,
     extraSystemPrompt: [
-      `This turn was relayed to this conversation from 「${from.label}」 by the owner through V's session relay (${id}). Treat it as the owner asking here.`,
-      "Do the work in this conversation, with this conversation's context. People here see a small 「消息来自」 note above your reply.",
-      `Your final reply in this turn is posted here and automatically returned to 「${from.label}」, so make it the result (what you did, what you found, what is still open), not a promise to do it later.`,
-      "Do not relay this task to yet another conversation from this turn.",
+      followUp
+        ? `「${from.label}」 is answering you in a task the owner handed to this conversation earlier (thread ${chainId}). Pick up where you left off.`
+        : `「${from.label}」 handed this task to this conversation on the owner's behalf (session relay thread ${chainId ?? id}). Treat it as the owner asking here and use this conversation's own context.`,
+      `Everything you reply in this turn is posted here and sent back to 「${from.label}」 automatically, so you are talking with the V over there.`,
+      `If you need information or a decision from 「${from.label}」 to do this well, ask for it in your reply, short and specific, and end the turn; the answer will arrive here as a new message. Do not guess what only they know.`,
+      "When the work is done, reply with the result: what you did, what you found, what is still open.",
+      "Do not relay to any other conversation from this turn.",
     ].join("\n"),
   };
 }
 
-export function resultTurn({ id, to, message, reply }) {
+export function resultTurn({ id, to, message, reply, chainId }) {
   return {
     message: `「${to.label}」回复了：\n\n${reply}`,
     extraSystemPrompt: [
-      `This turn carries the result of work you relayed to 「${to.label}」 (${id}). What you asked: ${clip(message, 600)}`,
-      "People here already see 「消息来自」 with the raw result folded under it. Continue what you were doing before you relayed it: use the result, take the next step, or tell the user what came back and what it means. Do not paste the result again verbatim.",
+      `You handed work to 「${to.label}」 (session relay thread ${chainId ?? id}); the message above is its reply. Your last message to it: ${clip(message, 600)}`,
+      "People here already see its message in a 「消息来自」 card, so do not paste it again.",
+      `If it asks you something or needs input you or this conversation can provide, answer it: call session_relay_send with target 「${to.label}」 and your answer, then say in one short line here what you told it. You are coordinating with it, not reporting every step.`,
+      "If it needs a decision only the owner can make, ask the owner here instead of guessing.",
+      "If it delivered the result, continue the owner's task: say what came back and what it means, or take the next step.",
     ].join("\n"),
   };
 }

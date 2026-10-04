@@ -71,7 +71,7 @@ export class RelayDispatcher {
 
   async deliverRequest(record) {
     if (!record.requestCardAt) {
-      const cardId = await this.postCard(record.to.sessionKey, attributionCard({ label: record.from.label, folded: record.message, foldedTitle: "查看消息" }));
+      const cardId = await this.postCard(record.to.sessionKey, attributionCard({ label: record.from.label, folded: record.message, foldedTitle: "查看全文" }));
       record = this.store.update(record.id, { requestCardAt: this.now(), requestCardId: cardId }, this.now());
     }
     const turn = requestTurn(record);
@@ -110,7 +110,7 @@ export class RelayDispatcher {
 
   async deliverResult(record, { recovering }) {
     if (!record.resultCardAt) {
-      const cardId = await this.postCard(record.from.sessionKey, attributionCard({ label: record.to.label, folded: record.reply, foldedTitle: "查看回复" }));
+      const cardId = await this.postCard(record.from.sessionKey, attributionCard({ label: record.to.label, folded: record.reply, foldedTitle: "查看全文" }));
       record = this.store.update(record.id, { resultCardAt: this.now(), resultCardId: cardId }, this.now());
     }
     let runId = record.replyRunId;
