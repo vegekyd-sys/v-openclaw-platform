@@ -139,13 +139,11 @@ import { callGatewayFromCli as vCallGateway } from "openclaw/plugin-sdk/gateway-
 \tconst vStartBackground = (card, finalText) => {
 \t\tvWork.dispose();
 \t\tif (!params.vSessionKey || !card?.cardInstanceId) return;
+\t\t// A finished AI card shows what its last finalize wrote, so the line is
+\t\t// written the same way the connector finishes a card.
 \t\tconst put = async (text) => {
-\t\t\tconst token = await getAccessToken(account.config);
-\t\t\tawait dingtalkHttp.put(\`\${DINGTALK_API}/v1.0/card/instances\`, {
-\t\t\t\toutTrackId: card.cardInstanceId,
-\t\t\t\tcardData: { cardParamMap: { msgContent: text } },
-\t\t\t\tcardUpdateOptions: { updateCardDataByKey: true }
-\t\t\t}, { headers: { "x-acs-dingtalk-access-token": token, "Content-Type": "application/json" } });
+\t\t\tawait finishAICard({ ...card, tokenExpireTime: 0 }, text, account.config, log);
+\t\t\tlog.info(\`[DingTalk][v-experience] background line written to \${card.cardInstanceId}\`);
 \t\t};
 \t\tvExperience.watchBackground({
 \t\t\tchannel: \`dingtalk:\${accountId ?? "default"}\`,
