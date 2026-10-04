@@ -223,7 +223,7 @@ const anyText = (msgs, re) => msgs.some((m) => m.history.some((h) => re.test(h.t
 let userIndex = 0;
 const newChat = () => USERS[userIndex++];
 
-// The 「电脑」 card: a photo with the card as caption and 接管 / 我完成了 / 跳过; press `command`'s
+// The 「电脑」 card: a photo with the card as caption and 接管 / 完成 / 跳过; press `command`'s
 // button (Telegram core turns callback data "/v-handback <id>" into that command from the presser).
 const HANDOFF_ASK = "这是自动化测试，请严格照做。立即调用 desktop_handoff_request 工具，参数 reason 填「需要你登录测试站点」。工具返回后按它返回的 instruction 只回复一句话，然后结束，不要做别的事。收到 /v-handback 或 /v-skip 之后，只回复一句「收到，继续」。";
 const handoffScenario = async (command) => {
@@ -530,7 +530,7 @@ const SCENARIOS = {
     result.switch = describe(await settle(chat, since2, (m) => m.length > 0, { label: "/model switch", quietMs: 3000, timeoutMs: 60_000 }));
     return result;
   },
-  // A4: V's 「电脑」 card — photo + 接管 / 我完成了 / 跳过, edited in place; 我完成了 pressed.
+  // A4: V's 「电脑」 card — photo + 接管 / 完成 / 跳过, edited in place; 完成 pressed.
   "handoff-card": () => handoffScenario("v-handback"),
   // The same card, 跳过 pressed: the handoff ends.
   "handoff-skip": () => handoffScenario("v-skip"),
@@ -650,9 +650,9 @@ if (EXPECT === "patched") {
     assert.equal(r.kind, "photo", "the card is not a photo");
     assert.deepEqual({ bytes: r.photo?.bytes, jpeg: r.photo?.jpeg }, { bytes: r.cover.bytes, jpeg: true }, "the desktop picture was not uploaded with the card");
     assert.equal(r.sent.parseMode, "HTML");
-    assert.match(r.sent.caption, /^<b>电脑<\/b> · 需要操作\n\n需要你登录测试站点\n\n<i>点「接管」打开 V 的电脑直接操作，做完点「我完成了」，V 接着做；不需要就点「跳过」。\d+ 分钟内打开有效。<\/i>/u);
+    assert.match(r.sent.caption, /^<b>电脑<\/b> · 需要操作\n\n需要你登录测试站点\n\n<i>点「接管」打开 V 的电脑直接操作，做完点「完成」，V 接着做；不需要就点「跳过」。\d+ 分钟内打开有效。<\/i>/u);
     // (the report went through JSON: absent fields, not undefined ones)
-    const commands = [{ text: "我完成了", data: `/v-handback ${r.handoffId}` }, { text: "跳过", data: `/v-skip ${r.handoffId}` }];
+    const commands = [{ text: "完成", data: `/v-handback ${r.handoffId}` }, { text: "跳过", data: `/v-skip ${r.handoffId}` }];
     if (HANDOFF_PUBLIC_BASE.startsWith("https://")) {
       assert.deepEqual(r.sent.buttons, [{ text: "接管", url: "https://openclaw.example.test/desktop-handoff/#[token]" }, ...commands]);
       assert.deepEqual(r.refusedFirst, []);

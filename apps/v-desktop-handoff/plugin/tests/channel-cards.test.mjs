@@ -9,13 +9,13 @@ import { inPlaceTarget } from "../core/card.js";
 
 const VIEW = { kind: "control", purpose: "login", reason: "需要你登录测试站点", url: "https://openclaw.example.test/desktop-handoff/#tok", handoffId: "h_1a2b", openWithinMinutes: 10 };
 
-test("channel card: 接管 / 我完成了 / 跳过 while pending, 我完成了 + 回到电脑 while active, nothing once over", () => {
+test("channel card: 接管 / 完成 / 跳过 while pending, 完成 + 回到电脑 while active, nothing once over", () => {
   assert.deepEqual(cardButtons(VIEW, "pending"), [
     { label: "接管", url: VIEW.url },
-    { label: "我完成了", command: "/v-handback h_1a2b" },
+    { label: "完成", command: "/v-handback h_1a2b" },
     { label: "跳过", command: "/v-skip h_1a2b" },
   ]);
-  assert.deepEqual(cardButtons(VIEW, "active"), [{ label: "我完成了", command: "/v-handback h_1a2b" }, { label: "回到电脑", url: VIEW.url }]);
+  assert.deepEqual(cardButtons(VIEW, "active"), [{ label: "完成", command: "/v-handback h_1a2b" }, { label: "回到电脑", url: VIEW.url }]);
   for (const state of ["done", "skipped", "ended"]) assert.deepEqual(cardButtons(VIEW, state), []);
   assert.deepEqual(cardButtons({ ...VIEW, kind: "watch" }, "pending"), [{ label: "观看", url: VIEW.url }]);
   assert.equal(cardButtons({ ...VIEW, purpose: "payment" }, "pending")[0].label, "付款");
@@ -26,11 +26,11 @@ test("channel card as a presentation: title with state, reason as text, note, pi
   assert.equal(text, "需要你登录测试站点");
   assert.equal(presentation.title, "电脑 · 需要操作");
   assert.deepEqual(presentation.blocks.map((b) => b.type), ["context", "text", "buttons"]);
-  assert.match(presentation.blocks[0].text, /^点「接管」打开 V 的电脑直接操作，做完点「我完成了」，V 接着做；不需要就点「跳过」。10 分钟内打开有效。$/u);
+  assert.match(presentation.blocks[0].text, /^点「接管」打开 V 的电脑直接操作，做完点「完成」，V 接着做；不需要就点「跳过」。10 分钟内打开有效。$/u);
   assert.equal(presentation.blocks[1].text, "![V 的电脑](file:///tmp/v-desktop-handoff-h_1a2b-00.jpg)");
   assert.deepEqual(presentation.blocks[2].buttons, [
     { label: "接管", url: VIEW.url, style: "primary" },
-    { label: "我完成了", value: "/v-handback h_1a2b" },
+    { label: "完成", value: "/v-handback h_1a2b" },
     { label: "跳过", value: "/v-skip h_1a2b" },
   ]);
   const done = handoffPresentation(VIEW, "done");
@@ -44,10 +44,10 @@ test("channel card as a presentation: title with state, reason as text, note, pi
 test("telegram card: caption and one row of buttons; a refused link moves into the caption", () => {
   const card = telegramHandoffCard(VIEW, "pending");
   assert.match(card.caption, /^<b>电脑<\/b> · 需要操作\n\n需要你登录测试站点\n\n<i>点「接管」/u);
-  assert.deepEqual(card.replyMarkup, { inline_keyboard: [[{ text: "接管", url: VIEW.url }, { text: "我完成了", callback_data: "/v-handback h_1a2b" }, { text: "跳过", callback_data: "/v-skip h_1a2b" }]] });
+  assert.deepEqual(card.replyMarkup, { inline_keyboard: [[{ text: "接管", url: VIEW.url }, { text: "完成", callback_data: "/v-handback h_1a2b" }, { text: "跳过", callback_data: "/v-skip h_1a2b" }]] });
   for (const b of card.replyMarkup.inline_keyboard[0]) if (b.callback_data) assert(Buffer.byteLength(b.callback_data) <= 64);
   const noLink = telegramHandoffCard(VIEW, "pending", { urlButtons: false });
-  assert.deepEqual(noLink.replyMarkup.inline_keyboard[0].map((b) => b.text), ["我完成了", "跳过"]);
+  assert.deepEqual(noLink.replyMarkup.inline_keyboard[0].map((b) => b.text), ["完成", "跳过"]);
   assert.match(noLink.caption, /\n\n接管：https:\/\/openclaw\.example\.test\/desktop-handoff\/#tok$/u);
   const done = telegramHandoffCard(VIEW, "done");
   assert.deepEqual(done.replyMarkup, { inline_keyboard: [] });

@@ -1,6 +1,6 @@
 // V's 「电脑」 handoff card on channels other than Feishu, laid out like the
 // native Feishu card (native-card.js): title 「电脑」 with its state, the
-// reason, a picture of V's desktop, and 接管 / 我完成了 / 跳过 — 我完成了 and 跳过
+// reason, a picture of V's desktop, and 接管 / 完成 / 跳过 — 完成 and 跳过
 // post `/v-handback <id>` / `/v-skip <id>` as the person who taps them.
 //
 //   Telegram   a photo with the card as its caption and an inline keyboard;
@@ -14,7 +14,7 @@ import { normalizePayment } from "./card.js";
 
 const LIVE = new Set(["pending", "active"]);
 
-/** Channels that get the 「电脑」 card (picture + 接管 / 我完成了 / 跳过) instead of the plain link card. */
+/** Channels that get the 「电脑」 card (picture + 接管 / 完成 / 跳过) instead of the plain link card. */
 export const NATIVE_CARD_CHANNELS = ["feishu", "telegram", "dingtalk-connector", "wecom"];
 
 /** Channels whose card the plugin can rewrite at any time (the others: see setCardState). */
@@ -56,8 +56,10 @@ export function cardNote(view, state) {
     const minutes = view.openWithinMinutes ? `${view.openWithinMinutes} 分钟内打开有效` : "";
     if (view.kind === "watch") return `点「观看」看 V 的电脑，只能看不能操作。${minutes ? `${minutes}。` : ""}`;
     const what = view.purpose === "payment" ? "核对金额后自己填写支付信息并确认付款" : "直接操作";
-    return `点「${takeLabel(view)}」打开 V 的电脑${what}，做完点「我完成了」，V 接着做；不需要就点「跳过」。${minutes ? `${minutes}。` : ""}`;
+    return `点「${takeLabel(view)}」打开 V 的电脑${what}，做完点「完成」，V 接着做；不需要就点「跳过」。${minutes ? `${minutes}。` : ""}`;
   }
+  // Feishu's note names its 「我完成了」 button; here the button is 「完成」.
+  if (state === "active") return "你在操作 V 的电脑。做完点「完成」，V 接着做。";
   return STATE_NOTES[state] ?? "";
 }
 
@@ -70,12 +72,12 @@ export function cardButtons(view, state) {
   if (state === "pending") {
     return [
       ...(view.url ? [{ label: takeLabel(view), url: view.url }] : []),
-      { label: "我完成了", command: `/v-handback ${id}` },
+      { label: "完成", command: `/v-handback ${id}` },
       { label: "跳过", command: `/v-skip ${id}` },
     ];
   }
   if (state === "active") {
-    return [{ label: "我完成了", command: `/v-handback ${id}` }, ...(view.url ? [{ label: "回到电脑", url: view.url }] : [])];
+    return [{ label: "完成", command: `/v-handback ${id}` }, ...(view.url ? [{ label: "回到电脑", url: view.url }] : [])];
   }
   return [];
 }

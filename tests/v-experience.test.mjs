@@ -430,11 +430,11 @@ const HANDOFF_PRESENTATION = { title: "需要你接管 V 的电脑", tone: "info
 const HANDOFF_LINK_ONLY = { ...HANDOFF_PRESENTATION, blocks: [HANDOFF_PRESENTATION.blocks[0], { type: "buttons", buttons: [HANDOFF_PRESENTATION.blocks[1].buttons[0]] }] };
 // The 「电脑」 card (apps/v-desktop-handoff/plugin/core/channel-cards.js, pending state).
 const COMPUTER_CARD = (imageRef) => ({ title: "电脑 · 需要操作", tone: "info", blocks: [
-  { type: "context", text: "点「接管」打开 V 的电脑直接操作，做完点「我完成了」，V 接着做；不需要就点「跳过」。10 分钟内打开有效。" },
+  { type: "context", text: "点「接管」打开 V 的电脑直接操作，做完点「完成」，V 接着做；不需要就点「跳过」。10 分钟内打开有效。" },
   ...(imageRef ? [{ type: "text", text: `![V 的电脑](${imageRef})` }] : []),
   { type: "buttons", buttons: [
     { label: "接管", url: "https://openclaw.example.test/desktop-handoff/#tok_1", style: "primary" },
-    { label: "我完成了", value: "/v-handback h_1" },
+    { label: "完成", value: "/v-handback h_1" },
     { label: "跳过", value: "/v-skip h_1" },
   ] },
 ] });
@@ -636,7 +636,7 @@ test("「电脑」 card from a presentation: picture, the link and the command b
     lines: ["需要你登录测试站点", COMPUTER_CARD().blocks[0].text],
     buttons: [
       { label: "接管", url: "https://openclaw.example.test/desktop-handoff/#tok_1" },
-      { label: "我完成了", command: "/v-handback h_1" },
+      { label: "完成", command: "/v-handback h_1" },
       { label: "跳过", command: "/v-skip h_1" },
     ],
     image: { alt: "V 的电脑", ref: "https://openclaw.example.test/desktop-handoff/snapshot/x.jpg" },
@@ -645,7 +645,7 @@ test("「电脑」 card from a presentation: picture, the link and the command b
   assert.equal(vx.linkCardFromPresentation({ title: "t", blocks: [{ type: "buttons", buttons: [{ label: "坏", value: "/v-handback h_1; rm -rf /" }] }] }, "", { commands: true }), undefined, "only plain slash commands");
   assert.equal(vx.linkCardFromPresentation({ title: "t", blocks: [{ type: "text", text: "![x](http://insecure.test/a.jpg)" }, { type: "buttons", buttons: [{ label: "a", url: "https://a.test/" }] }] }).image, undefined, "pictures only over https or a local file");
   assert.deepEqual(vx.linkCardFromPresentation({ title: "电脑 · 已完成", blocks: [{ type: "context", text: "已交还给 V，V 接着做。" }] }, "r", { commands: true, allowEmpty: true }), { title: "电脑 · 已完成", lines: ["r", "已交还给 V，V 接着做。"], buttons: [] });
-  assert.match(vx.linkCardText(card), /\n我完成了：回复 \/v-handback h_1\n跳过：回复 \/v-skip h_1$/u);
+  assert.match(vx.linkCardText(card), /\n完成：回复 \/v-handback h_1\n跳过：回复 \/v-skip h_1$/u);
 });
 
 test("「电脑」 card on DingTalk: picture in the markdown, three buttons, commands as send-message links", () => {
@@ -653,14 +653,14 @@ test("「电脑」 card on DingTalk: picture in the markdown, three buttons, com
   const withPicture = { ...card, image: { alt: "V 的电脑", ref: "@lADPcandidate" } };
   const ac = vx.dingtalkActionCard(withPicture);
   assert.equal(ac.btnOrientation, "1");
-  assert.deepEqual(ac.btns.map((b) => b.title), ["接管", "我完成了", "跳过"]);
+  assert.deepEqual(ac.btns.map((b) => b.title), ["接管", "完成", "跳过"]);
   assert.equal(new URL(ac.btns[0].actionURL).searchParams.get("url"), "https://openclaw.example.test/desktop-handoff/#tok_1");
   assert.equal(ac.btns[1].actionURL, "dtmd://dingtalkclient/sendMessage?content=%2Fv-handback%20h_1");
   assert.equal(ac.btns[2].actionURL, "dtmd://dingtalkclient/sendMessage?content=%2Fv-skip%20h_1");
   assert.equal(ac.text, `### 电脑 · 需要操作\n\n需要你登录测试站点\n\n${COMPUTER_CARD().blocks[0].text}\n\n![V 的电脑](@lADPcandidate)`);
   const robot = vx.dingtalkRobotActionCard(withPicture);
   assert.equal(robot.msgKey, "sampleActionCard3");
-  assert.deepEqual([robot.msgParam.actionTitle1, robot.msgParam.actionTitle2, robot.msgParam.actionTitle3], ["接管", "我完成了", "跳过"]);
+  assert.deepEqual([robot.msgParam.actionTitle1, robot.msgParam.actionTitle2, robot.msgParam.actionTitle3], ["接管", "完成", "跳过"]);
   assert.equal(robot.msgParam.actionURL2, ac.btns[1].actionURL);
   assert.equal(robot.msgParam.text, ac.text);
   assert.equal(vx.dingtalkRobotActionCard({ ...card, buttons: card.buttons.slice(1) }).msgKey, "sampleActionCard6", "two buttons side by side");
@@ -681,7 +681,7 @@ test("「电脑」 card on WeCom: picture card (or image) + button card; taps an
     sub_title_text: `需要你登录测试站点\n${COMPUTER_CARD().blocks[0].text}`,
     button_list: [
       { text: "接管", style: 1, type: 1, url: "https://openclaw.example.test/desktop-handoff/#tok_1" },
-      { text: "我完成了", style: 4, key: "vcmd:v-handback:h_1" },
+      { text: "完成", style: 4, key: "vcmd:v-handback:h_1" },
       { text: "跳过", style: 2, key: "vcmd:v-skip:h_1" },
     ],
     task_id: "v_t",

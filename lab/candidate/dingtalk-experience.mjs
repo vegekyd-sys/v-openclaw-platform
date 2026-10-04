@@ -206,7 +206,7 @@ const finishedCards = (since) => cardsSince(since).filter((c) => /^(3|FINISHED)$
 let user = 0;
 const nextUser = () => `cand${String(++user).padStart(3, "0")}`;
 
-// The 「电脑」 card: wait for it, open its link, press button `press` (2 = 我完成了, 3 = 跳过) the
+// The 「电脑」 card: wait for it, open its link, press button `press` (2 = 完成, 3 = 跳过) the
 // way DingTalk does for a send-message link (the command arrives as the user's message).
 const HANDOFF_ASK = "这是自动化测试，请严格照做。立即调用 desktop_handoff_request 工具，参数 reason 填「需要你登录测试站点」。工具返回后按它返回的 instruction 只回复一句话，然后结束，不要做别的事。收到 /v-handback 或 /v-skip 之后，只回复一句「收到，继续」。";
 const handoffScenario = async (press) => {
@@ -343,8 +343,8 @@ const SCENARIOS = {
       ...JSON.parse(JSON.stringify(view(conversationId, since)).replaceAll(link.token, "[token]")),
     };
   },
-  // A4: V's 「电脑」 card as an actionCard: the desktop picture (robot media) and 接管 / 我完成了 / 跳过;
-  // 我完成了 is pressed (its send-message link posts /v-handback <id> as the user).
+  // A4: V's 「电脑」 card as an actionCard: the desktop picture (robot media) and 接管 / 完成 / 跳过;
+  // 完成 is pressed (its send-message link posts /v-handback <id> as the user).
   "handoff-card": () => handoffScenario(2),
   // The same card, 跳过 pressed: /v-skip <id> ends the handoff.
   "handoff-skip": () => handoffScenario(3),
@@ -452,9 +452,9 @@ if (EXPECT === "patched") {
     assert.equal(r.error, undefined, r.error);
     assert.equal(r.card.msgKey, "sampleActionCard3", "three buttons");
     assert.equal(r.card.title, "电脑 · 需要操作");
-    assert.match(r.card.text, /^### 电脑 · 需要操作\n\n需要你登录测试站点\n\n点「接管」打开 V 的电脑直接操作，做完点「我完成了」，V 接着做；不需要就点「跳过」。\d+ 分钟内打开有效。\n\n!\[V 的电脑\]\(@lADPcandidate\d+\)$/u);
+    assert.match(r.card.text, /^### 电脑 · 需要操作\n\n需要你登录测试站点\n\n点「接管」打开 V 的电脑直接操作，做完点「完成」，V 接着做；不需要就点「跳过」。\d+ 分钟内打开有效。\n\n!\[V 的电脑\]\(@lADPcandidate\d+\)$/u);
     assert(r.uploads.length >= 1 && r.uploads[0].type === "image" && r.uploads[0].bytes > r.cover.bytes && r.uploads[0].token, `the desktop picture was not uploaded as robot media: ${JSON.stringify(r.uploads)}`);
-    assert.deepEqual(r.card.buttons.map((b) => b.title), ["接管", "我完成了", "跳过"]);
+    assert.deepEqual(r.card.buttons.map((b) => b.title), ["接管", "完成", "跳过"]);
     assert.deepEqual(r.card.buttons[0], { title: "接管", scheme: "dingtalk:", opens: "https://openclaw.example.test/desktop-handoff/#[token]", pcSlide: "false", sends: null });
     assert.equal(r.card.buttons[1].sends, `/v-handback ${r.handoffId}`);
     assert.equal(r.card.buttons[2].sends, `/v-skip ${r.handoffId}`);
@@ -463,7 +463,7 @@ if (EXPECT === "patched") {
     assert(!r.urlInReply, "the url was also pasted into the reply");
     const after = r.afterPress.join("\n");
     if (name === "handoff-card") {
-      assert.equal(r.after.cardState, "done", "我完成了 did not reach the plugin");
+      assert.equal(r.after.cardState, "done", "完成 did not reach the plugin");
       assert.equal(r.after.ended, false);
       assert.match(after, /电脑已在 V 手里/u, "no status line (a DingTalk card cannot change)");
     } else {
