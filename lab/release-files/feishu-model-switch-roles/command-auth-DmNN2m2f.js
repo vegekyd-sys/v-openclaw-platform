@@ -228,8 +228,8 @@ function resolveCommandSenderAuthorization(params) {
 		const commandsAllowAll = !params.providerResolutionError && Boolean(commandsAllowFromList && hasWildcardAllowFrom(commandsAllowFromList));
 		const matchedCommandsAllowFrom = commandsAllowFromList?.length ? params.senderCandidates.find((candidate) => commandsAllowFromList.includes(candidate)) : void 0;
 		if (params.providerResolutionError || !(commandsAllowAll || Boolean(matchedCommandsAllowFrom))) return "denied";
-        // FEISHU_MODEL_COMMAND_ONLY_V2: non-owner Feishu senders may use /model, not the full command set.
-        if (params.providerId === "feishu" && !params.senderIsOwner) return /^[ \t]*\/model(?:[ \t]+[^\r\n]*)?[ \t]*$/i.test(params.commandText ?? "") ? "commands" : "reset-only";
+        // V_MODEL_COMMAND_ONLY_V3: on V's chat channels a non-owner admitted by commands.allowFrom may use /model, not the full command set.
+        if (["feishu", "telegram", "dingtalk-connector", "wecom", "msteams"].includes(params.providerId) && !params.senderIsOwner) return /^[ \t]*\/model(?:[ \t]+[^\r\n]*)?[ \t]*$/i.test(params.commandText ?? "") ? "commands" : "reset-only";
         return "commands";
 	}
 	if (!params.commandAuthorized) return "denied";

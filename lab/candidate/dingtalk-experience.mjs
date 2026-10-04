@@ -10,6 +10,8 @@
 //
 // DT_EXPECT=baseline only reports; DT_EXPECT=patched applies
 // apps/v-experience/dingtalk/patch.mjs to the private copy and asserts.
+// The model-roles scenario also patches the core command-auth and sets the
+// command roles (lab/candidate/model-roles.mjs).
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -17,6 +19,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { createFakeDingTalkOpenApi } from "./dingtalk-fake-open-api.mjs";
+import { assertModelRoles, configureRoles, patchCoreCommandAuth, ROLES_CONFIGURED, runModelRoles } from "./model-roles.mjs";
 
 const runtime = process.env.VLAB_CANDIDATE_RUNTIME;
 const configPath = process.env.OPENCLAW_CONFIG_PATH;
@@ -120,6 +123,11 @@ if (workerPlugin && process.env.DT_WORKER !== "off") {
   config.plugins.entries["vlab-agent-worker-isolation"].enabled = false;
 }
 config.agents.defaults.model = { ...(config.agents.defaults.model ?? {}), primary: MODEL };
+const ROLE_USERS = { owner: "candowner", nonOwner: "candguest" };
+if (SCENARIO_NAMES.includes("model-roles")) {
+  report.coreCommandAuth = patchCoreCommandAuth(runtime);
+  report.roles = configureRoles(config, "dingtalk-connector", [ROLE_USERS.owner]);
+}
 fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
 
 // Candidate-only: the relocated connector has no official install record, so the
@@ -255,6 +263,19 @@ const SCENARIOS = {
     const replyText = JSON.stringify(reply ?? {});
     return { questionCard: true, templateId: card.templateId, ack: replyText.slice(0, 400), cardAnswered: /已选择：苏州/u.test(replyText), continued: /城市[：:]\s*苏州/u.test(allText(conversationId, since)), ...view(conversationId, since) };
   },
+  // C1: the owner keeps every command; a non-owner may only switch their own session's model.
+  "model-roles": () => runModelRoles({
+    dist, port, token: config.gateway?.auth?.token, config,
+    transport: {
+      ...ROLE_USERS,
+      send: (user, text) => fake.sendUserText({ userId: user, text }),
+      text: (user, since) => [
+        ...cardsSince(since).filter((c) => !c.delivered || c.delivered.openSpaceId?.includes(user)).flatMap((c) => c.history.map((h) => h.content)),
+        ...messagesSince(`cidDirect${user}`, since).map((m) => m.text),
+      ].filter(Boolean).join("\n\n"),
+      connections: () => fake.calls.filter((c) => c.path === "/v1.0/gateway/connections/open").length,
+    },
+  }),
   background: async () => {
     const u = nextUser(); const since = Date.now();
     const { conversationId } = fake.sendUserText({ userId: u, text: "这是自动化测试，请严格照做，不要等待任何结果。第一步：调用 sessions_spawn 启动一个子 agent，task 写：`用 exec 运行 sleep 40，然后回复 CHILD_DONE。` 第二步：工具返回后，立刻只回复 BG_OK。" });
@@ -306,6 +327,10 @@ if (EXPECT === "patched") {
   }
   if (s.steer) assert(s.steer.steered && !s.steer.answeredA, "steer: second message did not steer the running reply");
   if (s.background) assert(s.background.sawBackgroundLine && s.background.sawBackgroundDone, "background line missing");
+  if (s["model-roles"]) {
+    assert.equal(s["model-roles"].error, undefined, s["model-roles"].error);
+    if (ROLES_CONFIGURED) assertModelRoles(s["model-roles"]);
+  }
   if (s["ask-card"]) {
     assert(s["ask-card"].questionCard, "no question card was delivered");
     assert(s["ask-card"].cardAnswered, "tapping the card did not answer it");

@@ -9,12 +9,15 @@
 // TG_EXPECT=baseline only reports (the stock 9.1 behaviour).
 // TG_EXPECT=patched also asserts the v-experience behaviour.
 // TG_SCENARIOS picks scenarios (comma list); TG_MODEL picks the model.
+// The model-roles scenario also patches the core command-auth and sets the
+// command roles (lab/candidate/model-roles.mjs).
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { createFakeTelegramBotApi, FAKE_BOT_TOKEN, inlineButtons } from "./telegram-fake-bot-api.mjs";
+import { assertModelRoles, configureRoles, patchCoreCommandAuth, ROLES_CONFIGURED, runModelRoles } from "./model-roles.mjs";
 
 const runtime = process.env.VLAB_CANDIDATE_RUNTIME;
 const configPath = process.env.OPENCLAW_CONFIG_PATH;
@@ -44,6 +47,8 @@ const apiPort = await fake.listen();
 
 // ---- private config: Telegram only, pointed at the fake ----
 const USERS = Array.from({ length: 12 }, (_, i) => String(70000001 + i));
+// Allowed to talk to the bot but not an owner (model-roles).
+const NON_OWNER = "70000099";
 const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
 const port = Number(config.gateway?.port);
 const token = config.gateway?.auth?.token;
@@ -54,8 +59,8 @@ config.channels = {
     botToken: FAKE_BOT_TOKEN,
     apiRoot: `http://127.0.0.1:${apiPort}`,
     dmPolicy: "allowlist",
-    allowFrom: USERS,
-    groupAllowFrom: USERS,
+    allowFrom: [...USERS, NON_OWNER],
+    groupAllowFrom: [...USERS, NON_OWNER],
     ...(process.env.TG_STREAM_MODE ? { streaming: { mode: process.env.TG_STREAM_MODE } } : {}),
   },
 };
@@ -81,6 +86,9 @@ if (workerPlugin && process.env.TG_WORKER !== "off") {
   config.plugins.entries["vlab-agent-worker-isolation"].enabled = false;
 }
 config.agents.defaults.model = { ...(config.agents.defaults.model ?? {}), primary: MODEL };
+const rolesSetup = SCENARIO_NAMES.includes("model-roles")
+  ? { coreCommandAuth: patchCoreCommandAuth(runtime), roles: configureRoles(config, "telegram", []) }
+  : {};
 fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
 
 const scratch = process.env.VLAB_CANDIDATE_DATA ?? stateDir;
@@ -260,9 +268,19 @@ const SCENARIOS = {
     result.switch = describe(await settle(chat, since2, (m) => m.length > 0, { label: "/model switch", quietMs: 3000, timeoutMs: 60_000 }));
     return result;
   },
+  // C1: the owner keeps every command; a non-owner may only switch their own session's model.
+  "model-roles": () => runModelRoles({
+    dist, port, token, config,
+    transport: {
+      owner: USERS.at(-1), nonOwner: NON_OWNER,
+      send: (user, text) => fake.sendUserText({ chatId: user, userId: user, text }),
+      text: (user, since) => chatMessages(user, since).flatMap((m) => m.history.map((h) => h.text ?? "")).filter(Boolean).join("\n\n"),
+      connections: () => fake.calls.filter((c) => c.method === "getMe").length,
+    },
+  }),
 };
 
-const report = { expect: EXPECT, model: MODEL, patch: patchReport, scenarios: {} };
+const report = { expect: EXPECT, model: MODEL, patch: patchReport, ...rolesSetup, scenarios: {} };
 try {
   await waitFor(() => fake.calls.some((c) => c.method === "getMe"), 600_000, "Telegram channel start (getMe)");
   await sleep(3000);
@@ -319,5 +337,9 @@ if (EXPECT === "patched") {
   if (s.background) {
     assert.equal(s.background.error, undefined, s.background.error);
     assert(s.background.sawBackgroundLine, "background work line never appeared");
+  }
+  if (s["model-roles"]) {
+    assert.equal(s["model-roles"].error, undefined, s["model-roles"].error);
+    if (ROLES_CONFIGURED) assertModelRoles(s["model-roles"]);
   }
 }

@@ -1,0 +1,15 @@
+{
+  "support": [
+    "lab/candidate/dingtalk-experience.mjs",
+    "lab/candidate/dingtalk-fake-open-api.mjs",
+    "lab/candidate/model-roles.mjs",
+    "lab/release-files/feishu-model-switch-roles/patch-runtime.mjs",
+    "apps/v-experience/v-experience.mjs",
+    "apps/v-experience/dingtalk/patch.mjs",
+    "tmp/inputs/dingtalk-connector-0.8.26-v.tgz"
+  ],
+  "command": ["/opt/vlab/node-v22.23.1-linux-x64/bin/node", "lab/candidate/dingtalk-experience.mjs"],
+  "env": { "DT_EXPECT": "patched", "DT_SCENARIOS": "model-roles" },
+  "timeoutSeconds": 3600,
+  "user": "lab-db91-parity"
+}

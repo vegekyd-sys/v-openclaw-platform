@@ -184,7 +184,43 @@ const ingressReplacements = (callImport) => [
 \tbot.use(botRuntime.sequentialize(getTelegramSequentialConstraints));
 `,
   },
+  {
+    // Model picker buttons are a /model command (C1, see commandTextReplacements).
+    name: "model-callback-command-text",
+    anchor: "\t\t\tthreadSpec: context.threadSpec,\n\t\t\tsenderId,\n\t\t\tsenderUsername\n\t\t}).isAuthorizedSender;\n",
+    replace: `\t\t\tthreadSpec: context.threadSpec,\n\t\t\tsenderId,\n\t\t\tsenderUsername,\n\t\t\tcommandText: "/model" // ${MARKER}\n\t\t}).isAuthorizedSender;\n`,
+  },
 ];
+
+// C1 (harness switching): with commands.allowFrom.telegram set, Telegram
+// authorizes a native command before it has built the command text, so the
+// core rule "a non-owner may use /model only" (lab/release-files/
+// feishu-model-switch-roles) saw an empty text and refused /model too. Native
+// commands now carry their text into that check.
+const commandTextReplacements = {
+  helpers: [{
+    name: "authorization-command-text",
+    anchor: "\t\t\tSenderUsername: params.senderUsername || void 0\n\t\t},\n\t\tcfg: params.cfg,\n\t\tcommandAuthorized: false\n",
+    replace: `\t\t\tSenderUsername: params.senderUsername || void 0,\n\t\t\tcommandText: params.commandText // ${MARKER}\n\t\t},\n\t\tcfg: params.cfg,\n\t\tcommandAuthorized: false\n`,
+  }],
+  nativeDispatch: [
+    ...["preContextCommandsAllowFromAccess", "commandsAllowFromAccess"].map((name) => ({
+      name: `${name}-command-text`,
+      anchor: `\tconst ${name} = commandsAllowFromConfigured ? resolveTelegramCommandAuthorization({\n\t\tcfg,\n\t\taccountId,\n\t\tchatId,\n\t\tisGroup,\n\t\tthreadSpec,\n\t\tsenderId,\n\t\tsenderUsername\n\t}) : null;\n`,
+      replace: `\tconst ${name} = commandsAllowFromConfigured ? resolveTelegramCommandAuthorization({\n\t\tcfg,\n\t\taccountId,\n\t\tchatId,\n\t\tisGroup,\n\t\tthreadSpec,\n\t\tsenderId,\n\t\tsenderUsername,\n\t\tcommandText: params.commandText // ${MARKER}\n\t}) : null;\n`,
+    })),
+    {
+      name: "prepare-command-text",
+      anchor: "\t\trequireAuth: params.requireAuth\n\t});\n\tif (!auth) return null;\n",
+      replace: `\t\trequireAuth: params.requireAuth,\n\t\tcommandText: params.commandText // ${MARKER}\n\t});\n\tif (!auth) return null;\n`,
+    },
+  ],
+  nativeBuiltins: [{
+    name: "builtin-command-text",
+    anchor: "\tconst dispatch = await prepareTelegramCommandDispatch({\n\t\t...params,\n\t\trequireAuth: true\n\t});\n",
+    replace: `\tconst dispatch = await prepareTelegramCommandDispatch({\n\t\t...params,\n\t\trequireAuth: true,\n\t\tcommandText: params.rawText ? \`/\${params.commandName} \${params.rawText}\` : \`/\${params.commandName}\` // ${MARKER}\n\t});\n`,
+  }],
+};
 
 function apply(source, replacements, label) {
   if (source.includes(MARKER)) return source;
@@ -205,6 +241,8 @@ function apply(source, replacements, label) {
 
 export const patchDispatchChunk = (source, callImport, lineImport) => apply(source, dispatchReplacements(callImport, lineImport), "dispatch");
 export const patchIngressChunk = (source, callImport) => apply(source, ingressReplacements(callImport), "ingress");
+/** part: helpers | nativeDispatch | nativeBuiltins */
+export const patchCommandTextChunk = (source, part) => apply(source, commandTextReplacements[part], part);
 
 const findChunk = (distDir, re, needle) => {
   const matches = fs.readdirSync(distDir).filter((f) => re.test(f) && fs.readFileSync(path.join(distDir, f), "utf8").includes(needle));
@@ -217,8 +255,16 @@ export function patchTelegram(distDir, { experienceSource }) {
   const lineImport = progressLineImport(distDir);
   const dispatch = findChunk(distDir, /^bot-message-[\w-]+\.js$/u, "async function runTelegramDispatchTurn(turn)");
   const ingress = findChunk(distDir, /^telegram-ingress-drain-factory-[\w-]+\.js$/u, "bot.use(botRuntime.sequentialize(getTelegramSequentialConstraints));");
+  const helpers = findChunk(distDir, /^helpers-[\w-]+\.js$/u, "function resolveTelegramCommandAuthorization(params)");
+  const nativeDispatch = findChunk(distDir, /^bot-native-command-dispatch-[\w-]+\.js$/u, "async function resolveTelegramCommandAuth(params)");
+  const nativeBuiltins = findChunk(distDir, /^bot-native-command-builtins-[\w-]+\.js$/u, "async function executeTelegramBuiltinCommand(params)");
   const changed = {};
-  for (const [file, fn] of [[dispatch, patchDispatchChunk], [ingress, patchIngressChunk]]) {
+  for (const [file, fn] of [
+    [dispatch, patchDispatchChunk], [ingress, patchIngressChunk],
+    [helpers, (s) => apply(s, commandTextReplacements.helpers, "helpers")],
+    [nativeDispatch, (s) => apply(s, commandTextReplacements.nativeDispatch, "native dispatch")],
+    [nativeBuiltins, (s) => apply(s, commandTextReplacements.nativeBuiltins, "native builtins")],
+  ]) {
     const p = path.join(distDir, file);
     const before = fs.readFileSync(p, "utf8");
     const after = fn(before, callImport, lineImport);
