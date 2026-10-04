@@ -53,3 +53,17 @@
 二次挂断错误按真实运行源码定位：正常 client-tool-only 结束可返回 `payloads: undefined`，旧 registry 却只接受数组。修复只接纳已配对真实工具事件和原 host receipt、同 session、成功 tool_calls 及唯一零参数 end-tool 终态，错误、取消和外来终态仍拒绝。拒绝原因保留日志与原 run 诊断，不再追加一段失败口播。
 
 另设独立同 run 终态检查：原工具接受之后、原关闭之前，generic consult 必须唯一正常结束，不能有二次错误；原工具、告别和关闭分别判断。旧 0a capture 在此检查仍失败。统一构建后 34 个文件的 642 项本地检查通过；下一新 Candidate 才验证实际模型与媒体路径。
+
+## 72e20ef 的独立确认取消结果
+
+新启动器已实际绑定唯一新 Candidate，核对真实 Mac CLI、远端 owner、176 个冻结输入及 23 个 overlay 后才开始原 H5/WebRTC 语音。这轮已结束，receipt 保持 FAIL；自己的 unit 已读回 not-found / inactive / MainPID=0，目录不存在，共享 Gateway PID 及 runtime 保持。
+
+后台实际调用 `date; sleep 60; date`，core 返回真实确认挑战并阻止执行。用户要求先等待再读时间、不要增加其他步骤；原 selector 正确拒绝了多出的起始 date，因此没有注入确认 USER，也没有进入 pending、取消或 OS 退出路径。不能把启动器成功当作取消通过。原语音还被分成两条 USER，后半条的两个委派片段不包含完整目标；上下文仍让后台读到了等待要求，但没有完整输入收束的证明。保留原输入与失败，不凭时间相近合并不同 USER。
+
+通用执行契约进一步明确：限定步骤时保持用户指定顺序，不自行增加前置采样、诊断或重复动作。必要额外动作须说明实际前置条件并核对已有授权。新增入口回归只验证完整用户约束原样送到后台，不伪造模型执行或确认。
+
+原最终观测另有一次 149ms mic 采样缺口，receiver 同处也有 184ms 缺口；所有 connected 帧仍为原 live / enabled sender。缺口横跨大快照之后的采样，关闭前后边界正常。取证时整份 CDP 返回和截图产生共同主线程负担是强推断，不能由此断言实际麦克风停发或物理回声已解决。原 100ms 门槛及该 FAIL 保留；综合场景也需复用原始前缀分页、独立冻结时钟，关闭前不为制作截图延迟原挂断动作。
+
+独立执行真实 core 投射函数另发现一个终态缺口：tool timeout 和 compaction 也可返回 undefined payload、aborted=false、tool_calls，实际 liveness 分别为 blocked / paused。新增分支现仅接受实际正常的 working 状态；真实函数投射负回归拒绝 blocked、paused、abandoned、未知或缺失状态，已有 Array 路径保留。旧 72 投射失败独立记录，不追改为成功；修复仍须新真实自然挂断样本验证。
+
+本轮后续补丁统一构建后，34 文件、649 项本地检查通过。综合观察器保持全部原始前缀、每次新 header 与原关闭证据，截图在原关闭尝试后保存，不能称该图为通话中布局。新的模型执行、确认取消及自然挂断结果继续单独验证。

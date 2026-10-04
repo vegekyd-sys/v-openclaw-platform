@@ -742,13 +742,41 @@ test('same-page incremental reads and actual full snapshot wrapper reject a reus
  });
  await assert.rejects(readBoundedProbeSnapshot(async expression=>expression===SNAPSHOT_PAGED_HEADER_EXPRESSION?header:
   structuredClone(vm.runInContext(expression,context)),{previous:initial}),/Fresh browser snapshot header required/);
- const source=readFileSync(new URL('./call-lifecycle-smoke.mjs',import.meta.url),'utf8');
+ for(const runner of ['call-lifecycle-smoke.mjs','native-smoke.mjs']) {
+  const source=readFileSync(new URL('./'+runner,import.meta.url),'utf8');
+  const from=source.indexOf('async function snapshot(full=false){'),to=source.indexOf('\nasync function waitFor(',from);
+  assert(from>=0&&to>from,'Execute the actual full snapshot wrapper');
+  const run=vm.runInNewContext('('+source.slice(from,to)+')',{
+   assert,readBoundedProbeSnapshot:async()=>initial,evaluate:()=>{},snapshotCache:initial,browserTimeOrigin:1000,lastState:null,
+  });
+  await assert.rejects(run(true),/Full snapshot cannot reuse an old browser header/);
+ }
+});
+
+test('actual native snapshot keeps every original raw row in its prefix cache while polling and full receipts use fresh bounded headers',async()=>{
+ const source=readFileSync(new URL('./native-smoke.mjs',import.meta.url),'utf8');
  const from=source.indexOf('async function snapshot(full=false){'),to=source.indexOf('\nasync function waitFor(',from);
- assert(from>=0&&to>from,'Execute the actual full snapshot wrapper');
- const run=vm.runInNewContext('('+source.slice(from,to)+')',{
-  assert,readBoundedProbeSnapshot:async()=>initial,evaluate:()=>{},snapshotCache:initial,browserTimeOrigin:1000,lastState:null,
- });
- await assert.rejects(run(true),/Full snapshot cannot reuse an old browser header/);
+ assert(from>=0&&to>from);
+ const probe={...Object.fromEntries(SNAPSHOT_ARRAY_FIELDS.map(key=>[key,[]])),pcs:[]};
+ probe.micFrames=Array.from({length:137},(_,id)=>({id,at:1000+id*50}));
+ probe.audioFrames=Array.from({length:137},(_,id)=>({id,at:1000+id*50}));
+ const browser=vm.createContext({__candidateLiveProbe:probe,performance:{timeOrigin:1000},
+  document:{getElementById:()=>({}),body:{dataset:{callState:'connected'}}}});
+ const pages=[],reads=[];
+ const evaluate=async expression=>{const value=structuredClone(vm.runInContext(expression,browser));
+  if(Array.isArray(value)){pages.push(value.length);assert(value.length<=32,'No original array is returned as one large CDP object');}
+  return value;};
+ const context={assert,evaluate,snapshotCache:null,lastState:null,
+  readBoundedProbeSnapshot:async(evaluate,options)=>{reads.push(options.previous);return readBoundedProbeSnapshot(evaluate,options);}};
+ const snapshot=vm.runInNewContext('('+source.slice(from,to)+')',context);
+ const first=await snapshot();assert.equal(first.micFrames.length,80);assert.equal(context.snapshotCache.micFrames.length,137);
+ probe.micFrames.push({id:137,at:7850});probe.audioFrames.push({id:137,at:7850});
+ const second=await snapshot();assert.equal(second.micFrames.at(-1).id,137);assert.equal(context.snapshotCache.micFrames.length,138);
+ const full=await snapshot(true);assert.equal(full.micFrames.length,138);assert.equal(full.audioFrames.length,138);
+ assert.deepEqual(full.micFrames.map(row=>row.id),Array.from({length:138},(_,id)=>id));
+ assert(full.duplexSnapshotGeneration>second.duplexSnapshotGeneration&&second.duplexSnapshotGeneration>first.duplexSnapshotGeneration);
+ assert.equal(reads[0],null);assert.equal(reads[1].micFrames.length,137);assert.equal(reads[2],null);
+ assert.equal(Math.max(...pages),32);assert.equal(full.snapshotCompletedClock,'collector-wall');
 });
 
 function inputConvergenceFixture() {
@@ -817,6 +845,65 @@ test('header-time input convergence keeps stale, future, missing, incomplete and
   assert.equal(result.proof,null);assert.equal(result.check.passed,false);assert.equal(result.check.details.strictFailurePreserved,true);
   assert.equal(result.check.details.failureDoesNotSkipRemainingLifecycleObservations,true);
  }
+});
+
+async function actualNativeInputConverged(state,input) {
+ const source=readFileSync(new URL('./native-smoke.mjs',import.meta.url),'utf8');
+ const from=source.indexOf('async function convergeInputTurn(input,pcIndex,label) {'),to=source.indexOf('\nconst audible=',from);
+ assert(from>=0&&to>from,'Execute the actual native USER convergence observer');
+ const checks=[];
+ const run=vm.runInNewContext('('+source.slice(from,to)+')',{
+  assert,snapshot:async full=>{assert.equal(full,true);return state;},assessIndependentInputConvergence,
+  waitFor:async(predicate,label,max)=>{assert.equal(max,15000);const proof=await predicate(state);if(!proof)throw Error(label+' deadline');return proof;},
+  Date:{now:()=>{throw Error('Collector clock cannot age a frozen browser prefix');}},
+  check:(name,passed,details)=>checks.push({name,passed,details}),
+ });
+ const proof=await run({done:Promise.resolve(),row:{...input,label:'original-clip'}},0,'actual-native-input-convergence');
+ return {proof,check:checks[0]};
+}
+test('actual native USER convergence uses header-time freshness and records receipt latency without accepting later business input state',async()=>{
+ const f=inputConvergenceFixture();f.state.snapshotCollectionLatencyMs=350;f.state.duplexSnapshotGeneration=9;
+ const result=await actualNativeInputConverged(f.state,f.input);
+ assert.equal(result.proof.turnId,'actual-full-user');assert.equal(result.proof.quietTo,2350);
+ assert.equal(result.check.details.observation.latestMicrophoneAgeMs,20);
+ assert.equal(result.check.details.observation.collectorCompletedAt,60000);
+ assert.equal(result.check.details.observation.collectionLatencyMs,350);
+ assert.equal(result.check.details.observation.snapshotGeneration,9);
+ assert.equal(result.check.details.observation.scope,'validation-clip-before-next-USER-injection');
+});
+test('actual native USER convergence cannot accept stale or future clocks, missing USER, an unfinished suffix or discontinuous microphone evidence',async()=>{
+ const changes=[
+  f=>f.state.snapshotObservedAt=2500,
+  f=>delete f.state.snapshotObservedAt,
+  f=>f.state.micFrames.at(-1).at=2400,
+  f=>f.state.events=[],
+  f=>f.state.events.push({pcIndex:0,type:'input_transcript.added',at:2150,text:'unfinished remaining tail'}),
+  f=>f.state.micFrames=f.state.micFrames.filter((_,i)=>i<4||i>6),
+  f=>f.state.micFrames[5].trackEnabled=false,
+  f=>f.state.micFrames=f.state.micFrames.slice(0,6),
+ ];
+ for(const change of changes){const f=inputConvergenceFixture();change(f);await assert.rejects(actualNativeInputConverged(f.state,f.input),/deadline/);}
+});
+test('actual native cleanup preserves the pre-close prefix and closes the original call before screenshot rendering or media export',async()=>{
+ const source=readFileSync(new URL('./native-smoke.mjs',import.meta.url),'utf8');
+ const from=source.indexOf('\n if(cdp){const preCloseFull='),to=source.indexOf('\n  const audio=await evaluate(',from);
+ assert(from>=0&&to>from,'Execute the actual cleanup path before media export');
+ const trace=[],owner={voiceSessionId:'original-voice'},checks=[];
+ let snapshots=0,stopped=false;
+ const run=vm.runInNewContext('(async()=>{'+source.slice(from,to)+'\n}})',{
+  cdp:{request:async method=>{assert(stopped,'The original call must close before screenshot rendering');trace.push(method);return {data:'cG5n'};}},
+  snapshot:async full=>{assert.equal(full,true);trace.push('snapshot-'+(++snapshots));return {api:snapshots===1?[]:[{route:'/api/close',status:200,request:{voiceSessionId:owner.voiceSessionId}}]};},
+  save:name=>trace.push('save-'+name),callOwners:new Map([[0,owner]]),checks,
+  stopCall:async index=>{assert.equal(index,0);assert(trace.includes('save-browser-pre-close-native-evidence.json'));trace.push('original-stop');stopped=true;},
+  check:(name,passed,details)=>{checks.push({name,passed,...details});},testCase:'comprehensive-long',lastState:null,lastHistory:{},toolEvents:[],
+  confirmationDiagnostics:()=>({}),diagnostics:()=>[],evaluate:async expression=>{assert(stopped);trace.push('dispose');},
+  fs:{writeFileSync:()=>trace.push('write-screenshot')},path:{join:()=>'/unused/h5.png'},base:'/unused',Buffer,
+ });
+ await run();
+ assert(trace.indexOf('original-stop')<trace.indexOf('Page.captureScreenshot'));
+ assert(trace.indexOf('snapshot-2')<trace.indexOf('Page.captureScreenshot'));
+ assert(trace.indexOf('save-browser-native-evidence.json')<trace.indexOf('Page.captureScreenshot'));
+ assert.equal(checks.find(c=>c.name==='complete-observation-through-original-close').passed,true);
 });
 
 function toolsFixture() {

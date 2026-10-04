@@ -7,7 +7,7 @@ import {spawn,spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {createPrivatePulseMicrophone} from './private-pulse.mjs';
-import {BROWSER_PROBE,SNAPSHOT_EXPRESSION} from './browser-probe.mjs';
+import {BROWSER_PROBE,readBoundedProbeSnapshot} from './browser-probe.mjs';
 import {parsePublicProgressDiagnostics,assessH5ProgressProvenance} from '../gpt-live-h5-provenance-evidence.mjs';
 import {parseCompleteTimestamps} from '../gpt-live-call-live-evidence.mjs';
 import {indexNativeToolPairs,mergeExactToolBodies,mergeSessionToolEvidence,extractExecDateFromPairs,continuousPlaybackQuiet,explicitSpokenOffsets,resolveNativeControlOwner,resolveCanonicalFinalTrace,toolResultSucceeded,isExactTwoPlusTwoReply,nativeCountRequestsEighty,hasOrderedCountBeginning,resolveOwnedChildExecPending,resolveOwnedBargeTerminal,resolveNativeTurnTranscriptWindow,assessCompletePlaybackWindow,assessDecodedPlaybackWindow,assessEarlySpeechBoundary,resolveEarlyPlaybackTail,assessNativeResponseDrain,assessIndependentInputConvergence,matchesConsumedConditionBatch,extractQueuedConditionResume} from './evidence.mjs';
@@ -36,7 +36,7 @@ const app=await fetch(new URL('app.js',url)).then(r=>r.arrayBuffer());assert.equ
 const deadline=Date.now()+Number(process.env.GPT_LIVE_H5_NATIVE_CASE_SECONDS??600)*1000;
 const token=String(config.gateway.auth.token).replace(/\$\{([^}]+)\}/gu,(_,key)=>{assert(process.env[key]);return process.env[key]});
 const scratch=fs.mkdtempSync(path.join(stateRoot,'tmp',testCase+'-'));fs.chmodSync(scratch,0o700);
-let pulse,chrome,chromeTemp,chromeStderr='',cdp,gateway,lastState,lastHistory={},currentSession,summary,cleanup,controlConfirmation;
+let pulse,chrome,chromeTemp,chromeStderr='',cdp,gateway,lastState,snapshotCache,lastHistory={},currentSession,summary,cleanup,controlConfirmation;
 const checks=[],sessionKeys=[],toolEvents=[],subscribedSessions=new Set(),callOwners=new Map(),speechPlaybackWindows=[];
 function hash(value){return createHash('sha256').update(value).digest('hex')}
 function save(name,value){fs.writeFileSync(path.join(base,name),JSON.stringify(value,null,2)+'\n',{mode:0o600});}
@@ -72,7 +72,10 @@ async function clickOriginalButton(id) {
  await cdp.request('Input.dispatchMouseEvent',{type:'mousePressed',x:rect.x,y:rect.y,button:'left',clickCount:1});
  await cdp.request('Input.dispatchMouseEvent',{type:'mouseReleased',x:rect.x,y:rect.y,button:'left',clickCount:1});
 }
-async function snapshot(full=false){const expression=full?SNAPSHOT_EXPRESSION:SNAPSHOT_EXPRESSION.replace('audioFrames:p.audioFrames,micFrames:p.micFrames','audioFrames:p.audioFrames.slice(-80),micFrames:p.micFrames.slice(-80)').replace('duplex:globalThis.__gptLiveDuplexDiagnostics??null','duplex:null');return lastState=await evaluate(expression);}
+async function snapshot(full=false){const state=await readBoundedProbeSnapshot(evaluate,{previous:full?null:snapshotCache});
+ if(state&&state.probeTimeOrigin===snapshotCache?.probeTimeOrigin)assert(state.duplexSnapshotGeneration>snapshotCache.duplexSnapshotGeneration,'Full snapshot cannot reuse an old browser header');
+ snapshotCache=state;
+ return lastState=full||!state?state:{...state,audioFrames:state.audioFrames.slice(-80),micFrames:state.micFrames.slice(-80),duplex:null};}
 async function waitFor(predicate,label,max=120000) {
  const until=Math.min(deadline,Date.now()+max);
  while(Date.now()<until){const state=await snapshot();const result=await predicate(state);if(result)return result;await sleep(250);}
@@ -161,9 +164,21 @@ async function convergeInputTurn(input,pcIndex,label) {
  const complete=await snapshot(true),speech=complete.micFrames.filter(f=>f.pcIndex===pcIndex&&
    f.at>=input.row.startedAt&&f.at<=input.row.completedAt&&f.rms>.02);
  const lastSpeechAt=speech.at(-1)?.at;assert(Number.isFinite(lastSpeechAt),'Original input microphone speech witness required');
- const result=await waitFor(s=>assessIndependentInputConvergence({events:s.events,micFrames:s.micFrames,pcIndex,
-   input:input.row,lastSpeechAt,observedAt:Date.now()}),label+' native user completion and continuous microphone quiet',15000);
- check('independent-input-convergence-'+input.row.label,true,{proof:result});return result;
+ let observation;
+ const result=await waitFor(s=>{
+  const observedAt=s?.snapshotObservedAt,microphone=(s?.micFrames??[]).filter(f=>f.pcIndex===pcIndex),latestMicAt=microphone.at(-1)?.at;
+  // The caller waits for the completed clip before its next independent USER
+  // injection. This proves the frozen browser prefix at its own header time;
+  // a slow transfer does not certify arbitrary later business input state.
+  const currentObservation={observedAt:observedAt??null,source:'browser-wall-at-frozen-prefix-header',scope:'validation-clip-before-next-USER-injection',
+   latestMicrophoneAt:latestMicAt??null,latestMicrophoneAgeMs:Number.isFinite(observedAt)&&Number.isFinite(latestMicAt)?observedAt-latestMicAt:null,
+   collectorCompletedAt:s?.snapshotCompletedAt??null,collectorCompletedClock:s?.snapshotCompletedClock??null,
+   collectionLatencyMs:s?.snapshotCollectionLatencyMs??null,snapshotGeneration:s?.duplexSnapshotGeneration??null};
+  if(!Number.isFinite(observedAt)||!Number.isFinite(currentObservation.latestMicrophoneAgeMs)||currentObservation.latestMicrophoneAgeMs<0)return null;
+  const proof=assessIndependentInputConvergence({events:s.events,micFrames:microphone,pcIndex,input:input.row,lastSpeechAt,observedAt});
+  if(proof)observation=currentObservation;return proof;
+ },label+' native user completion and continuous microphone quiet',15000);
+ check('independent-input-convergence-'+input.row.label,true,{proof:result,input:input.row,lastSpeechAt,observation});return result;
 }
 const audible=(s,from,to=Infinity,pcIndex=0)=>s.audioFrames.filter(f=>f.pcIndex===pcIndex&&f.at>=from&&f.at<=to&&f.digitalAudible);
 function check(name,passed,details={}){checks.push({name,passed:Boolean(passed),...details});}
@@ -636,7 +651,6 @@ try {
 finally {
  if(cdp){const preCloseFull=await snapshot(true).catch(()=>null);
   if(preCloseFull)save('browser-pre-close-native-evidence.json',preCloseFull);
-  const screenshot=await cdp.request('Page.captureScreenshot',{format:'png'}).catch(()=>null);if(screenshot)fs.writeFileSync(path.join(base,'h5.png'),Buffer.from(screenshot.data,'base64'),{mode:0o600});
    for(const [pcIndex] of callOwners)if(!checks.some(c=>c.name==='end-call-'+pcIndex&&c.passed))await stopCall(pcIndex).catch(error=>check('finally-end-call-'+pcIndex,false,{message:error.message}));
   const postCloseFull=await snapshot(true).catch(()=>null);
   check('complete-observation-through-original-close',Boolean(postCloseFull)&&[...callOwners.values()].every(owner=>
@@ -648,6 +662,10 @@ finally {
    {attempted:false,status:'no exact native exec60 confirmation challenge selected',syntheticGrant:false});
   save('voice-confirmation-core-diagnostics.json',confirmationDiagnostics());
   save('browser-native-evidence.json',lastState);save('backend-history.json',lastHistory);save('backend-tool-events.json',toolEvents);save('native-public-diagnostics.json',diagnostics());
+  // Screenshot rendering must not hold a live microphone/receiver open after
+  // their original pre-close evidence has been frozen. h5.png is the actual
+  // page after the original cleanup attempt, not a connected-layout artifact.
+  const screenshot=await cdp.request('Page.captureScreenshot',{format:'png'}).catch(()=>null);if(screenshot)fs.writeFileSync(path.join(base,'h5.png'),Buffer.from(screenshot.data,'base64'),{mode:0o600});
   await evaluate(`globalThis.__candidateLiveProbe.dispose()`).catch(()=>{});
   const audio=await evaluate(`(async()=>{const p=globalThis.__candidateLiveProbe,rows=[];for(const recording of p.recordings){const blob=new Blob(recording.chunks,{type:'audio/webm;codecs=opus'}),bytes=new Uint8Array(await blob.arrayBuffer());let binary='';for(let at=0;at<bytes.length;at+=16384)binary+=String.fromCharCode(...bytes.subarray(at,at+16384));rows.push({pcIndex:recording.pcIndex,startedAt:recording.startedAt,blobBytes:blob.size,base64:btoa(binary),error:recording.error??null});}return rows})()`).catch(()=>[]);
   const decoded=[];for(const recording of audio){const prefix='native-'+recording.pcIndex,webm=path.join(base,prefix+'.webm');fs.writeFileSync(webm,Buffer.from(recording.base64,'base64'),{mode:0o600});const ff=spawnSync('/usr/bin/ffmpeg',['-v','error','-i',webm,'-f','s16le','-ar','48000','-ac','1','pipe:1'],{maxBuffer:80*1024**2});let rms=0,peak=0;if(ff.status===0){let sum=0;for(let at=0;at+1<ff.stdout.length;at+=2){const n=ff.stdout.readInt16LE(at);sum+=n*n;peak=Math.max(peak,Math.abs(n));}rms=Math.sqrt(sum/(ff.stdout.length/2));fs.writeFileSync(path.join(base,prefix+'.pcm'),ff.stdout,{mode:0o600});}decoded.push({pcIndex:recording.pcIndex,startedAt:recording.startedAt,blobBytes:recording.blobBytes,decodeSuccess:ff.status===0,pcmBytes:ff.stdout?.length??0,pcmSha256:ff.status===0?hash(ff.stdout):null,durationSeconds:(ff.stdout?.length??0)/96000,rms,peak});}

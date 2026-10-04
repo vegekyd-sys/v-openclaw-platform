@@ -28,22 +28,41 @@ const harnessSource = patchGptLiveContinuationHarness(patchGptLiveConsultProgres
 const actualTerminalSource = read("./fixtures/gpt-live-call-lifecycle/embedded-agent-complete-run-20261004.js");
 assert.equal(createHash("sha256").update(actualTerminalSource).digest("hex"),
   "e107149d6f9049f1f25d5c5f2a00ed137453dac49a419ebe68ceed5e8c3cf84b");
+// These liveness helpers execute unchanged from the captured native Candidate
+// builtin. The public terminal projection is supplied at its module boundary;
+// no successful liveness state is stubbed into completeEmbeddedRun.
+const actualBuiltinSource = read("./fixtures/gpt-live-voice-tool-order/builtin-openclaw-zQV8Wwjr.js");
+assert.equal(createHash("sha256").update(actualBuiltinSource).digest("hex"),
+  "f121be943b9694cbc73a00529a38235df4f6ebdb652208fa103c44b7a8ca0e80");
+const actualBuiltinFunction = (name, end, expectedSha) => {
+  const from = actualBuiltinSource.indexOf(`function ${name}(`);
+  assert(from >= 0); const to = actualBuiltinSource.indexOf(end, from); assert(to > from);
+  const source = actualBuiltinSource.slice(from, to);
+  assert.equal(createHash("sha256").update(source).digest("hex"), expectedSha);
+  return source;
+};
+const actualLivenessSource = actualBuiltinFunction("resolveRunLivenessState", "//#endregion",
+  "55deccd79d4ed7590100f51faba184416c578fa77c453d0ddf17dcf183d39536");
+const actualCurrentAssistantSource = actualBuiltinFunction("resolveCurrentAttemptAssistant", "/** Uses current-attempt evidence",
+  "2b11945d6a925fef005e3781f11ea35ed0039ac93d3492f1edf2c42287e5392f");
 async function actualClientToolTerminal({ outcome = { status: "ok" }, calls = [{ name: "openclaw_end_call", params: {} }],
-  sessionId = "session", yielded = false } = {}) {
+  sessionId = "session", yielded = false, terminal = {}, currentAssistant, incompleteTurnText } = {}) {
   const context = vm.createContext({ Date, JSON, randomBytes: () => Buffer.from("1234567890"),
     isEmbeddedRunTerminalAbort: value => value.status === "aborted",
     isEmbeddedRunTerminalTimeout: value => value.status === "timeout",
     classifyAgentRunTerminalOutcome: value => value.status === "error" ? "failure" : value.status,
-    projectAgentRunAttemptTerminal: terminal => ({ promptError: terminal.promptError }),
-    formatErrorMessage: String, hasYieldContinuationEvidence: () => false, resolveRunLivenessState: () => "completed",
+    projectAgentRunAttemptTerminal: terminal => ({ promptError: terminal.promptError,
+      promptErrorSource: terminal.promptErrorSource, timedOutDuringCompaction: terminal.timedOutDuringCompaction }),
+    formatErrorMessage: String, hasYieldContinuationEvidence: () => false,
     log$3: { debug() {}, warn() {} }, markEmbeddedRunAuthProfileSuccess() {}, reportEmbeddedRunSuccessfulAuthBinding() {},
     shouldContinueInteractiveAcceptedSessionSpawns: () => false, AGENT_LANE_SUBAGENT: "subagent", YIELD_DIAGNOSTIC_TEXT: "yield diagnostic",
     resolveFinalAssistantVisibleText: () => undefined, hasAttemptTerminalState: () => true,
     copyAttemptDeliveryState: () => ({}),
   });
-  vm.runInContext(actualTerminalSource, context);
+  vm.runInContext(actualCurrentAssistantSource + actualLivenessSource + actualTerminalSource, context);
   const projected = await context.completeEmbeddedRun({
-    terminalState: { outcome }, attempt: { terminal: {}, assistantTexts: [], clientToolCalls: calls, yieldDetected: yielded },
+    terminalState: { outcome }, attempt: { terminal, assistantTexts: [], clientToolCalls: calls, yieldDetected: yielded,
+      currentAttemptAssistant: currentAssistant }, incompleteTurnText,
     runParams: { runId: "parent", sessionId, lane: "voice", config: {} }, startedAtMs: Date.now(),
     payloadsForTerminalPath: [], payloadCount: 0, agentMeta: { sessionId }, reportedModelRef: { provider: "test", model: "test" },
     traceAttempts: [], traceAttemptUsesFallback: () => false, contextRecoveryState: { autoCompactionCount: 0 },
@@ -146,6 +165,7 @@ test("actual core client-tool-only terminal omits payloads and settles the exact
   const terminal = await actualClientToolTerminal();
   assert.equal(terminal.payloads, undefined);
   assert.equal(terminal.meta.aborted, false);
+  assert.equal(terminal.meta.livenessState, "working");
   assert.equal(terminal.meta.stopReason, "tool_calls");
   assert.equal(terminal.meta.pendingToolCalls.length, 1);
   assert.notEqual(terminal.meta.pendingToolCalls[0].id, "call_actual", "public random pending id is never the tool witness");
@@ -157,6 +177,42 @@ test("actual core client-tool-only terminal omits payloads and settles the exact
   assert.equal(Object.hasOwn(settled, "text"), false);
   assert.equal(f.accepted.length, 1);
   assert.equal(f.listeners.size, 0); assert.deepEqual(f.cleanups, ["initial"]);
+});
+
+test("actual core client-tool timeout, compaction and failed assistant projections cannot settle accepted end as success", async () => {
+  for (const [name, options, expectedLiveness] of [
+    ["zero-payload tool timeout", { outcome: { status: "timeout" } }, "blocked"],
+    ["compaction timeout", { outcome: { status: "timeout" }, terminal: { timedOutDuringCompaction: true } }, "paused"],
+    ["compaction-owned error source", { terminal: { promptErrorSource: "compaction" } }, "paused"],
+    ["current assistant error", { currentAssistant: { stopReason: "error" } }, "blocked"],
+    ["incomplete turn", { incompleteTurnText: "actual incomplete-turn failure" }, "abandoned"],
+  ]) {
+    const terminal = await actualClientToolTerminal(options);
+    assert.equal(terminal.meta.livenessState, expectedLiveness, name);
+    assert.equal(terminal.meta.aborted, false, name);
+    if (expectedLiveness !== "abandoned") {
+      assert.equal(terminal.payloads, undefined, name); assert.equal(terminal.meta.stopReason, "tool_calls", name);
+      assert.equal(terminal.meta.pendingToolCalls[0].name, "openclaw_end_call", name);
+    } else assert.equal(terminal.meta.error.kind, "incomplete_turn", name);
+    const f = fixture(); f.start(); f.result(); f.owner.finishInitial(terminal);
+    await assert.rejects(f.owner.wait(), /changed before its terminal/, name);
+    assert.equal(f.accepted.length, 1, "acceptance remains visible; failed terminal is not success");
+    assert.equal(f.listeners.size, 0, name);
+  }
+});
+
+test("undefined end terminal accepts only the actual working liveness contract and preserves existing array terminals", async () => {
+  for (const state of [undefined, null, "completed", "success", "idle", "blocked", "paused", "abandoned"]) {
+    const terminal = await actualClientToolTerminal(); terminal.meta.livenessState = state;
+    const f = fixture(); f.start(); f.result(); f.owner.finishInitial(terminal);
+    await assert.rejects(f.owner.wait(), /changed before its terminal/, String(state));
+  }
+  // This new guard is deliberately confined to omitted payloads. The existing
+  // successful array contract does not acquire a new liveness requirement.
+  for (const meta of [{}, { livenessState: "working", aborted: false }]) {
+    const f = fixture(); f.start(); f.result(); f.owner.finishInitial({ meta, payloads: [] });
+    assert.equal((await f.owner.wait()).callControl.backendToolCallId, "call_actual");
+  }
 });
 
 test("canonical terminal metadata cannot authorize an unobserved end tool or rescue rejected or foreign owners", async () => {

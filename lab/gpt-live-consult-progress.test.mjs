@@ -226,6 +226,31 @@ test("execution and subject checks remain conditional and preserve authorization
   assert.match(prompt, /If work is still running in accepted child tasks, use the actual supported yield\/continuation mechanism/);
 });
 
+test("captured consult delivers the full original ordered request without adding sampling steps or granting its conditional confirmation", async () => {
+  // Verbatim frozen cancel-task text. The callback is only a captured-model
+  // entry fixture: no command, confirmation grant or native input is created.
+  const question = "请在后台先等待六十秒，再读取当前完整日期和时间，包括时区。执行命令只用 sleep 和 date，不要加 echo，不加分隔线，也不要做其他步骤。如果这个操作需要我的确认，请先问我；我确认后再开始。等待期间继续听我说话。";
+  const fixtureReply = "这是契约交付测试结果，没有执行动作或产生确认。";
+  let capturedPrompt;
+  const runtime = createHarnessRuntime({
+    args: { question },
+    runEmbeddedAgent: async options => {
+      capturedPrompt = options.prompt;
+      return { payloads: [{ text: fixtureReply }] };
+    },
+  });
+  assert.deepEqual(await runtime.run(), { text: fixtureReply });
+  assert.equal(capturedPrompt.slice(capturedPrompt.lastIndexOf("User request:\n")), `User request:\n${question}`);
+  assert.match(capturedPrompt, /前一步真实完成后才开始下一步，不并行替代/u);
+  assert.match(capturedPrompt, /用户限定步骤、命令或输出范围时，只执行已授权且完成这些要求所需的动作/u);
+  assert.match(capturedPrompt, /不自行加入前置采样、额外诊断或重复步骤/u);
+  assert.match(capturedPrompt, /若真实前置条件使新增动作成为必要，说明该条件和动作的依据，并先核对是否在现有授权内/u);
+  assert.match(capturedPrompt, /VOICE_CONFIRMATION_REQUIRED, the action was not executed/);
+  assert.match(capturedPrompt, /wait for the core-validated explicit spoken confirmation/);
+  // Actual model command planning and the real challenged USER/core grant
+  // remain separate Candidate gates; this fixture cannot close either one.
+});
+
 test("the actual consult contract distinguishes source examples and conditional advice from verified deployment state, and preserves their returned text", async () => {
   const question = "只读所给接口文档，说明示例模型和有条件的迁移建议；不要检查部署，也不要执行迁移。";
   const context = '来源片段：示例代码 model: "example-model-v3"；If still on the preview interface, migrate to the stable interface. 未提供当前接入配置或迁移记录。';

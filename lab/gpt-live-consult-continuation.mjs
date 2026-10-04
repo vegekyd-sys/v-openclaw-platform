@@ -217,8 +217,11 @@ export function createGptLiveConsultContinuationRegistry(deps) {
             emptyEndArgs = Boolean(args && typeof args === "object" && !Array.isArray(args) && Object.keys(args).length === 0);
           } catch {}
         }
+        // The actual core calls normal completed runs "working". An omitted
+        // payload can also be a blocked timeout or paused compaction, so only
+        // that known healthy projection may enter this narrow success path.
         const clientToolOnlyTerminal = result?.payloads === undefined && result?.meta?.aborted === false &&
-          result.meta.stopReason === "tool_calls" && emptyEndArgs &&
+          result.meta.livenessState === "working" && result.meta.stopReason === "tool_calls" && emptyEndArgs &&
           result.meta.agentMeta?.sessionId === binding.sessionId && !result.meta.continuationPending &&
           !result.meta.failureSignal && !result.meta.terminalToolFailure;
         if (!result || !(Array.isArray(result.payloads) || clientToolOnlyTerminal) || result?.meta?.error ||
