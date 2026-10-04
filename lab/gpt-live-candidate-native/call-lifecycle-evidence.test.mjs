@@ -6,6 +6,8 @@ import path from 'node:path';
 import os from 'node:os';
 import vm from 'node:vm';
 import {captureOwnedBrowserDirectory,removeOwnedBrowserDirectory} from './private-pulse.mjs';
+import {BROWSER_PROBE,SNAPSHOT_ARRAY_FIELDS,readBoundedProbeSnapshot} from './browser-probe.mjs';
+import {assessDecodedPlaybackWindow} from './evidence.mjs';
 import {resolveEndCallToolWitness,resolveLifecycleUserTurn,assessLifecycleSpeech,hasLifecyclePlaybackTail,assessLifecycleFarewell,assessProactiveGreeting,assessAutomaticEnd,
   extractLifecycleToolPairs,resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult,readLifecycleHistoryOrRetry} from './call-lifecycle-evidence.mjs';
 
@@ -463,6 +465,140 @@ test('original app drain with a 700ms observer phase tail retains core but not s
   s=>s.browserTimeOrigin=null,s=>s.audioFrames[4].paused=true]){
   const value=structuredClone(state);change(value);assert.equal(assessLifecycleFarewell(value,{pcIndex:0,tool,before:2275}),null);
  }
+});
+
+test('genuine terminal and pre-release player boundary observations complete the same strict750ms tail',()=>{
+ const state=speechState(),tool=resolveEndCallToolWitness(witness());
+ // The timer phase begins 49 ms after terminal and ends 35 ms before release.
+ state.audioFrames=state.audioFrames.filter(f=>f.at<1500);
+ for(let at=1549;at<=2249;at+=50)state.audioFrames.push(frame(at,0));
+ state.duplex.transitions[0].at=1284;
+ state.pcStates[0]='closed';state.remoteAudio.attached=false;
+ state.api=[{route:'/api/close',status:200,requestedAt:2310,request:{voiceSessionId:'voice-1'}}];
+ const old=assessLifecycleFarewell(state,{pcIndex:0,tool,before:2310});
+ assert(old);assert.equal(old.strictTailPassed,false,'A timer-only700ms phase remains FAIL');
+ state.audioFrames.push({...frame(1500,0),sampleSource:'native-assistant-terminal'},
+   {...frame(2284,0),sampleSource:'original-pc-close-before-release'});
+ const proof=assessLifecycleFarewell(state,{pcIndex:0,tool,before:2310});
+ assert.equal(proof.strictTailPassed,true);assert.equal(proof.quiet.durationMs,784);
+ assert.equal(proof.quiet.from,1500);assert.equal(proof.window.to,2284);
+ assert.equal(assessAutomaticEnd(state,{pcIndex:0,owner:{voiceSessionId:'voice-1'},tool,farewell:proof}).strictTailPassed,true);
+ // The original encoded recording covers release, but not a later API call.
+ // Neither silent padding nor changing the PCM coverage gate is necessary.
+ const pcm=Buffer.alloc((2304-1000)*96);for(let at=0;at<pcm.length;at+=2)pcm.writeInt16LE(100,at);
+ assert.equal(assessDecodedPlaybackWindow(pcm,{...old.window,recordingStartedAt:1000}),null);
+ assert.equal(assessDecodedPlaybackWindow(pcm,{...proof.window,recordingStartedAt:1000}).coversWholeWindow,true);
+ for(const change of [s=>s.audioFrames.at(-1).paused=true,s=>s.audioFrames.at(-1).connected='closed',
+   s=>s.audioFrames.at(-1).trackState='ended',s=>s.audioFrames.at(-1).at=2249,
+   s=>s.audioFrames=s.audioFrames.map(f=>({...f,rtp:[]}))]){
+  const bad=structuredClone(state);change(bad);
+  assert.equal(assessLifecycleFarewell(bad,{pcIndex:0,tool,before:2310})?.strictTailPassed===true,false);
+ }
+});
+
+function browserProbeFixture() {
+ let clock=1000,nextTimer=1,level=0;const timers=new Map(),statsRequests=[],closeArgs=[],stopArgs=[];
+ class Track {
+  constructor(id){this.id=id;this.kind='audio';this.readyState='live';this.enabled=true;this.muted=false;}
+  stop(...args){stopArgs.push(args);this.readyState='ended';}
+  getSettings(){return {sampleRate:48000,echoCancellation:true};}
+ }
+ class Stream {constructor(tracks){this.tracks=tracks;}getAudioTracks(){return this.tracks;}getTracks(){return this.tracks;}}
+ class RTC extends EventTarget {
+  constructor(){super();this.connectionState='connected';this.senderTrack=null;}
+  getSenders(){return this.senderTrack?[{track:this.senderTrack}]:[];}
+  getStats(){statsRequests.push({at:clock,state:this.connectionState});return Promise.resolve(new Map([['actual',{id:'actual',timestamp:clock,type:'inbound-rtp',kind:'audio',packetsReceived:clock}]]));}
+  createDataChannel(){return new EventTarget();}
+  close(...args){closeArgs.push(args);this.connectionState='closed';}
+ }
+ class Context {
+  constructor(){this.state='running';}
+  createMediaStreamSource(){return {connect(){}};}
+  createAnalyser(){return {fftSize:2048,getFloatTimeDomainData(samples){samples.fill(level);}};}
+  resume(){return Promise.resolve();}close(){this.state='closed';return Promise.resolve();}
+ }
+ class Recorder extends EventTarget {constructor(){super();this.state='inactive';}start(){this.state='recording';}stop(){this.state='inactive';this.dispatchEvent(new Event('stop'));}}
+ const mic=new Track('original-mic'),receiver=new Track('original-receiver'),audio={muted:false,paused:false,volume:1,currentTime:1,srcObject:new Stream([receiver])};
+ const context=vm.createContext({Event,EventTarget,MediaStreamTrack:Track,MediaStream:Stream,RTCPeerConnection:RTC,AudioContext:Context,MediaRecorder:Recorder,
+  Date:class extends Date {static now(){return clock;}},navigator:{mediaDevices:{getUserMedia:async()=>new Stream([mic])}},
+  setInterval:fn=>{const id=nextTimer++;timers.set(id,fn);return id;},clearInterval:id=>timers.delete(id),
+  HTMLMediaElement:class {play(){return Promise.resolve();}},EventSource:class extends EventTarget {},fetch:async()=>({status:200}),
+  document:{addEventListener(){},getElementById:id=>id==='remoteAudio'?audio:null},location:{href:'http://127.0.0.1:1/',origin:'http://127.0.0.1:1'},URL});
+ vm.runInContext(BROWSER_PROBE,context);
+ const pc=new context.RTCPeerConnection();pc.senderTrack=mic;
+ const trackEvent=new Event('track');Object.defineProperty(trackEvent,'track',{value:receiver});pc.dispatchEvent(trackEvent);
+ const channel=pc.createDataChannel();
+ return {context,pc,mic,receiver,audio,timers,statsRequests,closeArgs,stopArgs,
+  at(value){clock=value;},level(value){level=value;},tick(){for(const timer of [...timers.values()])timer();},
+  wire(raw){const event=new Event('message');Object.defineProperty(event,'data',{value:JSON.stringify(raw)});channel.dispatchEvent(event);}};
+}
+test('actual additive browser probe samples terminal/PC/track release synchronously and never delays native release',async()=>{
+ const f=browserProbeFixture();await f.context.navigator.mediaDevices.getUserMedia({audio:true});
+ const p=f.context.__candidateLiveProbe;
+ f.at(1500);f.wire({type:'turn.done',turn:{id:'actual',role:'assistant',transcript:'再见。'}});
+ assert.equal(p.events.length,1);assert.equal(p.events[0].type,'turn.done');
+ assert.equal(p.audioFrames.at(-1).at,1500);assert.equal(p.audioFrames.at(-1).sampleSource,'native-assistant-terminal');
+ f.at(2250);f.tick();f.at(2284);f.mic.stop('real-stop');f.pc.close('real-close');
+ assert.equal(f.pc.connectionState,'closed');assert.equal(f.mic.readyState,'ended');
+ assert.deepEqual(f.closeArgs,[['real-close']]);assert.deepEqual(f.stopArgs,[['real-stop']]);
+ assert.equal(p.audioFrames.at(-1).sampleSource,'original-pc-close-before-release');
+ assert.equal(p.audioFrames.at(-1).trackState,'live');assert.equal(p.audioFrames.at(-1).connected,'connected');
+ assert.equal(p.micFrames.at(-1).sampleSource,'original-microphone-stop-before-release');
+ assert.equal(p.micFrames.at(-1).trackState,'live');assert.equal(p.micFrames.at(-1).senderTrackId,'original-mic');
+ assert.equal(f.statsRequests.at(-1).state,'connected');assert.equal(f.timers.size,0);
+ const last=p.audioFrames.length;f.at(2400);f.tick();assert.equal(p.audioFrames.length,last,'No closed-context timer frames substitute for live tail');
+ await Promise.resolve();assert.equal(p.audioFrames.at(-1).rtp[0].id,'actual');
+ assert.equal(p.audioFrames.at(-1).statsRequestedAt,2284);assert.equal(p.audioFrames.at(-1).statsObservedAt,2400,'Real delayed stats clock is retained');
+ assert.equal(p.observerStops.length,2);assert.equal(p.observerErrors.length,0);
+});
+test('an observer sampling exception is recorded while the original track and PC still release',async()=>{
+ const f=browserProbeFixture();await f.context.navigator.mediaDevices.getUserMedia({audio:true});
+ for(const owned of f.context.__candidateLiveProbe.resources)owned.sample=()=>{throw Error('observer failed');};
+ f.mic.stop();f.pc.close();assert.equal(f.pc.connectionState,'closed');assert.equal(f.mic.readyState,'ended');
+ assert.equal(f.context.__candidateLiveProbe.observerErrors.length,2);
+ assert.equal(f.timers.size,0);
+});
+test('full observer snapshots retrieve every frozen raw prefix in bounded pages while sampling can continue',async()=>{
+ const arrays=Object.fromEntries(SNAPSHOT_ARRAY_FIELDS.map(key=>[key,Array.from({length:137},(_,i)=>({id:key+'-'+i,raw:'actual'+i}))]));
+ const probe={...arrays,pcs:[]},duplex={events:Array.from({length:75},(_,id)=>({id})),transitions:[{type:'actual'}],closed:false};
+ const context=vm.createContext({__candidateLiveProbe:probe,__gptLiveDuplexDiagnostics:duplex,
+  performance:{timeOrigin:1000},
+  document:{getElementById:id=>id==='badge'?{textContent:'通话中'}:{},body:{dataset:{callState:'connected'}}}});
+ let reads=0,maxRows=0;
+ const result=await readBoundedProbeSnapshot(async expression=>{
+  const value=structuredClone(vm.runInContext(expression,context));
+  if(Array.isArray(value)){maxRows=Math.max(maxRows,value.length);reads++;probe.audioFrames.push({id:'sampled-during-page-'+reads});}
+  return value;
+ },{pageSize:32});
+ assert.equal(maxRows,32);assert.equal(result.audioFrames.length,137);assert(probe.audioFrames.length>137);
+ for(const field of SNAPSHOT_ARRAY_FIELDS)assert.deepEqual(result[field],arrays[field].slice(0,137));
+ assert.deepEqual(result.duplex.events,duplex.events);assert.equal(result.duplex.closed,false);
+ assert.equal(result.snapshotSource,'bounded-pages-of-frozen-original-observer-prefix');
+ await assert.rejects(readBoundedProbeSnapshot(async()=>null,{pageSize:65}),/page size/);
+ await assert.rejects(readBoundedProbeSnapshot(async expression=>expression.includes('arrayCounts:')?
+  {arrayCounts:Object.fromEntries(SNAPSHOT_ARRAY_FIELDS.map(key=>[key,1])),duplex:null}:[]),/prefix changed/);
+});
+test('incremental lifecycle polls bound every CDP page and refresh late fields; final full reads reobserve every raw row',async()=>{
+ const arrays=Object.fromEntries(SNAPSHOT_ARRAY_FIELDS.map(key=>[key,Array.from({length:137},(_,id)=>({id}))]));
+ const probe={...arrays,pcs:[]},performance={timeOrigin:1000},context=vm.createContext({__candidateLiveProbe:probe,performance,
+  document:{getElementById:()=>({}),body:{dataset:{callState:'connected'}}}});
+ let reads=0,maxRows=0;const evaluate=async expression=>{
+  const value=structuredClone(vm.runInContext(expression,context));
+  if(Array.isArray(value)){reads++;maxRows=Math.max(maxRows,value.length);}return value;
+ };
+ const initial=await readBoundedProbeSnapshot(evaluate),fullReads=reads;reads=0;
+ probe.audioFrames[136].rtp=[{id:'actual-late-stats'}];probe.audioFrames.push({id:137});
+ const poll=await readBoundedProbeSnapshot(evaluate,{previous:initial});
+ assert(reads<fullReads);assert.equal(maxRows,32);assert.equal(poll.audioFrames.length,138);
+ assert.deepEqual(poll.audioFrames[136].rtp,[{id:'actual-late-stats'}]);
+ // Even an unusually late mutation beyond the polling overlap is retrieved
+ // by the mandatory fresh full proof, without borrowing a cached old row.
+ probe.audioFrames[0].rtp=[{id:'actual-very-late-stats'}];
+ const final=await readBoundedProbeSnapshot(evaluate);
+ assert.deepEqual(final.audioFrames,probe.audioFrames);
+ performance.timeOrigin=2000;probe.events[0].id='new-page';
+ const newPage=await readBoundedProbeSnapshot(evaluate,{previous:poll});
+ assert.equal(newPage.events[0].id,'new-page','A new browser page cannot reuse old observer evidence');
 });
 
 function toolsFixture() {

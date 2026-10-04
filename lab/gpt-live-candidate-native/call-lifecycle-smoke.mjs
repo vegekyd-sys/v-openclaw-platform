@@ -7,7 +7,7 @@ import {spawn,spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {createPrivatePulseMicrophone,captureOwnedBrowserDirectory,observeOwnedChromeProcesses,removeOwnedBrowserDirectory} from './private-pulse.mjs';
-import {BROWSER_PROBE,SNAPSHOT_EXPRESSION} from './browser-probe.mjs';
+import {BROWSER_PROBE,readBoundedProbeSnapshot} from './browser-probe.mjs';
 import {assessDecodedPlaybackWindow,assessCompletePlaybackWindow,assessIndependentInputConvergence} from './evidence.mjs';
 import {resolveEndCallToolWitness,resolveLifecycleUserTurn,assessLifecycleSpeech,hasLifecyclePlaybackTail,assessLifecycleFarewell,assessProactiveGreeting,assessAutomaticEnd,
   resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult,readLifecycleHistoryOrRetry} from './call-lifecycle-evidence.mjs';
@@ -49,7 +49,7 @@ const scratch=fs.mkdtempSync(validationTarget==='candidate'?path.join(stateRoot,
 const scratchIdentity=captureOwnedBrowserDirectory(scratch,{parent:path.dirname(scratch),prefix:validationTarget==='candidate'?'call-lifecycle-':'scratch-'});
 const chromeProfile=path.join(scratch,'profile');
 const checks=[],owners=new Map(),speechWindows=[],gatewayEvents=[],subscribed=new Set(),coreCheckNames=new Set();
-let pulse,chrome,chromeTemp,chromeTempIdentity,cdp,gateway,lastState,cleanup,browserTimeOrigin;
+let pulse,chrome,chromeTemp,chromeTempIdentity,cdp,gateway,lastState,snapshotCache,cleanup,browserTimeOrigin;
 function hash(value){return createHash('sha256').update(value).digest('hex')}
 function save(name,value){fs.writeFileSync(path.join(base,name),JSON.stringify(value,null,2)+'\n',{mode:0o600});}
 function check(name,passed,details={}){checks.push({name,passed:Boolean(passed),...details});}
@@ -61,8 +61,9 @@ class CdpClient {
  close(){for(const p of this.pending.values()){clearTimeout(p.timer);p.reject(Error('CDP closed'));}this.pending.clear();this.socket?.close();}
 }
 async function evaluate(expression){const r=await cdp.request('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw Error(r.exceptionDetails.exception?.description??r.exceptionDetails.text);return r.result?.value;}
-async function snapshot(full=false){const state=await evaluate(full?SNAPSHOT_EXPRESSION:SNAPSHOT_EXPRESSION.replace('audioFrames:p.audioFrames,micFrames:p.micFrames','audioFrames:p.audioFrames.slice(-80),micFrames:p.micFrames.slice(-80)').replace('duplex:globalThis.__gptLiveDuplexDiagnostics??null','duplex:null'));
- if(state)state.browserTimeOrigin=browserTimeOrigin;return lastState=state;}
+async function snapshot(full=false){const state=await readBoundedProbeSnapshot(evaluate,{previous:full?null:snapshotCache});snapshotCache=state;
+ if(state)state.browserTimeOrigin=browserTimeOrigin;
+ return lastState=full||!state?state:{...state,audioFrames:state.audioFrames.slice(-80),micFrames:state.micFrames.slice(-80),duplex:null};}
 async function waitFor(predicate,label,max=45000){const until=Math.min(deadline,Date.now()+max);while(Date.now()<until){const s=await snapshot(),r=await predicate(s);if(r)return r;await sleep(200);}throw Error(label+' deadline');}
 async function clickOriginalButton(id){const rect=await evaluate(`(()=>{const e=document.getElementById(${JSON.stringify(id)});if(!e||e.disabled||e.hidden)throw Error('Original button unavailable');e.scrollIntoView({block:'center'});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,width:r.width,height:r.height}})()`);assert(rect.width>0&&rect.height>0);for(const type of ['mousePressed','mouseReleased'])await cdp.request('Input.dispatchMouseEvent',{type,x:rect.x,y:rect.y,button:'left',clickCount:1});}
 async function startCall(){
@@ -300,6 +301,7 @@ finally {
    const frames=(lastState?.micFrames??[]).filter(f=>f.pcIndex===pcIndex&&f.at>=from&&f.at<to),gaps=frames.slice(1).flatMap((f,i)=>f.at-frames[i].at>100?[{from:frames[i].at,to:f.at}]:[]);
    return {pcIndex,from,to,initialTrackId:initial?.trackId,frameCount:frames.length,gaps,passed:Number.isFinite(to)&&frames.length>0&&frames[0].at-from<=100&&to-frames.at(-1).at<=100&&gaps.length===0&&frames.every(f=>f.trackState==='live'&&f.trackEnabled===true&&f.trackId===initial?.trackId&&f.senderTrackId===initial?.trackId)};});
   check('continuous-original-processed-microphone-through-close',captureWindows.length>0&&captureWindows.every(w=>w.passed),{captureWindows});
+  check('original-browser-observer-no-capture-errors',Array.isArray(lastState?.observerErrors)&&lastState.observerErrors.length===0,{observerErrors:lastState?.observerErrors??null});
   check('default-Chrome-autoplay-no-play-rejection',Array.isArray(lastState?.playRejections)&&lastState.playRejections.length===0,{playRejections:lastState?.playRejections});
  }
  cdp?.close();gateway?.stop();let chromeProcesses,chromeProcessError;

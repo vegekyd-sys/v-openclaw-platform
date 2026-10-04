@@ -15,9 +15,15 @@ import {readPrivateChildTranscript,activeTranscriptMessages} from './read-child-
 import {extractControlExecWitness,assessControlExecPending,matchesExactControlMarker} from '../gpt-live-h5-control-evidence.mjs';
 import {resolveControlExecConfirmationChallenge,resolveConfirmationUserTurn,resolveConfirmedControlExec,
   confirmationArgsFingerprint,findDurableConfirmationUserMessage,parseVoiceConfirmationDiagnostics,
-  assessControlConfirmationCoreReceipt} from './confirmation-evidence.mjs';
+  assessControlConfirmationCoreReceipt,parseControlProcessWitness,assessControlProcessPending,
+  assessControlProcessExit,assessConfirmedControlCancel} from './confirmation-evidence.mjs';
+import {validateOwnedProcObserverBinding,validateOwnedProcObserverStart} from './os-observer-lifecycle.mjs';
 assert(process.env.VLAB_CANDIDATE_ID&&process.env.GPT_LIVE_H5_READY==='1','Ready private Candidate H5 required');
 const testCase=process.env.GPT_LIVE_H5_CASE;assert(['comprehensive-long','comprehensive-controls','comprehensive-queued-steer'].includes(testCase));
+const controlPath=process.env.GPT_LIVE_H5_CONTROL_PATH??'combined';
+assert(['combined','confirm-cancel'].includes(controlPath),'Unknown independent control path');
+assert(controlPath==='combined'||testCase==='comprehensive-controls'&&process.env.GPT_LIVE_H5_CONTROL_CONFIRMATION==='1'&&
+  process.env.GPT_LIVE_H5_OS_OBSERVER_CONFIG,'Independent confirm-cancel requires actual core confirmation and frozen OS observation');
 const base=process.env.GPT_LIVE_H5_EVIDENCE_DIR;assert(path.isAbsolute(base));fs.mkdirSync(base,{recursive:true,mode:0o700});
 const memoryQuery=process.env.GPT_LIVE_H5_MEMORY_QUERY?.trim();assert(memoryQuery,'Explicit private memory query required');
 const childWaitSeconds=Number(process.env.GPT_LIVE_H5_CHILD_WAIT_SECONDS??45);
@@ -107,6 +113,31 @@ function parentEvidencePairs(history=lastHistory.parent) {
 }
 function diagnostics(){return parsePublicProgressDiagnostics(fs.readFileSync(process.env.GPT_LIVE_H5_TRACE_PATH,'utf8'));}
 function confirmationDiagnostics(){return parseVoiceConfirmationDiagnostics(fs.readFileSync(process.env.GPT_LIVE_H5_TRACE_PATH,'utf8'));}
+function loadControlProcessSource() {
+ const frozen=JSON.parse(fs.readFileSync(process.env.GPT_LIVE_H5_OS_OBSERVER_CONFIG,'utf8'));
+ const directory=path.dirname(frozen.outputPath),beneath=(parent,child)=>child===parent||child.startsWith(parent+path.sep);
+ assert(path.isAbsolute(frozen.outputPath)&&path.isAbsolute(frozen.bindingPath)&&beneath(directory,base)&&
+  beneath(directory,frozen.bindingPath),'OS witness must belong to this exact Candidate evidence run');
+ const bindingBytes=fs.readFileSync(frozen.bindingPath),binding=JSON.parse(bindingBytes);
+ validateOwnedProcObserverBinding(binding,{candidateId:process.env.VLAB_CANDIDATE_ID,unit:process.env.VLAB_CANDIDATE_UNIT,
+  sourceCommit:process.env.GPT_LIVE_H5_SOURCE_COMMIT,expectedOwner:frozen.expectedOwner});
+ const launch=JSON.parse(fs.readFileSync(path.join(directory,'owned-proc-observer-launch.json'),'utf8'));
+ const expected={candidateId:binding.candidateId,unit:binding.unit,owner:binding.owner,sourceCommit:binding.sourceCommit,
+  planSha256:binding.planSha256,freezeSha256:binding.freezeSha256,ownerBindingSha256:hash(bindingBytes),
+  gatewayPid:Number(process.env.GPT_LIVE_H5_GATEWAY_PID),gatewayStartTimeTicks:launch.actualStart?.gatewayStartTimeTicks,
+  observerSourceSha256:frozen.scriptSha256,pollMs:frozen.pollMs,durationSeconds:frozen.durationSeconds,
+  user:frozen.expectedUser,uid:process.getuid()};
+ validateOwnedProcObserverStart(launch.actualStart,expected);
+ for(const name of ['bindingPath','outputPath']) {
+  const filename=frozen[name],stat=fs.statSync(filename);
+  assert(fs.realpathSync(filename)===filename&&stat.isFile()&&stat.uid===process.getuid()&&(stat.mode&0o777)===0o600,
+   'OS source must be a canonical private actual run file');
+ }
+ return {expected,outputPath:frozen.outputPath,launch};
+}
+function readControlProcessWitness(source) {
+ return parseControlProcessWitness(fs.readFileSync(source.outputPath,'utf8'));
+}
 async function startCall() {
  const pcIndex=(await snapshot()).pcStates.length;
  await clickOriginalButton('start');
@@ -349,6 +380,7 @@ async function controls() {
  const beforeControl=await snapshot();
  const originalOwner=resolveNativeControlOwner({diagnostics:diagnostics(),events:beforeControl.events,tools:beforeControl.tools,
    backendRunId,voiceSessionId:callOwners.get(pcIndex)?.voiceSessionId,pcIndex});
+ if(controlPath==='confirm-cancel')return confirmCancelOnly({pcIndex,accepted,actualExecStartedAt,backendRunId,originalOwner});
  let pendingAfterBarge;
  try {
  if(!controlConfirmation?.input)await convergeInputTurn(cancelInput,pcIndex,'Original background request before the separate count input');
@@ -432,6 +464,86 @@ async function controls() {
  const reconnectCaptionWindow=resolveNativeTurnTranscriptWindow(reconnectState.events,{pcIndex:reopened,turnId:greetingReply.turnId,after:greeting.row.startedAt});
  checkCompleteSpeechPlayback('reconnect-original-h5-unmuted-native-audio',reconnectState,reconnectCaptionWindow?
    {...reconnectCaptionWindow,to:reconnectDrain.to}:null,{turnId:greetingReply.turnId,reconnectCaptionWindow,includesPlaybackTail:true});
+ await stopCall(reopened);
+}
+async function confirmCancelOnly({pcIndex,accepted,actualExecStartedAt,backendRunId,originalOwner}) {
+ // This independent case never spends the sleep60 window on count/ack/barge.
+ // Every original combined gate remains on the default path above.
+ const confirmationGates=checks.filter(c=>c.name.startsWith('control-confirmation-'));
+ const coreConfirmed=controlConfirmation?.attempted===true&&controlConfirmation.coreReceipt?.identityValid===true&&
+  controlConfirmation.coreReceipt.rawUserTextHashVerified===true&&confirmationGates.length===6&&confirmationGates.every(c=>c.passed)&&
+  ['backendRunId','traceId','delegationId','generation','sourceRunIdSha256','voiceSessionId','bridgeCallId'].every(key=>
+   originalOwner?.[key]===controlConfirmation.newOwner?.[key]);
+ check('confirm-cancel-requires-complete-real-core-approval',coreConfirmed,{confirmationGates:confirmationGates.map(c=>({name:c.name,passed:c.passed})),
+  exactChallengeRequired:true,originalFixtureSelectorUnchanged:true});
+ assert(coreConfirmed,'Independent confirm-cancel cannot start without the exact actual challenged USER and core eligible/bind/consume receipt');
+ assert(Number.isFinite(actualExecStartedAt)&&backendRunId===accepted.runId,'Exact actual source exec start required');
+ const source=loadControlProcessSource();
+ let pending,lastProcessPending;
+ try {await waitFor(async()=>{
+  // Read core pending first; the OS read afterwards must be fresh at cancel.
+  await readHistory();pending=assessControlExecPending(lastHistory.parent,60,{requireDateInCommand:false});
+  lastProcessPending=assessControlProcessPending(readControlProcessWitness(source),{execPair:accepted,expected:source.expected,now:Date.now()});
+  return pending.pending&&pending.execCallId===accepted.id&&lastProcessPending.passed?lastProcessPending:false;
+ },'Confirmed exact real exec60 core and OS pending before immediate cancellation',10000);
+ }catch(error){
+  save('confirm-cancel-os-pending.json',{caseVariant:controlPath,pending:lastProcessPending,corePending:pending,
+   passed:false,exception:error.message,rawOsSourcePath:source.outputPath,observerLaunch:source.launch});
+  throw Error(error.message+'; '+(lastProcessPending?.reason??'OS pending source absent'));
+ }
+ const cancelAt=Date.now();
+ check('confirm-cancel-real-pending-before-immediate-original-button',pending.pending&&pending.execCallId===accepted.id&&
+  lastProcessPending.passed&&cancelAt-lastProcessPending.observedAt<=250&&cancelAt<actualExecStartedAt+55000,
+  {pending,processPending:lastProcessPending,cancelAt,elapsedFromActualExecStartMs:cancelAt-actualExecStartedAt,
+   syntheticIndependentCountAckBarge:false});
+ const noOtherInput=pulse.plays.length===2&&pulse.plays[0].label==='cancel-task'&&pulse.plays[1].label==='confirmation';
+ check('confirm-cancel-no-count-ack-barge-in-sleep-window',noOtherInput,{inputs:pulse.plays.map(p=>p.label)});
+ save('confirm-cancel-os-pending.json',{caseVariant:controlPath,pending:lastProcessPending,corePending:pending,cancelAt,
+  rawOsSourcePath:source.outputPath,observerLaunch:source.launch});
+ assert(noOtherInput&&checks.at(-2).passed,'Immediate cancellation must still precede natural completion with actual fresh pending');
+ await clickOriginalButton('cancel');
+ let cancellation;
+ try {await waitFor(state=>{
+  cancellation=assessConfirmedControlCancel({api:state.api,tools:state.tools,diagnostics:diagnostics(),owner:originalOwner,
+   sessionKey:currentSession,cancelAt});return cancellation.passed?cancellation:false;
+ },'Exact original cancel response, source run receipt, and native bridge terminal',15000);
+ }catch(error){
+  save('confirm-cancel-os-exit.json',{caseVariant:controlPath,cancelAt,cancellation,passed:false,
+   exception:error.message,rawOsSourcePath:source.outputPath});throw Error(error.message+'; '+(cancellation?.reason??'Cancel source absent'));
+ }
+ check('confirm-cancel-exact-core-and-native-cancel-accepted',cancellation.passed,{cancellation,cancelAt,execCallId:accepted.id,backendRunId});
+ let processExit;
+ try {
+  await waitFor(()=>{
+   processExit=assessControlProcessExit(readControlProcessWitness(source),{pending:lastProcessPending,cancelAt:cancellation.response.requestedAt,
+    trustedCancelAt:cancellation.trustedCancel.at,now:Date.now()});return processExit.passed?processExit:false;
+  },'Exact cancelled real shell and every observed descendant OS extinction before sleep60 deadline',15000);
+ }catch(error){processExit={...processExit,passed:false,exception:error.message};}
+ check('confirm-cancel-real-os-process-subtree-extinct',processExit?.passed===true,{processExit,
+  rawOsSourcePath:source.outputPath,observerSignalsSent:false,coreAckIsNotProcessExit:true});
+ save('confirm-cancel-os-exit.json',{caseVariant:controlPath,cancelAt,cancellation,processExit,rawOsSourcePath:source.outputPath});
+ const observeUntil=Math.max(Date.now()+5000,actualExecStartedAt+65000);
+ while(Date.now()<observeUntil)await sleep(Math.min(1000,observeUntil-Date.now()));
+ const owned=row=>row.traceId===originalOwner.traceId&&row.delegationId===originalOwner.delegationId&&
+  row.generation===originalOwner.generation;
+ const after=diagnostics().filter(row=>row.at>=cancelAt),lateAppends=after.filter(row=>row.stage==='context-append-sent'&&owned(row)),
+  droppedLate=after.filter(row=>row.stage==='stale-public-progress-dropped'&&owned(row)&&row.sourceRunIdSha256===originalOwner.sourceRunIdSha256);
+ check('real-cancel-terminal-and-observation-window',cancellation.passed&&Date.now()>=actualExecStartedAt+65000&&lateAppends.length===0,
+  {caseVariant:controlPath,observeUntil,checkedAt:Date.now(),nativeCancel:cancellation.nativeCancel,trustedCancel:cancellation.trustedCancel,lateAppends});
+ // Even this independently cancelled case cannot claim late-callback rejection
+ // from silence or an API ack. A missing actual callback remains unaccepted.
+ check('cancelled-real-late-callback-isolation',droppedLate.length>0&&lateAppends.length===0,
+  {caseVariant:controlPath,lateCallbackWitness:droppedLate,status:droppedLate.length?'witnessed':'missing-real-late-callback',
+   reason:'Quiet observation alone does not prove a late callback was rejected'});
+ await stopCall(pcIndex);
+ const reopened=await startCall(),greeting=play('new-greeting');await greeting.done;
+ const greetingReply=await waitFor(state=>state.events.find(e=>e.pcIndex===reopened&&e.type==='turn.done'&&e.role==='assistant'&&
+  e.at>=greeting.row.startedAt&&/(听|清楚|重连|连接)/u.test(e.text)),'Reconnect spoken greeting after independent cancellation',45000);
+ check('new-session-on-reconnect',sessionKeys.at(-1)!==sessionKeys.at(-2),{caseVariant:controlPath,sessionCount:sessionKeys.length});
+ const drain=await waitForPlaybackDrain(reopened,greetingReply.at,'Reconnected reply actual playback drain'),state=await snapshot(true),
+  caption=resolveNativeTurnTranscriptWindow(state.events,{pcIndex:reopened,turnId:greetingReply.turnId,after:greeting.row.startedAt});
+ checkCompleteSpeechPlayback('reconnect-original-h5-unmuted-native-audio',state,caption?{...caption,to:drain.to}:null,
+  {turnId:greetingReply.turnId,reconnectCaptionWindow:caption,includesPlaybackTail:true,caseVariant:controlPath});
  await stopCall(reopened);
 }
 async function queuedSteer() {
@@ -574,5 +686,5 @@ finally {
  cleanup={...(await pulse?.dispose()),chromeExited:Boolean(chrome&&(chrome.exitCode!==null||chrome.signalCode!==null))};
  if(chromeTemp){fs.rmSync(chromeTemp,{recursive:true,force:true});cleanup.chromePrivateTempRemoved=!fs.existsSync(chromeTemp);}
  check('private-config-unchanged',hash(fs.readFileSync(configPath))===configHash);
- summary={case:testCase,candidateId:process.env.VLAB_CANDIDATE_ID,h5AppSha256:process.env.GPT_LIVE_H5_APP_SHA,model:'gpt-live-1-codex',childWaitSeconds,checks,passed:checks.length>0&&checks.every(c=>c.passed),sessionKeys,syntheticUserPCM:true,syntheticAssistantEvents:false,syntheticBackendResults:false,continuousOriginalCaptureTrack:checks.find(c=>c.name==='original-processed-microphone-sender-identity')?.passed===true,digitalPlaybackAcceptanceOnly:true,physicalEchoAccepted:false,humanListeningAccepted:false,cleanup,evidenceDir:base};save('receipt.json',summary);console.log(JSON.stringify({nativeComprehensive:{case:testCase,candidateId:summary.candidateId,passed:summary.passed,checks:checks.map(c=>({name:c.name,passed:c.passed})),evidenceDir:base,physicalEchoAccepted:false}}));if(!summary.passed)process.exitCode=1;
+ summary={case:testCase,caseVariant:testCase==='comprehensive-controls'?controlPath:null,candidateId:process.env.VLAB_CANDIDATE_ID,h5AppSha256:process.env.GPT_LIVE_H5_APP_SHA,model:'gpt-live-1-codex',childWaitSeconds,checks,passed:checks.length>0&&checks.every(c=>c.passed),sessionKeys,syntheticUserPCM:true,syntheticAssistantEvents:false,syntheticBackendResults:false,continuousOriginalCaptureTrack:checks.find(c=>c.name==='original-processed-microphone-sender-identity')?.passed===true,digitalPlaybackAcceptanceOnly:true,physicalEchoAccepted:false,humanListeningAccepted:false,cleanup,evidenceDir:base};save('receipt.json',summary);console.log(JSON.stringify({nativeComprehensive:{case:testCase,caseVariant:summary.caseVariant,candidateId:summary.candidateId,passed:summary.passed,checks:checks.map(c=>({name:c.name,passed:c.passed})),evidenceDir:base,physicalEchoAccepted:false}}));if(!summary.passed)process.exitCode=1;
 }

@@ -4,7 +4,8 @@ import {createHash} from 'node:crypto';
 import {indexNativeToolPairs} from './evidence.mjs';
 import {confirmationArgsFingerprint,isOriginalControlSleep60,resolveControlExecConfirmationChallenge,
   resolveConfirmationUserTurn,resolveConfirmedControlExec,findDurableConfirmationUserMessage,
-  parseVoiceConfirmationDiagnostics,assessControlConfirmationCoreReceipt} from './confirmation-evidence.mjs';
+  parseVoiceConfirmationDiagnostics,assessControlConfirmationCoreReceipt,parseControlProcessWitness,
+  assessControlProcessPending,assessControlProcessExit,assessConfirmedControlCancel} from './confirmation-evidence.mjs';
 
 const hash=s=>createHash('sha256').update(s).digest('hex');
 function fixture() {
@@ -118,4 +119,123 @@ test('core durable receipt is distinct from independently matched exact canonica
   }
   const result=assessControlConfirmationCoreReceipt(f.parse(f.events),{...f.options,
     userTurn:{...f.options.userTurn,role:'assistant'}});assert.equal(result.identityValid,false);
+});
+
+function processFixture() {
+  const {execPair}=coreFixture().options,candidateId='candidate-12345678-1234-1234-1234-123456789abc',
+    unit='vlab-'+candidateId+'.service',uid=1001;
+  const expected={candidateId,unit,owner:'exact-cli-owner',sourceCommit:'a'.repeat(40),gatewayPid:100,gatewayStartTimeTicks:50,
+    ownerBindingSha256:hash('independent actual CLI binding'),observerSourceSha256:hash('raw readonly OS source'),
+    planSha256:hash('plan'),freezeSha256:hash('freeze'),pollMs:50,durationSeconds:1800,user:'private-user',uid};
+  const start={type:'observer-start',at:1000,...expected,unitProperties:{ActiveState:'active',User:'private-user',ControlGroup:'/user.slice/'+unit},
+    readOnly:true,signalsSent:false,gatewayCallsMade:false,envRecorded:false,fullCommandRecorded:false,execCallBindingEstablished:false};
+  const gateway={pid:100,startTimeTicks:50,state:'S',ppid:80,pgid:100,sid:80},
+    shell={pid:200,startTimeTicks:70,state:'S',ppid:100,pgid:200,sid:80},
+    sleep={pid:201,startTimeTicks:71,state:'S',ppid:200,pgid:200,sid:80};
+  const profile=(process,executableBasename,argumentSha256,shellCommandArgumentIndex=null)=>({
+    pid:process.pid,startTimeTicks:process.startTimeTicks,uid,cgroupMembershipVerified:true,
+    executableBasename,argumentSha256,shellCommandArgumentIndex});
+  const rows=[start,{type:'process-profile',at:1000,profile:profile(gateway,'node',[hash('node')])},
+    {type:'cgroup-sample',at:1950,processes:[gateway],readErrors:[]},
+    {type:'process-profile',at:2010,profile:profile(shell,'bash',[hash('bash'),hash('-c'),hash(execPair.args.command)],2)},
+    {type:'process-profile',at:2020,profile:profile(sleep,'sleep',[hash('sleep'),hash('60')])}];
+  for(let at=2050;at<=2450;at+=50)rows.push({type:'cgroup-sample',at,processes:[gateway,shell,sleep],readErrors:[]});
+  const parse=rows=>parseControlProcessWitness(rows.map(row=>JSON.stringify(row)).join('\n')+'\n');
+  const options={execPair,expected,now:2500},pending=assessControlProcessPending(parse(rows),options);
+  const exitRows=structuredClone(rows);
+  for(let at=2500;at<=3250;at+=50)exitRows.push({type:'cgroup-sample',at,processes:at<2700?[gateway,shell,sleep]:[gateway],readErrors:[]});
+  const exitOptions={pending,cancelAt:2600,trustedCancelAt:2650,now:3250};
+  return {rows,parse,options,pending,exitRows,exitOptions,gateway,shell,sleep};
+}
+test('OS parser keeps incomplete live tail separate and rejects malformed, reordered or foreign rows',()=>{
+  const f=processFixture(),text=f.rows.map(row=>JSON.stringify(row)).join('\n')+'\n';
+  assert.equal(parseControlProcessWitness(text+'{"type":').valid,true);
+  assert.equal(parseControlProcessWitness(text+'{"type":').partialTail,true);
+  for(const suffix of ['{invalid}\n','{}\n','\n',JSON.stringify({type:'cgroup-sample',at:1})+'\n'])
+    assert.equal(parseControlProcessWitness(text+suffix).valid,false);
+});
+test('actual native exec command joins a unique new own-cgroup shell and real sleep60 before cancellation',()=>{
+  const f=processFixture();assert.equal(f.pending.passed,true);assert.equal(f.pending.realSleep.pid,201);
+  assert.equal(f.pending.nativePidWitness,false,'OS correlation is recorded without inventing a native PID receipt');
+  assert.equal(f.pending.shell.argumentSha256[2],hash(f.options.execPair.args.command));
+  for(const change of [{sourceExecutionTimingVerified:false},{calledAt:999},{name:'process'},{rawEnvelopes:[]},
+    {args:{...f.options.execPair.args,command:'sleep 60; echo x; date'}}])
+    assert.equal(assessControlProcessPending(f.parse(f.rows),{...f.options,execPair:{...f.options.execPair,...change}}).passed,false);
+  for(const change of [{candidateId:'neighbor'},{sourceCommit:'b'.repeat(40)},{ownerBindingSha256:hash('neighbor')},
+    {freezeSha256:hash('neighbor')},{planSha256:hash('neighbor')},{gatewayPid:101},{uid:1002}])
+    assert.equal(assessControlProcessPending(f.parse(f.rows),{...f.options,expected:{...f.options.expected,...change}}).passed,false);
+});
+test('OS pending cannot borrow neighbor command, dead/reused process, stale sample or incomplete ancestry',()=>{
+  const f=processFixture(),assess=rows=>assessControlProcessPending(f.parse(rows),f.options);
+  for(const mutation of [
+    rows=>{rows[3].profile.uid=1002;},
+    rows=>{rows[3].profile.cgroupMembershipVerified=false;},
+    rows=>{rows[4].profile.argumentSha256[1]=hash('45');},
+    rows=>{rows.at(-1).processes[1]={...f.shell,ppid:999};},
+    rows=>{rows.at(-1).processes[2]={...f.sleep,state:'Z'};},
+    rows=>{rows.at(-1).processes[1]={...f.shell,startTimeTicks:700};},
+    rows=>{rows[2].processes.push(f.shell);},
+    rows=>{rows.at(-1).readErrors=[{pid:201,kind:'exited-during-read'}];},
+    rows=>{rows[0].readOnly=false;},
+    rows=>{rows.push({type:'identity-drift',at:2451,kind:'AssertionError'});},
+    rows=>{rows.push({type:'observer-end',at:2451,identityErrors:[]});},
+    rows=>{rows.splice(4,0,{type:'process-profile',at:2015,profile:{...rows[3].profile,pid:300,startTimeTicks:80}});},
+  ]){const rows=structuredClone(f.rows);mutation(rows);assert.equal(assess(rows).passed,false);}
+  assert.equal(assessControlProcessPending(f.parse(f.rows),{...f.options,now:2800}).passed,false);
+});
+test('OS extinction requires all exact processes absent continuously before the real sleep deadline',()=>{
+  const f=processFixture(),result=assessControlProcessExit(f.parse(f.exitRows),f.exitOptions);
+  assert.equal(result.passed,true);assert.equal(result.firstAbsentAt,2700);assert.equal(result.confirmedExtinctAt,3200);
+  assert.equal(result.quietDurationMs,500);assert.equal(result.signalsSentByObserver,false);
+  assert.deepEqual(result.trackedProcesses.map(p=>p.pid),[200,201]);
+  for(const change of [{cancelAt:2000},{cancelAt:7000},{trustedCancelAt:2599},{trustedCancelAt:Infinity},
+    {now:3700},{pending:{...f.pending,passed:false}},
+    {pending:{...f.pending,actualExecStartedAt:-53000}}])
+    assert.equal(assessControlProcessExit(f.parse(f.exitRows),{...f.exitOptions,...change}).passed,false);
+});
+test('cancel ack, a missing/read-error PID, sampling gaps and lingering child cannot masquerade as process exit',()=>{
+  const f=processFixture(),assess=rows=>assessControlProcessExit(f.parse(rows),f.exitOptions);
+  for(const mutation of [
+    rows=>{for(const row of rows)if(row.type==='cgroup-sample'&&row.at>=2700)row.processes.push(f.sleep);},
+    rows=>{for(const row of rows)if(row.type==='cgroup-sample'&&row.at>=2700)row.readErrors=[{pid:201,kind:'exited-during-read'}];},
+    rows=>{rows.splice(rows.findIndex(row=>row.type==='cgroup-sample'&&row.at===2750),4);},
+    rows=>{rows.push({type:'identity-drift',at:3251,kind:'AssertionError'});},
+    rows=>{for(const row of rows)if(row.type==='cgroup-sample'&&row.at>=2700)row.processes.push({...f.shell,state:'Z'});},
+  ]){const rows=structuredClone(f.exitRows);mutation(rows);assert.equal(assess(rows).passed,false);}
+  assert.equal(assess(f.exitRows.filter(row=>row.at<3050)).passed,false,'a short silent sample is not sustained OS extinction');
+});
+test('new observed descendants remain bound even if reparented after cancelling the original shell',()=>{
+  const f=processFixture(),rows=structuredClone(f.exitRows),child={pid:202,startTimeTicks:72,ppid:201,state:'S'};
+  rows.splice(rows.findIndex(row=>row.at===2500),0,{type:'process-profile',at:2490,
+    profile:{pid:202,startTimeTicks:72,uid:1001,cgroupMembershipVerified:true,executableBasename:'helper',argumentSha256:[]}});
+  for(const row of rows)if(row.type==='cgroup-sample'&&row.at>=2500)row.processes.push({...child,ppid:row.at<2700?201:1});
+  assert.equal(assessControlProcessExit(f.parse(rows),f.exitOptions).passed,false);
+});
+
+function cancelFixture() {
+  const owner={voiceSessionId:'voice',bridgeCallId:'bridge',backendRunId:'confirmed-run',sourceRunIdSha256:hash('confirmed-run'),
+    traceId:'trace',delegationId:'item',generation:2};
+  const api=[{route:'/api/steer',requestedAt:2601,at:2610,status:200,request:{voiceSessionId:'voice',mode:'cancel'},
+    responseBody:{ok:true,mode:'cancel',active:true,aborted:true,sessionKey:'key'}}];
+  const tools=[{at:2660,raw:{type:'tool.error',callId:'bridge',voiceSessionId:'voice'}}];
+  const diagnostics=[{at:2650,stage:'backend-cancel-accepted',traceId:'trace',delegationId:'item',generation:2,
+    sourceRunIdSha256:hash('confirmed-run')}];
+  return {api,tools,diagnostics,owner,sessionKey:'key',cancelAt:2600};
+}
+test('cancel requires exact original response body, source run receipt and native owner terminal independently',()=>{
+  const f=cancelFixture();assert.equal(assessConfirmedControlCancel(f).passed,true);
+  for(const mutation of [
+    options=>{options.api[0].responseBody={ok:true};},
+    options=>{options.api[0].responseBody.aborted=false;},
+    options=>{options.api[0].responseBody.sessionKey='neighbor';},
+    options=>{options.api[0].request.voiceSessionId='neighbor';},
+    options=>{options.api[0].status=409;},
+    options=>{options.api.push(options.api[0]);},
+    options=>{options.tools[0].raw.callId='neighbor';},
+    options=>{options.tools[0].raw.type='tool.result';},
+    options=>{options.diagnostics[0].generation=3;},
+    options=>{options.diagnostics[0].sourceRunIdSha256=hash('neighbor');},
+    options=>{options.diagnostics=[];},
+    options=>{options.owner.sourceRunIdSha256=hash('neighbor');},
+  ]){const options=structuredClone(f);mutation(options);assert.equal(assessConfirmedControlCancel(options).passed,false);}
 });

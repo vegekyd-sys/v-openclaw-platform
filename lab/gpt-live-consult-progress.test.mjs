@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { patchGptLiveContinuationTalk } from "./patch-gpt-live-consult-continuation.mjs";
+import { GPT_LIVE_CALL_INSTRUCTIONS } from "./gpt-live-h5/instructions.mjs";
 import {
   patchGptLiveConsultProgressHarness,
   patchGptLiveConsultProgressTalk,
@@ -223,6 +224,41 @@ test("execution and subject checks remain conditional and preserve authorization
   assert.match(prompt, /at most one short fact per 15 seconds/);
   assert.match(prompt, /Use final-answer output only when all requested outputs have been verified/);
   assert.match(prompt, /If work is still running in accepted child tasks, use the actual supported yield\/continuation mechanism/);
+});
+
+test("the actual consult contract distinguishes source examples and conditional advice from verified deployment state, and preserves their returned text", async () => {
+  const question = "只读所给接口文档，说明示例模型和有条件的迁移建议；不要检查部署，也不要执行迁移。";
+  const context = '来源片段：示例代码 model: "example-model-v3"；If still on the preview interface, migrate to the stable interface. 未提供当前接入配置或迁移记录。';
+  const stage = "文档建议：如果仍使用 preview 接口，应迁移到 stable 接口；本次接入状态尚未核实。";
+  const final = "文档示例模型为 example-model-v3，不代表当前通话模型；如果仍使用 preview 接口，应迁移到 stable 接口，本次接入是否已迁移尚未核实。";
+  const progress = [];
+  let capturedPrompt;
+  const runtime = createHarnessRuntime({
+    args: { question, context },
+    onProgress: value => progress.push(value),
+    runEmbeddedAgent: async options => {
+      capturedPrompt = options.prompt;
+      options.onAgentEvent({ stream: "item", data: { kind: "preamble", phase: "end", itemId: "conditional-document-fact", progressText: stage } });
+      return { payloads: [{ text: final }] };
+    },
+  });
+  assert.deepEqual(await runtime.run(), { text: final });
+  assert.deepEqual(progress.map(value => value.text), [stage]);
+  assert(capturedPrompt.includes(`User request:\n${question}`));
+  assert(capturedPrompt.includes(`Additional realtime context:\n${context}`));
+  assert.match(capturedPrompt, /Distinguish a documentation example, a documented capability, a recommendation, a conditional requirement, and a verified current deployment state/);
+  assert.match(capturedPrompt, /example code is only that example, not this call's actual model or configuration/);
+  assert.match(capturedPrompt, /Preserve if\/when\/unless conditions and should\/must\/can wording/);
+  assert.match(capturedPrompt, /a migration recommendation does not mean migration has already occurred/);
+  assert.match(capturedPrompt, /only with actual runtime\/configuration or completed-action evidence from the authorized task/);
+  assert.match(capturedPrompt, /Do not inspect unrelated runtime state or execute a migration merely to strengthen a documentation answer/);
+  assert.match(capturedPrompt, /Keep the subject, source type, and any necessary condition together/);
+  assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /示例里的模型或设置只属于该示例，不能说成当前通话配置/u);
+  assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /必须保留条件和建议语气，不能说成已经完成迁移/u);
+  assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /缺少这种证据就说明本次接入状态未核实/u);
+  assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /每条阶段事实都应在同一句保留必要条件/u);
+  // This executes the captured consult/observer with a stubbed model boundary.
+  // It verifies contract and lossless transport, not real model adherence.
 });
 
 test("voice consult carries child stage values and read-before-claim obligations without substituting tool text for progress", async () => {
