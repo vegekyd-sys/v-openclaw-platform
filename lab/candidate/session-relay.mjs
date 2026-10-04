@@ -208,9 +208,13 @@ try {
       if (settled && Date.now() - quietSince > 20_000) break;
     }
     await sleep(8_000); // let the last delivery reach Feishu
-    const cardText = async (id) => (id ? JSON.stringify((await feishuGet(`im/v1/messages/${id}?card_msg_content_type=raw_card_content`)).items?.[0]?.body ?? {}).slice(0, 300) : null);
-    const groupMsgs = [];
-    for (const r of records) groupMsgs.push({ requestCard: await cardText(r.requestCardId).catch((e) => e.message), resultCard: await cardText(r.resultCardId).catch((e) => e.message) });
+    const cardText = async (id) => (id ? JSON.stringify((await feishuGet(`im/v1/messages/${id}?card_msg_content_type=raw_card_content`)).items?.[0]?.body ?? {}) : null);
+    const root = records.slice().sort((a, b) => a.createdAt - b.createdAt)[0];
+    const threadCards = root?.threadCards ?? {};
+    const groupMsgs = {};
+    for (const [key, id] of Object.entries(threadCards)) groupMsgs[key] = { id, text: await cardText(id).catch((e) => e.message) };
+    const finalIds = records.map((r) => r.finalMessageId).filter(Boolean);
+    groupMsgs.final = await Promise.all(finalIds.map(async (id) => ({ id, text: (await cardText(id).catch((e) => e.message))?.slice(0, 600) })));
     summary.scenarios.relay = {
       coordinatorTurn: coordinator,
       dmRows: await sessionRows(OWNER),
@@ -227,10 +231,16 @@ try {
     assert.match(records.map((r) => r.message).join("\n"), /20\s*%/u, "the origin never passed on the rollout percentage");
     const rec = records[0];
     assert.equal(rec.to.sessionKey, `agent:makaron:feishu:group:${GROUP}`);
-    assert(rec.requestCardId && rec.resultCardId, "a 「消息来自」 card was not posted");
+    assert.deepEqual(Object.keys(threadCards).sort(), [dmKey, `agent:makaron:feishu:group:${GROUP}`].sort(), "the thread card is not in both chats");
     for (const r of records) assert.equal(r.status, "done", `relay ${r.id} ended ${r.status}: ${r.error ?? ""}`);
     assert.match(rec.reply, /\S/u, "the group's reply was not captured");
-    assert.match(groupMsgs[0].requestCard ?? "", /消息来自/u, "request card not readable in the group");
+    for (const key of Object.keys(threadCards)) {
+      const text = groupMsgs[key].text ?? "";
+      assert.match(text, /已完成/u, `thread card in ${key} not finished`);
+      assert.match(text, /20/u, `thread card in ${key} does not show the exchange`);
+      groupMsgs[key].text = text.slice(0, 400);
+    }
+    assert.equal(finalIds.length, 1, "the origin's closing words were not posted exactly once");
   }
 
   // ------------------------------------------------------------ denied: a non-owner turn cannot relay

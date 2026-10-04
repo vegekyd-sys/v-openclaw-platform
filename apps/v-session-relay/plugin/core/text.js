@@ -14,42 +14,83 @@ function escapeMd(text) {
   return String(text ?? "").replace(/[*_`<>[\]]/gu, (c) => `\\${c}`);
 }
 
-const SHOW_INLINE = 600;
+const ENTRY_MAX = 1_500;
+const CARD_BUDGET = 24_000; // Feishu rejects cards near 30 KB
+
+function shanghaiTime(ms) {
+  return ms ? new Date(ms).toLocaleTimeString("zh-CN", { timeZone: "Asia/Shanghai", hour: "2-digit", minute: "2-digit", hour12: false }) : "";
+}
+
+function threadStatus(records) {
+  const last = records.at(-1);
+  if (!last) {
+    return "";
+  }
+  if (last.status === "queued" || last.status === "delivering") return `正在交给「${last.to.label}」…`;
+  if (last.status === "running") return `「${last.to.label}」正在处理…`;
+  if (last.status === "replying") return `「${last.from.label}」正在处理…`;
+  if (last.status === "failed" || last.status === "interrupted") return "中断";
+  return "已完成";
+}
+
+/** What was said in a thread, in order: [{ label, text, at }]. */
+export function threadEntries(records) {
+  const entries = [];
+  for (const r of [...records].sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))) {
+    entries.push({ label: r.from.label, text: r.message, at: r.createdAt });
+    if (r.reply) entries.push({ label: r.to.label, text: r.reply, at: r.finishedAt });
+    if (r.error) entries.push({ label: r.to.label, text: `（${r.error}）`, at: r.updatedAt });
+  }
+  return entries;
+}
 
 /**
- * Feishu card 2.0: a centred grey 「消息来自」 line, then what the other side said.
- * Short messages are shown as they are, so the exchange between the two V's can be
- * read in the chat; long ones show the opening and fold the rest.
+ * Feishu card 2.0: one collapsed line 「A ⇄ B · 已完成 · 4 条」; opening it shows the
+ * two V's talking, each message headed by its conversation's name. Patched in place.
  */
-export function attributionCard({ label, folded, foldedTitle = "查看全文" }) {
-  const elements = [
-    {
-      tag: "markdown",
-      content: `<font color='grey'>消息来自 **${escapeMd(label)}**</font>`,
-      text_align: "center",
-      text_size: "notation",
-    },
-  ];
-  const body = String(folded ?? "").trim();
-  if (body && body.length <= SHOW_INLINE) {
-    elements.push({ tag: "markdown", content: body });
-  } else if (body) {
-    elements.push({ tag: "markdown", content: `${body.slice(0, 160).trim()}…` });
-    elements.push({
-      tag: "collapsible_panel",
-      expanded: false,
-      header: {
-        title: { tag: "markdown", content: `<font color='grey'>${foldedTitle}</font>`, text_align: "center" },
-        width: "fill",
-        vertical_align: "center",
-        icon: { tag: "standard_icon", token: "down-small-ccm_outlined", size: "16px 16px" },
-        icon_position: "follow_text",
-        icon_expanded_angle: -180,
-      },
-      elements: [{ tag: "markdown", content: clip(body) }],
-    });
+export function threadCard(records) {
+  const first = records[0];
+  const names = [...new Set(records.flatMap((r) => [r.from.label, r.to.label]))];
+  const entries = threadEntries(records);
+  const title = `**${names.map(escapeMd).join("** ⇄ **")}** · ${threadStatus(records)}${entries.length ? ` · ${entries.length} 条` : ""}`;
+  let budget = CARD_BUDGET;
+  const rows = [];
+  for (const entry of [...entries].reverse()) {
+    const content = `<font color='grey'>${escapeMd(entry.label)} · ${shanghaiTime(entry.at)}</font>\n${clip(entry.text, ENTRY_MAX)}`;
+    budget -= content.length * 3; // UTF-8 upper bound for CJK
+    if (budget < 0) {
+      rows.unshift({ tag: "markdown", content: "<font color='grey'>…更早的消息略</font>", text_size: "notation" });
+      break;
+    }
+    rows.unshift({ tag: "markdown", content, margin: "12px 0px 0px 0px" });
   }
-  return { schema: "2.0", config: { update_multi: true }, body: { elements } };
+  return {
+    schema: "2.0",
+    config: { update_multi: true, summary: { content: `${names.join(" ⇄ ")} · ${threadStatus(records)}` } },
+    body: {
+      elements: [
+        {
+          tag: "collapsible_panel",
+          element_id: `thread_${String(first?.chainId ?? "x").replace(/\W/gu, "").slice(0, 16)}`,
+          expanded: false,
+          header: {
+            title: { tag: "markdown", content: `<font color='grey'>${title}</font>`, text_align: "center", text_size: "notation" },
+            width: "fill",
+            vertical_align: "center",
+            icon: { tag: "standard_icon", token: "down-small-ccm_outlined", size: "16px 16px", color: "grey" },
+            icon_position: "follow_text",
+            icon_expanded_angle: -180,
+          },
+          elements: rows.length ? rows : [{ tag: "markdown", content: "<font color='grey'>还没有消息</font>" }],
+        },
+      ],
+    },
+  };
+}
+
+/** What the origin V says to the people there once a thread is over. */
+export function finalMessageCard(text) {
+  return { schema: "2.0", config: { update_multi: true }, body: { elements: [{ tag: "markdown", content: clip(text, 6_000) }] } };
 }
 
 // The two V's take turns in one thread: whatever the target replies goes back to the
@@ -63,7 +104,7 @@ export function requestTurn({ id, from, message, chainId }) {
       followUp
         ? `「${from.label}」 is answering you in a task the owner handed to this conversation earlier (thread ${chainId}). Pick up where you left off.`
         : `「${from.label}」 handed this task to this conversation on the owner's behalf (session relay thread ${chainId ?? id}). Treat it as the owner asking here and use this conversation's own context.`,
-      `Everything you reply in this turn is posted here and sent back to 「${from.label}」 automatically, so you are talking with the V over there.`,
+      `Everything you reply in this turn is sent back to 「${from.label}」 automatically: you are talking with the V over there. People in both chats see the exchange folded in one 「${from.label} ⇄ this conversation」 card, not as separate messages.`,
       `If you need information or a decision from 「${from.label}」 to do this well, ask for it in your reply, short and specific, and end the turn; the answer will arrive here as a new message. Do not guess what only they know.`,
       "When the work is done, reply with the result: what you did, what you found, what is still open.",
       "Do not relay to any other conversation from this turn.",
@@ -76,10 +117,10 @@ export function resultTurn({ id, to, message, reply, chainId }) {
     message: `「${to.label}」回复了：\n\n${reply}`,
     extraSystemPrompt: [
       `You handed work to 「${to.label}」 (session relay thread ${chainId ?? id}); the message above is its reply. Your last message to it: ${clip(message, 600)}`,
-      "People here already see its message in a 「消息来自」 card, so do not paste it again.",
-      `If it asks you something or needs input you or this conversation can provide, answer it: call session_relay_send with target 「${to.label}」 and your answer, then say in one short line here what you told it. You are coordinating with it, not reporting every step.`,
-      "If it needs a decision only the owner can make, ask the owner here instead of guessing.",
-      "If it delivered the result, continue the owner's task: say what came back and what it means, or take the next step.",
+      "People here see your exchange with it folded in one card; your own text in this turn is only posted here when you do not relay again.",
+      `If it asks you something or needs input you or this conversation can provide, answer it: call session_relay_send with target 「${to.label}」 and your answer, and end with one short line. You are coordinating with it, not reporting every step.`,
+      "If it needs a decision only the owner can make, ask the owner here instead of guessing (that text is posted here).",
+      "If it delivered the result, finish the owner's task: write what you want the owner to read here (the result and what it means, or the next step). Do not mention the relay mechanics.",
     ].join("\n"),
   };
 }

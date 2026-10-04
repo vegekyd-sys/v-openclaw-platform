@@ -70,6 +70,10 @@ export class FeishuApi {
     return data.message_id;
   }
 
+  async patchCard(messageId, card) {
+    await this.call("PATCH", `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}`, { json: { content: JSON.stringify(card) } });
+  }
+
   async chatName(chatId) {
     const data = await this.call("GET", `/open-apis/im/v1/chats/${encodeURIComponent(chatId)}`);
     return typeof data.name === "string" && data.name.trim() ? data.name.trim() : null;

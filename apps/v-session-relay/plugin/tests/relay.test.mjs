@@ -8,7 +8,7 @@ import { RelayDispatcher } from "../core/dispatcher.js";
 import { activeRelay, decideSend, resolveTrustedActor } from "../core/policy.js";
 import { agentForFeishuGroup, feishuReceiverForSession, labelForSession, parseSessionKey, resolveTarget } from "../core/sessions.js";
 import { RelayStore } from "../core/store.js";
-import { attributionCard, lastAssistantText } from "../core/text.js";
+import { lastAssistantText, threadCard, threadEntries } from "../core/text.js";
 
 const OWNER = "feishu:ou_owner";
 const DM = "agent:makaron:feishu:direct:ou_owner";
@@ -76,16 +76,25 @@ test("sessions: keys, receivers, bindings and target resolution", async () => {
   assert.equal(await labelForSession(DM, { owners: [OWNER] }), "Tianyi 的私聊");
 });
 
-test("text: attribution card and transcript reply extraction", () => {
-  const card = attributionCard({ label: "A 群", folded: "hello" });
-  assert.equal(card.schema, "2.0");
-  assert.match(card.body.elements[0].content, /消息来自 \*\*A 群\*\*/u);
-  assert.equal(card.body.elements[0].text_align, "center");
-  assert.deepEqual(card.body.elements[1], { tag: "markdown", content: "hello" }, "short messages are shown, not folded");
-  const long = attributionCard({ label: "A", folded: "x".repeat(2000) });
-  assert.equal(long.body.elements[2].tag, "collapsible_panel");
-  assert.equal(long.body.elements[2].header.title.text_align, "center");
-  assert.equal(attributionCard({ label: "A" }).body.elements.length, 1);
+test("text: one collapsed thread card per conversation, both sides inside, transcript reply extraction", () => {
+  const thread = [
+    record({ id: "r_1", chainId: "r_1", status: "done", createdAt: 1, reply: "缺灰度比例？", finishedAt: 2 }),
+    record({ id: "r_2", chainId: "r_1", status: "running", createdAt: 3, message: "20%" }),
+  ];
+  assert.deepEqual(threadEntries(thread).map((e) => [e.label, e.text]), [["Tianyi 的私聊", "do x"], ["A 群", "缺灰度比例？"], ["Tianyi 的私聊", "20%"]]);
+  const card = threadCard(thread);
+  const panel = card.body.elements[0];
+  assert.equal(card.body.elements.length, 1, "only one line in the chat");
+  assert.equal(panel.tag, "collapsible_panel");
+  assert.equal(panel.expanded, false);
+  assert.equal(panel.header.title.text_align, "center");
+  assert.match(panel.header.title.content, /Tianyi 的私聊\*\* ⇄ \*\*A 群/u);
+  assert.match(panel.header.title.content, /「A 群」正在处理… · 3 条/u);
+  assert.equal(panel.elements.length, 3);
+  assert.match(panel.elements[1].content, /A 群 ·/u);
+  assert.match(threadCard([{ ...thread[0] }]).body.elements[0].header.title.content, /已完成/u);
+  const huge = threadCard(Array.from({ length: 40 }, (_, i) => record({ id: `r_${i}`, chainId: "r_0", status: "done", createdAt: i, reply: "长".repeat(1500), finishedAt: i })));
+  assert(JSON.stringify(huge).length < 30_000 * 1.2, "card stays under Feishu's size limit");
   const messages = [
     { role: "user", content: "q", timestamp: 10 },
     { role: "assistant", content: [{ type: "text", text: "answer" }, { type: "tool_use" }], timestamp: 20 },
@@ -118,7 +127,11 @@ function fakeRuntime({ replies = {}, waitStatus = {} } = {}) {
 
 function fakeFeishu() {
   const cards = [];
-  return { cards, api: { sendCard: async (receiver, card) => { cards.push({ receiver, card }); return `om_${cards.length}`; } } };
+  const patches = [];
+  return { cards, patches, api: {
+    sendCard: async (receiver, card) => { cards.push({ receiver, card }); return `om_${cards.length}`; },
+    patchCard: async (id, card) => { patches.push({ id, card }); },
+  } };
 }
 
 test("dispatcher: request is posted and run in the target, the result returns to the origin", async () => {
@@ -134,13 +147,20 @@ test("dispatcher: request is posted and run in the target, the result returns to
   assert.equal(final.reply, "done: 3 files");
   assert.equal(runtime.runs.length, 2);
   assert.equal(runtime.runs[0].sessionKey, GROUP_A);
-  assert.equal(runtime.runs[0].deliver, true);
+  assert.equal(runtime.runs[0].deliver, false, "agent-to-agent turns are not posted on their own");
   assert.match(runtime.runs[0].message, /消息来自「Tianyi 的私聊」/u);
   assert.equal(runtime.runs[1].sessionKey, DM);
+  assert.equal(runtime.runs[1].deliver, false);
   assert.match(runtime.runs[1].message, /「A 群」回复了：\n\ndone: 3 files/u);
-  assert.deepEqual(feishu.cards.map((c) => c.receiver.receiveId), ["oc_a", "ou_owner"]);
-  assert.match(feishu.cards[0].card.body.elements[0].content, /Tianyi 的私聊/u);
-  assert.match(feishu.cards[1].card.body.elements[0].content, /A 群/u);
+  // one thread card in each chat, sent once and then patched; then the origin's last words
+  const threadCards = feishu.cards.filter((c) => c.card.body.elements[0].tag === "collapsible_panel");
+  assert.deepEqual(threadCards.map((c) => c.receiver.receiveId).sort(), ["oc_a", "ou_owner"]);
+  assert(feishu.patches.length >= 2);
+  assert.match(feishu.patches.at(-1).card.body.elements[0].header.title.content, /已完成 · 2 条/u);
+  const finals = feishu.cards.filter((c) => c.card.body.elements[0].tag === "markdown");
+  assert.deepEqual(finals.map((c) => [c.receiver.receiveId, c.card.body.elements[0].content]), [["ou_owner", "ok, next step"]]);
+  assert.deepEqual(Object.keys(final.threadCards).sort(), [DM, GROUP_A].sort());
+  assert.equal(final.finalMessageId, finals.length ? "om_3" : undefined);
 });
 
 test("dispatcher: after a restart a running relay is collected from the transcript and delivered", async () => {
@@ -200,4 +220,26 @@ test("text: a follow-up in a thread tells the target it is a reply, and the orig
   const next = requestTurn({ id: "r_2", chainId: "r_1", from: { label: "私聊" }, message: "版本 v2.3" });
   assert.match(next.extraSystemPrompt, /is answering you/u);
   assert.match(resultTurn({ id: "r_1", chainId: "r_1", to: { label: "B 群" }, message: "写公告", reply: "版本号？" }).extraSystemPrompt, /session_relay_send with target 「B 群」/u);
+});
+
+test("dispatcher: when the woken origin answers with another relay, its own text is not posted", async () => {
+  const store = tmpStore();
+  store.write(record());
+  const runtime = fakeRuntime({ replies: { [GROUP_A]: "缺灰度比例？", [DM]: "已回复 20%" } });
+  const origRun = runtime.run.bind(runtime);
+  runtime.run = async (params) => {
+    const res = await origRun(params);
+    if (params.sessionKey === DM && /回复了/u.test(params.message)) {
+      // the origin's turn relays again within the chain
+      store.write(record({ id: "r_2", chainId: "r_1", via: "reply", status: "done", createdAt: Date.now() + 1, message: "20%" }));
+    }
+    return res;
+  };
+  const feishu = fakeFeishu();
+  const d = new RelayDispatcher({ store, runtime, feishuFor: () => feishu.api, getConfig: () => ({}), logger: { info() {}, warn() {} } });
+  d.tick();
+  await d.idle();
+  assert.equal(store.read("r_1").status, "done");
+  assert.equal(store.read("r_1").finalMessageId, undefined);
+  assert.equal(feishu.cards.filter((c) => c.card.body.elements[0].tag === "markdown").length, 0);
 });

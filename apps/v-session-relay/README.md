@@ -1,19 +1,20 @@
 # v-session-relay
 
-让 Tianyi 在任何一个对话（私聊、群、Taskroom）里叫 V 把一件事交给另一个对话去做，做完的结果自动回到原来的对话，原来那个 V 被唤醒接着干。机制与 Claude Code 的跨会话消息、Grok Bot 的 bot 交接一样：传的是 session，不是另起 agent。两边在飞书里都看得见。
+让 Tianyi 在任何一个对话（私聊、群、Taskroom）里叫 V 把一件事交给另一个对话去做，做完的结果自动回到原来的对话，原来那个 V 被唤醒接着干。机制与 Claude Code 的跨会话消息、Grok Bot 的 bot 交接一样：传的是 session，不是另起 agent。两边在飞书里各有一张收起的对话卡片，点开就是两个 V 的来回。
 
 ```
 A 对话（Tianyi 说话） ── session_relay_send ──► 账本 queued
                                                │ Gateway 派送服务
-B 群：「消息来自 A」卡片 ◄────────────────────────┤
-B 的 V 在 B 群里正常回复（deliver: true）         │ 等 B 这一轮跑完（不限 30 秒）
-A 对话：「消息来自 B」卡片（回复折叠在里面） ◄──────┤
-A 的 V 被唤醒，拿着结果继续（deliver: true）       ┘
+B 的 V 跑一轮（deliver: false），回复回到账本      │ 等这一轮跑完（不限 30 秒）
+A 的 V 被唤醒（deliver: false）                    │
+  ├─ 又传话给 B（回答它的追问）→ 下一轮，同一条线程   │
+  └─ 不再传话 → 它这轮说的话发到 A 的聊天里          ┘
+两边聊天里各有一张「A ⇄ B · 状态 · N 条」卡片，默认收起，随对话实时更新；点开看两个 V 的全部对话。
 ```
 
 ## 为什么不用原生 sessions_send
 
-OpenClaw 2026.9.1 的 `sessions_send` 在不等待模式下只盯 30 秒，目标做得更久回复就丢；回传的来回轮次 `deliver:false`，飞书两边都看不见；最后的 announce 只发到目标频道。9.8 改成"回复只回一次"，但等待仍在进程内、重启就丢。这里改用插件运行时的 `subagent.run({sessionKey, deliver: true})` + `waitForRun`，与 desktop-handoff「页面交还唤醒 V」是同一条已上线的路径。
+OpenClaw 2026.9.1 的 `sessions_send` 在不等待模式下只盯 30 秒，目标做得更久回复就丢；回传的来回轮次 `deliver:false`，飞书两边都看不见；最后的 announce 只发到目标频道。9.8 改成"回复只回一次"，但等待仍在进程内、重启就丢。这里改用插件运行时的 `subagent.run({sessionKey})` + `waitForRun`（desktop-handoff「页面交还唤醒 V」用的同一个接口），飞书展示由插件自己发卡片、改卡片。
 
 ## 规则
 
