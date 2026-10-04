@@ -1,0 +1,13 @@
+{
+  "baseRelease": "gpt-live-call-v1-20261004-4934ff6",
+  "tests": ["lab/candidate/loopback-requester-sender.test.mjs"],
+  "files": [
+    {
+      "source": "lab/release-files/loopback-requester-sender/tool-resolution-Con11qMn.js",
+      "target": "openclaw/dist/tool-resolution-Con11qMn.js",
+      "before": "5d08186af6fc6ad0c887f2c9361279d036109016e7333cc9c4ee922bfe1dff6a"
+    }
+  ],
+  "timeoutSeconds": 600,
+  "user": "lab-db91-parity"
+}
