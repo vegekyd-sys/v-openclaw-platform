@@ -183,6 +183,10 @@ Gateway 挂点（progressCard / taskRegistry / question / approval / 回复回�
 Candidate：钉钉改后 `49f7b919`、改前 `d0f2e11d`；企微改后 `6ea201be`、改前 `a81c684e`；
 Telegram 原生 `503fe11b`。
 
+10/04 Tianyi 决定 Telegram 也上全套（`apps/v-experience/telegram/patch.mjs`，改核心里的两个 Telegram chunk）。
+Telegram 改后 `1b53a07e` 全过：单选题按钮一点即答（16 s 内继续），多选题勾选 + 确认，按钮消息原地改成「✓ 已选择：…」；
+凭据给出提示并取消；回复后另发一条静音的后台任务行并编辑到「☑️ 后台任务已结束」。进度清单仍用原生。
+
 实现要点（踩过的坑）：
 
 - Worker 的提问不走回复 payload，要订阅 V 核心的 `Symbol.for("openclaw.questionChannelRequestedListeners")`；
