@@ -59,6 +59,13 @@ export function handoffCard({ purpose = "login", kind = "control", reason, url, 
 }
 
 /**
+ * Channels that render the plain card's buttons: Feishu, and Telegram (URL
+ * button + callback button). DingTalk and WeCom flatten it to text, so there
+ * the link goes into V's reply instead.
+ */
+export const DEFAULT_CARD_CHANNELS = ["feishu", "telegram"];
+
+/**
  * Where to post the card in place: the conversation the request came from.
  * Returns null when there is no channel conversation (CLI, webchat) or the
  * channel does not render cards.
@@ -66,7 +73,7 @@ export function handoffCard({ purpose = "login", kind = "control", reason, url, 
 export function inPlaceTarget(context = {}, config = {}) {
   const channel = typeof context.messageChannel === "string" ? context.messageChannel.trim() : "";
   const to = typeof context.deliveryContext?.to === "string" ? context.deliveryContext.to.trim() : "";
-  const channels = Array.isArray(config.cardChannels) ? config.cardChannels : ["feishu"];
+  const channels = Array.isArray(config.cardChannels) ? config.cardChannels : DEFAULT_CARD_CHANNELS;
   if (!channel || !to || !channels.includes(channel)) {
     return null;
   }

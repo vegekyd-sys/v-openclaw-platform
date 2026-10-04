@@ -4,7 +4,7 @@ import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { HandoffAdminClient } from "./core/admin-client.js";
 import { describeContext, isControlAnywhereActor, isTrustedDirectSession, resolveTrustedActor } from "./core/identity.js";
 import { deliverPrivately } from "./core/deliver.js";
-import { handoffCard, inPlaceTarget, normalizePayment } from "./core/card.js";
+import { DEFAULT_CARD_CHANNELS, handoffCard, inPlaceTarget, normalizePayment } from "./core/card.js";
 import { FeishuApi, captureDesktop, feishuCredentials, feishuReceiver, loadCover } from "./core/feishu-api.js";
 import { nativeHandoffCard } from "./core/native-card.js";
 
@@ -239,7 +239,7 @@ export default definePluginEntry({
               if (!sentNative) await deliverPrivately({
                 channel,
                 target: senderId,
-                ...((config.cardChannels ?? ["feishu"]).includes(channel)
+                ...((config.cardChannels ?? DEFAULT_CARD_CHANNELS).includes(channel)
                   ? { text: card.text, presentation: card.presentation }
                   : { text: card.fallback }),
                 command: config.openclawCommand,
@@ -319,7 +319,7 @@ export default definePluginEntry({
             sessionMinutes,
             instruction:
               kind === "control"
-                ? "Send exactly this url to the user in this conversation, and no other address or 'equivalent' link (other hostnames may not resolve for them). They open it, press 接管控制, do the login on V's own browser, press 交还给 V, then tell you they are done. While they are in control, your browser tool is limited to read-only actions. Do not store the url in memory or logs."
+                ? "Send exactly this url to the user in this conversation as a markdown link on its own line, `[接管电脑](<url>)`, and no other address or 'equivalent' link (other hostnames may not resolve for them). They open it, press 接管控制, do the login on V's own browser, press 交还给 V, then tell you they are done. While they are in control, your browser tool is limited to read-only actions. Do not store the url in memory or logs."
                 : "Send this view-only url. Viewers can watch V's desktop but cannot type or click.",
           });
         },
@@ -401,6 +401,8 @@ export default definePluginEntry({
 
     api.registerCommand?.({
       name: "v-takeover",
+      // The handler checks the person is the one the card was for.
+      requireAuth: false,
       description: "Mark V's desktop as taken over (the 接管 card button; the button also opens the desktop).",
       acceptsArgs: true,
       handler: async (ctx) => {
@@ -421,6 +423,8 @@ export default definePluginEntry({
 
     api.registerCommand?.({
       name: "v-handback",
+      // The handler checks the person is the one the card was for.
+      requireAuth: false,
       description: "Hand V's desktop back to V after a takeover (the 我完成了 card button).",
       acceptsArgs: true,
       handler: async (ctx) => {
@@ -451,6 +455,8 @@ export default definePluginEntry({
 
     api.registerCommand?.({
       name: "v-skip",
+      // The handler checks the person is the one the card was for.
+      requireAuth: false,
       description: "Skip the step V asked the user to do on its desktop (the 跳过 card button).",
       acceptsArgs: true,
       handler: async (ctx) => {
