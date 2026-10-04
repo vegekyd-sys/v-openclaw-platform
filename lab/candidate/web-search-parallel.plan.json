@@ -1,0 +1,8 @@
+{
+  "support": ["lab/candidate/web-search-parallel.mjs", "lab/release-files/web-search-parallel/config.mjs"],
+  "command": ["/opt/vlab/node-v22.23.1-linux-x64/bin/node", "lab/candidate/web-search-parallel.mjs"],
+  "timeoutSeconds": 3600,
+  "user": "lab-db91-parity",
+  "files": [],
+  "env": { "PROVIDER": "parallel-free" }
+}
