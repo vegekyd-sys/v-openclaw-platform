@@ -99,7 +99,7 @@ function readJsonBody(req, limit = 8 * 1024) {
   });
 }
 
-function serveStatic(res, root, relative) {
+function serveStatic(res, root, relative, { immutable = false } = {}) {
   const target = path.resolve(root, `.${path.posix.normalize(`/${relative}`)}`);
   if (!target.startsWith(`${path.resolve(root)}${path.sep}`) && target !== path.resolve(root)) {
     res.writeHead(403);
@@ -125,7 +125,9 @@ function serveStatic(res, root, relative) {
     res.end("not found");
     return;
   }
-  res.writeHead(200, { "content-type": type, "content-length": stat.size, "cache-control": "no-cache" });
+  // Versioned assets (?v=<content hash>, stamped by build-viewer.mjs) never change: cache them for good.
+  const cache = immutable ? "public, max-age=31536000, immutable" : "no-cache";
+  res.writeHead(200, { "content-type": type, "content-length": stat.size, "cache-control": cache });
   fs.createReadStream(target).pipe(res);
 }
 
@@ -211,7 +213,7 @@ export function createService(config, { log = console, layout: layoutOverride } 
       } else if (req.method === "GET" && route.startsWith("/novnc/")) {
         serveStatic(res, config.novncDir, route.slice("/novnc/".length));
       } else if (req.method === "GET" && /^\/[\w.-]+\.(?:js|css|svg|png|ico)$/u.test(route)) {
-        serveStatic(res, PUBLIC_DIR, route.slice(1));
+        serveStatic(res, PUBLIC_DIR, route.slice(1), { immutable: url.searchParams.has("v") });
       } else if (req.method === "POST" && route === "/api/claim") {
         const body = await readJsonBody(req);
         const result = registry.claim(typeof body.token === "string" ? body.token : "", {
@@ -234,7 +236,7 @@ export function createService(config, { log = console, layout: layoutOverride } 
       } else if (req.method === "POST" && route === "/api/control") {
         const body = await readJsonBody(req);
         const secret = typeof body.viewer === "string" ? body.viewer : "";
-        const result = body.take ? registry.takeControl(secret) : registry.releaseControl(secret);
+        const result = body.take ? registry.takeControl(secret) : body.handBack ? registry.handBackFromPage(secret) : registry.releaseControl(secret);
         await layoutSettled();
         json(res, result.error ? 403 : 200, result);
       } else if (req.method === "POST" && route === "/api/layout") {
@@ -345,6 +347,7 @@ export function createService(config, { log = console, layout: layoutOverride } 
     const match = url.pathname.match(/^\/v1\/handoffs\/([\w-]+)$/u);
     const handBackMatch = url.pathname.match(/^\/v1\/handoffs\/([\w-]+)\/handback$/u);
     const cardMatch = url.pathname.match(/^\/v1\/handoffs\/([\w-]+)\/card$/u);
+    const wakeMatch = url.pathname.match(/^\/v1\/handoffs\/([\w-]+)\/wake$/u);
     try {
       if (req.method === "GET" && url.pathname === "/health") {
         json(res, 200, { ok: true, ...registry.state() });
@@ -359,6 +362,7 @@ export function createService(config, { log = console, layout: layoutOverride } 
           reason: body.reason,
           claimTtlMs: body.claimTtlMs,
           sessionTtlMs: body.sessionTtlMs,
+          origin: body.origin,
         });
         json(res, 201, { id: issued.id, kind: issued.kind, url: linkFor(issued.token), claimExpiresAt: issued.claimExpiresAt, sessionTtlMs: issued.sessionTtlMs });
       } else if (req.method === "GET" && url.pathname === "/v1/handoffs" && url.searchParams.get("sessionKey")) {
@@ -371,6 +375,9 @@ export function createService(config, { log = console, layout: layoutOverride } 
         const body = await readJsonBody(req, 20 * 1024);
         const result = registry.setCard(cardMatch[1], body.card);
         json(res, result ? 200 : 404, result ?? { error: "not_found" });
+      } else if (req.method === "POST" && wakeMatch) {
+        const body = await readJsonBody(req);
+        json(res, 200, registry.claimWake(wakeMatch[1], typeof body.origin === "string" ? body.origin : null));
       } else if (req.method === "POST" && handBackMatch) {
         const result = registry.handBack(handBackMatch[1]);
         await layoutSettled();

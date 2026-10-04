@@ -37,8 +37,8 @@ export class HandoffAdminClient {
     }
   }
 
-  issue({ kind, ownerId, sessionKey, reason, claimTtlMs, sessionTtlMs }, options) {
-    return this.request("POST", "/v1/handoffs", { kind, ownerId, sessionKey, reason, claimTtlMs, sessionTtlMs }, options);
+  issue({ kind, ownerId, sessionKey, reason, claimTtlMs, sessionTtlMs, origin }, options) {
+    return this.request("POST", "/v1/handoffs", { kind, ownerId, sessionKey, reason, claimTtlMs, sessionTtlMs, origin }, options);
   }
 
   latestForSession(sessionKey, options) {
@@ -55,6 +55,12 @@ export class HandoffAdminClient {
 
   handBack(id, options) {
     return this.request("POST", `/v1/handoffs/${encodeURIComponent(id)}/handback`, {}, options);
+  }
+
+  /** True for exactly one caller after the user pressed 交还给 V on the page. */
+  async claimWake(id, origin, options) {
+    const result = await this.request("POST", `/v1/handoffs/${encodeURIComponent(id)}/wake`, { origin }, options);
+    return result?.claimed === true;
   }
 
   revoke(id, options) {
