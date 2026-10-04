@@ -71,7 +71,7 @@ if (secrets.get("VLAB_DINGTALK_TEST_CLIENT_ID") && secrets.get("VLAB_DINGTALK_TE
   config.channels["dingtalk-connector"] = {
     enabled: true, clientId: secrets.get("VLAB_DINGTALK_TEST_CLIENT_ID"), clientSecret: secrets.get("VLAB_DINGTALK_TEST_CLIENT_SECRET"),
     dmPolicy: "open", groupPolicy: "open", allowFrom: ["*"], groupAllowFrom: ["*"], requireMention: true,
-    groupReplyMode: "aicard", typingIndicator: true, separateSessionByConversation: true, groupSessionScope: "group", debug: false,
+    groupReplyMode: "aicard", typingIndicator: true, separateSessionByConversation: true, groupSessionScope: "group", debug: true,
   };
   config.plugins.load.paths.push(pluginDir);
   allowPlugin("dingtalk-connector");
