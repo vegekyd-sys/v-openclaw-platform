@@ -223,4 +223,6 @@ VLab 测试机器人：钉钉「Vlab」（扫码注册，凭据在 VLab secrets�
 3. VLab 到 `api.dingtalk.com`（IPv4 在新加坡）约 250 ms，正好卡在 Node 默认的 happy-eyeballs 尝试超时上，首次建卡偶发 ETIMEDOUT 退化成普通消息。测试环境用 `--network-family-autoselection-attempt-timeout=2000`；生产 V 是否也偶发待查。
 4. 共享 VLab 配置里还挂着未打补丁的钉钉/企微插件副本（capability-alignment），测试时必须过滤掉，否则加载的是旧插件。
 
+真机修复后，假平台回归 `bb3757b2` 五项全过（钉钉补丁 9d2f9ae0 之后）。
+
 Telegram：bot 已接入私有 Gateway，Mac 端 Telegram 客户端连不上（需要代理），待验收。
