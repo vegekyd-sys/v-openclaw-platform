@@ -1,0 +1,561 @@
+import { createTranscriptPresentation } from "./transcript-presentation.mjs";
+import { captureDuplexMicrophone } from "./microphone-capture.mjs";
+import { createCallSounds } from "./call-sounds.mjs";
+import { createH5DuplexPlaybackGate } from "./duplex-playback.mjs";
+
+const $ = (id) => document.getElementById(id);
+let call = null;
+let starting = null;
+let liveReady = false;
+const duplexRecoveryMessage = "上一段语音还没确认结束。若仍无声音，请结束通话后重新开始。";
+const playbackRecoveryMessage = "声音播放被暂停了，点一下页面恢复声音。";
+const greetingGraceMs = 15000;
+const presentation = createTranscriptPresentation();
+const renderedTurns = new Map();
+const tasks = new Set();
+const setStatus = (text) => { $("status").textContent = text; };
+function duplexDiagnostic(active, entry) {
+  if (call !== active) return;
+  const counts = active.duplexDiagnostics.counts;
+  counts[entry.type] = (counts[entry.type] ?? 0) + 1;
+  if (entry.type === "activity-window") {
+    if (entry.remoteActive) counts.remoteActiveFrames = (counts.remoteActiveFrames ?? 0) + 1;
+    if (entry.appliedMuted) counts.appliedMutedFrames = (counts.appliedMutedFrames ?? 0) + 1;
+    if (entry.remoteActive && entry.appliedMuted) counts.remoteActiveWhileMutedFrames = (counts.remoteActiveWhileMutedFrames ?? 0) + 1;
+    active.duplexDiagnostics.latestActivity = entry;
+  } else {
+    active.duplexDiagnostics.transitions.push(entry);
+    if (active.duplexDiagnostics.transitions.length > 128) active.duplexDiagnostics.transitions.shift();
+  }
+  active.duplexDiagnostics.events.push(entry);
+  if (active.duplexDiagnostics.events.length > 1200) active.duplexDiagnostics.events.shift();
+}
+function playbackState(active) {
+  const audio = $("remoteAudio");
+  return { requestedMuted: active.duplex.snapshot().localPlaybackMuted,
+    appliedMuted: audio.muted, paused: audio.paused, volume: audio.volume,
+    readyState: audio.readyState, audioContextState: active.context?.state ?? "absent",
+    mode: active.duplex.snapshot().mode, interruptionOwner: active.duplex.snapshot().interruptionOwner };
+}
+function connectedStatus(active) {
+  if (active.playbackNeedsGesture) setStatus(playbackRecoveryMessage);
+  else if (active.duplexRecoveryNotice) setStatus(duplexRecoveryMessage);
+  else if (active.ending) setStatus("正在结束通话…");
+  else setStatus("V 正在听，直接说话就好");
+}
+async function greetWhenReady(active) {
+  if (call !== active || active.greetingPending || active.greetingRequested || active.greetingSuppressed
+    || active.greetingExpired || active.ending
+    || active.pc.connectionState !== "connected" || active.context?.state !== "running"
+    || $("remoteAudio").paused || active.playbackNeedsGesture) return;
+  // WebRTC may be connected before the backend's native sideband sees
+  // session.started. Bound elapsed readiness time, not a handful of retries.
+  const now = performance.now();
+  if (active.greetingDeadlineAt === undefined) {
+    active.greetingDeadlineAt = now + greetingGraceMs;
+    active.greetingDeadlineTimer = setTimeout(() => {
+      if (call !== active || active.greetingRequested || active.greetingSuppressed) return;
+      active.greetingExpired = true;
+      clearTimeout(active.greetingRetryTimer);
+      active.greetingAbort?.abort();
+      duplexDiagnostic(active, { type: "greeting-ready-expired", at: performance.now(), attempts: active.greetingAttempts ?? 0 });
+    }, greetingGraceMs);
+  }
+  if (now >= active.greetingDeadlineAt) return;
+  clearTimeout(active.greetingRetryTimer);
+  active.greetingRetryTimer = null;
+  active.greetingPending = true; active.greetingAttempts = (active.greetingAttempts ?? 0) + 1;
+  const controller = new AbortController(); active.greetingAbort = controller;
+  duplexDiagnostic(active, { type: "greeting-ready-attempt", at: now, attempt: active.greetingAttempts });
+  try {
+    const result = await api("ready", { voiceSessionId: active.voiceSessionId }, { signal: controller.signal });
+    if (call === active && !active.greetingSuppressed && !active.greetingExpired && !active.ending
+      && performance.now() < active.greetingDeadlineAt && result.ok === true) {
+      active.greetingRequested = true;
+      clearTimeout(active.greetingDeadlineTimer);
+      duplexDiagnostic(active, { type: "greeting-ready-accepted", at: performance.now(), attempt: active.greetingAttempts });
+    }
+  } catch {
+    // A rejected readiness request cannot manufacture a greeting or close a
+    // working call. The user can still speak; the host operation is idempotent.
+  } finally {
+    active.greetingPending = false;
+    if (active.greetingAbort === controller) active.greetingAbort = null;
+    if (call === active && !active.greetingRequested && !active.greetingSuppressed && !active.greetingExpired && !active.ending) {
+      const remaining = active.greetingDeadlineAt - performance.now();
+      if (remaining > 0) active.greetingRetryTimer = setTimeout(() => void greetWhenReady(active), Math.min(1000, 250 * active.greetingAttempts, remaining));
+    }
+  }
+}
+function suppressGreetingForCaller(active) {
+  if (active.greetingRequested || active.greetingSuppressed) return;
+  active.greetingSuppressed = true;
+  clearTimeout(active.greetingRetryTimer); clearTimeout(active.greetingDeadlineTimer);
+  active.greetingAbort?.abort();
+  duplexDiagnostic(active, { type: "greeting-suppressed-caller-start", at: performance.now() });
+}
+function cancelAutomaticEnd(active) {
+  if (!active.ending) return;
+  clearTimeout(active.ending.timeout); active.ending = null;
+  document.body.dataset.callState = "connected";
+  $("badge").textContent = "通话中";
+  connectedStatus(active);
+}
+function endCallRequest(active, requestId, originUserTurnId) {
+  if (typeof requestId !== "string" || !requestId || typeof originUserTurnId !== "string"
+    || !originUserTurnId || active.latestNativeUserTurnId !== originUserTurnId) return null;
+  active.endRequests ??= new Map();
+  let request = active.endRequests.get(requestId);
+  if (request && (request.invalidated || request.originUserTurnId !== originUserTurnId)) return null;
+  if (!request) {
+    request = { requestId, originUserTurnId, at: performance.now(), providerObserved: false,
+      accepted: false, invalidated: false, turnId: null, terminalAt: null,
+      audioObserved: false, quietSince: null, lastSampleAt: null };
+    active.endRequests.set(requestId, request);
+    if (active.endRequests.size > 32) active.endRequests.delete(active.endRequests.keys().next().value);
+  }
+  return request;
+}
+function armAutomaticEnd(active, request) {
+  if (call !== active || request.invalidated || !request.accepted || !request.providerObserved
+    || active.latestNativeUserTurnId !== request.originUserTurnId || active.ending) return;
+  active.ending = request;
+  document.body.dataset.callState = "ending";
+  $("badge").textContent = "正在结束"; connectedStatus(active);
+  // Silence or a timer alone is not proof of a delivered farewell. Keep the
+  // manual button available if transport/playback evidence never arrives.
+  request.timeout = setTimeout(() => {
+    if (call !== active || active.ending !== request) return;
+    setStatus("语音尚未确认播完，可以点按钮结束通话。");
+  }, 15000);
+}
+function requestAutomaticEnd(active, value) {
+  if (call !== active || value.name !== "openclaw_end_call" || value.closeAfterPlayback !== true) return;
+  const backendPath = value.source === "backend_model_client_tool";
+  if (backendPath) {
+    if (value.status !== "accepted" || value.nativeDelegationId !== value.requestId ||
+      value.backendToolCallId !== value.callId || !/^call_[a-zA-Z0-9_.:-]{1,155}$/.test(value.callId ?? "") ||
+      !/^[a-zA-Z0-9_.:-]{1,256}$/.test(value.backendRunId ?? "") ||
+      !Number.isSafeInteger(value.delegationGeneration) || value.delegationGeneration < 1 ||
+      !active.completedNativeUserTurns?.has(value.originUserTurnId)) return;
+  } else if (value.callId !== value.requestId) return;
+  const request = endCallRequest(active, value.requestId, value.originUserTurnId);
+  if (!request) return;
+  if (request.accepted && request.backendPath &&
+    (request.backendToolCallId !== value.backendToolCallId || request.backendRunId !== value.backendRunId)) return;
+  if (backendPath && !request.accepted) {
+    request.backendPath = true; request.source = value.source;
+    request.backendToolCallId = value.backendToolCallId; request.backendRunId = value.backendRunId;
+    request.delegationGeneration = value.delegationGeneration;
+    // An ordinary consult acknowledgment before host acceptance is not farewell.
+    request.turnId = null; request.terminalAt = null; request.audioObserved = false; request.quietSince = null;
+    const observed = active.nativeCallControlDelegations?.get(value.nativeDelegationId);
+    request.providerObserved = observed?.originUserTurnId === value.originUserTurnId;
+    if (request.providerObserved) active.endNativeRequestId = request.requestId;
+  }
+  request.accepted = true;
+  armAutomaticEnd(active, request);
+}
+function observeNativeEndDelegation(active, item) {
+  if (item?.type !== "delegation" || item.target !== "client" || !Array.isArray(item.content)
+    || item.content.length !== 1 || item.content[0].type !== "input_text" ||
+    typeof item.content[0].text !== "string" || typeof item.id !== "string" ||
+    typeof item.user_bidi_turn_id !== "string") return;
+  active.nativeCallControlDelegations ??= new Map();
+  active.nativeCallControlDelegations.set(item.id, { originUserTurnId: item.user_bidi_turn_id });
+  if (active.nativeCallControlDelegations.size > 256) active.nativeCallControlDelegations.delete(active.nativeCallControlDelegations.keys().next().value);
+  const backendRequest = active.endRequests?.get(item.id);
+  if (backendRequest?.backendPath && backendRequest.accepted && !backendRequest.invalidated &&
+    backendRequest.originUserTurnId === item.user_bidi_turn_id && active.latestNativeUserTurnId === item.user_bidi_turn_id) {
+    backendRequest.providerObserved = true; active.endNativeRequestId = backendRequest.requestId;
+    armAutomaticEnd(active, backendRequest);
+    return;
+  }
+  let input;
+  try { input = JSON.parse(item.content[0].text); } catch { return; }
+  if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).length !== 2
+    || input.name !== "openclaw_end_call" || !input.arguments || typeof input.arguments !== "object"
+    || Array.isArray(input.arguments) || Object.keys(input.arguments).length !== 0) return;
+  const request = endCallRequest(active, item.id, item.user_bidi_turn_id);
+  if (!request) return;
+  request.providerObserved = true;
+  active.endNativeRequestId = request.requestId;
+  armAutomaticEnd(active, request);
+}
+function observeAutomaticEnd(active, at, energy) {
+  // Keep the genuine native farewell observation even if the host SSE travels
+  // slower than WebRTC. It authorizes closing only when both proofs join.
+  const ending = active.endRequests?.get(active.endNativeRequestId);
+  if (!ending || ending.invalidated || !ending.providerObserved || !ending.turnId || call !== active) return;
+  const audio = $("remoteAudio");
+  if (ending.lastSampleAt !== null && at - ending.lastSampleAt > 125) ending.quietSince = null;
+  ending.lastSampleAt = at;
+  if (active.context?.state !== "running" || audio.paused || audio.muted || active.playbackNeedsGesture) {
+    ending.quietSince = null; return;
+  }
+  if (energy > .003) { ending.audioObserved = true; ending.quietSince = null; return; }
+  if (ending.terminalAt === null || !ending.audioObserved) return;
+  ending.quietSince ??= at;
+  if (at - ending.quietSince < 750 || !ending.accepted || active.ending !== ending) return;
+  duplexDiagnostic(active, { type: "model-end-call-playback-drained", at,
+    requestId: ending.requestId, originUserTurnId: ending.originUserTurnId, turnId: ending.turnId,
+    ...(ending.backendPath ? { source: ending.source, backendToolCallId: ending.backendToolCallId,
+      backendRunId: ending.backendRunId, nativeDelegationId: ending.requestId } : {}) });
+  void stopCall();
+}
+async function startRemotePlayback(active, source) {
+  if (call !== active) return false;
+  const audio = $("remoteAudio");
+  // Invoke play in the gesture's synchronous stack; awaiting context.resume
+  // first can lose browser user activation. This does not unmute a local gate.
+  try {
+    const playing = audio.play();
+    await playing;
+    if (call !== active) return false;
+    active.playbackAudioBlocked = false;
+    active.playbackNeedsGesture = Boolean(active.playbackContextBlocked);
+    duplexDiagnostic(active, { type: "playback-started", at: performance.now(), source, ...playbackState(active) });
+    if (source === "gesture" || $("status").textContent === playbackRecoveryMessage) connectedStatus(active);
+    void greetWhenReady(active);
+    return true;
+  } catch (error) {
+    if (call !== active) return false;
+    active.playbackAudioBlocked = true;
+    active.playbackNeedsGesture = true;
+    duplexDiagnostic(active, { type: "playback-rejected", at: performance.now(), source,
+      errorName: error?.name ?? "Error", ...playbackState(active) });
+    setStatus(playbackRecoveryMessage);
+    return false;
+  }
+}
+async function recoverPlaybackGesture() {
+  const active = call;
+  if (!active || !$("remoteAudio").srcObject || !active.playbackNeedsGesture) return;
+  const playing = startRemotePlayback(active, "gesture");
+  try {
+    await active.context?.resume();
+    if (call !== active) return;
+    active.playbackContextBlocked = active.context?.state === "suspended";
+    active.playbackNeedsGesture = Boolean(active.playbackAudioBlocked || active.playbackContextBlocked);
+    duplexDiagnostic(active, { type: "context-resumed", at: performance.now(), source: "gesture", ...playbackState(active) });
+    if (!active.playbackNeedsGesture) connectedStatus(active);
+    void greetWhenReady(active);
+  } catch (error) {
+    if (call !== active) return;
+    active.playbackContextBlocked = true;
+    active.playbackNeedsGesture = true;
+    duplexDiagnostic(active, { type: "context-resume-rejected", at: performance.now(), source: "gesture", errorName: error?.name ?? "Error", ...playbackState(active) });
+    setStatus(playbackRecoveryMessage);
+  }
+  await playing;
+}
+async function api(route, payload, { signal } = {}) {
+  const response = await fetch(`./api/${route}`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload ?? {}), signal,
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error ?? "连接暂时不可用");
+  return result;
+}
+function taskState() {
+  $("taskStatus").textContent = tasks.size ? "后台处理中" : "";
+  $("cancel").disabled = tasks.size === 0;
+  $("cancel").hidden = tasks.size === 0;
+  $("avatar").src = tasks.size ? "./assets/v-tool-busy-20260922.png" : "./assets/v-idle-nohat-20260922.png";
+  document.body.dataset.avatarState = tasks.size > 1 ? "very-busy" : tasks.size ? "busy" : "idle";
+}
+function renderTranscript(snapshot) {
+  const log = $("conversation");
+  const follow = log.scrollHeight - log.scrollTop - log.clientHeight < 64;
+  const all = [...snapshot.history, ...snapshot.current];
+  const visibleKeys = new Set(all.map(item => item.key));
+  for (const [key, row] of renderedTurns) if (!visibleKeys.has(key)) { row.remove(); renderedTurns.delete(key); }
+  $("currentLabel").textContent = call ? "正在说" : "最后的片段";
+  $("conversationEmpty").hidden = all.length > 0;
+  $("transcriptCurrent").hidden = snapshot.current.length === 0;
+  for (const [items, parent] of [[snapshot.history, $("transcriptHistory")], [snapshot.current, $("transcriptCurrentRows")]]) {
+    for (const [index, item] of items.entries()) {
+      let row = renderedTurns.get(item.key);
+      if (!row) {
+        row = document.createElement("article");
+        row.className = `transcript-turn ${item.role}`;
+        const meta = document.createElement("div"); meta.className = "transcript-meta";
+        const speaker = document.createElement("span"); speaker.className = "transcript-speaker";
+        const time = document.createElement("time"); time.className = "transcript-time";
+        const text = document.createElement("p"); text.className = "transcript-text";
+        meta.append(speaker, time); row.append(meta, text);
+        row.parts = { speaker, time, text };
+        renderedTurns.set(item.key, row);
+      }
+      const streaming = String(Boolean(call) && !item.complete);
+      if (row.dataset.streaming !== streaming) row.dataset.streaming = streaming;
+      if (row.parts.speaker.textContent !== item.speaker) row.parts.speaker.textContent = item.speaker;
+      if (row.parts.time.textContent !== item.time) row.parts.time.textContent = item.time;
+      const dateTime = new Date(item.at).toISOString();
+      if (row.parts.time.dateTime !== dateTime) row.parts.time.dateTime = dateTime;
+      if (row.parts.text.textContent !== item.text) row.parts.text.textContent = item.text;
+      if (parent.children[index] !== row) parent.insertBefore(row, parent.children[index] ?? null);
+    }
+  }
+  if (follow) log.scrollTop = log.scrollHeight;
+}
+function resetTranscript() {
+  presentation.reset(); renderedTurns.clear();
+  $("transcriptHistory").replaceChildren(); $("transcriptCurrentRows").replaceChildren();
+  renderTranscript(presentation.snapshot());
+}
+function providerMessage(event) {
+  let data;
+  try { data = JSON.parse(event.data); } catch { return; }
+  const active = call;
+  if (active && data.type === "session.started") void greetWhenReady(active);
+  if (active && ((["turn.created", "turn.done"].includes(data.type) && data.turn?.role === "user")
+    || (data.type === "input_transcript.added" && typeof data.item?.text === "string" && data.item.text.trim()))) suppressGreetingForCaller(active);
+  if (active && data.type === "delegation.created") observeNativeEndDelegation(active, data.item);
+  if (active && data.type === "turn.done" && data.turn?.role === "user" &&
+    data.turn.id === active.latestNativeUserTurnId && typeof data.turn.transcript === "string" && data.turn.transcript.trim()) {
+    active.completedNativeUserTurns ??= new Set(); active.completedNativeUserTurns.add(data.turn.id);
+    if (active.completedNativeUserTurns.size > 256) active.completedNativeUserTurns.delete(active.completedNativeUserTurns.values().next().value);
+  }
+  if (active && data.type === "turn.created" && ["user", "assistant"].includes(data.turn?.role)) {
+    const at = performance.now();
+    duplexDiagnostic(active, { type: "native-turn-created", at, role: data.turn.role });
+    if (data.turn.role === "user") {
+      active.latestNativeUserTurnId = typeof data.turn.id === "string" ? data.turn.id : null;
+      for (const request of active.endRequests?.values() ?? []) request.invalidated = true;
+      active.endNativeRequestId = null;
+      active.duplex.notifyUserTurnStarted(at);
+      // A caller who starts a new turn during the farewell keeps the line.
+      // This is a native turn event, not a phrase/keyword match on captions.
+      cancelAutomaticEnd(active);
+    } else if (typeof data.turn.id === "string" && data.turn.id.trim()) {
+      active.duplex.notifyAssistantTurnCreated(data.turn.id, at);
+      const request = active.endRequests?.get(active.endNativeRequestId);
+      if (request && !request.invalidated && (!request.backendPath || request.accepted && request.providerObserved)) {
+        request.turnId = data.turn.id; request.terminalAt = null;
+        request.audioObserved = false; request.quietSince = null;
+      }
+    }
+  }
+  if (active && data.type === "turn.done" && data.turn?.role === "assistant") {
+    const at = performance.now();
+    duplexDiagnostic(active, { type: "native-turn-done", at, role: "assistant" });
+    if (typeof data.turn.id === "string" && data.turn.id.trim())
+      active.duplex.notifyAssistantTurnDone(data.turn.id, at);
+    const request = active.endRequests?.get(active.endNativeRequestId);
+    if (request && !request.invalidated && request.turnId === data.turn?.id) request.terminalAt = at;
+  }
+  if (active && data.type === "output_audio_buffer.cleared") {
+    const at = performance.now();
+    duplexDiagnostic(active, { type: "native-output-audio-cleared", at });
+    active.duplex.notifyOutputAudioCleared(at);
+  }
+  renderTranscript(presentation.consume(data, Date.now()));
+  if (data.type === "error") setStatus("语音服务报告错误，请结束通话后重试。");
+}
+async function stopCall() {
+  const active = call; call = null;
+  if (starting === active) starting = null;
+  if (active) {
+    clearInterval(active.levelTimer); clearInterval(active.heartbeat);
+    clearTimeout(active.ending?.timeout); clearTimeout(active.greetingRetryTimer);
+    clearTimeout(active.greetingDeadlineTimer); active.greetingAbort?.abort();
+    active.captureAbort?.abort(); active.capture?.dispose();
+    void active.sounds?.dispose();
+    active.duplex?.dispose(); active.duplexDiagnostics.closed = true;
+    active.events?.close(); active.channel?.close(); active.pc?.close();
+    if (!active.capture) active.stream?.getTracks().forEach((track) => track.stop());
+  }
+  $("remoteAudio").srcObject = null;
+  $("remoteAudio").muted = false;
+  tasks.clear(); taskState(); document.body.dataset.voiceState = "idle";
+  document.body.dataset.callState = "idle";
+  renderTranscript(presentation.snapshot());
+  $("start").hidden = false; $("start").disabled = false; $("stop").hidden = true;
+  $("steerText").disabled = true; $("steer").disabled = true;
+  $("badge").textContent = liveReady ? "可以拨号" : "页面预览";
+  $("startLabel").textContent = "拨号"; $("stopLabel").textContent = "结束通话";
+  setStatus("拨号后，直接说话。");
+  if (active) {
+    await active.context?.close().catch(() => {});
+    if (active.voiceSessionId) await api("close", { voiceSessionId: active.voiceSessionId }).catch(() => {});
+  }
+}
+async function startCall() {
+  if (starting || call) return;
+  if (!liveReady) { setStatus("当前页面仅作预览，真实通话还未连接 VLab 候选服务。"); return; }
+  $("start").disabled = true; $("start").hidden = true; $("stop").hidden = false;
+  $("stopLabel").textContent = "取消拨号"; $("badge").textContent = "拨号中";
+  document.body.dataset.callState = "dialing"; setStatus("正在连接 V…");
+  resetTranscript();
+  const active = { pc: new RTCPeerConnection(), captureAbort: new AbortController() }; call = active; starting = active;
+  // Each call owns its sound element; a late play() from an older call cannot
+  // pause or replace the next call's pickup. The page element configures assets.
+  active.soundElement = document.createElement("audio"); active.soundElement.playsInline = true;
+  for (const key of ["ringSrc", "pickupSrc"]) if ($("callSound").dataset[key]) active.soundElement.dataset[key] = $("callSound").dataset[key];
+  active.sounds = createCallSounds({ audioElement: active.soundElement });
+  void active.sounds.dial();
+  // Activity metadata stays in this page's memory only. It contains no audio,
+  // transcript, session identifiers or claim that the model was interrupted.
+  active.duplexDiagnostics = { kind: "duplex-playback", schemaVersion: 2, closed: false,
+    counts: {}, transitions: [], events: [] };
+  globalThis.__gptLiveDuplexDiagnostics = active.duplexDiagnostics;
+  active.duplex = createH5DuplexPlaybackGate({ mode: "native", onGateChange: (entry) => {
+    if (call !== active) return;
+    $("remoteAudio").muted = entry.localPlaybackMuted;
+    duplexDiagnostic(active, { type: "local-playback-gate", at: entry.at,
+      muted: entry.localPlaybackMuted, reason: entry.reason,
+      oldTurnTerminal: entry.oldTurnTerminal, outputDrained: entry.outputDrained, ...playbackState(active) });
+  } });
+  active.duplexDiagnostics.playbackMode = active.duplex.snapshot().mode;
+  active.duplexDiagnostics.interruptionOwner = active.duplex.snapshot().interruptionOwner;
+  try {
+    active.capture = await captureDuplexMicrophone({
+      mediaDevices: navigator.mediaDevices, signal: active.captureAbort.signal,
+      isCurrent: () => call === active,
+      onDiagnostics: (metadata) => { if (call === active) active.duplexDiagnostics.microphone = metadata; },
+    });
+    active.stream = active.capture.stream;
+    if (call !== active) { active.stream.getTracks().forEach((track) => track.stop()); return; }
+    for (const track of active.stream.getAudioTracks()) active.pc.addTrack(track, active.stream);
+    const reservation = await api("session"); active.voiceSessionId = reservation.voiceSessionId;
+    if (call !== active) { await api("close", { voiceSessionId: active.voiceSessionId }); return; }
+    active.channel = active.pc.createDataChannel("oai-events"); active.channel.onmessage = (event) => { if (call === active) providerMessage(event); };
+    active.events = new EventSource("./api/events");
+    active.events.onmessage = (event) => {
+      if (call !== active) return;
+      const value = JSON.parse(event.data);
+      if (value.voiceSessionId !== active.voiceSessionId) return;
+      if (value.type === "tool.call" && value.name !== "openclaw_end_call") tasks.add(value.callId);
+      if (["tool.result", "tool.error"].includes(value.type)) tasks.delete(value.callId);
+      if (value.type === "tool.result") requestAutomaticEnd(active, value);
+      if (value.type === "tool.error" && value.name === "openclaw_end_call" &&
+        (value.callId === value.requestId || value.source === "backend_model_client_tool" &&
+          value.callId === value.backendToolCallId && value.nativeDelegationId === value.requestId)) {
+        const request = endCallRequest(active, value.requestId, value.originUserTurnId);
+        if (request && (!request.backendPath || request.backendToolCallId === value.backendToolCallId &&
+          request.backendRunId === value.backendRunId)) {
+          request.invalidated = true;
+          if (active.ending?.requestId === value.requestId) cancelAutomaticEnd(active);
+        }
+      }
+      taskState();
+    };
+    active.pc.ontrack = async (event) => {
+      if (call !== active) return;
+      const stream = new MediaStream([event.track]); $("remoteAudio").srcObject = stream;
+      await startRemotePlayback(active, "track");
+      if (call !== active) return;
+      active.context = new AudioContext();
+      try { await active.context.resume(); }
+      catch (error) {
+        if (call !== active) return;
+        active.playbackContextBlocked = true;
+        active.playbackNeedsGesture = true;
+        duplexDiagnostic(active, { type: "context-resume-rejected", at: performance.now(), source: "track", errorName: error?.name ?? "Error", ...playbackState(active) });
+        setStatus(playbackRecoveryMessage);
+      }
+      if (call !== active) { await active.context.close().catch(() => {}); return; }
+      if (active.context.state !== "running") {
+        active.playbackContextBlocked = true;
+        active.playbackNeedsGesture = true;
+        setStatus(playbackRecoveryMessage);
+      }
+      const analyser = active.context.createAnalyser(); analyser.fftSize = 1024;
+      active.context.createMediaStreamSource(stream).connect(analyser);
+      const microphoneAnalyser = active.context.createAnalyser(); microphoneAnalyser.fftSize = 1024;
+      active.context.createMediaStreamSource(active.stream).connect(microphoneAnalyser);
+      const samples = new Float32Array(analyser.fftSize);
+      const microphoneSamples = new Float32Array(microphoneAnalyser.fftSize);
+      active.levelTimer = setInterval(() => {
+        if (call !== active) return;
+        analyser.getFloatTimeDomainData(samples);
+        microphoneAnalyser.getFloatTimeDomainData(microphoneSamples);
+        const energy = Math.sqrt(samples.reduce((sum, value) => sum + value * value, 0) / samples.length);
+        const microphoneEnergy = Math.sqrt(microphoneSamples.reduce((sum, value) => sum + value * value, 0) / microphoneSamples.length);
+        const at = performance.now();
+        // This analyser reads the inbound stream before HTML playback muting,
+        // so a local gate cannot manufacture evidence of a provider audio gap.
+        const duplex = active.duplex.observe({ at, microphoneRms: microphoneEnergy, remoteRms: energy });
+        duplexDiagnostic(active, { type: "activity-window", at, microphoneRms: microphoneEnergy, remoteRms: energy,
+          microphoneAboveAttack: microphoneEnergy >= .02, microphoneAboveRelease: microphoneEnergy > .01,
+          microphoneVoiced: duplex.localUserSpeaking,
+          remoteActive: energy > .008, muted: duplex.localPlaybackMuted,
+          oldTurnTerminal: duplex.oldTurnTerminal, outputDrained: duplex.outputDrained, ...playbackState(active) });
+        if (energy > .008 && ($("remoteAudio").paused || active.context.state !== "running") && !active.playbackNeedsGesture) {
+          active.playbackNeedsGesture = true;
+          active.playbackAudioBlocked = $("remoteAudio").paused;
+          active.playbackContextBlocked = active.context.state !== "running";
+          duplexDiagnostic(active, { type: "playback-not-running", at, ...playbackState(active) });
+          setStatus(playbackRecoveryMessage);
+        }
+        if (duplex.recoverySuggested && !active.duplexRecoveryNotice) {
+          active.duplexRecoveryNotice = true;
+          setStatus(duplexRecoveryMessage);
+        } else if (!duplex.localPlaybackMuted && active.duplexRecoveryNotice) {
+          active.duplexRecoveryNotice = false;
+          if ($("status").textContent === duplexRecoveryMessage) connectedStatus(active);
+        }
+        document.body.dataset.voiceState = energy > .008 && !duplex.localPlaybackMuted && !active.playbackNeedsGesture ? "speaking" : "listening";
+        observeAutomaticEnd(active, at, energy);
+      }, 50);
+      void greetWhenReady(active);
+    };
+    active.pc.onconnectionstatechange = () => {
+      if (call !== active) return;
+      if (active.pc.connectionState === "connected") {
+        document.body.dataset.callState = "connected";
+        void active.sounds.connected();
+        $("stopLabel").textContent = "结束通话";
+        $("badge").textContent = "通话中"; connectedStatus(active);
+        $("start").hidden = true; $("stop").hidden = false;
+        $("steerText").disabled = false; $("steer").disabled = false;
+        void greetWhenReady(active);
+      } else if (["failed", "disconnected"].includes(active.pc.connectionState)) {
+        void stopCall().then(() => { if (!call) setStatus("连接已中断，可以重新开始通话。"); });
+      }
+    };
+    await active.pc.setLocalDescription(await active.pc.createOffer());
+    await new Promise((resolve) => {
+      if (active.pc.iceGatheringState === "complete") return resolve();
+      const timer = setTimeout(resolve, 5000);
+      active.pc.addEventListener("icegatheringstatechange", () => {
+        if (active.pc.iceGatheringState === "complete") { clearTimeout(timer); resolve(); }
+      });
+    });
+    if (call !== active) return;
+    const result = await api("offer", { voiceSessionId: active.voiceSessionId, sdp: active.pc.localDescription.sdp });
+    if (call !== active) return;
+    await active.pc.setRemoteDescription({ type: "answer", sdp: result.sdp });
+    if (call !== active) return;
+    active.heartbeat = setInterval(() => { if (call === active) void api("heartbeat", { voiceSessionId: active.voiceSessionId }).catch(() => {}); }, 15000);
+  } catch (error) { if (call === active) { await stopCall(); if (!call) setStatus(error.name === "NotAllowedError" ? "请允许麦克风访问后重试。" : error.message); } }
+  finally { if (starting === active) starting = null; if (!call) $("start").disabled = false; }
+}
+$("start").addEventListener("click", startCall);
+$("stop").addEventListener("click", () => void stopCall());
+// A tap anywhere can restore browser playback. Never gate/stop the microphone
+// or cancel accepted work while requesting this user gesture.
+window.addEventListener("pointerdown", () => void recoverPlaybackGesture());
+window.addEventListener("keydown", () => void recoverPlaybackGesture());
+$("steerForm").addEventListener("submit", async (event) => {
+  event.preventDefault(); const text = $("steerText").value.trim(); if (!text || !call) return;
+  const active = call;
+  try { await api("steer", { voiceSessionId: active.voiceSessionId, text, mode: "steer" }); if (call === active) { $("steerText").value = ""; setStatus("补充条件已交给 V 的后台任务。"); } }
+  catch (error) { if (call === active) setStatus(error.message); }
+});
+$("cancel").addEventListener("click", async () => {
+  if (!call) return;
+  const active = call;
+  try { await api("steer", { voiceSessionId: active.voiceSessionId, text: "取消当前后台任务，不要继续执行。", mode: "cancel" }); if (call === active) setStatus("已请求取消后台任务。"); }
+  catch (error) { if (call === active) setStatus(error.message); }
+});
+window.addEventListener("pagehide", () => {
+  const active = call;
+  if (!active) return;
+  // Beacon survives navigation; stopCall synchronously releases every local
+  // resource and dial owner before its best-effort asynchronous API cleanup.
+  if (active.voiceSessionId) navigator.sendBeacon("./api/close", new Blob([JSON.stringify({ voiceSessionId: active.voiceSessionId })], { type: "application/json" }));
+  void stopCall();
+});
+fetch("./api/status").then((r) => r.json()).then((s) => { liveReady = s.ready === true; $("badge").textContent = s.ready ? "可以拨号" : "页面预览"; if (!s.ready) setStatus("这是页面预览，真实通话需连接 VLab 候选服务。"); }).catch(() => setStatus("暂时无法连接 VLab，请稍后重试。"));

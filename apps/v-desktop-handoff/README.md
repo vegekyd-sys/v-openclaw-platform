@@ -17,6 +17,8 @@
 - 令牌：只存哈希；领取窗口默认 10 分钟；首次领取后会话 30 分钟；同一链接最多打开 5 次（手机 + 电脑 + 刷新）；控制者 5 分钟无输入降为观看；同时最多 N 个观看者；`kind=watch` 的链接永远拿不到控制权。抢控制时前一个连接以 4000 `control-taken` 关闭；撤销 4002；会话到期 4001；桌面不可用 4005。
 - 审计 `stateDir/audit.jsonl`，令牌本体永不出现。
 - 页面 `public/`，noVNC 从主机 `/usr/share/novnc` 直接提供。
+- **手机上的操作方式**（页面自己处理触摸，不用 noVNC 的鼠标式手势）：单指滑动＝滚轮（带惯性），轻点＝点击，长按＝右键，长按后拖动＝按住左键拖（选文字），双指＝只在手机上放大/移动画面。滚轮按实测标定：V 桌面上的 Chrome 一格滚 120 px，间隔小于约 40 ms 的连发会被吞，所以按 45 ms 节拍排队发送；滚完把指针停到右侧滚动条，避免网页弹出悬停卡片。键盘栏：拉丁字符实时按键，中文或长文本走剪贴板 + Ctrl+V；常用键 Esc/Tab/方向/退格/回车/全选/复制/粘贴/撤销。
+- **手机模式**（`lib/display-layout.mjs`）：手机接管时页面请求 `POST /api/layout {mode: "phone", width, height}`，服务用 `xrandr` 把屏幕改成竖屏（宽度至少 528，Chrome 窗口窄于约 510 px 时窗口管理器拒绝最大化），用 `wmctrl` 记下并最大化各窗口。**只有请求者仍是控制者时竖屏才存在**：每次控制权变化（交还、飞书里「我完成了」、闲置降级、断线、被别的窗口接管、撤销、到期）都会审计，审计回调和 5 秒定时器都会核对，不满足就恢复 `layout.base`（默认 1280x800）并把窗口放回原位；服务启动时也会先恢复一次。配置 `layout: {enabled, display, base}`，默认开启；主机需要 `wmctrl`（没有时只改分辨率，窗口不动）。
 
 配置见 `config.example.json`。VNC 密码用 `desktop/start-desktop.sh` 生成的明文文件 `vnc-password.txt`（0600）；**Gateway 的 `desktop.host.passwordFile` 也指向这个明文文件**（上游按 utf8 读进去当密码，指向 TigerVNC 混淆格式的 `vncpasswd` 会让 Control UI 面板报 Authentication failure；`vncpasswd` 只给 Xtigervnc 用）。
 

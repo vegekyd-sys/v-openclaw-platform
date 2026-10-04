@@ -1,0 +1,15 @@
+{
+  "baseRelease": "hotreload-feishu-approvals-v1",
+  "files": [
+    {
+      "source": "lab/release-files/gpt-live-completion-context/index.mjs",
+      "target": "production-worker/index.mjs",
+      "before": "b5f315bb20cb5eb5a3e30bec32e9bfe365b948bd7ce271298fbd53516bf4c315"
+    },
+    {
+      "source": "lab/release-files/gpt-live-completion-context/gateway-completion-context.mjs",
+      "target": "production-worker/gateway-completion-context.mjs",
+      "before": "e958ff1cd75cd28d0af3cd93d3e5d729c9a5d9108416c1a0652bdbbf3f38ff09"
+    }
+  ]
+}
