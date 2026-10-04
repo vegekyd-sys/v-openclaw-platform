@@ -8,11 +8,13 @@ import {createHash} from 'node:crypto';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {createPrivatePulseMicrophone,captureOwnedBrowserDirectory,observeOwnedChromeProcesses,removeOwnedBrowserDirectory} from './private-pulse.mjs';
 import {BROWSER_PROBE,readBoundedProbeSnapshot} from './browser-probe.mjs';
+import {readPrivateChildTranscript} from './read-child-transcript.mjs';
 import {parsePublicProgressDiagnostics} from '../gpt-live-h5-provenance-evidence.mjs';
 import {assessDecodedPlaybackWindow,assessCompletePlaybackWindow,assessIndependentInputConvergence,resolveNativeControlOwner,resolveCanonicalFinalTrace} from './evidence.mjs';
 import {resolveEndCallToolWitness,assessEndCallConsultTerminal,resolveLifecycleUserTurn,assessLifecycleSpeech,hasLifecyclePlaybackTail,assessLifecycleFarewell,assessProactiveGreeting,assessAutomaticEnd,
   resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult,resolveLifecycleCanonicalBody,
-  resolveLifecycleFinalSpeechTurns,hasLifecycleFinalPlaybackTail,assessLifecycleFinalSpeech,readLifecycleHistoryOrRetry,resolveLifecycleValidationProfile} from './call-lifecycle-evidence.mjs';
+  resolveLifecycleFinalSpeechTurns,hasLifecycleFinalPlaybackTail,assessLifecycleFinalSpeech,readLifecycleHistoryOrRetry,resolveLifecycleValidationProfile,
+  selectLifecycleFinalHistoryBinding,assessLifecycleFinalHistory} from './call-lifecycle-evidence.mjs';
 import {inspectLifecycleValidationTarget,readLifecycleVoiceOwner,preflightLifecycleMedia} from './call-lifecycle-target.mjs';
 
 const validationTarget=process.env.GPT_LIVE_H5_VALIDATION_TARGET??'candidate';
@@ -52,7 +54,8 @@ const scratch=fs.mkdtempSync(validationTarget==='candidate'?path.join(stateRoot,
 const scratchIdentity=captureOwnedBrowserDirectory(scratch,{parent:path.dirname(scratch),prefix:validationTarget==='candidate'?'call-lifecycle-':'scratch-'});
 const chromeProfile=path.join(scratch,'profile');
 const checks=[],owners=new Map(),speechWindows=[],gatewayEvents=[],subscribed=new Set(),coreCheckNames=new Set();
-let pulse,chrome,chromeTemp,chromeTempIdentity,cdp,gateway,lastState,snapshotCache,cleanup,browserTimeOrigin;
+const ownedBackendHistoryBindings=[];
+let pulse,chrome,chromeTemp,chromeTempIdentity,cdp,gateway,lastState,snapshotCache,cleanup,browserTimeOrigin,finalHistoryCaptureError;
 function hash(value){return createHash('sha256').update(value).digest('hex')}
 function save(name,value){fs.writeFileSync(path.join(base,name),JSON.stringify(value,null,2)+'\n',{mode:0o600});}
 function check(name,passed,details={}){checks.push({name,passed:Boolean(passed),...details});}
@@ -132,6 +135,40 @@ function ownedGatewayEvents() {
  const keys=new Set([...owners.values()].map(owner=>owner.sessionKey)),voices=new Set([...owners.values()].map(owner=>owner.voiceSessionId));
  return gatewayEvents.filter(e=>keys.has(e.payload?.sessionKey??e.payload?.session?.key)||voices.has(e.payload?.voiceSessionId));
 }
+async function captureOwnedBackendFinalHistory() {
+ // Optional private diagnostics run only after the original PC has closed.
+ // They cannot postpone close, inject a USER or alter the readback gate.
+ if(validationTarget!=='candidate'||!validationProfile.memoryWebRequired)return;
+ const selection=selectLifecycleFinalHistoryBinding({bindings:ownedBackendHistoryBindings,owners,state:lastState});
+ const receipt={selection,attemptedAt:Date.now(),historyRead:{status:'not-attempted'},privateTranscriptRead:{status:'not-attempted'}};
+ const errorRecord=error=>({message:String(error?.message??error).replace(/(token|secret|api.?key|authorization)[=: ]+[^\s]+/giu,'$1=[redacted]')});
+ let history,transcript,body;
+ if(selection.status==='bound') {
+  const binding=selection.binding;
+  try {
+   const diagnostics=parsePublicProgressDiagnostics(fs.readFileSync(process.env.GPT_LIVE_H5_TRACE_PATH,'utf8'));
+   const nativeOwner=resolveNativeControlOwner({diagnostics,events:lastState.events,tools:lastState.tools,
+     backendRunId:binding.runId,voiceSessionId:binding.voiceSessionId,pcIndex:binding.pcIndex});
+   const canonical=resolveCanonicalFinalTrace(diagnostics,nativeOwner);
+   body=resolveLifecycleCanonicalBody(ownedGatewayEvents(),{canonical,sessionKey:binding.sessionKey,runId:binding.runId});
+  } catch(error){receipt.canonicalObservationError=errorRecord(error);}
+  try {
+   history=await gateway.request('chat.history',{sessionKey:binding.sessionKey,limit:120},{timeoutMs:10000});
+   const observedAt=Date.now();receipt.historyRead={status:'success',observedAt};
+  } catch(error){receipt.historyRead={status:'unavailable',completedAt:Date.now(),...errorRecord(error)};}
+  if(receipt.historyRead.status==='success')save('memory-web-owned-backend-final-history.json',{
+   binding,observedAt:receipt.historyRead.observedAt,historyObservationPhase:'post-original-close',history});
+  if(history?.sessionKey===binding.sessionKey&&history?.sessionId===binding.sessionId)try {
+   transcript=readPrivateChildTranscript({state:stateRoot,candidateData:process.env.VLAB_CANDIDATE_DATA,
+     sessionId:binding.sessionId,runId:binding.runId,requestedSessionKey:binding.sessionKey,timeoutMs:5000});
+   receipt.privateTranscriptRead={status:'success',observedAt:transcript.observedAt};
+  } catch(error){receipt.privateTranscriptRead={status:'unavailable',completedAt:Date.now(),...errorRecord(error)};}
+  if(receipt.privateTranscriptRead.status==='success')save('memory-web-owned-backend-final-transcript.json',transcript);
+ }
+ receipt.completedAt=Date.now();
+ receipt.assessment=assessLifecycleFinalHistory({selection,history,transcript,body,observedAt:receipt.completedAt});
+ save('memory-web-owned-backend-final-history-receipt.json',receipt);
+}
 async function inputConverged(pcIndex,input,label) {
  // This runs after the complete USER and actual reply have been observed.
  // Missing historical input samples cannot be repaired by repeatedly copying
@@ -171,6 +208,8 @@ async function basicTools(pcIndex) {
   save('memory-web-owned-backend-history.json',{sessionKey:owner.sessionKey,observedAt:Date.now(),history:lastHistory});
   return resolveLifecycleMemoryWeb({events:ownedGatewayEvents(),history:lastHistory,sessionKey:owner.sessionKey,memoryQuery,after:input.row.startedAt});
  },'Actual nonempty memory result before owned web search and result',120000);
+ ownedBackendHistoryBindings.push(Object.freeze({pcIndex,voiceSessionId:owner.voiceSessionId,sessionKey:chain.sessionKey,
+   sessionId:lastHistory?.sessionId??null,runId:chain.runId,userTurnId:user.turnId,inputStartedAt:input.row.startedAt}));
  coreCheck('actual-owned-memory-result-before-web-call',chain.sequentialExecutionVerified===true,{memoryCallId:chain.memory.id,webCallId:chain.web.id,
   runId:chain.runId,sessionKey:chain.sessionKey,memoryResultAt:chain.memoryResult.at,webCallAt:chain.web.calledAt,webResultAt:chain.webResult.at});
  const allowed=new Set(['memory_search','memory_get','web_search','web_fetch','read','read_file']);
@@ -342,6 +381,10 @@ finally {
   check('original-browser-observer-no-capture-errors',Array.isArray(lastState?.observerErrors)&&lastState.observerErrors.length===0,{observerErrors:lastState?.observerErrors??null});
   check('default-Chrome-autoplay-no-play-rejection',Array.isArray(lastState?.playRejections)&&lastState.playRejections.length===0,{playRejections:lastState?.playRejections});
  }
+ // Success and failed-readback paths both reach this point only after original
+ // close and media export. Preserve the early history; read this same run once.
+ try {await captureOwnedBackendFinalHistory();}
+ catch(error){finalHistoryCaptureError={message:String(error?.message??error).replace(/(token|secret|api.?key|authorization)[=: ]+[^\s]+/giu,'$1=[redacted]')};}
  cdp?.close();gateway?.stop();let chromeProcesses,chromeProcessError;
  const inspectChrome=()=>chromeProcesses=observeOwnedChromeProcesses({profile:chromeProfile,rootPid:chrome?.pid,knownProcesses:chromeProcesses?.knownProcesses??[]});
  try{inspectChrome();}catch(error){chromeProcessError=error;}
@@ -369,6 +412,7 @@ finally {
  catch(error){check('private-scratch-cleanup',false,{code:error.code??null,message:error.message});}
  cleanup.privateScratchRemoved=!fs.existsSync(scratch);
  check('owned-browser-and-scratch-cleanup',cleanup.chromeExited&&cleanup.chromeProcessesExited&&cleanup.chromePrivateTempRemoved&&cleanup.privateScratchRemoved);
+ if(finalHistoryCaptureError)check('owned-backend-final-history-observer-error',false,finalHistoryCaptureError);
  check('actual-'+validationTarget+'-config-unchanged',hash(fs.readFileSync(configPath))===configSha);
  if(validationTarget!=='candidate') {
   try {const after=await inspectLifecycleValidationTarget({target:validationTarget,proofPath:process.env.GPT_LIVE_H5_TARGET_PROOF,configPath,corePath:runtime,stateRoot,url});

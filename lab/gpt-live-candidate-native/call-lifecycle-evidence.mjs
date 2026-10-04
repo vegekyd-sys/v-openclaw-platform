@@ -24,6 +24,70 @@ export async function readLifecycleHistoryOrRetry(read,onRebuilding=()=>{}) {
   }
 }
 
+/** Private final readback is diagnostic only; never select a neighboring run. */
+export function selectLifecycleFinalHistoryBinding({bindings=[],owners,state}={}) {
+  if(bindings.length!==1)return {status:'unavailable',reason:'no-unique-owned-backend-binding',bindingCount:bindings.length};
+  const binding=bindings[0],owner=owners?.get(binding.pcIndex);
+  if(!owner||!binding.sessionId||owner.sessionKey!==binding.sessionKey||owner.voiceSessionId!==binding.voiceSessionId||!binding.runId)
+    return {status:'unavailable',reason:'original-owner-or-session-identity-missing'};
+  const delegations=(state?.events??[]).filter(e=>e.pcIndex===binding.pcIndex&&e.type==='delegation.created'&&
+    e.raw?.item?.target==='client'&&e.raw.item.user_bidi_turn_id===binding.userTurnId&&e.at>=binding.inputStartedAt);
+  const calls=(state?.tools??[]).filter(e=>e.raw?.type==='tool.call'&&e.raw.voiceSessionId===binding.voiceSessionId&&
+    e.raw.callId===binding.runId&&e.at>=binding.inputStartedAt);
+  if(delegations.length!==1||calls.length!==1)return {status:'unavailable',reason:'native-USER-or-host-run-ambiguous'};
+  const close=(state?.api??[]).find(a=>a.route==='/api/close'&&a.status===200&&a.request?.voiceSessionId===binding.voiceSessionId);
+  if(state?.pcStates?.[binding.pcIndex]!=='closed'||!Number.isFinite(close?.requestedAt)||!Number.isFinite(close?.at))
+    return {status:'unavailable',reason:'original-close-not-observed'};
+  return {status:'bound',binding,originalCloseRequestedAt:close.requestedAt,originalCloseReturnedAt:close.at,
+    nativeDelegationId:delegations[0].raw.item.id,hostCallAt:calls[0].at};
+}
+
+/** Preserve provider fields only from the actual same-run durable final. */
+export function assessLifecycleFinalHistory({selection,history,transcript,body,observedAt}={}) {
+  const result={status:'unavailable',source:'owned-backend-post-close-readback',acceptanceGateChanged:false,
+    readbackIsNotNativeSpeechOrSemanticAcceptance:true,observedAt:observedAt??null,
+    canonicalFinal:body?{textSha256:createHash('sha256').update(body.text).digest('hex'),textBytes:Buffer.byteLength(body.text),
+      sourceAt:body.event?.payload?.ts??null,receivedAt:body.canonical?.received?.at??null}:null};
+  if(selection?.status!=='bound')return {...result,reason:selection?.reason??'no-owned-binding'};
+  const b=selection.binding;
+  Object.assign(result,{binding:b,originalCloseRequestedAt:selection.originalCloseRequestedAt,originalCloseReturnedAt:selection.originalCloseReturnedAt});
+  if(!Number.isFinite(observedAt)||observedAt<selection.originalCloseReturnedAt)return {...result,reason:'readback-not-after-original-close'};
+  if(history?.sessionKey!==b.sessionKey||history?.sessionId!==b.sessionId)return {...result,reason:'final-history-session-identity-mismatch'};
+  const historyMessages=history.messages??[];
+  result.historyDisplayTruncated=historyMessages.some(m=>m.__openclaw?.truncated===true||m.__openclaw?.reason==='display-cap');
+  if(!body||body.event?.payload?.sessionKey!==b.sessionKey||body.event.payload.runId!==b.runId||
+    !Number.isFinite(body.event.payload.ts)||body.event.payload.ts<b.inputStartedAt||body.event.payload.ts>observedAt)
+    return {...result,reason:'exact-canonical-final-unavailable'};
+  const sha=text=>createHash('sha256').update(text).digest('hex'),canonicalHash=sha(body.text);
+  result.historyFinalCandidates=historyMessages.filter(m=>m.role==='assistant'&&messageText(m).trim()&&
+    sha(messageText(m).trim())===canonicalHash).map(m=>({timestamp:timestamp(m.timestamp??m.__openclaw?.recordTimestampMs),
+      textSha256:sha(messageText(m).trim()),displayTruncated:m.__openclaw?.truncated===true||m.__openclaw?.reason==='display-cap'}));
+  // chat.history may abbreviate runId or display-cap content. The private
+  // SQLite projection supplies original bytes and actual declared identities;
+  // the reader's requested runId label alone is deliberately not source proof.
+  if(transcript?.canonicalSessionKey!==b.sessionKey||transcript.sessionId!==b.sessionId||
+    transcript.queryOnly!==true||transcript.source!=='private-sqlite-active-transcript')
+    return {...result,reason:'exact-private-final-transcript-unavailable'};
+  const rows=(transcript.rawEvents??[]).flatMap(row=>{
+    const message=row.event?.message,declared=[message?.runId,message?.__openclaw?.runId,row.event?.runId,row.event?.data?.runId]
+      .filter(value=>typeof value==='string');
+    const text=messageText(message).trim();
+    if(message?.role!=='assistant'||message.stopReason!=='stop'||!declared.length||declared.some(runId=>runId!==b.runId)||!text||sha(text)!==canonicalHash)return [];
+    const messageAt=timestamp(message.timestamp??row.createdAt),persistedAt=timestamp(row.createdAt);
+    if(!Number.isFinite(messageAt)||!Number.isFinite(persistedAt)||messageAt>observedAt||persistedAt>observedAt||
+      messageAt<b.inputStartedAt||persistedAt<b.inputStartedAt)return [];
+    return [{row,message,text,messageAt,persistedAt}];
+  });
+  if(rows.length!==1)return {...result,reason:'no-unique-exact-run-canonical-durable-final',matchingFinalCount:rows.length};
+  const {row,message,text,messageAt,persistedAt}=rows[0],fields=['api','provider','model','responseModel','responseId','modelCallId','stopReason'];
+  const providerMetadata=Object.fromEntries(fields.map(key=>[key,Object.hasOwn(message,key)?{status:'observed',value:message[key]}:{status:'not-present'}]));
+  return {...result,status:'captured',reason:null,final:{rawSeq:row.seq,messageAt,persistedAt,
+    timestampIsNotBackendCompletionClock:true,backendFinalSourceAt:body.event.payload.ts,
+    textSha256:sha(text),textBytes:Buffer.byteLength(text),rawTextSha256:sha(messageText(message)),rawTextBytes:Buffer.byteLength(messageText(message)),
+    originalBytesSource:'same-session-exact-run-private-sqlite-raw-message',
+    sourceRunIdentityActuallyDeclared:true,providerMetadata}};
+}
+
 /** Same read-only history projection used by native-smoke; clocks stay native. */
 export function extractLifecycleToolPairs(history) {
   const messages=history?.messages??[],rows=[];

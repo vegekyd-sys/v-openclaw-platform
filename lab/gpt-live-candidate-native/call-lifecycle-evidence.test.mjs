@@ -11,7 +11,8 @@ import {BROWSER_PROBE,SNAPSHOT_ARRAY_FIELDS,SNAPSHOT_PAGED_HEADER_EXPRESSION,SNA
 import {assessDecodedPlaybackWindow,assessIndependentInputConvergence,resolveNativeControlOwner,resolveCanonicalFinalTrace} from './evidence.mjs';
 import {resolveEndCallToolWitness,assessEndCallConsultTerminal,resolveLifecycleUserTurn,assessLifecycleSpeech,hasLifecyclePlaybackTail,assessLifecycleFarewell,assessProactiveGreeting,assessAutomaticEnd,
   extractLifecycleToolPairs,resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult,resolveLifecycleCanonicalBody,normalizeLifecycleFinalBody,
-  resolveLifecycleFinalSpeechTurns,hasLifecycleFinalPlaybackTail,assessLifecycleFinalSpeech,readLifecycleHistoryOrRetry,resolveLifecycleValidationProfile} from './call-lifecycle-evidence.mjs';
+  resolveLifecycleFinalSpeechTurns,hasLifecycleFinalPlaybackTail,assessLifecycleFinalSpeech,readLifecycleHistoryOrRetry,resolveLifecycleValidationProfile,
+  selectLifecycleFinalHistoryBinding,assessLifecycleFinalHistory} from './call-lifecycle-evidence.mjs';
 
 test('a narrow end diagnostic never grants combined release evidence or a shared/production test scope',()=>{
  for(const target of ['candidate','shared','v'])assert.deepEqual(resolveLifecycleValidationProfile(undefined,target),{
@@ -116,7 +117,7 @@ test('actual lifecycle cleanup records a nonretryable filesystem FAIL without ma
  const original={name:'test-exception',passed:false,message:'SessionTranscriptProjectionUnavailableError'},checks=[original],cleanup={chromeExited:true,chromeProcessesExited:true};
  const failure=Object.assign(Error('original permission error'),{code:'EACCES'});let waitCalls=0;
  try {
-  const run=vm.runInNewContext('(async()=>{'+block+'})',{chromeTemp,chromeTempIdentity,scratch:f.directory,scratchIdentity:f.identity,cleanup,fs,
+  const run=vm.runInNewContext('(async()=>{'+block+'})',{chromeTemp,chromeTempIdentity,scratch:f.directory,scratchIdentity:f.identity,cleanup,fs,finalHistoryCaptureError:null,
    inspectChrome:f.inspectChrome,check:(name,passed,details={})=>checks.push({name,passed,...details}),
    removeOwnedBrowserDirectory:(directory,options)=>removeOwnedBrowserDirectory(directory,options,{remove:async(target,flags)=>{
     if(target===chromeTemp)throw failure;await fs.promises.rm(target,flags);},wait:async()=>{waitCalls++;}})});
@@ -1177,7 +1178,7 @@ test('actual basicTools waits for canonical complete body and strict native tail
  const run=async fail=>{
   const checks=[],records=[],saved=new Map(),boundaries=[];
   const basicTools=vm.runInNewContext('('+source.slice(from,to)+')',{
-   assert,owners:new Map([[0,owner]]),memoryQuery:f.memoryQuery,play:()=>input,
+   assert,owners:new Map([[0,owner]]),ownedBackendHistoryBindings:[],memoryQuery:f.memoryQuery,play:()=>input,
    process:{env:{GPT_LIVE_H5_TRACE_PATH:'/private/trace'}},fs:{readFileSync:()=>''},parsePublicProgressDiagnostics:()=>fixture.diagnostics,
    waitFor:async(predicate,label,max)=>{boundaries.push({label,max});if(fail&&label.startsWith('Complete canonical'))throw fail;
     const value=await predicate(state);assert(value,'All actual tool/host/canonical prerequisites remain required');return value;},
@@ -1225,5 +1226,182 @@ test('Memory/Web input is a complete original USER request and exact consult own
  for(const mutate of [s=>s.tools[1].raw.voiceSessionId='neighbor',s=>s.tools[1].raw.callId='other',
   s=>s.events[0].raw.item.user_bidi_turn_id='other',s=>s.tools.push({at:204001,raw:{voiceSessionId:'voice-own',callId:chain.runId,type:'tool.error'}})]){
   const input=structuredClone(state);mutate(input);assert.equal(resolveLifecycleConsultResult(input,params),null);
+ }
+});
+
+// Anonymous diagnostic contracts only: these are not provider/model evidence.
+function finalHistoryFixture() {
+ const at=1791100000000,binding={pcIndex:0,voiceSessionId:'voice-own',sessionKey:'session-own',sessionId:'sqlite-own',
+   runId:'run-own',userTurnId:'user-own',inputStartedAt:at+100};
+ const owner={voiceSessionId:binding.voiceSessionId,sessionKey:binding.sessionKey};
+ const state={pcStates:['closed'],events:[{pcIndex:0,at:at+200,type:'delegation.created',raw:{item:{id:'native-own',target:'client',user_bidi_turn_id:binding.userTurnId}}}],
+  tools:[{at:at+250,raw:{type:'tool.call',voiceSessionId:binding.voiceSessionId,callId:binding.runId}}],
+  api:[{route:'/api/close',status:200,requestedAt:at+9000,at:at+9100,request:{voiceSessionId:binding.voiceSessionId}}]};
+ const text='来源只对浏览器连接给出一般建议，不能据此保证每个终端都相同。';
+ const message={role:'assistant',timestamp:at+4000,stopReason:'stop',api:'actual-api',provider:'actual-provider',model:'request-model',
+  responseModel:'provider-actual-model',responseId:'provider-actual-response',modelCallId:'provider-actual-call',
+  content:[{type:'text',text}],__openclaw:{runId:binding.runId}};
+ const history={sessionKey:binding.sessionKey,sessionId:binding.sessionId,messages:[structuredClone(message)]};
+ const transcript={canonicalSessionKey:binding.sessionKey,sessionId:binding.sessionId,runId:'requested-label-is-not-proof',queryOnly:true,
+  source:'private-sqlite-active-transcript',rawEvents:[{seq:12,createdAt:at+5010,event:{message}}]};
+ const body={text,event:{payload:{runId:binding.runId,sessionKey:binding.sessionKey,ts:at+5000}},canonical:{received:{at:at+5020}}};
+ const selection=selectLifecycleFinalHistoryBinding({bindings:[binding],owners:new Map([[0,owner]]),state});
+ return {binding,owner,state,selection,history,transcript,body,observedAt:at+10000};
+}
+test('final history is read only for one exact native USER/host run after its original owned close',()=>{
+ const f=finalHistoryFixture();assert.equal(f.selection.status,'bound');
+ const changes=[
+  x=>x.bindings.push({...x.bindings[0]}),x=>x.bindings=[],x=>x.bindings[0].sessionId=null,
+  x=>x.owners.set(0,{...x.owners.get(0),voiceSessionId:'foreign'}),
+  x=>x.state.events.push(structuredClone(x.state.events[0])),x=>x.state.events[0].raw.item.user_bidi_turn_id='new-user',
+  x=>x.state.tools[0].raw.callId='foreign-run',x=>x.state.tools.push(structuredClone(x.state.tools[0])),
+  x=>x.state.pcStates[0]='connected',x=>x.state.api[0].request.voiceSessionId='foreign',x=>delete x.state.api[0].at,
+ ];
+ for(const change of changes){const g=finalHistoryFixture(),x={bindings:[g.binding],owners:new Map([[0,g.owner]]),state:g.state};
+  change(x);assert.equal(selectLifecycleFinalHistoryBinding(x).status,'unavailable');}
+});
+test('the actual private transcript reader bounds only the explicit diagnostic read and propagates its child timeout',()=>{
+ const source=readFileSync(new URL('./read-child-transcript.mjs',import.meta.url),'utf8'),from=source.indexOf('export function readPrivateChildTranscript('),
+   to=source.indexOf('\nexport function activeTranscriptMessages(',from);assert(from>=0&&to>from);
+ const requests=[],timeout=Object.assign(Error('Python transcript deadline'),{code:'ETIMEDOUT'});
+ let fail=false;
+ const read=vm.runInNewContext('('+source.slice(from,to).replace(/^export /u,'')+')',{assert,path,
+  execFileSync:(program,args,options)=>{requests.push({program,args,options});if(fail)throw timeout;
+   return JSON.stringify({canonicalSessionKey:'session-own',queryOnly:true,rawEvents:[],activeEvents:[]});}});
+ const params={state:'/private/owned/state',candidateData:'/private/owned',sessionId:'sqlite-own',runId:'run-own',requestedSessionKey:'session-own'};
+ read(params);assert.equal(Object.hasOwn(requests.at(-1).options,'timeout'),false,'Existing callers retain their contract');
+ read({...params,timeoutMs:5000});assert.equal(requests.at(-1).program,'python3');
+ assert.equal(requests.at(-1).options.timeout,5000);assert.equal(requests.at(-1).options.killSignal,'SIGKILL');
+ assert(requests.at(-1).args[1].includes('PRAGMA query_only=ON'));assert(requests.at(-1).args[1].includes('mode=ro'));
+ for(const timeoutMs of [0,-1,10001,1.5,NaN,null])assert.throws(()=>read({...params,timeoutMs}),/Bounded/u);
+ fail=true;assert.throws(()=>read({...params,timeoutMs:5000}),error=>error===timeout,'No timeout is mislabeled as a transcript');
+});
+test('actual final provider metadata is bound to original raw run and canonical bytes, never request config',()=>{
+ const f=finalHistoryFixture(),result=assessLifecycleFinalHistory(f);assert.equal(result.status,'captured');
+ assert.equal(result.final.providerMetadata.responseModel.value,'provider-actual-model');
+ assert.equal(result.final.providerMetadata.model.value,'request-model');
+ assert.equal(result.final.providerMetadata.responseId.value,'provider-actual-response');
+ assert.equal(result.final.providerMetadata.modelCallId.value,'provider-actual-call');
+ assert.equal(result.final.messageAt,1791100004000);assert.equal(result.final.backendFinalSourceAt,1791100005000);
+ assert.equal(result.final.timestampIsNotBackendCompletionClock,true);
+ assert.equal(result.final.textSha256,createHash('sha256').update(f.body.text).digest('hex'));
+ assert.equal(result.acceptanceGateChanged,false);
+ const missing=finalHistoryFixture();delete missing.transcript.rawEvents[0].event.message.responseModel;
+ delete missing.transcript.rawEvents[0].event.message.responseId;delete missing.transcript.rawEvents[0].event.message.modelCallId;
+ missing.history.defaults={model:'must-not-fill-provider-fields',responseId:'must-not-fill-response'};
+ const unavailable=assessLifecycleFinalHistory(missing);
+ for(const key of ['responseModel','responseId','modelCallId'])assert.deepEqual(unavailable.final.providerMetadata[key],{status:'not-present'});
+});
+test('display-capped history retains full raw final bytes/hash and cannot abbreviate the raw run binding',()=>{
+ const f=finalHistoryFixture(),text=('必要来源条件与结论须一起保留。').repeat(1000);
+ f.body.text=text;f.transcript.rawEvents[0].event.message.content=[{type:'text',text:' '+text+'\n'}];
+ f.history.messages[0].content=[{type:'text',text:text.slice(0,8000)}];
+ f.history.messages[0].__openclaw={runId:'run-…',truncated:true,reason:'display-cap'};
+ const result=assessLifecycleFinalHistory(f);assert.equal(result.status,'captured');
+ assert.equal(result.historyDisplayTruncated,true);assert.deepEqual(result.historyFinalCandidates,[]);
+ assert.equal(result.final.textSha256,createHash('sha256').update(text).digest('hex'));
+ assert.equal(result.final.rawTextSha256,createHash('sha256').update(' '+text+'\n').digest('hex'));
+ assert(result.final.rawTextBytes>8000);
+ f.transcript.rawEvents[0].event.message.__openclaw.runId='run-…';f.transcript.runId=f.binding.runId;
+ assert.equal(assessLifecycleFinalHistory(f).status,'unavailable','Caller label never repairs a truncated actual runId');
+});
+test('missing, ambiguous, foreign, early and changed final histories stay explicitly unavailable',()=>{
+ const changes=[x=>x.history.sessionKey='foreign',x=>x.history.sessionId='rotated',x=>x.history=null,
+  x=>x.transcript=null,x=>x.transcript.canonicalSessionKey='foreign',x=>x.transcript.sessionId='foreign',x=>x.transcript.queryOnly=false,
+  x=>x.body=null,x=>x.body.event.payload.runId='foreign',x=>x.body.event.payload.sessionKey='foreign',
+  x=>x.body.event.payload.ts=x.binding.inputStartedAt-1,
+  x=>x.observedAt=x.selection.originalCloseReturnedAt-1,
+  x=>x.transcript.rawEvents[0].event.message.content[0].text+='changed condition',
+  x=>x.transcript.rawEvents.push(structuredClone(x.transcript.rawEvents[0])),
+  x=>x.transcript.rawEvents[0].event.message.stopReason='toolUse',
+  x=>x.transcript.rawEvents[0].event.runId='conflicting-actual-run',
+  x=>x.transcript.rawEvents[0].event.message.timestamp=x.binding.inputStartedAt-1,
+  x=>x.transcript.rawEvents[0].createdAt=x.observedAt+1,
+  x=>x.transcript.rawEvents[0].event.message.timestamp=x.observedAt+1,
+ ];
+ for(const mutate of changes){const f=finalHistoryFixture();mutate(f);assert.equal(assessLifecycleFinalHistory(f).status,'unavailable');}
+});
+test('actual lifecycle finally preserves early history and cleans up after successful, failed or unwritable final readback',async()=>{
+ const source=readFileSync(new URL('./call-lifecycle-smoke.mjs',import.meta.url),'utf8');
+ const basicFrom=source.indexOf('async function basicTools(pcIndex) {'),basicTo=source.indexOf('\nasync function runLifecycle()',basicFrom);
+ const captureFrom=source.indexOf('async function captureOwnedBackendFinalHistory() {'),captureTo=source.indexOf('\nasync function inputConverged(',captureFrom);
+ const finallyFrom=source.indexOf('\nfinally {\n if(cdp){'),finallyTo=source.indexOf("\n check('actual-'+validationTarget+'-config-unchanged'",finallyFrom);
+ assert(basicFrom>=0&&basicTo>basicFrom&&captureFrom>=0&&captureTo>captureFrom&&finallyFrom>=0&&finallyTo>finallyFrom);
+ const canonicalFailure=Error('Complete canonical Memory/Web body in native speech and actual playback tail deadline');
+ for(const mode of ['success','canonical-failure','history-failure','private-transcript-timeout','assessment-failure','final-save-failure','transcript-save-failure','receipt-save-failure']) {
+  const failure=mode==='success'?null:canonicalFailure;
+  const fixture=finalDeliveryFixture(),wall=1791100000000,seen=new WeakSet();
+  const shift=value=>{if(!value||typeof value!=='object'||seen.has(value))return;seen.add(value);for(const [key,item] of Object.entries(value))
+   if(['at','ts','timestamp','after','from','to'].includes(key)&&typeof item==='number')value[key]=wall+item;else shift(item);};shift(fixture);
+  const {f,owner,state}=fixture;f.history.sessionKey=owner.sessionKey;f.history.sessionId='sqlite-own';state.pcStates=['connected'];state.api=[];
+  const input={row:{exitCode:0,startedAt:f.after,completedAt:wall+199500},done:Promise.resolve()},trace=[],saved=new Map(),checks=[];
+  const diagnostic=finalHistoryFixture(),finalMessage=diagnostic.transcript.rawEvents[0].event.message;
+  finalMessage.content=[{type:'text',text:fixture.body.text}];finalMessage.__openclaw.runId=f.events[0].payload.runId;
+  finalMessage.timestamp=wall+203500;diagnostic.transcript.rawEvents[0].createdAt=wall+204095;
+  const finalHistory={sessionKey:owner.sessionKey,sessionId:'sqlite-own',messages:[finalMessage]};
+  const finalTranscript={...diagnostic.transcript,canonicalSessionKey:owner.sessionKey,sessionId:'sqlite-own',observedAt:wall+210000};
+  let historyReads=0,closed=false;
+  const context=vm.createContext({assert,Buffer,checks,Date:{now:()=>wall+210000},owners:new Map([[0,owner]]),ownedBackendHistoryBindings:[],
+   memoryQuery:f.memoryQuery,play:()=>input,validationTarget:'candidate',validationProfile:{memoryWebRequired:true},stateRoot:'/private/owned/state',
+   process:{env:{GPT_LIVE_H5_TRACE_PATH:'/private/trace',VLAB_CANDIDATE_DATA:'/private/owned'}},
+   fs:{readFileSync:()=>'',writeFileSync:()=>{},existsSync:()=>false},path:{join:()=>'/private/output'},base:'/private/output',
+   parsePublicProgressDiagnostics:()=>fixture.diagnostics,resolveNativeControlOwner,resolveCanonicalFinalTrace,
+   resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult,resolveLifecycleCanonicalBody,
+   resolveLifecycleFinalSpeechTurns,hasLifecycleFinalPlaybackTail,assessLifecycleFinalSpeech,readLifecycleHistoryOrRetry,
+   selectLifecycleFinalHistoryBinding,assessLifecycleFinalHistory:args=>{if(mode==='assessment-failure')throw Error('actual final assessment exception');return assessLifecycleFinalHistory(args);},
+   waitFor:async(predicate,label)=>{if(failure&&label.startsWith('Complete canonical'))throw failure;const value=await predicate(state);assert(value);return value;},
+   snapshot:async()=>state,ownedGatewayEvents:()=>fixture.events,
+   gateway:{request:async(method,params,options)=>{assert.equal(method,'chat.history');assert.equal(params.sessionKey,owner.sessionKey);assert.equal(params.limit,120);
+    if(++historyReads===1)return f.history;assert(closed,'Read final only after original PC close');assert.equal(options.timeoutMs,10000);trace.push('final-history');
+    if(mode==='history-failure')throw Error('chat.history timeout');return finalHistory;},stop:()=>trace.push('gateway-stop')},
+   readPrivateChildTranscript:params=>{assert(closed);assert.equal(params.sessionId,'sqlite-own');assert.equal(params.runId,f.events[0].payload.runId);
+    assert.equal(params.requestedSessionKey,owner.sessionKey);assert.equal(params.timeoutMs,5000);trace.push('final-raw-transcript');
+    if(mode==='private-transcript-timeout')throw Object.assign(Error('Python transcript deadline'),{code:'ETIMEDOUT'});return finalTranscript;},
+   cdp:{request:async()=>null,close:()=>trace.push('CDP-close')},manualCleanup:async()=>{trace.push('original-close');closed=true;state.pcStates[0]='closed';
+    state.api.push({route:'/api/close',status:200,requestedAt:wall+209000,at:wall+209100,request:{voiceSessionId:owner.voiceSessionId}});},
+   evaluate:async expression=>{assert(closed);if(expression.includes('dispose')){trace.push('dispose-after-close');return;}trace.push('media-export-after-close');return [];},
+   coreCheck:(name,passed)=>checks.push({name,passed}),check:(name,passed,details)=>checks.push({name,passed,details}),
+   recordSpeech:()=>{},save:(name,value)=>{trace.push('save-'+name);
+    if(mode==='final-save-failure'&&name==='memory-web-owned-backend-final-history.json'||
+       mode==='transcript-save-failure'&&name==='memory-web-owned-backend-final-transcript.json'||
+       mode==='receipt-save-failure'&&name==='memory-web-owned-backend-final-history-receipt.json')throw Error('original final archive EIO');
+    saved.set(name,structuredClone(value));},inputConverged:async()=>{},
+   lastState:null,speechWindows:[],media:{executables:{}},spawnSync:()=>{throw Error('No decoded fixture audio');},hash:()=>'',
+   cleanup:null,finalHistoryCaptureError:null,chrome:{pid:123,exitCode:0,signalCode:null,once:()=>{}},chromeProfile:'/private/owned/profile',
+   chromeTemp:'/private/owned/chrome-temp',chromeTempIdentity:{},scratch:'/private/owned/scratch',scratchIdentity:{},
+   observeOwnedChromeProcesses:()=>{trace.push('inspect-owned-Chrome');return {aliveProcesses:[],knownProcesses:[]};},sleep:async()=>{},
+   pulse:{plays:[input.row],dispose:async()=>{trace.push('Pulse-dispose');return {disposed:true};}},
+   removeOwnedBrowserDirectory:async directory=>{trace.push('remove-'+directory);return {removed:true};},
+  });
+  context.basicTools=vm.runInContext('('+source.slice(basicFrom,basicTo)+')',context);
+  context.captureOwnedBackendFinalHistory=vm.runInContext('('+source.slice(captureFrom,captureTo)+')',context);
+  const run=vm.runInContext('(async()=>{try {await basicTools(0);}catch(error){originalFailure=error;}'+source.slice(finallyFrom,finallyTo)+'\n}})',context);
+  await run();assert.equal(context.originalFailure??null,failure,'Original readback failure remains unchanged');
+  assert.equal(historyReads,2,'One early read and exactly one additional post-close final read');
+  assert(trace.indexOf('original-close')<trace.indexOf('dispose-after-close'));
+  assert(trace.indexOf('media-export-after-close')<trace.indexOf('final-history'));
+  for(const marker of ['CDP-close','gateway-stop','inspect-owned-Chrome','Pulse-dispose','remove-/private/owned/chrome-temp','remove-/private/owned/scratch'])
+   assert(trace.indexOf(marker)>trace.indexOf('final-history'),'Final diagnostics failure must not skip original cleanup: '+mode+' '+marker);
+  assert.equal(checks.find(c=>c.name==='owned-browser-and-scratch-cleanup').passed,true);
+  assert.equal(saved.get('memory-web-owned-backend-history.json').history.messages.length,f.history.messages.length,'Never replace early snapshot');
+  if(['assessment-failure','final-save-failure','transcript-save-failure','receipt-save-failure'].includes(mode)) {
+   const error=checks.find(c=>c.name==='owned-backend-final-history-observer-error');assert.equal(error.passed,false);
+   assert(error.details.message.includes(mode==='assessment-failure'?'assessment exception':'archive EIO'));
+  } else if(mode==='private-transcript-timeout') {
+   const receipt=saved.get('memory-web-owned-backend-final-history-receipt.json');
+   assert.equal(receipt.privateTranscriptRead.status,'unavailable');assert.equal(receipt.privateTranscriptRead.message,'Python transcript deadline');
+   assert.equal(receipt.assessment.reason,'exact-private-final-transcript-unavailable');
+   assert(!saved.has('memory-web-owned-backend-final-transcript.json'));
+  } else if(mode==='history-failure') {
+   assert.equal(saved.get('memory-web-owned-backend-final-history-receipt.json').historyRead.status,'unavailable');
+   assert.equal(saved.get('memory-web-owned-backend-final-history-receipt.json').historyRead.message,'chat.history timeout');
+   assert(!saved.has('memory-web-owned-backend-final-history.json'));assert(!saved.has('memory-web-owned-backend-final-transcript.json'));
+   assert(!checks.some(c=>c.name==='owned-backend-final-history-observer-error'),'Unavailable diagnostic is recorded, not a new model gate');
+  } else {
+   assert.equal(saved.get('memory-web-owned-backend-final-history.json').history.messages.length,1);
+   assert.equal(saved.get('memory-web-owned-backend-final-history-receipt.json').assessment.status,'captured');
+   assert.equal(saved.get('memory-web-owned-backend-final-history-receipt.json').assessment.final.providerMetadata.responseModel.value,'provider-actual-model');
+  }
+  if(failure)assert(!checks.some(c=>c.name==='actual-memory-web-backend-result-returned-in-native-speech'));
  }
 });
