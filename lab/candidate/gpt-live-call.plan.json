@@ -17,6 +17,11 @@
       "before": null
     },
     {
+      "source": "lab/release-files/gpt-live-call/embedded-agent-DaSvA-Yk.js",
+      "target": "openclaw/dist/embedded-agent-DaSvA-Yk.js",
+      "before": "128a61c9e10a47d501ad425345f9f05a88c9dc66b665e32f979d12e29675cd67"
+    },
+    {
       "source": "lab/release-files/gpt-live-call/gateway-public-stream.mjs",
       "target": "production-worker/gateway-public-stream.mjs",
       "before": "5440eadbfe1e6bf40824bd389e9cd3fb87326cc3c75b1a158cfe107799300fdf"
@@ -157,6 +162,7 @@
     "lab/gpt-live-call-lifecycle.mjs",
     "lab/patch-gpt-live-call-lifecycle.mjs",
     "lab/patch-gpt-live-backend-call-control.mjs",
+    "lab/patch-gpt-live-call-terminal.mjs",
     "lab/gpt-live-h5/instructions.mjs",
     "lab/patch-gpt-live-projection-readiness.mjs",
     "lab/gpt-live-projection-readiness.test.mjs",
@@ -253,6 +259,8 @@
     "lab/fixtures/gpt-live-public-progress/chat-message-content-Dws_XUEQ.js",
     "lab/fixtures/gpt-live-public-progress/manifest.json",
     "lab/fixtures/gpt-live-public-progress/string-coerce-CIXf7egm.js",
+    "lab/fixtures/gpt-live-call-lifecycle/agent-run-terminal-outcome-20261004.js",
+    "lab/fixtures/gpt-live-call-lifecycle/embedded-agent-DaSvA-Yk.js",
     "lab/fixtures/gpt-live-call-lifecycle/embedded-agent-complete-run-20261004.js",
     "lab/fixtures/gpt-live-call-lifecycle/realtime-quicksilver-bridge-BlvG9Zkq.js",
     "lab/fixtures/gpt-live-call-lifecycle/realtime-quicksilver-session-B3HKftDE.js",
@@ -260,6 +268,7 @@
     "lab/release-files/gpt-live-call/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
     "lab/release-files/gpt-live-call/realtime-quicksilver-session-B3HKftDE.js",
     "lab/release-files/gpt-live-call/gpt-live-call-lifecycle.mjs",
+    "lab/release-files/gpt-live-call/embedded-agent-DaSvA-Yk.js",
     "lab/release-files/gpt-live-call/gateway-public-stream.mjs",
     "lab/release-files/gpt-live-call/realtime-session-harness-CEO5kVAJ.js",
     "lab/release-files/gpt-live-call/talk-DkFuKRod.js",

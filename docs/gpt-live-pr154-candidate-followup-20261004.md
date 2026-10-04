@@ -67,3 +67,20 @@
 独立执行真实 core 投射函数另发现一个终态缺口：tool timeout 和 compaction 也可返回 undefined payload、aborted=false、tool_calls，实际 liveness 分别为 blocked / paused。新增分支现仅接受实际正常的 working 状态；真实函数投射负回归拒绝 blocked、paused、abandoned、未知或缺失状态，已有 Array 路径保留。旧 72 投射失败独立记录，不追改为成功；修复仍须新真实自然挂断样本验证。
 
 本轮后续补丁统一构建后，34 文件、649 项本地检查通过。综合观察器保持全部原始前缀、每次新 header 与原关闭证据，截图在原关闭尝试后保存，不能称该图为通话中布局。新的模型执行、确认取消及自然挂断结果继续单独验证。
+
+
+## 1db4c08 的真实生命周期结果与后续修复
+
+本轮唯一 Candidate `candidate-766a690d-ba12-4604-a7b9-a92700891347` 已结束并清理，共享 PID 1775226 和 runtime 保持。原 native receipt `e7e33972a567ac58b98f483f8da5b1014f961adc7d546f9ec959f245d4dae452` 为 FAIL，不追改。实际 Memory → Web search → 官方 web_fetch → canonical final → Live 两段事实回答已经执行；旧“两个接口不能混用”错误本题未再出现，记忆日期和“一般”限定保留。把 GPT Live 专属段落或搜索合成说法归到 Realtime 官方原文的来源缺口仍保留，示例、迁移和部署现状未覆盖。
+
+自动检查的 Memory/Web 音频窗口选中了“正在看文档”的进度句，终态早于后台 canonical final。测试随后过早注入告别；实际完整事实跨两个 Live turn，最后只有 207ms 到手动关闭，不能称最终答案完整播放验收。结束委派在完整告别 USER 后约 17.7 秒才到，backend 零参数工具和 host 接受随后实际发生，同 run generic consult 正常结果且没有二次 tool.error；它发生在 observer 原 20 秒期限外，关闭来自测试清理，未证明自然告别、自动关闭和重拨。
+
+独立整份原 WebM 重解验证 1564 帧 mic、最大间隔 69ms，原 live/enabled sender 保持；问候、保留通话回应及进度句各自完整播放与 750ms RTP 静尾有证。物理 AEC、真人听感以及完整最终结果不由这些窗口代替。
+
+新观察器把同 owner/run 的完整 canonical callback hash 与真实 assistant body、全部 final chunks、host result 绑定。原 Live 跨 turn 正文须严格覆盖完整 body，保留日期和限定，再等待原播放器连续与独立 RTP 时钟的 750ms 静尾才注入下一 USER。只正规化标点、固定结果标签和无歧义日期表示；小数点、负号、百分比及所有实质词仍区分。它是保守的交付准备门禁，合法改述可能仍未证实，不能替代独立来源语义审核；旧样本途中出现新 USER 仍拒绝。player/mic 的 100ms 连续门槛保持，200ms getStats 采样有独立的时钟和间距校验。
+
+真实 core 的 Array 路径也能在 tool timeout 时表现为 working。新增第 24 个 overlay，在实际 completeEmbeddedRun 中从最终核心终态产生私有 classification/reason/runId/sessionId；registry 的 Array 和 undefined 路径都要求同 owner 的 success/completed。实际捕获 classifier、attempt projection、liveness 与 completeEmbeddedRun 联合负回归拒绝超时、取消、失败、未知、缺失及外来投影。源码透传审查未发现 meta 丢失点，真实媒体链仍需新的 Candidate 样本。
+
+来源契约进一步要求逐个事实分句对应实际支持的页面及对象，不把搜索合成或 GPT Live 专属段落拼成 Realtime 原文的共同“它说”。完整 USER、单句呈现和只读范围保持。
+
+统一构建 24 targets，34 文件 658 项本地检查通过。2026-10-04T06:23Z 只读核对当前 loopback-requester-sender-v1 的全部 24 个 before 与 foreign PR181 文件 hash 匹配，pending/lease null。以上补丁继续仅 Candidate，不合 dev、不写共享、不部署 V。新真实验证将使用新的 clean source、冻结输入和独立目录；旧 FAIL 和未完成门槛保留。

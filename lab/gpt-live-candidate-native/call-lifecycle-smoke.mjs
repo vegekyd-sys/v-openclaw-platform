@@ -8,9 +8,11 @@ import {createHash} from 'node:crypto';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {createPrivatePulseMicrophone,captureOwnedBrowserDirectory,observeOwnedChromeProcesses,removeOwnedBrowserDirectory} from './private-pulse.mjs';
 import {BROWSER_PROBE,readBoundedProbeSnapshot} from './browser-probe.mjs';
-import {assessDecodedPlaybackWindow,assessCompletePlaybackWindow,assessIndependentInputConvergence} from './evidence.mjs';
+import {parsePublicProgressDiagnostics} from '../gpt-live-h5-provenance-evidence.mjs';
+import {assessDecodedPlaybackWindow,assessCompletePlaybackWindow,assessIndependentInputConvergence,resolveNativeControlOwner,resolveCanonicalFinalTrace} from './evidence.mjs';
 import {resolveEndCallToolWitness,assessEndCallConsultTerminal,resolveLifecycleUserTurn,assessLifecycleSpeech,hasLifecyclePlaybackTail,assessLifecycleFarewell,assessProactiveGreeting,assessAutomaticEnd,
-  resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult,readLifecycleHistoryOrRetry} from './call-lifecycle-evidence.mjs';
+  resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult,resolveLifecycleCanonicalBody,
+  resolveLifecycleFinalSpeechTurns,hasLifecycleFinalPlaybackTail,assessLifecycleFinalSpeech,readLifecycleHistoryOrRetry} from './call-lifecycle-evidence.mjs';
 import {inspectLifecycleValidationTarget,readLifecycleVoiceOwner,preflightLifecycleMedia} from './call-lifecycle-target.mjs';
 
 const validationTarget=process.env.GPT_LIVE_H5_VALIDATION_TARGET??'candidate';
@@ -173,13 +175,28 @@ async function basicTools(pcIndex) {
  check('requested-read-only-memory-web-tool-scope',unexpected.length===0,{unexpectedTools:unexpected.map(p=>({name:p.name,id:p.id})),requestedWrites:false,requestedMessages:false});
  const host=await waitFor(s=>resolveLifecycleConsultResult(s,{pcIndex,voiceSessionId:owner.voiceSessionId,userTurnId:user.turnId,toolChain:chain,after:input.row.startedAt}),
   'Original native USER delegation and real owned consult result',30000);
- // One actual native turn may speak a Memory stage before the Web result and
- // finish with both results. Preserve that complete turn; require its terminal
- // to follow the actual Web result rather than clipping its earlier prefix.
- const speech=await waitSpeech(pcIndex,input.row.startedAt,'Native spoken Memory/Web result after actual backend completion',Infinity,{terminalAfter:chain.webResult.at});
- coreCheck('actual-memory-web-backend-result-returned-in-native-speech',Boolean(host&&speech),{host,speech,semanticResultIndependentReviewRequired:true});
+ // The native protocol has no business-final event. A progress turn or one
+ // fragmented final can end after Web returns. Bind the real complete backend
+ // body and all its final chunks, then wait for that entire body in the original
+ // native turn sequence plus the unchanged real 750ms playback tail before
+ // injecting another USER. Correct paraphrases may remain unverified by this
+ // conservative readiness gate; independent content review is still required.
+ let finalBody;
+ const speech=await waitFor(async s=>{
+  const diagnostics=parsePublicProgressDiagnostics(fs.readFileSync(process.env.GPT_LIVE_H5_TRACE_PATH,'utf8'));
+  const nativeOwner=resolveNativeControlOwner({diagnostics,events:s.events,tools:s.tools,backendRunId:chain.runId,
+    voiceSessionId:owner.voiceSessionId,pcIndex});
+  const canonical=resolveCanonicalFinalTrace(diagnostics,nativeOwner);
+  finalBody=resolveLifecycleCanonicalBody(ownedGatewayEvents(),{canonical,sessionKey:owner.sessionKey,runId:chain.runId});
+  const params={pcIndex,body:finalBody,host,userTurnId:user.turnId};
+  const ready=resolveLifecycleFinalSpeechTurns(s,params);
+  if(!ready||!hasLifecycleFinalPlaybackTail(s,params))return null;
+  return assessLifecycleFinalSpeech(await snapshot(true),params);
+ },'Complete canonical Memory/Web body in native speech and actual playback tail',45000);
+ coreCheck('actual-memory-web-backend-result-returned-in-native-speech',Boolean(host&&speech?.completeBodyMatched),{host,finalBody,speech,
+   readinessMatchesCompleteBodyConservatively:true,semanticResultIndependentReviewRequired:true});
  recordSpeech('memory-web-result-complete-digital-playback',speech);
- save('memory-web-evidence.json',{input:input.row,user,owner,chain,host,speech,semanticResultIndependentReviewRequired:true,
+ save('memory-web-evidence.json',{input:input.row,user,owner,chain,host,finalBody,speech,semanticResultIndependentReviewRequired:true,
   exactFactSource:{memoryResult:chain.memoryResult.completeRawResult,webResult:chain.webResult.completeRawResult},summaryIsNotSemanticAcceptance:true});
  await inputConverged(pcIndex,input.row,'memory-web-independent-USER-input-convergence');
 }

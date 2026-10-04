@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -7,9 +8,10 @@ import os from 'node:os';
 import vm from 'node:vm';
 import {captureOwnedBrowserDirectory,removeOwnedBrowserDirectory} from './private-pulse.mjs';
 import {BROWSER_PROBE,SNAPSHOT_ARRAY_FIELDS,SNAPSHOT_PAGED_HEADER_EXPRESSION,readBoundedProbeSnapshot} from './browser-probe.mjs';
-import {assessDecodedPlaybackWindow,assessIndependentInputConvergence} from './evidence.mjs';
+import {assessDecodedPlaybackWindow,assessIndependentInputConvergence,resolveNativeControlOwner,resolveCanonicalFinalTrace} from './evidence.mjs';
 import {resolveEndCallToolWitness,assessEndCallConsultTerminal,resolveLifecycleUserTurn,assessLifecycleSpeech,hasLifecyclePlaybackTail,assessLifecycleFarewell,assessProactiveGreeting,assessAutomaticEnd,
-  extractLifecycleToolPairs,resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult,readLifecycleHistoryOrRetry} from './call-lifecycle-evidence.mjs';
+  extractLifecycleToolPairs,resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult,resolveLifecycleCanonicalBody,normalizeLifecycleFinalBody,
+  resolveLifecycleFinalSpeechTurns,hasLifecycleFinalPlaybackTail,assessLifecycleFinalSpeech,readLifecycleHistoryOrRetry} from './call-lifecycle-evidence.mjs';
 
 function cleanupFixture() {
  const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'gpt-live-cleanup-test-'))),directory=path.join(root,'scratch-owned');
@@ -142,7 +144,7 @@ test('history rebuilding retry matches only the exact error message and propagat
 const delegation=(text='{"name":"openclaw_end_call","arguments":{}}')=>({pcIndex:0,at:1000,type:'delegation.created',raw:{item:{id:'item-1',type:'delegation',target:'client',user_bidi_turn_id:'user-1',content:[{type:'input_text',text}]}}});
 const tool=(type,at)=>({at,raw:{voiceSessionId:'voice-1',type,name:'openclaw_end_call',callId:'item-1',requestId:'item-1',...(type==='tool.result'?{closeAfterPlayback:true}:{})}});
 const witness=()=>({events:[delegation()],tools:[tool('tool.call',1100),tool('tool.result',1200)],pcIndex:0,voiceSessionId:'voice-1'});
-const frame=(at,rms=.02)=>({at,pcIndex:0,rms,digitalAudible:rms>.005,muted:false,paused:false,volume:1,contextState:'running',receiverAttachedToPlayback:true,trackState:'live',connected:'connected',rtp:[{packetsReceived:at}]});
+const frame=(at,rms=.02)=>({at,pcIndex:0,rms,digitalAudible:rms>.005,muted:false,paused:false,volume:1,contextState:'running',receiverAttachedToPlayback:true,trackState:'live',connected:'connected',rtp:[{id:'receiver-own',timestamp:at,packetsReceived:at,bytesReceived:at*10}]});
 function speechState() {
  return {events:[{pcIndex:0,at:1250,type:'turn.created',role:'assistant',turnId:'bye-1'},
    {pcIndex:0,at:1300,type:'output_transcript.added',text:'再见。',turnId:'bye-1'},
@@ -921,35 +923,116 @@ function toolsFixture() {
     isError:false,content:[{type:'text',text:JSON.stringify(result(name))}]}))]};
  return {events,history,sessionKey,memoryQuery,after:199000};
 }
-test('actual basicTools preserves the complete USER-start speech window and requires a post-Web terminal',async()=>{
+// Offline contract fixtures below are not real model, speech or tool evidence.
+function finalDeliveryFixture() {
+ const f=toolsFixture(),owner={voiceSessionId:'voice-own',sessionKey:f.sessionKey},runId=f.events[0].payload.runId;
+ const user={pcIndex:0,at:199900,role:'user',type:'turn.done',turnId:'u-tools',text:'先用 memory search 查某同事，再用 web search 查 OpenAI Realtime API，不要写入，也不要发消息。'};
+ const state={events:[user,{pcIndex:0,at:200000,type:'delegation.created',raw:{item:{id:'native-owner',target:'client',user_bidi_turn_id:user.turnId}}}],
+  tools:[{at:200050,raw:{voiceSessionId:owner.voiceSessionId,callId:runId,type:'tool.call'}},
+   {at:204000,raw:{voiceSessionId:owner.voiceSessionId,callId:runId,type:'tool.result'}}]};
+ const text='记忆检索结果:同事甲是你的同事;OpenAI Realtime API 文档建议浏览器一般使用 WebRTC。';
+ const sha=x=>createHash('sha256').update(x).digest('hex'),sourceRunIdSha256=sha(runId),identity={traceId:'trace-tools',delegationId:'native-owner',generation:1,sourceRunIdSha256,ownerRunIdSha256:sourceRunIdSha256};
+ const diagnostics=[{...identity,stage:'backend-run-started',at:200060},
+  {...identity,stage:'backend-final-received',kind:'final',at:204100,textSha256:sha(text),provenance:{source:'canonical_final'}},
+  {...identity,stage:'context-append-sent',kind:'final',role:'final_complete',appendId:1,chunkIndex:0,chunkCount:1,at:204200,provenance:{source:'canonical_final'}}];
+ const events=[...f.events,{event:'agent',payload:{runId,sessionKey:f.sessionKey,stream:'assistant',ts:204090,data:{text}}}];
+ state.events.push({pcIndex:0,at:204250,type:'turn.created',role:'assistant',turnId:'final-tools'},
+  {pcIndex:0,at:204260,type:'output_transcript.added',turnId:'final-tools',text:text.replace('记忆检索结果:','')},
+  {pcIndex:0,at:204500,type:'turn.done',role:'assistant',turnId:'final-tools',text:text.replace('记忆检索结果:','')});
+ state.audioFrames=Array.from({length:25},(_,i)=>frame(204200+i*50,i<6?.02:0));
+ const host=resolveLifecycleConsultResult(state,{pcIndex:0,voiceSessionId:owner.voiceSessionId,userTurnId:user.turnId,
+  toolChain:resolveLifecycleMemoryWeb(f),after:f.after});
+ const nativeOwner=resolveNativeControlOwner({diagnostics,events:state.events,tools:state.tools,backendRunId:runId,voiceSessionId:owner.voiceSessionId,pcIndex:0});
+ const canonical=resolveCanonicalFinalTrace(diagnostics,nativeOwner);
+ const body=resolveLifecycleCanonicalBody(events,{canonical,sessionKey:f.sessionKey,runId});
+ return {f,owner,user,state,events,diagnostics,host,body,params:{pcIndex:0,body,host,userTurnId:user.turnId}};
+}
+test('complete final readiness preserves every qualifier and joins fragmented original turns',()=>{
+ const f=finalDeliveryFixture(),proof=assessLifecycleFinalSpeech(f.state,f.params);assert(proof);
+ assert.equal(proof.completeBodyMatched,true);assert(proof.quiet.durationMs>=750);assert(proof.playback.passed);
+ const terminal=f.state.events.at(-1),caption=f.state.events.at(-2),first=f.state.events.at(-3);
+ first.turnId=caption.turnId=terminal.turnId='part1';caption.text=terminal.text='同事甲是你的同事;';terminal.at=204350;
+ f.state.events.push({pcIndex:0,at:204360,type:'turn.created',role:'assistant',turnId:'part2'},
+  {pcIndex:0,at:204370,type:'output_transcript.added',turnId:'part2',text:'OpenAI Realtime API 文档建议浏览器一般使用 WebRTC。'},
+  {pcIndex:0,at:204500,type:'turn.done',role:'assistant',turnId:'part2',text:'OpenAI Realtime API 文档建议浏览器一般使用 WebRTC。'});
+ const joined=assessLifecycleFinalSpeech(f.state,f.params);assert(joined);assert.deepEqual(joined.window.turnIds,['part1','part2']);
+ assert.equal(joined.window.from,proof.window.from);assert.equal(joined.window.to,proof.window.to);
+});
+test('progress, partial final, changed qualifiers, new USER and incomplete RTP cannot be final readiness',()=>{
+ const changes=[
+  f=>{f.state.events.at(-1).text='记忆已查到，我现在在看 OpenAI 的 Realtime API 文档。';},
+  f=>{f.state.events.at(-1).text='同事甲是你的同事;';},
+  f=>{f.state.events.at(-1).text=f.state.events.at(-1).text.replace('一般','只能');},
+  f=>{f.state.events.push({pcIndex:0,at:204400,role:'user',type:'turn.created',turnId:'new-user'});},
+  f=>{f.state.events.push({pcIndex:0,at:202000,role:'user',type:'turn.done',turnId:'new-user',text:'另一个问题'});},
+  f=>{f.state.events.push({pcIndex:0,at:204600,role:'assistant',type:'turn.created',turnId:'still-speaking'});},
+  f=>{f.state.events.at(-3).at=204000;},
+  f=>{f.body.canonical.final.delegationId='other';},
+  f=>{f.state.audioFrames=f.state.audioFrames.slice(0,-4);},
+  f=>{f.state.audioFrames=f.state.audioFrames.filter(row=>![204250,204300].includes(row.at));},
+  f=>{f.state.audioFrames[8].paused=true;},
+  f=>{f.state.audioFrames=f.state.audioFrames.map(row=>({...row,rtp:[]}));},
+  f=>{f.state.audioFrames=f.state.audioFrames.map(row=>({...row,rtp:[{id:'receiver-own',timestamp:204400,packetsReceived:1,bytesReceived:10}]}));},
+  f=>{f.state.audioFrames=f.state.audioFrames.map(row=>({...row,rtp:[{...row.rtp[0],id:'receiver-'+row.at}]}));},
+  f=>{f.state.audioFrames.at(-1).rtp[0].packetsReceived=0;},
+ ];
+ for(const mutate of changes){const f=finalDeliveryFixture();mutate(f);assert.equal(assessLifecycleFinalSpeech(f.state,f.params),null);}
+ const f=finalDeliveryFixture();f.events.at(-1).payload.data.text+='额外断言';
+ assert.equal(resolveLifecycleCanonicalBody(f.events,{canonical:f.body.canonical,sessionKey:f.owner.sessionKey,runId:f.f.events[0].payload.runId}),null);
+});
+test('strict date representation normalization never drops substantive qualifications or other values',()=>{
+ const canonical='记忆检索结果:记录日期2021-11-12，浏览器一般使用 WebRTC。';
+ assert.equal(normalizeLifecycleFinalBody(canonical),normalizeLifecycleFinalBody('记录日期二零二一年十一月十二日,浏览器一般使用 webrtc。'));
+ assert.notEqual(normalizeLifecycleFinalBody(canonical),normalizeLifecycleFinalBody('记录日期二零二一年十一月十一日,浏览器一般使用 WebRTC。'));
+ assert.notEqual(normalizeLifecycleFinalBody(canonical),normalizeLifecycleFinalBody('记录日期二零二一年十一月十二日,浏览器只能使用 WebRTC。'));
+ assert.notEqual(normalizeLifecycleFinalBody('文档示例:模型甲'),normalizeLifecycleFinalBody('模型甲'));
+ for(const [left,right] of [['2.5','25'],['-3','3'],['+3','3'],['1/2','12'],['30%','30']])
+  assert.notEqual(normalizeLifecycleFinalBody(left),normalizeLifecycleFinalBody(right),'Never erase numeric punctuation or units');
+ assert.notEqual(normalizeLifecycleFinalBody('2021-11-11'),normalizeLifecycleFinalBody('二零二一年十一月十一十日'));
+ assert.notEqual(normalizeLifecycleFinalBody('2021-02-28'),normalizeLifecycleFinalBody('二零二一年二月三十一日'));
+});
+test('whole multi-turn final playback retains a caption prefix received before its turn.created summary',()=>{
+ const f=finalDeliveryFixture();f.state.events.at(-2).at=204230;
+ const proof=assessLifecycleFinalSpeech(f.state,f.params);assert(proof);
+ assert.equal(proof.window.from,204130);assert.equal(proof.turns[0].window.created.at,204250);
+});
+test('actual 200ms stats cadence is separate from the unchanged 100ms player sampling boundary',()=>{
+ const f=finalDeliveryFixture();f.state.audioFrames=f.state.audioFrames.map((row,index)=>({...row,rtp:index%4===0?row.rtp:[]}));
+ const proof=assessLifecycleFinalSpeech(f.state,f.params);assert(proof);assert(proof.independentRtp.durationMs>=750);
+ assert.equal(hasLifecycleFinalPlaybackTail(f.state,f.params),true);
+ const stale=structuredClone(f.state);stale.audioFrames=stale.audioFrames.map(row=>({...row,rtp:[{id:'receiver-own',timestamp:204400,packetsReceived:1,bytesReceived:10}]}));
+ assert.equal(hasLifecycleFinalPlaybackTail(stale,f.params),false,'Do not copy full evidence for one stale RTP row');
+ f.state.audioFrames=f.state.audioFrames.filter(row=>![204650,204700].includes(row.at));
+ assert.equal(assessLifecycleFinalSpeech(f.state,f.params),null,'Player sampling gaps remain strict failure');
+});
+test('actual basicTools waits for canonical complete body and strict native tail before the next USER',async()=>{
  const source=readFileSync(new URL('./call-lifecycle-smoke.mjs',import.meta.url),'utf8');
  const from=source.indexOf('async function basicTools(pcIndex) {'),to=source.indexOf('\nasync function runLifecycle()',from);
  assert(from>=0&&to>from,'Execute the actual Memory/Web runner');
- const f=toolsFixture(),owner={voiceSessionId:'voice-own',sessionKey:f.sessionKey};
- const user={pcIndex:0,at:199900,role:'user',type:'turn.done',turnId:'u-tools',text:'先用 memory search 查某同事，再用 web search 查 OpenAI Realtime API，不要写入，也不要发消息。'};
- const state={events:[user,{pcIndex:0,at:200000,type:'delegation.created',raw:{item:{id:'native-owner',target:'client',user_bidi_turn_id:user.turnId}}}],
-  tools:[{at:200050,raw:{voiceSessionId:owner.voiceSessionId,callId:f.events[0].payload.runId,type:'tool.call'}},
-   {at:204000,raw:{voiceSessionId:owner.voiceSessionId,callId:f.events[0].payload.runId,type:'tool.result'}}]};
- const speech={window:{pcIndex:0,from:202000,to:205000},playback:{passed:true}},input={row:{exitCode:0,startedAt:f.after,completedAt:199500},done:Promise.resolve()};
+ const fixture=finalDeliveryFixture(),{f,owner,state}=fixture;
+ const input={row:{exitCode:0,startedAt:f.after,completedAt:199500},done:Promise.resolve()};
  const run=async fail=>{
   const checks=[],records=[],saved=new Map(),boundaries=[];
   const basicTools=vm.runInNewContext('('+source.slice(from,to)+')',{
    assert,owners:new Map([[0,owner]]),memoryQuery:f.memoryQuery,play:()=>input,
-   waitFor:async predicate=>{const value=await predicate(state);assert(value,'All real tool/host prerequisites remain required');return value;},
-   resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult,readLifecycleHistoryOrRetry,
-   ownedGatewayEvents:()=>f.events,gateway:{request:async(method,params)=>{assert.equal(method,'chat.history');assert.equal(params.sessionKey,owner.sessionKey);return f.history;}},
-   waitSpeech:async(...args)=>{boundaries.push(args);if(fail)throw fail;return speech;},
+   process:{env:{GPT_LIVE_H5_TRACE_PATH:'/private/trace'}},fs:{readFileSync:()=>''},parsePublicProgressDiagnostics:()=>fixture.diagnostics,
+   waitFor:async(predicate,label,max)=>{boundaries.push({label,max});if(fail&&label.startsWith('Complete canonical'))throw fail;
+    const value=await predicate(state);assert(value,'All actual tool/host/canonical prerequisites remain required');return value;},
+   snapshot:async full=>{assert.equal(full,true);return state;},hasLifecyclePlaybackTail,resolveNativeControlOwner,resolveCanonicalFinalTrace,
+   resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult,resolveLifecycleCanonicalBody,
+   resolveLifecycleFinalSpeechTurns,hasLifecycleFinalPlaybackTail,assessLifecycleFinalSpeech,readLifecycleHistoryOrRetry,
+   ownedGatewayEvents:()=>fixture.events,gateway:{request:async(method,params)=>{assert.equal(method,'chat.history');assert.equal(params.sessionKey,owner.sessionKey);return f.history;}},
    coreCheck:(name,passed,details)=>checks.push({name,passed:Boolean(passed),details}),
    check:(name,passed,details)=>checks.push({name,passed:Boolean(passed),details}),
    recordSpeech:(name,proof)=>records.push({name,proof}),save:(name,value)=>saved.set(name,value),inputConverged:async()=>{},
   });
   await basicTools(0);return {checks,records,saved,boundaries};
  };
- const result=await run();assert.equal(result.boundaries[0][1],input.row.startedAt);
- assert.equal(result.boundaries[0][4].terminalAfter,203000);assert.equal(result.boundaries[0][3],Infinity);
- assert.equal(result.records[0].proof,speech);assert.equal(result.saved.get('memory-web-evidence.json').speech,speech);
+ const result=await run();assert.equal(result.boundaries.at(-1).max,45000,'No longer final wait deadline');
+ assert.equal(result.records[0].proof.completeBodyMatched,true);
+ assert.equal(result.saved.get('memory-web-evidence.json').speech.completeBodyMatched,true);
  assert.equal(result.checks.find(c=>c.name==='actual-memory-web-backend-result-returned-in-native-speech').passed,true);
- for(const failure of [Error('Native spoken Memory/Web result after actual backend completion deadline'),Error('CDP Runtime.evaluate timeout')])
+ for(const failure of [Error('Complete canonical Memory/Web body in native speech and actual playback tail deadline'),Error('CDP Runtime.evaluate timeout')])
   await assert.rejects(run(failure),error=>error===failure,'Selection fixes do not swallow failed observations');
 });
 test('Memory/Web tool chain uses actual native source clocks and current complete results',()=>{

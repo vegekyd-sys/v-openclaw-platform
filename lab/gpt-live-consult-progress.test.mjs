@@ -317,6 +317,9 @@ test("captured consult delivers source scope policy for the unchanged 0a USER an
   assert(capturedPrompt.includes(`Additional realtime context:\n${context}`));
   assert.match(capturedPrompt, /evidence scope rule is not an official claim of incompatibility or a ban on combining interfaces/);
   assert.match(capturedPrompt, /Derive recommendations, requirements, prohibitions and exclusive claims from the primary source's actual wording with its conditions/);
+  assert.match(capturedPrompt, /Attribute each factual clause to the actual supporting page and its exact subject/);
+  assert.match(capturedPrompt, /Do not join a search-synthesis claim or a GPT Live-specific section into a Realtime documentation claim/);
+  assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /每个事实分句都保留实际支持它的来源和适用对象/u);
   assert.match(capturedPrompt, /not from these instructions, absence of coverage, separate guides, or a typical flow/);
   assert.match(capturedPrompt, /recommended or usual connection flow does not establish an only-supported transport/);
   assert.match(capturedPrompt, /Do not cite our task policies as documentation facts/);

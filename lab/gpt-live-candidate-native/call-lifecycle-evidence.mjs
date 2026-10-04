@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 import {resolveNativeTurnTranscriptWindow,assessCompletePlaybackWindow,continuousPlaybackQuiet,mergeSessionToolEvidence,toolResultSucceeded} from './evidence.mjs';
 
 const normalize=text=>String(text??'').replace(/[\s，。！？,.!?]/gu,'');
@@ -72,6 +73,109 @@ export function resolveLifecycleConsultResult(state,{pcIndex,voiceSessionId,user
   const result=(state.tools??[]).find(e=>owned(e)&&e.raw.type==='tool.result'&&e.at>=call?.at);
   if(!call||!result||(state.tools??[]).some(e=>owned(e)&&e.raw.type==='tool.error'))return null;
   return {delegation:delegations[0],call,result,source:'actual-native-USER-delegation-and-owned-consult-run-SSE-result'};
+}
+
+/** An actual run's complete body must match the canonical callback hash. */
+export function resolveLifecycleCanonicalBody(events,{canonical,sessionKey,runId}={}) {
+  if(!canonical||!sessionKey||!runId)return null;
+  const rows=events.filter(e=>e.event==='agent'&&e.payload?.stream==='assistant'&&e.payload.runId===runId&&
+    e.payload.sessionKey===sessionKey&&typeof e.payload.data?.text==='string'&&Number.isFinite(e.payload.ts)&&
+    e.payload.ts<=canonical.received.at&&createHash('sha256').update(e.payload.data.text.trim()).digest('hex')===canonical.received.textSha256);
+  const bodies=new Set(rows.map(e=>e.payload.data.text.trim()));
+  return bodies.size===1?{text:[...bodies][0],event:rows.at(-1),canonical,source:'same-run-complete-body-matches-canonical-callback-hash'}:null;
+}
+
+// Strict observer readiness, not a paraphrase or truth evaluator. Preserve all
+// substantive words and qualifications; only punctuation, a known presentation
+// label, case and the unambiguous spoken/ISO representation of a date differ.
+export function normalizeLifecycleFinalBody(text) {
+  const digits={'零':0,'〇':0,'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9};
+  const small=value=>/^\d+$/u.test(value)?Number(value):/^[一二三四五六七八九]$/u.test(value)?digits[value]:
+    /^(?:十[一二三四五六七八九]?|[二三]十[一二三四五六七八九]?)$/u.test(value)?
+      (value.split('十')[0]?digits[value.split('十')[0]]:1)*10+(value.split('十')[1]?digits[value.split('十')[1]]:0):NaN;
+  const date=(year,month,day,original)=>{
+    if(!Number.isInteger(year)||!Number.isInteger(month)||!Number.isInteger(day)||year<1000||year>9999||month<1||month>12||day<1||day>31)return original;
+    const value=new Date(Date.UTC(year,month-1,day));
+    return value.getUTCFullYear()===year&&value.getUTCMonth()===month-1&&value.getUTCDate()===day?`date${year}m${month}d${day}`:original;
+  };
+  return String(text??'').replace(/^\s*(?:记忆检索结果|检索结果)\s*[:：]/u,'')
+    .replace(/(\d{4})-(\d{2})-(\d{2})/gu,(original,y,m,d)=>date(Number(y),Number(m),Number(d),original))
+    .replace(/([零〇一二三四五六七八九]{4}|\d{4})年([零〇一二三四五六七八九十\d]{1,3})月([零〇一二三四五六七八九十\d]{1,3})日/gu,
+      (original,y,m,d)=>date(/^\d+$/u.test(y)?Number(y):Number([...y].map(c=>digits[c]).join('')),small(m),small(d),original))
+    .replace(/[\s\p{P}]/gu,(character,offset,value)=>
+      character==='%'||character==='‰'||/[.,:/+\-−]/u.test(character)&&
+        (/\d/u.test(value[offset-1]??'')&&/\d/u.test(value[offset+1]??'')||/[+\-−]/u.test(character)&&/\d/u.test(value[offset+1]??''))?
+        character:'').toLowerCase();
+}
+
+/** Never feed the next USER on a progress sentence or one partial final turn. */
+export function resolveLifecycleFinalSpeechTurns(state,{pcIndex,body,host,userTurnId,before=Infinity}={}) {
+  if(!body?.canonical||!host?.result||host.delegation?.raw?.item?.id!==body.canonical.final.delegationId||
+    !Number.isFinite(host.result.at)||!userTurnId)return null;
+  const after=body.canonical.received.at,readyAt=Math.max(host.result.at,body.canonical.final.at);
+  const users=(state.events??[]).filter(e=>e.pcIndex===pcIndex&&e.role==='user'&&e.type==='turn.done'&&e.turnId===userTurnId&&Number.isFinite(e.at));
+  if(users.length!==1||users[0].at>after)return null;
+  if((state.events??[]).some(e=>e.pcIndex===pcIndex&&e.role==='user'&&e.turnId!==userTurnId&&
+    ['turn.created','turn.done'].includes(e.type)&&e.at>users[0].at&&e.at<before))return null;
+  const turns=(state.events??[]).filter(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='assistant'&&
+    e.turnId&&normalize(e.text)&&Number.isFinite(e.at)&&e.at>readyAt&&e.at<before)
+    .map(terminal=>({terminal,window:resolveNativeTurnTranscriptWindow(state.events,{pcIndex,turnId:terminal.turnId,after,before})}))
+    .filter(row=>row.window?.created&&row.window.created.at>=after).sort((a,b)=>a.terminal.at-b.terminal.at);
+  if(!turns.length)return null;
+  const required=normalizeLifecycleFinalBody(body.text),spoken=normalizeLifecycleFinalBody(turns.map(row=>row.terminal.text).join(''));
+  if(!required||!spoken.includes(required))return null;
+  const terminal=turns.at(-1).terminal;
+  if((state.events??[]).some(e=>e.pcIndex===pcIndex&&e.role==='assistant'&&e.type==='turn.created'&&e.at>terminal.at&&e.at<before))return null;
+  return {terminal,turns,after,readyAt,from:Math.min(...turns.map(row=>row.window.from)),canonical:body.canonical,
+    completeBodyMatched:true,semanticResultIndependentReviewRequired:true,source:'actual-complete-canonical-body-in-original-native-turn-sequence'};
+}
+
+export function assessLifecycleFinalSpeech(state,params={}) {
+  const delivery=resolveLifecycleFinalSpeechTurns(state,params);if(!delivery)return null;
+  const {pcIndex,before=Infinity}=params,frames=(state.audioFrames??[]).filter(f=>f.at<before);
+  const quiet=continuousPlaybackQuiet(frames,{pcIndex,after:delivery.terminal.at,durationMs:750,threshold:.003,maxGapMs:100,requireTail:true});
+  if(!quiet||!quiet.rtp.length)return null;
+  const independentRtp=assessLifecyclePostTerminalRtp(quiet,{terminalAt:delivery.terminal.at});
+  if(!independentRtp)return null;
+  const window={pcIndex,from:delivery.from,to:quiet.to,turnId:delivery.terminal.turnId,
+    turnIds:delivery.turns.map(row=>row.terminal.turnId),terminal:delivery.terminal,
+    canonicalFinalReceivedAt:delivery.after,completeBodyMatched:true};
+  const playback=assessCompletePlaybackWindow(frames,window);
+  if(!playback?.passed||playback.invalidFrames.length||playback.audibleFrames<3)return null;
+  return {...delivery,window,quiet,independentRtp,playback,strictCompletePlaybackPassed:playback.passed};
+}
+
+export function hasLifecycleFinalPlaybackTail(state,params={}) {
+  const delivery=resolveLifecycleFinalSpeechTurns(state,params);if(!delivery)return false;
+  const {pcIndex,before=Infinity}=params;
+  const quiet=continuousPlaybackQuiet((state.audioFrames??[]).filter(f=>f.at<before),{
+    pcIndex,after:delivery.terminal.at,durationMs:750,threshold:.003,maxGapMs:100,requireTail:true});
+  return Boolean(assessLifecyclePostTerminalRtp(quiet,{terminalAt:delivery.terminal.at}));
+}
+
+/** Real receiver clocks/counters must cover the tail; one stale stats row cannot. */
+export function assessLifecyclePostTerminalRtp(quiet,{terminalAt,durationMs=750,maxClockAgeMs=100,maxRtpGapMs=300}={}) {
+  if(!quiet||!Number.isFinite(terminalAt)||!Number.isFinite(quiet.to))return null;
+  const groups=new Map();
+  for(const row of quiet.rtp??[])for(const stat of row.rtp??[]) {
+    if(typeof stat.id!=='string'||!stat.id||!Number.isFinite(row.at)||!Number.isFinite(stat.timestamp)||
+      row.at<terminalAt||stat.timestamp<terminalAt||Math.abs(stat.timestamp-row.at)>maxClockAgeMs||
+      !Number.isSafeInteger(stat.packetsReceived)||stat.packetsReceived<0||!Number.isSafeInteger(stat.bytesReceived)||stat.bytesReceived<0)continue;
+    const rows=groups.get(stat.id)??[];rows.push({at:row.at,...stat});groups.set(stat.id,rows);
+  }
+  for(const [id,rows] of groups) {
+    rows.sort((a,b)=>a.at-b.at);
+    const first=rows[0],last=rows.at(-1);
+    // Browser probe schedules getStats every 200ms while player/mic state is
+    // sampled every 50ms. The unchanged player gate enforces 100ms continuity;
+    // stats cadence has a separate 200ms + 100ms observation-gap bound.
+    if(rows.length<2||last.timestamp-first.timestamp<durationMs||quiet.to-last.at>maxRtpGapMs)continue;
+    if(rows.some((row,index)=>index>0&&(row.at-rows[index-1].at>maxRtpGapMs||row.timestamp<=rows[index-1].timestamp||
+      row.packetsReceived<rows[index-1].packetsReceived||row.bytesReceived<rows[index-1].bytesReceived)))continue;
+    return {id,fromTimestamp:first.timestamp,toTimestamp:last.timestamp,durationMs:last.timestamp-first.timestamp,
+      terminalAt,frameCount:rows.length,first,last,source:'same-receiver-post-terminal-real-RTP-clocks-and-monotonic-counters'};
+  }
+  return null;
 }
 
 const emptyArguments=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===0;
