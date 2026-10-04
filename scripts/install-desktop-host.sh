@@ -41,7 +41,7 @@ id "$OPENCLAW_USER" >/dev/null
 echo "== packages"
 if [ "$SKIP_APT" != 1 ]; then
   export DEBIAN_FRONTEND=noninteractive
-  apt-get install -y --no-install-recommends tigervnc-standalone-server tigervnc-tools xfce4-session xfwm4 xfce4-panel xfdesktop4 dbus x11-utils x11-xserver-utils novnc >/dev/null
+  apt-get install -y --no-install-recommends tigervnc-standalone-server tigervnc-tools xfce4-session xfwm4 xfce4-panel xfdesktop4 dbus x11-utils x11-xserver-utils wmctrl novnc >/dev/null
 fi
 for bin in Xtigervnc tigervncpasswd xfce4-session dbus-daemon xdpyinfo google-chrome; do command -v "$bin" >/dev/null || { echo "missing $bin" >&2; exit 1; }; done
 [ -d /usr/share/novnc/core ] || { echo "/usr/share/novnc/core missing" >&2; exit 1; }
