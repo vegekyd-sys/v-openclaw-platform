@@ -1,0 +1,12 @@
+{
+  "tests": ["lab/candidate/x-search-effort.test.mjs"],
+  "user": "lab-db91-parity",
+  "timeoutSeconds": 600,
+  "files": [
+    {
+      "source": "lab/release-files/x-search-effort/x-search-shared-CJa_QAnc.js",
+      "target": "openclaw/dist/x-search-shared-CJa_QAnc.js",
+      "before": "72e642f38381af7e4ad34b9e357019a165c07d89ddc4619aa69f94c4cb716774"
+    }
+  ]
+}

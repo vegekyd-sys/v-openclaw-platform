@@ -107,13 +107,24 @@ function buildXaiXSearchPayload(params) {
 		...params.options?.enableVideoUnderstanding ? { enableVideoUnderstanding: true } : {}
 	};
 }
+// v-openclaw x-search-effort-v1: send each model's lowest supported effort, as
+// upstream 9.5 does (resolveXaiToolDefaultReasoningEffort + thinkingLevelMap).
+// 9.1 sent "none" only for grok-4.3; grok-4.6 rejects "none", so it got no
+// effort field and xAI ran x_search at its default (high) effort.
+const XAI_X_SEARCH_LOWEST_REASONING_EFFORT = {
+	[XAI_DEFAULT_X_SEARCH_MODEL]: "none",
+	"grok-4.6": "low"
+};
+function resolveXaiXSearchReasoningEffort(model) {
+	return Object.hasOwn(XAI_X_SEARCH_LOWEST_REASONING_EFFORT, model) ? XAI_X_SEARCH_LOWEST_REASONING_EFFORT[model] : void 0;
+}
 async function requestXaiXSearch(params) {
 	params.signal?.throwIfAborted();
 	return await requestXaiResponsesTool({
 		...params,
 		inputText: params.options.query,
 		tools: [buildXSearchTool(params.options)],
-		reasoningEffort: params.model === XAI_DEFAULT_X_SEARCH_MODEL ? "none" : void 0,
+		reasoningEffort: resolveXaiXSearchReasoningEffort(params.model),
 		errorLabel: "xAI X search failed"
 	}, (data) => requireXaiResponseTextCitationsAndInline(data, "xAI X search failed", params.inlineCitations, XAI_X_SEARCH_MAX_CONTENT_CHARS));
 }
