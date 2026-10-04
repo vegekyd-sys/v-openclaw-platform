@@ -1,0 +1,25 @@
+{
+  "id": "v-session-relay",
+  "name": "V Session Relay",
+  "description": "Lets the owner have V hand work to another conversation (group, task room or session) and get the result back where it was asked, visibly in Feishu.",
+  "activation": {
+    "onStartup": true
+  },
+  "contracts": {
+    "tools": ["session_relay_send", "session_relay_status"]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "storeDir": { "type": "string" },
+      "owners": { "type": "array", "items": { "type": "string" } },
+      "ownerName": { "type": "string" },
+      "maxChain": { "type": "integer", "minimum": 1, "maximum": 50 },
+      "pollMs": { "type": "integer", "minimum": 200, "maximum": 60000 },
+      "waitSliceMs": { "type": "integer", "minimum": 1000, "maximum": 3600000 },
+      "maxWaitMs": { "type": "integer", "minimum": 60000, "maximum": 172800000 },
+      "sessionKeyActorFallback": { "type": "boolean" }
+    }
+  }
+}

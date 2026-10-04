@@ -1,0 +1,189 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { test } from "node:test";
+
+import { RelayDispatcher } from "../core/dispatcher.js";
+import { activeRelay, decideSend, resolveTrustedActor } from "../core/policy.js";
+import { agentForFeishuGroup, feishuReceiverForSession, labelForSession, parseSessionKey, resolveTarget } from "../core/sessions.js";
+import { RelayStore } from "../core/store.js";
+import { attributionCard, lastAssistantText } from "../core/text.js";
+
+const OWNER = "feishu:ou_owner";
+const DM = "agent:makaron:feishu:direct:ou_owner";
+const GROUP_A = "agent:makaron:feishu:group:oc_a";
+const GROUP_B = "agent:makaron:feishu:group:oc_b";
+
+function tmpStore() {
+  return new RelayStore(fs.mkdtempSync(path.join(os.tmpdir(), "relay-test-")));
+}
+
+function record(over = {}) {
+  return { id: "r_1", chainId: "r_1", status: "queued", createdAt: 1, from: { sessionKey: DM, label: "Tianyi 的私聊" }, to: { sessionKey: GROUP_A, label: "A 群" }, message: "do x", ...over };
+}
+
+test("policy: only the owner starts a relay; nobody relays to itself", () => {
+  const base = { records: [], sessionKey: DM, targetSessionKey: GROUP_A, owners: [OWNER] };
+  assert.deepEqual(decideSend({ ...base, actor: OWNER }), { allow: true, chainId: null, via: "owner" });
+  assert.equal(decideSend({ ...base, actor: "feishu:ou_colleague" }).allow, false);
+  assert.equal(decideSend({ ...base, actor: null }).allow, false);
+  assert.equal(decideSend({ ...base, actor: OWNER, targetSessionKey: DM }).allow, false);
+});
+
+test("policy: a conversation executing a relayed request cannot relay further, even for the owner", () => {
+  const records = [record({ status: "running" })];
+  const d = decideSend({ records, sessionKey: GROUP_A, targetSessionKey: GROUP_B, actor: OWNER, owners: [OWNER] });
+  assert.equal(d.allow, false);
+  assert.match(d.reason, /Tianyi 的私聊/u);
+});
+
+test("policy: the origin woken by a result may keep relaying in the same chain, up to the cap", () => {
+  const records = [record({ status: "replying" })];
+  assert.deepEqual(decideSend({ records, sessionKey: DM, targetSessionKey: GROUP_B, actor: null, owners: [OWNER] }), { allow: true, chainId: "r_1", via: "reply" });
+  const full = Array.from({ length: 3 }, (_, i) => record({ id: `r_${i}`, status: i === 2 ? "replying" : "done" }));
+  assert.equal(decideSend({ records: full, sessionKey: DM, targetSessionKey: GROUP_B, actor: null, owners: [OWNER], maxChain: 3 }).allow, false);
+  assert.equal(activeRelay([record({ status: "done" })], DM), null);
+});
+
+test("identity: sender id from the channel, owner bit, and the test-only key fallback", () => {
+  assert.equal(resolveTrustedActor({ requesterSenderId: "ou_owner", messageChannel: "feishu" }), OWNER);
+  const cfg = { commands: { ownerAllowFrom: [OWNER] } };
+  assert.equal(resolveTrustedActor({ senderIsOwner: true, messageChannel: "feishu", config: cfg, deliveryContext: { to: "chat:oc_a" } }), OWNER);
+  assert.equal(resolveTrustedActor({ sessionKey: DM }), null);
+  assert.equal(resolveTrustedActor({ sessionKey: DM }, { sessionKeyActorFallback: true }), OWNER);
+  assert.equal(resolveTrustedActor({ sessionKey: GROUP_A }, { sessionKeyActorFallback: true }), null);
+});
+
+test("sessions: keys, receivers, bindings and target resolution", async () => {
+  assert.deepEqual(parseSessionKey(GROUP_A), { agentId: "makaron", channel: "feishu", kind: "group", peerId: "oc_a" });
+  assert.deepEqual(feishuReceiverForSession(DM), { receiveIdType: "open_id", receiveId: "ou_owner" });
+  assert.deepEqual(feishuReceiverForSession(GROUP_A), { receiveIdType: "chat_id", receiveId: "oc_a" });
+  assert.equal(feishuReceiverForSession("agent:makaron:explicit:x"), null);
+  const cfg = { agents: { list: [{ id: "makaron", default: true }, { id: "v-codex" }] }, bindings: [{ agentId: "v-codex", match: { channel: "feishu", peer: { kind: "group", id: "oc_codex" } } }] };
+  assert.equal(agentForFeishuGroup(cfg, "oc_codex"), "v-codex");
+  assert.equal(agentForFeishuGroup(cfg, "oc_other"), "makaron");
+  const feishu = {
+    listChats: async () => [{ chatId: "oc_x1", name: "竞品调研" }, { chatId: "oc_x2", name: "VLab 压测 01" }, { chatId: "oc_x3", name: "VLab 压测 02" }],
+    chatName: async (id) => ({ oc_codex: "Codex 群" })[id] ?? null,
+  };
+  assert.deepEqual(await resolveTarget("竞品调研", { cfg, feishu }), { sessionKey: "agent:makaron:feishu:group:oc_x1", label: "竞品调研" });
+  const ambiguous = await resolveTarget("压测", { cfg, feishu });
+  assert.match(ambiguous.error, /More than one/u);
+  assert.equal(ambiguous.candidates.length, 2);
+  assert.deepEqual(await resolveTarget("oc_codex", { cfg, feishu }), { sessionKey: "agent:v-codex:feishu:group:oc_codex", label: "Codex 群" });
+  assert.match((await resolveTarget("不存在", { cfg, feishu })).error, /not in a group/u);
+  assert.equal(await labelForSession(DM, { owners: [OWNER] }), "Tianyi 的私聊");
+});
+
+test("text: attribution card and transcript reply extraction", () => {
+  const card = attributionCard({ label: "A 群", folded: "hello" });
+  assert.equal(card.schema, "2.0");
+  assert.match(card.body.elements[0].content, /消息来自 \*\*A 群\*\*/u);
+  assert.equal(card.body.elements[1].tag, "collapsible_panel");
+  assert.equal(attributionCard({ label: "A" }).body.elements.length, 1);
+  const messages = [
+    { role: "user", content: "q", timestamp: 10 },
+    { role: "assistant", content: [{ type: "text", text: "answer" }, { type: "tool_use" }], timestamp: 20 },
+  ];
+  assert.equal(lastAssistantText(messages), "answer");
+  assert.equal(lastAssistantText(messages, { after: 30 }), null);
+});
+
+function fakeRuntime({ replies = {}, waitStatus = {} } = {}) {
+  const runs = [];
+  return {
+    runs,
+    async run(params) {
+      const runId = `run_${runs.length + 1}`;
+      runs.push({ ...params, runId });
+      return { runId };
+    },
+    async waitForRun({ runId }) {
+      const run = runs.find((r) => r.runId === runId);
+      const status = waitStatus[runId] ?? "ok";
+      if (status !== "ok") return { status, error: status === "error" ? "unknown run" : undefined };
+      const text = replies[run?.sessionKey];
+      return { status: "ok", terminalReply: text ? { disposition: "visible", text } : { disposition: "silent" } };
+    },
+    async getSessionMessages() {
+      return { messages: [{ role: "assistant", content: "from transcript", timestamp: Date.now() + 1 }] };
+    },
+  };
+}
+
+function fakeFeishu() {
+  const cards = [];
+  return { cards, api: { sendCard: async (receiver, card) => { cards.push({ receiver, card }); return `om_${cards.length}`; } } };
+}
+
+test("dispatcher: request is posted and run in the target, the result returns to the origin", async () => {
+  const store = tmpStore();
+  store.write(record());
+  const runtime = fakeRuntime({ replies: { [GROUP_A]: "done: 3 files", [DM]: "ok, next step" } });
+  const feishu = fakeFeishu();
+  const d = new RelayDispatcher({ store, runtime, feishuFor: () => feishu.api, getConfig: () => ({}), logger: { info() {}, warn() {} } });
+  d.tick();
+  await d.idle();
+  const final = store.read("r_1");
+  assert.equal(final.status, "done");
+  assert.equal(final.reply, "done: 3 files");
+  assert.equal(runtime.runs.length, 2);
+  assert.equal(runtime.runs[0].sessionKey, GROUP_A);
+  assert.equal(runtime.runs[0].deliver, true);
+  assert.match(runtime.runs[0].message, /消息来自「Tianyi 的私聊」/u);
+  assert.equal(runtime.runs[1].sessionKey, DM);
+  assert.match(runtime.runs[1].message, /「A 群」回复了：\n\ndone: 3 files/u);
+  assert.deepEqual(feishu.cards.map((c) => c.receiver.receiveId), ["oc_a", "ou_owner"]);
+  assert.match(feishu.cards[0].card.body.elements[0].content, /Tianyi 的私聊/u);
+  assert.match(feishu.cards[1].card.body.elements[0].content, /A 群/u);
+});
+
+test("dispatcher: after a restart a running relay is collected from the transcript and delivered", async () => {
+  const store = tmpStore();
+  store.write(record({ status: "running", runId: "old_run", startedAt: Date.now() - 1000, requestCardAt: 1 }));
+  const runtime = fakeRuntime({ waitStatus: { old_run: "error" }, replies: { [DM]: "continuing" } });
+  const feishu = fakeFeishu();
+  const d = new RelayDispatcher({ store, runtime, feishuFor: () => feishu.api, getConfig: () => ({}), logger: { info() {}, warn() {} } });
+  d.tick();
+  await d.idle();
+  const final = store.read("r_1");
+  assert.equal(final.status, "done");
+  assert.equal(final.reply, "from transcript");
+  assert.equal(runtime.runs.length, 1, "the target is not run again");
+  assert.equal(runtime.runs[0].sessionKey, DM);
+});
+
+test("dispatcher: a failed target run tells the origin instead of going silent", async () => {
+  const store = tmpStore();
+  store.write(record());
+  const runtime = fakeRuntime({ waitStatus: { run_1: "error" } });
+  runtime.getSessionMessages = async () => ({ messages: [] });
+  const feishu = fakeFeishu();
+  const d = new RelayDispatcher({ store, runtime, feishuFor: () => feishu.api, getConfig: () => ({}), logger: { info() {}, warn() {} } });
+  d.tick();
+  await d.idle();
+  const final = store.read("r_1");
+  assert.equal(final.status, "failed");
+  assert.equal(runtime.runs.at(-1).sessionKey, DM);
+  assert.match(runtime.runs.at(-1).message, /没能完成/u);
+});
+
+test("store: ids, atomic writes, listing and pruning finished records", () => {
+  const store = tmpStore();
+  const id = store.newId(1_000);
+  assert.match(id, /^r_[0-9a-z]+$/u);
+  store.write(record({ id, status: "done", createdAt: 1, updatedAt: 1 }));
+  store.write(record({ id: "r_live", status: "running", createdAt: 2, updatedAt: 2 }));
+  assert.equal(store.list().length, 2);
+  assert.equal(store.list({ prune: true, keepMs: 10, now: 1_000_000 }).length, 1);
+  assert.equal(store.read(id), null);
+  assert.throws(() => store.file("../x"), /invalid relay id/u);
+});
+
+test("sessions: agents.entries as an object keyed by id", () => {
+  const cfg = { agents: { entries: { "v-codex": {}, makaron: { default: true } } } };
+  assert.equal(agentForFeishuGroup(cfg, "oc_x"), "makaron");
+  assert.equal(agentForFeishuGroup({ agents: { entries: { makaron: {}, other: {} } } }, "oc_x", "makaron"), "makaron");
+  assert.equal(agentForFeishuGroup({}, "oc_x"), "main");
+});
