@@ -65,6 +65,13 @@ const CANDIDATES = {
   // Same API without citation redirect resolution, with an explicit thinking level.
   'gemini-38-flash-low': (q, signal) => geminiDirect(q, 'gemini-3.8-flash', { thinkingConfig: { thinkingLevel: 'low' } }, signal),
   'gemini-35-lite-min': (q, signal) => geminiDirect(q, 'gemini-3.5-flash-lite', { thinkingConfig: { thinkingLevel: 'minimal' } }, signal),
+  // Gemini squeezed toward "results only": no thinking, told to list facts + sources instead of prose.
+  'gemini-lite-facts': (q, signal) => geminiDirect(q, 'gemini-3.5-flash-lite', { thinkingConfig: { thinkingLevel: 'minimal' }, maxOutputTokens: 700 }, signal, FACTS_INSTRUCTION),
+  // Lower bound of Google grounding: the model may write almost nothing, so this is mostly search time.
+  'gemini-lite-floor': (q, signal) => geminiDirect(q, 'gemini-3.5-flash-lite', { thinkingConfig: { thinkingLevel: 'minimal' }, maxOutputTokens: 24 }, signal),
+  // Google results resold by SERP APIs (needs SERPER_API_KEY / SERPAPI_API_KEY).
+  'serper': (q, signal) => serper(q, signal),
+  'serpapi': (q, signal) => serpapi(q, signal),
   // xAI web_search exactly as extensions/xai builds it (grok-4.3 gets reasoning low).
   'grok-43': (q, signal) => grok(q, 'grok-4.3', 'low', signal),
   'grok-420-nr': (q, signal) => grok(q, 'grok-4.20-0309-non-reasoning', undefined, signal),
@@ -191,19 +198,70 @@ async function geminiDistCall(q, model, signal) {
   };
 }
 
-async function geminiDirect(q, model, generationConfig, signal) {
+const FACTS_INSTRUCTION = 'You are a search backend for another AI. Do not write an essay. Reply in the language of the query with a compact list of the specific facts found (names, numbers, dates, addresses, prices, versions), one per line, each ending with the source site in brackets. No introduction, no advice.';
+
+let redirectTools;
+async function loadRedirectTools() {
+  if (!redirectTools) {
+    const { readdirSync } = await import('node:fs');
+    const files = readdirSync(DIST);
+    const pws = await import(pathToFileURL(`${DIST}/${files.find((f) => /^provider-web-search-.+\.js$/.test(f))}`).href);
+    const budget = await import(pathToFileURL(`${DIST}/citation-resolution-budget.mjs`).href);
+    redirectTools = { resolve: pws.n, withinBudget: budget.resolveCitationsWithinBudget };
+  }
+  return redirectTools;
+}
+
+async function geminiDirect(q, model, generationConfig, signal, systemInstruction, resolveRedirects = Boolean(systemInstruction)) {
   const t0 = Date.now();
   const data = await postJson(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
     { 'x-goog-api-key': process.env.GOOGLE_API_KEY },
-    { contents: [{ parts: [{ text: q.query }] }], tools: [{ google_search: {} }], generationConfig }, signal);
+    { contents: [{ parts: [{ text: q.query }] }], tools: [{ google_search: {} }], generationConfig,
+      ...(systemInstruction ? { systemInstruction: { parts: [{ text: systemInstruction }] } } : {}) }, signal);
+  const apiMs = Date.now() - t0;
   const cand = data.candidates?.[0];
+  let citations = (cand?.groundingMetadata?.groundingChunks ?? []).filter((c) => c.web?.uri).map((c) => ({ url: c.web.uri, title: c.web.title, resolved: false }));
+  let redirectMs;
+  if (resolveRedirects && citations.length) {
+    const { resolve, withinBudget } = await loadRedirectTools();
+    const r = await withinBudget(citations.map(({ url, title }) => ({ url, title })), resolve, { signal, deadlineAt: t0 + 30000 });
+    citations = r.citations.map((c) => ({ url: c.url, title: c.title, resolved: c.resolution === 'resolved' }));
+    redirectMs = r.elapsedMs;
+  }
   return {
     model,
     content: (cand?.content?.parts ?? []).map((p) => p.text).filter(Boolean).join('\n'),
-    citations: (cand?.groundingMetadata?.groundingChunks ?? []).filter((c) => c.web?.uri).map((c) => ({ url: c.web.uri, title: c.web.title, resolved: false })),
-    apiMs: Date.now() - t0,
+    citations,
+    apiMs, redirectMs,
+    searchQueries: cand?.groundingMetadata?.webSearchQueries,
     usage: data.usageMetadata,
   };
+}
+
+async function serper(q, signal) {
+  if (!process.env.SERPER_API_KEY) throw new Error('missing api key');
+  const zh = /[\u4e00-\u9fff]/.test(q.query);
+  const data = await postJson('https://google.serper.dev/search', { 'x-api-key': process.env.SERPER_API_KEY },
+    { q: q.query, num: 8, ...(zh ? { gl: 'cn', hl: 'zh-cn' } : {}) }, signal);
+  const results = [...(data.answerBox ? [{ title: data.answerBox.title, url: data.answerBox.link, snippet: data.answerBox.answer ?? data.answerBox.snippet }] : []),
+    ...(data.knowledgeGraph ? [{ title: data.knowledgeGraph.title, url: data.knowledgeGraph.website ?? data.knowledgeGraph.descriptionLink, snippet: [data.knowledgeGraph.description, ...Object.entries(data.knowledgeGraph.attributes ?? {}).map(([k, v]) => `${k}: ${v}`)].filter(Boolean).join('; ') }] : []),
+    ...(data.organic ?? []).map((r) => ({ title: r.title, url: r.link, snippet: r.snippet, date: r.date }))];
+  const out = { results };
+  return { model: 'serper', content: renderPayload(out), citations: results.map((r) => ({ url: r.url, title: r.title })), payloadChars: JSON.stringify(out).length };
+}
+
+async function serpapi(q, signal) {
+  if (!process.env.SERPAPI_API_KEY) throw new Error('missing api key');
+  const zh = /[\u4e00-\u9fff]/.test(q.query);
+  const u = new URL('https://serpapi.com/search.json');
+  Object.entries({ engine: 'google', q: q.query, num: '8', api_key: process.env.SERPAPI_API_KEY, ...(zh ? { gl: 'cn', hl: 'zh-cn' } : {}) }).forEach(([k, v]) => u.searchParams.set(k, v));
+  const res = await fetch(u, { signal });
+  const data = await res.json();
+  if (!res.ok || data.error) throw new Error(String(data.error ?? res.status).slice(0, 300));
+  const results = [...(data.answer_box ? [{ title: data.answer_box.title, url: data.answer_box.link, snippet: data.answer_box.answer ?? data.answer_box.snippet }] : []),
+    ...(data.organic_results ?? []).map((r) => ({ title: r.title, url: r.link, snippet: r.snippet, date: r.date }))];
+  const out = { results };
+  return { model: 'serpapi', content: renderPayload(out), citations: results.map((r) => ({ url: r.url, title: r.title })), payloadChars: JSON.stringify(out).length };
 }
 
 async function grok(q, model, effort, signal) {
