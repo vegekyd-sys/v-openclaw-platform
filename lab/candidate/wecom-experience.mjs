@@ -201,6 +201,17 @@ const SCENARIOS = {
     const t = allText(chatId, since);
     return { questionShown: Boolean(asked), questionInFinished: finished(chatId, since).some((m) => /看电影/u.test(m.content)), ...view(chatId, since), continued: /周末安排[^\n]*爬山[^\n]*读书|周末安排[^\n]*读书[^\n]*爬山/u.test(t) };
   },
+  // The live acceptance message from 2026-10-04 (plan + exec + ask_user), sent by a non-owner and answered by number.
+  "ask-combo": async () => {
+    const u = nextUser(); const since = Date.now();
+    const { chatId } = fake.sendUserText({ userId: u, text: "验收测试：1) 用 progress_card 建 2 步计划「了解偏好」「给建议」，第 1 步进行中；2) 先用一句话说你要做什么，再用 exec 运行 sleep 5；3) 调用 ask_user 问我一个单选题「去哪个城市？」选项 杭州、苏州、南京；4) 拿到答案后 progress_card 全部完成，再用两句话推荐一个景点。" });
+    const asked = await waitFor(() => /南京/u.test(allText(chatId, since)) && allText(chatId, since), 240_000, "combo question shown").catch(() => null);
+    await sleep(2000);
+    fake.sendUserText({ userId: u, text: "2" });
+    await settle(chatId, since, (t) => /已选择[：:]\s*苏州/u.test(t) && /苏州/u.test(t.split(/已选择[：:]\s*苏州/u).pop() ?? ""), { label: "ask-combo answer", timeoutMs: 240_000 }).catch(() => null);
+    const t = allText(chatId, since);
+    return { questionShown: Boolean(asked), questionInFinished: finished(chatId, since).some((m) => /南京/u.test(m.content)), agentError: /couldn't generate a response|request failed/iu.test(t), continued: /已选择[：:]\s*苏州/u.test(t), ...view(chatId, since) };
+  },
   secret: async () => {
     const u = nextUser(); const since = Date.now();
     const { chatId } = fake.sendUserText({ userId: u, text: "这是自动化测试。请用 secrets 工具的 request 动作，向我索取一个名为 V_CANDIDATE_DEMO_TOKEN 的凭据（说明写：测试用）。如果没法索取，就只回复 SECRET_UNAVAILABLE。" });
@@ -223,7 +234,7 @@ try {
   await sleep(3000);
   for (const name of SCENARIO_NAMES) {
     const started = Date.now();
-    try { report.scenarios[name] = { ...(await SCENARIOS[name]()), secs: Math.round((Date.now() - started) / 1000) }; }
+    try { report.scenarios[name] = { ...(await SCENARIOS[name.split("#")[0]]()), secs: Math.round((Date.now() - started) / 1000) }; }
     catch (error) { report.scenarios[name] = { error: redact(String(error?.message ?? error)).slice(0, 1500), secs: Math.round((Date.now() - started) / 1000) }; }
   }
   report.frameCommands = [...new Set(fake.frames.map((f) => f.cmd))];
@@ -256,6 +267,11 @@ if (EXPECT === "patched") {
     // The WeCom desktop client shows a stream only once it is finished.
     assert(s[name].questionInFinished, `${name}: question only inside an unfinished stream`);
     assert(s[name].continued, `${name}: chat answer did not reach the agent`);
+  }
+  // "ask-combo#2" repeats a scenario; each run is checked on its own.
+  for (const name of Object.keys(s).filter((n) => n.split("#")[0] === "ask-combo")) {
+    assert(!s[name].agentError, `${name}: agent turn failed`);
+    assert(s[name].questionInFinished && s[name].continued, `${name}: question or answer missing`);
   }
   if (s.background) assert(s.background.sawBackgroundLine && s.background.sawBackgroundDone, "background line missing");
 }
