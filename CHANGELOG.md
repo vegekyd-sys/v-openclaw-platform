@@ -19,6 +19,8 @@
 
 本节另外记下上午已在 V 生效、但还没提交捕获的 GPT Live 三个发版（08:38 安装，08:39 重启生效）。
 
+**同日补丁（14:43）**：接管页手机体验（#183，dev `90d57c9e`）——手势、键盘栏、接管时桌面临时竖屏、交还前先复原。只更新了 `/opt/v-desktop-handoff/service`（不在捕获的三个运行时目录内，来源以仓库 `apps/v-desktop-handoff` 为准），重启 `v-desktop-handoff.service`，没有重启 Gateway；V 上新装 `wmctrl`。备份 `/opt/v-desktop-handoff/service.bak-20261004144257`。生产验收：接管后桌面变为 528x992 且窗口铺满，公网整屏画面 0.8 s 到齐，handBack 628 ms 应答时已是 1280x800、Chrome 回到 1277x760。
+
 相对上一版 `hotreload-feishu-approvals-20261003`：23 个文件变化。
 
 **经 VLab 发版 `gpt-live-call-v1-20261004-a64bf6b`**（01a0fb0e-739d-7681-9238-faa2c1912c6c，dev `a64bf6be`）
