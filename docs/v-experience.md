@@ -451,3 +451,12 @@ SECRET_SAVED、链接第二次用返回 410、没有出现取消提示，并扫�
 - 企微接管卡依赖 CLI 能连上 Gateway（`gateway call message.action`，V 上 `openclawCommand=/usr/local/bin/openclaw`）；钉钉接管卡在 Worker 里跑 `message send`，读 Worker 配置（Gateway 派生，含渠道凭据）。
 - 「好了」只是普通消息：用户没在接管页点交还给 V 时，`desktop_handoff_status` 仍显示接管中，模型会提醒去页面交还；钉钉/企微没有按钮式交还。
 - 群里的接管卡（私信路径）在钉钉走 batchSend、企微走 `message.action` 私聊，只有单元测试。
+
+## 16. 真机验收（2026-10-04 20:40–22:20，用 Tianyi 的电脑）
+
+- 插话：企微 ✅（只回 STEER_B，插话的消息收到「✅ 已收到」）；Telegram ✅（第一次 sleep 被放到后台、回合已结束，改为前台等待后通过）。
+- 切换 Harness：钉钉、企微 ✅（非主人 `/model vcc` 生效、回答走 claude-cli，`/status` 被拒，显示 9.1 的「No reply was generated…」）。
+- 凭据卡片：钉钉 ✅、企微 ✅（Tianyi 点卡片「填写凭据」提交；值只在凭据库，Gateway 日志、服务日志与审计里 0 次）。
+- 接管卡：钉钉原生卡片 + 「接管电脑」按钮 ✅；企微卡片可点开接管页 ✅；Telegram 测试地址 `http://[IPv6]` 被拒（`BUTTON_URL_INVALID`），退回链接。Tianyi 要求与飞书一致（截图 + 接管 / 我完成了 / 跳过），在做。
+- 钉钉出字：AI 卡片模板只渲染流式接口写入的内容，客户端会逐字播放；卡片数据更新与只发 FINISHED 都会空卡（真机 18:05、21:01）。Tianyi 定：先不改。
+- 测试环境注意：真机测试原先加载的是 VLab 安装的接管插件副本，已改为加载分支代码。
