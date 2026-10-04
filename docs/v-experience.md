@@ -159,6 +159,7 @@ Gateway 挂点（progressCard / taskRegistry / question / approval / 回复回�
   ② Telegram Mini App 表单；
   ③ 让用户直接发，bot 读取后立刻删除该消息。
   倾向 ①，因为它对所有渠道都通用。
+  10/04 晚：改做独立的一次性链接服务（Control UI 只给管理员），见第 12 节。
 - 钉钉、企业微信插件是第三方包，改动按「打补丁 + 记入捕获」流程管理，升级插件时要重打。
 
 ## 6. 相关安全问题（单独处理）
@@ -332,3 +333,79 @@ Candidate（按表格行序）：钉钉 `9d962118`、企微 `c5d02970`、Telegra
 - 真机未测；`live-experience.mjs` 已按上面的角色配置启动（Telegram owner 来自 `LIVE_TELEGRAM_ALLOW`，钉钉 / 企微不加 owner），并对 runtime 打 V3。
 - `/vds`、`/vcodex`：candidate 关了 Codex 插件，只测了 `vcc`；规则对任何 `/model <x>` 一样。
 - 群聊未测（规则按发送者，与私聊相同）。
+
+## 13. 凭据一次性链接（A3，2026-10-04 晚）
+
+Telegram、钉钉、企业微信没有密码框，原来只能「提示本渠道不能安全输入 + 取消请求」。现在：
+
+```
+agent 调 secrets request ──> Gateway question（secretStore 绑定，15 分钟到期）
+   │ questionChannelRequestedListeners
+   ▼
+渠道（v-experience）── POST /v1/links（loopback + admin token）──> v-secret-entry
+   │ 私聊里发「🔑 V 需要凭据 X：请点开这个一次性链接…」+ https://…/secret-entry/#<token>
+   ▼
+用户浏览器：密码框 ── POST /secret-entry/api/submit {token, value}
+   ▼
+v-secret-entry ── question.resolve {answers:{secret_value:[value]}, resolvedBy:"<渠道>:secret-link:<提问人>"}
+   ▼
+Gateway 写凭据库（+ V 的 mode-600 镜像）、登记脱敏，secrets 工具拿到 "stored"，agent 继续
+```
+
+- 服务：`apps/v-secret-entry/`（无依赖 Node）。公网面只有页面、`api/info`、`api/submit`；管理面只在 loopback，Bearer admin token。
+  令牌 32 字节、在 URL 片段里（不进访问日志、链接预览、Referer）、只存 sha256、只在内存；打开页面不消耗，成功提交一次即作废；
+  有效期跟问题到期时间且不超过 15 分钟；Gateway 暂时失败可重试，5 次后关闭；问题已结束则关闭；同一问题重发会关闭旧链接。
+  值不落盘、不进日志；审计只有 id / 问题 / 名称 / 渠道 / 提问人 / 时间。
+- 调 Gateway 用 OpenClaw 自己的 CLI 传输（`plugin-sdk/gateway-runtime.js` 的 `callGatewayFromCli`，scope `operator.questions`），
+  与 V 的运维脚本相同；所以服务以 Gateway 的用户运行、读 Gateway 自己的配置，本身不保存 Gateway 凭据。
+- 渠道：`v-experience.deliverSecretQuestion` 统一处理。**链接只发在提问人的私聊里**：私聊直接发；群里改为私信提问人（Telegram
+  `sendMessage(用户 id)`、钉钉机器人单聊 `oToMessages/batchSend`、企业微信 `sendMessage(userid)`），群里只说「录入链接已私信发给你」；
+  私信发不出（如 Telegram 用户从没和 bot 说过话）就撤销链接、退回原来的提示 + 取消。服务没配置（Gateway 环境里没有
+  `V_SECRET_ENTRY_ADMIN_URL` / `V_SECRET_ENTRY_ADMIN_TOKEN_FILE`）或签发失败，也退回提示 + 取消。Telegram 发链接时关掉链接预览。
+- core：`patch-openclaw91-secret-entry.mjs` 新增 `channels-v1`（叠在 v1 上，也能直接升级 V 冻结的 builtin）：
+  `messageChannel` 为 `telegram` / `dingtalk-connector` / `wecom` 时不再抛「Credential request unavailable here」，
+  问题保持等待；飞书的卡片描述符不变。不在名单里的渠道行为不变。
+  顺带修了这个脚本的两个老问题：直接 `node patch-openclaw91-secret-entry.mjs <dist>` 时 dist 参数被丢掉（只有带 `--check` 才能跑），
+  以及 9.1 有不止一个 `builtin-openclaw-*.js`（按含 `toolName === "secrets"` 的那个定位）。
+
+验收：`lab/candidate/telegram-secret-link.plan.json`（`telegram-experience.mjs` 的 `secret-link` 场景）——私有 Gateway + 假 Bot API +
+真实 Worker 模型回合；同机起 v-secret-entry，从 bot 消息里取链接，HTTP 打开页面、提交随机值，断言问题提交前 pending、agent 回复
+SECRET_SAVED、链接第二次用返回 410、没有出现取消提示，并扫描本轮写过的所有状态 / 数据文件、Gateway 与服务输出、bot 收发内容，
+值只能出现在凭据库里（`secrets/` 镜像、状态库的 `secret_store_entries` 表）。
+
+结果（10/04 18:3x，VLab candidate，deepseek-v4-flash + Worker）：
+
+| 场景 | candidate | 结果 |
+|---|---|---|
+| Telegram 链接录入（`telegram-secret-link.plan.json`） | `be26c905` | ✅ 私聊收到「🔑 V 需要凭据 V_CANDIDATE_DEMO_TOKEN：请点开这个一次性链接…5 分钟内有效…」+ 链接（关了预览）；提交前问题 pending；提交 200，5 s 后回复 SECRET_SAVED；问题 `answered`、答案 `stored`、`resolvedBy=telegram:secret-link:70000001`；同一链接再用 410；扫描 1225 个本轮写过的文件，值只在 `secrets/store/…` 和 `state/openclaw.sqlite`(+WAL) 的 `secret_store_entries`，Gateway / 服务日志与 bot 收发 0 处 |
+| Telegram 未配置服务的退路（core 已放宽，`TG_SECRET_CORE=1`） | `e5f66680` | ✅ 原提示 + 取消，agent 回 SECRET_UNAVAILABLE；单选题回归通过 |
+| 钉钉 退路回归（补丁改动后） | `d31ac220` | ✅ `(credential, cancelled)`，SECRET_UNAVAILABLE；单选题回归通过 |
+| 企微 退路回归（补丁改动后） | `74a50bc2` | ✅ 同上 |
+
+链接的有效分钟数跟问题本身的到期时间走（这次 `secrets` 请求是 5 分钟）。第一次并发跑三个 candidate 时 VLab 磁盘短暂写满（ENOSPC），
+之后都改为串行；共享实例未受影响（`openclaw-vlab-production-mirror-v8` 一直 active，事后剩余 29G）。
+
+上 V 需要 Tianyi 批准的步骤（都未执行）：
+
+1. 合入 dev；渠道补丁（Telegram core chunk、钉钉、企微插件）本身也还没上 V，要一起走共享 VLab 集成验收与 promote。
+2. core：按线上字节重建 `builtin-openclaw-zQV8Wwjr.js`（`node patch-openclaw91-secret-entry.mjs --out-dir <dir> <线上 dist>`，只有 builtin 变），
+   捕获进仓库、更新漂移哨兵。只改这一个 chunk，Worker 与 Gateway 共用同一份 dist，需要重启（stop → start）。
+3. 服务：`/opt/v-secret-entry`（复制 `apps/v-secret-entry`，不含 tests），配置 `/etc/v-secret-entry/config.json`（见 `config.example.json`；
+   `openclawDist` 填 V 的 Gateway 实际在跑的 dist），admin token `/etc/v-secret-entry/admin-token`（`openssl rand -hex 32`，属主 openclaw、0600，
+   Gateway 进程要读它），状态目录 `/var/lib/v-secret-entry`（0700）。systemd 单元 `v-secret-entry.service`：`User=openclaw`，
+   `Environment=HOME=/home/openclaw OPENCLAW_STATE_DIR=/home/openclaw/.openclaw OPENCLAW_CONFIG_PATH=<V 主配置>`，
+   `ExecStart=<node> /opt/v-secret-entry/server.mjs /etc/v-secret-entry/config.json`，`Restart=on-failure`，`NoNewPrivileges=yes`、`PrivateTmp=yes`。
+4. Gateway drop-in：`Environment=V_SECRET_ENTRY_ADMIN_URL=http://127.0.0.1:23961 V_SECRET_ENTRY_ADMIN_TOKEN_FILE=/etc/v-secret-entry/admin-token`（随第 2 步同一次重启）。
+5. cloudflared（`/etc/cloudflared/v-dashboard.yml`）：在 `openclaw.tianyi.live` 的兜底规则之前加
+   `- hostname: openclaw.tianyi.live` / `path: ^/secret-entry(?:/.*)?$` / `service: http://127.0.0.1:23960`；保留 `/email-template`、`/v-browser`、
+   `/desktop-handoff`、`/voice` 等现有路由；`cloudflared ingress validate` 后只重启 `cloudflared-v-dashboard`（不动 Gateway）。
+   验证 `https://openclaw.tianyi.live/secret-entry/healthz` 为 200、管理端口 23961 从公网不可达。
+6. 钉钉群里私信提问人要机器人有单聊发消息权限（`oToMessages/batchSend`）；没有就自动退回提示 + 取消。
+
+未覆盖 / 已知限制：
+
+- 服务重启会让未用的链接全部失效（令牌只在内存）；问题照常 15 分钟到期，agent 收到超时后继续。
+- 链接是不记名的：拿到链接的人在有效期内都能提交一次。所以只发私聊；群里私信不成就不发。
+- 钉钉、企微的链接路径只有单元测试（`tests/v-experience.test.mjs`）与补丁语法检查，没有跑假平台 candidate；企微 `sendMessage(userid)` 能否从群里
+  主动私聊、钉钉 batchSend 权限，都要真机确认。Telegram 群里私信的路径也只有单元测试。
+- `/vcodex`、`/vds`、`/vcc` 没有实测：core 改动在 builtin（嵌入式 runtime 的提示投递），其他 runtime 走 runtime-v2 的问题监听，渠道侧相同。

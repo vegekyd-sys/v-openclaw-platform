@@ -119,9 +119,17 @@ import { resolveWecomCommandAuthorization as vResolveCommandAuthorization } from
         if (!secret && !vExperience.isRenderableAsk(question)) return false;
         if (!vExperience.claimQuestionDelivery(question.id)) return true;
         try {
+            let vSecretHow = "";
             if (secret) {
-                await vSend(vExperience.secretQuestionNotice(question));
-                await vCallGateway("question.resolve", { config }, { id: question.id, cancel: true, resolvedBy: "wecom:credential-unsupported" }, { scopes: ["operator.questions"], progress: false, timeoutMs: 5000 }).catch(() => { });
+                // A one-time entry link, only in the asker's direct chat (a
+                // direct chat's id is the user id). Else notice + cancel.
+                vSecretHow = await vExperience.deliverSecretQuestion({
+                    record: question, channel: "wecom", askerId: vSender, direct: chatType !== "group", markdown: true,
+                    sendHere: (text) => vSend(text),
+                    sendPrivate: vSender ? (text) => wsClient.sendMessage(vSender, { msgtype: "markdown", markdown: { content: text } }) : undefined,
+                    cancel: () => vCallGateway("question.resolve", { config }, { id: question.id, cancel: true, resolvedBy: "wecom:credential-unsupported" }, { scopes: ["operator.questions"], progress: false, timeoutMs: 5000 }),
+                    log: (message) => runtime.log?.(message),
+                });
             }
             else if (state.streamId && !state.streamExpired && !state.vFinished) {
                 // The reply so far and the question close the stream, so every
@@ -149,7 +157,7 @@ import { resolveWecomCommandAuthorization as vResolveCommandAuthorization } from
                 await vSend(vExperience.askPromptMarkdown(question));
                 vExperience.trackChatQuestion({ channel: "wecom", chatKey: \`\${account.accountId}:\${chatId}\`, senderId: vSender, record: question });
             }
-            runtime.log?.(\`[wecom][v-experience] delivered question \${question.id}\${secret ? " (credential, cancelled)" : ""}\`);
+            runtime.log?.(\`[wecom][v-experience] delivered question \${question.id}\${secret ? \` (credential, \${vSecretHow})\` : ""}\`);
         }
         catch (err) {
             runtime.error?.(\`[wecom][v-experience] question delivery failed: \${String(err)}\`);

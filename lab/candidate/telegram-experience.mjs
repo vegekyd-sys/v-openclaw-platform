@@ -11,9 +11,14 @@
 // TG_SCENARIOS picks scenarios (comma list); TG_MODEL picks the model.
 // The model-roles scenario also patches the core command-auth and sets the
 // command roles (lab/candidate/model-roles.mjs).
+// The `secret-link` scenario also runs apps/v-secret-entry next to the
+// Gateway, widens the core secret-entry patch to Telegram, follows the link
+// the bot sends and submits a value over HTTP, like a person would.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
+import net from "node:net";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { createFakeTelegramBotApi, FAKE_BOT_TOKEN, inlineButtons } from "./telegram-fake-bot-api.mjs";
@@ -44,6 +49,48 @@ const patchReport = EXPECT === "patched"
   : undefined;
 const fake = createFakeTelegramBotApi();
 const apiPort = await fake.listen();
+
+// ---- secret-link: the core patch for Telegram and the entry service ----
+const SECRET_LINK = SCENARIO_NAMES.includes("secret-link");
+// TG_SECRET_CORE=1 widens the core without the service: the `secret` scenario then shows the fallback.
+const SECRET_CORE = SECRET_LINK || process.env.TG_SECRET_CORE === "1";
+const freePort = () => new Promise((resolve, reject) => {
+  const server = net.createServer();
+  server.once("error", reject);
+  server.listen(0, "127.0.0.1", () => { const { port } = server.address(); server.close(() => resolve(port)); });
+});
+let secretEntry;
+let secretCorePatch;
+if (SECRET_CORE) {
+  // The runtime already carries V's secret-entry v1 (as V does); widen it to Telegram.
+  const core = await import(pathToFileURL(path.resolve("lab/release-files/feishu-secret-entry/patch-openclaw91-secret-entry.mjs")).href);
+  const corePatch = fs.readdirSync(dist).filter((f) => /^(builtin-openclaw|dispatch-from-config)-[\w-]+\.js$/u.test(f)).map((file) => {
+    const p = path.join(dist, file);
+    const source = fs.readFileSync(p, "utf8");
+    const entry = { file, v1: source.includes(core.MARKER), secretsPrompt: source.includes('if (toolName === "secrets") {') };
+    if (file.startsWith("builtin-openclaw") && entry.secretsPrompt) {
+      const result = core.patchSecretEntryChannelsSource(source);
+      if (result.changed) fs.writeFileSync(p, result.source);
+      entry.channels = result.changed ? "applied" : "already";
+    }
+    return entry;
+  });
+  assert(corePatch.some((e) => e.channels), `no builtin chunk with the secrets prompt: ${JSON.stringify(corePatch)}`);
+  secretCorePatch = corePatch;
+}
+if (SECRET_LINK) {
+  const dir = path.join(process.env.VLAB_CANDIDATE_DATA ?? stateDir, "secret-entry");
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(path.join(dir, "admin-token"), `${crypto.randomBytes(24).toString("hex")}\n`, { mode: 0o600 });
+  const [publicPort, adminPort] = [await freePort(), await freePort()];
+  const serviceConfig = {
+    bind: "127.0.0.1", publicBind: "127.0.0.1", publicPort, adminPort,
+    publicBaseUrl: `http://127.0.0.1:${publicPort}`, pathPrefix: "/secret-entry",
+    stateDir: path.join(dir, "state"), adminTokenFile: path.join(dir, "admin-token"), openclawDist: dist,
+  };
+  fs.writeFileSync(path.join(dir, "config.json"), JSON.stringify(serviceConfig, null, 2), { mode: 0o600 });
+  secretEntry = { dir, publicPort, adminPort, config: serviceConfig, lines: [] };
+}
 
 // ---- private config: Telegram only, pointed at the fake ----
 const USERS = Array.from({ length: 12 }, (_, i) => String(70000001 + i));
@@ -104,6 +151,18 @@ for (const name of ["DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"]) 
   const value = secret(name);
   if (value) env[name] = value;
 }
+if (secretEntry) {
+  // The service calls the Gateway as its CLI does: same config, state and port.
+  secretEntry.process = spawn(process.execPath, [path.resolve("apps/v-secret-entry/server.mjs"), path.join(secretEntry.dir, "config.json")], {
+    env: { ...env, OPENCLAW_CONFIG_PATH: configPath, OPENCLAW_STATE_DIR: stateDir }, stdio: ["ignore", "pipe", "pipe"],
+  });
+  for (const s of [secretEntry.process.stdout, secretEntry.process.stderr]) {
+    s.setEncoding("utf8");
+    s.on("data", (chunk) => { for (const line of chunk.split(/\r?\n/u).filter(Boolean)) secretEntry.lines.push(line); });
+  }
+  env.V_SECRET_ENTRY_ADMIN_URL = `http://127.0.0.1:${secretEntry.adminPort}`;
+  env.V_SECRET_ENTRY_ADMIN_TOKEN_FILE = secretEntry.config.adminTokenFile;
+}
 
 const lines = [];
 const gateway = spawn(process.execPath, ["--max-old-space-size=4096", `${dist}/index.js`, "gateway", "--port", String(port)], {
@@ -153,6 +212,93 @@ const anyText = (msgs, re) => msgs.some((m) => m.history.some((h) => re.test(h.t
 
 let userIndex = 0;
 const newChat = () => USERS[userIndex++];
+
+let gatewayRuntime;
+const gatewayCall = async (method, params) => {
+  gatewayRuntime ??= await import(pathToFileURL(path.join(dist, "plugin-sdk", "gateway-runtime.js")).href);
+  // Explicit URL: this process's environment may name another Gateway port.
+  return gatewayRuntime.callGatewayFromCli(method, { json: true, timeout: "15000", url: `ws://127.0.0.1:${port}`, token }, params, { scopes: ["operator.admin", "operator.questions"], progress: false });
+};
+
+/**
+ * Where a submitted value shows up: every state/data file written since `since`
+ * (transcripts, session and agent databases, logs), the Gateway and service
+ * output, and everything the bot sent. The secret store is where it belongs
+ * and is listed separately: the `secrets/` mirror, and SQLite databases whose
+ * only rows holding the value are in `secret_store_entries` (their WAL too).
+ */
+function findValue(value, since) {
+  const needle = Buffer.from(value);
+  const hits = { files: [], secretStore: [], gatewayLog: 0, serviceLog: 0, botApi: 0, filesScanned: 0 };
+  const roots = [...new Set([stateDir, process.env.VLAB_CANDIDATE_DATA].filter(Boolean))];
+  const seen = new Set();
+  const scan = (p) => {
+    const fd = fs.openSync(p, "r");
+    try {
+      const buf = Buffer.alloc(8 << 20);
+      let carry = Buffer.alloc(0);
+      for (let pos = 0; ; ) {
+        const n = fs.readSync(fd, buf, 0, buf.length, pos);
+        if (!n) return false;
+        const chunk = Buffer.concat([carry, buf.subarray(0, n)]);
+        if (chunk.includes(needle)) return true;
+        carry = chunk.subarray(Math.max(0, chunk.length - needle.length));
+        pos += n;
+      }
+    } finally {
+      fs.closeSync(fd);
+    }
+  };
+  const walk = (dir) => {
+    let entries = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const p = path.join(dir, e.name);
+      if (seen.has(p)) continue;
+      seen.add(p);
+      if (e.isDirectory()) { walk(p); continue; }
+      if (!e.isFile()) continue;
+      try {
+        if (fs.statSync(p).mtimeMs < since - 1000) continue;
+        hits.filesScanned += 1;
+        if (scan(p)) (p.split(path.sep).includes("secrets") ? hits.secretStore : hits.files).push(path.relative(stateDir, p));
+      } catch { /* vanished or unreadable */ }
+    }
+  };
+  for (const root of roots) walk(root);
+  // Which tables of a database hold the value; a WAL follows its database.
+  const tablesWith = (file) => {
+    const { DatabaseSync } = process.getBuiltinModule("node:sqlite");
+    const db = new DatabaseSync(file, { readOnly: true });
+    try {
+      const found = [];
+      for (const { name } of db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all()) {
+        const cols = db.prepare(`PRAGMA table_info("${name.replaceAll('"', '""')}")`).all().map((c) => c.name);
+        if (!cols.length) continue;
+        const where = cols.map((c) => `instr(CAST("${c.replaceAll('"', '""')}" AS BLOB), CAST(? AS BLOB)) > 0`).join(" OR ");
+        const n = db.prepare(`SELECT count(*) AS n FROM "${name.replaceAll('"', '""')}" WHERE ${where}`).get(...cols.map(() => value)).n;
+        if (n) found.push(`${name}:${n}`);
+      }
+      return found;
+    } finally {
+      db.close();
+    }
+  };
+  hits.databases = {};
+  for (const rel of [...hits.files]) {
+    const base = rel.replace(/-(wal|shm|journal)$/u, "");
+    if (!/\.sqlite$/u.test(base)) continue;
+    try { hits.databases[base] ??= tablesWith(path.join(stateDir, base)); } catch (error) { hits.databases[base] = [`unreadable: ${String(error?.message ?? error).slice(0, 120)}`]; }
+    if (hits.databases[base].length && hits.databases[base].every((t) => t.startsWith("secret_store_entries:"))) {
+      hits.files.splice(hits.files.indexOf(rel), 1);
+      hits.secretStore.push(`${rel} (secret_store_entries)`);
+    }
+  }
+  hits.gatewayLog = lines.filter((l) => l.line.includes(value)).length;
+  hits.serviceLog = (secretEntry?.lines ?? []).filter((l) => l.includes(value)).length;
+  hits.botApi = fake.calls.filter((c) => JSON.stringify(c.params ?? {}).includes(value)).length + fake.messages().filter((m) => JSON.stringify(m.history).includes(value)).length;
+  return hits;
+}
 
 const SCENARIOS = {
   // B1/B2: process streaming and the progress checklist.
@@ -245,6 +391,49 @@ const SCENARIOS = {
     const msgs = await settle(chat, since, (m) => m.some((x) => /SECRET_|凭据|credential|secret/iu.test(x.text ?? "")), { label: "secret request", quietMs: 10_000 });
     return { chat, messages: describe(msgs), buttons: msgs.flatMap(inlineButtons), notice: anyText(msgs, /不能安全地输入凭据/u), agentCarriedOn: anyText(msgs, /SECRET_UNAVAILABLE/u) };
   },
+  // A3 by link: the bot sends a one-time link; the value is typed on the page.
+  "secret-link": async () => {
+    const chat = newChat();
+    const since = Date.now();
+    const name = "V_CANDIDATE_DEMO_TOKEN";
+    const value = `vsl-${crypto.randomBytes(12).toString("hex")}`;
+    fake.sendUserText({ chatId: chat, userId: chat, text: `这是自动化测试。请用 secrets 工具的 request 动作，向我索取一个名为 ${name} 的凭据（说明写：测试用，可以随便填）。拿到后只回复 SECRET_SAVED；如果没法索取，就回复 SECRET_UNAVAILABLE 并说明原因。` });
+    const linkRe = /(https?:\/\/\S+\/secret-entry\/#([\w-]+))/u;
+    const linkMessage = await waitFor(() => chatMessages(chat, since).find((m) => linkRe.test(m.text ?? "")), 300_000, "secret link message");
+    const [, url, token] = linkRe.exec(linkMessage.text);
+    const base = `http://127.0.0.1:${secretEntry.publicPort}/secret-entry`;
+    const post = async (route, body) => { const r = await fetch(`${base}/api/${route}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); return { status: r.status, body: await r.json().catch(() => ({})) }; };
+    const page = await fetch(`${base}/`);
+    const pageText = await page.text();
+    const info = await post("info", { token });
+    const adminToken = fs.readFileSync(secretEntry.config.adminTokenFile, "utf8").trim();
+    const linkState = await fetch(`http://127.0.0.1:${secretEntry.adminPort}/v1/links`, { headers: { authorization: `Bearer ${adminToken}` } }).then((r) => r.json());
+    const questionId = linkState.links?.at(-1)?.questionId;
+    const getQuestion = () => gatewayCall("question.get", { id: questionId }).catch((e) => ({ error: String(e?.message ?? e).slice(0, 300) }));
+    const before = questionId ? await getQuestion() : undefined;
+    const submitStarted = Date.now();
+    const submit = await post("submit", { token, value });
+    const msgs = await settle(chat, since, (m) => anyText(m, /SECRET_(SAVED|UNAVAILABLE)/u), { label: "secret-link reply", quietMs: 8000 });
+    const savedAt = msgs.filter((m) => /SECRET_SAVED/u.test(m.text ?? "")).map((m) => m.createdAt);
+    const reuse = await post("submit", { token, value: "second-use" });
+    const after = questionId ? await getQuestion() : undefined;
+    const mirror = path.join(stateDir, "secrets", "store", name);
+    await sleep(3000);
+    const linkSend = fake.calls.find((c) => c.method === "sendMessage" && String(c.params?.text ?? "").includes("/secret-entry/"));
+    return {
+      chat, messages: describe(msgs).map((m) => JSON.parse(JSON.stringify(m).replaceAll(token, "[token]"))), linkMessage: linkMessage.text.replace(token, "[token]"),
+      linkHost: new URL(url).host, linkSendOptions: linkSend ? Object.keys(linkSend.params).filter((k) => k !== "text") : null,
+      linkPreviewDisabled: Boolean(linkSend && JSON.stringify(linkSend.params).includes("is_disabled")),
+      pageHasPasswordInput: /type="password"/u.test(pageText), pageStatus: page.status, info: { status: info.status, name: info.body.name, reason: info.body.reason },
+      questionId, before: before?.question ? { status: before.question.status } : before,
+      submit, reuse: reuse.status, replyAfterSubmitSecs: savedAt.length ? Math.round((Math.min(...savedAt) - submitStarted) / 1000) : null,
+      after: after?.question ? JSON.parse(JSON.stringify(after.question, (k, v) => (k === "questions" ? undefined : v))) : after,
+      cancelled: anyText(msgs, /不能安全地输入凭据/u),
+      saved: anyText(msgs, /SECRET_SAVED/u),
+      mirrorMatches: fs.existsSync(mirror) ? fs.readFileSync(mirror, "utf8") === value : null,
+      leaks: findValue(value, since),
+    };
+  },
   // B3: background work left running after the reply.
   background: async () => {
     const chat = newChat();
@@ -280,7 +469,7 @@ const SCENARIOS = {
   }),
 };
 
-const report = { expect: EXPECT, model: MODEL, patch: patchReport, ...rolesSetup, scenarios: {} };
+const report = { expect: EXPECT, model: MODEL, patch: patchReport, ...rolesSetup, secretEntryCorePatch: secretCorePatch, scenarios: {} };
 try {
   await waitFor(() => fake.calls.some((c) => c.method === "getMe"), 600_000, "Telegram channel start (getMe)");
   await sleep(3000);
@@ -297,12 +486,22 @@ try {
   report.callbackAnswers = fake.callbackAnswers.map((a) => a.text ?? "").slice(0, 20);
   report.gatewayErrors = lines.filter((l) => /telegram/iu.test(l.line) && /error|failed/iu.test(l.line)).map((l) => redact(l.line).slice(0, 300)).slice(-20);
   report.experienceLog = lines.filter((l) => /v-experience/u.test(l.line)).map((l) => redact(l.line).slice(0, 300)).slice(-40);
+  if (secretEntry) {
+    report.secretEntryLog = secretEntry.lines.map((l) => redact(l).slice(0, 300)).slice(-20);
+    try {
+      report.secretEntryAudit = fs.readFileSync(path.join(secretEntry.config.stateDir, "audit.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+    } catch {
+      report.secretEntryAudit = [];
+    }
+    report.secretLines = lines.filter((l) => /secret|credential/iu.test(l.line)).map((l) => redact(l.line).slice(0, 300)).slice(-30);
+  }
 } catch (error) {
   report.fatal = redact(String(error?.message ?? error)).slice(0, 3000);
   report.gatewayTail = lines.slice(-120).map((l) => redact(l.line).slice(0, 400));
   process.exitCode = 1;
 } finally {
   gateway.kill("SIGTERM");
+  secretEntry?.process?.kill("SIGTERM");
   await sleep(3000);
   if (gateway.exitCode === null) gateway.kill("SIGKILL");
   await fake.close();
@@ -332,7 +531,22 @@ if (EXPECT === "patched") {
     assert.equal(s["ask-single"].answeredBy, "button", "single question had no option buttons");
     assert(s["ask-single"].continued, "single question answer did not reach the agent");
   }
-  if (s.secret) assert(s.secret.notice && s.secret.agentCarriedOn, "credential request did not end with a notice");
+  if (s.secret && !SECRET_LINK) assert(s.secret.notice && s.secret.agentCarriedOn, "credential request did not end with a notice");
+  if (s["secret-link"]) {
+    const r = s["secret-link"];
+    assert.equal(r.error, undefined, r.error);
+    assert(r.pageHasPasswordInput, "entry page has no password input");
+    assert.equal(r.info.status, 200, "link info not readable");
+    assert.equal(r.before?.status, "pending", "question was not waiting when the link was used");
+    assert.equal(r.submit.status, 200, `submit failed: ${JSON.stringify(r.submit)}`);
+    assert.equal(r.reuse, 410, "the link worked twice");
+    assert(r.saved, "agent did not reply SECRET_SAVED");
+    assert(!r.cancelled, "the old notice + cancel was shown");
+    assert.notEqual(r.mirrorMatches, false, "stored value differs from the submitted one");
+    assert.deepEqual(r.leaks.files, [], `value found outside the secret store: ${r.leaks.files.join(", ")}`);
+    assert.equal(r.leaks.gatewayLog + r.leaks.serviceLog + r.leaks.botApi, 0, "value found in logs or chat");
+    assert(!JSON.stringify(report.secretEntryAudit ?? []).includes("vsl-"), "value in the service audit");
+  }
   if (s.steer) assert(s.steer.steered && !s.steer.answeredA, "steer: second message did not steer the running reply");
   if (s.background) {
     assert.equal(s.background.error, undefined, s.background.error);

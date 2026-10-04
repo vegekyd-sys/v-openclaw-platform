@@ -4,8 +4,9 @@
 //
 //   questions   ask_user from any runtime as a message with option buttons;
 //               typed answers count; neither waits behind the asking turn
-//   credentials a clear notice instead of a request that hangs, and the
-//               request is cancelled so V carries on
+//   credentials a one-time entry link in the asker's private chat
+//               (apps/v-secret-entry); without the service, a clear notice
+//               and the request is cancelled so V carries on
 //   background  "⏳ 后台 … 进行中" as a quiet message after the reply, edited
 //               until "☑️ 后台任务已结束"; a newer reply removes the old one
 //   working     in progress mode the stock "Working" draft is replaced by V's

@@ -644,6 +644,104 @@ export function secretQuestionNotice(record) {
   return `🔑 V 需要一个凭据（${name}）。这个聊天渠道不能安全地输入凭据，请在飞书私聊里让 V 重新索取。`;
 }
 
+// ------------------------------------------------- credentials by link
+//
+// Channels without a masked input send the asker a one-time link to the
+// v-secret-entry service (apps/v-secret-entry); the page stores the value with
+// `question.resolve`, so it never enters the chat. Configured on the Gateway's
+// environment; without it, or when anything fails, the old notice + cancel.
+
+/** The service's admin endpoint, or undefined when links are not set up. */
+export function secretLinkConfig(env = process.env) {
+  const url = env.V_SECRET_ENTRY_ADMIN_URL?.trim();
+  const tokenFile = env.V_SECRET_ENTRY_ADMIN_TOKEN_FILE?.trim();
+  return url && tokenFile ? { url: url.replace(/\/+$/u, ""), tokenFile } : undefined;
+}
+
+/** A one-time link for a credential question: `{id, url, expiresAtMs}`, or undefined. */
+export async function requestSecretLink({ record, channel, askerId, env = process.env, fetchImpl = globalThis.fetch }) {
+  const config = secretLinkConfig(env);
+  const question = record?.questions?.[0];
+  const binding = question?.secretStore;
+  if (!config || !record?.id || !binding?.name || !askerId) return undefined;
+  const token = process.getBuiltinModule("node:fs").readFileSync(config.tokenFile, "utf8").split(/\r?\n/u)[0].trim();
+  const res = await fetchImpl(`${config.url}/v1/links`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      questionId: record.id,
+      answerKey: question.questionId,
+      name: binding.name,
+      ...(typeof binding.reason === "string" && binding.reason ? { reason: binding.reason } : {}),
+      allowedHosts: Array.isArray(binding.allowedHosts) ? binding.allowedHosts : [],
+      channel,
+      askerId: String(askerId),
+      ...(Number.isFinite(record.expiresAtMs) ? { expiresAtMs: record.expiresAtMs } : {}),
+    }),
+    signal: AbortSignal.timeout(5000),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || typeof body.url !== "string") throw new Error(`secret link not issued: ${res.status} ${String(body.error ?? "").slice(0, 120)}`);
+  return { id: body.id, url: body.url, expiresAtMs: body.expiresAtMs, config, adminToken: token };
+}
+
+/**
+ * The message that carries the link: plain text with the link as its last
+ * line, or (`markdown`) a markdown link, since a bare token with "_" in it
+ * could be read as emphasis.
+ */
+export function secretLinkMessage(record, link, { markdown = false, now = Date.now() } = {}) {
+  const name = record?.questions?.[0]?.secretStore?.name ?? "凭据";
+  const minutes = Math.max(1, Math.round((link.expiresAtMs - now) / 60_000));
+  const text = `🔑 V 需要凭据 ${name}：请点开这个一次性链接填写，链接只能用一次、${minutes} 分钟内有效；值不会出现在聊天记录里。`;
+  return markdown ? `${text}\n\n[点这里填写](${link.url})` : `${text}\n${link.url}`;
+}
+
+/** Said in a group when the link went to the asker's direct chat. */
+export function secretLinkSentPrivately(record) {
+  const name = record?.questions?.[0]?.secretStore?.name ?? "凭据";
+  return `🔑 V 需要凭据 ${name}，录入链接已私信发给你。`;
+}
+
+async function revokeSecretLink(link, fetchImpl) {
+  await fetchImpl(`${link.config.url}/v1/links/${link.id}`, { method: "DELETE", headers: { authorization: `Bearer ${link.adminToken}` }, signal: AbortSignal.timeout(5000) }).catch(() => {});
+}
+
+/**
+ * A credential question on a channel without a masked input. The link goes to
+ * the asker's direct chat only: here when `direct`, else through
+ * `sendPrivate` (a group then hears it was sent privately). Otherwise the
+ * notice is shown and `cancel()` ends the question so V carries on.
+ * Returns "link", "link-private" or "cancelled".
+ */
+export async function deliverSecretQuestion({ record, channel, askerId, direct, markdown = false, sendHere, sendPrivate, cancel, log, env, fetchImpl = globalThis.fetch }) {
+  let link;
+  try {
+    link = await requestSecretLink({ record, channel, askerId, env, fetchImpl });
+  } catch (error) {
+    log?.(`v-experience: ${channel} secret link for ${record?.id} failed: ${String(error?.message ?? error)}`);
+  }
+  if (link) {
+    try {
+      if (direct) {
+        await sendHere(secretLinkMessage(record, link, { markdown }));
+        return "link";
+      }
+      if (sendPrivate) {
+        await sendPrivate(secretLinkMessage(record, link, { markdown }));
+        await Promise.resolve(sendHere(secretLinkSentPrivately(record))).catch(() => {});
+        return "link-private";
+      }
+    } catch (error) {
+      log?.(`v-experience: ${channel} secret link for ${record?.id} not delivered: ${String(error?.message ?? error)}`);
+    }
+    await revokeSecretLink(link, fetchImpl);
+  }
+  await sendHere(secretQuestionNotice(record));
+  await Promise.resolve(cancel()).catch(() => {});
+  return "cancelled";
+}
+
 // ------------------------------------------------- questions asked in chat
 //
 // Channels without buttons show a question as a chat message and take the
@@ -978,8 +1076,16 @@ export function createTelegramExperience({ call, log }) {
     if (!claimQuestionDelivery(record.id)) return true;
     try { await beforeSend?.(); } catch (error) { log?.(`v-experience: telegram question ${record.id} beforeSend failed: ${String(error?.message ?? error)}`); }
     if (secret) {
-      await api.sendMessage(chatId, secretQuestionNotice(record), extra);
-      await call("question.resolve", { id: record.id, cancel: true, resolvedBy: "telegram:credential-unsupported" }).catch(() => {});
+      // A private chat's id is the user's id; a group hears the link went to the asker's DM.
+      const noPreview = { link_preview_options: { is_disabled: true } };
+      const how = await deliverSecretQuestion({
+        record, channel: "telegram", askerId: senderId, log,
+        direct: senderId != null && String(chatId) === String(senderId),
+        sendHere: (text) => api.sendMessage(chatId, text, { ...extra, ...noPreview }),
+        sendPrivate: senderId != null ? (text) => api.sendMessage(senderId, text, noPreview) : undefined,
+        cancel: () => call("question.resolve", { id: record.id, cancel: true, resolvedBy: "telegram:credential-unsupported" }),
+      });
+      log?.(`v-experience: telegram credential question ${record.id} ${how}`);
       return true;
     }
     askers.set(record.id, senderId ? String(senderId) : undefined);
