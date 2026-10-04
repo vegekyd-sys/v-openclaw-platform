@@ -7,7 +7,14 @@
     "apps/v-experience/wecom/patch.mjs",
     "apps/v-experience/telegram/patch.mjs",
     "tmp/inputs/dingtalk-connector-0.8.26-v.tgz",
-    "tmp/inputs/wecom-openclaw-plugin-2026.8.17-vlab.2-v.tgz"
+    "tmp/inputs/wecom-openclaw-plugin-2026.8.17-vlab.2-v.tgz",
+    "lab/release-files/feishu-secret-entry/patch-openclaw91-secret-entry.mjs",
+    "apps/v-secret-entry/server.mjs",
+    "apps/v-secret-entry/lib/links.mjs",
+    "apps/v-secret-entry/lib/gateway.mjs",
+    "apps/v-secret-entry/public/index.html",
+    "apps/v-secret-entry/public/app.js",
+    "apps/v-secret-entry/public/app.css"
   ],
   "command": [
     "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
@@ -16,7 +23,8 @@
   "env": {
     "LIVE_MINUTES": "60",
     "LIVE_TELEGRAM_ALLOW": "5368086561",
-    "V_DINGTALK_QUESTION_CARD_TEMPLATE": "9f86e003-e65e-4680-bf4b-8df5958d9f17.schema"
+    "V_DINGTALK_QUESTION_CARD_TEMPLATE": "9f86e003-e65e-4680-bf4b-8df5958d9f17.schema",
+    "LIVE_SECRET_PUBLIC_HOST": "fd7a:115c:a1e0::e539:be40"
   },
   "timeoutSeconds": 4200,
   "user": "lab-db91-parity"

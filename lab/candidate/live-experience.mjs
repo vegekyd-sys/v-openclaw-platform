@@ -10,6 +10,7 @@
 // A channel whose credentials are missing is left out. Production robots are
 // never used. Telegram accepts only LIVE_TELEGRAM_ALLOW (comma list of ids).
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -154,6 +155,42 @@ if (loaderFile && trustPlugins.length) {
 // then fail with ETIMEDOUT and it drops to plain messages. Give attempts 2 s.
 const nodeOptions = `${process.env.NODE_OPTIONS ?? ""} --network-family-autoselection-attempt-timeout=2000`.trim();
 const env = { ...process.env, NODE_OPTIONS: nodeOptions, OPENCLAW_GATEWAY_PORT: String(port), TMPDIR: path.join(scratch, "tmp"), XDG_CACHE_HOME: path.join(scratch, "cache"), npm_config_cache: path.join(scratch, "cache", "npm") };
+
+// Credential entry by one-time link (apps/v-secret-entry). The page listens only
+// on LIVE_SECRET_PUBLIC_HOST (VLab's tailnet address), so only tailnet devices
+// can open it; production uses openclaw.tianyi.live instead.
+let secretEntry;
+if (process.env.LIVE_SECRET_PUBLIC_HOST) {
+  const core = await import(pathToFileURL(path.resolve("lab/release-files/feishu-secret-entry/patch-openclaw91-secret-entry.mjs")).href);
+  report.secretEntryCore = fs.readdirSync(dist).filter((f) => /^builtin-openclaw-[\w-]+\.js$/u.test(f)).flatMap((file) => {
+    const p = path.join(dist, file);
+    const source = fs.readFileSync(p, "utf8");
+    if (!source.includes('if (toolName === "secrets") {')) return [];
+    const result = core.patchSecretEntryChannelsSource(source);
+    if (result.changed) fs.writeFileSync(p, result.source);
+    return [{ file, channels: result.changed ? "applied" : "already" }];
+  });
+  assert(report.secretEntryCore.length, "no builtin chunk with the secrets prompt");
+  const host = process.env.LIVE_SECRET_PUBLIC_HOST;
+  const dir = path.join(scratch, "secret-entry");
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(path.join(dir, "admin-token"), `${crypto.randomBytes(24).toString("hex")}\n`, { mode: 0o600 });
+  const publicPort = Number(process.env.LIVE_SECRET_PUBLIC_PORT ?? 23960);
+  const adminPort = Number(process.env.LIVE_SECRET_ADMIN_PORT ?? 23961);
+  const serviceConfig = {
+    bind: "127.0.0.1", publicBind: host, publicPort, adminPort,
+    publicBaseUrl: `http://${host.includes(":") ? `[${host}]` : host}:${publicPort}`, pathPrefix: "/secret-entry",
+    stateDir: path.join(dir, "state"), adminTokenFile: path.join(dir, "admin-token"), openclawDist: dist,
+  };
+  fs.writeFileSync(path.join(dir, "config.json"), JSON.stringify(serviceConfig, null, 2), { mode: 0o600 });
+  const serviceLog = fs.openSync(path.join(scratch, "live-secret-entry.log"), "a", 0o600);
+  secretEntry = spawn(process.execPath, [path.resolve("apps/v-secret-entry/server.mjs"), path.join(dir, "config.json")], {
+    env: { ...env, OPENCLAW_CONFIG_PATH: configPath, OPENCLAW_STATE_DIR: stateDir }, stdio: ["ignore", serviceLog, serviceLog],
+  });
+  env.V_SECRET_ENTRY_ADMIN_URL = `http://127.0.0.1:${adminPort}`;
+  env.V_SECRET_ENTRY_ADMIN_TOKEN_FILE = serviceConfig.adminTokenFile;
+  report.secretEntry = serviceConfig.publicBaseUrl;
+}
 for (const name of ["DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"]) if (secrets.get(name)) env[name] = secrets.get(name);
 const logFile = path.join(scratch, "live-gateway.log");
 const out = fs.openSync(logFile, "a", 0o600);
@@ -166,6 +203,7 @@ console.log(JSON.stringify({ started: new Date().toISOString(), minutes: MINUTES
 const deadline = Date.now() + MINUTES * 60_000;
 while (Date.now() < deadline && gateway.exitCode === null) await sleep(5000);
 gateway.kill("SIGTERM");
+secretEntry?.kill("SIGTERM");
 await sleep(3000);
 if (gateway.exitCode === null) gateway.kill("SIGKILL");
 const lines = fs.readFileSync(logFile, "utf8").split("\n");
