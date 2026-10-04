@@ -179,6 +179,8 @@ const view = (conv, since) => ({
 const allText = (conv, since) => [...cardsSince(since).flatMap((c) => c.history.map((h) => h.content)), ...messagesSince(conv, since).map((m) => m.text)].join("\n\n");
 const settle = async (conv, since, done, { quietMs = 6000, timeoutMs = 300_000, label = "reply" } = {}) =>
   waitFor(() => done(allText(conv, since)) && Date.now() - lastActivity(conv, since) > quietMs, timeoutMs, label);
+// A question card from a template (real buttons) also counts as shown.
+const questionCardSince = (since) => fake.cards().some((c) => c.createdAt >= since && c.templateId && !/02fcf2f4/u.test(c.templateId));
 const finishedCards = (since) => cardsSince(since).filter((c) => /^(3|FINISHED)$/u.test(String(c.status ?? "")));
 
 let user = 0;
@@ -208,7 +210,7 @@ const SCENARIOS = {
   "ask-single": async () => {
     const u = nextUser(); const since = Date.now();
     const { conversationId } = fake.sendUserText({ userId: u, text: "这是自动化测试。请调用 ask_user 工具问我一个单选题：「午饭吃什么？」选项为 面条、米饭、饺子。拿到答案后只回复「午饭定了：<答案>」。" });
-    const asked = await waitFor(() => /饺子/u.test(allText(conversationId, since).replace(/这是自动化测试[\s\S]*?答案>」。/u, "")) && allText(conversationId, since), 240_000, "question shown").catch(() => null);
+    const asked = await waitFor(() => questionCardSince(since) || (/饺子/u.test(allText(conversationId, since).replace(/这是自动化测试[\s\S]*?答案>」。/u, "")) && allText(conversationId, since)), 240_000, "question shown").catch(() => null);
     await sleep(2000);
     fake.sendUserText({ userId: u, text: "3", conversationId });
     await settle(conversationId, since, (t) => /午饭定了/u.test(t), { label: "ask-single answer", timeoutMs: 240_000 }).catch(() => null);
@@ -217,7 +219,7 @@ const SCENARIOS = {
   "ask-multi": async () => {
     const u = nextUser(); const since = Date.now();
     const { conversationId } = fake.sendUserText({ userId: u, text: "这是自动化测试。请调用 ask_user 工具问我一个多选题（允许多选）：「周末想做什么？」选项为 爬山、看电影、读书、做饭。拿到答案后只回复「周末安排：<答案>」。" });
-    const asked = await waitFor(() => /看电影/u.test(allText(conversationId, since)) && allText(conversationId, since), 240_000, "multi question shown").catch(() => null);
+    const asked = await waitFor(() => questionCardSince(since) || (/看电影/u.test(allText(conversationId, since)) && allText(conversationId, since)), 240_000, "multi question shown").catch(() => null);
     await sleep(2000);
     fake.sendUserText({ userId: u, text: "1、3", conversationId });
     await settle(conversationId, since, (t) => /周末安排/u.test(t), { label: "ask-multi answer", timeoutMs: 240_000 }).catch(() => null);
