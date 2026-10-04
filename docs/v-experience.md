@@ -203,3 +203,24 @@ Telegram 改后 `1b53a07e` 全过：单选题按钮一点即答（16 s 内继续
 - Telegram 的提问卡死：修法同上，但要改核心里的 Telegram 代码，待 Tianyi 决定。
 
 上 V 前还要做：合入 dev（需 Tianyi 授权）→ 共享 VLab 集成验收 → 两个第三方插件目录纳入捕获与漂移哨兵 → promote。
+
+## 8. 真机验收（2026-10-04 上午）
+
+VLab 测试机器人：钉钉「Vlab」（扫码注册，凭据在 VLab secrets）、Telegram `@v_lab_test_bot`；企业微信待建。
+`lab/candidate/live-experience.mjs` 起私有 Gateway 接真实平台，agent 用 Mac 上的钉钉客户端发消息验收。
+
+钉钉全部通过（截图见会话）：
+
+- 工作清单：卡片里 ▸ 查资料（进行中）/ ☐ 写草稿 / ⚙ 正在运行命令… 实时变化，结束后只留答案。
+- 问题：单独一条消息，编号选项；回「3」/「1、3」/「2」都在约 10 s 内被接住，回「✓ 已收到：…」。
+- 问题之后的回答开在**问题下方的新卡片**里（真机上发现：原来会写回问题上方的旧卡片，要往上翻才看得到）。
+- 后台任务行：卡片完成后追加「⏳ 后台 1 项进行中 · 子 agent」，子 agent 结束后变「☑️ 后台任务已结束」。
+
+真机上发现并已修的问题：
+
+1. 完成后的 AI 卡片只认 finalize 写入的内容，`PUT /card/instances` 改 `msgContent` 不显示；后台行改用再次 finalize 写入。
+2. 等回答期间插件自己的「回复开始」回调会新开卡片，夹在问题和回答之间；改为等回答期间不开新卡。
+3. VLab 到 `api.dingtalk.com`（IPv4 在新加坡）约 250 ms，正好卡在 Node 默认的 happy-eyeballs 尝试超时上，首次建卡偶发 ETIMEDOUT 退化成普通消息。测试环境用 `--network-family-autoselection-attempt-timeout=2000`；生产 V 是否也偶发待查。
+4. 共享 VLab 配置里还挂着未打补丁的钉钉/企微插件副本（capability-alignment），测试时必须过滤掉，否则加载的是旧插件。
+
+Telegram：bot 已接入私有 Gateway，Mac 端 Telegram 客户端连不上（需要代理），待验收。
