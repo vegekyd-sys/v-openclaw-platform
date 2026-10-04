@@ -140,9 +140,11 @@ test("dingtalk patch applies to V's connector chunk exactly once", () => {
   }
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vx-ding-"));
   fs.writeFileSync(path.join(dir, "message-handler-BUoLSylZ.mjs"), baseline);
+  fs.copyFileSync(new URL("../apps/v-experience/dingtalk/baseline/connection-DCvu-l09.mjs", import.meta.url), path.join(dir, "connection-DCvu-l09.mjs"));
   const result = patchDingtalkConnector(dir, { experienceSource: new URL("../apps/v-experience/v-experience.mjs", import.meta.url).pathname });
   assert.equal(result.changed, true);
   assert(fs.readFileSync(path.join(dir, "message-handler-BUoLSylZ.mjs"), "utf8").includes(MARKER));
+  assert(fs.readFileSync(path.join(dir, "connection-DCvu-l09.mjs"), "utf8").includes("/v1.0/card/instances/callback"));
   assert(fs.existsSync(path.join(dir, "v-experience.mjs")));
 });
 
@@ -207,4 +209,34 @@ test("tracked multiple choice: labels toggle, 确认 submits, inline needs no ac
   const r4 = await vx.answerTrackedQuestion({ channel: "t", chatKey: "m2", senderId: "u1", text: "1、3", resolve: async () => {} });
   assert.equal(r4.answered, true);
   assert.equal(vx.shouldSendAnswerNotice(r4), true, "not inline: acknowledge in chat");
+});
+
+test("DingTalk question card: one tap answers a single choice; others stage then submit; only the asker", async () => {
+  const one = { id: "ask_" + "e".repeat(32), questions: [{ questionId: "c", question: "去哪？", options: [{ label: "杭州" }, { label: "苏州" }] }] };
+  const data = vx.dingtalkQuestionCardData(one);
+  assert.equal(data.title, "去哪？");
+  assert.equal(JSON.parse(data.form_fields)[0].type, "CHECKBOX_LIST");
+  const resolved = [];
+  let answered;
+  vx.trackDingtalkQuestionCard({ outTrackId: "vq1", record: one, asker: "u1", resolve: async (a, by) => resolved.push([a, by]), onAnswered: (a) => { answered = a; } });
+  const tap = (out, user, params) => vx.handleDingtalkCardCallback({ outTrackId: out, userId: user, content: JSON.stringify({ cardPrivateData: { actionIds: ["x"], params } }) });
+  const other = await tap("vq1", "u2", { name: "q0", type: "CHECKBOX_LIST", value: 1 });
+  assert.equal(other.cardData.cardParamMap.err_msg, "这个问题在问别人。");
+  const r = await tap("vq1", "u1", { name: "q0", type: "CHECKBOX_LIST", value: 1 });
+  assert.equal(r.cardData.cardParamMap.form_status, "disabled");
+  assert.equal(r.cardData.cardParamMap.button_text, "✓ 已选择：苏州");
+  assert.deepEqual(JSON.parse(JSON.stringify(resolved)), [[{ answers: { c: ["苏州"] } }, "dingtalk:card:u1"]]);
+  assert.deepEqual(JSON.parse(JSON.stringify(answered)), { answers: { c: ["苏州"] } });
+
+  const multi = { id: "ask_" + "f".repeat(32), questions: [{ questionId: "w", question: "周末？", multiSelect: true, options: [{ label: "爬山" }, { label: "读书" }] }] };
+  const got = [];
+  vx.trackDingtalkQuestionCard({ outTrackId: "vq2", record: multi, resolve: async (a) => got.push(a) });
+  const s1 = await tap("vq2", "u1", { name: "q0", type: "CHECKBOX_LIST_MULTI", value: 0 });
+  assert.equal(s1.cardData.cardParamMap.form_status, "normal");
+  assert.equal(JSON.parse(s1.cardData.cardParamMap.form_fields)[0].checkbox_items[0].checked, true);
+  const empty = await vx.handleDingtalkCardCallback({ outTrackId: "vq2", userId: "u1", content: JSON.stringify({ cardPrivateData: { params: { submit_form_fields: [{ name: "q0", type: "CHECKBOX_LIST_MULTI", checkbox_items: [] }] } } }) });
+  assert.match(empty.cardData.cardParamMap.err_msg, /请先回答/u);
+  const done = await vx.handleDingtalkCardCallback({ outTrackId: "vq2", userId: "u1", content: JSON.stringify({ cardPrivateData: { params: { submit_form_fields: [{ name: "q0", type: "CHECKBOX_LIST_MULTI", checkbox_items: [{ value: 0, checked: true }, { value: 1, checked: true }] }] } } }) });
+  assert.equal(done.cardData.cardParamMap.button_text, "✓ 已选择：爬山、读书");
+  assert.deepEqual(JSON.parse(JSON.stringify(got)), [{ answers: { w: ["爬山", "读书"] } }]);
 });

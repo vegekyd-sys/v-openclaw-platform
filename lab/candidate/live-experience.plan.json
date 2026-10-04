@@ -8,8 +8,15 @@
     "tmp/inputs/dingtalk-connector-0.8.26-v.tgz",
     "tmp/inputs/wecom-openclaw-plugin-2026.8.17-vlab.2-v.tgz"
   ],
-  "command": ["/opt/vlab/node-v22.23.1-linux-x64/bin/node", "lab/candidate/live-experience.mjs"],
-  "env": { "LIVE_MINUTES": "60", "LIVE_TELEGRAM_ALLOW": "5368086561" },
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/live-experience.mjs"
+  ],
+  "env": {
+    "LIVE_MINUTES": "60",
+    "LIVE_TELEGRAM_ALLOW": "5368086561",
+    "V_DINGTALK_QUESTION_CARD_TEMPLATE": "9f86e003-e65e-4680-bf4b-8df5958d9f17.schema"
+  },
   "timeoutSeconds": 4200,
   "user": "lab-db91-parity"
 }

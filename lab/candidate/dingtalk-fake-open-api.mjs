@@ -49,6 +49,7 @@ export function createFakeDingTalkOpenApi({ WebSocketServer }) {
     },
     "POST /v1.0/card/instances/createAndDeliver": (body) => {
       const card = cardFor(body.outTrackId);
+      card.templateId = body.cardTemplateId;
       applyCardData(card, body.cardData?.cardParamMap, "createAndDeliver");
       card.delivered = { openSpaceId: body.openSpaceId, at: Date.now() };
       return { success: true, result: { outTrackId: body.outTrackId } };
@@ -105,6 +106,20 @@ export function createFakeDingTalkOpenApi({ WebSocketServer }) {
     calls,
     cards: () => [...cards.values()],
     webhookMessages,
+    /** A user taps a control on an interactive card; resolves with the client's ack. */
+    pressCard({ outTrackId, userId, params }) {
+      const messageId = `card-${Date.now()}-${nextMsg++}`;
+      const frame = { specVersion: "1.0", type: "CALLBACK", headers: { topic: "/v1.0/card/instances/callback", messageId, contentType: "application/json", time: String(Date.now()), appId: "candidate" },
+        data: JSON.stringify({ type: "actionCallback", outTrackId, userId, corpId: "dingcandidate", content: JSON.stringify({ cardPrivateData: { actionIds: ["candidate"], params } }) }) };
+      for (const ws of sockets) ws.send(JSON.stringify(frame));
+      return new Promise((resolve) => {
+        const started = Date.now();
+        const poll = setInterval(() => {
+          const ack = calls.find((c) => c.method === "WS" && c.body?.headers?.messageId === messageId);
+          if (ack || Date.now() - started > 15000) { clearInterval(poll); resolve(ack?.body); }
+        }, 100);
+      });
+    },
     /** A user writes to the robot (direct chat unless `group`). */
     sendUserText({ userId, text, group = false, conversationId, senderNick = "Tianyi" }) {
       const conv = conversationId ?? (group ? `cidGroup${userId}` : `cidDirect${userId}`);

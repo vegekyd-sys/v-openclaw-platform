@@ -230,6 +230,18 @@ const SCENARIOS = {
     await settle(conversationId, since, (t) => /SECRET_|凭据|🔑/u.test(t) && finishedCards(since).length > 0, { label: "secret", quietMs: 10_000, timeoutMs: 240_000 }).catch(() => null);
     return view(conversationId, since);
   },
+  // Real buttons: question card from the template, answered by tapping it.
+  "ask-card": async () => {
+    const u = nextUser(); const since = Date.now();
+    const { conversationId } = fake.sendUserText({ userId: u, text: "这是自动化测试。请调用 ask_user 工具问我一个单选题：「去哪个城市？」选项为 杭州、苏州、南京。拿到答案后只回复「城市：<答案>」。" });
+    const card = await waitFor(() => fake.cards().find((c) => c.createdAt >= since && c.templateId && !/02fcf2f4/u.test(c.templateId)), 240_000, "question card").catch(() => null);
+    if (!card) return { questionCard: false, ...view(conversationId, since) };
+    const ack = await fake.pressCard({ outTrackId: card.outTrackId, userId: u, params: { name: "q0", type: "CHECKBOX_LIST", value: 1 } });
+    await settle(conversationId, since, (t) => /城市[：:]\s*苏州/u.test(t), { label: "ask-card answer", timeoutMs: 240_000 }).catch(() => null);
+    const reply = ack?.data ?? ack?.response ?? ack;
+    const replyText = JSON.stringify(reply ?? {});
+    return { questionCard: true, templateId: card.templateId, ack: replyText.slice(0, 400), cardAnswered: /已选择：苏州/u.test(replyText), continued: /城市[：:]\s*苏州/u.test(allText(conversationId, since)), ...view(conversationId, since) };
+  },
   background: async () => {
     const u = nextUser(); const since = Date.now();
     const { conversationId } = fake.sendUserText({ userId: u, text: "这是自动化测试，请严格照做，不要等待任何结果。第一步：调用 sessions_spawn 启动一个子 agent，task 写：`用 exec 运行 sleep 40，然后回复 CHILD_DONE。` 第二步：工具返回后，立刻只回复 BG_OK。" });
@@ -280,4 +292,9 @@ if (EXPECT === "patched") {
     assert(s[name].continued, `${name}: chat answer did not reach the agent`);
   }
   if (s.background) assert(s.background.sawBackgroundLine && s.background.sawBackgroundDone, "background line missing");
+  if (s["ask-card"]) {
+    assert(s["ask-card"].questionCard, "no question card was delivered");
+    assert(s["ask-card"].cardAnswered, "tapping the card did not answer it");
+    assert(s["ask-card"].continued, "the agent did not continue after the tap");
+  }
 }

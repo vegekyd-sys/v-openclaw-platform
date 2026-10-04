@@ -78,6 +78,26 @@ import { formatChannelProgressDraftLineForEntry as vFormatProgressLine } from "o
 \t\t\tlog.warn(\`[DingTalk][v-experience] work refresh failed: \${err?.message || err}\`);
 \t\t}
 \t};
+\t// ${MARKER}: the question card template (real buttons); without it options
+\t// are links inside the reply card.
+\tconst vQuestionTemplate = process.env.V_DINGTALK_QUESTION_CARD_TEMPLATE?.trim() || "";
+\t// ${MARKER}: finish the current card with what it shows now; the next update
+\t// (after the answer) opens a new one below the question.
+\tconst vSplitCard = async () => {
+\t\tif (cardCreationPromise) await cardCreationPromise.catch(() => {});
+\t\tconst card = currentCardTarget;
+\t\tif (!card) return;
+\t\tcurrentCardTarget = null;
+\t\tclearCardWatchdog();
+\t\tconst shown = vWork.compose(vAnswerText);
+\t\tvAnswerText = "";
+\t\taccumulatedText = "";
+\t\ttry {
+\t\t\tawait finishCardOnce(card, shown || "…");
+\t\t} catch (err) {
+\t\t\tlog.warn(\`[DingTalk][v-experience] card split failed: \${err?.message || err}\`);
+\t\t}
+\t};
 \t// ${MARKER}: questions go into the reply card, as in Feishu. Worker runs
 \t// announce them on the Gateway question listener; other runtimes also send
 \t// a payload, which the connector used to drop. Either way: shown once.
@@ -94,6 +114,40 @@ import { formatChannelProgressDraftLineForEntry as vFormatProgressLine } from "o
 \t\t\tif (secret) {
 \t\t\t\tawait vSend(vExperience.secretQuestionNotice(question));
 \t\t\t\tawait vCallGateway("question.resolve", { config: cfg }, { id: question.id, cancel: true, resolvedBy: "dingtalk:credential-unsupported" }, { scopes: ["operator.questions"], progress: false, timeoutMs: 5000 }).catch(() => {});
+\t\t\t} else if (vQuestionTemplate && streamingEnabled && !asyncMode && !streamingSealed) {
+\t\t\t\t// Real buttons: the question gets its own interactive card below this
+\t\t\t\t// reply; the reply closes here and the answer opens a new one below.
+\t\t\t\tvWork.questionElsewhere();
+\t\t\t\tawait vSplitCard();
+\t\t\t\tconst outTrackId = \`vq_\${Date.now()}_\${Math.random().toString(36).slice(2, 10)}\`;
+\t\t\t\tconst robotCode = String(account.config.clientId ?? "");
+\t\t\t\tconst space = isDirect
+\t\t\t\t\t? { openSpaceId: \`dtv1.card//IM_ROBOT.\${senderId}\`, imRobotOpenDeliverModel: { spaceType: "IM_ROBOT", robotCode } }
+\t\t\t\t\t: { openSpaceId: \`dtv1.card//IM_GROUP.\${conversationId}\`, imGroupOpenDeliverModel: { robotCode } };
+\t\t\t\tconst headers = async () => ({ "x-acs-dingtalk-access-token": await getAccessToken(account.config), "Content-Type": "application/json" });
+\t\t\t\tconst resp = await dingtalkHttp.post(\`\${DINGTALK_API}/v1.0/card/instances/createAndDeliver\`, {
+\t\t\t\t\tcardTemplateId: vQuestionTemplate, outTrackId, callbackType: "STREAM", userIdType: 1,
+\t\t\t\t\tcardData: { cardParamMap: vExperience.dingtalkQuestionCardData(question) },
+\t\t\t\t\timGroupOpenSpaceModel: { supportForward: false }, imRobotOpenSpaceModel: { supportForward: false },
+\t\t\t\t\t...space
+\t\t\t\t}, { headers: await headers() });
+\t\t\t\tif (resp?.data?.success === false) throw new Error(\`question card not delivered: \${JSON.stringify(resp.data).slice(0, 300)}\`);
+\t\t\t\toutboundUserVisibleThisTurn = true;
+\t\t\t\tconst resolve = (answers, resolvedBy) => vCallGateway("question.resolve", { config: cfg }, { id: question.id, answers, resolvedBy }, { scopes: ["operator.questions"], progress: false, timeoutMs: 5000 });
+\t\t\t\tvExperience.trackDingtalkQuestionCard({
+\t\t\t\t\toutTrackId, record: question, asker: senderId, resolve,
+\t\t\t\t\tonAnswered: (answers) => { vExperience.untrackChatQuestion(question.id); vWork.questionAnswered(answers); },
+\t\t\t\t\tlog: (message) => log.info(message)
+\t\t\t\t});
+\t\t\t\t// A typed answer works too; the card then shows it.
+\t\t\t\tvExperience.trackChatQuestion({
+\t\t\t\t\tchannel: "dingtalk", chatKey: \`\${accountId ?? "default"}:\${conversationId}\`, senderId, record: question, inline: true,
+\t\t\t\t\tonAnswered: (answers) => {
+\t\t\t\t\t\tvWork.questionAnswered(answers);
+\t\t\t\t\t\tconst data = vExperience.closeDingtalkQuestionCard(outTrackId, "answered", answers);
+\t\t\t\t\t\tif (data) headers().then((h) => dingtalkHttp.put(\`\${DINGTALK_API}/v1.0/card/instances\`, { outTrackId, cardData: { cardParamMap: data }, cardUpdateOptions: { updateCardDataByKey: true } }, { headers: h })).catch((err) => log.warn(\`[DingTalk][v-experience] question card update failed: \${err?.message || err}\`));
+\t\t\t\t\t}
+\t\t\t\t});
 \t\t\t} else if (streamingEnabled && !asyncMode && !streamingSealed) {
 \t\t\t\t// Inside the card: what was written so far stays above the question,
 \t\t\t\t// the answer continues below it.
@@ -151,6 +205,36 @@ import { formatChannelProgressDraftLineForEntry as vFormatProgressLine } from "o
 \t\t});
 \t};
 `,
+  },
+  {
+    // No new card while a question card waits: it would land above the answer.
+    name: "start-guard",
+    anchor: "\tconst startStreaming = () => {\n\t\tif (streamingSealed) {\n",
+    replace: "\tconst startStreaming = () => {\n\t\tif (!currentCardTarget && !cardCreationPromise && vWork.waitingForAnswer()) return Promise.resolve();\n\t\tif (streamingSealed) {\n",
+  },
+  {
+    // Button clicks on question cards come back over Stream (before connect()).
+    file: "connection",
+    name: "card-callback",
+    anchor: "\t\tclient.registerCallbackListener(TOPIC_ROBOT, async (res) => {\n",
+    insert: "before",
+    code: `\t\t// ${MARKER}: question card buttons.
+\t\tclient.registerCallbackListener("/v1.0/card/instances/callback", async (res) => {
+\t\t\tlet reply;
+\t\t\ttry {
+\t\t\t\treply = await vExperience.handleDingtalkCardCallback(JSON.parse(res.data ?? "{}"));
+\t\t\t} catch (err) {
+\t\t\t\tlogger.warn(\`[DingTalk][v-experience] card callback failed: \${err?.message || err}\`);
+\t\t\t}
+\t\t\tclient.socketCallBackResponse(res.headers?.messageId, reply ?? {});
+\t\t});
+`,
+  },
+  {
+    file: "connection",
+    name: "connection-imports",
+    anchor: /^(import[^\n]*\n)+/u,
+    after: `// ${MARKER}\nimport * as vExperience from "./${EXPERIENCE_FILE}";\n`,
   },
   {
     // The finished card keeps what came before a question and its record.
@@ -241,35 +325,51 @@ import { formatChannelProgressDraftLineForEntry as vFormatProgressLine } from "o
 ];
 
 /** The rewritten chunk source; throws when an anchor is missing or ambiguous. */
-export function patchReplyChunk(source) {
+function applyAll(source, list, label) {
   if (source.includes(MARKER)) return source;
   let out = source;
-  for (const r of replacements) {
+  for (const r of list) {
+    if (r.anchor instanceof RegExp) {
+      const m = r.anchor.exec(out);
+      assert(m, `dingtalk ${label} anchor "${r.name}" not found`);
+      out = out.slice(0, m.index + m[0].length) + r.after + out.slice(m.index + m[0].length);
+      continue;
+    }
     const count = out.split(r.anchor).length - 1;
-    assert.equal(count, 1, `dingtalk anchor "${r.name}" matched ${count} times`);
+    assert.equal(count, 1, `dingtalk ${label} anchor "${r.name}" matched ${count} times`);
     const next = r.replace ?? (r.insert === "after" ? r.anchor + r.code : r.code + r.anchor);
     out = out.replace(r.anchor, () => next);
   }
   return out;
 }
 
-/** The connector chunk that defines the reply dispatcher. */
-export function findReplyChunk(distDir) {
-  const matches = fs.readdirSync(distDir)
-    .filter((f) => /^message-handler-[\w-]+\.mjs$/u.test(f))
-    .filter((f) => fs.readFileSync(path.join(distDir, f), "utf8").includes("function createDingtalkReplyDispatcher(params)"));
-  assert.equal(matches.length, 1, `expected one reply dispatcher chunk, found ${matches.length}`);
+/** The reply-dispatcher chunk, patched. */
+export const patchReplyChunk = (source) => applyAll(source, replacements.filter((r) => !r.file), "reply");
+/** The Stream connection chunk, patched (question card callbacks). */
+export const patchConnectionChunk = (source) => applyAll(source, replacements.filter((r) => r.file === "connection"), "connection");
+
+const findChunk = (distDir, re, needle) => {
+  const matches = fs.readdirSync(distDir).filter((f) => re.test(f) && fs.readFileSync(path.join(distDir, f), "utf8").includes(needle));
+  assert.equal(matches.length, 1, `expected one chunk with ${needle}, found ${matches.length}`);
   return matches[0];
-}
+};
+
+/** The connector chunk that defines the reply dispatcher. */
+export const findReplyChunk = (distDir) => findChunk(distDir, /^message-handler-[\w-]+\.mjs$/u, "function createDingtalkReplyDispatcher(params)");
+export const findConnectionChunk = (distDir) => findChunk(distDir, /^connection-[\w-]+\.mjs$/u, "client.registerCallbackListener(TOPIC_ROBOT");
 
 export function patchDingtalkConnector(distDir, { experienceSource }) {
+  const changed = {};
   const chunk = findReplyChunk(distDir);
-  const file = path.join(distDir, chunk);
-  const before = fs.readFileSync(file, "utf8");
-  const after = patchReplyChunk(before);
-  fs.writeFileSync(file, after);
+  for (const [file, fn] of [[chunk, patchReplyChunk], [findConnectionChunk(distDir), patchConnectionChunk]]) {
+    const p = path.join(distDir, file);
+    const before = fs.readFileSync(p, "utf8");
+    const after = fn(before);
+    fs.writeFileSync(p, after);
+    changed[file] = before !== after;
+  }
   fs.copyFileSync(experienceSource, path.join(distDir, EXPERIENCE_FILE));
-  return { chunk, changed: before !== after, experience: EXPERIENCE_FILE };
+  return { chunk, changed: Object.values(changed).some(Boolean), files: changed, experience: EXPERIENCE_FILE };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

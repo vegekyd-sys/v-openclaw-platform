@@ -1,0 +1,20 @@
+{
+  "support": [
+    "lab/candidate/dingtalk-experience.mjs",
+    "lab/candidate/dingtalk-fake-open-api.mjs",
+    "apps/v-experience/v-experience.mjs",
+    "apps/v-experience/dingtalk/patch.mjs",
+    "tmp/inputs/dingtalk-connector-0.8.26-v.tgz"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/dingtalk-experience.mjs"
+  ],
+  "env": {
+    "DT_EXPECT": "patched",
+    "DT_SCENARIOS": "ask-card,progress,ask-single,background",
+    "V_DINGTALK_QUESTION_CARD_TEMPLATE": "9f86e003-e65e-4680-bf4b-8df5958d9f17.schema"
+  },
+  "timeoutSeconds": 3600,
+  "user": "lab-db91-parity"
+}

@@ -150,6 +150,7 @@ export function createWorkView({ sessionKey, onChange = () => {}, log, formatToo
   let statusAnswerLength = 0; // answer length when the status line was set
   let lastAnswerLength = 0;
   let q = null; // { record, prefix, staged, answers, state }
+  let elsewhere = false; // question shown in its own card below
   const commentary = new Map(); // itemId -> text
   const seen = { card: 0, tool: 0, item: 0, plan: 0 };
   let disposed = false;
@@ -210,10 +211,16 @@ export function createWorkView({ sessionKey, onChange = () => {}, log, formatToo
     },
     /** Choices made so far, by question index: {0: ["爬山"]}. */
     stageQuestion(staged) { if (q?.state === "pending") { q.staged = staged ?? {}; changed(); } },
-    questionAnswered(answers) { if (q) { q.answers = answers; q.state = "answered"; changed(); } },
+    questionAnswered(answers) {
+      elsewhere = false;
+      if (q) { q.answers = answers; q.state = "answered"; }
+      changed();
+    },
+    /** The question has its own card below this reply; wait for it. */
+    questionElsewhere() { elsewhere = true; commentary.clear(); statusLine = ""; changed(); },
     questionClosed(state) { if (q && q.state === "pending") { q.state = state; changed(); } },
-    waitingForAnswer: () => q?.state === "pending",
-    hasContent: () => steps.length > 0 || Boolean(statusLine) || commentary.size > 0 || Boolean(q),
+    waitingForAnswer: () => elsewhere || q?.state === "pending",
+    hasContent: () => steps.length > 0 || Boolean(statusLine) || commentary.size > 0 || Boolean(q) || elsewhere,
     /** The reply while working. */
     compose(answer) {
       const text = String(answer ?? "").trimEnd();
@@ -222,7 +229,7 @@ export function createWorkView({ sessionKey, onChange = () => {}, log, formatToo
       if (statusLine && text.length > statusAnswerLength) statusLine = "";
       const body = text || [...commentary.values()].join("\n\n");
       const plan = planMarkdown(steps);
-      const top = [head(), body, statusLine].filter((part) => part && part.trim()).join("\n\n");
+      const top = [head(), body, elsewhere ? "❓ 请在下方卡片中回答" : statusLine].filter((part) => part && part.trim()).join("\n\n");
       return plan ? (top ? `${top}\n\n---\n\n${plan}` : plan) : top;
     },
     /** The finished reply: what came before a question, its record, the answer. */
@@ -736,6 +743,134 @@ export async function answerTrackedQuestion({ channel, chatKey, senderId, text, 
 export function shouldSendAnswerNotice(result) {
   if (!result?.notice) return false;
   return !(result.inline && (result.answered || result.quiet));
+}
+
+// ------------------------------------------------- DingTalk question card
+//
+// Real buttons in DingTalk need a card template with callbacks. The template
+// is DingTalk's open-source "循环渲染容器之交互组件的使用与服务端更新" form
+// (variables title, form_fields, form_status, button_text, err_msg): each
+// question is a clickable option list (CHECKBOX_LIST / _MULTI), optional free
+// text, and one button. Clicks come back over the Stream TOPIC_CARD callback.
+
+/** DingTalk's published sample of that template, for tests only. */
+export const DINGTALK_SAMPLE_QUESTION_TEMPLATE = "9f86e003-e65e-4680-bf4b-8df5958d9f17.schema";
+
+const dtJson = (map) => Object.fromEntries(Object.entries(map).map(([k, v]) => [k, typeof v === "string" ? v : JSON.stringify(v)]));
+
+/** Card data for a question; `checked` by question index, `text` free text by index. */
+export function dingtalkQuestionCardData(record, { checked = {}, text = {}, state = "pending", answers, errMsg = "" } = {}) {
+  const single = record.questions.length === 1 ? record.questions[0] : undefined;
+  const fields = [];
+  record.questions.forEach((q, i) => {
+    const label = record.questions.length > 1 ? `${i + 1}. ${q.question}${q.multiSelect ? "（可多选）" : ""}` : (q.multiSelect ? "可多选" : "");
+    if (q.options.length) {
+      const type = q.multiSelect ? "CHECKBOX_LIST_MULTI" : "CHECKBOX_LIST";
+      const picked = new Set(checked[i] ?? []);
+      fields.push({
+        type, name: `q${i}`, label, required: false,
+        checkbox_items: q.options.map((o, j) => ({ value: j, text: o.description ? `${o.label} — ${o.description}` : o.label, checked: picked.has(j), name: `q${i}`, type })),
+      });
+    }
+    if (q.isOther || !q.options.length) {
+      fields.push({ type: "TEXT", name: `q${i}_text`, label: q.options.length ? "我有其他想法" : (record.questions.length > 1 ? label : ""), placeholder: "说说你的想法", default_string: text[i] ?? "" });
+    }
+  });
+  const done = state !== "pending";
+  return dtJson({
+    title: single ? single.question : "V 想确认几件事",
+    form_fields: fields,
+    form_status: done ? "disabled" : "normal",
+    button_text: done ? questionRecordLine(record, state, answers) : "按这些选择继续",
+    err_msg: errMsg,
+  });
+}
+
+/** Answers from a submitted form (params.submit_form_fields) or the staged state. */
+export function dingtalkQuestionAnswers(record, { checked = {}, text = {} }) {
+  const answers = Object.create(null);
+  for (const [i, q] of record.questions.entries()) {
+    const picked = (checked[i] ?? []).filter((j) => q.options[j]).map((j) => q.options[j].label);
+    const own = String(text[i] ?? "").trim();
+    const values = own ? (q.multiSelect ? [...picked, own] : [own]) : picked;
+    if (!values.length) throw new Error(`请先回答「${record.questions.length > 1 ? `${i + 1}. ` : ""}${q.question}」。`);
+    answers[q.questionId] = values;
+  }
+  return { answers };
+}
+
+const dingtalkCards = new Map(); // outTrackId -> entry
+
+/**
+ * Remember a delivered question card. `resolve(answers, by)` answers the
+ * Gateway question; `onAnswered(answers)` lets the reply continue.
+ */
+export function trackDingtalkQuestionCard({ outTrackId, record, asker, resolve, onAnswered, log }) {
+  dingtalkCards.set(outTrackId, { record, asker: asker ? String(asker) : undefined, resolve, onAnswered, log, checked: {}, text: {}, state: "pending", at: Date.now() });
+  const ttl = setTimeout(() => dingtalkCards.delete(outTrackId), Math.max(60_000, (record.expiresAtMs ?? Date.now() + 30 * 60_000) - Date.now()) + 3600_000);
+  ttl.unref?.();
+}
+
+/** Mark a question card answered some other way (typed answer); returns card data to write. */
+export function closeDingtalkQuestionCard(outTrackId, state, answers) {
+  const entry = dingtalkCards.get(outTrackId);
+  if (!entry || entry.state !== "pending") return undefined;
+  entry.state = state;
+  entry.answers = answers;
+  return dingtalkQuestionCardData(entry.record, { checked: entry.checked, text: entry.text, state, answers });
+}
+
+/**
+ * The TOPIC_CARD callback: returns the card update to send back with the ack.
+ * Single question, single choice: one tap answers. Otherwise taps stage and
+ * the button submits.
+ */
+export async function handleDingtalkCardCallback(message) {
+  const outTrackId = message?.outTrackId;
+  const entry = dingtalkCards.get(outTrackId);
+  if (!entry) return undefined;
+  const update = (data) => ({ cardUpdateOptions: { updateCardDataByKey: true, updatePrivateDataByKey: true }, cardData: { cardParamMap: data } });
+  const fail = (errMsg) => update(dingtalkQuestionCardData(entry.record, { checked: entry.checked, text: entry.text, state: entry.state, answers: entry.answers, errMsg }));
+  if (entry.state !== "pending") return fail("");
+  const userId = message.userId ? String(message.userId) : undefined;
+  if (entry.asker && userId && userId !== entry.asker) return fail("这个问题在问别人。");
+  let params = {};
+  try { params = JSON.parse(message.content ?? "{}")?.cardPrivateData?.params ?? {}; } catch {}
+  const record = entry.record;
+  const submitted = Array.isArray(params.submit_form_fields) ? params.submit_form_fields : undefined;
+  if (submitted) {
+    for (const field of submitted) {
+      const i = Number(String(field?.name ?? "").replace(/^q(\d+).*$/, "$1"));
+      if (!Number.isInteger(i) || !record.questions[i]) continue;
+      if (field.type === "TEXT") entry.text[i] = field.default_string ?? "";
+      else if (Array.isArray(field.checkbox_items)) entry.checked[i] = field.checkbox_items.filter((x) => x.checked).map((x) => Number(x.value));
+    }
+  } else {
+    const i = Number(String(params.name ?? "").replace(/^q(\d+).*$/, "$1"));
+    const q = record.questions[i];
+    if (!q) return fail("");
+    const j = Number(params.value);
+    if (!q.options[j]) return fail("选项无效，请重新选择。");
+    const current = entry.checked[i] ?? [];
+    entry.checked[i] = q.multiSelect ? (current.includes(j) ? current.filter((x) => x !== j) : [...current, j]) : [j];
+    const immediate = record.questions.length === 1 && !q.multiSelect;
+    if (!immediate) return update(dingtalkQuestionCardData(record, { checked: entry.checked, text: entry.text }));
+  }
+  let answers;
+  try { answers = dingtalkQuestionAnswers(record, entry); }
+  catch (error) { return fail(error.message); }
+  try {
+    await entry.resolve(answers, `dingtalk:card:${userId ?? "unknown"}`);
+    entry.state = "answered";
+    entry.answers = answers;
+  } catch (error) {
+    const reason = error?.details?.reason;
+    if (reason === "QUESTION_ALREADY_TERMINAL" || reason === "QUESTION_NOT_FOUND") entry.state = "expired";
+    else { entry.log?.(`v-experience: dingtalk card answer failed ${record.id}: ${String(error?.message ?? error)}`); return fail("提交失败，请再试一次。"); }
+  }
+  if (entry.state === "answered") try { entry.onAnswered?.(answers); } catch {}
+  entry.log?.(`v-experience: dingtalk card ${outTrackId} ${entry.state} ${record.id}`);
+  return update(dingtalkQuestionCardData(record, { checked: entry.checked, text: entry.text, state: entry.state, answers }));
 }
 
 // ---------------------------------------------------------------- telegram
