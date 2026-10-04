@@ -1,0 +1,28 @@
+{
+  "candidateId": "candidate-fd91a488-b17e-49ef-aaac-5af21926093d",
+  "sourceCommit": "4c44cd387e73db96de620eec04ac7a50bb8e8028",
+  "captureKind": "actual private Candidate module bytes, no new runtime/model execution",
+  "files": [
+    {
+      "name": "builtin-openclaw-zQV8Wwjr.js",
+      "sha256": "f121be943b9694cbc73a00529a38235df4f6ebdb652208fa103c44b7a8ca0e80",
+      "bytes": 861352
+    },
+    {
+      "name": "agent-core-BxgCPa8O.js",
+      "sha256": "0c9bcca812ac44e9cd79a8df3ce627c55cd569182a4e9f0f6623d54483f149fa",
+      "bytes": 86715
+    }
+  ],
+  "sourceProofs": [
+    {
+      "name": "builtin-native-attempt-source-proof.json",
+      "sha256": "5cb6551663e0564aa924328fe602fdc7a7973f186a549f0f42b3cf0bc6d114a0"
+    },
+    {
+      "name": "native-agent-source-proof.json",
+      "sha256": "3d3cde71776cb857a504b9bcd0a9b03a63d148c4dd8000d149703cd8aab0293d"
+    }
+  ],
+  "scope": "Agent-core is a test fixture only; native Builtin is the sole new runtime target. Existing index/pool/bridge transforms compose after their already authorized transforms."
+}

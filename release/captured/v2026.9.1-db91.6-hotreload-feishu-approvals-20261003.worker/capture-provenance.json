@@ -1,0 +1,20 @@
+{
+  "capturedAt": "2026-10-03T14:29:07Z",
+  "baseRelease": "hotreload-feishu-approvals-v1",
+  "runtimeSha256": "6b37bbfa5b55ffe8a163b8437356db6d8dae056863e8a8aefc6f5418126a5f83",
+  "sourceProof": "actual-pid1620547-20261003T142907Z-source-proof.json",
+  "sourceProofSha256": "7784f548d30659b37112b4df3f06ba4013dc4343025860c319dc74fb7bf3d74f",
+  "runtimeFingerprintProofSha256": "420783f0ce514f8f0960b7d8def85ac353c747850eaca68918b42c15b193a9a6",
+  "files": [
+    {
+      "target": "release/captured/v2026.9.1-db91.6-hotreload-feishu-approvals-20261003.worker/dist/index.mjs",
+      "sha256": "b5f315bb20cb5eb5a3e30bec32e9bfe365b948bd7ce271298fbd53516bf4c315",
+      "source": "tmp/gpt-live-pr/v12-source-review/index-pid1620547-b5f315bb20cb5eb5a3e30bec32e9bfe365b948bd7ce271298fbd53516bf4c315.mjs"
+    },
+    {
+      "target": "release/captured/v2026.9.1-db91.6-hotreload-feishu-approvals-20261003.worker/dist/worker-pool.mjs",
+      "sha256": "58558773884404e99b50e8a2916dc62f6c18a7b2d9360301340dcd61511c50c6",
+      "source": "tmp/gpt-live-pr/v12-source-review/worker-pool-pid1620547-58558773884404e99b50e8a2916dc62f6c18a7b2d9360301340dcd61511c50c6.mjs"
+    }
+  ]
+}

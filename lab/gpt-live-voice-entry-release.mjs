@@ -1,0 +1,118 @@
+#!/usr/bin/env node
+// Reuse the existing authenticated /voice/ service after shared acceptance.
+// The unit, access secret and tunnel route remain owned by the original entry.
+import fs from "node:fs";
+import path from "node:path";
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { digest, freezeSource, validateSharedProof } from "./gpt-live-h5-release.mjs";
+
+export function assertEntrySnapshot(expected, actual) {
+  for (const key of ["pointer", "unitSha", "environmentSha", "gatewayPid", "gatewayStart", "gatewayInvocation", "configSha"])
+    assert.equal(actual[key], expected[key], `Voice entry ${key} changed`);
+  assert.equal(actual.openVoices, 0, "A voice call is open; do not replace the entry");
+}
+async function remoteMain(req) {
+  const fs = await import("node:fs"), path = await import("node:path"), crypto = await import("node:crypto");
+  const { execFileSync } = await import("node:child_process"), { request } = await import("node:http");
+  const run = (bin, args) => execFileSync(bin, args, { encoding: "utf8", timeout: 30000, stdio: ["pipe", "pipe", "pipe"] }).trim();
+  const hash = file => digest(fs.readFileSync(file));
+  const properties = unit => Object.fromEntries(run("systemctl", ["show", unit, "-p", "MainPID,InvocationID,ActiveState,FragmentPath"])
+    .split("\n").map(line => { const i = line.indexOf("="); return [line.slice(0, i), line.slice(i + 1)]; }));
+  const save = (file, value) => fs.writeFileSync(file, JSON.stringify(value, null, 2) + "\n", { flag: "wx", mode: 0o600 });
+  const unit = "openclaw-rtc-h5.service", base = "/opt/openclaw-voice-h5", pointer = base + "/current";
+  const dir = base + "/releases/gpt-live-" + req.commit, wantedPointer = dir + "/lab/gpt-live-h5";
+  const gateway = properties("openclaw-gateway.service"), gp = Number(gateway.MainPID);
+  assert(gp > 1 && gateway.ActiveState === "active", "Production Gateway is unavailable");
+  const env = Object.fromEntries(fs.readFileSync(`/proc/${gp}/environ`, "utf8").split("\0").filter(Boolean).map(line => { const i = line.indexOf("="); return [line.slice(0, i), line.slice(i + 1)]; }));
+  const argv = fs.readFileSync(`/proc/${gp}/cmdline`, "utf8").split("\0");
+  const entry = argv.find(value => value.endsWith("/dist/index.js"));
+  assert(entry?.startsWith("/opt/") && argv.includes("gateway"), "Not a production Gateway");
+  const runtime = path.dirname(path.dirname(entry));
+  for (const file of req.sharedProof.runtimeFiles) {
+    const target = file.target.startsWith("openclaw/") ? path.join(runtime, file.target.slice(9))
+      : path.join(path.dirname(runtime), "worker", file.target.slice("production-worker/".length));
+    assert.equal(hash(target), file.after, "V runtime differs from the shared accepted artifact");
+  }
+  const state = env.OPENCLAW_STATE_DIR ?? path.dirname(env.OPENCLAW_CONFIG_PATH);
+  const countVoices = () => Number(run("python3", ["-c", "import sqlite3,json,sys; d=sqlite3.connect('file:'+sys.argv[1]+'?mode=ro',uri=True); r=d.execute('select value_json from cache_entries where scope=?',('talk-client-voice-sessions',)); print(sum(json.loads(x[0]).get('status') not in ('closed','expired') for x in r))", path.join(state, "agents/makaron/agent/openclaw-agent.sqlite")]));
+  const observe = () => ({ pointer: fs.readlinkSync(pointer), unitSha: digest(run("systemctl", ["cat", unit])),
+    environmentSha: hash(path.join(state, "rtc-h5.env")), gatewayPid: gp,
+    gatewayStart: fs.readFileSync(`/proc/${gp}/stat`, "utf8").split(") ")[1].split(/\s+/u)[19],
+    gatewayInvocation: gateway.InvocationID, configSha: hash(env.OPENCLAW_CONFIG_PATH), openVoices: countVoices() });
+  const snapshot = observe();
+  const metadata = { schema: "gpt-live-voice-entry-v1", commit: req.commit, release: req.release, owner: req.owner,
+    artifactSha: req.sharedProof.artifactSha, filesSha: req.filesSha, dir, unit, url: "https://openclaw.tianyi.live/voice/", snapshot, at: new Date().toISOString() };
+  if (req.command === "plan") return { ...metadata, readOnly: true };
+  assertEntrySnapshot(req.expected.snapshot, snapshot);
+  const swap = target => { const temporary = pointer + ".gpt-live-new"; assert(!fs.existsSync(temporary)); fs.symlinkSync(target, temporary); fs.renameSync(temporary, pointer); };
+  if (req.command === "rollback") {
+    const installed = JSON.parse(fs.readFileSync(dir + (fs.existsSync(dir + "/installed.json") ? "/installed.json" : "/prepared.json")));
+    assert.equal(installed.filesSha, req.filesSha); assert.equal(installed.owner, req.owner);
+    assert.equal(snapshot.pointer, wantedPointer); assert.equal(snapshot.unitSha, installed.snapshot.unitSha);
+    run("systemctl", ["stop", unit]); swap(installed.beforePointer); run("systemctl", ["start", unit]);
+    const receipt = { ...metadata, restored: true, restoredPointer: fs.readlinkSync(pointer) };
+    save(dir + "/rolled-back.json", receipt); return receipt;
+  }
+  assert.equal(req.command, "install");
+  assert(!fs.existsSync(dir), "This voice release already exists; inspect its receipt");
+  assert(snapshot.pointer.startsWith(base + "/releases/") && !snapshot.pointer.includes(".."));
+  fs.mkdirSync(dir, { mode: 0o755 });
+  fs.chmodSync(dir, 0o755);
+  for (const file of req.files) {
+    const destination = path.join(dir, file.name);
+    fs.mkdirSync(path.dirname(destination), { recursive: true, mode: 0o755 });
+    const bytes = Buffer.from(file.content, "base64"); assert.equal(digest(bytes), file.sha);
+    fs.writeFileSync(destination, bytes, { flag: "wx", mode: 0o644 });
+    fs.chmodSync(destination, 0o644);
+    for (let parent = path.dirname(destination); parent !== dir; parent = path.dirname(parent)) fs.chmodSync(parent, 0o755);
+  }
+  save(dir + "/prepared.json", { ...metadata, beforePointer: snapshot.pointer });
+  assertEntrySnapshot(snapshot, observe());
+  run("systemctl", ["stop", unit]);
+  assert.equal(Number(properties(unit).MainPID), 0);
+  swap(wantedPointer); run("systemctl", ["start", unit]);
+  const hp = Number(properties(unit).MainPID); assert(hp > 1);
+  const henv = Object.fromEntries(fs.readFileSync(`/proc/${hp}/environ`, "utf8").split("\0").filter(Boolean).map(line => { const i = line.indexOf("="); return [line.slice(0, i), line.slice(i + 1)]; }));
+  assert.equal(henv.RTC_H5_BASE_PATH, "/voice"); assert.equal(henv.RTC_H5_PORT, "26242");
+  assert.equal(henv.RTC_H5_RUNTIME_ROOT, runtime);
+  assert(henv.RTC_H5_ACCESS_TOKEN?.length >= 32, "Original voice access protection is unavailable");
+  const probe = route => new Promise((resolve, reject) => {
+    const payload = `${crypto.randomBytes(16).toString("hex")}.${Date.now() + 60000}`;
+    const cookie = `v_voice_access=${payload}.${crypto.createHmac("sha256", henv.RTC_H5_ACCESS_TOKEN).update(payload).digest("base64url")}`;
+    const call = request({ host: "127.0.0.1", port: 26242, path: "/voice/" + route, headers: { host: "openclaw.tianyi.live", cookie } }, response => {
+      const chunks = []; response.on("data", chunk => chunks.push(chunk)); response.on("end", () => resolve({ status: response.statusCode, bytes: Buffer.concat(chunks) }));
+    }); call.on("error", reject); call.setTimeout(2000, () => call.destroy(new Error("Voice entry probe timeout"))); call.end();
+  });
+  let ready = false;
+  for (let attempt = 0; attempt < 30; attempt++) {
+    try { const response = await probe("api/status"); ready = response.status === 200 && JSON.parse(response.bytes).ready === true; if (ready) break; } catch {}
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+  assert(ready, "Voice entry not ready; preserve prepared.json and inspect before rollback");
+  const served = await probe("app.js"); assert.equal(served.status, 200);
+  assert.equal(digest(served.bytes), req.files.find(file => file.name.endsWith("/app.js")).sha);
+  const result = { ...metadata, beforePointer: snapshot.pointer, snapshot: observe(), h5Pid: hp, ready: true,
+    acceptance: "HTTP readiness only; real public H5 call validation required" };
+  save(dir + "/installed.json", result); return result;
+}
+export function remoteSource() {
+  return `import assert from 'node:assert/strict';import {createHash} from 'node:crypto';const digest=${digest.toString()};\n`
+    + [assertEntrySnapshot, remoteMain].map(fn => fn.toString()).join("\n")
+    + "\nlet text='';for await(const c of process.stdin)text+=c;try{const r=await remoteMain(JSON.parse(text));console.log(JSON.stringify(r))}catch{console.error('Voice entry identity or operation failed; preserve prepared receipts and inspect the service.');process.exitCode=1}";
+}
+function main(argv) {
+  const command = argv.shift(); assert(["plan", "install", "rollback"].includes(command));
+  const options = { command, target: "v" };
+  for (let i = 0; i < argv.length; i += 2) { assert(["--commit", "--release", "--owner", "--shared-proof", "--expected", "--output"].includes(argv[i]) && argv[i + 1]); options[argv[i].slice(2)] = argv[i + 1]; }
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  const req = freezeSource(root, options); req.sharedProof = JSON.parse(fs.readFileSync(options["shared-proof"])); validateSharedProof(req.sharedProof, req);
+  if (command !== "plan") { req.expected = JSON.parse(fs.readFileSync(options.expected)); for (const key of ["commit", "release", "owner", "filesSha"]) assert.equal(req.expected[key], req[key]); }
+  assert(!fs.existsSync(options.output), "Do not overwrite an entry receipt");
+  const quote = value => "'" + value.replaceAll("'", "'\"'\"'") + "'";
+  const output = execFileSync("ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "v", "sudo /opt/node-v22.23.1/bin/node --input-type=module -e " + quote(remoteSource())], { input: JSON.stringify(req), timeout: 120000, maxBuffer: 8000000, stdio: ["pipe", "pipe", "pipe"] });
+  const result = JSON.parse(output); fs.writeFileSync(options.output, JSON.stringify(result, null, 2) + "\n", { flag: "wx", mode: 0o600 });
+  console.log(JSON.stringify({ command, ready: result.ready, url: result.url, receipt: options.output }));
+}
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main(process.argv.slice(2));

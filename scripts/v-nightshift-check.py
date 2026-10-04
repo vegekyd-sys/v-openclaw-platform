@@ -15,8 +15,9 @@ comes from sample(), so the rules can be exercised with fixtures.
     ./nightshift-check.py           alert on what is new since the last run
 
 Service-level findings latch: one alert on entry, silence while they persist,
-one on recovery. Card-level findings alert once when they first appear. The
-first run records a baseline and sends nothing.
+one on recovery. Card-level findings alert once when they first appear,
+grouped by project and kind, each block ending in what a person should do.
+The first run records a baseline and sends nothing.
 """
 import json
 import os
@@ -35,8 +36,15 @@ HEALTH_URL = "http://127.0.0.1:24879/api/health"
 UNIT = "nightshift-workboard.service"
 BOARD = "nightshift"
 
+DASHBOARD = "https://nightshift.tianyi.live/?project=%s&view=workflows"
+
 STALE_READY_MIN = 45        # ready this long while dispatch is allowed
-STUCK_RUNNING_MIN = 40      # running with no execution update this long
+# Running with no execution update this long. Measured on V over the 14 days
+# to 2026-09-30, the longest silence inside runs that went on to succeed:
+# produce p99 97 min (39 runs past 40), brief p99 46 min (15 past 40), every
+# other stage under 30. A flat 40 called healthy paid renders stuck.
+STUCK_RUNNING_MIN = {"produce": 120, "brief": 60}
+STUCK_RUNNING_DEFAULT_MIN = 40
 PAID_EXECUTING_MIN = 60     # paid operation executing with no card running
 # A full board read is ~13 KB per card. The Gateway client drops frames over
 # 25 MiB (1006); reads are chunked since 4434cfe, but a board this size also
@@ -74,15 +82,20 @@ def sample(now_ms=None):
     out["blocked"] = []
     for iid, item, stage, card, kind, summary in ns.execute(
             "select instance_id, content_item_id, stage_id, card_id, coalesce(json_extract(failure_json,'$.kind'),'?'), "
-            "substr(coalesce(summary,''),1,110) from content_item_runs "
+            "substr(coalesce(json_extract(failure_json,'$.message'),summary,''),1,110) from content_item_runs "
             "where status='blocked' and updated_at > datetime('now','-1 day') "
             "union all select instance_id, null, stage_id, card_id, coalesce(json_extract(failure_json,'$.kind'),'?'), "
-            "substr(coalesce(summary,''),1,110) from stage_runs "
+            "substr(coalesce(json_extract(failure_json,'$.message'),summary,''),1,110) from stage_runs "
             "where status='blocked' and updated_at > datetime('now','-1 day')"):
         op = ns.execute("select status from external_operations where content_item_id=? and stage_id=?",
                         (item, stage)).fetchone() if item else None
+        # A person sending work back blocks the stage on purpose; that is not a failure.
+        verdict = ns.execute("select status from approvals where instance_id=? and stage_id=? "
+                             "and coalesce(content_item_id,'')=coalesce(?,'') order by created_at desc limit 1",
+                             (iid, stage, item)).fetchone()
         out["blocked"].append({"instance": iid, "item": item, "stage": stage, "card": card,
-                               "kind": kind, "summary": summary, "paid": op[0] if op else None})
+                               "kind": kind, "summary": summary, "paid": op[0] if op else None,
+                               "verdict": verdict[0] if verdict else None})
     out["live_cards"] = []
     for cid, status, updated, exec_updated, failures, automation in wb.execute(
             "select id, status, updated_at, execution_updated_at, coalesce(failure_count,0), automation_json "
@@ -93,6 +106,8 @@ def sample(now_ms=None):
             "failures": failures, "max_retries": (json.loads(automation or "{}") or {}).get("maxRetries"),
             "instance": next((l[9:] for l in labels if l.startswith("instance:")), None),
             "item": next((l[13:] for l in labels if l.startswith("content-item:")), None),
+            "stage": next((l[6:] for l in labels if l.startswith("stage:")), None),
+            "approval": "nightshift:approval" in labels,
         })
     out["paid_executing"] = [
         {"key": key, "instance": iid, "item": item, "task": task}
@@ -122,40 +137,90 @@ def evaluate(s):
     if brake:
         brake = dict(brake, targetMaxActive=pressure.get("targetMaxActive"))
 
+    # Card-level findings: key -> (group, line). Findings of one kind in one
+    # project share a group and go out as one block ending in what to do;
+    # group None is a line on its own.
     issues = {}
     for iid, fault in s.get("faults", []):
-        issues["fault:%s" % iid] = "项目 %s 带故障标记: %s" % (iid, str(fault)[:140])
-    for b in s.get("blocked", []):
-        paid = " 付费=%s" % b["paid"] if b.get("paid") else ""
-        issues["blocked:%s" % b["card"]] = "%s %s/%s blocked [%s]%s: %s" % (
-            b["instance"], b.get("item") or "", b["stage"], b["kind"], paid, b["summary"])
+        issues["fault:%s" % iid] = (None, "项目 %s 带故障标记: %s" % (iid, str(fault)[:140]))
     active = s.get("active", {})
+    for b in s.get("blocked", []):
+        if b["instance"] not in active or b.get("verdict") in ("changes_requested", "rejected"):
+            continue
+        issues["blocked:%s" % b["card"]] = (("blocked", b["instance"]), "%s：%s" % (
+            where(b), blocked_reason(b)))
     dispatch_allowed = pressure.get("dispatchAllowed")
     now_ms = s["now_ms"]
     running_items = {c["item"] for c in s.get("live_cards", []) if c["status"] == "running" and c.get("item")}
     for c in s.get("live_cards", []):
-        if c["instance"] not in active:
+        # Approval cards wait on people by design and the scheduler never
+        # starts them; how long they wait is business flow, not an alert
+        # (Tianyi, 2026-09-30).
+        if c["instance"] not in active or c.get("approval"):
             continue
+        idle = now_ms - c["updated"] if c.get("updated") else 0
         if c["status"] == "ready":
             if c.get("max_retries") and c["failures"] > c["max_retries"]:
-                issues["budget:%s" % c["id"]] = "%s 卡 %s ready 但重试预算已用尽（失败 %d > 上限 %d），不会被派出" % (
-                    c["instance"], c["id"][:8], c["failures"], c["max_retries"])
-            elif active[c["instance"]] and dispatch_allowed and c.get("updated") and \
-                    now_ms - c["updated"] > STALE_READY_MIN * 60_000:
-                issues["stale:%s" % c["id"]] = "%s 卡 %s ready 超过 %d 分钟且允许派工，却没被派出" % (
-                    c["instance"], c["id"][:8], STALE_READY_MIN)
+                issues["budget:%s" % c["id"]] = (("budget", c["instance"]), "%s 失败 %d 次，上限 %d" % (
+                    where(c), c["failures"], c["max_retries"]))
+            elif active[c["instance"]] and dispatch_allowed and idle > STALE_READY_MIN * 60_000:
+                issues["stale:%s" % c["id"]] = (("stale", c["instance"]), "%s 已等 %s" % (where(c), minutes(idle)))
         elif c["status"] == "running":
             last = c.get("exec_updated") or c.get("updated")
-            if last and now_ms - last > STUCK_RUNNING_MIN * 60_000:
-                issues["stuck:%s" % c["id"]] = "%s 卡 %s running 已 %d 分钟没有执行更新" % (
-                    c["instance"], c["id"][:8], (now_ms - last) // 60_000)
+            limit = STUCK_RUNNING_MIN.get(c.get("stage"), STUCK_RUNNING_DEFAULT_MIN)
+            if last and now_ms - last > limit * 60_000:
+                issues["stuck:%s" % c["id"]] = (("stuck", c["instance"]), "%s 已 %s 没有进展（这个阶段按 %d 分钟算异常）" % (
+                    where(c), minutes(now_ms - last), limit))
+    # A blocked line already tells whoever reads it to check the paid task.
+    reported = {(b["instance"], b.get("item")) for b in s.get("blocked", [])
+                if "blocked:%s" % b["card"] in issues and b.get("paid")}
     for p in s.get("paid_executing", []):
-        if p.get("item") not in running_items:
-            issues["paid:%s" % p["key"]] = "%s %s 付费操作 executing 超过 %d 分钟且没有在跑的卡 task=%s" % (
-                p["instance"], p.get("item"), PAID_EXECUTING_MIN, p.get("task"))
+        if p.get("item") not in running_items and (p["instance"], p.get("item")) not in reported:
+            issues["paid:%s" % p["key"]] = (("paid", p["instance"]), "%s 超过 %d 分钟，外部任务 %s" % (
+                p.get("item") or "（整个项目）", PAID_EXECUTING_MIN, p.get("task")))
     if s.get("board_cards", 0) > BOARD_CARD_LIMIT:
-        issues["board-size"] = "夜班看板 %d 张卡（阈值 %d）" % (s["board_cards"], BOARD_CARD_LIMIT)
+        issues["board-size"] = (None, "夜班看板 %d 张卡（阈值 %d）" % (s["board_cards"], BOARD_CARD_LIMIT))
     return service, brake, issues
+
+
+# kind -> (what happened, what to do). None: each line carries its own action.
+GROUPS = {
+    "stale": ("调度器允许派工，卡却一直停在 ready 没被派出", "多半是调度器的问题，查 nightshift-workboard 日志"),
+    "budget": ("重试次数已用完，不会再自动跑", "人工重试（会重置次数）或者跳过这条"),
+    "stuck": ("在跑，但很久没有进展", "Agent 可能挂了。付费阶段先核对外部任务再重试，免得重复付费"),
+    "blocked": ("有内容停住了（blocked）", None),
+    "paid": ("付费任务还在执行，但没有卡在跟进", "核对外部任务状态。不要直接重试，会重复付费"),
+}
+INFRA_KINDS = {"gateway_unavailable", "worker_unavailable", "database_lock", "connection_reset",
+               "provider_error", "upstream_unavailable"}
+AGENT_KINDS = {"agent_error", "agent_interrupted", "agent_not_started", "run_cancelled"}
+
+
+def where(c):
+    return "%s / %s" % (c.get("item") or "（整个项目）", c.get("stage") or "?")
+
+
+def minutes(ms):
+    m = int(ms // 60_000)
+    return "%d 分钟" % m if m < 120 else "%d 小时 %d 分" % (m // 60, m % 60)
+
+
+def blocked_reason(b):
+    kind, detail = b.get("kind"), (b.get("summary") or "").strip()
+    detail = "（%s）" % detail if detail else ""
+    if kind in INFRA_KINDS:
+        return "基础设施或上游临时故障 [%s] → 通常直接重试就行" % kind
+    if kind in AGENT_KINDS:
+        return "Agent 没跑完 [%s] → 看一眼原因再重试" % kind
+    if kind == "decision":
+        return "在等人拍板 → 去「需要你」面板处理"
+    if b.get("paid") == "failed":
+        return "付费任务失败了 → 看原因再重试，重试会再付一次费%s" % detail
+    if b.get("paid") and b["paid"] != "succeeded":
+        return "付费任务已发出，但成功记录没回写（付费=%s）→ 先核对外部任务，别重试%s" % (b["paid"], detail)
+    if kind == "contract_error":
+        return "产物没通过交付校验 → 要人看一下%s" % detail
+    return "原因没记录 [%s] → 要人看一下%s" % (kind, detail)
 
 
 def decide(state, service, brake, issues):
@@ -181,7 +246,21 @@ def decide(state, service, brake, issues):
 
     seen = set(state.get("seen", []))
     if state.get("baseline"):
-        lines.extend("⚠️ " + msg for key, msg in sorted(issues.items()) if key not in seen)
+        groups = {}
+        for key, (group, line) in sorted(issues.items()):
+            if key in seen:
+                continue
+            if group is None:
+                lines.append("⚠️ " + line)
+            else:
+                groups.setdefault(group, []).append(line)
+        for (kind, iid), members in sorted(groups.items()):
+            title, action = GROUPS[kind]
+            block = ["⚠️ 项目 %s：%s" % (iid, title)] + ["  · " + m for m in members]
+            if action:
+                block.append("  → " + action)
+            block.append("  " + DASHBOARD % iid)
+            lines.append("\n".join(block))
     state["baseline"] = True
     state["seen"] = sorted(issues)
     return lines

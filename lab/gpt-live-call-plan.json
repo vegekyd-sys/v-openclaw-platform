@@ -1,0 +1,125 @@
+{
+  "baseRelease": "loopback-requester-sender-v1",
+  "files": [
+    {
+      "source": "lab/release-files/gpt-live-call/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
+      "target": "openclaw/dist/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
+      "before": "e7a27df564dc8296dba853e27752f592f68ebf660736176793ede1bbb2762679"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/realtime-quicksilver-session-B3HKftDE.js",
+      "target": "openclaw/dist/realtime-quicksilver-session-B3HKftDE.js",
+      "before": "0f98f3d3a6cf947106f9bc0ae589d34571f822b0407c57cf38bb08e4fa0379ee"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/gpt-live-call-lifecycle.mjs",
+      "target": "openclaw/dist/gpt-live-call-lifecycle.mjs",
+      "before": null
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/embedded-agent-DaSvA-Yk.js",
+      "target": "openclaw/dist/embedded-agent-DaSvA-Yk.js",
+      "before": "128a61c9e10a47d501ad425345f9f05a88c9dc66b665e32f979d12e29675cd67"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/gateway-public-stream.mjs",
+      "target": "production-worker/gateway-public-stream.mjs",
+      "before": "5440eadbfe1e6bf40824bd389e9cd3fb87326cc3c75b1a158cfe107799300fdf"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/realtime-session-harness-CEO5kVAJ.js",
+      "target": "openclaw/dist/realtime-session-harness-CEO5kVAJ.js",
+      "before": "b394e47d6ac125dc357a74732c15974cae05e392c72e2c8184c6f6db4bb839b0"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/talk-DkFuKRod.js",
+      "target": "openclaw/dist/talk-DkFuKRod.js",
+      "before": "8626acc98d1ea5076d7b4e455246a02f0f80372b9f38cc4161c83a2aa5da840b"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/worker-index.mjs",
+      "target": "production-worker/index.mjs",
+      "before": "b5f315bb20cb5eb5a3e30bec32e9bfe365b948bd7ce271298fbd53516bf4c315"
+    },
+    {
+      "source": "lab/release-files/gpt-live-completion-context/gateway-completion-context.mjs",
+      "target": "production-worker/gateway-completion-context.mjs",
+      "before": "e958ff1cd75cd28d0af3cd93d3e5d729c9a5d9108416c1a0652bdbbf3f38ff09"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/subagent-registry-C24yr_PF.js",
+      "target": "openclaw/dist/subagent-registry-C24yr_PF.js",
+      "before": "c2c0c840f014a67156d40949cdbfa148607c8cffed349feef7be629fd24a056b"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/subagent-announce.requester-settle-wake-B2NSziIo.js",
+      "target": "openclaw/dist/subagent-announce.requester-settle-wake-B2NSziIo.js",
+      "before": "e42fc319a6d079e6e4dc4aba39afdf85a605740189d3ed00b8cb6b4cb91df149"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/subagent-announce-delivery-Dosep7Zr.js",
+      "target": "openclaw/dist/subagent-announce-delivery-Dosep7Zr.js",
+      "before": "c14b886cb8852d528de58cfdef28d45de42267e1dd372166b6075a74929c41bc"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/agent-harness-task-runtime.js",
+      "target": "openclaw/dist/plugin-sdk/agent-harness-task-runtime.js",
+      "before": "60913341429e7b6811d2dead24e0c9eaff49408f66d7049f026840f22fef9086"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/gpt-live-consult-continuation.js",
+      "target": "openclaw/dist/gpt-live-consult-continuation.js",
+      "before": null
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/sessions-spawn-tool-1FQMTkIo.js",
+      "target": "openclaw/dist/sessions-spawn-tool-1FQMTkIo.js",
+      "before": "52b6ea5448e758f6d764200d946853be80a0fe5b419629801ee761173741d848"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/agent-tools.before-tool-call-g2OT63u5.js",
+      "target": "openclaw/dist/agent-tools.before-tool-call-g2OT63u5.js",
+      "before": "e61b81d47b1dfb30ae42c6ee49607e5a2ba8935d8ad2389b8eec11f950079bfc"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/host-capability-Dq3cEEWF.js",
+      "target": "openclaw/dist/host-capability-Dq3cEEWF.js",
+      "before": "4535cb192dff71e0d3602f19ebbba6191f98a2f21013c2fa33e0b87386eaa5ce"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/bash-tools-DiAfkLAC.js",
+      "target": "openclaw/dist/bash-tools-DiAfkLAC.js",
+      "before": "8bda4a91e8e742308d2aecbd8914996b4ddd0f1af0cfc1018064f4a7a3cd8d28"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/native-attempt-bridge.mjs",
+      "target": "production-worker/native-attempt-bridge.mjs",
+      "before": "6482f3d27a0f7e019a1f65faaa6e7bbdb28a999250ff5d1d6ab871d9ba65a813"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/gateway-message-tool.mjs",
+      "target": "production-worker/gateway-message-tool.mjs",
+      "before": "2ae673d4eae9dfd0f350e07d1106a78c95c9259d698e2a9b42fdbaeab2078472"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/worker-pool.mjs",
+      "target": "production-worker/worker-pool.mjs",
+      "before": "58558773884404e99b50e8a2916dc62f6c18a7b2d9360301340dcd61511c50c6"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/gpt-live-voice-exec-lifetime.js",
+      "target": "openclaw/dist/gpt-live-voice-exec-lifetime.js",
+      "before": null
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/builtin-openclaw-zQV8Wwjr.js",
+      "target": "openclaw/dist/builtin-openclaw-zQV8Wwjr.js",
+      "before": "f121be943b9694cbc73a00529a38235df4f6ebdb652208fa103c44b7a8ca0e80"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/session-transcript-reconcile-j5qhAafV.js",
+      "target": "openclaw/dist/session-transcript-reconcile-j5qhAafV.js",
+      "before": "b0200676ea135b981d2caff2b6ec08cd608a75e48858fcd333519b046e613e89"
+    }
+  ]
+}

@@ -13,9 +13,9 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 export const PATCH_MARKER =
-  "v-worker-sessions-spawn-external-task-bridge-v0.2.8-v4";
+  "v-worker-sessions-spawn-external-task-bridge-v0.2.8-v5";
 const ACCEPTED_PATCH_MARKER =
-  "v-worker-sessions-spawn-external-task-record-v0.2.8-v4";
+  "v-worker-sessions-spawn-external-task-record-v0.2.8-v5";
 const LEGACY_TOOL_ANCHOR = "sessions_spawn built-in tool";
 const TOOL_FUNCTION_ANCHOR = "function createSessionsSpawnTool(opts)";
 const EXECUTE_ANCHORS = [
@@ -23,27 +23,44 @@ const EXECUTE_ANCHORS = [
   "\t\texecute: async (_toolCallId, args, signal) => {\n",
 ];
 const ACCEPTED_CALL_PATTERN =
-  /\t+recordAcceptedSessionSpawn\(result, [^)]+\);\n/g;
-const BACKUP_SUFFIX = ".v-worker-sessions-spawn-v0.2.9-v1.bak";
-const INJECTION = `\t\t\t// ${PATCH_MARKER}\n\t\t\tif (globalThis[Symbol.for("versa.vlab.external-harness-task-bridge-v1")] === true && args && typeof args === "object") {\n\t\t\t\targs = { ...args, expectsCompletionMessage: false };\n\t\t\t}\n`;
-const NOTE_MARKER = 'vlab-worker-completion-note-v1';
-function patchCompletionNote(source) {
-  if (source.includes(NOTE_MARKER)) return {source, changed: false};
-  if (source.split(INJECTION).length !== 2) throw new Error('Expected one external spawn bridge injection');
-  source = source.replace(INJECTION,
-    `\t\t\t// ${NOTE_MARKER}\n\t\t\tconst externalReplyExpectsCompletion = globalThis[Symbol.for("versa.vlab.external-harness-task-bridge-v1")] === true && args && typeof args === "object" && args.expectsCompletionMessage !== false && args.collect !== true && args.mode !== "session";\n` + INJECTION);
-  const anchor = `\t\t\t// ${ACCEPTED_PATCH_MARKER}\n`;
-  if (!source.includes(anchor)) throw new Error('Missing accepted spawn record');
-  source = source.replaceAll(anchor, anchor +
-    '\t\t\tif (externalReplyExpectsCompletion && result?.status === "accepted") {\n' +
-    '\t\t\t\tresult.expectsCompletionMessage = true;\n' +
-    '\t\t\t\tresult.note = "Completion is owned by the Gateway external task bridge. Use sessions_yield to await the completion event; do not poll files or status to substitute for completion.";\n' +
-    '\t\t\t}\n');
-  source = source.replaceAll('\t\t\t\t...result,\n\t\t\t\tparentSessionKey:',
-    '\t\t\t\t...result,\n\t\t\t\tvlabCompletionExpected: Boolean(externalReplyExpectsCompletion),\n\t\t\t\tparentSessionKey:');
-  return {source, changed: true};
-}
-const ACCEPTED_INJECTION = `\t\t\t// ${ACCEPTED_PATCH_MARKER}\n\t\t\tconst externalTaskFact = {\n\t\t\t\t...result,\n\t\t\t\tparentSessionKey: opts?.agentSessionKey,\n\t\t\t\trequesterTurnRunId: opts?.requesterTurnRunId,\n\t\t\t\ttask: params.task,\n\t\t\t\tmode: params.mode,\n\t\t\t\tcleanup: params.cleanup,\n\t\t\t\tlabel: params.label\n\t\t\t};\n\t\t\tconst externalTaskRecorder = globalThis[Symbol.for("versa.vlab.external-harness-task-record-v1")];\n\t\t\tif (typeof externalTaskRecorder === "function") externalTaskRecorder(externalTaskFact);\n\t\t\tconst externalTaskOwnerKeys = [\n\t\t\t\topts?.agentSessionKey?.trim(),\n\t\t\t\topts?.completionOwnerKey?.trim(),\n\t\t\t\topts?.requesterTurnRunId ? \`run:\${opts.requesterTurnRunId}\` : undefined\n\t\t\t].filter(Boolean);\n\t\t\tif (result?.status === "accepted" && externalTaskOwnerKeys.length > 0) {\n\t\t\t\tconst ownerSymbol = Symbol.for("versa.vlab.external-harness-task-owners-v1");\n\t\t\t\tconst owners = globalThis[ownerSymbol] instanceof Set ? globalThis[ownerSymbol] : new Set();\n\t\t\t\tfor (const ownerKey of externalTaskOwnerKeys) owners.add(ownerKey);\n\t\t\t\tglobalThis[ownerSymbol] = owners;\n\t\t\t}\n`;
+  /(\t+)recordAcceptedSessionSpawn\((result|visibleResult), [^\n]+\);\n/g;
+const BACKUP_SUFFIX = ".v-worker-sessions-spawn-v0.2.8-v5.bak";
+const INJECTION = `\t\t\t// ${PATCH_MARKER}\n\t\t\tconst externalReplyExpectsCompletion = globalThis[Symbol.for("versa.vlab.external-harness-task-bridge-v1")] === true && args && typeof args === "object" && args.expectsCompletionMessage !== false && args.collect !== true && args.mode !== "session";\n\t\t\tif (globalThis[Symbol.for("versa.vlab.external-harness-task-bridge-v1")] === true && args && typeof args === "object") {\n\t\t\t\targs = { ...args, expectsCompletionMessage: false };\n\t\t\t}\n`;
+// Every accepted branch uses the same recorder before returning, including the
+// visible dashboard branch. Native completion remains suppressed in the Worker;
+// the host relay owns it using this accepted run and requester identity.
+const ACCEPTED_HELPER = `\n\t// ${ACCEPTED_PATCH_MARKER}
+\tconst recordExternalAcceptedSessionSpawn = (result, params, completionExpected) => {
+\t\tif (result?.status !== "accepted") return;
+\t\tif (completionExpected) {
+\t\t\tresult.expectsCompletionMessage = true;
+\t\t\tresult.note = "Completion is owned by the Gateway external task bridge. Use sessions_yield to await the completion event; do not poll files or status to substitute for completion.";
+\t\t}
+\t\tconst externalTaskFact = {
+\t\t\t...result,
+\t\t\tvlabCompletionExpected: Boolean(completionExpected),
+\t\t\tparentSessionKey: opts?.agentSessionKey,
+\t\t\trequesterTurnRunId: opts?.requesterTurnRunId,
+\t\t\ttask: params.task,
+\t\t\tmode: params.mode,
+\t\t\tcleanup: params.cleanup,
+\t\t\tlabel: params.label
+\t\t};
+\t\tconst externalTaskRecorder = globalThis[Symbol.for("versa.vlab.external-harness-task-record-v1")];
+\t\tif (typeof externalTaskRecorder === "function") externalTaskRecorder(externalTaskFact);
+\t\tconst externalTaskOwnerKeys = [
+\t\t\topts?.agentSessionKey?.trim(),
+\t\t\topts?.completionOwnerKey?.trim(),
+\t\t\topts?.requesterTurnRunId ? \`run:\${opts.requesterTurnRunId}\` : undefined
+\t\t].filter(Boolean);
+\t\tif (externalTaskOwnerKeys.length > 0) {
+\t\t\tconst ownerSymbol = Symbol.for("versa.vlab.external-harness-task-owners-v1");
+\t\t\tconst owners = globalThis[ownerSymbol] instanceof Set ? globalThis[ownerSymbol] : new Set();
+\t\t\tfor (const ownerKey of externalTaskOwnerKeys) owners.add(ownerKey);
+\t\t\tglobalThis[ownerSymbol] = owners;
+\t\t}
+\t};
+`;
 
 export function patchSessionsSpawnGatewayProxy(source) {
   if (
@@ -51,18 +68,26 @@ export function patchSessionsSpawnGatewayProxy(source) {
     !source.includes(PATCH_MARKER)
   ) {
     source = source
+      .replace(/\t\t\t\/\/ vlab-worker-completion-note-v1\n\t\t\tconst externalReplyExpectsCompletion = [^\n]+\n/g, "")
       .replace(
-        /\n\t\t\t\/\/ v-worker-sessions-spawn-external-task-bridge-v0\.2\.8(?:-v[23])?\n\t\t\tif \(globalThis\[Symbol\.for\("versa\.vlab\.external-harness-task-bridge-v1"\)\] === true && args && typeof args === "object"\) \{\n\t\t\t\targs = \{ \.\.\.args, expectsCompletionMessage: false \};\n\t\t\t\}\n/,
+        /\n\t\t\t\/\/ v-worker-sessions-spawn-external-task-bridge-v0\.2\.8(?:-v[234])?\n\t\t\tif \(globalThis\[Symbol\.for\("versa\.vlab\.external-harness-task-bridge-v1"\)\] === true && args && typeof args === "object"\) \{\n\t\t\t\targs = \{ \.\.\.args, expectsCompletionMessage: false \};\n\t\t\t\}\n/,
         "\n",
       )
       .replace(
-        /\n\t\t\t\/\/ v-worker-sessions-spawn-external-task-record-v0\.2\.8(?:-v[23])?\n[\s\S]*?\n\t\t\t\}\n/,
+        /\t+\/\/ v-worker-sessions-spawn-external-task-record-v0\.2\.8(?:-v[234])?\n[\s\S]*?\t+globalThis\[ownerSymbol\] = owners;\n\t+\}\n/g,
         "\n",
       );
   }
   const hasExecutePatch = source.includes(PATCH_MARKER);
   const hasAcceptedPatch = source.includes(ACCEPTED_PATCH_MARKER);
-  if (hasExecutePatch && hasAcceptedPatch) return patchCompletionNote(source);
+  if (hasExecutePatch && hasAcceptedPatch) {
+    const acceptedCalls = [...source.matchAll(ACCEPTED_CALL_PATTERN)];
+    if (!source.includes(ACCEPTED_HELPER) || !acceptedCalls.length || acceptedCalls.some((call) =>
+      !source.slice(call.index + call[0].length).startsWith(
+        `${call[1]}recordExternalAcceptedSessionSpawn(${call[2]}, params, externalReplyExpectsCompletion);\n`,
+      ))) throw new Error("partial sessions_spawn accepted branch bridge detected");
+    return { source, changed: false };
+  }
   if (hasExecutePatch || hasAcceptedPatch) {
     throw new Error("partial sessions_spawn external Harness patch detected");
   }
@@ -78,7 +103,7 @@ export function patchSessionsSpawnGatewayProxy(source) {
     throw new Error(`expected one sessions_spawn execute anchor, found ${matches}`);
   }
   const executeAnchor = EXECUTE_ANCHORS.find(anchor => section.includes(anchor));
-  const patched = section.replace(
+  const patched = section.replace(TOOL_FUNCTION_ANCHOR + " {", TOOL_FUNCTION_ANCHOR + " {" + ACCEPTED_HELPER).replace(
     executeAnchor,
     `${executeAnchor}${INJECTION}`,
   );
@@ -90,12 +115,11 @@ export function patchSessionsSpawnGatewayProxy(source) {
   }
   const acceptedPatched = patched.replace(
     ACCEPTED_CALL_PATTERN,
-    (acceptedCall) => `${acceptedCall}${ACCEPTED_INJECTION}`,
+    (acceptedCall, indent, resultName) => `${acceptedCall}${indent}recordExternalAcceptedSessionSpawn(${resultName}, params, externalReplyExpectsCompletion);\n`,
   );
-  return patchCompletionNote(
-      source.slice(0, sectionStart) +
+  return { source: source.slice(0, sectionStart) +
       acceptedPatched +
-      source.slice(sectionEnd));
+      source.slice(sectionEnd), changed: true };
 }
 
 async function resolveBundle(packageDir) {

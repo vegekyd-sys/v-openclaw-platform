@@ -11,6 +11,58 @@
 
 ---
 
+## loopback-requester-sender-20261004
+
+上线：2026-10-04 11:26 CST 安装，11:27:27 重启 Gateway（V 空闲时）  ·  tag `loopback-requester-sender-20261004`
+
+**摘要**：/vcc（claude-cli）从此能用定时任务工具了（#181）。原来 claude-cli 走的 MCP loopback 不传发送者，共享定时任务策略拿不到 `{channel, accountId, senderId}`，makaron 的 `cron.add` 一律报 `job agentId outside caller scope`，`list` 也是空的；9/27 起就这样，当时 V 改用 `openclaw cron add`（不过权限、任务无 owner）掩盖了问题。补丁回移上游 v2026.9.5 的 `requesterSenderId: senderId`，并让 loopback 上的非 owner 与 Worker/Codex 同规则。VLab 群内验收四个入口（vcc/Worker/vds/vcodex）建、列、删全通过。
+
+本节另外记下上午已在 V 生效、但还没提交捕获的 GPT Live 三个发版（08:38 安装，08:39 重启生效）。
+
+**同日补丁（14:43）**：接管页手机体验（#183，dev `90d57c9e`）——手势、键盘栏、接管时桌面临时竖屏、交还前先复原。只更新了 `/opt/v-desktop-handoff/service`（不在捕获的三个运行时目录内，来源以仓库 `apps/v-desktop-handoff` 为准），重启 `v-desktop-handoff.service`，没有重启 Gateway；V 上新装 `wmctrl`。备份 `/opt/v-desktop-handoff/service.bak-20261004144257`。生产验收：接管后桌面变为 528x992 且窗口铺满，公网整屏画面 0.8 s 到齐，handBack 628 ms 应答时已是 1280x800、Chrome 回到 1277x760。
+
+**发版后配置改动（2026-10-04 21:29 CST，不改运行字节，代码仓库有迁移脚本）**：V 的 `web_search` 从 Gemini（gemini-3.5-flash-lite + Google 搜索 grounding）换成 Parallel 免 key 档（`tools.web.search.provider` gemini → `parallel-free`，新装官方 npm 插件 `@openclaw/parallel-plugin@2026.9.1` 并锁定版本，`plugins.entries.parallel` 启用并加入 `plugins.allow`；Gemini 搜索配置保留以便回退）。Gateway `openclaw.json` 和 Worker `worker-openclaw.json` 两份都改（备份 `.before-web-search-parallel-*`）。新插件装在 `npm/projects/openclaw-parallel-plugin-*`，不在捕获的三个运行时目录内。原因：60 条真实查询的基准测试中，V 的 DeepSeek 读 Parallel 原文摘录写出的回答盲评 6.6 分，读 Gemini 摘要只有 5.9 分（+0.77，95% CI +0.25~+1.32）；端到端 p50 从 8.2 s 降到 4.4 s，单次搜索从约 5.7 s 降到约 1.2 s（`experiments/web-search-bench/RESULTS-20261004.md`）。经 PR #187（dev `edf54b4a`）的 `lab/release-files/web-search-parallel/activate-production.mjs` 受控重启生效：21:06 第一次取空闲栅栏时，21:00 的 Memory Librarian 定时任务正在运行，45 s 内没能排空，脚本放弃，配置未改；等该任务结束、V 空闲后，21:27:49 自动重试并成功：停服 → 安装插件 → 写配置 → 启动，Gateway PID 700515 → 929016，21:29:39 就绪，worker 池 5，夜班自动暂停后接上。VLab 候选：parallel-free 3+8 个真实回合、Gemini 对照 3+8 个回合，全部通过（候选编号见迁移脚本 README）。生产验收（测试会话 `web-search-acceptance-1791120598`）：DeepSeek 回合调用 2 次 web_search，均走 parallel-free（1.2 s / 1.0 s，0 失败），回复正确并附官方来源，整轮 26.6 s；日志无 Parallel 报错，`worker pool is closing` 0 次。已知风险：中文本地查询排序有噪声（候选中出现过一轮连搜 12 次、用时 70 s）；每次搜索的工具结果体积从约 4K 字符涨到 10–24K 字符。跟踪：7 天每日 review（`experiments/web-search-bench/daily-review.mjs`，V 上 `/opt/v-web-search-review/`，含切换前基线）。回退：`activate-production.mjs --rollback`。
+
+相对上一版 `hotreload-feishu-approvals-20261003`：23 个文件变化。
+
+**经 VLab 发版 `gpt-live-call-v1-20261004-a64bf6b`**（01a0fb0e-739d-7681-9238-faa2c1912c6c，dev `a64bf6be`）
+- `core` agent-tools.before-tool-call-g2OT63u5.js  e61b81d4 → f410f20c
+- `core` bash-tools-DiAfkLAC.js  8bda4a91 → 43d9a227
+- `core` builtin-openclaw-zQV8Wwjr.js  f121be94 → d6cfa039
+- `core` host-capability-Dq3cEEWF.js  4535cb19 → 296b132d
+- `core` realtime-quicksilver-session-B3HKftDE.js  0f98f3d3 → 801c4fe7
+- `core` sessions-spawn-tool-1FQMTkIo.js  52b6ea54 → 1a7ab8f9
+- `core` subagent-announce-delivery-Dosep7Zr.js  c14b886c → 8cd70a86
+- `core` gpt-live-voice-exec-lifetime.js  — → 1f101c5c
+- `worker` gateway-message-tool.mjs  2ae673d4 → dbdd72fb
+- `worker` gateway-public-stream.mjs  5440eadb → 6cf18479
+- `worker` index.mjs  b5f315bb → 26c617fd
+- `worker` native-attempt-bridge.mjs  6482f3d2 → 0429d15e
+- `worker` worker-pool.mjs  58558773 → 1f137ca2
+
+**经 VLab 发版 `gpt-live-pr154-shared-20261003-d3cd1fe`**（01a0fb0e-739d-7681-9238-faa2c1912c6c，dev `d3cd1fe1`）
+- `core` plugin-sdk/agent-harness-task-runtime.js  60913341 → 50dc439b
+- `core` subagent-announce.requester-settle-wake-B2NSziIo.js  e42fc319 → be8a3f7f
+- `core` subagent-registry-C24yr_PF.js  c2c0c840 → 1d9f45d6
+- `worker` gateway-completion-context.mjs  e958ff1c → 612d83cd
+
+**经 VLab 发版 `gpt-live-call-v1-20261004-4934ff6`**（01a0fb0e-739d-7681-9238-faa2c1912c6c，dev `4934ff63`）
+> 验收：GPT Live authorized first-release business acceptance. Source 4934ff63340d211df72235bfe44871e07a8fde1b artifact 6174518da6d22054854c5101bf14135f0fa62368ef3f94b2be5bc22a8967bbc9. Actual original H5/WebRTC shared evidence tmp/gpt-live-pr/call-release-4934ff6-shared-native/receipt.json sha256 e592b0b3a0939cccddba4b28b29620d1e33d285607b48e12b0177829f16833f6. Six observed functionalCore true; real pare…
+- `core` realtime-quicksilver-delegation-controller-B0yPpiHp.js  e7a27df5 → ad9f99e8
+- `core` realtime-session-harness-CEO5kVAJ.js  b394e47d → eee6e604
+- `core` talk-DkFuKRod.js  8626acc9 → 560d5cf2
+- `core` gpt-live-call-lifecycle.mjs  — → 713e1ba6
+- `core` gpt-live-consult-continuation.js  — → db2ea459
+
+**经 VLab 发版 `loopback-requester-sender-v1`**（claude-loopback-sender，dev `fe4093ce`）
+> 验收：Shared VLab Feishu group oc_abfb8965 (VLab 压测 01), real model turns as owner Tianyi. Baseline before deploy (same group): /vcc cron.add refused 3x "job agentId outside caller scope" and automations list empty; worker/vds/vcodex succeeded. After deploy loopback-requester-sender-v1 (source fe4093ce, PR #181): /vcc (claude-cli) add -> list shows job (total=2) -> remove ok, list back to 1; worker add/…
+- `core` tool-resolution-Con11qMn.js  5d08186a → aa63296c
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #181 fix(cron): /vcc（claude-cli）按共享策略管理定时任务，与其他 harness 一致
+- #180 fix(voice): wait for current transcript before delegated call control
+- #179 fix(voice): delegate natural goodbye before farewell
+
 ## hotreload-feishu-approvals-20261003
 
 上线：2026-10-03 23:44 CST 安装，23:44:55 停 Gateway，停机时写入两项 Telegram 审批配置，23:47:14 就绪  ·  tag `hotreload-feishu-approvals-20261003`

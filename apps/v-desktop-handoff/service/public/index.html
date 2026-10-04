@@ -2,26 +2,59 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#0b0d12">
 <title>V 的电脑</title>
-<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="app.css?v=f32edcf2e03e">
 </head>
 <body>
 <header id="bar">
   <div id="title">V 的电脑</div>
-  <div id="status">连接中…</div>
+  <div id="status">加载中…</div>
+  <button id="layout" class="ghost" hidden aria-label="切换竖屏或横屏布局">横屏</button>
   <button id="reconnect" class="ghost" hidden>重新连接</button>
 </header>
 <main id="screen"></main>
 <div id="notice" hidden></div>
+<div id="kbdbar" hidden>
+  <div id="keys" role="toolbar" aria-label="常用按键">
+    <button data-key="Escape">Esc</button>
+    <button data-key="Tab">Tab</button>
+    <button data-key="ArrowLeft" aria-label="左">←</button>
+    <button data-key="ArrowUp" aria-label="上">↑</button>
+    <button data-key="ArrowDown" aria-label="下">↓</button>
+    <button data-key="ArrowRight" aria-label="右">→</button>
+    <button data-key="Backspace" aria-label="退格">⌫</button>
+    <button data-key="Enter">回车</button>
+    <button data-combo="a">全选</button>
+    <button data-combo="c">复制</button>
+    <button data-combo="v">粘贴</button>
+    <button data-combo="z">撤销</button>
+  </div>
+  <div id="inputrow">
+    <input id="kbd" type="text" enterkeyhint="send" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="直接输入，字会实时打到电脑上">
+    <button id="kbdclose" class="ghost">收起</button>
+  </div>
+</div>
 <footer id="dock">
-  <button id="zoom" class="tool" hidden aria-label="放大或适应屏幕">放大</button>
+  <button id="fit" class="tool" hidden aria-label="恢复整屏">适应</button>
   <button id="toggle" class="primary" hidden>接管电脑</button>
   <button id="keyboard" class="tool" hidden aria-label="打开键盘">键盘</button>
 </footer>
-<input id="kbd" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-hidden="true" tabindex="-1">
-<script type="module" src="app.js"></script>
+<div id="hint" hidden>
+  <div class="card">
+    <div class="h">在手机上操作电脑</div>
+    <ul>
+      <li><b>单指滑动</b>滚动页面</li>
+      <li><b>轻点</b>点击，<b>连点两下</b>双击</li>
+      <li><b>长按</b>右键，<b>长按后拖动</b>选中文字</li>
+      <li><b>双指</b>放大或移动画面</li>
+      <li><b>键盘</b>在下方，中文也可以直接打</li>
+    </ul>
+    <button id="hintok" class="primary">知道了</button>
+  </div>
+</div>
+<script type="module" src="viewer.js?v=b9f462d7d2c0"></script>
 </body>
 </html>
