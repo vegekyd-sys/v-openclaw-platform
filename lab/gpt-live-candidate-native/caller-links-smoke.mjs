@@ -9,18 +9,18 @@ import {setTimeout as sleep} from 'node:timers/promises';
 import {createPrivatePulseMicrophone,captureOwnedBrowserDirectory,observeOwnedChromeProcesses,removeOwnedBrowserDirectory} from './private-pulse.mjs';
 import {BROWSER_PROBE,readBoundedProbeSnapshot} from './browser-probe.mjs';
 import {preflightLifecycleMedia} from './call-lifecycle-target.mjs';
-import {extractGptLivePersona} from '../gpt-live-call-lifecycle.mjs';
+import {resolveGptLivePersona,extractGptLivePersona} from '../gpt-live-call-lifecycle.mjs';
 
 assert(process.env.VLAB_CANDIDATE_ID&&process.env.GPT_LIVE_H5_READY==='1');
 const base=process.env.GPT_LIVE_H5_EVIDENCE_DIR,clips=process.env.GPT_LIVE_H5_USER_CLIPS_DIR;
 const stateRoot=process.env.OPENCLAW_STATE_DIR,core=process.env.GPT_LIVE_H5_RUNTIME_ROOT,url=process.env.GPT_LIVE_H5_URL;
 const hash=b=>createHash('sha256').update(b).digest('hex');
 const config=JSON.parse(fs.readFileSync(process.env.OPENCLAW_CONFIG_PATH));
-const persona=extractGptLivePersona(config.talk?.realtime?.instructions);
+const persona=resolveGptLivePersona(config.talk?.realtime?.instructions);
 assert(persona.includes('Identity:'),'Candidate must use the existing configured persona');
 fs.mkdirSync(base,{recursive:true,mode:0o700});
 const save=(name,value)=>fs.writeFileSync(path.join(base,name),JSON.stringify(value,null,2)+'\n',{mode:0o600,flag:'wx'});
-save('configured-persona-proof.json',{sha256:hash(persona),characters:persona.length,configuredInstructionsSha256:hash(config.talk.realtime.instructions),usesExistingPersona:true});
+save('configured-persona-proof.json',{sha256:hash(persona),characters:persona.length,configuredInstructionsSha256:hash(config.talk.realtime.instructions),usesExistingPersona:true,source:extractGptLivePersona(config.talk.realtime.instructions)?'configured-persona':'frozen-original-V-persona'});
 const media=preflightLifecycleMedia();
 const scratch=fs.mkdtempSync(path.join(stateRoot,'tmp/caller-links-'));
 const scratchId=captureOwnedBrowserDirectory(scratch,{parent:path.dirname(scratch),prefix:'caller-links-'}),profile=path.join(scratch,'chrome');
@@ -34,7 +34,7 @@ class CDP {
 }
 async function evaluate(expression){const r=await cdp.request('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});assert(!r.exceptionDetails,'Browser evaluation failed');return r.result.value;}
 async function snap(){return cache=await readBoundedProbeSnapshot(evaluate,{previous:cache});}
-async function wait(fn,label,ms=30000){const end=Date.now()+ms;while(Date.now()<end){const s=await snap(),r=await fn(s);if(r)return r;await sleep(250);}throw Error(label+' deadline');}
+async function wait(fn,label,ms=30000){const end=Date.now()+ms;while(Date.now()<end){const s=await snap();if(s){const r=await fn(s);if(r)return r;}await sleep(250);}throw Error(label+' deadline');}
 async function click(id){const r=await evaluate(`(()=>{const e=document.getElementById(${JSON.stringify(id)});if(!e||e.hidden||e.disabled)throw Error('Button unavailable');const r=e.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()`);for(const type of ['mousePressed','mouseReleased'])await cdp.request('Input.dispatchMouseEvent',{type,...r,button:'left',clickCount:1});}
 const text=m=>typeof m.content==='string'?m.content:(m.content??[]).filter(x=>x.type==='text').map(x=>x.text).join('\n');
 const audible=(s,after)=>s.audioFrames.some(f=>f.at>=after&&f.digitalAudible===true);

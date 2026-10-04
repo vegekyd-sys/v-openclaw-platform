@@ -5,11 +5,21 @@ import { readFileSync } from "node:fs";
 import { resolveGptLiveCallInstructions, resolveGptLiveCaller, resolveGptLiveCallerSurface, extractGptLivePersona,
   createGptLiveCallLifecycleRuntimeSource } from "./gpt-live-call-lifecycle.mjs";
 import { patchGptLiveCallerContextTalk } from "./patch-gpt-live-caller-context.mjs";
+import { V_FRONTEND_PERSONA } from "./gpt-live-h5/persona.mjs";
 
 const key = entry => `agent:makaron:explicit:gpt-live-h5-${entry}-${randomUUID()}`;
 const profile = { providerId: "openai", model: "gpt-live-1-codex", transport: "webrtc", brain: "agent-consult",
   capabilities: { handlesAgentConsult: true, supportsToolCalls: false } };
 const persona = "Default presence:\nWarm and curious.\nIdentity:\nYou are V.\nSpeaker identity policy:\nAsk everyone who they are.\nBackchannel policy:\nFill every silence.\nAgency and judgment:\nPrivate info stays private.\nSelf-introduction policy:\nBe brief.\nPrivate bootstrap:\nSECRET_EXAMPLE";
+
+test("experimental config still receives the frozen original V persona without private family examples", () => {
+  const instructions = resolveGptLiveCallInstructions("ignored", { ...profile, sessionKey: key("visitor"), configuredInstructions: "Existing experimental speech policy" });
+  assert.ok(instructions.includes(V_FRONTEND_PERSONA));
+  assert.match(instructions, /Identity:|sharp, warm|Private information stays private/u);
+  assert.doesNotMatch(V_FRONTEND_PERSONA, /十二|members of his family|Backchannel policy|Pause and silence policy/u);
+  assert.equal(extractGptLivePersona("Identity:\nYour long-term partnership is with Tianyi, while realtime Talk may also be used by a private family example. Treat every confirmed speaker separately."),
+    "Identity:\nYour long-term partnership is with Tianyi. Treat every confirmed speaker separately.");
+});
 
 test("two host session identities select the greeting and preserve persona without old waiting or private bootstrap", () => {
   const selected = extractGptLivePersona(persona.replaceAll("\n", "\\n"));

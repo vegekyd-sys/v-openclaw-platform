@@ -1,4 +1,5 @@
 import { GPT_LIVE_CALL_INSTRUCTIONS } from "./gpt-live-h5/instructions.mjs";
+import { V_FRONTEND_PERSONA } from "./gpt-live-h5/persona.mjs";
 
 /** This is a code profile for the native browser client, not global Talk config. */
 export function isGptLiveCallProfile({ providerId, model, transport, brain, capabilities } = {}) {
@@ -11,7 +12,7 @@ export function resolveGptLiveCallInstructions(original, profile) {
   if (!isGptLiveCallProfile(profile)) return original;
   const caller = resolveGptLiveCaller(profile.sessionKey);
   if (!caller) return GPT_LIVE_CALL_INSTRUCTIONS;
-  const persona = extractGptLivePersona(profile.configuredInstructions);
+  const persona = resolveGptLivePersona(profile.configuredInstructions);
   return [GPT_LIVE_CALL_INSTRUCTIONS, persona, buildGptLiveCallerInstructions(caller)].filter(Boolean).join("\n\n");
 }
 
@@ -26,7 +27,12 @@ export function extractGptLivePersona(configured) {
   if (typeof configured !== "string") return "";
   const allowed = /^(?:Default presence[^:]*|Identity|Agency and judgment|Self-introduction policy|Conversation style|Pacing policy|Human presence policy)$/u;
   const blocks = configured.replaceAll("\\n", "\n").split(/(?=^[A-Za-z][^\n:]{0,100}:\s*$)/mu);
-  return blocks.filter(block => allowed.test(block.split(":", 1)[0].trim())).join("\n\n").trim();
+  return blocks.filter(block => allowed.test(block.split(":", 1)[0].trim())).join("\n\n").trim()
+    .replace(/, while realtime Talk may also be used by[^.]*\./u, ".");
+}
+
+export function resolveGptLivePersona(configured) {
+  return extractGptLivePersona(configured) || V_FRONTEND_PERSONA;
 }
 
 export function buildGptLiveCallerInstructions(caller) {
@@ -150,7 +156,7 @@ export function createGptLiveCallLifecycle(options) {
 }
 
 export function createGptLiveCallLifecycleRuntimeSource() {
-  return `// gpt-live-call-lifecycle-v1: native browser call controls\nconst GPT_LIVE_CALL_INSTRUCTIONS = ${JSON.stringify(GPT_LIVE_CALL_INSTRUCTIONS)};\n` +
-    [isGptLiveCallProfile, resolveGptLiveCaller, extractGptLivePersona, buildGptLiveCallerInstructions, resolveGptLiveCallerSurface, resolveGptLiveCallInstructions, parseGptLiveEndCallDelegation, createGptLiveEndCallClientTool, createGptLiveCallLifecycle]
+  return `// gpt-live-call-lifecycle-v1: native browser call controls\nconst GPT_LIVE_CALL_INSTRUCTIONS = ${JSON.stringify(GPT_LIVE_CALL_INSTRUCTIONS)};\nconst V_FRONTEND_PERSONA = ${JSON.stringify(V_FRONTEND_PERSONA)};\n` +
+    [isGptLiveCallProfile, resolveGptLiveCaller, extractGptLivePersona, resolveGptLivePersona, buildGptLiveCallerInstructions, resolveGptLiveCallerSurface, resolveGptLiveCallInstructions, parseGptLiveEndCallDelegation, createGptLiveEndCallClientTool, createGptLiveCallLifecycle]
       .map((fn) => "export " + fn.toString()).join("\n\n") + "\n";
 }
