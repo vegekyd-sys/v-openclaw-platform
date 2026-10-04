@@ -130,6 +130,31 @@ test("telegram staged question keyboard and callback data", () => {
   assert.equal(vx.parseTelegramExperienceCallback("tgv1:t:zz"), undefined);
 });
 
+test("telegram question message is HTML like the Feishu question card", () => {
+  const record = { id: ASK, questions: [{ questionId: "q", question: "周末<想>做什么？", multiSelect: true, options: [{ label: "爬山" }, { label: "读书" }] }] };
+  const pending = vx.telegramAskHtml(record);
+  assert.match(pending, /^<b>周末&lt;想&gt;做什么？<\/b>（可多选）/u);
+  assert.doesNotMatch(pending, /爬山/u, "options live on the buttons");
+  assert.match(pending, /<i>选好后点「确认」/u);
+  assert.match(vx.telegramAskHtml(record, "pending", { immediate: true }), /点一个选项/u);
+  const described = { ...record, questions: [{ ...record.questions[0], options: [{ label: "爬山", description: "去西湖" }, { label: "读书" }] }] };
+  assert.match(vx.telegramAskHtml(described), /• 爬山 — 去西湖\n• 读书/u);
+  assert.equal(vx.telegramAskHtml(record, "answered", { answers: { answers: { q: ["爬山", "读书"] } } }).split("\n\n")[1], "✓ 已选择：爬山、读书");
+});
+
+test("work view clears the working part for a question and keeps the plan", () => {
+  const view = vx.createWorkView({ sessionKey: "agent:a:telegram:direct:1" });
+  view.planUpdate({ phase: "update", steps: [{ step: "了解偏好", status: "in_progress" }, { step: "给建议", status: "pending" }] });
+  view.itemEvent({ kind: "preamble", itemId: "c1", progressText: "先问一下你的偏好。" });
+  view.toolStart({ name: "ask_user", phase: "start" });
+  assert.match(view.compose(""), /先问一下/u);
+  view.clearWorking();
+  const after = view.compose("");
+  assert.doesNotMatch(after, /先问一下/u);
+  assert.match(after, /▶️ \*\*了解偏好\*\*/u);
+  view.dispose();
+});
+
 test("dingtalk patch applies to V's connector chunk exactly once", () => {
   const baseline = fs.readFileSync(new URL("../apps/v-experience/dingtalk/baseline/message-handler-BUoLSylZ.mjs", import.meta.url), "utf8");
   const patched = patchReplyChunk(baseline);

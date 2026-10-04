@@ -167,6 +167,11 @@ const SCENARIOS = {
       sawCheckedStep: anyText(msgs, /☑️[^\n]*查资料|✅[^\n]*查资料|~查资料~/u),
       sawToolLine: anyText(msgs, /exec|sleep|🛠|⚙/iu),
       finalHasChecklist: msgs.some((m) => /写草稿/u.test(m.text ?? "") && /PROGRESS_DONE/u.test(m.text ?? "")),
+      // V's layout instead of the stock draft: "🛠️ Exec", a rule, the plan; no "Working" headline or raw progress_card line.
+      sawFeishuToolLine: anyText(msgs, /🛠️ Exec/u),
+      sawPlanUnderRule: anyText(msgs, /───[\s\S]*(☑️|▶️|◻️)/u),
+      sawStockDraft: anyText(msgs, /^Working\b|Progress Card/mu),
+      workingMessageGone: msgs.filter((m) => !m.deleted && /写草稿/u.test(m.text ?? "")).length === 0,
     };
   },
   // A1: one single-choice question, answered by a button press.
@@ -191,7 +196,7 @@ const SCENARIOS = {
     const chat = newChat();
     const since = Date.now();
     fake.sendUserText({ chatId: chat, userId: chat, text: "这是自动化测试。请调用 ask_user 工具问我一个多选题（允许多选）：「周末想做什么？」选项为 爬山、看电影、读书、做饭。拿到答案后只回复「周末安排：<答案>」。" });
-    const asked = await waitFor(() => chatMessages(chat, since).find((m) => /爬山/u.test(m.text ?? "") && /读书/u.test(m.text ?? "")), 240_000, "multi question").catch(() => null);
+    const asked = await waitFor(() => chatMessages(chat, since).find((m) => (/爬山/u.test(m.text ?? "") && /读书/u.test(m.text ?? "")) || (inlineButtons(m).some((b) => /爬山/u.test(b.text)) && inlineButtons(m).some((b) => /读书/u.test(b.text)))), 240_000, "multi question").catch(() => null);
     const buttons = asked ? inlineButtons(asked) : [];
     const pressedSeq = [];
     const pick = (re) => buttons.find((b) => re.test(b.text) && b.data);
@@ -283,6 +288,10 @@ if (EXPECT === "patched") {
     assert.equal(s.progress.error, undefined, s.progress.error);
     assert(s.progress.sawChecklist, "progress_card checklist never appeared in the reply");
     assert(s.progress.sawCheckedStep, "checklist never showed a finished step");
+    assert(s.progress.sawFeishuToolLine, "working message never showed the Feishu tool line");
+    assert(s.progress.sawPlanUnderRule, "plan was not under a rule in the working message");
+    assert(!s.progress.sawStockDraft, "stock Working draft still shown");
+    assert(s.progress.workingMessageGone, "working message stayed after the answer");
   }
   if (s["ask-multi"]) {
     assert.equal(s["ask-multi"].error, undefined, s["ask-multi"].error);

@@ -8,6 +8,10 @@
 //               request is cancelled so V carries on
 //   background  "⏳ 后台 … 进行中" as a quiet message after the reply, edited
 //               until "☑️ 后台任务已结束"; a newer reply removes the old one
+//   working     in progress mode the stock "Working" draft is replaced by V's
+//               Feishu layout: commentary, the current tool ("🛠️ Exec"), a
+//               rule and the plan (☑️ / ▶️ / ◻️); it moves below a question
+//               and goes away when the answer is sent, as on Feishu
 //
 //   patchTelegram(distDir, { experienceSource })
 //
@@ -20,6 +24,15 @@ import path from "node:path";
 
 export const MARKER = "v-experience-telegram-v1";
 export const EXPERIENCE_FILE = "v-experience.js";
+
+/** `import { a as formatChannelProgressDraftLineForEntry } from "./streaming-….js"` for this build. */
+export function progressLineImport(distDir) {
+  for (const f of fs.readdirSync(distDir).filter((n) => /^streaming-[\w-]+\.js$/u.test(n))) {
+    const m = /export \{[^}]*\bformatChannelProgressDraftLineForEntry as (\w+)\b[^}]*\};?\s*$/u.exec(fs.readFileSync(path.join(distDir, f), "utf8"));
+    if (m) return `import { ${m[1]} as vFormatProgressLine } from "./${f}";`;
+  }
+  throw new Error("formatChannelProgressDraftLineForEntry export not found");
+}
 
 /** `import { o as callGateway } from "./call-….js"` for this build. */
 export function callGatewayImport(distDir) {
@@ -39,11 +52,65 @@ const vTelegramFor = (cfg) => vExperience.telegramExperience({
 });
 `;
 
-const dispatchReplacements = (callImport) => [
+// The dispatch chunk also renders the working message.
+const dispatchHeader = (callImport, lineImport) => `${header(callImport)}${lineImport}
+const vRenderWork = async (turn) => {
+\tconst work = turn.vWork;
+\tif (!work || turn.vQuestionPause || !canPushToolProgress(turn) || !work.hasContent()) return;
+\tconst markdown = work.compose("");
+\tif (!markdown.trim()) return;
+\tconst html = renderTelegramHtmlText(markdown);
+\tawait prepareAnswerLaneForToolProgress(turn);
+\tturn.answerLane.lastPartialText = html;
+\tturn.answerLane.hasStreamedMessage = true;
+\tturn.answerLane.finalized = false;
+\tturn.answerLane.stream?.updatePreview({ text: html, parseMode: "HTML" });
+};
+// A question goes below the working message: drop that message; the next one starts after the answer.
+const vMakeRoomForQuestion = (turn) => enqueueDraftEvent(turn, async () => {
+\tif (!turn.vWork) return;
+\tturn.vQuestionPause = true;
+\tturn.vWork.clearWorking();
+\tif (turn.activeAnswerDraftIsToolProgressOnly) repositionLaneForNewMessage(turn, turn.answerLane);
+});
+const vResume = (turn) => { if (turn.vQuestionPause) turn.vQuestionPause = false; };
+`;
+
+const dispatchReplacements = (callImport, lineImport) => [
   {
     name: "imports",
     anchor: /^(import[^\n]*\n)+/u,
-    after: header(callImport),
+    after: dispatchHeader(callImport, lineImport),
+  },
+  {
+    // The stock compositor still tracks state; what it would draw is drawn by V's work view.
+    name: "compositor-update",
+    anchor: "\t\tupdate: async (streamText, options) => {\n\t\t\tawait prepareAnswerLaneForToolProgress();\n",
+    replace: `\t\tupdate: async (streamText, options) => {
+\t\t\tif (draftState.answerLane.vRender) return await draftState.answerLane.vRender();
+\t\t\tawait prepareAnswerLaneForToolProgress();
+`,
+  },
+  {
+    name: "tool-start",
+    anchor: "async function handleToolStart(turn, payload) {\n",
+    replace: "async function handleToolStart(turn, payload) {\n\tif (turn.vWork) { vResume(turn); turn.vWork.toolStart(payload); }\n",
+  },
+  {
+    name: "item-event",
+    anchor: "async function handleItemEvent(turn, payload) {\n",
+    replace: "async function handleItemEvent(turn, payload) {\n\tif (turn.vWork && payload?.kind === \"preamble\") { vResume(turn); turn.vWork.itemEvent(payload); }\n",
+  },
+  {
+    name: "plan-update",
+    anchor: "async function handlePlanUpdate(turn, payload) {\n",
+    replace: "async function handlePlanUpdate(turn, payload) {\n\tif (turn.vWork) { vResume(turn); turn.vWork.planUpdate(payload); }\n",
+  },
+  {
+    // Commentary reaches the work view in progress mode whatever the account's narration setting.
+    name: "commentary",
+    anchor: "\t\t\t\t\t\tcommentaryProgressEnabled: turn.streamMode === \"progress\" ? turn.commentaryProgressEnabled : void 0,\n",
+    replace: "\t\t\t\t\t\tcommentaryProgressEnabled: turn.streamMode === \"progress\" ? (turn.vWork ? true : turn.commentaryProgressEnabled) : void 0,\n",
   },
   {
     // Questions of this turn's session are shown here; the turn's end starts the background line.
@@ -53,7 +120,16 @@ const dispatchReplacements = (callImport) => [
 \t// ${MARKER}
 \tconst vTelegram = vTelegramFor(turn.cfg);
 \tconst vExtra = buildTelegramThreadParams(context.threadSpec) ?? {};
-\tconst vUnrouteQuestions = vExperience.onQuestionRequested(context.route.sessionKey, (record) => vTelegram.deliverQuestion({ api: turn.bot.api, chatId: context.chatId, extra: vExtra, senderId: context.ctxPayload.SenderId, record }));
+\tif (turn.streamMode === "progress" && turn.answerLane.stream) {
+\t\tturn.vWork = vExperience.createWorkView({
+\t\t\tsessionKey: context.route.sessionKey,
+\t\t\tformatTool: (name, phase) => vFormatProgressLine(turn.telegramCfg, { event: "tool", name, phase }, { detailMode: "status", commandText: "status" }),
+\t\t\tonChange: () => { void enqueueDraftEvent(turn, () => vRenderWork(turn)); },
+\t\t\tlog: (message) => console.log(message)
+\t\t});
+\t\tturn.answerLane.vRender = () => vRenderWork(turn);
+\t}
+\tconst vUnrouteQuestions = vExperience.onQuestionRequested(context.route.sessionKey, (record) => vTelegram.deliverQuestion({ api: turn.bot.api, chatId: context.chatId, extra: vExtra, senderId: context.ctxPayload.SenderId, record, beforeSend: () => vMakeRoomForQuestion(turn) }));
 \ttry {
 \t\tconst { onModelSelected, ...replyPipeline }`,
   },
@@ -63,6 +139,8 @@ const dispatchReplacements = (callImport) => [
     replace: `\t} finally {
 \t\tendDeliveryCorrelation();
 \t\tvUnrouteQuestions();
+\t\tturn.vWork?.dispose();
+\t\tif (turn.answerLane.vRender) delete turn.answerLane.vRender;
 \t\tlet vLineMessageId;
 \t\tvExperience.watchBackground({
 \t\t\tchannel: \`telegram:\${context.route.accountId ?? "default"}:\${context.chatId}\`,
@@ -88,7 +166,7 @@ const dispatchReplacements = (callImport) => [
 \tif (vAskId) try {
 \t\tconst { question } = await vCallGateway({ config: turn.cfg, method: "question.get", params: { id: vAskId }, scopes: ["operator.questions"], clientDisplayName: "Telegram question" });
 \t\tif (question?.status && question.status !== "pending") return await settleTerminalNoVisibleDelivery(turn, info);
-\t\tif (await vTelegramFor(turn.cfg).deliverQuestion({ api: turn.bot.api, chatId: turn.context.chatId, extra: buildTelegramThreadParams(turn.context.threadSpec) ?? {}, senderId: turn.context.ctxPayload.SenderId, record: question })) return await settleTerminalNoVisibleDelivery(turn, info);
+\t\tif (await vTelegramFor(turn.cfg).deliverQuestion({ api: turn.bot.api, chatId: turn.context.chatId, extra: buildTelegramThreadParams(turn.context.threadSpec) ?? {}, senderId: turn.context.ctxPayload.SenderId, record: question, beforeSend: () => vMakeRoomForQuestion(turn) })) return await settleTerminalNoVisibleDelivery(turn, info);
 \t} catch (error) {
 \t\tconsole.log(\`v-experience: telegram question payload \${vAskId} fell back to stock: \${String(error?.message ?? error)}\`);
 \t}
@@ -125,7 +203,7 @@ function apply(source, replacements, label) {
   return out;
 }
 
-export const patchDispatchChunk = (source, callImport) => apply(source, dispatchReplacements(callImport), "dispatch");
+export const patchDispatchChunk = (source, callImport, lineImport) => apply(source, dispatchReplacements(callImport, lineImport), "dispatch");
 export const patchIngressChunk = (source, callImport) => apply(source, ingressReplacements(callImport), "ingress");
 
 const findChunk = (distDir, re, needle) => {
@@ -136,13 +214,14 @@ const findChunk = (distDir, re, needle) => {
 
 export function patchTelegram(distDir, { experienceSource }) {
   const callImport = callGatewayImport(distDir);
+  const lineImport = progressLineImport(distDir);
   const dispatch = findChunk(distDir, /^bot-message-[\w-]+\.js$/u, "async function runTelegramDispatchTurn(turn)");
   const ingress = findChunk(distDir, /^telegram-ingress-drain-factory-[\w-]+\.js$/u, "bot.use(botRuntime.sequentialize(getTelegramSequentialConstraints));");
   const changed = {};
   for (const [file, fn] of [[dispatch, patchDispatchChunk], [ingress, patchIngressChunk]]) {
     const p = path.join(distDir, file);
     const before = fs.readFileSync(p, "utf8");
-    const after = fn(before, callImport);
+    const after = fn(before, callImport, lineImport);
     fs.writeFileSync(p, after);
     changed[file] = before !== after;
   }

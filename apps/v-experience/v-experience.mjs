@@ -219,6 +219,8 @@ export function createWorkView({ sessionKey, onChange = () => {}, log, formatToo
     /** The question has its own card below this reply; wait for it. */
     questionElsewhere() { elsewhere = true; commentary.clear(); statusLine = ""; changed(); },
     questionClosed(state) { if (q && q.state === "pending") { q.state = state; changed(); } },
+    /** The working message went away (a question was sent below it); start the next one fresh, plan kept. */
+    clearWorking() { commentary.clear(); statusLine = ""; },
     waitingForAnswer: () => elsewhere || q?.state === "pending",
     hasContent: () => steps.length > 0 || Boolean(statusLine) || commentary.size > 0 || Boolean(q) || elsewhere,
     /** The reply while working. */
@@ -890,26 +892,29 @@ export function parseTelegramExperienceCallback(data) {
   return m[3] === undefined ? undefined : { kind: "toggle", id, questionIndex: Number(m[3]), optionIndex: Number(m[4]) };
 }
 
-/** The message text for a staged question (plain text, no markup). */
-export function telegramAskText(record, state = "pending", { choices = {}, answers } = {}) {
+const escapeHtml = (text) => String(text ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/**
+ * A staged question as Telegram HTML, laid out like V's Feishu question card:
+ * the question in bold, the options as buttons (listed only when they carry a
+ * description), a short hint; once closed, the question and "✓ 已选择：…".
+ */
+export function telegramAskHtml(record, state = "pending", { answers, immediate = false } = {}) {
+  const numbered = record.questions.length > 1;
+  const title = (q, i) => `<b>${numbered ? `${i + 1}. ` : ""}${escapeHtml(q.question)}</b>`;
   if (state !== "pending") {
     const summary = askSummary(record, answers);
-    const head = state === "answered" ? summary ? `✓ 已选择：${summary}` : "✓ 已收到回答" : state === "expired" ? "问题已过期" : "问题已取消";
-    return [...record.questions.map((q) => q.question), "", head].join("\n");
+    const head = state === "answered" ? summary ? `✓ 已选择：${escapeHtml(summary)}` : "✓ 已收到回答" : state === "expired" ? "问题已过期" : "问题已取消";
+    return [record.questions.map(title).join("\n"), head].join("\n\n");
   }
-  const lines = [];
-  const numbered = record.questions.length > 1;
-  record.questions.forEach((q, i) => {
-    if (i > 0) lines.push("");
-    lines.push(`${numbered ? `${i + 1}. ` : ""}${q.question}${q.multiSelect ? "（可多选）" : ""}`);
-    q.options.forEach((o, j) => {
-      const picked = (choices[i] ?? []).includes(j);
-      lines.push(`${picked ? "✅" : "▫️"} ${o.label}${o.description ? ` — ${o.description}` : ""}`);
-    });
-    if (!q.options.length) lines.push("（直接回复你的回答）");
+  const blocks = record.questions.map((q, i) => {
+    const lines = [`${title(q, i)}${q.multiSelect ? "（可多选）" : ""}`];
+    if (q.options.some((o) => o.description)) for (const o of q.options) lines.push(`• ${escapeHtml(o.label)}${o.description ? ` — ${escapeHtml(o.description)}` : ""}`);
+    if (!q.options.length) lines.push("直接回复你的回答");
+    return lines.join("\n");
   });
-  lines.push("", numbered ? "点选后按「确认」。也可以直接回复，例如「1. 爬山」逐行回答。" : "点选后按「确认」。也可以直接回复答案。");
-  return lines.join("\n");
+  const hint = immediate ? "点一个选项，或直接回复答案。" : numbered ? "选好后点「确认」；也可以直接回复，例如「1. 爬山」逐行回答。" : "选好后点「确认」，或直接回复答案。";
+  return [blocks.join("\n\n"), `<i>${hint}</i>`].join("\n\n");
 }
 
 /** Inline keyboard rows for a staged question. */
@@ -929,11 +934,6 @@ export function telegramAskKeyboard(record, { choices = {} } = {}) {
   });
   rows.push([{ text: "确认", callback_data: `tgv1:c:${hex}` }]);
   return rows;
-}
-
-/** Plan steps for the stock Telegram progress draft (`pushPlanProgress`). */
-export function telegramPlanSteps(steps) {
-  return normalizePlanSteps(steps).map((s) => ({ step: s.step, status: s.status }));
 }
 
 /** Forget a tracked chat question (answered some other way). */
@@ -966,21 +966,20 @@ export function createTelegramExperience({ call, log }) {
     return immediate(record) ? rows.slice(0, -1) : rows;
   };
 
-  async function deliverQuestion({ api, chatId, extra = {}, senderId, record }) {
+  /** `beforeSend` runs once the question is ours to show, before its message (the turn moves its working message out of the way). */
+  async function deliverQuestion({ api, chatId, extra = {}, senderId, record, beforeSend }) {
     if (!record?.id) return false;
     const secret = record.questions?.some((q) => q.isSecret || q.secretStore);
     if (!secret && !isRenderableAsk(record)) return false;
     if (!claimQuestionDelivery(record.id)) return true;
+    try { await beforeSend?.(); } catch (error) { log?.(`v-experience: telegram question ${record.id} beforeSend failed: ${String(error?.message ?? error)}`); }
     if (secret) {
       await api.sendMessage(chatId, secretQuestionNotice(record), extra);
       await call("question.resolve", { id: record.id, cancel: true, resolvedBy: "telegram:credential-unsupported" }).catch(() => {});
       return true;
     }
     askers.set(record.id, senderId ? String(senderId) : undefined);
-    const text = immediate(record)
-      ? telegramAskText(record).replace(/点选后按「确认」。/u, "点一个选项即可。")
-      : telegramAskText(record);
-    await api.sendMessage(chatId, text, { ...extra, reply_markup: { inline_keyboard: keyboard(record, {}) } });
+    await api.sendMessage(chatId, telegramAskHtml(record, "pending", { immediate: immediate(record) }), { ...extra, parse_mode: "HTML", reply_markup: { inline_keyboard: keyboard(record, {}) } });
     trackChatQuestion({ channel: "telegram", chatKey: String(chatId), senderId, record });
     log?.(`v-experience: telegram question ${record.id} delivered`);
     return true;
@@ -998,9 +997,9 @@ export function createTelegramExperience({ call, log }) {
     const messageId = cb.message?.message_id;
     const repaint = async (entry, state, extra = {}) => {
       const done = state !== "pending";
-      const text = telegramAskText(entry.record, state, { choices: extra.choices, answers: entry.answers ?? extra.answers });
-      await ctx.api.editMessageText(chatId, messageId, done ? text : (immediate(entry.record) ? text.replace(/点选后按「确认」。/u, "点一个选项即可。") : text),
-        done ? {} : { reply_markup: { inline_keyboard: keyboard(entry.record, extra.choices ?? {}) } }).catch(() => {});
+      const html = telegramAskHtml(entry.record, state, { answers: entry.answers ?? extra.answers, immediate: immediate(entry.record) });
+      await ctx.api.editMessageText(chatId, messageId, html,
+        done ? { parse_mode: "HTML" } : { parse_mode: "HTML", reply_markup: { inline_keyboard: keyboard(entry.record, extra.choices ?? {}) } }).catch(() => {});
     };
     try {
       if (parsed.kind === "toggle") {
