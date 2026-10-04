@@ -2,9 +2,14 @@
 """The Night Shift check must alert on each failure it exists for, once, and
 report recovery. The fixtures are the failures seen on V on 2026-09-23/24."""
 import copy
+import datetime
 import importlib.util
+import io
+import json
 import os
+import sqlite3
 import sys
+import tempfile
 import unittest
 from unittest import mock
 
@@ -182,6 +187,78 @@ class NightShiftCheck(unittest.TestCase):
             self.assertEqual(mod.main(["--check"]), 1)
         sender.feishu.assert_not_called()
         save.assert_not_called()
+
+
+class SampleTimeWindows(unittest.TestCase):
+    """Exercise the real read-only SQL, not just prefiltered rule fixtures."""
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.ns_path = os.path.join(directory.name, "nightshift.sqlite")
+        self.wb_path = os.path.join(directory.name, "workboard.sqlite")
+        self.ns = sqlite3.connect(self.ns_path)
+        self.addCleanup(self.ns.close)
+        self.ns.executescript("""
+            create table instances (id text, status text);
+            create table instance_controls (instance_id text, automatic_dispatch integer, fault_json text);
+            create table content_item_runs (instance_id text, content_item_id text, stage_id text,
+                card_id text, failure_json text, summary text, status text, updated_at text);
+            create table stage_runs (instance_id text, stage_id text, card_id text,
+                failure_json text, summary text, status text, updated_at text);
+            create table external_operations (idempotency_key text, instance_id text, content_item_id text,
+                stage_id text, external_task_id text, status text, updated_at text);
+        """)
+        with sqlite3.connect(self.wb_path) as wb:
+            wb.executescript("""
+                create table workboard_cards (id text, board_id text, archived_at integer, status text,
+                    updated_at integer, execution_updated_at integer, failure_count integer, automation_json text);
+                create table workboard_card_labels (card_id text, label text);
+            """)
+        self.now = datetime.datetime(2026, 9, 30, 12, tzinfo=datetime.timezone.utc)
+
+    def sample(self):
+        self.ns.commit()
+        with mock.patch.object(mod, "NS_DB", self.ns_path), mock.patch.object(mod, "WB_DB", self.wb_path), \
+                mock.patch.object(mod, "sh", return_value="active"), \
+                mock.patch.object(mod.urllib.request, "urlopen", return_value=io.StringIO(json.dumps(HEALTHY))):
+            return mod.sample(int(self.now.timestamp() * 1000))
+
+    def paid(self, key, timestamp):
+        self.ns.execute("insert into external_operations values (?, 'project', ?, 'publish', 'task', 'executing', ?)",
+                        (key, key, timestamp))
+
+    def blocked(self, table, card, timestamp):
+        columns = "instance_id, stage_id, card_id, status, updated_at"
+        self.ns.execute("insert into %s (%s) values ('project', 'produce', ?, 'blocked', ?)" % (table, columns),
+                        (card, timestamp))
+
+    def test_paid_iso_timestamp_within_same_day_is_not_missed(self):
+        self.paid("stale", "2026-09-30T10:59:59.999Z")
+        self.paid("boundary", "2026-09-30T11:00:00.000Z")
+        self.paid("recent", "2026-09-30T11:00:00.001Z")
+        sampled = self.sample()
+        self.assertEqual([op["key"] for op in sampled["paid_executing"]], ["stale"])
+        self.assertIn("paid:stale", mod.evaluate(sampled)[2])
+
+    def test_paid_window_crosses_midnight(self):
+        self.now = self.now.replace(hour=0, minute=30)
+        self.paid("stale", "2026-09-29T23:29:59.999Z")
+        self.paid("recent", "2026-09-29T23:40:00.000Z")
+        self.assertEqual([op["key"] for op in self.sample()["paid_executing"]], ["stale"])
+
+    def test_paid_sqlite_format_and_timezone_offsets(self):
+        self.paid("sql-stale", "2026-09-30 10:59:00")
+        self.paid("offset-stale", "2026-09-30T18:59:00+08:00")
+        self.paid("offset-recent", "2026-09-30T19:01:00+08:00")
+        self.assertEqual([op["key"] for op in self.sample()["paid_executing"]], ["sql-stale", "offset-stale"])
+
+    def test_blocked_window_for_both_run_tables(self):
+        for table in ["content_item_runs", "stage_runs"]:
+            self.blocked(table, table + "-old", "2026-09-29T11:59:59.999Z")
+            self.blocked(table, table + "-boundary", "2026-09-29T12:00:00.000Z")
+            self.blocked(table, table + "-recent", "2026-09-29T12:00:00.001Z")
+        self.assertEqual({card["card"] for card in self.sample()["blocked"]},
+                         {"content_item_runs-recent", "stage_runs-recent"})
 
 
 if __name__ == "__main__":

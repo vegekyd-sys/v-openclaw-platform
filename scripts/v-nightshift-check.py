@@ -57,7 +57,8 @@ def ro(path):
 
 def sample(now_ms=None):
     """Everything the rules look at, read-only."""
-    now_ms = now_ms or int(time.time() * 1000)
+    now_ms = int(time.time() * 1000) if now_ms is None else now_ms
+    now_seconds = now_ms / 1000
     out = {"now_ms": now_ms, "unit": sh(["systemctl", "is-active", UNIT]), "health": None, "health_error": None}
     try:
         out["health"] = json.load(urllib.request.urlopen(HEALTH_URL, timeout=20))
@@ -72,13 +73,16 @@ def sample(now_ms=None):
     out["faults"] = [(iid, fault) for iid, fault in ns.execute(
         "select instance_id, fault_json from instance_controls where coalesce(fault_json,'')<>''") if iid in active]
     out["blocked"] = []
+    # Stored timestamps use ISO 8601 (T/Z), while SQLite datetime() uses a
+    # space. Compare instants, not strings, using the same clock as the rules.
     for iid, item, stage, card, kind, summary in ns.execute(
             "select instance_id, content_item_id, stage_id, card_id, coalesce(json_extract(failure_json,'$.kind'),'?'), "
             "substr(coalesce(summary,''),1,110) from content_item_runs "
-            "where status='blocked' and updated_at > datetime('now','-1 day') "
+            "where status='blocked' and julianday(updated_at) > julianday(?, 'unixepoch', '-1 day') "
             "union all select instance_id, null, stage_id, card_id, coalesce(json_extract(failure_json,'$.kind'),'?'), "
             "substr(coalesce(summary,''),1,110) from stage_runs "
-            "where status='blocked' and updated_at > datetime('now','-1 day')"):
+            "where status='blocked' and julianday(updated_at) > julianday(?, 'unixepoch', '-1 day')",
+            (now_seconds, now_seconds)):
         op = ns.execute("select status from external_operations where content_item_id=? and stage_id=?",
                         (item, stage)).fetchone() if item else None
         out["blocked"].append({"instance": iid, "item": item, "stage": stage, "card": card,
@@ -98,7 +102,8 @@ def sample(now_ms=None):
         {"key": key, "instance": iid, "item": item, "task": task}
         for key, iid, item, task in ns.execute(
             "select idempotency_key, instance_id, content_item_id, external_task_id from external_operations "
-            "where status='executing' and updated_at < datetime('now', ?)", ("-%d minutes" % PAID_EXECUTING_MIN,))]
+            "where status='executing' and julianday(updated_at) < julianday(?, 'unixepoch', ?)",
+            (now_seconds, "-%d minutes" % PAID_EXECUTING_MIN))]
     out["board_cards"] = wb.execute("select count(*) from workboard_cards where board_id=?", (BOARD,)).fetchone()[0]
     return out
 
