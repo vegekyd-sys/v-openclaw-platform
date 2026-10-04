@@ -10,6 +10,7 @@
 // Variants mirror what OpenClaw 9.1 would send for model grok-4.6:
 //   current  -> max_turns 2, no reasoning field (xAI default effort)
 //   low      -> max_turns 2, reasoning.effort "low" (the patched behaviour)
+//   medium   -> max_turns 2, reasoning.effort "medium"
 //   original -> no max_turns, no reasoning field (before 2026-10-04 tuning)
 import { appendFileSync, writeFileSync } from "node:fs";
 
@@ -28,6 +29,7 @@ const VARIANTS = {
   original: {},
   current: { max_turns: 2 },
   low: { max_turns: 2, reasoning: { effort: "low" } },
+  medium: { max_turns: 2, reasoning: { effort: "medium" } },
 };
 const variants = (args.variants ?? "current,low").split(",");
 
