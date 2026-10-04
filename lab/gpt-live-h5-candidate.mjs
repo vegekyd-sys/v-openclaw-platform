@@ -11,7 +11,7 @@ import {configureCandidateOpenAIAuth,installCandidateOpenAIAuth} from './gpt-liv
 import {GPT_LIVE_CALL_INSTRUCTIONS} from './gpt-live-h5/instructions.mjs';
 import {createLiveH5Server} from './gpt-live-h5/server.mjs';
 import {parsePublicProgressDiagnostics} from './gpt-live-h5-provenance-evidence.mjs';
-import {collectCandidateSelectedModelReferences,assertCandidateSelectedModelsPreserved,scopeCandidateAgentToAgentAllow,disableCandidateParallelToolCalls,preflightCandidateConfig} from './gpt-live-candidate-config-guard.mjs';
+import {collectCandidateSelectedModelReferences,assertCandidateSelectedModelsPreserved,scopeCandidateAgentToAgentAllow,disableCandidateParallelToolCalls,preflightCandidateConfig,applyCandidateBackendRouteDiagnostic,assertCandidateBackendRouteDiagnosticPair,assertCandidateBackendDiagnosticPaths} from './gpt-live-candidate-config-guard.mjs';
 import {startOwnedProcObserver} from './gpt-live-candidate-native/os-observer-lifecycle.mjs';
 import {parseVoiceConfirmationDiagnostics} from './gpt-live-candidate-native/confirmation-evidence.mjs';
 
@@ -55,7 +55,13 @@ const npmPrivate={cache:path.join(state,'cache/npm'),prefix:path.join(state,'npm
 for(const key of ['cache','prefix'])fs.mkdirSync(npmPrivate[key],{recursive:true,mode:0o700});
 for(const key of ['userconfig','globalconfig'])fs.writeFileSync(npmPrivate[key],'',{mode:0o600,flag:'wx'});
 for(const [key,value] of Object.entries(npmPrivate))for(const prefix of ['npm_config_','NPM_CONFIG_'])process.env[prefix+(prefix==='npm_config_'?key:key.toUpperCase())]=value;
-const config=JSON.parse(fs.readFileSync(configPath));
+let config=JSON.parse(fs.readFileSync(configPath));
+// Explicit diagnostic only. Without this frozen plan flag, retain the original
+// selected-model path; a Pro diagnostic never replaces normal Flash validation.
+const backendRouteFlag=process.env.GPT_LIVE_H5_BACKEND_ROUTE_DIAGNOSTIC;
+const backendRouteOptions={flag:backendRouteFlag,candidateId:process.env.VLAB_CANDIDATE_ID};
+const mainRouteBefore=backendRouteFlag===undefined?undefined:structuredClone(config);
+if(backendRouteFlag!==undefined)config=applyCandidateBackendRouteDiagnostic(config,{...backendRouteOptions,label:'main'}).config;
 // This experiment exercises Makaron and a real child of the same agent. Other
 // agents have independent selected harnesses and are outside this closure.
 const modelIsolation=[];
@@ -157,7 +163,9 @@ assert(worker?.workerConfigPath,'Worker configuration unavailable');
 const relative=path.relative(state,worker.workerConfigPath);assert(!relative.startsWith('..'));
 const workerBytes=fs.readFileSync(path.join(process.env.VLAB_SHARED_STATE_DIR,relative),'utf8')
  .replaceAll(process.env.VLAB_SHARED_STATE_DIR,state).replaceAll('/srv/vlab-production-mirror/labs/instances/db91-parity/runtime',runtime);
-const workerConfig=JSON.parse(workerBytes);
+let workerConfig=JSON.parse(workerBytes);
+const workerRouteBefore=backendRouteFlag===undefined?undefined:structuredClone(workerConfig);
+if(backendRouteFlag!==undefined)workerConfig=applyCandidateBackendRouteDiagnostic(workerConfig,{...backendRouteOptions,label:'worker'}).config;
 isolateMakaronModelScope(workerConfig,'worker');
 const workerProviderPolicy=disableCandidateParallelToolCalls(workerConfig,{label:'worker'});
 workerConfig.agents=workerProviderPolicy.config.agents;providerRequestPolicy.push(workerProviderPolicy.diagnostic);
@@ -188,6 +196,20 @@ if(fullTools) {
   workerConfig.plugins.allow=[...new Set([...(workerConfig.plugins.allow??[]),'memory-core','google','web-readability'])];
   workerConfig.tools.web=config.tools?.web??workerConfig.tools.web;
   workerConfig.plugins.load={...(workerConfig.plugins.load??{}),paths:config.plugins?.load?.paths??[]};
+}
+let backendRouteDiagnostic;
+if(backendRouteFlag!==undefined) {
+  // Resolve the nearest existing ancestor before creating any Worker config
+  // directories, so a symlink cannot redirect this diagnostic into shared state.
+  const target=path.resolve(worker.workerConfigPath);let ancestor=target;
+  while(!fs.existsSync(ancestor))ancestor=path.dirname(ancestor);
+  const workerTarget=path.join(fs.realpathSync(ancestor),path.relative(ancestor,target));
+  assert.equal(workerTarget,target,'Candidate backend Worker target has a noncanonical ancestor');
+  const privatePaths=assertCandidateBackendDiagnosticPaths({candidateId:process.env.VLAB_CANDIDATE_ID,
+    candidateRoot:fs.realpathSync(path.dirname(runtime)),runtime:fs.realpathSync(runtime),state:fs.realpathSync(state),
+    configPath:fs.realpathSync(configPath),workerConfigPath:workerTarget});
+  backendRouteDiagnostic={...assertCandidateBackendRouteDiagnosticPair({mainBefore:mainRouteBefore,mainAfter:config,
+    workerBefore:workerRouteBefore,workerAfter:workerConfig},backendRouteOptions),...privatePaths};
 }
 fs.mkdirSync(path.dirname(worker.workerConfigPath),{recursive:true});fs.writeFileSync(worker.workerConfigPath,JSON.stringify(workerConfig,null,2)+'\n',{mode:0o600});
 worker.gatewayConfigPath=configPath;fs.writeFileSync(configPath,JSON.stringify(config,null,2)+'\n',{mode:0o600});
@@ -225,7 +247,7 @@ db.close()`,privateAgentDb],{encoding:'utf8'}));
     fs.mkdirSync(path.dirname(destination),{recursive:true,mode:0o700});
     fs.copyFileSync(source,destination);fs.chmodSync(destination,0o600);copied++;bytes+=fs.statSync(destination).size;
   }
-  toolsEnvironment={schemaPreflight,npmPrivate,pluginIsolation,modelIsolation,providerRequestPolicy,actualMemorySnapshot:true,memorySources:inventory.sourceCount,memoryChunks:inventory.chunkCount,copiedMemoryFiles:copied,missingMemoryFiles:missing,copiedMemoryBytes:bytes,
+  toolsEnvironment={schemaPreflight,npmPrivate,pluginIsolation,modelIsolation,providerRequestPolicy,...(backendRouteDiagnostic?{backendRouteDiagnostic}:{}),actualMemorySnapshot:true,memorySources:inventory.sourceCount,memoryChunks:inventory.chunkCount,copiedMemoryFiles:copied,missingMemoryFiles:missing,copiedMemoryBytes:bytes,
     snapshotSchemaProof:{requiredTablesPresent:inventory.requiredTablesPresent,snapshotAgentId:inventory.snapshotAgentId,schemaSqlSha256:inventory.schemaSqlSha256,memorySourcesSha256:inventory.memorySourcesSha256,
       userVersion:inventory.userVersion,snapshotReadMode:inventory.snapshotReadMode},
     memoryDatabaseBytes:fs.statSync(privateAgentDb).size,plugins:[...allowed],webSearchEnabled:config.tools?.web?.search?.enabled===true,webSearchProvider:config.tools?.web?.search?.provider??null,
@@ -244,7 +266,7 @@ installCandidateOpenAIAuth();
 if(process.env.GPT_LIVE_H5_EVIDENCE_DIR) {
   const evidenceBase=process.env.GPT_LIVE_H5_EVIDENCE_DIR;assert(path.isAbsolute(evidenceBase),'Absolute evidence path required');
   fs.mkdirSync(evidenceBase,{recursive:true,mode:0o700});
-  fs.writeFileSync(path.join(evidenceBase,'bootstrap-isolation.json'),JSON.stringify({candidateId:process.env.VLAB_CANDIDATE_ID,createdAt:new Date().toISOString(),...toolsEnvironment,providerRequestPolicy,mainPluginAllow:config.plugins.allow,workerPluginAllow:workerConfig.plugins.allow,mainEnabledPlugins:Object.keys(config.plugins.entries??{}),workerEnabledPlugins:Object.keys(workerConfig.plugins.entries??{}),nativeVoiceStarted:false},null,2)+'\n',{mode:0o600});
+  fs.writeFileSync(path.join(evidenceBase,'bootstrap-isolation.json'),JSON.stringify({candidateId:process.env.VLAB_CANDIDATE_ID,createdAt:new Date().toISOString(),...toolsEnvironment,...(backendRouteDiagnostic?{backendRouteDiagnostic}:{}),providerRequestPolicy,mainPluginAllow:config.plugins.allow,workerPluginAllow:workerConfig.plugins.allow,mainEnabledPlugins:Object.keys(config.plugins.entries??{}),workerEnabledPlugins:Object.keys(workerConfig.plugins.entries??{}),nativeVoiceStarted:false},null,2)+'\n',{mode:0o600});
 }
 const tracePath=path.join(state,'gateway-stdout.log'),sessionPath=path.join(state,'h5-session.json');
 fs.writeFileSync(tracePath,'',{flag:'wx',mode:0o600});

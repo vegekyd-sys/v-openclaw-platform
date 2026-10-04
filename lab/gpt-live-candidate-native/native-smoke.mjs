@@ -18,6 +18,9 @@ import {resolveControlExecConfirmationChallenge,resolveConfirmationUserTurn,reso
   assessControlConfirmationCoreReceipt,parseControlProcessWitness,assessControlProcessPending,
   assessControlProcessExit,assessConfirmedControlCancel} from './confirmation-evidence.mjs';
 import {validateOwnedProcObserverBinding,validateOwnedProcObserverStart} from './os-observer-lifecycle.mjs';
+import {hasLifecyclePlaybackTail,assessLifecycleSpeech,assessProactiveGreeting,assessLifecyclePostTerminalRtp,
+  resolveLifecycleConsultResult,resolveLifecycleCanonicalBody,resolveLifecycleFinalSpeechTurns,
+  hasLifecycleFinalPlaybackTail,assessLifecycleFinalSpeech} from './call-lifecycle-evidence.mjs';
 assert(process.env.VLAB_CANDIDATE_ID&&process.env.GPT_LIVE_H5_READY==='1','Ready private Candidate H5 required');
 const testCase=process.env.GPT_LIVE_H5_CASE;assert(['comprehensive-long','comprehensive-controls','comprehensive-queued-steer'].includes(testCase));
 const controlPath=process.env.GPT_LIVE_H5_CONTROL_PATH??'combined';
@@ -150,6 +153,68 @@ async function startCall() {
  const meta=JSON.parse(fs.readFileSync(process.env.GPT_LIVE_H5_SESSION_PATH));const created=(await snapshot()).api.filter(x=>x.route==='/api/session'&&x.status===200).at(-1);
  assert.equal(meta.voiceSessionId,created.voiceSessionId,'Exact H5 session ownership');assert.equal(created.model,'gpt-live-1-codex');
  currentSession=meta.sessionKey;callOwners.set(pcIndex,{voiceSessionId:meta.voiceSessionId,sessionKey:meta.sessionKey,createdAt:created.at,connectedAt:(await snapshot()).pcTransitions.find(t=>t.pcIndex===pcIndex&&t.state==='connected')?.at??null});sessionKeys.push(meta.sessionKey);await subscribeSession(currentSession);const started={candidateId:process.env.VLAB_CANDIDATE_ID,testCase,pcIndex,paidVoiceStarted:true,sessionKey:meta.sessionKey,voiceSessionId:meta.voiceSessionId,apiStatus:created.status,connectedAt:callOwners.get(pcIndex).connectedAt,observedAt:Date.now()};save('native-voice-started-'+pcIndex+'.json',started);console.log(JSON.stringify({nativeVoiceStarted:started}));return pcIndex;
+}
+// Only the independent cancellation happy path waits before feeding USER PCM.
+// Deliberate acknowledgement/barge-in overlap on the combined path is intact.
+async function waitControlGreeting(pcIndex) {
+ assert.equal(controlPath,'confirm-cancel');
+ const owner=callOwners.get(pcIndex);assert(owner,'Exact original control call owner required');
+ const clipsBefore=pulse.plays.length,expectedClips=pcIndex===0?0:2;
+ assert.equal(clipsBefore,expectedClips,'Independent control greeting must precede the next USER');
+ const ready=await waitFor(s=>s.api.filter(a=>a.route==='/api/ready'&&a.status===200)[pcIndex],
+  'Independent control original H5 ready operation',15000);
+ assert(Number.isFinite(ready.requestedAt)&&ready.requestedAt>=owner.connectedAt&&ready.at>=owner.createdAt,
+  'Ready operation must belong to this connected original owner');
+ const evidence=await waitFor(async state=>{
+  if(!hasLifecyclePlaybackTail(state,{pcIndex,after:ready.requestedAt}))return null;
+  const full=await snapshot(true),speech=assessLifecycleSpeech(full,{pcIndex,after:ready.requestedAt,requireCreatedAfter:true});
+  if(!speech?.playback?.passed)return null;
+  const independentRtp=assessLifecyclePostTerminalRtp(speech.quiet,{terminalAt:speech.terminal.at});
+  const greeting=assessProactiveGreeting(full,{pcIndex,owner,readyAt:ready.requestedAt,before:speech.quiet.to+1});
+  if(!independentRtp||!greeting?.passed||greeting.speech?.terminal.turnId!==speech.terminal.turnId||
+    greeting.speech.window.from!==speech.window.from||greeting.speech.window.to!==speech.quiet.to)return null;
+  return {owner,ready,speech,greeting,independentRtp,clipsBefore,expectedClips,
+   proofObservedAt:full.snapshotObservedAt??null,proofWindowEnd:speech.quiet.to};
+ },'Independent control proactive greeting complete caption/player and750ms fresh RTP tail',45000);
+ // Keep this completed full-snapshot proof; a later transport/serialization
+ // delay cannot move its boundary or repair missing original player samples.
+ assert.equal(pulse.plays.length,clipsBefore,'No USER may be injected while the greeting proof is pending');
+ check('confirm-cancel-proactive-greeting-before-USER-'+pcIndex,true,{evidence,caseVariant:controlPath,
+  digitalPlaybackOnly:true,duplexAttenuationNotAccepted:true});
+ speechPlaybackWindows.push({name:'confirm-cancel-proactive-greeting-before-USER-'+pcIndex,window:evidence.speech.window});
+ save('confirm-cancel-greeting-'+pcIndex+'-evidence.json',evidence);return evidence;
+}
+async function waitControlConfirmationReply(pcIndex,challenge,userTurn) {
+ assert.equal(controlPath,'confirm-cancel');
+ const owner=callOwners.get(pcIndex),clipsBefore=pulse.plays.length;
+ assert(owner&&challenge?.owner&&challenge.pcIndex===pcIndex&&challenge.sessionKey===owner.sessionKey&&
+  challenge.voiceSessionId===owner.voiceSessionId&&challenge.owner.backendRunId===challenge.runId&&
+  challenge.owner.sourceRunIdSha256===hash(challenge.runId)&&clipsBefore===1&&userTurn?.turnId,
+  'Exact initial challenged run and complete original USER required');
+ const evidence=await waitFor(async state=>{
+  const ds=diagnostics(),canonical=resolveCanonicalFinalTrace(ds,challenge.owner,challenge.owner.sourceRunIdSha256);
+  if(!canonical||canonical.received.at<challenge.blockedAt)return null;
+  const body=resolveLifecycleCanonicalBody(toolEvents,{canonical,sessionKey:challenge.sessionKey,runId:challenge.runId});
+  const host=resolveLifecycleConsultResult(state,{pcIndex,voiceSessionId:owner.voiceSessionId,userTurnId:userTurn.turnId,
+   toolChain:{runId:challenge.runId},after:controlConfirmation.originalRequestInput.startedAt});
+  if(!host||host.result.at<challenge.blockedAt)return null;
+  const params={pcIndex,body,host,userTurnId:userTurn.turnId};
+  if(!hasLifecyclePlaybackTail(state,{pcIndex,after:canonical.received.at,terminalAfter:canonical.final.at})||
+    !resolveLifecycleFinalSpeechTurns(state,params)||!hasLifecycleFinalPlaybackTail(state,params))return null;
+  const full=await snapshot(true),fullHost=resolveLifecycleConsultResult(full,{pcIndex,voiceSessionId:owner.voiceSessionId,
+   userTurnId:userTurn.turnId,toolChain:{runId:challenge.runId},after:controlConfirmation.originalRequestInput.startedAt});
+  if(!fullHost||fullHost.result.at!==host.result.at)return null;
+  const speech=assessLifecycleFinalSpeech(full,{...params,host:fullHost});
+  return speech?{owner,challengeOwner:challenge.owner,canonical,body,host:fullHost,speech,clipsBefore,
+   proofObservedAt:full.snapshotObservedAt??null,proofWindowEnd:speech.quiet.to,
+   source:'exact-challenged-run-canonical-final-and-complete-native-playback-before-confirmation-USER',
+   confirmationPromptMeaningRequiresIndependentReview:true}:null;
+ },'Exact challenged canonical final complete native reply and750ms fresh RTP tail before confirmation USER',45000);
+ assert.equal(pulse.plays.length,clipsBefore,'No confirmation USER may overlap the pending spoken question');
+ check('confirm-cancel-challenged-reply-before-confirmation-USER',true,{evidence,caseVariant:controlPath,
+  digitalPlaybackOnly:true,duplexAttenuationNotAccepted:true});
+ speechPlaybackWindows.push({name:'confirm-cancel-challenged-reply-before-confirmation-USER',window:evidence.speech.window});
+ save('confirm-cancel-challenged-reply-evidence.json',evidence);return evidence;
 }
 function play(name){
  const file=path.join(clips,name+'.wav');assert(fs.existsSync(file));const input=pulse.play(file,name);
@@ -309,7 +374,9 @@ async function longTask() {
  await stopCall(pcIndex);
 }
 async function controls() {
- const pcIndex=await startCall(),cancelInput=play('cancel-task');await cancelInput.done;
+ const pcIndex=await startCall();
+ if(controlPath==='confirm-cancel')await waitControlGreeting(pcIndex);
+ const cancelInput=play('cancel-task');await cancelInput.done;
  let confirmationAttempted=false;
  const accepted=await waitFor(async state=>{
   await readHistory();const pairs=parentEvidencePairs(),pending=assessControlExecPending(lastHistory.parent,60,{requireDateInCommand:false});
@@ -346,6 +413,7 @@ async function controls() {
   assert(originalTurn&&/(?:六十|60)/u.test(originalTurn.text)&&/等待|等|睡眠|sleep/iu.test(originalTurn.text)&&
    /时间|日期|date/iu.test(originalTurn.text),'The actual original USER must request this sleep60/time task');
   controlConfirmation.originalRequestConvergence=original;controlConfirmation.originalRequestUserTurn=originalTurn;
+  if(controlPath==='confirm-cancel')controlConfirmation.originalChallengeReply=await waitControlConfirmationReply(pcIndex,challenge,originalTurn);
   assert(fs.readFileSync(path.join(clips,'confirmation.txt'),'utf8').trim()==='确认执行。','Frozen explicit USER confirmation fixture required');
   const input=play('confirmation');controlConfirmation.input=input.row;save('control-confirmation-evidence.json',controlConfirmation);
   await input.done;controlConfirmation.confirmationInputConvergence=await convergeInputTurn(input,pcIndex,'Explicit action confirmation USER');
@@ -552,7 +620,8 @@ async function confirmCancelOnly({pcIndex,accepted,actualExecStartedAt,backendRu
   {caseVariant:controlPath,lateCallbackWitness:droppedLate,status:droppedLate.length?'witnessed':'missing-real-late-callback',
    reason:'Quiet observation alone does not prove a late callback was rejected'});
  await stopCall(pcIndex);
- const reopened=await startCall(),greeting=play('new-greeting');await greeting.done;
+ const reopened=await startCall();await waitControlGreeting(reopened);
+ const greeting=play('new-greeting');await greeting.done;
  const greetingReply=await waitFor(state=>state.events.find(e=>e.pcIndex===reopened&&e.type==='turn.done'&&e.role==='assistant'&&
   e.at>=greeting.row.startedAt&&/(听|清楚|重连|连接)/u.test(e.text)),'Reconnect spoken greeting after independent cancellation',45000);
  check('new-session-on-reconnect',sessionKeys.at(-1)!==sessionKeys.at(-2),{caseVariant:controlPath,sessionCount:sessionKeys.length});

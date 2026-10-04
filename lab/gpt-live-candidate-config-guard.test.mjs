@@ -3,9 +3,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import vm from "node:vm";
 import {
   assertCandidateSelectedModelsPreserved, collectCandidateSelectedModelReferences,
   disableCandidateParallelToolCalls, preflightCandidateConfig, scopeCandidateAgentToAgentAllow, validateCandidateConfigPure,
+  CANDIDATE_PRO_DIAGNOSTIC_MODEL, applyCandidateBackendRouteDiagnostic,
+  assertCandidateBackendRouteDiagnosticPreserved, assertCandidateBackendRouteDiagnosticPair, assertCandidateBackendDiagnosticPaths,
 } from "./gpt-live-candidate-config-guard.mjs";
 
 function fixtureConfig() {
@@ -31,6 +34,172 @@ function fixtureConfig() {
     bindings: [{ agentId: "makaron" }],
   };
 }
+
+function diagnosticFixture(label) {
+  const config = fixtureConfig(), runtimeId = label === "main" ? "vlab-worker" : "openclaw";
+  delete config.agents.defaults.subagents.model;
+  config.agents.defaults.model = { primary: CANDIDATE_PRO_DIAGNOSTIC_MODEL, fallbacks: [] };
+  for (const model of ["deepseek/deepseek-v4-flash", CANDIDATE_PRO_DIAGNOSTIC_MODEL]) {
+    config.agents.defaults.models[model] = { agentRuntime: { id: runtimeId }, params: { temperature: 0.1 } };
+  }
+  config.agents.entries.makaron.model = { primary: "deepseek/deepseek-v4-flash", fallbacks: [] };
+  config.agents.entries.makaron.models = { [CANDIDATE_PRO_DIAGNOSTIC_MODEL]: {} };
+  config.models.providers.deepseek = { agentRuntime: { id: runtimeId }, apiKey: "fixture-secret-never-in-proof",
+    models: [{ id: "deepseek-v4-flash", name: "Existing Flash" }, { id: "deepseek-v4-pro", name: "Existing Pro" }] };
+  return config;
+}
+
+const diagnosticOptions = (label) => ({ flag: CANDIDATE_PRO_DIAGNOSTIC_MODEL, candidateId: "candidate-route-test", label });
+
+test("absent backend diagnostic flag retains the original config object and Flash path", () => {
+  const before = fixtureConfig();
+  const result = applyCandidateBackendRouteDiagnostic(before);
+  assert.equal(result.config, before);
+  assert.deepEqual(result.diagnostic, { applied: false });
+  assert.equal(before.agents.entries.makaron.model, "deepseek/flash");
+  assert.deepEqual(assertCandidateBackendRouteDiagnosticPair({}, {}), { applied: false });
+});
+
+test("explicit Pro diagnostic changes one primary in each private copy without changing credentials or defaults", () => {
+  for (const label of ["main", "worker"]) {
+    const before = diagnosticFixture(label), original = structuredClone(before);
+    const result = applyCandidateBackendRouteDiagnostic(before, diagnosticOptions(label));
+    const expected = structuredClone(original); expected.agents.entries.makaron.model.primary = CANDIDATE_PRO_DIAGNOSTIC_MODEL;
+    assert.deepEqual(result.config, expected);
+    assert.deepEqual(before, original);
+    result.config.agents.entries.makaron.model.primary = original.agents.entries.makaron.model.primary;
+    assert.deepEqual(result.config, original);
+    assert.equal(result.diagnostic.runtimeId, label === "main" ? "vlab-worker" : "openclaw");
+    assert.equal(result.diagnostic.changedPath, "agents.entries.makaron.model.primary");
+    assert.equal(result.diagnostic.combinedReleaseAccepted, false);
+    assert.equal(result.diagnostic.modelSemanticsVerified, false);
+    assert(!JSON.stringify(result.diagnostic).includes("fixture-secret-never-in-proof"));
+  }
+});
+
+test("diagnostic rejects unsupported flags, owner and copy without exposing their supplied values", () => {
+  const before = diagnosticFixture("main");
+  for (const flag of ["", "deepseek/new-model", "private-invalid-flag"]) {
+    assert.throws(() => applyCandidateBackendRouteDiagnostic(before, { ...diagnosticOptions("main"), flag }),
+      (error) => /Unsupported Candidate/u.test(error.message) && !error.message.includes("private-invalid-flag"));
+  }
+  assert.throws(() => applyCandidateBackendRouteDiagnostic(before, { ...diagnosticOptions("main"), candidateId: "shared" }), /owner required/u);
+  assert.throws(() => applyCandidateBackendRouteDiagnostic(before, { ...diagnosticOptions("main"), label: "shared" }), /copy required/u);
+});
+
+test("diagnostic rejects baseline, fallback, catalog and runtime drift rather than adding model configuration", () => {
+  for (const edit of [
+    (config) => { config.agents.entries.makaron.model = "deepseek/deepseek-v4-flash"; },
+    (config) => { config.agents.entries.makaron.model.primary = CANDIDATE_PRO_DIAGNOSTIC_MODEL; },
+    (config) => { config.agents.entries.makaron.model.fallbacks.push(CANDIDATE_PRO_DIAGNOSTIC_MODEL); },
+    (config) => { config.models.providers.deepseek.models.pop(); },
+    (config) => { config.models.providers.deepseek.models.push({ id: "deepseek-v4-pro" }); },
+    (config) => { config.models.providers.deepseek.agentRuntime.id = "openclaw"; },
+    (config) => { config.agents.defaults.models[CANDIDATE_PRO_DIAGNOSTIC_MODEL].agentRuntime.id = "codex"; },
+    (config) => { config.agents.entries.makaron.models["deepseek/*"] = { agentRuntime: { id: "claude-cli" } }; },
+    (config) => { config.models.providers.deepseek.models[1].agentRuntime = { id: "codex" }; },
+  ]) {
+    const config = diagnosticFixture("main"); edit(config);
+    assert.throws(() => applyCandidateBackendRouteDiagnostic(config, diagnosticOptions("main")));
+  }
+  const recursiveWorker = diagnosticFixture("worker"); recursiveWorker.models.providers.deepseek.agentRuntime.id = "vlab-worker";
+  assert.throws(() => applyCandidateBackendRouteDiagnostic(recursiveWorker, diagnosticOptions("worker")), /runtime drifted/u);
+});
+
+test("diagnostic rejects an explicit list or child selector rather than expanding its one-field scope", () => {
+  for (const edit of [
+    (config) => { config.agents.list = [{ id: "makaron", model: "deepseek/deepseek-v4-flash" }]; },
+    (config) => { config.agents.entries.makaron.subagents = { model: CANDIDATE_PRO_DIAGNOSTIC_MODEL }; },
+    (config) => { config.agents.defaults.subagents.model = "deepseek/deepseek-v4-flash"; },
+  ]) {
+    const config = diagnosticFixture("main"); edit(config);
+    assert.throws(() => applyCandidateBackendRouteDiagnostic(config, diagnosticOptions("main")), /explicit (list|child) model selection/u);
+  }
+  const inheritedList = diagnosticFixture("main"); inheritedList.agents.list = [{ id: "makaron", params: { temperature: 0.3 } }];
+  assert.equal(applyCandidateBackendRouteDiagnostic(inheritedList, diagnosticOptions("main")).diagnostic.applied, true);
+});
+
+test("both original Flash and new Pro metadata retain their existing generic preservation checks", () => {
+  const before = diagnosticFixture("main"), result = applyCandidateBackendRouteDiagnostic(before, diagnosticOptions("main"));
+  const proof = assertCandidateBackendRouteDiagnosticPreserved(before, result.config, diagnosticOptions("main"));
+  assert(proof.selectedFlash.metadataCount > 0 && proof.selectedPro.metadataCount > 0);
+  for (const model of ["deepseek/deepseek-v4-flash", CANDIDATE_PRO_DIAGNOSTIC_MODEL]) {
+    const after = structuredClone(result.config); after.agents.defaults.models[model].params.temperature = 0.9;
+    assert.throws(() => assertCandidateBackendRouteDiagnosticPreserved(before, after, diagnosticOptions("main")), /selected model metadata changed/u);
+  }
+  const alteredFallback = structuredClone(result.config); alteredFallback.agents.defaults.model.fallbacks.push("openai/new");
+  assert.throws(() => assertCandidateBackendRouteDiagnosticPreserved(before, alteredFallback, diagnosticOptions("main")), /selected model references changed/u);
+  assert.throws(() => assertCandidateSelectedModelsPreserved(before, result.config), /selected model references changed/u);
+});
+
+test("Pro-only post-isolation guard preserves the complete provider without printing credentials", () => {
+  for (const label of ["main", "worker"]) {
+    const before = diagnosticFixture(label);
+    Object.assign(before.models.providers.deepseek, { baseUrl: "https://fixture.invalid/v1",
+      headers: { Authorization: "fixture-private-header" }, api: "openai-completions" });
+    const result = applyCandidateBackendRouteDiagnostic(before, diagnosticOptions(label));
+    for (const edit of [
+      (provider) => { provider.apiKey = "anonymous-changed-secret"; },
+      (provider) => { provider.baseUrl = "https://anonymous-changed.invalid/v1"; },
+      (provider) => { provider.headers.Authorization = "anonymous-changed-secret"; },
+      (provider) => { provider.api = "anonymous-changed-api"; },
+    ]) {
+      const after = structuredClone(result.config); edit(after.models.providers.deepseek);
+      assert.throws(() => assertCandidateBackendRouteDiagnosticPreserved(before, after, diagnosticOptions(label)),
+        (error) => error.message === "Candidate backend complete provider configuration changed" &&
+          !error.stack.includes("anonymous-changed") && !error.stack.includes("fixture-private-header"));
+    }
+    assert.equal(assertCandidateBackendRouteDiagnosticPreserved(before, result.config, diagnosticOptions(label)).providerMetadataPreserved, true);
+  }
+  // The opt-in guard must not introduce a new check on the original path.
+  assert.deepEqual(assertCandidateBackendRouteDiagnosticPreserved({}, { arbitrary: "unchanged normal contract" }, {}), { applied: false });
+});
+
+test("Pro-only post-isolation guard preserves empty fallbacks and authored selector shape", () => {
+  const before = diagnosticFixture("main"), result = applyCandidateBackendRouteDiagnostic(before, diagnosticOptions("main"));
+  for (const scope of ["defaults", "makaron"]) {
+    for (const edit of [
+      (agent) => { delete agent.model.fallbacks; },
+      (agent) => { agent.model.fallbacks = null; },
+      (agent) => { agent.model.secondary = "anonymous-secondary"; },
+    ]) {
+      const after = structuredClone(result.config);
+      edit(scope === "defaults" ? after.agents.defaults : after.agents.entries.makaron);
+      assert.throws(() => assertCandidateBackendRouteDiagnosticPreserved(before, after, diagnosticOptions("main")),
+        /authored model selection changed/u);
+    }
+  }
+  const normalIsolation = structuredClone(result.config);
+  normalIsolation.agents.defaults.workspace = "/private/candidate/workspace";
+  normalIsolation.agents.defaults.heartbeat.every = "0m";
+  normalIsolation.agents.entries.makaron.subagents = { allowAgents: ["makaron"] };
+  assert.equal(assertCandidateBackendRouteDiagnosticPreserved(before, normalIsolation, diagnosticOptions("main")).fallbacksPreserved, true);
+});
+
+test("paired main and Worker diagnostic is bounded and refuses a stale or mixed Worker route", () => {
+  const mainBefore = diagnosticFixture("main"), workerBefore = diagnosticFixture("worker");
+  const mainAfter = applyCandidateBackendRouteDiagnostic(mainBefore, diagnosticOptions("main")).config;
+  const workerAfter = applyCandidateBackendRouteDiagnostic(workerBefore, diagnosticOptions("worker")).config;
+  const proof = assertCandidateBackendRouteDiagnosticPair({ mainBefore, mainAfter, workerBefore, workerAfter }, diagnosticOptions("main"));
+  assert.equal(proof.main.runtimeId, "vlab-worker"); assert.equal(proof.worker.runtimeId, "openclaw");
+  assert.equal(proof.normalFlashValidationReplaced, false); assert.equal(proof.combinedReleaseAccepted, false);
+  const serialized = JSON.stringify(proof);
+  assert(serialized.length < 4096 && !serialized.includes("fixture-secret-never-in-proof"));
+  assert(!serialized.includes("apiKey") && !serialized.includes("config\":"));
+  assert.throws(() => assertCandidateBackendRouteDiagnosticPair({ mainBefore, mainAfter, workerBefore, workerAfter: workerBefore }, diagnosticOptions("main")), /selected model references changed/u);
+});
+
+test("diagnostic private path guard rejects shared, escaped and duplicate config targets", () => {
+  const candidateRoot = "/tmp/candidate-route-test", state = candidateRoot + "/state";
+  const options = { candidateId: "candidate-route-test", candidateRoot, runtime: candidateRoot + "/runtime", state,
+    configPath: state + "/main.json", workerConfigPath: state + "/worker.json" };
+  assert.equal(assertCandidateBackendDiagnosticPaths(options).privatePathsVerified, true);
+  for (const edit of [
+    { candidateId: "candidate-someone-else" }, { runtime: "/srv/shared/runtime" },
+    { configPath: "/srv/shared/config.json" }, { workerConfigPath: options.configPath },
+    { workerConfigPath: state + "/../shared.json" },
+  ]) assert.throws(() => assertCandidateBackendDiagnosticPaths({ ...options, ...edit }));
+});
 
 test("selection protection includes image, compaction, heartbeat, subagent and Worker compaction routes", () => {
   const config = fixtureConfig(), before = structuredClone(config);
@@ -177,6 +346,51 @@ function privateFixture(t) {
   const configPath = path.join(state, "openclaw.json"); fs.writeFileSync(configPath, JSON.stringify(fixtureConfig()));
   return { container, candidateRoot, runtime, state, configPath, dist, schemaFile };
 }
+
+test("actual bootstrap pairs routes and private paths before its first config write", (t) => {
+  const source = fs.readFileSync(new URL("./gpt-live-h5-candidate.mjs", import.meta.url), "utf8");
+  const start = source.indexOf("let backendRouteDiagnostic;"), end = source.indexOf("const schemaPreflight=[];", start);
+  assert(start >= 0 && end > start);
+  const actualWriteBoundary = source.slice(start, end);
+  for (const scenario of ["valid", "mixed-worker", "symlink-worker"]) {
+    const f = privateFixture(t), state = fs.realpathSync(f.state), runtime = fs.realpathSync(f.runtime);
+    // The wrapper prepares its owned main config with 0600 before bootstrap.
+    fs.chmodSync(f.configPath, 0o600);
+    const configPath = fs.realpathSync(f.configPath), candidateId = path.basename(fs.realpathSync(f.candidateRoot));
+    const mainBefore = diagnosticFixture("main"), workerBefore = diagnosticFixture("worker");
+    const options = { flag: CANDIDATE_PRO_DIAGNOSTIC_MODEL, candidateId };
+    const config = applyCandidateBackendRouteDiagnostic(mainBefore, { ...options, label: "main" }).config;
+    const workerConfig = scenario === "mixed-worker" ? structuredClone(workerBefore)
+      : applyCandidateBackendRouteDiagnostic(workerBefore, { ...options, label: "worker" }).config;
+    const workerTarget = path.join(state, "worker/openclaw.json"), writes = [];
+    if (scenario === "symlink-worker") {
+      const outside = path.join(f.container, "shared-worker"); fs.mkdirSync(outside);
+      fs.symlinkSync(outside, path.dirname(workerTarget));
+    }
+    const guardedFs = { existsSync: fs.existsSync, realpathSync: fs.realpathSync,
+      mkdirSync(...args) { writes.push({ operation: "mkdir", target: args[0] }); return fs.mkdirSync(...args); },
+      writeFileSync(...args) { writes.push({ operation: "write", target: args[0] }); return fs.writeFileSync(...args); } };
+    const context = vm.createContext({ fs: guardedFs, path, assert, runtime, state, configPath,
+      worker: { workerConfigPath: workerTarget }, config, workerConfig, mainRouteBefore: mainBefore, workerRouteBefore: workerBefore,
+      backendRouteFlag: options.flag, backendRouteOptions: options, process: { env: { VLAB_CANDIDATE_ID: candidateId } },
+      assertCandidateBackendDiagnosticPaths, assertCandidateBackendRouteDiagnosticPair });
+    const run = () => vm.runInContext(actualWriteBoundary + "\nglobalThis.proof = backendRouteDiagnostic;", context);
+    if (scenario !== "valid") {
+      assert.throws(run);
+      assert.equal(writes.length, 0, "A rejected route/path pair must precede all config mutations");
+      assert(!fs.existsSync(workerTarget));
+    } else {
+      run();
+      assert.equal(context.proof.privatePathsVerified, true);
+      assert.equal(context.proof.combinedReleaseAccepted, false);
+      assert.deepEqual(writes.filter((row) => row.operation === "write").map((row) => row.target), [workerTarget, configPath]);
+      for (const file of [workerTarget, configPath]) {
+        assert.equal(JSON.parse(fs.readFileSync(file)).agents.entries.makaron.model.primary, CANDIDATE_PRO_DIAGNOSTIC_MODEL);
+        assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+      }
+    }
+  }
+});
 
 test("loader admits only the standalone schema and config inside actual private roots", async (t) => {
   const f = privateFixture(t), result = await preflightCandidateConfig(f);

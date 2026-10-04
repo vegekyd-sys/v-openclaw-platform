@@ -142,3 +142,15 @@
 仅四个观察器文件新增后置留证。原 PC 和麦克风先关闭、原录音先完成导出，再读取同一 owner/session/run 的 history 与 query-only SQLite 原始消息，分别另存早期原件之外的私有文件。原消息声明的 runId 必须全部一致，并以实际 canonical 正文 hash 与原始消息时钟核对；读者传入的标签、模型配置和邻居消息不能代替源身份或 response metadata。字段不存在明确记录，缺失不会把原 FAIL 改成通过。
 
 后置 history 有 10 秒预算，原始 SQLite 读取显式使用 5 秒预算；读取、评估、保存失败均继续原 Chrome/Pulse/私有目录清理，清理后才记观察器错误。八条实际 finally 的离线注入路径覆盖成功、正文失败、读取超时和保存失败。统一 build 的 24 个 runtime 与 ac9 逐字节一致，35 文件 684/684 本地通过、零 skip；这项新取证仍需后续 Memory/Web 原 H5 运行。
+
+### 独立确认取消样本 6b0a4aa：初始 USER 与接通问候重叠
+
+- 真实 canonical CLI / Darwin PID / 新 Candidate prevoice barrier 绑定成立；`exec90018` 已结束 FAIL，23 份原始文件完整导出，原回执 SHA `4923d3b0c9b0c6febe1c807eaac47cdcc27e43431e28f0dbfa4cdb3202bcae13`。自己的 unit 已 not-found、目录已删除，共享 Gateway `1812432` 保持。
+- 原 7.382 秒 USER 连续喂入时与主动问候重叠。原生字幕、完整 USER、委派、持久化 USER 都只含“执行 sleep 60 分号，需要确认就先问我”；前置等待/日期要求在原生输入文字出现前已缺失。后台实际尝试 `sleep 60;`，触发真实确认挑战，但与原严格场景不匹配，观察器正确没有喂确认、取消或重拨。7/8 局部检查不等于控制行为通过。
+- 独立麦克风报告：同一捕获轨道和 sender 持续开启、全程最大采样间隔 83 ms，喂入窗口最大 61 ms；问候重叠段 44 帧中 38 帧能量接近零，原 USER WAV 同期仍有声。无法仅据此确定具体 AEC/DSP 或 provider 根因，物理扬声器/真人听觉仍未验收。
+- 下一次确认取消 happy path 先核对接通问候、实际确认问句和原播放器/fresh RTP 的完整静尾，再喂独立 USER；故意插话场景保留。等待问候不代表修好了全双工重叠输入。
+- 为定位后台来源资格与 Live 漏读问题，准备显式 Candidate-only Pro 路由诊断。只变自有 main/Worker 的 Makaron `model.primary`，正常无标记仍沿原 Flash 路径；main 的 `vlab-worker` 与 Worker 的 `openclaw` runtime、defaults/fallback/provider/凭据均保留。诊断配置和本地测试不能充当真实模型遵循或发布验收；不合 dev/shared/V。
+
+确认取消的三个独立输入均接入实际完整语音等待：同原 owner 的接通问候、exact challenged run 的 canonical final 确认回复、重拨后的新 owner 问候。固定完整快照 proof，后续慢序列化不移动边界；combined 的故意重叠、原精确命令选择、100ms 与 750ms 门槛保留。这是验证流程修正，双向说话时的实际输入衰减还没有产品修复。
+
+Pro 诊断补丁独立审查修复了 post-isolation 的完整 provider/selector 保护缺口：实际函数拒绝凭据、端点、headers/API 及空 fallback 结构漂移。三文件无 flag 的实际 bootstrap 写入片段与原 6b 等价，只有显式标记的私有 main/Worker 使用既配 Pro；真实 provider 响应和语义仍待样本。统一 build 的 24 个 runtime 与 ac9 逐字节一致，36 文件 713/713 本地检查、零 skip。2026-10-04T09:29Z 只读核对全部 24 before 和 foreign PR181 hash 匹配，共享 Gateway 1812432、pending/lease null；没有共享或 V 写入。

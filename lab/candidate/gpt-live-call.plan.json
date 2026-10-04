@@ -156,6 +156,7 @@
     "lab/gpt-live-h5-control-evidence.test.mjs",
     "lab/gpt-live-h5-user-pcm.test.mjs",
     "lab/gpt-live-h5-control-probe.test.mjs",
+    "lab/gpt-live-candidate-config-guard.test.mjs",
     "lab/gpt-live-completion-context.test.mjs",
     "release/captured/v2026.9.1-db91.6-db91-shrink-reuse-20261002.worker/dist/subagent-completion-relay.test.mjs"
   ],
