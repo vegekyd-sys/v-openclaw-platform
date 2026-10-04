@@ -275,6 +275,34 @@ import { resolveWecomCommandAuthorization as vResolveCommandAuthorization } from
                 }
                 // 按 accountId:chatId 串行排队`,
   },
+  {
+    // A tap on a V card button (key `vcmd:…`, e.g. 我完成了 on the 「电脑」 card)
+    // becomes the command as the tapper's own message, so the plugin that owns
+    // it handles it with the usual identity checks. The tap's event is parked
+    // so that plugin can rewrite the card (WeCom accepts one update, in reply
+    // to the event, within 5 s). Other card events keep the plugin's handling.
+    name: "card-command",
+    anchor: "                if (eventType === \"template_card_event\") {\n                    const templateCardEvent = eventBody.event?.template_card_event;\n",
+    replace: `                // ${MARKER}
+                const vCardCommand = eventType === "template_card_event" ? vExperience.parseWecomCardKey(eventBody.event?.template_card_event?.event_key) : undefined;
+                if (vCardCommand === null)
+                    return;
+                if (vCardCommand) {
+                    const vTaskId = eventBody.event?.template_card_event?.task_id;
+                    const vTapper = eventBody.from?.userid;
+                    vExperience.cardActionBridge().hold("wecom", vCardCommand.ref, async ({ presentation, text }) => {
+                        const card = vExperience.linkCardFromPresentation(presentation, text, { commands: true, allowEmpty: true });
+                        if (!card) return;
+                        await wsClient.updateTemplateCard(frame, vExperience.wecomButtonCard(card, { taskId: vTaskId }), vTapper ? [vTapper] : undefined);
+                        runtime.log?.(\`[\${account.accountId}] [v-experience] card \${vTaskId} updated after \${vCardCommand.command.split(" ")[0]}\`);
+                    });
+                    frame.body = { ...eventBody, msgtype: "text", text: { content: vCardCommand.command } };
+                    runtime.log?.(\`[\${account.accountId}] [v-experience] card button \${vCardCommand.command.split(" ")[0]} from \${vTapper ?? "?"}\`);
+                }
+                else if (eventType === "template_card_event") {
+                    const templateCardEvent = eventBody.event?.template_card_event;
+`,
+  },
 ];
 
 // channel.js: the outbound adapter. `openclaw message send --presentation`
@@ -295,9 +323,10 @@ import { sendPayloadWithChunkedTextAndMedia as vSendTextAndMedia } from "opencla
     name: "outbound-card",
     anchor: '    outbound: {\n        deliveryMode: "gateway",\n',
     insert: "after",
-    code: `        // ${MARKER}: link buttons as a template card (callback buttons cannot be posted back).
+    code: `        // ${MARKER}: buttons as template cards: links as a text_notice; a card with
+        // command buttons (V's 「电脑」 card) as its picture + a button_interaction card.
         renderPresentation: ({ payload, presentation }) => {
-            const card = vExperience.linkCardFromPresentation(presentation, payload.text);
+            const card = vExperience.linkCardFromPresentation(presentation, payload.text, { commands: true });
             return card ? { ...payload, text: vExperience.linkCardText(card), channelData: { ...payload.channelData, vLinkCard: card } } : null;
         },
         sendPayload: async (ctx) => {
@@ -307,7 +336,29 @@ import { sendPayloadWithChunkedTextAndMedia as vSendTextAndMedia } from "opencla
             // Without the robot socket (Agent HTTP API) the card goes out as its text.
             if (!card || !wsClient?.isConnected) return vSendTextAndMedia({ ctx, textChunkLimit: out.textChunkLimit, chunker: out.chunker, sendText: out.sendText, sendMedia: out.sendMedia, emptyResult: { channel: CHANNEL_ID, messageId: "" } });
             const chatId = String(ctx.to ?? "").replace(new RegExp(\`^\${CHANNEL_ID}:\`, "i"), "");
-            const result = await wsClient.sendMessage(chatId, { msgtype: "template_card", template_card: vExperience.wecomTextNotice(card) });
+            let result;
+            const messages = vExperience.wecomCardMessages(card);
+            for (const [index, message] of messages.entries()) {
+                if (index < messages.length - 1 && message.templateCard) {
+                    // The picture card is extra: if WeCom refuses it, the button card still goes out.
+                    await wsClient.sendMessage(chatId, { msgtype: "template_card", template_card: message.templateCard }).catch((err) => console.warn(\`[wecom][v-experience] picture card not sent: \${String(err?.errmsg ?? err?.message ?? JSON.stringify(err))}\`));
+                    continue;
+                }
+                if (message.image) {
+                    // A local picture (no url WeCom can fetch): uploaded over the robot socket, sent as an image message.
+                    const picture = vExperience.localCardImage(message.image);
+                    if (!picture) continue;
+                    try {
+                        const uploaded = await wsClient.uploadMedia(picture.bytes, { type: "image", filename: picture.filename });
+                        await wsClient.sendMediaMessage(chatId, "image", uploaded.media_id);
+                    }
+                    catch (err) {
+                        console.warn(\`[wecom][v-experience] card picture not sent: \${String(err?.message ?? err)}\`);
+                    }
+                    continue;
+                }
+                result = await wsClient.sendMessage(chatId, { msgtype: "template_card", template_card: message.templateCard });
+            }
             return { channel: CHANNEL_ID, messageId: result?.headers?.req_id ?? \`wecom-\${Date.now()}\`, chatId };
         },
 `,

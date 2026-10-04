@@ -39,7 +39,7 @@
 | A1 Ask User | V（1–3 题、多选、自定义） | **实测卡死**：worker 的问题不显示选项，打字回答要等问题超时才被处理 | **实测卡死**：问题被丢弃 | **实测卡死**：问题不显示，回答排在等待的回合后面 | 只能打字回答 |
 | A2 审批卡 | V | 原生（V 上 10/03 已关） | — | — | 原生（仅默认账号） |
 | A3 密钥录入 | V | —（只发 Control UI 链接，V 没配 publicOrigin → 报错） | — | — | — |
-| A4 接管卡 | V | 走插件的 `message send --presentation` 通用回退，待实测 | 同左 | 同左 | 同左 |
+| A4 接管卡 | V | V（截图照片 + 接管 / 我完成了 / 跳过，原地改，见第 16 节） | V（actionCard：截图 + 三个按钮；卡片不能改，状态发一句话） | V（截图卡 + 按钮卡，点按钮 5 秒内改卡） | 通用回退 |
 | C1 切换 Harness | V | `/model` 原生 + 模型选择按钮；Telegram 只放行 Tianyi，权限问题不存在 | 命令权限**写死为已授权**（已改，见第 12 节） | 命令权限**写死为已授权**（已改，见第 12 节） | 只能打字 |
 | C2 插话 | V（状态待核实） | 待查 | 待查 | 待查 | 待查 |
 | 按钮回调 | 有 | 有（callback_query） | **没订阅**（`TOPIC_CARD`） | 有（`template_card_event`，5 秒内改卡） | 有（Adaptive Card invoke） |
@@ -460,3 +460,49 @@ SECRET_SAVED、链接第二次用返回 410、没有出现取消提示，并扫�
 - 接管卡：钉钉原生卡片 + 「接管电脑」按钮 ✅；企微卡片可点开接管页 ✅；Telegram 测试地址 `http://[IPv6]` 被拒（`BUTTON_URL_INVALID`），退回链接。Tianyi 要求与飞书一致（截图 + 接管 / 我完成了 / 跳过），在做。
 - 钉钉出字：AI 卡片模板只渲染流式接口写入的内容，客户端会逐字播放；卡片数据更新与只发 FINISHED 都会空卡（真机 18:05、21:01）。Tianyi 定：先不改。
 - 测试环境注意：真机测试原先加载的是 VLab 安装的接管插件副本，已改为加载分支代码。
+
+## 17. 「电脑」接管卡与飞书对齐：截图 + 接管 / 我完成了 / 跳过（2026-10-04 夜）
+
+第 15 节的接管卡只有一个链接按钮。现在三个渠道都换成飞书那张「电脑」卡的样子：标题「电脑」+ 状态（需要操作 / 操作中 / 已完成 / 已跳过 / 已结束）、原因、V 桌面的截图（截不到时用 V 的封面图）、三个按钮——「接管」打开接管页，「我完成了」「跳过」以**点按钮的人**的身份发 `/v-handback <id>`、`/v-skip <id>`，由插件的命令处理（同一套「是不是收卡人」检查，`allowed = 本人 || controlAnywhereActors || senderIsOwner`）。卡片状态仍存在接管服务里（`PUT /v1/handoffs/:id/card`，带 `channel`），所以按钮命令在 Gateway、工具在 Worker 也能接上。第 15 节的单按钮卡保留为回退：原生卡发送失败（没有凭据、平台拒收）时照旧发它，再不行就把链接写进回复。
+
+| | Telegram | 钉钉 | 企业微信 |
+|---|---|---|---|
+| 怎么发 | 插件直接调 Bot API（`core/telegram-api.js`，凭据和 `apiRoot` 取 Gateway/Worker 配置的 `channels.telegram`）：`sendPhoto` multipart 上传截图，卡片内容是 caption（HTML），下方一行内联按钮 | 插件发 presentation（`message send`，CLI 里跑连接器 outbound）；连接器 `sendPayload` 把截图用机器人媒体上传（oapi `/media/upload`，返回 `@lAD…`）放进 markdown，按钮多于一个时走 `sampleActionCard3`（三个竖排；两个用 `sampleActionCard6` 横排） | 插件发 presentation（Gateway 的 `message.action`）；插件先把截图交给接管服务换一个公网短期链接，`sendPayload` 先发 `news_notice`（`card_image` = 该链接，点图打开接管页），再发 `button_interaction`（「接管」是一行可点的链接，「我完成了」「跳过」是卡片按钮） |
+| 截图 | `sendPhoto` 直接上传字节 | 本机临时文件 `v-desktop-handoff-<id>-….jpg`（0600，发完即删）→ 连接器上传成媒体 id；上传失败则不带图照发 | 接管服务 `PUT /v1/handoffs/:id/snapshot`（admin）→ `https://<公网>/desktop-handoff/snapshot/<32 位随机令牌>.jpg`，只在内存、默认 60 分钟过期，令牌不进审计；服务地址不是公网 https 主机名（VLab 的 tailnet 地址）时改为本机临时文件，WeCom 侧经机器人长连接 `aibot_upload_media_*` 上传、作为一条图片消息发出 |
+| 我完成了 / 跳过 | 回调按钮，`callback_data` 就是 `/v-handback <id>`：9.1 Telegram core 对以 `/` 开头的回调数据先清掉按钮，再以点按人身份合成一条命令消息 | `dtmd://dingtalkclient/sendMessage?content=/v-handback%20<id>` 作为按钮链接：点按人把这条命令发进会话 | 按钮 `key = vcmd:v-handback:<id>`；补丁在 `monitor.js` 的 `template_card_event` 里把它改写成点按人发来的文字 `/v-handback <id>`，走正常消息路径 |
+| 状态变化 | 原地改：`editMessageCaption`（同时换按钮；有新截图时 `editMessageMedia`）。接管中由插件的轮询改为「操作中」，结束改「已结束」 | **actionCard 不能改**。按下后插件另发一句状态（「✅ 电脑已在 V 手里，V 接着做。」/「已跳过这一步…」，`message send` 到卡片所在会话），V 同时继续 | 只能在点按钮后 5 秒内、用那次事件的 `req_id` 改卡（`aibot_respond_update_msg`）。点按时补丁把事件停在进程内的 `cardActionBridge`，插件的命令处理完调用它把卡改成「已完成 / 已跳过」（按钮换成一个不起作用的状态按钮）；没赶上窗口就像钉钉一样另发一句状态 |
+| 非公网链接 | Telegram 拒收非公网 URL 按钮（`BUTTON_URL_INVALID`）→ 去掉「接管」按钮，链接写进 caption，「我完成了」「跳过」照旧 | 链接包在 `dingtalk://…/page/link?url=…&pc_slide=false` 里，不受影响 | horizontal 链接行，不受影响 |
+
+状态那一句为什么不是命令的回复文字：9.1 core 对返回 `continueAgent: true` 的插件命令**丢弃回复文字**（`get-reply` 只在 `shouldContinue` 为假时投递 `commandResult.reply`），原来 `/v-handback` 在没有卡片时返回的「✅ 已交还给 V…」其实从没显示过。现在由插件 `announce()` 另发，不等它发完（实测钉钉里这一句排在 V 的继续回复之后）。
+
+代码：`apps/v-desktop-handoff/plugin/core/channel-cards.js`（各状态的按钮与文案、presentation、Telegram caption/键盘）、`core/telegram-api.js`（multipart 手工拼：`FormData` 会把 caption 的 `\n` 变成 `\r\n`）、`index.js`（`postChannelCard` 分渠道发送，`setCardState` 分渠道改卡并返回「用户是否看得到新状态」；看不到时 `announce` 一句状态）、接管服务 `service/server.mjs`（`SnapshotStore`、`/snapshot/<token>.jpg`）；渠道侧 `apps/v-experience/v-experience.mjs`（`linkCardFromPresentation(…, {commands})` 保留斜杠命令按钮、`![alt](ref)` 一行作图片；`dingtalkRobotActionCard`、`wecomCardMessages` / `wecomButtonCard` / `wecomNewsCard`、`parseWecomCardKey`、`localCardImage`、`cardActionBridge`），钉钉补丁多改 `runtime-*.mjs` 的 `sendPayload` 并从 `token-*.mjs` 引入取 token 的函数（基线 `dingtalk/baseline/token-xUW84QQ8.mjs`），企微补丁多改 `monitor.js` 的事件分发和 `channel.js` 的 `sendPayload`。钉钉出字（流式 300 ms 节流）没有动。
+
+安全：渠道只上传文件名为 `v-desktop-handoff-*.jpg|png`、普通文件（非链接）、≤5 MB、JPEG/PNG 魔数正确的本机文件（`localCardImage`），presentation 不能让渠道上传任意文件；截图链接只服务 JPEG/PNG、随机令牌、过期即 404。命令按钮只接受 `/[a-z][\w-]* [\w-]+` 形式。
+
+### 平台限制（文档与源码能确认的 / 不能确认的）
+
+- 钉钉 actionCard 发出后不能修改（机器人消息没有更新接口；能改的是互动卡片/AI 卡片，需要在开发者后台建卡片模板）。所以钉钉卡不跟状态走，状态靠命令回复那一句。
+- 钉钉 `dtmd://dingtalkclient/sendMessage` 在 AI 卡片的 markdown 里能用（V 的问题选项就是这么做的）；**放在 actionCard 按钮的 actionURL 里是否同样生效，没有真机验证**。另外群里机器人只收 @ 它的消息，按钮发出的 `/v-handback …` 不带 @，**群聊里很可能到不了 V**（单聊没有这个问题）。到不了时用户仍可在接管页点「交还给 V」，或在聊天里 @V 说「好了」（模型会查 `desktop_handoff_status`）。
+- 钉钉 markdown 里 `![](@lADO…)` 媒体 id 的写法出自钉钉 actionCard 示例；`sampleActionCard3`/`sampleActionCard6` 的字段名按钉钉机器人消息类型文档；都只在假平台验证过发出的内容。
+- 企微智能机器人的 `button_interaction` 没有图片字段，`news_notice` 没有回调按钮，所以截图和按钮是两条消息。`news_notice` 的 `card_image` 必须是企微服务器能下载的 URL：生产 V 的接管服务公网地址 `https://openclaw.tianyi.live/desktop-handoff` 可以（cloudflared 已转发 `/desktop-handoff`，新路径 `/desktop-handoff/snapshot/…` 在同一前缀下，不用改 ingress）；VLab 是 tailnet 地址，改为上传图片消息。
+- 企微改卡只有一次、5 秒内、必须用那次点击事件的 `req_id`；插件命令在 Gateway 里排在该会话的队列后面，若会话正忙（例如 V 还在出上一句回复）可能超时，此时卡片不变、命令回复一句状态。「操作中 / 已结束」这类不是由点击引起的变化，企微卡片无法显示。
+- 企微点击事件随后作为普通消息进入回合，V 的回复用的是那次事件的 `req_id` 流式回复，这和插件原来把卡片事件转给模型的做法一致；真机上事件 `req_id` 同时用于改卡和回复是否都被接受，没有验证。
+- Telegram 照片 caption 上限 1024 字符（原因截到 300 字）；callback_data 上限 64 字节（`/v-handback h_` + 12 位十六进制 = 26 字节）。
+
+### 实测（假平台 candidate，真实插件 + VLab Worker 模型回合，逐个跑）
+
+每个场景：真实模型回合调用 `desktop_handoff_request`（工具在 Worker 里）→ 检查卡片 → 用卡片里的链接 claim（200）→ 按「我完成了」或「跳过」（钉钉：按钮链接里的命令作为用户消息发回；企微：`template_card_event`；Telegram：`callback_query`）→ 检查接管服务里的状态、卡片的变化、V 继续回复。截图用 candidate 生成的封面 JPEG（`cardImage: "cover"`，VLab 自己的显示器不进测试）。
+
+| plan | candidate | 结果 |
+|---|---|---|
+| `dingtalk-handoff-card`（handoff-card、handoff-skip） | `08b5fbe0` | ✅ batchSend `sampleActionCard3`「电脑 · 需要操作」：原因、说明、`![V 的电脑](@lADPcandidate1)`（截图经 oapi `/media/upload` 上传，1932 字节 multipart）；按钮 接管 → `dingtalk://…pc_slide=false` 包着 `/desktop-handoff/#…`（claim 200）、我完成了 → `dtmd://…sendMessage?content=/v-handback h_…`、跳过 → `/v-skip h_…`。按我完成了：卡片状态 done、接管未结束、聊天里「✅ 电脑已在 V 手里，V 接着做。」、V 回复「收到，继续。」；按跳过：skipped、接管结束（revoked_by_agent）、「已跳过这一步…」、V 继续 |
+| `wecom-handoff-card`（同上） | `54da62f2` | ✅ `news_notice`（`card_image` = `https://openclaw.example.test/desktop-handoff/snapshot/<32 位>.jpg`，经回环取回 200 image/jpeg、与封面字节一致；`card_action`/跳转「接管」= 接管链接）+ `button_interaction`（电脑 / 需要操作，「接管」链接行，按钮 我完成了 `vcmd:v-handback:h_…`、跳过 `vcmd:v-skip:h_…`）。点我完成了：816 ms 内 `aibot_respond_update_msg`（同 task_id、只发给点按人）卡变「已完成」、状态 done、V 继续；点跳过：140 ms 改「已跳过」、接管结束、V 继续 |
+| `wecom-handoff-card-loopback`（服务地址 `http://127.0.0.1:9`，代表 VLab tailnet） | `9ca667d9` | ✅ 截图改为 `aibot_upload_media_*` 上传（1724 字节）+ 图片消息，再发按钮卡；点我完成了 773 ms 改卡、done、V 继续 |
+| `telegram-handoff-card`（同上） | `560a9ef0` | ✅ `sendPhoto`（JPEG 1724 字节）caption「<b>电脑</b> · 需要操作 / 原因 / 说明」，一行按钮 接管(URL) / 我完成了 / 跳过（callback `/v-handback h_…`、`/v-skip h_…`）；按下后 core 先清按钮，插件 `editMessageCaption` 改成「已完成 / 已跳过」+ 无按钮，状态 done / skipped（跳过结束接管），V 回复「收到，继续。」 |
+| `telegram-handoff-card-loopback`（链接 `http://127.0.0.1:9`） | `3e5f8398` | ✅ 第一次 `sendPhoto` 得到 `BUTTON_URL_INVALID`，重发时去掉「接管」按钮、caption 末尾「接管：http://127.0.0.1:9/desktop-handoff/#…」；我完成了照常，卡改「已完成」 |
+
+回归：`dingtalk-secret-link` `a50c9aac` ✅、`wecom-secret-link` `65cd10b5` ✅（链接卡渲染共用）。单元测试：`tests/v-experience.test.mjs` 37 项、插件 24 项、接管服务 14 项全过。
+
+前两次钉钉运行的教训：模型偶尔不调用工具就回复（第一次运行 cand001 一次模型调用、没有工具事件），harness 现在这种情况下再问一次；`continueAgent` 丢弃回复文字是第二次运行发现的。
+
+假平台只能证明发出了什么、按钮命令能否回到插件；不能证明钉钉/企微/Telegram 客户端怎么显示（图片尺寸、按钮排布、dtmd 按钮是否生效）。需要测试机器人真机看一遍。

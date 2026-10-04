@@ -52,7 +52,8 @@ export function createFakeTelegramBotApi({ botId = 100000001, botUsername = "v_c
     date: now(),
     chat: { id: Number(state.chatId), type: Number(state.chatId) < 0 ? "supergroup" : "private" },
     from: from ?? { id: botId, is_bot: true, first_name: "V candidate", username: botUsername },
-    text: state.text,
+    // A photo message carries its text as the caption.
+    ...(state.kind === "photo" ? { caption: state.text, photo: [{ file_id: `photo-${state.messageId}`, file_unique_id: `p${state.messageId}`, width: 640, height: 400 }] } : { text: state.text }),
     ...(state.replyMarkup ? { reply_markup: state.replyMarkup } : {}),
   });
 
@@ -72,7 +73,24 @@ export function createFakeTelegramBotApi({ botId = 100000001, botUsername = "v_c
       refuseInvalidUrlButtons(params.reply_markup);
       return asTelegramMessage(recordMessage(params.chat_id, params, "text"));
     },
-    sendPhoto: (params) => asTelegramMessage(recordMessage(params.chat_id, params, "photo")),
+    sendPhoto: (params) => {
+      refuseInvalidUrlButtons(params.reply_markup);
+      const state = recordMessage(params.chat_id, params, "photo");
+      state.photo = params.photo;
+      state.threadId = params.message_thread_id;
+      return asTelegramMessage(state);
+    },
+    editMessageMedia: (params) => {
+      const state = messages.get(key(params.chat_id, params.message_id));
+      if (!state) throw apiError(400, "Bad Request: message to edit not found");
+      const media = parseMaybeJson(params.media) ?? {};
+      state.text = media.caption ?? "";
+      state.photo = typeof media.media === "string" && media.media.startsWith("attach://") ? params[media.media.slice("attach://".length)] : media.media;
+      if (params.reply_markup !== undefined) state.replyMarkup = parseMaybeJson(params.reply_markup);
+      state.history.push({ at: Date.now(), op: "edit-media", text: state.text, replyMarkup: state.replyMarkup, photo: state.photo });
+      emit({ type: "edit", message: state });
+      return asTelegramMessage(state);
+    },
     sendDocument: (params) => asTelegramMessage(recordMessage(params.chat_id, params, "document")),
     sendAnimation: (params) => asTelegramMessage(recordMessage(params.chat_id, params, "animation")),
     sendVideo: (params) => asTelegramMessage(recordMessage(params.chat_id, params, "video")),
@@ -248,9 +266,12 @@ async function readParams(req) {
     const sep = `--${boundary?.[1] ?? boundary?.[2]}`;
     for (const part of body.toString("latin1").split(sep)) {
       const name = /name="([^"]+)"/u.exec(part)?.[1];
-      if (!name || /filename="/u.test(part)) continue;
+      if (!name) continue;
       const value = part.split("\r\n\r\n").slice(1).join("\r\n\r\n").replace(/\r\n$/u, "");
-      params[name] = Buffer.from(value, "latin1").toString("utf8");
+      const file = /filename="([^"]*)"/u.exec(part)?.[1];
+      // An uploaded file is kept as its name, type and size (and whether it is a JPEG).
+      if (file !== undefined) params[name] = { filename: file, type: /content-type:\s*([^\r\n]+)/iu.exec(part)?.[1], bytes: value.length, jpeg: value.startsWith("\xff\xd8\xff") };
+      else params[name] = Buffer.from(value, "latin1").toString("utf8");
     }
   }
   return params;

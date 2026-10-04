@@ -270,6 +270,14 @@ import { sendPayloadWithChunkedTextAndMedia as vSendTextAndMedia } from "opencla
 `,
   },
   {
+    // The connector's token helpers and hosts (0.8.26 exports:
+    // getOapiAccessToken as i, DINGTALK_OAPI as n, getAccessToken as r, DINGTALK_API as t).
+    file: "runtime",
+    name: "runtime-token-import",
+    anchor: /^import "(\.\/token-[\w-]+\.mjs)";\n/mu,
+    after: (m) => `import { i as vGetOapiAccessToken, n as vDingtalkOapi, r as vGetAccessToken, t as vDingtalkApi } from "${m[1]}"; // ${MARKER}\n`,
+  },
+  {
     // \`openclaw message send --presentation\` (V's desktop handoff card) used
     // to arrive as flattened text. A presentation with link buttons now goes
     // out as an actionCard; anything else is sent as before.
@@ -277,9 +285,9 @@ import { sendPayloadWithChunkedTextAndMedia as vSendTextAndMedia } from "opencla
     name: "outbound-card",
     anchor: "\toutbound: {\n\t\tdeliveryMode: \"direct\",\n",
     insert: "after",
-    code: `\t\t// ${MARKER}: link buttons as a DingTalk actionCard (callback buttons cannot be posted back).
+    code: `\t\t// ${MARKER}: buttons as a DingTalk actionCard: links, and slash commands as send-message links.
 \t\trenderPresentation: ({ payload, presentation }) => {
-\t\t\tconst card = vExperience.linkCardFromPresentation(presentation, payload.text);
+\t\t\tconst card = vExperience.linkCardFromPresentation(presentation, payload.text, { commands: true });
 \t\t\treturn card ? { ...payload, text: vExperience.linkCardText(card), channelData: { ...payload.channelData, vLinkCard: card } } : null;
 \t\t},
 \t\tsendPayload: async (ctx) => {
@@ -294,9 +302,39 @@ import { sendPayloadWithChunkedTextAndMedia as vSendTextAndMedia } from "opencla
 \t\t\t};
 \t\t\tconst to = String(ctx.to ?? "");
 \t\t\tconst target = to.startsWith("group:") ? { openConversationId: to.slice(6) } : to.startsWith("user:") ? { userId: to.slice(5) } : to.startsWith("cid") ? { openConversationId: to } : { userId: to };
-\t\t\tconst result = await vSendProactive(config, target, JSON.stringify(vExperience.dingtalkActionCard(card)), { msgType: "actionCard", useAICard: false });
-\t\t\tif (!result.ok) throw new Error(result.error || "DingTalk actionCard delivery failed");
-\t\t\treturn { channel: CHANNEL_ID, messageId: result.processQueryKey ?? "unknown", target: { kind: "conversation", id: to } };
+\t\t\tif (!card.image && !card.buttons.some((b) => b.command)) {
+\t\t\t\tconst result = await vSendProactive(config, target, JSON.stringify(vExperience.dingtalkActionCard(card)), { msgType: "actionCard", useAICard: false });
+\t\t\t\tif (!result.ok) throw new Error(result.error || "DingTalk actionCard delivery failed");
+\t\t\t\treturn { channel: CHANNEL_ID, messageId: result.processQueryKey ?? "unknown", target: { kind: "conversation", id: to } };
+\t\t\t}
+\t\t\t// ${MARKER}: V's 「电脑」 card — the desktop picture (uploaded as robot media; a
+\t\t\t// local file the handoff plugin left here) and every button, 接管 as a link,
+\t\t\t// 我完成了 / 跳过 as send-message links that post the command as the tapper.
+\t\t\tconst shown = { ...card };
+\t\t\tconst picture = vExperience.localCardImage(card.image?.ref);
+\t\t\tif (picture) {
+\t\t\t\tdelete shown.image;
+\t\t\t\ttry {
+\t\t\t\t\tconst oapiToken = await vGetOapiAccessToken(config);
+\t\t\t\t\tif (!oapiToken) throw new Error("no oapi access token");
+\t\t\t\t\tconst form = new FormData();
+\t\t\t\t\tform.append("media", new Blob([picture.bytes], { type: picture.type }), picture.filename);
+\t\t\t\t\tconst uploaded = await (await fetch(\`\${vDingtalkOapi}/media/upload?access_token=\${encodeURIComponent(oapiToken)}&type=image\`, { method: "POST", body: form, signal: AbortSignal.timeout(30000) })).json();
+\t\t\t\t\tif (!uploaded?.media_id) throw new Error(\`media upload: \${JSON.stringify(uploaded).slice(0, 200)}\`);
+\t\t\t\t\tshown.image = { alt: card.image.alt, ref: uploaded.media_id };
+\t\t\t\t} catch (err) {
+\t\t\t\t\tconsole.warn(\`[DingTalk][v-experience] card picture not uploaded, sending the card without it: \${err?.message || err}\`);
+\t\t\t\t}
+\t\t\t} else if (card.image && !String(card.image.ref).startsWith("https://")) delete shown.image;
+\t\t\tconst { msgKey, msgParam } = vExperience.dingtalkRobotActionCard(shown);
+\t\t\tconst isUser = !target.openConversationId;
+\t\t\tconst resp = await dingtalkHttp.post(\`\${vDingtalkApi}/v1.0/robot/\${isUser ? "oToMessages/batchSend" : "groupMessages/send"}\`, {
+\t\t\t\trobotCode: String(config.clientId ?? ""), msgKey, msgParam: JSON.stringify(msgParam),
+\t\t\t\t...isUser ? { userIds: [String(target.userId)] } : { openConversationId: target.openConversationId }
+\t\t\t}, { headers: { "x-acs-dingtalk-access-token": await vGetAccessToken(config), "Content-Type": "application/json" } });
+\t\t\tconst data = resp?.data ?? {};
+\t\t\tif (!data.processQueryKey || data.invalidStaffIdList?.length || data.flowControlledStaffIdList?.length) throw new Error(\`DingTalk \${msgKey} not sent: \${JSON.stringify(data).slice(0, 200)}\`);
+\t\t\treturn { channel: CHANNEL_ID, messageId: data.processQueryKey, target: { kind: "conversation", id: to } };
 \t\t},
 `,
   },
@@ -466,6 +504,10 @@ export const findRuntimeChunk = (distDir) => findChunk(distDir, /^runtime-[\w-]+
 export function patchDingtalkConnector(distDir, { experienceSource }) {
   const changed = {};
   const chunk = findReplyChunk(distDir);
+  // The runtime patch imports the token chunk's helpers by their minified names.
+  const tokenChunk = /^import "\.\/(token-[\w-]+\.mjs)";$/mu.exec(fs.readFileSync(path.join(distDir, findRuntimeChunk(distDir)), "utf8"))?.[1];
+  assert(tokenChunk, "runtime chunk does not import the token chunk");
+  assert.match(fs.readFileSync(path.join(distDir, tokenChunk), "utf8"), /export \{ getOapiAccessToken as i, DINGTALK_OAPI as n, getAccessToken as r, DINGTALK_API as t \};/u, "token chunk exports changed");
   for (const [file, fn] of [[chunk, patchReplyChunk], [findConnectionChunk(distDir), patchConnectionChunk], [findRuntimeChunk(distDir), patchRuntimeChunk]]) {
     const p = path.join(distDir, file);
     const before = fs.readFileSync(p, "utf8");

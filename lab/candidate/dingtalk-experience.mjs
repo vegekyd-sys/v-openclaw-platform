@@ -135,7 +135,7 @@ if (SCENARIO_NAMES.includes("model-roles")) {
   report.roles = configureRoles(config, "dingtalk-connector", [ROLE_USERS.owner]);
 }
 if (SCENARIO_NAMES.includes("secret-link")) report.secretEntryCorePatch = await widenCoreSecretEntry(dist);
-const handoff = SCENARIO_NAMES.includes("handoff-card") ? await startHandoff({ dir: path.join(scratch, "desktop-handoff"), config, runtime, dist }) : undefined;
+const handoff = SCENARIO_NAMES.some((n) => n.startsWith("handoff-")) ? await startHandoff({ dir: path.join(scratch, "desktop-handoff"), config, runtime, dist }) : undefined;
 fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
 
 // Candidate-only: the relocated connector has no official install record, so the
@@ -205,6 +205,67 @@ const finishedCards = (since) => cardsSince(since).filter((c) => /^(3|FINISHED)$
 
 let user = 0;
 const nextUser = () => `cand${String(++user).padStart(3, "0")}`;
+
+// The 「电脑」 card: wait for it, open its link, press button `press` (2 = 我完成了, 3 = 跳过) the
+// way DingTalk does for a send-message link (the command arrives as the user's message).
+const HANDOFF_ASK = "这是自动化测试，请严格照做。立即调用 desktop_handoff_request 工具，参数 reason 填「需要你登录测试站点」。工具返回后按它返回的 instruction 只回复一句话，然后结束，不要做别的事。收到 /v-handback 或 /v-skip 之后，只回复一句「收到，继续」。";
+const handoffScenario = async (press) => {
+  const u = nextUser(); const since = Date.now();
+  const conversationId = `cidDirect${u}`;
+  // The model sometimes answers without calling the tool: ask once more in that case.
+  const replies = [];
+  let sent;
+  for (let attempt = 0; attempt < 2 && !sent; attempt += 1) {
+    const at = Date.now();
+    fake.sendUserText({ userId: u, text: HANDOFF_ASK, conversationId });
+    const found = await waitFor(() => fake.robotMessages.find((m) => m.at >= at && linkToken(m.msgParam?.actionURL1, "/desktop-handoff"))
+      ?? (finishedCards(at).length > 0 && Date.now() - lastActivity(conversationId, at) > 20_000 ? "no-card" : null), 300_000, "handoff card");
+    if (found === "no-card") replies.push(allText(conversationId, at).slice(-300));
+    else sent = found;
+  }
+  if (!sent) throw new Error(`no handoff card; replies: ${JSON.stringify(replies)}`);
+  await settle(conversationId, since, () => finishedCards(since).length > 0, { label: "handoff reply", quietMs: 6000, timeoutMs: 240_000 }).catch(() => null);
+  const link = linkToken(sent.msgParam.actionURL1, "/desktop-handoff");
+  const id = handoff.issued().at(-1)?.id;
+  const buttons = [1, 2, 3].map((i) => {
+    const target = sent.msgParam[`actionURL${i}`] ?? "";
+    const parsed = (() => { try { return new URL(target); } catch { return null; } })();
+    return { title: sent.msgParam[`actionTitle${i}`], scheme: parsed?.protocol, opens: parsed?.searchParams.get("url")?.replace(link.token, "[token]") ?? null, pcSlide: parsed?.searchParams.get("pc_slide") ?? null, sends: parsed?.protocol === "dtmd:" ? parsed.searchParams.get("content") : null };
+  });
+  const claimStatus = await handoff.claim(link.token);
+  const before = await handoff.status(id);
+  const command = buttons[press - 1].sends;
+  const pressedAt = Date.now();
+  if (command) fake.sendUserText({ userId: u, text: command, conversationId });
+  const expected = press === 2 ? "done" : "skipped";
+  let status = null;
+  for (const until = Date.now() + 90_000; Date.now() < until;) {
+    status = await handoff.status(id);
+    if (status?.card?.state === expected) break;
+    await sleep(500);
+  }
+  await settle(conversationId, pressedAt, (t) => /收到|继续/u.test(t), { label: "after the press", quietMs: 8000, timeoutMs: 240_000 }).catch(() => null);
+  // Every state a card showed (a command reply and the next answer may share one AI card).
+  const afterPress = [...new Set([
+    ...messagesSince(conversationId, pressedAt).map((m) => String(m.text ?? "")),
+    ...cardsSince(pressedAt).flatMap((c) => c.history.map((h) => h.content)),
+    ...fake.robotMessages.filter((m) => m.at >= pressedAt).map((m) => String(m.msgParam?.content ?? m.msgParam?.text ?? JSON.stringify(m.msgParam))),
+  ].filter(Boolean))];
+  return {
+    retriedAsk: replies,
+    card: { path: sent.path, msgKey: sent.msgKey, userIds: sent.userIds, title: sent.msgParam.title, text: sent.msgParam.text, buttons },
+    uploads: fake.mediaUploads.filter((m) => m.at >= since),
+    cover: handoff.cover,
+    handoffId: id,
+    claimStatus,
+    before: { cardState: before?.card?.state, cardChannel: before?.card?.channel, ended: before?.ended },
+    pressed: command,
+    after: { cardState: status?.card?.state, ended: status?.ended, endReason: status?.endReason, claims: status?.claims },
+    afterPress: afterPress.map((t) => t.slice(0, 300)),
+    urlInReply: /desktop-handoff/u.test(allText(conversationId, since)),
+    handoffLog: lines.filter((l) => /desktop.handoff|v-desktop-handoff/iu.test(l.line)).map((l) => redact(l.line).slice(0, 300)).slice(-10),
+  };
+};
 const SCENARIOS = {
   progress: async () => {
     const u = nextUser(); const since = Date.now();
@@ -282,30 +343,11 @@ const SCENARIOS = {
       ...JSON.parse(JSON.stringify(view(conversationId, since)).replaceAll(link.token, "[token]")),
     };
   },
-  // A4: V's desktop handoff card as an actionCard with one 接管电脑 button (no 交还给 V: DingTalk cannot post it back).
-  "handoff-card": async () => {
-    const u = nextUser(); const since = Date.now();
-    const { conversationId } = fake.sendUserText({ userId: u, text: "这是自动化测试，请严格照做。立即调用 desktop_handoff_request 工具，参数 reason 填「需要你登录测试站点」。工具返回后按它返回的 instruction 只回复一句话，然后结束，不要做别的事。" });
-    const sent = await waitFor(() => fake.robotMessages.find((m) => m.at >= since && linkToken(m.msgParam?.singleURL, "/desktop-handoff")), 300_000, "handoff card").catch(() => null);
-    await settle(conversationId, since, () => finishedCards(since).length > 0, { label: "handoff reply", quietMs: 6000, timeoutMs: 240_000 }).catch(() => null);
-    const link = sent && linkToken(sent.msgParam.singleURL, "/desktop-handoff");
-    const t = allText(conversationId, since);
-    return {
-      card: sent ? { path: sent.path, userIds: sent.userIds, openConversationId: sent.openConversationId, msgKey: sent.msgKey, title: sent.msgParam.title, text: sent.msgParam.text, singleTitle: sent.msgParam.singleTitle, opens: link.url.replace(link.token, "[token]"), pcSlide: new URL(sent.msgParam.singleURL).searchParams.get("pc_slide") } : null,
-      claimStatus: link ? await handoff.claim(link.token) : null,
-      urlInReply: /desktop-handoff/u.test(t),
-      issued: handoff.issued(),
-      // The tool runs in a Worker: its config must carry this plugin and the fake channel.
-      workerConfig: (() => {
-        try {
-          const w = JSON.parse(fs.readFileSync(workerPlugin.workerConfigPath, "utf8"));
-          return { handoffPlugin: String(w.plugins?.entries?.["v-desktop-handoff"]?.config?.adminUrl ?? "").endsWith(`:${handoff.ports.adminPort}`), channels: Object.keys(w.channels ?? {}), loadPaths: (w.plugins?.load?.paths ?? []).filter((p) => /handoff|dingtalk|wecom/u.test(p)) };
-        } catch (error) { return { error: String(error?.message ?? error) }; }
-      })(),
-      handoffLog: lines.filter((l) => /desktop.handoff|v-desktop-handoff/iu.test(l.line)).map((l) => redact(l.line).slice(0, 300)).slice(-10),
-      ...view(conversationId, since),
-    };
-  },
+  // A4: V's 「电脑」 card as an actionCard: the desktop picture (robot media) and 接管 / 我完成了 / 跳过;
+  // 我完成了 is pressed (its send-message link posts /v-handback <id> as the user).
+  "handoff-card": () => handoffScenario(2),
+  // The same card, 跳过 pressed: /v-skip <id> ends the handoff.
+  "handoff-skip": () => handoffScenario(3),
   // Real buttons: question card from the template, answered by tapping it.
   "ask-card": async () => {
     const u = nextUser(); const since = Date.now();
@@ -405,20 +447,31 @@ if (EXPECT === "patched") {
     assert(r.saved && !r.cancelled, "agent did not get the value");
     assert.deepEqual(r.leaks, { gatewayLog: 0, serviceLog: 0, chat: false, audit: false }, "value leaked");
   }
-  if (s["handoff-card"]) {
-    const r = s["handoff-card"];
+  for (const name of ["handoff-card", "handoff-skip"]) if (s[name]) {
+    const r = s[name];
     assert.equal(r.error, undefined, r.error);
-    assert(r.card, "no handoff actionCard was sent");
-    assert.equal(r.card.msgKey, "sampleActionCard");
-    assert.equal(r.card.title, "需要你接管 V 的电脑");
-    assert.equal(r.card.singleTitle, "接管电脑");
-    assert.match(r.card.text, /需要你登录测试站点/u);
-    assert.match(r.card.text, /做完在聊天里回复「好了」，V 接着做。\d+ 分钟内打开有效，接管最长 \d+ 分钟。/u);
-    assert.doesNotMatch(r.card.text, /交还给 V/u, "no 交还给 V on DingTalk");
-    assert.match(r.card.opens, /^https:\/\/openclaw\.example\.test\/desktop-handoff\/#\[token\]$/u);
-    assert.equal(r.card.pcSlide, "false");
+    assert.equal(r.card.msgKey, "sampleActionCard3", "three buttons");
+    assert.equal(r.card.title, "电脑 · 需要操作");
+    assert.match(r.card.text, /^### 电脑 · 需要操作\n\n需要你登录测试站点\n\n点「接管」打开 V 的电脑直接操作，做完点「我完成了」，V 接着做；不需要就点「跳过」。\d+ 分钟内打开有效。\n\n!\[V 的电脑\]\(@lADPcandidate\d+\)$/u);
+    assert(r.uploads.length >= 1 && r.uploads[0].type === "image" && r.uploads[0].bytes > r.cover.bytes && r.uploads[0].token, `the desktop picture was not uploaded as robot media: ${JSON.stringify(r.uploads)}`);
+    assert.deepEqual(r.card.buttons.map((b) => b.title), ["接管", "我完成了", "跳过"]);
+    assert.deepEqual(r.card.buttons[0], { title: "接管", scheme: "dingtalk:", opens: "https://openclaw.example.test/desktop-handoff/#[token]", pcSlide: "false", sends: null });
+    assert.equal(r.card.buttons[1].sends, `/v-handback ${r.handoffId}`);
+    assert.equal(r.card.buttons[2].sends, `/v-skip ${r.handoffId}`);
     assert.equal(r.claimStatus, 200, "the card's link does not open the handoff");
+    assert.deepEqual(r.before, { cardState: "pending", cardChannel: "dingtalk-connector", ended: false });
     assert(!r.urlInReply, "the url was also pasted into the reply");
+    const after = r.afterPress.join("\n");
+    if (name === "handoff-card") {
+      assert.equal(r.after.cardState, "done", "我完成了 did not reach the plugin");
+      assert.equal(r.after.ended, false);
+      assert.match(after, /电脑已在 V 手里/u, "no status line (a DingTalk card cannot change)");
+    } else {
+      assert.equal(r.after.cardState, "skipped", "跳过 did not reach the plugin");
+      assert.equal(r.after.ended, true, "跳过 did not end the handoff");
+      assert.match(after, /已跳过这一步/u, "no status line (a DingTalk card cannot change)");
+    }
+    assert.match(after, /收到|继续/u, "the agent did not continue after the press");
   }
   if (s["ask-card"]) {
     assert(s["ask-card"].questionCard, "no question card was delivered");
