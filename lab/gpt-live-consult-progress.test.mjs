@@ -261,6 +261,83 @@ test("the actual consult contract distinguishes source examples and conditional 
   // It verifies contract and lossless transport, not real model adherence.
 });
 
+test("captured consult carries the complete Memory/Web request through the required official read before a concise final", async () => {
+  // The complete USER wording is from the failed a85 lifecycle sample. The
+  // model/source-read boundary below is a fixture, not new native acceptance.
+  const question = "请先用 memory search 查家庭相关记录,再用 web search 查 OpenAI 官方 realtime API 文档,查到后用一句中文说两个结果,不要写入。也不要发消息";
+  const stage = "已找到官方文档入口，尚未读取原文。";
+  const final = "家庭记录已找到；所读官方文档示例使用 example-model-v3，如果仍使用 preview 接口应迁移到 stable 接口，本次接入状态未核实。";
+  let capturedPrompt;
+  let finishRead;
+  const sourceRead = new Promise(resolve => { finishRead = resolve; });
+  const progress = [];
+  let settled = false;
+  const runtime = createHarnessRuntime({
+    args: { question, responseStyle: "只用一句中文说两个结果" },
+    onProgress: value => progress.push(value),
+    runEmbeddedAgent: async options => {
+      capturedPrompt = options.prompt;
+      options.onAgentEvent({ stream: "item", data: { kind: "preamble", phase: "end", itemId: "source-discovery", progressText: stage } });
+      await sourceRead;
+      return { payloads: [{ text: final }] };
+    },
+  });
+  const pending = runtime.run().then(value => { settled = true; return value; });
+  await nextTick();
+  assert(capturedPrompt.includes(`User request:\n${question}`));
+  assert(capturedPrompt.includes("Spoken style: 只用一句中文说两个结果"));
+  assert.match(capturedPrompt, /web_search only locates sources; use available web_fetch\/read tools in this same run to read the relevant official content before final/);
+  assert.match(capturedPrompt, /necessary read-only retrieval is already part of that goal: do not stop after search to ask whether to fetch/);
+  assert.match(capturedPrompt, /one concise sentence limits presentation, not the necessary source checks/);
+  assert.equal(settled, false, "the discovery stage must not settle the pending source-read fixture");
+  assert.deepEqual(progress.map(value => value.text), [stage]);
+  finishRead();
+  assert.deepEqual(await pending, { text: final }, "source conditions and unverified deployment status remain unchanged");
+  assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /仅取得搜索摘要而尚未执行必要原文读取，是原目标内已授权的剩余只读步骤/u);
+  assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /后台已结束后实际委托该读取，不再问是否抓取，一句话只限制呈现/u);
+  // This proves instructions reach the captured backend entry and the source
+  // result is carried losslessly; only a real run can prove tools are chosen.
+});
+
+test("source-read continuation preserves explicit scope and genuine blockers without expanding deployment work", async t => {
+  const cases = [
+    { name: "search only", question: "只用 web search 找 OpenAI 官方 Realtime 文档链接，不抓取页面。", context: "用户明确只需来源入口，不要求文档事实。", final: "已找到官方文档入口，只有搜索结果，未读取或核实页面内容。" },
+    { name: "actual retrieval failure", question: "读取官方 Realtime 文档后简短说明连接方式。", context: "实际 web_fetch 返回读取失败，相关原文没有得到。", final: "官方页面读取失败，连接方式尚未从原文核实。" },
+    { name: "actual denial", question: "查官方 Realtime 文档。", context: "实际读取工具返回拒绝，原文未读取。", final: "官方页面读取被拒绝，相关内容尚未核实。" },
+    { name: "core confirmation", question: "读取官方 Realtime 文档。", context: "实际 core 返回 VOICE_CONFIRMATION_REQUIRED，动作未执行，当前没有用户确认。", final: "读取动作尚未执行，需要确认这一具体动作。" },
+    { name: "latest cancellation", question: "查官方 Realtime 文档。", context: "最新用户完整修正：不用继续读了，取消这次查询。", final: "本次查询已取消，原文未读取。" },
+    { name: "deployment state outside docs goal", question: "只解释已读取文档的有条件迁移建议，不检查接入配置。", context: "原文说如果仍使用 preview 接口应迁移；未提供当前部署证据。", final: "如果仍使用 preview 接口，应迁移；当前接入状态尚未核实。" },
+  ];
+  for (const scenario of cases) await t.test(scenario.name, async () => {
+    let capturedPrompt;
+    let runs = 0;
+    const runtime = createHarnessRuntime({
+      args: { question: scenario.question, context: scenario.context },
+      runEmbeddedAgent: async options => {
+        runs++;
+        capturedPrompt = options.prompt;
+        return { payloads: [{ text: scenario.final }] };
+      },
+    });
+    assert.deepEqual(await runtime.run(), { text: scenario.final });
+    assert.equal(runs, 1, "the captured return transport must not invent an additional backend attempt");
+    assert(capturedPrompt.includes(`User request:\n${scenario.question}`));
+    assert(capturedPrompt.includes(`Additional realtime context:\n${scenario.context}`));
+    assert.match(capturedPrompt, /Respect an explicit search-only or no-fetch scope: return discovery results as such/);
+    assert.match(capturedPrompt, /actual retrieval failure, denial, confirmation requirement, explicit cancellation, or user-imposed limit/);
+    assert.match(capturedPrompt, /do not repeat the same blocked attempt without new authorization or evidence/);
+    assert.match(capturedPrompt, /Unverified deployment state outside the requested documentation task does not authorize runtime inspection or migration/);
+    assert.match(capturedPrompt, /VOICE_CONFIRMATION_REQUIRED, the action was not executed/);
+  });
+  assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /尊重用户只搜索或不抓取的范围/u);
+  assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /不自动重复委托同一受理中或已阻塞的读取/u);
+  assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /同一剩余读取已经补委托一次，若再次结束仍未读取，就说明实际未完成/u);
+  assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /没有新用户要求或新来源证据，不循环重委托/u);
+  assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /仅有本次接入部署状态未核实，不产生额外 runtime 检查或迁移授权/u);
+  // These fixtures verify policy delivery and unchanged blockers. They do
+  // not claim the native Live model has obeyed the continuation policy.
+});
+
 test("voice consult carries child stage values and read-before-claim obligations without substituting tool text for progress", async () => {
   const question = "先检索合同来源，再读取官方文档相关段落；同一子任务依次测量延迟并公开带单位的实际值，再检查文件版本后汇总；保持只读，只公开测量值和版本。";
   const stage = "已测得延迟为 2.75 ms。";

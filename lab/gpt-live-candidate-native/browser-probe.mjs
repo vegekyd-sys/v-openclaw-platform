@@ -88,7 +88,12 @@ export const SNAPSHOT_EXPRESSION = `(()=>{const p=globalThis.__candidateLiveProb
 // creates observer-induced microphone gaps. Freeze prefix counts in a small
 // header, then retrieve every raw row in bounded pages without losing data.
 export const SNAPSHOT_ARRAY_FIELDS = ['events','tools','api','ui','audioFrames','micFrames','playRejections','micDiagnostics','pcTransitions','observerStops','observerErrors'];
-export const SNAPSHOT_PAGED_HEADER_EXPRESSION = `(()=>{const p=globalThis.__candidateLiveProbe,a=document.getElementById('remoteAudio'),d=globalThis.__gptLiveDuplexDiagnostics??null;return p?{snapshotStartedAt:Date.now(),probeTimeOrigin:performance.timeOrigin,arrayCounts:Object.fromEntries(${JSON.stringify(SNAPSHOT_ARRAY_FIELDS)}.map(key=>[key,p[key].length])),duplexArrayCounts:d?{events:d.events?.length??0,transitions:d.transitions?.length??0}:null,pcStates:p.pcs.map(pc=>pc.connectionState),senderTracks:p.pcs.map(pc=>pc.getSenders().filter(s=>s.track?.kind==='audio').map(s=>({id:s.track.id,state:s.track.readyState,enabled:s.track.enabled}))),remoteAudio:{muted:a?.muted,paused:a?.paused,volume:a?.volume,attached:Boolean(a?.srcObject)},badge:document.getElementById('badge')?.textContent,callState:document.body?.dataset?.callState,duplex:d?{...d,events:[],transitions:[]}:null}:null})()`;
+export const SNAPSHOT_PAGED_HEADER_EXPRESSION = `(()=>{const p=globalThis.__candidateLiveProbe,a=document.getElementById('remoteAudio'),d=globalThis.__gptLiveDuplexDiagnostics??null;if(!p)return null;
+ const snapshotStartedAt=Date.now();
+ // Duplex diagnostics are rolling rings. Counts alone cannot freeze their
+ // indices, so retain the original row references before any paged reads.
+ const frozen=p.frozenDuplexSnapshot={generation:(p.frozenDuplexSnapshot?.generation??0)+1,events:d?.events?.slice()??[],transitions:d?.transitions?.slice()??[]};
+ return {snapshotStartedAt,probeTimeOrigin:performance.timeOrigin,arrayCounts:Object.fromEntries(${JSON.stringify(SNAPSHOT_ARRAY_FIELDS)}.map(key=>[key,p[key].length])),duplexArrayCounts:d?{events:frozen.events.length,transitions:frozen.transitions.length}:null,duplexSnapshotGeneration:frozen.generation,pcStates:p.pcs.map(pc=>pc.connectionState),senderTracks:p.pcs.map(pc=>pc.getSenders().filter(s=>s.track?.kind==='audio').map(s=>({id:s.track.id,state:s.track.readyState,enabled:s.track.enabled}))),remoteAudio:{muted:a?.muted,paused:a?.paused,volume:a?.volume,attached:Boolean(a?.srcObject)},badge:document.getElementById('badge')?.textContent,callState:document.body?.dataset?.callState,duplex:d?{...d,events:[],transitions:[]}:null}})()`;
 
 export async function readBoundedProbeSnapshot(evaluate,{pageSize=32,previous=null}={}) {
  if(!Number.isSafeInteger(pageSize)||pageSize<1||pageSize>64)throw Error('Bounded probe snapshot page size required');
@@ -100,12 +105,13 @@ export async function readBoundedProbeSnapshot(evaluate,{pageSize=32,previous=nu
   // page for asynchronously attached real RTP/API fields. Final full reads
   // pass no previous state and retrieve every original row again.
   const start=samePage&&Array.isArray(prior)&&prior.length<=count?Math.max(0,prior.length-pageSize):0;
-  const rows=start?prior.slice(0,start):[];for(let at=start;at<count;at+=pageSize){const to=Math.min(at+pageSize,count),page=await evaluate(expression+`.slice(${at},${to}))()`);
+  const rows=start?prior.slice(0,start):[];for(let at=start;at<count;at+=pageSize){const to=Math.min(at+pageSize,count),page=await evaluate(`(${expression}).slice(${at},${to})`);
    if(!Array.isArray(page)||page.length!==to-at)throw Error('Original probe snapshot prefix changed during paged read');
    rows.push(...page);
   }return rows;
  };
- for(const field of SNAPSHOT_ARRAY_FIELDS)state[field]=await read(`(()=>globalThis.__candidateLiveProbe[${JSON.stringify(field)}]`,state.arrayCounts[field],previous?.[field]);
- if(state.duplex)for(const field of ['events','transitions'])state.duplex[field]=await read(`(()=>globalThis.__gptLiveDuplexDiagnostics[${JSON.stringify(field)}]`,state.duplexArrayCounts[field],previous?.duplex?.[field]);
+ for(const field of SNAPSHOT_ARRAY_FIELDS)state[field]=await read(`globalThis.__candidateLiveProbe[${JSON.stringify(field)}]`,state.arrayCounts[field],previous?.[field]);
+ // Rings must always read the entire header-time copy, never a cached prefix.
+ if(state.duplex)for(const field of ['events','transitions'])state.duplex[field]=await read(`(()=>{const frozen=globalThis.__candidateLiveProbe.frozenDuplexSnapshot;if(frozen?.generation!==${state.duplexSnapshotGeneration})throw Error('Frozen duplex snapshot superseded during paged read');return frozen[${JSON.stringify(field)}];})()`,state.duplexArrayCounts[field]);
  state.snapshotCompletedAt=Date.now();state.snapshotSource='bounded-pages-of-frozen-original-observer-prefix';return state;
 }

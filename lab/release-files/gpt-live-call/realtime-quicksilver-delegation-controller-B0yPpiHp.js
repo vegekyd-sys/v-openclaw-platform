@@ -181,6 +181,7 @@ var OpenAIQuicksilverDelegationController = class {
 		const transcript = this.transcript;
 		const delegation = {
 			id,
+			rawInput: input,
 			userBidiTurnId, inputKey,
 			userTranscriptRevision: this.userTranscriptRevision,
 			userTurnTranscriptText: this.nativeUserTurnText.get(userBidiTurnId)?.text,
@@ -295,6 +296,32 @@ var OpenAIQuicksilverDelegationController = class {
 				return receipt;
 			} };
 	}
+	retirePreDispatchUserTurnPrefix(delegation, signal, callControl) {
+		// Retire only a provably unfinished version, before host dispatch. A later
+		// provider item never cancels or rewrites a run already accepted by Talk.
+		if (!callControl || !this.isCurrentDelegation(delegation, signal) || delegation.backendDispatchStarted === true ||
+			callControl.nativeDelegationId !== delegation.id || callControl.delegationGeneration !== delegation.generation ||
+			callControl.originUserTurnId !== delegation.userBidiTurnId || callControl.isCurrent() !== true ||
+			typeof delegation.rawInput !== "string" || !delegation.rawInput.trim()) return false;
+		const proof = this.nativeUserTurnText.get(delegation.userBidiTurnId);
+		if (proof?.complete !== true || proof.text !== callControl.userTurnText || !Number.isFinite(proof.completedAt) ||
+			!this.completedUserTurns.has(delegation.userBidiTurnId) || !Number.isFinite(delegation.callerInputAcceptedAt)) return false;
+		const revisions = this.pendingDelegations.filter(next => next.userBidiTurnId === delegation.userBidiTurnId &&
+			next.generation > delegation.generation && next.backendDispatchStarted !== true && next.retiredBeforeDispatch !== true &&
+			typeof next.rawInput === "string" && next.rawInput.length > delegation.rawInput.length &&
+			next.rawInput.startsWith(delegation.rawInput) && next.rawInput === proof.text &&
+			Number.isFinite(next.callerInputAcceptedAt) && next.callerInputAcceptedAt >= delegation.callerInputAcceptedAt &&
+			next.callerInputAcceptedAt <= proof.completedAt);
+		if (revisions.length !== 1) return false;
+		delegation.retiredBeforeDispatch = true;
+		this.tracePublicProgress("delegation-coalesced-before-dispatch", delegation.id, "", {
+			kind: "progress", delegationGeneration: delegation.generation,
+			provenance: { source: "complete_user_revision", itemId: revisions[0].id, emittedAt: proof.completedAt }
+		});
+		// The unchanged FIFO launches the real newer item with its own id and
+		// generation. No result, terminal event, grant or wire item is synthesized.
+		return true;
+	}
 	observeNativeUserTurn(raw) {
 		if (this.stopped) return false;
 		const turnId = raw.type === "turn.delta" ? raw.turn_id : raw.turn?.id;
@@ -319,7 +346,7 @@ var OpenAIQuicksilverDelegationController = class {
 			const proof = this.nativeUserTurnText.get(turnId);
 			// Exact full strings, including whitespace, must agree. A missing prefix,
 			// correction or additional condition cannot become a harmless closing done.
-			if (proof && proof.text === raw.turn.transcript) { proof.complete = true; return true; }
+			if (proof && proof.text === raw.turn.transcript) { proof.complete = true; proof.completedAt = Date.now(); return true; }
 			this.nativeUserTurnText.delete(turnId);
 		}
 		return false;
@@ -554,6 +581,8 @@ var OpenAIQuicksilverDelegationController = class {
 		try {
 			const callControl = this.callLifecycle ? await this.prepareBackendCallControl(delegation, signal) : void 0;
 			if (!this.isCurrentDelegation(delegation, signal)) return;
+			if (this.retirePreDispatchUserTurnPrefix(delegation, signal, callControl)) return;
+			delegation.backendDispatchStarted = true;
 			const result = await this.options.runAgentConsult({
 				...(callControl ? { callControl } : {}),
 				prompt: delegation.prompt,

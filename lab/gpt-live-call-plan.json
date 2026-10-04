@@ -1,5 +1,5 @@
 {
-  "baseRelease": "hotreload-feishu-approvals-v2",
+  "baseRelease": "loopback-requester-sender-v1",
   "files": [
     {
       "source": "lab/release-files/gpt-live-call/realtime-quicksilver-delegation-controller-B0yPpiHp.js",

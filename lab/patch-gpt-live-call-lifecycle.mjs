@@ -84,8 +84,34 @@ export function patchGptLiveCallLifecycleController(source) {
 \t\t\t\treturn receipt;
 \t\t\t} };
 \t}
+\tretirePreDispatchUserTurnPrefix(delegation, signal, callControl) {
+\t\t// Retire only a provably unfinished version, before host dispatch. A later
+\t\t// provider item never cancels or rewrites a run already accepted by Talk.
+\t\tif (!callControl || !this.isCurrentDelegation(delegation, signal) || delegation.backendDispatchStarted === true ||
+\t\t\tcallControl.nativeDelegationId !== delegation.id || callControl.delegationGeneration !== delegation.generation ||
+\t\t\tcallControl.originUserTurnId !== delegation.userBidiTurnId || callControl.isCurrent() !== true ||
+\t\t\ttypeof delegation.rawInput !== "string" || !delegation.rawInput.trim()) return false;
+\t\tconst proof = this.nativeUserTurnText.get(delegation.userBidiTurnId);
+\t\tif (proof?.complete !== true || proof.text !== callControl.userTurnText || !Number.isFinite(proof.completedAt) ||
+\t\t\t!this.completedUserTurns.has(delegation.userBidiTurnId) || !Number.isFinite(delegation.callerInputAcceptedAt)) return false;
+\t\tconst revisions = this.pendingDelegations.filter(next => next.userBidiTurnId === delegation.userBidiTurnId &&
+\t\t\tnext.generation > delegation.generation && next.backendDispatchStarted !== true && next.retiredBeforeDispatch !== true &&
+\t\t\ttypeof next.rawInput === "string" && next.rawInput.length > delegation.rawInput.length &&
+\t\t\tnext.rawInput.startsWith(delegation.rawInput) && next.rawInput === proof.text &&
+\t\t\tNumber.isFinite(next.callerInputAcceptedAt) && next.callerInputAcceptedAt >= delegation.callerInputAcceptedAt &&
+\t\t\tnext.callerInputAcceptedAt <= proof.completedAt);
+\t\tif (revisions.length !== 1) return false;
+\t\tdelegation.retiredBeforeDispatch = true;
+\t\tthis.tracePublicProgress("delegation-coalesced-before-dispatch", delegation.id, "", {
+\t\t\tkind: "progress", delegationGeneration: delegation.generation,
+\t\t\tprovenance: { source: "complete_user_revision", itemId: revisions[0].id, emittedAt: proof.completedAt }
+\t\t});
+\t\t// The unchanged FIFO launches the real newer item with its own id and
+\t\t// generation. No result, terminal event, grant or wire item is synthesized.
+\t\treturn true;
+\t}
 \tobserveNativeUserTurn(raw) {`, "actual full caller call control capability");
-  source = once(source, "\t\t\tconst result = await this.options.runAgentConsult({", "\t\t\tconst callControl = this.callLifecycle ? await this.prepareBackendCallControl(delegation, signal) : void 0;\n\t\t\tif (!this.isCurrentDelegation(delegation, signal)) return;\n\t\t\tconst result = await this.options.runAgentConsult({\n\t\t\t\t...(callControl ? { callControl } : {}),", "host-only model call control context");
+  source = once(source, "\t\t\tconst result = await this.options.runAgentConsult({", "\t\t\tconst callControl = this.callLifecycle ? await this.prepareBackendCallControl(delegation, signal) : void 0;\n\t\t\tif (!this.isCurrentDelegation(delegation, signal)) return;\n\t\t\tif (this.retirePreDispatchUserTurnPrefix(delegation, signal, callControl)) return;\n\t\t\tdelegation.backendDispatchStarted = true;\n\t\t\tconst result = await this.options.runAgentConsult({\n\t\t\t\t...(callControl ? { callControl } : {}),", "host-only model call control context");
   source = once(source, '\t\t\tif (typeof result?.text !== "string" || !result.text.trim()) throw new Error("Backend returned no complete public result");', '\t\t\tif (delegation.callControlReceipt) {\n\t\t\t\tif (result?.callControl !== delegation.callControlReceipt) throw new Error("Backend call control returned an unowned receipt");\n\t\t\t\treturn;\n\t\t\t}\n\t\t\tif (typeof result?.text !== "string" || !result.text.trim()) throw new Error("Backend returned no complete public result");', "accepted call control is not a spoken final");
   source = once(source, '\t\t\tthis.options.logger.warn(`OpenAI GPT-Live delegation consult failed: ${shortFailureReason(error)}`);', '\t\t\tif (delegation.callControlReceipt) return;\n\t\t\tthis.options.logger.warn(`OpenAI GPT-Live delegation consult failed: ${shortFailureReason(error)}`);', "accepted farewell prevents duplicate failure speech");
   source = once(source, "\t\t\tif (finished || !this.isCurrentDelegation(delegation, signal)) {", "\t\t\tif (finished || delegation.callControlReceipt || !this.isCurrentDelegation(delegation, signal)) {", "accepted control stops ordinary progress");

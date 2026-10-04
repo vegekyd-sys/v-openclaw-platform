@@ -6,7 +6,7 @@ import path from 'node:path';
 import os from 'node:os';
 import vm from 'node:vm';
 import {captureOwnedBrowserDirectory,removeOwnedBrowserDirectory} from './private-pulse.mjs';
-import {BROWSER_PROBE,SNAPSHOT_ARRAY_FIELDS,readBoundedProbeSnapshot} from './browser-probe.mjs';
+import {BROWSER_PROBE,SNAPSHOT_ARRAY_FIELDS,SNAPSHOT_PAGED_HEADER_EXPRESSION,readBoundedProbeSnapshot} from './browser-probe.mjs';
 import {assessDecodedPlaybackWindow} from './evidence.mjs';
 import {resolveEndCallToolWitness,resolveLifecycleUserTurn,assessLifecycleSpeech,hasLifecyclePlaybackTail,assessLifecycleFarewell,assessProactiveGreeting,assessAutomaticEnd,
   extractLifecycleToolPairs,resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult,readLifecycleHistoryOrRetry} from './call-lifecycle-evidence.mjs';
@@ -599,6 +599,58 @@ test('incremental lifecycle polls bound every CDP page and refresh late fields; 
  performance.timeOrigin=2000;probe.events[0].id='new-page';
  const newPage=await readBoundedProbeSnapshot(evaluate,{previous:poll});
  assert.equal(newPage.events[0].id,'new-page','A new browser page cannot reuse old observer evidence');
+});
+test('paged duplex evidence freezes original ring rows while both live rings keep rotating',async()=>{
+ const arrays=Object.fromEntries(SNAPSHOT_ARRAY_FIELDS.map(key=>[key,Array.from({length:65},(_,id)=>({id:key+'-'+id}))]));
+ const probe={...arrays,pcs:[]},duplex={events:Array.from({length:75},(_,id)=>({id:'event-'+id})),transitions:Array.from({length:45},(_,id)=>({id:'transition-'+id}))};
+ const original={events:duplex.events.slice(),transitions:duplex.transitions.slice()};
+ const context=vm.createContext({__candidateLiveProbe:probe,__gptLiveDuplexDiagnostics:duplex,performance:{timeOrigin:1000},
+  document:{getElementById:()=>({}),body:{dataset:{callState:'connected'}}}});
+ let reads=0,maxRows=0;
+ const result=await readBoundedProbeSnapshot(async expression=>{
+  const value=structuredClone(vm.runInContext(expression,context));
+  if(Array.isArray(value)){
+   reads++;maxRows=Math.max(maxRows,value.length);
+   for(const field of ['events','transitions']){duplex[field].shift();duplex[field].push({id:field+'-after-header-'+reads});}
+   probe.micFrames.push({id:'live-mic-'+reads});
+  }else{
+   assert.notEqual(probe.frozenDuplexSnapshot.events,duplex.events);
+   assert(probe.frozenDuplexSnapshot.events.every((row,i)=>row===original.events[i]),'The header retains original row references with a shallow copy');
+  }
+  return value;
+ },{pageSize:32});
+ assert.equal(maxRows,32);assert(probe.micFrames.length>65,'The original microphone sampler can continue appending');
+ for(const field of SNAPSHOT_ARRAY_FIELDS)assert.deepEqual(result[field],arrays[field].slice(0,65));
+ for(const field of ['events','transitions']){
+  assert.deepEqual(result.duplex[field],original[field]);assert.notDeepEqual(result.duplex[field],duplex[field]);
+  assert.equal(new Set(result.duplex[field].map(row=>row.id)).size,original[field].length);
+ }
+});
+test('duplex polls re-read the complete new ring even when prior snapshot lengths and page origin match',async()=>{
+ const probe={...Object.fromEntries(SNAPSHOT_ARRAY_FIELDS.map(key=>[key,[]])),pcs:[]};
+ const duplex={events:Array.from({length:137},(_,id)=>({id:'event-'+id})),transitions:Array.from({length:128},(_,id)=>({id:'transition-'+id}))};
+ const context=vm.createContext({__candidateLiveProbe:probe,__gptLiveDuplexDiagnostics:duplex,performance:{timeOrigin:1000},
+  document:{getElementById:()=>({}),body:{dataset:{callState:'connected'}}}});
+ let reads=0;const evaluate=async expression=>{const value=structuredClone(vm.runInContext(expression,context));if(Array.isArray(value))reads++;return value;};
+ const initial=await readBoundedProbeSnapshot(evaluate),fullReads=reads;reads=0;
+ for(const field of ['events','transitions'])for(let i=0;i<70;i++){duplex[field].shift();duplex[field].push({id:field+'-next-'+i});}
+ const next=await readBoundedProbeSnapshot(evaluate,{previous:initial});
+ assert.equal(reads,fullReads,'Rolling arrays cannot reuse a previous append-only prefix');
+ assert(next.duplexSnapshotGeneration>initial.duplexSnapshotGeneration);
+ for(const field of ['events','transitions'])assert.deepEqual(next.duplex[field],duplex[field]);
+ assert.notDeepEqual(next.duplex.events,initial.duplex.events);
+});
+test('a superseding header rejects a paged duplex read instead of mixing different frozen rings',async()=>{
+ const probe={...Object.fromEntries(SNAPSHOT_ARRAY_FIELDS.map(key=>[key,[]])),pcs:[]};probe.events.push({id:'actual'});
+ const duplex={events:[{id:'original-ring'}],transitions:[]};
+ const context=vm.createContext({__candidateLiveProbe:probe,__gptLiveDuplexDiagnostics:duplex,performance:{timeOrigin:1000},
+  document:{getElementById:()=>({}),body:{dataset:{callState:'connected'}}}});
+ let superseded=false;
+ await assert.rejects(readBoundedProbeSnapshot(async expression=>{
+  const value=structuredClone(vm.runInContext(expression,context));
+  if(Array.isArray(value)&&!superseded){superseded=true;duplex.events[0]={id:'later-ring'};vm.runInContext(SNAPSHOT_PAGED_HEADER_EXPRESSION,context);}
+  return value;
+ }),/Frozen duplex snapshot superseded/);
 });
 
 function toolsFixture() {

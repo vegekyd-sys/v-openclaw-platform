@@ -161,6 +161,7 @@ var OpenAIQuicksilverDelegationController = class {
 		const transcript = this.transcript;
 		const delegation = {
 			id,
+			rawInput: input,
 			userBidiTurnId, inputKey,
 			userTranscriptRevision: this.userTranscriptRevision,
 			userTurnTranscriptText: this.nativeUserTurnText.get(userBidiTurnId)?.text,
@@ -243,7 +244,7 @@ var OpenAIQuicksilverDelegationController = class {
 			const proof = this.nativeUserTurnText.get(turnId);
 			// Exact full strings, including whitespace, must agree. A missing prefix,
 			// correction or additional condition cannot become a harmless closing done.
-			if (proof && proof.text === raw.turn.transcript) { proof.complete = true; return true; }
+			if (proof && proof.text === raw.turn.transcript) { proof.complete = true; proof.completedAt = Date.now(); return true; }
 			this.nativeUserTurnText.delete(turnId);
 		}
 		return false;

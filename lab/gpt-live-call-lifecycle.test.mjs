@@ -38,7 +38,7 @@ const Controller = new Function("createHash", "randomUUID", "createGptLiveCallLi
   (createHash, randomUUID, createGptLiveCallLifecycle, createGptLiveEndCallClientTool, (v) => v instanceof Error ? v : new Error(String(v)), (v) => v.message, String, ({ input }) => input, parseNative, (v) => v, chunkNative, (v) => v);
 
 function nativeFixture({ enabled = true, onToolEvent, adopted = true, runAgentConsult } = {}) {
-  const order = [], errors = [], calls = [], abort = new AbortController();
+  const order = [], errors = [], calls = [], diagnostics = [], abort = new AbortController();
   let currentLease = adopted;
   const socket = { readyState: 1, fail: false, send(value) {
     if (this.fail) throw new Error("socket send failed");
@@ -47,12 +47,13 @@ function nativeFixture({ enabled = true, onToolEvent, adopted = true, runAgentCo
   const controller = new Controller({ signal: abort.signal, getSocket: () => socket, logger: { warn() {} },
     callLifecycle: enabled, isCallCurrent: () => currentLease,
     onCallLifecycleEvent: (event) => { order.push({ kind: "tool", ...event }); onToolEvent?.(event); },
+    onPublicProgressDiagnostic: event => diagnostics.push(event),
     onError: (error) => errors.push(error), onFatalError: (error) => errors.push(error),
     runAgentConsult: (params) => { calls.push(params); return runAgentConsult ? runAgentConsult(params) : new Promise(() => {}); } });
   const frame = (event) => controller.handleFrame(JSON.stringify(event), false);
   const start = () => frame({ type: "session.started", session: {} });
   const end = (id = "native-end-1", origin = "actual-user-turn") => frame({ type: "delegation.created", item: { type: "delegation", target: "client", id, ...(origin ? { user_bidi_turn_id: origin } : {}), content: [{ type: "input_text", text: endPrompt }] } });
-  return { controller, abort, socket, order, errors, calls, frame, start, end, legacyEnd: (id = "native-end-1", origin = "actual-user-turn") => controller.callLifecycle.handleDelegation(id, endPrompt, origin),
+  return { controller, abort, socket, order, errors, calls, diagnostics, frame, start, end, legacyEnd: (id = "native-end-1", origin = "actual-user-turn") => controller.callLifecycle.handleDelegation(id, endPrompt, origin),
     setCurrentLease: value => { currentLease = value; } };
 }
 
@@ -524,4 +525,124 @@ test("the active controller never promotes even an exact JSON delegation string 
   assert.equal(f.order.length, 0);
   assert.doesNotMatch(controllerSource, /this\.callLifecycle\?\.handleDelegation/u);
   f.controller.detach();
+});
+
+const revisionPrefix = "请先用 memory search 查家庭相关记录,再用 web search 查 OpenAI 官方 realtime API 文档,查到后用一句中文说两个结果,不要写入。";
+const revisionFull = revisionPrefix + "也不要发消息";
+function revisionDelegation(f,id,text,turn="turn-revision") {
+  f.frame({ type: "delegation.created", item: { type: "delegation", target: "client", id,
+    user_bidi_turn_id: turn, content: [{ type: "input_text", text }] } });
+}
+function revisionUser(f,turn,text,kind="created") {
+  f.frame({ type: "turn."+kind, turn: { role: "user", id: turn, transcript: text } });
+}
+function revisionDelta(f,turn,delta) { f.frame({ type: "turn.delta", turn_id: turn, delta }); }
+
+test("complete same-USER strict revision retires only the unstarted prefix and dispatches the real full native item once", async t => {
+  let now=1000,finish;
+  t.mock.method(Date,"now",()=>now);
+  const f=nativeFixture({runAgentConsult:()=>new Promise(resolve=>{finish=resolve;})});
+  revisionUser(f,"turn-revision",revisionPrefix);
+  now=1100;revisionDelegation(f,"native-prefix",revisionPrefix);
+  const prefixSignal=f.controller.consultController.signal;
+  assert.equal(f.calls.length,0,"The completed USER barrier precedes any host dispatch");
+  now=1200;revisionDelta(f,"turn-revision",revisionFull.slice(revisionPrefix.length));
+  revisionDelegation(f,"native-full",revisionFull);
+  assert.equal(f.controller.pendingDelegations.length,1);
+  assert.equal(f.calls.length,0,"An accepted provider item is not an accepted backend run");
+  now=1250;revisionUser(f,"turn-revision",revisionFull,"done");await settleTick();
+  assert.equal(f.calls.length,1);assert.equal(f.calls[0].prompt,revisionFull);
+  assert.deepEqual(f.calls[0].continuationIdentity,{delegationItemId:"native-full",delegationGeneration:2});
+  assert.equal(f.calls[0].callControl.nativeDelegationId,"native-full");
+  assert.equal(f.calls[0].callControl.userTurnText,revisionFull);
+  assert.equal(f.calls[0].callerInputAcceptedAt,1200,"Retirement never borrows the completion or later caller time as acceptance");
+  assert.equal(prefixSignal.aborted,false,"No host run or accepted prefix is force-aborted");
+  assert.equal(f.controller.pendingDelegations.length,0);
+  const proof=f.diagnostics.filter(e=>e.stage==="delegation-coalesced-before-dispatch");
+  assert.equal(proof.length,1);assert.equal(proof[0].delegationId,"native-prefix");
+  assert.equal(proof[0].generation,1);assert.equal(proof[0].provenance.itemId,"native-full");
+  assert.equal(proof[0].provenance.emittedAt,1250);
+  assert.equal(f.order.length,0,"Retirement produces no synthetic terminal, failure, grant or provider frame");
+  finish({text:"已按完整只读目标查到两项结果。"});await settleTick();
+  assert.equal(f.calls.length,1);
+  assert.equal(f.order.filter(e=>e.type==="delegation.context.append").length,1);
+  assert(f.order.every(e=>e.delegation_item_id==="native-full"));
+  assert.equal(f.errors.length,0);f.controller.detach();
+});
+
+test("pre-dispatch strict revision retains every step and restriction of the complete multi-step USER", async () => {
+  const first="查询家庭记忆",middle=first+"，查询官方网页",full=middle+"，再让两个子任务分别查航班和酒店，只读";
+  const f=nativeFixture();revisionUser(f,"turn-revision",first);revisionDelegation(f,"first",first);
+  revisionDelta(f,"turn-revision",middle.slice(first.length));revisionDelegation(f,"middle",middle);
+  revisionDelta(f,"turn-revision",full.slice(middle.length));revisionDelegation(f,"full",full);
+  revisionUser(f,"turn-revision",full,"done");await settleTick();
+  assert.equal(f.calls.length,1);assert.equal(f.calls[0].prompt,full);
+  assert.deepEqual(f.calls[0].continuationIdentity,{delegationItemId:"full",delegationGeneration:3});
+  assert.deepEqual(f.diagnostics.filter(e=>e.stage==="delegation-coalesced-before-dispatch").map(e=>e.delegationId),["first","middle"]);
+  assert.equal(f.order.length,0);f.controller.detach();
+});
+
+test("an already dispatched host owner survives a later full same-USER version with no cancellation or owner rewrite", async () => {
+  const finish=[];
+  const f=nativeFixture({runAgentConsult:()=>new Promise(resolve=>finish.push(resolve))});
+  revisionUser(f,"turn-revision",revisionFull);revisionDelegation(f,"started-prefix",revisionPrefix);
+  revisionUser(f,"turn-revision",revisionFull,"done");await settleTick();
+  assert.equal(f.calls.length,1);const first=f.calls[0],original={...first.continuationIdentity};
+  revisionDelegation(f,"later-full",revisionFull);await settleTick();
+  assert.equal(f.calls.length,1);assert.deepEqual(first.continuationIdentity,original);assert.equal(first.signal.aborted,false);
+  assert.equal(f.diagnostics.some(e=>e.stage==="delegation-coalesced-before-dispatch"),false);
+  finish[0]({text:"原已接受工作完成"});await settleTick();
+  assert.equal(f.calls.length,2);assert.equal(f.calls[1].continuationIdentity.delegationItemId,"later-full");
+  finish[1]({text:"后续工作完成"});await settleTick();f.controller.detach();
+});
+
+test("different USER, distinct same-USER goals, non-prefix changes, and incomplete raw proof retain their separate host requests", async t => {
+  for(const scenario of ["new-user","distinct-goal","non-prefix","corrected-done","missing-raw-prefix","whitespace-correction"]) await t.test(scenario,async()=>{
+    const finish=[],f=nativeFixture({runAgentConsult:()=>new Promise(resolve=>finish.push(resolve))});
+    if(scenario!=="missing-raw-prefix")revisionUser(f,"turn-revision",revisionPrefix);
+    revisionDelegation(f,"first",revisionPrefix);
+    let next=revisionFull;
+    if(scenario==="new-user") {
+      revisionUser(f,"other-user",next);revisionDelegation(f,"second",next,"other-user");
+      revisionUser(f,"turn-revision",revisionPrefix,"done");revisionUser(f,"other-user",next,"done");
+    }else {
+      if(scenario==="distinct-goal")next="独立查询酒店价格";
+      if(scenario==="non-prefix")next="先只查官方网页，再查询家庭记忆";
+      if(scenario==="whitespace-correction")next=revisionFull.replace("不要写入。","不要 写入。");
+      if(!["corrected-done","missing-raw-prefix","whitespace-correction"].includes(scenario))
+        revisionDelta(f,"turn-revision",next.startsWith(revisionPrefix)?next.slice(revisionPrefix.length):"，还要查询酒店");
+      revisionDelegation(f,"second",next);revisionUser(f,"turn-revision",next,"done");
+    }
+    await settleTick();assert.equal(f.calls.length,1,scenario);
+    assert.equal(f.calls[0].continuationIdentity.delegationItemId,"first",scenario);
+    assert.equal(f.diagnostics.some(e=>e.stage==="delegation-coalesced-before-dispatch"),false,scenario);
+    finish[0]({text:"第一工作完成"});await settleTick();assert.equal(f.calls.length,2,scenario);
+    assert.equal(f.calls[1].continuationIdentity.delegationItemId,"second",scenario);
+    finish[1]({text:"第二工作完成"});await settleTick();f.controller.detach();
+  });
+});
+
+test("multiple full revisions are ambiguous and cannot retire an unstarted provider prefix", async () => {
+  const f=nativeFixture();revisionUser(f,"turn-revision",revisionPrefix);revisionDelegation(f,"prefix",revisionPrefix);
+  revisionDelta(f,"turn-revision",revisionFull.slice(revisionPrefix.length));
+  revisionDelegation(f,"full-one",revisionFull);revisionDelegation(f,"full-two",revisionFull);
+  revisionUser(f,"turn-revision",revisionFull,"done");await settleTick();
+  assert.equal(f.calls.length,1);assert.equal(f.calls[0].continuationIdentity.delegationItemId,"prefix");
+  assert.equal(f.diagnostics.some(e=>e.stage==="delegation-coalesced-before-dispatch"),false);f.controller.detach();
+});
+
+test("a failed or explicitly cancelled full revision remains eligible for a real later retry", async t => {
+  for(const failure of ["failure","cancel"])await t.test(failure,async()=>{
+    const pending=[],f=nativeFixture({runAgentConsult:()=>new Promise((resolve,reject)=>pending.push({resolve,reject}))});
+    revisionUser(f,"turn-revision",revisionPrefix);revisionDelegation(f,"prefix",revisionPrefix);
+    revisionDelta(f,"turn-revision",revisionFull.slice(revisionPrefix.length));revisionDelegation(f,"full",revisionFull);
+    revisionUser(f,"turn-revision",revisionFull,"done");await settleTick();assert.equal(f.calls.length,1);
+    if(failure==="cancel")f.calls[0].onCanceled({runId:"real-cancelled-run",source:"explicit_control"});
+    pending[0].reject(new Error(failure));await settleTick();
+    revisionDelegation(f,"retry",revisionFull);await settleTick();
+    assert.equal(f.calls.length,2);assert.equal(f.calls[1].continuationIdentity.delegationItemId,"retry");
+    assert.equal(f.calls[1].signal.aborted,false);
+    assert.equal(f.order.some(e=>e.delegation_item_id==="prefix"),false);
+    pending[1].resolve({text:"实际重试完成"});await settleTick();f.controller.detach();
+  });
 });
