@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { HandoffRegistry, CLOSE_CODES } from "./lib/registry.mjs";
 import { acceptWebSocket, isWebSocketUpgrade, rejectUpgrade } from "./lib/ws.mjs";
 import { connectVnc, bridgeViewer } from "./lib/rfb-proxy.mjs";
+import { createDisplayLayout } from "./lib/display-layout.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(HERE, "public");
@@ -42,6 +43,7 @@ export function loadConfig(file) {
     limits: {},
     ...raw,
     vnc: { host: "127.0.0.1", port: 5900, ...(raw.vnc ?? {}) },
+    layout: { enabled: true, display: ":99", base: "1280x800", ...(raw.layout ?? {}) },
   };
   for (const key of ["stateDir", "adminTokenFile"]) {
     if (typeof config[key] !== "string" || !config[key]) {
@@ -135,7 +137,7 @@ function clientIp(req) {
   return req.socket?.remoteAddress ?? null;
 }
 
-export function createService(config, { log = console } = {}) {
+export function createService(config, { log = console, layout: layoutOverride } = {}) {
   fs.mkdirSync(config.stateDir, { recursive: true, mode: 0o700 });
   const adminToken = readSecretFile(config.adminTokenFile);
   if (adminToken.length < 16) {
@@ -144,13 +146,27 @@ export function createService(config, { log = console } = {}) {
   const vncPassword = () => (config.vnc.passwordFile ? readSecretFile(config.vnc.passwordFile) : config.vnc.password);
   const auditFile = path.join(config.stateDir, "audit.jsonl");
   const stateFile = path.join(config.stateDir, "handoffs.json");
+  let layout = null;
   const registry = new HandoffRegistry({
     limits: config.limits,
     onAudit: (entry) => {
       fs.appendFileSync(auditFile, `${JSON.stringify(entry)}\n`, { mode: 0o600 });
       scheduleSave();
+      syncLayout();
     },
   });
+  // loadConfig turns the phone layout on by default; a bare config (tests) leaves it off.
+  layout =
+    layoutOverride ?? (config.layout?.enabled ? createDisplayLayout({ display: config.layout.display, base: config.layout.base, log }) : null);
+  // The phone layout exists only while the viewer that asked for it is still the controller.
+  // Every control change is audited, so checking here (and on the timer) covers release,
+  // hand-back, idle demotion, disconnect, takeover and the end of the handoff.
+  function syncLayout() {
+    const owner = layout?.state.owner;
+    if (owner && registry.controllerSecret !== owner) {
+      layout.restore("controller-changed").catch((error) => log.error?.(`layout restore failed: ${error.message}`));
+    }
+  }
   try {
     registry.importHandoffs(JSON.parse(fs.readFileSync(stateFile, "utf8")));
   } catch {
@@ -210,12 +226,35 @@ export function createService(config, { log = console } = {}) {
           json(res, 404, { error: "unknown_viewer" });
           return;
         }
-        json(res, 200, { ...status, now: Date.now() });
+        const lay = layout?.state;
+        json(res, 200, { ...status, now: Date.now(), layout: lay ? { mode: lay.owner === url.searchParams.get("viewer") ? lay.mode : "desktop", width: lay.width, height: lay.height } : null });
       } else if (req.method === "POST" && route === "/api/control") {
         const body = await readJsonBody(req);
         const secret = typeof body.viewer === "string" ? body.viewer : "";
         const result = body.take ? registry.takeControl(secret) : registry.releaseControl(secret);
         json(res, result.error ? 403 : 200, result);
+      } else if (req.method === "POST" && route === "/api/layout") {
+        const body = await readJsonBody(req);
+        const secret = typeof body.viewer === "string" ? body.viewer : "";
+        if (!layout) {
+          json(res, 409, { error: "layout_disabled" });
+          return;
+        }
+        if (!registry.isController(secret)) {
+          json(res, 403, { error: "not_controller" });
+          return;
+        }
+        try {
+          const state = body.mode === "phone" ? await layout.phone(secret, body.width, body.height) : await layout.restore("viewer-asked");
+          if (!registry.isController(secret)) {
+            syncLayout(); // lost control while resizing
+          }
+          registry.audit("layout", { viewer: secret.slice(0, 6), mode: state.mode, size: `${state.width}x${state.height}` });
+          json(res, 200, { mode: state.mode, width: state.width, height: state.height });
+        } catch (error) {
+          log.error?.(`layout ${body.mode} failed: ${error.message}`);
+          json(res, 500, { error: "layout_failed" });
+        }
       } else {
         res.writeHead(404);
         res.end("not found");
@@ -350,8 +389,12 @@ export function createService(config, { log = console } = {}) {
     }
   });
 
-  const timer = setInterval(() => registry.tick(), 5_000);
+  const timer = setInterval(() => {
+    registry.tick();
+    syncLayout();
+  }, 5_000);
   timer.unref();
+  layout?.recover().catch((error) => log.error?.(`layout recover failed: ${error.message}`));
 
   return {
     registry,
@@ -367,11 +410,13 @@ export function createService(config, { log = console } = {}) {
       });
       return { publicPort: publicServer.address().port, adminPort: adminServer.address().port };
     },
+    layout,
     async close() {
       clearInterval(timer);
       for (const [secret] of registry.viewers) {
         registry.detachViewer(secret, 1001, "service-stopping");
       }
+      await layout?.restore("service-stopping").catch(() => {});
       await Promise.all([
         new Promise((resolve) => publicServer.close(() => resolve())),
         new Promise((resolve) => adminServer.close(() => resolve())),
