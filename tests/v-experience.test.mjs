@@ -679,8 +679,11 @@ test("「电脑」 card on WeCom: picture card (or image) + button card; taps an
     card_type: "button_interaction",
     main_title: { title: "电脑", desc: "需要操作" },
     sub_title_text: `需要你登录测试站点\n${COMPUTER_CARD().blocks[0].text}`,
-    horizontal_content_list: [{ type: 1, keyname: "接管", value: "点击打开", url: "https://openclaw.example.test/desktop-handoff/#tok_1" }],
-    button_list: [{ text: "我完成了", style: 1, key: "vcmd:v-handback:h_1" }, { text: "跳过", style: 2, key: "vcmd:v-skip:h_1" }],
+    button_list: [
+      { text: "接管", style: 1, type: 1, url: "https://openclaw.example.test/desktop-handoff/#tok_1" },
+      { text: "我完成了", style: 4, key: "vcmd:v-handback:h_1" },
+      { text: "跳过", style: 2, key: "vcmd:v-skip:h_1" },
+    ],
     task_id: "v_t",
   });
   const local = vx.wecomCardMessages({ ...card, image: { alt: "x", ref: "file:///tmp/v-desktop-handoff-h_1.jpg" } });

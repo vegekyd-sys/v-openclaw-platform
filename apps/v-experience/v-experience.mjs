@@ -935,24 +935,25 @@ const taskIdFor = (taskId) => taskId ?? `v_${Date.now()}_${Math.random().toStrin
 
 /**
  * WeCom `button_interaction` template card: the title (with its state as the
- * title's desc), the lines, links as tappable rows, command buttons as card
- * buttons whose taps come back as template_card_event. The card type has no
- * picture. A card without command buttons (a finished state) keeps one inert
- * button showing that state.
+ * title's desc), the lines, then the buttons as on Feishu: links first as
+ * jump buttons (`type: 1`), then command buttons whose taps come back as
+ * template_card_event. The card type has no picture. A card without command
+ * buttons (a finished state) keeps one inert button showing that state.
  */
 export function wecomButtonCard(card, { taskId } = {}) {
   const head = splitTitle(card.title);
   const text = card.lines.map(plainLine).filter(Boolean).join("\n");
-  const links = card.buttons.filter((b) => b.url).slice(0, 6);
-  const commands = card.buttons.filter((b) => b.command).slice(0, 6);
+  const links = card.buttons.filter((b) => b.url);
+  const commands = card.buttons.filter((b) => b.command);
+  const buttons = [
+    ...links.map((b) => ({ text: b.label.slice(0, 10), style: 1, type: 1, url: b.url })),
+    ...commands.map((b, i) => ({ text: b.label.slice(0, 10), style: links.length || i > 0 ? (i === 0 ? 4 : 2) : 1, key: wecomCardKey(b.command) })),
+  ].slice(0, 6);
   return {
     card_type: "button_interaction",
     main_title: { title: head.title, ...(head.desc ? { desc: head.desc } : {}) },
     ...(text ? { sub_title_text: text.slice(0, 500) } : {}),
-    ...(links.length ? { horizontal_content_list: links.map((b) => ({ type: 1, keyname: b.label.slice(0, 5), value: "点击打开", url: b.url })) } : {}),
-    button_list: commands.length
-      ? commands.map((b, i) => ({ text: b.label.slice(0, 10), style: i === 0 ? 1 : 2, key: wecomCardKey(b.command) }))
-      : [{ text: (head.desc || "已结束").slice(0, 10), style: 2, key: "vnoop" }],
+    button_list: commands.length ? buttons : [{ text: (head.desc || "已结束").slice(0, 10), style: 2, key: "vnoop" }],
     task_id: taskIdFor(taskId),
   };
 }

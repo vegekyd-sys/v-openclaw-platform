@@ -200,7 +200,7 @@ const handoffScenario = async (command) => {
   await settle(chatId, since, () => finished(chatId, since).length > 0, { label: "handoff reply", quietMs: 6000, timeoutMs: 240_000 }).catch(() => null);
   const sent = proactiveSince(chatId, since).filter((m) => m.at <= card.at + 1 && (m.templateCard || m.msgtype === "image")).map((m) => ({ msgtype: m.msgtype, cardType: m.templateCard?.card_type, mediaId: m.mediaId }));
   const news = proactiveSince(chatId, since).find((m) => m.templateCard?.card_type === "news_notice");
-  const link = linkToken(card.templateCard.horizontal_content_list?.[0]?.url, "/desktop-handoff");
+  const link = linkToken(card.templateCard.button_list.find((b) => b.type === 1)?.url, "/desktop-handoff");
   const id = handoff.issued().at(-1)?.id;
   const claimStatus = link ? await handoff.claim(link.token) : null;
   const before = await handoff.status(id);
@@ -454,8 +454,11 @@ if (EXPECT === "patched") {
     }
     assert.deepEqual(r.card.main_title, { title: "电脑", desc: "需要操作" });
     assert.match(r.card.sub_title_text, /^需要你登录测试站点\n点「接管」打开 V 的电脑直接操作，做完点「我完成了」，V 接着做；不需要就点「跳过」。\d+ 分钟内打开有效。$/u);
-    assert.deepEqual(r.card.horizontal_content_list, [{ type: 1, keyname: "接管", value: "点击打开", url: takeover }]);
-    assert.deepEqual(r.card.button_list, [{ text: "我完成了", style: 1, key: `vcmd:v-handback:${r.handoffId}` }, { text: "跳过", style: 2, key: `vcmd:v-skip:${r.handoffId}` }]);
+    assert.deepEqual(r.card.button_list, [
+      { text: "接管", style: 1, type: 1, url: takeover },
+      { text: "我完成了", style: 4, key: `vcmd:v-handback:${r.handoffId}` },
+      { text: "跳过", style: 2, key: `vcmd:v-skip:${r.handoffId}` },
+    ]);
     assert.equal(r.claimStatus, 200, "the card's link does not open the handoff");
     assert.deepEqual(r.before, { cardState: "pending", cardChannel: "wecom", ended: false });
     assert(r.update, "the tapped card was not updated");
