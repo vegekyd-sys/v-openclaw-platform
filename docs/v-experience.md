@@ -322,7 +322,8 @@ V 现在：`commands.ownerAllowFrom = ["feishu:<Tianyi>", "telegram:<Tianyi>"]`�
 | 钉钉，只配 owner、不配 allowFrom | 有 | 不执行 | 未切换 | 都未执行 |
 | 飞书（`feishu-model-switch-roles`，V3） | 9 项检查全过 | | | |
 
-Candidate 见文末待填。
+Candidate（按表格行序）：钉钉 `9d962118`、企微 `c5d02970`、Telegram `ecfa2b36`（三者在 `f376c5f2` 干净提交上）；
+原版插件 + 角色配置 `bba5a98c`；V 现在的配置 `12e2df19`；只配 owner `033ebb6c`；飞书 `1cafc02d`。
 
 没覆盖 / 待处理：
 
