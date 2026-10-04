@@ -64,7 +64,8 @@ class CdpClient {
  close(){for(const p of this.pending.values()){clearTimeout(p.timer);p.reject(Error('CDP closed'));}this.pending.clear();this.socket?.close();}
 }
 async function evaluate(expression){const r=await cdp.request('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw Error(r.exceptionDetails.exception?.description??r.exceptionDetails.text);return r.result?.value;}
-async function snapshot(full=false){const state=await readBoundedProbeSnapshot(evaluate,{previous:full?null:snapshotCache});
+async function snapshot(full=false){const state=await readBoundedProbeSnapshot(evaluate,{previous:full?null:snapshotCache,
+ onClockRow:row=>{fs.appendFileSync(path.join(base,'browser-page-clocks.jsonl'),JSON.stringify(row)+'\n',{mode:0o600});}});
  if(state&&state.probeTimeOrigin===snapshotCache?.probeTimeOrigin)assert(state.duplexSnapshotGeneration>snapshotCache.duplexSnapshotGeneration,'Full snapshot cannot reuse an old browser header');
  snapshotCache=state;
  if(state)state.browserTimeOrigin=browserTimeOrigin;
@@ -319,12 +320,14 @@ finally {
   check('complete-raw-observation-through-original-close',Boolean(postClose)&&[...owners.values()].every(owner=>postClose.api.some(a=>a.route==='/api/close'&&a.status===200&&a.request?.voiceSessionId===owner.voiceSessionId)),{postCloseFullAvailable:Boolean(postClose)});
   save('browser-native-evidence.json',lastState);save('gateway-tool-events.json',ownedGatewayEvents());save('actual-input-clip-schedule.json',pulse?.plays??[]);
   await evaluate('globalThis.__candidateLiveProbe.dispose()').catch(()=>{});
-  const recordings=await evaluate(`(async()=>{const p=globalThis.__candidateLiveProbe,rows=[];for(const recording of p.recordings){const blob=new Blob(recording.chunks,{type:'audio/webm;codecs=opus'}),bytes=new Uint8Array(await blob.arrayBuffer());let binary='';for(let at=0;at<bytes.length;at+=16384)binary+=String.fromCharCode(...bytes.subarray(at,at+16384));rows.push({pcIndex:recording.pcIndex,startedAt:recording.startedAt,blobBytes:blob.size,base64:btoa(binary),error:recording.error??null});}return rows})()`).catch(()=>[]);
+  const recordings=await evaluate(`(async()=>{const p=globalThis.__candidateLiveProbe,rows=[];for(const recording of p.recordings){const blob=new Blob(recording.chunks,{type:'audio/webm;codecs=opus'}),bytes=new Uint8Array(await blob.arrayBuffer());let binary='';for(let at=0;at<bytes.length;at+=16384)binary+=String.fromCharCode(...bytes.subarray(at,at+16384));rows.push({pcIndex:recording.pcIndex,startedAt:recording.startedAt,blobBytes:blob.size,base64:btoa(binary),error:recording.error??null,recorderLifecycle:recording.lifecycle??null});}return rows})()`).catch(()=>[]);
+  const recordingMetadata=recordings.map(({base64,...metadata})=>metadata);save('native-recordings-metadata.json',{recordings:recordingMetadata,nominalPCMMappingUnchanged:true});
+  check('original-native-receiver-recording-finalization',recordings.length===owners.size&&recordings.length>0&&recordings.every(row=>row.recorderLifecycle?.finalization?.passed===true&&!row.error),{recordings:recordingMetadata,requiresActualNativeStopAndFinalData:true});
   const decoded=[];
   for(const row of recordings){const prefix='native-'+row.pcIndex,webm=path.join(base,prefix+'.webm');fs.writeFileSync(webm,Buffer.from(row.base64,'base64'),{mode:0o600});
    const ff=spawnSync(media.executables.ffmpeg,['-v','error','-i',webm,'-f','s16le','-ar','48000','-ac','1','pipe:1'],{maxBuffer:80*1024**2});
    if(ff.status===0)fs.writeFileSync(path.join(base,prefix+'.pcm'),ff.stdout,{mode:0o600});
-   decoded.push({pcIndex:row.pcIndex,startedAt:row.startedAt,blobBytes:row.blobBytes,decodeSuccess:ff.status===0,pcmBytes:ff.stdout?.length??0,pcmSha256:ff.status===0?hash(ff.stdout):null,durationSeconds:(ff.stdout?.length??0)/96000});
+   decoded.push({pcIndex:row.pcIndex,startedAt:row.startedAt,blobBytes:row.blobBytes,error:row.error??null,recorderLifecycle:row.recorderLifecycle,decodeSuccess:ff.status===0,pcmBytes:ff.stdout?.length??0,pcmSha256:ff.status===0?hash(ff.stdout):null,durationSeconds:(ff.stdout?.length??0)/96000});
   }
   check('original-native-receiver-recorded-PCM',decoded.length===owners.size&&decoded.length>0&&decoded.every(d=>d.decodeSuccess&&d.pcmBytes>0),{decoded});
   for(const {name,window} of speechWindows){const recording=decoded.find(d=>d.pcIndex===window.pcIndex&&d.decodeSuccess),pcm=recording&&fs.readFileSync(path.join(base,'native-'+window.pcIndex+'.pcm'));

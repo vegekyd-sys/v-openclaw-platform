@@ -7,7 +7,7 @@ import path from 'node:path';
 import os from 'node:os';
 import vm from 'node:vm';
 import {captureOwnedBrowserDirectory,removeOwnedBrowserDirectory} from './private-pulse.mjs';
-import {BROWSER_PROBE,SNAPSHOT_ARRAY_FIELDS,SNAPSHOT_PAGED_HEADER_EXPRESSION,readBoundedProbeSnapshot} from './browser-probe.mjs';
+import {BROWSER_PROBE,SNAPSHOT_ARRAY_FIELDS,SNAPSHOT_PAGED_HEADER_EXPRESSION,SNAPSHOT_CLOCK_LEDGER_LIMIT,SNAPSHOT_SLOW_CLOCK_LEDGER_LIMIT,readBoundedProbeSnapshot} from './browser-probe.mjs';
 import {assessDecodedPlaybackWindow,assessIndependentInputConvergence,resolveNativeControlOwner,resolveCanonicalFinalTrace} from './evidence.mjs';
 import {resolveEndCallToolWitness,assessEndCallConsultTerminal,resolveLifecycleUserTurn,assessLifecycleSpeech,hasLifecyclePlaybackTail,assessLifecycleFarewell,assessProactiveGreeting,assessAutomaticEnd,
   extractLifecycleToolPairs,resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult,resolveLifecycleCanonicalBody,normalizeLifecycleFinalBody,
@@ -681,7 +681,7 @@ test('full observer snapshots retrieve every frozen raw prefix in bounded pages 
  let reads=0,maxRows=0;
  const result=await readBoundedProbeSnapshot(async expression=>{
   const value=structuredClone(vm.runInContext(expression,context));
-  if(Array.isArray(value)){maxRows=Math.max(maxRows,value.length);reads++;probe.audioFrames.push({id:'sampled-during-page-'+reads});}
+  if(Array.isArray(value?.rows)){maxRows=Math.max(maxRows,value.rows.length);reads++;probe.audioFrames.push({id:'sampled-during-page-'+reads});}
   return value;
  },{pageSize:32});
  assert.equal(maxRows,32);assert.equal(result.audioFrames.length,137);assert(probe.audioFrames.length>137);
@@ -690,7 +690,7 @@ test('full observer snapshots retrieve every frozen raw prefix in bounded pages 
  assert.equal(result.snapshotSource,'bounded-pages-of-frozen-original-observer-prefix');
  await assert.rejects(readBoundedProbeSnapshot(async()=>null,{pageSize:65}),/page size/);
  await assert.rejects(readBoundedProbeSnapshot(async expression=>expression.includes('arrayCounts:')?
-  {arrayCounts:Object.fromEntries(SNAPSHOT_ARRAY_FIELDS.map(key=>[key,1])),duplex:null}:[]),/prefix changed/);
+  {arrayCounts:Object.fromEntries(SNAPSHOT_ARRAY_FIELDS.map(key=>[key,1])),duplex:null}:[]),/prefix changed|clock identity/);
 });
 test('incremental lifecycle polls bound every CDP page and refresh late fields; final full reads reobserve every raw row',async()=>{
  const arrays=Object.fromEntries(SNAPSHOT_ARRAY_FIELDS.map(key=>[key,Array.from({length:137},(_,id)=>({id}))]));
@@ -698,7 +698,7 @@ test('incremental lifecycle polls bound every CDP page and refresh late fields; 
   document:{getElementById:()=>({}),body:{dataset:{callState:'connected'}}}});
  let reads=0,maxRows=0;const evaluate=async expression=>{
   const value=structuredClone(vm.runInContext(expression,context));
-  if(Array.isArray(value)){reads++;maxRows=Math.max(maxRows,value.length);}return value;
+  if(Array.isArray(value?.rows)){reads++;maxRows=Math.max(maxRows,value.rows.length);}return value;
  };
  const initial=await readBoundedProbeSnapshot(evaluate),fullReads=reads;reads=0;
  probe.audioFrames[136].rtp=[{id:'actual-late-stats'}];probe.audioFrames.push({id:137});
@@ -723,8 +723,8 @@ test('paged duplex evidence freezes original ring rows while both live rings kee
  let reads=0,maxRows=0;
  const result=await readBoundedProbeSnapshot(async expression=>{
   const value=structuredClone(vm.runInContext(expression,context));
-  if(Array.isArray(value)){
-   reads++;maxRows=Math.max(maxRows,value.length);
+  if(Array.isArray(value?.rows)){
+   reads++;maxRows=Math.max(maxRows,value.rows.length);
    for(const field of ['events','transitions']){duplex[field].shift();duplex[field].push({id:field+'-after-header-'+reads});}
    probe.micFrames.push({id:'live-mic-'+reads});
   }else{
@@ -745,7 +745,7 @@ test('duplex polls re-read the complete new ring even when prior snapshot length
  const duplex={events:Array.from({length:137},(_,id)=>({id:'event-'+id})),transitions:Array.from({length:128},(_,id)=>({id:'transition-'+id}))};
  const context=vm.createContext({__candidateLiveProbe:probe,__gptLiveDuplexDiagnostics:duplex,performance:{timeOrigin:1000},
   document:{getElementById:()=>({}),body:{dataset:{callState:'connected'}}}});
- let reads=0;const evaluate=async expression=>{const value=structuredClone(vm.runInContext(expression,context));if(Array.isArray(value))reads++;return value;};
+ let reads=0;const evaluate=async expression=>{const value=structuredClone(vm.runInContext(expression,context));if(Array.isArray(value?.rows))reads++;return value;};
  const initial=await readBoundedProbeSnapshot(evaluate),fullReads=reads;reads=0;
  for(const field of ['events','transitions'])for(let i=0;i<70;i++){duplex[field].shift();duplex[field].push({id:field+'-next-'+i});}
  const next=await readBoundedProbeSnapshot(evaluate,{previous:initial});
@@ -762,7 +762,7 @@ test('a superseding header rejects a paged duplex read instead of mixing differe
  let superseded=false;
  await assert.rejects(readBoundedProbeSnapshot(async expression=>{
   const value=structuredClone(vm.runInContext(expression,context));
-  if(Array.isArray(value)&&!superseded){superseded=true;duplex.events[0]={id:'later-ring'};vm.runInContext(SNAPSHOT_PAGED_HEADER_EXPRESSION,context);}
+  if(Array.isArray(value?.rows)&&!superseded){superseded=true;duplex.events[0]={id:'later-ring'};vm.runInContext(SNAPSHOT_PAGED_HEADER_EXPRESSION,context);}
   return value;
  }),/Frozen probe snapshot changed/);
 });
@@ -774,7 +774,7 @@ test('raw-only paged snapshots reject a changed browser generation or header clo
   let changed=false;
   await assert.rejects(readBoundedProbeSnapshot(async expression=>{
    const value=structuredClone(vm.runInContext(expression,context));
-   if(Array.isArray(value)&&!changed){changed=true;change(probe);}
+   if(Array.isArray(value?.rows)&&!changed){changed=true;change(probe);}
    return value;
   }),/Frozen probe snapshot changed/);
  }
@@ -800,6 +800,124 @@ test('same-page incremental reads and actual full snapshot wrapper reject a reus
  }
 });
 
+function snapshotClockFixture({rowCount=65,browserCostMs=20,collectorCostMs=400}={}) {
+ let browserClock=5000,collectorClock=90000;
+ const probe={...Object.fromEntries(SNAPSHOT_ARRAY_FIELDS.map(key=>[key,[]])),pcs:[]};
+ probe.audioFrames=Array.from({length:rowCount},(_,id)=>({id,payload:'raw-row-payload-not-in-clock-ledger'}));
+ probe.audioFrames.slice=function(...args){browserClock+=browserCostMs;return Array.prototype.slice.apply(this,args);};
+ const performance={timeOrigin:1000,now:()=>browserClock-performance.timeOrigin};
+ const context=vm.createContext({__candidateLiveProbe:probe,performance,Date:{now:()=>browserClock},
+  document:{getElementById:()=>({}),body:{dataset:{callState:'connected'}}}});
+ const read=vm.runInNewContext('('+readBoundedProbeSnapshot.toString()+')',{
+  SNAPSHOT_PAGED_HEADER_EXPRESSION,SNAPSHOT_ARRAY_FIELDS,SNAPSHOT_CLOCK_LEDGER_LIMIT,SNAPSHOT_SLOW_CLOCK_LEDGER_LIMIT,
+  snapshotClockLedgers:new WeakMap(),Date:{now:()=>collectorClock}});
+ const evaluate=async expression=>{
+  const value=structuredClone(vm.runInContext(expression,context));
+  // These fixture clocks represent receipt time after browser execution has
+  // already ended; transport delay must never become browser execution time.
+  collectorClock+=collectorCostMs;browserClock+=collectorCostMs;return value;
+ };
+ return {probe,performance,context,read,evaluate};
+}
+test('actual header and page VM clocks bind frozen identity while separating collector receipt latency',async()=>{
+ const f=snapshotClockFixture(),state=await f.read(f.evaluate),ledger=state.snapshotClockLedger;
+ assert.equal(ledger.recent.length,4);assert.equal(ledger.recent[0].kind,'header');
+ assert.equal(ledger.recent[0].browserStartedWallAt,state.snapshotObservedAt);
+ assert(ledger.recent.every(row=>row.generation===state.duplexSnapshotGeneration&&row.probeTimeOrigin===state.probeTimeOrigin&&row.snapshotObservedAt===state.snapshotObservedAt));
+ assert.deepEqual(Array.from(ledger.recent,row=>row.sequence),[0,1,2,3]);
+ const pages=ledger.recent.filter(row=>row.kind==='page');
+ assert.deepEqual(Array.from(pages,row=>[row.field,row.from,row.to]),[['audioFrames',0,32],['audioFrames',32,64],['audioFrames',64,65]]);
+ assert(pages.every(row=>row.browserExecutionDurationMs===20&&row.collectorRoundTripMs===400&&row.clocksQualified));
+ assert(pages.every(row=>row.browserStartedWallAt===row.probeTimeOrigin+row.browserStartedPerformanceAt&&row.browserEndedWallAt===row.probeTimeOrigin+row.browserEndedPerformanceAt));
+ assert.equal(ledger.collectorRoundTripIsNotBrowserExecution,true);
+ assert.equal(ledger.browserExecutionScope,'synchronous-header-or-page-function-before-CDP-return-serialization');
+ assert.deepEqual(Array.from(state.audioFrames),Array.from(f.probe.audioFrames),'Original rows are preserved, with no clock data inserted into microphone/player rows');
+ assert(!JSON.stringify(ledger).includes('raw-row-payload-not-in-clock-ledger'));
+});
+test('missing or mismatched browser clocks remain explicitly unqualified and cannot imply execution duration',async()=>{
+ for(const change of [f=>delete f.performance.now,f=>f.performance.now=()=>50000]){
+  const f=snapshotClockFixture();change(f);const state=await f.read(f.evaluate);
+  assert.equal(state.audioFrames.length,65,'Diagnostics cannot manufacture or remove original evidence rows');
+  assert(state.snapshotClockLedger.recent.every(row=>row.clocksQualified===false&&row.browserExecutionDurationMs===null));
+  assert(state.snapshotClockLedger.recent.every(row=>row.clockIssues.length>0));assert.equal(state.snapshotClockLedger.slow.length,0);
+ }
+ for(const mutate of [c=>c.generation++,c=>c.probeTimeOrigin++,c=>c.snapshotObservedAt++,c=>c.sequence++,c=>c.field='micFrames',c=>c.from++]){
+  const f=snapshotClockFixture();await assert.rejects(f.read(async expression=>{
+   const value=await f.evaluate(expression);if(value?.snapshotPageClock)mutate(value.snapshotPageClock);return value;
+  }),/execution clock identity changed/u);
+ }
+ const f=snapshotClockFixture();await assert.rejects(f.read(async expression=>{
+  const value=await f.evaluate(expression);if(value?.snapshotPageClock)delete value.snapshotPageClock;return value;
+ }),/execution clock identity changed/u);
+ const malformed=snapshotClockFixture(),state=await malformed.read(async expression=>{
+  const value=await malformed.evaluate(expression);if(value?.snapshotPageClock)value.snapshotPageClock.browserStartedPerformanceAt={payload:'invalid-clock-object-not-exported'};return value;
+ });
+ assert(state.snapshotClockLedger.recent.filter(row=>row.kind==='page').every(row=>row.browserStartedPerformanceAt===null&&!row.clocksQualified));
+ assert(!JSON.stringify(state.snapshotClockLedger).includes('invalid-clock-object-not-exported'),'Malformed clock payload cannot enlarge the bounded ledger');
+});
+test('clock history is bounded, reports drops, survives full reads and never mixes page origins',async()=>{
+ const f=snapshotClockFixture({rowCount:200}),evaluate=f.evaluate;let state;
+ for(let i=0;i<30;i++)state=await f.read(evaluate);
+ const ledger=state.snapshotClockLedger;
+ assert.equal(ledger.recent.length,SNAPSHOT_CLOCK_LEDGER_LIMIT);assert.equal(ledger.slow.length,SNAPSHOT_SLOW_CLOCK_LEDGER_LIMIT);
+ assert.equal(ledger.droppedRows,ledger.totalRows-SNAPSHOT_CLOCK_LEDGER_LIMIT);assert(ledger.slowDroppedRows>0);assert.equal(ledger.truncated,true);
+ assert(JSON.stringify(ledger).length<131072,'Only bounded small clock rows are exported');
+ assert(ledger.recent.some(row=>row.generation<state.duplexSnapshotGeneration),'A fresh full read retains preceding same-page timing evidence');
+ assert.equal(state.audioFrames.length,200,'Clock truncation never truncates raw prefix data');
+ f.performance.timeOrigin=2000;const next=await f.read(evaluate,{previous:state});
+ assert.equal(next.snapshotClockLedger.previousOriginDiscarded,1000);assert.equal(next.snapshotClockLedger.totalRows,8);
+ assert(next.snapshotClockLedger.recent.every(row=>row.probeTimeOrigin===2000));assert.equal(next.snapshotClockLedger.droppedRows,0);
+ assert.equal(next.audioFrames.length,200);
+});
+test('validated fixed clock rows reach a synchronous append-only hook without raw payload and callback failures propagate',async()=>{
+ const f=snapshotClockFixture(),rows=[],first=await f.read(f.evaluate,{onClockRow:row=>rows.push(row)});
+ assert.equal(rows.length,4);assert.deepEqual(rows.map(row=>row.sequence),[0,1,2,3]);
+ assert(rows.every(row=>Object.isFrozen(row)&&Object.isFrozen(row.clockIssues)&&row.clocksQualified));
+ assert(rows.every(row=>!Object.hasOwn(row,'rows')&&!Object.hasOwn(row,'payload')));assert(!JSON.stringify(rows).includes('raw-row-payload-not-in-clock-ledger'));
+ await f.read(f.evaluate,{previous:first,onClockRow:row=>rows.push(row)});
+ assert(rows.some(row=>row.generation===first.duplexSnapshotGeneration)&&rows.some(row=>row.generation>first.duplexSnapshotGeneration));
+ const missing=snapshotClockFixture();delete missing.performance.now;let invalidCalls=0;
+ await missing.read(missing.evaluate,{onClockRow:()=>invalidCalls++});assert.equal(invalidCalls,0,'Missing browser clocks are diagnosed, never emitted as qualified execution evidence');
+ const failure=Error('Clock ledger append failed');await assert.rejects(f.read(f.evaluate,{onClockRow:()=>{throw failure;}}),error=>error===failure);
+ await assert.rejects(f.read(f.evaluate,{onClockRow:()=>Promise.resolve()}),/complete synchronously/u);
+ await assert.rejects(f.read(f.evaluate,{onClockRow:[]}),/clock row hook required/u);
+ const stale=snapshotClockFixture();let header,replay=false,emitted=0;
+ const evaluate=async expression=>{if(replay&&expression===SNAPSHOT_PAGED_HEADER_EXPRESSION)return header;
+  const value=await stale.evaluate(expression);if(expression===SNAPSHOT_PAGED_HEADER_EXPRESSION)header=structuredClone(value);return value;};
+ await stale.read(evaluate,{onClockRow:()=>emitted++});const before=emitted;replay=true;
+ await assert.rejects(stale.read(evaluate,{onClockRow:()=>emitted++}),/Fresh browser snapshot header/u);
+ assert.equal(emitted,before,'A stale full header must be rejected before qualified hook delivery, even without previous raw state');
+});
+test('a failed first clock archive can recover only with a fresh browser header',async()=>{
+ const f=snapshotClockFixture();let header,replay=false;
+ const evaluate=async expression=>{if(replay&&expression===SNAPSHOT_PAGED_HEADER_EXPRESSION)return header;
+  const value=await f.evaluate(expression);if(expression===SNAPSHOT_PAGED_HEADER_EXPRESSION)header=structuredClone(value);return value;};
+ const failure=Error('First clock archive failed');
+ await assert.rejects(f.read(evaluate,{onClockRow:()=>{throw failure;}}),error=>error===failure);
+ replay=true;await assert.rejects(f.read(evaluate),/Fresh browser snapshot header/u);
+ replay=false;const recovered=await f.read(evaluate);assert.equal(recovered.duplexSnapshotGeneration,2);assert.equal(recovered.audioFrames.length,65);
+ const bad=snapshotClockFixture();let corrupt=true;
+ const badEvaluate=async expression=>{const value=await bad.evaluate(expression);if(corrupt&&expression===SNAPSHOT_PAGED_HEADER_EXPRESSION)value.snapshotHeaderClock.generation++;return value;};
+ await assert.rejects(bad.read(badEvaluate),/execution clock identity changed/u);
+ corrupt=false;const valid=await bad.read(badEvaluate);assert.equal(valid.duplexSnapshotGeneration,2);assert.equal(valid.audioFrames.length,65);
+});
+test('both actual snapshot functions archive validated clock rows to private JSONL and propagate write failures',async()=>{
+ for(const name of ['native-smoke.mjs','call-lifecycle-smoke.mjs']){
+  const source=readFileSync(new URL('./'+name,import.meta.url),'utf8');
+  const from=source.indexOf('async function snapshot(full=false){'),to=source.indexOf('\nasync function waitFor(',from);assert(from>=0&&to>from);
+  const f=snapshotClockFixture(),writes=[],context=vm.createContext({assert,evaluate:f.evaluate,readBoundedProbeSnapshot:f.read,
+   snapshotCache:null,browserTimeOrigin:1000,lastState:null,base:'/private/evidence',path:{join:(...parts)=>parts.join('/')},
+   fs:{appendFileSync:(file,body,options)=>writes.push({file,body,options})}});
+  const snapshot=vm.runInContext('('+source.slice(from,to)+')',context);const state=await snapshot(true);
+  assert.equal(state.audioFrames.length,65);assert.equal(writes.length,4);
+  for(const row of writes){assert.equal(row.file,'/private/evidence/browser-page-clocks.jsonl');assert.equal(row.options.mode,0o600);
+   assert(row.body.endsWith('\n'));const clock=JSON.parse(row.body);assert.equal(clock.clocksQualified,true);assert.equal(clock.probeTimeOrigin,1000);
+   assert(!row.body.includes('raw-row-payload-not-in-clock-ledger'));}
+  const failure=Error('Private clock archive write failed');context.fs.appendFileSync=()=>{throw failure;};
+  await assert.rejects(snapshot(),error=>error===failure,name+' must not silently lose timing evidence');
+ }
+});
+
 test('actual native snapshot keeps every original raw row in its prefix cache while polling and full receipts use fresh bounded headers',async()=>{
  const source=readFileSync(new URL('./native-smoke.mjs',import.meta.url),'utf8');
  const from=source.indexOf('async function snapshot(full=false){'),to=source.indexOf('\nasync function waitFor(',from);
@@ -811,7 +929,7 @@ test('actual native snapshot keeps every original raw row in its prefix cache wh
   document:{getElementById:()=>({}),body:{dataset:{callState:'connected'}}}});
  const pages=[],reads=[];
  const evaluate=async expression=>{const value=structuredClone(vm.runInContext(expression,browser));
-  if(Array.isArray(value)){pages.push(value.length);assert(value.length<=32,'No original array is returned as one large CDP object');}
+  if(Array.isArray(value?.rows)){pages.push(value.rows.length);assert(value.rows.length<=32,'No original array is returned as one large CDP object');}
   return value;};
  const context={assert,evaluate,snapshotCache:null,lastState:null,
   readBoundedProbeSnapshot:async(evaluate,options)=>{reads.push(options.previous);return readBoundedProbeSnapshot(evaluate,options);}};
@@ -852,11 +970,11 @@ test('actual input convergence uses the browser header observation time despite 
  const context=vm.createContext({__candidateLiveProbe:probe,performance:{timeOrigin:1000},Date:{now:()=>browserClock},
   document:{getElementById:()=>({}),body:{dataset:{callState:'connected'}}}});
  const boundedRead=vm.runInNewContext('('+readBoundedProbeSnapshot.toString()+')',{
-  SNAPSHOT_PAGED_HEADER_EXPRESSION,SNAPSHOT_ARRAY_FIELDS,Date:{now:()=>collectorClock},
+  SNAPSHOT_PAGED_HEADER_EXPRESSION,SNAPSHOT_ARRAY_FIELDS,SNAPSHOT_CLOCK_LEDGER_LIMIT,SNAPSHOT_SLOW_CLOCK_LEDGER_LIMIT,snapshotClockLedgers:new WeakMap(),Date:{now:()=>collectorClock},
  });
  const state=await boundedRead(async expression=>{
   const value=structuredClone(vm.runInContext(expression,context));
-  if(Array.isArray(value)){
+  if(Array.isArray(value?.rows)){
    reads++;browserClock+=50;collectorClock+=50;
    probe.micFrames.push({...probe.micFrames.at(-1),at:browserClock});
   }
