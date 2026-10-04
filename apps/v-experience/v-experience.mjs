@@ -142,6 +142,8 @@ export function createWorkView({ sessionKey, onChange = () => {}, maxCommentary 
     compaction(active) { compacting = active; changed(); },
     questionPending(active) { question = active; answerLength = lastAnswerLength; changed(); },
     hasContent: () => steps.length > 0 || Boolean(tool) || commentary.size > 0 || compacting || question,
+    /** True while a question shown below waits for its answer. */
+    waitingForAnswer: () => question,
     markdown() {
       const lines = [];
       for (const text of commentary.values()) lines.push(`💬 ${escapeMarkdown(text)}`);

@@ -54,6 +54,8 @@ import { callGatewayFromCli as vCallGateway } from "openclaw/plugin-sdk/gateway-
     code: `\t// ${MARKER}: rewrite the card with the answer so far and the work under it.
 \tconst vRefreshCard = async () => {
 \t\tif (streamingSealed || asyncMode || !streamingEnabled || !vWork.hasContent()) return;
+\t\t// While a question waits, a new card would land above the answer.
+\t\tif (!currentCardTarget && !cardCreationPromise && vWork.waitingForAnswer()) return;
 \t\tawait startStreaming();
 \t\tif (!currentCardTarget || streamingSealed) return;
 \t\tif (Date.now() - lastUpdateTime < 800) {
