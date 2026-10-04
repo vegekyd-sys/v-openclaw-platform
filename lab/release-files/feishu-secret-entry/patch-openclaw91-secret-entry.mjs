@@ -11,7 +11,9 @@
 //
 // Four core bundles are patched together (pair with patch-feishu-secret-entry.mjs):
 //   builtin-openclaw-*.js     Feishu runs attach a `vSecretEntry` descriptor to
-//                             the prompt instead of throwing without a link.
+//                             the prompt instead of throwing without a link;
+//                             Telegram / DingTalk / WeCom runs (channels-v1)
+//                             wait for the one-time entry link instead.
 //   dispatch-from-config-*.js the worker-owned prompt skips the Gateway-local
 //                             pending check that can never see it.
 //   question-*.js             after a masked answer is stored, mirror it to a
@@ -61,6 +63,8 @@ export const FILES = [
   {
     id: "builtin",
     pattern: /^builtin-openclaw-[A-Za-z0-9_-]+\.js$/,
+    // 9.1 ships more than one builtin-openclaw chunk; the secrets prompt is in one.
+    contains: `if (toolName === "secrets") {`,
     sites: [
       {
         id: "secrets-prompt-in-chat",
@@ -137,6 +141,44 @@ export const FILES = [
   },
 ];
 
+// Channels whose v-experience patch sends a one-time entry link
+// (apps/v-secret-entry) for a credential question. Without this the builtin
+// throws "Credential request unavailable here" for them and the tool cancels
+// before the link arrives. Applied on top of v1, so it also upgrades a bundle
+// that already carries v1 (V's frozen builtin).
+export const CHANNELS_MARKER = "v-openclaw91-secret-entry-channels-v1";
+export const LINK_CHANNELS = ["telegram", "dingtalk-connector", "wecom"];
+
+const CHANNEL_SITES = [
+  {
+    id: "link-channels",
+    find: `\t\t\t\t\tconst vSecretEntryInChat = String(ctx.params.messageChannel ?? "").trim().toLowerCase() === "feishu"; // ${MARKER}
+\t\t\t\t\tconst text = vSecretEntryInChat ? \`🔑 V 需要凭据 \${binding.name}，请在卡片里安全录入。\` : controlUiBase ?`,
+    replace: `\t\t\t\t\tconst vSecretEntryChannel = String(ctx.params.messageChannel ?? "").trim().toLowerCase(); // ${CHANNELS_MARKER}
+\t\t\t\t\tconst vSecretEntryInChat = vSecretEntryChannel === "feishu"; // ${MARKER}
+\t\t\t\t\tconst vSecretEntryByLink = ${JSON.stringify(LINK_CHANNELS)}.includes(vSecretEntryChannel);
+\t\t\t\t\tconst text = vSecretEntryInChat ? \`🔑 V 需要凭据 \${binding.name}，请在卡片里安全录入。\` : vSecretEntryByLink ? \`🔑 V 需要凭据 \${binding.name}，请用 V 私信发来的一次性链接安全录入。\` : controlUiBase ?`,
+  },
+  {
+    id: "link-channels-no-throw",
+    find: `\t\t\t\t\tif (!controlUiBase && !vSecretEntryInChat) throw new Error(text);`,
+    replace: `\t\t\t\t\tif (!controlUiBase && !vSecretEntryInChat && !vSecretEntryByLink) throw new Error(text);`,
+  },
+];
+
+/** Lets the link channels' credential questions wait for the link; needs v1 in the source. */
+export function patchSecretEntryChannelsSource(source) {
+  if (source.includes(CHANNELS_MARKER)) return { changed: false, source };
+  if (!source.includes(MARKER)) throw new Error("builtin: secret entry v1 is not applied; refusing to patch channels");
+  for (const site of CHANNEL_SITES) {
+    const found = countOccurrences(source, site.find);
+    if (found !== 1) throw new Error(`builtin site ${site.id}: expected 1 match, found ${found}; refusing to patch`);
+  }
+  let patched = source;
+  for (const site of CHANNEL_SITES) patched = patched.replace(site.find, () => site.replace);
+  return { changed: true, source: patched };
+}
+
 const sha = (text) => createHash("sha256").update(text).digest("hex");
 
 function countOccurrences(haystack, needle) {
@@ -163,9 +205,9 @@ export function patchSecretEntrySource(fileId, source) {
 
 function findTarget(distDir, spec) {
   const names = readdirSync(distDir).filter((name) => spec.pattern.test(name));
-  const matches = spec.contains
-    ? names.filter((name) => readFileSync(join(distDir, name), "utf8").includes(spec.contains))
-    : names;
+  // 9.1 ships several chunks per name pattern: keep the one with the code (patched or not).
+  const holds = (source) => spec.contains ? source.includes(spec.contains) : source.includes(MARKER) || spec.sites.some((site) => source.includes(site.find));
+  const matches = names.length === 1 && !spec.contains ? names : names.filter((name) => holds(readFileSync(join(distDir, name), "utf8")));
   if (matches.length !== 1) throw new Error(`${spec.id}: expected exactly one bundle in ${distDir}, found ${matches.length}`);
   return join(distDir, matches[0]);
 }
@@ -175,7 +217,7 @@ function main() {
   const check = args.includes("--check");
   const outIndex = args.indexOf("--out-dir");
   const outDir = outIndex === -1 ? undefined : args[outIndex + 1];
-  const distDir = args.find((arg, index) => !arg.startsWith("--") && index !== outIndex + 1);
+  const distDir = args.find((arg, index) => !arg.startsWith("--") && (outIndex === -1 || index !== outIndex + 1));
   if (!distDir || (outIndex !== -1 && !outDir)) {
     console.error("usage: patch-openclaw91-secret-entry.mjs [--check | --out-dir <dir>] <openclaw dist dir>");
     process.exit(2);
@@ -185,14 +227,18 @@ function main() {
     const plans = FILES.map((spec) => {
       const path = findTarget(distDir, spec);
       const original = readFileSync(path, "utf8");
-      return { spec, path, original, ...patchSecretEntrySource(spec.id, original) };
+      const v1 = patchSecretEntrySource(spec.id, original);
+      if (spec.id !== "builtin") return { spec, path, original, ...v1 };
+      const channels = patchSecretEntryChannelsSource(v1.source);
+      // Never overwrite v1's backup of the pristine bundle with a patched one.
+      return { spec, path, original, changed: v1.changed || channels.changed, source: channels.source, backup: v1.changed ? MARKER : CHANNELS_MARKER };
     });
     const report = [];
     for (const plan of plans) {
       const name = plan.path.slice(distDir.replace(/\/$/, "").length + 1);
       if (outDir) writeFileSync(join(outDir, name), plan.source);
       else if (plan.changed && !check) {
-        copyFileSync(plan.path, `${plan.path}.bak-${MARKER}`);
+        copyFileSync(plan.path, `${plan.path}.bak-${plan.backup ?? MARKER}`);
         writeFileSync(plan.path, plan.source);
       }
       report.push({ file: name, changed: plan.changed, beforeSha: sha(plan.original), afterSha: sha(plan.source) });
