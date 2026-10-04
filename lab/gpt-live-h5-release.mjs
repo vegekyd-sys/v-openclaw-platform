@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 export const H5_PATHS = [
+  'lab/gpt-live-h5/access.mjs',
   'lab/gpt-live-h5/server.mjs', 'lab/gpt-live-h5/events.mjs', 'lab/gpt-live-h5/duplex-playback.mjs',
   'lab/gpt-live-h5/index.html', 'lab/gpt-live-h5/app.js', 'lab/gpt-live-h5/styles.css',
   'lab/gpt-live-h5/microphone-capture.mjs', 'lab/gpt-live-h5/transcript-presentation.mjs',
@@ -21,7 +22,7 @@ export function validateIdentity(value) {
   for (const key of ['release', 'owner']) assert(/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(value[key] ?? ''), `Invalid ${key}`);
 }
 export function fileIdentity(files) {
-  assert.equal(files.length, H5_PATHS.length, 'Exactly eleven H5 files are required');
+  assert.equal(files.length, H5_PATHS.length, 'The complete frozen H5 file set is required');
   return files.map((file, index) => {
     assert.equal(file.name, H5_PATHS[index], 'H5 file list or order changed');
     assert(/^[a-f0-9]{64}$/u.test(file.sha), 'Invalid H5 file hash');

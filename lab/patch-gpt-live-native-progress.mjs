@@ -24,7 +24,7 @@ const userTurnProofMethods = `\tobserveNativeUserTurn(raw) {
 \t\t\tconst proof = this.nativeUserTurnText.get(turnId);
 \t\t\t// Exact full strings, including whitespace, must agree. A missing prefix,
 \t\t\t// correction or additional condition cannot become a harmless closing done.
-\t\t\tif (proof && proof.text === raw.turn.transcript) { proof.complete = true; return true; }
+\t\t\tif (proof && proof.text === raw.turn.transcript) { proof.complete = true; proof.completedAt = Date.now(); return true; }
 \t\t\tthis.nativeUserTurnText.delete(turnId);
 \t\t}
 \t\treturn false;
@@ -151,10 +151,10 @@ const publicWireMethods = `\tfailTerminalDelivery(error) {
 \t\t\theader = \`[BACKEND_PROGRESS_PENDING \${position}]\\nParent task remains pending. One short fact when idle; stop for caller. Never guess values or claim completion.\\n\\n\`;
 \t\t} else if (chunkIndex + 1 < chunkCount) {
 \t\t\trole = "final_part";
-\t\t\theader = \`[BACKEND_FINAL_PART \${position}]\\nPartial parent final. Wait for BACKEND_FINAL_COMPLETE before answering; preserve all facts and values exactly.\\n\\n\`;
+\t\t\theader = \`[BACKEND_FINAL_PART \${position}]\\nWait for BACKEND_FINAL_COMPLETE before answering; keep facts, values and limits from all parts.\\n\\n\`;
 \t\t} else {
 \t\t\trole = "final_complete";
-\t\t\theader = \`[BACKEND_FINAL_COMPLETE \${position}]\\nParent final is complete. Follow caller output conditions; relay every requested value faithfully. Never invent facts.\\n\\n\`;
+\t\t\theader = \`[BACKEND_FINAL_COMPLETE \${position}]\\nDeliver all parts as the backend spoken answer. Keep every fact, value and condition; apply caller format.\\n\\n\`;
 \t\t}
 \t\tif (Buffer.byteLength(header, "utf8") > 180) throw new Error("Native public append role header exceeds byte budget");
 \t\treturn { role, wireText: header + text };
@@ -447,7 +447,7 @@ export function patchGptLiveNativeProgress(source) {
 \t\t\t\tproof?.complete === true && completed.text === proof.text) return;
 \t\t}`, "idempotent same-input provider replay");
   patched = replaceOnce(patched, "\t\tconst transcript = this.transcript;\n\t\tthis.transcript = [];\n\t\tthis.partialTranscriptRole = void 0;", "\t\tconst transcript = this.transcript;", "retain transcript until the queued request is admitted");
-  patched = replaceOnce(patched, "\t\tconst delegation = {\n\t\t\tid,", "\t\tconst delegation = {\n\t\t\tid,\n\t\t\tuserBidiTurnId, inputKey,\n\t\t\tuserTranscriptRevision: this.userTranscriptRevision,\n\t\t\tuserTurnTranscriptText: this.nativeUserTurnText.get(userBidiTurnId)?.text,\n\t\t\tcallerInputAcceptedAt: Date.now(),\n\t\t\tgeneration: ++this.issuedDelegationGeneration,", "delegation generation ownership");
+  patched = replaceOnce(patched, "\t\tconst delegation = {\n\t\t\tid,", "\t\tconst delegation = {\n\t\t\tid,\n\t\t\trawInput: input,\n\t\t\tuserBidiTurnId, inputKey,\n\t\t\tuserTranscriptRevision: this.userTranscriptRevision,\n\t\t\tuserTurnTranscriptText: this.nativeUserTurnText.get(userBidiTurnId)?.text,\n\t\t\tcallerInputAcceptedAt: Date.now(),\n\t\t\tgeneration: ++this.issuedDelegationGeneration,", "delegation generation ownership");
   patched = replaceOnce(patched, "\t\tthis.activeDelegationId = id;\n\t\tif (this.consultController) {\n\t\t\tthis.pendingDelegation = delegation;\n\t\t\tthis.consultController.abort(/* @__PURE__ */ new Error(\"GPT-Live delegation superseded\"));\n\t\t\treturn;\n\t\t}\n\t\tthis.launchDelegation(delegation);", `\t\t// New provider speech is not authorization to cancel an accepted app task.
 \t\t// Keep one owner through its complete final and admit other ids in order.
 \t\tconst identityLimit = this.observedDelegationIds.size >= 1024;

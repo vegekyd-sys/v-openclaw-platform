@@ -1,0 +1,156 @@
+# GPT Live Candidate 后续修复（2026-10-04）
+
+本次按用户最新要求仅在任务分支与隔离 Candidate 修复。本补丁没有获得合入 dev、更新共享 VLab 或生产部署授权。原 V 临时真人窗口到期后已关闭本窗 H5 和自己的转发，没有重启或回退 Gateway，没有改动其他任务的代码或占用。
+
+## 页面
+
+头像改成所有页面状态均显示的顶部小头像，包括拨号前和桌面。保留同一个头像节点、原形象、后台任务引起的形象变化和动效。对话占据剩余空间并独立滚动，后台状态仍紧邻“对话”。此前只有移动端通话中才启用紧凑布局，拨号页仍有大头像，这正是用户看到的遗漏。
+
+桌面和手机实际预览已检查，另外对 35 组窄屏、短屏和错误提示布局作独立复核。没有横向溢出；实际手机软键盘和扬声器声学仍待真人验收。
+
+## 后台答案
+
+补强后台及 Live 口播契约：文档示例、能力、条件建议、实际配置与已完成操作必须分别陈述。保留条件和不确定性，不能把文档里的示例升级成当前部署事实。旧样本的误述源自真实后台 final，Live 曾如实重复该误述；此次改动需要新的真实工具、后台 final 与语音对照验证。
+
+## 严格验证
+
+音频观察器在实际 assistant terminal、原 PC.close 和 mic.stop 之前补采真实状态，分批读取原始观测数据，减少大快照回传干扰采样。没有延迟业务关闭，没有添加静音或替代 PCM，没有降低 750ms 尾段及 100ms 连续输入门槛。
+
+新增独立确认与取消场景：同一实际 sleep60/date 请求被阻挡后，收取一次完整 USER 确认，观察真实 pending 后立即通过原 H5 取消按钮取消。核验 core/native 接受与独立 OS 子进程退出。原插话综合场景保留；没有真实迟到 callback 时，对应门槛仍为未通过。
+
+旧样本和 FAIL 记录保留。新的本地测试、隔离 Candidate 部署、真实语音及人工听感分别记录，任何单项通过均不代表整体已验收。
+
+## 本轮实际结果与修复
+
+`a85aad8` 的原 H5/WebRTC 通话截图确认：390×844 手机视口中，顶部同一个头像约 69×69，通话区高 86，对话区高 674；原形象、状态切换节点和动画保留。问候及连续输入有真实数字采样支持，物理扬声器声学仍待真人验证。
+
+该轮实际完成 Memory → Web search → backend final → Live 语音返回。总体 FAIL 是同一完整 USER 的两个输入版本触发了两次 consult；只有第一 run 实际调用搜索，第二 run 复用既有结果。此后加入派发前的严格版本收束：仅原始输入为严格扩展、完整 native USER 证明一致且尚未调用后台时退休旧项，真实新项沿原 FIFO 派发；已开始的工作、独立目标及不同 USER 保留。原 wire 唯一性门槛和旧 FAIL 不改。
+
+该轮也没有读取官方原文，后台再次请求已经获得的只读授权。新增同一任务的必要原文读取契约；一句话只限制回答长度。实际失败、拒绝、确认、取消和用户限定范围仍阻止执行，剩余读取不无限重委托。该契约仍需新真实工具及语音样本。
+
+确认取消的独立场景因 CLI 绑定截止而在付费语音前停止，未取得业务控制证据。音频观察器另修 duplex 滚动数组的分页问题：在 header 冻结原始副本，禁止复用滚动数组的旧前缀，混入另一快照时拒绝读取。统一构建后的 34 文件、630 项本地检查通过；本地结果不替代真实语音验收。
+
+## 0a8728f 的原通话复核
+
+该次 Candidate 已结束并清理，严格 receipt 仍为 FAIL：31 个自动检查中的 30 个通过，完整 USER 输入的独立收束检查未过。保存的原数据证明 93 字完整 USER 与唯一委派输入相等，Memory → Web search → 官方 web_fetch → 同 owner 的 canonical final → 原 Live 语音自动完成；这次没有触发派发前版本收束分支，不能用它证明该分支已实测通过。
+
+输入检查存在观测时钟疑点：快照在浏览器 header 冻结数组，再花 245–272ms 分页读取，但检查用读取结束后的时间判定末 mic 帧是否在 100ms 内。失败条目没有保存当次必要时标，无法把旧 FAIL 改成 PASS；后续采样须明确记录冻结时刻与收件时刻，原连续输入门槛不变。
+
+独立重解原 WebM/PCM 与真实 receiver/RTP：告别完整有声，模型 terminal 至原 PC.close 之前有 768ms 安静尾段；原 close 后 mic/PC 已结束，新 voice owner 自动重拨并先问候。自然挂断工具与接受结果确实来自同一 USER/run 的真实调用。不过接受后 84ms 又出现了 generic tool.error，二次终态仍需修复。
+
+内容审核另发现后台把官方原文中指向另一接口指南的说明扩成“两者不能混用”，Live 也复述了这个未获原文支持的绝对禁止。原内容 FAIL 保留；后续契约应保留原文的建议、要求、禁止及适用条件，不把本任务的证据范围规则当成官方事实。示例配置、条件迁移及部署现状的真实语音保真在这个样本中没有覆盖。
+
+确认取消、真实迟到 callback、物理扬声器回录及真人听觉仍单独待验。数字音频、搜索链和自然挂断的单项结果不能代表整个实验已通过。
+
+## 下一轮 Candidate 修复
+
+来源契约将接口差异改成证据适用范围：分开的文档、通常流程以及本任务规则不能生成“不能混用”或“唯一支持”。原文明确的禁止、要求和建议仍须按适用条件复述，不能反向抹去原文限制。新真实样本保留原完整 USER，不额外提醒模型该回答什么。
+
+输入观测记录浏览器冻结时刻、采集请求及完成时刻，分页按同一代次和时钟读取。独立收束按冻结前缀计算末 mic 帧年龄，拒绝陈旧、缺失、混代、未完成 USER 和中断输入证据；100ms 新鲜度、250ms 静音及连续输入门槛保持。它只证明测试 clip 在下一 USER 注入前的快照状态，不证明任意当前业务瞬间已收束。
+
+确认取消的新启动器先核验自己的实际 CLI PID、父进程、启动时间、完整命令与冻结输入，再绑定唯一新 Candidate 的预语音屏障。已做 Mac 实际身份与目标文件原子发布核验；错误 owner、旧实例、过期屏障或已有 binding 均不能覆盖。这里只记录启动门禁修复，不等于确认取消业务路径通过。
+
+二次挂断错误按真实运行源码定位：正常 client-tool-only 结束可返回 `payloads: undefined`，旧 registry 却只接受数组。修复只接纳已配对真实工具事件和原 host receipt、同 session、成功 tool_calls 及唯一零参数 end-tool 终态，错误、取消和外来终态仍拒绝。拒绝原因保留日志与原 run 诊断，不再追加一段失败口播。
+
+另设独立同 run 终态检查：原工具接受之后、原关闭之前，generic consult 必须唯一正常结束，不能有二次错误；原工具、告别和关闭分别判断。旧 0a capture 在此检查仍失败。统一构建后 34 个文件的 642 项本地检查通过；下一新 Candidate 才验证实际模型与媒体路径。
+
+## 72e20ef 的独立确认取消结果
+
+新启动器已实际绑定唯一新 Candidate，核对真实 Mac CLI、远端 owner、176 个冻结输入及 23 个 overlay 后才开始原 H5/WebRTC 语音。这轮已结束，receipt 保持 FAIL；自己的 unit 已读回 not-found / inactive / MainPID=0，目录不存在，共享 Gateway PID 及 runtime 保持。
+
+后台实际调用 `date; sleep 60; date`，core 返回真实确认挑战并阻止执行。用户要求先等待再读时间、不要增加其他步骤；原 selector 正确拒绝了多出的起始 date，因此没有注入确认 USER，也没有进入 pending、取消或 OS 退出路径。不能把启动器成功当作取消通过。原语音还被分成两条 USER，后半条的两个委派片段不包含完整目标；上下文仍让后台读到了等待要求，但没有完整输入收束的证明。保留原输入与失败，不凭时间相近合并不同 USER。
+
+通用执行契约进一步明确：限定步骤时保持用户指定顺序，不自行增加前置采样、诊断或重复动作。必要额外动作须说明实际前置条件并核对已有授权。新增入口回归只验证完整用户约束原样送到后台，不伪造模型执行或确认。
+
+原最终观测另有一次 149ms mic 采样缺口，receiver 同处也有 184ms 缺口；所有 connected 帧仍为原 live / enabled sender。缺口横跨大快照之后的采样，关闭前后边界正常。取证时整份 CDP 返回和截图产生共同主线程负担是强推断，不能由此断言实际麦克风停发或物理回声已解决。原 100ms 门槛及该 FAIL 保留；综合场景也需复用原始前缀分页、独立冻结时钟，关闭前不为制作截图延迟原挂断动作。
+
+独立执行真实 core 投射函数另发现一个终态缺口：tool timeout 和 compaction 也可返回 undefined payload、aborted=false、tool_calls，实际 liveness 分别为 blocked / paused。新增分支现仅接受实际正常的 working 状态；真实函数投射负回归拒绝 blocked、paused、abandoned、未知或缺失状态，已有 Array 路径保留。旧 72 投射失败独立记录，不追改为成功；修复仍须新真实自然挂断样本验证。
+
+本轮后续补丁统一构建后，34 文件、649 项本地检查通过。综合观察器保持全部原始前缀、每次新 header 与原关闭证据，截图在原关闭尝试后保存，不能称该图为通话中布局。新的模型执行、确认取消及自然挂断结果继续单独验证。
+
+
+## 1db4c08 的真实生命周期结果与后续修复
+
+本轮唯一 Candidate `candidate-766a690d-ba12-4604-a7b9-a92700891347` 已结束并清理，共享 PID 1775226 和 runtime 保持。原 native receipt `e7e33972a567ac58b98f483f8da5b1014f961adc7d546f9ec959f245d4dae452` 为 FAIL，不追改。实际 Memory → Web search → 官方 web_fetch → canonical final → Live 两段事实回答已经执行；旧“两个接口不能混用”错误本题未再出现，记忆日期和“一般”限定保留。把 GPT Live 专属段落或搜索合成说法归到 Realtime 官方原文的来源缺口仍保留，示例、迁移和部署现状未覆盖。
+
+自动检查的 Memory/Web 音频窗口选中了“正在看文档”的进度句，终态早于后台 canonical final。测试随后过早注入告别；实际完整事实跨两个 Live turn，最后只有 207ms 到手动关闭，不能称最终答案完整播放验收。结束委派在完整告别 USER 后约 17.7 秒才到，backend 零参数工具和 host 接受随后实际发生，同 run generic consult 正常结果且没有二次 tool.error；它发生在 observer 原 20 秒期限外，关闭来自测试清理，未证明自然告别、自动关闭和重拨。
+
+独立整份原 WebM 重解验证 1564 帧 mic、最大间隔 69ms，原 live/enabled sender 保持；问候、保留通话回应及进度句各自完整播放与 750ms RTP 静尾有证。物理 AEC、真人听感以及完整最终结果不由这些窗口代替。
+
+新观察器把同 owner/run 的完整 canonical callback hash 与真实 assistant body、全部 final chunks、host result 绑定。原 Live 跨 turn 正文须严格覆盖完整 body，保留日期和限定，再等待原播放器连续与独立 RTP 时钟的 750ms 静尾才注入下一 USER。只正规化标点、固定结果标签和无歧义日期表示；小数点、负号、百分比及所有实质词仍区分。它是保守的交付准备门禁，合法改述可能仍未证实，不能替代独立来源语义审核；旧样本途中出现新 USER 仍拒绝。player/mic 的 100ms 连续门槛保持，200ms getStats 采样有独立的时钟和间距校验。
+
+真实 core 的 Array 路径也能在 tool timeout 时表现为 working。新增第 24 个 overlay，在实际 completeEmbeddedRun 中从最终核心终态产生私有 classification/reason/runId/sessionId；registry 的 Array 和 undefined 路径都要求同 owner 的 success/completed。实际捕获 classifier、attempt projection、liveness 与 completeEmbeddedRun 联合负回归拒绝超时、取消、失败、未知、缺失及外来投影。源码透传审查未发现 meta 丢失点，真实媒体链仍需新的 Candidate 样本。
+
+来源契约进一步要求逐个事实分句对应实际支持的页面及对象，不把搜索合成或 GPT Live 专属段落拼成 Realtime 原文的共同“它说”。完整 USER、单句呈现和只读范围保持。
+
+统一构建 24 targets，34 文件 658 项本地检查通过。2026-10-04T06:23Z 只读核对当前 loopback-requester-sender-v1 的全部 24 个 before 与 foreign PR181 文件 hash 匹配，pending/lease null。以上补丁继续仅 Candidate，不合 dev、不写共享、不部署 V。新真实验证将使用新的 clean source、冻结输入和独立目录；旧 FAIL 和未完成门槛保留。
+
+## f163 真实结果与限定漏播修复
+
+真实 Candidate `candidate-716440f1-c5d9-401d-af25-37ece3d3d266`（source `f163c433760bb4145413f674001bb33c911c793b`）已结束 FAIL，17/18 自动检查；共享未改变，自己的 unit 与目录已独立读回清理。完整 28 文件及原 receipt 保持。原后台 canonical 296 字分两段，原 Live 终态 134 字只讲了结论，遗漏第二段中“仅搜索摘要、尚未读取官方原文”的必要限定。这是实际内容丢失，不能用合法改述解释，也不能放宽完整正文门槛。
+
+独立原 WebM 全份解码、47 个原字幕片段和真实播放器/RTP 尾支持实际说出的整句；麦克风/sender 1981 帧，最大间隔 85ms，原 live/enabled 身份保持。实际 utterance 的播放证据不等于完整 canonical 已交付。没有注入 end USER，新的核心终态传递、自然挂断及重拨仍未覆盖；物理 AEC 与真人听觉仍待验收。
+
+本次补丁仅 Candidate：点名 memory/web search 不自动解释成“只搜索、禁止读取”；必要官方原文读取沿同一授权目标继续，尊重明确的只搜索、拒绝、确认或取消。后台简短最终结论应把必要来源资格与对应事实放在同一句；Live 即使压缩表达也应保留所有 final parts 的资格。传输不改正文及 hash，不通过硬编码补造事实。
+
+另新增显式 `end-only` Candidate 诊断 profile，独立验新核心终态、保留通话反例、模型结束工具、实际告别播放与 750ms 尾、同 owner 关闭和新 owner 重拨。默认 `full` 不变，共享及生产不允许 narrow profile。end-only receipt 明示 Memory/Web 未覆盖、完整数字播放和整体验收未通过；完整场景原失败与所有原门槛保持。
+
+该补丁生成的 24 个 runtime 目标已重新 build；34 个本地测试文件 661/661 通过，零 skip。它们只证明契约、传输和观察器范围，不能替代新的实际模型与语音验收。
+
+独立审查还发现既有告别静尾检查仅要求 RTP 非空，过期的缓存 stats 也可能被误记为独立排空。已接入真实同 receiver 的新鲜时钟、750ms 跨度和单调 counter 核验，并在自动关闭汇总中重算。功能性 app drain 与严格独立 RTP 保持分开；无有效 stats 时只保留真实功能事实，不宣布严格尾段通过。原 2d84060 的 end-only 计划尚未派发，因这项观察器修正被作废，将冻结新提交后再测。
+
+## b6f169b 的真实挂断诊断
+
+新的 end-only Candidate 已结束，原 receipt 为 FAIL，23/26 自动检查通过；原记录不改。完整自然否定保留通话，完整自然告别触发同 owner/run 的真实零参数后台工具和 host 接受。generic consult 唯一正常结束，没有二次 tool.error；随后原 Live 说出告别、自动关闭，并由新 owner 重拨主动问候。独立同 receiver 时钟覆盖 792.372ms 静尾，counter 单调。冻结核心代码与正常 terminal 路径有因果证据，私有 classification 字段未直接导出，不把推断当作原始 meta 观测。
+
+第二次问候的原 no-USER、idle microphone、完整语音和播放器均成立，外层检查却沿用完整流程的累计三段输入；end-only 实际只有两段。仅修正 profile 的预期计数：首通零段，full 重拨三段，end-only 重拨两段；额外 USER 或 clip 仍拒绝。以原始状态离线复核，不修改旧 FAIL，也不宣称新源码已真实重跑。
+
+其余两项严格失败保留：原 WebM 全份重解后的名义 PCM 尾端比完整告别窗口短 109ms；麦克风采样有一次 129ms 间隔。原播放器与实际 RTP 尾段成立，但不能用它们补造 PCM；所有可见 sender/track 仍 live/enabled，也不能由采样缺口直接断言实际停麦或 AEC 已通过。录音起点和主线程采样仍需继续核对。Memory/Web、限定保真、物理回声与真人听觉未由 end-only 覆盖。
+
+本轮自己的 Candidate unit/目录已独立读回清理，没有共享或 V 写入。小动态原头像已在原 H5 的手机通话画面实证：顶部约 69px，对话区约占 390×844 画面的 80%；V 上的旧版不包含这个后续补丁。
+
+## 43395a9 的完整工具复验与录音观测修复
+
+新的完整 Candidate 已结束，原 receipt 为 FAIL，17/18 自动检查；自己的 unit 和目录已读回清理，共享未改变。原完整 USER 沿同一 owner/run 自动完成 Memory → Web search → 两次官方 web_fetch → canonical final → 原 Live 语音。最终正文保真仍失败：Live 遗漏后台的两个家庭出生日期，后台和 Live 还把官方 beta/GA 迁移的适用条件压成“并已迁到 GA”，不能据此证明当前 H5 或 V 已迁移。原用户要求简短总结并未逐项点名生日，全文门禁是保守的完整交付约束；来源条件的丢失另行按实际原文审核，不用全文门禁代替语义结论。
+
+独立整份原 WebM 重解支持实际最终 utterance 与 894.912ms 真实 RTP 静尾；2263 个原 mic/sender 样本最大间隔 70ms，持续到原关闭边界。手动清理在最终回复结束 23.9 秒后，未中途截断；这轮未注入挂断 USER，告别、自动关闭和重拨仍沿前次独立诊断记录。名义 PCM 比 PC.close 少 132ms，旧样本没有真实 recorder 首帧、final-data 与 stop 时钟，不能用播放器或后续新观测补造这个覆盖。
+
+新增观测只记录真实 MediaRecorder start/dataavailable/stop/error、事件时钟和分块 timecode。inactive 不代表 final data 已完成，导出有界等待原 stop 事件；错误、超时及之后迟到的 stop 不改写已失败结果。原业务关闭先执行，观测等待在其后，不延迟挂断以获取漂亮尾音。PCM 原名义映射、100ms 连续采样和 750ms 独立静尾门槛保持。
+
+每个原 header/page 记录浏览器执行时钟与 collector 收件时钟，固定的小型资格记录同步归档到私有 JSONL；不复制原始大正文，也不把 CDP 往返耗时当作浏览器主线程停顿。缺失或混代时钟拒绝或明确未资格，失败归档须使用新的原 header 恢复。原关闭、player/mic 采样源码逐字节保持，不能由这些本地改动声称旧 129ms 采样缺口或 PCM 差额已修复。统一构建后 35 文件、678 项本地检查通过；这组新观测尚未经过真实语音运行。所有后续仍限 Candidate，不合 dev、不写共享或 V。
+
+## 完整口播答案的职责修复
+
+433 的原 wire 两片正文及 hash 与 canonical 一致，没有传输截断；实际捕获的后台 prompt 已包含来源条件要求。失败属于实际模型遵从问题，不能归因于规则未下发。原始 ACK 与媒体 turn 范围不能证明首片提前触发生成，故不改 wire channel。
+
+本次替换输出职责：后台按用户语言、句数与格式制作一个可直接播报的完整答案，final 前逐个对照实际来源的主体、条件和要求/建议语气；在这一步精简非相关事实。Live 收齐 final parts 后完整交付该口播答案，不再按相关性挑事实或二次摘要，合法最新格式仍可在不改变事实、值和限定的前提下调整。近端 FINAL_COMPLETE header 同步该职责，正文与 hash 不加工。两个摘要层的责任歧义是待实测的因果假设，不把这次契约替换称作来源保真已修好。
+
+阶段续传 patch 通过共享的最终指令常量保持原插入顺序，生命周期逻辑不变。统一构建、完整 Unicode 分块/body/hash、最大位置 180-byte header/500-byte wire 及原控制门槛检查均通过，35 文件仍为 678/678、零 skip。下一次必要的 Candidate 完整原 H5 样本同时验证这项新职责和录音时标，不重跑已结束的 433，也不降低旧失败门槛。
+
+## ac9ced6 的真实结果
+
+新完整 Candidate 已结束，原 receipt 仍为 FAIL，18/19 自动检查；完整 30 文件已导出，自己的 unit 与目录已只读核对清理，共享 Gateway 前后保持同一进程。原 Memory → Web search → 官方正文读取 → canonical final → Live 语音确实自动完成。两片 wire 的原文及 hash 与 295 字 canonical 一致，Live 终态仅 212 字，仍漏姓名及两个日期；新职责契约没有证明完整事实交付已修复。beta 适用条件改善且未宣称当前集成已经迁移，但后台和 Live 仍合并了原文的产品主体、浏览器与服务端传输条件。原失败保留。
+
+真实录音的 start、186 次 dataavailable、最后 128 字节和 stop 顺序完整，分块字节和与整份 WebM 一致。整份原录音独立重解，四段实际讲话各有完整 PCM、未静音播放器和至少 750ms 的新鲜同 receiver RTP 静尾；2005 个麦克风样本最大间隔 70ms。完整私有 JSONL 的 10756 条时钟及 278 次快照逐项核对，页面同步函数最多 2.4ms，不把 CDP 往返解释成页面阻塞。
+
+新原生事件仍不能给出首编码样本的绝对墙钟锚点；原名义 PCM 到 PC.close 的 13ms 差额保持，不能通过改 anchor、补静音或另一个 AudioContext 的输出估计填平，也不能由此断言词语剪音。此轮最终正文门禁失败后未喂挂断输入，只执行 finally 的原手动关闭；自然挂断、重拨及物理 AEC 不由本轮补齐。顶部小动态原头像再次由原 H5/WebRTC 手机截图证实，对话区约占画面八成。
+
+最终请求的实际指标绑定同一 run 的 Flash 路线，但早期 history 截在最终生成前，最终 provider response 元数据尚未完整留证。下一项最小观察在原关闭及录音导出后读取唯一同 owner/session/run 的完整 durable final，保留早期原件，缺失如实记录；它不是新的语义修复。确认取消另准备一段 7.382 秒的合成 USER 请求，沿用原确认输入和全部严格挑战、原始 USER、真实 core、进程退出与迟到隔离门槛；本地素材准备不算真实 ASR 收束或取消通过。
+
+## 关闭后的最终响应留证
+
+仅四个观察器文件新增后置留证。原 PC 和麦克风先关闭、原录音先完成导出，再读取同一 owner/session/run 的 history 与 query-only SQLite 原始消息，分别另存早期原件之外的私有文件。原消息声明的 runId 必须全部一致，并以实际 canonical 正文 hash 与原始消息时钟核对；读者传入的标签、模型配置和邻居消息不能代替源身份或 response metadata。字段不存在明确记录，缺失不会把原 FAIL 改成通过。
+
+后置 history 有 10 秒预算，原始 SQLite 读取显式使用 5 秒预算；读取、评估、保存失败均继续原 Chrome/Pulse/私有目录清理，清理后才记观察器错误。八条实际 finally 的离线注入路径覆盖成功、正文失败、读取超时和保存失败。统一 build 的 24 个 runtime 与 ac9 逐字节一致，35 文件 684/684 本地通过、零 skip；这项新取证仍需后续 Memory/Web 原 H5 运行。
+
+### 独立确认取消样本 6b0a4aa：初始 USER 与接通问候重叠
+
+- 真实 canonical CLI / Darwin PID / 新 Candidate prevoice barrier 绑定成立；`exec90018` 已结束 FAIL，23 份原始文件完整导出，原回执 SHA `4923d3b0c9b0c6febe1c807eaac47cdcc27e43431e28f0dbfa4cdb3202bcae13`。自己的 unit 已 not-found、目录已删除，共享 Gateway `1812432` 保持。
+- 原 7.382 秒 USER 连续喂入时与主动问候重叠。原生字幕、完整 USER、委派、持久化 USER 都只含“执行 sleep 60 分号，需要确认就先问我”；前置等待/日期要求在原生输入文字出现前已缺失。后台实际尝试 `sleep 60;`，触发真实确认挑战，但与原严格场景不匹配，观察器正确没有喂确认、取消或重拨。7/8 局部检查不等于控制行为通过。
+- 独立麦克风报告：同一捕获轨道和 sender 持续开启、全程最大采样间隔 83 ms，喂入窗口最大 61 ms；问候重叠段 44 帧中 38 帧能量接近零，原 USER WAV 同期仍有声。无法仅据此确定具体 AEC/DSP 或 provider 根因，物理扬声器/真人听觉仍未验收。
+- 下一次确认取消 happy path 先核对接通问候、实际确认问句和原播放器/fresh RTP 的完整静尾，再喂独立 USER；故意插话场景保留。等待问候不代表修好了全双工重叠输入。
+- 为定位后台来源资格与 Live 漏读问题，准备显式 Candidate-only Pro 路由诊断。只变自有 main/Worker 的 Makaron `model.primary`，正常无标记仍沿原 Flash 路径；main 的 `vlab-worker` 与 Worker 的 `openclaw` runtime、defaults/fallback/provider/凭据均保留。诊断配置和本地测试不能充当真实模型遵循或发布验收；不合 dev/shared/V。
+
+确认取消的三个独立输入均接入实际完整语音等待：同原 owner 的接通问候、exact challenged run 的 canonical final 确认回复、重拨后的新 owner 问候。固定完整快照 proof，后续慢序列化不移动边界；combined 的故意重叠、原精确命令选择、100ms 与 750ms 门槛保留。这是验证流程修正，双向说话时的实际输入衰减还没有产品修复。
+
+Pro 诊断补丁独立审查修复了 post-isolation 的完整 provider/selector 保护缺口：实际函数拒绝凭据、端点、headers/API 及空 fallback 结构漂移。三文件无 flag 的实际 bootstrap 写入片段与原 6b 等价，只有显式标记的私有 main/Worker 使用既配 Pro；真实 provider 响应和语义仍待样本。统一 build 的 24 个 runtime 与 ac9 逐字节一致，36 文件 713/713 本地检查、零 skip。2026-10-04T09:29Z 只读核对全部 24 before 和 foreign PR181 hash 匹配，共享 Gateway 1812432、pending/lease null；没有共享或 V 写入。

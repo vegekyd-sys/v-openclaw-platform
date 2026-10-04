@@ -482,7 +482,7 @@ test("actual voice prompt requires verified public stage facts before the next s
   assert.match(value, /Do not guess missing facts or announce success before verification/);
   assert.match(value, /include any already confirmed public stage results in the public yield acknowledgment/);
   assert.match(value, /never expose raw tool output, tool logs, or private reasoning/);
-  assert.match(value, /When finished, return only the concise result/);
+  assert.match(value, /When finished, return only one ready-to-speak answer/);
   assert(value.includes(params.args.question) && value.includes(params.args.context));
   assert(value.includes("User: 之前的用户请求") && value.includes("Agent: 之前的公开回复"));
   const before = execute(source, "function buildRealtimeVoiceAgentConsultChatMessage", "/** Build the delegated OpenClaw agent prompt", deps);

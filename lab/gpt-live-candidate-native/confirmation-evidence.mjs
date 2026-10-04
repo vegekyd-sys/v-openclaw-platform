@@ -148,3 +148,174 @@ export function assessControlConfirmationCoreReceipt(rows,{challenge,userTurn,in
     serverFingerprintIsNotObserverArgsHash:true,callerInputAcceptedAt:receipt.eligible.callerInputAcceptedAt,
     actualArgsObservationSha256:confirmationArgsFingerprint(execPair.args)};
 }
+
+// Parse only complete raw OS rows. The running writer can have an unfinished
+// last line; it cannot turn malformed complete rows or an identity drift into
+// successful process evidence.
+export function parseControlProcessWitness(text) {
+  const lines=String(text??'').split('\n'),partialTail=lines.pop(),rows=[];
+  for(const [lineIndex,line] of lines.entries()) {
+    if(!line)return {rows,valid:false,reason:'Empty complete OS witness row',lineIndex};
+    try {
+      const row=JSON.parse(line);
+      if(!row||!['observer-start','process-profile','cgroup-sample','identity-drift','observer-end'].includes(row.type)||
+        !Number.isFinite(row.at)||rows.length&&row.at<rows.at(-1).at)
+        return {rows,valid:false,reason:'Malformed or unordered complete OS witness row',lineIndex};
+      rows.push(row);
+    }catch{return {rows,valid:false,reason:'Malformed complete OS witness JSON',lineIndex};}
+  }
+  return {rows,valid:true,partialTail:Boolean(partialTail)};
+}
+
+function controlObserverIdentity(witness,expected) {
+  if(witness?.valid!==true||!expected)return null;
+  const rows=witness.rows??[],starts=rows.filter(row=>row.type==='observer-start');
+  if(starts.length!==1||rows[0]!==starts[0]||rows.some(row=>['identity-drift','observer-end'].includes(row.type)))return null;
+  const start=starts[0];
+  for(const key of ['candidateId','unit','owner','sourceCommit','gatewayPid','gatewayStartTimeTicks',
+    'ownerBindingSha256','observerSourceSha256','planSha256','freezeSha256','pollMs','durationSeconds'])
+    if(start[key]!==expected[key])return null;
+  if(!/^candidate-[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(start.candidateId??'')||
+    start.unit!=='vlab-'+start.candidateId+'.service'||!start.owner||!Number.isSafeInteger(expected.uid)||
+    !Number.isSafeInteger(start.gatewayPid)||start.gatewayPid<=1||!Number.isSafeInteger(start.gatewayStartTimeTicks)||
+    start.gatewayStartTimeTicks<=0||!/^[a-f0-9]{40}$/u.test(start.sourceCommit??'')||
+    !['ownerBindingSha256','observerSourceSha256','planSha256','freezeSha256'].every(key=>/^[a-f0-9]{64}$/u.test(start[key]??''))||
+    start.pollMs!==50||start.durationSeconds!==1800||start.readOnly!==true||start.signalsSent!==false||
+    start.gatewayCallsMade!==false||start.envRecorded!==false||start.fullCommandRecorded!==false||
+    start.execCallBindingEstablished!==false||start.unitProperties?.ActiveState!=='active'||
+    start.unitProperties?.User!==expected.user||!start.unitProperties?.ControlGroup?.endsWith('/'+start.unit))return null;
+  return start;
+}
+
+const processKey=p=>`${p.pid}:${p.startTimeTicks}`;
+const isProcess=p=>Number.isSafeInteger(p?.pid)&&p.pid>1&&Number.isSafeInteger(p.startTimeTicks)&&p.startTimeTicks>0&&
+  Number.isSafeInteger(p.ppid)&&typeof p.state==='string';
+function profilesAt(rows,at) {
+  const profiles=new Map();for(const row of rows)if(row.type==='process-profile'&&row.at<=at&&
+    Number.isSafeInteger(row.profile?.pid)&&Number.isSafeInteger(row.profile?.startTimeTicks))
+    profiles.set(processKey(row.profile),{...row.profile,observedAt:row.at});
+  return profiles;
+}
+function descendantsOf(processes,rootPid) {
+  const pids=new Set([rootPid]);let changed=true;
+  while(changed){changed=false;for(const p of processes)if(pids.has(p.ppid)&&!pids.has(p.pid)){pids.add(p.pid);changed=true;}}
+  return processes.filter(p=>pids.has(p.pid));
+}
+function exactGatewayAncestor(shell,processes,start) {
+  const byPid=new Map(processes.map(p=>[p.pid,p])),seen=new Set();let current=shell;
+  while(current&&!seen.has(current.pid)) {
+    if(current.pid===start.gatewayPid)return current.startTimeTicks===start.gatewayStartTimeTicks;
+    seen.add(current.pid);current=byPid.get(current.ppid);
+  }
+  return false;
+}
+function completeSample(row) {
+  return row?.type==='cgroup-sample'&&Array.isArray(row.processes)&&row.processes.every(isProcess)&&
+    new Set(row.processes.map(p=>p.pid)).size===row.processes.length&&Array.isArray(row.readErrors);
+}
+
+// This join is independent of the model's acknowledgement and HTTP status. It
+// requires a unique newly observed exact command beneath the actual Gateway,
+// plus its real sleep60 child. It explicitly remains a correlation of native
+// execution with OS source; the raw observer does not mint an exec capability.
+export function assessControlProcessPending(witness,{execPair,expected,now,maxAgeMs=250}={}) {
+  const missing=reason=>({passed:false,status:'unproven',reason});
+  const start=controlObserverIdentity(witness,expected),rows=witness?.rows??[];
+  if(!start)return missing('Missing exact live read-only OS observer identity');
+  if(!Number.isFinite(now)||!Number.isFinite(execPair?.calledAt)||execPair.calledAt<start.at||
+    execPair.name!=='exec'||!execPair.id||!execPair.runId||!execPair.sessionKey||execPair.sourceExecutionTimingVerified!==true||
+    !isOriginalControlSleep60(execPair.args?.command))return missing('Missing exact original native exec60 start');
+  const sourceStart=execPair.rawEnvelopes?.find(row=>['agent','session.tool'].includes(row.event)&&row.payload?.stream==='tool'&&
+    row.payload.ts===execPair.calledAt&&row.payload.runId===execPair.runId&&row.payload.sessionKey===execPair.sessionKey&&
+    row.payload.data?.phase==='start'&&row.payload.data.name==='exec'&&row.payload.data.toolCallId===execPair.id&&
+    confirmationArgsFingerprint(row.payload.data.args)===confirmationArgsFingerprint(execPair.args));
+  if(!sourceStart)return missing('Actual native exec source envelope is not independently retained');
+  const sample=rows.filter(row=>row.type==='cgroup-sample'&&row.at<=now).at(-1);
+  if(!completeSample(sample)||sample.at<execPair.calledAt||now-sample.at>maxAgeMs)
+    return missing('Missing fresh complete OS sample after actual exec start');
+  const before=rows.filter(row=>row.type==='cgroup-sample'&&row.at<execPair.calledAt).at(-1);
+  if(!completeSample(before)||execPair.calledAt-before.at>1000||before.readErrors.length)
+    return missing('No complete independent OS sample immediately before native exec');
+  const commandSha256=sha256(execPair.args.command),profiles=profilesAt(rows,sample.at);
+  const matches=[...profiles.values()].filter(profile=>profile.cgroupMembershipVerified===true&&profile.uid===expected.uid&&
+    ['sh','bash','dash','zsh'].includes(profile.executableBasename)&&Number.isInteger(profile.shellCommandArgumentIndex)&&
+    profile.argumentSha256?.[profile.shellCommandArgumentIndex]===commandSha256&&profile.observedAt>=execPair.calledAt&&
+    profile.observedAt<=execPair.calledAt+3000);
+  if(matches.length!==1)return missing('Exact exec command has no unique new OS shell profile');
+  const profile=matches[0],shell=sample.processes.find(p=>processKey(p)===processKey(profile));
+  if(!shell||['Z','X','x'].includes(shell.state)||before.processes.some(p=>processKey(p)===processKey(shell))||
+    !exactGatewayAncestor(shell,sample.processes,start))return missing('Exact command is not a newly running descendant of this Gateway');
+  const owned=descendantsOf(sample.processes,shell.pid),ownedIds=new Set(owned.map(p=>p.pid));
+  if(owned.some(p=>['Z','X','x'].includes(p.state)||profiles.get(processKey(p))?.cgroupMembershipVerified!==true||
+    profiles.get(processKey(p))?.uid!==expected.uid)||sample.readErrors.some(e=>ownedIds.has(e.pid)||e.kind!=='exited-during-read'))
+    return missing('Owned process subtree has a dead process, identity failure, or incomplete read');
+  const sleeps=owned.filter(p=>p.pid!==shell.pid&&profiles.get(processKey(p))?.executableBasename==='sleep'&&
+    [sha256('60'),sha256('60s')].includes(profiles.get(processKey(p))?.argumentSha256?.[1]));
+  if(sleeps.length!==1)return missing('No unique real sleep60 child is currently pending');
+  return {passed:true,status:'observed-pending',observedAt:sample.at,checkedAt:now,execCallId:execPair.id,
+    backendRunId:execPair.runId,sessionKey:execPair.sessionKey,actualExecStartedAt:execPair.calledAt,commandSha256,
+    observerIdentity:start,expected,shell:profile,processes:owned,realSleep:sleeps[0],beforeSample:before,sample,
+    nativePidWitness:false,correlationMethod:'exact native command SHA + unique new own-cgroup shell + Gateway ancestry + actual source clock',
+    execCallBindingSource:'independent-native-and-read-only-OS-evidence-join'};
+}
+
+export function assessControlProcessExit(witness,{pending,cancelAt,trustedCancelAt,now,minQuietMs=500,maxGapMs=150}={}) {
+  const missing=reason=>({passed:false,status:'unproven',reason});
+  if(pending?.passed!==true||!controlObserverIdentity(witness,pending.expected)||
+    ![cancelAt,trustedCancelAt,now].every(Number.isFinite)||cancelAt<pending.observedAt||cancelAt-pending.observedAt>1000||
+    trustedCancelAt<cancelAt||trustedCancelAt>now)return missing('No fresh exact pending-to-trusted-cancel transition');
+  const naturalDeadline=pending.actualExecStartedAt+60000;
+  if(cancelAt>=naturalDeadline-5000)return missing('Cancellation is too close to the sleep60 natural completion deadline');
+  const rows=witness.rows,tracked=new Map(pending.processes.map(p=>[processKey(p),p]));
+  const samples=rows.filter(row=>row.type==='cgroup-sample'&&row.at>=pending.observedAt&&row.at<=now);
+  if(!samples.length||samples.at(-1).at<now-250)return missing('OS observation is stale after cancellation');
+  let absent=[],previous=pending.observedAt;
+  for(const sample of samples) {
+    if(!completeSample(sample)||sample.at-previous>maxGapMs)return missing('Process exit interval has missing or incomplete OS samples');
+    previous=sample.at;
+    const profiles=profilesAt(rows,sample.at);
+    for(const root of tracked.values())for(const child of descendantsOf(sample.processes,root.pid)) {
+      // A reused PID is never allowed to donate new descendants to the old exec.
+      if(sample.processes.some(p=>p.pid===root.pid&&p.startTimeTicks!==root.startTimeTicks))continue;
+      const profile=profiles.get(processKey(child));
+      if(profile?.uid!==pending.expected.uid||profile.cgroupMembershipVerified!==true)
+        return missing('Observed descendant lost its exact own-cgroup profile');
+      tracked.set(processKey(child),child);
+    }
+    const ids=new Set([...tracked.values()].map(p=>p.pid));
+    if(sample.readErrors.some(e=>ids.has(e.pid)||e.kind!=='exited-during-read'))
+      return missing('Owned PID has a read error; absence is not exit');
+    const live=sample.processes.filter(p=>tracked.has(processKey(p)));
+    if(sample.at<cancelAt||sample.at<trustedCancelAt||live.length){absent=[];continue;}
+    if(sample.at>=naturalDeadline-5000)return missing('Extinction was observed only near or after natural completion');
+    absent.push(sample);
+    if(absent.at(-1).at-absent[0].at>=minQuietMs)
+      return {passed:true,status:'observed-extinct',cancelAt,trustedCancelAt,naturalDeadline,
+        firstAbsentAt:absent[0].at,confirmedExtinctAt:sample.at,quietDurationMs:sample.at-absent[0].at,
+        trackedProcesses:[...tracked.values()],samples:absent,signalsSentByObserver:false,nativePidWitness:false,
+        correlationMethod:pending.correlationMethod,execCallId:pending.execCallId,backendRunId:pending.backendRunId};
+  }
+  return missing('Exact shell and every observed descendant have not remained absent for the complete exit window');
+}
+
+export function assessConfirmedControlCancel({api=[],tools=[],diagnostics=[],owner,sessionKey,cancelAt}={}) {
+  const missing=reason=>({passed:false,reason});
+  if(!owner?.voiceSessionId||!owner.bridgeCallId||!owner.backendRunId||!owner.traceId||!owner.delegationId||
+    !Number.isInteger(owner.generation)||owner.sourceRunIdSha256!==sha256(owner.backendRunId)||
+    !sessionKey||!Number.isFinite(cancelAt))return missing('Missing exact native cancellation owner');
+  const responses=api.filter(row=>row.route==='/api/steer'&&row.requestedAt>=cancelAt&&
+    row.request?.voiceSessionId===owner.voiceSessionId&&row.request.mode==='cancel');
+  if(responses.length!==1)return missing('Missing or ambiguous original H5 cancel request');
+  const response=responses[0];
+  if(response.status!==200||response.responseBody?.ok!==true||response.responseBody.mode!=='cancel'||
+    response.responseBody.aborted!==true||response.responseBody.active!==true||response.responseBody.sessionKey!==sessionKey)
+    return missing('HTTP acknowledgement does not establish exact backend cancellation acceptance');
+  const owned=row=>row.traceId===owner.traceId&&row.delegationId===owner.delegationId&&row.generation===owner.generation&&
+    row.sourceRunIdSha256===owner.sourceRunIdSha256;
+  const accepted=diagnostics.filter(row=>row.at>=cancelAt&&row.stage==='backend-cancel-accepted'&&owned(row));
+  const terminal=tools.filter(row=>row.at>=cancelAt&&row.raw?.type==='tool.error'&&
+    row.raw.callId===owner.bridgeCallId&&row.raw.voiceSessionId===owner.voiceSessionId);
+  if(accepted.length!==1||terminal.length!==1)return missing('No unique exact source cancel receipt and original native bridge terminal');
+  return {passed:true,response,trustedCancel:accepted[0],nativeCancel:terminal[0],
+    sourceRunIdSha256:owner.sourceRunIdSha256,backendRunId:owner.backendRunId};
+}

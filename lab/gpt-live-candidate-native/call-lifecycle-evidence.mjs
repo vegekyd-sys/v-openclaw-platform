@@ -1,9 +1,18 @@
+import {createHash} from 'node:crypto';
 import {resolveNativeTurnTranscriptWindow,assessCompletePlaybackWindow,continuousPlaybackQuiet,mergeSessionToolEvidence,toolResultSucceeded} from './evidence.mjs';
 
 const normalize=text=>String(text??'').replace(/[\s，。！？,.!?]/gu,'');
 const messageText=m=>typeof m?.content==='string'?m.content:(m?.content??[]).filter?.(v=>v?.type==='text').map(v=>v.text??'').join('\n')??'';
 const timestamp=value=>typeof value==='number'?value<1e11?value*1000:value:Date.parse(value);
 const queryIncluded=(text,query)=>normalize(text).toLowerCase().includes(normalize(query).toLowerCase());
+
+/** Narrow control diagnostics do not stand in for the combined release gate. */
+export function resolveLifecycleValidationProfile(value='full',target='candidate') {
+  if(!['full','end-only'].includes(value)||!['candidate','shared','v'].includes(target))
+    throw Error('Unknown lifecycle validation scope');
+  if(value==='end-only'&&target!=='candidate')throw Error('Narrow lifecycle diagnostics are Candidate-only');
+  return {name:value,memoryWebRequired:value==='full',combinedReleaseEvidenceEligible:value==='full'};
+}
 
 /** This exact temporary read failure may retry within the caller's existing budget. */
 export async function readLifecycleHistoryOrRetry(read,onRebuilding=()=>{}) {
@@ -13,6 +22,70 @@ export async function readLifecycleHistoryOrRetry(read,onRebuilding=()=>{}) {
     onRebuilding(error);
     return null;
   }
+}
+
+/** Private final readback is diagnostic only; never select a neighboring run. */
+export function selectLifecycleFinalHistoryBinding({bindings=[],owners,state}={}) {
+  if(bindings.length!==1)return {status:'unavailable',reason:'no-unique-owned-backend-binding',bindingCount:bindings.length};
+  const binding=bindings[0],owner=owners?.get(binding.pcIndex);
+  if(!owner||!binding.sessionId||owner.sessionKey!==binding.sessionKey||owner.voiceSessionId!==binding.voiceSessionId||!binding.runId)
+    return {status:'unavailable',reason:'original-owner-or-session-identity-missing'};
+  const delegations=(state?.events??[]).filter(e=>e.pcIndex===binding.pcIndex&&e.type==='delegation.created'&&
+    e.raw?.item?.target==='client'&&e.raw.item.user_bidi_turn_id===binding.userTurnId&&e.at>=binding.inputStartedAt);
+  const calls=(state?.tools??[]).filter(e=>e.raw?.type==='tool.call'&&e.raw.voiceSessionId===binding.voiceSessionId&&
+    e.raw.callId===binding.runId&&e.at>=binding.inputStartedAt);
+  if(delegations.length!==1||calls.length!==1)return {status:'unavailable',reason:'native-USER-or-host-run-ambiguous'};
+  const close=(state?.api??[]).find(a=>a.route==='/api/close'&&a.status===200&&a.request?.voiceSessionId===binding.voiceSessionId);
+  if(state?.pcStates?.[binding.pcIndex]!=='closed'||!Number.isFinite(close?.requestedAt)||!Number.isFinite(close?.at))
+    return {status:'unavailable',reason:'original-close-not-observed'};
+  return {status:'bound',binding,originalCloseRequestedAt:close.requestedAt,originalCloseReturnedAt:close.at,
+    nativeDelegationId:delegations[0].raw.item.id,hostCallAt:calls[0].at};
+}
+
+/** Preserve provider fields only from the actual same-run durable final. */
+export function assessLifecycleFinalHistory({selection,history,transcript,body,observedAt}={}) {
+  const result={status:'unavailable',source:'owned-backend-post-close-readback',acceptanceGateChanged:false,
+    readbackIsNotNativeSpeechOrSemanticAcceptance:true,observedAt:observedAt??null,
+    canonicalFinal:body?{textSha256:createHash('sha256').update(body.text).digest('hex'),textBytes:Buffer.byteLength(body.text),
+      sourceAt:body.event?.payload?.ts??null,receivedAt:body.canonical?.received?.at??null}:null};
+  if(selection?.status!=='bound')return {...result,reason:selection?.reason??'no-owned-binding'};
+  const b=selection.binding;
+  Object.assign(result,{binding:b,originalCloseRequestedAt:selection.originalCloseRequestedAt,originalCloseReturnedAt:selection.originalCloseReturnedAt});
+  if(!Number.isFinite(observedAt)||observedAt<selection.originalCloseReturnedAt)return {...result,reason:'readback-not-after-original-close'};
+  if(history?.sessionKey!==b.sessionKey||history?.sessionId!==b.sessionId)return {...result,reason:'final-history-session-identity-mismatch'};
+  const historyMessages=history.messages??[];
+  result.historyDisplayTruncated=historyMessages.some(m=>m.__openclaw?.truncated===true||m.__openclaw?.reason==='display-cap');
+  if(!body||body.event?.payload?.sessionKey!==b.sessionKey||body.event.payload.runId!==b.runId||
+    !Number.isFinite(body.event.payload.ts)||body.event.payload.ts<b.inputStartedAt||body.event.payload.ts>observedAt)
+    return {...result,reason:'exact-canonical-final-unavailable'};
+  const sha=text=>createHash('sha256').update(text).digest('hex'),canonicalHash=sha(body.text);
+  result.historyFinalCandidates=historyMessages.filter(m=>m.role==='assistant'&&messageText(m).trim()&&
+    sha(messageText(m).trim())===canonicalHash).map(m=>({timestamp:timestamp(m.timestamp??m.__openclaw?.recordTimestampMs),
+      textSha256:sha(messageText(m).trim()),displayTruncated:m.__openclaw?.truncated===true||m.__openclaw?.reason==='display-cap'}));
+  // chat.history may abbreviate runId or display-cap content. The private
+  // SQLite projection supplies original bytes and actual declared identities;
+  // the reader's requested runId label alone is deliberately not source proof.
+  if(transcript?.canonicalSessionKey!==b.sessionKey||transcript.sessionId!==b.sessionId||
+    transcript.queryOnly!==true||transcript.source!=='private-sqlite-active-transcript')
+    return {...result,reason:'exact-private-final-transcript-unavailable'};
+  const rows=(transcript.rawEvents??[]).flatMap(row=>{
+    const message=row.event?.message,declared=[message?.runId,message?.__openclaw?.runId,row.event?.runId,row.event?.data?.runId]
+      .filter(value=>typeof value==='string');
+    const text=messageText(message).trim();
+    if(message?.role!=='assistant'||message.stopReason!=='stop'||!declared.length||declared.some(runId=>runId!==b.runId)||!text||sha(text)!==canonicalHash)return [];
+    const messageAt=timestamp(message.timestamp??row.createdAt),persistedAt=timestamp(row.createdAt);
+    if(!Number.isFinite(messageAt)||!Number.isFinite(persistedAt)||messageAt>observedAt||persistedAt>observedAt||
+      messageAt<b.inputStartedAt||persistedAt<b.inputStartedAt)return [];
+    return [{row,message,text,messageAt,persistedAt}];
+  });
+  if(rows.length!==1)return {...result,reason:'no-unique-exact-run-canonical-durable-final',matchingFinalCount:rows.length};
+  const {row,message,text,messageAt,persistedAt}=rows[0],fields=['api','provider','model','responseModel','responseId','modelCallId','stopReason'];
+  const providerMetadata=Object.fromEntries(fields.map(key=>[key,Object.hasOwn(message,key)?{status:'observed',value:message[key]}:{status:'not-present'}]));
+  return {...result,status:'captured',reason:null,final:{rawSeq:row.seq,messageAt,persistedAt,
+    timestampIsNotBackendCompletionClock:true,backendFinalSourceAt:body.event.payload.ts,
+    textSha256:sha(text),textBytes:Buffer.byteLength(text),rawTextSha256:sha(messageText(message)),rawTextBytes:Buffer.byteLength(messageText(message)),
+    originalBytesSource:'same-session-exact-run-private-sqlite-raw-message',
+    sourceRunIdentityActuallyDeclared:true,providerMetadata}};
 }
 
 /** Same read-only history projection used by native-smoke; clocks stay native. */
@@ -72,6 +145,109 @@ export function resolveLifecycleConsultResult(state,{pcIndex,voiceSessionId,user
   const result=(state.tools??[]).find(e=>owned(e)&&e.raw.type==='tool.result'&&e.at>=call?.at);
   if(!call||!result||(state.tools??[]).some(e=>owned(e)&&e.raw.type==='tool.error'))return null;
   return {delegation:delegations[0],call,result,source:'actual-native-USER-delegation-and-owned-consult-run-SSE-result'};
+}
+
+/** An actual run's complete body must match the canonical callback hash. */
+export function resolveLifecycleCanonicalBody(events,{canonical,sessionKey,runId}={}) {
+  if(!canonical||!sessionKey||!runId)return null;
+  const rows=events.filter(e=>e.event==='agent'&&e.payload?.stream==='assistant'&&e.payload.runId===runId&&
+    e.payload.sessionKey===sessionKey&&typeof e.payload.data?.text==='string'&&Number.isFinite(e.payload.ts)&&
+    e.payload.ts<=canonical.received.at&&createHash('sha256').update(e.payload.data.text.trim()).digest('hex')===canonical.received.textSha256);
+  const bodies=new Set(rows.map(e=>e.payload.data.text.trim()));
+  return bodies.size===1?{text:[...bodies][0],event:rows.at(-1),canonical,source:'same-run-complete-body-matches-canonical-callback-hash'}:null;
+}
+
+// Strict observer readiness, not a paraphrase or truth evaluator. Preserve all
+// substantive words and qualifications; only punctuation, a known presentation
+// label, case and the unambiguous spoken/ISO representation of a date differ.
+export function normalizeLifecycleFinalBody(text) {
+  const digits={'零':0,'〇':0,'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9};
+  const small=value=>/^\d+$/u.test(value)?Number(value):/^[一二三四五六七八九]$/u.test(value)?digits[value]:
+    /^(?:十[一二三四五六七八九]?|[二三]十[一二三四五六七八九]?)$/u.test(value)?
+      (value.split('十')[0]?digits[value.split('十')[0]]:1)*10+(value.split('十')[1]?digits[value.split('十')[1]]:0):NaN;
+  const date=(year,month,day,original)=>{
+    if(!Number.isInteger(year)||!Number.isInteger(month)||!Number.isInteger(day)||year<1000||year>9999||month<1||month>12||day<1||day>31)return original;
+    const value=new Date(Date.UTC(year,month-1,day));
+    return value.getUTCFullYear()===year&&value.getUTCMonth()===month-1&&value.getUTCDate()===day?`date${year}m${month}d${day}`:original;
+  };
+  return String(text??'').replace(/^\s*(?:记忆检索结果|检索结果)\s*[:：]/u,'')
+    .replace(/(\d{4})-(\d{2})-(\d{2})/gu,(original,y,m,d)=>date(Number(y),Number(m),Number(d),original))
+    .replace(/([零〇一二三四五六七八九]{4}|\d{4})年([零〇一二三四五六七八九十\d]{1,3})月([零〇一二三四五六七八九十\d]{1,3})日/gu,
+      (original,y,m,d)=>date(/^\d+$/u.test(y)?Number(y):Number([...y].map(c=>digits[c]).join('')),small(m),small(d),original))
+    .replace(/[\s\p{P}]/gu,(character,offset,value)=>
+      character==='%'||character==='‰'||/[.,:/+\-−]/u.test(character)&&
+        (/\d/u.test(value[offset-1]??'')&&/\d/u.test(value[offset+1]??'')||/[+\-−]/u.test(character)&&/\d/u.test(value[offset+1]??''))?
+        character:'').toLowerCase();
+}
+
+/** Never feed the next USER on a progress sentence or one partial final turn. */
+export function resolveLifecycleFinalSpeechTurns(state,{pcIndex,body,host,userTurnId,before=Infinity}={}) {
+  if(!body?.canonical||!host?.result||host.delegation?.raw?.item?.id!==body.canonical.final.delegationId||
+    !Number.isFinite(host.result.at)||!userTurnId)return null;
+  const after=body.canonical.received.at,readyAt=Math.max(host.result.at,body.canonical.final.at);
+  const users=(state.events??[]).filter(e=>e.pcIndex===pcIndex&&e.role==='user'&&e.type==='turn.done'&&e.turnId===userTurnId&&Number.isFinite(e.at));
+  if(users.length!==1||users[0].at>after)return null;
+  if((state.events??[]).some(e=>e.pcIndex===pcIndex&&e.role==='user'&&e.turnId!==userTurnId&&
+    ['turn.created','turn.done'].includes(e.type)&&e.at>users[0].at&&e.at<before))return null;
+  const turns=(state.events??[]).filter(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='assistant'&&
+    e.turnId&&normalize(e.text)&&Number.isFinite(e.at)&&e.at>readyAt&&e.at<before)
+    .map(terminal=>({terminal,window:resolveNativeTurnTranscriptWindow(state.events,{pcIndex,turnId:terminal.turnId,after,before})}))
+    .filter(row=>row.window?.created&&row.window.created.at>=after).sort((a,b)=>a.terminal.at-b.terminal.at);
+  if(!turns.length)return null;
+  const required=normalizeLifecycleFinalBody(body.text),spoken=normalizeLifecycleFinalBody(turns.map(row=>row.terminal.text).join(''));
+  if(!required||!spoken.includes(required))return null;
+  const terminal=turns.at(-1).terminal;
+  if((state.events??[]).some(e=>e.pcIndex===pcIndex&&e.role==='assistant'&&e.type==='turn.created'&&e.at>terminal.at&&e.at<before))return null;
+  return {terminal,turns,after,readyAt,from:Math.min(...turns.map(row=>row.window.from)),canonical:body.canonical,
+    completeBodyMatched:true,semanticResultIndependentReviewRequired:true,source:'actual-complete-canonical-body-in-original-native-turn-sequence'};
+}
+
+export function assessLifecycleFinalSpeech(state,params={}) {
+  const delivery=resolveLifecycleFinalSpeechTurns(state,params);if(!delivery)return null;
+  const {pcIndex,before=Infinity}=params,frames=(state.audioFrames??[]).filter(f=>f.at<before);
+  const quiet=continuousPlaybackQuiet(frames,{pcIndex,after:delivery.terminal.at,durationMs:750,threshold:.003,maxGapMs:100,requireTail:true});
+  if(!quiet||!quiet.rtp.length)return null;
+  const independentRtp=assessLifecyclePostTerminalRtp(quiet,{terminalAt:delivery.terminal.at});
+  if(!independentRtp)return null;
+  const window={pcIndex,from:delivery.from,to:quiet.to,turnId:delivery.terminal.turnId,
+    turnIds:delivery.turns.map(row=>row.terminal.turnId),terminal:delivery.terminal,
+    canonicalFinalReceivedAt:delivery.after,completeBodyMatched:true};
+  const playback=assessCompletePlaybackWindow(frames,window);
+  if(!playback?.passed||playback.invalidFrames.length||playback.audibleFrames<3)return null;
+  return {...delivery,window,quiet,independentRtp,playback,strictCompletePlaybackPassed:playback.passed};
+}
+
+export function hasLifecycleFinalPlaybackTail(state,params={}) {
+  const delivery=resolveLifecycleFinalSpeechTurns(state,params);if(!delivery)return false;
+  const {pcIndex,before=Infinity}=params;
+  const quiet=continuousPlaybackQuiet((state.audioFrames??[]).filter(f=>f.at<before),{
+    pcIndex,after:delivery.terminal.at,durationMs:750,threshold:.003,maxGapMs:100,requireTail:true});
+  return Boolean(assessLifecyclePostTerminalRtp(quiet,{terminalAt:delivery.terminal.at}));
+}
+
+/** Real receiver clocks/counters must cover the tail; one stale stats row cannot. */
+export function assessLifecyclePostTerminalRtp(quiet,{terminalAt,durationMs=750,maxClockAgeMs=100,maxRtpGapMs=300}={}) {
+  if(!quiet||!Number.isFinite(terminalAt)||!Number.isFinite(quiet.to))return null;
+  const groups=new Map();
+  for(const row of quiet.rtp??[])for(const stat of row.rtp??[]) {
+    if(typeof stat.id!=='string'||!stat.id||!Number.isFinite(row.at)||!Number.isFinite(stat.timestamp)||
+      row.at<terminalAt||stat.timestamp<terminalAt||Math.abs(stat.timestamp-row.at)>maxClockAgeMs||
+      !Number.isSafeInteger(stat.packetsReceived)||stat.packetsReceived<0||!Number.isSafeInteger(stat.bytesReceived)||stat.bytesReceived<0)continue;
+    const rows=groups.get(stat.id)??[];rows.push({at:row.at,...stat});groups.set(stat.id,rows);
+  }
+  for(const [id,rows] of groups) {
+    rows.sort((a,b)=>a.at-b.at);
+    const first=rows[0],last=rows.at(-1);
+    // Browser probe schedules getStats every 200ms while player/mic state is
+    // sampled every 50ms. The unchanged player gate enforces 100ms continuity;
+    // stats cadence has a separate 200ms + 100ms observation-gap bound.
+    if(rows.length<2||last.timestamp-first.timestamp<durationMs||quiet.to-last.at>maxRtpGapMs)continue;
+    if(rows.some((row,index)=>index>0&&(row.at-rows[index-1].at>maxRtpGapMs||row.timestamp<=rows[index-1].timestamp||
+      row.packetsReceived<rows[index-1].packetsReceived||row.bytesReceived<rows[index-1].bytesReceived)))continue;
+    return {id,fromTimestamp:first.timestamp,toTimestamp:last.timestamp,durationMs:last.timestamp-first.timestamp,
+      terminalAt,frameCount:rows.length,first,last,source:'same-receiver-post-terminal-real-RTP-clocks-and-monotonic-counters'};
+  }
+  return null;
 }
 
 const emptyArguments=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===0;
@@ -185,6 +361,45 @@ export function resolveEndCallToolWitness({events=[],tools=[],backendEvents=[],b
   return candidates.length===1?candidates[0]:null;
 }
 
+/** End-tool acceptance does not prove that its original host consult settled. */
+export function assessEndCallConsultTerminal(state,{tool,before}={}) {
+  const voiceSessionId=tool?.voiceSessionId,backendRunId=tool?.backendRunId,issues=[];
+  const bindingValid=tool?.source==='exact-backend-model-tool-global-stream-and-durable-history-with-native-USER-and-host-owner'&&
+    typeof voiceSessionId==='string'&&Boolean(voiceSessionId)&&typeof backendRunId==='string'&&Boolean(backendRunId)&&
+    tool.consultCall?.raw?.voiceSessionId===voiceSessionId&&tool.consultCall.raw.callId===backendRunId&&
+    tool.consultCall.raw.type==='tool.call'&&tool.consultCall.raw.name===undefined&&Number.isFinite(tool.consultCall.at)&&
+    tool.result?.raw?.voiceSessionId===voiceSessionId&&tool.result.raw.backendRunId===backendRunId&&
+    tool.result.raw.type==='tool.result'&&tool.result.raw.name==='openclaw_end_call'&&
+    tool.result.raw.source==='backend_model_client_tool'&&tool.result.raw.status==='accepted'&&
+    tool.result.raw.closeAfterPlayback===true&&tool.result.raw.backendToolCallId===tool.backendToolCallId&&
+    tool.result.raw.requestId===tool.requestId&&tool.result.raw.originUserTurnId===tool.userTurnId&&
+    Number.isFinite(tool.result.at);
+  if(!bindingValid)issues.push('missing-exact-backend-end-tool-owner-binding');
+  const close=(state?.api??[]).find(row=>row.route==='/api/close'&&row.status===200&&
+    row.request?.voiceSessionId===voiceSessionId&&Number.isFinite(before)&&row.requestedAt===before);
+  if(!close)issues.push('missing-original-owned-close-boundary');
+  // Do not deduplicate terminal rows or infer a result from the named end-tool
+  // receipt. Retain invalid clocks and every same-run error as failure evidence.
+  const owned=(state?.tools??[]).filter(row=>bindingValid&&row.raw?.voiceSessionId===voiceSessionId&&
+    row.raw.callId===backendRunId&&['tool.call','tool.result','tool.error'].includes(row.raw.type));
+  const invalidClocks=owned.filter(row=>!Number.isFinite(row.at));
+  const rows=owned.filter(row=>Number.isFinite(row.at)&&Number.isFinite(before)&&row.at<=before);
+  const calls=rows.filter(row=>row.raw.type==='tool.call'),results=rows.filter(row=>row.raw.type==='tool.result'),
+    errors=rows.filter(row=>row.raw.type==='tool.error'),terminals=[...results,...errors];
+  const call=calls.length===1?calls[0]:null,result=results.length===1?results[0]:null;
+  if(invalidClocks.length)issues.push('invalid-owned-event-clock');
+  if(rows.some(row=>row.raw.name!==undefined))issues.push('unexpected-named-consult-event');
+  if(calls.length!==1)issues.push('original-consult-call-not-unique');
+  if(call&&call.at!==tool.consultCall.at)issues.push('original-consult-call-clock-mismatch');
+  if(results.length!==1)issues.push('normal-consult-result-not-unique');
+  if(errors.length)issues.push('owned-consult-tool-error');
+  if(terminals.length!==1)issues.push('consult-terminal-not-unique');
+  if(result&&(!call||result.at<call.at||result.at<tool.result.at||result.at>=before))issues.push('consult-result-outside-causal-window');
+  return {passed:issues.length===0,issues,voiceSessionId:voiceSessionId??null,backendRunId:backendRunId??null,
+    before:Number.isFinite(before)?before:null,close:close??null,call,result,calls,results,errors,terminals,invalidClocks,
+    source:'exact-end-tool-owned-host-consult-SSE-terminal-through-original-close'};
+}
+
 export function resolveLifecycleUserTurn(events,{pcIndex,after,before=Infinity,intent,expectedText}={}) {
   const rows=events.filter(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='user'&&
     Number.isFinite(e.at)&&e.at>=after&&e.at<before&&e.turnId&&normalize(e.text));
@@ -249,7 +464,9 @@ export function assessLifecycleFarewell(state,{pcIndex,tool,before=Infinity}={})
       e.backendRunId===tool.backendRunId&&e.nativeDelegationId===tool.requestId)&&
     Number.isFinite(state.browserTimeOrigin)&&state.browserTimeOrigin+e.at>=terminal.at&&state.browserTimeOrigin+e.at<=before);
   const strict=assessLifecycleSpeech(state,{pcIndex,after,before,requireCreatedAfter:true});
-  if(strict){const appDrain=exactDrain(strict.terminal);return {...strict,appDrain:appDrain??null,strictTailPassed:true};}
+  if(strict){const appDrain=exactDrain(strict.terminal);
+    const independentRtp=assessLifecyclePostTerminalRtp(strict.quiet,{terminalAt:strict.terminal.at});
+    return {...strict,appDrain:appDrain??null,independentRtp,strictTailPassed:Boolean(independentRtp)};}
   // The original app closes on its own 50ms analyser phase. Its exact trusted
   // drain transition can exist while this independent sampler has only 700ms
   // before the close. Preserve that functional witness without inventing the
@@ -276,10 +493,11 @@ export function assessAutomaticEnd(state,{pcIndex,owner,tool,farewell}={}) {
     farewell.window.to>=farewell.terminal.at&&farewell.appDrain?.requestId===tool.requestId&&farewell.appDrain.originUserTurnId===tool.userTurnId&&
     farewell.appDrain.turnId===farewell.terminal.turnId;
   const appDrainAt=Number.isFinite(state.browserTimeOrigin)&&Number.isFinite(farewell.appDrain?.at)?state.browserTimeOrigin+farewell.appDrain.at:null;
-  const strictTailPassed=Boolean(farewell.strictTailPassed&&farewell.quiet?.durationMs>=750&&farewell.quiet.rtp.length>0&&close?.requestedAt>=farewell.quiet.to);
+  const independentRtp=assessLifecyclePostTerminalRtp(farewell.quiet,{terminalAt:farewell.terminal.at});
+  const strictTailPassed=Boolean(farewell.strictTailPassed&&independentRtp&&close?.requestedAt>=farewell.quiet.to);
   const closed=state.pcStates?.[pcIndex]==='closed'&&state.remoteAudio?.attached===false;
   return {passed:Boolean(close)&&exactSpeech&&closed&&Number.isFinite(appDrainAt)&&close.requestedAt>=appDrainAt,
     close:close??null,exactSpeech,closed,requestId:tool.requestId,voiceSessionId:owner.voiceSessionId,
-    farewellTerminalAt:farewell.terminal.at,quiet:farewell.quiet,strictTailPassed,appDrain:farewell.appDrain,appDrainAt,
+    farewellTerminalAt:farewell.terminal.at,quiet:farewell.quiet,independentRtp,strictTailPassed,appDrain:farewell.appDrain,appDrainAt,
     source:'owned-host-tool-acceptance-then-real-farewell-tail-before-original-close-request'};
 }

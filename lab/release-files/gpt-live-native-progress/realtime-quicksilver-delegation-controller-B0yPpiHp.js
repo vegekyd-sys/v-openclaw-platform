@@ -161,6 +161,7 @@ var OpenAIQuicksilverDelegationController = class {
 		const transcript = this.transcript;
 		const delegation = {
 			id,
+			rawInput: input,
 			userBidiTurnId, inputKey,
 			userTranscriptRevision: this.userTranscriptRevision,
 			userTurnTranscriptText: this.nativeUserTurnText.get(userBidiTurnId)?.text,
@@ -243,7 +244,7 @@ var OpenAIQuicksilverDelegationController = class {
 			const proof = this.nativeUserTurnText.get(turnId);
 			// Exact full strings, including whitespace, must agree. A missing prefix,
 			// correction or additional condition cannot become a harmless closing done.
-			if (proof && proof.text === raw.turn.transcript) { proof.complete = true; return true; }
+			if (proof && proof.text === raw.turn.transcript) { proof.complete = true; proof.completedAt = Date.now(); return true; }
 			this.nativeUserTurnText.delete(turnId);
 		}
 		return false;
@@ -366,10 +367,10 @@ var OpenAIQuicksilverDelegationController = class {
 			header = `[BACKEND_PROGRESS_PENDING ${position}]\nParent task remains pending. One short fact when idle; stop for caller. Never guess values or claim completion.\n\n`;
 		} else if (chunkIndex + 1 < chunkCount) {
 			role = "final_part";
-			header = `[BACKEND_FINAL_PART ${position}]\nPartial parent final. Wait for BACKEND_FINAL_COMPLETE before answering; preserve all facts and values exactly.\n\n`;
+			header = `[BACKEND_FINAL_PART ${position}]\nWait for BACKEND_FINAL_COMPLETE before answering; keep facts, values and limits from all parts.\n\n`;
 		} else {
 			role = "final_complete";
-			header = `[BACKEND_FINAL_COMPLETE ${position}]\nParent final is complete. Follow caller output conditions; relay every requested value faithfully. Never invent facts.\n\n`;
+			header = `[BACKEND_FINAL_COMPLETE ${position}]\nDeliver all parts as the backend spoken answer. Keep every fact, value and condition; apply caller format.\n\n`;
 		}
 		if (Buffer.byteLength(header, "utf8") > 180) throw new Error("Native public append role header exceeds byte budget");
 		return { role, wireText: header + text };

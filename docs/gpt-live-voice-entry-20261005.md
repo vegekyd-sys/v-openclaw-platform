@@ -1,0 +1,13 @@
+# GPT Live replaces the existing V voice entry
+
+Tianyi authorized this release on 2026-10-05: keep the previous Xiaohe URL, submit a PR, verify on shared VLab, and publish to V only after that validation passes.
+
+The entry is `https://openclaw.tianyi.live/voice/`. Production currently routes it to the loopback `openclaw-rtc-h5.service` on port 26242, with `/opt/openclaw-voice-h5/current` pointing at the Xiaohe release. This release preserves that route, service definition and existing share-token environment. It replaces the pointer with the exact frozen GPT Live H5 bundle after canonical runtime deployment and shared H5 acceptance. An identity-bound rollback restores the previous pointer. Active native voice sessions block the cutover.
+
+The hosted bridge uses the existing signed `v_voice_access` cookie format and `#access=` exchange. Each visitor owns its own active call and event stream. Each dial creates a new voice session and a new backend session; calls do not reuse the 十二家 group session. The original URL fragment is removed after successful authentication. Gateway and provider credentials remain server-only. Admission includes in-flight reservations, global/per-IP call limits, and bounded repeated access/dial attempts.
+
+The release includes the already trialled Candidate follow-up through `890a532`: original desktop layout, H5 dial-only scene, continuous avatar pickup motion, and dialogue appearing after the first real transcript. It also includes existing backend task continuation, ready greeting, and the actual zero-argument backend `openclaw_end_call` tool. The tool's acceptance starts a short farewell; the browser closes the call after actual playback evidence. None of these controls uses a transcript phrase rule as a substitute for the model tool.
+
+Final-answer-fidelity and duplex-audio fixes remain paused at Tianyi's request. Their original failures remain recorded. This rollout's required checks are entry/auth/visitor isolation, real greeting, Memory→Web with real backend results and original H5 speech, task continuation, natural end-call tool and redial, and phone/desktop presentation. Local tests and HTTP readiness alone cannot accept the shared artifact. Shared failure requires rollback and release of our own lease; it does not authorize production.
+
+Core/Worker runtime changes require a controlled Gateway restart. H5 also restarts when the pointer changes. Configuration, OAuth, Memory, conversation databases and other agents' changes are preserved. The runtime artifact is based on the current shared release, never an old 4934 snapshot. Production receives the same accepted artifact through the canonical promotion command; parity/align and lease release complete the shared rollout.

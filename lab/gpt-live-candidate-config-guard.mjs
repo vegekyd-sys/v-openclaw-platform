@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 
 const DEFAULT_SCHEMA_FILE = "zod-schema-B8Isge8w.js";
 const selectionFields = [
@@ -86,6 +87,133 @@ export function assertCandidateSelectedModelsPreserved(before, after, { agentId 
       runtimeId: read(after, keys)?.agentRuntime?.id ?? (keys.at(-1) === "agentRuntime" ? read(after, keys)?.id : null) ?? null,
     })),
   };
+}
+
+export const CANDIDATE_PRO_DIAGNOSTIC_MODEL = "deepseek/deepseek-v4-pro";
+const CANDIDATE_FLASH_BASELINE_MODEL = "deepseek/deepseek-v4-flash";
+const diagnosticPrimaryPath = "agents.entries.makaron.model.primary";
+
+function assertBackendDiagnosticIdentity({ flag, candidateId, label }) {
+  assert(flag === CANDIDATE_PRO_DIAGNOSTIC_MODEL, "Unsupported Candidate backend diagnostic flag");
+  assert(/^candidate-[a-z0-9-]{1,100}$/u.test(candidateId ?? ""), "Candidate backend diagnostic owner required");
+  assert(["main", "worker"].includes(label), "Candidate backend diagnostic copy required");
+}
+
+function assertConfiguredDiagnosticRuntime(config, label) {
+  // The main Gateway delegates to its private Worker; the Worker must execute
+  // with openclaw rather than recursively dispatching to another Worker.
+  const expectedRuntime = label === "main" ? "vlab-worker" : "openclaw";
+  const provider = config.models?.providers?.deepseek;
+  assert(provider && provider.agentRuntime?.id === expectedRuntime, "Candidate backend provider runtime drifted");
+  for (const ref of [CANDIDATE_FLASH_BASELINE_MODEL, CANDIDATE_PRO_DIAGNOSTIC_MODEL]) {
+    const id = ref.slice("deepseek/".length);
+    const catalog = (provider.models ?? []).filter((model) => model.id === id);
+    assert.equal(catalog.length, 1, "Candidate backend model must already have one configured catalog entry");
+    assert(catalog[0].agentRuntime === undefined || catalog[0].agentRuntime.id === expectedRuntime,
+      "Candidate backend catalog runtime drifted");
+    const definition = config.agents?.defaults?.models?.[ref];
+    assert(definition?.agentRuntime?.id === expectedRuntime, "Candidate backend model runtime closure drifted");
+    for (const scope of agentScopes(config, "makaron")) {
+      for (const [key, metadata] of Object.entries(read(config, [...scope, "models"]) ?? {})) {
+        if (matchesModelDefinition(key, metadata, ref)) {
+          assert(metadata && typeof metadata === "object" && !Array.isArray(metadata), "Candidate backend alias definition drifted");
+          if (metadata.agentRuntime === undefined) continue;
+          assert(metadata.agentRuntime?.id === expectedRuntime, "Candidate backend alias runtime conflicts");
+        }
+      }
+    }
+  }
+  return expectedRuntime;
+}
+
+/** A diagnostic config overlay only; it grants no model or deployment acceptance. */
+export function applyCandidateBackendRouteDiagnostic(config, { flag, candidateId, label } = {}) {
+  if (flag === undefined) return { config, diagnostic: { applied: false } };
+  assertBackendDiagnosticIdentity({ flag, candidateId, label });
+  const originalModel = config.agents?.entries?.makaron?.model;
+  assert(originalModel && typeof originalModel === "object" && !Array.isArray(originalModel),
+    "Candidate backend diagnostic requires the existing object selection");
+  assert(originalModel.primary === CANDIDATE_FLASH_BASELINE_MODEL, "Candidate backend baseline primary drifted");
+  assert(Array.isArray(originalModel.fallbacks) && originalModel.fallbacks.length === 0,
+    "Candidate backend diagnostic must preserve the empty fallback list");
+  // One primary field is sufficient only with the observed inheritance shape.
+  // Reject another selector instead of silently rewriting a second route.
+  for (const scope of agentScopes(config, "makaron")) {
+    assert(read(config, [...scope, "subagents", "model"]) === undefined,
+      "Candidate backend diagnostic has an explicit child model selection");
+    if (scope[1] === "list") assert(read(config, [...scope, "model"]) === undefined,
+      "Candidate backend diagnostic has an explicit list model selection");
+  }
+  const runtimeId = assertConfiguredDiagnosticRuntime(config, label);
+  const scoped = structuredClone(config);
+  scoped.agents.entries.makaron.model.primary = CANDIDATE_PRO_DIAGNOSTIC_MODEL;
+  const rewound = structuredClone(scoped);
+  rewound.agents.entries.makaron.model.primary = originalModel.primary;
+  assert(isDeepStrictEqual(rewound, config), "Candidate backend diagnostic changed more than its primary");
+  return { config: scoped, diagnostic: {
+    applied: true, candidateId, label, scope: "Disposable Candidate backend route diagnostic",
+    changedPath: diagnosticPrimaryPath, before: originalModel.primary, after: CANDIDATE_PRO_DIAGNOSTIC_MODEL,
+    runtimeId, beforeConfigSha256: digest(config), overlayConfigSha256: digest(scoped),
+    onlyPrimaryChanged: true, defaultsPreserved: true, fallbacksPreserved: true, providerMetadataPreserved: true,
+    modelSemanticsVerified: false, actualProviderResponseVerified: false, combinedReleaseAccepted: false,
+  } };
+}
+
+/** Protect both the former Flash metadata and the newly selected Pro metadata. */
+export function assertCandidateBackendRouteDiagnosticPreserved(before, after, options) {
+  const overlay = applyCandidateBackendRouteDiagnostic(before, options);
+  if (!overlay.diagnostic.applied) return { applied: false };
+  const selectedPro = assertCandidateSelectedModelsPreserved(overlay.config, after);
+  const rewound = structuredClone(after);
+  rewound.agents.entries.makaron.model.primary = CANDIDATE_FLASH_BASELINE_MODEL;
+  const selectedFlash = assertCandidateSelectedModelsPreserved(before, rewound);
+  // Selected-model metadata alone does not include provider credentials,
+  // endpoints, headers or API shape. Preserve the complete original provider.
+  assert(isDeepStrictEqual(before.models.providers.deepseek, after.models?.providers?.deepseek),
+    "Candidate backend complete provider configuration changed");
+  // Reference lists omit empty fallback arrays and other authored selector
+  // shape. Preserve those fields while allowing the existing isolation setup
+  // to change workspace, heartbeat cadence and agent-to-agent permissions.
+  for (const scope of agentScopes(overlay.config, "makaron")) {
+    for (const field of [...selectionFields, ["mediaModels"]]) {
+      assert(isDeepStrictEqual(read(overlay.config, [...scope, ...field]), read(after, [...scope, ...field])),
+        "Candidate backend authored model selection changed");
+    }
+  }
+  assertConfiguredDiagnosticRuntime(after, options.label);
+  const summary = (proof) => {
+    assert(proof.selectedReferences.length <= 64 && proof.protectedMetadata.length <= 128,
+      "Candidate backend selected proof exceeds its bounded scope");
+    return { selectedCount: proof.selectedReferences.length, metadataCount: proof.protectedMetadata.length,
+      selectedReferencesSha256: digest(proof.selectedReferences), protectedMetadataSha256: digest(proof.protectedMetadata) };
+  };
+  return { ...overlay.diagnostic, postIsolationConfigSha256: digest(after),
+    selectedPro: summary(selectedPro), selectedFlash: summary(selectedFlash) };
+}
+
+/** Pair the two private configs before either bootstrap write or voice startup. */
+export function assertCandidateBackendRouteDiagnosticPair({ mainBefore, mainAfter, workerBefore, workerAfter }, options) {
+  if (options?.flag === undefined) return { applied: false };
+  const main = assertCandidateBackendRouteDiagnosticPreserved(mainBefore, mainAfter, { ...options, label: "main" });
+  const worker = assertCandidateBackendRouteDiagnosticPreserved(workerBefore, workerAfter, { ...options, label: "worker" });
+  assert.equal(main.candidateId, worker.candidateId, "Candidate backend diagnostic owners differ");
+  assert.equal(main.after, worker.after, "Candidate backend diagnostic routes differ");
+  return { applied: true, candidateId: main.candidateId, model: CANDIDATE_PRO_DIAGNOSTIC_MODEL,
+    scope: "Disposable Candidate main and private Worker Makaron only", main, worker,
+    normalFlashValidationReplaced: false, combinedReleaseAccepted: false };
+}
+
+/** Pure canonical-path check; callers resolve existing roots before applying it. */
+export function assertCandidateBackendDiagnosticPaths({ candidateId, candidateRoot, runtime, state, configPath, workerConfigPath }) {
+  assert(/^candidate-[a-z0-9-]{1,100}$/u.test(candidateId ?? ""), "Candidate backend diagnostic owner required");
+  assert([candidateRoot, runtime, state, configPath, workerConfigPath].every((value) =>
+    typeof value === "string" && path.isAbsolute(value) && path.resolve(value) === value),
+  "Candidate backend diagnostic canonical private paths required");
+  assert.equal(path.basename(candidateRoot), candidateId, "Candidate backend diagnostic root owner differs");
+  assert(isInside(candidateRoot, runtime) && isInside(candidateRoot, state) && isInside(state, configPath) &&
+    isInside(state, workerConfigPath) && configPath !== workerConfigPath,
+  "Candidate backend diagnostic configs must remain in their owned private roots");
+  return { candidateId, privatePathsVerified: true };
 }
 
 /** Restrict the actual global agent-to-agent allowlist without changing models. */

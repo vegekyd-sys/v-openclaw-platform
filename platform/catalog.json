@@ -319,7 +319,10 @@
         "experiments/agent-worker-isolation-v1/plugin-config-schema.test.mjs",
         "experiments/agent-worker-isolation-v1/worker-memory-recycle-soak.test.mjs",
         "experiments/agent-worker-isolation-v1/worker-memory-recycle.test.mjs",
-        "experiments/agent-worker-isolation-v1/worker-recycle-concurrency.test.mjs"
+        "experiments/agent-worker-isolation-v1/worker-recycle-concurrency.test.mjs",
+        "lab/gpt-live-candidate-native/recording-lifecycle.test.mjs",
+        "lab/gpt-live-h5/hosted.test.mjs",
+        "lab/gpt-live-voice-entry-release.test.mjs"
       ]
     }
   ],

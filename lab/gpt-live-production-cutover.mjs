@@ -24,7 +24,7 @@ export function artifactIdentity(bytes) {
   const artifact = JSON.parse(bytes);
   assert(/^[a-f0-9]{40}$/u.test(artifact.sourceCommit), 'Artifact commit is unavailable');
   assert.equal(artifact.branch, 'dev', 'Use the canonical merged dev artifact');
-  assert(Array.isArray(artifact.files) && artifact.files.length === 22, 'Exactly 22 canonical runtime targets are required');
+  assert(Array.isArray(artifact.files) && artifact.files.length === 24, 'Exactly 24 canonical runtime targets are required');
   const seen = new Set();
   const files = artifact.files.map(file => {
     assert(/^(openclaw|production-worker)\/[A-Za-z0-9._/-]+$/u.test(file.target ?? '')

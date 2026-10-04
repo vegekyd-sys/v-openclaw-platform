@@ -181,6 +181,7 @@ var OpenAIQuicksilverDelegationController = class {
 		const transcript = this.transcript;
 		const delegation = {
 			id,
+			rawInput: input,
 			userBidiTurnId, inputKey,
 			userTranscriptRevision: this.userTranscriptRevision,
 			userTurnTranscriptText: this.nativeUserTurnText.get(userBidiTurnId)?.text,
@@ -295,6 +296,32 @@ var OpenAIQuicksilverDelegationController = class {
 				return receipt;
 			} };
 	}
+	retirePreDispatchUserTurnPrefix(delegation, signal, callControl) {
+		// Retire only a provably unfinished version, before host dispatch. A later
+		// provider item never cancels or rewrites a run already accepted by Talk.
+		if (!callControl || !this.isCurrentDelegation(delegation, signal) || delegation.backendDispatchStarted === true ||
+			callControl.nativeDelegationId !== delegation.id || callControl.delegationGeneration !== delegation.generation ||
+			callControl.originUserTurnId !== delegation.userBidiTurnId || callControl.isCurrent() !== true ||
+			typeof delegation.rawInput !== "string" || !delegation.rawInput.trim()) return false;
+		const proof = this.nativeUserTurnText.get(delegation.userBidiTurnId);
+		if (proof?.complete !== true || proof.text !== callControl.userTurnText || !Number.isFinite(proof.completedAt) ||
+			!this.completedUserTurns.has(delegation.userBidiTurnId) || !Number.isFinite(delegation.callerInputAcceptedAt)) return false;
+		const revisions = this.pendingDelegations.filter(next => next.userBidiTurnId === delegation.userBidiTurnId &&
+			next.generation > delegation.generation && next.backendDispatchStarted !== true && next.retiredBeforeDispatch !== true &&
+			typeof next.rawInput === "string" && next.rawInput.length > delegation.rawInput.length &&
+			next.rawInput.startsWith(delegation.rawInput) && next.rawInput === proof.text &&
+			Number.isFinite(next.callerInputAcceptedAt) && next.callerInputAcceptedAt >= delegation.callerInputAcceptedAt &&
+			next.callerInputAcceptedAt <= proof.completedAt);
+		if (revisions.length !== 1) return false;
+		delegation.retiredBeforeDispatch = true;
+		this.tracePublicProgress("delegation-coalesced-before-dispatch", delegation.id, "", {
+			kind: "progress", delegationGeneration: delegation.generation,
+			provenance: { source: "complete_user_revision", itemId: revisions[0].id, emittedAt: proof.completedAt }
+		});
+		// The unchanged FIFO launches the real newer item with its own id and
+		// generation. No result, terminal event, grant or wire item is synthesized.
+		return true;
+	}
 	observeNativeUserTurn(raw) {
 		if (this.stopped) return false;
 		const turnId = raw.type === "turn.delta" ? raw.turn_id : raw.turn?.id;
@@ -319,7 +346,7 @@ var OpenAIQuicksilverDelegationController = class {
 			const proof = this.nativeUserTurnText.get(turnId);
 			// Exact full strings, including whitespace, must agree. A missing prefix,
 			// correction or additional condition cannot become a harmless closing done.
-			if (proof && proof.text === raw.turn.transcript) { proof.complete = true; return true; }
+			if (proof && proof.text === raw.turn.transcript) { proof.complete = true; proof.completedAt = Date.now(); return true; }
 			this.nativeUserTurnText.delete(turnId);
 		}
 		return false;
@@ -442,10 +469,10 @@ var OpenAIQuicksilverDelegationController = class {
 			header = `[BACKEND_PROGRESS_PENDING ${position}]\nParent task remains pending. One short fact when idle; stop for caller. Never guess values or claim completion.\n\n`;
 		} else if (chunkIndex + 1 < chunkCount) {
 			role = "final_part";
-			header = `[BACKEND_FINAL_PART ${position}]\nPartial parent final. Wait for BACKEND_FINAL_COMPLETE before answering; preserve all facts and values exactly.\n\n`;
+			header = `[BACKEND_FINAL_PART ${position}]\nWait for BACKEND_FINAL_COMPLETE before answering; keep facts, values and limits from all parts.\n\n`;
 		} else {
 			role = "final_complete";
-			header = `[BACKEND_FINAL_COMPLETE ${position}]\nParent final is complete. Follow caller output conditions; relay every requested value faithfully. Never invent facts.\n\n`;
+			header = `[BACKEND_FINAL_COMPLETE ${position}]\nDeliver all parts as the backend spoken answer. Keep every fact, value and condition; apply caller format.\n\n`;
 		}
 		if (Buffer.byteLength(header, "utf8") > 180) throw new Error("Native public append role header exceeds byte budget");
 		return { role, wireText: header + text };
@@ -554,6 +581,8 @@ var OpenAIQuicksilverDelegationController = class {
 		try {
 			const callControl = this.callLifecycle ? await this.prepareBackendCallControl(delegation, signal) : void 0;
 			if (!this.isCurrentDelegation(delegation, signal)) return;
+			if (this.retirePreDispatchUserTurnPrefix(delegation, signal, callControl)) return;
+			delegation.backendDispatchStarted = true;
 			const result = await this.options.runAgentConsult({
 				...(callControl ? { callControl } : {}),
 				prompt: delegation.prompt,
@@ -590,8 +619,17 @@ var OpenAIQuicksilverDelegationController = class {
 				this.options.logger.warn("OpenAI GPT-Live complete public result exceeded the 16 KiB delivery limit");
 			}
 		} catch (error) {
-			if (!this.isCurrentDelegation(delegation, signal) || this.options.isCanceledError?.(error)) return;
-			if (delegation.callControlReceipt) return;
+			if (!this.isCurrentDelegation(delegation, signal)) return;
+			if (delegation.callControlReceipt) {
+				// Talk already publishes the actual consult rejection. Keep its reason
+				// visible here, including a rejected terminal named AbortError, without
+				// manufacturing another tool result or speaking a second terminal.
+				this.options.logger.warn(`OpenAI GPT-Live accepted end-call consult failed: ${shortFailureReason(error)}`);
+				this.tracePublicProgress("backend-call-control-terminal-rejected", delegation.id, "", { kind: "failure",
+					delegationGeneration: delegation.generation, provenance: { runId: delegation.callControlReceipt.backendRunId } });
+				return;
+			}
+			if (this.options.isCanceledError?.(error)) return;
 			this.options.logger.warn(`OpenAI GPT-Live delegation consult failed: ${shortFailureReason(error)}`);
 			text = CONSULT_FAILURE_TEXT;
 			terminalKind = "failure";

@@ -7,7 +7,7 @@ import {
 } from './gpt-live-production-cutover.mjs';
 import { acquireIdleFence } from './shared/lifecycle.mjs';
 
-const rawArtifact = () => ({ branch: 'dev', sourceCommit: 'a'.repeat(40), files: Array.from({ length: 22 }, (_, i) => ({
+const rawArtifact = () => ({ branch: 'dev', sourceCommit: 'a'.repeat(40), files: Array.from({ length: 24 }, (_, i) => ({
   target: (i === 21 ? 'production-worker/' : 'openclaw/dist/') + `fixture-${i}.mjs`,
   before: i === 0 ? null : 'b'.repeat(64), after: digest('fixture ' + i), content: Buffer.from('fixture ' + i).toString('base64'),
 })) });
@@ -28,8 +28,8 @@ test('ExecStart identity excludes systemd runtime PID/timestamps but binds the c
   assert.throws(() => execStartIdentity(before + ' ; ' + after));
 });
 
-test('canonical artifact freezes all 22 targets, content hashes, and raw artifact identity without retaining bytes', () => {
-  const value = artifact(); assert.equal(value.files.length, 22); assert.equal(value.sourceCommit, 'a'.repeat(40));
+test('canonical artifact freezes all 24 targets, content hashes, and raw artifact identity without retaining bytes', () => {
+  const value = artifact(); assert.equal(value.files.length, 24); assert.equal(value.sourceCommit, 'a'.repeat(40));
   assert(!JSON.stringify(value).includes('content')); assertArtifactBinding(binding(value), value);
   const altered = { ...value, artifactSha: '0'.repeat(64) }; assert.throws(() => assertArtifactBinding(binding(value), altered), /artifact changed/u);
   assert.throws(() => assertArtifactBinding({ ...binding(value), files: value.files.slice(1) }, value), /mapping/u);
