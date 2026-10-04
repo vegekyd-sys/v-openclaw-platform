@@ -58,7 +58,7 @@ import { formatChannelProgressDraftLineForEntry as vFormatProgressLine } from "o
     };
     const vSchedule = () => {
         if (vTimer || state.vFinished) return;
-        vTimer = setTimeout(vFlush, Math.max(50, 1000 - (Date.now() - vLastFrame)));
+        vTimer = setTimeout(vFlush, Math.max(50, 400 - (Date.now() - vLastFrame)));
         vTimer.unref?.();
     };
     // Same tool line as Feishu ("🛠️ Exec"). WeCom has no send-message links,
@@ -195,6 +195,20 @@ import { formatChannelProgressDraftLineForEntry as vFormatProgressLine } from "o
     replace: "            await vStop().catch(() => { });\n            await finishThinkingStream(ctx);\n        }\n        catch (finishErr) {\n",
   },
   {
+    name: "queue-imports",
+    anchor: 'import { enqueueWeComChatTask } from "./chat-queue.js";\n',
+    replace: 'import { enqueueWeComChatTask, hasActiveTask as vHasActiveTask, buildQueueKey as vBuildQueueKey } from "./chat-queue.js";\n',
+  },
+  {
+    // Same entry as the DingTalk connector: the low-level channel dispatch lets
+    // OpenClaw's queue policy steer a message into the running turn instead of
+    // waiting for that turn to finish.
+    name: "dispatch-active-queue",
+    anchor: "        await core.channel.reply.dispatchReplyWithBufferedBlockDispatcher({\n            ctx: ctxPayload,\n            cfg: config,\n",
+    insert: "after",
+    code: "            dispatchReplyFromConfig: core.channel.reply.dispatchReplyFromConfig,\n",
+  },
+  {
     // An answer to a waiting question must not queue behind the turn that asked it.
     name: "chat-answer",
     anchor: "                if (!entry)\n                    return;\n                // 按 accountId:chatId 串行排队",
@@ -214,6 +228,14 @@ import { formatChannelProgressDraftLineForEntry as vFormatProgressLine } from "o
                         if (vExperience.shouldSendAnswerNotice(vAnswer)) await sendWeComReply({ wsClient, frame, text: vAnswer.notice, runtime, finish: true }).catch(() => { });
                         return;
                     }
+                }
+                // A message sent while V is replying goes to the running turn
+                // (OpenClaw steers it) instead of waiting behind it, like V's
+                // Feishu active-run lane.
+                if (vHasActiveTask(vBuildQueueKey(entry.account.accountId, entry.chatId))) {
+                    enqueueWeComChatTask({ accountId: entry.account.accountId, chatId: \`\${entry.chatId}:active-run\`, task: () => processWeComMessageNow(entry) });
+                    runtime.log?.(\`[wecom][v-experience] message during a running reply sent to the active run, chat=\${entry.chatId}\`);
+                    return;
                 }
                 // 按 accountId:chatId 串行排队`,
   },

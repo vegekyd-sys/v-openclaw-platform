@@ -226,6 +226,17 @@ const SCENARIOS = {
     const t = allText(conversationId, since);
     return { questionShown: Boolean(asked), ...view(conversationId, since), continued: /周末安排[^\n]*爬山[^\n]*读书|周末安排[^\n]*读书[^\n]*爬山/u.test(t) };
   },
+  // C2: a message sent while V is replying steers the running turn.
+  steer: async () => {
+    const u = nextUser(); const since = Date.now();
+    const { conversationId } = fake.sendUserText({ userId: u, text: "测试 steer：用 exec 执行 sleep 40，然后只回复 STEER_A" });
+    await waitFor(() => /Exec|运行命令/u.test(allText(conversationId, since)), 120_000, "steer tool start").catch(() => null);
+    await sleep(5000);
+    fake.sendUserText({ userId: u, text: "改成只回复 STEER_B", conversationId });
+    await settle(conversationId, since, (t) => /STEER_B/u.test(t), { label: "steer reply", timeoutMs: 240_000, quietMs: 15_000 }).catch(() => null);
+    const finals = [...cardsSince(since).map((c) => c.content ?? ""), ...messagesSince(conversationId, since).map((m) => m.text ?? "")];
+    return { finals: finals.map((t) => t.slice(0, 200)), steered: finals.some((t) => /STEER_B/u.test(t)), answeredA: finals.some((t) => /STEER_A/u.test(t) && !/STEER_B/u.test(t)) };
+  },
   secret: async () => {
     const u = nextUser(); const since = Date.now();
     const { conversationId } = fake.sendUserText({ userId: u, text: "这是自动化测试。请用 secrets 工具的 request 动作，向我索取一个名为 V_CANDIDATE_DEMO_TOKEN 的凭据（说明写：测试用）。如果没法索取，就只回复 SECRET_UNAVAILABLE。" });
@@ -293,6 +304,7 @@ if (EXPECT === "patched") {
     assert(s[name].questionShown, `${name}: question never reached the chat`);
     assert(s[name].continued, `${name}: chat answer did not reach the agent`);
   }
+  if (s.steer) assert(s.steer.steered && !s.steer.answeredA, "steer: second message did not steer the running reply");
   if (s.background) assert(s.background.sawBackgroundLine && s.background.sawBackgroundDone, "background line missing");
   if (s["ask-card"]) {
     assert(s["ask-card"].questionCard, "no question card was delivered");

@@ -218,6 +218,18 @@ const SCENARIOS = {
     return { chat, questionShown: Boolean(asked), buttons: buttons.map((b) => b.text), pressed: pressedSeq, answeredBy: pressedSeq.length ? "buttons" : "chat", messages: describe(msgs), continued: anyText(msgs, /周末安排[^\n]*爬山[^\n]*读书|周末安排[^\n]*读书[^\n]*爬山/u) };
   },
   // A3: a credential request.
+  // C2: a message sent while V is replying steers the running turn.
+  steer: async () => {
+    const chat = newChat();
+    const since = Date.now();
+    fake.sendUserText({ chatId: chat, userId: chat, text: "测试 steer：用 exec 执行 sleep 40，然后只回复 STEER_A" });
+    await waitFor(() => anyText(chatMessages(chat, since), /Exec|运行命令/u), 120_000, "steer tool start").catch(() => null);
+    await sleep(5000);
+    fake.sendUserText({ chatId: chat, userId: chat, text: "改成只回复 STEER_B" });
+    const msgs = await settle(chat, since, (m) => anyText(m, /STEER_B/u), { label: "steer reply", timeoutMs: 240_000, quietMs: 15_000 }).catch(() => chatMessages(chat, since));
+    const finals = msgs.filter((m) => !m.deleted).map((m) => m.text ?? "");
+    return { finals: finals.map((t) => t.slice(0, 200)), steered: finals.some((t) => /STEER_B/u.test(t)), answeredA: finals.some((t) => /STEER_A/u.test(t) && !/STEER_B/u.test(t)) };
+  },
   secret: async () => {
     const chat = newChat();
     const since = Date.now();
@@ -303,6 +315,7 @@ if (EXPECT === "patched") {
     assert(s["ask-single"].continued, "single question answer did not reach the agent");
   }
   if (s.secret) assert(s.secret.notice && s.secret.agentCarriedOn, "credential request did not end with a notice");
+  if (s.steer) assert(s.steer.steered && !s.steer.answeredA, "steer: second message did not steer the running reply");
   if (s.background) {
     assert.equal(s.background.error, undefined, s.background.error);
     assert(s.background.sawBackgroundLine, "background work line never appeared");

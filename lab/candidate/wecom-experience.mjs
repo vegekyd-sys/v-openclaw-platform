@@ -212,6 +212,17 @@ const SCENARIOS = {
     const t = allText(chatId, since);
     return { questionShown: Boolean(asked), questionInFinished: finished(chatId, since).some((m) => /南京/u.test(m.content)), agentError: /couldn't generate a response|request failed/iu.test(t), continued: /已选择[：:]\s*苏州/u.test(t), ...view(chatId, since) };
   },
+  // C2: a message sent while V is replying steers the running turn.
+  steer: async () => {
+    const u = nextUser(); const since = Date.now();
+    const { chatId } = fake.sendUserText({ userId: u, text: "测试 steer：用 exec 执行 sleep 40，然后只回复 STEER_A" });
+    await waitFor(() => /Exec|运行命令/u.test(allText(chatId, since)), 120_000, "steer tool start").catch(() => null);
+    await sleep(5000);
+    fake.sendUserText({ userId: u, text: "改成只回复 STEER_B" });
+    await settle(chatId, since, (t) => /STEER_B/u.test(t), { label: "steer reply", timeoutMs: 240_000, quietMs: 15_000 }).catch(() => null);
+    const finals = [...finished(chatId, since).map((m) => m.content), ...proactiveSince(chatId, since).map((m) => m.text)];
+    return { finals: finals.map((t) => t.slice(0, 200)), steered: finals.some((t) => /STEER_B/u.test(t)), answeredA: finals.some((t) => /STEER_A/u.test(t) && !/STEER_B/u.test(t)) };
+  },
   secret: async () => {
     const u = nextUser(); const since = Date.now();
     const { chatId } = fake.sendUserText({ userId: u, text: "这是自动化测试。请用 secrets 工具的 request 动作，向我索取一个名为 V_CANDIDATE_DEMO_TOKEN 的凭据（说明写：测试用）。如果没法索取，就只回复 SECRET_UNAVAILABLE。" });
@@ -239,6 +250,7 @@ try {
   }
   report.frameCommands = [...new Set(fake.frames.map((f) => f.cmd))];
   report.experienceLog = lines.filter((l) => /v-experience/u.test(l.line)).map((l) => redact(l.line).slice(0, 300)).slice(-40);
+  report.queueLog = lines.filter((l) => /steer|followup|queued|deferred|active-run|activeRun/iu.test(l.line)).map((l) => redact(l.line).slice(0, 300)).slice(-60);
   report.wecomErrors = lines.filter((l) => /wecom/iu.test(l.line) && /error|failed|threw/iu.test(l.line)).map((l) => redact(l.line).slice(0, 300)).slice(-25);
 } catch (error) {
   report.fatal = redact(String(error?.message ?? error)).slice(0, 3000);
@@ -273,5 +285,6 @@ if (EXPECT === "patched") {
     assert(!s[name].agentError, `${name}: agent turn failed`);
     assert(s[name].questionInFinished && s[name].continued, `${name}: question or answer missing`);
   }
+  if (s.steer) assert(s.steer.steered && !s.steer.answeredA, "steer: second message did not steer the running reply");
   if (s.background) assert(s.background.sawBackgroundLine && s.background.sawBackgroundDone, "background line missing");
 }
