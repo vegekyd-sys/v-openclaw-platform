@@ -29,7 +29,7 @@ test("work view: progress card plan, tool line, commentary; answer stays on top"
   assert.doesNotMatch(md, /别人的/u);
   assert(changes >= 3);
   view.questionPending(true);
-  assert.match(view.markdown(), /❓ 等你回答上面的问题$/u);
+  assert.match(view.markdown(), /❓ 等你回答下面的问题$/u);
   view.dispose();
   assert.equal(globalThis[PROGRESS].size, 0, "unsubscribed");
 });

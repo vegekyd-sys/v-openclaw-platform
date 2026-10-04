@@ -155,7 +155,7 @@ export function createWorkView({ sessionKey, onChange = () => {}, maxCommentary 
           lines.push(s.status === "completed" ? `✅ ${text}` : s.status === "in_progress" ? `▶️ **${text}**（进行中）` : `◻️ ${text}`);
         }
       }
-      const status = question ? "❓ 等你回答上面的问题" : compacting ? "🗜️ 正在整理上下文" : tool ? `⚙️ 正在${tool}` : "";
+      const status = question ? "❓ 等你回答下面的问题" : compacting ? "🗜️ 正在整理上下文" : tool ? `⚙️ 正在${tool}` : "";
       if (status) { if (lines.length) lines.push(""); lines.push(status); }
       return lines.join("\n");
     },

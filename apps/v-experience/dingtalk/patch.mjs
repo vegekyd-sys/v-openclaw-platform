@@ -69,6 +69,23 @@ import { callGatewayFromCli as vCallGateway } from "openclaw/plugin-sdk/gateway-
 \t\t\tlog.warn(\`[DingTalk][v-experience] work refresh failed: \${err?.message || err}\`);
 \t\t}
 \t};
+\t// ${MARKER}: finish the current card with what it shows now; the next
+\t// update opens a new one.
+\tconst vSplitCard = async () => {
+\t\tif (cardCreationPromise) await cardCreationPromise.catch(() => {});
+\t\tconst card = currentCardTarget;
+\t\tif (!card) return;
+\t\tcurrentCardTarget = null;
+\t\tclearCardWatchdog();
+\t\tconst shown = vWork.compose(vAnswerText);
+\t\tvAnswerText = "";
+\t\taccumulatedText = "";
+\t\ttry {
+\t\t\tawait finishCardOnce(card, shown || "…");
+\t\t} catch (err) {
+\t\t\tlog.warn(\`[DingTalk][v-experience] card split failed: \${err?.message || err}\`);
+\t\t}
+\t};
 \t// ${MARKER}: show a question as its own message. Worker runs announce it on the
 \t// Gateway question listener; other runtimes also send it as a payload, which
 \t// the connector used to drop. Either way it is shown once.
@@ -86,6 +103,10 @@ import { callGatewayFromCli as vCallGateway } from "openclaw/plugin-sdk/gateway-
 \t\t\t\tawait vSend(vExperience.secretQuestionNotice(question));
 \t\t\t\tawait vCallGateway("question.resolve", { config: cfg }, { id: question.id, cancel: true, resolvedBy: "dingtalk:credential-unsupported" }, { scopes: ["operator.questions"], progress: false, timeoutMs: 5000 }).catch(() => {});
 \t\t\t} else {
+\t\t\t\t// Close the card here, so whatever V writes after the answer lands in a
+\t\t\t\t// new card below the question instead of up in this one.
+\t\t\t\tvWork.questionPending(true);
+\t\t\t\tawait vSplitCard();
 \t\t\t\tawait vSend(vExperience.askPromptMarkdown(question));
 \t\t\t\tvExperience.trackChatQuestion({ channel: "dingtalk", chatKey: \`\${accountId ?? "default"}:\${conversationId}\`, senderId, record: question });
 \t\t\t\tvWork.questionPending(true);
