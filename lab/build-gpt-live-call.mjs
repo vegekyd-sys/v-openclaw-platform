@@ -22,6 +22,7 @@ import { createGptLiveCallLifecycleRuntimeSource } from "./gpt-live-call-lifecyc
 import { patchGptLiveCallLifecycleController, patchGptLiveCallLifecycleBroker, patchGptLiveCallLifecycleTalk,
   GPT_LIVE_CALL_BROKER_BEFORE } from "./patch-gpt-live-call-lifecycle.mjs";
 import { patchGptLiveBackendCallControlTalk, patchGptLiveBackendCallControlHarness } from "./patch-gpt-live-backend-call-control.mjs";
+import { patchGptLiveProjectionReadinessBuiltin, patchGptLiveProjectionReadinessReconcile } from "./patch-gpt-live-projection-readiness.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const hash = (source) => createHash("sha256").update(source).digest("hex");
@@ -128,18 +129,27 @@ export function build({ baseRelease = "hotreload-feishu-approvals-v2" } = {}) {
   const builtinBefore = readFileSync(resolve(root, builtinBaseline));
   assert.equal(hash(builtinBefore), GPT_LIVE_TOOL_ORDER_BUILTIN_BEFORE, "captured native tool-order baseline drifted");
   const builtinSource = "lab/release-files/gpt-live-call/builtin-openclaw-zQV8Wwjr.js";
-  writeFileSync(resolve(root, builtinSource), patchGptLiveVoiceToolOrderBuiltin(builtinBefore.toString("utf8")));
+  writeFileSync(resolve(root, builtinSource), patchGptLiveProjectionReadinessBuiltin(patchGptLiveVoiceToolOrderBuiltin(builtinBefore.toString("utf8"))));
   files.push({ source: builtinSource, target: "openclaw/dist/builtin-openclaw-zQV8Wwjr.js", before: GPT_LIVE_TOOL_ORDER_BUILTIN_BEFORE });
+  const projectionBaseline = "release/captured/v2026.9.1-db91.6-memory-search-guards-20261002/dist/session-transcript-reconcile-j5qhAafV.js";
+  const projectionBefore = readFileSync(resolve(root, projectionBaseline));
+  const projectionBeforeSha = "b0200676ea135b981d2caff2b6ec08cd608a75e48858fcd333519b046e613e89";
+  assert.equal(hash(projectionBefore), projectionBeforeSha, "captured transcript reconciliation baseline drifted");
+  const projectionSource = "lab/release-files/gpt-live-call/session-transcript-reconcile-j5qhAafV.js";
+  writeFileSync(resolve(root, projectionSource), patchGptLiveProjectionReadinessReconcile(projectionBefore.toString("utf8")));
+  files.push({ source: projectionSource, target: "openclaw/dist/session-transcript-reconcile-j5qhAafV.js", before: projectionBeforeSha });
   writeFileSync(resolve(root, "lab/gpt-live-call-plan.json"), JSON.stringify({ baseRelease, files }, null, 2) + "\n");
   const fixtureFiles=[];
   function fixtures(dir){for(const entry of readdirSync(resolve(root,dir),{withFileTypes:true})){const file=dir+'/'+entry.name;if(entry.isDirectory())fixtures(file);else fixtureFiles.push(file);}}
   fixtures('lab/fixtures/gpt-live-native-progress');fixtures('lab/fixtures/gpt-live-completion-context');fixtures('lab/fixtures/gpt-live-continuation');fixtures('lab/fixtures/gpt-live-public-progress');fixtures('lab/fixtures/gpt-live-call-lifecycle');
   const completionCandidate=JSON.parse(readFileSync(resolve(root,'lab/candidate/gpt-live-completion-context.plan.json')));
   writeFileSync(resolve(root, "lab/candidate/gpt-live-call.plan.json"), JSON.stringify({
-    baseRelease, files, tests: ["lab/gpt-live-backend-call-control.test.mjs", "lab/gpt-live-call-lifecycle.test.mjs", "lab/gpt-live-consult-progress.test.mjs", "lab/gpt-live-public-progress-bridge.test.mjs", "lab/gpt-live-native-progress.test.mjs", "lab/gpt-live-h5/server.test.mjs", "lab/gpt-live-h5/app.test.mjs", "lab/gpt-live-h5/duplex-playback.test.mjs", "lab/gpt-live-h5/microphone-capture.test.mjs", "lab/gpt-live-h5/transcript-presentation.test.mjs", "lab/gpt-live-h5/call-sounds.test.mjs", "lab/gpt-live-call-live-auth.test.mjs", "lab/gpt-live-call-live-evidence.test.mjs",
+    baseRelease, files, tests: ["lab/gpt-live-projection-readiness.test.mjs", "lab/gpt-live-backend-call-control.test.mjs", "lab/gpt-live-call-lifecycle.test.mjs", "lab/gpt-live-consult-progress.test.mjs", "lab/gpt-live-public-progress-bridge.test.mjs", "lab/gpt-live-native-progress.test.mjs", "lab/gpt-live-h5/server.test.mjs", "lab/gpt-live-h5/app.test.mjs", "lab/gpt-live-h5/duplex-playback.test.mjs", "lab/gpt-live-h5/microphone-capture.test.mjs", "lab/gpt-live-h5/transcript-presentation.test.mjs", "lab/gpt-live-h5/call-sounds.test.mjs", "lab/gpt-live-call-live-auth.test.mjs", "lab/gpt-live-call-live-evidence.test.mjs",
       "lab/gpt-live-consult-continuation.test.mjs", "lab/gpt-live-voice-exec-lifetime.test.mjs", "lab/gpt-live-voice-confirmation.test.mjs", "lab/gpt-live-native-confirmation.test.mjs", "lab/gpt-live-voice-tool-order.test.mjs", "lab/gpt-live-candidate-native/confirmation-evidence.test.mjs", "lab/gpt-live-candidate-native/os-observer-lifecycle.test.mjs", "lab/gpt-live-candidate-native/call-lifecycle-evidence.test.mjs", "lab/gpt-live-candidate-native/call-lifecycle-target.test.mjs", "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-spawn-gateway-proxy.test.mjs", "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-yield-external-task.test.mjs", "lab/gpt-live-pr-provenance.test.mjs", "lab/gpt-live-pr-config.test.mjs", "lab/gpt-live-pr-trace.test.mjs", "lab/gpt-live-h5-provenance-evidence.test.mjs", "lab/gpt-live-h5-control-evidence.test.mjs", "lab/gpt-live-h5-user-pcm.test.mjs", "lab/gpt-live-h5-control-probe.test.mjs",...completionCandidate.tests],
     support: [...new Set([
       "lab/gpt-live-call-lifecycle.mjs", "lab/patch-gpt-live-call-lifecycle.mjs", "lab/patch-gpt-live-backend-call-control.mjs", "lab/gpt-live-h5/instructions.mjs",
+      "lab/patch-gpt-live-projection-readiness.mjs", "lab/gpt-live-projection-readiness.test.mjs", "lab/fixtures/gpt-live-projection-readiness/session-transcript-reconcile-DFsDtc9l.js", projectionBaseline,
+      "release/captured/v2026.9.1-db91.6-memory-search-guards-20261002/dist/session-accessor-K0XuW6ln.js",
       "lab/gpt-live-consult-progress.mjs", "lab/gpt-live-public-progress-bridge.mjs", publicBridgeBaseline, "lab/patch-gpt-live-native-progress.mjs",
       "lab/fixtures/gpt-live-native-progress/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
       "release/captured/v2026.9.1-db91.6-background-work-20261002/dist/realtime-session-harness-CEO5kVAJ.js",

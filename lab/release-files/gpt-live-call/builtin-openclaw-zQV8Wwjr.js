@@ -1,3 +1,4 @@
+// gpt-live-projection-readiness-v1: admitted-voice-prompt
 // gpt-live-voice-tool-order-v1: native-builtin
 import {bundlePrepObserver} from "./bundle-prep-observer.mjs";
 import { n as authorizeVlabNativePermission } from "./permission-change-D8FixpUS.js";
@@ -11840,6 +11841,8 @@ function prepareEmbeddedAttemptStream(input) {
 			// Agent.createLoopConfig snapshots this public SDK field at prompt start.
 			// Every attempt creates a fresh AgentSession; the SDK default is unchanged.
 			input.activeSession.agent.toolExecution = "sequential";
+			// This closure is called only by the registered, current native voice admission.
+			input.activeSession[Symbol.for("openclaw.gptLive.projectionReadiness")] = true;
 			return input.activeSession.agent.toolExecution === "sequential";
 		});
 	if (attempt.deferTerminalLifecycle && attempt.onDeferredLifecycleOwner) {
@@ -14370,10 +14373,28 @@ async function runEmbeddedAttemptExecutionPhase(input) {
 		abortRun(true, error);
 	};
 	const abortable$1 = (promise) => abortable(input.runAbortController.signal, promise);
-	const promptActiveSession = (prompt, options) => withOwnedSessionTranscriptWrites(input.sessionLock.ownedTranscriptWriteContext, async () => {
-		if (input.runAbortController.signal.aborted) return abortable$1(Promise.resolve());
-		return abortable$1(trackPromptSettlePromise(activeSession.prompt(prompt, options)));
-	});
+	const promptActiveSession = async (prompt, options) => {
+		if (activeSession[Symbol.for("openclaw.gptLive.projectionReadiness")] === true) {
+			const assertProjectionOwner = () => {
+				input.runAbortController.signal.throwIfAborted();
+				assertActive();
+				const queueHandle = queueHandleRef.current;
+				if (!queueHandle || ACTIVE_EMBEDDED_RUNS_BY_RUN_ID.get(attempt.runId) !== queueHandle || queueHandle.isStopped()) throw new Error("Native voice projection wait owner is no longer active");
+			};
+			assertProjectionOwner();
+			const target = sessionManager.getSessionTarget();
+			if (!target || target.sessionId !== attempt.sessionId) throw new Error("Native voice projection wait requires the admitted session target");
+			const { waitForSessionTranscriptProjection } = await import("./session-transcript-reconcile-DFsDtc9l.js");
+			assertProjectionOwner();
+			// Do not hold a transcript write context while the native writer rebuilds.
+			await waitForSessionTranscriptProjection(target, input.runAbortController.signal, { assertActive: assertProjectionOwner });
+			assertProjectionOwner();
+		}
+		return withOwnedSessionTranscriptWrites(input.sessionLock.ownedTranscriptWriteContext, async () => {
+			if (input.runAbortController.signal.aborted) return abortable$1(Promise.resolve());
+			return abortable$1(trackPromptSettlePromise(activeSession.prompt(prompt, options)));
+		});
+	};
 	const onBlockReply = attempt.onBlockReply ? bindOwnedSessionTranscriptWrites(input.sessionLock.ownedTranscriptWriteContext, attempt.onBlockReply) : void 0;
 	const onBlockReplyFlush = attempt.onBlockReplyFlush ? bindOwnedSessionTranscriptWrites(input.sessionLock.ownedTranscriptWriteContext, attempt.onBlockReplyFlush) : void 0;
 	const preparedStream = prepareEmbeddedAttemptStream({
