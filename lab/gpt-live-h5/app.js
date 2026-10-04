@@ -585,4 +585,25 @@ window.addEventListener("pagehide", () => {
   if (active.voiceSessionId) navigator.sendBeacon("./api/close", new Blob([JSON.stringify({ voiceSessionId: active.voiceSessionId })], { type: "application/json" }));
   void stopCall();
 });
-fetch("./api/status").then((r) => r.json()).then((s) => { liveReady = s.ready === true; $("badge").textContent = s.ready ? "可以拨号" : "页面预览"; if (!s.ready) setStatus("这是页面预览，真实通话需连接 VLab 候选服务。"); }).catch(() => setStatus("暂时无法连接 VLab，请稍后重试。"));
+async function initializeEntry() {
+  try {
+    const fragment = new URLSearchParams(window.location.hash.slice(1));
+    const access = fragment.get("access");
+    if (access) {
+      // The share credential stays in the URL fragment until exchanged for the
+      // existing HttpOnly voice cookie; never send it as a query or log field.
+      await api("access", { access });
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    }
+    const response = await fetch("./api/status");
+    const status = await response.json();
+    if (!response.ok) throw new Error(status.error ?? "暂时无法连接 V，请稍后重试。");
+    liveReady = status.ready === true;
+    $("badge").textContent = liveReady ? "可以拨号" : "页面预览";
+    if (!liveReady) setStatus("这是页面预览，真实通话需连接候选服务。");
+  } catch (error) {
+    liveReady = false;
+    setStatus(error.message ?? "暂时无法连接 V，请稍后重试。");
+  }
+}
+void initializeEntry();

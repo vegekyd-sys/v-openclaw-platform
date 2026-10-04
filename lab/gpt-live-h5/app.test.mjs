@@ -115,7 +115,12 @@ async function fixture(t, options = {}) {
     createH5DuplexPlaybackGate: values => createH5DuplexPlaybackGate({...values, mode: options.playbackMode ?? values.mode}),
     performance: { now: () => now },
     document: { body, getElementById: element, createElement: () => new Element() },
-    window: { addEventListener: (type, listener) => pageEvents.set(type, listener) },
+    URLSearchParams,
+    window: {
+      location: { hash: options.hash ?? "", pathname: "/voice/", search: "" },
+      history: { replaceState: (...args) => options.replaceState?.(...args) },
+      addEventListener: (type, listener) => pageEvents.set(type, listener),
+    },
     navigator: { mediaDevices: { getUserMedia: () => options.getUserMedia?.() ?? Promise.resolve(stream([track()])) }, sendBeacon: (url, body) => { beacons.push({url,body}); return true; } },
     RTCPeerConnection: Peer,
     AudioContext,
@@ -146,6 +151,15 @@ async function fixture(t, options = {}) {
   };
   return { context, element, body, requests, peers, contexts, sounds, pageEvents, beacons, eventSources, intervals, timeouts, meter, setNow: value => {now = value;} };
 }
+
+test("shared voice link exchanges fragment access before status and removes the credential", async t => {
+  const replaced = [];
+  const f = await fixture(t, { hash: "#access=private-test-access", replaceState: (...args) => replaced.push(args) });
+  assert.deepEqual(f.requests.slice(0, 2).map(row => row.route), ["access", "status"]);
+  assert.equal(f.requests[0].payload.access, "private-test-access");
+  assert.equal(replaced[0][2], "/voice/");
+  assert.equal(f.requests.some(row => row.route === "session"), false);
+});
 
 test("stopping before microphone permission returns releases every late track without creating a session", async (t) => {
   const permission = deferred();
