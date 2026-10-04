@@ -22,6 +22,10 @@ export function createFakeWeComAibot({ WebSocketServer, streamLifetimeMs = 6 * 6
   const wss = new WebSocketServer({ server });
   const ack = (ws, reqId, extra = {}) => ws.send(JSON.stringify({ headers: { req_id: reqId }, errcode: 0, errmsg: "ok", ...extra }));
   const callbacks = new Map(); // callback req_id -> chatId
+  const uploads = new Map(); // upload id -> {type, filename, totalSize, received}
+  const media = []; // finished uploads
+  const cardUpdates = []; // aibot_respond_update_msg frames
+  const eventsAt = new Map(); // event req_id -> when it was pushed
 
   wss.on("connection", (ws) => {
     sockets.add(ws);
@@ -55,7 +59,33 @@ export function createFakeWeComAibot({ WebSocketServer, streamLifetimeMs = 6 * 6
         }
         case "aibot_send_msg": {
           const body = frame.body ?? {};
-          proactive.push({ at: Date.now(), chatId: body.chatid, msgtype: body.msgtype, text: body.markdown?.content ?? body.text?.content ?? JSON.stringify(body).slice(0, 500), ...(body.template_card ? { templateCard: body.template_card } : {}) });
+          proactive.push({ at: Date.now(), chatId: body.chatid, msgtype: body.msgtype, text: body.markdown?.content ?? body.text?.content ?? JSON.stringify(body).slice(0, 500), ...(body.template_card ? { templateCard: body.template_card } : {}), ...(body.image ? { mediaId: body.image.media_id } : {}) });
+          ack(ws, reqId);
+          return;
+        }
+        // Temporary media over the socket (init -> chunks -> finish); only sizes are kept.
+        case "aibot_upload_media_init": {
+          const id = `upload-${nextId++}`;
+          uploads.set(id, { type: frame.body?.type, filename: frame.body?.filename, totalSize: frame.body?.total_size, received: 0 });
+          ack(ws, reqId, { body: { upload_id: id } });
+          return;
+        }
+        case "aibot_upload_media_chunk": {
+          const u = uploads.get(frame.body?.upload_id);
+          if (u) u.received += Buffer.from(String(frame.body?.base64_data ?? ""), "base64").length;
+          ack(ws, reqId);
+          return;
+        }
+        case "aibot_upload_media_finish": {
+          const u = uploads.get(frame.body?.upload_id);
+          const mediaId = `media-${frame.body?.upload_id}`;
+          if (u) media.push({ at: Date.now(), mediaId, ...u });
+          ack(ws, reqId, { body: { media_id: mediaId, type: u?.type } });
+          return;
+        }
+        // A template card rewritten in reply to its event (the event's req_id).
+        case "aibot_respond_update_msg": {
+          cardUpdates.push({ at: Date.now(), reqId, chatId: callbacks.get(reqId), userids: frame.body?.userids, templateCard: frame.body?.template_card, inTime: Date.now() - (eventsAt.get(reqId) ?? 0) <= 5000 });
           ack(ws, reqId);
           return;
         }
@@ -72,6 +102,22 @@ export function createFakeWeComAibot({ WebSocketServer, streamLifetimeMs = 6 * 6
     frames,
     streams: () => [...streams.values()],
     proactive,
+    media,
+    cardUpdates,
+    /** A user taps a button on a template card: a template_card_event callback. */
+    pressCard({ userId, taskId, eventKey, cardType = "button_interaction", group = false }) {
+      const chatId = group ? `group-${userId}` : userId;
+      const reqId = `aibot_event_callback_${Date.now()}_${nextId++}`;
+      callbacks.set(reqId, chatId);
+      eventsAt.set(reqId, Date.now());
+      const body = {
+        msgid: `evt-${Date.now()}-${nextId++}`, aibotid: "candidate-bot", chattype: group ? "group" : "single",
+        ...(group ? { chatid: chatId } : {}), from: { userid: userId }, msgtype: "event", create_time: Math.floor(Date.now() / 1000),
+        event: { eventtype: "template_card_event", template_card_event: { card_type: cardType, event_key: eventKey, task_id: taskId } },
+      };
+      for (const ws of sockets) ws.send(JSON.stringify({ cmd: "aibot_event_callback", headers: { req_id: reqId }, body }));
+      return { chatId, reqId, at: Date.now() };
+    },
     /** A user writes to the robot (direct chat unless `group`). */
     sendUserText({ userId, text, group = false }) {
       const chatId = group ? `group-${userId}` : userId;

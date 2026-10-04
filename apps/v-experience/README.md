@@ -13,6 +13,7 @@ transport (send, rewrite, Gateway calls).
 | questions in chat | ask_user as its own message, numbered options, answered by typing (`3`, `1、3`, `1. …` lines). Answering bypasses the channel's queue and resolves the Gateway question directly. | `question.get` / `question.resolve` |
 | background line | `⏳ 后台 2 项进行中 · 子 agent 1 · 后台命令 1` → `☑️ 后台任务已结束` | V core task registry bridge |
 | link cards | a Feishu-like card: title, a few lines, a link button. The credential link (「🔑 V 需要凭据 X」, 填写凭据) and V's desktop handoff card (「需要你接管 V 的电脑」, 接管电脑). DingTalk `actionCard` (link wrapped as `dingtalk://dingtalkclient/page/link?url=…&pc_slide=false`), WeCom `text_notice` template card, Telegram inline URL button; text link when the platform refuses the card | `deliverSecretQuestion`; `openclaw message send --presentation` (handoff plugin) through the channel's outbound `renderPresentation` / `sendPayload` |
+| 「电脑」 handoff card | like Feishu: title 电脑 + state, reason, V's desktop picture, 接管 (link) / 我完成了 / 跳过 (post `/v-handback <id>` / `/v-skip <id>` as the tapper). DingTalk `sampleActionCard3` with the picture uploaded as robot media and send-message links (cannot change: a status line instead); WeCom `news_notice` picture (public snapshot url) or uploaded image, then a `button_interaction` card rewritten within 5 s of a tap (`cardActionBridge`); Telegram is sent and edited by the handoff plugin itself | presentation with callback buttons and a `![alt](ref)` text block (`linkCardFromPresentation(…, {commands: true})`); WeCom `template_card_event` keys `vcmd:…` |
 | Telegram staged questions | toggle buttons + 确认 for multi-select / several questions (not wired; Telegram stays stock for now) | — |
 
 ## Channels
@@ -34,6 +35,7 @@ apps/v-experience/wecom/fetch-plugin.sh
 node /Users/tianyicai/vlab-dev/lab/vlab.mjs candidate --repo "$PWD" --owner TASK --plan "$PWD/lab/candidate/dingtalk-experience.plan.json"
 node /Users/tianyicai/vlab-dev/lab/vlab.mjs candidate --repo "$PWD" --owner TASK --plan "$PWD/lab/candidate/wecom-experience.plan.json"
 # link cards: {dingtalk,wecom}-{secret-link,handoff-card}.plan.json, telegram-secret-link.plan.json (one at a time)
+# 「电脑」 card: {dingtalk,wecom,telegram}-handoff-card.plan.json, {wecom,telegram}-handoff-card-loopback.plan.json
 ```
 
 The candidates run the real plugin in a private Gateway against loopback fakes

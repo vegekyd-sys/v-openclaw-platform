@@ -14,7 +14,7 @@
 // the apps/v-secret-entry/ files (secret-link), and the
 // apps/v-desktop-handoff/{plugin,service} files (handoff-card).
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
@@ -127,20 +127,40 @@ export async function startHandoff({ dir, config, runtime, dist, publicBaseUrl =
   config.plugins.load.paths = [...(config.plugins.load.paths ?? []).filter((p) => !/v-desktop-handoff/u.test(p)), pluginDir];
   if (Array.isArray(config.plugins.allow) && !config.plugins.allow.includes("v-desktop-handoff")) config.plugins.allow.push("v-desktop-handoff");
   config.plugins.entries ??= {};
+  // The card's picture: no desktop here (and VLab's own display must not leak into a test),
+  // so the plugin uses its cover, a generated JPEG.
+  const coverImage = path.join(dir, "cover.jpg");
+  const made = spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=0x3a6ea5:s=640x400", "-frames:v", "1", "-q:v", "6", coverImage], { timeout: 20_000 });
+  if (made.status !== 0 || !fs.existsSync(coverImage)) fs.writeFileSync(coverImage, Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), crypto.randomBytes(4000), Buffer.from([0xff, 0xd9])]));
+  const cover = fs.readFileSync(coverImage);
   config.plugins.entries["v-desktop-handoff"] = {
     enabled: true,
     hooks: { allowConversationAccess: true },
     // As on V: control links in any conversation, posted in place.
-    config: { adminUrl: `http://127.0.0.1:${ports.adminPort}`, adminTokenFile, controlAnywhere: true, sessionKeyActorFallback: true, openclawEntry: path.join(dist, "index.js"), blockBrowserWhileControlled: false },
+    config: { adminUrl: `http://127.0.0.1:${ports.adminPort}`, adminTokenFile, controlAnywhere: true, sessionKeyActorFallback: true, openclawEntry: path.join(dist, "index.js"), blockBrowserWhileControlled: false, cardImage: "cover", coverImage },
   };
+  const adminToken = fs.readFileSync(adminTokenFile, "utf8").trim();
   return {
     pluginDir, ports,
+    cover: { bytes: cover.length, generatedBy: made.status === 0 ? "ffmpeg" : "fallback" },
     /** Claims a link on the public API, as opening the page does. */
     async claim(token) {
       const res = await fetch(`http://127.0.0.1:${ports.publicPort}/desktop-handoff/api/claim`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token }) });
       return res.status;
     },
-    issued: () => (service.registry.exportHandoffs() ?? []).map((h) => ({ id: h.id, kind: h.kind, ownerId: h.ownerId, sessionKey: h.sessionKey })),
+    /** The handoff as the plugin sees it (admin API): ended, endReason, the recorded card state. */
+    async status(id) {
+      const res = await fetch(`http://127.0.0.1:${ports.adminPort}/v1/handoffs/${encodeURIComponent(id)}`, { headers: { authorization: `Bearer ${adminToken}` } });
+      return res.ok ? res.json() : null;
+    },
+    /** Fetches a card picture url (public base) over loopback, as WeCom's servers would. */
+    async picture(url) {
+      const local = String(url).replace(publicBaseUrl.replace(/\/+$/u, ""), `http://127.0.0.1:${ports.publicPort}`);
+      const res = await fetch(local);
+      const bytes = Buffer.from(await res.arrayBuffer());
+      return { status: res.status, type: res.headers.get("content-type"), bytes: bytes.length, sameAsCover: bytes.equals(cover) };
+    },
+    issued: () => (service.registry.exportHandoffs() ?? []).map((h) => ({ id: h.id, kind: h.kind, ownerId: h.ownerId, sessionKey: h.sessionKey, ended: Boolean(h.endedAt), endReason: h.endReason, cardState: h.card?.state ?? null, cardChannel: h.card?.channel ?? null })),
     close: () => Promise.race([service.close(), new Promise((resolve) => setTimeout(resolve, 2000))]),
   };
 }

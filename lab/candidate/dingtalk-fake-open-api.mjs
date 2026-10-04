@@ -16,6 +16,7 @@ export function createFakeDingTalkOpenApi({ WebSocketServer }) {
   const cards = new Map(); // outTrackId -> {target, history, content, status}
   const webhookMessages = []; // {at, conversationId, msgtype, text, actionCard?}
   const robotMessages = []; // robot OpenAPI sends: {at, path, userIds|openConversationId, msgKey, msgParam}
+  const mediaUploads = []; // oapi media uploads: {at, type, bytes}
   const sockets = new Set();
   let nextMsg = 1;
   let port;
@@ -77,6 +78,11 @@ export function createFakeDingTalkOpenApi({ WebSocketServer }) {
       webhookMessages.push({ at: Date.now(), conversationId: query.get("conversation"), msgtype: body.msgtype, title: body.markdown?.title ?? body.actionCard?.title, text, ...(body.actionCard ? { actionCard: body.actionCard } : {}) });
       return { errcode: 0, errmsg: "ok" };
     },
+    // Robot media (oapi): the multipart body is only measured.
+    "POST /media/upload": (body, query) => {
+      mediaUploads.push({ at: Date.now(), type: query.get("type"), bytes: body.raw ?? 0, token: Boolean(query.get("access_token")) });
+      return { errcode: 0, errmsg: "ok", type: query.get("type"), media_id: `@lADPcandidate${mediaUploads.length}`, created_at: Date.now() };
+    },
     // Robot OpenAPI: 1:1 messages and group messages (msgKey sampleMarkdown, sampleActionCard, ...).
     "POST /v1.0/robot/oToMessages/batchSend": (body) => robotSend("/v1.0/robot/oToMessages/batchSend", body),
     "POST /v1.0/robot/groupMessages/send": (body) => robotSend("/v1.0/robot/groupMessages/send", body),
@@ -117,6 +123,7 @@ export function createFakeDingTalkOpenApi({ WebSocketServer }) {
     cards: () => [...cards.values()],
     webhookMessages,
     robotMessages,
+    mediaUploads,
     /** A user taps a control on an interactive card; resolves with the client's ack. */
     pressCard({ outTrackId, userId, params }) {
       const messageId = `card-${Date.now()}-${nextMsg++}`;

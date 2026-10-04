@@ -26,6 +26,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { createFakeTelegramBotApi, FAKE_BOT_TOKEN, inlineButtons } from "./telegram-fake-bot-api.mjs";
 import { assertModelRoles, configureRoles, patchCoreCommandAuth, ROLES_CONFIGURED, runModelRoles } from "./model-roles.mjs";
+import { startHandoff } from "./channel-cards-support.mjs";
 
 const runtime = process.env.VLAB_CANDIDATE_RUNTIME;
 const configPath = process.env.OPENCLAW_CONFIG_PATH;
@@ -139,6 +140,12 @@ config.agents.defaults.model = { ...(config.agents.defaults.model ?? {}), primar
 const rolesSetup = SCENARIO_NAMES.includes("model-roles")
   ? { coreCommandAuth: patchCoreCommandAuth(runtime), roles: configureRoles(config, "telegram", []) }
   : {};
+// handoff-*: the desktop handoff service and this branch's plugin (lab/candidate/channel-cards-support.mjs).
+// TG_HANDOFF_PUBLIC_BASE=loopback: links name 127.0.0.1, which Telegram refuses as a button url.
+const HANDOFF_PUBLIC_BASE = process.env.TG_HANDOFF_PUBLIC_BASE === "loopback" ? "http://127.0.0.1:9" : "https://openclaw.example.test";
+const handoff = SCENARIO_NAMES.some((n) => n.startsWith("handoff-"))
+  ? await startHandoff({ dir: path.join(process.env.VLAB_CANDIDATE_DATA ?? stateDir, "desktop-handoff"), config, runtime, dist, publicBaseUrl: HANDOFF_PUBLIC_BASE })
+  : undefined;
 fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
 
 const scratch = process.env.VLAB_CANDIDATE_DATA ?? stateDir;
@@ -215,6 +222,64 @@ const anyText = (msgs, re) => msgs.some((m) => m.history.some((h) => re.test(h.t
 
 let userIndex = 0;
 const newChat = () => USERS[userIndex++];
+
+// The 「电脑」 card: a photo with the card as caption and 接管 / 我完成了 / 跳过; press `command`'s
+// button (Telegram core turns callback data "/v-handback <id>" into that command from the presser).
+const HANDOFF_ASK = "这是自动化测试，请严格照做。立即调用 desktop_handoff_request 工具，参数 reason 填「需要你登录测试站点」。工具返回后按它返回的 instruction 只回复一句话，然后结束，不要做别的事。收到 /v-handback 或 /v-skip 之后，只回复一句「收到，继续」。";
+const handoffScenario = async (command) => {
+  const chat = newChat();
+  const since = Date.now();
+  // The model sometimes answers without calling the tool: ask once more in that case.
+  const replies = [];
+  let card;
+  for (let attempt = 0; attempt < 2 && !card; attempt += 1) {
+    const at = Date.now();
+    fake.sendUserText({ chatId: chat, userId: chat, text: HANDOFF_ASK });
+    const found = await waitFor(() => chatMessages(chat, at).find((m) => m.history[0]?.replyMarkup?.inline_keyboard?.flat().some((b) => /^\/v-handback h_/u.test(b.callback_data ?? "")))
+      ?? (chatMessages(chat, at).some((m) => m.kind === "text" && !m.deleted) && Date.now() - lastActivity(chat) > 20_000 ? "no-card" : null), 300_000, "handoff card");
+    if (found === "no-card") replies.push(chatMessages(chat, at).map((m) => m.text).join("\n").slice(-300));
+    else card = found;
+  }
+  if (!card) throw new Error(`no handoff card; replies: ${JSON.stringify(replies)}`);
+  await settle(chat, since, (msgs) => msgs.some((m) => m !== card && m.kind === "text" && !m.deleted), { label: "handoff reply", quietMs: 6000, timeoutMs: 240_000 }).catch(() => null);
+  const sentButtons = (card.history[0].replyMarkup?.inline_keyboard ?? []).flat().map((b) => ({ text: b.text, data: b.callback_data, url: b.url }));
+  const id = handoff.issued().at(-1)?.id;
+  const token = new RegExp(`/desktop-handoff/#([\\w-]+)`, "u").exec([card.history[0].text, ...sentButtons.map((b) => b.url ?? "")].join("\n"))?.[1];
+  const hide = (value) => (token ? JSON.parse(JSON.stringify(value).replaceAll(token, "[token]")) : value);
+  const claimStatus = token ? await handoff.claim(token) : null;
+  const before = await handoff.status(id);
+  const data = sentButtons.find((b) => b.data?.startsWith(`/${command} `))?.data;
+  const pressedAt = Date.now();
+  if (data) fake.pressButton({ chatId: chat, userId: chat, messageId: card.messageId, data });
+  const expected = command === "v-handback" ? "done" : "skipped";
+  let status = null;
+  for (const until = Date.now() + 60_000; Date.now() < until;) {
+    status = await handoff.status(id);
+    if (status?.card?.state === expected) break;
+    await sleep(500);
+  }
+  await settle(chat, pressedAt, (msgs) => anyText(msgs, /收到|继续/u), { label: "after the press", quietMs: 8000, timeoutMs: 240_000 }).catch(() => null);
+  return {
+    chat,
+    retriedAsk: replies,
+    handoffId: id,
+    kind: card.kind,
+    photo: card.photo,
+    threadId: card.threadId ?? null,
+    cover: handoff.cover,
+    sent: hide({ caption: card.history[0].text, parseMode: card.parseMode, buttons: sentButtons }),
+    refusedFirst: fake.calls.filter((c) => c.at >= since && c.at <= card.createdAt && c.error).map((c) => `${c.method}: ${c.error}`),
+    claimStatus,
+    before: { cardState: before?.card?.state, cardChannel: before?.card?.channel, ended: before?.ended },
+    pressed: data,
+    edits: hide(card.history.slice(1).map((h) => ({ op: h.op, text: h.text?.slice(0, 300), buttons: (h.replyMarkup?.inline_keyboard ?? []).flat().map((b) => b.text) }))),
+    final: hide({ caption: card.text, buttons: inlineButtons(card).map((b) => b.text) }),
+    after: { cardState: status?.card?.state, ended: status?.ended, endReason: status?.endReason },
+    afterPress: chatMessages(chat, pressedAt).filter((m) => m !== card).map((m) => String(m.text ?? "").slice(0, 300)),
+    urlInReply: chatMessages(chat, since).filter((m) => m !== card).some((m) => /desktop-handoff/u.test(m.text ?? "")),
+    handoffLog: lines.filter((l) => /desktop.handoff|v-desktop-handoff/iu.test(l.line)).map((l) => redact(l.line).slice(0, 300)).slice(-10),
+  };
+};
 
 let gatewayRuntime;
 const gatewayCall = async (method, params) => {
@@ -465,6 +530,10 @@ const SCENARIOS = {
     result.switch = describe(await settle(chat, since2, (m) => m.length > 0, { label: "/model switch", quietMs: 3000, timeoutMs: 60_000 }));
     return result;
   },
+  // A4: V's 「电脑」 card — photo + 接管 / 我完成了 / 跳过, edited in place; 我完成了 pressed.
+  "handoff-card": () => handoffScenario("v-handback"),
+  // The same card, 跳过 pressed: the handoff ends.
+  "handoff-skip": () => handoffScenario("v-skip"),
   // C1: the owner keeps every command; a non-owner may only switch their own session's model.
   "model-roles": () => runModelRoles({
     dist, port, token, config,
@@ -510,6 +579,7 @@ try {
 } finally {
   gateway.kill("SIGTERM");
   secretEntry?.process?.kill("SIGTERM");
+  await handoff?.close();
   await sleep(3000);
   if (gateway.exitCode === null) gateway.kill("SIGKILL");
   await fake.close();
@@ -573,5 +643,34 @@ if (EXPECT === "patched") {
   if (s["model-roles"]) {
     assert.equal(s["model-roles"].error, undefined, s["model-roles"].error);
     if (ROLES_CONFIGURED) assertModelRoles(s["model-roles"]);
+  }
+  for (const name of ["handoff-card", "handoff-skip"]) if (s[name]) {
+    const r = s[name];
+    assert.equal(r.error, undefined, r.error);
+    assert.equal(r.kind, "photo", "the card is not a photo");
+    assert.deepEqual({ bytes: r.photo?.bytes, jpeg: r.photo?.jpeg }, { bytes: r.cover.bytes, jpeg: true }, "the desktop picture was not uploaded with the card");
+    assert.equal(r.sent.parseMode, "HTML");
+    assert.match(r.sent.caption, /^<b>电脑<\/b> · 需要操作\n\n需要你登录测试站点\n\n<i>点「接管」打开 V 的电脑直接操作，做完点「我完成了」，V 接着做；不需要就点「跳过」。\d+ 分钟内打开有效。<\/i>/u);
+    // (the report went through JSON: absent fields, not undefined ones)
+    const commands = [{ text: "我完成了", data: `/v-handback ${r.handoffId}` }, { text: "跳过", data: `/v-skip ${r.handoffId}` }];
+    if (HANDOFF_PUBLIC_BASE.startsWith("https://")) {
+      assert.deepEqual(r.sent.buttons, [{ text: "接管", url: "https://openclaw.example.test/desktop-handoff/#[token]" }, ...commands]);
+      assert.deepEqual(r.refusedFirst, []);
+    } else {
+      // Telegram refuses a non-public url as a button: the link moves into the caption.
+      assert(r.refusedFirst.some((e) => /sendPhoto: .*BUTTON_URL_INVALID/u.test(e)), `the url button was not tried first: ${r.refusedFirst}`);
+      assert.deepEqual(r.sent.buttons, commands);
+      assert.match(r.sent.caption, /\n\n接管：http:\/\/127\.0\.0\.1:9\/desktop-handoff\/#\[token\]$/u);
+    }
+    assert.equal(r.claimStatus, 200, "the card's link does not open the handoff");
+    assert.deepEqual(r.before, { cardState: "pending", cardChannel: "telegram", ended: false });
+    assert(!r.urlInReply, "the url was also pasted into the reply");
+    const word = name === "handoff-card" ? "已完成" : "已跳过";
+    assert.equal(r.after.cardState, name === "handoff-card" ? "done" : "skipped", `${r.pressed} did not reach the plugin`);
+    assert.equal(r.after.ended, name === "handoff-skip");
+    assert.match(r.final.caption, new RegExp(`^<b>电脑</b> · ${word}\\n\\n需要你登录测试站点\\n\\n<i>`, "u"), "the card was not edited in place");
+    assert.deepEqual(r.final.buttons, [], "buttons left on a finished card");
+    assert(r.edits.some((e) => e.op === "edit-caption" && e.text.includes(word)), "no caption edit");
+    assert.match(r.afterPress.join("\n"), /收到|继续/u, "the agent did not continue after the press");
   }
 }
