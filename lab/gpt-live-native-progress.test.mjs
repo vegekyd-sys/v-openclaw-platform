@@ -807,6 +807,46 @@ test("public append chunk budgets include role headers and preserve Unicode and 
   f.calls[0].resolve({ text: "完成。" }); await settle();
 });
 
+test("anonymous 296-character qualified final keeps all body bytes and qualifications across native chunks", async () => {
+  // Anonymous fixed text preserves the two-paragraph, 296-character shape
+  // of the f163 failure without importing private local capture evidence.
+  // This tests transport and headers, not native model adherence.
+  const first = "Anonymous record found; search summaries mention WebRTC in browsers and WebSocket on servers. Official content is not yet verified.";
+  const second = "限定：官方页面读取被实际工具拒绝，当前只有搜索摘要，尚未核实一手内容；这次返回不是已核实的官方文档事实。仅提供来源入口和摘要线索，不能把搜索合成答案当成原文，也不能据此声称接口必须、禁止或仅能采用某种用法。当前接入配置也没有本次授权范围内的实际证据，所以部署状态尚未确认。简短语音结果仍需保留这些限定，不因位于一个分段而删去。";
+  const body = `${first}\n\n${second}`;
+  assert.equal(first.length, 131);
+  assert.equal(second.length, 163);
+  assert.equal(body.length, 296);
+  const diagnostics = [];
+  const f = fixture({ onPublicProgressDiagnostic: event => diagnostics.push(event) });
+  f.controller.startDelegation("qualified-final", "authorized request");
+  f.calls[0].resolve({ text: body });
+  await settle();
+  const bodies = f.texts();
+  assert.equal(bodies.length, 2);
+  assert.equal(bodies.join(""), body, "No rewrite, qualification insertion or deletion");
+  assert.equal(createHash("sha256").update(bodies.join("")).digest("hex"), createHash("sha256").update(body).digest("hex"));
+  assert(body.includes("尚未核实一手内容"));
+  assert(bodies[1].includes("部署状态尚未确认"), "late qualifications remain in the complete final part");
+  const sends = diagnostics.filter(event => event.stage === "context-append-sent");
+  assert.deepEqual(sends.map(event => event.role), ["final_part", "final_complete"]);
+  assert.equal(new Set(sends.map(event => event.appendId)).size, 1);
+  for (const [index, frame] of f.frames.entries()) {
+    const wire = frame.content[0].text;
+    const header = wire.slice(0, wire.length - bodies[index].length);
+    assert.match(header, /facts, values and limits/u);
+    assert.match(header, /all (?:final )?parts/u);
+    assert(Buffer.byteLength(header) <= 180);
+    assert(Buffer.byteLength(bodies[index]) <= 320);
+    assert(Buffer.byteLength(wire) <= 500);
+    assert.equal(sends[index].textSha256, createHash("sha256").update(bodies[index]).digest("hex"));
+    assert.equal(sends[index].wireTextSha256, createHash("sha256").update(wire).digest("hex"));
+  }
+  assert.match(f.frames[0].content[0].text, /Wait for BACKEND_FINAL_COMPLETE before answering/u);
+  assert.match(f.frames[1].content[0].text, /Keep facts, values and limits together/u);
+  assert.match(f.frames[1].content[0].text, /Never invent facts/u);
+});
+
 test("wire diagnostic hash comes only from successful sends and includes the fixed role", async () => {
   const diagnostics = [];
   const f = fixture({ onPublicProgressDiagnostic: (event) => diagnostics.push(event) });

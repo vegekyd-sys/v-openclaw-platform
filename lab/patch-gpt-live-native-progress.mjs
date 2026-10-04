@@ -151,10 +151,10 @@ const publicWireMethods = `\tfailTerminalDelivery(error) {
 \t\t\theader = \`[BACKEND_PROGRESS_PENDING \${position}]\\nParent task remains pending. One short fact when idle; stop for caller. Never guess values or claim completion.\\n\\n\`;
 \t\t} else if (chunkIndex + 1 < chunkCount) {
 \t\t\trole = "final_part";
-\t\t\theader = \`[BACKEND_FINAL_PART \${position}]\\nPartial parent final. Wait for BACKEND_FINAL_COMPLETE before answering; preserve all facts and values exactly.\\n\\n\`;
+\t\t\theader = \`[BACKEND_FINAL_PART \${position}]\\nWait for BACKEND_FINAL_COMPLETE before answering; keep facts, values and limits from all parts.\\n\\n\`;
 \t\t} else {
 \t\t\trole = "final_complete";
-\t\t\theader = \`[BACKEND_FINAL_COMPLETE \${position}]\\nParent final is complete. Follow caller output conditions; relay every requested value faithfully. Never invent facts.\\n\\n\`;
+\t\t\theader = \`[BACKEND_FINAL_COMPLETE \${position}]\\nUse all final parts. Keep facts, values and limits together; follow caller conditions. Never invent facts.\\n\\n\`;
 \t\t}
 \t\tif (Buffer.byteLength(header, "utf8") > 180) throw new Error("Native public append role header exceeds byte budget");
 \t\treturn { role, wireText: header + text };

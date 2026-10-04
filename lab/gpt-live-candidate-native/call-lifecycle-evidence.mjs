@@ -6,6 +6,14 @@ const messageText=m=>typeof m?.content==='string'?m.content:(m?.content??[]).fil
 const timestamp=value=>typeof value==='number'?value<1e11?value*1000:value:Date.parse(value);
 const queryIncluded=(text,query)=>normalize(text).toLowerCase().includes(normalize(query).toLowerCase());
 
+/** Narrow control diagnostics do not stand in for the combined release gate. */
+export function resolveLifecycleValidationProfile(value='full',target='candidate') {
+  if(!['full','end-only'].includes(value)||!['candidate','shared','v'].includes(target))
+    throw Error('Unknown lifecycle validation scope');
+  if(value==='end-only'&&target!=='candidate')throw Error('Narrow lifecycle diagnostics are Candidate-only');
+  return {name:value,memoryWebRequired:value==='full',combinedReleaseEvidenceEligible:value==='full'};
+}
+
 /** This exact temporary read failure may retry within the caller's existing budget. */
 export async function readLifecycleHistoryOrRetry(read,onRebuilding=()=>{}) {
   try {return await read();}

@@ -11,7 +11,17 @@ import {BROWSER_PROBE,SNAPSHOT_ARRAY_FIELDS,SNAPSHOT_PAGED_HEADER_EXPRESSION,rea
 import {assessDecodedPlaybackWindow,assessIndependentInputConvergence,resolveNativeControlOwner,resolveCanonicalFinalTrace} from './evidence.mjs';
 import {resolveEndCallToolWitness,assessEndCallConsultTerminal,resolveLifecycleUserTurn,assessLifecycleSpeech,hasLifecyclePlaybackTail,assessLifecycleFarewell,assessProactiveGreeting,assessAutomaticEnd,
   extractLifecycleToolPairs,resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult,resolveLifecycleCanonicalBody,normalizeLifecycleFinalBody,
-  resolveLifecycleFinalSpeechTurns,hasLifecycleFinalPlaybackTail,assessLifecycleFinalSpeech,readLifecycleHistoryOrRetry} from './call-lifecycle-evidence.mjs';
+  resolveLifecycleFinalSpeechTurns,hasLifecycleFinalPlaybackTail,assessLifecycleFinalSpeech,readLifecycleHistoryOrRetry,resolveLifecycleValidationProfile} from './call-lifecycle-evidence.mjs';
+
+test('a narrow end diagnostic never grants combined release evidence or a shared/production test scope',()=>{
+ for(const target of ['candidate','shared','v'])assert.deepEqual(resolveLifecycleValidationProfile(undefined,target),{
+  name:'full',memoryWebRequired:true,combinedReleaseEvidenceEligible:true});
+ assert.deepEqual(resolveLifecycleValidationProfile('end-only','candidate'),{
+  name:'end-only',memoryWebRequired:false,combinedReleaseEvidenceEligible:false});
+ for(const target of ['shared','v'])assert.throws(()=>resolveLifecycleValidationProfile('end-only',target),/Candidate-only/u);
+ for(const value of ['',null,'partial','end','all'])assert.throws(()=>resolveLifecycleValidationProfile(value,'candidate'),/Unknown/u);
+ assert.throws(()=>resolveLifecycleValidationProfile('full','production'),/Unknown/u);
+});
 
 function cleanupFixture() {
  const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'gpt-live-cleanup-test-'))),directory=path.join(root,'scratch-owned');

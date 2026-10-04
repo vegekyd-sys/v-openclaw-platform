@@ -84,3 +84,15 @@
 来源契约进一步要求逐个事实分句对应实际支持的页面及对象，不把搜索合成或 GPT Live 专属段落拼成 Realtime 原文的共同“它说”。完整 USER、单句呈现和只读范围保持。
 
 统一构建 24 targets，34 文件 658 项本地检查通过。2026-10-04T06:23Z 只读核对当前 loopback-requester-sender-v1 的全部 24 个 before 与 foreign PR181 文件 hash 匹配，pending/lease null。以上补丁继续仅 Candidate，不合 dev、不写共享、不部署 V。新真实验证将使用新的 clean source、冻结输入和独立目录；旧 FAIL 和未完成门槛保留。
+
+## f163 真实结果与限定漏播修复
+
+真实 Candidate `candidate-716440f1-c5d9-401d-af25-37ece3d3d266`（source `f163c433760bb4145413f674001bb33c911c793b`）已结束 FAIL，17/18 自动检查；共享未改变，自己的 unit 与目录已独立读回清理。完整 28 文件及原 receipt 保持。原后台 canonical 296 字分两段，原 Live 终态 134 字只讲了结论，遗漏第二段中“仅搜索摘要、尚未读取官方原文”的必要限定。这是实际内容丢失，不能用合法改述解释，也不能放宽完整正文门槛。
+
+独立原 WebM 全份解码、47 个原字幕片段和真实播放器/RTP 尾支持实际说出的整句；麦克风/sender 1981 帧，最大间隔 85ms，原 live/enabled 身份保持。实际 utterance 的播放证据不等于完整 canonical 已交付。没有注入 end USER，新的核心终态传递、自然挂断及重拨仍未覆盖；物理 AEC 与真人听觉仍待验收。
+
+本次补丁仅 Candidate：点名 memory/web search 不自动解释成“只搜索、禁止读取”；必要官方原文读取沿同一授权目标继续，尊重明确的只搜索、拒绝、确认或取消。后台简短最终结论应把必要来源资格与对应事实放在同一句；Live 即使压缩表达也应保留所有 final parts 的资格。传输不改正文及 hash，不通过硬编码补造事实。
+
+另新增显式 `end-only` Candidate 诊断 profile，独立验新核心终态、保留通话反例、模型结束工具、实际告别播放与 750ms 尾、同 owner 关闭和新 owner 重拨。默认 `full` 不变，共享及生产不允许 narrow profile。end-only receipt 明示 Memory/Web 未覆盖、完整数字播放和整体验收未通过；完整场景原失败与所有原门槛保持。
+
+该补丁生成的 24 个 runtime 目标已重新 build；34 个本地测试文件 661/661 通过，零 skip。它们只证明契约、传输和观察器范围，不能替代新的实际模型与语音验收。

@@ -406,6 +406,42 @@ test("source-read continuation preserves explicit scope and genuine blockers wit
   // not claim the native Live model has obeyed the continuation policy.
 });
 
+test("named discovery tools do not create search-only scope and concise finals keep actual qualification with the claim", async () => {
+  const question = "请先用 memory search 查相关记录，再用 web search 查官方 Realtime 文档，用一句中文说两个结果，不要写入或发消息。";
+  const context = "实际 web_fetch 返回读取被拒绝，相关官方原文尚未取得。";
+  const final = "相关记录已找到；官方页面读取被拒绝，目前只有未经过原文核实的搜索摘要。";
+  let capturedPrompt;
+  let runs = 0;
+  const runtime = createHarnessRuntime({
+    args: { question, context, responseStyle: "一句中文说两个结果" },
+    runEmbeddedAgent: async options => {
+      runs++;
+      capturedPrompt = options.prompt;
+      return { payloads: [{ text: final }] };
+    },
+  });
+  assert.deepEqual(await runtime.run(), { text: final });
+  assert.equal(runs, 1, "transport cannot inject a source read or another attempt");
+  assert(capturedPrompt.includes(`User request:\n${question}`));
+  assert(capturedPrompt.includes(`Additional realtime context:\n${context}`));
+  assert.match(capturedPrompt, /Merely naming memory search or web search selects discovery steps; it does not impose search-only scope or forbid fetching/);
+  assert.match(capturedPrompt, /Necessary read-only retrieval of the requested primary content remains within the goal unless the user explicitly limits it/);
+  assert.match(capturedPrompt, /Put each actual unverified condition, missing source, or genuine blocker in the same concise conclusion as the affected claim/);
+  assert.match(capturedPrompt, /do not give an unconditional claim and defer its qualification to an extra paragraph/);
+  assert.match(capturedPrompt, /A one-sentence request still includes all material qualifications/);
+  assert.match(capturedPrompt, /not task-count or tool-use meta commentary such as two steps completed or I only used search/);
+  assert.match(capturedPrompt, /Do not invent a limit absent from the actual user scope or tool evidence/);
+  assert.match(capturedPrompt, /Respect an explicit search-only or no-fetch scope/);
+  assert.match(capturedPrompt, /actual retrieval failure, denial, confirmation requirement, explicit cancellation, or user-imposed limit/);
+  assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /用户仅提到 memory search 或 web search，不等于明确只搜索或禁止抓取/u);
+  assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /综合所有 final parts 中的实际未核实、缺失来源、阻塞和适用条件，即使它们在另一分段或补充段落/u);
+  assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /把必要限定和对应结论放在同一句，不能因用户要求一句话或简洁而略去/u);
+  assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /不用“两步完成”或“我只做了……”之类任务元文本替代尚未读取或核实的状态/u);
+  assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /不自行添加后台没有的限制/u);
+  // Model output is a fixture. This verifies contract delivery and exact
+  // transport of a qualified result, not real model/tool compliance.
+});
+
 test("voice consult carries child stage values and read-before-claim obligations without substituting tool text for progress", async () => {
   const question = "先检索合同来源，再读取官方文档相关段落；同一子任务依次测量延迟并公开带单位的实际值，再检查文件版本后汇总；保持只读，只公开测量值和版本。";
   const stage = "已测得延迟为 2.75 ms。";

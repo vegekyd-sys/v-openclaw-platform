@@ -12,11 +12,12 @@ import {parsePublicProgressDiagnostics} from '../gpt-live-h5-provenance-evidence
 import {assessDecodedPlaybackWindow,assessCompletePlaybackWindow,assessIndependentInputConvergence,resolveNativeControlOwner,resolveCanonicalFinalTrace} from './evidence.mjs';
 import {resolveEndCallToolWitness,assessEndCallConsultTerminal,resolveLifecycleUserTurn,assessLifecycleSpeech,hasLifecyclePlaybackTail,assessLifecycleFarewell,assessProactiveGreeting,assessAutomaticEnd,
   resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult,resolveLifecycleCanonicalBody,
-  resolveLifecycleFinalSpeechTurns,hasLifecycleFinalPlaybackTail,assessLifecycleFinalSpeech,readLifecycleHistoryOrRetry} from './call-lifecycle-evidence.mjs';
+  resolveLifecycleFinalSpeechTurns,hasLifecycleFinalPlaybackTail,assessLifecycleFinalSpeech,readLifecycleHistoryOrRetry,resolveLifecycleValidationProfile} from './call-lifecycle-evidence.mjs';
 import {inspectLifecycleValidationTarget,readLifecycleVoiceOwner,preflightLifecycleMedia} from './call-lifecycle-target.mjs';
 
 const validationTarget=process.env.GPT_LIVE_H5_VALIDATION_TARGET??'candidate';
 assert(['candidate','shared','v'].includes(validationTarget)&&process.env.GPT_LIVE_H5_CASE==='call-lifecycle','Explicit lifecycle workflow target required');
+const validationProfile=resolveLifecycleValidationProfile(process.env.GPT_LIVE_H5_LIFECYCLE_PROFILE,validationTarget);
 if(validationTarget==='candidate')assert(process.env.VLAB_CANDIDATE_ID&&process.env.GPT_LIVE_H5_READY==='1','Ready owned Candidate lifecycle workflow required');
 else assert(!process.env.VLAB_CANDIDATE_ID,'Shared/V validation must not impersonate a Candidate');
 const base=process.env.GPT_LIVE_H5_EVIDENCE_DIR,stateRoot=process.env.OPENCLAW_STATE_DIR;
@@ -221,7 +222,9 @@ async function runLifecycle(){
  coreCheck('complete-negative-hangup-keeps-same-call',keepState.pcStates[pcIndex]==='connected'&&keepState.callState==='connected'&&keepBadTools.length===0&&keepBadClose.length===0,{keepUser,keepReply,keepBadTools,keepBadClose});
  recordSpeech('keep-call-model-reply-complete-digital-playback',keepReply);save('keep-call-evidence.json',{input:keep.row,keepUser,keepReply,keepState});
  await inputConverged(pcIndex,keep.row,'independent-full-USER-input-convergence');
- await basicTools(pcIndex);
+ if(validationProfile.memoryWebRequired)await basicTools(pcIndex);
+ else save('narrow-control-diagnostic-scope.json',{validationProfile,at:Date.now(),memoryWebExecuted:false,
+  priorMemoryWebFAILPreserved:true,combinedReleaseAccepted:false});
  const end=play('end-call');await end.done;assert.equal(end.row.exitCode,0);
  const expectedEndText=fs.readFileSync(path.join(clips,'end-call.txt'),'utf8');
  const endUser=await waitFor(s=>resolveLifecycleUserTurn(s.events,{pcIndex,after:end.row.startedAt,intent:'end',expectedText:expectedEndText}),
@@ -374,11 +377,16 @@ finally {
  const lifecycleNames=new Set(['proactive-greeting-complete-digital-playback-0','proactive-greeting-complete-digital-playback-1','keep-call-model-reply-complete-digital-playback','farewell-complete-digital-playback']);
  const lifecycleDecoded=wholeDecoded.filter(c=>lifecycleNames.has(c.name.replace(/-whole-decoded-PCM$/u,'')));
  const toolSpeech=wholeDecoded.find(c=>c.name==='memory-web-result-complete-digital-playback-whole-decoded-PCM');
- const summary={case:'call-lifecycle',validationTarget,validationId:targetInspection?.proof.validationId??null,candidateId:validationTarget==='candidate'?process.env.VLAB_CANDIDATE_ID:null,
+ const summary={case:'call-lifecycle',validationTarget,validationProfile,validationId:targetInspection?.proof.validationId??null,candidateId:validationTarget==='candidate'?process.env.VLAB_CANDIDATE_ID:null,
   sourceCommit:process.env.GPT_LIVE_H5_SOURCE_COMMIT??targetInspection?.proof.sourceCommit??null,h5AppSha256:process.env.GPT_LIVE_H5_APP_SHA,model:'gpt-live-1-codex',checks,passed:checks.length>0&&checks.every(c=>c.passed),functionalCore,
   coreLifecycleEvidenceComplete:functionalCore.every(c=>c.passed)&&lifecycleDecoded.length===4&&lifecycleDecoded.every(c=>c.segment?.passed===true),
   coreMemoryWebEvidenceComplete:checks.find(c=>c.name==='actual-owned-memory-result-before-web-call')?.passed===true&&checks.find(c=>c.name==='actual-memory-web-backend-result-returned-in-native-speech')?.passed===true&&toolSpeech?.segment?.passed===true,
-  strictCompleteDigitalPlayback:wholeDecoded.length===5&&wholeDecoded.every(c=>c.passed)&&checks.find(c=>c.name==='independent-farewell750ms-RTP-tail')?.passed===true,
+  strictCompleteDigitalPlayback:validationProfile.memoryWebRequired&&wholeDecoded.length===5&&wholeDecoded.every(c=>c.passed)&&checks.find(c=>c.name==='independent-farewell750ms-RTP-tail')?.passed===true,
+  scopedLifecycleDigitalPlayback:lifecycleDecoded.length===4&&lifecycleDecoded.every(c=>c.passed)&&checks.find(c=>c.name==='independent-farewell750ms-RTP-tail')?.passed===true,
+  coverage:{memoryWeb:{executed:validationProfile.memoryWebRequired&&checks.some(c=>c.name==='actual-owned-memory-result-before-web-call'),
+   covered:validationProfile.memoryWebRequired&&checks.find(c=>c.name==='actual-memory-web-backend-result-returned-in-native-speech')?.passed===true&&toolSpeech?.segment?.passed===true,
+   reason:validationProfile.memoryWebRequired?'combined lifecycle scenario':'end-only profile; prior Memory/Web failures remain'}},
+  combinedReleaseAccepted:false,
   continuousMicrophoneStrictPassed:checks.find(c=>c.name==='continuous-original-processed-microphone-through-close')?.passed===true,
   contentIndependentReviewRequired:true,productAccepted:false,owners:[...owners].map(([pcIndex,owner])=>({pcIndex,...owner})),syntheticUSERPCM:true,syntheticAssistantEvents:false,syntheticBackendResults:false,digitalPlaybackAcceptanceOnly:true,physicalEchoAccepted:false,humanListeningAccepted:false,cleanup,evidenceDir:base};
  save('receipt.json',summary);console.log(JSON.stringify({nativeCallLifecycle:{candidateId:summary.candidateId,passed:summary.passed,checks:checks.map(({name,passed})=>({name,passed})),evidenceDir:base}}));if(!summary.passed)process.exitCode=1;
