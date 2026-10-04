@@ -19,7 +19,7 @@
 | B2 | 进度清单：☑️ / ▶️ / ◻️ 工作清单在回复底部 | 可见性 | `lab/release-files/feishu-progress-stream/` |
 | B3 | 后台任务行：`⏳ 后台 2 项进行中 · 子 agent 1 · 后台命令 1` → `☑️ 后台任务已结束` | 可见性 | `lab/release-files/feishu-task-status/` |
 | B4 | Runtime 页脚（回复末尾显示当前 harness） | 可见性 | core `reply-prefix` + monitor display 补丁 |
-| C1 | 切换 Harness：`/model`、`/vcc`、`/vcodex`、`/vds`，非 owner 也可切自己的会话 | 控制 | core `command-auth` 补丁（写死 `providerId === "feishu"`） |
+| C1 | 切换 Harness：`/model`、`/vcc`、`/vcodex`、`/vds`，非 owner 也可切自己的会话 | 控制 | core `command-auth` 补丁（V2 写死 `providerId === "feishu"`；V3 推广到所有渠道，见第 12 节） |
 | C2 | 回复中插话（steer）：回复进行中发的消息注入当前回合 | 控制 | monitor steer 补丁，受 `VLAB_FEISHU_STEER_*` 环境变量控制 |
 | C3 | 夜班完成通知、「需要你」 | 通知 | v-nightshift 仓库，不在本计划内 |
 
@@ -40,7 +40,7 @@
 | A2 审批卡 | V | 原生（V 上 10/03 已关） | — | — | 原生（仅默认账号） |
 | A3 密钥录入 | V | —（只发 Control UI 链接，V 没配 publicOrigin → 报错） | — | — | — |
 | A4 接管卡 | V | 走插件的 `message send --presentation` 通用回退，待实测 | 同左 | 同左 | 同左 |
-| C1 切换 Harness | V | `/model` 原生 + 模型选择按钮；Telegram 只放行 Tianyi，权限问题不存在 | 命令权限**写死为已授权** | 命令权限**写死为已授权** | 只能打字 |
+| C1 切换 Harness | V | `/model` 原生 + 模型选择按钮；Telegram 只放行 Tianyi，权限问题不存在 | 命令权限**写死为已授权**（已改，见第 12 节） | 命令权限**写死为已授权**（已改，见第 12 节） | 只能打字 |
 | C2 插话 | V（状态待核实） | 待查 | 待查 | 待查 | 待查 |
 | 按钮回调 | 有 | 有（callback_query） | **没订阅**（`TOPIC_CARD`） | 有（`template_card_event`，5 秒内改卡） | 有（Adaptive Card invoke） |
 | 改已发消息 | 有 | 有 | 有（卡片实例随时可改） | 只有流消息 6 分钟内 | 有 |
@@ -81,7 +81,7 @@ Gateway 层已有可复用的挂点（都是 V 的 core 补丁或上游原生）
 两处 core 写死了飞书，推广前要改成按渠道配置：
 
 - secret-entry：`builtin-openclaw` 只在 `messageChannel === "feishu"` 时挂 `channelData.vSecretEntry`
-- 命令权限：`command-auth` 只认 `providerId === "feishu"`
+- 命令权限：`command-auth` 只认 `providerId === "feishu"`（V3 已改为渠道列表，见第 12 节）
 
 ### 3.2 目标
 
@@ -165,6 +165,9 @@ Gateway 挂点（progressCard / taskRegistry / question / approval / 回复回�
 
 钉钉和企业微信两个插件都把 `CommandAuthorized` 写死为 `true`；企业微信的私聊和群聊策略又都是 `open`。
 任何能给机器人发消息的人都能执行本应只有 owner 能用的命令。这和体验工作无关，应单独修。
+
+10/04 晚更正与修法见第 12 节：`/restart`、`/config` 等 owner 专属命令在 9.1 里另有 owner 检查，本来就执行不了；
+真正敞开的是其余命令（`/status`、`/stop`、`/think`、`/compact`、行内指令等）。
 
 ## 7. 实测结果（2026-10-04）
 
@@ -256,3 +259,75 @@ Tianyi 要求钉钉做成真按钮。做法（调研见会话）：
 - Telegram：原生「Working」草稿换成工作视图（说明 + 飞书工具行 + 横线 + 清单），问题改为 HTML（粗体标题、选项只在按钮上），问题出现时过程消息让到下方，回答发出后过程消息删除。假平台 `8f287a69` 五项通过；新样式真机待测。
 - 企业微信电脑客户端在流式消息结束前不显示任何内容（手机端正常流式，Tianyi 真机确认）。所以问题到来时，连同已写内容一起结束这条流，回答走插件现成的「流已过期」路径另发新消息；未回答的问题不在新消息里重复。假平台 `801b04f5` 通过、`b15fa5e8` 用真机那条消息以非主人身份连跑 3 遍通过；真机 17:42 通过（回「3」→「✓ 已选择：南京」+ 推荐）。
 - 更正：ask_user 在 9.1 不分主人（只看主会话与 deny）；非主人少的 12 个是控制面工具（computer、nodes、sessions、gateway、automations 等）。17:07 两次「残缺工具调用」与此无关，新会话里未能复现。生产 V 的飞书 / 企业微信 / 钉钉都对所有人开放，主人只有 Tianyi 的飞书和 Telegram。
+
+## 12. 切换 Harness（C1）推广到所有渠道，命令权限修正（2026-10-04 晚）
+
+改了什么：
+
+- core `command-auth` 补丁 V2 → V3（`lab/release-files/feishu-model-switch-roles/`）：「非 owner 只能用整条 `/model`」从只认飞书改为认
+  `feishu`、`telegram`、`dingtalk-connector`、`wecom`、`msteams`。飞书行为不变（同一条正则）。`patch-runtime.mjs` 能把 V 现在的 V2 原地升级，
+  也能直接打在原版 9.1 上，两者结果与仓库里的文件逐字节相同（`tests/model-command-roles.test.mjs`，原版由 V2 反推，哈希与 npm 9.1 一致）。
+- 钉钉、企微补丁不再把 `CommandAuthorized` 写死为 `true`，改为和飞书 / Telegram 一样用 core 的
+  `shouldComputeCommandAuthorized` + `resolveCommandAuthorizedFromAuthorizers`：只有像命令的消息、且发送者过了私聊白名单才算
+  （`open` = 所有人；企微直接用插件自带的 `resolveWecomCommandAuthorization`，默认策略跟随 bot 入口的 `open`）。
+- Telegram 补丁：配置了 `commands.allowFrom.telegram` 时，原生命令（菜单里的 `/model` 等）在拼出命令文字之前就做了授权，
+  V3 规则看到空文字，连 `/model` 也拒。现在原生命令把自己的文字带进授权，模型选择按钮按 `/model` 算。
+
+### 每个角色能做什么
+
+规则只在该渠道配置了 `commands.allowFrom.<渠道>` 时生效；owner 来自 `commands.ownerAllowFrom`（带渠道前缀）。
+
+| 渠道 | owner | 非 owner（能给机器人发消息的其他人） |
+|---|---|---|
+| 飞书 | 全部命令 | `/model`、`/model <别名或模型>`（只改自己会话）、`/new`、`/reset`；其他命令不执行；单独的 `/vcc` 等别名只当重置，消息里夹的行内指令被去掉 |
+| Telegram | 全部命令 | 同飞书；V 上 Telegram 只放行 Tianyi（`allowFrom`），所以目前没有非 owner |
+| 钉钉 | 全部命令（V 上没有配 owner） | 同飞书 |
+| 企业微信 | 全部命令（V 上没有配 owner） | 同飞书 |
+| Teams | 全部命令 | 同飞书（V 上 Teams 是 `pairing`，未在用） |
+
+`/restart`、`/config`、`/debug`、`/allowlist` 写入等在 9.1 里本身就要求 owner（`rejectNonOwnerCommand` / `ownerOnly`），任何配置下非 owner 都执行不了。
+第 6 节说的漏洞实际是：渠道没有 owner、也没配 `commands.allowFrom` 时，9.1 认为「没设 owner = 人人都算命令 owner」，
+非 owner 能用 `/status`、`/stop`、`/think`、`/compact`、`/model`、行内指令等全部非 owner 专属命令。只改插件的 `CommandAuthorized` 关不上这个口子
+（`open` 策略下人人都过白名单），要靠下面的配置。
+
+### 生产配置（要 Tianyi 批准后才改）
+
+V 现在：`commands.ownerAllowFrom = ["feishu:<Tianyi>", "telegram:<Tianyi>"]`，`commands.allowFrom = { "feishu": ["*"] }`；
+钉钉、企微、Slack 都是 `dmPolicy: open, allowFrom: ["*"]`、没有 owner。需要：
+
+```json
+"commands": {
+  "ownerAllowFrom": ["feishu:<Tianyi>", "telegram:<Tianyi>"],
+  "allowFrom": { "feishu": ["*"], "telegram": ["*"], "dingtalk-connector": ["*"], "wecom": ["*"] }
+}
+```
+
+- 想让 Tianyi 在钉钉 / 企微也有 owner 权限，再加 `"dingtalk-connector:<staffId>"`、`"wecom:<userid>"`。
+- 顺序：先部署 V3 core（飞书行为不变；V2 只认飞书，先改配置会让钉钉 / 企微非 owner 拿到全部命令），再改配置；两者都要重启，不能热加载。
+- Teams 上线时再加 `"msteams": ["*"]`。Slack 同样敞开、但不在规则列表里，单独处理（加进列表或关掉）。
+
+### 实测（假平台 candidate，真实插件 + VLab Worker）
+
+场景 `model-roles`（`lab/candidate/model-roles.mjs`，各渠道 `*-model-roles.plan.json`）：owner 发 `/status` 作对照（有回复才说明命令通路是通的）；
+非 owner 发 `/model vcc` → 回执 + Gateway `sessions.list` 里该会话的模型；再发 `/status`、`/config show`、`/restart`，
+检查没有执行、渠道没有重连（Gateway 没重启）。
+
+| 渠道 / 配置 | owner `/status` | 非 owner `/model vcc` | 会话 | 非 owner `/status` `/config` `/restart` |
+|---|---|---|---|---|
+| 钉钉，补丁 + 角色配置 | 有 | `Model set to vcc (anthropic/claude-opus-5) for this session only` | `anthropic/claude-opus-5`，runtime `claude-cli` | 都未执行 |
+| 企微，补丁 + 角色配置 | 有 | 同上 | 同上 | 都未执行 |
+| Telegram，补丁 + 角色配置 | 有 | 同上（原生命令） | 同上 | 都未执行（`You are not authorized to use this command.`） |
+| 钉钉，原版插件 + 角色配置 | 有 | 同上 | 同上 | 都未执行（配置 + V3 core 本身就够） |
+| 钉钉，V 现在的配置（无 owner、无 allowFrom） | 有 | 同上 | 同上 | **`/status` 执行了**；`/config`、`/restart` 被 owner 检查拦下 |
+| 钉钉，只配 owner、不配 allowFrom | 有 | 不执行 | 未切换 | 都未执行 |
+| 飞书（`feishu-model-switch-roles`，V3） | 9 项检查全过 | | | |
+
+Candidate 见文末待填。
+
+没覆盖 / 待处理：
+
+- 钉钉、企微、Telegram（文字命令）对被拒的命令显示 9.1 的兜底「No reply was generated for this message. This is usually a temporary model failure」，
+  容易误解为模型故障；飞书是不回复。要改成「此命令仅限 owner」需要另改 core 的空回复兜底。
+- 真机未测；`live-experience.mjs` 已按上面的角色配置启动（Telegram owner 来自 `LIVE_TELEGRAM_ALLOW`，钉钉 / 企微不加 owner），并对 runtime 打 V3。
+- `/vds`、`/vcodex`：candidate 关了 Codex 插件，只测了 `vcc`；规则对任何 `/model <x>` 一样。
+- 群聊未测（规则按发送者，与私聊相同）。

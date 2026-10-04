@@ -5,8 +5,10 @@
 // admits everyone to the command path and commands.ownerAllowFrom names the
 // owners; the core command-auth patch
 // (lab/release-files/feishu-model-switch-roles/patch-runtime.mjs) narrows
-// non-owners to a whole-message /model. MODEL_ROLES_CONFIG=off leaves
-// commands.allowFrom out to show the stock behaviour.
+// non-owners to a whole-message /model. MODEL_ROLES_CONFIG shows the other
+// cases (report only): "owners-only" leaves commands.allowFrom out, "none"
+// also leaves the channel's owners out (production V today for DingTalk and
+// WeCom).
 //
 // Each channel candidate supplies the transport: send(user, text), text(user,
 // since) for everything the bot showed that user since `since`, and
@@ -17,7 +19,9 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-export const ROLES_CONFIGURED = process.env.MODEL_ROLES_CONFIG !== "off";
+const MODE = process.env.MODEL_ROLES_CONFIG ?? "roles";
+assert(["roles", "owners-only", "none"].includes(MODE), `MODEL_ROLES_CONFIG=${MODE}`);
+export const ROLES_CONFIGURED = MODE === "roles";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** Applies the core command-auth patch to the candidate runtime (Gateway and Worker share it). */
@@ -27,11 +31,12 @@ export function patchCoreCommandAuth(runtime) {
   return run.stdout.trim().split("\n");
 }
 
-/** Owners for this channel, and (unless MODEL_ROLES_CONFIG=off) commands.allowFrom.<channel>=["*"]. */
+/** Owners for this channel and commands.allowFrom.<channel>=["*"], as MODEL_ROLES_CONFIG says. */
 export function configureRoles(config, channel, owners) {
+  const own = MODE === "none" ? [] : owners;
   config.commands = {
     ...(config.commands ?? {}),
-    ownerAllowFrom: [...new Set([...(config.commands?.ownerAllowFrom ?? []), ...owners.map((o) => `${channel}:${o}`)])],
+    ownerAllowFrom: [...new Set([...(config.commands?.ownerAllowFrom ?? []).filter((o) => MODE !== "none" || !o.startsWith(`${channel}:`)), ...own.map((o) => `${channel}:${o}`)])],
     ...(ROLES_CONFIGURED ? { allowFrom: { ...(config.commands?.allowFrom ?? {}), [channel]: ["*"] } } : {}),
   };
   return { ownerAllowFrom: config.commands.ownerAllowFrom.filter((o) => o.startsWith(`${channel}:`)), allowFrom: config.commands.allowFrom ?? null };
@@ -84,7 +89,7 @@ async function reply(transport, user, since, { ms, quietMs = 4000, until = (t) =
  */
 export async function runModelRoles({ transport, dist, port, token, config, alias = "vcc" }) {
   const target = aliasTarget(config, alias);
-  const result = { configured: ROLES_CONFIGURED, alias, target };
+  const result = { config: MODE, alias, target };
   // Control: the owner's /status is answered, so a silent non-owner means refused, not broken.
   let since = Date.now();
   transport.send(transport.owner, "/status");
@@ -97,7 +102,8 @@ export async function runModelRoles({ transport, dist, port, token, config, alia
   result.session = await sessionRows({ dist, port, token, peer: transport.nonOwner });
 
   // Owner-only and other commands from the non-owner.
-  const statusHead = result.ownerStatus.split("\n").find((l) => l.trim()) ?? "";
+  // "🦞 OpenClaw 2026.9.1 (…)": the first line (DingTalk cards join lines with <br>).
+  const statusHead = result.ownerStatus.split(/\n|<br>/u).find((l) => l.trim()) ?? "";
   result.refused = {};
   for (const command of ["/status", "/config show", "/restart"]) {
     since = Date.now();
