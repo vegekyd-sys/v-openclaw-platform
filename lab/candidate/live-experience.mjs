@@ -153,6 +153,17 @@ if (loaderFile && trustPlugins.length) {
 // VLab reaches api.dingtalk.com's IPv4 address (Singapore) in ~250 ms, right at
 // Node's default happy-eyeballs attempt timeout; the connector's axios calls
 // then fail with ETIMEDOUT and it drops to plain messages. Give attempts 2 s.
+// The desktop handoff plugin from this branch, not VLab's installed copy (its
+// dependencies come from that copy).
+const handoffInstalled = (config.plugins?.load?.paths ?? []).find((p) => /v-desktop-handoff\/plugin\/?$/u.test(p));
+if (handoffInstalled) {
+  const dir = path.join(scratch, "v-desktop-handoff-plugin");
+  fs.cpSync(path.resolve("apps/v-desktop-handoff/plugin"), dir, { recursive: true, filter: (src) => !src.includes(`${path.sep}tests`) });
+  fs.symlinkSync(path.join(handoffInstalled, "node_modules"), path.join(dir, "node_modules"));
+  config.plugins.load.paths = config.plugins.load.paths.map((p) => (p === handoffInstalled ? dir : p));
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+  report.handoffPlugin = dir;
+}
 const nodeOptions = `${process.env.NODE_OPTIONS ?? ""} --network-family-autoselection-attempt-timeout=2000`.trim();
 const env = { ...process.env, NODE_OPTIONS: nodeOptions, OPENCLAW_GATEWAY_PORT: String(port), TMPDIR: path.join(scratch, "tmp"), XDG_CACHE_HOME: path.join(scratch, "cache"), npm_config_cache: path.join(scratch, "cache", "npm") };
 
