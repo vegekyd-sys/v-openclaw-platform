@@ -131,7 +131,11 @@ if (loaderFile && trustPlugins.length) {
   fs.writeFileSync(loaderFile, src.replace(gate, gate.replace("record?.trustedOfficialInstall !== true", `record?.trustedOfficialInstall !== true && !${JSON.stringify(trustPlugins)}.includes(pluginId)`)));
 }
 
-const env = { ...process.env, OPENCLAW_GATEWAY_PORT: String(port), TMPDIR: path.join(scratch, "tmp"), XDG_CACHE_HOME: path.join(scratch, "cache"), npm_config_cache: path.join(scratch, "cache", "npm") };
+// VLab reaches api.dingtalk.com's IPv4 address (Singapore) in ~250 ms, right at
+// Node's default happy-eyeballs attempt timeout; the connector's axios calls
+// then fail with ETIMEDOUT and it drops to plain messages. Give attempts 2 s.
+const nodeOptions = `${process.env.NODE_OPTIONS ?? ""} --network-family-autoselection-attempt-timeout=2000`.trim();
+const env = { ...process.env, NODE_OPTIONS: nodeOptions, OPENCLAW_GATEWAY_PORT: String(port), TMPDIR: path.join(scratch, "tmp"), XDG_CACHE_HOME: path.join(scratch, "cache"), npm_config_cache: path.join(scratch, "cache", "npm") };
 for (const name of ["DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"]) if (secrets.get(name)) env[name] = secrets.get(name);
 const logFile = path.join(scratch, "live-gateway.log");
 const out = fs.openSync(logFile, "a", 0o600);
