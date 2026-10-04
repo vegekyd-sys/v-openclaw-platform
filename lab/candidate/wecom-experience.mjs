@@ -175,8 +175,8 @@ const SCENARIOS = {
       framesBeforeFinish: streamsSince(chatId, since).reduce((n, s) => n + s.history.filter((h) => !h.finish).length, 0),
       sawWorkWhileRunning: states.some((s) => /⚙️|▶️|◻️/u.test(s) && !/PROGRESS_DONE/u.test(s)),
       sawChecklist: states.some((s) => /写草稿/u.test(s)),
-      sawCheckedStep: states.some((s) => /✅[^\n]*查资料/u.test(s)),
-      finalIsAnswerOnly: finished(chatId, since).every((s) => !/◻️|▶️|⚙️|progress_card/u.test(s.content)),
+      sawCheckedStep: states.some((s) => /(☑️|✅)[^\n]*查资料/u.test(s)),
+      finalIsAnswerOnly: finished(chatId, since).every((s) => !/◻️|▶️|⚙️|🛠️|progress_card/u.test(s.content)),
     };
   },
   "ask-single": async () => {

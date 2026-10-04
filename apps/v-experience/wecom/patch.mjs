@@ -26,6 +26,7 @@ const replacements = [
     code: `// ${MARKER}
 import * as vExperience from "./${EXPERIENCE_FILE}";
 import { callGatewayFromCli as vCallGateway } from "openclaw/plugin-sdk/gateway-runtime";
+import { formatChannelProgressDraftLineForEntry as vFormatProgressLine } from "openclaw/plugin-sdk/channel-outbound";
 `,
   },
   {
@@ -57,7 +58,12 @@ import { callGatewayFromCli as vCallGateway } from "openclaw/plugin-sdk/gateway-
         vTimer = setTimeout(vFlush, Math.max(50, 1000 - (Date.now() - vLastFrame)));
         vTimer.unref?.();
     };
-    const vWork = vExperience.createWorkView({ sessionKey: vSessionKey, onChange: vSchedule, log: (message) => runtime.log?.(message) });
+    // Same tool line as Feishu ("🛠️ Exec"). WeCom has no send-message links,
+    // so question options are numbered for typing.
+    const vWork = vExperience.createWorkView({
+        sessionKey: vSessionKey, onChange: vSchedule, log: (message) => runtime.log?.(message),
+        formatTool: (name, phase) => vFormatProgressLine(account, { event: "tool", name, phase }, { detailMode: "status", commandText: "status" }),
+    });
     const vStop = async () => {
         state.vFinished = true;
         if (vTimer) clearTimeout(vTimer);
@@ -65,6 +71,7 @@ import { callGatewayFromCli as vCallGateway } from "openclaw/plugin-sdk/gateway-
         vWork.dispose();
         vUnrouteQuestions();
         await vSending;
+        state.accumulatedText = vWork.finalText(state.accumulatedText);
         const line = vExperience.currentBackgroundLine(vSessionKey);
         if (line && state.accumulatedText) {
             state.accumulatedText += \`\\n\\n---\\n\\n\${line}\`;
@@ -92,10 +99,22 @@ import { callGatewayFromCli as vCallGateway } from "openclaw/plugin-sdk/gateway-
                 await vSend(vExperience.secretQuestionNotice(question));
                 await vCallGateway("question.resolve", { config }, { id: question.id, cancel: true, resolvedBy: "wecom:credential-unsupported" }, { scopes: ["operator.questions"], progress: false, timeoutMs: 5000 }).catch(() => { });
             }
+            else if (state.streamId && !state.streamExpired && !state.vFinished) {
+                // Inside the streamed reply, as in Feishu: what was written stays
+                // above the question, the answer continues below it.
+                vWork.showQuestion(question, { prefix: maskTemplateCardBlocks(state.accumulatedText || vPartial, () => { }) });
+                state.accumulatedText = "";
+                vPartial = "";
+                vExperience.trackChatQuestion({
+                    channel: "wecom", chatKey: \`\${account.accountId}:\${chatId}\`, senderId: vSender, record: question, inline: true,
+                    onStaged: (staged) => vWork.stageQuestion(staged),
+                    onAnswered: (answers) => vWork.questionAnswered(answers),
+                });
+                vSchedule();
+            }
             else {
                 await vSend(vExperience.askPromptMarkdown(question));
                 vExperience.trackChatQuestion({ channel: "wecom", chatKey: \`\${account.accountId}:\${chatId}\`, senderId: vSender, record: question });
-                vWork.questionPending(true);
             }
             runtime.log?.(\`[wecom][v-experience] delivered question \${question.id}\${secret ? " (credential, cancelled)" : ""}\`);
         }
@@ -180,7 +199,7 @@ import { callGatewayFromCli as vCallGateway } from "openclaw/plugin-sdk/gateway-
                         log: (message) => runtime.log?.(message),
                     });
                     if (vAnswer.handled) {
-                        await sendWeComReply({ wsClient, frame, text: vAnswer.notice ?? "✓ 已收到", runtime, finish: true }).catch(() => { });
+                        if (vExperience.shouldSendAnswerNotice(vAnswer)) await sendWeComReply({ wsClient, frame, text: vAnswer.notice, runtime, finish: true }).catch(() => { });
                         return;
                     }
                 }

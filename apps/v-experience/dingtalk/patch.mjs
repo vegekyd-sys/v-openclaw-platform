@@ -21,6 +21,7 @@ const replacements = [
     code: `// ${MARKER}
 import * as vExperience from "./${EXPERIENCE_FILE}";
 import { callGatewayFromCli as vCallGateway } from "openclaw/plugin-sdk/gateway-runtime";
+import { formatChannelProgressDraftLineForEntry as vFormatProgressLine } from "openclaw/plugin-sdk/channel-outbound";
 `,
   },
   {
@@ -44,7 +45,15 @@ import { callGatewayFromCli as vCallGateway } from "openclaw/plugin-sdk/gateway-
 \t\t}, Math.max(50, 800 - (Date.now() - lastUpdateTime)));
 \t\tvRefreshTimer.unref?.();
 \t};
-\tconst vWork = vExperience.createWorkView({ sessionKey: params.vSessionKey, onChange: () => vScheduleRefresh(), log: (message) => log.info(message) });
+\t// Same tool line as Feishu ("🛠️ Exec"); options are links that send the
+\t// choice as the person's message.
+\tconst vWork = vExperience.createWorkView({
+\t\tsessionKey: params.vSessionKey,
+\t\tonChange: () => vScheduleRefresh(),
+\t\tlog: (message) => log.info(message),
+\t\tformatTool: (name, phase) => vFormatProgressLine(account.config, { event: "tool", name, phase }, { detailMode: "status", commandText: "status" }),
+\t\toptionLink: (text) => \`dtmd://dingtalkclient/sendMessage?content=\${encodeURIComponent(text)}\`
+\t});
 `,
   },
   {
@@ -54,8 +63,6 @@ import { callGatewayFromCli as vCallGateway } from "openclaw/plugin-sdk/gateway-
     code: `\t// ${MARKER}: rewrite the card with the answer so far and the work under it.
 \tconst vRefreshCard = async () => {
 \t\tif (streamingSealed || asyncMode || !streamingEnabled || !vWork.hasContent()) return;
-\t\t// While a question waits, a new card would land above the answer.
-\t\tif (!currentCardTarget && !cardCreationPromise && vWork.waitingForAnswer()) return;
 \t\tawait startStreaming();
 \t\tif (!currentCardTarget || streamingSealed) return;
 \t\tif (Date.now() - lastUpdateTime < 800) {
@@ -71,26 +78,9 @@ import { callGatewayFromCli as vCallGateway } from "openclaw/plugin-sdk/gateway-
 \t\t\tlog.warn(\`[DingTalk][v-experience] work refresh failed: \${err?.message || err}\`);
 \t\t}
 \t};
-\t// ${MARKER}: finish the current card with what it shows now; the next
-\t// update opens a new one.
-\tconst vSplitCard = async () => {
-\t\tif (cardCreationPromise) await cardCreationPromise.catch(() => {});
-\t\tconst card = currentCardTarget;
-\t\tif (!card) return;
-\t\tcurrentCardTarget = null;
-\t\tclearCardWatchdog();
-\t\tconst shown = vWork.compose(vAnswerText);
-\t\tvAnswerText = "";
-\t\taccumulatedText = "";
-\t\ttry {
-\t\t\tawait finishCardOnce(card, shown || "…");
-\t\t} catch (err) {
-\t\t\tlog.warn(\`[DingTalk][v-experience] card split failed: \${err?.message || err}\`);
-\t\t}
-\t};
-\t// ${MARKER}: show a question as its own message. Worker runs announce it on the
-\t// Gateway question listener; other runtimes also send it as a payload, which
-\t// the connector used to drop. Either way it is shown once.
+\t// ${MARKER}: questions go into the reply card, as in Feishu. Worker runs
+\t// announce them on the Gateway question listener; other runtimes also send
+\t// a payload, which the connector used to drop. Either way: shown once.
 \tconst vSend = async (markdown) => {
 \t\tawait sendMessage(account.config, sessionWebhook, markdown, { useMarkdown: true, log: params.runtime.log, cfg });
 \t\toutboundUserVisibleThisTurn = true;
@@ -104,14 +94,21 @@ import { callGatewayFromCli as vCallGateway } from "openclaw/plugin-sdk/gateway-
 \t\t\tif (secret) {
 \t\t\t\tawait vSend(vExperience.secretQuestionNotice(question));
 \t\t\t\tawait vCallGateway("question.resolve", { config: cfg }, { id: question.id, cancel: true, resolvedBy: "dingtalk:credential-unsupported" }, { scopes: ["operator.questions"], progress: false, timeoutMs: 5000 }).catch(() => {});
+\t\t\t} else if (streamingEnabled && !asyncMode && !streamingSealed) {
+\t\t\t\t// Inside the card: what was written so far stays above the question,
+\t\t\t\t// the answer continues below it.
+\t\t\t\tvWork.showQuestion(question, { prefix: vAnswerText });
+\t\t\t\tvAnswerText = "";
+\t\t\t\taccumulatedText = "";
+\t\t\t\tvExperience.trackChatQuestion({
+\t\t\t\t\tchannel: "dingtalk", chatKey: \`\${accountId ?? "default"}:\${conversationId}\`, senderId, record: question, inline: true,
+\t\t\t\t\tonStaged: (staged) => vWork.stageQuestion(staged),
+\t\t\t\t\tonAnswered: (answers) => vWork.questionAnswered(answers)
+\t\t\t\t});
+\t\t\t\tawait vRefreshCard();
 \t\t\t} else {
-\t\t\t\t// Close the card here, so whatever V writes after the answer lands in a
-\t\t\t\t// new card below the question instead of up in this one.
-\t\t\t\tvWork.questionPending(true);
-\t\t\t\tawait vSplitCard();
 \t\t\t\tawait vSend(vExperience.askPromptMarkdown(question));
 \t\t\t\tvExperience.trackChatQuestion({ channel: "dingtalk", chatKey: \`\${accountId ?? "default"}:\${conversationId}\`, senderId, record: question });
-\t\t\t\tvWork.questionPending(true);
 \t\t\t}
 \t\t\tlog.info(\`[DingTalk][v-experience] delivered question \${question.id}\${secret ? " (credential, cancelled)" : ""}\`);
 \t\t} catch (err) {
@@ -156,28 +153,15 @@ import { callGatewayFromCli as vCallGateway } from "openclaw/plugin-sdk/gateway-
 `,
   },
   {
-    // No new card while a question waits: it would land above the answer.
-    name: "start-guard",
-    anchor: "\tconst startStreaming = () => {\n\t\tif (streamingSealed) {\n",
-    replace: "\tconst startStreaming = () => {\n\t\tif (!currentCardTarget && !cardCreationPromise && vWork.waitingForAnswer()) return Promise.resolve();\n\t\tif (streamingSealed) {\n",
-  },
-  {
-    // Text after a question means it was answered.
-    name: "partial-answered",
-    anchor: "\t\t\t...streamingEnabled && { onPartialReply: async (payload) => {\n",
-    insert: "after",
-    code: "\t\t\t\tif (payload?.text) vWork.questionPending(false);\n",
-  },
-  {
+    // The finished card keeps what came before a question and its record.
     name: "finish-card",
     anchor: "\t\t\tawait finishCardOnce(cardSnapshot, finalText);\n",
-    insert: "after",
-    code: "\t\t\tvStartBackground(cardSnapshot, finalText);\n",
+    replace: "\t\t\tfinalText = vWork.finalText(finalText);\n\t\t\tawait finishCardOnce(cardSnapshot, finalText);\n\t\t\tvStartBackground(cardSnapshot, finalText);\n",
   },
   {
     name: "deliver-tool",
     anchor: "\t\t\tdeliver: async (payload, info) => {\n\t\t\t\tlet text = payload.text ?? \"\";\n",
-    replace: "\t\t\tdeliver: async (payload, info) => {\n\t\t\t\tif (info?.kind === \"tool\" || payload?.channelData?.askUser) {\n\t\t\t\t\tif (await vDeliverToolPayload(payload) || info?.kind === \"tool\") return;\n\t\t\t\t}\n\t\t\t\tif (info?.kind === \"final\" || info?.kind === \"block\") vWork.questionPending(false);\n\t\t\t\tlet text = payload.text ?? \"\";\n",
+    replace: "\t\t\tdeliver: async (payload, info) => {\n\t\t\t\tif (info?.kind === \"tool\" || payload?.channelData?.askUser) {\n\t\t\t\t\tif (await vDeliverToolPayload(payload) || info?.kind === \"tool\") return;\n\t\t\t\t}\n\t\t\t\tlet text = payload.text ?? \"\";\n",
   },
   {
     // A reply to a waiting question answers it directly instead of starting a
@@ -200,7 +184,7 @@ import { callGatewayFromCli as vCallGateway } from "openclaw/plugin-sdk/gateway-
 \t\t\tlog: (message) => params.runtime?.log?.(message)
 \t\t});
 \t\tif (vAnswer.handled) {
-\t\t\tif (vAnswer.notice) await sendMessage(params.config, vData.sessionWebhook, vAnswer.notice, { useMarkdown: false }).catch(() => {});
+\t\t\tif (vExperience.shouldSendAnswerNotice(vAnswer)) await sendMessage(params.config, vData.sessionWebhook, vAnswer.notice, { useMarkdown: false }).catch(() => {});
 \t\t\tawait recallEmotionReply(params.config, vData).catch(() => {});
 \t\t\treturn;
 \t\t}

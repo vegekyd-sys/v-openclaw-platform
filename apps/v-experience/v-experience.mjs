@@ -58,10 +58,17 @@ export function subscribeProgressCard(sessionKey, onSteps) {
 
 // ------------------------------------------------------------ work view
 //
-// What the agent is doing while a reply is being written, for channels whose
-// reply is one message that can be rewritten (DingTalk AI card, WeCom stream):
-// the plan from the progress card, the current tool and the latest
-// commentary. It is working state: the finished reply shows only the answer.
+// The reply while it is being written, laid out like V's Feishu card:
+//
+//   text written before a question          (kept)
+//   the question, or "✓ 已选择：…" once answered  (kept)
+//   the agent's commentary, replaced by the answer once it starts
+//   the current tool, e.g. "🛠️ Exec"         (working state)
+//   ---
+//   ☑️ / ▶️ / ◻️ plan from the progress card    (working state)
+//
+// Channels whose reply is one rewritable message (DingTalk AI card, WeCom
+// stream) render compose(answer) while working and finalText(answer) at the end.
 
 const TOOL_LABELS = [
   [/^(exec|bash|shell|process|run_command)$/i, "运行命令"],
@@ -88,44 +95,96 @@ export function toolActivityLabel(name) {
   return bare;
 }
 
+/** The plan as Feishu shows it, without colour (☑️ done, ▶️ live, ◻️ pending). */
+export function planMarkdown(steps) {
+  if (!steps.length) return "";
+  const done = steps.filter((s) => s.status === "completed").length;
+  const fold = steps.length > 12 ? Math.max(0, Math.min(done - 1, steps.length - 11)) : 0;
+  const lines = [];
+  if (fold) lines.push(`☑️ 已完成 ${fold} 步`);
+  const visible = steps.slice(fold, fold + (fold ? 11 : 12));
+  for (const s of visible) {
+    const text = escapeMarkdown(s.step);
+    lines.push(s.status === "completed" ? `☑️ ${text}` : s.status === "in_progress" ? `▶️ **${text}**　进行中` : `◻️ ${text}`);
+  }
+  const hidden = steps.length - fold - visible.length;
+  if (hidden > 0) lines.push(`…还有 ${hidden} 步`);
+  return lines.join("\n");
+}
+
 /**
- * Per-reply work state. `onChange()` is called whenever what should be shown
- * changes; `markdown()` renders it (standard markdown, no HTML).
+ * A question inside the reply. `optionLink(text)` makes an option a link that
+ * sends `text` as the person's message (DingTalk); without it options are
+ * numbered for typing.
  */
-export function createWorkView({ sessionKey, onChange = () => {}, maxCommentary = 2, log } = {}) {
+export function questionMarkdown(record, { staged = {}, optionLink } = {}) {
+  const numbered = record.questions.length > 1;
+  const multi = numbered || record.questions.some((q) => q.multiSelect);
+  const blocks = record.questions.map((q, i) => {
+    const head = `**${numbered ? `${i + 1}. ` : ""}${escapeMarkdown(q.question)}**${q.multiSelect ? "（可多选）" : ""}`;
+    const picked = new Set(staged[i] ?? []);
+    const rows = q.options.map((o, j) => {
+      const label = escapeMarkdown(o.label);
+      const send = numbered ? `${i + 1}. ${o.label}` : o.label;
+      const shown = optionLink ? `[${label}](${optionLink(send)})` : `${j + 1}. ${label}`;
+      return `${picked.has(o.label) ? "✅" : "▫️"} ${shown}${o.description ? ` — ${escapeMarkdown(o.description)}` : ""}`;
+    });
+    return [head, ...rows].join("\n");
+  });
+  const confirm = multi ? (optionLink ? `选好后点 [确认](${optionLink("确认")})` : "选好后回复「确认」") : "";
+  const hint = optionLink ? "也可以直接在聊天中回复答案" : (numbered ? "按题号逐行回复，例如「1. 你的回答」" : "回复选项序号或文字即可");
+  return [blocks.join("\n\n"), [confirm, hint].filter(Boolean).join("　")].join("\n\n");
+}
+
+/** "✓ 已选择：饺子" — what a question collapses to. */
+export function questionRecordLine(record, state, answers) {
+  if (state === "expired") return "问题已过期";
+  if (state === "cancelled") return "问题已取消";
+  const summary = askSummary(record, answers);
+  return summary ? `✓ 已选择：${escapeMarkdown(summary)}` : "✓ 已收到回答";
+}
+
+export function createWorkView({ sessionKey, onChange = () => {}, log, formatTool, optionLink, maxCommentary = 12 } = {}) {
   let steps = [];
-  const seen = { card: 0, tool: 0, item: 0, plan: 0 };
+  let statusLine = "";
+  let statusAnswerLength = 0; // answer length when the status line was set
   let lastAnswerLength = 0;
-  let tool = "";
-  let compacting = false;
-  let question = false;
-  let answerLength = 0; // answer length when the status line was set
+  let q = null; // { record, prefix, staged, answers, state }
   const commentary = new Map(); // itemId -> text
+  const seen = { card: 0, tool: 0, item: 0, plan: 0 };
   let disposed = false;
   const changed = () => { if (!disposed) try { onChange(); } catch {} };
   const unsubscribe = subscribeProgressCard(sessionKey, (next) => { seen.card += 1; steps = next; changed(); });
+  const toolLine = (name, phase) => {
+    try { const line = formatTool?.(name, phase); if (line) return line; } catch {}
+    const label = toolActivityLabel(name);
+    return label ? `🛠️ ${label}` : "";
+  };
+  const setStatus = (line) => { statusLine = line; statusAnswerLength = lastAnswerLength; changed(); };
+  const head = () => {
+    if (!q) return "";
+    const block = q.state === "pending" ? questionMarkdown(q.record, { staged: q.staged, optionLink }) : questionRecordLine(q.record, q.state, q.answers);
+    return [q.prefix, block].filter((part) => part && part.trim()).join("\n\n");
+  };
   return {
     toolStart(payload) {
       seen.tool += 1;
-      question = false;
       const name = payload?.name;
       if (!name || isProgressCardToolName(name)) return false;
       if (payload.phase && payload.phase !== "start") return false;
-      const label = toolActivityLabel(name);
-      if (label === tool) return false;
-      tool = label;
-      answerLength = lastAnswerLength;
-      changed();
+      const line = toolLine(name, payload.phase ?? "start");
+      if (!line || line === statusLine) return false;
+      setStatus(line);
       return true;
     },
     itemEvent(payload) {
       seen.item += 1;
-      if (payload?.kind !== "preamble" && payload?.kind !== "commentary") return false;
-      const text = String(payload.progressText ?? payload.text ?? "").replace(/[\u0000-\u0008\u000b-\u001f]/g, "").replace(/\s+/g, " ").trim();
+      if (payload?.kind !== "preamble") return false;
+      const text = String(payload.progressText ?? "").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "").trim().slice(-8000);
       if (!text) return false;
-      const id = payload.itemId ?? `c${commentary.size}`;
-      commentary.delete(id);
-      commentary.set(id, text.length > 160 ? `${text.slice(0, 159)}…` : text);
+      const id = payload.itemId ?? "unkeyed";
+      if (commentary.get(id) === text) return false;
+      commentary.set(id, text);
       while (commentary.size > maxCommentary) commentary.delete(commentary.keys().next().value);
       changed();
       return true;
@@ -139,37 +198,36 @@ export function createWorkView({ sessionKey, onChange = () => {}, maxCommentary 
       changed();
       return true;
     },
-    compaction(active) { compacting = active; changed(); },
-    questionPending(active) { question = active; answerLength = lastAnswerLength; changed(); },
-    hasContent: () => steps.length > 0 || Boolean(tool) || commentary.size > 0 || compacting || question,
-    /** True while a question shown below waits for its answer. */
-    waitingForAnswer: () => question,
-    markdown() {
-      const lines = [];
-      for (const text of commentary.values()) lines.push(`💬 ${escapeMarkdown(text)}`);
-      if (steps.length) {
-        if (lines.length) lines.push("");
-        const done = steps.filter((s) => s.status === "completed").length;
-        const fold = steps.length > 12 ? Math.max(0, Math.min(done - 1, steps.length - 11)) : 0;
-        if (fold) lines.push(`✅ 已完成 ${fold} 步`);
-        for (const s of steps.slice(fold, fold + 12)) {
-          const text = escapeMarkdown(s.step);
-          lines.push(s.status === "completed" ? `✅ ${text}` : s.status === "in_progress" ? `▶️ **${text}**（进行中）` : `◻️ ${text}`);
-        }
-      }
-      const status = question ? "❓ 等你回答下面的问题" : compacting ? "🗜️ 正在整理上下文" : tool ? `⚙️ 正在${tool}` : "";
-      if (status) { if (lines.length) lines.push(""); lines.push(status); }
-      return lines.join("\n");
+    compaction(active) { setStatus(active ? "📦 正在整理上下文" : ""); },
+    /** Show a question inside the reply; `prefix` is the text written before it. */
+    showQuestion(record, { prefix = "" } = {}) {
+      // A second question keeps the first one's record above it.
+      const before = [head(), String(prefix ?? "").trimEnd()].filter((part) => part && part.trim()).join("\n\n");
+      q = { record, prefix: before, staged: {}, answers: undefined, state: "pending" };
+      commentary.clear();
+      statusLine = "";
+      changed();
     },
-    /** The streaming content: the answer so far, then the work under a rule. */
+    /** Choices made so far, by question index: {0: ["爬山"]}. */
+    stageQuestion(staged) { if (q?.state === "pending") { q.staged = staged ?? {}; changed(); } },
+    questionAnswered(answers) { if (q) { q.answers = answers; q.state = "answered"; changed(); } },
+    questionClosed(state) { if (q && q.state === "pending") { q.state = state; changed(); } },
+    waitingForAnswer: () => q?.state === "pending",
+    hasContent: () => steps.length > 0 || Boolean(statusLine) || commentary.size > 0 || Boolean(q),
+    /** The reply while working. */
     compose(answer) {
       const text = String(answer ?? "").trimEnd();
-      // Once the answer moves on, the tool or question it was waiting for is over.
       lastAnswerLength = text.length;
-      if ((tool || question) && text.length > answerLength) { tool = ""; question = false; }
-      const work = this.markdown();
-      if (!work) return text;
-      return text ? `${text}\n\n---\n\n${work}` : work;
+      // The answer moving on means the tool it waited for is done.
+      if (statusLine && text.length > statusAnswerLength) statusLine = "";
+      const body = text || [...commentary.values()].join("\n\n");
+      const plan = planMarkdown(steps);
+      const top = [head(), body, statusLine].filter((part) => part && part.trim()).join("\n\n");
+      return plan ? (top ? `${top}\n\n---\n\n${plan}` : plan) : top;
+    },
+    /** The finished reply: what came before a question, its record, the answer. */
+    finalText(answer) {
+      return [head(), String(answer ?? "").trim()].filter((part) => part && part.trim()).join("\n\n");
     },
     dispose() {
       if (disposed) return;
@@ -583,56 +641,101 @@ export function secretQuestionNotice(record) {
 
 const chatQuestions = new Map(); // `${channel}|${chatKey}` -> entries, newest last
 
-/** Remembers a question shown in a chat until it is answered or expires. */
-export function trackChatQuestion({ channel, chatKey, senderId, record }) {
+/**
+ * Remembers a question shown in a chat until it is answered or expires.
+ * `inline`: the question is part of the reply, which shows staged choices
+ * (`onStaged`) and the answer (`onAnswered`), so no acknowledgement message is
+ * needed.
+ */
+export function trackChatQuestion({ channel, chatKey, senderId, record, inline = false, onStaged, onAnswered }) {
   if (!isRenderableAsk(record)) return false;
   const key = `${channel}|${chatKey}`;
   const entries = (chatQuestions.get(key) ?? []).filter((e) => e.record.id !== record.id && !expired(e));
-  entries.push({ record, senderId: senderId ? String(senderId) : undefined, staged: {}, at: Date.now() });
+  entries.push({ record, senderId: senderId ? String(senderId) : undefined, staged: {}, toggles: new Set(), inline, onStaged, onAnswered, at: Date.now() });
   chatQuestions.set(key, entries);
   return true;
 }
 
 const expired = (entry) => (entry.record.expiresAtMs ?? entry.at + 30 * 60_000) <= Date.now();
+const CONFIRM = /^(确认|确定|好了|就这些|ok|OK)$/u;
 
 /** True when a message in this chat would be taken as an answer. */
 export function hasTrackedQuestion({ channel, chatKey, senderId }) {
   return (chatQuestions.get(`${channel}|${chatKey}`) ?? []).some((e) => !expired(e) && (!e.senderId || !senderId || e.senderId === String(senderId)));
 }
 
+/** Staged answers by question index, labels only. */
+const stagedByIndex = (entry) => {
+  const out = {};
+  entry.record.questions.forEach((q, i) => {
+    const values = i === 0 && entry.toggles.size ? [...entry.toggles] : entry.staged[q.questionId];
+    if (values?.length) out[i] = values;
+  });
+  return out;
+};
+
 /**
- * Takes a chat message as the answer to the newest waiting question.
- * Returns {handled:false} when there is none (or it has already ended
- * elsewhere), so the message goes on as a normal message.
+ * Takes a chat message as (part of) the answer to the newest waiting question.
+ * Multiple choice: an option label toggles it and 确认 submits. Returns
+ * {handled:false} when there is no question (or it already ended elsewhere),
+ * so the message goes on as a normal message.
  */
 export async function answerTrackedQuestion({ channel, chatKey, senderId, text, resolve, resolvedBy, log }) {
   const key = `${channel}|${chatKey}`;
   const entries = (chatQuestions.get(key) ?? []).filter((e) => !expired(e));
   chatQuestions.set(key, entries);
   const entry = [...entries].reverse().find((e) => !e.senderId || !senderId || e.senderId === String(senderId));
-  if (!entry || typeof text !== "string" || !text.trim()) return { handled: false };
-  let result;
-  try { result = readAskChatAnswers(entry.record, text, entry.staged); }
-  catch (error) { return { handled: true, notice: error.message }; }
-  if (result.remaining.length) {
-    entry.staged = result.answers;
-    return { handled: true, notice: `已记下。请继续回答「${result.remaining[0].question}」。` };
-  }
+  const message = typeof text === "string" ? text.trim() : "";
+  if (!entry || !message) return { handled: false };
+  const inline = entry.inline;
   const drop = () => chatQuestions.set(key, (chatQuestions.get(key) ?? []).filter((e) => e !== entry));
+  const record = entry.record;
+  const single = record.questions.length === 1 ? record.questions[0] : undefined;
+  let answers;
+  if (single?.multiSelect && (single.options.some((o) => o.label === message) || CONFIRM.test(message))) {
+    if (!CONFIRM.test(message)) {
+      if (entry.toggles.has(message)) entry.toggles.delete(message); else entry.toggles.add(message);
+      entry.onStaged?.(stagedByIndex(entry));
+      return { handled: true, inline, quiet: true, notice: `已选：${[...entry.toggles].join("、") || "（无）"}。选好后点「确认」。` };
+    }
+    if (!entry.toggles.size) return { handled: true, inline, notice: "还没有选择，请先点选项。" };
+    answers = { [single.questionId]: [...entry.toggles] };
+  } else if (record.questions.length > 1 && CONFIRM.test(message)) {
+    const missing = record.questions.find((q) => !entry.staged[q.questionId]?.length);
+    if (missing) return { handled: true, inline, notice: `请先回答「${missing.question}」。` };
+    answers = { ...entry.staged };
+  } else {
+    let result;
+    try { result = readAskChatAnswers(record, message, entry.staged); }
+    catch (error) { return { handled: true, inline, notice: error.message }; }
+    if (result.remaining.length) {
+      entry.staged = result.answers;
+      entry.onStaged?.(stagedByIndex(entry));
+      return { handled: true, inline, quiet: true, notice: `已记下。请继续回答「${result.remaining[0].question}」。` };
+    }
+    answers = result.answers;
+  }
   try {
-    await resolve(entry.record.id, { answers: result.answers }, resolvedBy ?? `${channel}:chat:${senderId ?? "unknown"}`);
+    await resolve(record.id, { answers }, resolvedBy ?? `${channel}:chat:${senderId ?? "unknown"}`);
     drop();
-    log?.(`v-experience: ${channel} chat answer resolved ${entry.record.id}`);
-    return { handled: true, notice: `✓ 已收到：${askSummary(entry.record, { answers: result.answers })}` };
+    entry.onAnswered?.({ answers });
+    log?.(`v-experience: ${channel} chat answer resolved ${record.id}`);
+    return { handled: true, inline, answered: true, notice: `✓ 已收到：${askSummary(record, { answers })}` };
   } catch (error) {
     const reason = error?.details?.reason;
     if (reason === "QUESTION_ALREADY_TERMINAL" || reason === "QUESTION_NOT_FOUND" || /terminal|not.?found/i.test(String(error?.message ?? ""))) {
       drop();
       return { handled: false };
     }
-    log?.(`v-experience: ${channel} chat answer failed ${entry.record.id}: ${String(error?.message ?? error)}`);
-    return { handled: true, notice: "回答提交失败，请再回复一次。" };
+    log?.(`v-experience: ${channel} chat answer failed ${record.id}: ${String(error?.message ?? error)}`);
+    return { handled: true, inline, notice: "回答提交失败，请再回复一次。" };
   }
+}
+
+/** Whether a channel should send `result.notice` as a chat message. */
+export function shouldSendAnswerNotice(result) {
+  if (!result?.notice) return false;
+  return !(result.inline && (result.answered || result.quiet));
 }
 
 // ---------------------------------------------------------------- telegram

@@ -11,27 +11,44 @@ const BRIDGE = Symbol.for("openclaw.v.taskRegistryBridge");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const ASK = "ask_" + "a".repeat(32);
 
-test("work view: progress card plan, tool line, commentary; answer stays on top", () => {
+test("work view: Feishu layout — commentary, tool line, plan; final keeps only the answer", () => {
   globalThis[PROGRESS] = new Set();
   let changes = 0;
-  const view = vx.createWorkView({ sessionKey: "agent:makaron:dingtalk:direct:U1", onChange: () => changes++ });
-  assert.equal(view.compose("你好"), "你好", "no work, no rule");
+  const view = vx.createWorkView({ sessionKey: "agent:makaron:dingtalk:direct:U1", onChange: () => changes++, formatTool: (name) => name === "exec" ? "🛠️ Exec" : "" });
+  assert.equal(view.compose(""), "", "nothing yet");
   for (const fn of globalThis[PROGRESS]) fn({ sessionKey: "AGENT:makaron:dingtalk:direct:u1", card: { steps: [
     { step: "查资料", status: "completed" }, { step: "写*草稿*", status: "in_progress" }, { step: "检查", status: "pending" },
   ] } });
   for (const fn of globalThis[PROGRESS]) fn({ sessionKey: "agent:other", card: { steps: [{ step: "别人的", status: "pending" }] } });
   assert.equal(view.toolStart({ name: "mcp__openclaw__progress_card", phase: "start" }), false, "progress_card is not a visible tool");
-  view.compose("草稿如下");
+  view.itemEvent({ kind: "preamble", itemId: "i1", progressText: "先查一下资料。" });
+  view.itemEvent({ kind: "preamble", itemId: "i2", progressText: "资料够了，开始写。" });
   view.toolStart({ name: "exec", phase: "start" });
-  view.itemEvent({ kind: "preamble", itemId: "i1", progressText: "先查一下资料" });
-  const md = view.compose("草稿如下");
-  assert.match(md, /^草稿如下\n\n---\n\n💬 先查一下资料\n\n✅ 查资料\n▶️ \*\*写\\\*草稿\\\*\*\*（进行中）\n◻️ 检查\n\n⚙️ 正在运行命令$/u);
-  assert.doesNotMatch(md, /别人的/u);
-  assert(changes >= 3);
-  view.questionPending(true);
-  assert.match(view.markdown(), /❓ 等你回答下面的问题$/u);
+  assert.equal(view.compose(""), "先查一下资料。\n\n资料够了，开始写。\n\n🛠️ Exec\n\n---\n\n☑️ 查资料\n▶️ **写\\*草稿\\***　进行中\n◻️ 检查");
+  assert.doesNotMatch(view.compose(""), /别人的/u);
+  const writing = view.compose("草稿如下");
+  assert.match(writing, /^草稿如下\n\n---\n\n☑️ 查资料/u, "the answer replaces the commentary and ends the tool line");
+  assert.equal(view.finalText("草稿如下"), "草稿如下");
+  assert(changes >= 4);
   view.dispose();
   assert.equal(globalThis[PROGRESS].size, 0, "unsubscribed");
+});
+
+test("work view: a question inside the reply, staged, then collapsed to its record", () => {
+  const view = vx.createWorkView({ sessionKey: "s-q", optionLink: (t) => `dtmd://send?c=${encodeURIComponent(t)}` });
+  const record = { id: ASK, status: "pending", questions: [{ questionId: "q1", question: "周末做什么？", multiSelect: true, options: [{ label: "爬山" }, { label: "读书" }] }] };
+  view.showQuestion(record, { prefix: "先问一下：" });
+  assert(view.waitingForAnswer());
+  const asking = view.compose("");
+  assert.match(asking, /^先问一下：\n\n\*\*周末做什么？\*\*（可多选）\n▫️ \[爬山\]\(dtmd:\/\/send\?c=%E7%88%AC%E5%B1%B1\)/u);
+  assert.match(asking, /选好后点 \[确认\]/u);
+  view.stageQuestion({ 0: ["读书"] });
+  assert.match(view.compose(""), /✅ \[读书\]/u);
+  view.questionAnswered({ answers: { q1: ["读书"] } });
+  assert.equal(view.waitingForAnswer(), false);
+  assert.equal(view.compose("好的，安排读书。"), "先问一下：\n\n✓ 已选择：读书\n\n好的，安排读书。");
+  assert.equal(view.finalText("好的，安排读书。"), "先问一下：\n\n✓ 已选择：读书\n\n好的，安排读书。");
+  view.dispose();
 });
 
 test("ask prompt and chat answers", () => {
@@ -118,7 +135,7 @@ test("dingtalk patch applies to V's connector chunk exactly once", () => {
   const patched = patchReplyChunk(baseline);
   assert.notEqual(patched, baseline);
   assert.equal(patchReplyChunk(patched), patched, "idempotent");
-  for (const needle of ["vSessionKey: sessionKey", "vWork.compose(displayContent)", "await vDeliverToolPayload(payload)", "vStartBackground(cardSnapshot, finalText)", "onPlanUpdate: (payload) =>", "vWork.dispose()"]) {
+  for (const needle of ["vSessionKey: sessionKey", "vWork.compose(displayContent)", "await vDeliverToolPayload(payload)", "vStartBackground(cardSnapshot, finalText)", "vWork.finalText(finalText)", "dtmd://dingtalkclient/sendMessage", "onPlanUpdate: (payload) =>", "vWork.dispose()"]) {
     assert(patched.includes(needle), needle);
   }
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vx-ding-"));
@@ -159,18 +176,6 @@ test("tracked chat question: answer, partial answer, and ended elsewhere", async
   assert.deepEqual(ended, { handled: false }, "a question answered elsewhere lets the message through");
 });
 
-test("work view drops the tool and question line once the answer moves on", () => {
-  const view = vx.createWorkView({ sessionKey: "s-move" });
-  view.compose("");
-  view.toolStart({ name: "exec", phase: "start" });
-  assert.match(view.compose(""), /⚙️ 正在运行命令/u);
-  assert.doesNotMatch(view.compose("结果是"), /⚙️/u);
-  view.questionPending(true);
-  assert.match(view.compose("结果是"), /❓/u);
-  assert.equal(view.compose("结果是 42"), "结果是 42");
-  view.dispose();
-});
-
 test("question listener set is created before the core's lazy module", () => {
   const key = Symbol.for("openclaw.questionChannelRequestedListeners");
   delete globalThis[key];
@@ -183,4 +188,23 @@ test("question listener set is created before the core's lazy module", () => {
   off();
   assert.equal(vx.claimQuestionDelivery("q9"), true);
   assert.equal(vx.claimQuestionDelivery("q9"), false);
+});
+
+test("tracked multiple choice: labels toggle, 确认 submits, inline needs no acknowledgement", async () => {
+  const record = { id: "ask_" + "c".repeat(32), status: "pending", expiresAtMs: Date.now() + 60_000, questions: [{ questionId: "w", question: "周末？", multiSelect: true, options: [{ label: "爬山" }, { label: "读书" }, { label: "做饭" }] }] };
+  const staged = []; const answered = []; const calls = [];
+  vx.trackChatQuestion({ channel: "t", chatKey: "m1", senderId: "u1", record, inline: true, onStaged: (s) => staged.push(s), onAnswered: (a) => answered.push(a) });
+  const r1 = await vx.answerTrackedQuestion({ channel: "t", chatKey: "m1", senderId: "u1", text: "爬山", resolve: async (...a) => calls.push(a) });
+  await vx.answerTrackedQuestion({ channel: "t", chatKey: "m1", senderId: "u1", text: "读书", resolve: async (...a) => calls.push(a) });
+  assert.equal(vx.shouldSendAnswerNotice(r1), false, "inline staging is shown in the reply");
+  assert.deepEqual(staged.at(-1), { 0: ["爬山", "读书"] });
+  const r3 = await vx.answerTrackedQuestion({ channel: "t", chatKey: "m1", senderId: "u1", text: "确认", resolve: async (...a) => calls.push(a) });
+  assert.equal(r3.answered, true);
+  assert.equal(vx.shouldSendAnswerNotice(r3), false);
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [[record.id, { answers: { w: ["爬山", "读书"] } }, "t:chat:u1"]]);
+  assert.equal(answered.length, 1);
+  vx.trackChatQuestion({ channel: "t", chatKey: "m2", senderId: "u1", record: { ...record, id: "ask_" + "d".repeat(32) } });
+  const r4 = await vx.answerTrackedQuestion({ channel: "t", chatKey: "m2", senderId: "u1", text: "1、3", resolve: async () => {} });
+  assert.equal(r4.answered, true);
+  assert.equal(vx.shouldSendAnswerNotice(r4), true, "not inline: acknowledge in chat");
 });

@@ -201,8 +201,8 @@ const SCENARIOS = {
       ...view(conversationId, since),
       sawWorkWhileRunning: states.some((s) => /⚙️|▶️|◻️/u.test(s) && !/PROGRESS_DONE/u.test(s)),
       sawChecklist: states.some((s) => /写草稿/u.test(s)),
-      sawCheckedStep: states.some((s) => /✅[^\n]*查资料/u.test(s)),
-      finalIsAnswerOnly: finishedCards(since).every((c) => !/◻️|▶️|⚙️/u.test(c.content)),
+      sawCheckedStep: states.some((s) => /(☑️|✅)[^\n]*查资料/u.test(s)),
+      finalIsAnswerOnly: finishedCards(since).every((c) => !/◻️|▶️|⚙️|🛠️/u.test(c.content)),
     };
   },
   "ask-single": async () => {
