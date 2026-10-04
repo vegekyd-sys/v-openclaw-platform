@@ -13,7 +13,10 @@ const greetingGraceMs = 15000;
 const presentation = createTranscriptPresentation();
 const renderedTurns = new Map();
 const tasks = new Set();
-const setStatus = (text) => { $("status").textContent = text; };
+const setStatus = (text) => {
+  $("status").textContent = text;
+  $("status").dataset.notice = text === "拨号后，直接说话。" ? "normal" : "message";
+};
 function duplexDiagnostic(active, entry) {
   if (call !== active) return;
   const counts = active.duplexDiagnostics.counts;

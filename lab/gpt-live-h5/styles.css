@@ -322,3 +322,39 @@ body[data-voice-state="speaking"] .wave-mark { color: var(--accent); }
   .conversation { min-height: 325px; max-height: 400px; }
   .empty { min-height: 275px; }
 }
+
+/* H5 switches from a simple dial screen to a conversation screen. */
+@media (max-width: 900px) {
+  .voice-copy h1 { display: none; }
+  body[data-call-state="idle"] .voice-layout { justify-content: center; padding-top: 0; }
+  body[data-call-state="idle"] .voice-stage {
+    display: flex; flex: 1; flex-direction: column; justify-content: center;
+    min-height: 0; gap: 28px; padding: 24px 0; text-align: center;
+  }
+  body[data-call-state="idle"] .portrait-wrap { width: min(62vw, 28dvh, 260px); padding: 6px; }
+  body[data-call-state="idle"] .ambient-one { width: min(400px, 100%); top: 50%; left: 50%; transform: translate(-50%, -50%); }
+  body[data-call-state="idle"] .portrait-wrap::before { inset: -14px; }
+  body[data-call-state="idle"] .portrait-wrap::after { inset: -26px; }
+  body[data-call-state="idle"] .presence-dot { width: 20px; height: 20px; border-width: 4px; }
+  body[data-call-state="idle"] .call-actions { order: 2; }
+  body[data-call-state="idle"] .call-icon { width: 64px; height: 64px; }
+  body[data-call-state="idle"] .call-icon svg { width: 27px; height: 27px; }
+  body[data-call-state="idle"] .button-label { font-size: 12px; }
+  body[data-call-state="idle"] .voice-copy { display: none; order: 3; width: min(100%, 30ch); }
+  body[data-call-state="idle"] .voice-copy:has(.status-text[data-notice="message"]) { display: block; }
+  body[data-call-state="idle"] .conversation-panel { display: none; }
+  body:not([data-call-state="idle"]) .voice-stage {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    column-gap: 12px; row-gap: 6px; min-height: 96px; padding: 4px;
+  }
+  body:not([data-call-state="idle"]) .portrait-wrap { grid-column: 2; grid-row: 1; justify-self: center; width: 68px; }
+  body:not([data-call-state="idle"]) .call-actions { grid-column: 3; grid-row: 1; justify-self: end; }
+  body:not([data-call-state="idle"]) .voice-copy { grid-column: 1 / -1; grid-row: 2; width: 100%; text-align: center; }
+  body:not([data-call-state="idle"]) .status-text { margin: 0; font-size: 11px; }
+}
+@media (max-width: 900px) and (max-height: 500px) {
+  body[data-call-state="idle"] .voice-stage { gap: 14px; padding-block: 10px; }
+  body[data-call-state="idle"] .call-icon { width: 48px; height: 48px; }
+  body:not([data-call-state="idle"]) .portrait-wrap { width: 56px; }
+  body:not([data-call-state="idle"]) .voice-stage { min-height: 78px; }
+}
