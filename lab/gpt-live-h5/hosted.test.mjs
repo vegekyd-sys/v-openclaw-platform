@@ -35,12 +35,35 @@ async function fixture(t, options = {}) {
   return { bridge, calls, request, visitor };
 }
 
+test("bare public link is ready without an owner code and owner/visitor tabs remain separate", async t => {
+  const f = await fixture(t);
+  const page = await f.request("/voice/");
+  const guest = page.headers.get("set-cookie").split(";", 1)[0];
+  assert.match(guest, /^v_voice_visitor=/u);
+  assert.equal((await f.request("/voice/api/status", guest)).status, 200);
+  assert.equal((await f.request("/voice/api/status?entry=tianyi", guest)).status, 401);
+  assert.equal((await f.request("/voice/api/status?entry=tianyi", guest.replace("v_voice_visitor=", "v_voice_access="))).status, 401);
+  const owner = await f.visitor();
+  const both = `${guest}; ${owner}`;
+  const guestCall = await (await f.request("/voice/api/session", both, { entry: "tianyi", speaker: "Tianyi" })).json();
+  const ownerCall = await (await f.request("/voice/api/session?entry=tianyi", both, { entry: "visitor" })).json();
+  const creates = f.calls.filter(row => row.method === "talk.client.create");
+  assert.match(creates[0].params.sessionKey, /^agent:makaron:explicit:gpt-live-h5-visitor-/u);
+  assert.match(creates[1].params.sessionKey, /^agent:makaron:explicit:gpt-live-h5-tianyi-/u);
+  assert.equal((await f.request("/voice/api/close", both, ownerCall)).status, 409);
+  assert.equal((await f.request("/voice/api/close", both, guestCall)).status, 200);
+  assert.equal((await (await f.request("/voice/api/status?entry=tianyi", both)).json()).activeCall, true);
+  const samePage = await f.request("/voice/", both);
+  assert.equal(samePage.headers.get("set-cookie"), null);
+  assert.equal((await f.request("/voice/api/close?entry=tianyi", both, ownerCall)).status, 200);
+});
+
 test("original /voice/ path serves assets without creating a call and protects all APIs", async t => {
   const f = await fixture(t);
   const redirect = await f.request("/voice"); assert.equal(redirect.status, 308); assert.equal(redirect.headers.get("location"), "/voice/");
   for (const name of ["", "app.js", "styles.css", "events.mjs", "assets/v-idle-nohat-20260922.png"]) assert.equal((await f.request(`/voice/${name}`)).status, 200);
   assert.equal((await f.request("/api/status")).status, 404);
-  assert.equal((await f.request("/voice/api/status")).status, 401);
+  assert.equal((await f.request("/voice/api/status?entry=tianyi")).status, 401);
   assert.equal((await f.request("/voice/api/access", "", { access: "wrong" })).status, 403);
   assert.equal((await f.request("/voice/api/access", "", { access: token }, { origin: "https://other.example" })).status, 403);
   assert.equal((await f.request("/voice/api/access", "", { access: token }, { origin: "" })).status, 403);
@@ -51,17 +74,17 @@ test("existing Xiaohe signed cookies remain valid while visitor calls and closes
   const f = await fixture(t);
   const payload = `${"a".repeat(32)}.${Date.now() + 60000}`;
   const oldCookie = `v_voice_access=${payload}.${createHmac("sha256", token).update(payload).digest("base64url")}`;
-  assert.equal((await f.request("/voice/api/status", oldCookie)).status, 200);
+  assert.equal((await f.request("/voice/api/status?entry=tianyi", oldCookie)).status, 200);
   const second = await f.visitor();
-  const a = await (await f.request("/voice/api/session", oldCookie, {})).json();
-  const b = await (await f.request("/voice/api/session", second, {})).json();
+  const a = await (await f.request("/voice/api/session?entry=tianyi", oldCookie, {})).json();
+  const b = await (await f.request("/voice/api/session?entry=tianyi", second, {})).json();
   assert.notEqual(a.voiceSessionId, b.voiceSessionId);
   const creates = f.calls.filter(row => row.method === "talk.client.create");
   assert.notEqual(creates[0].params.sessionKey, creates[1].params.sessionKey);
-  assert.equal((await f.request("/voice/api/close", second, { voiceSessionId: a.voiceSessionId })).status, 409);
-  assert.equal((await f.request("/voice/api/close", oldCookie, a)).status, 200);
-  assert.equal((await (await f.request("/voice/api/status", second)).json()).activeCall, true);
-  const redial = await (await f.request("/voice/api/session", oldCookie, {})).json();
+  assert.equal((await f.request("/voice/api/close?entry=tianyi", second, { voiceSessionId: a.voiceSessionId })).status, 409);
+  assert.equal((await f.request("/voice/api/close?entry=tianyi", oldCookie, a)).status, 200);
+  assert.equal((await (await f.request("/voice/api/status?entry=tianyi", second)).json()).activeCall, true);
+  const redial = await (await f.request("/voice/api/session?entry=tianyi", oldCookie, {})).json();
   assert.notEqual(redial.voiceSessionId, a.voiceSessionId);
   assert.notEqual(f.calls.filter(row => row.method === "talk.client.create")[2].params.sessionKey, creates[0].params.sessionKey);
 });
@@ -75,19 +98,19 @@ test("global admission counts a pending reservation and never evicts someone els
     return { ok: true };
   } });
   const a = await f.visitor(), b = await f.visitor();
-  const first = f.request("/voice/api/session", a, {}); await started;
-  assert.equal((await f.request("/voice/api/session", b, {})).status, 503);
-  assert.equal((await f.request("/voice/api/session", a, {})).status, 409);
+  const first = f.request("/voice/api/session?entry=tianyi", a, {}); await started;
+  assert.equal((await f.request("/voice/api/session?entry=tianyi", b, {})).status, 503);
+  assert.equal((await f.request("/voice/api/session?entry=tianyi", a, {})).status, 409);
   release(); assert.equal((await first).status, 200);
   assert.equal(f.calls.filter(row => row.method === "talk.client.create").length, 1);
 });
 
 test("SSE tool events only reach the cookie owning the voice session", async t => {
   const f = await fixture(t), a = await f.visitor(), b = await f.visitor();
-  const voiceA = await (await f.request("/voice/api/session", a, {})).json();
-  const voiceB = await (await f.request("/voice/api/session", b, {})).json();
-  const readerA = (await f.request("/voice/api/events", a)).body.getReader();
-  const readerB = (await f.request("/voice/api/events", b)).body.getReader();
+  const voiceA = await (await f.request("/voice/api/session?entry=tianyi", a, {})).json();
+  const voiceB = await (await f.request("/voice/api/session?entry=tianyi", b, {})).json();
+  const readerA = (await f.request("/voice/api/events?entry=tianyi", a)).body.getReader();
+  const readerB = (await f.request("/voice/api/events?entry=tianyi", b)).body.getReader();
   await readerA.read(); await readerB.read();
   f.bridge.emit({ event: "talk.event", payload: { voiceSessionId: voiceA.voiceSessionId, talkEvent: { type: "tool.call", callId: "only-a" } } });
   f.bridge.emit({ event: "talk.event", payload: { voiceSessionId: voiceB.voiceSessionId, talkEvent: { type: "tool.call", callId: "only-b" } } });

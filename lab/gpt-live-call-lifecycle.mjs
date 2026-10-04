@@ -9,9 +9,40 @@ export function isGptLiveCallProfile({ providerId, model, transport, brain, capa
 
 export function resolveGptLiveCallInstructions(original, profile) {
   if (!isGptLiveCallProfile(profile)) return original;
-  // The exact native client profile owns this contract. Appending older global
-  // instructions could reintroduce conflicting delegation or final policies.
-  return GPT_LIVE_CALL_INSTRUCTIONS;
+  const caller = resolveGptLiveCaller(profile.sessionKey);
+  if (!caller) return GPT_LIVE_CALL_INSTRUCTIONS;
+  const persona = extractGptLivePersona(profile.configuredInstructions);
+  return [GPT_LIVE_CALL_INSTRUCTIONS, persona, buildGptLiveCallerInstructions(caller)].filter(Boolean).join("\n\n");
+}
+
+/** Only the H5 host chooses these session names; spoken names never change the entry. */
+export function resolveGptLiveCaller(sessionKey) {
+  const match = /^agent:makaron:explicit:gpt-live-h5-(tianyi|visitor)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.exec(sessionKey ?? "");
+  return match ? { entry: match[1], speaker: match[1] === "tianyi" ? "Tianyi" : null } : null;
+}
+
+/** Keep the configured V persona, not old silence/delegation rules or private bootstrap. */
+export function extractGptLivePersona(configured) {
+  if (typeof configured !== "string") return "";
+  const allowed = /^(?:Default presence[^:]*|Identity|Agency and judgment|Self-introduction policy|Conversation style|Pacing policy|Human presence policy)$/u;
+  const blocks = configured.replaceAll("\\n", "\n").split(/(?=^[A-Za-z][^\n:]{0,100}:\s*$)/mu);
+  return blocks.filter(block => allowed.test(block.split(":", 1)[0].trim())).join("\n\n").trim();
+}
+
+export function buildGptLiveCallerInstructions(caller) {
+  const identity = caller.entry === "tianyi"
+    ? "本次是本人入口，当前说话者默认是 Tianyi（天意）。接通后直接自然问候，不再询问是谁。"
+    : "本次是普通入口，默认当前说话者不是 Tianyi。接通后自然问一次‘我现在是在和谁说话呀？’；对方自报姓名后记住本次通话的称呼，不反复询问。";
+  return "Current caller context (chosen by the call host):\n" + identity +
+    "\n对方说换人接电话时更新当前称呼。普通入口中的自报姓名不改变入口类型，不把陌生人自动当成天意。" +
+    "\n委托后台时携带当前说话者姓名（未知就说明未知）、入口类型和完整请求。后台沿用已有 redline 决定哪些内容能回答；不要替后台承诺私人信息会被提供，也不要增加角色等级或审批流程。";
+}
+
+export function resolveGptLiveCallerSurface(surface, sessionKey) {
+  const caller = resolveGptLiveCaller(sessionKey);
+  if (!caller) return surface;
+  return surface + ". Call-host entry context: " + JSON.stringify(caller) +
+    ". The entry is chosen by the host. On a visitor entry, the frontend may report the caller's self-identified name; that does not turn this into Tianyi's entry. Apply the existing backend redline to the current speaker and request.";
 }
 
 /** Native delegation is the supported client tool surface. Never parse USER text. */
@@ -55,7 +86,7 @@ export function createGptLiveCallLifecycle(options) {
       assertCurrent();
       if (!greetingRequested) {
         // Same supported frame as the native bridge's triggerGreeting method.
-        const sent = options.sendSessionContext("通话音频已经就绪。现在用一句简短中文主动问候用户并邀请他说话，然后安静听；不要委托后台，不重复问候。");
+        const sent = options.sendSessionContext("通话音频已经就绪。遵循当前入口身份：本人入口直接自然问候；普通入口自然询问对方是谁；没有入口身份上下文时简短问候并邀请用户说话。然后安静听；不要委托后台，不重复问候。");
         if (sent !== true) throw new Error("GPT Live greeting could not be requested");
         greetingRequested = true;
       }
@@ -120,6 +151,6 @@ export function createGptLiveCallLifecycle(options) {
 
 export function createGptLiveCallLifecycleRuntimeSource() {
   return `// gpt-live-call-lifecycle-v1: native browser call controls\nconst GPT_LIVE_CALL_INSTRUCTIONS = ${JSON.stringify(GPT_LIVE_CALL_INSTRUCTIONS)};\n` +
-    [isGptLiveCallProfile, resolveGptLiveCallInstructions, parseGptLiveEndCallDelegation, createGptLiveEndCallClientTool, createGptLiveCallLifecycle]
+    [isGptLiveCallProfile, resolveGptLiveCaller, extractGptLivePersona, buildGptLiveCallerInstructions, resolveGptLiveCallerSurface, resolveGptLiveCallInstructions, parseGptLiveEndCallDelegation, createGptLiveEndCallClientTool, createGptLiveCallLifecycle]
       .map((fn) => "export " + fn.toString()).join("\n\n") + "\n";
 }

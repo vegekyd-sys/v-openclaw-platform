@@ -24,6 +24,7 @@ import { patchGptLiveCallLifecycleController, patchGptLiveCallLifecycleBroker, p
 import { patchGptLiveBackendCallControlTalk, patchGptLiveBackendCallControlHarness } from "./patch-gpt-live-backend-call-control.mjs";
 import { patchGptLiveCallTerminalEmbedded } from "./patch-gpt-live-call-terminal.mjs";
 import { patchGptLiveProjectionReadinessBuiltin, patchGptLiveProjectionReadinessReconcile } from "./patch-gpt-live-projection-readiness.mjs";
+import { patchGptLiveCallerContextTalk } from "./patch-gpt-live-caller-context.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const hash = (source) => createHash("sha256").update(source).digest("hex");
@@ -77,7 +78,7 @@ export function build({ baseRelease = "hotreload-feishu-approvals-v2" } = {}) {
     const continuation = item.name.startsWith("talk-") ? patchGptLiveContinuationTalk : patchGptLiveContinuationHarness;
     const continued = continuation(transform(before.toString("utf8")));
     const after = item.name.startsWith("talk-")
-      ? patchGptLiveBackendCallControlTalk(patchGptLiveCallLifecycleTalk(patchGptLiveNativeConfirmationTalk(continued)))
+      ? patchGptLiveCallerContextTalk(patchGptLiveBackendCallControlTalk(patchGptLiveCallLifecycleTalk(patchGptLiveNativeConfirmationTalk(continued))))
       : patchGptLiveBackendCallControlHarness(continued);
     const source = `lab/release-files/gpt-live-call/${item.name}`;
     mkdirSync(dirname(resolve(root, source)), { recursive: true }); writeFileSync(resolve(root, source), after);

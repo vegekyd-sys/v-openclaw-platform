@@ -26,7 +26,7 @@ test("exact native model reservation and SDP proxy keep credentials off the brow
   const created = await f.request("session"); assert.equal(created.status, 200);
   const result = await created.json(); assert.deepEqual(result, { voiceSessionId: "voice-private", model: "gpt-live-1-codex" });
   assert.equal(f.calls[0].params.model, "gpt-live-1-codex"); assert.equal(f.calls[0].params.transport, "webrtc");
-  assert.match(f.calls[0].params.sessionKey, /^agent:makaron:explicit:gpt-live-h5-experiment-/u);
+  assert.match(f.calls[0].params.sessionKey, /^agent:makaron:explicit:gpt-live-h5-visitor-/u);
   const answer = await f.request("offer", { voiceSessionId: result.voiceSessionId, sdp: "v=0\r\noffer" });
   assert.deepEqual(await answer.json(), { sdp: "v=0\r\nanswer" });
   assert.equal(f.offers[0].session.clientSecret, "never-expose-test-secret");
