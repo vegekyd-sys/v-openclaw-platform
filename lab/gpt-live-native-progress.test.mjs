@@ -834,7 +834,7 @@ test("anonymous 296-character qualified final keeps all body bytes and qualifica
   for (const [index, frame] of f.frames.entries()) {
     const wire = frame.content[0].text;
     const header = wire.slice(0, wire.length - bodies[index].length);
-    assert.match(header, /facts, values and limits/u);
+    assert.match(header, /facts, values and limits|every fact, value and condition/u);
     assert.match(header, /all (?:final )?parts/u);
     assert(Buffer.byteLength(header) <= 180);
     assert(Buffer.byteLength(bodies[index]) <= 320);
@@ -843,8 +843,8 @@ test("anonymous 296-character qualified final keeps all body bytes and qualifica
     assert.equal(sends[index].wireTextSha256, createHash("sha256").update(wire).digest("hex"));
   }
   assert.match(f.frames[0].content[0].text, /Wait for BACKEND_FINAL_COMPLETE before answering/u);
-  assert.match(f.frames[1].content[0].text, /Keep facts, values and limits together/u);
-  assert.match(f.frames[1].content[0].text, /Never invent facts/u);
+  assert.match(f.frames[1].content[0].text, /Deliver all parts as the backend spoken answer/u);
+  assert.match(f.frames[1].content[0].text, /Keep every fact, value and condition/u);
 });
 
 test("wire diagnostic hash comes only from successful sends and includes the fixed role", async () => {

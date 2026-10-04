@@ -278,12 +278,24 @@ test("the actual consult contract distinguishes source examples and conditional 
   assert.match(capturedPrompt, /only with actual runtime\/configuration or completed-action evidence from the authorized task/);
   assert.match(capturedPrompt, /Do not inspect unrelated runtime state or execute a migration merely to strengthen a documentation answer/);
   assert.match(capturedPrompt, /Keep the subject, source type, and any necessary condition together/);
+  assert.match(capturedPrompt, /return only one ready-to-speak answer in the caller's requested language, sentence count and format/);
+  assert.match(capturedPrompt, /complete spoken answer, not notes for the voice layer to summarize/);
+  assert.match(capturedPrompt, /compare each factual clause with the actual source sentence's subject, if\/when\/unless conditions and should\/must\/can force/);
+  assert.match(capturedPrompt, /without dropping necessary qualifications or asking the voice layer to select or compress facts/);
+  assert.match(capturedPrompt, /Exclude unrelated retrieved facts and task-count or tool-use meta commentary/);
+  assert.doesNotMatch(capturedPrompt, /When finished, return only the concise result the realtime voice agent should speak back/);
+  assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /按序组装同一主任务的全部 final parts/u);
+  assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /把后台已完成的口播答案完整交付，不再二次摘要或按相关性重新挑选事实/u);
+  assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /保留该答案中的全部事实、来源标签、数字、日期、时间和必要条件/u);
+  assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /只允许在不删除或改变这些内容的前提下调整呈现，不把 caller 指令或控制标题读出来/u);
+  assert.doesNotMatch(GPT_LIVE_CALL_INSTRUCTIONS, /只复述同一主任务 final parts 中明确对应用户所问项目的结果/u);
   assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /示例里的模型或设置只属于该示例，不能说成当前通话配置/u);
   assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /必须保留条件和建议语气，不能说成已经完成迁移/u);
   assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /缺少这种证据就说明本次接入状态未核实/u);
   assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /每条阶段事实都应在同一句保留必要条件/u);
   // This executes the captured consult/observer with a stubbed model boundary.
-  // It verifies contract and lossless transport, not real model adherence.
+  // It verifies the final-answer responsibility contract and lossless transport,
+  // not actual clause auditing, spoken completeness, or real model adherence.
 });
 
 test("captured consult delivers source scope policy for the unchanged 0a USER and transports its qualified fixture response", async () => {

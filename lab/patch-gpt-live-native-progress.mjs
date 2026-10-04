@@ -154,7 +154,7 @@ const publicWireMethods = `\tfailTerminalDelivery(error) {
 \t\t\theader = \`[BACKEND_FINAL_PART \${position}]\\nWait for BACKEND_FINAL_COMPLETE before answering; keep facts, values and limits from all parts.\\n\\n\`;
 \t\t} else {
 \t\t\trole = "final_complete";
-\t\t\theader = \`[BACKEND_FINAL_COMPLETE \${position}]\\nUse all final parts. Keep facts, values and limits together; follow caller conditions. Never invent facts.\\n\\n\`;
+\t\t\theader = \`[BACKEND_FINAL_COMPLETE \${position}]\\nDeliver all parts as the backend spoken answer. Keep every fact, value and condition; apply caller format.\\n\\n\`;
 \t\t}
 \t\tif (Buffer.byteLength(header, "utf8") > 180) throw new Error("Native public append role header exceeds byte budget");
 \t\treturn { role, wireText: header + text };
