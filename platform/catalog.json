@@ -261,6 +261,7 @@
         "lab/gpt-live-pr-provenance.test.mjs",
         "lab/gpt-live-pr-trace.test.mjs",
         "lab/gpt-live-production-cutover.test.mjs",
+        "lab/gpt-live-projection-readiness.test.mjs",
         "lab/gpt-live-public-progress-bridge.test.mjs",
         "lab/gpt-live-voice-confirmation.test.mjs",
         "lab/gpt-live-voice-exec-lifetime.test.mjs",

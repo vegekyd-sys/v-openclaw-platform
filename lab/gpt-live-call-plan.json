@@ -110,6 +110,11 @@
       "source": "lab/release-files/gpt-live-call/builtin-openclaw-zQV8Wwjr.js",
       "target": "openclaw/dist/builtin-openclaw-zQV8Wwjr.js",
       "before": "f121be943b9694cbc73a00529a38235df4f6ebdb652208fa103c44b7a8ca0e80"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/session-transcript-reconcile-j5qhAafV.js",
+      "target": "openclaw/dist/session-transcript-reconcile-j5qhAafV.js",
+      "before": "b0200676ea135b981d2caff2b6ec08cd608a75e48858fcd333519b046e613e89"
     }
   ]
 }

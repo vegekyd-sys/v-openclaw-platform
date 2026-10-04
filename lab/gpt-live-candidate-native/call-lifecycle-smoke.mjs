@@ -6,7 +6,7 @@ import path from 'node:path';
 import {spawn,spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {setTimeout as sleep} from 'node:timers/promises';
-import {createPrivatePulseMicrophone} from './private-pulse.mjs';
+import {createPrivatePulseMicrophone,captureOwnedBrowserDirectory,observeOwnedChromeProcesses,removeOwnedBrowserDirectory} from './private-pulse.mjs';
 import {BROWSER_PROBE,SNAPSHOT_EXPRESSION} from './browser-probe.mjs';
 import {assessDecodedPlaybackWindow,assessCompletePlaybackWindow,assessIndependentInputConvergence} from './evidence.mjs';
 import {resolveEndCallToolWitness,resolveLifecycleUserTurn,assessLifecycleSpeech,hasLifecyclePlaybackTail,assessLifecycleFarewell,assessProactiveGreeting,assessAutomaticEnd,
@@ -46,8 +46,10 @@ assert.equal(hash(Buffer.from(servedApp)),process.env.GPT_LIVE_H5_APP_SHA,'Actua
 if(validationTarget==='candidate'){fs.mkdirSync(base,{recursive:true,mode:0o700});fs.mkdirSync(path.join(stateRoot,'tmp'),{recursive:true,mode:0o700});}
 else {assert(!fs.existsSync(base),'Shared/V evidence directory must be fresh and validation-owned');fs.mkdirSync(base,{recursive:false,mode:0o700});}
 const scratch=fs.mkdtempSync(validationTarget==='candidate'?path.join(stateRoot,'tmp/call-lifecycle-'):path.join(base,'scratch-'));fs.chmodSync(scratch,0o700);
+const scratchIdentity=captureOwnedBrowserDirectory(scratch,{parent:path.dirname(scratch),prefix:validationTarget==='candidate'?'call-lifecycle-':'scratch-'});
+const chromeProfile=path.join(scratch,'profile');
 const checks=[],owners=new Map(),speechWindows=[],gatewayEvents=[],subscribed=new Set(),coreCheckNames=new Set();
-let pulse,chrome,chromeTemp,cdp,gateway,lastState,cleanup,browserTimeOrigin;
+let pulse,chrome,chromeTemp,chromeTempIdentity,cdp,gateway,lastState,cleanup,browserTimeOrigin;
 function hash(value){return createHash('sha256').update(value).digest('hex')}
 function save(name,value){fs.writeFileSync(path.join(base,name),JSON.stringify(value,null,2)+'\n',{mode:0o600});}
 function check(name,passed,details={}){checks.push({name,passed:Boolean(passed),...details});}
@@ -261,7 +263,8 @@ try {
  pulse=await createPrivatePulseMicrophone(path.join(scratch,'pulse'),{validationTarget,privateScratchRoot:scratch,
   executables:media.executables,moduleDirectory:media.moduleDirectory,libraryPath:media.libraryPath});
  chromeTemp=fs.mkdtempSync('/tmp/gpt-live-chrome-');fs.chmodSync(chromeTemp,0o700);
- const profile=path.join(scratch,'profile');let chromeError='';
+ chromeTempIdentity=captureOwnedBrowserDirectory(chromeTemp,{parent:'/tmp',prefix:'gpt-live-chrome-'});
+ const profile=chromeProfile;let chromeError='';
  chrome=spawn(media.executables.chrome,['--headless=new','--no-sandbox','--disable-dev-shm-usage','--disable-gpu','--disable-features=AudioServiceSandbox','--remote-debugging-port=0','--window-size=1280,900','--user-data-dir='+profile,'--use-fake-ui-for-media-stream','about:blank'],{env:{...pulse.environment,TMPDIR:chromeTemp,TMP:chromeTemp,TEMP:chromeTemp},stdio:['ignore','ignore','pipe']});
  chrome.stderr.on('data',chunk=>{chromeError=(chromeError+String(chunk)).slice(-2000);fs.appendFileSync(path.join(base,'chrome-stderr.log'),chunk,{mode:0o600});});
  const debugFile=path.join(profile,'DevToolsActivePort');for(const until=Date.now()+15000;Date.now()<until&&!fs.existsSync(debugFile)&&chrome.exitCode===null;)await sleep(100);assert(fs.existsSync(debugFile),'Owned Chrome debugger unavailable: '+chromeError);
@@ -299,22 +302,33 @@ finally {
   check('continuous-original-processed-microphone-through-close',captureWindows.length>0&&captureWindows.every(w=>w.passed),{captureWindows});
   check('default-Chrome-autoplay-no-play-rejection',Array.isArray(lastState?.playRejections)&&lastState.playRejections.length===0,{playRejections:lastState?.playRejections});
  }
- cdp?.close();gateway?.stop();if(chrome?.exitCode===null&&chrome.signalCode===null)chrome.kill('SIGTERM');if(chrome)await Promise.race([new Promise(resolve=>chrome.once('exit',resolve)),sleep(2000)]);
+ cdp?.close();gateway?.stop();let chromeProcesses,chromeProcessError;
+ const inspectChrome=()=>chromeProcesses=observeOwnedChromeProcesses({profile:chromeProfile,rootPid:chrome?.pid,knownProcesses:chromeProcesses?.knownProcesses??[]});
+ try{inspectChrome();}catch(error){chromeProcessError=error;}
+ if(chrome?.exitCode===null&&chrome.signalCode===null)chrome.kill('SIGTERM');if(chrome)await Promise.race([new Promise(resolve=>chrome.once('exit',resolve)),sleep(2000)]);
  if(chrome?.exitCode===null&&chrome.signalCode===null){chrome.kill('SIGKILL');await Promise.race([new Promise(resolve=>chrome.once('exit',resolve)),sleep(1000)]);}
  // Preserve the actual run outcome before asynchronous browser filesystem
  // cleanup. A transient profile write must not hide a failed native operation.
  save('run-observations-before-cleanup.json',{checks,owners:[...owners],speechWindows});
  cleanup={chromeExited:Boolean(chrome&&(chrome.exitCode!==null||chrome.signalCode!==null))};
+ if(!chromeProcessError) {
+  try{for(const until=Date.now()+2000;Date.now()<until;){if(inspectChrome().aliveProcesses.length===0)break;await sleep(100);}}
+  catch(error){chromeProcessError=error;}
+ }
+ cleanup.chromeProcessesExited=!chromeProcessError&&chromeProcesses?.aliveProcesses.length===0&&(!chrome||cleanup.chromeExited);
+ save('owned-browser-cleanup-process-observations.json',{...chromeProcesses,error:chromeProcessError?{code:chromeProcessError.code??null,message:chromeProcessError.message}:null,
+  mainExited:cleanup.chromeExited,allOwnedChromeProcessesExited:cleanup.chromeProcessesExited});
+ if(!cleanup.chromeProcessesExited)check('owned-browser-process-exit',false,{code:chromeProcessError?.code??null,message:chromeProcessError?.message??'Owned Chrome processes remain alive; keep private directories'});
  try {Object.assign(cleanup,await pulse?.dispose());}
  catch(error){check('private-media-cleanup',false,{code:error.code??null,message:error.message});}
- if(chromeTemp){try {fs.rmSync(chromeTemp,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
+ if(chromeTemp){try {cleanup.chromeTempRemoval=await removeOwnedBrowserDirectory(chromeTemp,{identity:chromeTempIdentity,chromeExited:cleanup.chromeProcessesExited,inspectChrome});}
   catch(error){check('private-browser-temp-cleanup',false,{code:error.code??null,message:error.message});}
   cleanup.chromePrivateTempRemoved=!fs.existsSync(chromeTemp);}
  // Entire scratch is unique and owned by this observer; profiles are never reused.
- try {fs.rmSync(scratch,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
+ try {cleanup.scratchRemoval=await removeOwnedBrowserDirectory(scratch,{identity:scratchIdentity,chromeExited:cleanup.chromeProcessesExited,inspectChrome});}
  catch(error){check('private-scratch-cleanup',false,{code:error.code??null,message:error.message});}
  cleanup.privateScratchRemoved=!fs.existsSync(scratch);
- check('owned-browser-and-scratch-cleanup',cleanup.chromeExited&&cleanup.chromePrivateTempRemoved&&cleanup.privateScratchRemoved);
+ check('owned-browser-and-scratch-cleanup',cleanup.chromeExited&&cleanup.chromeProcessesExited&&cleanup.chromePrivateTempRemoved&&cleanup.privateScratchRemoved);
  check('actual-'+validationTarget+'-config-unchanged',hash(fs.readFileSync(configPath))===configSha);
  if(validationTarget!=='candidate') {
   try {const after=await inspectLifecycleValidationTarget({target:validationTarget,proofPath:process.env.GPT_LIVE_H5_TARGET_PROOF,configPath,corePath:runtime,stateRoot,url});

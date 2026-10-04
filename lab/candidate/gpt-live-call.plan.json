@@ -110,9 +110,15 @@
       "source": "lab/release-files/gpt-live-call/builtin-openclaw-zQV8Wwjr.js",
       "target": "openclaw/dist/builtin-openclaw-zQV8Wwjr.js",
       "before": "f121be943b9694cbc73a00529a38235df4f6ebdb652208fa103c44b7a8ca0e80"
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/session-transcript-reconcile-j5qhAafV.js",
+      "target": "openclaw/dist/session-transcript-reconcile-j5qhAafV.js",
+      "before": "b0200676ea135b981d2caff2b6ec08cd608a75e48858fcd333519b046e613e89"
     }
   ],
   "tests": [
+    "lab/gpt-live-projection-readiness.test.mjs",
     "lab/gpt-live-backend-call-control.test.mjs",
     "lab/gpt-live-call-lifecycle.test.mjs",
     "lab/gpt-live-consult-progress.test.mjs",
@@ -152,6 +158,11 @@
     "lab/patch-gpt-live-call-lifecycle.mjs",
     "lab/patch-gpt-live-backend-call-control.mjs",
     "lab/gpt-live-h5/instructions.mjs",
+    "lab/patch-gpt-live-projection-readiness.mjs",
+    "lab/gpt-live-projection-readiness.test.mjs",
+    "lab/fixtures/gpt-live-projection-readiness/session-transcript-reconcile-DFsDtc9l.js",
+    "release/captured/v2026.9.1-db91.6-memory-search-guards-20261002/dist/session-transcript-reconcile-j5qhAafV.js",
+    "release/captured/v2026.9.1-db91.6-memory-search-guards-20261002/dist/session-accessor-K0XuW6ln.js",
     "lab/gpt-live-consult-progress.mjs",
     "lab/gpt-live-public-progress-bridge.mjs",
     "release/captured/v2026.9.1-db91.6-memory-search-guards-20261002.worker/dist/gateway-public-stream.mjs",
@@ -266,7 +277,8 @@
     "lab/release-files/gpt-live-call/gateway-message-tool.mjs",
     "lab/release-files/gpt-live-call/worker-pool.mjs",
     "lab/release-files/gpt-live-call/gpt-live-voice-exec-lifetime.js",
-    "lab/release-files/gpt-live-call/builtin-openclaw-zQV8Wwjr.js"
+    "lab/release-files/gpt-live-call/builtin-openclaw-zQV8Wwjr.js",
+    "lab/release-files/gpt-live-call/session-transcript-reconcile-j5qhAafV.js"
   ],
   "timeoutSeconds": 120
 }

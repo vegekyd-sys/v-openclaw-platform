@@ -1,9 +1,117 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
 import vm from 'node:vm';
+import {captureOwnedBrowserDirectory,removeOwnedBrowserDirectory} from './private-pulse.mjs';
 import {resolveEndCallToolWitness,resolveLifecycleUserTurn,assessLifecycleSpeech,hasLifecyclePlaybackTail,assessLifecycleFarewell,assessProactiveGreeting,assessAutomaticEnd,
   extractLifecycleToolPairs,resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult,readLifecycleHistoryOrRetry} from './call-lifecycle-evidence.mjs';
+
+function cleanupFixture() {
+ const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'gpt-live-cleanup-test-'))),directory=path.join(root,'scratch-owned');
+ fs.mkdirSync(directory,{mode:0o700});fs.writeFileSync(path.join(directory,'actual-profile-write'),'owned');
+ const identity=captureOwnedBrowserDirectory(directory,{parent:root,prefix:'scratch-'});
+ return {root,directory,identity,inspectChrome:()=>({aliveProcesses:[]}),dispose:()=>fs.rmSync(root,{recursive:true,force:true})};
+}
+test('owned cleanup retries only ENOTEMPTY asynchronously after exact Chrome exit',async()=>{
+ const f=cleanupFixture(),original=Object.assign(Error('directory not empty'),{code:'ENOTEMPTY'}),waits=[];let calls=0;
+ try {
+  const result=await removeOwnedBrowserDirectory(f.directory,{identity:f.identity,chromeExited:true,inspectChrome:f.inspectChrome},
+   {remove:async(target,options)=>{assert.equal(target,f.directory);assert.equal(options.maxRetries,0);if(++calls===1)throw original;await fs.promises.rm(target,options);},
+    wait:async ms=>{waits.push(ms);await Promise.resolve();}});
+  assert.deepEqual(result,{removed:true,attempts:2});assert.deepEqual(waits,[100]);assert.equal(fs.existsSync(f.directory),false);
+ } finally {f.dispose();}
+});
+test('owned cleanup preserves every other removal error without retry',async()=>{
+ for(const code of ['EACCES','EPERM','EBUSY','EIO','ENOENT']) {
+  const f=cleanupFixture(),original=Object.assign(Error('original '+code),{code});let calls=0,waits=0;
+  try {
+   await assert.rejects(removeOwnedBrowserDirectory(f.directory,{identity:f.identity,chromeExited:true,inspectChrome:f.inspectChrome},
+    {remove:async()=>{calls++;throw original;},wait:async()=>{waits++;}}),error=>error===original);
+   assert.equal(calls,1);assert.equal(waits,0);assert.equal(fs.existsSync(f.directory),true);
+  } finally {f.dispose();}
+ }
+});
+test('ENOTEMPTY retry has an exact bound and retains the actual final error',async()=>{
+ const f=cleanupFixture(),errors=[],waits=[];
+ try {
+  await assert.rejects(removeOwnedBrowserDirectory(f.directory,{identity:f.identity,chromeExited:true,inspectChrome:f.inspectChrome,maxAttempts:3},
+   {remove:async()=>{const error=Object.assign(Error('still busy '+errors.length),{code:'ENOTEMPTY'});errors.push(error);throw error;},wait:async ms=>waits.push(ms)}),error=>error===errors[2]);
+  assert.equal(errors.length,3);assert.deepEqual(waits,[100,100]);assert.equal(fs.existsSync(f.directory),true);
+ } finally {f.dispose();}
+});
+test('cleanup rejects live Chrome, failed process inspection and neighboring scope before deleting',async()=>{
+ const f=cleanupFixture(),neighbor=path.join(f.root,'scratch-neighbor');fs.mkdirSync(neighbor);let removes=0;
+ const remove=async()=>{removes++;};
+ try {
+  await assert.rejects(removeOwnedBrowserDirectory(f.directory,{identity:f.identity,chromeExited:false,inspectChrome:f.inspectChrome},{remove}));
+  await assert.rejects(removeOwnedBrowserDirectory(f.directory,{identity:f.identity,chromeExited:true,inspectChrome:()=>({aliveProcesses:[{pid:123,startTicks:'10'}]})},{remove}));
+  const inspection=Object.assign(Error('cannot inspect owned process'),{code:'EACCES'});
+  await assert.rejects(removeOwnedBrowserDirectory(f.directory,{identity:f.identity,chromeExited:true,inspectChrome:()=>{throw inspection}},{remove}),error=>error===inspection);
+  await assert.rejects(removeOwnedBrowserDirectory(neighbor,{identity:f.identity,chromeExited:true,inspectChrome:f.inspectChrome},{remove}));
+  await assert.rejects(removeOwnedBrowserDirectory(f.directory,{identity:f.identity,chromeExited:true,inspectChrome:f.inspectChrome,maxAttempts:11},{remove}));
+  await assert.rejects(removeOwnedBrowserDirectory(f.directory,{identity:f.identity,chromeExited:true,inspectChrome:f.inspectChrome,retryDelayMs:101},{remove}));
+  assert.equal(removes,0);assert(fs.existsSync(f.directory)&&fs.existsSync(neighbor));
+ } finally {f.dispose();}
+});
+test('retry rechecks Chrome exit and exact inode, never follows a replaced directory',async()=>{
+ for(const replacement of ['live','inode','symlink']) {
+  const f=cleanupFixture(),old=path.join(f.root,'retained-original'),neighbor=path.join(f.root,'untouched-neighbor');fs.mkdirSync(neighbor);
+  let removes=0,probes=0;
+  try {
+   await assert.rejects(removeOwnedBrowserDirectory(f.directory,{identity:f.identity,chromeExited:true,
+    inspectChrome:()=>({aliveProcesses:++probes>1&&replacement==='live'?[{pid:123,startTicks:'20'}]:[]})},
+    {remove:async()=>{removes++;throw Object.assign(Error('actual ENOTEMPTY'),{code:'ENOTEMPTY'});},wait:async()=>{
+     if(replacement==='live')return;
+     fs.renameSync(f.directory,old);
+     if(replacement==='symlink')fs.symlinkSync(neighbor,f.directory);else fs.mkdirSync(f.directory);
+    }}));
+   assert.equal(removes,1);assert(fs.existsSync(neighbor));if(replacement!=='live')assert(fs.existsSync(path.join(old,'actual-profile-write')));
+  } finally {f.dispose();}
+ }
+});
+test('actual owned Chrome observer retains reparented descendants and refuses PID-reuse ownership',()=>{
+ const source=readFileSync(new URL('./private-pulse.mjs',import.meta.url),'utf8');
+ const functionSource=source.slice(source.indexOf('export function observeOwnedChromeProcesses'),source.indexOf('export async function removeOwnedBrowserDirectory')).replace('export function','function');
+ const files=new Map(),profile='/tmp/unique-owned/profile';
+ const put=(pid,startTicks,{parent=1,state='S',args=[],children=[]}={})=>{
+  const fields=Array(20).fill('0');fields[0]=state;fields[1]=String(parent);fields[19]=startTicks;
+  files.set('/proc/'+pid+'/stat',pid+' (chrome process) '+fields.join(' '));files.set('/proc/'+pid+'/cmdline',args.join('\0'));
+  files.set('/proc/'+pid+'/task/'+pid+'/children',children.join(' '));
+ };
+ put(10,'100',{args:['chrome','--user-data-dir='+profile],children:[11]});put(11,'110',{parent:10,args:['chrome','--type=renderer']});
+ put(90,'900',{args:['chrome','--user-data-dir='+profile+'-neighbor']});
+ const view={readFileSync:file=>{if(!files.has(file))throw Object.assign(Error('exited'),{code:'ENOENT'});return files.get(file);},
+  readdirSync:()=>[...files.keys()].filter(k=>k.endsWith('/stat')).map(k=>k.split('/')[2])};
+ const observe=vm.runInNewContext(functionSource+';observeOwnedChromeProcesses',{fs:view,assert,path,Date});
+ const original=observe({profile,rootPid:10});assert.deepEqual(Array.from(original.aliveProcesses,row=>row.pid),[10,11]);
+ for(const key of [...files.keys()])if(key.startsWith('/proc/10/'))files.delete(key);
+ const reparented=observe({profile,rootPid:10,knownProcesses:original.knownProcesses});assert.deepEqual(Array.from(reparented.aliveProcesses,row=>row.pid),[11]);
+ put(11,'111',{args:['unrelated-process']});
+ const reused=observe({profile,rootPid:10,knownProcesses:original.knownProcesses});assert.equal(reused.aliveProcesses.length,0);
+ put(10,'101',{args:['unrelated-process']});assert.throws(()=>observe({profile,rootPid:10}),/PID\/profile mismatch/u);
+});
+test('actual lifecycle cleanup records a nonretryable filesystem FAIL without masking the original test failure',async()=>{
+ const f=cleanupFixture(),chromeTemp=path.join(f.root,'gpt-live-chrome-owned');fs.mkdirSync(chromeTemp,{mode:0o700});
+ const chromeTempIdentity=captureOwnedBrowserDirectory(chromeTemp,{parent:f.root,prefix:'gpt-live-chrome-'});
+ const source=readFileSync(new URL('./call-lifecycle-smoke.mjs',import.meta.url),'utf8');
+ const block=source.slice(source.indexOf(' if(chromeTemp){try {cleanup.chromeTempRemoval='),source.indexOf(" check('actual-'+validationTarget+'-config-unchanged'"));
+ assert(block.includes('await removeOwnedBrowserDirectory')&&!block.includes('rmSync'));
+ const original={name:'test-exception',passed:false,message:'SessionTranscriptProjectionUnavailableError'},checks=[original],cleanup={chromeExited:true,chromeProcessesExited:true};
+ const failure=Object.assign(Error('original permission error'),{code:'EACCES'});let waitCalls=0;
+ try {
+  const run=vm.runInNewContext('(async()=>{'+block+'})',{chromeTemp,chromeTempIdentity,scratch:f.directory,scratchIdentity:f.identity,cleanup,fs,
+   inspectChrome:f.inspectChrome,check:(name,passed,details={})=>checks.push({name,passed,...details}),
+   removeOwnedBrowserDirectory:(directory,options)=>removeOwnedBrowserDirectory(directory,options,{remove:async(target,flags)=>{
+    if(target===chromeTemp)throw failure;await fs.promises.rm(target,flags);},wait:async()=>{waitCalls++;}})});
+  await run();assert.equal(checks[0],original);assert.equal(waitCalls,0);
+  assert.equal(checks.find(c=>c.name==='private-browser-temp-cleanup').code,'EACCES');
+  assert.equal(checks.find(c=>c.name==='owned-browser-and-scratch-cleanup').passed,false);
+  assert.equal(fs.existsSync(chromeTemp),true);assert.equal(fs.existsSync(f.directory),false);
+ } finally {f.dispose();}
+});
 
 test('the exact temporary rebuilding failure yields a retry without inventing or replacing history',async()=>{
  const history={messages:[{role:'assistant',content:'Actual stored result'}]},observed=[];

@@ -5,6 +5,81 @@ import {spawn} from 'node:child_process';
 import {randomBytes} from 'node:crypto';
 import {setTimeout as sleep} from 'node:timers/promises';
 
+export function captureOwnedBrowserDirectory(directory,{parent,prefix}={}) {
+  assert(path.isAbsolute(directory)&&path.isAbsolute(parent)&&typeof prefix==='string'&&prefix.length>0,
+    'Exact owned browser directory identity required');
+  const resolved=path.resolve(directory),stat=fs.lstatSync(resolved);
+  assert(path.dirname(resolved)===fs.realpathSync(parent)&&path.basename(resolved).startsWith(prefix)&&
+    stat.isDirectory()&&!stat.isSymbolicLink()&&fs.realpathSync(resolved)===resolved&&stat.uid===process.getuid(),
+    'Browser cleanup directory escaped its newly allocated private scope');
+  return Object.freeze({path:resolved,dev:stat.dev,ino:stat.ino,uid:stat.uid});
+}
+
+export function observeOwnedChromeProcesses({profile,rootPid,knownProcesses=[]}={}) {
+  assert(path.isAbsolute(profile)&&(!rootPid||Number.isSafeInteger(rootPid)&&rootPid>0),
+    'Exact owned Chrome profile and process identity required');
+  const known=new Map(knownProcesses.map(row=>[row.pid,row])),alive=new Map(),visited=new Set();
+  const readProcess=pid=>{
+    try {
+      const stat=fs.readFileSync('/proc/'+pid+'/stat','utf8'),fields=stat.slice(stat.lastIndexOf(')')+2).trim().split(/\s+/u);
+      assert(/^\d+$/u.test(fields[19]??''),'Owned Chrome start ticks unavailable');
+      return {pid:Number(pid),startTicks:fields[19],state:fields[0]};
+    } catch(error){if(['ENOENT','ESRCH'].includes(error.code))return null;throw error;}
+  };
+  const add=row=>{if(row){known.set(row.pid,row);if(!['Z','X'].includes(row.state))alive.set(row.pid,row);}};
+  const visit=pid=>{
+    if(visited.has(pid))return;visited.add(pid);
+    const row=readProcess(pid);if(!row)return;
+    const previous=known.get(row.pid);if(previous&&previous.startTicks!==row.startTicks)return;
+    add(row);
+    let children;try{children=fs.readFileSync('/proc/'+pid+'/task/'+pid+'/children','utf8').trim();}
+    catch(error){if(['ENOENT','ESRCH'].includes(error.code))return;throw error;}
+    for(const child of children.split(/\s+/u).filter(Boolean))visit(Number(child));
+  };
+  if(rootPid) {
+    const row=readProcess(rootPid);
+    if(row&&(!known.has(rootPid)||known.get(rootPid).startTicks===row.startTicks)) {
+      let args;try{args=fs.readFileSync('/proc/'+rootPid+'/cmdline','utf8').split('\0');}
+      catch(error){if(!['ENOENT','ESRCH'].includes(error.code))throw error;}
+      if(args?.includes('--user-data-dir='+profile))visit(rootPid);
+      else if(!['Z','X'].includes(row.state))assert(known.has(rootPid),'Owned Chrome main PID/profile mismatch');
+    }
+  }
+  // Main exit can reparent a renderer. Retain its original PID/start ticks and
+  // also inspect only processes declaring this exact unique profile, never kill.
+  for(const prior of [...known.values()]) {
+    const row=readProcess(prior.pid);if(row?.startTicks===prior.startTicks)add(row);
+  }
+  for(const entry of fs.readdirSync('/proc'))if(/^\d+$/u.test(entry)) {
+    let args;try{args=fs.readFileSync('/proc/'+entry+'/cmdline','utf8').split('\0');}
+    catch(error){if(['ENOENT','ESRCH'].includes(error.code))continue;throw error;}
+    if(args.includes('--user-data-dir='+profile))add(readProcess(Number(entry)));
+  }
+  return {observedAt:Date.now(),profile,rootPid:rootPid??null,knownProcesses:[...known.values()],
+    aliveProcesses:[...alive.values()],source:'exact-private-profile-and-captured-descendant-start-ticks'};
+}
+
+export async function removeOwnedBrowserDirectory(directory,{identity,chromeExited,inspectChrome,maxAttempts=10,retryDelayMs=100}={},
+  {remove=(target,options)=>fs.promises.rm(target,options),wait=sleep}={}) {
+  assert(identity?.path===path.resolve(directory)&&path.isAbsolute(directory)&&chromeExited===true&&typeof inspectChrome==='function',
+    'Browser directory removal requires its exact allocation and confirmed Chrome exit');
+  assert(Number.isSafeInteger(maxAttempts)&&maxAttempts>=1&&maxAttempts<=10&&
+    Number.isSafeInteger(retryDelayMs)&&retryDelayMs>=1&&retryDelayMs<=100,'Bounded browser directory cleanup required');
+  let attempts=0;
+  while(attempts<maxAttempts) {
+    const observation=inspectChrome();assert(observation.aliveProcesses.length===0,'Owned Chrome process remains alive; keep its directory');
+    let stat;try{stat=fs.lstatSync(directory);}catch(error){if(error.code==='ENOENT')return {removed:true,attempts};throw error;}
+    assert(stat.isDirectory()&&!stat.isSymbolicLink()&&fs.realpathSync(directory)===identity.path&&
+      stat.dev===identity.dev&&stat.ino===identity.ino&&stat.uid===identity.uid,'Owned browser directory identity changed; refuse removal');
+    attempts++;
+    try{await remove(directory,{recursive:true,force:true,maxRetries:0});return {removed:!fs.existsSync(directory),attempts};}
+    catch(error){if(error.code!=='ENOTEMPTY'||attempts===maxAttempts)throw error;}
+    // Only ENOTEMPTY gets another event-loop turn. Permission, scope and all
+    // other filesystem/process errors are preserved without retrying.
+    await wait(retryDelayMs);
+  }
+}
+
 export async function createPrivatePulseMicrophone(scratch,{validationTarget='candidate',privateScratchRoot,executables={},moduleDirectory,libraryPath}={}) {
   if(validationTarget==='candidate')assert(process.env.VLAB_CANDIDATE_ID&&path.resolve(scratch).startsWith(path.resolve(process.env.OPENCLAW_STATE_DIR)+'/'),'Private Candidate pulse directory required');
   else {
