@@ -329,3 +329,19 @@ VLab 实测（Playwright Chromium 模拟 393x852 触摸手机，CDP 注入真实
 
 **测试环境限制**：Mac 到 VLab 的 tailnet 链路只有约 30–85 KB/s，手机画面在滚动后要几秒才赶上（服务器端早已滚到位）；一次 3 格平滑滚动约 380 KB 画面数据。生产走 cloudflared，带宽高得多，但手机网络差时平滑滚动的中间帧仍是主要流量，后续可考虑给 V 的 Chrome 关平滑滚动。未覆盖：真机 iOS 键盘与 visualViewport 行为、真实 4G/5G 下的跟手程度。
 
+### 13.8 打开慢与页面交还（2026-10-04 CST，VLab）
+
+**打开慢**：Tianyi 在手机（中国移动网络）上两次停在「连接中」，服务端审计显示第一个链接 10 分钟内从未被领取——页面脚本没跑到领取那一步。WebKit（iPhone 内核）本身没问题（Mac 上 4.5 s 连上，无报错），慢在页面要拉 43 个文件（noVNC 41 个模块，且每次都重新确认）。改为打包成一个文件并按内容哈希长期缓存：VLab 慢链路上从打开到「你在操作」约 2–4 s，请求只剩页面、样式、脚本和 API。
+
+**页面交还直接唤醒 V**（Tianyi：「直接点交还给 V，V 应该就能接收到」）。VLab 真实飞书私聊三个入口实测，按页面按钮后：
+
+| 入口 | 唤醒 | V 接着完成并回复 |
+|---|---|---|
+| Worker（deepseek-v4-pro） | 约 3 s | example.org 标题 Example Domain |
+| vcc（claude-cli） | 约 1 s | iana.org Example Domains，并说明「交还后无人控制，直接接上」 |
+| vcodex | 约 3 s | example.net 标题 Example Domain |
+
+卡片都自动变为「已完成」。
+
+**发现并已修**：同一台 VLab 上另一个会话的 candidate Gateway（`candidate-d016c916`）加载了同一份插件、连同一个接管服务，抢走了一次唤醒，你的会话不在它那里所以 V 没醒。改为认领绑定签发它的 Gateway（`origin`），服务端强制校验；同时唤醒先于卡片更新，并有 30 s 超时，任何一步卡住都不会拖住循环。
+

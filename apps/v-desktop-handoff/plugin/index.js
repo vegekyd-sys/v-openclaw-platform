@@ -12,8 +12,24 @@ import { nativeHandoffCard } from "./core/native-card.js";
 const DEFAULT_COVER = "https://cdn.makaron.app/storage/v1/object/public/images/5955d413-cad2-4814-b094-7fdf62d20400/0bc9ae1f-59b7-45a7-9e73-bf7c9951afdd/snapshot-d2ec2e6c-240d-4400-b0ad-4fce335e2e8c.jpg";
 
 const NATIVE_CARD_INSTRUCTION =
-  "A card titled 电脑 with three buttons has been posted in this conversation: 接管 (the user takes over V's desktop), 我完成了 (hands it back) and 跳过 (the user will not do this step). Do NOT repeat or paraphrase the url and do not say where the card is. Reply with one short sentence such as 卡片已发出，接管后完成登录，做完点「我完成了」, then end your turn. When `/v-handback <id>` arrives, the desktop is already back with you: continue the task right away without asking. When `/v-skip <id>` arrives, the user skipped this step: do not issue another handoff for it; say briefly what you can do instead or where the task is blocked.";
+  "A card titled 电脑 with three buttons has been posted in this conversation: 接管 (the user takes over V's desktop), 我完成了 (hands it back) and 跳过 (the user will not do this step). Do NOT repeat or paraphrase the url and do not say where the card is. Reply with one short sentence such as 卡片已发出，接管后完成登录，做完点「我完成了」, then end your turn. When `/v-handback <id>` arrives, or a message saying the user pressed 交还给 V on the takeover page, the desktop is already back with you: continue the task right away without asking. When `/v-skip <id>` arrives, the user skipped this step: do not issue another handoff for it; say briefly what you can do instead or where the task is blocked.";
 import { decideHandBack, decideToolCall, refuseEnd } from "./core/policy.js";
+import { createHash } from "node:crypto";
+
+// Identifies this Gateway and its workers (same home and state dir), and nothing else:
+// a candidate copy loading the same plugin against the same handoff service differs.
+const GATEWAY_ORIGIN = createHash("sha256")
+  .update(`${process.env.OPENCLAW_HOME ?? ""}\0${process.env.OPENCLAW_STATE_DIR ?? ""}`)
+  .digest("hex")
+  .slice(0, 24);
+
+function withTimeout(promise, ms) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`timed out after ${ms} ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
 
 function textResult(value) {
   return { content: [{ type: "text", text: JSON.stringify(value, null, 2) }] };
@@ -216,7 +232,7 @@ export default definePluginEntry({
             throw new Error("A control handoff is only issued in a direct/private conversation. Ask the user to message V privately, or issue kind=watch here.");
           }
           const issued = await client.issue(
-            { kind, ownerId: actorUserId, sessionKey, reason: params.reason, claimTtlMs: config.claimTtlMs, sessionTtlMs: config.sessionTtlMs },
+            { kind, ownerId: actorUserId, sessionKey, reason: params.reason, claimTtlMs: config.claimTtlMs, sessionTtlMs: config.sessionTtlMs, origin: GATEWAY_ORIGIN },
             { signal },
           );
           if (sessionKey) {
@@ -399,6 +415,63 @@ export default definePluginEntry({
       return { actor, status, allowed };
     };
 
+    // 交还给 V on the takeover page: the service records it, and this Gateway-only
+    // service wakes V in the conversation the handoff belongs to, so the user does not
+    // have to go back to the chat and press 我完成了. claimWake succeeds once, so a
+    // second Gateway or a later 我完成了 never wakes V twice.
+    const WAKE_MESSAGE = (id) =>
+      `用户在接管页点了「交还给 V」：电脑已经交还给你（${id}）。直接继续刚才的任务，不用再问。`;
+    let wakeTimer = null;
+    api.registerService?.({
+      id: "v-desktop-handoff-page-handback",
+      start(ctx) {
+        const run = api.runtime?.subagent?.run;
+        if (typeof run !== "function") {
+          ctx.logger?.warn?.("desktop handoff: runtime.subagent.run unavailable; 交还给 V on the page will not wake V");
+          return;
+        }
+        let busy = false;
+        wakeTimer = setInterval(async () => {
+          if (busy) {
+            return;
+          }
+          busy = true;
+          try {
+            const state = await client.request("GET", "/v1/state", undefined, { timeoutMs: 2_000 });
+            for (const h of state?.activeHandoffs ?? []) {
+              if (!h.pageHandBackAt || h.wakeClaimedAt || !h.sessionKey || h.controlActive || h.origin !== GATEWAY_ORIGIN) {
+                continue;
+              }
+              if (!(await client.claimWake(h.id, GATEWAY_ORIGIN).catch(() => false))) {
+                continue;
+              }
+              handedBack.add(h.id);
+              // Wake V first; the card (screenshot upload + Feishu patch) follows in the background.
+              try {
+                const res = await withTimeout(
+                  run({ sessionKey: h.sessionKey, message: WAKE_MESSAGE(h.id), deliver: true, idempotencyKey: `v-desktop-handoff-wake-${h.id}-${h.pageHandBackAt}` }),
+                  30_000,
+                );
+                ctx.logger?.info?.(`desktop handoff ${h.id} handed back on the page; woke ${h.sessionKey} (run ${res?.runId ?? "?"})`);
+              } catch (error) {
+                ctx.logger?.warn?.(`desktop handoff ${h.id}: waking ${h.sessionKey} failed: ${error.message}`);
+              }
+              setCardState(h.id, "done", ctx.config).catch(() => {});
+            }
+          } catch {
+            /* service unreachable: try again on the next tick */
+          } finally {
+            busy = false;
+          }
+        }, config.wakePollMs ?? 3_000);
+        wakeTimer.unref?.();
+      },
+      stop() {
+        clearInterval(wakeTimer);
+        wakeTimer = null;
+      },
+    });
+
     api.registerCommand?.({
       name: "v-takeover",
       description: "Mark V's desktop as taken over (the 接管 card button; the button also opens the desktop).",
@@ -430,6 +503,10 @@ export default definePluginEntry({
         }
         if (status?.controlActive) {
           handedBack.delete(status.id);
+        }
+        // Already handed back on the takeover page and V was woken there: do not wake it twice.
+        if (status && !status.controlActive && status.wakeClaimedAt) {
+          return { text: "已经在接管页交还给 V 了，V 正在接着做。" };
         }
         const decision = decideHandBack(status, { alreadyHandedBack: status ? handedBack.has(status.id) : false });
         if (decision.action === "release") {
