@@ -703,6 +703,119 @@ export function secretLinkSentPrivately(record) {
   return `🔑 V 需要凭据 ${name}，录入链接已私信发给你。`;
 }
 
+/** The same link as a card: title, reason, allowed hosts, validity, one 填写凭据 button. */
+export function secretLinkCard(record, link, { now = Date.now() } = {}) {
+  const binding = record?.questions?.[0]?.secretStore ?? {};
+  const minutes = Math.max(1, Math.round((link.expiresAtMs - now) / 60_000));
+  const hosts = (Array.isArray(binding.allowedHosts) ? binding.allowedHosts : []).filter((h) => typeof h === "string" && h.trim());
+  const lines = [];
+  if (typeof binding.reason === "string" && binding.reason.trim()) lines.push(binding.reason.trim());
+  if (hosts.length) lines.push(`只用于：${hosts.join("、")}`);
+  lines.push(`链接只能用一次、${minutes} 分钟内有效；值不会出现在聊天记录里。`);
+  return { title: `🔑 V 需要凭据 ${binding.name ?? "凭据"}`, lines, buttons: [{ label: "填写凭据", url: link.url }] };
+}
+
+// ------------------------------------------------------------ link cards
+//
+// A card the way V's Feishu cards look: a title, a few short lines and link
+// buttons. `{title, lines, buttons: [{label, url}]}`; each channel renders it
+// natively (DingTalk actionCard, WeCom text_notice, Telegram inline keyboard)
+// and falls back to the plain text when the platform refuses the card.
+
+const linkOf = (button) => {
+  const url = button?.url ?? (button?.action?.type === "url" ? button.action.url : undefined);
+  return typeof url === "string" && /^https?:\/\/\S+$/iu.test(url.trim()) ? url.trim() : undefined;
+};
+const plainLine = (text) => String(text ?? "").replace(/\*\*|__|`/gu, "").trim();
+
+/**
+ * A link card from a portable presentation (`openclaw message send
+ * --presentation`): title, the message text and text/context blocks as lines,
+ * URL buttons. Callback buttons are dropped (these channels cannot post them
+ * back); undefined when no URL button is left.
+ */
+export function linkCardFromPresentation(presentation, text) {
+  if (!presentation || !Array.isArray(presentation.blocks)) return undefined;
+  const title = String(presentation.title ?? "").trim();
+  const lines = [];
+  const body = String(text ?? "").trim();
+  if (body && body !== title) lines.push(body);
+  const buttons = [];
+  for (const block of presentation.blocks) {
+    if ((block?.type === "text" || block?.type === "context") && String(block.text ?? "").trim()) lines.push(String(block.text).trim());
+    if (block?.type === "buttons") {
+      for (const b of block.buttons ?? []) {
+        const url = linkOf(b);
+        if (url && String(b.label ?? "").trim()) buttons.push({ label: String(b.label).trim(), url });
+      }
+    }
+  }
+  return buttons.length ? { title: title || buttons[0].label, lines, buttons } : undefined;
+}
+
+/** The card as plain text, links spelled out. */
+export function linkCardText(card) {
+  return [card.title, ...card.lines.map(plainLine), ...card.buttons.map((b) => `${b.label}：${b.url}`)].filter(Boolean).join("\n");
+}
+
+/** Sends the card; when the platform refuses it, the text instead. */
+export async function sendCardOrText({ card, text, sendCard, sendText, log }) {
+  if (card && sendCard) {
+    try {
+      return await sendCard(card);
+    } catch (error) {
+      log?.(`v-experience: card refused, sending text instead: ${String(error?.description ?? error?.message ?? error).slice(0, 200)}`);
+    }
+  }
+  return sendText(text);
+}
+
+/**
+ * A DingTalk link that the PC client opens in the system browser
+ * (`pc_slide=false`; true would open the side panel). Phones open it in
+ * DingTalk's own browser.
+ */
+export function dingtalkOpenUrl(url) {
+  return `dingtalk://dingtalkclient/page/link?url=${encodeURIComponent(url)}&pc_slide=false`;
+}
+
+/**
+ * DingTalk robot `actionCard` ({title, text, singleTitle, singleURL}) for the
+ * session webhook (`msgtype: "actionCard"`) and the robot OpenAPI
+ * (`msgKey: "sampleActionCard"`, same fields). The first link is the button;
+ * any others become links in the text.
+ */
+export function dingtalkActionCard(card) {
+  const [first, ...more] = card.buttons;
+  const text = [`### ${card.title}`, ...card.lines, ...more.map((b) => `[${b.label}](${dingtalkOpenUrl(b.url)})`)].join("\n\n");
+  return { title: card.title, text, singleTitle: first.label, singleURL: dingtalkOpenUrl(first.url) };
+}
+
+/**
+ * WeCom smart-robot template card, `card_type: "text_notice"`: the first line
+ * under the title, the rest as the sub title, links in the jump list, and the
+ * card itself opens the first link.
+ */
+export function wecomTextNotice(card, { taskId } = {}) {
+  const [desc, ...rest] = card.lines.map(plainLine).filter(Boolean);
+  return {
+    card_type: "text_notice",
+    main_title: { title: card.title, ...(desc ? { desc } : {}) },
+    ...(rest.length ? { sub_title_text: rest.join("\n") } : {}),
+    jump_list: card.buttons.slice(0, 3).map((b) => ({ type: 1, title: b.label, url: b.url })),
+    card_action: { type: 1, url: card.buttons[0].url },
+    task_id: taskId ?? `v_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+  };
+}
+
+/** Telegram message text (HTML) and options with one URL button per row. */
+export function telegramLinkCard(card) {
+  return {
+    text: [`<b>${escapeHtml(card.title)}</b>`, ...card.lines.map((l) => escapeHtml(plainLine(l)))].join("\n\n"),
+    options: { parse_mode: "HTML", reply_markup: { inline_keyboard: card.buttons.map((b) => [{ text: b.label, url: b.url }]) } },
+  };
+}
+
 async function revokeSecretLink(link, fetchImpl) {
   await fetchImpl(`${link.config.url}/v1/links/${link.id}`, { method: "DELETE", headers: { authorization: `Bearer ${link.adminToken}` }, signal: AbortSignal.timeout(5000) }).catch(() => {});
 }
@@ -712,6 +825,8 @@ async function revokeSecretLink(link, fetchImpl) {
  * the asker's direct chat only: here when `direct`, else through
  * `sendPrivate` (a group then hears it was sent privately). Otherwise the
  * notice is shown and `cancel()` ends the question so V carries on.
+ * `sendHere(text, card)` / `sendPrivate(text, card)` get the link as text and,
+ * for channels that render one, as a link card (`secretLinkCard`).
  * Returns "link", "link-private" or "cancelled".
  */
 export async function deliverSecretQuestion({ record, channel, askerId, direct, markdown = false, sendHere, sendPrivate, cancel, log, env, fetchImpl = globalThis.fetch }) {
@@ -723,12 +838,13 @@ export async function deliverSecretQuestion({ record, channel, askerId, direct, 
   }
   if (link) {
     try {
+      const card = secretLinkCard(record, link);
       if (direct) {
-        await sendHere(secretLinkMessage(record, link, { markdown }));
+        await sendHere(secretLinkMessage(record, link, { markdown }), card);
         return "link";
       }
       if (sendPrivate) {
-        await sendPrivate(secretLinkMessage(record, link, { markdown }));
+        await sendPrivate(secretLinkMessage(record, link, { markdown }), card);
         await Promise.resolve(sendHere(secretLinkSentPrivately(record))).catch(() => {});
         return "link-private";
       }
@@ -1078,11 +1194,18 @@ export function createTelegramExperience({ call, log }) {
     if (secret) {
       // A private chat's id is the user's id; a group hears the link went to the asker's DM.
       const noPreview = { link_preview_options: { is_disabled: true } };
+      // The link behind a 填写凭据 button; Telegram refuses buttons whose url is
+      // not a public http(s) address (BUTTON_URL_INVALID), then it is a text link.
+      const send = (to, options) => (text, card) => sendCardOrText({
+        card, text, log,
+        sendCard: (c) => { const tg = telegramLinkCard(c); return api.sendMessage(to, tg.text, { ...options, ...noPreview, ...tg.options }); },
+        sendText: (t) => api.sendMessage(to, t, { ...options, ...noPreview }),
+      });
       const how = await deliverSecretQuestion({
         record, channel: "telegram", askerId: senderId, log,
         direct: senderId != null && String(chatId) === String(senderId),
-        sendHere: (text) => api.sendMessage(chatId, text, { ...extra, ...noPreview }),
-        sendPrivate: senderId != null ? (text) => api.sendMessage(senderId, text, noPreview) : undefined,
+        sendHere: send(chatId, extra),
+        sendPrivate: senderId != null ? send(senderId, {}) : undefined,
         cancel: () => call("question.resolve", { id: record.id, cancel: true, resolvedBy: "telegram:credential-unsupported" }),
       });
       log?.(`v-experience: telegram credential question ${record.id} ${how}`);

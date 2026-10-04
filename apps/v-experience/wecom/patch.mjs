@@ -4,8 +4,9 @@
 //   patchWeComPlugin(srcDir, { experienceSource })
 //
 // srcDir is the plugin's dist/src. Writes `v-experience.mjs` next to monitor.js
-// and rewrites monitor.js. Every anchor must match exactly once; an already
-// patched file is left unchanged.
+// and rewrites monitor.js (replies) and channel.js (link cards as template
+// cards). Every anchor must match exactly once; an already patched file is
+// left unchanged.
 //
 // WeCom limits: a reply is one stream message that can be rewritten for six
 // minutes after the user's message; after it is finished it cannot change.
@@ -123,10 +124,16 @@ import { resolveWecomCommandAuthorization as vResolveCommandAuthorization } from
             if (secret) {
                 // A one-time entry link, only in the asker's direct chat (a
                 // direct chat's id is the user id). Else notice + cancel.
+                // The link behind a 填写凭据 button on a text_notice card.
+                const vSendLink = (to) => (text, card) => vExperience.sendCardOrText({
+                    card, text, log: (message) => runtime.log?.(message),
+                    sendCard: (c) => wsClient.sendMessage(to, { msgtype: "template_card", template_card: vExperience.wecomTextNotice(c) }),
+                    sendText: (t) => wsClient.sendMessage(to, { msgtype: "markdown", markdown: { content: t } }),
+                });
                 vSecretHow = await vExperience.deliverSecretQuestion({
                     record: question, channel: "wecom", askerId: vSender, direct: chatType !== "group", markdown: true,
-                    sendHere: (text) => vSend(text),
-                    sendPrivate: vSender ? (text) => wsClient.sendMessage(vSender, { msgtype: "markdown", markdown: { content: text } }) : undefined,
+                    sendHere: vSendLink(chatId),
+                    sendPrivate: vSender ? vSendLink(vSender) : undefined,
                     cancel: () => vCallGateway("question.resolve", { config }, { id: question.id, cancel: true, resolvedBy: "wecom:credential-unsupported" }, { scopes: ["operator.questions"], progress: false, timeoutMs: 5000 }),
                     log: (message) => runtime.log?.(message),
                 });
@@ -270,25 +277,69 @@ import { resolveWecomCommandAuthorization as vResolveCommandAuthorization } from
   },
 ];
 
-export function patchMonitor(source) {
+// channel.js: the outbound adapter. `openclaw message send --presentation`
+// (V's desktop handoff card, delivered through the Gateway's message.action)
+// used to arrive as flattened text; a presentation with link buttons now goes
+// out as a text_notice template card, anything else as before.
+const channelReplacements = [
+  {
+    name: "channel-imports",
+    anchor: 'import { getWeComWebSocket } from "./state-manager.js";\n',
+    insert: "after",
+    code: `// ${MARKER}
+import * as vExperience from "./${EXPERIENCE_FILE}";
+import { sendPayloadWithChunkedTextAndMedia as vSendTextAndMedia } from "openclaw/plugin-sdk/reply-payload";
+`,
+  },
+  {
+    name: "outbound-card",
+    anchor: '    outbound: {\n        deliveryMode: "gateway",\n',
+    insert: "after",
+    code: `        // ${MARKER}: link buttons as a template card (callback buttons cannot be posted back).
+        renderPresentation: ({ payload, presentation }) => {
+            const card = vExperience.linkCardFromPresentation(presentation, payload.text);
+            return card ? { ...payload, text: vExperience.linkCardText(card), channelData: { ...payload.channelData, vLinkCard: card } } : null;
+        },
+        sendPayload: async (ctx) => {
+            const card = ctx.payload?.channelData?.vLinkCard;
+            const out = wecomPlugin.outbound;
+            const wsClient = getWeComWebSocket(ctx.accountId ?? DEFAULT_ACCOUNT_ID);
+            // Without the robot socket (Agent HTTP API) the card goes out as its text.
+            if (!card || !wsClient?.isConnected) return vSendTextAndMedia({ ctx, textChunkLimit: out.textChunkLimit, chunker: out.chunker, sendText: out.sendText, sendMedia: out.sendMedia, emptyResult: { channel: CHANNEL_ID, messageId: "" } });
+            const chatId = String(ctx.to ?? "").replace(new RegExp(\`^\${CHANNEL_ID}:\`, "i"), "");
+            const result = await wsClient.sendMessage(chatId, { msgtype: "template_card", template_card: vExperience.wecomTextNotice(card) });
+            return { channel: CHANNEL_ID, messageId: result?.headers?.req_id ?? \`wecom-\${Date.now()}\`, chatId };
+        },
+`,
+  },
+];
+
+function applyAll(source, list, label) {
   if (source.includes(MARKER)) return source;
   let out = source;
-  for (const r of replacements) {
+  for (const r of list) {
     const count = out.split(r.anchor).length - 1;
-    assert.equal(count, 1, `wecom anchor "${r.name}" matched ${count} times`);
+    assert.equal(count, 1, `wecom ${label} anchor "${r.name}" matched ${count} times`);
     const next = r.replace ?? (r.insert === "after" ? r.anchor + r.code : r.code + r.anchor);
     out = out.replace(r.anchor, () => next);
   }
   return out;
 }
 
+export const patchMonitor = (source) => applyAll(source, replacements, "monitor");
+export const patchChannel = (source) => applyAll(source, channelReplacements, "channel");
+
 export function patchWeComPlugin(srcDir, { experienceSource }) {
-  const file = path.join(srcDir, "monitor.js");
-  const before = fs.readFileSync(file, "utf8");
-  const after = patchMonitor(before);
-  fs.writeFileSync(file, after);
+  const files = {};
+  for (const [file, fn] of [["monitor.js", patchMonitor], ["channel.js", patchChannel]]) {
+    const p = path.join(srcDir, file);
+    const before = fs.readFileSync(p, "utf8");
+    const after = fn(before);
+    fs.writeFileSync(p, after);
+    files[file] = before !== after;
+  }
   fs.copyFileSync(experienceSource, path.join(srcDir, EXPERIENCE_FILE));
-  return { file: "monitor.js", changed: before !== after, experience: EXPERIENCE_FILE };
+  return { file: "monitor.js", changed: Object.values(files).some(Boolean), files, experience: EXPERIENCE_FILE };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

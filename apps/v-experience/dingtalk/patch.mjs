@@ -4,8 +4,9 @@
 //   patchDingtalkConnector(distDir, { experienceSource })
 //
 // writes `v-experience.mjs` next to the connector's chunks and rewrites the
-// chunk that holds the reply dispatcher. Every anchor must match exactly once;
-// an already patched chunk is left unchanged.
+// chunk that holds the reply dispatcher, the Stream connection chunk (question
+// card callbacks) and the channel chunk (link cards as actionCards). Every
+// anchor must match exactly once; an already patched chunk is left unchanged.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -105,6 +106,12 @@ import { formatChannelProgressDraftLineForEntry as vFormatProgressLine } from "o
 \t\tawait sendMessage(account.config, sessionWebhook, markdown, { useMarkdown: true, log: params.runtime.log, cfg });
 \t\toutboundUserVisibleThisTurn = true;
 \t};
+\t// ${MARKER}: a link card (credential link) as an actionCard with one button.
+\tconst vSendCard = async (card) => {
+\t\tconst resp = await dingtalkHttp.post(sessionWebhook, { msgtype: "actionCard", actionCard: vExperience.dingtalkActionCard(card) }, { headers: { "x-acs-dingtalk-access-token": await getAccessToken(account.config), "Content-Type": "application/json" } });
+\t\tif (resp?.data?.errcode) throw new Error(\`actionCard not sent: \${JSON.stringify(resp.data).slice(0, 200)}\`);
+\t\toutboundUserVisibleThisTurn = true;
+\t};
 \tconst vDeliverQuestionRecord = async (question) => {
 \t\tif (!question?.id) return false;
 \t\tconst secret = question.questions?.some((q) => q.isSecret || q.secretStore);
@@ -117,14 +124,21 @@ import { formatChannelProgressDraftLineForEntry as vFormatProgressLine } from "o
 \t\t\t\t// gets it through the robot's 1:1 message. Else notice + cancel.
 \t\t\t\tvSecretHow = await vExperience.deliverSecretQuestion({
 \t\t\t\t\trecord: question, channel: "dingtalk", askerId: senderId, direct: isDirect, markdown: true,
-\t\t\t\t\tsendHere: (text) => vSend(text),
-\t\t\t\t\tsendPrivate: senderId ? async (text) => {
-\t\t\t\t\t\tconst resp = await dingtalkHttp.post(\`\${DINGTALK_API}/v1.0/robot/oToMessages/batchSend\`, {
-\t\t\t\t\t\t\trobotCode: String(account.config.clientId ?? ""), userIds: [String(senderId)],
-\t\t\t\t\t\t\tmsgKey: "sampleMarkdown", msgParam: JSON.stringify({ title: "V 需要凭据", text })
-\t\t\t\t\t\t}, { headers: { "x-acs-dingtalk-access-token": await getAccessToken(account.config), "Content-Type": "application/json" } });
-\t\t\t\t\t\tconst data = resp?.data ?? {};
-\t\t\t\t\t\tif (!data.processQueryKey || data.invalidStaffIdList?.length || data.flowControlledStaffIdList?.length) throw new Error(\`private message not sent: \${JSON.stringify(data).slice(0, 200)}\`);
+\t\t\t\t\tsendHere: (text, card) => vExperience.sendCardOrText({ card, text, sendCard: vSendCard, sendText: vSend, log: (message) => log.warn(message) }),
+\t\t\t\t\tsendPrivate: senderId ? async (text, card) => {
+\t\t\t\t\t\tconst batchSend = async (msgKey, msgParam) => {
+\t\t\t\t\t\t\tconst resp = await dingtalkHttp.post(\`\${DINGTALK_API}/v1.0/robot/oToMessages/batchSend\`, {
+\t\t\t\t\t\t\t\trobotCode: String(account.config.clientId ?? ""), userIds: [String(senderId)],
+\t\t\t\t\t\t\t\tmsgKey, msgParam: JSON.stringify(msgParam)
+\t\t\t\t\t\t\t}, { headers: { "x-acs-dingtalk-access-token": await getAccessToken(account.config), "Content-Type": "application/json" } });
+\t\t\t\t\t\t\tconst data = resp?.data ?? {};
+\t\t\t\t\t\t\tif (!data.processQueryKey || data.invalidStaffIdList?.length || data.flowControlledStaffIdList?.length) throw new Error(\`private message not sent: \${JSON.stringify(data).slice(0, 200)}\`);
+\t\t\t\t\t\t};
+\t\t\t\t\t\tawait vExperience.sendCardOrText({
+\t\t\t\t\t\t\tcard, text, log: (message) => log.warn(message),
+\t\t\t\t\t\t\tsendCard: (c) => batchSend("sampleActionCard", vExperience.dingtalkActionCard(c)),
+\t\t\t\t\t\t\tsendText: (t) => batchSend("sampleMarkdown", { title: "V 需要凭据", text: t })
+\t\t\t\t\t\t});
 \t\t\t\t\t} : void 0,
 \t\t\t\t\tcancel: () => vCallGateway("question.resolve", { config: cfg }, { id: question.id, cancel: true, resolvedBy: "dingtalk:credential-unsupported" }, { scopes: ["operator.questions"], progress: false, timeoutMs: 5000 }),
 \t\t\t\t\tlog: (message) => log.info(message)
@@ -243,6 +257,47 @@ import { formatChannelProgressDraftLineForEntry as vFormatProgressLine } from "o
 \t\t\t}
 \t\t\tclient.socketCallBackResponse(res.headers?.messageId, reply ?? {});
 \t\t});
+`,
+  },
+  {
+    file: "runtime",
+    name: "runtime-imports",
+    anchor: /^import \{ n as sendMediaToDingTalk, o as sendTextToDingTalk \} from "(\.\/messaging-[\w-]+\.mjs)";\n/mu,
+    after: (m) => `// ${MARKER}
+import { i as vSendProactive } from "${m[1]}";
+import * as vExperience from "./${EXPERIENCE_FILE}";
+import { sendPayloadWithChunkedTextAndMedia as vSendTextAndMedia } from "openclaw/plugin-sdk/reply-payload";
+`,
+  },
+  {
+    // \`openclaw message send --presentation\` (V's desktop handoff card) used
+    // to arrive as flattened text. A presentation with link buttons now goes
+    // out as an actionCard; anything else is sent as before.
+    file: "runtime",
+    name: "outbound-card",
+    anchor: "\toutbound: {\n\t\tdeliveryMode: \"direct\",\n",
+    insert: "after",
+    code: `\t\t// ${MARKER}: link buttons as a DingTalk actionCard (callback buttons cannot be posted back).
+\t\trenderPresentation: ({ payload, presentation }) => {
+\t\t\tconst card = vExperience.linkCardFromPresentation(presentation, payload.text);
+\t\t\treturn card ? { ...payload, text: vExperience.linkCardText(card), channelData: { ...payload.channelData, vLinkCard: card } } : null;
+\t\t},
+\t\tsendPayload: async (ctx) => {
+\t\t\tconst card = ctx.payload?.channelData?.vLinkCard;
+\t\t\tconst out = dingtalkPlugin.outbound;
+\t\t\tif (!card) return vSendTextAndMedia({ ctx, textChunkLimit: out.textChunkLimit, chunker: out.chunker, sendText: out.sendText, sendMedia: out.sendMedia, emptyResult: { channel: CHANNEL_ID, messageId: "" } });
+\t\t\tconst account = resolveDingtalkAccount({ cfg: ctx.cfg, accountId: ctx.accountId });
+\t\t\tconst config = {
+\t\t\t\t...account.config,
+\t\t\t\t...account.clientId != null ? { clientId: account.clientId } : {},
+\t\t\t\t...account.clientSecret != null ? { clientSecret: account.clientSecret } : {}
+\t\t\t};
+\t\t\tconst to = String(ctx.to ?? "");
+\t\t\tconst target = to.startsWith("group:") ? { openConversationId: to.slice(6) } : to.startsWith("user:") ? { userId: to.slice(5) } : to.startsWith("cid") ? { openConversationId: to } : { userId: to };
+\t\t\tconst result = await vSendProactive(config, target, JSON.stringify(vExperience.dingtalkActionCard(card)), { msgType: "actionCard", useAICard: false });
+\t\t\tif (!result.ok) throw new Error(result.error || "DingTalk actionCard delivery failed");
+\t\t\treturn { channel: CHANNEL_ID, messageId: result.processQueryKey ?? "unknown", target: { kind: "conversation", id: to } };
+\t\t},
 `,
   },
   {
@@ -378,7 +433,8 @@ function applyAll(source, list, label) {
     if (r.anchor instanceof RegExp) {
       const m = r.anchor.exec(out);
       assert(m, `dingtalk ${label} anchor "${r.name}" not found`);
-      out = out.slice(0, m.index + m[0].length) + r.after + out.slice(m.index + m[0].length);
+      const added = typeof r.after === "function" ? r.after(m) : r.after;
+      out = out.slice(0, m.index + m[0].length) + added + out.slice(m.index + m[0].length);
       continue;
     }
     const count = out.split(r.anchor).length - 1;
@@ -393,6 +449,8 @@ function applyAll(source, list, label) {
 export const patchReplyChunk = (source) => applyAll(source, replacements.filter((r) => !r.file), "reply");
 /** The Stream connection chunk, patched (question card callbacks). */
 export const patchConnectionChunk = (source) => applyAll(source, replacements.filter((r) => r.file === "connection"), "connection");
+/** The channel plugin chunk, patched (outbound link cards). */
+export const patchRuntimeChunk = (source) => applyAll(source, replacements.filter((r) => r.file === "runtime"), "runtime");
 
 const findChunk = (distDir, re, needle) => {
   const matches = fs.readdirSync(distDir).filter((f) => re.test(f) && fs.readFileSync(path.join(distDir, f), "utf8").includes(needle));
@@ -403,11 +461,12 @@ const findChunk = (distDir, re, needle) => {
 /** The connector chunk that defines the reply dispatcher. */
 export const findReplyChunk = (distDir) => findChunk(distDir, /^message-handler-[\w-]+\.mjs$/u, "function createDingtalkReplyDispatcher(params)");
 export const findConnectionChunk = (distDir) => findChunk(distDir, /^connection-[\w-]+\.mjs$/u, "client.registerCallbackListener(TOPIC_ROBOT");
+export const findRuntimeChunk = (distDir) => findChunk(distDir, /^runtime-[\w-]+\.mjs$/u, "\toutbound: {\n\t\tdeliveryMode: \"direct\",\n");
 
 export function patchDingtalkConnector(distDir, { experienceSource }) {
   const changed = {};
   const chunk = findReplyChunk(distDir);
-  for (const [file, fn] of [[chunk, patchReplyChunk], [findConnectionChunk(distDir), patchConnectionChunk]]) {
+  for (const [file, fn] of [[chunk, patchReplyChunk], [findConnectionChunk(distDir), patchConnectionChunk], [findRuntimeChunk(distDir), patchRuntimeChunk]]) {
     const p = path.join(distDir, file);
     const before = fs.readFileSync(p, "utf8");
     const after = fn(before);

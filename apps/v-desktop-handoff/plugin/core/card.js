@@ -18,14 +18,18 @@ export function normalizePayment(payment) {
   return out.item || out.amount || out.merchant ? out : null;
 }
 
-export function handoffCard({ purpose = "login", kind = "control", reason, url, openWithinMinutes, sessionMinutes, payment, handoffId }) {
+/**
+ * `callbacks: false` for channels that cannot post a button back (DingTalk,
+ * WeCom): no 交还给 V button, the steps ask for a 好了 in the chat instead.
+ */
+export function handoffCard({ purpose = "login", kind = "control", reason, url, openWithinMinutes, sessionMinutes, payment, handoffId, callbacks = true }) {
   const pay = purpose === "payment" ? normalizePayment(payment) : null;
   const watch = kind === "watch";
   const title = watch
     ? "V 的桌面 · 只看"
     : purpose === "payment"
       ? `付款确认${pay?.merchant ? ` · ${pay.merchant}` : ""}`
-      : "V 需要你接管浏览器";
+      : "需要你接管 V 的电脑";
   // The Feishu channel renders the message text as the card body, above the
   // blocks. So the body carries the reason and purchase details, the blocks
   // carry the steps and the button, and the raw url appears only in `fallback`.
@@ -39,13 +43,14 @@ export function handoffCard({ purpose = "login", kind = "control", reason, url, 
     if (pay.amount) body.push(`金额：**${pay.amount}${pay.currency ? ` ${pay.currency}` : ""}**`);
     if (pay.merchant) body.push(`商户：${pay.merchant}`);
   }
+  const done = callbacks ? "点「交还给 V」" : "在聊天里回复「好了」";
   const steps = watch
     ? `${openWithinMinutes} 分钟内打开，只能观看，不能点击或输入。`
     : purpose === "payment"
-      ? `点「付款」打开 V 的电脑，核对金额后自己填写支付信息并确认付款，V 不会替你输入卡号。付完点「交还给 V」，V 接着做。${openWithinMinutes} 分钟内有效，接管最长 ${sessionMinutes} 分钟。`
-      : `点「接管电脑」打开 V 的电脑直接操作，做完点「交还给 V」，V 接着做。${openWithinMinutes} 分钟内有效，接管最长 ${sessionMinutes} 分钟。`;
+      ? `点「付款」打开 V 的电脑，核对金额后自己填写支付信息并确认付款，V 不会替你输入卡号。付完${done}，V 接着做。${openWithinMinutes} 分钟内打开有效，接管最长 ${sessionMinutes} 分钟。`
+      : `点「接管电脑」打开 V 的电脑直接操作，做完${done}，V 接着做。${openWithinMinutes} 分钟内打开有效，接管最长 ${sessionMinutes} 分钟。`;
   const buttons = [{ label: watch ? "观看桌面" : purpose === "payment" ? "付款" : "接管电脑", style: "primary", url }];
-  if (!watch && handoffId) {
+  if (!watch && handoffId && callbacks) {
     // A Feishu callback button: posts /v-handback as the clicking user, handled by this plugin.
     buttons.push({ label: "交还给 V", value: `/v-handback ${handoffId}` });
   }
@@ -59,11 +64,21 @@ export function handoffCard({ purpose = "login", kind = "control", reason, url, 
 }
 
 /**
- * Channels that render the plain card's buttons: Feishu, and Telegram (URL
- * button + callback button). DingTalk and WeCom flatten it to text, so there
- * the link goes into V's reply instead.
+ * Channels that render the plain card: Feishu and Telegram (URL button +
+ * callback button), DingTalk (actionCard) and WeCom (text_notice template
+ * card) through V's v-experience channel patches, link button only.
  */
-export const DEFAULT_CARD_CHANNELS = ["feishu", "telegram"];
+export const DEFAULT_CARD_CHANNELS = ["feishu", "telegram", "dingtalk-connector", "wecom"];
+
+/** Channels whose cards can carry the 交还给 V callback button. */
+export const CALLBACK_CARD_CHANNELS = ["feishu", "telegram"];
+
+/**
+ * Channels whose robot connection lives in the Gateway (outbound deliveryMode
+ * "gateway"): `openclaw message send` flattens a card to text on its way
+ * there, so the card goes through the Gateway's message.action instead.
+ */
+export const GATEWAY_ACTION_CHANNELS = ["wecom"];
 
 /**
  * Where to post the card in place: the conversation the request came from.
