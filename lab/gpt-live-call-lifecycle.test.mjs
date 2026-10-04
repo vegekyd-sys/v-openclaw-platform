@@ -82,6 +82,40 @@ test("exact native client profile uses the new code contract and leaves all neig
   assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /End-call host tool/u);
 });
 
+test("natural end intent has action priority while explicit keep, stop-speaking and discussion retain the call", () => {
+  assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /^Call-action priority:/u);
+  assert(GPT_LIVE_CALL_INSTRUCTIONS.indexOf("Call-action priority:") < GPT_LIVE_CALL_INSTRUCTIONS.indexOf("简单旁聊、语速调整"));
+  const priority = GPT_LIVE_CALL_INSTRUCTIONS.split("\n\n")[0];
+  assert.match(priority, /先实际发起 native client delegation/u);
+  assert.match(priority, /后台真实调用 openclaw_end_call/u);
+  assert.match(priority, /只有收到主机对当前真实结束请求的接受上下文后才简短告别/u);
+  assert.match(priority, /不生成虚构 JSON 或伪造调用/u);
+  const examples = GPT_LIVE_CALL_INSTRUCTIONS.split("\n\n")[1];
+  assert.match(examples, /今天就先这样，谢谢你，拜拜。.*实际委派并执行结束工具/u);
+  assert.match(examples, /我不是说拜拜，先别挂，我还要问。.*保留通话，不调用结束工具/u);
+  assert.match(examples, /先停下播音.*保留通话和当前后台任务/u);
+  assert.match(examples, /挂断功能应该怎么实现.*讨论功能，不结束当前通话/u);
+  assert.match(examples, /不能仅凭某个词触发结束/u);
+  for (const policy of ["End-call host tool:", "Consult goal policy:", "Task continuation policy:", "Final source policy:", "Scope fidelity policy:"]) {
+    assert(GPT_LIVE_CALL_INSTRUCTIONS.includes(policy), policy);
+  }
+});
+
+test("actual native capability profile receives the identical priority contract in generated runtime only", async () => {
+  const match = brokerSource.match(/const OPENAI_QUICKSILVER_CAPABILITIES = (\{[\s\S]*?\});/u);
+  assert(match, "captured native broker must expose its actual capability object");
+  const capabilities = new Function("return (" + match[1] + ");")();
+  const profile = { providerId: "openai", model: "gpt-live-1-codex", transport: "webrtc", brain: "agent-consult", capabilities };
+  const runtime = await import("data:text/javascript;base64," + Buffer.from(createGptLiveCallLifecycleRuntimeSource()).toString("base64"));
+  assert.equal(resolveGptLiveCallInstructions("old config", profile), GPT_LIVE_CALL_INSTRUCTIONS);
+  assert.equal(runtime.resolveGptLiveCallInstructions("old config", profile), GPT_LIVE_CALL_INSTRUCTIONS);
+  assert.equal(runtime.resolveGptLiveCallInstructions("old config", { ...profile, transport: undefined }), GPT_LIVE_CALL_INSTRUCTIONS);
+  for (const changed of [{ model: "gpt-realtime" }, { transport: "gateway-relay" }, { capabilities: {} },
+    { capabilities: { ...capabilities, handlesAgentConsult: false } }, { capabilities: { ...capabilities, supportsToolCalls: true } }]) {
+    assert.equal(runtime.resolveGptLiveCallInstructions("neighbor contract", { ...profile, ...changed }), "neighbor contract");
+  }
+});
+
 test("actual controller accepts owned browser ready without a sideband started event and sends greeting once", () => {
   const f = nativeFixture({ adopted: false });
   assert.throws(() => f.controller.callLifecycle.ready(), /no longer active/u);
