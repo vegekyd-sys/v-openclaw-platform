@@ -546,6 +546,29 @@ test('original app drain with a 700ms observer phase tail retains core but not s
  }
 });
 
+test('a real app farewell drain cannot convert stale or discontinuous receiver stats into independent750ms proof',()=>{
+ const tool=resolveEndCallToolWitness(witness()),owner={voiceSessionId:'voice-1'};
+ const make=()=>{const s=speechState();s.pcStates[0]='closed';s.remoteAudio.attached=false;
+  s.api=[{route:'/api/close',status:200,requestedAt:2350,request:{voiceSessionId:'voice-1'}}];return s;};
+ const valid=make(),farewell=assessLifecycleFarewell(valid,{pcIndex:0,tool,before:2350});
+ assert.equal(assessAutomaticEnd(valid,{pcIndex:0,owner,tool,farewell}).strictTailPassed,true);
+ for(const change of [
+  s=>s.audioFrames=s.audioFrames.map(f=>({...f,rtp:[{id:'receiver-own',timestamp:1400,packetsReceived:1,bytesReceived:10}]})),
+  s=>s.audioFrames=s.audioFrames.map(f=>({...f,rtp:[{id:'receiver-own',timestamp:f.at-101,packetsReceived:f.at,bytesReceived:f.at*10}]})),
+  s=>s.audioFrames=s.audioFrames.map(f=>({...f,rtp:f.at>1800&&f.at<2250?[]:f.rtp})),
+  s=>s.audioFrames=s.audioFrames.map(f=>({...f,rtp:f.rtp.map(r=>({...r,id:f.at%100===0?'odd':'even'}))})),
+  s=>s.audioFrames=s.audioFrames.map(f=>({...f,rtp:f.rtp.map(r=>({...r,packetsReceived:3000-f.at,bytesReceived:(3000-f.at)*10}))}))
+ ]){
+  const s=make();change(s);const actual=assessLifecycleFarewell(s,{pcIndex:0,tool,before:2350});
+  assert(actual,'Keep the real functional app witness');assert.equal(actual.strictTailPassed,false);
+  const proof=assessAutomaticEnd(s,{pcIndex:0,owner,tool,farewell:actual});
+  assert.equal(proof.passed,true,'Functional auto-close remains independent from missing RTP proof');
+  assert.equal(proof.strictTailPassed,false);assert.equal(proof.independentRtp,null);
+  const forged={...actual,strictTailPassed:true};
+  assert.equal(assessAutomaticEnd(s,{pcIndex:0,owner,tool,farewell:forged}).strictTailPassed,false,'Recompute original receiver stats instead of trusting a boolean');
+ }
+});
+
 test('genuine terminal and pre-release player boundary observations complete the same strict750ms tail',()=>{
  const state=speechState(),tool=resolveEndCallToolWitness(witness());
  // The timer phase begins 49 ms after terminal and ends 35 ms before release.

@@ -400,7 +400,9 @@ export function assessLifecycleFarewell(state,{pcIndex,tool,before=Infinity}={})
       e.backendRunId===tool.backendRunId&&e.nativeDelegationId===tool.requestId)&&
     Number.isFinite(state.browserTimeOrigin)&&state.browserTimeOrigin+e.at>=terminal.at&&state.browserTimeOrigin+e.at<=before);
   const strict=assessLifecycleSpeech(state,{pcIndex,after,before,requireCreatedAfter:true});
-  if(strict){const appDrain=exactDrain(strict.terminal);return {...strict,appDrain:appDrain??null,strictTailPassed:true};}
+  if(strict){const appDrain=exactDrain(strict.terminal);
+    const independentRtp=assessLifecyclePostTerminalRtp(strict.quiet,{terminalAt:strict.terminal.at});
+    return {...strict,appDrain:appDrain??null,independentRtp,strictTailPassed:Boolean(independentRtp)};}
   // The original app closes on its own 50ms analyser phase. Its exact trusted
   // drain transition can exist while this independent sampler has only 700ms
   // before the close. Preserve that functional witness without inventing the
@@ -427,10 +429,11 @@ export function assessAutomaticEnd(state,{pcIndex,owner,tool,farewell}={}) {
     farewell.window.to>=farewell.terminal.at&&farewell.appDrain?.requestId===tool.requestId&&farewell.appDrain.originUserTurnId===tool.userTurnId&&
     farewell.appDrain.turnId===farewell.terminal.turnId;
   const appDrainAt=Number.isFinite(state.browserTimeOrigin)&&Number.isFinite(farewell.appDrain?.at)?state.browserTimeOrigin+farewell.appDrain.at:null;
-  const strictTailPassed=Boolean(farewell.strictTailPassed&&farewell.quiet?.durationMs>=750&&farewell.quiet.rtp.length>0&&close?.requestedAt>=farewell.quiet.to);
+  const independentRtp=assessLifecyclePostTerminalRtp(farewell.quiet,{terminalAt:farewell.terminal.at});
+  const strictTailPassed=Boolean(farewell.strictTailPassed&&independentRtp&&close?.requestedAt>=farewell.quiet.to);
   const closed=state.pcStates?.[pcIndex]==='closed'&&state.remoteAudio?.attached===false;
   return {passed:Boolean(close)&&exactSpeech&&closed&&Number.isFinite(appDrainAt)&&close.requestedAt>=appDrainAt,
     close:close??null,exactSpeech,closed,requestId:tool.requestId,voiceSessionId:owner.voiceSessionId,
-    farewellTerminalAt:farewell.terminal.at,quiet:farewell.quiet,strictTailPassed,appDrain:farewell.appDrain,appDrainAt,
+    farewellTerminalAt:farewell.terminal.at,quiet:farewell.quiet,independentRtp,strictTailPassed,appDrain:farewell.appDrain,appDrainAt,
     source:'owned-host-tool-acceptance-then-real-farewell-tail-before-original-close-request'};
 }
