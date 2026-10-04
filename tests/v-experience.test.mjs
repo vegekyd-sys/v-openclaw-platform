@@ -172,12 +172,13 @@ test("dingtalk patch applies to V's connector chunk exactly once", () => {
   const patched = patchReplyChunk(baseline);
   assert.notEqual(patched, baseline);
   assert.equal(patchReplyChunk(patched), patched, "idempotent");
-  for (const needle of ["const updateInterval = 300;", "vSessionKey: sessionKey", "vWork.compose(displayContent)", "await vDeliverToolPayload(payload)", "vStartBackground(cardSnapshot, finalText)", "vWork.finalText(finalText)", "dtmd://dingtalkclient/sendMessage", "onPlanUpdate: (payload) =>", "vWork.dispose()"]) {
+  for (const needle of ["const updateInterval = 300;", "vSessionKey: sessionKey", "if (vWork.hasContent()) await streamAICard(currentCardTarget, vWork.compose(\"\")", "await vDeliverToolPayload(payload)", "vStartBackground(cardSnapshot, finalText)", "vWork.finalText(finalText)", "dtmd://dingtalkclient/sendMessage", "onPlanUpdate: (payload) =>", "vWork.dispose()"]) {
     assert(patched.includes(needle), needle);
   }
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vx-ding-"));
   fs.writeFileSync(path.join(dir, "message-handler-BUoLSylZ.mjs"), baseline);
   fs.copyFileSync(new URL("../apps/v-experience/dingtalk/baseline/connection-DCvu-l09.mjs", import.meta.url), path.join(dir, "connection-DCvu-l09.mjs"));
+  fs.copyFileSync(new URL("../apps/v-experience/dingtalk/baseline/card-CVsxDMw1.mjs", import.meta.url), path.join(dir, "card-CVsxDMw1.mjs"));
   const result = patchDingtalkConnector(dir, { experienceSource: new URL("../apps/v-experience/v-experience.mjs", import.meta.url).pathname });
   assert.equal(result.changed, true);
   assert(fs.readFileSync(path.join(dir, "message-handler-BUoLSylZ.mjs"), "utf8").includes(MARKER));
