@@ -494,12 +494,13 @@ test('actual smoke greeting retains its completed strict window when a later ful
  const source=readFileSync(new URL('./call-lifecycle-smoke.mjs',import.meta.url),'utf8');
  const from=source.indexOf('async function greeting(pcIndex){'),to=source.indexOf('\nfunction ownedGatewayEvents()',from);
  assert(from>=0&&to>from,'Execute the actual smoke function, not a copied implementation');
- const run=async(state,proof)=>{
+ const run=async(state,proof,{pcIndex=0,profile='full',USERClipsFed=0}={})=>{
   const checks=[],records=[],owner={connectedAt:1200},ready={requestedAt:1200},greeting=vm.runInNewContext('('+source.slice(from,to)+')',{
-   owners:new Map([[0,owner]]),waitFor:async()=>ready,waitSpeech:async()=>proof,snapshot:async()=>state,
-   assessProactiveGreeting,pulse:{plays:[]},coreCheck:(name,passed,details)=>checks.push({name,passed:Boolean(passed),details}),
+   owners:new Map([[pcIndex,owner]]),waitFor:async()=>ready,waitSpeech:async()=>proof,snapshot:async()=>state,
+   validationProfile:resolveLifecycleValidationProfile(profile,'candidate'),
+   assessProactiveGreeting,pulse:{plays:Array.from({length:USERClipsFed},()=>({}))},coreCheck:(name,passed,details)=>checks.push({name,passed:Boolean(passed),details}),
    recordSpeech:(name,value)=>records.push({name,value}),save(){}});
-  await greeting(0);return {check:checks[0],record:records[0]};
+  await greeting(pcIndex);return {check:checks[0],record:records[0]};
  };
  const original=speechState(),proof=assessLifecycleSpeech(original,{pcIndex:0,after:1200,requireCreatedAfter:true});
  assert(proof.playback.passed);assert(proof.quiet.durationMs>=750);
@@ -518,6 +519,17 @@ test('actual smoke greeting retains its completed strict window when a later ful
  const failedWhole=assessLifecycleSpeech(speechGap,{pcIndex:0,after:1200,requireCreatedAfter:true});
  assert.equal(failedWhole.playback.passed,false,'A whole-speech sampling gap retains its strict FAIL');
  const unchanged=await run(speechGap,failedWhole);assert.equal(unchanged.record.value.playback.passed,false);
+ const redial=speechState();for(const rows of [redial.events,redial.audioFrames,redial.micFrames])for(const row of rows)row.pcIndex=1;
+ const redialProof=assessLifecycleSpeech(redial,{pcIndex:1,after:1200,requireCreatedAfter:true});
+ assert.equal((await run(redial,redialProof,{pcIndex:1,profile:'full',USERClipsFed:3})).check.passed,true,'Full redial retains all three prior USER clips');
+ const narrow=await run(redial,redialProof,{pcIndex:1,profile:'end-only',USERClipsFed:2});
+ assert.equal(narrow.check.passed,true);assert.equal(narrow.check.details.expectedUSERClipsFed,2,'End-only redial has only the keep and end clips');
+ assert.equal((await run(redial,redialProof,{pcIndex:1,profile:'full',USERClipsFed:2})).check.passed,false,'Missing Memory/Web input cannot satisfy the full profile');
+ assert.equal((await run(redial,redialProof,{pcIndex:1,profile:'end-only',USERClipsFed:3})).check.passed,false,'An extra clip cannot satisfy the narrow scope');
+ const newUser=structuredClone(redial);newUser.events.push({pcIndex:1,at:1400,type:'turn.done',role:'user',turnId:'redial-user',text:'你好'});
+ assert.equal((await run(newUser,redialProof,{pcIndex:1,profile:'end-only',USERClipsFed:2})).check.passed,false,'Correct profile count never replaces the independent no-USER gate');
+ assert.equal((await run(original,proof,{profile:'end-only'})).check.passed,true,'The first call still requires zero fed USER clips');
+ assert.equal((await run(original,proof,{profile:'end-only',USERClipsFed:1})).check.passed,false);
 });
 test('tool accepted alone does not mean closed; same owner must close after entire farewell drain',()=>{
  const state=speechState(),tool=resolveEndCallToolWitness(witness()),farewell=assessLifecycleFarewell(state,{pcIndex:0,tool,before:2350});
