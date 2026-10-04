@@ -111,9 +111,24 @@ import { formatChannelProgressDraftLineForEntry as vFormatProgressLine } from "o
 \t\tif (!secret && !vExperience.isRenderableAsk(question)) return false;
 \t\tif (!vExperience.claimQuestionDelivery(question.id)) return true;
 \t\ttry {
+\t\t\tlet vSecretHow = "";
 \t\t\tif (secret) {
-\t\t\t\tawait vSend(vExperience.secretQuestionNotice(question));
-\t\t\t\tawait vCallGateway("question.resolve", { config: cfg }, { id: question.id, cancel: true, resolvedBy: "dingtalk:credential-unsupported" }, { scopes: ["operator.questions"], progress: false, timeoutMs: 5000 }).catch(() => {});
+\t\t\t\t// A one-time entry link, only in the asker's direct chat; a group
+\t\t\t\t// gets it through the robot's 1:1 message. Else notice + cancel.
+\t\t\t\tvSecretHow = await vExperience.deliverSecretQuestion({
+\t\t\t\t\trecord: question, channel: "dingtalk", askerId: senderId, direct: isDirect, markdown: true,
+\t\t\t\t\tsendHere: (text) => vSend(text),
+\t\t\t\t\tsendPrivate: senderId ? async (text) => {
+\t\t\t\t\t\tconst resp = await dingtalkHttp.post(\`\${DINGTALK_API}/v1.0/robot/oToMessages/batchSend\`, {
+\t\t\t\t\t\t\trobotCode: String(account.config.clientId ?? ""), userIds: [String(senderId)],
+\t\t\t\t\t\t\tmsgKey: "sampleMarkdown", msgParam: JSON.stringify({ title: "V 需要凭据", text })
+\t\t\t\t\t\t}, { headers: { "x-acs-dingtalk-access-token": await getAccessToken(account.config), "Content-Type": "application/json" } });
+\t\t\t\t\t\tconst data = resp?.data ?? {};
+\t\t\t\t\t\tif (!data.processQueryKey || data.invalidStaffIdList?.length || data.flowControlledStaffIdList?.length) throw new Error(\`private message not sent: \${JSON.stringify(data).slice(0, 200)}\`);
+\t\t\t\t\t} : void 0,
+\t\t\t\t\tcancel: () => vCallGateway("question.resolve", { config: cfg }, { id: question.id, cancel: true, resolvedBy: "dingtalk:credential-unsupported" }, { scopes: ["operator.questions"], progress: false, timeoutMs: 5000 }),
+\t\t\t\t\tlog: (message) => log.info(message)
+\t\t\t\t});
 \t\t\t} else if (vQuestionTemplate && streamingEnabled && !asyncMode && !streamingSealed) {
 \t\t\t\t// Real buttons: the question gets its own interactive card below this
 \t\t\t\t// reply; the reply closes here and the answer opens a new one below.
@@ -164,7 +179,7 @@ import { formatChannelProgressDraftLineForEntry as vFormatProgressLine } from "o
 \t\t\t\tawait vSend(vExperience.askPromptMarkdown(question));
 \t\t\t\tvExperience.trackChatQuestion({ channel: "dingtalk", chatKey: \`\${accountId ?? "default"}:\${conversationId}\`, senderId, record: question });
 \t\t\t}
-\t\t\tlog.info(\`[DingTalk][v-experience] delivered question \${question.id}\${secret ? " (credential, cancelled)" : ""}\`);
+\t\t\tlog.info(\`[DingTalk][v-experience] delivered question \${question.id}\${secret ? \` (credential, \${vSecretHow})\` : ""}\`);
 \t\t} catch (err) {
 \t\t\tlog.error(\`[DingTalk][v-experience] question delivery failed: \${err?.message || err}\`);
 \t\t}

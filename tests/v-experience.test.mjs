@@ -278,3 +278,115 @@ test("DingTalk question card: one tap answers a single choice; others stage then
   assert.equal(done.cardData.cardParamMap.button_text, "✓ 已选择：爬山、读书");
   assert.deepEqual(JSON.parse(JSON.stringify(got)), [{ answers: { w: ["爬山", "读书"] } }]);
 });
+
+// ---------------------------------------------------------- credentials by link
+
+const SECRET_RECORD = { id: "ask_" + "9".repeat(32), status: "pending", expiresAtMs: Date.now() + 10 * 60_000, questions: [{ questionId: "secret_value", question: "V_DEMO_TOKEN", isSecret: true, options: [], secretStore: { name: "V_DEMO_TOKEN", kind: "secret", reason: "测试用", allowedHosts: ["api.example.com"] } }] };
+
+async function withSecretService(fn) {
+  const { createService } = await import("../apps/v-secret-entry/server.mjs");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vx-secret-"));
+  fs.writeFileSync(path.join(dir, "admin-token"), "vx-admin-token-0123456789abcdef\n");
+  const resolved = [];
+  const service = createService({ bind: "127.0.0.1", publicBind: "127.0.0.1", publicPort: 0, adminPort: 0, pathPrefix: "/secret-entry", publicBaseUrl: "https://v.example.test", stateDir: path.join(dir, "state"), adminTokenFile: path.join(dir, "admin-token") }, { resolve: async (link, value) => resolved.push({ link, value }) });
+  const ports = await service.listen();
+  const env = { V_SECRET_ENTRY_ADMIN_URL: `http://127.0.0.1:${ports.adminPort}/`, V_SECRET_ENTRY_ADMIN_TOKEN_FILE: path.join(dir, "admin-token") };
+  try { return await fn({ env, ports, service, resolved }); } finally { await service.close(); fs.rmSync(dir, { recursive: true, force: true }); }
+}
+
+test("credential question in a direct chat: a one-time link, the question stays open", async () => {
+  await withSecretService(async ({ env, ports, service, resolved }) => {
+    const here = [];
+    let cancelled = 0;
+    const how = await vx.deliverSecretQuestion({ record: SECRET_RECORD, channel: "telegram", askerId: 70000001, direct: true, env, sendHere: async (t) => here.push(t), cancel: () => cancelled++ });
+    assert.equal(how, "link");
+    assert.equal(cancelled, 0, "the question is not cancelled");
+    assert.equal(here.length, 1);
+    assert.match(here[0], /^🔑 V 需要凭据 V_DEMO_TOKEN：请点开这个一次性链接填写，链接只能用一次、10 分钟内有效；值不会出现在聊天记录里。\nhttps:\/\/v\.example\.test\/secret-entry\/#[\w-]{40,}$/u);
+    const [link] = service.registry.list();
+    assert.deepEqual({ q: link.questionId, key: link.answerKey, name: link.name, reason: link.reason, hosts: link.allowedHosts, channel: link.channel, asker: link.askerId, exp: link.expiresAtMs },
+      { q: SECRET_RECORD.id, key: "secret_value", name: "V_DEMO_TOKEN", reason: "测试用", hosts: ["api.example.com"], channel: "telegram", asker: "70000001", exp: SECRET_RECORD.expiresAtMs });
+    const token = here[0].split("#")[1];
+    const res = await fetch(`http://127.0.0.1:${ports.publicPort}/secret-entry/api/submit`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token, value: "s3cret" }) });
+    assert.equal(res.status, 200);
+    assert.equal(resolved[0].value, "s3cret");
+    assert.equal(resolved[0].link.questionId, SECRET_RECORD.id);
+    assert.match(vx.secretLinkMessage(SECRET_RECORD, { url: "https://x/secret-entry/#a_b", expiresAtMs: Date.now() + 60_000 }, { markdown: true }), /\n\n\[点这里填写\]\(https:\/\/x\/secret-entry\/#a_b\)$/u);
+  });
+});
+
+test("credential question in a group: the link goes to the asker privately, or notice + cancel", async () => {
+  await withSecretService(async ({ env, service }) => {
+    const here = [];
+    const dm = [];
+    const how = await vx.deliverSecretQuestion({ record: SECRET_RECORD, channel: "dingtalk", askerId: "staff1", direct: false, markdown: true, env, sendHere: async (t) => here.push(t), sendPrivate: async (t) => dm.push(t), cancel: () => assert.fail("not cancelled") });
+    assert.equal(how, "link-private");
+    assert.match(dm[0], /\[点这里填写\]\(https:\/\/v\.example\.test\/secret-entry\/#/u);
+    assert.deepEqual(here, ["🔑 V 需要凭据 V_DEMO_TOKEN，录入链接已私信发给你。"]);
+
+    here.length = 0;
+    let cancelled = 0;
+    const other = "ask_" + "8".repeat(32);
+    const failed = await vx.deliverSecretQuestion({ record: { ...SECRET_RECORD, id: other }, channel: "telegram", askerId: "70000002", direct: false, env, sendHere: async (t) => here.push(t), sendPrivate: async () => { throw new Error("403 bot can't initiate conversation"); }, cancel: () => cancelled++ });
+    assert.equal(failed, "cancelled");
+    assert.equal(cancelled, 1);
+    assert.deepEqual(here, [vx.secretQuestionNotice(SECRET_RECORD)], "no link in the group");
+    assert.equal(service.registry.list().find((l) => l.questionId === other).state, "closed", "the undelivered link is revoked");
+  });
+});
+
+test("credential question without the link service: notice + cancel", async () => {
+  const here = [];
+  let cancelled = 0;
+  let fetched = 0;
+  const fetchImpl = async () => { fetched++; return new Response("{}", { status: 500 }); };
+  assert.equal(await vx.deliverSecretQuestion({ record: SECRET_RECORD, channel: "wecom", askerId: "u1", direct: true, env: {}, fetchImpl, sendHere: async (t) => here.push(t), cancel: () => cancelled++ }), "cancelled");
+  assert.equal(fetched, 0, "not configured: nothing fetched");
+  const env = { V_SECRET_ENTRY_ADMIN_URL: "http://127.0.0.1:1", V_SECRET_ENTRY_ADMIN_TOKEN_FILE: new URL(import.meta.url).pathname };
+  assert.equal(await vx.deliverSecretQuestion({ record: SECRET_RECORD, channel: "wecom", askerId: "u1", direct: true, env, fetchImpl, sendHere: async (t) => here.push(t), cancel: () => cancelled++ }), "cancelled");
+  assert.equal(fetched, 1);
+  assert.equal(cancelled, 2);
+  assert.deepEqual(here, [vx.secretQuestionNotice(SECRET_RECORD), vx.secretQuestionNotice(SECRET_RECORD)]);
+});
+
+test("core secret-entry patch lets link channels wait for the link (on top of V's v1 builtin)", async () => {
+  const { patchSecretEntryChannelsSource, CHANNELS_MARKER, LINK_CHANNELS } = await import("../lab/release-files/feishu-secret-entry/patch-openclaw91-secret-entry.mjs");
+  const frozen = fs.readFileSync(new URL("../lab/release-files/feishu-secret-entry/builtin-openclaw-zQV8Wwjr.js", import.meta.url), "utf8");
+  const { changed, source } = patchSecretEntryChannelsSource(frozen);
+  assert.equal(changed, true);
+  assert(source.includes(CHANNELS_MARKER));
+  assert.deepEqual(LINK_CHANNELS, ["telegram", "dingtalk-connector", "wecom"]);
+  assert(source.includes("if (!controlUiBase && !vSecretEntryInChat && !vSecretEntryByLink) throw new Error(text);"));
+  assert(source.includes("const vSecretEntryInChat = vSecretEntryChannel === \"feishu\";"), "Feishu keeps its card descriptor");
+  assert.equal(patchSecretEntryChannelsSource(source).changed, false, "idempotent");
+  assert(source.length - frozen.length < 600, "a small change");
+  assert.throws(() => patchSecretEntryChannelsSource(frozen.replaceAll("v-openclaw91-secret-entry-v1", "x")), /v1 is not applied/u);
+  // The changed lines decide as intended.
+  const start = source.indexOf("const vSecretEntryChannel =");
+  const body = source.slice(start, source.indexOf("await ctx.params.onToolResult?.(", start));
+  const decide = (channel, controlUiBase) => new Function("ctx", "binding", "controlUiBase", "controlUiAskUrl",
+    `${body}; return { text, throws: !controlUiBase && !vSecretEntryInChat && !vSecretEntryByLink };`)({ params: { messageChannel: channel } }, { name: "V_DEMO", kind: "secret" }, controlUiBase, undefined);
+  assert.deepEqual(decide("feishu"), { text: "🔑 V 需要凭据 V_DEMO，请在卡片里安全录入。", throws: false });
+  for (const channel of ["telegram", "dingtalk-connector", "wecom", " Telegram "]) assert.equal(decide(channel).throws, false, channel);
+  assert.match(decide("telegram").text, /一次性链接/u);
+  assert.equal(decide("discord").throws, true, "other channels unchanged");
+});
+
+test("core secret-entry patch CLI: takes the dist argument, finds the right chunk among several, keeps v1's backup", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const release = new URL("../lab/release-files/feishu-secret-entry/", import.meta.url).pathname;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vx-core-"));
+  for (const f of ["builtin-openclaw-zQV8Wwjr.js", "dispatch-from-config-DOJq_7CI.js", "question-BdQvLMDb.js", "openclaw-tools-BODVdJQD.js"]) fs.copyFileSync(path.join(release, f), path.join(dir, f));
+  fs.writeFileSync(path.join(dir, "builtin-openclaw-Other123.js"), "export const other = 1;\n");
+  fs.writeFileSync(path.join(dir, "dispatch-from-config-Other123.js"), "export const other = 1;\n");
+  fs.writeFileSync(path.join(dir, "builtin-openclaw-zQV8Wwjr.js.bak-v-openclaw91-secret-entry-v1"), "pristine");
+  const run = () => spawnSync(process.execPath, [path.join(release, "patch-openclaw91-secret-entry.mjs"), dir], { encoding: "utf8" });
+  const first = run();
+  assert.equal(first.status, 0, first.stderr);
+  const report = JSON.parse(first.stdout);
+  assert.deepEqual(report.files.map((f) => [f.file, f.changed]), [["builtin-openclaw-zQV8Wwjr.js", true], ["dispatch-from-config-DOJq_7CI.js", false], ["question-BdQvLMDb.js", false], ["openclaw-tools-BODVdJQD.js", false]]);
+  assert.equal(fs.readFileSync(path.join(dir, "builtin-openclaw-zQV8Wwjr.js.bak-v-openclaw91-secret-entry-v1"), "utf8"), "pristine", "v1 backup untouched");
+  assert(fs.existsSync(path.join(dir, "builtin-openclaw-zQV8Wwjr.js.bak-v-openclaw91-secret-entry-channels-v1")));
+  assert(JSON.parse(run().stdout).files.every((f) => !f.changed), "second run changes nothing");
+  fs.rmSync(dir, { recursive: true, force: true });
+});
