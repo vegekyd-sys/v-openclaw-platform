@@ -108,6 +108,13 @@ if (secrets.get("VLAB_TELEGRAM_TEST_BOT_TOKEN")) {
   report.channels.telegram = "configured";
 }
 assert(Object.keys(config.channels).length, "no test robot credentials in the VLab secrets file");
+// Channels without a test robot: their shared plugin entries would make the
+// Gateway install the plugin at startup and refuse to become ready.
+for (const [id, channel] of [["dingtalk-connector", "dingtalk-connector"], ["wecom-openclaw-plugin", "wecom"]]) {
+  if (config.channels[channel]) continue;
+  if (config.plugins.entries?.[id]) config.plugins.entries[id] = { ...config.plugins.entries[id], enabled: false };
+  if (Array.isArray(config.plugins.allow)) config.plugins.allow = config.plugins.allow.filter((p) => p !== id);
+}
 
 config.cron = { ...(config.cron ?? {}), enabled: false };
 if (config.plugins.entries?.codex) config.plugins.entries.codex.enabled = false;
@@ -140,7 +147,11 @@ const env = { ...process.env, NODE_OPTIONS: nodeOptions, OPENCLAW_GATEWAY_PORT: 
 for (const name of ["DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"]) if (secrets.get(name)) env[name] = secrets.get(name);
 const logFile = path.join(scratch, "live-gateway.log");
 const out = fs.openSync(logFile, "a", 0o600);
-const gateway = spawn(process.execPath, ["--max-old-space-size=4096", `${dist}/index.js`, "gateway", "--port", String(port)], { env, stdio: ["ignore", out, out] });
+const startGateway = () => spawn(process.execPath, ["--max-old-space-size=4096", `${dist}/index.js`, "gateway", "--port", String(port)], { env, stdio: ["ignore", out, out] });
+let gateway = startGateway();
+// A first start that converges plugin state asks for one restart; give it that.
+for (let i = 0; i < 60 && gateway.exitCode === null; i++) await sleep(1000);
+if (gateway.exitCode !== null && /Restart OpenClaw so state migrations run/u.test(fs.readFileSync(logFile, "utf8"))) gateway = startGateway();
 console.log(JSON.stringify({ started: new Date().toISOString(), minutes: MINUTES, ...report }));
 const deadline = Date.now() + MINUTES * 60_000;
 while (Date.now() < deadline && gateway.exitCode === null) await sleep(5000);
