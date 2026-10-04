@@ -14,7 +14,8 @@ import http from "node:http";
 export function createFakeDingTalkOpenApi({ WebSocketServer }) {
   const calls = [];
   const cards = new Map(); // outTrackId -> {target, history, content, status}
-  const webhookMessages = []; // {at, conversationId, msgtype, text}
+  const webhookMessages = []; // {at, conversationId, msgtype, text, actionCard?}
+  const robotMessages = []; // robot OpenAPI sends: {at, path, userIds|openConversationId, msgKey, msgParam}
   const sockets = new Set();
   let nextMsg = 1;
   let port;
@@ -31,6 +32,12 @@ export function createFakeDingTalkOpenApi({ WebSocketServer }) {
     card.history.push({ at: Date.now(), op, content: card.content, status: card.status });
   };
 
+  const robotSend = (path, body) => {
+    let msgParam = body.msgParam;
+    try { msgParam = JSON.parse(body.msgParam); } catch {}
+    robotMessages.push({ at: Date.now(), path, userIds: body.userIds, openConversationId: body.openConversationId, robotCode: body.robotCode, msgKey: body.msgKey, msgParam });
+    return { processQueryKey: `candidate-pqk-${robotMessages.length}`, invalidStaffIdList: [], flowControlledStaffIdList: [] };
+  };
   const routes = {
     "POST /v1.0/gateway/connections/open": () => ({ endpoint: `ws://127.0.0.1:${port}/connect`, ticket: "candidate-ticket" }),
     "GET /gettoken": () => ({ errcode: 0, errmsg: "ok", access_token: "candidate-oapi-token", expires_in: 7200 }),
@@ -66,10 +73,13 @@ export function createFakeDingTalkOpenApi({ WebSocketServer }) {
       return { success: true };
     },
     "POST /robot/sendBySession": (body, query) => {
-      const text = body.msgtype === "markdown" ? body.markdown?.text : body.msgtype === "text" ? body.text?.content : JSON.stringify(body);
-      webhookMessages.push({ at: Date.now(), conversationId: query.get("conversation"), msgtype: body.msgtype, title: body.markdown?.title, text });
+      const text = body.msgtype === "markdown" ? body.markdown?.text : body.msgtype === "text" ? body.text?.content : body.msgtype === "actionCard" ? body.actionCard?.text : JSON.stringify(body);
+      webhookMessages.push({ at: Date.now(), conversationId: query.get("conversation"), msgtype: body.msgtype, title: body.markdown?.title ?? body.actionCard?.title, text, ...(body.actionCard ? { actionCard: body.actionCard } : {}) });
       return { errcode: 0, errmsg: "ok" };
     },
+    // Robot OpenAPI: 1:1 messages and group messages (msgKey sampleMarkdown, sampleActionCard, ...).
+    "POST /v1.0/robot/oToMessages/batchSend": (body) => robotSend("/v1.0/robot/oToMessages/batchSend", body),
+    "POST /v1.0/robot/groupMessages/send": (body) => robotSend("/v1.0/robot/groupMessages/send", body),
   };
 
   const server = http.createServer(async (req, res) => {
@@ -106,6 +116,7 @@ export function createFakeDingTalkOpenApi({ WebSocketServer }) {
     calls,
     cards: () => [...cards.values()],
     webhookMessages,
+    robotMessages,
     /** A user taps a control on an interactive card; resolves with the client's ack. */
     pressCard({ outTrackId, userId, params }) {
       const messageId = `card-${Date.now()}-${nextMsg++}`;

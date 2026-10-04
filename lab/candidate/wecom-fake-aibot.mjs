@@ -55,7 +55,7 @@ export function createFakeWeComAibot({ WebSocketServer, streamLifetimeMs = 6 * 6
         }
         case "aibot_send_msg": {
           const body = frame.body ?? {};
-          proactive.push({ at: Date.now(), chatId: body.chatid, msgtype: body.msgtype, text: body.markdown?.content ?? body.text?.content ?? JSON.stringify(body).slice(0, 500) });
+          proactive.push({ at: Date.now(), chatId: body.chatid, msgtype: body.msgtype, text: body.markdown?.content ?? body.text?.content ?? JSON.stringify(body).slice(0, 500), ...(body.template_card ? { templateCard: body.template_card } : {}) });
           ack(ws, reqId);
           return;
         }

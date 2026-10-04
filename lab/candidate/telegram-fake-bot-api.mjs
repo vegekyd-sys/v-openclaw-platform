@@ -68,7 +68,10 @@ export function createFakeTelegramBotApi({ botId = 100000001, botUsername = "v_c
       while (updates.length && updates[0].update_id < offset) updates.shift();
       return updates.slice(0, Number(params.limit ?? 100));
     },
-    sendMessage: (params) => asTelegramMessage(recordMessage(params.chat_id, params, "text")),
+    sendMessage: (params) => {
+      refuseInvalidUrlButtons(params.reply_markup);
+      return asTelegramMessage(recordMessage(params.chat_id, params, "text"));
+    },
     sendPhoto: (params) => asTelegramMessage(recordMessage(params.chat_id, params, "photo")),
     sendDocument: (params) => asTelegramMessage(recordMessage(params.chat_id, params, "document")),
     sendAnimation: (params) => asTelegramMessage(recordMessage(params.chat_id, params, "animation")),
@@ -194,6 +197,22 @@ export function createFakeTelegramBotApi({ botId = 100000001, botUsername = "v_c
 export function inlineButtons(message) {
   const rows = message?.replyMarkup?.inline_keyboard ?? [];
   return rows.flat().map((b) => ({ text: b.text, data: b.callback_data, url: b.url, webApp: b.web_app?.url }));
+}
+
+/**
+ * Telegram refuses URL buttons whose address is not a public http(s) URL
+ * (VLab live test: BUTTON_URL_INVALID for http://[fd7a:…]:23950/…). Approximated
+ * here as: not http(s), or an IP literal or localhost host.
+ */
+function refuseInvalidUrlButtons(markup) {
+  const rows = parseMaybeJson(markup)?.inline_keyboard ?? [];
+  for (const button of rows.flat()) {
+    if (typeof button?.url !== "string") continue;
+    let url;
+    try { url = new URL(button.url); } catch { throw apiError(400, "Bad Request: BUTTON_URL_INVALID"); }
+    const host = url.hostname.replace(/^\[|\]$/gu, "");
+    if (!/^https?:$/u.test(url.protocol) || host === "localhost" || /^[\d.]+$/u.test(host) || host.includes(":")) throw apiError(400, "Bad Request: BUTTON_URL_INVALID");
+  }
 }
 
 function apiError(status, description) {

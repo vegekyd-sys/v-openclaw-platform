@@ -2,6 +2,7 @@
   "support": [
     "lab/candidate/dingtalk-experience.mjs",
     "lab/candidate/dingtalk-fake-open-api.mjs",
+    "lab/candidate/channel-cards-support.mjs",
     "lab/release-files/feishu-model-switch-roles/patch-runtime.mjs",
     "lab/candidate/model-roles.mjs",
     "apps/v-experience/v-experience.mjs",

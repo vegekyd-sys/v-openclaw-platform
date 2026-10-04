@@ -10,14 +10,20 @@
 // apps/v-experience/wecom/patch.mjs to the private copy and asserts.
 // The model-roles scenario also patches the core command-auth and sets the
 // command roles (lab/candidate/model-roles.mjs).
+// `secret-link` and `handoff-card` run the services behind V's link cards
+// (lab/candidate/channel-cards-support.mjs) and check the text_notice template
+// card the robot sends; `handoff-card` checks the Worker config the Gateway derives
+// carries the handoff plugin (the tool runs there).
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { createFakeWeComAibot } from "./wecom-fake-aibot.mjs";
 import { assertModelRoles, configureRoles, patchCoreCommandAuth, ROLES_CONFIGURED, runModelRoles } from "./model-roles.mjs";
+import { linkToken, startHandoff, startSecretEntry, widenCoreSecretEntry } from "./channel-cards-support.mjs";
 
 const runtime = process.env.VLAB_CANDIDATE_RUNTIME;
 const configPath = process.env.OPENCLAW_CONFIG_PATH;
@@ -106,6 +112,8 @@ if (SCENARIO_NAMES.includes("model-roles")) {
   report.coreCommandAuth = patchCoreCommandAuth(runtime);
   report.roles = configureRoles(config, "wecom", [ROLE_USERS.owner]);
 }
+if (SCENARIO_NAMES.includes("secret-link")) report.secretEntryCorePatch = await widenCoreSecretEntry(dist);
+const handoff = SCENARIO_NAMES.includes("handoff-card") ? await startHandoff({ dir: path.join(scratch, "desktop-handoff"), config, runtime, dist }) : undefined;
 fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
 
 const gate = 'if (record?.origin !== "bundled" && record?.trustedOfficialInstall !== true) throw new Error(`${methodName} is only available for trusted plugins';
@@ -126,6 +134,10 @@ for (const name of ["DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"]) 
   const value = secret(name);
   if (value) env[name] = value;
 }
+const secretEntry = SCENARIO_NAMES.includes("secret-link")
+  ? await startSecretEntry({ dir: path.join(scratch, "secret-entry"), dist, env, configPath, stateDir, publicBaseUrl: "https://openclaw.example.test" })
+  : undefined;
+if (secretEntry) Object.assign(env, secretEntry.gatewayEnv);
 const lines = [];
 const gateway = spawn(process.execPath, ["--max-old-space-size=4096", `${dist}/index.js`, "gateway", "--port", String(port)], { env, stdio: ["ignore", "pipe", "pipe"] });
 for (const s of [gateway.stdout, gateway.stderr]) {
@@ -237,6 +249,50 @@ const SCENARIOS = {
     await settle(chatId, since, (t) => /SECRET_|凭据|🔑/u.test(t) && finished(chatId, since).length > 0, { label: "secret", quietMs: 10_000, timeoutMs: 240_000 }).catch(() => null);
     return view(chatId, since);
   },
+  // A3: the credential link as a text_notice card with one 填写凭据 link; the value is typed on the page.
+  "secret-link": async () => {
+    const u = nextUser(); const since = Date.now();
+    const value = `vsl-${crypto.randomBytes(12).toString("hex")}`;
+    const { chatId } = fake.sendUserText({ userId: u, text: "这是自动化测试。请用 secrets 工具的 request 动作，向我索取一个名为 V_CANDIDATE_DEMO_TOKEN 的凭据（说明写：测试用，可以随便填）。拿到后只回复 SECRET_SAVED；如果没法索取，就回复 SECRET_UNAVAILABLE 并说明原因。" });
+    const cardMsg = await waitFor(() => proactiveSince(chatId, since).find((m) => linkToken(m.templateCard?.card_action?.url, "/secret-entry")), 300_000, "credential card");
+    const card = cardMsg.templateCard;
+    const link = linkToken(card.card_action.url, "/secret-entry");
+    const { reuse, ...page } = await secretEntry.use(link.token, value);
+    await settle(chatId, since, (t) => /SECRET_(SAVED|UNAVAILABLE)/u.test(t), { label: "secret-link reply", quietMs: 8000, timeoutMs: 240_000 }).catch(() => null);
+    const t = allText(chatId, since);
+    const chat = JSON.stringify([fake.streams(), fake.proactive]);
+    return {
+      card: JSON.parse(JSON.stringify(card).replaceAll(link.token, "[token]")),
+      page, reuse: await reuse(), saved: /SECRET_SAVED/u.test(t), cancelled: /不能安全地输入凭据/u.test(t),
+      linkInText: proactiveSince(chatId, since).some((m) => m.msgtype !== "template_card" && /secret-entry/u.test(m.text ?? "")),
+      leaks: { gatewayLog: lines.filter((l) => l.line.includes(value)).length, serviceLog: secretEntry.lines.filter((l) => l.includes(value)).length, chat: chat.includes(value), audit: JSON.stringify(secretEntry.audit()).includes(value) },
+      ...JSON.parse(JSON.stringify(view(chatId, since)).replaceAll(link.token, "[token]")),
+    };
+  },
+  // A4: V's desktop handoff card as a text_notice card with one 接管电脑 link (no 交还给 V: WeCom cannot post it back).
+  "handoff-card": async () => {
+    const u = nextUser(); const since = Date.now();
+    const { chatId } = fake.sendUserText({ userId: u, text: "这是自动化测试，请严格照做。立即调用 desktop_handoff_request 工具，参数 reason 填「需要你登录测试站点」。工具返回后按它返回的 instruction 只回复一句话，然后结束，不要做别的事。" });
+    const sent = await waitFor(() => proactiveSince(chatId, since).find((m) => linkToken(m.templateCard?.card_action?.url, "/desktop-handoff")), 300_000, "handoff card").catch(() => null);
+    await settle(chatId, since, () => finished(chatId, since).length > 0, { label: "handoff reply", quietMs: 6000, timeoutMs: 240_000 }).catch(() => null);
+    const link = sent && linkToken(sent.templateCard.card_action.url, "/desktop-handoff");
+    const t = [...streamsSince(chatId, since).map((s) => s.content), ...proactiveSince(chatId, since).filter((m) => m !== sent).map((m) => m.text)].join("\n");
+    return {
+      card: sent ? JSON.parse(JSON.stringify(sent.templateCard).replaceAll(link.token, "[token]")) : null,
+      claimStatus: link ? await handoff.claim(link.token) : null,
+      urlInReply: /desktop-handoff/u.test(t),
+      issued: handoff.issued(),
+      // The tool runs in a Worker: its config must carry this plugin and the fake channel.
+      workerConfig: (() => {
+        try {
+          const w = JSON.parse(fs.readFileSync(workerPlugin.workerConfigPath, "utf8"));
+          return { handoffPlugin: String(w.plugins?.entries?.["v-desktop-handoff"]?.config?.adminUrl ?? "").endsWith(`:${handoff.ports.adminPort}`), channels: Object.keys(w.channels ?? {}), loadPaths: (w.plugins?.load?.paths ?? []).filter((p) => /handoff|dingtalk|wecom/u.test(p)) };
+        } catch (error) { return { error: String(error?.message ?? error) }; }
+      })(),
+      handoffLog: lines.filter((l) => /desktop.handoff|v-desktop-handoff|message\.action/iu.test(l.line)).map((l) => redact(l.line).slice(0, 300)).slice(-10),
+      ...view(chatId, since),
+    };
+  },
   // C1: the owner keeps every command; a non-owner may only switch their own session's model.
   "model-roles": () => runModelRoles({
     dist, port, token: config.gateway?.auth?.token, config,
@@ -270,12 +326,15 @@ try {
   report.experienceLog = lines.filter((l) => /v-experience/u.test(l.line)).map((l) => redact(l.line).slice(0, 300)).slice(-40);
   report.queueLog = lines.filter((l) => /steer|followup|queued|deferred|active-run|activeRun/iu.test(l.line)).map((l) => redact(l.line).slice(0, 300)).slice(-60);
   report.wecomErrors = lines.filter((l) => /wecom/iu.test(l.line) && /error|failed|threw/iu.test(l.line)).map((l) => redact(l.line).slice(0, 300)).slice(-25);
+  if (handoff) report.agentErrors = lines.filter((l) => /error|failed|denied|exception/iu.test(l.line) && !/onStatusChange/u.test(l.line)).map((l) => redact(l.line).slice(0, 500)).slice(-30);
 } catch (error) {
   report.fatal = redact(String(error?.message ?? error)).slice(0, 3000);
   report.gatewayTail = lines.slice(-120).map((l) => redact(l.line).slice(0, 400));
   process.exitCode = 1;
 } finally {
   gateway.kill("SIGTERM");
+  secretEntry?.stop();
+  await handoff?.close();
   await sleep(3000);
   if (gateway.exitCode === null) gateway.kill("SIGKILL");
   await fake.close();
@@ -305,6 +364,34 @@ if (EXPECT === "patched") {
   }
   if (s.steer) assert(s.steer.steered && !s.steer.answeredA, "steer: second message did not steer the running reply");
   if (s.background) assert(s.background.sawBackgroundLine && s.background.sawBackgroundDone, "background line missing");
+  if (s["secret-link"]) {
+    const r = s["secret-link"];
+    assert.equal(r.error, undefined, r.error);
+    assert.equal(r.card.card_type, "text_notice");
+    assert.equal(r.card.main_title.title, "🔑 V 需要凭据 V_CANDIDATE_DEMO_TOKEN");
+    assert.match(r.card.sub_title_text, /链接只能用一次、\d+ 分钟内有效；值不会出现在聊天记录里。$/u);
+    assert.deepEqual(r.card.jump_list.map((j) => [j.type, j.title, j.url]), [[1, "填写凭据", "https://openclaw.example.test/secret-entry/#[token]"]]);
+    assert.deepEqual(r.card.card_action, { type: 1, url: "https://openclaw.example.test/secret-entry/#[token]" });
+    assert(!r.linkInText, "the link must only be on the card");
+    assert(r.page.pageHasPasswordInput && r.page.info.status === 200, "entry page");
+    assert.equal(r.page.submit.status, 200, `submit failed: ${JSON.stringify(r.page.submit)}`);
+    assert.equal(r.reuse, 410, "the link worked twice");
+    assert(r.saved && !r.cancelled, "agent did not get the value");
+    assert.deepEqual(r.leaks, { gatewayLog: 0, serviceLog: 0, chat: false, audit: false }, "value leaked");
+  }
+  if (s["handoff-card"]) {
+    const r = s["handoff-card"];
+    assert.equal(r.error, undefined, r.error);
+    assert(r.card, "no handoff template card was sent");
+    assert.equal(r.card.card_type, "text_notice");
+    assert.equal(r.card.main_title.title, "需要你接管 V 的电脑");
+    assert.match(r.card.main_title.desc ?? "", /需要你登录测试站点/u);
+    assert.match(r.card.sub_title_text, /做完在聊天里回复「好了」，V 接着做。\d+ 分钟内打开有效，接管最长 \d+ 分钟。/u);
+    assert.doesNotMatch(JSON.stringify(r.card), /交还给 V/u, "no 交还给 V on WeCom");
+    assert.deepEqual(r.card.jump_list.map((j) => [j.type, j.title, j.url]), [[1, "接管电脑", "https://openclaw.example.test/desktop-handoff/#[token]"]]);
+    assert.equal(r.claimStatus, 200, "the card's link does not open the handoff");
+    assert(!r.urlInReply, "the url was also pasted into the reply");
+  }
   if (s["model-roles"]) {
     assert.equal(s["model-roles"].error, undefined, s["model-roles"].error);
     if (ROLES_CONFIGURED) assertModelRoles(s["model-roles"]);
