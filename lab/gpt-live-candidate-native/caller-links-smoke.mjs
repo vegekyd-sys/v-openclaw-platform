@@ -9,6 +9,7 @@ import {setTimeout as sleep} from 'node:timers/promises';
 import {createPrivatePulseMicrophone,captureOwnedBrowserDirectory,observeOwnedChromeProcesses,removeOwnedBrowserDirectory} from './private-pulse.mjs';
 import {BROWSER_PROBE,readBoundedProbeSnapshot} from './browser-probe.mjs';
 import {preflightLifecycleMedia} from './call-lifecycle-target.mjs';
+import {readPrivateChildTranscript,activeTranscriptMessages} from './read-child-transcript.mjs';
 import {resolveGptLivePersona,extractGptLivePersona} from '../gpt-live-call-lifecycle.mjs';
 
 assert(process.env.VLAB_CANDIDATE_ID&&process.env.GPT_LIVE_H5_READY==='1');
@@ -29,7 +30,8 @@ const scratchId=captureOwnedBrowserDirectory(scratch,{parent:path.dirname(scratc
 const chromeTemp=fs.mkdtempSync('/tmp/gpt-live-caller-chrome-');fs.chmodSync(chromeTemp,0o700);
 const chromeTempId=captureOwnedBrowserDirectory(chromeTemp,{parent:'/tmp',prefix:'gpt-live-caller-chrome-'}),profile=path.join(chromeTemp,'profile');
 let pulse,chrome,cdp,gateway,cache,error=null,observed;
-const results=[];
+const results=[],gatewayEvents=[],owners=new Map();
+let latestHistory,latestTranscript,currentEntry;
 class CDP {
   constructor(url){this.url=url;this.pending=new Map();this.next=1;}
   async connect(){this.socket=new WebSocket(this.url);await new Promise((y,n)=>{this.socket.addEventListener('open',y,{once:true});this.socket.addEventListener('error',n,{once:true});});this.socket.addEventListener('message',e=>{const r=JSON.parse(e.data),p=this.pending.get(r.id);if(p){this.pending.delete(r.id);clearTimeout(p.timer);r.error?p.n(Error(r.error.message)):p.y(r.result);}});}
@@ -45,7 +47,8 @@ const audible=(s,after)=>s.audioFrames.some(f=>f.at>=after&&f.digitalAudible===t
 try {
   const token=String(config.gateway.auth.token).replace(/\$\{([^}]+)\}/gu,(_,k)=>{assert(process.env[k]);return process.env[k];});
   const {GatewayClient}=await import(core+'/dist/plugin-sdk/gateway-runtime.js');
-  await new Promise((y,n)=>{const timer=setTimeout(()=>n(Error('Gateway connect deadline')),15000);gateway=new GatewayClient({url:'ws://127.0.0.1:'+config.gateway.port,token,deviceIdentity:null,clientName:'cli',mode:'cli',scopes:['operator.read','operator.write'],onHelloOk(){clearTimeout(timer);y();},onConnectError:n});gateway.start();});
+  await new Promise((y,n)=>{const timer=setTimeout(()=>n(Error('Gateway connect deadline')),15000);gateway=new GatewayClient({url:'ws://127.0.0.1:'+config.gateway.port,token,deviceIdentity:null,clientName:'cli',mode:'cli',scopes:['operator.read','operator.write'],caps:['tool-events'],onEvent(event){const key=event.payload?.sessionKey??event.payload?.session?.key;if([...owners.values()].some(o=>o.sessionKey===key))gatewayEvents.push({at:Date.now(),event:event.event,payload:event.payload});},onHelloOk(){clearTimeout(timer);y();},onConnectError:n});gateway.start();});
+  assert.equal((await gateway.request('sessions.subscribe',{}, {timeoutMs:10000})).subscribed,true);
   pulse=await createPrivatePulseMicrophone(path.join(scratch,'pulse'),{executables:media.executables});
   chrome=spawn(media.executables.chrome,['--headless=new','--no-sandbox','--disable-dev-shm-usage','--disable-gpu','--disable-features=AudioServiceSandbox','--remote-debugging-port=0','--window-size=1280,900','--user-data-dir='+profile,'--use-fake-ui-for-media-stream','about:blank'],{env:{...pulse.environment,TMPDIR:chromeTemp,TMP:chromeTemp,TEMP:chromeTemp},stdio:['ignore','ignore','pipe']});
   chrome.stderr.on('data',b=>fs.appendFileSync(path.join(base,'chrome.log'),b,{mode:0o600}));
@@ -54,12 +57,12 @@ try {
   cdp=new CDP(tabs.find(t=>t.type==='page').webSocketDebuggerUrl);await cdp.connect();
   await cdp.request('Page.enable');await cdp.request('Runtime.enable');await cdp.request('Page.addScriptToEvaluateOnNewDocument',{source:BROWSER_PROBE});
   for(const entry of ['visitor','tianyi']) {
-    cache=null;await cdp.request('Page.navigate',{url:url+(entry==='tianyi'?'?entry=tianyi':'')});
+    currentEntry=entry;latestHistory=null;latestTranscript=null;cache=null;await cdp.request('Page.navigate',{url:url+(entry==='tianyi'?'?entry=tianyi':'')});
     await wait(s=>s.callState==='idle'&&s.badge==='可以拨号','Entry ready');
     await click('start');await wait(s=>s.pcStates[0]==='connected','Original WebRTC connected');
     const created=await wait(s=>s.api.find(a=>a.route==='/api/session'&&a.status===200),'Owned native session');
     const owner=JSON.parse(fs.readFileSync(process.env.GPT_LIVE_H5_SESSION_PATH));
-    assert(owner.sessionKey.includes('gpt-live-h5-'+entry+'-'));save(entry+'-owner.json',owner);
+    owners.set(entry,owner);assert(owner.sessionKey.includes('gpt-live-h5-'+entry+'-'));save(entry+'-owner.json',owner);
     const greeting=await wait(s=>s.events.find(e=>e.type==='turn.done'&&e.role==='assistant'&&e.text?.trim()&&audible(s,created.at)),'Native proactive greeting');
     if(entry==='visitor')assert.match(greeting.text,/谁|怎么称呼|叫什么|名字|哪位/u);
     else assert.doesNotMatch(greeting.text,/你是谁|怎么称呼|叫什么|哪位/u);
@@ -69,7 +72,25 @@ try {
     const clip=path.resolve(clips,entry+'.wav'),feed=pulse.play(clip,entry);await feed.done;assert.equal(feed.row.exitCode,0);
     save(entry+'-user-input.json',{...feed.row,clipSha256:hash(fs.readFileSync(clip)),syntheticUserOnly:true});
     let history,lastRead=0;
-    const backend=await wait(async()=>{if(Date.now()-lastRead<1500)return;lastRead=Date.now();history=await gateway.request('chat.history',{sessionKey:owner.sessionKey,limit:80},{timeoutMs:15000});const request=(history.messages??[]).find(m=>m.role==='user'&&text(m).includes('Call-host entry context:'));if(!request)return;assert(text(request).includes('"entry":"'+entry+'"'));if(entry==='visitor')assert.match(text(request),/小林/u);const final=(history.messages??[]).find(m=>m.role==='assistant'&&m.provider&&m.model!=='realtime-voice'&&m.stopReason==='stop'&&Number(m.timestamp)>=Number(request.timestamp)&&text(m).trim());return final?{request,final}:null;},'Same-owner real backend identity context',90000);
+    const backend=await wait(async()=>{
+      if(Date.now()-lastRead<1500)return;lastRead=Date.now();
+      history=latestHistory=await gateway.request('chat.history',{sessionKey:owner.sessionKey,limit:80},{timeoutMs:15000});
+      // chat.history bounds long messages, truncating the actual USER request
+      // below the existing backend contract. Read this exact owner's SQLite
+      // active transcript; never infer a missing name from the shortened view.
+      const run=gatewayEvents.find(e=>e.payload?.sessionKey===owner.sessionKey&&e.payload?.runId);
+      if(!run||!history.sessionId)return;
+      latestTranscript=readPrivateChildTranscript({state:stateRoot,candidateData:process.env.VLAB_CANDIDATE_DATA,
+        sessionId:history.sessionId,runId:run.payload.runId,requestedSessionKey:owner.sessionKey,timeoutMs:5000});
+      const messages=activeTranscriptMessages(latestTranscript),request=messages.find(m=>m.role==='user'&&text(m).includes('Call-host entry context:'));
+      if(!request)return;
+      const final=messages.find(m=>m.role==='assistant'&&m.provider&&m.model!=='realtime-voice'&&m.stopReason==='stop'&&Number(m.timestamp)>=Number(request.timestamp)&&text(m).trim());
+      return final?{request,final}:null;
+    },'Same-owner real backend identity context',90000);
+    save(entry+'-backend-transcript.json',latestTranscript);
+    save(entry+'-gateway-events.json',gatewayEvents.filter(e=>e.payload?.sessionKey===owner.sessionKey));
+    assert(text(backend.request).includes('"entry":"'+entry+'"'),'Host entry must reach actual backend');
+    if(entry==='visitor')assert(text(backend.request).includes('小林'),'The full backend USER request must carry the self-identified name');
     save(entry+'-backend-history.json',{owner,history});
     const response=await wait(s=>s.events.find(e=>e.type==='turn.done'&&e.role==='assistant'&&e.at>=Number(backend.final.timestamp)&&/入口|小林|天意|Tianyi|本人|普通/u.test(e.text??'')&&audible(s,Number(backend.final.timestamp))),'Backend response through original Live audio',45000);
     save(entry+'-speech.json',response);
@@ -81,7 +102,12 @@ try {
     for(const recording of recordings){const file=path.join(base,entry+'-native-'+recording.pcIndex+'.webm');fs.writeFileSync(file,Buffer.from(recording.base64,'base64'),{mode:0o600});const decoded=spawnSync(media.executables.ffmpeg,['-v','error','-i',file,'-f','s16le','-ar','48000','-ac','1','pipe:1'],{maxBuffer:32*1024**2});assert.equal(decoded.status,0);assert(decoded.stdout.length>0);fs.writeFileSync(file+'.pcm',decoded.stdout,{mode:0o600});}
     results.push({entry,sessionKey:owner.sessionKey,nativeGreeting:true,hostBackendIdentity:true,originalAudioDecoded:true,passed:true});
   }
-} catch(e){error=e.message;}
+} catch(e){error=e.message;
+  if(latestHistory)save('failure-backend-history.json',latestHistory);
+  if(latestTranscript)save('failure-backend-transcript.json',latestTranscript);
+  save('failure-gateway-events.json',gatewayEvents);
+  if(cdp)try{save('failure-raw-browser.json',await snap());}catch{}
+}
 finally {
   if(cdp){try{const s=await snap();if(s.pcStates[0]&&s.pcStates[0]!=='closed')await click('stop');}catch{}cdp.close();}
   gateway?.stop();
