@@ -417,3 +417,37 @@ SECRET_SAVED、链接第二次用返回 410、没有出现取消提示，并扫�
 - 钉钉出字：卡片数据更新在 INPUTING 状态下不渲染（真机 18:05 空卡 3 分钟），已回退为流式接口；保留节流 800→300 ms 和被节流更新的补发。企微节流 1 s→400 ms。Telegram 默认 progress 模式回答本来就是整段发出。
 - 合并后全量回归（假平台）全部通过：Telegram `3cde346a`（progress、ask-single、ask-multi、secret、background、steer）；钉钉 `7506f6ef`（ask-card、progress、ask-single、ask-multi、secret、background、steer）；企微 `e858dda5`（同前六项）；Harness 权限 Telegram `0c61fdee`、钉钉 `cc82fb3c`、企微 `b8212161`；Telegram 凭据链接 `849ba4b1`。
 - 真机测试（live）已带上凭据链接服务，页面只监听 VLab 的 tailnet 地址。
+
+## 15. 原生卡片：凭据链接（A3）与接管卡（A4）上钉钉、企微、Telegram（2026-10-04 晚）
+
+和飞书卡片一样：标题、一两行说明、一个按钮。共用一个「链接卡」结构（`v-experience.mjs`：`{title, lines, buttons:[{label,url}]}`），各渠道原生渲染，平台拒收卡片时退回文字链接（`sendCardOrText`）。
+
+| | 钉钉 | 企微 | Telegram |
+|---|---|---|---|
+| 凭据链接 | `actionCard`（会话 webhook；群里私信走 batchSend `sampleActionCard`）：「🔑 V 需要凭据 X」+ 说明 + 允许的域名 +「链接只能用一次、N 分钟内有效；值不会出现在聊天记录里」，按钮「填写凭据」 | `template_card` `text_notice`：主标题 + 说明（desc），其余在副标题，跳转「填写凭据」，点卡片本身也打开链接 | HTML 消息 + 内联 URL 按钮「填写凭据」；`BUTTON_URL_INVALID`（非公网地址，VLab 的 tailnet IP）时改发原来的文字链接 |
+| 接管卡 | `actionCard`「需要你接管 V 的电脑」+ 原因 + 「做完在聊天里回复『好了』…N 分钟内打开有效，接管最长 M 分钟」，按钮「接管电脑」 | `text_notice` 同样内容，跳转「接管电脑」 | 不变（接管电脑 + 交还给 V 两个按钮），标题同改为「需要你接管 V 的电脑」 |
+
+- 钉钉链接包成 `dingtalk://dingtalkclient/page/link?url=<编码后的链接>&pc_slide=false`：按钉钉「消息链接说明」，`pc_slide=false` 让 PC 端用系统浏览器打开（true 是侧边栏），手机端在钉钉内置浏览器打开。只在假平台验证过参数，PC/手机实际打开方式要真机确认。
+- 交还给 V 是回调按钮，钉钉 actionCard 和企微 text_notice 都发不回来，所以这两个渠道不放，说明里改成「在聊天里回复『好了』」；插件给模型的说明同步改（收到「好了」后查 `desktop_handoff_status`，仍在接管就提醒去页面点交还给 V）。
+- 接管卡的投递：插件仍用 `openclaw message send --presentation`。钉钉 `deliveryMode: "direct"`，CLI 进程里连接器的 outbound 新增 `renderPresentation`（有链接按钮的 presentation → `channelData.vLinkCard`）和 `sendPayload`（发 actionCard；其他 payload 照旧走 sendText/sendMedia）。企微 `deliveryMode: "gateway"`，`message send` 到 Gateway 的旧 `send` 方法只带文字（core 在 CLI 里就把卡片压平），所以企微改走 `openclaw gateway call message.action`（Gateway 里 `gatewayOwnedDelivery`，同样经 `renderPresentation`/`sendPayload` 发 `template_card`）。插件 `DEFAULT_CARD_CHANNELS` 加上 `dingtalk-connector`、`wecom`；卡片发送失败仍退回「回复里放链接」。
+- 补丁：钉钉多改 `runtime-C81EKBS1.mjs`（channel 插件 chunk），企微多改 `dist/src/channel.js`；基线字节在各自 `baseline/`。钉钉出字（流式 300 ms 节流）未动。
+
+假平台 candidate（真实 Worker 模型回合，每个 plan 单独跑）：
+
+| plan | candidate | 结果 |
+|---|---|---|
+| `dingtalk-handoff-card` | `fd9b8199` | ✅ batchSend `sampleActionCard`：标题、原因、「做完在聊天里回复『好了』…10 分钟内打开有效，接管最长 30 分钟」、按钮「接管电脑」，链接 `dingtalk://…pc_slide=false` 包着 `/desktop-handoff/#…`，用这个令牌 claim 200；回复「接管卡片已发出，完成后回复『好了』。」不含链接；Worker 配置（Gateway 派生）带插件与假渠道 |
+| `wecom-handoff-card` | `60201ca5` | ✅ `message.action` 477 ms → `aibot_send_msg` `template_card` `text_notice`，jump_list/card_action 指向 `/desktop-handoff/#…`，claim 200，回复不含链接 |
+| `dingtalk-secret-link` | `5c301a65` | ✅ 会话 webhook `actionCard`「🔑 V 需要凭据 V_CANDIDATE_DEMO_TOKEN」+「填写凭据」；页面提交 200、再用 410、SECRET_SAVED；值不在 Gateway/服务日志、聊天、审计 |
+| `wecom-secret-link` | `77ae7b08` | ✅ `text_notice` 同上；提交 200、再用 410、SECRET_SAVED、无泄漏 |
+| `telegram-secret-link` | `7c0c8bcb` | ✅ HTML 卡片 +「填写凭据」URL 按钮，文字里没有链接；SECRET_SAVED；扫描 1229 个文件值只在凭据库 |
+| `telegram-secret-link-loopback`（链接写 127.0.0.1，假 Bot API 按 Telegram 拒收 IP/localhost 按钮） | `640cc792` | ✅ 第一次 sendMessage 得到 `BUTTON_URL_INVALID`，随即改发文字链接；SECRET_SAVED、再用 410、无泄漏 |
+
+回归（同一分支）：钉钉 `dingtalk-experience` `89d0c621`（progress、ask-single、ask-multi、secret 无服务时提示 + 取消、background）✅；企微 `wecom-experience` `628c2fe5`（同五项）✅。钉钉出字速度没有改动。
+
+未覆盖 / 待真机确认：
+
+- 钉钉客户端怎么显示 actionCard、`dingtalk://…pc_slide=false` 在 PC/手机上是否如文档所说分别用系统浏览器/内置浏览器打开；企微客户端对 text_notice 的标题/副标题长度截断（文档写建议标题 ≤ 26 字，凭据名长时标题会被截）。假平台只证明发出了什么。
+- 企微接管卡依赖 CLI 能连上 Gateway（`gateway call message.action`，V 上 `openclawCommand=/usr/local/bin/openclaw`）；钉钉接管卡在 Worker 里跑 `message send`，读 Worker 配置（Gateway 派生，含渠道凭据）。
+- 「好了」只是普通消息：用户没在接管页点交还给 V 时，`desktop_handoff_status` 仍显示接管中，模型会提醒去页面交还；钉钉/企微没有按钮式交还。
+- 群里的接管卡（私信路径）在钉钉走 batchSend、企微走 `message.action` 私聊，只有单元测试。
