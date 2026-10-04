@@ -158,6 +158,19 @@ import { callGatewayFromCli as vCallGateway } from "openclaw/plugin-sdk/gateway-
 `,
   },
   {
+    // No new card while a question waits: it would land above the answer.
+    name: "start-guard",
+    anchor: "\tconst startStreaming = () => {\n\t\tif (streamingSealed) {\n",
+    replace: "\tconst startStreaming = () => {\n\t\tif (!currentCardTarget && !cardCreationPromise && vWork.waitingForAnswer()) return Promise.resolve();\n\t\tif (streamingSealed) {\n",
+  },
+  {
+    // Text after a question means it was answered.
+    name: "partial-answered",
+    anchor: "\t\t\t...streamingEnabled && { onPartialReply: async (payload) => {\n",
+    insert: "after",
+    code: "\t\t\t\tif (payload?.text) vWork.questionPending(false);\n",
+  },
+  {
     name: "finish-card",
     anchor: "\t\t\tawait finishCardOnce(cardSnapshot, finalText);\n",
     insert: "after",
@@ -166,7 +179,7 @@ import { callGatewayFromCli as vCallGateway } from "openclaw/plugin-sdk/gateway-
   {
     name: "deliver-tool",
     anchor: "\t\t\tdeliver: async (payload, info) => {\n\t\t\t\tlet text = payload.text ?? \"\";\n",
-    replace: "\t\t\tdeliver: async (payload, info) => {\n\t\t\t\tif (info?.kind === \"tool\" || payload?.channelData?.askUser) {\n\t\t\t\t\tif (await vDeliverToolPayload(payload) || info?.kind === \"tool\") return;\n\t\t\t\t}\n\t\t\t\tlet text = payload.text ?? \"\";\n",
+    replace: "\t\t\tdeliver: async (payload, info) => {\n\t\t\t\tif (info?.kind === \"tool\" || payload?.channelData?.askUser) {\n\t\t\t\t\tif (await vDeliverToolPayload(payload) || info?.kind === \"tool\") return;\n\t\t\t\t}\n\t\t\t\tif (info?.kind === \"final\" || info?.kind === \"block\") vWork.questionPending(false);\n\t\t\t\tlet text = payload.text ?? \"\";\n",
   },
   {
     // A reply to a waiting question answers it directly instead of starting a
