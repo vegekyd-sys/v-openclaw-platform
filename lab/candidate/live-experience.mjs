@@ -53,7 +53,8 @@ const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
 const port = Number(config.gateway?.port);
 config.channels = {};
 config.bindings = (config.bindings ?? []).filter((b) => !["dingtalk-connector", "wecom", "telegram"].includes(b?.match?.channel));
-config.plugins.load = { ...(config.plugins.load ?? {}), paths: [...(config.plugins.load?.paths ?? [])] };
+// Shared VLab also lists unpatched copies of these plugins; the private copies must be the only ones.
+config.plugins.load = { ...(config.plugins.load ?? {}), paths: (config.plugins.load?.paths ?? []).filter((p) => !/dingtalk|wecom/iu.test(p)) };
 config.plugins.allow = Array.isArray(config.plugins.allow) ? [...config.plugins.allow] : config.plugins.allow;
 const allowPlugin = (id) => {
   config.plugins.entries = { ...(config.plugins.entries ?? {}), [id]: { ...(config.plugins.entries?.[id] ?? {}), enabled: true } };
