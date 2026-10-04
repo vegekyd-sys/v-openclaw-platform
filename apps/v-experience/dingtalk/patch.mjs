@@ -60,11 +60,9 @@ import { formatChannelProgressDraftLineForEntry as vFormatProgressLine } from "o
     name: "helpers",
     anchor: "\tconst delayDefaults = cfg.agents?.defaults?.humanDelay;\n\tconst delayOverrides = resolveAgentConfig(cfg, agentId)?.humanDelay;\n\treturn {\n",
     insert: "before",
-    code: `\t// ${MARKER}: show the work (commentary, tool line, plan) while V works. The
-\t// answer is not streamed: the client types streamed text out slowly, so it
-\t// arrives whole with the FINISHED update, like V's Feishu card.
+    code: `\t// ${MARKER}: rewrite the card with the answer so far and the work under it.
 \tconst vRefreshCard = async () => {
-\t\tif (streamingSealed || asyncMode || !streamingEnabled || !vWork.hasContent()) return;
+\t\tif (streamingSealed || asyncMode || !streamingEnabled || (!vWork.hasContent() && !vAnswerText)) return;
 \t\tawait startStreaming();
 \t\tif (!currentCardTarget || streamingSealed) return;
 \t\tif (Date.now() - lastUpdateTime < updateInterval) {
@@ -73,7 +71,7 @@ import { formatChannelProgressDraftLineForEntry as vFormatProgressLine } from "o
 \t\t}
 \t\tlastUpdateTime = Date.now();
 \t\ttry {
-\t\t\tawait streamAICard(currentCardTarget, vWork.compose(""), false, account.config, log);
+\t\t\tawait streamAICard(currentCardTarget, vWork.compose(vAnswerText), false, account.config, log);
 \t\t\toutboundUserVisibleThisTurn = true;
 \t\t\tif (watchdogCard) armCardWatchdog();
 \t\t} catch (err) {
@@ -307,7 +305,7 @@ import { formatChannelProgressDraftLineForEntry as vFormatProgressLine } from "o
   {
     name: "partial-compose",
     anchor: "\t\t\t\t\t\t\tawait streamAICard(currentCardTarget, displayContent, false, account.config, log);\n",
-    replace: "\t\t\t\t\t\t\tvAnswerText = displayContent;\n\t\t\t\t\t\t\tif (vWork.hasContent()) await streamAICard(currentCardTarget, vWork.compose(\"\"), false, account.config, log);\n",
+    replace: "\t\t\t\t\t\t\tvAnswerText = displayContent;\n\t\t\t\t\t\t\tawait streamAICard(currentCardTarget, vWork.compose(displayContent), false, account.config, log);\n",
   },
   {
     // Feishu shows new text at once every 160 ms; 800 ms made DingTalk look slow.
@@ -370,14 +368,6 @@ function vCommandAuthorized({ core, cfg, config, senderId, text }) {
     anchor: "\t\t\tCommandAuthorized: true,\n\t\t\tOriginatingChannel: \"dingtalk-connector\",\n",
     replace: "\t\t\tCommandAuthorized: vCommandAuthorized({ core, cfg, config, senderId, text: userContent }),\n\t\t\tOriginatingChannel: \"dingtalk-connector\",\n",
   },
-  {
-    // The final text arrives whole with the FINISHED update; the closing stream
-    // write before it made the client type the whole answer out again.
-    file: "card",
-    name: "finish-whole",
-    anchor: "\tawait streamAICard(card, fixedContent, true, config, log);\n",
-    replace: `\t// ${MARKER}\n`,
-  },
 ];
 
 /** The rewritten chunk source; throws when an anchor is missing or ambiguous. */
@@ -403,8 +393,6 @@ function applyAll(source, list, label) {
 export const patchReplyChunk = (source) => applyAll(source, replacements.filter((r) => !r.file), "reply");
 /** The Stream connection chunk, patched (question card callbacks). */
 export const patchConnectionChunk = (source) => applyAll(source, replacements.filter((r) => r.file === "connection"), "connection");
-/** The AI card chunk, patched (final text without the typing animation). */
-export const patchCardChunk = (source) => applyAll(source, replacements.filter((r) => r.file === "card"), "card");
 
 const findChunk = (distDir, re, needle) => {
   const matches = fs.readdirSync(distDir).filter((f) => re.test(f) && fs.readFileSync(path.join(distDir, f), "utf8").includes(needle));
@@ -415,12 +403,11 @@ const findChunk = (distDir, re, needle) => {
 /** The connector chunk that defines the reply dispatcher. */
 export const findReplyChunk = (distDir) => findChunk(distDir, /^message-handler-[\w-]+\.mjs$/u, "function createDingtalkReplyDispatcher(params)");
 export const findConnectionChunk = (distDir) => findChunk(distDir, /^connection-[\w-]+\.mjs$/u, "client.registerCallbackListener(TOPIC_ROBOT");
-export const findCardChunk = (distDir) => findChunk(distDir, /^card-[\w-]+\.mjs$/u, "async function streamAICard(card, content, finished = false, config, log)");
 
 export function patchDingtalkConnector(distDir, { experienceSource }) {
   const changed = {};
   const chunk = findReplyChunk(distDir);
-  for (const [file, fn] of [[chunk, patchReplyChunk], [findConnectionChunk(distDir), patchConnectionChunk], [findCardChunk(distDir), patchCardChunk]]) {
+  for (const [file, fn] of [[chunk, patchReplyChunk], [findConnectionChunk(distDir), patchConnectionChunk]]) {
     const p = path.join(distDir, file);
     const before = fs.readFileSync(p, "utf8");
     const after = fn(before);
