@@ -93,5 +93,7 @@ export function inPlaceTarget(context = {}, config = {}) {
     return null;
   }
   const accountId = typeof context.deliveryContext?.accountId === "string" ? context.deliveryContext.accountId : undefined;
-  return { channel, target: to, accountId };
+  const thread = context.deliveryContext?.threadId;
+  const threadId = typeof thread === "number" || (typeof thread === "string" && /^\d+$/u.test(thread)) ? Number(thread) : undefined;
+  return { channel, target: to, accountId, ...(threadId ? { threadId } : {}) };
 }

@@ -179,6 +179,7 @@ test("dingtalk patch applies to V's connector chunk exactly once", () => {
   fs.writeFileSync(path.join(dir, "message-handler-BUoLSylZ.mjs"), baseline);
   fs.copyFileSync(new URL("../apps/v-experience/dingtalk/baseline/connection-DCvu-l09.mjs", import.meta.url), path.join(dir, "connection-DCvu-l09.mjs"));
   fs.copyFileSync(new URL("../apps/v-experience/dingtalk/baseline/runtime-C81EKBS1.mjs", import.meta.url), path.join(dir, "runtime-C81EKBS1.mjs"));
+  fs.copyFileSync(new URL("../apps/v-experience/dingtalk/baseline/token-xUW84QQ8.mjs", import.meta.url), path.join(dir, "token-xUW84QQ8.mjs"));
   const result = patchDingtalkConnector(dir, { experienceSource: new URL("../apps/v-experience/v-experience.mjs", import.meta.url).pathname });
   assert.equal(result.changed, true);
   assert(fs.readFileSync(path.join(dir, "message-handler-BUoLSylZ.mjs"), "utf8").includes(MARKER));
@@ -425,6 +426,18 @@ const HANDOFF_PRESENTATION = { title: "需要你接管 V 的电脑", tone: "info
   { type: "context", text: "点「接管电脑」打开 V 的电脑直接操作，做完在聊天里回复「好了」，V 接着做。10 分钟内打开有效，接管最长 30 分钟。" },
   { type: "buttons", buttons: [{ label: "接管电脑", style: "primary", url: "https://openclaw.example.test/desktop-handoff/#tok_1" }, { label: "交还给 V", value: "/v-handback h_1" }] },
 ] };
+// The plain card the plugin sends DingTalk and WeCom (no callback button).
+const HANDOFF_LINK_ONLY = { ...HANDOFF_PRESENTATION, blocks: [HANDOFF_PRESENTATION.blocks[0], { type: "buttons", buttons: [HANDOFF_PRESENTATION.blocks[1].buttons[0]] }] };
+// The 「电脑」 card (apps/v-desktop-handoff/plugin/core/channel-cards.js, pending state).
+const COMPUTER_CARD = (imageRef) => ({ title: "电脑 · 需要操作", tone: "info", blocks: [
+  { type: "context", text: "点「接管」打开 V 的电脑直接操作，做完点「我完成了」，V 接着做；不需要就点「跳过」。10 分钟内打开有效。" },
+  ...(imageRef ? [{ type: "text", text: `![V 的电脑](${imageRef})` }] : []),
+  { type: "buttons", buttons: [
+    { label: "接管", url: "https://openclaw.example.test/desktop-handoff/#tok_1", style: "primary" },
+    { label: "我完成了", value: "/v-handback h_1" },
+    { label: "跳过", value: "/v-skip h_1" },
+  ] },
+] });
 
 test("link card from a presentation: title, lines, URL buttons only", () => {
   const card = vx.linkCardFromPresentation(HANDOFF_PRESENTATION, "**需要你登录小红书**");
@@ -550,7 +563,7 @@ test("dingtalk channel patch: presentation with a link button goes out as an act
     "dingtalk-connector",
   );
   const methods = build(async (config, target, content, options) => { sent.push({ config, target, content: JSON.parse(content), options }); return { ok: true, processQueryKey: "pqk" }; });
-  const rendered = methods.renderPresentation({ payload: { text: "**需要你登录小红书**" }, presentation: HANDOFF_PRESENTATION });
+  const rendered = methods.renderPresentation({ payload: { text: "**需要你登录小红书**" }, presentation: HANDOFF_LINK_ONLY });
   assert.equal(rendered.channelData.vLinkCard.buttons.length, 1);
   assert.match(rendered.text, /接管电脑：https:/u);
   assert.equal(methods.renderPresentation({ payload: { text: "x" }, presentation: { blocks: [{ type: "text", text: "no buttons" }] } }), null, "no link: core fallback");
@@ -586,7 +599,7 @@ test("wecom channel patch: presentation with a link button goes out as a text_no
     async ({ ctx, sendText }) => sendText({ ...ctx, text: ctx.payload.text }),
     "wecom",
   );
-  const rendered = methods.renderPresentation({ payload: { text: "**需要你登录小红书**" }, presentation: HANDOFF_PRESENTATION });
+  const rendered = methods.renderPresentation({ payload: { text: "**需要你登录小红书**" }, presentation: HANDOFF_LINK_ONLY });
   assert.deepEqual(await methods.sendPayload({ to: "wecom:zhangsan", payload: rendered }), { channel: "wecom", messageId: "r1", chatId: "zhangsan" });
   assert.equal(frames[0].chatId, "zhangsan");
   assert.equal(frames[0].body.msgtype, "template_card");
@@ -604,4 +617,202 @@ test("wecom channel patch: presentation with a link button goes out as a text_no
   assert.deepEqual(patchWeComPlugin(dir, { experienceSource }).files, { "monitor.js": true, "channel.js": true });
   assert.equal(patchWeComPlugin(dir, { experienceSource }).changed, false, "second run changes nothing");
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// ------------------------------------------------- the 「电脑」 card (A4 parity)
+
+const JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(2000, 7)]);
+const withCardImage = async (fn, name = "v-desktop-handoff-h_1-abcd.jpg", bytes = JPEG) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vx-card-"));
+  const file = path.join(dir, name);
+  fs.writeFileSync(file, bytes);
+  try { return await fn(`file://${file}`, file, dir); } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+};
+
+test("「电脑」 card from a presentation: picture, the link and the command buttons", () => {
+  const card = vx.linkCardFromPresentation(COMPUTER_CARD("https://openclaw.example.test/desktop-handoff/snapshot/x.jpg"), "需要你登录测试站点", { commands: true });
+  assert.deepEqual(card, {
+    title: "电脑 · 需要操作",
+    lines: ["需要你登录测试站点", COMPUTER_CARD().blocks[0].text],
+    buttons: [
+      { label: "接管", url: "https://openclaw.example.test/desktop-handoff/#tok_1" },
+      { label: "我完成了", command: "/v-handback h_1" },
+      { label: "跳过", command: "/v-skip h_1" },
+    ],
+    image: { alt: "V 的电脑", ref: "https://openclaw.example.test/desktop-handoff/snapshot/x.jpg" },
+  });
+  assert.deepEqual(vx.linkCardFromPresentation(COMPUTER_CARD(), "x").buttons.map((b) => b.label), ["接管"], "without commands only the link stays");
+  assert.equal(vx.linkCardFromPresentation({ title: "t", blocks: [{ type: "buttons", buttons: [{ label: "坏", value: "/v-handback h_1; rm -rf /" }] }] }, "", { commands: true }), undefined, "only plain slash commands");
+  assert.equal(vx.linkCardFromPresentation({ title: "t", blocks: [{ type: "text", text: "![x](http://insecure.test/a.jpg)" }, { type: "buttons", buttons: [{ label: "a", url: "https://a.test/" }] }] }).image, undefined, "pictures only over https or a local file");
+  assert.deepEqual(vx.linkCardFromPresentation({ title: "电脑 · 已完成", blocks: [{ type: "context", text: "已交还给 V，V 接着做。" }] }, "r", { commands: true, allowEmpty: true }), { title: "电脑 · 已完成", lines: ["r", "已交还给 V，V 接着做。"], buttons: [] });
+  assert.match(vx.linkCardText(card), /\n我完成了：回复 \/v-handback h_1\n跳过：回复 \/v-skip h_1$/u);
+});
+
+test("「电脑」 card on DingTalk: picture in the markdown, three buttons, commands as send-message links", () => {
+  const card = vx.linkCardFromPresentation(COMPUTER_CARD(), "需要你登录测试站点", { commands: true });
+  const withPicture = { ...card, image: { alt: "V 的电脑", ref: "@lADPcandidate" } };
+  const ac = vx.dingtalkActionCard(withPicture);
+  assert.equal(ac.btnOrientation, "1");
+  assert.deepEqual(ac.btns.map((b) => b.title), ["接管", "我完成了", "跳过"]);
+  assert.equal(new URL(ac.btns[0].actionURL).searchParams.get("url"), "https://openclaw.example.test/desktop-handoff/#tok_1");
+  assert.equal(ac.btns[1].actionURL, "dtmd://dingtalkclient/sendMessage?content=%2Fv-handback%20h_1");
+  assert.equal(ac.btns[2].actionURL, "dtmd://dingtalkclient/sendMessage?content=%2Fv-skip%20h_1");
+  assert.equal(ac.text, `### 电脑 · 需要操作\n\n需要你登录测试站点\n\n${COMPUTER_CARD().blocks[0].text}\n\n![V 的电脑](@lADPcandidate)`);
+  const robot = vx.dingtalkRobotActionCard(withPicture);
+  assert.equal(robot.msgKey, "sampleActionCard3");
+  assert.deepEqual([robot.msgParam.actionTitle1, robot.msgParam.actionTitle2, robot.msgParam.actionTitle3], ["接管", "我完成了", "跳过"]);
+  assert.equal(robot.msgParam.actionURL2, ac.btns[1].actionURL);
+  assert.equal(robot.msgParam.text, ac.text);
+  assert.equal(vx.dingtalkRobotActionCard({ ...card, buttons: card.buttons.slice(1) }).msgKey, "sampleActionCard6", "two buttons side by side");
+  assert.equal(vx.dingtalkRobotActionCard({ title: "t", lines: [], buttons: [{ label: "a", url: "https://a.test/" }] }).msgKey, "sampleActionCard");
+  assert.doesNotMatch(vx.dingtalkActionCard({ ...card, image: { alt: "x", ref: "file:///tmp/v-desktop-handoff-h_1.jpg" } }).text, /file:/u, "a local file is never put in the markdown");
+});
+
+test("「电脑」 card on WeCom: picture card (or image) + button card; taps and state updates", () => {
+  const card = vx.linkCardFromPresentation(COMPUTER_CARD("https://openclaw.example.test/desktop-handoff/snapshot/x.jpg"), "需要你登录测试站点", { commands: true });
+  const [news, buttons] = vx.wecomCardMessages(card, { taskId: "v_t" });
+  assert.equal(news.templateCard.card_type, "news_notice");
+  assert.deepEqual(news.templateCard.card_image, { url: "https://openclaw.example.test/desktop-handoff/snapshot/x.jpg", aspect_ratio: 1.6 });
+  assert.deepEqual(news.templateCard.card_action, { type: 1, url: "https://openclaw.example.test/desktop-handoff/#tok_1" });
+  assert.deepEqual(news.templateCard.main_title, { title: "电脑", desc: "需要你登录测试站点" });
+  assert.deepEqual(buttons.templateCard, {
+    card_type: "button_interaction",
+    main_title: { title: "电脑", desc: "需要操作" },
+    sub_title_text: `需要你登录测试站点\n${COMPUTER_CARD().blocks[0].text}`,
+    horizontal_content_list: [{ type: 1, keyname: "接管", value: "点击打开", url: "https://openclaw.example.test/desktop-handoff/#tok_1" }],
+    button_list: [{ text: "我完成了", style: 1, key: "vcmd:v-handback:h_1" }, { text: "跳过", style: 2, key: "vcmd:v-skip:h_1" }],
+    task_id: "v_t",
+  });
+  const local = vx.wecomCardMessages({ ...card, image: { alt: "x", ref: "file:///tmp/v-desktop-handoff-h_1.jpg" } });
+  assert.deepEqual(local.map((m) => (m.image ? "image" : m.templateCard.card_type)), ["image", "button_interaction"]);
+  assert.deepEqual(vx.wecomCardMessages({ ...card, image: undefined }).map((m) => m.templateCard.card_type), ["button_interaction"], "no picture: the button card alone");
+  assert.deepEqual(vx.wecomCardMessages({ title: "t", lines: ["a"], buttons: [{ label: "开", url: "https://a.test/" }] }).map((m) => m.templateCard.card_type), ["text_notice"], "link cards unchanged");
+  assert.deepEqual(vx.parseWecomCardKey("vcmd:v-handback:h_1"), { command: "/v-handback h_1", ref: "h_1" });
+  assert.equal(vx.parseWecomCardKey("vnoop"), null);
+  assert.equal(vx.parseWecomCardKey("submit_1"), undefined, "other cards' events keep the plugin's handling");
+  assert.equal(vx.parseWecomCardKey("vcmd:v-handback:h_1 x"), undefined);
+  const done = vx.wecomButtonCard(vx.linkCardFromPresentation({ title: "电脑 · 已完成", blocks: [{ type: "context", text: "已交还给 V，V 接着做。" }] }, "需要你登录测试站点", { commands: true, allowEmpty: true }), { taskId: "v_t" });
+  assert.deepEqual(done.button_list, [{ text: "已完成", style: 2, key: "vnoop" }]);
+  assert.equal(done.task_id, "v_t", "the update keeps the tapped card's task id");
+});
+
+test("card pictures: only the plugin's own JPEG/PNG files are uploaded by a channel", async () => {
+  await withCardImage((ref) => {
+    const picture = vx.localCardImage(ref);
+    assert.equal(picture.type, "image/jpeg");
+    assert.equal(picture.filename, "v-desktop-handoff-h_1-abcd.jpg");
+    assert.equal(picture.bytes.length, JPEG.length);
+  });
+  await withCardImage((ref) => assert.equal(vx.localCardImage(ref), undefined), "passwd.jpg");
+  await withCardImage((ref) => assert.equal(vx.localCardImage(ref), undefined), "v-desktop-handoff-h_1.jpg", Buffer.from("not an image at all, just text"));
+  await withCardImage((ref, file, dir) => {
+    const link = path.join(dir, "v-desktop-handoff-link.jpg");
+    fs.symlinkSync(file, link);
+    assert.equal(vx.localCardImage(`file://${link}`), undefined, "no symlinks");
+  });
+  assert.equal(vx.localCardImage("https://a.test/v-desktop-handoff-1.jpg"), undefined);
+  assert.equal(vx.localCardImage("file:///etc/passwd"), undefined);
+});
+
+test("card action bridge: a tap is parked for the plugin's update, once, inside the window", async () => {
+  const bridge = vx.cardActionBridge();
+  assert.equal(vx.cardActionBridge(), bridge, "one per process");
+  const updates = [];
+  bridge.hold("wecom", "h_bridge", async (payload) => updates.push(payload));
+  assert.equal(await bridge.update("wecom", "h_bridge", { text: "a" }), true);
+  assert.equal(await bridge.update("wecom", "h_bridge", { text: "b" }), false, "one update per tap");
+  bridge.hold("wecom", "h_late", async () => updates.push("late"), 10);
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(await bridge.update("wecom", "h_late", {}), false, "past the window");
+  assert.deepEqual(updates, [{ text: "a" }]);
+});
+
+test("dingtalk channel patch: the 「电脑」 card uploads its picture and goes out with three buttons", async () => {
+  const baseline = fs.readFileSync(new URL("../apps/v-experience/dingtalk/baseline/runtime-C81EKBS1.mjs", import.meta.url), "utf8");
+  const patched = patchRuntimeChunk(baseline);
+  assert.match(patched, /^import \{ i as vGetOapiAccessToken, n as vDingtalkOapi, r as vGetAccessToken, t as vDingtalkApi \} from "\.\/token-xUW84QQ8\.mjs";/mu);
+  const start = patched.indexOf("\t\trenderPresentation:");
+  const snippet = patched.slice(start, patched.indexOf("\t\tchunker:", start));
+  const posts = [];
+  const uploads = [];
+  const make = ({ upload = true } = {}) => new Function("vExperience", "dingtalkPlugin", "vSendTextAndMedia", "resolveDingtalkAccount", "vSendProactive", "CHANNEL_ID", "vGetOapiAccessToken", "vDingtalkOapi", "vGetAccessToken", "vDingtalkApi", "dingtalkHttp", "fetch", `return {${snippet}};`)(
+    vx, { outbound: {} }, async () => assert.fail("no text path"),
+    () => ({ config: { clientId: "ding1" }, clientSecret: "s" }),
+    async () => assert.fail("not the single-link path"),
+    "dingtalk-connector",
+    async () => "oapi-token", "https://oapi.test", async () => "api-token", "https://api.test",
+    { post: async (url, body, options) => { posts.push({ url, body, options }); return { data: { processQueryKey: "pqk3" } }; } },
+    async (url, init) => { uploads.push({ url, file: init.body.get("media") }); return { json: async () => (upload ? { errcode: 0, media_id: "@lADPcandidate" } : { errcode: 40004, errmsg: "bad" }) }; },
+  );
+  await withCardImage(async (ref) => {
+    const methods = make();
+    const rendered = methods.renderPresentation({ payload: { text: "需要你登录测试站点" }, presentation: COMPUTER_CARD(ref) });
+    assert.equal(rendered.channelData.vLinkCard.image.ref, ref);
+    assert.deepEqual(await methods.sendPayload({ cfg: {}, to: "staff1", payload: rendered }), { channel: "dingtalk-connector", messageId: "pqk3", target: { kind: "conversation", id: "staff1" } });
+    assert.equal(uploads[0].url, "https://oapi.test/media/upload?access_token=oapi-token&type=image");
+    assert.equal(uploads[0].file.size, JPEG.length);
+    assert.equal(posts[0].url, "https://api.test/v1.0/robot/oToMessages/batchSend");
+    assert.equal(posts[0].body.msgKey, "sampleActionCard3");
+    assert.deepEqual(posts[0].body.userIds, ["staff1"]);
+    assert.equal(posts[0].options.headers["x-acs-dingtalk-access-token"], "api-token");
+    const param = JSON.parse(posts[0].body.msgParam);
+    assert.match(param.text, /!\[V 的电脑\]\(@lADPcandidate\)$/u);
+    assert.equal(param.actionURL2, "dtmd://dingtalkclient/sendMessage?content=%2Fv-handback%20h_1");
+    await methods.sendPayload({ cfg: {}, to: "cidGroup1", payload: rendered });
+    assert.equal(posts[1].url, "https://api.test/v1.0/robot/groupMessages/send");
+    assert.equal(posts[1].body.openConversationId, "cidGroup1");
+    // A failed upload: the card still goes out, without the picture.
+    await make({ upload: false }).sendPayload({ cfg: {}, to: "staff1", payload: rendered });
+    assert.doesNotMatch(JSON.parse(posts[2].body.msgParam).text, /!\[/u);
+  });
+});
+
+test("wecom channel patch: the 「电脑」 card goes out as picture + button card; a local picture is uploaded", async () => {
+  const { patchChannel } = await import("../apps/v-experience/wecom/patch.mjs");
+  const patched = patchChannel(fs.readFileSync(new URL("../apps/v-experience/wecom/baseline/channel.js", import.meta.url), "utf8"));
+  const start = patched.indexOf("        renderPresentation:");
+  const snippet = patched.slice(start, patched.indexOf("        chunker:", start));
+  const frames = [];
+  const ws = {
+    isConnected: true,
+    sendMessage: async (chatId, body) => { frames.push({ chatId, body }); return { headers: { req_id: `r${frames.length}` } }; },
+    uploadMedia: async (bytes, options) => { frames.push({ upload: bytes.length, options }); return { media_id: "m1" }; },
+    sendMediaMessage: async (chatId, type, mediaId) => { frames.push({ chatId, media: [type, mediaId] }); return {}; },
+  };
+  const build = (client) => new Function("vExperience", "wecomPlugin", "getWeComWebSocket", "DEFAULT_ACCOUNT_ID", "vSendTextAndMedia", "CHANNEL_ID", `return {${snippet}};`)(vx, { outbound: {} }, () => client, "default", async () => assert.fail("no text path"), "wecom");
+  const methods = build(ws);
+  const rendered = methods.renderPresentation({ payload: { text: "需要你登录测试站点" }, presentation: COMPUTER_CARD("https://openclaw.example.test/desktop-handoff/snapshot/x.jpg") });
+  assert.deepEqual(await methods.sendPayload({ to: "zhangsan", payload: rendered }), { channel: "wecom", messageId: "r2", chatId: "zhangsan" });
+  assert.deepEqual(frames.map((f) => f.body.template_card.card_type), ["news_notice", "button_interaction"]);
+  frames.length = 0;
+  await withCardImage(async (ref) => {
+    await methods.sendPayload({ to: "zhangsan", payload: methods.renderPresentation({ payload: { text: "x" }, presentation: COMPUTER_CARD(ref) }) });
+  });
+  assert.deepEqual(frames.map((f) => (f.upload ? `upload:${f.options.type}` : f.media ? `send:${f.media.join(":")}` : f.body.template_card.card_type)), ["upload:image", "send:image:m1", "button_interaction"]);
+  // A refused picture card does not stop the button card.
+  frames.length = 0;
+  const refusing = { ...ws, sendMessage: async (chatId, body) => { if (body.template_card.card_type === "news_notice") throw new Error("40058 bad image"); frames.push({ chatId, body }); return { headers: { req_id: "ok" } }; } };
+  assert.equal((await build(refusing).sendPayload({ to: "zhangsan", payload: rendered })).messageId, "ok");
+  assert.deepEqual(frames.map((f) => f.body.template_card.card_type), ["button_interaction"]);
+});
+
+test("wecom monitor patch: a V card button tap becomes the tapper's command and parks the event", async () => {
+  const { patchMonitor } = await import("../apps/v-experience/wecom/patch.mjs");
+  const patched = patchMonitor(fs.readFileSync(new URL("../apps/v-experience/wecom/baseline/monitor.js", import.meta.url), "utf8"));
+  const start = patched.indexOf("                const vCardCommand =");
+  const end = patched.indexOf("                else if (eventType === \"template_card_event\") {", start);
+  assert(start > 0 && end > start);
+  const updates = [];
+  const run = new Function("vExperience", "eventType", "eventBody", "frame", "wsClient", "runtime", "account", `${patched.slice(start, end)}; return frame.body;`);
+  const frame = { headers: { req_id: "evt1" }, body: { msgid: "m1", chattype: "single", from: { userid: "zhangsan" }, msgtype: "event", event: { eventtype: "template_card_event", template_card_event: { event_key: "vcmd:v-handback:h_77", task_id: "v_t", card_type: "button_interaction" } } } };
+  const wsClient = { updateTemplateCard: async (f, card, users) => updates.push({ req: f.headers.req_id, card, users }) };
+  const body = run(vx, "template_card_event", frame.body, frame, wsClient, { log() {} }, { accountId: "default" });
+  assert.deepEqual({ msgtype: body.msgtype, text: body.text, from: body.from }, { msgtype: "text", text: { content: "/v-handback h_77" }, from: { userid: "zhangsan" } });
+  assert.equal(await vx.cardActionBridge().update("wecom", "h_77", { presentation: { title: "电脑 · 已完成", blocks: [{ type: "context", text: "已交还给 V，V 接着做。" }] }, text: "r" }), true);
+  assert.equal(updates[0].req, "evt1");
+  assert.deepEqual(updates[0].users, ["zhangsan"]);
+  assert.equal(updates[0].card.task_id, "v_t");
+  assert.deepEqual(updates[0].card.button_list, [{ text: "已完成", style: 2, key: "vnoop" }]);
+  const other = { headers: {}, body: { msgid: "m2", chattype: "single", from: { userid: "zhangsan" }, msgtype: "event", event: { eventtype: "template_card_event", template_card_event: { event_key: "submit", task_id: "x" } } } };
+  assert.equal(run(vx, "template_card_event", other.body, other, wsClient, { log() {} }, { accountId: "default" }).msgtype, "event", "other card events untouched");
 });

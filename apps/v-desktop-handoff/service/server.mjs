@@ -4,8 +4,10 @@
 //   node server.mjs /etc/v-desktop-handoff/config.json
 //
 // Public side (behind cloudflared, path prefix): viewer page, claim/control
-// API, RFB-over-WebSocket. Admin side (loopback only, bearer token): issue and
-// revoke handoffs, read state and audit. See ../README.md.
+// API, RFB-over-WebSocket, desktop pictures for chat cards. Admin side
+// (loopback only, bearer token): issue and revoke handoffs, store a card's
+// picture, read state and audit. See ../README.md.
+import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -97,6 +99,90 @@ function readJsonBody(req, limit = 8 * 1024) {
   });
 }
 
+function readRawBody(req, limit) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > limit) {
+        reject(new Error("body too large"));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks)));
+    req.on("error", reject);
+  });
+}
+
+const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+/** "image/jpeg" | "image/png" from the first bytes, or null. */
+export function imageType(bytes) {
+  if (bytes?.length > 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return "image/jpeg";
+  }
+  if (bytes?.length > 8 && bytes.subarray(0, 8).equals(PNG_MAGIC)) {
+    return "image/png";
+  }
+  return null;
+}
+
+/**
+ * Desktop pictures for chat cards whose platform fetches images by url (WeCom
+ * template cards). Each picture gets its own random token, lives in memory
+ * only and expires; the token never reaches the audit log.
+ */
+export class SnapshotStore {
+  constructor({ ttlMs = 60 * 60_000, maxEntries = 50, maxBytes = 4 * 1024 * 1024, now = Date.now } = {}) {
+    this.ttlMs = ttlMs;
+    this.maxEntries = maxEntries;
+    this.maxBytes = maxBytes;
+    this.now = now;
+    this.entries = new Map(); // token -> {handoffId, bytes, type, expiresAt}
+  }
+
+  put(handoffId, bytes) {
+    const type = imageType(bytes);
+    if (!type) {
+      throw new Error("snapshot must be a JPEG or PNG image");
+    }
+    if (bytes.length > this.maxBytes) {
+      throw new Error("snapshot too large");
+    }
+    this.prune();
+    const token = crypto.randomBytes(24).toString("base64url");
+    const expiresAt = this.now() + this.ttlMs;
+    this.entries.set(token, { handoffId, bytes: Buffer.from(bytes), type, expiresAt });
+    while (this.entries.size > this.maxEntries) {
+      this.entries.delete(this.entries.keys().next().value);
+    }
+    return { token, type, expiresAt, extension: type === "image/png" ? "png" : "jpg" };
+  }
+
+  get(token) {
+    const entry = this.entries.get(token);
+    if (!entry) {
+      return null;
+    }
+    if (this.now() > entry.expiresAt) {
+      this.entries.delete(token);
+      return null;
+    }
+    return entry;
+  }
+
+  prune() {
+    for (const [token, entry] of this.entries) {
+      if (this.now() > entry.expiresAt) {
+        this.entries.delete(token);
+      }
+    }
+  }
+}
+
 function serveStatic(res, root, relative) {
   const target = path.resolve(root, `.${path.posix.normalize(`/${relative}`)}`);
   if (!target.startsWith(`${path.resolve(root)}${path.sep}`) && target !== path.resolve(root)) {
@@ -172,6 +258,8 @@ export function createService(config, { log = console } = {}) {
 
   const prefix = config.pathPrefix;
   const linkFor = (token) => `${config.publicBaseUrl.replace(/\/+$/u, "")}${prefix}/#${token}`;
+  const snapshots = new SnapshotStore({ ttlMs: config.snapshotTtlMs });
+  const snapshotUrlFor = (token, extension) => `${config.publicBaseUrl.replace(/\/+$/u, "")}${prefix}/snapshot/${token}.${extension}`;
 
   // ---------------- public ----------------
   const publicServer = http.createServer(async (req, res) => {
@@ -189,6 +277,20 @@ export function createService(config, { log = console } = {}) {
         serveStatic(res, PUBLIC_DIR, "index.html");
       } else if (req.method === "GET" && route === "/healthz") {
         json(res, 200, { ok: true, viewers: registry.activeViewerCount() });
+      } else if (req.method === "GET" && /^\/snapshot\/[\w-]{32}\.(?:jpg|png)$/u.test(route)) {
+        const entry = snapshots.get(route.slice("/snapshot/".length).replace(/\.\w+$/u, ""));
+        if (!entry) {
+          res.writeHead(404, { "cache-control": "no-store" });
+          res.end("not found");
+          return;
+        }
+        res.writeHead(200, {
+          "content-type": entry.type,
+          "content-length": entry.bytes.length,
+          "cache-control": `private, max-age=${Math.max(0, Math.floor((entry.expiresAt - Date.now()) / 1000))}`,
+          "x-content-type-options": "nosniff",
+        });
+        res.end(entry.bytes);
       } else if (req.method === "GET" && route.startsWith("/novnc/")) {
         serveStatic(res, config.novncDir, route.slice("/novnc/".length));
       } else if (req.method === "GET" && /^\/[\w.-]+\.(?:js|css|svg|png|ico)$/u.test(route)) {
@@ -302,6 +404,7 @@ export function createService(config, { log = console } = {}) {
     const match = url.pathname.match(/^\/v1\/handoffs\/([\w-]+)$/u);
     const handBackMatch = url.pathname.match(/^\/v1\/handoffs\/([\w-]+)\/handback$/u);
     const cardMatch = url.pathname.match(/^\/v1\/handoffs\/([\w-]+)\/card$/u);
+    const snapshotMatch = url.pathname.match(/^\/v1\/handoffs\/([\w-]+)\/snapshot$/u);
     try {
       if (req.method === "GET" && url.pathname === "/health") {
         json(res, 200, { ok: true, ...registry.state() });
@@ -328,6 +431,15 @@ export function createService(config, { log = console } = {}) {
         const body = await readJsonBody(req, 20 * 1024);
         const result = registry.setCard(cardMatch[1], body.card);
         json(res, result ? 200 : 404, result ?? { error: "not_found" });
+      } else if (req.method === "PUT" && snapshotMatch) {
+        // A chat card's desktop picture (raw JPEG/PNG body), served publicly under a fresh token.
+        if (!registry.handoffs.has(snapshotMatch[1])) {
+          json(res, 404, { error: "not_found" });
+          return;
+        }
+        const stored = snapshots.put(snapshotMatch[1], await readRawBody(req, snapshots.maxBytes + 1));
+        registry.audit("snapshot_stored", { id: snapshotMatch[1], type: stored.type });
+        json(res, 201, { url: snapshotUrlFor(stored.token, stored.extension), type: stored.type, expiresAt: stored.expiresAt });
       } else if (req.method === "POST" && handBackMatch) {
         const result = registry.handBack(handBackMatch[1]);
         json(res, result ? 200 : 404, result ?? { error: "not_found" });
@@ -355,6 +467,7 @@ export function createService(config, { log = console } = {}) {
 
   return {
     registry,
+    snapshots,
     linkFor,
     async listen() {
       await new Promise((resolve, reject) => {

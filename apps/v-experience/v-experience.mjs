@@ -728,34 +728,122 @@ const linkOf = (button) => {
 };
 const plainLine = (text) => String(text ?? "").replace(/\*\*|__|`/gu, "").trim();
 
+/** A slash command a card button may post as the person who taps it, e.g. `/v-handback h_1a2b`. */
+const commandOf = (button) => {
+  const value = typeof button?.value === "string" ? button.value.trim() : "";
+  return /^\/[a-z][\w-]{0,31}(?: [\w-]{1,48})?$/u.test(value) ? value : undefined;
+};
+// A picture line in a presentation text block: `![alt](https://…)` or a local
+// `file:///…/v-desktop-handoff-….jpg` the channel uploads itself.
+const IMAGE_LINE = /^!\[([^\]\n]{0,60})\]\(((?:https:\/\/|file:\/\/\/)\S+)\)$/u;
+
 /**
  * A link card from a portable presentation (`openclaw message send
  * --presentation`): title, the message text and text/context blocks as lines,
- * URL buttons. Callback buttons are dropped (these channels cannot post them
- * back); undefined when no URL button is left.
+ * URL buttons. With `commands`, callback buttons whose value is a slash
+ * command stay as `{label, command}` (DingTalk posts them through a
+ * send-message link, WeCom through card events); otherwise they are dropped.
+ * A text block that is only `![alt](url)` becomes the card's picture.
+ * Undefined when no button is left (unless `allowEmpty`, for state updates).
  */
-export function linkCardFromPresentation(presentation, text) {
+export function linkCardFromPresentation(presentation, text, { commands = false, allowEmpty = false } = {}) {
   if (!presentation || !Array.isArray(presentation.blocks)) return undefined;
   const title = String(presentation.title ?? "").trim();
   const lines = [];
+  let image;
   const body = String(text ?? "").trim();
   if (body && body !== title) lines.push(body);
   const buttons = [];
   for (const block of presentation.blocks) {
-    if ((block?.type === "text" || block?.type === "context") && String(block.text ?? "").trim()) lines.push(String(block.text).trim());
+    if ((block?.type === "text" || block?.type === "context") && String(block.text ?? "").trim()) {
+      const line = String(block.text).trim();
+      const picture = IMAGE_LINE.exec(line);
+      if (picture) image ??= { alt: picture[1], ref: picture[2] };
+      else lines.push(line);
+    }
     if (block?.type === "buttons") {
       for (const b of block.buttons ?? []) {
+        const label = String(b.label ?? "").trim();
+        if (!label) continue;
         const url = linkOf(b);
-        if (url && String(b.label ?? "").trim()) buttons.push({ label: String(b.label).trim(), url });
+        const command = commands && !url ? commandOf(b) : undefined;
+        if (url) buttons.push({ label, url });
+        else if (command) buttons.push({ label, command });
       }
     }
   }
-  return buttons.length ? { title: title || buttons[0].label, lines, buttons } : undefined;
+  if (!buttons.length && !allowEmpty) return undefined;
+  return { title: title || buttons[0]?.label || "", lines, buttons, ...(image ? { image } : {}) };
 }
 
 /** The card as plain text, links spelled out. */
 export function linkCardText(card) {
-  return [card.title, ...card.lines.map(plainLine), ...card.buttons.map((b) => `${b.label}：${b.url}`)].filter(Boolean).join("\n");
+  return [card.title, ...card.lines.map(plainLine), ...card.buttons.map((b) => (b.url ? `${b.label}：${b.url}` : `${b.label}：回复 ${b.command}`))].filter(Boolean).join("\n");
+}
+
+/** `{title, desc}` from a card title like 「电脑 · 需要操作」. */
+const splitTitle = (title) => {
+  const at = String(title ?? "").indexOf(" · ");
+  return at > 0 ? { title: title.slice(0, at), desc: title.slice(at + 3) } : { title: String(title ?? "") };
+};
+
+/**
+ * The bytes of a card picture the plugin left on this host for the channel to
+ * upload (`file:///…/v-desktop-handoff-<id>.jpg`). Only that file name
+ * pattern, a regular file, a JPEG/PNG of at most 5 MB: a presentation cannot
+ * make a channel upload anything else.
+ */
+export function localCardImage(ref) {
+  const fs = globalThis.process?.getBuiltinModule?.("node:fs");
+  if (!fs || typeof ref !== "string" || !ref.startsWith("file:///")) return undefined;
+  let file;
+  try { file = decodeURIComponent(new URL(ref).pathname); } catch { return undefined; }
+  const name = file.split("/").pop() ?? "";
+  if (!/^v-desktop-handoff-[\w-]{1,80}\.(?:jpg|png)$/u.test(name)) return undefined;
+  try {
+    const stat = fs.lstatSync(file);
+    if (!stat.isFile() || stat.size > 5 * 1024 * 1024) return undefined;
+    const bytes = fs.readFileSync(file);
+    const type = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff ? "image/jpeg" : bytes.subarray(0, 4).toString("latin1") === "\x89PNG" ? "image/png" : undefined;
+    return type ? { bytes, type, filename: name } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// ------------------------------------------------- card button actions
+//
+// A card button that posts a slash command as the person who tapped it
+// (/v-handback, /v-skip of V's desktop handoff). The command is handled by its
+// plugin in the Gateway; when it changes what the card should show, the
+// plugin asks the channel to update the card through this process-wide
+// bridge. WeCom can only update a template card in reply to the tap's event,
+// within 5 s, so the channel parks the event here until the plugin answers.
+
+const CARD_ACTION_BRIDGE = Symbol.for("openclaw.v.cardActionBridge");
+
+export function cardActionBridge() {
+  globalThis[CARD_ACTION_BRIDGE] ??= {
+    version: 1,
+    pending: new Map(), // `${channel}:${ref}` -> {update(payload), until}
+    /** The channel received a tap for `ref` (a handoff id); `update({presentation, text})` rewrites that card. */
+    hold(channel, ref, update, windowMs = 4500) {
+      const key = `${channel}:${ref}`;
+      this.pending.set(key, { update, until: Date.now() + windowMs });
+      const timer = setTimeout(() => { if (this.pending.get(key)?.update === update) this.pending.delete(key); }, windowMs + 100);
+      timer.unref?.();
+    },
+    /** The plugin's new card for `ref`; true when the channel rewrote it. */
+    async update(channel, ref, payload) {
+      const key = `${channel}:${ref}`;
+      const entry = this.pending.get(key);
+      this.pending.delete(key);
+      if (!entry || Date.now() > entry.until) return false;
+      await entry.update(payload);
+      return true;
+    },
+  };
+  return globalThis[CARD_ACTION_BRIDGE];
 }
 
 /** Sends the card; when the platform refuses it, the text instead. */
@@ -780,15 +868,128 @@ export function dingtalkOpenUrl(url) {
 }
 
 /**
- * DingTalk robot `actionCard` ({title, text, singleTitle, singleURL}) for the
- * session webhook (`msgtype: "actionCard"`) and the robot OpenAPI
- * (`msgKey: "sampleActionCard"`, same fields). The first link is the button;
- * any others become links in the text.
+ * A DingTalk link that sends `command` into the conversation as the person who
+ * taps it (DingTalk's `dtmd://dingtalkclient/sendMessage`, the same link V's
+ * reply cards use for question options).
+ */
+export function dingtalkSendMessageUrl(command) {
+  return `dtmd://dingtalkclient/sendMessage?content=${encodeURIComponent(command)}`;
+}
+
+const dingtalkButtonUrl = (b) => (b.url ? dingtalkOpenUrl(b.url) : dingtalkSendMessageUrl(b.command));
+const hasCommands = (card) => card.buttons.some((b) => b.command);
+/** The card's picture as DingTalk markdown: a media id (`@lAD…`) from the robot media upload, or an https url. */
+const dingtalkImage = (card) => {
+  const ref = card.image?.ref;
+  return typeof ref === "string" && (/^@[\w-]+$/u.test(ref) || ref.startsWith("https://")) ? [`![${card.image.alt || "图片"}](${ref})`] : [];
+};
+
+/**
+ * DingTalk robot `actionCard` for the session webhook (`msgtype: "actionCard"`).
+ * A card of links: {title, text, singleTitle, singleURL}, the first link is
+ * the button, any others become links in the text. A card with command
+ * buttons (or a picture): every button as `btns`, side by side; the picture
+ * under the lines.
  */
 export function dingtalkActionCard(card) {
+  if (hasCommands(card) || card.image) {
+    const text = [`### ${card.title}`, ...card.lines, ...dingtalkImage(card)].join("\n\n");
+    return { title: card.title, text, btnOrientation: "1", btns: card.buttons.map((b) => ({ title: b.label, actionURL: dingtalkButtonUrl(b) })) };
+  }
   const [first, ...more] = card.buttons;
   const text = [`### ${card.title}`, ...card.lines, ...more.map((b) => `[${b.label}](${dingtalkOpenUrl(b.url)})`)].join("\n\n");
   return { title: card.title, text, singleTitle: first.label, singleURL: dingtalkOpenUrl(first.url) };
+}
+
+/**
+ * The same card for the robot OpenAPI (batchSend / groupMessages): its message
+ * templates fix the number of buttons — `sampleActionCard` one,
+ * `sampleActionCard6` two side by side, `sampleActionCard3`…`5` three to five
+ * stacked. Returns {msgKey, msgParam}.
+ */
+export function dingtalkRobotActionCard(card) {
+  const ac = dingtalkActionCard(card);
+  if (!ac.btns) return { msgKey: "sampleActionCard", msgParam: ac };
+  const btns = ac.btns.slice(0, 5);
+  const base = { title: ac.title, text: ac.text };
+  if (btns.length === 1) return { msgKey: "sampleActionCard", msgParam: { ...base, singleTitle: btns[0].title, singleURL: btns[0].actionURL } };
+  if (btns.length === 2) return { msgKey: "sampleActionCard6", msgParam: { ...base, buttonTitle1: btns[0].title, buttonUrl1: btns[0].actionURL, buttonTitle2: btns[1].title, buttonUrl2: btns[1].actionURL } };
+  const msgParam = { ...base };
+  btns.forEach((b, i) => { msgParam[`actionTitle${i + 1}`] = b.title; msgParam[`actionURL${i + 1}`] = b.actionURL; });
+  return { msgKey: `sampleActionCard${btns.length}`, msgParam };
+}
+
+/** WeCom template card event key for a command button, and back. `vnoop` marks a button that does nothing. */
+export function wecomCardKey(command) {
+  return `vcmd:${command.slice(1).replace(/ /gu, ":")}`;
+}
+/** undefined: not a V card key; null: a V button that does nothing; else {command, ref} (ref = the command's argument). */
+export function parseWecomCardKey(key) {
+  if (key === "vnoop") return null;
+  const m = /^vcmd:([a-z][\w-]{0,31})(?::([\w-]{1,48}))?$/u.exec(String(key ?? ""));
+  if (!m) return undefined;
+  return { command: m[2] ? `/${m[1]} ${m[2]}` : `/${m[1]}`, ref: m[2] ?? m[1] };
+}
+
+const taskIdFor = (taskId) => taskId ?? `v_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+/**
+ * WeCom `button_interaction` template card: the title (with its state as the
+ * title's desc), the lines, links as tappable rows, command buttons as card
+ * buttons whose taps come back as template_card_event. The card type has no
+ * picture. A card without command buttons (a finished state) keeps one inert
+ * button showing that state.
+ */
+export function wecomButtonCard(card, { taskId } = {}) {
+  const head = splitTitle(card.title);
+  const text = card.lines.map(plainLine).filter(Boolean).join("\n");
+  const links = card.buttons.filter((b) => b.url).slice(0, 6);
+  const commands = card.buttons.filter((b) => b.command).slice(0, 6);
+  return {
+    card_type: "button_interaction",
+    main_title: { title: head.title, ...(head.desc ? { desc: head.desc } : {}) },
+    ...(text ? { sub_title_text: text.slice(0, 500) } : {}),
+    ...(links.length ? { horizontal_content_list: links.map((b) => ({ type: 1, keyname: b.label.slice(0, 5), value: "点击打开", url: b.url })) } : {}),
+    button_list: commands.length
+      ? commands.map((b, i) => ({ text: b.label.slice(0, 10), style: i === 0 ? 1 : 2, key: wecomCardKey(b.command) }))
+      : [{ text: (head.desc || "已结束").slice(0, 10), style: 2, key: "vnoop" }],
+    task_id: taskIdFor(taskId),
+  };
+}
+
+/**
+ * WeCom `news_notice` template card: the picture (a url WeCom can fetch), the
+ * title, and the first link on the picture and in the jump list.
+ */
+export function wecomNewsCard(card, { taskId } = {}) {
+  const head = splitTitle(card.title);
+  const link = card.buttons.find((b) => b.url);
+  const [first] = card.lines.map(plainLine).filter(Boolean);
+  return {
+    card_type: "news_notice",
+    main_title: { title: head.title, ...(first || head.desc ? { desc: (first ?? head.desc).slice(0, 60) } : {}) },
+    card_image: { url: card.image.ref, aspect_ratio: 1.6 },
+    card_action: { type: 1, url: link.url },
+    jump_list: [{ type: 1, title: link.label, url: link.url }],
+    task_id: taskIdFor(taskId),
+  };
+}
+
+/**
+ * The WeCom messages for a card, in order. A card of links: one text_notice.
+ * A card with command buttons: its picture first — a news_notice when the
+ * picture is an https url, or `{image}` (a local file the channel uploads
+ * and sends as an image message) — then the button card. WeCom has no card
+ * type with both a picture and callback buttons.
+ */
+export function wecomCardMessages(card, { taskId } = {}) {
+  if (!hasCommands(card)) return [{ templateCard: wecomTextNotice(card, { taskId }) }];
+  const out = [];
+  const ref = card.image?.ref;
+  if (ref?.startsWith("https://") && card.buttons.some((b) => b.url)) out.push({ templateCard: wecomNewsCard(card) });
+  else if (ref?.startsWith("file:///")) out.push({ image: ref });
+  out.push({ templateCard: wecomButtonCard(card, { taskId }) });
+  return out;
 }
 
 /**

@@ -73,7 +73,7 @@ export function decideHandBack(status, { alreadyHandedBack = false } = {}) {
     return { action: "resume", text: "✅ 电脑已在 V 手里，V 接着做。" };
   }
   if (status.claims === 0) {
-    return { action: "noop", text: "你还没有接管电脑，点「接管电脑」才能操作。" };
+    return { action: "noop", text: "你还没有接管电脑，先点卡片上的「接管」。" };
   }
   return { action: "noop", text: "电脑已经交还给 V 了。" };
 }
