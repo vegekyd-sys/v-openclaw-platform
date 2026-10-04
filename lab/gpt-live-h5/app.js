@@ -13,6 +13,29 @@ const greetingGraceMs = 15000;
 const presentation = createTranscriptPresentation();
 const renderedTurns = new Map();
 const tasks = new Set();
+const sceneAnimations = new Map();
+function setCallState(state) {
+  if (document.body.dataset.callState === state) return;
+  const animate = window.matchMedia?.("(max-width: 900px)").matches
+    && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const elements = animate ? [document.querySelector?.(".portrait-wrap"), document.querySelector?.(".call-actions")].filter(Boolean) : [];
+  const before = elements.map(element => element.getBoundingClientRect());
+  for (const animation of sceneAnimations.values()) animation.cancel();
+  sceneAnimations.clear();
+  document.body.dataset.callState = state;
+  elements.forEach((element, index) => {
+    const from = before[index], to = element.getBoundingClientRect();
+    if (!from.width || !to.width || typeof element.animate !== "function") return;
+    const dx = from.x + from.width / 2 - to.x - to.width / 2;
+    const dy = from.y + from.height / 2 - to.y - to.height / 2;
+    const animation = element.animate([
+      { transform: `translate(${dx}px, ${dy}px) scale(${from.width / to.width}, ${from.height / to.height})`, transformOrigin: "center" },
+      { transform: "none", transformOrigin: "center" },
+    ], { duration: 620, easing: "cubic-bezier(.22, 1, .36, 1)" });
+    sceneAnimations.set(element, animation);
+    animation.onfinish = () => { if (sceneAnimations.get(element) === animation) sceneAnimations.delete(element); };
+  });
+}
 const setStatus = (text) => {
   $("status").textContent = text;
   $("status").dataset.notice = text === "拨号后，直接说话。" ? "normal" : "message";
@@ -100,7 +123,7 @@ function suppressGreetingForCaller(active) {
 function cancelAutomaticEnd(active) {
   if (!active.ending) return;
   clearTimeout(active.ending.timeout); active.ending = null;
-  document.body.dataset.callState = "connected";
+  setCallState("connected");
   $("badge").textContent = "通话中";
   connectedStatus(active);
 }
@@ -123,7 +146,7 @@ function armAutomaticEnd(active, request) {
   if (call !== active || request.invalidated || !request.accepted || !request.providerObserved
     || active.latestNativeUserTurnId !== request.originUserTurnId || active.ending) return;
   active.ending = request;
-  document.body.dataset.callState = "ending";
+  setCallState("ending");
   $("badge").textContent = "正在结束"; connectedStatus(active);
   // Silence or a timer alone is not proof of a delivered farewell. Keep the
   // manual button available if transport/playback evidence never arrives.
@@ -271,6 +294,7 @@ function renderTranscript(snapshot) {
   const log = $("conversation");
   const follow = log.scrollHeight - log.scrollTop - log.clientHeight < 64;
   const all = [...snapshot.history, ...snapshot.current];
+  document.body.dataset.conversation = all.some(item => item.text?.trim()) ? "started" : "empty";
   const visibleKeys = new Set(all.map(item => item.key));
   for (const [key, row] of renderedTurns) if (!visibleKeys.has(key)) { row.remove(); renderedTurns.delete(key); }
   $("currentLabel").textContent = call ? "正在说" : "最后的片段";
@@ -372,7 +396,7 @@ async function stopCall() {
   $("remoteAudio").srcObject = null;
   $("remoteAudio").muted = false;
   tasks.clear(); taskState(); document.body.dataset.voiceState = "idle";
-  document.body.dataset.callState = "idle";
+  setCallState("idle");
   renderTranscript(presentation.snapshot());
   $("start").hidden = false; $("start").disabled = false; $("stop").hidden = true;
   $("steerText").disabled = true; $("steer").disabled = true;
@@ -389,7 +413,7 @@ async function startCall() {
   if (!liveReady) { setStatus("当前页面仅作预览，真实通话还未连接 VLab 候选服务。"); return; }
   $("start").disabled = true; $("start").hidden = true; $("stop").hidden = false;
   $("stopLabel").textContent = "取消拨号"; $("badge").textContent = "拨号中";
-  document.body.dataset.callState = "dialing"; setStatus("正在连接 V…");
+  setCallState("dialing"); setStatus("正在连接 V…");
   resetTranscript();
   const active = { pc: new RTCPeerConnection(), captureAbort: new AbortController() }; call = active; starting = active;
   // Each call owns its sound element; a late play() from an older call cannot
@@ -507,7 +531,7 @@ async function startCall() {
     active.pc.onconnectionstatechange = () => {
       if (call !== active) return;
       if (active.pc.connectionState === "connected") {
-        document.body.dataset.callState = "connected";
+        setCallState("connected");
         void active.sounds.connected();
         $("stopLabel").textContent = "结束通话";
         $("badge").textContent = "通话中"; connectedStatus(active);
