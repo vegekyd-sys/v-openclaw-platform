@@ -15,6 +15,7 @@
   "env": {
     "LIVE_MINUTES": "60",
     "LIVE_TELEGRAM_ALLOW": "5368086561",
+    "LIVE_WECOM_OWNER": "tianyi@versa",
     "V_DINGTALK_QUESTION_CARD_TEMPLATE": "9f86e003-e65e-4680-bf4b-8df5958d9f17.schema"
   },
   "timeoutSeconds": 4200,

@@ -8,7 +8,8 @@
 //   VLAB_WECOM_TEST_BOT_ID / VLAB_WECOM_TEST_SECRET
 //   VLAB_TELEGRAM_TEST_BOT_TOKEN
 // A channel whose credentials are missing is left out. Production robots are
-// never used. Telegram accepts only LIVE_TELEGRAM_ALLOW (comma list of ids).
+// never used. Telegram accepts only LIVE_TELEGRAM_ALLOW (comma list of ids),
+// WeCom only LIVE_WECOM_OWNER (comma list of WeCom user ids); both count as owner.
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -86,10 +87,14 @@ if (secrets.get("VLAB_WECOM_TEST_BOT_ID") && secrets.get("VLAB_WECOM_TEST_SECRET
   assert.equal(spawnSync("tar", ["xzf", path.resolve(findInput("wecom-openclaw-plugin-2026.8.17-vlab.2-v.tgz")), "-C", pluginDir]).status, 0);
   const { patchWeComPlugin } = await import(pathToFileURL(path.resolve("apps/v-experience/wecom/patch.mjs")).href);
   report.patches.wecom = patchWeComPlugin(path.join(pluginDir, "dist", "src"), { experienceSource });
+  // Only the tester may talk to the robot, and counts as owner (owner-only tools such as ask_user).
+  const owners = (process.env.LIVE_WECOM_OWNER ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  assert(owners.length, "LIVE_WECOM_OWNER is required for the WeCom test robot");
   config.channels.wecom = {
     enabled: true, connectionMode: "websocket", botId: secrets.get("VLAB_WECOM_TEST_BOT_ID"), secret: secrets.get("VLAB_WECOM_TEST_SECRET"),
-    dmPolicy: "open", groupPolicy: "open", allowFrom: ["*"], groupAllowFrom: ["*"],
+    dmPolicy: "allowlist", groupPolicy: "allowlist", allowFrom: owners, groupAllowFrom: owners,
   };
+  config.commands = { ...(config.commands ?? {}), ownerAllowFrom: [...new Set([...(config.commands?.ownerAllowFrom ?? []), ...owners.map((id) => `wecom:${id}`)])] };
   config.plugins.load.paths.push(pluginDir);
   allowPlugin("wecom-openclaw-plugin");
   trustPlugins.push("wecom-openclaw-plugin");
