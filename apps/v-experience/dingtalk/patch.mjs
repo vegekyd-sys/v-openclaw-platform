@@ -42,7 +42,7 @@ import { formatChannelProgressDraftLineForEntry as vFormatProgressLine } from "o
 \t\tvRefreshTimer = setTimeout(() => {
 \t\t\tvRefreshTimer = null;
 \t\t\tvoid vRefreshCard();
-\t\t}, Math.max(50, 800 - (Date.now() - lastUpdateTime)));
+\t\t}, Math.max(50, updateInterval - (Date.now() - lastUpdateTime)));
 \t\tvRefreshTimer.unref?.();
 \t};
 \t// Same tool line as Feishu ("🛠️ Exec"); options are links that send the
@@ -62,10 +62,10 @@ import { formatChannelProgressDraftLineForEntry as vFormatProgressLine } from "o
     insert: "before",
     code: `\t// ${MARKER}: rewrite the card with the answer so far and the work under it.
 \tconst vRefreshCard = async () => {
-\t\tif (streamingSealed || asyncMode || !streamingEnabled || !vWork.hasContent()) return;
+\t\tif (streamingSealed || asyncMode || !streamingEnabled || (!vWork.hasContent() && !vAnswerText)) return;
 \t\tawait startStreaming();
 \t\tif (!currentCardTarget || streamingSealed) return;
-\t\tif (Date.now() - lastUpdateTime < 800) {
+\t\tif (Date.now() - lastUpdateTime < updateInterval) {
 \t\t\tvScheduleRefresh();
 \t\t\treturn;
 \t\t}
@@ -293,9 +293,15 @@ import { formatChannelProgressDraftLineForEntry as vFormatProgressLine } from "o
     replace: "\t\t\t\t\t\t\tvAnswerText = displayContent;\n\t\t\t\t\t\t\tawait streamAICard(currentCardTarget, vWork.compose(displayContent), false, account.config, log);\n",
   },
   {
+    // Feishu shows new text at once every 160 ms; 800 ms made DingTalk look slow.
+    name: "update-interval",
+    anchor: "\tconst updateInterval = 800;\n",
+    replace: "\tconst updateInterval = 300;\n",
+  },
+  {
     name: "partial-throttled",
     anchor: "\t\t\t\t\t} else log.debug(`[DingTalk][onPartialReply] 节流控制，跳过本次更新（距离上次更新 ${now - lastUpdateTime}ms）`);\n",
-    replace: "\t\t\t\t\t} else {\n\t\t\t\t\t\tlog.debug(`[DingTalk][onPartialReply] 节流控制，跳过本次更新（距离上次更新 ${now - lastUpdateTime}ms）`);\n\t\t\t\t\t\tif (vWork.hasContent()) vScheduleRefresh();\n\t\t\t\t\t}\n",
+    replace: "\t\t\t\t\t} else {\n\t\t\t\t\t\tlog.debug(`[DingTalk][onPartialReply] 节流控制，跳过本次更新（距离上次更新 ${now - lastUpdateTime}ms）`);\n\t\t\t\t\t\tvScheduleRefresh();\n\t\t\t\t\t}\n",
   },
   {
     name: "progress-callbacks",
@@ -322,6 +328,52 @@ import { formatChannelProgressDraftLineForEntry as vFormatProgressLine } from "o
 \t\t\t},
 `,
   },
+  {
+    // Like V's Feishu card: new text appears whole (a card data update) instead
+    // of being typed out again by the client's streaming animation.
+    file: "card",
+    name: "paint-whole",
+    anchor: "\tconst fixedContent = normalizeForCard(content);\n\tconst streamContent = finished ? fixedContent : fixedContent.replace(/\\n+$/, \"\");\n",
+    insert: "before",
+    code: `\t// ${MARKER}
+\tif (!finished) {
+\t\tconst paintBody = {
+\t\t\toutTrackId: card.cardInstanceId,
+\t\t\tcardData: { cardParamMap: {
+\t\t\t\tflowStatus: AICardStatus.INPUTING,
+\t\t\t\tmsgContent: normalizeForCard(content),
+\t\t\t\tstaticMsgContent: "",
+\t\t\t\tsys_full_json_obj: JSON.stringify({ order: ["msgContent"] }),
+\t\t\t\tconfig: JSON.stringify({ autoLayout: true })
+\t\t\t} },
+\t\t\tcardUpdateOptions: { updateCardDataByKey: true }
+\t\t};
+\t\tconst paint = () => dingtalkHttp.put(\`\${DINGTALK_API}/v1.0/card/instances\`, paintBody, { headers: {
+\t\t\t"x-acs-dingtalk-access-token": card.accessToken,
+\t\t\t"Content-Type": "application/json"
+\t\t} });
+\t\tawait cardRateLimiter.waitForToken();
+\t\ttry {
+\t\t\tawait paint();
+\t\t} catch (err) {
+\t\t\tif (!isQpsLimitError(err)) throw err;
+\t\t\tcardRateLimiter.triggerBackoff();
+\t\t\tawait cardRateLimiter.waitForToken();
+\t\t\tawait paint();
+\t\t}
+\t\treturn;
+\t}
+\tcard.vStreamed = true;
+`,
+  },
+  {
+    // The final text is written whole by the FINISHED update; a closing stream
+    // write would type the tail out again. Only cards that streamed need it.
+    file: "card",
+    name: "finish-whole",
+    anchor: "\tawait streamAICard(card, fixedContent, true, config, log);\n",
+    replace: "\tif (card.vStreamed) await streamAICard(card, fixedContent, true, config, log);\n",
+  },
 ];
 
 /** The rewritten chunk source; throws when an anchor is missing or ambiguous. */
@@ -347,6 +399,8 @@ function applyAll(source, list, label) {
 export const patchReplyChunk = (source) => applyAll(source, replacements.filter((r) => !r.file), "reply");
 /** The Stream connection chunk, patched (question card callbacks). */
 export const patchConnectionChunk = (source) => applyAll(source, replacements.filter((r) => r.file === "connection"), "connection");
+/** The AI card chunk, patched (text shown whole, no typewriter). */
+export const patchCardChunk = (source) => applyAll(source, replacements.filter((r) => r.file === "card"), "card");
 
 const findChunk = (distDir, re, needle) => {
   const matches = fs.readdirSync(distDir).filter((f) => re.test(f) && fs.readFileSync(path.join(distDir, f), "utf8").includes(needle));
@@ -357,11 +411,12 @@ const findChunk = (distDir, re, needle) => {
 /** The connector chunk that defines the reply dispatcher. */
 export const findReplyChunk = (distDir) => findChunk(distDir, /^message-handler-[\w-]+\.mjs$/u, "function createDingtalkReplyDispatcher(params)");
 export const findConnectionChunk = (distDir) => findChunk(distDir, /^connection-[\w-]+\.mjs$/u, "client.registerCallbackListener(TOPIC_ROBOT");
+export const findCardChunk = (distDir) => findChunk(distDir, /^card-[\w-]+\.mjs$/u, "async function streamAICard(card, content, finished = false, config, log)");
 
 export function patchDingtalkConnector(distDir, { experienceSource }) {
   const changed = {};
   const chunk = findReplyChunk(distDir);
-  for (const [file, fn] of [[chunk, patchReplyChunk], [findConnectionChunk(distDir), patchConnectionChunk]]) {
+  for (const [file, fn] of [[chunk, patchReplyChunk], [findConnectionChunk(distDir), patchConnectionChunk], [findCardChunk(distDir), patchCardChunk]]) {
     const p = path.join(distDir, file);
     const before = fs.readFileSync(p, "utf8");
     const after = fn(before);
