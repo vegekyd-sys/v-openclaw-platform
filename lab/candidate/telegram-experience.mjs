@@ -13,6 +13,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { createFakeTelegramBotApi, FAKE_BOT_TOKEN, inlineButtons } from "./telegram-fake-bot-api.mjs";
 
 const runtime = process.env.VLAB_CANDIDATE_RUNTIME;
@@ -35,6 +36,9 @@ const secret = (name) => {
 };
 
 const dist = path.join(runtime, "openclaw", "dist");
+const patchReport = EXPECT === "patched"
+  ? (await import(pathToFileURL(path.resolve("apps/v-experience/telegram/patch.mjs")).href)).patchTelegram(dist, { experienceSource: path.resolve("apps/v-experience/v-experience.mjs") })
+  : undefined;
 const fake = createFakeTelegramBotApi();
 const apiPort = await fake.listen();
 
@@ -214,7 +218,7 @@ const SCENARIOS = {
     const since = Date.now();
     fake.sendUserText({ chatId: chat, userId: chat, text: "这是自动化测试。请用 secrets 工具的 request 动作，向我索取一个名为 V_CANDIDATE_DEMO_TOKEN 的凭据（说明写：测试用，可以随便填）。拿到后只回复 SECRET_SAVED；如果没法索取，就回复 SECRET_UNAVAILABLE 并说明原因。" });
     const msgs = await settle(chat, since, (m) => m.some((x) => /SECRET_|凭据|credential|secret/iu.test(x.text ?? "")), { label: "secret request", quietMs: 10_000 });
-    return { chat, messages: describe(msgs), buttons: msgs.flatMap(inlineButtons) };
+    return { chat, messages: describe(msgs), buttons: msgs.flatMap(inlineButtons), notice: anyText(msgs, /不能安全地输入凭据/u), agentCarriedOn: anyText(msgs, /SECRET_UNAVAILABLE/u) };
   },
   // B3: background work left running after the reply.
   background: async () => {
@@ -225,7 +229,7 @@ const SCENARIOS = {
     const snapshotAtAnswer = describe(answered);
     await sleep(70_000);
     const later = chatMessages(chat, since);
-    return { chat, atAnswer: snapshotAtAnswer, after70s: describe(later), sawBackgroundLine: anyText(later, /后台|background/iu) };
+    return { chat, atAnswer: snapshotAtAnswer, after70s: describe(later), sawBackgroundLine: anyText(later, /后台 \d+ 项进行中/u), sawBackgroundDone: anyText(later, /后台任务已结束/u) };
   },
   // C1: model / harness switching.
   model: async () => {
@@ -241,7 +245,7 @@ const SCENARIOS = {
   },
 };
 
-const report = { expect: EXPECT, model: MODEL, scenarios: {} };
+const report = { expect: EXPECT, model: MODEL, patch: patchReport, scenarios: {} };
 try {
   await waitFor(() => fake.calls.some((c) => c.method === "getMe"), 600_000, "Telegram channel start (getMe)");
   await sleep(3000);
@@ -285,7 +289,11 @@ if (EXPECT === "patched") {
     assert.equal(s["ask-multi"].answeredBy, "buttons", "multi-select question had no toggle buttons");
     assert(s["ask-multi"].continued, "multi-select answer did not reach the agent");
   }
-  if (s["ask-single"]) assert(s["ask-single"].continued, "single question answer did not reach the agent");
+  if (s["ask-single"]) {
+    assert.equal(s["ask-single"].answeredBy, "button", "single question had no option buttons");
+    assert(s["ask-single"].continued, "single question answer did not reach the agent");
+  }
+  if (s.secret) assert(s.secret.notice && s.secret.agentCarriedOn, "credential request did not end with a notice");
   if (s.background) {
     assert.equal(s.background.error, undefined, s.background.error);
     assert(s.background.sawBackgroundLine, "background work line never appeared");

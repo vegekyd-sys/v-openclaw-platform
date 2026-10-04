@@ -696,6 +696,132 @@ export function telegramPlanSteps(steps) {
   return normalizePlanSteps(steps).map((s) => ({ step: s.step, status: s.status }));
 }
 
+/** Forget a tracked chat question (answered some other way). */
+export function untrackChatQuestion(id) {
+  for (const [key, entries] of chatQuestions) {
+    const left = entries.filter((e) => e.record.id !== id);
+    if (left.length !== entries.length) chatQuestions.set(key, left);
+  }
+}
+
+/**
+ * Telegram: questions as a message with option buttons (single choice: one
+ * tap answers; multiple choice or several questions: toggle, then 确认), plus
+ * typed answers. Runs before Telegram's per-chat queue, which would otherwise
+ * hold an answer behind the turn that is waiting for it.
+ *
+ * `call(method, params)` is a Gateway call with operator.questions scope.
+ */
+export function createTelegramExperience({ call, log }) {
+  const asks = createAskRuntime({
+    getQuestion: async (id) => (await call("question.get", { id }))?.question,
+    resolve: (id, answers, resolvedBy) => call("question.resolve", { id, answers, resolvedBy }),
+    log,
+  });
+  const askers = new Map(); // question id -> asker user id (string) or undefined
+  const immediate = (record) => record.questions.length === 1 && !record.questions[0].multiSelect;
+
+  const keyboard = (record, choices) => {
+    const rows = telegramAskKeyboard(record, { choices });
+    return immediate(record) ? rows.slice(0, -1) : rows;
+  };
+
+  async function deliverQuestion({ api, chatId, extra = {}, senderId, record }) {
+    if (!record?.id) return false;
+    const secret = record.questions?.some((q) => q.isSecret || q.secretStore);
+    if (!secret && !isRenderableAsk(record)) return false;
+    if (!claimQuestionDelivery(record.id)) return true;
+    if (secret) {
+      await api.sendMessage(chatId, secretQuestionNotice(record), extra);
+      await call("question.resolve", { id: record.id, cancel: true, resolvedBy: "telegram:credential-unsupported" }).catch(() => {});
+      return true;
+    }
+    askers.set(record.id, senderId ? String(senderId) : undefined);
+    const text = immediate(record)
+      ? telegramAskText(record).replace(/点选后按「确认」。/u, "点一个选项即可。")
+      : telegramAskText(record);
+    await api.sendMessage(chatId, text, { ...extra, reply_markup: { inline_keyboard: keyboard(record, {}) } });
+    trackChatQuestion({ channel: "telegram", chatKey: String(chatId), senderId, record });
+    log?.(`v-experience: telegram question ${record.id} delivered`);
+    return true;
+  }
+
+  async function onCallback(ctx) {
+    const cb = ctx.callbackQuery;
+    const parsed = parseTelegramExperienceCallback(cb?.data);
+    if (!parsed) return false;
+    const toast = (text) => ctx.api.answerCallbackQuery(cb.id, { text }).catch(() => {});
+    const asker = askers.get(parsed.id);
+    const sender = String(cb.from?.id ?? "");
+    if (asker && asker !== sender) { await toast("这个问题在问别人。"); return true; }
+    const chatId = cb.message?.chat?.id;
+    const messageId = cb.message?.message_id;
+    const repaint = async (entry, state, extra = {}) => {
+      const done = state !== "pending";
+      const text = telegramAskText(entry.record, state, { choices: extra.choices, answers: entry.answers ?? extra.answers });
+      await ctx.api.editMessageText(chatId, messageId, done ? text : (immediate(entry.record) ? text.replace(/点选后按「确认」。/u, "点一个选项即可。") : text),
+        done ? {} : { reply_markup: { inline_keyboard: keyboard(entry.record, extra.choices ?? {}) } }).catch(() => {});
+    };
+    try {
+      if (parsed.kind === "toggle") {
+        const staged = await asks.choose(parsed.id, sender, parsed.questionIndex, parsed.optionIndex);
+        if (staged.kind === "invalid") { await toast("这个选项已失效。"); return true; }
+        if (staged.kind === "closed") { await toast("这个问题已经结束了。"); await repaint(staged.entry, staged.entry.state); return true; }
+        if (!immediate(staged.entry.record)) { await toast("已选择，选好后按「确认」。"); await repaint(staged.entry, "pending", { choices: staged.choices }); return true; }
+      }
+      const result = await asks.confirm(parsed.id, sender, `telegram:${sender}`);
+      if (result.kind === "incomplete") { await toast(result.message); return true; }
+      if (result.kind === "busy") { await toast("正在提交，请稍候。"); return true; }
+      if (result.kind === "invalid") { await toast("这个问题已失效。"); return true; }
+      untrackChatQuestion(parsed.id);
+      await toast(result.kind === "answered" ? "已收到，V 会继续。" : "这个问题已经结束了。");
+      await repaint(result.entry, result.entry.state, { answers: result.answers });
+    } catch (error) {
+      log?.(`v-experience: telegram question callback failed ${parsed.id}: ${String(error?.message ?? error)}`);
+      await toast("提交失败，请再试一次。");
+    }
+    return true;
+  }
+
+  async function onMessage(ctx) {
+    const msg = ctx.message;
+    const text = msg?.text;
+    if (!msg || typeof text !== "string" || text.trim().startsWith("/")) return false;
+    const chatKey = String(msg.chat?.id);
+    const sender = msg.from?.id != null ? String(msg.from.id) : undefined;
+    if (!hasTrackedQuestion({ channel: "telegram", chatKey, senderId: sender })) return false;
+    const result = await answerTrackedQuestion({
+      channel: "telegram", chatKey, senderId: sender, text,
+      resolvedBy: `telegram:chat:${sender}:${msg.message_id}`,
+      resolve: (id, answers, resolvedBy) => call("question.resolve", { id, answers, resolvedBy }),
+      log,
+    });
+    if (!result.handled) return false;
+    if (result.notice) await ctx.api.sendMessage(msg.chat.id, result.notice, { reply_parameters: { message_id: msg.message_id } }).catch(() => {});
+    return true;
+  }
+
+  /** grammY middleware, installed before the per-chat sequencer. */
+  const middleware = async (ctx, next) => {
+    try {
+      if (ctx.callbackQuery && isTelegramExperienceCallback(ctx.callbackQuery.data)) { await onCallback(ctx); return; }
+      if (ctx.message && await onMessage(ctx)) return;
+    } catch (error) {
+      log?.(`v-experience: telegram middleware failed: ${String(error?.message ?? error)}`);
+    }
+    await next();
+  };
+
+  return { deliverQuestion, middleware };
+}
+
+/** One Telegram experience per process, shared by the dispatch and ingress chunks. */
+export function telegramExperience(options) {
+  const key = Symbol.for("openclaw.v.experience.telegram");
+  globalThis[key] ??= createTelegramExperience(options);
+  return globalThis[key];
+}
+
 export function installVExperience() {
   const key = Symbol.for("openclaw.v.experience");
   const existing = globalThis[key];
