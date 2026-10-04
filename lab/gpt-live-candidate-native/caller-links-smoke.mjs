@@ -65,9 +65,9 @@ try {
     const clip=path.resolve(clips,entry+'.wav'),feed=pulse.play(clip,entry);await feed.done;assert.equal(feed.row.exitCode,0);
     save(entry+'-user-input.json',{...feed.row,clipSha256:hash(fs.readFileSync(clip)),syntheticUserOnly:true});
     let history,lastRead=0;
-    const backend=await wait(async()=>{if(Date.now()-lastRead<1500)return;lastRead=Date.now();history=await gateway.request('chat.history',{sessionKey:owner.sessionKey,limit:80},{timeoutMs:15000});const request=(history.messages??[]).find(m=>m.role==='user'&&text(m).includes('Call-host entry context:'));if(!request)return;assert(text(request).includes('"entry":"'+entry+'"'));if(entry==='visitor')assert.match(text(request),/小林/u);return (history.messages??[]).some(m=>m.role==='assistant'&&text(m).trim())?{request}:null;},'Same-owner real backend identity context',90000);
+    const backend=await wait(async()=>{if(Date.now()-lastRead<1500)return;lastRead=Date.now();history=await gateway.request('chat.history',{sessionKey:owner.sessionKey,limit:80},{timeoutMs:15000});const request=(history.messages??[]).find(m=>m.role==='user'&&text(m).includes('Call-host entry context:'));if(!request)return;assert(text(request).includes('"entry":"'+entry+'"'));if(entry==='visitor')assert.match(text(request),/小林/u);const final=(history.messages??[]).find(m=>m.role==='assistant'&&m.provider&&m.model!=='realtime-voice'&&m.stopReason==='stop'&&Number(m.timestamp)>=Number(request.timestamp)&&text(m).trim());return final?{request,final}:null;},'Same-owner real backend identity context',90000);
     save(entry+'-backend-history.json',{owner,history});
-    const response=await wait(s=>s.events.find(e=>e.type==='turn.done'&&e.role==='assistant'&&e.at>=feed.row.completedAt&&/入口|小林|天意|Tianyi|本人|普通/u.test(e.text??'')&&audible(s,feed.row.startedAt)),'Backend response through original Live audio',45000);
+    const response=await wait(s=>s.events.find(e=>e.type==='turn.done'&&e.role==='assistant'&&e.at>=Number(backend.final.timestamp)&&/入口|小林|天意|Tianyi|本人|普通/u.test(e.text??'')&&audible(s,Number(backend.final.timestamp))),'Backend response through original Live audio',45000);
     save(entry+'-speech.json',response);
     await click('stop');await wait(s=>s.pcStates[0]==='closed','Original owned close');
     const s=await snap();save(entry+'-raw-browser.json',s);
