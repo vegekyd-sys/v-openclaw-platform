@@ -11,6 +11,54 @@
 
 ---
 
+## loopback-requester-sender-20261004
+
+上线：2026-10-04 11:26 CST 安装，11:27:27 重启 Gateway（V 空闲时）  ·  tag `loopback-requester-sender-20261004`
+
+**摘要**：/vcc（claude-cli）从此能用定时任务工具了（#181）。原来 claude-cli 走的 MCP loopback 不传发送者，共享定时任务策略拿不到 `{channel, accountId, senderId}`，makaron 的 `cron.add` 一律报 `job agentId outside caller scope`，`list` 也是空的；9/27 起就这样，当时 V 改用 `openclaw cron add`（不过权限、任务无 owner）掩盖了问题。补丁回移上游 v2026.9.5 的 `requesterSenderId: senderId`，并让 loopback 上的非 owner 与 Worker/Codex 同规则。VLab 群内验收四个入口（vcc/Worker/vds/vcodex）建、列、删全通过。
+
+本节另外记下上午已在 V 生效、但还没提交捕获的 GPT Live 三个发版（08:38 安装，08:39 重启生效）。
+
+相对上一版 `hotreload-feishu-approvals-20261003`：23 个文件变化。
+
+**经 VLab 发版 `gpt-live-call-v1-20261004-a64bf6b`**（01a0fb0e-739d-7681-9238-faa2c1912c6c，dev `a64bf6be`）
+- `core` agent-tools.before-tool-call-g2OT63u5.js  e61b81d4 → f410f20c
+- `core` bash-tools-DiAfkLAC.js  8bda4a91 → 43d9a227
+- `core` builtin-openclaw-zQV8Wwjr.js  f121be94 → d6cfa039
+- `core` host-capability-Dq3cEEWF.js  4535cb19 → 296b132d
+- `core` realtime-quicksilver-session-B3HKftDE.js  0f98f3d3 → 801c4fe7
+- `core` sessions-spawn-tool-1FQMTkIo.js  52b6ea54 → 1a7ab8f9
+- `core` subagent-announce-delivery-Dosep7Zr.js  c14b886c → 8cd70a86
+- `core` gpt-live-voice-exec-lifetime.js  — → 1f101c5c
+- `worker` gateway-message-tool.mjs  2ae673d4 → dbdd72fb
+- `worker` gateway-public-stream.mjs  5440eadb → 6cf18479
+- `worker` index.mjs  b5f315bb → 26c617fd
+- `worker` native-attempt-bridge.mjs  6482f3d2 → 0429d15e
+- `worker` worker-pool.mjs  58558773 → 1f137ca2
+
+**经 VLab 发版 `gpt-live-pr154-shared-20261003-d3cd1fe`**（01a0fb0e-739d-7681-9238-faa2c1912c6c，dev `d3cd1fe1`）
+- `core` plugin-sdk/agent-harness-task-runtime.js  60913341 → 50dc439b
+- `core` subagent-announce.requester-settle-wake-B2NSziIo.js  e42fc319 → be8a3f7f
+- `core` subagent-registry-C24yr_PF.js  c2c0c840 → 1d9f45d6
+- `worker` gateway-completion-context.mjs  e958ff1c → 612d83cd
+
+**经 VLab 发版 `gpt-live-call-v1-20261004-4934ff6`**（01a0fb0e-739d-7681-9238-faa2c1912c6c，dev `4934ff63`）
+> 验收：GPT Live authorized first-release business acceptance. Source 4934ff63340d211df72235bfe44871e07a8fde1b artifact 6174518da6d22054854c5101bf14135f0fa62368ef3f94b2be5bc22a8967bbc9. Actual original H5/WebRTC shared evidence tmp/gpt-live-pr/call-release-4934ff6-shared-native/receipt.json sha256 e592b0b3a0939cccddba4b28b29620d1e33d285607b48e12b0177829f16833f6. Six observed functionalCore true; real pare…
+- `core` realtime-quicksilver-delegation-controller-B0yPpiHp.js  e7a27df5 → ad9f99e8
+- `core` realtime-session-harness-CEO5kVAJ.js  b394e47d → eee6e604
+- `core` talk-DkFuKRod.js  8626acc9 → 560d5cf2
+- `core` gpt-live-call-lifecycle.mjs  — → 713e1ba6
+- `core` gpt-live-consult-continuation.js  — → db2ea459
+
+**经 VLab 发版 `loopback-requester-sender-v1`**（claude-loopback-sender，dev `fe4093ce`）
+> 验收：Shared VLab Feishu group oc_abfb8965 (VLab 压测 01), real model turns as owner Tianyi. Baseline before deploy (same group): /vcc cron.add refused 3x "job agentId outside caller scope" and automations list empty; worker/vds/vcodex succeeded. After deploy loopback-requester-sender-v1 (source fe4093ce, PR #181): /vcc (claude-cli) add -> list shows job (total=2) -> remove ok, list back to 1; worker add/…
+- `core` tool-resolution-Con11qMn.js  5d08186a → aa63296c
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #181 fix(cron): /vcc（claude-cli）按共享策略管理定时任务，与其他 harness 一致
+- #180 fix(voice): wait for current transcript before delegated call control
+- #179 fix(voice): delegate natural goodbye before farewell
+
 ## hotreload-feishu-approvals-20261003
 
 上线：2026-10-03 23:44 CST 安装，23:44:55 停 Gateway，停机时写入两项 Telegram 审批配置，23:47:14 就绪  ·  tag `hotreload-feishu-approvals-20261003`
