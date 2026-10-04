@@ -409,3 +409,11 @@ SECRET_SAVED、链接第二次用返回 410、没有出现取消提示，并扫�
 - 钉钉、企微的链接路径只有单元测试（`tests/v-experience.test.mjs`）与补丁语法检查，没有跑假平台 candidate；企微 `sendMessage(userid)` 能否从群里
   主动私聊、钉钉 batchSend 权限，都要真机确认。Telegram 群里私信的路径也只有单元测试。
 - `/vcodex`、`/vds`、`/vcc` 没有实测：core 改动在 builtin（嵌入式 runtime 的提示投递），其他 runtime 走 runtime-v2 的问题监听，渠道侧相同。
+
+## 14. 合并后全量回归、插话、接管卡、钉钉出字（2026-10-04 晚）
+
+- 插话（C2）：钉钉、Telegram 不改代码即可（core 默认 steer）。企微两处阻塞：插件按会话串行排队；分发走高层入口、等当前回合结束。现在回复进行中的消息绕过插件队列，分发改用 `core.channel.reply.dispatchReplyFromConfig`（与钉钉连接器相同的低层入口），OpenClaw 把它插进当前回合；被插话的那条消息自己收到「✅ 已收到」（企微每条消息都要有一个结束的回复）。
+- 接管卡（A4）：插件默认卡片渠道改为飞书 + Telegram（Telegram 原生渲染两个按钮）；钉钉、企微把卡片压成文字，改为 V 在回复里放 `[接管电脑](url)` 链接；卡片按钮命令 `requireAuth: false`（处理函数自己核对是不是收卡人）。生产 V 未覆盖 `cardChannels`，上线即生效。
+- 钉钉出字：卡片数据更新在 INPUTING 状态下不渲染（真机 18:05 空卡 3 分钟），已回退为流式接口；保留节流 800→300 ms 和被节流更新的补发。企微节流 1 s→400 ms。Telegram 默认 progress 模式回答本来就是整段发出。
+- 合并后全量回归（假平台）全部通过：Telegram `3cde346a`（progress、ask-single、ask-multi、secret、background、steer）；钉钉 `7506f6ef`（ask-card、progress、ask-single、ask-multi、secret、background、steer）；企微 `e858dda5`（同前六项）；Harness 权限 Telegram `0c61fdee`、钉钉 `cc82fb3c`、企微 `b8212161`；Telegram 凭据链接 `849ba4b1`。
+- 真机测试（live）已带上凭据链接服务，页面只监听 VLab 的 tailnet 地址。
