@@ -9,9 +9,19 @@ import { fileURLToPath } from "node:url";
 import { digest, freezeSource, validateSharedProof } from "./gpt-live-h5-release.mjs";
 
 export function assertEntrySnapshot(expected, actual) {
-  for (const key of ["pointer", "unitSha", "environmentSha", "gatewayPid", "gatewayStart", "gatewayInvocation", "configSha"])
+  for (const key of ["pointer", "unitSha", "launchDropInSha", "environmentSha", "gatewayPid", "gatewayStart", "gatewayInvocation", "configSha"])
     assert.equal(actual[key], expected[key], `Voice entry ${key} changed`);
   assert.equal(actual.openVoices, 0, "A voice call is open; do not replace the entry");
+}
+export function entryLaunchOverride(execStart, server) {
+  assert(/^\/opt\/openclaw-voice-h5\/releases\/[A-Za-z0-9._-]+\/lab\/gpt-live-h5\/server\.mjs$/.test(server));
+  const match = /^\{\s*path=([^;]+);\s*argv\[\]=([^;]+);\s*ignore_errors=(yes|no)\s*;/.exec(execStart);
+  assert(match && !/[\r\n]/.test(match[2]), "Voice launcher definition unavailable");
+  const entries = match[2].match(/\/opt\/openclaw-voice-h5\/[A-Za-z0-9._/-]+\/server\.mjs/g);
+  assert.equal(entries?.length, 1, "Exactly one owned voice entrypoint required");
+  // Node resolves a main-module symlink before import.meta.url comparison.
+  // Launch the frozen real path so both the CLI guard and asset paths agree.
+  return "[Service]\nExecStart=\nExecStart=" + match[2].trim().replace(entries[0], server) + "\n";
 }
 async function remoteMain(req) {
   const fs = await import("node:fs"), path = await import("node:path"), crypto = await import("node:crypto");
@@ -22,6 +32,7 @@ async function remoteMain(req) {
     .split("\n").map(line => { const i = line.indexOf("="); return [line.slice(0, i), line.slice(i + 1)]; }));
   const save = (file, value) => fs.writeFileSync(file, JSON.stringify(value, null, 2) + "\n", { flag: "wx", mode: 0o600 });
   const unit = "openclaw-rtc-h5.service", base = "/opt/openclaw-voice-h5", pointer = base + "/current";
+  const launchDropIn = "/etc/systemd/system/" + unit + ".d/90-gpt-live-entry-launch.conf";
   const dir = base + "/releases/gpt-live-" + req.commit, wantedPointer = dir + "/lab/gpt-live-h5";
   const gateway = properties("openclaw-gateway.service"), gp = Number(gateway.MainPID);
   assert(gp > 1 && gateway.ActiveState === "active", "Production Gateway is unavailable");
@@ -38,6 +49,7 @@ async function remoteMain(req) {
   const state = env.OPENCLAW_STATE_DIR ?? path.dirname(env.OPENCLAW_CONFIG_PATH);
   const countVoices = () => Number(run("python3", ["-c", "import sqlite3,json,sys; d=sqlite3.connect('file:'+sys.argv[1]+'?mode=ro',uri=True); r=d.execute('select value_json from cache_entries where scope=?',('talk-client-voice-sessions',)); print(sum(json.loads(x[0]).get('status') not in ('closed','expired') for x in r))", path.join(state, "agents/makaron/agent/openclaw-agent.sqlite")]));
   const observe = () => ({ pointer: fs.readlinkSync(pointer), unitSha: digest(run("systemctl", ["cat", unit])),
+    launchDropInSha: fs.existsSync(launchDropIn) ? hash(launchDropIn) : null,
     environmentSha: hash(path.join(state, "rtc-h5.env")), gatewayPid: gp,
     gatewayStart: fs.readFileSync(`/proc/${gp}/stat`, "utf8").split(") ")[1].split(/\s+/u)[19],
     gatewayInvocation: gateway.InvocationID, configSha: hash(env.OPENCLAW_CONFIG_PATH), openVoices: countVoices() });
@@ -48,10 +60,21 @@ async function remoteMain(req) {
   assertEntrySnapshot(req.expected.snapshot, snapshot);
   const swap = target => { const temporary = pointer + ".gpt-live-new"; assert(!fs.existsSync(temporary)); fs.symlinkSync(target, temporary); fs.renameSync(temporary, pointer); };
   if (req.command === "rollback") {
-    const installed = JSON.parse(fs.readFileSync(dir + (fs.existsSync(dir + "/installed.json") ? "/installed.json" : "/prepared.json")));
+    const installed = JSON.parse(fs.readFileSync(dir + (fs.existsSync(dir + "/installed.json") ? "/installed.json"
+      : fs.existsSync(dir + "/installed-recovered.json") ? "/installed-recovered.json" : "/prepared.json")));
     assert.equal(installed.filesSha, req.filesSha); assert.equal(installed.owner, req.owner);
     assert.equal(snapshot.pointer, wantedPointer); assert.equal(snapshot.unitSha, installed.snapshot.unitSha);
-    run("systemctl", ["stop", unit]); swap(installed.beforePointer); run("systemctl", ["start", unit]);
+    const launch = installed.launchDropIn;
+    assert(launch || snapshot.launchDropInSha === null, "Unrecorded launcher override; inspect before rollback");
+    if (launch) assert.equal(snapshot.launchDropInSha, launch.afterSha);
+    run("systemctl", ["stop", unit]); swap(installed.beforePointer);
+    if (launch) {
+      if (launch.before.content === null) fs.unlinkSync(launchDropIn);
+      else fs.writeFileSync(launchDropIn, Buffer.from(launch.before.content, "base64"), { mode: 0o644 });
+      assert.equal(fs.existsSync(launchDropIn) ? hash(launchDropIn) : null, launch.before.sha);
+      run("systemctl", ["daemon-reload"]);
+    }
+    run("systemctl", ["start", unit]);
     const receipt = { ...metadata, restored: true, restoredPointer: fs.readlinkSync(pointer) };
     save(dir + "/rolled-back.json", receipt); return receipt;
   }
@@ -68,11 +91,19 @@ async function remoteMain(req) {
     fs.chmodSync(destination, 0o644);
     for (let parent = path.dirname(destination); parent !== dir; parent = path.dirname(parent)) fs.chmodSync(parent, 0o755);
   }
-  save(dir + "/prepared.json", { ...metadata, beforePointer: snapshot.pointer });
+  const beforeLaunch = fs.existsSync(launchDropIn)
+    ? { sha: hash(launchDropIn), content: fs.readFileSync(launchDropIn).toString("base64") } : { sha: null, content: null };
+  const launchBytes = entryLaunchOverride(run("systemctl", ["show", unit, "-p", "ExecStart", "--value"]), wantedPointer + "/server.mjs");
+  const launch = { path: launchDropIn, before: beforeLaunch, afterSha: digest(launchBytes) };
+  save(dir + "/prepared.json", { ...metadata, beforePointer: snapshot.pointer, launchDropIn: launch });
   assertEntrySnapshot(snapshot, observe());
   run("systemctl", ["stop", unit]);
   assert.equal(Number(properties(unit).MainPID), 0);
-  swap(wantedPointer); run("systemctl", ["start", unit]);
+  swap(wantedPointer);
+  assert.equal(fs.existsSync(launchDropIn) ? hash(launchDropIn) : null, beforeLaunch.sha);
+  fs.mkdirSync(path.dirname(launchDropIn), { recursive: true });
+  fs.writeFileSync(launchDropIn, launchBytes, { mode: 0o644 });
+  run("systemctl", ["daemon-reload"]); run("systemctl", ["start", unit]);
   const hp = Number(properties(unit).MainPID); assert(hp > 1);
   const henv = Object.fromEntries(fs.readFileSync(`/proc/${hp}/environ`, "utf8").split("\0").filter(Boolean).map(line => { const i = line.indexOf("="); return [line.slice(0, i), line.slice(i + 1)]; }));
   assert.equal(henv.RTC_H5_BASE_PATH, "/voice"); assert.equal(henv.RTC_H5_PORT, "26242");
@@ -93,13 +124,13 @@ async function remoteMain(req) {
   assert(ready, "Voice entry not ready; preserve prepared.json and inspect before rollback");
   const served = await probe("app.js"); assert.equal(served.status, 200);
   assert.equal(digest(served.bytes), req.files.find(file => file.name.endsWith("/app.js")).sha);
-  const result = { ...metadata, beforePointer: snapshot.pointer, snapshot: observe(), h5Pid: hp, ready: true,
+  const result = { ...metadata, beforePointer: snapshot.pointer, snapshot: observe(), launchDropIn: launch, h5Pid: hp, ready: true,
     acceptance: "HTTP readiness only; real public H5 call validation required" };
   save(dir + "/installed.json", result); return result;
 }
 export function remoteSource() {
   return `import assert from 'node:assert/strict';import {createHash} from 'node:crypto';const digest=${digest.toString()};\n`
-    + [assertEntrySnapshot, remoteMain].map(fn => fn.toString()).join("\n")
+    + [assertEntrySnapshot, entryLaunchOverride, remoteMain].map(fn => fn.toString()).join("\n")
     + "\nlet text='';for await(const c of process.stdin)text+=c;try{const r=await remoteMain(JSON.parse(text));console.log(JSON.stringify(r))}catch{console.error('Voice entry identity or operation failed; preserve prepared receipts and inspect the service.');process.exitCode=1}";
 }
 function main(argv) {

@@ -1,0 +1,27 @@
+{
+  "sourceCommit": "218941552ebbe1cebe17e2a9ce3e31f059c23a5f",
+  "artifactSha": "e2f3c5290cadbca2e384eae727422c7f82c39adb03ffdf81c423b192d3260268",
+  "url": "https://openclaw.tianyi.live/voice/",
+  "beforePointer": "/opt/openclaw-voice-h5/releases/65051986429b3b06df199ba520481facde9c2093",
+  "entryDirectory": "/opt/openclaw-voice-h5/releases/gpt-live-218941552ebbe1cebe17e2a9ce3e31f059c23a5f",
+  "filesSha": "21cd552dde4b8361b18136757e4fb0b6a7e6916363164c4936c642aa9ddb361c",
+  "launchDropIn": {
+    "path": "/etc/systemd/system/openclaw-rtc-h5.service.d/90-gpt-live-entry-launch.conf",
+    "before": {
+      "sha": null,
+      "content": null
+    },
+    "afterSha": "1c634d4e44c10021891c5c7b499d0fec7e68e00a486406ae92dffd3aef3c8d3a"
+  },
+  "gatewayRestartRequired": true,
+  "strictAcceptance": false,
+  "pausedWork": [
+    "final-answer-fidelity",
+    "duplex-audio-fix"
+  ],
+  "privateEvidenceHashes": {
+    "voice-launch-20261005-production-started.json": "46dc7a717432aaa730b052568ea953ffba6ed9bd2ef0f1b8908f8b0c99245b2c",
+    "voice-launch-20261005-entry-installed-recovered.json": "14da86640a6c30bac3668f8eacbb82355b0f99131cda8a69b7855f76d195cac6",
+    "voice-launch-20261005-public-independent-review.json": "0e7cae27bbfe00ef78f379c8b73c1da6a8e799e0e994da174c9a2063700435b1"
+  }
+}

@@ -11,6 +11,28 @@
 
 ---
 
+## v2026.9.1-db91.6-gpt-live-voice-20261005
+
+上线：2026-10-05 01:34 CST 受控启动 Gateway，01:41 公网语音服务就绪。tag `v2026.9.1-db91.6-gpt-live-voice-20261005`。
+
+**摘要**：原小何入口 https://openclaw.tianyi.live/voice/ 改为 GPT Live。保留桌面布局；手机拨号后头像连续上移缩小，第一条真实字幕到达才显示对话。接通问候、后台任务续做和模型调用挂断工具随同上线。每次拨号创建独立会话，不复用十二家群会话。
+
+**来源**：PR #189，dev `21894155`；共享发版 `gpt-live-voice-20261005-2189415`，artifact SHA256 `e2f3c5290cadbca2e384eae727422c7f82c39adb03ffdf81c423b192d3260268`。三个实际生产 capture 位于同名 `release/captured/` 目录。完整运行时逐字节 capture、漂移哨兵与共享 align 已执行。
+
+**验收范围**：按用户“你上线吧”授权发布已观察到的业务核心，保留历史 strict FAIL。公网原 H5/WebRTC 实测接通问候、同后台任务 Memory→Web 成功非空工具结果和语音返回；独立 controls-only 通话观察真实零参数挂断工具、告别及自动关闭。Memory/Web 严格观察器仍 FAIL（Web 原结果 envelope 在约 8000 字符截断，完整体未验证），不把它改记通过。最终答案保真和双向声学验收按用户要求暂停。
+
+**重启与回退**：Gateway 受控重启至 PID 1116064，H5 至 PID 1124391；数据、配置与访问授权保持。原 H5 unit 的 symlink 启动不满足新 server main guard，新增受控 ExecStart drop-in 指向冻结真实路径。回退同时检查并恢复 pointer 与 drop-in；只恢复已记录身份，不覆盖并行任务。发布记录见 `release/voice/gpt-live-20261005/`，相关控制器回归 27/27 通过。
+
+相对上一版 `loopback-requester-sender-20261004`，实际三个完整 capture 比较：7 个运行文件变化。
+
+- `core` ./builtin-openclaw-zQV8Wwjr.js  d6cfa039 → 029eae85
+- `core` ./embedded-agent-DaSvA-Yk.js  128a61c9 → 94fc21cb
+- `core` ./gpt-live-call-lifecycle.mjs  713e1ba6 → 73198276
+- `core` ./gpt-live-consult-continuation.js  db2ea459 → 2f2bcda1
+- `core` ./realtime-quicksilver-delegation-controller-B0yPpiHp.js  ad9f99e8 → a5a06fdb
+- `core` ./realtime-session-harness-CEO5kVAJ.js  eee6e604 → 02f37cb2
+- `core` ./session-transcript-reconcile-j5qhAafV.js  b0200676 → e95bb26a
+
 ## loopback-requester-sender-20261004
 
 上线：2026-10-04 11:26 CST 安装，11:27:27 重启 Gateway（V 空闲时）  ·  tag `loopback-requester-sender-20261004`
