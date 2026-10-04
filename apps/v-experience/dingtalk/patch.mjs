@@ -374,6 +374,31 @@ import { formatChannelProgressDraftLineForEntry as vFormatProgressLine } from "o
     anchor: "\tawait streamAICard(card, fixedContent, true, config, log);\n",
     replace: "\tif (card.vStreamed) await streamAICard(card, fixedContent, true, config, log);\n",
   },
+  {
+    // The connector marked every message as an authorized command. Compute it
+    // the way the core expects (as Feishu and Telegram do): only command-like
+    // text, from a sender the DM allowlist admits (the connector treats
+    // "pairing" as "open"). Which commands that sender may run is then the
+    // core's decision: commands.allowFrom and commands.ownerAllowFrom.
+    name: "command-auth-helper",
+    anchor: "async function prepareDingTalkMessage(params) {\n",
+    insert: "before",
+    code: `// ${MARKER}: CommandAuthorized from the core's helpers instead of always true.
+function vCommandAuthorized({ core, cfg, config, senderId, text }) {
+\tif (!core.channel.commands.shouldComputeCommandAuthorized(text, cfg)) return false;
+\tconst allowFrom = config.dmPolicy === "allowlist" ? (config.allowFrom || []).map(String) : ["*"];
+\treturn core.channel.commands.resolveCommandAuthorizedFromAuthorizers({
+\t\tuseAccessGroups: cfg.commands?.useAccessGroups !== false,
+\t\tauthorizers: [{ configured: allowFrom.length > 0, allowed: allowFrom.includes("*") || allowFrom.includes(String(senderId)) }]
+\t});
+}
+`,
+  },
+  {
+    name: "command-auth",
+    anchor: "\t\t\tCommandAuthorized: true,\n\t\t\tOriginatingChannel: \"dingtalk-connector\",\n",
+    replace: "\t\t\tCommandAuthorized: vCommandAuthorized({ core, cfg, config, senderId, text: userContent }),\n\t\t\tOriginatingChannel: \"dingtalk-connector\",\n",
+  },
 ];
 
 /** The rewritten chunk source; throws when an anchor is missing or ambiguous. */

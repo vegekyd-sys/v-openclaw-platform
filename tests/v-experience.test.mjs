@@ -278,3 +278,29 @@ test("DingTalk question card: one tap answers a single choice; others stage then
   assert.equal(done.cardData.cardParamMap.button_text, "✓ 已选择：爬山、读书");
   assert.deepEqual(JSON.parse(JSON.stringify(got)), [{ answers: { w: ["爬山", "读书"] } }]);
 });
+
+test("DingTalk and WeCom no longer mark every message as an authorized command", async () => {
+  const ding = patchReplyChunk(fs.readFileSync(new URL("../apps/v-experience/dingtalk/baseline/message-handler-BUoLSylZ.mjs", import.meta.url), "utf8"));
+  assert(!ding.includes("CommandAuthorized: true"));
+  assert(ding.includes("CommandAuthorized: vCommandAuthorized({ core, cfg, config, senderId, text: userContent })"));
+  const { patchMonitor } = await import("../apps/v-experience/wecom/patch.mjs");
+  const wecom = patchMonitor(fs.readFileSync(new URL("../apps/v-experience/wecom/baseline/monitor.js", import.meta.url), "utf8"));
+  assert(!wecom.includes("CommandAuthorized: true"));
+  assert(wecom.includes('import { resolveWecomCommandAuthorization as vResolveCommandAuthorization } from "./shared/command-auth.js";'));
+  assert.match(wecom, /CommandAuthorized: \(await vResolveCommandAuthorization\(\{[\s\S]*?rawBody: messageBody,[\s\S]*?\}\)\)\.commandAuthorized === true,/u);
+
+  // The DingTalk helper against 9.1's command helpers.
+  const helper = ding.match(/function vCommandAuthorized\([\s\S]*?\n\}\n/u)[0];
+  const vCommandAuthorized = new Function(`${helper}; return vCommandAuthorized;`)();
+  const core = { channel: { commands: {
+    shouldComputeCommandAuthorized: (text) => /(?:^|\s)[/!][a-z]/iu.test(text),
+    resolveCommandAuthorizedFromAuthorizers: ({ useAccessGroups, authorizers }) => !useAccessGroups || authorizers.some((a) => a.configured && a.allowed),
+  } } };
+  const cfg = { commands: {} };
+  const auth = (config, senderId, text) => vCommandAuthorized({ core, cfg, config, senderId, text });
+  assert.equal(auth({ dmPolicy: "open", allowFrom: ["*"] }, "u1", "你好"), false, "plain chat is not a command");
+  assert.equal(auth({ dmPolicy: "open", allowFrom: ["*"] }, "u1", "/model vcc"), true);
+  assert.equal(auth({}, "u1", "/model vcc"), true, "default policy is open");
+  assert.equal(auth({ dmPolicy: "allowlist", allowFrom: ["u2"] }, "u1", "/model vcc"), false);
+  assert.equal(auth({ dmPolicy: "allowlist", allowFrom: [12345] }, "12345", "/restart"), true);
+});

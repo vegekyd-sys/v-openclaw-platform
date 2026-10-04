@@ -30,6 +30,27 @@ const replacements = [
 import * as vExperience from "./${EXPERIENCE_FILE}";
 import { callGatewayFromCli as vCallGateway } from "openclaw/plugin-sdk/gateway-runtime";
 import { formatChannelProgressDraftLineForEntry as vFormatProgressLine } from "openclaw/plugin-sdk/channel-outbound";
+import { resolveWecomCommandAuthorization as vResolveCommandAuthorization } from "./shared/command-auth.js";
+`,
+  },
+  {
+    // The bot (websocket) path marked every message as an authorized command.
+    // Use the plugin's own helper, as its agent path does: only command-like
+    // text, from a sender the DM policy admits. The helper defaults dmPolicy to
+    // "pairing" where this path's gate defaults to "open"; follow the gate.
+    // Which commands that sender may run is then the core's decision
+    // (commands.allowFrom, commands.ownerAllowFrom).
+    name: "command-auth",
+    anchor: "        CommandAuthorized: true,\n        ResponseUrl: body.response_url,\n",
+    replace: `        // ${MARKER}: CommandAuthorized from the core's helpers instead of always true.
+        CommandAuthorized: (await vResolveCommandAuthorization({
+            core,
+            cfg: config,
+            accountConfig: { ...account.config, dmPolicy: account.config.dmPolicy ?? "open" },
+            rawBody: messageBody,
+            senderUserId: body.from.userid,
+        })).commandAuthorized === true,
+        ResponseUrl: body.response_url,
 `,
   },
   {

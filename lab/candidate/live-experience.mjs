@@ -108,6 +108,16 @@ if (secrets.get("VLAB_TELEGRAM_TEST_BOT_TOKEN")) {
   report.channels.telegram = "configured";
 }
 assert(Object.keys(config.channels).length, "no test robot credentials in the VLab secrets file");
+// Command roles as on Feishu: everyone reaches the command path, owners
+// (Telegram's allow list only; DingTalk and WeCom have none) get every command,
+// everyone else only /model for their own session (core command-auth patch).
+const commandAllowFrom = { ...(config.commands?.allowFrom ?? {}) };
+for (const channel of Object.keys(config.channels)) commandAllowFrom[channel] = ["*"];
+config.commands = { ...(config.commands ?? {}), allowFrom: commandAllowFrom };
+const commandAuth = spawnSync(process.execPath, [path.resolve("lab/release-files/feishu-model-switch-roles/patch-runtime.mjs"), path.join(runtime, "openclaw"), "--apply"], { encoding: "utf8" });
+assert.equal(commandAuth.status, 0, commandAuth.stderr);
+report.patches.commandAuth = commandAuth.stdout.trim().split("\n");
+report.commands = { allowFrom: config.commands.allowFrom, owners: (config.commands.ownerAllowFrom ?? []).filter((o) => /^(telegram|dingtalk-connector|wecom):/u.test(o)).length };
 // Channels without a test robot: their shared plugin entries would make the
 // Gateway install the plugin at startup and refuse to become ready.
 for (const [id, channel] of [["dingtalk-connector", "dingtalk-connector"], ["wecom-openclaw-plugin", "wecom"]]) {

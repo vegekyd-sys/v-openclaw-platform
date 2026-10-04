@@ -23,5 +23,15 @@ for (const commandText of ['/restart', '/config get gateway', '/bash ls', '/vcc'
   assert.equal(resolve({ ...base, commandText }), 'reset-only', commandText);
 assert.equal(resolve({ ...base, senderIsOwner: true, commandText: '/restart' }), 'commands');
 assert.equal(resolve({ ...base, commandsAllowFromList: ['feishu:someone_else'], commandText: '/model vds' }), 'denied');
-assert.equal(resolve({ ...base, providerId: 'telegram', senderIsOwner: false, commandText: '/restart' }), 'commands');
-console.log('Feishu /model-only command authorization assertions passed');
+for (const providerId of ['telegram', 'dingtalk-connector', 'wecom', 'msteams']) {
+  assert.equal(resolve({ ...base, providerId, commandText: '/model vcc' }), 'commands', providerId);
+  assert.equal(resolve({ ...base, providerId, commandText: '/restart' }), 'reset-only', providerId);
+  assert.equal(resolve({ ...base, providerId, senderIsOwner: true, commandText: '/restart' }), 'commands', providerId);
+}
+// Channels outside the list keep stock behaviour.
+assert.equal(resolve({ ...base, providerId: 'slack', commandText: '/restart' }), 'commands');
+// Without commands.allowFrom the plugin's CommandAuthorized decides, as in stock 9.1.
+const stock = { ...base, commandsAllowFromList: null, commandsAllowFromConfigured: false, providerId: 'wecom', commandText: '/restart' };
+assert.equal(resolve({ ...stock, commandAuthorized: false }), 'denied');
+assert.equal(resolve({ ...stock, isOwnerForCommands: false }), 'reset-only');
+console.log('/model-only command authorization assertions passed');

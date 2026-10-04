@@ -1,6 +1,7 @@
 {
   "support": [
     "lab/candidate/live-experience.mjs",
+    "lab/release-files/feishu-model-switch-roles/patch-runtime.mjs",
     "apps/v-experience/v-experience.mjs",
     "apps/v-experience/dingtalk/patch.mjs",
     "apps/v-experience/wecom/patch.mjs",
