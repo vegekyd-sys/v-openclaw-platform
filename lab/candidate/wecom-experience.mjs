@@ -189,7 +189,7 @@ const SCENARIOS = {
     await settle(chatId, since, (t) => /午饭定了/u.test(t), { label: "ask-single answer", timeoutMs: 240_000 }).catch(() => null);
     const t = allText(chatId, since);
     const continuedAt = Math.min(...streamsSince(chatId, since).flatMap((s) => s.history.filter((h) => /午饭定了/u.test(h.content)).map((h) => h.at)), ...proactiveSince(chatId, since).filter((m) => /午饭定了/u.test(m.text)).map((m) => m.at));
-    return { questionShown: Boolean(asked), ...view(chatId, since), continued: /午饭定了[：:]\s*饺子/u.test(t), continuedAfterSecs: Number.isFinite(continuedAt) ? Math.round((continuedAt - answerAt) / 1000) : null };
+    return { questionShown: Boolean(asked), questionInFinished: finished(chatId, since).some((m) => /饺子/u.test(m.content)), ...view(chatId, since), continued: /午饭定了[：:]\s*饺子/u.test(t), continuedAfterSecs: Number.isFinite(continuedAt) ? Math.round((continuedAt - answerAt) / 1000) : null };
   },
   "ask-multi": async () => {
     const u = nextUser(); const since = Date.now();
@@ -199,7 +199,7 @@ const SCENARIOS = {
     fake.sendUserText({ userId: u, text: "1、3" });
     await settle(chatId, since, (t) => /周末安排/u.test(t), { label: "ask-multi answer", timeoutMs: 240_000 }).catch(() => null);
     const t = allText(chatId, since);
-    return { questionShown: Boolean(asked), ...view(chatId, since), continued: /周末安排[^\n]*爬山[^\n]*读书|周末安排[^\n]*读书[^\n]*爬山/u.test(t) };
+    return { questionShown: Boolean(asked), questionInFinished: finished(chatId, since).some((m) => /看电影/u.test(m.content)), ...view(chatId, since), continued: /周末安排[^\n]*爬山[^\n]*读书|周末安排[^\n]*读书[^\n]*爬山/u.test(t) };
   },
   secret: async () => {
     const u = nextUser(); const since = Date.now();
@@ -253,6 +253,8 @@ if (EXPECT === "patched") {
   }
   for (const name of ["ask-single", "ask-multi"]) if (s[name]) {
     assert(s[name].questionShown, `${name}: question never reached the chat`);
+    // The WeCom desktop client shows a stream only once it is finished.
+    assert(s[name].questionInFinished, `${name}: question only inside an unfinished stream`);
     assert(s[name].continued, `${name}: chat answer did not reach the agent`);
   }
   if (s.background) assert(s.background.sawBackgroundLine && s.background.sawBackgroundDone, "background line missing");

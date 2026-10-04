@@ -142,6 +142,18 @@ test("telegram question message is HTML like the Feishu question card", () => {
   assert.equal(vx.telegramAskHtml(record, "answered", { answers: { answers: { q: ["爬山", "读书"] } } }).split("\n\n")[1], "✓ 已选择：爬山、读书");
 });
 
+test("work view closed at a question repeats only the answer record", () => {
+  const view = vx.createWorkView({ sessionKey: "agent:a:wecom:direct:1" });
+  const record = { id: ASK, questions: [{ questionId: "q", question: "去哪个城市？", options: [{ label: "杭州" }, { label: "苏州" }] }] };
+  view.showQuestion(record, { prefix: "先问一下。" });
+  assert.match(view.compose(""), /先问一下[\s\S]*去哪个城市/u);
+  view.closedAtQuestion();
+  assert.equal(view.finalText("按默认继续。"), "按默认继续。", "unanswered question is not shown again");
+  view.questionAnswered({ answers: { q: ["苏州"] } });
+  assert.equal(view.finalText("苏州不错。"), "✓ 已选择：苏州\n\n苏州不错。");
+  view.dispose();
+});
+
 test("work view clears the working part for a question and keeps the plan", () => {
   const view = vx.createWorkView({ sessionKey: "agent:a:telegram:direct:1" });
   view.planUpdate({ phase: "update", steps: [{ step: "了解偏好", status: "in_progress" }, { step: "给建议", status: "pending" }] });

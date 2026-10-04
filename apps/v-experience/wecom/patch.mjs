@@ -11,11 +11,14 @@
 // minutes after the user's message; after it is finished it cannot change.
 // So the work shows inside the stream while the turn runs, the background
 // line is part of the finished reply, and "后台任务已结束" is a new message.
+// The WeCom desktop client shows nothing of a stream until it is finished, so
+// a question finishes the stream (text so far + the question); the rest of the
+// reply goes out as a new message through the plugin's expired-stream path.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 
-export const MARKER = "v-experience-wecom-v1";
+export const MARKER = "v-experience-wecom-v2";
 export const EXPERIENCE_FILE = "v-experience.mjs";
 
 const replacements = [
@@ -100,17 +103,26 @@ import { formatChannelProgressDraftLineForEntry as vFormatProgressLine } from "o
                 await vCallGateway("question.resolve", { config }, { id: question.id, cancel: true, resolvedBy: "wecom:credential-unsupported" }, { scopes: ["operator.questions"], progress: false, timeoutMs: 5000 }).catch(() => { });
             }
             else if (state.streamId && !state.streamExpired && !state.vFinished) {
-                // Inside the streamed reply, as in Feishu: what was written stays
-                // above the question, the answer continues below it.
+                // The reply so far and the question close the stream, so every
+                // client shows the question; the answer follows as a new message.
                 vWork.showQuestion(question, { prefix: maskTemplateCardBlocks(state.accumulatedText || vPartial, () => { }) });
                 state.accumulatedText = "";
                 vPartial = "";
+                if (vTimer) clearTimeout(vTimer);
+                vTimer = null;
+                const closing = vWork.compose("");
+                state.streamExpired = true;
+                await vSending;
+                await sendWeComReply({ wsClient, frame, text: closing, runtime, finish: true, streamId: state.streamId }).catch(async (err) => {
+                    runtime.error?.(\`[wecom][v-experience] closing stream at question failed: \${String(err)}\`);
+                    await vSend(closing);
+                });
+                vWork.closedAtQuestion();
                 vExperience.trackChatQuestion({
                     channel: "wecom", chatKey: \`\${account.accountId}:\${chatId}\`, senderId: vSender, record: question, inline: true,
                     onStaged: (staged) => vWork.stageQuestion(staged),
                     onAnswered: (answers) => vWork.questionAnswered(answers),
                 });
-                vSchedule();
             }
             else {
                 await vSend(vExperience.askPromptMarkdown(question));

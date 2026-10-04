@@ -164,6 +164,8 @@ export function createWorkView({ sessionKey, onChange = () => {}, log, formatToo
   const setStatus = (line) => { statusLine = line; statusAnswerLength = lastAnswerLength; changed(); };
   const head = () => {
     if (!q) return "";
+    // A question already shown in a closed message is not repeated while it waits.
+    if (q.closed && q.state === "pending") return "";
     const block = q.state === "pending" ? questionMarkdown(q.record, { staged: q.staged, optionLink }) : questionRecordLine(q.record, q.state, q.answers);
     return [q.prefix, block].filter((part) => part && part.trim()).join("\n\n");
   };
@@ -221,6 +223,8 @@ export function createWorkView({ sessionKey, onChange = () => {}, log, formatToo
     questionClosed(state) { if (q && q.state === "pending") { q.state = state; changed(); } },
     /** The working message went away (a question was sent below it); start the next one fresh, plan kept. */
     clearWorking() { commentary.clear(); statusLine = ""; },
+    /** The reply up to and including the question was sent and closed; what follows starts after it. */
+    closedAtQuestion() { if (q) { q.prefix = ""; q.closed = true; } commentary.clear(); statusLine = ""; },
     waitingForAnswer: () => elsewhere || q?.state === "pending",
     hasContent: () => steps.length > 0 || Boolean(statusLine) || commentary.size > 0 || Boolean(q) || elsewhere,
     /** The reply while working. */
