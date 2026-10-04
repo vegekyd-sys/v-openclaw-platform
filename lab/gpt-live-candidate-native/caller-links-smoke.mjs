@@ -23,7 +23,11 @@ const save=(name,value)=>fs.writeFileSync(path.join(base,name),JSON.stringify(va
 save('configured-persona-proof.json',{sha256:hash(persona),characters:persona.length,configuredInstructionsSha256:hash(config.talk.realtime.instructions),usesExistingPersona:true,source:extractGptLivePersona(config.talk.realtime.instructions)?'configured-persona':'frozen-original-V-persona'});
 const media=preflightLifecycleMedia();
 const scratch=fs.mkdtempSync(path.join(stateRoot,'tmp/caller-links-'));
-const scratchId=captureOwnedBrowserDirectory(scratch,{parent:path.dirname(scratch),prefix:'caller-links-'}),profile=path.join(scratch,'chrome');
+const scratchId=captureOwnedBrowserDirectory(scratch,{parent:path.dirname(scratch),prefix:'caller-links-'});
+// Chromium creates Unix sockets below TMPDIR. Candidate state paths exceed
+// their length limit; reuse the lifecycle observer's short, separately owned temp.
+const chromeTemp=fs.mkdtempSync('/tmp/gpt-live-caller-chrome-');fs.chmodSync(chromeTemp,0o700);
+const chromeTempId=captureOwnedBrowserDirectory(chromeTemp,{parent:'/tmp',prefix:'gpt-live-caller-chrome-'}),profile=path.join(chromeTemp,'profile');
 let pulse,chrome,cdp,gateway,cache,error=null,observed;
 const results=[];
 class CDP {
@@ -43,7 +47,7 @@ try {
   const {GatewayClient}=await import(core+'/dist/plugin-sdk/gateway-runtime.js');
   await new Promise((y,n)=>{const timer=setTimeout(()=>n(Error('Gateway connect deadline')),15000);gateway=new GatewayClient({url:'ws://127.0.0.1:'+config.gateway.port,token,deviceIdentity:null,clientName:'cli',mode:'cli',scopes:['operator.read','operator.write'],onHelloOk(){clearTimeout(timer);y();},onConnectError:n});gateway.start();});
   pulse=await createPrivatePulseMicrophone(path.join(scratch,'pulse'),{executables:media.executables});
-  chrome=spawn(media.executables.chrome,['--headless=new','--no-sandbox','--disable-dev-shm-usage','--disable-gpu','--disable-features=AudioServiceSandbox','--remote-debugging-port=0','--window-size=1280,900','--user-data-dir='+profile,'--use-fake-ui-for-media-stream','about:blank'],{env:pulse.environment,stdio:['ignore','ignore','pipe']});
+  chrome=spawn(media.executables.chrome,['--headless=new','--no-sandbox','--disable-dev-shm-usage','--disable-gpu','--disable-features=AudioServiceSandbox','--remote-debugging-port=0','--window-size=1280,900','--user-data-dir='+profile,'--use-fake-ui-for-media-stream','about:blank'],{env:{...pulse.environment,TMPDIR:chromeTemp,TMP:chromeTemp,TEMP:chromeTemp},stdio:['ignore','ignore','pipe']});
   chrome.stderr.on('data',b=>fs.appendFileSync(path.join(base,'chrome.log'),b,{mode:0o600}));
   const debug=profile+'/DevToolsActivePort';for(let i=0;i<150&&!fs.existsSync(debug);i++)await sleep(100);assert(fs.existsSync(debug));
   const port=fs.readFileSync(debug,'utf8').split('\n')[0],tabs=await fetch('http://127.0.0.1:'+port+'/json/list').then(r=>r.json());
@@ -85,7 +89,10 @@ finally {
   if(chrome){inspect();if(chrome.exitCode===null&&chrome.signalCode===null){chrome.kill('SIGTERM');await Promise.race([new Promise(r=>chrome.once('exit',r)),sleep(3000)]);}}
   await pulse?.dispose();
   for(let i=0;i<20&&inspect().aliveProcesses.length;i++)await sleep(100);
-  if(inspect().aliveProcesses.length===0)await removeOwnedBrowserDirectory(scratch,{identity:scratchId,chromeExited:true,inspectChrome:inspect});
-  save('result.json',{results,error,cleanup:observed,productAccepted:false,pausedFidelityAndDuplexUntouched:true});
+  if(inspect().aliveProcesses.length===0){
+    await removeOwnedBrowserDirectory(chromeTemp,{identity:chromeTempId,chromeExited:true,inspectChrome:inspect});
+    await removeOwnedBrowserDirectory(scratch,{identity:scratchId,chromeExited:true,inspectChrome:inspect});
+  }
+  save('result.json',{results,error,cleanup:{...observed,chromeExitCode:chrome?.exitCode,chromeSignal:chrome?.signalCode,privateChromeTempRemoved:!fs.existsSync(chromeTemp),privateScratchRemoved:!fs.existsSync(scratch)},productAccepted:false,pausedFidelityAndDuplexUntouched:true});
 }
 assert.equal(error,null,error??'');assert.equal(results.length,2);

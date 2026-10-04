@@ -233,6 +233,7 @@
         "lab/gateway-self-config-realpath.test.mjs",
         "lab/gpt-live-backend-call-control.test.mjs",
         "lab/gpt-live-call-lifecycle.test.mjs",
+        "lab/gpt-live-caller-context.test.mjs",
         "lab/gpt-live-call-live-auth.test.mjs",
         "lab/gpt-live-call-live-evidence.test.mjs",
         "lab/gpt-live-candidate-config-guard.test.mjs",
