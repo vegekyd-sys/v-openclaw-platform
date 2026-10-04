@@ -300,7 +300,23 @@ function createGptLiveConsultContinuationRegistry(deps) {
         return;
       }
       if (binding.role === "initial" && callControlReceipt) {
-        if (!result || !Array.isArray(result.payloads) || result?.meta?.error ||
+        // Core intentionally omits payloads for a successful client-tool-only
+        // terminal. That public projection is not the actual tool-call proof:
+        // acceptance still requires the paired original run events above.
+        const pendingTools = result?.meta?.pendingToolCalls;
+        let emptyEndArgs = false;
+        if (Array.isArray(pendingTools) && pendingTools.length === 1 &&
+            pendingTools[0]?.name === "openclaw_end_call" && typeof pendingTools[0].arguments === "string") {
+          try {
+            const args = JSON.parse(pendingTools[0].arguments);
+            emptyEndArgs = Boolean(args && typeof args === "object" && !Array.isArray(args) && Object.keys(args).length === 0);
+          } catch {}
+        }
+        const clientToolOnlyTerminal = result?.payloads === undefined && result?.meta?.aborted === false &&
+          result.meta.stopReason === "tool_calls" && emptyEndArgs &&
+          result.meta.agentMeta?.sessionId === binding.sessionId && !result.meta.continuationPending &&
+          !result.meta.failureSignal && !result.meta.terminalToolFailure;
+        if (!result || !(Array.isArray(result.payloads) || clientToolOnlyTerminal) || result?.meta?.error ||
             result?.meta?.yielded === true || callControl.isCurrent() !== true) {
           throw error("Voice call control source changed before its terminal result");
         }

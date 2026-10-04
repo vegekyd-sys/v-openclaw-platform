@@ -92,13 +92,16 @@ export const SNAPSHOT_PAGED_HEADER_EXPRESSION = `(()=>{const p=globalThis.__cand
  const snapshotStartedAt=Date.now();
  // Duplex diagnostics are rolling rings. Counts alone cannot freeze their
  // indices, so retain the original row references before any paged reads.
- const frozen=p.frozenDuplexSnapshot={generation:(p.frozenDuplexSnapshot?.generation??0)+1,events:d?.events?.slice()??[],transitions:d?.transitions?.slice()??[]};
- return {snapshotStartedAt,probeTimeOrigin:performance.timeOrigin,arrayCounts:Object.fromEntries(${JSON.stringify(SNAPSHOT_ARRAY_FIELDS)}.map(key=>[key,p[key].length])),duplexArrayCounts:d?{events:frozen.events.length,transitions:frozen.transitions.length}:null,duplexSnapshotGeneration:frozen.generation,pcStates:p.pcs.map(pc=>pc.connectionState),senderTracks:p.pcs.map(pc=>pc.getSenders().filter(s=>s.track?.kind==='audio').map(s=>({id:s.track.id,state:s.track.readyState,enabled:s.track.enabled}))),remoteAudio:{muted:a?.muted,paused:a?.paused,volume:a?.volume,attached:Boolean(a?.srcObject)},badge:document.getElementById('badge')?.textContent,callState:document.body?.dataset?.callState,duplex:d?{...d,events:[],transitions:[]}:null}})()`;
+ const frozen=p.frozenDuplexSnapshot={generation:(p.frozenDuplexSnapshot?.generation??0)+1,observedAt:snapshotStartedAt,probeTimeOrigin:performance.timeOrigin,events:d?.events?.slice()??[],transitions:d?.transitions?.slice()??[]};
+ return {snapshotStartedAt,snapshotObservedAt:snapshotStartedAt,probeTimeOrigin:performance.timeOrigin,arrayCounts:Object.fromEntries(${JSON.stringify(SNAPSHOT_ARRAY_FIELDS)}.map(key=>[key,p[key].length])),duplexArrayCounts:d?{events:frozen.events.length,transitions:frozen.transitions.length}:null,duplexSnapshotGeneration:frozen.generation,pcStates:p.pcs.map(pc=>pc.connectionState),senderTracks:p.pcs.map(pc=>pc.getSenders().filter(s=>s.track?.kind==='audio').map(s=>({id:s.track.id,state:s.track.readyState,enabled:s.track.enabled}))),remoteAudio:{muted:a?.muted,paused:a?.paused,volume:a?.volume,attached:Boolean(a?.srcObject)},badge:document.getElementById('badge')?.textContent,callState:document.body?.dataset?.callState,duplex:d?{...d,events:[],transitions:[]}:null}})()`;
 
 export async function readBoundedProbeSnapshot(evaluate,{pageSize=32,previous=null}={}) {
  if(!Number.isSafeInteger(pageSize)||pageSize<1||pageSize>64)throw Error('Bounded probe snapshot page size required');
+ const snapshotRequestedAt=Date.now();
  const state=await evaluate(SNAPSHOT_PAGED_HEADER_EXPRESSION);if(!state)return null;
  const samePage=Number.isFinite(state.probeTimeOrigin)&&previous?.probeTimeOrigin===state.probeTimeOrigin;
+ if(samePage&&!(state.duplexSnapshotGeneration>previous.duplexSnapshotGeneration))throw Error('Fresh browser snapshot header required');
+ const frozenGuard=`const p=globalThis.__candidateLiveProbe,frozen=p?.frozenDuplexSnapshot;if(frozen?.generation!==${state.duplexSnapshotGeneration}||frozen.observedAt!==${state.snapshotObservedAt}||frozen.probeTimeOrigin!==${state.probeTimeOrigin})throw Error('Frozen probe snapshot changed during paged read');`;
  const read=async(expression,count,prior)=>{
   if(!Number.isSafeInteger(count)||count<0||count>1e6)throw Error('Invalid frozen probe snapshot prefix');
   // Polls reuse only this page's append-only prefix. Re-read the bounded last
@@ -110,8 +113,11 @@ export async function readBoundedProbeSnapshot(evaluate,{pageSize=32,previous=nu
    rows.push(...page);
   }return rows;
  };
- for(const field of SNAPSHOT_ARRAY_FIELDS)state[field]=await read(`globalThis.__candidateLiveProbe[${JSON.stringify(field)}]`,state.arrayCounts[field],previous?.[field]);
+ for(const field of SNAPSHOT_ARRAY_FIELDS)state[field]=await read(`(()=>{${frozenGuard}return p[${JSON.stringify(field)}];})()`,state.arrayCounts[field],previous?.[field]);
  // Rings must always read the entire header-time copy, never a cached prefix.
- if(state.duplex)for(const field of ['events','transitions'])state.duplex[field]=await read(`(()=>{const frozen=globalThis.__candidateLiveProbe.frozenDuplexSnapshot;if(frozen?.generation!==${state.duplexSnapshotGeneration})throw Error('Frozen duplex snapshot superseded during paged read');return frozen[${JSON.stringify(field)}];})()`,state.duplexArrayCounts[field]);
- state.snapshotCompletedAt=Date.now();state.snapshotSource='bounded-pages-of-frozen-original-observer-prefix';return state;
+ if(state.duplex)for(const field of ['events','transitions'])state.duplex[field]=await read(`(()=>{${frozenGuard}return frozen[${JSON.stringify(field)}];})()`,state.duplexArrayCounts[field]);
+ await evaluate(`(()=>{${frozenGuard}return true;})()`);
+ // The prefix was observed at the browser header, not when the collector
+ // finishes receiving its pages. Keep these clock domains explicit.
+ state.snapshotRequestedAt=snapshotRequestedAt;state.snapshotCompletedAt=Date.now();state.snapshotCollectionLatencyMs=state.snapshotCompletedAt-snapshotRequestedAt;state.snapshotCompletedClock='collector-wall';state.snapshotSource='bounded-pages-of-frozen-original-observer-prefix';return state;
 }

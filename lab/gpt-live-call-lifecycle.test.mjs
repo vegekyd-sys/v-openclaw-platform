@@ -37,14 +37,14 @@ const Controller = new Function("createHash", "randomUUID", "createGptLiveCallLi
   controllerSource.replace(/^import[^\n]*\n/gmu, "").replace(/export \{ OpenAIQuicksilverDelegationController as t \};\s*$/u, "") + "return OpenAIQuicksilverDelegationController;")
   (createHash, randomUUID, createGptLiveCallLifecycle, createGptLiveEndCallClientTool, (v) => v instanceof Error ? v : new Error(String(v)), (v) => v.message, String, ({ input }) => input, parseNative, (v) => v, chunkNative, (v) => v);
 
-function nativeFixture({ enabled = true, onToolEvent, adopted = true, runAgentConsult } = {}) {
-  const order = [], errors = [], calls = [], diagnostics = [], abort = new AbortController();
+function nativeFixture({ enabled = true, onToolEvent, adopted = true, runAgentConsult, isCanceledError } = {}) {
+  const order = [], errors = [], calls = [], diagnostics = [], warnings = [], abort = new AbortController();
   let currentLease = adopted;
   const socket = { readyState: 1, fail: false, send(value) {
     if (this.fail) throw new Error("socket send failed");
     order.push({ kind: "frame", ...JSON.parse(value) });
   } };
-  const controller = new Controller({ signal: abort.signal, getSocket: () => socket, logger: { warn() {} },
+  const controller = new Controller({ signal: abort.signal, getSocket: () => socket, logger: { warn: text => warnings.push(text) }, isCanceledError,
     callLifecycle: enabled, isCallCurrent: () => currentLease,
     onCallLifecycleEvent: (event) => { order.push({ kind: "tool", ...event }); onToolEvent?.(event); },
     onPublicProgressDiagnostic: event => diagnostics.push(event),
@@ -53,7 +53,7 @@ function nativeFixture({ enabled = true, onToolEvent, adopted = true, runAgentCo
   const frame = (event) => controller.handleFrame(JSON.stringify(event), false);
   const start = () => frame({ type: "session.started", session: {} });
   const end = (id = "native-end-1", origin = "actual-user-turn") => frame({ type: "delegation.created", item: { type: "delegation", target: "client", id, ...(origin ? { user_bidi_turn_id: origin } : {}), content: [{ type: "input_text", text: endPrompt }] } });
-  return { controller, abort, socket, order, errors, calls, diagnostics, frame, start, end, legacyEnd: (id = "native-end-1", origin = "actual-user-turn") => controller.callLifecycle.handleDelegation(id, endPrompt, origin),
+  return { controller, abort, socket, order, errors, calls, diagnostics, warnings, frame, start, end, legacyEnd: (id = "native-end-1", origin = "actual-user-turn") => controller.callLifecycle.handleDelegation(id, endPrompt, origin),
     setCurrentLease: value => { currentLease = value; } };
 }
 
@@ -469,6 +469,55 @@ test("plain natural delegation waits for the exact complete USER before exposing
   finish({ callControl: receipt }); await settleTick();
   assert.equal(f.order.filter(row => row.type === "delegation.context.append").length, 1);
   assert.doesNotMatch(JSON.stringify(f.order), /BACKEND_FINAL|BACKEND_FAILURE|另一个普通/u);
+  f.controller.detach();
+});
+
+test("accepted end call keeps genuine failed, aborted and foreign-receipt terminals visible without another spoken final", async () => {
+  for (const mode of ["failed", "aborted", "foreign"]) {
+    let finish, fail;
+    const f = nativeFixture({ runAgentConsult: () => new Promise((resolve, reject) => { finish = resolve; fail = reject; }),
+      isCanceledError: error => error.name === "AbortError" });
+    f.frame({ type: "turn.created", turn: { role: "user", id: "turn_end", transcript: "今天先这样，谢谢" } });
+    f.frame({ type: "turn.done", turn: { role: "user", id: "turn_end", transcript: "今天先这样，谢谢" } });
+    f.frame({ type: "delegation.created", item: { type: "delegation", target: "client", id: "item_end",
+      user_bidi_turn_id: "turn_end", content: [{ type: "input_text", text: "今天先这样，谢谢" }] } });
+    await settleTick();
+    const receipt = f.calls[0].callControl.accept({ backendRunId: "talk-realtime-consult:456:end", backendToolCallId: "call_end" });
+    assert(receipt);
+    if (mode === "foreign") finish({ callControl: { ...receipt, backendToolCallId: "call_foreign" } });
+    else fail(Object.assign(new Error(mode === "aborted" ? "actual rejected aborted terminal" : "actual backend failure"),
+      { name: mode === "aborted" ? "AbortError" : "Error" }));
+    await settleTick();
+    assert.equal(f.warnings.length, 1, mode);
+    assert.match(f.warnings[0], /accepted end-call consult failed/);
+    assert.match(f.warnings[0], mode === "foreign" ? /unowned receipt/ : /actual/);
+    const diagnostic = f.diagnostics.filter(row => row.stage === "backend-call-control-terminal-rejected");
+    assert.equal(diagnostic.length, 1);
+    assert.equal(diagnostic[0].delegationId, "item_end");
+    assert.equal(diagnostic[0].provenance.runId, receipt.backendRunId);
+    assert.deepEqual(f.order.map(row => row.type), ["tool.call", "tool.result", "delegation.context.append"],
+      "the controller never fabricates another native tool terminal");
+    assert.doesNotMatch(JSON.stringify(f.order), /BACKEND_FINAL|BACKEND_FAILURE/);
+    f.controller.detach();
+  }
+});
+
+test("an exact accepted host cancellation still revokes the old end owner before a late failed callback", async () => {
+  let fail;
+  const f = nativeFixture({ runAgentConsult: () => new Promise((resolve, reject) => { fail = reject; }) });
+  f.frame({ type: "turn.created", turn: { role: "user", id: "turn_cancel_end", transcript: "今天先这样" } });
+  f.frame({ type: "turn.done", turn: { role: "user", id: "turn_cancel_end", transcript: "今天先这样" } });
+  f.frame({ type: "delegation.created", item: { type: "delegation", target: "client", id: "item_cancel_end",
+    user_bidi_turn_id: "turn_cancel_end", content: [{ type: "input_text", text: "今天先这样" }] } });
+  await settleTick();
+  const receipt = f.calls[0].callControl.accept({ backendRunId: "talk-realtime-consult:456:cancel", backendToolCallId: "call_cancel" });
+  assert(receipt); const before = f.order.length;
+  f.calls[0].onCanceled({ runId: receipt.backendRunId, ownerRunId: receipt.backendRunId, source: "owned_run_signal" });
+  assert.equal(f.calls[0].signal.aborted, true);
+  fail(new Error("actual late old-owner rejection")); await settleTick();
+  assert.equal(f.order.length, before); assert.equal(f.warnings.length, 0);
+  assert.equal(f.diagnostics.some(row => row.stage === "backend-call-control-terminal-rejected"), false);
+  assert.equal(f.diagnostics.filter(row => row.stage === "backend-cancel-accepted").length, 1);
   f.controller.detach();
 });
 

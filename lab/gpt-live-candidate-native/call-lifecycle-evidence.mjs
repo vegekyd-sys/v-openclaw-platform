@@ -185,6 +185,45 @@ export function resolveEndCallToolWitness({events=[],tools=[],backendEvents=[],b
   return candidates.length===1?candidates[0]:null;
 }
 
+/** End-tool acceptance does not prove that its original host consult settled. */
+export function assessEndCallConsultTerminal(state,{tool,before}={}) {
+  const voiceSessionId=tool?.voiceSessionId,backendRunId=tool?.backendRunId,issues=[];
+  const bindingValid=tool?.source==='exact-backend-model-tool-global-stream-and-durable-history-with-native-USER-and-host-owner'&&
+    typeof voiceSessionId==='string'&&Boolean(voiceSessionId)&&typeof backendRunId==='string'&&Boolean(backendRunId)&&
+    tool.consultCall?.raw?.voiceSessionId===voiceSessionId&&tool.consultCall.raw.callId===backendRunId&&
+    tool.consultCall.raw.type==='tool.call'&&tool.consultCall.raw.name===undefined&&Number.isFinite(tool.consultCall.at)&&
+    tool.result?.raw?.voiceSessionId===voiceSessionId&&tool.result.raw.backendRunId===backendRunId&&
+    tool.result.raw.type==='tool.result'&&tool.result.raw.name==='openclaw_end_call'&&
+    tool.result.raw.source==='backend_model_client_tool'&&tool.result.raw.status==='accepted'&&
+    tool.result.raw.closeAfterPlayback===true&&tool.result.raw.backendToolCallId===tool.backendToolCallId&&
+    tool.result.raw.requestId===tool.requestId&&tool.result.raw.originUserTurnId===tool.userTurnId&&
+    Number.isFinite(tool.result.at);
+  if(!bindingValid)issues.push('missing-exact-backend-end-tool-owner-binding');
+  const close=(state?.api??[]).find(row=>row.route==='/api/close'&&row.status===200&&
+    row.request?.voiceSessionId===voiceSessionId&&Number.isFinite(before)&&row.requestedAt===before);
+  if(!close)issues.push('missing-original-owned-close-boundary');
+  // Do not deduplicate terminal rows or infer a result from the named end-tool
+  // receipt. Retain invalid clocks and every same-run error as failure evidence.
+  const owned=(state?.tools??[]).filter(row=>bindingValid&&row.raw?.voiceSessionId===voiceSessionId&&
+    row.raw.callId===backendRunId&&['tool.call','tool.result','tool.error'].includes(row.raw.type));
+  const invalidClocks=owned.filter(row=>!Number.isFinite(row.at));
+  const rows=owned.filter(row=>Number.isFinite(row.at)&&Number.isFinite(before)&&row.at<=before);
+  const calls=rows.filter(row=>row.raw.type==='tool.call'),results=rows.filter(row=>row.raw.type==='tool.result'),
+    errors=rows.filter(row=>row.raw.type==='tool.error'),terminals=[...results,...errors];
+  const call=calls.length===1?calls[0]:null,result=results.length===1?results[0]:null;
+  if(invalidClocks.length)issues.push('invalid-owned-event-clock');
+  if(rows.some(row=>row.raw.name!==undefined))issues.push('unexpected-named-consult-event');
+  if(calls.length!==1)issues.push('original-consult-call-not-unique');
+  if(call&&call.at!==tool.consultCall.at)issues.push('original-consult-call-clock-mismatch');
+  if(results.length!==1)issues.push('normal-consult-result-not-unique');
+  if(errors.length)issues.push('owned-consult-tool-error');
+  if(terminals.length!==1)issues.push('consult-terminal-not-unique');
+  if(result&&(!call||result.at<call.at||result.at<tool.result.at||result.at>=before))issues.push('consult-result-outside-causal-window');
+  return {passed:issues.length===0,issues,voiceSessionId:voiceSessionId??null,backendRunId:backendRunId??null,
+    before:Number.isFinite(before)?before:null,close:close??null,call,result,calls,results,errors,terminals,invalidClocks,
+    source:'exact-end-tool-owned-host-consult-SSE-terminal-through-original-close'};
+}
+
 export function resolveLifecycleUserTurn(events,{pcIndex,after,before=Infinity,intent,expectedText}={}) {
   const rows=events.filter(e=>e.pcIndex===pcIndex&&e.type==='turn.done'&&e.role==='user'&&
     Number.isFinite(e.at)&&e.at>=after&&e.at<before&&e.turnId&&normalize(e.text));

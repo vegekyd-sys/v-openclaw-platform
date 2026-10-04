@@ -218,7 +218,7 @@ test("execution and subject checks remain conditional and preserve authorization
   assert.match(prompt, /Latest explicit corrections|latest explicit corrections/);
   assert.match(prompt, /that command's exact returned value, not a nearby verification command or a separate time sample/);
   assert.match(prompt, /actually fetch and read the relevant primary pages/);
-  assert.match(prompt, /GPT Live and Realtime are distinct interfaces/);
+  assert.match(prompt, /Keep Realtime and GPT Live evidence scoped to the documented interface/);
   assert.match(prompt, /Preserve the source's product and model applicability, only\/except conditions, exact versions and units/);
   assert.match(prompt, /a scoped claim is not evidence for every model or mode/);
   assert.match(prompt, /at most one short fact per 15 seconds/);
@@ -259,6 +259,46 @@ test("the actual consult contract distinguishes source examples and conditional 
   assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /每条阶段事实都应在同一句保留必要条件/u);
   // This executes the captured consult/observer with a stubbed model boundary.
   // It verifies contract and lossless transport, not real model adherence.
+});
+
+test("captured consult delivers source scope policy for the unchanged 0a USER and transports its qualified fixture response", async () => {
+  const question = "请先用 memory search 查家庭相关记录,再用 web search 查 OpenAI 官方 Realtime API 文档,查到后用一句中文说两个结果,不要写入,也不要发消息";
+  // These exact relevant excerpts are from 0a's real official web_fetch result,
+  // full result text SHA256 14e6aa48c48be3ee9bdda4cbf78f053a2c07fb02801129c68a0fd2e2a6d52d9e.
+  // The fixture reply is deliberately supplied at the model boundary; this
+  // test does not run a model or make a semantic adherence claim.
+  const source = [
+    "For full-duplex conversations with a separate delegated backend, see [GPT-Live](https://developers.openai.com/api/docs/guides/live).",
+    "The usual browser flow is:",
+    "3. The session connects over WebRTC in the browser or WebSocket on the server.",
+  ].join("\n");
+  const context = `web_fetch returned official-source excerpts:\n${source}`;
+  const stage = "原文的通常连接流程是浏览器用 WebRTC、服务器用 WebSocket。";
+  const final = "家庭记录已找到；官方原文说明通常连接流程是浏览器用 WebRTC、服务器用 WebSocket，并将独立委派后台的全双工对话指向 GPT-Live 指南，接口组合兼容性尚未核实。";
+  const progress = [];
+  let capturedPrompt;
+  const runtime = createHarnessRuntime({
+    args: { question, context },
+    onProgress: value => progress.push(value),
+    runEmbeddedAgent: async options => {
+      capturedPrompt = options.prompt;
+      options.onAgentEvent({ stream: "item", data: { kind: "preamble", phase: "end", itemId: "source-qualified-fact", progressText: stage } });
+      return { payloads: [{ text: final }] };
+    },
+  });
+  assert.deepEqual(await runtime.run(), { text: final });
+  assert.deepEqual(progress.map(value => value.text), [stage]);
+  assert(capturedPrompt.includes(`User request:\n${question}`), "the original USER must not acquire extra source-fidelity hints");
+  assert(capturedPrompt.includes(`Additional realtime context:\n${context}`));
+  assert.match(capturedPrompt, /evidence scope rule is not an official claim of incompatibility or a ban on combining interfaces/);
+  assert.match(capturedPrompt, /Derive recommendations, requirements, prohibitions and exclusive claims from the primary source's actual wording with its conditions/);
+  assert.match(capturedPrompt, /not from these instructions, absence of coverage, separate guides, or a typical flow/);
+  assert.match(capturedPrompt, /recommended or usual connection flow does not establish an only-supported transport/);
+  assert.match(capturedPrompt, /Do not cite our task policies as documentation facts/);
+  assert.doesNotMatch(capturedPrompt, /GPT Live and Realtime are distinct interfaces;/);
+  assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /不同接口或分开的文档不证明互不兼容或不能组合使用/u);
+  assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /通常做法或推荐方式不能升级为唯一支持或强制要求/u);
+  assert.match(GPT_LIVE_CALL_INSTRUCTIONS, /声称必须、禁止或仅能时，要有原文明确的相应表述并保留条件/u);
 });
 
 test("captured consult carries the complete Memory/Web request through the required official read before a concise final", async () => {

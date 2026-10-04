@@ -9,7 +9,7 @@ import {setTimeout as sleep} from 'node:timers/promises';
 import {createPrivatePulseMicrophone,captureOwnedBrowserDirectory,observeOwnedChromeProcesses,removeOwnedBrowserDirectory} from './private-pulse.mjs';
 import {BROWSER_PROBE,readBoundedProbeSnapshot} from './browser-probe.mjs';
 import {assessDecodedPlaybackWindow,assessCompletePlaybackWindow,assessIndependentInputConvergence} from './evidence.mjs';
-import {resolveEndCallToolWitness,resolveLifecycleUserTurn,assessLifecycleSpeech,hasLifecyclePlaybackTail,assessLifecycleFarewell,assessProactiveGreeting,assessAutomaticEnd,
+import {resolveEndCallToolWitness,assessEndCallConsultTerminal,resolveLifecycleUserTurn,assessLifecycleSpeech,hasLifecyclePlaybackTail,assessLifecycleFarewell,assessProactiveGreeting,assessAutomaticEnd,
   resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult,readLifecycleHistoryOrRetry} from './call-lifecycle-evidence.mjs';
 import {inspectLifecycleValidationTarget,readLifecycleVoiceOwner,preflightLifecycleMedia} from './call-lifecycle-target.mjs';
 
@@ -61,7 +61,9 @@ class CdpClient {
  close(){for(const p of this.pending.values()){clearTimeout(p.timer);p.reject(Error('CDP closed'));}this.pending.clear();this.socket?.close();}
 }
 async function evaluate(expression){const r=await cdp.request('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw Error(r.exceptionDetails.exception?.description??r.exceptionDetails.text);return r.result?.value;}
-async function snapshot(full=false){const state=await readBoundedProbeSnapshot(evaluate,{previous:full?null:snapshotCache});snapshotCache=state;
+async function snapshot(full=false){const state=await readBoundedProbeSnapshot(evaluate,{previous:full?null:snapshotCache});
+ if(state&&state.probeTimeOrigin===snapshotCache?.probeTimeOrigin)assert(state.duplexSnapshotGeneration>snapshotCache.duplexSnapshotGeneration,'Full snapshot cannot reuse an old browser header');
+ snapshotCache=state;
  if(state)state.browserTimeOrigin=browserTimeOrigin;
  return lastState=full||!state?state:{...state,audioFrames:state.audioFrames.slice(-80),micFrames:state.micFrames.slice(-80),duplex:null};}
 async function waitFor(predicate,label,max=45000){const until=Math.min(deadline,Date.now()+max);while(Date.now()<until){const s=await snapshot(),r=await predicate(s);if(r)return r;await sleep(200);}throw Error(label+' deadline');}
@@ -130,9 +132,18 @@ async function inputConverged(pcIndex,input,label) {
  // Missing historical input samples cannot be repaired by repeatedly copying
  // the recording. Keep this independent strict FAIL and still observe the
  // newly requested lifecycle features; the overall receipt remains failed.
- const s=await snapshot(true),lastSpeechAt=s.micFrames.filter(f=>f.pcIndex===pcIndex&&f.at>=input.startedAt&&f.at<=input.completedAt&&f.rms>.02).at(-1)?.at;
- const proof=Number.isFinite(lastSpeechAt)?assessIndependentInputConvergence({events:s.events,micFrames:s.micFrames,pcIndex,input,lastSpeechAt,observedAt:Date.now()}):null;
- check(label,Boolean(proof),{proof,input,lastSpeechAt:lastSpeechAt??null,strictFailurePreserved:true,
+ const s=await snapshot(true),microphone=(s?.micFrames??[]).filter(f=>f.pcIndex===pcIndex);
+ const lastSpeechAt=microphone.filter(f=>f.at>=input.startedAt&&f.at<=input.completedAt&&f.rms>.02).at(-1)?.at;
+ // Frozen rows and their freshness share the browser's header clock. Paged
+ // transfer duration is recorded separately; it cannot age those same rows.
+ const observedAt=s?.snapshotObservedAt,latestMicAt=microphone.at(-1)?.at;
+ const observation={observedAt:observedAt??null,source:'browser-wall-at-frozen-prefix-header',scope:'validation-clip-before-next-USER-injection',
+   latestMicrophoneAt:latestMicAt??null,latestMicrophoneAgeMs:Number.isFinite(observedAt)&&Number.isFinite(latestMicAt)?observedAt-latestMicAt:null,
+   collectorCompletedAt:s?.snapshotCompletedAt??null,collectorCompletedClock:s?.snapshotCompletedClock??null,
+   collectionLatencyMs:s?.snapshotCollectionLatencyMs??null,snapshotGeneration:s?.duplexSnapshotGeneration??null};
+ const proof=Number.isFinite(lastSpeechAt)&&Number.isFinite(observedAt)&&Number.isFinite(observation.latestMicrophoneAgeMs)&&observation.latestMicrophoneAgeMs>=0?
+   assessIndependentInputConvergence({events:s.events,micFrames:microphone,pcIndex,input,lastSpeechAt,observedAt}):null;
+ check(label,Boolean(proof),{proof,input,lastSpeechAt:lastSpeechAt??null,observation,strictFailurePreserved:true,
    failureDoesNotSkipRemainingLifecycleObservations:true});return proof;
 }
 async function basicTools(pcIndex) {
@@ -237,12 +248,15 @@ async function runLifecycle(){
    requestId:tool.requestId,backendRunId:tool.backendRunId??null,historyObservedAt:endHistory?.observedAt??null,
    originalCloseRequestedAt:close.requestedAt,newUSERMustInvalidateOldRequest:true});
  assert(finalTool,'End-call causal witness invalidated before the original close');tool=finalTool;
+ const consultTerminal=assessEndCallConsultTerminal(state,{tool,before:close.requestedAt});
+ save('model-end-call-consult-terminal-evidence.json',consultTerminal);
+ coreCheck('end-call-owned-consult-settles-once-without-error-before-original-close',consultTerminal.passed,consultTerminal);
  const farewell=assessLifecycleFarewell(state,{pcIndex,tool,before:close.requestedAt});
  const automatic=assessAutomaticEnd(state,{pcIndex,owner,tool,farewell}),capture=await readCaptureClosed(pcIndex);
  coreCheck('automatic-close-after-real-farewell-and750ms-tail',automatic?.passed&&capture.captureEnded&&capture.pcClosed,{automatic,capture,closed:true,manualButtonUsed:false,farewellContentManualReviewRequired:true});
  check('independent-farewell750ms-RTP-tail',automatic?.strictTailPassed===true,{quiet:farewell?.quiet??null,appDrain:automatic?.appDrain??null,
   originalAppDrainIsNotIndependentRTPProof:true});
- recordSpeech('farewell-complete-digital-playback',farewell);save('model-end-call-evidence.json',{input:end.row,endUser,tool,farewell,automatic,capture,appDiagnostics:state.duplex});
+ recordSpeech('farewell-complete-digital-playback',farewell);save('model-end-call-evidence.json',{input:end.row,endUser,tool,consultTerminal,farewell,automatic,capture,appDiagnostics:state.duplex});
  // A failed close/farewell does not justify a third or replacement paid call.
  assert(automatic?.passed&&capture.captureEnded&&capture.pcClosed,'Automatic lifecycle core evidence missing; no replacement call');
  const reopened=await startCall();coreCheck('new-owner-redial-after-model-close',owners.get(reopened).voiceSessionId!==owner.voiceSessionId&&owners.get(reopened).sessionKey!==owner.sessionKey,{previousOwner:owner,newOwner:owners.get(reopened)});

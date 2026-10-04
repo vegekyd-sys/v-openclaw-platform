@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
@@ -19,6 +20,37 @@ const talkSource = patchGptLiveCallLifecycleTalk(patchGptLiveNativeConfirmationT
   patchGptLiveContinuationTalk(patchGptLiveConsultProgressTalk(talkBefore))));
 const harnessBefore = read("../release/captured/v2026.9.1-db91.6-background-work-20261002/dist/realtime-session-harness-CEO5kVAJ.js");
 const harnessSource = patchGptLiveContinuationHarness(patchGptLiveConsultProgressHarness(harnessBefore));
+
+// Exact completeEmbeddedRun slice from the actual shared runtime, read only on
+// 2026-10-04. Full source SHA256: 128a61c9e10a47d501ad425345f9f05a88c9dc66b665e32f979d12e29675cd67.
+// The projection runs unchanged; only unrelated auth/logging/terminal helpers
+// are supplied at their boundaries. Nothing below manufactures native events.
+const actualTerminalSource = read("./fixtures/gpt-live-call-lifecycle/embedded-agent-complete-run-20261004.js");
+assert.equal(createHash("sha256").update(actualTerminalSource).digest("hex"),
+  "e107149d6f9049f1f25d5c5f2a00ed137453dac49a419ebe68ceed5e8c3cf84b");
+async function actualClientToolTerminal({ outcome = { status: "ok" }, calls = [{ name: "openclaw_end_call", params: {} }],
+  sessionId = "session", yielded = false } = {}) {
+  const context = vm.createContext({ Date, JSON, randomBytes: () => Buffer.from("1234567890"),
+    isEmbeddedRunTerminalAbort: value => value.status === "aborted",
+    isEmbeddedRunTerminalTimeout: value => value.status === "timeout",
+    classifyAgentRunTerminalOutcome: value => value.status === "error" ? "failure" : value.status,
+    projectAgentRunAttemptTerminal: terminal => ({ promptError: terminal.promptError }),
+    formatErrorMessage: String, hasYieldContinuationEvidence: () => false, resolveRunLivenessState: () => "completed",
+    log$3: { debug() {}, warn() {} }, markEmbeddedRunAuthProfileSuccess() {}, reportEmbeddedRunSuccessfulAuthBinding() {},
+    shouldContinueInteractiveAcceptedSessionSpawns: () => false, AGENT_LANE_SUBAGENT: "subagent", YIELD_DIAGNOSTIC_TEXT: "yield diagnostic",
+    resolveFinalAssistantVisibleText: () => undefined, hasAttemptTerminalState: () => true,
+    copyAttemptDeliveryState: () => ({}),
+  });
+  vm.runInContext(actualTerminalSource, context);
+  const projected = await context.completeEmbeddedRun({
+    terminalState: { outcome }, attempt: { terminal: {}, assistantTexts: [], clientToolCalls: calls, yieldDetected: yielded },
+    runParams: { runId: "parent", sessionId, lane: "voice", config: {} }, startedAtMs: Date.now(),
+    payloadsForTerminalPath: [], payloadCount: 0, agentMeta: { sessionId }, reportedModelRef: { provider: "test", model: "test" },
+    traceAttempts: [], traceAttemptUsesFallback: () => false, contextRecoveryState: { autoCompactionCount: 0 },
+    resolveReplayInvalid: () => false, setTerminalLifecycleMeta() {},
+  });
+  return projected.result;
+}
 
 function fixture({ callControl = true, hostCurrent = true, receiptOverride } = {}) {
   const listeners = new Map(); const accepted = []; const cleanups = []; const progress = [];
@@ -108,6 +140,37 @@ test("actual initial-parent tool start and successful pending-client result yiel
   assert.equal(result.callControl.requestId, "item_native"); assert.equal(result.callControl.callId, "call_actual");
   assert.equal(Object.hasOwn(result, "text"), false); assert.equal(Object.hasOwn(result, "provenance"), false);
   assert.equal(f.listeners.size, 0); assert.deepEqual(f.cleanups, ["initial"]);
+});
+
+test("actual core client-tool-only terminal omits payloads and settles the exact observed original receipt", async () => {
+  const terminal = await actualClientToolTerminal();
+  assert.equal(terminal.payloads, undefined);
+  assert.equal(terminal.meta.aborted, false);
+  assert.equal(terminal.meta.stopReason, "tool_calls");
+  assert.equal(terminal.meta.pendingToolCalls.length, 1);
+  assert.notEqual(terminal.meta.pendingToolCalls[0].id, "call_actual", "public random pending id is never the tool witness");
+  const f = fixture(); f.start(); f.result();
+  f.owner.finishInitial(terminal);
+  const settled = await f.owner.wait();
+  assert.equal(settled.callControl.backendRunId, "parent");
+  assert.equal(settled.callControl.backendToolCallId, "call_actual");
+  assert.equal(Object.hasOwn(settled, "text"), false);
+  assert.equal(f.accepted.length, 1);
+  assert.equal(f.listeners.size, 0); assert.deepEqual(f.cleanups, ["initial"]);
+});
+
+test("canonical terminal metadata cannot authorize an unobserved end tool or rescue rejected or foreign owners", async () => {
+  const unobserved = fixture();
+  unobserved.owner.finishInitial(await actualClientToolTerminal());
+  await assert.rejects(unobserved.owner.wait(), /without a successful final result/);
+  assert.equal(unobserved.accepted.length, 0);
+  for (const options of [{ outcome: { status: "aborted" } }, { outcome: { status: "error", error: "actual failure" } },
+    { sessionId: "foreign" }, { yielded: true }, { calls: [{ name: "other", params: {} }] },
+    { calls: [{ name: "openclaw_end_call", params: { forged: true } }] },
+    { calls: [{ name: "openclaw_end_call", params: {} }, { name: "other", params: {} }] }]) {
+    const f = fixture(); f.start(); f.result(); f.owner.finishInitial(await actualClientToolTerminal(options));
+    await assert.rejects(f.owner.wait(), /aborted|changed before its terminal/);
+  }
 });
 
 test("metadata-only callback, error, blocked, wrong marker, absent termination and unpaired id cannot close", async () => {

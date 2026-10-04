@@ -7,8 +7,8 @@ import os from 'node:os';
 import vm from 'node:vm';
 import {captureOwnedBrowserDirectory,removeOwnedBrowserDirectory} from './private-pulse.mjs';
 import {BROWSER_PROBE,SNAPSHOT_ARRAY_FIELDS,SNAPSHOT_PAGED_HEADER_EXPRESSION,readBoundedProbeSnapshot} from './browser-probe.mjs';
-import {assessDecodedPlaybackWindow} from './evidence.mjs';
-import {resolveEndCallToolWitness,resolveLifecycleUserTurn,assessLifecycleSpeech,hasLifecyclePlaybackTail,assessLifecycleFarewell,assessProactiveGreeting,assessAutomaticEnd,
+import {assessDecodedPlaybackWindow,assessIndependentInputConvergence} from './evidence.mjs';
+import {resolveEndCallToolWitness,assessEndCallConsultTerminal,resolveLifecycleUserTurn,assessLifecycleSpeech,hasLifecyclePlaybackTail,assessLifecycleFarewell,assessProactiveGreeting,assessAutomaticEnd,
   extractLifecycleToolPairs,resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult,readLifecycleHistoryOrRetry} from './call-lifecycle-evidence.mjs';
 
 function cleanupFixture() {
@@ -234,6 +234,73 @@ test('a late durable history read may corroborate pre-close source events withou
  assert.equal(proof.historyObservedAt,3000);assert.equal(proof.backendResult.payload.ts,1150);
  input.backendEvents[1].payload.ts=2400;assert.equal(resolveEndCallToolWitness(input),null);
 });
+
+function settledEndConsultFixture() {
+ const input=backendEndFixture(),tool=resolveEndCallToolWitness(input),before=input.before;
+ input.tools.push({at:1250,raw:{voiceSessionId:tool.voiceSessionId,type:'tool.result',callId:tool.backendRunId}});
+ input.api=[{route:'/api/close',status:200,requestedAt:before,request:{voiceSessionId:tool.voiceSessionId}}];
+ return {state:input,tool,before};
+}
+test('end acceptance and the original generic consult result are independent exact-owner evidence',()=>{
+ const f=settledEndConsultFixture(),proof=assessEndCallConsultTerminal(f.state,f);
+ assert.equal(proof.passed,true);assert.deepEqual(proof.issues,[]);
+ assert.equal(proof.call,f.tool.consultCall);assert.equal(proof.result.raw.callId,f.tool.backendRunId);
+ assert.equal(proof.result.raw.name,undefined);assert.notEqual(proof.result,f.tool.result);
+ assert.equal(proof.terminals.length,1);assert.equal(proof.before,f.before);
+ // A neighboring voice/run and a post-close event cannot change this owner.
+ f.state.tools.push({at:1260,raw:{voiceSessionId:'neighbor',type:'tool.error',callId:f.tool.backendRunId}},
+  {at:1260,raw:{voiceSessionId:f.tool.voiceSessionId,type:'tool.error',callId:'another-run'}},
+  {at:f.before+1,raw:{voiceSessionId:f.tool.voiceSessionId,type:'tool.error',callId:f.tool.backendRunId}});
+ assert.equal(assessEndCallConsultTerminal(f.state,f).passed,true);
+});
+test('missing, rejected, duplicate or causally invalid consult terminals cannot be hidden by end acceptance',()=>{
+ const mutations=[
+  ['no generic result',f=>f.state.tools.pop()],
+  ['only named end receipt',f=>{f.state.tools.pop();f.state.tools.push(structuredClone(f.tool.result));}],
+  ['wrong voice result',f=>f.state.tools.at(-1).raw.voiceSessionId='neighbor'],
+  ['wrong run result',f=>f.state.tools.at(-1).raw.callId='another-run'],
+  ['named generic result',f=>f.state.tools.at(-1).raw.name='openclaw_end_call'],
+  ['generic error',f=>f.state.tools.at(-1).raw.type='tool.error'],
+  ['error followed by success',f=>f.state.tools.push({at:1230,raw:{voiceSessionId:f.tool.voiceSessionId,type:'tool.error',callId:f.tool.backendRunId}})],
+  ['duplicate result',f=>f.state.tools.push(structuredClone(f.state.tools.at(-1)))],
+  ['duplicate original call',f=>f.state.tools.push(structuredClone(f.tool.consultCall))],
+  ['result before accepted end receipt',f=>f.state.tools.at(-1).at=f.tool.result.at-1],
+  ['result at original close',f=>f.state.tools.at(-1).at=f.before],
+  ['result after original close',f=>f.state.tools.at(-1).at=f.before+1],
+  ['unknown result clock',f=>delete f.state.tools.at(-1).at],
+  ['unknown error clock',f=>f.state.tools.push({raw:{voiceSessionId:f.tool.voiceSessionId,type:'tool.error',callId:f.tool.backendRunId}})],
+  ['error at close boundary',f=>f.state.tools.push({at:f.before,raw:{voiceSessionId:f.tool.voiceSessionId,type:'tool.error',callId:f.tool.backendRunId}})],
+  ['wrong witness run',f=>f.tool={...f.tool,backendRunId:'another-run'}],
+  ['wrong witness voice',f=>f.tool={...f.tool,voiceSessionId:'neighbor'}],
+  ['changed original call clock',f=>f.tool={...f.tool,consultCall:{...f.tool.consultCall,at:1029}}],
+  ['direct native JSON witness',f=>f.tool=resolveEndCallToolWitness(witness())],
+  ['no end witness',f=>f.tool=null],
+  ['unaccepted witness receipt',f=>f.tool={...f.tool,result:{...f.tool.result,raw:{...f.tool.result.raw,status:'pending'}}}],
+  ['missing original close',f=>f.state.api=[]],
+  ['foreign close owner',f=>f.state.api[0].request.voiceSessionId='neighbor'],
+  ['unbounded cutoff',f=>f.before=Infinity],
+ ];
+ for(const [name,mutate] of mutations){const f=settledEndConsultFixture();mutate(f);assert.equal(assessEndCallConsultTerminal(f.state,f).passed,false,name);}
+});
+test('historical 0a8728f accepted end followed by its same-run 84ms tool.error remains FAIL under the new gate',()=>{
+ // Scalar metadata copied from the immutable 0a8728f browser-native-evidence
+ // and end-tool witness. No transcript, PCM, old receipt or check is rewritten.
+ const voiceSessionId='8a24741b-55cf-43da-b48e-c321ef0f28bb',
+  backendRunId='talk-realtime-consult:1791088531772:b91c26d9-2c42-4560-854f-ed378a25031c',
+  requestId='item_EV8EdcbgpahyvPYBCiXnI',backendToolCallId='call_00_Z00eWpCNPyogPU0dZQ513819',userTurnId='turn_EV8EakUIjRaCxN3UaOxfL';
+ const consultCall={at:1791088531783,raw:{voiceSessionId,type:'tool.call',callId:backendRunId}},
+  error={at:1791088536912,raw:{voiceSessionId,type:'tool.error',callId:backendRunId}};
+ const tool={voiceSessionId,backendRunId,requestId,backendToolCallId,userTurnId,consultCall,
+  result:{at:1791088536828,raw:{voiceSessionId,backendRunId,requestId,backendToolCallId,originUserTurnId:userTurnId,
+   type:'tool.result',name:'openclaw_end_call',source:'backend_model_client_tool',status:'accepted',closeAfterPlayback:true}},
+  source:'exact-backend-model-tool-global-stream-and-durable-history-with-native-USER-and-host-owner'};
+ const before=1791088540459,state={tools:[consultCall,tool.result,error],api:[{route:'/api/close',status:200,requestedAt:before,request:{voiceSessionId}}]};
+ const proof=assessEndCallConsultTerminal(state,{tool,before});
+ assert.equal(error.at-tool.result.at,84);assert.equal(proof.passed,false);
+ assert.deepEqual(proof.errors,[error]);assert.equal(proof.results.length,0);
+ assert(proof.issues.includes('owned-consult-tool-error'));assert(proof.issues.includes('normal-consult-result-not-unique'));
+});
+
 test('promises, quoted JSON, wrong run/child/session and missing full source cannot pass the backend path',()=>{
  const mutations=[
   ['ordinary spoken bye',f=>{f.tools=[];f.backendEvents=[];}],
@@ -650,7 +717,106 @@ test('a superseding header rejects a paged duplex read instead of mixing differe
   const value=structuredClone(vm.runInContext(expression,context));
   if(Array.isArray(value)&&!superseded){superseded=true;duplex.events[0]={id:'later-ring'};vm.runInContext(SNAPSHOT_PAGED_HEADER_EXPRESSION,context);}
   return value;
- }),/Frozen duplex snapshot superseded/);
+ }),/Frozen probe snapshot changed/);
+});
+test('raw-only paged snapshots reject a changed browser generation or header clock',async()=>{
+ for(const change of [p=>p.frozenDuplexSnapshot.generation++,p=>p.frozenDuplexSnapshot.observedAt++,p=>p.frozenDuplexSnapshot.probeTimeOrigin++]){
+  const probe={...Object.fromEntries(SNAPSHOT_ARRAY_FIELDS.map(key=>[key,[]])),pcs:[]};probe.audioFrames=Array.from({length:65},(_,id)=>({id}));
+  const context=vm.createContext({__candidateLiveProbe:probe,performance:{timeOrigin:1000},
+   document:{getElementById:()=>({}),body:{dataset:{callState:'connected'}}}});
+  let changed=false;
+  await assert.rejects(readBoundedProbeSnapshot(async expression=>{
+   const value=structuredClone(vm.runInContext(expression,context));
+   if(Array.isArray(value)&&!changed){changed=true;change(probe);}
+   return value;
+  }),/Frozen probe snapshot changed/);
+ }
+});
+test('same-page incremental reads and actual full snapshot wrapper reject a reused old header',async()=>{
+ const probe={...Object.fromEntries(SNAPSHOT_ARRAY_FIELDS.map(key=>[key,[]])),pcs:[]};
+ const context=vm.createContext({__candidateLiveProbe:probe,performance:{timeOrigin:1000},
+  document:{getElementById:()=>({}),body:{dataset:{callState:'connected'}}}});
+ let header;
+ const initial=await readBoundedProbeSnapshot(async expression=>{
+  const value=structuredClone(vm.runInContext(expression,context));if(expression===SNAPSHOT_PAGED_HEADER_EXPRESSION)header=value;return value;
+ });
+ await assert.rejects(readBoundedProbeSnapshot(async expression=>expression===SNAPSHOT_PAGED_HEADER_EXPRESSION?header:
+  structuredClone(vm.runInContext(expression,context)),{previous:initial}),/Fresh browser snapshot header required/);
+ const source=readFileSync(new URL('./call-lifecycle-smoke.mjs',import.meta.url),'utf8');
+ const from=source.indexOf('async function snapshot(full=false){'),to=source.indexOf('\nasync function waitFor(',from);
+ assert(from>=0&&to>from,'Execute the actual full snapshot wrapper');
+ const run=vm.runInNewContext('('+source.slice(from,to)+')',{
+  assert,readBoundedProbeSnapshot:async()=>initial,evaluate:()=>{},snapshotCache:initial,browserTimeOrigin:1000,lastState:null,
+ });
+ await assert.rejects(run(true),/Full snapshot cannot reuse an old browser header/);
+});
+
+function inputConvergenceFixture() {
+ const input={startedAt:1000,completedAt:2000,exitCode:0};
+ const events=[{pcIndex:0,type:'turn.done',role:'user',turnId:'actual-full-user',at:2100}];
+ const micFrames=[{pcIndex:0,at:1900,rms:.1,trackState:'live',trackEnabled:true,trackId:'mic',senderTrackId:'mic'},
+  ...Array.from({length:8},(_,i)=>({pcIndex:0,at:2000+i*50,rms:.001,trackState:'live',trackEnabled:true,trackId:'mic',senderTrackId:'mic'}))];
+ return {input,state:{events,micFrames,snapshotObservedAt:2370,snapshotCompletedAt:60000,snapshotCompletedClock:'collector-wall'}};
+}
+async function actualInputConverged(state,input) {
+ const source=readFileSync(new URL('./call-lifecycle-smoke.mjs',import.meta.url),'utf8');
+ const from=source.indexOf('async function inputConverged(pcIndex,input,label) {'),to=source.indexOf('\nasync function basicTools(',from);
+ assert(from>=0&&to>from,'Execute the actual input convergence observer');
+ const checks=[];
+ const run=vm.runInNewContext('('+source.slice(from,to)+')',{
+  snapshot:async full=>{assert.equal(full,true);return state;},assessIndependentInputConvergence,
+  Date:{now:()=>{throw Error('Collector clock cannot age a frozen browser prefix');}},
+  check:(name,passed,details)=>checks.push({name,passed,details}),
+ });
+ const proof=await run(0,input,'actual-input-convergence');return {proof,check:checks[0]};
+}
+test('actual input convergence uses the browser header observation time despite slow pages and an unrelated collector clock',async()=>{
+ const f=inputConvergenceFixture(),probe={...Object.fromEntries(SNAPSHOT_ARRAY_FIELDS.map(key=>[key,[]])),pcs:[]};
+ probe.events=f.state.events;probe.micFrames=f.state.micFrames;probe.audioFrames=Array.from({length:137},(_,id)=>({id}));
+ let browserClock=2370,collectorClock=60000,reads=0;
+ const context=vm.createContext({__candidateLiveProbe:probe,performance:{timeOrigin:1000},Date:{now:()=>browserClock},
+  document:{getElementById:()=>({}),body:{dataset:{callState:'connected'}}}});
+ const boundedRead=vm.runInNewContext('('+readBoundedProbeSnapshot.toString()+')',{
+  SNAPSHOT_PAGED_HEADER_EXPRESSION,SNAPSHOT_ARRAY_FIELDS,Date:{now:()=>collectorClock},
+ });
+ const state=await boundedRead(async expression=>{
+  const value=structuredClone(vm.runInContext(expression,context));
+  if(Array.isArray(value)){
+   reads++;browserClock+=50;collectorClock+=50;
+   probe.micFrames.push({...probe.micFrames.at(-1),at:browserClock});
+  }
+  return value;
+ });
+ assert(reads*50>100,'Bounded transfer can take longer than the unchanged 100ms freshness gate');
+ assert.equal(state.snapshotObservedAt,2370);assert.equal(state.snapshotStartedAt,2370);
+ assert.equal(state.micFrames.at(-1).at,2350,'No post-header microphone row is borrowed into the frozen proof');
+ assert(probe.micFrames.at(-1).at>state.snapshotObservedAt);
+ assert.equal(state.snapshotCompletedClock,'collector-wall');
+ assert.equal(state.snapshotRequestedAt,60000);assert.equal(state.snapshotCompletedAt,collectorClock);
+ assert.equal(state.snapshotCollectionLatencyMs,reads*50,'Receipt latency uses the collector clock only');
+ const result=await actualInputConverged(state,f.input);
+ assert.equal(result.proof.turnId,'actual-full-user');assert.equal(result.proof.quietTo,2350);
+ assert.equal(result.check.passed,true);assert.equal(result.check.details.observation.observedAt,2370);
+ assert.equal(result.check.details.observation.latestMicrophoneAgeMs,20);
+ assert.equal(result.check.details.observation.collectorCompletedAt,state.snapshotCompletedAt);
+ assert.equal(result.check.details.observation.collectionLatencyMs,reads*50);
+ assert.equal(result.check.details.observation.scope,'validation-clip-before-next-USER-injection');
+});
+test('header-time input convergence keeps stale, future, missing, incomplete and discontinuous evidence as strict failure',async()=>{
+ const changes=[
+  f=>f.state.snapshotObservedAt=2500,
+  f=>delete f.state.snapshotObservedAt,
+  f=>f.state.micFrames.at(-1).at=2400,
+  f=>f.state.events=[],
+  f=>f.state.events.push({pcIndex:0,type:'input_transcript.added',at:2150,text:'unfinished remaining tail'}),
+  f=>f.state.micFrames=f.state.micFrames.filter((_,i)=>i<4||i>6),
+  f=>f.state.micFrames[5].trackEnabled=false,
+  f=>f.state.micFrames=f.state.micFrames.slice(0,6),
+ ];
+ for(const change of changes){const f=inputConvergenceFixture();change(f);const result=await actualInputConverged(f.state,f.input);
+  assert.equal(result.proof,null);assert.equal(result.check.passed,false);assert.equal(result.check.details.strictFailurePreserved,true);
+  assert.equal(result.check.details.failureDoesNotSkipRemainingLifecycleObservations,true);
+ }
 });
 
 function toolsFixture() {

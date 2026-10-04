@@ -619,8 +619,17 @@ var OpenAIQuicksilverDelegationController = class {
 				this.options.logger.warn("OpenAI GPT-Live complete public result exceeded the 16 KiB delivery limit");
 			}
 		} catch (error) {
-			if (!this.isCurrentDelegation(delegation, signal) || this.options.isCanceledError?.(error)) return;
-			if (delegation.callControlReceipt) return;
+			if (!this.isCurrentDelegation(delegation, signal)) return;
+			if (delegation.callControlReceipt) {
+				// Talk already publishes the actual consult rejection. Keep its reason
+				// visible here, including a rejected terminal named AbortError, without
+				// manufacturing another tool result or speaking a second terminal.
+				this.options.logger.warn(`OpenAI GPT-Live accepted end-call consult failed: ${shortFailureReason(error)}`);
+				this.tracePublicProgress("backend-call-control-terminal-rejected", delegation.id, "", { kind: "failure",
+					delegationGeneration: delegation.generation, provenance: { runId: delegation.callControlReceipt.backendRunId } });
+				return;
+			}
+			if (this.options.isCanceledError?.(error)) return;
 			this.options.logger.warn(`OpenAI GPT-Live delegation consult failed: ${shortFailureReason(error)}`);
 			text = CONSULT_FAILURE_TEXT;
 			terminalKind = "failure";
