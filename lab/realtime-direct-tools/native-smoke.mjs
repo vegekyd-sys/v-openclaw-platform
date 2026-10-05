@@ -44,8 +44,23 @@ async function runModel(model){
  const rows=()=>audit().filter(x=>x.voiceSessionId===id),wire=async()=> (await state()).wire;
  await wait(()=>(model==='seeduplex'||rows().some(x=>x.type==='transcript'&&x.role==='assistant'&&x.final))&&rows().some(x=>x.type==='audio'),'actual greeting',20000);
  check(model+'/greeting',true,{voiceSessionId:id,provider:model,greetingMode:model==='seeduplex'?'documented SayHello native TTS':'model response'});await quiet(id);
+ if(process.env.DIRECT_VOICE_CASES==='followup'){
+  await speak('fetch');
+  await wait(()=>rows().some(x=>x.type==='tool.invoke'&&x.name==='web_fetch'),'native webpage call',60000);
+  await wait(()=>rows().some(x=>x.type==='tool.native-result'&&x.name==='web_fetch'),'native webpage result',60000);
+  await quiet(id,60000);
+  const fetched=rows().find(x=>x.type==='tool.native-result'&&x.name==='web_fetch');
+  check(model+'/web-fetch',fetched.result.ok===true&&fetched.result.output?.isError!==true,{callId:fetched.callId});
+  await stop();await click('start');await wait(s=>s.state==='connected','fresh redial ready');
+  const next=(await wire()).filter(x=>x.type==='ready').at(-1)?.voiceSessionId;
+  await wait(()=>audit().some(x=>x.voiceSessionId===next&&x.type==='audio')&&(model==='seeduplex'||audit().some(x=>x.voiceSessionId===next&&x.type==='transcript'&&x.role==='assistant'&&x.final)),'fresh native greeting',25000);
+  check(model+'/redial',next!==id,{old:id,next,greetingMode:model==='seeduplex'?'documented SayHello native TTS':'model response'});
+  await quiet(next);await stop();await stopRecording();
+  save(model+'-wire.json',await wire());return;
+ }
  await speak('tools');await wait(()=>rows().some(x=>x.type==='tool.invoke'&&x.name==='memory_search')&&rows().some(x=>x.type==='tool.invoke'&&x.name==='web_search')&&rows().some(x=>x.type==='tool.invoke'&&x.name==='exec'&&JSON.stringify(x.args).includes('lark-cli')),'actual memory/calendar/web direct calls',180000);
  await wait(()=>rows().some(x=>x.type==='tool.invoke'&&['read','exec'].includes(x.name)&&/agents\.md/i.test(JSON.stringify(x.args))),'generic native file tool',60000);
+ await wait(()=>rows().filter(x=>x.type==='tool.native-result').length>=4,'all core direct results',60000);
  await quiet(id,60000);
  const native=rows().filter(x=>x.type==='tool.native-result');
  check(model+'/direct-tools',native.length>=4&&native.every(x=>x.result.ok===true&&x.result.output?.isError!==true&&(x.name!=='exec'||x.result.output?.details?.status==='running'||x.result.output?.details?.exitCode===0)),{calls:rows().filter(x=>x.type==='tool.invoke').map(x=>({name:x.name,callId:x.callId})),rpcOnly:true,noBackendLLM:true});
@@ -61,7 +76,7 @@ async function runModel(model){
  check(model+'/semantic-hangup',rows().some(x=>x.type==='tool.call'&&x.name==='end_call')&&rows().some(x=>x.type==='call.closed'),{wireDrainObserved:(await wire()).some(x=>x.type==='end.after-playback')});
  // Same canonical backend, fresh voice connection and no reuse of old audio.
  await click('start');await wait(s=>s.state==='connected','redial');const next=(await wire()).filter(x=>x.type==='ready').at(-1)?.voiceSessionId;
- await wait(()=>audit().some(x=>x.voiceSessionId===next&&x.type==='transcript'&&x.role==='assistant'&&x.final),'fresh greeting',25000);
+ await wait(()=>audit().some(x=>x.voiceSessionId===next&&x.type==='audio')&&(model==='seeduplex'||audit().some(x=>x.voiceSessionId===next&&x.type==='transcript'&&x.role==='assistant'&&x.final)),'fresh greeting',25000);
  check(model+'/redial',next!==id,{old:id,next});await stop();await stopRecording();
  const screenshot=await cdp.request('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(evidence,model+'-desktop.png'),Buffer.from(screenshot.data,'base64'),{mode:0o600});
  save(model+'-wire.json',await wire());save(model+'-result.json',{model,start,finishedAt:Date.now(),results:results.filter(x=>x.name?.startsWith(model+'/')),nativeAudio:true,productAccepted:false});
