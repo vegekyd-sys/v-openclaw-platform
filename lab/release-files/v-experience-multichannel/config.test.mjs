@@ -5,9 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {
-  CHANNELS, TELEGRAM_OWNER, VLAB_DINGTALK_CARD_TEMPLATE, assertCommandAuthV3, envNames, productionConfig, vlabConfig, vlabDropins,
-} from './config.mjs';
+import {CHANNELS, TELEGRAM_OWNER, VLAB_DINGTALK_CARD_TEMPLATE, assertCommandAuthV3, envNames, productionConfig, vlabConfig, vlabDropins, PRODUCTION_DINGTALK_CARD_TEMPLATE, productionDropins} from './config.mjs';
 
 // Shapes of the two configs on 2026-10-05 (non-secret keys only; credentials replaced).
 const v = () => ({
@@ -89,6 +87,13 @@ test('VLab drop-ins: question card template always, secrets.env only when the un
     {'97-v-experience-dingtalk-card.conf': `[Service]\nEnvironment=V_DINGTALK_QUESTION_CARD_TEMPLATE=${VLAB_DINGTALK_CARD_TEMPLATE}\n`});
   assert.equal(vlabDropins({environmentFiles: [], secretsFile})['97-v-experience-secrets.conf'], `[Service]\nEnvironmentFile=${secretsFile}\n`);
   assert.deepEqual(envNames('A=1\nexport B="2"\n# C=3\n  D=4\nnot a line\n'), ['A', 'B', 'D']);
+});
+
+test('V drop-in: our own question card template, never the public sample', () => {
+  const body = productionDropins()['97-v-experience-dingtalk-card.conf'];
+  assert.equal(body, `[Service]\nEnvironment=V_DINGTALK_QUESTION_CARD_TEMPLATE=${PRODUCTION_DINGTALK_CARD_TEMPLATE}\n`);
+  assert.match(PRODUCTION_DINGTALK_CARD_TEMPLATE, /^[0-9a-f-]{36}\.schema$/);
+  assert.notEqual(PRODUCTION_DINGTALK_CARD_TEMPLATE, VLAB_DINGTALK_CARD_TEMPLATE);
 });
 
 test('command-auth V3 is required; the shipped V3 chunk passes, V2 and unpatched fail', () => {

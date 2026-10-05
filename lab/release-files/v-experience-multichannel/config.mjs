@@ -32,8 +32,11 @@ export const VLAB_SECRETS = {
   telegram: ['VLAB_TELEGRAM_TEST_BOT_TOKEN'],
 };
 // DingTalk question card template: DingTalk's public sample (docs/v-experience.md
-// section 10). VLab only; production needs a template imported into our own app.
+// section 10) on VLab; on V the same sample imported into V's own app V-Makaron
+// (card platform template 「V 提问卡」, published 2026-10-06). A template only
+// works for the apps it is linked to, so VLab's test robot keeps the public one.
 export const VLAB_DINGTALK_CARD_TEMPLATE = '9f86e003-e65e-4680-bf4b-8df5958d9f17.schema';
+export const PRODUCTION_DINGTALK_CARD_TEMPLATE = '99da3d5c-c916-4b89-b900-ca08ca8b5cdb.schema';
 
 const ref = (name) => `\${${name}}`;
 const isRef = (v) => typeof v === 'string' && /^\$\{[A-Z0-9_]+\}$/.test(v);
@@ -121,6 +124,11 @@ export function vlabDropins({environmentFiles, secretsFile}) {
   const out = {'97-v-experience-dingtalk-card.conf': `[Service]\nEnvironment=V_DINGTALK_QUESTION_CARD_TEMPLATE=${VLAB_DINGTALK_CARD_TEMPLATE}\n`};
   if (!environmentFiles.includes(secretsFile)) out['97-v-experience-secrets.conf'] = `[Service]\nEnvironmentFile=${secretsFile}\n`;
   return out;
+}
+
+// The drop-in V's Gateway unit gets: the question card template only.
+export function productionDropins() {
+  return {'97-v-experience-dingtalk-card.conf': `[Service]\nEnvironment=V_DINGTALK_QUESTION_CARD_TEMPLATE=${PRODUCTION_DINGTALK_CARD_TEMPLATE}\n`};
 }
 
 // Names (not values) defined in an env file.
