@@ -22,6 +22,9 @@ python3 "${REPO_ROOT}/tests/v-nightshift-check.test.py"
 bash -n "${REPO_ROOT}/scripts/install-v-nightshift-check.sh"
 python3 "${REPO_ROOT}/tests/v-daily-image.test.py"
 bash -n "${REPO_ROOT}/scripts/install-v-daily-image.sh"
+bash -n "${REPO_ROOT}/scripts/install-secret-entry-host.sh"
+grep -q '^NoNewPrivileges=true' "${REPO_ROOT}/systemd/v-secret-entry.service"
+grep -q '^Environment=V_SECRET_ENTRY_ADMIN_TOKEN_FILE=' "${REPO_ROOT}/systemd/openclaw-gateway.service.d/secret-entry.conf"
 # Capture suffixes of every captured component (scripts/lib/runtime-components.mjs):
 # .worker .feishu .dingtalk .wecom ...
 SUFFIXES=$(node --input-type=module -e "const m=await import(process.argv[1]);console.log(m.captureSuffixes().join(' '))" \
