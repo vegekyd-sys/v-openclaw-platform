@@ -151,7 +151,7 @@ node scripts/clean-v-residue.mjs [--apply | --undo <dir>]                       
 node lab/vlab.mjs stage / deploy / accept ...                      # VLab 上验收
 node scripts/promote-to-v.mjs --release <VLab release> --name <V 发版名>     # 先看计划
 node scripts/promote-to-v.mjs --release <VLab release> --name <V 发版名> --owner <o> --apply
-# → 装同一份字节到 V（先备份，写 undo.json）→ 捕获 core/worker/飞书 → 更新哨兵 → vlab.mjs align
+# → 装同一份字节到 V（先备份，写 undo.json）→ 捕获组件表里每个组件（core/worker/飞书/钉钉/企微）→ 更新哨兵 → vlab.mjs align
 git add release/captured/<V 发版名>*；node scripts/release-notes.mjs --from <上一版> --to <V 发版名> 生成 CHANGELOG.md 一节并写摘要；提交 PR；dev → main 发版 PR，打 tag <V 发版名>
 ```
 
@@ -166,7 +166,7 @@ git add release/captured/<V 发版名>*；node scripts/release-notes.mjs --from 
 - 有人在 V 上直接热修（2026-09-25 04:01 的 GPT-6 回迁就是这样）；
 - V 自己的 agent 通过 exec 工具改了自己的运行时。
 
-两种情况都一样处理。**先被发现**：漂移哨兵每小时比对 core / worker / 飞书三个目录；清单里没声明的文件也必须等于原版（`release/captured/base/`），否则告警。告警到飞书，不经过 Gateway。**然后二选一**：
+两种情况都一样处理。**先被发现**：漂移哨兵每小时比对组件表里每个被捕获的目录（core / worker / 飞书，钉钉、企微从它们第一次被捕获起）；清单里没声明的文件也必须等于原版（`release/captured/base/`），否则告警。告警到飞书，不经过 Gateway。**然后二选一**：
 
 | 决定 | 做什么 |
 | --- | --- |
@@ -179,6 +179,31 @@ git add release/captured/<V 发版名>*；node scripts/release-notes.mjs --from 
 
 **范围**：这里管的是代码（三个运行时目录）。V 的配置、skills、workspace、会话数据本来就和 VLab 分开，不在 parity 范围内。例如 2026-09-25 21:56，V 的 `secrets.egressProxy` 配置变更触发了一次自动重启，这不属于代码漂移。
 
+## 4.6 组件：渠道插件与旁路服务（2026-10-05）
+
+parity、promote、捕获、sync、release-notes、静态检查都只认一张表：`scripts/lib/runtime-components.mjs`。加一个组件 = 表里加一项 + 它的第一次捕获，不再到五个脚本里各写一份路径。
+
+| 组件 | 类型 | V 上 | VLab 上 | stage 目标前缀 | 捕获后缀 |
+|---|---|---|---|---|---|
+| core | runtime | ExecStart 的 core | `runtime/openclaw` | `openclaw/` | （无） |
+| worker | runtime | core 旁的 `worker` | `runtime/production-worker` | `production-worker/` | `.worker` |
+| feishu | runtime | `/opt/openclaw-experiments/…/feishu` | `runtime/npm/projects/openclaw-feishu-*` | `npm/projects/openclaw-feishu-*/…/@openclaw/feishu/` | `.feishu` |
+| codex | runtime（只上线，不比对、不捕获） | 同名 npm project | — | `npm/projects/openclaw-codex-*/…` | — |
+| dingtalk | runtime | `~/.openclaw/npm/projects/dingtalk-real-ai-dingtalk-connector-*`（glob，后缀随重装变） | VLab 配置 `plugins.load.paths` 里那一项 | `npm/projects/dingtalk-real-ai-dingtalk-connector-*/…/@dingtalk-real-ai/dingtalk-connector/` | `.dingtalk` |
+| wecom | runtime | `~/.openclaw/extensions/wecom-openclaw-plugin` | 同上 | `extensions/wecom-openclaw-plugin/` | `.wecom` |
+| handoff | sidecar | `/opt/v-desktop-handoff/{plugin,service,desktop}` | `/opt/vlab-v-desktop-handoff/…` | 不能 stage | 不捕获 |
+| secret-entry | sidecar | `/opt/v-secret-entry` | `/opt/vlab-v-secret-entry` | 不能 stage | 不捕获 |
+
+- **runtime 组件**走第 4 节的发版流程：VLab stage/deploy/rollback，`promote-to-v.mjs` 把同一份字节装到 V，捕获成 `<发版名><后缀>`，哨兵按清单盯。V 上的企微插件同时有一个没在用的旧 npm project（2026.5.7），所以企微按扩展目录认，不按 glob。
+- **sidecar** 由各自的安装脚本从某个提交装（`install-desktop-host.sh`、`install-secret-entry-host.sh`），提交就是记录，所以不捕获、哨兵不盯；parity 照样逐字节比，所以 ALIGNED 也意味着两边旁路服务是同一份字节。两边都没装 = 相等。
+- 表里 `blocking: false` 的组件只报告（"advisory"），不决定状态。接管服务现在是这样：V 从更新的提交装过（多 `service/build-viewer.mjs`、`service/vendor/novnc-1.3.0`，46 个文件），VLab 落后。多渠道发版在 VLab 上按 V 的提交重装之后，改成 `blocking: true`。
+- 一个发版带了旁路服务时，在 `--pending` 的 plan 里写 `"sidecars": ["secret-entry"]`，parity 把这些差异算作 pending（AHEAD）。上 V 时**先在 V 上装旁路服务，再跑 `promote-to-v.mjs --apply`**；顺序反了，末尾的 align 会拒绝，脚本会指出是哪个旁路服务没装，而不会建议 `sync-vlab-from-v`（sync 也会拒绝旁路服务差异）。
+- `release-notes.mjs`：上一版没有某个组件的捕获（钉钉、企微在 10/05 之前的发版里都没有）时，写成"首次纳入存档"，不逐个列文件。
+
+**一次性准备**：10/05 之前 VLab 从 `capability-alignment-20260911/plugin-sources/…`（runtime/ 外面、9/11 的 V 副本）加载钉钉和企微，stage 碰不到。`scripts/vlab-channel-plugins-prep.mjs` 把它们按 V 的目录名搬进 runtime/（同一文件系统 rename，不复制），有差异的文件换成 V 的字节（V 上只读），改两份配置里的 `plugins.load.paths`，受控重启一次；默认只看计划，`--apply` 要 lease、VLab 已 align、Worker 空闲，`--undo` 原样撤销。之后按它打印的命令 `vlab.mjs baseline` → parity → `vlab.mjs align`。在那之前 parity 照样比对这两个插件（按 VLab 实际加载的目录），只多一条提示。10/05 实测两边逐字节相同，parity ALIGNED（10047 个文件）。
+
+**VLab 上 server 工具的副本**（`labs/shared-workflow/tool/`）没有安装器：`lab/shared/files.mjs` 新增的 `extensions/` 目标前缀要手工更新过去，第一次 stage 企微文件之前做。
+
 ## 5. 工具
 
 ```bash
@@ -188,4 +213,4 @@ node scripts/vlab-rebase-to-v.mjs --owner <o> [--apply | --undo <dir>]
 node lab/vlab.mjs align --owner <o>
 ```
 
-V 的运行时路径从 `systemctl show openclaw-gateway -p ExecStart` 自动取（drop-in 层层覆盖，unit 文件本身不可信）。V 的飞书插件在 `/opt/openclaw-experiments/worker-visible-progress-v2026.9.1-20260909/feishu`，VLab 的在 npm project 里。两边都只读，V 上以 nice 19 / idle IO 运行。
+V 的运行时路径从 `systemctl show openclaw-gateway -p ExecStart` 自动取（drop-in 层层覆盖，unit 文件本身不可信）。其余目录见第 4.6 节的组件表。两边都只读，V 上以 nice 19 / idle IO 运行。

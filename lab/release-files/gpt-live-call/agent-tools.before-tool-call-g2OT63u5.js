@@ -1,3 +1,4 @@
+// v-voice-spoken-confirmation-switch-v1: off unless OPENCLAW_VOICE_SPOKEN_CONFIRMATION=1
 // gpt-live-client-voice-confirmation-v1: durable exact-scope host grant
 import { a as addTimerTimeoutGraceMs } from "./number-coercion-CLj0HTDM.js";
 import { r as asNullableRecord } from "./record-coerce-DItp3I4t.js";
@@ -1566,6 +1567,7 @@ function noteClientVoiceConfirmationUtterance(params) {
 }
 function resolveClientVoiceToolConfirmationPolicy(params, consume) {
 	if (!params.agentId || !params.voiceSessionId) return { allowed: true };
+	if (process.env.OPENCLAW_VOICE_SPOKEN_CONFIRMATION !== "1") return { allowed: true };
 	if (!requiresHighImpactVoiceConfirmation(params.toolName, params.toolParams)) return { allowed: true };
 	if (params.isConfirmable && !params.isConfirmable()) return { allowed: true };
 	const now = params.now ?? Date.now();

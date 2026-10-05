@@ -1,0 +1,13 @@
+{
+  "baseRelease": "placement-evidence-20261005-b",
+  "tests": ["lab/candidate/voice-spoken-confirmation-switch.test.mjs"],
+  "files": [
+    {
+      "source": "lab/release-files/gpt-live-call/agent-tools.before-tool-call-g2OT63u5.js",
+      "target": "openclaw/dist/agent-tools.before-tool-call-g2OT63u5.js",
+      "before": "f410f20cb9f52448bdf239cde73ff3fee89843b91ff1e1f250a6d57f7c4a29d8"
+    }
+  ],
+  "timeoutSeconds": 300,
+  "user": "lab-db91-parity"
+}
