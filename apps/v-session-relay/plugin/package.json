@@ -8,9 +8,6 @@
     "index.js",
     "openclaw.plugin.json"
   ],
-  "dependencies": {
-    "typebox": "1.1.39"
-  },
   "peerDependencies": {
     "openclaw": ">=2026.9.1"
   },

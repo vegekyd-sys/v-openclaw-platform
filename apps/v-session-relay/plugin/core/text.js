@@ -102,50 +102,44 @@ export function finalMessageCard(text) {
   return { schema: "2.0", config: { update_multi: true }, body: { elements: [{ tag: "markdown", content: clip(text, 6_000) }] } };
 }
 
-// The two V's take turns in one thread: whatever the target replies goes back to the
-// origin; the origin either answers (another relay to the same target, same chain)
-// or, when the target delivered, continues with the people it works for. Anyone may
-// start a thread; the receiving V decides, under its redlines, whether to do it here.
-export function requestTurn({ id, from, message, chainId, requester }) {
+// Guidance added to the native sessions_send turns (before_prompt_build). The two V's
+// take turns: whatever the target replies goes back to the requester; the requester
+// either answers (another sessions_send to the same session, same thread) or, when the
+// target delivered, finishes with the people it works for. Anyone may start a thread;
+// the receiving V decides, under its redlines, whether to do it here.
+export function requestGuidance({ from, requester, chainId, id }) {
   const followUp = chainId && chainId !== id;
   const who = requester ? `${requester} (in 「${from.label}」)` : `the V in 「${from.label}」 on its own initiative`;
-  return {
-    message: `${speaker(from)}：\n\n${message}`,
-    extraSystemPrompt: [
-      followUp
-        ? `The V in 「${from.label}」 is answering you in a task handed to this conversation earlier (session relay thread ${chainId}). Pick up where you left off.`
-        : `The V in 「${from.label}」 handed this task to this conversation (session relay thread ${chainId ?? id}). It was asked for by ${who}.`,
-      "Decide as you would if that person asked here: use this conversation's own context, follow your redlines, and keep in mind that your reply goes back to the other chat and its members. If it should not be done, or not shared there, say so briefly instead.",
-      `Everything you reply in this turn is sent back to 「${from.label}」 automatically: you are talking with the V over there. People in both chats see the exchange folded in one 「${from.label} ⇄ this conversation」 card, not as separate messages.`,
-      `If you need information or a decision from 「${from.label}」 to do this well, ask for it in your reply, short and specific, and end the turn; the answer will arrive here as a new message. Do not guess what only they know.`,
-      "When the work is done, reply with the result: what you did, what you found, what is still open.",
-      "Do not relay to any other conversation from this turn.",
-    ].join("\n"),
-  };
+  return [
+    followUp
+      ? `The V in 「${from.label}」 is answering you in an exchange that started earlier. Pick up where you left off.`
+      : `The V in 「${from.label}」 sent this to your conversation through sessions_send. It was asked for by ${who}.`,
+    "Decide as you would if that person asked here: use this conversation's own context, follow your redlines, and remember your reply goes back to the other chat and its members. If it should not be done, or not shared there, say so briefly instead.",
+    `Your final reply in this turn goes back to 「${from.label}」 automatically: you are talking with the V over there. People in both chats see the exchange folded in one card, not as separate messages.`,
+    `If you need information or a decision from 「${from.label}」 to do this well, ask for it in your reply, short and specific, and end the turn; the answer will come back here. Do not guess what only they know.`,
+    "When the work is done, reply with the result: what you did, what you found, what is still open.",
+  ].join("\n");
 }
 
-export function resultTurn({ id, to, message, reply, chainId }) {
-  return {
-    message: `${speaker(to)}：\n\n${reply}`,
-    extraSystemPrompt: [
-      `You handed work to 「${to.label}」 (session relay thread ${chainId ?? id}); the message above is the reply of the V there. Your last message to it: ${clip(message, 600)}`,
-      "People here see your exchange with it folded in one card; your own text in this turn is only posted here when you do not relay again.",
-      `If it asks you something or needs input you or this conversation can provide, answer it: call session_relay_send with target 「${to.label}」 and your answer, and end with one short line. You are coordinating with it, not reporting every step.`,
-      "If it needs a decision only the people here can make, ask them here instead of guessing (that text is posted here).",
-      "If it delivered the result, finish the task for the people here: write what they should read (the result and what it means, or the next step). Do not mention the relay mechanics.",
-    ].join("\n"),
-  };
+export function resultGuidance({ to, message }) {
+  return [
+    `This is the reply of the V in 「${to.label}」 to what you sent it with sessions_send. You had sent: ${clip(message, 600)}`,
+    "People here see your exchange with it folded in one card; your own text in this turn is only posted here when you do not send to it again.",
+    `If it asks you something or needs input you or this conversation can provide, answer it: call sessions_send with sessionKey ${JSON.stringify(to.sessionKey)} and your answer, and end with one short line. You are coordinating with it, not reporting every step.`,
+    "If it needs a decision only the people here can make, ask them here instead of guessing.",
+    "If it delivered the result, finish the task for the people here: write what they should read (the result and what it means, or the next step). Do not mention sessions_send or the relay.",
+  ].join("\n");
 }
+
+/** Same words as the core patch, for the wake the plugin issues itself (after a restart, or a steered send). */
+export const RESULT_EXTRA_SYSTEM_PROMPT =
+  "Another session returned the result of your earlier sessions_send request. Continue the work it was for. This result is delivered once; your response will not be sent back to the target session.";
 
 export function failureTurn({ id, to, message, reason }) {
   return {
     message: `${speaker(to)} 没能完成你交给它的事（${reason}）。`,
-    extraSystemPrompt: `Work you relayed to 「${to.label}」 (${id}) did not come back: ${reason}. What you asked: ${clip(message, 600)}. Tell the user briefly and decide whether to retry, do it here, or ask them.`,
+    extraSystemPrompt: `What you sent to 「${to.label}」 with sessions_send (${id}) did not come back: ${reason}. What you sent: ${clip(message, 600)}. Tell the people here briefly and decide whether to retry, do it here, or ask them.`,
   };
-}
-
-export function sentInstruction(label) {
-  return `已交给「${label}」。用一句很短的话告诉用户（例如：已经让「${label}」去做了），然后结束本轮。「${label}」做完后结果会作为一条新消息回到这里并唤醒你，那时再继续。不要等待、轮询，也不要自己再做一遍。`;
 }
 
 /** Text of the last assistant message in a sessions.get message list. */

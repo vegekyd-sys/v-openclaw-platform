@@ -78,25 +78,6 @@ export class FeishuApi {
     const data = await this.call("GET", `/open-apis/im/v1/chats/${encodeURIComponent(chatId)}`);
     return typeof data.name === "string" && data.name.trim() ? data.name.trim() : null;
   }
-
-  /** Group chats this bot is in: [{ chatId, name }]. */
-  async listChats({ maxPages = 10 } = {}) {
-    const chats = [];
-    let pageToken = "";
-    for (let page = 0; page < maxPages; page += 1) {
-      const data = await this.call("GET", `/open-apis/im/v1/chats?page_size=100${pageToken ? `&page_token=${encodeURIComponent(pageToken)}` : ""}`);
-      for (const item of data.items ?? []) {
-        if (typeof item.chat_id === "string") {
-          chats.push({ chatId: item.chat_id, name: typeof item.name === "string" ? item.name : "" });
-        }
-      }
-      if (!data.has_more || !data.page_token) {
-        break;
-      }
-      pageToken = data.page_token;
-    }
-    return chats;
-  }
 }
 
 /** One FeishuApi per app, reused across calls. */

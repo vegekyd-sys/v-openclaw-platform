@@ -1,17 +1,13 @@
 import path from "node:path";
-import { Type } from "typebox";
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 
 import { RelayDispatcher } from "./core/dispatcher.js";
 import { feishuClients } from "./core/feishu.js";
-import { decideSend, ownerList, resolveTrustedActor } from "./core/policy.js";
-import { labelForSession, resolveTarget } from "./core/sessions.js";
+import { recordFromSend, targetRunIdOf } from "./core/native.js";
+import { describeRequester, guardSend, ownerList } from "./core/policy.js";
+import { labelForSession } from "./core/sessions.js";
 import { RelayStore } from "./core/store.js";
-import { sentInstruction } from "./core/text.js";
-
-function textResult(value) {
-  return { content: [{ type: "text", text: JSON.stringify(value, null, 2) }] };
-}
+import { requestGuidance, resultGuidance } from "./core/text.js";
 
 function storeDir(config) {
   if (typeof config.storeDir === "string" && config.storeDir) {
@@ -24,123 +20,108 @@ function storeDir(config) {
   return path.join(state, "v-session-relay");
 }
 
+// No tool of its own: this plugin follows the native sessions_send. Hooks run wherever
+// the turn runs (Gateway or worker) and only write ledger files; the Gateway-only
+// service follows the runs, paints the Feishu thread cards and makes replies durable.
 export default definePluginEntry({
   id: "v-session-relay",
   name: "V Session Relay",
-  description: "Lets V hand work to another conversation and get the result back here.",
+  description: "Makes the native sessions_send visible in Feishu and durable: one thread card per exchange, the requester's closing words posted, replies survive restarts.",
   register(api) {
     const config = api.pluginConfig ?? {};
     const store = new RelayStore(storeDir(config));
     const feishuFor = feishuClients();
     const maxChain = config.maxChain ?? 8;
     const ownerName = config.ownerName ?? "Tianyi";
-    // How each conversation's V is named on the thread card (「V · 群名」); per agent if configured.
+    const requesters = new Map(); // toolCallId -> requester context, from before_tool_call to after_tool_call
     const agentName = (sessionKey) => {
       const agentId = String(sessionKey ?? "").split(":")[1];
       return (config.agentNames && typeof config.agentNames[agentId] === "string" && config.agentNames[agentId]) || "V";
     };
+    const withLabels = (record) => ({
+      ...record,
+      from: { ...record.from, label: record.from.label ?? record.from.sessionKey },
+      to: { ...record.to, label: record.to.label ?? record.to.sessionKey },
+    });
 
-    api.registerTool(
-      (context) => ({
-        name: "session_relay_send",
-        label: "Session Relay Send",
-        description:
-          "Hand a task to another V conversation (a Feishu group, a task room, or another session) and get its answer back here later. " +
-          "Use when the user asks you to have another group/room/session do, continue or report on something there, with that conversation's own context. " +
-          "The other conversation sees a small 「消息来自」 note and works on it in its own chat; when it finishes, its reply comes back to this conversation as a new message and wakes you to continue. " +
-          "target is the group's name as people call it (fuzzy match against groups V is in), a Feishu chat id (oc_…), or a session key. " +
-          "After calling, tell the user in one short sentence that it has been handed over and end your turn; do not wait, poll or do the task yourself. The other conversation's V decides whether to do it.",
-        parameters: Type.Object({
-          target: Type.String({ description: "Group name, Feishu chat id (oc_…) or session key of the conversation that should do it" }),
-          message: Type.String({ description: "What that conversation should do; include the context it lacks" }),
-        }),
-        async execute(_toolCallId, params) {
-          const cfg = context.getRuntimeConfig?.() ?? context.runtimeConfig ?? context.config ?? {};
-          const feishu = feishuFor(cfg, context.deliveryContext?.accountId);
-          const owners = ownerList(config, cfg);
-          const target = await resolveTarget(params.target, { cfg, feishu, fromSessionKey: context.sessionKey });
-          if (target.error) {
-            return textResult({ ok: false, error: target.error, ...(target.candidates ? { candidates: target.candidates } : {}) });
-          }
-          const sessionKey = typeof context.sessionKey === "string" ? context.sessionKey : null;
-          const records = store.list();
-          const actor = resolveTrustedActor(context, config);
-          const decision = decideSend({ records, sessionKey, targetSessionKey: target.sessionKey, actor, maxChain });
-          if (!decision.allow) {
-            api.logger?.info?.(`session relay denied from ${sessionKey} (actor ${actor ?? "none"}): ${decision.reason}`);
-            return textResult({ ok: false, error: decision.reason });
-          }
-          const message = String(params.message ?? "").trim();
-          if (!message) {
-            return textResult({ ok: false, error: "message is empty" });
-          }
-          const now = Date.now();
-          const id = store.newId(now);
-          const fromLabel = await labelForSession(sessionKey, { cfg, feishu, ownerName, owners });
-          store.write({
-            id,
-            chainId: decision.chainId ?? id,
-            via: decision.via,
-            requestedBy: actor,
-            // Follow-ups in a thread keep the person who started it.
-            requester: decision.chainId
-              ? (records.find((r) => r.id === decision.chainId)?.requester ?? null)
-              : actor ? (owners.includes(actor) ? ownerName : actor) : null,
-            status: "queued",
-            createdAt: now,
-            updatedAt: now,
-            from: { sessionKey, label: fromLabel, name: agentName(sessionKey) },
-            to: { sessionKey: target.sessionKey, label: target.label, name: agentName(target.sessionKey) },
-            message,
-          });
-          api.logger?.info?.(`session relay ${id} queued: ${sessionKey} -> ${target.sessionKey} (${decision.via})`);
-          return textResult({ ok: true, relayId: id, to: target.label, status: "queued", instruction: sentInstruction(target.label) });
-        },
-      }),
-      { name: "session_relay_send" },
+    api.on(
+      "before_tool_call",
+      async (event, ctx) => {
+        if (event.toolName !== "sessions_send") {
+          return undefined;
+        }
+        if (ctx?.toolCallId) {
+          requesters.set(ctx.toolCallId, ctx.requester ?? null);
+          setTimeout(() => requesters.delete(ctx.toolCallId), 30 * 60_000).unref?.();
+        }
+        const verdict = guardSend({ records: store.list(), sessionKey: ctx?.sessionKey, runId: ctx?.runId, maxChain });
+        if (verdict) {
+          api.logger?.info?.(`session relay: blocked sessions_send from ${ctx?.sessionKey}: ${verdict.blockReason}`);
+        }
+        return verdict;
+      },
+      { priority: 50, timeoutMs: 5_000 },
     );
 
-    api.registerTool(
-      (context) => ({
-        name: "session_relay_status",
-        label: "Session Relay Status",
-        description: "List work this conversation relayed to other conversations (and work relayed to it), with status: queued, running, replying, done, failed.",
-        parameters: Type.Object({}),
-        async execute() {
-          const sessionKey = typeof context.sessionKey === "string" ? context.sessionKey : null;
-          const mine = store
-            .list()
-            .filter((r) => r.from?.sessionKey === sessionKey || r.to?.sessionKey === sessionKey)
-            .slice(-20)
-            .map((r) => ({
-              relayId: r.id,
-              direction: r.from?.sessionKey === sessionKey ? "sent" : "received",
-              with: r.from?.sessionKey === sessionKey ? r.to?.label : r.from?.label,
-              status: r.status,
-              message: String(r.message ?? "").slice(0, 200),
-              ...(r.error ? { error: r.error } : {}),
-              createdAt: new Date(r.createdAt).toISOString(),
-            }));
-          return textResult({ relays: mine });
-        },
-      }),
-      { name: "session_relay_status" },
-    );
+    api.on("after_tool_call", async (event, ctx) => {
+      if (event.toolName !== "sessions_send" || event.error) {
+        return;
+      }
+      const callId = ctx?.toolCallId ?? event.toolCallId;
+      const requester = describeRequester(requesters.get(callId), { ownerName });
+      requesters.delete(callId);
+      const record = recordFromSend({
+        id: store.newId(),
+        params: event.params,
+        result: event.result,
+        ctx: { ...ctx, runId: ctx?.runId ?? event.runId },
+        records: store.list(),
+        requester,
+      });
+      if (record) {
+        store.write(record);
+        api.logger?.info?.(`session relay ${record.id}: following sessions_send ${record.from.sessionKey} -> ${record.to.sessionKey} run ${record.runId} (${record.status})`);
+      }
+    });
+
+    // The two turns of an exchange get a few lines on how to talk to the other V.
+    api.on("before_prompt_build", async (_event, ctx) => {
+      const runId = ctx?.runId;
+      if (!runId) {
+        return undefined;
+      }
+      const records = store.list();
+      const answering = targetRunIdOf(runId);
+      if (answering) {
+        const record = records.find((r) => r.runId === answering);
+        return record ? { prependContext: resultGuidance(withLabels(record)) } : undefined;
+      }
+      const request = records.find((r) => r.runId === runId && r.to?.sessionKey === ctx.sessionKey);
+      return request ? { prependContext: requestGuidance(withLabels(request)) } : undefined;
+    });
 
     let timer = null;
     api.registerService?.({
-      id: "v-session-relay-dispatcher",
+      id: "v-session-relay-follower",
       start(ctx) {
         const runtime = api.runtime?.subagent;
         if (typeof runtime?.run !== "function" || typeof runtime?.waitForRun !== "function") {
-          ctx.logger?.warn?.("session relay: runtime.subagent unavailable; relays will stay queued");
+          ctx.logger?.warn?.("session relay: runtime.subagent unavailable; sessions_send will not be followed");
           return;
         }
+        const getConfig = () => ctx.config ?? api.config ?? {};
         const dispatcher = new RelayDispatcher({
           store,
           runtime,
           feishuFor,
-          getConfig: () => ctx.config ?? api.config ?? {},
+          getConfig,
+          describe: async (sessionKey) => {
+            const cfg = getConfig();
+            return {
+              label: await labelForSession(sessionKey, { cfg, feishu: feishuFor(cfg, undefined), ownerName, owners: ownerList(config, cfg) }),
+              name: agentName(sessionKey),
+            };
+          },
           logger: ctx.logger ?? api.logger,
           ...(config.waitSliceMs ? { waitSliceMs: config.waitSliceMs } : {}),
           ...(config.maxWaitMs ? { maxWaitMs: config.maxWaitMs } : {}),
@@ -155,7 +136,7 @@ export default definePluginEntry({
         tick();
         timer = setInterval(tick, config.pollMs ?? 2_000);
         timer.unref?.();
-        ctx.logger?.info?.(`session relay dispatcher started (store ${store.dir})`);
+        ctx.logger?.info?.(`session relay follower started (store ${store.dir})`);
       },
       stop() {
         clearInterval(timer);

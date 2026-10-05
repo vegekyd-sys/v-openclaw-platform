@@ -1,11 +1,13 @@
 {
   "support": [
     "lab/candidate/session-relay.mjs",
+    "lab/release-files/sessions-send-reply-once/patch.mjs",
     "apps/v-session-relay/plugin/openclaw.plugin.json",
     "apps/v-session-relay/plugin/package.json",
     "apps/v-session-relay/plugin/index.js",
     "apps/v-session-relay/plugin/core/dispatcher.js",
     "apps/v-session-relay/plugin/core/feishu.js",
+    "apps/v-session-relay/plugin/core/native.js",
     "apps/v-session-relay/plugin/core/policy.js",
     "apps/v-session-relay/plugin/core/sessions.js",
     "apps/v-session-relay/plugin/core/store.js",

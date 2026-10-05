@@ -1,51 +1,59 @@
-// Gateway-only dispatcher. A thread (all relays sharing a chainId) is shown in every
-// chat taking part as ONE collapsed card, 「A ⇄ B · 进行中」, patched as it goes;
-// opening it shows the two V's talking. The agent-to-agent turns themselves are not
-// posted (deliver: false), so the chats are not flooded with the same words twice.
-// For each queued relay:
-//   1. run the target session with the request and wait for it, however long it takes;
-//   2. run the origin session with the reply and wait for it. If that run answered with
-//      another relay the thread goes on; otherwise its text is what the origin says to
-//      the people there, and it is posted in the origin chat.
-// Every step is recorded in the ledger before and after it happens, so after a
-// Gateway restart a relay resumes where it was instead of being lost.
+// Gateway-only follower of the native sessions_send. The tool itself starts the target
+// run; with the core patch v-sessions-send-reply-once-v1 the core then waits for it and
+// wakes the requester once with the reply (run id `sessions-send-result:<target run>`).
+// This dispatcher adds what the core does not do:
+//   - a thread (all sends sharing a chainId) is shown in every chat taking part as ONE
+//     collapsed card, 「A ⇄ B · 已完成 · N 条」, patched as it goes;
+//   - when the woken requester does not send again, its text is posted to its chat as
+//     the closing message (the core runs that turn with deliver: false);
+//   - durability: records are files, so after a Gateway restart (which drops the core's
+//     in-process wait), or for a send that was steered into an already running turn
+//     (which the core does not follow), the reply is still collected and the requester
+//     still woken, under the same run id so it never runs twice.
+import { resultRunId } from "./native.js";
 import { feishuReceiverForSession } from "./sessions.js";
-import { failureTurn, finalMessageCard, lastAssistantText, requestTurn, resultTurn, threadCard } from "./text.js";
+import { RESULT_EXTRA_SYSTEM_PROMPT, failureTurn, finalMessageCard, lastAssistantText, threadCard } from "./text.js";
 
-const ACTIVE = new Set(["queued", "delivering", "running", "replying"]);
+const ACTIVE = new Set(["running", "replying"]);
 
 export class RelayDispatcher {
-  constructor({ store, runtime, feishuFor, getConfig, logger, waitSliceMs = 10 * 60_000, maxWaitMs = 6 * 3600_000, now = Date.now }) {
+  constructor({ store, runtime, feishuFor, getConfig, describe, logger, waitSliceMs = 10 * 60_000, maxWaitMs = 6 * 3600_000, wakeGraceMs = 90_000, now = Date.now, sleep }) {
     this.store = store;
     this.runtime = runtime; // api.runtime.subagent
     this.feishuFor = feishuFor; // (cfg, accountId) => FeishuApi | null
     this.getConfig = getConfig;
+    this.describe = describe ?? (async (sessionKey) => ({ label: sessionKey, name: "V" }));
     this.logger = logger ?? console;
     this.waitSliceMs = waitSliceMs;
     this.maxWaitMs = maxWaitMs;
+    this.wakeGraceMs = wakeGraceMs;
     this.now = now;
-    this.inflight = new Map(); // relay id -> promise
+    this.sleep = sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    this.inflight = new Map(); // record id -> promise
     this.cardLocks = new Map(); // chain id -> promise (serialises card sends/patches)
-    this.recovered = false;
+    this.started = false;
   }
 
-  /** One pass over the ledger; starts work for records nobody in this process is handling. */
+  /** One pass over the ledger; starts work for records nobody in this process is following. */
   tick() {
-    const records = this.store.list({ prune: !this.recovered, now: this.now() });
-    const recovering = !this.recovered;
-    this.recovered = true;
-    for (const record of records) {
-      if (!ACTIVE.has(record.status) || this.inflight.has(record.id)) {
+    const recovering = !this.started;
+    this.started = true;
+    for (const record of this.store.list({ prune: recovering, now: this.now() })) {
+      if (this.inflight.has(record.id) || record.followedBy === this.processId()) {
         continue;
       }
-      if (record.status !== "queued" && !recovering) {
+      if (!ACTIVE.has(record.status) && !(record.status === "done" && !record.painted)) {
         continue;
       }
-      const job = this.process(record.id, { recovering: record.status !== "queued" })
+      const job = this.follow(record.id, { recovering })
         .catch((error) => this.logger.warn?.(`session relay ${record.id}: ${error.message}`))
         .finally(() => this.inflight.delete(record.id));
       this.inflight.set(record.id, job);
     }
+  }
+
+  processId() {
+    return `${process.pid}`;
   }
 
   async idle() {
@@ -54,51 +62,36 @@ export class RelayDispatcher {
     }
   }
 
-  async process(id, { recovering = false } = {}) {
-    let record = this.store.read(id);
-    if (!record) {
-      return;
-    }
-    if (record.status === "queued") {
-      record = this.store.update(id, { status: "delivering" }, this.now());
-      await this.refreshCard(record.chainId);
-    }
-    if (record.status === "delivering") {
-      record = await this.deliverRequest(record);
-    }
+  async follow(id, { recovering }) {
+    let record = this.store.update(id, { followedBy: this.processId() }, this.now());
+    record = await this.label(record);
+    await this.refreshCard(record.chainId);
     if (record.status === "running") {
       record = await this.collectResult(record, { recovering });
     }
     if (record.status === "replying") {
-      await this.deliverResult(record, { recovering });
+      await this.followWake(record, { recovering });
     }
+    this.store.update(id, { painted: true }, this.now());
   }
 
-  async deliverRequest(record) {
-    const turn = requestTurn(record);
-    try {
-      const res = await this.runtime.run({
-        sessionKey: record.to.sessionKey,
-        message: turn.message,
-        extraSystemPrompt: turn.extraSystemPrompt,
-        deliver: false,
-        idempotencyKey: `v-session-relay-${record.id}`,
-      });
-      this.logger.info?.(`session relay ${record.id}: ${record.from.sessionKey} -> ${record.to.sessionKey} run ${res.runId}`);
-      record = this.store.update(record.id, { status: "running", runId: res.runId, startedAt: this.now() }, this.now());
-      await this.refreshCard(record.chainId);
-      return record;
-    } catch (error) {
-      return this.fail(record, `没送到：${error.message}`);
+  /** Fills in chat names and speaker names (in the Gateway, where the Feishu credentials are). */
+  async label(record) {
+    const patch = {};
+    for (const side of ["from", "to"]) {
+      if (!record[side]?.label) {
+        patch[side] = { ...record[side], ...(await this.describe(record[side].sessionKey)) };
+      }
     }
+    return Object.keys(patch).length ? this.store.update(record.id, patch, this.now()) : record;
   }
 
   async collectResult(record, { recovering }) {
-    const wait = await this.waitRun(record.runId, record.startedAt);
+    const wait = await this.waitRun(record.runId, record.createdAt);
     let reply = wait.status === "ok" && wait.terminalReply?.disposition === "visible" ? wait.terminalReply.text : null;
     if (!reply && (wait.status === "ok" || recovering)) {
       // Silent terminal snapshot, or a run from before a restart that agent.wait no longer knows.
-      reply = await this.transcriptReply(record.to.sessionKey, record.startedAt);
+      reply = await this.transcriptReply(record.to.sessionKey, record.createdAt);
     }
     if (!reply && wait.status === "ok") {
       reply = "（做完了，但没有留下文字回复）";
@@ -113,38 +106,41 @@ export class RelayDispatcher {
     return this.fail(record, reason);
   }
 
-  async deliverResult(record, { recovering }) {
-    let runId = record.replyRunId;
-    if (!runId) {
-      const turn = resultTurn(record);
+  /**
+   * The core wakes the requester under resultRunId(target run). Wait for that run; if it
+   * never shows up (restart, steered send), issue it ourselves under the same id.
+   */
+  async followWake(record, { recovering }) {
+    const wakeId = resultRunId(record.runId);
+    const coreWakes = !recovering && record.targetDisposition !== "steered";
+    let wait = coreWakes ? await this.waitKnownRun(wakeId, this.wakeGraceMs) : null;
+    if (!wait || wait.status === "unknown") {
       try {
-        const res = await this.runtime.run({
+        await this.runtime.run({
           sessionKey: record.from.sessionKey,
-          message: turn.message,
-          extraSystemPrompt: turn.extraSystemPrompt,
+          message: record.reply,
+          extraSystemPrompt: RESULT_EXTRA_SYSTEM_PROMPT,
           deliver: false,
-          idempotencyKey: `v-session-relay-${record.id}-result`,
+          idempotencyKey: wakeId,
         });
-        runId = res.runId;
-        record = this.store.update(record.id, { replyRunId: runId, replyStartedAt: this.now() }, this.now());
+        this.store.update(record.id, { wokenBy: "plugin" }, this.now());
       } catch (error) {
         this.store.update(record.id, { status: "failed", error: `结果送不回去：${error.message}` }, this.now());
         await this.refreshCard(record.chainId);
         return;
       }
+      wait = await this.waitRun(wakeId, this.now());
     }
-    // Keep status "replying" while the origin runs, so it may relay again in this chain.
-    const wait = await this.waitRun(runId, record.replyStartedAt ?? this.now(), { maxWaitMs: recovering ? this.waitSliceMs : this.maxWaitMs });
-    const answeredAgain = this.store.list().some((r) => r.chainId === record.chainId && r.id !== record.id && r.createdAt >= (record.replyStartedAt ?? Infinity));
+    const answeredAgain = this.store.list().some((r) => r.chainId === record.chainId && r.id !== record.id && r.fromRunId === wakeId);
     let finalMessageId = null;
     if (!answeredAgain) {
-      // The origin is done with the thread: what it said is meant for the people there.
-      const text = wait.status === "ok" && wait.terminalReply?.disposition === "visible" ? wait.terminalReply.text : await this.transcriptReply(record.from.sessionKey, record.replyStartedAt);
-      if (text) {
+      // The requester is done with the thread: what it said is meant for the people there.
+      const text = wait.status === "ok" && wait.terminalReply?.disposition === "visible" ? wait.terminalReply.text : await this.transcriptReply(record.from.sessionKey, record.finishedAt);
+      if (text && text.trim()) {
         finalMessageId = await this.send(record.from.sessionKey, finalMessageCard(text));
       }
     }
-    this.store.update(record.id, { status: "done", replyRunStatus: wait.status, doneAt: this.now(), ...(finalMessageId ? { finalMessageId } : {}) }, this.now());
+    this.store.update(record.id, { status: "done", wakeStatus: wait.status, doneAt: this.now(), ...(finalMessageId ? { finalMessageId } : {}) }, this.now());
     await this.refreshCard(record.chainId);
   }
 
@@ -158,12 +154,39 @@ export class RelayDispatcher {
         message: turn.message,
         extraSystemPrompt: turn.extraSystemPrompt,
         deliver: true,
-        idempotencyKey: `v-session-relay-${record.id}-failed`,
+        idempotencyKey: `sessions-send-failed:${record.runId}`,
       });
     } catch (error) {
       this.logger.warn?.(`session relay ${record.id}: could not report failure: ${error.message}`);
     }
     return record;
+  }
+
+  /**
+   * Waits for a run that may not have been admitted yet. Returns { status: "unknown" } when
+   * nothing with that id ran within `graceMs`; otherwise the terminal wait result.
+   */
+  async waitKnownRun(runId, graceMs) {
+    const until = this.now() + graceMs;
+    for (;;) {
+      let res;
+      try {
+        res = await this.runtime.waitForRun({ runId, timeoutMs: 5_000 });
+      } catch (error) {
+        res = { status: "error", error: error.message };
+      }
+      if (res.status === "ok" || (res.status === "error" && !/unknown|not found/iu.test(res.error ?? ""))) {
+        return res;
+      }
+      if (res.status === "timeout" && (res.startedAt || res.providerStarted || res.livenessState)) {
+        // It exists and is running.
+        return this.waitRun(runId, this.now());
+      }
+      if (this.now() >= until) {
+        return { status: "unknown" };
+      }
+      await this.sleep(2_000);
+    }
   }
 
   /** agent.wait in slices until the run ends; unknown runs (after a restart) come back as error. */
@@ -181,6 +204,9 @@ export class RelayDispatcher {
       }
       if (this.now() >= deadline) {
         return { status: "timeout" };
+      }
+      if (res.status === "pending") {
+        await this.sleep(1_000);
       }
     }
   }
@@ -214,10 +240,10 @@ export class RelayDispatcher {
   }
 
   async paintCard(chainId) {
-    const thread = this.store.list().filter((r) => r.chainId === chainId);
-    const root = thread.find((r) => r.id === chainId) ?? thread[0];
+    const thread = this.store.list().filter((r) => r.chainId === chainId && r.from?.label && r.to?.label);
+    const root = this.store.read(chainId) ?? thread[0];
     const feishu = this.feishuFor(this.getConfig(), undefined);
-    if (!root || !feishu) {
+    if (!root || !thread.length || !feishu) {
       return;
     }
     const card = threadCard(thread);
