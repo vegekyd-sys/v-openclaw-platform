@@ -11,6 +11,20 @@
 
 ---
 
+## v2026.9.1-db91.6-voice-confirmation-switch-20261005
+
+上线：2026-10-05 12:51 CST 安装，12:52:51 受控重启 Gateway（worker 全空闲、无通话，原生 suspend/drain 后重启），12:54:27 就绪（95 s）·  tag `v2026.9.1-db91.6-voice-confirmation-switch-20261005`
+
+**摘要**：GPT Live 电话里 V 能正常用自己的工具了，语音查飞书日历不再报 `VOICE_CONFIRMATION_REQUIRED`（PR #196）。这道门是 OpenClaw 原生的语音口头确认：`exec` 只把 cat/grep/ls 等当只读，`lark-cli` 一律要确认。过去 V 上不拦，只是因为回合跑在 worker 里、worker 看不到语音绑定；GPT Live 把语音 exec 交回 Gateway 后它才生效（生产记录：音响 V 17/17 次执行，GPT Live 11/11 次被拦）。现在默认放行，语音和文字的 V 权限一致，本人入口和普通入口都放开（Tianyi 定）；`OPENCLAW_VOICE_SPOKEN_CONFIRMATION=1` 可恢复原生门。
+
+**V 上验收**：2026-10-05 12:55–12:57 CST，公网 https://openclaw.tianyi.live/voice/ 真实 GPT Live 通话（V 本机无头 Chrome，合成用户语音「帮我查一下今天飞书日历上有哪些安排」，访问 cookie 在服务器端签发）。会话 `gpt-live-h5-experiment-5aefdaf6`：后台 7 次 exec 全部执行、0 次被拦，`lark-cli calendar +agenda --as user` 返回三场日程；提问后 44 s 语音读出「九点半到十点半长老会、三点到六点客户沟通 · Tianyi × 袁振、六点到七点半福餐厅吃饭」，与工具结果逐条一致。
+
+相对上一版 `v2026.9.1-db91.6-placement-evidence-20261005`：1 个文件变化。
+
+**经 VLab 发版 `voice-confirmation-switch-v1`**（claude-voice-confirmation-switch，dev `71d3ecf2`）
+> 验收：Shared VLab 2026-10-05 12:45-12:49 CST: real GPT Live call (gpt-live-1-codex, WebRTC) through the dev H5 (transient loopback unit, stopped) on the shared Gateway; synthetic USER audio "帮我查一下今天飞书日历上有哪些安排". Voice session 55062026, session gpt-live-h5-experiment-02fa6d22: backend ran 25 exec calls starting with lark-cli calendar +agenda, all executed, 0 VOICE_CONFIRMATION_REQUIRED (V before fix: 11/1…
+- `core` agent-tools.before-tool-call-g2OT63u5.js  f410f20c → 618ab46a
+
 ## v2026.9.1-db91.6-placement-evidence-20261005
 
 上线：2026-10-05 10:38 CST 安装，10:39 重启 Gateway，10:41 就绪（PID 1518653）  ·  tag `v2026.9.1-db91.6-placement-evidence-20261005`
