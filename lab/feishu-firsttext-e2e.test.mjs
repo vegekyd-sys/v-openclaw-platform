@@ -45,7 +45,17 @@ test('reasoning shown first counts as first visible, the answer is measured sepa
   const m = measure({ ...sample, firstReasoningAtMs: t0 + 1500, firstPushAtMs: t0 + 3200, firstAnswerPushAtMs: t0 + 6000 });
   assert.equal(m.firstVisibleMs, 3200);
   assert.equal(m.firstAnswerMs, 6000);
-  assert.equal(m.agentMs, 1500 - 458);
+  assert.equal(m.reasoningMs, 1500 - 458);
+  assert.equal(m.agentMs, 2900 - 458);
+  assert.equal(m.deliveryMs, 6000 - 2900);
+});
+
+test('a status line pushed before the answer is visible but is not 首字', () => {
+  const m = measure({ ...sample, firstPushAtMs: t0 + 1200, firstAnswerPushAtMs: t0 + 4780 });
+  assert.equal(m.firstVisibleMs, 1200);
+  assert.equal(m.firstAnswerMs, 4780);
+  assert.equal(m.deliveryMs, 4780 - 2900);
+  assert.equal(m.cardReadyBeforeAnswer, false);
 });
 
 test('a non-streaming reply counts through its visible time', () => {
@@ -65,7 +75,7 @@ test('journal lines parse, broken lines are skipped, percentiles interpolate', (
   assert.equal(records.length, 2);
   const out = report(records);
   assert.equal(out.firstVisible.n, 2);
-  assert.equal(out.firstVisible.max, 9000);
+  assert.equal(out.firstAnswer.max, 9000);
   assert.equal(out.byHarness['vlab-worker/deepseek-flash'].n, 2);
   assert.equal(percentile([1, 2, 3, 4], 0.5), 2.5);
   assert.equal(percentile([], 0.5), undefined);
