@@ -1,6 +1,6 @@
 # v-session-relay
 
-让任何一个对话（私聊、群、Taskroom）里里的 V 把一件事交给另一个对话去做，做完的结果自动回到原来的对话，原来那个 V 被唤醒接着干。机制与 Claude Code 的跨会话消息、Grok Bot 的 bot 交接一样：传的是 session，不是另起 agent。两边在飞书里各有一张收起的对话卡片，点开就是两个 V 的来回。
+让任何一个对话（私聊、群、Taskroom）里的 V 把一件事交给另一个对话去做，做完的结果自动回到原来的对话，原来那个 V 被唤醒接着干。机制与 Claude Code 的跨会话消息、Grok Bot 的 bot 交接一样：传的是 session，不是另起 agent。两边在飞书里各有一张收起的对话卡片，点开就是两个 V 的来回。
 
 ```
 A 对话（Tianyi 说话） ── session_relay_send ──► 账本 queued
