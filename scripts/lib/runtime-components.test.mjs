@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  COMPONENTS, V_FEISHU, VLAB_RUNTIME, captureRuns, captureSourceForTarget, captureSuffixes, componentOfTarget,
+  COMPONENTS, V_FEISHU, VLAB_RUNTIME, captureRuns, diffReleaseComponents, captureSourceForTarget, captureSuffixes, componentOfTarget,
   parityPairs, releaseNoteComponents, resolveVDirs, vPathForTarget,
 } from './runtime-components.mjs';
 import { evaluateParity } from './parity.mjs';
@@ -170,4 +170,19 @@ test('every captured component has a unique suffix and a stage target; sidecars 
     if (c.kind === 'sidecar') assert(!c.capture && !c.target && c.subdirs.length);
     else assert(c.target instanceof RegExp);
   }
+});
+
+test('release notes: a component missing from the previous release is a first appearance, not a change list', () => {
+  const files = (o) => ({ files: o });
+  const from = { core: files({ 'a.js': h('1') }), worker: files({ 'i.mjs': h('2') }), feishu: files({}), dingtalk: null, wecom: null };
+  const to = { core: files({ 'a.js': h('3'), './b.js': h('4') }), worker: files({ 'i.mjs': h('2') }), feishu: files({}),
+    dingtalk: files({ 'dist/x.mjs': h('5'), 'package.json': h('6') }), wecom: null };
+  const { changes, firstSeen } = diffReleaseComponents(from, to, ['core', 'worker', 'feishu', 'dingtalk', 'wecom']);
+  assert.deepEqual(changes, [
+    { label: 'core', path: 'a.js', before: h('1'), after: h('3') },
+    { label: 'core', path: 'b.js', before: null, after: h('4') },
+  ]);
+  assert.deepEqual(firstSeen, ['dingtalk']);
+  const next = { ...to, dingtalk: files({ 'dist/x.mjs': h('7'), 'package.json': h('6') }) };
+  assert.deepEqual(diffReleaseComponents(to, next, ['dingtalk']).changes, [{ label: 'dingtalk', path: 'dist/x.mjs', before: h('5'), after: h('7') }]);
 });

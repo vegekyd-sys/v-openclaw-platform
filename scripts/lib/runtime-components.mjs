@@ -215,3 +215,21 @@ export function parityPairs({ vDirs, vlabRuntime = VLAB_RUNTIME, vlabGlob, vlabL
 
 // release-notes: [label, suffix] of every captured component.
 export const releaseNoteComponents = () => captured().map((c) => [c.label, c.suffix]);
+
+// release-notes: file changes between two releases, per component. `from` and
+// `to` map a label to { files: {path: sha} } or null (no capture of that
+// component in that release). Absent in `from` only = first appearance.
+export function diffReleaseComponents(from, to, labels) {
+  const changes = [];
+  const firstSeen = [];
+  for (const label of labels) {
+    if (!to[label]) continue;
+    if (!from[label]) { firstSeen.push(label); continue; }
+    const a = from[label].files, b = to[label].files;
+    for (const p of new Set([...Object.keys(a), ...Object.keys(b)])) {
+      if (a[p] === b[p]) continue;
+      changes.push({ label, path: p.replace(/^\.\//, ''), before: a[p] ?? null, after: b[p] ?? null });
+    }
+  }
+  return { changes, firstSeen };
+}

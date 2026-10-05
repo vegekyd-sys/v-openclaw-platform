@@ -5,12 +5,18 @@
 //   node scripts/release-notes.mjs --from <V release tag> --to <V release tag>
 //   node scripts/release-notes.mjs --to <tag> --baseline      # first captured release
 //
-// A V release tag names the captures release/captured/<tag>{,.worker,.feishu}.
-// Each capture is turned into the full set of files V runs (the published
-// package from release/captured/base/ plus the captured files, for core; the
-// whole directory, for the worker and Feishu plugins), and the two sets are
-// compared file by file. So the file list is exact, whoever changed V and
-// however.
+// A V release tag names the captures release/captured/<tag><suffix>, one per
+// captured component of scripts/lib/runtime-components.mjs (core, .worker,
+// .feishu, .dingtalk, .wecom). Each capture is turned into the full set of
+// files V runs (the published package from release/captured/base/ plus the
+// captured files, for core; the whole directory, for the plugins), and the
+// two sets are compared file by file. So the file list is exact, whoever
+// changed V and however.
+//
+// Components added to the table later (DingTalk and WeCom, 2026-10-05) are
+// missing from older captures. Missing in --from = first appearance (counted,
+// not listed file by file); missing in both = not part of either release.
+// core, worker and Feishu must be in every capture.
 //
 // Each changed file is then traced to the shared VLab release whose recorded
 // after-bytes it carries (its id, owner, dev commit and the acceptance
@@ -27,6 +33,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
+import { diffReleaseComponents, releaseNoteComponents } from './lib/runtime-components.mjs';
 
 const args = parseArgs(process.argv.slice(2));
 const repo = resolve(dirname(new URL(import.meta.url).pathname), '..');
@@ -35,12 +42,18 @@ if (!args.to || (!args.from && !args.baseline)) usage();
 
 const git = (...a) => execFileSync('git', ['-C', repo, ...a], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
 const show = (path) => JSON.parse(git('show', `${at}:${path}`));
-const COMPONENTS = [['core', ''], ['worker', '.worker'], ['feishu', '.feishu']];
+const COMPONENTS = releaseNoteComponents();
+const REQUIRED = new Set(['core', 'worker', 'feishu']);
+const exists = (path) => {
+  try { execFileSync('git', ['-C', repo, 'cat-file', '-e', `${at}:${path}`], { stdio: 'ignore' }); return true; } catch { return false; }
+};
 
 function runtimeOf(tag) {
   const out = {};
   for (const [label, suffix] of COMPONENTS) {
-    const m = show(`release/captured/${tag}${suffix}/manifest.json`);
+    const path = `release/captured/${tag}${suffix}/manifest.json`;
+    if (!REQUIRED.has(label) && !exists(path)) { out[label] = null; continue; }
+    const m = show(path);
     const files = {};
     const base = m.capturedFrom?.baseDir ?? 'none';
     if (base.startsWith('npm:')) {
@@ -63,6 +76,7 @@ const lines = [`## ${args.to}`, '', `上线：${toDate}  ·  tag \`${args.to}\``
 if (args.baseline) {
   lines.push('首个带完整存档的发版，作为之后比对的起点。');
   for (const [label] of COMPONENTS) {
+    if (!to[label]) continue;
     const c = to[label].manifest.counts;
     lines.push(`- ${label}：${label === 'core' ? `相对 ${to.core.manifest.capturedFrom.baseDir} 修改 ${c.modified}、新增 ${c.added}` : `${c.added} 个文件（整目录存档）`}`);
   }
@@ -72,14 +86,8 @@ if (args.baseline) {
 }
 
 const from = runtimeOf(args.from);
-const changes = [];
-for (const [label] of COMPONENTS) {
-  const a = from[label].files, b = to[label].files;
-  for (const p of new Set([...Object.keys(a), ...Object.keys(b)])) {
-    if (a[p] === b[p]) continue;
-    changes.push({ label, path: p.replace(/^\.\//, ''), before: a[p] ?? null, after: b[p] ?? null });
-  }
-}
+const { changes, firstSeen: firstSeenIds } = diffReleaseComponents(from, to, COMPONENTS.map(([label]) => label));
+const firstSeen = firstSeenIds.map((label) => `${label}（${Object.keys(to[label].files).length} 个文件，整目录存档）`);
 
 // Trace each change to the VLab release that produced those bytes.
 const vlab = args.noVlab ? [] : vlabReleases();
@@ -87,6 +95,7 @@ const byAfter = new Map();
 for (const r of vlab) for (const f of r.files) if (f.after) (byAfter.get(f.after) ?? byAfter.set(f.after, []).get(f.after)).push(r);
 
 lines.push(`相对上一版 \`${args.from}\`：${changes.length} 个文件变化。`, '');
+if (firstSeen.length) lines.push(`**首次纳入存档的组件**（上一版没有它的存档，不逐个列出）：${firstSeen.join('、')}`, '');
 if (changes.length) {
   const groups = new Map();
   for (const c of changes) {
