@@ -13,7 +13,7 @@ export function directInstructions(catalog,context='') {
 }
 
 /** One real provider connection per dial; tool authorization stays in OpenClaw. */
-export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>''}) {
+export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={}}) {
   const sessions=new Map();
   const websocketServer=new wsModule.WebSocketServer({noServer:true,maxPayload:65536});
   const configured=id=>id==='seeduplex'?Boolean(apiKeys.seeduplex):id==='grok'&&Boolean(apiKeys.grok);
@@ -55,7 +55,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       if(signal.aborted||!current(s))throw Error('本次任务已取消');
       if(!allowedTools.has(name))throw Error('OpenClaw 未开放这个工具');
       if(name==='process'&&args.action!=='list'&&!s.processes.has(args.sessionId))throw Error('只能管理本次电话发起的执行会话');
-      if(name==='exec')args={...args,yieldMs:1000};
+      if(name==='exec')args={...args,yieldMs:1000,...(Object.keys(toolEnvironment).length?{env:{...args.env,...toolEnvironment}}:{})};
       audit({type:'tool.invoke',voiceSessionId:s.id,callId,name,args});
       const result=await gateway.request('tools.invoke',{agentId:'makaron',sessionKey:s.sessionKey,name,args},{timeoutMs:180000});
       audit({type:'tool.native-result',voiceSessionId:s.id,callId,name,result});

@@ -28,7 +28,8 @@ await new Promise((resolve,reject)=>{
 });
 const credential=process.env.V_REALTIME_GROK_CREDENTIAL_FILE,st=fs.lstatSync(credential);
 assert(st.isFile()&&(st.mode&0o077)===0);
-const directVoice=createDirectVoiceService({gateway,wsModule,apiKeys:{seeduplex:process.env.VOLCENGINE_REALTIME_API_KEY,grok:JSON.parse(fs.readFileSync(credential)).apiKey},
+const toolEnvironment=process.env.DIRECT_LARK_CLI_CONFIG_DIR?{LARKSUITE_CLI_CONFIG_DIR:process.env.DIRECT_LARK_CLI_CONFIG_DIR,LARKSUITE_CLI_DATA_DIR:process.env.DIRECT_LARK_CLI_DATA_DIR}:{};
+const directVoice=createDirectVoiceService({gateway,wsModule,toolEnvironment,apiKeys:{seeduplex:process.env.VOLCENGINE_REALTIME_API_KEY,grok:JSON.parse(fs.readFileSync(credential)).apiKey},
  audit:value=>fs.appendFileSync(path.join(evidence,'direct-voice-audit.jsonl'),JSON.stringify({at:Date.now(),...value})+'\n',{mode:0o600}),
  onOutputAudio:(id,pcm)=>fs.appendFileSync(path.join(evidence,`provider-${id}.pcm`),pcm,{mode:0o600}),
  loadContext:async sessionKey=>{const r=await gateway.request('chat.history',{sessionKey,limit:6},{timeoutMs:10000});return JSON.stringify((r.messages??[]).map(m=>({role:m.role,content:m.content}))).slice(-12000);}});

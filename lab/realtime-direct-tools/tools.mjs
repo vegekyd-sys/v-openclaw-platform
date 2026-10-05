@@ -1,6 +1,9 @@
 const object=(properties,required=[])=>({type:'object',properties,required,additionalProperties:false});
 const str={type:'string'};
 export const TOOLS=[
+ {type:'function',name:'read',description:'直接读取工作目录中的文件。文件名区分大小写，AGENTS.md 是指引文件；可用 offset/limit 分页。',parameters:object({path:str,offset:{type:'integer',minimum:1,maximum:100000},limit:{type:'integer',minimum:1,maximum:300}},['path'])},
+ {type:'function',name:'exec',description:'直接运行 OpenClaw 原生执行工具。command 是完整命令，timeoutSeconds 是超时秒数。返回 running/sessionId 时用 process 跟进。外部写入需用户授权。',parameters:object({command:str,timeoutSeconds:{type:'integer',minimum:1,maximum:300}},['command'])},
+ {type:'function',name:'process',description:'跟进本通电话发起的执行会话。poll 查询；用户明确取消时用 cancel_task。不可管理其他电话的进程。',parameters:object({action:{type:'string',enum:['poll','log']},sessionId:str,timeout:{type:'integer',minimum:1,maximum:5000}},['action','sessionId'])},
  {type:'function',name:'memory_search',description:'搜索天意的 V/OpenClaw 个人记忆。关于家庭、个人偏好、项目历史的问题先查实际记录。',parameters:object({query:str,maxResults:{type:'integer',minimum:1,maximum:8}},['query'])},
  {type:'function',name:'web_search',description:'通过 OpenClaw 搜索互联网，查询当前新闻、价格和公开资料。',parameters:object({query:str,count:{type:'integer',minimum:1,maximum:5}},['query'])},
  {type:'function',name:'web_fetch',description:'通过 OpenClaw 读取搜索结果的公开网页，核对原文。',parameters:object({url:str},['url'])},
@@ -18,6 +21,7 @@ export function validateTool(name,args){
  for(const [key,value] of Object.entries(args)){
   const spec=tool.parameters.properties[key];
   if(spec.type==='string'&&(typeof value!=='string'||!value.trim()||value.length>16000))throw Error('无效文字参数');
+  if(spec.enum&&!spec.enum.includes(value))throw Error('不支持这个动作');
   if(spec.type==='integer'&&(!Number.isInteger(value)||value<spec.minimum||value>spec.maximum))throw Error('无效数字参数');
  }
  if(name==='web_fetch'){const u=new URL(args.url);if(u.protocol!=='https:'&&u.protocol!=='http:')throw Error('只读取网页');}

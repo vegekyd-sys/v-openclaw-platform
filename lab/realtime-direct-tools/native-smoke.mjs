@@ -45,10 +45,10 @@ async function runModel(model){
  await wait(()=>(model==='seeduplex'||rows().some(x=>x.type==='transcript'&&x.role==='assistant'&&x.final))&&rows().some(x=>x.type==='audio'),'actual greeting',20000);
  check(model+'/greeting',true,{voiceSessionId:id,provider:model,greetingMode:model==='seeduplex'?'documented SayHello native TTS':'model response'});await quiet(id);
  await speak('tools');await wait(()=>rows().some(x=>x.type==='tool.invoke'&&x.name==='memory_search')&&rows().some(x=>x.type==='tool.invoke'&&x.name==='web_search')&&rows().some(x=>x.type==='tool.invoke'&&x.name==='exec'&&JSON.stringify(x.args).includes('lark-cli')),'actual memory/calendar/web direct calls',180000);
- await wait(()=>rows().some(x=>x.type==='tool.invoke'&&['read','exec'].includes(x.name)&&JSON.stringify(x.args).includes('AGENTS.md')),'generic native file tool',60000);
+ await wait(()=>rows().some(x=>x.type==='tool.invoke'&&['read','exec'].includes(x.name)&&/agents\.md/i.test(JSON.stringify(x.args))),'generic native file tool',60000);
  await quiet(id,60000);
  const native=rows().filter(x=>x.type==='tool.native-result');
- check(model+'/direct-tools',native.length>=4&&native.every(x=>x.result.ok===true&&x.result.output?.isError!==true),{calls:rows().filter(x=>x.type==='tool.invoke').map(x=>({name:x.name,callId:x.callId})),rpcOnly:true,noBackendLLM:true});
+ check(model+'/direct-tools',native.length>=4&&native.every(x=>x.result.ok===true&&x.result.output?.isError!==true&&(x.name!=='exec'||x.result.output?.details?.status==='running'||x.result.output?.details?.exitCode===0)),{calls:rows().filter(x=>x.type==='tool.invoke').map(x=>({name:x.name,callId:x.callId})),rpcOnly:true,noBackendLLM:true});
  await speak('keep');await quiet(id,30000);check(model+'/discussion-does-not-hangup',(await state()).state==='connected'&&!rows().some(x=>x.type==='tool.call'&&x.name==='end_call'));
  await speak('count');await wait(()=>rows().filter(x=>x.type==='audio').at(-1)?.at>Date.now()-1000,'count audio',15000);
  const bargeAt=Date.now();await speak('barge');await quiet(id,30000);
