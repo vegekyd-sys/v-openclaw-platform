@@ -98,7 +98,11 @@ test('OPENCLAW_WORKER_EAGER_PREPARE=0 turns it off', async () => {
   assert.equal(stderr.length, 0);
 });
 
-test('preparation is bounded by its timeout', async () => {
+test('preparation is bounded by its timeout', async (t) => {
+  // the prewarm timer is unref'd (a real Worker is kept alive by its IPC channel); keep
+  // this test's event loop alive until the timeout fires
+  const keepAlive = setTimeout(() => {}, 10_000);
+  t.after(() => clearTimeout(keepAlive));
   const { result } = await runPrewarm({
     env: { OPENCLAW_WORKER_EAGER_PREPARE_TIMEOUT_MS: '1000' },
     acquire: (_params, { abortSignal }) => new Promise((_resolve, reject) => abortSignal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })))),
