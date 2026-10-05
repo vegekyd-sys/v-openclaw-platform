@@ -2,6 +2,7 @@ import { createTranscriptPresentation } from "./transcript-presentation.mjs";
 import { captureDuplexMicrophone } from "./microphone-capture.mjs";
 import { createCallSounds } from "./call-sounds.mjs";
 import { createH5DuplexPlaybackGate } from "./duplex-playback.mjs";
+import { createRelayAudio } from "./relay-audio.mjs";
 
 const $ = (id) => document.getElementById(id);
 let call = null;
@@ -387,6 +388,7 @@ async function stopCall() {
   const active = call; call = null;
   if (starting === active) starting = null;
   if (active) {
+    active.relay?.dispose();
     clearInterval(active.levelTimer); clearInterval(active.heartbeat);
     clearTimeout(active.ending?.timeout); clearTimeout(active.greetingRetryTimer);
     clearTimeout(active.greetingDeadlineTimer); active.greetingAbort?.abort();
@@ -405,6 +407,7 @@ async function stopCall() {
   $("steerText").disabled = true; $("steer").disabled = true;
   $("badge").textContent = liveReady ? "可以拨号" : "页面预览";
   $("startLabel").textContent = "拨号"; $("stopLabel").textContent = "结束通话";
+  if ($("voiceModel")) $("voiceModel").disabled = false;
   setStatus("拨号后，直接说话。");
   if (active) {
     await active.context?.close().catch(() => {});
@@ -419,6 +422,12 @@ async function startCall() {
   setCallState("dialing"); setStatus("正在连接 V…");
   resetTranscript();
   const active = { pc: new RTCPeerConnection(), captureAbort: new AbortController() }; call = active; starting = active;
+  if ($("voiceModel")) $("voiceModel").disabled = true;
+  if (['seeduplex','grok'].includes($("voiceModel")?.value)) {
+    // Create/resume in the dial gesture, before microphone and network awaits.
+    active.context = new AudioContext({sampleRate:24000});
+    active.contextResume = active.context.resume();
+  }
   // Each call owns its sound element; a late play() from an older call cannot
   // pause or replace the next call's pickup. The page element configures assets.
   active.soundElement = document.createElement("audio"); active.soundElement.playsInline = true;
@@ -447,9 +456,35 @@ async function startCall() {
     });
     active.stream = active.capture.stream;
     if (call !== active) { active.stream.getTracks().forEach((track) => track.stop()); return; }
-    for (const track of active.stream.getAudioTracks()) active.pc.addTrack(track, active.stream);
-    const reservation = await api("session"); active.voiceSessionId = reservation.voiceSessionId;
+    const reservation = await api("session", {model:['seeduplex','grok'].includes($("voiceModel")?.value)?$("voiceModel").value:'gpt-live'}); active.voiceSessionId = reservation.voiceSessionId;
     if (call !== active) { await api("close", { voiceSessionId: active.voiceSessionId }); return; }
+    if (reservation.transport === 'gateway-relay') {
+      await active.contextResume;
+      if(call!==active)return;
+      active.relay=createRelayAudio({context:active.context,stream:active.stream,reservation,
+        onError:error=>{if(call===active)void stopCall().then(()=>setStatus(error.message));},
+        onClosed:()=>{if(call===active)void stopCall();},
+        onEvent:value=>{
+          if(call!==active)return;
+          if(value.type==='tool.call'&&value.name!=='end_call')tasks.add(value.callId);
+          if(value.type==='tool.result')tasks.delete(value.callId);
+          if(value.type.startsWith('tool.'))taskState();
+          if(value.type==='transcript') {
+            active.relayTurns??={};
+            const id=active.relayTurns[value.role]??=crypto.randomUUID();
+            renderTranscript(presentation.consume(value.final?{type:'turn.done',turn:{id,role:value.role,transcript:value.text}}:
+              {type:'output_transcript.delta',turn_id:id,delta:value.text}));
+            if(value.final)delete active.relayTurns[value.role];
+          }
+        }});
+      await active.relay.start();if(call!==active)return;
+      setCallState('connected');$("badge").textContent='通话中';$("stopLabel").textContent='结束通话';
+      $("steerText").disabled=false;$("steer").disabled=false;setStatus('V 正在听，直接说话就好');
+      void active.sounds.connected();
+      active.heartbeat=setInterval(()=>void api('heartbeat',{voiceSessionId:active.voiceSessionId}).catch(()=>{}),15000);
+      return;
+    }
+    for (const track of active.stream.getAudioTracks()) active.pc.addTrack(track, active.stream);
     active.channel = active.pc.createDataChannel("oai-events"); active.channel.onmessage = (event) => { if (call === active) providerMessage(event); };
     active.events = new EventSource(apiUrl("events"));
     active.events.onmessage = (event) => {
@@ -605,6 +640,10 @@ async function initializeEntry() {
     const status = await response.json();
     if (!response.ok) throw new Error(status.error ?? "暂时无法连接 V，请稍后重试。");
     liveReady = status.ready === true;
+    if ($("voiceModel")) for(const model of status.models??[]) {
+      const option=[...$("voiceModel").options].find(o=>o.value===model.id);
+      if(option)option.disabled=!model.available;
+    }
     $("badge").textContent = liveReady ? "可以拨号" : "页面预览";
     if (!liveReady) setStatus("这是页面预览，真实通话需连接候选服务。");
   } catch (error) {

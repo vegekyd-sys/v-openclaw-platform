@@ -10,6 +10,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {configureCandidateOpenAIAuth,installCandidateOpenAIAuth} from './gpt-live-call-live-auth.mjs';
 import {GPT_LIVE_CALL_INSTRUCTIONS} from './gpt-live-h5/instructions.mjs';
 import {createLiveH5Server} from './gpt-live-h5/server.mjs';
+import {createDirectVoiceService} from './realtime-direct-tools/session.mjs';
 import {parsePublicProgressDiagnostics} from './gpt-live-h5-provenance-evidence.mjs';
 import {collectCandidateSelectedModelReferences,assertCandidateSelectedModelsPreserved,scopeCandidateAgentToAgentAllow,disableCandidateParallelToolCalls,preflightCandidateConfig,applyCandidateBackendRouteDiagnostic,assertCandidateBackendRouteDiagnosticPair,assertCandidateBackendDiagnosticPaths} from './gpt-live-candidate-config-guard.mjs';
 import {startOwnedProcObserver} from './gpt-live-candidate-native/os-observer-lifecycle.mjs';
@@ -353,7 +354,23 @@ try {
     if(method==='talk.client.create')fs.writeFileSync(sessionPath,JSON.stringify({sessionKey:params.sessionKey,voiceSessionId:result.voiceSessionId}),{mode:0o600});
     return result;
   }};
-  bridge=createLiveH5Server({gateway:guardedGateway,offer:async(reservation,sdp)=>{
+  let directVoice;
+  if(process.env.V_REALTIME_DIRECT_TOOLS==='1') {
+    const wsModule=await import(`${runtime}/openclaw/node_modules/ws/wrapper.mjs`);
+    const credentialPath=process.env.V_REALTIME_GROK_CREDENTIAL_FILE;
+    let grokKey=process.env.XAI_API_KEY;
+    if(credentialPath){const st=fs.lstatSync(credentialPath);assert(st.isFile()&&(st.mode&0o077)===0,'Grok credential file must be private');grokKey=JSON.parse(fs.readFileSync(credentialPath)).apiKey;}
+    const auditPath=path.join(process.env.GPT_LIVE_H5_EVIDENCE_DIR,'direct-voice-audit.jsonl');
+    fs.writeFileSync(auditPath,'',{mode:0o600,flag:'wx'});
+    directVoice=createDirectVoiceService({gateway:guardedGateway,wsModule,apiKeys:{seeduplex:process.env.VOLCENGINE_REALTIME_API_KEY,grok:grokKey},
+      audit:value=>fs.appendFileSync(auditPath,JSON.stringify({at:Date.now(),...value})+'\n'),
+      onOutputAudio:(id,pcm)=>fs.appendFileSync(path.join(process.env.GPT_LIVE_H5_EVIDENCE_DIR,`provider-${id}.pcm`),pcm,{mode:0o600}),
+      loadContext:async sessionKey=>{
+        const history=await guardedGateway.request('chat.history',{sessionKey,limit:6},{timeoutMs:10000});
+        return JSON.stringify((history.messages??[]).map(m=>({role:m.role,content:m.content}))).slice(-12000);
+      }});
+  }
+  bridge=createLiveH5Server({gateway:guardedGateway,directVoice,offer:async(reservation,sdp)=>{
     const response=await fetch(`http://127.0.0.1:${config.gateway.port}${reservation.offerUrl}`,{method:'POST',headers:{authorization:`Bearer ${reservation.clientSecret}`,'content-type':'application/sdp'},body:sdp,signal:AbortSignal.timeout(25000)});
     assert(response.ok,'Native SDP exchange failed');return response.text();
   }});
