@@ -16,6 +16,7 @@ import { HandoffRegistry, CLOSE_CODES } from "./lib/registry.mjs";
 import { acceptWebSocket, isWebSocketUpgrade, rejectUpgrade } from "./lib/ws.mjs";
 import { connectVnc, bridgeViewer } from "./lib/rfb-proxy.mjs";
 import { createDisplayLayout } from "./lib/display-layout.mjs";
+import { createInputReset } from "./lib/input-reset.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(HERE, "public");
@@ -225,7 +226,7 @@ function clientIp(req) {
   return req.socket?.remoteAddress ?? null;
 }
 
-export function createService(config, { log = console, layout: layoutOverride } = {}) {
+export function createService(config, { log = console, layout: layoutOverride, inputReset: inputResetOverride } = {}) {
   fs.mkdirSync(config.stateDir, { recursive: true, mode: 0o700 });
   const adminToken = readSecretFile(config.adminTokenFile);
   if (adminToken.length < 16) {
@@ -246,6 +247,8 @@ export function createService(config, { log = console, layout: layoutOverride } 
   // loadConfig turns the phone layout on by default; a bare config (tests) leaves it off.
   layout =
     layoutOverride ?? (config.layout?.enabled ? createDisplayLayout({ display: config.layout.display, base: config.layout.base, log }) : null);
+  // Same desktop as the layout: clear input V's computer use left pressed before a person takes over.
+  const inputReset = inputResetOverride ?? (config.layout?.enabled ? createInputReset({ display: config.layout.display, log }) : null);
   // The phone layout exists only while the viewer that asked for it is still the controller.
   // Every control change is audited, so checking here (and on the timer) covers release,
   // hand-back, idle demotion, disconnect, takeover and the end of the handoff.
@@ -338,6 +341,9 @@ export function createService(config, { log = console, layout: layoutOverride } 
       } else if (req.method === "POST" && route === "/api/control") {
         const body = await readJsonBody(req);
         const secret = typeof body.viewer === "string" ? body.viewer : "";
+        if (body.take && registry.viewers.get(secret)?.canControl) {
+          await inputReset?.releaseStuck();
+        }
         const result = body.take ? registry.takeControl(secret) : body.handBack ? registry.handBackFromPage(secret) : registry.releaseControl(secret);
         await layoutSettled();
         json(res, result.error ? 403 : 200, result);
