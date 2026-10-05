@@ -253,6 +253,36 @@ try {
     if (records.some((r) => !r.inline)) assert.equal(finalIds.length, 1, "the woken requester's closing words were not posted");
   }
 
+  // ------------------------------------------------------------ async: the target works longer than any wait
+  if (only.includes("async")) {
+    const dmKey = `agent:makaron:feishu:direct:${OWNER}`;
+    const groupKey = `agent:makaron:feishu:group:${GROUP}`;
+    if (!only.includes("relay")) {
+      agentTurn(null, "【候选测试·准备】只回复：就绪", { deliverTo: `chat:${GROUP}`, timeout: 300 });
+      await rpc("sessions.patch", { key: groupKey, label: GROUP_NAME }).catch(() => {});
+    }
+    const before = new Set(ledger().map((r) => r.id));
+    const mark = lines.length;
+    const coordinator = agentTurn(dmKey, `【候选测试·异步】让「${GROUP_NAME}」群里的 V 用 exec 执行 \`sleep 75 && date\`，然后把那个时间告诉我。不用一直等它，它做完会回来。`, { deliverTo: `user:${OWNER}` });
+    let rec;
+    for (const until = Date.now() + 600_000; Date.now() < until; await sleep(2_000)) {
+      rec = ledger().filter((r) => !before.has(r.id)).sort((a, b) => a.createdAt - b.createdAt)[0];
+      if (rec && ["done", "failed"].includes(rec.status)) break;
+    }
+    await sleep(8_000);
+    rec = rec ? JSON.parse(fs.readFileSync(path.join(storeDir, `${rec.id}.json`), "utf8")) : null;
+    summary.scenarios.async = {
+      coordinatorTurn: coordinator,
+      record: rec && { id: rec.id, status: rec.status, inline: rec.inline, targetDisposition: rec.targetDisposition, wokenBy: rec.wokenBy ?? "core", reply: String(rec.reply ?? "").slice(0, 300), error: rec.error, secsToReply: rec.finishedAt ? Math.round((rec.finishedAt - rec.createdAt) / 1000) : null, finalMessageId: rec.finalMessageId ?? null, threadCards: rec.threadCards },
+      log: logSince(mark, /session relay|sessions_send|sessions-send/iu).slice(-20),
+    };
+    assert(rec, "no sessions_send was followed");
+    assert.equal(rec.inline, false, "the send was answered inline; the async path was not exercised");
+    assert.equal(rec.status, "done", `async relay ended ${rec.status}: ${rec.error ?? ""}`);
+    assert(rec.finishedAt - rec.createdAt > 60_000, "the target did not take longer than a minute");
+    assert(rec.finalMessageId, "the woken requester's closing words were not posted");
+  }
+
   summary.ok = true;
 } catch (error) {
   summary.ok = false;
