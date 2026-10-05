@@ -117,7 +117,7 @@ async function fixture(t, options = {}) {
     document: { body, getElementById: element, createElement: () => new Element() },
     URLSearchParams,
     window: {
-      location: { hash: options.hash ?? "", pathname: "/voice/", search: "" },
+      location: { hash: options.hash ?? "", pathname: "/voice/", search: options.search ?? "" },
       history: { replaceState: (...args) => options.replaceState?.(...args) },
       addEventListener: (type, listener) => pageEvents.set(type, listener),
     },
@@ -128,9 +128,9 @@ async function fixture(t, options = {}) {
     MediaStream: class { constructor(tracks) { Object.assign(this, stream(tracks)); } },
     Blob,
     fetch: async (url, init) => {
-      const route = url.split("/").at(-1);
+      const route = url.split("?")[0].split("/").at(-1);
       const payload = init?.body ? JSON.parse(init.body) : undefined;
-      requests.push({ route, payload });
+      requests.push({ route, payload, url });
       const defaultResult = route === "status" ? { ready: true }
         : route === "session" ? { voiceSessionId: `voice-${++sessionId}` }
         : route === "offer" ? { sdp: "v=0\r\nanswer" } : { ok: true };
@@ -157,8 +157,19 @@ test("shared voice link exchanges fragment access before status and removes the 
   const f = await fixture(t, { hash: "#access=private-test-access", replaceState: (...args) => replaced.push(args) });
   assert.deepEqual(f.requests.slice(0, 2).map(row => row.route), ["access", "status"]);
   assert.equal(f.requests[0].payload.access, "private-test-access");
-  assert.equal(replaced[0][2], "/voice/");
+  assert.equal(replaced[0][2], "/voice/?entry=tianyi");
+  assert.equal(f.requests[1].url, "./api/status?entry=tianyi");
   assert.equal(f.requests.some(row => row.route === "session"), false);
+});
+
+test("bare personal page and retained owner link use the owner API on every operation", async t => {
+  const personal = await fixture(t);
+  assert.equal(personal.requests[0].url, "./api/status?entry=tianyi");
+  const owner = await fixture(t, { search: "?entry=tianyi" });
+  await owner.context.startCall();
+  await owner.context.stopCall();
+  assert.ok(owner.requests.some(row => row.route === "session"));
+  assert.ok(owner.requests.every(row => row.url.endsWith("?entry=tianyi")));
 });
 
 test("stopping before microphone permission returns releases every late track without creating a session", async (t) => {
@@ -596,7 +607,7 @@ test("page navigation closes the active call, meter, event stream, mic, sound an
   const peer=f.peers[0]; peer.connectionState="connected"; peer.onconnectionstatechange();
   await peer.ontrack({track:track()}); assert(f.intervals.size>0);
   f.pageEvents.get("pagehide")(); await tick();
-  assert.equal(f.beacons.length,1); assert.equal(f.beacons[0].url,"./api/close");
+  assert.equal(f.beacons.length,1); assert.equal(f.beacons[0].url,"./api/close?entry=tianyi");
   assert.deepEqual(JSON.parse(await f.beacons[0].body.text()),{voiceSessionId:"voice-1"});
   assert.equal(f.intervals.size,0); assert.equal(f.timeouts.size,0);
   assert.equal(peer.closed,true); assert.equal(peer.channel.closed,true);

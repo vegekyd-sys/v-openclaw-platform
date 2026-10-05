@@ -291,7 +291,7 @@ Tianyi 要求钉钉做成真按钮。做法（调研见会话）：
 非 owner 能用 `/status`、`/stop`、`/think`、`/compact`、`/model`、行内指令等全部非 owner 专属命令。只改插件的 `CommandAuthorized` 关不上这个口子
 （`open` 策略下人人都过白名单），要靠下面的配置。
 
-### 生产配置（要 Tianyi 批准后才改）
+### 生产配置（要 Tianyi 批准后才改；已做成 `lab/release-files/v-experience-multichannel/`，见第 19 节）
 
 V 现在：`commands.ownerAllowFrom = ["feishu:<Tianyi>", "telegram:<Tianyi>"]`，`commands.allowFrom = { "feishu": ["*"] }`；
 钉钉、企微、Slack 都是 `dmPolicy: open, allowFrom: ["*"]`、没有 owner。需要：
@@ -385,7 +385,7 @@ SECRET_SAVED、链接第二次用返回 410、没有出现取消提示，并扫�
 链接的有效分钟数跟问题本身的到期时间走（这次 `secrets` 请求是 5 分钟）。第一次并发跑三个 candidate 时 VLab 磁盘短暂写满（ENOSPC），
 之后都改为串行；共享实例未受影响（`openclaw-vlab-production-mirror-v8` 一直 active，事后剩余 29G）。
 
-上 V 需要 Tianyi 批准的步骤（都未执行）：
+上 V 需要 Tianyi 批准的步骤（都未执行；10/05 起按第 19 节的发版流程走，下面保留为设计说明）：
 
 1. 合入 dev；渠道补丁（Telegram core chunk、钉钉、企微插件）本身也还没上 V，要一起走共享 VLab 集成验收与 promote。
 2. core：按线上字节重建 `builtin-openclaw-zQV8Wwjr.js`（`node patch-openclaw91-secret-entry.mjs --out-dir <dir> <线上 dist>`，只有 builtin 变），
@@ -512,3 +512,32 @@ SECRET_SAVED、链接第二次用返回 410、没有出现取消提示，并扫�
 - 最终要合：两套逻辑会分叉，升级时 dist 补丁要搬两份，新渠道（Teams）只需写薄补丁。
 - 现在不合：飞书是最稳、用得最多的渠道；v-experience 刚在钉钉 / 企微 / Telegram 真机验收、还没上生产；飞书用原生卡片组件（真横线、颜色、表单密码框、可原地更新的「电脑」卡、审批卡），v-experience 要先有飞书渲染器，否则样子倒退。两边共用 core 同一批事件，行为已一致，不急。
 - 做法：v-experience 先在三个渠道生产跑两三周 → 下一次 OpenClaw 升级（源码 fork 方案）时把 v-experience 写进 fork 源码 → 分块迁飞书：先迁逻辑（提问运行时、后台任务行、进度清单状态），渲染保留飞书原生组件作为「飞书渲染器」，每块用飞书现有测试回归 → 审批、主人身份这类控制台功能继续只在飞书。
+
+## 19. 上线流程：共享 VLab → V → ALIGNED（2026-10-05）
+
+钉钉连接器、企微插件、接管服务、凭据链接服务以前都不在发版流程里（VLab 从 runtime/ 外面加载这两个插件，parity 也不看它们），所以多渠道改动只能手工上 V，上完 VLab 和 V 就对不齐。现在它们是组件表 `scripts/lib/runtime-components.mjs` 里的普通组件（见 `docs/vlab-v-sync-flow.md` 第 4.6 节），这一轮和以后的多渠道更新都走同一条路。
+
+一次性（Tianyi 批准后，持 lease）：
+
+1. 更新 VLab 上 server 工具副本里的 `lab/shared/files.mjs`（允许 `extensions/` 目标）。
+2. `node scripts/vlab-channel-plugins-prep.mjs` 看计划 → `--owner <o> --apply`：钉钉、企微按 V 的目录名搬进 VLab runtime/，受控重启一次。
+3. `node lab/vlab.mjs baseline --id … --replaceCurrent true` → `node scripts/vlab-v-parity.mjs` 必须是 ALIGNED → `node lab/vlab.mjs align`。
+
+这一轮（顺序和回退见 `lab/release-files/v-experience-multichannel/README.md`）：
+
+| # | 在哪 | 做什么 |
+|---|---|---|
+| 1 | VLab | 运行时字节（core command-auth V3、Telegram、secret-entry `channels-v1`；钉钉、企微补丁）按 VLab 当前字节构建 plan → package / stage / deploy |
+| 2 | VLab | `install-desktop-host.sh`、`install-secret-entry-host.sh`（`UNIT_PREFIX=vlab-`，凭据页只在 tailnet 地址）用同一个提交 |
+| 3 | VLab | `activate.mjs vlab --owner <o>`：测试机器人、`commands.allowFrom`、卡片模板；这次重启也让 Gateway 读到 `V_SECRET_ENTRY_*` |
+| 4 | VLab | 真机验收（第 16、17 节的清单），`vlab.mjs accept`；`vlab-v-parity --pending <plan>`（plan 带 `"sidecars"`）= AHEAD |
+| 5 | V | 先装旁路服务（同一提交；cloudflared 加 `/secret-entry`） |
+| 6 | V | `promote-to-v.mjs --apply`：同一份字节、捕获（多出 `.dingtalk`、`.wecom`）、哨兵、align |
+| 7 | V | `activate.mjs production`：`commands.allowFrom` + 受控重启，字节和环境变量这时生效 |
+| 8 | 仓库 | 捕获 + CHANGELOG（钉钉 / 企微记为首次纳入存档）、发版 PR、tag；接管组件改 `blocking: true` |
+
+未验证 / 风险：
+
+- **VLab 加载插件的方式与 V 不同，信任状态可能不同**：V 不在 `plugins.load.paths` 里列这两个插件（钉钉在 npm 安装目录，企微在全局 `~/.openclaw/extensions`），VLab 用 load path。9.1 的 `openKeyedStore` / `openChannelIngressQueue` / `dispatchHookAgentTurn` 等运行时方法和渠道 owner 判定只对 bundled 或 `trustedOfficialInstall` 插件开放；live candidate 为此给 loader 打过补丁。第 3 步之前在 V 和 VLab 上各查一次两个插件的 origin / trusted（`openclaw plugins inspect`，只读），不一致就先让 VLab 用和 V 相同的方式加载，否则 VLab 测到的行为不代表 V。
+- 渠道凭据靠 OpenClaw 的配置 `${ENV}` 替换（VLab 的 Gateway token 已经这样用）；第 3 步后先看三个渠道是否都连上。
+- 接管服务的安装脚本会在 Gateway 运行时替换 `/opt/v-desktop-handoff/plugin` 的文件（原来就如此）；新插件代码在下一次 Gateway 启动才生效，中间如有懒加载可能读到新文件。

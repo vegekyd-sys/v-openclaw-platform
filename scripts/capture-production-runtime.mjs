@@ -16,6 +16,7 @@
 // A component with no upstream install to diff against (the worker plugin, a
 // patched channel plugin) takes `--base none`: every file is captured. Use
 // `--exclude node_modules` (repeatable) to leave installed dependencies out.
+// `--sudo` runs the remote reads as root, for runtimes the ssh user cannot read.
 // Hashing runs at nice 19 / idle IO class: the host is production.
 //
 // `--base npm:openclaw@2026.9.1[:dist]` diffs against the pristine published
@@ -43,8 +44,11 @@ for (const key of required) {
 const repoRoot = resolve(dirname(new URL(import.meta.url).pathname), '..');
 const outDir = resolve(repoRoot, args.out);
 
+// `--sudo`: the runtime sits where the ssh user cannot read it (V's channel
+// plugins under /home/openclaw/.openclaw); every remote command runs as root.
+const remote = (script) => (args.sudo ? `sudo -n bash -c ${shq(script)}` : script);
 const ssh = (script) =>
-  execFileSync('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=30', args.host, script], {
+  execFileSync('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=30', args.host, remote(script)], {
     encoding: 'utf8',
     maxBuffer: 256 * 1024 * 1024,
   });
@@ -139,7 +143,7 @@ const list = diff.map((f) => f.path).join('\n');
 const tar = execFileSync(
   'ssh',
   ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=30', args.host,
-    `cd ${shq(args.runtime)} && tar -czf - -T -`],
+    remote(`cd ${shq(args.runtime)} && tar -czf - -T -`)],
   { input: list, maxBuffer: 512 * 1024 * 1024 },
 );
 const distDir = join(outDir, 'dist');

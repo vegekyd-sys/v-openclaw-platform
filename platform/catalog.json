@@ -188,7 +188,8 @@
     {
       "id": "release-parity",
       "purpose": "VLab 与生产 V 的字节对齐：残留判定、发版前后的最小差异",
-      "files": ["scripts/lib/runtime-residue.test.mjs", "lab/release-files/db91-preflight-timeout-env/bootstrap-timeout.test.mjs", "scripts/promote-to-v.test.mjs"]
+      "files": ["scripts/lib/runtime-residue.test.mjs", "lab/release-files/db91-preflight-timeout-env/bootstrap-timeout.test.mjs", "scripts/promote-to-v.test.mjs",
+        "scripts/vlab-channel-plugins-prep.test.mjs", "scripts/lib/runtime-components.test.mjs", "tests/install-secret-entry-host.test.mjs"]
     },
     {
       "id": "lab-and-release-regressions",
@@ -216,7 +217,7 @@
         "lab/candidate/deepseek-budget-image.test.mjs",
         "lab/candidate/completions-overflow-signal.test.mjs",
         "lab/release-files/codex-plugins-off/config.test.mjs",
-        "lab/release-files/web-search-parallel/config.test.mjs",
+        "lab/release-files/web-search-parallel/config.test.mjs", "lab/release-files/v-experience-multichannel/config.test.mjs",
         "lab/canonical-session-scan.test.mjs",
         "lab/cron-shared-tool-surface.test.mjs",
         "lab/db91-benchmark-profile.test.mjs",
@@ -235,6 +236,7 @@
         "lab/gateway-self-config-realpath.test.mjs",
         "lab/gpt-live-backend-call-control.test.mjs",
         "lab/gpt-live-call-lifecycle.test.mjs",
+        "lab/gpt-live-caller-context.test.mjs",
         "lab/gpt-live-call-live-auth.test.mjs",
         "lab/gpt-live-call-live-evidence.test.mjs",
         "lab/gpt-live-candidate-config-guard.test.mjs",
@@ -273,6 +275,7 @@
         "lab/db91-shrink-reuse.test.mjs",
         "lab/placement-evidence-absence.test.mjs",
         "lab/worker-prewarm-v.test.mjs",
+        "lab/feishu-firsttext-e2e.test.mjs",
         "lab/memory-search-fast.test.mjs",
         "lab/memory-search-query-isolation.test.mjs",
         "lab/memory-search-timeout.test.mjs",
@@ -349,6 +352,7 @@
     {"file": "lab/candidate/memory-search-fast.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
     {"file": "lab/candidate/memory-indexer-burst.test.mjs", "reason": "需要 VLab 候选运行时和共享 makaron 记忆文件副本，并要带入 V 上旧版 indexer（support），只能在 vlab.mjs candidate 里跑。"},
     {"file": "lab/candidate/computer-frame-prune.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
+    {"file": "lab/candidate/x-search-effort.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
     {"file": "lab/candidate/talk-input-stall-static.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
     {"file": "lab/candidate/talk-owner-terminal.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
     {"file": "lab/candidate/talk-voice-isolated.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},

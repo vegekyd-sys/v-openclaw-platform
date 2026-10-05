@@ -1,0 +1,15 @@
+{
+  "baseRelease": "gpt-live-voice-20261005-2189415",
+  "files": [
+    {
+      "source": "lab/release-files/gpt-live-caller-links/talk-DkFuKRod.js",
+      "target": "openclaw/dist/talk-DkFuKRod.js",
+      "before": "560d5cf27a149ca53eb1ec0b8b7932f11397cc412a8a9206a80edb3c2dee3f03"
+    },
+    {
+      "source": "lab/release-files/gpt-live-caller-links/gpt-live-call-lifecycle.mjs",
+      "target": "openclaw/dist/gpt-live-call-lifecycle.mjs",
+      "before": "7319827647a17e471b06102cca3b58724875498fe5cf40578e493b4343d2a165"
+    }
+  ]
+}
