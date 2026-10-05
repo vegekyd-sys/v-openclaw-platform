@@ -47,6 +47,90 @@
 - `wecom` dist/src/monitor.js  99efa7d6 → d4fe3561
 - `wecom` dist/src/v-experience.mjs  — → 5d939fa7
 
+## v2026.9.1-db91.6-firsttext-runid-20261005
+
+上线：2026-10-05 16:55 CST 安装，**还没有重启 V**（飞书插件在 Gateway 启动时加载）  ·  tag `v2026.9.1-db91.6-firsttext-runid-20261005`
+
+**摘要**：`[firsttext-e2e.1]` 首字记录多两项：`runId` 和 `runStartAtMs`（飞书回复对象接上 `onAgentRunStart`）。有了 runId，每条消息能和 worker 的 `[firsttext-worker-phases]` 对上；「V 收到 → 运行开始」就是消息在 Gateway 里的排队时间，统计脚本多了 queue 这一段（#209）。共享 VLab c5：5/5 条都有记录，其中 2/5 带 runId，并能和对应运行的 worker 阶段对上；部署重启后的第一轮，收到到运行开始 P50 13.8 s。
+
+相对上一版 `v2026.9.1-db91.6-firsttext-e2e-20261005`：1 个文件变化。
+
+**经 VLab 发版 `firsttext-runid-20261005`**（claude-firsttext-e2e）
+- `feishu` monitor.account-WFdlCDhR.js  943b0116 → ec089142
+
+**这期间合入 dev 的 PR**：
+- #209 feat(feishu): 首字记录带上运行 ID 和运行开始时间
+
+## v2026.9.1-db91.6-firsttext-e2e-20261005
+
+上线：2026-10-05 14:57 CST 安装，**还没有重启 V**（飞书插件在 Gateway 启动时加载，下次重启才生效）  ·  tag `v2026.9.1-db91.6-firsttext-e2e-20261005`
+
+**摘要**：以前量的首字都不是用户看到字的时刻：模型吐出第一个字、回复写进库、卡片创建时间都会偏早约 2 s。V 是在模型出第一个字之后才建卡片的，要调两次飞书接口，然后才推文字。现在飞书插件对每条回复的消息记一行 `[firsttext-e2e.1]`，内容包括：飞书发送时间、V 收到、开始分发、打字提示、第一段思考或第一个正文字到达插件、卡片开始建和建好、第一次推出内容、第一次推出正文、不走卡片的回复送达，以及 harness 和模型。不记消息内容，日志调用不会影响回复（#202）。`scripts/firsttext-e2e-report.mjs` 在 V 上读这些记录，给出首字 P50/P95/P99/Max 和分段（入站、agent、投递、建卡片）。共享 VLab 真实飞书 12/12 条都记到；热的一轮首字 P50 8.2 s、P95 9.3 s，其中入站 0.6 s、agent 6.9 s、投递 0.5 s。
+
+这也是钉钉、企微插件第一次被捕获（`.dingtalk`、`.wecom`；捕获脚本在 #204 加了 sudo）。
+
+相对上一版 `v2026.9.1-db91.6-worker-prewarm-20261005`：1 个文件变化。
+
+**经 VLab 发版 `firsttext-e2e-20261005`**（claude-firsttext-e2e，dev `63d6bc1f`）
+- `feishu` monitor.account-WFdlCDhR.js  b9ba9fc8 → 943b0116
+
+**这期间合入 dev 的 PR**：
+- #202 feat(feishu): 每条消息记录用户口径的首字时间
+
+## v2026.9.1-db91.6-worker-prewarm-20261005
+
+上线：2026-10-05 13:12 CST 安装，13:15 重启 Gateway，75 s 后 5 个 worker 全部预热完成  ·  tag `v2026.9.1-db91.6-worker-prewarm-20261005`
+
+**摘要**：V 一直常驻 5 个 worker，但「常驻」只是进程起好了。每个 worker 接的第一单还要付一整套一次性准备，V 上实测进 worker 到出第一个字要 13 s，热的只要 2–3 s。重启、按内存回收换新、扩容之后 worker 都会变冷。V 用过的每一版 worker 都没有回合级预热，9/12 的 VLab 候选也从没上线。
+
+现在 worker 报 ready 之前会先做三件事：拿一次 prepared-model 租约；加载 agent 命令模块的 14 个懒加载模块；打开本进程的会话库，再只读解析一次会话。最后这一步之前，进程里没有打开的库连接，每次只读查找都会新开连接，把全部会话的规范 key 重新扫一遍。预热不写库、不调模型、不调工具，失败时照常 ready。用 `OPENCLAW_WORKER_EAGER_PREPARE=0` 可以关掉（#198）。
+
+- VLab candidate：冷 worker 进 worker 到调模型 22.6–24.2 s → 5.8–6.2 s。
+- 共享 VLab 真实飞书：重启后首轮 31.5–37.5 s → 15.6–21.4 s。
+- V 重启后（13:17 c15，15/15）：首轮回复中位 23.5 s，worker 第一单的准备运行时从 4 s 降到 0.13 s，但从进命令到调模型仍要 7–12 s；第二轮中位 4.2 s。剩下的冷开销（技能快照、构建工具集、首次 import，以及 Gateway 重启后的开销）留给后续。
+
+相对上一版 `v2026.9.1-db91.6-voice-confirmation-switch-20261005`：3 个文件变化。
+
+**经 VLab 发版 `worker-prewarm-20261005`**（claude-worker-prewarm-v，dev `a1432ea8`）
+- `core` agent-command-DPfawBbr.js  f9142430 → e8a0c7e4
+- `core` agent-command-DeP5kHlK.js  893415c5 → e7b522ff
+- `worker` worker.mjs  4bf1472d → 898fd1fc
+
+**这期间合入 dev 的 PR**：
+- #198 perf(worker): worker 接第一单之前先做完准备（预热）
+
+## v2026.9.1-db91.6-voice-confirmation-switch-20261005
+
+上线：2026-10-05 12:51 CST 安装，12:52:51 受控重启 Gateway（worker 全空闲、无通话，原生 suspend/drain 后重启），12:54:27 就绪（95 s）·  tag `v2026.9.1-db91.6-voice-confirmation-switch-20261005`
+
+**摘要**：GPT Live 电话里 V 能正常用自己的工具了，语音查飞书日历不再报 `VOICE_CONFIRMATION_REQUIRED`（PR #196）。这道门是 OpenClaw 原生的语音口头确认：`exec` 只把 cat/grep/ls 等当只读，`lark-cli` 一律要确认。过去 V 上不拦，只是因为回合跑在 worker 里、worker 看不到语音绑定；GPT Live 把语音 exec 交回 Gateway 后它才生效（生产记录：音响 V 17/17 次执行，GPT Live 11/11 次被拦）。现在默认放行，语音和文字的 V 权限一致，本人入口和普通入口都放开（Tianyi 定）；`OPENCLAW_VOICE_SPOKEN_CONFIRMATION=1` 可恢复原生门。
+
+**V 上验收**：2026-10-05 12:55–12:57 CST，公网 https://openclaw.tianyi.live/voice/ 真实 GPT Live 通话（V 本机无头 Chrome，合成用户语音「帮我查一下今天飞书日历上有哪些安排」，访问 cookie 在服务器端签发）。会话 `gpt-live-h5-experiment-5aefdaf6`：后台 7 次 exec 全部执行、0 次被拦，`lark-cli calendar +agenda --as user` 返回三场日程；提问后 44 s 语音读出「九点半到十点半长老会、三点到六点客户沟通 · Tianyi × 袁振、六点到七点半福餐厅吃饭」，与工具结果逐条一致。
+
+相对上一版 `v2026.9.1-db91.6-placement-evidence-20261005`：1 个文件变化。
+
+**经 VLab 发版 `voice-confirmation-switch-v1`**（claude-voice-confirmation-switch，dev `71d3ecf2`）
+> 验收：Shared VLab 2026-10-05 12:45-12:49 CST: real GPT Live call (gpt-live-1-codex, WebRTC) through the dev H5 (transient loopback unit, stopped) on the shared Gateway; synthetic USER audio "帮我查一下今天飞书日历上有哪些安排". Voice session 55062026, session gpt-live-h5-experiment-02fa6d22: backend ran 25 exec calls starting with lark-cli calendar +agenda, all executed, 0 VOICE_CONFIRMATION_REQUIRED (V before fix: 11/1…
+- `core` agent-tools.before-tool-call-g2OT63u5.js  f410f20c → 618ab46a
+
+## v2026.9.1-db91.6-placement-evidence-20261005
+
+上线：2026-10-05 10:38 CST 安装，10:39 重启 Gateway，10:41 就绪（PID 1518653）  ·  tag `v2026.9.1-db91.6-placement-evidence-20261005`
+
+**摘要**：Gateway 每分钟会把所有 worker placement 对应的会话读出来、逐条解析一遍，用来判断有没有孤儿记录。placement 只增不减：9/18 有 295 条，10/05 有 2394 条，大头来自夜班。这一步就变成每分钟在主线程上卡 2–3 秒，落在卡顿里的消息都要等它结束。现在只用索引判断「会话还在不在」，只有 key 已经换了新会话 id 时才解析那一条（#193）。
+
+- VLab candidate（3172 条）：每次检查 2353→198 ms，最长阻塞 8.5 s→约 0.5 s；判断结果与原逻辑 3172/3172 一致。
+- 共享 VLab 真实飞书：6 个压测群 /deepseek，每条到会话库核对回复，旧代码 24/24、新代码 24/24 成功，中位数 3.1–3.5 s。5 分钟剖析里超过 2 s 的主线程占用 10→3 次。
+
+相对上一版 `v2026.9.1-db91.6-gpt-live-voice-20261005`：2 个文件变化。
+
+**经 VLab 发版 `placement-evidence-20261005-b`**（claude-placement-evidence，dev `790ae74c`）
+- `core` server-worker-placement-startup-BvPREvpr.js  96b5b482 → 8366d71a
+- `core` session-accessor-K0XuW6ln.js  21f2a569 → 5c2eb542
+
+**这期间合入 dev 的 PR**：
+- #193 fix(gateway): 60 秒 placement 对账不再逐条解析会话
+
 ## v2026.9.1-db91.6-gpt-live-voice-20261005
 
 上线：2026-10-05 01:34 CST 受控启动 Gateway，01:41 公网语音服务就绪。tag `v2026.9.1-db91.6-gpt-live-voice-20261005`。
