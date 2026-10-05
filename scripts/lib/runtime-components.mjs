@@ -75,7 +75,7 @@ export const COMPONENTS = [
     v: { glob: `${V_HOME}/npm/projects/dingtalk-real-ai-dingtalk-connector-*/${DINGTALK_PLUGIN}` },
     vlab: { loadPath: /\/npm\/projects\/(dingtalk-real-ai-dingtalk-connector-[^/]+)\/node_modules\/@dingtalk-real-ai\/dingtalk-connector\/?$/,
       canonical: (vDir) => `npm/projects/${/\/npm\/projects\/([^/]+)\//.exec(vDir)[1]}/${DINGTALK_PLUGIN}` },
-    capture: { base: 'none', upstream: '@dingtalk-real-ai/dingtalk-connector (version in package.json)' },
+    capture: { base: 'none', sudo: true, upstream: '@dingtalk-real-ai/dingtalk-connector (version in package.json)' },
   },
   {
     id: 'wecom', kind: 'runtime', label: 'wecom', suffix: '.wecom', blocking: true,
@@ -84,7 +84,7 @@ export const COMPONENTS = [
     // the one it loads is the extension.
     v: { fixed: `${V_HOME}/extensions/wecom-openclaw-plugin` },
     vlab: { loadPath: /\/extensions\/wecom-openclaw-plugin\/?$/, canonical: () => 'extensions/wecom-openclaw-plugin' },
-    capture: { base: 'none', upstream: '@wecom/wecom-openclaw-plugin (version in package.json)' },
+    capture: { base: 'none', sudo: true, upstream: '@wecom/wecom-openclaw-plugin (version in package.json)' },
   },
   {
     // 2026-10-05: V was installed from a newer commit than VLab (V has
@@ -157,6 +157,8 @@ export function captureRuns(name, vDirs) {
     if (c.capture.base === 'none') args.push('--exclude', 'node_modules');
     if (c.capture.upstream) args.push('--upstream', c.capture.upstream);
     if (c.capture.sourceCheckout) args.push('--sourceCheckout', `${dir.replace(/\/core$/, '')}/source`);
+    // V's channel plugins live under /home/openclaw/.openclaw, unreadable for the ssh user.
+    if (c.capture.sudo) args.push('--sudo');
     return { id: c.id, suffix: c.suffix, release: name + c.suffix, runtime: c.capture.sub ? `${dir}/${c.capture.sub}` : dir,
       args, out: `release/captured/${name}${c.suffix}`, manifest: `release/captured/${name}${c.suffix}/manifest.json` };
   });

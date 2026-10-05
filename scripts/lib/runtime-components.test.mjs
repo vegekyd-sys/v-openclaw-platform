@@ -186,3 +186,10 @@ test('release notes: a component missing from the previous release is a first ap
   const next = { ...to, dingtalk: files({ 'dist/x.mjs': h('7'), 'package.json': h('6') }) };
   assert.deepEqual(diffReleaseComponents(to, next, ['dingtalk']).changes, [{ label: 'dingtalk', path: 'dist/x.mjs', before: h('5'), after: h('7') }]);
 });
+
+test('captures of V channel plugins read as root (they live under /home/openclaw/.openclaw)', () => {
+  const vDirs = { core: '/opt/x/core', worker: '/opt/w', feishu: '/opt/f', dingtalk: '/home/openclaw/.openclaw/npm/projects/d/node_modules/@dingtalk-real-ai/dingtalk-connector', wecom: '/home/openclaw/.openclaw/extensions/wecom-openclaw-plugin' };
+  const runs = Object.fromEntries(captureRuns('r', vDirs).map((r) => [r.id, r.args]));
+  assert(runs.dingtalk.includes('--sudo') && runs.wecom.includes('--sudo'));
+  assert(!runs.core.includes('--sudo') && !runs.feishu.includes('--sudo'));
+});
