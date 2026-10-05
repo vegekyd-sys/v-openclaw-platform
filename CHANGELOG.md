@@ -11,6 +11,42 @@
 
 ---
 
+## v-experience-channels-20261005
+
+上线：2026-10-05 23:19 CST  ·  tag `v-experience-channels-20261005`
+
+**摘要**：飞书式体验带到钉钉、企业微信、Telegram（过程卡、Ask User、插话、切换 Harness、「电脑」接管卡带截图和 接管/完成/跳过、凭据一次性链接卡），钉钉/企微的非主人只开放 `/model`（core command-auth V3）；同一次重启带上 X search 在 grok-4.6 上用 effort low（#186）和 GPT Live 本人电话接续指定飞书会话（#194）。
+
+- 运行时：18 个文件（下表）；配置 `activate.mjs production`：`commands.allowFrom` 加 telegram / dingtalk-connector / wecom = `*`，Gateway 23:16:29 受控重启一次。
+- 旁路服务（同一 dev 提交 717e1449）：`v-desktop-handoff` 更新（渠道卡片、按渠道告诉 agent 按钮名 #211）；新装 `v-secret-entry`（127.0.0.1:23960/23961），cloudflared `v-dashboard.yml` 加 `openclaw.tianyi.live/secret-entry`。
+- 电话入口 `https://openclaw.tianyi.live/voice/`（`openclaw-rtc-h5`）切到 `gpt-live-717e1449…`，用 `lab/gpt-live-voice-entry-release.mjs`；shared proof 只带 core/worker 文件（脚本还不认渠道插件路径，插件已由 promote-to-v 核对并 ALIGNED）。
+- 验收：VLab 真机见下方引用；V 上 23:23–23:26 x_search 真实回合 deepseek-flash 23 s / grok-4.7 33 s / vcc 44 s，tookMs 11.9–12.7 s、failures 0（改前 28–51 s、12 次中 8 次超时）；Telegram（@ClawdTY_bot）接管卡是公网「接管」按钮 + 完成 / 跳过。
+- 重启后清了 4 行旧 Gateway（pid 1995562）的 Codex app-server 登记（进程均已退出），之后无 `Cannot reap`。
+- 待办：钉钉提问卡模板导入自有应用（未导入时 V 上退回普通消息）；接管组件表 `handoff` 可改 `blocking: true`；非主人 `/status` 回的是上游通用「No reply was generated」。
+
+相对上一版 `v2026.9.1-db91.6-firsttext-runid-20261005`：18 个文件变化。
+
+**经 VLab 发版 `v-experience-channels-20261005-d`**（claude-v-experience-d0ff74，dev `717e1449`）
+> 验收：Shared VLab 2026-10-05 21:15-22:52 CST, release v-experience-channels-20261005-d (dev 717e1449; same channel bytes as -c on which real-client tests ran). Real clients on Tianyi's Mac: WeCom Vlab bot - 电脑 card (screenshot + 接管/完成/跳过), 完成 tap answered as new message (846605 fix), full takeover h_8cee41d112ab 22:03 control_taken_by -> handed_back_from_page -> wake_claimed, V reported the page; ask_us…
+- `core` bot-message-DC6p8sB3.js  8af1697a → f37781c4
+- `core` bot-native-command-builtins-mQhamMB9.js  20c55fca → 8b7908bd
+- `core` bot-native-command-dispatch-7hG7WSS2.js  c42a0baf → 58c78cb2
+- `core` builtin-openclaw-zQV8Wwjr.js  029eae85 → 84456470
+- `core` command-auth-DmNN2m2f.js  d24a6081 → 8b4858e3
+- `core` helpers-DEd6NfQU.js  18a6c7fc → 8ee65399
+- `core` talk-DkFuKRod.js  560d5cf2 → 91cf0741
+- `core` telegram-ingress-drain-factory-DJM2Jqrc.js  aff8b436 → acdf98ee
+- `core` x-search-shared-CJa_QAnc.js  72e642f3 → bdb1ab1e
+- `core` gpt-live-call-lifecycle.mjs  73198276 → 47afe3df
+- `core` v-experience.js  — → 5d939fa7
+- `dingtalk` dist/connection-DCvu-l09.mjs  860176dd → 397c42c3
+- `dingtalk` dist/message-handler-BUoLSylZ.mjs  5db2b71d → d914cbce
+- `dingtalk` dist/runtime-C81EKBS1.mjs  d2515aab → af93e121
+- `dingtalk` dist/v-experience.mjs  — → 5d939fa7
+- `wecom` dist/src/channel.js  079f5c6c → 30eb4a17
+- `wecom` dist/src/monitor.js  99efa7d6 → d4fe3561
+- `wecom` dist/src/v-experience.mjs  — → 5d939fa7
+
 ## v2026.9.1-db91.6-firsttext-runid-20261005
 
 上线：2026-10-05 16:55 CST 安装，**还没有重启 V**（飞书插件在 Gateway 启动时加载）  ·  tag `v2026.9.1-db91.6-firsttext-runid-20261005`
