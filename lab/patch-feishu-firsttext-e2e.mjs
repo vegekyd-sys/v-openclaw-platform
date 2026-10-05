@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 // The reply dispatcher already exists once per inbound message and owns the card, so it now
 // records the moments the user can see, and the handler logs one line when the turn ends:
 //   [firsttext-e2e.1] {sessionKey, chatId, inboundMessageId, sentAtMs (Feishu create_time),
-//     receivedAtMs, dispatcherAtMs, typingShownAtMs, firstReasoningAtMs / firstAnswerTokenAtMs
+//     receivedAtMs, dispatcherAtMs, runId / runStartAtMs (onAgentRunStart), typingShownAtMs, firstReasoningAtMs / firstAnswerTokenAtMs
 //     (first reasoning / answer text reaching the channel), cardStartAtMs, cardCreatedAtMs,
 //     firstPushAtMs (first card content pushed), firstAnswerPushAtMs (first push carrying
 //     answer text, not only reasoning/status), visibleAtMs (first non-streaming visible reply),
@@ -80,6 +80,12 @@ export function patchFeishuMonitor(source) {
     '\t\t\tonReasoningStream: reasoningPreviewEnabled ? (payload) => {\n\t\t\t\tif (vlab91OwnsCodexProgress()) return false;\n\t\t\t\tif (!payload.text) return false;\n',
     '\t\t\tonReasoningStream: reasoningPreviewEnabled ? (payload) => {\n\t\t\t\tif (vlab91OwnsCodexProgress()) return false;\n\t\t\t\tif (!payload.text) return false;\n\t\t\t\tvFirsttextMark("firstReasoningAtMs");\n',
     'reasoning stream');
+  // the run this message started: its id joins the Worker's [firsttext-worker-phases] marks,
+  // and received -> run start is the queue wait before any agent work
+  out = replaceExactlyOnce(out,
+    '\n\t\treplyOptions: {\n',
+    '\n\t\treplyOptions: {\n\t\t\tonAgentRunStart: (runId) => {\n\t\t\t\tif (typeof runId === "string" && vFirsttextE2e.runId === void 0) vFirsttextE2e.runId = runId;\n\t\t\t\tvFirsttextMark("runStartAtMs");\n\t\t\t},\n',
+    'dispatcher reply options');
   out = replaceExactlyOnce(out,
     '\t\tgetVisibleReplyState: () => ({',
     `\t\tgetFirsttextE2e: () => {

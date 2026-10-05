@@ -9,7 +9,7 @@
 // delivery but not the client's rendering of the card.
 //   首字 / first answer = first card push carrying answer text, or the first non-streaming reply
 //   first visible  = any first push (status / progress / reasoning lines count)
-//   segments       = inbound (sent -> received), agent (received -> first answer text reaches the
+//   segments       = inbound (sent -> received), queue (received -> agent run start), agent (received -> first answer text reaches the
 //                    channel), reasoning (received -> first reasoning text), delivery (first answer
 //                    text at the channel -> in the card), card create (start -> created)
 // No message text is read or written.
@@ -45,6 +45,7 @@ export function measure(r) {
     firstAnswerMs: delta(firstAnswerAt, r.sentAtMs),
     firstVisibleMs: delta(firstVisibleAt, r.sentAtMs),
     inboundMs: delta(r.receivedAtMs, r.sentAtMs),
+    queueMs: delta(r.runStartAtMs, r.receivedAtMs),
     agentMs: delta(r.firstAnswerTokenAtMs, r.receivedAtMs),
     reasoningMs: delta(r.firstReasoningAtMs, r.receivedAtMs),
     deliveryMs: delta(firstAnswerAt, r.firstAnswerTokenAtMs),
@@ -71,7 +72,7 @@ export function summarize(rows, key) {
 export function report(records) {
   const rows = records.map(measure);
   const out = { n: rows.length, firstAnswer: summarize(rows, 'firstAnswerMs'), firstVisible: summarize(rows, 'firstVisibleMs'), segments: {}, byHarness: {}, slowest: [] };
-  for (const k of ['inboundMs', 'agentMs', 'reasoningMs', 'deliveryMs', 'cardCreateMs']) out.segments[k] = summarize(rows, k);
+  for (const k of ['inboundMs', 'queueMs', 'agentMs', 'reasoningMs', 'deliveryMs', 'cardCreateMs']) out.segments[k] = summarize(rows, k);
   const ready = rows.map((r) => r.cardReadyBeforeAnswer).filter((x) => x !== undefined);
   out.cardReadyBeforeAnswer = { n: ready.length, yes: ready.filter(Boolean).length };
   const groups = new Map();
