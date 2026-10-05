@@ -7,4 +7,5 @@ test('Feishu CLI uses current native exec timeoutSeconds schema',async()=>{
  const invoke=async(name,args)=>({name,args});
  const result=await createToolExecutor({invoke})('feishu_calendar',{},'native-calendar');
  assert.equal(result.name,'exec');assert.equal(result.args.timeoutSeconds,90);assert.equal(result.args.timeout,undefined);assert(result.args.command.includes("'--as' 'user'"));
+ const day=await createToolExecutor({invoke})('feishu_calendar',{start:'2026-10-06',end:'2026-10-06'},'calendar-day');assert(day.args.command.includes('T23:59:59+08:00'));assert(day.args.command.includes('T00:00:00+08:00'));
 });

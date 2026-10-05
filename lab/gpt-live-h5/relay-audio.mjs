@@ -1,6 +1,6 @@
 // Gateway-owned PCM transport shared by Seeduplex and Grok. No provider key
 // or arbitrary tool request is accepted from this browser audio channel.
-export function createRelayAudio({context,stream,reservation,onEvent,onError,onClosed}) {
+export function createRelayAudio({context,stream,reservation,onEvent,onError,onClosed,onPlaybackActivity=()=>{}}) {
   const endpoint=new URL('./api/relay',location.href);
   endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
   endpoint.search=new URLSearchParams({voiceSessionId:reservation.voiceSessionId,ticket:reservation.relayTicket});
@@ -9,7 +9,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
   const pendingInput=[],players=new Set();let pendingBytes=0;
   const stats={inputBytes:0,outputBytes:0,clears:0,playbackDrained:false};
   const send=e=>{if(socket.readyState===WebSocket.OPEN)socket.send(JSON.stringify(e));};
-  const flush=()=>{for(const player of players){try{player.stop();}catch{}}players.clear();nextAt=context.currentTime;stats.clears++;ending=null;clearTimeout(tailTimer);};
+  const flush=()=>{for(const player of players){try{player.stop();}catch{}}players.clear();nextAt=context.currentTime;stats.clears++;onPlaybackActivity(false);ending=null;clearTimeout(tailTimer);};
   const checkEnd=()=>{
     if(closed||!ending)return;
     if(context.state==='running'&&players.size===0&&context.currentTime>=nextAt+.75){stats.playbackDrained=true;send({type:'playback.drained',callId:ending});ending=null;}
@@ -23,8 +23,8 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
     for(let i=0;i<values.length;i++)values[i]=data.getInt16(i*2,true)/32768;
     if(nextAt-context.currentTime>30)throw Error('语音播放积压，请重新拨号');
     const player=context.createBufferSource();player.buffer=buffer;player.connect(context.destination);
-    players.add(player);player.onended=()=>{players.delete(player);player.disconnect();};
-    nextAt=Math.max(nextAt,context.currentTime+.01);player.start(nextAt);nextAt+=buffer.duration;
+    players.add(player);player.onended=()=>{players.delete(player);player.disconnect();if(players.size===0)onPlaybackActivity(false);};
+    nextAt=Math.max(nextAt,context.currentTime+.01);player.start(nextAt);nextAt+=buffer.duration;onPlaybackActivity(true);
     stats.outputBytes+=bytes.length;
   };
   const promise=new Promise((resolve,reject)=>{

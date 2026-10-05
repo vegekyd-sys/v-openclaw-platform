@@ -37,7 +37,7 @@ export function createToolExecutor({invoke,allowedTools,calendar}){return async(
   if(calendar)return calendar(args);
   const quote=s=>"'"+s.replaceAll("'","'\\''")+"'";
   const argv=['lark-cli','calendar','+agenda','--as','user','--format','json'];
-  for(const key of ['start','end'])if(args[key])argv.push('--'+key,args[key]);
+  for(const key of ['start','end'])if(args[key])argv.push('--'+key,/^\d{4}-\d{2}-\d{2}$/.test(args[key])?args[key]+(key==='start'?'T00:00:00+08:00':'T23:59:59+08:00'):args[key]);
   return invoke('exec',{command:argv.map(quote).join(' '),yieldMs:10000,timeoutSeconds:90},callId,signal);
  }
  if(name==='openclaw_tool') {

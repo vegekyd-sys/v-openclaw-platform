@@ -464,6 +464,7 @@ async function startCall() {
       active.relay=createRelayAudio({context:active.context,stream:active.stream,reservation,
         onError:error=>{if(call===active)void stopCall().then(()=>setStatus(error.message));},
         onClosed:()=>{if(call===active)void stopCall();},
+        onPlaybackActivity:speaking=>{if(call===active)document.body.dataset.voiceState=speaking?'speaking':'listening';},
         onEvent:value=>{
           if(call!==active)return;
           if(value.type==='tool.call'&&value.name!=='end_call')tasks.add(value.callId);
