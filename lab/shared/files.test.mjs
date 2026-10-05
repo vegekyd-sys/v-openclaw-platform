@@ -14,6 +14,19 @@ test('reject traversal, state, external symlink, duplicate and corrupt payloads'
  fs.symlinkSync(os.tmpdir(),root+'/openclaw/external');assert.throws(()=>target(root,'openclaw/external/a.js'));
  assert.throws(()=>validateFiles(root,[f,f]));assert.throws(()=>validateFiles(root,[{...f,content:Buffer.from('bad').toString('base64')}]));
 });
+test('channel plugin targets: npm projects and runtime/extensions are code targets, other top-level dirs are not',t=>{
+ const root=fixture(t);
+ fs.mkdirSync(root+'/extensions/wecom-openclaw-plugin/dist/src',{recursive:true});
+ fs.mkdirSync(root+'/npm/projects/dingtalk-real-ai-dingtalk-connector-aa54111b45__openclaw-generation__g-7ae9583359ddbec0/node_modules/@dingtalk-real-ai/dingtalk-connector/dist',{recursive:true});
+ assert.equal(target(root,'extensions/wecom-openclaw-plugin/dist/src/monitor.js'),root+'/extensions/wecom-openclaw-plugin/dist/src/monitor.js');
+ target(root,'extensions/wecom-openclaw-plugin/dist/src/new-chunk.js');
+ target(root,'npm/projects/dingtalk-real-ai-dingtalk-connector-aa54111b45__openclaw-generation__g-7ae9583359ddbec0/node_modules/@dingtalk-real-ai/dingtalk-connector/dist/runtime-C81EKBS1.mjs');
+ for(const p of ['extension/x/a.js','extensionsx/a.js','state/extensions/a.js','extensions/wecom-openclaw-plugin/.env','extensions/wecom-openclaw-plugin/state/a.json','extensions/wecom-openclaw-plugin/a.sh','extensions/../openclaw/a.js'])
+  assert.throws(()=>target(root,p),undefined,p);
+ fs.symlinkSync(os.tmpdir(),root+'/extensions/linked');assert.throws(()=>target(root,'extensions/linked/a.js'));
+ const f={target:'extensions/wecom-openclaw-plugin/dist/src/monitor.js',before:null,after:sha('x'),content:Buffer.from('x').toString('base64')};
+ validateFiles(root,[f]);
+});
 test('copy-on-write deployment preserves hardlinked baseline and rollback restores exact fingerprint',t=>{
  const root=fixture(t),old=fingerprint(root),payload=tmp(t);fs.mkdirSync(payload+'/before');fs.mkdirSync(payload+'/after');
  fs.linkSync(root+'/openclaw/dist/a.mjs',payload+'/before/0');fs.writeFileSync(payload+'/after/0','export const a=2;');fs.writeFileSync(payload+'/after/1','export const b=3;');
