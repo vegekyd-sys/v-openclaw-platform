@@ -42,8 +42,8 @@ async function runModel(model){
  await record(model);const start=Date.now();await click('start');await wait(s=>s.state==='connected','provider ready',45000);
  const id=(await state()).wire.find(x=>x.type==='ready')?.voiceSessionId;assert(id,'Original relay owner missing');
  const rows=()=>audit().filter(x=>x.voiceSessionId===id),wire=async()=> (await state()).wire;
- await wait(()=>rows().some(x=>x.type==='transcript'&&x.role==='assistant'&&x.final)&&rows().some(x=>x.type==='audio'),'actual greeting',20000);
- check(model+'/greeting',true,{voiceSessionId:id,provider:model});await quiet(id);
+ await wait(()=>(model==='seeduplex'||rows().some(x=>x.type==='transcript'&&x.role==='assistant'&&x.final))&&rows().some(x=>x.type==='audio'),'actual greeting',20000);
+ check(model+'/greeting',true,{voiceSessionId:id,provider:model,greetingMode:model==='seeduplex'?'documented SayHello native TTS':'model response'});await quiet(id);
  await speak('tools');await wait(()=>rows().some(x=>x.type==='tool.invoke'&&x.name==='memory_search')&&rows().some(x=>x.type==='tool.invoke'&&x.name==='web_search')&&rows().some(x=>x.type==='tool.invoke'&&x.name==='exec'&&JSON.stringify(x.args).includes('lark-cli')),'actual memory/calendar/web direct calls',180000);
  await wait(()=>rows().some(x=>x.type==='tool.invoke'&&['read','exec'].includes(x.name)&&JSON.stringify(x.args).includes('AGENTS.md')),'generic native file tool',60000);
  await quiet(id,60000);

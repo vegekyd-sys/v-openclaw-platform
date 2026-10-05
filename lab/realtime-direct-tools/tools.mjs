@@ -34,7 +34,7 @@ export function createToolExecutor({invoke,allowedTools,calendar}){return async(
   const quote=s=>"'"+s.replaceAll("'","'\\''")+"'";
   const argv=['lark-cli','calendar','+agenda','--as','user','--format','json'];
   for(const key of ['start','end'])if(args[key])argv.push('--'+key,args[key]);
-  return invoke('exec',{command:argv.map(quote).join(' '),yieldMs:10000,timeout:90},callId,signal);
+  return invoke('exec',{command:argv.map(quote).join(' '),yieldMs:10000,timeoutSeconds:90},callId,signal);
  }
  if(name==='openclaw_tool') {
   if(!allowedTools?.has(args.tool))throw Error('本会话没有这个 OpenClaw 工具');
