@@ -17,9 +17,9 @@
 // /var/lib/v-release-config/v-experience-multichannel/. --rollback restores the newest
 // receipt's backup, but only if the config is still exactly what activation wrote.
 //
-// Order on VLab: the runtime release must already be deployed (vlab.mjs deploy refuses a
-// changed config hash), and before `vlab.mjs rollback` of that release, run --rollback here
-// first so the config hash is back to the one it was staged with.
+// Order on VLab: activate before `vlab.mjs stage` (stage records the config hash, deploy and
+// accept refuse a changed one). To back out, the reverse: `vlab.mjs rollback` of that release
+// (it too checks the staged hash), then --rollback here.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
