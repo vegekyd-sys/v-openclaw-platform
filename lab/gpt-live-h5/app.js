@@ -8,7 +8,7 @@ let call = null;
 let starting = null;
 let liveReady = false;
 let entryError = null;
-let callerEntry = new URLSearchParams(window.location.search).get("entry") === "tianyi" ? "tianyi" : "visitor";
+let callerEntry = "tianyi";
 const apiUrl = route => `./api/${route}${callerEntry === "tianyi" ? "?entry=tianyi" : ""}`;
 const duplexRecoveryMessage = "上一段语音还没确认结束。若仍无声音，请结束通话后重新开始。";
 const playbackRecoveryMessage = "声音播放被暂停了，点一下页面恢复声音。";

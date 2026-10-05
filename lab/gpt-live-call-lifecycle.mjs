@@ -1,5 +1,6 @@
 import { GPT_LIVE_CALL_INSTRUCTIONS } from "./gpt-live-h5/instructions.mjs";
 import { V_FRONTEND_PERSONA } from "./gpt-live-h5/persona.mjs";
+import { GPT_LIVE_PERSONAL_SESSION_KEY } from "./gpt-live-h5/personal-session.mjs";
 
 /** This is a code profile for the native browser client, not global Talk config. */
 export function isGptLiveCallProfile({ providerId, model, transport, brain, capabilities } = {}) {
@@ -18,6 +19,7 @@ export function resolveGptLiveCallInstructions(original, profile) {
 
 /** Only the H5 host chooses these session names; spoken names never change the entry. */
 export function resolveGptLiveCaller(sessionKey) {
+  if (sessionKey === GPT_LIVE_PERSONAL_SESSION_KEY) return { entry: "tianyi", speaker: "Tianyi", conversation: "personal-task-room" };
   const match = /^agent:makaron:explicit:gpt-live-h5-(tianyi|visitor)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.exec(sessionKey ?? "");
   return match ? { entry: match[1], speaker: match[1] === "tianyi" ? "Tianyi" : null } : null;
 }
@@ -40,6 +42,7 @@ export function buildGptLiveCallerInstructions(caller) {
     ? "本次是本人入口，当前说话者默认是 Tianyi（天意）。接通后直接自然问候，不再询问是谁。"
     : "本次是普通入口，默认当前说话者不是 Tianyi。接通后自然问一次‘我现在是在和谁说话呀？’；对方自报姓名后记住本次通话的称呼，不反复询问。";
   return "Current caller context (chosen by the call host):\n" + identity +
+    (caller.conversation === "personal-task-room" ? "\n当前入口是 Tianyi 的网页语音电话，后端承接指定的‘V 接电话’任务房间。这个会话沿用飞书群的历史，但当前交流渠道是电话。挂断或重拨只改变通话连接，不重置会话历史。默认把‘我的日历’理解为 Tianyi 的飞书日历；用户明确指定其他平台时按该平台处理，不能猜成微信日历。" : "") +
     "\n对方说换人接电话时更新当前称呼。普通入口中的自报姓名不改变入口类型，不把陌生人自动当成天意。" +
     "\n委托后台时携带当前说话者姓名（未知就说明未知）、入口类型和完整请求。后台沿用已有 redline 决定哪些内容能回答；不要替后台承诺私人信息会被提供，也不要增加角色等级或审批流程。";
 }
@@ -48,6 +51,7 @@ export function resolveGptLiveCallerSurface(surface, sessionKey) {
   const caller = resolveGptLiveCaller(sessionKey);
   if (!caller) return surface;
   return surface + ". Call-host entry context: " + JSON.stringify(caller) +
+    (caller.conversation === "personal-task-room" ? ". Current channel is a web voice call with Tianyi, not a Feishu group message. Reuse this conversation's history; historical Feishu origin does not change the current channel. By default, 'my calendar' means Tianyi's Feishu calendar unless the caller explicitly specifies another source. Do not infer a WeChat calendar. Reply to this call; do not post to the group merely because its session is reused." : "") +
     ". The entry is chosen by the host. On a visitor entry, the frontend may report the caller's self-identified name; that does not turn this into Tianyi's entry. Apply the existing backend redline to the current speaker and request.";
 }
 
@@ -156,7 +160,7 @@ export function createGptLiveCallLifecycle(options) {
 }
 
 export function createGptLiveCallLifecycleRuntimeSource() {
-  return `// gpt-live-call-lifecycle-v1: native browser call controls\nconst GPT_LIVE_CALL_INSTRUCTIONS = ${JSON.stringify(GPT_LIVE_CALL_INSTRUCTIONS)};\nconst V_FRONTEND_PERSONA = ${JSON.stringify(V_FRONTEND_PERSONA)};\n` +
+  return `// gpt-live-call-lifecycle-v1: native browser call controls\nconst GPT_LIVE_CALL_INSTRUCTIONS = ${JSON.stringify(GPT_LIVE_CALL_INSTRUCTIONS)};\nconst V_FRONTEND_PERSONA = ${JSON.stringify(V_FRONTEND_PERSONA)};\nconst GPT_LIVE_PERSONAL_SESSION_KEY = ${JSON.stringify(GPT_LIVE_PERSONAL_SESSION_KEY)};\n` +
     [isGptLiveCallProfile, resolveGptLiveCaller, extractGptLivePersona, resolveGptLivePersona, buildGptLiveCallerInstructions, resolveGptLiveCallerSurface, resolveGptLiveCallInstructions, parseGptLiveEndCallDelegation, createGptLiveEndCallClientTool, createGptLiveCallLifecycle]
       .map((fn) => "export " + fn.toString()).join("\n\n") + "\n";
 }

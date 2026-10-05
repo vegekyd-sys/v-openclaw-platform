@@ -6,11 +6,28 @@ import { resolveGptLiveCallInstructions, resolveGptLiveCaller, resolveGptLiveCal
   createGptLiveCallLifecycleRuntimeSource } from "./gpt-live-call-lifecycle.mjs";
 import { patchGptLiveCallerContextTalk } from "./patch-gpt-live-caller-context.mjs";
 import { V_FRONTEND_PERSONA } from "./gpt-live-h5/persona.mjs";
+import { GPT_LIVE_PERSONAL_SESSION_KEY } from "./gpt-live-h5/personal-session.mjs";
 
 const key = entry => `agent:makaron:explicit:gpt-live-h5-${entry}-${randomUUID()}`;
 const profile = { providerId: "openai", model: "gpt-live-1-codex", transport: "webrtc", brain: "agent-consult",
   capabilities: { handlesAgentConsult: true, supportsToolCalls: false } };
 const persona = "Default presence:\nWarm and curious.\nIdentity:\nYou are V.\nSpeaker identity policy:\nAsk everyone who they are.\nBackchannel policy:\nFill every silence.\nAgency and judgment:\nPrivate info stays private.\nSelf-introduction policy:\nBe brief.\nPrivate bootstrap:\nSECRET_EXAMPLE";
+
+test("the selected Feishu conversation gets personal phone identity and an explicit current-channel context", async () => {
+  const instructions = resolveGptLiveCallInstructions("ignored", { ...profile, sessionKey: GPT_LIVE_PERSONAL_SESSION_KEY });
+  assert.match(instructions, /默认是 Tianyi.*不再询问是谁/u);
+  assert.match(instructions, /当前交流渠道是电话/u);
+  assert.match(instructions, /飞书日历/u);
+  const surface = resolveGptLiveCallerSurface("a browser Talk session", GPT_LIVE_PERSONAL_SESSION_KEY);
+  assert.match(surface, /web voice call with Tianyi, not a Feishu group message/u);
+  assert.match(surface, /Feishu calendar.*unless the caller explicitly specifies another source/u);
+  assert.match(surface, /do not post to the group/u);
+  assert.equal(resolveGptLiveCaller(GPT_LIVE_PERSONAL_SESSION_KEY + "-spoof"), null);
+  assert.equal(resolveGptLiveCaller("agent:makaron:feishu:group:oc_fab91abe705f55cc63751731d9a258ab"), null);
+  const runtime = await import(`data:text/javascript;base64,${Buffer.from(createGptLiveCallLifecycleRuntimeSource()).toString("base64")}`);
+  assert.equal(runtime.resolveGptLiveCallerSurface("a browser Talk session", GPT_LIVE_PERSONAL_SESSION_KEY), surface);
+  assert.equal(runtime.resolveGptLiveCallInstructions("ignored", { ...profile, sessionKey: GPT_LIVE_PERSONAL_SESSION_KEY }), instructions);
+});
 
 test("experimental config still receives the frozen original V persona without private family examples", () => {
   const instructions = resolveGptLiveCallInstructions("ignored", { ...profile, sessionKey: key("visitor"), configuredInstructions: "Existing experimental speech policy" });

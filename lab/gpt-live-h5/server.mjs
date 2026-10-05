@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { createVoiceAccess } from "./access.mjs";
+import { GPT_LIVE_PERSONAL_SESSION_KEY } from "./personal-session.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export function createLiveH5Server({ gateway, offer, preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2 }) {
@@ -16,10 +17,8 @@ export function createLiveH5Server({ gateway, offer, preview = false, basePath =
   if (hosted && (origin.protocol !== "https:" || origin.origin !== publicOrigin || !basePath)) throw new Error("Hosted voice requires an HTTPS origin and base path");
   if (!Number.isInteger(maxActiveSessions) || maxActiveSessions < 1 || maxActiveSessions > 50 || !Number.isInteger(maxActiveSessionsPerIp) || maxActiveSessionsPerIp < 1 || maxActiveSessionsPerIp > maxActiveSessions) throw new Error("Invalid voice call limits");
   const access = hosted ? createVoiceAccess(accessToken, basePath) : null;
-  const visitorAccess = hosted ? createVoiceAccess(accessToken, basePath, Date.now, { entry: "visitor" }) : null;
   const contexts = new Map();
-  const local = { active: null, creatingSession: false, listeners: new Set(), touchedAt: Date.now(), entry: "visitor" };
-  if (!hosted) contexts.set("local-tianyi", { ...local, listeners: new Set(), entry: "tianyi" });
+  const local = { active: null, creatingSession: false, listeners: new Set(), touchedAt: Date.now(), entry: "tianyi" };
   const attempts = new Map();
   const allow = key => {
     const times = (attempts.get(key) ?? []).filter(at => Date.now() - at < 600000);
@@ -44,7 +43,8 @@ export function createLiveH5Server({ gateway, offer, preview = false, basePath =
       if (basePath && url.pathname === basePath && req.method === "GET") { res.writeHead(308, { location: `${basePath}/${url.search}`, "cache-control": "no-store" }); res.end(); return; }
       if (basePath && !url.pathname.startsWith(`${basePath}/`)) return json(res, 404, { error: "没有这个入口" });
       const pathname = basePath ? url.pathname.slice(basePath.length) : url.pathname;
-      const entry = url.searchParams.get("entry") === "tianyi" ? "tianyi" : "visitor";
+      if (url.searchParams.get("entry") === "visitor") return json(res, 404, { error: "普通人电话入口尚未开放。" });
+      const entry = "tianyi";
       const staticFiles = new Map([
         ["/", [join(here, "index.html"), "text/html; charset=utf-8"]],
         ["/app.js", [join(here, "app.js"), "text/javascript; charset=utf-8"]],
@@ -56,7 +56,6 @@ export function createLiveH5Server({ gateway, offer, preview = false, basePath =
       ]);
       if (req.method === "GET" && staticFiles.has(pathname)) {
         if (pathname === "/" && !hosted) res.setHeader("set-cookie", `v_live_experiment=${cookie}; HttpOnly; SameSite=Strict; Path=/`);
-        if (pathname === "/" && hosted && entry === "visitor" && !visitorAccess.read(req)) visitorAccess.issue(res);
         const [file, type] = staticFiles.get(pathname);
         const contents = await readFile(file);
         res.writeHead(200, { "content-type": type, "cache-control": "no-store" }); res.end(contents); return;
@@ -75,8 +74,8 @@ export function createLiveH5Server({ gateway, offer, preview = false, basePath =
       }
       let context = local;
       if (hosted) {
-        const visitor = (entry === "tianyi" ? access : visitorAccess).read(req);
-        if (!visitor) return json(res, 401, { error: entry === "tianyi" ? "请使用完整的本人入口链接打开" : "请先打开 V 通话页面" });
+        const visitor = access.read(req);
+        if (!visitor) return json(res, 401, { error: "请使用完整的本人入口链接打开" });
         const contextId = `${entry}:${visitor.id}`;
         context = contexts.get(contextId);
         if (!context) {
@@ -85,7 +84,6 @@ export function createLiveH5Server({ gateway, offer, preview = false, basePath =
           contexts.set(contextId, context);
         }
       } else if (!String(req.headers.cookie ?? "").split(/;\s*/u).includes(`v_live_experiment=${cookie}`)) return json(res, 401, { error: "请先打开实验页面" });
-      else if (entry === "tianyi") context = contexts.get("local-tianyi");
       context.touchedAt = Date.now();
       if (req.method === "GET" && pathname === "/api/status") return json(res, 200, {
         ready: !preview, model: "gpt-live-1-codex", activeCall: Boolean(context.active), creatingSession: context.creatingSession,
@@ -100,6 +98,11 @@ export function createLiveH5Server({ gateway, offer, preview = false, basePath =
       const params = await readBody();
       if (pathname === "/api/session") {
         if (context.creatingSession) return json(res, 409, { error: "正在连接 V，请稍等。" });
+        // All devices share the selected personal conversation. Do not let a
+        // second device replace another device's voice owner or pending work.
+        if ([...contexts.values()].some(item => item !== context && (item.active || item.creatingSession))) {
+          return json(res, 409, { error: "另一台设备正在和 V 通话，请先结束那边的通话。" });
+        }
         if (hosted) {
           const busy = [...contexts.values()].filter(item => item.active || item.creatingSession);
           if (!context.active && busy.length >= maxActiveSessions) return json(res, 503, { error: "现在和 V 说话的人有点多，请稍后再试" });
@@ -110,7 +113,7 @@ export function createLiveH5Server({ gateway, offer, preview = false, basePath =
         context.creatingSession = true;
         try {
           await close(context);
-          const sessionKey = `agent:makaron:explicit:gpt-live-h5-${context.entry}-${randomUUID()}`;
+          const sessionKey = GPT_LIVE_PERSONAL_SESSION_KEY;
           const reservation = await gateway.request("talk.client.create", { sessionKey, provider: "openai", model: "gpt-live-1-codex", voice: "sol", mode: "realtime", transport: "webrtc", brain: "agent-consult", capabilities: ["voice-transcript"] }, { timeoutMs: 45000 });
           context.active = { sessionKey, reservation, touchedAt: Date.now() };
           if (reservation.model !== "gpt-live-1-codex" || reservation.transport !== "webrtc" || reservation.offerUrl !== "/plugins/openai/realtime/calls") {

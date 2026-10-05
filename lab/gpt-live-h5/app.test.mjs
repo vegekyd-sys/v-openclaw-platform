@@ -162,9 +162,9 @@ test("shared voice link exchanges fragment access before status and removes the 
   assert.equal(f.requests.some(row => row.route === "session"), false);
 });
 
-test("bare ordinary link uses ordinary APIs and retained owner link uses its query on every operation", async t => {
-  const guest = await fixture(t);
-  assert.equal(guest.requests[0].url, "./api/status");
+test("bare personal page and retained owner link use the owner API on every operation", async t => {
+  const personal = await fixture(t);
+  assert.equal(personal.requests[0].url, "./api/status?entry=tianyi");
   const owner = await fixture(t, { search: "?entry=tianyi" });
   await owner.context.startCall();
   await owner.context.stopCall();
@@ -607,7 +607,7 @@ test("page navigation closes the active call, meter, event stream, mic, sound an
   const peer=f.peers[0]; peer.connectionState="connected"; peer.onconnectionstatechange();
   await peer.ontrack({track:track()}); assert(f.intervals.size>0);
   f.pageEvents.get("pagehide")(); await tick();
-  assert.equal(f.beacons.length,1); assert.equal(f.beacons[0].url,"./api/close");
+  assert.equal(f.beacons.length,1); assert.equal(f.beacons[0].url,"./api/close?entry=tianyi");
   assert.deepEqual(JSON.parse(await f.beacons[0].body.text()),{voiceSessionId:"voice-1"});
   assert.equal(f.intervals.size,0); assert.equal(f.timeouts.size,0);
   assert.equal(peer.closed,true); assert.equal(peer.channel.closed,true);
