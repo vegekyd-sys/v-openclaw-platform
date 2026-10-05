@@ -111,7 +111,8 @@ config.agents.defaults.heartbeat={...(config.agents.defaults.heartbeat??{}),ever
 config.tools={...(config.tools??{}),deny:[...new Set([...(config.tools?.deny??[]),'message','cron'])]};
 if(config.tools.exec?.cwd)config.tools.exec.cwd=config.agents.entries.makaron.workspace;
 config.logging={...(config.logging??{}),file:path.join(state,'candidate-gateway.log')};
-config.talk={...(config.talk??{}),realtime:{...(config.talk?.realtime??{}),instructions:GPT_LIVE_CALL_INSTRUCTIONS}};
+if (process.env.GPT_LIVE_H5_CASE !== 'caller-links')
+  config.talk={...(config.talk??{}),realtime:{...(config.talk?.realtime??{}),instructions:GPT_LIVE_CALL_INSTRUCTIONS}};
 configureCandidateOpenAIAuth(config);
 const memoryQuery=process.env.GPT_LIVE_H5_MEMORY_QUERY?.trim();
 const fullTools=process.env.GPT_LIVE_H5_FULL_TOOLS==='1';
@@ -377,7 +378,7 @@ try {
   }
   if(experience)await holdForExperience();else {
   const cases=(process.env.GPT_LIVE_H5_CASE??'workflow').split(',');
-  assert(cases.every(value=>['workflow','cancel','close-reopen','barge-chat','comprehensive-long','comprehensive-controls','comprehensive-queued-steer','call-lifecycle'].includes(value)),'Unknown candidate H5 case');
+  assert(cases.every(value=>['workflow','cancel','close-reopen','barge-chat','comprehensive-long','comprehensive-controls','comprehensive-queued-steer','call-lifecycle','caller-links'].includes(value)),'Unknown candidate H5 case');
   const evidenceBase=process.env.GPT_LIVE_H5_EVIDENCE_DIR;
   assert(evidenceBase&&path.isAbsolute(evidenceBase),'Absolute candidate evidence directory required');
   fs.mkdirSync(evidenceBase,{recursive:true,mode:0o700});
@@ -391,7 +392,7 @@ try {
   const results=[];
   for(const testCase of cases) {
     if(osObserver)assert(osObserver.exitCode===null&&osObserver.signalCode===null,'OS witness must still cover this original native case');
-    const helper=testCase==='call-lifecycle'?'lab/gpt-live-candidate-native/call-lifecycle-smoke.mjs':testCase.startsWith('comprehensive-')?'lab/gpt-live-candidate-native/native-smoke.mjs':testCase==='workflow'?'lab/gpt-live-h5-provenance-smoke.mjs':'lab/gpt-live-h5-control-smoke.mjs';
+    const helper=testCase==='caller-links'?'lab/gpt-live-candidate-native/caller-links-smoke.mjs':testCase==='call-lifecycle'?'lab/gpt-live-candidate-native/call-lifecycle-smoke.mjs':testCase.startsWith('comprehensive-')?'lab/gpt-live-candidate-native/native-smoke.mjs':testCase==='workflow'?'lab/gpt-live-h5-provenance-smoke.mjs':'lab/gpt-live-h5-control-smoke.mjs';
     const clips=process.env.GPT_LIVE_H5_USER_CLIPS_DIR;
     smoke=spawn(process.execPath,[helper],{env:{...process.env,
       GPT_LIVE_H5_CASE:testCase,GPT_LIVE_H5_EVIDENCE_DIR:cases.length>1?path.join(evidenceBase,testCase):evidenceBase,

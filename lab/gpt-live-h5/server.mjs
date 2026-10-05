@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { createVoiceAccess } from "./access.mjs";
+import { GPT_LIVE_PERSONAL_SESSION_KEY } from "./personal-session.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export function createLiveH5Server({ gateway, offer, preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2 }) {
@@ -17,7 +18,7 @@ export function createLiveH5Server({ gateway, offer, preview = false, basePath =
   if (!Number.isInteger(maxActiveSessions) || maxActiveSessions < 1 || maxActiveSessions > 50 || !Number.isInteger(maxActiveSessionsPerIp) || maxActiveSessionsPerIp < 1 || maxActiveSessionsPerIp > maxActiveSessions) throw new Error("Invalid voice call limits");
   const access = hosted ? createVoiceAccess(accessToken, basePath) : null;
   const contexts = new Map();
-  const local = { active: null, creatingSession: false, listeners: new Set(), touchedAt: Date.now() };
+  const local = { active: null, creatingSession: false, listeners: new Set(), touchedAt: Date.now(), entry: "tianyi" };
   const attempts = new Map();
   const allow = key => {
     const times = (attempts.get(key) ?? []).filter(at => Date.now() - at < 600000);
@@ -42,6 +43,8 @@ export function createLiveH5Server({ gateway, offer, preview = false, basePath =
       if (basePath && url.pathname === basePath && req.method === "GET") { res.writeHead(308, { location: `${basePath}/${url.search}`, "cache-control": "no-store" }); res.end(); return; }
       if (basePath && !url.pathname.startsWith(`${basePath}/`)) return json(res, 404, { error: "没有这个入口" });
       const pathname = basePath ? url.pathname.slice(basePath.length) : url.pathname;
+      if (url.searchParams.get("entry") === "visitor") return json(res, 404, { error: "普通人电话入口尚未开放。" });
+      const entry = "tianyi";
       const staticFiles = new Map([
         ["/", [join(here, "index.html"), "text/html; charset=utf-8"]],
         ["/app.js", [join(here, "app.js"), "text/javascript; charset=utf-8"]],
@@ -72,12 +75,13 @@ export function createLiveH5Server({ gateway, offer, preview = false, basePath =
       let context = local;
       if (hosted) {
         const visitor = access.read(req);
-        if (!visitor) return json(res, 401, { error: "请使用完整的 V 语音分享链接打开" });
-        context = contexts.get(visitor.id);
+        if (!visitor) return json(res, 401, { error: "请使用完整的本人入口链接打开" });
+        const contextId = `${entry}:${visitor.id}`;
+        context = contexts.get(contextId);
         if (!context) {
           if (contexts.size >= 512) return json(res, 503, { error: "现在访问的人有点多，请稍后再试" });
-          context = { active: null, creatingSession: false, listeners: new Set(), touchedAt: Date.now(), ip };
-          contexts.set(visitor.id, context);
+          context = { active: null, creatingSession: false, listeners: new Set(), touchedAt: Date.now(), ip, entry };
+          contexts.set(contextId, context);
         }
       } else if (!String(req.headers.cookie ?? "").split(/;\s*/u).includes(`v_live_experiment=${cookie}`)) return json(res, 401, { error: "请先打开实验页面" });
       context.touchedAt = Date.now();
@@ -94,6 +98,11 @@ export function createLiveH5Server({ gateway, offer, preview = false, basePath =
       const params = await readBody();
       if (pathname === "/api/session") {
         if (context.creatingSession) return json(res, 409, { error: "正在连接 V，请稍等。" });
+        // All devices share the selected personal conversation. Do not let a
+        // second device replace another device's voice owner or pending work.
+        if ([...contexts.values()].some(item => item !== context && (item.active || item.creatingSession))) {
+          return json(res, 409, { error: "另一台设备正在和 V 通话，请先结束那边的通话。" });
+        }
         if (hosted) {
           const busy = [...contexts.values()].filter(item => item.active || item.creatingSession);
           if (!context.active && busy.length >= maxActiveSessions) return json(res, 503, { error: "现在和 V 说话的人有点多，请稍后再试" });
@@ -104,7 +113,7 @@ export function createLiveH5Server({ gateway, offer, preview = false, basePath =
         context.creatingSession = true;
         try {
           await close(context);
-          const sessionKey = `agent:makaron:explicit:gpt-live-h5-experiment-${randomUUID()}`;
+          const sessionKey = GPT_LIVE_PERSONAL_SESSION_KEY;
           const reservation = await gateway.request("talk.client.create", { sessionKey, provider: "openai", model: "gpt-live-1-codex", voice: "sol", mode: "realtime", transport: "webrtc", brain: "agent-consult", capabilities: ["voice-transcript"] }, { timeoutMs: 45000 });
           context.active = { sessionKey, reservation, touchedAt: Date.now() };
           if (reservation.model !== "gpt-live-1-codex" || reservation.transport !== "webrtc" || reservation.offerUrl !== "/plugins/openai/realtime/calls") {
@@ -148,7 +157,7 @@ export function createLiveH5Server({ gateway, offer, preview = false, basePath =
   const timer = setInterval(() => {
     for (const [id, context] of [...contexts, [null, local]]) {
       if (context.active && Date.now() - context.active.touchedAt > 45000) void close(context).catch(() => {});
-      if (id && !context.active && !context.creatingSession && !context.listeners.size && Date.now() - context.touchedAt > 1800000) contexts.delete(id);
+      if (id && id !== "local-tianyi" && !context.active && !context.creatingSession && !context.listeners.size && Date.now() - context.touchedAt > 1800000) contexts.delete(id);
     }
     for (const [key, times] of attempts) if (!times.some(at => Date.now() - at < 600000)) attempts.delete(key);
   }, 15000); timer.unref();
