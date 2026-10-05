@@ -3698,6 +3698,10 @@ function createFeishuReplyDispatcher(params) {
 			onError: handleDeliveryError
 		},
 		replyOptions: {
+			onAgentRunStart: (runId) => {
+				if (typeof runId === "string" && vFirsttextE2e.runId === void 0) vFirsttextE2e.runId = runId;
+				vFirsttextMark("runStartAtMs");
+			},
 			onModelSelected,
 			commentaryProgressEnabled: previewStreamingEnabled,
 			suppressDefaultToolProgressMessages: previewStreamingEnabled,
