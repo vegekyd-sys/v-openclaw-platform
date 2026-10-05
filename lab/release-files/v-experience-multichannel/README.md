@@ -11,6 +11,7 @@
 ## 配置改什么
 
 - **V**：只有 `commands.allowFrom` 加上 `telegram`、`dingtalk-connector`、`wecom` = `["*"]`。owner、渠道、绑定、插件都不动。
+  钉钉提问卡模板：`card-template.mjs` 给 V 的 Gateway 单元写 drop-in `97-v-experience-dingtalk-card.conf`（模板「V 提问卡」，导入到 V-Makaron 应用，2026-10-06 发布），不重启，下次启动生效；`--remove` 撤回。
   前提：运行时的 `command-auth-*.js` 已是 V3（`activate.mjs` 检查 `V_MODEL_COMMAND_ONLY_V3`；V2 只认飞书，先改配置会让钉钉 / 企微非 owner 拿到全部非 owner 命令）。
 - **VLab**：VLab 自己的测试机器人（与 `lab/candidate/live-experience.mjs` 相同）：
   - `channels.dingtalk-connector` / `wecom` / `telegram`，凭据写成 `${VLAB_DINGTALK_TEST_CLIENT_ID}` 这类引用，值只在 `secrets.env`（共享 Gateway 的 EnvironmentFile；没有时加 drop-in `97-v-experience-secrets.conf`）。配置里已有非引用的凭据就拒绝。
