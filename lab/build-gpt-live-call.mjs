@@ -25,6 +25,7 @@ import { patchGptLiveCallLifecycleController, patchGptLiveCallLifecycleBroker, p
 import { patchGptLiveBackendCallControlTalk, patchGptLiveBackendCallControlHarness } from "./patch-gpt-live-backend-call-control.mjs";
 import { patchGptLiveCallTerminalEmbedded } from "./patch-gpt-live-call-terminal.mjs";
 import { patchGptLiveProjectionReadinessBuiltin, patchGptLiveProjectionReadinessReconcile } from "./patch-gpt-live-projection-readiness.mjs";
+import { patchGptLiveCallerContextTalk } from "./patch-gpt-live-caller-context.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const hash = (source) => createHash("sha256").update(source).digest("hex");
@@ -78,7 +79,7 @@ export function build({ baseRelease = "hotreload-feishu-approvals-v2" } = {}) {
     const continuation = item.name.startsWith("talk-") ? patchGptLiveContinuationTalk : patchGptLiveContinuationHarness;
     const continued = continuation(transform(before.toString("utf8")));
     const after = item.name.startsWith("talk-")
-      ? patchGptLiveBackendCallControlTalk(patchGptLiveCallLifecycleTalk(patchGptLiveNativeConfirmationTalk(continued)))
+      ? patchGptLiveCallerContextTalk(patchGptLiveBackendCallControlTalk(patchGptLiveCallLifecycleTalk(patchGptLiveNativeConfirmationTalk(continued))))
       : patchGptLiveBackendCallControlHarness(continued);
     const source = `lab/release-files/gpt-live-call/${item.name}`;
     mkdirSync(dirname(resolve(root, source)), { recursive: true }); writeFileSync(resolve(root, source), after);
@@ -156,7 +157,7 @@ export function build({ baseRelease = "hotreload-feishu-approvals-v2" } = {}) {
     baseRelease, files, tests: ["lab/gpt-live-projection-readiness.test.mjs", "lab/gpt-live-backend-call-control.test.mjs", "lab/gpt-live-call-lifecycle.test.mjs", "lab/gpt-live-consult-progress.test.mjs", "lab/gpt-live-public-progress-bridge.test.mjs", "lab/gpt-live-native-progress.test.mjs", "lab/gpt-live-h5/server.test.mjs", "lab/gpt-live-h5/app.test.mjs", "lab/gpt-live-h5/duplex-playback.test.mjs", "lab/gpt-live-h5/microphone-capture.test.mjs", "lab/gpt-live-h5/transcript-presentation.test.mjs", "lab/gpt-live-h5/call-sounds.test.mjs", "lab/gpt-live-call-live-auth.test.mjs", "lab/gpt-live-call-live-evidence.test.mjs",
       "lab/gpt-live-consult-continuation.test.mjs", "lab/gpt-live-voice-exec-lifetime.test.mjs", "lab/gpt-live-voice-confirmation.test.mjs", "lab/voice-spoken-confirmation-switch.test.mjs", "lab/gpt-live-native-confirmation.test.mjs", "lab/gpt-live-voice-tool-order.test.mjs", "lab/gpt-live-candidate-native/confirmation-evidence.test.mjs", "lab/gpt-live-candidate-native/os-observer-lifecycle.test.mjs", "lab/gpt-live-candidate-native/call-lifecycle-evidence.test.mjs", "lab/gpt-live-candidate-native/call-lifecycle-target.test.mjs", "lab/gpt-live-candidate-native/recording-lifecycle.test.mjs", "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-spawn-gateway-proxy.test.mjs", "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-yield-external-task.test.mjs", "lab/gpt-live-pr-provenance.test.mjs", "lab/gpt-live-pr-config.test.mjs", "lab/gpt-live-pr-trace.test.mjs", "lab/gpt-live-h5-provenance-evidence.test.mjs", "lab/gpt-live-h5-control-evidence.test.mjs", "lab/gpt-live-h5-user-pcm.test.mjs", "lab/gpt-live-h5-control-probe.test.mjs", "lab/gpt-live-candidate-config-guard.test.mjs",...completionCandidate.tests],
     support: [...new Set([
-      "lab/gpt-live-call-lifecycle.mjs", "lab/patch-gpt-live-call-lifecycle.mjs", "lab/patch-gpt-live-backend-call-control.mjs", "lab/patch-gpt-live-call-terminal.mjs", "lab/gpt-live-h5/instructions.mjs",
+      "lab/gpt-live-call-lifecycle.mjs", "lab/patch-gpt-live-call-lifecycle.mjs", "lab/patch-gpt-live-caller-context.mjs", "lab/patch-gpt-live-backend-call-control.mjs", "lab/patch-gpt-live-call-terminal.mjs", "lab/gpt-live-h5/instructions.mjs", "lab/gpt-live-h5/persona.mjs",
       "lab/patch-gpt-live-projection-readiness.mjs", "lab/gpt-live-projection-readiness.test.mjs", "lab/fixtures/gpt-live-projection-readiness/session-transcript-reconcile-DFsDtc9l.js", projectionBaseline,
       "release/captured/v2026.9.1-db91.6-memory-search-guards-20261002/dist/session-accessor-K0XuW6ln.js",
       "lab/gpt-live-consult-progress.mjs", "lab/gpt-live-public-progress-bridge.mjs", publicBridgeBaseline, "lab/patch-gpt-live-native-progress.mjs",

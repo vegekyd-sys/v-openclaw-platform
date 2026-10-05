@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createLiveH5Server } from "./server.mjs";
 import { transcriptEvent } from "./events.mjs";
+import { GPT_LIVE_PERSONAL_SESSION_KEY } from "./personal-session.mjs";
 
 async function fixture(t, overrides = {}) {
   const calls = [];
@@ -26,7 +27,7 @@ test("exact native model reservation and SDP proxy keep credentials off the brow
   const created = await f.request("session"); assert.equal(created.status, 200);
   const result = await created.json(); assert.deepEqual(result, { voiceSessionId: "voice-private", model: "gpt-live-1-codex" });
   assert.equal(f.calls[0].params.model, "gpt-live-1-codex"); assert.equal(f.calls[0].params.transport, "webrtc");
-  assert.match(f.calls[0].params.sessionKey, /^agent:makaron:explicit:gpt-live-h5-experiment-/u);
+  assert.equal(f.calls[0].params.sessionKey, GPT_LIVE_PERSONAL_SESSION_KEY);
   const answer = await f.request("offer", { voiceSessionId: result.voiceSessionId, sdp: "v=0\r\noffer" });
   assert.deepEqual(await answer.json(), { sdp: "v=0\r\nanswer" });
   assert.equal(f.offers[0].session.clientSecret, "never-expose-test-secret");
@@ -131,7 +132,7 @@ test('pickup readiness uses an exact owned host operation without exposing broke
   assert.equal(invocation.params.voiceSessionId,'voice-private');
   assert.deepEqual(invocation.params.args,{action:'ready'});
   assert.match(invocation.params.callId,/^host-ready-/u);
-  assert.match(invocation.params.sessionKey,/^agent:makaron:explicit:/u);
+  assert.equal(invocation.params.sessionKey, GPT_LIVE_PERSONAL_SESSION_KEY);
   assert.equal((await f.request('ready',{voiceSessionId:'old'})).status,409);
   assert.equal(f.calls.filter(row=>row.method==='talk.client.toolCall').length,1);
 });

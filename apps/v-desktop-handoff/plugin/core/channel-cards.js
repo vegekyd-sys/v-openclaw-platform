@@ -63,6 +63,12 @@ export function cardNote(view, state) {
   return STATE_NOTES[state] ?? "";
 }
 
+/** What the agent is told after a card is posted; the hand-back button is 我完成了 on Feishu and 完成 elsewhere. */
+export function nativeCardInstruction(channel) {
+  const done = channel === "feishu" ? "我完成了" : "完成";
+  return `A card titled 电脑 with three buttons has been posted in this conversation: 接管 (the user takes over V's desktop), ${done} (hands it back) and 跳过 (the user will not do this step). Do NOT repeat or paraphrase the url and do not say where the card is. Reply with one short sentence such as 卡片已发出，接管后完成登录，做完点「${done}」, then end your turn. When \`/v-handback <id>\` arrives, or a message saying the user pressed 交还给 V on the takeover page, the desktop is already back with you: continue the task right away without asking. When \`/v-skip <id>\` arrives, the user skipped this step: do not issue another handoff for it; say briefly what you can do instead or where the task is blocked. If the user instead says in the chat that they are done (e.g. 好了), call desktop_handoff_status, then continue.`;
+}
+
 /** Buttons for a state: `{label, url}` opens the desktop, `{label, command}` posts the command. */
 export function cardButtons(view, state) {
   const id = view.handoffId;

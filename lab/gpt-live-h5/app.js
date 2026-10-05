@@ -7,6 +7,9 @@ const $ = (id) => document.getElementById(id);
 let call = null;
 let starting = null;
 let liveReady = false;
+let entryError = null;
+let callerEntry = "tianyi";
+const apiUrl = route => `./api/${route}${callerEntry === "tianyi" ? "?entry=tianyi" : ""}`;
 const duplexRecoveryMessage = "上一段语音还没确认结束。若仍无声音，请结束通话后重新开始。";
 const playbackRecoveryMessage = "声音播放被暂停了，点一下页面恢复声音。";
 const greetingGraceMs = 15000;
@@ -276,7 +279,7 @@ async function recoverPlaybackGesture() {
   await playing;
 }
 async function api(route, payload, { signal } = {}) {
-  const response = await fetch(`./api/${route}`, {
+  const response = await fetch(apiUrl(route), {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload ?? {}), signal,
   });
   const result = await response.json();
@@ -410,7 +413,7 @@ async function stopCall() {
 }
 async function startCall() {
   if (starting || call) return;
-  if (!liveReady) { setStatus("当前页面仅作预览，真实通话还未连接 VLab 候选服务。"); return; }
+  if (!liveReady) { setStatus(entryError ?? "当前页面仅作预览，真实通话还未连接 VLab 候选服务。"); return; }
   $("start").disabled = true; $("start").hidden = true; $("stop").hidden = false;
   $("stopLabel").textContent = "取消拨号"; $("badge").textContent = "拨号中";
   setCallState("dialing"); setStatus("正在连接 V…");
@@ -448,7 +451,7 @@ async function startCall() {
     const reservation = await api("session"); active.voiceSessionId = reservation.voiceSessionId;
     if (call !== active) { await api("close", { voiceSessionId: active.voiceSessionId }); return; }
     active.channel = active.pc.createDataChannel("oai-events"); active.channel.onmessage = (event) => { if (call === active) providerMessage(event); };
-    active.events = new EventSource("./api/events");
+    active.events = new EventSource(apiUrl("events"));
     active.events.onmessage = (event) => {
       if (call !== active) return;
       const value = JSON.parse(event.data);
@@ -582,7 +585,7 @@ window.addEventListener("pagehide", () => {
   if (!active) return;
   // Beacon survives navigation; stopCall synchronously releases every local
   // resource and dial owner before its best-effort asynchronous API cleanup.
-  if (active.voiceSessionId) navigator.sendBeacon("./api/close", new Blob([JSON.stringify({ voiceSessionId: active.voiceSessionId })], { type: "application/json" }));
+  if (active.voiceSessionId) navigator.sendBeacon(apiUrl("close"), new Blob([JSON.stringify({ voiceSessionId: active.voiceSessionId })], { type: "application/json" }));
   void stopCall();
 });
 async function initializeEntry() {
@@ -590,12 +593,15 @@ async function initializeEntry() {
     const fragment = new URLSearchParams(window.location.hash.slice(1));
     const access = fragment.get("access");
     if (access) {
+      callerEntry = "tianyi";
       // The share credential stays in the URL fragment until exchanged for the
       // existing HttpOnly voice cookie; never send it as a query or log field.
       await api("access", { access });
-      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+      const search = new URLSearchParams(window.location.search);
+      search.set("entry", "tianyi");
+      window.history.replaceState(null, "", `${window.location.pathname}?${search}`);
     }
-    const response = await fetch("./api/status");
+    const response = await fetch(apiUrl("status"));
     const status = await response.json();
     if (!response.ok) throw new Error(status.error ?? "暂时无法连接 V，请稍后重试。");
     liveReady = status.ready === true;
@@ -603,7 +609,9 @@ async function initializeEntry() {
     if (!liveReady) setStatus("这是页面预览，真实通话需连接候选服务。");
   } catch (error) {
     liveReady = false;
-    setStatus(error.message ?? "暂时无法连接 V，请稍后重试。");
+    entryError = error.message ?? "暂时无法连接 V，请稍后重试。";
+    $("badge").textContent = "暂未连接";
+    setStatus(entryError);
   }
 }
 void initializeEntry();
