@@ -129,6 +129,38 @@ test("card: login and payment cards carry the url behind 接管电脑 / 付款 b
   assert.equal(inPlaceTarget({ messageChannel: "feishu" }), null, "no conversation, no card");
 });
 
+test("card: DingTalk and WeCom get the card without 交还给 V, asked to reply 好了 instead", async () => {
+  const { handoffCard, inPlaceTarget, DEFAULT_CARD_CHANNELS, CALLBACK_CARD_CHANNELS, GATEWAY_ACTION_CHANNELS } = await import("../core/card.js");
+  for (const channel of ["dingtalk-connector", "wecom"]) {
+    assert(DEFAULT_CARD_CHANNELS.includes(channel), channel);
+    assert(!CALLBACK_CARD_CHANNELS.includes(channel), channel);
+  }
+  assert.deepEqual(GATEWAY_ACTION_CHANNELS, ["wecom"]);
+  assert.deepEqual(inPlaceTarget({ messageChannel: "dingtalk-connector", deliveryContext: { to: "staff1" } }), { channel: "dingtalk-connector", target: "staff1", accountId: undefined });
+  const card = handoffCard({ reason: "需要你登录小红书", url: "https://h/x#t", openWithinMinutes: 10, sessionMinutes: 30, handoffId: "h_1", callbacks: false });
+  assert.equal(card.presentation.title, "需要你接管 V 的电脑");
+  assert.deepEqual(card.presentation.blocks.at(-1).buttons.map((b) => b.label), ["接管电脑"]);
+  assert.match(card.presentation.blocks[0].text, /做完在聊天里回复「好了」，V 接着做。10 分钟内打开有效，接管最长 30 分钟。$/u);
+  const pay = handoffCard({ purpose: "payment", url: "https://h/p", openWithinMinutes: 10, sessionMinutes: 30, handoffId: "h_p", callbacks: false });
+  assert.deepEqual(pay.presentation.blocks.at(-1).buttons.map((b) => b.label), ["付款"]);
+  assert.match(pay.presentation.blocks[0].text, /付完在聊天里回复「好了」/u);
+  assert.match(handoffCard({ url: "https://h/x", openWithinMinutes: 10, sessionMinutes: 30, handoffId: "h_2" }).presentation.blocks[0].text, /做完点「交还给 V」/u, "callback channels keep the button wording");
+});
+
+test("WeCom cards go through the Gateway's message.action (message send would flatten them)", async () => {
+  const calls = [];
+  const runner = async (cmd, args) => { calls.push(args); return "{}"; };
+  const presentation = { title: "t", blocks: [{ type: "buttons", buttons: [{ label: "接管电脑", url: "https://h/x" }] }] };
+  await deliverPrivately({ channel: "wecom", target: "zhangsan", text: "fb", presentation, gatewayAction: true, accountId: "acc", entry: "/rt/dist/index.js", runner });
+  const args = calls[0];
+  assert.deepEqual(args.slice(0, 4), ["/rt/dist/index.js", "gateway", "call", "message.action"]);
+  const params = JSON.parse(args[args.indexOf("--params") + 1]);
+  assert.deepEqual({ ...params, idempotencyKey: undefined }, { channel: "wecom", action: "send", params: { target: "zhangsan", message: "fb", presentation }, accountId: "acc", idempotencyKey: undefined });
+  assert.match(params.idempotencyKey, /^v-desktop-handoff-[0-9a-f-]{36}$/u);
+  await deliverPrivately({ channel: "wecom", target: "zhangsan", text: "only text", gatewayAction: true, command: "openclaw", runner });
+  assert.deepEqual(calls[1].slice(0, 2), ["message", "send"], "plain text keeps message send");
+});
+
 test("card delivery passes --presentation to openclaw message send", async () => {
   const calls = [];
   await deliverPrivately({ channel: "feishu", target: "user:ou_1", text: "fb", presentation: { title: "t", blocks: [] }, command: "openclaw", runner: async (cmd, args) => { calls.push(args); return "{}"; } });

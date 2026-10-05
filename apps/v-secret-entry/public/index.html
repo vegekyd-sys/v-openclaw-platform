@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>给 V 录入凭据</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<main>
+  <h1>🔑 给 V 录入凭据</h1>
+  <p id="status">正在打开…</p>
+  <form id="form" autocomplete="off" hidden>
+    <dl>
+      <dt>名称</dt><dd><code id="name"></code></dd>
+      <dt id="reason-label" hidden>用途</dt><dd id="reason" hidden></dd>
+      <dt>只用于</dt><dd id="hosts"></dd>
+      <dt>有效期至</dt><dd id="expires"></dd>
+    </dl>
+    <label for="value">值</label>
+    <input id="value" type="password" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" required>
+    <label class="show"><input id="show" type="checkbox"> 显示</label>
+    <button id="submit" type="submit">保存</button>
+    <p class="note">值直接交给 V 的凭据库保存，不会出现在聊天记录里。这个链接只能用一次。</p>
+  </form>
+</main>
+<script type="module" src="app.js"></script>
+</body>
+</html>

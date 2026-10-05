@@ -1,0 +1,21 @@
+{
+  "support": [
+    "lab/candidate/telegram-experience.mjs",
+    "lab/candidate/telegram-fake-bot-api.mjs",
+    "lab/release-files/feishu-secret-entry/patch-openclaw91-secret-entry.mjs",
+    "lab/release-files/feishu-model-switch-roles/patch-runtime.mjs",
+    "lab/candidate/model-roles.mjs",
+    "apps/v-experience/v-experience.mjs",
+    "apps/v-experience/telegram/patch.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/telegram-experience.mjs"
+  ],
+  "env": {
+    "TG_EXPECT": "patched",
+    "TG_SCENARIOS": "progress,ask-single,ask-multi,secret,background"
+  },
+  "timeoutSeconds": 3600,
+  "user": "lab-db91-parity"
+}

@@ -74,6 +74,35 @@ test("admin API requires the bearer token and issues a link with the token in th
   assert.doesNotMatch(audit, new RegExp(tokenOf(issued.body.url)), "raw token must never reach the audit log");
 });
 
+test("a card's desktop picture is served publicly under its own short-lived token", async () => {
+  const issued = await admin("POST", "/v1/handoffs", { kind: "control", ownerId: "wecom:zhangsan", reason: "login" });
+  const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(3000, 9)]);
+  const put = (id, body, auth = `Bearer ${adminToken}`) => fetch(`http://127.0.0.1:${ports.adminPort}/v1/handoffs/${id}/snapshot`, { method: "PUT", headers: { authorization: auth, "content-type": "application/octet-stream" }, body });
+  assert.equal((await put(issued.body.id, jpeg, "Bearer wrong")).status, 401);
+  assert.equal((await put("h_000000000000", jpeg)).status, 404, "only for a handoff that exists");
+  assert.equal((await put(issued.body.id, Buffer.from("<svg onload=alert(1)>"))).status, 400, "only JPEG/PNG");
+  const stored = await put(issued.body.id, jpeg);
+  assert.equal(stored.status, 201);
+  const { url, type, expiresAt } = await stored.json();
+  assert.equal(type, "image/jpeg");
+  assert.match(url, /^https:\/\/example\.test\/desktop-handoff\/snapshot\/[\w-]{32}\.jpg$/u);
+  assert(expiresAt > Date.now() + 30 * 60_000);
+  const local = url.replace("https://example.test", `http://127.0.0.1:${ports.publicPort}`);
+  const res = await fetch(local);
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("content-type"), "image/jpeg");
+  assert.match(res.headers.get("cache-control"), /^private, max-age=\d+$/u);
+  assert.deepEqual(Buffer.from(await res.arrayBuffer()), jpeg);
+  assert.equal((await fetch(local.replace(/[\w-]{32}\.jpg$/u, `${"A".repeat(32)}.jpg`))).status, 404, "unknown token");
+  assert.equal((await fetch(local.replace(/\.jpg$/u, ".png"))).status, 200, "the extension is not part of the token");
+  assert.doesNotMatch(fs.readFileSync(path.join(tmp, "state", "audit.jsonl"), "utf8"), new RegExp(url.split("/").pop().slice(0, 32)), "the picture token never reaches the audit log");
+  // Expiry.
+  service.snapshots.ttlMs = -1;
+  const expired = await (await put(issued.body.id, jpeg)).json();
+  service.snapshots.ttlMs = 60 * 60_000;
+  assert.equal((await fetch(expired.url.replace("https://example.test", `http://127.0.0.1:${ports.publicPort}`))).status, 404);
+});
+
 test("latest handoff for a session is found by sessionKey", async () => {
   const a = await admin("POST", "/v1/handoffs", { kind: "control", ownerId: "u", sessionKey: "agent:x:feishu:direct:u" });
   await sleep(5);

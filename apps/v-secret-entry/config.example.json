@@ -1,0 +1,16 @@
+{
+  "bind": "127.0.0.1",
+  "publicBind": "127.0.0.1",
+  "publicPort": 23960,
+  "adminPort": 23961,
+  "publicBaseUrl": "https://openclaw.tianyi.live",
+  "pathPrefix": "/secret-entry",
+  "stateDir": "/var/lib/v-secret-entry",
+  "adminTokenFile": "/etc/v-secret-entry/admin-token",
+  "openclawDist": "/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core/dist",
+  "limits": {
+    "maxTtlMs": 900000,
+    "maxAttempts": 5,
+    "maxValueLength": 16384
+  }
+}
