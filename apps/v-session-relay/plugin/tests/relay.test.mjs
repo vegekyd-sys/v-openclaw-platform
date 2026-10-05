@@ -89,7 +89,7 @@ test("text: one collapsed thread card per conversation, both sides inside, trans
   assert.equal(panel.expanded, false);
   assert.equal(panel.header.title.text_align, "center");
   assert.match(panel.header.title.content, /V · Tianyi 的私聊\*\* ⇄ \*\*V · A 群/u);
-  assert.match(panel.header.title.content, /V · A 群 正在处理… · 3 条/u);
+  assert.match(panel.header.title.content, /V · A 群\*\*\nV · A 群 正在处理… · 3 条/u);
   assert.equal(panel.elements.length, 3);
   assert.match(panel.elements[1].content, /V · A 群 ·/u);
   assert.match(threadCard([{ ...thread[0] }]).body.elements[0].header.title.content, /已完成/u);
@@ -156,7 +156,7 @@ test("dispatcher: request is posted and run in the target, the result returns to
   const threadCards = feishu.cards.filter((c) => c.card.body.elements[0].tag === "collapsible_panel");
   assert.deepEqual(threadCards.map((c) => c.receiver.receiveId).sort(), ["oc_a", "ou_owner"]);
   assert(feishu.patches.length >= 2);
-  assert.match(feishu.patches.at(-1).card.body.elements[0].header.title.content, /已完成 · 2 条/u);
+  assert.match(feishu.patches.at(-1).card.body.elements[0].header.title.content, /\n已完成 · 2 条/u);
   const finals = feishu.cards.filter((c) => c.card.body.elements[0].tag === "markdown");
   assert.deepEqual(finals.map((c) => [c.receiver.receiveId, c.card.body.elements[0].content]), [["ou_owner", "ok, next step"]]);
   assert.deepEqual(Object.keys(final.threadCards).sort(), [DM, GROUP_A].sort());

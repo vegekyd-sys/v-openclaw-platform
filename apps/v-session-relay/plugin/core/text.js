@@ -57,7 +57,8 @@ export function threadCard(records) {
   const first = records[0];
   const names = [...new Set(records.flatMap((r) => [speaker(r.from), speaker(r.to)]))];
   const entries = threadEntries(records);
-  const title = `**${names.map(escapeMd).join("** ⇄ **")}** · ${threadStatus(records)}${entries.length ? ` · ${entries.length} 条` : ""}`;
+  // Two lines: who is talking, then where the thread is.
+  const title = `**${names.map(escapeMd).join("** ⇄ **")}**\n${threadStatus(records)}${entries.length ? ` · ${entries.length} 条` : ""}`;
   let budget = CARD_BUDGET;
   const rows = [];
   for (const entry of [...entries].reverse()) {
