@@ -273,6 +273,7 @@
         "lab/gpt-live-voice-tool-order.test.mjs",
         "lab/db91-shrink-reuse.test.mjs",
         "lab/placement-evidence-absence.test.mjs",
+        "lab/worker-prewarm-v.test.mjs",
         "lab/memory-search-fast.test.mjs",
         "lab/memory-search-query-isolation.test.mjs",
         "lab/memory-search-timeout.test.mjs",
