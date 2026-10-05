@@ -42,4 +42,4 @@ sudo <node> activate.mjs <vlab|production> --rollback [--owner <o>]   # 按最�
 7. V：`activate.mjs production`（这次重启让运行时字节和 `V_SECRET_ENTRY_*` 生效）。
 8. 收尾：提交捕获 + CHANGELOG（`release-notes.mjs`，钉钉 / 企微第一次出现会写成"首次纳入存档"），发版 PR，打 tag；接管旁路服务对齐后把组件表里 `handoff` 改成 `blocking: true`。
 
-不上线：VLab 上先 `activate.mjs vlab --rollback --owner <o>`（配置 hash 回到 stage 时的值），再 `install-secret-entry-host.sh` 的 `MODE=uninstall`、接管服务装回 V 的提交，最后 `vlab.mjs rollback`。
+不上线：VLab 上先 `vlab.mjs rollback`（它也核对 stage 时的配置 hash，所以配置要保持激活状态），再 `activate.mjs vlab --rollback --owner <o>`，最后 `install-secret-entry-host.sh` 的 `MODE=uninstall`、接管服务装回 V 的提交。
