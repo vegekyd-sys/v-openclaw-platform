@@ -1,0 +1,19 @@
+{
+  "support": [
+    "lab/candidate/wecom-experience.mjs",
+    "lab/candidate/wecom-fake-aibot.mjs",
+    "lab/candidate/channel-cards-support.mjs",
+    "lab/release-files/feishu-model-switch-roles/patch-runtime.mjs",
+    "lab/candidate/model-roles.mjs",
+    "tmp/inputs/wecom-openclaw-plugin-2026.8.17-vlab.2-v.tgz"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/wecom-experience.mjs"
+  ],
+  "env": {
+    "WC_EXPECT": "baseline"
+  },
+  "timeoutSeconds": 3600,
+  "user": "lab-db91-parity"
+}

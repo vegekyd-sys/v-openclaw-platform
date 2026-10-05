@@ -1,20 +1,27 @@
+import crypto, { createHash } from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { Type } from "typebox";
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 
 import { HandoffAdminClient } from "./core/admin-client.js";
 import { describeContext, isControlAnywhereActor, isTrustedDirectSession, resolveTrustedActor } from "./core/identity.js";
 import { deliverPrivately } from "./core/deliver.js";
-import { handoffCard, inPlaceTarget, normalizePayment } from "./core/card.js";
+import { CALLBACK_CARD_CHANNELS, DEFAULT_CARD_CHANNELS, GATEWAY_ACTION_CHANNELS, handoffCard, inPlaceTarget, normalizePayment } from "./core/card.js";
 import { FeishuApi, captureDesktop, feishuCredentials, feishuReceiver, loadCover } from "./core/feishu-api.js";
 import { nativeHandoffCard } from "./core/native-card.js";
+import { EDITABLE_CARD_CHANNELS, NATIVE_CARD_CHANNELS, handoffPresentation, isPublicImageUrl, nativeCardInstruction, telegramHandoffCard } from "./core/channel-cards.js";
+import { TelegramApi, telegramChat, telegramCredentials } from "./core/telegram-api.js";
+import { decideHandBack, decideToolCall, refuseEnd } from "./core/policy.js";
 
-// V's picture for the card (generated media stays out of git; fetched once per app and uploaded to Feishu).
+// V's picture for the card when the desktop cannot be captured (generated media stays out of git).
 const DEFAULT_COVER = "https://cdn.makaron.app/storage/v1/object/public/images/5955d413-cad2-4814-b094-7fdf62d20400/0bc9ae1f-59b7-45a7-9e73-bf7c9951afdd/snapshot-d2ec2e6c-240d-4400-b0ad-4fce335e2e8c.jpg";
 
-const NATIVE_CARD_INSTRUCTION =
-  "A card titled 电脑 with three buttons has been posted in this conversation: 接管 (the user takes over V's desktop), 我完成了 (hands it back) and 跳过 (the user will not do this step). Do NOT repeat or paraphrase the url and do not say where the card is. Reply with one short sentence such as 卡片已发出，接管后完成登录，做完点「我完成了」, then end your turn. When `/v-handback <id>` arrives, or a message saying the user pressed 交还给 V on the takeover page, the desktop is already back with you: continue the task right away without asking. When `/v-skip <id>` arrives, the user skipped this step: do not issue another handoff for it; say briefly what you can do instead or where the task is blocked.";
-import { decideHandBack, decideToolCall, refuseEnd } from "./core/policy.js";
-import { createHash } from "node:crypto";
+
+// The process-wide bridge through which a channel lets the button's plugin rewrite a card (v-experience).
+const CARD_ACTION_BRIDGE = Symbol.for("openclaw.v.cardActionBridge");
 
 // Identifies this Gateway and its workers (same home and state dir), and nothing else:
 // a candidate copy loading the same plugin against the same handoff service differs.
@@ -47,24 +54,59 @@ export default definePluginEntry({
     });
     const blockWhileControlled = config.blockBrowserWhileControlled ?? true;
     const bySession = new Map(); // sessionKey -> last handoff id (this process); the service is the source of truth
-    const cards = new Map(); // handoff id -> { feishu, messageId, view, state } for native Feishu cards
+    // handoff id -> card record (channel, where it is, view, state) plus the API client that edits it,
+    // for the 「电脑」 cards this process posted or touched. The record itself lives with the handoff.
+    const cards = new Map();
     const feishuApis = new Map(); // appId -> FeishuApi
     const coverKeys = new Map(); // appId -> uploaded image_key of the cover
+    let coverBytes = null; // V's cover, fetched once per process
+    const nativeChannels = Array.isArray(config.nativeCardChannels) ? config.nativeCardChannels : NATIVE_CARD_CHANNELS;
 
-    const postNativeCard = async ({ cfg, accountId, target, issued, kind, purpose, params, actorUserId }) => {
-      if (config.nativeCard === false) {
-        return null;
-      }
-      const creds = feishuCredentials(cfg, accountId);
-      const receiver = feishuReceiver(target);
-      if (!creds || !receiver) {
-        return null;
-      }
+    const feishuFor = (creds) => {
       let feishu = feishuApis.get(creds.appId);
       if (!feishu) {
         feishu = new FeishuApi(creds);
         feishuApis.set(creds.appId, feishu);
       }
+      return feishu;
+    };
+
+    /** The desktop now (JPEG), else V's cover; null when neither is available. */
+    const cardPicture = async () => {
+      if (config.cardImage !== "cover") {
+        const shot = await captureDesktop({ display: config.desktopDisplay ?? ":99" }).catch(() => null);
+        if (shot) {
+          return shot;
+        }
+      }
+      coverBytes ??= await loadCover(config.coverImage ?? DEFAULT_COVER).catch(() => null);
+      return coverBytes;
+    };
+
+    const remember = async (id, card) => {
+      cards.set(id, card);
+      const { feishu: _feishu, telegram: _telegram, ...record } = card;
+      // The button commands run in the Gateway, the tool may run in a worker: keep the card with the handoff.
+      await client.setCard(id, record).catch((error) => api.logger?.warn?.(`desktop handoff card not recorded: ${error.message}`));
+    };
+
+    const baseView = ({ issued, kind, purpose, params }) => ({
+      kind,
+      purpose,
+      reason: params.reason,
+      url: issued.url,
+      handoffId: issued.id,
+      payment: normalizePayment(params.payment),
+      openWithinMinutes: Math.max(1, Math.round((issued.claimExpiresAt - Date.now()) / 60_000)),
+    });
+
+    const postFeishuCard = async ({ cfg, accountId, target, issued, kind, purpose, params, actorUserId }) => {
+      const creds = feishuCredentials(cfg, accountId);
+      const receiver = feishuReceiver(target);
+      if (!creds || !receiver) {
+        return null;
+      }
+      const feishu = feishuFor(creds);
       let imageKey = null;
       try {
         if (config.cardImage !== "cover") {
@@ -96,17 +138,100 @@ export default definePluginEntry({
         owner: { userOpenId: ownerOpenId, expiresAt: issued.claimExpiresAt + issued.sessionTtlMs },
       };
       const messageId = await feishu.sendCard(receiver, nativeHandoffCard({ ...view, state: "pending" }));
-      const record = { messageId, appId: creds.appId, accountId: accountId ?? null, view, state: "pending" };
-      cards.set(issued.id, { ...record, feishu });
-      // The button commands run in the Gateway, the tool may run in a worker: keep the card with the handoff.
-      await client.setCard(issued.id, record).catch((error) => api.logger?.warn?.(`desktop handoff card not recorded: ${error.message}`));
-      watchCard(issued.id, issued.claimExpiresAt + issued.sessionTtlMs, cfg);
+      await remember(issued.id, { channel: "feishu", messageId, appId: creds.appId, accountId: accountId ?? null, view, state: "pending", feishu });
       return messageId;
+    };
+
+    // Telegram: a photo of the desktop with the card as caption and 接管 / 我完成了 / 跳过 under it,
+    // edited in place. A desktop link Telegram refuses as a button goes into the caption instead.
+    const postTelegramCard = async ({ cfg, accountId, target, threadId, issued, view }) => {
+      const creds = telegramCredentials(cfg, accountId);
+      const chat = telegramChat(target);
+      if (!creds || !chat) {
+        return null;
+      }
+      const telegram = new TelegramApi(creds);
+      const photo = await cardPicture();
+      const where = { chatId: chat.chatId, threadId: threadId ?? chat.threadId };
+      let urlButtons = true;
+      let sent;
+      try {
+        sent = await telegram.sendCard({ ...where, photo, ...telegramHandoffCard(view, "pending") });
+      } catch (error) {
+        if (!/BUTTON_URL_INVALID/u.test(error.description ?? "")) {
+          throw error;
+        }
+        urlButtons = false;
+        sent = await telegram.sendCard({ ...where, photo, ...telegramHandoffCard(view, "pending", { urlButtons }) });
+      }
+      await remember(issued.id, { channel: "telegram", accountId: accountId ?? null, chatId: where.chatId, threadId: where.threadId ?? null, messageId: sent.messageId, kind: sent.kind, urlButtons, view, state: "pending", telegram });
+      return sent.messageId;
+    };
+
+    // DingTalk and WeCom: the card as a presentation, rendered by V's channel patches (v-experience).
+    // The picture: WeCom fetches card images by url, so the handoff service serves it under a
+    // short-lived token when its public address is reachable from the internet; otherwise (and
+    // for DingTalk, which uploads robot media) a local file the channel uploads itself.
+    const postPresentationCard = async ({ channel, accountId, target, issued, view }) => {
+      let imageRef = null;
+      let tmpFile = null;
+      const picture = await cardPicture();
+      if (picture) {
+        if (channel === "wecom") {
+          const snapshot = await client.putSnapshot(issued.id, picture).catch((error) => api.logger?.warn?.(`desktop handoff snapshot not stored: ${error.message}`));
+          if (snapshot && isPublicImageUrl(snapshot.url)) {
+            imageRef = snapshot.url;
+          }
+        }
+        if (!imageRef) {
+          tmpFile = path.join(os.tmpdir(), `v-desktop-handoff-${issued.id}-${crypto.randomBytes(4).toString("hex")}.jpg`);
+          fs.writeFileSync(tmpFile, picture, { mode: 0o600 });
+          imageRef = pathToFileURL(tmpFile).href;
+        }
+      }
+      const { presentation, text } = handoffPresentation(view, "pending", { imageRef });
+      try {
+        await deliverPrivately({
+          channel,
+          target,
+          accountId: accountId ?? config.messageAccountId,
+          text,
+          presentation,
+          gatewayAction: GATEWAY_ACTION_CHANNELS.includes(channel),
+          command: config.openclawCommand,
+          entry: config.openclawEntry,
+        });
+      } finally {
+        if (tmpFile) fs.rmSync(tmpFile, { force: true });
+      }
+      await remember(issued.id, { channel, accountId: accountId ?? null, target, view, state: "pending", imageUrl: imageRef?.startsWith("https://") ? imageRef : null });
+      return true;
+    };
+
+    /** Posts the 「电脑」 card natively on this channel; null when the channel or its credentials are not there. */
+    const postChannelCard = async ({ channel, cfg, accountId, target, threadId, issued, kind, purpose, params, actorUserId }) => {
+      if (config.nativeCard === false || !nativeChannels.includes(channel)) {
+        return null;
+      }
+      let posted;
+      if (channel === "feishu") {
+        posted = await postFeishuCard({ cfg, accountId, target, issued, kind, purpose, params, actorUserId });
+      } else if (channel === "telegram") {
+        posted = await postTelegramCard({ cfg, accountId, target, threadId, issued, view: baseView({ issued, kind, purpose, params }) });
+      } else {
+        posted = await postPresentationCard({ channel, accountId, target, issued, view: baseView({ issued, kind, purpose, params }) });
+      }
+      if (posted && EDITABLE_CARD_CHANNELS.includes(channel)) {
+        watchCard(issued.id, issued.claimExpiresAt + issued.sessionTtlMs, cfg);
+      }
+      return posted;
     };
 
     // Feishu runs only the link of a button that has both a link and a callback,
     // so the card follows the desktop itself: someone in control -> 操作中, the
     // handoff over -> 已结束. 我完成了 / 跳过 still arrive as callbacks.
+    // Telegram cards follow it the same way; DingTalk and WeCom cards cannot be
+    // edited outside a button tap.
     const watchCard = (id, until, cfg) => {
       const timer = setInterval(async () => {
         const card = cards.get(id);
@@ -139,44 +264,93 @@ export default definePluginEntry({
       timer.unref?.();
     };
 
+    /** The card (posted by any process) with an API client for its channel, or null. */
+    const loadCard = async (id, cfg) => {
+      const known = cards.get(id);
+      if (known) {
+        return known;
+      }
+      const record = (await client.status(id).catch(() => null))?.card;
+      if (!record) {
+        return null;
+      }
+      const card = { ...record, channel: record.channel ?? "feishu" };
+      if (card.channel === "feishu") {
+        if (!card.messageId) {
+          return null;
+        }
+        const creds = feishuCredentials(cfg, card.accountId);
+        if (!creds || creds.appId !== card.appId) {
+          api.logger?.warn?.(`desktop handoff card ${id}: no Feishu credentials for app ${card.appId}`);
+          return null;
+        }
+        card.feishu = feishuFor(creds);
+      } else if (card.channel === "telegram") {
+        const creds = telegramCredentials(cfg, card.accountId);
+        if (creds) {
+          card.telegram = new TelegramApi(creds);
+        } else {
+          api.logger?.warn?.(`desktop handoff card ${id}: no Telegram bot token for account ${card.accountId ?? "default"}`);
+        }
+      }
+      cards.set(id, card);
+      return card;
+    };
+
+    /**
+     * Moves the card to `state` and shows it where the channel allows:
+     * Feishu and Telegram edit the card in place; WeCom rewrites it only in
+     * reply to the button tap that caused the change; a DingTalk actionCard
+     * cannot change. The state is recorded with the handoff either way.
+     * Returns true when the person sees the card in that state.
+     */
     const setCardState = async (id, state, cfg) => {
-      let card = cards.get(id);
+      const card = await loadCard(id, cfg);
       if (!card) {
-        const record = (await client.status(id).catch(() => null))?.card;
-        if (!record?.messageId) {
-          return;
-        }
-        const creds = feishuCredentials(cfg, record.accountId);
-        if (!creds || creds.appId !== record.appId) {
-          api.logger?.warn?.(`desktop handoff card ${id}: no Feishu credentials for app ${record.appId}`);
-          return;
-        }
-        let feishu = feishuApis.get(creds.appId);
-        if (!feishu) {
-          feishu = new FeishuApi(creds);
-          feishuApis.set(creds.appId, feishu);
-        }
-        card = { ...record, feishu };
-        cards.set(id, card);
+        return false;
       }
       if (card.state === state) {
-        return;
+        return EDITABLE_CARD_CHANNELS.includes(card.channel);
       }
       card.state = state;
+      let shown = false;
       try {
         // Show what the desktop looks like now (the person's result after 已完成), not the picture from when the card was sent.
-        if (config.cardImage !== "cover" && (state === "active" || state === "done")) {
-          const shot = await captureDesktop({ display: config.desktopDisplay ?? ":99" });
-          if (shot) {
-            card.view = { ...card.view, imageKey: await card.feishu.uploadImage(shot, "desktop.jpg") };
+        const fresh = config.cardImage !== "cover" && (state === "active" || state === "done");
+        if (card.channel === "feishu") {
+          if (fresh) {
+            const shot = await captureDesktop({ display: config.desktopDisplay ?? ":99" });
+            if (shot) {
+              card.view = { ...card.view, imageKey: await card.feishu.uploadImage(shot, "desktop.jpg") };
+            }
           }
+          await card.feishu.patchCard(card.messageId, nativeHandoffCard({ ...card.view, state }));
+          shown = true;
+        } else if (card.channel === "telegram" && card.telegram) {
+          const photo = fresh && card.kind === "photo" ? await captureDesktop({ display: config.desktopDisplay ?? ":99" }).catch(() => null) : null;
+          await card.telegram.editCard({ chatId: card.chatId, messageId: card.messageId, kind: card.kind, photo, ...telegramHandoffCard(card.view, state, { urlButtons: card.urlButtons !== false }) });
+          shown = true;
+        } else if (card.channel === "wecom") {
+          shown = (await globalThis[CARD_ACTION_BRIDGE]?.update?.("wecom", id, handoffPresentation(card.view, state))) === true;
         }
-        await card.feishu.patchCard(card.messageId, nativeHandoffCard({ ...card.view, state }));
-        const { feishu: _feishu, ...record } = card;
-        await client.setCard(id, record).catch(() => {});
       } catch (error) {
         api.logger?.warn?.(`desktop handoff card ${id} not updated to ${state}: ${error.message}`);
       }
+      const { feishu: _feishu, telegram: _telegram, ...record } = card;
+      await client.setCard(id, record).catch(() => {});
+      return shown;
+    };
+
+    // A card that could not show its new state (a DingTalk actionCard; a WeCom card past its
+    // 5 s window) gets one status line in its conversation. Not as the command's reply text:
+    // with continueAgent the 9.1 core drops that text. Not awaited: V continues meanwhile.
+    const announce = (id, text) => {
+      const card = cards.get(id);
+      if (!card?.target || !["dingtalk-connector", "wecom"].includes(card.channel)) {
+        return;
+      }
+      deliverPrivately({ channel: card.channel, target: card.target, accountId: card.accountId ?? config.messageAccountId, text, command: config.openclawCommand, entry: config.openclawEntry })
+        .catch((error) => api.logger?.warn?.(`desktop handoff ${id} status line not sent: ${error.message}`));
     };
     const resolveHandoff = async (handoffId, sessionKey, signal) => {
       const id = handoffId ?? (sessionKey ? bySession.get(sessionKey) : null);
@@ -245,18 +419,16 @@ export default definePluginEntry({
             const senderId = typeof context.requesterSenderId === "string" ? context.requesterSenderId.trim() : "";
             const channel = typeof context.messageChannel === "string" ? context.messageChannel.trim() : "";
             try {
-              const sentNative = channel === "feishu"
-                ? await postNativeCard({ cfg: context.config ?? context.runtimeConfig, accountId: context.deliveryContext?.accountId, target: senderId, issued, kind, purpose, params, actorUserId }).catch((error) => {
-                    api.logger?.warn?.(`desktop handoff native card failed, using the plain card: ${error.message}`);
-                    return null;
-                  })
-                : null;
-              const card = handoffCard({ purpose, kind, reason: params.reason, url: issued.url, openWithinMinutes, sessionMinutes, payment: params.payment, handoffId: issued.id });
+              const sentNative = await postChannelCard({ channel, cfg: context.config ?? context.runtimeConfig, accountId: context.deliveryContext?.accountId, target: senderId, issued, kind, purpose, params, actorUserId }).catch((error) => {
+                api.logger?.warn?.(`desktop handoff native card failed, using the plain card: ${error.message}`);
+                return null;
+              });
+              const card = handoffCard({ purpose, kind, reason: params.reason, url: issued.url, openWithinMinutes, sessionMinutes, payment: params.payment, handoffId: issued.id, callbacks: CALLBACK_CARD_CHANNELS.includes(channel) });
               if (!sentNative) await deliverPrivately({
                 channel,
                 target: senderId,
-                ...((config.cardChannels ?? ["feishu"]).includes(channel)
-                  ? { text: card.text, presentation: card.presentation }
+                ...((config.cardChannels ?? DEFAULT_CARD_CHANNELS).includes(channel)
+                  ? { text: card.text, presentation: card.presentation, gatewayAction: GATEWAY_ACTION_CHANNELS.includes(channel) }
                   : { text: card.fallback }),
                 command: config.openclawCommand,
                 entry: config.openclawEntry,
@@ -278,9 +450,9 @@ export default definePluginEntry({
           }
           // In a chat channel, post the link as a card with a button in this conversation.
           const place = config.cards === false ? null : inPlaceTarget(context, config);
-          if (place && place.channel === "feishu") {
+          if (place) {
             try {
-              if (await postNativeCard({ cfg: context.config ?? context.runtimeConfig, accountId: place.accountId, target: place.target, issued, kind, purpose, params, actorUserId })) {
+              if (await postChannelCard({ ...place, cfg: context.config ?? context.runtimeConfig, issued, kind, purpose, params, actorUserId })) {
                 return textResult({
                   handoffId: issued.id,
                   kind,
@@ -290,7 +462,7 @@ export default definePluginEntry({
                   openWithinMinutes,
                   sessionMinutes,
                   instruction:
-                    NATIVE_CARD_INSTRUCTION +
+                    nativeCardInstruction(place.channel) +
                     (purpose === "payment" ? " Do not click any pay/confirm button yourself; after the user is done, check the order result on the page and report it." : ""),
                 });
               }
@@ -299,13 +471,16 @@ export default definePluginEntry({
             }
           }
           if (place) {
-            const card = handoffCard({ purpose, kind, reason: params.reason, url: issued.url, openWithinMinutes, sessionMinutes, payment: params.payment, handoffId: issued.id });
+            // DingTalk and WeCom cards cannot post 交还给 V back: the card asks for 好了 in the chat.
+            const callbacks = CALLBACK_CARD_CHANNELS.includes(place.channel);
+            const card = handoffCard({ purpose, kind, reason: params.reason, url: issued.url, openWithinMinutes, sessionMinutes, payment: params.payment, handoffId: issued.id, callbacks });
             try {
               await deliverPrivately({
                 ...place,
                 accountId: place.accountId ?? config.messageAccountId,
                 text: card.text,
                 presentation: card.presentation,
+                gatewayAction: GATEWAY_ACTION_CHANNELS.includes(place.channel),
                 command: config.openclawCommand,
                 entry: config.openclawEntry,
               });
@@ -318,7 +493,9 @@ export default definePluginEntry({
                 openWithinMinutes,
                 sessionMinutes,
                 instruction:
-                  "A card with two buttons has been posted in this conversation: 接管电脑 (the user takes over V's desktop) and 交还给 V (hands it back; it arrives here as a `/v-handback <id>` message, and by then the plugin has already returned the desktop to you, so just continue the task without asking). Do NOT repeat or paraphrase the url, and do not say where the card is (above/below): reply with one short sentence such as 接管卡片已发出，登录完成后告诉我一声, then end your turn and wait until the user says they are done; then call desktop_handoff_status." +
+                  (callbacks
+                    ? "A card with two buttons has been posted in this conversation: 接管电脑 (the user takes over V's desktop) and 交还给 V (hands it back; it arrives here as a `/v-handback <id>` message, and by then the plugin has already returned the desktop to you, so just continue the task without asking). Do NOT repeat or paraphrase the url, and do not say where the card is (above/below): reply with one short sentence such as 接管卡片已发出，登录完成后告诉我一声, then end your turn and wait until the user says they are done; then call desktop_handoff_status."
+                    : "A card with a 接管电脑 button has been posted in this conversation (the user takes over V's desktop there); the card asks them to reply 好了 here when they are done. Do NOT repeat or paraphrase the url, and do not say where the card is (above/below): reply with one short sentence such as 接管卡片已发出，完成后回复「好了」, then end your turn and wait until the user says they are done; then call desktop_handoff_status (if it still shows them in control, ask them to press 交还给 V on the takeover page).") +
                   (purpose === "payment" ? " Do not click any pay/confirm button yourself; after the user is done, check the order result on the page and report it." : ""),
               });
             } catch (error) {
@@ -335,7 +512,7 @@ export default definePluginEntry({
             sessionMinutes,
             instruction:
               kind === "control"
-                ? "Send exactly this url to the user in this conversation, and no other address or 'equivalent' link (other hostnames may not resolve for them). They open it, press 接管控制, do the login on V's own browser, press 交还给 V, then tell you they are done. While they are in control, your browser tool is limited to read-only actions. Do not store the url in memory or logs."
+                ? "Send exactly this url to the user in this conversation as a markdown link on its own line, `[接管电脑](<url>)`, and no other address or 'equivalent' link (other hostnames may not resolve for them). They open it, press 接管控制, do the login on V's own browser, press 交还给 V, then tell you they are done. While they are in control, your browser tool is limited to read-only actions. Do not store the url in memory or logs."
                 : "Send this view-only url. Viewers can watch V's desktop but cannot type or click.",
           });
         },
@@ -474,6 +651,8 @@ export default definePluginEntry({
 
     api.registerCommand?.({
       name: "v-takeover",
+      // The handler checks the person is the one the card was for.
+      requireAuth: false,
       description: "Mark V's desktop as taken over (the 接管 card button; the button also opens the desktop).",
       acceptsArgs: true,
       handler: async (ctx) => {
@@ -494,6 +673,8 @@ export default definePluginEntry({
 
     api.registerCommand?.({
       name: "v-handback",
+      // The handler checks the person is the one the card was for.
+      requireAuth: false,
       description: "Hand V's desktop back to V after a takeover (the 我完成了 card button).",
       acceptsArgs: true,
       handler: async (ctx) => {
@@ -520,14 +701,19 @@ export default definePluginEntry({
           return { text: decision.text };
         }
         handedBack.add(status.id);
-        await setCardState(status.id, "done", ctx.config);
-        api.logger?.info?.(`desktop handoff ${status.id} handed back from chat by ${actor} (${decision.action})`);
-        return status.card || cards.has(status.id) ? { continueAgent: true } : { text: decision.text, continueAgent: true };
+        // A card that now shows 已完成 needs no reply; otherwise (no card, or a DingTalk card
+        // that cannot change, or a WeCom card past its update window) a short status line.
+        const shown = await setCardState(status.id, "done", ctx.config);
+        api.logger?.info?.(`desktop handoff ${status.id} handed back from chat by ${actor} (${decision.action}, card ${shown ? "updated" : "not updated"})`);
+        if (!shown) announce(status.id, decision.text);
+        return { continueAgent: true };
       },
     });
 
     api.registerCommand?.({
       name: "v-skip",
+      // The handler checks the person is the one the card was for.
+      requireAuth: false,
       description: "Skip the step V asked the user to do on its desktop (the 跳过 card button).",
       acceptsArgs: true,
       handler: async (ctx) => {
@@ -539,14 +725,15 @@ export default definePluginEntry({
           return { text: "这一步已经结束了。" };
         }
         handedBack.add(status.id);
-        await setCardState(status.id, "skipped", ctx.config);
+        const shown = await setCardState(status.id, "skipped", ctx.config);
         try {
           if (status.controlActive) await client.handBack(status.id);
           await client.revoke(status.id);
         } catch (error) {
           return { text: `跳过失败：${error.message}` };
         }
-        api.logger?.info?.(`desktop handoff ${status.id} skipped by ${actor}`);
+        api.logger?.info?.(`desktop handoff ${status.id} skipped by ${actor} (card ${shown ? "updated" : "not updated"})`);
+        if (!shown) announce(status.id, "已跳过这一步，V 会换个办法或告诉你卡在哪。");
         return { continueAgent: true };
       },
     });

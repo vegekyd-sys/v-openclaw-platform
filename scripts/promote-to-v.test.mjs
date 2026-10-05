@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { assertAcceptedReleaseBinding, assertPromotionLease, REMOTE } from './promote-to-v.mjs';
+import { assertAcceptedReleaseBinding, assertPromotionLease, classifyAlignFailure, REMOTE } from './promote-to-v.mjs';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 function acceptedFixture() {
@@ -118,3 +118,21 @@ test('partial explicit undo metadata fails closed instead of silently using back
   const run = remote('undo', dir); assert.notEqual(run.status, 0); assert.match(run.stderr, /Invalid undo file metadata/u);
   assert.equal(fs.readFileSync(target, 'utf8'), 'replacement\n');
 }));
+
+test('align refusal after install: own files -> undo, sidecar -> install on V, lagging -> sync, parity fine -> rerun align', () => {
+  const mine = new Set(['openclaw/dist/a.js', 'extensions/wecom-openclaw-plugin/dist/src/channel.js']);
+  const p = (...findings) => ({ state: 'DIVERGED', findings });
+  assert.equal(classifyAlignFailure(null, mine).kind, 'unknown');
+  assert.equal(classifyAlignFailure({ state: 'ALIGNED', findings: [] }, mine).kind, 'parity-aligned');
+  assert.equal(classifyAlignFailure({ state: 'ALIGNED', findings: [{ target: 'sidecar:handoff/service/x.js', component: 'handoff', kind: 'only-on-v', advisory: true }] }, mine).kind, 'parity-aligned');
+  assert.equal(classifyAlignFailure(p({ target: 'extensions/wecom-openclaw-plugin/dist/src/channel.js', kind: 'differs' }), mine).kind, 'undo');
+  // A release that also installed the secret-entry service, on VLab only so far.
+  const side = classifyAlignFailure(p({ target: 'sidecar:secret-entry/server.mjs', component: 'secret-entry', kind: 'only-on-vlab' }), mine);
+  assert.equal(side.kind, 'sidecars');
+  assert.deepEqual(side.sidecars.map(([id, list]) => [id, list.length]), [['secret-entry', 1]]);
+  assert.deepEqual(side.lagging, []);
+  const lag = classifyAlignFailure(p({ target: 'openclaw/dist/other.js', kind: 'differs' }), mine);
+  assert.deepEqual([lag.kind, lag.lagging.length], ['lagging', 1]);
+  // Something only on VLab outside the sidecars is not "V ahead": undo path.
+  assert.equal(classifyAlignFailure(p({ target: 'openclaw/dist/new.js', kind: 'only-on-vlab' }), mine).kind, 'unknown');
+});

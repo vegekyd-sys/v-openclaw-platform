@@ -1,5 +1,4 @@
 {
-  "baseRelease": "feishu-secret-entry-runtime-v2-1",
   "support": [
     "lab/candidate/feishu-model-switch-roles.mjs",
     "lab/release-files/feishu-model-switch-roles/patch-runtime.mjs"

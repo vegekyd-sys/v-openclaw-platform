@@ -29,6 +29,7 @@
       "messageAccountId": { "type": "string" },
       "cards": { "type": "boolean" },
       "nativeCard": { "type": "boolean" },
+      "nativeCardChannels": { "type": "array", "items": { "type": "string" } },
       "cardImage": { "type": "string", "enum": ["cover", "screenshot"] },
       "coverImage": { "type": "string" },
       "desktopDisplay": { "type": "string" },

@@ -13,13 +13,21 @@ export function quickCommand(command, { userOpenId, expiresAt } = {}) {
   return { oc: "ocf1", k: "quick", a: "feishu.payload.button", q: command, ...(Object.keys(c).length ? { c } : {}) };
 }
 
-const STATES = {
+export const STATES = {
   pending: { tag: "需要操作", color: "orange" },
   active: { tag: "操作中", color: "blue" },
   done: { tag: "已完成", color: "green" },
   skipped: { tag: "已跳过", color: "neutral" },
   ended: { tag: "已结束", color: "neutral" },
   watch: { tag: "可观看", color: "blue" },
+};
+
+/** The grey line under the reason, per state (pending has none on Feishu: the buttons say it). */
+export const STATE_NOTES = {
+  active: "你在操作 V 的电脑。做完点「我完成了」，V 接着做。",
+  done: "已交还给 V，V 接着做。",
+  skipped: "你跳过了这一步，V 会换个办法或告诉你卡在哪。",
+  ended: "这次接管已经结束。",
 };
 
 function button(label, type, { url, command, owner } = {}) {
@@ -49,12 +57,7 @@ export function nativeHandoffCard({ state = "pending", kind = "control", purpose
     const parts = [payment.item, payment.amount && `**${payment.amount}${payment.currency ? ` ${payment.currency}` : ""}**`, payment.merchant].filter(Boolean);
     if (parts.length) lines.push(parts.join(" · "));
   }
-  const notes = {
-    active: "你在操作 V 的电脑。做完点「我完成了」，V 接着做。",
-    done: "已交还给 V，V 接着做。",
-    skipped: "你跳过了这一步，V 会换个办法或告诉你卡在哪。",
-    ended: "这次接管已经结束。",
-  };
+  const notes = STATE_NOTES;
   if (note ?? notes[state]) lines.push(`<font color='grey'>${note ?? notes[state]}</font>`);
   elements.push({ tag: "markdown", content: lines.join("\n") || "V 需要你接管电脑。" });
   if (imageKey) {

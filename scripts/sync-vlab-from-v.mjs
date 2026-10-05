@@ -6,7 +6,8 @@
 // change is to stay, it must first become a capture in git, then reach VLab
 // through the ordinary release path, so VLab keeps a record and a rollback:
 //
-//   1. capture V   : scripts/capture-production-runtime.mjs (core/worker/Feishu)
+//   1. capture V   : scripts/capture-production-runtime.mjs (every captured
+//                    component of scripts/lib/runtime-components.mjs)
 //                    -> PR to dev -> merged. install-v-release-drift.sh with it.
 //   2. this script : node scripts/sync-vlab-from-v.mjs --name <captured release> --owner <o>          # plan
 //                    node scripts/sync-vlab-from-v.mjs --name <captured release> --owner <o> --apply  # do it
@@ -30,6 +31,7 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { captured, captureSourceForTarget } from './lib/runtime-components.mjs';
 
 const args = parseArgs(process.argv.slice(2));
 const repo = resolve(dirname(new URL(import.meta.url).pathname), '..');
@@ -49,27 +51,29 @@ if (parity.state === 'ALIGNED') {
   process.exit(0);
 }
 const commit = git('rev-parse', 'HEAD').toString().trim();
-const captures = [
-  { prefix: 'openclaw/dist/', dir: `release/captured/${args.name}/dist/` },
-  { prefix: 'production-worker/', dir: `release/captured/${args.name}.worker/dist/` },
-  { prefix: /^npm\/projects\/openclaw-feishu-[^/]+\/node_modules\/@openclaw\/feishu\//, dir: `release/captured/${args.name}.feishu/dist/` },
-];
-for (const c of captures) {
-  try { git('cat-file', '-e', `${commit}:${c.dir.replace(/dist\/$/, "manifest.json")}`); } catch {
-    fail(`${c.dir.replace(/dist\/$/, "manifest.json")} is not in dev ${commit.slice(0, 12)}: capture V and merge it first`);
+// The three original components must be in the capture. A release captured
+// before DingTalk/WeCom became components lacks theirs; a difference there then
+// has no source below and is refused (recapture V).
+for (const c of captured().filter((x) => ['', '.worker', '.feishu'].includes(x.suffix))) {
+  const manifest = `release/captured/${args.name}${c.suffix}/manifest.json`;
+  try { git('cat-file', '-e', `${commit}:${manifest}`); } catch {
+    fail(`${manifest} is not in dev ${commit.slice(0, 12)}: capture V and merge it first`);
   }
 }
-const sourceFor = (target) => {
-  for (const c of captures) {
-    const m = typeof c.prefix === 'string' ? (target.startsWith(c.prefix) ? c.prefix : null) : c.prefix.exec(target)?.[0];
-    if (m) return c.dir + target.slice(m.length);
-  }
-  return null;
-};
+const sourceFor = (target) => captureSourceForTarget(args.name, target);
 
 const files = [];
 const refused = [];
+// Sidecars are installed by their own scripts, never by a release; an advisory
+// component does not block alignment, so it is not synced either.
+const sidecars = parity.findings.filter((f) => !f.advisory && f.target.startsWith('sidecar:'));
+if (sidecars.length) {
+  console.error('Sidecars differ between V and VLab; install them on VLab from the commit V runs (UNIT_PREFIX=vlab-), then run this again:');
+  for (const f of sidecars) console.error(`  ${f.kind} ${f.target}`);
+  process.exit(1);
+}
 for (const f of parity.findings) {
+  if (f.advisory) continue;
   if (f.kind !== 'differs' && f.kind !== 'only-on-v') {
     refused.push(`${f.kind} ${f.target}`);
     continue;

@@ -1,0 +1,8 @@
+{
+  "tests": ["lab/candidate/x-search-effort.test.mjs"],
+  "user": "lab-db91-parity",
+  "timeoutSeconds": 600,
+  "env": {
+    "X_SEARCH_EFFORT_EXPECT": "baseline"
+  }
+}

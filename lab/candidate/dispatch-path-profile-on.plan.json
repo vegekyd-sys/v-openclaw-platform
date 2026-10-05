@@ -1,0 +1,26 @@
+{
+  "support": [
+    "lab/candidate/dispatch-path-profile.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/dispatch-path-profile.mjs"
+  ],
+  "timeoutSeconds": 2400,
+  "user": "lab-db91-parity",
+  "files": [
+    {
+      "source": "lab/release-files/placement-evidence-absence/session-accessor-K0XuW6ln.js",
+      "target": "openclaw/dist/session-accessor-K0XuW6ln.js",
+      "before": "21f2a5695f1caa2f3c18784f92a6f2beb7f54f71ad1378c5125f0d1d0563ca77"
+    },
+    {
+      "source": "lab/release-files/placement-evidence-absence/server-worker-placement-startup-BvPREvpr.js",
+      "target": "openclaw/dist/server-worker-placement-startup-BvPREvpr.js",
+      "before": "96b5b482700dcfe715c0acc1fd3f319e4e87d03372a9f4c7f33e4f0434c39663"
+    }
+  ],
+  "env": {
+    "CYCLES": "3"
+  }
+}

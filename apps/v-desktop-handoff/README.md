@@ -30,6 +30,8 @@
 
 `controlAnywhere: true`（V 与 VLab 当前设置）时任何群和私聊都能签发 `control` 链接并直接发在当场；链接是不记名的，群里谁点都能接管，这是 Tianyi 明确选择的策略。关掉时退回严格模式：只在私聊签发（`kind=watch` 群里可用），签发者取渠道可信 `requesterSenderId`，不信模型参数。`controlAnywhereActors`（如 `["feishu:ou_xxx"]`）里列出的人在群里也能要控制链接，但链接是不记名的，所以群里签发时**通过 `openclaw message send` 私聊投递**，工具结果里不含 url；投递失败则撤销签发并报错。自己的规范身份可从任一次 `desktop_handoff_request` 结果的 `requestedBy` 字段读到。`blockBrowserWhileControlled`（默认开）下，`/v1/state.controlActive` 为真时 `browser` 只放行 status / tabs / snapshot / screenshot，`computer` 只放行截图类；服务不可达时放行并记 warn，不让分享服务拖垮浏览器。
 
+聊天里的链接以「电脑」卡发出（截图 + 接管 / 我完成了 / 跳过）：飞书（`core/native-card.js`）和 Telegram（`core/telegram-api.js`，照片 + 内联按钮）由插件自己发送并原地改；钉钉、企微经 V 的 v-experience 渠道补丁渲染 presentation（`core/channel-cards.js`）。企微的截图要一个企微服务器能下载的 URL，所以服务多了 `PUT /v1/handoffs/:id/snapshot`（admin，JPEG/PNG）和公开的 `GET <prefix>/snapshot/<令牌>.jpg`（随机令牌、只在内存、`snapshotTtlMs` 默认 60 分钟）。`nativeCardChannels` 可限定哪些渠道发「电脑」卡，`nativeCard: false` 全部退回单按钮卡。详见 [docs/v-experience.md](../../docs/v-experience.md) 第 16 节。
+
 插件依赖 `typebox`，安装脚本把 `node_modules/typebox` 软链到 OpenClaw runtime 里的那份。
 
 ## 测试
