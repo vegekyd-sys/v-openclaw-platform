@@ -1,0 +1,21 @@
+{
+  "support": [
+    "lab/candidate/workboard-incremental-sweep.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/workboard-incremental-sweep.mjs"
+  ],
+  "timeoutSeconds": 2400,
+  "user": "lab-db91-parity",
+  "env": {
+    "PATCH": "on"
+  },
+  "files": [
+    {
+      "source": "lab/release-files/workboard-incremental-sweep/index.js",
+      "target": "openclaw/dist/extensions/workboard/index.js",
+      "before": "66e7b126907ccee1d6decb7c40b1a5ab80cbac7818a4ce2cc2e768f681d8f03f"
+    }
+  ]
+}
