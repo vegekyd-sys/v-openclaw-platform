@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { cardButtons, handoffPresentation, isPublicImageUrl, telegramHandoffCard } from "../core/channel-cards.js";
+import { cardButtons, handoffPresentation, isPublicImageUrl, nativeCardInstruction, telegramHandoffCard } from "../core/channel-cards.js";
 import { TelegramApi, telegramChat, telegramCredentials } from "../core/telegram-api.js";
 import { inPlaceTarget } from "../core/card.js";
 
@@ -119,4 +119,13 @@ test("telegram api: photo card as multipart, text card without a picture, edits,
   assert.deepEqual(JSON.parse(media.params.media), { type: "photo", media: "attach://photo", caption: "new", parse_mode: "HTML" });
   await tg.editCard({ chatId: "1", messageId: 43, kind: "text", caption: "t", replyMarkup: { inline_keyboard: [] } });
   assert.equal(calls.at(-1).method, "editMessageText");
+});
+
+test("the agent is told the hand-back button the channel actually shows", () => {
+  assert.match(nativeCardInstruction("feishu"), /做完点「我完成了」/);
+  for (const channel of ["telegram", "dingtalk-connector", "wecom"]) {
+    const text = nativeCardInstruction(channel);
+    assert.match(text, /做完点「完成」/, channel);
+    assert.doesNotMatch(text, /我完成了/, channel);
+  }
 });

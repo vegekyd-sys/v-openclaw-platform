@@ -33,13 +33,13 @@ sudo <node> activate.mjs <vlab|production> --rollback [--owner <o>]   # 按最�
 
 前提：`scripts/vlab-channel-plugins-prep.mjs --apply` 已在 VLab 上跑过（钉钉、企微在 runtime/ 里），之后 `vlab.mjs baseline` + `align`。VLab 上的 server 工具副本已含 `extensions` 目标（`lab/shared/files.mjs`，手工更新）。
 
-1. VLab，持 lease：`package/stage/deploy` 运行时字节（R）。
-2. VLab：`install-desktop-host.sh`（`UNIT_PREFIX=vlab-`）、`install-secret-entry-host.sh`（`UNIT_PREFIX=vlab- GATEWAY_UNIT=openclaw-vlab-production-mirror-v8.service PUBLIC_BIND=fd7a:115c:a1e0::e539:be40`），用 R 的同一个提交。
-3. VLab：`activate.mjs vlab --owner <o>`（这次重启同时让 Gateway 读到 `V_SECRET_ENTRY_*` 和卡片模板）。
+1. VLab，持 lease：`install-desktop-host.sh`（`UNIT_PREFIX=vlab-`）、`install-secret-entry-host.sh`（`UNIT_PREFIX=vlab- GATEWAY_UNIT=openclaw-vlab-production-mirror-v8.service PUBLIC_BIND=fd7a:115c:a1e0::e539:be40`），用 R 的同一个提交。
+2. VLab：`activate.mjs vlab --owner <o>`（重启一次，Gateway 读到 `V_SECRET_ENTRY_*` 和卡片模板）。**必须在 stage 之前**：stage 记下配置 hash，deploy 和 accept 都要求它不变。此时运行时还是 V2，脚本只提示不拦。
+3. VLab：`package/stage/deploy` 运行时字节（R），deploy 再重启一次，V3 和渠道补丁生效。
 4. 真机验收（钉钉 / 企微 / Telegram 测试机器人），`vlab.mjs accept`。parity：`node scripts/vlab-v-parity.mjs --pending <R 的 plan>`，plan 里写 `"sidecars": ["secret-entry", "handoff"]`，应为 `AHEAD`。
 5. V：`install-desktop-host.sh`、`install-secret-entry-host.sh`（同一提交；cloudflared 加 `/secret-entry`，见脚本输出）。**必须在第 6 步之前**，否则第 6 步末尾的 align 会因旁路服务不同而拒绝（脚本会提示改装旁路服务再 align，不会提示 sync）。
 6. `promote-to-v.mjs --release <R> --name <V 发版名> --owner <o> --apply`：装字节、捕获 `<name>{,.worker,.feishu,.dingtalk,.wecom}`、更新哨兵、align。
 7. V：`activate.mjs production`（这次重启让运行时字节和 `V_SECRET_ENTRY_*` 生效）。
 8. 收尾：提交捕获 + CHANGELOG（`release-notes.mjs`，钉钉 / 企微第一次出现会写成"首次纳入存档"），发版 PR，打 tag；接管旁路服务对齐后把组件表里 `handoff` 改成 `blocking: true`。
 
-不上线：VLab 上先 `activate.mjs vlab --rollback --owner <o>`（配置 hash 回到 stage 时的值），再 `install-secret-entry-host.sh` 的 `MODE=uninstall`、接管服务装回 V 的提交，最后 `vlab.mjs rollback`。
+不上线：VLab 上先 `vlab.mjs rollback`（它也核对 stage 时的配置 hash，所以配置要保持激活状态），再 `activate.mjs vlab --rollback --owner <o>`，最后 `install-secret-entry-host.sh` 的 `MODE=uninstall`、接管服务装回 V 的提交。

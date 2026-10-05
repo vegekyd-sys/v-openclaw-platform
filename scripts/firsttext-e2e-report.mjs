@@ -7,11 +7,11 @@
 // group). Each record is one inbound Feishu message V answered. Times are measured from the
 // message's Feishu create_time (when the user sent it), so they include Feishu's inbound
 // delivery but not the client's rendering of the card.
-//   first visible  = first card content push, or first non-streaming reply, whichever is first
-//   first answer   = first push that carries answer text (not only reasoning/status)
-//   segments       = inbound (sent -> received), agent (received -> first answer text reaches the
-//                    channel), delivery (that text -> pushed into the card), card create (start
-//                    -> created)
+//   首字 / first answer = first card push carrying answer text, or the first non-streaming reply
+//   first visible  = any first push (status / progress / reasoning lines count)
+//   segments       = inbound (sent -> received), queue (received -> agent run start), agent (received -> first answer text reaches the
+//                    channel), reasoning (received -> first reasoning text), delivery (first answer
+//                    text at the channel -> in the card), card create (start -> created)
 // No message text is read or written.
 
 import { execFileSync } from 'node:child_process';
@@ -36,17 +36,21 @@ export function parseRecords(text) {
 const delta = (to, from) => (Number.isFinite(to) && Number.isFinite(from) ? to - from : undefined);
 
 export function measure(r) {
+  // first answer text in the card is what the user calls 首字; earlier pushes are often status
+  // or progress lines, and reasoning may be shown before the answer
   const visibleCandidates = [r.firstPushAtMs, r.visibleAtMs].filter(Number.isFinite);
   const firstVisibleAt = visibleCandidates.length ? Math.min(...visibleCandidates) : undefined;
   const firstAnswerAt = r.firstAnswerPushAtMs ?? r.visibleAtMs;
-  const firstModelAt = [r.firstAnswerTokenAtMs, r.firstReasoningAtMs].filter(Number.isFinite);
   return {
-    firstVisibleMs: delta(firstVisibleAt, r.sentAtMs),
     firstAnswerMs: delta(firstAnswerAt, r.sentAtMs),
+    firstVisibleMs: delta(firstVisibleAt, r.sentAtMs),
     inboundMs: delta(r.receivedAtMs, r.sentAtMs),
-    agentMs: delta(firstModelAt.length ? Math.min(...firstModelAt) : undefined, r.receivedAtMs),
-    deliveryMs: delta(firstVisibleAt, firstModelAt.length ? Math.min(...firstModelAt) : undefined),
+    queueMs: delta(r.runStartAtMs, r.receivedAtMs),
+    agentMs: delta(r.firstAnswerTokenAtMs, r.receivedAtMs),
+    reasoningMs: delta(r.firstReasoningAtMs, r.receivedAtMs),
+    deliveryMs: delta(firstAnswerAt, r.firstAnswerTokenAtMs),
     cardCreateMs: delta(r.cardCreatedAtMs, r.cardStartAtMs),
+    cardReadyBeforeAnswer: Number.isFinite(r.cardCreatedAtMs) && Number.isFinite(r.firstAnswerTokenAtMs) ? r.cardCreatedAtMs <= r.firstAnswerTokenAtMs : undefined,
     harness: r.agentRuntime ?? 'unknown',
     model: r.model ?? 'unknown',
     chat: /:feishu:(group|direct|dm):/u.exec(r.sessionKey ?? '')?.[1] ?? 'other',
@@ -67,13 +71,15 @@ export function summarize(rows, key) {
 
 export function report(records) {
   const rows = records.map(measure);
-  const out = { n: rows.length, firstVisible: summarize(rows, 'firstVisibleMs'), firstAnswer: summarize(rows, 'firstAnswerMs'), segments: {}, byHarness: {}, slowest: [] };
-  for (const k of ['inboundMs', 'agentMs', 'deliveryMs', 'cardCreateMs']) out.segments[k] = summarize(rows, k);
+  const out = { n: rows.length, firstAnswer: summarize(rows, 'firstAnswerMs'), firstVisible: summarize(rows, 'firstVisibleMs'), segments: {}, byHarness: {}, slowest: [] };
+  for (const k of ['inboundMs', 'queueMs', 'agentMs', 'reasoningMs', 'deliveryMs', 'cardCreateMs']) out.segments[k] = summarize(rows, k);
+  const ready = rows.map((r) => r.cardReadyBeforeAnswer).filter((x) => x !== undefined);
+  out.cardReadyBeforeAnswer = { n: ready.length, yes: ready.filter(Boolean).length };
   const groups = new Map();
   rows.forEach((r) => { const g = `${r.harness}/${r.model}`; groups.set(g, [...(groups.get(g) ?? []), r]); });
-  for (const [g, list] of groups) out.byHarness[g] = summarize(list, 'firstVisibleMs');
+  for (const [g, list] of groups) out.byHarness[g] = summarize(list, 'firstAnswerMs');
   out.slowest = rows.map((r, i) => ({ ...r, at: records[i].sentAtMs, inboundMessageId: records[i].inboundMessageId }))
-    .filter((r) => Number.isFinite(r.firstVisibleMs)).sort((a, b) => b.firstVisibleMs - a.firstVisibleMs).slice(0, 5);
+    .filter((r) => Number.isFinite(r.firstAnswerMs)).sort((a, b) => b.firstAnswerMs - a.firstAnswerMs).slice(0, 5);
   return out;
 }
 
@@ -81,11 +87,12 @@ const s = (ms) => (Number.isFinite(ms) ? `${(ms / 1000).toFixed(1)}s` : '-');
 function print(out) {
   const line = (label, x) => console.log(`${label.padEnd(26)} n=${String(x.n).padStart(4)}  P50 ${s(x.p50).padStart(6)}  P95 ${s(x.p95).padStart(6)}  P99 ${s(x.p99).padStart(6)}  Max ${s(x.max).padStart(6)}`);
   console.log(`firsttext-e2e ${since} .. ${until}: ${out.n} messages`);
-  line('first visible', out.firstVisible);
-  line('first answer', out.firstAnswer);
+  line('首字 (first answer)', out.firstAnswer);
+  line('first visible (any)', out.firstVisible);
   for (const [k, v] of Object.entries(out.segments)) line(`  ${k}`, v);
   for (const [k, v] of Object.entries(out.byHarness)) line(`  ${k}`.slice(0, 26), v);
-  for (const r of out.slowest) console.log(`  slow ${new Date(r.at).toISOString()} ${s(r.firstVisibleMs)} inbound ${s(r.inboundMs)} agent ${s(r.agentMs)} delivery ${s(r.deliveryMs)} ${r.harness}/${r.model}`);
+  console.log(`  card ready before the first answer text: ${out.cardReadyBeforeAnswer.yes}/${out.cardReadyBeforeAnswer.n}`);
+  for (const r of out.slowest) console.log(`  slow ${new Date(r.at).toISOString()} ${s(r.firstAnswerMs)} inbound ${s(r.inboundMs)} agent ${s(r.agentMs)} delivery ${s(r.deliveryMs)} card ${s(r.cardCreateMs)} ${r.harness}/${r.model}`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

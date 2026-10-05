@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 export const H5_PATHS = [
   'lab/gpt-live-h5/access.mjs',
+  'lab/gpt-live-h5/personal-session.mjs',
   'lab/gpt-live-h5/server.mjs', 'lab/gpt-live-h5/events.mjs', 'lab/gpt-live-h5/duplex-playback.mjs',
   'lab/gpt-live-h5/index.html', 'lab/gpt-live-h5/app.js', 'lab/gpt-live-h5/styles.css',
   'lab/gpt-live-h5/microphone-capture.mjs', 'lab/gpt-live-h5/transcript-presentation.mjs',

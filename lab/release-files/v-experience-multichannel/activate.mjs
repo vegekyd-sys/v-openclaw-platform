@@ -17,9 +17,9 @@
 // /var/lib/v-release-config/v-experience-multichannel/. --rollback restores the newest
 // receipt's backup, but only if the config is still exactly what activation wrote.
 //
-// Order on VLab: the runtime release must already be deployed (vlab.mjs deploy refuses a
-// changed config hash), and before `vlab.mjs rollback` of that release, run --rollback here
-// first so the config hash is back to the one it was staged with.
+// Order on VLab: activate before `vlab.mjs stage` (stage records the config hash, deploy and
+// accept refuse a changed one). To back out, the reverse: `vlab.mjs rollback` of that release
+// (it too checks the staged hash), then --rollback here.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -72,7 +72,14 @@ let next, dropins = {}, removeDropins = [], receipt;
 if (!rollback) {
   const authFiles = fs.readdirSync(`${core}/dist`).filter((n) => /^command-auth-[A-Za-z0-9_-]{8}\.js$/.test(n));
   assert.equal(authFiles.length, 1, `expected one command-auth chunk in ${core}/dist`);
-  assertCommandAuthV3(fs.readFileSync(`${core}/dist/${authFiles[0]}`, 'utf8'));
+  const authSource = fs.readFileSync(`${core}/dist/${authFiles[0]}`, 'utf8');
+  // On V the release bytes are installed (no restart) before this runs, so V3 is
+  // already on disk. On VLab the config must be written before `stage` (stage
+  // records the config hash; deploy and accept require it unchanged), so V3
+  // arrives with the deploy minutes later. Until then VLab's test-bot channels
+  // behave like V's DingTalk/WeCom today; nothing new is exposed.
+  if (targetName === 'production') assertCommandAuthV3(authSource);
+  else try { assertCommandAuthV3(authSource); } catch (error) { console.error(`note: ${error.message}; on VLab the release deploy brings V3 after this config`); }
   const derive = (cfg.plugins?.load?.paths ?? []).some((p) => fs.existsSync(path.join(p, 'worker-config-derive.mjs')));
   assert(derive || !cfg.plugins?.entries?.['vlab-agent-worker-isolation']?.enabled, 'Worker plugin without worker-config-derive: the Worker would not see this config');
   if (targetName === 'production') {
