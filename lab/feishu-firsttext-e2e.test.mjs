@@ -36,6 +36,9 @@ test('a record measures from the user\'s send time and splits the segments', () 
   assert.equal(m.firstVisibleMs, 4780);
   assert.equal(m.firstAnswerMs, 4780);
   assert.equal(m.inboundMs, 458);
+  assert.equal(m.preDispatchMs, 12);
+  assert.equal(m.dispatchToRunMs, undefined);
+  assert.equal(measure({ ...sample, runStartAtMs: t0 + 880 }).dispatchToRunMs, 410);
   assert.equal(m.agentMs, 2900 - 458);
   assert.equal(m.deliveryMs, 4780 - 2900);
   assert.equal(m.cardCreateMs, 4268 - 2905);

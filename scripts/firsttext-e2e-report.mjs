@@ -9,7 +9,10 @@
 // delivery but not the client's rendering of the card.
 //   首字 / first answer = first card push carrying answer text, or the first non-streaming reply
 //   first visible  = any first push (status / progress / reasoning lines count)
-//   segments       = inbound (sent -> received), queue (received -> agent run start), agent (received -> first answer text reaches the
+//   segments       = inbound (sent -> received), queue (received -> agent run start) split into
+//                    preDispatch (received -> reply dispatcher: the Feishu handler's own work,
+//                    authorization, media, quoted/thread context, group name) and dispatchToRun
+//                    (dispatcher -> run start: core inbound, session, Worker admission), agent (received -> first answer text reaches the
 //                    channel), reasoning (received -> first reasoning text), delivery (first answer
 //                    text at the channel -> in the card), card create (start -> created)
 // No message text is read or written.
@@ -83,6 +86,8 @@ export function measure(r, model) {
     firstVisibleMs: delta(firstVisibleAt, r.sentAtMs),
     inboundMs: delta(r.receivedAtMs, r.sentAtMs),
     queueMs: delta(r.runStartAtMs, r.receivedAtMs),
+    preDispatchMs: delta(r.dispatcherAtMs, r.receivedAtMs),
+    dispatchToRunMs: delta(r.runStartAtMs, r.dispatcherAtMs),
     agentMs: delta(r.firstAnswerTokenAtMs, r.receivedAtMs),
     reasoningMs: delta(r.firstReasoningAtMs, r.receivedAtMs),
     deliveryMs: delta(firstAnswerAt, r.firstAnswerTokenAtMs),
@@ -115,7 +120,7 @@ export function summarize(rows, key) {
 export function report(records, models = new Map()) {
   const rows = records.map((r) => measure(r, models.get(r.runId)));
   const out = { n: rows.length, firstAnswer: summarize(rows, 'firstAnswerMs'), firstVisible: summarize(rows, 'firstVisibleMs'), segments: {}, byHarness: {}, slowest: [] };
-  for (const k of ['inboundMs', 'queueMs', 'agentMs', 'reasoningMs', 'deliveryMs', 'cardCreateMs']) out.segments[k] = summarize(rows, k);
+  for (const k of ['inboundMs', 'queueMs', 'preDispatchMs', 'dispatchToRunMs', 'agentMs', 'reasoningMs', 'deliveryMs', 'cardCreateMs']) out.segments[k] = summarize(rows, k);
   out.overhead = summarize(rows, 'overheadMs');
   out.overheadNoTools = summarize(rows, 'overheadNoToolsMs');
   out.model = {};
@@ -142,7 +147,7 @@ function print(out) {
   for (const [k, v] of Object.entries(out.segments)) line(`  ${k}`, v);
   for (const [k, v] of Object.entries(out.byHarness)) line(`  ${k}`.slice(0, 26), v);
   console.log(`  card ready before the first answer text: ${out.cardReadyBeforeAnswer.yes}/${out.cardReadyBeforeAnswer.n}`);
-  for (const r of out.slowest) console.log(`  slow ${new Date(r.at).toISOString()} ${s(r.firstAnswerMs)} overhead ${s(r.overheadMs)} model ${s(r.modelToTextMs)} inbound ${s(r.inboundMs)} queue ${s(r.queueMs)} agent ${s(r.agentMs)} delivery ${s(r.deliveryMs)} card ${s(r.cardCreateMs)} ${r.harness}/${r.model}`);
+  for (const r of out.slowest) console.log(`  slow ${new Date(r.at).toISOString()} ${s(r.firstAnswerMs)} overhead ${s(r.overheadMs)} model ${s(r.modelToTextMs)} inbound ${s(r.inboundMs)} queue ${s(r.queueMs)} (pre ${s(r.preDispatchMs)} run ${s(r.dispatchToRunMs)}) agent ${s(r.agentMs)} delivery ${s(r.deliveryMs)} card ${s(r.cardCreateMs)} ${r.harness}/${r.model}`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
