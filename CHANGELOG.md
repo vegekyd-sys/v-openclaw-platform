@@ -11,6 +11,27 @@
 
 ---
 
+## v2026.9.1-db91.6-workboard-incremental-sweep-20261006
+
+上线：2026-10-06 00:05 CST 安装到 V（promote-to-v，未重启；下次 Gateway 启动时生效，重启时间由 Tianyi 决定）  ·  tag `v2026.9.1-db91.6-workboard-incremental-sweep-20261006`
+
+**摘要**：workboard 的 lifecycle 对账以前每 64 秒把全部会话列一遍，每次卡 Gateway 主线程约 3 秒，赶上的消息要多等最多约 2.5 秒才开始跑。现在全量之间只列最近更新的会话，首次、每 10 分钟、有 prepared launch 时仍做全量。共享 VLab 实测每分钟对账约 0.6 秒，c10 首字 P95 6.6 秒（之前 10–14 秒）。
+
+相对上一版 `v-experience-channels-20261005`：1 个文件变化。
+
+**经 VLab 发版 `workboard-incremental-sweep-20261005`**（claude-workboard-incremental-sweep，dev `bdfcdde2`）
+> 验收：PR #212. Shared Gateway profiled 23:42-23:54 (12 min): session-sharing resolution ran once (23:51:57, 663 ms, the 10-minute full sweep) vs every minute before; per-minute sweep bursts ~0.06-0.1 s + 0.45-0.6 s (was ~2 s on VLab / ~3 s on V); 0 workboard lifecycle sync failures in journal. Candidate receipts candidate-52bbf324 (on) / candidate-e070d2dd (off): late card linked to a session changed af…
+- `core` extensions/workboard/index.js  66e7b126 → ba56e0ab
+
+**这期间合入 dev 的 PR**（7 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #213 release: V v-experience-channels-20261005 捕获与变更记录
+- #210 release: V v2026.9.1-db91.6-firsttext-runid-20261005 捕获与变更记录
+- #206 release: V v2026.9.1-db91.6-firsttext-e2e-20261005 捕获与变更记录
+- #200 release: V v2026.9.1-db91.6-worker-prewarm-20261005 捕获与变更记录
+- #199 release: V v2026.9.1-db91.6-voice-confirmation-switch-20261005 捕获与变更记录
+- #212 perf(workboard): 对账只列最近更新的会话，不再每分钟卡 Gateway 约 3 秒
+- #195 release: V v2026.9.1-db91.6-placement-evidence-20261005 捕获与变更记录
+
 ## v-experience-channels-20261005
 
 上线：2026-10-05 23:19 CST  ·  tag `v-experience-channels-20261005`
