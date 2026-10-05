@@ -18,7 +18,7 @@ const OWNER = process.env.RELAY_OWNER_OPEN_ID ?? "ou_775a78b0aaae67da5e15eeaf102
 const GROUP = process.env.RELAY_TARGET_CHAT ?? "oc_5afced473a29eb6f5fed3ba9966aa9ff";
 const GROUP_NAME = process.env.RELAY_TARGET_NAME ?? "VLab 发布验收 B";
 const MODEL = process.env.RELAY_MODEL ?? "deepseek/deepseek-v4-flash";
-const only = (process.env.RELAY_SCENARIOS ?? "relay,denied").split(",").map((s) => s.trim()).filter(Boolean);
+const only = (process.env.RELAY_SCENARIOS ?? "relay").split(",").map((s) => s.trim()).filter(Boolean);
 const SECRETS = "/srv/vlab-production-mirror/labs/instances/db91-parity/secrets.env";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const redact = (s) => String(s).replace(/(token|api.?key|authorization|secret|bearer|password)([=: ]+)[^\s"]+/giu, "$1$2[redacted]");
@@ -176,6 +176,41 @@ async function sessionRows(search) {
   const rows = res?.sessions ?? res?.rows ?? res?.items ?? [];
   return rows.map((r) => ({ key: r.key ?? r.sessionKey, label: r.label ?? r.displayName, lastChannel: r.lastChannel ?? r.deliveryContext?.channel, lastTo: r.lastTo ?? r.deliveryContext?.to }));
 }
+// Same as agentTurn but does not block: resolves with timings when the CLI exits.
+function agentTurnAsync(message, deliverTo, timeout = 600) {
+  const args = [`${dist}/index.js`, "agent", "--agent", "makaron", "--model", MODEL, "--message", message, "--json", "--timeout", String(timeout), "--channel", "feishu", "--to", deliverTo, "--deliver"];
+  const started = Date.now();
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, args, { env, stdio: ["ignore", "pipe", "pipe"] });
+    let out = "", err = "";
+    child.stdout.on("data", (b) => { out += b; });
+    child.stderr.on("data", (b) => { err += b; });
+    child.on("exit", (code) => {
+      let meta;
+      try { meta = JSON.parse(out.slice(out.indexOf("{"))); } catch { /* not json */ }
+      resolve({ exit: code, startedAt: started, endedAt: Date.now(), reply: redact(String(meta?.result?.payloads?.[0]?.text ?? meta?.payloads?.[0]?.text ?? "")).slice(0, 400), stderr: code === 0 ? undefined : redact(err).slice(-600) });
+    });
+  });
+}
+function queueRelay(id, message, dmKey) {
+  const now = Date.now();
+  fs.mkdirSync(storeDir, { recursive: true });
+  fs.writeFileSync(path.join(storeDir, `${id}.json`), JSON.stringify({
+    id, chainId: id, via: "owner", requestedBy: `feishu:${OWNER}`, status: "queued", createdAt: now, updatedAt: now,
+    from: { sessionKey: dmKey, label: "Tianyi 的私聊", name: "V" },
+    to: { sessionKey: `agent:makaron:feishu:group:${GROUP}`, label: GROUP_NAME, name: "V" },
+    message,
+  }));
+}
+const readRelay = (id) => { try { return JSON.parse(fs.readFileSync(path.join(storeDir, `${id}.json`), "utf8")); } catch { return null; } };
+async function waitRelay(id, statuses, ms = 600_000) {
+  for (const until = Date.now() + ms; Date.now() < until; await sleep(1_000)) {
+    const r = readRelay(id);
+    if (r && statuses.includes(r.status)) return r;
+  }
+  return readRelay(id);
+}
+const at = (ms) => (ms ? new Date(ms).toISOString().slice(11, 19) : null);
 const ledger = () => {
   try { return fs.readdirSync(storeDir).filter((n) => /^r_\w+\.json$/u.test(n)).map((n) => JSON.parse(fs.readFileSync(path.join(storeDir, n), "utf8"))); } catch { return []; }
 };
@@ -243,17 +278,40 @@ try {
     assert.equal(finalIds.length, 1, "the origin's closing words were not posted exactly once");
   }
 
-  // ------------------------------------------------------------ denied: a non-owner turn cannot relay
-  if (only.includes("denied")) {
-    const before = ledger().length;
+  // ------------------------------------------------------------ steer: what happens when one side is busy
+  if (only.includes("steer")) {
+    const dmKey = `agent:makaron:feishu:direct:${OWNER}`;
+    // Fresh candidate sessions have no stored model; pin both so injected turns do not
+    // fall back to a runtime this private Gateway does not load.
+    const groupKey = `agent:makaron:feishu:group:${GROUP}`;
+    summary.scenarios.steerSetup = {};
+    for (const key of [groupKey, dmKey]) {
+      summary.scenarios.steerSetup[key] = await rpc("sessions.patch", { key, model: MODEL }).then(() => "pinned", (e) => e.message);
+    }
     const mark = lines.length;
-    const turn = agentTurn("agent:makaron:feishu:group:oc_candidate_relay_denied", `【候选测试】请用 session_relay_send 让「${GROUP_NAME}」群里的 V 说一句你好。`, {});
-    const denied = logSince(mark, /session relay denied/u);
-    summary.scenarios.denied = { turn, denied, ledgerBefore: before, ledgerAfter: ledger().length };
-    assert.equal(ledger().length, before, "a non-owner turn created a relay");
-    // The tool runs in the worker, whose plugin log lines do not reach this Gateway's stdout;
-    // the ledger staying unchanged is the evidence.
+    // A. a relay arrives while the group V is busy with a person's turn
+    const humanA = agentTurnAsync("【候选测试·插队A】请用 exec 执行 `sleep 45 && date`，然后回复「人类任务完成」和那个时间。不要做别的。", `chat:${GROUP}`);
+    await sleep(12_000);
+    queueRelay("r_steera1", "【候选测试·插队A】这是一条插进来的传话：请只回复「传话收到」和当前时间。", dmKey);
+    const [hA] = await Promise.all([humanA]);
+    const rA = await waitRelay("r_steera1", ["done", "failed"]);
+    // B. a person speaks while the group V is working on a relay
+    queueRelay("r_steerb1", "【候选测试·插话B】请用 exec 执行 `sleep 45 && date`，然后回复「传话任务完成」和那个时间。不要做别的。", dmKey);
+    await waitRelay("r_steerb1", ["running", "replying", "done", "failed"], 120_000);
+    await sleep(10_000);
+    const hB = await agentTurnAsync("【候选测试·插话B】插一句：顺便告诉我现在几点，然后继续你手上的事。", `chat:${GROUP}`);
+    const rB = await waitRelay("r_steerb1", ["done", "failed"]);
+    const shape = (h, r) => ({
+      human: { start: at(h.startedAt), end: at(h.endedAt), exit: h.exit, reply: h.reply, stderr: h.stderr },
+      relay: { queued: at(r?.createdAt), runStart: at(r?.startedAt), runEnd: at(r?.finishedAt), status: r?.status, reply: String(r?.reply ?? r?.error ?? "").slice(0, 400) },
+    });
+    summary.scenarios.steer = {
+      A_relayWhileHumanTurn: shape(hA, rA),
+      B_humanWhileRelayTurn: shape(hB, rB),
+      log: logSince(mark, /steer|queued|queue|followup|interrupt|abort|lane|active run|busy/iu).slice(-40),
+    };
   }
+
   summary.ok = true;
 } catch (error) {
   summary.ok = false;

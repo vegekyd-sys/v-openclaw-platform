@@ -1,6 +1,6 @@
 # v-session-relay
 
-让 Tianyi 在任何一个对话（私聊、群、Taskroom）里叫 V 把一件事交给另一个对话去做，做完的结果自动回到原来的对话，原来那个 V 被唤醒接着干。机制与 Claude Code 的跨会话消息、Grok Bot 的 bot 交接一样：传的是 session，不是另起 agent。两边在飞书里各有一张收起的对话卡片，点开就是两个 V 的来回。
+让任何一个对话（私聊、群、Taskroom）里里的 V 把一件事交给另一个对话去做，做完的结果自动回到原来的对话，原来那个 V 被唤醒接着干。机制与 Claude Code 的跨会话消息、Grok Bot 的 bot 交接一样：传的是 session，不是另起 agent。两边在飞书里各有一张收起的对话卡片，点开就是两个 V 的来回。
 
 ```
 A 对话（Tianyi 说话） ── session_relay_send ──► 账本 queued
@@ -18,7 +18,7 @@ OpenClaw 2026.9.1 的 `sessions_send` 在不等待模式下只盯 30 秒，目�
 
 ## 规则
 
-- **只有 owner 能发起**：身份取 Gateway 给工具的 `requesterSenderId`（claude-cli/Codex 回环用 `senderIsOwner`），owner 名单是插件配置 `owners`，没配就用 `commands.ownerAllowFrom`。模型参数里的身份一律不信。
+- **谁都能发起，接收方的 V 自己判断**：不做工程上的权限限制。传过去的消息写明是谁（取 Gateway 给工具的 `requesterSenderId`，不信模型参数；owner 显示为 `ownerName`）在哪个对话要求的，接收方的 V 按自己的 redline 和本对话的上下文决定做不做、能不能把内容带回对方的群。V 自己主动发起时写明是 V 自发的。
 - **执行方不能再转交**：一个对话正在处理别人转来的任务时，它的工具调用被拒，A→B→C 和 A↔B 来回都起不来。
 - **回信唤醒的那一轮可以继续派**：属于同一条链，链上最多 `maxChain`（默认 8）次。
 - **不丢回信**：每次传话是 `storeDir` 里的一个 JSON 文件，状态 queued → delivering → running → replying → done/failed。Gateway 重启后派送服务从文件接着做；`agent.wait` 不认识的旧 run 就读目标对话的最后一条回复；实在拿不到就告诉 A「重启打断了」，不会静默。

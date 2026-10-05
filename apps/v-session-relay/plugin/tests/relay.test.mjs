@@ -23,26 +23,26 @@ function record(over = {}) {
   return { id: "r_1", chainId: "r_1", status: "queued", createdAt: 1, from: { sessionKey: DM, label: "Tianyi 的私聊" }, to: { sessionKey: GROUP_A, label: "A 群" }, message: "do x", ...over };
 }
 
-test("policy: only the owner starts a relay; nobody relays to itself", () => {
-  const base = { records: [], sessionKey: DM, targetSessionKey: GROUP_A, owners: [OWNER] };
-  assert.deepEqual(decideSend({ ...base, actor: OWNER }), { allow: true, chainId: null, via: "owner" });
-  assert.equal(decideSend({ ...base, actor: "feishu:ou_colleague" }).allow, false);
-  assert.equal(decideSend({ ...base, actor: null }).allow, false);
+test("policy: anyone may start a relay (the receiving V decides); nobody relays to itself", () => {
+  const base = { records: [], sessionKey: DM, targetSessionKey: GROUP_A };
+  assert.deepEqual(decideSend({ ...base, actor: OWNER }), { allow: true, chainId: null, via: "person" });
+  assert.deepEqual(decideSend({ ...base, actor: "feishu:ou_colleague" }), { allow: true, chainId: null, via: "person" });
+  assert.deepEqual(decideSend({ ...base, actor: null }), { allow: true, chainId: null, via: "agent" });
   assert.equal(decideSend({ ...base, actor: OWNER, targetSessionKey: DM }).allow, false);
 });
 
 test("policy: a conversation executing a relayed request cannot relay further, even for the owner", () => {
   const records = [record({ status: "running" })];
-  const d = decideSend({ records, sessionKey: GROUP_A, targetSessionKey: GROUP_B, actor: OWNER, owners: [OWNER] });
+  const d = decideSend({ records, sessionKey: GROUP_A, targetSessionKey: GROUP_B, actor: OWNER });
   assert.equal(d.allow, false);
   assert.match(d.reason, /Tianyi 的私聊/u);
 });
 
 test("policy: the origin woken by a result may keep relaying in the same chain, up to the cap", () => {
   const records = [record({ status: "replying" })];
-  assert.deepEqual(decideSend({ records, sessionKey: DM, targetSessionKey: GROUP_B, actor: null, owners: [OWNER] }), { allow: true, chainId: "r_1", via: "reply" });
+  assert.deepEqual(decideSend({ records, sessionKey: DM, targetSessionKey: GROUP_B, actor: null }), { allow: true, chainId: "r_1", via: "reply" });
   const full = Array.from({ length: 3 }, (_, i) => record({ id: `r_${i}`, status: i === 2 ? "replying" : "done" }));
-  assert.equal(decideSend({ records: full, sessionKey: DM, targetSessionKey: GROUP_B, actor: null, owners: [OWNER], maxChain: 3 }).allow, false);
+  assert.equal(decideSend({ records: full, sessionKey: DM, targetSessionKey: GROUP_B, actor: null, maxChain: 3 }).allow, false);
   assert.equal(activeRelay([record({ status: "done" })], DM), null);
 });
 
@@ -88,8 +88,9 @@ test("text: one collapsed thread card per conversation, both sides inside, trans
   assert.equal(panel.tag, "collapsible_panel");
   assert.equal(panel.expanded, false);
   assert.equal(panel.header.title.text_align, "center");
-  assert.match(panel.header.title.content, /V · Tianyi 的私聊\*\* ⇄ \*\*V · A 群/u);
-  assert.match(panel.header.title.content, /V · A 群\*\*\nV · A 群 正在处理… · 3 条/u);
+  assert.match(panel.header.title.content, /\*\*Tianyi 的私聊\*\* ⇄ \*\*A 群\*\* · 进行中 · 3 条/u);
+  assert(!panel.header.title.content.includes("\n"), "the title is one line");
+  assert.match(threadCard([record({ from: { label: "一个名字特别特别长的飞书群聊" } })]).body.elements[0].header.title.content, /一个名字特别特别长…/u);
   assert.equal(panel.elements.length, 3);
   assert.match(panel.elements[1].content, /V · A 群 ·/u);
   assert.match(threadCard([{ ...thread[0] }]).body.elements[0].header.title.content, /已完成/u);
@@ -156,7 +157,7 @@ test("dispatcher: request is posted and run in the target, the result returns to
   const threadCards = feishu.cards.filter((c) => c.card.body.elements[0].tag === "collapsible_panel");
   assert.deepEqual(threadCards.map((c) => c.receiver.receiveId).sort(), ["oc_a", "ou_owner"]);
   assert(feishu.patches.length >= 2);
-  assert.match(feishu.patches.at(-1).card.body.elements[0].header.title.content, /\n已完成 · 2 条/u);
+  assert.match(feishu.patches.at(-1).card.body.elements[0].header.title.content, / · 已完成 · 2 条/u);
   const finals = feishu.cards.filter((c) => c.card.body.elements[0].tag === "markdown");
   assert.deepEqual(finals.map((c) => [c.receiver.receiveId, c.card.body.elements[0].content]), [["ou_owner", "ok, next step"]]);
   assert.deepEqual(Object.keys(final.threadCards).sort(), [DM, GROUP_A].sort());
@@ -216,6 +217,9 @@ test("text: a follow-up in a thread tells the target it is a reply, and the orig
   const { requestTurn, resultTurn } = await import("../core/text.js");
   const first = requestTurn({ id: "r_1", chainId: "r_1", from: { label: "私聊" }, message: "写公告" });
   assert.match(first.extraSystemPrompt, /handed this task/u);
+  assert.match(requestTurn({ id: "r_1", chainId: "r_1", from: { label: "私聊" }, message: "x", requester: "Tianyi" }).extraSystemPrompt, /asked for by Tianyi \(in 「私聊」\)/u);
+  assert.match(first.extraSystemPrompt, /on its own initiative/u);
+  assert.match(first.extraSystemPrompt, /redlines/u);
   assert.match(first.extraSystemPrompt, /ask for it in your reply/u);
   const next = requestTurn({ id: "r_2", chainId: "r_1", from: { label: "私聊" }, message: "版本 v2.3" });
   assert.match(next.extraSystemPrompt, /is answering you/u);

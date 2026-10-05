@@ -27,7 +27,7 @@ function storeDir(config) {
 export default definePluginEntry({
   id: "v-session-relay",
   name: "V Session Relay",
-  description: "Lets the owner have V hand work to another conversation and get the result back here.",
+  description: "Lets V hand work to another conversation and get the result back here.",
   register(api) {
     const config = api.pluginConfig ?? {};
     const store = new RelayStore(storeDir(config));
@@ -49,10 +49,10 @@ export default definePluginEntry({
           "Use when the user asks you to have another group/room/session do, continue or report on something there, with that conversation's own context. " +
           "The other conversation sees a small 「消息来自」 note and works on it in its own chat; when it finishes, its reply comes back to this conversation as a new message and wakes you to continue. " +
           "target is the group's name as people call it (fuzzy match against groups V is in), a Feishu chat id (oc_…), or a session key. " +
-          "After calling, tell the user in one short sentence that it has been handed over and end your turn; do not wait, poll or do the task yourself. Only the owner can relay.",
+          "After calling, tell the user in one short sentence that it has been handed over and end your turn; do not wait, poll or do the task yourself. The other conversation's V decides whether to do it.",
         parameters: Type.Object({
           target: Type.String({ description: "Group name, Feishu chat id (oc_…) or session key of the conversation that should do it" }),
-          message: Type.String({ description: "What that conversation should do, written as the owner would say it there; include the context it lacks" }),
+          message: Type.String({ description: "What that conversation should do; include the context it lacks" }),
         }),
         async execute(_toolCallId, params) {
           const cfg = context.getRuntimeConfig?.() ?? context.runtimeConfig ?? context.config ?? {};
@@ -65,7 +65,7 @@ export default definePluginEntry({
           const sessionKey = typeof context.sessionKey === "string" ? context.sessionKey : null;
           const records = store.list();
           const actor = resolveTrustedActor(context, config);
-          const decision = decideSend({ records, sessionKey, targetSessionKey: target.sessionKey, actor, owners, maxChain });
+          const decision = decideSend({ records, sessionKey, targetSessionKey: target.sessionKey, actor, maxChain });
           if (!decision.allow) {
             api.logger?.info?.(`session relay denied from ${sessionKey} (actor ${actor ?? "none"}): ${decision.reason}`);
             return textResult({ ok: false, error: decision.reason });
@@ -82,6 +82,10 @@ export default definePluginEntry({
             chainId: decision.chainId ?? id,
             via: decision.via,
             requestedBy: actor,
+            // Follow-ups in a thread keep the person who started it.
+            requester: decision.chainId
+              ? (records.find((r) => r.id === decision.chainId)?.requester ?? null)
+              : actor ? (owners.includes(actor) ? ownerName : actor) : null,
             status: "queued",
             createdAt: now,
             updatedAt: now,

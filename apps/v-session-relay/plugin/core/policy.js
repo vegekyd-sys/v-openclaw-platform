@@ -1,8 +1,8 @@
-// Who may relay, and when. Relaying is the owner's "god mode": any conversation can
-// send work to any other, but only a turn the owner started (or a turn that is
-// carrying back the result of the owner's earlier relay) may do it. A conversation
-// that is executing a relayed request may not relay further, so A -> B -> C chains
-// and A <-> B ping-pong cannot start on their own.
+// When a relay may start. Who may ask is not limited here: any conversation's V may
+// hand work to any other, and the receiving V decides under its redlines whether to
+// do it. What is limited is runaway chains: a conversation executing a relayed
+// request may not relay further (no A -> B -> C on its own), and one thread may hold
+// at most maxChain relays (no endless A <-> B).
 
 /** Same rules the desktop-handoff plugin uses: identity only from the Gateway context. */
 export function resolveTrustedActor(context = {}, config = {}) {
@@ -67,10 +67,10 @@ export function activeRelay(records, sessionKey) {
 }
 
 /**
- * @returns {{ allow: true, chainId: string|null, via: "owner"|"reply" } | { allow: false, reason: string }}
+ * @returns {{ allow: true, chainId: string|null, via: "person"|"agent"|"reply" } | { allow: false, reason: string }}
  * chainId null means "start a new chain".
  */
-export function decideSend({ records, sessionKey, targetSessionKey, actor, owners, maxChain = 8 }) {
+export function decideSend({ records, sessionKey, targetSessionKey, actor, maxChain = 8 }) {
   if (!sessionKey) {
     return { allow: false, reason: "Session relay needs a conversation to relay from." };
   }
@@ -88,12 +88,9 @@ export function decideSend({ records, sessionKey, targetSessionKey, actor, owner
     const chainId = active.record.chainId;
     const used = records.filter((r) => r.chainId === chainId).length;
     if (used >= maxChain) {
-      return { allow: false, reason: `This task has already been relayed ${used} times. Stop relaying, report what you have to the user and ask how to continue.` };
+      return { allow: false, reason: `This task has already been relayed ${used} times. Stop relaying, report what you have to the people here and ask how to continue.` };
     }
     return { allow: true, chainId, via: "reply" };
   }
-  if (!actor || !owners.includes(actor)) {
-    return { allow: false, reason: "Only the owner can have V relay work to another conversation. Do the work here, or tell the user that only the owner can do this." };
-  }
-  return { allow: true, chainId: null, via: "owner" };
+  return { allow: true, chainId: null, via: actor ? "person" : "agent" };
 }
