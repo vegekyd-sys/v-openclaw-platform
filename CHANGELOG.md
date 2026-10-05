@@ -11,6 +11,24 @@
 
 ---
 
+## v2026.9.1-db91.6-placement-evidence-20261005
+
+上线：2026-10-05 10:38 CST 安装，10:39 重启 Gateway，10:41 就绪（PID 1518653）  ·  tag `v2026.9.1-db91.6-placement-evidence-20261005`
+
+**摘要**：Gateway 每分钟会把所有 worker placement 对应的会话读出来、逐条解析一遍，用来判断有没有孤儿记录。placement 只增不减：9/18 有 295 条，10/05 有 2394 条，大头来自夜班。这一步就变成每分钟在主线程上卡 2–3 秒，落在卡顿里的消息都要等它结束。现在只用索引判断「会话还在不在」，只有 key 已经换了新会话 id 时才解析那一条（#193）。
+
+- VLab candidate（3172 条）：每次检查 2353→198 ms，最长阻塞 8.5 s→约 0.5 s；判断结果与原逻辑 3172/3172 一致。
+- 共享 VLab 真实飞书：6 个压测群 /deepseek，每条到会话库核对回复，旧代码 24/24、新代码 24/24 成功，中位数 3.1–3.5 s。5 分钟剖析里超过 2 s 的主线程占用 10→3 次。
+
+相对上一版 `v2026.9.1-db91.6-gpt-live-voice-20261005`：2 个文件变化。
+
+**经 VLab 发版 `placement-evidence-20261005-b`**（claude-placement-evidence，dev `790ae74c`）
+- `core` server-worker-placement-startup-BvPREvpr.js  96b5b482 → 8366d71a
+- `core` session-accessor-K0XuW6ln.js  21f2a569 → 5c2eb542
+
+**这期间合入 dev 的 PR**：
+- #193 fix(gateway): 60 秒 placement 对账不再逐条解析会话
+
 ## v2026.9.1-db91.6-gpt-live-voice-20261005
 
 上线：2026-10-05 01:34 CST 受控启动 Gateway，01:41 公网语音服务就绪。tag `v2026.9.1-db91.6-gpt-live-voice-20261005`。
