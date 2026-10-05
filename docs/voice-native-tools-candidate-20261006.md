@@ -25,4 +25,4 @@
 
 本地检查不等于真实通话通过。物理扬声器AEC、中文声音自然程度仍需真人听觉验收。历史最终答案保真/双向音频 FAIL 不改为通过；暂停的旧修复不在本补丁中恢复。
 
-本轮仅 Candidate；未合入 dev、未写共享 VLab、未部署 V。共享串行验收与上线须在用户授权当前补丁合入后，沿 canonical流程执行。正常上线只需切换 H5 服务，不为本补丁重启 Gateway；其余批量发布是否重启由集成负责人判断。
+本轮仅 Candidate；未合入 dev、未写共享 VLab、未部署 V。共享串行验收与上线须在用户授权当前补丁合入后，沿 canonical流程执行。本次真实测试发现原 `tools.invoke` RPC 未提供 coding tools，新增仅本人服务端 voice-direct-tools capability 可进入的原生 mediated resolver，保留原策略与审批。后续上线需受控重启 Gateway 加载这一个 runtime 模块，再更新 H5 服务；需按实际忙闲排空并保留回退。

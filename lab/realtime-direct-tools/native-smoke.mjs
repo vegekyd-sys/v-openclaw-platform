@@ -45,7 +45,7 @@ async function runModel(model){
  await wait(()=>rows().some(x=>x.type==='transcript'&&x.role==='assistant'&&x.final)&&rows().some(x=>x.type==='audio'),'actual greeting',20000);
  check(model+'/greeting',true,{voiceSessionId:id,provider:model});await quiet(id);
  await speak('tools');await wait(()=>rows().some(x=>x.type==='tool.invoke'&&x.name==='memory_search')&&rows().some(x=>x.type==='tool.invoke'&&x.name==='web_search')&&rows().some(x=>x.type==='tool.invoke'&&x.name==='exec'&&JSON.stringify(x.args).includes('lark-cli')),'actual memory/calendar/web direct calls',180000);
- await wait(()=>rows().some(x=>x.type==='tool.invoke'&&x.name==='exec'&&JSON.stringify(x.args).includes('AGENTS.md')),'generic native exec',60000);
+ await wait(()=>rows().some(x=>x.type==='tool.invoke'&&['read','exec'].includes(x.name)&&JSON.stringify(x.args).includes('AGENTS.md')),'generic native file tool',60000);
  await quiet(id,60000);
  const native=rows().filter(x=>x.type==='tool.native-result');
  check(model+'/direct-tools',native.length>=4&&native.every(x=>x.result.ok===true&&x.result.output?.isError!==true),{calls:rows().filter(x=>x.type==='tool.invoke').map(x=>({name:x.name,callId:x.callId})),rpcOnly:true,noBackendLLM:true});
