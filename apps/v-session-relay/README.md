@@ -1,58 +1,66 @@
 # v-session-relay
 
-让任何一个对话（私聊、群、Taskroom）里的 V 把一件事交给另一个对话去做，做完的结果自动回到原来的对话，原来那个 V 被唤醒接着干。机制与 Claude Code 的跨会话消息、Grok Bot 的 bot 交接一样：传的是 session，不是另起 agent。两边在飞书里各有一张收起的对话卡片，点开就是两个 V 的来回。
+让任何一个对话（私聊、群、Taskroom）里的 V 把一件事交给另一个对话的 V，对方做完后结果回到原来的对话，原来那个 V 被唤醒接着干。机制与 Claude Code 的跨会话消息、Grok Bot 的 bot 交接一样：传的是 session，不是另起 agent。
+
+**入口只有原生 `sessions_send`**，这里不加新工具。两层：
+
+| 层 | 位置 | 做什么 | 升级到 9.8 后 |
+|---|---|---|---|
+| 行为 | dist 补丁 `lab/release-files/sessions-send-reply-once/`（标记 `v-sessions-send-reply-once-v1`） | 回移 9.5 + 9.8（上游 1b9e70e2685）：不等待的发送会一直等到对方那一轮结束（原来 30 秒就放弃、回信丢失）；回复只回一次，作为发起方的新一轮（run id `sessions-send-result:<对方 run>`）；去掉看不见的 5 轮来回和发到对方频道的 announce | 删掉，用官方的 |
+| 可见与可靠 | 本插件 `plugin/` | 两边聊天各一张收起的对话卡片；发起方不再传话时把它的话发出来；账本落盘，重启后或对方正忙被插入（steered）时补回信 | 保留 |
 
 ```
-A 对话（Tianyi 说话） ── session_relay_send ──► 账本 queued
-                                               │ Gateway 派送服务
-B 的 V 跑一轮（deliver: false），回复回到账本      │ 等这一轮跑完（不限 30 秒）
-A 的 V 被唤醒（deliver: false）                    │
-  ├─ 又传话给 B（回答它的追问）→ 下一轮，同一条线程   │
-  └─ 不再传话 → 它这轮说的话发到 A 的聊天里          ┘
-两边聊天里各有一张「A ⇄ B · 状态 · N 条」卡片，默认收起，随对话实时更新；点开看两个 V 的全部对话。
+A 的 V 调 sessions_send ──► 对方 B 跑一轮（原生）
+   │ after_tool_call：插件记账本              │ before_prompt_build：插件告诉 B 是谁要的、缺信息就问
+   │                                         ▼
+   │                             B 这一轮结束，回复回到核心
+   ▼                                         │
+A 被唤醒（核心补丁，run id 可预测）◄───────────┘ before_prompt_build：插件告诉 A 对方在问就再 sessions_send，交了结果就收尾
+   ├─ 又 sessions_send 给 B → 同一条线程的下一轮
+   └─ 不再发 → 插件把 A 这一轮的话发到 A 的聊天里
+两边聊天里各有一张「A ⇄ B · 状态 · N 条」卡片，默认收起、一行，实时更新；点开每条是「V · 群名 · 时间」。
 ```
 
-## 为什么不用原生 sessions_send
-
-OpenClaw 2026.9.1 的 `sessions_send` 在不等待模式下只盯 30 秒，目标做得更久回复就丢；回传的来回轮次 `deliver:false`，飞书两边都看不见；最后的 announce 只发到目标频道。9.8 改成"回复只回一次"，但等待仍在进程内、重启就丢。这里改用插件运行时的 `subagent.run({sessionKey})` + `waitForRun`（desktop-handoff「页面交还唤醒 V」用的同一个接口），飞书展示由插件自己发卡片、改卡片。
+对方很快答完时，原生工具会当场把回复作为工具结果交给 A（inline），A 在同一轮里接着说，插件只画卡片。
 
 ## 规则
 
-- **谁都能发起，接收方的 V 自己判断**：不做工程上的权限限制。传过去的消息写明是谁（取 Gateway 给工具的 `requesterSenderId`，不信模型参数；owner 显示为 `ownerName`）在哪个对话要求的，接收方的 V 按自己的 redline 和本对话的上下文决定做不做、能不能把内容带回对方的群。V 自己主动发起时写明是 V 自发的。
-- **执行方不能再转交**：一个对话正在处理别人转来的任务时，它的工具调用被拒，A→B→C 和 A↔B 来回都起不来。
-- **回信唤醒的那一轮可以继续派**：属于同一条链，链上最多 `maxChain`（默认 8）次。
-- **不丢回信**：每次传话是 `storeDir` 里的一个 JSON 文件，状态 queued → delivering → running → replying → done/failed。Gateway 重启后派送服务从文件接着做；`agent.wait` 不认识的旧 run 就读目标对话的最后一条回复；实在拿不到就告诉 A「重启打断了」，不会静默。
-- **群名可以直接说**：`target` 可以是群名（在 V 所在的群里模糊匹配，多个匹配会让 V 先问）、`oc_` 群 id 或 session key；有 binding 的群按 binding 找 agent。
-
-## 工具
-
-- `session_relay_send {target, message}`：交出去，立即返回；V 回一句「已经让「X」去做了」后结束本轮。
-- `session_relay_status`：本对话发出/收到的传话及状态。
+- **谁都能发起，接收方的 V 自己判断**：不做工程上的权限限制。插件在对方那一轮里写明是谁（Gateway 给的 requester；owner 显示为 `ownerName`）在哪个对话要的，对方按自己的 redline 和本对话上下文决定做不做、能不能把内容带回去。
+- **只防兜圈**：正在回答别人请求的那一轮不能再转给第三方（`before_tool_call` 拦下）；一条线程最多 `maxChain`（默认 8）次。
+- **不丢回信**：每次 `sessions_send` 是 `storeDir` 里的一个 JSON 文件。Gateway 重启丢了核心的进程内等待时，follower 从文件接着等对方、读对方最后一条回复，并用同一个 run id 唤醒 A（不会跑两次）；对方正忙被插入当前轮（`targetDisposition: steered`，9.1 核心不跟踪）时同样由 follower 补上。
 
 ## 配置
 
 ```json
 {
-  "storeDir": "/home/openclaw/.openclaw/v-session-relay",
-  "owners": ["feishu:ou_…"],
-  "ownerName": "Tianyi",
-  "maxChain": 8
+  "enabled": true,
+  "hooks": { "allowConversationAccess": true },
+  "config": {
+    "storeDir": "/home/openclaw/.openclaw/v-session-relay",
+    "owners": ["feishu:ou_…"],
+    "ownerName": "Tianyi",
+    "maxChain": 8,
+    "agentNames": { "dealclaw": "小元" }
+  }
 }
 ```
 
-`storeDir` 必须是 Gateway 和 worker 都能读写的同一个目录。V 上 worker 读第二份配置（`memory: v-worker-config-second-file`），插件要在两份配置里都声明。
+`before_prompt_build` 属于对话类 hook，必须开 `hooks.allowConversationAccess`。`storeDir` 必须是 Gateway 和 worker 都能读写的同一个目录。V 上 worker 读第二份配置（`memory: v-worker-config-second-file`），插件要在两份配置里都声明。
 
 ## 测试
 
 ```sh
 cd apps/v-session-relay/plugin && node --test 'tests/*.test.mjs'
-node /Users/tianyicai/vlab-dev/lab/vlab.mjs candidate --repo "$PWD" --owner session-relay --plan "$PWD/lab/candidate/session-relay.plan.json"
+node --test tests/sessions-send-reply-once.test.mjs
+node /Users/tianyicai/vlab-dev/lab/vlab.mjs candidate --repo "$PWD" --owner session-relay --plan "$PWD/lab/candidate/session-relay.plan.json"        # 来回对话
+node /Users/tianyicai/vlab-dev/lab/vlab.mjs candidate --repo "$PWD" --owner session-relay --plan "$PWD/lab/candidate/session-relay-async.plan.json"  # 对方做 75 秒
 ```
 
-候选测试是私有 Gateway + 真实 worker + DeepSeek，飞书走本机 webhook（不和共享 VLab 抢长连接），但发出去的卡片和回复是真的，会出现在 owner 的 VLab 私聊和「VLab 发布验收 B」群。
+候选测试在私有运行时里对自己的 `sessions-spawn-tool` 字节打核心补丁，飞书走本机 webhook（不和共享 VLab 抢长连接），卡片和回复是真的，会出现在 owner 的 VLab 私聊和「VLab 发布验收 B」群。
 
 ## 还没做
 
-- 插话（steer）：目前目标在忙时排队，等它这一轮结束再处理。
-- 对话视图网页（两边对话并排看）。
-- 非飞书对话（Control UI 等）只走 session，不发卡片。
+- 对方"后台异步干活"（spawn+yield、夜班、生图）时，回信是它这一轮的话，不是最终产物。
+- 只回文字，不带图片和文件。
+- claude-cli / vcodex / vds 下的 hook 与唤醒未验证；Gateway 真重启下的补回信只在单元测试里模拟过。
+- 9.8 上游仍开着的相关问题（#164732 等）回移时没有带进来，升级时要复核。
