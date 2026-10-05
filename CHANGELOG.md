@@ -11,6 +11,20 @@
 
 ---
 
+## v2026.9.1-db91.6-firsttext-runid-20261005
+
+上线：2026-10-05 16:55 CST 安装，**还没有重启 V**（飞书插件在 Gateway 启动时加载）  ·  tag `v2026.9.1-db91.6-firsttext-runid-20261005`
+
+**摘要**：`[firsttext-e2e.1]` 首字记录多两项：`runId` 和 `runStartAtMs`（飞书回复对象接上 `onAgentRunStart`）。有了 runId，每条消息能和 worker 的 `[firsttext-worker-phases]` 对上；「V 收到 → 运行开始」就是消息在 Gateway 里的排队时间，统计脚本多了 queue 这一段（#209）。共享 VLab c5：5/5 条都有记录，其中 2/5 带 runId，并能和对应运行的 worker 阶段对上；部署重启后的第一轮，收到到运行开始 P50 13.8 s。
+
+相对上一版 `v2026.9.1-db91.6-firsttext-e2e-20261005`：1 个文件变化。
+
+**经 VLab 发版 `firsttext-runid-20261005`**（claude-firsttext-e2e）
+- `feishu` monitor.account-WFdlCDhR.js  943b0116 → ec089142
+
+**这期间合入 dev 的 PR**：
+- #209 feat(feishu): 首字记录带上运行 ID 和运行开始时间
+
 ## v2026.9.1-db91.6-gpt-live-voice-20261005
 
 上线：2026-10-05 01:34 CST 受控启动 Gateway，01:41 公网语音服务就绪。tag `v2026.9.1-db91.6-gpt-live-voice-20261005`。
