@@ -1,0 +1,33 @@
+{
+  "support": [
+    "lab/candidate/worker-prewarm2-v.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/worker-prewarm2-v.mjs"
+  ],
+  "timeoutSeconds": 2400,
+  "user": "lab-db91-parity",
+  "env": {
+    "PATCH": "on",
+    "WORKERS": "1",
+    "PREWARM2": "off"
+  },
+  "files": [
+    {
+      "source": "lab/release-files/turn-caches/test-runtime-env-DQDRzsLt.js",
+      "target": "openclaw/dist/test-runtime-env-DQDRzsLt.js",
+      "before": "e9000342045431ef87d95881cb707a6f4dcbef0543324adc23c20ea066d1e98a"
+    },
+    {
+      "source": "lab/release-files/turn-caches/bundled-dir-CnR4u-Mo.js",
+      "target": "openclaw/dist/bundled-dir-CnR4u-Mo.js",
+      "before": "fd6f3c0904307db1b5b0bd84722124a16cccb3481a4eef3cb78079839672773c"
+    },
+    {
+      "source": "lab/release-files/turn-caches/bundled-channel-catalog-read-BwcurWAL.js",
+      "target": "openclaw/dist/bundled-channel-catalog-read-BwcurWAL.js",
+      "before": "cb86693938d17d74daddc9af70f008d24c7068da02d89c8f39d517560e09d92e"
+    }
+  ]
+}
