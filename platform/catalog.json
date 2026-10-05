@@ -188,7 +188,8 @@
     {
       "id": "release-parity",
       "purpose": "VLab 与生产 V 的字节对齐：残留判定、发版前后的最小差异",
-      "files": ["scripts/lib/runtime-residue.test.mjs", "lab/release-files/db91-preflight-timeout-env/bootstrap-timeout.test.mjs", "scripts/promote-to-v.test.mjs"]
+      "files": ["scripts/lib/runtime-residue.test.mjs", "lab/release-files/db91-preflight-timeout-env/bootstrap-timeout.test.mjs", "scripts/promote-to-v.test.mjs",
+        "scripts/vlab-channel-plugins-prep.test.mjs"]
     },
     {
       "id": "lab-and-release-regressions",
