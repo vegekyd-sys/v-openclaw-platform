@@ -11,6 +11,28 @@
 
 ---
 
+## v2026.9.1-db91.6-worker-prewarm-20261005
+
+上线：2026-10-05 13:12 CST 安装，13:15 重启 Gateway，75 s 后 5 个 worker 全部预热完成  ·  tag `v2026.9.1-db91.6-worker-prewarm-20261005`
+
+**摘要**：V 一直常驻 5 个 worker，但「常驻」只是进程起好了。每个 worker 接的第一单还要付一整套一次性准备，V 上实测进 worker 到出第一个字要 13 s，热的只要 2–3 s。重启、按内存回收换新、扩容之后 worker 都会变冷。V 用过的每一版 worker 都没有回合级预热，9/12 的 VLab 候选也从没上线。
+
+现在 worker 报 ready 之前会先做三件事：拿一次 prepared-model 租约；加载 agent 命令模块的 14 个懒加载模块；打开本进程的会话库，再只读解析一次会话。最后这一步之前，进程里没有打开的库连接，每次只读查找都会新开连接，把全部会话的规范 key 重新扫一遍。预热不写库、不调模型、不调工具，失败时照常 ready。用 `OPENCLAW_WORKER_EAGER_PREPARE=0` 可以关掉（#198）。
+
+- VLab candidate：冷 worker 进 worker 到调模型 22.6–24.2 s → 5.8–6.2 s。
+- 共享 VLab 真实飞书：重启后首轮 31.5–37.5 s → 15.6–21.4 s。
+- V 重启后（13:17 c15，15/15）：首轮回复中位 23.5 s，worker 第一单的准备运行时从 4 s 降到 0.13 s，但从进命令到调模型仍要 7–12 s；第二轮中位 4.2 s。剩下的冷开销（技能快照、构建工具集、首次 import，以及 Gateway 重启后的开销）留给后续。
+
+相对上一版 `v2026.9.1-db91.6-voice-confirmation-switch-20261005`：3 个文件变化。
+
+**经 VLab 发版 `worker-prewarm-20261005`**（claude-worker-prewarm-v，dev `a1432ea8`）
+- `core` agent-command-DPfawBbr.js  f9142430 → e8a0c7e4
+- `core` agent-command-DeP5kHlK.js  893415c5 → e7b522ff
+- `worker` worker.mjs  4bf1472d → 898fd1fc
+
+**这期间合入 dev 的 PR**：
+- #198 perf(worker): worker 接第一单之前先做完准备（预热）
+
 ## v2026.9.1-db91.6-voice-confirmation-switch-20261005
 
 上线：2026-10-05 12:51 CST 安装，12:52:51 受控重启 Gateway（worker 全空闲、无通话，原生 suspend/drain 后重启），12:54:27 就绪（95 s）·  tag `v2026.9.1-db91.6-voice-confirmation-switch-20261005`
