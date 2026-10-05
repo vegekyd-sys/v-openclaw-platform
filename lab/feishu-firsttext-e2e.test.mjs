@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { patchFeishuMonitor } from './patch-feishu-firsttext-e2e.mjs';
-import { parseRecords, measure, report, percentile } from '../scripts/firsttext-e2e-report.mjs';
+import { parseRecords, parseModelMetrics, measure, report, percentile } from '../scripts/firsttext-e2e-report.mjs';
 
 const read = (url) => fs.readFileSync(new URL(url, import.meta.url), 'utf8');
 const original = read('../release/captured/v2026.9.1-db91.6-gpt-live-voice-20261005.feishu/dist/dist/monitor.account-WFdlCDhR.js');
@@ -80,4 +80,54 @@ test('journal lines parse, broken lines are skipped, percentiles interpolate', (
   assert.equal(out.byHarness['vlab-worker/deepseek-flash'].n, 2);
   assert.equal(percentile([1, 2, 3, 4], 0.5), 2.5);
   assert.equal(percentile([], 0.5), undefined);
+});
+
+const runId = '6101061d-305d-4139-9cc3-5a1b04d543cf';
+const metric = (callId, stage, at) => `[firsttext-metrics] ${JSON.stringify({ runId, callId, provider: 'deepseek', model: 'deepseek-flash', at, pid: 7, stage })}`;
+
+test('model time is split out of 首字 by joining the Worker\'s model-call lines on runId', () => {
+  const text = [
+    metric('c1', 'model-call-enter', t0 + 1200),
+    metric('c1', 'first-decoded-event', t0 + 1700),
+    metric('c1', 'first-thinking-event', t0 + 1700),
+    metric('c1', 'first-thinking-event', t0 + 1800), // repeated stage keeps the first time
+    metric('c1', 'first-nonempty-text', t0 + 2850),
+    `[firsttext-metrics] {broken`,
+  ].join('\n');
+  const models = parseModelMetrics(text);
+  const m = measure({ ...sample, runId }, models.get(runId));
+  assert.equal(m.toModelMs, 1200);
+  assert.equal(m.modelFirstEventMs, 500);
+  assert.equal(m.modelToTextMs, 1650);
+  assert.equal(m.afterTextMs, 4780 - 2850);
+  assert.equal(m.overheadMs, 4780 - 1650);
+  assert.equal(m.overheadNoToolsMs, 4780 - 1650);
+  const out = report([{ ...sample, runId }, sample], models);
+  assert.equal(out.overhead.n, 1);
+  assert.equal(out.model.modelToTextMs.p50, 1650);
+});
+
+test('a tool call before the answer stays in overhead and is left out of the no-tools figure', () => {
+  const models = parseModelMetrics([
+    metric('c1', 'model-call-enter', t0 + 1000),
+    metric('c1', 'first-decoded-event', t0 + 1400),
+    metric('c1', 'first-tool-event', t0 + 1500),
+    metric('c2', 'model-call-enter', t0 + 2000),
+    metric('c2', 'first-decoded-event', t0 + 2300),
+    metric('c2', 'first-nonempty-text', t0 + 2600),
+  ].join('\n'));
+  const run = models.get(runId);
+  assert.equal(run.calls, 2);
+  const m = measure({ ...sample, runId }, run);
+  assert.equal(m.toModelMs, 1000);
+  assert.equal(m.modelFirstEventMs, 400);
+  assert.equal(m.modelToTextMs, 600);
+  assert.equal(m.overheadMs, 4780 - 600);
+  assert.equal(m.overheadNoToolsMs, undefined);
+});
+
+test('without model lines the overhead is unknown, not zero', () => {
+  const m = measure({ ...sample, runId }, undefined);
+  assert.equal(m.overheadMs, undefined);
+  assert.equal(m.toModelMs, undefined);
 });
