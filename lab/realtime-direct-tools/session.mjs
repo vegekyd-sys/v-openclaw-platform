@@ -64,7 +64,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       if(name==='process'&&details?.status!=='running'&&args.sessionId)s.processes.delete(args.sessionId);
       if((signal.aborted||!current(s))&&name==='exec'&&details?.sessionId)await killOwned(s,details.sessionId);
       if(signal.aborted||!current(s))throw Error('本次任务已取消');
-      if(result.ok!==true)throw Error('OpenClaw 没有完成这个工具调用');
+      if(result.ok!==true)throw Error(`${result.error?.code??'tool_error'}: ${result.error?.message??'OpenClaw 没有完成这个工具调用'}`);
       return result.output;
     };
     const execute=createToolExecutor({invoke,allowedTools});
