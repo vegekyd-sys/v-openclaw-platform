@@ -34,6 +34,11 @@ export default definePluginEntry({
     const feishuFor = feishuClients();
     const maxChain = config.maxChain ?? 8;
     const ownerName = config.ownerName ?? "Tianyi";
+    // How each conversation's V is named on the thread card (「V · 群名」); per agent if configured.
+    const agentName = (sessionKey) => {
+      const agentId = String(sessionKey ?? "").split(":")[1];
+      return (config.agentNames && typeof config.agentNames[agentId] === "string" && config.agentNames[agentId]) || "V";
+    };
 
     api.registerTool(
       (context) => ({
@@ -80,8 +85,8 @@ export default definePluginEntry({
             status: "queued",
             createdAt: now,
             updatedAt: now,
-            from: { sessionKey, label: fromLabel },
-            to: { sessionKey: target.sessionKey, label: target.label },
+            from: { sessionKey, label: fromLabel, name: agentName(sessionKey) },
+            to: { sessionKey: target.sessionKey, label: target.label, name: agentName(target.sessionKey) },
             message,
           });
           api.logger?.info?.(`session relay ${id} queued: ${sessionKey} -> ${target.sessionKey} (${decision.via})`);

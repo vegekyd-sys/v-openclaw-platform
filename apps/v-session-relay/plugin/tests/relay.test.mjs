@@ -81,17 +81,17 @@ test("text: one collapsed thread card per conversation, both sides inside, trans
     record({ id: "r_1", chainId: "r_1", status: "done", createdAt: 1, reply: "缺灰度比例？", finishedAt: 2 }),
     record({ id: "r_2", chainId: "r_1", status: "running", createdAt: 3, message: "20%" }),
   ];
-  assert.deepEqual(threadEntries(thread).map((e) => [e.label, e.text]), [["Tianyi 的私聊", "do x"], ["A 群", "缺灰度比例？"], ["Tianyi 的私聊", "20%"]]);
+  assert.deepEqual(threadEntries(thread).map((e) => [e.label, e.text]), [["V · Tianyi 的私聊", "do x"], ["V · A 群", "缺灰度比例？"], ["V · Tianyi 的私聊", "20%"]]);
   const card = threadCard(thread);
   const panel = card.body.elements[0];
   assert.equal(card.body.elements.length, 1, "only one line in the chat");
   assert.equal(panel.tag, "collapsible_panel");
   assert.equal(panel.expanded, false);
   assert.equal(panel.header.title.text_align, "center");
-  assert.match(panel.header.title.content, /Tianyi 的私聊\*\* ⇄ \*\*A 群/u);
-  assert.match(panel.header.title.content, /「A 群」正在处理… · 3 条/u);
+  assert.match(panel.header.title.content, /V · Tianyi 的私聊\*\* ⇄ \*\*V · A 群/u);
+  assert.match(panel.header.title.content, /V · A 群 正在处理… · 3 条/u);
   assert.equal(panel.elements.length, 3);
-  assert.match(panel.elements[1].content, /A 群 ·/u);
+  assert.match(panel.elements[1].content, /V · A 群 ·/u);
   assert.match(threadCard([{ ...thread[0] }]).body.elements[0].header.title.content, /已完成/u);
   const huge = threadCard(Array.from({ length: 40 }, (_, i) => record({ id: `r_${i}`, chainId: "r_0", status: "done", createdAt: i, reply: "长".repeat(1500), finishedAt: i })));
   assert(JSON.stringify(huge).length < 30_000 * 1.2, "card stays under Feishu's size limit");
@@ -148,10 +148,10 @@ test("dispatcher: request is posted and run in the target, the result returns to
   assert.equal(runtime.runs.length, 2);
   assert.equal(runtime.runs[0].sessionKey, GROUP_A);
   assert.equal(runtime.runs[0].deliver, false, "agent-to-agent turns are not posted on their own");
-  assert.match(runtime.runs[0].message, /消息来自「Tianyi 的私聊」/u);
+  assert.match(runtime.runs[0].message, /^V · Tianyi 的私聊：/u);
   assert.equal(runtime.runs[1].sessionKey, DM);
   assert.equal(runtime.runs[1].deliver, false);
-  assert.match(runtime.runs[1].message, /「A 群」回复了：\n\ndone: 3 files/u);
+  assert.match(runtime.runs[1].message, /^V · A 群：\n\ndone: 3 files/u);
   // one thread card in each chat, sent once and then patched; then the origin's last words
   const threadCards = feishu.cards.filter((c) => c.card.body.elements[0].tag === "collapsible_panel");
   assert.deepEqual(threadCards.map((c) => c.receiver.receiveId).sort(), ["oc_a", "ou_owner"]);
@@ -229,7 +229,7 @@ test("dispatcher: when the woken origin answers with another relay, its own text
   const origRun = runtime.run.bind(runtime);
   runtime.run = async (params) => {
     const res = await origRun(params);
-    if (params.sessionKey === DM && /回复了/u.test(params.message)) {
+    if (params.sessionKey === DM && /^V · A 群：/u.test(params.message)) {
       // the origin's turn relays again within the chain
       store.write(record({ id: "r_2", chainId: "r_1", via: "reply", status: "done", createdAt: Date.now() + 1, message: "20%" }));
     }

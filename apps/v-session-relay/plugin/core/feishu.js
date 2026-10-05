@@ -1,5 +1,5 @@
 // Minimal Feishu Open API client (same shape as the desktop-handoff plugin's).
-// The relay posts the small "消息来自 …" cards itself, as the conversation's own
+// The relay posts and patches its thread cards itself, as the conversation's own
 // bot app, and looks up chat names so people see 「群名」 instead of session keys.
 const HOSTS = { feishu: "https://open.feishu.cn", lark: "https://open.larksuite.com" };
 

@@ -1,7 +1,7 @@
-// What people and the two V's see. People see a small grey 「消息来自 …」 line (the
-// content folded under it) and then V's normal reply, like Grok Bot's handoff
-// divider. The model sees the request/result as a plain message plus a short
-// system note about what the turn is.
+// What people and the two V's see. People see one collapsed card per thread,
+// 「V · A ⇄ V · B」, that opens to the two V's exchange (like Grok Bot's bot-to-bot
+// handoffs). Each V sees the other's message headed 「V · 群名」 plus a short system
+// note about what the turn is.
 
 const MAX_FOLDED = 2_800;
 
@@ -21,14 +21,19 @@ function shanghaiTime(ms) {
   return ms ? new Date(ms).toLocaleTimeString("zh-CN", { timeZone: "Asia/Shanghai", hour: "2-digit", minute: "2-digit", hour12: false }) : "";
 }
 
+/** Who speaks for a conversation: its V, named after the chat, like 「V · Chief of staff」. */
+export function speaker(side) {
+  return `${side?.name ?? "V"} · ${side?.label ?? "?"}`;
+}
+
 function threadStatus(records) {
   const last = records.at(-1);
   if (!last) {
     return "";
   }
-  if (last.status === "queued" || last.status === "delivering") return `正在交给「${last.to.label}」…`;
-  if (last.status === "running") return `「${last.to.label}」正在处理…`;
-  if (last.status === "replying") return `「${last.from.label}」正在处理…`;
+  if (last.status === "queued" || last.status === "delivering") return `正在交给 ${speaker(last.to)}…`;
+  if (last.status === "running") return `${speaker(last.to)} 正在处理…`;
+  if (last.status === "replying") return `${speaker(last.from)} 正在处理…`;
   if (last.status === "failed" || last.status === "interrupted") return "中断";
   return "已完成";
 }
@@ -37,9 +42,9 @@ function threadStatus(records) {
 export function threadEntries(records) {
   const entries = [];
   for (const r of [...records].sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))) {
-    entries.push({ label: r.from.label, text: r.message, at: r.createdAt });
-    if (r.reply) entries.push({ label: r.to.label, text: r.reply, at: r.finishedAt });
-    if (r.error) entries.push({ label: r.to.label, text: `（${r.error}）`, at: r.updatedAt });
+    entries.push({ label: speaker(r.from), text: r.message, at: r.createdAt });
+    if (r.reply) entries.push({ label: speaker(r.to), text: r.reply, at: r.finishedAt });
+    if (r.error) entries.push({ label: speaker(r.to), text: `（${r.error}）`, at: r.updatedAt });
   }
   return entries;
 }
@@ -50,7 +55,7 @@ export function threadEntries(records) {
  */
 export function threadCard(records) {
   const first = records[0];
-  const names = [...new Set(records.flatMap((r) => [r.from.label, r.to.label]))];
+  const names = [...new Set(records.flatMap((r) => [speaker(r.from), speaker(r.to)]))];
   const entries = threadEntries(records);
   const title = `**${names.map(escapeMd).join("** ⇄ **")}** · ${threadStatus(records)}${entries.length ? ` · ${entries.length} 条` : ""}`;
   let budget = CARD_BUDGET;
@@ -99,11 +104,11 @@ export function finalMessageCard(text) {
 export function requestTurn({ id, from, message, chainId }) {
   const followUp = chainId && chainId !== id;
   return {
-    message: `消息来自「${from.label}」：\n\n${message}`,
+    message: `${speaker(from)}：\n\n${message}`,
     extraSystemPrompt: [
       followUp
-        ? `「${from.label}」 is answering you in a task the owner handed to this conversation earlier (thread ${chainId}). Pick up where you left off.`
-        : `「${from.label}」 handed this task to this conversation on the owner's behalf (session relay thread ${chainId ?? id}). Treat it as the owner asking here and use this conversation's own context.`,
+        ? `The V in 「${from.label}」 is answering you in a task the owner handed to this conversation earlier (thread ${chainId}). Pick up where you left off.`
+        : `The V in 「${from.label}」 handed this task to this conversation on the owner's behalf (session relay thread ${chainId ?? id}). Treat it as the owner asking here and use this conversation's own context.`,
       `Everything you reply in this turn is sent back to 「${from.label}」 automatically: you are talking with the V over there. People in both chats see the exchange folded in one 「${from.label} ⇄ this conversation」 card, not as separate messages.`,
       `If you need information or a decision from 「${from.label}」 to do this well, ask for it in your reply, short and specific, and end the turn; the answer will arrive here as a new message. Do not guess what only they know.`,
       "When the work is done, reply with the result: what you did, what you found, what is still open.",
@@ -114,9 +119,9 @@ export function requestTurn({ id, from, message, chainId }) {
 
 export function resultTurn({ id, to, message, reply, chainId }) {
   return {
-    message: `「${to.label}」回复了：\n\n${reply}`,
+    message: `${speaker(to)}：\n\n${reply}`,
     extraSystemPrompt: [
-      `You handed work to 「${to.label}」 (session relay thread ${chainId ?? id}); the message above is its reply. Your last message to it: ${clip(message, 600)}`,
+      `You handed work to 「${to.label}」 (session relay thread ${chainId ?? id}); the message above is the reply of the V there. Your last message to it: ${clip(message, 600)}`,
       "People here see your exchange with it folded in one card; your own text in this turn is only posted here when you do not relay again.",
       `If it asks you something or needs input you or this conversation can provide, answer it: call session_relay_send with target 「${to.label}」 and your answer, and end with one short line. You are coordinating with it, not reporting every step.`,
       "If it needs a decision only the owner can make, ask the owner here instead of guessing (that text is posted here).",
@@ -127,7 +132,7 @@ export function resultTurn({ id, to, message, reply, chainId }) {
 
 export function failureTurn({ id, to, message, reason }) {
   return {
-    message: `「${to.label}」没能完成你交给它的事（${reason}）。`,
+    message: `${speaker(to)} 没能完成你交给它的事（${reason}）。`,
     extraSystemPrompt: `Work you relayed to 「${to.label}」 (${id}) did not come back: ${reason}. What you asked: ${clip(message, 600)}. Tell the user briefly and decide whether to retry, do it here, or ask them.`,
   };
 }
