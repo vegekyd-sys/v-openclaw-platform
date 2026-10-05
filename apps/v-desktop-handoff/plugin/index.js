@@ -12,15 +12,13 @@ import { deliverPrivately } from "./core/deliver.js";
 import { CALLBACK_CARD_CHANNELS, DEFAULT_CARD_CHANNELS, GATEWAY_ACTION_CHANNELS, handoffCard, inPlaceTarget, normalizePayment } from "./core/card.js";
 import { FeishuApi, captureDesktop, feishuCredentials, feishuReceiver, loadCover } from "./core/feishu-api.js";
 import { nativeHandoffCard } from "./core/native-card.js";
-import { EDITABLE_CARD_CHANNELS, NATIVE_CARD_CHANNELS, handoffPresentation, isPublicImageUrl, telegramHandoffCard } from "./core/channel-cards.js";
+import { EDITABLE_CARD_CHANNELS, NATIVE_CARD_CHANNELS, handoffPresentation, isPublicImageUrl, nativeCardInstruction, telegramHandoffCard } from "./core/channel-cards.js";
 import { TelegramApi, telegramChat, telegramCredentials } from "./core/telegram-api.js";
 import { decideHandBack, decideToolCall, refuseEnd } from "./core/policy.js";
 
 // V's picture for the card when the desktop cannot be captured (generated media stays out of git).
 const DEFAULT_COVER = "https://cdn.makaron.app/storage/v1/object/public/images/5955d413-cad2-4814-b094-7fdf62d20400/0bc9ae1f-59b7-45a7-9e73-bf7c9951afdd/snapshot-d2ec2e6c-240d-4400-b0ad-4fce335e2e8c.jpg";
 
-const NATIVE_CARD_INSTRUCTION =
-  "A card titled 电脑 with three buttons has been posted in this conversation: 接管 (the user takes over V's desktop), 我完成了 (hands it back) and 跳过 (the user will not do this step). Do NOT repeat or paraphrase the url and do not say where the card is. Reply with one short sentence such as 卡片已发出，接管后完成登录，做完点「我完成了」, then end your turn. When `/v-handback <id>` arrives, or a message saying the user pressed 交还给 V on the takeover page, the desktop is already back with you: continue the task right away without asking. When `/v-skip <id>` arrives, the user skipped this step: do not issue another handoff for it; say briefly what you can do instead or where the task is blocked. If the user instead says in the chat that they are done (e.g. 好了), call desktop_handoff_status, then continue.";
 
 // The process-wide bridge through which a channel lets the button's plugin rewrite a card (v-experience).
 const CARD_ACTION_BRIDGE = Symbol.for("openclaw.v.cardActionBridge");
@@ -464,7 +462,7 @@ export default definePluginEntry({
                   openWithinMinutes,
                   sessionMinutes,
                   instruction:
-                    NATIVE_CARD_INSTRUCTION +
+                    nativeCardInstruction(place.channel) +
                     (purpose === "payment" ? " Do not click any pay/confirm button yourself; after the user is done, check the order result on the page and report it." : ""),
                 });
               }
