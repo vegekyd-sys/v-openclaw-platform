@@ -27,3 +27,9 @@
 ## 529d207e 原始 Candidate 结果
 
 本轮未通过，证据保留。小何真实一次复杂委派完成 Memory/Web/exec 与进度、最终语音，长故事播放器欠载/重复帧均为 0。简单记忆工具在输入结束 1293ms 后启动，但旧观察器在工具交付后过早发送下一句，不能证明第一句独立答案。取消场景模型选择前台 sleep60，测试等待后台 running 结果失败；退出时暴露 Worker 完成提前拒绝清理回执的竞态，随后阻断 Grok 拨号。新回归必须验证实际第一句 PCM 与原生进程退出，不修改旧 FAIL。共享在本轮期间由其他任务从旧版本推广至 firsttext-r2，候选没有写共享；sharedUnchanged=false 如实保留。
+
+## 80091a32 原始 Candidate 结果与后续修正
+
+原整轮 FAIL 保留，Candidate unit/rundir 已独立读回 not-found/gone。Grok 一句记忆查询无需第二个 USER 已返回原 PCM，工具选择在输入结束后 1929ms；复杂一次委派的实际工具、进度、最终语音和长故事已观察。日历实际 exit3/not_configured，旧观察器将 RPC ok 误记为日历成功，独立复核纠正为失败。取消原 Worker 注册表未找到实际执行 ID，随后小何拨号被清理保护阻断；不能将其称为小何 provider 失败。共享由其他任务重启至2279627，sharedUnchanged=false，候选未写共享。
+
+后续 Candidate 启动显式将继承的 VLAB_OPENCLAW_AGENT_RUNTIME 改到本候选 SDK，防止 Worker 加载共享旧代码；保留实际路径/hash证据。私有飞书配置使用现有本人登录的 access-only 加密副本，移除 refresh token，成功只读 CLI exit0/ok=true；这不是原 H5 语音验收。Worker 清理保留模型完成后的 exact Worker/run/session 归属，未确认退出不使用 Gateway 进程表冒充恢复。日历工具及观察器同时校验 CLI exit0 与业务 ok，并等待本 call 的实际结果交付后音频。

@@ -70,7 +70,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
     if(!configured(model))throw Error(`${spec.label} 尚未配置语音凭据`);
     const s={id:randomUUID(),ticket:randomBytes(32).toString('base64url'),model,sessionKey,closed:false,epoch:0,pending:new Map(),seen:new Map(),processes:new Set(),ending:null,assistantText:'',audioSequence:0};
     Object.assign(s,{responseActive:false,playing:false,userSpeaking:false,lastUserAt:0,lastProgressAt:0,progress:null});
-    s.backend=createBackendDelegation({gateway,sessionKey,ownerId:s.id,audit,onProcess:(id,running)=>{if(running)s.processes.add(id);else s.processes.delete(id);},onProgress:p=>{if(current(s)){s.progress=p;emit(s,{type:'tool.progress',callId:p.callId,name:'delegate_to_v'});}}});
+    // Worker-owned IDs live in a different native registry. Their exact Worker
+    // controller is responsible for cleanup; Gateway process is never fallback.
+    s.backend=createBackendDelegation({gateway,sessionKey,ownerId:s.id,audit,onProgress:p=>{if(current(s)){s.progress=p;emit(s,{type:'tool.progress',callId:p.callId,name:'delegate_to_v'});}}});
     sessions.set(s.id,s);
     return {voiceSessionId:s.id,model:spec.model,provider:model,transport:'gateway-relay',relayTicket:s.ticket};
   }

@@ -11,6 +11,7 @@ import {configureCandidateOpenAIAuth,installCandidateOpenAIAuth} from './gpt-liv
 import {GPT_LIVE_CALL_INSTRUCTIONS} from './gpt-live-h5/instructions.mjs';
 import {createLiveH5Server} from './gpt-live-h5/server.mjs';
 import {createDirectVoiceService} from './realtime-direct-tools/session.mjs';
+import {isolateCandidateAgentRuntime,candidateLarkEnvironment} from './realtime-direct-tools/candidate-environment.mjs';
 import {parsePublicProgressDiagnostics} from './gpt-live-h5-provenance-evidence.mjs';
 import {collectCandidateSelectedModelReferences,assertCandidateSelectedModelsPreserved,scopeCandidateAgentToAgentAllow,disableCandidateParallelToolCalls,preflightCandidateConfig,applyCandidateBackendRouteDiagnostic,assertCandidateBackendRouteDiagnosticPair,assertCandidateBackendDiagnosticPaths} from './gpt-live-candidate-config-guard.mjs';
 import {startOwnedProcObserver} from './gpt-live-candidate-native/os-observer-lifecycle.mjs';
@@ -18,6 +19,9 @@ import {parseVoiceConfirmationDiagnostics} from './gpt-live-candidate-native/con
 
 const runtime=process.env.VLAB_CANDIDATE_RUNTIME,state=process.env.OPENCLAW_STATE_DIR,configPath=process.env.OPENCLAW_CONFIG_PATH;
 assert(runtime&&state&&configPath,'Disposable candidate environment required');
+const agentRuntimeEnvironment=isolateCandidateAgentRuntime(process.env,runtime);
+const toolEnvironment=candidateLarkEnvironment(process.env);
+Object.assign(process.env,toolEnvironment);
 const scratch=path.join(state,'tmp');fs.mkdirSync(scratch,{recursive:true,mode:0o700});
 for(const key of ['TMPDIR','TMP','TEMP'])process.env[key]=scratch;
 if(process.env.GPT_LIVE_CALL_AUDIO_FIXTURE_GZIP) {
@@ -375,7 +379,8 @@ try {
     if(credentialPath){const st=fs.lstatSync(credentialPath);assert(st.isFile()&&(st.mode&0o077)===0,'Grok credential file must be private');grokKey=JSON.parse(fs.readFileSync(credentialPath)).apiKey;}
     const auditPath=path.join(process.env.GPT_LIVE_H5_EVIDENCE_DIR,'direct-voice-audit.jsonl');
     fs.writeFileSync(auditPath,'',{mode:0o600,flag:'wx'});
-    directVoice=createDirectVoiceService({gateway:guardedGateway,wsModule,apiKeys:{seeduplex:process.env.VOLCENGINE_REALTIME_API_KEY,grok:grokKey},
+    fs.writeFileSync(path.join(process.env.GPT_LIVE_H5_EVIDENCE_DIR,'native-environment-isolation.json'),JSON.stringify({agentRuntimeEnvironment,toolEnvironment},null,2)+'\n',{mode:0o600,flag:'wx'});
+    directVoice=createDirectVoiceService({gateway:guardedGateway,wsModule,toolEnvironment,apiKeys:{seeduplex:process.env.VOLCENGINE_REALTIME_API_KEY,grok:grokKey},
       audit:value=>fs.appendFileSync(auditPath,JSON.stringify({at:Date.now(),...value})+'\n'),
       onOutputAudio:(id,pcm)=>fs.appendFileSync(path.join(process.env.GPT_LIVE_H5_EVIDENCE_DIR,`provider-${id}.pcm`),pcm,{mode:0o600}),
       loadContext:async sessionKey=>{

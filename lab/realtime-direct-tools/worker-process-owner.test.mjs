@@ -76,3 +76,11 @@ test('native exec/process scope patch keeps ordinary personal sessions unchanged
  const expression=patched.match(/scopeKey: (.*),/)[1],scope=new Function('params','return '+expression);
  const runId='voice-12345678-1234-1234-1234-123456789abc-12345678-1234-1234-1234-123456789abc';assert.equal(scope({runId,sessionKey:'personal'}),runId);assert.equal(scope({runId:'normal',sessionKey:'personal'}),'personal');
 });
+test('completed model cleanup remains bound to its exact surviving Worker registry',async()=>{
+ const Pool=await patchedPool(),pool=new Pool();let control;
+ const active={id:'retired-request',sessionKey:'personal',request:{runId:'voice-retired'}},worker={active:new Map(),voiceProcessRuns:new Map([['voice-retired',active]]),child:{send:m=>control=m}};pool.workers.set('own',worker);
+ await assert.rejects(pool.cancelVoiceProcesses('voice-retired','foreign'),/no longer active/);
+ const result=pool.cancelVoiceProcesses('voice-retired','personal');assert.equal(control.requestId,'retired-request');
+ pool.onMessage(worker,{...control,type:'voice-process-cancel-ack',ok:true,result:{runId:'voice-retired',sessionKey:'personal',confirmed:true}});assert((await result).confirmed);assert.equal(worker.voiceProcessRuns.size,0);
+ await assert.rejects(pool.cancelVoiceProcesses('voice-retired','personal'),/no longer active/);
+});

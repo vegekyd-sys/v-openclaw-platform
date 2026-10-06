@@ -48,6 +48,8 @@ export function createToolExecutor({invoke,allowedTools,calendar,delegate}){retu
     result=await invoke('process',{action:'poll',sessionId,timeout:2000},callId,signal);
   }
   if(sessionId&&!processExited(result))throw Error('飞书日程查询尚未完成，执行会话仍保留以便取消。');
+  const outcome=calendarOutcome(result);
+  if(!outcome.ok)throw Error('飞书日程没有查成功：'+outcome.message);
   return result;
  }
  if(name==='openclaw_tool') {
@@ -58,6 +60,14 @@ export function createToolExecutor({invoke,allowedTools,calendar,delegate}){retu
  }
  return invoke(name,args,callId,signal);
 };}
+// Tool transport success is separate from the CLI's actual business result.
+// Native exec may append its exit annotation after otherwise valid JSON.
+export function calendarOutcome(output){
+ let value;const text=(output?.details?.aggregated??(output?.content??[]).filter(b=>b.type==='text').map(b=>b.text??'').join('\n')).replace(/\n\n\(Command exited with code \d+\)\s*$/u,'').trim();
+ try{value=JSON.parse(text);}catch{}
+ const ok=output?.isError!==true&&output?.details?.exitCode===0&&value?.ok===true;
+ return {ok,message:ok?'':String(value?.error?.message??'命令未成功返回有效日程结果').slice(0,500)};
+}
 /** Cache by provider call_id and reject conflicting replays before executing. */
 export function createCallDispatcher(execute){const cache=new Map();return (item)=>{
  if(item.type!=='function_call'||!item.call_id||typeof item.arguments!=='string')throw Error('不是原生工具调用');

@@ -1,9 +1,9 @@
 // Exact anchors patch the current runtime, preserving unrelated Worker changes.
 export function patchVoiceWorker(source) {
- if(source.includes('// voice-worker-process-owner-v2'))return source;
- if(source.includes('// voice-worker-process-owner-v1'))throw Error('Previous voice Worker patch must be rebased from its unpatched source');
+ if(source.includes('// voice-worker-process-owner-v3'))return source;
+ if(/voice-worker-process-owner-v[12]/.test(source))throw Error('Previous voice Worker patch must be rebased from its unpatched source');
  const once=(needle,value)=>{if(source.split(needle).length!==2)throw Error('Worker process owner anchor changed: '+needle);source=source.replace(needle,value);};
- once('const activeControllers = new Map();',`// voice-worker-process-owner-v2
+ once('const activeControllers = new Map();',`// voice-worker-process-owner-v3
 const activeControllers = new Map();
 const voiceProcessOwners = new Map();`);
  source=`import {createVoiceProcessOwner} from './voice-process-owner.mjs';\n`+source;
@@ -11,16 +11,17 @@ const voiceProcessOwners = new Map();`);
     runId:message.runId,sessionKey:message.sessionKey,
     loadProcessTool:async()=>{const m=await import(new URL('../bash-tools-DiAfkLAC.js',pathToFileURL(configuredAgentRuntimePath())).href);if(typeof m.t!=='function')throw Error('Native process tool unavailable');return m.t({scopeKey:message.runId});}
   }) : null;
-  if(voiceOwner)voiceProcessOwners.set(message.runId,voiceOwner);
+  if(voiceOwner)voiceProcessOwners.set(message.runId,{owner:voiceOwner,requestId:message.id,sessionKey:message.sessionKey});
   let unsubscribeAgentEvents = () => {};`);
  once('      if (event?.runId !== message.runId) {','      voiceOwner?.observe(event);\n      if (event?.runId !== message.runId) {');
  // Control starts while this exact request is active. It aborts the model before
  // reaping the same Worker's native exec IDs, and returns actual terminal polls.
  once('  if (message?.type === "cancel" && message.requestId) {',`  if(message?.type==='voice-process-cancel'&&message.requestId&&message.controlId){
-    const active=activeControllers.get(message.requestId),owner=voiceProcessOwners.get(message.runId);
+    const active=activeControllers.get(message.requestId),binding=voiceProcessOwners.get(message.runId),owner=binding?.owner;
     try{
-      if(!active||active.request.runId!==message.runId||active.request.sessionKey!==message.sessionKey||!owner)throw Error('Voice Worker ownership changed');
-      active.controller.abort(Object.assign(new Error('Voice task cancelled'),{name:'AbortError'}));
+      if(!owner||binding.requestId!==message.requestId||binding.sessionKey!==message.sessionKey||active&&(active.request.runId!==message.runId||active.request.sessionKey!==message.sessionKey))throw Error('Voice Worker ownership changed');
+      if(!active&&!owner.snapshot().settled)throw Error('Voice Worker model exit is unconfirmed');
+      active?.controller.abort(Object.assign(new Error('Voice task cancelled'),{name:'AbortError'}));
       const result=await owner.cancel();voiceProcessOwners.delete(message.runId);
       process.send?.({type:'voice-process-cancel-ack',controlId:message.controlId,requestId:message.requestId,ok:true,result});
     }catch(error){process.send?.({type:'voice-process-cancel-ack',controlId:message.controlId,requestId:message.requestId,ok:false,error:serializeError(error)});}
@@ -32,12 +33,12 @@ const voiceProcessOwners = new Map();`);
  return source;
 }
 export function patchVoicePool(source){
- if(source.includes('// voice-worker-process-control-v2'))return source;
- if(source.includes('// voice-worker-process-control-v1'))throw Error('Previous voice pool patch must be rebased from its unpatched source');
+ if(source.includes('// voice-worker-process-control-v3'))return source;
+ if(/voice-worker-process-control-v[12]/.test(source))throw Error('Previous voice pool patch must be rebased from its unpatched source');
  const needle='  async applyPermission(requestId, mode) {';if(source.split(needle).length!==2)throw Error('Pool control anchor changed');
- source=source.replace(needle,`  // voice-worker-process-control-v2
+ source=source.replace(needle,`  // voice-worker-process-control-v3
   async cancelVoiceProcesses(runId,sessionKey){
-    for(const worker of this.workers.values())for(const active of worker.active.values()){
+    for(const worker of this.workers.values())for(const active of [...worker.active.values(),...(worker.voiceProcessRuns?.values()??[])]){
       if(active.request?.runId!==runId||active.sessionKey!==sessionKey)continue;
       const controlId='voice-process-'+this.nextControlId++;
       return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{this.pendingControls.delete(controlId);reject(Error('Voice process cleanup acknowledgement timed out'));},15000);timer.unref?.();
@@ -54,12 +55,18 @@ ${needle}`);
  const completed='new Error(`worker request ${message.id} completed before Steer acknowledgement`),';
  if(source.split(completed).length!==2)throw Error('Worker completion control anchor changed');
  source=source.replace(completed,completed+'\n      true,');
+ const retired='    worker.active.delete(message.id);';
+ if(source.split(retired).length!==2)throw Error('Worker retirement anchor changed');
+ source=source.replace(retired,`    if(/^voice-[a-f0-9-]{36}-[a-f0-9-]{36}$/.test(active.request?.runId??'')){
+      worker.voiceProcessRuns??=new Map();worker.voiceProcessRuns.set(active.request.runId,active);
+    }
+${retired}`);
  return source.replace(ack,`${ack}
     if(message?.type==='voice-process-cancel-ack'){
       const p=this.pendingControls.get(message.controlId);if(!p||p.worker!==worker||p.requestId!==message.requestId||!p.runId)return;
       clearTimeout(p.timer);this.pendingControls.delete(message.controlId);
       if(!message.ok||message.result?.runId!==p.runId||message.result?.sessionKey!==p.sessionKey||message.result?.confirmed!==true)p.reject(Error(message.error?.message??'Voice process cleanup identity mismatch'));
-      else p.resolve(message.result);return;
+      else {p.worker.voiceProcessRuns?.delete(p.runId);p.resolve(message.result);}return;
     }`);
 }
 // Scope native exec and process registries to the trusted voice run rather than

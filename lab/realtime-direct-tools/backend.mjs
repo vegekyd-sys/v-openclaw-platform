@@ -129,7 +129,7 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
     } finally {
       clearTimeout(deadline);signal?.removeEventListener('abort',abort);retire(row);
       await row.cancelPromise?.catch(()=>{});
-      if(active===row&&!row.cleanupUnconfirmed)active=undefined;
+      if(active===row&&!row.cleanupUnconfirmed&&row.ownedProcesses.size===0&&row.pendingExecs.size===0)active=undefined;
     }
   }
   return {run,handleEvent,cancel:async()=>{
