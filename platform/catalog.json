@@ -214,6 +214,7 @@
         "tests/v-experience.test.mjs",
         "lab/agent-db-process-coordinator.test.mjs",
         "lab/async-writer-admission.test.mjs",
+        "lab/auth-lookup-memo.test.mjs",
         "lab/candidate/candidate.test.mjs",
         "lab/candidate/deepseek-budget-image.test.mjs",
         "lab/candidate/completions-overflow-signal.test.mjs",
