@@ -10,10 +10,14 @@ import { fileURLToPath } from 'node:url';
 export const H5_PATHS = [
   'lab/gpt-live-h5/access.mjs',
   'lab/gpt-live-h5/personal-session.mjs',
+  'lab/gpt-live-h5/persona.mjs',
   'lab/gpt-live-h5/server.mjs', 'lab/gpt-live-h5/events.mjs', 'lab/gpt-live-h5/duplex-playback.mjs',
   'lab/gpt-live-h5/index.html', 'lab/gpt-live-h5/app.js', 'lab/gpt-live-h5/styles.css',
   'lab/gpt-live-h5/microphone-capture.mjs', 'lab/gpt-live-h5/transcript-presentation.mjs',
   'lab/gpt-live-h5/call-sounds.mjs', 'lab/rtc-h5/assets/v-idle-nohat-20260922.png',
+  'lab/gpt-live-h5/relay-audio.mjs', 'lab/realtime-direct-tools/session.mjs',
+  'lab/realtime-direct-tools/tools.mjs', 'lab/realtime-direct-tools/grok-provider.mjs',
+  'lab/seeduplex-realtime-provider.mjs',
   'lab/rtc-h5/assets/v-tool-busy-20260922.png',
 ];
 export const digest = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -216,6 +220,9 @@ async function remoteMain(req) {
     for (let parent = path.dirname(destination); parent !== dir; parent = path.dirname(parent)) fs.chmodSync(parent, 0o755);
   }
   const childEnv = { OPENCLAW_CONFIG_PATH: env.OPENCLAW_CONFIG_PATH, GPT_LIVE_H5_RUNTIME_ROOT: runtime, GPT_LIVE_H5_PORT: '26244' };
+  // Native voice credentials stay in the existing private service environment.
+  // They are never included in the public release receipt or H5 responses.
+  for (const key of ['VOLCENGINE_REALTIME_API_KEY', 'DOUBAO_SPEECH_API_KEY', 'XAI_API_KEY']) if (env[key]) childEnv[key] = env[key];
   for (const match of String(config.gateway.auth.token).matchAll(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/gu)) {
     assert(env[match[1]], 'Gateway token reference is unavailable'); childEnv[match[1]] = env[match[1]];
   }

@@ -508,3 +508,14 @@ test("Gateway-owned consults return one ordered Seeduplex tool-result batch", as
   ]);
   bridge.close();
 });
+
+test('Seeduplex greeting uses native SayHello rather than injecting unpaired history', async () => {
+  const socket = new FakeSocket();
+  const bridge = buildSeeduplexRealtimeVoiceProvider({env:{VOLCENGINE_REALTIME_API_KEY:'test'},createWebSocket:async()=>socket}).createBridge({providerConfig:{voice:'xiaohe'},onAudio(){},onError:error=>assert.fail(error.message),onClose(){}});
+  const connecting=bridge.connect();await new Promise(resolve=>setImmediate(resolve));socket.open();socket.message({type:'session.created'});await connecting;
+  bridge.triggerGreeting('请向天意问候');
+  assert.equal(socket.sent.at(-1).type,'speech_text_buffer.commit');
+  assert.equal(socket.sent.at(-1).text,'天意，你好，我是 V，在呢。');
+  assert(!socket.sent.some(event=>event.type==='conversation.item.create'));
+  bridge.close();
+});
