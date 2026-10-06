@@ -1,0 +1,448 @@
+import assert from 'node:assert/strict';
+
+// Move a housekeeping memory flush behind the reply (memory-flush-defer), on V's
+// 2026.9.1 db91.6 bytes.
+//
+// Production V 2026-10-06 19:40: a user message in a large vlab-worker session waited
+// 38.6 s before its own run entered the harness. In front of it, the reply path's
+// pre-reply memory flush (executePreparedReplyAgentRun -> traceAgentPhase
+// "reply.memory_flush" -> runMemoryFlushIfNeeded) ran a 34.9 s embedded run in the same
+// session that read and wrote memory/2026-10-06.md and answered NO_REPLY. The session sat
+// at ~300k tokens, far below its compaction threshold: nothing was about to drop context.
+//
+// The flush protects one thing: durable memories written while the context that holds
+// them is still there, before compaction summarizes it away. Its two triggers:
+//   tokens            projected tokens >= compaction threshold - softThresholdTokens
+//                     (4000 by default): compaction is near, the flush must go first;
+//   transcript bytes  forceFlushTranscriptBytes (2 MiB by default) of model-visible
+//                     transcript, once per compaction cycle, a guard for stale counters.
+// A 300k-token session with tool output passes 2 MiB long before it nears a 1M window, so
+// the transcript-size trigger fires while compaction is many turns away.
+//
+// The reply path has no flush after the run (agentCommand's post-run flush belongs to the
+// Gateway `agent` command path, not to chat/channel replies), so a session that crossed
+// the trigger during one turn is flushed in front of the next user message, possibly
+// hours later.
+//
+// This change, on the reply path only:
+//   agent-runner-memory  runMemoryFlushIfNeeded, once it has decided to flush, asks an
+//                        optional deferPreReplyFlush hook; a true answer returns
+//                        outcome "deferred" without running. runSessionCompactionIfNeeded
+//                        accepts a `probe` object: it fills {willCompact, threshold,
+//                        tokenCount} from the very gate preflight compaction uses and
+//                        returns before compacting or writing anything.
+//   agent-runner.runtime executePreparedReplyAgentRun passes the hook. It defers only when
+//                        the token count is known, the projected tokens leave at least
+//                        max(32768, 25% of the flush threshold) of room below the flush
+//                        threshold (so a token-threshold flush, which by definition is
+//                        within softThresholdTokens of compaction, always stays first),
+//                        and the preflight probe says this turn does not compact. Then the
+//                        flush runs after the reply operation clears and the session has
+//                        been idle OPENCLAW_DEFER_PRE_REPLY_MEMORY_FLUSH_IDLE_MS (120 s by
+//                        default), through the same runMemoryFlushIfNeeded, on the session
+//                        lane, with no reply operation (so nothing can be injected into
+//                        it). A new non-heartbeat turn for the session aborts a running
+//                        deferred flush (abort is not counted as a flush failure) and
+//                        restarts the idle wait; if the flush has not run by the time
+//                        compaction nears, the next turn flushes first exactly as before.
+// OPENCLAW_DEFER_PRE_REPLY_MEMORY_FLUSH=0 turns it off. Tagged log lines
+// `[memory-flush-deferred.1]` carry a hashed session key and numbers, never message text.
+
+function replaceExactlyOnce(source, before, after, label) {
+  assert.equal(source.split(before).length, 2, `Expected exactly one ${label}`);
+  return source.replace(before, after);
+}
+
+export const MEMORY_FLUSH_DEFER_MARKER = 'memory-flush-defer-v1';
+
+// ---------------------------------------------------------------------------------------
+// agent-runner-memory-7VF-zwNt.js
+
+const FLUSH_DECISION_BEFORE = `	if (!(shouldRunMemoryFlush({
+		entry,
+		tokenCount: tokenCountForFlush,
+		threshold: flushThreshold
+	}) || shouldForceFlushByTranscriptSize && entry != null && !hasAlreadyFlushedForCurrentCompaction(entry))) return {
+		sessionEntry: entry ?? params.sessionEntry,
+		outcome: "skipped"
+	};
+	logVerbose(\`memoryFlush triggered: sessionKey=\${params.sessionKey} tokenCount=\${tokenCountForFlush ?? "undefined"} threshold=\${flushThreshold}\`);
+`;
+
+const FLUSH_DECISION_AFTER = `	const memoryFlushTokenTriggered = shouldRunMemoryFlush({
+		entry,
+		tokenCount: tokenCountForFlush,
+		threshold: flushThreshold
+	});
+	if (!(memoryFlushTokenTriggered || shouldForceFlushByTranscriptSize && entry != null && !hasAlreadyFlushedForCurrentCompaction(entry))) return {
+		sessionEntry: entry ?? params.sessionEntry,
+		outcome: "skipped"
+	};
+	logVerbose(\`memoryFlush triggered: sessionKey=\${params.sessionKey} tokenCount=\${tokenCountForFlush ?? "undefined"} threshold=\${flushThreshold}\`);
+	// ${MEMORY_FLUSH_DEFER_MARKER}: a reply-path caller may move a housekeeping flush behind the reply.
+	if (typeof params.deferPreReplyFlush === "function") {
+		let deferred = false;
+		try {
+			deferred = await params.deferPreReplyFlush({
+				sessionEntry: entry ?? params.sessionEntry,
+				tokenCount: tokenCountForFlush,
+				flushThreshold,
+				tokenTriggered: memoryFlushTokenTriggered,
+				transcriptBytes: transcriptByteSize,
+				forceFlushTranscriptBytes
+			}) === true;
+		} catch (err) {
+			logVerbose(\`memoryFlush deferral check failed; flushing before the reply: \${String(err)}\`);
+		}
+		if (deferred) return {
+			sessionEntry: entry ?? params.sessionEntry,
+			outcome: "deferred"
+		};
+	}
+`;
+
+const LATCH_BEFORE = '	if (latch !== void 0 && (typeof maxActiveTranscriptBytes !== "number" ||';
+const LATCH_AFTER = '	if (latch !== void 0 && params.probe === void 0 && (typeof maxActiveTranscriptBytes !== "number" ||';
+
+const PREFLIGHT_GATE_BEFORE = `	if (!(shouldRunPreflightCompaction({
+		entry,
+		tokenCount: tokenCountForCompaction,
+		threshold
+	}) || shouldCompactByTranscriptBytes)) return entry ?? params.sessionEntry;
+`;
+
+const PREFLIGHT_GATE_AFTER = `	if (params.probe) {
+		// ${MEMORY_FLUSH_DEFER_MARKER}: report this turn's preflight decision without compacting or writing.
+		params.probe.willCompact = Boolean(shouldRunPreflightCompaction({
+			entry,
+			tokenCount: tokenCountForCompaction,
+			threshold
+		}) || shouldCompactByTranscriptBytes);
+		params.probe.threshold = threshold;
+		params.probe.tokenCount = tokenCountForCompaction ?? freshPersistedTokens;
+		return entry ?? params.sessionEntry;
+	}
+${PREFLIGHT_GATE_BEFORE}`;
+
+export function patchAgentRunnerMemory(source) {
+  assert(!source.includes(MEMORY_FLUSH_DEFER_MARKER), 'agent-runner-memory is already patched');
+  let out = replaceExactlyOnce(source, FLUSH_DECISION_BEFORE, FLUSH_DECISION_AFTER, 'memory flush decision');
+  out = replaceExactlyOnce(out, LATCH_BEFORE, LATCH_AFTER, 'byte-compaction latch clear');
+  out = replaceExactlyOnce(out, PREFLIGHT_GATE_BEFORE, PREFLIGHT_GATE_AFTER, 'preflight compaction gate');
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------
+// agent-runner.runtime-CAdsMsQt.js
+
+export const DEFER_REGION_START = `//#region ${MEMORY_FLUSH_DEFER_MARKER}`;
+export const DEFER_REGION_END = `//#endregion ${MEMORY_FLUSH_DEFER_MARKER}`;
+export const MIN_HEADROOM_TOKENS = 32768;
+export const HEADROOM_RATIO = 0.25;
+export const DEFAULT_IDLE_MS = 120000;
+
+const DEFER_REGION = `${DEFER_REGION_START}
+/** Housekeeping memory flushes that can wait until after the reply (memory-flush-defer). */
+const MEMORY_FLUSH_DEFER_MIN_HEADROOM_TOKENS = ${MIN_HEADROOM_TOKENS};
+const MEMORY_FLUSH_DEFER_HEADROOM_RATIO = ${HEADROOM_RATIO};
+const MEMORY_FLUSH_DEFER_DEFAULT_IDLE_MS = ${DEFAULT_IDLE_MS};
+const MEMORY_FLUSH_DEFER_MAX_IDLE_MS = 36e5;
+const memoryFlushDeferLog = createSubsystemLogger("auto-reply/memory-flush-defer");
+const deferredMemoryFlushJobs = /* @__PURE__ */ new Map();
+function isPreReplyMemoryFlushDeferralEnabled(env = process.env) {
+	return env.OPENCLAW_DEFER_PRE_REPLY_MEMORY_FLUSH !== "0";
+}
+function resolveDeferredMemoryFlushIdleMs(env = process.env) {
+	const raw = env.OPENCLAW_DEFER_PRE_REPLY_MEMORY_FLUSH_IDLE_MS;
+	const value = raw === void 0 || raw === "" ? NaN : Number(raw);
+	return Number.isFinite(value) && value >= 0 ? Math.min(Math.floor(value), MEMORY_FLUSH_DEFER_MAX_IDLE_MS) : MEMORY_FLUSH_DEFER_DEFAULT_IDLE_MS;
+}
+function hashMemoryFlushSessionKey(sessionKey) {
+	return crypto.createHash("sha256").update(String(sessionKey)).digest("hex").slice(0, 12);
+}
+function logMemoryFlushDeferral(fields) {
+	memoryFlushDeferLog.info(\`[memory-flush-deferred.1] \${JSON.stringify(fields)}\`);
+}
+/**
+* Pure decision. A flush is moved behind the reply only when it is pure housekeeping:
+* known token count, far below the flush threshold (a token-threshold flush is within
+* softThresholdTokens of compaction and always stays first), and this turn's preflight
+* gate does not compact. Anything unknown keeps the flush in front.
+*/
+function resolvePreReplyMemoryFlushDeferral(input) {
+	if (!input.enabled) return {
+		defer: false,
+		reason: "disabled"
+	};
+	if (input.isHeartbeat) return {
+		defer: false,
+		reason: "heartbeat"
+	};
+	if (!input.hasSession) return {
+		defer: false,
+		reason: "no-session"
+	};
+	const tokens = input.tokenCount;
+	const threshold = input.flushThreshold;
+	if (typeof tokens !== "number" || !Number.isFinite(tokens) || tokens <= 0) return {
+		defer: false,
+		reason: "token-count-unknown"
+	};
+	if (typeof threshold !== "number" || !Number.isFinite(threshold) || threshold <= 0) return {
+		defer: false,
+		reason: "threshold-unknown"
+	};
+	const headroom = Math.max(MEMORY_FLUSH_DEFER_MIN_HEADROOM_TOKENS, Math.floor(threshold * MEMORY_FLUSH_DEFER_HEADROOM_RATIO));
+	if (tokens + headroom > threshold) return {
+		defer: false,
+		reason: "near-compaction",
+		headroom
+	};
+	const probe = input.probe;
+	if (probe === void 0) return {
+		defer: false,
+		reason: "probe-required",
+		headroom
+	};
+	if (probe.willCompact !== false) return {
+		defer: false,
+		reason: probe.willCompact === true ? "compaction-this-turn" : "compaction-unknown",
+		headroom
+	};
+	if (typeof probe.tokenCount === "number" && Number.isFinite(probe.tokenCount) && probe.tokenCount + headroom > threshold) return {
+		defer: false,
+		reason: "near-compaction",
+		headroom
+	};
+	return {
+		defer: true,
+		reason: "housekeeping",
+		headroom
+	};
+}
+/** deferPreReplyFlush hook for runMemoryFlushIfNeeded on the reply path. */
+async function deferPreReplyMemoryFlush(ctx) {
+	const flushState = ctx.flushState ?? {};
+	const base = {
+		enabled: isPreReplyMemoryFlushDeferralEnabled(),
+		isHeartbeat: ctx.isHeartbeat === true,
+		hasSession: Boolean(ctx.sessionKey && ctx.storePath && ctx.replyOperation),
+		tokenCount: flushState.tokenCount,
+		flushThreshold: flushState.flushThreshold
+	};
+	let decision = resolvePreReplyMemoryFlushDeferral(base);
+	if (decision.reason !== "probe-required") {
+		if (base.enabled && !base.isHeartbeat) logVerbose(\`memoryFlush kept before the reply: \${decision.reason}\`);
+		return false;
+	}
+	const probe = {};
+	await runSessionCompactionIfNeeded({
+		cfg: ctx.cfg,
+		followupRun: ctx.followupRun,
+		promptForEstimate: ctx.followupRun.prompt,
+		defaultModel: ctx.defaultModel,
+		sessionEntry: flushState.sessionEntry,
+		sessionStore: ctx.sessionStore,
+		sessionKey: ctx.sessionKey,
+		runtimePolicySessionKey: ctx.runtimePolicySessionKey,
+		storePath: ctx.storePath,
+		isHeartbeat: ctx.isHeartbeat,
+		abortSignal: ctx.replyOperation.abortSignal,
+		probe
+	});
+	decision = resolvePreReplyMemoryFlushDeferral({
+		...base,
+		probe
+	});
+	if (!decision.defer) {
+		logVerbose(\`memoryFlush kept before the reply: \${decision.reason}\`);
+		return false;
+	}
+	const idleMs = resolveDeferredMemoryFlushIdleMs();
+	scheduleDeferredMemoryFlush(ctx, idleMs);
+	logMemoryFlushDeferral({
+		phase: "deferred",
+		session: hashMemoryFlushSessionKey(ctx.sessionKey),
+		tokens: Math.round(flushState.tokenCount),
+		threshold: Math.round(flushState.flushThreshold),
+		compactionThreshold: typeof probe.threshold === "number" ? Math.round(probe.threshold) : null,
+		trigger: flushState.tokenTriggered ? "tokens" : "transcript_bytes",
+		idleMs
+	});
+	return true;
+}
+function scheduleDeferredMemoryFlush(ctx, idleMs) {
+	const key = ctx.sessionKey;
+	let job = deferredMemoryFlushJobs.get(key);
+	if (!job) {
+		job = {
+			key,
+			epoch: 0,
+			state: "new",
+			timer: void 0,
+			controller: void 0,
+			ctx,
+			idleMs
+		};
+		deferredMemoryFlushJobs.set(key, job);
+	}
+	if (job.state === "running") return job;
+	job.ctx = ctx;
+	job.idleMs = idleMs;
+	waitForDeferredMemoryFlushReplyClear(job, ctx.replyOperation);
+	return job;
+}
+function waitForDeferredMemoryFlushReplyClear(job, operation) {
+	const epoch = ++job.epoch;
+	if (job.timer) clearTimeout(job.timer);
+	job.timer = void 0;
+	job.state = "waiting-reply";
+	runAfterReplyOperationClear(operation, () => armDeferredMemoryFlushTimer(job, epoch));
+}
+function armDeferredMemoryFlushTimer(job, epoch) {
+	if (deferredMemoryFlushJobs.get(job.key) !== job || job.epoch !== epoch) return;
+	const timerEpoch = ++job.epoch;
+	if (job.timer) clearTimeout(job.timer);
+	job.state = "idle-wait";
+	job.timer = setTimeout(() => {
+		startDeferredMemoryFlush(job, timerEpoch);
+	}, job.idleMs);
+	job.timer?.unref?.();
+}
+function startDeferredMemoryFlush(job, epoch) {
+	if (deferredMemoryFlushJobs.get(job.key) !== job || job.epoch !== epoch) return;
+	job.timer = void 0;
+	const activeOperation = replyRunRegistry.get(job.key);
+	if (activeOperation) {
+		waitForDeferredMemoryFlushReplyClear(job, activeOperation);
+		return;
+	}
+	const runEpoch = ++job.epoch;
+	const controller = new AbortController();
+	const startedAt = Date.now();
+	job.controller = controller;
+	job.state = "running";
+	job.running = runDeferredMemoryFlush(job.ctx, controller.signal).then((outcome) => {
+		logMemoryFlushDeferral({
+			phase: "ran",
+			session: hashMemoryFlushSessionKey(job.key),
+			outcome: controller.signal.aborted ? "aborted" : outcome,
+			ms: Date.now() - startedAt
+		});
+		if (deferredMemoryFlushJobs.get(job.key) === job && job.epoch === runEpoch) deferredMemoryFlushJobs.delete(job.key);
+	});
+	return job.running;
+}
+async function runDeferredMemoryFlush(ctx, abortSignal) {
+	const sessionStore = {};
+	const sessionEntry = refreshSessionEntryFromStore({
+		storePath: ctx.storePath,
+		sessionKey: ctx.sessionKey,
+		fallbackEntry: void 0,
+		activeSessionStore: sessionStore
+	});
+	if (!sessionEntry?.sessionId) return "no-session";
+	const sessionChanged = sessionEntry.sessionId !== ctx.followupRun.run.sessionId;
+	const followupRun = {
+		...ctx.followupRun,
+		prompt: "",
+		run: {
+			...ctx.followupRun.run,
+			sessionId: sessionEntry.sessionId,
+			...sessionChanged ? { sessionFile: ctx.sessionKey } : {}
+		}
+	};
+	try {
+		const result = await runMemoryFlushIfNeeded({
+			cfg: ctx.cfg,
+			followupRun,
+			promptForEstimate: "",
+			sessionCtx: ctx.sessionCtx,
+			defaultModel: ctx.defaultModel,
+			resolvedVerboseLevel: ctx.resolvedVerboseLevel,
+			sessionEntry,
+			sessionStore,
+			sessionKey: ctx.sessionKey,
+			runtimePolicySessionKey: ctx.runtimePolicySessionKey,
+			storePath: ctx.storePath,
+			isHeartbeat: false,
+			abortSignal,
+			onVisibleErrorPayloads: (payloads) => {
+				logVerbose(\`deferred memory flush produced \${payloads.length} maintenance error payload(s)\`);
+			}
+		});
+		return result?.outcome ?? "unknown";
+	} catch (error) {
+		logVerbose(\`deferred memory flush failed: \${String(error)}\`);
+		return "error";
+	}
+}
+/** A new turn for the session goes first: abort a running deferred flush and wait for idle again. */
+function yieldDeferredMemoryFlush(sessionKey, reason) {
+	const job = deferredMemoryFlushJobs.get(sessionKey);
+	if (!job || job.state === "waiting-reply" || job.state === "new") return false;
+	const wasRunning = job.state === "running";
+	if (wasRunning) {
+		job.controller?.abort();
+		logMemoryFlushDeferral({
+			phase: "yielded",
+			session: hashMemoryFlushSessionKey(sessionKey),
+			reason
+		});
+	}
+	armDeferredMemoryFlushTimer(job, job.epoch);
+	return wasRunning;
+}
+${DEFER_REGION_END}
+`;
+
+const EXECUTE_FN = 'async function executePreparedReplyAgentRun(context) {\n';
+
+const FLUSH_CALL_BEFORE = `		isHeartbeat,
+		replyOperation,
+		onVisibleErrorPayloads: (payloads) => {
+			logVerbose(\`memory flush produced \${payloads.length} visible maintenance error payload(s); continuing user reply\`);
+		}
+	}));
+`;
+
+const FLUSH_CALL_AFTER = `		isHeartbeat,
+		replyOperation,
+		deferPreReplyFlush: (flushState) => deferPreReplyMemoryFlush({
+			flushState,
+			cfg,
+			followupRun,
+			defaultModel,
+			sessionStore: activeSessionStore,
+			sessionKey,
+			runtimePolicySessionKey,
+			storePath,
+			isHeartbeat,
+			replyOperation,
+			sessionCtx,
+			resolvedVerboseLevel
+		}),
+		onVisibleErrorPayloads: (payloads) => {
+			logVerbose(\`memory flush produced \${payloads.length} visible maintenance error payload(s); continuing user reply\`);
+		}
+	}));
+`;
+
+const REPLY_START_BEFORE = '\tconst isHeartbeat = opts?.isHeartbeat === true;\n\tlet didDeliverVisiblePartialReply = false;\n';
+const REPLY_START_AFTER = '\tconst isHeartbeat = opts?.isHeartbeat === true;\n\tif (!isHeartbeat && sessionKey) yieldDeferredMemoryFlush(sessionKey, "inbound-turn");\n\tlet didDeliverVisiblePartialReply = false;\n';
+
+export function patchAgentRunnerRuntime(source) {
+  assert(!source.includes(MEMORY_FLUSH_DEFER_MARKER), 'agent-runner.runtime is already patched');
+  let out = replaceExactlyOnce(source, EXECUTE_FN, `${DEFER_REGION}${EXECUTE_FN}`, 'reply agent run executor');
+  out = replaceExactlyOnce(out, FLUSH_CALL_BEFORE, FLUSH_CALL_AFTER, 'pre-reply memory flush call');
+  out = replaceExactlyOnce(out, REPLY_START_BEFORE, REPLY_START_AFTER, 'reply agent turn start');
+  return out;
+}
+
+/** The deferral region of a patched runtime, for tests that run it against fakes. */
+export function extractDeferRegion(patchedRuntime) {
+  const start = patchedRuntime.indexOf(DEFER_REGION_START);
+  const end = patchedRuntime.indexOf(DEFER_REGION_END);
+  assert(start >= 0 && end > start, 'memory-flush-defer region not found');
+  return patchedRuntime.slice(start, end + DEFER_REGION_END.length);
+}
