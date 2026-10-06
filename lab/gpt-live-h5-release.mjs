@@ -9,6 +9,8 @@ import { fileURLToPath } from 'node:url';
 
 export const H5_PATHS = [
   'lab/gpt-live-h5/access.mjs',
+  'lab/gpt-live-h5/avatar.mjs', 'lab/gpt-live-h5/avatar-state.mjs',
+  ...['idle','memory','web','calendar','background'].map(state => `lab/gpt-live-h5/assets/v-signal-${state}-20261006.png`),
   'lab/gpt-live-h5/personal-session.mjs',
   'lab/gpt-live-h5/persona.mjs',
   'lab/gpt-live-h5/server.mjs', 'lab/gpt-live-h5/events.mjs', 'lab/gpt-live-h5/duplex-playback.mjs',

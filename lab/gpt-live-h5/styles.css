@@ -381,3 +381,16 @@ body[data-voice-state="speaking"] .wave-mark { color: var(--accent); }
 .voice-model {appearance:none;border:1px solid rgba(115,81,138,.18);border-radius:20px;padding:8px 28px 8px 13px;background:rgba(255,255,255,.6);font:inherit;font-size:13px;color:#684c76;cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='m2 2 4 4 4-4' fill='none' stroke='%23856c94'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;}
 .voice-model:disabled {opacity:.6;cursor:default;}
 @media(max-width:900px){.connection-options{gap:8px;}.voice-model{font-size:12px;padding-block:6px;}}
+
+/* The operator owns the identity; the header only contains call controls. */
+.topbar { justify-content: flex-end; }
+.avatar-stack { position: relative; width: 100%; height: 100%; border-radius: 50%; overflow: hidden; }
+.avatar-stack #avatarPrevious { position: absolute; inset: 0; pointer-events: none; }
+.avatar-name { position: absolute; top: calc(100% + 14px); left: 50%; transform: translateX(-50%); color: var(--ink); text-decoration: none; font-size: 22px; font-weight: 650; line-height: 1; }
+.avatar-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 5px; border-radius: 3px; }
+@media (min-width: 901px) { .topbar { justify-content: flex-end; } }
+@media (max-width: 900px) {
+  body:is([data-call-state="idle"], [data-call-state="dialing"]) .voice-stage { gap: 48px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .portrait-wrap { margin-bottom: 20px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .avatar-name { font-size: 14px; top: calc(100% + 5px); }
+}
