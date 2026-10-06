@@ -8,7 +8,7 @@ import {spawn} from 'node:child_process';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {createPrivatePulseMicrophone} from '../gpt-live-candidate-native/private-pulse.mjs';
 const evidence=process.env.DIRECT_VOICE_EVIDENCE,ready=JSON.parse(fs.readFileSync(process.env.GPT_LIVE_H5_EXPERIENCE_READY));
-assert(ready.candidateId===process.env.VLAB_CANDIDATE_ID&&ready.state==='ready'&&Date.parse(ready.expiresAt)>Date.now()+600000);
+assert(ready.candidateId===process.env.VLAB_CANDIDATE_ID&&ready.state==='ready'&&Date.parse(ready.expiresAt)>Date.now()+Number(process.env.DIRECT_VOICE_MIN_WINDOW_MS??600000));
 fs.mkdirSync(evidence,{mode:0o700});
 const scratch=fs.mkdtempSync(path.join(process.env.OPENCLAW_STATE_DIR,'tmp/direct-smoke-'));
 const clips=process.env.DIRECT_VOICE_CLIPS,auditPath=path.join(path.dirname(process.env.GPT_LIVE_H5_EXPERIENCE_READY),'direct-voice-audit.jsonl');
@@ -44,6 +44,40 @@ async function runModel(model){
  const rows=()=>audit().filter(x=>x.voiceSessionId===id),wire=async()=> (await state()).wire;
  await wait(()=>(model==='seeduplex'||rows().some(x=>x.type==='transcript'&&x.role==='assistant'&&x.final))&&rows().some(x=>x.type==='audio'),'actual greeting',20000);
  check(model+'/greeting',true,{voiceSessionId:id,provider:model,greetingMode:model==='seeduplex'?'documented SayHello native TTS':'model response'});await quiet(id);
+ if(['hybrid','hybrid-core'].includes(process.env.DIRECT_VOICE_CASES)){
+  const firstInput=Date.now();await speak('simple');const firstInputEnd=Date.now();await wait(()=>rows().some(x=>x.type==='tool.invoke'&&x.name==='memory_search'),'simple native memory call',45000);
+  await wait(()=>rows().some(x=>x.type==='tool.delivered'&&rows().some(c=>c.type==='tool.call'&&c.name==='memory_search'&&c.callId===x.callId)),'simple native tool actually delivered',60000);await quiet(id,45000);
+  const firstTool=rows().find(x=>x.type==='tool.call'&&x.name==='memory_search');check(model+'/single-utterance-query',firstTool.at>=firstInput&&firstTool.at-firstInputEnd<10000,{inputStart:firstInput,inputEnd:firstInputEnd,toolAt:firstTool.at,latencyMs:firstTool.at-firstInputEnd});
+  check(model+'/simple-stays-native',!rows().some(x=>x.type==='backend.started')&&rows().some(x=>x.type==='tool.native-result'&&x.name==='memory_search'&&x.result.ok===true));
+  await speak('hybrid');await wait(()=>rows().some(x=>x.type==='backend.started'),'real V backend delegated',60000);
+  const run=rows().find(x=>x.type==='backend.started');
+  await wait(()=>rows().some(x=>x.type==='backend.event'&&x.runId===run.runId&&x.event.event==='agent'&&x.event.payload.stream==='tool'),'actual backend tool execution',90000);
+  const chatAt=Date.now();await speak('chat');await wait(()=>rows().some(x=>x.type==='transcript'&&x.role==='assistant'&&x.final&&x.at>chatAt&&/小汽车|小车|卡车/.test(x.text)&&!x.source)&&!rows().some(x=>x.type==='backend.completed'&&x.runId===run.runId),'actual requested joke before backend completion',30000);
+  check(model+'/hybrid-chat',true,{runId:run.runId,chatAt});
+  await wait(()=>rows().some(x=>x.type==='backend.completed'&&x.runId===run.runId),'automatic complete multi-step V final',180000);
+  await wait(()=>rows().some(x=>x.type==='tool.delivered'&&x.result.backend==='V'&&x.result.runId===run.runId),'actual provider final continuation',60000);
+  const delivered=rows().find(x=>x.type==='tool.delivered'&&x.result.runId===run.runId);
+  await wait(()=>rows().some(x=>x.type==='audio'&&x.at>delivered.at),'native final PCM after real backend delivery',30000);
+  if(model==='grok')await wait(()=>rows().some(x=>x.type==='transcript'&&x.role==='assistant'&&x.final&&x.at>delivered.at&&/上海/.test(x.text)&&/风火轮|玩具/.test(x.text)&&/时间|点|14:|15:/.test(x.text)),'provider actual three-part final speech transcript',30000);
+  await quiet(id,120000);
+  const playback=rows().filter(x=>x.type==='client.playback-stats').at(-1)?.stats;check(model+'/render-receipts',Boolean(playback)&&playback.outputBytes>0,{playback,physicalSafariAccepted:false});
+  const tools=rows().filter(x=>x.type==='backend.event'&&x.runId===run.runId&&x.event.payload.stream==='tool');
+  check(model+'/hybrid-completion',rows().filter(x=>x.type==='backend.started').length===1&&tools.length>=2,{runId:run.runId,backendToolEvents:tools.length});
+  check(model+'/hybrid-real-progress',rows().some(x=>x.type==='backend.progress-spoken'&&x.runId===run.runId)&&rows().some(x=>x.type==='audio'&&x.at>run.at),{runId:run.runId});
+  if(process.env.DIRECT_VOICE_CASES==='hybrid-core'){await stop();await stopRecording();save(model+'-hybrid-core-result.json',{model,results:results.filter(x=>x.name?.startsWith(model+'/')),scope:'hybrid core only; cancellation not exercised',productAccepted:false});return;}
+  await speak('backend-long');await wait(()=>rows().filter(x=>x.type==='backend.started').length===2,'new independent backend goal',60000);
+  const second=rows().filter(x=>x.type==='backend.started').at(-1);
+  await wait(()=>rows().some(x=>x.type==='backend.event'&&x.runId===second.runId&&x.event.payload.stream==='tool'&&x.event.payload.data?.name==='exec'&&x.event.payload.data?.result?.details?.status==='running'),'owned running backend exec result',45000);
+  const owned=rows().find(x=>x.type==='backend.event'&&x.runId===second.runId&&x.event.payload.data?.name==='exec'&&x.event.payload.data?.result?.details?.status==='running').event.payload.data.result.details;
+  const osBefore={pid:owned.pid,startTicks:fs.readFileSync(`/proc/${owned.pid}/stat`,'utf8').split(') ').at(-1).split(' ')[19],cgroup:fs.readFileSync(`/proc/${owned.pid}/cgroup`,'utf8')};
+  assert(osBefore.cgroup.includes(process.env.VLAB_CANDIDATE_UNIT),'Backend exec must belong to own Candidate');
+  await speak('cancel');await wait(()=>rows().some(x=>x.type==='backend.cancel-observed'&&x.runId===second.runId),'exact owned backend cancel terminal',45000);
+  const terminal=rows().find(x=>x.type==='backend.cancel-observed'&&x.runId===second.runId);
+  await wait(()=>rows().some(x=>x.type==='backend.process-cancel-observed'&&x.sessionId===owned.sessionId&&['completed','failed','killed','cancelled'].includes(x.result?.details?.status)),'backend owned process terminal poll',20000);
+  const sameProcess=fs.existsSync(`/proc/${owned.pid}/stat`)&&fs.readFileSync(`/proc/${owned.pid}/stat`,'utf8').split(') ').at(-1).split(' ')[19]===osBefore.startTicks;
+  check(model+'/hybrid-cancel',!sameProcess&&(terminal.observed.status==='error'||terminal.observed.aborted===true||terminal.observed.status==='ok'),{runId:second.runId,observed:terminal.observed,osBefore,sameProcessAfter:sameProcess});
+  await quiet(id,30000);await stop();await stopRecording();save(model+'-wire.json',await wire());save(model+'-hybrid-result.json',{model,results:results.filter(x=>x.name?.startsWith(model+'/')),productAccepted:false});return;
+ }
  if(process.env.DIRECT_VOICE_CASES==='followup'){
   await speak('fetch');
   await wait(()=>rows().some(x=>x.type==='tool.invoke'&&x.name==='web_fetch'),'native webpage call',60000);

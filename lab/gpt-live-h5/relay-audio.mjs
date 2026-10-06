@@ -45,13 +45,14 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
   const endpoint=new URL('./api/relay',location.href);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
   endpoint.search=new URLSearchParams({voiceSessionId:reservation.voiceSessionId,ticket:reservation.relayTicket});
   const socket=new WebSocket(endpoint);socket.binaryType='arraybuffer';
-  let closed=false,ready=false,node,speaker,source,quietGain,ending=null,tailTimer,epoch=0,written=0,lastPlayedAt=null,lastSequence=0,blocked=false,outputComplete=false,playbackActive=false;
+  let closed=false,ready=false,node,speaker,source,quietGain,ending=null,tailTimer,epoch=0,written=0,lastPlayedAt=null,lastSequence=0,blocked=false,outputComplete=false,playbackActive=false,busy=false,lastReceiveAt=null,statsTimer;
   const pendingInput=[],pendingOutput=[];let pendingBytes=0;
   const maxQueuedOutputBytes=16*1024*1024;
-  const stats={inputBytes:0,outputBytes:0,queuedOutputBytes:0,peakQueuedOutputBytes:0,clears:0,duplicateFrames:0,underflows:0,contextState:context.state,playbackDrained:false};
+  const stats={inputBytes:0,outputBytes:0,queuedOutputBytes:0,peakQueuedOutputBytes:0,clears:0,duplicateFrames:0,underflows:0,maxReceiveGapMs:0,startBufferMs:120,contextState:context.state,playbackDrained:false};
   const activity=value=>{if(playbackActive!==value){playbackActive=value;onPlaybackActivity(value);}};
   const send=e=>{if(socket.readyState===WebSocket.OPEN)socket.send(JSON.stringify(e));};
-  const flush=()=>{epoch++;written=0;pendingOutput.length=0;outputComplete=false;stats.queuedOutputBytes=0;lastPlayedAt=null;speaker?.port.postMessage({type:'clear',epoch});stats.clears++;activity(false);ending=null;clearTimeout(tailTimer);};
+  const reportBusy=()=>{const next=stats.queuedOutputBytes>0||playbackActive;if(next!==busy){busy=next;send({type:'playback.state',speaking:busy});}};
+  const flush=()=>{epoch++;written=0;pendingOutput.length=0;outputComplete=false;stats.queuedOutputBytes=0;lastPlayedAt=null;speaker?.port.postMessage({type:'clear',epoch});stats.clears++;activity(false);reportBusy();ending=null;clearTimeout(tailTimer);};
   const checkEnd=()=>{if(closed||!ending)return;
     if(context.state==='running'&&lastPlayedAt!==null&&stats.queuedOutputBytes===0&&context.currentTime>=lastPlayedAt+.75){stats.playbackDrained=true;send({type:'playback.drained',callId:ending});ending=null;}
     else tailTimer=setTimeout(checkEnd,100);
@@ -69,14 +70,15 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
     const bytes=Uint8Array.from(atob(e.audio),c=>c.charCodeAt(0));
     if(!bytes.length||bytes.length%2||bytes.length>480000||e.sampleRate!==24000)throw Error('语音帧格式无效');
     if(stats.queuedOutputBytes+bytes.length>maxQueuedOutputBytes)throw Error('语音缓存过大，请重新拨号');
+    const receivedAt=performance.now();if(lastReceiveAt!==null&&stats.queuedOutputBytes>0)stats.maxReceiveGapMs=Math.max(stats.maxReceiveGapMs,receivedAt-lastReceiveAt);lastReceiveAt=receivedAt;
     outputComplete=false;written+=bytes.length/2;stats.queuedOutputBytes+=bytes.length;stats.peakQueuedOutputBytes=Math.max(stats.peakQueuedOutputBytes,stats.queuedOutputBytes);stats.outputBytes+=bytes.length;stats.playbackDrained=false;
-    if(speaker)transfer(bytes.buffer);else pendingOutput.push(bytes.buffer);
+    reportBusy();if(speaker)transfer(bytes.buffer);else pendingOutput.push(bytes.buffer);
     if(context.state!=='running')stateChanged();
   };
   const promise=new Promise((resolve,reject)=>{
     socket.onmessage=e=>{if(closed)return;try{
       const value=JSON.parse(e.data);if(value.voiceSessionId!==reservation.voiceSessionId)return;
-      if(value.type==='ready'&&!ready){ready=true;for(const frame of pendingInput)socket.send(frame);pendingInput.length=0;pendingBytes=0;resolve();send({type:'greeting'});}
+      if(value.type==='ready'&&!ready){ready=true;for(const frame of pendingInput)socket.send(frame);pendingInput.length=0;pendingBytes=0;resolve();send({type:'greeting'});reportBusy();statsTimer=setInterval(()=>send({type:'playback.stats',...stats}),2000);}
       if(value.type==='audio')play(value);
       if(value.type==='audio.clear')flush();
       if(value.type==='audio.done'){outputComplete=true;speaker?.port.postMessage({type:'done',epoch});}
@@ -99,7 +101,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
       if(e.type==='error'){onError(Error('语音缓存过大，请重新拨号'));return;}
       if(e.type!=='playback')return;
       stats.queuedOutputBytes=Math.max(0,written-e.consumed)*2;stats.underflows=e.underflows;lastPlayedAt=e.lastPlayedAt;
-      activity(e.playing&&context.state==='running');
+      activity(e.playing&&context.state==='running');reportBusy();
     };
     for(const buffer of pendingOutput)transfer(buffer);pendingOutput.length=0;if(outputComplete)speaker.port.postMessage({type:'done',epoch});
     node=new AudioWorkletNode(context,'v-direct-mic');source=context.createMediaStreamSource(stream);
@@ -110,5 +112,5 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
     };
   }
   return {ready:promise,stats,async start(){await capture();await promise;},sendText:text=>send({type:'text',text}),
-    dispose(){closed=true;clearTimeout(tailTimer);context.removeEventListener?.('statechange',stateChanged);flush();node?.port.close();node?.disconnect();speaker?.port.close();speaker?.disconnect();source?.disconnect();quietGain?.disconnect();socket.close();}};
+    dispose(){send({type:'playback.stats',...stats});closed=true;clearInterval(statsTimer);clearTimeout(tailTimer);context.removeEventListener?.('statechange',stateChanged);flush();node?.port.close();node?.disconnect();speaker?.port.close();speaker?.disconnect();source?.disconnect();quietGain?.disconnect();socket.close();}};
 }

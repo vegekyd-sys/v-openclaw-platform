@@ -12,7 +12,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
  class Server {handleUpgrade(req,socket,head,done){done(socket);}close(){}}
  const gateway={request:async(method,args)=>{
   if(method==='tools.catalog')return {groups:[{tools:['memory_search','web_search','web_fetch','exec','process'].map(id=>({id}))}]};
-  invocations.push(args);return invoke(args);
+  invocations.push(args);return invoke(args,method);
  }};
  const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key'},audit:v=>audit.push(v)});
  const reservation=await service.reserve({model:'grok',sessionKey:'agent:makaron:explicit:personal-fixture'});
@@ -52,6 +52,71 @@ test('cancel kills and polls only process IDs actually created by this call',asy
  assert.deepEqual(f.invocations.filter(x=>x.name==='process').map(x=>x.args),[{action:'kill',sessionId:'owned-1'},{action:'poll',sessionId:'owned-1',timeout:2000}]);
  f.call('openclaw_tool',{tool:'process',arguments:JSON.stringify({action:'kill',sessionId:'foreign'})},'foreign');await delay(5);
  assert.equal(f.invocations.some(x=>x.args.sessionId==='foreign'),false);await f.service.dispose();
+});
+test('hybrid tool keeps one backend run alive during chat; progress and final wait for actual playback idle',async()=>{
+ const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:new Promise(()=>{}));
+ f.call('delegate_to_v',{question:'比较多种方案，完成所有步骤'});await delay(5);
+ const started=f.audit.find(x=>x.type==='backend.started');assert(started);
+ const backend=e=>f.service.handleEvent({event:e.event??'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,...e.payload}});
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:true})),false);
+ backend({event:'agent',payload:{stream:'tool',data:{phase:'result',name:'memory_search'}}});
+ backend({event:'agent',payload:{stream:'item',data:{kind:'preamble',phase:'end',progressText:'第一步查到了实际记录，正在核对网页。'}}});
+ await delay(250);assert.equal(f.upstream.sent.some(x=>x.item?.type==='force_message'),false);
+ await f.service.steer(f.reservation.voiceSessionId,{mode:'steer',text:'顺便和我聊聊天'});
+ assert.equal(f.invocations.filter(x=>x.message?.includes('完整目标')).length,1);
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:false})),false);
+ await delay(250);
+ const progress=f.upstream.sent.find(x=>x.item?.type==='force_message');assert.equal(progress.item.content[0].text,'第一步查到了实际记录，正在核对网页。');assert.equal(progress.item.interruptible,true);
+ backend({payload:{state:'final',message:{content:[{type:'text',text:'所有步骤完成，结论如下'}]}}});await delay(5);
+ assert.equal(f.upstream.sent.filter(x=>x.item?.type==='force_message').length,1);
+ f.event({type:'response.done',response:{id:'progress-speech',status:'completed'}});await delay(250);
+ assert.equal(f.upstream.sent.filter(x=>x.item?.type==='force_message').at(-1).item.content[0].text,'所有步骤完成，结论如下');
+ assert.equal(f.client.sent.filter(x=>x.type==='tool.result').length,1);await f.service.dispose();
+});
+test('hybrid explicit cancellation aborts only its own backend run and never feeds late final',async()=>{
+ let cancelled=false;const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:method==='chat.abort'?(cancelled=true,{ok:true}):cancelled?{status:'error',aborted:true}:new Promise(()=>{}));
+ f.call('delegate_to_v',{question:'做一个较长任务'});await delay(5);const started=f.audit.find(x=>x.type==='backend.started');
+ await f.service.steer(f.reservation.voiceSessionId,{mode:'cancel',text:'取消这个任务'});
+ f.service.handleEvent({event:'chat',payload:{runId:started.runId,state:'final',message:{text:'不要播报的旧结果'}}});await delay(5);
+ const result=f.audit.find(x=>x.type==='tool.delivered');assert.equal(result.result.cancelled,true);assert(!JSON.stringify(result).includes('不要播报'));
+ assert(f.invocations.some(x=>x.runId===started.runId&&x.sessionKey===started.sessionKey));await f.service.dispose();
+});
+
+test('unconfirmed process termination retains call ownership and prevents redial until cleanup retry',async()=>{
+ let terminal=false;const f=await fixture(async args=>args.name==='exec'?{ok:true,output:{details:{status:'running',sessionId:'owned-retry'}}}:{ok:true,output:{details:{status:terminal?'killed':'running'}}});
+ f.call('openclaw_tool',{tool:'exec',arguments:JSON.stringify({command:'sleep 60'})});await delay(5);
+ const cancelled=await f.service.steer(f.reservation.voiceSessionId,{mode:'cancel',text:'取消'});assert.equal(cancelled.ok,false);
+ await assert.rejects(f.service.close(f.reservation.voiceSessionId),/退出尚未确认/);
+ await assert.rejects(f.service.reserve({model:'grok',sessionKey:'personal'}),/正在确认退出/);
+ terminal=true;await delay(5);await f.service.close(f.reservation.voiceSessionId);
+ assert.equal(f.audit.filter(x=>x.type==='call.closed').length,1);await f.service.dispose();
+});
+
+test('backend cancellation uses its Worker registry; never sends backend IDs to Gateway process',async()=>{
+ let cancelled=false,started;
+ const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:method==='vlab.workers.voice.cancelProcesses'?(cancelled=true,{runId:args.runId,sessionKey:args.sessionKey,confirmed:true,pendingExecs:0,processes:[{sessionId:'worker-owned',result:{details:{status:'failed',exitSignal:'SIGTERM'}}}]}):method==='chat.abort'?(cancelled=true,{ok:true}):cancelled?{status:'error',aborted:true}:new Promise(()=>{}));
+ f.call('delegate_to_v',{question:'后台执行长命令'});await delay(5);started=f.audit.find(x=>x.type==='backend.started');
+ f.service.handleEvent({event:'agent',payload:{runId:started.runId,sessionKey:started.sessionKey,stream:'tool',data:{phase:'result',name:'exec',toolCallId:'exec',result:{details:{status:'running',sessionId:'worker-owned'}}}}});
+ const answer=await f.service.steer(f.reservation.voiceSessionId,{mode:'cancel',text:'取消后台'});assert(answer.cancelled);assert(!f.invocations.some(x=>x.name==='process'));assert(f.audit.some(x=>x.type==='backend.process-cancel-observed'));await f.service.dispose();
+});
+
+test('invalid or concurrent delegation returns native error without falsely acknowledging a new backend job',async()=>{
+ let cancelled=false;const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:method==='chat.abort'?(cancelled=true,{ok:true}):cancelled?{status:'error',aborted:true}:new Promise(()=>{}));
+ f.call('delegate_to_v',{},'invalid');await delay(5);assert(JSON.parse(f.upstream.sent.find(x=>x.item?.call_id==='invalid').item.output).error);
+ f.call('delegate_to_v',{question:'完整任务'},'first');await delay(5);f.call('delegate_to_v',{question:'另一个任务'},'second');await delay(5);
+ assert.equal(f.audit.filter(x=>x.type==='backend.start-requested').length,1);const second=JSON.parse(f.upstream.sent.find(x=>x.item?.call_id==='second').item.output);assert(second.error);assert(!second.accepted);await f.service.dispose();
+});
+
+test('backend registry miss retains cancellation responsibility and explicit V routing is instructed',async()=>{
+ let found=false;const f=await fixture(async args=>args.name==='exec'?{ok:true,output:{details:{status:'running',sessionId:'worker-owned'}}}:{ok:true,output:found?{details:{status:'killed'}}:{details:{status:'failed'},content:[{type:'text',text:'No session found for worker-owned'}]}});
+ f.upstream.emit('open');await delay(2);
+ assert.match(f.upstream.sent.find(x=>x.type==='session.update').session.instructions,/后台处理.*必须调用 delegate_to_v/);
+ f.call('openclaw_tool',{tool:'exec',arguments:JSON.stringify({command:'sleep 60'})});await delay(5);
+ f.call('process',{action:'poll',sessionId:'worker-owned'},'lookup');await delay(5);
+ const result=await f.service.steer(f.reservation.voiceSessionId,{mode:'cancel',text:'取消'});assert.equal(result.cancelled,false);
+ await assert.rejects(f.service.close(f.reservation.voiceSessionId),/退出尚未确认/);
+ await assert.rejects(f.service.reserve({model:'grok',sessionKey:'personal'}),/正在确认退出/);
+ found=true;await f.service.close(f.reservation.voiceSessionId);await f.service.dispose();
 });
 test('native call exposes only coarse task activity to the avatar, not tool arguments',async()=>{
  const f=await fixture();

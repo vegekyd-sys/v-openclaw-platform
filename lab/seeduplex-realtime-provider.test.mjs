@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import test from "node:test";
 import {
   Pcm24To16Resampler,
+  SeeduplexRealtimeVoiceBridge,
   SEEDUPLEX_MODEL,
   SEEDUPLEX_RESOURCE_ID,
   SEEDUPLEX_VOICES,
@@ -518,4 +519,44 @@ test('Seeduplex greeting uses native SayHello rather than injecting unpaired his
   assert.equal(socket.sent.at(-1).text,'天意，你好，我是 V，在呢。');
   assert(!socket.sent.some(event=>event.type==='conversation.item.create'));
   bridge.close();
+});
+
+test('async background tool releases the native call, accepts chat, and adds actual final paired context once',async()=>{
+ const socket=new FakeSocket(),texts=[];
+ const bridge=buildSeeduplexRealtimeVoiceProvider({env:{VOLCENGINE_REALTIME_API_KEY:'test'},createWebSocket:async()=>socket}).createBridge({providerConfig:{voice:'xiaohe'},tools:[{type:'function',name:'delegate_to_v',parameters:{type:'object',properties:{}}}],onAudio(){},onToolCall:call=>bridge.beginBackgroundTool(call.callId,'完整真实任务'),onTranscript:(...args)=>texts.push(args),onError:e=>assert.fail(e.message),onClose(){}});
+ const connecting=bridge.connect();await new Promise(resolve=>setImmediate(resolve));socket.open();socket.message({type:'session.created'});await connecting;
+ socket.message({type:'response.function_call_arguments.done',items:[{call_id:'owned-background',name:'delegate_to_v',arguments:'{}'}]});
+ const ack=socket.sent.find(x=>x.type==='conversation.item.create');assert.equal(JSON.parse(ack.items[0].content[0].text).accepted,true);assert.equal(bridge.toolBatches.length,0);
+ socket.message({type:'response.output_text.done',text:'小汽车笑话'});assert(texts.some(x=>x[1]==='小汽车笑话'));
+ bridge.completeBackgroundTool('owned-background',{result:'已完成全部步骤。'});bridge.completeBackgroundTool('owned-background',{result:'不得重复播报。'});
+ const history=socket.sent.find(x=>x.items?.length===2);assert.equal(history.items[0].content[0].text,'完整真实任务');assert.equal(history.items[1].content[0].text,'已完成全部步骤。');
+ assert.equal(socket.sent.filter(x=>x.type==='speech_text_buffer.commit'&&x.text==='已完成全部步骤。').length,1);assert(texts.some(x=>x[3]==='V-backend'));bridge.close();
+});
+
+
+test('direct tool notice starts work in the same turn and only holds its result until actual notice audio ends',async()=>{
+ const socket=new FakeSocket(),calls=[];
+ const bridge=buildSeeduplexRealtimeVoiceProvider({env:{VOLCENGINE_REALTIME_API_KEY:'test'},createWebSocket:async()=>socket}).createBridge({providerConfig:{voice:'xiaohe'},tools:['memory_search','web_search'].map(name=>({type:'function',name,parameters:{type:'object',properties:{}}})),toolStartNotice:()=> '我查一下记录。',onAudio(){},onToolCall:call=>{calls.push(call);bridge.submitToolResult(call.callId,{answer:'真实工具结果'});},onError:e=>assert.fail(e.message),onClose(){}});
+ const connecting=bridge.connect();await new Promise(resolve=>setImmediate(resolve));socket.open();socket.message({type:'session.created'});await connecting;
+ const call=id=>socket.message({type:'response.function_call_arguments.done',items:[{call_id:id,name:'memory_search',arguments:'{}'}]});
+ call('first');assert.equal(calls.length,1);assert.equal(socket.sent.filter(x=>x.type==='speech_text_buffer.commit').length,1);assert(!socket.sent.some(x=>x.items?.[0]?.role==='tool'));
+ socket.message({type:'response.output_audio.done'});assert(!socket.sent.some(x=>x.items?.[0]?.role==='tool'));
+ socket.message({type:'response.output_audio.delta',delta:floatAudio([.25,-.25])});socket.message({type:'response.output_audio.done'});
+ assert.equal(socket.sent.filter(x=>x.items?.[0]?.role==='tool').length,1);
+ call('second-step');assert.equal(calls.length,2);assert.equal(socket.sent.filter(x=>x.type==='speech_text_buffer.commit').length,1);assert.equal(socket.sent.filter(x=>x.items?.[0]?.role==='tool').length,2);
+ socket.message({type:'conversation.item.input_audio_transcription.completed',text:'查另外一件事'});call('next-user');assert.equal(socket.sent.filter(x=>x.type==='speech_text_buffer.commit').length,2);
+ socket.message({type:'conversation.item.input_audio_transcription.completed',text:'我补充一下'});assert.equal(socket.sent.filter(x=>x.items?.[0]?.role==='tool').length,3);bridge.close();
+});
+
+test('a stuck notice cancels only its speech; real cancel boundary releases the result without a second user utterance',async()=>{
+ const socket=new FakeSocket();let calls=0;const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},tools:[{type:'function',name:'memory_search',parameters:{type:'object'}}],toolStartNotice:()=> '我查一下。',onAudio(){},onToolCall:call=>{calls++;bridge.submitToolResult(call.callId,{actual:true});},onError:e=>assert.fail(e.message),onClose(){}},{createWebSocket:async()=>socket,toolNoticeTimeoutMs:10});
+ const opening=bridge.connect();await new Promise(r=>setImmediate(r));socket.open();socket.message({type:'session.created'});await opening;
+ socket.message({type:'response.function_call_arguments.done',items:[{call_id:'stuck',name:'memory_search',arguments:'{}'}]});assert.equal(calls,1);
+ await new Promise(r=>setTimeout(r,20));assert(socket.sent.some(e=>e.type==='response.cancel'));assert(!socket.sent.some(e=>e.items?.[0]?.role==='tool'));
+ socket.message({type:'response.canceled'});assert.equal(socket.sent.filter(e=>e.items?.[0]?.role==='tool').length,1);bridge.close();
+});
+test('Seeduplex repeats only a new audio event, never a replay of the same event identity',async()=>{
+ const socket=new FakeSocket(),audio=[];const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},onAudio:b=>audio.push(b),onError:e=>assert.fail(e.message),onClose(){}},{createWebSocket:async()=>socket});
+ const opening=bridge.connect();await new Promise(r=>setImmediate(r));socket.open();socket.message({type:'session.created'});await opening;
+ const e={type:'response.output_audio.delta',event_id:'native-audio',delta:floatAudio([.25,-.25])};socket.message(e);socket.message(e);socket.message({...e,event_id:'native-audio-next'});assert.equal(audio.length,2);bridge.close();
 });

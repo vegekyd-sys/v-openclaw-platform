@@ -160,6 +160,16 @@ if(fullTools&&config.plugins?.load?.paths) {
   }
   config.plugins.load.paths=privateLoadPaths;
 }
+if(process.env.VOICE_WORKER_PROCESS_OWNER==='1'){
+  const {patchVoiceWorker,patchVoicePool,patchVoiceIndex}=await import('./patch-voice-worker-process-owner.mjs');
+  const roots=(config.plugins?.load?.paths??[]).filter(p=>fs.existsSync(path.join(p,'openclaw.plugin.json'))&&JSON.parse(fs.readFileSync(path.join(p,'openclaw.plugin.json'))).id==='vlab-agent-worker-isolation');
+  assert(roots.length===1,'Exact private Worker plugin required');
+  const root=fs.realpathSync(roots[0]);assert(root.startsWith(fs.realpathSync(path.dirname(runtime))+'/'),'Worker patch must stay in own Candidate');
+  const receipts=[];
+  for(const [name,patch] of [['worker.mjs',patchVoiceWorker],['worker-pool.mjs',patchVoicePool],['index.mjs',patchVoiceIndex]]){const before=fs.readFileSync(path.join(root,name)),after=patch(before.toString());fs.writeFileSync(path.join(root,name),after);receipts.push({name,before:createHash('sha256').update(before).digest('hex'),after:createHash('sha256').update(after).digest('hex')});}
+  fs.copyFileSync('lab/realtime-direct-tools/worker-process-owner.mjs',path.join(root,'voice-process-owner.mjs'));
+  fs.mkdirSync(process.env.GPT_LIVE_H5_EVIDENCE_DIR,{recursive:true,mode:0o700});fs.writeFileSync(path.join(process.env.GPT_LIVE_H5_EVIDENCE_DIR,'worker-process-owner-patch.json'),JSON.stringify({candidateId:process.env.VLAB_CANDIDATE_ID,sourceCommit:process.env.GPT_LIVE_H5_SOURCE_COMMIT,root,receipts})+'\n',{mode:0o600,flag:'wx'});
+}
 const worker=config.plugins?.entries?.['vlab-agent-worker-isolation']?.config;
 assert(worker?.workerConfigPath,'Worker configuration unavailable');
 const relative=path.relative(state,worker.workerConfigPath);assert(!relative.startsWith('..'));
@@ -301,7 +311,7 @@ try {
     try {
       await new Promise((resolve,reject)=>{
         const timer=setTimeout(()=>reject(Error('Private Gateway connection deadline')),5000);
-        client=new GatewayClient({url:`ws://127.0.0.1:${config.gateway.port}`,token,deviceIdentity:null,clientName:'cli',mode:'cli',scopes:['operator.read','operator.write','operator.admin'],caps:process.env.V_REALTIME_DIRECT_TOOLS==='1'?['voice-direct-tools']:undefined,
+        client=new GatewayClient({url:`ws://127.0.0.1:${config.gateway.port}`,token,deviceIdentity:null,clientName:'cli',mode:'cli',scopes:['operator.read','operator.write','operator.admin'],caps:process.env.V_REALTIME_DIRECT_TOOLS==='1'?['voice-direct-tools','tool-events']:undefined,
           onHelloOk:()=>{clearTimeout(timer);resolve();},onConnectError:error=>{clearTimeout(timer);reject(error);},onEvent:event=>bridge?.emit(event)});client.start();
       });
       const catalog=await client.request('talk.catalog',{}, {timeoutMs:15000});

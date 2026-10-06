@@ -75,3 +75,8 @@ test('farewell acknowledgement waits for actual render and 750ms tail; disposal 
 test('worklet source does not perform main-thread per-frame BufferSource scheduling',()=>{
  assert.match(relayWorkletSource(),/registerProcessor\('v-direct-speaker'/);assert.doesNotMatch(createRelayAudio.toString(),/createBufferSource/);
 });
+test('queued and prebuffering playback reports busy before the first rendered sample',async t=>{
+ const f=await fixture(t);f.event({type:'audio',sequence:1,sampleRate:24000,audio:Buffer.alloc(960,1).toString('base64')});
+ assert(f.sent.some(raw=>typeof raw==='string'&&JSON.parse(raw).type==='playback.state'&&JSON.parse(raw).speaking));
+ f.event({type:'audio.done'});f.pump(48000);assert.equal(JSON.parse(f.sent.filter(raw=>typeof raw==='string'&&JSON.parse(raw).type==='playback.state').at(-1)).speaking,false);
+});

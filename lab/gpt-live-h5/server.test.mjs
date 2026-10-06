@@ -204,3 +204,7 @@ test('all new avatar assets and modules are served by the frozen whitelist',asyn
   }
   assert.equal((await fetch(f.url+'/assets/not-whitelisted.png',{headers:{cookie:f.cookie}})).status,404);
 });
+test('backend events reach direct voice even when they are not GPT Live talk events',async()=>{
+ const received=[];const bridge=createLiveH5Server({gateway:{request(){}},directVoice:{handleEvent:e=>received.push(e),dispose:async()=>{}},offer:async()=>''});
+ const e={event:'agent',payload:{runId:'voice-own',stream:'tool'}};bridge.emit(e);assert.deepEqual(received,[e]);await bridge.dispose();
+});

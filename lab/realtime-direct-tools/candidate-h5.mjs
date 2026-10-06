@@ -24,7 +24,7 @@ let gateway,bridge,closing=false;
 async function shutdown(){if(closing)return;closing=true;await bridge?.dispose();gateway?.stop();process.exit(0);}
 await new Promise((resolve,reject)=>{
  const timer=setTimeout(()=>reject(Error('Own Candidate Gateway unavailable')),15000);
- gateway=new GatewayClient({url:`ws://127.0.0.1:${config.gateway.port}`,token,deviceIdentity:null,clientName:'cli',mode:'cli',scopes:['operator.read','operator.write','operator.admin'],caps:['voice-direct-tools'],onHelloOk:()=>{clearTimeout(timer);resolve();},onEvent:e=>bridge?.emit(e),onConnectError:e=>{clearTimeout(timer);reject(e);if(bridge)void shutdown();}});gateway.start();
+ gateway=new GatewayClient({url:`ws://127.0.0.1:${config.gateway.port}`,token,deviceIdentity:null,clientName:'cli',mode:'cli',scopes:['operator.read','operator.write','operator.admin'],caps:['voice-direct-tools','tool-events'],onHelloOk:()=>{clearTimeout(timer);resolve();},onEvent:e=>bridge?.emit(e),onConnectError:e=>{clearTimeout(timer);reject(e);if(bridge)void shutdown();}});gateway.start();
 });
 const credential=process.env.V_REALTIME_GROK_CREDENTIAL_FILE,st=fs.lstatSync(credential);
 assert(st.isFile()&&(st.mode&0o077)===0);
