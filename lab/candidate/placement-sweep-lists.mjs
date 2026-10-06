@@ -16,6 +16,8 @@
 // Probes in this run's private runtime copy:
 //   [ps-read]    every placement read the sweep uses: method, rows, ms, caller. While EQUIV
 //                reads remain (PATCH=on), each new read is compared with list() on the spot.
+//                The compare (list() plus JSON of every row) runs inside the sweep and costs more
+//                than the reads it checks: EQUIV=0 (the profile plan) for timings and profiles.
 //   [ps-retire]  each session-retirement pass: placements checked, evidence ms.
 //   [ps-tick]    each minute sweep start; [ps-done] its reconcile part settled (after-snapshot
 //                included). The auto-suspend and disk-space parts start in the same window.
@@ -409,7 +411,7 @@ try {
   assert.equal(outcome.live?.state, "local", "the live placement was retired");
   assert(lateGoneAt !== null, "the late local ghost was never retired");
   if (PATCH === "on") {
-    assert(compared.length >= 3, "too few reads were compared with list()");
+    if (EQUIV > 0) assert(compared.length >= 3, "too few reads were compared with list()");
     assert.deepEqual(compared.filter((x) => !x.same), [], "a narrow read differed from list()");
     // between full retirement passes the minute sweep never lists every placement
     // the first minute sweep also runs reconcileActive's one-time orphan workspace cleanup, which

@@ -22,6 +22,7 @@
   ],
   "env": {
     "PATCH": "on",
-    "PROFILE": "1"
+    "PROFILE": "1",
+    "EQUIV": "0"
   }
 }
