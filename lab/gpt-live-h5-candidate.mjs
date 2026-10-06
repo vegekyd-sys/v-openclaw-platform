@@ -403,7 +403,7 @@ try {
     experienceReadyWritten=true;
     if(process.env.DIRECT_VOICE_AUTOMATED==='1'){
       assert(process.env.V_REALTIME_DIRECT_TOOLS==='1','Direct automated validation requires native voice tools');
-      smoke=spawn(process.execPath,['lab/realtime-direct-tools/native-smoke.mjs'],{env:{...process.env,DIRECT_VOICE_EVIDENCE:path.join(evidenceBase,'native'),DIRECT_VOICE_CLIPS:path.resolve('tmp/voice-reliability/clips'),DIRECT_VOICE_CASES:'hybrid'},stdio:'inherit'});
+      smoke=spawn(process.execPath,['lab/realtime-direct-tools/native-smoke.mjs'],{env:{...process.env,DIRECT_VOICE_EVIDENCE:path.join(process.env.GPT_LIVE_H5_EVIDENCE_DIR,'native'),DIRECT_VOICE_CLIPS:path.resolve('tmp/voice-reliability/clips'),DIRECT_VOICE_CASES:'hybrid'},stdio:'inherit'});
       const code=await new Promise((resolve,reject)=>{smoke.once('error',reject);smoke.once('exit',resolve);});
       assert.equal(code,0,'Original direct voice workflow failed; native evidence retained');experienceOutcome={status:'automation-completed'};return;
     }
