@@ -7,7 +7,11 @@
 // group). Each record is one inbound Feishu message V answered. Times are measured from the
 // message's Feishu create_time (when the user sent it), so they include Feishu's inbound
 // delivery but not the client's rendering of the card.
-//   首字 / first answer = first card push carrying answer text, or the first non-streaming reply
+//   首字           = first card push carrying answer text or a status line (a tool or compaction
+//                    status counts; Tianyi's choice 2026-10-06), or the first non-streaming reply.
+//                    Records without firstStatusPushAtMs infer the status push from firstPushAtMs
+//                    when it came before the answer and no reasoning had reached the channel yet.
+//   first answer   = first card push carrying answer text, or the first non-streaming reply
 //   first visible  = any first push (status / progress / reasoning lines count)
 //   segments       = inbound (sent -> received), queue (received -> agent run start) split into
 //                    preDispatch (received -> reply dispatcher: the Feishu handler's own work,
@@ -79,9 +83,14 @@ export function measure(r, model) {
   const firstVisibleAt = visibleCandidates.length ? Math.min(...visibleCandidates) : undefined;
   const firstAnswerAt = r.firstAnswerPushAtMs ?? r.visibleAtMs;
   const firstAnswerMs = delta(firstAnswerAt, r.sentAtMs);
+  const firstStatusAt = Number.isFinite(r.firstStatusPushAtMs) ? r.firstStatusPushAtMs : inferStatusPush(r, firstAnswerAt);
+  const firstTextCandidates = [firstAnswerAt, firstStatusAt].filter(Number.isFinite);
+  const firstTextAt = firstTextCandidates.length ? Math.min(...firstTextCandidates) : undefined;
   const modelToTextMs = delta(model?.firstTextAt, model?.textCallEnterAt);
   const overheadMs = Number.isFinite(modelToTextMs) && Number.isFinite(firstAnswerMs) && model.firstTextAt <= firstAnswerAt ? firstAnswerMs - modelToTextMs : undefined;
   return {
+    firstTextMs: delta(firstTextAt, r.sentAtMs),
+    statusFirst: Number.isFinite(firstStatusAt) && !(firstAnswerAt <= firstStatusAt),
     firstAnswerMs,
     firstVisibleMs: delta(firstVisibleAt, r.sentAtMs),
     inboundMs: delta(r.receivedAtMs, r.sentAtMs),
@@ -105,6 +114,15 @@ export function measure(r, model) {
   };
 }
 
+// Before firstStatusPushAtMs existed: the first push was a status line when it came before the
+// answer push and no reasoning text had reached the channel by then.
+function inferStatusPush(r, firstAnswerAt) {
+  if (!Number.isFinite(r.firstPushAtMs)) return undefined;
+  if (Number.isFinite(firstAnswerAt) && firstAnswerAt <= r.firstPushAtMs) return undefined;
+  if (Number.isFinite(r.firstReasoningAtMs) && r.firstReasoningAtMs <= r.firstPushAtMs) return undefined;
+  return r.firstPushAtMs;
+}
+
 export function percentile(values, q) {
   const s = values.filter(Number.isFinite).sort((a, b) => a - b);
   if (!s.length) return undefined;
@@ -119,7 +137,7 @@ export function summarize(rows, key) {
 
 export function report(records, models = new Map()) {
   const rows = records.map((r) => measure(r, models.get(r.runId)));
-  const out = { n: rows.length, firstAnswer: summarize(rows, 'firstAnswerMs'), firstVisible: summarize(rows, 'firstVisibleMs'), segments: {}, byHarness: {}, slowest: [] };
+  const out = { n: rows.length, firstText: summarize(rows, 'firstTextMs'), statusFirst: rows.filter((r) => r.statusFirst).length, firstAnswer: summarize(rows, 'firstAnswerMs'), firstVisible: summarize(rows, 'firstVisibleMs'), segments: {}, byHarness: {}, slowest: [] };
   for (const k of ['inboundMs', 'queueMs', 'preDispatchMs', 'dispatchToRunMs', 'agentMs', 'reasoningMs', 'deliveryMs', 'cardCreateMs']) out.segments[k] = summarize(rows, k);
   out.overhead = summarize(rows, 'overheadMs');
   out.overheadNoTools = summarize(rows, 'overheadNoToolsMs');
@@ -129,9 +147,9 @@ export function report(records, models = new Map()) {
   out.cardReadyBeforeAnswer = { n: ready.length, yes: ready.filter(Boolean).length };
   const groups = new Map();
   rows.forEach((r) => { const g = `${r.harness}/${r.model}`; groups.set(g, [...(groups.get(g) ?? []), r]); });
-  for (const [g, list] of groups) out.byHarness[g] = summarize(list, 'firstAnswerMs');
+  for (const [g, list] of groups) out.byHarness[g] = summarize(list, 'firstTextMs');
   out.slowest = rows.map((r, i) => ({ ...r, at: records[i].sentAtMs, inboundMessageId: records[i].inboundMessageId }))
-    .filter((r) => Number.isFinite(r.firstAnswerMs)).sort((a, b) => b.firstAnswerMs - a.firstAnswerMs).slice(0, 5);
+    .filter((r) => Number.isFinite(r.firstTextMs)).sort((a, b) => b.firstTextMs - a.firstTextMs).slice(0, 5);
   return out;
 }
 
@@ -139,7 +157,9 @@ const s = (ms) => (Number.isFinite(ms) ? `${(ms / 1000).toFixed(1)}s` : '-');
 function print(out) {
   const line = (label, x) => console.log(`${label.padEnd(26)} n=${String(x.n).padStart(4)}  P50 ${s(x.p50).padStart(6)}  P95 ${s(x.p95).padStart(6)}  P99 ${s(x.p99).padStart(6)}  Max ${s(x.max).padStart(6)}`);
   console.log(`firsttext-e2e ${since} .. ${until}: ${out.n} messages`);
-  line('首字 (first answer)', out.firstAnswer);
+  line('首字 (answer or status)', out.firstText);
+  console.log(`  status line came first: ${out.statusFirst}/${out.n}`);
+  line('first answer text', out.firstAnswer);
   line('first visible (any)', out.firstVisible);
   line('首字 - model (overhead)', out.overhead);
   line('  overhead, no tools', out.overheadNoTools);
@@ -147,7 +167,7 @@ function print(out) {
   for (const [k, v] of Object.entries(out.segments)) line(`  ${k}`, v);
   for (const [k, v] of Object.entries(out.byHarness)) line(`  ${k}`.slice(0, 26), v);
   console.log(`  card ready before the first answer text: ${out.cardReadyBeforeAnswer.yes}/${out.cardReadyBeforeAnswer.n}`);
-  for (const r of out.slowest) console.log(`  slow ${new Date(r.at).toISOString()} ${s(r.firstAnswerMs)} overhead ${s(r.overheadMs)} model ${s(r.modelToTextMs)} inbound ${s(r.inboundMs)} queue ${s(r.queueMs)} (pre ${s(r.preDispatchMs)} run ${s(r.dispatchToRunMs)}) agent ${s(r.agentMs)} delivery ${s(r.deliveryMs)} card ${s(r.cardCreateMs)} ${r.harness}/${r.model}`);
+  for (const r of out.slowest) console.log(`  slow ${new Date(r.at).toISOString()} ${s(r.firstTextMs)} answer ${s(r.firstAnswerMs)} overhead ${s(r.overheadMs)} model ${s(r.modelToTextMs)} inbound ${s(r.inboundMs)} queue ${s(r.queueMs)} (pre ${s(r.preDispatchMs)} run ${s(r.dispatchToRunMs)}) agent ${s(r.agentMs)} delivery ${s(r.deliveryMs)} card ${s(r.cardCreateMs)} ${r.harness}/${r.model}`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
