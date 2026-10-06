@@ -11,6 +11,12 @@
 
 ---
 
+## v2026.9.1-db91.6-voice-native-tools-20261006.1
+
+**试发布后回退，未通过生产验收；不标记成功发布 tag。** 2026-10-06 20:19 CST 安装 PR217 runtime，随后受控重启及替换原 `/voice/` 页面。共享核心工具/语音通过，但公网日历 exec 被现有凭据代理的 admitted-run 要求阻断，恢复旧入口和原 runtime。capture 是安装时五组件快照，不代表回退后的最终当前版本。
+
+**摘要**：尝试上线豆包小何与 Grok 原生工具及小何工具前说明，保留 firsttext-r1。未包含 PR228 混合委派。生产差异和后续登记/清理要求见 [完整记录](docs/pr217-production-attempt-20261006.md)。原严格 FAIL 和用户暂停项保留。
+
 ## v2026.9.1-db91.6-workboard-incremental-sweep-20261006
 
 上线：2026-10-06 00:05 CST 安装到 V（promote-to-v，未重启；下次 Gateway 启动时生效，重启时间由 Tianyi 决定）  ·  tag `v2026.9.1-db91.6-workboard-incremental-sweep-20261006`
