@@ -1,0 +1,15 @@
+{
+  "support": [
+    "lab/candidate/image-hold.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/image-hold.mjs"
+  ],
+  "timeoutSeconds": 900,
+  "user": "lab-db91-parity",
+  "env": {
+    "IMAGE_HOLD": "off"
+  },
+  "files": []
+}
