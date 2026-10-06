@@ -189,7 +189,8 @@
       "id": "release-parity",
       "purpose": "VLab 与生产 V 的字节对齐：残留判定、发版前后的最小差异",
       "files": ["scripts/lib/runtime-residue.test.mjs", "lab/release-files/db91-preflight-timeout-env/bootstrap-timeout.test.mjs", "scripts/promote-to-v.test.mjs",
-        "scripts/vlab-channel-plugins-prep.test.mjs", "scripts/lib/runtime-components.test.mjs", "tests/install-secret-entry-host.test.mjs"]
+        "scripts/vlab-channel-plugins-prep.test.mjs", "scripts/lib/runtime-components.test.mjs", "tests/install-secret-entry-host.test.mjs",
+        "scripts/lib/parity-config.test.mjs"]
     },
     {
       "id": "lab-and-release-regressions",
@@ -281,6 +282,8 @@
         "lab/db91-shrink-reuse.test.mjs",
         "lab/placement-evidence-absence.test.mjs",
         "lab/placement-sweep-lists.test.mjs",
+        "lab/skills-watch-ready.test.mjs",
+        "lab/worker-prewarm-secrets.test.mjs",
         "lab/worker-prewarm-v.test.mjs",
         "lab/image-hold.test.mjs",
         "lab/gateway-first-message.test.mjs",
