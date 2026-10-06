@@ -9,6 +9,8 @@ import { fileURLToPath } from 'node:url';
 
 export const H5_PATHS = [
   'lab/gpt-live-h5/access.mjs',
+  'lab/gpt-live-h5/avatar.mjs', 'lab/gpt-live-h5/avatar-state.mjs',
+  ...['idle','memory','web','calendar','background'].map(state => `lab/gpt-live-h5/assets/v-signal-${state}-20261006${state === 'idle' ? '' : '-r2'}.png`),
   'lab/gpt-live-h5/personal-session.mjs',
   'lab/gpt-live-h5/persona.mjs',
   'lab/gpt-live-h5/server.mjs', 'lab/gpt-live-h5/events.mjs', 'lab/gpt-live-h5/duplex-playback.mjs',
@@ -39,6 +41,7 @@ export function validateSharedProof(proof, request) {
   assert.equal(proof?.schema, 'gpt-live-h5-accepted-v1');
   assert.equal(proof.release, request.release, 'Shared accepted release differs');
   assert.equal(proof.sourceCommit, request.commit, 'Shared accepted commit differs');
+  assert.equal(proof.h5Only === true, request.h5Only === true, 'Shared H5-only release mode differs');
   assert.equal(proof.h5FilesSha, digest(JSON.stringify(fileIdentity(request.files))), 'Shared accepted H5 bytes differ');
   assert(/^[a-f0-9]{64}$/u.test(proof.artifactSha), 'Shared artifact identity is unavailable');
   assert(/^[a-f0-9]{64}$/u.test(proof.h5AcceptanceSha), 'Shared H5 acceptance is unavailable');
@@ -47,6 +50,16 @@ export function validateSharedProof(proof, request) {
     assert(/^(openclaw|production-worker)\/[A-Za-z0-9._/-]+$/u.test(file.target) && !file.target.split('/').includes('..'), 'Unsupported production runtime target');
     assert(/^[a-f0-9]{64}$/u.test(file.after), 'Shared runtime hash is unavailable');
   }
+}
+// A presentation release has its own commit and acceptance. It borrows the
+// accepted, aligned Gateway baseline without restaging or restarting it.
+export function assertH5Baseline(current, manifest, lease, request) {
+  assert.equal(current.release, request.release, 'Shared Gateway release changed');
+  assert.equal(current.accepted, true, 'Gateway baseline is not accepted');
+  assert.equal(current.v?.aligned, true, 'Align the Gateway baseline first');
+  assert.equal(manifest.sourceCommit, current.sourceCommit, 'Gateway baseline commit differs');
+  assert.equal(manifest.artifactSha, current.artifactSha, 'Gateway baseline artifact differs');
+  assert.equal(lease?.owner, request.owner, 'Shared H5 requires this integration lease');
 }
 export function assertRollbackIdentity(receipt, request, observed) {
   assert.equal(receipt.schema, 'gpt-live-h5-installed-v1');
@@ -88,10 +101,12 @@ async function remoteMain(req) {
     assert(!exists(home + '/pending.json'), 'Shared Gateway has an unresolved deployment');
     const current = read(home + '/current.json');
     assert.equal(current.release, req.release, 'Shared release changed');
-    assert.equal(current.sourceCommit, req.commit, 'Shared commit changed');
+    if (!req.h5Only) assert.equal(current.sourceCommit, req.commit, 'Shared commit changed');
     const dir = home + '/releases/' + req.release, manifest = read(dir + '/manifest.json');
     assert.equal(manifest.branch, 'dev', 'H5 installs require a canonical merged dev release');
-    assert.equal(manifest.sourceCommit, req.commit); assert.equal(hash(dir + '/artifact.json'), manifest.artifactSha);
+    if (req.h5Only) assertH5Baseline(current, manifest, read(path.dirname(home) + '/control/integration.json'), req);
+    else assert.equal(manifest.sourceCommit, req.commit);
+    assert.equal(hash(dir + '/artifact.json'), manifest.artifactSha);
     return { current, manifest, dir };
   };
   validateIdentity(req); assert.equal(req.filesSha, digest(JSON.stringify(fileIdentity(req.files)))); assert.equal(process.getuid(), 0);
@@ -100,14 +115,16 @@ async function remoteMain(req) {
     assert.equal(req.target, 'vlab');
     const { current, manifest, dir } = shared(); assert.equal(current.accepted, true, 'Shared release is not accepted');
     assert.equal(current.artifactSha, manifest.artifactSha, 'Shared acceptance artifact changed');
-    const accepted = read(dir + '/h5-accepted.json');
+    const acceptedPath = req.h5Only ? home + '/h5-presentation/releases/' + req.commit + '/accepted.json' : dir + '/h5-accepted.json';
+    const accepted = read(acceptedPath);
     assert.equal(accepted.schema, 'gpt-live-h5-acceptance-v1'); assert.equal(accepted.commit, req.commit);
     assert.equal(accepted.release, req.release); assert.equal(accepted.artifactSha, current.artifactSha);
-    assert.equal(accepted.dir, home + '/h5/releases/' + req.commit, 'Shared H5 acceptance directory changed');
+    assert.equal(accepted.dir, home + (req.h5Only ? '/h5-presentation' : '/h5') + '/releases/' + req.commit, 'Shared H5 acceptance directory changed');
     assert.equal(accepted.filesSha, req.filesSha, 'Shared H5 acceptance bytes changed');
     for (const file of req.files) assert.equal(hash(path.join(accepted.dir, file.name)), file.sha, 'Shared accepted H5 file changed');
     return { schema: 'gpt-live-h5-accepted-v1', release: req.release, sourceCommit: req.commit,
-      artifactSha: current.artifactSha, h5FilesSha: accepted.filesSha, h5AcceptanceSha: hash(dir + '/h5-accepted.json'),
+      ...(req.h5Only ? { h5Only: true, gatewaySourceCommit: current.sourceCommit } : {}),
+      artifactSha: current.artifactSha, h5FilesSha: accepted.filesSha, h5AcceptanceSha: hash(acceptedPath),
       runtimeFiles: manifest.files.map(file => ({ target: file.target, after: file.after })) };
   }
   let sharedState;
@@ -143,13 +160,14 @@ async function remoteMain(req) {
       assert.equal(hash(target), file.after, 'Production runtime is not the shared accepted artifact');
     }
   }
-  const base = req.target === 'v' ? '/opt/openclaw-gpt-live-h5' : home + '/h5';
+  const base = req.target === 'v' ? '/opt/openclaw-gpt-live-h5' : home + (req.h5Only ? '/h5-presentation' : '/h5');
   const dir = base + '/releases/' + req.commit, pointer = base + '/current';
-  const service = req.target === 'v' ? 'gpt-live-call-h5.service' : 'gpt-live-call-h5-' + req.commit.slice(0, 12) + '.service';
+  const service = req.target === 'v' ? 'gpt-live-call-h5.service' : (req.h5Only ? 'gpt-live-presentation-' : 'gpt-live-call-h5-') + req.commit.slice(0, 12) + '.service';
   const unitPath = req.target === 'v' ? '/etc/systemd/system/' + service : '/run/systemd/transient/' + service;
   const listener = () => run('ss', ['-H', '-lntp', 'sport = :26244']);
   const pointerTarget = () => { if (!exists(pointer)) return null; assert(fs.lstatSync(pointer).isSymbolicLink(), 'H5 pointer is not a symlink'); return fs.readlinkSync(pointer); };
   const publicPlan = { target: req.target, commit: req.commit, release: req.release, owner: req.owner, dir, service,
+    ...(req.h5Only ? { h5Only: true } : {}),
     gatewayPid, gatewayRuntime: runtime, serviceUid: uid, serviceGid: gid, files: fileIdentity(req.files), filesSha: req.filesSha,
     artifactSha: req.target === 'v' ? req.sharedProof.artifactSha : sharedState.manifest.artifactSha, url: 'http://127.0.0.1:26244/' };
   const getStatus = async () => {
@@ -187,7 +205,7 @@ async function remoteMain(req) {
       assert(typeof req.evidence === 'string' && req.evidence.trim().length >= 20, 'Provide the functional H5 evidence reference');
       const accepted = { schema: 'gpt-live-h5-acceptance-v1', target: req.target, commit: req.commit, release: req.release, owner: req.owner,
         artifactSha: receipt.artifactSha, dir, filesSha: receipt.filesSha, evidenceSha: digest(req.evidence), at: new Date().toISOString() };
-      save(sharedState.dir + '/h5-accepted.json', accepted); return accepted;
+      save(req.h5Only ? dir + '/accepted.json' : sharedState.dir + '/h5-accepted.json', accepted); return accepted;
     }
     assert.equal(receipt.beforeUnit.exists, false, 'An existing service requires a reviewed upgrade rollback');
     assert.equal(receipt.beforePointer.exists, false, 'An existing pointer requires a reviewed upgrade rollback');
@@ -256,14 +274,15 @@ async function remoteMain(req) {
 
 export function remoteSource() {
   return `import assert from 'node:assert/strict';import {createHash} from 'node:crypto';const H5_PATHS=${JSON.stringify(H5_PATHS)};const digest=${digest.toString()};\n`
-    + [validateIdentity, fileIdentity, validateSharedProof, assertRollbackIdentity, remoteMain].map(fn => fn.toString()).join('\n')
-    + `\nlet input='';for await(const chunk of process.stdin){input+=chunk;assert(input.length<16*1024**2)}try{console.log(JSON.stringify(await remoteMain(JSON.parse(input))))}catch(error){console.error(error.message);process.exitCode=1}`;
+    + [validateIdentity, fileIdentity, validateSharedProof, assertH5Baseline, assertRollbackIdentity, remoteMain].map(fn => fn.toString()).join('\n')
+    + `\nlet input='';for await(const chunk of process.stdin){input+=chunk;assert(input.length<32*1024**2)}try{console.log(JSON.stringify(await remoteMain(JSON.parse(input))))}catch(error){console.error(error.message);process.exitCode=1}`;
 }
 async function main(argv) {
   let command = 'plan'; if (argv[0] && !argv[0].startsWith('--')) command = argv.shift();
-  assert(['plan', 'install', 'accept', 'rollback'].includes(command), 'Use plan, install, accept or rollback');
+  assert(['plan', 'install', 'accept', 'rollback', 'proof'].includes(command), 'Use plan, install, accept, rollback or proof');
   const options = { command };
-  for (let i = 0; i < argv.length; i += 2) { assert(['--target', '--commit', '--release', '--owner', '--evidence'].includes(argv[i]) && argv[i + 1], 'Unknown or incomplete option'); const key = argv[i].slice(2); assert(!(key in options), 'Duplicate option'); options[key] = argv[i + 1]; }
+  for (let i = 0; i < argv.length; i += 2) { assert(['--target', '--commit', '--release', '--owner', '--evidence', '--h5-only'].includes(argv[i]) && argv[i + 1], 'Unknown or incomplete option'); const key = argv[i].slice(2); assert(!(key in options), 'Duplicate option'); options[key] = argv[i + 1]; }
+  if ('h5-only' in options) { assert.equal(options['h5-only'], 'true'); options.h5Only = true; delete options['h5-only']; }
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'), request = freezeSource(root, options);
   const quote = value => "'" + value.replaceAll("'", "'\\''") + "'";
   const remote = (target, value) => {

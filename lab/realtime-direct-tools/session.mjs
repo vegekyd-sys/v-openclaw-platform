@@ -1,3 +1,4 @@
+import { taskActivity } from '../gpt-live-h5/avatar-state.mjs';
 import {randomBytes,randomUUID} from 'node:crypto';
 import {SeeduplexRealtimeVoiceBridge} from '../seeduplex-realtime-provider.mjs';
 import {V_FRONTEND_PERSONA} from '../gpt-live-h5/persona.mjs';
@@ -77,7 +78,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       s.seen.set(call.callId,signature);
       const controller=new AbortController(),epoch=s.epoch;
       s.pending.set(call.callId,controller);
-      audit({type:'tool.call',voiceSessionId:s.id,...call});emit(s,{type:'tool.call',callId:call.callId,name:call.name});
+      audit({type:'tool.call',voiceSessionId:s.id,...call});emit(s,{type:'tool.call',callId:call.callId,name:call.name,activity:taskActivity(call.name,call.args)});
       let result;
       try {
         validateTool(call.name,call.args);

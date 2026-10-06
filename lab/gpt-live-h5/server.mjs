@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { AVATAR_FILES, taskActivity } from "./avatar-state.mjs";
 import { createVoiceAccess } from "./access.mjs";
 import { GPT_LIVE_PERSONAL_SESSION_KEY } from "./personal-session.mjs";
 
@@ -51,8 +52,9 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
         ["/app.js", [join(here, "app.js"), "text/javascript; charset=utf-8"]],
         ["/events.mjs", [join(here, "events.mjs"), "text/javascript; charset=utf-8"]],
         ["/duplex-playback.mjs", [join(here, "duplex-playback.mjs"), "text/javascript; charset=utf-8"]],
-        ...["microphone-capture.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
+        ...["microphone-capture.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "avatar.mjs", "avatar-state.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
         ["/styles.css", [join(here, "styles.css"), "text/css; charset=utf-8"]],
+        ...AVATAR_FILES.map(name => [`/assets/${name}`, [join(here, "assets", name), "image/png"]]),
         ...["v-idle-nohat-20260922.png", "v-tool-busy-20260922.png"].map((name) => [`/assets/${name}`, [join(here, "../rtc-h5/assets", name), "image/png"]]),
       ]);
       if (req.method === "GET" && staticFiles.has(pathname)) {
@@ -186,6 +188,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
     const item = event.payload.talkEvent;
     if (!["tool.call", "tool.result", "tool.error"].includes(item?.type)) return;
     const message = { voiceSessionId: context.active.reservation.voiceSessionId, type: item.type, callId: item.callId };
+    if (item.type === "tool.call") message.activity = taskActivity(item.payload?.name);
     if (item.payload?.name === "openclaw_end_call") {
       message.name = "openclaw_end_call";
       if (typeof item.payload.requestId === "string") message.requestId = item.payload.requestId;
