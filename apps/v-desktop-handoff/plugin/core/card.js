@@ -1,3 +1,4 @@
+import { joinSubject } from "./native-card.js";
 // Feishu card for a handoff link: the link sits behind a button instead of
 // being pasted as a bare url. Rendered by `openclaw message send --presentation`
 // (the same path Night Shift uses for its completion cards).
@@ -22,14 +23,14 @@ export function normalizePayment(payment) {
  * `callbacks: false` for channels that cannot post a button back (DingTalk,
  * WeCom): no 交还给 V button, the steps ask for a 好了 in the chat instead.
  */
-export function handoffCard({ purpose = "login", kind = "control", reason, url, openWithinMinutes, sessionMinutes, payment, handoffId, callbacks = true }) {
+export function handoffCard({ purpose = "login", kind = "control", reason, url, openWithinMinutes, sessionMinutes, payment, handoffId, callbacks = true, subject = "V 的电脑" }) {
   const pay = purpose === "payment" ? normalizePayment(payment) : null;
   const watch = kind === "watch";
   const title = watch
-    ? "V 的桌面 · 只看"
+    ? (subject === "V 的电脑" ? "V 的桌面 · 只看" : `${subject} · 只看`)
     : purpose === "payment"
       ? `付款确认${pay?.merchant ? ` · ${pay.merchant}` : ""}`
-      : "需要你接管 V 的电脑";
+      : joinSubject("需要你接管", subject);
   // The Feishu channel renders the message text as the card body, above the
   // blocks. So the body carries the reason and purchase details, the blocks
   // carry the steps and the button, and the raw url appears only in `fallback`.
@@ -47,8 +48,8 @@ export function handoffCard({ purpose = "login", kind = "control", reason, url, 
   const steps = watch
     ? `${openWithinMinutes} 分钟内打开，只能观看，不能点击或输入。`
     : purpose === "payment"
-      ? `点「付款」打开 V 的电脑，核对金额后自己填写支付信息并确认付款，V 不会替你输入卡号。付完${done}，V 接着做。${openWithinMinutes} 分钟内打开有效，接管最长 ${sessionMinutes} 分钟。`
-      : `点「接管电脑」打开 V 的电脑直接操作，做完${done}，V 接着做。${openWithinMinutes} 分钟内打开有效，接管最长 ${sessionMinutes} 分钟。`;
+      ? `点「付款」${joinSubject("打开", subject)}，核对金额后自己填写支付信息并确认付款，V 不会替你输入卡号。付完${done}，V 接着做。${openWithinMinutes} 分钟内打开有效，接管最长 ${sessionMinutes} 分钟。`
+      : `点「接管电脑」${joinSubject("打开", subject)}${/[A-Za-z0-9]$/u.test(subject) ? " " : ""}直接操作，做完${done}，V 接着做。${openWithinMinutes} 分钟内打开有效，接管最长 ${sessionMinutes} 分钟。`;
   const buttons = [{ label: watch ? "观看桌面" : purpose === "payment" ? "付款" : "接管电脑", style: "primary", url }];
   if (!watch && handoffId && callbacks) {
     // A Feishu callback button: posts /v-handback as the clicking user, handled by this plugin.

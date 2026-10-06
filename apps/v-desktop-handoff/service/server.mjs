@@ -329,7 +329,7 @@ export function createService(config, { log = console, layout: layoutOverride, i
           json(res, 403, { error: result.error });
           return;
         }
-        json(res, 200, { ...result, title: config.title, wsPath: `${prefix}/ws` });
+        json(res, 200, { ...result, title: config.title, subject: config.subject ?? "V 的电脑", wsPath: `${prefix}/ws` });
       } else if (req.method === "GET" && route === "/api/session") {
         const status = registry.viewerStatus(url.searchParams.get("viewer") ?? "");
         if (!status) {

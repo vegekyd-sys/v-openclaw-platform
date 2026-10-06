@@ -52,14 +52,66 @@ export default definePluginEntry({
       baseUrl: config.adminUrl ?? "http://127.0.0.1:23951",
       adminTokenFile: config.adminTokenFile,
     });
+    // Machines a handoff can open. The default is V's own desktop; `targets` adds others
+    // (each its own handoff service instance), e.g. the owner's Mac over macOS Screen Sharing.
+    const DEFAULT_TARGET = "v-desktop";
+    const targets = new Map([
+      [
+        DEFAULT_TARGET,
+        { key: DEFAULT_TARGET, client, subject: "V 的电脑", cardTitle: "电脑", machine: "V's desktop", cardImage: config.cardImage, coverImage: config.coverImage, desktopDisplay: config.desktopDisplay ?? ":99", computerNode: null },
+      ],
+    ]);
+    for (const [key, t] of Object.entries(config.targets ?? {})) {
+      if (key === DEFAULT_TARGET || !t?.adminTokenFile) continue;
+      targets.set(key, {
+        key,
+        client: new HandoffAdminClient({ baseUrl: t.adminUrl, adminTokenFile: t.adminTokenFile }),
+        subject: t.subject ?? t.label ?? key,
+        cardTitle: t.cardTitle ?? "电脑",
+        machine: t.machine ?? t.label ?? key,
+        description: t.description ?? "",
+        // No local display to capture for a remote machine: the card shows the cover.
+        cardImage: t.cardImage ?? "cover",
+        coverImage: t.coverImage ?? config.coverImage,
+        desktopDisplay: t.desktopDisplay ?? null,
+        computerNode: typeof t.computerNode === "string" ? t.computerNode : null,
+      });
+    }
+    const targetOfId = new Map(); // handoff id -> target key (this process)
+    /** The target whose service knows this handoff id, with its status; null when none does. */
+    const findHandoff = async (id, options) => {
+      const known = targetOfId.get(id);
+      const order = known ? [targets.get(known), ...[...targets.values()].filter((t) => t.key !== known)] : [...targets.values()];
+      for (const target of order) {
+        try {
+          const status = await target.client.status(id, options);
+          targetOfId.set(id, target.key);
+          return { target, status };
+        } catch {
+          /* not this service */
+        }
+      }
+      return null;
+    };
+    const targetFor = async (id) => targets.get(targetOfId.get(id)) ?? (await findHandoff(id))?.target ?? targets.get(DEFAULT_TARGET);
+    /** The most recent handoff of a session across all targets. */
+    const latestForSession = async (sessionKey, options) => {
+      let best = null;
+      for (const target of targets.values()) {
+        const status = await target.client.latestForSession(sessionKey, options).catch(() => null);
+        if (status && (!best || (status.createdAt ?? 0) > (best.status.createdAt ?? 0))) best = { target, status };
+      }
+      if (best) targetOfId.set(best.status.id, best.target.key);
+      return best;
+    };
     const blockWhileControlled = config.blockBrowserWhileControlled ?? true;
     const bySession = new Map(); // sessionKey -> last handoff id (this process); the service is the source of truth
     // handoff id -> card record (channel, where it is, view, state) plus the API client that edits it,
     // for the 「电脑」 cards this process posted or touched. The record itself lives with the handoff.
     const cards = new Map();
     const feishuApis = new Map(); // appId -> FeishuApi
-    const coverKeys = new Map(); // appId -> uploaded image_key of the cover
-    let coverBytes = null; // V's cover, fetched once per process
+    const coverKeys = new Map(); // appId|cover -> uploaded image_key of the cover
+    const coverBytesByUrl = new Map(); // cover -> bytes, fetched once per process
     const nativeChannels = Array.isArray(config.nativeCardChannels) ? config.nativeCardChannels : NATIVE_CARD_CHANNELS;
 
     const feishuFor = (creds) => {
@@ -72,25 +124,29 @@ export default definePluginEntry({
     };
 
     /** The desktop now (JPEG), else V's cover; null when neither is available. */
-    const cardPicture = async () => {
-      if (config.cardImage !== "cover") {
-        const shot = await captureDesktop({ display: config.desktopDisplay ?? ":99" }).catch(() => null);
+    const cardPicture = async (target) => {
+      if (target.cardImage !== "cover" && target.desktopDisplay) {
+        const shot = await captureDesktop({ display: target.desktopDisplay }).catch(() => null);
         if (shot) {
           return shot;
         }
       }
-      coverBytes ??= await loadCover(config.coverImage ?? DEFAULT_COVER).catch(() => null);
-      return coverBytes;
+      const cover = target.coverImage ?? DEFAULT_COVER;
+      if (!coverBytesByUrl.has(cover)) coverBytesByUrl.set(cover, await loadCover(cover).catch(() => null));
+      return coverBytesByUrl.get(cover);
     };
 
     const remember = async (id, card) => {
       cards.set(id, card);
       const { feishu: _feishu, telegram: _telegram, ...record } = card;
       // The button commands run in the Gateway, the tool may run in a worker: keep the card with the handoff.
-      await client.setCard(id, record).catch((error) => api.logger?.warn?.(`desktop handoff card not recorded: ${error.message}`));
+      await (await targetFor(id)).client.setCard(id, record).catch((error) => api.logger?.warn?.(`desktop handoff card not recorded: ${error.message}`));
     };
 
-    const baseView = ({ issued, kind, purpose, params }) => ({
+    const baseView = ({ issued, kind, purpose, params, target }) => ({
+      subject: target.subject,
+      cardTitle: target.cardTitle,
+      target: target.key,
       kind,
       purpose,
       reason: params.reason,
@@ -100,7 +156,7 @@ export default definePluginEntry({
       openWithinMinutes: Math.max(1, Math.round((issued.claimExpiresAt - Date.now()) / 60_000)),
     });
 
-    const postFeishuCard = async ({ cfg, accountId, target, issued, kind, purpose, params, actorUserId }) => {
+    const postFeishuCard = async ({ cfg, accountId, target, issued, kind, purpose, params, actorUserId, machine }) => {
       const creds = feishuCredentials(cfg, accountId);
       const receiver = feishuReceiver(target);
       if (!creds || !receiver) {
@@ -109,17 +165,18 @@ export default definePluginEntry({
       const feishu = feishuFor(creds);
       let imageKey = null;
       try {
-        if (config.cardImage !== "cover") {
-          const shot = await captureDesktop({ display: config.desktopDisplay ?? ":99" });
+        if (machine.cardImage !== "cover" && machine.desktopDisplay) {
+          const shot = await captureDesktop({ display: machine.desktopDisplay });
           imageKey = shot ? await feishu.uploadImage(shot, "desktop.jpg") : null;
         }
         if (!imageKey) {
-          imageKey = coverKeys.get(creds.appId) ?? null;
+          const cover = machine.coverImage ?? DEFAULT_COVER;
+          imageKey = coverKeys.get(`${creds.appId}|${cover}`) ?? null;
           if (!imageKey) {
-            const bytes = await loadCover(config.coverImage ?? DEFAULT_COVER);
+            const bytes = await loadCover(cover);
             if (bytes) {
               imageKey = await feishu.uploadImage(bytes, "v-cover.jpg");
-              coverKeys.set(creds.appId, imageKey);
+              coverKeys.set(`${creds.appId}|${cover}`, imageKey);
             }
           }
         }
@@ -128,6 +185,9 @@ export default definePluginEntry({
       }
       const ownerOpenId = typeof actorUserId === "string" && actorUserId.startsWith("feishu:ou_") ? actorUserId.slice("feishu:".length) : undefined;
       const view = {
+        subject: machine.subject,
+        cardTitle: machine.cardTitle,
+        target: machine.key,
         kind,
         purpose,
         reason: params.reason,
@@ -144,14 +204,14 @@ export default definePluginEntry({
 
     // Telegram: a photo of the desktop with the card as caption and 接管 / 我完成了 / 跳过 under it,
     // edited in place. A desktop link Telegram refuses as a button goes into the caption instead.
-    const postTelegramCard = async ({ cfg, accountId, target, threadId, issued, view }) => {
+    const postTelegramCard = async ({ cfg, accountId, target, threadId, issued, view, machine }) => {
       const creds = telegramCredentials(cfg, accountId);
       const chat = telegramChat(target);
       if (!creds || !chat) {
         return null;
       }
       const telegram = new TelegramApi(creds);
-      const photo = await cardPicture();
+      const photo = await cardPicture(machine);
       const where = { chatId: chat.chatId, threadId: threadId ?? chat.threadId };
       let urlButtons = true;
       let sent;
@@ -172,13 +232,13 @@ export default definePluginEntry({
     // The picture: WeCom fetches card images by url, so the handoff service serves it under a
     // short-lived token when its public address is reachable from the internet; otherwise (and
     // for DingTalk, which uploads robot media) a local file the channel uploads itself.
-    const postPresentationCard = async ({ channel, accountId, target, issued, view }) => {
+    const postPresentationCard = async ({ channel, accountId, target, issued, view, machine }) => {
       let imageRef = null;
       let tmpFile = null;
-      const picture = await cardPicture();
+      const picture = await cardPicture(machine);
       if (picture) {
         if (channel === "wecom") {
-          const snapshot = await client.putSnapshot(issued.id, picture).catch((error) => api.logger?.warn?.(`desktop handoff snapshot not stored: ${error.message}`));
+          const snapshot = await machine.client.putSnapshot(issued.id, picture).catch((error) => api.logger?.warn?.(`desktop handoff snapshot not stored: ${error.message}`));
           if (snapshot && isPublicImageUrl(snapshot.url)) {
             imageRef = snapshot.url;
           }
@@ -209,17 +269,17 @@ export default definePluginEntry({
     };
 
     /** Posts the 「电脑」 card natively on this channel; null when the channel or its credentials are not there. */
-    const postChannelCard = async ({ channel, cfg, accountId, target, threadId, issued, kind, purpose, params, actorUserId }) => {
+    const postChannelCard = async ({ channel, cfg, accountId, target, threadId, issued, kind, purpose, params, actorUserId, machine = targets.get(DEFAULT_TARGET) }) => {
       if (config.nativeCard === false || !nativeChannels.includes(channel)) {
         return null;
       }
       let posted;
       if (channel === "feishu") {
-        posted = await postFeishuCard({ cfg, accountId, target, issued, kind, purpose, params, actorUserId });
+        posted = await postFeishuCard({ cfg, accountId, target, issued, kind, purpose, params, actorUserId, machine });
       } else if (channel === "telegram") {
-        posted = await postTelegramCard({ cfg, accountId, target, threadId, issued, view: baseView({ issued, kind, purpose, params }) });
+        posted = await postTelegramCard({ cfg, accountId, target, threadId, issued, machine, view: baseView({ issued, kind, purpose, params, target: machine }) });
       } else {
-        posted = await postPresentationCard({ channel, accountId, target, issued, view: baseView({ issued, kind, purpose, params }) });
+        posted = await postPresentationCard({ channel, accountId, target, issued, machine, view: baseView({ issued, kind, purpose, params, target: machine }) });
       }
       if (posted && EDITABLE_CARD_CHANNELS.includes(channel)) {
         watchCard(issued.id, issued.claimExpiresAt + issued.sessionTtlMs, cfg);
@@ -241,7 +301,7 @@ export default definePluginEntry({
         }
         let status;
         try {
-          status = await client.status(id);
+          status = await (await targetFor(id)).client.status(id);
         } catch {
           return;
         }
@@ -270,7 +330,7 @@ export default definePluginEntry({
       if (known) {
         return known;
       }
-      const record = (await client.status(id).catch(() => null))?.card;
+      const record = (await findHandoff(id))?.status?.card;
       if (!record) {
         return null;
       }
@@ -316,10 +376,11 @@ export default definePluginEntry({
       let shown = false;
       try {
         // Show what the desktop looks like now (the person's result after 已完成), not the picture from when the card was sent.
-        const fresh = config.cardImage !== "cover" && (state === "active" || state === "done");
+        const machine = targets.get(card.view?.target) ?? (await targetFor(id));
+        const fresh = machine.cardImage !== "cover" && Boolean(machine.desktopDisplay) && (state === "active" || state === "done");
         if (card.channel === "feishu") {
           if (fresh) {
-            const shot = await captureDesktop({ display: config.desktopDisplay ?? ":99" });
+            const shot = await captureDesktop({ display: machine.desktopDisplay });
             if (shot) {
               card.view = { ...card.view, imageKey: await card.feishu.uploadImage(shot, "desktop.jpg") };
             }
@@ -327,7 +388,7 @@ export default definePluginEntry({
           await card.feishu.patchCard(card.messageId, nativeHandoffCard({ ...card.view, state }));
           shown = true;
         } else if (card.channel === "telegram" && card.telegram) {
-          const photo = fresh && card.kind === "photo" ? await captureDesktop({ display: config.desktopDisplay ?? ":99" }).catch(() => null) : null;
+          const photo = fresh && card.kind === "photo" ? await captureDesktop({ display: machine.desktopDisplay }).catch(() => null) : null;
           await card.telegram.editCard({ chatId: card.chatId, messageId: card.messageId, kind: card.kind, photo, ...telegramHandoffCard(card.view, state, { urlButtons: card.urlButtons !== false }) });
           shown = true;
         } else if (card.channel === "wecom") {
@@ -337,7 +398,7 @@ export default definePluginEntry({
         api.logger?.warn?.(`desktop handoff card ${id} not updated to ${state}: ${error.message}`);
       }
       const { feishu: _feishu, telegram: _telegram, ...record } = card;
-      await client.setCard(id, record).catch(() => {});
+      await (await targetFor(id)).client.setCard(id, record).catch(() => {});
       return shown;
     };
 
@@ -355,14 +416,13 @@ export default definePluginEntry({
     const resolveHandoff = async (handoffId, sessionKey, signal) => {
       const id = handoffId ?? (sessionKey ? bySession.get(sessionKey) : null);
       if (id) {
-        return client.status(id, { signal });
+        const found = await findHandoff(id, { signal });
+        if (!found) throw new Error(`Unknown handoff ${id}`);
+        return found.status;
       }
       if (sessionKey) {
-        try {
-          return await client.latestForSession(sessionKey, { signal });
-        } catch {
-          /* none for this session */
-        }
+        const latest = await latestForSession(sessionKey, { signal });
+        if (latest) return latest.status;
       }
       throw new Error("No handoff has been issued in this session");
     };
@@ -386,6 +446,11 @@ export default definePluginEntry({
           reason: Type.String({ description: "Short, user-facing reason, e.g. 'need you to log in to Xiaohongshu'" }),
           kind: Type.Optional(Type.Union([Type.Literal("control"), Type.Literal("watch")], { description: "control (default) or watch" })),
           purpose: Type.Optional(Type.Union([Type.Literal("login"), Type.Literal("payment")], { description: "login (default: login, captcha, 2FA, consent) or payment (the user enters payment details and confirms the purchase)" })),
+          target: Type.Optional(
+            Type.String({
+              description: `Which machine to hand over. Omit (or "${DEFAULT_TARGET}") for V's own desktop.${[...targets.values()].filter((t) => t.key !== DEFAULT_TARGET).map((t) => ` "${t.key}": ${t.description || t.machine}.`).join("")}`,
+            }),
+          ),
           payment: Type.Optional(
             Type.Object({
               item: Type.Optional(Type.String({ description: "What is being bought, as shown at checkout" })),
@@ -397,6 +462,10 @@ export default definePluginEntry({
         }),
         async execute(_toolCallId, params, signal) {
           const { actorUserId, sessionKey } = trusted(context);
+          const machine = targets.get(params.target ?? DEFAULT_TARGET);
+          if (!machine) {
+            throw new Error(`Unknown handoff target "${params.target}". Known: ${[...targets.keys()].join(", ")}`);
+          }
           const kind = params.kind === "watch" ? "watch" : "control";
           const purpose = params.purpose === "payment" ? "payment" : "login";
           // controlAnywhere: control links may be issued in any conversation and are posted in place.
@@ -405,10 +474,11 @@ export default definePluginEntry({
           if (kind === "control" && !direct && !anywhere) {
             throw new Error("A control handoff is only issued in a direct/private conversation. Ask the user to message V privately, or issue kind=watch here.");
           }
-          const issued = await client.issue(
+          const issued = await machine.client.issue(
             { kind, ownerId: actorUserId, sessionKey, reason: params.reason, claimTtlMs: config.claimTtlMs, sessionTtlMs: config.sessionTtlMs, origin: GATEWAY_ORIGIN },
             { signal },
           );
+          targetOfId.set(issued.id, machine.key);
           if (sessionKey) {
             bySession.set(sessionKey, issued.id);
           }
@@ -419,11 +489,11 @@ export default definePluginEntry({
             const senderId = typeof context.requesterSenderId === "string" ? context.requesterSenderId.trim() : "";
             const channel = typeof context.messageChannel === "string" ? context.messageChannel.trim() : "";
             try {
-              const sentNative = await postChannelCard({ channel, cfg: context.config ?? context.runtimeConfig, accountId: context.deliveryContext?.accountId, target: senderId, issued, kind, purpose, params, actorUserId }).catch((error) => {
+              const sentNative = await postChannelCard({ channel, cfg: context.config ?? context.runtimeConfig, accountId: context.deliveryContext?.accountId, target: senderId, issued, kind, purpose, params, actorUserId, machine }).catch((error) => {
                 api.logger?.warn?.(`desktop handoff native card failed, using the plain card: ${error.message}`);
                 return null;
               });
-              const card = handoffCard({ purpose, kind, reason: params.reason, url: issued.url, openWithinMinutes, sessionMinutes, payment: params.payment, handoffId: issued.id, callbacks: CALLBACK_CARD_CHANNELS.includes(channel) });
+              const card = handoffCard({ purpose, kind, reason: params.reason, url: issued.url, openWithinMinutes, sessionMinutes, payment: params.payment, handoffId: issued.id, callbacks: CALLBACK_CARD_CHANNELS.includes(channel), subject: machine.subject });
               if (!sentNative) await deliverPrivately({
                 channel,
                 target: senderId,
@@ -435,7 +505,7 @@ export default definePluginEntry({
                 accountId: config.messageAccountId,
               });
             } catch (error) {
-              await client.revoke(issued.id).catch(() => {});
+              await machine.client.revoke(issued.id).catch(() => {});
               throw new Error(`Could not deliver the control link privately (${error.message}). Ask the user to message V privately instead.`);
             }
             return textResult({
@@ -452,7 +522,7 @@ export default definePluginEntry({
           const place = config.cards === false ? null : inPlaceTarget(context, config);
           if (place) {
             try {
-              if (await postChannelCard({ ...place, cfg: context.config ?? context.runtimeConfig, issued, kind, purpose, params, actorUserId })) {
+              if (await postChannelCard({ ...place, cfg: context.config ?? context.runtimeConfig, issued, kind, purpose, params, actorUserId, machine })) {
                 return textResult({
                   handoffId: issued.id,
                   kind,
@@ -462,7 +532,7 @@ export default definePluginEntry({
                   openWithinMinutes,
                   sessionMinutes,
                   instruction:
-                    nativeCardInstruction(place.channel) +
+                    nativeCardInstruction(place.channel, { cardTitle: machine.cardTitle, machine: machine.machine }) +
                     (purpose === "payment" ? " Do not click any pay/confirm button yourself; after the user is done, check the order result on the page and report it." : ""),
                 });
               }
@@ -473,7 +543,7 @@ export default definePluginEntry({
           if (place) {
             // DingTalk and WeCom cards cannot post 交还给 V back: the card asks for 好了 in the chat.
             const callbacks = CALLBACK_CARD_CHANNELS.includes(place.channel);
-            const card = handoffCard({ purpose, kind, reason: params.reason, url: issued.url, openWithinMinutes, sessionMinutes, payment: params.payment, handoffId: issued.id, callbacks });
+            const card = handoffCard({ purpose, kind, reason: params.reason, url: issued.url, openWithinMinutes, sessionMinutes, payment: params.payment, handoffId: issued.id, callbacks, subject: machine.subject });
             try {
               await deliverPrivately({
                 ...place,
@@ -566,7 +636,7 @@ export default definePluginEntry({
           if (refusal) {
             throw new Error(refusal);
           }
-          await client.revoke(id, { signal });
+          await (await targetFor(id)).client.revoke(id, { signal });
           if (context.sessionKey && bySession.get(context.sessionKey) === id) {
             bySession.delete(context.sessionKey);
           }
@@ -584,7 +654,12 @@ export default definePluginEntry({
       const requested = String(ctx.args ?? "").trim().split(/\s+/u)[0];
       let status = null;
       try {
-        status = requested && /^h_[\w-]+$/u.test(requested) ? await client.status(requested) : ctx.sessionKey ? await client.latestForSession(ctx.sessionKey) : null;
+        status =
+          requested && /^h_[\w-]+$/u.test(requested)
+            ? ((await findHandoff(requested))?.status ?? null)
+            : ctx.sessionKey
+              ? ((await latestForSession(ctx.sessionKey))?.status ?? null)
+              : null;
       } catch {
         status = null;
       }
@@ -614,14 +689,16 @@ export default definePluginEntry({
           }
           busy = true;
           try {
-            const state = await client.request("GET", "/v1/state", undefined, { timeoutMs: 2_000 });
+            for (const target of targets.values()) {
+            const state = await target.client.request("GET", "/v1/state", undefined, { timeoutMs: 2_000 }).catch(() => null);
             for (const h of state?.activeHandoffs ?? []) {
               if (!h.pageHandBackAt || h.wakeClaimedAt || !h.sessionKey || h.controlActive || h.origin !== GATEWAY_ORIGIN) {
                 continue;
               }
-              if (!(await client.claimWake(h.id, GATEWAY_ORIGIN).catch(() => false))) {
+              if (!(await target.client.claimWake(h.id, GATEWAY_ORIGIN).catch(() => false))) {
                 continue;
               }
+              targetOfId.set(h.id, target.key);
               handedBack.add(h.id);
               // Wake V first; the card (screenshot upload + Feishu patch) follows in the background.
               try {
@@ -634,6 +711,7 @@ export default definePluginEntry({
                 ctx.logger?.warn?.(`desktop handoff ${h.id}: waking ${h.sessionKey} failed: ${error.message}`);
               }
               setCardState(h.id, "done", ctx.config).catch(() => {});
+            }
             }
           } catch {
             /* service unreachable: try again on the next tick */
@@ -692,7 +770,7 @@ export default definePluginEntry({
         const decision = decideHandBack(status, { alreadyHandedBack: status ? handedBack.has(status.id) : false });
         if (decision.action === "release") {
           try {
-            await client.handBack(status.id);
+            await (await targetFor(status.id)).client.handBack(status.id);
           } catch (error) {
             return { text: `交还失败：${error.message}。可以在接管页面里点「交还给 V」。` };
           }
@@ -727,8 +805,9 @@ export default definePluginEntry({
         handedBack.add(status.id);
         const shown = await setCardState(status.id, "skipped", ctx.config);
         try {
-          if (status.controlActive) await client.handBack(status.id);
-          await client.revoke(status.id);
+          const owner = (await targetFor(status.id)).client;
+          if (status.controlActive) await owner.handBack(status.id);
+          await owner.revoke(status.id);
         } catch (error) {
           return { text: `跳过失败：${error.message}` };
         }
@@ -744,9 +823,12 @@ export default definePluginEntry({
         if (!blockWhileControlled || (event.toolName !== "browser" && event.toolName !== "computer")) {
           return undefined;
         }
+        // The computer tool on another target's machine (its node) conflicts with that handoff, not V's desktop.
+        const node = event.toolName === "computer" && typeof event.params?.node === "string" ? event.params.node.trim().toLowerCase() : null;
+        const watched = (node && [...targets.values()].find((t) => t.computerNode && t.computerNode.toLowerCase() === node)) || targets.get(DEFAULT_TARGET);
         let state;
         try {
-          state = await client.state();
+          state = await watched.client.state();
         } catch (error) {
           // The handoff service being down must not take the browser tool down with it.
           api.logger?.warn?.(`desktop handoff state unavailable, allowing ${event.toolName}: ${error.message}`);
