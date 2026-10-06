@@ -9,6 +9,12 @@ test("voice cutover rejects a busy call or any concurrent entry/Gateway change",
   assertEntrySnapshot(snapshot, snapshot);
   for (const key of Object.keys(snapshot)) assert.throws(() => assertEntrySnapshot(snapshot, { ...snapshot, [key]: key === "openVoices" ? 1 : "changed" }));
 });
+test('H5-only cutover also refuses a live direct-provider relay or an unknown connection count', () => {
+  const idle={...snapshot,relayConnections:0};
+  assertEntrySnapshot(idle,idle);
+  assert.throws(()=>assertEntrySnapshot(idle,{...idle,relayConnections:1}));
+  assert.throws(()=>assertEntrySnapshot(idle,snapshot));
+});
 test("serialized production controller parses without loading credentials or touching V", () => {
   execFileSync(process.execPath, ["--check", "--input-type=module"], { input: remoteSource() });
 });

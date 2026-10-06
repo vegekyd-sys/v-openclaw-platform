@@ -104,7 +104,7 @@ async function remoteMain(req) {
     if (!req.h5Only) assert.equal(current.sourceCommit, req.commit, 'Shared commit changed');
     const dir = home + '/releases/' + req.release, manifest = read(dir + '/manifest.json');
     assert.equal(manifest.branch, 'dev', 'H5 installs require a canonical merged dev release');
-    if (req.h5Only) assertH5Baseline(current, manifest, read(home + '/control/integration.json'), req);
+    if (req.h5Only) assertH5Baseline(current, manifest, read(path.dirname(home) + '/control/integration.json'), req);
     else assert.equal(manifest.sourceCommit, req.commit);
     assert.equal(hash(dir + '/artifact.json'), manifest.artifactSha);
     return { current, manifest, dir };

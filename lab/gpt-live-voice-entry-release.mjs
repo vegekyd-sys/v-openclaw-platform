@@ -12,6 +12,7 @@ export function assertEntrySnapshot(expected, actual) {
   for (const key of ["pointer", "unitSha", "launchDropInSha", "environmentSha", "gatewayPid", "gatewayStart", "gatewayInvocation", "configSha"])
     assert.equal(actual[key], expected[key], `Voice entry ${key} changed`);
   assert.equal(actual.openVoices, 0, "A voice call is open; do not replace the entry");
+  if ('relayConnections' in expected) assert.equal(actual.relayConnections, 0, 'The H5 relay has a connection; defer the upgrade');
 }
 export function entryLaunchOverride(execStart, server, nativeEnvironment = "") {
   assert(/^\/opt\/openclaw-voice-h5\/releases\/[A-Za-z0-9._-]+\/lab\/gpt-live-h5\/server\.mjs$/.test(server));
@@ -54,7 +55,10 @@ async function remoteMain(req) {
     launchDropInSha: fs.existsSync(launchDropIn) ? hash(launchDropIn) : null,
     environmentSha: hash(path.join(state, "rtc-h5.env")), gatewayPid: gp,
     gatewayStart: fs.readFileSync(`/proc/${gp}/stat`, "utf8").split(") ")[1].split(/\s+/u)[19],
-    gatewayInvocation: gateway.InvocationID, configSha: hash(env.OPENCLAW_CONFIG_PATH), openVoices: countVoices() });
+    gatewayInvocation: gateway.InvocationID, configSha: hash(env.OPENCLAW_CONFIG_PATH), openVoices: countVoices(),
+    // Direct providers live in the H5 process, outside the Gateway voice DB.
+    // A conservative socket check also protects those calls during cutover.
+    ...(req.h5Only ? { relayConnections: run('ss', ['-H', '-tnp', 'state', 'established', '( sport = :26242 )']).split('\n').filter(Boolean).length } : {}) });
   const snapshot = observe();
   const metadata = { schema: "gpt-live-voice-entry-v1", commit: req.commit, release: req.release, owner: req.owner,
     artifactSha: req.sharedProof.artifactSha, filesSha: req.filesSha, dir, unit, url: "https://openclaw.tianyi.live/voice/", snapshot, at: new Date().toISOString() };
