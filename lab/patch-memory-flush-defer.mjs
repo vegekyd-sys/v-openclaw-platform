@@ -86,6 +86,17 @@ import assert from 'node:assert/strict';
 // the session's transcript projection is reindexed; the size trigger then reads as not
 // met, so a deferred run that skipped for that reason keeps the job and looks again after
 // the idle wait (at most three times) instead of ending it.
+//
+// Failure budget (VLab candidate at b6fef51: "ran outcome=failed aborted=true", and the
+// session entry held memoryFlush {kind:"failed"}). recordMemoryFlushFailure is the only
+// failed-write site; it skipped the write only when the abort signal was already aborted
+// at the moment the error was recorded. An error that reached the flush first (from the
+// incoming turn's own work, or from shutdown) was written as a counted failure, and three
+// consecutive ones mark the cycle as flushed ("exhausted": no flush until the next
+// compaction). A deferred flush runs behind the reply and is interrupted by design, so it
+// never writes the failure budget now; its log line carries the error class
+// (error:<name>). A flush that keeps failing is retried at most once per idle period, and
+// near compaction the pre-reply flush runs first with the normal budget.
 // OPENCLAW_DEFER_PRE_REPLY_MEMORY_FLUSH=0 turns it off. Tagged log lines
 // `[memory-flush-deferred.1]` carry a hashed session key and numbers, never message text.
 
@@ -168,9 +179,21 @@ const PREFLIGHT_GATE_AFTER = `	if (params.probe) {
 ${PREFLIGHT_GATE_BEFORE}`;
 
 const FAILURE_COUNT_BEFORE = '	if (!isAbortError(error) && storePath && sessionKey) try {\n';
-const FAILURE_COUNT_AFTER = `	// ${MEMORY_FLUSH_DEFER_MARKER}: a deferred flush that was aborted (new turn, restart drain) is not a failure.
-	if (!isAbortError(error) && !(run.memoryFlushDeferred === true && run.abortSignal?.aborted === true) && storePath && sessionKey) try {
+const FAILURE_COUNT_AFTER = `	// ${MEMORY_FLUSH_DEFER_MARKER}: a deferred flush runs behind the reply and is interrupted by design
+	// (new turn, restart drain, shutdown); it never writes the failure budget.
+	if (!isAbortError(error) && run.memoryFlushDeferred !== true && storePath && sessionKey) try {
 `;
+
+const FAILURE_RETURN_BEFORE = '\treturn {\n\t\tsessionEntry,\n\t\toutcome\n\t};\n}\n//#endregion\nexport';
+const FAILURE_RETURN_AFTER = `\treturn {
+		sessionEntry,
+		outcome,
+		// ${MEMORY_FLUSH_DEFER_MARKER}: the error class only, for the deferred run's log line.
+		...run.memoryFlushDeferred === true ? { failureName: isAbortError(error) ? "AbortError" : error instanceof Error ? error.name : typeof error } : {}
+	};
+}
+//#endregion
+export`;
 
 export function patchAgentRunnerMemory(source) {
   assert(!source.includes(MEMORY_FLUSH_DEFER_MARKER), 'agent-runner-memory is already patched');
@@ -178,6 +201,7 @@ export function patchAgentRunnerMemory(source) {
   out = replaceExactlyOnce(out, LATCH_BEFORE, LATCH_AFTER, 'byte-compaction latch clear');
   out = replaceExactlyOnce(out, PREFLIGHT_GATE_BEFORE, PREFLIGHT_GATE_AFTER, 'preflight compaction gate');
   out = replaceExactlyOnce(out, FAILURE_COUNT_BEFORE, FAILURE_COUNT_AFTER, 'memory flush failure accounting');
+  out = replaceExactlyOnce(out, FAILURE_RETURN_BEFORE, FAILURE_RETURN_AFTER, 'memory flush failure result');
   return out;
 }
 
@@ -408,6 +432,7 @@ function startDeferredMemoryFlush(job, epoch) {
 			outcome,
 			...abortSignal.aborted ? { aborted: true } : {},
 			...report.skipReason ? { reason: report.skipReason } : {},
+			...report.failureName ? { error: report.failureName } : {},
 			...retryUnreadable ? { retry: true } : {},
 			ms: Date.now() - startedAt
 		});
@@ -462,6 +487,7 @@ async function runDeferredMemoryFlush(ctx, abortSignal, report = {}) {
 			}
 		});
 		if (result?.skipReason) report.skipReason = result.skipReason;
+		if (result?.failureName) report.failureName = result.failureName;
 		return result?.outcome ?? "unknown";
 	} catch (error) {
 		logVerbose(\`deferred memory flush failed: \${String(error)}\`);

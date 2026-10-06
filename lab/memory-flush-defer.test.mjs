@@ -45,8 +45,8 @@ test('each anchor is replaced exactly once and a patched file is refused', () =>
   const doubled = memoryInput.replace('\tconst latch = entry.transcriptByteCompactionLatch;\n', '\tconst latch = entry.transcriptByteCompactionLatch;\n\tif (latch !== void 0 && (typeof maxActiveTranscriptBytes !== "number" || false)) {}\n');
   assert.throws(() => patchAgentRunnerMemory(doubled), /Expected exactly one byte-compaction latch clear/);
   assert.throws(() => patchAgentRunnerRuntime(runtimeInput.replace('async function executePreparedReplyAgentRun(context) {\n', '')), /Expected exactly one reply agent run executor/);
-  assert.equal(memoryOut.split(MEMORY_FLUSH_DEFER_MARKER).length - 1, 4);
-  assert.equal(memoryOut.split('run.memoryFlushDeferred === true && run.abortSignal?.aborted === true').length - 1, 1);
+  assert.equal(memoryOut.split(MEMORY_FLUSH_DEFER_MARKER).length - 1, 5);
+  assert.equal(memoryOut.split('if (!isAbortError(error) && run.memoryFlushDeferred !== true && storePath && sessionKey) try {').length - 1, 1);
   assert.equal(runtimeOut.split('deferPreReplyFlush:').length - 1, 1);
   assert.equal(runtimeOut.split('yieldDeferredMemoryFlush(sessionKey, "inbound-turn")').length - 1, 1);
 });
@@ -573,18 +573,21 @@ test('a restart drain during a deferred flush aborts it and the job ends', async
   assert.deepEqual(t.admission.getActiveGatewayRootWorkHolders(), []);
 });
 
-test('memory module: an aborted deferred flush is not counted as a failure; other failures still are', async () => {
+test('memory module: a deferred flush never writes the failure budget; a pre-reply flush still does', async () => {
   const drainError = Object.assign(new Error('gateway is draining for restart'), { name: 'GatewayDrainingError' });
   for (const [label, extra, counted] of [
     ['deferred and aborted', { memoryFlushDeferred: true, abortSignal: AbortSignal.abort(drainError) }, false],
-    ['deferred, not aborted', { memoryFlushDeferred: true, abortSignal: new AbortController().signal }, true],
+    // the error can precede the abort (or come from shutdown): still not written
+    ['deferred, not aborted', { memoryFlushDeferred: true, abortSignal: new AbortController().signal }, false],
     ['pre-reply, aborted', { abortSignal: AbortSignal.abort(drainError) }, true],
+    ['pre-reply', {}, true],
   ]) {
     const { fakes, calls } = memoryFakes({ fakes: { resolveMemoryFlushPlan: (p) => { if (p.nowMs) throw drainError; return { softThresholdTokens: 4000, forceFlushTranscriptBytes: 2097152, reserveTokensFloor: 20000 }; } } });
     const { runMemoryFlushIfNeeded } = loadMemoryModule({ ...fakes, isAbortError: (e) => e?.name === 'AbortError', truncateUtf16Safe: (v) => v, formatErrorMessage: (e) => String(e?.message ?? e) });
     const result = await runMemoryFlushIfNeeded(baseParams({ onVisibleErrorPayloads() {}, ...extra }));
     assert.equal(result.outcome, 'failed', label);
     assert.equal(calls.updateSessionEntry.length > 0, counted, label);
+    assert.equal(result.failureName, extra.memoryFlushDeferred ? 'GatewayDrainingError' : undefined, label);
   }
 });
 
@@ -772,7 +775,7 @@ function integratedSession({ stats } = {}) {
     createDeferredEmbeddedRunLifecycleManager: (p) => {
       const controller = new AbortController();
       return {
-        signal: AbortSignal.any([p.abortSignal, controller.signal]), adopt() {}, abort: () => controller.abort(),
+        signal: p.abortSignal ? AbortSignal.any([p.abortSignal, controller.signal]) : controller.signal, adopt() {}, abort: () => controller.abort(),
         complete: async () => { await completeGate?.promise; },
       };
     },
@@ -785,6 +788,7 @@ function integratedSession({ stats } = {}) {
         if (p.abortSignal.aborted) return onAbort();
         p.abortSignal.addEventListener('abort', onAbort, { once: true });
         call.finish = () => { p.abortSignal.removeEventListener('abort', onAbort); resolve(); };
+        call.fail = (error) => { p.abortSignal.removeEventListener('abort', onAbort); reject(error); };
       });
     },
   } });
@@ -808,7 +812,7 @@ function integratedSession({ stats } = {}) {
   // let the real module's awaits (including the memory file's fs calls) run out
   const settle = async () => { for (let i = 0; i < 5; i += 1) await new Promise((r) => setTimeout(r, 5)); };
   const gateCompletion = () => { let open; completeGate = { promise: new Promise((r) => { open = r; }) }; return () => { completeGate = undefined; open(); }; };
-  return { t, store, embedded, preReplyCheck, settle, gateCompletion, ranLines: () => t.log.filter((l) => l.includes('"phase":"ran"')).map((l) => JSON.parse(l.replace('[memory-flush-deferred.1] ', ''))) };
+  return { t, store, embedded, memory, preReplyCheck, settle, gateCompletion, ranLines: () => t.log.filter((l) => l.includes('"phase":"ran"')).map((l) => JSON.parse(l.replace('[memory-flush-deferred.1] ', ''))) };
 }
 
 test('abort mid-flush, the next turn defers again, then after idle the flush really runs (not skipped)', async () => {
@@ -821,7 +825,7 @@ test('abort mid-flush, the next turn defers again, then after idle the flush rea
   // a new turn: yield aborts the running flush
   assert.equal(s.t.api.yieldDeferredMemoryFlush(sessionKey, 'inbound-turn'), true);
   await s.settle();
-  assert.deepEqual(s.ranLines().at(-1), { phase: 'ran', session: s.ranLines().at(-1).session, outcome: 'failed', aborted: true, ms: s.ranLines().at(-1).ms });
+  assert.deepEqual(s.ranLines().at(-1), { phase: 'ran', session: s.ranLines().at(-1).session, outcome: 'failed', aborted: true, error: 'AbortError', ms: s.ranLines().at(-1).ms });
   // nothing marks the cycle as flushed, and no failure is counted
   assert.equal(s.store[sessionKey].memoryFlush, undefined);
   // that turn's own pre-reply check defers again, the reply clears, the session idles
@@ -896,4 +900,43 @@ test('a deferred run that cannot read the transcript stats keeps the flush due a
   assert.equal(b.t.api.deferredMemoryFlushJobs.size, 0);
   assert.equal(b.store[sessionKey].memoryFlush, undefined);
   assert.equal(b.embedded.length, 0);
+});
+
+test('real failure path: an error that reaches the deferred flush before the abort writes nothing; the same error before a reply writes kind=failed', async () => {
+  // what the candidate saw: memoryFlush {kind:"failed"} after "ran outcome=failed aborted=true".
+  // The guard on the aborted signal only held when the abort came first; an error raised
+  // by the incoming turn (or by shutdown) before the yield was written by
+  // recordMemoryFlushFailure as a counted failure.
+  const interrupted = Object.assign(new Error('Session work admission interrupted'), { name: 'Error' });
+  const s = integratedSession();
+  assert.equal(await s.preReplyCheck(), 'deferred');
+  s.t.afterClear.at(-1).cb();
+  s.t.timers.at(-1).fn();
+  await s.settle();
+  // the error lands and is recorded before any yield (the signal is not aborted yet)
+  s.embedded[0].fail(interrupted);
+  await s.settle();
+  assert.equal(s.store[sessionKey].memoryFlush, undefined);
+  const ran = s.ranLines().at(-1);
+  assert.deepEqual([ran.outcome, ran.error], ['failed', 'Error']);
+  // the next turn defers again, and the idle re-run flushes
+  assert.equal(await s.preReplyCheck(), 'deferred');
+  s.t.afterClear.at(-1).cb();
+  s.t.timers.at(-1).fn();
+  await s.settle();
+  s.embedded[1].finish();
+  await s.settle();
+  assert.equal(s.ranLines().at(-1).outcome, 'completed');
+  assert.deepEqual(s.store[sessionKey].memoryFlush, { kind: 'succeeded', compactionCount: 0 });
+
+  // the stock pre-reply path through the same code: kind=failed, counted toward the budget
+  const p = integratedSession();
+  p.store[sessionKey] = entry({ compactionCount: 101 });
+  const followup = { ...followupRun('用户消息'), run: { ...followupRun().run, workspaceDir: fs.mkdtempSync(path.join(fs.realpathSync(process.env.TMPDIR ?? '/tmp'), 'memflush-')), config: {} } };
+  after(() => fs.rmSync(followup.run.workspaceDir, { recursive: true, force: true }));
+  const pending = p.memory.runMemoryFlushIfNeeded(baseParams({ followupRun: followup, promptForEstimate: '', sessionEntry: p.store[sessionKey], onVisibleErrorPayloads() {} }));
+  await p.settle();
+  p.embedded[0].fail(interrupted);
+  assert.equal((await pending).outcome, 'failed');
+  assert.deepEqual(p.store[sessionKey].memoryFlush, { kind: 'failed', failureCount: 1 });
 });

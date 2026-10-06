@@ -1126,8 +1126,9 @@ async function recordMemoryFlushFailure(error, run, initialSessionEntry) {
 	let outcome = "failed";
 	const truncatedError = truncateMemoryFlushErrorMessage(error);
 	const { sessionKey, storePath } = run;
-	// memory-flush-defer-v1: a deferred flush that was aborted (new turn, restart drain) is not a failure.
-	if (!isAbortError(error) && !(run.memoryFlushDeferred === true && run.abortSignal?.aborted === true) && storePath && sessionKey) try {
+	// memory-flush-defer-v1: a deferred flush runs behind the reply and is interrupted by design
+	// (new turn, restart drain, shutdown); it never writes the failure budget.
+	if (!isAbortError(error) && run.memoryFlushDeferred !== true && storePath && sessionKey) try {
 		const adoptEntry = (entry) => {
 			if (entry) {
 				sessionEntry = entry;
@@ -1169,7 +1170,9 @@ async function recordMemoryFlushFailure(error, run, initialSessionEntry) {
 	if (visibleErrorPayload) run.onVisibleErrorPayloads?.([visibleErrorPayload]);
 	return {
 		sessionEntry,
-		outcome
+		outcome,
+		// memory-flush-defer-v1: the error class only, for the deferred run's log line.
+		...run.memoryFlushDeferred === true ? { failureName: isAbortError(error) ? "AbortError" : error instanceof Error ? error.name : typeof error } : {}
 	};
 }
 //#endregion
