@@ -42,3 +42,9 @@ fa1da9f8 原 H5 第二轮两个模型均有新的真实直接 memory_search，�
 取消仍失败：agent.wait 已观察 exact run 终态，但通过 Gateway 直调 process 无法找到 Worker 创建的 neat-breeze；返回 No session found/failed 后，独立 /proc 仍看到同一 PID/startTicks。之后 PID 消失不能改写原失败。当前修复只让此类查询错误保留清理责任，不再谎报取消成功；跨 Worker 的正确执行会话控制还未完成。Grok 的完整原 USER 虽明确要求后台，仍自己使用原生工具完成目标，未产生 delegate_to_v，本轮委派路由失败。
 
 后续补丁强化用户明确后台请求必须委派，并单独复验 Grok 核心路径；该样本只验证直接工具、后台闲聊、自动最终返回和公开进度，不覆盖或替代原取消失败。共享、生产和 PR217 发布仍等待用户通知。
+
+## Grok 核心复验和隔离收尾
+
+f6217211 新原 H5 样本只选择 Grok hybrid-core（不包含取消）。五项核心检查通过：接通问候、直接记忆、后台未完成前回答小汽车笑话、单一 V run 自动多步执行及最终原生语音、真实工具结果后的阶段播报。独立原 audit/供应商字幕/PCM 复查确认这一轮实际后台工具结果和音频返回，电话已正常关闭；严格最终保真、物理 AEC 和真人听觉未重新验收。小何核心证据来自 4349c4f6，不能称 f621 最新整包双模型全面验收。
+
+两轮 Candidate 均已收尾。第二轮五个自有 unit 全部 not-found/MainPID=0，运行目录已移除，exact 私有 Grok 凭据已删除。原 raw audit/PCM 留在独立 /tmp/codex-voice-hybrid-* 证据目录。canonical tests=[] 的 ok 回执只证明隔离窗口正常停止，不能替代上述实际语音或取消结果。未触碰共享 lease、dev 或 V；PR217 发布仍等待用户通知。
