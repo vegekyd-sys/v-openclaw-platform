@@ -10,9 +10,11 @@ import {
   STEER_WAIT_MS,
   MEMORY_FLUSH_DEFER_MARKER,
   MIN_HEADROOM_TOKENS,
+  extractBuiltinQueueHandle,
   extractDeferRegion,
   patchAgentRunnerMemory,
   patchAgentRunnerRuntime,
+  patchBuiltinOpenclaw,
 } from './patch-memory-flush-defer.mjs';
 import { EXPECTED_INPUT_SHA256 } from './build-memory-flush-defer.mjs';
 
@@ -26,6 +28,13 @@ const runtimeOut = released('agent-runner.runtime-CAdsMsQt.js');
 const admissionSource = read('./fixtures/memory-flush-defer/gateway-work-admission-3tn4Qiws.js');
 const ADMISSION_SHA256 = '7018c585a8ba0c7514e0521ba0e215dedcd07d8f01bd9a33121997cc0b589c10';
 const memoryOut = released('agent-runner-memory-7VF-zwNt.js');
+const builtinInput = read('../release/captured/v2026.9.1-db91.6-firsttext-r1-20261006/dist/builtin-openclaw-zQV8Wwjr.js');
+const builtinOut = released('builtin-openclaw-zQV8Wwjr.js');
+// npm 2026.9.1 bytes of the embedded run registry (unmodified on V): the sessionId injection path.
+const runsSource = read('./fixtures/memory-flush-defer/runs-5WnDPZ0V.js');
+const RUNS_SHA256 = '407999737bf83f799b68042ab6e9de48920bcdf656be8fba58c3183a82f24359';
+// V's subagent announce delivery (V patches it), from the same capture.
+const announceSource = read('../release/captured/v2026.9.1-db91.6-firsttext-r1-20261006/dist/subagent-announce-delivery-Dosep7Zr.js');
 
 test('inputs are V\'s pinned bytes and the release files are exactly the patch of them', () => {
   assert.equal(sha(runtimeInput), EXPECTED_INPUT_SHA256['agent-runner.runtime-CAdsMsQt.js']);
@@ -38,6 +47,14 @@ test('inputs are V\'s pinned bytes and the release files are exactly the patch o
   assert.equal(manifest.files.find((f) => f.path === './agent-runner.runtime-CAdsMsQt.js').sha256, sha(runtimeInput));
   assert.equal(patchAgentRunnerRuntime(runtimeInput), runtimeOut);
   assert.equal(patchAgentRunnerMemory(memoryInput), memoryOut);
+  // builtin-openclaw: V's bytes from the latest capture (V patches it)
+  assert.equal(sha(builtinInput), EXPECTED_INPUT_SHA256['builtin-openclaw-zQV8Wwjr.js']);
+  assert.equal(manifest.files.find((f) => f.path === './builtin-openclaw-zQV8Wwjr.js').sha256, sha(builtinInput));
+  assert.equal(patchBuiltinOpenclaw(builtinInput), builtinOut);
+  // the injection path and the announce caller run below as V runs them
+  assert.equal(sha(runsSource), RUNS_SHA256);
+  assert(!manifest.files.some((f) => f.path.includes('runs-5WnDPZ0V')));
+  assert.equal(manifest.files.find((f) => f.path === './subagent-announce-delivery-Dosep7Zr.js').sha256, sha(announceSource));
 });
 
 test('each anchor is replaced exactly once and a patched file is refused', () => {
@@ -47,7 +64,9 @@ test('each anchor is replaced exactly once and a patched file is refused', () =>
   const doubled = memoryInput.replace('\tconst latch = entry.transcriptByteCompactionLatch;\n', '\tconst latch = entry.transcriptByteCompactionLatch;\n\tif (latch !== void 0 && (typeof maxActiveTranscriptBytes !== "number" || false)) {}\n');
   assert.throws(() => patchAgentRunnerMemory(doubled), /Expected exactly one byte-compaction latch clear/);
   assert.throws(() => patchAgentRunnerRuntime(runtimeInput.replace('async function executePreparedReplyAgentRun(context) {\n', '')), /Expected exactly one reply agent run executor/);
-  assert.equal(memoryOut.split(MEMORY_FLUSH_DEFER_MARKER).length - 1, 5);
+  assert.throws(() => patchBuiltinOpenclaw(builtinOut), /already patched/);
+  assert.throws(() => patchBuiltinOpenclaw(builtinInput.replace('\t\tisCompacting: () => subscription.isCompacting(),\n', '')), /Expected exactly one embedded run compacting state/);
+  assert.equal(memoryOut.split(MEMORY_FLUSH_DEFER_MARKER).length - 1, 7);
   assert.equal(memoryOut.split('if (!isAbortError(error) && run.memoryFlushDeferred !== true && storePath && sessionKey) try {').length - 1, 1);
   assert.equal(runtimeOut.split('deferPreReplyFlush:').length - 1, 1);
   assert.equal(runtimeOut.split('yieldDeferredMemoryFlush(sessionKey, "inbound-turn")').length - 1, 1);
@@ -759,7 +778,7 @@ test('a heartbeat during a running deferred flush neither yields it nor runs', a
 // store (VLab candidate at 6f05930, interrupt arm: abort mid-flush, the next turn defers
 // again, and the re-run after the idle wait ended "skipped" without writing memory).
 
-function integratedSession({ stats } = {}) {
+function integratedSession({ stats, world } = {}) {
   const workspaceDir = fs.mkdtempSync(path.join(fs.realpathSync(process.env.TMPDIR ?? '/tmp'), 'memflush-'));
   after(() => fs.rmSync(workspaceDir, { recursive: true, force: true }));
   const store = { [sessionKey]: entry() };
@@ -790,16 +809,34 @@ function integratedSession({ stats } = {}) {
         complete: async () => { await completeGate?.promise; },
       };
     },
-    // the embedded flush run: holds until finished, rejects when aborted first
+    // the embedded flush run: holds until finished, rejects when aborted first. With a
+    // `world`, the attempt registers builtin-openclaw's real run handle for its sessionId
+    // (as setActiveEmbeddedRun does) and keeps it, aborted, until it has unwound.
     runEmbeddedAgentEntry: async (p) => {
       const call = { params: p };
       embedded.push(call);
+      const sessionId = p.identity.sessionId;
+      let runInput;
+      if (world) {
+        runInput = { state: { aborted: false }, runAbortController: new AbortController(), activeSession: { isStreaming: true, agent: {} } };
+        runInput.getRunState = () => runInput.state;
+        runInput.abortRun = () => { runInput.state.aborted = true; runInput.runAbortController.abort(); };
+        // runMemoryFlushIfNeeded hands runEmbeddedAgent trigger "memory" and runId flushRunId
+        call.handle = world.api.makeEmbeddedRunHandle({ runId: p.identity.runId, trigger: 'memory', sessionId, sessionKey }, runInput, { isCompacting: () => false });
+        world.ACTIVE_EMBEDDED_RUNS.set(sessionId, call.handle);
+      }
+      const release = () => { if (world && world.ACTIVE_EMBEDDED_RUNS.get(sessionId) === call.handle) world.ACTIVE_EMBEDDED_RUNS.delete(sessionId); };
       await new Promise((resolve, reject) => {
-        const onAbort = () => reject(p.abortSignal.reason);
+        const onAbort = async () => {
+          runInput?.abortRun();
+          await world?.unwindGate?.promise;
+          release();
+          reject(p.abortSignal.reason);
+        };
         if (p.abortSignal.aborted) return onAbort();
         p.abortSignal.addEventListener('abort', onAbort, { once: true });
-        call.finish = () => { p.abortSignal.removeEventListener('abort', onAbort); resolve(); };
-        call.fail = (error) => { p.abortSignal.removeEventListener('abort', onAbort); reject(error); };
+        call.finish = () => { p.abortSignal.removeEventListener('abort', onAbort); release(); resolve(); };
+        call.fail = (error) => { p.abortSignal.removeEventListener('abort', onAbort); release(); reject(error); };
       });
     },
   } });
@@ -1001,4 +1038,227 @@ test('the steer wait ends when the real reply ends, and never applies without an
   assert.deepEqual(h.decisions.map((d) => d[0]), ['steer']);
   assert(!t.log.some((l) => l.includes('steer-wait')));
   assert(STEER_WAIT_MS >= 1000 && STEER_WAIT_MS <= 10000);
+});
+
+// ---------------------------------------------------------------------------------------
+// Injection by sessionId (builtin-openclaw): the real queue path of the embedded run
+// registry (npm runs-5WnDPZ0V.js), V's subagent announce delivery and the embedded run
+// handle of builtin-openclaw (patched, or V's bytes for the contrast), in one scope.
+
+function extractFunctions(source, names, label) {
+  return names.map((name) => {
+    const re = new RegExp(`^(?:async )?function ${name}\\(`, 'gm');
+    const found = [...source.matchAll(re)];
+    assert.equal(found.length, 1, `${label}: exactly one ${name}`);
+    const end = source.indexOf('\n}\n', found[0].index);
+    return source.slice(found[0].index, end + 2);
+  }).join('\n');
+}
+
+function injectionWorld({ builtin = builtinOut } = {}) {
+  const ACTIVE_EMBEDDED_RUNS = new Map();
+  const steered = [];
+  const outcomes = [];
+  let api;
+  const world = { ACTIVE_EMBEDDED_RUNS, steered, outcomes, unwindGate: undefined };
+  const fakes = {
+    ACTIVE_EMBEDDED_RUNS,
+    ACTIVE_EMBEDDED_RUNS_BY_RUN_ID: new Map(),
+    isReplyRunEvidenceStaleBySessionId: () => false,
+    isReplyRunActiveForSessionId: () => false,
+    diagnosticLogger: { debug() {}, warn() {} },
+    resolveActiveEmbeddedRunRecoveryBlocker: () => undefined,
+    getDiagnosticSessionActivitySnapshot: () => ({}),
+    resolveRunStaleThresholdMs: () => 600_000,
+    resolveReplyBackendQueueMessageMismatch: () => undefined,
+    resolveActiveReplyOperationForSessionId: () => undefined,
+    normalizeOptionalString: (v) => (typeof v === 'string' && v.trim() ? v.trim() : undefined),
+    hasPromptImageInput: () => false,
+    formatErrorMessage: (e) => String(e?.message ?? e),
+    logMessageQueuedWithBacklogPolicy: () => {},
+    isFastTestRuntimeEnv: () => true,
+    tryResolveSubagentRequesterAgentId: () => 'makaron',
+    resolveRequesterStoreKey: (_cfg, key) => key,
+    resolveQueueSettings: () => ({}),
+    sessionDeliveryChannel: () => undefined,
+    subagentAnnounceDeliveryDeps: {
+      getRuntimeConfig: () => ({}),
+      // the default dependency: the requester's session id, active while any run holds it
+      getRequesterSessionActivity: () => ({ sessionId: 's1', isActive: api.isEmbeddedAgentRunActive('s1') }),
+      isRequesterSessionAbandoned: () => false,
+      loadRequesterSessionEntry: () => ({ entry: { sessionId: 's1' } }),
+      queueEmbeddedAgentMessageWithOutcome: async (...args) => {
+        const outcome = await api.queueEmbeddedAgentMessageWithOutcomeAsync(...args);
+        outcomes.push(outcome.queued ? 'queued' : outcome.reason);
+        return outcome;
+      },
+    },
+    // the attempt's steering into its live agent session: the message is absorbed by that run
+    steerActiveSessionWithOptionalDeliveryWait: async (_session, text) => { steered.push(text); return {}; },
+    closeDiagnosticEmbeddedRunOwner: () => {},
+    claimEmbeddedPendingUserInputAnswer: async () => false,
+    cancelPendingAgentQuestionForSession: () => {},
+  };
+  const scope = new Proxy({}, {
+    has: (_t, k) => typeof k === 'string',
+    get: (_t, k) => {
+      if (k === Symbol.unscopables) return undefined;
+      if (Object.hasOwn(fakes, k)) return fakes[k];
+      if (k in globalThis) return globalThis[k];
+      return (...args) => { throw new Error(`unexpected call to ${String(k)}(${JSON.stringify(args).slice(0, 80)})`); };
+    },
+  });
+  const runs = extractFunctions(runsSource, ['createQueueFailureOutcome', 'formatEmbeddedAgentQueueFailureSummary', 'logActiveRunMessageAccepted', 'resolveEmbeddedQueueMessage', 'prepareEmbeddedAgentQueueMessage', 'queueEmbeddedAgentMessageWithOutcomeAsync', 'isEmbeddedAgentRunActive'], 'runs');
+  const ownerChanged = 'const SOURCE_OWNER_CHANGED = Symbol("source_owner_changed");';
+  assert(announceSource.includes(`\n${ownerChanged}\n`));
+  const announce = `${ownerChanged}\n${extractFunctions(announceSource, ['getSubagentAnnounceRuntimeConfig', 'getSubagentRequesterSessionActivity', 'isSubagentRequesterSessionAbandoned', 'loadRequesterSessionEntry', 'queueSubagentAnnounceMessage', 'waitForAnnounceRetryDelay', 'resolveRequesterSessionActivity', 'resolveCompactionSteerRetryDelaysMs', 'resolveActiveWakeWithRetries', 'maybeSteerSubagentAnnounce', 'mapSteerOutcomeToDeliveryResult', 'runSubagentAnnounceDispatch'], 'announce')}`;
+  const { region, handle } = extractBuiltinQueueHandle(builtin);
+  api = new Function('scope', `with (scope) {
+${runs}
+${announce}
+${region}
+function makeEmbeddedRunHandle(attempt, input, subscription) {
+	let acceptingSteerMessages = true;
+	let activeQueueAdmissions = 0;
+	const abortActiveRunExternally = (reason) => input.abortRun(false);
+${handle}	return queueHandle;
+}
+return { queueEmbeddedAgentMessageWithOutcomeAsync, isEmbeddedAgentRunActive, maybeSteerSubagentAnnounce, runSubagentAnnounceDispatch, makeEmbeddedRunHandle };
+}`)(scope);
+  world.api = api;
+  // a subagent completion announce to the requester session (no completion message
+  // expected: steer first, direct delivery only when steering reports nothing active)
+  world.announce = async (text = 'subagent finished: report ready') => {
+    const direct = [];
+    const result = await api.runSubagentAnnounceDispatch({
+      expectsCompletionMessage: false,
+      steer: () => api.maybeSteerSubagentAnnounce({ requesterSessionKey: sessionKey, steerMessage: text }),
+      direct: async () => { direct.push(text); return { delivered: true, path: 'direct' }; },
+    });
+    return { result, direct };
+  };
+  world.holdUnwind = () => { let open; world.unwindGate = { promise: new Promise((r) => { open = r; }) }; return () => { world.unwindGate = undefined; open(); }; };
+  return world;
+}
+
+async function runningDeferredFlush(world) {
+  const s = integratedSession({ world });
+  assert.equal(await s.preReplyCheck(), 'deferred');
+  s.t.afterClear.at(-1).cb();
+  s.t.timers.at(-1).fn();
+  await s.settle();
+  assert.equal(s.embedded.length, 1);
+  assert.equal(world.ACTIVE_EMBEDDED_RUNS.get('s1'), s.embedded[0].handle);
+  return s;
+}
+
+test('the deferred flush registers its embedded run for the run\'s lifetime; the handle patch keys on that run', () => {
+  const run = memoryOut.slice(memoryOut.indexOf('async function runMemoryFlushIfNeeded(params) {'), memoryOut.indexOf('async function recordMemoryFlushFailure('));
+  // registered only for a deferred flush, before the embedded run starts, released after its lifecycle completes
+  assert.match(run, /const deferredMemoryFlushRuns = params\.memoryFlushDeferred === true \? globalThis\[Symbol\.for\("openclaw\.memoryFlushDefer\.deferredRuns\.v1"\)\] \?\?= /);
+  const registeredAt = run.indexOf('deferredMemoryFlushRuns?.set(flushRunId, {');
+  assert(registeredAt > 0 && registeredAt < run.indexOf('await runEmbeddedAgentEntry({'));
+  assert.match(run, /try \{\n\t\t\tawait deferredLifecycle\.complete\(\);\n\t\t\} finally \{\n[^\n]*\n\t\t\tdeferredMemoryFlushRuns\?\.delete\(flushRunId\);/);
+  // the embedded attempt sees that run id and trigger "memory"
+  assert.match(run, /identity: \{\n\t\t\t\t\trunId: flushRunId,/);
+  assert.match(run, /runId: flushRunId,\n\t\t\t\t\t\tallowTransientCooldownProbe/);
+  assert.match(run, /trigger: "memory",\n/);
+  assert.match(runtimeOut, /onDeferredFlushInjection: \(\) => \{\n\t\t\t\tif \(!isGatewayWorkAdmissionClosed\(\)\) yieldDeferredMemoryFlush\(ctx\.sessionKey, "session-injection"\);/);
+  // the builtin handle: only isAvailable, isCompacting and queueMessage change
+  const { region, handle } = extractBuiltinQueueHandle(builtinOut);
+  assert.match(region, /attempt\.trigger !== "memory" \|\| !attempt\.runId/);
+  assert(builtinOut.indexOf(region) < builtinOut.indexOf('function prepareEmbeddedAttemptStream(input) {'));
+  assert.equal(handle.replace(/resolveDeferredMemoryFlushRun\(attempt\) !== void 0 \|\| |refuseDeferredMemoryFlushInjection\(attempt\) \|\| |\t\tif \(resolveDeferredMemoryFlushRun\(attempt\)\) throw new Error\("active run is a deferred memory flush"\);\n/g, ''), extractBuiltinQueueHandle(builtinInput).handle);
+  assert.equal(builtinOut.split(MEMORY_FLUSH_DEFER_MARKER).length - 1, 2);
+});
+
+test('repro (V bytes): an announce during a running deferred flush is absorbed by the flush and never reaches the parent', async () => {
+  const world = injectionWorld({ builtin: builtinInput });
+  const s = await runningDeferredFlush(world);
+  const { result, direct } = await world.announce();
+  assert.equal(result.path, 'steered');
+  assert.deepEqual(world.steered, ['subagent finished: report ready']);
+  assert.deepEqual(direct, []);
+  // the flush did not yield: the message is now part of its NO_REPLY housekeeping turn
+  assert.equal(s.embedded[0].params.abortSignal.aborted, false);
+  assert(!s.t.log.some((l) => l.includes('"phase":"yielded"')));
+  s.embedded[0].finish();
+  await s.settle();
+});
+
+test('an announce during a running deferred flush is not absorbed: the flush yields and the announce reaches the parent', async () => {
+  const world = injectionWorld();
+  const s = await runningDeferredFlush(world);
+  // the aborted flush keeps its handle registered while it unwinds
+  const openUnwind = world.holdUnwind();
+  const pending = world.announce();
+  while (world.outcomes.length < 2) await new Promise((r) => globalThis.setTimeout(r, 1));
+  // refused as compacting while running and while unwinding (stock would say not_streaming
+  // for the aborted run, and the announce would be dropped: next test)
+  assert.deepEqual(world.outcomes, ['compacting', 'compacting']);
+  assert.equal(s.embedded[0].handle.isStopped(), true);
+  assert.equal(s.embedded[0].params.abortSignal.aborted, true);
+  openUnwind();
+  const { result, direct } = await pending;
+  assert.equal(result.delivered, true);
+  assert.equal(result.path, 'direct');
+  assert.deepEqual(result.phases.map((p) => [p.phase, p.path, p.reason]), [['steer-primary', 'none', undefined], ['direct-primary', 'direct', undefined]]);
+  assert.deepEqual(direct, ['subagent finished: report ready']);
+  assert.deepEqual(world.steered, []);
+  assert.deepEqual(world.outcomes.slice(-2), ['transcript_commit_wait_unsupported', 'no_active_run']);
+  assert(world.outcomes.slice(0, -2).every((o) => o === 'compacting'));
+  // the flush yielded once, counted nothing, and waits for idle again
+  await s.settle();
+  assert.equal(s.t.log.filter((l) => l.includes('"phase":"yielded"')).length, 1);
+  assert.match(s.t.log.find((l) => l.includes('"phase":"yielded"')), /"reason":"session-injection"/);
+  assert.deepEqual([s.ranLines().at(-1).outcome, s.ranLines().at(-1).aborted], ['failed', true]);
+  assert.equal(s.store[sessionKey].memoryFlush, undefined);
+  assert.equal(globalThis[Symbol.for('openclaw.memoryFlushDefer.deferredRuns.v1')].size, 0);
+  assert.equal(s.t.api.deferredMemoryFlushJobs.size, 1);
+  // after the idle wait the flush runs again, undisturbed, and completes
+  s.t.timers.at(-1).fn();
+  await s.settle();
+  assert.equal(s.embedded.length, 2);
+  s.embedded[1].finish();
+  await s.settle();
+  assert.equal(s.ranLines().at(-1).outcome, 'completed');
+  assert.deepEqual(s.store[sessionKey].memoryFlush, { kind: 'succeeded', compactionCount: 0 });
+});
+
+test('why compacting and not not_streaming: an announce refused as not_streaming by a still-active run is dropped', async () => {
+  const world = injectionWorld();
+  world.ACTIVE_EMBEDDED_RUNS.set('s1', { runId: 'r1', messageInjection: { isAvailable: () => false, queueMessage: async () => {} }, isCompacting: () => false });
+  const { result, direct } = await world.announce();
+  assert.deepEqual([result.delivered, result.reason], [false, 'steer_dropped']);
+  assert.deepEqual(direct, []);
+  assert.deepEqual(world.outcomes, ['not_streaming']);
+});
+
+test('a stock pre-reply flush is not registered and still accepts injection; a restart drain does not count as an injection', async () => {
+  const world = injectionWorld();
+  const p = integratedSession({ world });
+  const followup = { ...followupRun('用户消息'), run: { ...followupRun().run, workspaceDir: fs.mkdtempSync(path.join(fs.realpathSync(process.env.TMPDIR ?? '/tmp'), 'memflush-')), config: {} } };
+  after(() => fs.rmSync(followup.run.workspaceDir, { recursive: true, force: true }));
+  const pending = p.memory.runMemoryFlushIfNeeded(baseParams({ followupRun: followup, promptForEstimate: '', sessionEntry: p.store[sessionKey], onVisibleErrorPayloads() {} }));
+  await p.settle();
+  assert.equal(world.ACTIVE_EMBEDDED_RUNS.get('s1'), p.embedded[0].handle);
+  const outcome = await world.api.queueEmbeddedAgentMessageWithOutcomeAsync('s1', 'steer me', { steeringMode: 'all' });
+  assert.equal(outcome.queued, true);
+  assert.deepEqual(world.steered, ['steer me']);
+  p.embedded[0].finish();
+  assert.equal((await pending).outcome, 'completed');
+
+  // restart drain asks every run isCompacting() (abortEmbeddedAgentRun mode "compacting");
+  // with admission closed the deferred flush is not yielded through this path (the drain
+  // signal aborts it)
+  const s = await runningDeferredFlush(injectionWorld());
+  const fence = s.t.admission.beginGatewayRestartSignalAdmission();
+  assert.equal(s.embedded[0].handle.isCompacting(), true);
+  assert(!s.t.log.some((l) => l.includes('"phase":"yielded"')));
+  assert.equal(s.embedded[0].params.abortSignal.aborted, false);
+  fence.rollback();
+  // once admission is open, the same question is an injection and yields
+  assert.equal(s.embedded[0].handle.isCompacting(), true);
+  assert.equal(s.embedded[0].params.abortSignal.aborted, true);
+  await s.settle();
 });

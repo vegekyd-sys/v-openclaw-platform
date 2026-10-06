@@ -107,11 +107,23 @@ import assert from 'node:assert/strict';
 // session is in flight and another real reply is registered, a steer-mode turn now
 // waits (at most STEER_WAIT_MS) until that reply can take the message, or until it ends,
 // and then steers as stock would (phase=steer-wait).
-// Not covered: sessionId-based injection (queueEmbeddedAgentMessageWithOutcome, used by
-// the TUI embedded backend, realtime voice control, sessions_spawn and subagent
-// announces) reaches whatever embedded run is active, including a running flush, which
-// accepts it as stock pre-reply flushes do; those callers do not go through
-// runReplyAgent, so they do not yield the flush.
+//
+// Injection by sessionId (queueEmbeddedAgentMessageWithOutcome: the TUI embedded backend,
+// realtime voice control, sessions_spawn into a run-scoped session and subagent
+// announces) reaches whatever embedded run is active for the sessionId, and a running
+// deferred flush took such a message in as a stock pre-reply flush does. Those callers do
+// not go through runReplyAgent, so they did not yield the flush either, and the message
+// became part of a NO_REPLY housekeeping turn. A deferred flush now registers its run id
+// (agent-runner-memory, only when memoryFlushDeferred), and builtin-openclaw's embedded
+// run handle for that run refuses the injection as a compacting run does: prepare
+// reports reason "compacting", the outcome every caller already handles (subagent
+// announces retry and then deliver directly to the parent, the TUI embedded backend queues
+// a followup, voice control speaks the compacting refusal, sessions_spawn reports the
+// rejection). Refusing as "not_streaming" instead would make a subagent announce for a
+// requester that still looks active end "dropped". The refusal also yields the flush
+// (phase=yielded reason=session-injection), unless Gateway admission is closed (a
+// restart drain asks compacting runs the same question and already aborts the flush).
+// A stock pre-reply flush is not registered and still accepts injection.
 // OPENCLAW_DEFER_PRE_REPLY_MEMORY_FLUSH=0 turns it off. Tagged log lines
 // `[memory-flush-deferred.1]` carry a hashed session key and numbers, never message text.
 
@@ -210,6 +222,29 @@ const FAILURE_RETURN_AFTER = `\treturn {
 //#endregion
 export`;
 
+export const DEFERRED_FLUSH_RUNS_KEY = 'openclaw.memoryFlushDefer.deferredRuns.v1';
+
+const FLUSH_RUN_REGISTER_BEFORE = '\tconst flushedCompactionCount = activeSessionEntry?.compactionCount ?? 0;\n';
+const FLUSH_RUN_REGISTER_AFTER = `\t// ${MEMORY_FLUSH_DEFER_MARKER}: a deferred flush registers its run: the embedded run's handle
+	// (builtin-openclaw) refuses injection by sessionId as compacting and asks the flush to yield.
+	const deferredMemoryFlushRuns = params.memoryFlushDeferred === true ? globalThis[Symbol.for("${DEFERRED_FLUSH_RUNS_KEY}")] ??= /* @__PURE__ */ new Map() : void 0;
+	deferredMemoryFlushRuns?.set(flushRunId, {
+		sessionKey: params.sessionKey,
+		onInjection: typeof params.onDeferredFlushInjection === "function" ? params.onDeferredFlushInjection : void 0
+	});
+${FLUSH_RUN_REGISTER_BEFORE}`;
+
+const FLUSH_RUN_RELEASE_BEFORE = '\t} finally {\n\t\tawait deferredLifecycle.complete();\n\t\tif (flushRunRegistered) clearAgentRunContext(flushRunId);\n';
+const FLUSH_RUN_RELEASE_AFTER = `\t} finally {
+		try {
+			await deferredLifecycle.complete();
+		} finally {
+			// ${MEMORY_FLUSH_DEFER_MARKER}: registered until the embedded run has let go of the session
+			deferredMemoryFlushRuns?.delete(flushRunId);
+		}
+		if (flushRunRegistered) clearAgentRunContext(flushRunId);
+`;
+
 export function patchAgentRunnerMemory(source) {
   assert(!source.includes(MEMORY_FLUSH_DEFER_MARKER), 'agent-runner-memory is already patched');
   let out = replaceExactlyOnce(source, FLUSH_DECISION_BEFORE, FLUSH_DECISION_AFTER, 'memory flush decision');
@@ -217,6 +252,8 @@ export function patchAgentRunnerMemory(source) {
   out = replaceExactlyOnce(out, PREFLIGHT_GATE_BEFORE, PREFLIGHT_GATE_AFTER, 'preflight compaction gate');
   out = replaceExactlyOnce(out, FAILURE_COUNT_BEFORE, FAILURE_COUNT_AFTER, 'memory flush failure accounting');
   out = replaceExactlyOnce(out, FAILURE_RETURN_BEFORE, FAILURE_RETURN_AFTER, 'memory flush failure result');
+  out = replaceExactlyOnce(out, FLUSH_RUN_REGISTER_BEFORE, FLUSH_RUN_REGISTER_AFTER, 'memory flush run registration');
+  out = replaceExactlyOnce(out, FLUSH_RUN_RELEASE_BEFORE, FLUSH_RUN_RELEASE_AFTER, 'memory flush run release');
   return out;
 }
 
@@ -501,6 +538,12 @@ async function runDeferredMemoryFlush(ctx, abortSignal, report = {}) {
 			isHeartbeat: false,
 			abortSignal,
 			memoryFlushDeferred: true,
+			// an injection by sessionId was refused by this run's handle: the message goes
+			// elsewhere, the flush yields. A restart drain asks the same question and already
+			// aborts the flush through the drain signal.
+			onDeferredFlushInjection: () => {
+				if (!isGatewayWorkAdmissionClosed()) yieldDeferredMemoryFlush(ctx.sessionKey, "session-injection");
+			},
 			onVisibleErrorPayloads: (payloads) => {
 				logVerbose(\`deferred memory flush produced \${payloads.length} maintenance error payload(s)\`);
 			}
@@ -642,4 +685,68 @@ export function extractDeferRegion(patchedRuntime) {
   const end = patchedRuntime.indexOf(DEFER_REGION_END);
   assert(start >= 0 && end > start, 'memory-flush-defer region not found');
   return patchedRuntime.slice(start, end + DEFER_REGION_END.length);
+}
+
+// ---------------------------------------------------------------------------------------
+// builtin-openclaw-zQV8Wwjr.js (V's bytes: V patches it)
+
+export const BUILTIN_REGION_START = `//#region ${MEMORY_FLUSH_DEFER_MARKER}`;
+export const BUILTIN_REGION_END = `//#endregion ${MEMORY_FLUSH_DEFER_MARKER}`;
+
+const BUILTIN_REGION = `${BUILTIN_REGION_START}
+/**
+* A deferred memory flush (memory-flush-defer) runs behind the reply with no reply
+* operation, and agent-runner-memory registers its run id. Injection by sessionId must
+* not land in it: its handle reads as available and compacting, so prepare refuses with
+* reason "compacting" (the refusal every caller already handles: retry, followup or direct
+* delivery), and the flush is asked to yield. Any other run is untouched.
+*/
+function resolveDeferredMemoryFlushRun(attempt) {
+	if (attempt.trigger !== "memory" || !attempt.runId) return;
+	return globalThis[Symbol.for("${DEFERRED_FLUSH_RUNS_KEY}")]?.get(attempt.runId);
+}
+function refuseDeferredMemoryFlushInjection(attempt) {
+	const run = resolveDeferredMemoryFlushRun(attempt);
+	if (!run) return false;
+	try {
+		run.onInjection?.();
+	} catch {}
+	return true;
+}
+${BUILTIN_REGION_END}
+`;
+
+const PREPARE_STREAM_FN = 'function prepareEmbeddedAttemptStream(input) {\n';
+
+const QUEUE_MESSAGE_BEFORE = '\tconst queueMessage = async (text, options) => {\n\t\tconst canInject = () => acceptingSteerMessages && !input.getRunState().aborted && !input.runAbortController.signal.aborted;\n';
+const QUEUE_MESSAGE_AFTER = '\tconst queueMessage = async (text, options) => {\n\t\tif (resolveDeferredMemoryFlushRun(attempt)) throw new Error("active run is a deferred memory flush");\n\t\tconst canInject = () => acceptingSteerMessages && !input.getRunState().aborted && !input.runAbortController.signal.aborted;\n';
+
+// available while registered (also while it unwinds from the yield): a "not_streaming"
+// refusal would make a subagent announce for a still-active requester end "dropped"
+const INJECTION_AVAILABLE_BEFORE = '\t\t\tisAvailable: () => acceptingSteerMessages && !input.getRunState().aborted && !input.runAbortController.signal.aborted,\n';
+const INJECTION_AVAILABLE_AFTER = '\t\t\tisAvailable: () => resolveDeferredMemoryFlushRun(attempt) !== void 0 || acceptingSteerMessages && !input.getRunState().aborted && !input.runAbortController.signal.aborted,\n';
+
+const IS_COMPACTING_BEFORE = '\t\tisCompacting: () => subscription.isCompacting(),\n';
+const IS_COMPACTING_AFTER = '\t\tisCompacting: () => refuseDeferredMemoryFlushInjection(attempt) || subscription.isCompacting(),\n';
+
+export function patchBuiltinOpenclaw(source) {
+  assert(!source.includes(MEMORY_FLUSH_DEFER_MARKER), 'builtin-openclaw is already patched');
+  let out = replaceExactlyOnce(source, PREPARE_STREAM_FN, `${BUILTIN_REGION}${PREPARE_STREAM_FN}`, 'embedded attempt stream preparation');
+  out = replaceExactlyOnce(out, QUEUE_MESSAGE_BEFORE, QUEUE_MESSAGE_AFTER, 'embedded run queueMessage');
+  out = replaceExactlyOnce(out, INJECTION_AVAILABLE_BEFORE, INJECTION_AVAILABLE_AFTER, 'embedded run injection availability');
+  out = replaceExactlyOnce(out, IS_COMPACTING_BEFORE, IS_COMPACTING_AFTER, 'embedded run compacting state');
+  return out;
+}
+
+/** The embedded run handle of a patched builtin (queueMessage through attachBackend), for tests. */
+export function extractBuiltinQueueHandle(patchedBuiltin) {
+  const regionStart = patchedBuiltin.indexOf(BUILTIN_REGION_START);
+  const regionEnd = patchedBuiltin.indexOf(BUILTIN_REGION_END);
+  const start = patchedBuiltin.indexOf('\tconst queueMessage = async (text, options) => {\n');
+  const end = patchedBuiltin.indexOf('\tattempt.replyOperation?.attachBackend(queueHandle);\n', start);
+  assert(start >= 0 && end > start, 'embedded run handle not found');
+  return {
+    region: regionStart >= 0 && regionEnd > regionStart ? patchedBuiltin.slice(regionStart, regionEnd + BUILTIN_REGION_END.length) : '',
+    handle: patchedBuiltin.slice(start, end),
+  };
 }

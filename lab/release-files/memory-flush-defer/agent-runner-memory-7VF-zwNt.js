@@ -936,6 +936,13 @@ async function runMemoryFlushIfNeeded(params) {
 		sessionFile: params.followupRun.run.sessionFile,
 		abortSignal
 	});
+	// memory-flush-defer-v1: a deferred flush registers its run: the embedded run's handle
+	// (builtin-openclaw) refuses injection by sessionId as compacting and asks the flush to yield.
+	const deferredMemoryFlushRuns = params.memoryFlushDeferred === true ? globalThis[Symbol.for("openclaw.memoryFlushDefer.deferredRuns.v1")] ??= /* @__PURE__ */ new Map() : void 0;
+	deferredMemoryFlushRuns?.set(flushRunId, {
+		sessionKey: params.sessionKey,
+		onInjection: typeof params.onDeferredFlushInjection === "function" ? params.onDeferredFlushInjection : void 0
+	});
 	const flushedCompactionCount = activeSessionEntry?.compactionCount ?? 0;
 	const compaction = {
 		count: 0,
@@ -1116,7 +1123,12 @@ async function runMemoryFlushIfNeeded(params) {
 	} catch (error) {
 		return await recordFailure(error);
 	} finally {
-		await deferredLifecycle.complete();
+		try {
+			await deferredLifecycle.complete();
+		} finally {
+			// memory-flush-defer-v1: registered until the embedded run has let go of the session
+			deferredMemoryFlushRuns?.delete(flushRunId);
+		}
 		if (flushRunRegistered) clearAgentRunContext(flushRunId);
 		preparedRunAdmission.close();
 	}

@@ -7377,6 +7377,12 @@ async function runDeferredMemoryFlush(ctx, abortSignal, report = {}) {
 			isHeartbeat: false,
 			abortSignal,
 			memoryFlushDeferred: true,
+			// an injection by sessionId was refused by this run's handle: the message goes
+			// elsewhere, the flush yields. A restart drain asks the same question and already
+			// aborts the flush through the drain signal.
+			onDeferredFlushInjection: () => {
+				if (!isGatewayWorkAdmissionClosed()) yieldDeferredMemoryFlush(ctx.sessionKey, "session-injection");
+			},
 			onVisibleErrorPayloads: (payloads) => {
 				logVerbose(`deferred memory flush produced ${payloads.length} maintenance error payload(s)`);
 			}
