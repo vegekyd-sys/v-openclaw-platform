@@ -21,6 +21,8 @@ import assert from 'node:assert/strict';
 //   listByEnvironmentIds(ids)      full records whose environment_id is one of ids, by session id
 // and reads the existing listForReconcile() (every state except local and reclaimed) and getMany()
 // where only those rows can matter. A caller given a store without the new methods keeps list().
+// With no worker profile that sets suspendAfter, the auto-suspend sweep does nothing; the minute
+// sweep now skips it, and with it that publication's before and after snapshots.
 //
 // Session retirement between full passes checks only listForReconcile() placements, the ones that
 // can own a worker environment that needs tearing down. Local and reclaimed rows (row cleanup
@@ -108,6 +110,14 @@ function snapshotEntriesForNode(options, nodeId) {
     '\tconst reconcile = async () => {\n\t\tconst placements = deps.placements.list();\n',
     '\tconst reconcile = async (options) => {\n\t\tconst placements = options?.full === false && typeof deps.placements.listForReconcile === "function" ? deps.placements.listForReconcile() : deps.placements.list();\n',
     'session retirement list');
+  out = replaceExactlyOnce(out,
+    '\treturn { async sweep() {\n\t\tconst profiles = options.getConfig().cloudWorkers?.profiles;\n\t\tif (!profiles || !Object.values(profiles).some((profile) => profile.suspendAfter)) return;\n',
+    '\treturn {\n\tenabled() {\n\t\tconst profiles = options.getConfig().cloudWorkers?.profiles;\n\t\treturn Boolean(profiles && Object.values(profiles).some((profile) => profile.suspendAfter));\n\t},\n\tasync sweep() {\n\t\tconst profiles = options.getConfig().cloudWorkers?.profiles;\n\t\tif (!profiles || !Object.values(profiles).some((profile) => profile.suspendAfter)) return;\n',
+    'auto-suspend sweep');
+  out = replaceExactlyOnce(out,
+    '\t\t\t\tif (stopped || placementIdleSuspend.current) return;\n',
+    '\t\t\t\tif (stopped || placementIdleSuspend.current || placementIdleSweep.enabled?.() === false) return;\n',
+    'auto-suspend start');
   out = replaceExactlyOnce(out,
     'const WORKER_PLACEMENT_RECONCILE_INTERVAL_MS = 6e4;\n',
     `const WORKER_PLACEMENT_RECONCILE_INTERVAL_MS = 6e4;\n/** Between full passes, the minute sweep retires only placements that can own a worker environment. */\n${STARTUP_MARKER}${FULL_RETIREMENT_INTERVAL_MS};\n`,

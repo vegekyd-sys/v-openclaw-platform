@@ -5975,7 +5975,12 @@ function createWorkerPlacementIdleSweep(options) {
 		];
 		return () => isSessionWorkAdmissionActive(target.storePath, identities) || hasPendingFollowupQueueWork(identities);
 	}));
-	return { async sweep() {
+	return {
+	enabled() {
+		const profiles = options.getConfig().cloudWorkers?.profiles;
+		return Boolean(profiles && Object.values(profiles).some((profile) => profile.suspendAfter));
+	},
+	async sweep() {
 		const profiles = options.getConfig().cloudWorkers?.profiles;
 		if (!profiles || !Object.values(profiles).some((profile) => profile.suspendAfter)) return;
 		const pendingSessions = /* @__PURE__ */ new Set([...options.placements.listPendingWorkspaceResults().map((result) => result.sessionId), ...options.placements.listWorkspaceReconciliationOwners().map((owner) => owner.sessionId)]);
@@ -7641,7 +7646,7 @@ function createGatewayWorkerPlacementRuntime(params) {
 		};
 		const sweepActivePlacements = () => {
 			reconcileActivePlacements(lastFullRetirementAt === void 0 || Date.now() - lastFullRetirementAt >= WORKER_PLACEMENT_FULL_RETIREMENT_INTERVAL_MS || Date.now() < lastFullRetirementAt).then(() => {
-				if (stopped || placementIdleSuspend.current) return;
+				if (stopped || placementIdleSuspend.current || placementIdleSweep.enabled?.() === false) return;
 				trackOperation(placementIdleSuspend, publishPlacementChanges(() => placementIdleSweep.sweep()), "Worker placement auto-suspend sweep failed");
 			}, () => void 0);
 			sweepDiskSpace();

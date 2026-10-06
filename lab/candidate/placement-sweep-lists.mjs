@@ -17,13 +17,17 @@
 //   [ps-read]    every placement read the sweep uses: method, rows, ms, caller. While EQUIV
 //                reads remain (PATCH=on), each new read is compared with list() on the spot.
 //   [ps-retire]  each session-retirement pass: placements checked, evidence ms.
-//   [ps-tick]    each minute sweep start.
-//   [ps-lag]     the Gateway's own event-loop lag: max per 10 s window (50 ms timer drift).
+//   [ps-tick]    each minute sweep start; [ps-done] its reconcile part settled (after-snapshot
+//                included). The auto-suspend and disk-space parts start in the same window.
+//   [ps-stall]   every main-thread stall of 20 ms or more (50 ms timer drift), with its end time.
+//                A minute's sweepStallMs sums the stalls that overlap [tick, done + 250 ms], so
+//                other per-minute timers (the workboard sweep) are not counted.
+//   [ps-lag]     the Gateway's own event-loop lag: max per 10 s window, for comparison only.
 // PATCH=off  the unpatched runtime: baseline (SWEEPS minute sweeps)
 // PATCH=on   the patched runtime: every compared read equal to list(); no list() between full
 //            retirement passes; ghost and reset retired at startup, live kept, late retired by
-//            the 10-minute full pass and not before; event-loop lag in sweep windows under half
-//            of PATCH=off's (compare the two runs' summaries).
+//            the 10-minute full pass and not before (local orphans wait for a full pass by design).
+// The A/B verdict compares the two runs' summaries: sweepStallMs p50 ON under half of OFF.
 
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -63,6 +67,10 @@ const once = (src, anchor, replacement, label) => {
     "\t\tconst __psT0 = performance.now();\n\t\tconst resolveSessionEvidence = await deps.createSessionEvidenceResolver(placements);\n\t\tconsole.error(\"[ps-retire] \" + JSON.stringify({ at: Date.now(), placements: placements.length, evidenceMs: Math.round(performance.now() - __psT0) }));\n",
     "retirement evidence");
   src = once(src, "\t\tconst sweepActivePlacements = () => {\n", "\t\tconst sweepActivePlacements = () => {\n\t\t\tconsole.error(\"[ps-tick] \" + JSON.stringify({ at: Date.now() }));\n", "minute sweep");
+  // the reconcile part of the minute sweep has settled, its after-snapshot included
+  const settled = src.match(/\t\t\treconcileActivePlacements\([^\n]*?\)\.then\(\(\) => \{\n/gu);
+  assert.equal(settled?.length, 1, "minute sweep settle anchor not found exactly once");
+  src = src.replace(settled[0], `${settled[0]}\t\t\t\tconsole.error("[ps-done] " + JSON.stringify({ at: Date.now() }));\n`);
   fs.writeFileSync(placementFile, src);
 }
 {
@@ -78,8 +86,10 @@ function __psTimed(method, run, compare) {
 		let last = performance.now(), max = 0, windowStart = Date.now();
 		setInterval(() => {
 			const now = performance.now();
-			max = Math.max(max, now - last - 50);
+			const stall = now - last - 50;
+			max = Math.max(max, stall);
 			last = now;
+			if (stall >= 20) console.error("[ps-stall] " + JSON.stringify({ end: Date.now(), ms: Math.round(stall) }));
 			if (Date.now() - windowStart >= 10000) {
 				console.error("[ps-lag] " + JSON.stringify({ at: Date.now(), maxMs: Math.round(max) }));
 				max = 0;
@@ -312,6 +322,8 @@ try {
   const reads = probes("[ps-read]");
   const retires = probes("[ps-retire]");
   const lag = probes("[ps-lag]");
+  const dones = probes("[ps-done]");
+  const stalls = probes("[ps-stall]");
   const inSweep = (w) => ticks.some((t) => t.at <= w.at && t.at > w.at - 10_000);
   const lagIn = lag.filter(inSweep).map((w) => w.maxMs);
   const lagOut = lag.filter((w) => !inSweep(w) && w.at > (ticks[0]?.at ?? Infinity)).map((w) => w.maxMs);
@@ -321,7 +333,9 @@ try {
     const by = {};
     for (const x of r) { (by[x.method] ??= { n: 0, rows: 0, ms: 0 }); by[x.method].n += 1; by[x.method].rows += x.rows; by[x.method].ms = Math.round((by[x.method].ms + x.ms) * 10) / 10; }
     const retire = retires.find((x) => x.at >= t.at && x.at < t.at + 20_000);
-    return { at: t.at, readMs: Math.round(r.reduce((s, x) => s + x.ms, 0)), retirePlacements: retire?.placements, evidenceMs: retire?.evidenceMs, by };
+    const done = dones.find((x) => x.at >= t.at && x.at < t.at + 20_000)?.at ?? t.at + 5_000;
+    const overlapping = stalls.filter((x) => x.end > t.at && x.end - x.ms < done + 250);
+    return { at: t.at, sweepMs: done - t.at, sweepStallMs: overlapping.reduce((sum, x) => sum + x.ms, 0), maxStallMs: overlapping.length ? Math.max(...overlapping.map((x) => x.ms)) : 0, readMs: Math.round(r.reduce((s, x) => s + x.ms, 0)), retirePlacements: retire?.placements, evidenceMs: retire?.evidenceMs, by };
   });
   const compared = reads.filter((x) => x.same !== undefined);
   const outcome = Object.fromEntries(Object.entries(seeded.planted).map(([k, p]) => [k, placementState(p.sessionId)]));
@@ -329,6 +343,8 @@ try {
   const summary = {
     patch: PATCH, sessions: built.sessions, placements: seeded.total,
     perMinute,
+    // the first sweep after start also loads modules; steady minutes are the rest
+    sweepStallMs: { p50: pct(perMinute.slice(1).map((m) => m.sweepStallMs), 0.5), max: perMinute.length > 1 ? Math.max(...perMinute.slice(1).map((m) => m.sweepStallMs)) : null },
     minuteReadMs: { p50: pct(perMinute.map((m) => m.readMs), 0.5), max: perMinute.length ? Math.max(...perMinute.map((m) => m.readMs)) : null },
     eventLoopLagMs: { sweepWindows: { n: lagIn.length, p50: pct(lagIn, 0.5), max: lagIn.length ? Math.max(...lagIn) : null, each: lagIn }, otherWindows: { n: lagOut.length, p50: pct(lagOut, 0.5), max: lagOut.length ? Math.max(...lagOut) : null } },
     retirement: retires.map((x) => ({ minute: Math.round((x.at - startedAt) / 60_000), placements: x.placements, evidenceMs: x.evidenceMs })),
@@ -355,7 +371,7 @@ try {
     assert(tenMinutePass.at - fullPasses[0].at >= 590_000, "the second full pass came early");
     assert(lateGoneAt >= tenMinutePass.at - 2_000, "the late ghost was retired before the 10-minute full pass (partial passes must not retire local rows)");
   }
-  console.log(`PASS patch=${PATCH} placements=${seeded.total} minute reads p50=${summary.minuteReadMs.p50}ms max=${summary.minuteReadMs.max}ms lag-in-sweep p50=${summary.eventLoopLagMs.sweepWindows.p50}ms max=${summary.eventLoopLagMs.sweepWindows.max}ms late retired at minute ${summary.late.retiredMinute}`);
+  console.log(`PASS patch=${PATCH} placements=${seeded.total} sweep stall p50=${summary.sweepStallMs.p50}ms max=${summary.sweepStallMs.max}ms minute reads p50=${summary.minuteReadMs.p50}ms max=${summary.minuteReadMs.max}ms lag-in-sweep p50=${summary.eventLoopLagMs.sweepWindows.p50}ms max=${summary.eventLoopLagMs.sweepWindows.max}ms late retired at minute ${summary.late.retiredMinute}`);
 } finally {
   await stopGateway();
 }

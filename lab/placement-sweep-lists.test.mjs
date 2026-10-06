@@ -199,3 +199,16 @@ test('disk-space sweep and reconcile guard read the same placements without a fu
   assert.match(startup, /const active = \(typeof params\.placements\.listForReconcile === "function" \? params\.placements\.listForReconcile\(\)\.toSorted\(/u);
   assert.match(startup, /const references = \(typeof params\.placements\.listByEnvironmentIds === "function" \? params\.placements\.listByEnvironmentIds\(\[environmentId\]\) : params\.placements\.list\(\)\)\.filter\(\(placement\) => placement\.environmentId === environmentId\);/u);
 });
+
+test('the minute sweep skips the auto-suspend publication when no profile suspends', () => {
+  const idle = between(startup, 'function createWorkerPlacementIdleSweep(options) {', '//#endregion');
+  const { enabledFor } = compile(`function enabledFor(options) { return ({\n${between(idle, '\tenabled() {', '\tasync sweep() {')}}).enabled(); }`, [], [], ['enabledFor']);
+  const config = (profiles) => ({ getConfig: () => ({ cloudWorkers: profiles === undefined ? undefined : { profiles } }) });
+  assert.equal(enabledFor(config(undefined)), false);
+  assert.equal(enabledFor(config({})), false);
+  assert.equal(enabledFor(config({ a: { machineClass: 'x' } })), false);
+  assert.equal(enabledFor(config({ a: {}, b: { suspendAfter: '30m' } })), true);
+  // sweep() keeps its own early return, so a caller that does not check enabled() is unchanged
+  assert.match(idle, /async sweep\(\) \{\n\t\tconst profiles = options\.getConfig\(\)\.cloudWorkers\?\.profiles;\n\t\tif \(!profiles \|\| !Object\.values\(profiles\)\.some\(\(profile\) => profile\.suspendAfter\)\) return;/u);
+  assert.match(startup, /if \(stopped \|\| placementIdleSuspend\.current \|\| placementIdleSweep\.enabled\?\.\(\) === false\) return;/u);
+});
