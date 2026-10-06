@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 
 export const SEEDUPLEX_MODEL = "1.2.6.1";
 export const SEEDUPLEX_UPSTREAM =
@@ -242,7 +242,10 @@ export class SeeduplexRealtimeVoiceBridge {
     this.pendingInput = Buffer.alloc(0);
     this.toolBatches = [];
     this.seenToolCalls = new Set();
+    this.seenEvents = new Map();
     this.pendingToolCalls = new Map();
+    this.backgroundTools = new Map();
+    this.toolNoticeUsed = false;
     this.completedResponses = new Set();
     this.connectPromise = null;
     this.connectResolve = null;
@@ -352,6 +355,37 @@ export class SeeduplexRealtimeVoiceBridge {
 
   setMediaTimestamp(_timestamp) {}
 
+  beginBackgroundTool(callId, question) {
+    // Finish the native function immediately; the host owns the async job.
+    // Keeping a native continuation open suppresses later conversational turns.
+    this.backgroundTools.set(callId, question);
+    this.submitToolResult(callId, {accepted:true,status:"working",message:"已交给 V 后台，我会继续做完。",instruction:"简短说明任务已开始，随后正常回应用户聊天。任务仍在后台继续，不要声称已完成。"}, {backgroundAck:true});
+  }
+
+  completeBackgroundTool(callId, result) {
+    const question = this.backgroundTools.get(callId);
+    if (question === undefined) return;
+    this.backgroundTools.delete(callId);
+    if (result?.cancelled) return;
+    const text = spokenToolResult(result);
+    if (!text) return;
+    // Documented paired history, containing the actual delegated request and
+    // actual backend answer. This is context, not a new human utterance.
+    this.#send({type:"conversation.item.create",event_id:`event_${randomUUID()}`,items:[
+      {role:"user",content:[{type:"input_text",text:question}]},
+      {role:"assistant",content:[{type:"input_text",text}]},
+    ]});
+    this.request.onTranscript?.("assistant", text, true, "V-backend");
+    this.speakProgress(text);
+  }
+
+  speakProgress(text) {
+    if (!this.ready || this.terminal) return;
+    this.outputClosed = false;
+    this.responseOwnerAnnounced = false;
+    this.#send({ type: "speech_text_buffer.commit", event_id: `event_${randomUUID()}`, text });
+  }
+
   sendUserMessage(text) {
     const normalized = optionalString(text);
     if (!normalized || !this.ready) return;
@@ -424,8 +458,12 @@ export class SeeduplexRealtimeVoiceBridge {
       role: "tool",
       content: [{ type: "input_text", text: serializeToolResult(result) }],
     });
-    if (batch.results.size !== batch.ids.length) return;
     batch.continuing = options.willContinue === true;
+    this.#flushToolBatch(batch);
+  }
+
+  #flushToolBatch(batch) {
+    if (batch.results.size !== batch.ids.length) return;
     this.#send({
       type: "conversation.item.create",
       event_id: `event_${randomUUID()}`,
@@ -496,6 +534,13 @@ export class SeeduplexRealtimeVoiceBridge {
       event = JSON.parse(data.toString());
     } catch {
       return this.#fail(new Error("Invalid Seeduplex upstream event"));
+    }
+    if (typeof event.event_id === 'string' && event.event_id) {
+      const signature = createHash('sha256').update(JSON.stringify(event)).digest('hex');
+      const previous = this.seenEvents.get(event.event_id);
+      if (previous) { if (previous !== signature) this.#fail(new Error('Seeduplex event identity conflict')); return; }
+      this.seenEvents.set(event.event_id, signature);
+      if (this.seenEvents.size > 2048) this.seenEvents.delete(this.seenEvents.keys().next().value);
     }
     this.request.onProtocolEvent?.(event);
     const type = event?.type;
@@ -600,7 +645,10 @@ export class SeeduplexRealtimeVoiceBridge {
     }
     if (type === "conversation.item.input_audio_transcription.completed") {
       const text = optionalString(event.transcript) ?? optionalString(event.text);
-      if (text) this.request.onTranscript?.("user", text, true);
+      if (text) {
+        this.toolNoticeUsed = false;
+        this.request.onTranscript?.("user", text, true);
+      }
     }
     const workingBatch = continuingBatch;
     const suppressWorkingTranscript =
@@ -634,6 +682,7 @@ export class SeeduplexRealtimeVoiceBridge {
       }
     }
     if (type === "response.output_audio.done") {
+      this.request.onAudioSegmentDone?.();
       const continuing = this.toolBatches.find(
         (batch) =>
           batch.continuing &&
@@ -739,6 +788,13 @@ export class SeeduplexRealtimeVoiceBridge {
       phase: "collecting",
     };
     this.toolBatches.push(batch);
+    // Host-owned cached PCM explains the selected function without injecting
+    // another upstream response or delaying its native function result.
+    const notice = !this.toolNoticeUsed && this.request.toolStartNotice?.(calls[0]);
+    if (notice) {
+      this.toolNoticeUsed = true;
+      this.request.onToolStartNotice?.(notice, calls[0]);
+    }
     for (const call of calls) {
       this.seenToolCalls.add(call.callId);
       this.pendingToolCalls.set(call.callId, batch);
