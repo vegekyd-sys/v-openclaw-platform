@@ -122,3 +122,13 @@ Grok没有进入上述流程：连接尚未ready，客户端已缓存约8秒麦�
 原USER被识别为“交给后端里”，模型说“交给后端执行”却实际调用exec，而非delegate_to_v；随后反复process轮询和播报倒计时。并未进入后端模型取消场景，不能把它算作后端委派/取消通过。原Candidate unit/rundir/Mac CLI均已读回消失，sharedUnchanged=true。
 
 后续把模型分工放到目录与历史上下文之前，工具说明明确“delegate_to_v真正调用后端语言模型，exec/process只是原生工具”，完整命令也不能代替用户要求的模型委派。长时间等待/反复轮询属于后端长任务，禁止只口头委派或密集报倒计时；短查询仍直接调工具。下一独立USER材料明确说“后台语言模型”，不改旧ASR/FAIL、不注入工具或assistant，验证实际模型是否真正选择委派后再取消。原日历/长故事与小何路径不重复付费。
+
+## R14：分工与退出流程通过；问候欠载仍保留
+
+7cdd7923 原H5针对样本12/12流程通过。小何和Grok各一条USER→实际Memory/read→原答案PCM，无第二句话、无后端委派，选择首工具分别1273ms/2310ms。Grok明确后台模型的长任务实际只调用一次delegate_to_v，正常deepseek-flash启动前台sleep60（background=false/yieldMs=120000/timeoutSeconds=90）；普通exec结果尚未返回时，真实cancel_task→匹配run的nativeExecScopeJoined→独立PID/start witness消失，取消至join713ms。自然告别/end_call、排空、重拨新owner问候和同页getUserMedia一次均通过。自己的unit/rundir/Mac CLI已独立实读消失。共享被其他任务更新，原sharedUnchanged=false保留，本任务未写共享或V。
+
+流程通过不等于播放通过：全部epoch独立复核发现Grok第一次问候欠载1，重复帧0；小何和Grok重拨问候欠载0。问候第三包后还有1.867秒上游到达空隙，400ms一般回答缓冲不足以保护该短问候。原真实结果不改为播放通过。
+
+后续仅对Grok第一段接通问候等待原audio.done后连续播，麦克风保持接通；正常回答仍400ms流式缓冲，小何仍120ms。插话audio.clear退休旧问候，后续回答不能继承等待完整的状态。用原provider PCM和真实包时间在24/44.1/48kHz离线因果重放：旧逻辑均欠载1，新逻辑均0、全部93600样本各消费一次。该样本第一声约从0.4秒变为2.41秒（相对首包），属于短问候的明确延迟取舍，不改变后续工具/回答等待策略。实际序列化worklet和插话退休回归通过，1909/1909本地零skip；这是原材料离线重放，不是新付费语音或物理Safari验收。
+
+当前共享已进入feishu-codex-early-card-d-20261007，仍为其他任务lease/尚未accept；本补丁七个runtime目标before在最新只读核对仍匹配。原package plan基线不直接用来stage新共享，授权集成时须按当时真正已验收基线重新package并复核完整fingerprint/config/controller。

@@ -6,13 +6,15 @@ export class PcmPlaybackQueue {
   constructor(rate, prefillMs=120, maxFrames=8*1024*1024) {
     this.rate=rate;this.prefill=Math.ceil(rate*prefillMs/1000);this.maxFrames=maxFrames;this.clear();
   }
-  clear(){this.chunks=[];this.head=0;this.offset=0;this.frames=0;this.phase=0;this.wait=0;this.playing=false;this.consumed=0;this.underflows=0;this.lastPlayedAt=null;this.complete=false;}
-  end(){this.complete=true;}
+  clear(){this.chunks=[];this.head=0;this.offset=0;this.frames=0;this.phase=0;this.wait=0;this.playing=false;this.consumed=0;this.underflows=0;this.lastPlayedAt=null;this.complete=false;this.holdUntilComplete=false;}
+  hold(){this.holdUntilComplete=true;}
+  end(){this.complete=true;this.holdUntilComplete=false;}
   push(pcm){this.complete=false;if(!(pcm instanceof Int16Array)||!pcm.length)throw Error('Invalid PCM');if(this.frames+pcm.length>this.maxFrames)throw Error('PCM queue overflow');this.chunks.push(pcm);this.frames+=pcm.length;}
   peek(offset){const c=this.chunks[this.head];const i=this.offset+offset;return i<c.length?c[i]:(this.chunks[this.head+1]?.[i-c.length]??c[c.length-1]);}
   advance(){this.offset++;this.frames--;this.consumed++;if(this.offset===this.chunks[this.head].length){this.chunks[this.head]=null;this.head++;this.offset=0;if(this.head>=32){this.chunks.splice(0,this.head);this.head=0;}}}
   render(out,at){
     out.fill(0);
+    if(this.holdUntilComplete&&!this.complete)return;
     if(!this.frames){if(this.playing){if(!this.complete)this.underflows++;this.playing=false;this.wait=0;}return;}
     // Even a large first packet needs a real jitter window. Previously a
     // 244ms packet bypassed prefill and a next packet at 300ms caused a hole.
@@ -33,6 +35,7 @@ class Speaker extends AudioWorkletProcessor {
  if(!Number.isFinite(prefill)||prefill<0||prefill>1000)throw Error('Invalid playback buffer');
  this.queue=new PcmPlaybackQueue(sampleRate,prefill);this.epoch=0;this.tick=0;
  this.port.onmessage=({data:e})=>{if(e.type==='clear'){this.epoch=e.epoch;this.queue.clear();}
+ else if(e.type==='hold'&&e.epoch===this.epoch)this.queue.hold();
  else if(e.type==='done'&&e.epoch===this.epoch)this.queue.end();
  else if(e.type==='audio'&&e.epoch===this.epoch){try{this.queue.push(new Int16Array(e.buffer));}catch{this.port.postMessage({type:'error',epoch:this.epoch});}}};}
  process(inputs,outputs){const out=outputs[0]?.[0];if(!out)return true;
@@ -50,6 +53,10 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
   // Recorded Grok packets: 245ms of speech, then a 595ms arrival gap.
   // 400ms protects that real startup cadence; Xiaohe retains its smaller lead.
   const startBufferMs=reservation.provider==='grok'?400:120;
+  // Grok's short greeting can arrive as two sentences with a multi-second
+  // network gap. Hold only that first response to its native completion;
+  // later answers keep streaming with their normal lead, and the mic stays on.
+  let greetingHeld=reservation.provider==='grok';
   const endpoint=new URL('./api/relay',location.href);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
   endpoint.search=new URLSearchParams({voiceSessionId:reservation.voiceSessionId,ticket:reservation.relayTicket});
   const socket=new WebSocket(endpoint);socket.binaryType='arraybuffer';
@@ -60,7 +67,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
   const activity=value=>{if(playbackActive!==value){playbackActive=value;onPlaybackActivity(value);}};
   const send=e=>{if(socket.readyState===WebSocket.OPEN)socket.send(JSON.stringify(e));};
   const reportBusy=()=>{const next=stats.queuedOutputBytes>0||playbackActive;if(next!==busy){busy=next;send({type:'playback.state',speaking:busy});}};
-  const flush=()=>{epoch++;written=0;pendingOutput.length=0;outputComplete=false;stats.queuedOutputBytes=0;lastPlayedAt=null;speaker?.port.postMessage({type:'clear',epoch});stats.clears++;activity(false);reportBusy();ending=null;clearTimeout(tailTimer);};
+  const flush=()=>{epoch++;written=0;pendingOutput.length=0;outputComplete=false;greetingHeld=false;stats.queuedOutputBytes=0;lastPlayedAt=null;speaker?.port.postMessage({type:'clear',epoch});stats.clears++;activity(false);reportBusy();ending=null;clearTimeout(tailTimer);};
   const checkEnd=()=>{if(closed||!ending)return;
     if(context.state==='running'&&lastPlayedAt!==null&&stats.queuedOutputBytes===0&&context.currentTime>=lastPlayedAt+.75){stats.playbackDrained=true;send({type:'playback.drained',callId:ending});ending=null;}
     else tailTimer=setTimeout(checkEnd,100);
@@ -89,7 +96,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
       if(value.type==='ready'&&!ready){ready=true;resolve();send({type:'greeting'});reportBusy();statsTimer=setInterval(()=>send({type:'playback.stats',...stats}),2000);}
       if(value.type==='audio')play(value);
       if(value.type==='audio.clear')flush();
-      if(value.type==='audio.done'){outputComplete=true;speaker?.port.postMessage({type:'done',epoch});}
+      if(value.type==='audio.done'){outputComplete=true;greetingHeld=false;speaker?.port.postMessage({type:'done',epoch});}
       if(value.type==='end.cancelled'){ending=null;clearTimeout(tailTimer);}
       if(value.type==='end.after-playback'){ending=value.callId;checkEnd();}
       if(value.type==='error'){reject(Error(value.message));onError(Error(value.message));}
@@ -103,7 +110,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
     try{await context.audioWorklet.addModule(url);}finally{URL.revokeObjectURL(url);}
     if(closed)return;
     speaker=new AudioWorkletNode(context,'v-direct-speaker',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[1],processorOptions:{prefillMs:startBufferMs}});
-    speaker.port.postMessage({type:'clear',epoch});speaker.connect(context.destination);
+    speaker.port.postMessage({type:'clear',epoch});if(greetingHeld)speaker.port.postMessage({type:'hold',epoch});speaker.connect(context.destination);
     speaker.port.onmessage=({data:e})=>{
       if(closed||e.epoch!==epoch)return;
       if(e.type==='error'){onError(Error('语音缓存过大，请重新拨号'));return;}

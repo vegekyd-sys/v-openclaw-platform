@@ -74,6 +74,32 @@ async function fixture(t,provider,deferReady=false){
 test('actual serialized worklet receives only the selected Grok buffer; Xiaohe stays at 120ms',async t=>{
  const f=await fixture(t,'grok');assert.equal(f.relay.stats.startBufferMs,400);assert.equal(f.speaker.processor.queue.prefill,19200);
 });
+test('recorded Grok greeting hole is held to completion; next answer keeps its streaming lead and the microphone',async t=>{
+ const f=await fixture(t,'grok');
+ // Original R14 greeting packets: a 1.867s mid-response arrival hole,
+ // despite the first three packets already containing 1.346s of PCM.
+ const arrivals=[[0,5872],[.181,22754],[.181,3670],[2.048,8074],[2.229,14680],[2.231,11744],[2.410,16882],[2.411,8074],[2.411,1850]];
+ let index=0;const before=[];
+ for(let frame=0;frame<48000*2.5;frame+=128){
+  const at=frame/48000;
+  while(index<arrivals.length&&at>=arrivals[index][0]){const n=arrivals[index][1];f.event({type:'audio',sequence:index+1,sampleRate:24000,audio:Buffer.from(pcm(n).buffer).toString('base64')});index++;}
+  before.push(...f.pump(128));
+ }
+ assert(before.every(v=>v===0));assert.equal(f.speaker.processor.queue.consumed,0);
+ const mic=f.nodes.find(n=>n.name==='v-direct-mic');mic.port.onmessage({data:new Int16Array(480).buffer});assert.equal(f.relay.stats.inputBytes,960);
+ f.event({type:'audio.done'});const n=arrivals.reduce((sum,x)=>sum+x[1],0),heard=f.pump(n*2+512);
+ assert(heard.slice(0,n*2).every(v=>v===.25));assert(heard.slice(n*2).every(v=>v===0));assert.equal(f.speaker.processor.queue.consumed,n);assert.equal(f.relay.stats.underflows,0);
+ f.event({type:'audio',sequence:10,sampleRate:24000,audio:Buffer.from(pcm(24000,-8192).buffer).toString('base64')});
+ const next=f.pump(24000);assert(next.some(v=>v===-.25));assert.equal(f.speaker.processor.queue.holdUntilComplete,false);
+ f.event({type:'audio.done'});f.pump(48000);assert.equal(f.relay.stats.underflows,0);assert.equal(f.relay.stats.duplicateFrames,0);
+});
+test('an interrupted held greeting is retired; the next response does not inherit its hold',async t=>{
+ const f=await fixture(t,'grok');const audio=value=>Buffer.from(pcm(24000,value).buffer).toString('base64');
+ f.event({type:'audio',sequence:1,sampleRate:24000,audio:audio(8192)});assert(f.pump(24000).every(v=>v===0));
+ f.event({type:'audio.clear'});f.event({type:'audio',sequence:2,sampleRate:24000,audio:audio(-8192)});
+ const out=f.pump(24000);assert(out.some(v=>v===-.25));assert(out.every(v=>v===0||v===-.25));assert.equal(f.speaker.processor.queue.holdUntilComplete,false);
+ f.event({type:'audio.done'});f.pump(48000);assert.equal(f.relay.stats.underflows,0);
+});
 test('serialized production worklet executes; exact relay sequence is consumed once, identical PCM still valid',async t=>{
  const f=await fixture(t),audio=Buffer.alloc(960,1).toString('base64');
  for(const sequence of [1,1,2])f.event({type:'audio',sequence,sampleRate:24000,audio});f.event({type:'audio.done'});f.pump(48000);
