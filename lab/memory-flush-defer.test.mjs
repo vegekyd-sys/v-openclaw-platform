@@ -6,6 +6,8 @@ import crypto, { createHash } from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import {
   DEFAULT_IDLE_MS,
+  STEER_POLL_MS,
+  STEER_WAIT_MS,
   MEMORY_FLUSH_DEFER_MARKER,
   MIN_HEADROOM_TOKENS,
   extractDeferRegion,
@@ -307,10 +309,19 @@ function loadRegion({ env = {}, probeResult = { willCompact: false, threshold: 9
     },
     // the reply registry runs after-clear callbacks from the clearing reply's context
     runAfterReplyOperationClear: (op, cb) => afterClear.push({ op, cb: AsyncLocalStorage.bind(cb) }),
-    replyRunRegistry: { get: (key) => activeOps.get(key) },
+    replyRunRegistry: {
+      get: (key) => activeOps.get(key),
+      // a reply can take a steered message once its run has attached a backend
+      resolveCurrentMessageInjectionTarget: (key) => { const op = activeOps.get(key); return op && op.injectable !== false ? { op } : undefined; },
+    },
     refreshSessionEntryFromStore: () => freshEntry,
     // a real timer callback runs in the async context that armed it
-    setTimeout: (fn, ms) => { const t = { fn: AsyncLocalStorage.bind(fn), ms, cleared: false, unref() { this.unrefd = true; } }; timers.push(t); return t; },
+    setTimeout: (fn, ms) => {
+      if (ms === STEER_POLL_MS) return globalThis.setTimeout(fn, 1); // the steer-wait poll runs for real
+      const t = { fn: AsyncLocalStorage.bind(fn), ms, cleared: false, unref() { this.unrefd = true; } };
+      timers.push(t);
+      return t;
+    },
     clearTimeout: (t) => { if (t) t.cleared = true; },
     runWithGatewayIndependentRootWorkAdmission: admission.runWithGatewayIndependentRootWorkAdmission,
     isGatewayWorkAdmissionClosed: admission.isGatewayWorkAdmissionClosed,
@@ -939,4 +950,55 @@ test('real failure path: an error that reaches the deferred flush before the abo
   p.embedded[0].fail(interrupted);
   assert.equal((await pending).outcome, 'failed');
   assert.deepEqual(p.store[sessionKey].memoryFlush, { kind: 'failed', failureCount: 1 });
+});
+
+test('a steered message waits for the real reply queued behind the unwinding flush, then steers into it (stock: B merges into A)', async () => {
+  const activeOps = new Map();
+  const { decisions, replyFakes } = replyHarness();
+  const t = loadRegion({ activeOps, replyFakes, unwindOnAbort: false });
+  await startRunningFlush(t);
+  // A: aborts the flush and runs itself; its reply operation registers, but its embedded
+  // run waits on the session lane behind the unwinding flush (no backend yet)
+  assert.equal(await t.api.runReplyAgentHead(inboundTurn()), 'run-own-turn');
+  const replyA = { key: sessionKey, sessionId: 's1', toolAuthorityFingerprint: 'authority-a', injectable: false };
+  activeOps.set(sessionKey, replyA);
+  // B, 100 ms later: busy, steer mode; it waits instead of falling back to a queued followup
+  let settled = false;
+  const b = t.api.runReplyAgentHead(inboundTurn()).then((v) => { settled = true; return v; });
+  await new Promise((r) => globalThis.setTimeout(r, 20));
+  assert.equal(settled, false);
+  assert.deepEqual(decisions, []);
+  // the flush lets go of the lane, A's run starts and attaches its backend
+  t.flushCalls[0].__finish();
+  await new Promise((r) => globalThis.setTimeout(r, 5));
+  replyA.injectable = true;
+  assert.equal(await b, undefined);
+  assert.deepEqual(decisions.map((d) => d[0]), ['steer']);
+  assert.match(t.log.find((l) => l.includes('"phase":"steer-wait"')), /"result":"injectable"/);
+});
+
+test('the steer wait ends when the real reply ends, and never applies without an in-flight flush, for followup mode or for the turn\'s own operation', async () => {
+  const activeOps = new Map();
+  let h = replyHarness();
+  let t = loadRegion({ activeOps, replyFakes: h.replyFakes, unwindOnAbort: false });
+  await startRunningFlush(t);
+  assert.equal(await t.api.runReplyAgentHead(inboundTurn()), 'run-own-turn');
+  activeOps.set(sessionKey, { key: sessionKey, sessionId: 's1', toolAuthorityFingerprint: 'authority-a', injectable: false });
+  const b = t.api.runReplyAgentHead(inboundTurn());
+  await new Promise((r) => globalThis.setTimeout(r, 20));
+  activeOps.delete(sessionKey);
+  await b;
+  assert.match(t.log.find((l) => l.includes('"phase":"steer-wait"')), /"result":"reply-ended"/);
+  // followup mode queues as stock does, without waiting
+  activeOps.set(sessionKey, { key: sessionKey, sessionId: 's1', toolAuthorityFingerprint: 'authority-a', injectable: false });
+  await t.api.runReplyAgentHead(inboundTurn({ resolvedQueue: { mode: 'followup' }, shouldSteer: false }));
+  assert.deepEqual(h.decisions.map((d) => d[0]), ['steer', 'followup']);
+  assert.equal(t.log.filter((l) => l.includes('"phase":"steer-wait"')).length, 1);
+  // no flush in flight: a not-yet-injectable reply is stock behavior, no wait
+  h = replyHarness();
+  t = loadRegion({ activeOps, replyFakes: h.replyFakes });
+  await t.api.runReplyAgentHead(inboundTurn());
+  assert.deepEqual(h.decisions.map((d) => d[0]), ['steer']);
+  assert(!t.log.some((l) => l.includes('steer-wait')));
+  assert(STEER_WAIT_MS >= 1000 && STEER_WAIT_MS <= 10000);
 });

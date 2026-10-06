@@ -7114,6 +7114,8 @@ const MEMORY_FLUSH_DEFER_HEADROOM_RATIO = 0.25;
 const MEMORY_FLUSH_DEFER_DEFAULT_IDLE_MS = 120000;
 const MEMORY_FLUSH_DEFER_MAX_IDLE_MS = 36e5;
 const MEMORY_FLUSH_DEFER_MAX_UNREADABLE_RETRIES = 3;
+const MEMORY_FLUSH_DEFER_STEER_WAIT_MS = 5000;
+const MEMORY_FLUSH_DEFER_STEER_POLL_MS = 25;
 const memoryFlushDeferLog = createSubsystemLogger("auto-reply/memory-flush-defer");
 const deferredMemoryFlushJobs = /* @__PURE__ */ new Map();
 function isPreReplyMemoryFlushDeferralEnabled(env = process.env) {
@@ -7422,6 +7424,39 @@ function resolveReplyActiveAfterDeferredFlushYield(params) {
 		flush: "in-flight"
 	});
 	return false;
+}
+/**
+* A steer-mode message for a session whose real reply is queued behind an unwinding
+* deferred flush. That reply's embedded run waits on the session lane until the flush has
+* let go, so it has no backend to inject into yet, and stock steering would fall back to a
+* separate queued followup turn. Wait (bounded) until the reply can take the message, as
+* it could at once without the flush; give up when the reply ends or the wait runs out.
+*/
+async function waitForSteerTargetBehindDeferredFlush(params) {
+	if (!params.isActive || !params.shouldSteer || params.isHeartbeat || !params.sessionKey) return;
+	const job = deferredMemoryFlushJobs.get(params.sessionKey);
+	if (!job || !(job.inFlight > 0)) return;
+	const operation = replyRunRegistry.get(params.sessionKey);
+	if (!operation || operation === params.providedReplyOperation) return;
+	const startedAt = Date.now();
+	let result = "timeout";
+	while (Date.now() - startedAt < MEMORY_FLUSH_DEFER_STEER_WAIT_MS) {
+		if (replyRunRegistry.get(params.sessionKey) !== operation) {
+			result = "reply-ended";
+			break;
+		}
+		if (replyRunRegistry.resolveCurrentMessageInjectionTarget(params.sessionKey)) {
+			result = "injectable";
+			break;
+		}
+		await new Promise((resolve) => setTimeout(resolve, MEMORY_FLUSH_DEFER_STEER_POLL_MS));
+	}
+	logMemoryFlushDeferral({
+		phase: "steer-wait",
+		session: hashMemoryFlushSessionKey(params.sessionKey),
+		result,
+		ms: Date.now() - startedAt
+	});
 }
 //#endregion memory-flush-defer-v1
 async function executePreparedReplyAgentRun(context) {
@@ -7870,6 +7905,13 @@ async function runReplyAgent(params) {
 	if (!isHeartbeat && sessionKey) yieldDeferredMemoryFlush(sessionKey, "inbound-turn");
 	const isActive = resolveReplyActiveAfterDeferredFlushYield({
 		isActive: isActiveBeforeDeferredFlushYield,
+		isHeartbeat,
+		sessionKey,
+		providedReplyOperation
+	});
+	await waitForSteerTargetBehindDeferredFlush({
+		isActive,
+		shouldSteer: shouldSteer && !effectiveResetTriggered && !isHeartbeat,
 		isHeartbeat,
 		sessionKey,
 		providedReplyOperation

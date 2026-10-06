@@ -97,6 +97,21 @@ import assert from 'node:assert/strict';
 // never writes the failure budget now; its log line carries the error class
 // (error:<name>). A flush that keeps failing is retried at most once per idle period, and
 // near compaction the pre-reply flush runs first with the normal budget.
+//
+// Steering behind the unwinding flush (VLab candidate at b6fef51: message C, 100 ms after
+// B, ended up outside B's turn; stock merges C into B's run). Chat and channel steering
+// injects only into a reply operation's attached backend, never into the flush (which
+// has no reply operation). But B's embedded run waits on the session lane until the
+// aborted flush lets go, so B has no backend yet, the injection is rejected, and stock
+// falls back to a separate queued followup turn after B. While a deferred flush of the
+// session is in flight and another real reply is registered, a steer-mode turn now
+// waits (at most STEER_WAIT_MS) until that reply can take the message, or until it ends,
+// and then steers as stock would (phase=steer-wait).
+// Not covered: sessionId-based injection (queueEmbeddedAgentMessageWithOutcome, used by
+// the TUI embedded backend, realtime voice control, sessions_spawn and subagent
+// announces) reaches whatever embedded run is active, including a running flush, which
+// accepts it as stock pre-reply flushes do; those callers do not go through
+// runReplyAgent, so they do not yield the flush.
 // OPENCLAW_DEFER_PRE_REPLY_MEMORY_FLUSH=0 turns it off. Tagged log lines
 // `[memory-flush-deferred.1]` carry a hashed session key and numbers, never message text.
 
@@ -213,6 +228,8 @@ export const DEFER_REGION_END = `//#endregion ${MEMORY_FLUSH_DEFER_MARKER}`;
 export const MIN_HEADROOM_TOKENS = 32768;
 export const HEADROOM_RATIO = 0.25;
 export const DEFAULT_IDLE_MS = 120000;
+export const STEER_WAIT_MS = 5000;
+export const STEER_POLL_MS = 25;
 
 const DEFER_REGION = `${DEFER_REGION_START}
 /** Housekeeping memory flushes that can wait until after the reply (memory-flush-defer). */
@@ -221,6 +238,8 @@ const MEMORY_FLUSH_DEFER_HEADROOM_RATIO = ${HEADROOM_RATIO};
 const MEMORY_FLUSH_DEFER_DEFAULT_IDLE_MS = ${DEFAULT_IDLE_MS};
 const MEMORY_FLUSH_DEFER_MAX_IDLE_MS = 36e5;
 const MEMORY_FLUSH_DEFER_MAX_UNREADABLE_RETRIES = 3;
+const MEMORY_FLUSH_DEFER_STEER_WAIT_MS = ${STEER_WAIT_MS};
+const MEMORY_FLUSH_DEFER_STEER_POLL_MS = ${STEER_POLL_MS};
 const memoryFlushDeferLog = createSubsystemLogger("auto-reply/memory-flush-defer");
 const deferredMemoryFlushJobs = /* @__PURE__ */ new Map();
 function isPreReplyMemoryFlushDeferralEnabled(env = process.env) {
@@ -530,6 +549,39 @@ function resolveReplyActiveAfterDeferredFlushYield(params) {
 	});
 	return false;
 }
+/**
+* A steer-mode message for a session whose real reply is queued behind an unwinding
+* deferred flush. That reply's embedded run waits on the session lane until the flush has
+* let go, so it has no backend to inject into yet, and stock steering would fall back to a
+* separate queued followup turn. Wait (bounded) until the reply can take the message, as
+* it could at once without the flush; give up when the reply ends or the wait runs out.
+*/
+async function waitForSteerTargetBehindDeferredFlush(params) {
+	if (!params.isActive || !params.shouldSteer || params.isHeartbeat || !params.sessionKey) return;
+	const job = deferredMemoryFlushJobs.get(params.sessionKey);
+	if (!job || !(job.inFlight > 0)) return;
+	const operation = replyRunRegistry.get(params.sessionKey);
+	if (!operation || operation === params.providedReplyOperation) return;
+	const startedAt = Date.now();
+	let result = "timeout";
+	while (Date.now() - startedAt < MEMORY_FLUSH_DEFER_STEER_WAIT_MS) {
+		if (replyRunRegistry.get(params.sessionKey) !== operation) {
+			result = "reply-ended";
+			break;
+		}
+		if (replyRunRegistry.resolveCurrentMessageInjectionTarget(params.sessionKey)) {
+			result = "injectable";
+			break;
+		}
+		await new Promise((resolve) => setTimeout(resolve, MEMORY_FLUSH_DEFER_STEER_POLL_MS));
+	}
+	logMemoryFlushDeferral({
+		phase: "steer-wait",
+		session: hashMemoryFlushSessionKey(params.sessionKey),
+		result,
+		ms: Date.now() - startedAt
+	});
+}
 ${DEFER_REGION_END}
 `;
 
@@ -566,7 +618,7 @@ const FLUSH_CALL_AFTER = `		isHeartbeat,
 `;
 
 const REPLY_START_BEFORE = '\tconst isHeartbeat = opts?.isHeartbeat === true;\n\tlet didDeliverVisiblePartialReply = false;\n';
-const REPLY_START_AFTER = '\tconst isHeartbeat = opts?.isHeartbeat === true;\n\tif (!isHeartbeat && sessionKey) yieldDeferredMemoryFlush(sessionKey, "inbound-turn");\n\tconst isActive = resolveReplyActiveAfterDeferredFlushYield({\n\t\tisActive: isActiveBeforeDeferredFlushYield,\n\t\tisHeartbeat,\n\t\tsessionKey,\n\t\tprovidedReplyOperation\n\t});\n\tlet didDeliverVisiblePartialReply = false;\n';
+const REPLY_START_AFTER = '\tconst isHeartbeat = opts?.isHeartbeat === true;\n\tif (!isHeartbeat && sessionKey) yieldDeferredMemoryFlush(sessionKey, "inbound-turn");\n\tconst isActive = resolveReplyActiveAfterDeferredFlushYield({\n\t\tisActive: isActiveBeforeDeferredFlushYield,\n\t\tisHeartbeat,\n\t\tsessionKey,\n\t\tprovidedReplyOperation\n\t});\n\tawait waitForSteerTargetBehindDeferredFlush({\n\t\tisActive,\n\t\tshouldSteer: shouldSteer && !effectiveResetTriggered && !isHeartbeat,\n\t\tisHeartbeat,\n\t\tsessionKey,\n\t\tprovidedReplyOperation\n\t});\n\tlet didDeliverVisiblePartialReply = false;\n';
 
 const REPLY_PARAMS_BEFORE = 'queueAdmissionState = "empty", isActive, isRunActive, opts,';
 const REPLY_PARAMS_AFTER = 'queueAdmissionState = "empty", isActive: isActiveBeforeDeferredFlushYield, isRunActive, opts,';
