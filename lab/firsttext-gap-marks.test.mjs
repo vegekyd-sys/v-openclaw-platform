@@ -14,7 +14,7 @@ const read = (file) => fs.readFileSync(file, 'utf8');
 const sha = (value) => createHash('sha256').update(value).digest('hex');
 
 for (const [name, patch, marks] of [
-  ['agent-command-DPfawBbr.js', patchAgentCommandChunk, 13],
+  ['agent-command-DPfawBbr.js', patchAgentCommandChunk, 26],
   ['embedded-agent-DaSvA-Yk.js', patchEmbeddedAgentChunk, 7],
   ['builtin-openclaw-zQV8Wwjr.js', patchBuiltinChunk, 5],
 ]) {
@@ -28,6 +28,7 @@ for (const [name, patch, marks] of [
     // Removing every added line except the try/finally wrapper restores the original.
     const stripped = patched
       .replace(/^import \{ firsttextGapMark \}.*\n/m, '')
+      .replace(/^import \{ firsttextGapMark, firsttextSkillDetail, firsttextWatchSkillsBumps \}.*\nimport \{ i as firsttextRegisterSkillsChange \} from "\.\/refresh-state-DHnXO3IV\.js";\nfirsttextWatchSkillsBumps\(firsttextRegisterSkillsChange\);\n/m, '')
       .replace(/\t\t\tprepare: async \(preparedOpts\) => \{\n\t\t\t\tfirsttextGapMark\("cmd-prepare-enter", opts\.runId\);\n\t\t\t\ttry \{\n\t\t\t\t\treturn await (prepareAgentCommandExecution\(preparedOpts, runtime, runtimeContext\));\n\t\t\t\t\} finally \{\n\t\t\t\t\tfirsttextGapMark\("cmd-prepare-end", opts\.runId\);\n\t\t\t\t\}\n\t\t\t\},\n/, '\t\t\tprepare: async (preparedOpts) => await $1,\n')
       .replace(/\t\t\t\{\n\t\t\t\tconst markStartupStage = startupStages\.mark;\n[\s\S]*?\n\t\t\t\}\n/, '')
       .replace(/\t\t\{\n\t\t\tconst markCorePluginToolStage = corePluginToolStages\.mark;\n[\s\S]*?\n\t\t\}\n/, '')
@@ -80,4 +81,29 @@ test('agent-db-process-coordinator.mjs: lease log is additive and reports long w
   assert.deepEqual(rows.map((row) => row.mode), ['sync', 'async']);
   assert.ok(rows[0].holdMs >= 20 && rows[0].attempts === 4);
   assert.ok(rows[1].holdMs >= 20);
+});
+
+test('round 3: skill detail and skills bump lines carry only validated fields', () => {
+  const script = `
+    const m = await import(${JSON.stringify(path.join(release, 'firsttext-gap-marks.mjs'))});
+    const listeners = [];
+    m.firsttextWatchSkillsBumps((l) => listeners.push(l));
+    process.env.OPENCLAW_FIRSTTEXT_WORKER_PHASES = '1';
+    m.firsttextWatchSkillsBumps((l) => listeners.push(l));
+    m.firsttextWatchSkillsBumps((l) => listeners.push(l));
+    listeners[0]({ workspaceDir: '/w', reason: 'watch', changedPath: '/w/skills/a/SKILL.md' });
+    const id = '4efda310-0000-4000-8000-000000000000';
+    const detail = m.firsttextSkillDetail(false, { version: 1, promptFormatVersion: 4 }, { snapshotVersion: Date.now(), shouldRefresh: true });
+    m.firsttextGapMark('cmd-session-state:skills-snapshot', id, detail);
+    m.firsttextGapMark('cmd-session-state:skills-snapshot', id, 'bad detail {}');
+    console.error('LISTENERS ' + listeners.length);`;
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8', env: { PATH: process.env.PATH } });
+  assert.equal(result.status, 0, result.stderr);
+  const lines = result.stderr.trim().split('\n');
+  assert.equal(lines.at(-1), 'LISTENERS 1');
+  const bump = JSON.parse(lines[0].replace('[firsttext-skills-bump.1] ', ''));
+  assert.deepEqual([bump.reason, bump.workspace, bump.changedPath], ['watch', true, '/w/skills/a/SKILL.md']);
+  const marks = lines.filter((l) => l.startsWith('[firsttext-gap.1] ')).map((l) => JSON.parse(l.slice(18)));
+  assert.match(marks[0].detail, /^new=0,existing=1,refresh=1,older=1,prompt=0,hydrate=1,verSinceStartS=\d+$/);
+  assert.equal(marks[1].detail, undefined);
 });

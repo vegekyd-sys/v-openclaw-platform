@@ -8,13 +8,43 @@ function once(source, before, after, label) {
 
 export const GAP_MARKER = 'OPENCLAW_FIRSTTEXT_GAP_MARKS_V1';
 const IMPORT = `import { firsttextGapMark } from "./firsttext-gap-marks.mjs"; // ${GAP_MARKER}\n`;
+const COMMAND_IMPORT = `import { firsttextGapMark, firsttextSkillDetail, firsttextWatchSkillsBumps } from "./firsttext-gap-marks.mjs"; // ${GAP_MARKER}\n` +
+  'import { i as firsttextRegisterSkillsChange } from "./refresh-state-DHnXO3IV.js";\n' +
+  'firsttextWatchSkillsBumps(firsttextRegisterSkillsChange);\n';
+// Round 3: sub-stages of prepareAgentCommandExecution (cmd-prepare-end held 1.7-2.2 s in some warm
+// runs) and the skills snapshot resolve (about 1.2 s once per Worker), with why it rebuilt.
+const PREPARE_MARKS = [
+  ['\tconst cfg = await resolveAgentRuntimeConfig(runtime, {', 'getActiveSecretsRuntimeConfigSnapshot() ? "cmd-prep:secrets-warm" : "cmd-prep:secrets-cold"'],
+  ['\tconst normalizedSpawned = normalizeSpawnedRunMetadata({', '"cmd-prep:config-resolved"'],
+  ['\tconst { sessionId, sessionKey, sessionEntry: sessionEntryRaw, storePath, isNewSession, previousSessionId, persistedThinking, persistedVerbose } = resolveSession({', '"cmd-prep:recipient-resolved"'],
+  ['\tconst harnessSessionError = sessionKey ? resolveAgentHarnessSessionContextError', '"cmd-prep:session-resolved"'],
+  ['\tconst { getAcpSessionManager } = await loadAcpManagerRuntime();', '"cmd-prep:acp-start"'],
+  ['\tconst modelManifestContext = { manifestPlugins: manifestMetadataSnapshot ?? [] };', 'preparedMetadataSnapshot ? "cmd-prep:plugin-metadata-prepared" : "cmd-prep:plugin-metadata-resolved"'],
+  ['\tconst configuredThinkingRuntime = resolveEffectiveAgentRuntime({', '"cmd-prep:model-catalog"'],
+  ['\tconst resolvedCwd = cwd ? resolveUserPath(cwd) : void 0;', '"cmd-prep:thinking"'],
+  ['\tconst runLease = worktreeId ? await acquireWorktreeRunLease(worktreeId) : void 0;', '"cmd-prep:worktree-resolved"'],
+  ['\t\tlet promptMessage = message;', '"cmd-prep:workspace-ensured"'],
+  ['\t\tconst body = !isRawModelRun && acpResolution', '"cmd-prep:skill-commands"'],
+];
 
 export function patchAgentCommandChunk(source) {
   if (source.includes(GAP_MARKER)) throw new Error('already patched');
   source = once(source,
     'import { randomUUID } from "node:crypto";\n',
-    'import { randomUUID } from "node:crypto";\n' + IMPORT,
+    'import { randomUUID } from "node:crypto";\n' + COMMAND_IMPORT,
     'imports');
+  for (const [anchor, stage] of PREPARE_MARKS) {
+    const indent = anchor.startsWith('\t\t') ? '\t\t' : '\t';
+    source = once(source, anchor, `${indent}firsttextGapMark(${stage}, opts.runId);\n${anchor}`, `prepare ${stage}`);
+  }
+  source = once(source,
+    '\tconst runLease = worktreeId ? await acquireWorktreeRunLease(worktreeId) : void 0;\n',
+    '\tconst runLease = worktreeId ? await acquireWorktreeRunLease(worktreeId) : void 0;\n\tfirsttextGapMark("cmd-prep:run-lease", opts.runId);\n',
+    'prepare run lease');
+  source = once(source,
+    '\tconst skillSnapshotState = resolveReusableWorkspaceSkillSnapshot({',
+    '\tfirsttextGapMark("cmd-session-state:skills-resolve", params.runId);\n\tconst skillSnapshotState = resolveReusableWorkspaceSkillSnapshot({',
+    'session state skills resolve');
   source = once(source,
     '\tconst executeIngress = () => withAgentRunLifecycleGeneration(lifecycleGeneration, async () => {\n\t\tlet preparedAgentDir;\n',
     '\tconst executeIngress = () => withAgentRunLifecycleGeneration(lifecycleGeneration, async () => {\n\t\tfirsttextGapMark("cmd-ingress-enter", opts.runId);\n\t\tlet preparedAgentDir;\n',
@@ -49,7 +79,7 @@ export function patchAgentCommandChunk(source) {
     'embedded attempt');
   source = once(source,
     '\tconst needsSkillsSnapshot = params.isNewSession',
-    '\tfirsttextGapMark("cmd-session-state:skills-snapshot", params.runId);\n\tconst needsSkillsSnapshot = params.isNewSession',
+    '\tfirsttextGapMark("cmd-session-state:skills-snapshot", params.runId, firsttextSkillDetail(params.isNewSession, currentSkillsSnapshot, skillSnapshotState));\n\tconst needsSkillsSnapshot = params.isNewSession',
     'session state skills');
   source = once(source,
     '\tconst shouldPersistInitialSessionTouch = ',

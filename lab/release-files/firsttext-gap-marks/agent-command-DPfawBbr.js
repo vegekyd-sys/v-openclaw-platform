@@ -138,7 +138,9 @@ import { i as runEmbeddedAgentEntry, t as hasSameCompactionWriter } from "./agen
 import { t as resolveAgentRunContext } from "./run-context-D1ccatfu.js";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { firsttextGapMark } from "./firsttext-gap-marks.mjs"; // OPENCLAW_FIRSTTEXT_GAP_MARKS_V1
+import { firsttextGapMark, firsttextSkillDetail, firsttextWatchSkillsBumps } from "./firsttext-gap-marks.mjs"; // OPENCLAW_FIRSTTEXT_GAP_MARKS_V1
+import { i as firsttextRegisterSkillsChange } from "./refresh-state-DHnXO3IV.js";
+firsttextWatchSkillsBumps(firsttextRegisterSkillsChange);
 //#region src/gateway/local-request-context.ts
 function cronUnavailable() {
 	throw new Error("Cron is unavailable in local embedded agent gateway context.");
@@ -791,6 +793,7 @@ async function prepareAgentCommandExecution(opts, runtime, runtimeContext) {
 	const recipientChannel = resolveMessageChannel(opts.channel);
 	const shouldResolveExplicitRecipientSession = Boolean(!rawExplicitSessionKey && !requestedSessionId && !toSessionKey && opts.agentId?.trim() && recipientChannel && isDeliverableMessageChannel(recipientChannel) && rawTo);
 	if (!opts.to && !requestedSessionId && !rawExplicitSessionKey && !opts.agentId) throw new Error("Pass --to <E.164>, --session-key, --session-id, or --agent to choose a session");
+	firsttextGapMark(getActiveSecretsRuntimeConfigSnapshot() ? "cmd-prep:secrets-warm" : "cmd-prep:secrets-cold", opts.runId);
 	const cfg = await resolveAgentRuntimeConfig(runtime, {
 		runtimeTargetsChannelSecrets: opts.deliver === true,
 		runtimeChannelSecretScope: opts.deliver !== true && shouldResolveExplicitRecipientSession && recipientChannel ? {
@@ -798,6 +801,7 @@ async function prepareAgentCommandExecution(opts, runtime, runtimeContext) {
 			accountId: opts.accountId
 		} : void 0
 	});
+	firsttextGapMark("cmd-prep:config-resolved", opts.runId);
 	const normalizedSpawned = normalizeSpawnedRunMetadata({
 		spawnedBy: opts.spawnedBy,
 		groupId: opts.groupId,
@@ -855,6 +859,7 @@ async function prepareAgentCommandExecution(opts, runtime, runtimeContext) {
 		accountId: explicitRecipientSession.accountId,
 		threadId: explicitRecipientSession.threadId
 	} : selectedCommandOpts;
+	firsttextGapMark("cmd-prep:recipient-resolved", opts.runId);
 	const { sessionId, sessionKey, sessionEntry: sessionEntryRaw, storePath, isNewSession, previousSessionId, persistedThinking, persistedVerbose } = resolveSession({
 		cfg,
 		to: commandOpts.to,
@@ -862,6 +867,7 @@ async function prepareAgentCommandExecution(opts, runtime, runtimeContext) {
 		sessionKey: explicitSessionKey ?? explicitRecipientSession?.sessionKey,
 		agentId: agentIdOverride
 	});
+	firsttextGapMark("cmd-prep:session-resolved", opts.runId);
 	const harnessSessionError = sessionKey ? resolveAgentHarnessSessionContextError(sessionKey, sessionEntryRaw) : void 0;
 	if (harnessSessionError) throw new Error(harnessSessionError);
 	if ((opts.modelRun === true || opts.promptMode === "none") && sessionKey && sessionEntryRaw?.modelSelectionLocked === true) throw new Error(AGENT_HARNESS_MODEL_RUN_FORBIDDEN_MESSAGE);
@@ -877,6 +883,7 @@ async function prepareAgentCommandExecution(opts, runtime, runtimeContext) {
 	});
 	const workspaceDirRaw = normalizedSpawned.workspaceDir ?? resolveAgentWorkspaceDir(cfg, sessionAgentId);
 	const workspaceDir = resolveUserPath(workspaceDirRaw);
+	firsttextGapMark("cmd-prep:acp-start", opts.runId);
 	const { getAcpSessionManager } = await loadAcpManagerRuntime();
 	const acpManager = getAcpSessionManager();
 	const acpResolution = sessionKey ? acpManager.resolveSession({
@@ -894,6 +901,7 @@ async function prepareAgentCommandExecution(opts, runtime, runtimeContext) {
 		env: process.env,
 		workspaceDir
 	}) : void 0;
+	firsttextGapMark(preparedMetadataSnapshot ? "cmd-prep:plugin-metadata-prepared" : "cmd-prep:plugin-metadata-resolved", opts.runId);
 	const modelManifestContext = { manifestPlugins: manifestMetadataSnapshot ?? [] };
 	const configuredModel = resolveConfiguredModelRef({
 		cfg,
@@ -908,6 +916,7 @@ async function prepareAgentCommandExecution(opts, runtime, runtimeContext) {
 		workspaceDir,
 		...modelManifestContext
 	});
+	firsttextGapMark("cmd-prep:model-catalog", opts.runId);
 	const configuredThinkingRuntime = resolveEffectiveAgentRuntime({
 		cfg,
 		provider: configuredModel.provider,
@@ -934,12 +943,15 @@ async function prepareAgentCommandExecution(opts, runtime, runtimeContext) {
 	const thinkOnce = normalizeThinkLevel(opts.thinkingOnce);
 	if (opts.thinking && !thinkOverride) throw new Error(`Invalid thinking level. Use one of: ${thinkingLevelsHint}.`);
 	if (opts.thinkingOnce && !thinkOnce) throw new Error(`Invalid one-shot thinking level. Use one of: ${thinkingLevelsHint}.`);
+	firsttextGapMark("cmd-prep:thinking", opts.runId);
 	const resolvedCwd = cwd ? resolveUserPath(cwd) : void 0;
 	const worktreeId = await resolveWorktreeIdForPath({
 		sessionEntry: sessionEntryRaw,
 		candidatePaths: [resolvedCwd ?? workspaceDir, workspaceDir]
 	});
+	firsttextGapMark("cmd-prep:worktree-resolved", opts.runId);
 	const runLease = worktreeId ? await acquireWorktreeRunLease(worktreeId) : void 0;
+	firsttextGapMark("cmd-prep:run-lease", opts.runId);
 	try {
 		const { resolveAcpAgentWorkspaceProvisioningForTurn } = await import("./acp-workspace-provisioning-BeD_7yxe.js");
 		const workspaceProvisioning = await resolveAcpAgentWorkspaceProvisioningForTurn({
@@ -957,6 +969,7 @@ async function prepareAgentCommandExecution(opts, runtime, runtimeContext) {
 			provisioning: workspaceProvisioning
 		});
 		const runId = opts.runId?.trim() || sessionId;
+		firsttextGapMark("cmd-prep:workspace-ensured", opts.runId);
 		let promptMessage = message;
 		if (!isRawModelRun && (message.includes("$") || message.trimStart().startsWith("/"))) {
 			const { expandExplicitSkillReferences, hasSkillReferenceCandidate, listSkillCommandsForWorkspace, resolveEffectiveAgentSkillFilter } = await import("./chat-commands.runtime.js");
@@ -984,6 +997,7 @@ async function prepareAgentCommandExecution(opts, runtime, runtimeContext) {
 				promptMessage = expansion.body;
 			}
 		}
+		firsttextGapMark("cmd-prep:skill-commands", opts.runId);
 		const body = !isRawModelRun && acpResolution?.kind === "ready" ? resolveAcpPromptBody(promptMessage, opts.internalEvents) : prependInternalEventContext(promptMessage, opts.internalEvents);
 		const transcriptBody = opts.transcriptMessage ?? resolveInternalEventTranscriptBody(message, opts.internalEvents);
 		return {
@@ -3280,6 +3294,7 @@ async function prepareEmbeddedSessionState(params) {
 		sessionKey: params.sessionKey,
 		agentId: params.sessionAgentId
 	});
+	firsttextGapMark("cmd-session-state:skills-resolve", params.runId);
 	const skillSnapshotState = resolveReusableWorkspaceSkillSnapshot({
 		workspaceDir: params.workspaceDir,
 		executionSkillsDir: params.executionSkillsDir,
@@ -3295,7 +3310,7 @@ async function prepareEmbeddedSessionState(params) {
 		watch: params.watchSkills && params.opts.oneShotCliRun !== true,
 		...params.pluginMetadataSnapshot ? { pluginMetadataSnapshot: params.pluginMetadataSnapshot } : {}
 	});
-	firsttextGapMark("cmd-session-state:skills-snapshot", params.runId);
+	firsttextGapMark("cmd-session-state:skills-snapshot", params.runId, firsttextSkillDetail(params.isNewSession, currentSkillsSnapshot, skillSnapshotState));
 	const needsSkillsSnapshot = params.isNewSession || !currentSkillsSnapshot || skillSnapshotState.shouldRefresh;
 	const skillsSnapshot = skillSnapshotState.snapshot;
 	if (skillsSnapshot && params.sessionStore && params.sessionKey && needsSkillsSnapshot && !params.suppressVisibleSessionEffects) {
