@@ -103,7 +103,7 @@ if (args.json) {
 } else {
   console.log(`${state}: ${compared} files compared; V=${vHost}:${vCore}  VLab=${vlabHost}:${vlabRuntime}`);
   console.log(`components: ${[...new Set(pairs.map((p) => p.component + (p.blocking === false ? ' (advisory)' : '')))].join(', ')}`);
-  console.log(`config (advisory): ${config.compared} switches compared (MCP servers, plugin entries; Gateway and Worker config)`);
+  console.log(`config (advisory): ${config.compared} switches compared (MCP servers, plugin entries, memory-core dreaming; Gateway and Worker config)`);
   for (const note of notes) console.log(`note: ${note}`);
   const byKind = Map.groupBy(findings, (f) => (f.advisory ? `advisory, does not decide the state: ${f.kind}` : f.kind));
   for (const [kind, list] of byKind) {

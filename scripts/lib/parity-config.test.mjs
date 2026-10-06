@@ -33,10 +33,11 @@ test('extracts only names and booleans; unset enabled counts as on', () => {
   assert.deepEqual(s, {
     mcp: { figma: false, 'universal-memory': false, 'voice-memory': true },
     plugins: { feishu: true, 'vlab-agent-worker-isolation': true },
+    pluginConfig: {},
   });
   assert.ok(!JSON.stringify(s).includes(SECRET));
   assert.equal(configSwitches(null), null);
-  assert.deepEqual(configSwitches({}), { mcp: {}, plugins: {} });
+  assert.deepEqual(configSwitches({}), { mcp: {}, plugins: {}, pluginConfig: {} });
   assert.deepEqual(configSwitches({ mcp: { servers: { a: null, b: 'x' } } }).mcp, { a: true, b: true });
 });
 
@@ -94,4 +95,20 @@ test('MCP absent vs off is not reported; channel plugins are expected difference
   // An MCP server on one side only, and on, is still drift.
   const on = compareConfigSwitches({ v: { gateway: { mcp: {}, plugins: {} }, worker: null }, vlab: { gateway: { mcp: { figma: true }, plugins: {} }, worker: null } });
   assert.deepEqual(on.findings.map((f) => [f.target, f.kind]), [['gateway: mcp.servers.figma.enabled', 'config-differs']]);
+});
+
+test('memory-core dreaming inside plugin config is compared; nothing else of the config is kept', () => {
+  const cfg = (dreaming) => ({
+    plugins: { entries: { 'memory-core': { config: { dreaming: dreaming === undefined ? { cron: '0 3 * * *' } : { enabled: dreaming, cron: '0 3 * * *', token: SECRET } } } } },
+  });
+  assert.deepEqual(configSwitches(cfg(false)).pluginConfig, { 'memory-core.config.dreaming': false });
+  assert.deepEqual(configSwitches(cfg(undefined)).pluginConfig, {});
+  assert.ok(!JSON.stringify(configSwitches(cfg(true))).includes(SECRET));
+  // The 2026-10-06 state: off on V, on in VLab, in both configs.
+  const v = { gateway: configSwitches(cfg(false)), worker: configSwitches(cfg(false)) };
+  const vlab = { gateway: configSwitches(cfg(true)), worker: configSwitches(cfg(true)) };
+  assert.deepEqual(compareConfigSwitches({ v, vlab }).findings.map((f) => [f.target, f.kind, f.v, f.vlab]), [
+    ['gateway: plugins.entries.memory-core.config.dreaming.enabled', 'config-differs', 'false', 'true'],
+    ['worker: plugins.entries.memory-core.config.dreaming.enabled', 'config-differs', 'false', 'true'],
+  ]);
 });
