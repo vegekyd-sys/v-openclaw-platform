@@ -249,6 +249,7 @@
         "lab/gpt-live-consult-continuation.test.mjs",
         "lab/gpt-live-consult-progress.test.mjs",
         "lab/gpt-live-h5/app.test.mjs",
+        "lab/gpt-live-h5/avatar.test.mjs",
         "lab/gpt-live-h5/call-sounds.test.mjs",
         "lab/gpt-live-h5/duplex-playback.test.mjs",
         "lab/gpt-live-h5/microphone-capture.test.mjs",
