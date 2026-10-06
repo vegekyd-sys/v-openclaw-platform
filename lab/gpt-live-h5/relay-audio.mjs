@@ -7,9 +7,12 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
   const socket=new WebSocket(endpoint);socket.binaryType='arraybuffer';
   let closed=false,ready=false,nextAt=0,node,source,quietGain,ending=null,tailTimer;
   const pendingInput=[],players=new Set();let pendingBytes=0;
-  const stats={inputBytes:0,outputBytes:0,clears:0,playbackDrained:false};
+  // Providers can synthesize long answers faster than real time. Bound memory,
+  // rather than treating an ordinary 30-second playback lead as a broken call.
+  const maxQueuedOutputBytes=16*1024*1024;
+  const stats={inputBytes:0,outputBytes:0,queuedOutputBytes:0,peakQueuedOutputBytes:0,clears:0,playbackDrained:false};
   const send=e=>{if(socket.readyState===WebSocket.OPEN)socket.send(JSON.stringify(e));};
-  const flush=()=>{for(const player of players){try{player.stop();}catch{}}players.clear();nextAt=context.currentTime;stats.clears++;onPlaybackActivity(false);ending=null;clearTimeout(tailTimer);};
+  const flush=()=>{for(const player of players){try{player.stop();}catch{}}players.clear();stats.queuedOutputBytes=0;nextAt=context.currentTime;stats.clears++;onPlaybackActivity(false);ending=null;clearTimeout(tailTimer);};
   const checkEnd=()=>{
     if(closed||!ending)return;
     if(context.state==='running'&&players.size===0&&context.currentTime>=nextAt+.75){stats.playbackDrained=true;send({type:'playback.drained',callId:ending});ending=null;}
@@ -19,11 +22,12 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
     const bytes=Uint8Array.from(atob(e.audio),c=>c.charCodeAt(0));
     if(bytes.length%2||bytes.length>480000||e.sampleRate!==24000)throw Error('语音帧格式无效');
     if(context.state!=='running')throw Error('声音播放被暂停了，请点击页面恢复');
+    if(stats.queuedOutputBytes+bytes.length>maxQueuedOutputBytes)throw Error('语音缓存过大，请重新拨号');
     const data=new DataView(bytes.buffer),buffer=context.createBuffer(1,bytes.length/2,24000),values=buffer.getChannelData(0);
     for(let i=0;i<values.length;i++)values[i]=data.getInt16(i*2,true)/32768;
-    if(nextAt-context.currentTime>30)throw Error('语音播放积压，请重新拨号');
     const player=context.createBufferSource();player.buffer=buffer;player.connect(context.destination);
-    players.add(player);player.onended=()=>{players.delete(player);player.disconnect();if(players.size===0)onPlaybackActivity(false);};
+    players.add(player);stats.queuedOutputBytes+=bytes.length;stats.peakQueuedOutputBytes=Math.max(stats.peakQueuedOutputBytes,stats.queuedOutputBytes);
+    player.onended=()=>{if(players.delete(player))stats.queuedOutputBytes-=bytes.length;player.disconnect();if(players.size===0)onPlaybackActivity(false);};
     nextAt=Math.max(nextAt,context.currentTime+.01);player.start(nextAt);nextAt+=buffer.duration;onPlaybackActivity(true);
     stats.outputBytes+=bytes.length;
   };
