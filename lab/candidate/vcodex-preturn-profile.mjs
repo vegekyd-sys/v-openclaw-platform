@@ -176,6 +176,10 @@ const aliases = Object.entries({ ...config.agents.defaults.models, ...makaron.mo
 assert.equal(aliases.length, 1, `shared config /${ALIAS} does not resolve to one model`);
 const [[MODEL, aliasRow]] = aliases;
 assert.equal(aliasRow.agentRuntime?.id, "codex", `/${ALIAS} does not run on the codex runtime`);
+// `agent --model` is checked against modelPolicy.allow, which Feishu aliases bypass; shared VLab's
+// list lacks the DeepSeek flash ref behind /vds, so admit the driven model in this private copy
+const allow = config.agents.defaults.modelPolicy?.allow;
+if (Array.isArray(allow) && !allow.includes(MODEL)) allow.push(MODEL);
 const workerPlugin = config.plugins.entries?.["vlab-agent-worker-isolation"]?.config;
 if (workerPlugin?.workerConfigPath) {
   Object.assign(workerPlugin, { minWorkers: 1, maxWorkers: 1, warmSpareWorkers: 0 });
