@@ -363,8 +363,10 @@ try {
     assert(compared.length >= 3, "too few reads were compared with list()");
     assert.deepEqual(compared.filter((x) => !x.same), [], "a narrow read differed from list()");
     // between full retirement passes the minute sweep never lists every placement
-    const partialMinutes = perMinute.filter((m) => m.retirePlacements !== undefined && m.retirePlacements < seeded.copied);
-    assert(partialMinutes.length >= SWEEPS - 3, `only ${partialMinutes.length} partial minutes`);
+    // the first minute sweep also runs reconcileActive's one-time orphan workspace cleanup, which
+    // walks every placement once per process (unchanged); steady partial minutes are the rest
+    const partialMinutes = perMinute.slice(1).filter((m) => m.retirePlacements !== undefined && m.retirePlacements < seeded.copied);
+    assert(partialMinutes.length >= SWEEPS - 4, `only ${partialMinutes.length} partial minutes`);
     for (const m of partialMinutes) assert.equal(m.by.list, undefined, `a partial minute still listed every placement: ${JSON.stringify(m)}`);
     assert(fullPasses.length >= 2, "no 10-minute full retirement pass after startup");
     const tenMinutePass = fullPasses[1];
