@@ -34,3 +34,35 @@ export function patchSessionEntryChunk(source) {
     'entry patch commit');
   return source;
 }
+
+// The heartbeat outcome claim is a sync write transaction on the prompt path,
+// right before the model call; wait for the writer lease on the event loop first.
+export function patchBuiltinChunk(source) {
+  if (source.includes(ADMISSION_MARKER)) throw new Error('already patched');
+  source = once(source,
+    'import { n as claimHeartbeatOutcomeForRun, t as buildHeartbeatOutcomeContext } from "./heartbeat-outcome-store-BoT9c8Af.js";\n',
+    'import { n as claimHeartbeatOutcomeForRun, t as buildHeartbeatOutcomeContext } from "./heartbeat-outcome-store-BoT9c8Af.js";\n' +
+    'import { c as heartbeatAdmissionResolveSqliteScope, m as heartbeatAdmissionToDatabaseOptions } from "./session-accessor.sqlite-scope-BwPKGcgm.js";\n' +
+    'import { r as heartbeatAdmissionResolveSqlitePath, t as heartbeatAdmissionIsIncognitoSqlitePath } from "./openclaw-agent-db.paths-DYna80bS.js";\n' +
+    'import { o as heartbeatAdmissionTryAcquireCoordinator } from "./node-sqlite-CL-d6drd.js";\n' +
+    'import { isAgentDatabaseProcessLeaseHeld as heartbeatAdmissionIsLeaseHeld } from "./agent-db-process-coordinator.mjs";\n' +
+    'import { waitForAgentDatabaseWriterAdmission as heartbeatAdmissionWait } from "./agent-db-writer-admission-wait.mjs";\n' +
+    `// ${ADMISSION_MARKER}: wait for the Agent DB writer lease without Atomics.wait before the sync heartbeat claim.\n` +
+    'async function claimHeartbeatOutcomeForRunAfterWriterAdmission(params) {\n' +
+    '\ttry {\n' +
+    '\t\tconst options = heartbeatAdmissionToDatabaseOptions(heartbeatAdmissionResolveSqliteScope(params));\n' +
+    '\t\tawait heartbeatAdmissionWait(heartbeatAdmissionResolveSqlitePath(options), {\n' +
+    '\t\t\tacquire: heartbeatAdmissionTryAcquireCoordinator,\n' +
+    '\t\t\tisHeld: heartbeatAdmissionIsLeaseHeld,\n' +
+    '\t\t\tisIncognito: (databasePath) => heartbeatAdmissionIsIncognitoSqlitePath(databasePath, options)\n' +
+    '\t\t});\n' +
+    '\t} catch {}\n' +
+    '\treturn claimHeartbeatOutcomeForRun(params);\n' +
+    '}\n',
+    'builtin imports');
+  source = once(source,
+    'buildHeartbeatOutcomeContext(claimHeartbeatOutcomeForRun({',
+    'buildHeartbeatOutcomeContext(await claimHeartbeatOutcomeForRunAfterWriterAdmission({',
+    'heartbeat claim');
+  return source;
+}
