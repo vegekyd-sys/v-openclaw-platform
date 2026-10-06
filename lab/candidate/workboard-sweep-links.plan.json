@@ -1,0 +1,16 @@
+{
+  "support": [
+    "lab/candidate/workboard-sweep-links.mjs",
+    "lab/release-files/workboard-incremental-sweep/index.js",
+    "lab/release-files/workboard-sweep-links/index.js"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/workboard-sweep-links.mjs"
+  ],
+  "timeoutSeconds": 1200,
+  "user": "lab-db91-parity",
+  "env": {
+    "N": "3580"
+  }
+}
