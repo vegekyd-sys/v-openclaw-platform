@@ -4,7 +4,7 @@ import test from "node:test";
 import vm from "node:vm";
 import { createAvatarTasks, ACTIVITY_LABELS } from "./avatar-state.mjs";
 import { createTranscriptPresentation } from "./transcript-presentation.mjs";
-import { captureDuplexMicrophone } from "./microphone-capture.mjs";
+import { createPageMicrophoneSession } from "./microphone-session.mjs";
 import { createH5DuplexPlaybackGate } from "./duplex-playback.mjs";
 
 const appSource = readFileSync(new URL("./app.js", import.meta.url), "utf8")
@@ -107,7 +107,7 @@ async function fixture(t, options = {}) {
     close() { this.closed = true; }
   }
   const context = vm.createContext({
-    createTranscriptPresentation, captureDuplexMicrophone, createAvatarTasks, ACTIVITY_LABELS,
+    createTranscriptPresentation, createPageMicrophoneSession, createAvatarTasks, ACTIVITY_LABELS,
     AbortController,
     createCallSounds: () => {
       const value = { dialing: 0, pickups: 0, disposed: 0, dial() { this.dialing++; }, connected() { this.pickups++; }, dispose() { this.disposed++; } };
@@ -181,7 +181,7 @@ test("stopping before microphone permission returns releases every late track wi
   await f.context.stopCall();
   const tracks = [track(), track(), track("video")];
   permission.resolve(stream(tracks));
-  await starting;
+  await starting; await tick();
   assert(tracks.every((item) => item.stopped === 1));
   assert.equal(f.requests.filter(({ route }) => route === "session" || route === "offer").length, 0);
   assert.equal(f.peers[0].closed, true);
@@ -984,4 +984,10 @@ test('backend end host acceptance does not use an unfinished USER prefix', async
     backendRunId: 'talk-realtime-consult:actual:parent', requestId: 'item_pending', nativeDelegationId: 'item_pending',
     delegationGeneration: 1, originUserTurnId: 'turn_pending', closeAfterPlayback: true }) });
   assert.equal(f.body.dataset.callState, 'connected'); assert.equal(peer.closed, false);
+});
+test('same-page redial reuses one grant, keeps the idle microphone disabled and releases on navigation',async t=>{
+ let grants=0;const mic=track();const f=await fixture(t,{getUserMedia:()=>{grants++;return stream([mic]);}});
+ await f.context.startCall();assert.equal(grants,1);await f.context.stopCall();assert.equal(mic.enabled,false);assert.equal(mic.stopped,0);
+ await f.context.startCall();assert.equal(grants,1);assert.equal(mic.enabled,true);await f.context.stopCall();assert.equal(mic.enabled,false);
+ f.pageEvents.get('pagehide')();assert.equal(mic.stopped,1);
 });

@@ -1,12 +1,13 @@
 import { createAvatarTasks, ACTIVITY_LABELS } from "./avatar-state.mjs";
 import { mountAvatar } from "./avatar.mjs";
 import { createTranscriptPresentation } from "./transcript-presentation.mjs";
-import { captureDuplexMicrophone } from "./microphone-capture.mjs";
+import { createPageMicrophoneSession } from "./microphone-session.mjs";
 import { createCallSounds } from "./call-sounds.mjs";
 import { createH5DuplexPlaybackGate } from "./duplex-playback.mjs";
 import { createRelayAudio } from "./relay-audio.mjs";
 
 const $ = (id) => document.getElementById(id);
+let microphoneSession = createPageMicrophoneSession();
 let call = null;
 let starting = null;
 let liveReady = false;
@@ -458,7 +459,7 @@ async function startCall() {
   active.duplexDiagnostics.playbackMode = active.duplex.snapshot().mode;
   active.duplexDiagnostics.interruptionOwner = active.duplex.snapshot().interruptionOwner;
   try {
-    active.capture = await captureDuplexMicrophone({
+    active.capture = await microphoneSession.acquire({
       mediaDevices: navigator.mediaDevices, signal: active.captureAbort.signal,
       isCurrent: () => call === active,
       onDiagnostics: (metadata) => { if (call === active) active.duplexDiagnostics.microphone = metadata; },
@@ -626,6 +627,7 @@ $("cancel").addEventListener("click", async () => {
   catch (error) { if (call === active) setStatus(error.message); }
 });
 window.addEventListener("pagehide", () => {
+  microphoneSession.close();
   const active = call;
   if (!active) return;
   // Beacon survives navigation; stopCall synchronously releases every local
@@ -633,6 +635,7 @@ window.addEventListener("pagehide", () => {
   if (active.voiceSessionId) navigator.sendBeacon(apiUrl("close"), new Blob([JSON.stringify({ voiceSessionId: active.voiceSessionId })], { type: "application/json" }));
   void stopCall();
 });
+window.addEventListener("pageshow",event=>{if(event.persisted)microphoneSession=createPageMicrophoneSession();});
 async function initializeEntry() {
   try {
     const fragment = new URLSearchParams(window.location.hash.slice(1));
