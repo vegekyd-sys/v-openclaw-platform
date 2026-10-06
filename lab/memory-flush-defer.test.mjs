@@ -66,7 +66,7 @@ test('each anchor is replaced exactly once and a patched file is refused', () =>
   assert.throws(() => patchAgentRunnerRuntime(runtimeInput.replace('async function executePreparedReplyAgentRun(context) {\n', '')), /Expected exactly one reply agent run executor/);
   assert.throws(() => patchBuiltinOpenclaw(builtinOut), /already patched/);
   assert.throws(() => patchBuiltinOpenclaw(builtinInput.replace('\t\tisCompacting: () => subscription.isCompacting(),\n', '')), /Expected exactly one embedded run compacting state/);
-  assert.equal(memoryOut.split(MEMORY_FLUSH_DEFER_MARKER).length - 1, 7);
+  assert.equal(memoryOut.split(MEMORY_FLUSH_DEFER_MARKER).length - 1, 11);
   assert.equal(memoryOut.split('if (!isAbortError(error) && run.memoryFlushDeferred !== true && storePath && sessionKey) try {').length - 1, 1);
   assert.equal(runtimeOut.split('deferPreReplyFlush:').length - 1, 1);
   assert.equal(runtimeOut.split('yieldDeferredMemoryFlush(sessionKey, "inbound-turn")').length - 1, 1);
@@ -778,19 +778,51 @@ test('a heartbeat during a running deferred flush neither yields it nor runs', a
 // store (VLab candidate at 6f05930, interrupt arm: abort mid-flush, the next turn defers
 // again, and the re-run after the idle wait ended "skipped" without writing memory).
 
-function integratedSession({ stats, world } = {}) {
+function integratedSession({ stats, world, stockAttempts = false } = {}) {
   const workspaceDir = fs.mkdtempSync(path.join(fs.realpathSync(process.env.TMPDIR ?? '/tmp'), 'memflush-'));
   after(() => fs.rmSync(workspaceDir, { recursive: true, force: true }));
   const store = { [sessionKey]: entry() };
   const embedded = [];
+  const attempts = [];
+  const hooks = {};
   let completeGate;
   const plan = { softThresholdTokens: 4000, forceFlushTranscriptBytes: 2097152, reserveTokensFloor: 20000 };
   const { fakes } = memoryFakes({ fakes: {
-    updateSessionEntry: async (scope, update) => {
-      const patch = await update(store[scope.sessionKey]);
+    // as patchSqliteSessionEntrySnapshot: prepare the patch, then commit (assertCommitAllowed at
+    // the commit edge); a null patch writes nothing and returns the current entry
+    updateSessionEntry: async (scope, update, options = {}) => {
+      if (!store[scope.sessionKey]) return null;
+      const patch = await update({ ...store[scope.sessionKey] });
+      await hooks.beforeCommit?.();
+      options.assertCommitAllowed?.();
+      if (!patch) return { ...store[scope.sessionKey] };
       store[scope.sessionKey] = { ...store[scope.sessionKey], ...patch };
       return store[scope.sessionKey];
     },
+    // stockAttempts: the entry calls the module's real runCandidate, and the embedded attempt
+    // (runEmbeddedAgent) behaves as builtin-openclaw's does: an aborted attempt returns
+    // normally with meta.aborted instead of throwing
+    ...stockAttempts ? {
+      createLazyImportLoader: () => ({ load: async () => ({
+        runEmbeddedAgent: async (p) => {
+          const attempt = { params: p };
+          attempts.push(attempt);
+          return await new Promise((resolve) => {
+            const abortedResult = () => resolve({ payloads: [], meta: { durationMs: 2410, aborted: true, stopReason: 'aborted' } });
+            if (p.abortSignal.aborted) return abortedResult();
+            p.abortSignal.addEventListener('abort', abortedResult, { once: true });
+            attempt.finish = () => { p.abortSignal.removeEventListener('abort', abortedResult); resolve({ payloads: [], meta: { durationMs: 24_700 } }); };
+            // the run aborts itself (its own run controller) while the flush's signal is not aborted
+            attempt.abortInternally = () => { p.abortSignal.removeEventListener('abort', abortedResult); abortedResult(); };
+          });
+        },
+      }) }),
+      resolveSessionRuntimeOverrideForProvider: () => undefined,
+      resolveCandidateThinkingLevel: () => undefined,
+      invalidateTurnCompactionContext: () => {},
+      recordTurnCompaction: () => {},
+      buildEmbeddedRunExecutionParams: async (p) => ({ embeddedContext: {}, senderContext: {}, runBaseParams: { runId: p.runId, sessionId: p.run.sessionId } }),
+    } : {},
     readSessionTranscriptActiveStats: () => (stats ? stats() : { sizeBytes: 3_500_000, eventCount: 400 }),
     resolveMemoryFlushPlan: (p) => (p.nowMs ? { ...plan, relativePath: 'memory/2026-10-06.md', prompt: 'flush', systemPrompt: 'sys' } : plan),
     resolveModelFallbackOptions: (run) => ({ cfg: run.config, provider: run.provider, model: run.model }),
@@ -815,6 +847,11 @@ function integratedSession({ stats, world } = {}) {
     runEmbeddedAgentEntry: async (p) => {
       const call = { params: p };
       embedded.push(call);
+      if (stockAttempts) {
+        // the stock entry returns the candidate's result normally (agent-runner-compaction-accounting)
+        call.result = await p.runCandidate(p.selection.provider, p.selection.model, { isFinalFallbackAttempt: true, onContextEngineTurnCandidate() {} });
+        return { outcome: 'completed', result: call.result };
+      }
       const sessionId = p.identity.sessionId;
       let runInput;
       if (world) {
@@ -860,7 +897,7 @@ function integratedSession({ stats, world } = {}) {
   // let the real module's awaits (including the memory file's fs calls) run out
   const settle = async () => { for (let i = 0; i < 5; i += 1) await new Promise((r) => setTimeout(r, 5)); };
   const gateCompletion = () => { let open; completeGate = { promise: new Promise((r) => { open = r; }) }; return () => { completeGate = undefined; open(); }; };
-  return { t, store, embedded, memory, preReplyCheck, settle, gateCompletion, ranLines: () => t.log.filter((l) => l.includes('"phase":"ran"')).map((l) => JSON.parse(l.replace('[memory-flush-deferred.1] ', ''))) };
+  return { t, store, embedded, attempts, hooks, memory, preReplyCheck, settle, gateCompletion, ranLines: () => t.log.filter((l) => l.includes('"phase":"ran"')).map((l) => JSON.parse(l.replace('[memory-flush-deferred.1] ', ''))) };
 }
 
 test('abort mid-flush, the next turn defers again, then after idle the flush really runs (not skipped)', async () => {
@@ -908,6 +945,7 @@ test('an abort that lands after the flush finished is logged with its real outco
   const ran = s.ranLines().at(-1);
   assert.equal(ran.outcome, 'completed');
   assert.equal(ran.aborted, true);
+  assert.equal(ran.marked, true);
   // the re-armed job finds the cycle flushed and says so
   s.t.timers.at(-1).fn();
   await s.settle();
@@ -1038,6 +1076,88 @@ test('the steer wait ends when the real reply ends, and never applies without an
   assert.deepEqual(h.decisions.map((d) => d[0]), ['steer']);
   assert(!t.log.some((l) => l.includes('steer-wait')));
   assert(STEER_WAIT_MS >= 1000 && STEER_WAIT_MS <= 10000);
+});
+
+// Success marker (VLab candidate at 38bdb0a, interrupt arm: "ran outcome=failed aborted=true
+// error=AbortError ms=2410", then "ran skipped already-flushed", entry.memoryFlush succeeded).
+// The embedded attempt of the real path returns normally when aborted (meta.aborted), and the
+// entry returns that result; runMemoryFlushIfNeeded ignores it and relies on its lifecycle
+// signal. These run the module's real runCandidate against that stock attempt shape.
+
+test('stock aborted-run shape: a deferred flush aborted mid-run returns normally, marks nothing, and the idle re-run flushes', async () => {
+  const s = integratedSession({ stockAttempts: true });
+  assert.equal(await s.preReplyCheck(), 'deferred');
+  s.t.afterClear.at(-1).cb();
+  s.t.timers.at(-1).fn();
+  await s.settle();
+  assert.equal(s.attempts.length, 1);
+  assert.equal(s.attempts[0].params.trigger, 'memory');
+  assert.equal(s.t.api.yieldDeferredMemoryFlush(sessionKey, 'inbound-turn'), true);
+  await s.settle();
+  // the attempt and the entry returned normally, with the aborted flag
+  assert.equal(s.embedded[0].result.meta.aborted, true);
+  const ran = s.ranLines().at(-1);
+  assert.deepEqual([ran.outcome, ran.aborted, ran.error, ran.marked], ['failed', true, 'AbortError', undefined]);
+  assert.equal(s.store[sessionKey].memoryFlush, undefined);
+  // the cycle stays due: the next turn defers again and the idle re-run really flushes
+  assert.equal(await s.preReplyCheck(), 'deferred');
+  s.t.afterClear.at(-1).cb();
+  s.t.timers.at(-1).fn();
+  await s.settle();
+  assert.equal(s.attempts.length, 2);
+  s.attempts[1].finish();
+  await s.settle();
+  assert.deepEqual([s.ranLines().at(-1).outcome, s.ranLines().at(-1).marked], ['completed', true]);
+  assert.deepEqual(s.store[sessionKey].memoryFlush, { kind: 'succeeded', compactionCount: 0 });
+  assert.equal(await s.preReplyCheck(), 'skipped');
+});
+
+test('a deferred run that reports aborted marks nothing even when the flush signal was not aborted; the stock pre-reply path still marks it', async () => {
+  const s = integratedSession({ stockAttempts: true });
+  assert.equal(await s.preReplyCheck(), 'deferred');
+  s.t.afterClear.at(-1).cb();
+  s.t.timers.at(-1).fn();
+  await s.settle();
+  s.attempts[0].abortInternally();
+  await s.settle();
+  const ran = s.ranLines().at(-1);
+  assert.deepEqual([ran.outcome, ran.aborted, ran.error], ['failed', undefined, 'AbortError']);
+  assert.equal(s.store[sessionKey].memoryFlush, undefined);
+  // still due for the next pre-reply check
+  assert.equal(await s.preReplyCheck(), 'deferred');
+
+  // stock pre-reply flush, same attempt shape: unchanged (it marks the cycle)
+  const p = integratedSession({ stockAttempts: true });
+  const followup = { ...followupRun('用户消息'), run: { ...followupRun().run, workspaceDir: fs.mkdtempSync(path.join(fs.realpathSync(process.env.TMPDIR ?? '/tmp'), 'memflush-')), config: {} } };
+  after(() => fs.rmSync(followup.run.workspaceDir, { recursive: true, force: true }));
+  const pending = p.memory.runMemoryFlushIfNeeded(baseParams({ followupRun: followup, promptForEstimate: '', sessionEntry: p.store[sessionKey], onVisibleErrorPayloads() {} }));
+  await p.settle();
+  p.attempts[0].abortInternally();
+  const result = await pending;
+  assert.equal(result.outcome, 'completed');
+  assert.equal(result.markedFlushed, undefined);
+  assert.deepEqual(p.store[sessionKey].memoryFlush, { kind: 'succeeded', compactionCount: 0 });
+});
+
+test('an abort that lands while the success marker is being written does not mark the cycle', async () => {
+  const s = integratedSession({ stockAttempts: true });
+  assert.equal(await s.preReplyCheck(), 'deferred');
+  s.t.afterClear.at(-1).cb();
+  s.t.timers.at(-1).fn();
+  await s.settle();
+  // the run finished; the new turn arrives between preparing the marker and its commit
+  s.hooks.beforeCommit = () => { s.t.api.yieldDeferredMemoryFlush(sessionKey, 'inbound-turn'); };
+  s.attempts[0].finish();
+  await s.settle();
+  const ran = s.ranLines().at(-1);
+  assert.deepEqual([ran.outcome, ran.aborted, ran.error], ['failed', true, 'AbortError']);
+  assert.equal(s.store[sessionKey].memoryFlush, undefined);
+  s.hooks.beforeCommit = undefined;
+  s.t.timers.at(-1).fn();
+  await s.settle();
+  s.attempts[1].finish();
+  await s.settle();
+  assert.deepEqual(s.store[sessionKey].memoryFlush, { kind: 'succeeded', compactionCount: 0 });
 });
 
 // ---------------------------------------------------------------------------------------
@@ -1261,4 +1381,40 @@ test('a stock pre-reply flush is not registered and still accepts injection; a r
   assert.equal(s.embedded[0].handle.isCompacting(), true);
   assert.equal(s.embedded[0].params.abortSignal.aborted, true);
   await s.settle();
+});
+
+test('candidate probe: off without its env; with it, wakes the deferred flush\'s session like an announce and reports the outcome', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const probe = new URL('./memory-flush-defer-inject-probe.mjs', import.meta.url).href;
+  const dist = fs.mkdtempSync(path.join(fs.realpathSync(process.env.TMPDIR ?? '/tmp'), 'memflush-probe-'));
+  after(() => fs.rmSync(dist, { recursive: true, force: true }));
+  // a stand-in for the runs chunk: refuses as the patched handle does, then the flush is gone
+  fs.writeFileSync(path.join(dist, 'runs-5WnDPZ0V.js'), `
+const state = () => globalThis[Symbol.for('openclaw.embeddedRunState')];
+let calls = 0;
+export const v = async (sessionId, _text, options) => {
+  calls += 1;
+  globalThis.__probeCalls = [...(globalThis.__probeCalls ?? []), { sessionId, options }];
+  if (calls <= 2) return { queued: false, sessionId, reason: 'compacting' };
+  state().activeRuns.delete(sessionId);
+  return { queued: false, sessionId, reason: options.waitForTranscriptCommit ? 'transcript_commit_wait_unsupported' : 'no_active_run' };
+};
+export const u = (sessionId) => state().activeRuns.has(sessionId);
+`);
+  const child = `
+globalThis[Symbol.for('openclaw.embeddedRunState')] = { activeRuns: new Map([['s1', { runId: 'run-1' }]]) };
+globalThis[Symbol.for('openclaw.memoryFlushDefer.deferredRuns.v1')] = new Map([['run-1', { sessionKey: 'k' }]]);
+setTimeout(() => {}, 400);
+`;
+  const run = (env) => spawnSync(process.execPath, ['--import', probe, '-e', child], { env: { PATH: process.env.PATH, ...env }, encoding: 'utf8' });
+  const quiet = run({});
+  assert.equal(quiet.status, 0);
+  assert.equal(quiet.stderr, '');
+  const on = run({ MEMORY_FLUSH_DEFER_PROBE_DIST: dist, MEMORY_FLUSH_DEFER_PROBE_DELAY_MS: '10', MEMORY_FLUSH_DEFER_PROBE_RETRY_MS: '5,5,5,5' });
+  assert.equal(on.status, 0, on.stderr);
+  const events = on.stderr.trim().split('\n').map((l) => JSON.parse(l.replace('[memory-flush-defer-probe] ', '')));
+  assert.deepEqual(events.map((e) => e.phase), ['loaded', 'armed', 'attempt', 'attempt', 'attempt', 'attempt', 'result']);
+  const result = events.at(-1);
+  assert.deepEqual([result.sessionId, result.outcomes, result.requesterActive, result.verdict], ['s1', ['compacting', 'compacting', 'transcript_commit_wait_unsupported', 'no_active_run'], false, 'direct-delivery']);
+  assert(!on.stderr.includes('probe received'), 'message text is not logged');
 });

@@ -7328,6 +7328,7 @@ function startDeferredMemoryFlush(job, epoch) {
 			...abortSignal.aborted ? { aborted: true } : {},
 			...report.skipReason ? { reason: report.skipReason } : {},
 			...report.failureName ? { error: report.failureName } : {},
+			...typeof report.marked === "boolean" ? { marked: report.marked } : {},
 			...retryUnreadable ? { retry: true } : {},
 			ms: Date.now() - startedAt
 		});
@@ -7389,6 +7390,7 @@ async function runDeferredMemoryFlush(ctx, abortSignal, report = {}) {
 		});
 		if (result?.skipReason) report.skipReason = result.skipReason;
 		if (result?.failureName) report.failureName = result.failureName;
+		if (typeof result?.markedFlushed === "boolean") report.marked = result.markedFlushed;
 		return result?.outcome ?? "unknown";
 	} catch (error) {
 		logVerbose(`deferred memory flush failed: ${String(error)}`);

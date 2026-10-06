@@ -943,6 +943,10 @@ async function runMemoryFlushIfNeeded(params) {
 		sessionKey: params.sessionKey,
 		onInjection: typeof params.onDeferredFlushInjection === "function" ? params.onDeferredFlushInjection : void 0
 	});
+	// memory-flush-defer-v1: a deferred flush counts as done only when its run truly finished.
+	let deferredFlushRunAborted = false;
+	const deferredFlushInterrupted = () => params.memoryFlushDeferred === true && (deferredFlushRunAborted || abortSignal?.aborted === true || deferredLifecycle.signal.aborted);
+	const createDeferredFlushInterruptedError = () => Object.assign(new Error("deferred memory flush was interrupted before it finished"), { name: "AbortError" });
 	const flushedCompactionCount = activeSessionEntry?.compactionCount ?? 0;
 	const compaction = {
 		count: 0,
@@ -1062,6 +1066,8 @@ async function runMemoryFlushIfNeeded(params) {
 						onContextEngineTurnCandidate: runOptions.onContextEngineTurnCandidate
 					});
 					visibleErrorPayloads = resolveVisibleMemoryFlushErrorPayloads(result.payloads);
+					// memory-flush-defer-v1: an aborted embedded run returns normally, with meta.aborted
+					if (params.memoryFlushDeferred === true && result?.meta?.aborted === true) deferredFlushRunAborted = true;
 					bootstrapPromptWarningSignaturesSeen = resolveBootstrapWarningSignaturesSeen(result.meta?.systemPromptReport);
 					return result;
 				}
@@ -1095,16 +1101,33 @@ async function runMemoryFlushIfNeeded(params) {
 		}
 		deferredLifecycle.signal.throwIfAborted();
 		if (visibleErrorPayloads.length > 0) throw buildVisibleMemoryFlushFailure(visibleErrorPayloads);
+		// memory-flush-defer-v1: a deferred flush that was aborted (its signal, or a run that reports
+		// aborted) never marks the cycle flushed: it stays due and the idle re-run flushes. Checked
+		// again when the marker is prepared and at the commit edge, so an abort that lands while
+		// the write is in flight does not mark it either.
+		if (deferredFlushInterrupted()) throw createDeferredFlushInterruptedError();
+		let deferredFlushMarkRefused = false;
 		if (params.storePath && params.sessionKey) try {
 			const updatedEntry = await updateSessionEntry({
 				storePath: params.storePath,
 				sessionKey: params.sessionKey
-			}, async () => ({ memoryFlush: {
-				kind: "succeeded",
-				compactionCount: flushedCompactionCount
-			} }), {
+			}, async () => {
+				if (deferredFlushInterrupted()) {
+					deferredFlushMarkRefused = true;
+					return null;
+				}
+				return { memoryFlush: {
+					kind: "succeeded",
+					compactionCount: flushedCompactionCount
+				} };
+			}, {
 				skipMaintenance: true,
-				takeCacheOwnership: true
+				takeCacheOwnership: true,
+				...params.memoryFlushDeferred === true ? { assertCommitAllowed: () => {
+					if (!deferredFlushInterrupted()) return;
+					deferredFlushMarkRefused = true;
+					throw createDeferredFlushInterruptedError();
+				} } : {}
 			});
 			if (updatedEntry) {
 				activeSessionEntry = updatedEntry;
@@ -1116,9 +1139,12 @@ async function runMemoryFlushIfNeeded(params) {
 		} catch (err) {
 			logVerbose(`failed to persist memory flush metadata: ${String(err)}`);
 		}
+		if (deferredFlushMarkRefused) throw createDeferredFlushInterruptedError();
 		return {
 			sessionEntry: activeSessionEntry,
-			outcome: "completed"
+			outcome: "completed",
+			// memory-flush-defer-v1: whether this deferred run wrote the success marker (for its log line)
+			...params.memoryFlushDeferred === true ? { markedFlushed: activeSessionEntry?.memoryFlush?.kind === "succeeded" && activeSessionEntry.memoryFlush.compactionCount === flushedCompactionCount } : {}
 		};
 	} catch (error) {
 		return await recordFailure(error);
