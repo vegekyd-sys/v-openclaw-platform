@@ -68,6 +68,19 @@ export class HandoffAdminClient {
     return json;
   }
 
+  /** PNG bytes of the service's desktop now (one VNC frame, scaled to maxWidth), or throws. */
+  async capture({ maxWidth = 1280, timeoutMs = 25_000 } = {}) {
+    const res = await this.fetch(`${this.baseUrl}/v1/capture?maxWidth=${encodeURIComponent(maxWidth)}`, {
+      headers: { authorization: `Bearer ${this.token()}` },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      throw new Error(`desktop handoff service ${res.status}: ${json.error ?? "error"}`);
+    }
+    return Buffer.from(await res.arrayBuffer());
+  }
+
   handBack(id, options) {
     return this.request("POST", `/v1/handoffs/${encodeURIComponent(id)}/handback`, {}, options);
   }

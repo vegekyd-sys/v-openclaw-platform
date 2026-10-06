@@ -4,7 +4,7 @@ import net from "node:net";
 import crypto from "node:crypto";
 import { vncAuthResponse } from "../lib/vnc-auth.mjs";
 
-export async function startFakeVnc({ password = "secret", name = "fake desktop", width = 64, height = 48 } = {}) {
+export async function startFakeVnc({ password = "secret", name = "fake desktop", width = 64, height = 48, frame = null } = {}) {
   const clients = [];
   const server = net.createServer((socket) => {
     const client = { socket, messages: [], setEncodings: [], authenticated: false, shared: null };
@@ -91,7 +91,25 @@ export async function startFakeVnc({ password = "secret", name = "fake desktop",
             client.setEncodings.push(encodings);
           }
           client.messages.push({ type, bytes: Buffer.from(message) });
-          if (type === 3) {
+          if (type === 3 && frame) {
+            // a full-screen raw rectangle from frame(x, y) -> [r, g, b], in the 32-bit BGRX format the capture asks for
+            const rect = Buffer.alloc(16 + width * height * 4);
+            rect[0] = 0;
+            rect.writeUInt16BE(1, 2);
+            rect.writeUInt16BE(width, 8);
+            rect.writeUInt16BE(height, 10);
+            rect.writeInt32BE(0, 12);
+            for (let y = 0; y < height; y += 1) {
+              for (let x = 0; x < width; x += 1) {
+                const [r, g, b] = frame(x, y);
+                const i = 16 + (y * width + x) * 4;
+                rect[i] = b;
+                rect[i + 1] = g;
+                rect[i + 2] = r;
+              }
+            }
+            socket.write(rect);
+          } else if (type === 3) {
             // answer with one raw rectangle so the client sees a frame
             const rect = Buffer.alloc(4 + 12 + 4);
             rect[0] = 0; // FramebufferUpdate

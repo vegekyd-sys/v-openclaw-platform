@@ -17,6 +17,7 @@ import { acceptWebSocket, isWebSocketUpgrade, rejectUpgrade } from "./lib/ws.mjs
 import { connectVnc, bridgeViewer } from "./lib/rfb-proxy.mjs";
 import { createDisplayLayout } from "./lib/display-layout.mjs";
 import { createInputReset } from "./lib/input-reset.mjs";
+import { captureVncPng } from "./lib/capture.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(HERE, "public");
@@ -226,7 +227,8 @@ function clientIp(req) {
   return req.socket?.remoteAddress ?? null;
 }
 
-export function createService(config, { log = console, layout: layoutOverride, inputReset: inputResetOverride } = {}) {
+export function createService(config, options = {}) {
+  const { log = console, layout: layoutOverride, inputReset: inputResetOverride } = options;
   fs.mkdirSync(config.stateDir, { recursive: true, mode: 0o700 });
   const adminToken = readSecretFile(config.adminTokenFile);
   if (adminToken.length < 16) {
@@ -462,6 +464,12 @@ export function createService(config, { log = console, layout: layoutOverride, i
         json(res, 200, { ok: true, ...registry.state() });
       } else if (req.method === "GET" && url.pathname === "/v1/state") {
         json(res, 200, registry.state());
+      } else if (req.method === "GET" && url.pathname === "/v1/capture") {
+        // The desktop now as a PNG, for chat cards of a machine the Gateway cannot screenshot itself.
+        const maxWidth = Math.min(Math.max(Number(url.searchParams.get("maxWidth")) || 1280, 160), 3840);
+        const shot = await captureVncPng({ host: config.vnc.host, port: config.vnc.port, password: vncPassword(), maxWidth, connect: options.connectVnc ?? connectVnc });
+        res.writeHead(200, { "content-type": "image/png", "content-length": shot.png.length, "cache-control": "no-store" });
+        res.end(shot.png);
       } else if (req.method === "POST" && url.pathname === "/v1/handoffs") {
         const body = await readJsonBody(req);
         const issued = registry.issue({

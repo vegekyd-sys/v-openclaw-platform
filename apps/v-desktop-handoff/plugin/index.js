@@ -70,8 +70,8 @@ export default definePluginEntry({
         cardTitle: t.cardTitle ?? "电脑",
         machine: t.machine ?? t.label ?? key,
         description: t.description ?? "",
-        // No local display to capture for a remote machine: the card shows the cover.
-        cardImage: t.cardImage ?? "cover",
+        // A remote machine has no local display: its handoff service captures a VNC frame instead.
+        cardImage: t.cardImage ?? "screenshot",
         coverImage: t.coverImage ?? config.coverImage,
         desktopDisplay: t.desktopDisplay ?? null,
         computerNode: typeof t.computerNode === "string" ? t.computerNode : null,
@@ -123,13 +123,25 @@ export default definePluginEntry({
       return feishu;
     };
 
-    /** The desktop now (JPEG), else V's cover; null when neither is available. */
+    const canCapture = (machine) => machine.cardImage !== "cover" && (Boolean(machine.desktopDisplay) || Boolean(machine.client?.capture));
+    /** {bytes, filename} of the machine's desktop now: the local display, else a frame from its handoff service; null when unavailable. */
+    const captureMachine = async (machine) => {
+      if (!canCapture(machine)) {
+        return null;
+      }
+      if (machine.desktopDisplay) {
+        const shot = await captureDesktop({ display: machine.desktopDisplay });
+        return shot ? { bytes: shot, filename: "desktop.jpg" } : null;
+      }
+      const shot = await machine.client.capture();
+      return shot?.length ? { bytes: shot, filename: "desktop.png" } : null;
+    };
+
+    /** The desktop now (JPEG/PNG), else V's cover; null when neither is available. */
     const cardPicture = async (target) => {
-      if (target.cardImage !== "cover" && target.desktopDisplay) {
-        const shot = await captureDesktop({ display: target.desktopDisplay }).catch(() => null);
-        if (shot) {
-          return shot;
-        }
+      const shot = await captureMachine(target).catch((error) => api.logger?.warn?.(`desktop handoff capture failed: ${error.message}`));
+      if (shot) {
+        return shot.bytes;
       }
       const cover = target.coverImage ?? DEFAULT_COVER;
       if (!coverBytesByUrl.has(cover)) coverBytesByUrl.set(cover, await loadCover(cover).catch(() => null));
@@ -165,10 +177,8 @@ export default definePluginEntry({
       const feishu = feishuFor(creds);
       let imageKey = null;
       try {
-        if (machine.cardImage !== "cover" && machine.desktopDisplay) {
-          const shot = await captureDesktop({ display: machine.desktopDisplay });
-          imageKey = shot ? await feishu.uploadImage(shot, "desktop.jpg") : null;
-        }
+        const shot = await captureMachine(machine).catch((error) => api.logger?.warn?.(`desktop handoff capture failed: ${error.message}`));
+        imageKey = shot ? await feishu.uploadImage(shot.bytes, shot.filename) : null;
         if (!imageKey) {
           const cover = machine.coverImage ?? DEFAULT_COVER;
           imageKey = coverKeys.get(`${creds.appId}|${cover}`) ?? null;
@@ -377,18 +387,18 @@ export default definePluginEntry({
       try {
         // Show what the desktop looks like now (the person's result after 已完成), not the picture from when the card was sent.
         const machine = targets.get(card.view?.target) ?? (await targetFor(id));
-        const fresh = machine.cardImage !== "cover" && Boolean(machine.desktopDisplay) && (state === "active" || state === "done");
+        const fresh = canCapture(machine) && (state === "active" || state === "done");
         if (card.channel === "feishu") {
           if (fresh) {
-            const shot = await captureDesktop({ display: machine.desktopDisplay });
+            const shot = await captureMachine(machine).catch((error) => api.logger?.warn?.(`desktop handoff capture failed: ${error.message}`));
             if (shot) {
-              card.view = { ...card.view, imageKey: await card.feishu.uploadImage(shot, "desktop.jpg") };
+              card.view = { ...card.view, imageKey: await card.feishu.uploadImage(shot.bytes, shot.filename) };
             }
           }
           await card.feishu.patchCard(card.messageId, nativeHandoffCard({ ...card.view, state }));
           shown = true;
         } else if (card.channel === "telegram" && card.telegram) {
-          const photo = fresh && card.kind === "photo" ? await captureDesktop({ display: machine.desktopDisplay }).catch(() => null) : null;
+          const photo = fresh && card.kind === "photo" ? ((await captureMachine(machine).catch(() => null))?.bytes ?? null) : null;
           await card.telegram.editCard({ chatId: card.chatId, messageId: card.messageId, kind: card.kind, photo, ...telegramHandoffCard(card.view, state, { urlButtons: card.urlButtons !== false }) });
           shown = true;
         } else if (card.channel === "wecom") {
