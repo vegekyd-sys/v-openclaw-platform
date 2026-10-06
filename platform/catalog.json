@@ -281,6 +281,7 @@
         "lab/placement-evidence-absence.test.mjs",
         "lab/placement-sweep-lists.test.mjs",
         "lab/worker-prewarm-v.test.mjs",
+        "lab/image-hold.test.mjs",
         "lab/gateway-first-message.test.mjs",
         "lab/worker-prewarm2-v.test.mjs",
         "lab/feishu-firsttext-e2e.test.mjs",
