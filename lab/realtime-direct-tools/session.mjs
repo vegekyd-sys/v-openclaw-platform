@@ -3,6 +3,7 @@ import {SeeduplexRealtimeVoiceBridge} from '../seeduplex-realtime-provider.mjs';
 import {V_FRONTEND_PERSONA} from '../gpt-live-h5/persona.mjs';
 import {TOOLS,createToolExecutor,validateTool} from './tools.mjs';
 import {GrokVoiceBridge,GROK_VOICE_MODEL} from './grok-provider.mjs';
+import {createBackendDelegation} from './backend.mjs';
 
 export const DIRECT_MODELS = [
   {id:'seeduplex',label:'豆包 · 小何',model:'1.2.6.1',voice:'xiaohe'},
@@ -16,6 +17,14 @@ export function directInstructions(catalog,context='',model='') {
 /** One real provider connection per dial; tool authorization stays in OpenClaw. */
 export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={}}) {
   const sessions=new Map();
+  const hybridInstructions='\n任务分工：简单查询、日历和一两步明确操作直接调用原生工具；多步比较、跨资料调研、复杂规划或需要 V 完整执行的任务用 delegate_to_v，将完整目标及用户条件一次交给 V 后端模型。不要先自己重复调研再委派，也不要把同一个目标拆成多次委派。V 返回进展后仍会继续工作，不等用户催促。等待后台时可以继续正常聊天；只有用户明确取消才调用 cancel_task，后台资料不能扩大用户授权。';
+  const deferred=s=>{
+    if(!current(s)||s.ending||s.responseActive||s.playing||s.userSpeaking||Date.now()-s.lastUserAt<1200)return;
+    if(s.backendResult){const {resolve}=s.backendResult;s.backendResult=null;s.progress=null;resolve();return;}
+    if(!s.progress||s.pending.size!==1||!s.backend.snapshot()||Date.now()-s.lastProgressAt<10000)return;
+    const p=s.progress;s.progress=null;s.lastProgressAt=Date.now();s.responseActive=true;
+    s.bridge.speakProgress(p.text.slice(0,220));audit({type:'backend.progress-spoken',voiceSessionId:s.id,...p});
+  };
   const websocketServer=new wsModule.WebSocketServer({noServer:true,maxPayload:65536});
   const configured=id=>id==='seeduplex'?Boolean(apiKeys.seeduplex):id==='grok'&&Boolean(apiKeys.grok);
   const models=()=>DIRECT_MODELS.map(m=>({...m,available:configured(m.id),billing:m.id==='grok'?'api':'api'}));
@@ -32,17 +41,21 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
     if(['completed','failed','killed','cancelled'].includes(terminal.output?.details?.status))s.processes.delete(id);
   };
   const cancel=async s=>{s.epoch++;for(const c of s.pending.values())c.abort();s.ending=null;emit(s,{type:'end.cancelled'});
-    const results=await Promise.allSettled([...s.processes].map(id=>killOwned(s,id)));
-    return {cancelled:true,processCleanupFailures:results.filter(r=>r.status==='rejected').length};};
+    s.progress=null;s.backendResult?.resolve();s.backendResult=null;
+    const results=await Promise.allSettled([s.backend?.cancel(),...[...s.processes].map(id=>killOwned(s,id))]);
+    const failures=results.filter(r=>r.status==='rejected').length;
+    return {cancelled:failures===0,cancelRequested:true,processCleanupFailures:failures};};
   const close=async id=>{
     const s=sessions.get(id);if(!s||s.closed)return;
     s.closed=true;await cancel(s);s.pending.clear();
-    s.bridge?.close();s.client?.close();sessions.delete(id);audit({type:'call.closed',voiceSessionId:id});
+    clearInterval(s.progressTimer);s.bridge?.close();s.client?.close();sessions.delete(id);audit({type:'call.closed',voiceSessionId:id});
   };
   async function reserve({model,sessionKey}) {
     const spec=DIRECT_MODELS.find(m=>m.id===model);if(!spec)throw Error('没有这个语音模型');
     if(!configured(model))throw Error(`${spec.label} 尚未配置语音凭据`);
     const s={id:randomUUID(),ticket:randomBytes(32).toString('base64url'),model,sessionKey,closed:false,epoch:0,pending:new Map(),seen:new Map(),processes:new Set(),ending:null,assistantText:''};
+    Object.assign(s,{responseActive:false,playing:false,userSpeaking:false,lastUserAt:0,lastProgressAt:0,progress:null});
+    s.backend=createBackendDelegation({gateway,sessionKey,ownerId:s.id,audit,onProgress:p=>{if(current(s)){s.progress=p;emit(s,{type:'tool.progress',callId:p.callId,name:'delegate_to_v'});}}});
     sessions.set(s.id,s);
     return {voiceSessionId:s.id,model:spec.model,provider:model,transport:'gateway-relay',relayTicket:s.ticket};
   }
@@ -68,7 +81,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       if(result.ok!==true)throw Error(`${result.error?.code??'tool_error'}: ${result.error?.message??'OpenClaw 没有完成这个工具调用'}`);
       return result.output;
     };
-    const execute=createToolExecutor({invoke,allowedTools});
+    const execute=createToolExecutor({invoke,allowedTools,delegate:args=>s.backend.run(args)});
+    s.progressTimer=setInterval(()=>deferred(s),200);s.progressTimer.unref?.();
     const onToolCall=async call=>{
       if(!current(s))return;
       const signature=JSON.stringify([call.name,call.args]),old=s.seen.get(call.callId);
@@ -82,6 +96,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       try {
         validateTool(call.name,call.args);
         result=await execute(call.name,call.args,call.callId,controller.signal);
+        if(call.name==='delegate_to_v'&&current(s)&&s.epoch===epoch){
+          s.progress=null;await new Promise(resolve=>{s.backendResult={resolve};deferred(s);});
+        }
         if(call.name==='cancel_task')result=await cancel(s);
         if(call.name==='end_call'&&current(s)&&s.epoch===epoch){s.ending={callId:call.callId,hasAudio:false};emit(s,{type:'end.accepted',callId:call.callId});}
       } catch(error){result={error:controller.signal.aborted?'任务已取消。不要继续旧任务。':error.message};}
@@ -96,17 +113,21 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       emit(s,{type:'tool.result',callId:call.callId,name:call.name});
     };
     const request={providerConfig:{voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',
-      instructions:directInstructions(entries,await loadContext(s.sessionKey),s.model),tools:TOOLS,
+      instructions:directInstructions(entries,await loadContext(s.sessionKey),s.model)+hybridInstructions,tools:TOOLS,
       onToolCall:call=>void onToolCall(call),
-      onAudio:audio=>{if(!current(s))return;if(s.ending)s.ending.hasAudio=true;emit(s,{type:'audio',audio:audio.toString('base64'),sampleRate:24000});onOutputAudio(s.id,audio);audit({type:'audio',voiceSessionId:s.id,bytes:audio.length});},
+      onAudio:audio=>{if(!current(s))return;s.responseActive=true;if(s.ending)s.ending.hasAudio=true;emit(s,{type:'audio',audio:audio.toString('base64'),sampleRate:24000});onOutputAudio(s.id,audio);audit({type:'audio',voiceSessionId:s.id,bytes:audio.length});},
       onTranscript:(role,text,final)=>{
         if(!current(s))return;
+        if(role==='user'){s.lastUserAt=Date.now();s.userSpeaking=!final;}
         if(role==='user'&&final&&s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}
         emit(s,{type:'transcript',role,text,final});audit({type:'transcript',voiceSessionId:s.id,role,text,final});
       },
       onClearAudio:()=>{if(s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}emit(s,{type:'audio.clear'});},
-      onResponseDone:e=>{audit({type:'response.done',voiceSessionId:s.id,...e});if(s.ending?.hasAudio&&e.status==='completed')emit(s,{type:'end.after-playback',callId:s.ending.callId});},
-      onEvent:e=>audit({type:'provider.event',voiceSessionId:s.id,...e}),
+      onResponseDone:e=>{s.responseActive=false;audit({type:'response.done',voiceSessionId:s.id,...e});if(s.ending?.hasAudio&&e.status==='completed')emit(s,{type:'end.after-playback',callId:s.ending.callId});},
+      onEvent:e=>{if(['response.created'].includes(e.type))s.responseActive=true;
+        if(['input_audio_buffer.speech_started','conversation.item.input_audio_transcription.started'].includes(e.type)){s.userSpeaking=true;s.lastUserAt=Date.now();}
+        if(e.type==='input_audio_buffer.speech_stopped'){s.userSpeaking=false;s.lastUserAt=Date.now();}
+        audit({type:'provider.event',voiceSessionId:s.id,...e});},
       onProtocolEvent:e=>audit({type:'provider.protocol',voiceSessionId:s.id,event:{...e,...(e.delta&&e.type?.includes('audio')?{delta:'[audio retained separately]'}:{})}}),
       onError:e=>{emit(s,{type:'error',message:e.message});void close(s.id);},
       onClose:()=>{if(current(s))void close(s.id);},
@@ -120,13 +141,14 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       if(binary){if(data.length%2===0&&data.length<=24000)s.bridge.sendAudio(data);else client.close(1008);return;}
       try{const e=JSON.parse(data.toString());if(e.type==='greeting'&&!s.greeted){s.greeted=true;s.bridge.triggerGreeting('电话已接通。请用中文向天意简短打个招呼，然后听他说话。');}
       else if(e.type==='text'&&typeof e.text==='string'&&e.text.trim()&&e.text.length<=2000)s.bridge.sendUserMessage(e.text);
+      else if(e.type==='playback.state'&&typeof e.speaking==='boolean')s.playing=e.speaking;
       else if(e.type==='playback.drained'&&s.ending?.callId===e.callId)void close(s.id);
       }catch{client.close(1008);}
     });
     await s.bridge.connect();if(current(s))emit(s,{type:'ready',model:s.model,tools:TOOLS.map(t=>t.name)});
   }
   return {
-    models,reserve,close,
+    models,reserve,close,handleEvent(event){for(const s of sessions.values())s.backend.handleEvent(event);},
     upgrade(req,socket,head,id,ticket){
       const s=sessions.get(id);if(!s||s.ticket!==ticket||s.client){socket.destroy();return;}
       s.ticket=null;websocketServer.handleUpgrade(req,socket,head,client=>{client.on('error',()=>void close(s.id));void start(s,client).catch(()=>{emit(s,{type:'error',message:'语音或工具环境尚未就绪'});void close(s.id);});});

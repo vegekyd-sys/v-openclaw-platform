@@ -352,6 +352,13 @@ export class SeeduplexRealtimeVoiceBridge {
 
   setMediaTimestamp(_timestamp) {}
 
+  speakProgress(text) {
+    if (!this.ready || this.terminal) return;
+    this.outputClosed = false;
+    this.responseOwnerAnnounced = false;
+    this.#send({ type: "speech_text_buffer.commit", event_id: `event_${randomUUID()}`, text });
+  }
+
   sendUserMessage(text) {
     const normalized = optionalString(text);
     if (!normalized || !this.ready) return;

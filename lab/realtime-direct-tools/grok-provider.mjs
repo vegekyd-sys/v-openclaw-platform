@@ -33,6 +33,7 @@ export class GrokVoiceBridge {
   sendAudio(audio){if(this.ready)this.send({type:'input_audio_buffer.append',audio:audio.toString('base64')});}
   sendUserMessage(text){this.send({type:'conversation.item.create',item:{type:'message',role:'user',content:[{type:'input_text',text}]}});this.send({type:'response.create'});}
   triggerGreeting(text){this.sendUserMessage(text);}
+  speakProgress(text){this.send({type:'conversation.item.create',item:{type:'force_message',role:'assistant',interruptible:true,content:[{type:'output_text',text}]}});}
   handleBargeIn(){this.send({type:'response.cancel'});this.request.onClearAudio?.('barge-in');}
   receive(e) {
     if(this.closed)return;

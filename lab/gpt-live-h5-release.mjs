@@ -17,6 +17,7 @@ export const H5_PATHS = [
   'lab/gpt-live-h5/call-sounds.mjs', 'lab/rtc-h5/assets/v-idle-nohat-20260922.png',
   'lab/gpt-live-h5/relay-audio.mjs', 'lab/realtime-direct-tools/session.mjs',
   'lab/realtime-direct-tools/tools.mjs', 'lab/realtime-direct-tools/grok-provider.mjs',
+  'lab/realtime-direct-tools/backend.mjs', 'lab/gpt-live-consult-progress.mjs',
   'lab/seeduplex-realtime-provider.mjs',
   'lab/rtc-h5/assets/v-tool-busy-20260922.png',
 ];

@@ -44,6 +44,26 @@ async function runModel(model){
  const rows=()=>audit().filter(x=>x.voiceSessionId===id),wire=async()=> (await state()).wire;
  await wait(()=>(model==='seeduplex'||rows().some(x=>x.type==='transcript'&&x.role==='assistant'&&x.final))&&rows().some(x=>x.type==='audio'),'actual greeting',20000);
  check(model+'/greeting',true,{voiceSessionId:id,provider:model,greetingMode:model==='seeduplex'?'documented SayHello native TTS':'model response'});await quiet(id);
+ if(process.env.DIRECT_VOICE_CASES==='hybrid'){
+  await speak('simple');await wait(()=>rows().some(x=>x.type==='tool.invoke'&&x.name==='memory_search'),'simple native memory call',45000);await quiet(id,45000);
+  check(model+'/simple-stays-native',!rows().some(x=>x.type==='backend.started')&&rows().some(x=>x.type==='tool.native-result'&&x.name==='memory_search'&&x.result.ok===true));
+  await speak('hybrid');await wait(()=>rows().some(x=>x.type==='backend.started'),'real V backend delegated',60000);
+  const run=rows().find(x=>x.type==='backend.started');
+  await wait(()=>rows().some(x=>x.type==='backend.event'&&x.runId===run.runId&&x.event.event==='agent'&&x.event.payload.stream==='tool'),'actual backend tool execution',90000);
+  await speak('chat');await wait(()=>rows().some(x=>x.type==='transcript'&&x.role==='assistant'&&x.at>run.at),'conversation while backend running',30000);
+  await wait(()=>rows().some(x=>x.type==='backend.completed'&&x.runId===run.runId),'automatic complete multi-step V final',180000);
+  await wait(()=>rows().some(x=>x.type==='tool.delivered'&&x.result.backend==='V'&&x.result.runId===run.runId),'actual provider final continuation',60000);await quiet(id,60000);
+  const tools=rows().filter(x=>x.type==='backend.event'&&x.runId===run.runId&&x.event.payload.stream==='tool');
+  check(model+'/hybrid-completion',rows().filter(x=>x.type==='backend.started').length===1&&tools.length>=2,{runId:run.runId,backendToolEvents:tools.length});
+  check(model+'/hybrid-real-progress',rows().some(x=>x.type==='backend.progress-spoken'&&x.runId===run.runId)&&rows().some(x=>x.type==='audio'&&x.at>run.at),{runId:run.runId});
+  await speak('backend-long');await wait(()=>rows().filter(x=>x.type==='backend.started').length===2,'new independent backend goal',60000);
+  const second=rows().filter(x=>x.type==='backend.started').at(-1);
+  await wait(()=>rows().some(x=>x.type==='backend.event'&&x.runId===second.runId&&x.event.payload.stream==='tool'),'new backend working',45000);
+  await speak('cancel');await wait(()=>rows().some(x=>x.type==='backend.cancel-observed'&&x.runId===second.runId),'exact owned backend cancel terminal',45000);
+  const terminal=rows().find(x=>x.type==='backend.cancel-observed'&&x.runId===second.runId);
+  check(model+'/hybrid-cancel',terminal.observed.status==='error'||terminal.observed.aborted===true||terminal.observed.status==='ok',{runId:second.runId,observed:terminal.observed});
+  await quiet(id,30000);await stop();await stopRecording();save(model+'-wire.json',await wire());save(model+'-hybrid-result.json',{model,results:results.filter(x=>x.name?.startsWith(model+'/')),productAccepted:false});return;
+ }
  if(process.env.DIRECT_VOICE_CASES==='followup'){
   await speak('fetch');
   await wait(()=>rows().some(x=>x.type==='tool.invoke'&&x.name==='web_fetch'),'native webpage call',60000);

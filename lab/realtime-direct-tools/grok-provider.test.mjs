@@ -18,3 +18,8 @@ test('parallel calls wait for terminal call batch and both real results; one con
 test('duplicate function event is not executed twice and conflicting call identity closes',async()=>{const f=await fixture();const event={type:'response.function_call_arguments.done',response_id:'r1',call_id:'a',name:'memory_search',arguments:'{"query":"x"}'};
  f.bridge.receive(event);f.bridge.receive(event);assert.equal(f.calls.length,1);f.bridge.receive({...event,arguments:'{"query":"other"}'});assert.equal(f.bridge.closed,true);});
 test('provider failure cancels connect, late events cannot emit audio',async()=>{const f=await fixture();f.bridge.close();f.bridge.receive({type:'response.output_audio.delta',delta:'AAE='});assert.equal(f.audio.length,0);});
+test('backend progress uses documented interruptible force_message without a second response.create',async()=>{
+ const f=await fixture();f.bridge.speakProgress('网页已核对，继续比较。');
+ assert.deepEqual(f.ws.sent.at(-1),{type:'conversation.item.create',item:{type:'force_message',role:'assistant',interruptible:true,content:[{type:'output_text',text:'网页已核对，继续比较。'}]}});
+ assert.equal(f.ws.sent.filter(e=>e.type==='response.create').length,0);f.bridge.close();
+});

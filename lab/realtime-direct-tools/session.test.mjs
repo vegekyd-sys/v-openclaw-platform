@@ -12,7 +12,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
  class Server {handleUpgrade(req,socket,head,done){done(socket);}close(){}}
  const gateway={request:async(method,args)=>{
   if(method==='tools.catalog')return {groups:[{tools:['memory_search','web_search','web_fetch','exec','process'].map(id=>({id}))}]};
-  invocations.push(args);return invoke(args);
+  invocations.push(args);return invoke(args,method);
  }};
  const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key'},audit:v=>audit.push(v)});
  const reservation=await service.reserve({model:'grok',sessionKey:'agent:makaron:explicit:personal-fixture'});
@@ -52,4 +52,31 @@ test('cancel kills and polls only process IDs actually created by this call',asy
  assert.deepEqual(f.invocations.filter(x=>x.name==='process').map(x=>x.args),[{action:'kill',sessionId:'owned-1'},{action:'poll',sessionId:'owned-1',timeout:2000}]);
  f.call('openclaw_tool',{tool:'process',arguments:JSON.stringify({action:'kill',sessionId:'foreign'})},'foreign');await delay(5);
  assert.equal(f.invocations.some(x=>x.args.sessionId==='foreign'),false);await f.service.dispose();
+});
+test('hybrid tool keeps one backend run alive during chat; progress and final wait for actual playback idle',async()=>{
+ const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:new Promise(()=>{}));
+ f.call('delegate_to_v',{question:'比较多种方案，完成所有步骤'});await delay(5);
+ const started=f.audit.find(x=>x.type==='backend.started');assert(started);
+ const backend=e=>f.service.handleEvent({event:e.event??'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,...e.payload}});
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:true})),false);
+ backend({event:'agent',payload:{stream:'item',data:{kind:'preamble',phase:'end',progressText:'第一步查到了实际记录，正在核对网页。'}}});
+ await delay(250);assert.equal(f.upstream.sent.some(x=>x.item?.type==='force_message'),false);
+ await f.service.steer(f.reservation.voiceSessionId,{mode:'steer',text:'顺便和我聊聊天'});
+ assert.equal(f.invocations.filter(x=>x.message?.includes('完整目标')).length,1);
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:false})),false);
+ await delay(250);
+ const progress=f.upstream.sent.find(x=>x.item?.type==='force_message');assert.equal(progress.item.content[0].text,'第一步查到了实际记录，正在核对网页。');assert.equal(progress.item.interruptible,true);
+ backend({payload:{state:'final',message:{content:[{type:'text',text:'所有步骤完成，结论如下'}]}}});await delay(5);
+ assert.equal(f.upstream.sent.some(x=>x.item?.type==='function_call_output'),false);
+ f.event({type:'response.done',response:{id:'progress-speech',status:'completed'}});await delay(250);
+ assert.equal(JSON.parse(f.upstream.sent.find(x=>x.item?.type==='function_call_output').item.output).backend,'V');
+ assert.equal(f.client.sent.filter(x=>x.type==='tool.result').length,1);await f.service.dispose();
+});
+test('hybrid explicit cancellation aborts only its own backend run and never feeds late final',async()=>{
+ let cancelled=false;const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:method==='chat.abort'?(cancelled=true,{ok:true}):cancelled?{status:'error',aborted:true}:new Promise(()=>{}));
+ f.call('delegate_to_v',{question:'做一个较长任务'});await delay(5);const started=f.audit.find(x=>x.type==='backend.started');
+ await f.service.steer(f.reservation.voiceSessionId,{mode:'cancel',text:'取消这个任务'});
+ f.service.handleEvent({event:'chat',payload:{runId:started.runId,state:'final',message:{text:'不要播报的旧结果'}}});await delay(5);
+ const result=f.audit.find(x=>x.type==='tool.delivered');assert.equal(result.result.cancelled,true);assert(!JSON.stringify(result).includes('不要播报'));
+ assert(f.invocations.some(x=>x.runId===started.runId&&x.sessionKey===started.sessionKey));await f.service.dispose();
 });

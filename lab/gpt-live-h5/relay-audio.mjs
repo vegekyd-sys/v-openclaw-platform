@@ -12,7 +12,9 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
   const maxQueuedOutputBytes=16*1024*1024;
   const stats={inputBytes:0,outputBytes:0,queuedOutputBytes:0,peakQueuedOutputBytes:0,clears:0,playbackDrained:false};
   const send=e=>{if(socket.readyState===WebSocket.OPEN)socket.send(JSON.stringify(e));};
-  const flush=()=>{for(const player of players){try{player.stop();}catch{}}players.clear();stats.queuedOutputBytes=0;nextAt=context.currentTime;stats.clears++;onPlaybackActivity(false);ending=null;clearTimeout(tailTimer);};
+  let playing=false;
+  const playback=speaking=>{if(playing===speaking)return;playing=speaking;onPlaybackActivity(speaking);send({type:'playback.state',speaking});};
+  const flush=()=>{for(const player of players){try{player.stop();}catch{}}players.clear();stats.queuedOutputBytes=0;nextAt=context.currentTime;stats.clears++;playback(false);ending=null;clearTimeout(tailTimer);};
   const checkEnd=()=>{
     if(closed||!ending)return;
     if(context.state==='running'&&players.size===0&&context.currentTime>=nextAt+.75){stats.playbackDrained=true;send({type:'playback.drained',callId:ending});ending=null;}
@@ -27,8 +29,8 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
     for(let i=0;i<values.length;i++)values[i]=data.getInt16(i*2,true)/32768;
     const player=context.createBufferSource();player.buffer=buffer;player.connect(context.destination);
     players.add(player);stats.queuedOutputBytes+=bytes.length;stats.peakQueuedOutputBytes=Math.max(stats.peakQueuedOutputBytes,stats.queuedOutputBytes);
-    player.onended=()=>{if(players.delete(player))stats.queuedOutputBytes-=bytes.length;player.disconnect();if(players.size===0)onPlaybackActivity(false);};
-    nextAt=Math.max(nextAt,context.currentTime+.01);player.start(nextAt);nextAt+=buffer.duration;onPlaybackActivity(true);
+    player.onended=()=>{if(players.delete(player))stats.queuedOutputBytes-=bytes.length;player.disconnect();if(players.size===0)playback(false);};
+    nextAt=Math.max(nextAt,context.currentTime+.01);player.start(nextAt);nextAt+=buffer.duration;playback(true);
     stats.outputBytes+=bytes.length;
   };
   const promise=new Promise((resolve,reject)=>{

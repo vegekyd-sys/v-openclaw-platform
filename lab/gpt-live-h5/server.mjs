@@ -180,6 +180,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
     for (const [key, times] of attempts) if (!times.some(at => Date.now() - at < 600000)) attempts.delete(key);
   }, 15000); timer.unref();
   const emit = (event) => {
+    directVoice?.handleEvent?.(event);
     if (event.event !== "talk.event") return;
     const context = [local, ...contexts.values()].find(item => item.active?.reservation.voiceSessionId === event.payload?.voiceSessionId);
     if (!context) return;
