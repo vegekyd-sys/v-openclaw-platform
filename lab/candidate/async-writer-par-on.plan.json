@@ -23,6 +23,11 @@
       "source": "lab/release-files/async-writer-admission/agent-db-writer-admission-wait.mjs",
       "target": "openclaw/dist/agent-db-writer-admission-wait.mjs",
       "before": null
+    },
+    {
+      "source": "lab/release-files/async-writer-admission/builtin-openclaw-zQV8Wwjr.js",
+      "target": "openclaw/dist/builtin-openclaw-zQV8Wwjr.js",
+      "before": "8445647093325217ee80f83b1fd34b5a01f2322adbb495732d576d2d40d75af1"
     }
   ]
 }
