@@ -5978,7 +5978,7 @@ function createWorkerPlacementIdleSweep(options) {
 	return {
 	enabled() {
 		const profiles = options.getConfig().cloudWorkers?.profiles;
-		return Boolean(profiles && Object.values(profiles).some((profile) => profile.suspendAfter));
+		return Boolean(profiles && Object.values(profiles).some((profile) => profile.suspendAfter)) && options.placements.listForReconcile().some((placement) => placement.state === "active" && !placement.turnClaim);
 	},
 	async sweep() {
 		const profiles = options.getConfig().cloudWorkers?.profiles;

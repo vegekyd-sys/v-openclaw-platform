@@ -200,14 +200,19 @@ test('disk-space sweep and reconcile guard read the same placements without a fu
   assert.match(startup, /const references = \(typeof params\.placements\.listByEnvironmentIds === "function" \? params\.placements\.listByEnvironmentIds\(\[environmentId\]\) : params\.placements\.list\(\)\)\.filter\(\(placement\) => placement\.environmentId === environmentId\);/u);
 });
 
-test('the minute sweep skips the auto-suspend publication when no profile suspends', () => {
+test('the minute sweep skips the auto-suspend publication when nothing can be suspended', () => {
   const idle = between(startup, 'function createWorkerPlacementIdleSweep(options) {', '//#endregion');
   const { enabledFor } = compile(`function enabledFor(options) { return ({\n${between(idle, '\tenabled() {', '\tasync sweep() {')}}).enabled(); }`, [], [], ['enabledFor']);
-  const config = (profiles) => ({ getConfig: () => ({ cloudWorkers: profiles === undefined ? undefined : { profiles } }) });
+  const config = (profiles, placements = [{ state: 'active', turnClaim: null }]) => ({ getConfig: () => ({ cloudWorkers: profiles === undefined ? undefined : { profiles } }), placements: { listForReconcile: () => placements } });
   assert.equal(enabledFor(config(undefined)), false);
   assert.equal(enabledFor(config({})), false);
   assert.equal(enabledFor(config({ a: { machineClass: 'x' } })), false);
   assert.equal(enabledFor(config({ a: {}, b: { suspendAfter: '30m' } })), true);
+  // nothing the sweep could suspend: no active placement, or only claimed ones
+  const suspending = { b: { suspendAfter: '45m' } };
+  assert.equal(enabledFor(config(suspending, [])), false);
+  assert.equal(enabledFor(config(suspending, [{ state: 'failed', turnClaim: null }, { state: 'active', turnClaim: { owner: 'worker' } }])), false);
+  assert.equal(enabledFor(config(suspending, [{ state: 'starting', turnClaim: null }, { state: 'active', turnClaim: null }])), true);
   // sweep() keeps its own early return, so a caller that does not check enabled() is unchanged
   assert.match(idle, /async sweep\(\) \{\n\t\tconst profiles = options\.getConfig\(\)\.cloudWorkers\?\.profiles;\n\t\tif \(!profiles \|\| !Object\.values\(profiles\)\.some\(\(profile\) => profile\.suspendAfter\)\) return;/u);
   assert.match(startup, /if \(stopped \|\| placementIdleSuspend\.current \|\| placementIdleSweep\.enabled\?\.\(\) === false\) return;/u);

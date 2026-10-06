@@ -21,8 +21,9 @@ import assert from 'node:assert/strict';
 //   listByEnvironmentIds(ids)      full records whose environment_id is one of ids, by session id
 // and reads the existing listForReconcile() (every state except local and reclaimed) and getMany()
 // where only those rows can matter. A caller given a store without the new methods keeps list().
-// With no worker profile that sets suspendAfter, the auto-suspend sweep does nothing; the minute
-// sweep now skips it, and with it that publication's before and after snapshots.
+// The auto-suspend sweep only acts on an active placement without a turn claim, and only when a
+// worker profile sets suspendAfter; when neither holds, the minute sweep now skips it, and with it
+// that publication's before and after snapshots of every row.
 //
 // Session retirement between full passes checks only listForReconcile() placements, the ones that
 // can own a worker environment that needs tearing down. Local and reclaimed rows (row cleanup
@@ -112,7 +113,7 @@ function snapshotEntriesForNode(options, nodeId) {
     'session retirement list');
   out = replaceExactlyOnce(out,
     '\treturn { async sweep() {\n\t\tconst profiles = options.getConfig().cloudWorkers?.profiles;\n\t\tif (!profiles || !Object.values(profiles).some((profile) => profile.suspendAfter)) return;\n',
-    '\treturn {\n\tenabled() {\n\t\tconst profiles = options.getConfig().cloudWorkers?.profiles;\n\t\treturn Boolean(profiles && Object.values(profiles).some((profile) => profile.suspendAfter));\n\t},\n\tasync sweep() {\n\t\tconst profiles = options.getConfig().cloudWorkers?.profiles;\n\t\tif (!profiles || !Object.values(profiles).some((profile) => profile.suspendAfter)) return;\n',
+    '\treturn {\n\tenabled() {\n\t\tconst profiles = options.getConfig().cloudWorkers?.profiles;\n\t\treturn Boolean(profiles && Object.values(profiles).some((profile) => profile.suspendAfter)) && options.placements.listForReconcile().some((placement) => placement.state === "active" && !placement.turnClaim);\n\t},\n\tasync sweep() {\n\t\tconst profiles = options.getConfig().cloudWorkers?.profiles;\n\t\tif (!profiles || !Object.values(profiles).some((profile) => profile.suspendAfter)) return;\n',
     'auto-suspend sweep');
   out = replaceExactlyOnce(out,
     '\t\t\t\tif (stopped || placementIdleSuspend.current) return;\n',
