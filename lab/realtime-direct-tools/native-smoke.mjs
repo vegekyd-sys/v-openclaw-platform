@@ -44,11 +44,16 @@ async function runModel(model){
  const rows=()=>audit().filter(x=>x.voiceSessionId===id),wire=async()=> (await state()).wire;
  await wait(()=>(model==='seeduplex'||rows().some(x=>x.type==='transcript'&&x.role==='assistant'&&x.final))&&rows().some(x=>x.type==='audio'),'actual greeting',20000);
  check(model+'/greeting',true,{voiceSessionId:id,provider:model,greetingMode:model==='seeduplex'?'documented SayHello native TTS':'model response'});await quiet(id);
- if(['hybrid','hybrid-core'].includes(process.env.DIRECT_VOICE_CASES)){
+ if(['hybrid','hybrid-core','single-query'].includes(process.env.DIRECT_VOICE_CASES)){
   const firstInput=Date.now();await speak('simple');const firstInputEnd=Date.now();await wait(()=>rows().some(x=>x.type==='tool.invoke'&&x.name==='memory_search'),'simple native memory call',45000);
-  await wait(()=>rows().some(x=>x.type==='tool.delivered'&&rows().some(c=>c.type==='tool.call'&&c.name==='memory_search'&&c.callId===x.callId)),'simple native tool actually delivered',60000);await quiet(id,45000);
+  await wait(()=>rows().some(x=>x.type==='tool.delivered'&&rows().some(c=>c.type==='tool.call'&&c.name==='memory_search'&&c.callId===x.callId)),'simple native tool actually delivered',60000);
+  const firstDelivery=rows().find(x=>x.type==='tool.delivered'&&rows().some(c=>c.type==='tool.call'&&c.name==='memory_search'&&c.callId===x.callId));
+  await wait(()=>rows().some(x=>x.type==='audio'&&x.at>firstDelivery.at),'first answer actual PCM without another USER utterance',30000);
+  await quiet(id,90000);
+  check(model+'/single-query-answer-audio',rows().some(x=>x.type==='audio'&&x.at>firstDelivery.at),{deliveryAt:firstDelivery.at,nextUserInputSent:false});
   const firstTool=rows().find(x=>x.type==='tool.call'&&x.name==='memory_search');check(model+'/single-utterance-query',firstTool.at>=firstInput&&firstTool.at-firstInputEnd<10000,{inputStart:firstInput,inputEnd:firstInputEnd,toolAt:firstTool.at,latencyMs:firstTool.at-firstInputEnd});
   check(model+'/simple-stays-native',!rows().some(x=>x.type==='backend.started')&&rows().some(x=>x.type==='tool.native-result'&&x.name==='memory_search'&&x.result.ok===true));
+  if(process.env.DIRECT_VOICE_CASES==='single-query'){await stop();await stopRecording();save(model+'-wire.json',await wire());save(model+'-single-query-result.json',{model,results:results.filter(x=>x.name?.startsWith(model+'/')),productAccepted:false});return;}
   await speak('hybrid');await wait(()=>rows().some(x=>x.type==='backend.started'),'real V backend delegated',60000);
   const run=rows().find(x=>x.type==='backend.started');
   await wait(()=>rows().some(x=>x.type==='backend.event'&&x.runId===run.runId&&x.event.event==='agent'&&x.event.payload.stream==='tool'),'actual backend tool execution',90000);
