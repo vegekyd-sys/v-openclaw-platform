@@ -47,6 +47,18 @@ export function patchAgentCommandChunk(source) {
     '\t\t\tconst embeddedAttempt = await runEmbeddedAgentAttempt({\n',
     '\t\t\tfirsttextGapMark("cmd-embedded-attempt-enter", prepared.runId);\n\t\t\tconst embeddedAttempt = await runEmbeddedAgentAttempt({\n',
     'embedded attempt');
+  source = once(source,
+    '\tconst needsSkillsSnapshot = params.isNewSession',
+    '\tfirsttextGapMark("cmd-session-state:skills-snapshot", params.runId);\n\tconst needsSkillsSnapshot = params.isNewSession',
+    'session state skills');
+  source = once(source,
+    '\tconst shouldPersistInitialSessionTouch = ',
+    '\tfirsttextGapMark("cmd-session-state:skills-persisted", params.runId);\n\tconst shouldPersistInitialSessionTouch = ',
+    'session state skills persist');
+  source = once(source,
+    '\tif (params.sessionKey && !params.isSubagentLaneTurn) recordSessionHumanDirectMessage({',
+    '\tfirsttextGapMark("cmd-session-state:touch-persisted", params.runId);\n\tif (params.sessionKey && !params.isSubagentLaneTurn) recordSessionHumanDirectMessage({',
+    'session state touch persist');
   return source;
 }
 
@@ -79,5 +91,60 @@ export function patchEmbeddedAgentChunk(source) {
     '\t\t\tconst startupStages = createEmbeddedRunStageTracker();\n' +
     '\t\t\t{\n\t\t\t\tconst markStartupStage = startupStages.mark;\n\t\t\t\tstartupStages.mark = (name) => {\n\t\t\t\t\tmarkStartupStage(name);\n\t\t\t\t\tfirsttextGapMark(`emb-stage:${name}`, params.runId);\n\t\t\t\t};\n\t\t\t}\n',
     'startup stages');
+  return source;
+}
+
+export function patchBuiltinChunk(source) {
+  if (source.includes(GAP_MARKER)) throw new Error('already patched');
+  source = once(source,
+    'import { setImmediate as setImmediate$1 } from "node:timers/promises";\n',
+    'import { setImmediate as setImmediate$1 } from "node:timers/promises";\n' + IMPORT,
+    'imports');
+  source = once(source,
+    '\tlet params = globalThis[Symbol.for("versa.vlab.native-attempt-91-v1")]?.prepare(input) ?? input;\n',
+    '\tlet params = globalThis[Symbol.for("versa.vlab.native-attempt-91-v1")]?.prepare(input) ?? input;\n\tfirsttextGapMark("att-enter", params.runId);\n',
+    'attempt enter');
+  // Each attempt preparation stage: queued (behind the process-wide stage chain), started, ended.
+  source = once(source,
+    '\treturn async (stage, run) => {\n\t\tconst start = nextPreparationStart.then(() => setImmediate$1());\n\t\tnextPreparationStart = start;\n\t\tawait start;\n\t\toptions.assertCurrent();\n\t\treturn measureEmbeddedAgentPreparation(stage, run, { config: options.config });\n\t};\n',
+    '\treturn async (stage, run) => {\n\t\tfirsttextGapMark(`att-queued:${stage}`, options.runId);\n\t\tconst start = nextPreparationStart.then(() => setImmediate$1());\n\t\tnextPreparationStart = start;\n\t\tawait start;\n\t\toptions.assertCurrent();\n\t\tfirsttextGapMark(`att-start:${stage}`, options.runId);\n\t\ttry {\n\t\t\treturn await measureEmbeddedAgentPreparation(stage, run, { config: options.config });\n\t\t} finally {\n\t\t\tfirsttextGapMark(`att-end:${stage}`, options.runId);\n\t\t}\n\t};\n',
+    'attempt preparation');
+  source = once(source,
+    '\tconst prepare = createEmbeddedAttemptPreparation({\n\t\tconfig: params.config,\n',
+    '\tconst prepare = createEmbeddedAttemptPreparation({\n\t\trunId: params.runId,\n\t\tconfig: params.config,\n',
+    'attempt preparation runId');
+  source = once(source,
+    '\t\tconst corePluginToolStages = createEmbeddedRunStageTracker();\n',
+    '\t\tconst corePluginToolStages = createEmbeddedRunStageTracker();\n' +
+    '\t\t{\n\t\t\tconst markCorePluginToolStage = corePluginToolStages.mark;\n\t\t\tcorePluginToolStages.mark = (name) => {\n\t\t\t\tmarkCorePluginToolStage(name);\n\t\t\t\tfirsttextGapMark(`att-tool:${name}`, params.runId);\n\t\t\t};\n\t\t}\n',
+    'core plugin tool stages');
+  return source;
+}
+
+// Agent DB process writer lease: log waits and holds of 20 ms or more, in every process.
+export function patchCoordinator(source) {
+  if (source.includes(GAP_MARKER)) throw new Error('already patched');
+  source = once(source,
+    "import {AsyncLocalStorage} from 'node:async_hooks';\n",
+    "import {AsyncLocalStorage} from 'node:async_hooks';\n" +
+    `// ${GAP_MARKER}: [firsttext-lease.1] lines (pid, mode, wait, hold, short caller chain; no data).\n` +
+    "function firsttextLeaseLog(mode, waitMs, holdMs, attempts) {\n" +
+    "  try {\n" +
+    "    if (process.env.OPENCLAW_FIRSTTEXT_WORKER_PHASES !== '1' || process.env.OPENCLAW_FIRSTTEXT_GAP_MARKS === '0') return;\n" +
+    "    if (waitMs < 20 && holdMs < 20) return;\n" +
+    "    const callers = String(new Error().stack ?? '').split('\\n').slice(2, 10)\n" +
+    "      .map(line => /at (?:async )?([A-Za-z0-9_$.<>]+) /.exec(line)?.[1]).filter(Boolean).slice(0, 6);\n" +
+    "    console.error('[firsttext-lease.1] ' + JSON.stringify({v: 1, mode, pid: process.pid, atMs: Date.now(), waitMs, holdMs, attempts, callers}));\n" +
+    "  } catch { /* Observation must not alter runtime control flow. */ }\n" +
+    "}\n",
+    'imports');
+  source = once(source,
+    "  const waitMs = Math.max(0, now() - startedAt);\n  params.onAcquired?.({attempts: attempt + 1, coordinatorPath, waitMs});\n  let operationError;\n  try {\n    return await runWithHeldLease(params.databasePath, suffix, params.fn);\n  } catch (error) {\n    operationError = error;\n    throw error;\n  } finally {\n",
+    "  const waitMs = Math.max(0, now() - startedAt);\n  params.onAcquired?.({attempts: attempt + 1, coordinatorPath, waitMs});\n  const firsttextHeldAt = Date.now();\n  let operationError;\n  try {\n    return await runWithHeldLease(params.databasePath, suffix, params.fn);\n  } catch (error) {\n    operationError = error;\n    throw error;\n  } finally {\n    firsttextLeaseLog('async', waitMs, Date.now() - firsttextHeldAt, attempt + 1);\n",
+    'async lease');
+  source = once(source,
+    "  params.onAcquired?.({attempts: attempt + 1, coordinatorPath, waitMs: Math.max(0, now() - startedAt)});\n  let operationError;\n  try {\n    return runWithHeldLease(params.databasePath, suffix, params.fn);\n  } catch (error) {\n    operationError = error;\n    throw error;\n  } finally {\n",
+    "  const firsttextWaitMs = Math.max(0, now() - startedAt);\n  params.onAcquired?.({attempts: attempt + 1, coordinatorPath, waitMs: firsttextWaitMs});\n  const firsttextHeldAt = Date.now();\n  let operationError;\n  try {\n    return runWithHeldLease(params.databasePath, suffix, params.fn);\n  } catch (error) {\n    operationError = error;\n    throw error;\n  } finally {\n    firsttextLeaseLog('sync', firsttextWaitMs, Date.now() - firsttextHeldAt, attempt + 1);\n",
+    'sync lease');
   return source;
 }

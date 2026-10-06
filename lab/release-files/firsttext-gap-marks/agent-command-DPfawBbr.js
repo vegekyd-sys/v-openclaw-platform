@@ -3295,6 +3295,7 @@ async function prepareEmbeddedSessionState(params) {
 		watch: params.watchSkills && params.opts.oneShotCliRun !== true,
 		...params.pluginMetadataSnapshot ? { pluginMetadataSnapshot: params.pluginMetadataSnapshot } : {}
 	});
+	firsttextGapMark("cmd-session-state:skills-snapshot", params.runId);
 	const needsSkillsSnapshot = params.isNewSession || !currentSkillsSnapshot || skillSnapshotState.shouldRefresh;
 	const skillsSnapshot = skillSnapshotState.snapshot;
 	if (skillsSnapshot && params.sessionStore && params.sessionKey && needsSkillsSnapshot && !params.suppressVisibleSessionEffects) {
@@ -3319,6 +3320,7 @@ async function prepareEmbeddedSessionState(params) {
 			entry: next
 		});
 	}
+	firsttextGapMark("cmd-session-state:skills-persisted", params.runId);
 	const shouldPersistInitialSessionTouch = params.opts.skipInitialSessionTouch !== true || Boolean(params.verboseOverride);
 	if (params.sessionStore && params.sessionKey && !params.suppressVisibleSessionEffects && shouldPersistInitialSessionTouch) {
 		const now = Date.now();
@@ -3344,6 +3346,7 @@ async function prepareEmbeddedSessionState(params) {
 			entry: next
 		});
 	}
+	firsttextGapMark("cmd-session-state:touch-persisted", params.runId);
 	if (params.sessionKey && !params.isSubagentLaneTurn) recordSessionHumanDirectMessage({
 		sessionKey: params.sessionKey,
 		entry: sessionEntry,

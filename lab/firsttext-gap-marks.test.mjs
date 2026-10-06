@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { GAP_MARKER, patchAgentCommandChunk, patchEmbeddedAgentChunk } from './patch-firsttext-gap-marks.mjs';
+import { GAP_MARKER, patchAgentCommandChunk, patchBuiltinChunk, patchCoordinator, patchEmbeddedAgentChunk } from './patch-firsttext-gap-marks.mjs';
 
 const repo = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const capture = path.join(repo, 'release/captured/v2026.9.1-db91.6-firsttext-r1-20261006/dist');
@@ -14,8 +14,9 @@ const read = (file) => fs.readFileSync(file, 'utf8');
 const sha = (value) => createHash('sha256').update(value).digest('hex');
 
 for (const [name, patch, marks] of [
-  ['agent-command-DPfawBbr.js', patchAgentCommandChunk, 10],
+  ['agent-command-DPfawBbr.js', patchAgentCommandChunk, 13],
   ['embedded-agent-DaSvA-Yk.js', patchEmbeddedAgentChunk, 7],
+  ['builtin-openclaw-zQV8Wwjr.js', patchBuiltinChunk, 5],
 ]) {
   test(`${name}: release file is the patched V capture and only adds marks`, () => {
     const base = read(path.join(capture, name));
@@ -29,6 +30,9 @@ for (const [name, patch, marks] of [
       .replace(/^import \{ firsttextGapMark \}.*\n/m, '')
       .replace(/\t\t\tprepare: async \(preparedOpts\) => \{\n\t\t\t\tfirsttextGapMark\("cmd-prepare-enter", opts\.runId\);\n\t\t\t\ttry \{\n\t\t\t\t\treturn await (prepareAgentCommandExecution\(preparedOpts, runtime, runtimeContext\));\n\t\t\t\t\} finally \{\n\t\t\t\t\tfirsttextGapMark\("cmd-prepare-end", opts\.runId\);\n\t\t\t\t\}\n\t\t\t\},\n/, '\t\t\tprepare: async (preparedOpts) => await $1,\n')
       .replace(/\t\t\t\{\n\t\t\t\tconst markStartupStage = startupStages\.mark;\n[\s\S]*?\n\t\t\t\}\n/, '')
+      .replace(/\t\t\{\n\t\t\tconst markCorePluginToolStage = corePluginToolStages\.mark;\n[\s\S]*?\n\t\t\}\n/, '')
+      .replace('\t\ttry {\n\t\t\treturn await measureEmbeddedAgentPreparation(stage, run, { config: options.config });\n\t\t} finally {\n\t\t\tfirsttextGapMark(`att-end:${stage}`, options.runId);\n\t\t}\n', '\t\treturn measureEmbeddedAgentPreparation(stage, run, { config: options.config });\n')
+      .replace('\t\trunId: params.runId,\n\t\tconfig: params.config,\n', '\t\tconfig: params.config,\n')
       .replace(/^\t*firsttextGapMark\(.*\);\n/gm, '');
     assert.equal(stripped, base);
   });
@@ -51,4 +55,29 @@ test('marks are silent unless enabled and only carry validated timing fields', (
   const rows = result.stderr.trim().split('\n').map((line) => JSON.parse(line.replace('[firsttext-gap.1] ', '')));
   assert.deepEqual(rows.map((row) => row.stage), ['cmd-ingress-enter', 'emb-stage:attempt-dispatch']);
   assert.deepEqual(Object.keys(rows[1]).sort(), ['atMs', 'loopBusyPct', 'monoMs', 'pid', 'runId', 'sincePrevMs', 'stage', 'v']);
+});
+
+test('agent-db-process-coordinator.mjs: lease log is additive and reports long waits and holds', async () => {
+  const name = 'agent-db-process-coordinator.mjs';
+  const base = read(path.join(capture, name));
+  const patched = read(path.join(release, name));
+  assert.equal(sha(patchCoordinator(base)), sha(patched));
+  assert.throws(() => patchCoordinator(patched), /already patched/);
+  const script = `
+    const m = await import(${JSON.stringify(path.join(release, name))});
+    process.env.OPENCLAW_FIRSTTEXT_WORKER_PHASES = '1';
+    const lease = () => ({ release() {} });
+    let n = 0;
+    const busyAcquire = () => (++n > 3 ? lease() : null);
+    const syncResult = m.withAgentDatabaseProcessLeaseSync({ databasePath: '/tmp/x.sqlite', acquire: busyAcquire, fn: () => { const end = Date.now() + 30; while (Date.now() < end) {} return 7; } });
+    const quick = m.withAgentDatabaseProcessLeaseSync({ databasePath: '/tmp/y.sqlite', acquire: lease, fn: () => 1 });
+    const asyncResult = await m.withAgentDatabaseProcessLease({ databasePath: '/tmp/z.sqlite', acquire: lease, fn: async () => { await new Promise(r => setTimeout(r, 40)); return 9; } });
+    console.log(JSON.stringify([syncResult, quick, asyncResult]));`;
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8', env: { PATH: process.env.PATH } });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), '[7,1,9]');
+  const rows = result.stderr.trim().split('\n').map((line) => JSON.parse(line.replace('[firsttext-lease.1] ', '')));
+  assert.deepEqual(rows.map((row) => row.mode), ['sync', 'async']);
+  assert.ok(rows[0].holdMs >= 20 && rows[0].attempts === 4);
+  assert.ok(rows[1].holdMs >= 20);
 });

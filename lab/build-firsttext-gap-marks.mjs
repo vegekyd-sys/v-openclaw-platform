@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { patchAgentCommandChunk, patchEmbeddedAgentChunk } from './patch-firsttext-gap-marks.mjs';
+import { patchAgentCommandChunk, patchBuiltinChunk, patchCoordinator, patchEmbeddedAgentChunk } from './patch-firsttext-gap-marks.mjs';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.dirname(dir);
@@ -13,6 +13,8 @@ const capture = 'release/captured/v2026.9.1-db91.6-firsttext-r1-20261006/dist';
 export const GAP_MARK_INPUTS = [
   { name: 'agent-command-DPfawBbr.js', before: '82e7ca49babbe4638428ebc472855dd408e5c46a3bef0fe798ffcca9279540e0', patch: patchAgentCommandChunk },
   { name: 'embedded-agent-DaSvA-Yk.js', before: '94fc21cb0511287baf7b7d1196075619a105958d6e2308eb75f5d31452aa749b', patch: patchEmbeddedAgentChunk },
+  { name: 'builtin-openclaw-zQV8Wwjr.js', before: '8445647093325217ee80f83b1fd34b5a01f2322adbb495732d576d2d40d75af1', patch: patchBuiltinChunk },
+  { name: 'agent-db-process-coordinator.mjs', before: '51c170d34fad2b5d0a6b0de8b10d0f32b57384b5db32e78dfd7b80eb7547650e', patch: patchCoordinator },
 ];
 const out = [];
 for (const input of GAP_MARK_INPUTS) {
