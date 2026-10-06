@@ -1,0 +1,30 @@
+{
+  "baseRelease": "firsttext-r2-20261007",
+  "files": [
+    {
+      "source": "lab/release-files/voice-reliability-20261007/openclaw/dist/embedded-agent.runtime-CL7poBKY.js",
+      "target": "openclaw/dist/embedded-agent.runtime-CL7poBKY.js",
+      "before": "31e6c95723f1452ea796e8a8353e04075b1cd8c395977ff075191ac04322552a"
+    },
+    {
+      "source": "lab/release-files/voice-reliability-20261007/production-worker/worker.mjs",
+      "target": "production-worker/worker.mjs",
+      "before": "18fc5d4f8ad29e50407e81f93583a54879ab712de105faf71f6402a8be84986b"
+    },
+    {
+      "source": "lab/release-files/voice-reliability-20261007/production-worker/worker-pool.mjs",
+      "target": "production-worker/worker-pool.mjs",
+      "before": "1f137ca291f37605b2d2d29aa19aae2ad1328f344f2b26c3919a185e0a3325d1"
+    },
+    {
+      "source": "lab/release-files/voice-reliability-20261007/production-worker/index.mjs",
+      "target": "production-worker/index.mjs",
+      "before": "26c617fd59be278de1b0cd8d99657ef4a306ffc9a67acef3eee5c9c2745f08c0"
+    },
+    {
+      "source": "lab/release-files/voice-reliability-20261007/production-worker/voice-process-owner.mjs",
+      "target": "production-worker/voice-process-owner.mjs",
+      "before": null
+    }
+  ]
+}

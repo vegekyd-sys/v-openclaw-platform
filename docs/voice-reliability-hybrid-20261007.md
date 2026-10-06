@@ -37,3 +37,9 @@
 ## 大首包的真实缓冲
 
 80091a32 的 Grok 长故事约58秒，四个整段锚点无累积漂移，但首段录音存在缺口，原严格 PCM 检查仍 FAIL。实际首包约244ms、第二包晚约300ms到达；旧条件只在包小于120ms时等待，导致大包绕过缓冲。后续改为未完整返回的响应实际等待120ms音频线程时间，完整短响应无需等待。按真实大包/后续延迟输入在24/44.1/48kHz回归，欠载0、无中间空帧、每样本只消费一次；尚待新原H5录音与物理Safari验收。
+
+## 共享部署产物
+
+Worker 的 run 隔离、取消 RPC 和退休任务归属需要实际运行文件，不只合入 H5 源码。`lab/build-voice-reliability-runtime.mjs` 在独立目录读取四个已捕获的现行 runtime 文件，先核验冻结 before hash，再生成四个补丁文件及新的 `voice-process-owner.mjs`。它不连接或修改 Gateway。最终文件、before/after proof 与 package plan 位于 `lab/release-files/voice-reliability-20261007/`，当前基线为 `firsttext-r2-20261007`；集成前必须实时复核基线与文件，漂移则重新适配，不能覆盖其他任务。
+
+这轮不是纯 UI 发布：Worker/OpenClaw 运行代码需要排空任务后受控重启 Gateway，并安装同字节 H5 bundle。合入前 Candidate 验证不动共享或生产；用户明确决定本次 SHA 合入 dev 后，再取得自己的 integration lease，通过 canonical package/stage/deploy 进入共享验收。共享工具、原 H5 语音和 iPhone Safari 听觉仍分别记录。生产尚未获本补丁发布授权。
