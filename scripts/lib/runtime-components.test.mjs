@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   COMPONENTS, V_FEISHU, VLAB_RUNTIME, captureRuns, diffReleaseComponents, captureSourceForTarget, captureSuffixes, componentOfTarget,
-  parityPairs, releaseNoteComponents, resolveVDirs, vPathForTarget,
+  parityPairs, releaseNoteComponents, resolveSidecarDirs, resolveVDirs, vPathForTarget,
 } from './runtime-components.mjs';
 import { evaluateParity } from './parity.mjs';
 
@@ -106,6 +106,10 @@ test('parity pairs: existing three unchanged; DingTalk/WeCom follow VLab\'s load
     ['handoff', 'sidecar:handoff/service', '/opt/v-desktop-handoff/service', '/opt/vlab-v-desktop-handoff/service', false],
     ['handoff', 'sidecar:handoff/desktop', '/opt/v-desktop-handoff/desktop', '/opt/vlab-v-desktop-handoff/desktop', false],
     ['secret-entry', 'sidecar:secret-entry', '/opt/v-secret-entry', '/opt/vlab-v-secret-entry', true],
+    // V Browser: not resolved here (no sidecarDirs), so absent on both sides.
+    ['v-browser-plugin', 'sidecar:v-browser-plugin', null, null, false],
+    ['v-browser-broker', 'sidecar:v-browser-broker', null, null, false],
+    ['v-browser-gateway', 'sidecar:v-browser-gateway', null, null, false],
   ]);
 
   // Before the prep: compared where VLab loads them, under the target prefix they will have.
@@ -118,6 +122,61 @@ test('parity pairs: existing three unchanged; DingTalk/WeCom follow VLab\'s load
   assert.throws(() => parityPairs({ vDirs, vlabGlob, vlabLoadPaths: [] }), /dingtalk: expected one plugins.load.paths entry/);
   assert.throws(() => parityPairs({ vDirs, vlabGlob: () => [], vlabLoadPaths: [] }), /feishu: expected one/);
   assert.deepEqual(parityPairs({ vDirs, vlabGlob, only: ['core', 'worker'] }).map((p) => p.component), ['core', 'worker']);
+});
+
+// What the two hosts reported on 2026-10-06 (systemctl show -p ExecStart, plugins.load.paths).
+const VLAB_PLUGINS = '/srv/vlab-production-mirror/labs/instances/db91-parity/capability-alignment-20260911/plugin-sources/opt/v-browser/releases';
+const EXEC = {
+  v: {
+    'v-browser-broker.service': '{ path=/opt/node-v22.23.1/bin/node ; argv[]=/opt/node-v22.23.1/bin/node /srv/vlab-browser/releases/native-browser91-20260905/app/broker/main.mjs ; ignore_errors=no }',
+    'openclaw-vlab-browser.service': '{ path=/opt/node-v22.23.1/bin/node ; argv[]=/opt/node-v22.23.1/bin/node --max-old-space-size=1536 /srv/vlab-browser/releases/native-browser91-20260905/runtime/openclaw/dist/index.js gateway --port 23793 ; ignore_errors=no }',
+  },
+  vlab: {
+    'v-browser-broker.service': '{ path=/opt/node-v24.15.0/bin/node ; argv[]=/opt/node-v24.15.0/bin/node /srv/vlab-browser/app/broker/main.mjs ; ignore_errors=no }',
+    'openclaw-vlab-browser.service': '{ path=/opt/vlab/node-v22.23.1-linux-x64/bin/node ; argv[]=/opt/vlab/node-v22.23.1-linux-x64/bin/node --max-old-space-size=1536 /srv/vlab-production-mirror/browser91/native-browser-20260905/runtime/openclaw/dist/index.js gateway --port 24793 ; ignore_errors=no }',
+  },
+};
+const loadPaths = (vPlugin, vlabPlugin, vWorkerPlugin = vPlugin) => ({
+  v: { main: ['/opt/v-desktop-handoff/plugin', `${vPlugin}/`], worker: ['/opt/v-desktop-handoff/plugin', vWorkerPlugin] },
+  vlab: { main: [vlabPlugin], worker: [vlabPlugin] },
+});
+
+test('V Browser sidecars: plugin from main config load paths, Broker and Browser Gateway from ExecStart', () => {
+  const execStart = { v: (u) => EXEC.v[u] ?? '', vlab: (u) => EXEC.vlab[u] ?? '' };
+  const dirs = resolveSidecarDirs({ execStart,
+    loadPaths: loadPaths('/opt/v-browser/releases/0.4.7-wake-lease-20261006/openclaw-plugin', `${VLAB_PLUGINS}/0.4.7/openclaw-plugin`) });
+  assert.deepEqual(Object.keys(dirs), ['v-browser-plugin', 'v-browser-broker', 'v-browser-gateway'], 'fixed sidecars need no resolving');
+  assert.deepEqual(dirs['v-browser-plugin'], { v: '/opt/v-browser/releases/0.4.7-wake-lease-20261006/openclaw-plugin', vlab: `${VLAB_PLUGINS}/0.4.7/openclaw-plugin`, notes: [] });
+  assert.deepEqual([dirs['v-browser-broker'].v, dirs['v-browser-broker'].vlab],
+    ['/srv/vlab-browser/releases/native-browser91-20260905/app/broker', '/srv/vlab-browser/app/broker']);
+  assert.match(dirs['v-browser-broker'].notes[0], /V runs it with \/opt\/node-v22\.23\.1\/bin\/node, VLab with \/opt\/node-v24\.15\.0/);
+  assert.deepEqual([dirs['v-browser-gateway'].v, dirs['v-browser-gateway'].vlab],
+    ['/srv/vlab-browser/releases/native-browser91-20260905/runtime/openclaw/dist', '/srv/vlab-production-mirror/browser91/native-browser-20260905/runtime/openclaw/dist']);
+
+  const pairs = parityPairs({ vDirs, vlabGlob, sidecarDirs: dirs, only: ['v-browser-plugin', 'v-browser-broker', 'v-browser-gateway'] });
+  assert.deepEqual(pairs.map((p) => [p.prefix, p.exclude ?? null, p.blocking]), [
+    ['sidecar:v-browser-plugin', null, false], ['sidecar:v-browser-broker', ['tests'], false], ['sidecar:v-browser-gateway', null, false]]);
+  assert.match(pairs[1].note, /node-v24/);
+
+  // Worker loading another copy than main: compared on main, said out loud.
+  const split = resolveSidecarDirs({ execStart,
+    loadPaths: loadPaths('/opt/v-browser/releases/0.4.7/openclaw-plugin', `${VLAB_PLUGINS}/0.4.7/openclaw-plugin`, '/opt/v-browser/releases/0.4.6/openclaw-plugin') });
+  assert.equal(split['v-browser-plugin'].v, '/opt/v-browser/releases/0.4.7/openclaw-plugin');
+  assert.match(split['v-browser-plugin'].notes[0], /v Worker config loads \/opt\/v-browser\/releases\/0\.4\.6/);
+
+  // Not running on a host (no unit, plugin not loaded): absent there, not an error.
+  const none = resolveSidecarDirs({ execStart: { v: () => '', vlab: () => '' }, loadPaths: { v: { main: [] }, vlab: { main: [] } } });
+  assert.deepEqual(none['v-browser-broker'], { v: null, vlab: null, notes: [] });
+  assert.throws(() => resolveSidecarDirs({ execStart, loadPaths: { v: { main: ['/opt/v-browser/releases/a/openclaw-plugin', '/opt/v-browser/releases/b/openclaw-plugin'] }, vlab: {} } }),
+    /v-browser-plugin: v main config loads 2 copies/);
+});
+
+test('V Browser drift is advisory: reported, does not decide the state', () => {
+  const pairs = pairsFor('v-browser-plugin');
+  const r = evaluateParity({ pairs, trees: [{ v: T({ 'index.js': h('a'), 'core/session-actor-memory.js': h('b') }), vlab: T({ 'index.js': h('c') }) }] });
+  assert.equal(r.state, 'ALIGNED');
+  assert.deepEqual(r.findings.map((f) => [f.kind, f.target, f.advisory]), [
+    ['only-on-v', 'sidecar:v-browser-plugin/core/session-actor-memory.js', true], ['differs', 'sidecar:v-browser-plugin/index.js', true]]);
 });
 
 const T = (o) => new Map(Object.entries(o));

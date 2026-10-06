@@ -1,0 +1,28 @@
+{
+  "support": [
+    "lab/candidate/worker-prewarm2-v.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/worker-prewarm2-v.mjs"
+  ],
+  "timeoutSeconds": 2400,
+  "user": "lab-db91-parity",
+  "env": {
+    "PATCH": "on",
+    "WORKERS": "1",
+    "PREWARM2": "on"
+  },
+  "files": [
+    {
+      "source": "lab/release-files/worker-prewarm2-v/agent-command-DPfawBbr.js",
+      "target": "openclaw/dist/agent-command-DPfawBbr.js",
+      "before": "e8a0c7e4210989f454a75fc7b6fd7c2c332e79f2e336467f5f301bb5fc8cddf1"
+    },
+    {
+      "source": "lab/release-files/worker-prewarm2-v/worker.mjs",
+      "target": "production-worker/worker.mjs",
+      "before": "898fd1fc67d5cdfc5a4b7a926aa08cead56b97d37c385a661edd2c518d7ae6c3"
+    }
+  ]
+}
