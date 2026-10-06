@@ -317,13 +317,6 @@ try {
     workerProfile.pid = workerProf.pid;
     if (process.env.SCRIPTS === "1") workerProfile.scripts = Object.fromEntries(["cold", "warm"].map((k) => [k, parsed.filter((p) => windows.some((w) => w.kind === k && p.at >= w.from && p.at <= w.to)).map((p) => p.url.replace(/^.*\/dist\//u, "dist/"))]));
   }
-  // every observer line of the first cold run, for the remaining first-turn gap
-  const coldRun = rounds[0].runs[0];
-  const coldId = rounds[0].runIds?.[0];
-  const detail = coldId ? lines.filter((l) => l.line.includes(coldId) && !/firsttext-worker-phases/u.test(l.line)).map((l) => {
-    const s = l.line; const at = s.match(/"(?:atMs|at)":(\d{13})/u)?.[1] ?? Date.parse(s.match(/"at":"([^"]+Z)"/u)?.[1] ?? "") ;
-    return `${Number.isFinite(+at) ? +at - rounds[0].sentAt : "?"} ${s.replace(/\x1b\[[0-9;]*m/gu, "").slice(0, /trace:embedded-run|startup stages/u.test(s) ? 3000 : 200)}`;
-  }) : [];
   const q = (v, p) => { const x = [...v].sort((a, b) => a - b); return x.length ? x[Math.min(x.length - 1, Math.floor((x.length - 1) * p))] : null; };
   summary = { async: ASYNC, par: PAR, workers: WORKERS, n: all.length, cmdToModel: { p50: q(all, 0.5), p95: q(all, 0.95), max: all.length ? Math.max(...all) : null }, rounds };
   console.log(JSON.stringify(summary, null, 1));
