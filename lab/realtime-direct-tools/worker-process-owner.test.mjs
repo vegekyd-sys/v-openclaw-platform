@@ -1,16 +1,16 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {createVoiceProcessOwner} from './worker-process-owner.mjs';
-import {patchVoiceWorker,patchVoicePool,patchVoiceIndex} from '../patch-voice-worker-process-owner.mjs';
+import {patchVoiceWorker,patchVoicePool,patchVoiceIndex,patchNativeVoiceProcessScope} from '../patch-voice-worker-process-owner.mjs';
 import fs from 'node:fs';
 test('only exact-run native exec IDs enter cleanup; terminal poll follows kill and is idempotent',async()=>{
- const calls=[];const owner=createVoiceProcessOwner({runId:'own',sessionKey:'personal',loadProcessTool:async()=>({execute:async(id,args)=>{calls.push(args);return {details:{status:args.action==='kill'?'running':'failed',sessionId:args.sessionId,exitSignal:'SIGTERM'}};}})});
+ const calls=[];const owner=createVoiceProcessOwner({runId:'own',sessionKey:'personal',loadProcessTool:async()=>({execute:async(id,args)=>{calls.push(args);if(args.action==='list')return {details:{sessions:[]}};return {details:{status:args.action==='kill'?'running':'failed',sessionId:args.sessionId,exitSignal:'SIGTERM'}};}})});
  owner.observe({runId:'foreign',stream:'tool',data:{name:'exec',phase:'result',result:{details:{status:'running',sessionId:'foreign'}}}});
  owner.observe({runId:'own',sessionKey:'personal',stream:'tool',data:{name:'exec',phase:'result',result:{details:{status:'running',sessionId:'owned'}}}});
- const result=await owner.cancel();assert(result.confirmed);assert.deepEqual(result.processes.map(p=>p.sessionId),['owned']);await owner.cancel();assert.deepEqual(calls.map(c=>c.action),['kill','poll']);assert.equal(owner.snapshot().processes.length,0);
+ owner.markSettled();const result=await owner.cancel();assert(result.confirmed);assert.deepEqual(result.processes.map(p=>p.sessionId),['owned']);await owner.cancel();assert.deepEqual(calls.map(c=>c.action),['list','kill','poll']);assert.equal(owner.snapshot().processes.length,0);
 });
 test('registry misses and unfinished exec results retain ownership and allow retry',async()=>{
- let done=false;const owner=createVoiceProcessOwner({runId:'own',sessionKey:'p',attempts:1,wait:async()=>{},loadProcessTool:async()=>({execute:async()=>done?{details:{status:'completed'}}:{isError:true,details:{status:'failed'}}})});
- const event=(phase,result)=>owner.observe({runId:'own',stream:'tool',data:{name:'exec',toolCallId:'late',phase,result}});event('start');await assert.rejects(owner.cancel(),/pending/);event('result',{details:{status:'running',sessionId:'owned'}});await assert.rejects(owner.cancel(),/unconfirmed/);assert.deepEqual(owner.snapshot().processes,['owned']);done=true;assert((await owner.cancel()).confirmed);
+ let done=false;const owner=createVoiceProcessOwner({runId:'own',sessionKey:'p',attempts:1,wait:async()=>{},loadProcessTool:async()=>({execute:async(id,args)=>args.action==='list'?{details:{sessions:[]}}:done?{details:{status:'completed',exitCode:0}}:{isError:true,details:{status:'failed'}}})});
+ const event=(phase,result)=>owner.observe({runId:'own',stream:'tool',data:{name:'exec',toolCallId:'late',phase,result}});event('start');await assert.rejects(owner.cancel(),/pending/);event('result',{details:{status:'running',sessionId:'owned'}});owner.markSettled();await assert.rejects(owner.cancel(),/unconfirmed/);assert.deepEqual(owner.snapshot().processes,['owned']);done=true;assert((await owner.cancel()).confirmed);
 });
 test('patches preserve current Worker code, apply once, and reject changed anchors',()=>{
  for(const [file,patch] of [['worker.mjs',patchVoiceWorker],['worker-pool.mjs',patchVoicePool],['index.mjs',patchVoiceIndex]]){const original=fs.readFileSync(new URL('../../experiments/agent-worker-isolation-v1/'+file,import.meta.url),'utf8'),next=patch(original);assert.equal(patch(next),next);assert(next.includes('voice-'));assert.throws(()=>patch('changed runtime'));}
@@ -44,4 +44,35 @@ test('Worker terminal acknowledgement cannot substitute another run or unconfirm
   pool.onMessage(worker,{...control,type:'voice-process-cancel-ack',ok:true,result});await rejected;
   assert.equal(pool.pendingControls.size,0);
  }
+});
+
+test('foreground abort recovers an exec with no tool result from the exact native run registry',async()=>{
+ const calls=[];let running=true;const owner=createVoiceProcessOwner({runId:'trusted-run',sessionKey:'personal',attempts:2,wait:async()=>owner.markSettled(),loadProcessTool:async()=>({execute:async(id,args)=>{
+  calls.push(args);if(args.action==='list')return {details:{sessions:[{sessionId:'native-foreground',status:'running',pid:123}]}};
+  if(args.action==='kill'){running=false;return {details:{status:'running'}};}
+  return {details:{status:running?'running':'failed',sessionId:args.sessionId,exitSignal:'SIGTERM'}};
+ }})});
+ owner.observe({runId:'trusted-run',stream:'tool',data:{name:'exec',phase:'start',toolCallId:'aborted-no-result'}});
+ const result=await owner.cancel();assert(result.confirmed);assert(result.modelSettled);assert.equal(result.registryScope,'trusted-run');
+ assert.deepEqual(calls,[{action:'list'},{action:'kill',sessionId:'native-foreground'},{action:'poll',sessionId:'native-foreground',timeout:500}]);assert.deepEqual(owner.snapshot().pending,[]);
+});
+test('an aborted foreground already terminated natively needs no fabricated kill or tool result',async()=>{
+ const owner=createVoiceProcessOwner({runId:'r',sessionKey:'s',loadProcessTool:async()=>({execute:async()=>({details:{sessions:[{sessionId:'native',status:'failed',exitSignal:'SIGTERM'}]}})})});
+ owner.observe({runId:'r',stream:'tool',data:{name:'exec',phase:'start',toolCallId:'missing'}});owner.markSettled();
+ const result=await owner.cancel();assert(result.confirmed);assert.equal(result.processes[0].source,'native-run-scoped-list');assert.equal(result.processes[0].result.details.exitSignal,'SIGTERM');
+});
+test('unknown native registry cannot clear suppressed exec responsibility',async()=>{
+ const owner=createVoiceProcessOwner({runId:'r',sessionKey:'s',loadProcessTool:async()=>({execute:async()=>({isError:true})})});owner.observe({runId:'r',stream:'tool',data:{name:'exec',phase:'start',toolCallId:'x'}});owner.markSettled();await assert.rejects(owner.cancel(),/registry is unavailable/);assert.deepEqual(owner.snapshot().pending,['x']);
+});
+test('normal model completion preserves native process acknowledgement; Worker failure rejects it',async()=>{
+ const Pool=await patchedPool(),pool=new Pool();let control;const active={id:'own',sessionKey:'p',request:{runId:'voice-own'}},worker={active:new Map([['own',active]]),child:{send:m=>control=m}};pool.workers.set('own',worker);
+ const promise=pool.cancelVoiceProcesses('voice-own','p');pool.rejectPendingSteers('own',Error('model finished'),true);assert.equal(pool.pendingControls.size,1);
+ pool.onMessage(worker,{...control,type:'voice-process-cancel-ack',ok:true,result:{runId:'voice-own',sessionKey:'p',confirmed:true}});assert((await promise).confirmed);
+ const failed=pool.cancelVoiceProcesses('voice-own','p'),rejected=assert.rejects(failed,/Worker died/);pool.rejectPendingSteers('own',Error('Worker died'));await rejected;assert.equal(pool.pendingControls.size,0);
+});
+test('native exec/process scope patch keeps ordinary personal sessions unchanged',()=>{
+ const original='\t\t\tscopeKey: params.sessionKey,\n\t\t\tsessionKey: params.sessionKey,\n\t\t\trunId: params.runId,\nprocessDefaults: { scopeKey: params.sessionKey }';
+ const patched=patchNativeVoiceProcessScope(original);assert.equal(patchNativeVoiceProcessScope(patched),patched);assert.throws(()=>patchNativeVoiceProcessScope('changed runtime'));
+ const expression=patched.match(/scopeKey: (.*),/)[1],scope=new Function('params','return '+expression);
+ const runId='voice-12345678-1234-1234-1234-123456789abc-12345678-1234-1234-1234-123456789abc';assert.equal(scope({runId,sessionKey:'personal'}),runId);assert.equal(scope({runId:'normal',sessionKey:'personal'}),'personal');
 });

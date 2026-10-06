@@ -1,14 +1,15 @@
 // Exact anchors patch the current runtime, preserving unrelated Worker changes.
 export function patchVoiceWorker(source) {
- if(source.includes('// voice-worker-process-owner-v1'))return source;
+ if(source.includes('// voice-worker-process-owner-v2'))return source;
+ if(source.includes('// voice-worker-process-owner-v1'))throw Error('Previous voice Worker patch must be rebased from its unpatched source');
  const once=(needle,value)=>{if(source.split(needle).length!==2)throw Error('Worker process owner anchor changed: '+needle);source=source.replace(needle,value);};
- once('const activeControllers = new Map();',`// voice-worker-process-owner-v1
+ once('const activeControllers = new Map();',`// voice-worker-process-owner-v2
 const activeControllers = new Map();
 const voiceProcessOwners = new Map();`);
  source=`import {createVoiceProcessOwner} from './voice-process-owner.mjs';\n`+source;
  once('  let unsubscribeAgentEvents = () => {};',`  const voiceOwner = /^voice-[a-f0-9-]{36}-[a-f0-9-]{36}$/.test(message.runId ?? '') ? createVoiceProcessOwner({
     runId:message.runId,sessionKey:message.sessionKey,
-    loadProcessTool:async()=>{const m=await import(new URL('../bash-tools-DiAfkLAC.js',pathToFileURL(configuredAgentRuntimePath())).href);if(typeof m.t!=='function')throw Error('Native process tool unavailable');return m.t();}
+    loadProcessTool:async()=>{const m=await import(new URL('../bash-tools-DiAfkLAC.js',pathToFileURL(configuredAgentRuntimePath())).href);if(typeof m.t!=='function')throw Error('Native process tool unavailable');return m.t({scopeKey:message.runId});}
   }) : null;
   if(voiceOwner)voiceProcessOwners.set(message.runId,voiceOwner);
   let unsubscribeAgentEvents = () => {};`);
@@ -27,13 +28,14 @@ const voiceProcessOwners = new Map();`);
   }
   if (message?.type === "cancel" && message.requestId) {`);
  // Keep failed/live ownership; retire only already empty completed owners.
- once('    unsubscribeAgentEvents();','    unsubscribeAgentEvents();\n    if(voiceOwner&&voiceOwner.snapshot().processes.length===0&&voiceOwner.snapshot().pending.length===0)voiceProcessOwners.delete(message.runId);');
+ once('    unsubscribeAgentEvents();','    voiceOwner?.markSettled();\n    unsubscribeAgentEvents();\n    if(voiceOwner&&!voiceOwner.snapshot().cleaning&&voiceOwner.snapshot().processes.length===0&&voiceOwner.snapshot().pending.length===0)voiceProcessOwners.delete(message.runId);');
  return source;
 }
 export function patchVoicePool(source){
- if(source.includes('// voice-worker-process-control-v1'))return source;
+ if(source.includes('// voice-worker-process-control-v2'))return source;
+ if(source.includes('// voice-worker-process-control-v1'))throw Error('Previous voice pool patch must be rebased from its unpatched source');
  const needle='  async applyPermission(requestId, mode) {';if(source.split(needle).length!==2)throw Error('Pool control anchor changed');
- source=source.replace(needle,`  // voice-worker-process-control-v1
+ source=source.replace(needle,`  // voice-worker-process-control-v2
   async cancelVoiceProcesses(runId,sessionKey){
     for(const worker of this.workers.values())for(const active of worker.active.values()){
       if(active.request?.runId!==runId||active.sessionKey!==sessionKey)continue;
@@ -47,6 +49,11 @@ export function patchVoicePool(source){
   }
 ${needle}`);
  const ack='  onMessage(worker, message) {';if(source.split(ack).length!==2)throw Error('Pool acknowledgement anchor changed');
+ source=source.replace('  rejectPendingSteers(requestId, error) {','  rejectPendingSteers(requestId, error, preserveVoiceProcessControls=false) {');
+ source=source.replace('      if (pending.requestId !== requestId) continue;','      if (pending.requestId !== requestId || preserveVoiceProcessControls && pending.runId) continue;');
+ const completed='new Error(`worker request ${message.id} completed before Steer acknowledgement`),';
+ if(source.split(completed).length!==2)throw Error('Worker completion control anchor changed');
+ source=source.replace(completed,completed+'\n      true,');
  return source.replace(ack,`${ack}
     if(message?.type==='voice-process-cancel-ack'){
       const p=this.pendingControls.get(message.controlId);if(!p||p.worker!==worker||p.requestId!==message.requestId||!p.runId)return;
@@ -54,6 +61,16 @@ ${needle}`);
       if(!message.ok||message.result?.runId!==p.runId||message.result?.sessionKey!==p.sessionKey||message.result?.confirmed!==true)p.reject(Error(message.error?.message??'Voice process cleanup identity mismatch'));
       else p.resolve(message.result);return;
     }`);
+}
+// Scope native exec and process registries to the trusted voice run rather than
+// the shared personal session. Normal Feishu/non-voice execution is unchanged.
+export function patchNativeVoiceProcessScope(source){
+ if(source.includes('// voice-native-process-scope-v1'))return source;
+ const needle='\t\t\tscopeKey: params.sessionKey,\n\t\t\tsessionKey: params.sessionKey,\n\t\t\trunId: params.runId,';
+ if(source.split(needle).length!==2)throw Error('Native voice exec scope anchor changed');
+ source=source.replace(needle,'\t\t\t// voice-native-process-scope-v1\n\t\t\tscopeKey: /^voice-[a-f0-9-]{36}-[a-f0-9-]{36}$/.test(params.runId ?? "") ? params.runId : params.sessionKey,\n\t\t\tsessionKey: params.sessionKey,\n\t\t\trunId: params.runId,');
+ const process='processDefaults: { scopeKey: params.sessionKey }';if(source.split(process).length!==2)throw Error('Native voice process scope anchor changed');
+ return source.replace(process,'processDefaults: { scopeKey: /^voice-[a-f0-9-]{36}-[a-f0-9-]{36}$/.test(params.runId ?? "") ? params.runId : params.sessionKey }');
 }
 export function patchVoiceIndex(source){
  if(source.includes('// voice-worker-process-rpc-v1'))return source;

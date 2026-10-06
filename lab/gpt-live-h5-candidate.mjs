@@ -161,11 +161,14 @@ if(fullTools&&config.plugins?.load?.paths) {
   config.plugins.load.paths=privateLoadPaths;
 }
 if(process.env.VOICE_WORKER_PROCESS_OWNER==='1'){
-  const {patchVoiceWorker,patchVoicePool,patchVoiceIndex}=await import('./patch-voice-worker-process-owner.mjs');
+  const {patchVoiceWorker,patchVoicePool,patchVoiceIndex,patchNativeVoiceProcessScope}=await import('./patch-voice-worker-process-owner.mjs');
   const roots=(config.plugins?.load?.paths??[]).filter(p=>fs.existsSync(path.join(p,'openclaw.plugin.json'))&&JSON.parse(fs.readFileSync(path.join(p,'openclaw.plugin.json'))).id==='vlab-agent-worker-isolation');
   assert(roots.length===1,'Exact private Worker plugin required');
   const root=fs.realpathSync(roots[0]);assert(root.startsWith(fs.realpathSync(path.dirname(runtime))+'/'),'Worker patch must stay in own Candidate');
   const receipts=[];
+  const nativeScopeFile=path.join(runtime,'openclaw/dist/embedded-agent.runtime-CL7poBKY.js');
+  const nativeBefore=fs.readFileSync(nativeScopeFile),nativeAfter=patchNativeVoiceProcessScope(nativeBefore.toString());
+  fs.writeFileSync(nativeScopeFile,nativeAfter);receipts.push({name:'embedded-agent.runtime-CL7poBKY.js',before:createHash('sha256').update(nativeBefore).digest('hex'),after:createHash('sha256').update(nativeAfter).digest('hex')});
   for(const [name,patch] of [['worker.mjs',patchVoiceWorker],['worker-pool.mjs',patchVoicePool],['index.mjs',patchVoiceIndex]]){const before=fs.readFileSync(path.join(root,name)),after=patch(before.toString());fs.writeFileSync(path.join(root,name),after);receipts.push({name,before:createHash('sha256').update(before).digest('hex'),after:createHash('sha256').update(after).digest('hex')});}
   fs.copyFileSync('lab/realtime-direct-tools/worker-process-owner.mjs',path.join(root,'voice-process-owner.mjs'));
   fs.mkdirSync(process.env.GPT_LIVE_H5_EVIDENCE_DIR,{recursive:true,mode:0o700});fs.writeFileSync(path.join(process.env.GPT_LIVE_H5_EVIDENCE_DIR,'worker-process-owner-patch.json'),JSON.stringify({candidateId:process.env.VLAB_CANDIDATE_ID,sourceCommit:process.env.GPT_LIVE_H5_SOURCE_COMMIT,root,receipts})+'\n',{mode:0o600,flag:'wx'});
@@ -403,7 +406,9 @@ try {
     experienceReadyWritten=true;
     if(process.env.DIRECT_VOICE_AUTOMATED==='1'){
       assert(process.env.V_REALTIME_DIRECT_TOOLS==='1','Direct automated validation requires native voice tools');
-      smoke=spawn(process.execPath,['lab/realtime-direct-tools/native-smoke.mjs'],{env:{...process.env,DIRECT_VOICE_EVIDENCE:path.join(process.env.GPT_LIVE_H5_EVIDENCE_DIR,'native'),DIRECT_VOICE_CLIPS:path.resolve('tmp/voice-reliability/clips'),DIRECT_VOICE_CASES:'hybrid'},stdio:'inherit'});
+      const directCase=process.env.DIRECT_VOICE_CASES??'hybrid';
+      assert(['hybrid','hybrid-core','single-query','followup','core'].includes(directCase),'Unknown direct voice observer case');
+      smoke=spawn(process.execPath,['lab/realtime-direct-tools/native-smoke.mjs'],{env:{...process.env,DIRECT_VOICE_EVIDENCE:path.join(process.env.GPT_LIVE_H5_EVIDENCE_DIR,'native'),DIRECT_VOICE_CLIPS:path.resolve('tmp/voice-reliability/clips'),DIRECT_VOICE_CASES:directCase},stdio:'inherit'});
       const code=await new Promise((resolve,reject)=>{smoke.once('error',reject);smoke.once('exit',resolve);});
       assert.equal(code,0,'Original direct voice workflow failed; native evidence retained');experienceOutcome={status:'automation-completed'};return;
     }

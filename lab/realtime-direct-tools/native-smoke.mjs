@@ -54,6 +54,12 @@ async function runModel(model){
   const firstTool=rows().find(x=>x.type==='tool.call'&&x.name==='memory_search');check(model+'/single-utterance-query',firstTool.at>=firstInput&&firstTool.at-firstInputEnd<10000,{inputStart:firstInput,inputEnd:firstInputEnd,toolAt:firstTool.at,latencyMs:firstTool.at-firstInputEnd});
   check(model+'/simple-stays-native',!rows().some(x=>x.type==='backend.started')&&rows().some(x=>x.type==='tool.native-result'&&x.name==='memory_search'&&x.result.ok===true));
   if(process.env.DIRECT_VOICE_CASES==='single-query'){await stop();await stopRecording();save(model+'-wire.json',await wire());save(model+'-single-query-result.json',{model,results:results.filter(x=>x.name?.startsWith(model+'/')),productAccepted:false});return;}
+  if(process.env.DIRECT_VOICE_SIMPLE_EXTENDED==='1')for(const [clip,names] of [['calendar',['feishu_calendar','exec']],['weather',['web_search']]]){
+   const at=Date.now();await speak(clip);await wait(()=>rows().some(x=>x.type==='tool.native-result'&&x.at>at&&names.includes(x.name)),'simple '+clip+' native result',90000);
+   const result=rows().find(x=>x.type==='tool.native-result'&&x.at>at&&names.includes(x.name));
+   await wait(()=>rows().some(x=>x.type==='audio'&&x.at>result.at),'simple '+clip+' actual answer PCM',30000);await quiet(id,90000);
+   check(model+'/simple-'+clip,result.result.ok===true&&result.result.output?.isError!==true&&!rows().some(x=>x.type==='backend.started'&&x.at>at),{name:result.name,callId:result.callId,secondUserUtteranceRequired:false});
+  }
   await speak('hybrid');await wait(()=>rows().some(x=>x.type==='backend.started'),'real V backend delegated',60000);
   const run=rows().find(x=>x.type==='backend.started');
   await wait(()=>rows().some(x=>x.type==='backend.event'&&x.runId===run.runId&&x.event.event==='agent'&&x.event.payload.stream==='tool'),'actual backend tool execution',90000);
@@ -71,7 +77,7 @@ async function runModel(model){
   check(model+'/hybrid-real-progress',rows().some(x=>x.type==='backend.progress-spoken'&&x.runId===run.runId)&&rows().some(x=>x.type==='audio'&&x.at>run.at),{runId:run.runId});
   if(process.env.DIRECT_VOICE_CASES==='hybrid-core'){await stop();await stopRecording();save(model+'-hybrid-core-result.json',{model,results:results.filter(x=>x.name?.startsWith(model+'/')),scope:'hybrid core only; cancellation not exercised',productAccepted:false});return;}
   const storyAt=Date.now();await speak('story');await wait(()=>rows().some(x=>x.type==='audio'&&x.at>storyAt),'native long story',30000);await quiet(id,120000);const afterStory=rows().filter(x=>x.type==='client.playback-stats').at(-1)?.stats;check(model+'/long-playback',Boolean(afterStory)&&afterStory.outputBytes>playback.outputBytes&&(await state()).state==='connected',{playback:afterStory,physicalSafariAccepted:false});
-  await speak('backend-long');await wait(()=>rows().filter(x=>x.type==='backend.started').length===2,'new independent backend goal',60000);
+  await speak(process.env.DIRECT_VOICE_BACKGROUND_CLIP??'backend-long');await wait(()=>rows().filter(x=>x.type==='backend.started').length===2,'new independent backend goal',60000);
   const second=rows().filter(x=>x.type==='backend.started').at(-1);
   await wait(()=>rows().some(x=>x.type==='backend.event'&&x.runId===second.runId&&x.event.payload.stream==='tool'&&x.event.payload.data?.name==='exec'&&x.event.payload.data?.result?.details?.status==='running'),'owned running backend exec result',45000);
   const owned=rows().find(x=>x.type==='backend.event'&&x.runId===second.runId&&x.event.payload.data?.name==='exec'&&x.event.payload.data?.result?.details?.status==='running').event.payload.data.result.details;
@@ -82,7 +88,12 @@ async function runModel(model){
   await wait(()=>rows().some(x=>x.type==='backend.process-cancel-observed'&&x.sessionId===owned.sessionId&&['completed','failed','killed','cancelled'].includes(x.result?.details?.status)),'backend owned process terminal poll',20000);
   const sameProcess=fs.existsSync(`/proc/${owned.pid}/stat`)&&fs.readFileSync(`/proc/${owned.pid}/stat`,'utf8').split(') ').at(-1).split(' ')[19]===osBefore.startTicks;
   check(model+'/hybrid-cancel',!sameProcess&&(terminal.observed.status==='error'||terminal.observed.aborted===true||terminal.observed.status==='ok'),{runId:second.runId,observed:terminal.observed,osBefore,sameProcessAfter:sameProcess});
-  await quiet(id,30000);await stop();await stopRecording();save(model+'-wire.json',await wire());save(model+'-hybrid-result.json',{model,results:results.filter(x=>x.name?.startsWith(model+'/')),productAccepted:false});return;
+  await quiet(id,30000);await speak('end');await wait(s=>s.state==='idle','semantic end after cancellation',40000);
+  check(model+'/semantic-hangup',rows().some(x=>x.type==='tool.call'&&x.name==='end_call')&&rows().some(x=>x.type==='call.closed'),{wireDrainObserved:(await wire()).some(x=>x.type==='end.after-playback')});
+  await click('start');await wait(s=>s.state==='connected','redial after cancellation');const next=(await wire()).filter(x=>x.type==='ready').at(-1)?.voiceSessionId;
+  await wait(()=>audit().some(x=>x.voiceSessionId===next&&x.type==='audio')&&(model==='seeduplex'||audit().some(x=>x.voiceSessionId===next&&x.type==='transcript'&&x.role==='assistant'&&x.final)),'fresh redial greeting',25000);
+  const grants=await evaluate('globalThis.__directMicRequests');check(model+'/redial',next!==id,{old:id,next});check(model+'/same-page-microphone-reuse',grants===1,{getUserMediaRequests:grants,physicalSafariAccepted:false});
+  await stop();await stopRecording();save(model+'-wire.json',await wire());save(model+'-hybrid-result.json',{model,results:results.filter(x=>x.name?.startsWith(model+'/')),productAccepted:false});return;
  }
  if(process.env.DIRECT_VOICE_CASES==='followup'){
   await speak('fetch');
@@ -128,7 +139,7 @@ try {
  chromeRoot=fs.mkdtempSync('/tmp/voice-direct-chrome-');fs.chmodSync(chromeRoot,0o700);const profile=path.join(chromeRoot,'profile');chrome=spawn('/usr/bin/google-chrome',['--headless=new','--no-sandbox','--disable-dev-shm-usage','--disable-gpu','--disable-features=AudioServiceSandbox','--remote-debugging-port=0','--window-size=1280,900','--user-data-dir='+profile,'--use-fake-ui-for-media-stream','about:blank'],{env:{...pulse.environment,TMPDIR:chromeRoot,TMP:chromeRoot,TEMP:chromeRoot},stdio:['ignore','ignore','pipe']});
  chrome.stderr.on('data',b=>fs.appendFileSync(path.join(evidence,'chrome.log'),b,{mode:0o600}));for(const until=Date.now()+10000;Date.now()<until&&!fs.existsSync(path.join(profile,'DevToolsActivePort'))&&chrome.exitCode===null&&chrome.signalCode===null;)await sleep(100);
  const port=Number(fs.readFileSync(path.join(profile,'DevToolsActivePort'),'utf8').split('\n')[0]);const targets=await fetch(`http://127.0.0.1:${port}/json/list`).then(r=>r.json());cdp=new Cdp(targets.find(x=>x.type==='page').webSocketDebuggerUrl);await cdp.connect();await cdp.request('Page.enable');
- await cdp.request('Page.addScriptToEvaluateOnNewDocument',{source:`globalThis.__directWire=[];const Native=WebSocket;globalThis.WebSocket=class extends Native{constructor(...args){super(...args);if(String(args[0]).includes('/api/relay'))this.addEventListener('message',e=>{try{const v=JSON.parse(e.data);if(v.type==='audio')v.audioBytes=Math.floor(v.audio.length*3/4);delete v.audio;globalThis.__directWire.push({...v,observedAt:Date.now()});}catch{}});}};`});
+ await cdp.request('Page.addScriptToEvaluateOnNewDocument',{source:`globalThis.__directWire=[];globalThis.__directMicRequests=0;const getMic=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);navigator.mediaDevices.getUserMedia=(...args)=>{globalThis.__directMicRequests++;return getMic(...args)};const Native=WebSocket;globalThis.WebSocket=class extends Native{constructor(...args){super(...args);if(String(args[0]).includes('/api/relay'))this.addEventListener('message',e=>{try{const v=JSON.parse(e.data);if(v.type==='audio')v.audioBytes=Math.floor(v.audio.length*3/4);delete v.audio;globalThis.__directWire.push({...v,observedAt:Date.now()});}catch{}});}};`});
  for(const model of (process.env.DIRECT_VOICE_MODELS??'seeduplex,grok').split(',')){
   try{await runModel(model);}catch(error){errors.push({model,message:error.message,at:Date.now()});check(model+'/workflow',false,{error:error.message});save(model+'-failure-state.json',await state().catch(()=>null));await stop().catch(()=>{});await stopRecording();}
  }
