@@ -193,10 +193,14 @@ parity、promote、捕获、sync、release-notes、静态检查都只认一张�
 | wecom | runtime | `~/.openclaw/extensions/wecom-openclaw-plugin` | 同上 | `extensions/wecom-openclaw-plugin/` | `.wecom` |
 | handoff | sidecar | `/opt/v-desktop-handoff/{plugin,service,desktop}` | `/opt/vlab-v-desktop-handoff/…` | 不能 stage | 不捕获 |
 | secret-entry | sidecar | `/opt/v-secret-entry` | `/opt/vlab-v-secret-entry` | 不能 stage | 不捕获 |
+| v-browser-plugin | sidecar | 主配置 `plugins.load.paths` 里的 `/opt/v-browser/releases/<版本>/openclaw-plugin` | VLab 主配置里同样形状的那一项 | 不能 stage | 不捕获 |
+| v-browser-broker | sidecar | `v-browser-broker.service` 的 ExecStart 所在 `broker/` | 同名 unit 的 `broker/`（不含 `tests/`） | 不能 stage | 不捕获 |
+| v-browser-gateway | sidecar | `openclaw-vlab-browser.service` 的 ExecStart 所在 `dist/` | 同名 unit 的 `dist/` | 不能 stage | 不捕获 |
 
 - **runtime 组件**走第 4 节的发版流程：VLab stage/deploy/rollback，`promote-to-v.mjs` 把同一份字节装到 V，捕获成 `<发版名><后缀>`，哨兵按清单盯。V 上的企微插件同时有一个没在用的旧 npm project（2026.5.7），所以企微按扩展目录认，不按 glob。
 - **sidecar** 由各自的安装脚本从某个提交装（`install-desktop-host.sh`、`install-secret-entry-host.sh`），提交就是记录，所以不捕获、哨兵不盯；parity 照样逐字节比，所以 ALIGNED 也意味着两边旁路服务是同一份字节。两边都没装 = 相等。
-- 表里 `blocking: false` 的组件只报告（"advisory"），不决定状态。接管服务现在是这样：V 从更新的提交装过（多 `service/build-viewer.mjs`、`service/vendor/novnc-1.3.0`，46 个文件），VLab 落后。多渠道发版在 VLab 上按 V 的提交重装之后，改成 `blocking: true`。
+- V Browser 三块（2026-10-06 纳入）的位置不固定，parity 按两边**实际在跑的**找：插件看 Gateway 主配置的 `plugins.load.paths`（Worker 那份配置加载的若不同，打一条 note，只比主配置那份）；Broker 和 Browser Gateway 看各自 unit 的 ExecStart（drop-in 叠加后的结果）。两边解释器不同也会打 note（Broker：V 是 node 22，VLab 是 node 24）。产品代码在 `vegekyd-sys/v-browser`，安装方式见 `docs/v-browser-0.4.7-release-20261001.md`。
+- 表里 `blocking: false` 的组件只报告（"advisory"），不决定状态。接管服务现在是这样：V 从更新的提交装过（多 `service/build-viewer.mjs`、`service/vendor/novnc-1.3.0`，46 个文件），VLab 落后。多渠道发版在 VLab 上按 V 的提交重装之后，改成 `blocking: true`。2026-10-06 18:49 V 上又热装了一版（新增 `service/lib/capture.mjs`，24/27 个文件同 `claude/handoff-mac-screenshot`，其余未提交），V Browser 也在同一分钟热修（插件 `0.4.7-wake-lease-20261006`、Browser Gateway 的 `relay-server`）。这四个 sidecar 都先保持 advisory：等这些热修合入各自仓库、VLab 按同一提交重装后再改 `blocking: true`，否则 parity 立刻 DIVERGED，挡住所有人的 align。
 - 一个发版带了旁路服务时，在 `--pending` 的 plan 里写 `"sidecars": ["secret-entry"]`，parity 把这些差异算作 pending（AHEAD）。上 V 时**先在 V 上装旁路服务，再跑 `promote-to-v.mjs --apply`**；顺序反了，末尾的 align 会拒绝，脚本会指出是哪个旁路服务没装，而不会建议 `sync-vlab-from-v`（sync 也会拒绝旁路服务差异）。
 - `release-notes.mjs`：上一版没有某个组件的捕获（钉钉、企微在 10/05 之前的发版里都没有）时，写成"首次纳入存档"，不逐个列文件。
 
