@@ -2914,7 +2914,8 @@ function createFeishuReplyDispatcher(params) {
 			session: streaming,
 			generation: activeStreamingGeneration,
 			startPromise: streamingStartPromise,
-			hasAnswer: Boolean(streamText)
+			hasAnswer: Boolean(streamText),
+			hasStatus: Boolean(statusLine)
 		};
 		if (streamingFlushScheduled) return;
 		streamingFlushScheduled = true;
@@ -2928,6 +2929,7 @@ function createFeishuReplyDispatcher(params) {
 						await next.session.update(next.combined);
 						vFirsttextMark("firstPushAtMs");
 						if (next.hasAnswer) vFirsttextMark("firstAnswerPushAtMs");
+						if (next.hasStatus) vFirsttextMark("firstStatusPushAtMs");
 					}
 				}
 			} finally {
