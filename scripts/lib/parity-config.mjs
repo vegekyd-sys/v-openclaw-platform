@@ -14,6 +14,9 @@
 //                                    a few named switches inside a plugin's config
 //                                    (PLUGIN_CONFIG_SWITCHES), reported only when set
 //                                    to a boolean
+//   channels.feishu.renderMode       the Feishu reply render mode, top level and the
+//                                    distinct effective values across accounts, as
+//                                    short lowercase words only
 //
 // `enabled` left unset counts as on, as OpenClaw reads it (`enabled !== false`),
 // except inside plugin config, where only explicit booleans are kept.
@@ -36,10 +39,37 @@ export const EXPECTED_CHANNEL_PLUGINS = new Set(['telegram', 'openclaw-plugin-xi
 // cleanup blocked the VLab Gateway main thread for 2.9 s during r2 acceptance.
 export const PLUGIN_CONFIG_SWITCHES = [['memory-core', ['dreaming']]];
 
+// Channel settings that change when a reply card is created. Feishu renderMode
+// "card" starts the streaming card at reply start; "auto" (the default) waits
+// for the first status line or text, so a codex turn shows nothing until its
+// first answer token. A VLab on "card" hides that wait (2026-10-07, #247).
+// An account's own renderMode overrides the top level, as
+// mergeFeishuAccountConfig does.
+const RENDER_MODE_DEFAULT = 'auto';
+
+function renderModeValue(value) {
+  if (value === undefined || value === null) return undefined;
+  return typeof value === 'string' && /^[a-z]{1,16}$/.test(value) ? value : 'other';
+}
+
+function channelSettings(cfg) {
+  const feishu = cfg?.channels?.feishu;
+  if (!feishu || typeof feishu !== 'object') return {};
+  const top = renderModeValue(feishu.renderMode);
+  const out = { 'channels.feishu.renderMode': top ?? `${RENDER_MODE_DEFAULT} (unset)` };
+  const accounts = feishu.accounts && typeof feishu.accounts === 'object' && !Array.isArray(feishu.accounts) ? Object.values(feishu.accounts) : [];
+  if (accounts.length) {
+    const effective = new Set(accounts.map((a) => renderModeValue(a && typeof a === 'object' ? a.renderMode : undefined) ?? top ?? RENDER_MODE_DEFAULT));
+    out['channels.feishu.accounts.*.renderMode'] = [...effective].sort().join(',');
+  }
+  return out;
+}
+
 const SECTIONS = [
   ['mcp', (cfg) => cfg?.mcp?.servers, 'mcp.servers'],
   ['plugins', (cfg) => cfg?.plugins?.entries, 'plugins.entries'],
   ['pluginConfig', null, 'plugins.entries'],
+  ['channels', null, null],
 ];
 
 function pluginConfigSwitches(cfg) {
@@ -52,13 +82,18 @@ function pluginConfigSwitches(cfg) {
 }
 
 // cfg: a parsed openclaw.json, or null when the host has no such file.
-// Returns { mcp: { name: boolean }, plugins: { id: boolean }, pluginConfig: { path: boolean } } or null.
+// Returns { mcp: { name: boolean }, plugins: { id: boolean }, pluginConfig: { path: boolean },
+// channels: { path: string } } or null.
 export function configSwitches(cfg) {
   if (cfg == null) return null;
   const out = {};
   for (const [key, pick] of SECTIONS) {
     if (key === 'pluginConfig') {
       out[key] = pluginConfigSwitches(cfg);
+      continue;
+    }
+    if (key === 'channels') {
+      out[key] = channelSettings(cfg);
       continue;
     }
     const section = pick(cfg);
@@ -77,7 +112,8 @@ export function configSwitches(cfg) {
 // v, vlab: { gateway: switches | null, worker: switches | null }, each from
 // configSwitches(). Returns findings in the shape evaluateParity() uses, all
 // advisory: { target, component: 'config', kind, v, vlab, advisory } where kind
-// is 'config-differs' or 'config-expected' and v / vlab are 'true' | 'false' | 'absent'.
+// is 'config-differs' or 'config-expected' and v / vlab are 'true' | 'false' | 'absent'
+// (channel settings: their short value, or 'absent').
 export function compareConfigSwitches({ v, vlab }) {
   const findings = [];
   let compared = 0;
@@ -99,7 +135,7 @@ export function compareConfigSwitches({ v, vlab }) {
         if (va === vb) continue;
         if (key === 'mcp' && va !== 'true' && vb !== 'true') continue;
         const kind = key === 'plugins' && EXPECTED_CHANNEL_PLUGINS.has(name) ? 'config-expected' : 'config-differs';
-        findings.push(finding(`${role}: ${path}.${name}.enabled`, va, vb, kind));
+        findings.push(finding(path ? `${role}: ${path}.${name}.enabled` : `${role}: ${name}`, va, vb, kind));
       }
     }
   }
@@ -107,6 +143,7 @@ export function compareConfigSwitches({ v, vlab }) {
 }
 
 function show(value) {
+  if (typeof value === 'string') return value;
   return value === undefined ? 'absent' : value ? 'true' : 'false';
 }
 

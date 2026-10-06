@@ -34,10 +34,11 @@ test('extracts only names and booleans; unset enabled counts as on', () => {
     mcp: { figma: false, 'universal-memory': false, 'voice-memory': true },
     plugins: { feishu: true, 'vlab-agent-worker-isolation': true },
     pluginConfig: {},
+    channels: {},
   });
   assert.ok(!JSON.stringify(s).includes(SECRET));
   assert.equal(configSwitches(null), null);
-  assert.deepEqual(configSwitches({}), { mcp: {}, plugins: {}, pluginConfig: {} });
+  assert.deepEqual(configSwitches({}), { mcp: {}, plugins: {}, pluginConfig: {}, channels: {} });
   assert.deepEqual(configSwitches({ mcp: { servers: { a: null, b: 'x' } } }).mcp, { a: true, b: true });
 });
 
@@ -111,4 +112,28 @@ test('memory-core dreaming inside plugin config is compared; nothing else of the
     ['gateway: plugins.entries.memory-core.config.dreaming.enabled', 'config-differs', 'false', 'true'],
     ['worker: plugins.entries.memory-core.config.dreaming.enabled', 'config-differs', 'false', 'true'],
   ]);
+});
+
+test('Feishu renderMode is compared; an account overrides the top level; nothing else is kept', () => {
+  const cfg = (top, accounts) => ({
+    channels: { feishu: { appSecret: SECRET, ...(top === undefined ? {} : { renderMode: top }), ...(accounts ? { accounts } : {}) } },
+  });
+  assert.deepEqual(configSwitches(cfg(undefined)).channels, { 'channels.feishu.renderMode': 'auto (unset)' });
+  assert.deepEqual(configSwitches(cfg('card', { a: { appSecret: SECRET }, b: { renderMode: 'raw' } })).channels, {
+    'channels.feishu.renderMode': 'card',
+    'channels.feishu.accounts.*.renderMode': 'card,raw',
+  });
+  assert.deepEqual(configSwitches(cfg(SECRET)).channels, { 'channels.feishu.renderMode': 'other' });
+  assert.ok(!JSON.stringify(configSwitches(cfg('card', { a: { appSecret: SECRET, renderMode: SECRET } }))).includes(SECRET));
+  assert.deepEqual(configSwitches({ channels: {} }).channels, {});
+  // The 2026-10-07 suspicion: V on the default, VLab on "card".
+  const v = { gateway: configSwitches(cfg(undefined, { main: {} })), worker: configSwitches({}) };
+  const vlab = { gateway: configSwitches(cfg('card', { main: {} })), worker: configSwitches({}) };
+  assert.deepEqual(compareConfigSwitches({ v, vlab }).findings.map((f) => [f.target, f.kind, f.v, f.vlab]), [
+    ['gateway: channels.feishu.accounts.*.renderMode', 'config-differs', 'auto', 'card'],
+    ['gateway: channels.feishu.renderMode', 'config-differs', 'auto (unset)', 'card'],
+  ]);
+  // Same effective mode, spelled differently, still shows at the top level only.
+  const same = compareConfigSwitches({ v: { gateway: configSwitches(cfg('auto', { m: {} })), worker: null }, vlab: { gateway: configSwitches(cfg(undefined, { m: {} })), worker: null } });
+  assert.deepEqual(same.findings.map((f) => f.target), ['gateway: channels.feishu.renderMode']);
 });
