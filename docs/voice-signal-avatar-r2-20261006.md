@@ -43,3 +43,7 @@ ACTING POSE: V works like a multitasking interstellar operator: torso leaning FO
 这是 H5-only 发版：Gateway runtime、配置、当前 release 均沿用已接受并 ALIGNED 的基线，不 stage/deploy Gateway。`gpt-live-h5-release.mjs --h5-only true` 单独记录 H5 commit、完整文件集和验收，要求 integration lease、accepted/aligned Gateway baseline；共享 H5 使用独立 `h5-presentation` 目录，不碰旧测试入口。生产通过 `scripts/promote-to-v.mjs --h5-entry` 调用原受控 `/voice/` 切换器，验收 proof 必须明确 h5Only 模式，绑定共享 H5 字节与 Gateway 原 artifact。仅电话网页服务在 idle/openVoices=0 时切换；Gateway 不重启。
 
 上线后检查原公共 `/voice/` 路径、全部可公开文件 hash、三个模型 availability、Gateway PID/Invocation 不变，另核对共享/生产 H5 全文件一致；`vlab.mjs align` 仍单独确认运行时组件。旧音频、最终答案、工具准入的 FAIL 不随本次视觉验收改写。
+
+### 最新发布授权
+
+用户随后明确“不需要 vlab 验收了，上 v”。本次允许使用单独的 `user-reviewed-h5-presentation-v1` 记录替代共享 H5 gate；该记录绑定用户确认的完整文件、commit、owner、授权类型及 V 原 Gateway baseline。不得把这条记录称作共享验收，不允许用于 Gateway runtime 发布。生产仍走受控 `promote-to-v --h5-entry`、空闲与 socket 守卫。共享正在被 firsttext 的发布占用时，不写它的 metadata/runtime；后续只在取得合法 lease 后同步同一 H5 文件，并核对 align。
