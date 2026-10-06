@@ -46,6 +46,9 @@ const PATCH = process.env.PATCH ?? "on";
 assert(["on", "off"].includes(PATCH), `bad PATCH ${PATCH}`);
 const SWEEPS = Number(process.env.SWEEPS ?? (PATCH === "on" ? 12 : 6));
 const EQUIV = PATCH === "on" ? Number(process.env.EQUIV ?? 40) : 0;
+// PROFILE=1: the Gateway runs with --cpu-prof; after the run, each minute sweep's samples are
+// summed by self and inclusive frame, so the sweep's own cost is named, not inferred
+const PROFILE = process.env.PROFILE === "1";
 const MODEL = "deepseek/deepseek-flash";
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const redact = (s) => String(s).replace(/(token|api.?key|authorization|secret|bearer)([=: ]+)[^\s"]+/giu, "$1$2[redacted]");
@@ -66,11 +69,11 @@ const once = (src, anchor, replacement, label) => {
   src = once(src, "\t\tconst resolveSessionEvidence = await deps.createSessionEvidenceResolver(placements);\n",
     "\t\tconst __psT0 = performance.now();\n\t\tconst resolveSessionEvidence = await deps.createSessionEvidenceResolver(placements);\n\t\tconsole.error(\"[ps-retire] \" + JSON.stringify({ at: Date.now(), placements: placements.length, evidenceMs: Math.round(performance.now() - __psT0) }));\n",
     "retirement evidence");
-  src = once(src, "\t\tconst sweepActivePlacements = () => {\n", "\t\tconst sweepActivePlacements = () => {\n\t\t\tconsole.error(\"[ps-tick] \" + JSON.stringify({ at: Date.now() }));\n", "minute sweep");
+  src = once(src, "\t\tconst sweepActivePlacements = () => {\n", "\t\tconst sweepActivePlacements = () => {\n\t\t\tconsole.error(\"[ps-tick] \" + JSON.stringify({ at: Date.now(), hr: Number(process.hrtime.bigint() / 1000n) }));\n", "minute sweep");
   // the reconcile part of the minute sweep has settled, its after-snapshot included
   const settled = src.match(/\t\t\treconcileActivePlacements\([^\n]*?\)\.then\(\(\) => \{\n/gu);
   assert.equal(settled?.length, 1, "minute sweep settle anchor not found exactly once");
-  src = src.replace(settled[0], `${settled[0]}\t\t\t\tconsole.error("[ps-done] " + JSON.stringify({ at: Date.now() }));\n`);
+  src = src.replace(settled[0], `${settled[0]}\t\t\t\tconsole.error("[ps-done] " + JSON.stringify({ at: Date.now(), hr: Number(process.hrtime.bigint() / 1000n) }));\n`);
   fs.writeFileSync(placementFile, src);
 }
 {
@@ -238,8 +241,39 @@ function placementState(sessionId) {
 const env = { ...process.env, OPENCLAW_GATEWAY_PORT: String(port) };
 const lines = [];
 let gateway, client;
+const profileDir = path.join(stateDir, "ps-cpuprofile");
+let profiling = false;
+// samples between [from, to] (µs, the profile's monotonic clock = process.hrtime), by frame
+function profileWindows(windows) {
+  const files = fs.existsSync(profileDir) ? fs.readdirSync(profileDir).filter((f) => f.endsWith(".cpuprofile")) : [];
+  if (files.length === 0) return { error: "no .cpuprofile written (Gateway did not exit cleanly?)" };
+  const profile = JSON.parse(fs.readFileSync(path.join(profileDir, files.at(-1)), "utf8"));
+  const parent = new Map(), byId = new Map();
+  for (const node of profile.nodes) { byId.set(node.id, node); for (const child of node.children ?? []) parent.set(child, node.id); }
+  const label = (node) => { const f = node.callFrame; return `${f.functionName || "(anonymous)"} ${f.url.split("/").pop()}:${f.lineNumber + 1}`; };
+  const out = [];
+  for (const group of windows) {
+    const self = new Map(), incl = new Map();
+    let t = profile.startTime, n = 0, idle = 0;
+    for (let i = 0; i < profile.samples.length; i += 1) {
+      t += profile.timeDeltas[i];
+      if (!group.ranges.some(([a, b]) => t >= a && t <= b)) continue;
+      const node = byId.get(profile.samples[i]);
+      const name = label(node);
+      if (/^\(idle\)|^\(program\)/u.test(name)) { idle += 1; continue; }
+      n += 1;
+      self.set(name, (self.get(name) ?? 0) + 1);
+      const seen = new Set();
+      for (let id = node.id; id !== undefined; id = parent.get(id)) { const l = label(byId.get(id)); if (!seen.has(l)) { seen.add(l); incl.set(l, (incl.get(l) ?? 0) + 1); } }
+    }
+    const top = (m) => [...m].sort((a, b) => b[1] - a[1]).slice(0, 18).map(([k, v]) => `${Math.round(v * 0.5)}ms ${k}`);
+    out.push({ group: group.name, minutes: group.ranges.length, busyMs: Math.round(n * 0.5), idleMs: Math.round(idle * 0.5), self: top(self), inclusive: top(incl) });
+  }
+  return out;
+}
 function startGateway() {
-  gateway = spawn(process.execPath, ["--max-old-space-size=8192", `${dist}/index.js`, "gateway", "--port", String(port)], { env, stdio: ["ignore", "pipe", "pipe"] });
+  const prof = PROFILE && profiling ? ["--cpu-prof", `--cpu-prof-dir=${profileDir}`, "--cpu-prof-interval=500"] : [];
+  gateway = spawn(process.execPath, ["--max-old-space-size=8192", ...prof, `${dist}/index.js`, "gateway", "--port", String(port)], { env, stdio: ["ignore", "pipe", "pipe"] });
   for (const s of [gateway.stdout, gateway.stderr]) {
     s.setEncoding("utf8");
     s.on("data", (chunk) => {
@@ -304,6 +338,7 @@ try {
   const seeded = copyPlacements(built.live);
   assert(seeded.copied >= 1000, `only ${seeded.copied} placements copied from the mirror; not V-sized`);
   lines.length = 0;
+  profiling = true;
   const startedAt = Date.now();
   startGateway();
   await connectGateway();
@@ -352,6 +387,16 @@ try {
     planted: outcome,
     late: { plantedMinute: Math.round((late.at - startedAt) / 60_000), retiredMinute: lateGoneAt === null ? null : Math.round((lateGoneAt - startedAt) / 60_000) },
   };
+  if (PROFILE) {
+    await stopGateway();
+    // steady partial minutes before the 10-minute full pass vs after it
+    const secondFull = fullPasses[1]?.at ?? Infinity;
+    const range = (t) => { const d = dones.find((x) => x.at >= t.at && x.at < t.at + 20_000); return [t.hr, (d?.hr ?? t.hr + 5_000_000) + 250_000]; };
+    summary.profile = profileWindows([
+      { name: "partial minutes before the 10-minute full pass", ranges: ticks.slice(1).filter((t) => t.at < secondFull - 30_000).map(range) },
+      { name: "minutes from the 10-minute full pass on", ranges: ticks.filter((t) => t.at >= secondFull - 30_000).map(range) },
+    ]);
+  }
   console.log(JSON.stringify(summary, null, 1));
 
   assert(ticks.length >= SWEEPS, `only ${ticks.length} minute sweeps observed`);
