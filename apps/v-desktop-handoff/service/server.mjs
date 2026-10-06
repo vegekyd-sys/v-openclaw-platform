@@ -17,6 +17,7 @@ import { acceptWebSocket, isWebSocketUpgrade, rejectUpgrade } from "./lib/ws.mjs
 import { connectVnc, bridgeViewer } from "./lib/rfb-proxy.mjs";
 import { createDisplayLayout } from "./lib/display-layout.mjs";
 import { createInputReset } from "./lib/input-reset.mjs";
+import { captureRfbFrame } from "./lib/rfb-capture.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(HERE, "public");
@@ -47,6 +48,7 @@ export function loadConfig(file) {
     ...raw,
     vnc: { host: "127.0.0.1", port: 5900, ...(raw.vnc ?? {}) },
     layout: { enabled: true, display: ":99", base: "1280x800", ...(raw.layout ?? {}) },
+    capture: { timeoutMs: 20_000, maxWidth: 1280, ...(raw.capture ?? {}) },
   };
   for (const key of ["stateDir", "adminTokenFile"]) {
     if (typeof config[key] !== "string" || !config[key]) {
@@ -226,13 +228,23 @@ function clientIp(req) {
   return req.socket?.remoteAddress ?? null;
 }
 
-export function createService(config, { log = console, layout: layoutOverride, inputReset: inputResetOverride } = {}) {
+export function createService(config, { log = console, layout: layoutOverride, inputReset: inputResetOverride, captureFrame: captureFrameOverride } = {}) {
   fs.mkdirSync(config.stateDir, { recursive: true, mode: 0o700 });
   const adminToken = readSecretFile(config.adminTokenFile);
   if (adminToken.length < 16) {
     throw new Error("admin token is too short");
   }
   const vncPassword = () => (config.vnc.passwordFile ? readSecretFile(config.vnc.passwordFile) : config.vnc.password);
+  // One frame of the machine's screen through the same VNC connection the
+  // takeover page uses: the card picture for a host with no local display.
+  const captureFrame = captureFrameOverride ?? (() =>
+    captureRfbFrame({
+      host: config.vnc.host,
+      port: config.vnc.port,
+      password: vncPassword(),
+      timeoutMs: config.capture?.timeoutMs,
+      maxWidth: config.capture?.maxWidth,
+    }));
   const auditFile = path.join(config.stateDir, "audit.jsonl");
   const stateFile = path.join(config.stateDir, "handoffs.json");
   let layout = null;
@@ -462,6 +474,13 @@ export function createService(config, { log = console, layout: layoutOverride, i
         json(res, 200, { ok: true, ...registry.state() });
       } else if (req.method === "GET" && url.pathname === "/v1/state") {
         json(res, 200, registry.state());
+      } else if (req.method === "GET" && url.pathname === "/v1/capture") {
+        // A fresh picture of the machine for a chat card (never cached: the
+        // point is to show what the screen looks like now).
+        const frame = await captureFrame();
+        registry.audit("frame_captured", { bytes: frame.length });
+        res.writeHead(200, { "content-type": "image/png", "content-length": frame.length, "cache-control": "no-store" });
+        res.end(frame);
       } else if (req.method === "POST" && url.pathname === "/v1/handoffs") {
         const body = await readJsonBody(req);
         const issued = registry.issue({

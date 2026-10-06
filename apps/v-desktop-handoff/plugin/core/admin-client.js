@@ -68,6 +68,24 @@ export class HandoffAdminClient {
     return json;
   }
 
+  /**
+   * One frame of this machine's screen (PNG bytes) through the handoff
+   * service's own VNC/Screen-Sharing connection; null when it is unavailable.
+   */
+  async captureFrame({ timeoutMs = 20_000 } = {}) {
+    const res = await this.fetch(`${this.baseUrl}/v1/capture`, {
+      method: "GET",
+      headers: { authorization: `Bearer ${this.token()}` },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      throw new Error(`desktop handoff service ${res.status}: ${json.error ?? "error"}`);
+    }
+    const bytes = Buffer.from(await res.arrayBuffer());
+    return bytes.length > 1000 ? bytes : null;
+  }
+
   handBack(id, options) {
     return this.request("POST", `/v1/handoffs/${encodeURIComponent(id)}/handback`, {}, options);
   }

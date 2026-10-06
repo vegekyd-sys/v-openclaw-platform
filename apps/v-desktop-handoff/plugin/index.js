@@ -15,6 +15,7 @@ import { nativeHandoffCard } from "./core/native-card.js";
 import { EDITABLE_CARD_CHANNELS, NATIVE_CARD_CHANNELS, handoffPresentation, isPublicImageUrl, nativeCardInstruction, telegramHandoffCard } from "./core/channel-cards.js";
 import { TelegramApi, telegramChat, telegramCredentials } from "./core/telegram-api.js";
 import { decideHandBack, decideToolCall, refuseEnd } from "./core/policy.js";
+import { targetCaptureFromService } from "./core/target-capture.js";
 
 // V's picture for the card when the desktop cannot be captured (generated media stays out of git).
 const DEFAULT_COVER = "https://cdn.makaron.app/storage/v1/object/public/images/5955d413-cad2-4814-b094-7fdf62d20400/0bc9ae1f-59b7-45a7-9e73-bf7c9951afdd/snapshot-d2ec2e6c-240d-4400-b0ad-4fce335e2e8c.jpg";
@@ -42,6 +43,9 @@ function textResult(value) {
   return { content: [{ type: "text", text: JSON.stringify(value, null, 2) }] };
 }
 
+/** Feishu picks the upload mime by filename suffix. */
+const imageFilename = (bytes) => (bytes?.length > 8 && bytes[0] === 0x89 && bytes[1] === 0x50 ? "desktop.png" : "desktop.jpg");
+
 export default definePluginEntry({
   id: "v-desktop-handoff",
   name: "V Desktop Handoff",
@@ -58,7 +62,7 @@ export default definePluginEntry({
     const targets = new Map([
       [
         DEFAULT_TARGET,
-        { key: DEFAULT_TARGET, client, subject: "V 的电脑", cardTitle: "电脑", machine: "V's desktop", cardImage: config.cardImage, coverImage: config.coverImage, desktopDisplay: config.desktopDisplay ?? ":99", computerNode: null },
+        { key: DEFAULT_TARGET, client, subject: "V 的电脑", cardTitle: "电脑", machine: "V's desktop", cardImage: config.cardImage, coverImage: config.coverImage, desktopDisplay: config.desktopDisplay ?? ":99", computerNode: null, captureFromService: false },
       ],
     ]);
     for (const [key, t] of Object.entries(config.targets ?? {})) {
@@ -70,10 +74,13 @@ export default definePluginEntry({
         cardTitle: t.cardTitle ?? "电脑",
         machine: t.machine ?? t.label ?? key,
         description: t.description ?? "",
-        // No local display to capture for a remote machine: the card shows the cover.
+        // A remote machine has no local display: the service that already speaks its
+        // Screen Sharing takes the frame (t.capture: "service" forces it, "cover"
+        // disables it and keeps V's cover).
         cardImage: t.cardImage ?? "cover",
         coverImage: t.coverImage ?? config.coverImage,
         desktopDisplay: t.desktopDisplay ?? null,
+        captureFromService: targetCaptureFromService(t),
         computerNode: typeof t.computerNode === "string" ? t.computerNode : null,
       });
     }
@@ -123,18 +130,26 @@ export default definePluginEntry({
       return feishu;
     };
 
-    /** The desktop now (JPEG), else V's cover; null when neither is available. */
-    const cardPicture = async (target) => {
-      if (target.cardImage !== "cover" && target.desktopDisplay) {
-        const shot = await captureDesktop({ display: target.desktopDisplay }).catch(() => null);
-        if (shot) {
-          return shot;
-        }
+    /** A fresh picture of this machine now, or null. Never the cover. */
+    const capturePicture = async (target) => {
+      if (target.captureFromService) {
+        return target.client.captureFrame({ timeoutMs: config.captureTimeoutMs }).catch(() => null);
       }
+      if (target.cardImage !== "cover" && target.desktopDisplay) {
+        return captureDesktop({ display: target.desktopDisplay }).catch(() => null);
+      }
+      return null;
+    };
+
+    /** V's cover picture, loaded once per process. */
+    const coverPicture = async (target) => {
       const cover = target.coverImage ?? DEFAULT_COVER;
       if (!coverBytesByUrl.has(cover)) coverBytesByUrl.set(cover, await loadCover(cover).catch(() => null));
       return coverBytesByUrl.get(cover);
     };
+
+    /** The machine now, else V's cover; null when neither is available. */
+    const cardPicture = async (target) => (await capturePicture(target)) ?? (await coverPicture(target));
 
     const remember = async (id, card) => {
       cards.set(id, card);
@@ -165,9 +180,9 @@ export default definePluginEntry({
       const feishu = feishuFor(creds);
       let imageKey = null;
       try {
-        if (machine.cardImage !== "cover" && machine.desktopDisplay) {
-          const shot = await captureDesktop({ display: machine.desktopDisplay });
-          imageKey = shot ? await feishu.uploadImage(shot, "desktop.jpg") : null;
+        const shot = await capturePicture(machine);
+        if (shot) {
+          imageKey = await feishu.uploadImage(shot, imageFilename(shot));
         }
         if (!imageKey) {
           const cover = machine.coverImage ?? DEFAULT_COVER;
@@ -377,18 +392,19 @@ export default definePluginEntry({
       try {
         // Show what the desktop looks like now (the person's result after 已完成), not the picture from when the card was sent.
         const machine = targets.get(card.view?.target) ?? (await targetFor(id));
-        const fresh = machine.cardImage !== "cover" && Boolean(machine.desktopDisplay) && (state === "active" || state === "done");
+        const canCapture = machine.captureFromService || (machine.cardImage !== "cover" && Boolean(machine.desktopDisplay));
+        const fresh = canCapture && (state === "active" || state === "done");
         if (card.channel === "feishu") {
           if (fresh) {
-            const shot = await captureDesktop({ display: machine.desktopDisplay });
+            const shot = await capturePicture(machine);
             if (shot) {
-              card.view = { ...card.view, imageKey: await card.feishu.uploadImage(shot, "desktop.jpg") };
+              card.view = { ...card.view, imageKey: await card.feishu.uploadImage(shot, imageFilename(shot)) };
             }
           }
           await card.feishu.patchCard(card.messageId, nativeHandoffCard({ ...card.view, state }));
           shown = true;
         } else if (card.channel === "telegram" && card.telegram) {
-          const photo = fresh && card.kind === "photo" ? await captureDesktop({ display: machine.desktopDisplay }).catch(() => null) : null;
+          const photo = fresh && card.kind === "photo" ? await capturePicture(machine) : null;
           await card.telegram.editCard({ chatId: card.chatId, messageId: card.messageId, kind: card.kind, photo, ...telegramHandoffCard(card.view, state, { urlButtons: card.urlButtons !== false }) });
           shown = true;
         } else if (card.channel === "wecom") {

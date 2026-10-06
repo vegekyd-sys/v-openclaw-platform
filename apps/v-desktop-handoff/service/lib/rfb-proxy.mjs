@@ -11,7 +11,7 @@ import { createRfbClientMessageSplitter, INPUT_MESSAGE_TYPES, stripCursorEncodin
 
 const RFB_VERSION = Buffer.from("RFB 003.008\n", "ascii");
 
-class ByteReader {
+export class ByteReader {
   constructor() {
     this.buffer = Buffer.alloc(0);
     this.waiters = [];

@@ -93,6 +93,11 @@
       "desktopDisplay": {
         "type": "string"
       },
+      "captureTimeoutMs": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 120000
+      },
       "cardPollMs": {
         "type": "integer",
         "minimum": 1000,
@@ -153,6 +158,14 @@
             },
             "desktopDisplay": {
               "type": "string"
+            },
+            "capture": {
+              "type": "string",
+              "enum": [
+                "service",
+                "cover",
+                "local"
+              ]
             },
             "computerNode": {
               "type": "string"
