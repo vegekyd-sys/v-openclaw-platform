@@ -277,6 +277,7 @@
         "lab/realtime-direct-tools/playback-evidence.test.mjs",
         "lab/realtime-direct-tools/runtime-package.test.mjs",
         "lab/realtime-direct-tools/tool-start-audio.test.mjs",
+        "lab/realtime-direct-tools/observer-bootstrap.test.mjs",
         "lab/realtime-direct-tools/worker-process-owner.test.mjs",
         "lab/realtime-direct-tools/tools.test.mjs",
         "lab/gpt-live-projection-readiness.test.mjs",

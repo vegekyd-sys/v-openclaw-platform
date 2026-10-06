@@ -17,6 +17,13 @@ import {collectCandidateSelectedModelReferences,assertCandidateSelectedModelsPre
 import {startOwnedProcObserver} from './gpt-live-candidate-native/os-observer-lifecycle.mjs';
 import {parseVoiceConfirmationDiagnostics} from './gpt-live-candidate-native/confirmation-evidence.mjs';
 
+// Reject an invalid observer before copying/opening the private database or
+// starting a Gateway. A controls-only probe uses the same native controls path.
+const directCase=process.env.DIRECT_VOICE_CASES??'hybrid';
+if(process.env.DIRECT_VOICE_AUTOMATED==='1'){
+  assert(process.env.V_REALTIME_DIRECT_TOOLS==='1','Direct automated validation requires native voice tools');
+  assert(['hybrid','hybrid-core','single-query','followup','core','controls'].includes(directCase),'Unknown direct voice observer case');
+}
 const runtime=process.env.VLAB_CANDIDATE_RUNTIME,state=process.env.OPENCLAW_STATE_DIR,configPath=process.env.OPENCLAW_CONFIG_PATH;
 assert(runtime&&state&&configPath,'Disposable candidate environment required');
 const agentRuntimeEnvironment=isolateCandidateAgentRuntime(process.env,runtime);
@@ -411,9 +418,6 @@ try {
     fs.writeFileSync(experienceReadyPath,JSON.stringify(experienceMetadata,null,2)+'\n',{mode:0o600,flag:'wx'});
     experienceReadyWritten=true;
     if(process.env.DIRECT_VOICE_AUTOMATED==='1'){
-      assert(process.env.V_REALTIME_DIRECT_TOOLS==='1','Direct automated validation requires native voice tools');
-      const directCase=process.env.DIRECT_VOICE_CASES??'hybrid';
-      assert(['hybrid','hybrid-core','single-query','followup','core'].includes(directCase),'Unknown direct voice observer case');
       smoke=spawn(process.execPath,['lab/realtime-direct-tools/native-smoke.mjs'],{env:{...process.env,DIRECT_VOICE_EVIDENCE:path.join(process.env.GPT_LIVE_H5_EVIDENCE_DIR,'native'),DIRECT_VOICE_CLIPS:path.resolve('tmp/voice-reliability/clips'),DIRECT_VOICE_CASES:directCase},stdio:'inherit'});
       const code=await new Promise((resolve,reject)=>{smoke.once('error',reject);smoke.once('exit',resolve);});
       assert.equal(code,0,'Original direct voice workflow failed; native evidence retained');experienceOutcome={status:'automation-completed'};return;

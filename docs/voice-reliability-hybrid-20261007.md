@@ -57,3 +57,7 @@ Grok 的 Memory、飞书日历（真实 exit0/业务 ok）、Web 及复杂 V 一
 取消实际sleep60的good-shoal进程时，外层Worker注册表无法证明内层原生Worker执行退出；后续Grok被正确的清理保护阻断，不能归为Grok模型故障。原Candidate unit/rundir已读回not-found/gone，sharedUnchanged=true。
 
 后续将退出核验放入实际执行工具的原生Worker：停止模型后，只读取本语音run注册表，用真正的process kill/poll及最终list核验，再经已有认证Worker事件传回带host provenance的真实结果。外层空登记表不能冒充内层已退出，也不接收浏览器PID。只在取消时执行此生命周期清理，正常工具和飞书任务不变；未知结果继续阻止重拨。新验证先单独覆盖取消、OS退出、自然告别、重拨和同页麦克风复用，不重复已完成的付费场景。
+
+## R6b 拨号前的观察器配置失败
+
+36a88c22 的独立取消场景完成数据库冷启动后，被启动器旧的允许列表拒绝（Unknown direct voice observer case），没有开始付费语音。原 FAIL、247 个冻结输入和回执保留，自己的 unit/rundir 已实读 not-found/gone。后续补上 controls 并把验证提前到任何私有数据库/Gateway 操作之前；回归实际执行 bootstrap，验证未知场景早拒绝、controls 能通过场景校验。sharedUnchanged=false 原值保留，Candidate 没有写共享，不用这个失败样本证明语音或取消已通过。
