@@ -819,9 +819,10 @@ async function runWorkerEmbeddedTurnWithResources(params, skillsSnapshot) {
 			error: runFailure
 		});
 	}
-	// voice-native-process-lifetime-v3: registry lives in this execution process.
+	// voice-native-process-lifetime-v4: registry lives in this execution process.
 	if(/^voice-[a-f0-9-]{36}-[a-f0-9-]{36}$/.test(params.runId??'')){
 		const owner=createVoiceProcessOwner({runId:params.runId,sessionKey:params.sessionKey,
+			joinExecScope:async runId=>{const m=await import('./bash-process-registry-BIq3VUFD.js');if(typeof m.S!=='function')throw Error('Native exec lifecycle unavailable');await m.S(runId);},
 			loadProcessTool:async()=>{const m=await import('./bash-tools-DiAfkLAC.js');return m.t({scopeKey:params.runId});},
 			onNativeCall:async call=>{const event=boundLiveEvent({kind:'tool',payload:{name:'process',phase:call.phase,toolCallId:call.toolCallId,hideFromChannelProgress:true,...call.phase==='start'?{args:call.args}:{isError:call.result?.isError===true,result:{...call.result,__voiceHost:{source:'voice-native-lifecycle',registryScope:params.runId,registryFinal:call.registryFinal}}}}});
 				if(call.registryFinal&&call.phase==='result')await params.live.emitTerminal(event);else params.live.enqueuePreview(event);}});

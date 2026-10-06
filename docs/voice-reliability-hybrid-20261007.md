@@ -40,7 +40,7 @@
 
 ## 共享部署产物
 
-Worker 的 run 隔离、取消 RPC 和退休任务归属需要实际运行文件，不只合入 H5 源码。`lab/build-voice-reliability-runtime.mjs` 在独立目录读取四个已捕获的现行 runtime 文件，先核验冻结 before hash，再生成四个补丁文件及新的 `voice-process-owner.mjs`。它不连接或修改 Gateway。最终文件、before/after proof 与 package plan 位于 `lab/release-files/voice-reliability-20261007/`，当前基线为 `firsttext-r2-20261007`；集成前必须实时复核基线与文件，漂移则重新适配，不能覆盖其他任务。
+Worker 的 run 隔离、取消 RPC 和退休任务归属需要实际运行文件，不只合入 H5 源码。`lab/build-voice-reliability-runtime.mjs` 在独立目录读取五个已捕获的现行 runtime 文件，先核验冻结 before hash，再生成五个补丁文件及新的 `voice-process-owner.mjs`。它不连接或修改 Gateway。最终文件、before/after proof 与 package plan 位于 `lab/release-files/voice-reliability-20261007/`，当前基线为 `firsttext-r2-20261007`；集成前必须实时复核基线与文件，漂移则重新适配，不能覆盖其他任务。
 
 这轮不是纯 UI 发布：Worker/OpenClaw 运行代码需要排空任务后受控重启 Gateway，并安装同字节 H5 bundle。合入前 Candidate 验证不动共享或生产；用户明确决定本次 SHA 合入 dev 后，再取得自己的 integration lease，通过 canonical package/stage/deploy 进入共享验收。共享工具、原 H5 语音和 iPhone Safari 听觉仍分别记录。生产尚未获本补丁发布授权。
 
@@ -91,8 +91,20 @@ Grok 日历原 CLI exit3，原因是私有配置把 base/openclaw 当作 base；
 
 ## 仍需完成的验收
 
-- 当前修正后的日历和Grok缓冲原H5复验，不能由旧样本替代。
+- 日历和Grok缓冲原H5流程复验见R11；物理Safari与原严格波形门槛仍独立未过。
 - iPhone Safari实际不重复/不卡、权限重拨、后台/锁屏恢复和人声插话听觉。
-- 后台取消已经返回执行ID的路径通过；经典Worker里前台命令尚未返回ID的取消仍保持未确认，禁止从共享session猜测或清理其他任务。
+- 后台取消已返回执行ID的原H5路径通过。前台未返回ID已完成下述真实原生工厂/OS复核，最新语音Worker集成仍待独立原H5复验；禁止从共享session猜测其他任务。
 - 原固定时钟PCM失败、物理回声、未知/迟到回调和OAuth自动续期等原未完成项保留。局部通过不表示整个实验已验收。
 - 共享VLab部署仍需当前补丁的合入授权、合法lease、实时before/controller核对，不能覆盖并行任务。生产本补丁未发布。
+
+## R11：日历与缓冲修正后的真实语音复验
+
+59ba36ab 的独立原H5测试5/5流程检查通过，完整原录音和回执保留。小何/Grok各一条USER直接调用飞书本人日历，原CLI exit0/业务ok，并返回实际答案PCM；没有第二句话或后端委派。选工具在输入结束后分别1962ms/3057ms，这不是完整答案延迟。小何查询说明原PCM出现在实际工具执行之前，工具结果交付无需等说明结束。
+
+Grok真实长故事42.24秒，最新400ms缓冲下全部问候/日历/长故事播放epoch的欠载和重复帧计数均为0，队列排空。独立Linux源/声卡录音全段相关性0.99505、四个整段锚点无相对漂移，但部分100ms窗口未过原严格相关性门槛，该独立FAIL仍保留。不能据此宣布iOS Safari物理听感已经通过。原Candidate unit/rundir已实读not-found/gone；sharedUnchanged=true，未改共享或V。R10启动前因并行共享版本变化被基线保护拒绝，没有开始语音，不修改原拒绝记录。
+
+## 未返回进程ID的取消：真实注册表生命周期
+
+经典Worker另走`agent-tools-djVuP1H1.js`工厂，现将voice run的exec与process同时绑定到可信runId；普通飞书/非voice scope保持原逻辑。原生process list刻意不列前台命令，空list不能证明退出。清理先kill/poll本run已列出的后台任务，再调用原生`waitForExecScope`等待隐藏前台命令真实关闭；不能先join仍活着的后台进程而死锁。缺少原生join或退出未知继续保留责任。
+
+独立Linux实际原生工具工厂创建同个人session的本run后台与未返回结果的前台命令，以及另一个run的后台命令。当前helper实际取消后，本run两个原PID/start witness消失，foreign仍活着；随后仅清理本测试的foreign，三PID均独立实读消失。无模型/Gateway修改；这不代替最新语音Worker集成验收。Worker RPC增加真实join审计字段，下一原H5 controls针对前台无普通结果路径，不重复已完成的付费长故事/日历。

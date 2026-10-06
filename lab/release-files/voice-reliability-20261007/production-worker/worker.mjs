@@ -55,7 +55,7 @@ let agentRuntimePromise;
 let agentEventRuntimePromise;
 let diagnosticRuntimePromise;
 let compactionRuntimePromise;
-// voice-worker-process-owner-v4
+// voice-worker-process-owner-v5
 const activeControllers = new Map();
 const voiceProcessOwners = new Map();
 const activeSteerControllers = new Map();
@@ -663,8 +663,9 @@ async function runAgent(message, abortSignal) {
         message.id, message, abortSignal, streamState, globallyBridgedNames))
     : () => {};
   const voiceOwner = /^voice-[a-f0-9-]{36}-[a-f0-9-]{36}$/.test(message.runId ?? '') ? createVoiceProcessOwner({
-    runId:message.runId,sessionKey:message.sessionKey,nativeRegistryRemote:false,recoverRegistry:false,attempts:100,
-    loadProcessTool:async()=>{const m=await import(new URL('../bash-tools-DiAfkLAC.js',pathToFileURL(configuredAgentRuntimePath())).href);if(typeof m.t!=='function')throw Error('Native process tool unavailable');return m.t({scopeKey:message.sessionKey});}
+    runId:message.runId,sessionKey:message.sessionKey,nativeRegistryRemote:false,recoverRegistry:true,attempts:100,
+    joinExecScope:async runId=>{const m=await import(new URL('../bash-process-registry-BIq3VUFD.js',pathToFileURL(configuredAgentRuntimePath())).href);if(typeof m.S!=='function')throw Error('Native exec lifecycle unavailable');await m.S(runId);},
+    loadProcessTool:async()=>{const m=await import(new URL('../bash-tools-DiAfkLAC.js',pathToFileURL(configuredAgentRuntimePath())).href);if(typeof m.t!=='function')throw Error('Native process tool unavailable');return m.t({scopeKey:message.runId});}
   }) : null;
   if(voiceOwner)voiceProcessOwners.set(message.runId,{owner:voiceOwner,requestId:message.id,sessionKey:message.sessionKey});
   let unsubscribeAgentEvents = () => {};

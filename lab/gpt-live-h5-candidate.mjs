@@ -174,7 +174,7 @@ if(fullTools&&config.plugins?.load?.paths) {
   config.plugins.load.paths=privateLoadPaths;
 }
 if(process.env.VOICE_WORKER_PROCESS_OWNER==='1'){
-  const {patchVoiceWorker,patchVoicePool,patchVoiceIndex,patchNativeVoiceProcessScope}=await import('./patch-voice-worker-process-owner.mjs');
+  const {patchVoiceWorker,patchVoicePool,patchVoiceIndex,patchNativeVoiceProcessScope,patchClassicVoiceProcessScope}=await import('./patch-voice-worker-process-owner.mjs');
   const roots=(config.plugins?.load?.paths??[]).filter(p=>fs.existsSync(path.join(p,'openclaw.plugin.json'))&&JSON.parse(fs.readFileSync(path.join(p,'openclaw.plugin.json'))).id==='vlab-agent-worker-isolation');
   assert(roots.length===1,'Exact private Worker plugin required');
   const root=fs.realpathSync(roots[0]);assert(root.startsWith(fs.realpathSync(path.dirname(runtime))+'/'),'Worker patch must stay in own Candidate');
@@ -183,6 +183,8 @@ if(process.env.VOICE_WORKER_PROCESS_OWNER==='1'){
   const nativeBefore=fs.readFileSync(nativeScopeFile),nativeAfter=patchNativeVoiceProcessScope(nativeBefore.toString());
   fs.copyFileSync('lab/realtime-direct-tools/worker-process-owner.mjs',path.join(runtime,'openclaw/dist/voice-process-owner.mjs'));
   fs.writeFileSync(nativeScopeFile,nativeAfter);receipts.push({name:'embedded-agent.runtime-CL7poBKY.js',before:createHash('sha256').update(nativeBefore).digest('hex'),after:createHash('sha256').update(nativeAfter).digest('hex')});
+  const classicFile=path.join(runtime,'openclaw/dist/agent-tools-djVuP1H1.js'),classicBefore=fs.readFileSync(classicFile),classicAfter=patchClassicVoiceProcessScope(classicBefore.toString());
+  fs.writeFileSync(classicFile,classicAfter);receipts.push({name:'agent-tools-djVuP1H1.js',before:createHash('sha256').update(classicBefore).digest('hex'),after:createHash('sha256').update(classicAfter).digest('hex')});
   for(const [name,patch] of [['worker.mjs',patchVoiceWorker],['worker-pool.mjs',patchVoicePool],['index.mjs',patchVoiceIndex]]){const before=fs.readFileSync(path.join(root,name)),after=patch(before.toString());fs.writeFileSync(path.join(root,name),after);receipts.push({name,before:createHash('sha256').update(before).digest('hex'),after:createHash('sha256').update(after).digest('hex')});}
   fs.copyFileSync('lab/realtime-direct-tools/worker-process-owner.mjs',path.join(root,'voice-process-owner.mjs'));
   fs.mkdirSync(process.env.GPT_LIVE_H5_EVIDENCE_DIR,{recursive:true,mode:0o700});fs.writeFileSync(path.join(process.env.GPT_LIVE_H5_EVIDENCE_DIR,'worker-process-owner-patch.json'),JSON.stringify({candidateId:process.env.VLAB_CANDIDATE_ID,sourceCommit:process.env.GPT_LIVE_H5_SOURCE_COMMIT,root,receipts})+'\n',{mode:0o600,flag:'wx'});

@@ -1,15 +1,16 @@
 // Exact anchors patch the current runtime, preserving unrelated Worker changes.
 export function patchVoiceWorker(source) {
- if(source.includes('// voice-worker-process-owner-v4'))return source;
- if(/voice-worker-process-owner-v[123]/.test(source))throw Error('Previous voice Worker patch must be rebased from its unpatched source');
+ if(source.includes('// voice-worker-process-owner-v5'))return source;
+ if(/voice-worker-process-owner-v[1234]/.test(source))throw Error('Previous voice Worker patch must be rebased from its unpatched source');
  const once=(needle,value)=>{if(source.split(needle).length!==2)throw Error('Worker process owner anchor changed: '+needle);source=source.replace(needle,value);};
- once('const activeControllers = new Map();',`// voice-worker-process-owner-v4
+ once('const activeControllers = new Map();',`// voice-worker-process-owner-v5
 const activeControllers = new Map();
 const voiceProcessOwners = new Map();`);
  source=`import {createVoiceProcessOwner} from './voice-process-owner.mjs';\n`+source;
  once('  let unsubscribeAgentEvents = () => {};',`  const voiceOwner = /^voice-[a-f0-9-]{36}-[a-f0-9-]{36}$/.test(message.runId ?? '') ? createVoiceProcessOwner({
-    runId:message.runId,sessionKey:message.sessionKey,nativeRegistryRemote:false,recoverRegistry:false,attempts:100,
-    loadProcessTool:async()=>{const m=await import(new URL('../bash-tools-DiAfkLAC.js',pathToFileURL(configuredAgentRuntimePath())).href);if(typeof m.t!=='function')throw Error('Native process tool unavailable');return m.t({scopeKey:message.sessionKey});}
+    runId:message.runId,sessionKey:message.sessionKey,nativeRegistryRemote:false,recoverRegistry:true,attempts:100,
+    joinExecScope:async runId=>{const m=await import(new URL('../bash-process-registry-BIq3VUFD.js',pathToFileURL(configuredAgentRuntimePath())).href);if(typeof m.S!=='function')throw Error('Native exec lifecycle unavailable');await m.S(runId);},
+    loadProcessTool:async()=>{const m=await import(new URL('../bash-tools-DiAfkLAC.js',pathToFileURL(configuredAgentRuntimePath())).href);if(typeof m.t!=='function')throw Error('Native process tool unavailable');return m.t({scopeKey:message.runId});}
   }) : null;
   if(voiceOwner)voiceProcessOwners.set(message.runId,{owner:voiceOwner,requestId:message.id,sessionKey:message.sessionKey});
   let unsubscribeAgentEvents = () => {};`);
@@ -31,6 +32,14 @@ const voiceProcessOwners = new Map();`);
  // Keep failed/live ownership; retire only already empty completed owners.
  once('    unsubscribeAgentEvents();','    voiceOwner?.markSettled();\n    unsubscribeAgentEvents();\n    if(voiceOwner&&!voiceOwner.snapshot().cleaning&&voiceOwner.snapshot().processes.length===0&&voiceOwner.snapshot().pending.length===0)voiceProcessOwners.delete(message.runId);');
  return source;
+}
+// The admitted classic Worker constructs its tools through this separate
+// factory. Both exec and process receive the same exact voice-run scope.
+export function patchClassicVoiceProcessScope(source){
+ if(source.includes('// voice-classic-process-scope-v1'))return source;
+ const needle='\tconst scopeKey = resolveProcessToolScopeKey({';
+ if(source.split(needle).length!==2)throw Error('Classic voice tool scope anchor changed');
+ return source.replace(needle,'\t// voice-classic-process-scope-v1\n\tconst scopeKey = /^voice-[a-f0-9-]{36}-[a-f0-9-]{36}$/.test(options?.runId ?? "") ? options.runId : resolveProcessToolScopeKey({');
 }
 export function patchVoicePool(source){
  if(source.includes('// voice-worker-process-control-v3'))return source;
@@ -72,8 +81,8 @@ ${retired}`);
 // Scope native exec and process registries to the trusted voice run rather than
 // the shared personal session. Normal Feishu/non-voice execution is unchanged.
 export function patchNativeVoiceProcessScope(source){
- if(source.includes('// voice-native-process-lifetime-v3'))return source;
- if(/voice-native-process-(scope-v1|lifetime-v2)/.test(source))throw Error('Rebase native lifecycle from unpatched runtime');
+ if(source.includes('// voice-native-process-lifetime-v4'))return source;
+ if(/voice-native-process-(scope-v1|lifetime-v[23])/.test(source))throw Error('Rebase native lifecycle from unpatched runtime');
  const needle='\t\t\tscopeKey: params.sessionKey,\n\t\t\tsessionKey: params.sessionKey,\n\t\t\trunId: params.runId,';
  if(source.split(needle).length!==2)throw Error('Native voice exec scope anchor changed');
  source=source.replace(needle,'\t\t\t// voice-native-process-scope-v1\n\t\t\tscopeKey: /^voice-[a-f0-9-]{36}-[a-f0-9-]{36}$/.test(params.runId ?? "") ? params.runId : params.sessionKey,\n\t\t\tsessionKey: params.sessionKey,\n\t\t\trunId: params.runId,');
@@ -82,9 +91,10 @@ export function patchNativeVoiceProcessScope(source){
  const nativeCleanup='\tlet finalTranscriptFailure;\n\ttry {\n\t\tturnLifetime.abort();';
  if(source.split(nativeCleanup).length!==2)throw Error('Native voice lifecycle anchor changed');
  source="import {createVoiceProcessOwner} from './voice-process-owner.mjs';\n"+source;
- return source.replace(nativeCleanup,`	// voice-native-process-lifetime-v3: registry lives in this execution process.
+ return source.replace(nativeCleanup,`	// voice-native-process-lifetime-v4: registry lives in this execution process.
 	if(/^voice-[a-f0-9-]{36}-[a-f0-9-]{36}$/.test(params.runId??'')){
 		const owner=createVoiceProcessOwner({runId:params.runId,sessionKey:params.sessionKey,
+			joinExecScope:async runId=>{const m=await import('./bash-process-registry-BIq3VUFD.js');if(typeof m.S!=='function')throw Error('Native exec lifecycle unavailable');await m.S(runId);},
 			loadProcessTool:async()=>{const m=await import('./bash-tools-DiAfkLAC.js');return m.t({scopeKey:params.runId});},
 			onNativeCall:async call=>{const event=boundLiveEvent({kind:'tool',payload:{name:'process',phase:call.phase,toolCallId:call.toolCallId,hideFromChannelProgress:true,...call.phase==='start'?{args:call.args}:{isError:call.result?.isError===true,result:{...call.result,__voiceHost:{source:'voice-native-lifecycle',registryScope:params.runId,registryFinal:call.registryFinal}}}}});
 				if(call.registryFinal&&call.phase==='result')await params.live.emitTerminal(event);else params.live.enqueuePreview(event);}});

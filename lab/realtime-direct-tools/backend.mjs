@@ -30,6 +30,7 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
       try{if(row.ownedProcesses.size||row.pendingExecs.size){
         const proof=await gateway.request('vlab.workers.voice.cancelProcesses',{runId:row.runId,sessionKey},{timeoutMs:20000});
         if(proof.runId!==row.runId||proof.sessionKey!==sessionKey||proof.confirmed!==true)throw Error('V Worker 退出回执身份不匹配');
+        log(row,'backend.worker-cleanup-confirmed',{registryScope:proof.registryScope,nativeExecScopeJoined:proof.nativeExecScopeJoined===true,processCount:proof.processes?.length??0});
         for(const item of proof.processes??[]){if(!item.sessionId||!processExited(item.result))throw Error('V Worker 执行退出未确认');row.ownedProcesses.delete(item.sessionId);onProcess(item.sessionId,false);log(row,'backend.process-cancel-observed',item);}
         if(row.ownedProcesses.size||proof.pendingExecs!==0)throw Error('V Worker 仍有未确认退出的命令');
         row.pendingExecs.clear();

@@ -2,10 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
-import {patchVoiceWorker,patchVoicePool,patchVoiceIndex,patchNativeVoiceProcessScope} from './patch-voice-worker-process-owner.mjs';
+import {patchVoiceWorker,patchVoicePool,patchVoiceIndex,patchNativeVoiceProcessScope,patchClassicVoiceProcessScope} from './patch-voice-worker-process-owner.mjs';
 
 const targets=[
  ['openclaw/dist/embedded-agent.runtime-CL7poBKY.js',patchNativeVoiceProcessScope],
+ ['openclaw/dist/agent-tools-djVuP1H1.js',patchClassicVoiceProcessScope],
  ['production-worker/worker.mjs',patchVoiceWorker],
  ['production-worker/worker-pool.mjs',patchVoicePool],
  ['production-worker/index.mjs',patchVoiceIndex],

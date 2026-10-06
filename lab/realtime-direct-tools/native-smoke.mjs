@@ -106,17 +106,27 @@ async function runModel(model){
   const previousRuns=rows().filter(x=>x.type==='backend.started').length;
   await speak(process.env.DIRECT_VOICE_BACKGROUND_CLIP??'backend-long');await wait(()=>rows().filter(x=>x.type==='backend.started').length===previousRuns+1,'new independent backend goal',60000);
   const second=rows().filter(x=>x.type==='backend.started').at(-1);
-  await wait(()=>rows().some(x=>x.type==='backend.event'&&x.runId===second.runId&&x.event.payload.stream==='tool'&&x.event.payload.data?.name==='exec'&&x.event.payload.data?.result?.details?.status==='running'),'owned running backend exec result',45000);
-  const owned=rows().find(x=>x.type==='backend.event'&&x.runId===second.runId&&x.event.payload.data?.name==='exec'&&x.event.payload.data?.result?.details?.status==='running').event.payload.data.result.details;
+  const foreground=process.env.DIRECT_VOICE_FOREGROUND_CANCEL==='1';let owned;
+  if(foreground){
+   await wait(()=>rows().some(x=>x.type==='backend.event'&&x.runId===second.runId&&x.event.payload.stream==='tool'&&x.event.payload.data?.name==='exec'&&x.event.payload.data?.phase==='start'&&/sleep\s+60/.test(String(x.event.payload.data?.args?.command))),'actual foreground exec tool start',45000);
+   // Independent OS witness only. These PIDs never enter cancellation requests.
+   const witnesses=()=>fs.readdirSync('/proc').filter(n=>/^\d+$/.test(n)).flatMap(n=>{try{const args=fs.readFileSync('/proc/'+n+'/cmdline').toString().split('\0').filter(Boolean),cgroup=fs.readFileSync('/proc/'+n+'/cgroup','utf8');return cgroup.includes(process.env.VLAB_CANDIDATE_UNIT)&&args.length===2&&/(?:^|\/)sleep$/.test(args[0])&&args[1]==='60'?[{pid:Number(n),args}]:[];}catch{return [];}});
+   await wait(()=>witnesses().length===1,'unique own-unit actual foreground sleep',10000);owned=witnesses()[0];assert(!rows().some(x=>x.type==='backend.event'&&x.runId===second.runId&&x.event.payload.data?.name==='exec'&&x.event.payload.data?.phase==='result'),'ordinary foreground result must still be absent');
+  }else{
+   await wait(()=>rows().some(x=>x.type==='backend.event'&&x.runId===second.runId&&x.event.payload.stream==='tool'&&x.event.payload.data?.name==='exec'&&x.event.payload.data?.result?.details?.status==='running'),'owned running backend exec result',45000);
+   owned=rows().find(x=>x.type==='backend.event'&&x.runId===second.runId&&x.event.payload.data?.name==='exec'&&x.event.payload.data?.result?.details?.status==='running').event.payload.data.result.details;
+  }
   const osBefore={pid:owned.pid,startTicks:fs.readFileSync(`/proc/${owned.pid}/stat`,'utf8').split(') ').at(-1).split(' ')[19],cgroup:fs.readFileSync(`/proc/${owned.pid}/cgroup`,'utf8')};
   assert(osBefore.cgroup.includes(process.env.VLAB_CANDIDATE_UNIT),'Backend exec must belong to own Candidate');
   save(model+'-backend-process-before.json',{runId:second.runId,sessionId:owned.sessionId,...osBefore});
   if(process.env.DIRECT_VOICE_CANCEL_AFTER_QUIET==='1')await quiet(id,30000);
+  if(foreground)assert(!rows().some(x=>x.type==='backend.event'&&x.runId===second.runId&&x.event.payload.data?.name==='exec'&&x.event.payload.data?.phase==='result'),'cancel must precede the ordinary foreground result');
   await speak('cancel');await wait(()=>rows().some(x=>x.type==='backend.cancel-observed'&&x.runId===second.runId),'exact owned backend cancel terminal',45000);
   const terminal=rows().find(x=>x.type==='backend.cancel-observed'&&x.runId===second.runId);
-  await wait(()=>rows().some(x=>x.type==='backend.process-cancel-observed'&&x.sessionId===owned.sessionId&&['completed','failed','killed','cancelled'].includes(x.result?.details?.status)),'backend owned process terminal poll',20000);
+  if(foreground)await wait(()=>rows().some(x=>x.type==='backend.worker-cleanup-confirmed'&&x.runId===second.runId&&x.registryScope===second.runId&&x.nativeExecScopeJoined===true),'actual exact-run hidden foreground lifecycle join',20000);
+  else await wait(()=>rows().some(x=>x.type==='backend.process-cancel-observed'&&x.sessionId===owned.sessionId&&['completed','failed','killed','cancelled'].includes(x.result?.details?.status)),'backend owned process terminal poll',20000);
   const sameProcess=fs.existsSync(`/proc/${owned.pid}/stat`)&&fs.readFileSync(`/proc/${owned.pid}/stat`,'utf8').split(') ').at(-1).split(' ')[19]===osBefore.startTicks;
-  check(model+'/hybrid-cancel',!sameProcess&&(terminal.observed.status==='error'||terminal.observed.aborted===true||terminal.observed.status==='ok'),{runId:second.runId,observed:terminal.observed,osBefore,sameProcessAfter:sameProcess});
+  check(model+'/hybrid-cancel',!sameProcess&&(terminal.observed.status==='error'||terminal.observed.aborted===true||terminal.observed.status==='ok'),{runId:second.runId,observed:terminal.observed,osBefore,sameProcessAfter:sameProcess,foregroundWithoutOrdinaryResult:foreground});
   await quiet(id,30000);await speak('end');await wait(s=>s.state==='idle','semantic end after cancellation',40000);
   check(model+'/semantic-hangup',rows().some(x=>x.type==='tool.call'&&x.name==='end_call')&&rows().some(x=>x.type==='call.closed'),{wireDrainObserved:(await wire()).some(x=>x.type==='end.after-playback')});
   await click('start');await wait(s=>s.state==='connected','redial after cancellation');const next=(await wire()).filter(x=>x.type==='ready').at(-1)?.voiceSessionId;

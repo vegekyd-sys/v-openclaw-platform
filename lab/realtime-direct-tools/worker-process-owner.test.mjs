@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {createVoiceProcessOwner} from './worker-process-owner.mjs';
-import {patchVoiceWorker,patchVoicePool,patchVoiceIndex,patchNativeVoiceProcessScope} from '../patch-voice-worker-process-owner.mjs';
+import {patchVoiceWorker,patchVoicePool,patchVoiceIndex,patchNativeVoiceProcessScope,patchClassicVoiceProcessScope} from '../patch-voice-worker-process-owner.mjs';
 import fs from 'node:fs';
 test('only exact-run native exec IDs enter cleanup; terminal poll follows kill and is idempotent',async()=>{
  const calls=[];const owner=createVoiceProcessOwner({runId:'own',sessionKey:'personal',loadProcessTool:async()=>({execute:async(id,args)=>{calls.push(args);if(args.action==='list')return {details:{sessions:[]}};return {details:{status:args.action==='kill'?'running':'failed',sessionId:args.sessionId,exitSignal:'SIGTERM'}};}})});
@@ -47,7 +47,7 @@ test('Worker terminal acknowledgement cannot substitute another run or unconfirm
 });
 
 test('foreground abort recovers an exec with no tool result from the exact native run registry',async()=>{
- const calls=[];let running=true;const owner=createVoiceProcessOwner({runId:'trusted-run',sessionKey:'personal',attempts:2,wait:async()=>owner.markSettled(),loadProcessTool:async()=>({execute:async(id,args)=>{
+ const calls=[];let running=true;const owner=createVoiceProcessOwner({runId:'trusted-run',sessionKey:'personal',attempts:2,wait:async()=>owner.markSettled(),joinExecScope:async scope=>{assert.equal(scope,'trusted-run');assert.equal(running,false);},loadProcessTool:async()=>({execute:async(id,args)=>{
   calls.push(args);if(args.action==='list')return {details:{sessions:running?[{sessionId:'native-foreground',status:'running',pid:123}]:[{sessionId:'native-foreground',status:'failed',exitSignal:'SIGTERM'}]}};
   if(args.action==='kill'){running=false;return {details:{status:'running'}};}
   return {details:{status:running?'running':'failed',sessionId:args.sessionId,exitSignal:'SIGTERM'}};
@@ -57,12 +57,12 @@ test('foreground abort recovers an exec with no tool result from the exact nativ
  assert.deepEqual(calls,[{action:'list'},{action:'kill',sessionId:'native-foreground'},{action:'poll',sessionId:'native-foreground',timeout:500},{action:'list'}]);assert.deepEqual(owner.snapshot().pending,[]);
 });
 test('an aborted foreground already terminated natively needs no fabricated kill or tool result',async()=>{
- const owner=createVoiceProcessOwner({runId:'r',sessionKey:'s',loadProcessTool:async()=>({execute:async()=>({details:{sessions:[{sessionId:'native',status:'failed',exitSignal:'SIGTERM'}]}})})});
+ const owner=createVoiceProcessOwner({runId:'r',sessionKey:'s',joinExecScope:async()=>{},loadProcessTool:async()=>({execute:async()=>({details:{sessions:[{sessionId:'native',status:'failed',exitSignal:'SIGTERM'}]}})})});
  owner.observe({runId:'r',stream:'tool',data:{name:'exec',phase:'start',toolCallId:'missing'}});owner.markSettled();
  const result=await owner.cancel();assert(result.confirmed);assert.equal(result.processes[0].source,'native-run-scoped-list');assert.equal(result.processes[0].result.details.exitSignal,'SIGTERM');
 });
 test('unknown native registry cannot clear suppressed exec responsibility',async()=>{
- const owner=createVoiceProcessOwner({runId:'r',sessionKey:'s',loadProcessTool:async()=>({execute:async()=>({isError:true})})});owner.observe({runId:'r',stream:'tool',data:{name:'exec',phase:'start',toolCallId:'x'}});owner.markSettled();await assert.rejects(owner.cancel(),/registry is unavailable/);assert.deepEqual(owner.snapshot().pending,['x']);
+ const owner=createVoiceProcessOwner({runId:'r',sessionKey:'s',joinExecScope:async()=>{},loadProcessTool:async()=>({execute:async()=>({isError:true})})});owner.observe({runId:'r',stream:'tool',data:{name:'exec',phase:'start',toolCallId:'x'}});owner.markSettled();await assert.rejects(owner.cancel(),/registry is unavailable/);assert.deepEqual(owner.snapshot().pending,['x']);
 });
 test('normal model completion preserves native process acknowledgement; Worker failure rejects it',async()=>{
  const Pool=await patchedPool(),pool=new Pool();let control;const active={id:'own',sessionKey:'p',request:{runId:'voice-own'}},worker={active:new Map([['own',active]]),child:{send:m=>control=m}};pool.workers.set('own',worker);
@@ -118,9 +118,22 @@ test('a shared session registry cannot recover an unreturned command by guessing
  let opened=false;const owner=createVoiceProcessOwner({runId:'voice-own',sessionKey:'personal',recoverRegistry:false,loadProcessTool:async()=>{opened=true;return {execute:async()=>({details:{sessions:[{sessionId:'foreign',status:'running'}]}})};}});
  owner.observe({runId:'voice-own',stream:'tool',data:{name:'exec',phase:'start',toolCallId:'pending'}});owner.markSettled();await assert.rejects(owner.cancel(),/identity is not settled/);assert.equal(opened,false);assert.deepEqual(owner.snapshot().pending,['pending']);
 });
-test('installed classic Worker uses its own exact session process scope instead of expecting cloud-worker events',()=>{
+test('installed classic Worker joins its actual native registry in the exact run scope',()=>{
  const original=fs.readFileSync(new URL('../../experiments/agent-worker-isolation-v1/worker.mjs',import.meta.url),'utf8'),patched=patchVoiceWorker(original);
- assert(patched.includes('nativeRegistryRemote:false,recoverRegistry:false'));
- assert(patched.includes('return m.t({scopeKey:message.sessionKey})'));
- assert(!patched.includes('return m.t({scopeKey:message.runId})'));
+ assert(patched.includes('nativeRegistryRemote:false,recoverRegistry:true'));
+ assert(patched.includes('return m.t({scopeKey:message.runId})'));
+ assert(patched.includes("../bash-process-registry-BIq3VUFD.js"));assert(patched.includes('await m.S(runId)'));
+ assert(!patched.includes('return m.t({scopeKey:message.sessionKey})'));
+});
+test('empty public registry cannot confirm hidden foreground exit until its native scope join finishes',async()=>{
+ let release,finished=false;const calls=[],owner=createVoiceProcessOwner({runId:'own',sessionKey:'shared',joinExecScope:scope=>{assert.equal(scope,'own');return new Promise(r=>release=r);},loadProcessTool:async()=>({execute:async(id,args)=>{calls.push(args.action);return {details:{sessions:[]}};}})});
+ owner.observe({runId:'own',stream:'tool',data:{name:'exec',phase:'start',toolCallId:'hidden'}});owner.markSettled();const cleanup=owner.cancel().then(x=>{finished=true;return x});
+ for(let i=0;i<10&&!release;i++)await new Promise(r=>setImmediate(r));assert(release);assert.equal(finished,false);assert.deepEqual(calls,['list']);assert.deepEqual(owner.snapshot().pending,['hidden']);release();const result=await cleanup;assert(result.nativeExecScopeJoined);assert(result.confirmed);assert.deepEqual(calls,['list','list']);
+});
+test('suppressed foreground without the native lifecycle join stays unconfirmed',async()=>{
+ const owner=createVoiceProcessOwner({runId:'own',sessionKey:'shared',loadProcessTool:async()=>{throw Error('must not open an empty registry');}});owner.observe({runId:'own',stream:'tool',data:{name:'exec',phase:'start',toolCallId:'hidden'}});owner.markSettled();await assert.rejects(owner.cancel(),/scope exit is unconfirmed/);assert.deepEqual(owner.snapshot().pending,['hidden']);
+});
+test('classic factory scopes voice exec and process together and preserves ordinary session resolution',()=>{
+ const needle='\tconst scopeKey = resolveProcessToolScopeKey({';const source=needle+'scopeKey:options?.exec?.scopeKey,sessionKey:options?.sessionKey});';const after=patchClassicVoiceProcessScope(source);assert.equal(patchClassicVoiceProcessScope(after),after);assert.throws(()=>patchClassicVoiceProcessScope('changed factory'),/anchor changed/);
+ const scope=new Function('options','resolveProcessToolScopeKey',after+'return scopeKey;'),normal=x=>x.scopeKey??x.sessionKey;const voice='voice-12345678-1234-1234-1234-123456789abc-12345678-1234-1234-1234-123456789abc';assert.equal(scope({runId:voice,sessionKey:'personal',exec:{scopeKey:'caller'}},normal),voice);assert.equal(scope({runId:'ordinary',sessionKey:'personal'},normal),'personal');assert.equal(scope({runId:'ordinary',sessionKey:'personal',exec:{scopeKey:'ordinary-override'}},normal),'ordinary-override');
 });

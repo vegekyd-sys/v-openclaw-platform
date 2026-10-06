@@ -7,6 +7,11 @@
       "before": "31e6c95723f1452ea796e8a8353e04075b1cd8c395977ff075191ac04322552a"
     },
     {
+      "source": "lab/release-files/voice-reliability-20261007/openclaw/dist/agent-tools-djVuP1H1.js",
+      "target": "openclaw/dist/agent-tools-djVuP1H1.js",
+      "before": "50da97801599701494c39cd8ca285aa28c38fe6be5fe91a9dd0efeac02e9662a"
+    },
+    {
       "source": "lab/release-files/voice-reliability-20261007/production-worker/worker.mjs",
       "target": "production-worker/worker.mjs",
       "before": "18fc5d4f8ad29e50407e81f93583a54879ab712de105faf71f6402a8be84986b"
