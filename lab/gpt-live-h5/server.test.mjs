@@ -197,7 +197,7 @@ test('SSE avatar activity belongs to the current voice and excludes tool argumen
 
 test('all new avatar assets and modules are served by the frozen whitelist',async t=>{
   const f=await fixture(t);
-  for(const name of ['avatar.mjs','avatar-state.mjs',...['idle','memory','web','calendar','background'].map(s=>`assets/v-signal-${s}-20261006.png`)]){
+  for(const name of ['avatar.mjs','avatar-state.mjs',...['idle','memory','web','calendar','background'].map(s=>`assets/v-signal-${s}-20261006${s === 'idle' ? '' : '-r2'}.png`)]){
     const r=await fetch(`${f.url}/${name}`);assert.equal(r.status,200,name);
     const bytes=new Uint8Array(await r.arrayBuffer());assert.ok(bytes.length>0);
     assert.match(r.headers.get('content-type'),name.endsWith('.png')?/image\/png/u:/javascript/u);

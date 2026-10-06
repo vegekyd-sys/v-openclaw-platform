@@ -1,10 +1,10 @@
 // Only a coarse visual category crosses the wire; never arguments or results.
 export const AVATAR_POSES = Object.freeze({
   idle: 'v-signal-idle-20261006.png',
-  memory: 'v-signal-memory-20261006.png',
-  web: 'v-signal-web-20261006.png',
-  calendar: 'v-signal-calendar-20261006.png',
-  background: 'v-signal-background-20261006.png',
+  memory: 'v-signal-memory-20261006-r2.png',
+  web: 'v-signal-web-20261006-r2.png',
+  calendar: 'v-signal-calendar-20261006-r2.png',
+  background: 'v-signal-background-20261006-r2.png',
 });
 export const AVATAR_FILES = Object.values(AVATAR_POSES);
 export const ACTIVITY_LABELS = Object.freeze({memory:'正在查记忆', web:'正在查资料', calendar:'正在查日程', background:'后台处理中'});

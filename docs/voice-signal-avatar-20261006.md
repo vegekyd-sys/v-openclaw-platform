@@ -1,6 +1,6 @@
 # V 信号伙伴头像与任务状态（2026-10-06）
 
-用户选定 D「信号伙伴」为主头像，四张任务变体通过内置 image_gen 生成。保留同一脸型、白发、蓝绿制服、龙虾胸针、小信号伙伴与淡紫背景。资产在 lab/gpt-live-h5/assets 中；原始生成文件保留。
+用户选定 D「信号伙伴」为主头像，四张任务变体通过内置 image_gen 生成。保留同一脸型、白发、蓝绿制服、龙虾胸针、小信号伙伴与淡紫背景。资产在 lab/gpt-live-h5/assets 中；原始生成文件保留。当前使用人物表演变化更明显的 R2（见 voice-signal-avatar-r2-20261006.md），首批图片留作历史。
 
 ## 图片和真实任务对应
 
@@ -47,4 +47,3 @@ V studies a clearly recognizable compact holographic CALENDAR PANEL in front of 
 ### 后台整理与分析
 
 V is carrying out a multistep background task: arranging THREE chunky glowing task tiles connected by short cyan route lines in front of her. First tile has an abstract document shape, second a cog shape, third an empty checkmark outline; show first complete via small light, middle currently active, final pending. V uses both hands to connect and organize the middle tile; signal creature carries another small document tile toward her. Concentrated but cheerful, visually working rather than waiting. Large simple legible objects, NOT a calendar, browser or archive book.
-
