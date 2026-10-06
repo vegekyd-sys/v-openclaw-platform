@@ -7294,12 +7294,18 @@ function startDeferredMemoryFlush(job, epoch) {
 		});
 		return;
 	}
+	if (job.inFlight > 0) {
+		// a yielded run is still unwinding: start only after it has let go of the session
+		job.running.then(() => armDeferredMemoryFlushTimer(job, epoch));
+		return;
+	}
 	const runEpoch = ++job.epoch;
 	const controller = new AbortController();
 	const abortSignal = AbortSignal.any([controller.signal, getGatewayRestartDrainSignal()]);
 	const startedAt = Date.now();
 	job.controller = controller;
 	job.state = "running";
+	job.inFlight = (job.inFlight ?? 0) + 1;
 	// The timer was armed inside the reply's async context and inherits that reply's
 	// root-work admission, released by now: subordinate admission (session lane enqueue,
 	// session work admission) would read it as closed and throw GatewayDrainingError.
@@ -7308,6 +7314,7 @@ function startDeferredMemoryFlush(job, epoch) {
 		logVerbose(`deferred memory flush was not admitted: ${String(error)}`);
 		return "not-admitted";
 	}).then((outcome) => {
+		job.inFlight -= 1;
 		logMemoryFlushDeferral({
 			phase: "ran",
 			session: hashMemoryFlushSessionKey(job.key),
@@ -7378,6 +7385,26 @@ function yieldDeferredMemoryFlush(sessionKey, reason) {
 	}
 	armDeferredMemoryFlushTimer(job, job.epoch);
 	return wasRunning;
+}
+/**
+* isActive for runReplyAgent after the yield. get-reply resolved it before the yield, and
+* the deferred flush's embedded run is active for the session's sessionId, so it reads
+* busy while the flush runs and while it unwinds from the abort. A flush is not a reply
+* to steer into or queue behind: in that window only another registered reply operation
+* (not this turn's own provided operation) keeps the turn busy.
+*/
+function resolveReplyActiveAfterDeferredFlushYield(params) {
+	if (!params.isActive || params.isHeartbeat || !params.sessionKey) return params.isActive;
+	const job = deferredMemoryFlushJobs.get(params.sessionKey);
+	if (!job || !(job.inFlight > 0)) return true;
+	const operation = replyRunRegistry.get(params.sessionKey);
+	if (operation !== void 0 && operation !== params.providedReplyOperation) return true;
+	logMemoryFlushDeferral({
+		phase: "turn-not-busy",
+		session: hashMemoryFlushSessionKey(params.sessionKey),
+		flush: "in-flight"
+	});
+	return false;
 }
 //#endregion memory-flush-defer-v1
 async function executePreparedReplyAgentRun(context) {
@@ -7814,7 +7841,7 @@ async function runActiveReplySteer(params) {
 //#endregion
 //#region src/auto-reply/reply/agent-runner-run.ts
 async function runReplyAgent(params) {
-	const { commandBody, transcriptCommandBody, followupRun, queueKey, resolvedQueue, shouldSteer, shouldFollowup, queueAdmissionState = "empty", isActive, isRunActive, opts, typing, sessionEntry, sessionStore, sessionKey, runtimePolicySessionKey, storePath, defaultModel, resolvedVerboseLevel, toolProgressDetail, isNewSession, blockStreamingEnabled, blockReplyChunking, resolvedBlockStreamingBreak, sessionCtx, shouldInjectGroupIntro, typingMode, resetTriggered, replyThreadingOverride, replyOperation: providedReplyOperation } = params;
+	const { commandBody, transcriptCommandBody, followupRun, queueKey, resolvedQueue, shouldSteer, shouldFollowup, queueAdmissionState = "empty", isActive: isActiveBeforeDeferredFlushYield, isRunActive, opts, typing, sessionEntry, sessionStore, sessionKey, runtimePolicySessionKey, storePath, defaultModel, resolvedVerboseLevel, toolProgressDetail, isNewSession, blockStreamingEnabled, blockReplyChunking, resolvedBlockStreamingBreak, sessionCtx, shouldInjectGroupIntro, typingMode, resetTriggered, replyThreadingOverride, replyOperation: providedReplyOperation } = params;
 	const turnAdoptionLifecycle = opts?.turnAdoptionLifecycle;
 	const releaseAdmissionTicket = () => opts?.[REPLY_ADMISSION_TICKET]?.release();
 	let activeSessionEntry = sessionEntry;
@@ -7824,6 +7851,12 @@ async function runReplyAgent(params) {
 	const activeRunQueueMode = effectiveResetTriggered ? "interrupt" : resolvedQueue.mode;
 	const isHeartbeat = opts?.isHeartbeat === true;
 	if (!isHeartbeat && sessionKey) yieldDeferredMemoryFlush(sessionKey, "inbound-turn");
+	const isActive = resolveReplyActiveAfterDeferredFlushYield({
+		isActive: isActiveBeforeDeferredFlushYield,
+		isHeartbeat,
+		sessionKey,
+		providedReplyOperation
+	});
 	let didDeliverVisiblePartialReply = false;
 	const onPartialReply = opts?.onPartialReply;
 	const runOpts = onPartialReply ? {

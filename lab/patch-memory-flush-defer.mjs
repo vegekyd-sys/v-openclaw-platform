@@ -40,11 +40,24 @@ import assert from 'node:assert/strict';
 //                        flush runs after the reply operation clears and the session has
 //                        been idle OPENCLAW_DEFER_PRE_REPLY_MEMORY_FLUSH_IDLE_MS (120 s by
 //                        default), through the same runMemoryFlushIfNeeded, on the session
-//                        lane, with no reply operation (so nothing can be injected into
-//                        it). A new non-heartbeat turn for the session aborts a running
-//                        deferred flush (abort is not counted as a flush failure) and
-//                        restarts the idle wait; if the flush has not run by the time
-//                        compaction nears, the next turn flushes first exactly as before.
+//                        lane, with no reply operation. A new non-heartbeat turn for the
+//                        session aborts a running deferred flush (abort is not counted as
+//                        a flush failure) and restarts the idle wait; if the flush has not
+//                        run by the time compaction nears, the next turn flushes first
+//                        exactly as before.
+//
+// Busy state (VLab candidate at 69bd4b9: a message sent while the deferred flush ran got
+// state=final after 215 ms with no text). Having no reply operation does not make the flush
+// invisible: its embedded run is active for the session's sessionId, and get-reply's
+// resolveQueueBusyState counts isEmbeddedAgentRunActive(), so the turn reached runReplyAgent
+// with isActive=true and took the steer path (no injectable reply operation, so a parked
+// followup) or enqueue-followup, both decided before the yield aborted the flush.
+// runReplyAgent therefore re-resolves isActive right after the yield: while a deferred
+// flush of this session is running or still unwinding from the abort, the turn counts as
+// busy only when another reply operation (not this turn's own provided operation) is
+// registered for the session, so a real active reply is still steered into or queued
+// behind. Otherwise the turn runs itself; its embedded run waits on the session lane until
+// the aborted flush has released it.
 //
 // Gateway work admission (VLab candidate 2026-10-06: the deferred flush failed with
 // "Gateway is draining; new tasks are not accepted" while nothing drained). The idle timer
@@ -350,12 +363,18 @@ function startDeferredMemoryFlush(job, epoch) {
 		});
 		return;
 	}
+	if (job.inFlight > 0) {
+		// a yielded run is still unwinding: start only after it has let go of the session
+		job.running.then(() => armDeferredMemoryFlushTimer(job, epoch));
+		return;
+	}
 	const runEpoch = ++job.epoch;
 	const controller = new AbortController();
 	const abortSignal = AbortSignal.any([controller.signal, getGatewayRestartDrainSignal()]);
 	const startedAt = Date.now();
 	job.controller = controller;
 	job.state = "running";
+	job.inFlight = (job.inFlight ?? 0) + 1;
 	// The timer was armed inside the reply's async context and inherits that reply's
 	// root-work admission, released by now: subordinate admission (session lane enqueue,
 	// session work admission) would read it as closed and throw GatewayDrainingError.
@@ -364,6 +383,7 @@ function startDeferredMemoryFlush(job, epoch) {
 		logVerbose(\`deferred memory flush was not admitted: \${String(error)}\`);
 		return "not-admitted";
 	}).then((outcome) => {
+		job.inFlight -= 1;
 		logMemoryFlushDeferral({
 			phase: "ran",
 			session: hashMemoryFlushSessionKey(job.key),
@@ -435,6 +455,26 @@ function yieldDeferredMemoryFlush(sessionKey, reason) {
 	armDeferredMemoryFlushTimer(job, job.epoch);
 	return wasRunning;
 }
+/**
+* isActive for runReplyAgent after the yield. get-reply resolved it before the yield, and
+* the deferred flush's embedded run is active for the session's sessionId, so it reads
+* busy while the flush runs and while it unwinds from the abort. A flush is not a reply
+* to steer into or queue behind: in that window only another registered reply operation
+* (not this turn's own provided operation) keeps the turn busy.
+*/
+function resolveReplyActiveAfterDeferredFlushYield(params) {
+	if (!params.isActive || params.isHeartbeat || !params.sessionKey) return params.isActive;
+	const job = deferredMemoryFlushJobs.get(params.sessionKey);
+	if (!job || !(job.inFlight > 0)) return true;
+	const operation = replyRunRegistry.get(params.sessionKey);
+	if (operation !== void 0 && operation !== params.providedReplyOperation) return true;
+	logMemoryFlushDeferral({
+		phase: "turn-not-busy",
+		session: hashMemoryFlushSessionKey(params.sessionKey),
+		flush: "in-flight"
+	});
+	return false;
+}
 ${DEFER_REGION_END}
 `;
 
@@ -471,7 +511,10 @@ const FLUSH_CALL_AFTER = `		isHeartbeat,
 `;
 
 const REPLY_START_BEFORE = '\tconst isHeartbeat = opts?.isHeartbeat === true;\n\tlet didDeliverVisiblePartialReply = false;\n';
-const REPLY_START_AFTER = '\tconst isHeartbeat = opts?.isHeartbeat === true;\n\tif (!isHeartbeat && sessionKey) yieldDeferredMemoryFlush(sessionKey, "inbound-turn");\n\tlet didDeliverVisiblePartialReply = false;\n';
+const REPLY_START_AFTER = '\tconst isHeartbeat = opts?.isHeartbeat === true;\n\tif (!isHeartbeat && sessionKey) yieldDeferredMemoryFlush(sessionKey, "inbound-turn");\n\tconst isActive = resolveReplyActiveAfterDeferredFlushYield({\n\t\tisActive: isActiveBeforeDeferredFlushYield,\n\t\tisHeartbeat,\n\t\tsessionKey,\n\t\tprovidedReplyOperation\n\t});\n\tlet didDeliverVisiblePartialReply = false;\n';
+
+const REPLY_PARAMS_BEFORE = 'queueAdmissionState = "empty", isActive, isRunActive, opts,';
+const REPLY_PARAMS_AFTER = 'queueAdmissionState = "empty", isActive: isActiveBeforeDeferredFlushYield, isRunActive, opts,';
 
 const ADMISSION_IMPORT_BEFORE = 'import { t as GatewayDrainingError } from "./gateway-work-admission-3tn4Qiws.js";\n';
 const ADMISSION_IMPORT_AFTER = 'import { b as runWithGatewayIndependentRootWorkAdmission, f as isGatewayWorkAdmissionClosed, s as getGatewayRestartDrainSignal, t as GatewayDrainingError } from "./gateway-work-admission-3tn4Qiws.js";\n';
@@ -481,6 +524,7 @@ export function patchAgentRunnerRuntime(source) {
   let out = replaceExactlyOnce(source, ADMISSION_IMPORT_BEFORE, ADMISSION_IMPORT_AFTER, 'gateway work admission import');
   out = replaceExactlyOnce(out, EXECUTE_FN, `${DEFER_REGION}${EXECUTE_FN}`, 'reply agent run executor');
   out = replaceExactlyOnce(out, FLUSH_CALL_BEFORE, FLUSH_CALL_AFTER, 'pre-reply memory flush call');
+  out = replaceExactlyOnce(out, REPLY_PARAMS_BEFORE, REPLY_PARAMS_AFTER, 'reply agent isActive parameter');
   out = replaceExactlyOnce(out, REPLY_START_BEFORE, REPLY_START_AFTER, 'reply agent turn start');
   return out;
 }

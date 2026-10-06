@@ -58,6 +58,11 @@ test('the runtime wiring sits where the reply path flushes and where a turn star
   const yieldAt = reply.indexOf('yieldDeferredMemoryFlush(sessionKey, "inbound-turn")');
   assert(yieldAt > 0 && yieldAt < reply.indexOf('runActiveReplySteer({') && yieldAt < reply.indexOf('enqueueFollowupRun('));
   assert.match(reply, /if \(!isHeartbeat && sessionKey\) yieldDeferredMemoryFlush/);
+  // busy state is re-resolved after the yield and before every queue decision
+  assert.match(reply, /isActive: isActiveBeforeDeferredFlushYield, isRunActive,/);
+  const resolvedAt = reply.indexOf('const isActive = resolveReplyActiveAfterDeferredFlushYield({');
+  assert(resolvedAt > yieldAt && resolvedAt < reply.indexOf('shouldQueueAuthorityMismatch =') && resolvedAt < reply.indexOf('runActiveReplySteer({') && resolvedAt < reply.indexOf('resolveActiveRunQueueAction({'));
+  assert.equal(reply.slice(0, reply.indexOf('\n}\n')).split('isActiveBeforeDeferredFlushYield').length - 1, 2);
   // every name the region uses is bound in the chunk
   for (const [name, re] of [
     ['runSessionCompactionIfNeeded/runMemoryFlushIfNeeded', /^import \{ n as runSessionCompactionIfNeeded, t as runMemoryFlushIfNeeded \} from "\.\/agent-runner-memory-7VF-zwNt\.js";$/m],
@@ -242,6 +247,15 @@ test('memory module: heartbeat or runtime-owned compaction leaves the probe empt
 // ---------------------------------------------------------------------------------------
 // Evaluate the runtime's deferral region against fakes.
 
+// runReplyAgent from its start through the queue decision; reaching the turn's own run
+// returns "run-own-turn" instead of continuing.
+function extractReplyAgentHead(runtime) {
+  const start = runtime.indexOf('async function runReplyAgent(params) {\n');
+  const stop = runtime.indexOf('\tfollowupRun.run.config = await resolveQueuedReplyExecutionConfig(', start);
+  assert(start >= 0 && stop > start, 'runReplyAgent head not found');
+  return `${runtime.slice(start, stop)}\treturn "run-own-turn";\n}`;
+}
+
 // The real Gateway work admission chunk, with its two imports faked and a private state.
 function loadAdmissionModule() {
   const body = [];
@@ -260,7 +274,7 @@ function loadAdmissionModule() {
   return { mod, exported };
 }
 
-function loadRegion({ env = {}, probeResult = { willCompact: false, threshold: 980_000, tokenCount: 300_500 }, flushOutcome = 'completed', activeOps = new Map(), freshEntry = entry() } = {}) {
+function loadRegion({ env = {}, probeResult = { willCompact: false, threshold: 980_000, tokenCount: 300_500 }, flushOutcome = 'completed', activeOps = new Map(), freshEntry = entry(), unwindOnAbort = true, replyFakes = {} } = {}) {
   const log = [];
   const verbose = [];
   const timers = [];
@@ -286,8 +300,9 @@ function loadRegion({ env = {}, probeResult = { willCompact: false, threshold: 9
       }
       if (p.abortSignal.aborted) return { outcome: 'failed' };
       return await new Promise((resolve) => {
-        p.abortSignal.addEventListener('abort', () => resolve({ outcome: 'failed' }));
-        p.__finish = () => resolve({ outcome: flushOutcome });
+        // unwindOnAbort=false: the aborted embedded run keeps the session until __finish
+        if (unwindOnAbort) p.abortSignal.addEventListener('abort', () => resolve({ outcome: 'failed' }));
+        p.__finish = () => resolve({ outcome: p.abortSignal.aborted ? 'failed' : flushOutcome });
       });
     },
     // the reply registry runs after-clear callbacks from the clearing reply's context
@@ -301,8 +316,21 @@ function loadRegion({ env = {}, probeResult = { willCompact: false, threshold: 9
     isGatewayWorkAdmissionClosed: admission.isGatewayWorkAdmissionClosed,
     getGatewayRestartDrainSignal: admission.getGatewayRestartDrainSignal,
   };
-  const names = Object.keys(fakes);
-  const api = new Function(...names, `${extractDeferRegion(runtimeOut)}\nreturn { resolvePreReplyMemoryFlushDeferral, deferPreReplyMemoryFlush, yieldDeferredMemoryFlush, deferredMemoryFlushJobs, resolveDeferredMemoryFlushIdleMs };`)(...names.map((n) => fakes[n]));
+  // The region plus the head of runReplyAgent (through its queue decision), evaluated in
+  // one scope so the reply turn sees the same deferred-flush jobs. Free names resolve to
+  // the fakes, then to globals; anything else throws when called.
+  Object.assign(fakes, replyFakes);
+  const scope = new Proxy({}, {
+    has: (_t, k) => typeof k === 'string',
+    get: (_t, k) => {
+      if (k === Symbol.unscopables) return undefined;
+      if (Object.hasOwn(fakes, k)) return fakes[k];
+      if (k in globalThis) return globalThis[k];
+      return (...args) => { throw new Error(`unexpected call to ${String(k)}(${JSON.stringify(args).slice(0, 80)})`); };
+    },
+  });
+  const head = extractReplyAgentHead(runtimeOut);
+  const api = new Function('scope', `with (scope) {\n${extractDeferRegion(runtimeOut)}\n${head}\nreturn { resolvePreReplyMemoryFlushDeferral, deferPreReplyMemoryFlush, yieldDeferredMemoryFlush, deferredMemoryFlushJobs, resolveDeferredMemoryFlushIdleMs, runReplyAgentHead: runReplyAgent };\n}`)(scope);
   return { api, log, verbose, timers, afterClear, flushCalls, probeCalls, admission };
 }
 
@@ -558,4 +586,156 @@ test('memory module: an aborted deferred flush is not counted as a failure; othe
     assert.equal(result.outcome, 'failed', label);
     assert.equal(calls.updateSessionEntry.length > 0, counted, label);
   }
+});
+
+// ---------------------------------------------------------------------------------------
+// A message that arrives while the deferred flush runs (VLab candidate at 69bd4b9: the
+// second message got state=final after 215 ms with no text). get-reply's
+// resolveQueueBusyState reports isActive=true because the flush's embedded run is active
+// for the session's sessionId; runReplyAgent must not steer into or queue behind it.
+
+// npm 2026.9.1 current-turn-images-DlJeEkAZ.js resolveActiveRunQueueAction, verbatim.
+function resolveActiveRunQueueAction(params) {
+  if (!params.isActive && (!params.queueAdmissionState || params.queueAdmissionState === 'empty')) return 'run-now';
+  if (params.isHeartbeat) return 'drop';
+  if (params.resetTriggered) return 'run-now';
+  if (params.queueAdmissionState && params.queueAdmissionState !== 'empty') return 'enqueue-followup';
+  if (params.shouldFollowup) return 'enqueue-followup';
+  return 'run-now';
+}
+
+function replyHarness() {
+  const decisions = [];
+  const replyFakes = {
+    REPLY_ADMISSION_TICKET: Symbol('ticket'),
+    resolveReplyOperationRunState: () => undefined,
+    resolveFollowupRunToolAuthorityFingerprint: () => 'authority-a',
+    createTypingSignaler: () => ({ shouldStartImmediately: false, signalToolStart: async () => {} }),
+    readChannelSourceTurnId: () => undefined,
+    loadSessionEntry: () => undefined,
+    createShouldEmitToolResult: () => () => false,
+    createShouldEmitToolOutput: () => () => false,
+    createFollowupRunner: () => async () => {},
+    bindQueueDispositionToRunState: () => {},
+    runActiveReplySteer: async (p) => { decisions.push(['steer', p.providedReplyOperation]); },
+    resolveActiveRunQueueAction,
+    enqueueFollowupRun: () => { decisions.push(['followup']); return true; },
+    scheduleFollowupDrainAfterReplyOperationClear: () => {},
+    scheduleFollowupDrain: () => {},
+    updateSessionEntry: async () => undefined,
+  };
+  return { decisions, replyFakes };
+}
+
+// What get-reply hands runReplyAgent for a steer-mode DM while the session looks busy.
+const inboundTurn = (over = {}) => ({
+  commandBody: '第二条消息', transcriptCommandBody: '第二条消息', followupRun: followupRun('第二条消息'), queueKey: sessionKey,
+  resolvedQueue: { mode: 'steer' }, shouldSteer: true, shouldFollowup: true, queueAdmissionState: 'empty', isActive: true,
+  isRunActive: () => true, opts: {}, typing: { cleanup() {} }, sessionEntry: entry(), sessionStore: {}, sessionKey,
+  runtimePolicySessionKey: sessionKey, storePath: '/store', defaultModel: 'model-a', resolvedVerboseLevel: 'off',
+  sessionCtx: { Provider: 'feishu' }, typingMode: 'instant', ...over,
+});
+
+async function startRunningFlush(t) {
+  await t.api.deferPreReplyMemoryFlush(ctxFor(sizeState));
+  t.afterClear[0].cb();
+  t.timers[0].fn();
+  assert.equal(t.flushCalls.length, 1);
+}
+
+test('repro: a message during a running deferred flush runs its own turn instead of steering into the flush', async () => {
+  for (const mode of ['steer', 'followup', 'collect']) {
+    const { decisions, replyFakes } = replyHarness();
+    const t = loadRegion({ replyFakes });
+    await startRunningFlush(t);
+    const out = await t.api.runReplyAgentHead(inboundTurn({ resolvedQueue: { mode }, shouldSteer: mode === 'steer' }));
+    assert.equal(out, 'run-own-turn', mode);
+    assert.deepEqual(decisions, [], mode);
+    assert.equal(t.flushCalls[0].abortSignal.aborted, true, mode);
+    assert(t.log.some((l) => l.includes('"phase":"turn-not-busy"')), mode);
+  }
+});
+
+test('the unwinding window: the first message runs itself, the second steers into that real reply, not the dying flush', async () => {
+  const activeOps = new Map();
+  const { decisions, replyFakes } = replyHarness();
+  const t = loadRegion({ activeOps, replyFakes, unwindOnAbort: false });
+  await startRunningFlush(t);
+  // first message: aborts the flush, which keeps unwinding
+  assert.equal(await t.api.runReplyAgentHead(inboundTurn()), 'run-own-turn');
+  assert.equal(t.flushCalls[0].abortSignal.aborted, true);
+  assert.match(t.log.find((l) => l.includes('"phase":"turn-not-busy"')), /"flush":"in-flight"/);
+  await new Promise((r) => setImmediate(r));
+  assert(!t.log.some((l) => l.includes('"phase":"ran"')));
+  // a second message before the first turn registered its reply operation also runs itself
+  // (it waits on the session lane behind the first)
+  assert.equal(await t.api.runReplyAgentHead(inboundTurn()), 'run-own-turn');
+  assert.equal(t.log.filter((l) => l.includes('"phase":"turn-not-busy"')).length, 2);
+  // once the first turn owns a reply operation, the next message steers into it
+  const firstReply = { key: sessionKey, sessionId: 's1', toolAuthorityFingerprint: 'authority-a' };
+  activeOps.set(sessionKey, firstReply);
+  assert.equal(await t.api.runReplyAgentHead(inboundTurn()), undefined);
+  assert.equal(decisions.length, 1);
+  assert.equal(decisions[0][0], 'steer');
+  // this turn's own provided (pre-dispatch) operation is not "another reply"
+  const ownOp = { key: sessionKey, sessionId: 's1', toolAuthorityFingerprint: 'authority-a' };
+  activeOps.set(sessionKey, ownOp);
+  assert.equal(await t.api.runReplyAgentHead(inboundTurn({ replyOperation: ownOp })), 'run-own-turn');
+  // the flush finishes unwinding: aborted, not failed, and the job waits for idle again
+  t.flushCalls[0].__finish();
+  await new Promise((r) => setImmediate(r));
+  assert.match(t.log.find((l) => l.includes('"phase":"ran"')), /"outcome":"aborted"/);
+  assert.equal(t.api.deferredMemoryFlushJobs.size, 1);
+  // with no flush in flight, busy is get-reply's answer again
+  activeOps.delete(sessionKey);
+  assert.equal(await t.api.runReplyAgentHead(inboundTurn()), undefined);
+  assert.equal(decisions.length, 2);
+});
+
+test('a re-armed flush does not start while the yielded run is still unwinding', async () => {
+  const t = loadRegion({ unwindOnAbort: false });
+  await startRunningFlush(t);
+  assert.equal(t.api.yieldDeferredMemoryFlush(sessionKey, 'inbound-turn'), true);
+  t.timers.at(-1).fn();
+  assert.equal(t.flushCalls.length, 1);
+  t.flushCalls[0].__finish();
+  await new Promise((r) => setImmediate(r));
+  // re-armed after the unwind, then runs once the idle wait ends
+  t.timers.at(-1).fn();
+  assert.equal(t.flushCalls.length, 2);
+  assert.equal(t.flushCalls[1].abortSignal.aborted, false);
+});
+
+test('without a deferred flush in flight steering and queueing are unchanged', async () => {
+  // a real active reply, no flush: steer into it
+  const activeOps = new Map([[sessionKey, { key: sessionKey, sessionId: 's1', toolAuthorityFingerprint: 'authority-a' }]]);
+  let h = replyHarness();
+  let t = loadRegion({ activeOps, replyFakes: h.replyFakes });
+  assert.equal(await t.api.runReplyAgentHead(inboundTurn()), undefined);
+  assert.deepEqual(h.decisions.map((d) => d[0]), ['steer']);
+  assert(!t.log.some((l) => l.includes('turn-not-busy')));
+  // followup mode queues behind it
+  h = replyHarness();
+  t = loadRegion({ activeOps, replyFakes: h.replyFakes });
+  assert.equal(await t.api.runReplyAgentHead(inboundTurn({ resolvedQueue: { mode: 'followup' }, shouldSteer: false })), undefined);
+  assert.deepEqual(h.decisions.map((d) => d[0]), ['followup']);
+  // a flush deferred but only waiting (idle wait, not running): get-reply's busy state stands
+  h = replyHarness();
+  t = loadRegion({ replyFakes: h.replyFakes });
+  await t.api.deferPreReplyMemoryFlush(ctxFor(sizeState));
+  t.afterClear[0].cb();
+  assert.equal(await t.api.runReplyAgentHead(inboundTurn()), undefined);
+  assert.deepEqual(h.decisions.map((d) => d[0]), ['steer']);
+  // not busy stays not busy
+  assert.equal(await t.api.runReplyAgentHead(inboundTurn({ isActive: false })), 'run-own-turn');
+});
+
+test('a heartbeat during a running deferred flush neither yields it nor runs', async () => {
+  const { decisions, replyFakes } = replyHarness();
+  const t = loadRegion({ replyFakes });
+  await startRunningFlush(t);
+  assert.equal(await t.api.runReplyAgentHead(inboundTurn({ opts: { isHeartbeat: true }, shouldSteer: false })), undefined);
+  assert.deepEqual(decisions, []);
+  assert.equal(t.flushCalls[0].abortSignal.aborted, false);
+  assert(!t.log.some((l) => l.includes('turn-not-busy')));
 });
