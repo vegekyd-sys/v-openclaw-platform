@@ -74,6 +74,18 @@ import assert from 'node:assert/strict';
 //     the stale store and is visible to restart-drain and busy accounting;
 //   - aborts on a restart drain (getGatewayRestartDrainSignal) as well as on a new turn,
 //     and agent-runner-memory does not count an aborted deferred flush as a failure.
+//
+// Outcomes (VLab candidate at 6f05930, interrupt arm: "ran aborted ms=2454", then the
+// re-run "ran skipped"). Neither the abort path nor a returned "deferred" writes
+// memoryFlush; only a completed flush (or an exhausted failure budget) marks the cycle.
+// But the "ran" line printed "aborted" whenever the signal was aborted, which also hid a
+// flush that had finished (and marked the cycle) before an abort landed during its
+// lifecycle completion. The line now carries the real outcome plus aborted:true, and a
+// deferred run's skip carries its reason (already-flushed, below-trigger,
+// transcript-stats-unavailable, no-entry). A read of the transcript stats can fail while
+// the session's transcript projection is reindexed; the size trigger then reads as not
+// met, so a deferred run that skipped for that reason keeps the job and looks again after
+// the idle wait (at most three times) instead of ending it.
 // OPENCLAW_DEFER_PRE_REPLY_MEMORY_FLUSH=0 turns it off. Tagged log lines
 // `[memory-flush-deferred.1]` carry a hashed session key and numbers, never message text.
 
