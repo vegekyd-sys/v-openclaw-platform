@@ -1,0 +1,21 @@
+{
+  "support": [
+    "lab/candidate/image-hold.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/image-hold.mjs"
+  ],
+  "timeoutSeconds": 900,
+  "user": "lab-db91-parity",
+  "env": {
+    "IMAGE_HOLD": "on"
+  },
+  "files": [
+    {
+      "source": "lab/release-files/image-hold/runner-BIhCXp3h.js",
+      "target": "openclaw/dist/runner-BIhCXp3h.js",
+      "before": "0648f47c8f4327111f6007aa7b6a1ac4a31872b3d9308970527e3035733bf130"
+    }
+  ]
+}
