@@ -870,7 +870,9 @@ async function runMemoryFlushIfNeeded(params) {
 	});
 	if (!(memoryFlushTokenTriggered || shouldForceFlushByTranscriptSize && entry != null && !hasAlreadyFlushedForCurrentCompaction(entry))) return {
 		sessionEntry: entry ?? params.sessionEntry,
-		outcome: "skipped"
+		outcome: "skipped",
+		// memory-flush-defer-v1: a deferred run reports why it found nothing to flush.
+		...params.memoryFlushDeferred === true ? { skipReason: entry == null ? "no-entry" : hasAlreadyFlushedForCurrentCompaction(entry) ? "already-flushed" : shouldCheckTranscriptSizeForForcedFlush && typeof transcriptByteSize !== "number" ? "transcript-stats-unavailable" : "below-trigger" } : {}
 	};
 	logVerbose(`memoryFlush triggered: sessionKey=${params.sessionKey} tokenCount=${tokenCountForFlush ?? "undefined"} threshold=${flushThreshold}`);
 	// memory-flush-defer-v1: a reply-path caller may move a housekeeping flush behind the reply.

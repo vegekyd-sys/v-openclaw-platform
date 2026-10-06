@@ -105,7 +105,9 @@ const FLUSH_DECISION_AFTER = `	const memoryFlushTokenTriggered = shouldRunMemory
 	});
 	if (!(memoryFlushTokenTriggered || shouldForceFlushByTranscriptSize && entry != null && !hasAlreadyFlushedForCurrentCompaction(entry))) return {
 		sessionEntry: entry ?? params.sessionEntry,
-		outcome: "skipped"
+		outcome: "skipped",
+		// ${MEMORY_FLUSH_DEFER_MARKER}: a deferred run reports why it found nothing to flush.
+		...params.memoryFlushDeferred === true ? { skipReason: entry == null ? "no-entry" : hasAlreadyFlushedForCurrentCompaction(entry) ? "already-flushed" : shouldCheckTranscriptSizeForForcedFlush && typeof transcriptByteSize !== "number" ? "transcript-stats-unavailable" : "below-trigger" } : {}
 	};
 	logVerbose(\`memoryFlush triggered: sessionKey=\${params.sessionKey} tokenCount=\${tokenCountForFlush ?? "undefined"} threshold=\${flushThreshold}\`);
 	// ${MEMORY_FLUSH_DEFER_MARKER}: a reply-path caller may move a housekeeping flush behind the reply.
@@ -182,6 +184,7 @@ const MEMORY_FLUSH_DEFER_MIN_HEADROOM_TOKENS = ${MIN_HEADROOM_TOKENS};
 const MEMORY_FLUSH_DEFER_HEADROOM_RATIO = ${HEADROOM_RATIO};
 const MEMORY_FLUSH_DEFER_DEFAULT_IDLE_MS = ${DEFAULT_IDLE_MS};
 const MEMORY_FLUSH_DEFER_MAX_IDLE_MS = 36e5;
+const MEMORY_FLUSH_DEFER_MAX_UNREADABLE_RETRIES = 3;
 const memoryFlushDeferLog = createSubsystemLogger("auto-reply/memory-flush-defer");
 const deferredMemoryFlushJobs = /* @__PURE__ */ new Map();
 function isPreReplyMemoryFlushDeferralEnabled(env = process.env) {
@@ -379,22 +382,35 @@ function startDeferredMemoryFlush(job, epoch) {
 	// root-work admission, released by now: subordinate admission (session lane enqueue,
 	// session work admission) would read it as closed and throw GatewayDrainingError.
 	// Run under a fresh independent root instead, so drain/busy accounting also sees it.
-	job.running = runWithGatewayIndependentRootWorkAdmission(() => runDeferredMemoryFlush(job.ctx, abortSignal), "memory-flush-deferred").catch((error) => {
+	const report = {};
+	job.running = runWithGatewayIndependentRootWorkAdmission(() => runDeferredMemoryFlush(job.ctx, abortSignal, report), "memory-flush-deferred").catch((error) => {
 		logVerbose(\`deferred memory flush was not admitted: \${String(error)}\`);
 		return "not-admitted";
 	}).then((outcome) => {
 		job.inFlight -= 1;
+		// the real outcome: an abort that lands after the flush finished does not undo it
+		const retryUnreadable = outcome === "skipped" && report.skipReason === "transcript-stats-unavailable" && (job.unreadableRetries ?? 0) < MEMORY_FLUSH_DEFER_MAX_UNREADABLE_RETRIES;
 		logMemoryFlushDeferral({
 			phase: "ran",
 			session: hashMemoryFlushSessionKey(job.key),
-			outcome: abortSignal.aborted ? "aborted" : outcome,
+			outcome,
+			...abortSignal.aborted ? { aborted: true } : {},
+			...report.skipReason ? { reason: report.skipReason } : {},
+			...retryUnreadable ? { retry: true } : {},
 			ms: Date.now() - startedAt
 		});
-		if (deferredMemoryFlushJobs.get(job.key) === job && job.epoch === runEpoch) deferredMemoryFlushJobs.delete(job.key);
+		if (deferredMemoryFlushJobs.get(job.key) !== job || job.epoch !== runEpoch) return;
+		if (retryUnreadable) {
+			// the transcript projection was being reindexed: the flush is still due, look again after the idle wait
+			job.unreadableRetries = (job.unreadableRetries ?? 0) + 1;
+			armDeferredMemoryFlushTimer(job, job.epoch);
+			return;
+		}
+		deferredMemoryFlushJobs.delete(job.key);
 	});
 	return job.running;
 }
-async function runDeferredMemoryFlush(ctx, abortSignal) {
+async function runDeferredMemoryFlush(ctx, abortSignal, report = {}) {
 	const sessionStore = {};
 	const sessionEntry = refreshSessionEntryFromStore({
 		storePath: ctx.storePath,
@@ -433,6 +449,7 @@ async function runDeferredMemoryFlush(ctx, abortSignal) {
 				logVerbose(\`deferred memory flush produced \${payloads.length} maintenance error payload(s)\`);
 			}
 		});
+		if (result?.skipReason) report.skipReason = result.skipReason;
 		return result?.outcome ?? "unknown";
 	} catch (error) {
 		logVerbose(\`deferred memory flush failed: \${String(error)}\`);

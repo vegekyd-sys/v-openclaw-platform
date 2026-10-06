@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -45,7 +45,7 @@ test('each anchor is replaced exactly once and a patched file is refused', () =>
   const doubled = memoryInput.replace('\tconst latch = entry.transcriptByteCompactionLatch;\n', '\tconst latch = entry.transcriptByteCompactionLatch;\n\tif (latch !== void 0 && (typeof maxActiveTranscriptBytes !== "number" || false)) {}\n');
   assert.throws(() => patchAgentRunnerMemory(doubled), /Expected exactly one byte-compaction latch clear/);
   assert.throws(() => patchAgentRunnerRuntime(runtimeInput.replace('async function executePreparedReplyAgentRun(context) {\n', '')), /Expected exactly one reply agent run executor/);
-  assert.equal(memoryOut.split(MEMORY_FLUSH_DEFER_MARKER).length - 1, 3);
+  assert.equal(memoryOut.split(MEMORY_FLUSH_DEFER_MARKER).length - 1, 4);
   assert.equal(memoryOut.split('run.memoryFlushDeferred === true && run.abortSignal?.aborted === true').length - 1, 1);
   assert.equal(runtimeOut.split('deferPreReplyFlush:').length - 1, 1);
   assert.equal(runtimeOut.split('yieldDeferredMemoryFlush(sessionKey, "inbound-turn")').length - 1, 1);
@@ -463,7 +463,7 @@ test('a new turn aborts a running deferred flush and the flush waits for idle ag
   assert.equal(t.flushCalls[0].abortSignal.aborted, true);
   await new Promise((r) => setImmediate(r));
   assert.match(t.log.find((l) => l.includes('"phase":"yielded"')), /"reason":"inbound-turn"/);
-  assert.match(t.log.find((l) => l.includes('"phase":"ran"')), /"outcome":"aborted"/);
+  assert.match(t.log.find((l) => l.includes('"phase":"ran"')), /"outcome":"failed","aborted":true/);
   // the job survives the abort and runs again after the next idle wait
   assert.equal(t.api.deferredMemoryFlushJobs.size, 1);
   t.timers.at(-1).fn();
@@ -568,7 +568,7 @@ test('a restart drain during a deferred flush aborts it and the job ends', async
   t.admission.markGatewayRestartDraining();
   assert.equal(t.flushCalls[0].abortSignal.aborted, true);
   await new Promise((r) => setImmediate(r));
-  assert.match(t.log.at(-1), /"phase":"ran".*"outcome":"aborted"/);
+  assert.match(t.log.at(-1), /"phase":"ran".*"outcome":"failed","aborted":true/);
   assert.equal(t.api.deferredMemoryFlushJobs.size, 0);
   assert.deepEqual(t.admission.getActiveGatewayRootWorkHolders(), []);
 });
@@ -684,7 +684,7 @@ test('the unwinding window: the first message runs itself, the second steers int
   // the flush finishes unwinding: aborted, not failed, and the job waits for idle again
   t.flushCalls[0].__finish();
   await new Promise((r) => setImmediate(r));
-  assert.match(t.log.find((l) => l.includes('"phase":"ran"')), /"outcome":"aborted"/);
+  assert.match(t.log.find((l) => l.includes('"phase":"ran"')), /"outcome":"failed","aborted":true/);
   assert.equal(t.api.deferredMemoryFlushJobs.size, 1);
   // with no flush in flight, busy is get-reply's answer again
   activeOps.delete(sessionKey);
@@ -738,4 +738,162 @@ test('a heartbeat during a running deferred flush neither yields it nor runs', a
   assert.deepEqual(decisions, []);
   assert.equal(t.flushCalls[0].abortSignal.aborted, false);
   assert(!t.log.some((l) => l.includes('turn-not-busy')));
+});
+
+// ---------------------------------------------------------------------------------------
+// The patched agent-runner-memory and the runtime region together, against one session
+// store (VLab candidate at 6f05930, interrupt arm: abort mid-flush, the next turn defers
+// again, and the re-run after the idle wait ended "skipped" without writing memory).
+
+function integratedSession({ stats } = {}) {
+  const workspaceDir = fs.mkdtempSync(path.join(fs.realpathSync(process.env.TMPDIR ?? '/tmp'), 'memflush-'));
+  after(() => fs.rmSync(workspaceDir, { recursive: true, force: true }));
+  const store = { [sessionKey]: entry() };
+  const embedded = [];
+  let completeGate;
+  const plan = { softThresholdTokens: 4000, forceFlushTranscriptBytes: 2097152, reserveTokensFloor: 20000 };
+  const { fakes } = memoryFakes({ fakes: {
+    updateSessionEntry: async (scope, update) => {
+      const patch = await update(store[scope.sessionKey]);
+      store[scope.sessionKey] = { ...store[scope.sessionKey], ...patch };
+      return store[scope.sessionKey];
+    },
+    readSessionTranscriptActiveStats: () => (stats ? stats() : { sizeBytes: 3_500_000, eventCount: 400 }),
+    resolveMemoryFlushPlan: (p) => (p.nowMs ? { ...plan, relativePath: 'memory/2026-10-06.md', prompt: 'flush', systemPrompt: 'sys' } : plan),
+    resolveModelFallbackOptions: (run) => ({ cfg: run.config, provider: run.provider, model: run.model }),
+    prepareSystemAgentRunAdmission: () => ({ close() {} }),
+    registerAgentRunContext: () => {},
+    clearAgentRunContext: () => {},
+    refreshQueuedFollowupSession: () => {},
+    isAbortError: (e) => e?.name === 'AbortError',
+    truncateUtf16Safe: (v) => v,
+    formatErrorMessage: (e) => String(e?.message ?? e),
+    isRenderablePayload: () => true,
+    createDeferredEmbeddedRunLifecycleManager: (p) => {
+      const controller = new AbortController();
+      return {
+        signal: AbortSignal.any([p.abortSignal, controller.signal]), adopt() {}, abort: () => controller.abort(),
+        complete: async () => { await completeGate?.promise; },
+      };
+    },
+    // the embedded flush run: holds until finished, rejects when aborted first
+    runEmbeddedAgentEntry: async (p) => {
+      const call = { params: p };
+      embedded.push(call);
+      await new Promise((resolve, reject) => {
+        const onAbort = () => reject(p.abortSignal.reason);
+        if (p.abortSignal.aborted) return onAbort();
+        p.abortSignal.addEventListener('abort', onAbort, { once: true });
+        call.finish = () => { p.abortSignal.removeEventListener('abort', onAbort); resolve(); };
+      });
+    },
+  } });
+  const memory = loadMemoryModule(fakes);
+  const t = loadRegion({ replyFakes: {
+    runMemoryFlushIfNeeded: memory.runMemoryFlushIfNeeded,
+    runSessionCompactionIfNeeded: memory.runSessionCompactionIfNeeded,
+    refreshSessionEntryFromStore: (p) => { const e = store[p.sessionKey]; if (e) p.activeSessionStore[p.sessionKey] = e; return e; },
+  } });
+  const run = () => ({ ...followupRun('用户消息'), run: { ...followupRun().run, workspaceDir, config: {} } });
+  // what executePreparedReplyAgentRun does for a turn: the pre-reply check with the hook
+  const preReplyCheck = async () => {
+    const replyOp = { key: sessionKey, abortSignal: new AbortController().signal, setPhase() {}, updateSessionId() {} };
+    const followup = run();
+    const result = await memory.runMemoryFlushIfNeeded(baseParams({
+      followupRun: followup, promptForEstimate: followup.prompt, sessionEntry: store[sessionKey], replyOperation: replyOp,
+      deferPreReplyFlush: (flushState) => t.api.deferPreReplyMemoryFlush(ctxFor(flushState, { followupRun: followup, replyOperation: replyOp })),
+    }));
+    return result.outcome;
+  };
+  // let the real module's awaits (including the memory file's fs calls) run out
+  const settle = async () => { for (let i = 0; i < 5; i += 1) await new Promise((r) => setTimeout(r, 5)); };
+  const gateCompletion = () => { let open; completeGate = { promise: new Promise((r) => { open = r; }) }; return () => { completeGate = undefined; open(); }; };
+  return { t, store, embedded, preReplyCheck, settle, gateCompletion, ranLines: () => t.log.filter((l) => l.includes('"phase":"ran"')).map((l) => JSON.parse(l.replace('[memory-flush-deferred.1] ', ''))) };
+}
+
+test('abort mid-flush, the next turn defers again, then after idle the flush really runs (not skipped)', async () => {
+  const s = integratedSession();
+  assert.equal(await s.preReplyCheck(), 'deferred');
+  s.t.afterClear.at(-1).cb();
+  s.t.timers.at(-1).fn();
+  await s.settle();
+  assert.equal(s.embedded.length, 1);
+  // a new turn: yield aborts the running flush
+  assert.equal(s.t.api.yieldDeferredMemoryFlush(sessionKey, 'inbound-turn'), true);
+  await s.settle();
+  assert.deepEqual(s.ranLines().at(-1), { phase: 'ran', session: s.ranLines().at(-1).session, outcome: 'failed', aborted: true, ms: s.ranLines().at(-1).ms });
+  // nothing marks the cycle as flushed, and no failure is counted
+  assert.equal(s.store[sessionKey].memoryFlush, undefined);
+  // that turn's own pre-reply check defers again, the reply clears, the session idles
+  assert.equal(await s.preReplyCheck(), 'deferred');
+  s.t.afterClear.at(-1).cb();
+  s.t.timers.at(-1).fn();
+  await s.settle();
+  assert.equal(s.embedded.length, 2, 'the re-run reached the embedded flush run');
+  s.embedded[1].finish();
+  await s.settle();
+  assert.equal(s.ranLines().at(-1).outcome, 'completed');
+  assert.deepEqual(s.store[sessionKey].memoryFlush, { kind: 'succeeded', compactionCount: 0 });
+  assert.equal(s.t.api.deferredMemoryFlushJobs.size, 0);
+  // and only now does the next turn find nothing to flush
+  assert.equal(await s.preReplyCheck(), 'skipped');
+});
+
+test('an abort that lands after the flush finished is logged with its real outcome (completed), so a later skip is "already-flushed"', async () => {
+  const s = integratedSession();
+  const openCompletion = s.gateCompletion();
+  assert.equal(await s.preReplyCheck(), 'deferred');
+  s.t.afterClear.at(-1).cb();
+  s.t.timers.at(-1).fn();
+  await s.settle();
+  s.embedded[0].finish();
+  await s.settle();
+  // the model run is done and the cycle is marked; the run is still completing its lifecycle
+  assert.deepEqual(s.store[sessionKey].memoryFlush, { kind: 'succeeded', compactionCount: 0 });
+  assert.equal(s.t.api.yieldDeferredMemoryFlush(sessionKey, 'inbound-turn'), true);
+  openCompletion();
+  await s.settle();
+  const ran = s.ranLines().at(-1);
+  assert.equal(ran.outcome, 'completed');
+  assert.equal(ran.aborted, true);
+  // the re-armed job finds the cycle flushed and says so
+  s.t.timers.at(-1).fn();
+  await s.settle();
+  assert.equal(s.embedded.length, 1);
+  assert.equal(s.ranLines().at(-1).outcome, 'skipped');
+  assert.equal(s.ranLines().at(-1).reason, 'already-flushed');
+});
+
+test('a deferred run that cannot read the transcript stats keeps the flush due and looks again', async () => {
+  let unreadable = 0;
+  const s = integratedSession({ stats: () => { if (unreadable > 0) { unreadable -= 1; throw new Error('SessionTranscriptProjectionUnavailableError'); } return { sizeBytes: 3_500_000, eventCount: 400 }; } });
+  assert.equal(await s.preReplyCheck(), 'deferred');
+  s.t.afterClear.at(-1).cb();
+  unreadable = 1;
+  s.t.timers.at(-1).fn();
+  await s.settle();
+  assert.equal(s.embedded.length, 0);
+  assert.deepEqual(['skipped', 'transcript-stats-unavailable', true], [s.ranLines().at(-1).outcome, s.ranLines().at(-1).reason, s.ranLines().at(-1).retry]);
+  assert.equal(s.t.api.deferredMemoryFlushJobs.size, 1);
+  s.t.timers.at(-1).fn();
+  await s.settle();
+  assert.equal(s.embedded.length, 1);
+  s.embedded[0].finish();
+  await s.settle();
+  assert.equal(s.ranLines().at(-1).outcome, 'completed');
+  // retries are bounded: after three unreadable looks the job ends and the flush waits for
+  // the next pre-reply check (still not marked as flushed)
+  let broken = false;
+  const b = integratedSession({ stats: () => { if (broken) throw new Error('unavailable'); return { sizeBytes: 3_500_000, eventCount: 400 }; } });
+  assert.equal(await b.preReplyCheck(), 'deferred');
+  b.t.afterClear.at(-1).cb();
+  broken = true;
+  for (let i = 0; i < 4; i += 1) {
+    b.t.timers.at(-1).fn();
+    await b.settle();
+  }
+  assert.deepEqual(b.ranLines().map((l) => l.retry === true), [true, true, true, false]);
+  assert.equal(b.t.api.deferredMemoryFlushJobs.size, 0);
+  assert.equal(b.store[sessionKey].memoryFlush, undefined);
+  assert.equal(b.embedded.length, 0);
 });
