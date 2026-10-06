@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto, { createHash } from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import {
   DEFAULT_IDLE_MS,
   MEMORY_FLUSH_DEFER_MARKER,
@@ -19,6 +20,9 @@ const runtimeInput = read('../release/captured/v2026.9.1-db91.6-firsttext-r1-202
 const memoryInput = read('./fixtures/memory-flush-defer/agent-runner-memory-7VF-zwNt.js');
 const released = (name) => read(`./release-files/memory-flush-defer/${name}`);
 const runtimeOut = released('agent-runner.runtime-CAdsMsQt.js');
+// npm 2026.9.1 bytes of the Gateway work admission chunk (unmodified on V), run for real below.
+const admissionSource = read('./fixtures/memory-flush-defer/gateway-work-admission-3tn4Qiws.js');
+const ADMISSION_SHA256 = '7018c585a8ba0c7514e0521ba0e215dedcd07d8f01bd9a33121997cc0b589c10';
 const memoryOut = released('agent-runner-memory-7VF-zwNt.js');
 
 test('inputs are V\'s pinned bytes and the release files are exactly the patch of them', () => {
@@ -27,6 +31,8 @@ test('inputs are V\'s pinned bytes and the release files are exactly the patch o
   // V runs the npm bytes of agent-runner-memory: the latest capture does not list it as modified.
   const manifest = JSON.parse(read('../release/captured/v2026.9.1-db91.6-firsttext-r1-20261006/manifest.json'));
   assert(!manifest.files.some((f) => f.path.includes('agent-runner-memory-')));
+  assert(!manifest.files.some((f) => f.path.includes('gateway-work-admission-')));
+  assert.equal(sha(admissionSource), ADMISSION_SHA256);
   assert.equal(manifest.files.find((f) => f.path === './agent-runner.runtime-CAdsMsQt.js').sha256, sha(runtimeInput));
   assert.equal(patchAgentRunnerRuntime(runtimeInput), runtimeOut);
   assert.equal(patchAgentRunnerMemory(memoryInput), memoryOut);
@@ -39,7 +45,8 @@ test('each anchor is replaced exactly once and a patched file is refused', () =>
   const doubled = memoryInput.replace('\tconst latch = entry.transcriptByteCompactionLatch;\n', '\tconst latch = entry.transcriptByteCompactionLatch;\n\tif (latch !== void 0 && (typeof maxActiveTranscriptBytes !== "number" || false)) {}\n');
   assert.throws(() => patchAgentRunnerMemory(doubled), /Expected exactly one byte-compaction latch clear/);
   assert.throws(() => patchAgentRunnerRuntime(runtimeInput.replace('async function executePreparedReplyAgentRun(context) {\n', '')), /Expected exactly one reply agent run executor/);
-  assert.equal(memoryOut.split(MEMORY_FLUSH_DEFER_MARKER).length - 1, 2);
+  assert.equal(memoryOut.split(MEMORY_FLUSH_DEFER_MARKER).length - 1, 3);
+  assert.equal(memoryOut.split('run.memoryFlushDeferred === true && run.abortSignal?.aborted === true').length - 1, 1);
   assert.equal(runtimeOut.split('deferPreReplyFlush:').length - 1, 1);
   assert.equal(runtimeOut.split('yieldDeferredMemoryFlush(sessionKey, "inbound-turn")').length - 1, 1);
 });
@@ -58,6 +65,7 @@ test('the runtime wiring sits where the reply path flushes and where a turn star
     ['createSubsystemLogger', /^import \{ t as createSubsystemLogger \} from /m],
     ['logVerbose', /^import \{ r as logVerbose \} from /m],
     ['crypto', /^import crypto from "node:crypto";$/m],
+    ['gateway work admission', /^import \{ b as runWithGatewayIndependentRootWorkAdmission, f as isGatewayWorkAdmissionClosed, s as getGatewayRestartDrainSignal, t as GatewayDrainingError \} from "\.\/gateway-work-admission-3tn4Qiws\.js";$/m],
     ['refreshSessionEntryFromStore', /^function refreshSessionEntryFromStore\(params\) \{$/m],
   ]) assert.match(runtimeOut, re, name);
 });
@@ -234,6 +242,24 @@ test('memory module: heartbeat or runtime-owned compaction leaves the probe empt
 // ---------------------------------------------------------------------------------------
 // Evaluate the runtime's deferral region against fakes.
 
+// The real Gateway work admission chunk, with its two imports faked and a private state.
+function loadAdmissionModule() {
+  const body = [];
+  let exported;
+  for (const line of admissionSource.split('\n')) {
+    if (line.startsWith('import ')) continue;
+    if (line.startsWith('export {')) {
+      exported = Object.fromEntries(line.slice('export { '.length, -' };'.length).split(', ').map((part) => part.split(' as ').reverse()));
+      body.push(`return { ${Object.entries(exported).map(([letter, name]) => `${letter}: ${name}, ${name}`).join(', ')} };`);
+      continue;
+    }
+    body.push(line);
+  }
+  const mod = new Function('resolveGlobalSingleton', 'createSubsystemLogger', 'AsyncLocalStorage', body.join('\n'))(
+    (_key, create) => create(), () => ({ info() {}, warn() {} }), AsyncLocalStorage);
+  return { mod, exported };
+}
+
 function loadRegion({ env = {}, probeResult = { willCompact: false, threshold: 980_000, tokenCount: 300_500 }, flushOutcome = 'completed', activeOps = new Map(), freshEntry = entry() } = {}) {
   const log = [];
   const verbose = [];
@@ -241,6 +267,7 @@ function loadRegion({ env = {}, probeResult = { willCompact: false, threshold: 9
   const afterClear = [];
   const flushCalls = [];
   const probeCalls = [];
+  const { mod: admission } = loadAdmissionModule();
   const fakes = {
     createSubsystemLogger: () => ({ info: (m) => log.push(m) }),
     process: { env },
@@ -249,21 +276,34 @@ function loadRegion({ env = {}, probeResult = { willCompact: false, threshold: 9
     runSessionCompactionIfNeeded: async (p) => { probeCalls.push(p); Object.assign(p.probe, probeResult); return p.sessionEntry; },
     runMemoryFlushIfNeeded: async (p) => {
       flushCalls.push(p);
+      p.__rootWork = admission.getActiveGatewayRootWorkHolders();
+      // the embedded flush run enqueues on the session lane: enqueueCommandInLane rejects
+      // with GatewayDrainingError when subordinate admission is closed, and the flush
+      // records a failure (command-queue-oRD7ZANz.js enqueueCommandInLane)
+      if (admission.isGatewaySubordinateWorkAdmissionClosed()) {
+        p.__admissionClosed = true;
+        return { outcome: 'failed' };
+      }
       if (p.abortSignal.aborted) return { outcome: 'failed' };
       return await new Promise((resolve) => {
         p.abortSignal.addEventListener('abort', () => resolve({ outcome: 'failed' }));
         p.__finish = () => resolve({ outcome: flushOutcome });
       });
     },
-    runAfterReplyOperationClear: (op, cb) => afterClear.push({ op, cb }),
+    // the reply registry runs after-clear callbacks from the clearing reply's context
+    runAfterReplyOperationClear: (op, cb) => afterClear.push({ op, cb: AsyncLocalStorage.bind(cb) }),
     replyRunRegistry: { get: (key) => activeOps.get(key) },
     refreshSessionEntryFromStore: () => freshEntry,
-    setTimeout: (fn, ms) => { const t = { fn, ms, cleared: false, unref() { this.unrefd = true; } }; timers.push(t); return t; },
+    // a real timer callback runs in the async context that armed it
+    setTimeout: (fn, ms) => { const t = { fn: AsyncLocalStorage.bind(fn), ms, cleared: false, unref() { this.unrefd = true; } }; timers.push(t); return t; },
     clearTimeout: (t) => { if (t) t.cleared = true; },
+    runWithGatewayIndependentRootWorkAdmission: admission.runWithGatewayIndependentRootWorkAdmission,
+    isGatewayWorkAdmissionClosed: admission.isGatewayWorkAdmissionClosed,
+    getGatewayRestartDrainSignal: admission.getGatewayRestartDrainSignal,
   };
   const names = Object.keys(fakes);
   const api = new Function(...names, `${extractDeferRegion(runtimeOut)}\nreturn { resolvePreReplyMemoryFlushDeferral, deferPreReplyMemoryFlush, yieldDeferredMemoryFlush, deferredMemoryFlushJobs, resolveDeferredMemoryFlushIdleMs };`)(...names.map((n) => fakes[n]));
-  return { api, log, verbose, timers, afterClear, flushCalls, probeCalls };
+  return { api, log, verbose, timers, afterClear, flushCalls, probeCalls, admission };
 }
 
 const sessionKey = 'agent:makaron:feishu:dm:u1';
@@ -415,4 +455,107 @@ test('a turn arriving while the flush still waits for its reply does not disturb
   assert.equal(t.timers.length, 0);
   t.afterClear[0].cb();
   assert.equal(t.timers.length, 1);
+});
+
+test('the runtime imports the admission functions it calls under their real export letters', () => {
+  const { exported } = loadAdmissionModule();
+  const line = runtimeOut.split('\n').find((l) => l.endsWith('from "./gateway-work-admission-3tn4Qiws.js";'));
+  for (const part of line.match(/^import \{ (.+) \} from /)[1].split(', ')) {
+    const [letter, name] = part.split(' as ');
+    assert.equal(exported[letter], name, part);
+  }
+});
+
+test('a deferred flush armed inside a reply whose root admission is released still runs (stale-ALS repro)', async () => {
+  const t = loadRegion();
+  const { admission } = t;
+  // the reply runs under its root-work admission; the deferral, the after-clear callback
+  // and the idle timer are all created inside it
+  const reply = admission.tryBeginGatewayRootWorkAdmission('chat.send');
+  await reply.run(async () => {
+    assert.equal(await t.api.deferPreReplyMemoryFlush(ctxFor(sizeState)), true);
+    t.afterClear[0].cb();
+  });
+  reply.release();
+  assert.equal(t.timers.length, 1);
+  // the cause: a chain carrying the released reply store reads subordinate admission as
+  // closed although the Gateway accepts work
+  assert.equal(admission.isGatewayWorkAdmissionClosed(), false);
+  let staleClosed;
+  const probe = admission.tryBeginGatewayRootWorkAdmission('probe');
+  await probe.run(async () => {
+    // reproduce the timer's view: a callback bound inside a released root
+    const bound = AsyncLocalStorage.bind(() => admission.isGatewaySubordinateWorkAdmissionClosed());
+    probe.release();
+    staleClosed = bound();
+  });
+  assert.equal(staleClosed, true);
+  // the idle timer fires in the released reply's context: the flush runs admitted
+  t.timers[0].fn();
+  assert.equal(t.flushCalls.length, 1);
+  const call = t.flushCalls[0];
+  assert.equal(call.__admissionClosed, undefined);
+  assert.equal(call.memoryFlushDeferred, true);
+  assert.deepEqual(call.__rootWork, ['memory-flush-deferred']);
+  call.__finish();
+  await new Promise((r) => setImmediate(r));
+  assert.match(t.log.at(-1), /"phase":"ran".*"outcome":"completed"/);
+  assert.deepEqual(admission.getActiveGatewayRootWorkHolders(), []);
+  assert.equal(t.api.deferredMemoryFlushJobs.size, 0);
+});
+
+test('a deferred flush is skipped without a failure while Gateway admission is closed', async () => {
+  for (const [label, close] of [
+    ['restart-signal fence', (a) => { const fence = a.beginGatewayRestartSignalAdmission(); return () => fence.rollback(); }],
+    ['host suspension', (a) => { const s = a.tryBeginGatewaySuspendAdmission(); return () => s.rollback(); }],
+  ]) {
+    const t = loadRegion();
+    await t.api.deferPreReplyMemoryFlush(ctxFor(sizeState));
+    t.afterClear[0].cb();
+    const reopen = close(t.admission);
+    assert.equal(t.admission.isGatewayWorkAdmissionClosed(), true, label);
+    t.timers[0].fn();
+    await new Promise((r) => setImmediate(r));
+    assert.equal(t.flushCalls.length, 0, label);
+    assert.deepEqual(JSON.parse(t.log.at(-1).replace('[memory-flush-deferred.1] ', '')), { phase: 'skipped', session: createHash('sha256').update(sessionKey).digest('hex').slice(0, 12), reason: 'admission-closed' }, label);
+    assert(!t.log.some((l) => l.includes('"phase":"ran"')), label);
+    // left for the next pre-reply check, which may defer it again once admission reopens
+    assert.equal(t.api.deferredMemoryFlushJobs.size, 0, label);
+    assert.deepEqual(t.admission.getActiveGatewayRootWorkHolders(), [], label);
+    reopen();
+    assert.equal(await t.api.deferPreReplyMemoryFlush(ctxFor(sizeState)), true, label);
+    t.afterClear[1].cb();
+    t.timers[1].fn();
+    assert.equal(t.flushCalls.length, 1, label);
+  }
+});
+
+test('a restart drain during a deferred flush aborts it and the job ends', async () => {
+  const t = loadRegion();
+  await t.api.deferPreReplyMemoryFlush(ctxFor(sizeState));
+  t.afterClear[0].cb();
+  t.timers[0].fn();
+  assert.equal(t.flushCalls.length, 1);
+  assert.deepEqual(t.admission.getActiveGatewayRootWorkHolders(), ['memory-flush-deferred']);
+  t.admission.markGatewayRestartDraining();
+  assert.equal(t.flushCalls[0].abortSignal.aborted, true);
+  await new Promise((r) => setImmediate(r));
+  assert.match(t.log.at(-1), /"phase":"ran".*"outcome":"aborted"/);
+  assert.equal(t.api.deferredMemoryFlushJobs.size, 0);
+  assert.deepEqual(t.admission.getActiveGatewayRootWorkHolders(), []);
+});
+
+test('memory module: an aborted deferred flush is not counted as a failure; other failures still are', async () => {
+  const drainError = Object.assign(new Error('gateway is draining for restart'), { name: 'GatewayDrainingError' });
+  for (const [label, extra, counted] of [
+    ['deferred and aborted', { memoryFlushDeferred: true, abortSignal: AbortSignal.abort(drainError) }, false],
+    ['deferred, not aborted', { memoryFlushDeferred: true, abortSignal: new AbortController().signal }, true],
+    ['pre-reply, aborted', { abortSignal: AbortSignal.abort(drainError) }, true],
+  ]) {
+    const { fakes, calls } = memoryFakes({ fakes: { resolveMemoryFlushPlan: (p) => { if (p.nowMs) throw drainError; return { softThresholdTokens: 4000, forceFlushTranscriptBytes: 2097152, reserveTokensFloor: 20000 }; } } });
+    const { runMemoryFlushIfNeeded } = loadMemoryModule({ ...fakes, isAbortError: (e) => e?.name === 'AbortError', truncateUtf16Safe: (v) => v, formatErrorMessage: (e) => String(e?.message ?? e) });
+    const result = await runMemoryFlushIfNeeded(baseParams({ onVisibleErrorPayloads() {}, ...extra }));
+    assert.equal(result.outcome, 'failed', label);
+    assert.equal(calls.updateSessionEntry.length > 0, counted, label);
+  }
 });

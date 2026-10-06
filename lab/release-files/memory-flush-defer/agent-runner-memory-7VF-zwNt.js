@@ -1124,7 +1124,8 @@ async function recordMemoryFlushFailure(error, run, initialSessionEntry) {
 	let outcome = "failed";
 	const truncatedError = truncateMemoryFlushErrorMessage(error);
 	const { sessionKey, storePath } = run;
-	if (!isAbortError(error) && storePath && sessionKey) try {
+	// memory-flush-defer-v1: a deferred flush that was aborted (new turn, restart drain) is not a failure.
+	if (!isAbortError(error) && !(run.memoryFlushDeferred === true && run.abortSignal?.aborted === true) && storePath && sessionKey) try {
 		const adoptEntry = (entry) => {
 			if (entry) {
 				sessionEntry = entry;

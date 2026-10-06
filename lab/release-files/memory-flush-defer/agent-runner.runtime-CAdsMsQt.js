@@ -32,7 +32,7 @@ import { r as logVerbose } from "./globals-Dl0PaL2u.js";
 import { f as onAgentEventForRun, i as emitAgentEvent, n as captureAgentRunLifecycleGeneration, v as withAgentRunLifecycleGeneration } from "./agent-events-Con5xUCM.js";
 import { a as clearAgentRunContext, h as registerAgentRunContext } from "./agent-run-registry-D84MDeZl.js";
 import { a as getPluginRuntimeGatewayRequestScope, t as bindGatewayContextResolver } from "./gateway-request-scope-CmMd3nUp.js";
-import { t as GatewayDrainingError } from "./gateway-work-admission-3tn4Qiws.js";
+import { b as runWithGatewayIndependentRootWorkAdmission, f as isGatewayWorkAdmissionClosed, s as getGatewayRestartDrainSignal, t as GatewayDrainingError } from "./gateway-work-admission-3tn4Qiws.js";
 import { r as leaseMcpAppModelContextForTurn } from "./mcp-app-model-context-DMVjt_jf.js";
 import { s as peekSessionMcpRuntime } from "./agent-bundle-mcp-manager-api-Bk_6h3Rj.js";
 import { x as ensureMessageToolRunOutcomeSchema } from "./openclaw-agent-db-maintenance-DYSkzMMg.js";
@@ -7283,16 +7283,35 @@ function startDeferredMemoryFlush(job, epoch) {
 		waitForDeferredMemoryFlushReplyClear(job, activeOperation);
 		return;
 	}
+	if (isGatewayWorkAdmissionClosed()) {
+		// Restart drain, restart-signal fence or host suspension: not a flush failure. The
+		// flush stays due and the next pre-reply check decides again.
+		deferredMemoryFlushJobs.delete(job.key);
+		logMemoryFlushDeferral({
+			phase: "skipped",
+			session: hashMemoryFlushSessionKey(job.key),
+			reason: "admission-closed"
+		});
+		return;
+	}
 	const runEpoch = ++job.epoch;
 	const controller = new AbortController();
+	const abortSignal = AbortSignal.any([controller.signal, getGatewayRestartDrainSignal()]);
 	const startedAt = Date.now();
 	job.controller = controller;
 	job.state = "running";
-	job.running = runDeferredMemoryFlush(job.ctx, controller.signal).then((outcome) => {
+	// The timer was armed inside the reply's async context and inherits that reply's
+	// root-work admission, released by now: subordinate admission (session lane enqueue,
+	// session work admission) would read it as closed and throw GatewayDrainingError.
+	// Run under a fresh independent root instead, so drain/busy accounting also sees it.
+	job.running = runWithGatewayIndependentRootWorkAdmission(() => runDeferredMemoryFlush(job.ctx, abortSignal), "memory-flush-deferred").catch((error) => {
+		logVerbose(`deferred memory flush was not admitted: ${String(error)}`);
+		return "not-admitted";
+	}).then((outcome) => {
 		logMemoryFlushDeferral({
 			phase: "ran",
 			session: hashMemoryFlushSessionKey(job.key),
-			outcome: controller.signal.aborted ? "aborted" : outcome,
+			outcome: abortSignal.aborted ? "aborted" : outcome,
 			ms: Date.now() - startedAt
 		});
 		if (deferredMemoryFlushJobs.get(job.key) === job && job.epoch === runEpoch) deferredMemoryFlushJobs.delete(job.key);
@@ -7333,6 +7352,7 @@ async function runDeferredMemoryFlush(ctx, abortSignal) {
 			storePath: ctx.storePath,
 			isHeartbeat: false,
 			abortSignal,
+			memoryFlushDeferred: true,
 			onVisibleErrorPayloads: (payloads) => {
 				logVerbose(`deferred memory flush produced ${payloads.length} maintenance error payload(s)`);
 			}

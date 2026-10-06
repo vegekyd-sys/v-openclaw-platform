@@ -45,6 +45,22 @@ import assert from 'node:assert/strict';
 //                        deferred flush (abort is not counted as a flush failure) and
 //                        restarts the idle wait; if the flush has not run by the time
 //                        compaction nears, the next turn flushes first exactly as before.
+//
+// Gateway work admission (VLab candidate 2026-10-06: the deferred flush failed with
+// "Gateway is draining; new tasks are not accepted" while nothing drained). The idle timer
+// is armed inside the reply's async context, so it inherits that reply's root-work
+// admission (an AsyncLocalStorage store). When it fires the admission is released, and
+// isGatewaySubordinateWorkAdmissionClosed() returns `current.released` for any chain that
+// carries a store, so the session-lane enqueue rejects with GatewayDrainingError and the
+// flush counts a failure. The deferred run therefore:
+//   - skips (phase=skipped reason=admission-closed, no failure counted, flush stays due
+//     for the next pre-reply check) when isGatewayWorkAdmissionClosed() reports a real
+//     restart drain, restart-signal fence or host suspension;
+//   - otherwise runs under its own independent root admission "memory-flush-deferred"
+//     (runWithGatewayIndependentRootWorkAdmission, as heartbeat wakes do), which replaces
+//     the stale store and is visible to restart-drain and busy accounting;
+//   - aborts on a restart drain (getGatewayRestartDrainSignal) as well as on a new turn,
+//     and agent-runner-memory does not count an aborted deferred flush as a failure.
 // OPENCLAW_DEFER_PRE_REPLY_MEMORY_FLUSH=0 turns it off. Tagged log lines
 // `[memory-flush-deferred.1]` carry a hashed session key and numbers, never message text.
 
@@ -124,11 +140,17 @@ const PREFLIGHT_GATE_AFTER = `	if (params.probe) {
 	}
 ${PREFLIGHT_GATE_BEFORE}`;
 
+const FAILURE_COUNT_BEFORE = '	if (!isAbortError(error) && storePath && sessionKey) try {\n';
+const FAILURE_COUNT_AFTER = `	// ${MEMORY_FLUSH_DEFER_MARKER}: a deferred flush that was aborted (new turn, restart drain) is not a failure.
+	if (!isAbortError(error) && !(run.memoryFlushDeferred === true && run.abortSignal?.aborted === true) && storePath && sessionKey) try {
+`;
+
 export function patchAgentRunnerMemory(source) {
   assert(!source.includes(MEMORY_FLUSH_DEFER_MARKER), 'agent-runner-memory is already patched');
   let out = replaceExactlyOnce(source, FLUSH_DECISION_BEFORE, FLUSH_DECISION_AFTER, 'memory flush decision');
   out = replaceExactlyOnce(out, LATCH_BEFORE, LATCH_AFTER, 'byte-compaction latch clear');
   out = replaceExactlyOnce(out, PREFLIGHT_GATE_BEFORE, PREFLIGHT_GATE_AFTER, 'preflight compaction gate');
+  out = replaceExactlyOnce(out, FAILURE_COUNT_BEFORE, FAILURE_COUNT_AFTER, 'memory flush failure accounting');
   return out;
 }
 
@@ -317,16 +339,35 @@ function startDeferredMemoryFlush(job, epoch) {
 		waitForDeferredMemoryFlushReplyClear(job, activeOperation);
 		return;
 	}
+	if (isGatewayWorkAdmissionClosed()) {
+		// Restart drain, restart-signal fence or host suspension: not a flush failure. The
+		// flush stays due and the next pre-reply check decides again.
+		deferredMemoryFlushJobs.delete(job.key);
+		logMemoryFlushDeferral({
+			phase: "skipped",
+			session: hashMemoryFlushSessionKey(job.key),
+			reason: "admission-closed"
+		});
+		return;
+	}
 	const runEpoch = ++job.epoch;
 	const controller = new AbortController();
+	const abortSignal = AbortSignal.any([controller.signal, getGatewayRestartDrainSignal()]);
 	const startedAt = Date.now();
 	job.controller = controller;
 	job.state = "running";
-	job.running = runDeferredMemoryFlush(job.ctx, controller.signal).then((outcome) => {
+	// The timer was armed inside the reply's async context and inherits that reply's
+	// root-work admission, released by now: subordinate admission (session lane enqueue,
+	// session work admission) would read it as closed and throw GatewayDrainingError.
+	// Run under a fresh independent root instead, so drain/busy accounting also sees it.
+	job.running = runWithGatewayIndependentRootWorkAdmission(() => runDeferredMemoryFlush(job.ctx, abortSignal), "memory-flush-deferred").catch((error) => {
+		logVerbose(\`deferred memory flush was not admitted: \${String(error)}\`);
+		return "not-admitted";
+	}).then((outcome) => {
 		logMemoryFlushDeferral({
 			phase: "ran",
 			session: hashMemoryFlushSessionKey(job.key),
-			outcome: controller.signal.aborted ? "aborted" : outcome,
+			outcome: abortSignal.aborted ? "aborted" : outcome,
 			ms: Date.now() - startedAt
 		});
 		if (deferredMemoryFlushJobs.get(job.key) === job && job.epoch === runEpoch) deferredMemoryFlushJobs.delete(job.key);
@@ -367,6 +408,7 @@ async function runDeferredMemoryFlush(ctx, abortSignal) {
 			storePath: ctx.storePath,
 			isHeartbeat: false,
 			abortSignal,
+			memoryFlushDeferred: true,
 			onVisibleErrorPayloads: (payloads) => {
 				logVerbose(\`deferred memory flush produced \${payloads.length} maintenance error payload(s)\`);
 			}
@@ -431,9 +473,13 @@ const FLUSH_CALL_AFTER = `		isHeartbeat,
 const REPLY_START_BEFORE = '\tconst isHeartbeat = opts?.isHeartbeat === true;\n\tlet didDeliverVisiblePartialReply = false;\n';
 const REPLY_START_AFTER = '\tconst isHeartbeat = opts?.isHeartbeat === true;\n\tif (!isHeartbeat && sessionKey) yieldDeferredMemoryFlush(sessionKey, "inbound-turn");\n\tlet didDeliverVisiblePartialReply = false;\n';
 
+const ADMISSION_IMPORT_BEFORE = 'import { t as GatewayDrainingError } from "./gateway-work-admission-3tn4Qiws.js";\n';
+const ADMISSION_IMPORT_AFTER = 'import { b as runWithGatewayIndependentRootWorkAdmission, f as isGatewayWorkAdmissionClosed, s as getGatewayRestartDrainSignal, t as GatewayDrainingError } from "./gateway-work-admission-3tn4Qiws.js";\n';
+
 export function patchAgentRunnerRuntime(source) {
   assert(!source.includes(MEMORY_FLUSH_DEFER_MARKER), 'agent-runner.runtime is already patched');
-  let out = replaceExactlyOnce(source, EXECUTE_FN, `${DEFER_REGION}${EXECUTE_FN}`, 'reply agent run executor');
+  let out = replaceExactlyOnce(source, ADMISSION_IMPORT_BEFORE, ADMISSION_IMPORT_AFTER, 'gateway work admission import');
+  out = replaceExactlyOnce(out, EXECUTE_FN, `${DEFER_REGION}${EXECUTE_FN}`, 'reply agent run executor');
   out = replaceExactlyOnce(out, FLUSH_CALL_BEFORE, FLUSH_CALL_AFTER, 'pre-reply memory flush call');
   out = replaceExactlyOnce(out, REPLY_START_BEFORE, REPLY_START_AFTER, 'reply agent turn start');
   return out;
