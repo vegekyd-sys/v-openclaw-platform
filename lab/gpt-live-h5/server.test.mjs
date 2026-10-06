@@ -181,3 +181,26 @@ test('owned backend model end receipts preserve real tool/run and native identit
   assert.doesNotMatch(body, /private caller|secret|hidden|not-for-browser/u);
   stop.abort(); await reader.cancel().catch(() => {});
 });
+
+test('SSE avatar activity belongs to the current voice and excludes tool arguments',async t=>{
+  const f=await fixture(t);await f.request('session');
+  const stop=new AbortController();
+  const response=await fetch(f.url+'/api/events',{headers:{cookie:f.cookie},signal:stop.signal});
+  const reader=response.body.getReader();await reader.read();
+  const emit=(voice,name)=>f.bridge.emit({event:'talk.event',payload:{voiceSessionId:voice,talkEvent:{type:'tool.call',callId:'visual',payload:{name,args:{query:'private-avatar-query'},result:'private-result'}}}});
+  emit('foreign','web_search');emit('voice-private','memory_search');
+  const received=new TextDecoder().decode((await reader.read()).value);
+  assert.match(received,/"activity":"memory"/u);
+  assert.doesNotMatch(received,/foreign|private-avatar-query|private-result|args|web/u);
+  stop.abort();await reader.cancel().catch(()=>{});
+});
+
+test('all new avatar assets and modules are served by the frozen whitelist',async t=>{
+  const f=await fixture(t);
+  for(const name of ['avatar.mjs','avatar-state.mjs',...['idle','memory','web','calendar','background'].map(s=>`assets/v-signal-${s}-20261006${s === 'idle' ? '' : '-r2'}.png`)]){
+    const r=await fetch(`${f.url}/${name}`);assert.equal(r.status,200,name);
+    const bytes=new Uint8Array(await r.arrayBuffer());assert.ok(bytes.length>0);
+    assert.match(r.headers.get('content-type'),name.endsWith('.png')?/image\/png/u:/javascript/u);
+  }
+  assert.equal((await fetch(f.url+'/assets/not-whitelisted.png',{headers:{cookie:f.cookie}})).status,404);
+});

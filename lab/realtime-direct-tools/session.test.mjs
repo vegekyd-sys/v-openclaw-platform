@@ -53,3 +53,12 @@ test('cancel kills and polls only process IDs actually created by this call',asy
  f.call('openclaw_tool',{tool:'process',arguments:JSON.stringify({action:'kill',sessionId:'foreign'})},'foreign');await delay(5);
  assert.equal(f.invocations.some(x=>x.args.sessionId==='foreign'),false);await f.service.dispose();
 });
+test('native call exposes only coarse task activity to the avatar, not tool arguments',async()=>{
+ const f=await fixture();
+ f.call('openclaw_tool',{tool:'web_search',arguments:JSON.stringify({query:'private-query-for-avatar-test'})},'visual-web');await delay(5);
+ const visible=f.client.sent.find(e=>e.type==='tool.call'&&e.callId==='visual-web');
+ assert.equal(visible.activity,'web');
+ assert.equal(JSON.stringify(f.client.sent).includes('private-query-for-avatar-test'),false);
+ assert.equal(f.invocations[0].args.query,'private-query-for-avatar-test');
+ await f.service.dispose();
+});

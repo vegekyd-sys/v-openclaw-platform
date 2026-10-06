@@ -6,12 +6,27 @@ import path from "node:path";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { digest, freezeSource, validateSharedProof } from "./gpt-live-h5-release.mjs";
+import { digest, freezeSource, validateSharedProof, fileIdentity, H5_PATHS } from "./gpt-live-h5-release.mjs";
+
+export function validateReviewedPresentation(proof, request) {
+  assert.equal(request.h5Only, true, 'A review waiver only applies to H5 presentation');
+  assert.equal(proof.schema, 'user-reviewed-h5-presentation-v1');
+  assert.equal(proof.sourceCommit, request.commit); assert.equal(proof.owner, request.owner);
+  assert.equal(proof.h5FilesSha, digest(JSON.stringify(fileIdentity(request.files))));
+  assert.equal(proof.authorization, 'skip-shared-h5-validation-and-publish');
+  assert(/^[a-f0-9]{64}$/u.test(proof.artifactSha), 'Gateway baseline artifact required');
+  assert(Array.isArray(proof.runtimeFiles) && proof.runtimeFiles.length > 0);
+  for (const file of proof.runtimeFiles) {
+    assert(/^(openclaw|production-worker)\/[A-Za-z0-9._/-]+$/u.test(file.target) && !file.target.split('/').includes('..'));
+    assert(/^[a-f0-9]{64}$/u.test(file.after));
+  }
+}
 
 export function assertEntrySnapshot(expected, actual) {
   for (const key of ["pointer", "unitSha", "launchDropInSha", "environmentSha", "gatewayPid", "gatewayStart", "gatewayInvocation", "configSha"])
     assert.equal(actual[key], expected[key], `Voice entry ${key} changed`);
   assert.equal(actual.openVoices, 0, "A voice call is open; do not replace the entry");
+  if ('relayConnections' in expected) assert.equal(actual.relayConnections, 0, 'The H5 relay has a connection; defer the upgrade');
 }
 export function entryLaunchOverride(execStart, server, nativeEnvironment = "") {
   assert(/^\/opt\/openclaw-voice-h5\/releases\/[A-Za-z0-9._-]+\/lab\/gpt-live-h5\/server\.mjs$/.test(server));
@@ -29,6 +44,8 @@ async function remoteMain(req) {
   const fs = await import("node:fs"), path = await import("node:path"), crypto = await import("node:crypto");
   const { execFileSync } = await import("node:child_process"), { request } = await import("node:http");
   const run = (bin, args) => execFileSync(bin, args, { encoding: "utf8", timeout: 30000, stdio: ["pipe", "pipe", "pipe"] }).trim();
+  const proof = req.productionReview ?? req.sharedProof;
+  if (req.productionReview) validateReviewedPresentation(proof, req);
   const hash = file => digest(fs.readFileSync(file));
   const properties = unit => Object.fromEntries(run("systemctl", ["show", unit, "-p", "MainPID,InvocationID,ActiveState,FragmentPath"])
     .split("\n").map(line => { const i = line.indexOf("="); return [line.slice(0, i), line.slice(i + 1)]; }));
@@ -43,7 +60,7 @@ async function remoteMain(req) {
   const entry = argv.find(value => value.endsWith("/dist/index.js"));
   assert(entry?.startsWith("/opt/") && argv.includes("gateway"), "Not a production Gateway");
   const runtime = path.dirname(path.dirname(entry));
-  for (const file of req.sharedProof.runtimeFiles) {
+  for (const file of proof.runtimeFiles) {
     const target = file.target.startsWith("openclaw/") ? path.join(runtime, file.target.slice(9))
       : path.join(path.dirname(runtime), "worker", file.target.slice("production-worker/".length));
     assert.equal(hash(target), file.after, "V runtime differs from the shared accepted artifact");
@@ -54,10 +71,14 @@ async function remoteMain(req) {
     launchDropInSha: fs.existsSync(launchDropIn) ? hash(launchDropIn) : null,
     environmentSha: hash(path.join(state, "rtc-h5.env")), gatewayPid: gp,
     gatewayStart: fs.readFileSync(`/proc/${gp}/stat`, "utf8").split(") ")[1].split(/\s+/u)[19],
-    gatewayInvocation: gateway.InvocationID, configSha: hash(env.OPENCLAW_CONFIG_PATH), openVoices: countVoices() });
+    gatewayInvocation: gateway.InvocationID, configSha: hash(env.OPENCLAW_CONFIG_PATH), openVoices: countVoices(),
+    // Direct providers live in the H5 process, outside the Gateway voice DB.
+    // A conservative socket check also protects those calls during cutover.
+    ...(req.h5Only ? { relayConnections: run('ss', ['-H', '-tnp', 'state', 'established', '( sport = :26242 )']).split('\n').filter(Boolean).length } : {}) });
   const snapshot = observe();
   const metadata = { schema: "gpt-live-voice-entry-v1", commit: req.commit, release: req.release, owner: req.owner,
-    artifactSha: req.sharedProof.artifactSha, filesSha: req.filesSha, dir, unit, url: "https://openclaw.tianyi.live/voice/", snapshot, at: new Date().toISOString() };
+    artifactSha: proof.artifactSha, filesSha: req.filesSha, dir, unit, url: "https://openclaw.tianyi.live/voice/", snapshot,
+    acceptanceBasis: req.productionReview ? 'user-reviewed-presentation; shared H5 gate explicitly waived' : 'shared-H5-acceptance', at: new Date().toISOString() };
   if (req.command === "plan") return { ...metadata, readOnly: true };
   assertEntrySnapshot(req.expected.snapshot, snapshot);
   const swap = target => { const temporary = pointer + ".gpt-live-new"; assert(!fs.existsSync(temporary)); fs.symlinkSync(target, temporary); fs.renameSync(temporary, pointer); };
@@ -143,16 +164,20 @@ async function remoteMain(req) {
   save(dir + "/installed.json", result); return result;
 }
 export function remoteSource() {
-  return `import assert from 'node:assert/strict';import {createHash} from 'node:crypto';const digest=${digest.toString()};\n`
-    + [assertEntrySnapshot, entryLaunchOverride, remoteMain].map(fn => fn.toString()).join("\n")
+  return `import assert from 'node:assert/strict';import {createHash} from 'node:crypto';const digest=${digest.toString()};const H5_PATHS=${JSON.stringify(H5_PATHS)};const fileIdentity=${fileIdentity.toString()};\n`
+    + [validateReviewedPresentation, assertEntrySnapshot, entryLaunchOverride, remoteMain].map(fn => fn.toString()).join("\n")
     + "\nlet text='';for await(const c of process.stdin)text+=c;try{const r=await remoteMain(JSON.parse(text));console.log(JSON.stringify(r))}catch{console.error('Voice entry identity or operation failed; preserve prepared receipts and inspect the service.');process.exitCode=1}";
 }
 function main(argv) {
   const command = argv.shift(); assert(["plan", "install", "rollback"].includes(command));
   const options = { command, target: "v" };
-  for (let i = 0; i < argv.length; i += 2) { assert(["--commit", "--release", "--owner", "--shared-proof", "--expected", "--output"].includes(argv[i]) && argv[i + 1]); options[argv[i].slice(2)] = argv[i + 1]; }
+  for (let i = 0; i < argv.length; i += 2) { assert(["--commit", "--release", "--owner", "--shared-proof", "--reviewed-proof", "--expected", "--output", "--h5-only"].includes(argv[i]) && argv[i + 1]); options[argv[i].slice(2)] = argv[i + 1]; }
+  if ('h5-only' in options) { assert.equal(options['h5-only'], 'true'); options.h5Only = true; delete options['h5-only']; }
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-  const req = freezeSource(root, options); req.sharedProof = JSON.parse(fs.readFileSync(options["shared-proof"])); validateSharedProof(req.sharedProof, req);
+  const req = freezeSource(root, options);
+  assert(Boolean(options['reviewed-proof']) !== Boolean(options['shared-proof']), 'Choose exactly one acceptance source');
+  if (options['reviewed-proof']) { req.productionReview = JSON.parse(fs.readFileSync(options['reviewed-proof'])); validateReviewedPresentation(req.productionReview, req); }
+  else { req.sharedProof = JSON.parse(fs.readFileSync(options['shared-proof'])); validateSharedProof(req.sharedProof, req); }
   if (command !== "plan") { req.expected = JSON.parse(fs.readFileSync(options.expected)); for (const key of ["commit", "release", "owner", "filesSha"]) assert.equal(req.expected[key], req[key]); }
   assert(!fs.existsSync(options.output), "Do not overwrite an entry receipt");
   const quote = value => "'" + value.replaceAll("'", "'\"'\"'") + "'";
