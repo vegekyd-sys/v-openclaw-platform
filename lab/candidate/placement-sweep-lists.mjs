@@ -244,9 +244,12 @@ let gateway, client;
 const profileDir = path.join(stateDir, "ps-cpuprofile");
 let profiling = false;
 // samples between [from, to] (µs, the profile's monotonic clock = process.hrtime), by frame
-function profileWindows(windows) {
-  const files = fs.existsSync(profileDir) ? fs.readdirSync(profileDir).filter((f) => f.endsWith(".cpuprofile")) : [];
-  if (files.length === 0) return { error: "no .cpuprofile written (Gateway did not exit cleanly?)" };
+function profileWindows(windows, pid) {
+  // CPU.<date>.<time>.<pid>.<thread>.<seq>.cpuprofile: Worker threads write their own; thread 0 is
+  // the Gateway's main thread
+  const all = fs.existsSync(profileDir) ? fs.readdirSync(profileDir).filter((f) => f.endsWith(".cpuprofile")) : [];
+  const files = all.filter((f) => f.split(".")[3] === String(pid) && f.split(".")[4] === "0");
+  if (files.length === 0) return { error: `no main-thread .cpuprofile for pid ${pid} (Gateway did not exit cleanly?)`, files: all };
   const profile = JSON.parse(fs.readFileSync(path.join(profileDir, files.at(-1)), "utf8"));
   const parent = new Map(), byId = new Map();
   for (const node of profile.nodes) { byId.set(node.id, node); for (const child of node.children ?? []) parent.set(child, node.id); }
@@ -388,6 +391,7 @@ try {
     late: { plantedMinute: Math.round((late.at - startedAt) / 60_000), retiredMinute: lateGoneAt === null ? null : Math.round((lateGoneAt - startedAt) / 60_000) },
   };
   if (PROFILE) {
+    const pid = gateway.pid;
     await stopGateway();
     // steady partial minutes before the 10-minute full pass vs after it
     const secondFull = fullPasses[1]?.at ?? Infinity;
@@ -395,7 +399,7 @@ try {
     summary.profile = profileWindows([
       { name: "partial minutes before the 10-minute full pass", ranges: ticks.slice(1).filter((t) => t.at < secondFull - 30_000).map(range) },
       { name: "minutes from the 10-minute full pass on", ranges: ticks.filter((t) => t.at >= secondFull - 30_000).map(range) },
-    ]);
+    ], pid);
   }
   console.log(JSON.stringify(summary, null, 1));
 
