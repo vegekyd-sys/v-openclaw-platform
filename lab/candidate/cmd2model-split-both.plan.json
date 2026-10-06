@@ -1,0 +1,38 @@
+{
+  "support": [
+    "lab/candidate/async-writer-par.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/async-writer-par.mjs"
+  ],
+  "timeoutSeconds": 2400,
+  "user": "lab-db91-parity",
+  "env": {
+    "PATCH": "on",
+    "WORKERS": "5",
+    "PAR": "8"
+  },
+  "files": [
+    {
+      "source": "lab/release-files/async-writer-admission/session-accessor.sqlite-entry-BlklNPKQ.js",
+      "target": "openclaw/dist/session-accessor.sqlite-entry-BlklNPKQ.js",
+      "before": "6b12190ca8e975ea6c8bce6703af805e01a1ef492e83f4829a6fe0f90669d96b"
+    },
+    {
+      "source": "lab/release-files/async-writer-admission/agent-db-writer-admission-wait.mjs",
+      "target": "openclaw/dist/agent-db-writer-admission-wait.mjs",
+      "before": null
+    },
+    {
+      "source": "lab/release-files/async-writer-admission/builtin-openclaw-zQV8Wwjr.js",
+      "target": "openclaw/dist/builtin-openclaw-zQV8Wwjr.js",
+      "before": "8445647093325217ee80f83b1fd34b5a01f2322adbb495732d576d2d40d75af1"
+    },
+    {
+      "source": "lab/release-files/auth-lookup-memo/provider-env-vars-BMbvepMk.js",
+      "target": "openclaw/dist/provider-env-vars-BMbvepMk.js",
+      "before": "78bedb00551a0b7f7d54f1a2bb8448053decb0f91ba72d04d9d7ddd25fb58cad"
+    }
+  ]
+}
