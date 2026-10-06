@@ -7,7 +7,7 @@ import {createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {DatabaseSync} from 'node:sqlite';
 import {waitForAgentDatabaseWriterAdmission} from './release-files/async-writer-admission/agent-db-writer-admission-wait.mjs';
-import {ADMISSION_MARKER, patchSessionEntryChunk} from './patch-async-writer-admission.mjs';
+import {ADMISSION_MARKER, patchBuiltinChunk, patchSessionEntryChunk} from './patch-async-writer-admission.mjs';
 
 const here = path.dirname(new URL(import.meta.url).pathname);
 const repo = path.dirname(here);
@@ -44,6 +44,25 @@ test('release file is exactly the patched V chunk and the patch applies once', (
   assert.match(patched, /await awaitAgentDatabaseWriterAdmission\(database, resolved\);\n\t\tawait withSqliteBeginContentionRetry\(\{/);
   assert.match(patched, /await awaitAgentDatabaseWriterAdmission\(owner\.database, owner\.scope\);\n\t\t\t\treturn withSqliteBeginContentionRetry\(/);
   assert.ok(patched.includes(ADMISSION_MARKER));
+});
+
+test('builtin release file awaits admission before the sync heartbeat claim', () => {
+  const builtinBase = path.join(repo, 'release/captured/v2026.9.1-db91.6-firsttext-r1-20261006/dist/builtin-openclaw-zQV8Wwjr.js');
+  const original = fs.readFileSync(builtinBase, 'utf8');
+  assert.equal(sha(original), '8445647093325217ee80f83b1fd34b5a01f2322adbb495732d576d2d40d75af1');
+  const patched = patchBuiltinChunk(original);
+  assert.equal(fs.readFileSync(path.join(here, 'release-files/async-writer-admission/builtin-openclaw-zQV8Wwjr.js'), 'utf8'), patched);
+  assert.throws(() => patchBuiltinChunk(patched), /already patched/);
+  assert.equal(patched.split('claimHeartbeatOutcomeForRun({').length - 1, 0);
+  assert.match(patched, /buildHeartbeatOutcomeContext\(await claimHeartbeatOutcomeForRunAfterWriterAdmission\(\{/);
+  // The wrapper still runs the unchanged sync claim, after the advisory wait.
+  assert.match(patched, /\t\} catch \{\}\n\treturn claimHeartbeatOutcomeForRun\(params\);\n\}/);
+  // Nothing else in the chunk changes.
+  const start = patched.indexOf('import { c as heartbeatAdmissionResolveSqliteScope');
+  const end = patched.indexOf('\treturn claimHeartbeatOutcomeForRun(params);\n}\n') + '\treturn claimHeartbeatOutcomeForRun(params);\n}\n'.length;
+  const restored = (patched.slice(0, start) + patched.slice(end))
+    .replace('await claimHeartbeatOutcomeForRunAfterWriterAdmission({', 'claimHeartbeatOutcomeForRun({');
+  assert.equal(restored, original);
 });
 
 test('free lease is probed once and released', async () => {
