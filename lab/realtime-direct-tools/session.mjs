@@ -43,7 +43,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
   async function reserve({model,sessionKey}) {
     const spec=DIRECT_MODELS.find(m=>m.id===model);if(!spec)throw Error('没有这个语音模型');
     if(!configured(model))throw Error(`${spec.label} 尚未配置语音凭据`);
-    const s={id:randomUUID(),ticket:randomBytes(32).toString('base64url'),model,sessionKey,closed:false,epoch:0,pending:new Map(),seen:new Map(),processes:new Set(),ending:null,assistantText:''};
+    const s={id:randomUUID(),ticket:randomBytes(32).toString('base64url'),model,sessionKey,closed:false,epoch:0,pending:new Map(),seen:new Map(),processes:new Set(),ending:null,assistantText:'',audioSequence:0};
     sessions.set(s.id,s);
     return {voiceSessionId:s.id,model:spec.model,provider:model,transport:'gateway-relay',relayTicket:s.ticket};
   }
@@ -99,14 +99,14 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
     const request={providerConfig:{voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',
       instructions:directInstructions(entries,await loadContext(s.sessionKey),s.model),tools:TOOLS,
       onToolCall:call=>void onToolCall(call),
-      onAudio:audio=>{if(!current(s))return;if(s.ending)s.ending.hasAudio=true;emit(s,{type:'audio',audio:audio.toString('base64'),sampleRate:24000});onOutputAudio(s.id,audio);audit({type:'audio',voiceSessionId:s.id,bytes:audio.length});},
+      onAudio:audio=>{if(!current(s))return;if(s.ending)s.ending.hasAudio=true;emit(s,{type:'audio',sequence:++s.audioSequence,audio:audio.toString('base64'),sampleRate:24000});onOutputAudio(s.id,audio);audit({type:'audio',voiceSessionId:s.id,bytes:audio.length});},
       onTranscript:(role,text,final)=>{
         if(!current(s))return;
         if(role==='user'&&final&&s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}
         emit(s,{type:'transcript',role,text,final});audit({type:'transcript',voiceSessionId:s.id,role,text,final});
       },
       onClearAudio:()=>{if(s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}emit(s,{type:'audio.clear'});},
-      onResponseDone:e=>{audit({type:'response.done',voiceSessionId:s.id,...e});if(s.ending?.hasAudio&&e.status==='completed')emit(s,{type:'end.after-playback',callId:s.ending.callId});},
+      onResponseDone:e=>{if(e.status==='completed')emit(s,{type:'audio.done'});audit({type:'response.done',voiceSessionId:s.id,...e});if(s.ending?.hasAudio&&e.status==='completed')emit(s,{type:'end.after-playback',callId:s.ending.callId});},
       onEvent:e=>audit({type:'provider.event',voiceSessionId:s.id,...e}),
       onProtocolEvent:e=>audit({type:'provider.protocol',voiceSessionId:s.id,event:{...e,...(e.delta&&e.type?.includes('audio')?{delta:'[audio retained separately]'}:{})}}),
       onError:e=>{emit(s,{type:'error',message:e.message});void close(s.id);},

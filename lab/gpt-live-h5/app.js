@@ -263,7 +263,13 @@ async function startRemotePlayback(active, source) {
 }
 async function recoverPlaybackGesture() {
   const active = call;
-  if (!active || !$("remoteAudio").srcObject || !active.playbackNeedsGesture) return;
+  if (!active) return;
+  if (active.relay) {
+    try { await active.context.resume(); if (call === active && active.context.state === "running") setStatus("V 正在听，直接说话就好"); }
+    catch { if (call === active) setStatus("轻点页面恢复声音播放。"); }
+    return;
+  }
+  if (!$("remoteAudio").srcObject || !active.playbackNeedsGesture) return;
   const playing = startRemotePlayback(active, "gesture");
   try {
     await active.context?.resume();
@@ -428,14 +434,14 @@ async function startCall() {
   if ($("voiceModel")) $("voiceModel").disabled = true;
   if (['seeduplex','grok'].includes($("voiceModel")?.value)) {
     // Create/resume in the dial gesture, before microphone and network awaits.
-    active.context = new AudioContext({sampleRate:24000});
+    active.context = new AudioContext({latencyHint:"interactive"});
     active.contextResume = active.context.resume();
   }
   // Each call owns its sound element; a late play() from an older call cannot
   // pause or replace the next call's pickup. The page element configures assets.
   active.soundElement = document.createElement("audio"); active.soundElement.playsInline = true;
   for (const key of ["ringSrc", "pickupSrc"]) if ($("callSound").dataset[key]) active.soundElement.dataset[key] = $("callSound").dataset[key];
-  active.sounds = createCallSounds({ audioElement: active.soundElement });
+  active.sounds = createCallSounds({ audioElement: active.soundElement, sharedContext: active.context });
   void active.sounds.dial();
   // Activity metadata stays in this page's memory only. It contains no audio,
   // transcript, session identifiers or claim that the model was interrupted.
@@ -472,6 +478,8 @@ async function startCall() {
           if(call!==active)return;
           tasks.consume(value);
           if(value.type.startsWith('tool.'))taskState();
+          if(value.type==='playback.blocked')setStatus('声音播放已暂停，轻点页面继续。');
+          if(value.type==='playback.resumed')setStatus('V 正在听，直接说话就好');
           if(value.type==='transcript') {
             active.relayTurns??={};
             const id=active.relayTurns[value.role]??=crypto.randomUUID();

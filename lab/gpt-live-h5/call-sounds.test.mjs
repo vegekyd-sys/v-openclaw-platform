@@ -94,3 +94,8 @@ test("remote MediaStream playback is rejected rather than touched by call sounds
   assert.throws(() => createCallSounds(f.options), TypeError);
   assert.equal(playRows(f).length, 0); assert(!f.trace.includes("pause"));
 });
+
+test('relay ring and pickup share the call context without closing its microphone or playback graph',async()=>{
+ const f=fixture();const Context=f.options.AudioContext,shared=new Context();const sounds=createCallSounds({...f.options,sharedContext:shared});
+ await sounds.dial();await sounds.connected();assert.equal(f.contexts.length,1);assert.equal(shared.state,'running');await sounds.dispose();assert.equal(shared.state,'running');assert.equal(f.trace.includes('close'),false);await shared.close();
+});

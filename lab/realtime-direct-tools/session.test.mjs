@@ -62,3 +62,8 @@ test('native call exposes only coarse task activity to the avatar, not tool argu
  assert.equal(f.invocations[0].args.query,'private-query-for-avatar-test');
  await f.service.dispose();
 });
+
+test('relay audio gets call-owned monotonically increasing sequence and a real response end boundary',async()=>{
+ const f=await fixture();const delta=Buffer.alloc(960).toString('base64');for(let i=0;i<2;i++)f.event({type:'response.output_audio.delta',delta});f.event({type:'response.done',response:{id:'speech',status:'completed'}});
+ assert.deepEqual(f.client.sent.filter(e=>e.type==='audio').map(e=>e.sequence),[1,2]);assert.equal(f.client.sent.filter(e=>e.type==='audio.done').length,1);await f.service.dispose();
+});
