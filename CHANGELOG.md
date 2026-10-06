@@ -11,6 +11,35 @@
 
 ---
 
+## v2026.9.1-db91.6-firsttext-r2-20261007
+
+上线：2026-10-07 01:48 CST  ·  tag `v2026.9.1-db91.6-firsttext-r2-20261007`
+
+**摘要**：首字优化第二批。Gateway 每分钟两次后台扫描（workboard 卡片、Worker placement）不再整表读取，共享 VLab 上每分钟主线程卡顿从 1.6–2.5 s 降到约 0.2 s；带图消息的识图能力判断不再现场构建完整模型目录（#221）。文件已于 2026-10-07 01:45 CST 装到 V 磁盘，在下一次 Gateway 重启时生效（本节写入时 V 尚未重启）。附带：本版之前 V 已上 voice-native-tools-pr217（tools-invoke-shared，由其负责人上线）。
+
+相对上一版 `v2026.9.1-db91.6-firsttext-r1-20261006`：5 个文件变化。
+
+**经 VLab 发版 `firsttext-r2-20261007`**（firsttext-0jwr2n，dev `9cc6785a`）
+> 验收：R2 (#221 #238 #240) on shared VLab 2026-10-07: health ok; real model turn exec+memory_search+write ok, 0 tool errors; idle profile minute windows 169-208 ms (batch2 base 1577-2466); image turns 3/3 toHarness 0.3-0.4 s; bench cold8 P50 12.4 s, warm16 P50 6.1 / P95 9.7 s; no errors from R2
+- `core` extensions/workboard/index.js  ba56e0ab → 5ac1a060
+- `core` placement-store-CkyLHi6x.js  f7c7b41c → 5bcb7a2f
+- `core` runner-BIhCXp3h.js  0648f47c → f99d7111
+- `core` server-worker-placement-startup-BvPREvpr.js  8366d71a → 8e73e9eb
+
+**经 VLab 发版 `voice-native-tools-pr217-firsttext-r1-20261006`**（01a0fb0e-739d-7681-9238-faa2c1912c6c，dev `1ee42ed0`）
+> 验收：Same frozen PR217 artifact/config; original shared native provider and speaker PCM core review reused (pr217-shared-core-review.json). User explicitly retained production trial after exec admission failure; production calendar and strict paused gates remain FAIL/unaccepted.
+- `core` tools-invoke-shared-CjpflNGO.js  68ef48e5 → ac465c5b
+
+**这期间合入 dev 的 PR**（8 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #250 parity: mark VLab channel plugins as expected config differences
+- #249 parity: advisory comparison of MCP server and plugin enabled switches
+- #240 perf(placement): the minute sweep stops reading every placement row
+- #221 带图消息：识图能力判断不再现场构建完整模型目录
+- #238 perf(workboard): stop the per-minute sweep from reading every card (retry of #225)
+- #237 feat(parity): V Browser 纳入 VLab↔V 比对（plugin / Broker / Browser Gateway）
+- #235 Capture of the release Tianyi Cai approved on 2026-10-06 ("可以先上线219 和220", "上线吧").
+- #232 feat(v-self-restart): 让 V 能安全地重启自己
+
 ## v2026.9.1-db91.6-firsttext-r1-20261006
 
 上线：2026-10-06 18:14 CST 安装到 V（promote-to-v，未重启；下次 Gateway 启动时生效，重启时间由 Tianyi 决定）  ·  tag `v2026.9.1-db91.6-firsttext-r1-20261006`
