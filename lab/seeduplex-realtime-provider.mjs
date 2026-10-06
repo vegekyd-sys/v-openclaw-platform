@@ -245,7 +245,6 @@ export class SeeduplexRealtimeVoiceBridge {
     this.seenEvents = new Map();
     this.pendingToolCalls = new Map();
     this.backgroundTools = new Map();
-    this.toolNotice = null;
     this.toolNoticeUsed = false;
     this.completedResponses = new Set();
     this.connectPromise = null;
@@ -464,7 +463,7 @@ export class SeeduplexRealtimeVoiceBridge {
   }
 
   #flushToolBatch(batch) {
-    if (batch.results.size !== batch.ids.length || this.toolNotice?.batch === batch) return;
+    if (batch.results.size !== batch.ids.length) return;
     this.#send({
       type: "conversation.item.create",
       event_id: `event_${randomUUID()}`,
@@ -477,14 +476,6 @@ export class SeeduplexRealtimeVoiceBridge {
     } else {
       this.toolBatches.splice(this.toolBatches.indexOf(batch), 1);
     }
-  }
-
-  #finishToolNotice() {
-    const notice = this.toolNotice;
-    if (!notice) return;
-    this.toolNotice = null;
-    clearTimeout(notice.timer);
-    this.#flushToolBatch(notice.batch);
   }
 
   #dispatchContinuedResult(batch) {
@@ -517,7 +508,6 @@ export class SeeduplexRealtimeVoiceBridge {
     this.ready = false;
     this.abortController.abort(new Error("Seeduplex session closed"));
     clearTimeout(this.connectTimer);
-    clearTimeout(this.toolNotice?.timer);
     if (this.socket?.readyState === 1) {
       this.#send({ type: "session.close" });
       setTimeout(() => this.socket?.close(), 1_000).unref?.();
@@ -554,9 +544,6 @@ export class SeeduplexRealtimeVoiceBridge {
     }
     this.request.onProtocolEvent?.(event);
     const type = event?.type;
-    if (this.toolNotice?.cancelRequested && type === 'error' && ['response_cancel_not_active','response_already_cancelled'].includes(event.error?.code)) {
-      this.#finishToolNotice(); return;
-    }
     if (type === "error" && this.cancelledOutputPending) {
       // response.cancel is documented to return an error when its target ended
       // in the race between local playback and the upstream command.
@@ -660,7 +647,6 @@ export class SeeduplexRealtimeVoiceBridge {
       const text = optionalString(event.transcript) ?? optionalString(event.text);
       if (text) {
         this.toolNoticeUsed = false;
-        this.#finishToolNotice();
         this.request.onTranscript?.("user", text, true);
       }
     }
@@ -689,7 +675,6 @@ export class SeeduplexRealtimeVoiceBridge {
     ) {
       try {
         const audio = decodeSeeduplexFloat32Pcm(event.delta);
-        if (this.toolNotice) this.toolNotice.audioSeen = true;
         this.request.onAudio(audio);
         this.request.onMark?.(`seeduplex-audio-${randomUUID()}`);
       } catch {
@@ -697,7 +682,6 @@ export class SeeduplexRealtimeVoiceBridge {
       }
     }
     if (type === "response.output_audio.done") {
-      if (this.toolNotice?.audioSeen) this.#finishToolNotice();
       this.request.onAudioSegmentDone?.();
       const continuing = this.toolBatches.find(
         (batch) =>
@@ -751,7 +735,6 @@ export class SeeduplexRealtimeVoiceBridge {
       }
       this.responseActive = false;
     } else if (type === "response.canceled") {
-      this.#finishToolNotice();
       this.responseActive = false;
       this.#onResponseDone({
         status: "cancelled",
@@ -805,25 +788,12 @@ export class SeeduplexRealtimeVoiceBridge {
       phase: "collecting",
     };
     this.toolBatches.push(batch);
-    // The function is already selected. Start real work in this same turn;
-    // only its native result waits for the short host-owned spoken notice.
+    // Host-owned cached PCM explains the selected function without injecting
+    // another upstream response or delaying its native function result.
     const notice = !this.toolNoticeUsed && this.request.toolStartNotice?.(calls[0]);
     if (notice) {
       this.toolNoticeUsed = true;
-      this.toolNotice = {batch, audioSeen:false, cancelRequested:false};
-      const owner = this.toolNotice;
-      owner.timer = setTimeout(() => {
-        if (this.terminal || this.toolNotice !== owner) return;
-        owner.cancelRequested = true;
-        this.#send({type:'response.cancel',event_id:`event_${randomUUID()}`});
-        owner.timer = setTimeout(() => {
-          if (this.toolNotice === owner) this.#fail(new Error('查询已执行，但等待提示语音未结束，请重新拨号'));
-        }, 3000);
-        owner.timer.unref?.();
-      }, this.options.toolNoticeTimeoutMs ?? 5000);
-      owner.timer.unref?.();
-      this.request.onTranscript?.("assistant", notice, true, "tool-start");
-      this.speakProgress(notice);
+      this.request.onToolStartNotice?.(notice, calls[0]);
     }
     for (const call of calls) {
       this.seenToolCalls.add(call.callId);

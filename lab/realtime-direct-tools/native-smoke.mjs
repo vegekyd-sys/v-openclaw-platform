@@ -8,6 +8,7 @@ import {spawn} from 'node:child_process';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {createPrivatePulseMicrophone} from '../gpt-live-candidate-native/private-pulse.mjs';
 import {calendarOutcome} from './tools.mjs';
+import {actualSpeakerIdle} from './playback-evidence.mjs';
 const evidence=process.env.DIRECT_VOICE_EVIDENCE,ready=JSON.parse(fs.readFileSync(process.env.GPT_LIVE_H5_EXPERIENCE_READY));
 assert(ready.candidateId===process.env.VLAB_CANDIDATE_ID&&ready.state==='ready'&&Date.parse(ready.expiresAt)>Date.now()+Number(process.env.DIRECT_VOICE_MIN_WINDOW_MS??600000));
 fs.mkdirSync(evidence,{mode:0o700});
@@ -29,7 +30,7 @@ async function click(id){const rect=await evaluate(`(()=>{const e=document.getEl
 async function speak(name){const row={name,at:Date.now(),source:'private-real-getUserMedia-PCM'};results.push(row);await pulse.play(path.join(clips,name+'.wav'),name).done;row.completedAt=Date.now();}
 function check(name,passed,details={}){const row={...details,name,passed:Boolean(passed),at:Date.now()};results.push(row);save('progress.json',{results,errors});console.log(JSON.stringify(row));}
 function speakerTailRms(){if(!outputFile||!fs.existsSync(outputFile))return 1;const size=fs.statSync(outputFile).size;if(size<48000)return 1;const fd=fs.openSync(outputFile,'r'),b=Buffer.alloc(48000);try{fs.readSync(fd,b,0,b.length,size-b.length);}finally{fs.closeSync(fd);}let sum=0;for(let i=0;i<b.length;i+=2)sum+=(b.readInt16LE(i)/32768)**2;return Math.sqrt(sum/(b.length/2));}
-async function quiet(id,ms=15000){return wait(()=>{const rows=audit().filter(x=>x.voiceSessionId===id&&x.type==='audio');return rows.length&&Date.now()-rows.at(-1).at>1200&&speakerTailRms()<.001;},'actual provider and native speaker quiet',ms);}
+async function quiet(id,ms=15000){return wait(()=>actualSpeakerIdle(audit().filter(x=>x.voiceSessionId===id),Date.now(),speakerTailRms()),'actual provider and FIFO-drained native speaker quiet',ms);}
 async function stop(){const s=await state();if(s.state!=='idle')await click('stop');await wait(s=>s.state==='idle','original UI release',15000);}
 async function record(model){
  outputFile=path.join(evidence,model+'-speaker.pcm');outputHandle=fs.openSync(outputFile,'wx',0o600);
@@ -49,9 +50,9 @@ async function runModel(model){
   const firstInput=Date.now();await speak('simple');const firstInputEnd=Date.now();await wait(()=>rows().some(x=>x.type==='tool.invoke'&&x.name==='memory_search'),'simple native memory call',45000);
   await wait(()=>rows().some(x=>x.type==='tool.delivered'&&rows().some(c=>c.type==='tool.call'&&c.name==='memory_search'&&c.callId===x.callId)),'simple native tool actually delivered',60000);
   const firstDelivery=rows().find(x=>x.type==='tool.delivered'&&rows().some(c=>c.type==='tool.call'&&c.name==='memory_search'&&c.callId===x.callId));
-  await wait(()=>rows().some(x=>x.type==='audio'&&x.at>firstDelivery.at),'first answer actual PCM without another USER utterance',30000);
+  await wait(()=>rows().some(x=>x.type==='audio'&&!x.source&&x.at>firstDelivery.at),'first answer actual PCM without another USER utterance',30000);
   await quiet(id,90000);
-  check(model+'/single-query-answer-audio',rows().some(x=>x.type==='audio'&&x.at>firstDelivery.at),{deliveryAt:firstDelivery.at,nextUserInputSent:false});
+  check(model+'/single-query-answer-audio',rows().some(x=>x.type==='audio'&&!x.source&&x.at>firstDelivery.at),{deliveryAt:firstDelivery.at,nextUserInputSent:false});
   const firstTool=rows().find(x=>x.type==='tool.call'&&x.name==='memory_search');check(model+'/single-utterance-query',firstTool.at>=firstInput&&firstTool.at-firstInputEnd<10000,{inputStart:firstInput,inputEnd:firstInputEnd,toolAt:firstTool.at,latencyMs:firstTool.at-firstInputEnd});
   check(model+'/simple-stays-native',!rows().some(x=>x.type==='backend.started')&&rows().some(x=>x.type==='tool.native-result'&&x.name==='memory_search'&&x.result.ok===true));
   if(process.env.DIRECT_VOICE_CASES==='single-query'){await stop();await stopRecording();save(model+'-wire.json',await wire());save(model+'-single-query-result.json',{model,results:results.filter(x=>x.name?.startsWith(model+'/')),productAccepted:false});return;}
@@ -60,7 +61,7 @@ async function runModel(model){
    const first=rows().find(x=>x.type==='tool.native-result'&&x.at>at&&names.includes(x.name));
    await wait(()=>rows().some(x=>x.type==='tool.delivered'&&x.callId===first.callId),'simple '+clip+' result delivery',100000);
    const delivered=rows().find(x=>x.type==='tool.delivered'&&x.callId===first.callId),result=rows().filter(x=>x.type==='tool.native-result'&&x.callId===first.callId).at(-1);
-   await wait(()=>rows().some(x=>x.type==='audio'&&x.at>delivered.at),'simple '+clip+' actual answer PCM',30000);await quiet(id,90000);
+   await wait(()=>rows().some(x=>x.type==='audio'&&!x.source&&x.at>delivered.at),'simple '+clip+' actual answer PCM',30000);await quiet(id,90000);
    const output=result.result.output,calendar=clip==='calendar'?calendarOutcome(output):null;
    const succeeded=result.result.ok===true&&output?.isError!==true&&!delivered.result?.error&&(clip!=='calendar'||calendar.ok);
    check(model+'/simple-'+clip,succeeded&&!rows().some(x=>x.type==='backend.started'&&x.at>at),{toolName:result.name,callId:result.callId,exitCode:output?.details?.exitCode,calendarOk:calendar?.ok,deliveryAt:delivered.at,secondUserUtteranceRequired:false});
@@ -73,7 +74,7 @@ async function runModel(model){
   await wait(()=>rows().some(x=>x.type==='backend.completed'&&x.runId===run.runId),'automatic complete multi-step V final',180000);
   await wait(()=>rows().some(x=>x.type==='tool.delivered'&&x.result.backend==='V'&&x.result.runId===run.runId),'actual provider final continuation',60000);
   const delivered=rows().find(x=>x.type==='tool.delivered'&&x.result.runId===run.runId);
-  await wait(()=>rows().some(x=>x.type==='audio'&&x.at>delivered.at),'native final PCM after real backend delivery',30000);
+  await wait(()=>rows().some(x=>x.type==='audio'&&!x.source&&x.at>delivered.at),'native final PCM after real backend delivery',30000);
   if(model==='grok')await wait(()=>rows().some(x=>x.type==='transcript'&&x.role==='assistant'&&x.final&&x.at>delivered.at&&/上海/.test(x.text)&&/风火轮|玩具/.test(x.text)&&/时间|点|14:|15:/.test(x.text)),'provider actual three-part final speech transcript',30000);
   await quiet(id,120000);
   const playback=rows().filter(x=>x.type==='client.playback-stats').at(-1)?.stats;check(model+'/render-receipts',Boolean(playback)&&playback.outputBytes>0,{playback,physicalSafariAccepted:false});

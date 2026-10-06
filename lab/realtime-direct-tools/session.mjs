@@ -5,6 +5,7 @@ import {V_FRONTEND_PERSONA} from '../gpt-live-h5/persona.mjs';
 import {TOOLS,createToolExecutor,validateTool,processExited} from './tools.mjs';
 import {GrokVoiceBridge,GROK_VOICE_MODEL} from './grok-provider.mjs';
 import {createBackendDelegation} from './backend.mjs';
+import {loadToolStartClips,toolStartClip} from './tool-start-audio.mjs';
 
 export const DIRECT_MODELS = [
   {id:'seeduplex',label:'豆包 · 小何',model:'1.2.6.1',voice:'xiaohe'},
@@ -82,6 +83,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
     const catalog=await gateway.request('tools.catalog',{agentId:'makaron',includePlugins:true},{timeoutMs:20000});
     if(!current(s))return;
     const entries=(catalog.groups??[]).flatMap(g=>g.tools??[]),allowedTools=new Set(entries.map(t=>t.id));
+    const noticeClips=s.model==='seeduplex'?loadToolStartClips():null;
+    const deliverAudio=(audio,metadata={})=>{if(!current(s))return;emit(s,{type:'audio',sequence:++s.audioSequence,audio:audio.toString('base64'),sampleRate:24000,...metadata});onOutputAudio(s.id,audio);audit({type:'audio',voiceSessionId:s.id,bytes:audio.length,...metadata});};
     const invoke=async(name,args,callId,signal)=>{
       if(signal.aborted||!current(s))throw Error('本次任务已取消');
       if(!allowedTools.has(name))throw Error('OpenClaw 未开放这个工具');
@@ -138,12 +141,15 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       instructions:directInstructions(entries,await loadContext(s.sessionKey),s.model)+hybridInstructions,tools:TOOLS,
       onToolCall:call=>void onToolCall(call),
       toolStartNotice:call=>{
-        if(['end_call','cancel_task','delegate_to_v','process'].includes(call.name))return null;
-        if(call.name==='memory_search')return '我查一下记忆里的记录。';
-        if(['web_search','web_fetch'].includes(call.name))return '我上网查一下。';
-        return '我查一下相关资料。';
+        return noticeClips?toolStartClip(call,noticeClips)?.text:null;
       },
-      onAudio:audio=>{if(!current(s))return;s.responseActive=true;if(s.ending)s.ending.hasAudio=true;emit(s,{type:'audio',sequence:++s.audioSequence,audio:audio.toString('base64'),sampleRate:24000});onOutputAudio(s.id,audio);audit({type:'audio',voiceSessionId:s.id,bytes:audio.length});},
+      onToolStartNotice:(text,call)=>{
+        if(!current(s))return;const clip=toolStartClip(call,noticeClips);
+        emit(s,{type:'transcript',role:'assistant',text,final:true,source:'tool-start'});
+        audit({type:'transcript',voiceSessionId:s.id,role:'assistant',text,final:true,source:'tool-start',callId:call.callId});
+        deliverAudio(clip.pcm,{source:clip.source,sha256:clip.sha256,callId:call.callId});emit(s,{type:'audio.done'});
+      },
+      onAudio:audio=>{if(!current(s))return;s.responseActive=true;if(s.ending)s.ending.hasAudio=true;deliverAudio(audio);},
       onTranscript:(role,text,final,source)=>{
         if(!current(s))return;
         if(role==='user'){s.lastUserAt=Date.now();s.userSpeaking=!final;}
