@@ -79,3 +79,19 @@ test('config findings are advisory: they do not change the parity state', () => 
   // promote-to-v.mjs and evaluateParity count blocking findings this way.
   assert.deepEqual(findings.filter((f) => f.kind !== 'pending' && !f.advisory), []);
 });
+
+test('MCP absent vs off is not reported; channel plugins are expected differences', () => {
+  // The 2026-10-06 parity run, after voice-memory was turned off on VLab.
+  const v = { gateway: { mcp: { figma: false, 'voice-memory': false }, plugins: { feishu: true, 'openclaw-plugin-xiaoai-cloud': false, parallel: true } }, worker: null };
+  const vlab = { gateway: { mcp: { 'voice-memory': false }, plugins: { feishu: true, 'openclaw-plugin-xiaoai-cloud': true, telegram: true } }, worker: null };
+  const { compared, findings } = compareConfigSwitches({ v, vlab });
+  assert.equal(compared, 6);
+  assert.deepEqual(findings.map((f) => [f.target, f.kind, f.v, f.vlab, f.advisory]), [
+    ['gateway: plugins.entries.openclaw-plugin-xiaoai-cloud.enabled', 'config-expected', 'false', 'true', true],
+    ['gateway: plugins.entries.parallel.enabled', 'config-differs', 'true', 'absent', true],
+    ['gateway: plugins.entries.telegram.enabled', 'config-expected', 'absent', 'true', true],
+  ]);
+  // An MCP server on one side only, and on, is still drift.
+  const on = compareConfigSwitches({ v: { gateway: { mcp: {}, plugins: {} }, worker: null }, vlab: { gateway: { mcp: { figma: true }, plugins: {} }, worker: null } });
+  assert.deepEqual(on.findings.map((f) => [f.target, f.kind]), [['gateway: mcp.servers.figma.enabled', 'config-differs']]);
+});
