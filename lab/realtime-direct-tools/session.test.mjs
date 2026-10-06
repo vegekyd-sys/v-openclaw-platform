@@ -80,3 +80,13 @@ test('hybrid explicit cancellation aborts only its own backend run and never fee
  const result=f.audit.find(x=>x.type==='tool.delivered');assert.equal(result.result.cancelled,true);assert(!JSON.stringify(result).includes('不要播报'));
  assert(f.invocations.some(x=>x.runId===started.runId&&x.sessionKey===started.sessionKey));await f.service.dispose();
 });
+
+test('unconfirmed process termination retains call ownership and prevents redial until cleanup retry',async()=>{
+ let terminal=false;const f=await fixture(async args=>args.name==='exec'?{ok:true,output:{details:{status:'running',sessionId:'owned-retry'}}}:{ok:true,output:{details:{status:terminal?'killed':'running'}}});
+ f.call('openclaw_tool',{tool:'exec',arguments:JSON.stringify({command:'sleep 60'})});await delay(5);
+ const cancelled=await f.service.steer(f.reservation.voiceSessionId,{mode:'cancel',text:'取消'});assert.equal(cancelled.ok,false);
+ await assert.rejects(f.service.close(f.reservation.voiceSessionId),/退出尚未确认/);
+ await assert.rejects(f.service.reserve({model:'grok',sessionKey:'personal'}),/正在确认退出/);
+ terminal=true;await delay(5);await f.service.close(f.reservation.voiceSessionId);
+ assert.equal(f.audit.filter(x=>x.type==='call.closed').length,1);await f.service.dispose();
+});

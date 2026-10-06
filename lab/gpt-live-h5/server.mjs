@@ -141,7 +141,9 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
         if (pathname === '/api/heartbeat') return json(res,200,{ok:true});
         if (pathname === '/api/steer') {
           if(!['steer','cancel'].includes(params.mode)||typeof params.text!=='string'||!params.text.trim()||params.text.length>2000)return json(res,400,{error:'补充内容无效'});
-          return json(res,200,await directVoice.steer(params.voiceSessionId,params));
+          const result=await directVoice.steer(params.voiceSessionId,params);
+          if(result?.ok!==true)return json(res,409,{error:'已请求取消，后台退出尚未确认，请稍后重试。'});
+          return json(res,200,result);
         }
         return json(res,400,{error:'当前模型使用实时音频通道'});
       }

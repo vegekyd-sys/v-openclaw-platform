@@ -22,8 +22,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
     if(!current(s)||s.ending||s.responseActive||s.playing||s.userSpeaking||Date.now()-s.lastUserAt<1200)return;
     if(s.backendResult){const {resolve}=s.backendResult;s.backendResult=null;s.progress=null;resolve();return;}
     if(!s.progress||s.pending.size!==1||!s.backend.snapshot()||Date.now()-s.lastProgressAt<10000)return;
-    const p=s.progress;s.progress=null;s.lastProgressAt=Date.now();s.responseActive=true;
-    s.bridge.speakProgress(p.text.slice(0,220));audit({type:'backend.progress-spoken',voiceSessionId:s.id,...p});
+    const p=s.progress;s.progress=null;if(p.text.length>220)return;
+    s.lastProgressAt=Date.now();s.responseActive=true;
+    s.bridge.speakProgress(p.text);audit({type:'backend.progress-spoken',voiceSessionId:s.id,...p});
   };
   const websocketServer=new wsModule.WebSocketServer({noServer:true,maxPayload:65536});
   const configured=id=>id==='seeduplex'?Boolean(apiKeys.seeduplex):id==='grok'&&Boolean(apiKeys.grok);
@@ -39,6 +40,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
     const terminal=await gateway.request('tools.invoke',{agentId:'makaron',sessionKey:s.sessionKey,name:'process',args:{action:'poll',sessionId:id,timeout:2000}},{timeoutMs:10000});
     audit({type:'process.cancel-observed',voiceSessionId:s.id,sessionId:id,result:terminal});
     if(['completed','failed','killed','cancelled'].includes(terminal.output?.details?.status))s.processes.delete(id);
+    else throw Error('执行会话退出尚未确认');
   };
   const cancel=async s=>{s.epoch++;for(const c of s.pending.values())c.abort();s.ending=null;emit(s,{type:'end.cancelled'});
     s.progress=null;s.backendResult?.resolve();s.backendResult=null;
@@ -46,11 +48,21 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
     const failures=results.filter(r=>r.status==='rejected').length;
     return {cancelled:failures===0,cancelRequested:true,processCleanupFailures:failures};};
   const close=async id=>{
-    const s=sessions.get(id);if(!s||s.closed)return;
-    s.closed=true;await cancel(s);s.pending.clear();
-    clearInterval(s.progressTimer);s.bridge?.close();s.client?.close();sessions.delete(id);audit({type:'call.closed',voiceSessionId:id});
+    const s=sessions.get(id);if(!s)return;
+    if(s.closePromise)return s.closePromise;
+    if(s.closed&&!s.cleanupFailed)return;
+    s.closePromise=(async()=>{
+      s.closed=true;
+      const result=await cancel(s);s.pending.clear();
+      clearInterval(s.progressTimer);s.bridge?.close();s.client?.close();
+      s.cleanupFailed=result.processCleanupFailures>0;
+      if(s.cleanupFailed){audit({type:'call.cleanup-unconfirmed',voiceSessionId:id,result});throw Error('电话已结束，后台任务退出尚未确认');}
+      sessions.delete(id);audit({type:'call.closed',voiceSessionId:id});
+    })();
+    try{return await s.closePromise;}finally{s.closePromise=null;}
   };
   async function reserve({model,sessionKey}) {
+    if([...sessions.values()].some(s=>s.cleanupFailed))throw Error('上一通电话的后台任务正在确认退出，请稍后重试');
     const spec=DIRECT_MODELS.find(m=>m.id===model);if(!spec)throw Error('没有这个语音模型');
     if(!configured(model))throw Error(`${spec.label} 尚未配置语音凭据`);
     const s={id:randomUUID(),ticket:randomBytes(32).toString('base64url'),model,sessionKey,closed:false,epoch:0,pending:new Map(),seen:new Map(),processes:new Set(),ending:null,assistantText:''};
@@ -61,7 +73,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
   }
   async function start(s,client) {
     s.client=client;
-    client.on('close',()=>void close(s.id));
+    client.on('close',()=>void close(s.id).catch(()=>{}));
     const catalog=await gateway.request('tools.catalog',{agentId:'makaron',includePlugins:true},{timeoutMs:20000});
     if(!current(s))return;
     const entries=(catalog.groups??[]).flatMap(g=>g.tools??[]),allowedTools=new Set(entries.map(t=>t.id));
@@ -87,7 +99,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       if(!current(s))return;
       const signature=JSON.stringify([call.name,call.args]),old=s.seen.get(call.callId);
       if(old){if(old!==signature)emit(s,{type:'error',message:'工具身份冲突'});return;}
-      if(s.seen.size>=256){emit(s,{type:'error',message:'这通电话的工具调用已达到上限，请重新拨号'});void close(s.id);return;}
+      if(s.seen.size>=256){emit(s,{type:'error',message:'这通电话的工具调用已达到上限，请重新拨号'});void close(s.id).catch(()=>{});return;}
       s.seen.set(call.callId,signature);
       const controller=new AbortController(),epoch=s.epoch;
       s.pending.set(call.callId,controller);
@@ -129,8 +141,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
         if(e.type==='input_audio_buffer.speech_stopped'){s.userSpeaking=false;s.lastUserAt=Date.now();}
         audit({type:'provider.event',voiceSessionId:s.id,...e});},
       onProtocolEvent:e=>audit({type:'provider.protocol',voiceSessionId:s.id,event:{...e,...(e.delta&&e.type?.includes('audio')?{delta:'[audio retained separately]'}:{})}}),
-      onError:e=>{emit(s,{type:'error',message:e.message});void close(s.id);},
-      onClose:()=>{if(current(s))void close(s.id);},
+      onError:e=>{emit(s,{type:'error',message:e.message});void close(s.id).catch(()=>{});},
+      onClose:()=>{if(current(s))void close(s.id).catch(()=>{});},
     };
     if(!current(s))return;
     const createWebSocket=async(url,options)=>new wsModule.WebSocket(url,options);
@@ -142,7 +154,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       try{const e=JSON.parse(data.toString());if(e.type==='greeting'&&!s.greeted){s.greeted=true;s.bridge.triggerGreeting('电话已接通。请用中文向天意简短打个招呼，然后听他说话。');}
       else if(e.type==='text'&&typeof e.text==='string'&&e.text.trim()&&e.text.length<=2000)s.bridge.sendUserMessage(e.text);
       else if(e.type==='playback.state'&&typeof e.speaking==='boolean')s.playing=e.speaking;
-      else if(e.type==='playback.drained'&&s.ending?.callId===e.callId)void close(s.id);
+      else if(e.type==='playback.drained'&&s.ending?.callId===e.callId)void close(s.id).catch(()=>{});
       }catch{client.close(1008);}
     });
     await s.bridge.connect();if(current(s))emit(s,{type:'ready',model:s.model,tools:TOOLS.map(t=>t.name)});
@@ -151,11 +163,11 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
     models,reserve,close,handleEvent(event){for(const s of sessions.values())s.backend.handleEvent(event);},
     upgrade(req,socket,head,id,ticket){
       const s=sessions.get(id);if(!s||s.ticket!==ticket||s.client){socket.destroy();return;}
-      s.ticket=null;websocketServer.handleUpgrade(req,socket,head,client=>{client.on('error',()=>void close(s.id));void start(s,client).catch(()=>{emit(s,{type:'error',message:'语音或工具环境尚未就绪'});void close(s.id);});});
+      s.ticket=null;websocketServer.handleUpgrade(req,socket,head,client=>{client.on('error',()=>void close(s.id).catch(()=>{}));void start(s,client).catch(()=>{emit(s,{type:'error',message:'语音或工具环境尚未就绪'});void close(s.id).catch(()=>{});});});
     },
     async steer(id,{mode,text}){const s=sessions.get(id);if(!current(s)||!s.bridge)throw Error('语音会话已结束');
-      if(mode==='cancel')await cancel(s);
-      s.bridge.sendUserMessage(text);return {ok:true};},
+      const result=mode==='cancel'?await cancel(s):null;
+      s.bridge.sendUserMessage(text);return {ok:result?result.cancelled:true,...result};},
     async dispose(){await Promise.all([...sessions.keys()].map(close));websocketServer.close();},
   };
 }
