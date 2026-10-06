@@ -10,8 +10,13 @@
 //
 //   mcp.servers.<name>.enabled       which servers exist, and whether each is on
 //   plugins.entries.<id>.enabled     which plugin entries exist, and whether each is on
+//   plugins.entries.<id>.config.<path>.enabled
+//                                    a few named switches inside a plugin's config
+//                                    (PLUGIN_CONFIG_SWITCHES), reported only when set
+//                                    to a boolean
 //
-// `enabled` left unset counts as on, as OpenClaw reads it (`enabled !== false`).
+// `enabled` left unset counts as on, as OpenClaw reads it (`enabled !== false`),
+// except inside plugin config, where only explicit booleans are kept.
 // Differences are advisory: they never decide ALIGNED / AHEAD / DIVERGED,
 // because channels, credentials and providers are meant to differ
 // (AGENTS.md); they are reported so a measurement on VLab can be read with them.
@@ -26,17 +31,36 @@
 // Channel plugin entries VLab and V may each have on their own.
 export const EXPECTED_CHANNEL_PLUGINS = new Set(['telegram', 'openclaw-plugin-xiaoai-cloud']);
 
+// Switches inside plugin config that change what a Gateway or Worker does on a
+// timer. memory-core dreaming: off on V, on in VLab (2026-10-06), and its
+// cleanup blocked the VLab Gateway main thread for 2.9 s during r2 acceptance.
+export const PLUGIN_CONFIG_SWITCHES = [['memory-core', ['dreaming']]];
+
 const SECTIONS = [
   ['mcp', (cfg) => cfg?.mcp?.servers, 'mcp.servers'],
   ['plugins', (cfg) => cfg?.plugins?.entries, 'plugins.entries'],
+  ['pluginConfig', null, 'plugins.entries'],
 ];
 
+function pluginConfigSwitches(cfg) {
+  const switches = {};
+  for (const [id, keys] of PLUGIN_CONFIG_SWITCHES) {
+    const value = keys.reduce((node, key) => (node && typeof node === 'object' ? node[key] : undefined), cfg?.plugins?.entries?.[id]?.config)?.enabled;
+    if (typeof value === 'boolean') switches[`${id}.config.${keys.join('.')}`] = value;
+  }
+  return switches;
+}
+
 // cfg: a parsed openclaw.json, or null when the host has no such file.
-// Returns { mcp: { name: boolean }, plugins: { id: boolean } } or null.
+// Returns { mcp: { name: boolean }, plugins: { id: boolean }, pluginConfig: { path: boolean } } or null.
 export function configSwitches(cfg) {
   if (cfg == null) return null;
   const out = {};
   for (const [key, pick] of SECTIONS) {
+    if (key === 'pluginConfig') {
+      out[key] = pluginConfigSwitches(cfg);
+      continue;
+    }
     const section = pick(cfg);
     const switches = {};
     if (section && typeof section === 'object' && !Array.isArray(section)) {
