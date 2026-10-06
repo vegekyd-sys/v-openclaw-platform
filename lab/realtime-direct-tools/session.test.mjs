@@ -68,9 +68,9 @@ test('hybrid tool keeps one backend run alive during chat; progress and final wa
  await delay(250);
  const progress=f.upstream.sent.find(x=>x.item?.type==='force_message');assert.equal(progress.item.content[0].text,'第一步查到了实际记录，正在核对网页。');assert.equal(progress.item.interruptible,true);
  backend({payload:{state:'final',message:{content:[{type:'text',text:'所有步骤完成，结论如下'}]}}});await delay(5);
- assert.equal(f.upstream.sent.some(x=>x.item?.type==='function_call_output'),false);
+ assert.equal(f.upstream.sent.filter(x=>x.item?.type==='force_message').length,1);
  f.event({type:'response.done',response:{id:'progress-speech',status:'completed'}});await delay(250);
- assert.equal(JSON.parse(f.upstream.sent.find(x=>x.item?.type==='function_call_output').item.output).backend,'V');
+ assert.equal(f.upstream.sent.filter(x=>x.item?.type==='force_message').at(-1).item.content[0].text,'所有步骤完成，结论如下');
  assert.equal(f.client.sent.filter(x=>x.type==='tool.result').length,1);await f.service.dispose();
 });
 test('hybrid explicit cancellation aborts only its own backend run and never feeds late final',async()=>{

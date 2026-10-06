@@ -107,7 +107,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       let result;
       try {
         validateTool(call.name,call.args);
-        if(call.name==='delegate_to_v'&&s.model==='seeduplex')s.bridge.beginBackgroundTool(call.callId,call.args.question);
+        if(call.name==='delegate_to_v')s.bridge.beginBackgroundTool(call.callId,call.args.question);
         result=await execute(call.name,call.args,call.callId,controller.signal);
         if(call.name==='delegate_to_v'&&current(s)&&s.epoch===epoch){
           s.progress=null;await new Promise(resolve=>{s.backendResult={resolve};deferred(s);});
@@ -120,7 +120,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       // Explicit cancellation retires results, while ordinary conversational
       // interruption leaves background work alive. Never feed a late old fact.
       if(s.epoch!==epoch&&call.name!=='cancel_task')result={cancelled:true,instruction:'旧任务已取消，不继续，也不播报旧结果。'};
-      try {if(call.name==='delegate_to_v'&&s.model==='seeduplex')s.bridge.completeBackgroundTool(call.callId,result);else s.bridge.submitToolResult(call.callId,result);}
+      try {if(call.name==='delegate_to_v')s.bridge.completeBackgroundTool(call.callId,result);else s.bridge.submitToolResult(call.callId,result);}
       catch {result={error:'工具结果过大或无法续传，请缩小范围并分页读取。'};s.bridge.submitToolResult(call.callId,result);}
       audit({type:'tool.delivered',voiceSessionId:s.id,callId:call.callId,result});
       emit(s,{type:'tool.result',callId:call.callId,name:call.name});

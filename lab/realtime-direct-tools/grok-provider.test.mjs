@@ -23,3 +23,10 @@ test('backend progress uses documented interruptible force_message without a sec
  assert.deepEqual(f.ws.sent.at(-1),{type:'conversation.item.create',item:{type:'force_message',role:'assistant',interruptible:true,content:[{type:'output_text',text:'网页已核对，继续比较。'}]}});
  assert.equal(f.ws.sent.filter(e=>e.type==='response.create').length,0);f.bridge.close();
 });
+
+test('async backend releases native function before chat and returns final once via force_message',async()=>{
+ const f=await fixture();f.bridge.receive({type:'response.created',response:{id:'job'}});f.bridge.receive({type:'response.function_call_arguments.done',response_id:'job',call_id:'owned-job',name:'delegate_to_v',arguments:'{}'});
+ f.bridge.beginBackgroundTool('owned-job');f.bridge.receive({type:'response.done',response:{id:'job',status:'completed'}});assert(JSON.parse(f.ws.sent.find(x=>x.item?.type==='function_call_output').item.output).accepted);
+ f.bridge.receive({type:'response.created',response:{id:'chat'}});f.bridge.receive({type:'response.done',response:{id:'chat',status:'completed'}});
+ f.bridge.completeBackgroundTool('owned-job',{result:'真实后台最终结果'});f.bridge.completeBackgroundTool('owned-job',{result:'不能重复'});assert.equal(f.ws.sent.filter(x=>x.item?.type==='force_message').length,1);f.bridge.close();
+});

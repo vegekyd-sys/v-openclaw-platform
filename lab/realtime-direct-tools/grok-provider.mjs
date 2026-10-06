@@ -3,7 +3,7 @@ export const GROK_VOICE_MODEL = 'grok-voice-think-fast-2.0';
 export class GrokVoiceBridge {
   constructor(request, {createWebSocket, apiKey, upstream = 'wss://api.x.ai/v1/realtime', connectTimeoutMs = 20000}) {
     Object.assign(this, {request, createWebSocket, apiKey, upstream, connectTimeoutMs});
-    this.closed = false; this.ready = false; this.calls = new Map(); this.batches = new Map();
+    this.closed = false; this.ready = false; this.calls = new Map(); this.batches = new Map(); this.backgroundTools = new Set();
   }
   connect() {
     if (this.promise) return this.promise;
@@ -34,6 +34,15 @@ export class GrokVoiceBridge {
   sendUserMessage(text){this.send({type:'conversation.item.create',item:{type:'message',role:'user',content:[{type:'input_text',text}]}});this.send({type:'response.create'});}
   triggerGreeting(text){this.sendUserMessage(text);}
   speakProgress(text){this.send({type:'conversation.item.create',item:{type:'force_message',role:'assistant',interruptible:true,content:[{type:'output_text',text}]}});}
+  beginBackgroundTool(callId){
+    this.backgroundTools.add(callId);
+    this.submitToolResult(callId,{accepted:true,status:'working',instruction:'后台继续执行；正常回应用户聊天，有真正新进展或最终结果时会主动回来。不要声称已完成。'});
+  }
+  completeBackgroundTool(callId,result){
+    if(!this.backgroundTools.delete(callId)||result?.cancelled)return;
+    const text=result?.result??(result?.error?`V 后台没有完成：${result.error}`:null);
+    if(text)this.speakProgress(text);
+  }
   handleBargeIn(){this.send({type:'response.cancel'});this.request.onClearAudio?.('barge-in');}
   receive(e) {
     if(this.closed)return;
