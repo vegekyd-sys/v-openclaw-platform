@@ -531,3 +531,18 @@ test('async background tool releases the native call, accepts chat, and adds act
  const history=socket.sent.find(x=>x.items?.length===2);assert.equal(history.items[0].content[0].text,'完整真实任务');assert.equal(history.items[1].content[0].text,'已完成全部步骤。');
  assert.equal(socket.sent.filter(x=>x.type==='speech_text_buffer.commit'&&x.text==='已完成全部步骤。').length,1);assert(texts.some(x=>x[3]==='V-backend'));bridge.close();
 });
+
+
+test('direct tool notice starts work in the same turn and only holds its result until actual notice audio ends',async()=>{
+ const socket=new FakeSocket(),calls=[];
+ const bridge=buildSeeduplexRealtimeVoiceProvider({env:{VOLCENGINE_REALTIME_API_KEY:'test'},createWebSocket:async()=>socket}).createBridge({providerConfig:{voice:'xiaohe'},tools:['memory_search','web_search'].map(name=>({type:'function',name,parameters:{type:'object',properties:{}}})),toolStartNotice:()=> '我查一下记录。',onAudio(){},onToolCall:call=>{calls.push(call);bridge.submitToolResult(call.callId,{answer:'真实工具结果'});},onError:e=>assert.fail(e.message),onClose(){}});
+ const connecting=bridge.connect();await new Promise(resolve=>setImmediate(resolve));socket.open();socket.message({type:'session.created'});await connecting;
+ const call=id=>socket.message({type:'response.function_call_arguments.done',items:[{call_id:id,name:'memory_search',arguments:'{}'}]});
+ call('first');assert.equal(calls.length,1);assert.equal(socket.sent.filter(x=>x.type==='speech_text_buffer.commit').length,1);assert(!socket.sent.some(x=>x.items?.[0]?.role==='tool'));
+ socket.message({type:'response.output_audio.done'});assert(!socket.sent.some(x=>x.items?.[0]?.role==='tool'));
+ socket.message({type:'response.output_audio.delta',delta:floatAudio([.25,-.25])});socket.message({type:'response.output_audio.done'});
+ assert.equal(socket.sent.filter(x=>x.items?.[0]?.role==='tool').length,1);
+ call('second-step');assert.equal(calls.length,2);assert.equal(socket.sent.filter(x=>x.type==='speech_text_buffer.commit').length,1);assert.equal(socket.sent.filter(x=>x.items?.[0]?.role==='tool').length,2);
+ socket.message({type:'conversation.item.input_audio_transcription.completed',text:'查另外一件事'});call('next-user');assert.equal(socket.sent.filter(x=>x.type==='speech_text_buffer.commit').length,2);
+ socket.message({type:'conversation.item.input_audio_transcription.completed',text:'我补充一下'});assert.equal(socket.sent.filter(x=>x.items?.[0]?.role==='tool').length,3);bridge.close();
+});

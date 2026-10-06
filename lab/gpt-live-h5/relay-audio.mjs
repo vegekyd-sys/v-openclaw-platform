@@ -6,21 +6,25 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
   endpoint.search=new URLSearchParams({voiceSessionId:reservation.voiceSessionId,ticket:reservation.relayTicket});
   const socket=new WebSocket(endpoint);socket.binaryType='arraybuffer';
   let closed=false,ready=false,nextAt=0,node,source,quietGain,ending=null,tailTimer;
-  const pendingInput=[],players=new Set();let pendingBytes=0;
+  const pendingInput=[],players=new Set();let pendingBytes=0;let lastPacketAt=0,lastReportAt=0;
   // Providers can synthesize long answers faster than real time. Bound memory,
   // rather than treating an ordinary 30-second playback lead as a broken call.
   const maxQueuedOutputBytes=16*1024*1024;
-  const stats={inputBytes:0,outputBytes:0,queuedOutputBytes:0,peakQueuedOutputBytes:0,clears:0,playbackDrained:false};
+  const stats={inputBytes:0,outputBytes:0,queuedOutputBytes:0,peakQueuedOutputBytes:0,clears:0,playbackDrained:false,underruns:0,maxReceiveGapMs:0,startBufferMs:180};
   const send=e=>{if(socket.readyState===WebSocket.OPEN)socket.send(JSON.stringify(e));};
   let playing=false;
   const playback=speaking=>{if(playing===speaking)return;playing=speaking;onPlaybackActivity(speaking);send({type:'playback.state',speaking});};
-  const flush=()=>{for(const player of players){try{player.stop();}catch{}}players.clear();stats.queuedOutputBytes=0;nextAt=context.currentTime;stats.clears++;playback(false);ending=null;clearTimeout(tailTimer);};
+  const report=()=>send({type:'playback.stats',...stats});
+  const flush=()=>{report();lastPacketAt=0;for(const player of players){try{player.stop();}catch{}}players.clear();stats.queuedOutputBytes=0;nextAt=context.currentTime;stats.clears++;playback(false);ending=null;clearTimeout(tailTimer);};
   const checkEnd=()=>{
     if(closed||!ending)return;
     if(context.state==='running'&&players.size===0&&context.currentTime>=nextAt+.75){stats.playbackDrained=true;send({type:'playback.drained',callId:ending});ending=null;}
     else tailTimer=setTimeout(checkEnd,100);
   };
   const play=e=>{
+    const receivedAt=performance.now();
+    if(lastPacketAt)stats.maxReceiveGapMs=Math.max(stats.maxReceiveGapMs,receivedAt-lastPacketAt);
+    const recentPacket=lastPacketAt&&receivedAt-lastPacketAt<2000;lastPacketAt=receivedAt;
     const bytes=Uint8Array.from(atob(e.audio),c=>c.charCodeAt(0));
     if(bytes.length%2||bytes.length>480000||e.sampleRate!==24000)throw Error('语音帧格式无效');
     if(context.state!=='running')throw Error('声音播放被暂停了，请点击页面恢复');
@@ -30,7 +34,11 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
     const player=context.createBufferSource();player.buffer=buffer;player.connect(context.destination);
     players.add(player);stats.queuedOutputBytes+=bytes.length;stats.peakQueuedOutputBytes=Math.max(stats.peakQueuedOutputBytes,stats.queuedOutputBytes);
     player.onended=()=>{if(players.delete(player))stats.queuedOutputBytes-=bytes.length;player.disconnect();if(players.size===0)playback(false);};
-    nextAt=Math.max(nextAt,context.currentTime+.01);player.start(nextAt);nextAt+=buffer.duration;playback(true);
+    // Schedule adjacent PCM frames without per-packet padding. A short initial
+    // lead absorbs delivery jitter; rebuffer only after a genuine underrun.
+    if(nextAt<=context.currentTime){if(recentPacket)stats.underruns++;nextAt=context.currentTime+stats.startBufferMs/1000;}
+    player.start(nextAt);nextAt+=buffer.duration;playback(true);
+    if(receivedAt-lastReportAt>2000){lastReportAt=receivedAt;report();}
     stats.outputBytes+=bytes.length;
   };
   const promise=new Promise((resolve,reject)=>{

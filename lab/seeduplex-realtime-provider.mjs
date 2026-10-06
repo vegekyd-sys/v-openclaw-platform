@@ -244,6 +244,8 @@ export class SeeduplexRealtimeVoiceBridge {
     this.seenToolCalls = new Set();
     this.pendingToolCalls = new Map();
     this.backgroundTools = new Map();
+    this.toolNotice = null;
+    this.toolNoticeUsed = false;
     this.completedResponses = new Set();
     this.connectPromise = null;
     this.connectResolve = null;
@@ -456,8 +458,12 @@ export class SeeduplexRealtimeVoiceBridge {
       role: "tool",
       content: [{ type: "input_text", text: serializeToolResult(result) }],
     });
-    if (batch.results.size !== batch.ids.length) return;
     batch.continuing = options.willContinue === true;
+    this.#flushToolBatch(batch);
+  }
+
+  #flushToolBatch(batch) {
+    if (batch.results.size !== batch.ids.length || this.toolNotice?.batch === batch) return;
     this.#send({
       type: "conversation.item.create",
       event_id: `event_${randomUUID()}`,
@@ -470,6 +476,13 @@ export class SeeduplexRealtimeVoiceBridge {
     } else {
       this.toolBatches.splice(this.toolBatches.indexOf(batch), 1);
     }
+  }
+
+  #finishToolNotice() {
+    const notice = this.toolNotice;
+    if (!notice) return;
+    this.toolNotice = null;
+    this.#flushToolBatch(notice.batch);
   }
 
   #dispatchContinuedResult(batch) {
@@ -632,7 +645,11 @@ export class SeeduplexRealtimeVoiceBridge {
     }
     if (type === "conversation.item.input_audio_transcription.completed") {
       const text = optionalString(event.transcript) ?? optionalString(event.text);
-      if (text) this.request.onTranscript?.("user", text, true);
+      if (text) {
+        this.toolNoticeUsed = false;
+        this.#finishToolNotice();
+        this.request.onTranscript?.("user", text, true);
+      }
     }
     const workingBatch = continuingBatch;
     const suppressWorkingTranscript =
@@ -659,6 +676,7 @@ export class SeeduplexRealtimeVoiceBridge {
     ) {
       try {
         const audio = decodeSeeduplexFloat32Pcm(event.delta);
+        if (this.toolNotice) this.toolNotice.audioSeen = true;
         this.request.onAudio(audio);
         this.request.onMark?.(`seeduplex-audio-${randomUUID()}`);
       } catch {
@@ -666,6 +684,7 @@ export class SeeduplexRealtimeVoiceBridge {
       }
     }
     if (type === "response.output_audio.done") {
+      if (this.toolNotice?.audioSeen) this.#finishToolNotice();
       this.request.onAudioSegmentDone?.();
       const continuing = this.toolBatches.find(
         (batch) =>
@@ -719,6 +738,7 @@ export class SeeduplexRealtimeVoiceBridge {
       }
       this.responseActive = false;
     } else if (type === "response.canceled") {
+      this.#finishToolNotice();
       this.responseActive = false;
       this.#onResponseDone({
         status: "cancelled",
@@ -772,6 +792,15 @@ export class SeeduplexRealtimeVoiceBridge {
       phase: "collecting",
     };
     this.toolBatches.push(batch);
+    // The function is already selected. Start real work in this same turn;
+    // only its native result waits for the short host-owned spoken notice.
+    const notice = !this.toolNoticeUsed && this.request.toolStartNotice?.(calls[0]);
+    if (notice) {
+      this.toolNoticeUsed = true;
+      this.toolNotice = {batch, audioSeen:false};
+      this.request.onTranscript?.("assistant", notice, true, "tool-start");
+      this.speakProgress(notice);
+    }
     for (const call of calls) {
       this.seenToolCalls.add(call.callId);
       this.pendingToolCalls.set(call.callId, batch);
