@@ -80,8 +80,11 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
   async function start(s,client) {
     s.client=client;
     client.on('close',()=>void close(s.id).catch(()=>{}));
+    const connectionStage=stage=>audit({type:'call.connection-stage',voiceSessionId:s.id,model:s.model,stage});
+    connectionStage('catalog-requested');
     const catalog=await gateway.request('tools.catalog',{agentId:'makaron',includePlugins:true},{timeoutMs:20000});
     if(!current(s))return;
+    connectionStage('catalog-ready');
     const entries=(catalog.groups??[]).flatMap(g=>g.tools??[]),allowedTools=new Set(entries.map(t=>t.id));
     const noticeClips=s.model==='seeduplex'?loadToolStartClips():null;
     const deliverAudio=(audio,metadata={})=>{if(!current(s))return;emit(s,{type:'audio',sequence:++s.audioSequence,audio:audio.toString('base64'),sampleRate:24000,...metadata});onOutputAudio(s.id,audio);audit({type:'audio',voiceSessionId:s.id,bytes:audio.length,...metadata});};
@@ -137,8 +140,12 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       audit({type:'tool.delivered',voiceSessionId:s.id,callId:call.callId,result});
       emit(s,{type:'tool.result',callId:call.callId,name:call.name});
     };
+    connectionStage('context-requested');
+    const context=await loadContext(s.sessionKey);
+    if(!current(s))return;
+    connectionStage('context-ready');
     const request={providerConfig:{voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',
-      instructions:directInstructions(entries,await loadContext(s.sessionKey),s.model)+hybridInstructions,tools:TOOLS,
+      instructions:directInstructions(entries,context,s.model)+hybridInstructions,tools:TOOLS,
       onToolCall:call=>void onToolCall(call),
       toolStartNotice:call=>{
         return noticeClips?toolStartClip(call,noticeClips)?.text:null;
@@ -164,7 +171,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
         if(e.type==='input_audio_buffer.speech_stopped'){s.userSpeaking=false;s.lastUserAt=Date.now();}
         audit({type:'provider.event',voiceSessionId:s.id,...e});},
       onProtocolEvent:e=>audit({type:'provider.protocol',voiceSessionId:s.id,event:{...e,...(e.delta&&e.type?.includes('audio')?{delta:'[audio retained separately]'}:{})}}),
-      onError:e=>{emit(s,{type:'error',message:e.message});void close(s.id).catch(()=>{});},
+      onError:e=>{audit({type:'call.connection-error',voiceSessionId:s.id,model:s.model,message:e.message});emit(s,{type:'error',message:e.message});void close(s.id).catch(()=>{});},
       onClose:()=>{if(current(s))void close(s.id).catch(()=>{});},
     };
     if(!current(s))return;
@@ -184,7 +191,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       else if(e.type==='playback.drained'&&s.ending?.callId===e.callId)void close(s.id).catch(()=>{});
       }catch{client.close(1008);}
     });
-    await s.bridge.connect();if(current(s))emit(s,{type:'ready',model:s.model,tools:TOOLS.map(t=>t.name)});
+    connectionStage('provider-connecting');
+    await s.bridge.connect();if(current(s)){connectionStage('provider-ready');emit(s,{type:'ready',model:s.model,tools:TOOLS.map(t=>t.name)});}
   }
   return {
     models,reserve,close,handleEvent(event){for(const s of sessions.values())s.backend.handleEvent(event);},

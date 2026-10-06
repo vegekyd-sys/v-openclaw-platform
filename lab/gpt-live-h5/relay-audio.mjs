@@ -54,7 +54,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
   endpoint.search=new URLSearchParams({voiceSessionId:reservation.voiceSessionId,ticket:reservation.relayTicket});
   const socket=new WebSocket(endpoint);socket.binaryType='arraybuffer';
   let closed=false,ready=false,node,speaker,source,quietGain,ending=null,tailTimer,epoch=0,written=0,lastPlayedAt=null,lastSequence=0,blocked=false,outputComplete=false,playbackActive=false,busy=false,lastReceiveAt=null,statsTimer;
-  const pendingInput=[],pendingOutput=[];let pendingBytes=0;
+  const pendingOutput=[];
   const maxQueuedOutputBytes=16*1024*1024;
   const stats={inputBytes:0,outputBytes:0,queuedOutputBytes:0,peakQueuedOutputBytes:0,clears:0,duplicateFrames:0,underflows:0,maxReceiveGapMs:0,startBufferMs,contextState:context.state,contextSampleRate:context.sampleRate,playbackDrained:false};
   const activity=value=>{if(playbackActive!==value){playbackActive=value;onPlaybackActivity(value);}};
@@ -86,7 +86,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
   const promise=new Promise((resolve,reject)=>{
     socket.onmessage=e=>{if(closed)return;try{
       const value=JSON.parse(e.data);if(value.voiceSessionId!==reservation.voiceSessionId)return;
-      if(value.type==='ready'&&!ready){ready=true;for(const frame of pendingInput)socket.send(frame);pendingInput.length=0;pendingBytes=0;resolve();send({type:'greeting'});reportBusy();statsTimer=setInterval(()=>send({type:'playback.stats',...stats}),2000);}
+      if(value.type==='ready'&&!ready){ready=true;resolve();send({type:'greeting'});reportBusy();statsTimer=setInterval(()=>send({type:'playback.stats',...stats}),2000);}
       if(value.type==='audio')play(value);
       if(value.type==='audio.clear')flush();
       if(value.type==='audio.done'){outputComplete=true;speaker?.port.postMessage({type:'done',epoch});}
@@ -116,9 +116,14 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
     quietGain=context.createGain();quietGain.gain.value=0;source.connect(node);node.connect(quietGain);quietGain.connect(context.destination);
     node.port.onmessage=e=>{if(closed)return;const frame=e.data;
       if(ready&&socket.readyState===WebSocket.OPEN){if(socket.bufferedAmount>480000){onError(Error('音频上传积压，请重新拨号'));return;}socket.send(frame);stats.inputBytes+=frame.byteLength;}
-      else{pendingBytes+=frame.byteLength;if(pendingBytes>384000){onError(Error('模型连接超时，请重新拨号'));return;}pendingInput.push(frame);}
     };
   }
-  return {ready:promise,stats,async start(){await capture();await promise;},sendText:text=>send({type:'text',text}),
+  return {ready:promise,stats,async start(){
+      // Connecting is not yet a listening call. Starting capture beforehand
+      // filled an eight-second PCM queue and aborted legitimate 20s connects.
+      // Keep the page-owned microphone grant; attach audio nodes only after
+      // the actual upstream ready event. Greeting PCM is retained above.
+      await promise;if(!closed)await capture();
+    },sendText:text=>send({type:'text',text}),
     dispose(){send({type:'playback.stats',...stats});closed=true;clearInterval(statsTimer);clearTimeout(tailTimer);context.removeEventListener?.('statechange',stateChanged);flush();node?.port.close();node?.disconnect();speaker?.port.close();speaker?.disconnect();source?.disconnect();quietGain?.disconnect();socket.close();}};
 }

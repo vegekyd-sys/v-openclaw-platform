@@ -57,19 +57,19 @@ test('fast long speech releases queue capacity after playback, independently of 
  for(let i=0;i<70*24000;i+=24000)render(q,24000);assert.equal(q.frames,0);assert.equal(q.consumed,70*24000);assert.equal(q.underflows,0);
 });
 
-async function fixture(t,provider){
+async function fixture(t,provider,deferReady=false){
  const old={WebSocket:globalThis.WebSocket,location:globalThis.location,AudioWorkletNode:globalThis.AudioWorkletNode};
  let socket;const sent=[],nodes=[],classes=new Map(),events=[],errors=[],listeners=new Map();
- class Socket{static OPEN=1;readyState=1;bufferedAmount=0;constructor(){socket=this}send(e){sent.push(e)}close(){this.readyState=3}}
+ class Socket{static OPEN=1;readyState=1;bufferedAmount=0;constructor(){socket=this}send(e){sent.push(e)}close(){this.readyState=3;this.onclose?.()}}
  const realm=vm.createContext({Int16Array,Float32Array,sampleRate:48000,currentTime:0,registerProcessor:(name,K)=>classes.set(name,K),AudioWorkletProcessor:class{constructor(){this.port={postMessage:e=>this.toHost?.(e)}}}});
  class Worklet{constructor(context,name,options){this.name=name;this.processor=new(classes.get(name))(options);this.port={postMessage:(e,transfer=[])=>this.processor.port.onmessage?.({data:structuredClone(e,{transfer})}),close(){}};this.processor.toHost=e=>this.port.onmessage?.({data:e});nodes.push(this)}connect(){}disconnect(){this.disconnected=true}}
  Object.assign(globalThis,{WebSocket:Socket,location:{href:'https://voice.test/voice/'},AudioWorkletNode:Worklet});
  const ctx={state:'running',currentTime:0,destination:{},audioWorklet:{addModule:async url=>vm.runInContext(await(await fetch(url)).text(),realm)},addEventListener:(name,cb)=>listeners.set(name,cb),removeEventListener:name=>listeners.delete(name),createMediaStreamSource:()=>({connect(){},disconnect(){}}),createGain:()=>({gain:{value:1},connect(){},disconnect(){}})};
  const relay=createRelayAudio({context:ctx,stream:{},reservation:{voiceSessionId:'fixture',relayTicket:'fixture',provider},onEvent:e=>events.push(e),onError:e=>errors.push(e.message),onClosed(){}});
- const event=e=>socket.onmessage({data:JSON.stringify({voiceSessionId:'fixture',...e})});event({type:'ready'});await relay.start();
+ const event=e=>socket.onmessage({data:JSON.stringify({voiceSessionId:'fixture',...e})});const started=relay.start();if(!deferReady){event({type:'ready'});await started;}
  t.after(()=>{relay.dispose();Object.assign(globalThis,old)});
  const speaker=nodes.find(n=>n.name==='v-direct-speaker');const pump=n=>{const output=[];for(let i=0;i<n;i+=128){realm.currentTime=ctx.currentTime;const block=new Float32Array(128);speaker.processor.process([],[[block]]);output.push(...block);ctx.currentTime+=128/48000;}return output;};
- return {relay,event,ctx,speaker,nodes,sent,events,errors,pump,listeners};
+ return {relay,event,ctx,speaker,nodes,sent,events,errors,pump,listeners,started};
 }
 test('actual serialized worklet receives only the selected Grok buffer; Xiaohe stays at 120ms',async t=>{
  const f=await fixture(t,'grok');assert.equal(f.relay.stats.startBufferMs,400);assert.equal(f.speaker.processor.queue.prefill,19200);
@@ -103,4 +103,17 @@ test('queued and prebuffering playback reports busy before the first rendered sa
  const f=await fixture(t);f.event({type:'audio',sequence:1,sampleRate:24000,audio:Buffer.alloc(960,1).toString('base64')});
  assert(f.sent.some(raw=>typeof raw==='string'&&JSON.parse(raw).type==='playback.state'&&JSON.parse(raw).speaking));
  f.event({type:'audio.done'});f.pump(48000);assert.equal(JSON.parse(f.sent.filter(raw=>typeof raw==='string'&&JSON.parse(raw).type==='playback.state').at(-1)).speaking,false);
+});
+
+test('a slow upstream connect does not capture or overflow pre-call microphone PCM; first greeting is retained',async t=>{
+ const f=await fixture(t,'grok',true);await new Promise(r=>setImmediate(r));
+ f.ctx.currentTime=10;assert.equal(f.nodes.length,0);assert.equal(f.relay.stats.inputBytes,0);assert.deepEqual(f.errors,[]);
+ f.event({type:'ready'});f.event({type:'audio',sequence:1,sampleRate:24000,audio:Buffer.alloc(960,1).toString('base64')});f.event({type:'audio.done'});
+ await f.started;const speaker=f.nodes.find(n=>n.name==='v-direct-speaker');assert(speaker);assert.equal(speaker.processor.queue.frames,480);
+ const mic=f.nodes.find(n=>n.name==='v-direct-mic');assert(mic);mic.port.onmessage({data:new Int16Array(480).buffer});
+ assert.equal(f.relay.stats.inputBytes,960);assert.equal(f.sent.filter(x=>x instanceof ArrayBuffer).length,1);assert.deepEqual(f.errors,[]);
+});
+test('closing a connecting call cannot attach late microphone or playback nodes',async t=>{
+ const f=await fixture(t,'grok',true);const outcome=assert.rejects(f.started,/关闭/);
+ f.relay.dispose();await outcome;f.event({type:'ready'});await new Promise(r=>setImmediate(r));assert.equal(f.nodes.length,0);
 });

@@ -108,3 +108,9 @@ Grok真实长故事42.24秒，最新400ms缓冲下全部问候/日历/长故事�
 经典Worker另走`agent-tools-djVuP1H1.js`工厂，现将voice run的exec与process同时绑定到可信runId；普通飞书/非voice scope保持原逻辑。原生process list刻意不列前台命令，空list不能证明退出。清理先kill/poll本run已列出的后台任务，再调用原生`waitForExecScope`等待隐藏前台命令真实关闭；不能先join仍活着的后台进程而死锁。缺少原生join或退出未知继续保留责任。
 
 独立Linux实际原生工具工厂创建同个人session的本run后台与未返回结果的前台命令，以及另一个run的后台命令。当前helper实际取消后，本run两个原PID/start witness消失，foreign仍活着；随后仅清理本测试的foreign，三PID均独立实读消失。无模型/Gateway修改；这不代替最新语音Worker集成验收。Worker RPC增加真实join审计字段，下一原H5 controls针对前台无普通结果路径，不重复已完成的付费长故事/日历。
+
+## R12：未返回ID的小何取消通过；Grok接通前失败保留
+
+48d5acbb 的原H5独立controls整轮FAIL保留。小何实际前台sleep60尚无普通工具结果时，用户通过原麦克风发送取消，模型真正调用cancel_task。匹配run的Worker回执nativeExecScopeJoined=true，独立原PID/start witness消失；从工具调用到退出确认620ms。自然告别、真实排空挂断、新owner问候和同页麦克风仅请求一次共5项通过。本轮Candidate unit/rundir/Mac CLI已独立读回消失；sharedUnchanged=true。
+
+Grok没有进入上述流程：连接尚未ready，客户端已缓存约8秒麦克风PCM，先触发自己的“模型连接超时”；原Grok上游连接期限20秒。未收到ready或原答案PCM，不能当作Grok取消通过，也不能确定上游握手为何慢。后续只在真实provider ready后连接麦克风音频节点，保留原页面授权与已到达问候PCM；关闭连接中的电话不能晚建音频节点。增加catalog/context/provider连接阶段审计以区分本地准备与上游等待，不扩大权限或改变模型路线。下一必要复验只覆盖Grok controls，不重复小何/日历/长故事付费场景。
