@@ -24,7 +24,7 @@
 //      (every captured component of the table), install the drift sentinel's
 //      expectations, and run `vlab.mjs align`.
 //
-// Sidecars (desktop handoff, secret entry) are installed by their own scripts,
+// Sidecars (desktop handoff, secret entry, V Browser) are installed by their own scripts,
 // not by this one. If the release carried one, install it on V from the same
 // commit BEFORE --apply, so the align in step 5 sees it; if it was not, align
 // refuses and this script says which sidecar to install (then align by hand).
@@ -40,7 +40,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { captureRuns, resolveVDirs, vPathForTarget } from './lib/runtime-components.mjs';
+import { COMPONENTS, captureRuns, resolveVDirs, vPathForTarget } from './lib/runtime-components.mjs';
 
 const sha = (buf) => createHash('sha256').update(buf).digest('hex');
 const sq = (s) => `'${String(s).replaceAll("'", `'\\''`)}'`;
@@ -223,8 +223,11 @@ try {
     if (verdict.sidecars.length) {
       // The release also installed a sidecar on VLab. Same commit onto V, then align.
       console.log(`Sidecars that differ (install each on V from the commit VLab runs, then align):`);
-      for (const [id, list] of verdict.sidecars) console.log(`  ${id}: ${list.length} files, e.g. ${list[0].kind} ${list[0].target}`);
-      console.log(`  ${SIDECAR_INSTALL}\n  then: node lab/vlab.mjs align --owner ${args.owner}`);
+      for (const [id, list] of verdict.sidecars) {
+        console.log(`  ${id}: ${list.length} files, e.g. ${list[0].kind} ${list[0].target}`);
+        console.log(`    install: ${COMPONENTS.find((c) => c.id === id)?.install ?? 'see scripts/lib/runtime-components.mjs'}`);
+      }
+      console.log(`  then: node lab/vlab.mjs align --owner ${args.owner}`);
     }
     if (verdict.lagging.length) {
       console.log(`VLab still lags V on files this release did not touch (V changed itself earlier):`);
@@ -244,8 +247,6 @@ try {
 }
 console.log(`\nDone. Commit release/captured/${args.name}*, add its CHANGELOG.md section\n(node scripts/release-notes.mjs --from <previous V release> --to ${args.name}, then write the summary),\nand open the release PR (dev -> main, tag ${args.name}).`);
 }
-
-const SIDECAR_INSTALL = 'handoff: scripts/install-desktop-host.sh; secret-entry: scripts/install-secret-entry-host.sh (run on V as root from the same commit)';
 
 // Why `vlab.mjs align` refused after the install. `mine` = this release's targets.
 //   undo      this release's own files differ: V did not get the same bytes

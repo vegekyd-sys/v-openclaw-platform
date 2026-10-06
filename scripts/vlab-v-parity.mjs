@@ -22,7 +22,8 @@
 // the state. It still has to go: it enters the deploy channel's fingerprint.
 //
 // What is compared is scripts/lib/runtime-components.mjs: core, Worker, Feishu,
-// DingTalk, WeCom (runtime code) and the handoff / secret-entry sidecars. A
+// DingTalk, WeCom (runtime code) and the sidecars: desktop handoff, secret
+// entry, and V Browser (plugin, Broker, Browser Gateway). A
 // component marked `blocking: false` there is reported as advisory and does
 // not decide the state. A sidecar absent on both hosts is equal. A --pending
 // plan may list `"sidecars": ["secret-entry"]` when the release installs one.
@@ -30,7 +31,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { parityPairs, resolveVDirs } from './lib/runtime-components.mjs';
+import { parityPairs, resolveSidecarDirs, resolveVDirs } from './lib/runtime-components.mjs';
 import { evaluateParity, parseSums } from './lib/parity.mjs';
 
 const args = parseArgs(process.argv.slice(2));
@@ -51,10 +52,16 @@ const vCore = args.vCore ?? detectVCore();
 const vDirs = resolveVDirs(vCore, (glob) => listDirs(vHost, glob), {
   ...(args.vWorker ? { worker: args.vWorker } : {}), ...(args.vFeishu ? { feishu: args.vFeishu } : {}),
 });
+const vlabConfig = gatewayLoadPaths(vlabHost, vlabUnit, args.vlabConfig);
+// Sidecars that are not at a fixed path: found where each host runs them.
+const sidecarDirs = resolveSidecarDirs({
+  loadPaths: { v: gatewayLoadPaths(vHost, vUnit, args.vConfig), vlab: vlabConfig },
+  execStart: { v: (unit) => execStart(vHost, unit), vlab: (unit) => execStart(vlabHost, unit) },
+});
 const pairs = parityPairs({
-  vDirs, vlabRuntime,
+  vDirs, vlabRuntime, sidecarDirs,
   vlabGlob: (rel) => (rel.includes('openclaw-feishu') && args.vlabFeishu ? [args.vlabFeishu] : listDirs(vlabHost, `${vlabRuntime}/${rel}`)),
-  vlabLoadPaths: vlabLoadPaths(),
+  vlabLoadPaths: args.vlabLoadPaths ? JSON.parse(args.vlabLoadPaths) : vlabConfig.main,
 });
 
 const pending = new Map();
@@ -72,8 +79,8 @@ for (const planPath of [].concat(args.pending ?? [])) {
 }
 
 const trees = pairs.map((pair) => ({
-  v: hashTree(vHost, pair.v, true, pair.optional),
-  vlab: hashTree(vlabHost, pair.vlab, false, pair.optional),
+  v: hashTree(vHost, pair.v, true, pair.optional, pair.exclude),
+  vlab: hashTree(vlabHost, pair.vlab, false, pair.optional, pair.exclude),
 }));
 const { state, compared, findings, residue } = evaluateParity({ pairs, trees, pending, pendingSidecars });
 const notes = pairs.filter((p) => p.note).map((p) => p.note);
@@ -96,11 +103,14 @@ if (args.json) {
 }
 process.exit(state === 'DIVERGED' ? 1 : 0);
 
-function hashTree(host, root, gentle, optional = false) {
+function hashTree(host, root, gentle, optional = false, exclude = []) {
+  // A sidecar the host does not run at all has no directory to hash.
+  if (root == null && optional) return null;
   const prefix = gentle ? 'nice -n 19 ionice -c3 ' : '';
   // An optional (sidecar) directory may be absent: print a marker instead of failing.
   const guard = optional ? `[ -d ${shellQuote(root)} ] || { echo ABSENT; exit 0; }; ` : '';
-  const script = `${guard}cd ${shellQuote(root)} && ${prefix}find . -path ./node_modules -prune -o -type f -print0 | ${prefix}xargs -0 -r sha256sum`;
+  const prune = ['node_modules', ...exclude].map((d) => `-path ${shellQuote(`./${d}`)} -prune -o `).join('');
+  const script = `${guard}cd ${shellQuote(root)} && ${prefix}find . ${prune}-type f -print0 | ${prefix}xargs -0 -r sha256sum`;
   const out = execFileSync('ssh', ['-o', 'ConnectTimeout=15', host, `sudo sh -c ${shellQuote(script)}`], {
     encoding: 'utf8', maxBuffer: 256 * 1024 * 1024,
   });
@@ -115,14 +125,21 @@ function listDirs(host, glob) {
   return out.split('\n').filter(Boolean);
 }
 
-// The DingTalk and WeCom pairs follow what the shared Gateway actually loads.
-function vlabLoadPaths() {
-  if (args.vlabLoadPaths) return JSON.parse(args.vlabLoadPaths);
-  const env = execFileSync('ssh', ['-o', 'ConnectTimeout=15', vlabHost, `systemctl show ${vlabUnit} -p Environment --value`], { encoding: 'utf8' });
-  const config = args.vlabConfig ?? /(?:^|\s)OPENCLAW_CONFIG_PATH=(\S+)/.exec(env)?.[1];
-  if (!config) throw new Error(`cannot find OPENCLAW_CONFIG_PATH in ${vlabUnit}`);
-  const cfg = JSON.parse(execFileSync('ssh', ['-o', 'ConnectTimeout=15', vlabHost, `sudo cat ${shellQuote(config)}`], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }));
-  return cfg.plugins?.load?.paths ?? [];
+// The DingTalk, WeCom and V Browser plugin pairs follow what the Gateway
+// actually loads: plugins.load.paths of its config, and of the Worker's copy
+// (the model runs in the Worker child, which reads only that second file).
+function gatewayLoadPaths(host, unit, override) {
+  const env = execFileSync('ssh', ['-o', 'ConnectTimeout=15', host, `systemctl show ${unit} -p Environment --value`], { encoding: 'utf8' });
+  const config = override ?? /(?:^|\s)OPENCLAW_CONFIG_PATH=(\S+)/.exec(env)?.[1];
+  if (!config) throw new Error(`cannot find OPENCLAW_CONFIG_PATH in ${host}:${unit}`);
+  const read = (file) => JSON.parse(execFileSync('ssh', ['-o', 'ConnectTimeout=15', host, `sudo cat ${shellQuote(file)}`], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }));
+  const cfg = read(config);
+  const workerConfig = cfg.plugins?.entries?.['vlab-agent-worker-isolation']?.config?.workerConfigPath;
+  return { main: cfg.plugins?.load?.paths ?? [], worker: workerConfig ? read(workerConfig).plugins?.load?.paths ?? [] : [] };
+}
+
+function execStart(host, unit) {
+  return execFileSync('ssh', ['-o', 'ConnectTimeout=15', host, `systemctl show ${shellQuote(unit)} -p ExecStart --value`], { encoding: 'utf8' });
 }
 
 function detectVCore() {
@@ -155,7 +172,7 @@ function parseArgs(argv) {
     else out[key] = value;
   }
   if (out.help) {
-    console.error('usage: vlab-v-parity.mjs [--pending plan.json]... [--json] [--v-core dir] [--vlab-runtime dir] [--vlab-config file]');
+    console.error('usage: vlab-v-parity.mjs [--pending plan.json]... [--json] [--v-core dir] [--vlab-runtime dir] [--v-config file] [--vlab-config file]');
     process.exit(2);
   }
   return out;
