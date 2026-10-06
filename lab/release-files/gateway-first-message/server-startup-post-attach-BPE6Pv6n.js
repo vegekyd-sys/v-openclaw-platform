@@ -83,13 +83,16 @@ function dashboardDataPrewarmItems(cfg, log) {
 		if (!sessionDataPrewarmAllowed) log.info?.(`skipping optional dashboard session prewarm: combined stores exceed ${SIDEBAR_PREWARM_MAX_SESSION_ENTRIES} rows`);
 		return sessionDataPrewarmAllowed;
 	};
+	const firstMessageMaxIdleWaitMs = Number(process.env.OPENCLAW_GATEWAY_FIRST_MESSAGE_PREWARM_MAX_WAIT_MS ?? 3000);
 	const firstMessageItems = process.env.OPENCLAW_GATEWAY_FIRST_MESSAGE_PREWARM === "0" ? [] : [{
 		name: "reply.first-message",
+		maxIdleWaitMs: Number.isFinite(firstMessageMaxIdleWaitMs) && firstMessageMaxIdleWaitMs >= 0 ? firstMessageMaxIdleWaitMs : 3000,
 		load: async () => {
+			const busyAtStart = getActiveGatewayRootWorkCount({ excludeCurrent: true });
 			const { prewarmConfigDrivenReplyFirstMessage } = await loadGetReplyFromConfigRuntime();
 			if (typeof prewarmConfigDrivenReplyFirstMessage !== "function") return;
 			const result = await prewarmConfigDrivenReplyFirstMessage({ cfg, agentIds });
-			log.info?.(`[gateway-first-message-prewarm.1] ${JSON.stringify({ status: "ready", ...result })}`);
+			log.info?.(`[gateway-first-message-prewarm.1] ${JSON.stringify({ status: "ready", busyAtStart, ...result })}`);
 		}
 	}];
 	return [...firstMessageItems, ...agentIds.map((agentId) => ({
@@ -121,11 +124,12 @@ function scheduleGatewayHandlerPrewarm(params) {
 			if (!item) return;
 			currentItemName = item.name;
 			const load = () => item.load();
+			const busyUntil = typeof item.maxIdleWaitMs === "number" ? Date.now() + item.maxIdleWaitMs : Infinity;
 			idleTask = scheduleGatewayIdleTask({
 				delayMs: 0,
 				retryDelayMs: GATEWAY_HANDLER_PREWARM_RETRY_DELAY_MS,
 				isClosing: () => stopped,
-				isBusy: () => getActiveGatewayRootWorkCount({ excludeCurrent: true }) > 0,
+				isBusy: () => Date.now() < busyUntil && getActiveGatewayRootWorkCount({ excludeCurrent: true }) > 0,
 				run: async () => {
 					try {
 						await (params.startupTrace ? params.startupTrace.measure(`post-ready.gateway-data.${item.name}`, load) : load());
