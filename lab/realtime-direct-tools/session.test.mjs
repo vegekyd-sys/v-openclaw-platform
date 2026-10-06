@@ -103,3 +103,10 @@ test('cancel reaps backend exec returned during abort; foreign run process never
  const answer=await f.service.steer(f.reservation.voiceSessionId,{mode:'cancel',text:'取消后台'});
  assert.equal(answer.cancelled,true);assert.deepEqual(f.invocations.filter(x=>x.name==='process').map(x=>x.args),[{action:'kill',sessionId:'backend-owned'},{action:'poll',sessionId:'backend-owned',timeout:2000}]);await f.service.dispose();
 });
+
+test('invalid or concurrent delegation returns native error without falsely acknowledging a new backend job',async()=>{
+ let cancelled=false;const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:method==='chat.abort'?(cancelled=true,{ok:true}):cancelled?{status:'error',aborted:true}:new Promise(()=>{}));
+ f.call('delegate_to_v',{},'invalid');await delay(5);assert(JSON.parse(f.upstream.sent.find(x=>x.item?.call_id==='invalid').item.output).error);
+ f.call('delegate_to_v',{question:'完整任务'},'first');await delay(5);f.call('delegate_to_v',{question:'另一个任务'},'second');await delay(5);
+ assert.equal(f.audit.filter(x=>x.type==='backend.start-requested').length,1);const second=JSON.parse(f.upstream.sent.find(x=>x.item?.call_id==='second').item.output);assert(second.error);assert(!second.accepted);await f.service.dispose();
+});

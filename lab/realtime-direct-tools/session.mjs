@@ -106,11 +106,14 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       const controller=new AbortController(),epoch=s.epoch;
       s.pending.set(call.callId,controller);
       audit({type:'tool.call',voiceSessionId:s.id,...call});emit(s,{type:'tool.call',callId:call.callId,name:call.name});
-      let result;
+      let result,backgroundAck=false;
       try {
         validateTool(call.name,call.args);
         if(call.name==='delegate_to_v'&&s.cancelCleanupFailed)throw Error('上一任务退出尚未确认，先重试取消');
-        if(call.name==='delegate_to_v')s.bridge.beginBackgroundTool(call.callId,call.args.question);
+        if(call.name==='delegate_to_v'){
+          if(s.backend.snapshot())throw Error('这通电话已有一个 V 后台任务，先完成或明确取消');
+          s.bridge.beginBackgroundTool(call.callId,call.args.question);backgroundAck=true;
+        }
         result=await execute(call.name,call.args,call.callId,controller.signal);
         if(call.name==='delegate_to_v'&&current(s)&&s.epoch===epoch){
           s.progress=null;await new Promise(resolve=>{s.backendResult={resolve};deferred(s);});
@@ -123,7 +126,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       // Explicit cancellation retires results, while ordinary conversational
       // interruption leaves background work alive. Never feed a late old fact.
       if(s.epoch!==epoch&&call.name!=='cancel_task')result={cancelled:true,instruction:'旧任务已取消，不继续，也不播报旧结果。'};
-      try {if(call.name==='delegate_to_v')s.bridge.completeBackgroundTool(call.callId,result);else s.bridge.submitToolResult(call.callId,result);}
+      try {if(backgroundAck)s.bridge.completeBackgroundTool(call.callId,result);else s.bridge.submitToolResult(call.callId,result);}
       catch {result={error:'工具结果过大或无法续传，请缩小范围并分页读取。'};s.bridge.submitToolResult(call.callId,result);}
       audit({type:'tool.delivered',voiceSessionId:s.id,callId:call.callId,result});
       emit(s,{type:'tool.result',callId:call.callId,name:call.name});
