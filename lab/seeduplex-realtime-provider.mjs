@@ -243,6 +243,7 @@ export class SeeduplexRealtimeVoiceBridge {
     this.toolBatches = [];
     this.seenToolCalls = new Set();
     this.pendingToolCalls = new Map();
+    this.backgroundTools = new Map();
     this.completedResponses = new Set();
     this.connectPromise = null;
     this.connectResolve = null;
@@ -352,9 +353,28 @@ export class SeeduplexRealtimeVoiceBridge {
 
   setMediaTimestamp(_timestamp) {}
 
-  beginBackgroundTool(callId, text) {
-    this.pendingWorkingSpeech = text;
-    this.submitToolResult(callId, {status:"working",message:text,instruction:"只简短播报 message，不重复等待提示。"}, {willContinue:true});
+  beginBackgroundTool(callId, question) {
+    // Finish the native function immediately; the host owns the async job.
+    // Keeping a native continuation open suppresses later conversational turns.
+    this.backgroundTools.set(callId, question);
+    this.submitToolResult(callId, {accepted:true,status:"working",message:"已交给 V 后台，我会继续做完。",instruction:"简短说明任务已开始，随后正常回应用户聊天。任务仍在后台继续，不要声称已完成。"}, {backgroundAck:true});
+  }
+
+  completeBackgroundTool(callId, result) {
+    const question = this.backgroundTools.get(callId);
+    if (question === undefined) return;
+    this.backgroundTools.delete(callId);
+    if (result?.cancelled) return;
+    const text = spokenToolResult(result);
+    if (!text) return;
+    // Documented paired history, containing the actual delegated request and
+    // actual backend answer. This is context, not a new human utterance.
+    this.#send({type:"conversation.item.create",event_id:`event_${randomUUID()}`,items:[
+      {role:"user",content:[{type:"input_text",text:question}]},
+      {role:"assistant",content:[{type:"input_text",text}]},
+    ]});
+    this.request.onTranscript?.("assistant", text, true, "V-backend");
+    this.speakProgress(text);
   }
 
   speakProgress(text) {

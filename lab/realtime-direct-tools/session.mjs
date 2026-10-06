@@ -107,7 +107,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       let result;
       try {
         validateTool(call.name,call.args);
-        if(call.name==='delegate_to_v'&&s.model==='seeduplex')s.bridge.beginBackgroundTool(call.callId,'已交给 V 后台，我会继续做完。');
+        if(call.name==='delegate_to_v'&&s.model==='seeduplex')s.bridge.beginBackgroundTool(call.callId,call.args.question);
         result=await execute(call.name,call.args,call.callId,controller.signal);
         if(call.name==='delegate_to_v'&&current(s)&&s.epoch===epoch){
           s.progress=null;await new Promise(resolve=>{s.backendResult={resolve};deferred(s);});
@@ -120,7 +120,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       // Explicit cancellation retires results, while ordinary conversational
       // interruption leaves background work alive. Never feed a late old fact.
       if(s.epoch!==epoch&&call.name!=='cancel_task')result={cancelled:true,instruction:'旧任务已取消，不继续，也不播报旧结果。'};
-      try {s.bridge.submitToolResult(call.callId,result);}
+      try {if(call.name==='delegate_to_v'&&s.model==='seeduplex')s.bridge.completeBackgroundTool(call.callId,result);else s.bridge.submitToolResult(call.callId,result);}
       catch {result={error:'工具结果过大或无法续传，请缩小范围并分页读取。'};s.bridge.submitToolResult(call.callId,result);}
       audit({type:'tool.delivered',voiceSessionId:s.id,callId:call.callId,result});
       emit(s,{type:'tool.result',callId:call.callId,name:call.name});
@@ -129,11 +129,11 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       instructions:directInstructions(entries,await loadContext(s.sessionKey),s.model)+hybridInstructions,tools:TOOLS,
       onToolCall:call=>void onToolCall(call),
       onAudio:audio=>{if(!current(s))return;s.responseActive=true;if(s.ending)s.ending.hasAudio=true;emit(s,{type:'audio',audio:audio.toString('base64'),sampleRate:24000});onOutputAudio(s.id,audio);audit({type:'audio',voiceSessionId:s.id,bytes:audio.length});},
-      onTranscript:(role,text,final)=>{
+      onTranscript:(role,text,final,source)=>{
         if(!current(s))return;
         if(role==='user'){s.lastUserAt=Date.now();s.userSpeaking=!final;}
         if(role==='user'&&final&&s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}
-        emit(s,{type:'transcript',role,text,final});audit({type:'transcript',voiceSessionId:s.id,role,text,final});
+        emit(s,{type:'transcript',role,text,final,...(source?{source}:{})});audit({type:'transcript',voiceSessionId:s.id,role,text,final,...(source?{source}:{})});
       },
       onClearAudio:()=>{if(s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}emit(s,{type:'audio.clear'});},
       onAudioSegmentDone:()=>{s.responseActive=false;},

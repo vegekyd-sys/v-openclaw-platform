@@ -520,14 +520,14 @@ test('Seeduplex greeting uses native SayHello rather than injecting unpaired his
   bridge.close();
 });
 
-test('direct background tool acknowledges working through existing continuation and returns its final once',async()=>{
- const socket=new FakeSocket(),segments=[],texts=[];
- const bridge=buildSeeduplexRealtimeVoiceProvider({env:{VOLCENGINE_REALTIME_API_KEY:'test'},createWebSocket:async()=>socket}).createBridge({providerConfig:{voice:'xiaohe'},tools:[{type:'function',name:'delegate_to_v',parameters:{type:'object',properties:{}}}],onAudio(){},onToolCall:call=>bridge.beginBackgroundTool(call.callId,'已交给 V 后台。'),onTranscript:(role,text)=>texts.push(text),onAudioSegmentDone:()=>segments.push(true),onError:e=>assert.fail(e.message),onClose(){}});
+test('async background tool releases the native call, accepts chat, and adds actual final paired context once',async()=>{
+ const socket=new FakeSocket(),texts=[];
+ const bridge=buildSeeduplexRealtimeVoiceProvider({env:{VOLCENGINE_REALTIME_API_KEY:'test'},createWebSocket:async()=>socket}).createBridge({providerConfig:{voice:'xiaohe'},tools:[{type:'function',name:'delegate_to_v',parameters:{type:'object',properties:{}}}],onAudio(){},onToolCall:call=>bridge.beginBackgroundTool(call.callId,'完整真实任务'),onTranscript:(...args)=>texts.push(args),onError:e=>assert.fail(e.message),onClose(){}});
  const connecting=bridge.connect();await new Promise(resolve=>setImmediate(resolve));socket.open();socket.message({type:'session.created'});await connecting;
  socket.message({type:'response.function_call_arguments.done',items:[{call_id:'owned-background',name:'delegate_to_v',arguments:'{}'}]});
- const ack=socket.sent.find(x=>x.type==='conversation.item.create');assert.equal(JSON.parse(ack.items[0].content[0].text).status,'working');
- socket.message({type:'response.output_audio.done'});socket.message({type:'response.output_audio.done'});
- bridge.submitToolResult('owned-background',{result:'已完成全部步骤。'});bridge.submitToolResult('owned-background',{result:'不得重复播报。'});
- assert.equal(socket.sent.filter(x=>x.type==='speech_text_buffer.commit'&&x.text==='已完成全部步骤。').length,1);assert.equal(segments.length,2);
- bridge.close();
+ const ack=socket.sent.find(x=>x.type==='conversation.item.create');assert.equal(JSON.parse(ack.items[0].content[0].text).accepted,true);assert.equal(bridge.toolBatches.length,0);
+ socket.message({type:'response.output_text.done',text:'小汽车笑话'});assert(texts.some(x=>x[1]==='小汽车笑话'));
+ bridge.completeBackgroundTool('owned-background',{result:'已完成全部步骤。'});bridge.completeBackgroundTool('owned-background',{result:'不得重复播报。'});
+ const history=socket.sent.find(x=>x.items?.length===2);assert.equal(history.items[0].content[0].text,'完整真实任务');assert.equal(history.items[1].content[0].text,'已完成全部步骤。');
+ assert.equal(socket.sent.filter(x=>x.type==='speech_text_buffer.commit'&&x.text==='已完成全部步骤。').length,1);assert(texts.some(x=>x[3]==='V-backend'));bridge.close();
 });
