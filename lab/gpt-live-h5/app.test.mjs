@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { createAvatarTasks, ACTIVITY_LABELS } from "./avatar-state.mjs";
 import { createTranscriptPresentation } from "./transcript-presentation.mjs";
 import { captureDuplexMicrophone } from "./microphone-capture.mjs";
 import { createH5DuplexPlaybackGate } from "./duplex-playback.mjs";
@@ -106,7 +107,7 @@ async function fixture(t, options = {}) {
     close() { this.closed = true; }
   }
   const context = vm.createContext({
-    createTranscriptPresentation, captureDuplexMicrophone,
+    createTranscriptPresentation, captureDuplexMicrophone, createAvatarTasks, ACTIVITY_LABELS,
     AbortController,
     createCallSounds: () => {
       const value = { dialing: 0, pickups: 0, disposed: 0, dial() { this.dialing++; }, connected() { this.pickups++; }, dispose() { this.disposed++; } };

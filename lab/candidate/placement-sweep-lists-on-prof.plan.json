@@ -1,0 +1,27 @@
+{
+  "support": [
+    "lab/candidate/placement-sweep-lists.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/placement-sweep-lists.mjs"
+  ],
+  "timeoutSeconds": 2400,
+  "user": "lab-db91-parity",
+  "files": [
+    {
+      "source": "lab/release-files/placement-sweep-lists/placement-store-CkyLHi6x.js",
+      "target": "openclaw/dist/placement-store-CkyLHi6x.js",
+      "before": "f7c7b41c8748a077448728c97dbd5d08510e9c931af40e02e2801b5072a7c24f"
+    },
+    {
+      "source": "lab/release-files/placement-sweep-lists/server-worker-placement-startup-BvPREvpr.js",
+      "target": "openclaw/dist/server-worker-placement-startup-BvPREvpr.js",
+      "before": "8366d71a63fce504ff122e99581f4fffb0bde96613402f31478aa4e26846c781"
+    }
+  ],
+  "env": {
+    "PATCH": "on",
+    "PROFILE": "1"
+  }
+}

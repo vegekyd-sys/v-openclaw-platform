@@ -27,12 +27,18 @@
 // component marked `blocking: false` there is reported as advisory and does
 // not decide the state. A sidecar absent on both hosts is equal. A --pending
 // plan may list `"sidecars": ["secret-entry"]` when the release installs one.
+//
+// Config is advisory only (scripts/lib/parity-config.mjs): for the Gateway
+// config and the Worker config on each host, which MCP servers and plugin
+// entries exist and whether each is enabled. Names and booleans only; a
+// difference is reported, never decides the state.
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { parityPairs, resolveSidecarDirs, resolveVDirs } from './lib/runtime-components.mjs';
 import { evaluateParity, parseSums } from './lib/parity.mjs';
+import { compareConfigSwitches, configSwitches } from './lib/parity-config.mjs';
 
 const args = parseArgs(process.argv.slice(2));
 const vHost = args.vHost ?? 'v';
@@ -53,9 +59,10 @@ const vDirs = resolveVDirs(vCore, (glob) => listDirs(vHost, glob), {
   ...(args.vWorker ? { worker: args.vWorker } : {}), ...(args.vFeishu ? { feishu: args.vFeishu } : {}),
 });
 const vlabConfig = gatewayLoadPaths(vlabHost, vlabUnit, args.vlabConfig);
+const vConfig = gatewayLoadPaths(vHost, vUnit, args.vConfig);
 // Sidecars that are not at a fixed path: found where each host runs them.
 const sidecarDirs = resolveSidecarDirs({
-  loadPaths: { v: gatewayLoadPaths(vHost, vUnit, args.vConfig), vlab: vlabConfig },
+  loadPaths: { v: vConfig, vlab: vlabConfig },
   execStart: { v: (unit) => execStart(vHost, unit), vlab: (unit) => execStart(vlabHost, unit) },
 });
 const pairs = parityPairs({
@@ -82,15 +89,21 @@ const trees = pairs.map((pair) => ({
   v: hashTree(vHost, pair.v, true, pair.optional, pair.exclude),
   vlab: hashTree(vlabHost, pair.vlab, false, pair.optional, pair.exclude),
 }));
-const { state, compared, findings, residue } = evaluateParity({ pairs, trees, pending, pendingSidecars });
+const { state, compared, findings: fileFindings, residue } = evaluateParity({ pairs, trees, pending, pendingSidecars });
+// Advisory, added after the state is decided: config never changes it.
+const switches = { v: vConfig.switches, vlab: vlabConfig.switches };
+const config = compareConfigSwitches(switches);
+const findings = [...fileFindings, ...config.findings];
 const notes = pairs.filter((p) => p.note).map((p) => p.note);
-const report = { state, vCore, vlabRuntime, pairs, compared, pendingPlans: [].concat(args.pending ?? []), findings, residue, notes };
+const report = { state, vCore, vlabRuntime, pairs, compared, pendingPlans: [].concat(args.pending ?? []), findings, residue, notes,
+  config: { compared: config.compared, switches } };
 
 if (args.json) {
   console.log(JSON.stringify(report, null, 2));
 } else {
   console.log(`${state}: ${compared} files compared; V=${vHost}:${vCore}  VLab=${vlabHost}:${vlabRuntime}`);
   console.log(`components: ${[...new Set(pairs.map((p) => p.component + (p.blocking === false ? ' (advisory)' : '')))].join(', ')}`);
+  console.log(`config (advisory): ${config.compared} switches compared (MCP servers, plugin entries; Gateway and Worker config)`);
   for (const note of notes) console.log(`note: ${note}`);
   const byKind = Map.groupBy(findings, (f) => (f.advisory ? `advisory, does not decide the state: ${f.kind}` : f.kind));
   for (const [kind, list] of byKind) {
@@ -128,6 +141,8 @@ function listDirs(host, glob) {
 // The DingTalk, WeCom and V Browser plugin pairs follow what the Gateway
 // actually loads: plugins.load.paths of its config, and of the Worker's copy
 // (the model runs in the Worker child, which reads only that second file).
+// The same two files give the advisory config switches: configSwitches()
+// keeps names and booleans only, and the parsed configs are not kept.
 function gatewayLoadPaths(host, unit, override) {
   const env = execFileSync('ssh', ['-o', 'ConnectTimeout=15', host, `systemctl show ${unit} -p Environment --value`], { encoding: 'utf8' });
   const config = override ?? /(?:^|\s)OPENCLAW_CONFIG_PATH=(\S+)/.exec(env)?.[1];
@@ -135,7 +150,11 @@ function gatewayLoadPaths(host, unit, override) {
   const read = (file) => JSON.parse(execFileSync('ssh', ['-o', 'ConnectTimeout=15', host, `sudo cat ${shellQuote(file)}`], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }));
   const cfg = read(config);
   const workerConfig = cfg.plugins?.entries?.['vlab-agent-worker-isolation']?.config?.workerConfigPath;
-  return { main: cfg.plugins?.load?.paths ?? [], worker: workerConfig ? read(workerConfig).plugins?.load?.paths ?? [] : [] };
+  const worker = workerConfig ? read(workerConfig) : null;
+  return {
+    main: cfg.plugins?.load?.paths ?? [], worker: worker?.plugins?.load?.paths ?? [],
+    switches: { gateway: configSwitches(cfg), worker: configSwitches(worker) },
+  };
 }
 
 function execStart(host, unit) {
@@ -154,8 +173,10 @@ function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
-function short(sha) {
-  return sha ? sha.slice(0, 8) : '-';
+function short(value) {
+  // File findings carry sha256 hashes; config findings carry true/false/absent.
+  if (value == null) return '-';
+  return /^[0-9a-f]{64}$/.test(value) ? value.slice(0, 8) : String(value);
 }
 
 function shellQuote(s) {
