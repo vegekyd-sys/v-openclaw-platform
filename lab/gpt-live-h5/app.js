@@ -1,3 +1,5 @@
+import { createAvatarTasks, ACTIVITY_LABELS } from "./avatar-state.mjs";
+import { mountAvatar } from "./avatar.mjs";
 import { createTranscriptPresentation } from "./transcript-presentation.mjs";
 import { captureDuplexMicrophone } from "./microphone-capture.mjs";
 import { createCallSounds } from "./call-sounds.mjs";
@@ -16,7 +18,8 @@ const playbackRecoveryMessage = "声音播放被暂停了，点一下页面恢�
 const greetingGraceMs = 15000;
 const presentation = createTranscriptPresentation();
 const renderedTurns = new Map();
-const tasks = new Set();
+const tasks = createAvatarTasks();
+const avatar = typeof window.Image === "function" ? mountAvatar(document, window) : null;
 const sceneAnimations = new Map();
 function setCallState(state) {
   if (document.body.dataset.callState === state) return;
@@ -288,10 +291,10 @@ async function api(route, payload, { signal } = {}) {
   return result;
 }
 function taskState() {
-  $("taskStatus").textContent = tasks.size ? "后台处理中" : "";
+  $("taskStatus").textContent = ACTIVITY_LABELS[tasks.pose] ?? "";
   $("cancel").disabled = tasks.size === 0;
   $("cancel").hidden = tasks.size === 0;
-  $("avatar").src = tasks.size ? "./assets/v-tool-busy-20260922.png" : "./assets/v-idle-nohat-20260922.png";
+  void avatar?.show(tasks.pose);
   document.body.dataset.avatarState = tasks.size > 1 ? "very-busy" : tasks.size ? "busy" : "idle";
 }
 function renderTranscript(snapshot) {
@@ -467,8 +470,7 @@ async function startCall() {
         onPlaybackActivity:speaking=>{if(call===active)document.body.dataset.voiceState=speaking?'speaking':'listening';},
         onEvent:value=>{
           if(call!==active)return;
-          if(value.type==='tool.call'&&value.name!=='end_call')tasks.add(value.callId);
-          if(value.type==='tool.result')tasks.delete(value.callId);
+          tasks.consume(value);
           if(value.type.startsWith('tool.'))taskState();
           if(value.type==='transcript') {
             active.relayTurns??={};
@@ -492,8 +494,7 @@ async function startCall() {
       if (call !== active) return;
       const value = JSON.parse(event.data);
       if (value.voiceSessionId !== active.voiceSessionId) return;
-      if (value.type === "tool.call" && value.name !== "openclaw_end_call") tasks.add(value.callId);
-      if (["tool.result", "tool.error"].includes(value.type)) tasks.delete(value.callId);
+      tasks.consume(value);
       if (value.type === "tool.result") requestAutomaticEnd(active, value);
       if (value.type === "tool.error" && value.name === "openclaw_end_call" &&
         (value.callId === value.requestId || value.source === "backend_model_client_tool" &&
