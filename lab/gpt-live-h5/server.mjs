@@ -240,7 +240,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     });
     const {createDirectVoiceService}=await import('../realtime-direct-tools/session.mjs');
     const wsModule=await import(pathToFileURL(join(runtime,'node_modules/ws/wrapper.mjs')));
-    const directVoice=createDirectVoiceService({gateway,wsModule,apiKeys:{
+    const directVoice=createDirectVoiceService({gateway,wsModule,
+      toolEnvironment:Object.fromEntries(["LARKSUITE_CLI_CONFIG_DIR","LARKSUITE_CLI_DATA_DIR"].filter(key=>process.env[key]).map(key=>[key,process.env[key]])),
+      apiKeys:{
       seeduplex:process.env.VOLCENGINE_REALTIME_API_KEY??process.env.DOUBAO_SPEECH_API_KEY,
       grok:process.env.XAI_API_KEY,
     },loadContext:async sessionKey=>{
