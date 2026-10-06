@@ -4,7 +4,7 @@
 
 ## 实现
 
-- 播放：设备原生采样率 + AudioWorklet 连续 FIFO，120ms 启动/欠载缓冲；消费过的 PCM 不重放。只按明确事件/传输身份去重，不删除真实重复波形。旧播放 epoch、挂断后回调隔离。两种模型共用该链路。
+- 播放：设备原生采样率 + AudioWorklet 连续 FIFO，小何120ms、Grok400ms启动/欠载缓冲；消费过的 PCM 不重放。只按明确事件/传输身份去重，不删除真实重复波形。旧播放 epoch、挂断后回调隔离。两种模型共用该链路。
 - 简单查询：前端模型直接调用 OpenClaw 原生工具。日历使用飞书本人 CLI，自动等待自己的 exec/process 结果。没有额外后端模型跳转。
 - 复杂任务：模型选择 delegate_to_v，把完整目标一次交给同一个个人 V session 的正常后端模型。原生工具调用先释放等待状态，可以继续聊天；后台自主完成多步，只播报实际工具返回后的公开进展。结果等待当前用户/声音退出后续传。
 - 小何：查询选中工具后立即执行，用独立生成并核验 hash 的原生小何 PCM 播报一句说明；提示和回答共用同一 FIFO。提示不再向等待函数结果的主对话插入 SayHello，也不等待提示结束才交付真实工具结果。无需第二句话续接仍须原 H5 实测。
@@ -77,3 +77,22 @@ The next frozen Candidate selects Xiaohe controls and Grok full hybrid separatel
 `nativeAttempt91` 的经典本地 Worker 适配器与独立云 Worker 的 `runWorkerEmbeddedTurn` 不是同一个执行域；不能仅凭该标识期待云 Worker 生命周期事件。Gateway exec 代理也可能返回 handled=false，不能仅凭代理代码存在就断言实际执行位于 Gateway。后续本地 Worker 使用实际 SDK 的本进程 native process 工具与原 session scope，但只清理本 run 已观察的 exec ID，不恢复或清理共享 session 中的其他执行。尚未返回 ID 的命令保持退出未确认，不能猜测归属。
 
 独立 Linux 原生工具复核实际创建两个同 scope 后台 sleep：本 run 已观察的命令经原生 kill/poll 后真实 PID 消失，另一个命令仍在运行。最后正常清理该独立测试的另一个命令，两个 PID 均实读消失。此为真实原生工具/OS 证据，不是 H5 语音或 iOS Safari 验收。1900 项本地检查通过；新语音复验仍待。
+
+
+## R9：两种模型的退出控制通过，日历与播放仍有独立失败
+
+3e8dac97 原整轮 FAIL 保留，20项流程检查中19项通过。两种模型均真实委派后台命令，再由模型调用 cancel_task；原生 process poll 确认终止，独立 PID/start witness 消失。自然告别→实际 end_call→声音排空→关闭→新 owner 问候均观察，同页 getUserMedia 请求各为1。Grok 简单记忆和 Web 未委派后端；一条 USER 查询实际返回答案 PCM，没有第二句话，Memory 选工具延迟3439ms。复杂目标只委派一次，正常配置的 deepseek-flash 产生23个实际工具事件、公开进度和自动最终语音，等待期间仍能聊天。
+
+Grok 日历原 CLI exit3，原因是私有配置把 base/openclaw 当作 base；原生 OpenClaw 子进程会再次追加 openclaw。相同 access-only 登录在真实 OpenClaw 环境中改用 base 后，CLI 真实查询 exit0/ok=true。后续 Candidate 启动在数据库/Gateway之前检查 base/openclaw/config.json，防止裸 CLI 身份检查通过、原工具路径却失败。原语音失败不改为通过，待独立日历语音复验。
+
+原长故事105.58秒，该播放 epoch 欠载/重复计数0，但问候和短提示有首包欠载；整段源/声卡固定时钟波形检查仍FAIL，不能仅凭播放器计数宣布不卡。实际 Grok 首包244.67ms、第二包晚595ms，原120ms缓冲不足。后续只给 Grok 400ms音频线程启动窗口；小何保持120ms，完整短响应仍可立即播放。使用原包长度/到达时刻在24/44.1/48kHz回归，没有中间空帧或重播；新原H5录音和物理Safari仍需实测。
+
+本轮自己的 Candidate unit/rundir 已独立读回 not-found/gone，完整原录音、audit和FAIL回执保存。sharedUnchanged=false 属于并行共享更新，本任务没有修改共享或V。
+
+## 仍需完成的验收
+
+- 当前修正后的日历和Grok缓冲原H5复验，不能由旧样本替代。
+- iPhone Safari实际不重复/不卡、权限重拨、后台/锁屏恢复和人声插话听觉。
+- 后台取消已经返回执行ID的路径通过；经典Worker里前台命令尚未返回ID的取消仍保持未确认，禁止从共享session猜测或清理其他任务。
+- 原固定时钟PCM失败、物理回声、未知/迟到回调和OAuth自动续期等原未完成项保留。局部通过不表示整个实验已验收。
+- 共享VLab部署仍需当前补丁的合入授权、合法lease、实时before/controller核对，不能覆盖并行任务。生产本补丁未发布。

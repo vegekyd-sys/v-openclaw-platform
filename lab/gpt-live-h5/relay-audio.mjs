@@ -29,7 +29,9 @@ export class PcmPlaybackQueue {
 }
 export function relayWorkletSource(){return `${PcmPlaybackQueue.toString()}
 class Speaker extends AudioWorkletProcessor {
- constructor(){super();this.queue=new PcmPlaybackQueue(sampleRate);this.epoch=0;this.tick=0;
+ constructor(options){super();const prefill=options?.processorOptions?.prefillMs??120;
+ if(!Number.isFinite(prefill)||prefill<0||prefill>1000)throw Error('Invalid playback buffer');
+ this.queue=new PcmPlaybackQueue(sampleRate,prefill);this.epoch=0;this.tick=0;
  this.port.onmessage=({data:e})=>{if(e.type==='clear'){this.epoch=e.epoch;this.queue.clear();}
  else if(e.type==='done'&&e.epoch===this.epoch)this.queue.end();
  else if(e.type==='audio'&&e.epoch===this.epoch){try{this.queue.push(new Int16Array(e.buffer));}catch{this.port.postMessage({type:'error',epoch:this.epoch});}}};}
@@ -45,13 +47,16 @@ class Mic extends AudioWorkletProcessor {
 }
 registerProcessor('v-direct-speaker',Speaker);registerProcessor('v-direct-mic',Mic);`;}
 export function createRelayAudio({context,stream,reservation,onEvent,onError,onClosed,onPlaybackActivity=()=>{}}) {
+  // Recorded Grok packets: 245ms of speech, then a 595ms arrival gap.
+  // 400ms protects that real startup cadence; Xiaohe retains its smaller lead.
+  const startBufferMs=reservation.provider==='grok'?400:120;
   const endpoint=new URL('./api/relay',location.href);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
   endpoint.search=new URLSearchParams({voiceSessionId:reservation.voiceSessionId,ticket:reservation.relayTicket});
   const socket=new WebSocket(endpoint);socket.binaryType='arraybuffer';
   let closed=false,ready=false,node,speaker,source,quietGain,ending=null,tailTimer,epoch=0,written=0,lastPlayedAt=null,lastSequence=0,blocked=false,outputComplete=false,playbackActive=false,busy=false,lastReceiveAt=null,statsTimer;
   const pendingInput=[],pendingOutput=[];let pendingBytes=0;
   const maxQueuedOutputBytes=16*1024*1024;
-  const stats={inputBytes:0,outputBytes:0,queuedOutputBytes:0,peakQueuedOutputBytes:0,clears:0,duplicateFrames:0,underflows:0,maxReceiveGapMs:0,startBufferMs:120,contextState:context.state,contextSampleRate:context.sampleRate,playbackDrained:false};
+  const stats={inputBytes:0,outputBytes:0,queuedOutputBytes:0,peakQueuedOutputBytes:0,clears:0,duplicateFrames:0,underflows:0,maxReceiveGapMs:0,startBufferMs,contextState:context.state,contextSampleRate:context.sampleRate,playbackDrained:false};
   const activity=value=>{if(playbackActive!==value){playbackActive=value;onPlaybackActivity(value);}};
   const send=e=>{if(socket.readyState===WebSocket.OPEN)socket.send(JSON.stringify(e));};
   const reportBusy=()=>{const next=stats.queuedOutputBytes>0||playbackActive;if(next!==busy){busy=next;send({type:'playback.state',speaking:busy});}};
@@ -97,7 +102,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
     const url=URL.createObjectURL(new Blob([relayWorkletSource()],{type:'text/javascript'}));
     try{await context.audioWorklet.addModule(url);}finally{URL.revokeObjectURL(url);}
     if(closed)return;
-    speaker=new AudioWorkletNode(context,'v-direct-speaker',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[1]});
+    speaker=new AudioWorkletNode(context,'v-direct-speaker',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[1],processorOptions:{prefillMs:startBufferMs}});
     speaker.port.postMessage({type:'clear',epoch});speaker.connect(context.destination);
     speaker.port.onmessage=({data:e})=>{
       if(closed||e.epoch!==epoch)return;

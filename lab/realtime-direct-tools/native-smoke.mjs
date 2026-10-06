@@ -46,6 +46,23 @@ async function runModel(model){
  const rows=()=>audit().filter(x=>x.voiceSessionId===id),wire=async()=> (await state()).wire;
  await wait(()=>(model==='seeduplex'||rows().some(x=>x.type==='transcript'&&x.role==='assistant'&&x.final))&&rows().some(x=>x.type==='audio'),'actual greeting',20000);
  check(model+'/greeting',true,{voiceSessionId:id,provider:model,greetingMode:model==='seeduplex'?'documented SayHello native TTS':'model response'});await quiet(id);
+ if(process.env.DIRECT_VOICE_CASES==='calendar-playback'){
+  const at=Date.now();await speak('calendar');const inputEnd=Date.now();
+  const calendarResults=()=>rows().filter(x=>x.type==='tool.native-result'&&x.at>at&&x.name==='exec'&&rows().some(c=>c.type==='tool.invoke'&&c.callId===x.callId&&String(c.args?.command).includes('lark-cli')&&String(c.args?.command).includes('+agenda')));
+  await wait(()=>calendarResults().some(x=>calendarOutcome(x.result.output).ok),'actual successful personal calendar business result',90000);
+  const result=calendarResults().find(x=>calendarOutcome(x.result.output).ok);
+  await wait(()=>rows().some(x=>x.type==='tool.delivered'&&x.callId===result.callId&&!x.result?.error),'actual calendar delivery',30000);
+  const delivered=rows().find(x=>x.type==='tool.delivered'&&x.callId===result.callId);
+  await wait(()=>rows().some(x=>x.type==='audio'&&!x.source&&x.at>delivered.at),'calendar answer PCM without a second USER',30000);await quiet(id,90000);
+  const call=rows().find(x=>x.type==='tool.invoke'&&x.callId===result.callId);
+  check(model+'/calendar-native-answer',calendarResults().every(x=>calendarOutcome(x.result.output).ok)&&!rows().some(x=>x.type==='backend.started'),{callId:result.callId,exitCode:result.result.output.details.exitCode,calendarOk:true,inputEnd,toolAt:call.at,latencyMs:call.at-inputEnd,secondUserUtteranceRequired:false});
+  if(model==='grok'){
+   const storyAt=Date.now();await speak('story');await wait(()=>rows().some(x=>x.type==='audio'&&!x.source&&x.at>storyAt),'actual long story PCM',30000);await quiet(id,120000);
+   const playback=rows().filter(x=>x.type==='client.playback-stats').at(-1)?.stats;
+   check(model+'/long-playback',Boolean(playback)&&playback.queuedOutputBytes===0&&playback.underflows===0&&playback.duplicateFrames===0&&(await state()).state==='connected',{playback,physicalSafariAccepted:false});
+  }
+  await stop();await stopRecording();save(model+'-wire.json',await wire());save(model+'-calendar-playback-result.json',{model,results:results.filter(x=>x.name?.startsWith(model+'/')),scope:'calendar and playback regression only',productAccepted:false});return;
+ }
  if(['hybrid','hybrid-core','single-query'].includes(process.env.DIRECT_VOICE_CASES)){
   const firstInput=Date.now();await speak('simple');const firstInputEnd=Date.now();await wait(()=>rows().some(x=>x.type==='tool.invoke'&&x.name==='memory_search'),'simple native memory call',45000);
   await wait(()=>rows().some(x=>x.type==='tool.delivered'&&rows().some(c=>c.type==='tool.call'&&c.name==='memory_search'&&c.callId===x.callId)),'simple native tool actually delivered',60000);

@@ -33,6 +33,17 @@ test('a large first Grok packet cannot bypass the real jitter window',()=>{
   const last=heard.findLastIndex(v=>v!==0);assert(first/rate>=.11);assert(first/rate<.13);assert.equal(heard.slice(first,last+1).filter(v=>v===0).length,0);assert.equal(q.underflows,0);assert.equal(q.consumed,17872);
  }
 });
+test('recorded Grok 595ms and late tail cadence plays continuously with the 400ms provider lead',()=>{
+ const cases=[[[0,5872],[.595,20552],[.599,3670],[1.167,8074],[1.466,15414],[1.785,11744],[1.885,14680],[1.973,8074],[1.974,1680]],[[0,5872],[.329,15414],[.330,5138],[.332,7340],[1.765,2476]]];
+ for(const rate of [24000,44100,48000])for(const arrivals of cases){
+  const q=queue(rate,400),heard=[];let index=0,first=null;
+  for(let frame=0;frame<rate*5;frame+=128){const at=frame/rate;
+   while(index<arrivals.length&&at>=arrivals[index][0]){q.push(pcm(arrivals[index][1]));index++;if(index===arrivals.length)q.end();}
+   for(const value of render(q,128,at)){if(value&&first===null)first=heard.length;heard.push(value);}
+  }
+  const last=heard.findLastIndex(v=>v!==0);assert(first/rate>=.39&&first/rate<.41);assert.equal(heard.slice(first,last+1).filter(v=>v===0).length,0);assert.equal(q.underflows,0);assert.equal(q.consumed,arrivals.reduce((n,x)=>n+x[1],0));
+ }
+});
 test('FIFO retains chunk boundaries, sample order, and legitimate identical frames',()=>{
  const q=queue(24000,0);q.push(Int16Array.from([1,2,3]));q.push(Int16Array.from([4,5]));q.push(Int16Array.from([4,5]));q.end();
  assert.deepEqual([...render(q,7)].map(v=>Math.round(v*32768)),[1,2,3,4,5,4,5]);assert.equal(q.frames,0);assert.equal(q.underflows,0);
@@ -46,20 +57,23 @@ test('fast long speech releases queue capacity after playback, independently of 
  for(let i=0;i<70*24000;i+=24000)render(q,24000);assert.equal(q.frames,0);assert.equal(q.consumed,70*24000);assert.equal(q.underflows,0);
 });
 
-async function fixture(t){
+async function fixture(t,provider){
  const old={WebSocket:globalThis.WebSocket,location:globalThis.location,AudioWorkletNode:globalThis.AudioWorkletNode};
  let socket;const sent=[],nodes=[],classes=new Map(),events=[],errors=[],listeners=new Map();
  class Socket{static OPEN=1;readyState=1;bufferedAmount=0;constructor(){socket=this}send(e){sent.push(e)}close(){this.readyState=3}}
  const realm=vm.createContext({Int16Array,Float32Array,sampleRate:48000,currentTime:0,registerProcessor:(name,K)=>classes.set(name,K),AudioWorkletProcessor:class{constructor(){this.port={postMessage:e=>this.toHost?.(e)}}}});
- class Worklet{constructor(context,name){this.name=name;this.processor=new(classes.get(name))();this.port={postMessage:(e,transfer=[])=>this.processor.port.onmessage?.({data:structuredClone(e,{transfer})}),close(){}};this.processor.toHost=e=>this.port.onmessage?.({data:e});nodes.push(this)}connect(){}disconnect(){this.disconnected=true}}
+ class Worklet{constructor(context,name,options){this.name=name;this.processor=new(classes.get(name))(options);this.port={postMessage:(e,transfer=[])=>this.processor.port.onmessage?.({data:structuredClone(e,{transfer})}),close(){}};this.processor.toHost=e=>this.port.onmessage?.({data:e});nodes.push(this)}connect(){}disconnect(){this.disconnected=true}}
  Object.assign(globalThis,{WebSocket:Socket,location:{href:'https://voice.test/voice/'},AudioWorkletNode:Worklet});
  const ctx={state:'running',currentTime:0,destination:{},audioWorklet:{addModule:async url=>vm.runInContext(await(await fetch(url)).text(),realm)},addEventListener:(name,cb)=>listeners.set(name,cb),removeEventListener:name=>listeners.delete(name),createMediaStreamSource:()=>({connect(){},disconnect(){}}),createGain:()=>({gain:{value:1},connect(){},disconnect(){}})};
- const relay=createRelayAudio({context:ctx,stream:{},reservation:{voiceSessionId:'fixture',relayTicket:'fixture'},onEvent:e=>events.push(e),onError:e=>errors.push(e.message),onClosed(){}});
+ const relay=createRelayAudio({context:ctx,stream:{},reservation:{voiceSessionId:'fixture',relayTicket:'fixture',provider},onEvent:e=>events.push(e),onError:e=>errors.push(e.message),onClosed(){}});
  const event=e=>socket.onmessage({data:JSON.stringify({voiceSessionId:'fixture',...e})});event({type:'ready'});await relay.start();
  t.after(()=>{relay.dispose();Object.assign(globalThis,old)});
  const speaker=nodes.find(n=>n.name==='v-direct-speaker');const pump=n=>{const output=[];for(let i=0;i<n;i+=128){realm.currentTime=ctx.currentTime;const block=new Float32Array(128);speaker.processor.process([],[[block]]);output.push(...block);ctx.currentTime+=128/48000;}return output;};
  return {relay,event,ctx,speaker,nodes,sent,events,errors,pump,listeners};
 }
+test('actual serialized worklet receives only the selected Grok buffer; Xiaohe stays at 120ms',async t=>{
+ const f=await fixture(t,'grok');assert.equal(f.relay.stats.startBufferMs,400);assert.equal(f.speaker.processor.queue.prefill,19200);
+});
 test('serialized production worklet executes; exact relay sequence is consumed once, identical PCM still valid',async t=>{
  const f=await fixture(t),audio=Buffer.alloc(960,1).toString('base64');
  for(const sequence of [1,1,2])f.event({type:'audio',sequence,sampleRate:24000,audio});f.event({type:'audio.done'});f.pump(48000);

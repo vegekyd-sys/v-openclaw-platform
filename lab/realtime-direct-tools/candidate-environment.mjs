@@ -23,5 +23,13 @@ export function candidateLarkEnvironment(env) {
     const stat=fs.lstatSync(dir);
     assert(path.isAbsolute(dir)&&stat.isDirectory()&&!stat.isSymbolicLink()&&(stat.mode&0o077)===0,'Candidate Lark directories must be private');
   }
+  // In an OpenClaw subprocess the CLI selects base/openclaw automatically.
+  // A leaf directory can pass a bare CLI check but fail in the actual tool.
+  const workspace=path.join(config,'openclaw'),file=path.join(workspace,'config.json');
+  assert(fs.existsSync(file),'Candidate Lark config must be the base containing openclaw/config.json');
+  for(const target of [workspace,file]){
+    const stat=fs.lstatSync(target);
+    assert(!stat.isSymbolicLink()&&(stat.mode&0o077)===0,'Candidate Lark bound workspace must be private');
+  }
   return {LARKSUITE_CLI_CONFIG_DIR:config,LARKSUITE_CLI_DATA_DIR:data};
 }
