@@ -13,7 +13,7 @@ test('unknown observer is rejected before disposable runtime startup',()=>{
  assert.doesNotMatch(result.stderr,/Disposable candidate environment required/);
 });
 test('controls-only observer passes case validation before runtime startup',()=>{
- for(const name of ['controls','calendar-playback']){const result=bootstrap(name);assert.equal(result.status,1);
+ for(const name of ['controls','calendar-playback','routing-controls']){const result=bootstrap(name);assert.equal(result.status,1);
  assert.match(result.stderr,/Disposable candidate environment required/);
  assert.doesNotMatch(result.stderr,/Unknown direct voice observer case/);}
 });

@@ -2,14 +2,14 @@ const object=(properties,required=[])=>({type:'object',properties,required,addit
 const str={type:'string'};
 export const TOOLS=[
  {type:'function',name:'read',description:'直接读取工作目录中的文件。文件名区分大小写，AGENTS.md 是指引文件；可用 offset/limit 分页。',parameters:object({path:str,offset:{type:'integer',minimum:1,maximum:100000},limit:{type:'integer',minimum:1,maximum:300}},['path'])},
- {type:'function',name:'exec',description:'直接运行 OpenClaw 原生执行工具。command 是完整命令，timeoutSeconds 是超时秒数。返回 running/sessionId 时用 process 跟进。外部写入需用户授权。',parameters:object({command:str,timeoutSeconds:{type:'integer',minimum:1,maximum:300}},['command'])},
- {type:'function',name:'process',description:'跟进本通电话发起的执行会话。poll 查询；用户明确取消时用 cancel_task。不可管理其他电话的进程。',parameters:object({action:{type:'string',enum:['poll','log']},sessionId:str,timeout:{type:'integer',minimum:1,maximum:5000}},['action','sessionId'])},
+ {type:'function',name:'exec',description:'短、明确的原生执行操作。command 是完整命令，timeoutSeconds 是超时秒数。需要长时间等待、反复轮询或用户要求后端模型执行时用 delegate_to_v；本工具不调用后端语言模型。返回 running/sessionId 时用 process 跟进。外部写入需用户授权。',parameters:object({command:str,timeoutSeconds:{type:'integer',minimum:1,maximum:300}},['command'])},
+ {type:'function',name:'process',description:'跟进本通电话发起的执行会话。poll 查询，timeout 最大5000毫秒；长时间等待交给 delegate_to_v。用户明确取消时用 cancel_task。不可管理其他电话的进程。',parameters:object({action:{type:'string',enum:['poll','log']},sessionId:str,timeout:{type:'integer',minimum:1,maximum:5000}},['action','sessionId'])},
  {type:'function',name:'memory_search',description:'搜索天意的 V/OpenClaw 个人记忆。关于家庭、个人偏好、项目历史的问题先查实际记录。',parameters:object({query:str,maxResults:{type:'integer',minimum:1,maximum:8}},['query'])},
  {type:'function',name:'web_search',description:'通过 OpenClaw 搜索互联网，查询当前新闻、价格和公开资料。',parameters:object({query:str,count:{type:'integer',minimum:1,maximum:5}},['query'])},
  {type:'function',name:'web_fetch',description:'通过 OpenClaw 读取搜索结果的公开网页，核对原文。',parameters:object({url:str},['url'])},
  {type:'function',name:'feishu_calendar',description:'查询天意本人的飞书日程。默认查今天；不是微信日历。start/end 是上海时区 ISO 时间或 YYYY-MM-DD。只查询，不创建或修改。',parameters:object({start:str,end:str})},
  {type:'function',name:'current_time',description:'获取当前上海时间，用于解释今天、明天和周末。',parameters:object({})},
- {type:'function',name:'delegate_to_v',description:'把需要多步调研、跨资料整合、规划或复杂执行的完整目标交给 V 后端模型。简单查询优先直接用工具；用户明确要求交给 V 后台时必须用本工具，不能自行代做。V 会自主继续全部步骤，返回公开进展和最终结果；等待时仍可聊天，不重复派发同一任务。context 传递用户条件和已有资料，不能扩大授权。',parameters:object({question:str,context:str},['question'])},
+ {type:'function',name:'delegate_to_v',description:'真正调用个人 V 的后端语言模型，交给它多步调研、跨资料整合、规划或长时间执行的完整目标。用户要求交给后端模型或后台处理时必须用本工具；即使用户给出了命令也不能只口头委派然后自己 exec/process。简单明确查询直接用原生工具。V 会自主继续全部步骤，返回公开进展和最终结果；等待时仍可聊天，不重复派发同一任务。context 传递用户条件和已有资料，不能扩大授权。',parameters:object({question:str,context:str},['question'])},
  {type:'function',name:'cancel_task',description:'用户明确取消当前后台任务时调用。普通插话、闲聊或补充条件不表示取消。只取消本次电话发起的任务。',parameters:object({})},
  {type:'function',name:'openclaw_tool',description:'直接执行 OpenClaw 工具，不调用另一个语言模型。可用工具和用法以本次会话提供的目录为准。飞书用 exec 执行 lark-cli --as user；外部写入遵守用户授权，禁止自行确认。arguments 是原工具参数的 JSON 字符串。',parameters:object({tool:str,arguments:str},['tool','arguments'])},
  {type:'function',name:'end_call',description:'用户明确表达结束本次通话时调用。先理解上下文，讨论挂断功能或取消一个任务不表示要结束电话。调用成功后简短告别。',parameters:object({})}

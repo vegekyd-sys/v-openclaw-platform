@@ -110,7 +110,14 @@ test('invalid or concurrent delegation returns native error without falsely ackn
 test('backend registry miss retains cancellation responsibility and explicit V routing is instructed',async()=>{
  let found=false;const f=await fixture(async args=>args.name==='exec'?{ok:true,output:{details:{status:'running',sessionId:'worker-owned'}}}:{ok:true,output:found?{details:{status:'killed'}}:{details:{status:'failed'},content:[{type:'text',text:'No session found for worker-owned'}]}});
  f.upstream.emit('open');await delay(2);
- assert.match(f.upstream.sent.find(x=>x.type==='session.update').session.instructions,/后台处理.*必须调用 delegate_to_v/);
+ const session=f.upstream.sent.find(x=>x.type==='session.update').session;
+ assert.match(session.instructions,/后台处理.*必须调用 delegate_to_v/);
+ assert(session.instructions.indexOf('任务分工：')<session.instructions.indexOf('可直接执行的原生工具目录：'));
+ assert(session.instructions.indexOf('任务分工：')<session.instructions.indexOf('最近个人对话上下文'));
+ assert.equal(session.instructions.split('任务分工：').length,2);
+ assert.match(session.instructions,/exec\/process 只是执行工具/);
+ assert.match(session.tools.find(t=>t.name==='delegate_to_v').description,/后端语言模型/);
+ assert.match(session.tools.find(t=>t.name==='exec').description,/不调用后端语言模型/);
  f.call('openclaw_tool',{tool:'exec',arguments:JSON.stringify({command:'sleep 60'})});await delay(5);
  f.call('process',{action:'poll',sessionId:'worker-owned'},'lookup');await delay(5);
  const result=await f.service.steer(f.reservation.voiceSessionId,{mode:'cancel',text:'取消'});assert.equal(result.cancelled,false);

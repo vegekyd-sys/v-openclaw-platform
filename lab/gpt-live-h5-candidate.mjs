@@ -22,7 +22,7 @@ import {parseVoiceConfirmationDiagnostics} from './gpt-live-candidate-native/con
 const directCase=process.env.DIRECT_VOICE_CASES??'hybrid';
 if(process.env.DIRECT_VOICE_AUTOMATED==='1'){
   assert(process.env.V_REALTIME_DIRECT_TOOLS==='1','Direct automated validation requires native voice tools');
-  const cases=['hybrid','hybrid-core','single-query','followup','core','controls','calendar-playback'];
+  const cases=['hybrid','hybrid-core','single-query','followup','core','controls','calendar-playback','routing-controls'];
   assert(cases.includes(directCase),'Unknown direct voice observer case');
   if(process.env.DIRECT_VOICE_CASE_BY_MODEL){const selected=JSON.parse(process.env.DIRECT_VOICE_CASE_BY_MODEL);assert(selected&&typeof selected==='object'&&!Array.isArray(selected),'Invalid per-model cases');for(const [model,value] of Object.entries(selected))assert(['seeduplex','grok'].includes(model)&&cases.includes(value),'Unknown per-model voice observer case');}
 }

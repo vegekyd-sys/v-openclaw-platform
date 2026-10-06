@@ -114,3 +114,11 @@ Grok真实长故事42.24秒，最新400ms缓冲下全部问候/日历/长故事�
 48d5acbb 的原H5独立controls整轮FAIL保留。小何实际前台sleep60尚无普通工具结果时，用户通过原麦克风发送取消，模型真正调用cancel_task。匹配run的Worker回执nativeExecScopeJoined=true，独立原PID/start witness消失；从工具调用到退出确认620ms。自然告别、真实排空挂断、新owner问候和同页麦克风仅请求一次共5项通过。本轮Candidate unit/rundir/Mac CLI已独立读回消失；sharedUnchanged=true。
 
 Grok没有进入上述流程：连接尚未ready，客户端已缓存约8秒麦克风PCM，先触发自己的“模型连接超时”；原Grok上游连接期限20秒。未收到ready或原答案PCM，不能当作Grok取消通过，也不能确定上游握手为何慢。后续只在真实provider ready后连接麦克风音频节点，保留原页面授权与已到达问候PCM；关闭连接中的电话不能晚建音频节点。增加catalog/context/provider连接阶段审计以区分本地准备与上游等待，不扩大权限或改变模型路线。下一必要复验只覆盖Grok controls，不重复小何/日历/长故事付费场景。
+
+## R13：接通修复通过；Grok把委派混成原生exec
+
+79660d3d 原整轮FAIL保留。Grok真实provider ready、问候PCM和整个后续播放都观察到，全部报告epoch欠载/重复0。目录读取132ms、个人上下文219ms、上游ready1855ms；原客户端连接前缓存溢出没有重现。这不是物理Safari验收。
+
+原USER被识别为“交给后端里”，模型说“交给后端执行”却实际调用exec，而非delegate_to_v；随后反复process轮询和播报倒计时。并未进入后端模型取消场景，不能把它算作后端委派/取消通过。原Candidate unit/rundir/Mac CLI均已读回消失，sharedUnchanged=true。
+
+后续把模型分工放到目录与历史上下文之前，工具说明明确“delegate_to_v真正调用后端语言模型，exec/process只是原生工具”，完整命令也不能代替用户要求的模型委派。长时间等待/反复轮询属于后端长任务，禁止只口头委派或密集报倒计时；短查询仍直接调工具。下一独立USER材料明确说“后台语言模型”，不改旧ASR/FAIL、不注入工具或assistant，验证实际模型是否真正选择委派后再取消。原日历/长故事与小何路径不重复付费。

@@ -63,7 +63,7 @@ async function runModel(model){
   }
   await stop();await stopRecording();save(model+'-wire.json',await wire());save(model+'-calendar-playback-result.json',{model,results:results.filter(x=>x.name?.startsWith(model+'/')),scope:'calendar and playback regression only',productAccepted:false});return;
  }
- if(['hybrid','hybrid-core','single-query'].includes(process.env.DIRECT_VOICE_CASES)){
+ if(['hybrid','hybrid-core','single-query','routing-controls'].includes(process.env.DIRECT_VOICE_CASES)){
   const firstInput=Date.now();await speak('simple');const firstInputEnd=Date.now();await wait(()=>rows().some(x=>x.type==='tool.invoke'&&x.name==='memory_search'),'simple native memory call',45000);
   await wait(()=>rows().some(x=>x.type==='tool.delivered'&&rows().some(c=>c.type==='tool.call'&&c.name==='memory_search'&&c.callId===x.callId)),'simple native tool actually delivered',60000);
   const firstDelivery=rows().find(x=>x.type==='tool.delivered'&&rows().some(c=>c.type==='tool.call'&&c.name==='memory_search'&&c.callId===x.callId));
@@ -72,6 +72,7 @@ async function runModel(model){
   check(model+'/single-query-answer-audio',rows().some(x=>x.type==='audio'&&!x.source&&x.at>firstDelivery.at),{deliveryAt:firstDelivery.at,nextUserInputSent:false});
   const firstTool=rows().find(x=>x.type==='tool.call'&&x.name==='memory_search');check(model+'/single-utterance-query',firstTool.at>=firstInput&&firstTool.at-firstInputEnd<10000,{inputStart:firstInput,inputEnd:firstInputEnd,toolAt:firstTool.at,latencyMs:firstTool.at-firstInputEnd});
   check(model+'/simple-stays-native',!rows().some(x=>x.type==='backend.started')&&rows().some(x=>x.type==='tool.native-result'&&x.name==='memory_search'&&x.result.ok===true));
+  if(process.env.DIRECT_VOICE_CASES==='routing-controls')return runControls();
   if(process.env.DIRECT_VOICE_CASES==='single-query'){await stop();await stopRecording();save(model+'-wire.json',await wire());save(model+'-single-query-result.json',{model,results:results.filter(x=>x.name?.startsWith(model+'/')),productAccepted:false});return;}
   if(process.env.DIRECT_VOICE_SIMPLE_EXTENDED==='1')for(const [clip,names] of [['calendar',['feishu_calendar','exec']],['weather',['web_search']]]){
    const at=Date.now();await speak(clip);await wait(()=>rows().some(x=>x.type==='tool.native-result'&&x.at>at&&names.includes(x.name)),'simple '+clip+' native result',90000);
