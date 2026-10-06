@@ -220,6 +220,7 @@
         "lab/release-files/codex-plugins-off/config.test.mjs",
         "lab/release-files/web-search-parallel/config.test.mjs", "lab/release-files/v-experience-multichannel/config.test.mjs",
         "lab/canonical-session-scan.test.mjs",
+        "lab/canonical-scan-path-cache.test.mjs",
         "lab/cron-shared-tool-surface.test.mjs",
         "lab/db91-benchmark-profile.test.mjs",
         "lab/db91-event-loop-p50.test.mjs",
