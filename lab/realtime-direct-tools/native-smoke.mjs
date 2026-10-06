@@ -65,6 +65,7 @@ async function runModel(model){
   check(model+'/hybrid-completion',rows().filter(x=>x.type==='backend.started').length===1&&tools.length>=2,{runId:run.runId,backendToolEvents:tools.length});
   check(model+'/hybrid-real-progress',rows().some(x=>x.type==='backend.progress-spoken'&&x.runId===run.runId)&&rows().some(x=>x.type==='audio'&&x.at>run.at),{runId:run.runId});
   if(process.env.DIRECT_VOICE_CASES==='hybrid-core'){await stop();await stopRecording();save(model+'-hybrid-core-result.json',{model,results:results.filter(x=>x.name?.startsWith(model+'/')),scope:'hybrid core only; cancellation not exercised',productAccepted:false});return;}
+  const storyAt=Date.now();await speak('story');await wait(()=>rows().some(x=>x.type==='audio'&&x.at>storyAt),'native long story',30000);await quiet(id,120000);const afterStory=rows().filter(x=>x.type==='client.playback-stats').at(-1)?.stats;check(model+'/long-playback',Boolean(afterStory)&&afterStory.outputBytes>playback.outputBytes&&(await state()).state==='connected',{playback:afterStory,physicalSafariAccepted:false});
   await speak('backend-long');await wait(()=>rows().filter(x=>x.type==='backend.started').length===2,'new independent backend goal',60000);
   const second=rows().filter(x=>x.type==='backend.started').at(-1);
   await wait(()=>rows().some(x=>x.type==='backend.event'&&x.runId===second.runId&&x.event.payload.stream==='tool'&&x.event.payload.data?.name==='exec'&&x.event.payload.data?.result?.details?.status==='running'),'owned running backend exec result',45000);
