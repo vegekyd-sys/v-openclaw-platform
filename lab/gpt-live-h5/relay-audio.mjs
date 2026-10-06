@@ -14,7 +14,10 @@ export class PcmPlaybackQueue {
   render(out,at){
     out.fill(0);
     if(!this.frames){if(this.playing){if(!this.complete)this.underflows++;this.playing=false;this.wait=0;}return;}
-    if(!this.playing){this.wait+=out.length;if(this.frames<Math.ceil(24000*this.prefill/this.rate)&&this.wait<this.prefill)return;this.playing=true;this.wait=0;}
+    // Even a large first packet needs a real jitter window. Previously a
+    // 244ms packet bypassed prefill and a next packet at 300ms caused a hole.
+    // A complete response can start immediately: no more network frames await.
+    if(!this.playing){this.wait+=out.length;if(!this.complete&&this.wait<this.prefill)return;this.playing=true;this.wait=0;}
     const step=24000/this.rate;
     for(let i=0;i<out.length;i++){
       if(!this.frames){if(!this.complete)this.underflows++;this.playing=false;this.wait=0;break;}

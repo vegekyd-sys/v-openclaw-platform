@@ -33,3 +33,7 @@
 原整轮 FAIL 保留，Candidate unit/rundir 已独立读回 not-found/gone。Grok 一句记忆查询无需第二个 USER 已返回原 PCM，工具选择在输入结束后 1929ms；复杂一次委派的实际工具、进度、最终语音和长故事已观察。日历实际 exit3/not_configured，旧观察器将 RPC ok 误记为日历成功，独立复核纠正为失败。取消原 Worker 注册表未找到实际执行 ID，随后小何拨号被清理保护阻断；不能将其称为小何 provider 失败。共享由其他任务重启至2279627，sharedUnchanged=false，候选未写共享。
 
 后续 Candidate 启动显式将继承的 VLAB_OPENCLAW_AGENT_RUNTIME 改到本候选 SDK，防止 Worker 加载共享旧代码；保留实际路径/hash证据。私有飞书配置使用现有本人登录的 access-only 加密副本，移除 refresh token，成功只读 CLI exit0/ok=true；这不是原 H5 语音验收。Worker 清理保留模型完成后的 exact Worker/run/session 归属，未确认退出不使用 Gateway 进程表冒充恢复。日历工具及观察器同时校验 CLI exit0 与业务 ok，并等待本 call 的实际结果交付后音频。
+
+## 大首包的真实缓冲
+
+80091a32 的 Grok 长故事约58秒，四个整段锚点无累积漂移，但首段录音存在缺口，原严格 PCM 检查仍 FAIL。实际首包约244ms、第二包晚约300ms到达；旧条件只在包小于120ms时等待，导致大包绕过缓冲。后续改为未完整返回的响应实际等待120ms音频线程时间，完整短响应无需等待。按真实大包/后续延迟输入在24/44.1/48kHz回归，欠载0、无中间空帧、每样本只消费一次；尚待新原H5录音与物理Safari验收。

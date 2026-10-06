@@ -23,6 +23,16 @@ test('starvation produces silence, not the last syllable; new speech resumes onc
  assert(render(q).every(v=>v===0));assert.equal(q.underflows,1);assert(render(q).every(v=>v===0));assert.equal(q.underflows,1);
  q.push(pcm(480,8192));const next=render(q,960);assert(next.every(v=>v===.25));assert.equal(q.consumed,960);
 });
+test('a large first Grok packet cannot bypass the real jitter window',()=>{
+ for(const rate of [24000,44100,48000]){
+  const q=queue(rate),heard=[];let first=null,second=false;
+  q.push(pcm(5872));
+  for(let frame=0;frame<rate*.9;frame+=128){const at=frame/rate;if(at>=.3&&!second){q.push(pcm(12000));q.end();second=true;}
+   for(const value of render(q,128,at)){if(value&&first===null)first=heard.length;heard.push(value);}
+  }
+  const last=heard.findLastIndex(v=>v!==0);assert(first/rate>=.11);assert(first/rate<.13);assert.equal(heard.slice(first,last+1).filter(v=>v===0).length,0);assert.equal(q.underflows,0);assert.equal(q.consumed,17872);
+ }
+});
 test('FIFO retains chunk boundaries, sample order, and legitimate identical frames',()=>{
  const q=queue(24000,0);q.push(Int16Array.from([1,2,3]));q.push(Int16Array.from([4,5]));q.push(Int16Array.from([4,5]));q.end();
  assert.deepEqual([...render(q,7)].map(v=>Math.round(v*32768)),[1,2,3,4,5,4,5]);assert.equal(q.frames,0);assert.equal(q.underflows,0);
