@@ -96,3 +96,10 @@ test('outer Worker cannot use its empty registry to confirm inner execution exit
  event({name:'process',phase:'result',result:{__voiceHost:{source:'voice-native-lifecycle',registryScope:runId,registryFinal:true},details:{sessions:[{sessionId:'inner',status:'failed',exitSignal:'SIGTERM'}]}}});
  const proof=await owner.cancel();assert(proof.confirmed);assert.equal(proof.processes[0].result.details.exitSignal,'SIGTERM');assert.equal(proof.source,'executing-native-worker');
 });
+
+test('native registry cleanup awaits the reliable final receipt before confirming',async()=>{
+ let release;const order=[],owner=createVoiceProcessOwner({runId:'r',sessionKey:'s',loadProcessTool:async()=>({execute:async()=>({details:{sessions:[]}})}),onNativeCall:async call=>{order.push([call.phase,call.registryFinal]);if(call.registryFinal&&call.phase==='result')await new Promise(resolve=>release=resolve);}});
+ owner.markSettled();let complete=false;const p=owner.cancel().then(result=>{complete=true;return result;});
+ for(let n=0;n<10&&!release;n++)await new Promise(resolve=>setImmediate(resolve));assert(release);assert.equal(complete,false);release();assert((await p).confirmed);
+ assert.deepEqual(order,[['start',false],['result',false],['start',true],['result',true]]);
+});

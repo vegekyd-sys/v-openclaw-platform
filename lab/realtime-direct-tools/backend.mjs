@@ -16,7 +16,7 @@ export function visibleText(message) {
 const terminal=r=>r?.status==='error'||r?.status==='aborted'||r?.aborted===true||r?.status==='ok'&&!r.yielded;
 
 /** One backend goal per telephone owner; ordinary speech never calls cancel. */
-export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{},onProgress=()=>{},onProcess=()=>{},timeoutMs=600000}) {
+export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{},onProgress=()=>{},onProcess=()=>{},timeoutMs=600000,processProofTimeoutMs=10000}) {
   let active;
   const log=(row,type,extra={})=>audit({type,voiceSessionId:ownerId,callId:row.callId,runId:row.runId,sessionKey,...extra});
   const retire=row=>{row.retired=true;row.observer.close();};
@@ -44,7 +44,16 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
       }
       log(row,'backend.cancel-observed',{observed});
       if(!terminal(observed)){row.cleanupUnconfirmed=true;throw Error('已请求取消，但 V 后台退出尚未确认');}
-      if(processCleanupError)throw processCleanupError;
+      if(processCleanupError){
+        // Native execution publishes directly in the Gateway. The outer Worker
+        // callback bridge intentionally stops on abort; its missing preview
+        // is not evidence that the executing registry failed to drain.
+        const until=Date.now()+processProofTimeoutMs;
+        while(!row.nativeRegistryFinal&&Date.now()<until)await new Promise(resolve=>setTimeout(resolve,50));
+        if(!row.nativeRegistryFinal||row.ownedProcesses.size)throw processCleanupError;
+        row.pendingExecs.clear();
+        log(row,'backend.native-cleanup-confirmed',{source:'executing-native-worker-live',registryScope:row.runId});
+      }
       for(let i=0;i<10&&row.pendingExecs.size;i++)await new Promise(resolve=>setTimeout(resolve,300));
       if(row.pendingExecs.size)throw Error('后台已停，但执行工具返回尚未收齐，保留退出责任');
       row.cleanupUnconfirmed=false;
@@ -61,6 +70,15 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
       if(d.name==='exec'&&d.phase==='start')row.pendingExecs.add(d.toolCallId);
       if(d.phase==='result'){
         const details=d.result?.details;
+        const host=d.result?.__voiceHost;
+        if(d.name==='process'&&host?.source==='voice-native-lifecycle'&&host.registryScope===row.runId&&host.registryFinal===true){
+          const entries=details?.sessions;
+          if(Array.isArray(entries)&&entries.every(entry=>typeof entry.sessionId==='string'&&processExited({details:entry}))){
+            for(const entry of entries){row.ownedProcesses.delete(entry.sessionId);onProcess(entry.sessionId,false);log(row,'backend.process-cancel-observed',{sessionId:entry.sessionId,result:{details:entry},source:'executing-native-worker-final-list'});}
+            row.nativeRegistryFinal=true;
+          }
+          log(row,'backend.native-cleanup-receipt',{confirmed:row.nativeRegistryFinal===true,registryScope:host.registryScope});
+        }
         if(d.name==='exec'){row.pendingExecs.delete(d.toolCallId);if(details?.status==='running'&&details.sessionId){row.ownedProcesses.add(details.sessionId);onProcess(details.sessionId,true);}}
         if(d.name==='process'&&details?.sessionId&&processExited(d.result)){row.ownedProcesses.delete(details.sessionId);onProcess(details.sessionId,false);}
       }

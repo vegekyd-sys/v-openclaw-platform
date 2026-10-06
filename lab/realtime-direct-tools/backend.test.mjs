@@ -66,3 +66,15 @@ test('unconfirmed cancellation blocks another goal until exact-run termination i
   await assert.rejects(f.start(),/已有一个/);
   confirmed=true;await f.backend.cancel();await rejected;assert.equal(f.backend.snapshot(),null);
 });
+
+test('executing native final list survives aborted outer callbacks and proves only its exact registry',async()=>{
+ let cancelled=false;const f=fixture(method=>method==='vlab.workers.voice.cancelProcesses'?Promise.reject(Error('outer callback stopped')):method==='chat.abort'?(cancelled=true,{ok:true}):cancelled?{status:'error',aborted:true}:new Promise(()=>{}));
+ const pending=f.start(),rejected=assert.rejects(pending,/取消/);await delay(0);const {runId}=f.backend.snapshot();
+ const native=(scope,entries)=>f.backend.handleEvent({event:'agent',payload:{runId,sessionKey:f.sessionKey,stream:'tool',data:{name:'process',phase:'result',result:{__voiceHost:{source:'voice-native-lifecycle',registryScope:scope,registryFinal:true},details:{sessions:entries}}}}});
+ f.backend.handleEvent({event:'agent',payload:{runId,stream:'tool',data:{name:'exec',phase:'result',result:{details:{status:'running',sessionId:'owned'}}}}});
+ const cancel=f.backend.cancel();await delay(5);
+ native('foreign',[{sessionId:'owned',status:'completed',exitCode:0}]);assert.equal(f.audit.some(e=>e.type==='backend.native-cleanup-confirmed'),false);
+ native(runId,[{sessionId:'owned',status:'running'}]);assert.equal(f.audit.some(e=>e.type==='backend.native-cleanup-confirmed'),false);
+ native(runId,[{sessionId:'owned',status:'failed',exitSignal:'SIGTERM'}]);await cancel;await rejected;
+ assert(f.audit.some(e=>e.type==='backend.native-cleanup-confirmed'));assert(f.audit.some(e=>e.type==='backend.process-cancel-observed'&&e.sessionId==='owned'));
+});

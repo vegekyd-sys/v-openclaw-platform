@@ -819,11 +819,12 @@ async function runWorkerEmbeddedTurnWithResources(params, skillsSnapshot) {
 			error: runFailure
 		});
 	}
-	// voice-native-process-lifetime-v2: registry lives in this execution process.
-	if(params.signal?.aborted&&/^voice-[a-f0-9-]{36}-[a-f0-9-]{36}$/.test(params.runId??'')){
+	// voice-native-process-lifetime-v3: registry lives in this execution process.
+	if(/^voice-[a-f0-9-]{36}-[a-f0-9-]{36}$/.test(params.runId??'')){
 		const owner=createVoiceProcessOwner({runId:params.runId,sessionKey:params.sessionKey,
 			loadProcessTool:async()=>{const m=await import('./bash-tools-DiAfkLAC.js');return m.t({scopeKey:params.runId});},
-			onNativeCall:call=>params.live.enqueuePreview(boundLiveEvent({kind:'tool',payload:{name:'process',phase:call.phase,toolCallId:call.toolCallId,hideFromChannelProgress:true,...call.phase==='start'?{args:call.args}:{isError:call.result?.isError===true,result:{...call.result,__voiceHost:{source:'voice-native-lifecycle',registryScope:params.runId,registryFinal:call.registryFinal}}}}}))});
+			onNativeCall:async call=>{const event=boundLiveEvent({kind:'tool',payload:{name:'process',phase:call.phase,toolCallId:call.toolCallId,hideFromChannelProgress:true,...call.phase==='start'?{args:call.args}:{isError:call.result?.isError===true,result:{...call.result,__voiceHost:{source:'voice-native-lifecycle',registryScope:params.runId,registryFinal:call.registryFinal}}}}});
+				if(call.registryFinal&&call.phase==='result')await params.live.emitTerminal(event);else params.live.enqueuePreview(event);}});
 		owner.markSettled();
 		try{await owner.cancel();}catch(error){runFailure=toWorkerAgentError(error,'Voice native process cleanup failed.');liveRuntime.enqueueRunFailure({aborted:true,error:runFailure});}
 	}

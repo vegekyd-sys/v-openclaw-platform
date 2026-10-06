@@ -178,7 +178,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       else if(e.type==='text'&&typeof e.text==='string'&&e.text.trim()&&e.text.length<=2000)s.bridge.sendUserMessage(e.text);
       else if(e.type==='playback.state'&&typeof e.speaking==='boolean')s.playing=e.speaking;
       else if(e.type==='playback.stats'){
-        const stats=Object.fromEntries(['inputBytes','outputBytes','queuedOutputBytes','peakQueuedOutputBytes','clears','underflows','duplicateFrames','maxReceiveGapMs','startBufferMs'].filter(k=>Number.isFinite(e[k])&&e[k]>=0).map(k=>[k,e[k]]));
+        const stats=Object.fromEntries(['inputBytes','outputBytes','queuedOutputBytes','peakQueuedOutputBytes','clears','underflows','duplicateFrames','maxReceiveGapMs','startBufferMs','contextSampleRate'].filter(k=>Number.isFinite(e[k])&&e[k]>=0).map(k=>[k,e[k]]));
         audit({type:'client.playback-stats',voiceSessionId:s.id,stats});
       }
       else if(e.type==='playback.drained'&&s.ending?.callId===e.callId)void close(s.id).catch(()=>{});

@@ -22,7 +22,9 @@ import {parseVoiceConfirmationDiagnostics} from './gpt-live-candidate-native/con
 const directCase=process.env.DIRECT_VOICE_CASES??'hybrid';
 if(process.env.DIRECT_VOICE_AUTOMATED==='1'){
   assert(process.env.V_REALTIME_DIRECT_TOOLS==='1','Direct automated validation requires native voice tools');
-  assert(['hybrid','hybrid-core','single-query','followup','core','controls'].includes(directCase),'Unknown direct voice observer case');
+  const cases=['hybrid','hybrid-core','single-query','followup','core','controls'];
+  assert(cases.includes(directCase),'Unknown direct voice observer case');
+  if(process.env.DIRECT_VOICE_CASE_BY_MODEL){const selected=JSON.parse(process.env.DIRECT_VOICE_CASE_BY_MODEL);assert(selected&&typeof selected==='object'&&!Array.isArray(selected),'Invalid per-model cases');for(const [model,value] of Object.entries(selected))assert(['seeduplex','grok'].includes(model)&&cases.includes(value),'Unknown per-model voice observer case');}
 }
 const runtime=process.env.VLAB_CANDIDATE_RUNTIME,state=process.env.OPENCLAW_STATE_DIR,configPath=process.env.OPENCLAW_CONFIG_PATH;
 assert(runtime&&state&&configPath,'Disposable candidate environment required');

@@ -94,6 +94,7 @@ async function runModel(model){
   const osBefore={pid:owned.pid,startTicks:fs.readFileSync(`/proc/${owned.pid}/stat`,'utf8').split(') ').at(-1).split(' ')[19],cgroup:fs.readFileSync(`/proc/${owned.pid}/cgroup`,'utf8')};
   assert(osBefore.cgroup.includes(process.env.VLAB_CANDIDATE_UNIT),'Backend exec must belong to own Candidate');
   save(model+'-backend-process-before.json',{runId:second.runId,sessionId:owned.sessionId,...osBefore});
+  if(process.env.DIRECT_VOICE_CANCEL_AFTER_QUIET==='1')await quiet(id,30000);
   await speak('cancel');await wait(()=>rows().some(x=>x.type==='backend.cancel-observed'&&x.runId===second.runId),'exact owned backend cancel terminal',45000);
   const terminal=rows().find(x=>x.type==='backend.cancel-observed'&&x.runId===second.runId);
   await wait(()=>rows().some(x=>x.type==='backend.process-cancel-observed'&&x.sessionId===owned.sessionId&&['completed','failed','killed','cancelled'].includes(x.result?.details?.status)),'backend owned process terminal poll',20000);
@@ -152,7 +153,9 @@ try {
  chrome.stderr.on('data',b=>fs.appendFileSync(path.join(evidence,'chrome.log'),b,{mode:0o600}));for(const until=Date.now()+10000;Date.now()<until&&!fs.existsSync(path.join(profile,'DevToolsActivePort'))&&chrome.exitCode===null&&chrome.signalCode===null;)await sleep(100);
  const port=Number(fs.readFileSync(path.join(profile,'DevToolsActivePort'),'utf8').split('\n')[0]);const targets=await fetch(`http://127.0.0.1:${port}/json/list`).then(r=>r.json());cdp=new Cdp(targets.find(x=>x.type==='page').webSocketDebuggerUrl);await cdp.connect();await cdp.request('Page.enable');
  await cdp.request('Page.addScriptToEvaluateOnNewDocument',{source:`globalThis.__directWire=[];globalThis.__directMicRequests=0;const getMic=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);navigator.mediaDevices.getUserMedia=(...args)=>{globalThis.__directMicRequests++;return getMic(...args)};const Native=WebSocket;globalThis.WebSocket=class extends Native{constructor(...args){super(...args);if(String(args[0]).includes('/api/relay'))this.addEventListener('message',e=>{try{const v=JSON.parse(e.data);if(v.type==='audio')v.audioBytes=Math.floor(v.audio.length*3/4);delete v.audio;globalThis.__directWire.push({...v,observedAt:Date.now()});}catch{}});}};`});
+ const defaultCase=process.env.DIRECT_VOICE_CASES,modelCases=JSON.parse(process.env.DIRECT_VOICE_CASE_BY_MODEL??'{}');
  for(const model of (process.env.DIRECT_VOICE_MODELS??'seeduplex,grok').split(',')){
+  process.env.DIRECT_VOICE_CASES=modelCases[model]??defaultCase;
   try{await runModel(model);}catch(error){errors.push({model,message:error.message,at:Date.now()});check(model+'/workflow',false,{error:error.message});save(model+'-failure-state.json',await state().catch(()=>null));await stop().catch(()=>{});await stopRecording();}
  }
 } catch(error){errors.push({kind:'harness',message:error.message});}

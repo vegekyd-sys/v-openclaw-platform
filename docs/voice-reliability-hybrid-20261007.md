@@ -61,3 +61,11 @@ Grok 的 Memory、飞书日历（真实 exit0/业务 ok）、Web 及复杂 V 一
 ## R6b 拨号前的观察器配置失败
 
 36a88c22 的独立取消场景完成数据库冷启动后，被启动器旧的允许列表拒绝（Unknown direct voice observer case），没有开始付费语音。原 FAIL、247 个冻结输入和回执保留，自己的 unit/rundir 已实读 not-found/gone。后续补上 controls 并把验证提前到任何私有数据库/Gateway 操作之前；回归实际执行 bootstrap，验证未知场景早拒绝、controls 能通过场景校验。sharedUnchanged=false 原值保留，Candidate 没有写共享，不用这个失败样本证明语音或取消已通过。
+
+### R7 cancellation diagnosis and next probe
+
+R7 (28797865) reached real Xiaohe voice and a running native backend command. The cancel USER clip overlapped the provider reply: upstream reported transcription started but neither a completed USER transcript nor `cancel_task`. Its original strict workflow FAIL is retained. During the observer's subsequent stop, the outer Worker also failed to confirm native process cleanup. Candidate unit/rundir were independently confirmed gone; shared changes in the receipt belong to concurrent shared activity and are not relabelled unchanged.
+
+Native cleanup now drains the trusted voice run's registry at every turn exit, including normal completion. The final actual process-list result is acknowledged through the existing native live protocol before finishing the run. Backend cancellation can verify that exact native final receipt after the outer callback bridge has stopped; a foreign run, a still-running list or a missing owned command remains unconfirmed. No Gateway registry or caller-supplied PID is used. The original Linux AudioContext was independently read as 44.1 kHz; playback stats now retain its actual sample rate. Prior 48 kHz-reference review failures are preserved.
+
+The next frozen Candidate selects Xiaohe controls and Grok full hybrid separately. Cancellation is exercised after actual provider/FIFO/speaker quiet to distinguish cancellation lifecycle from the independently unpassed overlapping-input case. Actual iOS Safari repetition, physical listening and overlapping speech are still required and cannot be declared passed by this probe.

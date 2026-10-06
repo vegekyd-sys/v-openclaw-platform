@@ -21,7 +21,7 @@ export function createVoiceProcessOwner({runId,sessionKey,loadProcessTool,wait=m
     pending.clear();return {runId,sessionKey,processes:[...observedExits.values()],pendingExecs:0,modelSettled:true,registryScope:runId,confirmed:true,source:'executing-native-worker'};
    }
    const tool=await loadProcessTool(),results=[...observedExits.values()];
-   const execute=async(args,final=false)=>{const toolCallId='voice-native-cleanup:'+runId+':'+args.action+':'+(args.sessionId??'registry')+(final?':final':'');onNativeCall({phase:'start',toolCallId,args,registryFinal:final});const result=await tool.execute(toolCallId,args);onNativeCall({phase:'result',toolCallId,result,registryFinal:final});return result;};
+   const execute=async(args,final=false)=>{const toolCallId='voice-native-cleanup:'+runId+':'+args.action+':'+(args.sessionId??'registry')+(final?':final':'');await onNativeCall({phase:'start',toolCallId,args,registryFinal:final});const result=await tool.execute(toolCallId,args);await onNativeCall({phase:'result',toolCallId,result,registryFinal:final});return result;};
    const listed=await execute({action:'list'});
    if(listed?.isError||!Array.isArray(listed?.details?.sessions))throw Error('Voice run-scoped native registry is unavailable');
    for(const row of listed.details.sessions){

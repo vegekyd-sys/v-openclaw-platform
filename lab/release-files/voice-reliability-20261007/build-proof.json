@@ -4,8 +4,8 @@
     {
       "target": "openclaw/dist/embedded-agent.runtime-CL7poBKY.js",
       "before": "31e6c95723f1452ea796e8a8353e04075b1cd8c395977ff075191ac04322552a",
-      "after": "6d8e913bdc3ed4ad3d9ff8c45df199f799bf97b18a75868493b0d75baac6be6f",
-      "bytes": 34876
+      "after": "368658632996de2ef80e840925b118fe666cc9a0f7e9b52ce09360df2b3fac27",
+      "bytes": 34972
     },
     {
       "target": "production-worker/worker.mjs",
@@ -28,14 +28,14 @@
     {
       "target": "production-worker/voice-process-owner.mjs",
       "before": null,
-      "after": "16f86e2c895eadbcf6d5a3636d953287881a1b040336d9d852b3652b30e3702d",
-      "bytes": 4566
+      "after": "8c1ce3ceef09fa27425cdf12f701e82910a32f53d9962ba5fa0a1aaa765492cb",
+      "bytes": 4578
     },
     {
       "target": "openclaw/dist/voice-process-owner.mjs",
       "before": null,
-      "after": "16f86e2c895eadbcf6d5a3636d953287881a1b040336d9d852b3652b30e3702d",
-      "bytes": 4566
+      "after": "8c1ce3ceef09fa27425cdf12f701e82910a32f53d9962ba5fa0a1aaa765492cb",
+      "bytes": 4578
     }
   ]
 }
