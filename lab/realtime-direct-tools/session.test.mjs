@@ -110,3 +110,15 @@ test('invalid or concurrent delegation returns native error without falsely ackn
  f.call('delegate_to_v',{question:'完整任务'},'first');await delay(5);f.call('delegate_to_v',{question:'另一个任务'},'second');await delay(5);
  assert.equal(f.audit.filter(x=>x.type==='backend.start-requested').length,1);const second=JSON.parse(f.upstream.sent.find(x=>x.item?.call_id==='second').item.output);assert(second.error);assert(!second.accepted);await f.service.dispose();
 });
+
+test('backend registry miss retains cancellation responsibility and explicit V routing is instructed',async()=>{
+ let found=false;const f=await fixture(async args=>args.name==='exec'?{ok:true,output:{details:{status:'running',sessionId:'worker-owned'}}}:{ok:true,output:found?{details:{status:'killed'}}:{details:{status:'failed'},content:[{type:'text',text:'No session found for worker-owned'}]}});
+ f.upstream.emit('open');await delay(2);
+ assert.match(f.upstream.sent.find(x=>x.type==='session.update').session.instructions,/后台处理.*必须调用 delegate_to_v/);
+ f.call('openclaw_tool',{tool:'exec',arguments:JSON.stringify({command:'sleep 60'})});await delay(5);
+ f.call('process',{action:'poll',sessionId:'worker-owned'},'lookup');await delay(5);
+ const result=await f.service.steer(f.reservation.voiceSessionId,{mode:'cancel',text:'取消'});assert.equal(result.cancelled,false);
+ await assert.rejects(f.service.close(f.reservation.voiceSessionId),/退出尚未确认/);
+ await assert.rejects(f.service.reserve({model:'grok',sessionKey:'personal'}),/正在确认退出/);
+ found=true;await f.service.close(f.reservation.voiceSessionId);await f.service.dispose();
+});

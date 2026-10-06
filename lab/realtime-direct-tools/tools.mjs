@@ -9,7 +9,7 @@ export const TOOLS=[
  {type:'function',name:'web_fetch',description:'通过 OpenClaw 读取搜索结果的公开网页，核对原文。',parameters:object({url:str},['url'])},
  {type:'function',name:'feishu_calendar',description:'查询天意本人的飞书日程。默认查今天；不是微信日历。start/end 是上海时区 ISO 时间或 YYYY-MM-DD。只查询，不创建或修改。',parameters:object({start:str,end:str})},
  {type:'function',name:'current_time',description:'获取当前上海时间，用于解释今天、明天和周末。',parameters:object({})},
- {type:'function',name:'delegate_to_v',description:'把需要多步调研、跨资料整合、规划或复杂执行的完整目标交给 V 后端模型。简单查询优先直接用工具。V 会自主继续全部步骤，返回公开进展和最终结果；等待时仍可聊天，不重复派发同一任务。context 传递用户条件和已有资料，不能扩大授权。',parameters:object({question:str,context:str},['question'])},
+ {type:'function',name:'delegate_to_v',description:'把需要多步调研、跨资料整合、规划或复杂执行的完整目标交给 V 后端模型。简单查询优先直接用工具；用户明确要求交给 V 后台时必须用本工具，不能自行代做。V 会自主继续全部步骤，返回公开进展和最终结果；等待时仍可聊天，不重复派发同一任务。context 传递用户条件和已有资料，不能扩大授权。',parameters:object({question:str,context:str},['question'])},
  {type:'function',name:'cancel_task',description:'用户明确取消当前后台任务时调用。普通插话、闲聊或补充条件不表示取消。只取消本次电话发起的任务。',parameters:object({})},
  {type:'function',name:'openclaw_tool',description:'直接执行 OpenClaw 工具，不调用另一个语言模型。可用工具和用法以本次会话提供的目录为准。飞书用 exec 执行 lark-cli --as user；外部写入遵守用户授权，禁止自行确认。arguments 是原工具参数的 JSON 字符串。',parameters:object({tool:str,arguments:str},['tool','arguments'])},
  {type:'function',name:'end_call',description:'用户明确表达结束本次通话时调用。先理解上下文，讨论挂断功能或取消一个任务不表示要结束电话。调用成功后简短告别。',parameters:object({})}
@@ -57,3 +57,10 @@ export function createCallDispatcher(execute){const cache=new Map();return (item
  if(cache.has(key)){if(cache.get(key).signature!==signature)throw Error('工具调用身份冲突');return cache.get(key).promise;}
  const promise=Promise.resolve().then(()=>execute(item.name,JSON.parse(item.arguments),key));cache.set(key,{signature,promise});return promise;
 };}
+
+// A registry miss is a tool lookup error, not proof of OS process exit.
+export function processExited(output) {
+ if(!output||output.isError||output.content?.some(b=>b.type==='text'&&/No session found/i.test(b.text??'')))return false;
+ const d=output.details;
+ return ['completed','killed','cancelled'].includes(d?.status)||d?.status==='failed'&&Number.isInteger(d.exitCode);
+}

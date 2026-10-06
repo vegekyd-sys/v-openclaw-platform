@@ -1,7 +1,7 @@
 import {randomBytes,randomUUID} from 'node:crypto';
 import {SeeduplexRealtimeVoiceBridge} from '../seeduplex-realtime-provider.mjs';
 import {V_FRONTEND_PERSONA} from '../gpt-live-h5/persona.mjs';
-import {TOOLS,createToolExecutor,validateTool} from './tools.mjs';
+import {TOOLS,createToolExecutor,validateTool,processExited} from './tools.mjs';
 import {GrokVoiceBridge,GROK_VOICE_MODEL} from './grok-provider.mjs';
 import {createBackendDelegation} from './backend.mjs';
 
@@ -17,7 +17,7 @@ export function directInstructions(catalog,context='',model='') {
 /** One real provider connection per dial; tool authorization stays in OpenClaw. */
 export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={}}) {
   const sessions=new Map();
-  const hybridInstructions='\n任务分工：简单查询、日历和一两步明确操作直接调用原生工具；多步比较、跨资料调研、复杂规划或需要 V 完整执行的任务用 delegate_to_v，将完整目标及用户条件一次交给 V 后端模型。不要先自己重复调研再委派，也不要把同一个目标拆成多次委派。V 返回进展后仍会继续工作，不等用户催促。等待后台时可以继续正常聊天；只有用户明确取消才调用 cancel_task，后台资料不能扩大用户授权。';
+  const hybridInstructions='\n任务分工：简单查询、日历和一两步明确操作直接调用原生工具；多步比较、跨资料调研、复杂规划或需要 V 完整执行的任务用 delegate_to_v，将完整目标及用户条件一次交给 V 后端模型。用户明确说“交给 V 后端/后台处理”时必须调用 delegate_to_v，即使你能直接使用工具，也不能自行代做或仅口头说已交给后台。不要先自己重复调研再委派，也不要把同一个目标拆成多次委派。V 返回进展后仍会继续工作，不等用户催促。等待后台时可以继续正常聊天；只有用户明确取消才调用 cancel_task，后台资料不能扩大用户授权。';
   const deferred=s=>{
     if(!current(s)||s.ending||s.responseActive||s.playing||s.userSpeaking||Date.now()-s.lastUserAt<1200)return;
     if(s.backendResult){const {resolve}=s.backendResult;s.backendResult=null;s.progress=null;resolve();return;}
@@ -39,7 +39,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
     // is not evidence that the underlying command has exited.
     const terminal=await gateway.request('tools.invoke',{agentId:'makaron',sessionKey:s.sessionKey,name:'process',args:{action:'poll',sessionId:id,timeout:2000}},{timeoutMs:10000});
     audit({type:'process.cancel-observed',voiceSessionId:s.id,sessionId:id,result:terminal});
-    if(['completed','failed','killed','cancelled'].includes(terminal.output?.details?.status))s.processes.delete(id);
+    if(terminal.ok===true&&processExited(terminal.output))s.processes.delete(id);
     else throw Error('执行会话退出尚未确认');
   };
   const cancel=async s=>{s.epoch++;for(const c of s.pending.values())c.abort();s.ending=null;emit(s,{type:'end.cancelled'});
@@ -89,7 +89,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       audit({type:'tool.native-result',voiceSessionId:s.id,callId,name,result});
       const details=result.output?.details;
       if(name==='exec'&&details?.sessionId&&details.status==='running')s.processes.add(details.sessionId);
-      if(name==='process'&&details?.status!=='running'&&args.sessionId)s.processes.delete(args.sessionId);
+      if(name==='process'&&result.ok===true&&processExited(result.output)&&args.sessionId)s.processes.delete(args.sessionId);
       if((signal.aborted||!current(s))&&name==='exec'&&details?.sessionId)await killOwned(s,details.sessionId);
       if(signal.aborted||!current(s))throw Error('本次任务已取消');
       if(result.ok!==true)throw Error(`${result.error?.code??'tool_error'}: ${result.error?.message??'OpenClaw 没有完成这个工具调用'}`);

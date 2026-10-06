@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import {processExited} from './tools.mjs';
 import {createGptLiveConsultProgressObserver} from '../gpt-live-consult-progress.mjs';
 
 // Use V's normal conversation runner and configured agent/model/tool policy.
@@ -50,7 +51,7 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
       if(d.phase==='result'){
         const details=d.result?.details;
         if(d.name==='exec'){row.pendingExecs.delete(d.toolCallId);if(details?.status==='running'&&details.sessionId)onProcess(details.sessionId,true);}
-        if(d.name==='process'&&details?.sessionId&&['completed','failed','killed','cancelled'].includes(details.status))onProcess(details.sessionId,false);
+        if(d.name==='process'&&details?.sessionId&&processExited(d.result))onProcess(details.sessionId,false);
       }
     }
     if(row.retired)return;

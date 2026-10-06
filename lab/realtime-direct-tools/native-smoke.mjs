@@ -44,7 +44,7 @@ async function runModel(model){
  const rows=()=>audit().filter(x=>x.voiceSessionId===id),wire=async()=> (await state()).wire;
  await wait(()=>(model==='seeduplex'||rows().some(x=>x.type==='transcript'&&x.role==='assistant'&&x.final))&&rows().some(x=>x.type==='audio'),'actual greeting',20000);
  check(model+'/greeting',true,{voiceSessionId:id,provider:model,greetingMode:model==='seeduplex'?'documented SayHello native TTS':'model response'});await quiet(id);
- if(process.env.DIRECT_VOICE_CASES==='hybrid'){
+ if(['hybrid','hybrid-core'].includes(process.env.DIRECT_VOICE_CASES)){
   await speak('simple');await wait(()=>rows().some(x=>x.type==='tool.invoke'&&x.name==='memory_search'),'simple native memory call',45000);
   await wait(()=>rows().some(x=>x.type==='tool.delivered'&&rows().some(c=>c.type==='tool.call'&&c.name==='memory_search'&&c.callId===x.callId)),'simple native tool actually delivered',60000);await quiet(id,45000);
   check(model+'/simple-stays-native',!rows().some(x=>x.type==='backend.started')&&rows().some(x=>x.type==='tool.native-result'&&x.name==='memory_search'&&x.result.ok===true));
@@ -62,6 +62,7 @@ async function runModel(model){
   const tools=rows().filter(x=>x.type==='backend.event'&&x.runId===run.runId&&x.event.payload.stream==='tool');
   check(model+'/hybrid-completion',rows().filter(x=>x.type==='backend.started').length===1&&tools.length>=2,{runId:run.runId,backendToolEvents:tools.length});
   check(model+'/hybrid-real-progress',rows().some(x=>x.type==='backend.progress-spoken'&&x.runId===run.runId)&&rows().some(x=>x.type==='audio'&&x.at>run.at),{runId:run.runId});
+  if(process.env.DIRECT_VOICE_CASES==='hybrid-core'){await stop();await stopRecording();save(model+'-hybrid-core-result.json',{model,results:results.filter(x=>x.name?.startsWith(model+'/')),scope:'hybrid core only; cancellation not exercised',productAccepted:false});return;}
   await speak('backend-long');await wait(()=>rows().filter(x=>x.type==='backend.started').length===2,'new independent backend goal',60000);
   const second=rows().filter(x=>x.type==='backend.started').at(-1);
   await wait(()=>rows().some(x=>x.type==='backend.event'&&x.runId===second.runId&&x.event.payload.stream==='tool'&&x.event.payload.data?.name==='exec'&&x.event.payload.data?.result?.details?.status==='running'),'owned running backend exec result',45000);
