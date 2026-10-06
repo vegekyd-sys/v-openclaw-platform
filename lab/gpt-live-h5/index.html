@@ -12,7 +12,7 @@
   <main class="app-shell">
     <header class="topbar">
       <a class="wordmark" href="./" aria-label="V 通话首页"><span class="wordmark-mark" aria-hidden="true">V</span><span>V</span></a>
-      <span id="badge" class="connection-badge" role="status">连接中</span>
+      <div class="connection-options"><label class="sr-only" for="voiceModel">语音模型</label><select id="voiceModel" class="voice-model" aria-label="语音模型"><option value="gpt-live">GPT Live</option><option value="seeduplex" disabled>豆包 · 小何</option><option value="grok" disabled>Grok Voice</option></select><span id="badge" class="connection-badge" role="status">连接中</span></div>
     </header>
     <div class="voice-layout">
       <section class="voice-stage" aria-labelledby="voiceTitle">
