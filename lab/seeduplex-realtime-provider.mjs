@@ -352,6 +352,11 @@ export class SeeduplexRealtimeVoiceBridge {
 
   setMediaTimestamp(_timestamp) {}
 
+  beginBackgroundTool(callId, text) {
+    this.pendingWorkingSpeech = text;
+    this.submitToolResult(callId, {status:"working",message:text,instruction:"只简短播报 message，不重复等待提示。"}, {willContinue:true});
+  }
+
   speakProgress(text) {
     if (!this.ready || this.terminal) return;
     this.outputClosed = false;
@@ -641,6 +646,7 @@ export class SeeduplexRealtimeVoiceBridge {
       }
     }
     if (type === "response.output_audio.done") {
+      this.request.onAudioSegmentDone?.();
       const continuing = this.toolBatches.find(
         (batch) =>
           batch.continuing &&

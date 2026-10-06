@@ -107,6 +107,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       let result;
       try {
         validateTool(call.name,call.args);
+        if(call.name==='delegate_to_v'&&s.model==='seeduplex')s.bridge.beginBackgroundTool(call.callId,'已交给 V 后台，我会继续做完。');
         result=await execute(call.name,call.args,call.callId,controller.signal);
         if(call.name==='delegate_to_v'&&current(s)&&s.epoch===epoch){
           s.progress=null;await new Promise(resolve=>{s.backendResult={resolve};deferred(s);});
@@ -135,6 +136,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
         emit(s,{type:'transcript',role,text,final});audit({type:'transcript',voiceSessionId:s.id,role,text,final});
       },
       onClearAudio:()=>{if(s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}emit(s,{type:'audio.clear'});},
+      onAudioSegmentDone:()=>{s.responseActive=false;},
       onResponseDone:e=>{s.responseActive=false;audit({type:'response.done',voiceSessionId:s.id,...e});if(s.ending?.hasAudio&&e.status==='completed')emit(s,{type:'end.after-playback',callId:s.ending.callId});},
       onEvent:e=>{if(['response.created'].includes(e.type))s.responseActive=true;
         if(['input_audio_buffer.speech_started','conversation.item.input_audio_transcription.started'].includes(e.type)){s.userSpeaking=true;s.lastUserAt=Date.now();}

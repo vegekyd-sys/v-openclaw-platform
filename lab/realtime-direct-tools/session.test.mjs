@@ -59,6 +59,7 @@ test('hybrid tool keeps one backend run alive during chat; progress and final wa
  const started=f.audit.find(x=>x.type==='backend.started');assert(started);
  const backend=e=>f.service.handleEvent({event:e.event??'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,...e.payload}});
  f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:true})),false);
+ backend({event:'agent',payload:{stream:'tool',data:{phase:'result',name:'memory_search'}}});
  backend({event:'agent',payload:{stream:'item',data:{kind:'preamble',phase:'end',progressText:'第一步查到了实际记录，正在核对网页。'}}});
  await delay(250);assert.equal(f.upstream.sent.some(x=>x.item?.type==='force_message'),false);
  await f.service.steer(f.reservation.voiceSessionId,{mode:'steer',text:'顺便和我聊聊天'});

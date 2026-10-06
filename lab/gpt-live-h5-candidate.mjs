@@ -301,7 +301,7 @@ try {
     try {
       await new Promise((resolve,reject)=>{
         const timer=setTimeout(()=>reject(Error('Private Gateway connection deadline')),5000);
-        client=new GatewayClient({url:`ws://127.0.0.1:${config.gateway.port}`,token,deviceIdentity:null,clientName:'cli',mode:'cli',scopes:['operator.read','operator.write','operator.admin'],caps:process.env.V_REALTIME_DIRECT_TOOLS==='1'?['voice-direct-tools']:undefined,
+        client=new GatewayClient({url:`ws://127.0.0.1:${config.gateway.port}`,token,deviceIdentity:null,clientName:'cli',mode:'cli',scopes:['operator.read','operator.write','operator.admin'],caps:process.env.V_REALTIME_DIRECT_TOOLS==='1'?['voice-direct-tools','tool-events']:undefined,
           onHelloOk:()=>{clearTimeout(timer);resolve();},onConnectError:error=>{clearTimeout(timer);reject(error);},onEvent:event=>bridge?.emit(event)});client.start();
       });
       const catalog=await client.request('talk.catalog',{}, {timeoutMs:15000});

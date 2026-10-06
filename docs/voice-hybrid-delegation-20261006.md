@@ -20,3 +20,9 @@ PR 217 的直接工具和静默提示修复保持独立待发布。此补丁只�
 当前暂停的最终答案严格保真、双向声学/AEC、旧 barge/父子续传严格门槛不改成通过。本补丁也不宣称所有复杂目标（尤其异步子任务的父子续传）均已验收。后台补充条件和任务跨通话持久化后续单独考虑，普通闲聊不会自动改写后台目标。
 
 Grok 进度语音事件依据 [官方 Speech to Speech 文档](https://docs.x.ai/developers/model-capabilities/audio/speech-to-speech#force-message)。共享和 V 等待用户通知，保持原 `/voice` 链接及 Web/H5 布局。
+
+## 第一轮实际诊断
+
+25fe0c15 的独立 Candidate 原 H5 样本保留失败：小何确实发起原生 memory_search 和一个真实 V run，但工具调用一直挂起等待，供应商约 33 秒报 AudioTTSIdleTimeoutError，host 已对该 exact run 取消并观察 error/rpc 终态。首次脚本也过早用音频空闲代替工具完成，且未声明工具事件订阅；Grok 使用已有个人上下文回答了重复问题，没有产生这一轮新记忆调用。这些不能称完整混合执行通过。
+
+后续修复复用小何已有 willContinue 工具续传：先发送 working 回执释放挂起状态，实际后台完成后通过同一工具身份返回最终内容；音频段实际完成时允许继续播报。网关连接声明 tool-events，以真实后台工具结果作为阶段播报的前置证据；首条纯计划不播。脚本等待实际工具交付，独立 USER 输入明确要求重新搜索。原样本和音频不改写，新样本单独记录。

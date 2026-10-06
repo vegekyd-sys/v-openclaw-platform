@@ -72,6 +72,6 @@ test("release artifacts derive from the exact current VLab runtime", () => {
   assert.equal(releaseProvider, provider);
   assert.equal(
     sha256(releaseProvider),
-    "3d72b15a8a291c89ac03981a3db227998761d6d2dd808a9d31330a6125f852a9",
+    "61a0e55e10c02d7de337dc8c4160847de7e976dd1e37d4da4394057426dfb863",
   );
 });

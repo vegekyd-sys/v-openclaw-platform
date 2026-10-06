@@ -21,6 +21,8 @@ test('one complete goal uses configured V session; unrelated run cannot complete
 test('progress admits public complete commentary only and deduplicates source mirrors',async()=>{
   const f=fixture(),promise=f.start();await delay(0);const {runId}=f.backend.snapshot();
   const agent=data=>f.backend.handleEvent({event:'agent',payload:{runId,sessionKey:f.sessionKey,stream:'item',data}});
+  agent({kind:'preamble',phase:'end',progressText:'收到，我现在开始查。'});assert.equal(f.progress.length,0);
+  f.backend.handleEvent({event:'agent',payload:{runId,stream:'tool',data:{phase:'result',name:'memory_search',toolCallId:'real-step'}}});
   agent({kind:'reasoning',phase:'end',progressText:'私有推理。'});
   agent({kind:'preamble',phase:'end',isReasoning:true,progressText:'隐私思考。'});
   agent({kind:'preamble',phase:'update',itemId:'item',progressText:'记忆已查到第一条记录。下一'});
