@@ -282,6 +282,7 @@
         "lab/worker-prewarm-v.test.mjs",
         "lab/feishu-firsttext-e2e.test.mjs",
         "lab/workboard-incremental-sweep.test.mjs",
+        "lab/workboard-full-sweep-noop.test.mjs",
         "lab/memory-search-fast.test.mjs",
         "lab/memory-search-query-isolation.test.mjs",
         "lab/memory-search-timeout.test.mjs",
