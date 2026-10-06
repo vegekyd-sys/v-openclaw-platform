@@ -1,0 +1,29 @@
+{
+  "support": [
+    "lab/candidate/async-writer-par.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/async-writer-par.mjs"
+  ],
+  "timeoutSeconds": 2400,
+  "user": "lab-db91-parity",
+  "env": {
+    "PATCH": "on",
+    "WORKERS": "5",
+    "PAR": "8",
+    "OPENCLAW_ASYNC_WRITER_ADMISSION": "0"
+  },
+  "files": [
+    {
+      "source": "lab/release-files/async-writer-admission/session-accessor.sqlite-entry-BlklNPKQ.js",
+      "target": "openclaw/dist/session-accessor.sqlite-entry-BlklNPKQ.js",
+      "before": "6b12190ca8e975ea6c8bce6703af805e01a1ef492e83f4829a6fe0f90669d96b"
+    },
+    {
+      "source": "lab/release-files/async-writer-admission/agent-db-writer-admission-wait.mjs",
+      "target": "openclaw/dist/agent-db-writer-admission-wait.mjs",
+      "before": null
+    }
+  ]
+}
