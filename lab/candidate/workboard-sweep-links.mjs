@@ -3,8 +3,9 @@
 //
 // After #212 every sweep (once a minute) still began with store.list(): every card with its notes
 // and eleven child tables, on the Gateway main thread. V has ~3,580 cards; the shared VLab mirror
-// only ~600, so this test seeds a private Workboard database to V's size (N, default 3,580) in the
-// candidate state directory, shaped like linked Night Shift cards, and runs the lifecycle region of
+// only ~2,470 (602 unarchived), so this test seeds a private Workboard database to V's size (N,
+// default 3,580) in the candidate state directory, shaped like linked Night Shift cards, a quarter
+// of them archived with an uncleaned worktree, and runs the lifecycle region of
 // both plugin files against the runtime's real WorkboardStore. A fake Gateway answers
 // sessions.list: every session on a full sweep, three recently finished ones on a partial sweep.
 // Each sweep is timed by the longest stretch the event loop could not run a 1 ms timer.
@@ -51,6 +52,8 @@ async function seed(dir) {
     card.events = card.events.map((e, j) => ({ ...e, id: `${id}-e-${j}`, ...e.sessionKey ? { sessionKey: card.sessionKey } : {} }));
     card.metadata.comments = card.metadata.comments.map((c, j) => ({ ...c, id: `${id}-c-${j}` }));
     card.metadata.automation = { boardId: "default", tenant: "nightshift", idempotencyKey: id };
+    // a quarter are archived with a worktree never cleaned up (as on VLab's mirror)
+    if (i % 4 === 0) Object.assign(card.metadata, { archivedAt: card.updatedAt }, { automation: { ...card.metadata.automation, workspace: { kind: "worktree", path: `/nonexistent/wt/${id}`, sourcePath: "/nonexistent/repo" } } });
     await store.cardStore.register(id, { version: 1, card });
   }
   return store;

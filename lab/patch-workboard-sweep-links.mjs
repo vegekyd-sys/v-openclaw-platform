@@ -15,14 +15,17 @@ import assert from 'node:assert/strict';
 // execution keys, automation JSON, archived flag; the same parent-row read agent_end uses). So
 // a partial sweep now reads the links, picks those cards, and loads only them by id, through the
 // unchanged per-card read. Selection is a superset of what the unchanged sync and cleanup act on
-// (they still filter with the full card), and the sort order is the same, so the cleanup cursor
-// walks the same list. Unchanged:
+// (they still filter with the full card), in the same sort order. Worktree cleanup between full
+// sweeps walks the uncleaned-worktree cards (archived included, as the native filter does) 16 at
+// a time with its own cursor, so a large backlog never turns a partial sweep back into a full read;
+// a full sweep still cleans from every card as before. Unchanged:
 //   - a full sweep (first, every 10 minutes, any prepared launch) still loads every card;
-//   - more than 64 selected cards (per-card reads stop being cheaper) loads every card;
+//   - more than 64 cards named by the partial sweep's sessions loads every card;
 //   - a store without listLifecycleLinks, or links that show no linked card (the sweep may then
 //     still be needed for a running, claimed or stale card), takes the original path.
 
 export const HYDRATE_LIMIT = 64;
+export const WORKTREE_WINDOW = 16;
 
 function replaceExactlyOnce(source, before, after, label) {
   assert.equal(source.split(before).length, 2, `Expected exactly one ${label}`);
@@ -33,7 +36,7 @@ export function patchWorkboardIndex(source) {
   let out = source;
   out = replaceExactlyOnce(out,
     'const WORKBOARD_WORKTREE_CLEANUP_SWEEP_LIMIT = 32;\n',
-    `const WORKBOARD_WORKTREE_CLEANUP_SWEEP_LIMIT = 32;\n/** A partial sweep loads at most this many cards by id; above it, one full list read is cheaper. */\nconst WORKBOARD_LIFECYCLE_HYDRATE_LIMIT = ${HYDRATE_LIMIT};\n`,
+    `const WORKBOARD_WORKTREE_CLEANUP_SWEEP_LIMIT = 32;\n/** A partial sweep loads at most this many cards by id; above it, one full list read is cheaper. */\nconst WORKBOARD_LIFECYCLE_HYDRATE_LIMIT = ${HYDRATE_LIMIT};\n/** Between full sweeps, worktree cleanup looks at this many uncleaned-worktree cards per sweep. */\nconst WORKBOARD_WORKTREE_LINK_WINDOW = ${WORKTREE_WINDOW};\n`,
     'cleanup limit');
   out = replaceExactlyOnce(out,
     'const LIFECYCLE_TARGETS = {\n',
@@ -72,6 +75,10 @@ function workboardWorktreeLinkIds(links) {
 const LIFECYCLE_TARGETS = {\n`,
     'lifecycle targets');
   out = replaceExactlyOnce(out,
+    '\tlet cleanupCursor = 0;\n',
+    '\tlet cleanupCursor = 0;\n\tlet worktreeLinkCursor = 0;\n',
+    'service state');
+  out = replaceExactlyOnce(out,
     `				try {
 					let cards = await params.store.list();
 					if (generation !== owner) return;
@@ -89,8 +96,14 @@ const LIFECYCLE_TARGETS = {\n`,
 					if (generation !== owner) return;
 					let cards = links?.some(workboardLinkNeedsReconciliation) ? void 0 : await params.store.list();
 					if (generation !== owner) return;
-					let cardIds = cards ? void 0 : workboardWorktreeLinkIds(links);
-					const readCards = async () => cardIds && cardIds.length <= WORKBOARD_LIFECYCLE_HYDRATE_LIMIT ? await params.store.list({ cardIds }) : await params.store.list();
+					let cardIds;
+					if (!cards) {
+						const worktreeIds = workboardWorktreeLinkIds(links);
+						const start = worktreeLinkCursor % Math.max(worktreeIds.length, 1);
+						cardIds = [...worktreeIds.slice(start), ...worktreeIds.slice(0, start)].slice(0, WORKBOARD_WORKTREE_LINK_WINDOW);
+						worktreeLinkCursor = worktreeIds.length === 0 ? 0 : (start + cardIds.length) % worktreeIds.length;
+					}
+					const readCards = async () => cardIds ? await params.store.list({ cardIds }) : await params.store.list();
 					if (!cards || cards.some((card) => needsWorkboardLifecycleReconciliation(card))) try {
 						const linked = cards ?? links;
 						const sweepStartedAt = Date.now();
@@ -101,7 +114,8 @@ const LIFECYCLE_TARGETS = {\n`,
 						});
 						if (generation !== owner) return;
 						if (!cards) {
-							cardIds = full ? void 0 : [...new Set([...cardIds, ...workboardLifecycleSnapshotCardIds(links, snapshot.sessions)])];
+							const snapshotIds = full ? void 0 : workboardLifecycleSnapshotCardIds(links, snapshot.sessions);
+							cardIds = snapshotIds && snapshotIds.length <= WORKBOARD_LIFECYCLE_HYDRATE_LIMIT ? [...new Set([...cardIds, ...snapshotIds])] : void 0;
 							cards = await readCards();
 							if (generation !== owner) return;
 						}

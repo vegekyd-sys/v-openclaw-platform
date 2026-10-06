@@ -312,6 +312,8 @@ const WORKBOARD_LIFECYCLE_FULL_SWEEP_MS = 6e5;
 const WORKBOARD_WORKTREE_CLEANUP_SWEEP_LIMIT = 32;
 /** A partial sweep loads at most this many cards by id; above it, one full list read is cheaper. */
 const WORKBOARD_LIFECYCLE_HYDRATE_LIMIT = 64;
+/** Between full sweeps, worktree cleanup looks at this many uncleaned-worktree cards per sweep. */
+const WORKBOARD_WORKTREE_LINK_WINDOW = 16;
 const workboardLifecycleGatewayState = resolveGlobalSingleton(Symbol.for("openclaw.workboard.lifecycleGatewayState"), () => ({ ready: false }), (state) => {
 	state.ready = false;
 });
@@ -573,6 +575,7 @@ function createWorkboardLifecycleService(params) {
 	let timer;
 	let begin;
 	let cleanupCursor = 0;
+	let worktreeLinkCursor = 0;
 	let lastSweepStartedAt;
 	let lastFullSweepAt;
 	const cleanupWorktrees = async (cards, warn) => {
@@ -610,8 +613,14 @@ function createWorkboardLifecycleService(params) {
 					if (generation !== owner) return;
 					let cards = links?.some(workboardLinkNeedsReconciliation) ? void 0 : await params.store.list();
 					if (generation !== owner) return;
-					let cardIds = cards ? void 0 : workboardWorktreeLinkIds(links);
-					const readCards = async () => cardIds && cardIds.length <= WORKBOARD_LIFECYCLE_HYDRATE_LIMIT ? await params.store.list({ cardIds }) : await params.store.list();
+					let cardIds;
+					if (!cards) {
+						const worktreeIds = workboardWorktreeLinkIds(links);
+						const start = worktreeLinkCursor % Math.max(worktreeIds.length, 1);
+						cardIds = [...worktreeIds.slice(start), ...worktreeIds.slice(0, start)].slice(0, WORKBOARD_WORKTREE_LINK_WINDOW);
+						worktreeLinkCursor = worktreeIds.length === 0 ? 0 : (start + cardIds.length) % worktreeIds.length;
+					}
+					const readCards = async () => cardIds ? await params.store.list({ cardIds }) : await params.store.list();
 					if (!cards || cards.some((card) => needsWorkboardLifecycleReconciliation(card))) try {
 						const linked = cards ?? links;
 						const sweepStartedAt = Date.now();
@@ -622,7 +631,8 @@ function createWorkboardLifecycleService(params) {
 						});
 						if (generation !== owner) return;
 						if (!cards) {
-							cardIds = full ? void 0 : [...new Set([...cardIds, ...workboardLifecycleSnapshotCardIds(links, snapshot.sessions)])];
+							const snapshotIds = full ? void 0 : workboardLifecycleSnapshotCardIds(links, snapshot.sessions);
+							cardIds = snapshotIds && snapshotIds.length <= WORKBOARD_LIFECYCLE_HYDRATE_LIMIT ? [...new Set([...cardIds, ...snapshotIds])] : void 0;
 							cards = await readCards();
 							if (generation !== owner) return;
 						}

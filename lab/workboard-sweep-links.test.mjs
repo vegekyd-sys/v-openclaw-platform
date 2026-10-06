@@ -1,7 +1,7 @@
 import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { patchWorkboardIndex, HYDRATE_LIMIT } from './patch-workboard-sweep-links.mjs';
+import { patchWorkboardIndex, HYDRATE_LIMIT, WORKTREE_WINDOW } from './patch-workboard-sweep-links.mjs';
 
 const read = (url) => fs.readFileSync(new URL(url, import.meta.url), 'utf8');
 const original = read('./release-files/workboard-incremental-sweep/index.js');
@@ -210,5 +210,21 @@ test('prepared launches still force a full sweep that can fail them', async (t) 
   // full read, and a second one because failing the launch changed a card
   assert.deepEqual(h.reads, ['links', 'all', 'all']);
   assert.deepEqual(h.failed, ['p1']);
+  h.service.stop();
+});
+
+test(`a large worktree backlog is walked ${WORKTREE_WINDOW} cards at a time, never as a full read`, async (t) => {
+  clock(t);
+  const ws = (id) => ({ automation: { workspace: { kind: 'worktree', path: `/wt/${id}`, sourcePath: '/repo' } }, archivedAt: 1 });
+  const cards = [card('live'), ...Array.from({ length: 150 }, (_, i) => card(`w${i}`, { status: 'done', metadata: ws(`w${i}`) }))];
+  const h = harness({ cards });
+  h.service.onGatewayStart(); await settle();
+  h.reads.length = 0;
+  for (let i = 0; i < 9; i += 1) await tick(60_000);
+  const windows = h.reads.filter((r) => Array.isArray(r));
+  assert(!h.reads.includes('all'));
+  assert.deepEqual(windows.map((w) => w.length), Array(9).fill(WORKTREE_WINDOW));
+  // the nine windows between full sweeps walk 144 of the 150 cards in order
+  assert.equal(new Set(windows.flat()).size, 9 * WORKTREE_WINDOW);
   h.service.stop();
 });
