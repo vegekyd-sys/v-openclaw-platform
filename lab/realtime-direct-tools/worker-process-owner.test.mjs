@@ -103,3 +103,24 @@ test('native registry cleanup awaits the reliable final receipt before confirmin
  for(let n=0;n<10&&!release;n++)await new Promise(resolve=>setImmediate(resolve));assert(release);assert.equal(complete,false);release();assert((await p).confirmed);
  assert.deepEqual(order,[['start',false],['result',false],['start',true],['result',true]]);
 });
+
+test('local admitted Worker reaps only exact observed IDs in a shared personal-session registry',async()=>{
+ let running=true;const calls=[];
+ const owner=createVoiceProcessOwner({runId:'voice-own',sessionKey:'personal',recoverRegistry:false,loadProcessTool:async()=>({execute:async(id,args)=>{
+  calls.push(args);if(args.action==='list')return {details:{sessions:[{sessionId:'foreign',status:'running'},{sessionId:'owned',status:running?'running':'failed',exitSignal:running?undefined:'SIGTERM'}]}};
+  if(args.action==='kill'){assert.equal(args.sessionId,'owned');running=false;return {details:{status:'running'}};}
+  return {details:{sessionId:'owned',status:'failed',exitSignal:'SIGTERM'}};
+ }})});
+ owner.observe({runId:'voice-own',sessionKey:'personal',stream:'tool',data:{name:'exec',phase:'result',result:{details:{status:'running',sessionId:'owned'}}}});owner.markSettled();
+ const proof=await owner.cancel();assert(proof.confirmed);assert.deepEqual(proof.processes.map(x=>x.sessionId),['owned']);assert.deepEqual(calls.filter(x=>x.sessionId).map(x=>x.sessionId),['owned','owned']);
+});
+test('a shared session registry cannot recover an unreturned command by guessing a foreign ID',async()=>{
+ let opened=false;const owner=createVoiceProcessOwner({runId:'voice-own',sessionKey:'personal',recoverRegistry:false,loadProcessTool:async()=>{opened=true;return {execute:async()=>({details:{sessions:[{sessionId:'foreign',status:'running'}]}})};}});
+ owner.observe({runId:'voice-own',stream:'tool',data:{name:'exec',phase:'start',toolCallId:'pending'}});owner.markSettled();await assert.rejects(owner.cancel(),/identity is not settled/);assert.equal(opened,false);assert.deepEqual(owner.snapshot().pending,['pending']);
+});
+test('installed classic Worker uses its own exact session process scope instead of expecting cloud-worker events',()=>{
+ const original=fs.readFileSync(new URL('../../experiments/agent-worker-isolation-v1/worker.mjs',import.meta.url),'utf8'),patched=patchVoiceWorker(original);
+ assert(patched.includes('nativeRegistryRemote:false,recoverRegistry:false'));
+ assert(patched.includes('return m.t({scopeKey:message.sessionKey})'));
+ assert(!patched.includes('return m.t({scopeKey:message.runId})'));
+});

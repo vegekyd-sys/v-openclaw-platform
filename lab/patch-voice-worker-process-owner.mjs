@@ -1,15 +1,15 @@
 // Exact anchors patch the current runtime, preserving unrelated Worker changes.
 export function patchVoiceWorker(source) {
- if(source.includes('// voice-worker-process-owner-v3'))return source;
- if(/voice-worker-process-owner-v[12]/.test(source))throw Error('Previous voice Worker patch must be rebased from its unpatched source');
+ if(source.includes('// voice-worker-process-owner-v4'))return source;
+ if(/voice-worker-process-owner-v[123]/.test(source))throw Error('Previous voice Worker patch must be rebased from its unpatched source');
  const once=(needle,value)=>{if(source.split(needle).length!==2)throw Error('Worker process owner anchor changed: '+needle);source=source.replace(needle,value);};
- once('const activeControllers = new Map();',`// voice-worker-process-owner-v3
+ once('const activeControllers = new Map();',`// voice-worker-process-owner-v4
 const activeControllers = new Map();
 const voiceProcessOwners = new Map();`);
  source=`import {createVoiceProcessOwner} from './voice-process-owner.mjs';\n`+source;
  once('  let unsubscribeAgentEvents = () => {};',`  const voiceOwner = /^voice-[a-f0-9-]{36}-[a-f0-9-]{36}$/.test(message.runId ?? '') ? createVoiceProcessOwner({
-    runId:message.runId,sessionKey:message.sessionKey,nativeRegistryRemote:true,attempts:100,
-    loadProcessTool:async()=>{const m=await import(new URL('../bash-tools-DiAfkLAC.js',pathToFileURL(configuredAgentRuntimePath())).href);if(typeof m.t!=='function')throw Error('Native process tool unavailable');return m.t({scopeKey:message.runId});}
+    runId:message.runId,sessionKey:message.sessionKey,nativeRegistryRemote:false,recoverRegistry:false,attempts:100,
+    loadProcessTool:async()=>{const m=await import(new URL('../bash-tools-DiAfkLAC.js',pathToFileURL(configuredAgentRuntimePath())).href);if(typeof m.t!=='function')throw Error('Native process tool unavailable');return m.t({scopeKey:message.sessionKey});}
   }) : null;
   if(voiceOwner)voiceProcessOwners.set(message.runId,{owner:voiceOwner,requestId:message.id,sessionKey:message.sessionKey});
   let unsubscribeAgentEvents = () => {};`);

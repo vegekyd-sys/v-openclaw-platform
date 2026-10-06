@@ -10,8 +10,8 @@
     {
       "target": "production-worker/worker.mjs",
       "before": "18fc5d4f8ad29e50407e81f93583a54879ab712de105faf71f6402a8be84986b",
-      "after": "9356ee4b2f69140d572b600a7f24743b64acfba834751b88300f83b923d36e61",
-      "bytes": 46269
+      "after": "1d594fca2dee5894dcffc173e7f4e983f4c08f9954d7c5406914551aad7c57dd",
+      "bytes": 46297
     },
     {
       "target": "production-worker/worker-pool.mjs",
@@ -28,14 +28,14 @@
     {
       "target": "production-worker/voice-process-owner.mjs",
       "before": null,
-      "after": "8c1ce3ceef09fa27425cdf12f701e82910a32f53d9962ba5fa0a1aaa765492cb",
-      "bytes": 4578
+      "after": "77878bbd13d4d1a8b7fd8eaa8db880ce916fc145384625e1f33373dc35cda709",
+      "bytes": 4990
     },
     {
       "target": "openclaw/dist/voice-process-owner.mjs",
       "before": null,
-      "after": "8c1ce3ceef09fa27425cdf12f701e82910a32f53d9962ba5fa0a1aaa765492cb",
-      "bytes": 4578
+      "after": "77878bbd13d4d1a8b7fd8eaa8db880ce916fc145384625e1f33373dc35cda709",
+      "bytes": 4990
     }
   ]
 }

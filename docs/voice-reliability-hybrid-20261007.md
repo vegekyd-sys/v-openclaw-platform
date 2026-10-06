@@ -69,3 +69,11 @@ R7 (28797865) reached real Xiaohe voice and a running native backend command. Th
 Native cleanup now drains the trusted voice run's registry at every turn exit, including normal completion. The final actual process-list result is acknowledged through the existing native live protocol before finishing the run. Backend cancellation can verify that exact native final receipt after the outer callback bridge has stopped; a foreign run, a still-running list or a missing owned command remains unconfirmed. No Gateway registry or caller-supplied PID is used. The original Linux AudioContext was independently read as 44.1 kHz; playback stats now retain its actual sample rate. Prior 48 kHz-reference review failures are preserved.
 
 The next frozen Candidate selects Xiaohe controls and Grok full hybrid separately. Cancellation is exercised after actual provider/FIFO/speaker quiet to distinguish cancellation lifecycle from the independently unpassed overlapping-input case. Actual iOS Safari repetition, physical listening and overlapping speech are still required and cannot be declared passed by this probe.
+
+## R8 与本地执行域复核
+
+497ac3e8 原整轮 FAIL 保留。取消 USER 在实际队列与声卡静尾之后进入，模型确实调用 cancel_task，后台返回终态，但没有执行进程的 terminal poll 证明，因此 Grok 被退出保护阻断。自己的 Candidate unit/rundir 已实读 not-found/gone。
+
+`nativeAttempt91` 的经典本地 Worker 适配器与独立云 Worker 的 `runWorkerEmbeddedTurn` 不是同一个执行域；不能仅凭该标识期待云 Worker 生命周期事件。Gateway exec 代理也可能返回 handled=false，不能仅凭代理代码存在就断言实际执行位于 Gateway。后续本地 Worker 使用实际 SDK 的本进程 native process 工具与原 session scope，但只清理本 run 已观察的 exec ID，不恢复或清理共享 session 中的其他执行。尚未返回 ID 的命令保持退出未确认，不能猜测归属。
+
+独立 Linux 原生工具复核实际创建两个同 scope 后台 sleep：本 run 已观察的命令经原生 kill/poll 后真实 PID 消失，另一个命令仍在运行。最后正常清理该独立测试的另一个命令，两个 PID 均实读消失。此为真实原生工具/OS 证据，不是 H5 语音或 iOS Safari 验收。1900 项本地检查通过；新语音复验仍待。
