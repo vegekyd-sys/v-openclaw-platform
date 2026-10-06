@@ -9,7 +9,7 @@ import { createVoiceAccess } from "./access.mjs";
 import { GPT_LIVE_PERSONAL_SESSION_KEY } from "./personal-session.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
-export function createLiveH5Server({ gateway, offer, preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2 }) {
+export function createLiveH5Server({ gateway, offer, directVoice, preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2 }) {
   basePath = basePath.replace(/\/$/u, "");
   if (basePath && !/^\/[a-zA-Z0-9_-]+$/u.test(basePath)) throw new Error("Invalid voice base path");
   const hosted = Boolean(publicOrigin || accessToken);
@@ -29,7 +29,8 @@ export function createLiveH5Server({ gateway, offer, preview = false, basePath =
   const json = (res, status, data) => { res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }); res.end(JSON.stringify(data)); };
   const close = async (context = local) => {
     const old = context.active;
-    if (old) await gateway.request("talk.client.close", { sessionKey: old.sessionKey, voiceSessionId: old.reservation.voiceSessionId });
+    if (old?.direct) await directVoice.close(old.reservation.voiceSessionId);
+    else if (old) await gateway.request("talk.client.close", { sessionKey: old.sessionKey, voiceSessionId: old.reservation.voiceSessionId });
     if (context.active === old) context.active = null;
   };
   const server = createServer(async (req, res) => {
@@ -50,7 +51,7 @@ export function createLiveH5Server({ gateway, offer, preview = false, basePath =
         ["/app.js", [join(here, "app.js"), "text/javascript; charset=utf-8"]],
         ["/events.mjs", [join(here, "events.mjs"), "text/javascript; charset=utf-8"]],
         ["/duplex-playback.mjs", [join(here, "duplex-playback.mjs"), "text/javascript; charset=utf-8"]],
-        ...["microphone-capture.mjs", "transcript-presentation.mjs", "call-sounds.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
+        ...["microphone-capture.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
         ["/styles.css", [join(here, "styles.css"), "text/css; charset=utf-8"]],
         ...["v-idle-nohat-20260922.png", "v-tool-busy-20260922.png"].map((name) => [`/assets/${name}`, [join(here, "../rtc-h5/assets", name), "image/png"]]),
       ]);
@@ -87,6 +88,7 @@ export function createLiveH5Server({ gateway, offer, preview = false, basePath =
       context.touchedAt = Date.now();
       if (req.method === "GET" && pathname === "/api/status") return json(res, 200, {
         ready: !preview, model: "gpt-live-1-codex", activeCall: Boolean(context.active), creatingSession: context.creatingSession,
+        ...(directVoice ? {models:[{id:'gpt-live',label:'GPT Live',available:true},...directVoice.models()]} : {}),
       });
       if (preview) return json(res, 503, { error: "当前是页面预览，还未连接 VLab 候选服务。" });
       if (req.method === "GET" && pathname === "/api/events") {
@@ -97,6 +99,8 @@ export function createLiveH5Server({ gateway, offer, preview = false, basePath =
       if (req.method !== "POST") return json(res, 404, { error: "没有这个入口" });
       const params = await readBody();
       if (pathname === "/api/session") {
+        if (params.model && !['gpt-live','seeduplex','grok'].includes(params.model)) return json(res,400,{error:'没有这个语音模型'});
+        if (params.model && params.model !== 'gpt-live' && !directVoice) return json(res,503,{error:'这个语音模型尚未接入'});
         if (context.creatingSession) return json(res, 409, { error: "正在连接 V，请稍等。" });
         // All devices share the selected personal conversation. Do not let a
         // second device replace another device's voice owner or pending work.
@@ -114,6 +118,11 @@ export function createLiveH5Server({ gateway, offer, preview = false, basePath =
         try {
           await close(context);
           const sessionKey = GPT_LIVE_PERSONAL_SESSION_KEY;
+          if (params.model && params.model !== 'gpt-live') {
+            const reservation = await directVoice.reserve({model:params.model,sessionKey});
+            context.active={sessionKey,reservation,direct:true,touchedAt:Date.now(),cookie:req.headers.cookie};
+            return json(res,200,reservation);
+          }
           const reservation = await gateway.request("talk.client.create", { sessionKey, provider: "openai", model: "gpt-live-1-codex", voice: "sol", mode: "realtime", transport: "webrtc", brain: "agent-consult", capabilities: ["voice-transcript"] }, { timeoutMs: 45000 });
           context.active = { sessionKey, reservation, touchedAt: Date.now() };
           if (reservation.model !== "gpt-live-1-codex" || reservation.transport !== "webrtc" || reservation.offerUrl !== "/plugins/openai/realtime/calls") {
@@ -127,6 +136,15 @@ export function createLiveH5Server({ gateway, offer, preview = false, basePath =
       }
       if (!context.active || params.voiceSessionId !== context.active.reservation.voiceSessionId) return json(res, 409, { error: "通话已结束，请重新开始" });
       context.active.touchedAt = Date.now();
+      if (context.active.direct) {
+        if (pathname === '/api/close') { await close(context); return json(res,200,{ok:true}); }
+        if (pathname === '/api/heartbeat') return json(res,200,{ok:true});
+        if (pathname === '/api/steer') {
+          if(!['steer','cancel'].includes(params.mode)||typeof params.text!=='string'||!params.text.trim()||params.text.length>2000)return json(res,400,{error:'补充内容无效'});
+          return json(res,200,await directVoice.steer(params.voiceSessionId,params));
+        }
+        return json(res,400,{error:'当前模型使用实时音频通道'});
+      }
       if (pathname === "/api/offer") {
         if (typeof params.sdp !== "string" || !params.sdp.startsWith("v=0") || params.sdp.length > 65536) return json(res, 400, { error: "语音连接参数无效" });
         const sdp = await offer(context.active.reservation, params.sdp);
@@ -185,9 +203,22 @@ export function createLiveH5Server({ gateway, offer, preview = false, basePath =
     }
     for (const response of context.listeners) response.write(`data: ${JSON.stringify(message)}\n\n`);
   };
+  server.on('upgrade',(req,socket,head)=>{
+    const host=req.headers.host??'';
+    const expectedOrigin=hosted?publicOrigin:`http://${host}`;
+    if(!directVoice||(hosted?host!==origin.host:!/^(127\.0\.0\.1|localhost)(:\d+)?$/u.test(host))||req.headers.origin!==expectedOrigin){socket.destroy();return;}
+    const url=new URL(req.url,expectedOrigin);
+    if(url.pathname!==`${basePath}/api/relay`){socket.destroy();return;}
+    const context=[local,...contexts.values()].find(c=>c.active?.direct&&c.active.reservation.voiceSessionId===url.searchParams.get('voiceSessionId'));
+    if(!context||!req.headers.cookie||req.headers.cookie!==context.active.cookie){socket.destroy();return;}
+    // Re-check the live access cookie, not just a remembered session ticket.
+    if(hosted?!access.read(req):!String(req.headers.cookie).split(/;\s*/u).includes(`v_live_experiment=${cookie}`)){socket.destroy();return;}
+    directVoice.upgrade(req,socket,head,url.searchParams.get('voiceSessionId'),url.searchParams.get('ticket'));
+  });
   return { server, emit, dispose: async () => {
     clearInterval(timer);
     for (const context of [local, ...contexts.values()]) { for (const response of context.listeners) response.end(); await close(context).catch(() => {}); }
+    await directVoice?.dispose();
     server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
   } };
 }
@@ -205,9 +236,21 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const { GatewayClient } = await import(pathToFileURL(join(runtime, "dist/plugin-sdk/gateway-runtime.js")));
     await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error("Candidate Gateway unavailable")), 15000);
-      gateway = new GatewayClient({ url: `ws://127.0.0.1:${config.gateway.port}`, token, deviceIdentity: null, clientName: "cli", mode: "cli", scopes: ["operator.read", "operator.write", "operator.admin"], onHelloOk: () => { clearTimeout(timeout); resolve(); }, onEvent: (event) => bridge?.emit(event), onConnectError: (error) => { clearTimeout(timeout); reject(error); } }); gateway.start();
+      gateway = new GatewayClient({ url: `ws://127.0.0.1:${config.gateway.port}`, token, deviceIdentity: null, clientName: "cli", mode: "cli", scopes: ["operator.read", "operator.write", "operator.admin"], caps:["voice-direct-tools"], onHelloOk: () => { clearTimeout(timeout); resolve(); }, onEvent: (event) => bridge?.emit(event), onConnectError: (error) => { clearTimeout(timeout); reject(error); } }); gateway.start();
     });
+    const {createDirectVoiceService}=await import('../realtime-direct-tools/session.mjs');
+    const wsModule=await import(pathToFileURL(join(runtime,'node_modules/ws/wrapper.mjs')));
+    const directVoice=createDirectVoiceService({gateway,wsModule,
+      toolEnvironment:Object.fromEntries(["LARKSUITE_CLI_CONFIG_DIR","LARKSUITE_CLI_DATA_DIR"].filter(key=>process.env[key]).map(key=>[key,process.env[key]])),
+      apiKeys:{
+      seeduplex:process.env.VOLCENGINE_REALTIME_API_KEY??process.env.DOUBAO_SPEECH_API_KEY,
+      grok:process.env.XAI_API_KEY,
+    },loadContext:async sessionKey=>{
+      const history=await gateway.request('chat.history',{sessionKey,limit:6},{timeoutMs:10000});
+      return JSON.stringify((history.messages??[]).map(m=>({role:m.role,content:m.content}))).slice(-12000);
+    }});
     bridge = createLiveH5Server({ gateway,
+      directVoice,
       basePath: process.env.GPT_LIVE_H5_BASE_PATH ?? process.env.RTC_H5_BASE_PATH ?? "",
       publicOrigin: process.env.GPT_LIVE_H5_PUBLIC_ORIGIN ?? process.env.RTC_H5_PUBLIC_ORIGIN
         ?? (process.env.RTC_H5_BASE_PATH && process.env.RTC_H5_ACCESS_TOKEN ? "https://openclaw.tianyi.live" : ""),

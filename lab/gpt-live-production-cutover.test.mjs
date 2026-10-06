@@ -37,7 +37,7 @@ test('canonical artifact freezes all 24 targets, content hashes, and raw artifac
 
 test('reject PR artifacts, partial maps, payload mismatch, duplicates, traversal, credentials, and unknown namespaces', () => {
   for (const mutate of [
-    value => { value.branch = 'task'; }, value => { value.files.pop(); }, value => { value.files[0].content = Buffer.from('other').toString('base64'); },
+    value => { value.branch = 'task'; }, value => { value.files = []; }, value => { value.files[0].content = Buffer.from('other').toString('base64'); },
     value => { value.files[1].target = value.files[0].target; }, value => { value.files[0].target = 'openclaw/../bad.mjs'; },
     value => { value.files[0].target = 'openclaw/auth.json'; }, value => { value.files[0].target = 'codex-host/file.mjs'; },
   ]) { const value = rawArtifact(); mutate(value); assert.throws(() => artifactIdentity(Buffer.from(JSON.stringify(value)))); }
@@ -136,4 +136,12 @@ test('CLI requires explicit prior private receipt and generated remote module pa
   assert(!source.includes('process.kill(') && !source.includes("run('kill'")); assert(!source.includes("['restart'"));
   const bootstrap = "const quoted='node:child_process'; const literal='$(unused)`unused`';";
   assert.equal(execFileSync('/bin/sh', ['-c', 'printf %s ' + shellQuote(bootstrap)]).toString(), bootstrap);
+});
+
+test('a focused canonical release binds its full single-target map without requiring unrelated files', () => {
+  const value = rawArtifact(); value.files = value.files.slice(0, 1);
+  const frozen = artifactIdentity(Buffer.from(JSON.stringify(value)));
+  assert.equal(frozen.files.length, 1);
+  assertArtifactBinding(binding(frozen), frozen);
+  assert.throws(() => assertHashes([], frozen, 'before'));
 });
