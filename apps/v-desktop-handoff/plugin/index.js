@@ -155,6 +155,25 @@ export default definePluginEntry({
       await (await targetFor(id)).client.setCard(id, record).catch((error) => api.logger?.warn?.(`desktop handoff card not recorded: ${error.message}`));
     };
 
+    // A remote machine's frame takes ~2 s (VNC over the network): its Feishu card goes out (or changes
+    // state) at once with the cover, and the screenshot replaces the picture when it arrives.
+    const capturesLater = (machine) => canCapture(machine) && !machine.desktopDisplay;
+    const patchPictureLater = (id, machine) => {
+      captureMachine(machine)
+        .then(async (shot) => {
+          const card = cards.get(id);
+          if (!shot || card?.channel !== "feishu" || !card.feishu) {
+            return;
+          }
+          const imageKey = await card.feishu.uploadImage(shot.bytes, shot.filename);
+          const latest = cards.get(id) ?? card;
+          latest.view = { ...latest.view, imageKey };
+          await latest.feishu.patchCard(latest.messageId, nativeHandoffCard({ ...latest.view, state: latest.state }));
+          await remember(id, latest);
+        })
+        .catch((error) => api.logger?.warn?.(`desktop handoff card ${id} picture not updated: ${error.message}`));
+    };
+
     const baseView = ({ issued, kind, purpose, params, target }) => ({
       subject: target.subject,
       cardTitle: target.cardTitle,
@@ -177,7 +196,7 @@ export default definePluginEntry({
       const feishu = feishuFor(creds);
       let imageKey = null;
       try {
-        const shot = await captureMachine(machine).catch((error) => api.logger?.warn?.(`desktop handoff capture failed: ${error.message}`));
+        const shot = capturesLater(machine) ? null : await captureMachine(machine).catch((error) => api.logger?.warn?.(`desktop handoff capture failed: ${error.message}`));
         imageKey = shot ? await feishu.uploadImage(shot.bytes, shot.filename) : null;
         if (!imageKey) {
           const cover = machine.coverImage ?? DEFAULT_COVER;
@@ -209,6 +228,9 @@ export default definePluginEntry({
       };
       const messageId = await feishu.sendCard(receiver, nativeHandoffCard({ ...view, state: "pending" }));
       await remember(issued.id, { channel: "feishu", messageId, appId: creds.appId, accountId: accountId ?? null, view, state: "pending", feishu });
+      if (capturesLater(machine)) {
+        patchPictureLater(issued.id, machine);
+      }
       return messageId;
     };
 
@@ -389,7 +411,9 @@ export default definePluginEntry({
         const machine = targets.get(card.view?.target) ?? (await targetFor(id));
         const fresh = canCapture(machine) && (state === "active" || state === "done");
         if (card.channel === "feishu") {
-          if (fresh) {
+          if (fresh && capturesLater(machine)) {
+            patchPictureLater(id, machine);
+          } else if (fresh) {
             const shot = await captureMachine(machine).catch((error) => api.logger?.warn?.(`desktop handoff capture failed: ${error.message}`));
             if (shot) {
               card.view = { ...card.view, imageKey: await card.feishu.uploadImage(shot.bytes, shot.filename) };

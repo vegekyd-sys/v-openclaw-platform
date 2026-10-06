@@ -56,7 +56,7 @@ test("scaleToRgb averages blocks and swaps BGRX to RGB", () => {
   assert.deepEqual([...scaled.rgb], [255, 0, 0, 0, 0, 100]);
 });
 
-test("captureVncPng asks for raw 32-bit frames and returns the scaled screen", async () => {
+test("captureVncPng asks for zlib (then raw) 32-bit frames and returns the scaled screen", async () => {
   const vnc = await startFakeVnc({ password: "pw123456", width: 40, height: 20, frame: quadrants(40, 20) });
   try {
     const shot = await captureVncPng({ host: "127.0.0.1", port: vnc.port, password: "pw123456", maxWidth: 20 });
@@ -71,7 +71,7 @@ test("captureVncPng asks for raw 32-bit frames and returns the scaled screen", a
     assert.deepEqual(at(15, 8), [255, 255, 255]);
     const client = vnc.clients[0];
     assert.equal(client.shared, 1, "joins as a shared client so a live viewer is not kicked");
-    assert.deepEqual(client.setEncodings, [[0]]);
+    assert.deepEqual(client.setEncodings, [[6, 0]], "zlib first: ~6x less data than raw on the Mac");
     const pixelFormat = client.messages.find((m) => m.type === 0).bytes.subarray(4);
     assert.deepEqual([...pixelFormat.subarray(0, 4)], [32, 24, 0, 1]);
     const request = client.messages.find((m) => m.type === 3).bytes;

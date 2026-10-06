@@ -1,25 +1,50 @@
 // One still frame of the VNC desktop, for chat cards of machines the Gateway
 // cannot screenshot locally (Tianyi's Mac): connect as a shared client, ask for
-// one full raw frame in 32-bit BGRX, scale it down and return a PNG.
+// one full frame in 32-bit BGRX (Zlib-compressed when the server supports it,
+// else raw), scale it down and return a PNG. Measured on the 3440x1440 Mac:
+// raw moves ~20 MB (~7 s), Zlib ~3.4 MB (~2 s); 8-bit pixel formats get no reply.
 import zlib from "node:zlib";
 import { connectVnc } from "./rfb-proxy.mjs";
 
 // 32 bpp, depth 24, little-endian, true colour, 8 bits per channel: bytes are B,G,R,X.
 const PIXEL_FORMAT = Buffer.from([32, 24, 0, 1, 0, 255, 0, 255, 0, 255, 16, 8, 0, 0, 0, 0]);
 const RAW = 0;
+const ZLIB = 6;
+
+/** Collects chunks and hands out exact byte counts without re-copying the backlog on every chunk. */
+function byteQueue() {
+  const chunks = [];
+  let length = 0;
+  return {
+    get length() {
+      return length;
+    },
+    push(chunk) {
+      chunks.push(chunk);
+      length += chunk.length;
+    },
+    take(n) {
+      const head = chunks.length === 1 ? chunks[0] : Buffer.concat(chunks, length);
+      chunks.length = 0;
+      const out = head.subarray(0, n);
+      if (head.length > n) chunks.push(head.subarray(n));
+      length -= n;
+      return out;
+    },
+  };
+}
 
 /** Reads exact byte counts from a socket that already finished the RFB handshake. */
 function socketReader(socket, leftover) {
-  let buffer = leftover?.length ? Buffer.from(leftover) : Buffer.alloc(0);
+  const queue = byteQueue();
+  if (leftover?.length) queue.push(Buffer.from(leftover));
   let waiter = null;
   let failure = null;
   const flush = () => {
-    if (waiter && buffer.length >= waiter.n) {
+    if (waiter && queue.length >= waiter.n) {
       const { n, resolve } = waiter;
       waiter = null;
-      const out = buffer.subarray(0, n);
-      buffer = buffer.subarray(n);
-      resolve(out);
+      resolve(queue.take(n));
     } else if (waiter && failure) {
       const { reject } = waiter;
       waiter = null;
@@ -27,7 +52,7 @@ function socketReader(socket, leftover) {
     }
   };
   socket.on("data", (chunk) => {
-    buffer = buffer.length ? Buffer.concat([buffer, chunk]) : chunk;
+    queue.push(chunk);
     flush();
   });
   socket.on("error", (error) => {
@@ -51,9 +76,47 @@ function socketReader(socket, leftover) {
   };
 }
 
-/** Reads server messages until the whole screen arrived in raw rectangles (or the server goes quiet after a partial frame). */
+/** One zlib stream for the whole connection (RFB Zlib encoding); returns exactly n inflated bytes per call. */
+function zlibStream() {
+  const inflate = zlib.createInflate({ chunkSize: 1 << 20 });
+  const out = byteQueue();
+  let waiter = null;
+  let failure = null;
+  const settle = () => {
+    if (!waiter) return;
+    if (out.length >= waiter.n) {
+      const { n, resolve } = waiter;
+      waiter = null;
+      resolve(out.take(n));
+    } else if (failure) {
+      const { reject } = waiter;
+      waiter = null;
+      reject(failure);
+    }
+  };
+  inflate.on("data", (chunk) => {
+    out.push(chunk);
+    settle();
+  });
+  inflate.on("error", (error) => {
+    failure = error;
+    settle();
+  });
+  return {
+    inflate: (compressed, n) =>
+      new Promise((resolve, reject) => {
+        waiter = { n, resolve, reject };
+        inflate.write(compressed);
+        settle();
+      }),
+    close: () => inflate.destroy(),
+  };
+}
+
+/** Reads server messages until the whole screen arrived (or the server goes quiet after a partial frame). */
 async function readFrame(reader, width, height, { quietMs }) {
   const bgrx = Buffer.alloc(width * height * 4);
+  let stream = null;
   let covered = 0;
   let updates = 0;
   while (covered < width * height) {
@@ -75,10 +138,16 @@ async function readFrame(reader, width, height, { quietMs }) {
           const w = r.readUInt16BE(4);
           const h = r.readUInt16BE(6);
           const encoding = r.readInt32BE(8);
-          if (encoding !== RAW) {
-            throw new Error(`VNC server sent encoding ${encoding}, only raw was requested`);
+          let pixels;
+          if (encoding === RAW) {
+            pixels = await reader.read(w * h * 4);
+          } else if (encoding === ZLIB) {
+            const length = (await reader.read(4)).readUInt32BE(0);
+            stream ??= zlibStream();
+            pixels = await stream.inflate(await reader.read(length), w * h * 4);
+          } else {
+            throw new Error(`VNC server sent encoding ${encoding}, only zlib/raw were requested`);
           }
-          const pixels = await reader.read(w * h * 4);
           for (let row = 0; row < h && y + row < height; row += 1) {
             const cols = Math.min(w, width - x);
             if (cols <= 0) break;
@@ -105,6 +174,7 @@ async function readFrame(reader, width, height, { quietMs }) {
         throw new Error(`unexpected VNC server message ${type[0]}`);
     }
   }
+  stream?.close();
   return bgrx;
 }
 
@@ -192,7 +262,7 @@ export async function captureVncPng({ host, port, password, maxWidth = 1280, tim
     }
     const setPixelFormat = Buffer.alloc(20);
     PIXEL_FORMAT.copy(setPixelFormat, 4);
-    const setEncodings = Buffer.from([2, 0, 0, 1, 0, 0, 0, RAW]);
+    const setEncodings = Buffer.from([2, 0, 0, 2, 0, 0, 0, ZLIB, 0, 0, 0, RAW]);
     const request = Buffer.alloc(10);
     request[0] = 3; // FramebufferUpdateRequest, non-incremental
     request.writeUInt16BE(width, 6);

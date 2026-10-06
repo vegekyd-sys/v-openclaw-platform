@@ -2,6 +2,7 @@
 // message it receives after the handshake and can push framebuffer updates.
 import net from "node:net";
 import crypto from "node:crypto";
+import zlib from "node:zlib";
 import { vncAuthResponse } from "../lib/vnc-auth.mjs";
 
 export async function startFakeVnc({ password = "secret", name = "fake desktop", width = 64, height = 48, frame = null } = {}) {
@@ -93,22 +94,31 @@ export async function startFakeVnc({ password = "secret", name = "fake desktop",
           client.messages.push({ type, bytes: Buffer.from(message) });
           if (type === 3 && frame) {
             // a full-screen raw rectangle from frame(x, y) -> [r, g, b], in the 32-bit BGRX format the capture asks for
-            const rect = Buffer.alloc(16 + width * height * 4);
-            rect[0] = 0;
-            rect.writeUInt16BE(1, 2);
-            rect.writeUInt16BE(width, 8);
-            rect.writeUInt16BE(height, 10);
-            rect.writeInt32BE(0, 12);
+            const pixels = Buffer.alloc(width * height * 4);
             for (let y = 0; y < height; y += 1) {
               for (let x = 0; x < width; x += 1) {
                 const [r, g, b] = frame(x, y);
-                const i = 16 + (y * width + x) * 4;
-                rect[i] = b;
-                rect[i + 1] = g;
-                rect[i + 2] = r;
+                const i = (y * width + x) * 4;
+                pixels[i] = b;
+                pixels[i + 1] = g;
+                pixels[i + 2] = r;
               }
             }
-            socket.write(rect);
+            // Zlib (6) when the client listed it first, like macOS Screen Sharing does; else raw.
+            const zlibFirst = client.setEncodings.at(-1)?.[0] === 6;
+            const head = Buffer.alloc(16);
+            head.writeUInt16BE(1, 2);
+            head.writeUInt16BE(width, 8);
+            head.writeUInt16BE(height, 10);
+            head.writeInt32BE(zlibFirst ? 6 : 0, 12);
+            if (zlibFirst) {
+              const compressed = zlib.deflateSync(pixels, { finishFlush: zlib.constants.Z_SYNC_FLUSH });
+              const length = Buffer.alloc(4);
+              length.writeUInt32BE(compressed.length, 0);
+              socket.write(Buffer.concat([head, length, compressed]));
+            } else {
+              socket.write(Buffer.concat([head, pixels]));
+            }
           } else if (type === 3) {
             // answer with one raw rectangle so the client sees a frame
             const rect = Buffer.alloc(4 + 12 + 4);
