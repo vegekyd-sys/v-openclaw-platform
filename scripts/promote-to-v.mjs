@@ -42,6 +42,13 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { captureRuns, resolveVDirs, vPathForTarget } from './lib/runtime-components.mjs';
 
+// H5-only releases keep the Gateway runtime/current metadata unchanged. The
+// entry controller requires a frozen shared H5 proof and an idle voice entry.
+if (process.argv[2] === '--h5-entry') {
+  execFileSync(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), '../lab/gpt-live-voice-entry-release.mjs'), ...process.argv.slice(3)], { stdio: 'inherit' });
+  process.exit(0);
+}
+
 const sha = (buf) => createHash('sha256').update(buf).digest('hex');
 const sq = (s) => `'${String(s).replaceAll("'", `'\\''`)}'`;
 

@@ -150,7 +150,8 @@ export function remoteSource() {
 function main(argv) {
   const command = argv.shift(); assert(["plan", "install", "rollback"].includes(command));
   const options = { command, target: "v" };
-  for (let i = 0; i < argv.length; i += 2) { assert(["--commit", "--release", "--owner", "--shared-proof", "--expected", "--output"].includes(argv[i]) && argv[i + 1]); options[argv[i].slice(2)] = argv[i + 1]; }
+  for (let i = 0; i < argv.length; i += 2) { assert(["--commit", "--release", "--owner", "--shared-proof", "--expected", "--output", "--h5-only"].includes(argv[i]) && argv[i + 1]); options[argv[i].slice(2)] = argv[i + 1]; }
+  if ('h5-only' in options) { assert.equal(options['h5-only'], 'true'); options.h5Only = true; delete options['h5-only']; }
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   const req = freezeSource(root, options); req.sharedProof = JSON.parse(fs.readFileSync(options["shared-proof"])); validateSharedProof(req.sharedProof, req);
   if (command !== "plan") { req.expected = JSON.parse(fs.readFileSync(options.expected)); for (const key of ["commit", "release", "owner", "filesSha"]) assert.equal(req.expected[key], req[key]); }

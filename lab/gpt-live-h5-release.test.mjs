@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { execFileSync } from 'node:child_process';
-import { H5_PATHS, digest, validateIdentity, fileIdentity, validateSharedProof, assertRollbackIdentity, freezeSource, remoteSource } from './gpt-live-h5-release.mjs';
+import { H5_PATHS, digest, validateIdentity, fileIdentity, validateSharedProof, assertH5Baseline, assertRollbackIdentity, freezeSource, remoteSource } from './gpt-live-h5-release.mjs';
 
 const identity = { target: 'v', commit: 'a'.repeat(40), release: 'live-h5-release', owner: 'gpt-live-owner' };
 const files = H5_PATHS.map(name => ({ name, content: Buffer.from(name).toString('base64'), sha: digest(name) }));
@@ -70,4 +70,14 @@ test('collected expired VLab transient unit may clean its pointer; a missing pro
 });
 test('generated remote installer is valid standalone JavaScript without executing a service', () => {
   execFileSync(process.execPath, ['--check', '--input-type=module'], { input: remoteSource(), stdio: ['pipe', 'pipe', 'pipe'] });
+});
+test('H5-only release requires its own lease and an accepted aligned baseline; its commit may differ', () => {
+  const current={release:identity.release,sourceCommit:'f'.repeat(40),artifactSha:proof.artifactSha,accepted:true,v:{aligned:true}};
+  const manifest={sourceCommit:current.sourceCommit,artifactSha:current.artifactSha};
+  assertH5Baseline(current,manifest,{owner:identity.owner},request);
+  for(const patch of [{accepted:false},{v:{aligned:false}},{release:'other'}])assert.throws(()=>assertH5Baseline({...current,...patch},manifest,{owner:identity.owner},request));
+  assert.throws(()=>assertH5Baseline(current,manifest,{owner:'foreign'},request));
+  assert.throws(()=>assertH5Baseline(current,{...manifest,artifactSha:'f'.repeat(64)},{owner:identity.owner},request));
+  validateSharedProof({...proof,h5Only:true},{...request,h5Only:true});
+  assert.throws(()=>validateSharedProof({...proof,h5Only:true},request));
 });

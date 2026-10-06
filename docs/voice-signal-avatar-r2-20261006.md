@@ -35,3 +35,11 @@ ACTING POSE: V works like a multitasking interstellar operator: torso leaning FO
 161 项本地检查通过。独立 Playwright UI fixture 验证1440×960桌面、390×844手机、四张R2状态图真实加载及过渡完成后的圆形裁切；无错误或警告、无横向溢出。原事件映射不变，未新增真实语音或后端任务测试，未合dev或部署Candidate/共享VLab/V。本轮预览浏览器与26249服务已收尾。
 
 图片文件位于 `lab/gpt-live-h5/assets/v-signal-{memory,web,calendar,background}-20261006-r2.png`；主头像仍为 `v-signal-idle-20261006.png`。原生成文件均保留。
+
+## 用户确认后的发布范围
+
+2026-10-06 用户确认状态图及预览，仅要求 Web 不重复显示 V。桌面隐藏头像下的独立名字，保留“和 V 通话”；手机小头像仍保留名字。
+
+这是 H5-only 发版：Gateway runtime、配置、当前 release 均沿用已接受并 ALIGNED 的基线，不 stage/deploy Gateway。`gpt-live-h5-release.mjs --h5-only true` 单独记录 H5 commit、完整文件集和验收，要求 integration lease、accepted/aligned Gateway baseline；共享 H5 使用独立 `h5-presentation` 目录，不碰旧测试入口。生产通过 `scripts/promote-to-v.mjs --h5-entry` 调用原受控 `/voice/` 切换器，验收 proof 必须明确 h5Only 模式，绑定共享 H5 字节与 Gateway 原 artifact。仅电话网页服务在 idle/openVoices=0 时切换；Gateway 不重启。
+
+上线后检查原公共 `/voice/` 路径、全部可公开文件 hash、三个模型 availability、Gateway PID/Invocation 不变，另核对共享/生产 H5 全文件一致；`vlab.mjs align` 仍单独确认运行时组件。旧音频、最终答案、工具准入的 FAIL 不随本次视觉验收改写。

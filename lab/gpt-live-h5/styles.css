@@ -388,7 +388,7 @@ body[data-voice-state="speaking"] .wave-mark { color: var(--accent); }
 .avatar-stack #avatarPrevious { position: absolute; inset: 0; pointer-events: none; }
 .avatar-name { position: absolute; top: calc(100% + 14px); left: 50%; transform: translateX(-50%); color: var(--ink); text-decoration: none; font-size: 22px; font-weight: 650; line-height: 1; }
 .avatar-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 5px; border-radius: 3px; }
-@media (min-width: 901px) { .topbar { justify-content: flex-end; } }
+@media (min-width: 901px) { .topbar { justify-content: flex-end; } .avatar-name { display: none; } }
 @media (max-width: 900px) {
   body:is([data-call-state="idle"], [data-call-state="dialing"]) .voice-stage { gap: 48px; }
   body:is([data-call-state="connected"], [data-call-state="ending"]) .portrait-wrap { margin-bottom: 20px; }
