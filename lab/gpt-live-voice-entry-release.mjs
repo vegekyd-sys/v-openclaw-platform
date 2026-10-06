@@ -13,15 +13,17 @@ export function assertEntrySnapshot(expected, actual) {
     assert.equal(actual[key], expected[key], `Voice entry ${key} changed`);
   assert.equal(actual.openVoices, 0, "A voice call is open; do not replace the entry");
 }
-export function entryLaunchOverride(execStart, server) {
+export function entryLaunchOverride(execStart, server, nativeEnvironment = "") {
   assert(/^\/opt\/openclaw-voice-h5\/releases\/[A-Za-z0-9._-]+\/lab\/gpt-live-h5\/server\.mjs$/.test(server));
+  assert(!nativeEnvironment || /^\/opt\/openclaw-voice-h5\/releases\/[A-Za-z0-9._-]+\/native-voice.env$/.test(nativeEnvironment));
   const match = /^\{\s*path=([^;]+);\s*argv\[\]=([^;]+);\s*ignore_errors=(yes|no)\s*;/.exec(execStart);
   assert(match && !/[\r\n]/.test(match[2]), "Voice launcher definition unavailable");
   const entries = match[2].match(/\/opt\/openclaw-voice-h5\/[A-Za-z0-9._/-]+\/server\.mjs/g);
   assert.equal(entries?.length, 1, "Exactly one owned voice entrypoint required");
   // Node resolves a main-module symlink before import.meta.url comparison.
   // Launch the frozen real path so both the CLI guard and asset paths agree.
-  return "[Service]\nExecStart=\nExecStart=" + match[2].trim().replace(entries[0], server) + "\n";
+  return "[Service]\nExecStart=\nExecStart=" + match[2].trim().replace(entries[0], server) + "\n"
+    + (nativeEnvironment ? "EnvironmentFile=" + nativeEnvironment + "\n" : "");
 }
 async function remoteMain(req) {
   const fs = await import("node:fs"), path = await import("node:path"), crypto = await import("node:crypto");
@@ -93,7 +95,19 @@ async function remoteMain(req) {
   }
   const beforeLaunch = fs.existsSync(launchDropIn)
     ? { sha: hash(launchDropIn), content: fs.readFileSync(launchDropIn).toString("base64") } : { sha: null, content: null };
-  const launchBytes = entryLaunchOverride(run("systemctl", ["show", unit, "-p", "ExecStart", "--value"]), wantedPointer + "/server.mjs");
+  // Keep the original hosted entry environment intact. Native provider keys
+  // come only from the actual Gateway environment, never the release artifact.
+  const nativeEnvironment = dir + "/native-voice.env";
+  const nativeEnv = Object.fromEntries(["VOLCENGINE_REALTIME_API_KEY", "DOUBAO_SPEECH_API_KEY", "XAI_API_KEY"].filter(key => env[key]).map(key => [key, env[key]]));
+  const personalConfig = path.join(env.HOME, ".lark-cli/openclaw");
+  const personalData = path.join(env.HOME, ".local/share");
+  assert(fs.existsSync(path.join(personalConfig, "config.json")), "Personal Lark CLI configuration is unavailable");
+  nativeEnv.LARKSUITE_CLI_CONFIG_DIR = env.LARKSUITE_CLI_CONFIG_DIR || personalConfig;
+  nativeEnv.LARKSUITE_CLI_DATA_DIR = env.LARKSUITE_CLI_DATA_DIR || personalData;
+  assert(nativeEnv.XAI_API_KEY && (nativeEnv.VOLCENGINE_REALTIME_API_KEY || nativeEnv.DOUBAO_SPEECH_API_KEY), "Native voice provider credentials unavailable");
+  assert(Object.values(nativeEnv).every(value => !/[\r\n\0]/u.test(value)), "Invalid native environment value");
+  fs.writeFileSync(nativeEnvironment, Object.entries(nativeEnv).map(([key, value]) => key + "=" + JSON.stringify(value)).join("\n") + "\n", { flag: "wx", mode: 0o600 });
+  const launchBytes = entryLaunchOverride(run("systemctl", ["show", unit, "-p", "ExecStart", "--value"]), wantedPointer + "/server.mjs", nativeEnvironment);
   const launch = { path: launchDropIn, before: beforeLaunch, afterSha: digest(launchBytes) };
   save(dir + "/prepared.json", { ...metadata, beforePointer: snapshot.pointer, launchDropIn: launch });
   assertEntrySnapshot(snapshot, observe());

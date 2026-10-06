@@ -365,9 +365,10 @@ export class SeeduplexRealtimeVoiceBridge {
   }
 
   triggerGreeting(instructions) {
-    this.sendUserMessage(
-      optionalString(instructions) ?? "Start the call now. Greet the caller naturally and briefly.",
-    );
+    // Seeduplex conversation.item.create injects paired history; it does not
+    // trigger an assistant turn. SayHello is the documented speech event.
+    this.#send({type: "speech_text_buffer.commit", event_id: `event_${randomUUID()}`,
+      text: this.request.greetingText ?? "天意，你好，我是 V，在呢。"});
   }
 
   handleBargeIn() {
@@ -496,6 +497,7 @@ export class SeeduplexRealtimeVoiceBridge {
     } catch {
       return this.#fail(new Error("Invalid Seeduplex upstream event"));
     }
+    this.request.onProtocolEvent?.(event);
     const type = event?.type;
     if (type === "error" && this.cancelledOutputPending) {
       // response.cancel is documented to return an error when its target ended
