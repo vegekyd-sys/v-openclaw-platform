@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { MAX_PREWARM_AGENTS, REPLY_FIRST_MESSAGE_MODULES, patchGetReplyChunk, patchPostAttach, patchReplyFacade } from './patch-gateway-first-message.mjs';
+import { DEFAULT_MAX_IDLE_WAIT_MS, MAX_PREWARM_AGENTS, REPLY_FIRST_MESSAGE_MODULES, patchGetReplyChunk, patchPostAttach, patchReplyFacade } from './patch-gateway-first-message.mjs';
 
 const read = (url) => fs.readFileSync(new URL(url, import.meta.url), 'utf8');
 const getReply = read('../release/captured/v2026.9.1-db91.6-workboard-incremental-sweep-20261006/dist/get-reply-CqW1y05D.js');
@@ -15,7 +15,7 @@ test('release files are V\'s files with only the first-message change', () => {
   assert.equal(patchPostAttach(postAttach), released('server-startup-post-attach-BPE6Pv6n.js'));
   assert.throws(() => patchGetReplyChunk(released('get-reply-CqW1y05D.js')), /agent id import|get-reply exports/);
   assert.throws(() => patchReplyFacade(released('get-reply-from-config.runtime-CWdWv_c6.js')), /facade import/);
-  assert.throws(() => patchPostAttach(released('server-startup-post-attach-BPE6Pv6n.js')), /dashboard prewarm item list/);
+  assert.throws(() => patchPostAttach(released('server-startup-post-attach-BPE6Pv6n.js')), /dashboard prewarm item list|handler prewarm idle wait/);
 });
 
 test('the prewarm calls ensureSkillSnapshot the way get-reply does, without anything to persist into', () => {
@@ -100,4 +100,42 @@ test('more agents than the bound: only the first ones are prepared', async () =>
   const calls = [];
   await runPrewarm({ agentIds: Array.from({ length: MAX_PREWARM_AGENTS + 5 }, (_, i) => `agent${i}`), ensure: async (p) => { calls.push(p.agentId); return {}; } });
   assert.equal(calls.length, MAX_PREWARM_AGENTS);
+});
+
+test('on a busy Gateway the item waits at most its bound, the other items still wait for idle', async () => {
+  const out = released('server-startup-post-attach-BPE6Pv6n.js');
+  assert.match(out, new RegExp(`OPENCLAW_GATEWAY_FIRST_MESSAGE_PREWARM_MAX_WAIT_MS \\?\\? ${DEFAULT_MAX_IDLE_WAIT_MS}\\)`));
+  assert.match(out, /maxIdleWaitMs: Number\.isFinite\(firstMessageMaxIdleWaitMs\) && firstMessageMaxIdleWaitMs >= 0 \? firstMessageMaxIdleWaitMs : 3000,/);
+  assert.match(out, /status: "ready", busyAtStart, \.\.\.result/);
+  // only the handler prewarm's wait changes; the context-cache prewarm keeps waiting for idle
+  assert.equal(out.split('isBusy: () => getActiveGatewayRootWorkCount({ excludeCurrent: true }) > 0,').length, 2);
+  const src = out.slice(out.indexOf('function scheduleGatewayHandlerPrewarm(params) {'), out.indexOf('//#endregion', out.indexOf('function scheduleGatewayHandlerPrewarm(params) {')));
+  // the real idle scheduler's loop: retry while busy, then run
+  const scheduleGatewayIdleTask = (p) => {
+    let timer;
+    const tick = () => { timer = setTimeout(() => (p.isClosing() ? undefined : p.isBusy() ? tick() : p.run()), p.retryDelayMs); };
+    tick();
+    return { stop: () => clearTimeout(timer) };
+  };
+  const ran = [];
+  const make = new Function('scheduleGatewayIdleTask', 'GATEWAY_HANDLER_PREWARM_RETRY_DELAY_MS', 'getActiveGatewayRootWorkCount', 'dashboardDataPrewarmItems', `${src}\nreturn scheduleGatewayHandlerPrewarm;`);
+  const schedule = make(scheduleGatewayIdleTask, 5, () => 1, () => []);
+  const started = Date.now();
+  const handle = schedule({ log: { warn() {} }, items: [
+    { name: 'reply.first-message', maxIdleWaitMs: 60, load: async () => { ran.push(['first', Date.now() - started]); } },
+    { name: 'sessions.makaron', load: async () => { ran.push(['sessions', Date.now() - started]); } },
+  ] });
+  await new Promise((r) => setTimeout(r, 300));
+  handle.stop();
+  assert.deepEqual(ran.map(([n]) => n), ['first']);
+  assert(ran[0][1] >= 55, `ran after ${ran[0][1]} ms`);
+  // an idle Gateway runs both at once
+  const ranIdle = [];
+  const idle = make(scheduleGatewayIdleTask, 5, () => 0, () => [])({ log: { warn() {} }, items: [
+    { name: 'reply.first-message', maxIdleWaitMs: 60_000, load: async () => { ranIdle.push('first'); } },
+    { name: 'sessions.makaron', load: async () => { ranIdle.push('sessions'); } },
+  ] });
+  await new Promise((r) => setTimeout(r, 100));
+  idle.stop();
+  assert.deepEqual(ranIdle, ['first', 'sessions']);
 });

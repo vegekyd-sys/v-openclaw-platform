@@ -25,6 +25,12 @@ import assert from 'node:assert/strict';
 //   handle. With none of those ensureSkillSnapshot has nothing to persist into: the
 //   snapshot lands only in the process cache that the first message's cachedRebuild reads.
 // Nothing is written. OPENCLAW_GATEWAY_FIRST_MESSAGE_PREWARM=0 turns it off.
+//
+// Busy start (V 2026-10-06 18:51): the idle scheduler retries every 250 ms while the Gateway
+// has any root work, and V had browser and takeover turns running from the first seconds, so
+// after 7 minutes the item had still not run and real messages paid the cost instead. The
+// item now waits for an idle Gateway at most OPENCLAW_GATEWAY_FIRST_MESSAGE_PREWARM_MAX_WAIT_MS
+// (default 3000) and then runs anyway; the other prewarm items keep waiting for idle as before.
 
 function replaceExactlyOnce(source, before, after, label) {
   assert.equal(source.split(before).length, 2, `Expected exactly one ${label}`);
@@ -40,6 +46,7 @@ export const REPLY_FIRST_MESSAGE_MODULES = [
   './agents/auth-profiles.runtime.js',
 ];
 export const MAX_PREWARM_AGENTS = 16;
+export const DEFAULT_MAX_IDLE_WAIT_MS = 3000;
 
 const REPLY_PREWARM = `/** Prepare what the first message after a Gateway start would otherwise pay for on the
  * reply path (gateway-first-message): its remaining lazy imports, and each agent's workspace
@@ -126,22 +133,44 @@ export { getReplyFromConfig, prewarmConfigDrivenReplyFirstMessage, prewarmConfig
   return out;
 }
 
-const FIRST_MESSAGE_ITEM = `	const firstMessageItems = process.env.OPENCLAW_GATEWAY_FIRST_MESSAGE_PREWARM === "0" ? [] : [{
+const FIRST_MESSAGE_ITEM = `	const firstMessageMaxIdleWaitMs = Number(process.env.OPENCLAW_GATEWAY_FIRST_MESSAGE_PREWARM_MAX_WAIT_MS ?? ${'%MAXWAIT%'});
+	const firstMessageItems = process.env.OPENCLAW_GATEWAY_FIRST_MESSAGE_PREWARM === "0" ? [] : [{
 		name: "reply.first-message",
+		maxIdleWaitMs: Number.isFinite(firstMessageMaxIdleWaitMs) && firstMessageMaxIdleWaitMs >= 0 ? firstMessageMaxIdleWaitMs : ${'%MAXWAIT%'},
 		load: async () => {
+			const busyAtStart = getActiveGatewayRootWorkCount({ excludeCurrent: true });
 			const { prewarmConfigDrivenReplyFirstMessage } = await loadGetReplyFromConfigRuntime();
 			if (typeof prewarmConfigDrivenReplyFirstMessage !== "function") return;
 			const result = await prewarmConfigDrivenReplyFirstMessage({ cfg, agentIds });
-			log.info?.(\`[gateway-first-message-prewarm.1] \${JSON.stringify({ status: "ready", ...result })}\`);
+			log.info?.(\`[gateway-first-message-prewarm.1] \${JSON.stringify({ status: "ready", busyAtStart, ...result })}\`);
 		}
 	}];
 	return [...firstMessageItems, ...agentIds.map((agentId) => ({`;
 
+const BOUNDED_IDLE_WAIT = `			const load = () => item.load();
+			const busyUntil = typeof item.maxIdleWaitMs === "number" ? Date.now() + item.maxIdleWaitMs : Infinity;
+			idleTask = scheduleGatewayIdleTask({
+				delayMs: 0,
+				retryDelayMs: GATEWAY_HANDLER_PREWARM_RETRY_DELAY_MS,
+				isClosing: () => stopped,
+				isBusy: () => Date.now() < busyUntil && getActiveGatewayRootWorkCount({ excludeCurrent: true }) > 0,`;
+
 export function patchPostAttach(source) {
-  return replaceExactlyOnce(
+  const out = replaceExactlyOnce(
     source,
     '	return [...agentIds.map((agentId) => ({',
-    FIRST_MESSAGE_ITEM,
+    FIRST_MESSAGE_ITEM.replaceAll('%MAXWAIT%', String(DEFAULT_MAX_IDLE_WAIT_MS)),
     'dashboard prewarm item list',
+  );
+  return replaceExactlyOnce(
+    out,
+    `			const load = () => item.load();
+			idleTask = scheduleGatewayIdleTask({
+				delayMs: 0,
+				retryDelayMs: GATEWAY_HANDLER_PREWARM_RETRY_DELAY_MS,
+				isClosing: () => stopped,
+				isBusy: () => getActiveGatewayRootWorkCount({ excludeCurrent: true }) > 0,`,
+    BOUNDED_IDLE_WAIT,
+    'handler prewarm idle wait',
   );
 }
