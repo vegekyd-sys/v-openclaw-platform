@@ -91,3 +91,15 @@ test('unconfirmed process termination retains call ownership and prevents redial
  terminal=true;await delay(5);await f.service.close(f.reservation.voiceSessionId);
  assert.equal(f.audit.filter(x=>x.type==='call.closed').length,1);await f.service.dispose();
 });
+
+test('cancel reaps backend exec returned during abort; foreign run process never enters ownership',async()=>{
+ let cancelled=false;
+ const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:method==='chat.abort'?(cancelled=true,{ok:true}):method==='agent.wait'?(cancelled?{status:'error',aborted:true}:new Promise(()=>{})):{ok:true,output:{details:{status:'killed'}}});
+ f.call('delegate_to_v',{question:'等待较长执行任务'});await delay(5);const started=f.audit.find(x=>x.type==='backend.started');
+ const tool=(runId,data)=>f.service.handleEvent({event:'agent',payload:{runId,sessionKey:started.sessionKey,stream:'tool',data}});
+ tool(started.runId,{phase:'start',name:'exec',toolCallId:'exec-owned'});
+ tool('foreign-run',{phase:'result',name:'exec',result:{details:{status:'running',sessionId:'foreign'}}});
+ setTimeout(()=>tool(started.runId,{phase:'result',name:'exec',toolCallId:'exec-owned',result:{details:{status:'running',sessionId:'backend-owned'}}}),30);
+ const answer=await f.service.steer(f.reservation.voiceSessionId,{mode:'cancel',text:'取消后台'});
+ assert.equal(answer.cancelled,true);assert.deepEqual(f.invocations.filter(x=>x.name==='process').map(x=>x.args),[{action:'kill',sessionId:'backend-owned'},{action:'poll',sessionId:'backend-owned',timeout:2000}]);await f.service.dispose();
+});

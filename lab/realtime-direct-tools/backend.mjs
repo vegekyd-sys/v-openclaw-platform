@@ -15,7 +15,7 @@ export function visibleText(message) {
 const terminal=r=>r?.status==='error'||r?.status==='aborted'||r?.aborted===true||r?.status==='ok'&&!r.yielded;
 
 /** One backend goal per telephone owner; ordinary speech never calls cancel. */
-export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{},onProgress=()=>{},timeoutMs=600000}) {
+export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{},onProgress=()=>{},onProcess=()=>{},timeoutMs=600000}) {
   let active;
   const log=(row,type,extra={})=>audit({type,voiceSessionId:ownerId,callId:row.callId,runId:row.runId,sessionKey,...extra});
   const retire=row=>{row.retired=true;row.observer.close();};
@@ -33,6 +33,8 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
       }
       log(row,'backend.cancel-observed',{observed});
       if(!terminal(observed)){row.cleanupUnconfirmed=true;throw Error('已请求取消，但 V 后台退出尚未确认');}
+      for(let i=0;i<10&&row.pendingExecs.size;i++)await new Promise(resolve=>setTimeout(resolve,300));
+      if(row.pendingExecs.size)throw Error('后台已停，但执行工具返回尚未收齐，保留退出责任');
       row.cleanupUnconfirmed=false;
       row.reject(Error('任务已取消，不播报旧结果'));
       return {cancelled:true,runId:row.runId};
@@ -41,7 +43,17 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
   }
   function handleEvent(event) {
     const row=active,p=event.payload;
-    if(!row||row.retired||p?.runId!==row.runId||p.sessionKey&&p.sessionKey!==sessionKey)return;
+    if(!row||p?.runId!==row.runId||p.sessionKey&&p.sessionKey!==sessionKey)return;
+    if(event.event==='agent'&&p.stream==='tool'){
+      const d=p.data??{};
+      if(d.name==='exec'&&d.phase==='start')row.pendingExecs.add(d.toolCallId);
+      if(d.phase==='result'){
+        const details=d.result?.details;
+        if(d.name==='exec'){row.pendingExecs.delete(d.toolCallId);if(details?.status==='running'&&details.sessionId)onProcess(details.sessionId,true);}
+        if(d.name==='process'&&details?.sessionId&&['completed','failed','killed','cancelled'].includes(details.status))onProcess(details.sessionId,false);
+      }
+    }
+    if(row.retired)return;
     log(row,'backend.event',{event});
     if(event.event==='agent'){
       if(p.stream==='tool'&&p.data?.phase==='result')row.hasToolResult=true;
@@ -57,7 +69,7 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
   async function run({question,context='',callId,signal}) {
     if(active)throw Error('这通电话已有一个 V 后台任务，先等待它完成或明确取消');
     signal?.throwIfAborted();
-    const row={callId,runId:`voice-${ownerId}-${randomUUID()}`,retired:false};
+    const row={callId,runId:`voice-${ownerId}-${randomUUID()}`,retired:false,pendingExecs:new Set()};
     const live=new Promise((resolve,reject)=>Object.assign(row,{resolve,reject}));
     void live.catch(()=>{});
     row.observer=createGptLiveConsultProgressObserver({runId:row.runId,onProgress:p=>{

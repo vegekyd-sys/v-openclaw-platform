@@ -44,8 +44,10 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
   };
   const cancel=async s=>{s.epoch++;for(const c of s.pending.values())c.abort();s.ending=null;emit(s,{type:'end.cancelled'});
     s.progress=null;s.backendResult?.resolve();s.backendResult=null;
-    const results=await Promise.allSettled([s.backend?.cancel(),...[...s.processes].map(id=>killOwned(s,id))]);
+    const backend=await Promise.allSettled([s.backend?.cancel()]);
+    const results=[...backend,...await Promise.allSettled([...s.processes].map(id=>killOwned(s,id)))];
     const failures=results.filter(r=>r.status==='rejected').length;
+    s.cancelCleanupFailed=failures>0;
     return {cancelled:failures===0,cancelRequested:true,processCleanupFailures:failures};};
   const close=async id=>{
     const s=sessions.get(id);if(!s)return;
@@ -67,7 +69,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
     if(!configured(model))throw Error(`${spec.label} 尚未配置语音凭据`);
     const s={id:randomUUID(),ticket:randomBytes(32).toString('base64url'),model,sessionKey,closed:false,epoch:0,pending:new Map(),seen:new Map(),processes:new Set(),ending:null,assistantText:''};
     Object.assign(s,{responseActive:false,playing:false,userSpeaking:false,lastUserAt:0,lastProgressAt:0,progress:null});
-    s.backend=createBackendDelegation({gateway,sessionKey,ownerId:s.id,audit,onProgress:p=>{if(current(s)){s.progress=p;emit(s,{type:'tool.progress',callId:p.callId,name:'delegate_to_v'});}}});
+    s.backend=createBackendDelegation({gateway,sessionKey,ownerId:s.id,audit,onProcess:(id,running)=>{if(running)s.processes.add(id);else s.processes.delete(id);},onProgress:p=>{if(current(s)){s.progress=p;emit(s,{type:'tool.progress',callId:p.callId,name:'delegate_to_v'});}}});
     sessions.set(s.id,s);
     return {voiceSessionId:s.id,model:spec.model,provider:model,transport:'gateway-relay',relayTicket:s.ticket};
   }
@@ -107,6 +109,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       let result;
       try {
         validateTool(call.name,call.args);
+        if(call.name==='delegate_to_v'&&s.cancelCleanupFailed)throw Error('上一任务退出尚未确认，先重试取消');
         if(call.name==='delegate_to_v')s.bridge.beginBackgroundTool(call.callId,call.args.question);
         result=await execute(call.name,call.args,call.callId,controller.signal);
         if(call.name==='delegate_to_v'&&current(s)&&s.epoch===epoch){
