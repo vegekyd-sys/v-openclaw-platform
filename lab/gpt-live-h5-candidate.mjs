@@ -172,6 +172,7 @@ if(process.env.VOICE_WORKER_PROCESS_OWNER==='1'){
   const receipts=[];
   const nativeScopeFile=path.join(runtime,'openclaw/dist/embedded-agent.runtime-CL7poBKY.js');
   const nativeBefore=fs.readFileSync(nativeScopeFile),nativeAfter=patchNativeVoiceProcessScope(nativeBefore.toString());
+  fs.copyFileSync('lab/realtime-direct-tools/worker-process-owner.mjs',path.join(runtime,'openclaw/dist/voice-process-owner.mjs'));
   fs.writeFileSync(nativeScopeFile,nativeAfter);receipts.push({name:'embedded-agent.runtime-CL7poBKY.js',before:createHash('sha256').update(nativeBefore).digest('hex'),after:createHash('sha256').update(nativeAfter).digest('hex')});
   for(const [name,patch] of [['worker.mjs',patchVoiceWorker],['worker-pool.mjs',patchVoicePool],['index.mjs',patchVoiceIndex]]){const before=fs.readFileSync(path.join(root,name)),after=patch(before.toString());fs.writeFileSync(path.join(root,name),after);receipts.push({name,before:createHash('sha256').update(before).digest('hex'),after:createHash('sha256').update(after).digest('hex')});}
   fs.copyFileSync('lab/realtime-direct-tools/worker-process-owner.mjs',path.join(root,'voice-process-owner.mjs'));

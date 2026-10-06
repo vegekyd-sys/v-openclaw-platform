@@ -1,3 +1,4 @@
+import {createVoiceProcessOwner} from './voice-process-owner.mjs';
 import { i as loadBundledPluginPublicSurfaceModuleSyncCore } from "./facade-loader-D1O9Kulb.js";
 import { u as SESSIONS_SEND_RESULT_GUIDANCE } from "./tool-description-presets-C6exCTZo.js";
 import { I as WorkerPortalParamsSchema, et as WorkerComputerParamsSchema, g as WORKER_SESSION_TOOL_MAX_TEXT_LENGTH, it as GitHubPublicationTitleSchema, rt as GitHubPublicationBodySchema } from "./worker-admission-B7c6K0nm.js";
@@ -817,6 +818,14 @@ async function runWorkerEmbeddedTurnWithResources(params, skillsSnapshot) {
 			aborted: params.signal?.aborted === true,
 			error: runFailure
 		});
+	}
+	// voice-native-process-lifetime-v2: registry lives in this execution process.
+	if(params.signal?.aborted&&/^voice-[a-f0-9-]{36}-[a-f0-9-]{36}$/.test(params.runId??'')){
+		const owner=createVoiceProcessOwner({runId:params.runId,sessionKey:params.sessionKey,
+			loadProcessTool:async()=>{const m=await import('./bash-tools-DiAfkLAC.js');return m.t({scopeKey:params.runId});},
+			onNativeCall:call=>params.live.enqueuePreview(boundLiveEvent({kind:'tool',payload:{name:'process',phase:call.phase,toolCallId:call.toolCallId,hideFromChannelProgress:true,...call.phase==='start'?{args:call.args}:{isError:call.result?.isError===true,result:{...call.result,__voiceHost:{source:'voice-native-lifecycle',registryScope:params.runId,registryFinal:call.registryFinal}}}}}))});
+		owner.markSettled();
+		try{await owner.cancel();}catch(error){runFailure=toWorkerAgentError(error,'Voice native process cleanup failed.');liveRuntime.enqueueRunFailure({aborted:true,error:runFailure});}
 	}
 	let finalTranscriptFailure;
 	try {

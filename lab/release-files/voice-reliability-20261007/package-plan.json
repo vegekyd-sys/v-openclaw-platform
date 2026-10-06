@@ -25,6 +25,11 @@
       "source": "lab/release-files/voice-reliability-20261007/production-worker/voice-process-owner.mjs",
       "target": "production-worker/voice-process-owner.mjs",
       "before": null
+    },
+    {
+      "source": "lab/release-files/voice-reliability-20261007/openclaw/dist/voice-process-owner.mjs",
+      "target": "openclaw/dist/voice-process-owner.mjs",
+      "before": null
     }
   ]
 }

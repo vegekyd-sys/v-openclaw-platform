@@ -4,14 +4,14 @@
     {
       "target": "openclaw/dist/embedded-agent.runtime-CL7poBKY.js",
       "before": "31e6c95723f1452ea796e8a8353e04075b1cd8c395977ff075191ac04322552a",
-      "after": "9f83b8e79432e980d1c4f7db717025b7bb16c7f8ac52e73675b70d12cfb3aeee",
-      "bytes": 33835
+      "after": "6d8e913bdc3ed4ad3d9ff8c45df199f799bf97b18a75868493b0d75baac6be6f",
+      "bytes": 34876
     },
     {
       "target": "production-worker/worker.mjs",
       "before": "18fc5d4f8ad29e50407e81f93583a54879ab712de105faf71f6402a8be84986b",
-      "after": "ae07246ffad3a2e7d850e1bf8762eb0e236fe6d89bc2759e6c7fb6cee4a51c8f",
-      "bytes": 46230
+      "after": "9356ee4b2f69140d572b600a7f24743b64acfba834751b88300f83b923d36e61",
+      "bytes": 46269
     },
     {
       "target": "production-worker/worker-pool.mjs",
@@ -28,8 +28,14 @@
     {
       "target": "production-worker/voice-process-owner.mjs",
       "before": null,
-      "after": "b377d3bcc7b2241bc31e4f3be279d7bfb0f7b3450c6754db7d9e92750f72e357",
-      "bytes": 2948
+      "after": "16f86e2c895eadbcf6d5a3636d953287881a1b040336d9d852b3652b30e3702d",
+      "bytes": 4566
+    },
+    {
+      "target": "openclaw/dist/voice-process-owner.mjs",
+      "before": null,
+      "after": "16f86e2c895eadbcf6d5a3636d953287881a1b040336d9d852b3652b30e3702d",
+      "bytes": 4566
     }
   ]
 }

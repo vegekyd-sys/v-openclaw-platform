@@ -663,7 +663,7 @@ async function runAgent(message, abortSignal) {
         message.id, message, abortSignal, streamState, globallyBridgedNames))
     : () => {};
   const voiceOwner = /^voice-[a-f0-9-]{36}-[a-f0-9-]{36}$/.test(message.runId ?? '') ? createVoiceProcessOwner({
-    runId:message.runId,sessionKey:message.sessionKey,
+    runId:message.runId,sessionKey:message.sessionKey,nativeRegistryRemote:true,attempts:100,
     loadProcessTool:async()=>{const m=await import(new URL('../bash-tools-DiAfkLAC.js',pathToFileURL(configuredAgentRuntimePath())).href);if(typeof m.t!=='function')throw Error('Native process tool unavailable');return m.t({scopeKey:message.runId});}
   }) : null;
   if(voiceOwner)voiceProcessOwners.set(message.runId,{owner:voiceOwner,requestId:message.id,sessionKey:message.sessionKey});

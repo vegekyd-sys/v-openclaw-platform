@@ -51,7 +51,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
   let closed=false,ready=false,node,speaker,source,quietGain,ending=null,tailTimer,epoch=0,written=0,lastPlayedAt=null,lastSequence=0,blocked=false,outputComplete=false,playbackActive=false,busy=false,lastReceiveAt=null,statsTimer;
   const pendingInput=[],pendingOutput=[];let pendingBytes=0;
   const maxQueuedOutputBytes=16*1024*1024;
-  const stats={inputBytes:0,outputBytes:0,queuedOutputBytes:0,peakQueuedOutputBytes:0,clears:0,duplicateFrames:0,underflows:0,maxReceiveGapMs:0,startBufferMs:120,contextState:context.state,playbackDrained:false};
+  const stats={inputBytes:0,outputBytes:0,queuedOutputBytes:0,peakQueuedOutputBytes:0,clears:0,duplicateFrames:0,underflows:0,maxReceiveGapMs:0,startBufferMs:120,contextState:context.state,contextSampleRate:context.sampleRate,playbackDrained:false};
   const activity=value=>{if(playbackActive!==value){playbackActive=value;onPlaybackActivity(value);}};
   const send=e=>{if(socket.readyState===WebSocket.OPEN)socket.send(JSON.stringify(e));};
   const reportBusy=()=>{const next=stats.queuedOutputBytes>0||playbackActive;if(next!==busy){busy=next;send({type:'playback.state',speaking:busy});}};

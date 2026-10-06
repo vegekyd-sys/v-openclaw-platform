@@ -25,7 +25,7 @@ export function buildVoiceReliabilityRuntime({beforeRoot,outputRoot,sourcePrefix
   return {target,original,after,before:hash(original)};
  });
  const helper=fs.readFileSync(new URL('./realtime-direct-tools/worker-process-owner.mjs',import.meta.url));
- files.push({target:'production-worker/voice-process-owner.mjs',after:helper,before:null});
+ for(const target of ['production-worker/voice-process-owner.mjs','openclaw/dist/voice-process-owner.mjs'])files.push({target,after:helper,before:null});
  fs.mkdirSync(outputRoot,{recursive:true});
  for(const file of files){const destination=path.join(outputRoot,file.target);fs.mkdirSync(path.dirname(destination),{recursive:true});fs.writeFileSync(destination,file.after,{flag:'wx'});}
  const plan={baseRelease,files:files.map(file=>({source:path.posix.join(sourcePrefix,file.target),target:file.target,before:file.before}))};

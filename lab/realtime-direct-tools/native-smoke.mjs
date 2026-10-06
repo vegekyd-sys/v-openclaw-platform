@@ -83,7 +83,11 @@ async function runModel(model){
   check(model+'/hybrid-real-progress',rows().some(x=>x.type==='backend.progress-spoken'&&x.runId===run.runId)&&rows().some(x=>x.type==='audio'&&x.at>run.at),{runId:run.runId});
   if(process.env.DIRECT_VOICE_CASES==='hybrid-core'){await stop();await stopRecording();save(model+'-hybrid-core-result.json',{model,results:results.filter(x=>x.name?.startsWith(model+'/')),scope:'hybrid core only; cancellation not exercised',productAccepted:false});return;}
   const storyAt=Date.now();await speak('story');await wait(()=>rows().some(x=>x.type==='audio'&&x.at>storyAt),'native long story',30000);await quiet(id,120000);const afterStory=rows().filter(x=>x.type==='client.playback-stats').at(-1)?.stats;check(model+'/long-playback',Boolean(afterStory)&&afterStory.outputBytes>playback.outputBytes&&(await state()).state==='connected',{playback:afterStory,physicalSafariAccepted:false});
-  await speak(process.env.DIRECT_VOICE_BACKGROUND_CLIP??'backend-long');await wait(()=>rows().filter(x=>x.type==='backend.started').length===2,'new independent backend goal',60000);
+  return runControls();
+ }
+ async function runControls(){
+  const previousRuns=rows().filter(x=>x.type==='backend.started').length;
+  await speak(process.env.DIRECT_VOICE_BACKGROUND_CLIP??'backend-long');await wait(()=>rows().filter(x=>x.type==='backend.started').length===previousRuns+1,'new independent backend goal',60000);
   const second=rows().filter(x=>x.type==='backend.started').at(-1);
   await wait(()=>rows().some(x=>x.type==='backend.event'&&x.runId===second.runId&&x.event.payload.stream==='tool'&&x.event.payload.data?.name==='exec'&&x.event.payload.data?.result?.details?.status==='running'),'owned running backend exec result',45000);
   const owned=rows().find(x=>x.type==='backend.event'&&x.runId===second.runId&&x.event.payload.data?.name==='exec'&&x.event.payload.data?.result?.details?.status==='running').event.payload.data.result.details;
@@ -100,8 +104,9 @@ async function runModel(model){
   await click('start');await wait(s=>s.state==='connected','redial after cancellation');const next=(await wire()).filter(x=>x.type==='ready').at(-1)?.voiceSessionId;
   await wait(()=>audit().some(x=>x.voiceSessionId===next&&x.type==='audio')&&(model==='seeduplex'||audit().some(x=>x.voiceSessionId===next&&x.type==='transcript'&&x.role==='assistant'&&x.final)),'fresh redial greeting',25000);
   const grants=await evaluate('globalThis.__directMicRequests');check(model+'/redial',next!==id,{old:id,next});check(model+'/same-page-microphone-reuse',grants===1,{getUserMediaRequests:grants,physicalSafariAccepted:false});
-  await stop();await stopRecording();save(model+'-wire.json',await wire());save(model+'-hybrid-result.json',{model,results:results.filter(x=>x.name?.startsWith(model+'/')),productAccepted:false});return;
+  await stop();await stopRecording();save(model+'-wire.json',await wire());save(model+'-controls-result.json',{model,results:results.filter(x=>x.name?.startsWith(model+'/')),productAccepted:false});return;
  }
+ if(process.env.DIRECT_VOICE_CASES==='controls')return runControls();
  if(process.env.DIRECT_VOICE_CASES==='followup'){
   await speak('fetch');
   await wait(()=>rows().some(x=>x.type==='tool.invoke'&&x.name==='web_fetch'),'native webpage call',60000);

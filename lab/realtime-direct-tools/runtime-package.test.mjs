@@ -9,7 +9,7 @@ import {buildVoiceReliabilityRuntime} from '../build-voice-reliability-runtime.m
 test('committed voice runtime package carries exact captured before and generated after bytes',()=>{
  const root=new URL('../release-files/voice-reliability-20261007/',import.meta.url);
  const proof=JSON.parse(fs.readFileSync(new URL('build-proof.json',root))),plan=JSON.parse(fs.readFileSync(new URL('package-plan.json',root)));
- assert.equal(plan.baseRelease,proof.baseRelease);assert.equal(plan.files.length,5);
+ assert.equal(plan.baseRelease,proof.baseRelease);assert.equal(plan.files.length,6);
  for(const file of proof.files){const bytes=fs.readFileSync(new URL(file.target,root));assert.equal(createHash('sha256').update(bytes).digest('hex'),file.after);assert.equal(bytes.length,file.bytes);assert.equal(plan.files.find(f=>f.target===file.target).before,file.before);}
  assert.equal(proof.files.find(f=>f.target.endsWith('voice-process-owner.mjs')).before,null);
 });

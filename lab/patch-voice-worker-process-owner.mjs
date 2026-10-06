@@ -8,7 +8,7 @@ const activeControllers = new Map();
 const voiceProcessOwners = new Map();`);
  source=`import {createVoiceProcessOwner} from './voice-process-owner.mjs';\n`+source;
  once('  let unsubscribeAgentEvents = () => {};',`  const voiceOwner = /^voice-[a-f0-9-]{36}-[a-f0-9-]{36}$/.test(message.runId ?? '') ? createVoiceProcessOwner({
-    runId:message.runId,sessionKey:message.sessionKey,
+    runId:message.runId,sessionKey:message.sessionKey,nativeRegistryRemote:true,attempts:100,
     loadProcessTool:async()=>{const m=await import(new URL('../bash-tools-DiAfkLAC.js',pathToFileURL(configuredAgentRuntimePath())).href);if(typeof m.t!=='function')throw Error('Native process tool unavailable');return m.t({scopeKey:message.runId});}
   }) : null;
   if(voiceOwner)voiceProcessOwners.set(message.runId,{owner:voiceOwner,requestId:message.id,sessionKey:message.sessionKey});
@@ -72,12 +72,26 @@ ${retired}`);
 // Scope native exec and process registries to the trusted voice run rather than
 // the shared personal session. Normal Feishu/non-voice execution is unchanged.
 export function patchNativeVoiceProcessScope(source){
- if(source.includes('// voice-native-process-scope-v1'))return source;
+ if(source.includes('// voice-native-process-lifetime-v2'))return source;
+ if(source.includes('// voice-native-process-scope-v1'))throw Error('Rebase native lifecycle from unpatched runtime');
  const needle='\t\t\tscopeKey: params.sessionKey,\n\t\t\tsessionKey: params.sessionKey,\n\t\t\trunId: params.runId,';
  if(source.split(needle).length!==2)throw Error('Native voice exec scope anchor changed');
  source=source.replace(needle,'\t\t\t// voice-native-process-scope-v1\n\t\t\tscopeKey: /^voice-[a-f0-9-]{36}-[a-f0-9-]{36}$/.test(params.runId ?? "") ? params.runId : params.sessionKey,\n\t\t\tsessionKey: params.sessionKey,\n\t\t\trunId: params.runId,');
  const process='processDefaults: { scopeKey: params.sessionKey }';if(source.split(process).length!==2)throw Error('Native voice process scope anchor changed');
- return source.replace(process,'processDefaults: { scopeKey: /^voice-[a-f0-9-]{36}-[a-f0-9-]{36}$/.test(params.runId ?? "") ? params.runId : params.sessionKey }');
+ source=source.replace(process,'processDefaults: { scopeKey: /^voice-[a-f0-9-]{36}-[a-f0-9-]{36}$/.test(params.runId ?? "") ? params.runId : params.sessionKey }');
+ const nativeCleanup='\tlet finalTranscriptFailure;\n\ttry {\n\t\tturnLifetime.abort();';
+ if(source.split(nativeCleanup).length!==2)throw Error('Native voice lifecycle anchor changed');
+ source="import {createVoiceProcessOwner} from './voice-process-owner.mjs';\n"+source;
+ return source.replace(nativeCleanup,`	// voice-native-process-lifetime-v2: registry lives in this execution process.
+	if(params.signal?.aborted&&/^voice-[a-f0-9-]{36}-[a-f0-9-]{36}$/.test(params.runId??'')){
+		const owner=createVoiceProcessOwner({runId:params.runId,sessionKey:params.sessionKey,
+			loadProcessTool:async()=>{const m=await import('./bash-tools-DiAfkLAC.js');return m.t({scopeKey:params.runId});},
+			onNativeCall:call=>params.live.enqueuePreview(boundLiveEvent({kind:'tool',payload:{name:'process',phase:call.phase,toolCallId:call.toolCallId,hideFromChannelProgress:true,...call.phase==='start'?{args:call.args}:{isError:call.result?.isError===true,result:{...call.result,__voiceHost:{source:'voice-native-lifecycle',registryScope:params.runId,registryFinal:call.registryFinal}}}}}))});
+		owner.markSettled();
+		try{await owner.cancel();}catch(error){runFailure=toWorkerAgentError(error,'Voice native process cleanup failed.');liveRuntime.enqueueRunFailure({aborted:true,error:runFailure});}
+	}
+${nativeCleanup}`);
+
 }
 export function patchVoiceIndex(source){
  if(source.includes('// voice-worker-process-rpc-v1'))return source;
