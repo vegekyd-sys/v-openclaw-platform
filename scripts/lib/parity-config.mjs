@@ -15,6 +15,16 @@
 // Differences are advisory: they never decide ALIGNED / AHEAD / DIVERGED,
 // because channels, credentials and providers are meant to differ
 // (AGENTS.md); they are reported so a measurement on VLab can be read with them.
+//
+// Two kinds of difference are not worth reading as drift:
+//   - An MCP server that is absent on one side and off on the other: neither
+//     host starts it, so it is not reported at all.
+//   - A channel plugin entry: VLab keeps its own channels (2026-10-06, Tianyi:
+//     「频道是vlab自己有一份」). These are reported as kind 'config-expected'
+//     so they stay visible without reading as drift.
+
+// Channel plugin entries VLab and V may each have on their own.
+export const EXPECTED_CHANNEL_PLUGINS = new Set(['telegram', 'openclaw-plugin-xiaoai-cloud']);
 
 const SECTIONS = [
   ['mcp', (cfg) => cfg?.mcp?.servers, 'mcp.servers'],
@@ -42,8 +52,8 @@ export function configSwitches(cfg) {
 
 // v, vlab: { gateway: switches | null, worker: switches | null }, each from
 // configSwitches(). Returns findings in the shape evaluateParity() uses, all
-// advisory: { target, component: 'config', kind: 'config-differs', v, vlab, advisory }
-// where v / vlab are 'true' | 'false' | 'absent'.
+// advisory: { target, component: 'config', kind, v, vlab, advisory } where kind
+// is 'config-differs' or 'config-expected' and v / vlab are 'true' | 'false' | 'absent'.
 export function compareConfigSwitches({ v, vlab }) {
   const findings = [];
   let compared = 0;
@@ -62,7 +72,10 @@ export function compareConfigSwitches({ v, vlab }) {
         compared += 1;
         const va = show(a[key]?.[name]);
         const vb = show(b[key]?.[name]);
-        if (va !== vb) findings.push(finding(`${role}: ${path}.${name}.enabled`, va, vb));
+        if (va === vb) continue;
+        if (key === 'mcp' && va !== 'true' && vb !== 'true') continue;
+        const kind = key === 'plugins' && EXPECTED_CHANNEL_PLUGINS.has(name) ? 'config-expected' : 'config-differs';
+        findings.push(finding(`${role}: ${path}.${name}.enabled`, va, vb, kind));
       }
     }
   }
@@ -73,6 +86,6 @@ function show(value) {
   return value === undefined ? 'absent' : value ? 'true' : 'false';
 }
 
-function finding(target, v, vlab) {
-  return { target, component: 'config', kind: 'config-differs', v, vlab, advisory: true };
+function finding(target, v, vlab, kind = 'config-differs') {
+  return { target, component: 'config', kind, v, vlab, advisory: true };
 }
