@@ -11,6 +11,28 @@
 
 ---
 
+## v2026.9.1-db91.6-firsttext-r1-20261006
+
+上线：2026-10-06 18:14 CST 安装到 V（promote-to-v，未重启；下次 Gateway 启动时生效，重启时间由 Tianyi 决定）  ·  tag `v2026.9.1-db91.6-firsttext-r1-20261006`
+
+**摘要**：Gateway 重启后的第一条消息、以及新 Worker 接的第一单，以前要先做一遍一次性的准备（建技能快照、首次加载模块），用户多等几秒。现在 Worker 在就绪前（#219）、Gateway 在启动后空闲时（#220）提前做完，不写库、失败不影响就绪。共享 VLab 压测：重启后第一条首字 7.8–9.3 秒 → 5.4–6.1 秒，冷 Worker 第一轮 P50 12.7 → 10.6–10.7 秒；稳态各类无退化。
+
+相对上一版 `v2026.9.1-db91.6-workboard-incremental-sweep-20261006`：5 个文件变化。
+
+**经 VLab 发版 `firsttext-r1-20261006`**（firsttext-0jwr2n，dev `1ee42ed0`；同样字节此前也在测试发版 `firsttext-r2-20261006` 里出现过，脚本按首次出现归属，已手工更正）
+- `core` agent-command-DPfawBbr.js  e8a0c7e4 → 82e7ca49
+- `core` get-reply-CqW1y05D.js  fcfca37f → 9bac6b7c
+- `core` get-reply-from-config.runtime-CWdWv_c6.js  71de3e3e → 727ad514
+- `core` server-startup-post-attach-BPE6Pv6n.js  fbf799dd → fdd10613
+- `worker` worker.mjs  898fd1fc → 18fc5d4f
+
+**这期间合入 dev 的 PR**（5 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #220 Approved by Tianyi Cai in the project chat (2026-10-06 07:49Z): 可以先上线219 和220
+- #219 Approved by Tianyi Cai in the project chat (2026-10-06 07:49Z): 可以先上线219 和220
+- #218 fix(desktop-handoff): 接管前自动松开 V 残留按下的按键
+- #215 release: V v2026.9.1-db91.6-workboard-incremental-sweep-20261006 捕获与变更记录
+- #214 feat(v-experience): V 自己的钉钉提问卡模板
+
 ## v2026.9.1-db91.6-workboard-incremental-sweep-20261006
 
 上线：2026-10-06 00:05 CST 安装到 V（promote-to-v，未重启；下次 Gateway 启动时生效，重启时间由 Tianyi 决定）  ·  tag `v2026.9.1-db91.6-workboard-incremental-sweep-20261006`

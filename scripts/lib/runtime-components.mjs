@@ -16,9 +16,14 @@
 //            stage/deploy/rollback; promote-to-v copies the same bytes to V.
 //   sidecar  a service or plugin installed outside both runtimes by its own
 //            install script from a git commit (scripts/install-desktop-host.sh,
-//            scripts/install-secret-entry-host.sh). Not stageable, not
-//            captured (the commit is the record); parity compares it so that
-//            "ALIGNED" also means both hosts run the same sidecar bytes.
+//            scripts/install-secret-entry-host.sh, the v-browser repo). Not
+//            stageable, not captured (the commit is the record); parity
+//            compares it so that "ALIGNED" also means both hosts run the same
+//            sidecar bytes. `install` is what promote-to-v tells you to run.
+//            Its directory on each host is `fixed`, or found where the host
+//            actually runs it: `loadPath` (the Gateway config's
+//            plugins.load.paths, main and Worker) or `unit` + `exec` (the
+//            directory systemd's ExecStart runs from). See resolveSidecarDirs.
 //
 // A component with `blocking: false` is compared and reported but does not
 // decide the parity state. Use it while a component is being brought into
@@ -92,6 +97,7 @@ export const COMPONENTS = [
     // Advisory until the multi-channel release reinstalls VLab's copy from the
     // commit V runs; then set blocking: true.
     id: 'handoff', kind: 'sidecar', label: 'desktop handoff', blocking: false,
+    install: 'scripts/install-desktop-host.sh (on V as root, from the same commit)',
     v: { fixed: '/opt/v-desktop-handoff' },
     vlab: { fixed: '/opt/vlab-v-desktop-handoff' },
     // Only what install-desktop-host.sh installs; *.bak-* siblings are not.
@@ -99,8 +105,37 @@ export const COMPONENTS = [
   },
   {
     id: 'secret-entry', kind: 'sidecar', label: 'secret entry', blocking: true,
+    install: 'scripts/install-secret-entry-host.sh (on V as root, from the same commit)',
     v: { fixed: '/opt/v-secret-entry' },
     vlab: { fixed: '/opt/vlab-v-secret-entry' },
+    subdirs: [''],
+  },
+  // V Browser (product code in vegekyd-sys/v-browser, docs/v-browser-0.4.7-release-20261001.md):
+  // the Gateway plugin, the multi-device Broker and the Browser Gateway that
+  // owns the CDP relays. 2026-10-06: Broker identical; V runs a newer plugin
+  // (0.4.7-wake-lease-20261006) and a patched relay-server than VLab, both
+  // hotfixed on V at 18:49. Advisory until VLab is brought to V's bytes; then
+  // set blocking: true.
+  {
+    id: 'v-browser-plugin', kind: 'sidecar', label: 'V Browser plugin', blocking: false,
+    install: 'v-browser repo: new /opt/v-browser/releases/<version>/openclaw-plugin + scripts/replace-openclaw-plugin-release.mjs on main and Worker config (Gateway stop/start)',
+    v: { loadPath: /\/v-browser\/releases\/[^/]+\/openclaw-plugin\/?$/ },
+    vlab: { loadPath: /\/v-browser\/releases\/[^/]+\/openclaw-plugin\/?$/ },
+    subdirs: [''],
+  },
+  {
+    id: 'v-browser-broker', kind: 'sidecar', label: 'V Browser broker', blocking: false,
+    install: 'v-browser repo broker/ into the directory v-browser-broker.service runs (restart that unit)',
+    // VLab's directory is a full v-browser checkout; its broker/tests are not deployed on V.
+    v: { unit: 'v-browser-broker.service', exec: /(\/\S+\/broker)\/main\.mjs\b/ },
+    vlab: { unit: 'v-browser-broker.service', exec: /(\/\S+\/broker)\/main\.mjs\b/ },
+    subdirs: [''], exclude: ['tests'],
+  },
+  {
+    id: 'v-browser-gateway', kind: 'sidecar', label: 'V Browser Gateway', blocking: false,
+    install: 'the dist the openclaw-vlab-browser.service ExecStart runs (restart that unit)',
+    v: { unit: 'openclaw-vlab-browser.service', exec: /(\/\S+\/dist)\/index\.js\b/ },
+    vlab: { unit: 'openclaw-vlab-browser.service', exec: /(\/\S+\/dist)\/index\.js\b/ },
     subdirs: [''],
   },
 ];
@@ -177,19 +212,59 @@ export function captureSourceForTarget(name, target) {
   return null;
 }
 
+// vlab-v-parity: where each non-fixed sidecar lives on each host.
+//   loadPaths  { v: { main: [], worker: [] }, vlab: { main, worker } }  plugins.load.paths
+//   execStart  { v(unit) -> string, vlab(unit) -> string }              systemctl show -p ExecStart
+// Returns { [id]: { v, vlab, notes } }; a side that does not run it is null
+// (the pair then counts as absent there).
+export function resolveSidecarDirs({ loadPaths, execStart }) {
+  const out = {};
+  for (const c of COMPONENTS) {
+    if (c.kind !== 'sidecar' || (c.v.fixed && c.vlab.fixed)) continue;
+    const notes = [];
+    const entry = { notes };
+    for (const side of ['v', 'vlab']) {
+      const loc = c[side];
+      if (loc.fixed) { entry[side] = loc.fixed; continue; }
+      if (loc.loadPath) {
+        const match = (list = []) => [...new Set(list.map((p) => p.replace(/\/$/, '')).filter((p) => loc.loadPath.test(p)))];
+        const main = match(loadPaths?.[side]?.main);
+        const worker = match(loadPaths?.[side]?.worker);
+        assert(main.length <= 1, `${c.id}: ${side} main config loads ${main.length} copies: ${main.join(', ')}`);
+        entry[side] = main[0] ?? null;
+        // The model runs in the Worker child; a different copy there is drift parity cannot see.
+        if (worker.length && worker.join() !== main.join()) notes.push(`${c.id}: ${side} Worker config loads ${worker.join(', ')}, main loads ${main[0] ?? 'nothing'}; only main is compared`);
+        continue;
+      }
+      const exec = execStart?.[side]?.(loc.unit) ?? '';
+      entry[side] = loc.exec.exec(exec)?.[1] ?? null;
+      entry[`${side}Interpreter`] = /path=(\S+)/.exec(exec)?.[1] ?? null;
+    }
+    if (entry.vInterpreter && entry.vlabInterpreter && entry.vInterpreter !== entry.vlabInterpreter) {
+      notes.push(`${c.id}: V runs it with ${entry.vInterpreter}, VLab with ${entry.vlabInterpreter}`);
+    }
+    out[c.id] = { v: entry.v ?? null, vlab: entry.vlab ?? null, notes };
+  }
+  return out;
+}
+
 // vlab-v-parity: the directory pairs to compare. `vlab` is resolved by the
 // caller: { glob(rel) -> [abs], loadPaths: [abs] } for VLab's runtime and the
 // load paths of its Gateway config.
-export function parityPairs({ vDirs, vlabRuntime = VLAB_RUNTIME, vlabGlob, vlabLoadPaths = [], only } = {}) {
+export function parityPairs({ vDirs, vlabRuntime = VLAB_RUNTIME, vlabGlob, vlabLoadPaths = [], sidecarDirs = {}, only } = {}) {
   const pairs = [];
   for (const c of COMPONENTS) {
     if (!c.vlab || (only && !only.includes(c.id))) continue;
     if (c.kind === 'sidecar') {
+      const root = (side) => c[side].fixed ?? sidecarDirs[c.id]?.[side] ?? null;
+      const at = (dir, sub) => (dir && sub ? `${dir}/${sub}` : dir);
       for (const sub of c.subdirs) {
         pairs.push({ component: c.id, kind: c.kind, blocking: c.blocking, optional: true,
           prefix: `sidecar:${c.id}${sub ? '/' + sub : ''}`,
-          v: sub ? `${c.v.fixed}/${sub}` : c.v.fixed, vlab: sub ? `${c.vlab.fixed}/${sub}` : c.vlab.fixed });
+          v: at(root('v'), sub), vlab: at(root('vlab'), sub),
+          ...(c.exclude ? { exclude: c.exclude } : {}) });
       }
+      for (const note of sidecarDirs[c.id]?.notes ?? []) pairs.at(-1).note = [pairs.at(-1).note, note].filter(Boolean).join('; ');
       continue;
     }
     const v = vDirs[c.id];

@@ -28,7 +28,8 @@ Rollback: stop the Gateway, run `replace-openclaw-plugin-release.mjs --from …/
 on both configs (or restore the two backup files), start. 0.4.6 stays on disk.
 
 `/opt/v-browser/releases/*` is outside the drift sentinel and `capture-production-runtime.mjs`
-(core / worker / Feishu only).
+(core / worker / Feishu only). Since 2026-10-06 `vlab-v-parity.mjs` compares the plugin V loads, the Broker and
+the Browser Gateway dist against VLab (advisory for now, docs/vlab-v-sync-flow.md section 4.6).
 
 ## Shared VLab
 
