@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  FLAG, TARGETS, baseExecStart, cmdlineHasFlag, dropinBase, dropinContent, dropinPath, supportsFlag, withFlag,
+  FLAG, TARGETS, baseExecStart, cmdlineHasFlag, dropinBase, dropinContent, dropinName, dropinPath, supportsFlag, withFlag,
 } from './node-async-context-frame.mjs';
 
 const own = dropinPath(TARGETS.v.unit);
@@ -32,7 +32,7 @@ ExecStartPre=-+/bin/bash x
 ${extra}`;
 
 test('paths and units', () => {
-  assert.equal(own, '/etc/systemd/system/openclaw-gateway.service.d/zzzz-node-async-context-frame.conf');
+  assert.equal(own, '/etc/systemd/system/openclaw-gateway.service.d/zzzzz-node-async-context-frame.conf');
   assert.equal(TARGETS.vlab.unit, 'openclaw-vlab-production-mirror-v8.service');
   // sorts after V's release drop-in, so its ExecStart wins
   assert(path.basename(own) > 'zzzz-db91-release-v1.conf');
@@ -81,4 +81,23 @@ require('node:child_process').fork(__dirname + '/child.cjs', [], { execArgv }).o
     assert.equal(r.status, 0, r.stderr);
     assert.deepEqual(JSON.parse(r.stdout), [FLAG]);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// V's openclaw-gateway.service.d on 2026-10-07 (names only); the last four re-declare ExecStart
+const vDropins = ['15-openclaw-home.conf', '25-v-self-maintenance.conf', '30-node-heap.conf', '35-node-inspector.conf', '40-v-browser.conf',
+  '45-v-browser-cdp-timeout.conf', '60-claude-code-no-background-tasks.conf', '70-v-storage-governance.conf', '90-openclaw91.conf',
+  '92-feishu-parity.conf', '93-cron-shared-management-20260910.conf', '94-verifier-resource-group-20260910.conf', '95-xiaohe-vds.conf',
+  '97-v-experience-dingtalk-card.conf', '99-v91-version.conf', 'desktop-display.conf', 'secret-entry.conf', 'session-hotset-v0.2.0.conf',
+  'vcodex-streaming-v0.1.4.conf', 'worker-steer-v0.2.3.conf', 'zz-db91-c5.conf', 'zz-steer91-prestart.conf', 'zzz-worker-affinity-enabled.conf',
+  'zzzz-db91-release-v1.conf', 'zzzzz-db91-process-global-writer-v2.conf', 'zzzzzz-db91-memory-fts-v3.conf', 'zzzzzz-db91-memory-fts-v3.conf.staged',
+  'zzzzzzz-db91-writer-transaction-scope-v5.conf', 'zzzzzzzz-db91-state-db-fastpath-v6.conf'];
+
+test('the drop-in sorts after every other drop-in, so its ExecStart is the one systemd keeps', () => {
+  const name = dropinName(vDropins);
+  assert.equal(name, 'zzzzzzzzz-node-async-context-frame.conf');
+  const order = [...vDropins.filter((n) => n.endsWith('.conf')), name].sort();
+  assert.equal(order.at(-1), name);
+  assert.equal(dropinPath(TARGETS.v.unit, vDropins), `/etc/systemd/system/openclaw-gateway.service.d/${name}`);
+  // an installed one (including the old fixed name) is found by its suffix, not renamed
+  assert.equal(dropinPath(TARGETS.v.unit, [...vDropins, 'zzzz-node-async-context-frame.conf']), '/etc/systemd/system/openclaw-gateway.service.d/zzzz-node-async-context-frame.conf');
 });

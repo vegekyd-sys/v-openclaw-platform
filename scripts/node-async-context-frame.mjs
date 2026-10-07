@@ -33,8 +33,16 @@ export const TARGETS = {
   v: { host: 'VM-8-2-ubuntu', unit: 'openclaw-gateway.service' },
   vlab: { host: 'VM-0-4-ubuntu', unit: 'openclaw-vlab-production-mirror-v8.service' },
 };
-export const DROPIN_NAME = 'zzzz-node-async-context-frame.conf';
-export const dropinPath = (unit) => `/etc/systemd/system/${unit}.d/${DROPIN_NAME}`;
+// systemd applies a unit's drop-ins in file name order and the last ExecStart wins. V has several db91
+// drop-ins that each re-declare ExecStart (zzzzz- ... zzzzzzzz-), so a fixed name lost to them on
+// 2026-10-07: the drop-in was installed but the Gateway started without the flag. The name now takes one
+// more leading "z" than any other drop-in in the directory; an installed one is found by its suffix.
+export const DROPIN_SUFFIX = '-node-async-context-frame.conf';
+export function dropinName(names) {
+  const others = names.filter((n) => n.endsWith('.conf') && !n.endsWith(DROPIN_SUFFIX));
+  return `${'z'.repeat(Math.max(4, ...others.map((n) => /^z*/u.exec(n)[0].length)) + 1)}${DROPIN_SUFFIX}`;
+}
+export const dropinPath = (unit, names = []) => `/etc/systemd/system/${unit}.d/${names.find((n) => n.endsWith(DROPIN_SUFFIX)) ?? dropinName(names)}`;
 const BASE_MARK = '# base ExecStart: ';
 
 // The ExecStart the unit has without this drop-in, from `systemctl cat` (unit file, then drop-ins in
@@ -87,7 +95,8 @@ function main(argv) {
   const target = TARGETS[arg('--target')];
   assert(target, `--target must be one of ${Object.keys(TARGETS).join(', ')}`);
   assert.equal(os.hostname(), target.host, `--target ${arg('--target')} runs on ${target.host}`);
-  const file = dropinPath(target.unit);
+  const dir = `/etc/systemd/system/${target.unit}.d`;
+  const file = dropinPath(target.unit, fs.existsSync(dir) ? fs.readdirSync(dir) : []);
   const installed = fs.existsSync(file);
   const mode = ['--apply', '--undo', '--verify'].find((m) => argv.includes(m)) ?? 'plan';
   const base = baseExecStart(execFileSync('systemctl', ['cat', target.unit], { encoding: 'utf8' }), file);
@@ -132,6 +141,12 @@ function main(argv) {
   }
   execFileSync('systemctl', ['daemon-reload']);
   const effective = show(target.unit, 'ExecStart');
+  if (mode === '--apply' && !effective.includes(` ${FLAG} `)) {
+    // another drop-in still wins: take ours back out so a restart cannot be mistaken for flagged
+    fs.unlinkSync(file);
+    execFileSync('systemctl', ['daemon-reload']);
+    throw new Error(`${file} installed but the unit's ExecStart still lacks ${FLAG}; removed it again. ExecStart: ${effective.slice(0, 300)}`);
+  }
   assert.equal(effective.includes(` ${FLAG} `), mode === '--apply', `unit ExecStart after ${mode}: ${effective.slice(0, 300)}`);
   console.log(JSON.stringify({ ...plan, done: mode, restarted: false, next: mode === '--apply' ? `restart ${target.unit} when allowed, then --verify` : `restart ${target.unit} when allowed` }, null, 1));
 }
