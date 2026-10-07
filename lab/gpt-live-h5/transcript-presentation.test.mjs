@@ -175,3 +175,13 @@ test('time labels use a real received timestamp and malformed times never fabric
   for (const value of [NaN, Infinity, -1, '11:04']) assert.equal(formatTranscriptTime(value), '');
   assert.throws(() => createTranscriptPresentation().consume({}, NaN), /timestamp/u);
 });
+
+test('backend document is exact, separately labelled, deduplicated and does not finalize native speech',()=>{
+ const p=createTranscriptPresentation(),text='## 原始方案\n| 日期 | 条件 |\n| --- | --- |\n| 2028-09 | 尚未核实 |';
+ p.consume(created('user','u'),100);p.consume(caption('user','uf','我还想问'),101);
+ const event={type:'backend.result',callId:'owned-doc',text};p.consume(event,102);p.consume({...event,text:'不可替换'},103);
+ let s=p.snapshot();assert.equal(s.history.length,1);assert.equal(s.history[0].speaker,'V · 完整方案');assert.equal(s.history[0].text,text);assert.equal(s.current[0].text,'我还想问');
+ p.consume(caption('assistant','af','结果在屏幕上。'),104);s=p.snapshot();assert.equal(s.current.find(x=>x.role==='assistant').text,'结果在屏幕上。');assert.equal(s.history.length,1);
+ for(const bad of [{type:'backend.result',text},{...event,callId:''},{...event,callId:'other',text:''}])p.consume(bad,105);
+ assert.equal(p.snapshot().history.length,1);p.reset();assert.deepEqual(p.snapshot(),{history:[],current:[]});
+});

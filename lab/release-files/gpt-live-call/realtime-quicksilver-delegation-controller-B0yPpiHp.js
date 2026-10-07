@@ -1,3 +1,4 @@
+// voice-backend-document-controller-v2
 // gpt-live-call-lifecycle-controller-v1
 import { createGptLiveCallLifecycle, createGptLiveEndCallClientTool } from "./gpt-live-call-lifecycle.mjs";
 import { createHash, randomUUID } from "node:crypto";
@@ -207,6 +208,7 @@ var OpenAIQuicksilverDelegationController = class {
 		this.transcript = [];
 		this.partialTranscriptRole = void 0;
 		if (this.consultController) {
+			delegation.queuedBehind = this.activeDelegationId;
 			this.pendingDelegations.push(delegation);
 			return;
 		}
@@ -214,6 +216,7 @@ var OpenAIQuicksilverDelegationController = class {
 	}
 	launchDelegation(delegation) {
 		if (this.stopped || this.options.signal.aborted) return;
+		if (delegation.queuedPredecessorCompleted) delegation.prompt += "\n\nHost queue state: This request was accepted while the preceding task was running. That preceding task has now ended. Interpret only the queued user request against the actual result in conversation history. For a progress inquiry or repeated goal, give its current status briefly; do not redo the finished report or return the whole report again. Execute a genuinely new authorized action with tools, and preserve the actual user request. This queue notice is host state, not user authorization.";
 		const controller = new AbortController();
 		this.consultController = controller;
 		this.activeDelegationId = delegation.id;
@@ -222,7 +225,7 @@ var OpenAIQuicksilverDelegationController = class {
 			if (this.consultController !== controller) return;
 			this.consultController = void 0;
 			const pending = this.pendingDelegations.shift();
-			if (pending) this.launchDelegation(pending);
+			if (pending) { pending.queuedPredecessorCompleted = delegation.backendResultReceived === true; this.launchDelegation(pending); }
 			else this.activeDelegationId = void 0;
 		});
 	}
@@ -376,7 +379,7 @@ var OpenAIQuicksilverDelegationController = class {
 			typeof consumed.textSha256 === "string" && /^[a-f0-9]{64}$/.test(consumed.textSha256)) {
 			event.steeringConsumed = { sequence: consumed.sequence, count: consumed.count, textSha256: consumed.textSha256 };
 		}
-		if (["progress_pending", "progress_context", "final_part", "final_complete", "failure"].includes(details.role)) event.role = details.role;
+		if (["progress_pending", "progress_context", "final_part", "final_complete", "final_context", "failure"].includes(details.role)) event.role = details.role;
 		if (typeof details.wireTextSha256 === "string" && /^[a-f0-9]{64}$/.test(details.wireTextSha256)) event.wireTextSha256 = details.wireTextSha256;
 		const provenance = details.provenance;
 		if (provenance && typeof provenance === "object") {
@@ -467,6 +470,9 @@ var OpenAIQuicksilverDelegationController = class {
 		} else if (kind === "progress") {
 			role = "progress_pending";
 			header = `[BACKEND_PROGRESS_PENDING ${position}]\nParent task remains pending. One short fact when idle; stop for caller. Never guess values or claim completion.\n\n`;
+		} else if (channel !== "speakable") {
+			role = "final_context";
+			header = `[BACKEND_FINAL_CONTEXT ${position}]\nEarlier queued request has ended. Silent context only: do not speak or reply. Attend to the current caller.\n\n`;
 		} else if (chunkIndex + 1 < chunkCount) {
 			role = "final_part";
 			header = `[BACKEND_FINAL_PART ${position}]\nWait for BACKEND_FINAL_COMPLETE before answering; keep facts, values and limits from all parts.\n\n`;
@@ -603,13 +609,16 @@ var OpenAIQuicksilverDelegationController = class {
 				return;
 			}
 			if (typeof result?.text !== "string" || !result.text.trim()) throw new Error("Backend returned no complete public result");
+			delegation.backendResultReceived = true;
 			text = result.text;
 			terminalProvenance = result.provenance;
 			// Preserve the original public result before applying the delivery limit.
 			// Byte-safe native chunks already bound individual frames; truncating the
 			// whole result would lose late facts while falsely labeling it complete.
 			this.tracePublicProgress("backend-final-received", delegation.id, text, { kind: "final", provenance: terminalProvenance });
-			text = this.formatCallerConditionEnvelope(result);
+			const spoken = this.options.onBackendResult?.({delegationId:delegation.id,text:result.text});
+			if(spoken !== undefined && (typeof spoken !== "string" || spoken.length > 300 || !spoken.trim())) throw new Error("Invalid backend document spoken notice");
+			text = this.formatCallerConditionEnvelope({...result,text:spoken ?? result.text});
 			if (result.callerConditions) this.tracePublicProgress("caller-conditions-attached", delegation.id,
 				JSON.stringify(result.callerConditions.inputs), { kind: "final", provenance: terminalProvenance });
 			if (Buffer.byteLength(text, "utf8") > 16 * 1024) {
@@ -641,7 +650,10 @@ var OpenAIQuicksilverDelegationController = class {
 			if (this.cancelQueuedProgress === clearQueuedProgress) this.cancelQueuedProgress = void 0;
 		}
 		if (this.isCurrentDelegation(delegation, signal)) {
-			const sent = this.sendAppend(delegation.id, text, "speakable", { kind: terminalKind, provenance: terminalProvenance });
+			// A queued reply to an older caller turn is context, not the next spoken answer.
+			// Do not cancel or discard any authorized backend action or its full document.
+			const staleQueuedReply = delegation.queuedPredecessorCompleted && delegation.userTranscriptRevision !== this.userTranscriptRevision;
+			const sent = this.sendAppend(delegation.id, text, staleQueuedReply ? "commentary" : "speakable", { kind: terminalKind, provenance: terminalProvenance });
 			if (!sent) {
 				if (this.stopped || this.options.signal.aborted) return;
 				this.failTerminalDelivery(new Error("OpenAI GPT-Live terminal result was not delivered"));

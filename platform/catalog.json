@@ -183,14 +183,22 @@
     {
       "id": "platform-contracts",
       "purpose": "发行清单、防漏、版本边界和严格验收入口自身的回归",
-      "files": ["platform/platform.test.mjs"]
+      "files": [
+        "platform/platform.test.mjs"
+      ]
     },
     {
       "id": "release-parity",
       "purpose": "VLab 与生产 V 的字节对齐：残留判定、发版前后的最小差异",
-      "files": ["scripts/lib/runtime-residue.test.mjs", "lab/release-files/db91-preflight-timeout-env/bootstrap-timeout.test.mjs", "scripts/promote-to-v.test.mjs",
-        "scripts/vlab-channel-plugins-prep.test.mjs", "scripts/lib/runtime-components.test.mjs", "tests/install-secret-entry-host.test.mjs",
-        "scripts/lib/parity-config.test.mjs"]
+      "files": [
+        "scripts/lib/runtime-residue.test.mjs",
+        "lab/release-files/db91-preflight-timeout-env/bootstrap-timeout.test.mjs",
+        "scripts/promote-to-v.test.mjs",
+        "scripts/vlab-channel-plugins-prep.test.mjs",
+        "scripts/lib/runtime-components.test.mjs",
+        "tests/install-secret-entry-host.test.mjs",
+        "scripts/lib/parity-config.test.mjs"
+      ]
     },
     {
       "id": "lab-and-release-regressions",
@@ -218,7 +226,8 @@
         "lab/candidate/deepseek-budget-image.test.mjs",
         "lab/candidate/completions-overflow-signal.test.mjs",
         "lab/release-files/codex-plugins-off/config.test.mjs",
-        "lab/release-files/web-search-parallel/config.test.mjs", "lab/release-files/v-experience-multichannel/config.test.mjs",
+        "lab/release-files/web-search-parallel/config.test.mjs",
+        "lab/release-files/v-experience-multichannel/config.test.mjs",
         "lab/canonical-session-scan.test.mjs",
         "lab/cron-shared-tool-surface.test.mjs",
         "lab/db91-benchmark-profile.test.mjs",
@@ -272,6 +281,14 @@
         "lab/patch-voice-native-tools.test.mjs",
         "lab/realtime-direct-tools/grok-provider.test.mjs",
         "lab/realtime-direct-tools/session.test.mjs",
+        "lab/gpt-live-h5/microphone-session.test.mjs",
+        "lab/realtime-direct-tools/backend.test.mjs",
+        "lab/realtime-direct-tools/candidate-environment.test.mjs",
+        "lab/realtime-direct-tools/playback-evidence.test.mjs",
+        "lab/realtime-direct-tools/runtime-package.test.mjs",
+        "lab/realtime-direct-tools/tool-start-audio.test.mjs",
+        "lab/realtime-direct-tools/observer-bootstrap.test.mjs",
+        "lab/realtime-direct-tools/worker-process-owner.test.mjs",
         "lab/realtime-direct-tools/tools.test.mjs",
         "lab/gpt-live-projection-readiness.test.mjs",
         "lab/gpt-live-public-progress-bridge.test.mjs",
@@ -348,41 +365,133 @@
         "experiments/agent-worker-isolation-v1/worker-recycle-concurrency.test.mjs",
         "lab/gpt-live-candidate-native/recording-lifecycle.test.mjs",
         "lab/gpt-live-h5/hosted.test.mjs",
-        "lab/gpt-live-voice-entry-release.test.mjs"
+        "lab/gpt-live-voice-entry-release.test.mjs",
+        "lab/gpt-live-h5/markdown.test.mjs",
+        "lab/gpt-live-h5/result-presentation.test.mjs"
       ]
     }
   ],
   "deferredTestFiles": [
-    {"file": "lab/db91-writer-transaction-scope.test.mjs", "reason": "读取只存在于 Tianyi 这台 Mac 上的 ~/v-upgrade-private/20260912-openclaw94-shared-vlab 9.4 fixture；本机离线通过，CI 干净环境 ENOENT。fixture 进仓库或改成显式环境变量之前不进 CI 套件。"},
-    {"file": "scripts/patch-openclaw94-sqlite-begin-contention.test.mjs", "reason": "读取只存在于 Tianyi 这台 Mac 上的 ~/v-upgrade-private/20260912-openclaw94-shared-vlab 9.4 fixture；本机离线通过，CI 干净环境 ENOENT。fixture 进仓库或改成显式环境变量之前不进 CI 套件。"},
-    {"file": "scripts/patch-openclaw94-operational-parity.test.mjs", "reason": "读取只存在于 Tianyi 这台 Mac 上的 ~/v-upgrade-private/20260912-openclaw94-shared-vlab 9.4 fixture；本机离线通过，CI 干净环境 ENOENT。fixture 进仓库或改成显式环境变量之前不进 CI 套件。"},
-    {"file": "scripts/patch-openclaw94-cron-shared-management.test.mjs", "reason": "读取只存在于 Tianyi 这台 Mac 上的 ~/v-upgrade-private/20260912-openclaw94-shared-vlab 9.4 fixture；本机离线通过，CI 干净环境 ENOENT。fixture 进仓库或改成显式环境变量之前不进 CI 套件。"},
-    {"file": "lab/short-maintenance-transactions.test.mjs", "reason": "其中 WAL 快照一条需要 OPENCLAW_TEST_NATIVE_DIST 指向原生运行时，缺省时 skip；离线入口不把 skip 当通过。"},
-    {"file": "tests/cron-shared-management/patcher.test.mjs", "reason": "需要真实 9.1 cron bundle fixture；缺 fixture 时 node:test 会 skip，离线入口不把 skip 当通过。"},
-    {"file": "lab/cold-start-pipeline-contract.test.mjs", "reason": "钉的是 worker-pool.mjs 在 035ccb4（spawn-containment）时的内容哈希；之后 2da3eec（worker-memory-recycle，已上线）和 88380e9 改了该文件而未重钉，自 9/16 起失败、被未登记测试的目录错误掩盖。需要 worker 线负责人确认现内容后重钉，不由 2026-09-24 的登记整理代为声明。"},
-    {"file": "tests/dreaming-session-ingestion-candidate.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
-    {"file": "lab/candidate/view-image-bytes-cap.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
-    {"file": "lab/candidate/vcodex-sol61.test.mjs", "reason": "需要 VLab 候选运行时和实际配置，通过 vlab.mjs candidate 执行；独立候选和共享飞书验收已单独记录。"},
-    {"file": "lab/candidate/examples/config.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
-    {"file": "lab/candidate/computer-execution-idle.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
-    {"file": "lab/candidate/loopback-requester-sender.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
-    {"file": "lab/candidate/voice-spoken-confirmation-switch.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
-    {"file": "lab/candidate/memory-search-fast.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
-    {"file": "lab/candidate/memory-indexer-burst.test.mjs", "reason": "需要 VLab 候选运行时和共享 makaron 记忆文件副本，并要带入 V 上旧版 indexer（support），只能在 vlab.mjs candidate 里跑。"},
-    {"file": "lab/candidate/computer-frame-prune.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
-    {"file": "lab/candidate/x-search-effort.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
-    {"file": "lab/candidate/talk-input-stall-static.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
-    {"file": "lab/candidate/talk-owner-terminal.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
-    {"file": "lab/candidate/talk-voice-isolated.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
-    {"file": "lab/canonical-session-scan.native.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
-    {"file": "lab/deferred-reply-maintenance.test.mjs", "reason": "2026-09-24 登记时离线运行失败（AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:），待负责该线的人判断是测试过期还是回归；在此之前不进 CI 套件。"},
-    {"file": "lab/firsttext-transport.test.mjs", "reason": "2026-09-24 登记时离线运行失败（AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:），待负责该线的人判断是测试过期还是回归；在此之前不进 CI 套件。"},
-    {"file": "lab/session-store-hotpaths-build.test.mjs", "reason": "2026-09-24 登记时离线运行失败（Error: ENOENT: no such file or directory, mkdtemp '/Users/tianyicai/v-openclaw-platform/.claude/worktrees/vlab-v-alignme），待负责该线的人判断是测试过期还是回归；在此之前不进 CI 套件。"},
-    {"file": "lab/state-db-exec-approvals-repro.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
-    {"file": "lab/volcengine-rtc-agent-candidate.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
-    {"file": "lab/worker-loop-state-native.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
-    {"file": "lab/ws-heartbeat-backport-91-candidate.test.mjs", "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"},
-    {"file": "experiments/agent-worker-isolation-v1/native-module-resolution-cache.test.mjs", "reason": "2026-09-24 登记时离线运行失败（AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:），待负责该线的人判断是测试过期还是回归；在此之前不进 CI 套件。"},
+    {
+      "file": "lab/db91-writer-transaction-scope.test.mjs",
+      "reason": "读取只存在于 Tianyi 这台 Mac 上的 ~/v-upgrade-private/20260912-openclaw94-shared-vlab 9.4 fixture；本机离线通过，CI 干净环境 ENOENT。fixture 进仓库或改成显式环境变量之前不进 CI 套件。"
+    },
+    {
+      "file": "scripts/patch-openclaw94-sqlite-begin-contention.test.mjs",
+      "reason": "读取只存在于 Tianyi 这台 Mac 上的 ~/v-upgrade-private/20260912-openclaw94-shared-vlab 9.4 fixture；本机离线通过，CI 干净环境 ENOENT。fixture 进仓库或改成显式环境变量之前不进 CI 套件。"
+    },
+    {
+      "file": "scripts/patch-openclaw94-operational-parity.test.mjs",
+      "reason": "读取只存在于 Tianyi 这台 Mac 上的 ~/v-upgrade-private/20260912-openclaw94-shared-vlab 9.4 fixture；本机离线通过，CI 干净环境 ENOENT。fixture 进仓库或改成显式环境变量之前不进 CI 套件。"
+    },
+    {
+      "file": "scripts/patch-openclaw94-cron-shared-management.test.mjs",
+      "reason": "读取只存在于 Tianyi 这台 Mac 上的 ~/v-upgrade-private/20260912-openclaw94-shared-vlab 9.4 fixture；本机离线通过，CI 干净环境 ENOENT。fixture 进仓库或改成显式环境变量之前不进 CI 套件。"
+    },
+    {
+      "file": "lab/short-maintenance-transactions.test.mjs",
+      "reason": "其中 WAL 快照一条需要 OPENCLAW_TEST_NATIVE_DIST 指向原生运行时，缺省时 skip；离线入口不把 skip 当通过。"
+    },
+    {
+      "file": "tests/cron-shared-management/patcher.test.mjs",
+      "reason": "需要真实 9.1 cron bundle fixture；缺 fixture 时 node:test 会 skip，离线入口不把 skip 当通过。"
+    },
+    {
+      "file": "lab/cold-start-pipeline-contract.test.mjs",
+      "reason": "钉的是 worker-pool.mjs 在 035ccb4（spawn-containment）时的内容哈希；之后 2da3eec（worker-memory-recycle，已上线）和 88380e9 改了该文件而未重钉，自 9/16 起失败、被未登记测试的目录错误掩盖。需要 worker 线负责人确认现内容后重钉，不由 2026-09-24 的登记整理代为声明。"
+    },
+    {
+      "file": "tests/dreaming-session-ingestion-candidate.test.mjs",
+      "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"
+    },
+    {
+      "file": "lab/candidate/view-image-bytes-cap.test.mjs",
+      "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"
+    },
+    {
+      "file": "lab/candidate/vcodex-sol61.test.mjs",
+      "reason": "需要 VLab 候选运行时和实际配置，通过 vlab.mjs candidate 执行；独立候选和共享飞书验收已单独记录。"
+    },
+    {
+      "file": "lab/candidate/examples/config.test.mjs",
+      "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"
+    },
+    {
+      "file": "lab/candidate/computer-execution-idle.test.mjs",
+      "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"
+    },
+    {
+      "file": "lab/candidate/loopback-requester-sender.test.mjs",
+      "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"
+    },
+    {
+      "file": "lab/candidate/voice-spoken-confirmation-switch.test.mjs",
+      "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"
+    },
+    {
+      "file": "lab/candidate/memory-search-fast.test.mjs",
+      "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"
+    },
+    {
+      "file": "lab/candidate/memory-indexer-burst.test.mjs",
+      "reason": "需要 VLab 候选运行时和共享 makaron 记忆文件副本，并要带入 V 上旧版 indexer（support），只能在 vlab.mjs candidate 里跑。"
+    },
+    {
+      "file": "lab/candidate/computer-frame-prune.test.mjs",
+      "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"
+    },
+    {
+      "file": "lab/candidate/x-search-effort.test.mjs",
+      "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"
+    },
+    {
+      "file": "lab/candidate/talk-input-stall-static.test.mjs",
+      "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"
+    },
+    {
+      "file": "lab/candidate/talk-owner-terminal.test.mjs",
+      "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"
+    },
+    {
+      "file": "lab/candidate/talk-voice-isolated.test.mjs",
+      "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"
+    },
+    {
+      "file": "lab/canonical-session-scan.native.test.mjs",
+      "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"
+    },
+    {
+      "file": "lab/deferred-reply-maintenance.test.mjs",
+      "reason": "2026-09-24 登记时离线运行失败（AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:），待负责该线的人判断是测试过期还是回归；在此之前不进 CI 套件。"
+    },
+    {
+      "file": "lab/firsttext-transport.test.mjs",
+      "reason": "2026-09-24 登记时离线运行失败（AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:），待负责该线的人判断是测试过期还是回归；在此之前不进 CI 套件。"
+    },
+    {
+      "file": "lab/session-store-hotpaths-build.test.mjs",
+      "reason": "2026-09-24 登记时离线运行失败（Error: ENOENT: no such file or directory, mkdtemp '/Users/tianyicai/v-openclaw-platform/.claude/worktrees/vlab-v-alignme），待负责该线的人判断是测试过期还是回归；在此之前不进 CI 套件。"
+    },
+    {
+      "file": "lab/state-db-exec-approvals-repro.test.mjs",
+      "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"
+    },
+    {
+      "file": "lab/volcengine-rtc-agent-candidate.test.mjs",
+      "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"
+    },
+    {
+      "file": "lab/worker-loop-state-native.test.mjs",
+      "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"
+    },
+    {
+      "file": "lab/ws-heartbeat-backport-91-candidate.test.mjs",
+      "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"
+    },
+    {
+      "file": "experiments/agent-worker-isolation-v1/native-module-resolution-cache.test.mjs",
+      "reason": "2026-09-24 登记时离线运行失败（AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:），待负责该线的人判断是测试过期还是回归；在此之前不进 CI 套件。"
+    },
     {
       "file": "tests/feishu-steer91-real-bundle.test.mjs",
       "reason": "需要未修改的真实 Feishu 9.1 bundle fixture；不在离线入口中将条件 skip 冒充通过。后续接入制品兼容性门槛。"
@@ -657,22 +766,126 @@
     }
   ],
   "adaptations": [
-    {"id": "patch-openclaw91-gpt6-sol-luna", "file": "scripts/patch-openclaw91-gpt6-sol-luna.mjs", "component": "openclaw-core", "reason": "上游 4ae133a994f（v2026.9.6）GPT-6 Sol/Luna 回迁到 9.1；2026-09-25 04:01 已在生产 V 上（流程外热改），9/25 补登记", "hostVersions": ["2026.9.1"], "disposition": "needs-live-reconciliation", "sourceSha256": "d174c744963b26436c46e13de8564988355ee7a8cd9982bdac3a7f5fb9053c39"},
-    {"id": "patch-db91-integrity-gate", "file": "scripts/patch-db91-integrity-gate.mjs", "component": "openclaw-core", "reason": "db91 启动前库完整性门；生产 V 在跑（db91.x）；2026-09-24 从未登记状态收拢", "hostVersions": ["2026.9.1"], "disposition": "needs-live-reconciliation", "sourceSha256": "b0c64ad7465c9f08cbd98d30fb52fff568127675a5b79904d41a5833e1b16c39"},
-    {"id": "patch-db91-maintenance-throttle", "file": "scripts/patch-db91-maintenance-throttle.mjs", "component": "openclaw-core", "reason": "db91 维护节流；生产 V 在跑；2026-09-24 从未登记状态收拢", "hostVersions": ["2026.9.1"], "disposition": "needs-live-reconciliation", "sourceSha256": "6c59c8ec62b486e213b430dbcfb1ed3ad318099eaefe9f4fd51a0734254b4268"},
-    {"id": "patch-db91-memory-provenance", "file": "scripts/patch-db91-memory-provenance.mjs", "component": "openclaw-core", "reason": "db91 记忆来源标注；生产 V 在跑；2026-09-24 从未登记状态收拢", "hostVersions": ["2026.9.1"], "disposition": "needs-live-reconciliation", "sourceSha256": "9fd5083939188dc3d9d5fdc1f343e6e1c4bc7e7e4e439960852f72894399d6b2"},
-    {"id": "patch-dm-delivery-notice-race", "file": "scripts/patch-dm-delivery-notice-race.mjs", "component": "openclaw-core", "reason": "私信投递通知竞态修复；2026-09-24 从未登记状态收拢", "hostVersions": ["2026.9.1"], "disposition": "needs-live-reconciliation", "sourceSha256": "1f57d662025d913232caf32eaa2e825bd7c49b7a166ecb9651598ae06b6e2267"},
-    {"id": "patch-openclaw91-cron-shared-management", "file": "scripts/patch-openclaw91-cron-shared-management.mjs", "component": "openclaw-core", "reason": "9.1 cron 共享管理；2026-09-24 从未登记状态收拢", "hostVersions": ["2026.9.1"], "disposition": "needs-live-reconciliation", "sourceSha256": "80172cb5ce0d1e77cd05e5dea51dfa55a7d2f47704b676dba8ddce98bad3a18c"},
-    {"id": "patch-openclaw91-session-races", "file": "scripts/patch-openclaw91-session-races.mjs", "component": "openclaw-core", "reason": "9.1 会话竞态修复；2026-09-24 从未登记状态收拢", "hostVersions": ["2026.9.1"], "disposition": "needs-live-reconciliation", "sourceSha256": "55a7baa0308046c7dcafe1d9ee91e67b6cc32d18b5c7de5ff89786797485bc25"},
-    {"id": "patch-openclaw94-cron-shared-management", "file": "scripts/patch-openclaw94-cron-shared-management.mjs", "component": "openclaw-core", "reason": "9.4 升级线（已暂停，未上线）；2026-09-24 从未登记状态收拢", "hostVersions": ["2026.9.4"], "disposition": "excluded-candidate", "sourceSha256": "c98775777a5d4ec6cddc711139563f8bf83cc88c030eaeaeb00b7e8c74978a15"},
-    {"id": "patch-openclaw94-operational-parity", "file": "scripts/patch-openclaw94-operational-parity.mjs", "component": "openclaw-core", "reason": "9.4 升级线（已暂停，未上线）；2026-09-24 从未登记状态收拢", "hostVersions": ["2026.9.4"], "disposition": "excluded-candidate", "sourceSha256": "fa1aa02a8426b26ad3aaab72aa5fe63f3e2bd4851e53d9ef971048f7983568cf"},
-    {"id": "patch-openclaw94-sqlite-begin-contention", "file": "scripts/patch-openclaw94-sqlite-begin-contention.mjs", "component": "openclaw-core", "reason": "9.4 升级线（已暂停，未上线）；2026-09-24 从未登记状态收拢", "hostVersions": ["2026.9.4"], "disposition": "excluded-candidate", "sourceSha256": "7931efb8aaa162731567ce2b1a86544669fbb40f964e28591fa7751e4797f64b"},
+    {
+      "id": "patch-openclaw91-gpt6-sol-luna",
+      "file": "scripts/patch-openclaw91-gpt6-sol-luna.mjs",
+      "component": "openclaw-core",
+      "reason": "上游 4ae133a994f（v2026.9.6）GPT-6 Sol/Luna 回迁到 9.1；2026-09-25 04:01 已在生产 V 上（流程外热改），9/25 补登记",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "needs-live-reconciliation",
+      "sourceSha256": "d174c744963b26436c46e13de8564988355ee7a8cd9982bdac3a7f5fb9053c39"
+    },
+    {
+      "id": "patch-db91-integrity-gate",
+      "file": "scripts/patch-db91-integrity-gate.mjs",
+      "component": "openclaw-core",
+      "reason": "db91 启动前库完整性门；生产 V 在跑（db91.x）；2026-09-24 从未登记状态收拢",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "needs-live-reconciliation",
+      "sourceSha256": "b0c64ad7465c9f08cbd98d30fb52fff568127675a5b79904d41a5833e1b16c39"
+    },
+    {
+      "id": "patch-db91-maintenance-throttle",
+      "file": "scripts/patch-db91-maintenance-throttle.mjs",
+      "component": "openclaw-core",
+      "reason": "db91 维护节流；生产 V 在跑；2026-09-24 从未登记状态收拢",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "needs-live-reconciliation",
+      "sourceSha256": "6c59c8ec62b486e213b430dbcfb1ed3ad318099eaefe9f4fd51a0734254b4268"
+    },
+    {
+      "id": "patch-db91-memory-provenance",
+      "file": "scripts/patch-db91-memory-provenance.mjs",
+      "component": "openclaw-core",
+      "reason": "db91 记忆来源标注；生产 V 在跑；2026-09-24 从未登记状态收拢",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "needs-live-reconciliation",
+      "sourceSha256": "9fd5083939188dc3d9d5fdc1f343e6e1c4bc7e7e4e439960852f72894399d6b2"
+    },
+    {
+      "id": "patch-dm-delivery-notice-race",
+      "file": "scripts/patch-dm-delivery-notice-race.mjs",
+      "component": "openclaw-core",
+      "reason": "私信投递通知竞态修复；2026-09-24 从未登记状态收拢",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "needs-live-reconciliation",
+      "sourceSha256": "1f57d662025d913232caf32eaa2e825bd7c49b7a166ecb9651598ae06b6e2267"
+    },
+    {
+      "id": "patch-openclaw91-cron-shared-management",
+      "file": "scripts/patch-openclaw91-cron-shared-management.mjs",
+      "component": "openclaw-core",
+      "reason": "9.1 cron 共享管理；2026-09-24 从未登记状态收拢",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "needs-live-reconciliation",
+      "sourceSha256": "80172cb5ce0d1e77cd05e5dea51dfa55a7d2f47704b676dba8ddce98bad3a18c"
+    },
+    {
+      "id": "patch-openclaw91-session-races",
+      "file": "scripts/patch-openclaw91-session-races.mjs",
+      "component": "openclaw-core",
+      "reason": "9.1 会话竞态修复；2026-09-24 从未登记状态收拢",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "needs-live-reconciliation",
+      "sourceSha256": "55a7baa0308046c7dcafe1d9ee91e67b6cc32d18b5c7de5ff89786797485bc25"
+    },
+    {
+      "id": "patch-openclaw94-cron-shared-management",
+      "file": "scripts/patch-openclaw94-cron-shared-management.mjs",
+      "component": "openclaw-core",
+      "reason": "9.4 升级线（已暂停，未上线）；2026-09-24 从未登记状态收拢",
+      "hostVersions": [
+        "2026.9.4"
+      ],
+      "disposition": "excluded-candidate",
+      "sourceSha256": "c98775777a5d4ec6cddc711139563f8bf83cc88c030eaeaeb00b7e8c74978a15"
+    },
+    {
+      "id": "patch-openclaw94-operational-parity",
+      "file": "scripts/patch-openclaw94-operational-parity.mjs",
+      "component": "openclaw-core",
+      "reason": "9.4 升级线（已暂停，未上线）；2026-09-24 从未登记状态收拢",
+      "hostVersions": [
+        "2026.9.4"
+      ],
+      "disposition": "excluded-candidate",
+      "sourceSha256": "fa1aa02a8426b26ad3aaab72aa5fe63f3e2bd4851e53d9ef971048f7983568cf"
+    },
+    {
+      "id": "patch-openclaw94-sqlite-begin-contention",
+      "file": "scripts/patch-openclaw94-sqlite-begin-contention.mjs",
+      "component": "openclaw-core",
+      "reason": "9.4 升级线（已暂停，未上线）；2026-09-24 从未登记状态收拢",
+      "hostVersions": [
+        "2026.9.4"
+      ],
+      "disposition": "excluded-candidate",
+      "sourceSha256": "7931efb8aaa162731567ce2b1a86544669fbb40f964e28591fa7751e4797f64b"
+    },
     {
       "id": "patch-openclaw-worker-native-attempt",
       "file": "scripts/patch-openclaw-worker-native-attempt.mjs",
       "component": "worker-runtime",
       "reason": "从 9.1 平台来源收拢原生执行、身份、消息与实例上下文桥；9.2 锚点检查不等于全能力通过",
-      "hostVersions": ["2026.9.1", "2026.9.2", "2026.9.4"],
+      "hostVersions": [
+        "2026.9.1",
+        "2026.9.2",
+        "2026.9.4"
+      ],
       "disposition": "needs-live-reconciliation",
       "sourceSha256": "0153cee8a04dfd6f09ee8b4790ee5bd4a33ef79dbbe5da635787153271e2791f"
     },

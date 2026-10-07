@@ -11,13 +11,26 @@ import {configureCandidateOpenAIAuth,installCandidateOpenAIAuth} from './gpt-liv
 import {GPT_LIVE_CALL_INSTRUCTIONS} from './gpt-live-h5/instructions.mjs';
 import {createLiveH5Server} from './gpt-live-h5/server.mjs';
 import {createDirectVoiceService} from './realtime-direct-tools/session.mjs';
+import {isolateCandidateAgentRuntime,candidateLarkEnvironment} from './realtime-direct-tools/candidate-environment.mjs';
 import {parsePublicProgressDiagnostics} from './gpt-live-h5-provenance-evidence.mjs';
 import {collectCandidateSelectedModelReferences,assertCandidateSelectedModelsPreserved,scopeCandidateAgentToAgentAllow,disableCandidateParallelToolCalls,preflightCandidateConfig,applyCandidateBackendRouteDiagnostic,assertCandidateBackendRouteDiagnosticPair,assertCandidateBackendDiagnosticPaths} from './gpt-live-candidate-config-guard.mjs';
 import {startOwnedProcObserver} from './gpt-live-candidate-native/os-observer-lifecycle.mjs';
 import {parseVoiceConfirmationDiagnostics} from './gpt-live-candidate-native/confirmation-evidence.mjs';
 
+// Reject an invalid observer before copying/opening the private database or
+// starting a Gateway. A controls-only probe uses the same native controls path.
+const directCase=process.env.DIRECT_VOICE_CASES??'hybrid';
+if(process.env.DIRECT_VOICE_AUTOMATED==='1'){
+  assert(process.env.V_REALTIME_DIRECT_TOOLS==='1','Direct automated validation requires native voice tools');
+  const cases=['hybrid','hybrid-core','single-query','followup','core','controls','calendar-playback','routing-controls'];
+  assert(cases.includes(directCase),'Unknown direct voice observer case');
+  if(process.env.DIRECT_VOICE_CASE_BY_MODEL){const selected=JSON.parse(process.env.DIRECT_VOICE_CASE_BY_MODEL);assert(selected&&typeof selected==='object'&&!Array.isArray(selected),'Invalid per-model cases');for(const [model,value] of Object.entries(selected))assert(['seeduplex','grok'].includes(model)&&cases.includes(value),'Unknown per-model voice observer case');}
+}
 const runtime=process.env.VLAB_CANDIDATE_RUNTIME,state=process.env.OPENCLAW_STATE_DIR,configPath=process.env.OPENCLAW_CONFIG_PATH;
 assert(runtime&&state&&configPath,'Disposable candidate environment required');
+const agentRuntimeEnvironment=isolateCandidateAgentRuntime(process.env,runtime);
+const toolEnvironment=candidateLarkEnvironment(process.env);
+Object.assign(process.env,toolEnvironment);
 const scratch=path.join(state,'tmp');fs.mkdirSync(scratch,{recursive:true,mode:0o700});
 for(const key of ['TMPDIR','TMP','TEMP'])process.env[key]=scratch;
 if(process.env.GPT_LIVE_CALL_AUDIO_FIXTURE_GZIP) {
@@ -160,6 +173,22 @@ if(fullTools&&config.plugins?.load?.paths) {
   }
   config.plugins.load.paths=privateLoadPaths;
 }
+if(process.env.VOICE_WORKER_PROCESS_OWNER==='1'){
+  const {patchVoiceWorker,patchVoicePool,patchVoiceIndex,patchNativeVoiceProcessScope,patchClassicVoiceProcessScope}=await import('./patch-voice-worker-process-owner.mjs');
+  const roots=(config.plugins?.load?.paths??[]).filter(p=>fs.existsSync(path.join(p,'openclaw.plugin.json'))&&JSON.parse(fs.readFileSync(path.join(p,'openclaw.plugin.json'))).id==='vlab-agent-worker-isolation');
+  assert(roots.length===1,'Exact private Worker plugin required');
+  const root=fs.realpathSync(roots[0]);assert(root.startsWith(fs.realpathSync(path.dirname(runtime))+'/'),'Worker patch must stay in own Candidate');
+  const receipts=[];
+  const nativeScopeFile=path.join(runtime,'openclaw/dist/embedded-agent.runtime-CL7poBKY.js');
+  const nativeBefore=fs.readFileSync(nativeScopeFile),nativeAfter=patchNativeVoiceProcessScope(nativeBefore.toString());
+  fs.copyFileSync('lab/realtime-direct-tools/worker-process-owner.mjs',path.join(runtime,'openclaw/dist/voice-process-owner.mjs'));
+  fs.writeFileSync(nativeScopeFile,nativeAfter);receipts.push({name:'embedded-agent.runtime-CL7poBKY.js',before:createHash('sha256').update(nativeBefore).digest('hex'),after:createHash('sha256').update(nativeAfter).digest('hex')});
+  const classicFile=path.join(runtime,'openclaw/dist/agent-tools-djVuP1H1.js'),classicBefore=fs.readFileSync(classicFile),classicAfter=patchClassicVoiceProcessScope(classicBefore.toString());
+  fs.writeFileSync(classicFile,classicAfter);receipts.push({name:'agent-tools-djVuP1H1.js',before:createHash('sha256').update(classicBefore).digest('hex'),after:createHash('sha256').update(classicAfter).digest('hex')});
+  for(const [name,patch] of [['worker.mjs',patchVoiceWorker],['worker-pool.mjs',patchVoicePool],['index.mjs',patchVoiceIndex]]){const before=fs.readFileSync(path.join(root,name)),after=patch(before.toString());fs.writeFileSync(path.join(root,name),after);receipts.push({name,before:createHash('sha256').update(before).digest('hex'),after:createHash('sha256').update(after).digest('hex')});}
+  fs.copyFileSync('lab/realtime-direct-tools/worker-process-owner.mjs',path.join(root,'voice-process-owner.mjs'));
+  fs.mkdirSync(process.env.GPT_LIVE_H5_EVIDENCE_DIR,{recursive:true,mode:0o700});fs.writeFileSync(path.join(process.env.GPT_LIVE_H5_EVIDENCE_DIR,'worker-process-owner-patch.json'),JSON.stringify({candidateId:process.env.VLAB_CANDIDATE_ID,sourceCommit:process.env.GPT_LIVE_H5_SOURCE_COMMIT,root,receipts})+'\n',{mode:0o600,flag:'wx'});
+}
 const worker=config.plugins?.entries?.['vlab-agent-worker-isolation']?.config;
 assert(worker?.workerConfigPath,'Worker configuration unavailable');
 const relative=path.relative(state,worker.workerConfigPath);assert(!relative.startsWith('..'));
@@ -301,7 +330,7 @@ try {
     try {
       await new Promise((resolve,reject)=>{
         const timer=setTimeout(()=>reject(Error('Private Gateway connection deadline')),5000);
-        client=new GatewayClient({url:`ws://127.0.0.1:${config.gateway.port}`,token,deviceIdentity:null,clientName:'cli',mode:'cli',scopes:['operator.read','operator.write','operator.admin'],caps:process.env.V_REALTIME_DIRECT_TOOLS==='1'?['voice-direct-tools']:undefined,
+        client=new GatewayClient({url:`ws://127.0.0.1:${config.gateway.port}`,token,deviceIdentity:null,clientName:'cli',mode:'cli',scopes:['operator.read','operator.write','operator.admin'],caps:process.env.V_REALTIME_DIRECT_TOOLS==='1'?['voice-direct-tools','tool-events']:undefined,
           onHelloOk:()=>{clearTimeout(timer);resolve();},onConnectError:error=>{clearTimeout(timer);reject(error);},onEvent:event=>bridge?.emit(event)});client.start();
       });
       const catalog=await client.request('talk.catalog',{}, {timeoutMs:15000});
@@ -362,7 +391,8 @@ try {
     if(credentialPath){const st=fs.lstatSync(credentialPath);assert(st.isFile()&&(st.mode&0o077)===0,'Grok credential file must be private');grokKey=JSON.parse(fs.readFileSync(credentialPath)).apiKey;}
     const auditPath=path.join(process.env.GPT_LIVE_H5_EVIDENCE_DIR,'direct-voice-audit.jsonl');
     fs.writeFileSync(auditPath,'',{mode:0o600,flag:'wx'});
-    directVoice=createDirectVoiceService({gateway:guardedGateway,wsModule,apiKeys:{seeduplex:process.env.VOLCENGINE_REALTIME_API_KEY,grok:grokKey},
+    fs.writeFileSync(path.join(process.env.GPT_LIVE_H5_EVIDENCE_DIR,'native-environment-isolation.json'),JSON.stringify({agentRuntimeEnvironment,toolEnvironment},null,2)+'\n',{mode:0o600,flag:'wx'});
+    directVoice=createDirectVoiceService({gateway:guardedGateway,wsModule,toolEnvironment,apiKeys:{seeduplex:process.env.VOLCENGINE_REALTIME_API_KEY,grok:grokKey},
       audit:value=>fs.appendFileSync(auditPath,JSON.stringify({at:Date.now(),...value})+'\n'),
       onOutputAudio:(id,pcm)=>fs.appendFileSync(path.join(process.env.GPT_LIVE_H5_EVIDENCE_DIR,`provider-${id}.pcm`),pcm,{mode:0o600}),
       loadContext:async sessionKey=>{
@@ -391,6 +421,11 @@ try {
     fs.mkdirSync(path.dirname(experienceReadyPath),{recursive:true,mode:0o700});
     fs.writeFileSync(experienceReadyPath,JSON.stringify(experienceMetadata,null,2)+'\n',{mode:0o600,flag:'wx'});
     experienceReadyWritten=true;
+    if(process.env.DIRECT_VOICE_AUTOMATED==='1'){
+      smoke=spawn(process.execPath,['lab/realtime-direct-tools/native-smoke.mjs'],{env:{...process.env,DIRECT_VOICE_EVIDENCE:path.join(process.env.GPT_LIVE_H5_EVIDENCE_DIR,'native'),DIRECT_VOICE_CLIPS:path.resolve('tmp/voice-reliability/clips'),DIRECT_VOICE_CASES:directCase},stdio:'inherit'});
+      const code=await new Promise((resolve,reject)=>{smoke.once('error',reject);smoke.once('exit',resolve);});
+      assert.equal(code,0,'Original direct voice workflow failed; native evidence retained');experienceOutcome={status:'automation-completed'};return;
+    }
     experienceOutcome=await waitForExperience({durationMs:durationSeconds*1000,gateway,signal:shutdown.signal});
   }
   if(experience)await holdForExperience();else {
