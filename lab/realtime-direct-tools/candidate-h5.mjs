@@ -37,7 +37,8 @@ bridge=createLiveH5Server({gateway,directVoice,
  basePath:process.env.GPT_LIVE_H5_BASE_PATH??'',publicOrigin:process.env.GPT_LIVE_H5_PUBLIC_ORIGIN??'',accessToken:process.env.GPT_LIVE_H5_ACCESS_TOKEN??'',
  offer:async(reservation,sdp)=>{
  const r=await fetch(`http://127.0.0.1:${config.gateway.port}${reservation.offerUrl}`,{method:'POST',headers:{authorization:`Bearer ${reservation.clientSecret}`,'content-type':'application/sdp'},body:sdp,signal:AbortSignal.timeout(25000)});assert(r.ok);return r.text();}});
-await new Promise(resolve=>bridge.server.listen(0,'127.0.0.1',resolve));
+const h5Port=Number(process.env.GPT_LIVE_H5_PORT??0);assert(Number.isInteger(h5Port)&&h5Port>=0&&h5Port<=65535);
+await new Promise(resolve=>bridge.server.listen(h5Port,'127.0.0.1',resolve));
 const ready={...original,remotePort:bridge.server.address().port,sourceCommit:process.env.DIRECT_SOURCE_COMMIT,canonicalSourceCommit:original.sourceCommit,h5Unit:process.env.DIRECT_H5_UNIT,...(process.env.GPT_LIVE_H5_PUBLIC_ORIGIN?{publicOrigin:process.env.GPT_LIVE_H5_PUBLIC_ORIGIN,basePath:process.env.GPT_LIVE_H5_BASE_PATH}:{}),appSha:createHash('sha256').update(fs.readFileSync('lab/gpt-live-h5/app.js')).digest('hex'),readyAt:new Date().toISOString(),productAccepted:false,humanAccepted:false};
 fs.writeFileSync(process.env.GPT_LIVE_H5_EXPERIENCE_READY,JSON.stringify(ready,null,2)+'\n',{mode:0o600,flag:'wx'});
 setTimeout(()=>void shutdown(),Date.parse(original.expiresAt)-Date.now());
