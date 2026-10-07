@@ -1,5 +1,5 @@
-// Sends a few layouts of the session-relay thread card to the VLab test group so a
-// person can see which one Feishu actually centres. No Gateway, no model.
+// Sends the session-relay thread card, as the plugin paints it, to the VLab test group so a
+// person can check how Feishu renders it. No Gateway, no model.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { threadCard } from "../../apps/v-session-relay/plugin/core/text.js";
@@ -17,30 +17,9 @@ const records = [
   { id: "r_p1", chainId: "r_p1", status: "done", createdAt: Date.now() - 60_000, finishedAt: Date.now() - 40_000, from: side("Tianyi 的私聊"), to: side("VLab 发布验收 B"), message: "按群规起草 v2.3 上线通知。", reply: "灰度比例定多少？" },
   { id: "r_p2", chainId: "r_p1", status: "done", createdAt: Date.now() - 30_000, finishedAt: Date.now() - 10_000, from: side("Tianyi 的私聊"), to: side("VLab 发布验收 B"), message: "20%", reply: "定稿：……" },
 ];
-const base = threadCard(records);
-const panel = base.body.elements[0];
-const lines = panel.header.title.content;
-const variants = {
-  "A 折叠时按内容宽度": (p) => ({ ...p, header: { ...p.header, width: "auto_when_fold" } }),
-  "B 居中列 + 折叠时按内容宽度": (p) => null,
-  "C 文字在面板外居中": (p) => null,
-};
+// The card exactly as the plugin paints it, finished and in progress.
 const out = [];
-for (const name of Object.keys(variants)) {
-  let elements;
-  const tagLine = { tag: "markdown", content: `<font color='grey'>样式 ${name}</font>`, text_size: "notation" };
-  if (name.startsWith("A")) {
-    elements = [tagLine, variants[name](structuredClone(panel))];
-  } else if (name.startsWith("B")) {
-    const p = structuredClone(panel);
-    p.header.width = "auto_when_fold";
-    elements = [tagLine, { tag: "column_set", horizontal_align: "center", columns: [{ tag: "column", width: "auto", elements: [p] }] }];
-  } else {
-    const p = structuredClone(panel);
-    p.header.title = { tag: "markdown", content: "<font color='grey'>展开对话</font>", text_align: "center", text_size: "notation" };
-    elements = [tagLine, { tag: "markdown", content: lines.replace(/^<font color='grey'>|<\/font>$/gu, "").split("\n").map((l) => `<font color='grey'>${l}</font>`).join("\n"), text_align: "center", text_size: "notation" }, p];
-  }
-  const card = { schema: "2.0", config: { update_multi: true }, body: { elements } };
+for (const [name, card] of [["已完成", threadCard(records)], ["进行中", threadCard([{ ...records[0] }, { ...records[1], status: "running", reply: undefined }])]]) {
   const res = await fetch(`${host}/open-apis/im/v1/messages?receive_id_type=chat_id`, { method: "POST", headers: { Authorization: `Bearer ${auth.tenant_access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ receive_id: GROUP, msg_type: "interactive", content: JSON.stringify(card) }) }).then((r) => r.json());
   out.push({ name, code: res.code, msg: res.msg, id: res.data?.message_id });
 }

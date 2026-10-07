@@ -36,8 +36,8 @@ function threadStatus(records) {
   return "已完成";
 }
 
-/** Chat names on the one-line title are cut so the line does not wrap on a phone. */
-function shortName(label, max = 10) {
+/** Chat names on the one-line title are cut only when very long, so the line stays one line. */
+function shortName(label, max = 16) {
   const chars = [...String(label ?? "")];
   return chars.length > max ? `${chars.slice(0, max - 1).join("")}…` : chars.join("");
 }
@@ -77,20 +77,33 @@ export function threadCard(records) {
     schema: "2.0",
     config: { update_multi: true, summary: { content: `${chats.join(" ⇄ ")} · ${threadStatus(records)}` } },
     body: {
+      // Feishu ignores text_align on a panel header; a centred auto-width column centres it.
       elements: [
         {
-          tag: "collapsible_panel",
-          element_id: `thread_${String(first?.chainId ?? "x").replace(/\W/gu, "").slice(0, 16)}`,
-          expanded: false,
-          header: {
-            title: { tag: "markdown", content: `<font color='grey'>${title}</font>`, text_align: "center", text_size: "notation" },
-            width: "fill",
-            vertical_align: "center",
-            icon: { tag: "standard_icon", token: "down-small-ccm_outlined", size: "16px 16px", color: "grey" },
-            icon_position: "follow_text",
-            icon_expanded_angle: -180,
-          },
-          elements: rows.length ? rows : [{ tag: "markdown", content: "<font color='grey'>还没有消息</font>" }],
+          tag: "column_set",
+          horizontal_align: "center",
+          columns: [
+            {
+              tag: "column",
+              width: "auto",
+              elements: [
+                {
+                  tag: "collapsible_panel",
+                  element_id: `thread_${String(first?.chainId ?? "x").replace(/\W/gu, "").slice(0, 16)}`,
+                  expanded: false,
+                  header: {
+                    title: { tag: "markdown", content: `<font color='grey'>${title}</font>`, text_size: "notation" },
+                    width: "auto_when_fold",
+                    vertical_align: "center",
+                    icon: { tag: "standard_icon", token: "down-small-ccm_outlined", size: "16px 16px", color: "grey" },
+                    icon_position: "follow_text",
+                    icon_expanded_angle: -180,
+                  },
+                  elements: rows.length ? rows : [{ tag: "markdown", content: "<font color='grey'>还没有消息</font>" }],
+                },
+              ],
+            },
+          ],
         },
       ],
     },

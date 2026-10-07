@@ -28,6 +28,9 @@ function record(over = {}) {
   };
 }
 
+// The panel sits in a centred column: body > column_set > column > collapsible_panel.
+const panelOf = (card) => card.body.elements[0].columns[0].elements[0];
+const isThreadCard = (card) => card.body.elements[0].tag === "column_set";
 const sendResult = (data) => ({ content: [{ type: "text", text: JSON.stringify(data) }] });
 
 test("native: reads sessions_send results and turns accepted sends into records", () => {
@@ -103,12 +106,15 @@ test("text: one-line collapsed card per thread, 「V · 群名」 inside, guidan
   ];
   assert.deepEqual(threadEntries(thread).map((e) => [e.label, e.text]), [["V · Tianyi 的私聊", "do x"], ["V · A 群", "缺灰度比例？"], ["V · Tianyi 的私聊", "20%"]]);
   const card = threadCard(thread);
-  const panel = card.body.elements[0];
+  const panel = panelOf(card);
   assert.equal(card.body.elements.length, 1);
+  assert.equal(card.body.elements[0].horizontal_align, "center");
+  assert.equal(panel.header.width, "auto_when_fold");
   assert.equal(panel.expanded, false);
   assert.match(panel.header.title.content, /\*\*Tianyi 的私聊\*\* ⇄ \*\*A 群\*\* · 进行中 · 3 条/u);
   assert(!panel.header.title.content.includes("\n"), "the title is one line");
-  assert.match(threadCard([record({ status: "done", reply: "x", from: { label: "一个名字特别特别长的飞书群聊" } })]).body.elements[0].header.title.content, /一个名字特别特别长…/u);
+  assert.match(panelOf(threadCard([record({ status: "done", reply: "x", from: { label: "VLab 发布验收 B" } })])).header.title.content, /VLab 发布验收 B\*\*/u, "an 11-character name is not cut");
+  assert.match(panelOf(threadCard([record({ status: "done", reply: "x", from: { label: "一个名字特别特别特别特别长的飞书群聊" } })])).header.title.content, /一个名字特别特别特别特别长的飞…/u);
   const huge = threadCard(Array.from({ length: 40 }, (_, i) => record({ id: `r_${i}`, chainId: "r_0", status: "done", createdAt: i, reply: "长".repeat(1500), finishedAt: i })));
   assert(JSON.stringify(huge).length < 36_000);
   assert.match(requestGuidance({ ...thread[0], requester: "Tianyi" }), /asked for by Tianyi \(in 「Tianyi 的私聊」\)/u);
@@ -170,9 +176,9 @@ test("dispatcher: follows the target run, then the core's wake of the requester,
   assert.equal(final.reply, "done: 3 files");
   assert.equal(final.from.label, "Tianyi 的私聊");
   assert.equal(runtime.runs.length, 0, "the core woke the requester; the plugin ran nothing");
-  const threadCards = feishu.cards.filter((c) => c.card.body.elements[0].tag === "collapsible_panel");
+  const threadCards = feishu.cards.filter((c) => isThreadCard(c.card));
   assert.deepEqual(threadCards.map((c) => c.receiver.receiveId).sort(), ["oc_a", "ou_owner"]);
-  assert.match(feishu.patches.at(-1).card.body.elements[0].header.title.content, / · 已完成 · 2 条/u);
+  assert.match(panelOf(feishu.patches.at(-1).card).header.title.content, / · 已完成 · 2 条/u);
   const finals = feishu.cards.filter((c) => c.card.body.elements[0].tag === "markdown");
   assert.deepEqual(finals.map((c) => [c.receiver.receiveId, c.card.body.elements[0].content]), [["ou_owner", "ok, next step"]]);
 });
