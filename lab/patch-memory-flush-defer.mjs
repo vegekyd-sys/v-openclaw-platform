@@ -217,10 +217,12 @@ const PREFLIGHT_GATE_AFTER = `	if (params.probe) {
 	}
 ${PREFLIGHT_GATE_BEFORE}`;
 
-// Codex compacts natively in its own thread, so OpenClaw's preflight returns here without compacting.
-// With a known token count the probe reports exactly that (this turn does not compact in OpenClaw);
-// the headroom rule then defers only far below the flush threshold, where Codex's own limit is also
-// far away. An unknown token count leaves the probe empty and the flush stays in front.
+// Codex compacts natively in its own thread, so OpenClaw's preflight returns here without compacting,
+// whatever the token count: the probe reports exactly that. The fresh persisted count rides along when
+// there is one. The headroom rule has already checked the flush's own token count against the flush
+// threshold before asking, so deferral still happens only far below it. A stale count must not keep
+// the flush in front: on V 2026-10-07 a /vds session (totalTokensFresh=false, flush marked failed at an
+// older compaction) ran a 40-50 s flush in front of every message.
 const CODEX_PREFLIGHT_BEFORE = `	if (isCodexRuntime && !shouldCompactByTranscriptBytes) {
 		logVerbose(\`preflightCompaction skipped: sessionKey=\${params.sessionKey} runtime=codex reason=codex_native_auto_compaction activeTranscriptBytes=\${activeTranscriptBytes ?? "undefined"} maxActiveTranscriptBytes=\${maxActiveTranscriptBytes ?? "undefined"}\`);
 		return entry ?? params.sessionEntry;
@@ -228,11 +230,11 @@ const CODEX_PREFLIGHT_BEFORE = `	if (isCodexRuntime && !shouldCompactByTranscrip
 `;
 const CODEX_PREFLIGHT_AFTER = `	if (isCodexRuntime && !shouldCompactByTranscriptBytes) {
 		logVerbose(\`preflightCompaction skipped: sessionKey=\${params.sessionKey} runtime=codex reason=codex_native_auto_compaction activeTranscriptBytes=\${activeTranscriptBytes ?? "undefined"} maxActiveTranscriptBytes=\${maxActiveTranscriptBytes ?? "undefined"}\`);
-		if (params.probe && typeof freshPersistedTokens === "number" && Number.isFinite(freshPersistedTokens) && freshPersistedTokens > 0) {
-			// ${MEMORY_FLUSH_DEFER_MARKER}: OpenClaw does not compact a Codex session here; report it with the known tokens.
+		if (params.probe) {
+			// ${MEMORY_FLUSH_DEFER_MARKER}: OpenClaw does not compact a Codex session here; report it, with fresh tokens when known.
 			params.probe.willCompact = false;
 			params.probe.threshold = threshold;
-			params.probe.tokenCount = freshPersistedTokens;
+			if (typeof freshPersistedTokens === "number" && Number.isFinite(freshPersistedTokens) && freshPersistedTokens > 0) params.probe.tokenCount = freshPersistedTokens;
 		}
 		return entry ?? params.sessionEntry;
 	}

@@ -261,7 +261,7 @@ test('memory module: a heartbeat leaves the probe empty (unknown)', async () => 
   assert.deepEqual(probe, {});
 });
 
-test('memory module: a Codex session reports no OpenClaw compaction with its known tokens, else stays unknown', async () => {
+test('memory module: a Codex session reports no OpenClaw compaction, with its tokens when they are fresh', async () => {
   // V 2026-10-07 11:28: a /vds turn waited 73 s behind the flush because this probe stayed empty
   const codex = memoryFakes({ fakes: { resolveEffectiveAgentRuntime: () => 'codex' } });
   const probe = {};
@@ -273,11 +273,13 @@ test('memory module: a Codex session reports no OpenClaw compaction with its kno
   assert.equal(codex.calls.compact.length, 0);
   assert.equal(codex.calls.incrementCompactionCount.length, 0);
   assert.deepEqual(out, baseParams().sessionEntry);
-  // no fresh token count: unknown, so the flush stays in front of the reply
+  // a stale token count still means no OpenClaw compaction; only the count is left out
+  // (V 2026-10-07 13:55 and 14:00: a stale /vds session ran a 40-50 s flush in front of each message)
   const stale = memoryFakes({ fakes: { resolveEffectiveAgentRuntime: () => 'codex' } });
   const probe2 = {};
   await loadMemoryModule(stale.fakes).runSessionCompactionIfNeeded({ ...baseParams({ sessionEntry: entry({ totalTokensFresh: false }) }), probe: probe2 });
-  assert.deepEqual(probe2, {});
+  assert.deepEqual(probe2, { willCompact: false, threshold: 980_000 });
+  assert.equal(stale.calls.compact.length, 0);
 });
 
 // ---------------------------------------------------------------------------------------
