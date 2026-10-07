@@ -33,10 +33,12 @@ test('extracts only names and booleans; unset enabled counts as on', () => {
   assert.deepEqual(s, {
     mcp: { figma: false, 'universal-memory': false, 'voice-memory': true },
     plugins: { feishu: true, 'vlab-agent-worker-isolation': true },
+    pluginConfig: {},
+    channels: {},
   });
   assert.ok(!JSON.stringify(s).includes(SECRET));
   assert.equal(configSwitches(null), null);
-  assert.deepEqual(configSwitches({}), { mcp: {}, plugins: {} });
+  assert.deepEqual(configSwitches({}), { mcp: {}, plugins: {}, pluginConfig: {}, channels: {} });
   assert.deepEqual(configSwitches({ mcp: { servers: { a: null, b: 'x' } } }).mcp, { a: true, b: true });
 });
 
@@ -78,4 +80,60 @@ test('config findings are advisory: they do not change the parity state', () => 
   const findings = [...parity.findings, ...compareConfigSwitches({ v, vlab }).findings];
   // promote-to-v.mjs and evaluateParity count blocking findings this way.
   assert.deepEqual(findings.filter((f) => f.kind !== 'pending' && !f.advisory), []);
+});
+
+test('MCP absent vs off is not reported; channel plugins are expected differences', () => {
+  // The 2026-10-06 parity run, after voice-memory was turned off on VLab.
+  const v = { gateway: { mcp: { figma: false, 'voice-memory': false }, plugins: { feishu: true, 'openclaw-plugin-xiaoai-cloud': false, parallel: true } }, worker: null };
+  const vlab = { gateway: { mcp: { 'voice-memory': false }, plugins: { feishu: true, 'openclaw-plugin-xiaoai-cloud': true, telegram: true } }, worker: null };
+  const { compared, findings } = compareConfigSwitches({ v, vlab });
+  assert.equal(compared, 6);
+  assert.deepEqual(findings.map((f) => [f.target, f.kind, f.v, f.vlab, f.advisory]), [
+    ['gateway: plugins.entries.openclaw-plugin-xiaoai-cloud.enabled', 'config-expected', 'false', 'true', true],
+    ['gateway: plugins.entries.parallel.enabled', 'config-differs', 'true', 'absent', true],
+    ['gateway: plugins.entries.telegram.enabled', 'config-expected', 'absent', 'true', true],
+  ]);
+  // An MCP server on one side only, and on, is still drift.
+  const on = compareConfigSwitches({ v: { gateway: { mcp: {}, plugins: {} }, worker: null }, vlab: { gateway: { mcp: { figma: true }, plugins: {} }, worker: null } });
+  assert.deepEqual(on.findings.map((f) => [f.target, f.kind]), [['gateway: mcp.servers.figma.enabled', 'config-differs']]);
+});
+
+test('memory-core dreaming inside plugin config is compared; nothing else of the config is kept', () => {
+  const cfg = (dreaming) => ({
+    plugins: { entries: { 'memory-core': { config: { dreaming: dreaming === undefined ? { cron: '0 3 * * *' } : { enabled: dreaming, cron: '0 3 * * *', token: SECRET } } } } },
+  });
+  assert.deepEqual(configSwitches(cfg(false)).pluginConfig, { 'memory-core.config.dreaming': false });
+  assert.deepEqual(configSwitches(cfg(undefined)).pluginConfig, {});
+  assert.ok(!JSON.stringify(configSwitches(cfg(true))).includes(SECRET));
+  // The 2026-10-06 state: off on V, on in VLab, in both configs.
+  const v = { gateway: configSwitches(cfg(false)), worker: configSwitches(cfg(false)) };
+  const vlab = { gateway: configSwitches(cfg(true)), worker: configSwitches(cfg(true)) };
+  assert.deepEqual(compareConfigSwitches({ v, vlab }).findings.map((f) => [f.target, f.kind, f.v, f.vlab]), [
+    ['gateway: plugins.entries.memory-core.config.dreaming.enabled', 'config-differs', 'false', 'true'],
+    ['worker: plugins.entries.memory-core.config.dreaming.enabled', 'config-differs', 'false', 'true'],
+  ]);
+});
+
+test('Feishu renderMode is compared; an account overrides the top level; nothing else is kept', () => {
+  const cfg = (top, accounts) => ({
+    channels: { feishu: { appSecret: SECRET, ...(top === undefined ? {} : { renderMode: top }), ...(accounts ? { accounts } : {}) } },
+  });
+  assert.deepEqual(configSwitches(cfg(undefined)).channels, { 'channels.feishu.renderMode': 'auto (unset)' });
+  assert.deepEqual(configSwitches(cfg('card', { a: { appSecret: SECRET }, b: { renderMode: 'raw' } })).channels, {
+    'channels.feishu.renderMode': 'card',
+    'channels.feishu.accounts.*.renderMode': 'card,raw',
+  });
+  assert.deepEqual(configSwitches(cfg(SECRET)).channels, { 'channels.feishu.renderMode': 'other' });
+  assert.ok(!JSON.stringify(configSwitches(cfg('card', { a: { appSecret: SECRET, renderMode: SECRET } }))).includes(SECRET));
+  assert.deepEqual(configSwitches({ channels: {} }).channels, {});
+  // The 2026-10-07 suspicion: V on the default, VLab on "card".
+  const v = { gateway: configSwitches(cfg(undefined, { main: {} })), worker: configSwitches({}) };
+  const vlab = { gateway: configSwitches(cfg('card', { main: {} })), worker: configSwitches({}) };
+  assert.deepEqual(compareConfigSwitches({ v, vlab }).findings.map((f) => [f.target, f.kind, f.v, f.vlab]), [
+    ['gateway: channels.feishu.accounts.*.renderMode', 'config-differs', 'auto', 'card'],
+    ['gateway: channels.feishu.renderMode', 'config-differs', 'auto (unset)', 'card'],
+  ]);
+  // Same effective mode, spelled differently, still shows at the top level only.
+  const same = compareConfigSwitches({ v: { gateway: configSwitches(cfg('auto', { m: {} })), worker: null }, vlab: { gateway: configSwitches(cfg(undefined, { m: {} })), worker: null } });
+  assert.deepEqual(same.findings.map((f) => f.target), ['gateway: channels.feishu.renderMode']);
 });
