@@ -78,3 +78,10 @@ test('executing native final list survives aborted outer callbacks and proves on
  native(runId,[{sessionId:'owned',status:'failed',exitSignal:'SIGTERM'}]);await cancel;await rejected;
  assert(f.audit.some(e=>e.type==='backend.native-cleanup-confirmed'));assert(f.audit.some(e=>e.type==='backend.process-cancel-observed'&&e.sessionId==='owned'));
 });
+
+test('one normal V run returns both actual summary and full Markdown; raw canonical output remains audited',async()=>{
+ const f=fixture(),pending=f.start();await delay(0);const {runId}=f.backend.snapshot();
+ const summary='推荐先核对身份和招生政策，暂不定案。',text='## 完整方案\n'+'具体事实、时间和限制。'.repeat(80),raw=`【语音摘要】\n${summary}\n【完整方案】\n${text}`;
+ assert(f.calls[0].args.message.includes('【语音摘要】'));f.event(runId,'final',{text:raw});const result=await pending;
+ assert.equal(result.result,text);assert.equal(result.spokenSummary,summary);assert.equal(f.audit.find(x=>x.type==='backend.completed').result,raw);assert.equal(f.calls.filter(x=>x.method==='chat.send').length,1);
+});

@@ -1,12 +1,52 @@
 // voice-backend-document-talk-v1
-const LONG_RESULT_NOTICE="结果回来了，详细内容和方案已经放在屏幕上。你可以先看，也可以让我整理成一份文档发给你。";
+const LONG_RESULT_NOTICE="详细方案在屏幕上，需要的话也可以整理成文档发给你。";
+function readBackendResult(result) {
+  const raw = typeof result === 'string' ? result : result?.result ?? result?.text;
+  if (typeof raw !== 'string') return null;
+  const pair = /^\s*【语音摘要】\s*\n([\s\S]*?)\n【完整方案】\s*\n([\s\S]+)$/u.exec(raw);
+  const text = pair ? pair[2] : raw;
+  const supplied = pair ? pair[1].trim() : result?.spokenSummary;
+  const summary = typeof supplied === 'string' && supplied.trim() && supplied.trim().length <= 120 ? supplied.trim() : null;
+  return {text, summary};
+}
+function extractResultSummary(text) {
+  const clean = text.replace(/```[^\n]*\n[\s\S]*?```/gu, '')
+    .replace(/\[([^\]]+)\]\([^\n)]+\)/gu, '$1').replace(/[*_`]/gu, '');
+  const allLines = clean.split('\n').map(line => line.trim());
+  const conclusion = allLines.findIndex(line => /^#{1,6}\s.*(?:结论|建议|推荐|总结)/u.test(line));
+  const lines = (conclusion >= 0 ? allLines.slice(conclusion + 1) : allLines).filter(line => line && !/^#{1,6}\s|^\|?\s*[-:| ]+$/u.test(line));
+  for (let i = 0; i < lines.length - 1; i++) {
+    if (!lines[i].includes('|') || !lines[i+1].includes('|')) continue;
+    const cells = line => line.replace(/^\||\|$/gu, '').split('|').map(value => value.trim());
+    const headers = cells(lines[i]);
+    for (let j = i+1; j < lines.length && lines[j].includes('|'); j++) {
+      const values = cells(lines[j]);
+      if (values.length === headers.length) lines[j] = values.map((value, k) => `${headers[k]}：${value}`).join('，') + '。';
+    }
+    lines[i] = '';
+    break;
+  }
+  const lead = lines.findIndex(line => /^(?:核心)?(?:结论|建议|推荐)[：:]/u.test(line));
+  const candidates = (lead >= 0 ? lines.slice(lead) : lines).flatMap(line => line.match(/[^。！？!?]+[。！？!?]?/gu) ?? []);
+  const chosen = [];
+  for (const sentence of candidates) {
+    const value = sentence.replace(/^[-+]\s+/u, '').trim();
+    if (!value || chosen.includes(value) || value.length > 120) continue;
+    if ((chosen.join('') + value).length > 120) break;
+    chosen.push(value);
+    if (chosen.length === 2) break;
+  }
+  return chosen.join('') || lines.join(' ').slice(0, 110) + '…';
+}
 function presentBackendResult(result) {
   if (result?.cancelled || result?.error) return null;
-  const text = typeof result === 'string' ? result : result?.result ?? result?.text;
-  if (typeof text !== 'string' || !text.trim()) return null;
+  const parsed = readBackendResult(result);
+  if (!parsed?.text.trim()) return null;
+  const {text} = parsed;
   const long = [...text].length > 300 || text.split('\n').filter(line => line.trim()).length >= 8 ||
     /^\s*```/mu.test(text) || /^\s*\|?.*\|.*\n\s*\|?\s*:?-{3,}/mu.test(text);
-  return { text, long, spokenText: long ? LONG_RESULT_NOTICE : text };
+  const summary = long ? parsed.summary ?? extractResultSummary(text) : null;
+  return {text, long, spokenText: long ? `${summary} ${LONG_RESULT_NOTICE}` : text};
 }
 // gpt-live-backend-call-control-v1: Talk
 function bindGptLiveBackendCallControl({ callControl, continuationIdentity, assertCurrent }) {
@@ -637,7 +677,7 @@ function createTalkClientGatewayControlOwner(params) {
 				if(owners.get(params.voiceSessionId)!==owner)throw new Error("Realtime voice session is not active");
 				if(typeof delegationId!=="string"||!delegationId||typeof text!=="string")throw new Error("Invalid backend document identity");
 				const document=presentBackendResult(text);
-				if(!document?.long)return;
+				if(!document?.long)return document?.text!==text?document?.text:undefined;
 				harness.emit({type:"tool.result",callId:delegationId,turnId:harness.ensureTurn(),payload:{name:"openclaw_backend_result",text:document.text,...talkPayload()},final:true});
 				return document.spokenText;
 			},

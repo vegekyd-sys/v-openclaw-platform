@@ -155,6 +155,6 @@ test('owned long backend result publishes full document and speaks brief notice 
  f.call('delegate_to_v',{question:'比较多种方案'});await delay(5);const started=f.audit.find(x=>x.type==='backend.started'),text='## 完整结果\n'+'原始事实与限制。'.repeat(100);
  const event={event:'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,state:'final',message:{content:[{type:'text',text}]}}};f.service.handleEvent(event);f.service.handleEvent(event);await delay(250);
  const docs=f.client.sent.filter(x=>x.type==='backend.result');assert.equal(docs.length,1);assert.equal(docs[0].text,text);assert.equal(docs[0].callId,'call-1');assert.equal(docs[0].voiceSessionId,f.reservation.voiceSessionId);
- const speech=f.upstream.sent.filter(x=>x.item?.type==='force_message');assert.equal(speech.length,1);assert(speech[0].item.content[0].text.includes('屏幕'));assert(!speech[0].item.content[0].text.includes('原始事实'));
+ const speech=f.upstream.sent.filter(x=>x.item?.type==='force_message');assert.equal(speech.length,1);assert(speech[0].item.content[0].text.includes('屏幕'));assert(speech[0].item.content[0].text.includes('原始事实'));assert(speech[0].item.content[0].text.length<200);
  assert.equal(f.invocations.filter(x=>x.message?.includes('完整目标')).length,1);await f.service.dispose();
 });

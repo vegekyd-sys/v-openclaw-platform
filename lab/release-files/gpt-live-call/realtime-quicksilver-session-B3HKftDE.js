@@ -1,4 +1,8 @@
 // voice-backend-document-broker-v1
+const BACKEND_RESULT_INSTRUCTIONS="电话结果呈现：如果最终结果是较长方案，最后一次回答同时写语音摘要和完整正文，不另起任务。严格使用这两个标题：\n【语音摘要】\n两到三句自然中文，100字以内，直接说最重要的结论、推荐或下一步，保留影响结论的必要条件和未完成项。不能只说完成了或让用户看屏幕，不能编造原结果没有的事实。\n【完整方案】\n完整Markdown正文，保留全部事实、来源、条件和细节。不要把摘要当成正文的替代。普通短答案直接回答，不需要这两个标题。";
+function backendResultQuestion(question) {
+  return `${question}\n\n${BACKEND_RESULT_INSTRUCTIONS}`;
+}
 // gpt-live-call-lifecycle-broker-v1
 import { c as readRequestBodyWithLimit } from "./http-body-C8wtGPZr.js";
 import { m as resolveOpenAICodexAuthIdentity, s as resolveProviderAuthProfileApiKey } from "./provider-auth-BSTUvZrs.js";
@@ -383,7 +387,7 @@ function createOpenAIQuicksilverBrowserSessionBroker(params) {
 						activeSessionLease.expireIn(session, Math.min(OPENAI_QUICKSILVER_SESSION_TTL_MS, upstreamTtlMs));
 					}
 				},
-				runAgentConsult,
+				runAgentConsult: (params) => runAgentConsult({...params,prompt:typeof offer.request.gatewayControl?.onBackendResult === "function" ? backendResultQuestion(params.prompt) : params.prompt}),
 				signal: abortController.signal
 			});
 			if (delegations.callLifecycle) offer.request.gatewayControl.bindCallLifecycle(delegations.callLifecycle);

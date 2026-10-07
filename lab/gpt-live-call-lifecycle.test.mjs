@@ -12,7 +12,7 @@ import { patchGptLiveConsultProgressTalk } from "./gpt-live-consult-progress.mjs
 import { patchGptLiveContinuationTalk } from "./patch-gpt-live-consult-continuation.mjs";
 import { patchGptLiveNativeConfirmationTalk } from "./patch-gpt-live-native-confirmation.mjs";
 
-import {presentBackendResult,LONG_RESULT_NOTICE} from "./gpt-live-h5/result-presentation.mjs";
+import {presentBackendResult,LONG_RESULT_NOTICE,backendResultQuestion} from "./gpt-live-h5/result-presentation.mjs";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 const sha = (text) => createHash("sha256").update(text).digest("hex");
@@ -256,11 +256,11 @@ test("actual broker binds only its native exact-model lifecycle and forwards act
   const start = brokerSource.indexOf("\t\t\tconst abortController = new AbortController();", brokerSource.indexOf("const connected = await connectOpenAIQuicksilverSideband"));
   const end = brokerSource.indexOf("\t\t\tsession = activeSessionLease.adopt", start);
   assert(start > 0 && end > start);
-  const construct = new Function("offer", "connected", "params", "activeSessionLease", "session", "OPENAI_QUICKSILVER_SESSION_TTL_MS", "OpenAIQuicksilverDelegationController", "runAgentConsult", brokerSource.slice(start, end) + "return delegations;");
+  const construct = new Function("backendResultQuestion", "offer", "connected", "params", "activeSessionLease", "session", "OPENAI_QUICKSILVER_SESSION_TTL_MS", "OpenAIQuicksilverDelegationController", "runAgentConsult", brokerSource.slice(start, end) + "return delegations;");
   for (const model of ["gpt-live-1-codex", "gpt-realtime"]) {
     const bound = [], transcripts = [];
     const gatewayControl = { bindCallLifecycle: (v) => bound.push(v), onTranscript: (...v) => transcripts.push(v) };
-    const controller = construct({ request: { model, gatewayControl } }, { socket: {} }, { logger: {} }, {}, undefined, 1000,
+    const controller = construct(backendResultQuestion, { request: { model, gatewayControl } }, { socket: {} }, { logger: {} }, {}, undefined, 1000,
       class { constructor(options) { this.options = options; this.callLifecycle = options.callLifecycle ? {} : undefined; } }, () => {});
     assert.equal(bound.length, model === "gpt-live-1-codex" ? 1 : 0);
     controller.options.onTranscript("user", "真实确认执行", true);
@@ -279,7 +279,7 @@ function adoptedBrokerFixture({ model = "gpt-live-1-codex" } = {}) {
   const from = brokerSource.indexOf("\t\t\tconst abortController = new AbortController();", brokerSource.indexOf("const connected = await connectOpenAIQuicksilverSideband"));
   const to = brokerSource.indexOf("\n\t\t\tactiveSessionLease.expireIn(session,", from);
   assert(from > 0 && to > from);
-  const construct = new Function("offer", "connected", "params", "activeSessionLease", "session", "OPENAI_QUICKSILVER_SESSION_TTL_MS",
+  const construct = new Function("backendResultQuestion", "offer", "connected", "params", "activeSessionLease", "session", "OPENAI_QUICKSILVER_SESSION_TTL_MS",
     "OpenAIQuicksilverDelegationController", "runAgentConsult", "activeSessions", "token", "lifecycleSignal", "WEBSOCKET_OPEN", "reportTerminal",
     brokerSource.slice(from, to) + "return { controller: delegations, session };");
   const activeSessions = new Map(), token = "private-broker-token", lifetime = new AbortController();
@@ -296,7 +296,7 @@ function adoptedBrokerFixture({ model = "gpt-live-1-codex" } = {}) {
     adopt(key, wire) { const value = { token: key, ...wire }; activeSessions.set(key, value); return value; },
     expireIn: (session, ttl) => expiry.push({ session, ttl }), close() {},
   };
-  const value = construct({ request: { model, gatewayControl } }, { socket }, { logger: { warn() {}, debug() {} } }, lease, undefined,
+  const value = construct(backendResultQuestion, { request: { model, gatewayControl } }, { socket }, { logger: { warn() {}, debug() {} } }, lease, undefined,
     1800000, Controller, () => new Promise(() => {}), activeSessions, token, lifetime.signal, 1, () => {});
   return { ...value, activeSessions, token, lifetime, socket, order, beforeAdoption, expiry };
 }
@@ -706,13 +706,13 @@ test("long native backend result is published whole before only the short notice
   for(let i=0;i<8;i++)await settleTick();
   assert.deepEqual(published,[{delegationId:"owned-doc",text}]);
   const frames=f.order.filter(e=>e.type==="delegation.context.append");assert(frames.length);
-  const wireText=frames.map(e=>e.content[0].text).join("");assert(wireText.includes(LONG_RESULT_NOTICE));assert(!wireText.includes("2028年9月"));
+  const wireText=frames.map(e=>e.content[0].text).join("");assert(wireText.includes(LONG_RESULT_NOTICE));assert(wireText.includes("2028年9月"));assert(wireText.length < text.length);
   assert.equal(f.calls.length,1);f.controller.detach();
 });
 
 test("actual Talk document publisher keeps full Markdown and rejects closed or replaced voice owner", async()=>{
   const f=talkFixture(),text="| 项目 | 日期 |\n| --- | --- |\n| 入学 | 2028-09 |";
-  assert.equal(f.owner.control.onBackendResult({delegationId:"doc",text}),LONG_RESULT_NOTICE);
+  const summary=f.owner.control.onBackendResult({delegationId:"doc",text});assert(summary.includes("2028-09"));assert(summary.endsWith(LONG_RESULT_NOTICE));
   assert.deepEqual(f.emitted,[{type:"tool.result",callId:"doc",turnId:"harness-turn",payload:{name:"openclaw_backend_result",text,voiceSessionId:"voice"},final:true}]);
   assert.equal(f.owner.control.onBackendResult({delegationId:"short",text:"日期还没有确认。"}),undefined);
   f.owners.set("voice",{});assert.throws(()=>f.owner.control.onBackendResult({delegationId:"late",text}),/not active/);
@@ -725,5 +725,16 @@ test('late native final after detach and backend rejection cannot announce a com
   f.start();f.frame({type:'delegation.created',item:{type:'delegation',target:'client',id:'old-doc',content:[{type:'input_text',text:'原任务'}]}});await settleTick();
   if(failure)reject(new Error('真实读取失败'));else{f.controller.detach();finish({text:'旧结果'.repeat(200)});}
   for(let i=0;i<8;i++)await settleTick();assert.equal(published.length,0);assert(!JSON.stringify(f.order).includes(LONG_RESULT_NOTICE));f.controller.detach();
+ }
+});
+
+test('native broker adds summary output format only for document-capable host, preserving call-control and one consult',()=>{
+ const line=brokerSource.split('\n').find(line=>line.includes('runAgentConsult: (params) =>'));assert(line);
+ const make=new Function('offer','runAgentConsult','backendResultQuestion','return ({'+line.trim()+'});');
+ for(const capable of [false,true]){
+  const calls=[],signal=new AbortController().signal,control={actualUser:'完整USER原句'},input={prompt:'原始完整目标',signal,callControl:control};
+  const host=make({request:{gatewayControl:capable?{onBackendResult(){}}:{}}},p=>{calls.push(p);return 'actual-answer';},backendResultQuestion);
+  assert.equal(host.runAgentConsult(input),'actual-answer');assert.equal(calls.length,1);assert.strictEqual(calls[0].callControl,control);assert.strictEqual(calls[0].signal,signal);
+  assert.equal(calls[0].prompt,capable?backendResultQuestion(input.prompt):input.prompt);assert.equal(input.prompt,'原始完整目标');
  }
 });
