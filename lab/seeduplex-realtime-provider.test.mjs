@@ -559,3 +559,25 @@ test('Seeduplex repeats only a new audio event, never a replay of the same event
  const opening=bridge.connect();await new Promise(r=>setImmediate(r));socket.open();socket.message({type:'session.created'});await opening;
  const e={type:'response.output_audio.delta',event_id:'native-audio',delta:floatAudio([.25,-.25])};socket.message(e);socket.message(e);socket.message({...e,event_id:'native-audio-next'});assert.equal(audio.length,2);bridge.close();
 });
+
+test('fixed backend TTS cancels without response.created or delayed ASR, suppresses its tail, and accepts the next real boundary',async()=>{
+ const socket=new FakeSocket(),audio=[],done=[],clears=[];
+ const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},onAudio:(b,m)=>audio.push({b,m}),onClearAudio:r=>clears.push(r),onResponseDone:e=>done.push(e),onError:e=>assert.fail(e.message),onClose(){}},{createWebSocket:async()=>socket});
+ const connect=bridge.connect();await new Promise(r=>setImmediate(r));socket.open();socket.message({type:'session.created'});await connect;
+ bridge.speakProgress('后台已经查完，下面是完整结果。');
+ socket.message({type:'response.output_audio.started',response_id:'backend-final',tts_type:'chat_tts_text'});
+ socket.message({type:'response.output_audio.delta',delta:floatAudio([.5])});
+ assert.deepEqual(audio[0].m,{source:'injected-speech',responseId:'backend-final'});
+ bridge.handleBargeIn();bridge.handleBargeIn();
+ assert.equal(socket.sent.filter(e=>e.type==='response.cancel').length,1);assert.equal(done.length,0);
+ // Already-in-flight sentence start and unlabelled deltas cannot revive it.
+ socket.message({type:'response.output_audio.started',response_id:'backend-final',tts_type:'chat_tts_text'});
+ socket.message({type:'response.output_audio.delta',delta:floatAudio([.5])});
+ socket.message({type:'response.output_audio.done',response_id:'backend-final'});
+ assert.equal(audio.length,1);assert.equal(done.length,0);
+ socket.message({type:'response.output_audio.started',response_id:'new-question',tts_type:'default'});
+ socket.message({type:'response.output_audio.delta',delta:floatAudio([-.5])});
+ socket.message({type:'response.output_audio.done',response_id:'new-question'});
+ assert.equal(audio.length,2);assert.deepEqual(audio[1].m,{responseId:'new-question'});
+ assert.equal(done.at(-1).responseId,'new-question');assert(clears.length>=1);bridge.close();
+});

@@ -1,5 +1,6 @@
 import { createAvatarTasks, ACTIVITY_LABELS } from "./avatar-state.mjs";
 import { mountAvatar } from "./avatar.mjs";
+import { renderMarkdown } from "./markdown.mjs";
 import { createTranscriptPresentation } from "./transcript-presentation.mjs";
 import { createPageMicrophoneSession } from "./microphone-session.mjs";
 import { createCallSounds } from "./call-sounds.mjs";
@@ -323,7 +324,7 @@ function renderTranscript(snapshot) {
         const meta = document.createElement("div"); meta.className = "transcript-meta";
         const speaker = document.createElement("span"); speaker.className = "transcript-speaker";
         const time = document.createElement("time"); time.className = "transcript-time";
-        const text = document.createElement("p"); text.className = "transcript-text";
+        const text = document.createElement("div"); text.className = "transcript-text";
         meta.append(speaker, time); row.append(meta, text);
         row.parts = { speaker, time, text };
         renderedTurns.set(item.key, row);
@@ -334,7 +335,11 @@ function renderTranscript(snapshot) {
       if (row.parts.time.textContent !== item.time) row.parts.time.textContent = item.time;
       const dateTime = new Date(item.at).toISOString();
       if (row.parts.time.dateTime !== dateTime) row.parts.time.dateTime = dateTime;
-      if (row.parts.text.textContent !== item.text) row.parts.text.textContent = item.text;
+      if (row.rawText !== item.text) {
+        if (item.role === "assistant") renderMarkdown(row.parts.text, item.text, document);
+        else row.parts.text.textContent = item.text;
+        row.rawText = item.text;
+      }
       if (parent.children[index] !== row) parent.insertBefore(row, parent.children[index] ?? null);
     }
   }

@@ -49,6 +49,21 @@ class Mic extends AudioWorkletProcessor {
  if(this.index===480){this.port.postMessage(this.frame.buffer,[this.frame.buffer]);this.frame=new Int16Array(480);this.index=0;}}}return true;}
 }
 registerProcessor('v-direct-speaker',Speaker);registerProcessor('v-direct-mic',Mic);`;}
+// Only fixed backend speech needs client onset detection: its upstream ASR can
+// be delayed behind synthesis. Frames are the existing post-AEC microphone PCM.
+export class BackendSpeechOnset {
+  constructor(){this.reset();}
+  reset(){this.voicedMs=0;this.fired=false;this.quietMs=0;}
+  observe(frame, enabled){
+    if(!enabled){this.reset();return false;}
+    const samples=new Int16Array(frame);let energy=0;
+    for(const sample of samples)energy+=(sample/32768)**2;
+    const ms=samples.length/24,voiced=Math.sqrt(energy/Math.max(1,samples.length))>=.025;
+    if(!voiced){this.voicedMs=0;this.quietMs+=ms;if(this.quietMs>=300)this.fired=false;return false;}
+    this.quietMs=0;this.voicedMs+=ms;
+    if(!this.fired&&this.voicedMs>=80){this.fired=true;return true;}return false;
+  }
+}
 export function createRelayAudio({context,stream,reservation,onEvent,onError,onClosed,onPlaybackActivity=()=>{}}) {
   // Recorded Grok packets: 245ms of speech, then a 595ms arrival gap.
   // 400ms protects that real startup cadence; Xiaohe retains its smaller lead.
@@ -56,6 +71,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
   // Grok's short greeting can arrive as two sentences with a multi-second
   // network gap. Hold only that first response to its native completion;
   // later answers keep streaming with their normal lead, and the mic stays on.
+  const backendOnset=new BackendSpeechOnset();let backendPlayback=false, backendResponseId=null;const retiredResponses=new Set();
   let greetingHeld=reservation.provider==='grok';
   const endpoint=new URL('./api/relay',location.href);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
   endpoint.search=new URLSearchParams({voiceSessionId:reservation.voiceSessionId,ticket:reservation.relayTicket});
@@ -67,7 +83,7 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
   const activity=value=>{if(playbackActive!==value){playbackActive=value;onPlaybackActivity(value);}};
   const send=e=>{if(socket.readyState===WebSocket.OPEN)socket.send(JSON.stringify(e));};
   const reportBusy=()=>{const next=stats.queuedOutputBytes>0||playbackActive;if(next!==busy){busy=next;send({type:'playback.state',speaking:busy});}};
-  const flush=()=>{epoch++;written=0;pendingOutput.length=0;outputComplete=false;greetingHeld=false;stats.queuedOutputBytes=0;lastPlayedAt=null;speaker?.port.postMessage({type:'clear',epoch});stats.clears++;activity(false);reportBusy();ending=null;clearTimeout(tailTimer);};
+  const flush=()=>{backendPlayback=false;backendOnset.reset();epoch++;written=0;pendingOutput.length=0;outputComplete=false;greetingHeld=false;stats.queuedOutputBytes=0;lastPlayedAt=null;speaker?.port.postMessage({type:'clear',epoch});stats.clears++;activity(false);reportBusy();ending=null;clearTimeout(tailTimer);};
   const checkEnd=()=>{if(closed||!ending)return;
     if(context.state==='running'&&lastPlayedAt!==null&&stats.queuedOutputBytes===0&&context.currentTime>=lastPlayedAt+.75){stats.playbackDrained=true;send({type:'playback.drained',callId:ending});ending=null;}
     else tailTimer=setTimeout(checkEnd,100);
@@ -86,6 +102,8 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
     if(!bytes.length||bytes.length%2||bytes.length>480000||e.sampleRate!==24000)throw Error('语音帧格式无效');
     if(stats.queuedOutputBytes+bytes.length>maxQueuedOutputBytes)throw Error('语音缓存过大，请重新拨号');
     const receivedAt=performance.now();if(lastReceiveAt!==null&&stats.queuedOutputBytes>0)stats.maxReceiveGapMs=Math.max(stats.maxReceiveGapMs,receivedAt-lastReceiveAt);lastReceiveAt=receivedAt;
+    if(e.responseId&&retiredResponses.has(e.responseId))return;
+    if(e.source==='injected-speech'){backendPlayback=true;backendResponseId=e.responseId??null;}
     outputComplete=false;written+=bytes.length/2;stats.queuedOutputBytes+=bytes.length;stats.peakQueuedOutputBytes=Math.max(stats.peakQueuedOutputBytes,stats.queuedOutputBytes);stats.outputBytes+=bytes.length;stats.playbackDrained=false;
     reportBusy();if(speaker)transfer(bytes.buffer);else pendingOutput.push(bytes.buffer);
     if(context.state!=='running')stateChanged();
@@ -116,13 +134,18 @@ export function createRelayAudio({context,stream,reservation,onEvent,onError,onC
       if(e.type==='error'){onError(Error('语音缓存过大，请重新拨号'));return;}
       if(e.type!=='playback')return;
       stats.queuedOutputBytes=Math.max(0,written-e.consumed)*2;stats.underflows=e.underflows;lastPlayedAt=e.lastPlayedAt;
+      if(stats.queuedOutputBytes===0&&!e.playing)backendPlayback=false;
       activity(e.playing&&context.state==='running');reportBusy();
     };
     for(const buffer of pendingOutput)transfer(buffer);pendingOutput.length=0;if(outputComplete)speaker.port.postMessage({type:'done',epoch});
     node=new AudioWorkletNode(context,'v-direct-mic');source=context.createMediaStreamSource(stream);
     quietGain=context.createGain();quietGain.gain.value=0;source.connect(node);node.connect(quietGain);quietGain.connect(context.destination);
     node.port.onmessage=e=>{if(closed)return;const frame=e.data;
-      if(ready&&socket.readyState===WebSocket.OPEN){if(socket.bufferedAmount>480000){onError(Error('音频上传积压，请重新拨号'));return;}socket.send(frame);stats.inputBytes+=frame.byteLength;}
+      if(ready&&socket.readyState===WebSocket.OPEN){
+        if(backendOnset.observe(frame,backendPlayback&&stats.queuedOutputBytes>0)){
+          if(backendResponseId){retiredResponses.add(backendResponseId);if(retiredResponses.size>256)retiredResponses.delete(retiredResponses.values().next().value);}
+          flush();send({type:'barge-in'});}
+        if(socket.bufferedAmount>480000){onError(Error('音频上传积压，请重新拨号'));return;}socket.send(frame);stats.inputBytes+=frame.byteLength;}
     };
   }
   return {ready:promise,stats,async start(){

@@ -132,3 +132,13 @@ Grok没有进入上述流程：连接尚未ready，客户端已缓存约8秒麦�
 后续仅对Grok第一段接通问候等待原audio.done后连续播，麦克风保持接通；正常回答仍400ms流式缓冲，小何仍120ms。插话audio.clear退休旧问候，后续回答不能继承等待完整的状态。用原provider PCM和真实包时间在24/44.1/48kHz离线因果重放：旧逻辑均欠载1，新逻辑均0、全部93600样本各消费一次。该样本第一声约从0.4秒变为2.41秒（相对首包），属于短问候的明确延迟取舍，不改变后续工具/回答等待策略。实际序列化worklet和插话退休回归通过，1909/1909本地零skip；这是原材料离线重放，不是新付费语音或物理Safari验收。
 
 当前共享已进入feishu-codex-early-card-d-20261007，仍为其他任务lease/尚未accept；本补丁七个runtime目标before在最新只读核对仍匹配。原package plan基线不直接用来stage新共享，授权集成时须按当时真正已验收基线重新package并复核完整fingerprint/config/controller。
+
+## 真人发现的最终结果插话与 Markdown
+
+小何真实通话没有 response.created；后台最终结果通过 speech_text_buffer.commit 的固定文本 TTS 播报，普通回复走 default TTS。原播放队列在长答案中积累约55秒，麦克风仍上传，但 ASRstarted 比最终播报开始晚约60秒。原取消状态只从 response.created 建立，也没有客户端固定文本语音的开口通知，因而不能及时打断这条路径。
+
+补丁以真实 TTSSentenceStart/response_id 建立播报边界。固定文本播报期间，现有 AEC 后麦克风 PCM 连续80ms超过开口阈值时，浏览器清掉旧队列并通知同一服务端会话取消；所有麦克风帧仍上传。服务器发送官方 response.cancel，以真实播报ID隔离迟到的旧开始/音频/结束；普通聊天维持原生插话路径。这个阈值的单位回归不是物理AEC或真人100ms验收。
+
+真实独立小何接口探针保留真实USER PCM和provider输出，旧播报取消后0旧音频交付，实际 response.canceled 到达，新题原语音返回。它只验证固定文本TTS取消路径，不能替代原H5完整后台最终答案插话或物理Safari听觉验收。原失败不改写。
+
+文字展示使用本地固定 marked18.0.5 GFM lexer，DOM节点渲染标题、列表、引用、代码和表格，用户文字仍按原文。模型HTML不执行，外部图片不自动请求；链接限http/https/mailto。保留完整答案，表格在手机可独立横向滚动。桌面/390x844手机显示及无console错误已经实际检查，属于UI验证。补丁只在任务源码/Candidate迭代，不写dev、共享或V。

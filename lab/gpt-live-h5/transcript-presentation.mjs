@@ -9,7 +9,7 @@ export function formatTranscriptTime(at) {
 
 /**
  * One row per real native turn. Provider caption item IDs identify fragments,
- * not conversational turns. Text stays unescaped here: render with textContent.
+ * not conversational turns. Text stays unchanged here; the view renders safe Markdown DOM.
  * This state lives in the page; it performs no persistence or network actions.
  */
 export function createTranscriptPresentation() {

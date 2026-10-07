@@ -157,7 +157,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
         audit({type:'transcript',voiceSessionId:s.id,role:'assistant',text,final:true,source:'tool-start',callId:call.callId});
         deliverAudio(clip.pcm,{source:clip.source,sha256:clip.sha256,callId:call.callId});emit(s,{type:'audio.done'});
       },
-      onAudio:audio=>{if(!current(s))return;s.responseActive=true;if(s.ending)s.ending.hasAudio=true;deliverAudio(audio);},
+      onAudio:(audio,metadata)=>{if(!current(s))return;s.responseActive=true;if(s.ending)s.ending.hasAudio=true;deliverAudio(audio,metadata);},
       onTranscript:(role,text,final,source)=>{
         if(!current(s))return;
         if(role==='user'){s.lastUserAt=Date.now();s.userSpeaking=!final;}
@@ -183,6 +183,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       if(!current(s))return;
       if(binary){if(data.length%2===0&&data.length<=24000)s.bridge.sendAudio(data);else client.close(1008);return;}
       try{const e=JSON.parse(data.toString());if(e.type==='greeting'&&!s.greeted){s.greeted=true;s.bridge.triggerGreeting('电话已接通。请用中文向天意简短打个招呼，然后听他说话。');}
+      else if(e.type==='barge-in') {s.bridge.handleBargeIn();audit({type:'client.barge-in',voiceSessionId:s.id});}
       else if(e.type==='text'&&typeof e.text==='string'&&e.text.trim()&&e.text.length<=2000)s.bridge.sendUserMessage(e.text);
       else if(e.type==='playback.state'&&typeof e.speaking==='boolean')s.playing=e.speaking;
       else if(e.type==='playback.stats'){

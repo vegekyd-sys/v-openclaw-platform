@@ -143,3 +143,24 @@ test('closing a connecting call cannot attach late microphone or playback nodes'
  const f=await fixture(t,'grok',true);const outcome=assert.rejects(f.started,/关闭/);
  f.relay.dispose();await outcome;f.event({type:'ready'});await new Promise(r=>setImmediate(r));assert.equal(f.nodes.length,0);
 });
+
+test('a sustained client utterance retires backend final PCM within four 20ms frames, keeps uploading mic, and rejects old tail',async t=>{
+ const f=await fixture(t,'seeduplex'),frame=Buffer.from(pcm(24000).buffer).toString('base64');
+ f.event({type:'audio',sequence:1,sampleRate:24000,audio:frame,source:'injected-speech',responseId:'final-1'});
+ const mic=f.nodes.find(n=>n.name==='v-direct-mic');
+ mic.port.onmessage({data:pcm(480,0).buffer});mic.port.onmessage({data:pcm(480,16000).buffer});mic.port.onmessage({data:pcm(480,0).buffer});
+ assert.equal(f.relay.stats.clears,0,'silence and one spike are not a speech onset');
+ for(let i=0;i<3;i++)mic.port.onmessage({data:pcm(480,3000).buffer});assert.equal(f.relay.stats.clears,0);
+ mic.port.onmessage({data:pcm(480,3000).buffer});
+ assert.equal(f.relay.stats.clears,1);assert.equal(f.relay.stats.queuedOutputBytes,0);assert(f.pump(1024).every(v=>v===0));
+ assert.equal(f.sent.filter(x=>typeof x==='string'&&JSON.parse(x).type==='barge-in').length,1);
+ assert.equal(f.sent.filter(x=>x instanceof ArrayBuffer).length,7,'every mic frame remains uploaded');
+ f.event({type:'audio',sequence:2,sampleRate:24000,audio:frame,source:'injected-speech',responseId:'final-1'});
+ assert.equal(f.relay.stats.queuedOutputBytes,0);assert(f.pump(1024).every(v=>v===0));
+ f.event({type:'audio',sequence:3,sampleRate:24000,audio:Buffer.from(pcm(2400,-8192).buffer).toString('base64'),responseId:'next'});f.event({type:'audio.done'});
+ const heard=f.pump(48000);assert(heard.some(v=>v===-.25));assert(heard.every(v=>v===0||v===-.25));assert.deepEqual(f.errors,[]);
+});
+test('ordinary native speech still uses upstream interruption rather than the fixed-speech detector',async t=>{
+ const f=await fixture(t,'seeduplex');f.event({type:'audio',sequence:1,sampleRate:24000,audio:Buffer.from(pcm(24000).buffer).toString('base64'),responseId:'native'});
+ const mic=f.nodes.find(n=>n.name==='v-direct-mic');for(let i=0;i<10;i++)mic.port.onmessage({data:pcm(480,3000).buffer});assert.equal(f.relay.stats.clears,0);assert.equal(f.relay.stats.inputBytes,9600);
+});

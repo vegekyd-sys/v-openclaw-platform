@@ -107,7 +107,7 @@ async function fixture(t, options = {}) {
     close() { this.closed = true; }
   }
   const context = vm.createContext({
-    createTranscriptPresentation, createPageMicrophoneSession, createAvatarTasks, ACTIVITY_LABELS,
+    renderMarkdown: (target,text) => { target.textContent = text; }, createTranscriptPresentation, createPageMicrophoneSession, createAvatarTasks, ACTIVITY_LABELS,
     AbortController,
     createCallSounds: () => {
       const value = { dialing: 0, pickups: 0, disposed: 0, dial() { this.dialing++; }, connected() { this.pickups++; }, dispose() { this.disposed++; } };

@@ -259,6 +259,9 @@ export class SeeduplexRealtimeVoiceBridge {
     this.bargeInPending = false;
     this.pendingWorkingSpeech = undefined;
     this.responseActive = false;
+    this.injectedSpeech = false;
+    this.retiredResponses = new Set();
+    this.audioResponseId = null;
     this.responseOwnerAnnounced = false;
     this.responseOwnerId = undefined;
     this.supportsToolResultContinuation = true;
@@ -381,6 +384,8 @@ export class SeeduplexRealtimeVoiceBridge {
 
   speakProgress(text) {
     if (!this.ready || this.terminal) return;
+    this.injectedSpeech = true;
+    this.responseActive = true;
     this.outputClosed = false;
     this.responseOwnerAnnounced = false;
     this.#send({ type: "speech_text_buffer.commit", event_id: `event_${randomUUID()}`, text });
@@ -416,16 +421,22 @@ export class SeeduplexRealtimeVoiceBridge {
     // confirmed to have actually said something, in #cancelUpstreamResponse.
     this.request.onClearAudio?.("barge-in");
     this.bargeInPending = true;
+    // Host-injected backend speech may postpone native ASR until its TTS ends.
+    // A client speech onset must retire that playback, not wait for ASREnded.
+    if (this.injectedSpeech) this.#cancelUpstreamResponse(true);
   }
 
   /**
    * Tear down the upstream generation. Reserved for a confirmed user utterance,
-   * never for a bare barge-in signal.
+   * a sustained client speech onset during host-injected TTS may cancel immediately.
    */
-  #cancelUpstreamResponse() {
+  #cancelUpstreamResponse(force = false) {
     this.bargeInPending = false;
-    if (!this.ready || this.cancelledOutputPending || !this.responseActive) return;
+    if (!this.ready || this.cancelledOutputPending || (!this.responseActive && !force)) return;
     this.cancelledOutputPending = true;
+    const retiredId = this.audioResponseId ?? this.responseOwnerId;
+    if (retiredId) this.retiredResponses.add(retiredId);
+    if (this.retiredResponses.size > 256) this.retiredResponses.delete(this.retiredResponses.values().next().value);
     this.responseActive = false;
     this.#send({ type: "response.cancel", event_id: `event_${randomUUID()}` });
   }
@@ -544,6 +555,18 @@ export class SeeduplexRealtimeVoiceBridge {
     }
     this.request.onProtocolEvent?.(event);
     const type = event?.type;
+    const responseId = optionalString(event.response_id) ?? optionalString(event.response?.id);
+    if (responseId && this.retiredResponses.has(responseId) && type?.startsWith("response.")) return;
+    // This service emits TTSSentenceStart, without response.created. Use its
+    // actual response ID as the boundary; an old tail cannot reopen playback.
+    if (type === "response.output_audio.started") {
+      this.cancelledOutputPending = false;
+      this.outputClosed = false;
+      this.responseActive = true;
+      this.audioResponseId = responseId;
+      if (event.tts_type === "default") this.injectedSpeech = false;
+    }
+
     if (type === "error" && this.cancelledOutputPending) {
       // response.cancel is documented to return an error when its target ended
       // in the race between local playback and the upstream command.
@@ -575,6 +598,7 @@ export class SeeduplexRealtimeVoiceBridge {
       this.outputClosed = false;
     }
     if (type === "conversation.item.input_audio_transcription.started") {
+      if (this.injectedSpeech && this.responseActive) this.#cancelUpstreamResponse(true);
       this.responseOwnerAnnounced = false;
       this.responseOwnerId = undefined;
     }
@@ -675,7 +699,7 @@ export class SeeduplexRealtimeVoiceBridge {
     ) {
       try {
         const audio = decodeSeeduplexFloat32Pcm(event.delta);
-        this.request.onAudio(audio);
+        this.request.onAudio(audio, { ...(this.injectedSpeech ? {source:"injected-speech"} : {}), responseId: this.audioResponseId ?? responseId });
         this.request.onMark?.(`seeduplex-audio-${randomUUID()}`);
       } catch {
         return this.#fail(new Error("Invalid Seeduplex audio output"));
