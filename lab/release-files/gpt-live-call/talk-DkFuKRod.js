@@ -53,6 +53,7 @@ function presentBackendResult(result) {
   const summary = long ? parsed.summary ?? extractResultSummary(text) : null;
   return {text, long, spokenText: long ? `${summary} ${LONG_RESULT_NOTICE}` : text};
 }
+// gpt-live-caller-context-v1
 // gpt-live-backend-call-control-v1: Talk
 function bindGptLiveBackendCallControl({ callControl, continuationIdentity, assertCurrent }) {
   if (callControl === undefined) return;
@@ -102,7 +103,7 @@ function buildGptLiveBackendCallControlQuestion(prompt, callControl) {
   ].join("\n\n");
 }
 // gpt-live-call-lifecycle-talk-v1
-import { resolveGptLiveCallInstructions } from "./gpt-live-call-lifecycle.mjs";
+import { resolveGptLiveCallInstructions, resolveGptLiveCallerSurface } from "./gpt-live-call-lifecycle.mjs";
 // gpt-live-native-confirmation-v1: durable caller affirmation
 import { authorizeGptLiveClientVoicePendingConfirmation } from "./agent-tools.before-tool-call-g2OT63u5.js";
 // gpt-live-consult-continuation-v1: Talk
@@ -400,7 +401,7 @@ function createTalkClientAgentConsultRunner(params) {
 			runIdPrefix: params.runIdPrefix ?? "talk-realtime-consult",
 			args: parsedArgs,
 			transcript: params.initialItems,
-			surface: params.surface ?? "a browser Talk session",
+			surface: resolveGptLiveCallerSurface(params.surface ?? "a browser Talk session", canonicalKey),
 			userLabel: "User",
 			questionSourceLabel: "user",
 			thinkLevel: talkConfig?.consultThinkingLevel,
@@ -2962,7 +2963,8 @@ const createTalkClient = async ({ params, respond, context, client, sessionMutat
 			const tools = providerCapabilities?.supportsToolCalls === false ? [] : [REALTIME_VOICE_AGENT_CONSULT_TOOL, REALTIME_VOICE_AGENT_CONTROL_TOOL];
 			if (wantsCameraFrames && tools.length > 0) tools.push(REALTIME_VOICE_DESCRIBE_VIEW_TOOL);
 			const instructions = resolveGptLiveCallInstructions(providerCapabilities?.handlesAgentConsult === true ? normalizeOptionalString(providerInstructions) : buildRealtimeInstructions(providerInstructions), {
-				providerId: resolution.provider.id, model: launchOptions.model, transport, brain: "agent-consult", capabilities: providerCapabilities
+				providerId: resolution.provider.id, model: launchOptions.model, transport, brain: "agent-consult", capabilities: providerCapabilities,
+				sessionKey: target.canonicalKey, configuredInstructions: realtimeConfig.instructions
 			});
 			const requestedVoiceSessionId = normalizeOptionalString(params.voiceSessionId);
 			const ownsProvider = wantsGatewayControl || providerCapabilities?.handlesAgentConsult === true;
