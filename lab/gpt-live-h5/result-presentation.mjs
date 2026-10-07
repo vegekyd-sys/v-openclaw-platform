@@ -10,7 +10,12 @@ export function readBackendResult(result) {
   const pair = /^\s*【语音摘要】\s*\n([\s\S]*?)\n【完整方案】\s*\n([\s\S]+)$/u.exec(raw);
   const text = pair ? pair[2] : raw;
   const supplied = pair ? pair[1].trim() : result?.spokenSummary;
-  const summary = typeof supplied === 'string' && supplied.trim() && supplied.trim().length <= 120 ? supplied.trim() : null;
+  // A backend that exceeds its summary budget still supplied the summary's
+  // source. Extract from that source, rather than accidentally reading a table
+  // cell from the full document as the recommendation.
+  const candidate = typeof supplied === 'string' && supplied.trim()
+    ? supplied.trim().length <= 120 ? supplied.trim() : extractResultSummary(supplied) : null;
+  const summary = candidate && candidate.length <= 120 ? candidate : null;
   return {text, summary};
 }
 // Legacy or nonconforming results still speak actual source content. This is an

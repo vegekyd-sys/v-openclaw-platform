@@ -170,7 +170,7 @@ test("bare personal page and retained owner link use the owner API on every oper
   await owner.context.startCall();
   await owner.context.stopCall();
   assert.ok(owner.requests.some(row => row.route === "session"));
-  assert.ok(owner.requests.every(row => row.url.endsWith("?entry=tianyi")));
+  assert.ok(owner.requests.every(row => new URL(row.url, 'https://voice.test/voice/').searchParams.get('entry') === 'tianyi'));
 });
 
 test("stopping before microphone permission returns releases every late track without creating a session", async (t) => {
@@ -1002,4 +1002,18 @@ test('full backend document renders separately from spoken caption and retired c
  f.peers[0].channel.onmessage({data:JSON.stringify({type:'output_transcript.added',item:{id:'spoken',text:'结果在屏幕上。'}})});
  assert.equal(f.element('transcriptCurrentRows').children[0].parts.text.textContent,'结果在屏幕上。');
  await f.context.stopCall();await f.context.startCall();old.onmessage({data:JSON.stringify(e)});assert.equal(history.children.length,0);
+});
+
+
+test('native snapshot recovers actual task and full Markdown without SSE, but an old voice cannot change a redial',async t=>{
+ let response={voiceSessionId:'voice-1',revision:1,pending:[{type:'tool.call',callId:'pending',name:'openclaw_agent_consult'}],documents:[]};
+ const f=await fixture(t,{api:route=>route==='presentation'?response:undefined});await f.context.startCall();await tick();
+ assert.equal(f.body.dataset.avatarState,'busy');
+ const poll=[...f.intervals.values()].find(v=>v.delay===1500).callback;
+ response={voiceSessionId:'voice-1',revision:3,pending:[],documents:[{revision:3,type:'backend.result',voiceSessionId:'voice-1',callId:'doc',text:'## 完整方案\n实际条件和来源'}]};
+ poll();await tick();assert.equal(f.body.dataset.avatarState,'idle');assert.equal(f.element('transcriptHistory').children.length,1);
+ assert.equal(f.element('transcriptHistory').children[0].parts.text.textContent,response.documents[0].text);
+ const late=deferred();response=late.promise;const fetching=poll();await tick();await f.context.stopCall();await f.context.startCall();
+ late.resolve({voiceSessionId:'voice-1',revision:4,pending:[],documents:[{type:'backend.result',voiceSessionId:'voice-1',callId:'late',text:'旧报告'}]});await tick();
+ assert.equal(f.element('transcriptHistory').children.length,0);
 });

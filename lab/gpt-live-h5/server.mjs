@@ -95,10 +95,22 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
         ...(directVoice ? {models:[{id:'gpt-live',label:'GPT Live',available:true},...directVoice.models()]} : {}),
       });
       if (preview) return json(res, 503, { error: "当前是页面预览，还未连接 VLab 候选服务。" });
+      if (req.method === "GET" && pathname === "/api/presentation") {
+        const active = context.active;
+        if (!active || active.direct) return json(res, 200, { voiceSessionId: null });
+        const view = active.presentation;
+        const after = Number(url.searchParams.get("after") ?? 0);
+        return json(res, 200, { voiceSessionId: active.reservation.voiceSessionId,
+          revision: view.revision, pending: [...view.pending.values()],
+          documents: [...view.documents.values()].filter(item => item.revision > after) });
+      }
       if (req.method === "GET" && pathname === "/api/events") {
         if (context.listeners.size >= 2) return json(res, 429, { error: "通话连接已打开" });
-        res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
-        res.write(": connected\n\n"); context.listeners.add(res); req.on("close", () => context.listeners.delete(res)); return;
+        res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store, no-transform", connection: "keep-alive", "x-accel-buffering": "no" });
+        res.flushHeaders();
+        res.write(": connected\n\n"); context.listeners.add(res);
+        const keepalive = setInterval(() => res.write(": keepalive\n\n"), 15000); keepalive.unref();
+        res.on("close", () => { clearInterval(keepalive); context.listeners.delete(res); }); return;
       }
       if (req.method !== "POST") return json(res, 404, { error: "没有这个入口" });
       const params = await readBody();
@@ -128,7 +140,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
             return json(res,200,reservation);
           }
           const reservation = await gateway.request("talk.client.create", { sessionKey, provider: "openai", model: "gpt-live-1-codex", voice: "sol", mode: "realtime", transport: "webrtc", brain: "agent-consult", capabilities: ["voice-transcript"] }, { timeoutMs: 45000 });
-          context.active = { sessionKey, reservation, touchedAt: Date.now() };
+          context.active = { sessionKey, reservation, touchedAt: Date.now(), presentation: { revision: 0, pending: new Map(), documents: new Map() } };
           if (reservation.model !== "gpt-live-1-codex" || reservation.transport !== "webrtc" || reservation.offerUrl !== "/plugins/openai/realtime/calls") {
             await close(context);
             return json(res, 409, { error: "候选语音配置与 GPT Live 实验不匹配" });
@@ -189,10 +201,23 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
     const context = [local, ...contexts.values()].find(item => item.active?.reservation.voiceSessionId === event.payload?.voiceSessionId);
     if (!context) return;
     const item = event.payload.talkEvent;
+    const publish = message => {
+      const view = context.active.presentation;
+      if (view) {
+        message.revision = ++view.revision;
+        if (message.type === 'tool.call') view.pending.set(message.callId, message);
+        else view.pending.delete(message.callId);
+        if (message.type === 'backend.result') {
+          view.documents.set(message.callId, message);
+          if (view.documents.size > 16) view.documents.delete(view.documents.keys().next().value);
+        }
+      }
+      for (const response of context.listeners) response.write(`data: ${JSON.stringify(message)}\n\n`);
+    };
     if(item?.type==='tool.result' && item.payload?.name==='openclaw_backend_result' &&
       typeof item.callId==='string' && item.callId && typeof item.payload.text==='string' && item.payload.text.trim()) {
       const message={voiceSessionId:context.active.reservation.voiceSessionId,type:'backend.result',callId:item.callId,text:item.payload.text};
-      for(const response of context.listeners)response.write(`data: ${JSON.stringify(message)}\n\n`);
+      publish(message);
       return;
     }
     if (!["tool.call", "tool.result", "tool.error"].includes(item?.type)) return;
@@ -213,7 +238,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
         message.closeAfterPlayback = true;
       }
     }
-    for (const response of context.listeners) response.write(`data: ${JSON.stringify(message)}\n\n`);
+    publish(message);
   };
   server.on('upgrade',(req,socket,head)=>{
     const host=req.headers.host??'';

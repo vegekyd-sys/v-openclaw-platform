@@ -404,7 +404,8 @@ async function stopCall() {
   if (starting === active) starting = null;
   if (active) {
     active.relay?.dispose();
-    clearInterval(active.levelTimer); clearInterval(active.heartbeat);
+    clearInterval(active.levelTimer); clearInterval(active.heartbeat); clearInterval(active.presentationPoll);
+    active.presentationAbort?.abort();
     clearTimeout(active.ending?.timeout); clearTimeout(active.greetingRetryTimer);
     clearTimeout(active.greetingDeadlineTimer); active.greetingAbort?.abort();
     active.captureAbort?.abort(); active.capture?.dispose();
@@ -509,6 +510,7 @@ async function startCall() {
       if (call !== active) return;
       const value = JSON.parse(event.data);
       if (value.voiceSessionId !== active.voiceSessionId) return;
+      if (Number.isSafeInteger(value.revision)) active.presentationRevision = Math.max(active.presentationRevision ?? 0, value.revision);
       tasks.consume(value);
       if(value.type==='backend.result')renderTranscript(presentation.consume(value));
       if (value.type === "tool.result") requestAutomaticEnd(active, value);
@@ -524,6 +526,29 @@ async function startCall() {
       }
       taskState();
     };
+    // Native voice audio remains on WebRTC. This authenticated snapshot only
+    // recovers task/document presentation when an HTTPS proxy buffers SSE.
+    const refreshPresentation = async () => {
+      if (call !== active || active.presentationFetching) return;
+      active.presentationFetching = true;
+      active.presentationAbort ??= new AbortController();
+      try {
+        const response = await fetch(apiUrl('presentation') + `&after=${active.documentRevision ?? 0}`, { signal: active.presentationAbort.signal });
+        if (!response.ok) return;
+        const value = await response.json();
+        if (call !== active || value.voiceSessionId !== active.voiceSessionId ||
+          !Number.isSafeInteger(value.revision) || value.revision < (active.presentationRevision ?? 0)) return;
+        tasks.clear();
+        for (const item of value.pending ?? []) tasks.consume(item);
+        for (const item of value.documents ?? []) renderTranscript(presentation.consume(item));
+        active.presentationRevision = value.revision;
+        active.documentRevision = value.revision;
+        taskState();
+      } catch { /* A transient presentation failure never closes the audio call. */ }
+      finally { active.presentationFetching = false; }
+    };
+    active.presentationPoll = setInterval(() => void refreshPresentation(), 1500);
+    void refreshPresentation();
     active.pc.ontrack = async (event) => {
       if (call !== active) return;
       const stream = new MediaStream([event.track]); $("remoteAudio").srcObject = stream;

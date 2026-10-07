@@ -1,4 +1,4 @@
-// voice-backend-document-talk-v1
+// voice-backend-document-talk-v2
 const LONG_RESULT_NOTICE="详细方案在屏幕上，需要的话也可以整理成文档发给你。";
 function readBackendResult(result) {
   const raw = typeof result === 'string' ? result : result?.result ?? result?.text;
@@ -6,7 +6,12 @@ function readBackendResult(result) {
   const pair = /^\s*【语音摘要】\s*\n([\s\S]*?)\n【完整方案】\s*\n([\s\S]+)$/u.exec(raw);
   const text = pair ? pair[2] : raw;
   const supplied = pair ? pair[1].trim() : result?.spokenSummary;
-  const summary = typeof supplied === 'string' && supplied.trim() && supplied.trim().length <= 120 ? supplied.trim() : null;
+  // A backend that exceeds its summary budget still supplied the summary's
+  // source. Extract from that source, rather than accidentally reading a table
+  // cell from the full document as the recommendation.
+  const candidate = typeof supplied === 'string' && supplied.trim()
+    ? supplied.trim().length <= 120 ? supplied.trim() : extractResultSummary(supplied) : null;
+  const summary = candidate && candidate.length <= 120 ? candidate : null;
   return {text, summary};
 }
 function extractResultSummary(text) {

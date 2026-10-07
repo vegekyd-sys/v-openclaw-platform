@@ -26,3 +26,10 @@ test('legacy fallback selects actual conclusion instead of a completion preamble
  const text='查完了。基于这次调研。\n## 核心结论\n优先选A，但仍需核对证件。预算目前只是参考。\n## 完整细节\n'+'后续来源与细节。'.repeat(60);
  const result=presentBackendResult(text);assert(result.spokenText.startsWith('优先选A，但仍需核对证件。预算目前只是参考。'));assert(!result.spokenText.includes('查完了'));assert.equal(result.text,text);
 });
+
+
+test('oversized backend summary is shortened from its own conclusion, never a report table cell',()=>{
+ const summary='首选A，次选B，证件条件仍需确认。'+ '研究范围和后续行动。'.repeat(20),body='| 项 | 推荐 |\n| --- | --- |\n| 首选 | A |\n'+'全部正文'.repeat(200);
+ const result=presentBackendResult(`【语音摘要】\n${summary}\n【完整方案】\n${body}`);
+ assert.equal(result.text,body);assert(result.spokenText.startsWith('首选A，次选B，证件条件仍需确认。'));assert(!result.spokenText.startsWith('项'));
+});

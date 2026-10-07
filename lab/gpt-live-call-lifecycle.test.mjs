@@ -738,3 +738,30 @@ test('native broker adds summary output format only for document-capable host, p
   assert.equal(calls[0].prompt,capable?backendResultQuestion(input.prompt):input.prompt);assert.equal(input.prompt,'原始完整目标');
  }
 });
+
+
+test('completed predecessor is context for a queued progress question, while its authorized later action still runs',async()=>{
+ const finishes=[],published=[],f=nativeFixture({enabled:false,onBackendResult:r=>{published.push(r);return presentBackendResult(r.text).spokenText;},runAgentConsult:()=>new Promise(resolve=>finishes.push(resolve))});
+ f.start();revisionUser(f,'goal','写完整报告','done');revisionDelegation(f,'report','写完整报告','goal');await settleTick();
+ revisionUser(f,'status','做得怎么样了','done');revisionDelegation(f,'status-query','做得怎么样了','status');
+ assert.equal(f.calls.length,1);finishes[0]({text:'完整报告已经做好。'});await settleTick();
+ assert.equal(f.calls.length,2);assert(f.calls[1].prompt.startsWith('做得怎么样了'));assert(f.calls[1].prompt.includes('preceding task has now ended'));
+ revisionUser(f,'send','把报告发给我','done');revisionDelegation(f,'send-report','把报告发给我','send');
+ finishes[1]({text:'旧问题对应的结论'});await settleTick();assert.equal(f.calls.length,3);assert(f.calls[2].prompt.startsWith('把报告发给我'));
+ const old=f.order.filter(e=>e.delegation_item_id==='status-query');assert(old.length>0);assert(old.every(e=>e.channel==='commentary'&&e.content[0].text.includes('BACKEND_FINAL_CONTEXT')));
+ assert(f.diagnostics.some(e=>e.delegationId==='status-query'&&e.role==='final_context'));
+ finishes[2]({text:'新的发送工具实际完成'});await settleTick();
+ assert(f.order.filter(e=>e.delegation_item_id==='send-report').every(e=>e.channel==='speakable'));
+ assert.equal(published.length,3);f.controller.detach();
+});
+
+test('spoken summary keeps canonical caller corrections and rejects forged condition ownership',async()=>{
+ for(const owner of ['real-owner','foreign-owner']){
+ const f=nativeFixture({enabled:false,onBackendResult:()=> '建议先核实条件。',runAgentConsult:async()=>({text:'完整报告'.repeat(200),provenance:{source:'canonical_final',ownerRunId:'real-owner'},callerConditions:{ownerRunId:owner,sequence:1,inputs:[{sequence:1,mode:'followup',text:'改成发给我，不要重做报告'}]}})});
+ f.start();revisionDelegation(f,'conditions','完成任务');for(let i=0;i<6;i++)await settleTick();
+ const text=f.order.filter(e=>e.delegation_item_id==='conditions').map(e=>e.content[0].text.slice(e.content[0].text.indexOf('\n\n')+2)).join('');
+ if(owner==='real-owner'){assert(text.includes('改成发给我，不要重做报告'));assert(text.includes('建议先核实条件。'));}
+ else {assert(!text.includes('建议先核实条件。'));assert(f.warnings.some(e=>e.includes('ownership')));}
+ f.controller.detach();
+ }
+});
