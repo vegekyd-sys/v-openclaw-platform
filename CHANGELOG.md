@@ -11,6 +11,47 @@
 
 ---
 
+## v2026.9.1-db91.6-voice-reliability-20261008
+
+上线：2026-10-08 01:33–01:39 CST  ·  tag `v2026.9.1-db91.6-voice-reliability-20261008`
+
+**摘要**：PR #251 修复 Voice 的播放队列、同页麦克风复用、简单请求直接调工具与复杂任务后端委派；完整方案以 Markdown 展示，口播给出真实摘要，GPT Live 后台状态可见并在最终回复后恢复对话。共享 VLab 实际验证三模型工具/回答、复杂任务与 GPT Live 方案和后续对话；原媒体、物理 Safari 与语义保真严格 FAIL 继续保留。2026-10-08 经 Tianyi「可以安排上线」授权，推广同一份 11 个运行时文件（artifact SHA `f1a7f7eef03346182c267bbe4725d1047ae29b7084f5a1c2272b09b5923f30ab`），保留备份，受控重启 Gateway，并将原 `/voice/` H5 更新为 38 个 dd5e4cdb 文件。H5 文件集合 SHA `1f0d855faf2cf3f7ec96e8dde0a56dacfc83ae53bee25a490682786a4a237f98`。 原线上 `/voice/` 三模型实际回答及原 WebRTC/AudioWorklet 输出 PCM 已验证；临时验收页面清理、共享 lease 归还，部署版本保留。生产原姓名保真、观察器期限及媒体采样 FAIL 保留，详见 `docs/voice-release-20261008.md`。
+
+相对上一版 `codex-firsttext-20261008`：11 个文件变化。
+
+**经 VLab 发版 `voice-reliability-20261008`**（01a0fb0e-739d-7681-9238-faa2c1912c6c，dev `dd5e4cdb`）
+> 验收：PR251 dd5e4cdb release functional evidence: shared direct actual native Memory single USER + hybrid delegated multi-tool/progress/auto final both models; direct-voice r2 original FAIL retained, independent source=injected-speech real Xiaohe 54 provider PCM chunks FIFO drained. Shared GPT Live 56c5e847 real Memory then Web results native speech+pending; eda62700 scoped original H5 long complete USE…
+- `core` agent-tools-djVuP1H1.js  50da9780 → f414fa7f
+- `core` embedded-agent.runtime-CL7poBKY.js  31e6c957 → 8ba1f8fb
+- `core` realtime-quicksilver-delegation-controller-B0yPpiHp.js  a5a06fdb → 7ddf7fae
+- `core` realtime-quicksilver-session-B3HKftDE.js  801c4fe7 → f0b01553
+- `core` talk-DkFuKRod.js  91cf0741 → 2d740a7c
+- `core` gpt-live-call-lifecycle.mjs  47afe3df → ba6f0b7e
+- `core` voice-process-owner.mjs  — → c0045e63
+- `worker` index.mjs  26c617fd → 4f6894da
+- `worker` worker-pool.mjs  1f137ca2 → 197ec4a8
+- `worker` worker.mjs  18fc5d4f → 024306ae
+- `worker` voice-process-owner.mjs  — → c0045e63
+
+
+## codex-firsttext-20261008
+
+上线：2026-10-08 00:17 CST  ·  tag `codex-firsttext-20261008`
+
+**摘要**：Tianyi 于 2026-10-07 批准（「开 PR 合进 dev 然后上 V」，并要求带上 #262）。/vds 不再每轮新开 Codex 线程，同模型连续对话续用线程、缓存可命中（V 实测第二轮缓存 98%）；Codex 的答案不再等用户消息写库才往外送（修 /vcodex 被扣 1–8 s、/vds 私聊 pre-bind 溢出整轮重试）；同一会话 vds↔vcodex 两个方向都能切，并且看得到对方那几轮（原来 vcodex→vds 报 auth profile 不可用）。同一次重启生效 #262：Gateway 和 Worker 以 `--experimental-async-context-frame` 启动（`--verify` 6/6 进程）。
+
+两项改动都不在 V 捕获范围内，所以下面的文件比对是 0：
+- Codex 插件（npm 管理，`npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/…/dist/`）：`run-attempt-D1hJO4fX.js` 694e3817 → 564374a6，`thread-lifecycle-DAcEJ_Om.js` 94d5420f → e7c2208f。经 VLab 发版 `codex-firsttext-20261007`（codex-firsttext-prebind，dev `9d4ccd63`），旧文件在 `/opt/v-release-backups/codex-firsttext-20261008/`。升级或重装该插件会丢掉这两个补丁和 /vds 补丁。
+- systemd drop-in `/etc/systemd/system/openclaw-gateway.service.d/zzzzzzzzz-node-async-context-frame.conf`（`scripts/node-async-context-frame.mjs --target v --apply`）。
+
+重启：2026-10-08 00:13:28 请求（v-self-restart `20261008-001328-7749`），00:17:56 就绪（237 s），清掉 4 条 Codex 孤儿登记。V 上专用会话验收：vds 两轮同一线程、vcodex 答出两个暗号、再切 vds 正常并复述 vcodex 的回答。
+
+相对上一版 `v2026.9.1-db91.6-firsttext-r4-20261007`：0 个文件变化。
+
+**这期间合入 dev 的 PR**（2 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #269 fix(codex): /vds 首字与线程续用、vds↔vcodex 切换
+- #265 Release capture: V after firsttext-r4-20261007 (#243 #264)
+
 ## v2026.9.1-db91.6-firsttext-r4-20261007
 
 上线：2026-10-07 16:46 CST  ·  tag `v2026.9.1-db91.6-firsttext-r4-20261007`

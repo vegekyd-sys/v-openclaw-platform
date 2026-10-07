@@ -49,10 +49,12 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
       const entry = "tianyi";
       const staticFiles = new Map([
         ["/", [join(here, "index.html"), "text/html; charset=utf-8"]],
+        ["/markdown.mjs", [join(here, "markdown.mjs"), "text/javascript; charset=utf-8"]],
+        ["/vendor/marked-18.0.5.mjs", [join(here, "vendor/marked-18.0.5.mjs"), "text/javascript; charset=utf-8"]],
         ["/app.js", [join(here, "app.js"), "text/javascript; charset=utf-8"]],
         ["/events.mjs", [join(here, "events.mjs"), "text/javascript; charset=utf-8"]],
         ["/duplex-playback.mjs", [join(here, "duplex-playback.mjs"), "text/javascript; charset=utf-8"]],
-        ...["microphone-capture.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "avatar.mjs", "avatar-state.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
+        ...["microphone-capture.mjs", "microphone-session.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "avatar.mjs", "avatar-state.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
         ["/styles.css", [join(here, "styles.css"), "text/css; charset=utf-8"]],
         ...AVATAR_FILES.map(name => [`/assets/${name}`, [join(here, "assets", name), "image/png"]]),
         ...["v-idle-nohat-20260922.png", "v-tool-busy-20260922.png"].map((name) => [`/assets/${name}`, [join(here, "../rtc-h5/assets", name), "image/png"]]),
@@ -93,10 +95,23 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
         ...(directVoice ? {models:[{id:'gpt-live',label:'GPT Live',available:true},...directVoice.models()]} : {}),
       });
       if (preview) return json(res, 503, { error: "当前是页面预览，还未连接 VLab 候选服务。" });
+      if (req.method === "GET" && pathname === "/api/presentation") {
+        const active = context.active;
+        if (!active || active.direct) return json(res, 200, { voiceSessionId: null });
+        const view = active.presentation;
+        const after = Number(url.searchParams.get("after") ?? 0);
+        return json(res, 200, { voiceSessionId: active.reservation.voiceSessionId,
+          revision: view.revision, pending: [...view.pending.values()],
+          documents: [...view.documents.values()].filter(item => item.revision > after),
+          controls: view.controls.filter(item => item.revision > Number(url.searchParams.get('controlsAfter') ?? 0)) });
+      }
       if (req.method === "GET" && pathname === "/api/events") {
         if (context.listeners.size >= 2) return json(res, 429, { error: "通话连接已打开" });
-        res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
-        res.write(": connected\n\n"); context.listeners.add(res); req.on("close", () => context.listeners.delete(res)); return;
+        res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store, no-transform", connection: "keep-alive", "x-accel-buffering": "no" });
+        res.flushHeaders();
+        res.write(": connected\n\n"); context.listeners.add(res);
+        const keepalive = setInterval(() => res.write(": keepalive\n\n"), 15000); keepalive.unref();
+        res.on("close", () => { clearInterval(keepalive); context.listeners.delete(res); }); return;
       }
       if (req.method !== "POST") return json(res, 404, { error: "没有这个入口" });
       const params = await readBody();
@@ -126,7 +141,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
             return json(res,200,reservation);
           }
           const reservation = await gateway.request("talk.client.create", { sessionKey, provider: "openai", model: "gpt-live-1-codex", voice: "sol", mode: "realtime", transport: "webrtc", brain: "agent-consult", capabilities: ["voice-transcript"] }, { timeoutMs: 45000 });
-          context.active = { sessionKey, reservation, touchedAt: Date.now() };
+          context.active = { sessionKey, reservation, touchedAt: Date.now(), presentation: { revision: 0, pending: new Map(), documents: new Map(), controls: [] } };
           if (reservation.model !== "gpt-live-1-codex" || reservation.transport !== "webrtc" || reservation.offerUrl !== "/plugins/openai/realtime/calls") {
             await close(context);
             return json(res, 409, { error: "候选语音配置与 GPT Live 实验不匹配" });
@@ -182,10 +197,34 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
     for (const [key, times] of attempts) if (!times.some(at => Date.now() - at < 600000)) attempts.delete(key);
   }, 15000); timer.unref();
   const emit = (event) => {
+    directVoice?.handleEvent(event);
     if (event.event !== "talk.event") return;
     const context = [local, ...contexts.values()].find(item => item.active?.reservation.voiceSessionId === event.payload?.voiceSessionId);
     if (!context) return;
     const item = event.payload.talkEvent;
+    const publish = message => {
+      const view = context.active.presentation;
+      if (view) {
+        message.revision = ++view.revision;
+        if (message.name === 'openclaw_end_call') {
+          view.controls.push(message);
+          if(view.controls.length > 64)view.controls.shift();
+        }
+        if (message.type === 'tool.call') view.pending.set(message.callId, message);
+        else view.pending.delete(message.callId);
+        if (message.type === 'backend.result') {
+          view.documents.set(message.callId, message);
+          if (view.documents.size > 16) view.documents.delete(view.documents.keys().next().value);
+        }
+      }
+      for (const response of context.listeners) response.write(`data: ${JSON.stringify(message)}\n\n`);
+    };
+    if(item?.type==='tool.result' && item.payload?.name==='openclaw_backend_result' &&
+      typeof item.callId==='string' && item.callId && typeof item.payload.text==='string' && item.payload.text.trim()) {
+      const message={voiceSessionId:context.active.reservation.voiceSessionId,type:'backend.result',callId:item.callId,text:item.payload.text};
+      publish(message);
+      return;
+    }
     if (!["tool.call", "tool.result", "tool.error"].includes(item?.type)) return;
     const message = { voiceSessionId: context.active.reservation.voiceSessionId, type: item.type, callId: item.callId };
     if (item.type === "tool.call") message.activity = taskActivity(item.payload?.name);
@@ -204,7 +243,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
         message.closeAfterPlayback = true;
       }
     }
-    for (const response of context.listeners) response.write(`data: ${JSON.stringify(message)}\n\n`);
+    publish(message);
   };
   server.on('upgrade',(req,socket,head)=>{
     const host=req.headers.host??'';
@@ -239,7 +278,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const { GatewayClient } = await import(pathToFileURL(join(runtime, "dist/plugin-sdk/gateway-runtime.js")));
     await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error("Candidate Gateway unavailable")), 15000);
-      gateway = new GatewayClient({ url: `ws://127.0.0.1:${config.gateway.port}`, token, deviceIdentity: null, clientName: "cli", mode: "cli", scopes: ["operator.read", "operator.write", "operator.admin"], caps:["voice-direct-tools"], onHelloOk: () => { clearTimeout(timeout); resolve(); }, onEvent: (event) => bridge?.emit(event), onConnectError: (error) => { clearTimeout(timeout); reject(error); } }); gateway.start();
+      gateway = new GatewayClient({ url: `ws://127.0.0.1:${config.gateway.port}`, token, deviceIdentity: null, clientName: "cli", mode: "cli", scopes: ["operator.read", "operator.write", "operator.admin"], caps:["voice-direct-tools","tool-events"], onHelloOk: () => { clearTimeout(timeout); resolve(); }, onEvent: (event) => bridge?.emit(event), onConnectError: (error) => { clearTimeout(timeout); reject(error); } }); gateway.start();
     });
     const {createDirectVoiceService}=await import('../realtime-direct-tools/session.mjs');
     const wsModule=await import(pathToFileURL(join(runtime,'node_modules/ws/wrapper.mjs')));
