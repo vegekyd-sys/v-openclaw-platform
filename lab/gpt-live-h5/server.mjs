@@ -102,7 +102,8 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
         const after = Number(url.searchParams.get("after") ?? 0);
         return json(res, 200, { voiceSessionId: active.reservation.voiceSessionId,
           revision: view.revision, pending: [...view.pending.values()],
-          documents: [...view.documents.values()].filter(item => item.revision > after) });
+          documents: [...view.documents.values()].filter(item => item.revision > after),
+          controls: view.controls.filter(item => item.revision > Number(url.searchParams.get('controlsAfter') ?? 0)) });
       }
       if (req.method === "GET" && pathname === "/api/events") {
         if (context.listeners.size >= 2) return json(res, 429, { error: "通话连接已打开" });
@@ -140,7 +141,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
             return json(res,200,reservation);
           }
           const reservation = await gateway.request("talk.client.create", { sessionKey, provider: "openai", model: "gpt-live-1-codex", voice: "sol", mode: "realtime", transport: "webrtc", brain: "agent-consult", capabilities: ["voice-transcript"] }, { timeoutMs: 45000 });
-          context.active = { sessionKey, reservation, touchedAt: Date.now(), presentation: { revision: 0, pending: new Map(), documents: new Map() } };
+          context.active = { sessionKey, reservation, touchedAt: Date.now(), presentation: { revision: 0, pending: new Map(), documents: new Map(), controls: [] } };
           if (reservation.model !== "gpt-live-1-codex" || reservation.transport !== "webrtc" || reservation.offerUrl !== "/plugins/openai/realtime/calls") {
             await close(context);
             return json(res, 409, { error: "候选语音配置与 GPT Live 实验不匹配" });
@@ -205,6 +206,10 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
       const view = context.active.presentation;
       if (view) {
         message.revision = ++view.revision;
+        if (message.name === 'openclaw_end_call') {
+          view.controls.push(message);
+          if(view.controls.length > 64)view.controls.shift();
+        }
         if (message.type === 'tool.call') view.pending.set(message.callId, message);
         else view.pending.delete(message.callId);
         if (message.type === 'backend.result') {

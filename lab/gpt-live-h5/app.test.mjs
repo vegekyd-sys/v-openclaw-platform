@@ -719,8 +719,8 @@ test('a user farewell transcript alone never hangs up the call', async t => {
   assert.equal(f.requests.filter(r=>r.route==='close').length,0);
 });
 
-async function endCallFixture(t) {
-  const f = await fixture(t); await f.context.startCall();
+async function endCallFixture(t, options = {}) {
+  const f = await fixture(t, options); await f.context.startCall();
   const peer = f.peers[0]; peer.connectionState='connected'; peer.onconnectionstatechange();
   await peer.ontrack({track:track()}); await tick();
   const send = value => peer.channel.onmessage({data:JSON.stringify(value)});
@@ -1016,4 +1016,15 @@ test('native snapshot recovers actual task and full Markdown without SSE, but an
  const late=deferred();response=late.promise;const fetching=poll();await tick();await f.context.stopCall();await f.context.startCall();
  late.resolve({voiceSessionId:'voice-1',revision:4,pending:[],documents:[{type:'backend.result',voiceSessionId:'voice-1',callId:'late',text:'旧报告'}]});await tick();
  assert.equal(f.element('transcriptHistory').children.length,0);
+});
+
+
+test('snapshot carries only current real end-tool acceptance and rejection through the same ownership gate as SSE',async t=>{
+ let response={voiceSessionId:'voice-1',revision:0,pending:[],documents:[],controls:[]};
+ const f=await endCallFixture(t,{api:route=>route==='presentation'?response:undefined});await tick();
+ const poll=[...f.intervals.values()].find(v=>v.delay===1500).callback;
+ const actual={revision:1,voiceSessionId:'voice-1',type:'tool.result',name:'openclaw_end_call',callId:'end',requestId:'end',originUserTurnId:'u',closeAfterPlayback:true};
+ response={...response,revision:1,controls:[{...actual,voiceSessionId:'foreign'}]};poll();await tick();assert.equal(f.body.dataset.callState,'connected');
+ response={...response,controls:[actual]};poll();await tick();assert.equal(f.body.dataset.callState,'ending');assert(!f.peer.closed,'tool acceptance does not prove farewell audio drained');
+ response={...response,revision:2,controls:[actual,{...actual,revision:2,type:'tool.error'}]};poll();await tick();assert.equal(f.body.dataset.callState,'connected');
 });

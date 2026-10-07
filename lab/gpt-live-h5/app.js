@@ -506,13 +506,7 @@ async function startCall() {
     for (const track of active.stream.getAudioTracks()) active.pc.addTrack(track, active.stream);
     active.channel = active.pc.createDataChannel("oai-events"); active.channel.onmessage = (event) => { if (call === active) providerMessage(event); };
     active.events = new EventSource(apiUrl("events"));
-    active.events.onmessage = (event) => {
-      if (call !== active) return;
-      const value = JSON.parse(event.data);
-      if (value.voiceSessionId !== active.voiceSessionId) return;
-      if (Number.isSafeInteger(value.revision)) active.presentationRevision = Math.max(active.presentationRevision ?? 0, value.revision);
-      tasks.consume(value);
-      if(value.type==='backend.result')renderTranscript(presentation.consume(value));
+    const applyNativeControl = value => {
       if (value.type === "tool.result") requestAutomaticEnd(active, value);
       if (value.type === "tool.error" && value.name === "openclaw_end_call" &&
         (value.callId === value.requestId || value.source === "backend_model_client_tool" &&
@@ -524,6 +518,15 @@ async function startCall() {
           if (active.ending?.requestId === value.requestId) cancelAutomaticEnd(active);
         }
       }
+    };
+    active.events.onmessage = (event) => {
+      if (call !== active) return;
+      const value = JSON.parse(event.data);
+      if (value.voiceSessionId !== active.voiceSessionId) return;
+      if (Number.isSafeInteger(value.revision)) active.presentationRevision = Math.max(active.presentationRevision ?? 0, value.revision);
+      tasks.consume(value);
+      if(value.type==='backend.result')renderTranscript(presentation.consume(value));
+      applyNativeControl(value);
       taskState();
     };
     // Native voice audio remains on WebRTC. This authenticated snapshot only
@@ -533,11 +536,15 @@ async function startCall() {
       active.presentationFetching = true;
       active.presentationAbort ??= new AbortController();
       try {
-        const response = await fetch(apiUrl('presentation') + `&after=${active.documentRevision ?? 0}`, { signal: active.presentationAbort.signal });
+        const response = await fetch(apiUrl('presentation') + `&after=${active.documentRevision ?? 0}&controlsAfter=${active.controlRevision ?? 0}`, { signal: active.presentationAbort.signal });
         if (!response.ok) return;
         const value = await response.json();
         if (call !== active || value.voiceSessionId !== active.voiceSessionId ||
           !Number.isSafeInteger(value.revision) || value.revision < (active.presentationRevision ?? 0)) return;
+        for(const item of value.controls ?? []) {
+          if(item.voiceSessionId !== active.voiceSessionId || !Number.isSafeInteger(item.revision) || item.revision <= (active.controlRevision ?? 0))continue;
+          applyNativeControl(item); active.controlRevision = item.revision;
+        }
         tasks.clear();
         for (const item of value.pending ?? []) tasks.consume(item);
         for (const item of value.documents ?? []) renderTranscript(presentation.consume(item));
