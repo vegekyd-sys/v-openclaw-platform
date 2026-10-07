@@ -414,7 +414,18 @@ async function uiCheck(t) {
   const out = { cards: {}, finals: [] };
   for (const [key, id] of Object.entries(cards)) {
     const raw = await readMessage(id);
-    const body = norm(raw);
+    // Feishu returns the card parsed into elements (a code span becomes its own run), so
+    // join every text value of the card before comparing.
+    const texts = [];
+    const walk = (v) => {
+      if (typeof v === "string") {
+        try { if (/^[{[]/u.test(v.trim())) return walk(JSON.parse(v)); } catch { /* plain text */ }
+        texts.push(v);
+      } else if (Array.isArray(v)) v.forEach(walk);
+      else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) if (k === "content" || k === "text" || typeof x === "object" || (typeof x === "string" && /^[{[]/u.test(x.trim()))) walk(x);
+    };
+    try { walk(JSON.parse(raw)); } catch { texts.push(raw); }
+    const body = norm(texts.join(""));
     // Every message of the thread, as said, appears in the card (first 12 chars of each).
     const missing = t.flatMap((r) => [r.message, r.reply].filter(Boolean)).map((s) => norm(s).slice(0, 12)).filter((s) => s && !body.includes(s));
     out.cards[key.includes(":group:") ? "group" : "dm"] = { id, status: /已完成/u.test(raw) ? "已完成" : /中断/u.test(raw) ? "中断" : /进行中/u.test(raw) ? "进行中" : "?", missing };

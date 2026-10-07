@@ -67,7 +67,9 @@ export default definePluginEntry({
     );
 
     api.on("after_tool_call", async (event, ctx) => {
-      if (event.toolName !== "sessions_send" || event.error) {
+      // A send whose target run failed comes back as a tool error that still carries the
+      // JSON result (runId, sentBeforeError); recordFromSend decides from the result.
+      if (event.toolName !== "sessions_send") {
         return;
       }
       const callId = ctx?.toolCallId ?? event.toolCallId;
