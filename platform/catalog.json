@@ -301,6 +301,7 @@
         "lab/placement-sweep-lists.test.mjs",
         "lab/skills-watch-ready.test.mjs",
         "lab/chat-channel-id-memo.test.mjs",
+        "lab/plugin-config-memo.test.mjs",
         "lab/worker-prewarm-secrets.test.mjs",
         "lab/worker-prewarm-v.test.mjs",
         "lab/image-hold.test.mjs",
