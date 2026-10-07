@@ -86,6 +86,19 @@ const TARGETS = [
       ["\tconst mirrorOutcome = await codexTranscriptMirrorRuntime.mirrorBestEffort({\n",
         `\tawait activeTurn.promptMirrorSettled; // ${MARK}\n`
         + "\tconst mirrorOutcome = await codexTranscriptMirrorRuntime.mirrorBestEffort({\n"],
+      // B2. With no explicit profile, startup fell back to the bound thread's auth profile
+      //     even when the turn switched provider family: /vds after /vcodex asked for the
+      //     OpenAI subscription profile and failed ("selected auth profile is unavailable").
+      //     Inherit it only within the same family; the thread itself rotates (see B).
+      ["var CodexTranscriptCheckpoint = class {",
+        `// ${MARK}: a thread binding's auth profile belongs to its provider family.\n`
+        + "function codexBindingSharesProviderFamily(binding, provider) {\n"
+        + "\tconst bindingDeepSeek = String(binding?.modelProvider ?? \"\").trim().toLowerCase() === \"deepseek\" || /deepseek/iu.test(String(binding?.model ?? \"\"));\n"
+        + "\treturn bindingDeepSeek === (String(provider ?? \"\").trim().toLowerCase() === \"deepseek\");\n"
+        + "}\n"
+        + "var CodexTranscriptCheckpoint = class {"],
+      ["params.runtimePlan?.auth.forwardedAuthProfileId ?? params.authProfileId ?? startupBinding?.authProfileId;",
+        "params.runtimePlan?.auth.forwardedAuthProfileId ?? params.authProfileId ?? (codexBindingSharesProviderFamily(startupBinding, params.provider) ? startupBinding?.authProfileId : void 0);"],
     ],
   },
   {

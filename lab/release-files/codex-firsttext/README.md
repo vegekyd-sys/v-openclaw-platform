@@ -44,6 +44,12 @@ G1 让 deepseek 关掉 code mode（`nativeCodeModeEnabled=false`）。上游把�
 （`selectNewerVisibleHistoryAfterBinding`）又会排除所有 codex 写入的消息，所以 vcodex 看不到 vds
 那几轮。现在换家族时开新线程，从完整会话记录灌入，两边都看得到。
 
+### B2. vcodex 之后切 vds 用了 GPT 的认证配置（run-attempt）
+
+启动阶段在没有显式认证配置时退回用线程绑定上的 `authProfileId`，provider 家族变了也照样沿用：
+`/vcodex` 之后 `/vds`，DeepSeek 回合拿着 `openai:…` 订阅配置去启动，报 `selected_auth_profile_unavailable`，
+回答丢失（V 上记录过「同会话 vcodex→vds 实测 401」）。现在只在同一家族内继承。
+
 代价：每次在 vds 和 vcodex 之间切换，第一轮要重放一次历史（缓存未命中一次）。同一模型连续对话
 线程续用，缓存可以命中。
 
@@ -53,3 +59,18 @@ G1 让 deepseek 关掉 code mode（`nativeCodeModeEnabled=false`）。上游把�
   只在 candidate 副本里把写用户消息人为延迟 6 s，同一脚本先跑 V 原样字节、再跑补丁版，比较首字、
   pre-bind 溢出、会话记录顺序、线程数和缓存命中。
 - vds↔vcodex 来回切换需要 ChatGPT 登录，在共享 VLab 上用 `vlab.mjs test` 验证。
+
+## 共享 VLab 验收（2026-10-07 18:24–18:46 CST）
+
+共享 VLab 原本没有 /vds：主配置和 Worker 配置（`state/shared-vlab-20260909-v3/` 下，不是 `state/openclaw.json`）
+都按 V 补齐后测试。脚本 `lab/codex-firsttext-shared-accept.mjs`，专用 `vlab-dev-*` 会话，`deliver:false`。
+
+| | V 原样代码 | 补丁 |
+|---|---|---|
+| 同一 vds 会话连续 4 轮 | 每轮一个新线程 | 1 个线程 4 轮，缓存 99.5–99.7% |
+| 热的 vds 首字 | 9.7–10.4 s | 3.8–5.0 s（候选重启后的首轮 12.6 s 为冷启动） |
+| vds→vcodex→vds→vcodex | vcodex 之后切 vds 失败（auth profile） | 4 步全部成功，每次切换换线程，两边都答出对方那轮的暗号 |
+| 会话记录顺序 | 正常 | 正常（先用户后回答） |
+
+A（写库慢扣住答案）在共享 VLab 上只验证不回归：镜像里没有 V 那样的大私聊。复现与对比见 candidate。
+重启后第一轮可能报 `Cannot reap registered Codex process`（上一个 Gateway 的孤儿登记，与本补丁无关）。

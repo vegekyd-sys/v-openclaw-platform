@@ -22,7 +22,16 @@ const UNIT = "openclaw-vlab-production-mirror-v8.service";
 const NODE = "/opt/vlab/node-v22.23.1-linux-x64/bin/node";
 const PORT = 24993;
 const WORK = `${LAB}/shared-workflow/codex-firsttext-20261007`;
-const CONFIG = `${BASE}/state/openclaw.json`;
+// The live configs are wherever the running Gateway says (not state/openclaw.json): its
+// OPENCLAW_CONFIG_PATH, and the Worker config that one names. makaron turns run in the
+// Worker, which applies its own allowlist and aliases.
+const liveConfigPath = () => {
+  const pid = Number(execFileSync("systemctl", ["show", "openclaw-vlab-production-mirror-v8.service", "-p", "MainPID", "--value"], { encoding: "utf8" }).trim());
+  const env = fs.readFileSync(`/proc/${pid}/environ`, "utf8").split("\0").find((x) => x.startsWith("OPENCLAW_CONFIG_PATH="));
+  return env.slice("OPENCLAW_CONFIG_PATH=".length);
+};
+const CONFIG = liveConfigPath();
+const WORKER_CONFIG = JSON.parse(fs.readFileSync(CONFIG, "utf8")).plugins.entries["vlab-agent-worker-isolation"].config.workerConfigPath;
 const CODEX_HOME = `${BASE}/state/agents/makaron/agent/codex-home`;
 const TOML = `${CODEX_HOME}/config.toml`;
 const CODEX = `${BASE}/state/npm/projects/openclaw-codex-8902d781d4/node_modules/@openclaw/codex`;
@@ -148,6 +157,11 @@ async function run(label, bigKey) {
   log({ label, at: new Date().toISOString(), pid: gatewayPid(), codex: Object.fromEntries(CODEX_FILES.map((f) => [f, sha(`${CODEX}/dist/${f}`)])), eventLoop: health.eventLoop });
   const since = Date.now();
   const stamp = Date.now().toString(36);
+  // Warm-up: the first Codex turn after a restart can trip the previous Gateway's orphan
+  // app-server registration ("Cannot reap registered Codex process"); keep it out of the results.
+  const warm = `agent:makaron:explicit:vlab-dev-codexft-${label}-warm-${stamp}`;
+  await send(warm, "/vds");
+  log(turnRow(label, "warmup", await send(warm, "Reply with exactly: WARM")));
 
   // 1. Big session (25 MB group mirror): first text under a slow prompt write.
   if (bigKey) {
@@ -216,7 +230,7 @@ async function run(label, bigKey) {
   client.stop?.();
 }
 
-async function waitReady(timeoutMs = 15 * 60_000) {
+async function waitReady(timeoutMs = 30 * 60_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const listening = await new Promise((resolve) => {
@@ -244,31 +258,34 @@ async function restart() {
 
 if (command === "backup") {
   const dir = `${WORK}/backup`;
-  for (const [src, name] of [[CONFIG, "openclaw.json"], [TOML, "config.toml"], ...CODEX_FILES.map((f) => [`${CODEX}/dist/${f}`, f])]) {
+  for (const [src, name] of [[CONFIG, "live-openclaw.json"], [WORKER_CONFIG, "live-worker-openclaw.json"], [TOML, "config.toml"], ...CODEX_FILES.map((f) => [`${CODEX}/dist/${f}`, f])]) {
     const dst = `${dir}/${name}`;
     if (!fs.existsSync(dst)) execFileSync("cp", ["-a", src, dst]);
     assert.equal(sha(dst), sha(src), `${name} already backed up with different bytes`);
   }
   log({ backup: dir, files: fs.readdirSync(dir).map((f) => [f, sha(`${dir}/${f}`)]) });
 } else if (command === "vds-config") {
-  const cfg = JSON.parse(fs.readFileSync(CONFIG, "utf8"));
-  const ds = cfg.models.providers.deepseek.models;
-  const shape = { reasoning: true, input: ["text", "image"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 1000000, maxTokens: 384000, api: "openai-completions", compat: { supportsUsageInStreaming: true, supportsReasoningEffort: true, maxTokensField: "max_tokens", thinkingFormat: "deepseek" } };
-  for (const [id, name] of [["deepseek-flash", "DeepSeek V4.1 Flash"], ["vds-deepseek-flash", "DeepSeek V4.1 Flash (Codex vds alias)"]]) if (!ds.some((m) => m.id === id)) ds.push({ id, name, ...shape });
-  const entry = { alias: "vds", agentRuntime: { id: "codex" }, params: { thinking: "high", codexAppServerRuntimeModel: "deepseek-flash" } };
-  cfg.agents.defaults.models[VDS_REF] = entry;
-  cfg.agents.entries.makaron.models[VDS_REF] = entry;
-  const allow = cfg.agents.defaults.modelPolicy?.allow;
-  if (Array.isArray(allow) && !allow.includes(VDS_REF)) allow.push(VDS_REF);
-  const candidate = `${WORK}/openclaw.vds.json`;
-  fs.writeFileSync(candidate, `${JSON.stringify(cfg, null, 2)}\n`, { mode: 0o600 });
-  fs.chownSync(candidate, fs.statSync(CONFIG).uid, fs.statSync(CONFIG).gid);
-  const env = { ...gatewayEnv(), OPENCLAW_CONFIG_PATH: candidate };
-  const v = spawnSync("sudo", ["-u", "lab-db91-parity", "--preserve-env", NODE, `${BASE}/runtime/openclaw/dist/index.js`, "config", "validate", "--json"], { env, encoding: "utf8", cwd: "/tmp", timeout: 180_000, maxBuffer: 16 * 1024 * 1024 });
-  log({ validate: v.status, out: redact((v.stdout || "") + (v.stderr || "")).slice(-1500) });
-  assert.equal(v.status, 0, "config validate failed; shared config untouched");
-  replaceKeepingOwner(CONFIG, fs.readFileSync(candidate));
-  log({ vdsConfig: true, configSha: sha(CONFIG) });
+  for (const [file, name] of [[CONFIG, "openclaw.vds.json"], [WORKER_CONFIG, "worker-openclaw.vds.json"]]) {
+    const cfg = JSON.parse(fs.readFileSync(file, "utf8"));
+    const ds = cfg.models.providers.deepseek.models;
+    const shape = { reasoning: true, input: ["text", "image"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 1000000, maxTokens: 384000, api: "openai-completions", compat: { supportsUsageInStreaming: true, supportsReasoningEffort: true, maxTokensField: "max_tokens", thinkingFormat: "deepseek" } };
+    for (const [id, label] of [["deepseek-flash", "DeepSeek V4.1 Flash"], ["vds-deepseek-flash", "DeepSeek V4.1 Flash (Codex vds alias)"]]) if (!ds.some((m) => m.id === id)) ds.push({ id, name: label, ...shape });
+    const entry = { alias: "vds", agentRuntime: { id: "codex" }, params: { thinking: "high", codexAppServerRuntimeModel: "deepseek-flash" } };
+    cfg.agents.defaults.models[VDS_REF] = entry;
+    if (cfg.agents.entries?.makaron) cfg.agents.entries.makaron.models = { ...(cfg.agents.entries.makaron.models ?? {}), [VDS_REF]: entry };
+    const allow = cfg.agents.defaults.modelPolicy?.allow;
+    if (Array.isArray(allow) && !allow.includes(VDS_REF)) allow.push(VDS_REF);
+    const candidate = `${WORK}/${name}`;
+    fs.rmSync(candidate, { force: true });
+    fs.writeFileSync(candidate, `${JSON.stringify(cfg, null, 2)}\n`, { mode: 0o600 });
+    fs.chownSync(candidate, fs.statSync(file).uid, fs.statSync(file).gid);
+    const env = { ...gatewayEnv(), OPENCLAW_CONFIG_PATH: candidate };
+    const v = spawnSync("sudo", ["-u", "lab-db91-parity", "--preserve-env", NODE, `${BASE}/runtime/openclaw/dist/index.js`, "config", "validate", "--json"], { env, encoding: "utf8", cwd: "/tmp", timeout: 180_000, maxBuffer: 16 * 1024 * 1024 });
+    log({ validate: name, status: v.status, out: redact((v.stdout || "") + (v.stderr || "")).slice(-600) });
+    assert.equal(v.status, 0, `${name} validate failed; shared config untouched`);
+    if (fs.readFileSync(candidate, "utf8") !== fs.readFileSync(file, "utf8")) replaceKeepingOwner(file, fs.readFileSync(candidate));
+    log({ vdsConfig: file, sha: sha(file) });
+  }
 } else if (command === "patch") {
   const r = spawnSync(NODE, [opt("patch"), "--codex", CODEX], { encoding: "utf8" });
   log({ patch: r.status, out: (r.stdout || "").slice(-800), err: (r.stderr || "").slice(-800) });
@@ -278,9 +295,16 @@ if (command === "backup") {
   await restart();
 } else if (command === "run") {
   await run(opt("label"), opt("bigKey"));
+} else if (command === "models") {
+  await connect();
+  for (const [method, params] of [["models.list", { agentId: "makaron" }], ["models.list", { agentId: "makaron", view: "all" }]]) {
+    const r = await call(method, params).catch((e) => ({ error: String(e.message).slice(0, 300) }));
+    const list = r.models ?? r.entries ?? [];
+    log({ method, params, error: r.error, keys: Object.keys(r).slice(0, 12), deepseek: list.filter((m) => JSON.stringify(m).includes("deepseek")).map((m) => JSON.stringify(m).slice(0, 220)) });
+  }
 } else if (command === "restore") {
   const dir = `${WORK}/backup`;
-  for (const [dst, name] of [[CONFIG, "openclaw.json"], [TOML, "config.toml"], ...CODEX_FILES.map((f) => [`${CODEX}/dist/${f}`, f])]) execFileSync("cp", ["-a", `${dir}/${name}`, dst]);
+  for (const [dst, name] of [[CONFIG, "live-openclaw.json"], [WORKER_CONFIG, "live-worker-openclaw.json"], [TOML, "config.toml"], ...CODEX_FILES.map((f) => [`${CODEX}/dist/${f}`, f])]) execFileSync("cp", ["-a", `${dir}/${name}`, dst]);
   log({ restored: true });
   await restart();
 } else {
