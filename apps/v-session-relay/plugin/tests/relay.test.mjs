@@ -9,6 +9,7 @@ import { recordFromSend, resultRunId, targetRunIdOf, toolResultJson } from "../c
 import { describeRequester, guardSend } from "../core/policy.js";
 import { feishuReceiverForSession, labelForSession, parseSessionKey } from "../core/sessions.js";
 import { RelayStore } from "../core/store.js";
+import { TurnMarkers, interSessionSource } from "../core/turns.js";
 import { lastAssistantText, requestGuidance, resultGuidance, threadCard, threadEntries } from "../core/text.js";
 
 const OWNER = "feishu:ou_owner";
@@ -63,15 +64,27 @@ test("native: a send from the woken requester, or again in the same turn, stays 
 });
 
 test("policy: guards only runaway chains; who asked is described, not judged", () => {
-  const running = record({ status: "running", runId: "run_t1" });
-  assert.equal(guardSend({ records: [running], sessionKey: GROUP_A, runId: "run_t1" }).block, true, "the relayed turn cannot hand on");
-  assert.equal(guardSend({ records: [running], sessionKey: GROUP_A, runId: "run_other" }), undefined, "another turn in that chat may send");
+  assert.equal(guardSend({ records: [], runId: "run_t1", requestTurn: { sourceSession: DM } }).block, true, "a turn answering a sessions_send cannot send, not even back");
+  assert.equal(guardSend({ records: [], runId: "run_other", requestTurn: null }), undefined);
   const full = Array.from({ length: 3 }, (_, i) => record({ id: `r_${i}`, runId: `run_${i}`, status: "done" }));
-  assert.equal(guardSend({ records: full, sessionKey: DM, runId: "sessions-send-result:run_2", maxChain: 3 }).block, true);
-  assert.equal(guardSend({ records: full, sessionKey: DM, runId: "sessions-send-result:run_2", maxChain: 4 }), undefined);
+  assert.equal(guardSend({ records: full, runId: "sessions-send-result:run_2", maxChain: 3 }).block, true);
+  assert.equal(guardSend({ records: full, runId: "sessions-send-result:run_2", maxChain: 4 }), undefined);
   assert.equal(describeRequester({ senderIsOwner: true, senderId: "ou_owner", channel: "feishu" }), "Tianyi");
   assert.equal(describeRequester({ senderId: "ou_x", channel: "feishu" }), "feishu:ou_x");
   assert.equal(describeRequester(undefined), null);
+});
+
+test("turns: the inter-session envelope marks a request turn; markers work across processes", () => {
+  const prompt = "[Inter-session message] sourceSession=agent:makaron:feishu:direct:ou_owner sourceChannel=feishu sourceTool=sessions_send isUser=false\nThis content was routed by OpenClaw from another session.\n写公告";
+  assert.deepEqual(interSessionSource(prompt), { sourceSession: DM, sourceTool: "sessions_send" });
+  assert.equal(interSessionSource("hello"), null);
+  const m = new TurnMarkers(fs.mkdtempSync(path.join(os.tmpdir(), "relay-turns-")));
+  m.put("request-turns", "run_t1", { sessionKey: GROUP_A, sourceSession: DM });
+  assert.equal(m.get("request-turns", "run_t1").sourceSession, DM);
+  assert.equal(m.get("request-turns", "run_other"), null);
+  m.put("sends", "call_1", { fromSessionKey: DM, requester: "Tianyi" });
+  m.put("sends", "call_2", { fromSessionKey: GROUP_A, requester: null });
+  assert.equal(m.latest("sends", (v) => v.fromSessionKey === DM).requester, "Tianyi");
 });
 
 test("sessions: keys, receivers, labels", async () => {

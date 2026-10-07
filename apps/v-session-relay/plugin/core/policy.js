@@ -26,14 +26,15 @@ export function describeRequester(requester, { ownerName = "Tianyi" } = {}) {
 }
 
 /**
+ * @param requestTurn the marker of this run when it answers another conversation's
+ *   sessions_send (see turns.js), else null.
  * @returns {undefined | { block: true, blockReason: string }} a before_tool_call result.
  */
-export function guardSend({ records, sessionKey, runId, maxChain = 8 }) {
-  const executing = records.find((r) => r.to?.sessionKey === sessionKey && r.runId === runId && r.status === "running");
-  if (executing) {
+export function guardSend({ records, runId, requestTurn, maxChain = 8 }) {
+  if (requestTurn) {
     return {
       block: true,
-      blockReason: `This turn is answering a request sent from another conversation. Reply here instead; your reply goes back automatically. Do not hand it on to a third conversation from this turn.`,
+      blockReason: "This turn is answering a message from another conversation. Do not send anything with sessions_send from this turn, not even back: just write your reply, it goes back to that conversation automatically. If it needs someone else, say so in your reply and let that conversation decide.",
     };
   }
   const answering = targetRunIdOf(runId);

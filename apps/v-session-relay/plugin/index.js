@@ -7,6 +7,7 @@ import { recordFromSend, targetRunIdOf } from "./core/native.js";
 import { describeRequester, guardSend, ownerList } from "./core/policy.js";
 import { labelForSession } from "./core/sessions.js";
 import { RelayStore } from "./core/store.js";
+import { TurnMarkers, interSessionSource } from "./core/turns.js";
 import { requestGuidance, resultGuidance } from "./core/text.js";
 
 function storeDir(config) {
@@ -33,7 +34,7 @@ export default definePluginEntry({
     const feishuFor = feishuClients();
     const maxChain = config.maxChain ?? 8;
     const ownerName = config.ownerName ?? "Tianyi";
-    const requesters = new Map(); // toolCallId -> requester context, from before_tool_call to after_tool_call
+    const markers = new TurnMarkers(store.dir);
     const agentName = (sessionKey) => {
       const agentId = String(sessionKey ?? "").split(":")[1];
       return (config.agentNames && typeof config.agentNames[agentId] === "string" && config.agentNames[agentId]) || "V";
@@ -50,13 +51,15 @@ export default definePluginEntry({
         if (event.toolName !== "sessions_send") {
           return undefined;
         }
-        if (ctx?.toolCallId) {
-          requesters.set(ctx.toolCallId, ctx.requester ?? null);
-          setTimeout(() => requesters.delete(ctx.toolCallId), 30 * 60_000).unref?.();
+        const callId = ctx?.toolCallId ?? event.toolCallId;
+        if (callId) {
+          markers.put("sends", callId, { fromSessionKey: ctx?.sessionKey ?? null, fromRunId: ctx?.runId ?? null, requester: describeRequester(ctx?.requester, { ownerName }) });
         }
-        const verdict = guardSend({ records: store.list(), sessionKey: ctx?.sessionKey, runId: ctx?.runId, maxChain });
+        const requestTurn = ctx?.runId ? markers.get("request-turns", ctx.runId) : null;
+        const verdict = guardSend({ records: store.list(), runId: ctx?.runId, requestTurn, maxChain });
         if (verdict) {
           api.logger?.info?.(`session relay: blocked sessions_send from ${ctx?.sessionKey}: ${verdict.blockReason}`);
+          markers.put("blocked", `${ctx?.runId}:${callId}`, { sessionKey: ctx?.sessionKey ?? null, runId: ctx?.runId ?? null });
         }
         return verdict;
       },
@@ -68,15 +71,14 @@ export default definePluginEntry({
         return;
       }
       const callId = ctx?.toolCallId ?? event.toolCallId;
-      const requester = describeRequester(requesters.get(callId), { ownerName });
-      requesters.delete(callId);
+      const send = callId ? markers.get("sends", callId) : null;
       const record = recordFromSend({
         id: store.newId(),
         params: event.params,
         result: event.result,
-        ctx: { ...ctx, runId: ctx?.runId ?? event.runId },
+        ctx: { ...ctx, sessionKey: ctx?.sessionKey ?? send?.fromSessionKey, runId: ctx?.runId ?? event.runId ?? send?.fromRunId },
         records: store.list(),
-        requester,
+        requester: send?.requester ?? null,
       });
       if (record) {
         store.write(record);
@@ -84,8 +86,8 @@ export default definePluginEntry({
       }
     });
 
-    // The two turns of an exchange get a few lines on how to talk to the other V.
-    api.on("before_prompt_build", async (_event, ctx) => {
+    // Marks the turns of an exchange and gives them a few lines on how to talk to the other V.
+    api.on("before_prompt_build", async (event, ctx) => {
       const runId = ctx?.runId;
       if (!runId) {
         return undefined;
@@ -94,10 +96,29 @@ export default definePluginEntry({
       const answering = targetRunIdOf(runId);
       if (answering) {
         const record = records.find((r) => r.runId === answering);
-        return record ? { prependContext: resultGuidance(withLabels(record)) } : undefined;
+        return record && config.guidance !== false ? { prependContext: resultGuidance(withLabels(record)) } : undefined;
       }
-      const request = records.find((r) => r.runId === runId && r.to?.sessionKey === ctx.sessionKey);
-      return request ? { prependContext: requestGuidance(withLabels(request)) } : undefined;
+      const source = interSessionSource(event?.prompt);
+      if (!source || source.sourceTool !== "sessions_send" || !source.sourceSession) {
+        return undefined;
+      }
+      markers.put("request-turns", runId, { sessionKey: ctx.sessionKey ?? null, sourceSession: source.sourceSession });
+      if (config.guidance === false) {
+        return undefined;
+      }
+      // The requester's record may not exist yet (inline send); its send marker does.
+      const known = records.filter((r) => r.from?.sessionKey === source.sourceSession && r.to?.sessionKey === ctx.sessionKey).at(-1);
+      const send = markers.latest("sends", (m) => m.fromSessionKey === source.sourceSession);
+      const request = known && known.runId === runId
+        ? known
+        : {
+            id: null,
+            chainId: null,
+            requester: send?.requester ?? known?.requester ?? null,
+            from: { sessionKey: source.sourceSession, label: known?.from?.label ?? null },
+            to: { sessionKey: ctx.sessionKey, label: known?.to?.label ?? null },
+          };
+      return { prependContext: requestGuidance(withLabels(request)) };
     });
 
     let timer = null;
@@ -134,6 +155,7 @@ export default definePluginEntry({
           }
         };
         tick();
+        markers.prune();
         timer = setInterval(tick, config.pollMs ?? 2_000);
         timer.unref?.();
         ctx.logger?.info?.(`session relay follower started (store ${store.dir})`);

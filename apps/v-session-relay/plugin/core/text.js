@@ -115,7 +115,7 @@ export function requestGuidance({ from, requester, chainId, id }) {
       ? `The V in 「${from.label}」 is answering you in an exchange that started earlier. Pick up where you left off.`
       : `The V in 「${from.label}」 sent this to your conversation through sessions_send. It was asked for by ${who}.`,
     "Decide as you would if that person asked here: use this conversation's own context, follow your redlines, and remember your reply goes back to the other chat and its members. If it should not be done, or not shared there, say so briefly instead.",
-    `Your final reply in this turn goes back to 「${from.label}」 automatically: you are talking with the V over there. People in both chats see the exchange folded in one card, not as separate messages.`,
+    `Your final reply in this turn goes back to 「${from.label}」 automatically: you are talking with the V over there. Do not call sessions_send in this turn, not even to send the answer back. People in both chats see the exchange folded in one card, not as separate messages.`,
     `If you need information or a decision from 「${from.label}」 to do this well, ask for it in your reply, short and specific, and end the turn; the answer will come back here. Do not guess what only they know.`,
     "When the work is done, reply with the result: what you did, what you found, what is still open.",
   ].join("\n");

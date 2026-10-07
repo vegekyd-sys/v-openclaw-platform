@@ -133,14 +133,16 @@ export class RelayDispatcher {
     }
     const answeredAgain = this.store.list().some((r) => r.chainId === record.chainId && r.id !== record.id && r.fromRunId === wakeId);
     let finalMessageId = null;
+    let closingText = null;
     if (!answeredAgain) {
       // The requester is done with the thread: what it said is meant for the people there.
       const text = wait.status === "ok" && wait.terminalReply?.disposition === "visible" ? wait.terminalReply.text : await this.transcriptReply(record.from.sessionKey, record.finishedAt);
       if (text && text.trim()) {
+        closingText = text;
         finalMessageId = await this.send(record.from.sessionKey, finalMessageCard(text));
       }
     }
-    this.store.update(record.id, { status: "done", wakeStatus: wait.status, doneAt: this.now(), ...(finalMessageId ? { finalMessageId } : {}) }, this.now());
+    this.store.update(record.id, { status: "done", wakeStatus: wait.status, doneAt: this.now(), ...(closingText ? { closingText } : {}), ...(finalMessageId ? { finalMessageId } : {}) }, this.now());
     await this.refreshCard(record.chainId);
   }
 

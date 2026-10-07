@@ -46,6 +46,9 @@
         "type": "integer",
         "minimum": 60000,
         "maximum": 172800000
+      },
+      "guidance": {
+        "type": "boolean"
       }
     }
   }
