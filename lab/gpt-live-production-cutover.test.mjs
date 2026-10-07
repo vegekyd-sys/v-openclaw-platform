@@ -7,7 +7,7 @@ import {
 } from './gpt-live-production-cutover.mjs';
 import { acquireIdleFence } from './shared/lifecycle.mjs';
 
-const rawArtifact = () => ({ branch: 'dev', sourceCommit: 'a'.repeat(40), files: Array.from({ length: 22 }, (_, i) => ({
+const rawArtifact = () => ({ branch: 'dev', sourceCommit: 'a'.repeat(40), files: Array.from({ length: 24 }, (_, i) => ({
   target: (i === 21 ? 'production-worker/' : 'openclaw/dist/') + `fixture-${i}.mjs`,
   before: i === 0 ? null : 'b'.repeat(64), after: digest('fixture ' + i), content: Buffer.from('fixture ' + i).toString('base64'),
 })) });
@@ -28,8 +28,8 @@ test('ExecStart identity excludes systemd runtime PID/timestamps but binds the c
   assert.throws(() => execStartIdentity(before + ' ; ' + after));
 });
 
-test('canonical artifact freezes all 22 targets, content hashes, and raw artifact identity without retaining bytes', () => {
-  const value = artifact(); assert.equal(value.files.length, 22); assert.equal(value.sourceCommit, 'a'.repeat(40));
+test('canonical artifact freezes all 24 targets, content hashes, and raw artifact identity without retaining bytes', () => {
+  const value = artifact(); assert.equal(value.files.length, 24); assert.equal(value.sourceCommit, 'a'.repeat(40));
   assert(!JSON.stringify(value).includes('content')); assertArtifactBinding(binding(value), value);
   const altered = { ...value, artifactSha: '0'.repeat(64) }; assert.throws(() => assertArtifactBinding(binding(value), altered), /artifact changed/u);
   assert.throws(() => assertArtifactBinding({ ...binding(value), files: value.files.slice(1) }, value), /mapping/u);
@@ -37,7 +37,7 @@ test('canonical artifact freezes all 22 targets, content hashes, and raw artifac
 
 test('reject PR artifacts, partial maps, payload mismatch, duplicates, traversal, credentials, and unknown namespaces', () => {
   for (const mutate of [
-    value => { value.branch = 'task'; }, value => { value.files.pop(); }, value => { value.files[0].content = Buffer.from('other').toString('base64'); },
+    value => { value.branch = 'task'; }, value => { value.files = []; }, value => { value.files[0].content = Buffer.from('other').toString('base64'); },
     value => { value.files[1].target = value.files[0].target; }, value => { value.files[0].target = 'openclaw/../bad.mjs'; },
     value => { value.files[0].target = 'openclaw/auth.json'; }, value => { value.files[0].target = 'codex-host/file.mjs'; },
   ]) { const value = rawArtifact(); mutate(value); assert.throws(() => artifactIdentity(Buffer.from(JSON.stringify(value)))); }
@@ -136,4 +136,12 @@ test('CLI requires explicit prior private receipt and generated remote module pa
   assert(!source.includes('process.kill(') && !source.includes("run('kill'")); assert(!source.includes("['restart'"));
   const bootstrap = "const quoted='node:child_process'; const literal='$(unused)`unused`';";
   assert.equal(execFileSync('/bin/sh', ['-c', 'printf %s ' + shellQuote(bootstrap)]).toString(), bootstrap);
+});
+
+test('a focused canonical release binds its full single-target map without requiring unrelated files', () => {
+  const value = rawArtifact(); value.files = value.files.slice(0, 1);
+  const frozen = artifactIdentity(Buffer.from(JSON.stringify(value)));
+  assert.equal(frozen.files.length, 1);
+  assertArtifactBinding(binding(frozen), frozen);
+  assert.throws(() => assertHashes([], frozen, 'before'));
 });

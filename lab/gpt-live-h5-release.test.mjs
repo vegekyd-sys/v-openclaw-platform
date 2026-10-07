@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { execFileSync } from 'node:child_process';
-import { H5_PATHS, digest, validateIdentity, fileIdentity, validateSharedProof, assertRollbackIdentity, freezeSource, remoteSource } from './gpt-live-h5-release.mjs';
+import { H5_PATHS, digest, validateIdentity, fileIdentity, validateSharedProof, assertH5Baseline, assertRollbackIdentity, freezeSource, remoteSource } from './gpt-live-h5-release.mjs';
 
 const identity = { target: 'v', commit: 'a'.repeat(40), release: 'live-h5-release', owner: 'gpt-live-owner' };
 const files = H5_PATHS.map(name => ({ name, content: Buffer.from(name).toString('base64'), sha: digest(name) }));
@@ -18,11 +18,11 @@ test('canonical merge commit is allowed; short SHAs and unsafe identity are refu
   for (const patch of [{ commit: 'abcdef1' }, { target: 'production' }, { owner: '../other' }, { release: 'a\nUser=root' }])
     assert.throws(() => validateIdentity({ ...identity, ...patch }));
 });
-test('source freeze reads exactly eleven committed files and refuses dirty or different HEAD before reading assets', () => {
+test('source freeze reads the complete set of committed files and refuses dirty or different HEAD before reading assets', () => {
   const calls = [];
   const git = (...args) => { calls.push(args); if (args[0] === 'status') return ''; if (args[0] === 'rev-parse') return identity.commit; return Buffer.from(args[1]); };
   const frozen = freezeSource('/unused', identity, git);
-  assert.equal(frozen.files.length, 11); assert.equal(calls.filter(call => call[0] === 'show').length, 11);
+  assert.equal(frozen.files.length, H5_PATHS.length); assert.equal(calls.filter(call => call[0] === 'show').length, H5_PATHS.length);
   assert(calls.filter(call => call[0] === 'show').every(call => call[1].startsWith(identity.commit + ':')));
   assert.equal(calls.some(call => call.includes('branch')), false, 'An accepted dev merge needs no OPEN PR or branch allowlist');
   for (const mode of ['dirty', 'head']) {
@@ -36,7 +36,7 @@ test('source freeze reads exactly eleven committed files and refuses dirty or di
   }
 });
 test('file whitelist and committed content hashes reject missing, reordered, foreign and altered input', () => {
-  assert.equal(fileIdentity(files).length, 11);
+  assert.equal(fileIdentity(files).length, H5_PATHS.length);
   assert.throws(() => fileIdentity(files.slice(1)));
   assert.throws(() => fileIdentity([...files].reverse()));
   assert.throws(() => fileIdentity([{ ...files[0], name: 'lab/../../secret' }, ...files.slice(1)]));
@@ -70,4 +70,14 @@ test('collected expired VLab transient unit may clean its pointer; a missing pro
 });
 test('generated remote installer is valid standalone JavaScript without executing a service', () => {
   execFileSync(process.execPath, ['--check', '--input-type=module'], { input: remoteSource(), stdio: ['pipe', 'pipe', 'pipe'] });
+});
+test('H5-only release requires its own lease and an accepted aligned baseline; its commit may differ', () => {
+  const current={release:identity.release,sourceCommit:'f'.repeat(40),artifactSha:proof.artifactSha,accepted:true,v:{aligned:true}};
+  const manifest={sourceCommit:current.sourceCommit,artifactSha:current.artifactSha};
+  assertH5Baseline(current,manifest,{owner:identity.owner},request);
+  for(const patch of [{accepted:false},{v:{aligned:false}},{release:'other'}])assert.throws(()=>assertH5Baseline({...current,...patch},manifest,{owner:identity.owner},request));
+  assert.throws(()=>assertH5Baseline(current,manifest,{owner:'foreign'},request));
+  assert.throws(()=>assertH5Baseline(current,{...manifest,artifactSha:'f'.repeat(64)},{owner:identity.owner},request));
+  validateSharedProof({...proof,h5Only:true},{...request,h5Only:true});
+  assert.throws(()=>validateSharedProof({...proof,h5Only:true},request));
 });

@@ -1,0 +1,18 @@
+:root { color-scheme: light dark; --fg: #1d1f24; --muted: #6b7180; --bg: #f6f7f9; --card: #fff; --line: #d8dbe2; --accent: #2f6fed; }
+@media (prefers-color-scheme: dark) { :root { --fg: #e8eaf0; --muted: #9aa1b2; --bg: #0f1115; --card: #181b22; --line: #2c313c; --accent: #6b9bff; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; }
+main { max-width: 480px; margin: 0 auto; padding: 32px 16px; }
+h1 { font-size: 20px; margin: 0 0 12px; }
+#status { color: var(--muted); margin: 0 0 16px; }
+form { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0 0 16px; }
+dt { color: var(--muted); }
+dd { margin: 0; overflow-wrap: anywhere; }
+code { font-size: 14px; }
+label { display: block; margin: 0 0 6px; color: var(--muted); }
+input#value { width: 100%; padding: 10px 12px; font-size: 16px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--fg); }
+label.show { margin: 8px 0 16px; font-size: 14px; }
+button { width: 100%; padding: 12px; font-size: 16px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; }
+button:disabled { opacity: 0.6; }
+.note { color: var(--muted); font-size: 13px; margin: 12px 0 0; }

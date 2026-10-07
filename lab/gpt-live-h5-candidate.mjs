@@ -10,13 +10,27 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {configureCandidateOpenAIAuth,installCandidateOpenAIAuth} from './gpt-live-call-live-auth.mjs';
 import {GPT_LIVE_CALL_INSTRUCTIONS} from './gpt-live-h5/instructions.mjs';
 import {createLiveH5Server} from './gpt-live-h5/server.mjs';
+import {createDirectVoiceService} from './realtime-direct-tools/session.mjs';
+import {isolateCandidateAgentRuntime,candidateLarkEnvironment} from './realtime-direct-tools/candidate-environment.mjs';
 import {parsePublicProgressDiagnostics} from './gpt-live-h5-provenance-evidence.mjs';
-import {collectCandidateSelectedModelReferences,assertCandidateSelectedModelsPreserved,scopeCandidateAgentToAgentAllow,disableCandidateParallelToolCalls,preflightCandidateConfig} from './gpt-live-candidate-config-guard.mjs';
+import {collectCandidateSelectedModelReferences,assertCandidateSelectedModelsPreserved,scopeCandidateAgentToAgentAllow,disableCandidateParallelToolCalls,preflightCandidateConfig,applyCandidateBackendRouteDiagnostic,assertCandidateBackendRouteDiagnosticPair,assertCandidateBackendDiagnosticPaths} from './gpt-live-candidate-config-guard.mjs';
 import {startOwnedProcObserver} from './gpt-live-candidate-native/os-observer-lifecycle.mjs';
 import {parseVoiceConfirmationDiagnostics} from './gpt-live-candidate-native/confirmation-evidence.mjs';
 
+// Reject an invalid observer before copying/opening the private database or
+// starting a Gateway. A controls-only probe uses the same native controls path.
+const directCase=process.env.DIRECT_VOICE_CASES??'hybrid';
+if(process.env.DIRECT_VOICE_AUTOMATED==='1'){
+  assert(process.env.V_REALTIME_DIRECT_TOOLS==='1','Direct automated validation requires native voice tools');
+  const cases=['hybrid','hybrid-core','single-query','followup','core','controls','calendar-playback','routing-controls'];
+  assert(cases.includes(directCase),'Unknown direct voice observer case');
+  if(process.env.DIRECT_VOICE_CASE_BY_MODEL){const selected=JSON.parse(process.env.DIRECT_VOICE_CASE_BY_MODEL);assert(selected&&typeof selected==='object'&&!Array.isArray(selected),'Invalid per-model cases');for(const [model,value] of Object.entries(selected))assert(['seeduplex','grok'].includes(model)&&cases.includes(value),'Unknown per-model voice observer case');}
+}
 const runtime=process.env.VLAB_CANDIDATE_RUNTIME,state=process.env.OPENCLAW_STATE_DIR,configPath=process.env.OPENCLAW_CONFIG_PATH;
 assert(runtime&&state&&configPath,'Disposable candidate environment required');
+const agentRuntimeEnvironment=isolateCandidateAgentRuntime(process.env,runtime);
+const toolEnvironment=candidateLarkEnvironment(process.env);
+Object.assign(process.env,toolEnvironment);
 const scratch=path.join(state,'tmp');fs.mkdirSync(scratch,{recursive:true,mode:0o700});
 for(const key of ['TMPDIR','TMP','TEMP'])process.env[key]=scratch;
 if(process.env.GPT_LIVE_CALL_AUDIO_FIXTURE_GZIP) {
@@ -55,7 +69,13 @@ const npmPrivate={cache:path.join(state,'cache/npm'),prefix:path.join(state,'npm
 for(const key of ['cache','prefix'])fs.mkdirSync(npmPrivate[key],{recursive:true,mode:0o700});
 for(const key of ['userconfig','globalconfig'])fs.writeFileSync(npmPrivate[key],'',{mode:0o600,flag:'wx'});
 for(const [key,value] of Object.entries(npmPrivate))for(const prefix of ['npm_config_','NPM_CONFIG_'])process.env[prefix+(prefix==='npm_config_'?key:key.toUpperCase())]=value;
-const config=JSON.parse(fs.readFileSync(configPath));
+let config=JSON.parse(fs.readFileSync(configPath));
+// Explicit diagnostic only. Without this frozen plan flag, retain the original
+// selected-model path; a Pro diagnostic never replaces normal Flash validation.
+const backendRouteFlag=process.env.GPT_LIVE_H5_BACKEND_ROUTE_DIAGNOSTIC;
+const backendRouteOptions={flag:backendRouteFlag,candidateId:process.env.VLAB_CANDIDATE_ID};
+const mainRouteBefore=backendRouteFlag===undefined?undefined:structuredClone(config);
+if(backendRouteFlag!==undefined)config=applyCandidateBackendRouteDiagnostic(config,{...backendRouteOptions,label:'main'}).config;
 // This experiment exercises Makaron and a real child of the same agent. Other
 // agents have independent selected harnesses and are outside this closure.
 const modelIsolation=[];
@@ -105,7 +125,8 @@ config.agents.defaults.heartbeat={...(config.agents.defaults.heartbeat??{}),ever
 config.tools={...(config.tools??{}),deny:[...new Set([...(config.tools?.deny??[]),'message','cron'])]};
 if(config.tools.exec?.cwd)config.tools.exec.cwd=config.agents.entries.makaron.workspace;
 config.logging={...(config.logging??{}),file:path.join(state,'candidate-gateway.log')};
-config.talk={...(config.talk??{}),realtime:{...(config.talk?.realtime??{}),instructions:GPT_LIVE_CALL_INSTRUCTIONS}};
+if (process.env.GPT_LIVE_H5_CASE !== 'caller-links')
+  config.talk={...(config.talk??{}),realtime:{...(config.talk?.realtime??{}),instructions:GPT_LIVE_CALL_INSTRUCTIONS}};
 configureCandidateOpenAIAuth(config);
 const memoryQuery=process.env.GPT_LIVE_H5_MEMORY_QUERY?.trim();
 const fullTools=process.env.GPT_LIVE_H5_FULL_TOOLS==='1';
@@ -152,12 +173,30 @@ if(fullTools&&config.plugins?.load?.paths) {
   }
   config.plugins.load.paths=privateLoadPaths;
 }
+if(process.env.VOICE_WORKER_PROCESS_OWNER==='1'){
+  const {patchVoiceWorker,patchVoicePool,patchVoiceIndex,patchNativeVoiceProcessScope,patchClassicVoiceProcessScope}=await import('./patch-voice-worker-process-owner.mjs');
+  const roots=(config.plugins?.load?.paths??[]).filter(p=>fs.existsSync(path.join(p,'openclaw.plugin.json'))&&JSON.parse(fs.readFileSync(path.join(p,'openclaw.plugin.json'))).id==='vlab-agent-worker-isolation');
+  assert(roots.length===1,'Exact private Worker plugin required');
+  const root=fs.realpathSync(roots[0]);assert(root.startsWith(fs.realpathSync(path.dirname(runtime))+'/'),'Worker patch must stay in own Candidate');
+  const receipts=[];
+  const nativeScopeFile=path.join(runtime,'openclaw/dist/embedded-agent.runtime-CL7poBKY.js');
+  const nativeBefore=fs.readFileSync(nativeScopeFile),nativeAfter=patchNativeVoiceProcessScope(nativeBefore.toString());
+  fs.copyFileSync('lab/realtime-direct-tools/worker-process-owner.mjs',path.join(runtime,'openclaw/dist/voice-process-owner.mjs'));
+  fs.writeFileSync(nativeScopeFile,nativeAfter);receipts.push({name:'embedded-agent.runtime-CL7poBKY.js',before:createHash('sha256').update(nativeBefore).digest('hex'),after:createHash('sha256').update(nativeAfter).digest('hex')});
+  const classicFile=path.join(runtime,'openclaw/dist/agent-tools-djVuP1H1.js'),classicBefore=fs.readFileSync(classicFile),classicAfter=patchClassicVoiceProcessScope(classicBefore.toString());
+  fs.writeFileSync(classicFile,classicAfter);receipts.push({name:'agent-tools-djVuP1H1.js',before:createHash('sha256').update(classicBefore).digest('hex'),after:createHash('sha256').update(classicAfter).digest('hex')});
+  for(const [name,patch] of [['worker.mjs',patchVoiceWorker],['worker-pool.mjs',patchVoicePool],['index.mjs',patchVoiceIndex]]){const before=fs.readFileSync(path.join(root,name)),after=patch(before.toString());fs.writeFileSync(path.join(root,name),after);receipts.push({name,before:createHash('sha256').update(before).digest('hex'),after:createHash('sha256').update(after).digest('hex')});}
+  fs.copyFileSync('lab/realtime-direct-tools/worker-process-owner.mjs',path.join(root,'voice-process-owner.mjs'));
+  fs.mkdirSync(process.env.GPT_LIVE_H5_EVIDENCE_DIR,{recursive:true,mode:0o700});fs.writeFileSync(path.join(process.env.GPT_LIVE_H5_EVIDENCE_DIR,'worker-process-owner-patch.json'),JSON.stringify({candidateId:process.env.VLAB_CANDIDATE_ID,sourceCommit:process.env.GPT_LIVE_H5_SOURCE_COMMIT,root,receipts})+'\n',{mode:0o600,flag:'wx'});
+}
 const worker=config.plugins?.entries?.['vlab-agent-worker-isolation']?.config;
 assert(worker?.workerConfigPath,'Worker configuration unavailable');
 const relative=path.relative(state,worker.workerConfigPath);assert(!relative.startsWith('..'));
 const workerBytes=fs.readFileSync(path.join(process.env.VLAB_SHARED_STATE_DIR,relative),'utf8')
  .replaceAll(process.env.VLAB_SHARED_STATE_DIR,state).replaceAll('/srv/vlab-production-mirror/labs/instances/db91-parity/runtime',runtime);
-const workerConfig=JSON.parse(workerBytes);
+let workerConfig=JSON.parse(workerBytes);
+const workerRouteBefore=backendRouteFlag===undefined?undefined:structuredClone(workerConfig);
+if(backendRouteFlag!==undefined)workerConfig=applyCandidateBackendRouteDiagnostic(workerConfig,{...backendRouteOptions,label:'worker'}).config;
 isolateMakaronModelScope(workerConfig,'worker');
 const workerProviderPolicy=disableCandidateParallelToolCalls(workerConfig,{label:'worker'});
 workerConfig.agents=workerProviderPolicy.config.agents;providerRequestPolicy.push(workerProviderPolicy.diagnostic);
@@ -188,6 +227,20 @@ if(fullTools) {
   workerConfig.plugins.allow=[...new Set([...(workerConfig.plugins.allow??[]),'memory-core','google','web-readability'])];
   workerConfig.tools.web=config.tools?.web??workerConfig.tools.web;
   workerConfig.plugins.load={...(workerConfig.plugins.load??{}),paths:config.plugins?.load?.paths??[]};
+}
+let backendRouteDiagnostic;
+if(backendRouteFlag!==undefined) {
+  // Resolve the nearest existing ancestor before creating any Worker config
+  // directories, so a symlink cannot redirect this diagnostic into shared state.
+  const target=path.resolve(worker.workerConfigPath);let ancestor=target;
+  while(!fs.existsSync(ancestor))ancestor=path.dirname(ancestor);
+  const workerTarget=path.join(fs.realpathSync(ancestor),path.relative(ancestor,target));
+  assert.equal(workerTarget,target,'Candidate backend Worker target has a noncanonical ancestor');
+  const privatePaths=assertCandidateBackendDiagnosticPaths({candidateId:process.env.VLAB_CANDIDATE_ID,
+    candidateRoot:fs.realpathSync(path.dirname(runtime)),runtime:fs.realpathSync(runtime),state:fs.realpathSync(state),
+    configPath:fs.realpathSync(configPath),workerConfigPath:workerTarget});
+  backendRouteDiagnostic={...assertCandidateBackendRouteDiagnosticPair({mainBefore:mainRouteBefore,mainAfter:config,
+    workerBefore:workerRouteBefore,workerAfter:workerConfig},backendRouteOptions),...privatePaths};
 }
 fs.mkdirSync(path.dirname(worker.workerConfigPath),{recursive:true});fs.writeFileSync(worker.workerConfigPath,JSON.stringify(workerConfig,null,2)+'\n',{mode:0o600});
 worker.gatewayConfigPath=configPath;fs.writeFileSync(configPath,JSON.stringify(config,null,2)+'\n',{mode:0o600});
@@ -225,7 +278,7 @@ db.close()`,privateAgentDb],{encoding:'utf8'}));
     fs.mkdirSync(path.dirname(destination),{recursive:true,mode:0o700});
     fs.copyFileSync(source,destination);fs.chmodSync(destination,0o600);copied++;bytes+=fs.statSync(destination).size;
   }
-  toolsEnvironment={schemaPreflight,npmPrivate,pluginIsolation,modelIsolation,providerRequestPolicy,actualMemorySnapshot:true,memorySources:inventory.sourceCount,memoryChunks:inventory.chunkCount,copiedMemoryFiles:copied,missingMemoryFiles:missing,copiedMemoryBytes:bytes,
+  toolsEnvironment={schemaPreflight,npmPrivate,pluginIsolation,modelIsolation,providerRequestPolicy,...(backendRouteDiagnostic?{backendRouteDiagnostic}:{}),actualMemorySnapshot:true,memorySources:inventory.sourceCount,memoryChunks:inventory.chunkCount,copiedMemoryFiles:copied,missingMemoryFiles:missing,copiedMemoryBytes:bytes,
     snapshotSchemaProof:{requiredTablesPresent:inventory.requiredTablesPresent,snapshotAgentId:inventory.snapshotAgentId,schemaSqlSha256:inventory.schemaSqlSha256,memorySourcesSha256:inventory.memorySourcesSha256,
       userVersion:inventory.userVersion,snapshotReadMode:inventory.snapshotReadMode},
     memoryDatabaseBytes:fs.statSync(privateAgentDb).size,plugins:[...allowed],webSearchEnabled:config.tools?.web?.search?.enabled===true,webSearchProvider:config.tools?.web?.search?.provider??null,
@@ -244,7 +297,7 @@ installCandidateOpenAIAuth();
 if(process.env.GPT_LIVE_H5_EVIDENCE_DIR) {
   const evidenceBase=process.env.GPT_LIVE_H5_EVIDENCE_DIR;assert(path.isAbsolute(evidenceBase),'Absolute evidence path required');
   fs.mkdirSync(evidenceBase,{recursive:true,mode:0o700});
-  fs.writeFileSync(path.join(evidenceBase,'bootstrap-isolation.json'),JSON.stringify({candidateId:process.env.VLAB_CANDIDATE_ID,createdAt:new Date().toISOString(),...toolsEnvironment,providerRequestPolicy,mainPluginAllow:config.plugins.allow,workerPluginAllow:workerConfig.plugins.allow,mainEnabledPlugins:Object.keys(config.plugins.entries??{}),workerEnabledPlugins:Object.keys(workerConfig.plugins.entries??{}),nativeVoiceStarted:false},null,2)+'\n',{mode:0o600});
+  fs.writeFileSync(path.join(evidenceBase,'bootstrap-isolation.json'),JSON.stringify({candidateId:process.env.VLAB_CANDIDATE_ID,createdAt:new Date().toISOString(),...toolsEnvironment,...(backendRouteDiagnostic?{backendRouteDiagnostic}:{}),providerRequestPolicy,mainPluginAllow:config.plugins.allow,workerPluginAllow:workerConfig.plugins.allow,mainEnabledPlugins:Object.keys(config.plugins.entries??{}),workerEnabledPlugins:Object.keys(workerConfig.plugins.entries??{}),nativeVoiceStarted:false},null,2)+'\n',{mode:0o600});
 }
 const tracePath=path.join(state,'gateway-stdout.log'),sessionPath=path.join(state,'h5-session.json');
 fs.writeFileSync(tracePath,'',{flag:'wx',mode:0o600});
@@ -277,7 +330,7 @@ try {
     try {
       await new Promise((resolve,reject)=>{
         const timer=setTimeout(()=>reject(Error('Private Gateway connection deadline')),5000);
-        client=new GatewayClient({url:`ws://127.0.0.1:${config.gateway.port}`,token,deviceIdentity:null,clientName:'cli',mode:'cli',scopes:['operator.read','operator.write','operator.admin'],
+        client=new GatewayClient({url:`ws://127.0.0.1:${config.gateway.port}`,token,deviceIdentity:null,clientName:'cli',mode:'cli',scopes:['operator.read','operator.write','operator.admin'],caps:process.env.V_REALTIME_DIRECT_TOOLS==='1'?['voice-direct-tools','tool-events']:undefined,
           onHelloOk:()=>{clearTimeout(timer);resolve();},onConnectError:error=>{clearTimeout(timer);reject(error);},onEvent:event=>bridge?.emit(event)});client.start();
       });
       const catalog=await client.request('talk.catalog',{}, {timeoutMs:15000});
@@ -330,7 +383,24 @@ try {
     if(method==='talk.client.create')fs.writeFileSync(sessionPath,JSON.stringify({sessionKey:params.sessionKey,voiceSessionId:result.voiceSessionId}),{mode:0o600});
     return result;
   }};
-  bridge=createLiveH5Server({gateway:guardedGateway,offer:async(reservation,sdp)=>{
+  let directVoice;
+  if(process.env.V_REALTIME_DIRECT_TOOLS==='1') {
+    const wsModule=await import(`${runtime}/openclaw/node_modules/ws/wrapper.mjs`);
+    const credentialPath=process.env.V_REALTIME_GROK_CREDENTIAL_FILE;
+    let grokKey=process.env.XAI_API_KEY;
+    if(credentialPath){const st=fs.lstatSync(credentialPath);assert(st.isFile()&&(st.mode&0o077)===0,'Grok credential file must be private');grokKey=JSON.parse(fs.readFileSync(credentialPath)).apiKey;}
+    const auditPath=path.join(process.env.GPT_LIVE_H5_EVIDENCE_DIR,'direct-voice-audit.jsonl');
+    fs.writeFileSync(auditPath,'',{mode:0o600,flag:'wx'});
+    fs.writeFileSync(path.join(process.env.GPT_LIVE_H5_EVIDENCE_DIR,'native-environment-isolation.json'),JSON.stringify({agentRuntimeEnvironment,toolEnvironment},null,2)+'\n',{mode:0o600,flag:'wx'});
+    directVoice=createDirectVoiceService({gateway:guardedGateway,wsModule,toolEnvironment,apiKeys:{seeduplex:process.env.VOLCENGINE_REALTIME_API_KEY,grok:grokKey},
+      audit:value=>fs.appendFileSync(auditPath,JSON.stringify({at:Date.now(),...value})+'\n'),
+      onOutputAudio:(id,pcm)=>fs.appendFileSync(path.join(process.env.GPT_LIVE_H5_EVIDENCE_DIR,`provider-${id}.pcm`),pcm,{mode:0o600}),
+      loadContext:async sessionKey=>{
+        const history=await guardedGateway.request('chat.history',{sessionKey,limit:6},{timeoutMs:10000});
+        return JSON.stringify((history.messages??[]).map(m=>({role:m.role,content:m.content}))).slice(-12000);
+      }});
+  }
+  bridge=createLiveH5Server({gateway:guardedGateway,directVoice,offer:async(reservation,sdp)=>{
     const response=await fetch(`http://127.0.0.1:${config.gateway.port}${reservation.offerUrl}`,{method:'POST',headers:{authorization:`Bearer ${reservation.clientSecret}`,'content-type':'application/sdp'},body:sdp,signal:AbortSignal.timeout(25000)});
     assert(response.ok,'Native SDP exchange failed');return response.text();
   }});
@@ -351,11 +421,16 @@ try {
     fs.mkdirSync(path.dirname(experienceReadyPath),{recursive:true,mode:0o700});
     fs.writeFileSync(experienceReadyPath,JSON.stringify(experienceMetadata,null,2)+'\n',{mode:0o600,flag:'wx'});
     experienceReadyWritten=true;
+    if(process.env.DIRECT_VOICE_AUTOMATED==='1'){
+      smoke=spawn(process.execPath,['lab/realtime-direct-tools/native-smoke.mjs'],{env:{...process.env,DIRECT_VOICE_EVIDENCE:path.join(process.env.GPT_LIVE_H5_EVIDENCE_DIR,'native'),DIRECT_VOICE_CLIPS:path.resolve('tmp/voice-reliability/clips'),DIRECT_VOICE_CASES:directCase},stdio:'inherit'});
+      const code=await new Promise((resolve,reject)=>{smoke.once('error',reject);smoke.once('exit',resolve);});
+      assert.equal(code,0,'Original direct voice workflow failed; native evidence retained');experienceOutcome={status:'automation-completed'};return;
+    }
     experienceOutcome=await waitForExperience({durationMs:durationSeconds*1000,gateway,signal:shutdown.signal});
   }
   if(experience)await holdForExperience();else {
   const cases=(process.env.GPT_LIVE_H5_CASE??'workflow').split(',');
-  assert(cases.every(value=>['workflow','cancel','close-reopen','barge-chat','comprehensive-long','comprehensive-controls','comprehensive-queued-steer','call-lifecycle'].includes(value)),'Unknown candidate H5 case');
+  assert(cases.every(value=>['workflow','cancel','close-reopen','barge-chat','comprehensive-long','comprehensive-controls','comprehensive-queued-steer','call-lifecycle','caller-links'].includes(value)),'Unknown candidate H5 case');
   const evidenceBase=process.env.GPT_LIVE_H5_EVIDENCE_DIR;
   assert(evidenceBase&&path.isAbsolute(evidenceBase),'Absolute candidate evidence directory required');
   fs.mkdirSync(evidenceBase,{recursive:true,mode:0o700});
@@ -369,7 +444,7 @@ try {
   const results=[];
   for(const testCase of cases) {
     if(osObserver)assert(osObserver.exitCode===null&&osObserver.signalCode===null,'OS witness must still cover this original native case');
-    const helper=testCase==='call-lifecycle'?'lab/gpt-live-candidate-native/call-lifecycle-smoke.mjs':testCase.startsWith('comprehensive-')?'lab/gpt-live-candidate-native/native-smoke.mjs':testCase==='workflow'?'lab/gpt-live-h5-provenance-smoke.mjs':'lab/gpt-live-h5-control-smoke.mjs';
+    const helper=testCase==='caller-links'?'lab/gpt-live-candidate-native/caller-links-smoke.mjs':testCase==='call-lifecycle'?'lab/gpt-live-candidate-native/call-lifecycle-smoke.mjs':testCase.startsWith('comprehensive-')?'lab/gpt-live-candidate-native/native-smoke.mjs':testCase==='workflow'?'lab/gpt-live-h5-provenance-smoke.mjs':'lab/gpt-live-h5-control-smoke.mjs';
     const clips=process.env.GPT_LIVE_H5_USER_CLIPS_DIR;
     smoke=spawn(process.execPath,[helper],{env:{...process.env,
       GPT_LIVE_H5_CASE:testCase,GPT_LIVE_H5_EVIDENCE_DIR:cases.length>1?path.join(evidenceBase,testCase):evidenceBase,

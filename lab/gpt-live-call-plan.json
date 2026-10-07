@@ -1,5 +1,5 @@
 {
-  "baseRelease": "hotreload-feishu-approvals-v2",
+  "baseRelease": "loopback-requester-sender-v1",
   "files": [
     {
       "source": "lab/release-files/gpt-live-call/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
@@ -15,6 +15,11 @@
       "source": "lab/release-files/gpt-live-call/gpt-live-call-lifecycle.mjs",
       "target": "openclaw/dist/gpt-live-call-lifecycle.mjs",
       "before": null
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/embedded-agent-DaSvA-Yk.js",
+      "target": "openclaw/dist/embedded-agent-DaSvA-Yk.js",
+      "before": "128a61c9e10a47d501ad425345f9f05a88c9dc66b665e32f979d12e29675cd67"
     },
     {
       "source": "lab/release-files/gpt-live-call/gateway-public-stream.mjs",

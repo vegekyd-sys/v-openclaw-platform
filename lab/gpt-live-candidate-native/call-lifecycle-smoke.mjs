@@ -7,14 +7,19 @@ import {spawn,spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {createPrivatePulseMicrophone,captureOwnedBrowserDirectory,observeOwnedChromeProcesses,removeOwnedBrowserDirectory} from './private-pulse.mjs';
-import {BROWSER_PROBE,SNAPSHOT_EXPRESSION} from './browser-probe.mjs';
-import {assessDecodedPlaybackWindow,assessCompletePlaybackWindow,assessIndependentInputConvergence} from './evidence.mjs';
-import {resolveEndCallToolWitness,resolveLifecycleUserTurn,assessLifecycleSpeech,hasLifecyclePlaybackTail,assessLifecycleFarewell,assessProactiveGreeting,assessAutomaticEnd,
-  resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult,readLifecycleHistoryOrRetry} from './call-lifecycle-evidence.mjs';
+import {BROWSER_PROBE,readBoundedProbeSnapshot} from './browser-probe.mjs';
+import {readPrivateChildTranscript} from './read-child-transcript.mjs';
+import {parsePublicProgressDiagnostics} from '../gpt-live-h5-provenance-evidence.mjs';
+import {assessDecodedPlaybackWindow,assessCompletePlaybackWindow,assessIndependentInputConvergence,resolveNativeControlOwner,resolveCanonicalFinalTrace} from './evidence.mjs';
+import {resolveEndCallToolWitness,assessEndCallConsultTerminal,resolveLifecycleUserTurn,assessLifecycleSpeech,hasLifecyclePlaybackTail,assessLifecycleFarewell,assessProactiveGreeting,assessAutomaticEnd,
+  resolveLifecycleMemoryUser,resolveLifecycleMemoryWeb,resolveLifecycleConsultResult,resolveLifecycleCanonicalBody,
+  resolveLifecycleFinalSpeechTurns,hasLifecycleFinalPlaybackTail,assessLifecycleFinalSpeech,readLifecycleHistoryOrRetry,resolveLifecycleValidationProfile,
+  selectLifecycleFinalHistoryBinding,assessLifecycleFinalHistory} from './call-lifecycle-evidence.mjs';
 import {inspectLifecycleValidationTarget,readLifecycleVoiceOwner,preflightLifecycleMedia} from './call-lifecycle-target.mjs';
 
 const validationTarget=process.env.GPT_LIVE_H5_VALIDATION_TARGET??'candidate';
 assert(['candidate','shared','v'].includes(validationTarget)&&process.env.GPT_LIVE_H5_CASE==='call-lifecycle','Explicit lifecycle workflow target required');
+const validationProfile=resolveLifecycleValidationProfile(process.env.GPT_LIVE_H5_LIFECYCLE_PROFILE,validationTarget);
 if(validationTarget==='candidate')assert(process.env.VLAB_CANDIDATE_ID&&process.env.GPT_LIVE_H5_READY==='1','Ready owned Candidate lifecycle workflow required');
 else assert(!process.env.VLAB_CANDIDATE_ID,'Shared/V validation must not impersonate a Candidate');
 const base=process.env.GPT_LIVE_H5_EVIDENCE_DIR,stateRoot=process.env.OPENCLAW_STATE_DIR;
@@ -49,7 +54,8 @@ const scratch=fs.mkdtempSync(validationTarget==='candidate'?path.join(stateRoot,
 const scratchIdentity=captureOwnedBrowserDirectory(scratch,{parent:path.dirname(scratch),prefix:validationTarget==='candidate'?'call-lifecycle-':'scratch-'});
 const chromeProfile=path.join(scratch,'profile');
 const checks=[],owners=new Map(),speechWindows=[],gatewayEvents=[],subscribed=new Set(),coreCheckNames=new Set();
-let pulse,chrome,chromeTemp,chromeTempIdentity,cdp,gateway,lastState,cleanup,browserTimeOrigin;
+const ownedBackendHistoryBindings=[];
+let pulse,chrome,chromeTemp,chromeTempIdentity,cdp,gateway,lastState,snapshotCache,cleanup,browserTimeOrigin,finalHistoryCaptureError;
 function hash(value){return createHash('sha256').update(value).digest('hex')}
 function save(name,value){fs.writeFileSync(path.join(base,name),JSON.stringify(value,null,2)+'\n',{mode:0o600});}
 function check(name,passed,details={}){checks.push({name,passed:Boolean(passed),...details});}
@@ -61,8 +67,12 @@ class CdpClient {
  close(){for(const p of this.pending.values()){clearTimeout(p.timer);p.reject(Error('CDP closed'));}this.pending.clear();this.socket?.close();}
 }
 async function evaluate(expression){const r=await cdp.request('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw Error(r.exceptionDetails.exception?.description??r.exceptionDetails.text);return r.result?.value;}
-async function snapshot(full=false){const state=await evaluate(full?SNAPSHOT_EXPRESSION:SNAPSHOT_EXPRESSION.replace('audioFrames:p.audioFrames,micFrames:p.micFrames','audioFrames:p.audioFrames.slice(-80),micFrames:p.micFrames.slice(-80)').replace('duplex:globalThis.__gptLiveDuplexDiagnostics??null','duplex:null'));
- if(state)state.browserTimeOrigin=browserTimeOrigin;return lastState=state;}
+async function snapshot(full=false){const state=await readBoundedProbeSnapshot(evaluate,{previous:full?null:snapshotCache,
+ onClockRow:row=>{fs.appendFileSync(path.join(base,'browser-page-clocks.jsonl'),JSON.stringify(row)+'\n',{mode:0o600});}});
+ if(state&&state.probeTimeOrigin===snapshotCache?.probeTimeOrigin)assert(state.duplexSnapshotGeneration>snapshotCache.duplexSnapshotGeneration,'Full snapshot cannot reuse an old browser header');
+ snapshotCache=state;
+ if(state)state.browserTimeOrigin=browserTimeOrigin;
+ return lastState=full||!state?state:{...state,audioFrames:state.audioFrames.slice(-80),micFrames:state.micFrames.slice(-80),duplex:null};}
 async function waitFor(predicate,label,max=45000){const until=Math.min(deadline,Date.now()+max);while(Date.now()<until){const s=await snapshot(),r=await predicate(s);if(r)return r;await sleep(200);}throw Error(label+' deadline');}
 async function clickOriginalButton(id){const rect=await evaluate(`(()=>{const e=document.getElementById(${JSON.stringify(id)});if(!e||e.disabled||e.hidden)throw Error('Original button unavailable');e.scrollIntoView({block:'center'});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,width:r.width,height:r.height}})()`);assert(rect.width>0&&rect.height>0);for(const type of ['mousePressed','mouseReleased'])await cdp.request('Input.dispatchMouseEvent',{type,x:rect.x,y:rect.y,button:'left',clickCount:1});}
 async function startCall(){
@@ -117,21 +127,65 @@ async function greeting(pcIndex){
  // that cannot erase an already observed greeting or extend its proof window.
  const state=await snapshot(true),g=assessProactiveGreeting(state,{pcIndex,owner,readyAt:ready.requestedAt,before:proof.quiet.to+1});
  const sameSpeech=g?.speech?.terminal.turnId===proof.terminal.turnId&&g?.speech?.window.from===proof.window.from&&g?.speech?.window.to===proof.quiet.to;
- coreCheck('proactive-greeting-before-any-USER-'+pcIndex,g?.passed&&sameSpeech&&pulse.plays.length===(pcIndex===0?0:3),{ready,greeting:g,USERClipsFed:pulse.plays.length,greetingContentManualReviewRequired:true});
+ const expectedUSERClipsFed=pcIndex===0?0:validationProfile.memoryWebRequired?3:2;
+ coreCheck('proactive-greeting-before-any-USER-'+pcIndex,g?.passed&&sameSpeech&&pulse.plays.length===expectedUSERClipsFed,{ready,greeting:g,USERClipsFed:pulse.plays.length,expectedUSERClipsFed,greetingContentManualReviewRequired:true});
  recordSpeech('proactive-greeting-complete-digital-playback-'+pcIndex,proof);save('greeting-'+pcIndex+'-evidence.json',{owner,ready,greeting:g});return proof;
 }
 function ownedGatewayEvents() {
  const keys=new Set([...owners.values()].map(owner=>owner.sessionKey)),voices=new Set([...owners.values()].map(owner=>owner.voiceSessionId));
  return gatewayEvents.filter(e=>keys.has(e.payload?.sessionKey??e.payload?.session?.key)||voices.has(e.payload?.voiceSessionId));
 }
+async function captureOwnedBackendFinalHistory() {
+ // Optional private diagnostics run only after the original PC has closed.
+ // They cannot postpone close, inject a USER or alter the readback gate.
+ if(validationTarget!=='candidate'||!validationProfile.memoryWebRequired)return;
+ const selection=selectLifecycleFinalHistoryBinding({bindings:ownedBackendHistoryBindings,owners,state:lastState});
+ const receipt={selection,attemptedAt:Date.now(),historyRead:{status:'not-attempted'},privateTranscriptRead:{status:'not-attempted'}};
+ const errorRecord=error=>({message:String(error?.message??error).replace(/(token|secret|api.?key|authorization)[=: ]+[^\s]+/giu,'$1=[redacted]')});
+ let history,transcript,body;
+ if(selection.status==='bound') {
+  const binding=selection.binding;
+  try {
+   const diagnostics=parsePublicProgressDiagnostics(fs.readFileSync(process.env.GPT_LIVE_H5_TRACE_PATH,'utf8'));
+   const nativeOwner=resolveNativeControlOwner({diagnostics,events:lastState.events,tools:lastState.tools,
+     backendRunId:binding.runId,voiceSessionId:binding.voiceSessionId,pcIndex:binding.pcIndex});
+   const canonical=resolveCanonicalFinalTrace(diagnostics,nativeOwner);
+   body=resolveLifecycleCanonicalBody(ownedGatewayEvents(),{canonical,sessionKey:binding.sessionKey,runId:binding.runId});
+  } catch(error){receipt.canonicalObservationError=errorRecord(error);}
+  try {
+   history=await gateway.request('chat.history',{sessionKey:binding.sessionKey,limit:120},{timeoutMs:10000});
+   const observedAt=Date.now();receipt.historyRead={status:'success',observedAt};
+  } catch(error){receipt.historyRead={status:'unavailable',completedAt:Date.now(),...errorRecord(error)};}
+  if(receipt.historyRead.status==='success')save('memory-web-owned-backend-final-history.json',{
+   binding,observedAt:receipt.historyRead.observedAt,historyObservationPhase:'post-original-close',history});
+  if(history?.sessionKey===binding.sessionKey&&history?.sessionId===binding.sessionId)try {
+   transcript=readPrivateChildTranscript({state:stateRoot,candidateData:process.env.VLAB_CANDIDATE_DATA,
+     sessionId:binding.sessionId,runId:binding.runId,requestedSessionKey:binding.sessionKey,timeoutMs:5000});
+   receipt.privateTranscriptRead={status:'success',observedAt:transcript.observedAt};
+  } catch(error){receipt.privateTranscriptRead={status:'unavailable',completedAt:Date.now(),...errorRecord(error)};}
+  if(receipt.privateTranscriptRead.status==='success')save('memory-web-owned-backend-final-transcript.json',transcript);
+ }
+ receipt.completedAt=Date.now();
+ receipt.assessment=assessLifecycleFinalHistory({selection,history,transcript,body,observedAt:receipt.completedAt});
+ save('memory-web-owned-backend-final-history-receipt.json',receipt);
+}
 async function inputConverged(pcIndex,input,label) {
  // This runs after the complete USER and actual reply have been observed.
  // Missing historical input samples cannot be repaired by repeatedly copying
  // the recording. Keep this independent strict FAIL and still observe the
  // newly requested lifecycle features; the overall receipt remains failed.
- const s=await snapshot(true),lastSpeechAt=s.micFrames.filter(f=>f.pcIndex===pcIndex&&f.at>=input.startedAt&&f.at<=input.completedAt&&f.rms>.02).at(-1)?.at;
- const proof=Number.isFinite(lastSpeechAt)?assessIndependentInputConvergence({events:s.events,micFrames:s.micFrames,pcIndex,input,lastSpeechAt,observedAt:Date.now()}):null;
- check(label,Boolean(proof),{proof,input,lastSpeechAt:lastSpeechAt??null,strictFailurePreserved:true,
+ const s=await snapshot(true),microphone=(s?.micFrames??[]).filter(f=>f.pcIndex===pcIndex);
+ const lastSpeechAt=microphone.filter(f=>f.at>=input.startedAt&&f.at<=input.completedAt&&f.rms>.02).at(-1)?.at;
+ // Frozen rows and their freshness share the browser's header clock. Paged
+ // transfer duration is recorded separately; it cannot age those same rows.
+ const observedAt=s?.snapshotObservedAt,latestMicAt=microphone.at(-1)?.at;
+ const observation={observedAt:observedAt??null,source:'browser-wall-at-frozen-prefix-header',scope:'validation-clip-before-next-USER-injection',
+   latestMicrophoneAt:latestMicAt??null,latestMicrophoneAgeMs:Number.isFinite(observedAt)&&Number.isFinite(latestMicAt)?observedAt-latestMicAt:null,
+   collectorCompletedAt:s?.snapshotCompletedAt??null,collectorCompletedClock:s?.snapshotCompletedClock??null,
+   collectionLatencyMs:s?.snapshotCollectionLatencyMs??null,snapshotGeneration:s?.duplexSnapshotGeneration??null};
+ const proof=Number.isFinite(lastSpeechAt)&&Number.isFinite(observedAt)&&Number.isFinite(observation.latestMicrophoneAgeMs)&&observation.latestMicrophoneAgeMs>=0?
+   assessIndependentInputConvergence({events:s.events,micFrames:microphone,pcIndex,input,lastSpeechAt,observedAt}):null;
+ check(label,Boolean(proof),{proof,input,lastSpeechAt:lastSpeechAt??null,observation,strictFailurePreserved:true,
    failureDoesNotSkipRemainingLifecycleObservations:true});return proof;
 }
 async function basicTools(pcIndex) {
@@ -154,6 +208,8 @@ async function basicTools(pcIndex) {
   save('memory-web-owned-backend-history.json',{sessionKey:owner.sessionKey,observedAt:Date.now(),history:lastHistory});
   return resolveLifecycleMemoryWeb({events:ownedGatewayEvents(),history:lastHistory,sessionKey:owner.sessionKey,memoryQuery,after:input.row.startedAt});
  },'Actual nonempty memory result before owned web search and result',120000);
+ ownedBackendHistoryBindings.push(Object.freeze({pcIndex,voiceSessionId:owner.voiceSessionId,sessionKey:chain.sessionKey,
+   sessionId:lastHistory?.sessionId??null,runId:chain.runId,userTurnId:user.turnId,inputStartedAt:input.row.startedAt}));
  coreCheck('actual-owned-memory-result-before-web-call',chain.sequentialExecutionVerified===true,{memoryCallId:chain.memory.id,webCallId:chain.web.id,
   runId:chain.runId,sessionKey:chain.sessionKey,memoryResultAt:chain.memoryResult.at,webCallAt:chain.web.calledAt,webResultAt:chain.webResult.at});
  const allowed=new Set(['memory_search','memory_get','web_search','web_fetch','read','read_file']);
@@ -161,13 +217,28 @@ async function basicTools(pcIndex) {
  check('requested-read-only-memory-web-tool-scope',unexpected.length===0,{unexpectedTools:unexpected.map(p=>({name:p.name,id:p.id})),requestedWrites:false,requestedMessages:false});
  const host=await waitFor(s=>resolveLifecycleConsultResult(s,{pcIndex,voiceSessionId:owner.voiceSessionId,userTurnId:user.turnId,toolChain:chain,after:input.row.startedAt}),
   'Original native USER delegation and real owned consult result',30000);
- // One actual native turn may speak a Memory stage before the Web result and
- // finish with both results. Preserve that complete turn; require its terminal
- // to follow the actual Web result rather than clipping its earlier prefix.
- const speech=await waitSpeech(pcIndex,input.row.startedAt,'Native spoken Memory/Web result after actual backend completion',Infinity,{terminalAfter:chain.webResult.at});
- coreCheck('actual-memory-web-backend-result-returned-in-native-speech',Boolean(host&&speech),{host,speech,semanticResultIndependentReviewRequired:true});
+ // The native protocol has no business-final event. A progress turn or one
+ // fragmented final can end after Web returns. Bind the real complete backend
+ // body and all its final chunks, then wait for that entire body in the original
+ // native turn sequence plus the unchanged real 750ms playback tail before
+ // injecting another USER. Correct paraphrases may remain unverified by this
+ // conservative readiness gate; independent content review is still required.
+ let finalBody;
+ const speech=await waitFor(async s=>{
+  const diagnostics=parsePublicProgressDiagnostics(fs.readFileSync(process.env.GPT_LIVE_H5_TRACE_PATH,'utf8'));
+  const nativeOwner=resolveNativeControlOwner({diagnostics,events:s.events,tools:s.tools,backendRunId:chain.runId,
+    voiceSessionId:owner.voiceSessionId,pcIndex});
+  const canonical=resolveCanonicalFinalTrace(diagnostics,nativeOwner);
+  finalBody=resolveLifecycleCanonicalBody(ownedGatewayEvents(),{canonical,sessionKey:owner.sessionKey,runId:chain.runId});
+  const params={pcIndex,body:finalBody,host,userTurnId:user.turnId};
+  const ready=resolveLifecycleFinalSpeechTurns(s,params);
+  if(!ready||!hasLifecycleFinalPlaybackTail(s,params))return null;
+  return assessLifecycleFinalSpeech(await snapshot(true),params);
+ },'Complete canonical Memory/Web body in native speech and actual playback tail',45000);
+ coreCheck('actual-memory-web-backend-result-returned-in-native-speech',Boolean(host&&speech?.completeBodyMatched),{host,finalBody,speech,
+   readinessMatchesCompleteBodyConservatively:true,semanticResultIndependentReviewRequired:true});
  recordSpeech('memory-web-result-complete-digital-playback',speech);
- save('memory-web-evidence.json',{input:input.row,user,owner,chain,host,speech,semanticResultIndependentReviewRequired:true,
+ save('memory-web-evidence.json',{input:input.row,user,owner,chain,host,finalBody,speech,semanticResultIndependentReviewRequired:true,
   exactFactSource:{memoryResult:chain.memoryResult.completeRawResult,webResult:chain.webResult.completeRawResult},summaryIsNotSemanticAcceptance:true});
  await inputConverged(pcIndex,input.row,'memory-web-independent-USER-input-convergence');
 }
@@ -192,7 +263,9 @@ async function runLifecycle(){
  coreCheck('complete-negative-hangup-keeps-same-call',keepState.pcStates[pcIndex]==='connected'&&keepState.callState==='connected'&&keepBadTools.length===0&&keepBadClose.length===0,{keepUser,keepReply,keepBadTools,keepBadClose});
  recordSpeech('keep-call-model-reply-complete-digital-playback',keepReply);save('keep-call-evidence.json',{input:keep.row,keepUser,keepReply,keepState});
  await inputConverged(pcIndex,keep.row,'independent-full-USER-input-convergence');
- await basicTools(pcIndex);
+ if(validationProfile.memoryWebRequired)await basicTools(pcIndex);
+ else save('narrow-control-diagnostic-scope.json',{validationProfile,at:Date.now(),memoryWebExecuted:false,
+  priorMemoryWebFAILPreserved:true,combinedReleaseAccepted:false});
  const end=play('end-call');await end.done;assert.equal(end.row.exitCode,0);
  const expectedEndText=fs.readFileSync(path.join(clips,'end-call.txt'),'utf8');
  const endUser=await waitFor(s=>resolveLifecycleUserTurn(s.events,{pcIndex,after:end.row.startedAt,intent:'end',expectedText:expectedEndText}),
@@ -236,12 +309,15 @@ async function runLifecycle(){
    requestId:tool.requestId,backendRunId:tool.backendRunId??null,historyObservedAt:endHistory?.observedAt??null,
    originalCloseRequestedAt:close.requestedAt,newUSERMustInvalidateOldRequest:true});
  assert(finalTool,'End-call causal witness invalidated before the original close');tool=finalTool;
+ const consultTerminal=assessEndCallConsultTerminal(state,{tool,before:close.requestedAt});
+ save('model-end-call-consult-terminal-evidence.json',consultTerminal);
+ coreCheck('end-call-owned-consult-settles-once-without-error-before-original-close',consultTerminal.passed,consultTerminal);
  const farewell=assessLifecycleFarewell(state,{pcIndex,tool,before:close.requestedAt});
  const automatic=assessAutomaticEnd(state,{pcIndex,owner,tool,farewell}),capture=await readCaptureClosed(pcIndex);
  coreCheck('automatic-close-after-real-farewell-and750ms-tail',automatic?.passed&&capture.captureEnded&&capture.pcClosed,{automatic,capture,closed:true,manualButtonUsed:false,farewellContentManualReviewRequired:true});
  check('independent-farewell750ms-RTP-tail',automatic?.strictTailPassed===true,{quiet:farewell?.quiet??null,appDrain:automatic?.appDrain??null,
   originalAppDrainIsNotIndependentRTPProof:true});
- recordSpeech('farewell-complete-digital-playback',farewell);save('model-end-call-evidence.json',{input:end.row,endUser,tool,farewell,automatic,capture,appDiagnostics:state.duplex});
+ recordSpeech('farewell-complete-digital-playback',farewell);save('model-end-call-evidence.json',{input:end.row,endUser,tool,consultTerminal,farewell,automatic,capture,appDiagnostics:state.duplex});
  // A failed close/farewell does not justify a third or replacement paid call.
  assert(automatic?.passed&&capture.captureEnded&&capture.pcClosed,'Automatic lifecycle core evidence missing; no replacement call');
  const reopened=await startCall();coreCheck('new-owner-redial-after-model-close',owners.get(reopened).voiceSessionId!==owner.voiceSessionId&&owners.get(reopened).sessionKey!==owner.sessionKey,{previousOwner:owner,newOwner:owners.get(reopened)});
@@ -283,12 +359,14 @@ finally {
   check('complete-raw-observation-through-original-close',Boolean(postClose)&&[...owners.values()].every(owner=>postClose.api.some(a=>a.route==='/api/close'&&a.status===200&&a.request?.voiceSessionId===owner.voiceSessionId)),{postCloseFullAvailable:Boolean(postClose)});
   save('browser-native-evidence.json',lastState);save('gateway-tool-events.json',ownedGatewayEvents());save('actual-input-clip-schedule.json',pulse?.plays??[]);
   await evaluate('globalThis.__candidateLiveProbe.dispose()').catch(()=>{});
-  const recordings=await evaluate(`(async()=>{const p=globalThis.__candidateLiveProbe,rows=[];for(const recording of p.recordings){const blob=new Blob(recording.chunks,{type:'audio/webm;codecs=opus'}),bytes=new Uint8Array(await blob.arrayBuffer());let binary='';for(let at=0;at<bytes.length;at+=16384)binary+=String.fromCharCode(...bytes.subarray(at,at+16384));rows.push({pcIndex:recording.pcIndex,startedAt:recording.startedAt,blobBytes:blob.size,base64:btoa(binary),error:recording.error??null});}return rows})()`).catch(()=>[]);
+  const recordings=await evaluate(`(async()=>{const p=globalThis.__candidateLiveProbe,rows=[];for(const recording of p.recordings){const blob=new Blob(recording.chunks,{type:'audio/webm;codecs=opus'}),bytes=new Uint8Array(await blob.arrayBuffer());let binary='';for(let at=0;at<bytes.length;at+=16384)binary+=String.fromCharCode(...bytes.subarray(at,at+16384));rows.push({pcIndex:recording.pcIndex,startedAt:recording.startedAt,blobBytes:blob.size,base64:btoa(binary),error:recording.error??null,recorderLifecycle:recording.lifecycle??null});}return rows})()`).catch(()=>[]);
+  const recordingMetadata=recordings.map(({base64,...metadata})=>metadata);save('native-recordings-metadata.json',{recordings:recordingMetadata,nominalPCMMappingUnchanged:true});
+  check('original-native-receiver-recording-finalization',recordings.length===owners.size&&recordings.length>0&&recordings.every(row=>row.recorderLifecycle?.finalization?.passed===true&&!row.error),{recordings:recordingMetadata,requiresActualNativeStopAndFinalData:true});
   const decoded=[];
   for(const row of recordings){const prefix='native-'+row.pcIndex,webm=path.join(base,prefix+'.webm');fs.writeFileSync(webm,Buffer.from(row.base64,'base64'),{mode:0o600});
    const ff=spawnSync(media.executables.ffmpeg,['-v','error','-i',webm,'-f','s16le','-ar','48000','-ac','1','pipe:1'],{maxBuffer:80*1024**2});
    if(ff.status===0)fs.writeFileSync(path.join(base,prefix+'.pcm'),ff.stdout,{mode:0o600});
-   decoded.push({pcIndex:row.pcIndex,startedAt:row.startedAt,blobBytes:row.blobBytes,decodeSuccess:ff.status===0,pcmBytes:ff.stdout?.length??0,pcmSha256:ff.status===0?hash(ff.stdout):null,durationSeconds:(ff.stdout?.length??0)/96000});
+   decoded.push({pcIndex:row.pcIndex,startedAt:row.startedAt,blobBytes:row.blobBytes,error:row.error??null,recorderLifecycle:row.recorderLifecycle,decodeSuccess:ff.status===0,pcmBytes:ff.stdout?.length??0,pcmSha256:ff.status===0?hash(ff.stdout):null,durationSeconds:(ff.stdout?.length??0)/96000});
   }
   check('original-native-receiver-recorded-PCM',decoded.length===owners.size&&decoded.length>0&&decoded.every(d=>d.decodeSuccess&&d.pcmBytes>0),{decoded});
   for(const {name,window} of speechWindows){const recording=decoded.find(d=>d.pcIndex===window.pcIndex&&d.decodeSuccess),pcm=recording&&fs.readFileSync(path.join(base,'native-'+window.pcIndex+'.pcm'));
@@ -300,8 +378,13 @@ finally {
    const frames=(lastState?.micFrames??[]).filter(f=>f.pcIndex===pcIndex&&f.at>=from&&f.at<to),gaps=frames.slice(1).flatMap((f,i)=>f.at-frames[i].at>100?[{from:frames[i].at,to:f.at}]:[]);
    return {pcIndex,from,to,initialTrackId:initial?.trackId,frameCount:frames.length,gaps,passed:Number.isFinite(to)&&frames.length>0&&frames[0].at-from<=100&&to-frames.at(-1).at<=100&&gaps.length===0&&frames.every(f=>f.trackState==='live'&&f.trackEnabled===true&&f.trackId===initial?.trackId&&f.senderTrackId===initial?.trackId)};});
   check('continuous-original-processed-microphone-through-close',captureWindows.length>0&&captureWindows.every(w=>w.passed),{captureWindows});
+  check('original-browser-observer-no-capture-errors',Array.isArray(lastState?.observerErrors)&&lastState.observerErrors.length===0,{observerErrors:lastState?.observerErrors??null});
   check('default-Chrome-autoplay-no-play-rejection',Array.isArray(lastState?.playRejections)&&lastState.playRejections.length===0,{playRejections:lastState?.playRejections});
  }
+ // Success and failed-readback paths both reach this point only after original
+ // close and media export. Preserve the early history; read this same run once.
+ try {await captureOwnedBackendFinalHistory();}
+ catch(error){finalHistoryCaptureError={message:String(error?.message??error).replace(/(token|secret|api.?key|authorization)[=: ]+[^\s]+/giu,'$1=[redacted]')};}
  cdp?.close();gateway?.stop();let chromeProcesses,chromeProcessError;
  const inspectChrome=()=>chromeProcesses=observeOwnedChromeProcesses({profile:chromeProfile,rootPid:chrome?.pid,knownProcesses:chromeProcesses?.knownProcesses??[]});
  try{inspectChrome();}catch(error){chromeProcessError=error;}
@@ -329,6 +412,7 @@ finally {
  catch(error){check('private-scratch-cleanup',false,{code:error.code??null,message:error.message});}
  cleanup.privateScratchRemoved=!fs.existsSync(scratch);
  check('owned-browser-and-scratch-cleanup',cleanup.chromeExited&&cleanup.chromeProcessesExited&&cleanup.chromePrivateTempRemoved&&cleanup.privateScratchRemoved);
+ if(finalHistoryCaptureError)check('owned-backend-final-history-observer-error',false,finalHistoryCaptureError);
  check('actual-'+validationTarget+'-config-unchanged',hash(fs.readFileSync(configPath))===configSha);
  if(validationTarget!=='candidate') {
   try {const after=await inspectLifecycleValidationTarget({target:validationTarget,proofPath:process.env.GPT_LIVE_H5_TARGET_PROOF,configPath,corePath:runtime,stateRoot,url});
@@ -341,11 +425,16 @@ finally {
  const lifecycleNames=new Set(['proactive-greeting-complete-digital-playback-0','proactive-greeting-complete-digital-playback-1','keep-call-model-reply-complete-digital-playback','farewell-complete-digital-playback']);
  const lifecycleDecoded=wholeDecoded.filter(c=>lifecycleNames.has(c.name.replace(/-whole-decoded-PCM$/u,'')));
  const toolSpeech=wholeDecoded.find(c=>c.name==='memory-web-result-complete-digital-playback-whole-decoded-PCM');
- const summary={case:'call-lifecycle',validationTarget,validationId:targetInspection?.proof.validationId??null,candidateId:validationTarget==='candidate'?process.env.VLAB_CANDIDATE_ID:null,
+ const summary={case:'call-lifecycle',validationTarget,validationProfile,validationId:targetInspection?.proof.validationId??null,candidateId:validationTarget==='candidate'?process.env.VLAB_CANDIDATE_ID:null,
   sourceCommit:process.env.GPT_LIVE_H5_SOURCE_COMMIT??targetInspection?.proof.sourceCommit??null,h5AppSha256:process.env.GPT_LIVE_H5_APP_SHA,model:'gpt-live-1-codex',checks,passed:checks.length>0&&checks.every(c=>c.passed),functionalCore,
   coreLifecycleEvidenceComplete:functionalCore.every(c=>c.passed)&&lifecycleDecoded.length===4&&lifecycleDecoded.every(c=>c.segment?.passed===true),
   coreMemoryWebEvidenceComplete:checks.find(c=>c.name==='actual-owned-memory-result-before-web-call')?.passed===true&&checks.find(c=>c.name==='actual-memory-web-backend-result-returned-in-native-speech')?.passed===true&&toolSpeech?.segment?.passed===true,
-  strictCompleteDigitalPlayback:wholeDecoded.length===5&&wholeDecoded.every(c=>c.passed)&&checks.find(c=>c.name==='independent-farewell750ms-RTP-tail')?.passed===true,
+  strictCompleteDigitalPlayback:validationProfile.memoryWebRequired&&wholeDecoded.length===5&&wholeDecoded.every(c=>c.passed)&&checks.find(c=>c.name==='independent-farewell750ms-RTP-tail')?.passed===true,
+  scopedLifecycleDigitalPlayback:lifecycleDecoded.length===4&&lifecycleDecoded.every(c=>c.passed)&&checks.find(c=>c.name==='independent-farewell750ms-RTP-tail')?.passed===true,
+  coverage:{memoryWeb:{executed:validationProfile.memoryWebRequired&&checks.some(c=>c.name==='actual-owned-memory-result-before-web-call'),
+   covered:validationProfile.memoryWebRequired&&checks.find(c=>c.name==='actual-memory-web-backend-result-returned-in-native-speech')?.passed===true&&toolSpeech?.segment?.passed===true,
+   reason:validationProfile.memoryWebRequired?'combined lifecycle scenario':'end-only profile; prior Memory/Web failures remain'}},
+  combinedReleaseAccepted:false,
   continuousMicrophoneStrictPassed:checks.find(c=>c.name==='continuous-original-processed-microphone-through-close')?.passed===true,
   contentIndependentReviewRequired:true,productAccepted:false,owners:[...owners].map(([pcIndex,owner])=>({pcIndex,...owner})),syntheticUSERPCM:true,syntheticAssistantEvents:false,syntheticBackendResults:false,digitalPlaybackAcceptanceOnly:true,physicalEchoAccepted:false,humanListeningAccepted:false,cleanup,evidenceDir:base};
  save('receipt.json',summary);console.log(JSON.stringify({nativeCallLifecycle:{candidateId:summary.candidateId,passed:summary.passed,checks:checks.map(({name,passed})=>({name,passed})),evidenceDir:base}}));if(!summary.passed)process.exitCode=1;

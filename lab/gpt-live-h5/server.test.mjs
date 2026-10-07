@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createLiveH5Server } from "./server.mjs";
 import { transcriptEvent } from "./events.mjs";
+import { GPT_LIVE_PERSONAL_SESSION_KEY } from "./personal-session.mjs";
 
 async function fixture(t, overrides = {}) {
   const calls = [];
@@ -26,7 +27,7 @@ test("exact native model reservation and SDP proxy keep credentials off the brow
   const created = await f.request("session"); assert.equal(created.status, 200);
   const result = await created.json(); assert.deepEqual(result, { voiceSessionId: "voice-private", model: "gpt-live-1-codex" });
   assert.equal(f.calls[0].params.model, "gpt-live-1-codex"); assert.equal(f.calls[0].params.transport, "webrtc");
-  assert.match(f.calls[0].params.sessionKey, /^agent:makaron:explicit:gpt-live-h5-experiment-/u);
+  assert.equal(f.calls[0].params.sessionKey, GPT_LIVE_PERSONAL_SESSION_KEY);
   const answer = await f.request("offer", { voiceSessionId: result.voiceSessionId, sdp: "v=0\r\noffer" });
   assert.deepEqual(await answer.json(), { sdp: "v=0\r\nanswer" });
   assert.equal(f.offers[0].session.clientSecret, "never-expose-test-secret");
@@ -131,7 +132,7 @@ test('pickup readiness uses an exact owned host operation without exposing broke
   assert.equal(invocation.params.voiceSessionId,'voice-private');
   assert.deepEqual(invocation.params.args,{action:'ready'});
   assert.match(invocation.params.callId,/^host-ready-/u);
-  assert.match(invocation.params.sessionKey,/^agent:makaron:explicit:/u);
+  assert.equal(invocation.params.sessionKey, GPT_LIVE_PERSONAL_SESSION_KEY);
   assert.equal((await f.request('ready',{voiceSessionId:'old'})).status,409);
   assert.equal(f.calls.filter(row=>row.method==='talk.client.toolCall').length,1);
 });
@@ -179,4 +180,71 @@ test('owned backend model end receipts preserve real tool/run and native identit
   assert.equal(value.backendRunId, 'talk-realtime-consult:actual:parent');
   assert.doesNotMatch(body, /private caller|secret|hidden|not-for-browser/u);
   stop.abort(); await reader.cancel().catch(() => {});
+});
+
+test('SSE avatar activity belongs to the current voice and excludes tool arguments',async t=>{
+  const f=await fixture(t);await f.request('session');
+  const stop=new AbortController();
+  const response=await fetch(f.url+'/api/events',{headers:{cookie:f.cookie},signal:stop.signal});
+  const reader=response.body.getReader();await reader.read();
+  const emit=(voice,name)=>f.bridge.emit({event:'talk.event',payload:{voiceSessionId:voice,talkEvent:{type:'tool.call',callId:'visual',payload:{name,args:{query:'private-avatar-query'},result:'private-result'}}}});
+  emit('foreign','web_search');emit('voice-private','memory_search');
+  const received=new TextDecoder().decode((await reader.read()).value);
+  assert.match(received,/"activity":"memory"/u);
+  assert.doesNotMatch(received,/foreign|private-avatar-query|private-result|args|web/u);
+  stop.abort();await reader.cancel().catch(()=>{});
+});
+
+test('all new avatar assets and modules are served by the frozen whitelist',async t=>{
+  const f=await fixture(t);
+  for(const name of ['avatar.mjs','avatar-state.mjs',...['idle','memory','web','calendar','background'].map(s=>`assets/v-signal-${s}-20261006${s === 'idle' ? '' : '-r2'}.png`)]){
+    const r=await fetch(`${f.url}/${name}`);assert.equal(r.status,200,name);
+    const bytes=new Uint8Array(await r.arrayBuffer());assert.ok(bytes.length>0);
+    assert.match(r.headers.get('content-type'),name.endsWith('.png')?/image\/png/u:/javascript/u);
+  }
+  assert.equal((await fetch(f.url+'/assets/not-whitelisted.png',{headers:{cookie:f.cookie}})).status,404);
+});
+test('backend events reach direct voice even when they are not GPT Live talk events',async()=>{
+ const received=[];const bridge=createLiveH5Server({gateway:{request(){}},directVoice:{handleEvent:e=>received.push(e),dispose:async()=>{}},offer:async()=>''});
+ const e={event:'agent',payload:{runId:'voice-own',stream:'tool'}};bridge.emit(e);assert.deepEqual(received,[e]);await bridge.dispose();
+});
+
+test('backend document SSE belongs to exact active voice and carries original Markdown without unrelated fields',async t=>{
+ const f=await fixture(t);await f.request('session');const stop=new AbortController();
+ const response=await fetch(f.url+'/api/events',{headers:{cookie:f.cookie},signal:stop.signal}),reader=response.body.getReader();await reader.read();
+ const text='## 原始方案\n| 日期 | 条件 |\n| --- | --- |\n| 2028-09 | 尚未核实 |';
+ const emit=voiceSessionId=>f.bridge.emit({event:'talk.event',payload:{voiceSessionId,talkEvent:{type:'tool.result',callId:'doc',payload:{name:'openclaw_backend_result',text,secret:'不应进入浏览器'}}}});
+ emit('foreign');emit('voice-private');const body=new TextDecoder().decode((await reader.read()).value),value=JSON.parse(body.slice(body.indexOf('data: ')+6).trim());
+ assert.deepEqual(value,{voiceSessionId:'voice-private',type:'backend.result',callId:'doc',text,revision:1});assert(!body.includes('foreign'));assert(!body.includes('secret'));stop.abort();await reader.cancel().catch(()=>{});
+});
+
+test('authenticated presentation snapshot recovers pending work and full document without an SSE connection',async t=>{
+ const f=await fixture(t);await f.request('session');
+ const read=async(after=0)=>{
+  const r=await fetch(f.url+`/api/presentation?after=${after}`,{headers:{cookie:f.cookie}});assert.equal(r.status,200);return r.json();
+ };
+ assert.equal((await fetch(f.url+'/api/presentation')).status,401);
+ const emit=(type,callId,payload,voiceSessionId='voice-private')=>f.bridge.emit({event:'talk.event',payload:{voiceSessionId,talkEvent:{type,callId,payload}}});
+ emit('tool.call','foreign',{name:'web_search'},'foreign-voice');
+ emit('tool.call','run',{name:'openclaw_agent_consult',args:{secret:'private query'}});
+ let view=await read();assert.equal(view.revision,1);assert.deepEqual(view.pending.map(x=>x.callId),['run']);assert(!JSON.stringify(view).includes('private query'));
+ const text='## 完整原始报告\n'+ '日期和条件不变。'.repeat(500);
+ emit('tool.result','run',{name:'openclaw_agent_consult'});emit('tool.result','doc',{name:'openclaw_backend_result',text});
+ view=await read(1);assert.equal(view.pending.length,0);assert.equal(view.documents[0].text,text);assert.equal(view.revision,3);
+ assert.equal((await read(3)).documents.length,0);
+ emit('tool.result','end',{name:'openclaw_end_call',requestId:'end',originUserTurnId:'u',closeAfterPlayback:true,secret:'excluded'});
+ view=await read(3);assert.equal(view.controls.length,1);assert.equal(view.controls[0].closeAfterPlayback,true);assert(!JSON.stringify(view.controls).includes('excluded'));
+ const controlsAfter=await fetch(f.url+'/api/presentation?controlsAfter=4',{headers:{cookie:f.cookie}});assert.equal((await controlsAfter.json()).controls.length,0);
+ await f.request('close',{voiceSessionId:'voice-private'});assert.equal((await read()).voiceSessionId,null);
+ await f.request('session');view=await read();assert.equal(view.revision,0);assert.equal(view.documents.length,0);
+});
+
+test('event stream flushes headers and remains open for delayed events',async t=>{
+ const f=await fixture(t);await f.request('session');const stop=new AbortController();
+ const response=await fetch(f.url+'/api/events',{headers:{cookie:f.cookie},signal:stop.signal});
+ assert(response.headers.get('cache-control').includes('no-transform'));assert.equal(response.headers.get('x-accel-buffering'),'no');
+ const reader=response.body.getReader();await reader.read();
+ await new Promise(resolve=>setTimeout(resolve,25));
+ f.bridge.emit({event:'talk.event',payload:{voiceSessionId:'voice-private',talkEvent:{type:'tool.call',callId:'late',payload:{name:'web_search'}}}});
+ assert(new TextDecoder().decode((await reader.read()).value).includes('late'));stop.abort();await reader.cancel().catch(()=>{});
 });

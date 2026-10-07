@@ -8,7 +8,7 @@
 //
 // What it does, all in this run's private copies:
 //   - a private Gateway on V's shared VLab configuration (channels and cron off),
-//     under --cpu-prof, with OPENCLAW_DIAGNOSTICS=codex.profiler
+//     under --cpu-prof, with OPENCLAW_DIAGNOSTICS=profiler (Codex and reply/agent-turn timings)
 //   - marks between the awaited stages of runCodexAppServerAttempt and a timer
 //     on every Codex app-server RPC, both patched into the private plugin copy
 //   - vcodex turns (gpt-6.1-sol via the codex runtime) on a new session and on a
@@ -176,6 +176,10 @@ const aliases = Object.entries({ ...config.agents.defaults.models, ...makaron.mo
 assert.equal(aliases.length, 1, `shared config /${ALIAS} does not resolve to one model`);
 const [[MODEL, aliasRow]] = aliases;
 assert.equal(aliasRow.agentRuntime?.id, "codex", `/${ALIAS} does not run on the codex runtime`);
+// `agent --model` is checked against modelPolicy.allow, which Feishu aliases bypass; shared VLab's
+// list lacks the DeepSeek flash ref behind /vds, so admit the driven model in this private copy
+const allow = config.agents.defaults.modelPolicy?.allow;
+if (Array.isArray(allow) && !allow.includes(MODEL)) allow.push(MODEL);
 const workerPlugin = config.plugins.entries?.["vlab-agent-worker-isolation"]?.config;
 if (workerPlugin?.workerConfigPath) {
   Object.assign(workerPlugin, { minWorkers: 1, maxWorkers: 1, warmSpareWorkers: 0 });
@@ -282,12 +286,15 @@ function buildPrivateDatabase(sessionIds) {
 const built = buildPrivateDatabase([bigSessionId]);
 
 // ---- private Gateway under the CPU profiler ----
-const env = { ...process.env, OPENCLAW_GATEWAY_PORT: String(port), OPENCLAW_DIAGNOSTICS: "codex.profiler" };
+// "profiler" turns on codex.profiler and reply.profiler; both only log stages over 500 ms / turns over 1 s
+const env = { ...process.env, OPENCLAW_GATEWAY_PORT: String(port), OPENCLAW_DIAGNOSTICS: "profiler" };
+// extra Node flags for the Gateway only, e.g. GATEWAY_NODE_FLAGS=--experimental-async-context-frame
+const GATEWAY_NODE_FLAGS = (process.env.GATEWAY_NODE_FLAGS ?? "").split(/\s+/u).filter(Boolean);
 const lines = [];
 let gateway, gatewayStarts = 0;
 function startGateway() {
   gatewayStarts += 1;
-  gateway = spawn(process.execPath, ["--max-old-space-size=8192", "--cpu-prof", `--cpu-prof-dir=${PROFILE_DIR}`, "--cpu-prof-interval=1000", cli, "gateway", "--port", String(port)], { env, stdio: ["ignore", "pipe", "pipe"] });
+  gateway = spawn(process.execPath, [...GATEWAY_NODE_FLAGS, "--max-old-space-size=8192", "--cpu-prof", `--cpu-prof-dir=${PROFILE_DIR}`, "--cpu-prof-interval=1000", cli, "gateway", "--port", String(port)], { env, stdio: ["ignore", "pipe", "pipe"] });
   for (const s of [gateway.stdout, gateway.stderr]) {
     s.setEncoding("utf8");
     s.on("data", (chunk) => {
@@ -340,17 +347,16 @@ async function turn(sessionKey, label) {
 const parseTagged = (tag) => lines.filter((l) => l.line.includes(`[${tag}] `)).map((l) => {
   try { return JSON.parse(l.line.slice(l.line.indexOf(`[${tag}] `) + tag.length + 3)); } catch { return null; }
 }).filter(Boolean);
-function trajectoryFor(sessionKey, since) {
+function trajectoryFor(sessionKey, since, runId) {
   const d = new DatabaseSync(dstPath, { readOnly: true });
   try {
     const sid = d.prepare("SELECT current_session_id id FROM session_nodes WHERE session_key = ?").get(sessionKey)?.id;
     if (!sid) return null;
     const ev = {};
-    let runId;
-    for (const r of d.prepare("SELECT run_id, event_json, created_at FROM trajectory_runtime_events WHERE session_id = ? AND created_at >= ? ORDER BY seq").all(sid, since)) {
+    // only this turn's run: a back-to-back previous turn's events fall inside the `since` margin
+    for (const r of d.prepare("SELECT event_json, created_at FROM trajectory_runtime_events WHERE session_id = ? AND run_id = ? AND created_at >= ? ORDER BY seq").all(sid, runId, since)) {
       const j = JSON.parse(r.event_json);
       ev[j.type] ??= r.created_at;
-      runId ??= r.run_id;
     }
     const user = d.prepare("SELECT created_at FROM transcript_events WHERE session_id = ? AND created_at >= ? AND json_extract(event_json, '$.message.role') = 'user' ORDER BY seq LIMIT 1").get(sid, since)?.created_at;
     return { runId, user, ...ev };
@@ -406,11 +412,12 @@ function cpuIn(fromWall, toWall) {
 }
 
 const holds = parseTagged("hold-probe");
+const TURN_TIMING = /agent turn (timings|milestone)/u;
 const report = turns.map((t) => {
   const end = t.started + t.wallMs;
   const own = marks.filter((x) => x.at >= t.started && x.at <= end && x.stage === "attempt-begin");
   const runId = own[0]?.runId;
-  const tr = { ...(trajectoryFor(t.sessionKey, t.started - 1000) ?? {}), runId };
+  const tr = { ...(runId ? trajectoryFor(t.sessionKey, t.started - 1000, runId) ?? {} : {}), runId };
   const m = marks.filter((x) => x.runId && x.runId === runId);
   const at = Object.fromEntries(m.map((x) => [x.stage, x.at]));
   const order = ["attempt-begin", "connection", "runtime", "tools", "context", "prompt", "thread-ready", "route", "turn-request", "turn-started"];
@@ -435,14 +442,16 @@ const report = turns.map((t) => {
     cliToRunLogMs: fallbackLine ? fallbackLine.at - t.started : null,
     cliToTurnStartedMs: at["turn-started"] ? at["turn-started"] - t.started : null,
     turnStartedToModelCompletedMs: at["turn-started"] && tr["model.completed"] ? tr["model.completed"] - at["turn-started"] : null,
-    stages, rpcs: windowRpcs, holds: windowHolds.slice(0, 12),
+    stages, rpcs: windowRpcs,
+    turnTimings: runId ? lines.filter((l) => l.line.includes(`runId=${runId}`) && TURN_TIMING.test(l.line)).map((l) => redact(l.line).replace(/^.*?(agent turn)/u, "$1").slice(0, 600)) : [], holds: windowHolds.slice(0, 12),
     cpuPreTurn: cpuIn(t.started, turnStart),
   };
 });
 const profilerLines = lines.filter((l) => /pre-dynamic startup timings|dynamic tool build timings/u.test(l.line)).map((l) => redact(l.line).replace(/^.*?(codex app-server)/u, "$1").slice(0, 600));
+const replyProfilerLines = lines.filter((l) => /reply (hot path|resolver) timings/u.test(l.line)).map((l) => redact(l.line).replace(/^.*?(reply )/u, "$1").slice(0, 600));
 const pluginBranches = parseTagged("vprof-plugins").map((x) => x.branch);
 const pluginRpcs = rpcs.filter((r) => /^(plugin|app)\//u.test(r.method)).map((r) => r.method);
-console.log(JSON.stringify({ codexPluginsOff: CODEX_PLUGINS_OFF, pluginsChange, pluginBranches, pluginRpcs, alias: ALIAS, model: MODEL, allSessionMetadata: ALL_SESSION_METADATA, bigSession: built.bigSession, sessionEntries: built.sessionEntries, profile: profile ? { samples: profile.samples.length } : null, turns: report, codexProfiler: profilerLines.slice(0, 12) }, null, 1));
+console.log(JSON.stringify({ codexPluginsOff: CODEX_PLUGINS_OFF, pluginsChange, pluginBranches, pluginRpcs, alias: ALIAS, model: MODEL, allSessionMetadata: ALL_SESSION_METADATA, bigSession: built.bigSession, sessionEntries: built.sessionEntries, gatewayNodeFlags: GATEWAY_NODE_FLAGS, profile: profile ? { samples: profile.samples.length } : null, turns: report, codexProfiler: profilerLines.slice(0, 12), replyProfiler: replyProfilerLines.slice(0, 20) }, null, 1));
 assert(turns.some((t) => t.exit === 0), "no vcodex turn completed; nothing was measured");
 assert(report.some((r) => r.cliToTurnStartedMs != null), "no stage marks were captured; the probes did not load");
 assert(turns.every((t) => t.exit === 0), "a turn failed");

@@ -127,6 +127,7 @@ async function claim() {
 
 function connect() {
   notice("");
+  setStatus("正在连接电脑…");
   if (rfb) {
     rfb.disconnect();
     rfb = null;
@@ -234,7 +235,8 @@ async function control(take) {
   const res = await fetch(api("control"), {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ viewer: viewer.viewer, take }),
+    // 交还给 V also wakes V in its conversation (the service records it, the plugin picks it up).
+    body: JSON.stringify({ viewer: viewer.viewer, take, handBack: !take }),
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -244,11 +246,11 @@ async function control(take) {
   }
   if (take) {
     if (!touch) {
-      notice("现在你在操作 V 的电脑。做完点「交还给 V」，或回飞书点卡片上的「我完成了」。", 7000);
+      notice("现在你在操作 V 的电脑。做完点「交还给 V」，V 会接着做。", 7000);
     }
   } else {
     closeKeyboard();
-    notice("已交还。回到飞书点卡片上的「我完成了」，V 就会接着做。", 7000);
+    notice(body.wakesAgent ? "已交还，V 会接着做。" : "已交还。回到飞书点卡片上的「我完成了」，V 就会接着做。", 7000);
   }
   await poll();
   releasingLocally = false;
@@ -836,9 +838,13 @@ window.addEventListener("hashchange", () => location.reload());
 $("toggle").addEventListener("click", () => control($("toggle").dataset.take === "1"));
 $("reconnect").addEventListener("click", () => connect());
 
-viewer = await claim();
-if (viewer) {
-  document.title = viewer.title ?? document.title;
-  $("title").textContent = viewer.title ?? "V 的电脑";
-  connect();
-}
+// Not top-level await: the bundle also has to run on older iOS WebKit.
+(async () => {
+  setStatus("正在打开链接…");
+  viewer = await claim();
+  if (viewer) {
+    document.title = viewer.title ?? document.title;
+    $("title").textContent = viewer.title ?? "V 的电脑";
+    connect();
+  }
+})();

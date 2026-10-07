@@ -37,8 +37,8 @@ export class HandoffAdminClient {
     }
   }
 
-  issue({ kind, ownerId, sessionKey, reason, claimTtlMs, sessionTtlMs }, options) {
-    return this.request("POST", "/v1/handoffs", { kind, ownerId, sessionKey, reason, claimTtlMs, sessionTtlMs }, options);
+  issue({ kind, ownerId, sessionKey, reason, claimTtlMs, sessionTtlMs, origin }, options) {
+    return this.request("POST", "/v1/handoffs", { kind, ownerId, sessionKey, reason, claimTtlMs, sessionTtlMs, origin }, options);
   }
 
   latestForSession(sessionKey, options) {
@@ -53,8 +53,29 @@ export class HandoffAdminClient {
     return this.request("PUT", `/v1/handoffs/${encodeURIComponent(id)}/card`, { card }, options);
   }
 
+  /** Stores a card's desktop picture; returns {url, type, expiresAt} (a public, tokenized, short-lived url). */
+  async putSnapshot(id, bytes, { timeoutMs = 10_000 } = {}) {
+    const res = await this.fetch(`${this.baseUrl}/v1/handoffs/${encodeURIComponent(id)}/snapshot`, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${this.token()}`, "content-type": "application/octet-stream" },
+      body: bytes,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(`desktop handoff service ${res.status}: ${json.error ?? "error"}`);
+    }
+    return json;
+  }
+
   handBack(id, options) {
     return this.request("POST", `/v1/handoffs/${encodeURIComponent(id)}/handback`, {}, options);
+  }
+
+  /** True for exactly one caller after the user pressed 交还给 V on the page. */
+  async claimWake(id, origin, options) {
+    const result = await this.request("POST", `/v1/handoffs/${encodeURIComponent(id)}/wake`, { origin }, options);
+    return result?.claimed === true;
   }
 
   revoke(id, options) {

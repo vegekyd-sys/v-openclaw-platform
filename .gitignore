@@ -27,6 +27,10 @@ release/*.local.json
 # directory is excluded, so the directories are un-ignored first.
 !release/captured/*/dist/
 !release/captured/*/dist/**
+# Release bytes built for a staged release (lab/release-files/<release>/) keep
+# the target's dist/ layout so the plan maps them one to one.
+!lab/release-files/*/**/dist/
+!lab/release-files/*/**/dist/**
 
 # Python bytecode
 __pycache__/

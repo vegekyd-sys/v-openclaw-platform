@@ -1,0 +1,39 @@
+{
+  "support": [
+    "lab/candidate/telegram-experience.mjs",
+    "lab/candidate/telegram-fake-bot-api.mjs",
+    "lab/release-files/feishu-model-switch-roles/patch-runtime.mjs",
+    "lab/candidate/model-roles.mjs",
+    "apps/v-experience/v-experience.mjs",
+    "apps/v-experience/telegram/patch.mjs",
+    "lab/candidate/channel-cards-support.mjs",
+    "apps/v-desktop-handoff/service/server.mjs",
+    "apps/v-desktop-handoff/service/lib/registry.mjs",
+    "apps/v-desktop-handoff/service/lib/ws.mjs",
+    "apps/v-desktop-handoff/service/lib/rfb-proxy.mjs",
+    "apps/v-desktop-handoff/service/lib/vnc-auth.mjs",
+    "apps/v-desktop-handoff/service/lib/rfb-filter.mjs",
+    "apps/v-desktop-handoff/plugin/index.js",
+    "apps/v-desktop-handoff/plugin/openclaw.plugin.json",
+    "apps/v-desktop-handoff/plugin/package.json",
+    "apps/v-desktop-handoff/plugin/core/admin-client.js",
+    "apps/v-desktop-handoff/plugin/core/card.js",
+    "apps/v-desktop-handoff/plugin/core/deliver.js",
+    "apps/v-desktop-handoff/plugin/core/feishu-api.js",
+    "apps/v-desktop-handoff/plugin/core/identity.js",
+    "apps/v-desktop-handoff/plugin/core/native-card.js",
+    "apps/v-desktop-handoff/plugin/core/policy.js",
+    "apps/v-desktop-handoff/plugin/core/channel-cards.js",
+    "apps/v-desktop-handoff/plugin/core/telegram-api.js"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/telegram-experience.mjs"
+  ],
+  "env": {
+    "TG_EXPECT": "patched",
+    "TG_SCENARIOS": "handoff-card,handoff-skip"
+  },
+  "timeoutSeconds": 3600,
+  "user": "lab-db91-parity"
+}

@@ -140,7 +140,7 @@ export async function inspectLifecycleValidationTarget({target,proofPath,configP
   // Verify all publicly served bytes too. server.mjs is deliberately not served;
   // its disk hash and exact running H5 process are checked above.
   const served=[];
-  for(const file of files.filter(f=>!f.name.endsWith('/server.mjs'))) {
+  for(const file of files.filter(f=>!f.name.endsWith('/server.mjs')&&!f.name.endsWith('/access.mjs'))) {
     const route=file.name.includes('/rtc-h5/assets/')?'assets/'+path.basename(file.name):file.name.endsWith('/index.html')?'':path.basename(file.name);
     const response=await fetch(new URL(route,url));assert.equal(response.status,200);
     const digest=hash(Buffer.from(await response.arrayBuffer()));assert.equal(digest,file.sha,'Served H5 bytes changed');served.push({route,sha:digest});

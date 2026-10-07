@@ -1,3 +1,4 @@
+import {patchBackendResultController,patchBackendResultBroker,patchBackendResultTalk} from './patch-gpt-live-result-presentation.mjs';
 import assert from "node:assert/strict";
 
 export const GPT_LIVE_CALL_BROKER_BEFORE = "0f98f3d3a6cf947106f9bc0ae589d34571f822b0407c57cf38bb08e4fa0379ee";
@@ -9,7 +10,7 @@ function once(source, before, after, label) {
 
 export function patchGptLiveCallLifecycleController(source) {
   const marker = "// gpt-live-call-lifecycle-controller-v1";
-  if (source.includes(marker)) return source;
+  if (source.includes(marker)) return patchBackendResultController(source);
   source = once(source, "\t\tthis.stopped = false;", `\t\tthis.stopped = false;
 \t\tthis.callLifecycle = options.callLifecycle === true ? createGptLiveCallLifecycle({
 \t\t\tsignal: options.signal,
@@ -84,17 +85,45 @@ export function patchGptLiveCallLifecycleController(source) {
 \t\t\t\treturn receipt;
 \t\t\t} };
 \t}
+\tretirePreDispatchUserTurnPrefix(delegation, signal, callControl) {
+\t\t// Retire only a provably unfinished version, before host dispatch. A later
+\t\t// provider item never cancels or rewrites a run already accepted by Talk.
+\t\tif (!callControl || !this.isCurrentDelegation(delegation, signal) || delegation.backendDispatchStarted === true ||
+\t\t\tcallControl.nativeDelegationId !== delegation.id || callControl.delegationGeneration !== delegation.generation ||
+\t\t\tcallControl.originUserTurnId !== delegation.userBidiTurnId || callControl.isCurrent() !== true ||
+\t\t\ttypeof delegation.rawInput !== "string" || !delegation.rawInput.trim()) return false;
+\t\tconst proof = this.nativeUserTurnText.get(delegation.userBidiTurnId);
+\t\tif (proof?.complete !== true || proof.text !== callControl.userTurnText || !Number.isFinite(proof.completedAt) ||
+\t\t\t!this.completedUserTurns.has(delegation.userBidiTurnId) || !Number.isFinite(delegation.callerInputAcceptedAt)) return false;
+\t\tconst revisions = this.pendingDelegations.filter(next => next.userBidiTurnId === delegation.userBidiTurnId &&
+\t\t\tnext.generation > delegation.generation && next.backendDispatchStarted !== true && next.retiredBeforeDispatch !== true &&
+\t\t\ttypeof next.rawInput === "string" && next.rawInput.length > delegation.rawInput.length &&
+\t\t\tnext.rawInput.startsWith(delegation.rawInput) && next.rawInput === proof.text &&
+\t\t\tNumber.isFinite(next.callerInputAcceptedAt) && next.callerInputAcceptedAt >= delegation.callerInputAcceptedAt &&
+\t\t\tnext.callerInputAcceptedAt <= proof.completedAt);
+\t\tif (revisions.length !== 1) return false;
+\t\tdelegation.retiredBeforeDispatch = true;
+\t\tthis.tracePublicProgress("delegation-coalesced-before-dispatch", delegation.id, "", {
+\t\t\tkind: "progress", delegationGeneration: delegation.generation,
+\t\t\tprovenance: { source: "complete_user_revision", itemId: revisions[0].id, emittedAt: proof.completedAt }
+\t\t});
+\t\t// The unchanged FIFO launches the real newer item with its own id and
+\t\t// generation. No result, terminal event, grant or wire item is synthesized.
+\t\treturn true;
+\t}
 \tobserveNativeUserTurn(raw) {`, "actual full caller call control capability");
-  source = once(source, "\t\t\tconst result = await this.options.runAgentConsult({", "\t\t\tconst callControl = this.callLifecycle ? await this.prepareBackendCallControl(delegation, signal) : void 0;\n\t\t\tif (!this.isCurrentDelegation(delegation, signal)) return;\n\t\t\tconst result = await this.options.runAgentConsult({\n\t\t\t\t...(callControl ? { callControl } : {}),", "host-only model call control context");
+  source = once(source, "\t\t\tconst result = await this.options.runAgentConsult({", "\t\t\tconst callControl = this.callLifecycle ? await this.prepareBackendCallControl(delegation, signal) : void 0;\n\t\t\tif (!this.isCurrentDelegation(delegation, signal)) return;\n\t\t\tif (this.retirePreDispatchUserTurnPrefix(delegation, signal, callControl)) return;\n\t\t\tdelegation.backendDispatchStarted = true;\n\t\t\tconst result = await this.options.runAgentConsult({\n\t\t\t\t...(callControl ? { callControl } : {}),", "host-only model call control context");
   source = once(source, '\t\t\tif (typeof result?.text !== "string" || !result.text.trim()) throw new Error("Backend returned no complete public result");', '\t\t\tif (delegation.callControlReceipt) {\n\t\t\t\tif (result?.callControl !== delegation.callControlReceipt) throw new Error("Backend call control returned an unowned receipt");\n\t\t\t\treturn;\n\t\t\t}\n\t\t\tif (typeof result?.text !== "string" || !result.text.trim()) throw new Error("Backend returned no complete public result");', "accepted call control is not a spoken final");
-  source = once(source, '\t\t\tthis.options.logger.warn(`OpenAI GPT-Live delegation consult failed: ${shortFailureReason(error)}`);', '\t\t\tif (delegation.callControlReceipt) return;\n\t\t\tthis.options.logger.warn(`OpenAI GPT-Live delegation consult failed: ${shortFailureReason(error)}`);', "accepted farewell prevents duplicate failure speech");
+  source = once(source, '\t\t\tif (!this.isCurrentDelegation(delegation, signal) || this.options.isCanceledError?.(error)) return;\n\t\t\tthis.options.logger.warn(`OpenAI GPT-Live delegation consult failed: ${shortFailureReason(error)}`);',
+    '\t\t\tif (!this.isCurrentDelegation(delegation, signal)) return;\n\t\t\tif (delegation.callControlReceipt) {\n\t\t\t\t// Talk already publishes the actual consult rejection. Keep its reason\n\t\t\t\t// visible here, including a rejected terminal named AbortError, without\n\t\t\t\t// manufacturing another tool result or speaking a second terminal.\n\t\t\t\tthis.options.logger.warn(`OpenAI GPT-Live accepted end-call consult failed: ${shortFailureReason(error)}`);\n\t\t\t\tthis.tracePublicProgress("backend-call-control-terminal-rejected", delegation.id, "", { kind: "failure",\n\t\t\t\t\tdelegationGeneration: delegation.generation, provenance: { runId: delegation.callControlReceipt.backendRunId } });\n\t\t\t\treturn;\n\t\t\t}\n\t\t\tif (this.options.isCanceledError?.(error)) return;\n\t\t\tthis.options.logger.warn(`OpenAI GPT-Live delegation consult failed: ${shortFailureReason(error)}`);',
+    "accepted farewell retains actual rejection without duplicate failure speech");
   source = once(source, "\t\t\tif (finished || !this.isCurrentDelegation(delegation, signal)) {", "\t\t\tif (finished || delegation.callControlReceipt || !this.isCurrentDelegation(delegation, signal)) {", "accepted control stops ordinary progress");
-  return `${marker}\nimport { createGptLiveCallLifecycle, createGptLiveEndCallClientTool } from "./gpt-live-call-lifecycle.mjs";\n` + source;
+  return patchBackendResultController(`${marker}\nimport { createGptLiveCallLifecycle, createGptLiveEndCallClientTool } from "./gpt-live-call-lifecycle.mjs";\n` + source);
 }
 
 export function patchGptLiveCallLifecycleBroker(source) {
   const marker = "// gpt-live-call-lifecycle-broker-v1";
-  if (source.includes(marker)) return source;
+  if (source.includes(marker)) return patchBackendResultBroker(source);
   source = once(source, `\t\t\tconst delegations = new OpenAIQuicksilverDelegationController({
 \t\t\t\tgetSocket: () => connected.socket,`, `\t\t\tconst delegations = new OpenAIQuicksilverDelegationController({
 \t\t\t\tcallLifecycle: offer.request.model === "gpt-live-1-codex" && typeof offer.request.gatewayControl?.bindCallLifecycle === "function",
@@ -105,12 +134,12 @@ export function patchGptLiveCallLifecycleBroker(source) {
 \t\t\t\tonTranscript: (role, text, final) => offer.request.gatewayControl?.onTranscript?.(role, text, final),
 \t\t\t\tgetSocket: () => connected.socket,`, "native browser broker options");
   source = once(source, "\t\t\tsession = activeSessionLease.adopt(token, {", "\t\t\tif (delegations.callLifecycle) offer.request.gatewayControl.bindCallLifecycle(delegations.callLifecycle);\n\t\t\tsession = activeSessionLease.adopt(token, {", "native broker exact lifecycle binding");
-  return marker + "\n" + source;
+  return patchBackendResultBroker(marker + "\n" + source);
 }
 
 export function patchGptLiveCallLifecycleTalk(source) {
   const marker = "// gpt-live-call-lifecycle-talk-v1";
-  if (source.includes(marker)) return source;
+  if (source.includes(marker)) return patchBackendResultTalk(source);
   source = once(source, "function createTalkClientGatewayControlOwner(params) {\n\tlet bridge;", "function createTalkClientGatewayControlOwner(params) {\n\tlet callLifecycle;\n\tlet bridge;", "Talk session lifecycle storage");
   source = once(source, "\t\tcontrol: {\n\t\t\tbindBridge: (nextBridge) => {", `\t\trequestCallReady: () => {
 \t\t\towner.assertOpen();
@@ -156,5 +185,5 @@ export function patchGptLiveCallLifecycleTalk(source) {
 \t\t\treturn;
 \t\t}
 ${toolCheck}`, "existing authorized Talk tool route");
-  return `${marker}\nimport { resolveGptLiveCallInstructions } from "./gpt-live-call-lifecycle.mjs";\n` + source;
+  return patchBackendResultTalk(`${marker}\nimport { resolveGptLiveCallInstructions } from "./gpt-live-call-lifecycle.mjs";\n` + source);
 }

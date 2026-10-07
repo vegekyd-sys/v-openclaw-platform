@@ -205,8 +205,35 @@ export function createGptLiveConsultContinuationRegistry(deps) {
         return;
       }
       if (binding.role === "initial" && callControlReceipt) {
-        if (!result || !Array.isArray(result.payloads) || result?.meta?.error ||
-            result?.meta?.yielded === true || callControl.isCurrent() !== true) {
+        // Neither payload presence nor liveness proves success. The actual
+        // final core owner classifies timeout/cancel/error before projecting
+        // this private result, which must belong to the accepted original run.
+        const terminal = result?.meta?.gptLiveTerminalOutcome;
+        const ownedCompletion = terminal?.version === 1 && terminal.source === "embedded_terminal_state" &&
+          terminal.classification === "success" && terminal.reason === "completed" &&
+          terminal.runId === binding.runId && terminal.sessionId === binding.sessionId;
+        // Core intentionally omits payloads for a successful client-tool-only
+        // terminal. That public projection is not the actual tool-call proof:
+        // acceptance still requires the paired original run events above.
+        const pendingTools = result?.meta?.pendingToolCalls;
+        let emptyEndArgs = false;
+        if (Array.isArray(pendingTools) && pendingTools.length === 1 &&
+            pendingTools[0]?.name === "openclaw_end_call" && typeof pendingTools[0].arguments === "string") {
+          try {
+            const args = JSON.parse(pendingTools[0].arguments);
+            emptyEndArgs = Boolean(args && typeof args === "object" && !Array.isArray(args) && Object.keys(args).length === 0);
+          } catch {}
+        }
+        // The actual core calls normal completed runs "working". An omitted
+        // payload can also be a blocked timeout or paused compaction, so only
+        // that known healthy projection may enter this narrow success path.
+        const clientToolOnlyTerminal = result?.payloads === undefined && result?.meta?.aborted === false &&
+          result.meta.livenessState === "working" && result.meta.stopReason === "tool_calls" && emptyEndArgs &&
+          result.meta.agentMeta?.sessionId === binding.sessionId && !result.meta.continuationPending &&
+          !result.meta.failureSignal && !result.meta.terminalToolFailure;
+        if (!result || !ownedCompletion || !(Array.isArray(result.payloads) || clientToolOnlyTerminal) || result?.meta?.error ||
+            result?.meta?.yielded === true || result?.meta?.continuationPending || result?.meta?.failureSignal ||
+            result?.meta?.terminalToolFailure || callControl.isCurrent() !== true) {
           throw error("Voice call control source changed before its terminal result");
         }
         // A real client-tool termination has no final text. Keep this host

@@ -119,3 +119,43 @@ test("registry: a handoff keeps its chat card so any process can update it", () 
   assert.equal(registry.setCard("missing", {}), null);
   assert.throws(() => registry.setCard(issued.id, { big: "x".repeat(20_000) }), /too large/u);
 });
+
+test("registry: 交还给 V on the page wakes V once, only for a conversation's handoff, and a new takeover cancels it", () => {
+  let now = 1000;
+  const audit = [];
+  const registry = new HandoffRegistry({ now: () => now, onAudit: (e) => audit.push(e) });
+  const link = { close() {} };
+  const open = (sessionKey) => {
+    const issued = registry.issue({ kind: "control", ownerId: "u1", sessionKey, origin: "gw-a" });
+    const claim = registry.claim(issued.token);
+    registry.attachViewer(claim.viewer, link);
+    return { id: issued.id, viewer: claim.viewer };
+  };
+
+  const a = open("agent:makaron:feishu:direct:u1");
+  assert.equal(registry.handBackFromPage(a.viewer).wakesAgent, false, "not the controller: nothing to hand back");
+  registry.takeControl(a.viewer);
+  const back = registry.handBackFromPage(a.viewer);
+  assert.deepEqual(back, { role: "observer", wakesAgent: true });
+  assert.equal(registry.isController(a.viewer), false);
+  assert.equal(registry.handoffStatus(a.id).pageHandBackAt, 1000);
+  assert.deepEqual(registry.claimWake(a.id, "gw-candidate"), { claimed: false, reason: "other_gateway" }, "another Gateway with the same plugin cannot take it");
+  assert.deepEqual(registry.claimWake(a.id), { claimed: false, reason: "other_gateway" }, "an old plugin without origin cannot take it");
+  assert.deepEqual(registry.claimWake(a.id, "gw-a"), { claimed: true, sessionKey: "agent:makaron:feishu:direct:u1" });
+  assert.deepEqual(registry.claimWake(a.id, "gw-a"), { claimed: false }, "a second process or a later 我完成了 never wakes V again");
+  assert.ok(audit.some((e) => e.event === "handed_back_from_page") && audit.some((e) => e.event === "wake_claimed"));
+
+  // Take over again before V picked it up: the pending wake is cancelled.
+  now += 10;
+  registry.takeControl(a.viewer);
+  registry.handBackFromPage(a.viewer);
+  registry.takeControl(a.viewer);
+  assert.equal(registry.handoffStatus(a.id).pageHandBackAt, null);
+  assert.deepEqual(registry.claimWake(a.id, "gw-a"), { claimed: false });
+
+  // A link issued outside a conversation (no sessionKey) cannot wake anyone.
+  const b = open(null);
+  registry.takeControl(b.viewer);
+  assert.equal(registry.handBackFromPage(b.viewer).wakesAgent, false);
+  assert.deepEqual(registry.claimWake(b.id, "gw-a"), { claimed: false });
+});

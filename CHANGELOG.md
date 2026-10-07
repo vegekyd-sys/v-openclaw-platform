@@ -11,6 +11,285 @@
 
 ---
 
+## codex-firsttext-20261008
+
+上线：2026-10-08 00:17 CST  ·  tag `codex-firsttext-20261008`
+
+**摘要**：Tianyi 于 2026-10-07 批准（「开 PR 合进 dev 然后上 V」，并要求带上 #262）。/vds 不再每轮新开 Codex 线程，同模型连续对话续用线程、缓存可命中（V 实测第二轮缓存 98%）；Codex 的答案不再等用户消息写库才往外送（修 /vcodex 被扣 1–8 s、/vds 私聊 pre-bind 溢出整轮重试）；同一会话 vds↔vcodex 两个方向都能切，并且看得到对方那几轮（原来 vcodex→vds 报 auth profile 不可用）。同一次重启生效 #262：Gateway 和 Worker 以 `--experimental-async-context-frame` 启动（`--verify` 6/6 进程）。
+
+两项改动都不在 V 捕获范围内，所以下面的文件比对是 0：
+- Codex 插件（npm 管理，`npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/…/dist/`）：`run-attempt-D1hJO4fX.js` 694e3817 → 564374a6，`thread-lifecycle-DAcEJ_Om.js` 94d5420f → e7c2208f。经 VLab 发版 `codex-firsttext-20261007`（codex-firsttext-prebind，dev `9d4ccd63`），旧文件在 `/opt/v-release-backups/codex-firsttext-20261008/`。升级或重装该插件会丢掉这两个补丁和 /vds 补丁。
+- systemd drop-in `/etc/systemd/system/openclaw-gateway.service.d/zzzzzzzzz-node-async-context-frame.conf`（`scripts/node-async-context-frame.mjs --target v --apply`）。
+
+重启：2026-10-08 00:13:28 请求（v-self-restart `20261008-001328-7749`），00:17:56 就绪（237 s），清掉 4 条 Codex 孤儿登记。V 上专用会话验收：vds 两轮同一线程、vcodex 答出两个暗号、再切 vds 正常并复述 vcodex 的回答。
+
+相对上一版 `v2026.9.1-db91.6-firsttext-r4-20261007`：0 个文件变化。
+
+**这期间合入 dev 的 PR**（2 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #269 fix(codex): /vds 首字与线程续用、vds↔vcodex 切换
+- #265 Release capture: V after firsttext-r4-20261007 (#243 #264)
+
+## v2026.9.1-db91.6-firsttext-r4-20261007
+
+上线：2026-10-07 16:46 CST  ·  tag `v2026.9.1-db91.6-firsttext-r4-20261007`
+
+**摘要**：首字优化第四批，Tianyi 于 2026-10-07 08:32 UTC 批准（「r4上线吧」，#247 已按他的要求撤出）。大会话空闲后的第一条消息不再被回复前的记忆整理挡住：整理推迟到回复之后、会话空闲时再跑，新消息来了就让出，之后补跑并照常写记忆；快到压缩阈值时仍然先整理（#243）。codex 会话同样推迟，包括 token 数不新鲜的会话（#264）。上线前 24 小时 V 上有 10 条真实消息因此白等 37–90 s（7 条 codex、3 条 vlab-worker）。16:35 CST 装到 V 磁盘，16:41 v-self-restart（20261007-164108-05f1），16:44:45 Gateway ready。#262 的 async-context-frame 启动参数这次没有生效：V 上排在它后面的 db91 drop-in（state-db-fastpath-v6）重新声明了 ExecStart，--verify 查出后已把这个 drop-in 撤掉，修复后另行上线。`agent-runner.runtime` 与 `builtin-openclaw` 的字节与验收 #243 用的 VLab 发版 `mflush-vds-20261007` 相同，所以来源追溯到那一版。
+
+相对上一版 `v2026.9.1-db91.6-firsttext-r3-20261007`：3 个文件变化。
+
+**经 VLab 发版 `firsttext-r4c-20261007`**（firsttext-0jwr2n，dev `22c4f72f`）
+> 验收：2026-10-07 15:55 CST r4c = #243 + #264 (3 core files, dev 22c4f72; #247 dropped by Tianyi) + #262 acf drop-in (--target vlab, --verify 6/6) on shared VLab: dedicated session vlab-dev-r4c-accept-1791358677236 exec + memory_search + visible reply (deepseek-flash); #243 deferral/interrupt/memory-write verified 13:10-13:28 on the same runtime/builtin bytes (memory file differs only by #264's stale-tok…
+- `core` agent-runner-memory-7VF-zwNt.js  8bca065f → 27f38ffb
+
+**经 VLab 发版 `mflush-vds-20261007`**（firsttext-0jwr2n，dev `eea51de0`）
+- `core` agent-runner.runtime-CAdsMsQt.js  9b85f780 → 947ba056
+- `core` builtin-openclaw-zQV8Wwjr.js  84456470 → 972d25fe
+
+**这期间合入 dev 的 PR**（4 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #264 #243 follow-up: defer a Codex session's flush even when its token count is stale
+- #243 perf(reply): run a housekeeping memory flush after the reply, not before it
+- #262 scripts: start the Gateway and its Workers with --experimental-async-context-frame
+- #263 Release capture: V after firsttext-r3-20261007 (#252 #254)
+
+## v2026.9.1-db91.6-firsttext-r3-20261007
+
+上线：2026-10-07 09:33 CST  ·  tag `v2026.9.1-db91.6-firsttext-r3-20261007`
+
+**摘要**：首字优化第三批，Tianyi 于 2026-10-07 01:10 UTC 批准（「r3上V」）。Worker 启动时 skills watcher 不再误判变更而让每个 Worker 的 skills 快照失效重建（#252）；Worker 预热时提前激活 secrets 运行时快照，冷首轮的 config-resolved 段在 VLab 上从约 1.1 s 降到 0（#254）。2026-10-07 09:27 CST 装到 V 磁盘，09:28:35 v-self-restart（20261007-092835-4165）后生效，09:32:32 Gateway ready。`refresh-BzYxPady.js` 的字节与 #252 的 VLab 对照发版 `skillswatch-on-20261007` 相同，所以来源追溯到那一版。
+
+相对上一版 `v2026.9.1-db91.6-firsttext-r2-20261007`：2 个文件变化。
+
+**经 VLab 发版 `firsttext-r3-20261007`**（firsttext-0jwr2n，dev `e97e98bb`）
+> 验收：2026-10-07 09:25 CST r3 (#252 #254) on VLab: dedicated session agent:makaron:explicit:vlab-dev-r3-accept-1791336390511 run status ok in 24 s, model deepseek-flash, tools exec + memory_search, visible final reply; Feishu bench r3-accept 8/8 answered (first answer p50 9.0 s, max 10.6 s cold); parity AHEAD by pending plan
+- `core` agent-command-DPfawBbr.js  82e7ca49 → 150d9003
+
+**经 VLab 发版 `skillswatch-on-20261007`**（firsttext-0jwr2n，dev `7569497f`）
+- `core` refresh-BzYxPady.js  e886dd60 → 3e34ae21
+
+**这期间合入 dev 的 PR**（8 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #258 candidate: vcodex-preturn-profile shows Gateway-side pre-turn stages
+- #257 candidate: let vcodex-preturn-profile drive /vds
+- #247 飞书：codex 回合开始就建卡片，不再等第一个答案字
+- #254 首字：Worker 预热时激活 secrets 运行时快照
+- #256 parity: compare Feishu renderMode in the config advisory
+- #252 firsttext: skills watcher stops invalidating each Worker's skills snapshot at startup
+- #255 Release capture: V after firsttext-r2-20261007 (#221 #238 #240)
+- #253 parity: compare memory-core dreaming in the config advisory
+
+## v2026.9.1-db91.6-firsttext-r2-20261007
+
+上线：2026-10-07 01:48 CST  ·  tag `v2026.9.1-db91.6-firsttext-r2-20261007`
+
+**摘要**：首字优化第二批。Gateway 每分钟两次后台扫描（workboard 卡片、Worker placement）不再整表读取，共享 VLab 上每分钟主线程卡顿从 1.6–2.5 s 降到约 0.2 s；带图消息的识图能力判断不再现场构建完整模型目录（#221）。文件已于 2026-10-07 01:45 CST 装到 V 磁盘，在下一次 Gateway 重启时生效（本节写入时 V 尚未重启）。附带：本版之前 V 已上 voice-native-tools-pr217（tools-invoke-shared，由其负责人上线）。
+
+相对上一版 `v2026.9.1-db91.6-firsttext-r1-20261006`：5 个文件变化。
+
+**经 VLab 发版 `firsttext-r2-20261007`**（firsttext-0jwr2n，dev `9cc6785a`）
+> 验收：R2 (#221 #238 #240) on shared VLab 2026-10-07: health ok; real model turn exec+memory_search+write ok, 0 tool errors; idle profile minute windows 169-208 ms (batch2 base 1577-2466); image turns 3/3 toHarness 0.3-0.4 s; bench cold8 P50 12.4 s, warm16 P50 6.1 / P95 9.7 s; no errors from R2
+- `core` extensions/workboard/index.js  ba56e0ab → 5ac1a060
+- `core` placement-store-CkyLHi6x.js  f7c7b41c → 5bcb7a2f
+- `core` runner-BIhCXp3h.js  0648f47c → f99d7111
+- `core` server-worker-placement-startup-BvPREvpr.js  8366d71a → 8e73e9eb
+
+**经 VLab 发版 `voice-native-tools-pr217-firsttext-r1-20261006`**（01a0fb0e-739d-7681-9238-faa2c1912c6c，dev `1ee42ed0`）
+> 验收：Same frozen PR217 artifact/config; original shared native provider and speaker PCM core review reused (pr217-shared-core-review.json). User explicitly retained production trial after exec admission failure; production calendar and strict paused gates remain FAIL/unaccepted.
+- `core` tools-invoke-shared-CjpflNGO.js  68ef48e5 → ac465c5b
+
+**这期间合入 dev 的 PR**（8 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #250 parity: mark VLab channel plugins as expected config differences
+- #249 parity: advisory comparison of MCP server and plugin enabled switches
+- #240 perf(placement): the minute sweep stops reading every placement row
+- #221 带图消息：识图能力判断不再现场构建完整模型目录
+- #238 perf(workboard): stop the per-minute sweep from reading every card (retry of #225)
+- #237 feat(parity): V Browser 纳入 VLab↔V 比对（plugin / Broker / Browser Gateway）
+- #235 Capture of the release Tianyi Cai approved on 2026-10-06 ("可以先上线219 和220", "上线吧").
+- #232 feat(v-self-restart): 让 V 能安全地重启自己
+
+## v2026.9.1-db91.6-firsttext-r1-20261006
+
+上线：2026-10-06 18:14 CST 安装到 V（promote-to-v，未重启；下次 Gateway 启动时生效，重启时间由 Tianyi 决定）  ·  tag `v2026.9.1-db91.6-firsttext-r1-20261006`
+
+**摘要**：Gateway 重启后的第一条消息、以及新 Worker 接的第一单，以前要先做一遍一次性的准备（建技能快照、首次加载模块），用户多等几秒。现在 Worker 在就绪前（#219）、Gateway 在启动后空闲时（#220）提前做完，不写库、失败不影响就绪。共享 VLab 压测：重启后第一条首字 7.8–9.3 秒 → 5.4–6.1 秒，冷 Worker 第一轮 P50 12.7 → 10.6–10.7 秒；稳态各类无退化。
+
+相对上一版 `v2026.9.1-db91.6-workboard-incremental-sweep-20261006`：5 个文件变化。
+
+**经 VLab 发版 `firsttext-r1-20261006`**（firsttext-0jwr2n，dev `1ee42ed0`；同样字节此前也在测试发版 `firsttext-r2-20261006` 里出现过，脚本按首次出现归属，已手工更正）
+- `core` agent-command-DPfawBbr.js  e8a0c7e4 → 82e7ca49
+- `core` get-reply-CqW1y05D.js  fcfca37f → 9bac6b7c
+- `core` get-reply-from-config.runtime-CWdWv_c6.js  71de3e3e → 727ad514
+- `core` server-startup-post-attach-BPE6Pv6n.js  fbf799dd → fdd10613
+- `worker` worker.mjs  898fd1fc → 18fc5d4f
+
+**这期间合入 dev 的 PR**（5 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #220 Approved by Tianyi Cai in the project chat (2026-10-06 07:49Z): 可以先上线219 和220
+- #219 Approved by Tianyi Cai in the project chat (2026-10-06 07:49Z): 可以先上线219 和220
+- #218 fix(desktop-handoff): 接管前自动松开 V 残留按下的按键
+- #215 release: V v2026.9.1-db91.6-workboard-incremental-sweep-20261006 捕获与变更记录
+- #214 feat(v-experience): V 自己的钉钉提问卡模板
+
+## v2026.9.1-db91.6-workboard-incremental-sweep-20261006
+
+上线：2026-10-06 00:05 CST 安装到 V（promote-to-v，未重启；下次 Gateway 启动时生效，重启时间由 Tianyi 决定）  ·  tag `v2026.9.1-db91.6-workboard-incremental-sweep-20261006`
+
+**摘要**：workboard 的 lifecycle 对账以前每 64 秒把全部会话列一遍，每次卡 Gateway 主线程约 3 秒，赶上的消息要多等最多约 2.5 秒才开始跑。现在全量之间只列最近更新的会话，首次、每 10 分钟、有 prepared launch 时仍做全量。共享 VLab 实测每分钟对账约 0.6 秒，c10 首字 P95 6.6 秒（之前 10–14 秒）。
+
+相对上一版 `v-experience-channels-20261005`：1 个文件变化。
+
+**经 VLab 发版 `workboard-incremental-sweep-20261005`**（claude-workboard-incremental-sweep，dev `bdfcdde2`）
+> 验收：PR #212. Shared Gateway profiled 23:42-23:54 (12 min): session-sharing resolution ran once (23:51:57, 663 ms, the 10-minute full sweep) vs every minute before; per-minute sweep bursts ~0.06-0.1 s + 0.45-0.6 s (was ~2 s on VLab / ~3 s on V); 0 workboard lifecycle sync failures in journal. Candidate receipts candidate-52bbf324 (on) / candidate-e070d2dd (off): late card linked to a session changed af…
+- `core` extensions/workboard/index.js  66e7b126 → ba56e0ab
+
+**这期间合入 dev 的 PR**（7 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #213 release: V v-experience-channels-20261005 捕获与变更记录
+- #210 release: V v2026.9.1-db91.6-firsttext-runid-20261005 捕获与变更记录
+- #206 release: V v2026.9.1-db91.6-firsttext-e2e-20261005 捕获与变更记录
+- #200 release: V v2026.9.1-db91.6-worker-prewarm-20261005 捕获与变更记录
+- #199 release: V v2026.9.1-db91.6-voice-confirmation-switch-20261005 捕获与变更记录
+- #212 perf(workboard): 对账只列最近更新的会话，不再每分钟卡 Gateway 约 3 秒
+- #195 release: V v2026.9.1-db91.6-placement-evidence-20261005 捕获与变更记录
+
+## v-experience-channels-20261005
+
+上线：2026-10-05 23:19 CST  ·  tag `v-experience-channels-20261005`
+
+**摘要**：飞书式体验带到钉钉、企业微信、Telegram（过程卡、Ask User、插话、切换 Harness、「电脑」接管卡带截图和 接管/完成/跳过、凭据一次性链接卡），钉钉/企微的非主人只开放 `/model`（core command-auth V3）；同一次重启带上 X search 在 grok-4.6 上用 effort low（#186）和 GPT Live 本人电话接续指定飞书会话（#194）。
+
+- 运行时：18 个文件（下表）；配置 `activate.mjs production`：`commands.allowFrom` 加 telegram / dingtalk-connector / wecom = `*`，Gateway 23:16:29 受控重启一次。
+- 旁路服务（同一 dev 提交 717e1449）：`v-desktop-handoff` 更新（渠道卡片、按渠道告诉 agent 按钮名 #211）；新装 `v-secret-entry`（127.0.0.1:23960/23961），cloudflared `v-dashboard.yml` 加 `openclaw.tianyi.live/secret-entry`。
+- 电话入口 `https://openclaw.tianyi.live/voice/`（`openclaw-rtc-h5`）切到 `gpt-live-717e1449…`，用 `lab/gpt-live-voice-entry-release.mjs`；shared proof 只带 core/worker 文件（脚本还不认渠道插件路径，插件已由 promote-to-v 核对并 ALIGNED）。
+- 验收：VLab 真机见下方引用；V 上 23:23–23:26 x_search 真实回合 deepseek-flash 23 s / grok-4.7 33 s / vcc 44 s，tookMs 11.9–12.7 s、failures 0（改前 28–51 s、12 次中 8 次超时）；Telegram（@ClawdTY_bot）接管卡是公网「接管」按钮 + 完成 / 跳过。
+- 重启后清了 4 行旧 Gateway（pid 1995562）的 Codex app-server 登记（进程均已退出），之后无 `Cannot reap`。
+- 待办：钉钉提问卡模板导入自有应用（未导入时 V 上退回普通消息）；接管组件表 `handoff` 可改 `blocking: true`；非主人 `/status` 回的是上游通用「No reply was generated」。
+
+相对上一版 `v2026.9.1-db91.6-firsttext-runid-20261005`：18 个文件变化。
+
+**经 VLab 发版 `v-experience-channels-20261005-d`**（claude-v-experience-d0ff74，dev `717e1449`）
+> 验收：Shared VLab 2026-10-05 21:15-22:52 CST, release v-experience-channels-20261005-d (dev 717e1449; same channel bytes as -c on which real-client tests ran). Real clients on Tianyi's Mac: WeCom Vlab bot - 电脑 card (screenshot + 接管/完成/跳过), 完成 tap answered as new message (846605 fix), full takeover h_8cee41d112ab 22:03 control_taken_by -> handed_back_from_page -> wake_claimed, V reported the page; ask_us…
+- `core` bot-message-DC6p8sB3.js  8af1697a → f37781c4
+- `core` bot-native-command-builtins-mQhamMB9.js  20c55fca → 8b7908bd
+- `core` bot-native-command-dispatch-7hG7WSS2.js  c42a0baf → 58c78cb2
+- `core` builtin-openclaw-zQV8Wwjr.js  029eae85 → 84456470
+- `core` command-auth-DmNN2m2f.js  d24a6081 → 8b4858e3
+- `core` helpers-DEd6NfQU.js  18a6c7fc → 8ee65399
+- `core` talk-DkFuKRod.js  560d5cf2 → 91cf0741
+- `core` telegram-ingress-drain-factory-DJM2Jqrc.js  aff8b436 → acdf98ee
+- `core` x-search-shared-CJa_QAnc.js  72e642f3 → bdb1ab1e
+- `core` gpt-live-call-lifecycle.mjs  73198276 → 47afe3df
+- `core` v-experience.js  — → 5d939fa7
+- `dingtalk` dist/connection-DCvu-l09.mjs  860176dd → 397c42c3
+- `dingtalk` dist/message-handler-BUoLSylZ.mjs  5db2b71d → d914cbce
+- `dingtalk` dist/runtime-C81EKBS1.mjs  d2515aab → af93e121
+- `dingtalk` dist/v-experience.mjs  — → 5d939fa7
+- `wecom` dist/src/channel.js  079f5c6c → 30eb4a17
+- `wecom` dist/src/monitor.js  99efa7d6 → d4fe3561
+- `wecom` dist/src/v-experience.mjs  — → 5d939fa7
+
+## v2026.9.1-db91.6-firsttext-runid-20261005
+
+上线：2026-10-05 16:55 CST 安装，**还没有重启 V**（飞书插件在 Gateway 启动时加载）  ·  tag `v2026.9.1-db91.6-firsttext-runid-20261005`
+
+**摘要**：`[firsttext-e2e.1]` 首字记录多两项：`runId` 和 `runStartAtMs`（飞书回复对象接上 `onAgentRunStart`）。有了 runId，每条消息能和 worker 的 `[firsttext-worker-phases]` 对上；「V 收到 → 运行开始」就是消息在 Gateway 里的排队时间，统计脚本多了 queue 这一段（#209）。共享 VLab c5：5/5 条都有记录，其中 2/5 带 runId，并能和对应运行的 worker 阶段对上；部署重启后的第一轮，收到到运行开始 P50 13.8 s。
+
+相对上一版 `v2026.9.1-db91.6-firsttext-e2e-20261005`：1 个文件变化。
+
+**经 VLab 发版 `firsttext-runid-20261005`**（claude-firsttext-e2e）
+- `feishu` monitor.account-WFdlCDhR.js  943b0116 → ec089142
+
+**这期间合入 dev 的 PR**：
+- #209 feat(feishu): 首字记录带上运行 ID 和运行开始时间
+
+## v2026.9.1-db91.6-firsttext-e2e-20261005
+
+上线：2026-10-05 14:57 CST 安装，**还没有重启 V**（飞书插件在 Gateway 启动时加载，下次重启才生效）  ·  tag `v2026.9.1-db91.6-firsttext-e2e-20261005`
+
+**摘要**：以前量的首字都不是用户看到字的时刻：模型吐出第一个字、回复写进库、卡片创建时间都会偏早约 2 s。V 是在模型出第一个字之后才建卡片的，要调两次飞书接口，然后才推文字。现在飞书插件对每条回复的消息记一行 `[firsttext-e2e.1]`，内容包括：飞书发送时间、V 收到、开始分发、打字提示、第一段思考或第一个正文字到达插件、卡片开始建和建好、第一次推出内容、第一次推出正文、不走卡片的回复送达，以及 harness 和模型。不记消息内容，日志调用不会影响回复（#202）。`scripts/firsttext-e2e-report.mjs` 在 V 上读这些记录，给出首字 P50/P95/P99/Max 和分段（入站、agent、投递、建卡片）。共享 VLab 真实飞书 12/12 条都记到；热的一轮首字 P50 8.2 s、P95 9.3 s，其中入站 0.6 s、agent 6.9 s、投递 0.5 s。
+
+这也是钉钉、企微插件第一次被捕获（`.dingtalk`、`.wecom`；捕获脚本在 #204 加了 sudo）。
+
+相对上一版 `v2026.9.1-db91.6-worker-prewarm-20261005`：1 个文件变化。
+
+**经 VLab 发版 `firsttext-e2e-20261005`**（claude-firsttext-e2e，dev `63d6bc1f`）
+- `feishu` monitor.account-WFdlCDhR.js  b9ba9fc8 → 943b0116
+
+**这期间合入 dev 的 PR**：
+- #202 feat(feishu): 每条消息记录用户口径的首字时间
+
+## v2026.9.1-db91.6-worker-prewarm-20261005
+
+上线：2026-10-05 13:12 CST 安装，13:15 重启 Gateway，75 s 后 5 个 worker 全部预热完成  ·  tag `v2026.9.1-db91.6-worker-prewarm-20261005`
+
+**摘要**：V 一直常驻 5 个 worker，但「常驻」只是进程起好了。每个 worker 接的第一单还要付一整套一次性准备，V 上实测进 worker 到出第一个字要 13 s，热的只要 2–3 s。重启、按内存回收换新、扩容之后 worker 都会变冷。V 用过的每一版 worker 都没有回合级预热，9/12 的 VLab 候选也从没上线。
+
+现在 worker 报 ready 之前会先做三件事：拿一次 prepared-model 租约；加载 agent 命令模块的 14 个懒加载模块；打开本进程的会话库，再只读解析一次会话。最后这一步之前，进程里没有打开的库连接，每次只读查找都会新开连接，把全部会话的规范 key 重新扫一遍。预热不写库、不调模型、不调工具，失败时照常 ready。用 `OPENCLAW_WORKER_EAGER_PREPARE=0` 可以关掉（#198）。
+
+- VLab candidate：冷 worker 进 worker 到调模型 22.6–24.2 s → 5.8–6.2 s。
+- 共享 VLab 真实飞书：重启后首轮 31.5–37.5 s → 15.6–21.4 s。
+- V 重启后（13:17 c15，15/15）：首轮回复中位 23.5 s，worker 第一单的准备运行时从 4 s 降到 0.13 s，但从进命令到调模型仍要 7–12 s；第二轮中位 4.2 s。剩下的冷开销（技能快照、构建工具集、首次 import，以及 Gateway 重启后的开销）留给后续。
+
+相对上一版 `v2026.9.1-db91.6-voice-confirmation-switch-20261005`：3 个文件变化。
+
+**经 VLab 发版 `worker-prewarm-20261005`**（claude-worker-prewarm-v，dev `a1432ea8`）
+- `core` agent-command-DPfawBbr.js  f9142430 → e8a0c7e4
+- `core` agent-command-DeP5kHlK.js  893415c5 → e7b522ff
+- `worker` worker.mjs  4bf1472d → 898fd1fc
+
+**这期间合入 dev 的 PR**：
+- #198 perf(worker): worker 接第一单之前先做完准备（预热）
+
+## v2026.9.1-db91.6-voice-confirmation-switch-20261005
+
+上线：2026-10-05 12:51 CST 安装，12:52:51 受控重启 Gateway（worker 全空闲、无通话，原生 suspend/drain 后重启），12:54:27 就绪（95 s）·  tag `v2026.9.1-db91.6-voice-confirmation-switch-20261005`
+
+**摘要**：GPT Live 电话里 V 能正常用自己的工具了，语音查飞书日历不再报 `VOICE_CONFIRMATION_REQUIRED`（PR #196）。这道门是 OpenClaw 原生的语音口头确认：`exec` 只把 cat/grep/ls 等当只读，`lark-cli` 一律要确认。过去 V 上不拦，只是因为回合跑在 worker 里、worker 看不到语音绑定；GPT Live 把语音 exec 交回 Gateway 后它才生效（生产记录：音响 V 17/17 次执行，GPT Live 11/11 次被拦）。现在默认放行，语音和文字的 V 权限一致，本人入口和普通入口都放开（Tianyi 定）；`OPENCLAW_VOICE_SPOKEN_CONFIRMATION=1` 可恢复原生门。
+
+**V 上验收**：2026-10-05 12:55–12:57 CST，公网 https://openclaw.tianyi.live/voice/ 真实 GPT Live 通话（V 本机无头 Chrome，合成用户语音「帮我查一下今天飞书日历上有哪些安排」，访问 cookie 在服务器端签发）。会话 `gpt-live-h5-experiment-5aefdaf6`：后台 7 次 exec 全部执行、0 次被拦，`lark-cli calendar +agenda --as user` 返回三场日程；提问后 44 s 语音读出「九点半到十点半长老会、三点到六点客户沟通 · Tianyi × 袁振、六点到七点半福餐厅吃饭」，与工具结果逐条一致。
+
+相对上一版 `v2026.9.1-db91.6-placement-evidence-20261005`：1 个文件变化。
+
+**经 VLab 发版 `voice-confirmation-switch-v1`**（claude-voice-confirmation-switch，dev `71d3ecf2`）
+> 验收：Shared VLab 2026-10-05 12:45-12:49 CST: real GPT Live call (gpt-live-1-codex, WebRTC) through the dev H5 (transient loopback unit, stopped) on the shared Gateway; synthetic USER audio "帮我查一下今天飞书日历上有哪些安排". Voice session 55062026, session gpt-live-h5-experiment-02fa6d22: backend ran 25 exec calls starting with lark-cli calendar +agenda, all executed, 0 VOICE_CONFIRMATION_REQUIRED (V before fix: 11/1…
+- `core` agent-tools.before-tool-call-g2OT63u5.js  f410f20c → 618ab46a
+
+## v2026.9.1-db91.6-placement-evidence-20261005
+
+上线：2026-10-05 10:38 CST 安装，10:39 重启 Gateway，10:41 就绪（PID 1518653）  ·  tag `v2026.9.1-db91.6-placement-evidence-20261005`
+
+**摘要**：Gateway 每分钟会把所有 worker placement 对应的会话读出来、逐条解析一遍，用来判断有没有孤儿记录。placement 只增不减：9/18 有 295 条，10/05 有 2394 条，大头来自夜班。这一步就变成每分钟在主线程上卡 2–3 秒，落在卡顿里的消息都要等它结束。现在只用索引判断「会话还在不在」，只有 key 已经换了新会话 id 时才解析那一条（#193）。
+
+- VLab candidate（3172 条）：每次检查 2353→198 ms，最长阻塞 8.5 s→约 0.5 s；判断结果与原逻辑 3172/3172 一致。
+- 共享 VLab 真实飞书：6 个压测群 /deepseek，每条到会话库核对回复，旧代码 24/24、新代码 24/24 成功，中位数 3.1–3.5 s。5 分钟剖析里超过 2 s 的主线程占用 10→3 次。
+
+相对上一版 `v2026.9.1-db91.6-gpt-live-voice-20261005`：2 个文件变化。
+
+**经 VLab 发版 `placement-evidence-20261005-b`**（claude-placement-evidence，dev `790ae74c`）
+- `core` server-worker-placement-startup-BvPREvpr.js  96b5b482 → 8366d71a
+- `core` session-accessor-K0XuW6ln.js  21f2a569 → 5c2eb542
+
+**这期间合入 dev 的 PR**：
+- #193 fix(gateway): 60 秒 placement 对账不再逐条解析会话
+
+## v2026.9.1-db91.6-gpt-live-voice-20261005
+
+上线：2026-10-05 01:34 CST 受控启动 Gateway，01:41 公网语音服务就绪。tag `v2026.9.1-db91.6-gpt-live-voice-20261005`。
+
+**摘要**：原小何入口 https://openclaw.tianyi.live/voice/ 改为 GPT Live。保留桌面布局；手机拨号后头像连续上移缩小，第一条真实字幕到达才显示对话。接通问候、后台任务续做和模型调用挂断工具随同上线。每次拨号创建独立会话，不复用十二家群会话。
+
+**来源**：PR #189，dev `21894155`；共享发版 `gpt-live-voice-20261005-2189415`，artifact SHA256 `e2f3c5290cadbca2e384eae727422c7f82c39adb03ffdf81c423b192d3260268`。三个实际生产 capture 位于同名 `release/captured/` 目录。完整运行时逐字节 capture、漂移哨兵与共享 align 已执行。
+
+**验收范围**：按用户“你上线吧”授权发布已观察到的业务核心，保留历史 strict FAIL。公网原 H5/WebRTC 实测接通问候、同后台任务 Memory→Web 成功非空工具结果和语音返回；独立 controls-only 通话观察真实零参数挂断工具、告别及自动关闭。Memory/Web 严格观察器仍 FAIL（Web 原结果 envelope 在约 8000 字符截断，完整体未验证），不把它改记通过。最终答案保真和双向声学验收按用户要求暂停。
+
+**重启与回退**：Gateway 受控重启至 PID 1116064，H5 至 PID 1124391；数据、配置与访问授权保持。原 H5 unit 的 symlink 启动不满足新 server main guard，新增受控 ExecStart drop-in 指向冻结真实路径。回退同时检查并恢复 pointer 与 drop-in；只恢复已记录身份，不覆盖并行任务。发布记录见 `release/voice/gpt-live-20261005/`，相关控制器回归 27/27 通过。
+
+相对上一版 `loopback-requester-sender-20261004`，实际三个完整 capture 比较：7 个运行文件变化。
+
+- `core` ./builtin-openclaw-zQV8Wwjr.js  d6cfa039 → 029eae85
+- `core` ./embedded-agent-DaSvA-Yk.js  128a61c9 → 94fc21cb
+- `core` ./gpt-live-call-lifecycle.mjs  713e1ba6 → 73198276
+- `core` ./gpt-live-consult-continuation.js  db2ea459 → 2f2bcda1
+- `core` ./realtime-quicksilver-delegation-controller-B0yPpiHp.js  ad9f99e8 → a5a06fdb
+- `core` ./realtime-session-harness-CEO5kVAJ.js  eee6e604 → 02f37cb2
+- `core` ./session-transcript-reconcile-j5qhAafV.js  b0200676 → e95bb26a
+
 ## loopback-requester-sender-20261004
 
 上线：2026-10-04 11:26 CST 安装，11:27:27 重启 Gateway（V 空闲时）  ·  tag `loopback-requester-sender-20261004`
@@ -20,6 +299,8 @@
 本节另外记下上午已在 V 生效、但还没提交捕获的 GPT Live 三个发版（08:38 安装，08:39 重启生效）。
 
 **同日补丁（14:43）**：接管页手机体验（#183，dev `90d57c9e`）——手势、键盘栏、接管时桌面临时竖屏、交还前先复原。只更新了 `/opt/v-desktop-handoff/service`（不在捕获的三个运行时目录内，来源以仓库 `apps/v-desktop-handoff` 为准），重启 `v-desktop-handoff.service`，没有重启 Gateway；V 上新装 `wmctrl`。备份 `/opt/v-desktop-handoff/service.bak-20261004144257`。生产验收：接管后桌面变为 528x992 且窗口铺满，公网整屏画面 0.8 s 到齐，handBack 628 ms 应答时已是 1280x800、Chrome 回到 1277x760。
+
+**发版后配置改动（2026-10-04 21:29 CST，不改运行字节，代码仓库有迁移脚本）**：V 的 `web_search` 从 Gemini（gemini-3.5-flash-lite + Google 搜索 grounding）换成 Parallel 免 key 档（`tools.web.search.provider` gemini → `parallel-free`，新装官方 npm 插件 `@openclaw/parallel-plugin@2026.9.1` 并锁定版本，`plugins.entries.parallel` 启用并加入 `plugins.allow`；Gemini 搜索配置保留以便回退）。Gateway `openclaw.json` 和 Worker `worker-openclaw.json` 两份都改（备份 `.before-web-search-parallel-*`）。新插件装在 `npm/projects/openclaw-parallel-plugin-*`，不在捕获的三个运行时目录内。原因：60 条真实查询的基准测试中，V 的 DeepSeek 读 Parallel 原文摘录写出的回答盲评 6.6 分，读 Gemini 摘要只有 5.9 分（+0.77，95% CI +0.25~+1.32）；端到端 p50 从 8.2 s 降到 4.4 s，单次搜索从约 5.7 s 降到约 1.2 s（`experiments/web-search-bench/RESULTS-20261004.md`）。经 PR #187（dev `edf54b4a`）的 `lab/release-files/web-search-parallel/activate-production.mjs` 受控重启生效：21:06 第一次取空闲栅栏时，21:00 的 Memory Librarian 定时任务正在运行，45 s 内没能排空，脚本放弃，配置未改；等该任务结束、V 空闲后，21:27:49 自动重试并成功：停服 → 安装插件 → 写配置 → 启动，Gateway PID 700515 → 929016，21:29:39 就绪，worker 池 5，夜班自动暂停后接上。VLab 候选：parallel-free 3+8 个真实回合、Gemini 对照 3+8 个回合，全部通过（候选编号见迁移脚本 README）。生产验收（测试会话 `web-search-acceptance-1791120598`）：DeepSeek 回合调用 2 次 web_search，均走 parallel-free（1.2 s / 1.0 s，0 失败），回复正确并附官方来源，整轮 26.6 s；日志无 Parallel 报错，`worker pool is closing` 0 次。已知风险：中文本地查询排序有噪声（候选中出现过一轮连搜 12 次、用时 70 s）；每次搜索的工具结果体积从约 4K 字符涨到 10–24K 字符。跟踪：7 天每日 review（`experiments/web-search-bench/daily-review.mjs`，V 上 `/opt/v-web-search-review/`，含切换前基线）。回退：`activate-production.mjs --rollback`。
 
 相对上一版 `hotreload-feishu-approvals-20261003`：23 个文件变化。
 

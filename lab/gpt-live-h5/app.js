@@ -1,19 +1,54 @@
+import { createAvatarTasks, ACTIVITY_LABELS } from "./avatar-state.mjs";
+import { mountAvatar } from "./avatar.mjs";
+import { renderMarkdown } from "./markdown.mjs";
 import { createTranscriptPresentation } from "./transcript-presentation.mjs";
-import { captureDuplexMicrophone } from "./microphone-capture.mjs";
+import { createPageMicrophoneSession } from "./microphone-session.mjs";
 import { createCallSounds } from "./call-sounds.mjs";
 import { createH5DuplexPlaybackGate } from "./duplex-playback.mjs";
+import { createRelayAudio } from "./relay-audio.mjs";
 
 const $ = (id) => document.getElementById(id);
+let microphoneSession = createPageMicrophoneSession();
 let call = null;
 let starting = null;
 let liveReady = false;
+let entryError = null;
+let callerEntry = "tianyi";
+const apiUrl = route => `./api/${route}${callerEntry === "tianyi" ? "?entry=tianyi" : ""}`;
 const duplexRecoveryMessage = "上一段语音还没确认结束。若仍无声音，请结束通话后重新开始。";
 const playbackRecoveryMessage = "声音播放被暂停了，点一下页面恢复声音。";
 const greetingGraceMs = 15000;
 const presentation = createTranscriptPresentation();
 const renderedTurns = new Map();
-const tasks = new Set();
-const setStatus = (text) => { $("status").textContent = text; };
+const tasks = createAvatarTasks();
+const avatar = typeof window.Image === "function" ? mountAvatar(document, window) : null;
+const sceneAnimations = new Map();
+function setCallState(state) {
+  if (document.body.dataset.callState === state) return;
+  const animate = window.matchMedia?.("(max-width: 900px)").matches
+    && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const elements = animate ? [document.querySelector?.(".portrait-wrap"), document.querySelector?.(".call-actions")].filter(Boolean) : [];
+  const before = elements.map(element => element.getBoundingClientRect());
+  for (const animation of sceneAnimations.values()) animation.cancel();
+  sceneAnimations.clear();
+  document.body.dataset.callState = state;
+  elements.forEach((element, index) => {
+    const from = before[index], to = element.getBoundingClientRect();
+    if (!from.width || !to.width || typeof element.animate !== "function") return;
+    const dx = from.x + from.width / 2 - to.x - to.width / 2;
+    const dy = from.y + from.height / 2 - to.y - to.height / 2;
+    const animation = element.animate([
+      { transform: `translate(${dx}px, ${dy}px) scale(${from.width / to.width}, ${from.height / to.height})`, transformOrigin: "center" },
+      { transform: "none", transformOrigin: "center" },
+    ], { duration: 620, easing: "cubic-bezier(.22, 1, .36, 1)" });
+    sceneAnimations.set(element, animation);
+    animation.onfinish = () => { if (sceneAnimations.get(element) === animation) sceneAnimations.delete(element); };
+  });
+}
+const setStatus = (text) => {
+  $("status").textContent = text;
+  $("status").dataset.notice = text === "拨号后，直接说话。" ? "normal" : "message";
+};
 function duplexDiagnostic(active, entry) {
   if (call !== active) return;
   const counts = active.duplexDiagnostics.counts;
@@ -97,7 +132,7 @@ function suppressGreetingForCaller(active) {
 function cancelAutomaticEnd(active) {
   if (!active.ending) return;
   clearTimeout(active.ending.timeout); active.ending = null;
-  document.body.dataset.callState = "connected";
+  setCallState("connected");
   $("badge").textContent = "通话中";
   connectedStatus(active);
 }
@@ -120,7 +155,7 @@ function armAutomaticEnd(active, request) {
   if (call !== active || request.invalidated || !request.accepted || !request.providerObserved
     || active.latestNativeUserTurnId !== request.originUserTurnId || active.ending) return;
   active.ending = request;
-  document.body.dataset.callState = "ending";
+  setCallState("ending");
   $("badge").textContent = "正在结束"; connectedStatus(active);
   // Silence or a timer alone is not proof of a delivered farewell. Keep the
   // manual button available if transport/playback evidence never arrives.
@@ -230,7 +265,13 @@ async function startRemotePlayback(active, source) {
 }
 async function recoverPlaybackGesture() {
   const active = call;
-  if (!active || !$("remoteAudio").srcObject || !active.playbackNeedsGesture) return;
+  if (!active) return;
+  if (active.relay) {
+    try { await active.context.resume(); if (call === active && active.context.state === "running") setStatus("V 正在听，直接说话就好"); }
+    catch { if (call === active) setStatus("轻点页面恢复声音播放。"); }
+    return;
+  }
+  if (!$("remoteAudio").srcObject || !active.playbackNeedsGesture) return;
   const playing = startRemotePlayback(active, "gesture");
   try {
     await active.context?.resume();
@@ -250,7 +291,7 @@ async function recoverPlaybackGesture() {
   await playing;
 }
 async function api(route, payload, { signal } = {}) {
-  const response = await fetch(`./api/${route}`, {
+  const response = await fetch(apiUrl(route), {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload ?? {}), signal,
   });
   const result = await response.json();
@@ -258,16 +299,17 @@ async function api(route, payload, { signal } = {}) {
   return result;
 }
 function taskState() {
-  $("taskStatus").textContent = tasks.size ? "后台处理中" : "";
+  $("taskStatus").textContent = ACTIVITY_LABELS[tasks.pose] ?? "";
   $("cancel").disabled = tasks.size === 0;
   $("cancel").hidden = tasks.size === 0;
-  $("avatar").src = tasks.size ? "./assets/v-tool-busy-20260922.png" : "./assets/v-idle-nohat-20260922.png";
+  void avatar?.show(tasks.pose);
   document.body.dataset.avatarState = tasks.size > 1 ? "very-busy" : tasks.size ? "busy" : "idle";
 }
 function renderTranscript(snapshot) {
   const log = $("conversation");
   const follow = log.scrollHeight - log.scrollTop - log.clientHeight < 64;
   const all = [...snapshot.history, ...snapshot.current];
+  document.body.dataset.conversation = all.some(item => item.text?.trim()) ? "started" : "empty";
   const visibleKeys = new Set(all.map(item => item.key));
   for (const [key, row] of renderedTurns) if (!visibleKeys.has(key)) { row.remove(); renderedTurns.delete(key); }
   $("currentLabel").textContent = call ? "正在说" : "最后的片段";
@@ -282,7 +324,7 @@ function renderTranscript(snapshot) {
         const meta = document.createElement("div"); meta.className = "transcript-meta";
         const speaker = document.createElement("span"); speaker.className = "transcript-speaker";
         const time = document.createElement("time"); time.className = "transcript-time";
-        const text = document.createElement("p"); text.className = "transcript-text";
+        const text = document.createElement("div"); text.className = "transcript-text";
         meta.append(speaker, time); row.append(meta, text);
         row.parts = { speaker, time, text };
         renderedTurns.set(item.key, row);
@@ -293,7 +335,11 @@ function renderTranscript(snapshot) {
       if (row.parts.time.textContent !== item.time) row.parts.time.textContent = item.time;
       const dateTime = new Date(item.at).toISOString();
       if (row.parts.time.dateTime !== dateTime) row.parts.time.dateTime = dateTime;
-      if (row.parts.text.textContent !== item.text) row.parts.text.textContent = item.text;
+      if (row.rawText !== item.text) {
+        if (item.role === "assistant") renderMarkdown(row.parts.text, item.text, document);
+        else row.parts.text.textContent = item.text;
+        row.rawText = item.text;
+      }
       if (parent.children[index] !== row) parent.insertBefore(row, parent.children[index] ?? null);
     }
   }
@@ -357,7 +403,9 @@ async function stopCall() {
   const active = call; call = null;
   if (starting === active) starting = null;
   if (active) {
-    clearInterval(active.levelTimer); clearInterval(active.heartbeat);
+    active.relay?.dispose();
+    clearInterval(active.levelTimer); clearInterval(active.heartbeat); clearInterval(active.presentationPoll);
+    active.presentationAbort?.abort();
     clearTimeout(active.ending?.timeout); clearTimeout(active.greetingRetryTimer);
     clearTimeout(active.greetingDeadlineTimer); active.greetingAbort?.abort();
     active.captureAbort?.abort(); active.capture?.dispose();
@@ -369,12 +417,13 @@ async function stopCall() {
   $("remoteAudio").srcObject = null;
   $("remoteAudio").muted = false;
   tasks.clear(); taskState(); document.body.dataset.voiceState = "idle";
-  document.body.dataset.callState = "idle";
+  setCallState("idle");
   renderTranscript(presentation.snapshot());
   $("start").hidden = false; $("start").disabled = false; $("stop").hidden = true;
   $("steerText").disabled = true; $("steer").disabled = true;
   $("badge").textContent = liveReady ? "可以拨号" : "页面预览";
   $("startLabel").textContent = "拨号"; $("stopLabel").textContent = "结束通话";
+  if ($("voiceModel")) $("voiceModel").disabled = false;
   setStatus("拨号后，直接说话。");
   if (active) {
     await active.context?.close().catch(() => {});
@@ -383,17 +432,23 @@ async function stopCall() {
 }
 async function startCall() {
   if (starting || call) return;
-  if (!liveReady) { setStatus("当前页面仅作预览，真实通话还未连接 VLab 候选服务。"); return; }
+  if (!liveReady) { setStatus(entryError ?? "当前页面仅作预览，真实通话还未连接 VLab 候选服务。"); return; }
   $("start").disabled = true; $("start").hidden = true; $("stop").hidden = false;
   $("stopLabel").textContent = "取消拨号"; $("badge").textContent = "拨号中";
-  document.body.dataset.callState = "dialing"; setStatus("正在连接 V…");
+  setCallState("dialing"); setStatus("正在连接 V…");
   resetTranscript();
   const active = { pc: new RTCPeerConnection(), captureAbort: new AbortController() }; call = active; starting = active;
+  if ($("voiceModel")) $("voiceModel").disabled = true;
+  if (['seeduplex','grok'].includes($("voiceModel")?.value)) {
+    // Create/resume in the dial gesture, before microphone and network awaits.
+    active.context = new AudioContext({latencyHint:"interactive"});
+    active.contextResume = active.context.resume();
+  }
   // Each call owns its sound element; a late play() from an older call cannot
   // pause or replace the next call's pickup. The page element configures assets.
   active.soundElement = document.createElement("audio"); active.soundElement.playsInline = true;
   for (const key of ["ringSrc", "pickupSrc"]) if ($("callSound").dataset[key]) active.soundElement.dataset[key] = $("callSound").dataset[key];
-  active.sounds = createCallSounds({ audioElement: active.soundElement });
+  active.sounds = createCallSounds({ audioElement: active.soundElement, sharedContext: active.context });
   void active.sounds.dial();
   // Activity metadata stays in this page's memory only. It contains no audio,
   // transcript, session identifiers or claim that the model was interrupted.
@@ -410,24 +465,48 @@ async function startCall() {
   active.duplexDiagnostics.playbackMode = active.duplex.snapshot().mode;
   active.duplexDiagnostics.interruptionOwner = active.duplex.snapshot().interruptionOwner;
   try {
-    active.capture = await captureDuplexMicrophone({
+    active.capture = await microphoneSession.acquire({
       mediaDevices: navigator.mediaDevices, signal: active.captureAbort.signal,
       isCurrent: () => call === active,
       onDiagnostics: (metadata) => { if (call === active) active.duplexDiagnostics.microphone = metadata; },
     });
     active.stream = active.capture.stream;
     if (call !== active) { active.stream.getTracks().forEach((track) => track.stop()); return; }
-    for (const track of active.stream.getAudioTracks()) active.pc.addTrack(track, active.stream);
-    const reservation = await api("session"); active.voiceSessionId = reservation.voiceSessionId;
+    const reservation = await api("session", {model:['seeduplex','grok'].includes($("voiceModel")?.value)?$("voiceModel").value:'gpt-live'}); active.voiceSessionId = reservation.voiceSessionId;
     if (call !== active) { await api("close", { voiceSessionId: active.voiceSessionId }); return; }
+    if (reservation.transport === 'gateway-relay') {
+      await active.contextResume;
+      if(call!==active)return;
+      active.relay=createRelayAudio({context:active.context,stream:active.stream,reservation,
+        onError:error=>{if(call===active)void stopCall().then(()=>setStatus(error.message));},
+        onClosed:()=>{if(call===active)void stopCall();},
+        onPlaybackActivity:speaking=>{if(call===active)document.body.dataset.voiceState=speaking?'speaking':'listening';},
+        onEvent:value=>{
+          if(call!==active)return;
+          tasks.consume(value);
+          if(value.type==='backend.result')renderTranscript(presentation.consume(value));
+          if(value.type.startsWith('tool.'))taskState();
+          if(value.type==='playback.blocked')setStatus('声音播放已暂停，轻点页面继续。');
+          if(value.type==='playback.resumed')setStatus('V 正在听，直接说话就好');
+          if(value.type==='transcript') {
+            active.relayTurns??={};
+            const id=active.relayTurns[value.role]??=crypto.randomUUID();
+            renderTranscript(presentation.consume(value.final?{type:'turn.done',turn:{id,role:value.role,transcript:value.text}}:
+              {type:'output_transcript.delta',turn_id:id,delta:value.text}));
+            if(value.final)delete active.relayTurns[value.role];
+          }
+        }});
+      await active.relay.start();if(call!==active)return;
+      setCallState('connected');$("badge").textContent='通话中';$("stopLabel").textContent='结束通话';
+      $("steerText").disabled=false;$("steer").disabled=false;setStatus('V 正在听，直接说话就好');
+      void active.sounds.connected();
+      active.heartbeat=setInterval(()=>void api('heartbeat',{voiceSessionId:active.voiceSessionId}).catch(()=>{}),15000);
+      return;
+    }
+    for (const track of active.stream.getAudioTracks()) active.pc.addTrack(track, active.stream);
     active.channel = active.pc.createDataChannel("oai-events"); active.channel.onmessage = (event) => { if (call === active) providerMessage(event); };
-    active.events = new EventSource("./api/events");
-    active.events.onmessage = (event) => {
-      if (call !== active) return;
-      const value = JSON.parse(event.data);
-      if (value.voiceSessionId !== active.voiceSessionId) return;
-      if (value.type === "tool.call" && value.name !== "openclaw_end_call") tasks.add(value.callId);
-      if (["tool.result", "tool.error"].includes(value.type)) tasks.delete(value.callId);
+    active.events = new EventSource(apiUrl("events"));
+    const applyNativeControl = value => {
       if (value.type === "tool.result") requestAutomaticEnd(active, value);
       if (value.type === "tool.error" && value.name === "openclaw_end_call" &&
         (value.callId === value.requestId || value.source === "backend_model_client_tool" &&
@@ -439,8 +518,44 @@ async function startCall() {
           if (active.ending?.requestId === value.requestId) cancelAutomaticEnd(active);
         }
       }
+    };
+    active.events.onmessage = (event) => {
+      if (call !== active) return;
+      const value = JSON.parse(event.data);
+      if (value.voiceSessionId !== active.voiceSessionId) return;
+      if (Number.isSafeInteger(value.revision)) active.presentationRevision = Math.max(active.presentationRevision ?? 0, value.revision);
+      tasks.consume(value);
+      if(value.type==='backend.result')renderTranscript(presentation.consume(value));
+      applyNativeControl(value);
       taskState();
     };
+    // Native voice audio remains on WebRTC. This authenticated snapshot only
+    // recovers task/document presentation when an HTTPS proxy buffers SSE.
+    const refreshPresentation = async () => {
+      if (call !== active || active.presentationFetching) return;
+      active.presentationFetching = true;
+      active.presentationAbort ??= new AbortController();
+      try {
+        const response = await fetch(apiUrl('presentation') + `&after=${active.documentRevision ?? 0}&controlsAfter=${active.controlRevision ?? 0}`, { signal: active.presentationAbort.signal });
+        if (!response.ok) return;
+        const value = await response.json();
+        if (call !== active || value.voiceSessionId !== active.voiceSessionId ||
+          !Number.isSafeInteger(value.revision) || value.revision < (active.presentationRevision ?? 0)) return;
+        for(const item of value.controls ?? []) {
+          if(item.voiceSessionId !== active.voiceSessionId || !Number.isSafeInteger(item.revision) || item.revision <= (active.controlRevision ?? 0))continue;
+          applyNativeControl(item); active.controlRevision = item.revision;
+        }
+        tasks.clear();
+        for (const item of value.pending ?? []) tasks.consume(item);
+        for (const item of value.documents ?? []) renderTranscript(presentation.consume(item));
+        active.presentationRevision = value.revision;
+        active.documentRevision = value.revision;
+        taskState();
+      } catch { /* A transient presentation failure never closes the audio call. */ }
+      finally { active.presentationFetching = false; }
+    };
+    active.presentationPoll = setInterval(() => void refreshPresentation(), 1500);
+    void refreshPresentation();
     active.pc.ontrack = async (event) => {
       if (call !== active) return;
       const stream = new MediaStream([event.track]); $("remoteAudio").srcObject = stream;
@@ -504,7 +619,7 @@ async function startCall() {
     active.pc.onconnectionstatechange = () => {
       if (call !== active) return;
       if (active.pc.connectionState === "connected") {
-        document.body.dataset.callState = "connected";
+        setCallState("connected");
         void active.sounds.connected();
         $("stopLabel").textContent = "结束通话";
         $("badge").textContent = "通话中"; connectedStatus(active);
@@ -551,11 +666,43 @@ $("cancel").addEventListener("click", async () => {
   catch (error) { if (call === active) setStatus(error.message); }
 });
 window.addEventListener("pagehide", () => {
+  microphoneSession.close();
   const active = call;
   if (!active) return;
   // Beacon survives navigation; stopCall synchronously releases every local
   // resource and dial owner before its best-effort asynchronous API cleanup.
-  if (active.voiceSessionId) navigator.sendBeacon("./api/close", new Blob([JSON.stringify({ voiceSessionId: active.voiceSessionId })], { type: "application/json" }));
+  if (active.voiceSessionId) navigator.sendBeacon(apiUrl("close"), new Blob([JSON.stringify({ voiceSessionId: active.voiceSessionId })], { type: "application/json" }));
   void stopCall();
 });
-fetch("./api/status").then((r) => r.json()).then((s) => { liveReady = s.ready === true; $("badge").textContent = s.ready ? "可以拨号" : "页面预览"; if (!s.ready) setStatus("这是页面预览，真实通话需连接 VLab 候选服务。"); }).catch(() => setStatus("暂时无法连接 VLab，请稍后重试。"));
+window.addEventListener("pageshow",event=>{if(event.persisted)microphoneSession=createPageMicrophoneSession();});
+async function initializeEntry() {
+  try {
+    const fragment = new URLSearchParams(window.location.hash.slice(1));
+    const access = fragment.get("access");
+    if (access) {
+      callerEntry = "tianyi";
+      // The share credential stays in the URL fragment until exchanged for the
+      // existing HttpOnly voice cookie; never send it as a query or log field.
+      await api("access", { access });
+      const search = new URLSearchParams(window.location.search);
+      search.set("entry", "tianyi");
+      window.history.replaceState(null, "", `${window.location.pathname}?${search}`);
+    }
+    const response = await fetch(apiUrl("status"));
+    const status = await response.json();
+    if (!response.ok) throw new Error(status.error ?? "暂时无法连接 V，请稍后重试。");
+    liveReady = status.ready === true;
+    if ($("voiceModel")) for(const model of status.models??[]) {
+      const option=[...$("voiceModel").options].find(o=>o.value===model.id);
+      if(option)option.disabled=!model.available;
+    }
+    $("badge").textContent = liveReady ? "可以拨号" : "页面预览";
+    if (!liveReady) setStatus("这是页面预览，真实通话需连接候选服务。");
+  } catch (error) {
+    liveReady = false;
+    entryError = error.message ?? "暂时无法连接 V，请稍后重试。";
+    $("badge").textContent = "暂未连接";
+    setStatus(entryError);
+  }
+}
+void initializeEntry();

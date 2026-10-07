@@ -7,7 +7,7 @@ import {spawn,spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {createPrivatePulseMicrophone} from './private-pulse.mjs';
-import {BROWSER_PROBE,SNAPSHOT_EXPRESSION} from './browser-probe.mjs';
+import {BROWSER_PROBE,readBoundedProbeSnapshot} from './browser-probe.mjs';
 import {parsePublicProgressDiagnostics,assessH5ProgressProvenance} from '../gpt-live-h5-provenance-evidence.mjs';
 import {parseCompleteTimestamps} from '../gpt-live-call-live-evidence.mjs';
 import {indexNativeToolPairs,mergeExactToolBodies,mergeSessionToolEvidence,extractExecDateFromPairs,continuousPlaybackQuiet,explicitSpokenOffsets,resolveNativeControlOwner,resolveCanonicalFinalTrace,toolResultSucceeded,isExactTwoPlusTwoReply,nativeCountRequestsEighty,hasOrderedCountBeginning,resolveOwnedChildExecPending,resolveOwnedBargeTerminal,resolveNativeTurnTranscriptWindow,assessCompletePlaybackWindow,assessDecodedPlaybackWindow,assessEarlySpeechBoundary,resolveEarlyPlaybackTail,assessNativeResponseDrain,assessIndependentInputConvergence,matchesConsumedConditionBatch,extractQueuedConditionResume} from './evidence.mjs';
@@ -15,9 +15,18 @@ import {readPrivateChildTranscript,activeTranscriptMessages} from './read-child-
 import {extractControlExecWitness,assessControlExecPending,matchesExactControlMarker} from '../gpt-live-h5-control-evidence.mjs';
 import {resolveControlExecConfirmationChallenge,resolveConfirmationUserTurn,resolveConfirmedControlExec,
   confirmationArgsFingerprint,findDurableConfirmationUserMessage,parseVoiceConfirmationDiagnostics,
-  assessControlConfirmationCoreReceipt} from './confirmation-evidence.mjs';
+  assessControlConfirmationCoreReceipt,parseControlProcessWitness,assessControlProcessPending,
+  assessControlProcessExit,assessConfirmedControlCancel} from './confirmation-evidence.mjs';
+import {validateOwnedProcObserverBinding,validateOwnedProcObserverStart} from './os-observer-lifecycle.mjs';
+import {hasLifecyclePlaybackTail,assessLifecycleSpeech,assessProactiveGreeting,assessLifecyclePostTerminalRtp,
+  resolveLifecycleConsultResult,resolveLifecycleCanonicalBody,resolveLifecycleFinalSpeechTurns,
+  hasLifecycleFinalPlaybackTail,assessLifecycleFinalSpeech} from './call-lifecycle-evidence.mjs';
 assert(process.env.VLAB_CANDIDATE_ID&&process.env.GPT_LIVE_H5_READY==='1','Ready private Candidate H5 required');
 const testCase=process.env.GPT_LIVE_H5_CASE;assert(['comprehensive-long','comprehensive-controls','comprehensive-queued-steer'].includes(testCase));
+const controlPath=process.env.GPT_LIVE_H5_CONTROL_PATH??'combined';
+assert(['combined','confirm-cancel'].includes(controlPath),'Unknown independent control path');
+assert(controlPath==='combined'||testCase==='comprehensive-controls'&&process.env.GPT_LIVE_H5_CONTROL_CONFIRMATION==='1'&&
+  process.env.GPT_LIVE_H5_OS_OBSERVER_CONFIG,'Independent confirm-cancel requires actual core confirmation and frozen OS observation');
 const base=process.env.GPT_LIVE_H5_EVIDENCE_DIR;assert(path.isAbsolute(base));fs.mkdirSync(base,{recursive:true,mode:0o700});
 const memoryQuery=process.env.GPT_LIVE_H5_MEMORY_QUERY?.trim();assert(memoryQuery,'Explicit private memory query required');
 const childWaitSeconds=Number(process.env.GPT_LIVE_H5_CHILD_WAIT_SECONDS??45);
@@ -30,7 +39,7 @@ const app=await fetch(new URL('app.js',url)).then(r=>r.arrayBuffer());assert.equ
 const deadline=Date.now()+Number(process.env.GPT_LIVE_H5_NATIVE_CASE_SECONDS??600)*1000;
 const token=String(config.gateway.auth.token).replace(/\$\{([^}]+)\}/gu,(_,key)=>{assert(process.env[key]);return process.env[key]});
 const scratch=fs.mkdtempSync(path.join(stateRoot,'tmp',testCase+'-'));fs.chmodSync(scratch,0o700);
-let pulse,chrome,chromeTemp,chromeStderr='',cdp,gateway,lastState,lastHistory={},currentSession,summary,cleanup,controlConfirmation;
+let pulse,chrome,chromeTemp,chromeStderr='',cdp,gateway,lastState,snapshotCache,lastHistory={},currentSession,summary,cleanup,controlConfirmation;
 const checks=[],sessionKeys=[],toolEvents=[],subscribedSessions=new Set(),callOwners=new Map(),speechPlaybackWindows=[];
 function hash(value){return createHash('sha256').update(value).digest('hex')}
 function save(name,value){fs.writeFileSync(path.join(base,name),JSON.stringify(value,null,2)+'\n',{mode:0o600});}
@@ -66,7 +75,11 @@ async function clickOriginalButton(id) {
  await cdp.request('Input.dispatchMouseEvent',{type:'mousePressed',x:rect.x,y:rect.y,button:'left',clickCount:1});
  await cdp.request('Input.dispatchMouseEvent',{type:'mouseReleased',x:rect.x,y:rect.y,button:'left',clickCount:1});
 }
-async function snapshot(full=false){const expression=full?SNAPSHOT_EXPRESSION:SNAPSHOT_EXPRESSION.replace('audioFrames:p.audioFrames,micFrames:p.micFrames','audioFrames:p.audioFrames.slice(-80),micFrames:p.micFrames.slice(-80)').replace('duplex:globalThis.__gptLiveDuplexDiagnostics??null','duplex:null');return lastState=await evaluate(expression);}
+async function snapshot(full=false){const state=await readBoundedProbeSnapshot(evaluate,{previous:full?null:snapshotCache,
+ onClockRow:row=>{fs.appendFileSync(path.join(base,'browser-page-clocks.jsonl'),JSON.stringify(row)+'\n',{mode:0o600});}});
+ if(state&&state.probeTimeOrigin===snapshotCache?.probeTimeOrigin)assert(state.duplexSnapshotGeneration>snapshotCache.duplexSnapshotGeneration,'Full snapshot cannot reuse an old browser header');
+ snapshotCache=state;
+ return lastState=full||!state?state:{...state,audioFrames:state.audioFrames.slice(-80),micFrames:state.micFrames.slice(-80),duplex:null};}
 async function waitFor(predicate,label,max=120000) {
  const until=Math.min(deadline,Date.now()+max);
  while(Date.now()<until){const state=await snapshot();const result=await predicate(state);if(result)return result;await sleep(250);}
@@ -107,6 +120,31 @@ function parentEvidencePairs(history=lastHistory.parent) {
 }
 function diagnostics(){return parsePublicProgressDiagnostics(fs.readFileSync(process.env.GPT_LIVE_H5_TRACE_PATH,'utf8'));}
 function confirmationDiagnostics(){return parseVoiceConfirmationDiagnostics(fs.readFileSync(process.env.GPT_LIVE_H5_TRACE_PATH,'utf8'));}
+function loadControlProcessSource() {
+ const frozen=JSON.parse(fs.readFileSync(process.env.GPT_LIVE_H5_OS_OBSERVER_CONFIG,'utf8'));
+ const directory=path.dirname(frozen.outputPath),beneath=(parent,child)=>child===parent||child.startsWith(parent+path.sep);
+ assert(path.isAbsolute(frozen.outputPath)&&path.isAbsolute(frozen.bindingPath)&&beneath(directory,base)&&
+  beneath(directory,frozen.bindingPath),'OS witness must belong to this exact Candidate evidence run');
+ const bindingBytes=fs.readFileSync(frozen.bindingPath),binding=JSON.parse(bindingBytes);
+ validateOwnedProcObserverBinding(binding,{candidateId:process.env.VLAB_CANDIDATE_ID,unit:process.env.VLAB_CANDIDATE_UNIT,
+  sourceCommit:process.env.GPT_LIVE_H5_SOURCE_COMMIT,expectedOwner:frozen.expectedOwner});
+ const launch=JSON.parse(fs.readFileSync(path.join(directory,'owned-proc-observer-launch.json'),'utf8'));
+ const expected={candidateId:binding.candidateId,unit:binding.unit,owner:binding.owner,sourceCommit:binding.sourceCommit,
+  planSha256:binding.planSha256,freezeSha256:binding.freezeSha256,ownerBindingSha256:hash(bindingBytes),
+  gatewayPid:Number(process.env.GPT_LIVE_H5_GATEWAY_PID),gatewayStartTimeTicks:launch.actualStart?.gatewayStartTimeTicks,
+  observerSourceSha256:frozen.scriptSha256,pollMs:frozen.pollMs,durationSeconds:frozen.durationSeconds,
+  user:frozen.expectedUser,uid:process.getuid()};
+ validateOwnedProcObserverStart(launch.actualStart,expected);
+ for(const name of ['bindingPath','outputPath']) {
+  const filename=frozen[name],stat=fs.statSync(filename);
+  assert(fs.realpathSync(filename)===filename&&stat.isFile()&&stat.uid===process.getuid()&&(stat.mode&0o777)===0o600,
+   'OS source must be a canonical private actual run file');
+ }
+ return {expected,outputPath:frozen.outputPath,launch};
+}
+function readControlProcessWitness(source) {
+ return parseControlProcessWitness(fs.readFileSync(source.outputPath,'utf8'));
+}
 async function startCall() {
  const pcIndex=(await snapshot()).pcStates.length;
  await clickOriginalButton('start');
@@ -115,6 +153,68 @@ async function startCall() {
  const meta=JSON.parse(fs.readFileSync(process.env.GPT_LIVE_H5_SESSION_PATH));const created=(await snapshot()).api.filter(x=>x.route==='/api/session'&&x.status===200).at(-1);
  assert.equal(meta.voiceSessionId,created.voiceSessionId,'Exact H5 session ownership');assert.equal(created.model,'gpt-live-1-codex');
  currentSession=meta.sessionKey;callOwners.set(pcIndex,{voiceSessionId:meta.voiceSessionId,sessionKey:meta.sessionKey,createdAt:created.at,connectedAt:(await snapshot()).pcTransitions.find(t=>t.pcIndex===pcIndex&&t.state==='connected')?.at??null});sessionKeys.push(meta.sessionKey);await subscribeSession(currentSession);const started={candidateId:process.env.VLAB_CANDIDATE_ID,testCase,pcIndex,paidVoiceStarted:true,sessionKey:meta.sessionKey,voiceSessionId:meta.voiceSessionId,apiStatus:created.status,connectedAt:callOwners.get(pcIndex).connectedAt,observedAt:Date.now()};save('native-voice-started-'+pcIndex+'.json',started);console.log(JSON.stringify({nativeVoiceStarted:started}));return pcIndex;
+}
+// Only the independent cancellation happy path waits before feeding USER PCM.
+// Deliberate acknowledgement/barge-in overlap on the combined path is intact.
+async function waitControlGreeting(pcIndex) {
+ assert.equal(controlPath,'confirm-cancel');
+ const owner=callOwners.get(pcIndex);assert(owner,'Exact original control call owner required');
+ const clipsBefore=pulse.plays.length,expectedClips=pcIndex===0?0:2;
+ assert.equal(clipsBefore,expectedClips,'Independent control greeting must precede the next USER');
+ const ready=await waitFor(s=>s.api.filter(a=>a.route==='/api/ready'&&a.status===200)[pcIndex],
+  'Independent control original H5 ready operation',15000);
+ assert(Number.isFinite(ready.requestedAt)&&ready.requestedAt>=owner.connectedAt&&ready.at>=owner.createdAt,
+  'Ready operation must belong to this connected original owner');
+ const evidence=await waitFor(async state=>{
+  if(!hasLifecyclePlaybackTail(state,{pcIndex,after:ready.requestedAt}))return null;
+  const full=await snapshot(true),speech=assessLifecycleSpeech(full,{pcIndex,after:ready.requestedAt,requireCreatedAfter:true});
+  if(!speech?.playback?.passed)return null;
+  const independentRtp=assessLifecyclePostTerminalRtp(speech.quiet,{terminalAt:speech.terminal.at});
+  const greeting=assessProactiveGreeting(full,{pcIndex,owner,readyAt:ready.requestedAt,before:speech.quiet.to+1});
+  if(!independentRtp||!greeting?.passed||greeting.speech?.terminal.turnId!==speech.terminal.turnId||
+    greeting.speech.window.from!==speech.window.from||greeting.speech.window.to!==speech.quiet.to)return null;
+  return {owner,ready,speech,greeting,independentRtp,clipsBefore,expectedClips,
+   proofObservedAt:full.snapshotObservedAt??null,proofWindowEnd:speech.quiet.to};
+ },'Independent control proactive greeting complete caption/player and750ms fresh RTP tail',45000);
+ // Keep this completed full-snapshot proof; a later transport/serialization
+ // delay cannot move its boundary or repair missing original player samples.
+ assert.equal(pulse.plays.length,clipsBefore,'No USER may be injected while the greeting proof is pending');
+ check('confirm-cancel-proactive-greeting-before-USER-'+pcIndex,true,{evidence,caseVariant:controlPath,
+  digitalPlaybackOnly:true,duplexAttenuationNotAccepted:true});
+ speechPlaybackWindows.push({name:'confirm-cancel-proactive-greeting-before-USER-'+pcIndex,window:evidence.speech.window});
+ save('confirm-cancel-greeting-'+pcIndex+'-evidence.json',evidence);return evidence;
+}
+async function waitControlConfirmationReply(pcIndex,challenge,userTurn) {
+ assert.equal(controlPath,'confirm-cancel');
+ const owner=callOwners.get(pcIndex),clipsBefore=pulse.plays.length;
+ assert(owner&&challenge?.owner&&challenge.pcIndex===pcIndex&&challenge.sessionKey===owner.sessionKey&&
+  challenge.voiceSessionId===owner.voiceSessionId&&challenge.owner.backendRunId===challenge.runId&&
+  challenge.owner.sourceRunIdSha256===hash(challenge.runId)&&clipsBefore===1&&userTurn?.turnId,
+  'Exact initial challenged run and complete original USER required');
+ const evidence=await waitFor(async state=>{
+  const ds=diagnostics(),canonical=resolveCanonicalFinalTrace(ds,challenge.owner,challenge.owner.sourceRunIdSha256);
+  if(!canonical||canonical.received.at<challenge.blockedAt)return null;
+  const body=resolveLifecycleCanonicalBody(toolEvents,{canonical,sessionKey:challenge.sessionKey,runId:challenge.runId});
+  const host=resolveLifecycleConsultResult(state,{pcIndex,voiceSessionId:owner.voiceSessionId,userTurnId:userTurn.turnId,
+   toolChain:{runId:challenge.runId},after:controlConfirmation.originalRequestInput.startedAt});
+  if(!host||host.result.at<challenge.blockedAt)return null;
+  const params={pcIndex,body,host,userTurnId:userTurn.turnId};
+  if(!hasLifecyclePlaybackTail(state,{pcIndex,after:canonical.received.at,terminalAfter:canonical.final.at})||
+    !resolveLifecycleFinalSpeechTurns(state,params)||!hasLifecycleFinalPlaybackTail(state,params))return null;
+  const full=await snapshot(true),fullHost=resolveLifecycleConsultResult(full,{pcIndex,voiceSessionId:owner.voiceSessionId,
+   userTurnId:userTurn.turnId,toolChain:{runId:challenge.runId},after:controlConfirmation.originalRequestInput.startedAt});
+  if(!fullHost||fullHost.result.at!==host.result.at)return null;
+  const speech=assessLifecycleFinalSpeech(full,{...params,host:fullHost});
+  return speech?{owner,challengeOwner:challenge.owner,canonical,body,host:fullHost,speech,clipsBefore,
+   proofObservedAt:full.snapshotObservedAt??null,proofWindowEnd:speech.quiet.to,
+   source:'exact-challenged-run-canonical-final-and-complete-native-playback-before-confirmation-USER',
+   confirmationPromptMeaningRequiresIndependentReview:true}:null;
+ },'Exact challenged canonical final complete native reply and750ms fresh RTP tail before confirmation USER',45000);
+ assert.equal(pulse.plays.length,clipsBefore,'No confirmation USER may overlap the pending spoken question');
+ check('confirm-cancel-challenged-reply-before-confirmation-USER',true,{evidence,caseVariant:controlPath,
+  digitalPlaybackOnly:true,duplexAttenuationNotAccepted:true});
+ speechPlaybackWindows.push({name:'confirm-cancel-challenged-reply-before-confirmation-USER',window:evidence.speech.window});
+ save('confirm-cancel-challenged-reply-evidence.json',evidence);return evidence;
 }
 function play(name){
  const file=path.join(clips,name+'.wav');assert(fs.existsSync(file));const input=pulse.play(file,name);
@@ -130,9 +230,21 @@ async function convergeInputTurn(input,pcIndex,label) {
  const complete=await snapshot(true),speech=complete.micFrames.filter(f=>f.pcIndex===pcIndex&&
    f.at>=input.row.startedAt&&f.at<=input.row.completedAt&&f.rms>.02);
  const lastSpeechAt=speech.at(-1)?.at;assert(Number.isFinite(lastSpeechAt),'Original input microphone speech witness required');
- const result=await waitFor(s=>assessIndependentInputConvergence({events:s.events,micFrames:s.micFrames,pcIndex,
-   input:input.row,lastSpeechAt,observedAt:Date.now()}),label+' native user completion and continuous microphone quiet',15000);
- check('independent-input-convergence-'+input.row.label,true,{proof:result});return result;
+ let observation;
+ const result=await waitFor(s=>{
+  const observedAt=s?.snapshotObservedAt,microphone=(s?.micFrames??[]).filter(f=>f.pcIndex===pcIndex),latestMicAt=microphone.at(-1)?.at;
+  // The caller waits for the completed clip before its next independent USER
+  // injection. This proves the frozen browser prefix at its own header time;
+  // a slow transfer does not certify arbitrary later business input state.
+  const currentObservation={observedAt:observedAt??null,source:'browser-wall-at-frozen-prefix-header',scope:'validation-clip-before-next-USER-injection',
+   latestMicrophoneAt:latestMicAt??null,latestMicrophoneAgeMs:Number.isFinite(observedAt)&&Number.isFinite(latestMicAt)?observedAt-latestMicAt:null,
+   collectorCompletedAt:s?.snapshotCompletedAt??null,collectorCompletedClock:s?.snapshotCompletedClock??null,
+   collectionLatencyMs:s?.snapshotCollectionLatencyMs??null,snapshotGeneration:s?.duplexSnapshotGeneration??null};
+  if(!Number.isFinite(observedAt)||!Number.isFinite(currentObservation.latestMicrophoneAgeMs)||currentObservation.latestMicrophoneAgeMs<0)return null;
+  const proof=assessIndependentInputConvergence({events:s.events,micFrames:microphone,pcIndex,input:input.row,lastSpeechAt,observedAt});
+  if(proof)observation=currentObservation;return proof;
+ },label+' native user completion and continuous microphone quiet',15000);
+ check('independent-input-convergence-'+input.row.label,true,{proof:result,input:input.row,lastSpeechAt,observation});return result;
 }
 const audible=(s,from,to=Infinity,pcIndex=0)=>s.audioFrames.filter(f=>f.pcIndex===pcIndex&&f.at>=from&&f.at<=to&&f.digitalAudible);
 function check(name,passed,details={}){checks.push({name,passed:Boolean(passed),...details});}
@@ -262,7 +374,9 @@ async function longTask() {
  await stopCall(pcIndex);
 }
 async function controls() {
- const pcIndex=await startCall(),cancelInput=play('cancel-task');await cancelInput.done;
+ const pcIndex=await startCall();
+ if(controlPath==='confirm-cancel')await waitControlGreeting(pcIndex);
+ const cancelInput=play('cancel-task');await cancelInput.done;
  let confirmationAttempted=false;
  const accepted=await waitFor(async state=>{
   await readHistory();const pairs=parentEvidencePairs(),pending=assessControlExecPending(lastHistory.parent,60,{requireDateInCommand:false});
@@ -299,6 +413,7 @@ async function controls() {
   assert(originalTurn&&/(?:六十|60)/u.test(originalTurn.text)&&/等待|等|睡眠|sleep/iu.test(originalTurn.text)&&
    /时间|日期|date/iu.test(originalTurn.text),'The actual original USER must request this sleep60/time task');
   controlConfirmation.originalRequestConvergence=original;controlConfirmation.originalRequestUserTurn=originalTurn;
+  if(controlPath==='confirm-cancel')controlConfirmation.originalChallengeReply=await waitControlConfirmationReply(pcIndex,challenge,originalTurn);
   assert(fs.readFileSync(path.join(clips,'confirmation.txt'),'utf8').trim()==='确认执行。','Frozen explicit USER confirmation fixture required');
   const input=play('confirmation');controlConfirmation.input=input.row;save('control-confirmation-evidence.json',controlConfirmation);
   await input.done;controlConfirmation.confirmationInputConvergence=await convergeInputTurn(input,pcIndex,'Explicit action confirmation USER');
@@ -349,6 +464,7 @@ async function controls() {
  const beforeControl=await snapshot();
  const originalOwner=resolveNativeControlOwner({diagnostics:diagnostics(),events:beforeControl.events,tools:beforeControl.tools,
    backendRunId,voiceSessionId:callOwners.get(pcIndex)?.voiceSessionId,pcIndex});
+ if(controlPath==='confirm-cancel')return confirmCancelOnly({pcIndex,accepted,actualExecStartedAt,backendRunId,originalOwner});
  let pendingAfterBarge;
  try {
  if(!controlConfirmation?.input)await convergeInputTurn(cancelInput,pcIndex,'Original background request before the separate count input');
@@ -432,6 +548,87 @@ async function controls() {
  const reconnectCaptionWindow=resolveNativeTurnTranscriptWindow(reconnectState.events,{pcIndex:reopened,turnId:greetingReply.turnId,after:greeting.row.startedAt});
  checkCompleteSpeechPlayback('reconnect-original-h5-unmuted-native-audio',reconnectState,reconnectCaptionWindow?
    {...reconnectCaptionWindow,to:reconnectDrain.to}:null,{turnId:greetingReply.turnId,reconnectCaptionWindow,includesPlaybackTail:true});
+ await stopCall(reopened);
+}
+async function confirmCancelOnly({pcIndex,accepted,actualExecStartedAt,backendRunId,originalOwner}) {
+ // This independent case never spends the sleep60 window on count/ack/barge.
+ // Every original combined gate remains on the default path above.
+ const confirmationGates=checks.filter(c=>c.name.startsWith('control-confirmation-'));
+ const coreConfirmed=controlConfirmation?.attempted===true&&controlConfirmation.coreReceipt?.identityValid===true&&
+  controlConfirmation.coreReceipt.rawUserTextHashVerified===true&&confirmationGates.length===6&&confirmationGates.every(c=>c.passed)&&
+  ['backendRunId','traceId','delegationId','generation','sourceRunIdSha256','voiceSessionId','bridgeCallId'].every(key=>
+   originalOwner?.[key]===controlConfirmation.newOwner?.[key]);
+ check('confirm-cancel-requires-complete-real-core-approval',coreConfirmed,{confirmationGates:confirmationGates.map(c=>({name:c.name,passed:c.passed})),
+  exactChallengeRequired:true,originalFixtureSelectorUnchanged:true});
+ assert(coreConfirmed,'Independent confirm-cancel cannot start without the exact actual challenged USER and core eligible/bind/consume receipt');
+ assert(Number.isFinite(actualExecStartedAt)&&backendRunId===accepted.runId,'Exact actual source exec start required');
+ const source=loadControlProcessSource();
+ let pending,lastProcessPending;
+ try {await waitFor(async()=>{
+  // Read core pending first; the OS read afterwards must be fresh at cancel.
+  await readHistory();pending=assessControlExecPending(lastHistory.parent,60,{requireDateInCommand:false});
+  lastProcessPending=assessControlProcessPending(readControlProcessWitness(source),{execPair:accepted,expected:source.expected,now:Date.now()});
+  return pending.pending&&pending.execCallId===accepted.id&&lastProcessPending.passed?lastProcessPending:false;
+ },'Confirmed exact real exec60 core and OS pending before immediate cancellation',10000);
+ }catch(error){
+  save('confirm-cancel-os-pending.json',{caseVariant:controlPath,pending:lastProcessPending,corePending:pending,
+   passed:false,exception:error.message,rawOsSourcePath:source.outputPath,observerLaunch:source.launch});
+  throw Error(error.message+'; '+(lastProcessPending?.reason??'OS pending source absent'));
+ }
+ const cancelAt=Date.now();
+ check('confirm-cancel-real-pending-before-immediate-original-button',pending.pending&&pending.execCallId===accepted.id&&
+  lastProcessPending.passed&&cancelAt-lastProcessPending.observedAt<=250&&cancelAt<actualExecStartedAt+55000,
+  {pending,processPending:lastProcessPending,cancelAt,elapsedFromActualExecStartMs:cancelAt-actualExecStartedAt,
+   syntheticIndependentCountAckBarge:false});
+ const noOtherInput=pulse.plays.length===2&&pulse.plays[0].label==='cancel-task'&&pulse.plays[1].label==='confirmation';
+ check('confirm-cancel-no-count-ack-barge-in-sleep-window',noOtherInput,{inputs:pulse.plays.map(p=>p.label)});
+ save('confirm-cancel-os-pending.json',{caseVariant:controlPath,pending:lastProcessPending,corePending:pending,cancelAt,
+  rawOsSourcePath:source.outputPath,observerLaunch:source.launch});
+ assert(noOtherInput&&checks.at(-2).passed,'Immediate cancellation must still precede natural completion with actual fresh pending');
+ await clickOriginalButton('cancel');
+ let cancellation;
+ try {await waitFor(state=>{
+  cancellation=assessConfirmedControlCancel({api:state.api,tools:state.tools,diagnostics:diagnostics(),owner:originalOwner,
+   sessionKey:currentSession,cancelAt});return cancellation.passed?cancellation:false;
+ },'Exact original cancel response, source run receipt, and native bridge terminal',15000);
+ }catch(error){
+  save('confirm-cancel-os-exit.json',{caseVariant:controlPath,cancelAt,cancellation,passed:false,
+   exception:error.message,rawOsSourcePath:source.outputPath});throw Error(error.message+'; '+(cancellation?.reason??'Cancel source absent'));
+ }
+ check('confirm-cancel-exact-core-and-native-cancel-accepted',cancellation.passed,{cancellation,cancelAt,execCallId:accepted.id,backendRunId});
+ let processExit;
+ try {
+  await waitFor(()=>{
+   processExit=assessControlProcessExit(readControlProcessWitness(source),{pending:lastProcessPending,cancelAt:cancellation.response.requestedAt,
+    trustedCancelAt:cancellation.trustedCancel.at,now:Date.now()});return processExit.passed?processExit:false;
+  },'Exact cancelled real shell and every observed descendant OS extinction before sleep60 deadline',15000);
+ }catch(error){processExit={...processExit,passed:false,exception:error.message};}
+ check('confirm-cancel-real-os-process-subtree-extinct',processExit?.passed===true,{processExit,
+  rawOsSourcePath:source.outputPath,observerSignalsSent:false,coreAckIsNotProcessExit:true});
+ save('confirm-cancel-os-exit.json',{caseVariant:controlPath,cancelAt,cancellation,processExit,rawOsSourcePath:source.outputPath});
+ const observeUntil=Math.max(Date.now()+5000,actualExecStartedAt+65000);
+ while(Date.now()<observeUntil)await sleep(Math.min(1000,observeUntil-Date.now()));
+ const owned=row=>row.traceId===originalOwner.traceId&&row.delegationId===originalOwner.delegationId&&
+  row.generation===originalOwner.generation;
+ const after=diagnostics().filter(row=>row.at>=cancelAt),lateAppends=after.filter(row=>row.stage==='context-append-sent'&&owned(row)),
+  droppedLate=after.filter(row=>row.stage==='stale-public-progress-dropped'&&owned(row)&&row.sourceRunIdSha256===originalOwner.sourceRunIdSha256);
+ check('real-cancel-terminal-and-observation-window',cancellation.passed&&Date.now()>=actualExecStartedAt+65000&&lateAppends.length===0,
+  {caseVariant:controlPath,observeUntil,checkedAt:Date.now(),nativeCancel:cancellation.nativeCancel,trustedCancel:cancellation.trustedCancel,lateAppends});
+ // Even this independently cancelled case cannot claim late-callback rejection
+ // from silence or an API ack. A missing actual callback remains unaccepted.
+ check('cancelled-real-late-callback-isolation',droppedLate.length>0&&lateAppends.length===0,
+  {caseVariant:controlPath,lateCallbackWitness:droppedLate,status:droppedLate.length?'witnessed':'missing-real-late-callback',
+   reason:'Quiet observation alone does not prove a late callback was rejected'});
+ await stopCall(pcIndex);
+ const reopened=await startCall();await waitControlGreeting(reopened);
+ const greeting=play('new-greeting');await greeting.done;
+ const greetingReply=await waitFor(state=>state.events.find(e=>e.pcIndex===reopened&&e.type==='turn.done'&&e.role==='assistant'&&
+  e.at>=greeting.row.startedAt&&/(听|清楚|重连|连接)/u.test(e.text)),'Reconnect spoken greeting after independent cancellation',45000);
+ check('new-session-on-reconnect',sessionKeys.at(-1)!==sessionKeys.at(-2),{caseVariant:controlPath,sessionCount:sessionKeys.length});
+ const drain=await waitForPlaybackDrain(reopened,greetingReply.at,'Reconnected reply actual playback drain'),state=await snapshot(true),
+  caption=resolveNativeTurnTranscriptWindow(state.events,{pcIndex:reopened,turnId:greetingReply.turnId,after:greeting.row.startedAt});
+ checkCompleteSpeechPlayback('reconnect-original-h5-unmuted-native-audio',state,caption?{...caption,to:drain.to}:null,
+  {turnId:greetingReply.turnId,reconnectCaptionWindow:caption,includesPlaybackTail:true,caseVariant:controlPath});
  await stopCall(reopened);
 }
 async function queuedSteer() {
@@ -524,7 +721,6 @@ try {
 finally {
  if(cdp){const preCloseFull=await snapshot(true).catch(()=>null);
   if(preCloseFull)save('browser-pre-close-native-evidence.json',preCloseFull);
-  const screenshot=await cdp.request('Page.captureScreenshot',{format:'png'}).catch(()=>null);if(screenshot)fs.writeFileSync(path.join(base,'h5.png'),Buffer.from(screenshot.data,'base64'),{mode:0o600});
    for(const [pcIndex] of callOwners)if(!checks.some(c=>c.name==='end-call-'+pcIndex&&c.passed))await stopCall(pcIndex).catch(error=>check('finally-end-call-'+pcIndex,false,{message:error.message}));
   const postCloseFull=await snapshot(true).catch(()=>null);
   check('complete-observation-through-original-close',Boolean(postCloseFull)&&[...callOwners.values()].every(owner=>
@@ -536,9 +732,15 @@ finally {
    {attempted:false,status:'no exact native exec60 confirmation challenge selected',syntheticGrant:false});
   save('voice-confirmation-core-diagnostics.json',confirmationDiagnostics());
   save('browser-native-evidence.json',lastState);save('backend-history.json',lastHistory);save('backend-tool-events.json',toolEvents);save('native-public-diagnostics.json',diagnostics());
+  // Screenshot rendering must not hold a live microphone/receiver open after
+  // their original pre-close evidence has been frozen. h5.png is the actual
+  // page after the original cleanup attempt, not a connected-layout artifact.
+  const screenshot=await cdp.request('Page.captureScreenshot',{format:'png'}).catch(()=>null);if(screenshot)fs.writeFileSync(path.join(base,'h5.png'),Buffer.from(screenshot.data,'base64'),{mode:0o600});
   await evaluate(`globalThis.__candidateLiveProbe.dispose()`).catch(()=>{});
-  const audio=await evaluate(`(async()=>{const p=globalThis.__candidateLiveProbe,rows=[];for(const recording of p.recordings){const blob=new Blob(recording.chunks,{type:'audio/webm;codecs=opus'}),bytes=new Uint8Array(await blob.arrayBuffer());let binary='';for(let at=0;at<bytes.length;at+=16384)binary+=String.fromCharCode(...bytes.subarray(at,at+16384));rows.push({pcIndex:recording.pcIndex,startedAt:recording.startedAt,blobBytes:blob.size,base64:btoa(binary),error:recording.error??null});}return rows})()`).catch(()=>[]);
-  const decoded=[];for(const recording of audio){const prefix='native-'+recording.pcIndex,webm=path.join(base,prefix+'.webm');fs.writeFileSync(webm,Buffer.from(recording.base64,'base64'),{mode:0o600});const ff=spawnSync('/usr/bin/ffmpeg',['-v','error','-i',webm,'-f','s16le','-ar','48000','-ac','1','pipe:1'],{maxBuffer:80*1024**2});let rms=0,peak=0;if(ff.status===0){let sum=0;for(let at=0;at+1<ff.stdout.length;at+=2){const n=ff.stdout.readInt16LE(at);sum+=n*n;peak=Math.max(peak,Math.abs(n));}rms=Math.sqrt(sum/(ff.stdout.length/2));fs.writeFileSync(path.join(base,prefix+'.pcm'),ff.stdout,{mode:0o600});}decoded.push({pcIndex:recording.pcIndex,startedAt:recording.startedAt,blobBytes:recording.blobBytes,decodeSuccess:ff.status===0,pcmBytes:ff.stdout?.length??0,pcmSha256:ff.status===0?hash(ff.stdout):null,durationSeconds:(ff.stdout?.length??0)/96000,rms,peak});}
+  const audio=await evaluate(`(async()=>{const p=globalThis.__candidateLiveProbe,rows=[];for(const recording of p.recordings){const blob=new Blob(recording.chunks,{type:'audio/webm;codecs=opus'}),bytes=new Uint8Array(await blob.arrayBuffer());let binary='';for(let at=0;at<bytes.length;at+=16384)binary+=String.fromCharCode(...bytes.subarray(at,at+16384));rows.push({pcIndex:recording.pcIndex,startedAt:recording.startedAt,blobBytes:blob.size,base64:btoa(binary),error:recording.error??null,recorderLifecycle:recording.lifecycle??null});}return rows})()`).catch(()=>[]);
+  const recordingMetadata=audio.map(({base64,...metadata})=>metadata);save('native-recordings-metadata.json',{recordings:recordingMetadata,nominalPCMMappingUnchanged:true});
+  check('original-native-receiver-recording-finalization',audio.length===callOwners.size&&audio.length>0&&audio.every(row=>row.recorderLifecycle?.finalization?.passed===true&&!row.error),{recordings:recordingMetadata,requiresActualNativeStopAndFinalData:true});
+  const decoded=[];for(const recording of audio){const prefix='native-'+recording.pcIndex,webm=path.join(base,prefix+'.webm');fs.writeFileSync(webm,Buffer.from(recording.base64,'base64'),{mode:0o600});const ff=spawnSync('/usr/bin/ffmpeg',['-v','error','-i',webm,'-f','s16le','-ar','48000','-ac','1','pipe:1'],{maxBuffer:80*1024**2});let rms=0,peak=0;if(ff.status===0){let sum=0;for(let at=0;at+1<ff.stdout.length;at+=2){const n=ff.stdout.readInt16LE(at);sum+=n*n;peak=Math.max(peak,Math.abs(n));}rms=Math.sqrt(sum/(ff.stdout.length/2));fs.writeFileSync(path.join(base,prefix+'.pcm'),ff.stdout,{mode:0o600});}decoded.push({pcIndex:recording.pcIndex,startedAt:recording.startedAt,blobBytes:recording.blobBytes,error:recording.error??null,recorderLifecycle:recording.recorderLifecycle,decodeSuccess:ff.status===0,pcmBytes:ff.stdout?.length??0,pcmSha256:ff.status===0?hash(ff.stdout):null,durationSeconds:(ff.stdout?.length??0)/96000,rms,peak});}
   check('recorded-real-native-pcm',decoded.length>0&&decoded.every(row=>row.decodeSuccess&&row.rms>30),{decoded});
   const markerGate=checks.find(c=>c.name==='early-speakable-fact-and-digital-audio-before-final');
   if(markerGate?.markerSpeechWindow)speechPlaybackWindows.push({name:markerGate.name,window:markerGate.markerSpeechWindow});
@@ -574,5 +776,5 @@ finally {
  cleanup={...(await pulse?.dispose()),chromeExited:Boolean(chrome&&(chrome.exitCode!==null||chrome.signalCode!==null))};
  if(chromeTemp){fs.rmSync(chromeTemp,{recursive:true,force:true});cleanup.chromePrivateTempRemoved=!fs.existsSync(chromeTemp);}
  check('private-config-unchanged',hash(fs.readFileSync(configPath))===configHash);
- summary={case:testCase,candidateId:process.env.VLAB_CANDIDATE_ID,h5AppSha256:process.env.GPT_LIVE_H5_APP_SHA,model:'gpt-live-1-codex',childWaitSeconds,checks,passed:checks.length>0&&checks.every(c=>c.passed),sessionKeys,syntheticUserPCM:true,syntheticAssistantEvents:false,syntheticBackendResults:false,continuousOriginalCaptureTrack:checks.find(c=>c.name==='original-processed-microphone-sender-identity')?.passed===true,digitalPlaybackAcceptanceOnly:true,physicalEchoAccepted:false,humanListeningAccepted:false,cleanup,evidenceDir:base};save('receipt.json',summary);console.log(JSON.stringify({nativeComprehensive:{case:testCase,candidateId:summary.candidateId,passed:summary.passed,checks:checks.map(c=>({name:c.name,passed:c.passed})),evidenceDir:base,physicalEchoAccepted:false}}));if(!summary.passed)process.exitCode=1;
+ summary={case:testCase,caseVariant:testCase==='comprehensive-controls'?controlPath:null,candidateId:process.env.VLAB_CANDIDATE_ID,h5AppSha256:process.env.GPT_LIVE_H5_APP_SHA,model:'gpt-live-1-codex',childWaitSeconds,checks,passed:checks.length>0&&checks.every(c=>c.passed),sessionKeys,syntheticUserPCM:true,syntheticAssistantEvents:false,syntheticBackendResults:false,continuousOriginalCaptureTrack:checks.find(c=>c.name==='original-processed-microphone-sender-identity')?.passed===true,digitalPlaybackAcceptanceOnly:true,physicalEchoAccepted:false,humanListeningAccepted:false,cleanup,evidenceDir:base};save('receipt.json',summary);console.log(JSON.stringify({nativeComprehensive:{case:testCase,caseVariant:summary.caseVariant,candidateId:summary.candidateId,passed:summary.passed,checks:checks.map(c=>({name:c.name,passed:c.passed})),evidenceDir:base,physicalEchoAccepted:false}}));if(!summary.passed)process.exitCode=1;
 }

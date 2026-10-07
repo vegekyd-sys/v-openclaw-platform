@@ -45,7 +45,7 @@ export class HandoffRegistry {
 
   // ---- issuing (admin API) ----
 
-  issue({ kind = "control", ownerId, sessionKey = null, reason = "", claimTtlMs, sessionTtlMs } = {}) {
+  issue({ kind = "control", ownerId, sessionKey = null, reason = "", claimTtlMs, sessionTtlMs, origin = null } = {}) {
     if (!["control", "watch"].includes(kind)) {
       throw new TypeError("kind must be control or watch");
     }
@@ -73,6 +73,9 @@ export class HandoffRegistry {
       endedAt: null,
       endReason: null,
       card: null, // the chat card that carries this link (opaque to the service), so any process can update it
+      // Which Gateway issued it (opaque id from the plugin). Only that Gateway may wake V for a page
+      // hand-back: another Gateway loading the same plugin (a candidate copy) must not take it.
+      origin: typeof origin === "string" && /^[\w-]{1,64}$/u.test(origin) ? origin : null,
     };
     this.handoffs.set(id, handoff);
     this.byTokenHash.set(handoff.tokenHash, id);
@@ -247,6 +250,9 @@ export class HandoffRegistry {
     this.controllerSecret = secret;
     viewer.role = "controller";
     viewer.lastInputAt = this.now();
+    // Taking control again cancels a hand-back that V has not picked up yet.
+    handoff.pageHandBackAt = null;
+    handoff.wakeClaimedAt = null;
     this.audit("control_taken_by", { id: handoff.id, viewer: secret.slice(0, 6) });
     return { role: "controller" };
   }
@@ -262,6 +268,42 @@ export class HandoffRegistry {
       this.audit("control_released", { id: viewer.handoffId, viewer: secret.slice(0, 6), reason: "released" });
     }
     return { role: "observer" };
+  }
+
+  /**
+   * 交还给 V on the viewer page: release control and, when the handoff belongs to
+   * a conversation, record it so the plugin wakes V there (claimWake). The user
+   * no longer has to go back to the chat and press 我完成了.
+   */
+  handBackFromPage(secret) {
+    const viewer = this.viewers.get(secret);
+    if (!viewer) {
+      return { error: "unknown_viewer" };
+    }
+    const handoff = this.handoffs.get(viewer.handoffId);
+    const wasController = this.controllerSecret === secret;
+    const released = this.releaseControl(secret);
+    const wakesAgent = Boolean(wasController && handoff && !handoff.endedAt && handoff.sessionKey);
+    if (wakesAgent) {
+      handoff.pageHandBackAt = this.now();
+      handoff.wakeClaimedAt = null;
+      this.audit("handed_back_from_page", { id: handoff.id, viewer: secret.slice(0, 6) });
+    }
+    return { ...released, wakesAgent };
+  }
+
+  /** One process of the issuing Gateway wins the right to wake V for a page hand-back; every later call gets false. */
+  claimWake(id, origin) {
+    const handoff = this.handoffs.get(id);
+    if (!handoff || !handoff.pageHandBackAt || handoff.wakeClaimedAt) {
+      return { claimed: false };
+    }
+    if (!handoff.origin || handoff.origin !== origin) {
+      return { claimed: false, reason: "other_gateway" };
+    }
+    handoff.wakeClaimedAt = this.now();
+    this.audit("wake_claimed", { id });
+    return { claimed: true, sessionKey: handoff.sessionKey };
   }
 
   /**
@@ -413,6 +455,9 @@ export class HandoffRegistry {
       ended: Boolean(handoff.endedAt),
       endReason: handoff.endReason,
       card: handoff.card,
+      origin: handoff.origin ?? null,
+      pageHandBackAt: handoff.pageHandBackAt ?? null,
+      wakeClaimedAt: handoff.wakeClaimedAt ?? null,
     };
   }
 

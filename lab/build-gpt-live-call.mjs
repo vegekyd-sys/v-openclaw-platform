@@ -14,6 +14,7 @@ import { createGptLiveVoiceExecLifetimeRuntimeSource } from "./gpt-live-voice-ex
 import { patchGptLiveVoiceExecHostCapability, patchGptLiveVoiceExecBashTools, patchGptLiveVoiceExecNativeAttemptBridge,
   patchGptLiveVoiceExecGatewayRelay, patchGptLiveVoiceExecWorkerPool } from "./patch-gpt-live-voice-exec-lifetime.mjs";
 import { patchGptLiveClientVoiceConfirmation } from "./patch-gpt-live-voice-confirmation.mjs";
+import { patchVoiceSpokenConfirmationSwitch } from "./patch-voice-spoken-confirmation-switch.mjs";
 import { patchGptLiveNativeConfirmationTalk } from "./patch-gpt-live-native-confirmation.mjs";
 import { patchGptLiveVoiceToolOrderGatewayIndex, patchGptLiveVoiceToolOrderWorkerPool,
   patchGptLiveVoiceToolOrderNativeAttemptBridge, patchGptLiveVoiceToolOrderBuiltin,
@@ -22,7 +23,9 @@ import { createGptLiveCallLifecycleRuntimeSource } from "./gpt-live-call-lifecyc
 import { patchGptLiveCallLifecycleController, patchGptLiveCallLifecycleBroker, patchGptLiveCallLifecycleTalk,
   GPT_LIVE_CALL_BROKER_BEFORE } from "./patch-gpt-live-call-lifecycle.mjs";
 import { patchGptLiveBackendCallControlTalk, patchGptLiveBackendCallControlHarness } from "./patch-gpt-live-backend-call-control.mjs";
+import { patchGptLiveCallTerminalEmbedded } from "./patch-gpt-live-call-terminal.mjs";
 import { patchGptLiveProjectionReadinessBuiltin, patchGptLiveProjectionReadinessReconcile } from "./patch-gpt-live-projection-readiness.mjs";
+import { patchGptLiveCallerContextTalk } from "./patch-gpt-live-caller-context.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const hash = (source) => createHash("sha256").update(source).digest("hex");
@@ -53,6 +56,13 @@ export function build({ baseRelease = "hotreload-feishu-approvals-v2" } = {}) {
   const lifecycleSource = "lab/release-files/gpt-live-call/gpt-live-call-lifecycle.mjs";
   writeFileSync(resolve(root, lifecycleSource), createGptLiveCallLifecycleRuntimeSource());
   files.push({ source: lifecycleSource, target: "openclaw/dist/gpt-live-call-lifecycle.mjs", before: null });
+  const terminalBaseline = "lab/fixtures/gpt-live-call-lifecycle/embedded-agent-DaSvA-Yk.js";
+  const terminalBefore = readFileSync(resolve(root, terminalBaseline));
+  const terminalBeforeSha = "128a61c9e10a47d501ad425345f9f05a88c9dc66b665e32f979d12e29675cd67";
+  assert.equal(hash(terminalBefore), terminalBeforeSha, "captured embedded terminal owner drifted");
+  const terminalSource = "lab/release-files/gpt-live-call/embedded-agent-DaSvA-Yk.js";
+  writeFileSync(resolve(root, terminalSource), patchGptLiveCallTerminalEmbedded(terminalBefore.toString("utf8")));
+  files.push({source:terminalSource,target:"openclaw/dist/embedded-agent-DaSvA-Yk.js",before:terminalBeforeSha});
   const publicBridgeBaseline = "release/captured/v2026.9.1-db91.6-memory-search-guards-20261002.worker/dist/gateway-public-stream.mjs";
   const publicBridgeBefore = readFileSync(resolve(root, publicBridgeBaseline));
   const publicBridgeBeforeSha = "5440eadbfe1e6bf40824bd389e9cd3fb87326cc3c75b1a158cfe107799300fdf";
@@ -69,7 +79,7 @@ export function build({ baseRelease = "hotreload-feishu-approvals-v2" } = {}) {
     const continuation = item.name.startsWith("talk-") ? patchGptLiveContinuationTalk : patchGptLiveContinuationHarness;
     const continued = continuation(transform(before.toString("utf8")));
     const after = item.name.startsWith("talk-")
-      ? patchGptLiveBackendCallControlTalk(patchGptLiveCallLifecycleTalk(patchGptLiveNativeConfirmationTalk(continued)))
+      ? patchGptLiveCallerContextTalk(patchGptLiveBackendCallControlTalk(patchGptLiveCallLifecycleTalk(patchGptLiveNativeConfirmationTalk(continued))))
       : patchGptLiveBackendCallControlHarness(continued);
     const source = `lab/release-files/gpt-live-call/${item.name}`;
     mkdirSync(dirname(resolve(root, source)), { recursive: true }); writeFileSync(resolve(root, source), after);
@@ -109,7 +119,7 @@ export function build({ baseRelease = "hotreload-feishu-approvals-v2" } = {}) {
   const confirmationBefore = readFileSync(resolve(root, confirmationBaseline));
   assert.equal(hash(confirmationBefore), confirmationBeforeSha, "captured voice confirmation baseline drifted");
   const confirmationSource = "lab/release-files/gpt-live-call/agent-tools.before-tool-call-g2OT63u5.js";
-  writeFileSync(resolve(root, confirmationSource), patchGptLiveClientVoiceConfirmation(confirmationBefore.toString("utf8")));
+  writeFileSync(resolve(root, confirmationSource), patchVoiceSpokenConfirmationSwitch(patchGptLiveClientVoiceConfirmation(confirmationBefore.toString("utf8"))));
   files.push({ source: confirmationSource, target: "openclaw/dist/agent-tools.before-tool-call-g2OT63u5.js", before: confirmationBeforeSha });
   for (const item of voiceExecBaseline) {
     const before = readFileSync(resolve(root, item.directory, item.name));
@@ -144,10 +154,10 @@ export function build({ baseRelease = "hotreload-feishu-approvals-v2" } = {}) {
   fixtures('lab/fixtures/gpt-live-native-progress');fixtures('lab/fixtures/gpt-live-completion-context');fixtures('lab/fixtures/gpt-live-continuation');fixtures('lab/fixtures/gpt-live-public-progress');fixtures('lab/fixtures/gpt-live-call-lifecycle');
   const completionCandidate=JSON.parse(readFileSync(resolve(root,'lab/candidate/gpt-live-completion-context.plan.json')));
   writeFileSync(resolve(root, "lab/candidate/gpt-live-call.plan.json"), JSON.stringify({
-    baseRelease, files, tests: ["lab/gpt-live-projection-readiness.test.mjs", "lab/gpt-live-backend-call-control.test.mjs", "lab/gpt-live-call-lifecycle.test.mjs", "lab/gpt-live-consult-progress.test.mjs", "lab/gpt-live-public-progress-bridge.test.mjs", "lab/gpt-live-native-progress.test.mjs", "lab/gpt-live-h5/server.test.mjs", "lab/gpt-live-h5/app.test.mjs", "lab/gpt-live-h5/duplex-playback.test.mjs", "lab/gpt-live-h5/microphone-capture.test.mjs", "lab/gpt-live-h5/transcript-presentation.test.mjs", "lab/gpt-live-h5/call-sounds.test.mjs", "lab/gpt-live-call-live-auth.test.mjs", "lab/gpt-live-call-live-evidence.test.mjs",
-      "lab/gpt-live-consult-continuation.test.mjs", "lab/gpt-live-voice-exec-lifetime.test.mjs", "lab/gpt-live-voice-confirmation.test.mjs", "lab/gpt-live-native-confirmation.test.mjs", "lab/gpt-live-voice-tool-order.test.mjs", "lab/gpt-live-candidate-native/confirmation-evidence.test.mjs", "lab/gpt-live-candidate-native/os-observer-lifecycle.test.mjs", "lab/gpt-live-candidate-native/call-lifecycle-evidence.test.mjs", "lab/gpt-live-candidate-native/call-lifecycle-target.test.mjs", "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-spawn-gateway-proxy.test.mjs", "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-yield-external-task.test.mjs", "lab/gpt-live-pr-provenance.test.mjs", "lab/gpt-live-pr-config.test.mjs", "lab/gpt-live-pr-trace.test.mjs", "lab/gpt-live-h5-provenance-evidence.test.mjs", "lab/gpt-live-h5-control-evidence.test.mjs", "lab/gpt-live-h5-user-pcm.test.mjs", "lab/gpt-live-h5-control-probe.test.mjs",...completionCandidate.tests],
+    baseRelease, files, tests: ["lab/gpt-live-h5/result-presentation.test.mjs", "lab/gpt-live-projection-readiness.test.mjs", "lab/gpt-live-backend-call-control.test.mjs", "lab/gpt-live-call-lifecycle.test.mjs", "lab/gpt-live-consult-progress.test.mjs", "lab/gpt-live-public-progress-bridge.test.mjs", "lab/gpt-live-native-progress.test.mjs", "lab/gpt-live-h5/server.test.mjs", "lab/gpt-live-h5/app.test.mjs", "lab/gpt-live-h5/duplex-playback.test.mjs", "lab/gpt-live-h5/microphone-capture.test.mjs", "lab/gpt-live-h5/transcript-presentation.test.mjs", "lab/gpt-live-h5/call-sounds.test.mjs", "lab/gpt-live-call-live-auth.test.mjs", "lab/gpt-live-call-live-evidence.test.mjs",
+      "lab/gpt-live-consult-continuation.test.mjs", "lab/gpt-live-voice-exec-lifetime.test.mjs", "lab/gpt-live-voice-confirmation.test.mjs", "lab/voice-spoken-confirmation-switch.test.mjs", "lab/gpt-live-native-confirmation.test.mjs", "lab/gpt-live-voice-tool-order.test.mjs", "lab/gpt-live-candidate-native/confirmation-evidence.test.mjs", "lab/gpt-live-candidate-native/os-observer-lifecycle.test.mjs", "lab/gpt-live-candidate-native/call-lifecycle-evidence.test.mjs", "lab/gpt-live-candidate-native/call-lifecycle-target.test.mjs", "lab/gpt-live-candidate-native/recording-lifecycle.test.mjs", "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-spawn-gateway-proxy.test.mjs", "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-yield-external-task.test.mjs", "lab/gpt-live-pr-provenance.test.mjs", "lab/gpt-live-pr-config.test.mjs", "lab/gpt-live-pr-trace.test.mjs", "lab/gpt-live-h5-provenance-evidence.test.mjs", "lab/gpt-live-h5-control-evidence.test.mjs", "lab/gpt-live-h5-user-pcm.test.mjs", "lab/gpt-live-h5-control-probe.test.mjs", "lab/gpt-live-candidate-config-guard.test.mjs",...completionCandidate.tests],
     support: [...new Set([
-      "lab/gpt-live-call-lifecycle.mjs", "lab/patch-gpt-live-call-lifecycle.mjs", "lab/patch-gpt-live-backend-call-control.mjs", "lab/gpt-live-h5/instructions.mjs",
+      "lab/gpt-live-call-lifecycle.mjs", "lab/patch-gpt-live-call-lifecycle.mjs", "lab/patch-gpt-live-result-presentation.mjs", "lab/gpt-live-h5/result-presentation.mjs", "lab/patch-gpt-live-caller-context.mjs", "lab/patch-gpt-live-backend-call-control.mjs", "lab/patch-gpt-live-call-terminal.mjs", "lab/gpt-live-h5/instructions.mjs", "lab/gpt-live-h5/persona.mjs",
       "lab/patch-gpt-live-projection-readiness.mjs", "lab/gpt-live-projection-readiness.test.mjs", "lab/fixtures/gpt-live-projection-readiness/session-transcript-reconcile-DFsDtc9l.js", projectionBaseline,
       "release/captured/v2026.9.1-db91.6-memory-search-guards-20261002/dist/session-accessor-K0XuW6ln.js",
       "lab/gpt-live-consult-progress.mjs", "lab/gpt-live-public-progress-bridge.mjs", publicBridgeBaseline, "lab/patch-gpt-live-native-progress.mjs",
@@ -163,12 +173,12 @@ export function build({ baseRelease = "hotreload-feishu-approvals-v2" } = {}) {
       "lab/gpt-live-pr-provenance.mjs","lab/gpt-live-pr-config.mjs","lab/gpt-live-pr-trace.mjs","lab/shared/server.mjs","lab/shared/files.mjs","lab/shared/lifecycle.mjs",
       "lab/gpt-live-consult-continuation.mjs","lab/patch-gpt-live-consult-continuation.mjs","lab/gpt-live-consult-continuation-baseline.json",
       "lab/gpt-live-voice-exec-lifetime.mjs", "lab/patch-gpt-live-voice-exec-lifetime.mjs", ...voiceExecBaseline.map(item => item.directory + "/" + item.name),
-      "lab/gpt-live-voice-confirmation.mjs", "lab/patch-gpt-live-voice-confirmation.mjs", "lab/patch-gpt-live-native-confirmation.mjs",
+      "lab/gpt-live-voice-confirmation.mjs", "lab/patch-gpt-live-voice-confirmation.mjs", "lab/patch-voice-spoken-confirmation-switch.mjs", "release/captured/v2026.9.1-db91.6-gpt-live-voice-20261005/dist/agent-tools.before-tool-call-g2OT63u5.js", "lab/patch-gpt-live-native-confirmation.mjs",
       "lab/release-files/gpt-live-completion-context/index.mjs",
       confirmationBaseline, "lab/fixtures/gpt-live-voice-confirmation/tool-mutation-7Z6dWuA8.js",
       "lab/patch-gpt-live-voice-tool-order.mjs", builtinBaseline, "lab/fixtures/gpt-live-voice-tool-order/agent-core-BxgCPa8O.js", "lab/fixtures/gpt-live-voice-tool-order/capture-provenance.json",
       "lab/gpt-live-candidate-native/confirmation-evidence.mjs", "lab/gpt-live-candidate-native/evidence.mjs",
-      "lab/gpt-live-candidate-native/call-lifecycle-smoke.mjs", "lab/gpt-live-candidate-native/call-lifecycle-evidence.mjs", "lab/gpt-live-candidate-native/call-lifecycle-evidence.test.mjs", "lab/gpt-live-candidate-native/call-lifecycle-target.mjs", "lab/gpt-live-candidate-native/call-lifecycle-target.test.mjs", "lab/gpt-live-h5-release.mjs",
+      "lab/gpt-live-candidate-native/call-lifecycle-smoke.mjs", "lab/gpt-live-candidate-native/call-lifecycle-evidence.mjs", "lab/gpt-live-candidate-native/call-lifecycle-evidence.test.mjs", "lab/gpt-live-candidate-native/call-lifecycle-target.mjs", "lab/gpt-live-candidate-native/call-lifecycle-target.test.mjs", "lab/gpt-live-candidate-native/browser-probe.mjs", "lab/gpt-live-h5-release.mjs",
       "lab/gpt-live-candidate-native/os-observer-lifecycle.mjs", "lab/gpt-live-candidate-native/owned-proc-witness.py",
       "release/captured/v2026.9.1-db91.6-memory-search-weighted-20261002.worker/dist/worker-pool.mjs",
       "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-spawn-gateway-proxy.mjs", spawnBaseline,

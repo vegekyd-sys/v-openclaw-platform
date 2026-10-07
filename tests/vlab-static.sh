@@ -22,10 +22,23 @@ python3 "${REPO_ROOT}/tests/v-nightshift-check.test.py"
 bash -n "${REPO_ROOT}/scripts/install-v-nightshift-check.sh"
 python3 "${REPO_ROOT}/tests/v-daily-image.test.py"
 bash -n "${REPO_ROOT}/scripts/install-v-daily-image.sh"
-# The release production V runs now: core dist, worker plugin, Feishu plugin.
-for component in "" .worker .feishu; do
-  node "${REPO_ROOT}/scripts/verify-release-reproducible.mjs" \
-    --manifest "${REPO_ROOT}/release/captured/v2026.9.1-db91.6-media-relay-20260925${component}/manifest.json" --quiet
+python3 "${REPO_ROOT}/tests/v-self-restart.test.py"
+bash -n "${REPO_ROOT}/scripts/install-v-self-restart.sh"
+bash -n "${REPO_ROOT}/scripts/install-secret-entry-host.sh"
+grep -q '^NoNewPrivileges=true' "${REPO_ROOT}/systemd/v-secret-entry.service"
+grep -q '^Environment=V_SECRET_ENTRY_ADMIN_TOKEN_FILE=' "${REPO_ROOT}/systemd/openclaw-gateway.service.d/secret-entry.conf"
+# Capture suffixes of every captured component (scripts/lib/runtime-components.mjs):
+# .worker .feishu .dingtalk .wecom ...
+SUFFIXES=$(node --input-type=module -e "const m=await import(process.argv[1]);console.log(m.captureSuffixes().join(' '))" \
+  "${REPO_ROOT}/scripts/lib/runtime-components.mjs")
+[ -n "$SUFFIXES" ] || { echo "no capture suffixes from the component table" >&2; exit 1; }
+# The release production V runs now. Core, worker and Feishu are always
+# captured; a component added to the table later only once a release has it.
+CURRENT_V=v2026.9.1-db91.6-media-relay-20260925
+for component in "" $SUFFIXES; do
+  manifest="${REPO_ROOT}/release/captured/${CURRENT_V}${component}/manifest.json"
+  case "$component" in ""|.worker|.feishu) ;; *) [ -f "$manifest" ] || continue;; esac
+  node "${REPO_ROOT}/scripts/verify-release-reproducible.mjs" --manifest "$manifest" --quiet
 done
 jq empty "${REPO_ROOT}/config/vlab-production-parity-v1.json"
 "${REPO_ROOT}/tests/vlab-agent-worker-static.sh"
@@ -49,7 +62,8 @@ grep -q '"workerRelease": "8d3b75e' \
 # Every production release captured in git has a CHANGELOG.md section.
 for dir in "${REPO_ROOT}"/release/captured/v*/; do
   name=$(basename "$dir")
-  case "$name" in *.worker|*.feishu) continue;; esac
+  suffix=".${name##*.}"
+  case " $SUFFIXES " in *" $suffix "*) continue;; esac
   grep -qxF "## ${name}" "${REPO_ROOT}/CHANGELOG.md" || {
     echo "CHANGELOG.md has no section for ${name}: node scripts/release-notes.mjs --from <previous> --to ${name}" >&2
     exit 1

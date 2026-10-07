@@ -4,8 +4,9 @@ import {execFileSync} from 'node:child_process';
 
 // Equivalent to the native SQLite active transcript branch. No Gateway/database
 // admission helper is imported and no JSONL or terminal-text fallback is used.
-export function readPrivateChildTranscript({state,candidateData,sessionId,runId,requestedSessionKey}) {
+export function readPrivateChildTranscript({state,candidateData,sessionId,runId,requestedSessionKey,timeoutMs}) {
   assert(path.isAbsolute(state)&&path.isAbsolute(candidateData)&&sessionId&&runId);
+  if(timeoutMs!==undefined)assert(Number.isSafeInteger(timeoutMs)&&timeoutMs>0&&timeoutMs<=10000,'Bounded private transcript timeout required');
   const db=path.join(state,'agents/makaron/agent/openclaw-agent.sqlite');
   const value=JSON.parse(execFileSync('python3',['-c',String.raw`
 import json,os,sqlite3,sys,urllib.parse
@@ -21,7 +22,8 @@ raw=list(db.execute('SELECT seq,created_at,event_json FROM transcript_events WHE
 decode=lambda rs:[{'seq':r[0],'createdAt':r[1],'event':json.loads(r[2])} for r in rs]
 print(json.dumps({'canonicalSessionKey':key[0],'activeEvents':decode(rows),'rawEvents':decode(raw),'queryOnly':True,'agentId':'makaron'}))
 db.rollback();db.close()
-  `,db,candidateData,sessionId],{encoding:'utf8',maxBuffer:8*1024**2}));
+  `,db,candidateData,sessionId],{encoding:'utf8',maxBuffer:8*1024**2,
+    ...(timeoutMs===undefined?{}:{timeout:timeoutMs,killSignal:'SIGKILL'})}));
   assert.equal(value.canonicalSessionKey,requestedSessionKey,'Exact child terminal transcript identity mismatch');
   return {...value,sessionId,runId,requestedSessionKey,source:'private-sqlite-active-transcript',observedAt:Date.now()};
 }
