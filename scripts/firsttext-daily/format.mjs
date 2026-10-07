@@ -20,22 +20,27 @@ const s = (ms) => (Number.isFinite(ms) ? (ms / 1000).toFixed(1) : '-');
 const load = (d) => { try { return JSON.parse(fs.readFileSync(path.join(dir, `${d}.json`), 'utf8')); } catch { return undefined; } };
 const shift = (d, n) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
 
+const head1 = (d) => d?.firstText ?? d?.firstAnswer;
+
 export function render(day, today, history) {
   const L = [];
   const row = (label, x) => L.push(`| ${label} | ${x?.n ?? 0} | ${s(x?.p50)} | ${s(x?.p95)} | ${s(x?.p99)} | ${s(x?.max)} |`);
   const head = () => { L.push('| 指标 | n | P50 | P95 | P99 | Max |'); L.push('|---|---|---|---|---|---|'); };
   L.push(`# V 首字日报 ${day}（北京时间全天）`, '');
   if (!today) { L.push('这一天没有拿到数据。'); return L.join('\n'); }
-  const fa = today.firstAnswer;
-  L.push(`${today.n} 条飞书消息，${fa.n} 条有首字。目标：P50 ≈ 1s，P99 和 Max < 10s。`);
-  const prev = history.filter((h) => h.day < day && h.data?.firstAnswer?.n).at(-1);
+  // 首字 counts a status line pushed before the answer (Tianyi, 2026-10-06); older summaries only
+  // have firstAnswer
+  const fa = head1(today);
+  L.push(`${today.n} 条飞书消息，${fa.n} 条有首字${Number.isFinite(today.statusFirst) ? `，其中 ${today.statusFirst} 条先出的是状态行` : ''}。目标：P50 ≈ 1s，P99 和 Max < 10s。`);
+  const prev = history.filter((h) => h.day < day && head1(h.data)?.n).at(-1);
   if (prev && fa.n) {
-    const d = (k) => { const a = fa[k], b = prev.data.firstAnswer[k]; if (!Number.isFinite(a) || !Number.isFinite(b)) return `${k === "max" ? "Max" : k.toUpperCase()} -`; const x = (a - b) / 1000; return `${k === "max" ? "Max" : k.toUpperCase()} ${x > 0 ? '+' : ''}${x.toFixed(1)}s`; };
+    const d = (k) => { const a = fa[k], b = head1(prev.data)[k]; if (!Number.isFinite(a) || !Number.isFinite(b)) return `${k === "max" ? "Max" : k.toUpperCase()} -`; const x = (a - b) / 1000; return `${k === "max" ? "Max" : k.toUpperCase()} ${x > 0 ? '+' : ''}${x.toFixed(1)}s`; };
     L.push(`比 ${prev.day}：${['p50', 'p95', 'p99', 'max'].map(d).join('，')}。`);
   }
   L.push('', '单位秒。', '');
   head();
-  row('首字', fa);
+  row('首字（回答文字或状态行）', fa);
+  if (today.firstText) row('首段回答文字', today.firstAnswer);
   row('first visible（任何推送）', today.firstVisible);
   row('系统开销（首字 − 模型）', today.overhead);
   row('　系统开销，无工具调用', today.overheadNoTools);
@@ -58,10 +63,10 @@ export function render(day, today, history) {
     L.push('');
   }
   if (today.slowest?.length) {
-    L.push('最慢 5 条（北京时间，首字 / 系统开销 / 排队 / harness）：', '');
+    L.push('最慢 5 条（北京时间，首字 / 首段回答 / 系统开销 / 排队 / harness）：', '');
     for (const r of today.slowest) {
       const t = new Date(r.at + 8 * 3600e3).toISOString().slice(11, 19);
-      L.push(`- ${t}　${s(r.firstAnswerMs)} / ${s(r.overheadMs)} / ${s(r.queueMs)}　${r.harness}/${r.model}`);
+      L.push(`- ${t}　${s(r.firstTextMs ?? r.firstAnswerMs)} / ${s(r.firstAnswerMs)} / ${s(r.overheadMs)} / ${s(r.queueMs)}　${r.harness}/${r.model}`);
     }
     L.push('');
   }
@@ -71,12 +76,12 @@ export function render(day, today, history) {
     L.push('| 日期 | n | 首字 P50 | P95 | P99 | Max | 开销 P50 | 开销 P95 |');
     L.push('|---|---|---|---|---|---|---|---|');
     for (const h of rows) {
-      const a = h.data.firstAnswer, o = h.data.overhead ?? {};
+      const a = head1(h.data), o = h.data.overhead ?? {};
       L.push(`| ${h.day} | ${a.n} | ${s(a.p50)} | ${s(a.p95)} | ${s(a.p99)} | ${s(a.max)} | ${s(o.p50)} | ${s(o.p95)} |`);
     }
     L.push('');
   }
-  L.push('口径：首字 = 飞书消息发出 → 卡片里第一段回答文字，不含 thinking。系统开销 = 首字 − 模型从发请求到吐出首段回答文字（含 thinking）。只统计飞书。');
+  L.push('口径：首字 = 飞书消息发出 → 卡片里第一段回答文字或状态行（工具、压缩状态算），不含 thinking。系统开销 = 首字 − 模型从发请求到吐出首段回答文字（含 thinking）。只统计飞书。');
   return L.join('\n');
 }
 
