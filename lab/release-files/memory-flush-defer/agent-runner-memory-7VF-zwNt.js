@@ -544,6 +544,12 @@ async function runSessionCompactionIfNeeded(params) {
 	const shouldCompactByTranscriptBytes = exceedsTranscriptByteThreshold && !transcriptByteCompactionLatched;
 	if (isCodexRuntime && !shouldCompactByTranscriptBytes) {
 		logVerbose(`preflightCompaction skipped: sessionKey=${params.sessionKey} runtime=codex reason=codex_native_auto_compaction activeTranscriptBytes=${activeTranscriptBytes ?? "undefined"} maxActiveTranscriptBytes=${maxActiveTranscriptBytes ?? "undefined"}`);
+		if (params.probe && typeof freshPersistedTokens === "number" && Number.isFinite(freshPersistedTokens) && freshPersistedTokens > 0) {
+			// memory-flush-defer-v1: OpenClaw does not compact a Codex session here; report it with the known tokens.
+			params.probe.willCompact = false;
+			params.probe.threshold = threshold;
+			params.probe.tokenCount = freshPersistedTokens;
+		}
 		return entry ?? params.sessionEntry;
 	}
 	const transcriptPromptTokens = transcriptUsageTokens?.promptTokens;

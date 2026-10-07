@@ -217,6 +217,27 @@ const PREFLIGHT_GATE_AFTER = `	if (params.probe) {
 	}
 ${PREFLIGHT_GATE_BEFORE}`;
 
+// Codex compacts natively in its own thread, so OpenClaw's preflight returns here without compacting.
+// With a known token count the probe reports exactly that (this turn does not compact in OpenClaw);
+// the headroom rule then defers only far below the flush threshold, where Codex's own limit is also
+// far away. An unknown token count leaves the probe empty and the flush stays in front.
+const CODEX_PREFLIGHT_BEFORE = `	if (isCodexRuntime && !shouldCompactByTranscriptBytes) {
+		logVerbose(\`preflightCompaction skipped: sessionKey=\${params.sessionKey} runtime=codex reason=codex_native_auto_compaction activeTranscriptBytes=\${activeTranscriptBytes ?? "undefined"} maxActiveTranscriptBytes=\${maxActiveTranscriptBytes ?? "undefined"}\`);
+		return entry ?? params.sessionEntry;
+	}
+`;
+const CODEX_PREFLIGHT_AFTER = `	if (isCodexRuntime && !shouldCompactByTranscriptBytes) {
+		logVerbose(\`preflightCompaction skipped: sessionKey=\${params.sessionKey} runtime=codex reason=codex_native_auto_compaction activeTranscriptBytes=\${activeTranscriptBytes ?? "undefined"} maxActiveTranscriptBytes=\${maxActiveTranscriptBytes ?? "undefined"}\`);
+		if (params.probe && typeof freshPersistedTokens === "number" && Number.isFinite(freshPersistedTokens) && freshPersistedTokens > 0) {
+			// ${MEMORY_FLUSH_DEFER_MARKER}: OpenClaw does not compact a Codex session here; report it with the known tokens.
+			params.probe.willCompact = false;
+			params.probe.threshold = threshold;
+			params.probe.tokenCount = freshPersistedTokens;
+		}
+		return entry ?? params.sessionEntry;
+	}
+`;
+
 const FAILURE_COUNT_BEFORE = '	if (!isAbortError(error) && storePath && sessionKey) try {\n';
 const FAILURE_COUNT_AFTER = `	// ${MEMORY_FLUSH_DEFER_MARKER}: a deferred flush runs behind the reply and is interrupted by design
 	// (new turn, restart drain, shutdown); it never writes the failure budget.
@@ -337,6 +358,7 @@ export function patchAgentRunnerMemory(source) {
   let out = replaceExactlyOnce(source, FLUSH_DECISION_BEFORE, FLUSH_DECISION_AFTER, 'memory flush decision');
   out = replaceExactlyOnce(out, LATCH_BEFORE, LATCH_AFTER, 'byte-compaction latch clear');
   out = replaceExactlyOnce(out, PREFLIGHT_GATE_BEFORE, PREFLIGHT_GATE_AFTER, 'preflight compaction gate');
+  out = replaceExactlyOnce(out, CODEX_PREFLIGHT_BEFORE, CODEX_PREFLIGHT_AFTER, 'codex preflight skip');
   out = replaceExactlyOnce(out, FAILURE_COUNT_BEFORE, FAILURE_COUNT_AFTER, 'memory flush failure accounting');
   out = replaceExactlyOnce(out, FAILURE_RETURN_BEFORE, FAILURE_RETURN_AFTER, 'memory flush failure result');
   out = replaceExactlyOnce(out, FLUSH_RUN_REGISTER_BEFORE, FLUSH_RUN_REGISTER_AFTER, 'memory flush run registration');

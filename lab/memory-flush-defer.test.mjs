@@ -66,7 +66,7 @@ test('each anchor is replaced exactly once and a patched file is refused', () =>
   assert.throws(() => patchAgentRunnerRuntime(runtimeInput.replace('async function executePreparedReplyAgentRun(context) {\n', '')), /Expected exactly one reply agent run executor/);
   assert.throws(() => patchBuiltinOpenclaw(builtinOut), /already patched/);
   assert.throws(() => patchBuiltinOpenclaw(builtinInput.replace('\t\tisCompacting: () => subscription.isCompacting(),\n', '')), /Expected exactly one embedded run compacting state/);
-  assert.equal(memoryOut.split(MEMORY_FLUSH_DEFER_MARKER).length - 1, 11);
+  assert.equal(memoryOut.split(MEMORY_FLUSH_DEFER_MARKER).length - 1, 12);
   assert.equal(memoryOut.split('if (!isAbortError(error) && run.memoryFlushDeferred !== true && storePath && sessionKey) try {').length - 1, 1);
   assert.equal(runtimeOut.split('deferPreReplyFlush:').length - 1, 1);
   assert.equal(runtimeOut.split('yieldDeferredMemoryFlush(sessionKey, "inbound-turn")').length - 1, 1);
@@ -253,15 +253,30 @@ test('memory module: the preflight probe reports the real gate and neither compa
   assert.equal(calls.incrementCompactionCount[0]?.amount, 0);
 });
 
-test('memory module: heartbeat or runtime-owned compaction leaves the probe empty (unknown)', async () => {
+test('memory module: a heartbeat leaves the probe empty (unknown)', async () => {
   const { fakes } = memoryFakes();
   const { runSessionCompactionIfNeeded } = loadMemoryModule(fakes);
   const probe = {};
   await runSessionCompactionIfNeeded({ ...baseParams({ isHeartbeat: true }), probe });
   assert.deepEqual(probe, {});
+});
+
+test('memory module: a Codex session reports no OpenClaw compaction with its known tokens, else stays unknown', async () => {
+  // V 2026-10-07 11:28: a /vds turn waited 73 s behind the flush because this probe stayed empty
   const codex = memoryFakes({ fakes: { resolveEffectiveAgentRuntime: () => 'codex' } });
+  const probe = {};
+  const out = await loadMemoryModule(codex.fakes).runSessionCompactionIfNeeded({ ...baseParams(), probe });
+  assert.equal(probe.willCompact, false);
+  assert.equal(probe.threshold, 980_000);
+  assert.equal(typeof probe.tokenCount, 'number');
+  assert(probe.tokenCount > 0);
+  assert.equal(codex.calls.compact.length, 0);
+  assert.equal(codex.calls.incrementCompactionCount.length, 0);
+  assert.deepEqual(out, baseParams().sessionEntry);
+  // no fresh token count: unknown, so the flush stays in front of the reply
+  const stale = memoryFakes({ fakes: { resolveEffectiveAgentRuntime: () => 'codex' } });
   const probe2 = {};
-  await loadMemoryModule(codex.fakes).runSessionCompactionIfNeeded({ ...baseParams(), probe: probe2 });
+  await loadMemoryModule(stale.fakes).runSessionCompactionIfNeeded({ ...baseParams({ sessionEntry: entry({ totalTokensFresh: false }) }), probe: probe2 });
   assert.deepEqual(probe2, {});
 });
 
