@@ -79,7 +79,7 @@ test('hybrid explicit cancellation aborts only its own backend run and never fee
  await f.service.steer(f.reservation.voiceSessionId,{mode:'cancel',text:'取消这个任务'});
  f.service.handleEvent({event:'chat',payload:{runId:started.runId,state:'final',message:{text:'不要播报的旧结果'}}});await delay(5);
  const result=f.audit.find(x=>x.type==='tool.delivered');assert.equal(result.result.cancelled,true);assert(!JSON.stringify(result).includes('不要播报'));
- assert(f.invocations.some(x=>x.runId===started.runId&&x.sessionKey===started.sessionKey));await f.service.dispose();
+ assert(f.invocations.some(x=>x.runId===started.runId&&x.sessionKey===started.sessionKey));assert(!f.client.sent.some(x=>x.type==='backend.result'));await f.service.dispose();
 });
 
 test('unconfirmed process termination retains call ownership and prevents redial until cleanup retry',async()=>{
@@ -148,4 +148,13 @@ test('Xiaohe cached native notice uses the same sequenced FIFO and leaves the pe
  // Only actual provider reply PCM can satisfy first-query answer evidence.
  const floats=Buffer.alloc(8);floats.writeFloatLE(.25);floats.writeFloatLE(-.25,4);f.event({type:'response.output_audio.delta',delta:floats.toString('base64')});
  assert.equal(f.client.sent.filter(e=>e.type==='audio').at(-1).sequence,2);assert.equal(f.client.sent.filter(e=>e.type==='audio').at(-1).source,undefined);await f.service.dispose();
+});
+
+test('owned long backend result publishes full document and speaks brief notice with exactly one backend run',async()=>{
+ const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:new Promise(()=>{}));
+ f.call('delegate_to_v',{question:'比较多种方案'});await delay(5);const started=f.audit.find(x=>x.type==='backend.started'),text='## 完整结果\n'+'原始事实与限制。'.repeat(100);
+ const event={event:'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,state:'final',message:{content:[{type:'text',text}]}}};f.service.handleEvent(event);f.service.handleEvent(event);await delay(250);
+ const docs=f.client.sent.filter(x=>x.type==='backend.result');assert.equal(docs.length,1);assert.equal(docs[0].text,text);assert.equal(docs[0].callId,'call-1');assert.equal(docs[0].voiceSessionId,f.reservation.voiceSessionId);
+ const speech=f.upstream.sent.filter(x=>x.item?.type==='force_message');assert.equal(speech.length,1);assert(speech[0].item.content[0].text.includes('屏幕'));assert(!speech[0].item.content[0].text.includes('原始事实'));
+ assert.equal(f.invocations.filter(x=>x.message?.includes('完整目标')).length,1);await f.service.dispose();
 });

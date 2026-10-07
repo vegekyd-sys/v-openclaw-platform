@@ -12,6 +12,8 @@ import { patchGptLiveConsultProgressTalk } from "./gpt-live-consult-progress.mjs
 import { patchGptLiveContinuationTalk } from "./patch-gpt-live-consult-continuation.mjs";
 import { patchGptLiveNativeConfirmationTalk } from "./patch-gpt-live-native-confirmation.mjs";
 
+import {presentBackendResult,LONG_RESULT_NOTICE} from "./gpt-live-h5/result-presentation.mjs";
+
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 const sha = (text) => createHash("sha256").update(text).digest("hex");
 const controllerBefore = read("fixtures/gpt-live-native-progress/realtime-quicksilver-delegation-controller-B0yPpiHp.js");
@@ -37,7 +39,7 @@ const Controller = new Function("createHash", "randomUUID", "createGptLiveCallLi
   controllerSource.replace(/^import[^\n]*\n/gmu, "").replace(/export \{ OpenAIQuicksilverDelegationController as t \};\s*$/u, "") + "return OpenAIQuicksilverDelegationController;")
   (createHash, randomUUID, createGptLiveCallLifecycle, createGptLiveEndCallClientTool, (v) => v instanceof Error ? v : new Error(String(v)), (v) => v.message, String, ({ input }) => input, parseNative, (v) => v, chunkNative, (v) => v);
 
-function nativeFixture({ enabled = true, onToolEvent, adopted = true, runAgentConsult, isCanceledError } = {}) {
+function nativeFixture({ enabled = true, onToolEvent, adopted = true, runAgentConsult, isCanceledError, onBackendResult } = {}) {
   const order = [], errors = [], calls = [], diagnostics = [], warnings = [], abort = new AbortController();
   let currentLease = adopted;
   const socket = { readyState: 1, fail: false, send(value) {
@@ -45,7 +47,7 @@ function nativeFixture({ enabled = true, onToolEvent, adopted = true, runAgentCo
     order.push({ kind: "frame", ...JSON.parse(value) });
   } };
   const controller = new Controller({ signal: abort.signal, getSocket: () => socket, logger: { warn: text => warnings.push(text) }, isCanceledError,
-    callLifecycle: enabled, isCallCurrent: () => currentLease,
+    onBackendResult, callLifecycle: enabled, isCallCurrent: () => currentLease,
     onCallLifecycleEvent: (event) => { order.push({ kind: "tool", ...event }); onToolEvent?.(event); },
     onPublicProgressDiagnostic: event => diagnostics.push(event),
     onError: (error) => errors.push(error), onFatalError: (error) => errors.push(error),
@@ -361,9 +363,9 @@ test("actual broker preserves native expiry handling and rejects controls after 
 function talkFixture() {
   const from = talkSource.indexOf("function createTalkClientGatewayControlOwner(params) {");
   const to = talkSource.indexOf("async function closeTalkClientGatewayControlSession", from);
-  const construct = new Function("randomUUID", "owners", "pendingOwners", "createRealtimeControlQueue", "createRealtimeVoiceSessionHarness", "createTalkRealtimeRunControlOwner", "registerTalkConnectionCleanup", "formatErrorMessage", talkSource.slice(from, to) + "return createTalkClientGatewayControlOwner;");
+  const construct = new Function("presentBackendResult", "randomUUID", "owners", "pendingOwners", "createRealtimeControlQueue", "createRealtimeVoiceSessionHarness", "createTalkRealtimeRunControlOwner", "registerTalkConnectionCleanup", "formatErrorMessage", talkSource.slice(from, to) + "return createTalkClientGatewayControlOwner;");
   const owners = new Map(), pendingOwners = new Set(), emitted = [], targets = { agentId: "agent", sessionKey: "canonical", canonicalKey: "canonical", storePath: "/private/store" };
-  const factory = construct(randomUUID, owners, pendingOwners, () => ({ seal() {}, flush: async () => {} }),
+  const factory = construct(presentBackendResult, randomUUID, owners, pendingOwners, () => ({ seal() {}, flush: async () => {} }),
     () => ({ emit: (v) => emitted.push(v), ensureTurn: () => "harness-turn", close() {} }),
     () => ({ close: async () => {} }), () => {}, (v) => v.message);
   const owner = factory({ connId: "conn", voiceSessionId: "voice", sessionTarget: targets,
@@ -694,4 +696,34 @@ test("a failed or explicitly cancelled full revision remains eligible for a real
     assert.equal(f.order.some(e=>e.delegation_item_id==="prefix"),false);
     pending[1].resolve({text:"实际重试完成"});await settleTick();f.controller.detach();
   });
+});
+
+
+test("long native backend result is published whole before only the short notice enters speakable wire", async () => {
+  const text = "## 方案\n" + "核对后的完整事实，2028年9月，尚未核实的条件。".repeat(35), published=[];
+  const f=nativeFixture({enabled:false,runAgentConsult:async()=>({text}),onBackendResult:result=>{published.push(result);return presentBackendResult(result.text).spokenText;}});
+  f.start();f.frame({type:"delegation.created",item:{type:"delegation",target:"client",id:"owned-doc",content:[{type:"input_text",text:"给我完整方案"}]}});
+  for(let i=0;i<8;i++)await settleTick();
+  assert.deepEqual(published,[{delegationId:"owned-doc",text}]);
+  const frames=f.order.filter(e=>e.type==="delegation.context.append");assert(frames.length);
+  const wireText=frames.map(e=>e.content[0].text).join("");assert(wireText.includes(LONG_RESULT_NOTICE));assert(!wireText.includes("2028年9月"));
+  assert.equal(f.calls.length,1);f.controller.detach();
+});
+
+test("actual Talk document publisher keeps full Markdown and rejects closed or replaced voice owner", async()=>{
+  const f=talkFixture(),text="| 项目 | 日期 |\n| --- | --- |\n| 入学 | 2028-09 |";
+  assert.equal(f.owner.control.onBackendResult({delegationId:"doc",text}),LONG_RESULT_NOTICE);
+  assert.deepEqual(f.emitted,[{type:"tool.result",callId:"doc",turnId:"harness-turn",payload:{name:"openclaw_backend_result",text,voiceSessionId:"voice"},final:true}]);
+  assert.equal(f.owner.control.onBackendResult({delegationId:"short",text:"日期还没有确认。"}),undefined);
+  f.owners.set("voice",{});assert.throws(()=>f.owner.control.onBackendResult({delegationId:"late",text}),/not active/);
+  await f.owner.close();assert.throws(()=>f.owner.control.onBackendResult({delegationId:"closed",text}),/closed/);assert.equal(f.emitted.length,1);
+});
+
+test('late native final after detach and backend rejection cannot announce a completed document',async()=>{
+ for(const failure of [false,true]){
+  let finish,reject;const published=[];const f=nativeFixture({enabled:false,onBackendResult:r=>{published.push(r);return LONG_RESULT_NOTICE;},runAgentConsult:()=>new Promise((resolve,fail)=>{finish=resolve;reject=fail;})});
+  f.start();f.frame({type:'delegation.created',item:{type:'delegation',target:'client',id:'old-doc',content:[{type:'input_text',text:'原任务'}]}});await settleTick();
+  if(failure)reject(new Error('真实读取失败'));else{f.controller.detach();finish({text:'旧结果'.repeat(200)});}
+  for(let i=0;i<8;i++)await settleTick();assert.equal(published.length,0);assert(!JSON.stringify(f.order).includes(LONG_RESULT_NOTICE));f.controller.detach();
+ }
 });

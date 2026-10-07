@@ -483,6 +483,7 @@ async function startCall() {
         onEvent:value=>{
           if(call!==active)return;
           tasks.consume(value);
+          if(value.type==='backend.result')renderTranscript(presentation.consume(value));
           if(value.type.startsWith('tool.'))taskState();
           if(value.type==='playback.blocked')setStatus('声音播放已暂停，轻点页面继续。');
           if(value.type==='playback.resumed')setStatus('V 正在听，直接说话就好');
@@ -509,6 +510,7 @@ async function startCall() {
       const value = JSON.parse(event.data);
       if (value.voiceSessionId !== active.voiceSessionId) return;
       tasks.consume(value);
+      if(value.type==='backend.result')renderTranscript(presentation.consume(value));
       if (value.type === "tool.result") requestAutomaticEnd(active, value);
       if (value.type === "tool.error" && value.name === "openclaw_end_call" &&
         (value.callId === value.requestId || value.source === "backend_model_client_tool" &&

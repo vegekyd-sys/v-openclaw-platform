@@ -1,3 +1,13 @@
+// voice-backend-document-talk-v1
+const LONG_RESULT_NOTICE="结果回来了，详细内容和方案已经放在屏幕上。你可以先看，也可以让我整理成一份文档发给你。";
+function presentBackendResult(result) {
+  if (result?.cancelled || result?.error) return null;
+  const text = typeof result === 'string' ? result : result?.result ?? result?.text;
+  if (typeof text !== 'string' || !text.trim()) return null;
+  const long = [...text].length > 300 || text.split('\n').filter(line => line.trim()).length >= 8 ||
+    /^\s*```/mu.test(text) || /^\s*\|?.*\|.*\n\s*\|?\s*:?-{3,}/mu.test(text);
+  return { text, long, spokenText: long ? LONG_RESULT_NOTICE : text };
+}
 // gpt-live-backend-call-control-v1: Talk
 function bindGptLiveBackendCallControl({ callControl, continuationIdentity, assertCurrent }) {
   if (callControl === undefined) return;
@@ -621,6 +631,15 @@ function createTalkClientGatewayControlOwner(params) {
 				if (callLifecycle && callLifecycle !== nextLifecycle) throw new Error("GPT Live call lifecycle is already bound");
 				if (typeof nextLifecycle?.ready !== "function" || typeof nextLifecycle?.close !== "function") throw new Error("Invalid GPT Live call lifecycle");
 				callLifecycle = nextLifecycle;
+			},
+			onBackendResult: ({delegationId,text}) => {
+				owner.assertOpen();
+				if(owners.get(params.voiceSessionId)!==owner)throw new Error("Realtime voice session is not active");
+				if(typeof delegationId!=="string"||!delegationId||typeof text!=="string")throw new Error("Invalid backend document identity");
+				const document=presentBackendResult(text);
+				if(!document?.long)return;
+				harness.emit({type:"tool.result",callId:delegationId,turnId:harness.ensureTurn(),payload:{name:"openclaw_backend_result",text:document.text,...talkPayload()},final:true});
+				return document.spokenText;
 			},
 			onCallLifecycleEvent: (event) => {
 				owner.assertOpen();

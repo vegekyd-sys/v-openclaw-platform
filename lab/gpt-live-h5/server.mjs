@@ -189,6 +189,12 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
     const context = [local, ...contexts.values()].find(item => item.active?.reservation.voiceSessionId === event.payload?.voiceSessionId);
     if (!context) return;
     const item = event.payload.talkEvent;
+    if(item?.type==='tool.result' && item.payload?.name==='openclaw_backend_result' &&
+      typeof item.callId==='string' && item.callId && typeof item.payload.text==='string' && item.payload.text.trim()) {
+      const message={voiceSessionId:context.active.reservation.voiceSessionId,type:'backend.result',callId:item.callId,text:item.payload.text};
+      for(const response of context.listeners)response.write(`data: ${JSON.stringify(message)}\n\n`);
+      return;
+    }
     if (!["tool.call", "tool.result", "tool.error"].includes(item?.type)) return;
     const message = { voiceSessionId: context.active.reservation.voiceSessionId, type: item.type, callId: item.callId };
     if (item.type === "tool.call") message.activity = taskActivity(item.payload?.name);

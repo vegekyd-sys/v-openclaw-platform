@@ -365,7 +365,7 @@ export class SeeduplexRealtimeVoiceBridge {
     this.submitToolResult(callId, {accepted:true,status:"working",message:"已交给 V 后台，我会继续做完。",instruction:"简短说明任务已开始，随后正常回应用户聊天。任务仍在后台继续，不要声称已完成。"}, {backgroundAck:true});
   }
 
-  completeBackgroundTool(callId, result) {
+  completeBackgroundTool(callId, result, options = {}) {
     const question = this.backgroundTools.get(callId);
     if (question === undefined) return;
     this.backgroundTools.delete(callId);
@@ -378,8 +378,8 @@ export class SeeduplexRealtimeVoiceBridge {
       {role:"user",content:[{type:"input_text",text:question}]},
       {role:"assistant",content:[{type:"input_text",text}]},
     ]});
-    this.request.onTranscript?.("assistant", text, true, "V-backend");
-    this.speakProgress(text);
+    if (!options.displayedFullResult) this.request.onTranscript?.("assistant", text, true, "V-backend");
+    this.speakProgress(options.spokenText ?? text);
   }
 
   speakProgress(text) {

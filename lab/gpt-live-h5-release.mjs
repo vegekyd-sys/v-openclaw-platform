@@ -13,6 +13,7 @@ export const H5_PATHS = [
   ...['idle','memory','web','calendar','background'].map(state => `lab/gpt-live-h5/assets/v-signal-${state}-20261006${state === 'idle' ? '' : '-r2'}.png`),
   'lab/gpt-live-h5/personal-session.mjs',
   'lab/gpt-live-h5/persona.mjs',
+  'lab/gpt-live-h5/result-presentation.mjs',
   'lab/gpt-live-h5/server.mjs', 'lab/gpt-live-h5/events.mjs', 'lab/gpt-live-h5/duplex-playback.mjs',
   'lab/gpt-live-h5/markdown.mjs', 'lab/gpt-live-h5/vendor/marked-18.0.5.mjs', 'lab/gpt-live-h5/vendor/marked-LICENSE',
   'lab/gpt-live-h5/index.html', 'lab/gpt-live-h5/app.js', 'lab/gpt-live-h5/styles.css',

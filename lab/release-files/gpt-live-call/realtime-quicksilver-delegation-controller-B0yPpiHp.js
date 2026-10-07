@@ -1,3 +1,4 @@
+// voice-backend-document-controller-v1
 // gpt-live-call-lifecycle-controller-v1
 import { createGptLiveCallLifecycle, createGptLiveEndCallClientTool } from "./gpt-live-call-lifecycle.mjs";
 import { createHash, randomUUID } from "node:crypto";
@@ -609,7 +610,9 @@ var OpenAIQuicksilverDelegationController = class {
 			// Byte-safe native chunks already bound individual frames; truncating the
 			// whole result would lose late facts while falsely labeling it complete.
 			this.tracePublicProgress("backend-final-received", delegation.id, text, { kind: "final", provenance: terminalProvenance });
-			text = this.formatCallerConditionEnvelope(result);
+			const spoken = this.options.onBackendResult?.({delegationId:delegation.id,text:result.text});
+			if(spoken !== undefined && (typeof spoken !== "string" || spoken.length > 300 || !spoken.trim())) throw new Error("Invalid backend document spoken notice");
+			text = spoken ?? this.formatCallerConditionEnvelope(result);
 			if (result.callerConditions) this.tracePublicProgress("caller-conditions-attached", delegation.id,
 				JSON.stringify(result.callerConditions.inputs), { kind: "final", provenance: terminalProvenance });
 			if (Buffer.byteLength(text, "utf8") > 16 * 1024) {

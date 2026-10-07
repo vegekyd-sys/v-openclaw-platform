@@ -581,3 +581,14 @@ test('fixed backend TTS cancels without response.created or delayed ASR, suppres
  assert.equal(audio.length,2);assert.deepEqual(audio[1].m,{responseId:'new-question'});
  assert.equal(done.at(-1).responseId,'new-question');assert(clears.length>=1);bridge.close();
 });
+
+test('long backend document keeps full paired history but commits only short speech, not a fabricated full spoken caption',async()=>{
+ const socket=new FakeSocket(),texts=[];
+ const bridge=buildSeeduplexRealtimeVoiceProvider({env:{VOLCENGINE_REALTIME_API_KEY:'test'},createWebSocket:async()=>socket}).createBridge({providerConfig:{voice:'xiaohe'},tools:[{type:'function',name:'delegate_to_v',parameters:{type:'object',properties:{}}}],onAudio(){},onToolCall:call=>bridge.beginBackgroundTool(call.callId,'原始任务'),onTranscript:(...args)=>texts.push(args),onError:e=>assert.fail(e.message),onClose(){}});
+ const connecting=bridge.connect();await new Promise(resolve=>setImmediate(resolve));socket.open();socket.message({type:'session.created'});await connecting;
+ socket.message({type:'response.function_call_arguments.done',items:[{call_id:'doc',name:'delegate_to_v',arguments:'{}'}]});
+ const text='## 全文\n'+'日期和限定。'.repeat(100),spokenText='结果在屏幕上，可以整理成文档发给你。';
+ bridge.completeBackgroundTool('doc',{result:text},{spokenText,displayedFullResult:true});bridge.completeBackgroundTool('doc',{result:text},{spokenText,displayedFullResult:true});
+ const history=socket.sent.find(x=>x.items?.length===2);assert.equal(history.items[1].content[0].text,text);
+ assert.deepEqual(socket.sent.filter(x=>x.type==='speech_text_buffer.commit').map(x=>x.text),[spokenText]);assert(!texts.some(x=>x[1]===text));bridge.close();
+});

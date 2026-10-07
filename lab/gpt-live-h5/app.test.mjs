@@ -991,3 +991,15 @@ test('same-page redial reuses one grant, keeps the idle microphone disabled and 
  await f.context.startCall();assert.equal(grants,1);assert.equal(mic.enabled,true);await f.context.stopCall();assert.equal(mic.enabled,false);
  f.pageEvents.get('pagehide')();assert.equal(mic.stopped,1);
 });
+
+test('full backend document renders separately from spoken caption and retired call cannot insert late documents',async t=>{
+ const f=await fixture(t);await f.context.startCall();
+ const body='## 完整方案\n| 日期 | 状态 |\n| --- | --- |\n| 2028-09 | 尚未核实 |';
+ const e={voiceSessionId:'voice-1',type:'backend.result',callId:'doc',text:body};
+ const old=f.eventSources[0];old.onmessage({data:JSON.stringify({...e,voiceSessionId:'foreign'})});assert.equal(f.element('transcriptHistory').children.length,0);
+ old.onmessage({data:JSON.stringify(e)});old.onmessage({data:JSON.stringify(e)});
+ const history=f.element('transcriptHistory');assert.equal(history.children.length,1);assert.equal(history.children[0].parts.speaker.textContent,'V · 完整方案');assert.equal(history.children[0].parts.text.textContent,body);
+ f.peers[0].channel.onmessage({data:JSON.stringify({type:'output_transcript.added',item:{id:'spoken',text:'结果在屏幕上。'}})});
+ assert.equal(f.element('transcriptCurrentRows').children[0].parts.text.textContent,'结果在屏幕上。');
+ await f.context.stopCall();await f.context.startCall();old.onmessage({data:JSON.stringify(e)});assert.equal(history.children.length,0);
+});

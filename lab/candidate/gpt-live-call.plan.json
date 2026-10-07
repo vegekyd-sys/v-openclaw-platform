@@ -123,6 +123,7 @@
     }
   ],
   "tests": [
+    "lab/gpt-live-h5/result-presentation.test.mjs",
     "lab/gpt-live-projection-readiness.test.mjs",
     "lab/gpt-live-backend-call-control.test.mjs",
     "lab/gpt-live-call-lifecycle.test.mjs",
@@ -294,7 +295,9 @@
     "lab/release-files/gpt-live-call/worker-pool.mjs",
     "lab/release-files/gpt-live-call/gpt-live-voice-exec-lifetime.js",
     "lab/release-files/gpt-live-call/builtin-openclaw-zQV8Wwjr.js",
-    "lab/release-files/gpt-live-call/session-transcript-reconcile-j5qhAafV.js"
+    "lab/release-files/gpt-live-call/session-transcript-reconcile-j5qhAafV.js",
+    "lab/patch-gpt-live-result-presentation.mjs",
+    "lab/gpt-live-h5/result-presentation.mjs"
   ],
   "timeoutSeconds": 120
 }

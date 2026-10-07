@@ -208,3 +208,12 @@ test('backend events reach direct voice even when they are not GPT Live talk eve
  const received=[];const bridge=createLiveH5Server({gateway:{request(){}},directVoice:{handleEvent:e=>received.push(e),dispose:async()=>{}},offer:async()=>''});
  const e={event:'agent',payload:{runId:'voice-own',stream:'tool'}};bridge.emit(e);assert.deepEqual(received,[e]);await bridge.dispose();
 });
+
+test('backend document SSE belongs to exact active voice and carries original Markdown without unrelated fields',async t=>{
+ const f=await fixture(t);await f.request('session');const stop=new AbortController();
+ const response=await fetch(f.url+'/api/events',{headers:{cookie:f.cookie},signal:stop.signal}),reader=response.body.getReader();await reader.read();
+ const text='## 原始方案\n| 日期 | 条件 |\n| --- | --- |\n| 2028-09 | 尚未核实 |';
+ const emit=voiceSessionId=>f.bridge.emit({event:'talk.event',payload:{voiceSessionId,talkEvent:{type:'tool.result',callId:'doc',payload:{name:'openclaw_backend_result',text,secret:'不应进入浏览器'}}}});
+ emit('foreign');emit('voice-private');const body=new TextDecoder().decode((await reader.read()).value),value=JSON.parse(body.slice(body.indexOf('data: ')+6).trim());
+ assert.deepEqual(value,{voiceSessionId:'voice-private',type:'backend.result',callId:'doc',text});assert(!body.includes('foreign'));assert(!body.includes('secret'));stop.abort();await reader.cancel().catch(()=>{});
+});

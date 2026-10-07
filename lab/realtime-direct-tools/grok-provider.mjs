@@ -39,10 +39,15 @@ export class GrokVoiceBridge {
     this.backgroundTools.add(callId);
     this.submitToolResult(callId,{accepted:true,status:'working',instruction:'后台继续执行；正常回应用户聊天，有真正新进展或最终结果时会主动回来。不要声称已完成。'});
   }
-  completeBackgroundTool(callId,result){
+  completeBackgroundTool(callId,result,options={}){
     if(!this.backgroundTools.delete(callId)||result?.cancelled)return;
     const text=result?.result??(result?.error?`V 后台没有完成：${result.error}`:null);
-    if(text)this.speakProgress(text);
+    if(text){
+      // Keep the complete backend facts as conversation context, separately
+      // from the short force_message that actually produces spoken audio.
+      if(options.displayedFullResult)this.send({type:'conversation.item.create',item:{type:'message',role:'assistant',content:[{type:'output_text',text}]}});
+      this.speakProgress(options.spokenText??text);
+    }
   }
   handleBargeIn(){this.send({type:'response.cancel'});this.request.onClearAudio?.('barge-in');}
   receive(e) {

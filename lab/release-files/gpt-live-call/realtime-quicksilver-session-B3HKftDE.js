@@ -1,3 +1,4 @@
+// voice-backend-document-broker-v1
 // gpt-live-call-lifecycle-broker-v1
 import { c as readRequestBodyWithLimit } from "./http-body-C8wtGPZr.js";
 import { m as resolveOpenAICodexAuthIdentity, s as resolveProviderAuthProfileApiKey } from "./provider-auth-BSTUvZrs.js";
@@ -367,6 +368,7 @@ function createOpenAIQuicksilverBrowserSessionBroker(params) {
 				isCallCurrent: () => Boolean(session) && activeSessions.get(token) === session &&
 					!session.closing && session.socket === connected.socket &&
 					!lifecycleSignal.aborted && !abortController.signal.aborted && connected.socket.readyState === WEBSOCKET_OPEN,
+				onBackendResult: (result) => offer.request.gatewayControl?.onBackendResult?.(result),
 				onCallLifecycleEvent: (event) => offer.request.gatewayControl?.onCallLifecycleEvent?.(event),
 				onTranscript: (role, text, final) => offer.request.gatewayControl?.onTranscript?.(role, text, final),
 				getSocket: () => connected.socket,
