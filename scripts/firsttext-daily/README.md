@@ -14,6 +14,10 @@ V is reachable only from Tianyi's Mac (`ssh v`), so the daily job runs there und
 - `format.mjs --dir <dir> --day <day>` renders the Markdown: the day's P50/P95/P99/Max for
   首字, first visible, overhead and its segments, per harness, the five slowest, change
   against the previous day, and a 14-day trend table.
+- `export-records.mjs` (piped to V by `run.sh`) writes `records-<day>.jsonl.gz`: one line per
+  Feishu message with the e2e timestamps, runtime/provider/model, group or direct chat, a 10-char
+  sha256 of the session key, and the first Worker phase and model-call marks joined by runId.
+  No message text, chat ids or message ids.
 
 The project thread "V首字每日报告" reads `latest.md` each morning and posts it. Nothing on V
 is installed or changed; uninstall with

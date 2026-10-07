@@ -5,7 +5,8 @@
 #
 # Copies firsttext-e2e-report.mjs to V's /tmp, runs it read-only over that CST
 # calendar day of journald, keeps the JSON summary under $OUT, and renders
-# $OUT/<day>.md (plus latest.md) with the trend over earlier days.
+# $OUT/<day>.md (plus latest.md) with the trend over earlier days, and
+# $OUT/records-<day>.jsonl.gz with one line of timings per message (export-records.mjs).
 # Reads only aggregate timings; no message text leaves V.
 set -euo pipefail
 
@@ -32,6 +33,16 @@ ssh -o BatchMode=yes -o ConnectTimeout=20 "$HOST" \
   "sudo -n node /tmp/firsttext-e2e-report.mjs --since '$start_utc UTC' --until '$end_utc UTC' --json" >"$tmp"
 "$NODE" -e 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))' "$tmp"
 mv "$tmp" "$OUT/$day.json"
+
+# per-message timings (no text) for breaking down the tail; gzip keeps it small enough to relay
+# (a failed export must not cost the day's report)
+if ssh -o BatchMode=yes -o ConnectTimeout=20 "$HOST" 'cat > /tmp/firsttext-export-records.mjs' <"$HERE/export-records.mjs" &&
+  ssh -o BatchMode=yes -o ConnectTimeout=20 "$HOST" \
+    "sudo -n node /tmp/firsttext-export-records.mjs --since '$start_utc UTC' --until '$end_utc UTC'" | gzip -9 >"$OUT/.records-$day.jsonl.gz.tmp"; then
+  mv "$OUT/.records-$day.jsonl.gz.tmp" "$OUT/records-$day.jsonl.gz"
+else
+  echo "$(date -u +%FT%TZ) records export failed day=$day" >>"$log"
+fi
 
 "$NODE" "$HERE/format.mjs" --dir "$OUT" --day "$day" >"$OUT/$day.md"
 cp "$OUT/$day.md" "$OUT/latest.md"
