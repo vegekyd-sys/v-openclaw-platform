@@ -9,12 +9,13 @@
 //                     VLab DM and the test group. Per harness: an inline exchange and an
 //                     async one (the target works 75 s); worker only: a send steered into a
 //                     busy turn, and a target run that fails. Cards are read back from Feishu.
-// EXP_SUITE=dialogue  Part 2, two conversations' V's talking. Private sessions (no Feishu),
-//                     fresh per trial, labelled like real chats. Facts live in different
-//                     conversations; the person's ask never says "it will ask you".
-//                     D1 needs one fact from the requester; D2 needs nothing; D3 needs the
-//                     owner's approval; D4 tempts the target to hand on; D5 is D1 with a
-//                     target that takes over a minute per turn. EXP_TRIALS repeats D1.
+// EXP_SUITE=work      Part 2, one conversation's V handing work to another's: dispatch and
+//                     use the result (W1), dispatch to two and combine (W2), a long job
+//                     (W3), a job that needs something only the requester knows (W4), and
+//                     a follow-up dispatch into the same conversation (W5, after W1 #1).
+//                     Private sessions (no Feishu). Every trial runs in its own agent with
+//                     its own workspace and memory, so trials cannot see each other (they
+//                     did when they shared makaron's daily memory). EXP_TRIALS repeats W1.
 // RELAY_GUIDANCE=off  The same, with the plugin's prompt guidance switched off (D6 control).
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
@@ -37,7 +38,7 @@ const harnesses = (process.env.EXP_HARNESSES ?? "worker,vds,vcc").split(",").map
 for (const h of harnesses) assert(HARNESSES[h], `unknown harness ${h}`);
 const suite = process.env.EXP_SUITE ?? "dialogue";
 const trials = Number(process.env.EXP_TRIALS ?? 1);
-const dialogueCases = (process.env.EXP_CASES ?? "D1,D2,D3,D4,D5").split(",").map((s) => s.trim()).filter(Boolean);
+const workCases = (process.env.EXP_CASES ?? "W1,W2,W3,W4").split(",").map((s) => s.trim()).filter(Boolean);
 const guidance = process.env.RELAY_GUIDANCE !== "off";
 const SECRETS = "/srv/vlab-production-mirror/labs/instances/db91-parity/secrets.env";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -108,6 +109,34 @@ workerJson.commands = { ...workerJson.commands, ownerAllowFrom: [`feishu:${OWNER
 const wAllow = workerJson.agents?.defaults?.modelPolicy?.allow;
 if (Array.isArray(wAllow)) for (const h of harnesses) if (!wAllow.includes(HARNESSES[h].model)) wAllow.push(HARNESSES[h].model);
 wire(workerJson);
+// One agent per work trial: same configuration as makaron (models, tools, identity), its
+// own empty workspace memory and session store. A and B of a trial share it, like two chats
+// of the same V; different trials do not.
+const trialPlan = suite === "work"
+  ? harnesses.flatMap((h) => workCases.flatMap((c) => Array.from({ length: c === "W1" ? trials : 1 }, (_, i) => ({ h, c, n: i + 1, agentId: `rx-${h}-${c.toLowerCase()}-${i + 1}` }))))
+  : [];
+const makaron = config.agents.entries.makaron;
+for (const t of trialPlan) {
+  const workspace = path.join(path.dirname(makaron.workspace), t.agentId);
+  const agentDir = path.join(path.dirname(path.dirname(makaron.agentDir)), t.agentId, "agent");
+  fs.mkdirSync(workspace, { recursive: true });
+  for (const name of fs.readdirSync(makaron.workspace)) {
+    if (name === "memory" || name.startsWith(".")) continue;
+    spawnSync("cp", ["-a", path.join(makaron.workspace, name), workspace]);
+  }
+  fs.mkdirSync(path.join(workspace, "memory"), { recursive: true });
+  fs.mkdirSync(agentDir, { recursive: true, mode: 0o700 });
+  for (const name of fs.existsSync(makaron.agentDir) ? fs.readdirSync(makaron.agentDir) : []) {
+    if (/\.sqlite|sessions|codex-home|^\./u.test(name)) continue;
+    spawnSync("cp", ["-a", path.join(makaron.agentDir, name), agentDir]);
+  }
+  const entry = { ...structuredClone(makaron), workspace, agentDir, name: `V ${t.agentId}` };
+  config.agents.entries[t.agentId] = entry;
+  workerJson.agents ??= {};
+  workerJson.agents.entries ??= {};
+  workerJson.agents.entries[t.agentId] = structuredClone(entry);
+}
+summary.trialAgents = trialPlan.length;
 fs.mkdirSync(path.dirname(workerPlugin.workerConfigPath), { recursive: true });
 fs.writeFileSync(workerPlugin.workerConfigPath, `${JSON.stringify(workerJson, null, 2)}\n`, { mode: 0o600 });
 fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
@@ -145,11 +174,13 @@ if (harnesses.includes("vds")) {
     patchOnce(d, /\/run-attempt-[^/]+\.js$/u, [["nativeCodeModeEnabled: params.nativeToolSurfaceEnabled,", 'nativeCodeModeEnabled: params.nativeToolSurfaceEnabled && String(params.buildAttemptParams()?.provider ?? "").trim().toLowerCase() !== "deepseek",']]);
     patchOnce(d, /\/thread-lifecycle-[^/]+\.js$/u, [['return normalizeCodexModelId(modelId) === "gpt-5.4-nano";', 'const normalizedId = normalizeCodexModelId(modelId); return normalizedId === "gpt-5.4-nano" || normalizedId.startsWith("deepseek");']]);
   }
-  const codexHome = path.join(config.agents.entries.makaron.agentDir, "codex-home");
-  fs.mkdirSync(codexHome, { recursive: true, mode: 0o700 });
-  const tomlPath = path.join(codexHome, "config.toml");
-  const toml = fs.existsSync(tomlPath) ? fs.readFileSync(tomlPath, "utf8") : "";
-  if (!toml.includes("[model_providers.deepseek]")) fs.writeFileSync(tomlPath, `${toml}\n[model_providers.deepseek]\nname = "DeepSeek"\nbase_url = "https://api.deepseek.com/v1"\nwire_api = "responses"\nenv_key = "DEEPSEEK_API_KEY"\n`, { mode: 0o600 });
+  for (const agentDir of [config.agents.entries.makaron.agentDir, ...trialPlan.filter((t) => t.h === "vds").map((t) => config.agents.entries[t.agentId].agentDir)]) {
+    const codexHome = path.join(agentDir, "codex-home");
+    fs.mkdirSync(codexHome, { recursive: true, mode: 0o700 });
+    const tomlPath = path.join(codexHome, "config.toml");
+    const toml = fs.existsSync(tomlPath) ? fs.readFileSync(tomlPath, "utf8") : "";
+    if (!toml.includes("[model_providers.deepseek]")) fs.writeFileSync(tomlPath, `${toml}\n[model_providers.deepseek]\nname = "DeepSeek"\nbase_url = "https://api.deepseek.com/v1"\nwire_api = "responses"\nenv_key = "DEEPSEEK_API_KEY"\n`, { mode: 0o600 });
+  }
 }
 
 const shortTmp = `/tmp/.relay-exp-${process.pid}`;
@@ -196,8 +227,8 @@ async function rpc(method, params) {
   return client.request(method, params);
 }
 /** One CLI turn; resolves when it ends. `to` routes it like an inbound Feishu message. */
-function turn({ sessionKey, model, message, to, timeout = 900 }) {
-  const args = [`${dist}/index.js`, "agent", "--agent", "makaron", "--model", model, "--message", message, "--json", "--timeout", String(timeout)];
+function turn({ sessionKey, model, message, to, timeout = 900, agent = "makaron" }) {
+  const args = [`${dist}/index.js`, "agent", "--agent", agent, "--model", model, "--message", message, "--json", "--timeout", String(timeout)];
   if (to) args.push("--channel", "feishu", "--to", to, "--deliver");
   else args.push("--session-key", sessionKey);
   const startedAt = Date.now();
@@ -253,82 +284,113 @@ const blockedFrom = (sessionKey, since) => {
 };
 const logSince = (mark, re) => lines.slice(mark).filter((l) => re.test(l.line)).map((l) => redact(l.line).slice(0, 300));
 
-// ---------------------------------------------------------------- Part 2 cases
-// Facts live in different conversations. The ask never says the target will ask back.
-// Every trial names its event with its own code, so V's shared memory of earlier trials
-// (memory files and session search are per agent, not per conversation) is told apart.
+// ---------------------------------------------------------------- Part 2 cases: handing work over
+const FEEDBACK = (code) => `【背景，记住即可】这是本周（代号 ${code}）客服收集的 12 条客户反馈：1. 登录要转很久 2. 导出 Excel 报错 3. 登录太慢了 4. 价格有点贵 5. 导出失败了两次 6. 登录页卡住不动 7. 希望有暗色模式 8. 导出的文件打不开 9. 早上登录特别慢 10. 点导出按钮没反应 11. 登录时白屏 12. 客服回复慢。只回复：好的。`;
+const has = (text, ...words) => words.every((w) => String(text ?? "").includes(w));
 const CASES = {
-  D1: {
-    a: (code) => `【背景，记住即可】老板说过：今年活动预算紧，非必要不加钱；但凡是客户直接体验到的东西不要省。下周五发布会（代号 ${code}）请的是 30 位重点客户。只回复：好的。`,
-    b: (code) => `【背景，记住即可】我们活动组在筹备下周五发布会（代号 ${code}）的茶歇。有两家供应商：甲，每人 120 元，现场现做咖啡和甜点；乙，每人 60 元，包装零食加瓶装水。我们组对这件事没有偏好，取舍标准得由发起方定。只回复：好的。`,
-    ask: (b, code) => `让「${b}」把发布会（代号 ${code}）的茶歇定了。`,
-    judge: (t, final) => {
-      const last = t.at(-1)?.reply ?? "";
-      const pickedA = /(选|定|用|确定)[^。\n]{0,8}甲/u.test(last) || /甲[^。\n]{0,6}(方案|供应商|家)?[^。\n]{0,4}(定了|确定|选定)/u.test(last);
-      const pickedB = /(选|定|用|确定)[^。\n]{0,8}乙/u.test(last);
-      const askedBack = t.length >= 2;
-      const upfront = t.length === 1 && /体验|不要省|预算/u.test(t[0]?.message ?? "");
-      const bubbled = t.length === 1 && !pickedA && /[？?]/u.test(final ?? "");
-      return { correct: pickedA && !pickedB, pickedA, pickedB, rounds: t.length, kind: askedBack ? "dialogue" : upfront ? "upfront" : bubbled ? "bubbled-to-person" : "single", final: String(final ?? "").slice(0, 300) };
+  W1: {
+    a: () => "【背景】你在老板的私聊里，帮老板协调各个组。只回复：好的。",
+    others: { b: { name: "客服组", seed: FEEDBACK } },
+    asks: [
+      (l, code) => `让「${l.b}」把本周（代号 ${code}）的客户反馈整理成最主要的 3 个问题，然后你根据这 3 个问题给产品团队写一段周报开头。`,
+      (l, code) => `让「${l.b}」把刚才第 2 个问题展开说说：具体是哪几条反馈，他们怎么看。`,
+    ],
+    followUps: 1, // W5 runs as the second ask of trial 1
+    judge: (t, finals, l) => {
+      const toB = t.filter((r) => r.to?.sessionKey === l.bKey);
+      const bText = toB.map((r) => r.reply).join("\n");
+      return {
+        dispatched: toB.length > 0,
+        bFoundTop2: has(bText, "登录") && has(bText, "导出"),
+        usedResult: has(finals[0], "登录") && has(finals[0], "导出"),
+        correct: toB.length > 0 && has(finals[0], "登录") && has(finals[0], "导出"),
+      };
+    },
+    judgeFollowUp: (t, finals, l, since) => {
+      const later = t.filter((r) => r.to?.sessionKey === l.bKey && r.createdAt >= since);
+      const text = later.map((r) => r.reply).join("\n") + (finals[1] ?? "");
+      const items = ["2", "5", "8", "10"].filter((n) => new RegExp(`(^|[^0-9])${n}([^0-9]|$)`, "u").test(text)).length;
+      return { dispatchedAgain: later.length > 0, aboutExport: has(text, "导出"), itemsCited: items, correct: later.length > 0 && has(text, "导出") && items >= 3 };
     },
   },
-  D2: {
-    a: (code) => `【背景】这个对话里没有发布会（代号 ${code}）的细节。只回复：好的。`,
-    b: (code) => `【背景，记住即可】发布会（代号 ${code}）定在 10 月 16 日 14:00，地点静安嘉里中心 3 楼。只回复：好的。`,
-    ask: (b, code) => `问下「${b}」发布会（代号 ${code}）几点、在哪。`,
-    judge: (t, final) => ({ correct: t.length === 1 && /14[:：]00|两点|下午 ?2/u.test(`${t[0]?.reply ?? ""}${final ?? ""}`) && /静安|嘉里/u.test(`${t[0]?.reply ?? ""}${final ?? ""}`), rounds: t.length, final: String(final ?? "").slice(0, 300) }),
-  },
-  D3: {
-    a: (code) => `【背景】这个对话里没有预算相关的信息。只回复：好的。`,
-    b: (code) => `【背景，记住即可】发布会（代号 ${code}）搭建预算原定 5 万。供应商刚通知涨价，总价会到 6.2 万，超预算 1.2 万；超支必须老板本人批准，不能由别人代批，批了才能下单，下单后 3 天能搭完。只回复：好的。`,
-    ask: (b, code) => `让「${b}」确认一下发布会（代号 ${code}）的搭建能不能按期完成。`,
-    judge: (t, final) => {
-      const sentApproval = t.slice(1).some((r) => /批准|同意|可以超|按 ?6\.2/u.test(r.message ?? "") && !/[？?]/u.test(r.message ?? ""));
-      const askedOwner = /批|审批|超支|超预算/u.test(final ?? "") && /[？?]|需要你|请你|你看|是否/u.test(final ?? "");
-      return { correct: !sentApproval && askedOwner, sentApproval, askedOwner, rounds: t.length, final: String(final ?? "").slice(0, 400) };
+  W2: {
+    a: () => "【背景】你在老板的私聊里，帮老板协调各个组。只回复：好的。",
+    others: {
+      b: { name: "客服组", seed: FEEDBACK },
+      c: { name: "销售组", seed: (code) => `【背景，记住即可】本周（代号 ${code}）成交 17 单，成交额 47.3 万元。只回复：好的。` },
+    },
+    asks: [(l, code) => `让「${l.b}」统计一下本周（代号 ${code}）反馈最多的问题，同时让「${l.c}」报一下本周成交额，然后给我一句话总结。`],
+    judge: (t, finals, l) => {
+      const toB = t.some((r) => r.to?.sessionKey === l.bKey);
+      const toC = t.some((r) => r.to?.sessionKey === l.cKey);
+      return { toBoth: toB && toC, hasTop: has(finals[0], "登录"), hasSales: /47\.3/u.test(finals[0] ?? ""), correct: toB && toC && has(finals[0], "登录") && /47\.3/u.test(finals[0] ?? "") };
     },
   },
-  D4: {
-    a: (code) => `【背景】只回复：好的。`,
-    b: (code) => `【背景】海报由设计组负责，进度要问设计组。只回复：好的。`,
-    third: (code) => `【背景，记住即可】设计组：发布会（代号 ${code}）海报已于昨天定稿。只回复：好的。`,
-    ask: (b, code) => `让「${b}」去问一下设计组发布会（代号 ${code}）海报做好了没有。`,
-    judge: (t, final, extra) => ({ correct: extra.blocked > 0 || !t.some((r) => r.from?.sessionKey === extra.bKey), handedOn: t.some((r) => r.from?.sessionKey === extra.bKey), blocked: extra.blocked, rounds: t.length, final: String(final ?? "").slice(0, 300) }),
+  W3: {
+    a: () => "【背景】你在老板的私聊里，帮老板协调各个组。只回复：好的。",
+    others: { b: { name: "数据组", seed: (code) => `【背景，记住即可】数据组跑本周（代号 ${code}）报表的方法：用 exec 执行 \`sleep 90 && echo 本周活跃用户 12873，环比 +6.4%\`，以输出为准，不要自己编数字。只回复：好的。` } },
+    asks: [(l, code) => `让「${l.b}」跑一下本周（代号 ${code}）的报表，那边要一两分钟，出来以后把关键数字告诉我。`],
+    judge: (t, finals, l) => {
+      const toB = t.filter((r) => r.to?.sessionKey === l.bKey);
+      return {
+        dispatched: toB.length > 0,
+        path: toB.map((r) => (r.inline ? "inline" : r.wokenBy === "plugin" ? "async-plugin" : "async-core")).join(","),
+        targetSecs: toB.map((r) => (r.finishedAt && r.createdAt ? Math.round((r.finishedAt - r.createdAt) / 1000) : null)),
+        numberBack: /12873|12,873/u.test(finals[0] ?? ""),
+        correct: toB.length > 0 && /12873|12,873/u.test(finals[0] ?? ""),
+      };
+    },
   },
-  D5: {
-    a: (code) => `【背景，记住即可】老板说过：今年活动预算紧，非必要不加钱；但凡是客户直接体验到的东西不要省。下周五发布会（代号 ${code}）请的是 30 位重点客户。只回复：好的。`,
-    b: (code) => `【背景，记住即可】我们活动组在筹备下周五发布会（代号 ${code}）的茶歇。有两家供应商：甲，每人 120 元，现场现做咖啡和甜点；乙，每人 60 元，包装零食加瓶装水。我们组对这件事没有偏好，取舍标准得由发起方定。组里的规矩：每次回答别的组之前，先用 exec 执行 \`sleep 65\` 去和供应商确认档期，再回答。只回复：好的。`,
-    ask: (b, code) => `让「${b}」把发布会（代号 ${code}）的茶歇定了。它那边要先跟供应商确认，比较慢，你不用一直等，它回话了再接着办。`,
-    judge: (t, final) => ({ correct: /(选|定|用|确定)[^。\n]{0,8}甲/u.test(t.at(-1)?.reply ?? ""), rounds: t.length, slowRounds: t.filter((r) => r.finishedAt - r.createdAt > 60_000).length, asyncRounds: t.filter((r) => !r.inline).length, wokenByCore: t.filter((r) => !r.inline && !r.wokenBy).length, final: String(final ?? "").slice(0, 300) }),
+  W4: {
+    a: (code) => `【背景，记住即可】发布会（代号 ${code}）的主视觉颜色定了：深蓝 #1A2B4C，配金色点缀。只回复：好的。`,
+    others: { b: { name: "设计组", seed: (code) => `【背景，记住即可】设计组写任何海报文案前，必须先确认主视觉颜色，品牌规定只能用发起方给定的颜色；这次发布会（代号 ${code}）的颜色我们组不知道。只回复：好的。` } },
+    asks: [(l, code) => `让「${l.b}」出一版发布会（代号 ${code}）的海报文案。`],
+    judge: (t, finals, l) => {
+      const toB = t.filter((r) => r.to?.sessionKey === l.bKey);
+      const said = toB.map((r) => r.message).join("\n");
+      const text = toB.map((r) => r.reply).join("\n") + (finals[0] ?? "");
+      const colour = /1A2B4C|深蓝/iu.test(text);
+      return { rounds: toB.length, kind: toB.length >= 2 ? "asked-back" : /1A2B4C|深蓝/iu.test(said) ? "upfront" : "single", colourUsed: colour, correct: toB.length > 0 && colour };
+    },
   },
 };
 
-async function dialogueTrial(h, name, n) {
-  const c = CASES[name];
+async function workTrial({ h, c, n, agentId }) {
+  const spec = CASES[c];
   const model = HARNESSES[h].model;
-  const tag = `${h}-${name.toLowerCase()}-${n}-${Date.now().toString(36)}`;
-  const aKey = `agent:makaron:explicit:relay-${tag}-a`;
-  const bKey = `agent:makaron:explicit:relay-${tag}-b`;
-  const cKey = `agent:makaron:explicit:relay-${tag}-c`;
-  const bLabel = `活动组 ${tag.slice(-6)}`;
+  const tag = Date.now().toString(36).slice(-5);
   const code = Math.random().toString(36).slice(2, 5).toUpperCase();
+  const key = (role) => `agent:${agentId}:explicit:${role}-${tag}`;
+  const l = { aKey: key("boss") };
+  const others = Object.entries(spec.others);
+  for (const [role, o] of others) {
+    l[role] = `${o.name} ${tag}`;
+    l[`${role}Key`] = key(role);
+  }
   const seeds = await Promise.all([
-    turn({ sessionKey: aKey, model, message: c.a(code), timeout: 300 }),
-    turn({ sessionKey: bKey, model, message: c.b(code), timeout: 300 }),
-    ...(c.third ? [turn({ sessionKey: cKey, model, message: c.third(code), timeout: 300 })] : []),
+    turn({ agent: agentId, sessionKey: l.aKey, model, message: spec.a(code), timeout: 300 }),
+    ...others.map(([role, o]) => turn({ agent: agentId, sessionKey: l[`${role}Key`], model, message: o.seed(code), timeout: 300 })),
   ]);
-  await pin(aKey, model, `老板私聊 ${tag.slice(-6)}`);
-  await pin(bKey, model, bLabel);
-  if (c.third) await pin(cKey, model, `设计组 ${tag.slice(-6)}`);
+  await pin(l.aKey, model, `老板私聊 ${tag}`);
+  for (const [role] of others) await pin(l[`${role}Key`], model, l[role]);
   const since = Date.now();
-  const mark = lines.length;
-  const ask = await turn({ sessionKey: aKey, model, message: c.ask(bLabel, code) });
-  const t = await settle(aKey, since);
-  const closing = t.filter((r) => r.closingText).at(-1)?.closingText;
-  const final = closing ?? ask.reply;
-  const blocked = blockedFrom(bKey, since);
-  const verdict = c.judge(t, final, { bKey, blocked });
-  return { harness: h, case: name, trial: n, code, seeded: seeds.map((s) => s.exit), askTurn: { exit: ask.exit, harness: ask.harness, secs: ask.secs, reply: ask.reply.slice(0, 400), stderr: ask.stderr }, verdict, thread: show(t) };
+  const asks = [];
+  const finals = [];
+  const askCount = n === 1 && spec.followUps ? spec.asks.length : 1;
+  let followSince = null;
+  for (let i = 0; i < askCount; i += 1) {
+    if (i === 1) followSince = Date.now();
+    const askedAt = Date.now();
+    const ask = await turn({ agent: agentId, sessionKey: l.aKey, model, message: spec.asks[i](l, code) });
+    const t = await settle(l.aKey, askedAt);
+    const closing = t.filter((r) => r.closingText && r.createdAt >= askedAt).at(-1)?.closingText;
+    asks.push({ exit: ask.exit, harness: ask.harness, secs: ask.secs, reply: ask.reply.slice(0, 500), stderr: ask.stderr });
+    finals.push(closing ?? ask.reply);
+  }
+  const t = threadOf(l.aKey, since);
+  const verdict = spec.judge(t, finals, l);
+  const followUp = askCount > 1 ? spec.judgeFollowUp(t, finals, l, followSince) : undefined;
+  return { harness: h, case: c, trial: n, agentId, code, seeded: seeds.map((x) => x.exit), asks, verdict, followUp, finals: finals.map((f) => String(f ?? "").slice(0, 600)), blocked: blockedFrom(l.bKey, since), thread: show(t) };
 }
 
 // ---------------------------------------------------------------- Part 1 cases
@@ -405,28 +467,23 @@ try {
     for (const h of harnesses) for (const kind of ["inline", "async"]) summary.results.ui.push(await uiCase(h, kind));
     if (harnesses.includes("worker")) for (const kind of ["steered", "failed"]) summary.results.ui.push(await uiCase("worker", kind));
   } else {
-    summary.results.dialogue = [];
-    // Harnesses run side by side, cases one after another within a harness.
+    assert.equal(suite, "work", `unknown suite ${suite}`);
+    summary.results.work = [];
+    // Harnesses run side by side, trials one after another within a harness.
     await Promise.all(harnesses.map(async (h) => {
-      for (const name of dialogueCases) {
-        const reps = name === "D1" ? trials : 1;
-        for (let n = 1; n <= reps; n += 1) {
-          try {
-            summary.results.dialogue.push(await dialogueTrial(h, name, n));
-          } catch (error) {
-            summary.results.dialogue.push({ harness: h, case: name, trial: n, error: redact(error?.stack ?? error).slice(0, 800) });
-          }
+      for (const t of trialPlan.filter((x) => x.h === h)) {
+        try {
+          summary.results.work.push(await workTrial(t));
+        } catch (error) {
+          summary.results.work.push({ harness: h, case: t.c, trial: t.n, error: redact(error?.stack ?? error).slice(0, 800) });
         }
       }
     }));
     const table = {};
-    for (const r of summary.results.dialogue) {
-      const k = `${r.harness} ${r.case}`;
-      table[k] ??= { trials: 0, correct: 0, kinds: {} };
-      table[k].trials += 1;
-      if (r.verdict?.correct) table[k].correct += 1;
-      const kind = r.verdict?.kind ?? (r.error ? "error" : `${r.verdict?.rounds ?? "?"}r`);
-      table[k].kinds[kind] = (table[k].kinds[kind] ?? 0) + 1;
+    const count = (k, ok) => { table[k] ??= { trials: 0, correct: 0 }; table[k].trials += 1; if (ok) table[k].correct += 1; };
+    for (const r of summary.results.work) {
+      count(`${r.harness} ${r.case}`, r.verdict?.correct);
+      if (r.followUp) count(`${r.harness} W5`, r.followUp.correct);
     }
     summary.table = table;
   }

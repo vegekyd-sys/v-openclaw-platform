@@ -22,7 +22,9 @@
   "timeoutSeconds": 7200,
   "user": "lab-db91-parity",
   "env": {
-    "EXP_SUITE": "dialogue",
-    "EXP_TRIALS": "5"
+    "EXP_SUITE": "work",
+    "EXP_CASES": "W1,W2,W3",
+    "EXP_TRIALS": "3",
+    "RELAY_GUIDANCE": "off"
   }
 }
