@@ -11,6 +11,29 @@
 
 ---
 
+## v2026.9.1-db91.6-voice-reliability-20261008
+
+上线：2026-10-08 01:33–01:39 CST  ·  tag `v2026.9.1-db91.6-voice-reliability-20261008`
+
+**摘要**：PR #251 修复 Voice 的播放队列、同页麦克风复用、简单请求直接调工具与复杂任务后端委派；完整方案以 Markdown 展示，口播给出真实摘要，GPT Live 后台状态可见并在最终回复后恢复对话。共享 VLab 实际验证三模型工具/回答、复杂任务与 GPT Live 方案和后续对话；原媒体、物理 Safari 与语义保真严格 FAIL 继续保留。2026-10-08 经 Tianyi「可以安排上线」授权，推广同一份 11 个运行时文件（artifact SHA `f1a7f7eef03346182c267bbe4725d1047ae29b7084f5a1c2272b09b5923f30ab`），保留备份，受控重启 Gateway，并将原 `/voice/` H5 更新为 38 个 dd5e4cdb 文件。H5 文件集合 SHA `1f0d855faf2cf3f7ec96e8dde0a56dacfc83ae53bee25a490682786a4a237f98`。 原线上 `/voice/` 三模型实际回答及原 WebRTC/AudioWorklet 输出 PCM 已验证；临时验收页面清理、共享 lease 归还，部署版本保留。生产原姓名保真、观察器期限及媒体采样 FAIL 保留，详见 `docs/voice-release-20261008.md`。
+
+相对上一版 `codex-firsttext-20261008`：11 个文件变化。
+
+**经 VLab 发版 `voice-reliability-20261008`**（01a0fb0e-739d-7681-9238-faa2c1912c6c，dev `dd5e4cdb`）
+> 验收：PR251 dd5e4cdb release functional evidence: shared direct actual native Memory single USER + hybrid delegated multi-tool/progress/auto final both models; direct-voice r2 original FAIL retained, independent source=injected-speech real Xiaohe 54 provider PCM chunks FIFO drained. Shared GPT Live 56c5e847 real Memory then Web results native speech+pending; eda62700 scoped original H5 long complete USE…
+- `core` agent-tools-djVuP1H1.js  50da9780 → f414fa7f
+- `core` embedded-agent.runtime-CL7poBKY.js  31e6c957 → 8ba1f8fb
+- `core` realtime-quicksilver-delegation-controller-B0yPpiHp.js  a5a06fdb → 7ddf7fae
+- `core` realtime-quicksilver-session-B3HKftDE.js  801c4fe7 → f0b01553
+- `core` talk-DkFuKRod.js  91cf0741 → 2d740a7c
+- `core` gpt-live-call-lifecycle.mjs  47afe3df → ba6f0b7e
+- `core` voice-process-owner.mjs  — → c0045e63
+- `worker` index.mjs  26c617fd → 4f6894da
+- `worker` worker-pool.mjs  1f137ca2 → 197ec4a8
+- `worker` worker.mjs  18fc5d4f → 024306ae
+- `worker` voice-process-owner.mjs  — → c0045e63
+
+
 ## codex-firsttext-20261008
 
 上线：2026-10-08 00:17 CST  ·  tag `codex-firsttext-20261008`
