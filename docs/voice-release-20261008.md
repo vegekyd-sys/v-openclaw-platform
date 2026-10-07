@@ -17,6 +17,8 @@
 
 原 Gateway 排空、取得 native ready fence 后受控停止，推广同一份 11 个字节并保留 `/opt/v-release-backups/` 的 undo。新 Gateway PID 129267，配置 SHA256 `9395cc48061647fb9cd26590aac74894e5a74ffeb32fe337f6e4377bec93b9ec` 保持；原 H5 冷启动期间首次就绪期限失败，其 prepared 原回执保留。新 H5 通过实际字节与 HTTPS ready 读回，PID 133716。Gateway 启动守卫在恢复旧 RTC 身份时拒绝，因为本轮授权的新 H5 切换已改变 RTC 定义；原失败未覆盖，也未再次启动 Gateway。独立健康检查确认新 Gateway/5 Workers ready 与 11 个 after 字节。
 
-VLab align 已成功：18658 文件比较、当前 release accepted=true、aligned=true。生产三模型原 `/voice/` 通话仍在验证；初次 GPT Live 的 60 秒答案期限失败，实际后端已完成 Memory 调用，不作为生产通话通过。新独立短问题与完整原通话证据将补充到本记录。
+VLab align 已成功：18658 文件比较、当前 release accepted=true、aligned=true。生产原 HTTPS `/voice/?entry=tianyi` 的实际通话已验证：GPT Live 的独立年份问题经过原生通话返回 2021，原 WebRTC 接收音频实际解码为 PCM（RMS 0.02462）；小何一次实际 memory_search 调用/结果后回答 2021，Grok 从已有上下文直接回答 2021。后二者原 AudioWorklet 播放输出已实际录制解码。三模型分别使用原拨号/挂断按钮，最终 idle，所有自有测试 Chrome 退出，Gateway/H5 身份保持。Grok 这条生产样本没有再次调用工具；其实际工具回路由共享独立样本验证，不能把本条生产缓存回答计作新的工具调用。
+
+生产独立回顾只验收以上功能范围。r1 的 60 秒答案期限 FAIL、r2 姓名字幕保真偏差 FAIL，以及 r3 直接音频观察器只录了同一 AudioContext 的拨号声音而跳过 speaker 的 FAIL 均保留。r4 只补验未取得真实输出音频的两个直接模型，观察器连接原 speaker 输出，产品代码不变；没有重复已通过的 GPT Live 音频样本。所有严格门槛与真机听觉仍未整体验收。私人生产功能证据汇总 SHA256：`58a7a14d4f6299a135632e795e7463088c4edcbf41c8f26ce0cdc86b3eb2859a`。
 
 私人证据目录：任务 worktree `tmp/voice-reliability/release-20261008`，包含原始失败和独立检查；不公开对话、音频或凭据。
