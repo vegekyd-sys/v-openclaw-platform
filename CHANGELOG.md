@@ -11,6 +11,82 @@
 
 ---
 
+## v2026.9.1-db91.6-firsttext-r4-20261007
+
+上线：2026-10-07 16:46 CST  ·  tag `v2026.9.1-db91.6-firsttext-r4-20261007`
+
+**摘要**：首字优化第四批，Tianyi 于 2026-10-07 08:32 UTC 批准（「r4上线吧」，#247 已按他的要求撤出）。大会话空闲后的第一条消息不再被回复前的记忆整理挡住：整理推迟到回复之后、会话空闲时再跑，新消息来了就让出，之后补跑并照常写记忆；快到压缩阈值时仍然先整理（#243）。codex 会话同样推迟，包括 token 数不新鲜的会话（#264）。上线前 24 小时 V 上有 10 条真实消息因此白等 37–90 s（7 条 codex、3 条 vlab-worker）。16:35 CST 装到 V 磁盘，16:41 v-self-restart（20261007-164108-05f1），16:44:45 Gateway ready。#262 的 async-context-frame 启动参数这次没有生效：V 上排在它后面的 db91 drop-in（state-db-fastpath-v6）重新声明了 ExecStart，--verify 查出后已把这个 drop-in 撤掉，修复后另行上线。`agent-runner.runtime` 与 `builtin-openclaw` 的字节与验收 #243 用的 VLab 发版 `mflush-vds-20261007` 相同，所以来源追溯到那一版。
+
+相对上一版 `v2026.9.1-db91.6-firsttext-r3-20261007`：3 个文件变化。
+
+**经 VLab 发版 `firsttext-r4c-20261007`**（firsttext-0jwr2n，dev `22c4f72f`）
+> 验收：2026-10-07 15:55 CST r4c = #243 + #264 (3 core files, dev 22c4f72; #247 dropped by Tianyi) + #262 acf drop-in (--target vlab, --verify 6/6) on shared VLab: dedicated session vlab-dev-r4c-accept-1791358677236 exec + memory_search + visible reply (deepseek-flash); #243 deferral/interrupt/memory-write verified 13:10-13:28 on the same runtime/builtin bytes (memory file differs only by #264's stale-tok…
+- `core` agent-runner-memory-7VF-zwNt.js  8bca065f → 27f38ffb
+
+**经 VLab 发版 `mflush-vds-20261007`**（firsttext-0jwr2n，dev `eea51de0`）
+- `core` agent-runner.runtime-CAdsMsQt.js  9b85f780 → 947ba056
+- `core` builtin-openclaw-zQV8Wwjr.js  84456470 → 972d25fe
+
+**这期间合入 dev 的 PR**（4 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #264 #243 follow-up: defer a Codex session's flush even when its token count is stale
+- #243 perf(reply): run a housekeeping memory flush after the reply, not before it
+- #262 scripts: start the Gateway and its Workers with --experimental-async-context-frame
+- #263 Release capture: V after firsttext-r3-20261007 (#252 #254)
+
+## v2026.9.1-db91.6-firsttext-r3-20261007
+
+上线：2026-10-07 09:33 CST  ·  tag `v2026.9.1-db91.6-firsttext-r3-20261007`
+
+**摘要**：首字优化第三批，Tianyi 于 2026-10-07 01:10 UTC 批准（「r3上V」）。Worker 启动时 skills watcher 不再误判变更而让每个 Worker 的 skills 快照失效重建（#252）；Worker 预热时提前激活 secrets 运行时快照，冷首轮的 config-resolved 段在 VLab 上从约 1.1 s 降到 0（#254）。2026-10-07 09:27 CST 装到 V 磁盘，09:28:35 v-self-restart（20261007-092835-4165）后生效，09:32:32 Gateway ready。`refresh-BzYxPady.js` 的字节与 #252 的 VLab 对照发版 `skillswatch-on-20261007` 相同，所以来源追溯到那一版。
+
+相对上一版 `v2026.9.1-db91.6-firsttext-r2-20261007`：2 个文件变化。
+
+**经 VLab 发版 `firsttext-r3-20261007`**（firsttext-0jwr2n，dev `e97e98bb`）
+> 验收：2026-10-07 09:25 CST r3 (#252 #254) on VLab: dedicated session agent:makaron:explicit:vlab-dev-r3-accept-1791336390511 run status ok in 24 s, model deepseek-flash, tools exec + memory_search, visible final reply; Feishu bench r3-accept 8/8 answered (first answer p50 9.0 s, max 10.6 s cold); parity AHEAD by pending plan
+- `core` agent-command-DPfawBbr.js  82e7ca49 → 150d9003
+
+**经 VLab 发版 `skillswatch-on-20261007`**（firsttext-0jwr2n，dev `7569497f`）
+- `core` refresh-BzYxPady.js  e886dd60 → 3e34ae21
+
+**这期间合入 dev 的 PR**（8 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #258 candidate: vcodex-preturn-profile shows Gateway-side pre-turn stages
+- #257 candidate: let vcodex-preturn-profile drive /vds
+- #247 飞书：codex 回合开始就建卡片，不再等第一个答案字
+- #254 首字：Worker 预热时激活 secrets 运行时快照
+- #256 parity: compare Feishu renderMode in the config advisory
+- #252 firsttext: skills watcher stops invalidating each Worker's skills snapshot at startup
+- #255 Release capture: V after firsttext-r2-20261007 (#221 #238 #240)
+- #253 parity: compare memory-core dreaming in the config advisory
+
+## v2026.9.1-db91.6-firsttext-r2-20261007
+
+上线：2026-10-07 01:48 CST  ·  tag `v2026.9.1-db91.6-firsttext-r2-20261007`
+
+**摘要**：首字优化第二批。Gateway 每分钟两次后台扫描（workboard 卡片、Worker placement）不再整表读取，共享 VLab 上每分钟主线程卡顿从 1.6–2.5 s 降到约 0.2 s；带图消息的识图能力判断不再现场构建完整模型目录（#221）。文件已于 2026-10-07 01:45 CST 装到 V 磁盘，在下一次 Gateway 重启时生效（本节写入时 V 尚未重启）。附带：本版之前 V 已上 voice-native-tools-pr217（tools-invoke-shared，由其负责人上线）。
+
+相对上一版 `v2026.9.1-db91.6-firsttext-r1-20261006`：5 个文件变化。
+
+**经 VLab 发版 `firsttext-r2-20261007`**（firsttext-0jwr2n，dev `9cc6785a`）
+> 验收：R2 (#221 #238 #240) on shared VLab 2026-10-07: health ok; real model turn exec+memory_search+write ok, 0 tool errors; idle profile minute windows 169-208 ms (batch2 base 1577-2466); image turns 3/3 toHarness 0.3-0.4 s; bench cold8 P50 12.4 s, warm16 P50 6.1 / P95 9.7 s; no errors from R2
+- `core` extensions/workboard/index.js  ba56e0ab → 5ac1a060
+- `core` placement-store-CkyLHi6x.js  f7c7b41c → 5bcb7a2f
+- `core` runner-BIhCXp3h.js  0648f47c → f99d7111
+- `core` server-worker-placement-startup-BvPREvpr.js  8366d71a → 8e73e9eb
+
+**经 VLab 发版 `voice-native-tools-pr217-firsttext-r1-20261006`**（01a0fb0e-739d-7681-9238-faa2c1912c6c，dev `1ee42ed0`）
+> 验收：Same frozen PR217 artifact/config; original shared native provider and speaker PCM core review reused (pr217-shared-core-review.json). User explicitly retained production trial after exec admission failure; production calendar and strict paused gates remain FAIL/unaccepted.
+- `core` tools-invoke-shared-CjpflNGO.js  68ef48e5 → ac465c5b
+
+**这期间合入 dev 的 PR**（8 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #250 parity: mark VLab channel plugins as expected config differences
+- #249 parity: advisory comparison of MCP server and plugin enabled switches
+- #240 perf(placement): the minute sweep stops reading every placement row
+- #221 带图消息：识图能力判断不再现场构建完整模型目录
+- #238 perf(workboard): stop the per-minute sweep from reading every card (retry of #225)
+- #237 feat(parity): V Browser 纳入 VLab↔V 比对（plugin / Broker / Browser Gateway）
+- #235 Capture of the release Tianyi Cai approved on 2026-10-06 ("可以先上线219 和220", "上线吧").
+- #232 feat(v-self-restart): 让 V 能安全地重启自己
+
 ## v2026.9.1-db91.6-firsttext-r1-20261006
 
 上线：2026-10-06 18:14 CST 安装到 V（promote-to-v，未重启；下次 Gateway 启动时生效，重启时间由 Tianyi 决定）  ·  tag `v2026.9.1-db91.6-firsttext-r1-20261006`

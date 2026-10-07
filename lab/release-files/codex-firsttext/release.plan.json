@@ -1,0 +1,7 @@
+{
+  "baseRelease": "firsttext-r4c-20261007",
+  "files": [
+    {"source": "lab/release-files/codex-firsttext/dist/run-attempt-D1hJO4fX.js", "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/run-attempt-D1hJO4fX.js", "before": "694e3817aebbdd511937eee6f40bf1a8441000ca6cd0b5370f8943cf77a5421e"},
+    {"source": "lab/release-files/codex-firsttext/dist/thread-lifecycle-DAcEJ_Om.js", "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/thread-lifecycle-DAcEJ_Om.js", "before": "94d5420fa41808e5e415b4bbd4cb869d0e31adb88800a1db74b0eb8d54b5dad5"}
+  ]
+}

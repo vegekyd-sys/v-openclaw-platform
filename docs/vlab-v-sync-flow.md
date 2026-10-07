@@ -179,6 +179,8 @@ git add release/captured/<V 发版名>*；node scripts/release-notes.mjs --from 
 
 **范围**：这里管的是代码（三个运行时目录）。V 的配置、skills、workspace、会话数据本来就和 VLab 分开，不在 parity 范围内。例如 2026-09-25 21:56，V 的 `secrets.egressProxy` 配置变更触发了一次自动重启，这不属于代码漂移。
 
+**配置开关（advisory，2026-10-06 起）**：配置不决定 parity 状态，但 parity 会比一小组影响行为的开关，在输出里单列为 `advisory, does not decide the state: config-differs`，退出码不变。比的是两边 Gateway 主配置和 Worker 配置（`plugins.entries.vlab-agent-worker-isolation.config.workerConfigPath`）里：`mcp.servers.<名>.enabled` 和 `plugins.entries.<id>.enabled`，包括哪些名字只在一边有；`enabled` 没写算开。只取名字和布尔值，env、命令参数、URL、token 一概不取不打（`scripts/lib/parity-config.mjs`）。起因：VLab 两份配置里 `voice-memory` MCP 开着，V 上 figma / universal-memory / voice-memory 全关，VLab 每个 Worker 回合多付约 1 秒 MCP 连接，首字测量因此偏慢，而 parity 照样是 ALIGNED。看到这类差异时，测量结论要带上它，或者先把 VLab 的开关对齐到 V。
+
 ## 4.6 组件：渠道插件与旁路服务（2026-10-05）
 
 parity、promote、捕获、sync、release-notes、静态检查都只认一张表：`scripts/lib/runtime-components.mjs`。加一个组件 = 表里加一项 + 它的第一次捕获，不再到五个脚本里各写一份路径。
