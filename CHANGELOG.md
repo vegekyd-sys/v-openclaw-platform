@@ -11,6 +11,31 @@
 
 ---
 
+## v2026.9.1-db91.6-firsttext-r3-20261007
+
+上线：2026-10-07 09:33 CST  ·  tag `v2026.9.1-db91.6-firsttext-r3-20261007`
+
+**摘要**：首字优化第三批，Tianyi 于 2026-10-07 01:10 UTC 批准（「r3上V」）。Worker 启动时 skills watcher 不再误判变更而让每个 Worker 的 skills 快照失效重建（#252）；Worker 预热时提前激活 secrets 运行时快照，冷首轮的 config-resolved 段在 VLab 上从约 1.1 s 降到 0（#254）。2026-10-07 09:27 CST 装到 V 磁盘，09:28:35 v-self-restart（20261007-092835-4165）后生效，09:32:32 Gateway ready。`refresh-BzYxPady.js` 的字节与 #252 的 VLab 对照发版 `skillswatch-on-20261007` 相同，所以来源追溯到那一版。
+
+相对上一版 `v2026.9.1-db91.6-firsttext-r2-20261007`：2 个文件变化。
+
+**经 VLab 发版 `firsttext-r3-20261007`**（firsttext-0jwr2n，dev `e97e98bb`）
+> 验收：2026-10-07 09:25 CST r3 (#252 #254) on VLab: dedicated session agent:makaron:explicit:vlab-dev-r3-accept-1791336390511 run status ok in 24 s, model deepseek-flash, tools exec + memory_search, visible final reply; Feishu bench r3-accept 8/8 answered (first answer p50 9.0 s, max 10.6 s cold); parity AHEAD by pending plan
+- `core` agent-command-DPfawBbr.js  82e7ca49 → 150d9003
+
+**经 VLab 发版 `skillswatch-on-20261007`**（firsttext-0jwr2n，dev `7569497f`）
+- `core` refresh-BzYxPady.js  e886dd60 → 3e34ae21
+
+**这期间合入 dev 的 PR**（8 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #258 candidate: vcodex-preturn-profile shows Gateway-side pre-turn stages
+- #257 candidate: let vcodex-preturn-profile drive /vds
+- #247 飞书：codex 回合开始就建卡片，不再等第一个答案字
+- #254 首字：Worker 预热时激活 secrets 运行时快照
+- #256 parity: compare Feishu renderMode in the config advisory
+- #252 firsttext: skills watcher stops invalidating each Worker's skills snapshot at startup
+- #255 Release capture: V after firsttext-r2-20261007 (#221 #238 #240)
+- #253 parity: compare memory-core dreaming in the config advisory
+
 ## v2026.9.1-db91.6-firsttext-r2-20261007
 
 上线：2026-10-07 01:48 CST  ·  tag `v2026.9.1-db91.6-firsttext-r2-20261007`
