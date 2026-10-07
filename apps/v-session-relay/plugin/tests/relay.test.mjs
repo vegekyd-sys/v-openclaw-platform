@@ -52,6 +52,10 @@ test("native: reads sessions_send results and turns accepted sends into records"
   const inline = recordFromSend({ id: "r_8", params: { sessionKey: GROUP_A, message: "q" }, result: sendResult({ runId: "run_t8", status: "ok", sessionKey: GROUP_A, reply: "a" }), ctx, records: [], requester: null });
   assert.deepEqual([inline.status, inline.reply, inline.via], ["done", "a", "agent"]);
 
+  const failed = recordFromSend({ id: "r_6", params: { sessionKey: GROUP_A, message: "q" }, result: sendResult({ runId: "run_t6", status: "error", error: "no usable profiles", sentBeforeError: true, sessionKey: GROUP_A }), ctx, records: [] });
+  assert.deepEqual([failed.status, failed.inline, failed.error], ["failed", true, "no usable profiles"], "a send whose target run failed is still shown");
+  const late = recordFromSend({ id: "r_5", params: { sessionKey: GROUP_A, message: "q" }, result: sendResult({ runId: "run_t5", status: "timeout", sentBeforeError: true, sessionKey: GROUP_A }), ctx, records: [] });
+  assert.deepEqual([late.status, late.inline], ["running", false], "an inline wait that timed out after delivery is followed, not failed");
   for (const bad of [{ status: "error", runId: "x" }, { status: "forbidden" }, { status: "accepted", runId: "x", sessionKey: DM }]) {
     assert.equal(recordFromSend({ id: "r_7", params: {}, result: sendResult(bad), ctx, records: [] }), null, JSON.stringify(bad));
   }
@@ -257,4 +261,19 @@ test("store: ids, atomic writes, listing and pruning finished records", () => {
   assert.equal(store.list({ prune: true, keepMs: 10, now: 1_000_000 }).length, 1);
   assert.equal(store.read(id), null);
   assert.throws(() => store.file("../x"), /invalid relay id/u);
+});
+
+test("dispatcher: a failed inline send gets an interrupted card and no wake", async () => {
+  const store = tmpStore();
+  store.write(record({ status: "failed", inline: true, error: "no usable profiles", finishedAt: 2 }));
+  const runtime = fakeRuntime();
+  const feishu = fakeFeishu();
+  const d = new RelayDispatcher({ store, runtime, feishuFor: () => feishu.api, getConfig: () => ({}), describe, logger: quiet, ...fast });
+  d.started = true;
+  d.tick();
+  await d.idle();
+  assert.equal(runtime.runs.length, 0);
+  assert.equal(store.read("r_1").painted, true);
+  assert.match(panelOf(feishu.cards[0].card).header.title.content, /中断/u);
+  assert.match(JSON.stringify(panelOf(feishu.cards[0].card).elements), /no usable profiles/u);
 });

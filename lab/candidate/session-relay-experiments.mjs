@@ -406,7 +406,8 @@ async function readMessage(id) {
 }
 const dmKey = `agent:makaron:feishu:direct:${OWNER}`;
 const groupKey = `agent:makaron:feishu:group:${GROUP}`;
-const norm = (s) => String(s ?? "").replace(/\\+/gu, "").replace(/\s+/gu, "");
+// Feishu returns the card parsed (markdown becomes styled runs), so compare plain text only.
+const norm = (s) => String(s ?? "").replace(/\\+/gu, "").replace(/[`*_#>\[\]()~|-]/gu, "").replace(/\s+/gu, "");
 async function uiCheck(t) {
   const root = t[0] && ledger().find((r) => r.id === t[0].chainId);
   const cards = root?.threadCards ?? {};
@@ -417,6 +418,8 @@ async function uiCheck(t) {
     // Every message of the thread, as said, appears in the card (first 12 chars of each).
     const missing = t.flatMap((r) => [r.message, r.reply].filter(Boolean)).map((s) => norm(s).slice(0, 12)).filter((s) => s && !body.includes(s));
     out.cards[key.includes(":group:") ? "group" : "dm"] = { id, status: /已完成/u.test(raw) ? "已完成" : /中断/u.test(raw) ? "中断" : /进行中/u.test(raw) ? "进行中" : "?", missing };
+    // Messages are cut to the first 12 plain characters; one that starts with code or a link
+    // may still differ after Feishu's parsing, so a miss is reported, not guessed away.
   }
   for (const r of t) if (r.finalMessageId) out.finals.push({ id: r.finalMessageId, text: (await readMessage(r.finalMessageId)).slice(0, 200) });
   out.pass = Object.keys(out.cards).length === 2 && Object.values(out.cards).every((c) => c.missing.length === 0 && c.status !== "?" && c.status !== "进行中") && out.finals.length <= 1;
@@ -464,8 +467,9 @@ try {
       turn({ model: HARNESSES.worker.model, to: `user:${OWNER}`, message: "【候选测试·准备】接下来是自动测试，会有几张「⇄」卡片，可以忽略。只回复：好的", timeout: 300 }),
     ]).then((r) => r.map((x) => x.exit));
     summary.results.ui = [];
-    for (const h of harnesses) for (const kind of ["inline", "async"]) summary.results.ui.push(await uiCase(h, kind));
-    if (harnesses.includes("worker")) for (const kind of ["steered", "failed"]) summary.results.ui.push(await uiCase("worker", kind));
+    const kinds = (process.env.EXP_UI_KINDS ?? "inline,async,steered,failed").split(",").map((k) => k.trim());
+    for (const h of harnesses) for (const kind of kinds.filter((k) => k === "inline" || k === "async")) summary.results.ui.push(await uiCase(h, kind));
+    if (harnesses.includes("worker")) for (const kind of kinds.filter((k) => k === "steered" || k === "failed")) summary.results.ui.push(await uiCase("worker", kind));
   } else {
     assert.equal(suite, "work", `unknown suite ${suite}`);
     summary.results.work = [];

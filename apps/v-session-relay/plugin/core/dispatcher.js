@@ -42,7 +42,7 @@ export class RelayDispatcher {
       if (this.inflight.has(record.id) || record.followedBy === this.processId()) {
         continue;
       }
-      if (!ACTIVE.has(record.status) && !(record.status === "done" && !record.painted)) {
+      if (!ACTIVE.has(record.status) && !((record.status === "done" || record.status === "failed") && !record.painted)) {
         continue;
       }
       const job = this.follow(record.id, { recovering })

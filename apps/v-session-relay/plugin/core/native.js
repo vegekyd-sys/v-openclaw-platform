@@ -44,7 +44,12 @@ export function recordFromSend({ id, params, result, ctx, records, requester, no
   if (!data || typeof data.runId !== "string" || !data.runId) {
     return null;
   }
-  if (data.status !== "accepted" && data.status !== "ok") {
+  // A send that reached the target but whose run failed is still shown, as an interrupted
+  // thread; the requester already has the error inline. A send whose inline wait timed out
+  // after delivery is still running: the core follows it and wakes the requester later.
+  const failed = data.status === "error" && data.sentBeforeError === true;
+  const late = data.status === "timeout" && data.sentBeforeError === true;
+  if (data.status !== "accepted" && data.status !== "ok" && !failed && !late) {
     return null;
   }
   const from = typeof ctx?.sessionKey === "string" ? ctx.sessionKey : null;
@@ -57,20 +62,21 @@ export function recordFromSend({ id, params, result, ctx, records, requester, no
   const wokenBy = records.find((r) => r.from?.sessionKey === from && ctx?.runId && resultRunId(r.runId) === ctx.runId);
   const sameTurn = records.filter((r) => r.from?.sessionKey === from && r.to?.sessionKey === targetKey && r.fromRunId && r.fromRunId === ctx?.runId).at(-1);
   const chainId = wokenBy?.chainId ?? sameTurn?.chainId ?? id;
-  const inline = data.status === "ok";
+  const inline = data.status === "ok" || failed;
   return {
     id,
     chainId,
     via: wokenBy ? "reply" : requester ? "person" : "agent",
     requester: wokenBy || sameTurn ? (records.find((r) => r.id === chainId)?.requester ?? null) : requester,
-    status: inline ? "done" : "running",
+    status: failed ? "failed" : inline ? "done" : "running",
     inline,
     runId: data.runId,
     fromRunId: ctx?.runId ?? null,
     targetDisposition: data.targetDisposition ?? null,
     createdAt: now,
     updatedAt: now,
-    ...(inline ? { reply: typeof data.reply === "string" ? data.reply : "", finishedAt: now } : {}),
+    ...(inline && !failed ? { reply: typeof data.reply === "string" ? data.reply : "", finishedAt: now } : {}),
+    ...(failed ? { error: typeof data.error === "string" && data.error ? data.error : data.status, finishedAt: now } : {}),
     from: { sessionKey: from, label: null, name: null },
     to: { sessionKey: targetKey, label: null, name: null },
     message: typeof params?.message === "string" ? params.message : "",
