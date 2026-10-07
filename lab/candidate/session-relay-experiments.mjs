@@ -259,15 +259,17 @@ const logSince = (mark, re) => lines.slice(mark).filter((l) => re.test(l.line)).
 // (memory files and session search are per agent, not per conversation) is told apart.
 const CASES = {
   D1: {
-    a: (code) => `【背景，记住即可】下周五（10/16）的新品发布会（代号 ${code}）上有 20 分钟现场产品演示，演示要用大屏。只回复：好的。`,
-    b: (code) => `【背景，记住即可】我们活动组负责下周五发布会（代号 ${code}）的物料。供应商给了两套方案：甲（含 LED 大屏）6 万；乙（不含大屏）3.5 万。选哪套只取决于会上有没有需要大屏的环节，这一点我们组不知道。只回复：好的。`,
-    ask: (b, code) => `让「${b}」把发布会（代号 ${code}）的物料方案定下来，定了告诉我。`,
+    a: (code) => `【背景，记住即可】老板说过：今年活动预算紧，非必要不加钱；但凡是客户直接体验到的东西不要省。下周五发布会（代号 ${code}）请的是 30 位重点客户。只回复：好的。`,
+    b: (code) => `【背景，记住即可】我们活动组在筹备下周五发布会（代号 ${code}）的茶歇。有两家供应商：甲，每人 120 元，现场现做咖啡和甜点；乙，每人 60 元，包装零食加瓶装水。我们组对这件事没有偏好，取舍标准得由发起方定。只回复：好的。`,
+    ask: (b, code) => `让「${b}」把发布会（代号 ${code}）的茶歇定了。`,
     judge: (t, final) => {
       const last = t.at(-1)?.reply ?? "";
-      const correct = /甲/u.test(last) && !/选.{0,4}乙/u.test(last);
-      const asked = t.length >= 2;
-      const upfront = t.length === 1 && /演示|大屏/u.test(t[0]?.message ?? "");
-      return { correct, rounds: t.length, kind: asked ? "dialogue" : upfront ? "upfront" : "single", final: String(final ?? "").slice(0, 300) };
+      const pickedA = /(选|定|用|确定)[^。\n]{0,8}甲/u.test(last) || /甲[^。\n]{0,6}(方案|供应商|家)?[^。\n]{0,4}(定了|确定|选定)/u.test(last);
+      const pickedB = /(选|定|用|确定)[^。\n]{0,8}乙/u.test(last);
+      const askedBack = t.length >= 2;
+      const upfront = t.length === 1 && /体验|不要省|预算/u.test(t[0]?.message ?? "");
+      const bubbled = t.length === 1 && !pickedA && /[？?]/u.test(final ?? "");
+      return { correct: pickedA && !pickedB, pickedA, pickedB, rounds: t.length, kind: askedBack ? "dialogue" : upfront ? "upfront" : bubbled ? "bubbled-to-person" : "single", final: String(final ?? "").slice(0, 300) };
     },
   },
   D2: {
@@ -294,10 +296,10 @@ const CASES = {
     judge: (t, final, extra) => ({ correct: extra.blocked > 0 || !t.some((r) => r.from?.sessionKey === extra.bKey), handedOn: t.some((r) => r.from?.sessionKey === extra.bKey), blocked: extra.blocked, rounds: t.length, final: String(final ?? "").slice(0, 300) }),
   },
   D5: {
-    a: (code) => `【背景，记住即可】下周五（10/16）的新品发布会（代号 ${code}）上有 20 分钟现场产品演示，演示要用大屏。只回复：好的。`,
-    b: (code) => `【背景，记住即可】我们活动组负责下周五发布会（代号 ${code}）的物料。供应商给了两套方案：甲（含 LED 大屏）6 万；乙（不含大屏）3.5 万。选哪套只取决于会上有没有需要大屏的环节，这一点我们组不知道。组里的规矩：每次回答别的组之前，先用 exec 执行 \`sleep 65\`（去仓库核对库存），再回答。只回复：好的。`,
-    ask: (b, code) => `让「${b}」把发布会（代号 ${code}）的物料方案定下来，定了告诉我。`,
-    judge: (t, final) => ({ correct: /甲/u.test(t.at(-1)?.reply ?? ""), rounds: t.length, slowRounds: t.filter((r) => r.finishedAt - r.createdAt > 60_000).length, asyncRounds: t.filter((r) => !r.inline).length, final: String(final ?? "").slice(0, 300) }),
+    a: (code) => `【背景，记住即可】老板说过：今年活动预算紧，非必要不加钱；但凡是客户直接体验到的东西不要省。下周五发布会（代号 ${code}）请的是 30 位重点客户。只回复：好的。`,
+    b: (code) => `【背景，记住即可】我们活动组在筹备下周五发布会（代号 ${code}）的茶歇。有两家供应商：甲，每人 120 元，现场现做咖啡和甜点；乙，每人 60 元，包装零食加瓶装水。我们组对这件事没有偏好，取舍标准得由发起方定。组里的规矩：每次回答别的组之前，先用 exec 执行 \`sleep 65\` 去和供应商确认档期，再回答。只回复：好的。`,
+    ask: (b, code) => `让「${b}」把发布会（代号 ${code}）的茶歇定了。它那边要先跟供应商确认，比较慢，你不用一直等，它回话了再接着办。`,
+    judge: (t, final) => ({ correct: /(选|定|用|确定)[^。\n]{0,8}甲/u.test(t.at(-1)?.reply ?? ""), rounds: t.length, slowRounds: t.filter((r) => r.finishedAt - r.createdAt > 60_000).length, asyncRounds: t.filter((r) => !r.inline).length, wokenByCore: t.filter((r) => !r.inline && !r.wokenBy).length, final: String(final ?? "").slice(0, 300) }),
   },
 };
 

@@ -8,7 +8,7 @@ import { describeRequester, guardSend, ownerList } from "./core/policy.js";
 import { labelForSession } from "./core/sessions.js";
 import { RelayStore } from "./core/store.js";
 import { TurnMarkers, interSessionSource } from "./core/turns.js";
-import { requestGuidance, resultGuidance } from "./core/text.js";
+import { STANDING_GUIDANCE, requestGuidance, resultGuidance } from "./core/text.js";
 
 function storeDir(config) {
   if (typeof config.storeDir === "string" && config.storeDir) {
@@ -89,18 +89,19 @@ export default definePluginEntry({
     // Marks the turns of an exchange and gives them a few lines on how to talk to the other V.
     api.on("before_prompt_build", async (event, ctx) => {
       const runId = ctx?.runId;
+      const standing = config.guidance === false ? {} : { appendSystemContext: STANDING_GUIDANCE };
       if (!runId) {
-        return undefined;
+        return standing;
       }
       const records = store.list();
       const answering = targetRunIdOf(runId);
       if (answering) {
         const record = records.find((r) => r.runId === answering);
-        return record && config.guidance !== false ? { prependContext: resultGuidance(withLabels(record)) } : undefined;
+        return record && config.guidance !== false ? { ...standing, prependContext: resultGuidance(withLabels(record)) } : standing;
       }
       const source = interSessionSource(event?.prompt);
       if (!source || source.sourceTool !== "sessions_send" || !source.sourceSession) {
-        return undefined;
+        return standing;
       }
       markers.put("request-turns", runId, { sessionKey: ctx.sessionKey ?? null, sourceSession: source.sourceSession });
       if (config.guidance === false) {
@@ -118,7 +119,7 @@ export default definePluginEntry({
             from: { sessionKey: source.sourceSession, label: known?.from?.label ?? null },
             to: { sessionKey: ctx.sessionKey, label: known?.to?.label ?? null },
           };
-      return { prependContext: requestGuidance(withLabels(request)) };
+      return { ...standing, prependContext: requestGuidance(withLabels(request)) };
     });
 
     let timer = null;

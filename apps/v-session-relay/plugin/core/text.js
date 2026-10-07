@@ -107,6 +107,13 @@ export function finalMessageCard(text) {
 // either answers (another sessions_send to the same session, same thread) or, when the
 // target delivered, finishes with the people it works for. Anyone may start a thread;
 // the receiving V decides, under its redlines, whether to do it here.
+/** Standing guidance on every turn (system context, cacheable): how to work with another conversation's V. */
+export const STANDING_GUIDANCE = [
+  "Working with other conversations: when something should be done by, or asked of, another chat or task room, hand it over with sessions_send (find it with sessions_list by its name). Send what that conversation lacks, not everything you know.",
+  "When the other conversation's V answers with a question, a choice it needs, or a gap, and you or this conversation can settle it, answer it yourself with sessions_send to the same session (same sessionKey). Ask the people here only for decisions that only they can make.",
+  "When the exchange has the result, tell the people here what came back and what it means. Do not narrate the mechanics of sessions_send.",
+].join("\n");
+
 export function requestGuidance({ from, requester, chainId, id }) {
   const followUp = chainId && chainId !== id;
   const who = requester ? `${requester} (in 「${from.label}」)` : `the V in 「${from.label}」 on its own initiative`;
