@@ -11,6 +11,24 @@
 
 ---
 
+## codex-firsttext-20261008
+
+上线：2026-10-08 00:17 CST  ·  tag `codex-firsttext-20261008`
+
+**摘要**：Tianyi 于 2026-10-07 批准（「开 PR 合进 dev 然后上 V」，并要求带上 #262）。/vds 不再每轮新开 Codex 线程，同模型连续对话续用线程、缓存可命中（V 实测第二轮缓存 98%）；Codex 的答案不再等用户消息写库才往外送（修 /vcodex 被扣 1–8 s、/vds 私聊 pre-bind 溢出整轮重试）；同一会话 vds↔vcodex 两个方向都能切，并且看得到对方那几轮（原来 vcodex→vds 报 auth profile 不可用）。同一次重启生效 #262：Gateway 和 Worker 以 `--experimental-async-context-frame` 启动（`--verify` 6/6 进程）。
+
+两项改动都不在 V 捕获范围内，所以下面的文件比对是 0：
+- Codex 插件（npm 管理，`npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/…/dist/`）：`run-attempt-D1hJO4fX.js` 694e3817 → 564374a6，`thread-lifecycle-DAcEJ_Om.js` 94d5420f → e7c2208f。经 VLab 发版 `codex-firsttext-20261007`（codex-firsttext-prebind，dev `9d4ccd63`），旧文件在 `/opt/v-release-backups/codex-firsttext-20261008/`。升级或重装该插件会丢掉这两个补丁和 /vds 补丁。
+- systemd drop-in `/etc/systemd/system/openclaw-gateway.service.d/zzzzzzzzz-node-async-context-frame.conf`（`scripts/node-async-context-frame.mjs --target v --apply`）。
+
+重启：2026-10-08 00:13:28 请求（v-self-restart `20261008-001328-7749`），00:17:56 就绪（237 s），清掉 4 条 Codex 孤儿登记。V 上专用会话验收：vds 两轮同一线程、vcodex 答出两个暗号、再切 vds 正常并复述 vcodex 的回答。
+
+相对上一版 `v2026.9.1-db91.6-firsttext-r4-20261007`：0 个文件变化。
+
+**这期间合入 dev 的 PR**（2 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #269 fix(codex): /vds 首字与线程续用、vds↔vcodex 切换
+- #265 Release capture: V after firsttext-r4-20261007 (#243 #264)
+
 ## v2026.9.1-db91.6-firsttext-r4-20261007
 
 上线：2026-10-07 16:46 CST  ·  tag `v2026.9.1-db91.6-firsttext-r4-20261007`
