@@ -11,6 +11,28 @@
 
 ---
 
+## v2026.9.1-db91.6-firsttext-r4-20261007
+
+上线：2026-10-07 16:46 CST  ·  tag `v2026.9.1-db91.6-firsttext-r4-20261007`
+
+**摘要**：首字优化第四批，Tianyi 于 2026-10-07 08:32 UTC 批准（「r4上线吧」，#247 已按他的要求撤出）。大会话空闲后的第一条消息不再被回复前的记忆整理挡住：整理推迟到回复之后、会话空闲时再跑，新消息来了就让出，之后补跑并照常写记忆；快到压缩阈值时仍然先整理（#243）。codex 会话同样推迟，包括 token 数不新鲜的会话（#264）。上线前 24 小时 V 上有 10 条真实消息因此白等 37–90 s（7 条 codex、3 条 vlab-worker）。16:35 CST 装到 V 磁盘，16:41 v-self-restart（20261007-164108-05f1），16:44:45 Gateway ready。#262 的 async-context-frame 启动参数这次没有生效：V 上排在它后面的 db91 drop-in（state-db-fastpath-v6）重新声明了 ExecStart，--verify 查出后已把这个 drop-in 撤掉，修复后另行上线。`agent-runner.runtime` 与 `builtin-openclaw` 的字节与验收 #243 用的 VLab 发版 `mflush-vds-20261007` 相同，所以来源追溯到那一版。
+
+相对上一版 `v2026.9.1-db91.6-firsttext-r3-20261007`：3 个文件变化。
+
+**经 VLab 发版 `firsttext-r4c-20261007`**（firsttext-0jwr2n，dev `22c4f72f`）
+> 验收：2026-10-07 15:55 CST r4c = #243 + #264 (3 core files, dev 22c4f72; #247 dropped by Tianyi) + #262 acf drop-in (--target vlab, --verify 6/6) on shared VLab: dedicated session vlab-dev-r4c-accept-1791358677236 exec + memory_search + visible reply (deepseek-flash); #243 deferral/interrupt/memory-write verified 13:10-13:28 on the same runtime/builtin bytes (memory file differs only by #264's stale-tok…
+- `core` agent-runner-memory-7VF-zwNt.js  8bca065f → 27f38ffb
+
+**经 VLab 发版 `mflush-vds-20261007`**（firsttext-0jwr2n，dev `eea51de0`）
+- `core` agent-runner.runtime-CAdsMsQt.js  9b85f780 → 947ba056
+- `core` builtin-openclaw-zQV8Wwjr.js  84456470 → 972d25fe
+
+**这期间合入 dev 的 PR**（4 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #264 #243 follow-up: defer a Codex session's flush even when its token count is stale
+- #243 perf(reply): run a housekeeping memory flush after the reply, not before it
+- #262 scripts: start the Gateway and its Workers with --experimental-async-context-frame
+- #263 Release capture: V after firsttext-r3-20261007 (#252 #254)
+
 ## v2026.9.1-db91.6-firsttext-r3-20261007
 
 上线：2026-10-07 09:33 CST  ·  tag `v2026.9.1-db91.6-firsttext-r3-20261007`
