@@ -204,3 +204,47 @@ test('all new avatar assets and modules are served by the frozen whitelist',asyn
   }
   assert.equal((await fetch(f.url+'/assets/not-whitelisted.png',{headers:{cookie:f.cookie}})).status,404);
 });
+test('backend events reach direct voice even when they are not GPT Live talk events',async()=>{
+ const received=[];const bridge=createLiveH5Server({gateway:{request(){}},directVoice:{handleEvent:e=>received.push(e),dispose:async()=>{}},offer:async()=>''});
+ const e={event:'agent',payload:{runId:'voice-own',stream:'tool'}};bridge.emit(e);assert.deepEqual(received,[e]);await bridge.dispose();
+});
+
+test('backend document SSE belongs to exact active voice and carries original Markdown without unrelated fields',async t=>{
+ const f=await fixture(t);await f.request('session');const stop=new AbortController();
+ const response=await fetch(f.url+'/api/events',{headers:{cookie:f.cookie},signal:stop.signal}),reader=response.body.getReader();await reader.read();
+ const text='## 原始方案\n| 日期 | 条件 |\n| --- | --- |\n| 2028-09 | 尚未核实 |';
+ const emit=voiceSessionId=>f.bridge.emit({event:'talk.event',payload:{voiceSessionId,talkEvent:{type:'tool.result',callId:'doc',payload:{name:'openclaw_backend_result',text,secret:'不应进入浏览器'}}}});
+ emit('foreign');emit('voice-private');const body=new TextDecoder().decode((await reader.read()).value),value=JSON.parse(body.slice(body.indexOf('data: ')+6).trim());
+ assert.deepEqual(value,{voiceSessionId:'voice-private',type:'backend.result',callId:'doc',text,revision:1});assert(!body.includes('foreign'));assert(!body.includes('secret'));stop.abort();await reader.cancel().catch(()=>{});
+});
+
+test('authenticated presentation snapshot recovers pending work and full document without an SSE connection',async t=>{
+ const f=await fixture(t);await f.request('session');
+ const read=async(after=0)=>{
+  const r=await fetch(f.url+`/api/presentation?after=${after}`,{headers:{cookie:f.cookie}});assert.equal(r.status,200);return r.json();
+ };
+ assert.equal((await fetch(f.url+'/api/presentation')).status,401);
+ const emit=(type,callId,payload,voiceSessionId='voice-private')=>f.bridge.emit({event:'talk.event',payload:{voiceSessionId,talkEvent:{type,callId,payload}}});
+ emit('tool.call','foreign',{name:'web_search'},'foreign-voice');
+ emit('tool.call','run',{name:'openclaw_agent_consult',args:{secret:'private query'}});
+ let view=await read();assert.equal(view.revision,1);assert.deepEqual(view.pending.map(x=>x.callId),['run']);assert(!JSON.stringify(view).includes('private query'));
+ const text='## 完整原始报告\n'+ '日期和条件不变。'.repeat(500);
+ emit('tool.result','run',{name:'openclaw_agent_consult'});emit('tool.result','doc',{name:'openclaw_backend_result',text});
+ view=await read(1);assert.equal(view.pending.length,0);assert.equal(view.documents[0].text,text);assert.equal(view.revision,3);
+ assert.equal((await read(3)).documents.length,0);
+ emit('tool.result','end',{name:'openclaw_end_call',requestId:'end',originUserTurnId:'u',closeAfterPlayback:true,secret:'excluded'});
+ view=await read(3);assert.equal(view.controls.length,1);assert.equal(view.controls[0].closeAfterPlayback,true);assert(!JSON.stringify(view.controls).includes('excluded'));
+ const controlsAfter=await fetch(f.url+'/api/presentation?controlsAfter=4',{headers:{cookie:f.cookie}});assert.equal((await controlsAfter.json()).controls.length,0);
+ await f.request('close',{voiceSessionId:'voice-private'});assert.equal((await read()).voiceSessionId,null);
+ await f.request('session');view=await read();assert.equal(view.revision,0);assert.equal(view.documents.length,0);
+});
+
+test('event stream flushes headers and remains open for delayed events',async t=>{
+ const f=await fixture(t);await f.request('session');const stop=new AbortController();
+ const response=await fetch(f.url+'/api/events',{headers:{cookie:f.cookie},signal:stop.signal});
+ assert(response.headers.get('cache-control').includes('no-transform'));assert.equal(response.headers.get('x-accel-buffering'),'no');
+ const reader=response.body.getReader();await reader.read();
+ await new Promise(resolve=>setTimeout(resolve,25));
+ f.bridge.emit({event:'talk.event',payload:{voiceSessionId:'voice-private',talkEvent:{type:'tool.call',callId:'late',payload:{name:'web_search'}}}});
+ assert(new TextDecoder().decode((await reader.read()).value).includes('late'));stop.abort();await reader.cancel().catch(()=>{});
+});

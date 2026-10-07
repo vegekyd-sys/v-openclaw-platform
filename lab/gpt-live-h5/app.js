@@ -1,12 +1,14 @@
 import { createAvatarTasks, ACTIVITY_LABELS } from "./avatar-state.mjs";
 import { mountAvatar } from "./avatar.mjs";
+import { renderMarkdown } from "./markdown.mjs";
 import { createTranscriptPresentation } from "./transcript-presentation.mjs";
-import { captureDuplexMicrophone } from "./microphone-capture.mjs";
+import { createPageMicrophoneSession } from "./microphone-session.mjs";
 import { createCallSounds } from "./call-sounds.mjs";
 import { createH5DuplexPlaybackGate } from "./duplex-playback.mjs";
 import { createRelayAudio } from "./relay-audio.mjs";
 
 const $ = (id) => document.getElementById(id);
+let microphoneSession = createPageMicrophoneSession();
 let call = null;
 let starting = null;
 let liveReady = false;
@@ -263,7 +265,13 @@ async function startRemotePlayback(active, source) {
 }
 async function recoverPlaybackGesture() {
   const active = call;
-  if (!active || !$("remoteAudio").srcObject || !active.playbackNeedsGesture) return;
+  if (!active) return;
+  if (active.relay) {
+    try { await active.context.resume(); if (call === active && active.context.state === "running") setStatus("V 正在听，直接说话就好"); }
+    catch { if (call === active) setStatus("轻点页面恢复声音播放。"); }
+    return;
+  }
+  if (!$("remoteAudio").srcObject || !active.playbackNeedsGesture) return;
   const playing = startRemotePlayback(active, "gesture");
   try {
     await active.context?.resume();
@@ -316,7 +324,7 @@ function renderTranscript(snapshot) {
         const meta = document.createElement("div"); meta.className = "transcript-meta";
         const speaker = document.createElement("span"); speaker.className = "transcript-speaker";
         const time = document.createElement("time"); time.className = "transcript-time";
-        const text = document.createElement("p"); text.className = "transcript-text";
+        const text = document.createElement("div"); text.className = "transcript-text";
         meta.append(speaker, time); row.append(meta, text);
         row.parts = { speaker, time, text };
         renderedTurns.set(item.key, row);
@@ -327,7 +335,11 @@ function renderTranscript(snapshot) {
       if (row.parts.time.textContent !== item.time) row.parts.time.textContent = item.time;
       const dateTime = new Date(item.at).toISOString();
       if (row.parts.time.dateTime !== dateTime) row.parts.time.dateTime = dateTime;
-      if (row.parts.text.textContent !== item.text) row.parts.text.textContent = item.text;
+      if (row.rawText !== item.text) {
+        if (item.role === "assistant") renderMarkdown(row.parts.text, item.text, document);
+        else row.parts.text.textContent = item.text;
+        row.rawText = item.text;
+      }
       if (parent.children[index] !== row) parent.insertBefore(row, parent.children[index] ?? null);
     }
   }
@@ -392,7 +404,8 @@ async function stopCall() {
   if (starting === active) starting = null;
   if (active) {
     active.relay?.dispose();
-    clearInterval(active.levelTimer); clearInterval(active.heartbeat);
+    clearInterval(active.levelTimer); clearInterval(active.heartbeat); clearInterval(active.presentationPoll);
+    active.presentationAbort?.abort();
     clearTimeout(active.ending?.timeout); clearTimeout(active.greetingRetryTimer);
     clearTimeout(active.greetingDeadlineTimer); active.greetingAbort?.abort();
     active.captureAbort?.abort(); active.capture?.dispose();
@@ -428,14 +441,14 @@ async function startCall() {
   if ($("voiceModel")) $("voiceModel").disabled = true;
   if (['seeduplex','grok'].includes($("voiceModel")?.value)) {
     // Create/resume in the dial gesture, before microphone and network awaits.
-    active.context = new AudioContext({sampleRate:24000});
+    active.context = new AudioContext({latencyHint:"interactive"});
     active.contextResume = active.context.resume();
   }
   // Each call owns its sound element; a late play() from an older call cannot
   // pause or replace the next call's pickup. The page element configures assets.
   active.soundElement = document.createElement("audio"); active.soundElement.playsInline = true;
   for (const key of ["ringSrc", "pickupSrc"]) if ($("callSound").dataset[key]) active.soundElement.dataset[key] = $("callSound").dataset[key];
-  active.sounds = createCallSounds({ audioElement: active.soundElement });
+  active.sounds = createCallSounds({ audioElement: active.soundElement, sharedContext: active.context });
   void active.sounds.dial();
   // Activity metadata stays in this page's memory only. It contains no audio,
   // transcript, session identifiers or claim that the model was interrupted.
@@ -452,7 +465,7 @@ async function startCall() {
   active.duplexDiagnostics.playbackMode = active.duplex.snapshot().mode;
   active.duplexDiagnostics.interruptionOwner = active.duplex.snapshot().interruptionOwner;
   try {
-    active.capture = await captureDuplexMicrophone({
+    active.capture = await microphoneSession.acquire({
       mediaDevices: navigator.mediaDevices, signal: active.captureAbort.signal,
       isCurrent: () => call === active,
       onDiagnostics: (metadata) => { if (call === active) active.duplexDiagnostics.microphone = metadata; },
@@ -471,7 +484,10 @@ async function startCall() {
         onEvent:value=>{
           if(call!==active)return;
           tasks.consume(value);
+          if(value.type==='backend.result')renderTranscript(presentation.consume(value));
           if(value.type.startsWith('tool.'))taskState();
+          if(value.type==='playback.blocked')setStatus('声音播放已暂停，轻点页面继续。');
+          if(value.type==='playback.resumed')setStatus('V 正在听，直接说话就好');
           if(value.type==='transcript') {
             active.relayTurns??={};
             const id=active.relayTurns[value.role]??=crypto.randomUUID();
@@ -490,11 +506,7 @@ async function startCall() {
     for (const track of active.stream.getAudioTracks()) active.pc.addTrack(track, active.stream);
     active.channel = active.pc.createDataChannel("oai-events"); active.channel.onmessage = (event) => { if (call === active) providerMessage(event); };
     active.events = new EventSource(apiUrl("events"));
-    active.events.onmessage = (event) => {
-      if (call !== active) return;
-      const value = JSON.parse(event.data);
-      if (value.voiceSessionId !== active.voiceSessionId) return;
-      tasks.consume(value);
+    const applyNativeControl = value => {
       if (value.type === "tool.result") requestAutomaticEnd(active, value);
       if (value.type === "tool.error" && value.name === "openclaw_end_call" &&
         (value.callId === value.requestId || value.source === "backend_model_client_tool" &&
@@ -506,8 +518,44 @@ async function startCall() {
           if (active.ending?.requestId === value.requestId) cancelAutomaticEnd(active);
         }
       }
+    };
+    active.events.onmessage = (event) => {
+      if (call !== active) return;
+      const value = JSON.parse(event.data);
+      if (value.voiceSessionId !== active.voiceSessionId) return;
+      if (Number.isSafeInteger(value.revision)) active.presentationRevision = Math.max(active.presentationRevision ?? 0, value.revision);
+      tasks.consume(value);
+      if(value.type==='backend.result')renderTranscript(presentation.consume(value));
+      applyNativeControl(value);
       taskState();
     };
+    // Native voice audio remains on WebRTC. This authenticated snapshot only
+    // recovers task/document presentation when an HTTPS proxy buffers SSE.
+    const refreshPresentation = async () => {
+      if (call !== active || active.presentationFetching) return;
+      active.presentationFetching = true;
+      active.presentationAbort ??= new AbortController();
+      try {
+        const response = await fetch(apiUrl('presentation') + `&after=${active.documentRevision ?? 0}&controlsAfter=${active.controlRevision ?? 0}`, { signal: active.presentationAbort.signal });
+        if (!response.ok) return;
+        const value = await response.json();
+        if (call !== active || value.voiceSessionId !== active.voiceSessionId ||
+          !Number.isSafeInteger(value.revision) || value.revision < (active.presentationRevision ?? 0)) return;
+        for(const item of value.controls ?? []) {
+          if(item.voiceSessionId !== active.voiceSessionId || !Number.isSafeInteger(item.revision) || item.revision <= (active.controlRevision ?? 0))continue;
+          applyNativeControl(item); active.controlRevision = item.revision;
+        }
+        tasks.clear();
+        for (const item of value.pending ?? []) tasks.consume(item);
+        for (const item of value.documents ?? []) renderTranscript(presentation.consume(item));
+        active.presentationRevision = value.revision;
+        active.documentRevision = value.revision;
+        taskState();
+      } catch { /* A transient presentation failure never closes the audio call. */ }
+      finally { active.presentationFetching = false; }
+    };
+    active.presentationPoll = setInterval(() => void refreshPresentation(), 1500);
+    void refreshPresentation();
     active.pc.ontrack = async (event) => {
       if (call !== active) return;
       const stream = new MediaStream([event.track]); $("remoteAudio").srcObject = stream;
@@ -618,6 +666,7 @@ $("cancel").addEventListener("click", async () => {
   catch (error) { if (call === active) setStatus(error.message); }
 });
 window.addEventListener("pagehide", () => {
+  microphoneSession.close();
   const active = call;
   if (!active) return;
   // Beacon survives navigation; stopCall synchronously releases every local
@@ -625,6 +674,7 @@ window.addEventListener("pagehide", () => {
   if (active.voiceSessionId) navigator.sendBeacon(apiUrl("close"), new Blob([JSON.stringify({ voiceSessionId: active.voiceSessionId })], { type: "application/json" }));
   void stopCall();
 });
+window.addEventListener("pageshow",event=>{if(event.persisted)microphoneSession=createPageMicrophoneSession();});
 async function initializeEntry() {
   try {
     const fragment = new URLSearchParams(window.location.hash.slice(1));

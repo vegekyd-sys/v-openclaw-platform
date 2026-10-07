@@ -9,14 +9,14 @@ export function formatTranscriptTime(at) {
 
 /**
  * One row per real native turn. Provider caption item IDs identify fragments,
- * not conversational turns. Text stays unescaped here: render with textContent.
+ * not conversational turns. Text stays unchanged here; the view renders safe Markdown DOM.
  * This state lives in the page; it performs no persistence or network actions.
  */
 export function createTranscriptPresentation() {
   let sequence = 0;
   const rows = [], nativeTurns = new Map(), openByRole = new Map(), fragments = new Map(), seenEvents = new Set();
   const view = row => ({
-    key: row.key, role: row.role, speaker: row.role === 'user' ? '你' : 'V',
+    key: row.key, role: row.role, speaker: row.document ? 'V · 完整方案' : row.role === 'user' ? '你' : 'V',
     text: row.text, at: row.at, time: formatTranscriptTime(row.at), complete: row.complete,
   });
   const snapshot = () => ({
@@ -49,6 +49,14 @@ export function createTranscriptPresentation() {
     consume(event, at = Date.now()) {
       if (!Number.isFinite(at) || at < 0) throw new RangeError('Transcript time must be a nonnegative finite timestamp');
       if (!event || typeof event !== 'object') return snapshot();
+      if (event.type === 'backend.result') {
+        if (typeof event.callId !== 'string' || !event.callId || typeof event.text !== 'string' || !event.text.trim()) return snapshot();
+        const id = `backend-document:${event.callId}`;
+        if (nativeTurns.has(turnKey('assistant', id))) return snapshot();
+        const row = newRow('assistant', at, id, false);
+        row.text = event.text; row.complete = true; row.document = true;
+        return snapshot();
+      }
       if (typeof event.event_id === 'string') {
         if (seenEvents.has(event.event_id)) return snapshot();
         seenEvents.add(event.event_id);

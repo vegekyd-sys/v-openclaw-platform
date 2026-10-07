@@ -1,0 +1,47 @@
+{
+  "baseRelease": "firsttext-r2-20261007",
+  "files": [
+    {
+      "target": "openclaw/dist/embedded-agent.runtime-CL7poBKY.js",
+      "before": "31e6c95723f1452ea796e8a8353e04075b1cd8c395977ff075191ac04322552a",
+      "after": "8ba1f8fb7d2de9a69728dbc27b9119313ce7318d99ccc63c05446692e0a0f82e",
+      "bytes": 35159
+    },
+    {
+      "target": "openclaw/dist/agent-tools-djVuP1H1.js",
+      "before": "50da97801599701494c39cd8ca285aa28c38fe6be5fe91a9dd0efeac02e9662a",
+      "after": "f414fa7fc9f52a1d118a0ba14d100f4f73bc7134b6150191ab404c25e51d55ad",
+      "bytes": 37465
+    },
+    {
+      "target": "production-worker/worker.mjs",
+      "before": "18fc5d4f8ad29e50407e81f93583a54879ab712de105faf71f6402a8be84986b",
+      "after": "024306ae44dc6aa1c925af226d43738450fba534e54fcc1022bae15d4d970e38",
+      "bytes": 46538
+    },
+    {
+      "target": "production-worker/worker-pool.mjs",
+      "before": "1f137ca291f37605b2d2d29aa19aae2ad1328f344f2b26c3919a185e0a3325d1",
+      "after": "197ec4a877a92e1cbbbe97ceadbdb175e32e4438c69791813f34602c6e5250f6",
+      "bytes": 69392
+    },
+    {
+      "target": "production-worker/index.mjs",
+      "before": "26c617fd59be278de1b0cd8d99657ef4a306ffc9a67acef3eee5c9c2745f08c0",
+      "after": "4f6894daccc12dbf923cfc8d4c5e93b04961cdd16d5071bec2b4cfb51cea753c",
+      "bytes": 76739
+    },
+    {
+      "target": "production-worker/voice-process-owner.mjs",
+      "before": null,
+      "after": "c0045e63409a22e94bff30a3a4bfc03f3a52e768d569c5dadbde86086c716be5",
+      "bytes": 5436
+    },
+    {
+      "target": "openclaw/dist/voice-process-owner.mjs",
+      "before": null,
+      "after": "c0045e63409a22e94bff30a3a4bfc03f3a52e768d569c5dadbde86086c716be5",
+      "bytes": 5436
+    }
+  ]
+}
