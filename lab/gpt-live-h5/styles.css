@@ -394,3 +394,21 @@ body[data-voice-state="speaking"] .wave-mark { color: var(--accent); }
   body:is([data-call-state="connected"], [data-call-state="ending"]) .portrait-wrap { margin-bottom: 20px; }
   body:is([data-call-state="connected"], [data-call-state="ending"]) .avatar-name { font-size: 14px; top: calc(100% + 5px); }
 }
+
+/* Markdown answers keep the existing conversation layout. */
+.transcript-turn.assistant .transcript-text { white-space: normal; }
+.transcript-text > :first-child { margin-top: 0; }
+.transcript-text > :last-child { margin-bottom: 0; }
+.transcript-text p { margin: 0 0 .8em; }
+.transcript-text h1, .transcript-text h2, .transcript-text h3, .transcript-text h4, .transcript-text h5, .transcript-text h6 { font-size: 1.08em; line-height: 1.5; margin: 1.2em 0 .5em; }
+.transcript-text ul, .transcript-text ol { padding-left: 1.5em; margin: .6em 0; }
+.transcript-text li > p { margin: .2em 0; }
+.transcript-text code { font: .9em ui-monospace, monospace; background: #f0e9f5; padding: .12em .3em; border-radius: 4px; }
+.transcript-text pre { overflow-x: auto; padding: 12px; border-radius: 8px; background: #f0e9f5; white-space: pre; }
+.transcript-text pre code { padding: 0; }
+.transcript-text blockquote { margin: .8em 0; padding-left: 12px; border-left: 3px solid #c6abd8; color: #786485; }
+.transcript-text a { color: var(--accent-deep); text-underline-offset: 3px; }
+.markdown-table { max-width: 100%; overflow-x: auto; margin: .8em 0; }
+.markdown-table table { border-collapse: collapse; min-width: 100%; font-size: .92em; }
+.markdown-table th, .markdown-table td { border: 1px solid #e8dfed; padding: 7px 9px; min-width: 5em; text-align: left; vertical-align: top; }
+.markdown-table th { background: #f0e9f5; font-weight: 600; }

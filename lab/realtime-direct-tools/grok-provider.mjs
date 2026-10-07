@@ -1,9 +1,10 @@
+import {createHash} from 'node:crypto';
 // xAI's documented speech-to-speech API. Credentials never cross the H5 relay.
 export const GROK_VOICE_MODEL = 'grok-voice-think-fast-2.0';
 export class GrokVoiceBridge {
   constructor(request, {createWebSocket, apiKey, upstream = 'wss://api.x.ai/v1/realtime', connectTimeoutMs = 20000}) {
     Object.assign(this, {request, createWebSocket, apiKey, upstream, connectTimeoutMs});
-    this.closed = false; this.ready = false; this.calls = new Map(); this.batches = new Map();
+    this.closed = false; this.ready = false; this.calls = new Map(); this.batches = new Map(); this.backgroundTools = new Set(); this.seenEvents = new Map();
   }
   connect() {
     if (this.promise) return this.promise;
@@ -33,9 +34,29 @@ export class GrokVoiceBridge {
   sendAudio(audio){if(this.ready)this.send({type:'input_audio_buffer.append',audio:audio.toString('base64')});}
   sendUserMessage(text){this.send({type:'conversation.item.create',item:{type:'message',role:'user',content:[{type:'input_text',text}]}});this.send({type:'response.create'});}
   triggerGreeting(text){this.sendUserMessage(text);}
+  speakProgress(text){this.send({type:'conversation.item.create',item:{type:'force_message',role:'assistant',interruptible:true,content:[{type:'output_text',text}]}});}
+  beginBackgroundTool(callId){
+    this.backgroundTools.add(callId);
+    this.submitToolResult(callId,{accepted:true,status:'working',instruction:'后台继续执行；正常回应用户聊天，有真正新进展或最终结果时会主动回来。不要声称已完成。'});
+  }
+  completeBackgroundTool(callId,result,options={}){
+    if(!this.backgroundTools.delete(callId)||result?.cancelled)return;
+    const text=result?.result??(result?.error?`V 后台没有完成：${result.error}`:null);
+    if(text){
+      // Keep the complete backend facts as conversation context, separately
+      // from the short force_message that actually produces spoken audio.
+      if(options.displayedFullResult)this.send({type:'conversation.item.create',item:{type:'message',role:'assistant',content:[{type:'output_text',text}]}});
+      this.speakProgress(options.spokenText??text);
+    }
+  }
   handleBargeIn(){this.send({type:'response.cancel'});this.request.onClearAudio?.('barge-in');}
   receive(e) {
     if(this.closed)return;
+    if(typeof e.event_id==='string'&&e.event_id){
+      const signature=createHash('sha256').update(JSON.stringify(e)).digest('hex'),previous=this.seenEvents.get(e.event_id);
+      if(previous){if(previous!==signature)this.fail('Grok Voice 事件身份冲突');return;}
+      this.seenEvents.set(e.event_id,signature);if(this.seenEvents.size>2048)this.seenEvents.delete(this.seenEvents.keys().next().value);
+    }
     this.request.onEvent?.({direction:'server',type:e.type,responseId:e.response_id});
     if(e.type==='session.updated'&&!this.ready){this.ready=true;clearTimeout(this.timer);this.resolve();this.request.onReady?.();}
     if(e.type==='error'){

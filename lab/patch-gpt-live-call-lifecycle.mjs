@@ -1,3 +1,4 @@
+import {patchBackendResultController,patchBackendResultBroker,patchBackendResultTalk} from './patch-gpt-live-result-presentation.mjs';
 import assert from "node:assert/strict";
 
 export const GPT_LIVE_CALL_BROKER_BEFORE = "0f98f3d3a6cf947106f9bc0ae589d34571f822b0407c57cf38bb08e4fa0379ee";
@@ -9,7 +10,7 @@ function once(source, before, after, label) {
 
 export function patchGptLiveCallLifecycleController(source) {
   const marker = "// gpt-live-call-lifecycle-controller-v1";
-  if (source.includes(marker)) return source;
+  if (source.includes(marker)) return patchBackendResultController(source);
   source = once(source, "\t\tthis.stopped = false;", `\t\tthis.stopped = false;
 \t\tthis.callLifecycle = options.callLifecycle === true ? createGptLiveCallLifecycle({
 \t\t\tsignal: options.signal,
@@ -117,12 +118,12 @@ export function patchGptLiveCallLifecycleController(source) {
     '\t\t\tif (!this.isCurrentDelegation(delegation, signal)) return;\n\t\t\tif (delegation.callControlReceipt) {\n\t\t\t\t// Talk already publishes the actual consult rejection. Keep its reason\n\t\t\t\t// visible here, including a rejected terminal named AbortError, without\n\t\t\t\t// manufacturing another tool result or speaking a second terminal.\n\t\t\t\tthis.options.logger.warn(`OpenAI GPT-Live accepted end-call consult failed: ${shortFailureReason(error)}`);\n\t\t\t\tthis.tracePublicProgress("backend-call-control-terminal-rejected", delegation.id, "", { kind: "failure",\n\t\t\t\t\tdelegationGeneration: delegation.generation, provenance: { runId: delegation.callControlReceipt.backendRunId } });\n\t\t\t\treturn;\n\t\t\t}\n\t\t\tif (this.options.isCanceledError?.(error)) return;\n\t\t\tthis.options.logger.warn(`OpenAI GPT-Live delegation consult failed: ${shortFailureReason(error)}`);',
     "accepted farewell retains actual rejection without duplicate failure speech");
   source = once(source, "\t\t\tif (finished || !this.isCurrentDelegation(delegation, signal)) {", "\t\t\tif (finished || delegation.callControlReceipt || !this.isCurrentDelegation(delegation, signal)) {", "accepted control stops ordinary progress");
-  return `${marker}\nimport { createGptLiveCallLifecycle, createGptLiveEndCallClientTool } from "./gpt-live-call-lifecycle.mjs";\n` + source;
+  return patchBackendResultController(`${marker}\nimport { createGptLiveCallLifecycle, createGptLiveEndCallClientTool } from "./gpt-live-call-lifecycle.mjs";\n` + source);
 }
 
 export function patchGptLiveCallLifecycleBroker(source) {
   const marker = "// gpt-live-call-lifecycle-broker-v1";
-  if (source.includes(marker)) return source;
+  if (source.includes(marker)) return patchBackendResultBroker(source);
   source = once(source, `\t\t\tconst delegations = new OpenAIQuicksilverDelegationController({
 \t\t\t\tgetSocket: () => connected.socket,`, `\t\t\tconst delegations = new OpenAIQuicksilverDelegationController({
 \t\t\t\tcallLifecycle: offer.request.model === "gpt-live-1-codex" && typeof offer.request.gatewayControl?.bindCallLifecycle === "function",
@@ -133,12 +134,12 @@ export function patchGptLiveCallLifecycleBroker(source) {
 \t\t\t\tonTranscript: (role, text, final) => offer.request.gatewayControl?.onTranscript?.(role, text, final),
 \t\t\t\tgetSocket: () => connected.socket,`, "native browser broker options");
   source = once(source, "\t\t\tsession = activeSessionLease.adopt(token, {", "\t\t\tif (delegations.callLifecycle) offer.request.gatewayControl.bindCallLifecycle(delegations.callLifecycle);\n\t\t\tsession = activeSessionLease.adopt(token, {", "native broker exact lifecycle binding");
-  return marker + "\n" + source;
+  return patchBackendResultBroker(marker + "\n" + source);
 }
 
 export function patchGptLiveCallLifecycleTalk(source) {
   const marker = "// gpt-live-call-lifecycle-talk-v1";
-  if (source.includes(marker)) return source;
+  if (source.includes(marker)) return patchBackendResultTalk(source);
   source = once(source, "function createTalkClientGatewayControlOwner(params) {\n\tlet bridge;", "function createTalkClientGatewayControlOwner(params) {\n\tlet callLifecycle;\n\tlet bridge;", "Talk session lifecycle storage");
   source = once(source, "\t\tcontrol: {\n\t\t\tbindBridge: (nextBridge) => {", `\t\trequestCallReady: () => {
 \t\t\towner.assertOpen();
@@ -184,5 +185,5 @@ export function patchGptLiveCallLifecycleTalk(source) {
 \t\t\treturn;
 \t\t}
 ${toolCheck}`, "existing authorized Talk tool route");
-  return `${marker}\nimport { resolveGptLiveCallInstructions } from "./gpt-live-call-lifecycle.mjs";\n` + source;
+  return patchBackendResultTalk(`${marker}\nimport { resolveGptLiveCallInstructions } from "./gpt-live-call-lifecycle.mjs";\n` + source);
 }

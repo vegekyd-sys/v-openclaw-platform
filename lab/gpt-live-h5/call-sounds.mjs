@@ -1,6 +1,7 @@
 /** Optional call-state sounds. Supply a dedicated audio element, never remoteAudio. */
 export function createCallSounds({
   audioElement,
+  sharedContext,
   AudioContext = globalThis.AudioContext ?? globalThis.webkitAudioContext,
   location = globalThis.location,
   setInterval = globalThis.setInterval,
@@ -10,7 +11,7 @@ export function createCallSounds({
 } = {}) {
   if (audioElement?.id === "remoteAudio" || audioElement?.srcObject)
     throw new TypeError("Call sounds require a dedicated audio element");
-  let phase = "idle", generation = 0, context, resumePromise;
+  let phase = "idle", generation = 0, context = sharedContext, resumePromise;
   let ringTimer, pickupTimer, connectedOnce = false, disposed = false, customOwned = false;
   const nodes = new Set();
   const current = (token, expected) => !disposed && generation === token && phase === expected;
@@ -138,7 +139,7 @@ export function createCallSounds({
       if (disposed) return Promise.resolve();
       disposed = true; phase = "disposed"; ++generation;
       clearTimers(); stopNodes(); stopCustom();
-      try { return Promise.resolve(context?.close()).catch(() => {}); }
+      try { return Promise.resolve(sharedContext ? undefined : context?.close()).catch(() => {}); }
       catch { return Promise.resolve(); }
     },
   };

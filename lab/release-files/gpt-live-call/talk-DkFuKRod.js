@@ -1,3 +1,59 @@
+// voice-backend-document-talk-v2
+const LONG_RESULT_NOTICE="详细方案在屏幕上，需要的话也可以整理成文档发给你。";
+function readBackendResult(result) {
+  const raw = typeof result === 'string' ? result : result?.result ?? result?.text;
+  if (typeof raw !== 'string') return null;
+  const pair = /^\s*【语音摘要】\s*\n([\s\S]*?)\n【完整方案】\s*\n([\s\S]+)$/u.exec(raw);
+  const text = pair ? pair[2] : raw;
+  const supplied = pair ? pair[1].trim() : result?.spokenSummary;
+  // A backend that exceeds its summary budget still supplied the summary's
+  // source. Extract from that source, rather than accidentally reading a table
+  // cell from the full document as the recommendation.
+  const candidate = typeof supplied === 'string' && supplied.trim()
+    ? supplied.trim().length <= 120 ? supplied.trim() : extractResultSummary(supplied) : null;
+  const summary = candidate && candidate.length <= 120 ? candidate : null;
+  return {text, summary};
+}
+function extractResultSummary(text) {
+  const clean = text.replace(/```[^\n]*\n[\s\S]*?```/gu, '')
+    .replace(/\[([^\]]+)\]\([^\n)]+\)/gu, '$1').replace(/[*_`]/gu, '');
+  const allLines = clean.split('\n').map(line => line.trim());
+  const conclusion = allLines.findIndex(line => /^#{1,6}\s.*(?:结论|建议|推荐|总结)/u.test(line));
+  const lines = (conclusion >= 0 ? allLines.slice(conclusion + 1) : allLines).filter(line => line && !/^#{1,6}\s|^\|?\s*[-:| ]+$/u.test(line));
+  for (let i = 0; i < lines.length - 1; i++) {
+    if (!lines[i].includes('|') || !lines[i+1].includes('|')) continue;
+    const cells = line => line.replace(/^\||\|$/gu, '').split('|').map(value => value.trim());
+    const headers = cells(lines[i]);
+    for (let j = i+1; j < lines.length && lines[j].includes('|'); j++) {
+      const values = cells(lines[j]);
+      if (values.length === headers.length) lines[j] = values.map((value, k) => `${headers[k]}：${value}`).join('，') + '。';
+    }
+    lines[i] = '';
+    break;
+  }
+  const lead = lines.findIndex(line => /^(?:核心)?(?:结论|建议|推荐)[：:]/u.test(line));
+  const candidates = (lead >= 0 ? lines.slice(lead) : lines).flatMap(line => line.match(/[^。！？!?]+[。！？!?]?/gu) ?? []);
+  const chosen = [];
+  for (const sentence of candidates) {
+    const value = sentence.replace(/^[-+]\s+/u, '').trim();
+    if (!value || chosen.includes(value) || value.length > 120) continue;
+    if ((chosen.join('') + value).length > 120) break;
+    chosen.push(value);
+    if (chosen.length === 2) break;
+  }
+  return chosen.join('') || lines.join(' ').slice(0, 110) + '…';
+}
+function presentBackendResult(result) {
+  if (result?.cancelled || result?.error) return null;
+  const parsed = readBackendResult(result);
+  if (!parsed?.text.trim()) return null;
+  const {text} = parsed;
+  const long = [...text].length > 300 || text.split('\n').filter(line => line.trim()).length >= 8 ||
+    /^\s*```/mu.test(text) || /^\s*\|?.*\|.*\n\s*\|?\s*:?-{3,}/mu.test(text);
+  const summary = long ? parsed.summary ?? extractResultSummary(text) : null;
+  return {text, long, spokenText: long ? `${summary} ${LONG_RESULT_NOTICE}` : text};
+}
+// gpt-live-caller-context-v1
 // gpt-live-backend-call-control-v1: Talk
 function bindGptLiveBackendCallControl({ callControl, continuationIdentity, assertCurrent }) {
   if (callControl === undefined) return;
@@ -47,7 +103,7 @@ function buildGptLiveBackendCallControlQuestion(prompt, callControl) {
   ].join("\n\n");
 }
 // gpt-live-call-lifecycle-talk-v1
-import { resolveGptLiveCallInstructions } from "./gpt-live-call-lifecycle.mjs";
+import { resolveGptLiveCallInstructions, resolveGptLiveCallerSurface } from "./gpt-live-call-lifecycle.mjs";
 // gpt-live-native-confirmation-v1: durable caller affirmation
 import { authorizeGptLiveClientVoicePendingConfirmation } from "./agent-tools.before-tool-call-g2OT63u5.js";
 // gpt-live-consult-continuation-v1: Talk
@@ -345,7 +401,7 @@ function createTalkClientAgentConsultRunner(params) {
 			runIdPrefix: params.runIdPrefix ?? "talk-realtime-consult",
 			args: parsedArgs,
 			transcript: params.initialItems,
-			surface: params.surface ?? "a browser Talk session",
+			surface: resolveGptLiveCallerSurface(params.surface ?? "a browser Talk session", canonicalKey),
 			userLabel: "User",
 			questionSourceLabel: "user",
 			thinkLevel: talkConfig?.consultThinkingLevel,
@@ -621,6 +677,15 @@ function createTalkClientGatewayControlOwner(params) {
 				if (callLifecycle && callLifecycle !== nextLifecycle) throw new Error("GPT Live call lifecycle is already bound");
 				if (typeof nextLifecycle?.ready !== "function" || typeof nextLifecycle?.close !== "function") throw new Error("Invalid GPT Live call lifecycle");
 				callLifecycle = nextLifecycle;
+			},
+			onBackendResult: ({delegationId,text}) => {
+				owner.assertOpen();
+				if(owners.get(params.voiceSessionId)!==owner)throw new Error("Realtime voice session is not active");
+				if(typeof delegationId!=="string"||!delegationId||typeof text!=="string")throw new Error("Invalid backend document identity");
+				const document=presentBackendResult(text);
+				if(!document?.long)return document?.text!==text?document?.text:undefined;
+				harness.emit({type:"tool.result",callId:delegationId,turnId:harness.ensureTurn(),payload:{name:"openclaw_backend_result",text:document.text,...talkPayload()},final:true});
+				return document.spokenText;
 			},
 			onCallLifecycleEvent: (event) => {
 				owner.assertOpen();
@@ -2898,7 +2963,8 @@ const createTalkClient = async ({ params, respond, context, client, sessionMutat
 			const tools = providerCapabilities?.supportsToolCalls === false ? [] : [REALTIME_VOICE_AGENT_CONSULT_TOOL, REALTIME_VOICE_AGENT_CONTROL_TOOL];
 			if (wantsCameraFrames && tools.length > 0) tools.push(REALTIME_VOICE_DESCRIBE_VIEW_TOOL);
 			const instructions = resolveGptLiveCallInstructions(providerCapabilities?.handlesAgentConsult === true ? normalizeOptionalString(providerInstructions) : buildRealtimeInstructions(providerInstructions), {
-				providerId: resolution.provider.id, model: launchOptions.model, transport, brain: "agent-consult", capabilities: providerCapabilities
+				providerId: resolution.provider.id, model: launchOptions.model, transport, brain: "agent-consult", capabilities: providerCapabilities,
+				sessionKey: target.canonicalKey, configuredInstructions: realtimeConfig.instructions
 			});
 			const requestedVoiceSessionId = normalizeOptionalString(params.voiceSessionId);
 			const ownsProvider = wantsGatewayControl || providerCapabilities?.handlesAgentConsult === true;

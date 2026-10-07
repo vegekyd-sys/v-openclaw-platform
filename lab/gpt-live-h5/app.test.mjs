@@ -4,7 +4,7 @@ import test from "node:test";
 import vm from "node:vm";
 import { createAvatarTasks, ACTIVITY_LABELS } from "./avatar-state.mjs";
 import { createTranscriptPresentation } from "./transcript-presentation.mjs";
-import { captureDuplexMicrophone } from "./microphone-capture.mjs";
+import { createPageMicrophoneSession } from "./microphone-session.mjs";
 import { createH5DuplexPlaybackGate } from "./duplex-playback.mjs";
 
 const appSource = readFileSync(new URL("./app.js", import.meta.url), "utf8")
@@ -107,7 +107,7 @@ async function fixture(t, options = {}) {
     close() { this.closed = true; }
   }
   const context = vm.createContext({
-    createTranscriptPresentation, captureDuplexMicrophone, createAvatarTasks, ACTIVITY_LABELS,
+    renderMarkdown: (target,text) => { target.textContent = text; }, createTranscriptPresentation, createPageMicrophoneSession, createAvatarTasks, ACTIVITY_LABELS,
     AbortController,
     createCallSounds: () => {
       const value = { dialing: 0, pickups: 0, disposed: 0, dial() { this.dialing++; }, connected() { this.pickups++; }, dispose() { this.disposed++; } };
@@ -170,7 +170,7 @@ test("bare personal page and retained owner link use the owner API on every oper
   await owner.context.startCall();
   await owner.context.stopCall();
   assert.ok(owner.requests.some(row => row.route === "session"));
-  assert.ok(owner.requests.every(row => row.url.endsWith("?entry=tianyi")));
+  assert.ok(owner.requests.every(row => new URL(row.url, 'https://voice.test/voice/').searchParams.get('entry') === 'tianyi'));
 });
 
 test("stopping before microphone permission returns releases every late track without creating a session", async (t) => {
@@ -181,7 +181,7 @@ test("stopping before microphone permission returns releases every late track wi
   await f.context.stopCall();
   const tracks = [track(), track(), track("video")];
   permission.resolve(stream(tracks));
-  await starting;
+  await starting; await tick();
   assert(tracks.every((item) => item.stopped === 1));
   assert.equal(f.requests.filter(({ route }) => route === "session" || route === "offer").length, 0);
   assert.equal(f.peers[0].closed, true);
@@ -719,8 +719,8 @@ test('a user farewell transcript alone never hangs up the call', async t => {
   assert.equal(f.requests.filter(r=>r.route==='close').length,0);
 });
 
-async function endCallFixture(t) {
-  const f = await fixture(t); await f.context.startCall();
+async function endCallFixture(t, options = {}) {
+  const f = await fixture(t, options); await f.context.startCall();
   const peer = f.peers[0]; peer.connectionState='connected'; peer.onconnectionstatechange();
   await peer.ontrack({track:track()}); await tick();
   const send = value => peer.channel.onmessage({data:JSON.stringify(value)});
@@ -984,4 +984,47 @@ test('backend end host acceptance does not use an unfinished USER prefix', async
     backendRunId: 'talk-realtime-consult:actual:parent', requestId: 'item_pending', nativeDelegationId: 'item_pending',
     delegationGeneration: 1, originUserTurnId: 'turn_pending', closeAfterPlayback: true }) });
   assert.equal(f.body.dataset.callState, 'connected'); assert.equal(peer.closed, false);
+});
+test('same-page redial reuses one grant, keeps the idle microphone disabled and releases on navigation',async t=>{
+ let grants=0;const mic=track();const f=await fixture(t,{getUserMedia:()=>{grants++;return stream([mic]);}});
+ await f.context.startCall();assert.equal(grants,1);await f.context.stopCall();assert.equal(mic.enabled,false);assert.equal(mic.stopped,0);
+ await f.context.startCall();assert.equal(grants,1);assert.equal(mic.enabled,true);await f.context.stopCall();assert.equal(mic.enabled,false);
+ f.pageEvents.get('pagehide')();assert.equal(mic.stopped,1);
+});
+
+test('full backend document renders separately from spoken caption and retired call cannot insert late documents',async t=>{
+ const f=await fixture(t);await f.context.startCall();
+ const body='## 完整方案\n| 日期 | 状态 |\n| --- | --- |\n| 2028-09 | 尚未核实 |';
+ const e={voiceSessionId:'voice-1',type:'backend.result',callId:'doc',text:body};
+ const old=f.eventSources[0];old.onmessage({data:JSON.stringify({...e,voiceSessionId:'foreign'})});assert.equal(f.element('transcriptHistory').children.length,0);
+ old.onmessage({data:JSON.stringify(e)});old.onmessage({data:JSON.stringify(e)});
+ const history=f.element('transcriptHistory');assert.equal(history.children.length,1);assert.equal(history.children[0].parts.speaker.textContent,'V · 完整方案');assert.equal(history.children[0].parts.text.textContent,body);
+ f.peers[0].channel.onmessage({data:JSON.stringify({type:'output_transcript.added',item:{id:'spoken',text:'结果在屏幕上。'}})});
+ assert.equal(f.element('transcriptCurrentRows').children[0].parts.text.textContent,'结果在屏幕上。');
+ await f.context.stopCall();await f.context.startCall();old.onmessage({data:JSON.stringify(e)});assert.equal(history.children.length,0);
+});
+
+
+test('native snapshot recovers actual task and full Markdown without SSE, but an old voice cannot change a redial',async t=>{
+ let response={voiceSessionId:'voice-1',revision:1,pending:[{type:'tool.call',callId:'pending',name:'openclaw_agent_consult'}],documents:[]};
+ const f=await fixture(t,{api:route=>route==='presentation'?response:undefined});await f.context.startCall();await tick();
+ assert.equal(f.body.dataset.avatarState,'busy');
+ const poll=[...f.intervals.values()].find(v=>v.delay===1500).callback;
+ response={voiceSessionId:'voice-1',revision:3,pending:[],documents:[{revision:3,type:'backend.result',voiceSessionId:'voice-1',callId:'doc',text:'## 完整方案\n实际条件和来源'}]};
+ poll();await tick();assert.equal(f.body.dataset.avatarState,'idle');assert.equal(f.element('transcriptHistory').children.length,1);
+ assert.equal(f.element('transcriptHistory').children[0].parts.text.textContent,response.documents[0].text);
+ const late=deferred();response=late.promise;const fetching=poll();await tick();await f.context.stopCall();await f.context.startCall();
+ late.resolve({voiceSessionId:'voice-1',revision:4,pending:[],documents:[{type:'backend.result',voiceSessionId:'voice-1',callId:'late',text:'旧报告'}]});await tick();
+ assert.equal(f.element('transcriptHistory').children.length,0);
+});
+
+
+test('snapshot carries only current real end-tool acceptance and rejection through the same ownership gate as SSE',async t=>{
+ let response={voiceSessionId:'voice-1',revision:0,pending:[],documents:[],controls:[]};
+ const f=await endCallFixture(t,{api:route=>route==='presentation'?response:undefined});await tick();
+ const poll=[...f.intervals.values()].find(v=>v.delay===1500).callback;
+ const actual={revision:1,voiceSessionId:'voice-1',type:'tool.result',name:'openclaw_end_call',callId:'end',requestId:'end',originUserTurnId:'u',closeAfterPlayback:true};
+ response={...response,revision:1,controls:[{...actual,voiceSessionId:'foreign'}]};poll();await tick();assert.equal(f.body.dataset.callState,'connected');
+ response={...response,controls:[actual]};poll();await tick();assert.equal(f.body.dataset.callState,'ending');assert(!f.peer.closed,'tool acceptance does not prove farewell audio drained');
+ response={...response,revision:2,controls:[actual,{...actual,revision:2,type:'tool.error'}]};poll();await tick();assert.equal(f.body.dataset.callState,'connected');
 });

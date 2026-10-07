@@ -18,3 +18,28 @@ test('parallel calls wait for terminal call batch and both real results; one con
 test('duplicate function event is not executed twice and conflicting call identity closes',async()=>{const f=await fixture();const event={type:'response.function_call_arguments.done',response_id:'r1',call_id:'a',name:'memory_search',arguments:'{"query":"x"}'};
  f.bridge.receive(event);f.bridge.receive(event);assert.equal(f.calls.length,1);f.bridge.receive({...event,arguments:'{"query":"other"}'});assert.equal(f.bridge.closed,true);});
 test('provider failure cancels connect, late events cannot emit audio',async()=>{const f=await fixture();f.bridge.close();f.bridge.receive({type:'response.output_audio.delta',delta:'AAE='});assert.equal(f.audio.length,0);});
+test('backend progress uses documented interruptible force_message without a second response.create',async()=>{
+ const f=await fixture();f.bridge.speakProgress('网页已核对，继续比较。');
+ assert.deepEqual(f.ws.sent.at(-1),{type:'conversation.item.create',item:{type:'force_message',role:'assistant',interruptible:true,content:[{type:'output_text',text:'网页已核对，继续比较。'}]}});
+ assert.equal(f.ws.sent.filter(e=>e.type==='response.create').length,0);f.bridge.close();
+});
+
+test('async backend releases native function before chat and returns final once via force_message',async()=>{
+ const f=await fixture();f.bridge.receive({type:'response.created',response:{id:'job'}});f.bridge.receive({type:'response.function_call_arguments.done',response_id:'job',call_id:'owned-job',name:'delegate_to_v',arguments:'{}'});
+ f.bridge.beginBackgroundTool('owned-job');f.bridge.receive({type:'response.done',response:{id:'job',status:'completed'}});assert(JSON.parse(f.ws.sent.find(x=>x.item?.type==='function_call_output').item.output).accepted);
+ f.bridge.receive({type:'response.created',response:{id:'chat'}});f.bridge.receive({type:'response.done',response:{id:'chat',status:'completed'}});
+ f.bridge.completeBackgroundTool('owned-job',{result:'真实后台最终结果'});f.bridge.completeBackgroundTool('owned-job',{result:'不能重复'});assert.equal(f.ws.sent.filter(x=>x.item?.type==='force_message').length,1);f.bridge.close();
+});
+test('audio transport event identity is idempotent; equal PCM with new identities remains valid',async()=>{
+ const f=await fixture(),e={type:'response.output_audio.delta',event_id:'audio-1',delta:'AAE='};f.bridge.receive(e);f.bridge.receive(e);f.bridge.receive({...e,event_id:'audio-2'});assert.equal(f.audio.length,2);f.bridge.close();
+});
+
+test('long backend document stays in context; only brief notice requests interruptible speech once',async()=>{
+ const f=await fixture();f.bridge.receive({type:'response.created',response:{id:'job'}});f.bridge.receive({type:'response.function_call_arguments.done',response_id:'job',call_id:'doc',name:'delegate_to_v',arguments:'{}'});f.bridge.beginBackgroundTool('doc');f.bridge.receive({type:'response.done',response:{id:'job',status:'completed'}});
+ const text='## 原始完整方案\n'+'日期与条件。'.repeat(100),spokenText='结果回来了，详细方案在屏幕上。';
+ const before=f.ws.sent.length;f.bridge.completeBackgroundTool('doc',{result:text},{spokenText,displayedFullResult:true});f.bridge.completeBackgroundTool('doc',{result:'不要重复'},{spokenText,displayedFullResult:true});
+ assert.deepEqual(f.ws.sent.slice(before),[
+  {type:'conversation.item.create',item:{type:'message',role:'assistant',content:[{type:'output_text',text}]}},
+  {type:'conversation.item.create',item:{type:'force_message',role:'assistant',interruptible:true,content:[{type:'output_text',text:spokenText}]}}
+ ]);f.bridge.close();
+});
