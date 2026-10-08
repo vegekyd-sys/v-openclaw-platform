@@ -159,7 +159,7 @@ test('owned long backend result publishes full document and speaks brief notice 
  assert.equal(f.invocations.filter(x=>x.message?.includes('完整目标')).length,1);await f.service.dispose();
 });
 
-const decisionAnswer=action=>({model:'typesafe/jev-test',answers:{route:{type:'choice',choice:action,confidence:1},endIntent:{type:'noul',noul:1},cancelIntent:{type:'noul',noul:1}}});
+const decisionAnswer=action=>({model:'typesafe/jev-test',answers:{route:{type:'choice',choice:action,confidence:1},searchQuery:{type:'choice',choice:'query_0',confidence:1},endIntent:{type:'noul',noul:1},cancelIntent:{type:'noul',noul:1}}});
 test('JEV native entry uses host USER rather than model arguments; direct tools cannot bypass router',async()=>{
  const states=[];const f=await fixture(undefined,'grok',async state=>{states.push(state);return decisionAnswer('memory_search');});
  f.client.emit('message',Buffer.from(JSON.stringify({type:'text',text:'查一下十二的实际档案'})),false);

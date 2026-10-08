@@ -75,8 +75,18 @@ async function runModel(model){
  await wait(()=>memory(),'actual memory tool start',90000);
  let delivered;
  if(model==='gpt-live'){
-  await wait(s=>s.sse.some(x=>x.type==='tool.result'&&x.observedAt>utteranceStart),'actual GPT consult result',90000);
-  delivered=(await state()).sse.find(x=>x.type==='tool.result'&&x.observedAt>utteranceStart)?.observedAt;
+  const call=memory();
+  if(call.callId){
+   // Presentation may arrive through the real HTTP polling fallback, with no
+   // SSE message. Require the actual tool return and the provider's matching
+   // native delegation-context ACK rather than an invented UI event.
+   const returned=()=>jevRows().find(x=>x.type==='tool.native-result'&&x.callId===call.callId);
+   await wait(s=>returned()&&s.native.some(x=>x.type==='delegation.context.appended'&&x.delegation_item_id===call.callId&&x.observedAt>=returned().at),'actual GPT tool result and native context receipt',90000);
+   delivered=(await state()).native.find(x=>x.type==='delegation.context.appended'&&x.delegation_item_id===call.callId&&x.observedAt>=returned().at).observedAt;
+  }else{
+   await wait(s=>s.sse.some(x=>x.type==='tool.result'&&x.observedAt>utteranceStart),'actual GPT consult result',90000);
+   delivered=(await state()).sse.find(x=>x.type==='tool.result'&&x.observedAt>utteranceStart)?.observedAt;
+  }
  }else{
   const call=memory();await wait(()=>direct().some(x=>x.type==='tool.delivered'&&x.callId===call.callId),'actual memory delivered',90000);
   delivered=direct().find(x=>x.type==='tool.delivered'&&x.callId===call.callId).at;

@@ -1,10 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createVoiceDecisionRouter,createJevEvaluator} from './voice-decision-router.mjs';
+import {createVoiceDecisionRouter,createJevEvaluator,searchQueryCandidates} from './voice-decision-router.mjs';
 import {createGatewayVoiceDecisionOwner} from './voice-decision-gateway.mjs';
 import {createGptLiveCallLifecycle} from './gpt-live-call-lifecycle.mjs';
-const response=(action,extra={})=>({model:'typesafe/jev-fixture',answers:{route:{type:'choice',choice:action,confidence:1},endIntent:{type:'noul',noul:1},calendarRange:{type:'choice',choice:'tomorrow'},...extra}});
+const response=(action,extra={})=>({model:'typesafe/jev-fixture',answers:{route:{type:'choice',choice:action,confidence:1},searchQuery:{type:'choice',choice:'query_0',confidence:1},endIntent:{type:'noul',noul:1},calendarRange:{type:'choice',choice:'tomorrow'},...extra}});
 const input={request:'查一下十二是谁',requestId:'owned',available:['memory_search'],callActive:true};
+test('search parameters are model-selected literal USER spans; identity and real constraints survive',async()=>{
+ const request='用记忆搜索工具再查一次十二喜欢的玩具，不沿用上一轮答案';
+ const candidates=searchQueryCandidates(request),target=candidates.find(s=>s.text==='十二喜欢的玩具');assert(target);
+ for(const span of candidates)assert.equal(request.slice(span.start,span.end),span.text);
+ const router=createVoiceDecisionRouter({evaluate:async()=>response('memory_search',{searchQuery:{type:'choice',choice:target.id,confidence:1}})});
+ assert.equal((await router.decide({...input,request})).args.query,'十二喜欢的玩具');
+ const constrained=searchQueryCandidates('查一下十二在上海的学校，不要台北的');
+ assert(constrained.every(s=>s.text.includes('不要台北的')));
+ const forged=await createVoiceDecisionRouter({evaluate:async()=>response('memory_search',{searchQuery:{type:'choice',choice:'查公司合同',confidence:1}})}).decide(input);
+ assert.equal(forged.action,'clarify');
+});
 test('one request is evaluated once; changed request/capability cannot reuse its receipt',async()=>{
  let calls=0;const router=createVoiceDecisionRouter({evaluate:async()=>{calls++;return response('memory_search');}});
  const [a,b]=await Promise.all([router.decide(input),router.decide(input)]);assert.equal(a,b);assert.equal(calls,1);

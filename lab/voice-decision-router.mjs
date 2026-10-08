@@ -17,6 +17,16 @@ const DEFAULT_CRITERIA = {
   clarify:'A referent or critical execution parameter is genuinely missing, e.g. 查那个 with no antecedent. Do not use merely because a requested report needs facts that the Agent can retrieve.',
   noop:'没有新的操作要求；普通聊天、讨论能力、引用他人的命令、否定或尚未说完的命令。',
 };
+export function searchQueryCandidates(request) {
+  const spans=[{start:0,end:request.length}];
+  // Parameter compiler only: candidates are literal USER spans. The decision
+  // model selects among them; this parser never chooses a tool or invents facts.
+  const replay=/[,，]\s*(?:不沿用(?:上一轮|上次|之前)(?:的)?答案|不要用缓存)[。.!！\s]*$/u.exec(request);
+  if(replay)spans.push({start:0,end:replay.index});
+  const prefix=/^(?:请|麻烦你?|帮我|你)?\s*(?:用(?:记忆搜索|memory_search|Memory Search|Web Search|web_search|网络搜索)工具)?(?:再|重新)?(?:查一下|查一次|查一查|查查|搜索一下|搜一下|查询一下)\s*/iu;
+  for(const span of [...spans]){const m=prefix.exec(request.slice(span.start,span.end));if(m&&m[0].length<span.end-span.start)spans.push({start:span.start+m[0].length,end:span.end});}
+  const seen=new Set();return spans.filter(s=>{const key=s.start+':'+s.end;if(seen.has(key))return false;seen.add(key);return true;}).map((s,i)=>({...s,id:'query_'+i,text:request.slice(s.start,s.end)}));
+}
 export function voiceDecisionQuestions(state) {
   const criteria={...DEFAULT_CRITERIA};
   for(const name of ['memory_search','web_search','web_fetch','feishu_calendar','current_time'])if(!state.available.includes(name))delete criteria[name];
@@ -28,6 +38,7 @@ export function voiceDecisionQuestions(state) {
     cancelIntent:{type:'noul',instructions:'用户是否明确要求取消正在执行的任务，而不是插话、闲聊、问进度或补充要求？'}};
   if(state.urls?.length)questions.url={type:'choice',instructions:'如果当前目标是读取网页，选择 USER 指定的或当前任务所需的那个实际 URL。没有匹配时选 none。',criteria:{none:'没有明确对应网页',...Object.fromEntries(state.urls.map((url,i)=>['url_'+i,url]))}};
   questions.calendarRange={type:'choice',instructions:'如果查询日历，选择用户明确要求的时间范围；特殊日期或不明确范围选 other，不猜测。',criteria:{today:'今天',tomorrow:'明天',week:'这周/本周',other:'其他明确日期范围、复杂时间表达或不确定范围'}};
+  questions.searchQuery={type:'choice',instructions:'如果做 Memory/Web 查询，选择完整保留实际事实对象和查询条件的最简 USER 原文片段。省去“用记忆搜索工具、再查一次、不沿用旧答案”等操作措辞，避免搜到检索协议。保留真实人名、日期、地区及排除条件。不适合简化时选 query_0 完整原句。不改写事实，不根据旧答案选查询。',criteria:Object.fromEntries(state.queryCandidates.map(s=>[s.id,s.text]))};
   return questions;
 }
 
@@ -65,6 +76,7 @@ export function createVoiceDecisionRouter({evaluate,audit=()=>{},now=Date.now,ti
     if(typeof request!=='string'||!request.trim()||request.length>16000||typeof requestId!=='string'||!requestId)throw Error('无效决策输入');
     const started=now(),id=randomUUID();
     const state={request,context:(input.context??'').slice(-8000),available:input.available??[],callActive:input.callActive===true,pending:input.pending??false,volumeControl:input.volumeControl===true,urls:(input.urls??[]).filter(u=>typeof u==='string'&&/^https?:\/\//u.test(u)).slice(0,8),proposed:input.proposed??null,timezone:'Asia/Shanghai',now:new Date(started).toISOString()};
+    state.queryCandidates=searchQueryCandidates(request);
     const questions=voiceDecisionQuestions(state);let raw;
     audit({type:'decision.started',id,requestId,at:started});
     try{raw=await evaluate(state,questions,signal);check();}
@@ -77,7 +89,11 @@ export function createVoiceDecisionRouter({evaluate,audit=()=>{},now=Date.now,ti
     if(route.confidence<0.75&&!['noop','task_status','delegate_to_v','clarify'].includes(action))action='clarify';
     if(action==='end_call'&&!(raw.answers.endIntent?.type==='noul'&&route.confidence>=0.9&&raw.answers.endIntent.noul>=0.85&&raw.answers.endIntent.noul<=1))action='clarify';
     if(action==='cancel_task'&&!(raw.answers.cancelIntent?.type==='noul'&&raw.answers.cancelIntent.noul>=0.95&&raw.answers.cancelIntent.noul<=1))action='clarify';
-    if(['memory_search','web_search'].includes(action))args={query:request};
+    if(['memory_search','web_search'].includes(action)){
+      const query=raw.answers.searchQuery,span=state.queryCandidates.find(s=>s.id===query?.choice);
+      if(query?.type!=='choice'||!span||!Number.isFinite(query.confidence)||query.confidence<.75||query.confidence>1)action='clarify';
+      else {if(request.slice(span.start,span.end)!==span.text)throw Error('查询参数不是实际 USER 原文');args={query:span.text};}
+    }
     if(action==='web_fetch'){
       const selected=raw.answers.url?.choice,index=/^url_(\d+)$/u.exec(selected??'');
       if(!index||!state.urls[Number(index[1])])action='clarify';else args={url:state.urls[Number(index[1])]};
