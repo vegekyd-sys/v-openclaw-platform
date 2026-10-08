@@ -1,0 +1,9 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/context-window-read/session-manager-CNTG_BAJ.js",
+      "target": "openclaw/dist/session-manager-CNTG_BAJ.js",
+      "before": "8db52c1a8d53e5f69e0bb2fe83c4fb0074b7abf6e2d03a4c832d5536fadc7024"
+    }
+  ]
+}

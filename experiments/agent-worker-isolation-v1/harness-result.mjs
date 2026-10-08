@@ -261,21 +261,146 @@ function readTerminalToolError(messages) {
   };
 }
 
+// A turn needs only the tail of its session: the messages this attempt appended
+// (timestamp >= attemptStartedAt) or, without a start time, the last user turn.
+// OpenClaw's full visible read loads and parses every event of the session
+// (V 2026-10-08: 100-180 MB sessions, 2.4-8.6 s of synchronous main-thread work
+// per turn in the Worker and again in the Gateway). The tail comes from the same
+// public paged reader Control UI uses, started from a cursor a bounded window
+// before the newest visible message. The window grows until it reaches past the
+// start of the attempt; anything the paged reader refuses (rewritten
+// generation, moved anchor, a single message over its byte cap) falls back to
+// the full read.
+const NATIVE_TAIL_INITIAL_MESSAGES = 128;
+const NATIVE_TAIL_MAX_MESSAGES = 8192;
+const NATIVE_TAIL_PAGE_MESSAGES = 1000;
+const NATIVE_TAIL_PAGE_BYTES = 64 * 1024 * 1024; // OpenClaw's per-page maximum
+const NATIVE_TAIL_EARLIER_MESSAGES = 8; // messages older than the attempt kept as margin
+const VISIBLE_MESSAGE_CURSOR_VERSION = 1; // OpenClaw 9.1 visible-message cursor
+
+function nativeMessageTime(entry) {
+  const value = entry.message.timestamp ?? entry.createdAt;
+  const time = typeof value === "number" ? value : Date.parse(value);
+  return Number.isFinite(time) ? time : undefined;
+}
+
+function nativeTailCoversAttempt(entries, minTimestamp) {
+  const messages = entries.filter(entry => isRecord(entry.message));
+  if (minTimestamp === undefined) {
+    return messages.some(entry => entry.message.role === "user");
+  }
+  let earlier = 0;
+  for (const entry of messages) {
+    const time = nativeMessageTime(entry);
+    if (time === undefined || time >= minTimestamp) break;
+    earlier += 1;
+  }
+  return earlier >= Math.min(NATIVE_TAIL_EARLIER_MESSAGES, messages.length);
+}
+
+async function loadNativeTailRuntime() {
+  const sdk = dirname(resolveOpenClawAgentRuntimePath());
+  const [transcript, sqlite] = await Promise.all([
+    import(pathToFileURL(join(sdk, "session-transcript-runtime.js")).href),
+    import(pathToFileURL(join(sdk, "sqlite-runtime.js")).href),
+  ]);
+  return {
+    readPage: transcript.readSessionTranscriptVisibleMessageDelta,
+    readAnchor: (target, window) => {
+      const read = sqlite.withOpenClawAgentDatabaseReadOnly(({ db }) => {
+        const generation = db.prepare(
+          "SELECT generation FROM transcript_rewrite_watermarks WHERE session_id = ?",
+        ).get(target.sessionId)?.generation;
+        const row = db.prepare(
+          `SELECT event_seq, message_position FROM session_transcript_active_events
+            WHERE session_id = ? AND message_position IS NOT NULL
+            ORDER BY message_position DESC LIMIT 1 OFFSET ?`,
+        ).get(target.sessionId, window);
+        return {
+          generation,
+          anchor: row ? { eventSeq: Number(row.event_seq), messagePosition: Number(row.message_position) } : null,
+        };
+      }, { agentId: target.agentId });
+      return read?.found ? read.value : undefined;
+    },
+  };
+}
+
+/**
+ * Reads the visible tail of a native transcript that covers the attempt.
+ * Returns undefined when the paged reader cannot serve it; callers then use
+ * the full visible read.
+ */
+export async function readNativeTailEntries(target, options = {}) {
+  const runtime = options.readTailPage && options.readTailAnchor
+    ? { readPage: options.readTailPage, readAnchor: options.readTailAnchor }
+    : await loadNativeTailRuntime();
+  if (typeof runtime.readPage !== "function" || typeof runtime.readAnchor !== "function") return undefined;
+  const maxMessages = options.tailMaxMessages ?? NATIVE_TAIL_MAX_MESSAGES;
+  for (let window = options.tailInitialMessages ?? NATIVE_TAIL_INITIAL_MESSAGES; ; window *= 4) {
+    const start = runtime.readAnchor(target, window);
+    if (typeof start?.generation !== "string") return undefined;
+    let cursor = start.anchor
+      ? Buffer.from(JSON.stringify({
+        agentId: target.agentId,
+        generation: start.generation,
+        sessionId: target.sessionId,
+        lastEventSeq: start.anchor.eventSeq,
+        lastMessagePosition: start.anchor.messagePosition,
+        version: VISIBLE_MESSAGE_CURSOR_VERSION,
+      }), "utf8").toString("base64url")
+      : undefined;
+    const entries = [];
+    for (;;) {
+      const page = await runtime.readPage({
+        ...target,
+        ...(cursor !== undefined ? { cursor } : {}),
+        maxMessages: NATIVE_TAIL_PAGE_MESSAGES,
+        maxBytes: NATIVE_TAIL_PAGE_BYTES,
+      });
+      if (page?.kind !== "page" || !Array.isArray(page.entries)) return undefined;
+      if (page.entries.length === 0 && page.hasMore) return undefined;
+      entries.push(...page.entries);
+      cursor = page.cursor;
+      if (!page.hasMore) break;
+      if (entries.length > maxMessages + NATIVE_TAIL_PAGE_MESSAGES) return undefined;
+    }
+    if (!start.anchor || nativeTailCoversAttempt(entries, options.minTimestamp)) return entries;
+    if (window >= maxMessages) return undefined;
+  }
+}
+
+function projectNativeMessages(entries) {
+  return entries.filter(entry => isRecord(entry.message)).map(entry => ({
+    ...entry.message,
+    ...(entry.message.timestamp == null && entry.createdAt ? {timestamp:Date.parse(entry.createdAt)} : {}),
+  }));
+}
+
 export async function readNativeSessionMessages(sessionFile, options = {}) {
   if (isRecord(sessionFile)) {
     const target = sessionFile;
     if (!target.agentId || !target.sessionId || !target.sessionKey) {
       throw new Error("Native transcript read requires explicit session identity");
     }
+    if (!options.readVisibleEntries) {
+      let tail;
+      try {
+        tail = await readNativeTailEntries(target, {
+          ...options,
+          minTimestamp: Number.isFinite(options.attemptStartedAt) ? options.attemptStartedAt : undefined,
+        });
+      } catch {
+        tail = undefined;
+      }
+      if (tail) return projectNativeMessages(tail);
+    }
     const reader = options.readVisibleEntries ?? (await import(pathToFileURL(join(
       dirname(resolveOpenClawAgentRuntimePath()), "session-transcript-runtime.js",
     )).href)).readVisibleSessionTranscriptMessageEntries;
     const entries = await reader(target);
     if (!Array.isArray(entries)) throw new Error("Invalid native transcript projection");
-    return entries.filter(entry => isRecord(entry.message)).map(entry => ({
-      ...entry.message,
-      ...(entry.message.timestamp == null && entry.createdAt ? {timestamp:Date.parse(entry.createdAt)} : {}),
-    }));
+    return projectNativeMessages(entries);
   }
   if (typeof sessionFile !== "string" || sessionFile.trim() === "") {
     return [];
