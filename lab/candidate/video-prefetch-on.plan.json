@@ -1,0 +1,30 @@
+{
+ "support": [
+  "lab/candidate/video-media-serial.mjs"
+ ],
+ "command": [
+  "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+  "lab/candidate/video-media-serial.mjs"
+ ],
+ "timeoutSeconds": 1800,
+ "user": "lab-db91-parity",
+ "files": [
+  {
+   "source": "lab/release-files/media-prefetch/runner.entries-C1o21Kna.js",
+   "target": "openclaw/dist/runner.entries-C1o21Kna.js",
+   "before": "b3cde575a01cea39207a266eeca70b799e38b1b87565e8f08891c9c37bbf61ca"
+  },
+  {
+   "source": "lab/release-files/media-prefetch/dispatch-from-config-DOJq_7CI.js",
+   "target": "openclaw/dist/dispatch-from-config-DOJq_7CI.js",
+   "before": "f150902ab3ebf2c9ccb19c4c5eb5158b469554553992a76b1c5e772fe7db39bd"
+  }
+ ],
+ "env": {
+  "WORKERS": "2",
+  "SESSIONS_PER_WORKER": "3",
+  "ASR_S": "10",
+  "VIDEO_S": "30",
+  "IDLE_MS": "15000"
+ }
+}

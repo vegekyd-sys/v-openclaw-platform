@@ -310,6 +310,7 @@
         "lab/image-hold.test.mjs",
         "lab/gateway-first-message.test.mjs",
         "lab/memory-flush-defer.test.mjs",
+        "lab/media-prefetch.test.mjs",
         "lab/worker-prewarm2-v.test.mjs",
         "lab/feishu-firsttext-e2e.test.mjs",
         "lab/feishu-codex-early-card.test.mjs",
