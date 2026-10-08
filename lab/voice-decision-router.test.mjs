@@ -9,7 +9,7 @@ test('search parameters are model-selected literal USER spans; identity and real
  const request='用记忆搜索工具再查一次十二喜欢的玩具，不沿用上一轮答案';
  const candidates=searchQueryCandidates(request),target=candidates.find(s=>s.text==='十二喜欢的玩具');assert(target);
  for(const span of candidates)assert.equal(request.slice(span.start,span.end),span.text);
- const router=createVoiceDecisionRouter({evaluate:async()=>response('memory_search',{searchQuery:{type:'choice',choice:target.id,confidence:1}})});
+ const router=createVoiceDecisionRouter({evaluate:async()=>response('memory_search',{searchQuery:{type:'choice',choice:target.id,confidence:.4}})});
  assert.equal((await router.decide({...input,request})).args.query,'十二喜欢的玩具');
  const constrained=searchQueryCandidates('查一下十二在上海的学校，不要台北的');
  assert(constrained.every(s=>s.text.includes('不要台北的')));

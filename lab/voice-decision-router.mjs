@@ -91,7 +91,10 @@ export function createVoiceDecisionRouter({evaluate,audit=()=>{},now=Date.now,ti
     if(action==='cancel_task'&&!(raw.answers.cancelIntent?.type==='noul'&&raw.answers.cancelIntent.noul>=0.95&&raw.answers.cancelIntent.noul<=1))action='clarify';
     if(['memory_search','web_search'].includes(action)){
       const query=raw.answers.searchQuery,span=state.queryCandidates.find(s=>s.id===query?.choice);
-      if(query?.type!=='choice'||!span||!Number.isFinite(query.confidence)||query.confidence<.75||query.confidence>1)action='clarify';
+      // These options differ only in query scaffolding, not caller authority or
+      // real constraints. Choice entropy between valid spans is not permission
+      // confidence. The action >= .75 and end-intent gates remain unchanged.
+      if(query?.type!=='choice'||!span||!Number.isFinite(query.confidence)||query.confidence<0||query.confidence>1)action='clarify';
       else {if(request.slice(span.start,span.end)!==span.text)throw Error('查询参数不是实际 USER 原文');args={query:span.text};}
     }
     if(action==='web_fetch'){
