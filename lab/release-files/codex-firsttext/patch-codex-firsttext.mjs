@@ -113,6 +113,14 @@ const TARGETS = [
         + "\tif (tokenCount !== void 0 && tokenCount >= maxTokens && codexDeepSeekThread) embeddedAgentLog.info(\"codex app-server keeping oversized DeepSeek thread for native compaction\", {\n"
         + "\t\tthreadId: binding.threadId,\n\t\tmaxTokens,\n\t\tnativeTokens,\n\t\tsessionTokens\n\t});\n"
         + "\tif (tokenCount !== void 0 && tokenCount >= maxTokens && !codexDeepSeekThread) {\n"],
+      // G. Codex compacts a DeepSeek thread locally inside the turn: the model writes a handoff
+      //    summary, which arrives as rawResponseItem/completed (role assistant, phase final_answer)
+      //    between item/started and item/completed of the contextCompaction item. The raw-item path
+      //    promoted it to the turn's answer, so the summary was delivered and stored while the real
+      //    answer that followed was dropped (oc_ff5076, 2026-10-08 23:30). While a compaction item
+      //    is open, raw items are not assistant replies.
+      ["\t\tthis.assistantProjection.handleRawResponseItemCompleted(item, this.activeItemIds);\n",
+        "\t\tif (!this.isCompacting()) this.assistantProjection.handleRawResponseItemCompleted(item, this.activeItemIds); // v-codex-firsttext-v5: a compaction handoff summary is not a reply\n"],
     ],
   },
   {
@@ -163,74 +171,6 @@ const TARGETS = [
       ["\t\tconst transientDelegationRestriction = params.params.delegationCapability === \"report_only\";\n",
         "\t\t// v-codex-firsttext-v3: a memory flush is a one-turn tool surface; never rebind the session to it.\n"
         + "\t\tconst transientDelegationRestriction = params.params.delegationCapability === \"report_only\" || params.params.trigger === \"memory\";\n"],
-      // F. Owner and member turns in one group get different tool catalogs: the owner has
-      //    owner-only tools (computer, conversations_*, …) and a few descriptions mention
-      //    them. Each change of speaker therefore rotated the thread and replayed the whole
-      //    transcript. Tool calls only run what the current turn grants (toolMap), so a
-      //    thread whose recorded tools cover this turn's tools by name and schema can keep
-      //    serving it; descriptions may differ. Keep the binding's fingerprint truthful: the
-      //    warm reuse and resume paths use the thread's own catalog fingerprint.
-      ["function shouldStartTransientNoToolThread(params) {",
-        "// v-codex-firsttext-v4: a thread whose recorded tools cover this turn's tools keeps serving it.\n"
-        + "function codexThreadToolName(tool) {\n"
-        + "\treturn tool?.namespace ?? tool?.name;\n"
-        + "}\n"
-        + "function codexThreadToolShape(tool) {\n"
-        + "\tconst { description, tools, deferLoading, ...rest } = tool ?? {};\n"
-        + "\treturn JSON.stringify(stabilizeJsonValue({ ...rest, deferLoading: deferLoading === true }));\n"
-        + "}\n"
-        + "function codexThreadToolServes(have, want) {\n"
-        + "\tif (!have || !want || codexThreadToolName(have) !== codexThreadToolName(want)) return false;\n"
-        + "\tif (Array.isArray(have.tools) || Array.isArray(want.tools)) {\n"
-        + "\t\tif (!Array.isArray(have.tools) || !Array.isArray(want.tools)) return false;\n"
-        + "\t\tconst byName = new Map(have.tools.map((tool) => [codexThreadToolName(tool), tool]));\n"
-        + "\t\treturn want.tools.every((tool) => codexThreadToolServes(byName.get(codexThreadToolName(tool)), tool));\n"
-        + "\t}\n"
-        + "\treturn codexThreadToolShape(have) === codexThreadToolShape(want);\n"
-        + "}\n"
-        + "async function codexBoundThreadToolCatalogForTurn(params, binding) {\n"
-        + "\tif (!binding?.rolloutPath || !binding.dynamicToolsFingerprint || binding.connectionScope === \"supervision\" || params.dynamicTools.length === 0) return;\n"
-        + "\ttry {\n"
-        + "\t\tconst sessionsRoot = path.join(resolveCodexAppServerLocalHomeDir(params.appServer.start, resolveCodexThreadAgentDir(params)), \"sessions\");\n"
-        + "\t\tconst recorded = (await readCodexSessionMeta(sessionsRoot, binding.rolloutPath, binding.threadId))?.dynamic_tools;\n"
-        + "\t\tif (!Array.isArray(recorded) || codexDynamicToolsFingerprint(recorded) !== binding.dynamicToolsFingerprint) return;\n"
-        + "\t\tconst byName = new Map(recorded.map((tool) => [codexThreadToolName(tool), tool]));\n"
-        + "\t\tif (!params.dynamicTools.every((tool) => codexThreadToolServes(byName.get(codexThreadToolName(tool)), tool))) return;\n"
-        + "\t\treturn {\n"
-        + "\t\t\tdynamicToolsFingerprint: binding.dynamicToolsFingerprint,\n"
-        + "\t\t\tlegacyDynamicToolsFingerprint: codexLegacyDynamicToolsFingerprint(recorded),\n"
-        + "\t\t\trecordedToolCount: recorded.length\n"
-        + "\t\t};\n"
-        + "\t} catch {\n"
-        + "\t\treturn;\n"
-        + "\t}\n"
-        + "}\n"
-        + "function shouldStartTransientNoToolThread(params) {"],
-      ["\t\tif (binding?.threadId) {\n"
-        + "\t\t\tif (binding.dynamicToolsFingerprint && !areDynamicToolFingerprintsCompatible(binding.dynamicToolsFingerprint, dynamicToolsFingerprint, legacyDynamicToolsFingerprint)) {\n",
-        "\t\tlet codexKeptToolCatalog; // v-codex-firsttext-v4\n"
-        + "\t\tif (binding?.threadId && binding.dynamicToolsFingerprint && !areDynamicToolFingerprintsCompatible(binding.dynamicToolsFingerprint, dynamicToolsFingerprint, legacyDynamicToolsFingerprint)) {\n"
-        + "\t\t\tconst kept = await codexBoundThreadToolCatalogForTurn(params, binding);\n"
-        + "\t\t\tif (kept) {\n"
-        + "\t\t\t\tembeddedAgentLog.info(\"codex app-server keeping thread whose tool catalog covers this turn\", {\n"
-        + "\t\t\t\t\tthreadId: binding.threadId,\n"
-        + "\t\t\t\t\tthreadTools: kept.recordedToolCount,\n"
-        + "\t\t\t\t\tturnTools: params.dynamicTools.length\n"
-        + "\t\t\t\t});\n"
-        + "\t\t\t\tcodexKeptToolCatalog = {\n"
-        + "\t\t\t\t\tdynamicToolsFingerprint: kept.dynamicToolsFingerprint,\n"
-        + "\t\t\t\t\tlegacyDynamicToolsFingerprint: kept.legacyDynamicToolsFingerprint\n"
-        + "\t\t\t\t};\n"
-        + "\t\t\t}\n"
-        + "\t\t}\n"
-        + "\t\tif (binding?.threadId) {\n"
-        + "\t\t\tif (!codexKeptToolCatalog && binding.dynamicToolsFingerprint && !areDynamicToolFingerprintsCompatible(binding.dynamicToolsFingerprint, dynamicToolsFingerprint, legacyDynamicToolsFingerprint)) {\n"],
-      ["\t\t\t\tconst warmReuse = await tryReuseCodexLiveThread({\n\t\t\t\t\t...requestContext,\n",
-        "\t\t\t\tconst warmReuse = await tryReuseCodexLiveThread({\n\t\t\t\t\t...requestContext,\n\t\t\t\t\t...codexKeptToolCatalog,\n"],
-      ["\t\t\t\t\tconst configuration = await prepareCodexThreadResume(params, binding, requestContext);\n",
-        "\t\t\t\t\tconst configuration = await prepareCodexThreadResume(params, binding, {\n\t\t\t\t\t\t...requestContext,\n\t\t\t\t\t\t...codexKeptToolCatalog\n\t\t\t\t\t});\n"],
-      ["\t\t\t\t\t\tconst resumed = await resumeExistingCodexThread(params, {\n\t\t\t\t\t\t\t...requestContext,\n\t\t\t\t\t\t\tbinding,\n",
-        "\t\t\t\t\t\tconst resumed = await resumeExistingCodexThread(params, {\n\t\t\t\t\t\t\t...requestContext,\n\t\t\t\t\t\t\t...codexKeptToolCatalog,\n\t\t\t\t\t\t\tbinding,\n"],
     ],
   },
 ];

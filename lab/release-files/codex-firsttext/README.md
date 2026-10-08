@@ -93,9 +93,11 @@ C 上线后，大群（oc_fab91、oc_64bcd621）仍然每条消息新开线程�
 
 修法：`trigger === "memory"` 的回合按「一回合受限」处理，与 `delegationCapability === "report_only"` 同一条路径：开临时线程、不写回绑定。整理回合本来就是新线程、全量灌入，行为不变；普通回合不受影响。
 
-附带：DeepSeek 线程压缩时，Codex 写的交接摘要会作为一条助手消息存进 OpenClaw 会话记录，压缩后的真实回答在记录里缺失（VLab 两次复现）。用户在卡片上看到的是流式的真实回答，V 上 13:46 之后的飞书消息里没有摘要。待单独处理。
+附带：DeepSeek 线程压缩时，Codex 写的交接摘要会作为一条助手消息存进 OpenClaw 会话记录，压缩后的真实回答在记录里缺失（VLab 两次复现）。当时以为用户只会看到流式的真实回答；10/08 23:30 在 oc_ff5076 上摘要被直接发到了飞书，见 G。
 
-## F. 主人和成员轮流说话时每次换线程（2026-10-08，thread-lifecycle）
+## F. 主人和成员轮流说话时每次换线程（2026-10-08，thread-lifecycle）——已撤回，未上线
+
+2026-10-09：共享 VLab 对比显示首字没有可测的改善（见本节末尾），Tianyi 决定暂缓。`codex-toolset-cover-20261008` 只装到了 V 磁盘、没有重启生效，由 `codex-compaction-summary-20261009` 把 thread-lifecycle 换回 c0a9ce77；补丁脚本里的 F 已删除，T 场景与 toolset/swap 工具保留。
 
 现象：同一个群里，主人（Tianyi）和其他成员交替发言时，每换一个发言人就新开一个 Codex 线程、重放整段历史。V 上线程 7e2d（主人，106 个工具）和 38b4（成员，94 个工具）同属一个会话。
 
@@ -108,3 +110,27 @@ C 上线后，大群（oc_fab91、oc_64bcd621）仍然每条消息新开线程�
 方向是单向的：主人线程能服务成员回合；成员线程服务不了主人回合，主人第一次说话仍然换一次线程，之后两边共用主人线程。supervision 绑定不走这条路径。
 
 candidate `lab/candidate/codex-ds-window.mjs` 的 T 段（`PHASES=T`，2026-10-08 22:02）：同一个 /vds 会话里成员先发言，之后主人、成员交替，共 6 轮。结果只有 2 个线程：成员线程 27 个工具、1 轮；主人一发言就换到 40 个工具的线程，其余 5 轮都在这个线程上。两边都答对了对方那几轮给的暗号。成员调用 `conversations_list` 被拒。缓存方面，第一次从主人切到成员时命中 7k/38k（这一轮刷新开发者说明），之后每轮 94–99%。
+
+## G. 压缩时的交接摘要被当成回复发出（2026-10-08，run-attempt）
+
+现象：群 oc_ff5076（/vds）23:30，「测试测试2」这一轮在回合内压缩。用户收到的回复是一整段 `# Context Checkpoint Handoff — V …`，真正的回答「在，正常 ⚡」既没发出，也没存进会话记录。
+
+原因（candidate 抓了一遍通知顺序）：本地压缩时，Codex 先发 `item/started contextCompaction`；模型写完摘要后发 `rawResponseItem/completed`（role assistant、phase `final_answer`，没有对应的 agentMessage item），然后才是 `item/completed contextCompaction` 和真正的回答。插件的 raw item 路径把这条摘要提升成了本回合的回复候选，后面真正的回答反而被判成被取代。
+
+修法：压缩 item 未结束时（`isCompacting()`），raw item 不进助手回复投影；工具和媒体记录照常。
+
+### F 的首字与缓存对比（共享 VLab，2026-10-09 00:10 CST）
+
+`codex-firsttext-shared-accept.mjs toolset --seedWords 90000 --salt <每次不同>`：先跑修复前（c0a9ce77），再跑修复后（7ee060b1），两次之前都重启，并加 salt，避免 DeepSeek 前缀缓存跨次命中。垫底约 40 万 token，两边第一个成员回合都触发压缩，之后会话约 12–13 万 token。
+
+| | 修复前 | 修复后 |
+|---|---|---|
+| 线程 | 5 | 2 |
+| 压缩后 5 轮首字 | 3.4 / 3.9 / 2.5 / 3.5 / 2.0 s | 4.3 / 3.2 / 3.2 / 2.8 / 2.4 s |
+| 压缩后 5 轮未命中缓存的输入 | 约 15 万 token | 约 8 万 token |
+
+结论：F 省的是重放的 token（这次少了约一半），首字没有可测的改善（DeepSeek Flash 处理 7.5 万未缓存 token 只多约 1 s，在噪声范围内）。
+
+第一次对比没加 salt，修复前那次蹭到了修复后那次留下的前缀缓存，数据作废。另外，这两次都在压缩那一轮把交接摘要当成回复发了出来（`**Handoff Summary**`），共享 VLab 上可以稳定复现 G。
+
+candidate `PHASES=S`（2026-10-09 00:04 CST，同一 Gateway 先跑 V 的 run-attempt，再跑修复版；约 31 万 token 的 /vds 会话，第二轮要求原样回复 `ANSWER-OK-7`，两边各压缩一次）：V 原样存下并发出的回复是 `**Handoff Summary** **Current State** …`，修复版是 `ANSWER-OK-7`。
