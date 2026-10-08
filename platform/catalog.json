@@ -299,6 +299,7 @@
         "lab/db91-shrink-reuse.test.mjs",
         "lab/placement-evidence-absence.test.mjs",
         "lab/placement-sweep-lists.test.mjs",
+        "lab/transcript-index-preflight.test.mjs",
         "lab/skills-watch-ready.test.mjs",
         "lab/worker-prewarm-secrets.test.mjs",
         "lab/worker-prewarm-v.test.mjs",

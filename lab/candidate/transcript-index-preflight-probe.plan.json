@@ -1,0 +1,13 @@
+{
+  "support": [
+    "lab/candidate/transcript-index-preflight-probe.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/transcript-index-preflight-probe.mjs"
+  ],
+  "databases": [
+    "agents/makaron/agent/openclaw-agent.sqlite"
+  ],
+  "timeoutSeconds": 0
+}
