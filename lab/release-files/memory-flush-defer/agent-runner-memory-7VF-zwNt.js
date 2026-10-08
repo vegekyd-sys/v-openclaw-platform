@@ -548,6 +548,8 @@ async function runSessionCompactionIfNeeded(params) {
 			// memory-flush-defer-v1: OpenClaw does not compact a Codex session here; report it, with fresh tokens when known.
 			params.probe.willCompact = false;
 			params.probe.threshold = threshold;
+			params.probe.runtime = "codex";
+			if (typeof contextWindowTokens === "number" && Number.isFinite(contextWindowTokens) && contextWindowTokens > 0) params.probe.contextWindow = contextWindowTokens;
 			if (typeof freshPersistedTokens === "number" && Number.isFinite(freshPersistedTokens) && freshPersistedTokens > 0) params.probe.tokenCount = freshPersistedTokens;
 		}
 		return entry ?? params.sessionEntry;

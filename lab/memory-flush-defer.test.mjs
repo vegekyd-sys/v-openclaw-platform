@@ -10,6 +10,8 @@ import {
   STEER_WAIT_MS,
   MEMORY_FLUSH_DEFER_MARKER,
   MIN_HEADROOM_TOKENS,
+  CODEX_NEAR_LIMIT_RATIO,
+  CODEX_MAX_FAILED_PER_CYCLE,
   extractBuiltinQueueHandle,
   extractDeferRegion,
   patchAgentRunnerMemory,
@@ -268,6 +270,9 @@ test('memory module: a Codex session reports no OpenClaw compaction, with its to
   const out = await loadMemoryModule(codex.fakes).runSessionCompactionIfNeeded({ ...baseParams(), probe });
   assert.equal(probe.willCompact, false);
   assert.equal(probe.threshold, 980_000);
+  assert.equal(probe.runtime, 'codex');
+  assert.equal(typeof probe.contextWindow, 'number');
+  assert(probe.contextWindow > 0);
   assert.equal(typeof probe.tokenCount, 'number');
   assert(probe.tokenCount > 0);
   assert.equal(codex.calls.compact.length, 0);
@@ -278,7 +283,10 @@ test('memory module: a Codex session reports no OpenClaw compaction, with its to
   const stale = memoryFakes({ fakes: { resolveEffectiveAgentRuntime: () => 'codex' } });
   const probe2 = {};
   await loadMemoryModule(stale.fakes).runSessionCompactionIfNeeded({ ...baseParams({ sessionEntry: entry({ totalTokensFresh: false }) }), probe: probe2 });
-  assert.deepEqual(probe2, { willCompact: false, threshold: 980_000 });
+  assert.equal(probe2.willCompact, false);
+  assert.equal(probe2.threshold, 980_000);
+  assert.equal(probe2.runtime, 'codex');
+  assert.equal(probe2.tokenCount, undefined);
   assert.equal(stale.calls.compact.length, 0);
 });
 
@@ -321,7 +329,7 @@ function loadRegion({ env = {}, probeResult = { willCompact: false, threshold: 9
   const probeCalls = [];
   const { mod: admission } = loadAdmissionModule();
   const fakes = {
-    createSubsystemLogger: () => ({ info: (m) => log.push(m) }),
+    createSubsystemLogger: () => ({ info: (m) => log.push(m), warn: (m) => log.push(`WARN ${m}`) }),
     process: { env },
     crypto,
     logVerbose: (m) => verbose.push(m),
@@ -377,7 +385,7 @@ function loadRegion({ env = {}, probeResult = { willCompact: false, threshold: 9
     },
   });
   const head = extractReplyAgentHead(runtimeOut);
-  const api = new Function('scope', `with (scope) {\n${extractDeferRegion(runtimeOut)}\n${head}\nreturn { resolvePreReplyMemoryFlushDeferral, deferPreReplyMemoryFlush, yieldDeferredMemoryFlush, deferredMemoryFlushJobs, resolveDeferredMemoryFlushIdleMs, runReplyAgentHead: runReplyAgent };\n}`)(scope);
+  const api = new Function('scope', `with (scope) {\n${extractDeferRegion(runtimeOut)}\n${head}\nreturn { resolvePreReplyMemoryFlushDeferral, deferPreReplyMemoryFlush, yieldDeferredMemoryFlush, deferredMemoryFlushJobs, resolveDeferredMemoryFlushIdleMs, codexDeferredFlushFailureCount, recordCodexDeferredFlushOutcome, runReplyAgentHead: runReplyAgent };\n}`)(scope);
   return { api, log, verbose, timers, afterClear, flushCalls, probeCalls, admission };
 }
 
@@ -1434,4 +1442,89 @@ setTimeout(() => {}, 400);
   const result = events.at(-1);
   assert.deepEqual([result.sessionId, result.outcomes, result.requesterActive, result.verdict], ['s1', ['compacting', 'compacting', 'transcript_commit_wait_unsupported', 'no_active_run'], false, 'direct-delivery']);
   assert(!on.stderr.includes('probe received'), 'message text is not logged');
+});
+
+// ---------------------------------------------------------------------------------------
+// Codex-native sessions (OPENCLAW_MEMORY_FLUSH_CODEX_AWARE). V 2026-10-08: a /vds session's
+// deferred flushes failed 5 of 11 times (Codex compacting its own thread mid-flush); its
+// OpenClaw token estimate reached 446k of a 976k flush threshold, 25% headroom away from
+// the old "near-compaction" rule putting a 40-100 s flush back in front of the reply.
+
+const codexProbe = (over = {}) => ({ willCompact: false, threshold: 980_000, runtime: 'codex', contextWindow: 1_000_000, tokenCount: 300_000, ...over });
+
+test('codex decision: Codex usage decides, a failed previous flush keeps deferring, the cycle gives up after the cap', () => {
+  const { api } = loadRegion();
+  const d = (over) => api.resolvePreReplyMemoryFlushDeferral({ enabled: true, isHeartbeat: false, hasSession: true, tokenCount: 800_000, flushThreshold: 976_000, codexAware: true, codexHint: true, probe: codexProbe(), ...over });
+  // near OpenClaw's threshold, but Codex is far from its own limit: defer
+  assert.equal(d({ probe: undefined }).reason, 'probe-required');
+  assert.deepEqual(d({}), { defer: true, reason: 'codex-housekeeping', headroom: 244_000 });
+  // Codex's own usage near its context window: the flush goes first
+  assert.deepEqual(d({ probe: codexProbe({ tokenCount: CODEX_NEAR_LIMIT_RATIO * 1_000_000 }) }), { defer: false, reason: 'codex-near-context-limit', headroom: 244_000 });
+  // usage unknown: OpenClaw never compacts this session, so defer
+  assert.equal(d({ probe: codexProbe({ tokenCount: undefined }) }).defer, true);
+  // previous deferred flush failed in this cycle: keep deferring even near the limit
+  assert.deepEqual(d({ codexFailures: 1, probe: codexProbe({ tokenCount: 950_000 }) }), { defer: true, reason: 'codex-previous-flush-failed', headroom: 244_000 });
+  assert.deepEqual(d({ codexFailures: CODEX_MAX_FAILED_PER_CYCLE }), { defer: true, skip: true, reason: 'codex-flush-gave-up', headroom: 244_000 });
+  // switched off, or not a Codex session: the old rule, unchanged
+  assert.equal(d({ codexAware: false, probe: undefined }).reason, 'near-compaction');
+  assert.equal(d({ codexHint: false, probe: undefined }).reason, 'near-compaction');
+  assert.equal(d({ probe: { willCompact: false, threshold: 980_000, tokenCount: 300_000 } }).reason, 'near-compaction');
+  // far from OpenClaw's threshold the non-Codex path is the same as before
+  assert.equal(d({ tokenCount: 300_000, codexHint: false, probe: { willCompact: false, threshold: 980_000, tokenCount: 300_000 } }).reason, 'housekeeping');
+});
+
+test('codex failures are counted per compaction cycle: a yield does not count, a completed flush clears', () => {
+  const { api, log } = loadRegion();
+  api.recordCodexDeferredFlushOutcome(sessionKey, 4, 'failed', false);
+  assert.equal(api.codexDeferredFlushFailureCount(sessionKey, 4), 1);
+  api.recordCodexDeferredFlushOutcome(sessionKey, 4, 'failed', true); // yielded to a new turn
+  api.recordCodexDeferredFlushOutcome(sessionKey, 4, 'skipped', false);
+  assert.equal(api.codexDeferredFlushFailureCount(sessionKey, 4), 1);
+  assert.equal(api.codexDeferredFlushFailureCount(sessionKey, 5), 0, 'a new cycle starts clean');
+  api.recordCodexDeferredFlushOutcome(sessionKey, 4, 'error', false);
+  api.recordCodexDeferredFlushOutcome(sessionKey, 4, 'failed', false);
+  assert.equal(api.codexDeferredFlushFailureCount(sessionKey, 4), CODEX_MAX_FAILED_PER_CYCLE);
+  assert(log.some((l) => l.startsWith('WARN ') && l.includes('"phase":"codex-failure-cap"') && !l.includes(sessionKey)));
+  api.recordCodexDeferredFlushOutcome(sessionKey, 4, 'completed', false);
+  assert.equal(api.codexDeferredFlushFailureCount(sessionKey, 4), 0);
+});
+
+const codexState = (over = {}) => ({ ...sizeState, tokenCount: 800_000, sessionEntry: entry({ agentHarnessId: 'codex', compactionCount: 2 }), ...over });
+
+test('codex end to end: near OpenClaw threshold defers, a failed run is counted, the next turn still defers, the cap skips the cycle', async () => {
+  const t = loadRegion({ probeResult: codexProbe(), flushOutcome: 'failed' });
+  assert.equal(await t.api.deferPreReplyMemoryFlush(ctxFor(codexState())), true);
+  assert.equal(t.probeCalls.length, 1);
+  const deferred = JSON.parse(t.log.at(-1).replace('[memory-flush-deferred.1] ', ''));
+  assert.equal(deferred.reason, 'codex-housekeeping');
+  assert.equal(deferred.codexUsage, 300_000);
+  assert.equal(deferred.codexContextWindow, 1_000_000);
+  // the deferred run fails (Codex compacted mid-flush): counted against cycle 2
+  t.afterClear[0].cb(); t.timers.at(-1).fn(); t.flushCalls.at(-1).__finish();
+  await new Promise((r) => setImmediate(r));
+  assert.equal(t.api.codexDeferredFlushFailureCount(sessionKey, 2), 1);
+  // even with Codex usage near its limit, the next turn keeps deferring
+  const near = loadRegion({ probeResult: codexProbe({ tokenCount: 950_000 }), flushOutcome: 'failed' });
+  assert.equal(await near.api.deferPreReplyMemoryFlush(ctxFor(codexState())), false, 'no failure yet: the flush goes first');
+  near.api.recordCodexDeferredFlushOutcome(sessionKey, 2, 'failed', false);
+  assert.equal(await near.api.deferPreReplyMemoryFlush(ctxFor(codexState())), true);
+  assert.equal(JSON.parse(near.log.at(-1).replace('[memory-flush-deferred.1] ', '')).reason, 'codex-previous-flush-failed');
+  // at the cap: nothing in front, nothing scheduled, one warning
+  near.api.deferredMemoryFlushJobs.clear();
+  near.api.recordCodexDeferredFlushOutcome(sessionKey, 2, 'failed', false);
+  near.api.recordCodexDeferredFlushOutcome(sessionKey, 2, 'failed', false);
+  const before = near.afterClear.length;
+  assert.equal(await near.api.deferPreReplyMemoryFlush(ctxFor(codexState())), true);
+  assert.equal(near.afterClear.length, before);
+  assert.equal(near.api.deferredMemoryFlushJobs.size, 0);
+  assert.match(near.log.at(-1), /^WARN \[memory-flush-deferred\.1\] .*"phase":"gave-up".*"reason":"codex-flush-gave-up"/);
+});
+
+test('codex awareness off, or a non-Codex session near the threshold: kept first without probing, as before', async () => {
+  const off = loadRegion({ env: { OPENCLAW_MEMORY_FLUSH_CODEX_AWARE: '0' }, probeResult: codexProbe() });
+  assert.equal(await off.api.deferPreReplyMemoryFlush(ctxFor(codexState())), false);
+  assert.equal(off.probeCalls.length, 0);
+  const plain = loadRegion({ probeResult: codexProbe() });
+  assert.equal(await plain.api.deferPreReplyMemoryFlush(ctxFor({ ...sizeState, tokenCount: 800_000 })), false);
+  assert.equal(plain.probeCalls.length, 0);
 });

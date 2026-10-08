@@ -7118,6 +7118,19 @@ const MEMORY_FLUSH_DEFER_STEER_WAIT_MS = 5000;
 const MEMORY_FLUSH_DEFER_STEER_POLL_MS = 25;
 const memoryFlushDeferLog = createSubsystemLogger("auto-reply/memory-flush-defer");
 const deferredMemoryFlushJobs = /* @__PURE__ */ new Map();
+// Codex-native sessions: OpenClaw never compacts them (Codex compacts in its own thread), so the
+// flush only has to go first when Codex's own usage nears its context. Failed deferred flushes
+// (typically cut short by that native compaction) are counted per compaction cycle.
+const MEMORY_FLUSH_CODEX_NEAR_LIMIT_RATIO = 0.85;
+const MEMORY_FLUSH_CODEX_MAX_FAILED_PER_CYCLE = 3;
+const codexDeferredFlushFailures = /* @__PURE__ */ new Map();
+function isCodexAwareMemoryFlushEnabled(env = process.env) {
+	return env.OPENCLAW_MEMORY_FLUSH_CODEX_AWARE !== "0";
+}
+function codexDeferredFlushFailureCount(sessionKey, cycle) {
+	const state = codexDeferredFlushFailures.get(sessionKey);
+	return state && state.cycle === cycle ? state.failures : 0;
+}
 function isPreReplyMemoryFlushDeferralEnabled(env = process.env) {
 	return env.OPENCLAW_DEFER_PRE_REPLY_MEMORY_FLUSH !== "0";
 }
@@ -7162,7 +7175,11 @@ function resolvePreReplyMemoryFlushDeferral(input) {
 		reason: "threshold-unknown"
 	};
 	const headroom = Math.max(MEMORY_FLUSH_DEFER_MIN_HEADROOM_TOKENS, Math.floor(threshold * MEMORY_FLUSH_DEFER_HEADROOM_RATIO));
-	if (tokens + headroom > threshold) return {
+	const nearFlushThreshold = tokens + headroom > threshold;
+	const codexAware = input.codexAware === true;
+	// a session that looks Codex-native is probed even near OpenClaw's threshold: that threshold
+	// is not the one Codex compacts at
+	if (nearFlushThreshold && !(codexAware && input.codexHint === true)) return {
 		defer: false,
 		reason: "near-compaction",
 		headroom
@@ -7171,6 +7188,12 @@ function resolvePreReplyMemoryFlushDeferral(input) {
 	if (probe === void 0) return {
 		defer: false,
 		reason: "probe-required",
+		headroom
+	};
+	if (codexAware && probe.runtime === "codex" && probe.willCompact === false) return resolveCodexMemoryFlushDeferral(input, probe, headroom);
+	if (nearFlushThreshold) return {
+		defer: false,
+		reason: "near-compaction",
 		headroom
 	};
 	if (probe.willCompact !== false) return {
@@ -7189,6 +7212,38 @@ function resolvePreReplyMemoryFlushDeferral(input) {
 		headroom
 	};
 }
+/**
+* Codex-native session. Previous deferred flush failed in this compaction cycle: keep deferring
+* (a flush in front of the reply would most likely fail the same way and only hold the user),
+* up to MEMORY_FLUSH_CODEX_MAX_FAILED_PER_CYCLE failures, then skip the cycle. Otherwise the
+* flush goes first only when Codex's own fresh usage is near its context window.
+*/
+function resolveCodexMemoryFlushDeferral(input, probe, headroom) {
+	const failures = typeof input.codexFailures === "number" ? input.codexFailures : 0;
+	if (failures >= MEMORY_FLUSH_CODEX_MAX_FAILED_PER_CYCLE) return {
+		defer: true,
+		skip: true,
+		reason: "codex-flush-gave-up",
+		headroom
+	};
+	if (failures > 0) return {
+		defer: true,
+		reason: "codex-previous-flush-failed",
+		headroom
+	};
+	const usage = probe.tokenCount;
+	const contextWindow = probe.contextWindow;
+	if (typeof usage === "number" && Number.isFinite(usage) && typeof contextWindow === "number" && Number.isFinite(contextWindow) && contextWindow > 0 && usage >= contextWindow * MEMORY_FLUSH_CODEX_NEAR_LIMIT_RATIO) return {
+		defer: false,
+		reason: "codex-near-context-limit",
+		headroom
+	};
+	return {
+		defer: true,
+		reason: "codex-housekeeping",
+		headroom
+	};
+}
 /** deferPreReplyFlush hook for runMemoryFlushIfNeeded on the reply path. */
 async function deferPreReplyMemoryFlush(ctx) {
 	const flushState = ctx.flushState ?? {};
@@ -7197,7 +7252,10 @@ async function deferPreReplyMemoryFlush(ctx) {
 		isHeartbeat: ctx.isHeartbeat === true,
 		hasSession: Boolean(ctx.sessionKey && ctx.storePath && ctx.replyOperation),
 		tokenCount: flushState.tokenCount,
-		flushThreshold: flushState.flushThreshold
+		flushThreshold: flushState.flushThreshold,
+		codexAware: isCodexAwareMemoryFlushEnabled(),
+		codexHint: flushState.sessionEntry?.agentHarnessId === "codex",
+		codexFailures: codexDeferredFlushFailureCount(ctx.sessionKey, flushState.sessionEntry?.compactionCount ?? 0)
 	};
 	let decision = resolvePreReplyMemoryFlushDeferral(base);
 	if (decision.reason !== "probe-required") {
@@ -7227,6 +7285,14 @@ async function deferPreReplyMemoryFlush(ctx) {
 		logVerbose(`memoryFlush kept before the reply: ${decision.reason}`);
 		return false;
 	}
+	if (decision.skip) {
+		memoryFlushDeferLog.warn(`[memory-flush-deferred.1] ${JSON.stringify({ phase: "gave-up", session: hashMemoryFlushSessionKey(ctx.sessionKey), reason: decision.reason, failures: base.codexFailures, cycle: flushState.sessionEntry?.compactionCount ?? 0 })}`);
+		return true;
+	}
+	if (probe.runtime === "codex") {
+		ctx.codexNative = true;
+		ctx.codexCycle = flushState.sessionEntry?.compactionCount ?? 0;
+	}
 	const idleMs = resolveDeferredMemoryFlushIdleMs();
 	scheduleDeferredMemoryFlush(ctx, idleMs);
 	logMemoryFlushDeferral({
@@ -7236,6 +7302,8 @@ async function deferPreReplyMemoryFlush(ctx) {
 		threshold: Math.round(flushState.flushThreshold),
 		compactionThreshold: typeof probe.threshold === "number" ? Math.round(probe.threshold) : null,
 		trigger: flushState.tokenTriggered ? "tokens" : "transcript_bytes",
+		...decision.reason !== "housekeeping" ? { reason: decision.reason } : {},
+		...ctx.codexNative ? { codexUsage: typeof probe.tokenCount === "number" ? Math.round(probe.tokenCount) : null, codexContextWindow: typeof probe.contextWindow === "number" ? Math.round(probe.contextWindow) : null } : {},
 		idleMs
 	});
 	return true;
@@ -7332,6 +7400,7 @@ function startDeferredMemoryFlush(job, epoch) {
 			...retryUnreadable ? { retry: true } : {},
 			ms: Date.now() - startedAt
 		});
+		if (job.ctx?.codexNative) recordCodexDeferredFlushOutcome(job.key, job.ctx.codexCycle ?? 0, outcome, abortSignal.aborted);
 		if (deferredMemoryFlushJobs.get(job.key) !== job || job.epoch !== runEpoch) return;
 		if (retryUnreadable) {
 			// the transcript projection was being reindexed: the flush is still due, look again after the idle wait
@@ -7342,6 +7411,18 @@ function startDeferredMemoryFlush(job, epoch) {
 		deferredMemoryFlushJobs.delete(job.key);
 	});
 	return job.running;
+}
+/** Codex-native: a failed deferred flush counts against its compaction cycle; a yield (abort) does not, a completed one clears it. */
+function recordCodexDeferredFlushOutcome(sessionKey, cycle, outcome, aborted) {
+	if (outcome === "completed") {
+		codexDeferredFlushFailures.delete(sessionKey);
+		return;
+	}
+	if (aborted || (outcome !== "failed" && outcome !== "error")) return;
+	const state = codexDeferredFlushFailures.get(sessionKey);
+	const failures = state && state.cycle === cycle ? state.failures + 1 : 1;
+	codexDeferredFlushFailures.set(sessionKey, { cycle, failures });
+	if (failures >= MEMORY_FLUSH_CODEX_MAX_FAILED_PER_CYCLE) memoryFlushDeferLog.warn(`[memory-flush-deferred.1] ${JSON.stringify({ phase: "codex-failure-cap", session: hashMemoryFlushSessionKey(sessionKey), failures, cycle })}`);
 }
 async function runDeferredMemoryFlush(ctx, abortSignal, report = {}) {
 	const sessionStore = {};
