@@ -2,16 +2,18 @@ import assert from 'node:assert/strict';
 function once(source,before,after){assert.equal(source.split(before).length-1,1,'JEV host anchor drifted: '+before.slice(0,100));return source.replace(before,after);}
 export function patchVoiceJevTalk(source){
   if(source.includes('// voice-jev-unified-v1'))return source;
-  source='// voice-jev-unified-v1\nimport {jevEvaluatorFromEnv} from "./voice-decision-router.mjs";\nimport {createGatewayVoiceDecisionOwner} from "./voice-decision-gateway.mjs";\nimport {appendFileSync} from "node:fs";\n'+source;
+  source='// voice-jev-unified-v1\nimport {jevEvaluatorFromEnv,createVoiceDecisionHistory} from "./voice-decision-router.mjs";\nimport {createGatewayVoiceDecisionOwner} from "./voice-decision-gateway.mjs";\nimport {appendFileSync} from "node:fs";\n'+source;
   source=once(source,'function createTalkClientGatewayControlOwner(params) {\n\tlet callLifecycle;',`function createTalkClientGatewayControlOwner(params) {
 \tlet decisionOwner;
+	const decisionHistory=createVoiceDecisionHistory();
 \tconst decisionEvaluate=jevEvaluatorFromEnv();
 \tlet callLifecycle;`);
+  source=once(source,'\t\ttranscriptSequence += 1;','\t\tdecisionHistory.append(role,text);\n\t\ttranscriptSequence += 1;');
   source=once(source,'\t\tif (role === "user") runControl.handleSpoken(text, params.flushTranscript());','\t\tif (!decisionEvaluate && role === "user") runControl.handleSpoken(text, params.flushTranscript());');
   source=once(source,'\t\t\tconst spokenGrant = authorizeGptLiveClientVoicePendingConfirmation({',`\t\t\tif(decisionEvaluate){
 \t\t\t\tif(!boundCallControl || typeof callControl.acceptDecision !== "function") throw new Error("JEV requires complete native USER ownership");
 \t\t\t\tdecisionOwner ??= createGatewayVoiceDecisionOwner({evaluate:decisionEvaluate,
-\t\t\t\t\tcontext:params.decisionContext??"",isCallCurrent:()=>{owner.assertOpen();return owners.get(params.voiceSessionId)===owner;},
+\t\t\t\t\tcontext:params.decisionContext??"",getHistory:request=>decisionHistory.snapshot(request),isCallCurrent:()=>{owner.assertOpen();return owners.get(params.voiceSessionId)===owner;},
 \t\t\t\t\tinvoke:params.invokeDirectTool,
 \t\t\t\t\tcontrol:applyControl,
 \t\t\t\t\temit:event=>harness.emit({...event,turnId:harness.ensureTurn(),payload:{...event.payload,...talkPayload()},final:event.type!=="tool.call"}),
@@ -50,7 +52,7 @@ export function patchVoiceJevController(source){
   source=once(source,'\t\tthis.stopped = false;','\t\tthis.stopped = false;\n\t\tthis.decisionDelegations = new Map();');
   source=once(source,'\t\tthis.transcript = [];\n\t\tthis.partialTranscriptRole = void 0;\n\t\tif (this.consultController)',`\t\tthis.transcript = [];
 \t\tthis.partialTranscriptRole = void 0;
-\t\tif(process.env.VOICE_DECISION_PROVIDER==="jev"){
+\t\tif(["jev","openai_decisions"].includes(process.env.VOICE_DECISION_PROVIDER)){
 \t\t\tif(this.decisionDelegations.size>=8){this.sendAppend(id,"Too many tasks are pending; this request was not started.","speakable");return;}
 \t\t\tconst controller=new AbortController();
 \t\t\tthis.decisionDelegations.set(id,{generation:delegation.generation,controller});

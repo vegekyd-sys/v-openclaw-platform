@@ -12,7 +12,7 @@ export function isGptLiveCallProfile({ providerId, model, transport, brain, capa
 export function resolveGptLiveCallInstructions(original, profile) {
   if (!isGptLiveCallProfile(profile)) return original;
   const caller = resolveGptLiveCaller(profile.sessionKey);
-  const contract = process.env.VOICE_DECISION_PROVIDER === 'jev' ? GPT_LIVE_CALL_INSTRUCTIONS + '\n\n统一决策入口优先：任何查询、操作、任务分配、取消或自然挂断要求都发起真实 native client delegation，并保留完整 USER 目标与条件。这个 client 后面是 JEV 决策器，由它选择直接 OpenClaw 工具还是后台 Agent；不要自行选择工具、伪造调用或推断任务复杂度。无需一律启动后台 Agent。普通聊天仍自然回答。只有实际主机接受结束后才告别；告别播完才关闭。' : GPT_LIVE_CALL_INSTRUCTIONS;
+  const contract = ['jev','openai_decisions'].includes(process.env.VOICE_DECISION_PROVIDER) ? GPT_LIVE_CALL_INSTRUCTIONS + '\n\n统一决策入口优先：任何查询、操作、任务分配、取消或自然挂断要求都发起真实 native client delegation，并保留完整 USER 目标与条件。这个 client 后面是统一决策器，由它选择直接 OpenClaw 工具还是后台 Agent；不要自行选择工具、伪造调用或推断任务复杂度。无需一律启动后台 Agent。普通聊天仍自然回答。只有实际主机接受结束后才告别；告别播完才关闭。' : GPT_LIVE_CALL_INSTRUCTIONS;
   if (!caller) return contract;
   const persona = resolveGptLivePersona(profile.configuredInstructions);
   return [contract, persona, buildGptLiveCallerInstructions(caller)].filter(Boolean).join("\n\n");

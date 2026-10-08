@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createVoiceDecisionRouter,createJevEvaluator,searchQueryCandidates} from './voice-decision-router.mjs';
+import {createVoiceDecisionRouter,createJevEvaluator,searchQueryCandidates,createVoiceDecisionHistory,voiceDecisionQuestions,jevEvaluatorFromEnv} from './voice-decision-router.mjs';
 import {createGatewayVoiceDecisionOwner,directToolText} from './voice-decision-gateway.mjs';
 import {patchVoiceJevController} from './patch-voice-jev.mjs';
 import {createGptLiveCallLifecycle} from './gpt-live-call-lifecycle.mjs';
@@ -104,4 +104,39 @@ test('long Agent serialization does not block a new real decision or direct memo
  const quick=await owner.run({request:'查十二',requestId:'quick',signal,isCurrent:()=>true});
  assert.deepEqual(calls,['memory_search']);assert.equal(quick.provenance.source,'direct_tool');assert.equal(owner.pending,true);
  completeFirst({text:'报告最终内容',provenance:{source:'canonical_final'}});await long;assert.equal(owner.pending,false);
+});
+
+
+test('OpenAI Decisions uses the same host gates and requires two query choices even for one literal',async()=>{
+ const questions=voiceDecisionQuestions({available:['memory_search'],callActive:true,queryCandidates:searchQueryCandidates('十二是谁')});
+ assert(Object.keys(questions.searchQuery.criteria).length>=2);
+ let body;const evaluate=jevEvaluatorFromEnv({VOICE_DECISION_PROVIDER:'openai_decisions',VOICE_JEV_API_KEY:'private-test'});assert.equal(typeof evaluate,'function');
+ const adapter=createJevEvaluator({apiKey:'private-test',model:'openai/gpt-6-luna-decisions',fetchImpl:async(url,options)=>{body=JSON.parse(options.body);return {ok:true,json:async()=>response('end_call',{model:'openai/gpt-6-luna-decisions-actual',endIntent:{type:'noul',noul:.6}})};}});
+ assert.equal((await createVoiceDecisionRouter({evaluate:adapter}).decide(input)).action,'clarify');
+ assert.equal(body.model,'openai/gpt-6-luna-decisions');assert(!JSON.stringify(body).includes('private-test'));
+});
+test('rolling USER references preserve antecedent and current exclusions without inventing facts',async()=>{
+ const h=createVoiceDecisionHistory();h.append('user','十二是谁啊');h.append('assistant','模型猜测的名字不能当作USER');h.append('user','给他买个玩具，不要卡牌');
+ const history=h.snapshot('给他买个玩具，不要卡牌');assert.equal(history.length,2);
+ const candidates=searchQueryCandidates('给他买个玩具，不要卡牌',history),choice=candidates.find(c=>c.reference?.text==='十二');assert(choice);
+ assert(candidates.filter(c=>c.reference).every(c=>c.text.includes('不要卡牌')));
+ assert(!candidates.some(c=>c.reference?.text==='模型猜测'));
+ const router=createVoiceDecisionRouter({evaluate:async()=>response('memory_search',{searchQuery:{type:'choice',choice:choice.id,confidence:1}})});
+ assert.equal((await router.decide({...input,request:'给他买个玩具，不要卡牌',history})).args.query,'十二 给他买个玩具，不要卡牌');
+ assert.throws(()=>router.decide({...input,request:'给他买个玩具，不要卡牌',history:[]}),/冲突/);
+ const low=createVoiceDecisionRouter({evaluate:async()=>response('memory_search',{searchQuery:{type:'choice',choice:choice.id,confidence:.5}})});
+ assert.equal((await low.decide({...input,request:'给他买个玩具，不要卡牌',history})).action,'clarify');
+});
+test('Gateway snapshots real rolling context independently for each request',async()=>{
+ const h=createVoiceDecisionHistory();const states=[];
+ const owner=createGatewayVoiceDecisionOwner({evaluate:async state=>{states.push(state);return response('noop');},invoke:async()=>assert.fail(),isCallCurrent:()=>true,getHistory:r=>h.snapshot(r)});
+ h.append('user','十二是谁');await owner.run({request:'十二是谁',requestId:'first',signal:new AbortController().signal,isCurrent:()=>true});
+ h.append('user','给他买玩具');await owner.run({request:'给他买玩具',requestId:'second',signal:new AbortController().signal,isCurrent:()=>true});
+ assert.equal(states[0].history.length,0);assert.equal(states[1].history[0].text,'十二是谁');
+ const other=createVoiceDecisionHistory();assert.equal(other.snapshot('给他买玩具').length,0);
+});
+
+test('spoken fillers and polite modal are query scaffolding; named private topic and exclusions survive',()=>{
+ assert(searchQueryCandidates('呃,能查一下夜班模式吗').some(q=>q.text==='夜班模式'));
+ assert(searchQueryCandidates('嗯，你可以查一下十二在上海的学校，不要台北的好吗').every(q=>q.text.includes('不要台北的')));
 });

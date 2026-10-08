@@ -768,8 +768,8 @@ test('spoken summary keeps canonical caller corrections and rejects forged condi
 });
 
 
-test('opted-in JEV native decisions launch before the Agent queue and closing aborts each owner',async()=>{
- const old=process.env.VOICE_DECISION_PROVIDER;process.env.VOICE_DECISION_PROVIDER='jev';
+for(const provider of ['jev','openai_decisions'])test('opted-in '+provider+' native decisions launch before the Agent queue and closing aborts each owner',async()=>{
+ const old=process.env.VOICE_DECISION_PROVIDER;process.env.VOICE_DECISION_PROVIDER=provider;
  const pending=[];
  try{
   const f=nativeFixture({runAgentConsult:params=>new Promise(resolve=>pending.push({params,resolve}))});f.start();

@@ -210,7 +210,7 @@ var OpenAIQuicksilverDelegationController = class {
 		}
 		this.transcript = [];
 		this.partialTranscriptRole = void 0;
-		if(process.env.VOICE_DECISION_PROVIDER==="jev"){
+		if(["jev","openai_decisions"].includes(process.env.VOICE_DECISION_PROVIDER)){
 			if(this.decisionDelegations.size>=8){this.sendAppend(id,"Too many tasks are pending; this request was not started.","speakable");return;}
 			const controller=new AbortController();
 			this.decisionDelegations.set(id,{generation:delegation.generation,controller});

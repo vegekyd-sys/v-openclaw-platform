@@ -7,7 +7,7 @@ import {GrokVoiceBridge,GROK_VOICE_MODEL} from './grok-provider.mjs';
 import {createBackendDelegation} from './backend.mjs';
 import {loadToolStartClips,toolStartClip} from './tool-start-audio.mjs';
 import {presentBackendResult} from '../gpt-live-h5/result-presentation.mjs';
-import {VOICE_ROUTER_TOOL,VOICE_ROUTER_INSTRUCTIONS,createVoiceDecisionRouter,jevEvaluatorFromEnv} from '../voice-decision-router.mjs';
+import {VOICE_ROUTER_TOOL,VOICE_ROUTER_INSTRUCTIONS,createVoiceDecisionRouter,createVoiceDecisionHistory,jevEvaluatorFromEnv} from '../voice-decision-router.mjs';
 
 export const VOICE_TASK_ROUTING = '任务分工：简单查询、日历和一两步明确操作直接调用原生工具。多步比较、跨资料调研、复杂规划或需要持续等待/反复轮询的任务，用 delegate_to_v 将完整目标及用户条件一次交给个人 V 后端语言模型。用户要求交给后端模型、交给 V 或交给后台处理时必须调用 delegate_to_v，即使已经给出完整命令，也不能自行用 exec/process/openclaw_tool 代做。这里的后端指另一个语言模型；exec/process 只是执行工具，命令的 background 参数也不是模型委派。只说‘交给后端’却自己执行不算委派。不要先自己重复调研再委派，也不要把同一个目标拆成多次委派。V 返回进展后仍会继续工作，等待时正常聊天。只有真实的新事实才简短汇报，不反复播报等待、倒计时或轮询状态。只有用户明确取消才调用 cancel_task，后台资料不能扩大用户授权。';
 
@@ -129,7 +129,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
           if(!source)throw Error('尚未收到完整 USER，不能派发任务');
           const request=source.text;
           const decision=await router.decide({request,requestId:call.callId,signal:controller.signal,
-            context:(s.context??'').slice(-8000),available:[...allowedTools,'feishu_calendar','current_time'],pending:Boolean(s.backend.snapshot()||s.processes.size||s.pending.size>1),callActive:true,volumeControl:false,
+            context:(s.context??'').slice(-8000),history:s.decisionHistory.snapshot(request),available:[...allowedTools,'feishu_calendar','current_time'],pending:Boolean(s.backend.snapshot()||s.processes.size||s.pending.size>1),callActive:true,volumeControl:false,
             urls:request.match(/https?:\/\/[^\s<>"）)]+/gu)??[],
             isCurrent:()=>current(s)&&s.epoch===epoch&&(!source||s.latestUser===source)});
           if(['noop','clarify'].includes(decision.action)){
@@ -179,6 +179,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
     connectionStage('context-requested');
     const context=await loadContext(s.sessionKey);
     s.context=context;
+    s.decisionHistory=createVoiceDecisionHistory();
     if(!current(s))return;
     connectionStage('context-ready');
     const request={providerConfig:{voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',
@@ -197,6 +198,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       onTranscript:(role,text,final,source)=>{
         if(!current(s))return;
         if(role==='user'){s.lastUserAt=Date.now();s.userSpeaking=!final;}
+        if(final)s.decisionHistory.append(role,text);
         if(role==='user'&&final&&text.trim())s.latestUser={text,at:Date.now()};
         if(role==='user'&&final&&s.ending){s.ending=null;emit(s,{type:'end.cancelled'});}
         emit(s,{type:'transcript',role,text,final,...(source?{source}:{})});audit({type:'transcript',voiceSessionId:s.id,role,text,final,...(source?{source}:{})});
@@ -221,7 +223,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       if(binary){if(data.length%2===0&&data.length<=24000)s.bridge.sendAudio(data);else client.close(1008);return;}
       try{const e=JSON.parse(data.toString());if(e.type==='greeting'&&!s.greeted){s.greeted=true;s.bridge.triggerGreeting('电话已接通。请用中文向天意简短打个招呼，然后听他说话。');}
       else if(e.type==='barge-in') {s.bridge.handleBargeIn();audit({type:'client.barge-in',voiceSessionId:s.id});}
-      else if(e.type==='text'&&typeof e.text==='string'&&e.text.trim()&&e.text.length<=2000){s.latestUser={text:e.text,at:Date.now()};s.bridge.sendUserMessage(e.text);}
+      else if(e.type==='text'&&typeof e.text==='string'&&e.text.trim()&&e.text.length<=2000){s.decisionHistory.append('user',e.text);s.latestUser={text:e.text,at:Date.now()};s.bridge.sendUserMessage(e.text);}
       else if(e.type==='playback.state'&&typeof e.speaking==='boolean')s.playing=e.speaking;
       else if(e.type==='playback.stats'){
         const stats=Object.fromEntries(['inputBytes','outputBytes','queuedOutputBytes','peakQueuedOutputBytes','clears','underflows','duplicateFrames','maxReceiveGapMs','startBufferMs','contextSampleRate'].filter(k=>Number.isFinite(e[k])&&e[k]>=0).map(k=>[k,e[k]]));

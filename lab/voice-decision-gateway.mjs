@@ -17,7 +17,7 @@ export function directToolText(action,args,result) {
 
 /** Protocol-independent owner. Transport supplies authenticated tool invocation,
  * real native turn ownership and real call closure; JEV never grants authority. */
-export function createGatewayVoiceDecisionOwner({evaluate,invoke,control,emit=()=>{},audit=()=>{},isCallCurrent,context=''}={}) {
+export function createGatewayVoiceDecisionOwner({evaluate,invoke,control,emit=()=>{},audit=()=>{},isCallCurrent,context='',getHistory=()=>[]}={}) {
   const pending=new Map(),processes=new Set(),requests=new Map();
   const router=createVoiceDecisionRouter({evaluate,audit});
   let agentTail=Promise.resolve(),agentQueued=0;
@@ -40,7 +40,7 @@ export function createGatewayVoiceDecisionOwner({evaluate,invoke,control,emit=()
   }});
   const run=async({request,requestId,signal,isCurrent,acceptEnd,delegate:runDelegate})=>{
       check(signal);
-      const decision=await router.decide({request,requestId,signal,isCurrent,context,
+      const decision=await router.decide({request,requestId,signal,isCurrent,context,history:getHistory(request),
         available:[...allowedTools,'current_time','feishu_calendar'],callActive:true,pending:pending.size>0,
         volumeControl:false,urls:request.match(/https?:\/\/[^\s<>"）)]+/gu)??[]});
       check(signal);

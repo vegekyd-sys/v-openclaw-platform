@@ -1,5 +1,5 @@
 // voice-jev-unified-v1
-import {jevEvaluatorFromEnv} from "./voice-decision-router.mjs";
+import {jevEvaluatorFromEnv,createVoiceDecisionHistory} from "./voice-decision-router.mjs";
 import {createGatewayVoiceDecisionOwner} from "./voice-decision-gateway.mjs";
 import {appendFileSync} from "node:fs";
 // gpt-live-caller-context-v1
@@ -478,6 +478,7 @@ function createTalkClientAgentConsultRunner(params) {
 }
 function createTalkClientGatewayControlOwner(params) {
 	let decisionOwner;
+	const decisionHistory=createVoiceDecisionHistory();
 	const decisionEvaluate=jevEvaluatorFromEnv();
 	let callLifecycle;
 	let bridge;
@@ -616,6 +617,7 @@ function createTalkClientGatewayControlOwner(params) {
 			final
 		});
 		if (!final) return;
+		decisionHistory.append(role,text);
 		transcriptSequence += 1;
 		const entryId = `${entryPrefix}-${transcriptSequence}`;
 		params.appendTranscript({
@@ -662,7 +664,7 @@ function createTalkClientGatewayControlOwner(params) {
 			if(decisionEvaluate){
 				if(!boundCallControl || typeof callControl.acceptDecision !== "function") throw new Error("JEV requires complete native USER ownership");
 				decisionOwner ??= createGatewayVoiceDecisionOwner({evaluate:decisionEvaluate,
-					context:params.decisionContext??"",isCallCurrent:()=>{owner.assertOpen();return owners.get(params.voiceSessionId)===owner;},
+					context:params.decisionContext??"",getHistory:request=>decisionHistory.snapshot(request),isCallCurrent:()=>{owner.assertOpen();return owners.get(params.voiceSessionId)===owner;},
 					invoke:params.invokeDirectTool,
 					control:applyControl,
 					emit:event=>harness.emit({...event,turnId:harness.ensureTurn(),payload:{...event.payload,...talkPayload()},final:event.type!=="tool.call"}),
