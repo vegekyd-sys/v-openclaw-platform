@@ -3128,7 +3128,15 @@ async function rotateOversizedCodexAppServerStartupBinding(params) {
 	});
 	const sessionTokens = sessionRecord?.totalTokensFresh === true && sessionRecord.totalTokensVersion === 1 && typeof sessionRecord?.totalTokens === "number" && Number.isFinite(sessionRecord.totalTokens) ? sessionRecord.totalTokens : void 0;
 	const tokenCount = maxFiniteNumber([sessionTokens, nativeTokens]);
-	if (tokenCount !== void 0 && tokenCount >= maxTokens) {
+	// v-codex-firsttext-v2: Codex compacts an oversized DeepSeek thread itself; a fresh one would replay the whole transcript.
+	const codexDeepSeekThread = String(binding.modelProvider ?? "").trim().toLowerCase() === "deepseek" || /deepseek/iu.test(String(binding.model ?? ""));
+	if (tokenCount !== void 0 && tokenCount >= maxTokens && codexDeepSeekThread) embeddedAgentLog.info("codex app-server keeping oversized DeepSeek thread for native compaction", {
+		threadId: binding.threadId,
+		maxTokens,
+		nativeTokens,
+		sessionTokens
+	});
+	if (tokenCount !== void 0 && tokenCount >= maxTokens && !codexDeepSeekThread) {
 		embeddedAgentLog.warn("codex app-server native transcript exceeded active token limit; starting a fresh thread", {
 			threadId: binding.threadId,
 			maxTokens,

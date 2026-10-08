@@ -99,6 +99,20 @@ const TARGETS = [
         + "var CodexTranscriptCheckpoint = class {"],
       ["params.runtimePlan?.auth.forwardedAuthProfileId ?? params.authProfileId ?? startupBinding?.authProfileId;",
         "params.runtimePlan?.auth.forwardedAuthProfileId ?? params.authProfileId ?? (codexBindingSharesProviderFamily(startupBinding, params.provider) ? startupBinding?.authProfileId : void 0);"],
+      // C. An oversized DeepSeek thread was rotated before every turn. The fresh thread is
+      //    seeded with the whole OpenClaw transcript, so in a big session (43万 tokens in
+      //    oc_64bcd621) it is born over Codex's 258,400 fallback window: the next turn sees
+      //    it oversized again, rotates again, and Codex compacts the replay every turn.
+      //    Keep the DeepSeek thread and let Codex's own auto-compaction shrink it; the
+      //    DeepSeek API accepts the uncompacted request (1M context). Byte guard and other
+      //    providers are unchanged.
+      ["\tconst tokenCount = maxFiniteNumber([sessionTokens, nativeTokens]);\n\tif (tokenCount !== void 0 && tokenCount >= maxTokens) {\n",
+        "\tconst tokenCount = maxFiniteNumber([sessionTokens, nativeTokens]);\n"
+        + "\t// v-codex-firsttext-v2: Codex compacts an oversized DeepSeek thread itself; a fresh one would replay the whole transcript.\n"
+        + "\tconst codexDeepSeekThread = String(binding.modelProvider ?? \"\").trim().toLowerCase() === \"deepseek\" || /deepseek/iu.test(String(binding.model ?? \"\"));\n"
+        + "\tif (tokenCount !== void 0 && tokenCount >= maxTokens && codexDeepSeekThread) embeddedAgentLog.info(\"codex app-server keeping oversized DeepSeek thread for native compaction\", {\n"
+        + "\t\tthreadId: binding.threadId,\n\t\tmaxTokens,\n\t\tnativeTokens,\n\t\tsessionTokens\n\t});\n"
+        + "\tif (tokenCount !== void 0 && tokenCount >= maxTokens && !codexDeepSeekThread) {\n"],
     ],
   },
   {
