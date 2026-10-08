@@ -1841,7 +1841,7 @@ var CodexAppServerEventProjector = class {
 		const item = isJsonObject(params.item) ? params.item : void 0;
 		if (!item) return;
 		this.toolTranscriptProjection.recordRawNativeToolItem(item);
-		this.assistantProjection.handleRawResponseItemCompleted(item, this.activeItemIds);
+		if (!this.isCompacting()) this.assistantProjection.handleRawResponseItemCompleted(item, this.activeItemIds); // v-codex-firsttext-v5: a compaction handoff summary is not a reply
 		await this.generatedMediaProjection.recordRaw(item);
 	}
 	clearTerminalPresentationForNativeItem(item) {

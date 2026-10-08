@@ -1621,40 +1621,6 @@ function areDynamicToolFingerprintsCompatible(previous, next, nextLegacy) {
 function areUserMcpServersFingerprintsCompatible(params) {
 	return params.previous === params.next || params.previous === params.nextLegacy || params.nextLegacy !== void 0 && params.previous === hashCodexAppServerBindingFingerprint(params.nextLegacy);
 }
-// v-codex-firsttext-v4: a thread whose recorded tools cover this turn's tools keeps serving it.
-function codexThreadToolName(tool) {
-	return tool?.namespace ?? tool?.name;
-}
-function codexThreadToolShape(tool) {
-	const { description, tools, deferLoading, ...rest } = tool ?? {};
-	return JSON.stringify(stabilizeJsonValue({ ...rest, deferLoading: deferLoading === true }));
-}
-function codexThreadToolServes(have, want) {
-	if (!have || !want || codexThreadToolName(have) !== codexThreadToolName(want)) return false;
-	if (Array.isArray(have.tools) || Array.isArray(want.tools)) {
-		if (!Array.isArray(have.tools) || !Array.isArray(want.tools)) return false;
-		const byName = new Map(have.tools.map((tool) => [codexThreadToolName(tool), tool]));
-		return want.tools.every((tool) => codexThreadToolServes(byName.get(codexThreadToolName(tool)), tool));
-	}
-	return codexThreadToolShape(have) === codexThreadToolShape(want);
-}
-async function codexBoundThreadToolCatalogForTurn(params, binding) {
-	if (!binding?.rolloutPath || !binding.dynamicToolsFingerprint || binding.connectionScope === "supervision" || params.dynamicTools.length === 0) return;
-	try {
-		const sessionsRoot = path.join(resolveCodexAppServerLocalHomeDir(params.appServer.start, resolveCodexThreadAgentDir(params)), "sessions");
-		const recorded = (await readCodexSessionMeta(sessionsRoot, binding.rolloutPath, binding.threadId))?.dynamic_tools;
-		if (!Array.isArray(recorded) || codexDynamicToolsFingerprint(recorded) !== binding.dynamicToolsFingerprint) return;
-		const byName = new Map(recorded.map((tool) => [codexThreadToolName(tool), tool]));
-		if (!params.dynamicTools.every((tool) => codexThreadToolServes(byName.get(codexThreadToolName(tool)), tool))) return;
-		return {
-			dynamicToolsFingerprint: binding.dynamicToolsFingerprint,
-			legacyDynamicToolsFingerprint: codexLegacyDynamicToolsFingerprint(recorded),
-			recordedToolCount: recorded.length
-		};
-	} catch {
-		return;
-	}
-}
 function shouldStartTransientNoToolThread(params) {
 	return Boolean(params.previous && !isEmptyDynamicToolsFingerprint(params.previous) && !params.nextHasDynamicTools);
 }
@@ -5040,23 +5006,8 @@ async function startOrResumeThread(params) {
 				binding = void 0;
 			}
 		}
-		let codexKeptToolCatalog; // v-codex-firsttext-v4
-		if (binding?.threadId && binding.dynamicToolsFingerprint && !areDynamicToolFingerprintsCompatible(binding.dynamicToolsFingerprint, dynamicToolsFingerprint, legacyDynamicToolsFingerprint)) {
-			const kept = await codexBoundThreadToolCatalogForTurn(params, binding);
-			if (kept) {
-				embeddedAgentLog.info("codex app-server keeping thread whose tool catalog covers this turn", {
-					threadId: binding.threadId,
-					threadTools: kept.recordedToolCount,
-					turnTools: params.dynamicTools.length
-				});
-				codexKeptToolCatalog = {
-					dynamicToolsFingerprint: kept.dynamicToolsFingerprint,
-					legacyDynamicToolsFingerprint: kept.legacyDynamicToolsFingerprint
-				};
-			}
-		}
 		if (binding?.threadId) {
-			if (!codexKeptToolCatalog && binding.dynamicToolsFingerprint && !areDynamicToolFingerprintsCompatible(binding.dynamicToolsFingerprint, dynamicToolsFingerprint, legacyDynamicToolsFingerprint)) {
+			if (binding.dynamicToolsFingerprint && !areDynamicToolFingerprintsCompatible(binding.dynamicToolsFingerprint, dynamicToolsFingerprint, legacyDynamicToolsFingerprint)) {
 				assertCodexBindingMayBeReplaced(binding, "changing the dynamic tool catalog");
 				preserveExistingBinding = shouldStartTransientNoToolThread({
 					previous: binding.dynamicToolsFingerprint,
@@ -5070,7 +5021,6 @@ async function startOrResumeThread(params) {
 			} else {
 				const warmReuse = await tryReuseCodexLiveThread({
 					...requestContext,
-					...codexKeptToolCatalog,
 					params,
 					binding,
 					clientId,
@@ -5081,16 +5031,12 @@ async function startOrResumeThread(params) {
 					throwIfAborted();
 					await clearCurrentBinding(incognito ? "rotating an unavailable ephemeral thread binding" : "rotating a stale plugin app binding");
 				} else {
-					const configuration = await prepareCodexThreadResume(params, binding, {
-						...requestContext,
-						...codexKeptToolCatalog
-					});
+					const configuration = await prepareCodexThreadResume(params, binding, requestContext);
 					try {
 						await releaseRetainedThread(binding.threadId, binding.clientId, configuration.assertCurrent);
 						configuration.assertCurrent();
 						const resumed = await resumeExistingCodexThread(params, {
 							...requestContext,
-							...codexKeptToolCatalog,
 							binding,
 							clearCurrentBinding,
 							prebuiltFinalConfigPatch: warmReuse.prebuiltFinalConfigPatch,

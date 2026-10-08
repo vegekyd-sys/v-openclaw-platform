@@ -5,7 +5,8 @@
 //   node codex-firsttext-shared-accept.mjs patch   --owner O --patch <patch-codex-firsttext.mjs>
 //   node codex-firsttext-shared-accept.mjs restart --owner O
 //   node codex-firsttext-shared-accept.mjs run     --owner O --label L --bigKey <session key>
-//   node codex-firsttext-shared-accept.mjs toolset --owner O --label L  # owner and member turns share one thread
+//   node codex-firsttext-shared-accept.mjs toolset --owner O --label L [--seedWords N]  # owner and member turns share one thread
+//   node codex-firsttext-shared-accept.mjs swap    --owner O --tl <thread-lifecycle.js> --sha <sha256>
 //   node codex-firsttext-shared-accept.mjs restore --owner O         # byte-for-byte from backup, then restart
 //
 // The codex plugin lives under state/npm, outside the release channel's runtime
@@ -342,6 +343,17 @@ if (command === "backup") {
   const key = `agent:makaron:explicit:vlab-dev-codexft-${label}-${Date.now().toString(36)}`;
   const t0 = Date.now();
   await send(key, "/vds");
+  // --seedWords N: a member first loads N filler words (about 2.2 tokens each), so a thread
+  // rotation has a real history to replay, as in V's groups. Keep it under Codex's 244,800-token
+  // auto-compaction limit.
+  const seedWords = Number(opt("seedWords") ?? 0);
+  if (seedWords > 0) {
+    // --salt makes each run's history unique, so DeepSeek's prefix cache from an earlier run
+    // cannot serve this one.
+    const salt = opt("salt") ?? "";
+    const list = Array.from({ length: seedWords }, (_, i) => `${salt}w${i % 997}`).join(" ");
+    log(turnRow(label, "toolset:seed", await send(key, `Remember this list for later; do not repeat it, just reply OK. ${list}`, member)));
+  }
   const steps = [
     ["member", "Do not use any tools. Remember the code word OTTER-4 and reply with one short sentence."],
     ["owner", "Do not use any tools. From our conversation only: what code word was given earlier? One line."],
@@ -362,6 +374,16 @@ if (command === "backup") {
   log({ label, scenario: "toolset", ownerOnlyProbe: { calls: body.split('"name":"conversations_list"').length - 1, refused: body.split("Unknown OpenClaw tool: conversations_list").length + body.split("not available for this turn").length - 2 } });
   member.stop?.();
   client.stop?.();
+} else if (command === "swap") {
+  // Put one thread-lifecycle build into the Gateway-loaded copy (state/npm), keeping owner and mode.
+  const src = opt("tl");
+  const want = opt("sha");
+  assert(src && want, "--tl <file> --sha <sha256 prefix> required");
+  assert.equal(sha(src), want.slice(0, 16), "source bytes are not the expected build");
+  const dst = `${CODEX}/dist/thread-lifecycle-DAcEJ_Om.js`;
+  replaceKeepingOwner(dst, fs.readFileSync(src));
+  execFileSync(NODE, ["--check", dst]);
+  log({ swap: dst, sha: sha(dst) });
 } else if (command === "models") {
   await connect();
   for (const [method, params] of [["models.list", { agentId: "makaron" }], ["models.list", { agentId: "makaron", view: "all" }]]) {

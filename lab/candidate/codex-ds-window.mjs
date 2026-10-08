@@ -9,6 +9,7 @@
 //   PHASES=A,B        + catalog (lab/release-files/codex-firsttext/openclaw-deepseek-model-catalog.json), same turn, compare
 //   PHASES=A,B,C,D    + big session without catalog (C) and with catalog (D), two turns each
 //   PHASES=T          owner and member turns share one thread (patch F)
+//   PHASES=S          a compaction handoff summary is not delivered as the reply (patch G)
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -59,6 +60,15 @@ const codexRoot = path.join(npmProjects, codexProject, "node_modules", "@opencla
 const codexDist = path.join(codexRoot, "dist");
 fs.copyFileSync(path.join(repoRoot, "lab/release-files/background-work-20261002/vlab-codex-parity/harness-DXVZ5II5.js"), path.join(codexDist, "harness-DXVZ5II5.js"));
 for (const f of ["run-attempt-D1hJO4fX.js", "thread-lifecycle-DAcEJ_Om.js"]) fs.copyFileSync(path.join(repoRoot, "lab/release-files/codex-firsttext/dist", f), path.join(codexDist, f));
+// TRACE=1: log every app-server notification the turn projector sees (method, item id/type/phase,
+// first characters of a delta), in this candidate's copy only.
+if (process.env.TRACE === "1") {
+  const ra = path.join(codexDist, "run-attempt-D1hJO4fX.js");
+  const anchor = "\t\tthis.assistantProjection.handleNotification(notification.method, params);\n";
+  const src = fs.readFileSync(ra, "utf8");
+  assert.equal(src.split(anchor).length, 2, "trace anchor");
+  fs.writeFileSync(ra, src.replace(anchor, anchor + "\t\tconsole.log(\"[codex-notify-trace] \" + JSON.stringify({ m: notification.method, id: params?.itemId ?? params?.item?.id, t: params?.item?.type, ph: params?.item?.phase, d: typeof params?.delta === \"string\" ? params.delta.slice(0, 24) : void 0, compacting: this.isCompacting() }));\n"));
+}
 
 // ---- config: V's /vds ----
 const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
@@ -164,7 +174,7 @@ async function connectOnce(scopes = ["operator.read", "operator.write", "operato
   client = await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("connect deadline")), 30_000);
     const c = new GatewayClient({ url: `ws://127.0.0.1:${port}`, token, deviceIdentity: null, clientName: "cli", mode: "cli", caps: ["tool-events"], scopes,
-      onEvent(e) { const p = e.payload; const r = runs.get(p?.runId); if (r && e.event === "chat" && ["final", "error", "aborted"].includes(p.state)) { r.terminal = p.state; r.endAt = Date.now(); if (p.state !== "final") r.error = redact(String(p.errorMessage ?? "").slice(0, 300)); } },
+      onEvent(e) { const p = e.payload; const r = runs.get(p?.runId); if (r && e.event === "agent" && p.stream === "assistant" && typeof p.data?.text === "string") r.streamed = (r.streamed ?? []).concat(p.data.text.slice(0, 60)).slice(-40); if (r && e.event === "chat" && ["final", "error", "aborted"].includes(p.state)) { r.terminal = p.state; r.endAt = Date.now(); if (p.state !== "final") r.error = redact(String(p.errorMessage ?? "").slice(0, 300)); } },
       onHelloOk() { clearTimeout(timer); resolve(c); }, onConnectError(e) { clearTimeout(timer); reject(e); } });
     c.start();
   });
@@ -226,6 +236,18 @@ async function phase(label, withCatalog, turns) {
     results.push({ terminal: r.terminal, error: r.error, secs: Math.round((r.endAt - r.sentAt) / 1000),
       log: lines.slice(mark).filter((l) => /exceeded active token limit|keeping oversized DeepSeek|auto-compaction|starting a fresh thread|model_catalog_json|catalog/iu.test(l)).map((l) => redact(l).slice(0, 220)).slice(-6) });
   }
+  if (process.env.TRACE === "1") {
+    // Collapse runs of the same (method, item) so the order stays readable.
+    const out = [];
+    for (const l of lines.filter((x) => x.includes("[codex-notify-trace]"))) {
+      const j = JSON.parse(l.slice(l.indexOf("{")));
+      const k = `${j.m}|${j.id}`;
+      if (out.length && out.at(-1).k === k) { out.at(-1).n += 1; continue; }
+      out.push({ k, n: 1, ...j });
+    }
+    console.log(JSON.stringify({ phase: label, trace: out.map(({ k, ...r }) => r) }));
+    lines.splice(0, lines.length);
+  }
   const caps = captures.slice(c0);
   console.log(JSON.stringify({ phase: label, catalog: withCatalog, results, requests: caps.length, first: caps[0] ? summarize(caps[0].json) : null, rollouts: rollouts(t0) }));
   return caps;
@@ -266,6 +288,33 @@ try {
       while (Date.now() < deadline && !(flush = lines.slice(mark).find((l) => /memory-flush-deferred\.1\].*"phase":"ran"/u.test(l)))) await sleep(3000);
       const r2 = await send(key, big[1]);
       console.log(JSON.stringify({ phase: "F", variant, turn1: r1.terminal, flush: flush ? redact(flush).slice(-160) : "no flush within 8 min", turn2: r2.terminal, turn2Secs: Math.round((r2.endAt - r2.sentAt) / 1000), rollouts: rollouts(t0) }));
+    }
+  }
+  // S: a /vds session over Codex's window compacts inside the next turn. The handoff summary the
+  // model writes for the compaction must not become the reply; the real answer must. Runs V's
+  // run-attempt (v) and this branch's (fixed) on the same Gateway setup.
+  if (PHASES.includes("S")) {
+    const ra = path.join(codexDist, "run-attempt-D1hJO4fX.js");
+    const fixedSrc = fs.readFileSync(ra, "utf8");
+    const fixedLine = "\t\tif (!this.isCompacting()) this.assistantProjection.handleRawResponseItemCompleted(item, this.activeItemIds); // v-codex-firsttext-v5: a compaction handoff summary is not a reply\n";
+    const vLine = "\t\tthis.assistantProjection.handleRawResponseItemCompleted(item, this.activeItemIds);\n";
+    assert.equal(fixedSrc.split(fixedLine).length, 2, "fixed line present once");
+    for (const variant of (process.env.S_VARIANTS ?? "v,fixed").split(",")) {
+      fs.writeFileSync(ra, variant === "v" ? fixedSrc.replace(fixedLine, vLine) : fixedSrc);
+      client?.stop?.(); await stopGateway(); startGateway(); await waitPort(); await sleep(3000); await connect();
+      const key = `agent:makaron:explicit:vlab-dev-dssum-${variant}-${Date.now().toString(36)}`;
+      const t0 = Date.now();
+      await send(key, "/vds");
+      const r1 = await send(key, big[0]);
+      const mark = lines.length;
+      const r2 = await send(key, "Do not use any tools. Reply with exactly this and nothing else: ANSWER-OK-7");
+      const h = await client.request("chat.history", { agentId: "makaron", sessionKey: key, limit: 6 }, { timeoutMs: 30_000 });
+      const texts = (h.messages ?? []).filter((m) => m.role === "assistant").map((m) => (typeof m.content === "string" ? m.content : (m.content ?? []).filter((c) => c.type === "text").map((c) => c.text).join(" ")).trim());
+      const last = texts.at(-1) ?? "";
+      const streamedSummary = (r2.streamed ?? []).some((t) => /Checkpoint|Handoff|^#/u.test(t));
+      console.log(JSON.stringify({ phase: "S", variant, turn1: r1.terminal, turn2: r2.terminal, turn2Secs: Math.round((r2.endAt - r2.sentAt) / 1000),
+        storedReply: last.slice(0, 120), replyIsAnswer: last.includes("ANSWER-OK-7"), storedSummary: texts.some((t) => /Checkpoint|Handoff/u.test(t)), streamedSummary,
+        streamedFirst: (r2.streamed ?? [])[0], compactionLog: lines.slice(mark).filter((l) => /keeping oversized|auto-compaction/u.test(l)).length, rollouts: rollouts(t0) }));
     }
   }
   // T: owner and member turns in one /vds session. chat.send marks the sender owner only with
