@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createAvatarTasks, taskActivity, AVATAR_FILES } from './avatar-state.mjs';
-import { createAvatarRenderer } from './avatar.mjs';
+import { createAvatarRenderer, mountAvatar, THINKING_POSE_DWELL_MS } from './avatar.mjs';
 
 test('task identities come from executing tools, never from conversational text', () => {
   assert.equal(taskActivity('memory_search'), 'memory');
@@ -63,4 +63,26 @@ test('failed assets keep last good portrait and allow a retry; reduced motion sk
   const renderer=createAvatarRenderer({image,previous,load:async file=>file,reducedMotion:()=>true});
   await renderer.show('memory');assert.equal(animations,0);assert.equal(previous.hidden,true);
   assert.equal(AVATAR_FILES.length,74);
+});
+
+test('cosmetic decisions and duplicate task events do not shorten thinking; last pose stays still', async t => {
+  t.mock.timers.enable({apis:['setTimeout']});
+  const image={src:'idle',getAttribute(){return this.src;}},previous={hidden:true};
+  const body={dataset:{callState:'connected'}};
+  const document={body,hidden:false,getElementById:id=>id==='avatar'?image:previous,addEventListener(){},removeEventListener(){}};
+  const window={navigator:{},Image:class {set src(value){this.value=value;queueMicrotask(()=>this.onload());}async decode(){}},
+    matchMedia:()=>({matches:false,addEventListener(){},removeEventListener(){}}),
+    MutationObserver:class {observe(){}disconnect(){}},addEventListener(){}};
+  const settle=async()=>{for(let i=0;i<8;i++)await Promise.resolve();};
+  const avatar=mountAvatar(document,window);avatar.show('memory');await settle();
+  const first=image.src;
+  t.mock.timers.tick(THINKING_POSE_DWELL_MS-1);avatar.expression('bright');avatar.show('memory');await settle();
+  assert.equal(image.src,first);
+  t.mock.timers.tick(1);await settle();assert.notEqual(image.src,first);
+  for(let i=0;i<4;i++){t.mock.timers.tick(THINKING_POSE_DWELL_MS);await settle();}
+  assert.match(image.src,/memory-5-512\.webp$/u);
+  const last=image.src;
+  for(let i=0;i<8;i++){t.mock.timers.tick(THINKING_POSE_DWELL_MS);avatar.expression('curious');await settle();}
+  assert.equal(image.src,last);
+  avatar.dispose();
 });
