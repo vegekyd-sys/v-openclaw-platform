@@ -192,8 +192,13 @@ function requestAutomaticEnd(active, value) {
     if (backendPath) { request.backendToolCallId = value.backendToolCallId; request.backendRunId = value.backendRunId; }
     if (decisionPath) { request.decisionId = value.decisionId; request.decisionModel = value.model; }
     request.delegationGeneration = value.delegationGeneration;
-    // An ordinary consult acknowledgment before host acceptance is not farewell.
-    request.turnId = null; request.terminalAt = null; request.audioObserved = false; request.quietSince = null;
+    // The actual native context ACK can precede the slower host polling receipt.
+    // Keep only playback recorded after that ACK for this exact delegation.
+    // Backend consult progress still needs a fresh post-acceptance farewell.
+    if (!decisionPath || !request.nativeContextAck || !request.providerObserved) {
+      request.turnId = null; request.terminalAt = null; request.audioObserved = false;
+    }
+    request.quietSince = null; request.lastSampleAt = null;
     const observed = active.nativeCallControlDelegations?.get(value.nativeDelegationId);
     request.providerObserved = observed?.originUserTurnId === value.originUserTurnId;
     if (request.providerObserved) active.endNativeRequestId = request.requestId;
@@ -226,6 +231,21 @@ function observeNativeEndDelegation(active, item) {
   request.providerObserved = true;
   active.endNativeRequestId = request.requestId;
   armAutomaticEnd(active, request);
+}
+function observeNativeControlContext(active, data) {
+  const id = data.delegation_item_id;
+  const observed = active.nativeCallControlDelegations?.get(id);
+  if (!observed || active.latestNativeUserTurnId !== observed.originUserTurnId) return;
+  const request = endCallRequest(active, id, observed.originUserTurnId);
+  if (!request || request.backendPath) return;
+  const key = JSON.stringify([data.start_ms ?? null, data.end_ms ?? null]);
+  if (request.nativeContextAck && request.nativeContextAckKey === key) return;
+  // This captures evidence, never permission to hang up. A matching, accepted
+  // JEV host receipt and actual audible PCM + terminal + fresh quiet are required.
+  request.nativeContextAck = true; request.nativeContextAckKey = key;
+  request.providerObserved = true; active.endNativeRequestId = id;
+  request.turnId = null; request.terminalAt = null; request.audioObserved = false;
+  request.quietSince = null; request.lastSampleAt = null;
 }
 function observeAutomaticEnd(active, at, energy) {
   // Keep the genuine native farewell observation even if the host SSE travels
@@ -370,6 +390,7 @@ function providerMessage(event) {
   if (active && ((["turn.created", "turn.done"].includes(data.type) && data.turn?.role === "user")
     || (data.type === "input_transcript.added" && typeof data.item?.text === "string" && data.item.text.trim()))) suppressGreetingForCaller(active);
   if (active && data.type === "delegation.created") observeNativeEndDelegation(active, data.item);
+  if (active && data.type === "delegation.context.appended") observeNativeControlContext(active, data);
   if (active && data.type === "turn.done" && data.turn?.role === "user" &&
     data.turn.id === active.latestNativeUserTurnId && typeof data.turn.transcript === "string" && data.turn.transcript.trim()) {
     active.completedNativeUserTurns ??= new Set(); active.completedNativeUserTurns.add(data.turn.id);

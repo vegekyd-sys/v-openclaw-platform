@@ -1059,3 +1059,63 @@ test('actual JEV end rejection revokes only matching decision and a new USER kee
  f.send({type:'turn.created',turn:{role:'user',id:'new-user'}}); f.tool(receipt);
  assert.equal(f.body.dataset.callState,'connected'); assert.equal(f.peer.closed,false);
 });
+
+const jevEndReceipt = {source:'decision_model_client_tool',callId:'jev_d',decisionId:'d',model:'typesafe/jev-1.13',backendToolCallId:undefined,backendRunId:undefined};
+function nativeControlAck(f, id='item_end_real', start=100) {
+ f.send({type:'delegation.context.appended',delegation_item_id:id,start_ms:start,end_ms:start+200});
+}
+function nativeFarewell(f, id='native-bye') {
+ f.setNow(100); f.send({type:'turn.created',turn:{role:'assistant',id}});
+ f.meter(150,0,.12); f.setNow(175); f.send({type:'turn.done',turn:{role:'assistant',id}});
+}
+
+test('late JEV polling receipt keeps exact native ACK farewell but requires fresh post-receipt quiet',async t=>{
+ const f=await backendEndCallFixture(t); f.native(); nativeControlAck(f); nativeFarewell(f);
+ for(let at=200;at<=1000;at+=50) f.meter(at,0,0);
+ assert.equal(f.peer.closed,false,'native context alone cannot authorize closure');
+ f.tool(jevEndReceipt); assert.equal(f.body.dataset.callState,'ending');
+ // A duplicate receipt/ACK cannot replace the delivered farewell or reuse old quiet.
+ f.tool(jevEndReceipt); nativeControlAck(f);
+ for(let at=1050;at<=1750;at+=50) f.meter(at,0,0);
+ assert.equal(f.peer.closed,false);
+ f.meter(1800,0,0); await tick(); assert.equal(f.peer.closed,true);
+ const drain=f.context.__gptLiveDuplexDiagnostics.events.find(row=>row.type==='model-end-call-playback-drained');
+ assert.equal(drain.turnId,'native-bye'); assert.equal(drain.decisionId,'d');
+});
+
+test('late JEV receipt cannot reuse an ordinary response before native context ACK',async t=>{
+ const f=await backendEndCallFixture(t); f.native(); nativeFarewell(f,'ordinary-ack');
+ nativeControlAck(f); f.tool(jevEndReceipt);
+ for(let at=200;at<=1500;at+=50) f.meter(at,0,0);
+ assert.equal(f.peer.closed,false);
+});
+
+test('missing or foreign native ACK cannot preserve pre-receipt playback',async t=>{
+ for(const id of [null,'foreign-item']) {
+  const f=await backendEndCallFixture(t); f.native();
+  if(id) nativeControlAck(f,id);
+  nativeFarewell(f); f.tool(jevEndReceipt);
+  for(let at=200;at<=1500;at+=50) f.meter(at,0,0);
+  assert.equal(f.peer.closed,false);
+ }
+});
+
+test('new USER invalidates native ACK playback before the late JEV receipt',async t=>{
+ const f=await backendEndCallFixture(t); f.native(); nativeControlAck(f); nativeFarewell(f);
+ f.send({type:'turn.created',turn:{role:'user',id:'new-user'}});
+ nativeControlAck(f); f.tool(jevEndReceipt);
+ for(let at=200;at<=1500;at+=50) f.meter(at,0,0);
+ assert.equal(f.body.dataset.callState,'connected'); assert.equal(f.peer.closed,false);
+});
+
+test('native ACK and accepted JEV receipt still need both audible PCM and matching terminal',async t=>{
+ for(const missing of ['audio','terminal']) {
+  const f=await backendEndCallFixture(t); f.native(); nativeControlAck(f);
+  f.send({type:'turn.created',turn:{role:'assistant',id:'bye'}});
+  if(missing!=='audio') f.meter(50,0,.12);
+  if(missing!=='terminal') f.send({type:'turn.done',turn:{role:'assistant',id:'bye'}});
+  f.tool(jevEndReceipt);
+  for(let at=100;at<=1500;at+=50) f.meter(at,0,0);
+  assert.equal(f.peer.closed,false);
+ }
+});
