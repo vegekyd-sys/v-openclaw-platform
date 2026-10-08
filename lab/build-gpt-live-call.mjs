@@ -1,3 +1,4 @@
+import {patchVoiceJevTalk,patchVoiceJevController} from "./patch-voice-jev.mjs";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
@@ -36,7 +37,7 @@ const voiceExecBaseline = [
   { name: "gateway-message-tool.mjs", directory: "release/captured/v2026.9.1-db91.6-memory-search-weighted-20261002.worker/dist", target: "production-worker/gateway-message-tool.mjs", before: "2ae673d4eae9dfd0f350e07d1106a78c95c9259d698e2a9b42fdbaeab2078472", transform: patchGptLiveVoiceExecGatewayRelay },
   { name: "worker-pool.mjs", directory: "release/captured/v2026.9.1-db91.6-hotreload-feishu-approvals-20261003.worker/dist", target: "production-worker/worker-pool.mjs", before: "58558773884404e99b50e8a2916dc62f6c18a7b2d9360301340dcd61511c50c6", transform: patchGptLiveVoiceExecWorkerPool },
 ];
-export function build({ baseRelease = "hotreload-feishu-approvals-v2" } = {}) {
+export function build({ baseRelease = "loopback-requester-sender-v1" } = {}) {
   buildNative();
   const native = JSON.parse(readFileSync(resolve(root, "lab/gpt-live-native-progress-plan.json")));
   const baseline = JSON.parse(readFileSync(resolve(root, "lab/gpt-live-consult-baseline.json")));
@@ -45,7 +46,7 @@ export function build({ baseRelease = "hotreload-feishu-approvals-v2" } = {}) {
   assert(lifecycleController, "native lifecycle requires the tested progress controller");
   const lifecycleControllerSource = "lab/release-files/gpt-live-call/realtime-quicksilver-delegation-controller-B0yPpiHp.js";
   mkdirSync(dirname(resolve(root, lifecycleControllerSource)), { recursive: true });
-  writeFileSync(resolve(root, lifecycleControllerSource), patchGptLiveCallLifecycleController(readFileSync(resolve(root, lifecycleController.source), "utf8")));
+  writeFileSync(resolve(root, lifecycleControllerSource), patchVoiceJevController(patchGptLiveCallLifecycleController(readFileSync(resolve(root, lifecycleController.source), "utf8"))));
   lifecycleController.source = lifecycleControllerSource;
   const lifecycleBrokerBaseline = "lab/fixtures/gpt-live-call-lifecycle/realtime-quicksilver-session-B3HKftDE.js";
   const lifecycleBrokerBefore = readFileSync(resolve(root, lifecycleBrokerBaseline));
@@ -56,6 +57,13 @@ export function build({ baseRelease = "hotreload-feishu-approvals-v2" } = {}) {
   const lifecycleSource = "lab/release-files/gpt-live-call/gpt-live-call-lifecycle.mjs";
   writeFileSync(resolve(root, lifecycleSource), createGptLiveCallLifecycleRuntimeSource());
   files.push({ source: lifecycleSource, target: "openclaw/dist/gpt-live-call-lifecycle.mjs", before: null });
+  for(const [input,name] of [['lab/voice-decision-router.mjs','voice-decision-router.mjs'],['lab/voice-decision-gateway.mjs','voice-decision-gateway.mjs'],['lab/realtime-direct-tools/tools.mjs','voice-direct-tools.mjs']]){
+    const source='lab/release-files/gpt-live-call/'+name;
+    let bytes=readFileSync(resolve(root,input),'utf8');
+    if(name==='voice-decision-gateway.mjs')bytes=bytes.replace('./realtime-direct-tools/tools.mjs','./voice-direct-tools.mjs');
+    writeFileSync(resolve(root,source),bytes);
+    files.push({source,target:'openclaw/dist/'+name,before:null});
+  }
   const terminalBaseline = "lab/fixtures/gpt-live-call-lifecycle/embedded-agent-DaSvA-Yk.js";
   const terminalBefore = readFileSync(resolve(root, terminalBaseline));
   const terminalBeforeSha = "128a61c9e10a47d501ad425345f9f05a88c9dc66b665e32f979d12e29675cd67";
@@ -79,7 +87,7 @@ export function build({ baseRelease = "hotreload-feishu-approvals-v2" } = {}) {
     const continuation = item.name.startsWith("talk-") ? patchGptLiveContinuationTalk : patchGptLiveContinuationHarness;
     const continued = continuation(transform(before.toString("utf8")));
     const after = item.name.startsWith("talk-")
-      ? patchGptLiveCallerContextTalk(patchGptLiveBackendCallControlTalk(patchGptLiveCallLifecycleTalk(patchGptLiveNativeConfirmationTalk(continued))))
+      ? patchVoiceJevTalk(patchGptLiveCallerContextTalk(patchGptLiveBackendCallControlTalk(patchGptLiveCallLifecycleTalk(patchGptLiveNativeConfirmationTalk(continued)))))
       : patchGptLiveBackendCallControlHarness(continued);
     const source = `lab/release-files/gpt-live-call/${item.name}`;
     mkdirSync(dirname(resolve(root, source)), { recursive: true }); writeFileSync(resolve(root, source), after);
@@ -154,10 +162,10 @@ export function build({ baseRelease = "hotreload-feishu-approvals-v2" } = {}) {
   fixtures('lab/fixtures/gpt-live-native-progress');fixtures('lab/fixtures/gpt-live-completion-context');fixtures('lab/fixtures/gpt-live-continuation');fixtures('lab/fixtures/gpt-live-public-progress');fixtures('lab/fixtures/gpt-live-call-lifecycle');
   const completionCandidate=JSON.parse(readFileSync(resolve(root,'lab/candidate/gpt-live-completion-context.plan.json')));
   writeFileSync(resolve(root, "lab/candidate/gpt-live-call.plan.json"), JSON.stringify({
-    baseRelease, files, tests: ["lab/gpt-live-h5/result-presentation.test.mjs", "lab/gpt-live-projection-readiness.test.mjs", "lab/gpt-live-backend-call-control.test.mjs", "lab/gpt-live-call-lifecycle.test.mjs", "lab/gpt-live-consult-progress.test.mjs", "lab/gpt-live-public-progress-bridge.test.mjs", "lab/gpt-live-native-progress.test.mjs", "lab/gpt-live-h5/server.test.mjs", "lab/gpt-live-h5/app.test.mjs", "lab/gpt-live-h5/duplex-playback.test.mjs", "lab/gpt-live-h5/microphone-capture.test.mjs", "lab/gpt-live-h5/transcript-presentation.test.mjs", "lab/gpt-live-h5/call-sounds.test.mjs", "lab/gpt-live-call-live-auth.test.mjs", "lab/gpt-live-call-live-evidence.test.mjs",
+    baseRelease, files, tests: ["lab/voice-decision-router.test.mjs", "lab/realtime-direct-tools/session.test.mjs", "lab/gpt-live-h5/result-presentation.test.mjs", "lab/gpt-live-projection-readiness.test.mjs", "lab/gpt-live-backend-call-control.test.mjs", "lab/gpt-live-call-lifecycle.test.mjs", "lab/gpt-live-consult-progress.test.mjs", "lab/gpt-live-public-progress-bridge.test.mjs", "lab/gpt-live-native-progress.test.mjs", "lab/gpt-live-h5/server.test.mjs", "lab/gpt-live-h5/app.test.mjs", "lab/gpt-live-h5/duplex-playback.test.mjs", "lab/gpt-live-h5/microphone-capture.test.mjs", "lab/gpt-live-h5/transcript-presentation.test.mjs", "lab/gpt-live-h5/call-sounds.test.mjs", "lab/gpt-live-call-live-auth.test.mjs", "lab/gpt-live-call-live-evidence.test.mjs",
       "lab/gpt-live-consult-continuation.test.mjs", "lab/gpt-live-voice-exec-lifetime.test.mjs", "lab/gpt-live-voice-confirmation.test.mjs", "lab/voice-spoken-confirmation-switch.test.mjs", "lab/gpt-live-native-confirmation.test.mjs", "lab/gpt-live-voice-tool-order.test.mjs", "lab/gpt-live-candidate-native/confirmation-evidence.test.mjs", "lab/gpt-live-candidate-native/os-observer-lifecycle.test.mjs", "lab/gpt-live-candidate-native/call-lifecycle-evidence.test.mjs", "lab/gpt-live-candidate-native/call-lifecycle-target.test.mjs", "lab/gpt-live-candidate-native/recording-lifecycle.test.mjs", "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-spawn-gateway-proxy.test.mjs", "experiments/agent-worker-isolation-v1/patch-openclaw-sessions-yield-external-task.test.mjs", "lab/gpt-live-pr-provenance.test.mjs", "lab/gpt-live-pr-config.test.mjs", "lab/gpt-live-pr-trace.test.mjs", "lab/gpt-live-h5-provenance-evidence.test.mjs", "lab/gpt-live-h5-control-evidence.test.mjs", "lab/gpt-live-h5-user-pcm.test.mjs", "lab/gpt-live-h5-control-probe.test.mjs", "lab/gpt-live-candidate-config-guard.test.mjs",...completionCandidate.tests],
     support: [...new Set([
-      "lab/gpt-live-call-lifecycle.mjs", "lab/patch-gpt-live-call-lifecycle.mjs", "lab/patch-gpt-live-result-presentation.mjs", "lab/gpt-live-h5/result-presentation.mjs", "lab/patch-gpt-live-caller-context.mjs", "lab/patch-gpt-live-backend-call-control.mjs", "lab/patch-gpt-live-call-terminal.mjs", "lab/gpt-live-h5/instructions.mjs", "lab/gpt-live-h5/persona.mjs",
+      "lab/gpt-live-call-lifecycle.mjs", "lab/patch-gpt-live-call-lifecycle.mjs", "lab/patch-voice-jev.mjs", "lab/voice-decision-router.mjs", "lab/voice-decision-router.test.mjs", "lab/voice-jev-benchmark.mjs", "lab/realtime-direct-tools/jev-ab-observer.mjs", "lab/voice-decision-gateway.mjs", "lab/realtime-direct-tools/tools.mjs", "lab/patch-gpt-live-result-presentation.mjs", "lab/gpt-live-h5/result-presentation.mjs", "lab/patch-gpt-live-caller-context.mjs", "lab/patch-gpt-live-backend-call-control.mjs", "lab/patch-gpt-live-call-terminal.mjs", "lab/gpt-live-h5/instructions.mjs", "lab/gpt-live-h5/persona.mjs",
       "lab/patch-gpt-live-projection-readiness.mjs", "lab/gpt-live-projection-readiness.test.mjs", "lab/fixtures/gpt-live-projection-readiness/session-transcript-reconcile-DFsDtc9l.js", projectionBaseline,
       "release/captured/v2026.9.1-db91.6-memory-search-guards-20261002/dist/session-accessor-K0XuW6ln.js",
       "lab/gpt-live-consult-progress.mjs", "lab/gpt-live-public-progress-bridge.mjs", publicBridgeBaseline, "lab/patch-gpt-live-native-progress.mjs",

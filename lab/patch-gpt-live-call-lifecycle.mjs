@@ -77,6 +77,13 @@ export function patchGptLiveCallLifecycleController(source) {
 \t\t\tthis.completedCallControlUserTurns.get(originUserTurnId) === userTurnText;
 \t\treturn { nativeDelegationId: delegation.id, originUserTurnId, delegationGeneration: delegation.generation,
 \t\t\tuserTurnText, tool: createGptLiveEndCallClientTool(), isCurrent,
+\t\t\tacceptDecision: ({decisionId,model}={}) => {
+\t\t\t\tif(!isCurrent())return false;
+\t\t\t\tconst receipt=this.callLifecycle.acceptDecisionTool({nativeDelegationId:delegation.id,originUserTurnId,
+\t\t\t\t\tdelegationGeneration:delegation.generation,decisionId,model});
+\t\t\t\tif(receipt){delegation.callControlReceipt=receipt;this.cancelQueuedProgress?.();}
+\t\t\t\treturn receipt;
+\t\t\t},
 \t\t\taccept: ({ backendRunId, backendToolCallId } = {}) => {
 \t\t\t\tif (!isCurrent()) return false;
 \t\t\t\tconst receipt = this.callLifecycle.acceptBackendTool({ nativeDelegationId: delegation.id, originUserTurnId,

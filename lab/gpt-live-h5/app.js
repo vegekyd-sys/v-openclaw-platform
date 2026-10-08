@@ -167,10 +167,17 @@ function armAutomaticEnd(active, request) {
 function requestAutomaticEnd(active, value) {
   if (call !== active || value.name !== "openclaw_end_call" || value.closeAfterPlayback !== true) return;
   const backendPath = value.source === "backend_model_client_tool";
+  const decisionPath = value.source === "decision_model_client_tool";
   if (backendPath) {
     if (value.status !== "accepted" || value.nativeDelegationId !== value.requestId ||
       value.backendToolCallId !== value.callId || !/^call_[a-zA-Z0-9_.:-]{1,155}$/.test(value.callId ?? "") ||
       !/^[a-zA-Z0-9_.:-]{1,256}$/.test(value.backendRunId ?? "") ||
+      !Number.isSafeInteger(value.delegationGeneration) || value.delegationGeneration < 1 ||
+      !active.completedNativeUserTurns?.has(value.originUserTurnId)) return;
+  } else if (decisionPath) {
+    if (value.status !== "accepted" || value.nativeDelegationId !== value.requestId ||
+      !/^[a-zA-Z0-9_.:-]{1,256}$/.test(value.decisionId ?? "") || value.callId !== `jev_${value.decisionId}` ||
+      !/^typesafe\/jev-[a-zA-Z0-9_.:-]+$/.test(value.model ?? "") ||
       !Number.isSafeInteger(value.delegationGeneration) || value.delegationGeneration < 1 ||
       !active.completedNativeUserTurns?.has(value.originUserTurnId)) return;
   } else if (value.callId !== value.requestId) return;
@@ -178,9 +185,12 @@ function requestAutomaticEnd(active, value) {
   if (!request) return;
   if (request.accepted && request.backendPath &&
     (request.backendToolCallId !== value.backendToolCallId || request.backendRunId !== value.backendRunId)) return;
-  if (backendPath && !request.accepted) {
-    request.backendPath = true; request.source = value.source;
-    request.backendToolCallId = value.backendToolCallId; request.backendRunId = value.backendRunId;
+  if (request.accepted && request.decisionPath &&
+    (request.decisionId !== value.decisionId || request.decisionModel !== value.model || !decisionPath)) return;
+  if ((backendPath || decisionPath) && !request.accepted) {
+    request.backendPath = backendPath; request.decisionPath = decisionPath; request.source = value.source;
+    if (backendPath) { request.backendToolCallId = value.backendToolCallId; request.backendRunId = value.backendRunId; }
+    if (decisionPath) { request.decisionId = value.decisionId; request.decisionModel = value.model; }
     request.delegationGeneration = value.delegationGeneration;
     // An ordinary consult acknowledgment before host acceptance is not farewell.
     request.turnId = null; request.terminalAt = null; request.audioObserved = false; request.quietSince = null;
@@ -200,7 +210,7 @@ function observeNativeEndDelegation(active, item) {
   active.nativeCallControlDelegations.set(item.id, { originUserTurnId: item.user_bidi_turn_id });
   if (active.nativeCallControlDelegations.size > 256) active.nativeCallControlDelegations.delete(active.nativeCallControlDelegations.keys().next().value);
   const backendRequest = active.endRequests?.get(item.id);
-  if (backendRequest?.backendPath && backendRequest.accepted && !backendRequest.invalidated &&
+  if ((backendRequest?.backendPath || backendRequest?.decisionPath) && backendRequest.accepted && !backendRequest.invalidated &&
     backendRequest.originUserTurnId === item.user_bidi_turn_id && active.latestNativeUserTurnId === item.user_bidi_turn_id) {
     backendRequest.providerObserved = true; active.endNativeRequestId = backendRequest.requestId;
     armAutomaticEnd(active, backendRequest);
@@ -235,7 +245,9 @@ function observeAutomaticEnd(active, at, energy) {
   duplexDiagnostic(active, { type: "model-end-call-playback-drained", at,
     requestId: ending.requestId, originUserTurnId: ending.originUserTurnId, turnId: ending.turnId,
     ...(ending.backendPath ? { source: ending.source, backendToolCallId: ending.backendToolCallId,
-      backendRunId: ending.backendRunId, nativeDelegationId: ending.requestId } : {}) });
+      backendRunId: ending.backendRunId, nativeDelegationId: ending.requestId } : {}),
+    ...(ending.decisionPath ? { source: ending.source, decisionId: ending.decisionId, model: ending.decisionModel,
+      nativeDelegationId: ending.requestId } : {}) });
   void stopCall();
 }
 async function startRemotePlayback(active, source) {
@@ -377,7 +389,7 @@ function providerMessage(event) {
     } else if (typeof data.turn.id === "string" && data.turn.id.trim()) {
       active.duplex.notifyAssistantTurnCreated(data.turn.id, at);
       const request = active.endRequests?.get(active.endNativeRequestId);
-      if (request && !request.invalidated && (!request.backendPath || request.accepted && request.providerObserved)) {
+      if (request && !request.invalidated && (!(request.backendPath || request.decisionPath) || request.accepted && request.providerObserved)) {
         request.turnId = data.turn.id; request.terminalAt = null;
         request.audioObserved = false; request.quietSince = null;
       }
@@ -510,10 +522,12 @@ async function startCall() {
       if (value.type === "tool.result") requestAutomaticEnd(active, value);
       if (value.type === "tool.error" && value.name === "openclaw_end_call" &&
         (value.callId === value.requestId || value.source === "backend_model_client_tool" &&
-          value.callId === value.backendToolCallId && value.nativeDelegationId === value.requestId)) {
+          value.callId === value.backendToolCallId && value.nativeDelegationId === value.requestId ||
+          value.source === "decision_model_client_tool" && value.callId === `jev_${value.decisionId}` && value.nativeDelegationId === value.requestId)) {
         const request = endCallRequest(active, value.requestId, value.originUserTurnId);
         if (request && (!request.backendPath || request.backendToolCallId === value.backendToolCallId &&
-          request.backendRunId === value.backendRunId)) {
+          request.backendRunId === value.backendRunId) && (!request.decisionPath ||
+          request.decisionId === value.decisionId && request.decisionModel === value.model && value.source === request.source)) {
           request.invalidated = true;
           if (active.ending?.requestId === value.requestId) cancelAutomaticEnd(active);
         }

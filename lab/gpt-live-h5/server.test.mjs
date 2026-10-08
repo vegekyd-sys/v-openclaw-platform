@@ -248,3 +248,13 @@ test('event stream flushes headers and remains open for delayed events',async t=
  f.bridge.emit({event:'talk.event',payload:{voiceSessionId:'voice-private',talkEvent:{type:'tool.call',callId:'late',payload:{name:'web_search'}}}});
  assert(new TextDecoder().decode((await reader.read()).value).includes('late'));stop.abort();await reader.cancel().catch(()=>{});
 });
+
+
+test('JEV host end SSE preserves real decision provenance without fabricating backend run fields',async t=>{
+ const f=await fixture(t);await f.request('session');const stop=new AbortController();
+ const response=await fetch(f.url+'/api/events',{headers:{cookie:f.cookie},signal:stop.signal}),reader=response.body.getReader();await reader.read();
+ f.bridge.emit({event:'talk.event',payload:{voiceSessionId:'voice-private',talkEvent:{type:'tool.result',callId:'jev_actual',payload:{name:'openclaw_end_call',source:'decision_model_client_tool',status:'accepted',decisionId:'actual',model:'typesafe/jev-1.13',requestId:'native',nativeDelegationId:'native',originUserTurnId:'user',delegationGeneration:2,closeAfterPlayback:true,backendRunId:'must-not-invent',userTurnText:'private caller',args:{secret:'secret'}}}}});
+ const body=new TextDecoder().decode((await reader.read()).value),v=JSON.parse(body.slice(body.indexOf('data: ')+6).trim());
+ assert.equal(v.source,'decision_model_client_tool');assert.equal(v.decisionId,'actual');assert.equal(v.model,'typesafe/jev-1.13');assert.equal(v.nativeDelegationId,'native');assert.equal(v.delegationGeneration,2);assert.equal(v.backendRunId,undefined);
+ assert.doesNotMatch(body,/secret|private caller|must-not-invent/);stop.abort();await reader.cancel().catch(()=>{});
+});

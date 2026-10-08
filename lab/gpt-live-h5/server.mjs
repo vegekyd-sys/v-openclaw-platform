@@ -238,6 +238,12 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
           if (typeof item.payload[field] === "string") message[field] = item.payload[field];
         if (Number.isSafeInteger(item.payload.delegationGeneration)) message.delegationGeneration = item.payload.delegationGeneration;
       }
+      if (item.payload.source === "decision_model_client_tool") {
+        message.source = item.payload.source;
+        for (const field of ["nativeDelegationId", "decisionId", "model", "status"])
+          if (typeof item.payload[field] === "string") message[field] = item.payload[field];
+        if (Number.isSafeInteger(item.payload.delegationGeneration)) message.delegationGeneration = item.payload.delegationGeneration;
+      }
       if (item.type === "tool.result" && item.payload.closeAfterPlayback === true
         && typeof item.payload.requestId === "string" && item.payload.requestId) {
         message.closeAfterPlayback = true;

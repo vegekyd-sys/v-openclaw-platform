@@ -1028,3 +1028,34 @@ test('snapshot carries only current real end-tool acceptance and rejection throu
  response={...response,controls:[actual]};poll();await tick();assert.equal(f.body.dataset.callState,'ending');assert(!f.peer.closed,'tool acceptance does not prove farewell audio drained');
  response={...response,revision:2,controls:[actual,{...actual,revision:2,type:'tool.error'}]};poll();await tick();assert.equal(f.body.dataset.callState,'connected');
 });
+
+
+test('JEV end acceptance joins native USER and fresh farewell without invented backend identity', async t => {
+  const f = await backendEndCallFixture(t);
+  const receipt = {source:'decision_model_client_tool',callId:'jev_decision_actual',decisionId:'decision_actual',model:'typesafe/jev-1.13',backendToolCallId:undefined,backendRunId:undefined};
+  for (const bad of [{decisionId:''},{model:'unknown'},{nativeDelegationId:'foreign'},{status:'pending'},{callId:'jev_wrong'},{delegationGeneration:0}]) {
+    f.tool({...receipt,...bad}); assert.equal(f.body.dataset.callState,'connected');
+  }
+  f.tool(receipt); assert.equal(f.body.dataset.callState,'connected');
+  f.native(); assert.equal(f.body.dataset.callState,'ending');
+  f.tool({...receipt,type:'tool.error',decisionId:'foreign',callId:'jev_foreign'});
+  assert.equal(f.body.dataset.callState,'ending');
+  for(let at=0;at<=900;at+=50) f.meter(at,0,0);
+  assert.equal(f.peer.closed,false,'receipt alone cannot close without actual farewell');
+  f.setNow(925); f.send({type:'turn.created',turn:{role:'assistant',id:'jev-farewell'}});
+  f.meter(950,0,.12); f.setNow(975); f.send({type:'turn.done',turn:{role:'assistant',id:'jev-farewell'}});
+  for(let at=1000;at<=1750;at+=50) f.meter(at,0,0);
+  await tick(); assert.equal(f.peer.closed,true);
+  const drain=f.context.__gptLiveDuplexDiagnostics.events.find(row=>row.type==='model-end-call-playback-drained');
+  assert.equal(drain.source,'decision_model_client_tool'); assert.equal(drain.decisionId,'decision_actual');
+  assert.equal(drain.model,'typesafe/jev-1.13'); assert.equal(drain.backendRunId,undefined); assert.equal(drain.backendToolCallId,undefined);
+});
+
+test('actual JEV end rejection revokes only matching decision and a new USER keeps the call open',async t=>{
+ const f=await backendEndCallFixture(t); f.native();
+ const receipt={source:'decision_model_client_tool',callId:'jev_d',decisionId:'d',model:'typesafe/jev-1.13',backendToolCallId:undefined,backendRunId:undefined};
+ f.tool(receipt); assert.equal(f.body.dataset.callState,'ending');
+ f.tool({...receipt,type:'tool.error'}); assert.equal(f.body.dataset.callState,'connected');
+ f.send({type:'turn.created',turn:{role:'user',id:'new-user'}}); f.tool(receipt);
+ assert.equal(f.body.dataset.callState,'connected'); assert.equal(f.peer.closed,false);
+});

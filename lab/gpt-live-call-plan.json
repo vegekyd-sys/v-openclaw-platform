@@ -17,6 +17,21 @@
       "before": null
     },
     {
+      "source": "lab/release-files/gpt-live-call/voice-decision-router.mjs",
+      "target": "openclaw/dist/voice-decision-router.mjs",
+      "before": null
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/voice-decision-gateway.mjs",
+      "target": "openclaw/dist/voice-decision-gateway.mjs",
+      "before": null
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/voice-direct-tools.mjs",
+      "target": "openclaw/dist/voice-direct-tools.mjs",
+      "before": null
+    },
+    {
       "source": "lab/release-files/gpt-live-call/embedded-agent-DaSvA-Yk.js",
       "target": "openclaw/dist/embedded-agent-DaSvA-Yk.js",
       "before": "128a61c9e10a47d501ad425345f9f05a88c9dc66b665e32f979d12e29675cd67"

@@ -1,3 +1,4 @@
+// voice-jev-concurrent-decisions-v1
 // voice-backend-document-controller-v2
 // gpt-live-call-lifecycle-controller-v1
 import { createGptLiveCallLifecycle, createGptLiveEndCallClientTool } from "./gpt-live-call-lifecycle.mjs";
@@ -32,6 +33,7 @@ var OpenAIQuicksilverDelegationController = class {
 			this.stop(reason instanceof Error ? reason : /* @__PURE__ */ new Error("GPT-Live session stopped"));
 		};
 		this.stopped = false;
+		this.decisionDelegations = new Map();
 		this.callLifecycle = options.callLifecycle === true ? createGptLiveCallLifecycle({
 			signal: options.signal,
 			isCurrent: () => !this.stopped && !options.signal.aborted &&
@@ -207,6 +209,13 @@ var OpenAIQuicksilverDelegationController = class {
 		}
 		this.transcript = [];
 		this.partialTranscriptRole = void 0;
+		if(process.env.VOICE_DECISION_PROVIDER==="jev"){
+			if(this.decisionDelegations.size>=8){this.sendAppend(id,"Too many tasks are pending; this request was not started.","speakable");return;}
+			const controller=new AbortController();
+			this.decisionDelegations.set(id,{generation:delegation.generation,controller});
+			this.runDelegation(delegation,controller.signal).catch(error=>this.failTerminalDelivery(toErrorObject(error,"JEV task failed"))).finally(()=>this.decisionDelegations.delete(id));
+			return;
+		}
 		if (this.consultController) {
 			delegation.queuedBehind = this.activeDelegationId;
 			this.pendingDelegations.push(delegation);
@@ -237,6 +246,8 @@ var OpenAIQuicksilverDelegationController = class {
 		this.pendingDelegations.length = 0;
 		this.observedDelegationIds.clear();
 		this.stopped = true;
+		for(const entry of this.decisionDelegations.values())entry.controller.abort(new Error("Voice session stopped"));
+		this.decisionDelegations.clear();
 		this.callLifecycle?.close();
 		this.completedCallControlUserTurns.clear();
 		for (const notify of this.callControlUserTurnWaiters) notify();
@@ -291,6 +302,13 @@ var OpenAIQuicksilverDelegationController = class {
 			this.completedCallControlUserTurns.get(originUserTurnId) === userTurnText;
 		return { nativeDelegationId: delegation.id, originUserTurnId, delegationGeneration: delegation.generation,
 			userTurnText, tool: createGptLiveEndCallClientTool(), isCurrent,
+			acceptDecision: ({decisionId,model}={}) => {
+				if(!isCurrent())return false;
+				const receipt=this.callLifecycle.acceptDecisionTool({nativeDelegationId:delegation.id,originUserTurnId,
+					delegationGeneration:delegation.generation,decisionId,model});
+				if(receipt){delegation.callControlReceipt=receipt;this.cancelQueuedProgress?.();}
+				return receipt;
+			},
 			accept: ({ backendRunId, backendToolCallId } = {}) => {
 				if (!isCurrent()) return false;
 				const receipt = this.callLifecycle.acceptBackendTool({ nativeDelegationId: delegation.id, originUserTurnId,
@@ -485,7 +503,8 @@ var OpenAIQuicksilverDelegationController = class {
 	}
 	isCurrentDelegation(delegation, signal) {
 		return !this.stopped && !this.options.signal.aborted && !signal.aborted &&
-			this.activeDelegationId === delegation.id && this.delegationGeneration === delegation.generation;
+			((this.decisionDelegations.get(delegation.id)?.generation === delegation.generation) ||
+			this.activeDelegationId === delegation.id && this.delegationGeneration === delegation.generation);
 	}
 	async runDelegation(delegation, signal) {
 		let text;

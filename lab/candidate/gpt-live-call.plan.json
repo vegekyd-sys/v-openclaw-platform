@@ -17,6 +17,21 @@
       "before": null
     },
     {
+      "source": "lab/release-files/gpt-live-call/voice-decision-router.mjs",
+      "target": "openclaw/dist/voice-decision-router.mjs",
+      "before": null
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/voice-decision-gateway.mjs",
+      "target": "openclaw/dist/voice-decision-gateway.mjs",
+      "before": null
+    },
+    {
+      "source": "lab/release-files/gpt-live-call/voice-direct-tools.mjs",
+      "target": "openclaw/dist/voice-direct-tools.mjs",
+      "before": null
+    },
+    {
       "source": "lab/release-files/gpt-live-call/embedded-agent-DaSvA-Yk.js",
       "target": "openclaw/dist/embedded-agent-DaSvA-Yk.js",
       "before": "128a61c9e10a47d501ad425345f9f05a88c9dc66b665e32f979d12e29675cd67"
@@ -123,6 +138,8 @@
     }
   ],
   "tests": [
+    "lab/voice-decision-router.test.mjs",
+    "lab/realtime-direct-tools/session.test.mjs",
     "lab/gpt-live-h5/result-presentation.test.mjs",
     "lab/gpt-live-projection-readiness.test.mjs",
     "lab/gpt-live-backend-call-control.test.mjs",
@@ -165,9 +182,20 @@
   "support": [
     "lab/gpt-live-call-lifecycle.mjs",
     "lab/patch-gpt-live-call-lifecycle.mjs",
+    "lab/patch-voice-jev.mjs",
+    "lab/voice-decision-router.mjs",
+    "lab/voice-decision-router.test.mjs",
+    "lab/voice-jev-benchmark.mjs",
+    "lab/realtime-direct-tools/jev-ab-observer.mjs",
+    "lab/voice-decision-gateway.mjs",
+    "lab/realtime-direct-tools/tools.mjs",
+    "lab/patch-gpt-live-result-presentation.mjs",
+    "lab/gpt-live-h5/result-presentation.mjs",
+    "lab/patch-gpt-live-caller-context.mjs",
     "lab/patch-gpt-live-backend-call-control.mjs",
     "lab/patch-gpt-live-call-terminal.mjs",
     "lab/gpt-live-h5/instructions.mjs",
+    "lab/gpt-live-h5/persona.mjs",
     "lab/patch-gpt-live-projection-readiness.mjs",
     "lab/gpt-live-projection-readiness.test.mjs",
     "lab/fixtures/gpt-live-projection-readiness/session-transcript-reconcile-DFsDtc9l.js",
@@ -275,6 +303,9 @@
     "lab/release-files/gpt-live-call/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
     "lab/release-files/gpt-live-call/realtime-quicksilver-session-B3HKftDE.js",
     "lab/release-files/gpt-live-call/gpt-live-call-lifecycle.mjs",
+    "lab/release-files/gpt-live-call/voice-decision-router.mjs",
+    "lab/release-files/gpt-live-call/voice-decision-gateway.mjs",
+    "lab/release-files/gpt-live-call/voice-direct-tools.mjs",
     "lab/release-files/gpt-live-call/embedded-agent-DaSvA-Yk.js",
     "lab/release-files/gpt-live-call/gateway-public-stream.mjs",
     "lab/release-files/gpt-live-call/realtime-session-harness-CEO5kVAJ.js",
@@ -295,9 +326,7 @@
     "lab/release-files/gpt-live-call/worker-pool.mjs",
     "lab/release-files/gpt-live-call/gpt-live-voice-exec-lifetime.js",
     "lab/release-files/gpt-live-call/builtin-openclaw-zQV8Wwjr.js",
-    "lab/release-files/gpt-live-call/session-transcript-reconcile-j5qhAafV.js",
-    "lab/patch-gpt-live-result-presentation.mjs",
-    "lab/gpt-live-h5/result-presentation.mjs"
+    "lab/release-files/gpt-live-call/session-transcript-reconcile-j5qhAafV.js"
   ],
   "timeoutSeconds": 120
 }
