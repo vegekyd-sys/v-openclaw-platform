@@ -23,7 +23,7 @@ export function searchQueryCandidates(request) {
   // model selects among them; this parser never chooses a tool or invents facts.
   const replay=/(?:[,，。]\s*)?(?:不(?:沿|言)用(?:上一轮|上次|之前)(?:的)?答案|不要用缓存)[。.!！\s]*$/u.exec(request);
   if(replay)spans.push({start:0,end:replay.index});
-  const prefix=/^(?:请|麻烦你?|帮我|你)?\s*(?:用(?:记忆搜索|memory_search|Memory Search|Web Search|web_search|网络搜索)工具)?(?:再|重新)?(?:查一下|查一次|查一查|查查|搜索一下|搜一下|查询一下)\s*/iu;
+  const prefix=/^(?:请|麻烦你?|帮我|你)?\s*(?:用(?:记忆搜索|memory_search|Memory Search|Web Search|web_search|网络搜索)工具)?(?:再|重新)?(?:查一下|查一次|查一查|查查|搜索一下|搜一下|查询一下|看一下|看看)\s*/iu;
   for(const span of [...spans]){const m=prefix.exec(request.slice(span.start,span.end));if(m&&m[0].length<span.end-span.start)spans.push({start:span.start+m[0].length,end:span.end});}
   for(const span of [...spans]){const m=/^[。,.，:\s]+/u.exec(request.slice(span.start,span.end));if(m&&m[0].length<span.end-span.start)spans.push({start:span.start+m[0].length,end:span.end});}
   const seen=new Set();return spans.filter(s=>{const key=s.start+':'+s.end;if(seen.has(key))return false;seen.add(key);return true;}).map((s,i)=>({...s,id:'query_'+i,text:request.slice(s.start,s.end)}));

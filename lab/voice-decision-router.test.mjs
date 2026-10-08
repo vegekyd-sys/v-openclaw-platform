@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createVoiceDecisionRouter,createJevEvaluator,searchQueryCandidates} from './voice-decision-router.mjs';
-import {createGatewayVoiceDecisionOwner} from './voice-decision-gateway.mjs';
+import {createGatewayVoiceDecisionOwner,directToolText} from './voice-decision-gateway.mjs';
+import {patchVoiceJevController} from './patch-voice-jev.mjs';
 import {createGptLiveCallLifecycle} from './gpt-live-call-lifecycle.mjs';
 const response=(action,extra={})=>({model:'typesafe/jev-fixture',answers:{route:{type:'choice',choice:action,confidence:1},searchQuery:{type:'choice',choice:'query_0',confidence:1},endIntent:{type:'noul',noul:1},calendarRange:{type:'choice',choice:'tomorrow'},...extra}});
 const input={request:'查一下十二是谁',requestId:'owned',available:['memory_search'],callActive:true};
@@ -22,6 +23,25 @@ test('real ASR punctuation and replay-control variant stay literal without dropp
  assert(candidates.some(s=>s.text==='12。喜欢的玩具'));
  for(const span of candidates)assert.equal(request.slice(span.start,span.end),span.text);
  assert(searchQueryCandidates('查一下十二喜欢的玩具，不要上一轮报告里的玩具').every(s=>s.text.includes('不要上一轮报告里的玩具')));
+});
+test('natural 看看 lookup preserves the literal person, topic and exclusions',()=>{
+ const request='你看看十二喜欢什么玩具';
+ assert(searchQueryCandidates(request).some(s=>s.text==='十二喜欢什么玩具'));
+ assert(searchQueryCandidates('你看看十二在上海的学校，不要台北的').every(s=>s.text.includes('不要台北的')));
+});
+test('direct Memory evidence is unwrapped, keeps source and uncertainty, and bypasses Agent document summary',()=>{
+ const result={content:[{type:'text',text:JSON.stringify({results:[{path:'memory/people/shi-er.md',startLine:2,endLine:8,snippet:'喜欢小汽车；卡牌偏好没有记录。'}]})}]};
+ const text=directToolText('memory_search',{query:'十二 玩具'},result);
+ assert(text.includes('喜欢小汽车；卡牌偏好没有记录。'));assert(text.includes('memory/people/shi-er.md:2-8'));
+ assert(!text.includes('"results"'));assert(text.includes('无关命中不能作为答案'));
+ assert(directToolText('memory_search',{query:'未记录'}, {details:{results:[]}}).includes('没有检索结果'));
+ assert(directToolText('memory_search',{query:'十二'}, {isError:true,content:[{type:'text',text:'索引不可用'}]}).includes('工具没有成功完成'));
+ const source='// voice-jev-concurrent-decisions-v1\nconst spoken=this.options.onBackendResult?.({delegationId:delegation.id,text:result.text});';
+ const patched=patchVoiceJevController(source);assert.equal(patchVoiceJevController(patched),patched);
+ let publications=0;const fn=new Function('result','delegation',patched+' return spoken;');
+ assert.equal(fn.call({options:{onBackendResult:()=>{publications++;return '摘要';}}},{text,provenance:{source:'direct_tool'}},{id:'owned'}),undefined);
+ assert.equal(publications,0);
+ assert.equal(fn.call({options:{onBackendResult:()=>{publications++;return '摘要';}}},{text:'真实方案',provenance:{source:'canonical_final'}},{id:'owned'}),'摘要');assert.equal(publications,1);
 });
 test('one request is evaluated once; changed request/capability cannot reuse its receipt',async()=>{
  let calls=0;const router=createVoiceDecisionRouter({evaluate:async()=>{calls++;return response('memory_search');}});

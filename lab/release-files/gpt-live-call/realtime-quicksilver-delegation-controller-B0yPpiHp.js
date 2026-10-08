@@ -1,4 +1,5 @@
 // voice-jev-concurrent-decisions-v1
+// voice-jev-direct-result-v2
 // voice-backend-document-controller-v2
 // gpt-live-call-lifecycle-controller-v1
 import { createGptLiveCallLifecycle, createGptLiveEndCallClientTool } from "./gpt-live-call-lifecycle.mjs";
@@ -635,7 +636,7 @@ var OpenAIQuicksilverDelegationController = class {
 			// Byte-safe native chunks already bound individual frames; truncating the
 			// whole result would lose late facts while falsely labeling it complete.
 			this.tracePublicProgress("backend-final-received", delegation.id, text, { kind: "final", provenance: terminalProvenance });
-			const spoken = this.options.onBackendResult?.({delegationId:delegation.id,text:result.text});
+			const spoken = (result.provenance?.source === "direct_tool" ? undefined : this.options.onBackendResult?.({delegationId:delegation.id,text:result.text}));
 			if(spoken !== undefined && (typeof spoken !== "string" || spoken.length > 300 || !spoken.trim())) throw new Error("Invalid backend document spoken notice");
 			text = this.formatCallerConditionEnvelope({...result,text:spoken ?? result.text});
 			if (result.callerConditions) this.tracePublicProgress("caller-conditions-attached", delegation.id,

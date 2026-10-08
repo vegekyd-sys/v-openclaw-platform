@@ -38,6 +38,13 @@ export function patchVoiceJevTalk(source){
 }
 
 export function patchVoiceJevController(source){
+  // Direct native tool evidence must reach Live intact, without the long Agent
+  // document extractor publishing raw tool JSON as a completed screen plan.
+  if(!source.includes('// voice-jev-direct-result-v2')&&source.includes('this.options.onBackendResult?.({delegationId:delegation.id,text:result.text})')){
+    source='// voice-jev-direct-result-v2\n'+once(source,
+      'this.options.onBackendResult?.({delegationId:delegation.id,text:result.text})',
+      '(result.provenance?.source === "direct_tool" ? undefined : this.options.onBackendResult?.({delegationId:delegation.id,text:result.text}))');
+  }
   if(source.includes('// voice-jev-concurrent-decisions-v1'))return source;
   source='// voice-jev-concurrent-decisions-v1\n'+source;
   source=once(source,'\t\tthis.stopped = false;','\t\tthis.stopped = false;\n\t\tthis.decisionDelegations = new Map();');
