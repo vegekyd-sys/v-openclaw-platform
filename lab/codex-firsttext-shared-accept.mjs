@@ -295,6 +295,22 @@ if (command === "backup") {
   await restart();
 } else if (command === "run") {
   await run(opt("label"), opt("bigKey"));
+} else if (command === "big") {
+  // A /vds session larger than Codex's 258,400 fallback window: two turns must share one thread.
+  await connect();
+  const label = opt("label") ?? "big";
+  const key = `agent:makaron:explicit:vlab-dev-codexft-${label}-${Date.now().toString(36)}`;
+  const t0 = Date.now();
+  const words = Number(opt("words") ?? 140000);
+  const list = Array.from({ length: words }, (_, i) => `w${i % 997}`).join(" ");
+  await send(key, "/vds");
+  for (const msg of [`Remember this list for later; do not repeat it, just reply OK. ${list}`, "Without using any tools: what was the first word of the list I gave you? Reply in one line.", "Without using any tools: reply with one short sentence about tides."]) {
+    const r = await send(key, msg);
+    log(turnRow(label, "big", r, { reply: (await lastReply(key)).text?.slice(0, 80) }));
+  }
+  log({ label, scenario: "big", rollouts: rollouts(t0) });
+  log({ label, scenario: "big", journal: journal(t0, /keeping oversized DeepSeek|exceeded active token limit|auto-compaction|starting a fresh thread|pre-bind/u).slice(-10) });
+  client.stop?.();
 } else if (command === "models") {
   await connect();
   for (const [method, params] of [["models.list", { agentId: "makaron" }], ["models.list", { agentId: "makaron", view: "all" }]]) {
