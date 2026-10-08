@@ -187,6 +187,8 @@
     "lab/voice-decision-router.test.mjs",
     "lab/voice-jev-benchmark.mjs",
     "lab/realtime-direct-tools/jev-ab-observer.mjs",
+    "lab/realtime-direct-tools/jev-benchmark-events.mjs",
+    "lab/realtime-direct-tools/jev-benchmark-events.test.mjs",
     "lab/voice-decision-gateway.mjs",
     "lab/realtime-direct-tools/tools.mjs",
     "lab/patch-gpt-live-result-presentation.mjs",

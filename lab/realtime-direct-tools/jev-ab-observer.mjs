@@ -10,6 +10,7 @@ import {setTimeout as sleep} from 'node:timers/promises';
 import {createPrivatePulseMicrophone} from '../gpt-live-candidate-native/private-pulse.mjs';
 import {calendarOutcome} from './tools.mjs';
 import {actualSpeakerIdle} from './playback-evidence.mjs';
+import {measuredGatewayEvents,firstMeasuredToolStart} from './jev-benchmark-events.mjs';
 const evidence=process.env.DIRECT_VOICE_EVIDENCE,ready=JSON.parse(fs.readFileSync(process.env.GPT_LIVE_H5_EXPERIENCE_READY));
 assert(ready.candidateId===process.env.VLAB_CANDIDATE_ID&&ready.state==='ready'&&ready.reusable===true&&ready.expiresAt===null);
 const identity=JSON.parse(fs.readFileSync(process.env.VOICE_BENCH_OWNER_PROOF));
@@ -65,10 +66,10 @@ async function runModel(model){
  } else await waitQuiet(model,id,dialAt);
  await sleep(500);
  const utteranceStart=Date.now();await speak('simple');const inputEnd=Date.now();
- const events=()=>gatewayEvents.filter(x=>x.at>=utteranceStart&&x.event==='agent'&&x.payload?.sessionKey==='agent:makaron:feishu:group:oc_adda79fa3d492cca82869c0c72bc62ae');
+ const events=()=>measuredGatewayEvents(gatewayEvents,{since:utteranceStart,sessionKey:'agent:makaron:feishu:group:oc_adda79fa3d492cca82869c0c72bc62ae'});
  const direct=()=>audit().filter(x=>x.voiceSessionId===id&&x.at>=utteranceStart);
  const jevRows=()=>process.env.GPT_LIVE_VOICE_JEV_AUDIT_PATH&&fs.existsSync(process.env.GPT_LIVE_VOICE_JEV_AUDIT_PATH)?fs.readFileSync(process.env.GPT_LIVE_VOICE_JEV_AUDIT_PATH,'utf8').split('\n').filter(Boolean).map(l=>JSON.parse(l)).filter(x=>x.voiceSessionId===id&&x.at>=utteranceStart):[];
- const memory=()=>model==='gpt-live'?(jevRows().find(x=>x.type==='tool.invoke'&&x.name==='memory_search')??events().find(x=>x.payload.stream==='tool'&&x.payload.data?.name==='memory_search'&&x.payload.data?.phase==='start')):direct().find(x=>x.type==='tool.invoke'&&x.name==='memory_search');
+ const memory=()=>model==='gpt-live'?(jevRows().find(x=>x.type==='tool.invoke'&&x.name==='memory_search')??firstMeasuredToolStart(events(),'memory_search')):direct().find(x=>x.type==='tool.invoke'&&x.name==='memory_search');
  await wait(()=>memory(),'actual memory tool start',90000);
  let delivered;
  if(model==='gpt-live'){
