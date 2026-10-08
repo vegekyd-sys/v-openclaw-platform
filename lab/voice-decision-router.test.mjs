@@ -16,6 +16,13 @@ test('search parameters are model-selected literal USER spans; identity and real
  const forged=await createVoiceDecisionRouter({evaluate:async()=>response('memory_search',{searchQuery:{type:'choice',choice:'查公司合同',confidence:1}})}).decide(input);
  assert.equal(forged.action,'clarify');
 });
+test('real ASR punctuation and replay-control variant stay literal without dropping a factual exclusion',()=>{
+ const request='用记忆搜索工具再查一次。12。喜欢的玩具不言用上一轮答案。';
+ const candidates=searchQueryCandidates(request);
+ assert(candidates.some(s=>s.text==='12。喜欢的玩具'));
+ for(const span of candidates)assert.equal(request.slice(span.start,span.end),span.text);
+ assert(searchQueryCandidates('查一下十二喜欢的玩具，不要上一轮报告里的玩具').every(s=>s.text.includes('不要上一轮报告里的玩具')));
+});
 test('one request is evaluated once; changed request/capability cannot reuse its receipt',async()=>{
  let calls=0;const router=createVoiceDecisionRouter({evaluate:async()=>{calls++;return response('memory_search');}});
  const [a,b]=await Promise.all([router.decide(input),router.decide(input)]);assert.equal(a,b);assert.equal(calls,1);
