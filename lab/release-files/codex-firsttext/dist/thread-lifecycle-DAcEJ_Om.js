@@ -4831,7 +4831,8 @@ async function startOrResumeThread(params) {
 				throwIfAborted
 			};
 		};
-		const transientDelegationRestriction = params.params.delegationCapability === "report_only";
+		// v-codex-firsttext-v3: a memory flush is a one-turn tool surface; never rebind the session to it.
+		const transientDelegationRestriction = params.params.delegationCapability === "report_only" || params.params.trigger === "memory";
 		const persistentWebSearchRestriction = params.webSearchAllowed === false && params.persistentWebSearchAllowed === false;
 		const transientNativeToolRestriction = params.nativeCodeModeEnabled === false && !persistentWebSearchRestriction && !isCodexDeepSeekProvider(params.params.provider);
 		const transientWebSearchRestriction = isTransientWebSearchRestriction(params);

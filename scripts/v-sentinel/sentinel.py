@@ -146,6 +146,51 @@ def scan_crashes(cursor):
     return lines, new_cursor
 
 
+# "(mid-turn precheck)" on an isError line ends only the current attempt: the
+# same run compacts the session and retries under the same runId. On
+# 2026-10-08 four such runs (628-846 message sessions) were reported as cut
+# off; every one went on to deliver a single complete answer. What the person
+# can actually be left with is a failed compaction, which these lines name.
+COMPACT_FAIL = re.compile(r"Auto-compaction failed|auto-compaction failed for|"
+                          r"auto-compaction could not recover|auto-compaction timed out")
+
+
+STREAMED = re.compile(r'"runId":"([^"]+)"[^\n]*"stage":"first-nonempty-text"')
+
+
+def scan_cutoffs(journal, lookback=None):
+    """Return (cut-off run ids, cause of the first, compaction failure count).
+
+    A user-facing run that emitted first-nonempty-text and still ended
+    isError=true: someone watched an answer start and stop. This cannot be
+    confused with the agent choosing not to reply, which never streams.
+
+    A long turn starts streaming minutes before it fails (2026-10-08 17:50 ->
+    17:53), outside the scan window. lookback(run_ids) returns older journal
+    text for just those runs, and is only called when a failure has no
+    streamed line in the window.
+    """
+    streamed, failed, compact_fail = set(), {}, 0
+    for line in journal.splitlines():
+        if "first-nonempty-text" in line:
+            m = re.search(r'"runId":"([^"]+)"', line)
+            if m: streamed.add(m.group(1))
+        elif "isError=true" in line:
+            m = re.search(r"runId=([0-9a-zA-Z:_-]+)", line)
+            if m and "(mid-turn precheck)" not in line:
+                cause = re.search(r"rawError=([^\"]{0,60})", line)
+                failed[m.group(1)] = cause.group(1).strip() if cause else "?"
+        if COMPACT_FAIL.search(line):
+            compact_fail += 1
+    unseen = sorted(set(failed) - streamed)
+    if unseen and lookback:
+        streamed.update(r for r in STREAMED.findall(lookback(unseen)) if r in failed)
+    hits = [r for r in streamed & set(failed)
+            if not r.startswith(("workboard", "nightshift", "announce"))
+            and "internal-session-effects" not in r and "skill-workshop" not in r]
+    return hits, (failed[hits[0]] if hits else ""), compact_fail
+
+
 def sample(cursor=None):
     out = {}
     out["pool"] = len(re.findall(r"worker/worker\.mjs",
@@ -166,25 +211,15 @@ def sample(cursor=None):
                     + j.count("made no progress for")
                     + j.count("Request timed out before a response"))
     out["complete"] = j.count("dispatch complete")
-    # A user-facing run that emitted first-nonempty-text and still ended
-    # isError=true: someone watched an answer start and stop. This cannot be
-    # confused with the agent choosing not to reply, which never streams.
-    streamed, failed = set(), {}
-    for line in j.splitlines():
-        if "first-nonempty-text" in line:
-            m = re.search(r'"runId":"([^"]+)"', line)
-            if m: streamed.add(m.group(1))
-        elif "isError=true" in line:
-            m = re.search(r"runId=([0-9a-zA-Z:_-]+)", line)
-            if m:
-                cause = re.search(r"rawError=([^\"]{0,60})", line)
-                failed[m.group(1)] = cause.group(1).strip() if cause else "?"
-    hits = [r for r in streamed & set(failed)
-            if not r.startswith(("workboard", "nightshift", "announce"))
-            and "internal-session-effects" not in r and "skill-workshop" not in r]
-    out["cutoff"] = len(hits)
-    out["cutoff_ids"] = hits
-    out["cutoff_cause"] = failed[hits[0]] if hits else ""
+    def lookback(run_ids):
+        # Only the failed runs, only their streamed marker: a few lines, not a
+        # 20-minute dump. scan_cutoffs only yields [0-9a-zA-Z:_-] ids, none of
+        # which is special in an ERE or inside single quotes.
+        pat = "|".join(run_ids)
+        return sh("journalctl -u %s --since '-1200s' --no-pager -o cat "
+                  "| grep -aE '(%s).*first-nonempty-text'" % (UNIT, pat), timeout=60)
+    out["cutoff_ids"], out["cutoff_cause"], out["compact_fail"] = scan_cutoffs(j, lookback)
+    out["cutoff"] = len(out["cutoff_ids"])
     out["received"] = j.count("received message from")
     out["crash_lines"], out["journal_cursor"] = scan_crashes(cursor)
     df = sh("df -BM --output=avail / | tail -1")
@@ -312,6 +347,14 @@ def main():
                       % (st["cutoff_pending"], st.get("cutoff_last_cause") or "未知"))
         st["cutoff_pending"] = 0
         st["cutoff_last_alert"] = now_s
+
+    # The person asked in a session too large for the model and compaction
+    # could not shrink it, so they got the "context too large" error instead
+    # of an answer. Rare; same once-an-hour cap as above.
+    if s.get("compact_fail") and now_s - st.get("compact_fail_last_alert", 0) >= 3600:
+        alerts.append("%d 次会话超出模型上下文后自动压缩失败，用户收到的是报错而不是回答。"
+                      "可以让对方 /new 开新会话。" % s["compact_fail"])
+        st["compact_fail_last_alert"] = now_s
 
     st["last_run"] = now_s
     st["last_sample"] = s

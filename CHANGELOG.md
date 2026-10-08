@@ -11,6 +11,26 @@
 
 ---
 
+## codex-vds-oversized-20261008
+
+上线：2026-10-08 13:46 CST  ·  tag `codex-vds-oversized-20261008`
+
+**摘要**：Tianyi 于 2026-10-08 批准（「只上第二处」「现在上，空闲时重启」）。大会话里 /vds 不再每轮换 Codex 线程、重放整段历史并压缩：群 oc_64bcd621…（约 43–44 万 token）此前每轮都 `native transcript exceeded active token limit; starting a fresh thread`，首字 19–27 s，带工具的回合还要 Codex 压缩一次。原因是 Codex 不认识 deepseek-flash，按 272,000 兜底窗口（生效 258,400），新线程灌入的历史本身就超限，下一轮又被换掉。现在 DeepSeek 线程超限时保留线程、交给 Codex 自己压缩后续用（日志 `keeping oversized DeepSeek thread for native compaction`），字节上限保险和 GPT 不变。
+
+改动不在 V 捕获范围内，所以下面的文件比对是 0：Codex 插件（npm 管理）`run-attempt-D1hJO4fX.js` 564374a6 → b4553661，经 VLab 发版 `codex-vds-oversized-20261008`（codex-vds-oversized，dev `4dd61571`），旧文件在 `/opt/v-release-backups/codex-vds-oversized-20261008/`。共享 VLab 验收：约 33 万 token 会话 3 轮同一线程、只压缩一次、第三轮缓存 99.8%；常规回归通过。
+
+重启：2026-10-08 13:43:06 空闲时请求（v-self-restart `20261008-134306-b8b7`），13:46:23 就绪（166 s），清掉 2 条 Codex 孤儿登记。
+
+**已知、未修**：DeepSeek 线程压缩时 Codex 把交接摘要写成一条 final_answer；若模型紧接着直接回答（中间没有工具调用），OpenClaw 可能把摘要当回复发出（VLab 复现，V 上至今未见）。另：DeepSeek 窗口仍是 258,400，提到 100 万需改全局 Codex 模型目录，暂不做（见 `lab/release-files/codex-firsttext/README.md`）。
+
+相对上一版 `v2026.9.1-db91.6-voice-reliability-20261008`：0 个文件变化。
+
+**这期间合入 dev 的 PR**（4 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #275 fix(codex): 大会话 /vds 不再每轮换线程、每轮压缩
+- #261 首字：isInstalledPluginEnabled 复用已规范化的插件配置
+- #260 首字：内置 chat channel id 查找结果按进程记住
+- #268 feishu: 发送人名/群名缓存过期后不再阻塞消息分发（首字）
+
 ## v2026.9.1-db91.6-voice-reliability-20261008
 
 上线：2026-10-08 01:33–01:39 CST  ·  tag `v2026.9.1-db91.6-voice-reliability-20261008`
