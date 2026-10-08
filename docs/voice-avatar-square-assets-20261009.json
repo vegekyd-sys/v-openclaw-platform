@@ -671,7 +671,7 @@
   ],
   "totalBytes": 860072,
   "maxBytes": 20328,
-  "thinkingDwellMs": 12000,
+  "thinkingDwellMs": 5000,
   "thinkingCycle": "One sequence then hold final pose; no endless loop; expression decision cannot restart it.",
   "finalInterruption": "Removed forced exhaustive spoken final instruction. Candidate media validation still required; unit assertions do not prove audio interruption."
 }

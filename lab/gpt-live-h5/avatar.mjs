@@ -1,6 +1,6 @@
 import { AVATAR_POSES, AVATAR_SEQUENCES } from './avatar-state.mjs';
 
-export const THINKING_POSE_DWELL_MS = 12000;
+export const THINKING_POSE_DWELL_MS = 5000;
 const THINKING_POSES = new Set(['memory', 'web', 'calendar', 'background']);
 
 // Decode before swapping; old/failed downloads never resurrect retired tasks.
