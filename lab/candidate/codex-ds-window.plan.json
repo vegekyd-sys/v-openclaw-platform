@@ -10,7 +10,7 @@
     "lab/candidate/codex-ds-window.mjs"
   ],
   "env": {
-    "PHASES": "A,C",
+    "PHASES": "F",
     "BIG_WORDS": "140000"
   },
   "timeoutSeconds": 3600,

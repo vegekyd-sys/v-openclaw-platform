@@ -154,6 +154,15 @@ const TARGETS = [
         + "\t\t\tawait clearCurrentBinding(\"rotating a cross-provider thread binding\");\n"
         + "\t\t\tbinding = void 0;\n"
         + "\t\t}\n"],
+      // E. The deferred memory flush (#243) runs after each reply in a big session with only
+      //    read/write as tools. A Codex thread's tools are fixed at creation, so the flush got
+      //    a fresh thread AND became the session's binding; the next user turn (94 tools) did
+      //    not match it and started yet another thread, replaying the whole transcript every
+      //    turn (oc_fab91, 2026-10-08). Run the flush in a transient thread like other one-turn
+      //    restrictions and keep the session's binding.
+      ["\t\tconst transientDelegationRestriction = params.params.delegationCapability === \"report_only\";\n",
+        "\t\t// v-codex-firsttext-v3: a memory flush is a one-turn tool surface; never rebind the session to it.\n"
+        + "\t\tconst transientDelegationRestriction = params.params.delegationCapability === \"report_only\" || params.params.trigger === \"memory\";\n"],
     ],
   },
 ];

@@ -64,7 +64,7 @@ const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
 const port = Number(config.gateway?.port);
 config.channels = {};
 config.cron = { ...(config.cron ?? {}), enabled: false };
-const keep = new Set(["vlab-agent-worker-isolation", "deepseek", "openai", "codex"]);
+const keep = new Set(["vlab-agent-worker-isolation", "deepseek", "openai", "codex", "memory-core"]);
 config.plugins.entries = Object.fromEntries(Object.entries(config.plugins.entries ?? {}).filter(([id]) => keep.has(id)));
 if (Array.isArray(config.plugins.allow)) config.plugins.allow = config.plugins.allow.filter((id) => keep.has(id));
 const shape = { reasoning: true, input: ["text", "image"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 1000000, maxTokens: 384000, api: "openai-completions", compat: { supportsUsageInStreaming: true, supportsReasoningEffort: true, maxTokensField: "max_tokens", thinkingFormat: "deepseek" } };
@@ -180,10 +180,11 @@ async function send(key, message) {
 function rollouts(sinceMs) {
   const files = spawnSync("bash", ["-c", `find ${CODEX_HOME}/sessions -name 'rollout-*.jsonl' -newermt @${Math.floor(sinceMs / 1000)} | sort`], { encoding: "utf8" }).stdout.split("\n").filter(Boolean);
   return files.map((f) => {
-    let turns = 0, compactions = 0; const windows = new Set(); const usage = [];
+    let turns = 0, compactions = 0, tools = null; const windows = new Set(); const usage = [];
     for (const l of fs.readFileSync(f, "utf8").split("\n").filter(Boolean)) {
       let e; try { e = JSON.parse(l); } catch { continue; }
       const p = e.payload ?? {};
+      if (e.type === "session_meta") tools = (p.dynamic_tools ?? []).length;
       if (e.type === "event_msg" && p.type === "task_started") turns += 1;
       if (e.type === "compacted") compactions += 1;
       if (e.type === "event_msg" && p.type === "token_count" && p.info) { windows.add(p.info.model_context_window); usage.push(p.info.last_token_usage?.total_tokens); }
@@ -191,7 +192,7 @@ function rollouts(sinceMs) {
     const tid = path.basename(f).slice(-41, -6);
     const tags = spawnSync("sqlite3", ["-readonly", `file:${CODEX_HOME}/logs_2.sqlite?mode=ro`, `select feedback_log_body from logs where thread_id='${tid}' and feedback_log_body like '%model_context_window%' limit 1`], { encoding: "utf8" }).stdout;
     const tag = (k) => tags.match(new RegExp(`"${k}":"([^"]*)"`, "u"))?.[1];
-    return { thread: tid.slice(0, 13), turns, compactions, windows: [...windows], usage: usage.slice(-4),
+    return { thread: tid.slice(0, 13), tools, turns, compactions, windows: [...windows], usage: usage.slice(-4),
       catalogTag: tag("model_catalog_json"), windowTag: tag("model_context_window"), effectiveTag: tag("model_context_window_effective") };
   });
 }
@@ -245,6 +246,27 @@ try {
   }
   if (PHASES.includes("C")) await phase("C", false, big);
   if (PHASES.includes("D")) await phase("D", true, big);
+  // F: the deferred memory flush must not take over the session's Codex thread.
+  if (PHASES.includes("F")) {
+    const tl = path.join(codexDist, "thread-lifecycle-DAcEJ_Om.js");
+    const patchedLine = '\t\tconst transientDelegationRestriction = params.params.delegationCapability === "report_only" || params.params.trigger === "memory";\n';
+    const vLine = '\t\tconst transientDelegationRestriction = params.params.delegationCapability === "report_only";\n';
+    const patchedSrc = fs.readFileSync(tl, "utf8");
+    for (const variant of (process.env.F_VARIANTS ?? "v,patched").split(",")) {
+      fs.writeFileSync(tl, variant === "v" ? patchedSrc.replace(patchedLine, vLine) : patchedSrc);
+      client?.stop?.(); await stopGateway(); startGateway(); await waitPort(); await sleep(3000); await connect();
+      const key = `agent:makaron:explicit:vlab-dev-dsflush-${variant}-${Date.now().toString(36)}`;
+      const t0 = Date.now();
+      await send(key, "/vds");
+      const r1 = await send(key, big[0]);
+      const mark = lines.length;
+      const deadline = Date.now() + 8 * 60_000;
+      let flush;
+      while (Date.now() < deadline && !(flush = lines.slice(mark).find((l) => /memory-flush-deferred\.1\].*"phase":"ran"/u.test(l)))) await sleep(3000);
+      const r2 = await send(key, big[1]);
+      console.log(JSON.stringify({ phase: "F", variant, turn1: r1.terminal, flush: flush ? redact(flush).slice(-160) : "no flush within 8 min", turn2: r2.terminal, turn2Secs: Math.round((r2.endAt - r2.sentAt) / 1000), rollouts: rollouts(t0) }));
+    }
+  }
 } catch (error) {
   console.error(redact(error instanceof Error ? error.stack : String(error)));
   console.error(redact(lines.slice(-60).join("\n")));
