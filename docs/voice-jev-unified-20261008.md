@@ -72,3 +72,16 @@ GPT Live r4 和 r5 的挂断 FAIL 保留：实际 JEV 已接受结束，原生�
 未完成：完整交替 A/B、独立原宿主轮询回执与物理媒体审查、后台执行期间快任务/取消、长任务恢复与迟到隔离、实际音频回归。复杂 Agent 与短任务独立排队已有本地检查，不能代替新的原 H5 实测。最后只增加了新 USER 清除旧 assistant 身份的负向守卫（本地有针对检查），作为一个静态 app.js overlay 逐 hash/HTTP 验证后复用原 H5 与 Gateway，二者均未重启。原 r6 样本绑定该守卫前的 5e0aef82，不是最新整包真人验收；frozen ready 的旧 appSha 不能代表 overlay 后的实际 HTTP 字节。此前物理 Safari、AEC、严格双向媒体和最终语义 FAIL 仍保留。本轮不宣称整个实验已验收或上线。
 
 源码分支 `codex/voice-jev-unified`，草稿 PR [#274](https://github.com/vegekyd-sys/v-openclaw-platform/pull/274)。当前仅在本任务已存在的可复用 Candidate 做带 before/after hash、配置与实际服务身份守卫的 overlay；共享 VLab、dev 和生产 V 没有写入。入口继续复用 `http://127.0.0.1:26244/voice/?entry=tianyi`。产物/原始证据在私有 `tmp/voice-jev`，不将个人查询内容或凭据加入 PR。
+
+
+## 真人 Memory 查询反馈：2026-10-08
+
+真人完整自然问法曾耗时 23.6 秒、返回无关记录，并在 GPT Live 页面展示转义工具 JSON 为“完整方案”。这是新的产品失败；此前 r6 的工具路径成功不能当成结果相关性通过。
+
+只读对比实际加载的生产 V、共享 VLab 与 Candidate：Memory core、查询扩展与 KNN/child 的四个文件 hash 相同，缺失快检索代码不是差异。实际配置入口为 `memory.search`。生产配置与实际 FTS/meta 使用 `trigram`；共享与原 Candidate 是默认 `unicode61`。生产与 Candidate 的来源数量和快照也不同，不能宣称二者同一份最新语料。
+
+对生产 V 原工具直接执行同一句自然问法，无 Agent、无语音：首轮总耗时 24240 ms（工具 23857 ms、search 23432 ms）；随后同句热查询 1732 ms（工具 1611 ms、search 1539 ms）。相关对象与专题确实命中。此为探索样本，说明慢等待也发生在 Memory Search 内部，不证明冷初始化的具体阶段或 P95。
+
+Candidate 修正：JEV 可从真实 USER 中选去掉“看看”等操作措辞的原文片段，事实与排除条件保留。直接工具证据解开 MCP envelope 后交给语音模型，保留出处与不确定性；`direct_tool` provenance 不经过后台 Agent 文档摘要/发布，长方案仍使用原流程。新代码与产物本地 250 文件、2044 项零 skip 通过。
+
+本轮只在自有 Candidate 对齐生产的 trigram 配置，使用相同 native body/path FTS 函数重建派生表，单独备份原派生索引及 metadata；记忆正文、embedding、原对话和凭据不替换。实际 canonical counts、revision、非 FTS schema 与其他 metadata 保持。原共享/生产未改，未合 dev。真实语音和语义重验另行记录，不以本地回归或索引重建宣布验收通过。
