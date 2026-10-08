@@ -58,10 +58,12 @@ async function runModel(model){
  ownedVoice=(await state()).sessions.at(-1)?.voiceSessionId;assert(ownedVoice,'Actual owned session receipt absent');const id=ownedVoice;
  if(model==='gpt-live'){
   await wait(s=>s.duplex?.counts?.['greeting-ready-accepted']===1,'actual GPT host readiness',20000);
-  await sleep(2000);
+  // Host readiness is not the end of the actual greeting audio. Keep this
+  // pre-input wait outside the measurement and never talk over active output.
+  await sleep(10000);
   const g=await state();const greetingObserved=g.native.some(x=>x.type==='turn.done'&&x.turn?.role==='assistant');
   save(model+'-greeting-observation.json',{greetingObserved,wire:g});
-  if(greetingObserved)await waitQuiet(model,id,dialAt);
+  if(greetingObserved || speakerTailRms()>=.003)await waitQuiet(model,id,dialAt);
   else {assert(speakerTailRms()<.003,'Cannot inject USER over unknown playback');check(model+'/greeting-missing',false,{hostReady:true,scope:'greeting remains FAIL; independent first-USER benchmark continues'});}
  } else await waitQuiet(model,id,dialAt);
  await sleep(500);
