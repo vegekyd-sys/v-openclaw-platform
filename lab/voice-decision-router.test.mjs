@@ -56,6 +56,13 @@ test('unavailable actions, malformed choice and stale or cancelled evaluation ne
  let current=true;await assert.rejects(createVoiceDecisionRouter({evaluate:async()=>{current=false;return response('memory_search');}}).decide({...input,isCurrent:()=>current}),/失效/);
  const abort=new AbortController();await assert.rejects(createVoiceDecisionRouter({evaluate:async()=>{abort.abort();return response('memory_search');}}).decide({...input,signal:abort.signal}),/abort/i);
 });
+test('route uncertainty is not reported as a missing caller target and never executes a tool',async()=>{
+ for(const confidence of [.68,.48]){
+  let calls=0;const owner=createGatewayVoiceDecisionOwner({evaluate:async()=>response('memory_search',{route:{type:'choice',choice:'memory_search',confidence}}),invoke:async()=>{calls++;},isCallCurrent:()=>true});
+  const answer=await owner.run({request:'十二喜欢什么玩具',requestId:'uncertain-'+confidence,signal:new AbortController().signal,isCurrent:()=>true});
+  assert.equal(calls,0);assert(answer.text.includes('尚未执行查询'));assert(!answer.text.includes('目标尚不明确'));
+ }
+});
 test('intent uncertainty cannot end the call; timeout cannot silently launch an Agent',async()=>{
  const low=response('end_call',{endIntent:{type:'noul',noul:.6}});
  assert.equal((await createVoiceDecisionRouter({evaluate:async()=>low}).decide(input)).action,'clarify');
