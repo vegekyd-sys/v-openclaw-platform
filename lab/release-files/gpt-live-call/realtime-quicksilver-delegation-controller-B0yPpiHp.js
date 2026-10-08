@@ -478,7 +478,7 @@ var OpenAIQuicksilverDelegationController = class {
 			header = `[BACKEND_FINAL_PART ${position}]\nWait for BACKEND_FINAL_COMPLETE before answering; keep facts, values and limits from all parts.\n\n`;
 		} else {
 			role = "final_complete";
-			header = `[BACKEND_FINAL_COMPLETE ${position}]\nDeliver all parts as the backend spoken answer. Keep every fact, value and condition; apply caller format.\n\n`;
+			header = `[BACKEND_FINAL_COMPLETE ${position}]\nUse all parts as facts, values and limits. Answer once. Stop for caller speech; never resume unless asked.\n\n`;
 		}
 		if (Buffer.byteLength(header, "utf8") > 180) throw new Error("Native public append role header exceeds byte budget");
 		return { role, wireText: header + text };

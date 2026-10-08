@@ -1,15 +1,15 @@
 // Only a coarse visual category crosses the wire; never arguments or results.
 export const AVATAR_POSES = Object.freeze({
   idle: 'v-operator-idle-512.webp',
-  listen: 'v-operator-listen-0-512.webp',
-  memory: 'v-operator-memory-0-512.webp',
-  web: 'v-operator-web-0-512.webp',
-  calendar: 'v-operator-calendar-0-512.webp',
-  background: 'v-operator-background-0-512.webp',
-  complete: 'v-operator-complete-0-512.webp',
+  listen: 'v-operator-square-listen-0-512.webp',
+  memory: 'v-operator-square-memory-0-512.webp',
+  web: 'v-operator-square-web-0-512.webp',
+  calendar: 'v-operator-square-calendar-0-512.webp',
+  background: 'v-operator-square-background-0-512.webp',
+  complete: 'v-operator-square-complete-0-512.webp',
 });
 export const AVATAR_SEQUENCES = Object.freeze(Object.fromEntries(Object.keys(AVATAR_POSES).map(pose => [pose,
-  Object.freeze(pose === 'idle' ? [AVATAR_POSES.idle] : Array.from({length:6}, (_,i)=>`v-operator-${pose}-${i}-512.webp`))])));
+  Object.freeze(pose === 'idle' ? [AVATAR_POSES.idle] : Array.from({length:6}, (_,i)=>`v-operator-square-${pose}-${i}-512.webp`))])));
 export const AVATAR_FILES = Object.values(AVATAR_SEQUENCES).flatMap(files => files.flatMap(file => [file,file.replace('-512.webp','-256.webp')]));
 export const ACTIVITY_LABELS = Object.freeze({memory:'正在查记忆', web:'正在查资料', calendar:'正在查日程', background:'后台处理中'});
 export function taskActivity(name, args = {}, depth = 0) {
