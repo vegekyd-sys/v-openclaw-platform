@@ -1119,3 +1119,24 @@ test('native ACK and accepted JEV receipt still need both audible PCM and matchi
   assert.equal(f.peer.closed,false);
  }
 });
+
+test('native result ACK inside the same open assistant turn captures only subsequent PCM',async t=>{
+ const f=await backendEndCallFixture(t); f.native();
+ f.send({type:'turn.created',turn:{role:'assistant',id:'native-continuation'}});
+ f.meter(50,0,.12); nativeControlAck(f);
+ f.meter(100,0,.12); f.setNow(125);
+ f.send({type:'turn.done',turn:{role:'assistant',id:'native-continuation'}});
+ f.tool(jevEndReceipt);
+ for(let at=150;at<=900;at+=50) f.meter(at,0,0);
+ await tick(); assert.equal(f.peer.closed,true);
+});
+
+test('PCM only before in-turn context ACK does not prove the accepted farewell',async t=>{
+ const f=await backendEndCallFixture(t); f.native();
+ f.send({type:'turn.created',turn:{role:'assistant',id:'native-continuation'}});
+ f.meter(50,0,.12); nativeControlAck(f); f.setNow(125);
+ f.send({type:'turn.done',turn:{role:'assistant',id:'native-continuation'}});
+ f.tool(jevEndReceipt);
+ for(let at=150;at<=1200;at+=50) f.meter(at,0,0);
+ assert.equal(f.peer.closed,false);
+});

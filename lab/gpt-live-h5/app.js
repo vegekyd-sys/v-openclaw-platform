@@ -244,7 +244,10 @@ function observeNativeControlContext(active, data) {
   // JEV host receipt and actual audible PCM + terminal + fresh quiet are required.
   request.nativeContextAck = true; request.nativeContextAckKey = key;
   request.providerObserved = true; active.endNativeRequestId = id;
-  request.turnId = null; request.terminalAt = null; request.audioObserved = false;
+  // Native context can be appended inside an already-created assistant turn.
+  // Keep that still-open native identity, but start PCM proof only after ACK.
+  request.turnId = active.openNativeAssistantTurnId ?? null;
+  request.terminalAt = null; request.audioObserved = false;
   request.quietSince = null; request.lastSampleAt = null;
 }
 function observeAutomaticEnd(active, at, energy) {
@@ -408,6 +411,7 @@ function providerMessage(event) {
       // This is a native turn event, not a phrase/keyword match on captions.
       cancelAutomaticEnd(active);
     } else if (typeof data.turn.id === "string" && data.turn.id.trim()) {
+      active.openNativeAssistantTurnId = data.turn.id;
       active.duplex.notifyAssistantTurnCreated(data.turn.id, at);
       const request = active.endRequests?.get(active.endNativeRequestId);
       if (request && !request.invalidated && (!(request.backendPath || request.decisionPath) || request.accepted && request.providerObserved)) {
@@ -423,6 +427,7 @@ function providerMessage(event) {
       active.duplex.notifyAssistantTurnDone(data.turn.id, at);
     const request = active.endRequests?.get(active.endNativeRequestId);
     if (request && !request.invalidated && request.turnId === data.turn?.id) request.terminalAt = at;
+    if (active.openNativeAssistantTurnId === data.turn?.id) active.openNativeAssistantTurnId = null;
   }
   if (active && data.type === "output_audio_buffer.cleared") {
     const at = performance.now();
