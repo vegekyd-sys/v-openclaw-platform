@@ -11,6 +11,18 @@
 
 ---
 
+## codex-toolset-cover-20261008
+
+上线：待重启生效（2026-10-08 22:41 CST 装到 V 磁盘）  ·  tag `codex-toolset-cover-20261008`
+
+**摘要**：修同一个群里主人和普通成员交替发言时，每换一次人就新开 Codex 线程、重放整段历史的问题。主人回合比成员多 12 个顶层工具（`nodes`、`gateway`、`terminal`、`conversations_*`、`codex_plugins` 等，`openclaw_direct` 里还有 `computer`），有些工具描述也跟着变，Codex 线程的工具清单在创建时固定，于是工具指纹一变就换线程。现在指纹不同时先读线程实际记录的工具：本回合每个工具在线程里都有同名、参数相同的版本（描述可不同），就续用这个线程。权限不放宽，工具调用只按本回合授权执行，成员调用主人专属工具返回 `Unknown OpenClaw tool`。方向是单向的：主人第一次发言仍换一次线程，之后两人共用主人线程。
+
+Codex 插件（npm 管理）`thread-lifecycle-DAcEJ_Om.js` c0a9ce77 → 7ee060b1，经 VLab 发版 `codex-toolset-cover-20261008`（dev `fc8c04cb`，PR #289），旧文件在 `/opt/v-release-backups/codex-toolset-cover-20261008-20261008T144149/`；改动不在捕获范围内，所以下面的文件比对是 0。共享 VLab 验收：一个 /vds 会话、成员先说再交替 6 轮，2 个线程（109/122 个工具），成员 3 轮都留在主人线程，缓存 99% 以上，首字 2.2–2.5 s；续用与 vds↔vcodex 切换回归通过。
+
+相对上一版 `v2026.9.1-db91.6-big-session-reads-20261008`：0 个文件变化。
+
+---
+
 ## v2026.9.1-db91.6-big-session-reads-20261008
 
 上线：2026-10-08 22:14 CST（v-self-restart 20261008-221101-b85e 重启生效）  ·  tag `v2026.9.1-db91.6-big-session-reads-20261008`
