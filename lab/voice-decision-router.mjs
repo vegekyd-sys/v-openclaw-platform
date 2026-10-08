@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
-export const VOICE_ROUTER_TOOL = {type:'function',name:'route_task',description:'将当前用户的完整操作或查询要求交给统一决策器。所有工具选择、简单执行和后台任务分配都由决策器完成，不自行选择工具或猜测结果。普通聊天无需调用。',parameters:{type:'object',properties:{request:{type:'string'}},required:['request'],additionalProperties:false}};
-export const VOICE_ROUTER_INSTRUCTIONS = '\n统一任务入口：你只负责自然交流和呈现真实结果。任何查询、执行、挂断或取消要求，立即调用 route_task，request 保留完整用户目标与条件。不要自行决定简单工具还是后端 Agent，不要另行执行旧工具；决策器会选择。结果未到不猜测。普通交流仍正常回答，等待后台时仍可听说。';
+export const VOICE_ROUTER_TOOL = {type:'function',name:'route_task',description:'所有查询、执行、任务控制以及结束电话的唯一入口。用户自然道别如“今天就聊到这里，谢谢你，拜拜”也必须先调用本工具，不能仅回答拜拜；决策器负责确认是否真正挂断。保留完整用户目标与条件，由决策器选择具体工具或后台 Agent。',parameters:{type:'object',properties:{request:{type:'string'}},required:['request'],additionalProperties:false}};
+export const VOICE_ROUTER_INSTRUCTIONS = '\n统一任务入口：你只负责自然交流和呈现真实结果。任何查询、执行、挂断或取消要求，立即调用 route_task，request 保留完整用户目标与条件。不要自行决定简单工具还是后端 Agent，不要另行执行旧工具；决策器会选择。结果未到不猜测。结束电话优先于普通聊天：用户自然说“今天就聊到这里，谢谢你，拜拜”“我先挂了，下次再聊”等时，先实际调用 route_task，将整句话交给决策器。只口头回答“不客气，拜拜”会留下电话，不能代替工具调用；工具返回主机已接受结束后才简短告别。否定、引用或讨论挂断也由决策器区分，不靠关键词在前端挂断。普通交流仍正常回答，等待后台时仍可听说。';
 const DEFAULT_CRITERIA = {
   memory_search:'Look up existing personal facts, preferences or records. A straightforward lookup, not research/analysis. Do not choose if USER explicitly asks for the backend Agent.',
   web_search:'One straightforward public web lookup. Excludes comparisons/reports and excludes explicit requests for the backend Agent.',
