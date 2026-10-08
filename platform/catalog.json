@@ -296,6 +296,7 @@
         "lab/gpt-live-voice-confirmation.test.mjs",
         "lab/voice-spoken-confirmation-switch.test.mjs",
         "lab/voice-decision-router.test.mjs",
+        "lab/gpt-live-h5/avatar-decision.test.mjs",
         "lab/gpt-live-voice-exec-lifetime.test.mjs",
         "lab/gpt-live-voice-tool-order.test.mjs",
         "lab/db91-shrink-reuse.test.mjs",

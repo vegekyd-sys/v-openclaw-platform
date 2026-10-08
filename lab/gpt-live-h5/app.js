@@ -167,17 +167,10 @@ function armAutomaticEnd(active, request) {
 function requestAutomaticEnd(active, value) {
   if (call !== active || value.name !== "openclaw_end_call" || value.closeAfterPlayback !== true) return;
   const backendPath = value.source === "backend_model_client_tool";
-  const decisionPath = value.source === "decision_model_client_tool";
   if (backendPath) {
     if (value.status !== "accepted" || value.nativeDelegationId !== value.requestId ||
       value.backendToolCallId !== value.callId || !/^call_[a-zA-Z0-9_.:-]{1,155}$/.test(value.callId ?? "") ||
       !/^[a-zA-Z0-9_.:-]{1,256}$/.test(value.backendRunId ?? "") ||
-      !Number.isSafeInteger(value.delegationGeneration) || value.delegationGeneration < 1 ||
-      !active.completedNativeUserTurns?.has(value.originUserTurnId)) return;
-  } else if (decisionPath) {
-    if (value.status !== "accepted" || value.nativeDelegationId !== value.requestId ||
-      !/^[a-zA-Z0-9_.:-]{1,256}$/.test(value.decisionId ?? "") || value.callId !== `jev_${value.decisionId}` ||
-      !/^typesafe\/jev-[a-zA-Z0-9_.:-]+$/.test(value.model ?? "") ||
       !Number.isSafeInteger(value.delegationGeneration) || value.delegationGeneration < 1 ||
       !active.completedNativeUserTurns?.has(value.originUserTurnId)) return;
   } else if (value.callId !== value.requestId) return;
@@ -185,20 +178,12 @@ function requestAutomaticEnd(active, value) {
   if (!request) return;
   if (request.accepted && request.backendPath &&
     (request.backendToolCallId !== value.backendToolCallId || request.backendRunId !== value.backendRunId)) return;
-  if (request.accepted && request.decisionPath &&
-    (request.decisionId !== value.decisionId || request.decisionModel !== value.model || !decisionPath)) return;
-  if ((backendPath || decisionPath) && !request.accepted) {
-    request.backendPath = backendPath; request.decisionPath = decisionPath; request.source = value.source;
-    if (backendPath) { request.backendToolCallId = value.backendToolCallId; request.backendRunId = value.backendRunId; }
-    if (decisionPath) { request.decisionId = value.decisionId; request.decisionModel = value.model; }
+  if (backendPath && !request.accepted) {
+    request.backendPath = true; request.source = value.source;
+    request.backendToolCallId = value.backendToolCallId; request.backendRunId = value.backendRunId;
     request.delegationGeneration = value.delegationGeneration;
-    // The actual native context ACK can precede the slower host polling receipt.
-    // Keep only playback recorded after that ACK for this exact delegation.
-    // Backend consult progress still needs a fresh post-acceptance farewell.
-    if (!decisionPath || !request.nativeContextAck || !request.providerObserved) {
-      request.turnId = null; request.terminalAt = null; request.audioObserved = false;
-    }
-    request.quietSince = null; request.lastSampleAt = null;
+    // An ordinary consult acknowledgment before host acceptance is not farewell.
+    request.turnId = null; request.terminalAt = null; request.audioObserved = false; request.quietSince = null;
     const observed = active.nativeCallControlDelegations?.get(value.nativeDelegationId);
     request.providerObserved = observed?.originUserTurnId === value.originUserTurnId;
     if (request.providerObserved) active.endNativeRequestId = request.requestId;
@@ -215,7 +200,7 @@ function observeNativeEndDelegation(active, item) {
   active.nativeCallControlDelegations.set(item.id, { originUserTurnId: item.user_bidi_turn_id });
   if (active.nativeCallControlDelegations.size > 256) active.nativeCallControlDelegations.delete(active.nativeCallControlDelegations.keys().next().value);
   const backendRequest = active.endRequests?.get(item.id);
-  if ((backendRequest?.backendPath || backendRequest?.decisionPath) && backendRequest.accepted && !backendRequest.invalidated &&
+  if (backendRequest?.backendPath && backendRequest.accepted && !backendRequest.invalidated &&
     backendRequest.originUserTurnId === item.user_bidi_turn_id && active.latestNativeUserTurnId === item.user_bidi_turn_id) {
     backendRequest.providerObserved = true; active.endNativeRequestId = backendRequest.requestId;
     armAutomaticEnd(active, backendRequest);
@@ -231,24 +216,6 @@ function observeNativeEndDelegation(active, item) {
   request.providerObserved = true;
   active.endNativeRequestId = request.requestId;
   armAutomaticEnd(active, request);
-}
-function observeNativeControlContext(active, data) {
-  const id = data.delegation_item_id;
-  const observed = active.nativeCallControlDelegations?.get(id);
-  if (!observed || active.latestNativeUserTurnId !== observed.originUserTurnId) return;
-  const request = endCallRequest(active, id, observed.originUserTurnId);
-  if (!request || request.backendPath) return;
-  const key = JSON.stringify([data.start_ms ?? null, data.end_ms ?? null]);
-  if (request.nativeContextAck && request.nativeContextAckKey === key) return;
-  // This captures evidence, never permission to hang up. A matching, accepted
-  // JEV host receipt and actual audible PCM + terminal + fresh quiet are required.
-  request.nativeContextAck = true; request.nativeContextAckKey = key;
-  request.providerObserved = true; active.endNativeRequestId = id;
-  // Native context can be appended inside an already-created assistant turn.
-  // Keep that still-open native identity, but start PCM proof only after ACK.
-  request.turnId = active.openNativeAssistantTurnId ?? null;
-  request.terminalAt = null; request.audioObserved = false;
-  request.quietSince = null; request.lastSampleAt = null;
 }
 function observeAutomaticEnd(active, at, energy) {
   // Keep the genuine native farewell observation even if the host SSE travels
@@ -268,9 +235,7 @@ function observeAutomaticEnd(active, at, energy) {
   duplexDiagnostic(active, { type: "model-end-call-playback-drained", at,
     requestId: ending.requestId, originUserTurnId: ending.originUserTurnId, turnId: ending.turnId,
     ...(ending.backendPath ? { source: ending.source, backendToolCallId: ending.backendToolCallId,
-      backendRunId: ending.backendRunId, nativeDelegationId: ending.requestId } : {}),
-    ...(ending.decisionPath ? { source: ending.source, decisionId: ending.decisionId, model: ending.decisionModel,
-      nativeDelegationId: ending.requestId } : {}) });
+      backendRunId: ending.backendRunId, nativeDelegationId: ending.requestId } : {}) });
   void stopCall();
 }
 async function startRemotePlayback(active, source) {
@@ -337,7 +302,7 @@ function taskState() {
   $("taskStatus").textContent = ACTIVITY_LABELS[tasks.pose] ?? "";
   $("cancel").disabled = tasks.size === 0;
   $("cancel").hidden = tasks.size === 0;
-  void avatar?.show(tasks.pose);
+  void avatar?.show(tasks.pose, tasks.completion);
   document.body.dataset.avatarState = tasks.size > 1 ? "very-busy" : tasks.size ? "busy" : "idle";
 }
 function renderTranscript(snapshot) {
@@ -393,7 +358,6 @@ function providerMessage(event) {
   if (active && ((["turn.created", "turn.done"].includes(data.type) && data.turn?.role === "user")
     || (data.type === "input_transcript.added" && typeof data.item?.text === "string" && data.item.text.trim()))) suppressGreetingForCaller(active);
   if (active && data.type === "delegation.created") observeNativeEndDelegation(active, data.item);
-  if (active && data.type === "delegation.context.appended") observeNativeControlContext(active, data);
   if (active && data.type === "turn.done" && data.turn?.role === "user" &&
     data.turn.id === active.latestNativeUserTurnId && typeof data.turn.transcript === "string" && data.turn.transcript.trim()) {
     active.completedNativeUserTurns ??= new Set(); active.completedNativeUserTurns.add(data.turn.id);
@@ -404,7 +368,6 @@ function providerMessage(event) {
     duplexDiagnostic(active, { type: "native-turn-created", at, role: data.turn.role });
     if (data.turn.role === "user") {
       active.latestNativeUserTurnId = typeof data.turn.id === "string" ? data.turn.id : null;
-      active.openNativeAssistantTurnId = null;
       for (const request of active.endRequests?.values() ?? []) request.invalidated = true;
       active.endNativeRequestId = null;
       active.duplex.notifyUserTurnStarted(at);
@@ -412,10 +375,9 @@ function providerMessage(event) {
       // This is a native turn event, not a phrase/keyword match on captions.
       cancelAutomaticEnd(active);
     } else if (typeof data.turn.id === "string" && data.turn.id.trim()) {
-      active.openNativeAssistantTurnId = data.turn.id;
       active.duplex.notifyAssistantTurnCreated(data.turn.id, at);
       const request = active.endRequests?.get(active.endNativeRequestId);
-      if (request && !request.invalidated && (!(request.backendPath || request.decisionPath) || request.accepted && request.providerObserved)) {
+      if (request && !request.invalidated && (!request.backendPath || request.accepted && request.providerObserved)) {
         request.turnId = data.turn.id; request.terminalAt = null;
         request.audioObserved = false; request.quietSince = null;
       }
@@ -428,7 +390,6 @@ function providerMessage(event) {
       active.duplex.notifyAssistantTurnDone(data.turn.id, at);
     const request = active.endRequests?.get(active.endNativeRequestId);
     if (request && !request.invalidated && request.turnId === data.turn?.id) request.terminalAt = at;
-    if (active.openNativeAssistantTurnId === data.turn?.id) active.openNativeAssistantTurnId = null;
   }
   if (active && data.type === "output_audio_buffer.cleared") {
     const at = performance.now();
@@ -522,7 +483,8 @@ async function startCall() {
         onPlaybackActivity:speaking=>{if(call===active)document.body.dataset.voiceState=speaking?'speaking':'listening';},
         onEvent:value=>{
           if(call!==active)return;
-          tasks.consume(value);
+          if (value.type === 'avatar.expression') { avatar?.expression(value.expression); return; }
+      tasks.consume(value);
           if(value.type==='backend.result')renderTranscript(presentation.consume(value));
           if(value.type.startsWith('tool.'))taskState();
           if(value.type==='playback.blocked')setStatus('声音播放已暂停，轻点页面继续。');
@@ -549,12 +511,10 @@ async function startCall() {
       if (value.type === "tool.result") requestAutomaticEnd(active, value);
       if (value.type === "tool.error" && value.name === "openclaw_end_call" &&
         (value.callId === value.requestId || value.source === "backend_model_client_tool" &&
-          value.callId === value.backendToolCallId && value.nativeDelegationId === value.requestId ||
-          value.source === "decision_model_client_tool" && value.callId === `jev_${value.decisionId}` && value.nativeDelegationId === value.requestId)) {
+          value.callId === value.backendToolCallId && value.nativeDelegationId === value.requestId)) {
         const request = endCallRequest(active, value.requestId, value.originUserTurnId);
         if (request && (!request.backendPath || request.backendToolCallId === value.backendToolCallId &&
-          request.backendRunId === value.backendRunId) && (!request.decisionPath ||
-          request.decisionId === value.decisionId && request.decisionModel === value.model && value.source === request.source)) {
+          request.backendRunId === value.backendRunId)) {
           request.invalidated = true;
           if (active.ending?.requestId === value.requestId) cancelAutomaticEnd(active);
         }
@@ -565,6 +525,7 @@ async function startCall() {
       const value = JSON.parse(event.data);
       if (value.voiceSessionId !== active.voiceSessionId) return;
       if (Number.isSafeInteger(value.revision)) active.presentationRevision = Math.max(active.presentationRevision ?? 0, value.revision);
+      if (value.type === 'avatar.expression') { avatar?.expression(value.expression); return; }
       tasks.consume(value);
       if(value.type==='backend.result')renderTranscript(presentation.consume(value));
       applyNativeControl(value);

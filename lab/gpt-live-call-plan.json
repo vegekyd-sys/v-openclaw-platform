@@ -1,5 +1,5 @@
 {
-  "baseRelease": "loopback-requester-sender-v1",
+  "baseRelease": "hotreload-feishu-approvals-v2",
   "files": [
     {
       "source": "lab/release-files/gpt-live-call/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
@@ -14,21 +14,6 @@
     {
       "source": "lab/release-files/gpt-live-call/gpt-live-call-lifecycle.mjs",
       "target": "openclaw/dist/gpt-live-call-lifecycle.mjs",
-      "before": null
-    },
-    {
-      "source": "lab/release-files/gpt-live-call/voice-decision-router.mjs",
-      "target": "openclaw/dist/voice-decision-router.mjs",
-      "before": null
-    },
-    {
-      "source": "lab/release-files/gpt-live-call/voice-decision-gateway.mjs",
-      "target": "openclaw/dist/voice-decision-gateway.mjs",
-      "before": null
-    },
-    {
-      "source": "lab/release-files/gpt-live-call/voice-direct-tools.mjs",
-      "target": "openclaw/dist/voice-direct-tools.mjs",
       "before": null
     },
     {

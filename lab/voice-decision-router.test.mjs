@@ -83,14 +83,9 @@ test('Gateway decision performs the authenticated direct tool without Agent; Age
  assert.equal(await owner.run({request:'做报告',requestId:'agent',signal,isCurrent:()=>true,delegate:async args=>{assert.equal(args.question,'做报告');return actual;}}),actual);
  assert.equal(owner.pending,false);
 });
-test('JEV end receipt is honest and owner-bound; goodbye still uses original native context and playback close',()=>{
- const events=[],frames=[];let current=true;
- const lifecycle=createGptLiveCallLifecycle({isCurrent:()=>current,onToolEvent:e=>events.push(e),sendDelegationContext:(id,text)=>{frames.push({id,text});return true;}});
- const proof={nativeDelegationId:'native-owned',originUserTurnId:'user-owned',delegationGeneration:1,decisionId:'real-decision-id',model:'typesafe/jev-fixture'};
- const receipt=lifecycle.acceptDecisionTool(proof);assert.equal(receipt.source,'decision_model_client_tool');assert(!('backendRunId' in receipt));
- assert.equal(lifecycle.acceptDecisionTool(proof),receipt);assert.equal(events.length,2);assert.equal(frames.length,1);
- assert.equal(lifecycle.acceptDecisionTool({...proof,decisionId:'foreign'}),false);current=false;
- assert.throws(()=>lifecycle.acceptDecisionTool({...proof,nativeDelegationId:'new'}),/no longer active/);
+test('restored native lifecycle does not expose experimental decision hangup acceptance',()=>{
+ const lifecycle=createGptLiveCallLifecycle({isCurrent:()=>true});
+ assert.equal(lifecycle.acceptDecisionTool,undefined);
 });
 
 

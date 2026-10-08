@@ -62,5 +62,5 @@ test('failed assets keep last good portrait and allow a retry; reduced motion sk
   const previous={hidden:true,animate(){animations++;}};
   const renderer=createAvatarRenderer({image,previous,load:async file=>file,reducedMotion:()=>true});
   await renderer.show('memory');assert.equal(animations,0);assert.equal(previous.hidden,true);
-  assert.equal(AVATAR_FILES.length,5);
+  assert.equal(AVATAR_FILES.length,74);
 });

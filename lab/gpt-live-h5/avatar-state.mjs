@@ -1,12 +1,16 @@
 // Only a coarse visual category crosses the wire; never arguments or results.
 export const AVATAR_POSES = Object.freeze({
-  idle: 'v-signal-idle-20261006.png',
-  memory: 'v-signal-memory-20261006-r2.png',
-  web: 'v-signal-web-20261006-r2.png',
-  calendar: 'v-signal-calendar-20261006-r2.png',
-  background: 'v-signal-background-20261006-r2.png',
+  idle: 'v-operator-idle-512.webp',
+  listen: 'v-operator-listen-0-512.webp',
+  memory: 'v-operator-memory-0-512.webp',
+  web: 'v-operator-web-0-512.webp',
+  calendar: 'v-operator-calendar-0-512.webp',
+  background: 'v-operator-background-0-512.webp',
+  complete: 'v-operator-complete-0-512.webp',
 });
-export const AVATAR_FILES = Object.values(AVATAR_POSES);
+export const AVATAR_SEQUENCES = Object.freeze(Object.fromEntries(Object.keys(AVATAR_POSES).map(pose => [pose,
+  Object.freeze(pose === 'idle' ? [AVATAR_POSES.idle] : Array.from({length:6}, (_,i)=>`v-operator-${pose}-${i}-512.webp`))])));
+export const AVATAR_FILES = Object.values(AVATAR_SEQUENCES).flatMap(files => files.flatMap(file => [file,file.replace('-512.webp','-256.webp')]));
 export const ACTIVITY_LABELS = Object.freeze({memory:'正在查记忆', web:'正在查资料', calendar:'正在查日程', background:'后台处理中'});
 export function taskActivity(name, args = {}, depth = 0) {
   if (['end_call','openclaw_end_call','openclaw_live_call_control','cancel_task','current_time'].includes(name)) return 'control';
@@ -23,6 +27,7 @@ export function taskActivity(name, args = {}, depth = 0) {
 }
 export function createAvatarTasks() {
   const pending = new Map();
+  let completion = null;
   return {
     consume(event) {
       if (typeof event?.callId !== 'string' || !event.callId) return;
@@ -30,9 +35,12 @@ export function createAvatarTasks() {
         const activity = Object.hasOwn(ACTIVITY_LABELS, event.activity) || event.activity === 'control'
           ? event.activity : taskActivity(event.name);
         if (activity !== 'control' && !pending.has(event.callId)) pending.set(event.callId, activity);
-      } else if (['tool.result','tool.error'].includes(event.type)) pending.delete(event.callId);
+      } else if (['tool.result','tool.error'].includes(event.type) && pending.delete(event.callId)) {
+        completion = {id:event.callId, ok:event.type === 'tool.result'};
+      }
     },
-    clear() { pending.clear(); },
+    clear() { pending.clear(); completion = null; },
+    get completion() { return completion; },
     get size() { return pending.size; },
     get pose() { return [...pending.values()].at(-1) ?? 'idle'; },
   };

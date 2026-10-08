@@ -5,12 +5,13 @@ import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { createAvatarExpressionSelector, avatarEvaluatorFromEnv } from "./avatar-decision.mjs";
 import { AVATAR_FILES, taskActivity } from "./avatar-state.mjs";
 import { createVoiceAccess } from "./access.mjs";
 import { GPT_LIVE_PERSONAL_SESSION_KEY } from "./personal-session.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
-export function createLiveH5Server({ gateway, offer, directVoice, preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2 }) {
+export function createLiveH5Server({ gateway, offer, directVoice, preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv() }) {
   basePath = basePath.replace(/\/$/u, "");
   if (basePath && !/^\/[a-zA-Z0-9_-]+$/u.test(basePath)) throw new Error("Invalid voice base path");
   const hosted = Boolean(publicOrigin || accessToken);
@@ -18,6 +19,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
   if (hosted && (origin.protocol !== "https:" || origin.origin !== publicOrigin || !basePath)) throw new Error("Hosted voice requires an HTTPS origin and base path");
   if (!Number.isInteger(maxActiveSessions) || maxActiveSessions < 1 || maxActiveSessions > 50 || !Number.isInteger(maxActiveSessionsPerIp) || maxActiveSessionsPerIp < 1 || maxActiveSessionsPerIp > maxActiveSessions) throw new Error("Invalid voice call limits");
   const access = hosted ? createVoiceAccess(accessToken, basePath) : null;
+  const visual = createAvatarExpressionSelector({evaluate:avatarEvaluate});
   const contexts = new Map();
   const local = { active: null, creatingSession: false, listeners: new Set(), touchedAt: Date.now(), entry: "tianyi" };
   const attempts = new Map();
@@ -56,14 +58,14 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
         ["/duplex-playback.mjs", [join(here, "duplex-playback.mjs"), "text/javascript; charset=utf-8"]],
         ...["microphone-capture.mjs", "microphone-session.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "avatar.mjs", "avatar-state.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
         ["/styles.css", [join(here, "styles.css"), "text/css; charset=utf-8"]],
-        ...AVATAR_FILES.map(name => [`/assets/${name}`, [join(here, "assets", name), "image/png"]]),
+        ...AVATAR_FILES.map(name => [`/assets/${name}`, [join(here, "assets", name), name.endsWith(".webp") ? "image/webp" : "image/png"]]),
         ...["v-idle-nohat-20260922.png", "v-tool-busy-20260922.png"].map((name) => [`/assets/${name}`, [join(here, "../rtc-h5/assets", name), "image/png"]]),
       ]);
       if (req.method === "GET" && staticFiles.has(pathname)) {
         if (pathname === "/" && !hosted) res.setHeader("set-cookie", `v_live_experiment=${cookie}; HttpOnly; SameSite=Strict; Path=/`);
         const [file, type] = staticFiles.get(pathname);
         const contents = await readFile(file);
-        res.writeHead(200, { "content-type": type, "cache-control": "no-store" }); res.end(contents); return;
+        res.writeHead(200, { "content-type": type, "cache-control": pathname.startsWith("/assets/v-operator-") ? "public, max-age=86400" : "no-store" }); res.end(contents); return;
       }
       const readBody = async () => {
         const chunks = []; let size = 0;
@@ -238,18 +240,21 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
           if (typeof item.payload[field] === "string") message[field] = item.payload[field];
         if (Number.isSafeInteger(item.payload.delegationGeneration)) message.delegationGeneration = item.payload.delegationGeneration;
       }
-      if (item.payload.source === "decision_model_client_tool") {
-        message.source = item.payload.source;
-        for (const field of ["nativeDelegationId", "decisionId", "model", "status"])
-          if (typeof item.payload[field] === "string") message[field] = item.payload[field];
-        if (Number.isSafeInteger(item.payload.delegationGeneration)) message.delegationGeneration = item.payload.delegationGeneration;
-      }
       if (item.type === "tool.result" && item.payload.closeAfterPlayback === true
         && typeof item.payload.requestId === "string" && item.payload.requestId) {
         message.closeAfterPlayback = true;
       }
     }
     publish(message);
+    if (message.type === 'tool.call' && message.activity !== 'control') {
+      const active=context.active;
+      void visual.select({owner:message.voiceSessionId,callId:message.callId,activity:message.activity,
+        isCurrent:()=>context.active===active && active.presentation.pending.has(message.callId)})
+        .then(expression=>{if(expression && context.active===active && active.presentation.pending.has(message.callId)) {
+          const cosmetic={type:'avatar.expression',voiceSessionId:message.voiceSessionId,callId:message.callId,expression};
+          for(const response of context.listeners)response.write(`data: ${JSON.stringify(cosmetic)}\n\n`);
+        }}).catch(()=>{});
+    }
   };
   server.on('upgrade',(req,socket,head)=>{
     const host=req.headers.host??'';

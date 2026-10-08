@@ -47,10 +47,9 @@ export function resolveGptLiveCallerSurface(surface, sessionKey) {
 export function resolveGptLiveCallInstructions(original, profile) {
   if (!isGptLiveCallProfile(profile)) return original;
   const caller = resolveGptLiveCaller(profile.sessionKey);
-  const contract = ['jev','openai_decisions'].includes(process.env.VOICE_DECISION_PROVIDER) ? GPT_LIVE_CALL_INSTRUCTIONS + '\n\n统一决策入口优先：任何查询、操作、任务分配、取消或自然挂断要求都发起真实 native client delegation，并保留完整 USER 目标与条件。这个 client 后面是统一决策器，由它选择直接 OpenClaw 工具还是后台 Agent；不要自行选择工具、伪造调用或推断任务复杂度。无需一律启动后台 Agent。普通聊天仍自然回答。只有实际主机接受结束后才告别；告别播完才关闭。' : GPT_LIVE_CALL_INSTRUCTIONS;
-  if (!caller) return contract;
+  if (!caller) return GPT_LIVE_CALL_INSTRUCTIONS;
   const persona = resolveGptLivePersona(profile.configuredInstructions);
-  return [contract, persona, buildGptLiveCallerInstructions(caller)].filter(Boolean).join("\n\n");
+  return [GPT_LIVE_CALL_INSTRUCTIONS, persona, buildGptLiveCallerInstructions(caller)].filter(Boolean).join("\n\n");
 }
 
 export function parseGptLiveEndCallDelegation(prompt) {
@@ -148,32 +147,6 @@ export function createGptLiveCallLifecycle(options) {
         try { emit("tool.error", backendToolCallId, { ...receipt, message: "GPT Live goodbye could not be requested" }, originUserTurnId); } catch {}
         options.onError?.(error instanceof Error ? error : new Error(String(error)));
         return false;
-      }
-    },
-    acceptDecisionTool({nativeDelegationId,originUserTurnId,delegationGeneration,decisionId,model}={}) {
-      assertCurrent();
-      const validId=value=>typeof value==='string'&&/^[a-zA-Z0-9_.:-]{1,160}$/.test(value);
-      if(![nativeDelegationId,originUserTurnId,decisionId].every(validId)||
-        typeof model!=='string'||!model.startsWith('typesafe/jev-')||
-        !Number.isSafeInteger(delegationGeneration)||delegationGeneration<1)return false;
-      const old=backendReceipts.get(nativeDelegationId);
-      if(old)return old.source==='decision_model_client_tool'&&old.decisionId===decisionId&&old.model===model&&
-        old.originUserTurnId===originUserTurnId&&old.delegationGeneration===delegationGeneration?old:false;
-      if(endedRequestIds.has(nativeDelegationId))return false;
-      const callId='jev_'+decisionId;
-      const receipt=Object.freeze({source:'decision_model_client_tool',callId,requestId:nativeDelegationId,nativeDelegationId,
-        originUserTurnId,delegationGeneration,decisionId,model,status:'accepted',closeAfterPlayback:true});
-      try{
-        emit('tool.call',callId,{...receipt,args:{}},originUserTurnId);
-        emit('tool.result',callId,receipt,originUserTurnId);
-        assertCurrent();
-        if(options.sendDelegationContext(nativeDelegationId,'openclaw_end_call 已被当前通话接受。现在用一句简短中文向用户告别，不委托后台、不继续旧话题；客户端会在这句语音实际播完后结束通话。')!==true)throw Error('GPT Live goodbye could not be requested');
-        backendReceipts.set(nativeDelegationId,receipt);
-        if(backendReceipts.size>256)backendReceipts.delete(backendReceipts.keys().next().value);
-        return receipt;
-      }catch(error){
-        try{emit('tool.error',callId,{...receipt,message:'GPT Live goodbye could not be requested'},originUserTurnId);}catch{}
-        options.onError?.(error);return false;
       }
     },
     close() { closed = true; endedRequestIds.clear(); backendReceipts.clear(); },

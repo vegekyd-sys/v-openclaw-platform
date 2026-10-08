@@ -1,56 +1,3 @@
-// voice-jev-unified-v1
-import {jevEvaluatorFromEnv,createVoiceDecisionHistory} from "./voice-decision-router.mjs";
-import {createGatewayVoiceDecisionOwner} from "./voice-decision-gateway.mjs";
-import {appendFileSync} from "node:fs";
-// gpt-live-caller-context-v1
-// gpt-live-backend-call-control-v1: Talk
-function bindGptLiveBackendCallControl({ callControl, continuationIdentity, assertCurrent }) {
-  if (callControl === undefined) return;
-  const validId = value => typeof value === "string" && /^[a-zA-Z0-9_.:-]{1,160}$/.test(value);
-  if (!callControl || !validId(callControl.nativeDelegationId) || !validId(callControl.originUserTurnId) ||
-      !Number.isSafeInteger(callControl.delegationGeneration) || callControl.delegationGeneration < 1 ||
-      callControl.nativeDelegationId !== continuationIdentity?.delegationItemId ||
-      callControl.delegationGeneration !== continuationIdentity?.delegationGeneration ||
-      typeof callControl.userTurnText !== "string" || !callControl.userTurnText.trim() || callControl.userTurnText.length > 32768 ||
-      typeof callControl.isCurrent !== "function" || typeof callControl.accept !== "function" ||
-      typeof assertCurrent !== "function" || callControl.tool?.type !== "function" ||
-      callControl.tool.function?.name !== "openclaw_end_call" ||
-      callControl.tool.function.parameters?.type !== "object" ||
-      !callControl.tool.function.parameters.properties ||
-      Object.keys(callControl.tool.function.parameters.properties).length !== 0 ||
-      callControl.tool.function.parameters.additionalProperties !== false ||
-      callControl.tool.function.parameters.required?.length > 0) {
-    throw new Error("Invalid host-owned GPT Live call control");
-  }
-  const original = { nativeDelegationId: callControl.nativeDelegationId, originUserTurnId: callControl.originUserTurnId,
-    delegationGeneration: callControl.delegationGeneration, userTurnText: callControl.userTurnText };
-  const check = () => {
-    assertCurrent();
-    if (Object.keys(original).some(key => callControl[key] !== original[key]) || callControl.isCurrent() !== true) {
-      throw new Error("GPT Live call control native source is no longer current");
-    }
-  };
-  check();
-  // Only JSON schema is sent to Worker. These owner callbacks remain in Talk.
-  const tool = Object.freeze({ type: "function", function: Object.freeze({ name: "openclaw_end_call",
-    description: typeof callControl.tool.function.description === "string" ? callControl.tool.function.description : "End the current voice call only when the user has clearly requested it. Do not use for a negated, unfinished, or ambiguous request.",
-    parameters: Object.freeze({ type: "object", properties: Object.freeze({}), additionalProperties: false }),
-  }) });
-  return Object.freeze({ ...original, tool,
-    isCurrent: () => { try { check(); return true; } catch { return false; } },
-    accept: proof => { check(); const receipt = callControl.accept(proof); check(); return receipt; },
-  });
-}
-function buildGptLiveBackendCallControlQuestion(prompt, callControl) {
-  if (!callControl) return prompt;
-  if (callControl.isCurrent() !== true) throw new Error("GPT Live call control source changed before prompt submission");
-  return [
-    prompt,
-    "Original complete latest USER turn, finalized by the current voice host (JSON string):",
-    JSON.stringify(callControl.userTurnText),
-    "Use this complete utterance to interpret the live request. The available openclaw_end_call client tool takes no arguments and asks the current host to end this call after its farewell plays. Use it only if this complete latest utterance clearly requests ending this call. Do not use it for a negated, unfinished, ambiguous, quoted or hypothetical request; answer the actual request normally in those cases. Do not claim that the call has closed just because you called the tool.",
-  ].join("\n\n");
-}
 // voice-backend-document-talk-v2
 const LONG_RESULT_NOTICE="详细方案在屏幕上，需要的话也可以整理成文档发给你。";
 function readBackendResult(result) {
@@ -105,6 +52,55 @@ function presentBackendResult(result) {
     /^\s*```/mu.test(text) || /^\s*\|?.*\|.*\n\s*\|?\s*:?-{3,}/mu.test(text);
   const summary = long ? parsed.summary ?? extractResultSummary(text) : null;
   return {text, long, spokenText: long ? `${summary} ${LONG_RESULT_NOTICE}` : text};
+}
+// gpt-live-caller-context-v1
+// gpt-live-backend-call-control-v1: Talk
+function bindGptLiveBackendCallControl({ callControl, continuationIdentity, assertCurrent }) {
+  if (callControl === undefined) return;
+  const validId = value => typeof value === "string" && /^[a-zA-Z0-9_.:-]{1,160}$/.test(value);
+  if (!callControl || !validId(callControl.nativeDelegationId) || !validId(callControl.originUserTurnId) ||
+      !Number.isSafeInteger(callControl.delegationGeneration) || callControl.delegationGeneration < 1 ||
+      callControl.nativeDelegationId !== continuationIdentity?.delegationItemId ||
+      callControl.delegationGeneration !== continuationIdentity?.delegationGeneration ||
+      typeof callControl.userTurnText !== "string" || !callControl.userTurnText.trim() || callControl.userTurnText.length > 32768 ||
+      typeof callControl.isCurrent !== "function" || typeof callControl.accept !== "function" ||
+      typeof assertCurrent !== "function" || callControl.tool?.type !== "function" ||
+      callControl.tool.function?.name !== "openclaw_end_call" ||
+      callControl.tool.function.parameters?.type !== "object" ||
+      !callControl.tool.function.parameters.properties ||
+      Object.keys(callControl.tool.function.parameters.properties).length !== 0 ||
+      callControl.tool.function.parameters.additionalProperties !== false ||
+      callControl.tool.function.parameters.required?.length > 0) {
+    throw new Error("Invalid host-owned GPT Live call control");
+  }
+  const original = { nativeDelegationId: callControl.nativeDelegationId, originUserTurnId: callControl.originUserTurnId,
+    delegationGeneration: callControl.delegationGeneration, userTurnText: callControl.userTurnText };
+  const check = () => {
+    assertCurrent();
+    if (Object.keys(original).some(key => callControl[key] !== original[key]) || callControl.isCurrent() !== true) {
+      throw new Error("GPT Live call control native source is no longer current");
+    }
+  };
+  check();
+  // Only JSON schema is sent to Worker. These owner callbacks remain in Talk.
+  const tool = Object.freeze({ type: "function", function: Object.freeze({ name: "openclaw_end_call",
+    description: typeof callControl.tool.function.description === "string" ? callControl.tool.function.description : "End the current voice call only when the user has clearly requested it. Do not use for a negated, unfinished, or ambiguous request.",
+    parameters: Object.freeze({ type: "object", properties: Object.freeze({}), additionalProperties: false }),
+  }) });
+  return Object.freeze({ ...original, tool,
+    isCurrent: () => { try { check(); return true; } catch { return false; } },
+    accept: proof => { check(); const receipt = callControl.accept(proof); check(); return receipt; },
+  });
+}
+function buildGptLiveBackendCallControlQuestion(prompt, callControl) {
+  if (!callControl) return prompt;
+  if (callControl.isCurrent() !== true) throw new Error("GPT Live call control source changed before prompt submission");
+  return [
+    prompt,
+    "Original complete latest USER turn, finalized by the current voice host (JSON string):",
+    JSON.stringify(callControl.userTurnText),
+    "Use this complete utterance to interpret the live request. The available openclaw_end_call client tool takes no arguments and asks the current host to end this call after its farewell plays. Use it only if this complete latest utterance clearly requests ending this call. Do not use it for a negated, unfinished, ambiguous, quoted or hypothetical request; answer the actual request normally in those cases. Do not claim that the call has closed just because you called the tool.",
+  ].join("\n\n");
 }
 // gpt-live-call-lifecycle-talk-v1
 import { resolveGptLiveCallInstructions, resolveGptLiveCallerSurface } from "./gpt-live-call-lifecycle.mjs";
@@ -477,9 +473,6 @@ function createTalkClientAgentConsultRunner(params) {
 	};
 }
 function createTalkClientGatewayControlOwner(params) {
-	let decisionOwner;
-	const decisionHistory=createVoiceDecisionHistory();
-	const decisionEvaluate=jevEvaluatorFromEnv();
 	let callLifecycle;
 	let bridge;
 	let closeProvider;
@@ -617,7 +610,6 @@ function createTalkClientGatewayControlOwner(params) {
 			final
 		});
 		if (!final) return;
-		decisionHistory.append(role,text);
 		transcriptSequence += 1;
 		const entryId = `${entryPrefix}-${transcriptSequence}`;
 		params.appendTranscript({
@@ -627,7 +619,7 @@ function createTalkClientGatewayControlOwner(params) {
 		}).catch((error) => {
 			warn(`talk Gateway control transcript failed: ${formatErrorMessage(error)}`);
 		});
-		if (!decisionEvaluate && role === "user") runControl.handleSpoken(text, params.flushTranscript());
+		if (role === "user") runControl.handleSpoken(text, params.flushTranscript());
 	};
 	const owner = {
 		connId: params.connId,
@@ -660,19 +652,6 @@ function createTalkClientGatewayControlOwner(params) {
 			if (boundCallControl) {
 				if (!continuationContext) throw new Error("GPT Live call control requires the native delegation owner");
 				continuationContext.callControl = boundCallControl;
-			}
-			if(decisionEvaluate){
-				if(!boundCallControl || typeof callControl.acceptDecision !== "function") throw new Error("JEV requires complete native USER ownership");
-				decisionOwner ??= createGatewayVoiceDecisionOwner({evaluate:decisionEvaluate,
-					context:params.decisionContext??"",getHistory:request=>decisionHistory.snapshot(request),isCallCurrent:()=>{owner.assertOpen();return owners.get(params.voiceSessionId)===owner;},
-					invoke:params.invokeDirectTool,
-					control:applyControl,
-					emit:event=>harness.emit({...event,turnId:harness.ensureTurn(),payload:{...event.payload,...talkPayload()},final:event.type!=="tool.call"}),
-					audit:event=>appendFileSync(process.env.GPT_LIVE_VOICE_JEV_AUDIT_PATH??("/tmp/openclaw-voice-jev-"+process.pid+"-audit.jsonl"),JSON.stringify({at:Date.now(),voiceSessionId:params.voiceSessionId,...event})+"\n",{mode:0o600})});
-				return await decisionOwner.run({request:boundCallControl.userTurnText,requestId:boundCallControl.nativeDelegationId,
-					signal:AbortSignal.any([consultSignal,signal]),isCurrent:boundCallControl.isCurrent,
-					acceptEnd:proof=>{if(!boundCallControl.isCurrent())return false;return callControl.acceptDecision(proof);},
-					delegate:args=>{const grant=authorizeGptLiveClientVoicePendingConfirmation({agentId:params.sessionTarget.agentId,sessionKey:params.sessionTarget.sessionKey,voiceSessionId:params.voiceSessionId,callerInputAcceptedAt});return params.runAgentConsult({question:buildGptLiveBackendCallControlQuestion(args.question,boundCallControl),...grant?{confirmationId:grant.confirmationId}:{}},AbortSignal.any([consultSignal,signal]),onProgress,continuationContext);}});
 			}
 			const spokenGrant = authorizeGptLiveClientVoicePendingConfirmation({
 				agentId: params.sessionTarget.agentId,
@@ -3014,18 +2993,7 @@ const createTalkClient = async ({ params, respond, context, client, sessionMutat
 				assertConnectionOpen: () => {
 					if (!(context.getClientConnIds?.((candidate) => candidate === client))?.has(ownerConnId)) throw new Error("Realtime voice client disconnected");
 				},
-				decisionContext:JSON.stringify(initialItems),
-			invokeDirectTool:async(name,args,callId,signal)=>{
-				const {t:invokeGatewayTool}=await import("./tools-invoke-shared-CjpflNGO.js");
-				const outcome=await invokeGatewayTool({cfg:context.getRuntimeConfig(),signal,
-					input:{agentId:target.agentId,sessionKey:target.canonicalKey,name,args},
-					authenticatedUserProfile:client?.authenticatedUserProfile,operatorRoleActor:client?.internal?.operatorRoleActor,
-					operatorScopes:client?.connect.scopes,senderIsOwner:client?.connect.scopes?.includes("operator.admin"),
-					clientCaps:client?.connect.caps,toolCallIdPrefix:"voice-jev",approvalMode:"report"});
-				if(!outcome.ok)throw new Error(outcome.error?.message??"Direct voice tool failed");
-				return outcome.result;
-			},
-			runAgentConsult: consultRunner.runArgs,
+				runAgentConsult: consultRunner.runArgs,
 				appendTranscript: ({ entryId, role, text }) => appendClientVoiceTranscript({
 					agentId,
 					sessionKey,

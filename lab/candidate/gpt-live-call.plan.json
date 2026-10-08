@@ -1,5 +1,5 @@
 {
-  "baseRelease": "loopback-requester-sender-v1",
+  "baseRelease": "hotreload-feishu-approvals-v2",
   "files": [
     {
       "source": "lab/release-files/gpt-live-call/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
@@ -14,21 +14,6 @@
     {
       "source": "lab/release-files/gpt-live-call/gpt-live-call-lifecycle.mjs",
       "target": "openclaw/dist/gpt-live-call-lifecycle.mjs",
-      "before": null
-    },
-    {
-      "source": "lab/release-files/gpt-live-call/voice-decision-router.mjs",
-      "target": "openclaw/dist/voice-decision-router.mjs",
-      "before": null
-    },
-    {
-      "source": "lab/release-files/gpt-live-call/voice-decision-gateway.mjs",
-      "target": "openclaw/dist/voice-decision-gateway.mjs",
-      "before": null
-    },
-    {
-      "source": "lab/release-files/gpt-live-call/voice-direct-tools.mjs",
-      "target": "openclaw/dist/voice-direct-tools.mjs",
       "before": null
     },
     {
@@ -138,8 +123,6 @@
     }
   ],
   "tests": [
-    "lab/voice-decision-router.test.mjs",
-    "lab/realtime-direct-tools/session.test.mjs",
     "lab/gpt-live-h5/result-presentation.test.mjs",
     "lab/gpt-live-projection-readiness.test.mjs",
     "lab/gpt-live-backend-call-control.test.mjs",
@@ -182,15 +165,6 @@
   "support": [
     "lab/gpt-live-call-lifecycle.mjs",
     "lab/patch-gpt-live-call-lifecycle.mjs",
-    "lab/patch-voice-jev.mjs",
-    "lab/voice-decision-router.mjs",
-    "lab/voice-decision-router.test.mjs",
-    "lab/voice-jev-benchmark.mjs",
-    "lab/realtime-direct-tools/jev-ab-observer.mjs",
-    "lab/realtime-direct-tools/jev-benchmark-events.mjs",
-    "lab/realtime-direct-tools/jev-benchmark-events.test.mjs",
-    "lab/voice-decision-gateway.mjs",
-    "lab/realtime-direct-tools/tools.mjs",
     "lab/patch-gpt-live-result-presentation.mjs",
     "lab/gpt-live-h5/result-presentation.mjs",
     "lab/patch-gpt-live-caller-context.mjs",
@@ -305,9 +279,6 @@
     "lab/release-files/gpt-live-call/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
     "lab/release-files/gpt-live-call/realtime-quicksilver-session-B3HKftDE.js",
     "lab/release-files/gpt-live-call/gpt-live-call-lifecycle.mjs",
-    "lab/release-files/gpt-live-call/voice-decision-router.mjs",
-    "lab/release-files/gpt-live-call/voice-decision-gateway.mjs",
-    "lab/release-files/gpt-live-call/voice-direct-tools.mjs",
     "lab/release-files/gpt-live-call/embedded-agent-DaSvA-Yk.js",
     "lab/release-files/gpt-live-call/gateway-public-stream.mjs",
     "lab/release-files/gpt-live-call/realtime-session-harness-CEO5kVAJ.js",

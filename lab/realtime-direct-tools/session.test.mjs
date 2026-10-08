@@ -4,7 +4,7 @@ import {EventEmitter} from 'node:events';
 import {setTimeout as delay} from 'node:timers/promises';
 import {createDirectVoiceService} from './session.mjs';
 
-async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}),model='grok',decisionEvaluate=null) {
+async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}),model='grok',options={}) {
  const peers=[],audit=[],invocations=[];
  class WS extends EventEmitter {constructor(){super();this.readyState=1;this.sent=[];peers.push(this);queueMicrotask(()=>this.emit('open'));}
   send(raw){const value=JSON.parse(raw);this.sent.push(value);if(value.type==='session.update')queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.updated'})),false));if(value.type==='session.create')queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.created'})),false));}
@@ -14,7 +14,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   if(method==='tools.catalog')return {groups:[{tools:['memory_search','web_search','web_fetch','exec','process'].map(id=>({id}))}]};
   invocations.push(args);return invoke(args,method);
  }};
- const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},decisionEvaluate,audit:v=>audit.push(v)});
+ const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),...options});
  const reservation=await service.reserve({model,sessionKey:'agent:makaron:explicit:personal-fixture'});
  const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>client.sent.push(JSON.parse(raw));client.close=()=>{client.readyState=3;client.emit('close');};
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);await delay(5);
@@ -159,36 +159,15 @@ test('owned long backend result publishes full document and speaks brief notice 
  assert.equal(f.invocations.filter(x=>x.message?.includes('完整目标')).length,1);await f.service.dispose();
 });
 
-const decisionAnswer=action=>({model:'typesafe/jev-test',answers:{route:{type:'choice',choice:action,confidence:1},searchQuery:{type:'choice',choice:'query_0',confidence:1},endIntent:{type:'noul',noul:1},cancelIntent:{type:'noul',noul:1}}});
-test('JEV native entry uses host USER rather than model arguments; direct tools cannot bypass router',async()=>{
- const states=[];const f=await fixture(undefined,'grok',async state=>{states.push(state);return decisionAnswer('memory_search');});
- f.client.emit('message',Buffer.from(JSON.stringify({type:'text',text:'查一下十二的实际档案'})),false);
- f.call('route_task',{request:'查公司合同'},'jev-memory');await delay(5);
- assert.equal(f.invocations[0].args.query,'查一下十二的实际档案');assert.equal(states.length,1);
- const decision=f.audit.find(x=>x.type==='decision.completed');
- assert.equal(decision.model,'typesafe/jev-test');assert.equal(decision.voiceModel,'grok');
- f.call('web_search',{query:'绕过'},'bypass');await delay(5);assert.equal(f.invocations.length,1);
- f.upstream.emit('open');await delay(2);
- const config=f.upstream.sent.find(x=>x.type==='session.update').session;
- assert.deepEqual(config.tools.map(x=>x.name),['route_task']);assert(!config.instructions.includes('任务分工：'));
- assert.equal(f.client.sent.filter(x=>x.type==='tool.result').length,2);
+test('avatar decision never blocks a direct tool and a late style cannot revive finished work',async()=>{
+ let expressionDone;
+ const f=await fixture(undefined,'grok',{avatarEvaluate:()=>new Promise(resolve=>{expressionDone=resolve;})});
+ f.call('memory_search',{query:'private query'});await delay(10);
+ assert.equal(f.invocations[0].name,'memory_search');
+ assert.equal(f.audit.filter(x=>x.type==='tool.delivered').length,1);
+ assert.equal(typeof expressionDone,'function');
+ expressionDone({model:'visual-fixture',answers:{expression:{type:'choice',choice:'curious',confidence:.9}}});await delay(5);
+ assert.equal(f.client.sent.filter(x=>x.type==='avatar.expression').length,0);
+ assert.equal(f.upstream.sent.filter(x=>x.item?.type==='function_call_output').length,1);
  await f.service.dispose();
-});
-test('JEV delayed decision loses authority after a newer USER; no late tool or end executes',async()=>{
- let finish;const f=await fixture(undefined,'grok',()=>new Promise(resolve=>finish=resolve));
- f.client.emit('message',Buffer.from(JSON.stringify({type:'text',text:'挂电话吧'})),false);
- f.call('route_task',{request:'挂电话吧'});await delay(5);
- f.client.emit('message',Buffer.from(JSON.stringify({type:'text',text:'先不要挂'})),false);
- finish(decisionAnswer('end_call'));await delay(5);
- assert(!f.client.sent.some(x=>x.type==='end.accepted'));assert.equal(f.invocations.length,0);
- assert.equal(f.audit.filter(x=>x.type==='tool.delivered').length,1);await f.service.dispose();
-});
-test('JEV noop clears task UI and responds once; missing finalized USER cannot execute',async()=>{
- const f=await fixture(undefined,'grok',async()=>decisionAnswer('noop'));
- f.call('route_task',{request:'模型猜测的任务'},'no-source');await delay(5);
- assert.equal(f.invocations.length,0);
- f.client.emit('message',Buffer.from(JSON.stringify({type:'text',text:'我们聊聊天'})),false);
- f.call('route_task',{request:'聊天'},'chat');f.call('route_task',{request:'聊天'},'chat');await delay(5);
- assert.equal(f.audit.filter(x=>x.type==='tool.delivered'&&x.callId==='chat').length,1);
- assert.equal(f.client.sent.filter(x=>x.type==='tool.result'&&x.callId==='chat').length,1);await f.service.dispose();
 });

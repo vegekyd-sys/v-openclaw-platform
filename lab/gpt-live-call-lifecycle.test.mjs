@@ -1,4 +1,3 @@
-import {patchVoiceJevController} from './patch-voice-jev.mjs';
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
@@ -18,7 +17,7 @@ import {presentBackendResult,LONG_RESULT_NOTICE,backendResultQuestion} from "./g
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 const sha = (text) => createHash("sha256").update(text).digest("hex");
 const controllerBefore = read("fixtures/gpt-live-native-progress/realtime-quicksilver-delegation-controller-B0yPpiHp.js");
-const controllerSource = patchVoiceJevController(patchGptLiveCallLifecycleController(patchGptLiveNativeProgress(controllerBefore)));
+const controllerSource = patchGptLiveCallLifecycleController(patchGptLiveNativeProgress(controllerBefore));
 const brokerBefore = read("fixtures/gpt-live-call-lifecycle/realtime-quicksilver-session-B3HKftDE.js");
 const brokerSource = patchGptLiveCallLifecycleBroker(brokerBefore);
 const wire = read("fixtures/gpt-live-call-lifecycle/realtime-quicksilver-wire-C2tdaxFV.js");
@@ -765,23 +764,4 @@ test('spoken summary keeps canonical caller corrections and rejects forged condi
  else {assert(!text.includes('建议先核实条件。'));assert(f.warnings.some(e=>e.includes('ownership')));}
  f.controller.detach();
  }
-});
-
-
-for(const provider of ['jev','openai_decisions'])test('opted-in '+provider+' native decisions launch before the Agent queue and closing aborts each owner',async()=>{
- const old=process.env.VOICE_DECISION_PROVIDER;process.env.VOICE_DECISION_PROVIDER=provider;
- const pending=[];
- try{
-  const f=nativeFixture({runAgentConsult:params=>new Promise(resolve=>pending.push({params,resolve}))});f.start();
-  for(const [id,text] of [['user-long','做一份报告'],['user-quick','查十二']]){
-   f.frame({type:'turn.created',turn:{role:'user',id}});f.frame({type:'turn.done',turn:{role:'user',id,transcript:text}});
-   f.frame({type:'delegation.created',item:{type:'delegation',target:'client',id:'item-'+id,user_bidi_turn_id:id,content:[{type:'input_text',text}]}});
-   for(let n=0;n<10&&pending.length<(id==='user-long'?1:2);n++)await new Promise(resolve=>setImmediate(resolve));
-  }
-  assert.equal(pending.length,2,'second decision cannot wait for the first long Agent');
-  assert.equal(f.controller.decisionDelegations.size,2);assert.equal(f.controller.pendingDelegations.length,0);
-  f.abort.abort();assert(pending.every(row=>row.params.signal.aborted));
-  for(const row of pending)row.resolve({text:'cancelled'});
-  await new Promise(resolve=>setImmediate(resolve));assert.equal(f.controller.decisionDelegations.size,0);
- }finally{if(old===undefined)delete process.env.VOICE_DECISION_PROVIDER;else process.env.VOICE_DECISION_PROVIDER=old;}
 });

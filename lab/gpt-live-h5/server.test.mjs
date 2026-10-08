@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createLiveH5Server } from "./server.mjs";
 import { transcriptEvent } from "./events.mjs";
+import { AVATAR_FILES } from "./avatar-state.mjs";
 import { GPT_LIVE_PERSONAL_SESSION_KEY } from "./personal-session.mjs";
 
 async function fixture(t, overrides = {}) {
@@ -197,10 +198,10 @@ test('SSE avatar activity belongs to the current voice and excludes tool argumen
 
 test('all new avatar assets and modules are served by the frozen whitelist',async t=>{
   const f=await fixture(t);
-  for(const name of ['avatar.mjs','avatar-state.mjs',...['idle','memory','web','calendar','background'].map(s=>`assets/v-signal-${s}-20261006${s === 'idle' ? '' : '-r2'}.png`)]){
+  for(const name of ['avatar.mjs','avatar-state.mjs',...AVATAR_FILES.map(s=>'assets/'+s)]){
     const r=await fetch(`${f.url}/${name}`);assert.equal(r.status,200,name);
     const bytes=new Uint8Array(await r.arrayBuffer());assert.ok(bytes.length>0);
-    assert.match(r.headers.get('content-type'),name.endsWith('.png')?/image\/png/u:/javascript/u);
+    assert.match(r.headers.get('content-type'),name.endsWith('.webp')?/image\/webp/u:/javascript/u);
   }
   assert.equal((await fetch(f.url+'/assets/not-whitelisted.png',{headers:{cookie:f.cookie}})).status,404);
 });
@@ -247,14 +248,4 @@ test('event stream flushes headers and remains open for delayed events',async t=
  await new Promise(resolve=>setTimeout(resolve,25));
  f.bridge.emit({event:'talk.event',payload:{voiceSessionId:'voice-private',talkEvent:{type:'tool.call',callId:'late',payload:{name:'web_search'}}}});
  assert(new TextDecoder().decode((await reader.read()).value).includes('late'));stop.abort();await reader.cancel().catch(()=>{});
-});
-
-
-test('JEV host end SSE preserves real decision provenance without fabricating backend run fields',async t=>{
- const f=await fixture(t);await f.request('session');const stop=new AbortController();
- const response=await fetch(f.url+'/api/events',{headers:{cookie:f.cookie},signal:stop.signal}),reader=response.body.getReader();await reader.read();
- f.bridge.emit({event:'talk.event',payload:{voiceSessionId:'voice-private',talkEvent:{type:'tool.result',callId:'jev_actual',payload:{name:'openclaw_end_call',source:'decision_model_client_tool',status:'accepted',decisionId:'actual',model:'typesafe/jev-1.13',requestId:'native',nativeDelegationId:'native',originUserTurnId:'user',delegationGeneration:2,closeAfterPlayback:true,backendRunId:'must-not-invent',userTurnText:'private caller',args:{secret:'secret'}}}}});
- const body=new TextDecoder().decode((await reader.read()).value),v=JSON.parse(body.slice(body.indexOf('data: ')+6).trim());
- assert.equal(v.source,'decision_model_client_tool');assert.equal(v.decisionId,'actual');assert.equal(v.model,'typesafe/jev-1.13');assert.equal(v.nativeDelegationId,'native');assert.equal(v.delegationGeneration,2);assert.equal(v.backendRunId,undefined);
- assert.doesNotMatch(body,/secret|private caller|must-not-invent/);stop.abort();await reader.cancel().catch(()=>{});
 });
