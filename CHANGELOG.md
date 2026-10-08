@@ -11,6 +11,34 @@
 
 ---
 
+## release-batch-20261009
+
+上线：2026-10-09 01:19 CST（v-self-restart `20261009-011524-19f1`，01:15:24 空闲时请求，191 s 就绪）  ·  tag `release-batch-20261009`
+
+**摘要**：Tianyi 10/09 00:37 定的一批：共享 VLab 验收通过就直接装 V 重启。
+
+- **#292 压缩时的交接摘要不再被当成回复发出。** 10/08 23:30 群 oc_ff5076（/vds）在回合内压缩，用户收到一整段 `# Context Checkpoint Handoff …`，真正的回答丢了。Codex 本地压缩时，摘要以 `rawResponseItem/completed`（phase `final_answer`）在压缩 item 打开期间到达，被插件当成了回复；现在压缩期间的 raw item 不再进入回复。Codex 插件（npm 管理，不在捕获范围）`run-attempt-D1hJO4fX.js` b4553661 → 1264f88b。
+- **同时撤回 F**：`codex-toolset-cover-20261008`（主人与成员交替不换线程）只装到了磁盘、从未重启生效；共享 VLab 对比首字无可测改善，暂缓。`thread-lifecycle-DAcEJ_Om.js` 7ee060b1 → c0a9ce77，即 V 一直在跑的版本。
+- **#285 会话索引预检不再在写锁下全表扫描**（10/08 V 上最长持锁约 10 s，打断聊天）。
+- **#278 / #279 Worker 预热**：会话键检查按库文件只做一次并放进预热；预热抢不到 state-lifecycle 锁时重试，不再整段推迟到首个用户回合。私有 VLab A/B：冷启动 command→model P95 约 7 → 4–5 s。这两个 PR 10/08 合入 dev 时以 VLab 发版 `firsttext-r5-prewarm-20261008` 准备过，但那一版没有到 V（V 上没有任何 r5 文件，上面「r5 同一次重启生效」的说法不准确），这次才上。
+
+验收（共享 VLab，01:10–01:13）：约 31 万 token 的 /vds 会话在第二轮回合内压缩，回复是真正的答案（旧代码同形状返回 `**Handoff Summary**`）；续用 4 轮一个线程、首字 2.0–4.2 s；vds↔vcodex 4/4；Worker 预热 10/10 ready、无推迟；预检无退回或报错。V 重启后：Worker 预热 5/5 ready（会话键 350–485 ms）。监控 `batch-watch-20261009`（V 上 systemd，至 11:27）盯交接摘要外泄、预检慢持锁、预热未就绪、Codex 回合报错，出问题直发飞书。
+
+另：#287（v-memory-indexer 分批短事务）10/08 已直接装到 V 的 `/opt/v-sentinel/`（独立服务，不在 Gateway 发版链里），之前的章节漏记。
+
+相对上一版 `codex-toolset-cover-20261008`：4 个文件变化（Codex 插件的两个文件不在捕获范围内）。
+
+**经 VLab 发版 `release-batch-20261009`**（codex-compaction-summary，dev `b38982e8`）
+- `core` agent-command-DPfawBbr.js  150d9003 → e3cab0b4
+- `core` session-accessor.sqlite-transcript-state-Cz9g7S9v.js  dd00be09 → 792b1c75
+- `core` session-transcript-reconcile-j5qhAafV.js  e95bb26a → b63bdf05
+- `worker` worker.mjs  024306ae → 8b466a60
+
+**这期间合入 dev 的 PR**（1 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #292 fix(codex): 压缩时的交接摘要不再被当成回复发出（G），并同批上 #285
+
+---
+
 ## codex-toolset-cover-20261008
 
 上线：待重启生效（2026-10-08 22:41 CST 装到 V 磁盘）  ·  tag `codex-toolset-cover-20261008`
