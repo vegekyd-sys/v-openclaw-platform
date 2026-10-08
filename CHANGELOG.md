@@ -11,6 +11,22 @@
 
 ---
 
+## v2026.9.1-db91.6-big-session-reads-20261008
+
+上线：2026-10-08 22:14 CST（v-self-restart 20261008-221101-b85e 重启生效）  ·  tag `v2026.9.1-db91.6-big-session-reads-20261008`
+
+**摘要**：大会话不再整段同步读取（PR #286）。vlab-worker 每轮结束只读会话尾部，不再把整段历史经 IPC 回传；vcodex/vds 回合开始只读最近压缩之后的上下文窗口，Gateway 主线程不再被 70–160 MB 的会话冻住 3–11 s（VLab：3.0–3.4 s → 114–167 ms，vds 回合由失败变为成功）。上线后 V 上 worker 读取 p50 286 ms → 13 ms。新的 operationLabel `session context window read`；`OPENCLAW_V_CONTEXT_WINDOW_READ=0` 可退回全量扫描。
+
+相对上一版 `codex-memory-flush-transient-20261008`：2 个文件变化。
+
+**经 VLab 发版 `big-session-reads-v1`**（claude-big-session-reads，dev `6b3cff70`）
+> 验收：2026-10-08 22:00 CST big-session-reads-v1 (PR #286, dev 6b3cff70): shared VLab regression - deepseek-flash via vlab-worker 2 turns with exec (session vlab-dev-bsr-accept-flash-1791467922143) ok; /vds switch + 2 Codex turns with exec and recall (vlab-dev-bsr-accept-vds-1791467956) ok, second turn recalled the first turn tool output; no errors in journal. Effect evidence from candidate (same runtime…
+- `core` session-manager-CNTG_BAJ.js  8db52c1a → ce091fda
+- `worker` harness-result.mjs  c1be75be → 76840da2
+
+**这期间合入 dev 的 PR**（1 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #289 fix(codex): 主人与成员交替发言不再换线程
+
 ## codex-memory-flush-transient-20261008
 
 上线：2026-10-08 21:09 CST（16:58 装到 V 磁盘）  ·  tag `codex-memory-flush-transient-20261008`
