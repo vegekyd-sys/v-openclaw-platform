@@ -132,3 +132,5 @@ candidate `lab/candidate/codex-ds-window.mjs` 的 T 段（`PHASES=T`，2026-10-0
 结论：F 省的是重放的 token（这次少了约一半），首字没有可测的改善（DeepSeek Flash 处理 7.5 万未缓存 token 只多约 1 s，在噪声范围内）。
 
 第一次对比没加 salt，修复前那次蹭到了修复后那次留下的前缀缓存，数据作废。另外，这两次都在压缩那一轮把交接摘要当成回复发了出来（`**Handoff Summary**`），共享 VLab 上可以稳定复现 G。
+
+candidate `PHASES=S`（2026-10-09 00:04 CST，同一 Gateway 先跑 V 的 run-attempt，再跑修复版；约 31 万 token 的 /vds 会话，第二轮要求原样回复 `ANSWER-OK-7`，两边各压缩一次）：V 原样存下并发出的回复是 `**Handoff Summary** **Current State** …`，修复版是 `ANSWER-OK-7`。
