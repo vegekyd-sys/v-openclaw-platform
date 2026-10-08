@@ -404,6 +404,7 @@ function providerMessage(event) {
     duplexDiagnostic(active, { type: "native-turn-created", at, role: data.turn.role });
     if (data.turn.role === "user") {
       active.latestNativeUserTurnId = typeof data.turn.id === "string" ? data.turn.id : null;
+      active.openNativeAssistantTurnId = null;
       for (const request of active.endRequests?.values() ?? []) request.invalidated = true;
       active.endNativeRequestId = null;
       active.duplex.notifyUserTurnStarted(at);

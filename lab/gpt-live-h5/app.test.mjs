@@ -1140,3 +1140,16 @@ test('PCM only before in-turn context ACK does not prove the accepted farewell',
  for(let at=150;at<=1200;at+=50) f.meter(at,0,0);
  assert.equal(f.peer.closed,false);
 });
+
+test('a new caller turn cannot attach its context ACK to the previous assistant turn',async t=>{
+ const f=await backendEndCallFixture(t);
+ f.send({type:'turn.created',turn:{role:'assistant',id:'previous-response'}});
+ f.send({type:'turn.created',turn:{role:'user',id:'new-user'}});
+ f.send({type:'turn.done',turn:{role:'user',id:'new-user',transcript:'今天先这样，拜拜'}});
+ f.send({type:'delegation.created',item:{type:'delegation',target:'client',id:'new-item',user_bidi_turn_id:'new-user',content:[{type:'input_text',text:'今天先这样，拜拜'}]}});
+ nativeControlAck(f,'new-item');
+ f.meter(50,0,.12); f.send({type:'turn.done',turn:{role:'assistant',id:'previous-response'}});
+ f.tool({...jevEndReceipt,requestId:'new-item',nativeDelegationId:'new-item',originUserTurnId:'new-user'});
+ for(let at=100;at<=1200;at+=50) f.meter(at,0,0);
+ assert.equal(f.peer.closed,false);
+});
