@@ -11,6 +11,32 @@
 
 ---
 
+## codex-memory-flush-transient-20261008
+
+上线：2026-10-08 21:09 CST（16:58 装到 V 磁盘）  ·  tag `codex-memory-flush-transient-20261008`
+
+**摘要**：Tianyi 允许 21:00 后重启；V 由 codexft-idle-restart-20261008.timer 在 21:05:29 空闲时请求重启（v-self-restart `20261008-210529-4007`），21:09:03 就绪，同一次重启生效的还有 #205（Codex 孤儿登记启动前清理）和首字线 r5（各自记账）。
+
+修的是 #275 上线后大群仍然每条消息新开 Codex 线程：大会话回复后空闲时跑的推迟记忆整理（#243）只有 read/write 两个工具，插件为它开新线程并把会话的 Codex 绑定改写成它，下一条用户消息工具集不符只能再开新线程、重放 40 多万 token。现在 `trigger === "memory"` 的回合走临时线程、不写回绑定（与 report_only 同一条路径）。Codex 插件（npm 管理）`thread-lifecycle-DAcEJ_Om.js` e7c2208f → c0a9ce77，经 VLab 发版 `codex-memory-flush-transient-20261008`（dev `a6b146fa`），旧文件在 `/opt/v-release-backups/codex-memory-flush-transient-20261008/`；改动不在捕获范围内，所以下面的文件比对是 0。
+
+V 线上（21:09–21:37）：重启前 17:40–21:05 记忆整理 7 次中 6 次夺走绑定；重启后整理 3 次、0 次夺走绑定。oc_b4346bd5 一个线程连续 7 轮（重启后首轮补全量 46 万并压缩一次，之后每轮 12–16 万、缓存 97–98%）；你的私聊线程 d694 跨重启续用。
+
+**已知**：同一大群里主人与普通成员交替发言时工具集不同（106 vs 94），每次切换仍会新开线程（oc_b4346bd5 21:28）；DeepSeek 窗口仍是 258,400；压缩时交接摘要会存进会话记录（飞书未见外发）。
+
+相对上一版 `codex-vds-oversized-20261008`：0 个文件变化。
+
+**这期间合入 dev 的 PR**（10 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #286 fix: 大会话不再整段同步读取（worker 尾部读取 + 上下文窗口读取）
+- #285 perf(sessions): transcript index preflight without a full scan under the writer
+- #284 fix(ops): Codex 孤儿登记清理的 drop-in 要排在 db91 的清空之后（#205 补丁）
+- #282 fix(sentinel): 压缩后重试不再报「回复断掉」，补上长回合漏报
+- #205 Clear dead Codex app-server registrations before the Gateway starts
+- #283 撤回首字小修复 #260 #261 #268（未上 V）
+- #281 firsttext: revert #260, #261, #268 from dev
+- #277 fix(codex): 记忆整理回合用临时线程，不再改写会话的 Codex 绑定
+- #278 VLab A/B (private candidate, 5 Workers, 8 concurrent cold turns, alternating ON/OFF ×2+2): command->model P95 7.0–7.5 -> 4.2–4.9 s, max 8.7–9.6 -> 4.8–5.8 s, in-turn scan 3.6–4.1 s CPU -> ≤6 ms; P50 unchanged; replies unaffected.
+- #272 release: v2026.9.1-db91.6-voice-reliability-20261008
+
 ## codex-vds-oversized-20261008
 
 上线：2026-10-08 13:46 CST  ·  tag `codex-vds-oversized-20261008`
