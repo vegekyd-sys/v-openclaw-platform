@@ -8,6 +8,7 @@
 //   PHASES=A          no catalog, one small turn (baseline request)
 //   PHASES=A,B        + catalog (lab/release-files/codex-firsttext/openclaw-deepseek-model-catalog.json), same turn, compare
 //   PHASES=A,B,C,D    + big session without catalog (C) and with catalog (D), two turns each
+//   PHASES=T          owner and member turns share one thread (patch F)
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -159,20 +160,20 @@ async function connect() {
     }
   }
 }
-async function connectOnce() {
+async function connectOnce(scopes = ["operator.read", "operator.write", "operator.admin"]) {
   client = await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("connect deadline")), 30_000);
-    const c = new GatewayClient({ url: `ws://127.0.0.1:${port}`, token, deviceIdentity: null, clientName: "cli", mode: "cli", caps: ["tool-events"], scopes: ["operator.read", "operator.write", "operator.admin"],
+    const c = new GatewayClient({ url: `ws://127.0.0.1:${port}`, token, deviceIdentity: null, clientName: "cli", mode: "cli", caps: ["tool-events"], scopes,
       onEvent(e) { const p = e.payload; const r = runs.get(p?.runId); if (r && e.event === "chat" && ["final", "error", "aborted"].includes(p.state)) { r.terminal = p.state; r.endAt = Date.now(); if (p.state !== "final") r.error = redact(String(p.errorMessage ?? "").slice(0, 300)); } },
       onHelloOk() { clearTimeout(timer); resolve(c); }, onConnectError(e) { clearTimeout(timer); reject(e); } });
     c.start();
   });
 }
-async function send(key, message) {
+async function send(key, message, via = client) {
   const id = randomUUID();
   const r = { id, sentAt: Date.now() };
   runs.set(id, r);
-  await client.request("chat.send", { agentId: "makaron", sessionKey: key, message, deliver: false, idempotencyKey: id, timeoutMs: 600_000 }, { timeoutMs: 60_000 });
+  await via.request("chat.send", { agentId: "makaron", sessionKey: key, message, deliver: false, idempotencyKey: id, timeoutMs: 600_000 }, { timeoutMs: 60_000 });
   const deadline = Date.now() + 620_000;
   while (!r.terminal && Date.now() < deadline) await sleep(500);
   return r;
@@ -266,6 +267,41 @@ try {
       const r2 = await send(key, big[1]);
       console.log(JSON.stringify({ phase: "F", variant, turn1: r1.terminal, flush: flush ? redact(flush).slice(-160) : "no flush within 8 min", turn2: r2.terminal, turn2Secs: Math.round((r2.endAt - r2.sentAt) / 1000), rollouts: rollouts(t0) }));
     }
+  }
+  // T: owner and member turns in one /vds session. chat.send marks the sender owner only with
+  // operator.admin; members lose the owner-only tools. The member opens the session, so the owner's
+  // first turn must rotate to a bigger thread; every later member turn must stay on it, and the
+  // member must still be refused an owner-only tool.
+  if (PHASES.includes("T")) {
+    await connectOnce(["operator.read", "operator.write"]);
+    const member = client;
+    await connect();
+    const key = `agent:makaron:explicit:vlab-dev-toolset-${Date.now().toString(36)}`;
+    const t0 = Date.now();
+    const mark = lines.length;
+    await send(key, "/vds");
+    const steps = [
+      ["member", "Do not use any tools. Remember the code word OTTER-4 and reply with one short sentence."],
+      ["owner", "Do not use any tools. From our conversation only: what code word was given earlier? One line."],
+      ["member", "Do not use any tools. Remember a second code word LARCH-7 and reply with one short sentence."],
+      ["owner", "Do not use any tools. From our conversation only: list every code word given so far. One line."],
+      ["member", "Call the conversations_list tool once with no arguments and report in one line exactly what it returned (error text included). Do not call any other tool."],
+      ["member", "Do not use any tools. From our conversation only: list every code word given so far. One line."],
+    ];
+    const results = [];
+    for (const [who, msg] of steps) {
+      const r = await send(key, msg, who === "owner" ? client : member);
+      const h = await client.request("chat.history", { agentId: "makaron", sessionKey: key, limit: 4 }, { timeoutMs: 30_000 });
+      const a = (h.messages ?? []).filter((m) => m.role === "assistant").at(-1);
+      const reply = typeof a?.content === "string" ? a.content : (a?.content ?? []).filter((c) => c.type === "text").map((c) => c.text).join(" ");
+      results.push({ who, terminal: r.terminal, error: r.error, secs: Math.round((r.endAt - r.sentAt) / 1000), reply: String(reply).trim().slice(0, 160) });
+    }
+    const files = spawnSync("bash", ["-c", `find ${CODEX_HOME}/sessions -name 'rollout-*.jsonl' -newermt @${Math.floor(t0 / 1000)}`], { encoding: "utf8" }).stdout.split("\n").filter(Boolean);
+    const body = files.map((f) => fs.readFileSync(f, "utf8")).join("\n");
+    console.log(JSON.stringify({ phase: "T", results, rollouts: rollouts(t0),
+      ownerOnlyProbe: { calls: body.split('"name":"conversations_list"').length - 1, refused: body.split("Unknown OpenClaw tool: conversations_list").length + body.split("not available for this turn").length - 2 },
+      log: lines.slice(mark).filter((l) => /tool catalog|starting a new thread|transient thread|cross-provider|not available for this turn|Unknown OpenClaw tool/u.test(l)).map((l) => redact(l).slice(0, 220)).slice(-12) }));
+    member.stop?.();
   }
 } catch (error) {
   console.error(redact(error instanceof Error ? error.stack : String(error)));

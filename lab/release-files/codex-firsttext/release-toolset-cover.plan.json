@@ -1,0 +1,6 @@
+{
+  "baseRelease": "codex-memory-flush-transient-20261008",
+  "files": [
+    {"source": "lab/release-files/codex-firsttext/dist/thread-lifecycle-DAcEJ_Om.js", "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/thread-lifecycle-DAcEJ_Om.js", "before": "c0a9ce7762eddb5355e94b7cab7cfcfabceb6d520f3f7281b324881422bf1e3c"}
+  ]
+}

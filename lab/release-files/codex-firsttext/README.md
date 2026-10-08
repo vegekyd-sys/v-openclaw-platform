@@ -94,3 +94,17 @@ C 上线后，大群（oc_fab91、oc_64bcd621）仍然每条消息新开线程�
 修法：`trigger === "memory"` 的回合按「一回合受限」处理，与 `delegationCapability === "report_only"` 同一条路径：开临时线程、不写回绑定。整理回合本来就是新线程、全量灌入，行为不变；普通回合不受影响。
 
 附带：DeepSeek 线程压缩时，Codex 写的交接摘要会作为一条助手消息存进 OpenClaw 会话记录，压缩后的真实回答在记录里缺失（VLab 两次复现）。用户在卡片上看到的是流式的真实回答，V 上 13:46 之后的飞书消息里没有摘要。待单独处理。
+
+## F. 主人和成员轮流说话时每次换线程（2026-10-08，thread-lifecycle）
+
+现象：同一个群里，主人（Tianyi）和其他成员交替发言时，每换一个发言人就新开一个 Codex 线程、重放整段历史。V 上线程 7e2d（主人，106 个工具）和 38b4（成员，94 个工具）同属一个会话。
+
+原因：主人回合多 12 个顶层工具（`nodes`、`gateway`、`terminal`、`conversations_list/send/turn`、`codex_plugins` 等，来自 core 的 `senderIsOwner` denylist 和插件的主人限定），`sessions_send` 的描述里还会提到 `conversations_list`，命名空间 `openclaw_direct` 里也多了 `computer`。Codex 线程的工具在创建时固定，工具指纹不同就换线程。
+
+修法：指纹不同时，读线程 rollout 首行记录的工具。先确认它和绑定上的指纹一致；再检查本回合的每个工具，线程里都有同名、参数 schema 相同的工具（描述可以不同，命名空间按子工具递归比较）。满足就续用这个线程（日志 `keeping thread whose tool catalog covers this turn`）。续用时，热复用和 resume 用线程自己的指纹，绑定始终记录线程真实的工具集。
+
+安全上不放宽：Codex 发来的工具调用只按本回合授权的工具表执行（`dynamic-tools` 的 `toolMap`），成员调用主人专属工具会被拒绝（candidate 实测返回 `Unknown OpenClaw tool: conversations_list`）。代价是成员回合里，模型能看到主人专属工具的声明。
+
+方向是单向的：主人线程能服务成员回合；成员线程服务不了主人回合，主人第一次说话仍然换一次线程，之后两边共用主人线程。supervision 绑定不走这条路径。
+
+candidate `lab/candidate/codex-ds-window.mjs` 的 T 段（`PHASES=T`，2026-10-08 22:02）：同一个 /vds 会话里成员先发言，之后主人、成员交替，共 6 轮。结果只有 2 个线程：成员线程 27 个工具、1 轮；主人一发言就换到 40 个工具的线程，其余 5 轮都在这个线程上。两边都答对了对方那几轮给的暗号。成员调用 `conversations_list` 被拒。缓存方面，第一次从主人切到成员时命中 7k/38k（这一轮刷新开发者说明），之后每轮 94–99%。
