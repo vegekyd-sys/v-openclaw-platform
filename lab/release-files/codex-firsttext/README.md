@@ -74,3 +74,23 @@ G1 让 deepseek 关掉 code mode（`nativeCodeModeEnabled=false`）。上游把�
 
 A（写库慢扣住答案）在共享 VLab 上只验证不回归：镜像里没有 V 那样的大私聊。复现与对比见 candidate。
 重启后第一轮可能报 `Cannot reap registered Codex process`（上一个 Gateway 的孤儿登记，与本补丁无关）。
+
+## C. 大会话里 /vds 每轮都压缩（2026-10-08，run-attempt）
+
+现象：群 oc_64bcd621…（会话约 43 万 token）切到 /vds 后，每条消息都 `native transcript exceeded active token limit; starting a fresh thread`，新线程灌入整段历史，Codex 立刻 `auto-compaction`。
+
+原因：Codex 不认识 deepseek-flash，按兜底窗口 272,000 处理（生效 258,400，自动压缩上限 244,800）。OpenClaw 每轮开始前读线程 rollout 最近一条 token 记录，超过上限就换新线程；而新线程第一轮就要灌入超过上限的整段历史，只要这一轮结束时 Codex 还没压缩，最近一条记录仍是 40 多万，下一轮又换线程，形成死循环（V 日志 nativeTokens 36.7 万–43.8 万，maxTokens 238,400）。
+
+修法：DeepSeek 线程超限时不再换线程（日志 `keeping oversized DeepSeek thread for native compaction`），交给 Codex 自己压缩后续用；DeepSeek 接口本身接受 100 万上下文，压缩前那次大请求不会被拒。字节上限保险和其他 provider 不变。
+
+candidate `lab/candidate/codex-ds-window.mjs`（C 段，约 31 万 token 大会话两轮）：两轮同一线程、只压缩一次（压后 2.6 万、第二轮 6.7 万），回答正常。
+
+**没有上线的另一半：把 DeepSeek 窗口提到 100 万。** `models.providers.deepseek.models[].contextTokens` 会以 `model_context_window` 传给 Codex（`model_context_window_override=true`），但 Codex 把它钳在模型目录的 `max_context_window`（兜底 272,000）以内。按线程传 `model_catalog_json`：`codex exec` 下窗口变 950,000、基础提示不变；但经 app-server 时窗口仍 258,400，基础提示反而换成目录里的（16,979 → 20,751 字）。只有改 makaron CODEX_HOME 的全局目录才行，那要抄全部 GPT 条目并冻结它们，暂不做。
+
+## E. 记忆整理回合把会话绑到自己的线程上（2026-10-08，thread-lifecycle）
+
+C 上线后，大群（oc_fab91、oc_64bcd621）仍然每条消息新开线程。原因：大会话回复后空闲时会跑推迟的记忆整理（#243），这一轮只有 read/write 两个工具；Codex 线程的工具在创建时固定，于是插件给它开了新线程，并把会话的绑定改成这个整理线程。下一条用户消息有 94 个工具，与绑定线程不符，只能再开新线程、重放整段历史（V 实测：14:03 一轮续用了线程，14:05 整理线程 9eb0 只有 2 个工具、提示 104 万字符，绑定随之改写）。
+
+修法：`trigger === "memory"` 的回合按「一回合受限」处理，与 `delegationCapability === "report_only"` 同一条路径：开临时线程、不写回绑定。整理回合本来就是新线程、全量灌入，行为不变；普通回合不受影响。
+
+附带：DeepSeek 线程压缩时，Codex 写的交接摘要会作为一条助手消息存进 OpenClaw 会话记录，压缩后的真实回答在记录里缺失（VLab 两次复现）。用户在卡片上看到的是流式的真实回答，V 上 13:46 之后的飞书消息里没有摘要。待单独处理。

@@ -1,0 +1,18 @@
+{
+  "support": [
+    "lab/candidate/codex-ds-window.mjs",
+    "lab/release-files/background-work-20261002/vlab-codex-parity/harness-DXVZ5II5.js",
+    "lab/release-files/codex-firsttext/dist/run-attempt-D1hJO4fX.js",
+    "lab/release-files/codex-firsttext/dist/thread-lifecycle-DAcEJ_Om.js"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/codex-ds-window.mjs"
+  ],
+  "env": {
+    "PHASES": "F",
+    "BIG_WORDS": "140000"
+  },
+  "timeoutSeconds": 3600,
+  "user": "lab-db91-parity"
+}

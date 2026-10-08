@@ -126,20 +126,20 @@ function journal(sinceMs, re) {
 function rollouts(sinceMs) {
   const files = spawnSync("bash", ["-c", `find ${CODEX_HOME}/sessions -name 'rollout-*.jsonl' -newermt @${Math.floor(sinceMs / 1000)} | sort`], { encoding: "utf8" }).stdout.split("\n").filter(Boolean);
   return files.map((f) => {
-    let model = "", threadId = "", turns = 0;
+    let model = "", threadId = "", turns = 0, tools = null;
     const usage = [], errors = [];
     let reasoningText = 0;
     for (const line of fs.readFileSync(f, "utf8").split("\n").filter(Boolean)) {
       let e; try { e = JSON.parse(line); } catch { continue; }
       const p = e.payload ?? {};
-      if (e.type === "session_meta") threadId = p.id ?? threadId;
+      if (e.type === "session_meta") { threadId = p.id ?? threadId; tools = (p.dynamic_tools ?? []).length; }
       if (e.type === "turn_context") model = p.model;
       if (e.type === "event_msg" && p.type === "task_started") turns += 1;
       if (e.type === "event_msg" && p.type === "error") errors.push(String(p.message).slice(0, 200));
       if (e.type === "event_msg" && p.type === "token_count" && p.info?.last_token_usage) usage.push([p.info.last_token_usage.input_tokens, p.info.last_token_usage.cached_input_tokens]);
       if (e.type === "response_item" && p.type === "reasoning") reasoningText += (p.content ?? []).filter((c) => c.type === "reasoning_text").length;
     }
-    return { threadId: threadId.slice(0, 13), model, turns, usage, reasoningTextItems: reasoningText, errors };
+    return { threadId: threadId.slice(0, 13), model, tools, turns, usage, reasoningTextItems: reasoningText, errors };
   });
 }
 function turnRow(label, scenario, r, extra = {}) {
@@ -295,6 +295,41 @@ if (command === "backup") {
   await restart();
 } else if (command === "run") {
   await run(opt("label"), opt("bigKey"));
+} else if (command === "big") {
+  // A /vds session larger than Codex's 258,400 fallback window: two turns must share one thread.
+  await connect();
+  const label = opt("label") ?? "big";
+  const key = `agent:makaron:explicit:vlab-dev-codexft-${label}-${Date.now().toString(36)}`;
+  const t0 = Date.now();
+  const words = Number(opt("words") ?? 140000);
+  const list = Array.from({ length: words }, (_, i) => `w${i % 997}`).join(" ");
+  await send(key, "/vds");
+  for (const msg of [`Remember this list for later; do not repeat it, just reply OK. ${list}`, "Without using any tools: what was the first word of the list I gave you? Reply in one line.", "Without using any tools: reply with one short sentence about tides."]) {
+    const r = await send(key, msg);
+    log(turnRow(label, "big", r, { reply: (await lastReply(key)).text?.slice(0, 80) }));
+  }
+  log({ label, scenario: "big", rollouts: rollouts(t0) });
+  log({ label, scenario: "big", journal: journal(t0, /keeping oversized DeepSeek|exceeded active token limit|auto-compaction|starting a fresh thread|pre-bind/u).slice(-10) });
+  client.stop?.();
+} else if (command === "flush") {
+  // Big /vds session, wait for the deferred memory flush, then one more turn: the second user
+  // turn must stay on the first turn's Codex thread.
+  await connect();
+  const label = opt("label") ?? "flush";
+  const key = `agent:makaron:explicit:vlab-dev-codexft-${label}-${Date.now().toString(36)}`;
+  const t0 = Date.now();
+  const list = Array.from({ length: Number(opt("words") ?? 140000) }, (_, i) => `w${i % 997}`).join(" ");
+  await send(key, "/vds");
+  const r1 = await send(key, `Remember this list for later; do not repeat it, just reply OK. ${list}`);
+  log(turnRow(label, "flush:turn1", r1));
+  const t1 = Date.now();
+  let ran = [];
+  while (Date.now() - t1 < 8 * 60_000 && !(ran = journal(t1, /memory-flush-deferred\.1\].*"phase":"ran"/u)).length) await sleep(5000);
+  log({ label, scenario: "flush", flushLog: ran.slice(-2), waitedSecs: Math.round((Date.now() - t1) / 1000) });
+  const r2 = await send(key, "Without using any tools: what was the first word of the list I gave you? Reply in one line.");
+  log(turnRow(label, "flush:turn2", r2, { reply: (await lastReply(key)).text?.slice(0, 80) }));
+  log({ label, scenario: "flush", rollouts: rollouts(t0).map((r) => r) });
+  client.stop?.();
 } else if (command === "models") {
   await connect();
   for (const [method, params] of [["models.list", { agentId: "makaron" }], ["models.list", { agentId: "makaron", view: "all" }]]) {
