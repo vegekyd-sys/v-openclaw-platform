@@ -1,0 +1,6 @@
+{
+  "baseRelease": "voice-reliability-20261008",
+  "files": [
+    {"source": "lab/release-files/codex-firsttext/dist/run-attempt-D1hJO4fX.js", "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/run-attempt-D1hJO4fX.js", "before": "564374a6f55b533773a4d0c7875ea66e58215c999789ba93edc5ad0e6383ec83"}
+  ]
+}
