@@ -165,6 +165,8 @@ test('JEV native entry uses host USER rather than model arguments; direct tools 
  f.client.emit('message',Buffer.from(JSON.stringify({type:'text',text:'查一下十二的实际档案'})),false);
  f.call('route_task',{request:'查公司合同'},'jev-memory');await delay(5);
  assert.equal(f.invocations[0].args.query,'查一下十二的实际档案');assert.equal(states.length,1);
+ const decision=f.audit.find(x=>x.type==='decision.completed');
+ assert.equal(decision.model,'typesafe/jev-test');assert.equal(decision.voiceModel,'grok');
  f.call('web_search',{query:'绕过'},'bypass');await delay(5);assert.equal(f.invocations.length,1);
  f.upstream.emit('open');await delay(2);
  const config=f.upstream.sent.find(x=>x.type==='session.update').session;

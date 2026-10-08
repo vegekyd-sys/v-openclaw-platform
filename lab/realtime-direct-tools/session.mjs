@@ -110,7 +110,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       return result.output;
     };
     const execute=createToolExecutor({invoke,allowedTools,delegate:args=>s.backend.run(args)});
-    const router=decisionEvaluate?createVoiceDecisionRouter({evaluate:decisionEvaluate,audit:value=>audit({...value,voiceSessionId:s.id,model:s.model})}):null;
+    const router=decisionEvaluate?createVoiceDecisionRouter({evaluate:decisionEvaluate,audit:value=>audit({...value,voiceSessionId:s.id,voiceModel:s.model})}):null;
     s.progressTimer=setInterval(()=>deferred(s),200);s.progressTimer.unref?.();
     const onToolCall=async call=>{
       if(!current(s))return;
