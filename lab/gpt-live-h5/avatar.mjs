@@ -48,6 +48,7 @@ export function mountAvatar(document, window) {
     if (disposed) return;
     clearTimeout(timer);
     const connected = ['connected','ending'].includes(document.body.dataset.callState);
+    if (!connected) { complete = false; clearTimeout(completionTimer); }
     const next = task !== 'idle' ? task : connected ? complete ? 'complete' : 'listen' : 'idle';
     if (next !== pose) { pose = next; frame = style === 'bright' ? 4 : style === 'curious' ? 3 : 0; }
     if (pose === 'idle' || reduced()) frame = 0;
