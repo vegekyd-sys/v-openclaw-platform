@@ -11,7 +11,12 @@ set -euo pipefail
 
 host=${1:?usage: install-v-codex-orphan-cleanup.sh <ssh-host>}
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-dropin=/etc/systemd/system/openclaw-gateway.service.d/28-codex-orphan-cleanup.conf
+# The db91 release drop-ins (zz-db91-c5 ... zzzzzzzz-db91-state-db-fastpath-v6)
+# each start with an empty ExecStartPre=, which clears every ExecStartPre set
+# by a drop-in that sorts before them. This one must sort after all of them,
+# like zzzzzzzzz-node-async-context-frame.conf (#266). The check at the end
+# fails the install if a later reset ever clears it again.
+dropin=/etc/systemd/system/openclaw-gateway.service.d/zzzzzzzzz-codex-orphan-cleanup.conf
 
 ssh "$host" 'test -x /usr/bin/python3' || { echo "/usr/bin/python3 missing on $host" >&2; exit 1; }
 
