@@ -1,0 +1,6 @@
+{
+  "baseRelease": "codex-vds-oversized-20261008",
+  "files": [
+    {"source": "lab/release-files/codex-firsttext/dist/thread-lifecycle-DAcEJ_Om.js", "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/thread-lifecycle-DAcEJ_Om.js", "before": "e7c2208f8c9c99bbf06bc73800cdac2f013078199214d27b0ccbdec2470a1890"}
+  ]
+}
