@@ -50,7 +50,7 @@ const PHASES = (process.env.PHASES ?? "direct,turns").split(",");
 const VARIANTS = (process.env.VARIANTS ?? "v,fixed").split(",");
 const HOLD_PROBE_MS = Number(process.env.HOLD_PROBE_MS ?? 200);
 const FLUSH_IDLE_MS = process.env.FLUSH_IDLE_MS ?? "15000";
-const FLUSH_WAIT_MS = Number(process.env.FLUSH_WAIT_MS ?? 12 * 60_000);
+const FLUSH_WAIT_MS = Number(process.env.FLUSH_WAIT_MS ?? 10 * 60_000);
 const CONTEXT_TOKEN_BUDGET = 1_000_000; // V's deepseek-flash / vds-deepseek-flash contextWindow
 const VDS_REF = "deepseek/vds-deepseek-flash";
 const SECRETS = "/srv/vlab-production-mirror/labs/instances/db91-parity/secrets.env";
@@ -96,6 +96,20 @@ const codexRoot = path.join(npmProjects, codexProject, "node_modules", "@opencla
 const codexDist = path.join(codexRoot, "dist");
 fs.copyFileSync(path.join(repoRoot, "lab/release-files/background-work-20261002/vlab-codex-parity/harness-DXVZ5II5.js"), path.join(codexDist, "harness-DXVZ5II5.js"));
 fs.copyFileSync(path.join(repoRoot, "lab/release-files/codex-firsttext/dist/thread-lifecycle-DAcEJ_Om.js"), path.join(codexDist, "thread-lifecycle-DAcEJ_Om.js"));
+// Codex inspects its app-server processes with a 2 s deadline (transport-stdio MAX_PROCESS_CONTAINMENT_MS); a
+// main-thread freeze across it fails the turn ("Cannot inspect Codex processes"). On VLab V's full read takes
+// 4.6 s and failed turn 1 that way; V (faster) logged no such failure on 10/08-09. Both variants get the same
+// wider deadline so the comparison goes past turn 1; INSPECT_DEADLINE_MS=2000 keeps V's.
+const INSPECT_DEADLINE_MS = Number(process.env.INSPECT_DEADLINE_MS ?? 15_000);
+{
+  const file = path.join(codexDist, fs.readdirSync(codexDist).find((f) => /^transport-stdio-.*\.js$/u.test(f)));
+  let src = fs.readFileSync(file, "utf8");
+  for (const anchor of ["const MAX_PROCESS_CONTAINMENT_MS$1 = 2e3;", "const MAX_PROCESS_CONTAINMENT_MS = 2e3;", "readCodexAppServerProcessCommand(spawned, Date.now() + 2e3)"]) {
+    assert.equal(src.split(anchor).length, 2, `process inspection deadline anchor ${anchor}`);
+    src = src.replace(anchor, anchor.replace("2e3", String(INSPECT_DEADLINE_MS)));
+  }
+  fs.writeFileSync(file, src);
+}
 function applyVariant(variant) {
   const out = {};
   for (const [name, rel] of Object.entries(VARIANT_FILES[variant].core)) { fs.copyFileSync(path.join(repoRoot, rel), path.join(dist, name)); out[name] = sha(fs.readFileSync(path.join(dist, name))).slice(0, 8); }
@@ -263,6 +277,18 @@ function inflateSession() {
   const size = db.prepare("SELECT count(*) AS rows, sum(octet_length(event_json)) AS bytes, sum(octet_length(event_json) > 1048576) AS big FROM transcript_events WHERE session_id = ?").get(sid);
   const check = db.prepare("PRAGMA foreign_key_check(session_transcript_active_events)").all().length + db.prepare("PRAGMA foreign_key_check(transcript_event_identities)").all().length;
   assert.equal(check, 0, "inflated derived rows reference missing events");
+  // the session is already on /vds, as V's ou_0674 entry (a sessions.patch model switch would reset it)
+  const node = db.prepare("SELECT session_key, entry_json FROM session_nodes WHERE current_session_id = ?").get(sid);
+  const entry = JSON.parse(node.entry_json);
+  // and in use: an entry idle past session.reset.idleMinutes (30 days on V) is reset by its next message
+  const now = Date.now();
+  for (const k of ["updatedAt", "lastInteractionAt", "lastActivityAt"]) if (k in entry || k === "updatedAt") entry[k] = now;
+  // and due for a memory flush: the copied entry was already marked for its cycle
+  delete entry.memoryFlush;
+  Object.assign(entry, { model: "vds-deepseek-flash", modelProvider: "deepseek", modelOverride: "vds-deepseek-flash", providerOverride: "deepseek", modelOverrideSource: "user", modelOverrideRouteResolution: "resolved", agentHarnessId: "codex", thinkingLevel: "high" });
+  db.prepare("UPDATE session_nodes SET entry_json = ? WHERE session_key = ?").run(JSON.stringify(entry), node.session_key);
+  db.prepare("UPDATE session_windows SET model_provider = 'deepseek', model = 'vds-deepseek-flash', agent_harness_id = 'codex', updated_at = ? WHERE session_id = ?").run(now, sid);
+  db.prepare("UPDATE session_nodes SET updated_at = ? WHERE session_key = ?").run(now, node.session_key);
   db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
   db.close();
   return { rows: size.rows, mb: Math.round(size.bytes / 1e5) / 10, bigRows: size.big, activeEvents: active.length + (INFLATE - 1) * activeBody.length, leaf };
@@ -270,6 +296,10 @@ function inflateSession() {
 function restoreDatabase() {
   for (const f of [dstPath, `${dstPath}-wal`, `${dstPath}-shm`]) fs.rmSync(f, { force: true });
   fs.copyFileSync(snapshotPath, dstPath);
+}
+function readSessionId() {
+  const db = new DatabaseSync(dstPath, { readOnly: true });
+  try { return db.prepare("SELECT current_session_id FROM session_nodes WHERE session_key = ?").get(sessionKey)?.current_session_id; } finally { db.close(); }
 }
 function readEntry() {
   const db = new DatabaseSync(dstPath, { readOnly: true });
@@ -497,9 +527,15 @@ async function send(key, message) {
   const id = randomUUID();
   const r = { id, sentAt: Date.now() };
   runs.set(id, r);
-  await client.request("chat.send", { agentId: "makaron", sessionKey: key, message, deliver: false, idempotencyKey: id, timeoutMs: 900_000 }, { timeoutMs: 60_000 });
+  await Promise.race([
+    client.request("chat.send", { agentId: "makaron", sessionKey: key, message, deliver: false, idempotencyKey: id, timeoutMs: 900_000 }, { timeoutMs: 60_000 }),
+    sleep(90_000).then(() => { throw new Error(`chat.send got no answer in 90 s (Gateway exit ${gateway.exitCode})\n${redact(lines.slice(-80).map((l) => l.line).join("\n"))}`); }),
+  ]);
   const deadline = Date.now() + 920_000;
-  while (!r.terminal && Date.now() < deadline) await sleep(500);
+  while (!r.terminal && Date.now() < deadline) {
+    if (gateway.exitCode !== null) throw new Error(`Gateway exited ${gateway.exitCode} during a turn\n${redact(lines.slice(-80).map((l) => l.line).join("\n"))}`);
+    await sleep(500);
+  }
   return { terminal: r.terminal ?? "timeout", error: r.error, secs: Math.round(((r.endAt ?? Date.now()) - r.sentAt) / 1000), sentAt: r.sentAt, endAt: r.endAt ?? Date.now() };
 }
 const rss = [];
@@ -530,7 +566,6 @@ async function variantRun(variant) {
   sampleRss();
   const c0 = captures.length;
   const out = { variant, bytes, entryBefore: readEntry() };
-  await client.request("sessions.patch", { key: sessionKey, model: VDS_REF });
   await sleep(2000);
   const base = Date.now();
   out.rssBeforeMB = peakRss(base - 2000, base);
@@ -541,14 +576,18 @@ async function variantRun(variant) {
   out.turn1.firstRequestKB = turn1Requests[0] ? Math.round(turn1Requests[0].bytes / 1024) : null;
   const ctx = turn1Requests[0] ? contextOf(turn1Requests[0].userText) : null;
   out.turn1.projectedContext = ctx ? { chars: ctx.length, sha: sha(ctx).slice(0, 16) } : null;
+  out.turn1.sessionKept = readSessionId() === SOURCE_SESSION;
+  if (!out.turn1.sessionKept || !(out.turn1.firstRequestKB > 1024)) throw new Error(`turn 1 did not project the big history: ${JSON.stringify(out)}`);
   // the deferred flush after turn 1
   const fromFlush = t1.endAt;
   const deadline = Date.now() + FLUSH_WAIT_MS;
   let ran;
-  while (Date.now() < deadline && !(ran = flushLines(fromFlush).find((l) => l.phase === "ran"))) await sleep(2000);
+  while (Date.now() < deadline && gateway.exitCode === null && !(ran = flushLines(fromFlush).find((l) => l.phase === "ran"))) await sleep(2000);
+  if (gateway.exitCode !== null) throw new Error(`Gateway exited ${gateway.exitCode} while waiting for the flush\n${redact(lines.slice(-60).map((l) => l.line).join("\n"))}`);
   const ranAt = lines.find((l) => l.at >= fromFlush && l.line.includes("[memory-flush-deferred.1]") && l.line.includes('"phase":"ran"'))?.at ?? Date.now();
   out.flush = { lines: flushLines(base), ran: ran ?? "no flush ran", secs: Math.round((ranAt - fromFlush) / 1000), rssPeakMB: peakRss(fromFlush, ranAt + 2000), holds: holdsIn(fromFlush, ranAt), requestsKB: captures.slice(c0).filter((c) => c.at >= fromFlush && c.at <= ranAt).map((c) => Math.round(c.bytes / 1024)) };
   out.entryAfterFlush = readEntry();
+  out.sessionKept = readSessionId() === SOURCE_SESSION;
   // turn 2: does the reply find the flush due again?
   const t2 = await send(sessionKey, "（自动化测试 turn-2）不要调用任何工具，只回复：OK-2");
   await sleep(1500);
@@ -593,6 +632,9 @@ try {
   clearInterval(rssTimer);
   client?.stop?.();
   await stopGateway();
+  proxy.closeAllConnections?.();
   proxy.close();
   fs.rmSync(tmpDir, { recursive: true, force: true });
 }
+// keep-alive sockets and client timers must not keep a finished run alive
+process.exit(process.exitCode ?? 0);

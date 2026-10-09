@@ -21,7 +21,7 @@
     "lab/candidate/codex-big-history.mjs"
   ],
   "env": {
-    "PHASES": "direct,turns"
+    "PHASES": "turns"
   },
   "timeoutSeconds": 7200,
   "user": "lab-db91-parity"
