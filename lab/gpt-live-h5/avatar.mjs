@@ -1,3 +1,4 @@
+import { avatarPicture } from './avatar-catalog.mjs';
 import { AVATAR_POSES, AVATAR_SEQUENCES } from './avatar-state.mjs';
 
 export const THINKING_POSE_DWELL_MS = 5000;
@@ -23,7 +24,7 @@ export function createAvatarRenderer({ image, previous, load, reducedMotion = ()
         const current = fade = previous.animate([{opacity:1},{opacity:0}], {duration:280,easing:'ease-out'});
         current.onfinish = () => { if (fade === current) { previous.hidden = true; fade = null; } };
       } else { image.src = src; if (previous) previous.hidden = true; }
-      onPose(pose);
+      onPose(pose, frame);
     },
     dispose() { closed = true; ++version; fade?.cancel(); if (previous) previous.hidden = true; },
   };
@@ -43,22 +44,26 @@ export function mountAvatar(document, window) {
     }));
     return cache.get(url);
   };
+  let selected = null, pendingSelection = null, selectionTimer, lastPictureAt = -Infinity;
   const renderer = createAvatarRenderer({image:document.getElementById('avatar'),previous:document.getElementById('avatarPrevious'),load,
-    reducedMotion:reduced,onPose:pose => {document.body.dataset.avatarPose = pose;}});
+    reducedMotion:reduced,onPose:(pose, frame) => {document.body.dataset.avatarPose = pose; lastPictureAt = Date.now();
+      document.getElementById('avatar').alt = avatarPicture(pose === 'idle' ? 'idle' : `${pose}-${frame}`)?.label ?? 'V';
+      if (selected) document.body.dataset.avatarReaction = selected.id;}});
   let task = 'idle', pose = 'idle', frame = 0, timer, completionTimer, disposed = false;
-  let complete = false, completionId = null, style = 'focused';
+  let complete = false, completionId = null, lastOutcome = null, style = 'focused';
   const render = () => {
     if (disposed) return;
     clearTimeout(timer);
     const connected = ['connected','ending'].includes(document.body.dataset.callState);
-    if (!connected) { complete = false; clearTimeout(completionTimer); }
-    const next = task !== 'idle' ? task : connected ? complete ? 'complete' : 'listen' : 'idle';
+    if (!connected) { complete = false; clearTimeout(completionTimer); selected = pendingSelection = null; clearTimeout(selectionTimer); delete document.body.dataset.avatarReaction; }
+    const next = selected && connected ? selected.scene : task !== 'idle' ? task : connected ? complete ? 'complete' : 'listen' : 'idle';
     if (next !== pose) { pose = next; frame = style === 'bright' ? 4 : style === 'curious' ? 3 : 0; }
-    if (pose === 'idle' || reduced()) frame = 0;
+    if (selected) frame = selected.frame;
+    else if (pose === 'idle' || reduced()) frame = 0;
     if (!document.hidden) {
       void renderer.show(pose, frame);
       // Only the current frame and one neighbor are loaded, never the gallery.
-      if (!reduced() && pose !== 'idle' && (!THINKING_POSES.has(pose) || frame < AVATAR_SEQUENCES[pose].length - 1)) {
+      if (!selected && !pendingSelection && !reduced() && pose !== 'idle' && (!THINKING_POSES.has(pose) || frame < AVATAR_SEQUENCES[pose].length - 1)) {
         const files = AVATAR_SEQUENCES[pose];
         void load(files[(frame+1)%files.length]);
         timer = setTimeout(() => {frame=(frame+1)%files.length;render();}, THINKING_POSES.has(pose) ? THINKING_POSE_DWELL_MS : pose === 'listen' ? 6500 : 3200);
@@ -71,9 +76,20 @@ export function mountAvatar(document, window) {
   const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
   motion.addEventListener?.('change',render);
   render();
-  const dispose = () => {disposed=true;clearTimeout(timer);clearTimeout(completionTimer);observer.disconnect();document.removeEventListener('visibilitychange',render);motion.removeEventListener?.('change',render);renderer.dispose();};
+  const dispose = () => {disposed=true;clearTimeout(timer);clearTimeout(completionTimer);clearTimeout(selectionTimer);observer.disconnect();document.removeEventListener('visibilitychange',render);motion.removeEventListener?.('change',render);renderer.dispose();};
   window.addEventListener('pagehide',dispose,{once:true});
   return {
+    select(id) {
+      const picture = avatarPicture(id);
+      if (!picture || disposed || selected?.id === id || !['connected','ending'].includes(document.body.dataset.callState)) return;
+      pendingSelection = picture; clearTimeout(selectionTimer); clearTimeout(timer);
+      const apply = () => {
+        if (disposed || !pendingSelection) return;
+        selected = pendingSelection; pendingSelection = null; render();
+      };
+      const wait = Math.max(0,THINKING_POSE_DWELL_MS-(Date.now()-lastPictureAt));
+      if (wait) selectionTimer = setTimeout(apply,wait); else apply();
+    },
     show(activity, outcome) {
       const changed = task !== activity;
       task = Object.hasOwn(AVATAR_POSES, activity) ? activity : 'idle';
@@ -82,14 +98,17 @@ export function mountAvatar(document, window) {
         if (outcome.ok && task === 'idle') {complete=true;clearTimeout(completionTimer);completionTimer=setTimeout(()=>{complete=false;render();},3200);}
       }
       if (task !== 'idle') {complete=false;clearTimeout(completionTimer);}
-      if (changed || outcome?.id) render();
+      if (changed || outcome?.id && outcome.id !== lastOutcome) {
+        selected = pendingSelection = null; clearTimeout(selectionTimer); delete document.body.dataset.avatarReaction;
+        lastOutcome = outcome?.id; render();
+      }
     },
     expression(value) {
       if (!['focused','curious','bright','calm'].includes(value)) return;
       style = value;
       // A cosmetic decision must not restart a thinking sequence or cut its dwell.
       // Apply the chosen expression on the next real activity transition.
-      if (!THINKING_POSES.has(pose)) {
+      if (!selected && !THINKING_POSES.has(pose)) {
         frame = value === 'bright' ? 4 : value === 'curious' ? 3 : value === 'calm' ? 5 : 0;
         render();
       }

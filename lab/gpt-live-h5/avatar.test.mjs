@@ -86,3 +86,18 @@ test('cosmetic decisions and duplicate task events do not shorten thinking; last
   assert.equal(image.src,last);
   avatar.dispose();
 });
+
+test('contextual choices select an exact frame across task categories and hold at least five seconds',async t=>{
+ t.mock.timers.enable({apis:['setTimeout','Date'],now:0});
+ const image={src:'idle',getAttribute(){return this.src;}},previous={hidden:true},body={dataset:{callState:'connected'}};
+ const document={body,hidden:false,getElementById:id=>id==='avatar'?image:previous,addEventListener(){},removeEventListener(){}};
+ const window={navigator:{},Image:class {set src(value){queueMicrotask(()=>this.onload());}async decode(){}},matchMedia:()=>({matches:false,addEventListener(){},removeEventListener(){}}),MutationObserver:class {observe(){}disconnect(){}},addEventListener(){}};
+ const settle=async()=>{for(let i=0;i<8;i++)await Promise.resolve();};
+ const avatar=mountAvatar(document,window);avatar.show('memory');await settle();const initial=image.src;
+ avatar.select('listen-3');t.mock.timers.tick(4999);await settle();assert.equal(image.src,initial);
+ t.mock.timers.tick(1);await settle();assert.match(image.src,/listen-3-512/);assert.equal(body.dataset.avatarReaction,'listen-3');
+ avatar.select('complete-2');t.mock.timers.tick(4999);await settle();assert.match(image.src,/listen-3-512/);
+ t.mock.timers.tick(1);await settle();assert.match(image.src,/complete-2-512/);
+ avatar.select('web-4');avatar.show('background');t.mock.timers.tick(5000);await settle();assert.doesNotMatch(image.src,/web-4/);
+ avatar.dispose();
+});

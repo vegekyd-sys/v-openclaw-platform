@@ -14,7 +14,7 @@ async function fixture(t, overrides = {}) {
     return method === "talk.client.create" ? reservation : { ok: true };
   } };
   const offers = [];
-  const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, preview: overrides.preview });
+  const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, preview: overrides.preview, avatarEvaluate: overrides.avatarEvaluate, directVoice: overrides.directVoice });
   await new Promise((resolve) => bridge.server.listen(0, "127.0.0.1", resolve));
   t.after(() => bridge.dispose());
   const url = `http://127.0.0.1:${bridge.server.address().port}`;
@@ -198,7 +198,7 @@ test('SSE avatar activity belongs to the current voice and excludes tool argumen
 
 test('all new avatar assets and modules are served by the frozen whitelist',async t=>{
   const f=await fixture(t);
-  for(const name of ['avatar.mjs','avatar-state.mjs',...AVATAR_FILES.map(s=>'assets/'+s)]){
+  for(const name of ['avatar.mjs','avatar-state.mjs','avatar-catalog.mjs','avatar-reactions.mjs',...AVATAR_FILES.map(s=>'assets/'+s)]){
     const r=await fetch(`${f.url}/${name}`);assert.equal(r.status,200,name);
     const bytes=new Uint8Array(await r.arrayBuffer());assert.ok(bytes.length>0);
     assert.match(r.headers.get('content-type'),name.endsWith('.webp')?/image\/webp/u:/javascript/u);
@@ -248,4 +248,25 @@ test('event stream flushes headers and remains open for delayed events',async t=
  await new Promise(resolve=>setTimeout(resolve,25));
  f.bridge.emit({event:'talk.event',payload:{voiceSessionId:'voice-private',talkEvent:{type:'tool.call',callId:'late',payload:{name:'web_search'}}}});
  assert(new TextDecoder().decode((await reader.read()).value).includes('late'));stop.abort();await reader.cancel().catch(()=>{});
+});
+
+
+test('all three voice owners share the contextual picture endpoint, independently of task routing',async t=>{
+ for(const model of ['gpt-live','seeduplex','grok']){
+  let input;const f=await fixture(t,{avatarEvaluate:async(...args)=>{input=args;return {answers:{picture:{type:'choice',choice:'listen-3',confidence:.95}}};},directVoice:{reserve:async()=>({voiceSessionId:'direct-'+model,transport:'gateway-relay'}),close:async()=>{},dispose:async()=>{}}});
+  const {voiceSessionId}=await (await f.request('session',{model})).json();
+  const payload={voiceSessionId,revision:1,turns:[{role:'user',text:'有点失落'},{role:'assistant',text:'我在这里陪你'}],activity:'memory',taskOutcome:'pending'};
+  assert.equal((await f.request('avatar',{...payload,voiceSessionId:'foreign'})).status,409);
+  const reply=await f.request('avatar',payload);assert.equal(reply.status,200);assert.equal((await reply.json()).picture,'listen-3');
+  assert.deepEqual(input[0].conversation,payload.turns);assert.equal((await f.request('avatar',payload)).status,409);
+  assert.equal(f.calls.filter(c=>c.method==='talk.client.toolCall').length,0);
+ }
+});
+test('a slow display decision cannot delay heartbeat or task events and cannot survive a closed call',async t=>{
+ let resolve;const f=await fixture(t,{avatarEvaluate:()=>new Promise(r=>resolve=r)});await f.request('session');
+ const pending=f.request('avatar',{voiceSessionId:'voice-private',revision:1,turns:[{role:'user',text:'有点失落'}]});
+ while(!resolve)await new Promise(r=>setImmediate(r));
+ assert.equal((await f.request('heartbeat',{voiceSessionId:'voice-private'})).status,200);
+ await f.request('close',{voiceSessionId:'voice-private'});resolve({answers:{picture:{type:'choice',choice:'complete-2',confidence:1}}});
+ assert.equal((await (await pending).json()).picture,null);
 });

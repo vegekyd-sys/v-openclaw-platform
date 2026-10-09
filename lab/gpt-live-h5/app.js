@@ -1,4 +1,5 @@
 import { createAvatarTasks, ACTIVITY_LABELS } from "./avatar-state.mjs";
+import { createAvatarReactions } from "./avatar-reactions.mjs";
 import { mountAvatar } from "./avatar.mjs";
 import { renderMarkdown } from "./markdown.mjs";
 import { createTranscriptPresentation } from "./transcript-presentation.mjs";
@@ -298,12 +299,18 @@ async function api(route, payload, { signal } = {}) {
   if (!response.ok) throw new Error(result.error ?? "连接暂时不可用");
   return result;
 }
+document.addEventListener?.('visibilitychange',()=>call?.avatarReactions?.resume());
+function avatarContext(snapshot = presentation.snapshot()) {
+  call?.avatarReactions?.update({snapshot,activity:tasks.pose,
+    taskOutcome:tasks.size ? 'pending' : tasks.completion ? tasks.completion.ok ? 'success' : 'error' : 'none'});
+}
 function taskState() {
   $("taskStatus").textContent = ACTIVITY_LABELS[tasks.pose] ?? "";
   $("cancel").disabled = tasks.size === 0;
   $("cancel").hidden = tasks.size === 0;
   void avatar?.show(tasks.pose, tasks.completion);
   document.body.dataset.avatarState = tasks.size > 1 ? "very-busy" : tasks.size ? "busy" : "idle";
+  avatarContext();
 }
 function renderTranscript(snapshot) {
   const log = $("conversation");
@@ -344,6 +351,7 @@ function renderTranscript(snapshot) {
     }
   }
   if (follow) log.scrollTop = log.scrollHeight;
+  avatarContext(snapshot);
 }
 function resetTranscript() {
   presentation.reset(); renderedTurns.clear();
@@ -403,6 +411,7 @@ async function stopCall() {
   const active = call; call = null;
   if (starting === active) starting = null;
   if (active) {
+    active.avatarReactions?.dispose();
     active.relay?.dispose();
     clearInterval(active.levelTimer); clearInterval(active.heartbeat); clearInterval(active.presentationPoll);
     active.presentationAbort?.abort();
@@ -474,6 +483,10 @@ async function startCall() {
     if (call !== active) { active.stream.getTracks().forEach((track) => track.stop()); return; }
     const reservation = await api("session", {model:['seeduplex','grok'].includes($("voiceModel")?.value)?$("voiceModel").value:'gpt-live'}); active.voiceSessionId = reservation.voiceSessionId;
     if (call !== active) { await api("close", { voiceSessionId: active.voiceSessionId }); return; }
+    if (avatar) active.avatarReactions = createAvatarReactions({
+      request:(context,options)=>api('avatar',{voiceSessionId:active.voiceSessionId,...context},options),
+      apply:picture=>avatar.select(picture),isCurrent:()=>call===active,isVisible:()=>!document.hidden,
+    });
     if (reservation.transport === 'gateway-relay') {
       await active.contextResume;
       if(call!==active)return;
