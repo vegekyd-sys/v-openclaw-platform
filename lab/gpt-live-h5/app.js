@@ -34,7 +34,7 @@ const avatar = typeof window.Image === "function" ? mountAvatar(document, window
 const sceneAnimations = new Map();
 function setCallState(state) {
   if (document.body.dataset.callState === state) return;
-  const animate = window.matchMedia?.("(max-width: 900px)").matches
+  const animate = typeof window.matchMedia === "function"
     && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const elements = animate ? [document.querySelector?.(".portrait-wrap"), document.querySelector?.(".call-actions")].filter(Boolean) : [];
   const before = elements.map(element => element.getBoundingClientRect());

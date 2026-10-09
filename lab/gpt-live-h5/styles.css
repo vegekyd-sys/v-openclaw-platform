@@ -778,6 +778,61 @@ body[data-reading="true"] .content-card {
     opacity: 1;
   }
 }
+/* Before a call, the portrait is the whole scene. Keep notices available
+   without reserving an empty transcript panel; completed chats stay visible. */
+@media (min-width: 701px) {
+  body:is([data-call-state="idle"]:not([data-conversation="started"]),
+    [data-call-state="dialing"]) .app-shell {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 30px;
+  }
+  body:is([data-call-state="idle"]:not([data-conversation="started"]),
+    [data-call-state="dialing"]) .voice-stage {
+    width: min(420px, 100%);
+    padding: 0;
+    flex-shrink: 0;
+  }
+  body:is([data-call-state="idle"]:not([data-conversation="started"]),
+    [data-call-state="dialing"]) .portrait-wrap {
+    width: min(360px, 100%, calc(var(--voice-height) - 350px));
+  }
+  body:is([data-call-state="idle"]:not([data-conversation="started"]),
+    [data-call-state="dialing"]) .conversation-panel {
+    position: static;
+    align-self: center;
+    flex-shrink: 0;
+    width: min(560px, 100%);
+    padding: 0;
+    background: none;
+    border: 0;
+    box-shadow: none;
+  }
+  body:is([data-call-state="idle"]:not([data-conversation="started"]),
+    [data-call-state="dialing"]) .conversation,
+  body:is([data-call-state="idle"]:not([data-conversation="started"]),
+    [data-call-state="dialing"]) .steer-form {
+    display: none;
+  }
+  body:is([data-call-state="idle"]:not([data-conversation="started"]),
+    [data-call-state="dialing"]) .conversation-panel:not(:has(
+      .status-text[data-notice="message"]:not(:empty), #taskStatus:not(:empty))) {
+    display: none;
+  }
+  body:is([data-call-state="idle"]:not([data-conversation="started"]),
+    [data-call-state="dialing"]):has(.status-text[data-notice="message"]:not(:empty),
+      #taskStatus:not(:empty)) .portrait-wrap {
+    width: min(360px, 100%, calc(var(--voice-height) - 420px));
+  }
+  body[data-call-state="connected"] .conversation-panel {
+    animation: conversation-enter 500ms cubic-bezier(.22, 1, .36, 1) both;
+  }
+}
+@keyframes conversation-enter {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 @media (max-width: 700px) {
   .app-shell {
     padding: max(12px, env(safe-area-inset-top)) 16px
@@ -968,38 +1023,38 @@ body[data-reading="true"] .content-card {
   .model-menu {
     left: -49px;
   }
-  body[data-call-state="idle"][data-conversation!="started"] .app-shell,
+  body[data-call-state="idle"]:not([data-conversation="started"]) .app-shell,
   body[data-call-state="dialing"] .app-shell {
     grid-template-rows: minmax(0, 1fr) 74px;
   }
-  body[data-call-state="idle"][data-conversation!="started"] .voice-stage,
+  body[data-call-state="idle"]:not([data-conversation="started"]) .voice-stage,
   body[data-call-state="dialing"] .voice-stage {
     align-self: center;
     padding-bottom: 25px;
   }
-  body[data-call-state="idle"][data-conversation!="started"] .portrait-wrap,
+  body[data-call-state="idle"]:not([data-conversation="started"]) .portrait-wrap,
   body[data-call-state="dialing"] .portrait-wrap {
     width: min(270px, 76vw);
     padding: 7px;
     outline-offset: 11px;
   }
-  body[data-call-state="idle"][data-conversation!="started"] .avatar-name,
+  body[data-call-state="idle"]:not([data-conversation="started"]) .avatar-name,
   body[data-call-state="dialing"] .avatar-name {
     font-size: 25px;
     margin-top: 25px;
   }
-  body[data-call-state="idle"][data-conversation!="started"]
+  body[data-call-state="idle"]:not([data-conversation="started"])
     .conversation-panel {
     position: fixed;
     bottom: 90px;
     left: 16px;
     right: 16px;
   }
-  body[data-call-state="idle"][data-conversation!="started"] .conversation,
-  body[data-call-state="idle"][data-conversation!="started"] .steer-form {
+  body[data-call-state="idle"]:not([data-conversation="started"]) .conversation,
+  body[data-call-state="idle"]:not([data-conversation="started"]) .steer-form {
     display: none;
   }
-  body[data-call-state="idle"][data-conversation!="started"] #pillHome,
+  body[data-call-state="idle"]:not([data-conversation="started"]) #pillHome,
   body[data-call-state="dialing"] #pillHome {
     grid-row: 2;
   }
