@@ -5,12 +5,13 @@ import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { createAvatarReactionSelector, avatarEvaluatorFromEnv } from "./avatar-decision.mjs";
 import { AVATAR_FILES, taskActivity } from "./avatar-state.mjs";
 import { createVoiceAccess } from "./access.mjs";
 import { GPT_LIVE_PERSONAL_SESSION_KEY } from "./personal-session.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
-export function createLiveH5Server({ gateway, offer, directVoice, preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2 }) {
+export function createLiveH5Server({ gateway, offer, directVoice, preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv() }) {
   basePath = basePath.replace(/\/$/u, "");
   if (basePath && !/^\/[a-zA-Z0-9_-]+$/u.test(basePath)) throw new Error("Invalid voice base path");
   const hosted = Boolean(publicOrigin || accessToken);
@@ -18,6 +19,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
   if (hosted && (origin.protocol !== "https:" || origin.origin !== publicOrigin || !basePath)) throw new Error("Hosted voice requires an HTTPS origin and base path");
   if (!Number.isInteger(maxActiveSessions) || maxActiveSessions < 1 || maxActiveSessions > 50 || !Number.isInteger(maxActiveSessionsPerIp) || maxActiveSessionsPerIp < 1 || maxActiveSessionsPerIp > maxActiveSessions) throw new Error("Invalid voice call limits");
   const access = hosted ? createVoiceAccess(accessToken, basePath) : null;
+  const visual = createAvatarReactionSelector({evaluate:avatarEvaluate});
   const contexts = new Map();
   const local = { active: null, creatingSession: false, listeners: new Set(), touchedAt: Date.now(), entry: "tianyi" };
   const attempts = new Map();
@@ -30,6 +32,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
   const json = (res, status, data) => { res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }); res.end(JSON.stringify(data)); };
   const close = async (context = local) => {
     const old = context.active;
+    if (old) visual.forget(old.reservation.voiceSessionId);
     if (old?.direct) await directVoice.close(old.reservation.voiceSessionId);
     else if (old) await gateway.request("talk.client.close", { sessionKey: old.sessionKey, voiceSessionId: old.reservation.voiceSessionId });
     if (context.active === old) context.active = null;
@@ -54,16 +57,16 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
         ["/app.js", [join(here, "app.js"), "text/javascript; charset=utf-8"]],
         ["/events.mjs", [join(here, "events.mjs"), "text/javascript; charset=utf-8"]],
         ["/duplex-playback.mjs", [join(here, "duplex-playback.mjs"), "text/javascript; charset=utf-8"]],
-        ...["microphone-capture.mjs", "microphone-session.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "avatar.mjs", "avatar-state.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
+        ...["microphone-capture.mjs", "microphone-session.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "avatar.mjs", "avatar-state.mjs", "avatar-catalog.mjs", "avatar-reactions.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
         ["/styles.css", [join(here, "styles.css"), "text/css; charset=utf-8"]],
-        ...AVATAR_FILES.map(name => [`/assets/${name}`, [join(here, "assets", name), "image/png"]]),
+        ...AVATAR_FILES.map(name => [`/assets/${name}`, [join(here, "assets", name), name.endsWith(".webp") ? "image/webp" : "image/png"]]),
         ...["v-idle-nohat-20260922.png", "v-tool-busy-20260922.png"].map((name) => [`/assets/${name}`, [join(here, "../rtc-h5/assets", name), "image/png"]]),
       ]);
       if (req.method === "GET" && staticFiles.has(pathname)) {
         if (pathname === "/" && !hosted) res.setHeader("set-cookie", `v_live_experiment=${cookie}; HttpOnly; SameSite=Strict; Path=/`);
         const [file, type] = staticFiles.get(pathname);
         const contents = await readFile(file);
-        res.writeHead(200, { "content-type": type, "cache-control": "no-store" }); res.end(contents); return;
+        res.writeHead(200, { "content-type": type, "cache-control": pathname.startsWith("/assets/v-operator-") ? "public, max-age=86400" : "no-store" }); res.end(contents); return;
       }
       const readBody = async () => {
         const chunks = []; let size = 0;
@@ -153,6 +156,19 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
       }
       if (!context.active || params.voiceSessionId !== context.active.reservation.voiceSessionId) return json(res, 409, { error: "通话已结束，请重新开始" });
       context.active.touchedAt = Date.now();
+      if (pathname === '/api/avatar') {
+        const active = context.active;
+        if (!Number.isSafeInteger(params.revision) || params.revision < 1 || !Array.isArray(params.turns)
+          || params.turns.length > 6 || params.turns.some(t => !['user','assistant'].includes(t?.role)
+            || typeof t.text !== 'string' || t.text.length > 600)) return json(res,400,{error:'头像上下文无效'});
+        if (params.revision <= (active.avatarRevision ?? 0)) return json(res,409,{error:'头像上下文已更新'});
+        active.avatarRevision = params.revision;
+        let outcome;
+        const reaction = await visual.select({owner:params.voiceSessionId,context:params,
+          onOutcome:value=>{outcome=value;},
+          isCurrent:()=>context.active===active && active.avatarRevision===params.revision});
+        return json(res,200,{picture:null,...reaction,revision:params.revision,reason:outcome?.reason??'unknown',durationMs:outcome?.durationMs});
+      }
       if (context.active.direct) {
         if (pathname === '/api/close') { await close(context); return json(res,200,{ok:true}); }
         if (pathname === '/api/heartbeat') return json(res,200,{ok:true});
@@ -244,6 +260,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
       }
     }
     publish(message);
+
   };
   server.on('upgrade',(req,socket,head)=>{
     const host=req.headers.host??'';

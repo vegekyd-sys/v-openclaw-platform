@@ -12,7 +12,7 @@ export const TOOLS=[
  {type:'function',name:'delegate_to_v',description:'真正调用个人 V 的后端语言模型，交给它多步调研、跨资料整合、规划或长时间执行的完整目标。用户要求交给后端模型或后台处理时必须用本工具；即使用户给出了命令也不能只口头委派然后自己 exec/process。简单明确查询直接用原生工具。V 会自主继续全部步骤，返回公开进展和最终结果；等待时仍可聊天，不重复派发同一任务。context 传递用户条件和已有资料，不能扩大授权。',parameters:object({question:str,context:str},['question'])},
  {type:'function',name:'cancel_task',description:'用户明确取消当前后台任务时调用。普通插话、闲聊或补充条件不表示取消。只取消本次电话发起的任务。',parameters:object({})},
  {type:'function',name:'openclaw_tool',description:'直接执行 OpenClaw 工具，不调用另一个语言模型。可用工具和用法以本次会话提供的目录为准。飞书用 exec 执行 lark-cli --as user；外部写入遵守用户授权，禁止自行确认。arguments 是原工具参数的 JSON 字符串。',parameters:object({tool:str,arguments:str},['tool','arguments'])},
- {type:'function',name:'end_call',description:'用户明确表达结束本次通话时调用。先理解上下文，讨论挂断功能或取消一个任务不表示要结束电话。调用成功后简短告别。',parameters:object({})}
+ {type:'function',name:'end_call',description:'结束当前电话。用户向你告别，例如“好了，那我们就聊到这里”“拜拜啦”“今天先这样，下次再聊”，立即调用本工具，不只口头告别，也不等用户再次要求挂断。先理解上下文：讨论挂断功能、引用别人的告别、转话题继续提问或取消一个任务都不要挂断。调用成功后简短告别，系统等待真实告别音频播完才关闭。',parameters:object({})}
 ];
 export function validateTool(name,args){
  const tool=TOOLS.find(t=>t.name===name);if(!tool)throw Error('不支持这个工具');

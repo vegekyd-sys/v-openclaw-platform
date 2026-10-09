@@ -4,7 +4,7 @@ import {EventEmitter} from 'node:events';
 import {setTimeout as delay} from 'node:timers/promises';
 import {createDirectVoiceService} from './session.mjs';
 
-async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}),model='grok') {
+async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}),model='grok',options={}) {
  const peers=[],audit=[],invocations=[];
  class WS extends EventEmitter {constructor(){super();this.readyState=1;this.sent=[];peers.push(this);queueMicrotask(()=>this.emit('open'));}
   send(raw){const value=JSON.parse(raw);this.sent.push(value);if(value.type==='session.update')queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.updated'})),false));if(value.type==='session.create')queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.created'})),false));}
@@ -14,7 +14,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   if(method==='tools.catalog')return {groups:[{tools:['memory_search','web_search','web_fetch','exec','process'].map(id=>({id}))}]};
   invocations.push(args);return invoke(args,method);
  }};
- const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v)});
+ const service=createDirectVoiceService({gateway,wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),...options});
  const reservation=await service.reserve({model,sessionKey:'agent:makaron:explicit:personal-fixture'});
  const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>client.sent.push(JSON.parse(raw));client.close=()=>{client.readyState=3;client.emit('close');};
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);await delay(5);
@@ -157,4 +157,16 @@ test('owned long backend result publishes full document and speaks brief notice 
  const docs=f.client.sent.filter(x=>x.type==='backend.result');assert.equal(docs.length,1);assert.equal(docs[0].text,text);assert.equal(docs[0].callId,'call-1');assert.equal(docs[0].voiceSessionId,f.reservation.voiceSessionId);
  const speech=f.upstream.sent.filter(x=>x.item?.type==='force_message');assert.equal(speech.length,1);assert(speech[0].item.content[0].text.includes('屏幕'));assert(speech[0].item.content[0].text.includes('原始事实'));assert(speech[0].item.content[0].text.length<200);
  assert.equal(f.invocations.filter(x=>x.message?.includes('完整目标')).length,1);await f.service.dispose();
+});
+
+test('direct tools emit actual activity; contextual picture decisions belong only to the shared H5 path',async()=>{
+ let expressionDone;
+ const f=await fixture(undefined,'grok',{avatarEvaluate:()=>new Promise(resolve=>{expressionDone=resolve;})});
+ f.call('memory_search',{query:'private query'});await delay(10);
+ assert.equal(f.invocations[0].name,'memory_search');
+ assert.equal(f.audit.filter(x=>x.type==='tool.delivered').length,1);
+ assert.equal(expressionDone,undefined);
+ assert.equal(f.client.sent.filter(x=>x.type==='avatar.expression').length,0);
+ assert.equal(f.upstream.sent.filter(x=>x.item?.type==='function_call_output').length,1);
+ await f.service.dispose();
 });
