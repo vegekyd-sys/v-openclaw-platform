@@ -86,7 +86,7 @@ test('same reaction changes compatible gesture before five seconds; HOLD never r
  t.mock.timers.tick(500);await settle();assert.notEqual(f.image.src,first);assert.equal(f.avatar.context().reactionPicture,'listen-3');
  for(let i=0;i<8;i++){
   const old=f.image.src;t.mock.timers.tick(4500);await settle();assert.notEqual(f.image.src,old);
-  assert.doesNotMatch(f.image.src,/complete-[0124]|web-[45]|listen-4/);
+  assert.doesNotMatch(f.image.src,/complete-[0124]|web-[45]|listen-[04]/);
  }
  f.avatar.dispose();
 });

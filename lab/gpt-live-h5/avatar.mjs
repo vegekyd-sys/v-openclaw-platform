@@ -50,7 +50,8 @@ export function mountAvatar(document, window) {
   const fileFor = id => { const p=avatarPicture(id);return p && AVATAR_SEQUENCES[p.scene][p.frame]; };
   const clearTimers = () => {clearTimeout(timer);clearTimeout(deadline);};
   const chooseVariation = () => {
-    const id=(anchor??displayed)?.id,ids = [...avatarVariants(id),id].filter(Boolean);
+    const reaction=anchor??displayed,id=reaction?.id;
+    const ids=[...avatarVariants(id),id].filter(id=>id&&!(reaction.family==='attentive'&&reaction.dialogue!=='welcome'&&avatarPicture(id).dialogue==='welcome'));
     const fresh=ids.filter(id=>id!==displayed?.id&&!recent.slice(-2).includes(id));
     return fresh[phase%fresh.length] ?? ids.find(id=>id!==displayed?.id)
       ?? (displayed?.id==='listen-5'?'listen-3':'listen-5');
