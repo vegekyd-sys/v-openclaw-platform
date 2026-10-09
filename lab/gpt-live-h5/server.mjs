@@ -9,10 +9,12 @@ import { createAvatarReactionSelector, avatarEvaluatorFromEnv } from "./avatar-d
 import { AVATAR_FILES, taskActivity } from "./avatar-state.mjs";
 import { createVoiceAccess } from "./access.mjs";
 import { GPT_LIVE_PERSONAL_SESSION_KEY } from "./personal-session.mjs";
+import {normalizeAvatarEvent} from './avatar-telemetry.mjs';
+import {createAvatarTelemetryLog} from './avatar-telemetry-log.mjs';
 import { createVoiceTranscriptLog } from '../realtime-direct-tools/transcript-log.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-export function createLiveH5Server({ gateway, offer, directVoice, preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv() }) {
+export function createLiveH5Server({ gateway, offer, directVoice, preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog }) {
   basePath = basePath.replace(/\/$/u, "");
   if (basePath && !/^\/[a-zA-Z0-9_-]+$/u.test(basePath)) throw new Error("Invalid voice base path");
   const hosted = Boolean(publicOrigin || accessToken);
@@ -31,12 +33,19 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
   };
   const cookie = randomBytes(32).toString("hex");
   const json = (res, status, data) => { res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }); res.end(JSON.stringify(data)); };
+  const rememberAvatarCall = (context,active,provider) => {
+    const registry=context.avatarOwners??=new Map();
+    for(const [id,owner] of registry)if(owner.endedAt&&Date.now()-owner.endedAt>300000)registry.delete(id);
+    if(registry.size>=3)registry.delete(registry.keys().next().value);
+    registry.set(active.reservation.voiceSessionId,{voiceSessionId:active.reservation.voiceSessionId,sessionKey:active.sessionKey,
+      provider,model:active.reservation.model??null,avatarSequences:new Map()});
+  };
   const close = async (context = local) => {
     const old = context.active;
     if (old) visual.forget(old.reservation.voiceSessionId);
     if (old?.direct) await directVoice.close(old.reservation.voiceSessionId);
     else if (old) await gateway.request("talk.client.close", { sessionKey: old.sessionKey, voiceSessionId: old.reservation.voiceSessionId });
-    if (context.active === old) context.active = null;
+    if (context.active === old) {context.active = null;const owner=context.avatarOwners?.get(old?.reservation.voiceSessionId);if(owner)owner.endedAt=Date.now();}
   };
   const server = createServer(async (req, res) => {
     res.setHeader("referrer-policy", "no-referrer"); res.setHeader("x-content-type-options", "nosniff");
@@ -58,7 +67,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
         ["/app.js", [join(here, "app.js"), "text/javascript; charset=utf-8"]],
         ["/events.mjs", [join(here, "events.mjs"), "text/javascript; charset=utf-8"]],
         ["/duplex-playback.mjs", [join(here, "duplex-playback.mjs"), "text/javascript; charset=utf-8"]],
-        ...["microphone-capture.mjs", "microphone-session.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "avatar.mjs", "avatar-state.mjs", "avatar-catalog.mjs", "avatar-reactions.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
+        ...["microphone-capture.mjs", "microphone-session.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "avatar.mjs", "avatar-state.mjs", "avatar-catalog.mjs", "avatar-reactions.mjs", "avatar-telemetry.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
         ["/styles.css", [join(here, "styles.css"), "text/css; charset=utf-8"]],
         ...AVATAR_FILES.map(name => [`/assets/${name}`, [join(here, "assets", name), name.endsWith(".webp") ? "image/webp" : "image/png"]]),
         ...["v-idle-nohat-20260922.png", "v-tool-busy-20260922.png"].map((name) => [`/assets/${name}`, [join(here, "../rtc-h5/assets", name), "image/png"]]),
@@ -142,6 +151,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
           if (params.model && params.model !== 'gpt-live') {
             const reservation = await directVoice.reserve({model:params.model,sessionKey});
             context.active={sessionKey,reservation,direct:true,touchedAt:Date.now(),cookie:req.headers.cookie};
+            rememberAvatarCall(context,context.active,params.model);
             return json(res,200,reservation);
           }
           const reservation = await gateway.request("talk.client.create", { sessionKey, provider: "openai", model: "gpt-live-1-codex", voice: "sol", mode: "realtime", transport: "webrtc", brain: "agent-consult", capabilities: ["voice-transcript"] }, { timeoutMs: 45000 });
@@ -150,10 +160,21 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
             await close(context);
             return json(res, 409, { error: "候选语音配置与 GPT Live 实验不匹配" });
           }
+          rememberAvatarCall(context,context.active,'openai');
           return json(res, 200, { voiceSessionId: reservation.voiceSessionId, model: reservation.model });
         } finally {
           context.creatingSession = false;
         }
+      }
+      if(pathname==='/api/avatar-events'){
+        const owner=context.avatarOwners?.get(params.voiceSessionId);
+        if(!owner||owner.endedAt&&Date.now()-owner.endedAt>300000)return json(res,409,{error:'头像记录不属于此通话'});
+        if(!avatarLog)return json(res,503,{error:'头像记录尚未启用'});
+        if(typeof params.captureId!=='string'||!/^[a-f0-9-]{36}$/u.test(params.captureId)||!Array.isArray(params.events)||!params.events.length||params.events.length>20)return json(res,400,{error:'头像记录无效'});
+        try{params.events.forEach(normalizeAvatarEvent);}catch{return json(res,400,{error:'头像记录无效'});}
+        if(!owner.avatarSequences.has(params.captureId)&&owner.avatarSequences.size>=4)return json(res,429,{error:'头像记录来源过多'});
+        try{return json(res,200,await avatarLog.write({owner,clientCaptureId:params.captureId,events:params.events}));}
+        catch{return json(res,503,{error:'头像记录暂未保存'});}
       }
       if (!context.active || params.voiceSessionId !== context.active.reservation.voiceSessionId) return json(res, 409, { error: "通话已结束，请重新开始" });
       context.active.touchedAt = Date.now();
@@ -286,7 +307,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const preview = process.env.GPT_LIVE_H5_PREVIEW === "1";
   const port = Number(process.env.GPT_LIVE_H5_PORT ?? process.env.RTC_H5_PORT ?? 26244);
-  let gateway, bridge, transcriptLog;
+  let gateway, bridge, transcriptLog, avatarLog;
   if (!preview) {
     const configPath = process.env.OPENCLAW_CONFIG_PATH;
     const runtime = process.env.GPT_LIVE_H5_RUNTIME_ROOT ?? process.env.RTC_H5_RUNTIME_ROOT;
@@ -304,6 +325,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       directory:process.env.RTC_H5_TRANSCRIPT_DIR??join(process.env.OPENCLAW_STATE_DIR??dirname(configPath),'state','voice-transcripts'),
       onError:({code})=>console.warn(JSON.stringify({type:'voice.transcript-write-error',code})),
     });
+    avatarLog=createAvatarTelemetryLog({directory:process.env.RTC_H5_AVATAR_LOG_DIR??join(process.env.OPENCLAW_STATE_DIR??dirname(configPath),'state','voice-avatar-events'),
+      onError:({code})=>console.warn(JSON.stringify({type:'voice.avatar-write-error',code})),
+    });
     const directVoice=createDirectVoiceService({gateway,wsModule,
       audit:transcriptLog.audit,
       toolEnvironment:Object.fromEntries(["LARKSUITE_CLI_CONFIG_DIR","LARKSUITE_CLI_DATA_DIR"].filter(key=>process.env[key]).map(key=>[key,process.env[key]])),
@@ -315,7 +339,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       return JSON.stringify((history.messages??[]).map(m=>({role:m.role,content:m.content}))).slice(-12000);
     }});
     bridge = createLiveH5Server({ gateway,
-      directVoice,
+      directVoice, avatarLog,
       basePath: process.env.GPT_LIVE_H5_BASE_PATH ?? process.env.RTC_H5_BASE_PATH ?? "",
       publicOrigin: process.env.GPT_LIVE_H5_PUBLIC_ORIGIN ?? process.env.RTC_H5_PUBLIC_ORIGIN
         ?? (process.env.RTC_H5_BASE_PATH && process.env.RTC_H5_ACCESS_TOKEN ? "https://openclaw.tianyi.live" : ""),
@@ -328,5 +352,5 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     } });
   } else bridge = createLiveH5Server({ preview: true });
   bridge.server.listen(port, "127.0.0.1", () => console.log(JSON.stringify({ ready: true, host: "127.0.0.1", port, preview })));
-  for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => void bridge.dispose().finally(async () => { await transcriptLog?.close(); gateway?.stop(); process.exit(0); }));
+  for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => void bridge.dispose().finally(async () => { await transcriptLog?.close(); await avatarLog?.close(); gateway?.stop(); process.exit(0); }));
 }
