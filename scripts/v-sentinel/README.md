@@ -37,6 +37,9 @@ HTTPS. When the Gateway is the broken component, the alert still goes out.
 | unit down | `systemctl is-active` not `active` | |
 | stalled | 8+ stalled requests, two samples running | Baseline measured across three separate hours of real traffic on 2026-09-20: exactly 0. Two samples to skip a single burst. |
 | disk / memory | under 15 GB / 2 GB | |
+| plugin dir missing | any `plugins.load.paths` entry of the main or worker config absent on disk, every tick | 2026-10-09: a deleted plugin dir broke the worker config at once (48 turns failed in 22 min) and the main config silently (it would only have failed at the next Gateway start). |
+| config invalid | `openclaw config validate` fails for either file, run every 10 min (≈2 s each) as `openclaw` with the unit's own node + `dist/index.js` | Catches the main config breaking long before a restart exposes it. A validator timeout is not reported. |
+| worker invalid config | any `Worker Agent request failed … InvalidConfigError` in 3 min | Each one is a user turn that got an error card before reaching the model. |
 
 Every rule latches: it fires once on the way in, stays quiet while the condition
 persists, and sends a recovery message on the way out.
