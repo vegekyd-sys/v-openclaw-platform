@@ -1,0 +1,7 @@
+{
+  "id": "hotprobe-plain",
+  "activation": { "onStartup": true },
+  "name": "Hot reload probe (plain)",
+  "description": "Test-only: reports the code version it was loaded with.",
+  "configSchema": { "type": "object", "additionalProperties": false, "properties": { "rev": { "type": "integer" } } }
+}

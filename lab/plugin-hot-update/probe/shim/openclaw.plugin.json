@@ -1,0 +1,7 @@
+{
+  "id": "hotprobe-shim",
+  "activation": { "onStartup": true },
+  "name": "Hot reload probe (shim)",
+  "description": "Test-only: a stable shim that loads its implementation from releases/<release>/.",
+  "configSchema": { "type": "object", "additionalProperties": false, "properties": { "release": { "type": "string" } } }
+}
