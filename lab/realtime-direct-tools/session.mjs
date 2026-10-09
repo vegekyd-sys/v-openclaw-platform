@@ -1,4 +1,3 @@
-import {createAvatarExpressionSelector,avatarEvaluatorFromEnv} from '../gpt-live-h5/avatar-decision.mjs';
 import { taskActivity } from '../gpt-live-h5/avatar-state.mjs';
 import {randomBytes,randomUUID} from 'node:crypto';
 import {SeeduplexRealtimeVoiceBridge} from '../seeduplex-realtime-provider.mjs';
@@ -21,8 +20,7 @@ export function directInstructions(catalog,context='',model='') {
 }
 
 /** One real provider connection per dial; tool authorization stays in OpenClaw. */
-export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},avatarEvaluate=avatarEvaluatorFromEnv()}) {
-  const visual=createAvatarExpressionSelector({evaluate:avatarEvaluate,audit});
+export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={}}) {
   const sessions=new Map();
   const deferred=s=>{
     if(!current(s)||s.ending||s.responseActive||s.playing||s.userSpeaking||Date.now()-s.lastUserAt<1200)return;
@@ -119,7 +117,6 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       const controller=new AbortController(),epoch=s.epoch;
       s.pending.set(call.callId,controller);
       audit({type:'tool.call',voiceSessionId:s.id,...call});emit(s,{type:'tool.call',callId:call.callId,name:call.name,activity:taskActivity(call.name,call.args)});
-      void visual.select({owner:s.id,callId:call.callId,activity:taskActivity(call.name,call.args),isCurrent:()=>current(s)&&s.pending.get(call.callId)===controller}).then(expression=>{if(expression && current(s)&&s.pending.get(call.callId)===controller)emit(s,{type:'avatar.expression',callId:call.callId,expression});}).catch(()=>{});
       let result,backgroundAck=false;
       try {
         validateTool(call.name,call.args);

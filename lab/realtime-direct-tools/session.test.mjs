@@ -159,14 +159,13 @@ test('owned long backend result publishes full document and speaks brief notice 
  assert.equal(f.invocations.filter(x=>x.message?.includes('完整目标')).length,1);await f.service.dispose();
 });
 
-test('avatar decision never blocks a direct tool and a late style cannot revive finished work',async()=>{
+test('direct tools emit actual activity; contextual picture decisions belong only to the shared H5 path',async()=>{
  let expressionDone;
  const f=await fixture(undefined,'grok',{avatarEvaluate:()=>new Promise(resolve=>{expressionDone=resolve;})});
  f.call('memory_search',{query:'private query'});await delay(10);
  assert.equal(f.invocations[0].name,'memory_search');
  assert.equal(f.audit.filter(x=>x.type==='tool.delivered').length,1);
- assert.equal(typeof expressionDone,'function');
- expressionDone({model:'visual-fixture',answers:{expression:{type:'choice',choice:'curious',confidence:.9}}});await delay(5);
+ assert.equal(expressionDone,undefined);
  assert.equal(f.client.sent.filter(x=>x.type==='avatar.expression').length,0);
  assert.equal(f.upstream.sent.filter(x=>x.item?.type==='function_call_output').length,1);
  await f.service.dispose();

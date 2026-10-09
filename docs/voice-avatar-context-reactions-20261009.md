@@ -10,8 +10,10 @@ A selected exact picture holds until a new semantic choice or actual task transi
 
 ## Validation
 
-198 H5 tests passed (0 skipped), including audio/playback, microphone lifetime, task/result presentation, call controls and new contextual selection tests. The latter cover all three server reservation paths, current-owner validation, no Agent/tool dispatch, an independent heartbeat during a delayed display request, stale completion, bounded context, document exclusion, exact picture loading and five-second dwell.
+268 H5 and direct-provider tests passed (0 skipped), including audio/playback, microphone lifetime, task/result presentation, call controls and new contextual selection tests. The latter cover all three server reservation paths, current-owner validation, no Agent/tool dispatch, an independent heartbeat during a delayed display request, stale completion, bounded context, document exclusion, exact picture loading and five-second dwell.
 
 Eight actual OpenAI Decisions samples were run through the existing Candidate credential/provider, without starting paid voice. A memory task plus disappointment selected `listen-3`; the same task plus celebration selected a reviewed joyful pose. Curiosity, surprise, reading, scheduling, explanation and frustration selected reviewed, context-appropriate frames. This is a small sample review, not proof of general emotion accuracy. Provider receipts and browser-only fixture evidence are private under `tmp/voice-performance/context-reactions-20261009/`.
+
+The direct-provider adapters no longer own a separate coarse-style classifier. All three models use the H5 contextual selector. A first Candidate H5 load found an obsolete adapter import; that failed load is retained separately and the corrected adapter was included in the final regression.
 
 This patch is Candidate only. It changes the display decision and H5 server; it does not change the three voice providers, voice routing, OpenClaw Agent, runtime/config or final-answer interruption policy. Native final interruption remains partially verified and physical iOS/Safari acceptance remains incomplete. Shared VLab/dev/V acceptance and rollout are not included.
