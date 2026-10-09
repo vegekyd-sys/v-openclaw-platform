@@ -322,15 +322,12 @@ body:not([data-call-state="idle"]) .call-actions {
 .status-text {
   font-size: 13px;
   line-height: 1.7;
-  color: #8b7154;
-  padding: 10px 13px;
+  color: #8b7296;
+  padding: 0;
   margin: 0 0 10px;
-  border: 1px solid #e9dfd0;
-  background: #fffbf1dd;
-  border-radius: 14px;
   overflow-wrap: anywhere;
 }
-.status-text[data-notice="normal"] {
+.status-text:is([data-notice="normal"], [data-notice="progress"]) {
   display: none;
 }
 .task-progress {
@@ -488,6 +485,18 @@ body:not([data-call-state="idle"]) .call-actions {
 }
 body[data-call-state="connected"] .connection-badge::before {
   background: #53b385;
+}
+body:is([data-call-state="dialing"], [data-call-state="ending"]) .connection-badge::before {
+  width: 9px;
+  height: 9px;
+  background: none;
+  border: 1.5px solid #dcd1e5;
+  border-top-color: #9274a4;
+  vertical-align: -1px;
+  animation: connection-spin 900ms linear infinite;
+}
+@keyframes connection-spin {
+  to { transform: rotate(360deg); }
 }
 .call-pill .call-stop {
   background: var(--accent);
@@ -808,6 +817,7 @@ body[data-reading="true"] .content-card {
     background: none;
     border: 0;
     box-shadow: none;
+    text-align: center;
   }
   body:is([data-call-state="idle"]:not([data-conversation="started"]),
     [data-call-state="dialing"]) .conversation,

@@ -1035,3 +1035,19 @@ test('avatar recorder uses exact voice owner and public snapshot, sends keepaliv
  let values,closed=0;const pending=deferred();const f=await fixture(t,{telemetry:v=>{values=v;return {close(){closed++;},display(){},decision(){}};},api:(route,payload,result,init)=>{if(route==='avatar-events'){assert.equal(payload.voiceSessionId,'voice-1');assert.equal(init.keepalive,true);return pending.promise;}return result;}});
  await f.context.startCall();assert(values);const sending=values.send({captureId:'11111111-1111-4111-8111-111111111111',events:[]});await f.context.stopCall();assert.equal(closed,1);assert(f.requests.some(r=>r.route==='close'));pending.resolve({accepted:0});await sending;
 });
+
+
+test("connection progress lives in the pill while a busy rejection remains an actionable notice", async t => {
+  const session = deferred();
+  const f = await fixture(t, { api: (route, payload, result) => route === "session" ? session.promise : result });
+  const starting = f.context.startCall();
+  await tick();
+  assert.equal(f.body.dataset.callState, "dialing");
+  assert.equal(f.element("badge").textContent, "连接中");
+  assert.equal(f.element("status").dataset.notice, "progress");
+  session.reject(new Error("正在连接 V，请稍等。"));
+  await starting;
+  assert.equal(f.body.dataset.callState, "idle");
+  assert.equal(f.element("status").dataset.notice, "message");
+  assert.equal(f.element("status").textContent, "正在连接 V，请稍等。");
+});

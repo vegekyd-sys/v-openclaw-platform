@@ -57,7 +57,8 @@ function setCallState(state) {
 }
 const setStatus = (text) => {
   $("status").textContent = text;
-  $("status").dataset.notice = ["拨号后，直接说话。", "V 正在听，直接说话就好"].includes(text) ? "normal" : "message";
+  $("status").dataset.notice = ["拨号后，直接说话。", "V 正在听，直接说话就好"].includes(text) ? "normal"
+    : ["正在连接 V…", "正在结束通话…"].includes(text) ? "progress" : "message";
 };
 function duplexDiagnostic(active, entry) {
   if (call !== active) return;
@@ -455,7 +456,7 @@ async function startCall() {
   if (starting || call) return;
   if (!liveReady) { setStatus(entryError ?? "当前页面仅作预览，真实通话还未连接 VLab 候选服务。"); return; }
   $("start").disabled = true; $("start").hidden = true; $("stop").hidden = false;
-  $("stopLabel").textContent = "取消拨号"; $("badge").textContent = "拨号中";
+  $("stopLabel").textContent = "取消拨号"; $("badge").textContent = "连接中";
   setCallState("dialing"); setStatus("正在连接 V…");
   resetTranscript();
   const active = { pc: new RTCPeerConnection(), captureAbort: new AbortController() }; call = active; starting = active;
