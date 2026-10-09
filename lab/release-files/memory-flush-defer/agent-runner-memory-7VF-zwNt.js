@@ -953,6 +953,8 @@ async function runMemoryFlushIfNeeded(params) {
 	let deferredFlushRunAborted = false;
 	const deferredFlushInterrupted = () => params.memoryFlushDeferred === true && (deferredFlushRunAborted || abortSignal?.aborted === true || deferredLifecycle.signal.aborted);
 	const createDeferredFlushInterruptedError = () => Object.assign(new Error("deferred memory flush was interrupted before it finished"), { name: "AbortError" });
+	// memory-flush-defer-v1: compactions the deferred flush's own run counted on this session.
+	let deferredFlushOwnCompactions = 0;
 	const flushedCompactionCount = activeSessionEntry?.compactionCount ?? 0;
 	const compaction = {
 		count: 0,
@@ -1092,6 +1094,8 @@ async function runMemoryFlushIfNeeded(params) {
 					tokensAfter: fact.currentContextSnapshot?.tokens
 				}) === void 0) continue;
 				activeSessionEntry = activeSessionStore[fact.target.sessionKey] ?? activeSessionEntry;
+				// memory-flush-defer-v1: a deferred flush's own compaction belongs to the cycle it marks
+				if (params.memoryFlushDeferred === true && fact.target.sessionKey === params.sessionKey && Number.isFinite(fact.count) && fact.count > 0) deferredFlushOwnCompactions += fact.count;
 				if (activeSessionEntry?.sessionId === fact.target.sessionId) {
 					params.followupRun.run.sessionId = activeSessionEntry.sessionId;
 					params.followupRun.run.sessionFile = fact.target.sessionKey;
@@ -1113,6 +1117,7 @@ async function runMemoryFlushIfNeeded(params) {
 		// the write is in flight does not mark it either.
 		if (deferredFlushInterrupted()) throw createDeferredFlushInterruptedError();
 		let deferredFlushMarkRefused = false;
+		const markedCompactionCount = flushedCompactionCount + deferredFlushOwnCompactions;
 		if (params.storePath && params.sessionKey) try {
 			const updatedEntry = await updateSessionEntry({
 				storePath: params.storePath,
@@ -1124,7 +1129,7 @@ async function runMemoryFlushIfNeeded(params) {
 				}
 				return { memoryFlush: {
 					kind: "succeeded",
-					compactionCount: flushedCompactionCount
+					compactionCount: markedCompactionCount
 				} };
 			}, {
 				skipMaintenance: true,
@@ -1150,7 +1155,7 @@ async function runMemoryFlushIfNeeded(params) {
 			sessionEntry: activeSessionEntry,
 			outcome: "completed",
 			// memory-flush-defer-v1: whether this deferred run wrote the success marker (for its log line)
-			...params.memoryFlushDeferred === true ? { markedFlushed: activeSessionEntry?.memoryFlush?.kind === "succeeded" && activeSessionEntry.memoryFlush.compactionCount === flushedCompactionCount } : {}
+			...params.memoryFlushDeferred === true ? { markedFlushed: activeSessionEntry?.memoryFlush?.kind === "succeeded" && activeSessionEntry.memoryFlush.compactionCount === markedCompactionCount, ownCompactions: deferredFlushOwnCompactions } : {}
 		};
 	} catch (error) {
 		return await recordFailure(error);

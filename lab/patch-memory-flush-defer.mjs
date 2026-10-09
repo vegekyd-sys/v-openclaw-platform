@@ -136,6 +136,16 @@ import assert from 'node:assert/strict';
 // assertCommitAllowed). Either way the cycle stays due and the idle re-run flushes. The "ran"
 // line carries marked:true|false for a completed deferred run, so a marker that appears
 // without one came from another writer. Stock flushes are unchanged.
+//
+// Own compactions (V 2026-10-08/09: after each of 60 "marked:true" runs in nine /vds sessions the
+// next reply deferred a flush again, with no compaction of the session's own Codex thread in
+// between; one direct session flushed 15 times a day, 90-190 s each). A Codex session's deferred
+// flush runs in a transient thread (trigger "memory") that replays the transcript, so it compacts
+// natively at once, and runMemoryFlushIfNeeded raises the session's compactionCount by that durable
+// fact after flushedCompactionCount was taken. The marker then named the previous cycle. A
+// deferred flush runs on the session lane, so the compactions it counts are its own and belong to
+// the cycle it marks: the marker is flushedCompactionCount plus them, and the "ran" line carries
+// ownCompactions. The next flush is due at the session's next real compaction.
 // OPENCLAW_DEFER_PRE_REPLY_MEMORY_FLUSH=0 turns it off. Tagged log lines
 // `[memory-flush-deferred.1]` carry a hashed session key and numbers, never message text.
 
@@ -271,7 +281,21 @@ const FLUSH_RUN_REGISTER_AFTER = `\t// ${MEMORY_FLUSH_DEFER_MARKER}: a deferred 
 	let deferredFlushRunAborted = false;
 	const deferredFlushInterrupted = () => params.memoryFlushDeferred === true && (deferredFlushRunAborted || abortSignal?.aborted === true || deferredLifecycle.signal.aborted);
 	const createDeferredFlushInterruptedError = () => Object.assign(new Error("deferred memory flush was interrupted before it finished"), { name: "AbortError" });
+	// ${MEMORY_FLUSH_DEFER_MARKER}: compactions the deferred flush's own run counted on this session.
+	let deferredFlushOwnCompactions = 0;
 ${FLUSH_RUN_REGISTER_BEFORE}`;
+
+// Own compactions (V 2026-10-08/09: 60 of 60 re-triggers). A Codex session's deferred flush runs
+// in a transient Codex thread that replays the whole transcript (456k tokens for one /vds direct
+// session), so it compacts natively at once, and the run reports that compaction as a durable fact.
+// The loop below raises the session's compactionCount by it, after flushedCompactionCount was
+// taken, so the success marker named the previous cycle and the next reply found the flush due
+// again: one 90-190 s flush after every reply. The deferred flush runs on the session lane, so the
+// compactions it counts are its own; the marker covers them.
+const FLUSH_COMPACTION_COUNT_BEFORE = '\t\t\t\t}) === void 0) continue;\n\t\t\t\tactiveSessionEntry = activeSessionStore[fact.target.sessionKey] ?? activeSessionEntry;\n';
+const FLUSH_COMPACTION_COUNT_AFTER = `${FLUSH_COMPACTION_COUNT_BEFORE}\t\t\t\t// ${MEMORY_FLUSH_DEFER_MARKER}: a deferred flush's own compaction belongs to the cycle it marks
+\t\t\t\tif (params.memoryFlushDeferred === true && fact.target.sessionKey === params.sessionKey && Number.isFinite(fact.count) && fact.count > 0) deferredFlushOwnCompactions += fact.count;
+`;
 
 const FLUSH_RUN_RESULT_BEFORE = '\t\t\t\t\tvisibleErrorPayloads = resolveVisibleMemoryFlushErrorPayloads(result.payloads);\n';
 const FLUSH_RUN_RESULT_AFTER = `${FLUSH_RUN_RESULT_BEFORE}\t\t\t\t\t// ${MEMORY_FLUSH_DEFER_MARKER}: an aborted embedded run returns normally, with meta.aborted
@@ -300,6 +324,7 @@ const FLUSH_SUCCESS_AFTER = `		deferredLifecycle.signal.throwIfAborted();
 		// the write is in flight does not mark it either.
 		if (deferredFlushInterrupted()) throw createDeferredFlushInterruptedError();
 		let deferredFlushMarkRefused = false;
+		const markedCompactionCount = flushedCompactionCount + deferredFlushOwnCompactions;
 		if (params.storePath && params.sessionKey) try {
 			const updatedEntry = await updateSessionEntry({
 				storePath: params.storePath,
@@ -311,7 +336,7 @@ const FLUSH_SUCCESS_AFTER = `		deferredLifecycle.signal.throwIfAborted();
 				}
 				return { memoryFlush: {
 					kind: "succeeded",
-					compactionCount: flushedCompactionCount
+					compactionCount: markedCompactionCount
 				} };
 			}, {
 				skipMaintenance: true,
@@ -340,7 +365,7 @@ const FLUSH_COMPLETED_AFTER = `		} catch (err) {
 			sessionEntry: activeSessionEntry,
 			outcome: "completed",
 			// ${MEMORY_FLUSH_DEFER_MARKER}: whether this deferred run wrote the success marker (for its log line)
-			...params.memoryFlushDeferred === true ? { markedFlushed: activeSessionEntry?.memoryFlush?.kind === "succeeded" && activeSessionEntry.memoryFlush.compactionCount === flushedCompactionCount } : {}
+			...params.memoryFlushDeferred === true ? { markedFlushed: activeSessionEntry?.memoryFlush?.kind === "succeeded" && activeSessionEntry.memoryFlush.compactionCount === markedCompactionCount, ownCompactions: deferredFlushOwnCompactions } : {}
 		};
 `;
 
@@ -366,6 +391,7 @@ export function patchAgentRunnerMemory(source) {
   out = replaceExactlyOnce(out, FLUSH_RUN_REGISTER_BEFORE, FLUSH_RUN_REGISTER_AFTER, 'memory flush run registration');
   out = replaceExactlyOnce(out, FLUSH_RUN_RELEASE_BEFORE, FLUSH_RUN_RELEASE_AFTER, 'memory flush run release');
   out = replaceExactlyOnce(out, FLUSH_RUN_RESULT_BEFORE, FLUSH_RUN_RESULT_AFTER, 'memory flush run result');
+  out = replaceExactlyOnce(out, FLUSH_COMPACTION_COUNT_BEFORE, FLUSH_COMPACTION_COUNT_AFTER, 'memory flush compaction accounting');
   out = replaceExactlyOnce(out, FLUSH_SUCCESS_BEFORE, FLUSH_SUCCESS_AFTER, 'memory flush success marker');
   out = replaceExactlyOnce(out, FLUSH_COMPLETED_BEFORE, FLUSH_COMPLETED_AFTER, 'memory flush completed result');
   return out;
@@ -604,6 +630,7 @@ function startDeferredMemoryFlush(job, epoch) {
 			...report.skipReason ? { reason: report.skipReason } : {},
 			...report.failureName ? { error: report.failureName } : {},
 			...typeof report.marked === "boolean" ? { marked: report.marked } : {},
+			...report.ownCompactions ? { ownCompactions: report.ownCompactions } : {},
 			...retryUnreadable ? { retry: true } : {},
 			ms: Date.now() - startedAt
 		});
@@ -666,6 +693,7 @@ async function runDeferredMemoryFlush(ctx, abortSignal, report = {}) {
 		if (result?.skipReason) report.skipReason = result.skipReason;
 		if (result?.failureName) report.failureName = result.failureName;
 		if (typeof result?.markedFlushed === "boolean") report.marked = result.markedFlushed;
+		if (typeof result?.ownCompactions === "number" && result.ownCompactions > 0) report.ownCompactions = result.ownCompactions;
 		return result?.outcome ?? "unknown";
 	} catch (error) {
 		logVerbose(\`deferred memory flush failed: \${String(error)}\`);

@@ -66,7 +66,7 @@ test('each anchor is replaced exactly once and a patched file is refused', () =>
   assert.throws(() => patchAgentRunnerRuntime(runtimeInput.replace('async function executePreparedReplyAgentRun(context) {\n', '')), /Expected exactly one reply agent run executor/);
   assert.throws(() => patchBuiltinOpenclaw(builtinOut), /already patched/);
   assert.throws(() => patchBuiltinOpenclaw(builtinInput.replace('\t\tisCompacting: () => subscription.isCompacting(),\n', '')), /Expected exactly one embedded run compacting state/);
-  assert.equal(memoryOut.split(MEMORY_FLUSH_DEFER_MARKER).length - 1, 12);
+  assert.equal(memoryOut.split(MEMORY_FLUSH_DEFER_MARKER).length - 1, 14);
   assert.equal(memoryOut.split('if (!isAbortError(error) && run.memoryFlushDeferred !== true && storePath && sessionKey) try {').length - 1, 1);
   assert.equal(runtimeOut.split('deferPreReplyFlush:').length - 1, 1);
   assert.equal(runtimeOut.split('yieldDeferredMemoryFlush(sessionKey, "inbound-turn")').length - 1, 1);
@@ -795,7 +795,7 @@ test('a heartbeat during a running deferred flush neither yields it nor runs', a
 // store (VLab candidate at 6f05930, interrupt arm: abort mid-flush, the next turn defers
 // again, and the re-run after the idle wait ended "skipped" without writing memory).
 
-function integratedSession({ stats, world, stockAttempts = false } = {}) {
+function integratedSession({ stats, world, stockAttempts = false, extraFakes = {} } = {}) {
   const workspaceDir = fs.mkdtempSync(path.join(fs.realpathSync(process.env.TMPDIR ?? '/tmp'), 'memflush-'));
   after(() => fs.rmSync(workspaceDir, { recursive: true, force: true }));
   const store = { [sessionKey]: entry() };
@@ -831,6 +831,8 @@ function integratedSession({ stats, world, stockAttempts = false } = {}) {
             attempt.finish = () => { p.abortSignal.removeEventListener('abort', abortedResult); resolve({ payloads: [], meta: { durationMs: 24_700 } }); };
             // the run aborts itself (its own run controller) while the flush's signal is not aborted
             attempt.abortInternally = () => { p.abortSignal.removeEventListener('abort', abortedResult); abortedResult(); };
+            // a Codex flush thread compacts natively and the run reports it as a durable fact
+            attempt.compact = (count = 1) => p.onCompactionAccounting({ kind: 'durable', count, target: { agentId: 'makaron', sessionId: 's1', sessionKey, storePath: '/store' } });
           });
         },
       }) }),
@@ -841,6 +843,7 @@ function integratedSession({ stats, world, stockAttempts = false } = {}) {
       buildEmbeddedRunExecutionParams: async (p) => ({ embeddedContext: {}, senderContext: {}, runBaseParams: { runId: p.runId, sessionId: p.run.sessionId } }),
     } : {},
     readSessionTranscriptActiveStats: () => (stats ? stats() : { sizeBytes: 3_500_000, eventCount: 400 }),
+    ...extraFakes,
     resolveMemoryFlushPlan: (p) => (p.nowMs ? { ...plan, relativePath: 'memory/2026-10-06.md', prompt: 'flush', systemPrompt: 'sys' } : plan),
     resolveModelFallbackOptions: (run) => ({ cfg: run.config, provider: run.provider, model: run.model }),
     prepareSystemAgentRunAdmission: () => ({ close() {} }),
@@ -1434,4 +1437,71 @@ setTimeout(() => {}, 400);
   const result = events.at(-1);
   assert.deepEqual([result.sessionId, result.outcomes, result.requesterActive, result.verdict], ['s1', ['compacting', 'compacting', 'transcript_commit_wait_unsupported', 'no_active_run'], false, 'direct-delivery']);
   assert(!on.stderr.includes('probe received'), 'message text is not logged');
+});
+
+// V 2026-10-08/09: a /vds session's deferred flush replays the transcript into a transient Codex
+// thread, which compacts at once; the run reports that compaction as a durable fact and
+// runMemoryFlushIfNeeded raises the session's compactionCount by it. The marker used the count
+// taken before the run, so the next reply found the cycle unflushed and deferred another flush:
+// 60 of 60 re-triggers in two days, none after a compaction of the session's own thread.
+test('a deferred flush whose own run compacts marks the cycle it produced; the next flush waits for a real compaction', async () => {
+  const durableCompactions = (store) => ({
+    recordTurnCompaction: (compaction, fact) => { if (fact?.kind === 'durable') compaction.durable.push(fact); },
+    incrementCompactionCount: async (p) => {
+      store()[p.sessionKey] = { ...store()[p.sessionKey], compactionCount: (store()[p.sessionKey].compactionCount ?? 0) + p.amount };
+      if (p.sessionStore) p.sessionStore[p.sessionKey] = store()[p.sessionKey];
+      return store()[p.sessionKey].compactionCount;
+    },
+  });
+  let s;
+  s = integratedSession({ stockAttempts: true, extraFakes: durableCompactions(() => s.store) });
+  s.store[sessionKey] = entry({ compactionCount: 66, memoryFlush: { kind: 'succeeded', compactionCount: 65 } });
+  assert.equal(await s.preReplyCheck(), 'deferred');
+  s.t.afterClear.at(-1).cb();
+  s.t.timers.at(-1).fn();
+  await s.settle();
+  assert.equal(s.attempts.length, 1);
+  s.attempts[0].compact();
+  s.attempts[0].finish();
+  await s.settle();
+  const ran = s.ranLines().at(-1);
+  assert.deepEqual([ran.outcome, ran.marked, ran.ownCompactions], ['completed', true, 1]);
+  // the flush's own compaction raised the count, and the marker covers it (V's bytes wrote 66)
+  assert.equal(s.store[sessionKey].compactionCount, 67);
+  assert.deepEqual(s.store[sessionKey].memoryFlush, { kind: 'succeeded', compactionCount: 67 });
+  // the next replies find nothing to flush
+  assert.equal(await s.preReplyCheck(), 'skipped');
+  assert.equal(await s.preReplyCheck(), 'skipped');
+  // until the session's own thread compacts in a reply: then one flush is due again
+  s.store[sessionKey] = { ...s.store[sessionKey], compactionCount: 68 };
+  assert.equal(await s.preReplyCheck(), 'deferred');
+
+  // a deferred flush without its own compaction marks the count it read, as before
+  let q;
+  q = integratedSession({ stockAttempts: true, extraFakes: durableCompactions(() => q.store) });
+  q.store[sessionKey] = entry({ compactionCount: 5 });
+  assert.equal(await q.preReplyCheck(), 'deferred');
+  q.t.afterClear.at(-1).cb();
+  q.t.timers.at(-1).fn();
+  await q.settle();
+  q.attempts[0].finish();
+  await q.settle();
+  assert.deepEqual([q.ranLines().at(-1).marked, q.ranLines().at(-1).ownCompactions], [true, undefined]);
+  assert.deepEqual(q.store[sessionKey].memoryFlush, { kind: 'succeeded', compactionCount: 5 });
+
+  // the stock pre-reply flush is unchanged: it marks the count it read before its run
+  let p;
+  p = integratedSession({ stockAttempts: true, extraFakes: durableCompactions(() => p.store) });
+  p.store[sessionKey] = entry({ compactionCount: 10 });
+  const followup = { ...followupRun('用户消息'), run: { ...followupRun().run, workspaceDir: fs.mkdtempSync(path.join(fs.realpathSync(process.env.TMPDIR ?? '/tmp'), 'memflush-')), config: {} } };
+  after(() => fs.rmSync(followup.run.workspaceDir, { recursive: true, force: true }));
+  const pending = p.memory.runMemoryFlushIfNeeded(baseParams({ followupRun: followup, promptForEstimate: '', sessionEntry: p.store[sessionKey], sessionStore: p.store, onVisibleErrorPayloads() {} }));
+  await p.settle();
+  p.attempts[0].compact();
+  p.attempts[0].finish();
+  const result = await pending;
+  assert.equal(result.outcome, 'completed');
+  assert.equal(result.ownCompactions, undefined);
+  assert.equal(p.store[sessionKey].compactionCount, 11);
+  assert.deepEqual(p.store[sessionKey].memoryFlush, { kind: 'succeeded', compactionCount: 10 });
 });
