@@ -16,8 +16,10 @@ import assert from 'node:assert/strict';
 //    message is being sent, instead of after it. The message never shows up empty because the
 //    entity already carries the text, or gets it a moment later through the same streaming card.
 //
-// Nothing about what is written changes: same card JSON, header, note (refreshed if the model was
-// picked after the entity was made) and text. An entity older than PRECREATE_MAX_AGE_MS is not
+// Nothing about what is written changes: same card JSON, header, note and text. If the model was
+// picked after the entity was made, the note is refreshed by replacing the whole note component
+// (PUT .../elements/note), never through the streaming content endpoint: on a streaming-mode card
+// that endpoint types the footer out character by character (V 2026-10-10 00:24, Tianyi). An entity older than PRECREATE_MAX_AGE_MS is not
 // used (streaming mode on an entity ends 10 min after creation), nor one whose creation failed;
 // then the card is created the old way. Unused entities expire on Feishu's side.
 // OPENCLAW_FEISHU_CARD_PRECREATE=0 turns both parts off.
@@ -61,7 +63,8 @@ export function patchFeishuMonitor(source) {
 		// ${MARKER}: the entity exists, so the first text can go in while the message is sent
 		this.state = {
 			cardId,
-			sequence: 1,
+			// writes already made to a precreated entity (its note) used sequence numbers up to this one
+			sequence: vPrecreated && Number.isInteger(options?.precreatedSequence) && options.precreatedSequence > 1 ? options.precreatedSequence : 1,
 			currentText: "",
 			sentText: "",
 			hasNote: Boolean(options?.note)
@@ -159,18 +162,38 @@ const VFEISHU_CARD_PRECREATE_MAX_AGE_MS = ${PRECREATE_MAX_AGE_MS};
 		const header = resolveCardHeader(agentId, identity);
 		const note = resolveCardNote(agentId, identity, responsePrefixContextProvider());
 		const createdAt = Date.now();
-		const cardId = new FeishuStreamingSession(createFeishuClient(account), creds, log).createCard({ header, note }).catch((error) => {
+		const session = new FeishuStreamingSession(createFeishuClient(account), creds, log);
+		const cardId = session.createCard({ header, note }).catch((error) => {
 			log(\`card precreate failed: \${String(error)}\`);
 			return null;
 		});
-		vPrecreatedCard = { cardId, createdAt, header: JSON.stringify(header ?? null), note };
+		vPrecreatedCard = { cardId, createdAt, header: JSON.stringify(header ?? null), note, session, sequence: 1, log };
+	};
+	// The model is usually picked after the reply starts, so the precreated note lacks it. Complete
+	// it on the entity as soon as the model is known, as one whole note component (never the
+	// streaming content endpoint), so the card shows the full footer from its first appearance.
+	const vRefreshPrecreatedNote = () => {
+		const entry = vPrecreatedCard;
+		if (!entry) return;
+		const note = resolveCardNote(agentId, identity, responsePrefixContextProvider());
+		if (note === entry.note || note === entry.pendingNote) return;
+		entry.pendingNote = note;
+		entry.sequence += 1;
+		const state = { cardId: void 0, sequence: entry.sequence - 1 };
+		entry.cardId.then((cardId) => {
+			if (!cardId) return;
+			state.cardId = cardId;
+			return vAskCardKitWrite(entry.session, state, "/elements/note", { element: JSON.stringify({ tag: "markdown", element_id: "note", content: \`<font color='grey'>\${note}</font>\` }) }).then(() => {
+				if (entry.pendingNote === note) entry.note = note;
+			});
+		}).catch((error) => entry.log(\`card precreate note failed: \${String(error)}\`));
 	};
 	const vTakePrecreatedCard = async (header) => {
 		const entry = vPrecreatedCard;
 		vPrecreatedCard = null;
 		if (!entry || Date.now() - entry.createdAt > VFEISHU_CARD_PRECREATE_MAX_AGE_MS || entry.header !== JSON.stringify(header ?? null)) return null;
 		const cardId = await entry.cardId;
-		return cardId ? { cardId, note: entry.note } : null;
+		return cardId ? { cardId, note: entry.note, sequence: entry.sequence } : null;
 	};
 	const startStreaming = () => {
 		if (!streamingEnabled || streamingStartPromise || streaming || isStreamingStartBackedOff(account.accountId)) return;
@@ -198,13 +221,31 @@ const VFEISHU_CARD_PRECREATE_MAX_AGE_MS = ${PRECREATE_MAX_AGE_MS};
 					rootId,
 					header: cardHeader,
 					note: cardNote,
-					...precreated ? { precreatedCardId: precreated.cardId } : {},
+					...precreated ? { precreatedCardId: precreated.cardId, precreatedSequence: precreated.sequence } : {},
 					initialText: () => buildCombinedStreamText(reasoningText, streamText)
 				});
-				// the model may have been picked after the entity was made; fix the note behind the first text
-				if (precreated && precreated.note !== cardNote) session.queue = session.queue.then(() => session.updateNoteContent(cardNote));
+				// the model may have been picked after the entity was made; fix the note behind the first text.
+				// Replace the whole note component: the content endpoint streams it in like a typewriter on a
+				// streaming-mode card. An inline question owns the note already (same whole-component write).
+				if (precreated && precreated.note !== cardNote) session.queue = session.queue.then(() => {
+					if (!session.state?.hasNote) return;
+					if (session.vAskAttached) return session.updateNoteContent(cardNote);
+					return vAskCardKitWrite(session, session.state, "/elements/note", { element: JSON.stringify({ tag: "markdown", element_id: "note", content: \`<font color='grey'>\${cardNote}</font>\` }) });
+				}).catch((error) => params.runtime.log?.(\`feishu[\${account.accountId}] card note refresh failed: \${String(error)}\`));
 				vFirsttextMark("cardCreatedAtMs");`,
     'startStreaming');
+
+  out = replaceExactlyOnce(out,
+    '\t\t\tonModelSelected,\n\t\t\tcommentaryProgressEnabled: previewStreamingEnabled,\n',
+    `\t\t\tonModelSelected: (...args) => {
+				const selected = onModelSelected?.(...args);
+				// ${MARKER}: the precreated card gets the full note now, not behind the first text
+				Promise.resolve(selected).then(vRefreshPrecreatedNote, () => {});
+				return selected;
+			},
+			commentaryProgressEnabled: previewStreamingEnabled,
+`,
+    'reply options onModelSelected');
 
   out = replaceExactlyOnce(out,
     '\t\t\tif (previewStreamingEnabled && renderMode === "card") startStreaming();\n',
