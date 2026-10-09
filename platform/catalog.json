@@ -322,6 +322,7 @@
         "lab/workboard-incremental-sweep.test.mjs",
         "lab/workboard-sweep-links.test.mjs",
         "lab/workboard-create-indexed.test.mjs",
+        "lab/workboard-dispatch-slots.test.mjs",
         "lab/memory-search-fast.test.mjs",
         "lab/memory-search-query-isolation.test.mjs",
         "lab/memory-search-timeout.test.mjs",
