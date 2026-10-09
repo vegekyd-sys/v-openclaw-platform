@@ -258,19 +258,25 @@ export async function installShortWrites(dist, MemoryIndexManager, { log, budget
 
     let next = 0;
     let transactions = 0;
+    // Hold: from taking the lock (inside BEGIN IMMEDIATE) to the end of COMMIT. Waiting for
+    // another writer's lock is counted apart; on V it made a 1.1 s Gateway hold look like ours.
     let longestMs = 0;
+    let longestWaitMs = 0;
     try {
       while (next < ops.length) {
         if (transactions > 0) await sleep(pauseMs);
         for (let i = next; i < Math.min(ops.length, next + PREFETCH_STEPS); i++) if (ops[i].reads) prefetch(ops[i].reads);
         const txStarted = performance.now();
+        let lockedAt = txStarted;
         runSqliteImmediateTransactionSync(db, () => {
-          const until = performance.now() + budgetMs;
+          lockedAt = performance.now();
+          const until = lockedAt + budgetMs;
           do ops[next++].run();
           while (next < ops.length && performance.now() < until);
         }, { operationLabel: "memory.index.write" });
         transactions += 1;
-        longestMs = Math.max(longestMs, performance.now() - txStarted);
+        longestMs = Math.max(longestMs, performance.now() - lockedAt);
+        longestWaitMs = Math.max(longestWaitMs, lockedAt - txStarted);
       }
     } catch (error) {
       if (transactions > 0) {
@@ -280,7 +286,7 @@ export async function installShortWrites(dist, MemoryIndexManager, { log, budget
       }
       throw error;
     } finally {
-      if (longestMs >= slowMs) log({ event: "slow-write", agent: manager.agentId, path: entry.path, chunks: chunks.length, transactions, longestMs: Math.round(longestMs), ms: Math.round(performance.now() - started) });
+      if (longestMs >= slowMs) log({ event: "slow-write", agent: manager.agentId, path: entry.path, chunks: chunks.length, transactions, longestMs: Math.round(longestMs), longestWaitMs: Math.round(longestWaitMs), ms: Math.round(performance.now() - started) });
     }
   }
   return true;
