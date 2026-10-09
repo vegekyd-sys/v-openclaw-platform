@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Canonical H5 only. Gateway code/configuration are deployed by the VLab workflow.
 import fs from 'node:fs';
+import { AVATAR_FILES } from './gpt-live-h5/avatar-state.mjs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -8,9 +9,9 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 export const H5_PATHS = [
-  'lab/gpt-live-h5/access.mjs',
-  'lab/gpt-live-h5/avatar.mjs', 'lab/gpt-live-h5/avatar-state.mjs',
-  ...['idle','memory','web','calendar','background'].map(state => `lab/gpt-live-h5/assets/v-signal-${state}-20261006${state === 'idle' ? '' : '-r2'}.png`),
+  'lab/gpt-live-h5/access.mjs', 'lab/voice-decision-router.mjs',
+  'lab/gpt-live-h5/avatar.mjs', 'lab/gpt-live-h5/avatar-state.mjs', 'lab/gpt-live-h5/avatar-decision.mjs', 'lab/gpt-live-h5/avatar-catalog.mjs', 'lab/gpt-live-h5/avatar-reactions.mjs',
+  ...AVATAR_FILES.map(file => `lab/gpt-live-h5/assets/${file}`),
   'lab/gpt-live-h5/personal-session.mjs',
   'lab/gpt-live-h5/persona.mjs',
   'lab/gpt-live-h5/result-presentation.mjs',

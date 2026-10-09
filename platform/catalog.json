@@ -374,7 +374,9 @@
         "lab/gpt-live-h5/hosted.test.mjs",
         "lab/gpt-live-voice-entry-release.test.mjs",
         "lab/gpt-live-h5/markdown.test.mjs",
-        "lab/gpt-live-h5/result-presentation.test.mjs"
+        "lab/gpt-live-h5/result-presentation.test.mjs",
+        "lab/gpt-live-h5/avatar-decision.test.mjs",
+        "lab/gpt-live-h5/avatar-reactions.test.mjs"
       ]
     }
   ],

@@ -1,4 +1,5 @@
 import { createAvatarTasks, ACTIVITY_LABELS } from "./avatar-state.mjs";
+import { createAvatarReactions } from "./avatar-reactions.mjs";
 import { mountAvatar } from "./avatar.mjs";
 import { renderMarkdown } from "./markdown.mjs";
 import { createTranscriptPresentation } from "./transcript-presentation.mjs";
@@ -11,6 +12,7 @@ const $ = (id) => document.getElementById(id);
 let microphoneSession = createPageMicrophoneSession();
 let call = null;
 let starting = null;
+let avatarDiagnosticOwner = null;
 let liveReady = false;
 let entryError = null;
 let callerEntry = "tianyi";
@@ -298,12 +300,18 @@ async function api(route, payload, { signal } = {}) {
   if (!response.ok) throw new Error(result.error ?? "连接暂时不可用");
   return result;
 }
+document.addEventListener?.('visibilitychange',()=>call?.avatarReactions?.resume());
+function avatarContext(snapshot = presentation.snapshot()) {
+  call?.avatarReactions?.update({snapshot,activity:tasks.pose,
+    taskOutcome:tasks.size ? 'pending' : tasks.completion ? tasks.completion.ok ? 'success' : 'error' : 'none'});
+}
 function taskState() {
   $("taskStatus").textContent = ACTIVITY_LABELS[tasks.pose] ?? "";
   $("cancel").disabled = tasks.size === 0;
   $("cancel").hidden = tasks.size === 0;
-  void avatar?.show(tasks.pose);
+  void avatar?.show(tasks.pose, tasks.completion);
   document.body.dataset.avatarState = tasks.size > 1 ? "very-busy" : tasks.size ? "busy" : "idle";
+  avatarContext();
 }
 function renderTranscript(snapshot) {
   const log = $("conversation");
@@ -344,6 +352,7 @@ function renderTranscript(snapshot) {
     }
   }
   if (follow) log.scrollTop = log.scrollHeight;
+  avatarContext(snapshot);
 }
 function resetTranscript() {
   presentation.reset(); renderedTurns.clear();
@@ -403,6 +412,7 @@ async function stopCall() {
   const active = call; call = null;
   if (starting === active) starting = null;
   if (active) {
+    active.avatarReactions?.dispose();
     active.relay?.dispose();
     clearInterval(active.levelTimer); clearInterval(active.heartbeat); clearInterval(active.presentationPoll);
     active.presentationAbort?.abort();
@@ -474,6 +484,28 @@ async function startCall() {
     if (call !== active) { active.stream.getTracks().forEach((track) => track.stop()); return; }
     const reservation = await api("session", {model:['seeduplex','grok'].includes($("voiceModel")?.value)?$("voiceModel").value:'gpt-live'}); active.voiceSessionId = reservation.voiceSessionId;
     if (call !== active) { await api("close", { voiceSessionId: active.voiceSessionId }); return; }
+    const diagnosticOwner=avatarDiagnosticOwner=Symbol('avatar-call');
+    document.body.dataset.avatarReactionRequests='0';
+    document.body.dataset.avatarReactionApplied='0';
+    document.body.dataset.avatarReactionResult='waiting';
+    document.body.dataset.avatarReactionTimeline='[]';
+    document.body.dataset.avatarImageTimeline='[]';
+    if (avatar) active.avatarReactions = createAvatarReactions({
+      observe:event=>{
+        const {type,picture}=event;
+        // Retain the old call's terminal reason, but never write into a newer call.
+        if(avatarDiagnosticOwner!==diagnosticOwner)return;
+        const trace=JSON.parse(document.body.dataset.avatarReactionTimeline??'[]');
+        trace.push(event);document.body.dataset.avatarReactionTimeline=JSON.stringify(trace.slice(-120));
+        document.body.dataset.avatarReactionResult=type;
+        document.body.dataset.avatarReactionReason=event.reason??type;
+        if(type==='requested')document.body.dataset.avatarReactionRequests=String(Number(document.body.dataset.avatarReactionRequests)+1);
+        if(type==='applied'){document.body.dataset.avatarReactionApplied=String(Number(document.body.dataset.avatarReactionApplied)+1);document.body.dataset.avatarDecisionPicture=picture;}
+      },
+      request:(context,options)=>api('avatar',{voiceSessionId:active.voiceSessionId,...context},options),
+      apply:reaction=>avatar.select(reaction),attend:()=>avatar.attend(),current:()=>avatar.context(),
+      isCurrent:()=>call===active,isVisible:()=>!document.hidden,
+    });
     if (reservation.transport === 'gateway-relay') {
       await active.contextResume;
       if(call!==active)return;
@@ -483,7 +515,8 @@ async function startCall() {
         onPlaybackActivity:speaking=>{if(call===active)document.body.dataset.voiceState=speaking?'speaking':'listening';},
         onEvent:value=>{
           if(call!==active)return;
-          tasks.consume(value);
+          if (value.type === 'avatar.expression') { avatar?.expression(value.expression); return; }
+      tasks.consume(value);
           if(value.type==='backend.result')renderTranscript(presentation.consume(value));
           if(value.type.startsWith('tool.'))taskState();
           if(value.type==='playback.blocked')setStatus('声音播放已暂停，轻点页面继续。');
@@ -524,6 +557,7 @@ async function startCall() {
       const value = JSON.parse(event.data);
       if (value.voiceSessionId !== active.voiceSessionId) return;
       if (Number.isSafeInteger(value.revision)) active.presentationRevision = Math.max(active.presentationRevision ?? 0, value.revision);
+      if (value.type === 'avatar.expression') { avatar?.expression(value.expression); return; }
       tasks.consume(value);
       if(value.type==='backend.result')renderTranscript(presentation.consume(value));
       applyNativeControl(value);

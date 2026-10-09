@@ -412,3 +412,26 @@ body[data-voice-state="speaking"] .wave-mark { color: var(--accent); }
 .markdown-table table { border-collapse: collapse; min-width: 100%; font-size: .92em; }
 .markdown-table th, .markdown-table td { border: 1px solid #e8dfed; padding: 7px 9px; min-width: 5em; text-align: left; vertical-align: top; }
 .markdown-table th { background: #f0e9f5; font-weight: 600; }
+
+/* The operator performs inside a stable stage: compositor-only micro-motion. */
+.avatar-stack { isolation: isolate; overflow: hidden; }
+body[data-voice-state="speaking"] .avatar-stack { animation: operator-talk 2.1s ease-in-out infinite; }
+body[data-avatar-state="busy"] .avatar-stack,
+body[data-avatar-state="very-busy"] .avatar-stack { animation: operator-work 3.8s ease-in-out infinite; }
+body[data-avatar-pose="complete"] .avatar-stack { animation: operator-celebrate .7s ease-out 1; }
+@keyframes operator-talk { 0%,100% { transform: scale(1); } 45% { transform: scale(1.025) rotate(-.7deg); } 70% { transform: scale(1.012) rotate(.5deg); } }
+@keyframes operator-work { 0%,100% { transform: scale(1.01) rotate(-1deg); } 50% { transform: scale(1.035) rotate(1deg); } }
+@keyframes operator-celebrate { 0%,100% { transform: scale(1); } 45% { transform: scale(1.055) rotate(-2deg); } }
+@media (min-width: 901px) {
+  .portrait-wrap { width: clamp(290px, 29vw, 400px); }
+  .voice-copy h1 { font-size: clamp(30px, 3vw, 44px); }
+}
+@media (max-width: 900px) {
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .portrait-wrap { width: 104px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .voice-stage { min-height: 126px; }
+}
+@media (max-width:900px) and (max-height:650px) {
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .portrait-wrap { width: 80px; }
+  body:is([data-call-state="connected"], [data-call-state="ending"]) .voice-stage { min-height: 100px; }
+}
+@media (prefers-reduced-motion: reduce) { .avatar-stack { animation: none !important; } }
