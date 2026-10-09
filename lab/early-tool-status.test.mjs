@@ -20,22 +20,26 @@ test('release files are the dev bundle plus only this patch', () => {
 });
 
 // Run the inserted handleMessageUpdate block with the real readToolCallBlock.
-function earlyBlock(env = {}) {
+function earlyBlock(env = {}, { callback = true } = {}) {
   const start = builtin.indexOf(`// ${MARKER}`);
   const end = builtin.indexOf('\tconst eventAssistantMessage =', start);
   const helperStart = builtin.indexOf('function readToolCallBlock(event) {');
   const helperEnd = builtin.indexOf('\n}\n', helperStart) + 3;
   const events = [];
-  const ctx = { state: {}, log: { debug() {} }, params: { onAgentEvent: (e) => events.push(JSON.parse(JSON.stringify(e))) } };
+  const bus = [];
+  const params = { runId: 'run-1' };
+  if (callback) params.onAgentEvent = (e) => events.push(JSON.parse(JSON.stringify(e)));
+  const ctx = { state: {}, log: { debug() {} }, params };
   const src = `${builtin.slice(helperStart, helperEnd)}\nthis.run = (ctx, evtType, assistantRecord) => {\n${builtin.slice(start, end)}\n};`;
   const context = {
     process: { env },
     normalizeToolPolicyName: (n) => n.toLowerCase(),
     runBestEffortCallback: ({ callback }) => callback(),
+    emitAgentEvent: (e) => bus.push(JSON.parse(JSON.stringify(e))),
   };
   vm.runInNewContext(src, context);
   const call = (type, id, name) => context.run(ctx, type, { type, contentIndex: 0, partial: { content: [{ type: 'toolCall', id, name, partialJson: '' }] } });
-  return { call, events };
+  return { call, events, bus };
 }
 
 test('first toolcall_start of each call reports input_start once, with name and id only', () => {
@@ -50,6 +54,21 @@ test('first toolcall_start of each call reports input_start once, with name and 
   ]);
 });
 
+test('without a run callback (the Worker bridges the bus) the event still reaches the bus for this run', () => {
+  const { call, events, bus } = earlyBlock({}, { callback: false });
+  call('toolcall_start', 'c1', 'Write');
+  call('toolcall_delta', 'c1', 'Write');
+  assert.equal(events.length, 0);
+  assert.deepEqual(bus, [{ runId: 'run-1', stream: 'tool', data: { phase: 'input_start', name: 'write', toolCallId: 'c1' } }]);
+});
+
+test('with a run callback the same event goes to both, like the real tool start', () => {
+  const { call, events, bus } = earlyBlock();
+  call('toolcall_start', 'c1', 'Exec');
+  assert.equal(events.length, 1);
+  assert.deepEqual(bus.map((e) => e.data), events.map((e) => e.data));
+});
+
 test('no name yet, or switched off: nothing is reported', () => {
   const a = earlyBlock();
   a.call('toolcall_start', 'c1', '');
@@ -59,6 +78,7 @@ test('no name yet, or switched off: nothing is reported', () => {
   const b = earlyBlock({ OPENCLAW_EARLY_TOOL_STATUS: '0' });
   b.call('toolcall_start', 'c1', 'exec');
   assert.equal(b.events.length, 0);
+  assert.equal(b.bus.length, 0);
 });
 
 // Run the reply runner's tool branch against an input_start event.

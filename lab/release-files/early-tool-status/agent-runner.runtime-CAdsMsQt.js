@@ -1986,7 +1986,7 @@ function createAgentRunEventHandler(params) {
 			const args = evt.data.args && typeof evt.data.args === "object" ? evt.data.args : void 0;
 			if (params.sourceRepliesAreToolOnly && toolCallId && name && (phase === "start" || phase === "update") && args && isMessagingToolSendAction(name, args)) params.messageToolDeliveryState.toolCallIds.add(toolCallId);
 			if (shouldSuppressProgressAfterMessageToolDelivery()) return;
-			// v-early-tool-status-v1: a tool call the model has only started streaming shows the same status line
+			// v-early-tool-status-v2: a tool call the model has only started streaming shows the same status line
 			const vEarlyToolStart = phase === "input_start" && Boolean(name) && process.env.OPENCLAW_EARLY_TOOL_STATUS !== "0";
 			if (phase === "start" || phase === "update" || vEarlyToolStart) {
 				const toolStartProgressPromise = params.turn.opts?.onToolStart?.({
