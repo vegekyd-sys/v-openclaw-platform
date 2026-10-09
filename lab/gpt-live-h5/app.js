@@ -55,8 +55,9 @@ function setCallState(state) {
     animation.onfinish = () => { if (sceneAnimations.get(element) === animation) sceneAnimations.delete(element); };
   });
 }
-const setStatus = (text) => {
+const setStatus = (text, { tone = "info" } = {}) => {
   $("status").textContent = text;
+  $("status").dataset.tone = tone;
   $("status").dataset.notice = ["拨号后，直接说话。", "V 正在听，直接说话就好"].includes(text) ? "normal"
     : ["正在连接 V…", "正在结束通话…"].includes(text) ? "progress" : "message";
 };
@@ -417,7 +418,7 @@ function providerMessage(event) {
     active.duplex.notifyOutputAudioCleared(at);
   }
   renderTranscript(presentation.consume(data, Date.now()));
-  if (data.type === "error") setStatus("语音服务报告错误，请结束通话后重试。");
+  if (data.type === "error") setStatus("语音服务报告错误，请结束通话后重试。", { tone: "error" });
 }
 async function stopCall() {
   const active = call; call = null;
@@ -526,7 +527,7 @@ async function startCall() {
       await active.contextResume;
       if(call!==active)return;
       active.relay=createRelayAudio({context:active.context,stream:active.stream,reservation,
-        onError:error=>{if(call===active)void stopCall().then(()=>setStatus(error.message));},
+        onError:error=>{if(call===active)void stopCall().then(()=>setStatus(error.message, { tone: "error" }));},
         onClosed:()=>{if(call===active)void stopCall();},
         onPlaybackActivity:speaking=>{if(call===active)document.body.dataset.voiceState=speaking?'speaking':'listening';},
         onEvent:value=>{
@@ -677,7 +678,7 @@ async function startCall() {
         $("steerText").disabled = false; $("steer").disabled = false;
         void greetWhenReady(active);
       } else if (["failed", "disconnected"].includes(active.pc.connectionState)) {
-        void stopCall().then(() => { if (!call) setStatus("连接已中断，可以重新开始通话。"); });
+        void stopCall().then(() => { if (!call) setStatus("连接已中断，可以重新开始通话。", { tone: "error" }); });
       }
     };
     await active.pc.setLocalDescription(await active.pc.createOffer());
@@ -694,7 +695,7 @@ async function startCall() {
     await active.pc.setRemoteDescription({ type: "answer", sdp: result.sdp });
     if (call !== active) return;
     active.heartbeat = setInterval(() => { if (call === active) void api("heartbeat", { voiceSessionId: active.voiceSessionId }).catch(() => {}); }, 15000);
-  } catch (error) { if (call === active) { await stopCall(); if (!call) setStatus(error.name === "NotAllowedError" ? "请允许麦克风访问后重试。" : error.message); } }
+  } catch (error) { if (call === active) { await stopCall(); if (!call) setStatus(error.name === "NotAllowedError" ? "请允许麦克风访问后重试。" : error.message, { tone: "error" }); } }
   finally { if (starting === active) starting = null; if (!call) $("start").disabled = false; }
 }
 $("start").addEventListener("click", startCall);
@@ -706,14 +707,14 @@ window.addEventListener("keydown", () => void recoverPlaybackGesture());
 $("steerForm").addEventListener("submit", async (event) => {
   event.preventDefault(); const text = $("steerText").value.trim(); if (!text || !call) return;
   const active = call;
-  try { await api("steer", { voiceSessionId: active.voiceSessionId, text, mode: "steer" }); if (call === active) { $("steerText").value = ""; productControls?.sent(); setStatus("补充条件已交给 V 的后台任务。"); } }
-  catch (error) { if (call === active) setStatus(error.message); }
+  try { await api("steer", { voiceSessionId: active.voiceSessionId, text, mode: "steer" }); if (call === active) { $("steerText").value = ""; productControls?.sent(); setStatus("补充条件已交给 V 的后台任务。", { tone: "success" }); } }
+  catch (error) { if (call === active) setStatus(error.message, { tone: "error" }); }
 });
 $("cancel").addEventListener("click", async () => {
   if (!call) return;
   const active = call;
-  try { await api("steer", { voiceSessionId: active.voiceSessionId, text: "取消当前后台任务，不要继续执行。", mode: "cancel" }); if (call === active) setStatus("已请求取消后台任务。"); }
-  catch (error) { if (call === active) setStatus(error.message); }
+  try { await api("steer", { voiceSessionId: active.voiceSessionId, text: "取消当前后台任务，不要继续执行。", mode: "cancel" }); if (call === active) setStatus("已请求取消后台任务。", { tone: "success" }); }
+  catch (error) { if (call === active) setStatus(error.message, { tone: "error" }); }
 });
 window.addEventListener("pagehide", () => {
   microphoneSession.close();
@@ -752,7 +753,7 @@ async function initializeEntry() {
     liveReady = false;
     entryError = error.message ?? "暂时无法连接 V，请稍后重试。";
     $("badge").textContent = "暂未连接";
-    setStatus(entryError);
+    setStatus(entryError, { tone: "error" });
   }
 }
 void initializeEntry();

@@ -320,12 +320,18 @@ body:not([data-call-state="idle"]) .call-actions {
   line-height: 1.8;
 }
 .status-text {
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.7;
   color: #8b7296;
   padding: 0;
   margin: 0 0 10px;
   overflow-wrap: anywhere;
+}
+.status-text[data-tone="success"] { color: #6a8b78; }
+.status-text[data-tone="error"] { color: #a46d83; }
+.status-text[data-tone="success"]::before {
+  content: "✓";
+  margin-right: 7px;
 }
 .status-text:is([data-notice="normal"], [data-notice="progress"]) {
   display: none;
@@ -335,7 +341,7 @@ body:not([data-call-state="idle"]) .call-actions {
   justify-content: space-between;
   gap: 8px;
   align-items: center;
-  font-size: 13px;
+  font-size: 14px;
   color: #887094;
   margin: 0 0 10px;
   min-height: 0;
@@ -343,22 +349,27 @@ body:not([data-call-state="idle"]) .call-actions {
 .task-status:not(:empty)::before {
   content: "";
   display: inline-block;
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  border: 1px solid #b69cc9;
-  border-top-color: transparent;
+  border: 1.5px solid #dcd1e5;
+  border-top-color: #9274a4;
   margin-right: 8px;
   vertical-align: -2px;
-  animation: spin 1.4s linear infinite;
+  animation: connection-spin 900ms linear infinite;
 }
 .task-progress:has(.task-status:empty) {
   display: none;
 }
 .task-progress button {
-  font-size: 12px;
-  padding: 7px;
+  font-size: 13px;
+  min-height: 36px;
+  min-width: 44px;
+  padding: 6px 9px;
+  border-radius: 18px;
+  transition: background 160ms ease;
 }
+.task-progress button:hover { background: #eee6f4; }
 .steer-form {
   display: flex;
   gap: 6px;
@@ -468,7 +479,7 @@ body:not([data-call-state="idle"]) .call-actions {
 }
 .connection-badge {
   display: block;
-  font-size: 10px;
+  font-size: 11px;
   margin-top: 3px;
   color: #8d9b92;
   white-space: nowrap;
@@ -506,6 +517,10 @@ body:is([data-call-state="dialing"], [data-call-state="ending"]) .connection-bad
   background: #eee4f5;
   color: #bc4264;
 }
+.mute-slash { display: none; }
+#mute[aria-pressed="true"] .mute-slash { display: block; }
+.call-pill button:not(:disabled) { transition: background 160ms ease, color 160ms ease; }
+.call-pill button:not(#modelTrigger):not(.call-stop):hover { background: #eee6f4; }
 #textToggle {
   display: none;
 }
@@ -693,11 +708,9 @@ body:is([data-call-state="dialing"], [data-call-state="ending"]) .connection-bad
 .reader-dock > #conversationFooter {
   width: 100%;
 }
+.reader-dock #statusHome,
 .reader-dock .task-progress {
-  padding: 7px 13px;
-  background: #fffdfeaa;
-  border: 1px solid #e9dfef;
-  border-radius: 18px;
+  padding: 0 8px;
 }
 .reader-morph {
   position: fixed;
@@ -984,11 +997,11 @@ body[data-reading="true"] .content-card {
     width: 36px;
   }
   .status-text {
-    font-size: 12px;
-    padding: 9px 11px;
+    font-size: 14px;
+    padding: 0;
   }
   .task-progress {
-    font-size: 12px;
+    font-size: 13px;
     margin-bottom: 8px;
   }
   .reader-layer {

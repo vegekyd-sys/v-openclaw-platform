@@ -113,6 +113,7 @@ export function mountProductControls(document, window, { onMute }) {
     muted = next;
     $("mute").setAttribute("aria-pressed", String(muted));
     $("mute").setAttribute("aria-label", muted ? "打开麦克风" : "静音麦克风");
+    $("mute").title = muted ? "打开麦克风" : "静音麦克风";
     document.body.dataset.microphoneMuted = String(muted);
     $("mutedNotice").hidden = !muted;
   });
@@ -135,6 +136,7 @@ export function mountProductControls(document, window, { onMute }) {
         muted = false;
         $("mute").setAttribute("aria-pressed", "false");
         $("mute").setAttribute("aria-label", "静音麦克风");
+        $("mute").title = "静音麦克风";
         document.body.dataset.microphoneMuted = "false";
         $("mutedNotice").hidden = true;
       }
