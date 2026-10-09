@@ -3042,8 +3042,14 @@ function createFeishuReplyDispatcher(params) {
 					...precreated ? { precreatedCardId: precreated.cardId } : {},
 					initialText: () => buildCombinedStreamText(reasoningText, streamText)
 				});
-				// the model may have been picked after the entity was made; fix the note behind the first text
-				if (precreated && precreated.note !== cardNote) session.queue = session.queue.then(() => session.updateNoteContent(cardNote));
+				// the model may have been picked after the entity was made; fix the note behind the first text.
+				// Replace the whole note component: the content endpoint streams it in like a typewriter on a
+				// streaming-mode card. An inline question owns the note already (same whole-component write).
+				if (precreated && precreated.note !== cardNote) session.queue = session.queue.then(() => {
+					if (!session.state?.hasNote) return;
+					if (session.vAskAttached) return session.updateNoteContent(cardNote);
+					return vAskCardKitWrite(session, session.state, "/elements/note", { element: JSON.stringify({ tag: "markdown", element_id: "note", content: `<font color='grey'>${cardNote}</font>` }) });
+				}).catch((error) => params.runtime.log?.(`feishu[${account.accountId}] card note refresh failed: ${String(error)}`));
 				vFirsttextMark("cardCreatedAtMs");
 				streamingStartBackoffUntilByAccount.delete(account.accountId);
 				vTaskStatusAttach(params.sessionKey, session, (message) => params.runtime.log?.(`feishu[${account.accountId}] ${message}`));

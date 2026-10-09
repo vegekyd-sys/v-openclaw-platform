@@ -115,3 +115,77 @@ test('dispatcher precreates on reply start only outside card mode and hands the 
   assert(take > startStreaming && take < startCall, 'the first await in startStreaming comes before start() reads the text');
   assert(released.indexOf('initialText: () => buildCombinedStreamText(reasoningText, streamText)', startCall) - startCall < 400);
 });
+
+// V 2026-10-10 00:24: the note refresh went through the streaming content endpoint and the footer was
+// typed out character by character. It must replace the whole note component instead.
+function loadNoteRefresh() {
+  const fixStart = released.indexOf('if (precreated && precreated.note !== cardNote) session.queue = session.queue.then(() => {');
+  const fixEnd = released.indexOf('card note refresh failed: ${String(error)}`));', fixStart);
+  assert(fixStart > 0 && fixEnd > fixStart, 'note refresh not found');
+  const fix = released.slice(fixStart, fixEnd + 'card note refresh failed: ${String(error)}`));'.length);
+  const helperStart = released.indexOf('async function vAskCardKitWrite(session, state, suffix, payload) {');
+  const helperEnd = released.indexOf('\n}\n', helperStart) + 3;
+  const calls = [];
+  const logs = [];
+  const context = {
+    JSON, String, Promise,
+    resolveApiBase: () => 'https://api',
+    getToken: async () => 't',
+    getFeishuUserAgent: () => 'ua',
+    resolveAllowedHostnames: () => [],
+    fetchWithSsrFGuard: async ({ url, init }) => { calls.push({ url, method: init.method, body: JSON.parse(init.body) }); return { response: { ok: true }, release: async () => {} }; },
+    assertSuccessfulCardKitResponse: async () => {},
+    pushLog: (m) => logs.push(m),
+  };
+  vm.runInNewContext(`${released.slice(helperStart, helperEnd)}
+this.refresh = async (precreated, cardNote, session) => {
+  const params = { runtime: { log: pushLog } };
+  const account = { accountId: 'default' };
+  ${fix}
+  await session.queue;
+};`, context);
+  return { refresh: context.refresh, calls, logs };
+}
+
+test('a stale precreated note is replaced as a whole component, never streamed into the content endpoint', async () => {
+  const { refresh, calls, logs } = loadNoteRefresh();
+  let streamed = 0;
+  const session = { queue: Promise.resolve(), creds: { domain: 'feishu' }, state: { cardId: 'card-1', hasNote: true, sequence: 4 }, updateNoteContent: async () => { streamed += 1; } };
+  const full = 'Agent: V × Makaron | Model: deepseek-flash | Provider: deepseek | Runtime: vlab-worker';
+  await refresh({ cardId: 'card-1', note: 'Agent: V × Makaron' }, full, session);
+  assert.deepEqual(logs, []);
+  assert.equal(streamed, 0);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://api/cardkit/v1/cards/card-1/elements/note');
+  assert(!calls[0].url.endsWith('/content'));
+  assert.equal(calls[0].method, 'PUT');
+  assert.deepEqual(JSON.parse(calls[0].body.element), { tag: 'markdown', element_id: 'note', content: `<font color='grey'>${full}</font>` });
+  assert.equal(calls[0].body.sequence, 5);
+  assert.equal(session.state.sequence, 5);
+});
+
+test('note refresh: nothing when the note is already right or the card has no note; an inline question keeps its own whole-component write', async () => {
+  const { refresh, calls } = loadNoteRefresh();
+  const mk = (over = {}) => ({ queue: Promise.resolve(), state: { cardId: 'c', hasNote: true, sequence: 0 }, updates: [], updateNoteContent(n) { this.updates.push(n); }, ...over });
+  const same = mk();
+  await refresh({ cardId: 'c', note: 'N' }, 'N', same);
+  await refresh(null, 'N', same);
+  const noNote = mk({ state: { cardId: 'c', hasNote: false, sequence: 0 } });
+  await refresh({ cardId: 'c', note: 'old' }, 'new', noNote);
+  assert.equal(calls.length, 0);
+  assert.deepEqual([...same.updates, ...noNote.updates], []);
+  const asked = mk({ vAskAttached: true });
+  await refresh({ cardId: 'c', note: 'old' }, 'new', asked);
+  assert.deepEqual(asked.updates, ['new']);
+  assert.equal(calls.length, 0);
+});
+
+test('a failed note refresh is logged and does not break the write queue', async () => {
+  const { refresh, logs } = loadNoteRefresh();
+  const session = { queue: Promise.resolve(), state: null, get vAskAttached() { throw new Error('boom'); } };
+  session.state = { cardId: 'c', hasNote: true, sequence: 0 };
+  await refresh({ cardId: 'c', note: 'old' }, 'new', session);
+  assert.equal(logs.length, 1);
+  assert.match(logs[0], /card note refresh failed/);
+  await session.queue;
+});

@@ -16,8 +16,10 @@ import assert from 'node:assert/strict';
 //    message is being sent, instead of after it. The message never shows up empty because the
 //    entity already carries the text, or gets it a moment later through the same streaming card.
 //
-// Nothing about what is written changes: same card JSON, header, note (refreshed if the model was
-// picked after the entity was made) and text. An entity older than PRECREATE_MAX_AGE_MS is not
+// Nothing about what is written changes: same card JSON, header, note and text. If the model was
+// picked after the entity was made, the note is refreshed by replacing the whole note component
+// (PUT .../elements/note), never through the streaming content endpoint: on a streaming-mode card
+// that endpoint types the footer out character by character (V 2026-10-10 00:24, Tianyi). An entity older than PRECREATE_MAX_AGE_MS is not
 // used (streaming mode on an entity ends 10 min after creation), nor one whose creation failed;
 // then the card is created the old way. Unused entities expire on Feishu's side.
 // OPENCLAW_FEISHU_CARD_PRECREATE=0 turns both parts off.
@@ -201,8 +203,14 @@ const VFEISHU_CARD_PRECREATE_MAX_AGE_MS = ${PRECREATE_MAX_AGE_MS};
 					...precreated ? { precreatedCardId: precreated.cardId } : {},
 					initialText: () => buildCombinedStreamText(reasoningText, streamText)
 				});
-				// the model may have been picked after the entity was made; fix the note behind the first text
-				if (precreated && precreated.note !== cardNote) session.queue = session.queue.then(() => session.updateNoteContent(cardNote));
+				// the model may have been picked after the entity was made; fix the note behind the first text.
+				// Replace the whole note component: the content endpoint streams it in like a typewriter on a
+				// streaming-mode card. An inline question owns the note already (same whole-component write).
+				if (precreated && precreated.note !== cardNote) session.queue = session.queue.then(() => {
+					if (!session.state?.hasNote) return;
+					if (session.vAskAttached) return session.updateNoteContent(cardNote);
+					return vAskCardKitWrite(session, session.state, "/elements/note", { element: JSON.stringify({ tag: "markdown", element_id: "note", content: \`<font color='grey'>\${cardNote}</font>\` }) });
+				}).catch((error) => params.runtime.log?.(\`feishu[\${account.accountId}] card note refresh failed: \${String(error)}\`));
 				vFirsttextMark("cardCreatedAtMs");`,
     'startStreaming');
 
