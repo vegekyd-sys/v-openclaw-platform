@@ -34,7 +34,13 @@ export function createAvatarTelemetry({send,snapshot,now=Date.now,elapsed=()=>pe
  }
  async function flush(){
   clearTimeout(timer);if(busy||!queue.length||now()>retiredAt)return;
-  busy=true;const batch=queue.slice(0,20);
+  // keepalive has a browser byte budget, not a character budget. Leave room
+  // for other requests and the call envelope, including multibyte dialogue.
+  busy=true;const batch=[];
+  for(const e of queue.slice(0,20)){
+   if(new TextEncoder().encode(JSON.stringify({captureId,events:[...batch,e]})).byteLength>20000)break;
+   batch.push(e);
+  }
   try{await send({captureId,events:batch});queue.splice(0,batch.length);}catch{}finally{
    busy=false;
    if(dropped&&queue.length<maxQueued){queue.push({...clock(),type:'avatar.gap',dropped});dropped=0;}

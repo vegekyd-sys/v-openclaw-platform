@@ -27,3 +27,9 @@ test('client associates visible display with current public turns, retries same 
 test('bounded browser queue emits a gap instead of blocking speech or pretending full capture',async t=>{
  t.mock.timers.enable({apis:['setTimeout','Date'],now:1791547000000});const sent=[];const client=createAvatarTelemetry({maxQueued:4,id:()=>id,elapsed:()=>0,snapshot:()=>({history:[],current:[]}),send:async b=>sent.push(structuredClone(b))});for(let i=0;i<10;i++)client.display({picture:'listen-3',source:'state'});await client.flush();await client.flush();assert(sent.flatMap(x=>x.events).some(e=>e.type==='avatar.gap'&&e.dropped>0));client.close();await client.flush();
 });
+test('multibyte dialogue batches stay within keepalive byte budget without dropping events',async t=>{
+ t.mock.timers.enable({apis:['setTimeout','Date'],now:1791547000000});const sent=[];const client=createAvatarTelemetry({id:()=>id,elapsed:()=>0,snapshot:()=>({history:[{key:'u',role:'user',text:'问'.repeat(600)},{key:'v',role:'assistant',text:'答'.repeat(600)}]}),send:async b=>sent.push(structuredClone(b))});
+ for(let i=0;i<25;i++)client.display({picture:'listen-3',source:'state'});
+ client.close();for(let i=0;i<30&&client.pending;i++)await client.flush();
+ assert.equal(client.pending,0);assert(sent.every(b=>new TextEncoder().encode(JSON.stringify(b)).byteLength<=20000));assert.equal(sent.flatMap(b=>b.events).filter(e=>e.type==='avatar.displayed').length,25);
+});

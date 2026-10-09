@@ -18,13 +18,13 @@ Each capture has client UUID and sequence; the writer serializes append operatio
 
 ## Voice remains independent
 
-Uploads are asynchronous, batches contain at most 20 events, and the client queue is bounded at 160. Dropped records produce `avatar.gap`; start/close markers expose incomplete or open captures. Hangup never waits for telemetry. Page-hide requests use keepalive, with five-second request timeouts; closed captures retry for up to five minutes. Page destruction, prolonged offline operation or service replacement can still lose pending events. Missing or partial coverage must be reported as such.
+Uploads are asynchronous, batches contain at most 20 events and 20,000 UTF-8 bytes, and the client queue is bounded at 160. Dropped records produce `avatar.gap`; start/close markers expose incomplete or open captures. Hangup never waits for telemetry. Page-hide requests use keepalive, with five-second request timeouts; closed captures retry for up to five minutes. Page destruction, prolonged offline operation or service replacement can still lose pending events. Missing or partial coverage must be reported as such.
 
 The local daily pull reader is prepared to read this schema alongside the existing three-model text sources. It preserves client and server time, actual-display vs Decision events, exact identity and missing coverage. Historic calls without this capture cannot be reconstructed as actual-avatar evidence.
 
 ## Verification
 
-- 134 relevant local tests passed, no skips: renderer ownership/visibility/assets, wire validation, all three providers, private disk persistence, retry/gaps, closed-call grace, app integration and release packaging.
+- 135 relevant local tests passed, no skips: renderer ownership/visibility/assets, wire validation, all three providers, private disk persistence, retry/gaps, closed-call grace, app integration and release packaging.
 - Catalog audit passed; existing platform artifact-lock warnings and `releaseReady=false` remain.
 - Regular Playwright CLI used because the Browser plugin/skill is unavailable. A local fixture served the real renderer, telemetry client, server endpoint and writer without microphone or provider connections. Desktop 1440×1000 and mobile 390×844 rendered correctly; all three provider ownership paths persisted matching public dialogue and decoded-image IDs, with zero console/page errors. Fixture dialogue is test evidence only and is never inserted into production.
 - The private daily reader successfully consumed these local JSONL captures, with closed capture markers and no declared gaps.
