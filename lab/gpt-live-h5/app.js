@@ -1,5 +1,6 @@
 import { createAvatarTasks, ACTIVITY_LABELS } from "./avatar-state.mjs";
 import { createAvatarReactions } from "./avatar-reactions.mjs";
+import { createAvatarTelemetry } from "./avatar-telemetry.mjs";
 import { mountAvatar } from "./avatar.mjs";
 import { renderMarkdown } from "./markdown.mjs";
 import { createTranscriptPresentation } from "./transcript-presentation.mjs";
@@ -23,7 +24,7 @@ const greetingGraceMs = 15000;
 const presentation = createTranscriptPresentation();
 const renderedTurns = new Map();
 const tasks = createAvatarTasks();
-const avatar = typeof window.Image === "function" ? mountAvatar(document, window) : null;
+const avatar = typeof window.Image === "function" ? mountAvatar(document, window, {owner:()=>call?.voiceSessionId,onDisplayed:event=>call?.avatarTelemetry?.display(event)}) : null;
 const sceneAnimations = new Map();
 function setCallState(state) {
   if (document.body.dataset.callState === state) return;
@@ -292,15 +293,16 @@ async function recoverPlaybackGesture() {
   }
   await playing;
 }
-async function api(route, payload, { signal } = {}) {
+async function api(route, payload, { signal, keepalive = false } = {}) {
   const response = await fetch(apiUrl(route), {
-    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload ?? {}), signal,
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload ?? {}), signal, keepalive,
   });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error ?? "连接暂时不可用");
   return result;
 }
-document.addEventListener?.('visibilitychange',()=>call?.avatarReactions?.resume());
+document.addEventListener?.('visibilitychange',()=>{call?.avatarReactions?.resume();if(document.hidden)void call?.avatarTelemetry?.flush();});
+window.addEventListener?.('pagehide',()=>call?.avatarTelemetry?.close());
 function avatarContext(snapshot = presentation.snapshot()) {
   call?.avatarReactions?.update({snapshot,activity:tasks.pose,
     taskOutcome:tasks.size ? 'pending' : tasks.completion ? tasks.completion.ok ? 'success' : 'error' : 'none'});
@@ -412,6 +414,7 @@ async function stopCall() {
   const active = call; call = null;
   if (starting === active) starting = null;
   if (active) {
+    active.avatarTelemetry?.close();
     active.avatarReactions?.dispose();
     active.relay?.dispose();
     clearInterval(active.levelTimer); clearInterval(active.heartbeat); clearInterval(active.presentationPoll);
@@ -489,9 +492,13 @@ async function startCall() {
     document.body.dataset.avatarReactionApplied='0';
     document.body.dataset.avatarReactionResult='waiting';
     document.body.dataset.avatarReactionTimeline='[]';
+    active.avatarTelemetry = createAvatarTelemetry({snapshot:()=>presentation.snapshot(),
+      send:payload=>api('avatar-events',{voiceSessionId:active.voiceSessionId,...payload},{keepalive:true,signal:AbortSignal.timeout(5000)}),
+    });
     document.body.dataset.avatarImageTimeline='[]';
     if (avatar) active.avatarReactions = createAvatarReactions({
       observe:event=>{
+        if(event.type==='applied')active.avatarTelemetry?.decision(event);
         const {type,picture}=event;
         // Retain the old call's terminal reason, but never write into a newer call.
         if(avatarDiagnosticOwner!==diagnosticOwner)return;

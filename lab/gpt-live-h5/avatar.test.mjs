@@ -66,11 +66,12 @@ test('failed assets keep last good portrait and allow a retry; reduced motion sk
 });
 
 
-function mountFixture({stall=false,reduced=false}={}){
- const image={src:'idle',getAttribute(){return this.src;}},previous={hidden:true},body={dataset:{callState:'connected'}};
+function mountFixture({stall=false,reduced=false,onDisplayed,owner,paint=false}={}){
+ const image={src:'idle',complete:true,naturalWidth:512,getBoundingClientRect:()=>({width:200,height:200,top:0,left:0,bottom:200,right:200}),getAttribute(){return this.src;}},previous={hidden:true},body={dataset:{callState:'connected'}};
  const events={};const document={body,hidden:false,getElementById:id=>id==='avatar'?image:previous,addEventListener(k,f){events[k]=f;},removeEventListener(){}};
  const window={navigator:{},Image:class{set src(value){if(stall&&!/listen-[35]-512/.test(value))return;queueMicrotask(()=>this.onload());}async decode(){}},matchMedia:q=>({matches:reduced&&q.includes('reduced-motion'),addEventListener(){},removeEventListener(){}}),MutationObserver:class{observe(){}disconnect(){}},addEventListener(){}};
- return {avatar:mountAvatar(document,window),image,body,document,events};
+ const frames=[];if(paint){window.requestAnimationFrame=f=>frames.push(f);window.innerWidth=1000;window.innerHeight=800;}
+ return {avatar:mountAvatar(document,window,{onDisplayed,owner}),image,body,document,events,paint(){while(frames.length)frames.shift()();}};
 }
 const settle=async()=>{for(let i=0;i<12;i++)await Promise.resolve();};
 test('meaningful contextual reaction replaces old image immediately and background cannot erase empathy',async t=>{
@@ -127,4 +128,15 @@ test('new user attention cancels a deferred reply reaction',async t=>{
  f.avatar.select({picture:'listen-3',beat:'user_meaning'});await settle();
  t.mock.timers.tick(200);f.avatar.select({picture:'web-2',beat:'assistant_start'});await settle();assert.match(f.image.src,/listen-3/);
  f.avatar.attend();await settle();t.mock.timers.tick(2000);await settle();assert.doesNotMatch(f.image.src,/web-2/);f.avatar.dispose();
+});
+
+test('only decoded matching visible frames are reported, with owner and revision preserved',async()=>{
+ let owner='own';const rows=[];const f=mountFixture({paint:true,owner:()=>owner,onDisplayed:e=>rows.push(e)});await settle();f.paint();assert.equal(rows.length,1);
+ f.avatar.select({picture:'complete-2',revision:9});await settle();f.paint();assert.equal(rows.at(-1).picture,'complete-2');assert.equal(rows.at(-1).revision,9);
+ const count=rows.length;
+ f.avatar.select('memory-0');await settle();owner='new';f.paint();assert.equal(rows.length,count);
+ f.avatar.select('web-2');await settle();f.document.hidden=true;f.paint();assert.equal(rows.length,count);
+ f.document.hidden=false;f.avatar.select('memory-1');await settle();f.image.currentSrc='/wrong.webp';f.paint();assert.equal(rows.length,count);delete f.image.currentSrc;
+ f.avatar.select('memory-2');await settle();f.image.naturalWidth=0;f.paint();assert.equal(rows.length,count);f.image.naturalWidth=512;
+ f.avatar.select('memory-3');await settle();f.image.getBoundingClientRect=()=>({width:200,height:200,top:900,left:0,bottom:1100,right:200});f.paint();assert.equal(rows.length,count);f.avatar.dispose();
 });
