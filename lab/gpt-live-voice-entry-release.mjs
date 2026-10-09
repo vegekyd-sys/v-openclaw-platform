@@ -17,7 +17,7 @@ export function validateReviewedPresentation(proof, request) {
   assert(/^[a-f0-9]{64}$/u.test(proof.artifactSha), 'Gateway baseline artifact required');
   assert(Array.isArray(proof.runtimeFiles) && proof.runtimeFiles.length > 0);
   for (const file of proof.runtimeFiles) {
-    assert(/^(openclaw|production-worker)\/[A-Za-z0-9._/-]+$/u.test(file.target) && !file.target.split('/').includes('..'));
+    assert(/^(openclaw|production-worker|npm\/projects)\/[A-Za-z0-9._@/-]+$/u.test(file.target) && !file.target.split('/').includes('..'));
     assert(/^[a-f0-9]{64}$/u.test(file.after));
   }
 }
@@ -62,7 +62,8 @@ async function remoteMain(req) {
   const runtime = path.dirname(path.dirname(entry));
   for (const file of proof.runtimeFiles) {
     const target = file.target.startsWith("openclaw/") ? path.join(runtime, file.target.slice(9))
-      : path.join(path.dirname(runtime), "worker", file.target.slice("production-worker/".length));
+      : file.target.startsWith('production-worker/') ? path.join(path.dirname(runtime), "worker", file.target.slice("production-worker/".length))
+      : path.join(env.HOME, '.openclaw', file.target);
     assert.equal(hash(target), file.after, "V runtime differs from the shared accepted artifact");
   }
   const state = env.OPENCLAW_STATE_DIR ?? path.dirname(env.OPENCLAW_CONFIG_PATH);

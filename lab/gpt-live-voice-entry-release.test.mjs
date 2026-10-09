@@ -21,7 +21,8 @@ test('explicit presentation review binds bytes, source, owner and waiver; cannot
   const req={h5Only:true,commit:'a'.repeat(40),owner:'avatar-owner',files};
   const proof={schema:'user-reviewed-h5-presentation-v1',sourceCommit:req.commit,owner:req.owner,h5FilesSha:digest(JSON.stringify(files)),authorization:'skip-shared-h5-validation-and-publish',artifactSha:'b'.repeat(64),runtimeFiles:[{target:'openclaw/dist/example.js',after:'c'.repeat(64)}]};
   validateReviewedPresentation(proof,req);
-  for(const patch of [{authorization:'assumed'},{owner:'other'},{sourceCommit:'f'.repeat(40)},{h5FilesSha:'f'.repeat(64)},{runtimeFiles:[{target:'openclaw/../secret',after:'c'.repeat(64)}]}])assert.throws(()=>validateReviewedPresentation({...proof,...patch},req));
+  validateReviewedPresentation({...proof,runtimeFiles:[{target:'npm/projects/frozen/node_modules/@openclaw/codex/dist/tool.js',after:'c'.repeat(64)}]},req);
+  for(const patch of [{authorization:'assumed'},{owner:'other'},{sourceCommit:'f'.repeat(40)},{h5FilesSha:'f'.repeat(64)},{runtimeFiles:[{target:'openclaw/../secret',after:'c'.repeat(64)}]}, {runtimeFiles:[{target:'npm/projects/../secret',after:'c'.repeat(64)}]}])assert.throws(()=>validateReviewedPresentation({...proof,...patch},req));
   assert.throws(()=>validateReviewedPresentation(proof,{...req,h5Only:false}));
 });
 test("serialized production controller parses without loading credentials or touching V", () => {
