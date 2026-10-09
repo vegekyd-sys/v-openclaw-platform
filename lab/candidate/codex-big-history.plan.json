@@ -1,0 +1,28 @@
+{
+  "support": [
+    "lab/candidate/codex-big-history.mjs",
+    "release/captured/release-batch-20261009/dist/session-manager-CNTG_BAJ.js",
+    "release/captured/release-batch-20261009/dist/agent-runner-memory-7VF-zwNt.js",
+    "release/captured/release-batch-20261009/dist/agent-runner.runtime-CAdsMsQt.js",
+    "tmp/codex-v/run-attempt-D1hJO4fX.js",
+    "tmp/codex-v/attempt-context-DmQUNWwT.js",
+    "tmp/codex-v/session-history-C5J1AKzG.js",
+    "lab/release-files/context-window-read/session-manager-CNTG_BAJ.js",
+    "lab/release-files/memory-flush-defer/agent-runner-memory-7VF-zwNt.js",
+    "lab/release-files/memory-flush-defer/agent-runner.runtime-CAdsMsQt.js",
+    "lab/release-files/codex-firsttext/dist/run-attempt-D1hJO4fX.js",
+    "lab/release-files/codex-firsttext/dist/attempt-context-DmQUNWwT.js",
+    "lab/release-files/codex-firsttext/dist/session-history-C5J1AKzG.js",
+    "lab/release-files/codex-firsttext/dist/thread-lifecycle-DAcEJ_Om.js",
+    "lab/release-files/background-work-20261002/vlab-codex-parity/harness-DXVZ5II5.js"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/codex-big-history.mjs"
+  ],
+  "env": {
+    "PHASES": "turns"
+  },
+  "timeoutSeconds": 7200,
+  "user": "lab-db91-parity"
+}

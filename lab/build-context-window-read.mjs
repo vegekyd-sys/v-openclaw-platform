@@ -9,7 +9,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { patchSessionManagerContextWindow, SESSION_MANAGER_BEFORE, SESSION_MANAGER_FILE } from "./patch-context-window-read.mjs";
+import { patchSessionManagerBoundedModelContext, patchSessionManagerContextWindow, SESSION_MANAGER_BEFORE, SESSION_MANAGER_FILE } from "./patch-context-window-read.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const releaseDir = "lab/release-files/context-window-read";
@@ -26,7 +26,7 @@ if (process.argv.includes("--verify-vlab")) {
 
 const before = readFileSync(path.join(root, "lab/fixtures/context-window-read", SESSION_MANAGER_FILE), "utf8");
 assert.equal(sha256(before), SESSION_MANAGER_BEFORE, "fixture is not V's bytes");
-const after = patchSessionManagerContextWindow(before);
+const after = patchSessionManagerBoundedModelContext(patchSessionManagerContextWindow(before));
 mkdirSync(path.join(root, releaseDir), { recursive: true });
 const source = `${releaseDir}/${SESSION_MANAGER_FILE}`;
 writeFileSync(path.join(root, source), after);

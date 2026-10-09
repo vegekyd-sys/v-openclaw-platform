@@ -157,3 +157,58 @@ export function patchSessionManagerContextWindow(source) {
   }
   return source.replace("function withTranscriptContextSnapshot(scope, view, read) {", FAST_PATH);
 }
+
+// ---------------------------------------------------------------------------------------
+// codex-bounded-history-v1: openModelContext(target, { limits }) reads a bounded tail.
+//
+// V 2026-10-09: "session context window read" still held the Gateway main thread 2-9.8 s at
+// the start of Codex turns (11 times >= 3 s between 09:00 and 17:00). The window above starts at
+// the latest compaction/reset boundary, but OpenClaw never compacts a Codex session (Codex
+// compacts inside its own thread): the /vds direct session ou_0674 had 12,421 events and 178 MB
+// (58 MB of inline view_image base64) after its last reset, all read, parsed and kept for the
+// whole turn. Its overlapping turns and deferred memory flushes match the Gateway's heap jumps
+// (+1.4 GiB in 30 s, 9.3 GiB RSS at 17:06). A fresh Codex thread renders at most about a million
+// characters of that history, and a resumed thread only needs what came after its binding.
+//
+// 9.5 bounds this read upstream (extensions/codex session-history: openModelContextAsync with
+// limits maxBytes = min(64 MiB, contextTokenBudget * 8), maxEvents = 10,000). 9.1 already has the
+// bounded reader that SessionManager.open(target, cwd, limits) uses for embedded runs
+// (readSessionTranscriptBoundedActiveContextCore: newest active-branch events by
+// OCTET_LENGTH, which SQLite answers without reading overflow pages, plus the latest boundary
+// when it fits). With options.limits, openModelContext runs that reader under the same
+// current-turn admission fence and returns a detached manager over it. Without limits nothing
+// changes. options.onBoundedRead receives the read's size facts for the caller's log line.
+export const BOUNDED_MARKER = "codex-bounded-history-v1";
+const OPEN_MODEL_CONTEXT_BEFORE = `	static openModelContext(target, options = {}) {
+		const entries = withSessionContextAdmission(target, options.admission, () => readSessionTranscriptModelContext(target));
+`;
+const OPEN_MODEL_CONTEXT_AFTER = `	static openModelContext(target, options = {}) {
+		// V ${BOUNDED_MARKER}: with limits, the newest active-branch tail within them, under the same admission fence
+		if (options.limits) {
+			const context = withSessionContextAdmission(target, options.admission, () => readSessionTranscriptBoundedActiveContextCore(target, options.limits));
+			const boundedEntries = context.events;
+			const boundedHeader = boundedEntries.find((entry) => typeof entry === "object" && entry !== null && entry.type === "session");
+			if (boundedEntries.length > 0 && (!boundedHeader || (boundedHeader.version ?? 1) < 3)) throw new Error("Persisted legacy session transcripts require doctor/import migration before runtime use");
+			options.onBoundedRead?.({
+				events: boundedEntries.length,
+				totalEvents: context.totalEvents,
+				serializedBytes: context.serializedBytes,
+				truncated: context.truncated
+			});
+			return new SessionManager(options.cwd ?? boundedHeader?.cwd ?? process.cwd(), void 0, boundedEntries, {
+				...context,
+				limits: options.limits
+			});
+		}
+		const entries = withSessionContextAdmission(target, options.admission, () => readSessionTranscriptModelContext(target));
+`;
+
+export function patchSessionManagerBoundedModelContext(source) {
+  assert(source.includes(MARKER), `${SESSION_MANAGER_FILE} must carry ${MARKER} first`);
+  assert(!source.includes(BOUNDED_MARKER), `${SESSION_MANAGER_FILE} already carries ${BOUNDED_MARKER}`);
+  assert.equal(source.split(OPEN_MODEL_CONTEXT_BEFORE).length, 2, "openModelContext anchor is not unique");
+  for (const name of ["function readSessionTranscriptBoundedActiveContextCore(scope, options) {", "function withSessionContextAdmission(target, admission, read) {"]) {
+    assert(source.includes(name), `${name} is not in ${SESSION_MANAGER_FILE}`);
+  }
+  return source.replace(OPEN_MODEL_CONTEXT_BEFORE, OPEN_MODEL_CONTEXT_AFTER);
+}

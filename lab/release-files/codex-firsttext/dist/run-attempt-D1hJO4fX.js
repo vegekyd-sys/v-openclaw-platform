@@ -3585,14 +3585,35 @@ async function prepareCodexAttemptContext(runtime, attemptTools) {
 		sessionKey: contextSessionKey,
 		sessionTarget: params.sessionTarget
 	};
-	const readFencedHistory = async () => {
+	const readFencedHistory = async (bounded = true) => {
 		const transcriptReadFence = params.userTurnTranscriptRecorder?.getAdmissionReceipt();
 		return await readMirroredSessionHistoryMessages({
 			...activeTranscriptTarget,
-			...transcriptReadFence ? { admission: transcriptReadFence } : {}
+			...transcriptReadFence ? { admission: transcriptReadFence } : {},
+			...bounded && !activeContextEngine ? { contextTokenBudget: effectiveContextTokenBudget } : {} // v-codex-bounded-history-v1
 		});
 	};
 	const historyState = { messages: !activeContextEngine && initialStartupBindingHadInactiveThreadBootstrap ? [] : await readFencedHistory() ?? [] };
+	// v-codex-bounded-history-v1: the history may be the newest tail only; read the full context when the turn needs it.
+	historyState.ensureHistoryFor = async (action, binding) => {
+		if (historyState.messages?.codexHistoryTruncated !== true) return;
+		if (action === "resumed") {
+			const cutoff = Date.parse(binding?.historyCoveredThrough ?? "");
+			const oldest = historyState.messages.find((message) => message.role === "user" || message.role === "assistant");
+			const oldestAt = typeof oldest?.timestamp === "number" ? oldest.timestamp : Date.parse(oldest?.timestamp ?? "");
+			if (Number.isFinite(cutoff) && Number.isFinite(oldestAt) && oldestAt < cutoff) return;
+		}
+		const startedAt = Date.now();
+		const full = await readFencedHistory(false);
+		if (!full) return;
+		embeddedAgentLog.info("[codex-bounded-history.1] " + JSON.stringify({
+			fullRead: action,
+			boundedMessages: historyState.messages.length,
+			fullMessages: full.length,
+			ms: Date.now() - startedAt
+		}));
+		historyState.messages = full;
+	};
 	const hadSessionTranscriptState = historyState.messages.length > 0;
 	const hookContextWindowFields = {
 		...effectiveContextWindowInfo?.tokens ? { contextTokenBudget: effectiveContextWindowInfo.tokens } : effectiveContextTokenBudget ? { contextTokenBudget: effectiveContextTokenBudget } : {},
@@ -4783,6 +4804,7 @@ async function prepareCodexAttemptPrompt(context) {
 		}
 		return false;
 	};
+	if (!activeContextEngine && mutable.startupBinding?.threadId && !mutable.startupBinding.pendingSupervisionBranch) await historyState.ensureHistoryFor(isInactiveThreadBootstrapBinding(mutable.startupBinding) ? "started" : "resumed", mutable.startupBinding); // v-codex-bounded-history-v1
 	if (precomputeNoContextEngineStaleBindingProjection()) await rebuildCodexPromptBuildFromCurrentProjection();
 	const rotateStartupBindingForProjectedTurn = async () => {
 		const binding = mutable.startupBinding;
@@ -4808,7 +4830,10 @@ async function prepareCodexAttemptPrompt(context) {
 		if (mutable.startupBinding?.threadId) return;
 		promptState.inactiveThreadBootstrapBindingForcedFreshStart = hadInactiveThreadBootstrapBinding;
 		promptState.staleBindingContinuityForcedFreshStart = promptState.precomputedStaleBindingContinuityProjectionApplied && !promptState.inactiveThreadBootstrapBindingForcedFreshStart;
-		if (promptState.staleBindingContinuityForcedFreshStart) applyFreshThreadContinuityProjection();
+		if (promptState.staleBindingContinuityForcedFreshStart) {
+			await historyState.ensureHistoryFor("started"); // v-codex-bounded-history-v1
+			applyFreshThreadContinuityProjection();
+		}
 		if (activeContextEngine) {
 			promptState.contextEngineProjection = void 0;
 			try {
@@ -6421,6 +6446,7 @@ async function startCodexAttemptRuntime(resources) {
 				clientId: state.client.getInstanceId()
 			}
 		});
+		await context.historyState?.ensureHistoryFor?.(state.thread.lifecycle.action, state.thread); // v-codex-bounded-history-v1
 		if (applyNoContextEngineContinuityProjection(state.thread.lifecycle.action, state.thread)) await rebuildCodexTurnPromptTextFromCurrentProjection();
 		trajectoryRecorder?.recordEvent("session.started", {
 			sessionFile: params.sessionFile,

@@ -1370,6 +1370,23 @@ var SessionManager = class SessionManager extends SessionManagerBranching {
 	}
 	/** Detached model view: selected payloads plus lightweight ancestry, never raw replay evidence. */
 	static openModelContext(target, options = {}) {
+		// V codex-bounded-history-v1: with limits, the newest active-branch tail within them, under the same admission fence
+		if (options.limits) {
+			const context = withSessionContextAdmission(target, options.admission, () => readSessionTranscriptBoundedActiveContextCore(target, options.limits));
+			const boundedEntries = context.events;
+			const boundedHeader = boundedEntries.find((entry) => typeof entry === "object" && entry !== null && entry.type === "session");
+			if (boundedEntries.length > 0 && (!boundedHeader || (boundedHeader.version ?? 1) < 3)) throw new Error("Persisted legacy session transcripts require doctor/import migration before runtime use");
+			options.onBoundedRead?.({
+				events: boundedEntries.length,
+				totalEvents: context.totalEvents,
+				serializedBytes: context.serializedBytes,
+				truncated: context.truncated
+			});
+			return new SessionManager(options.cwd ?? boundedHeader?.cwd ?? process.cwd(), void 0, boundedEntries, {
+				...context,
+				limits: options.limits
+			});
+		}
 		const entries = withSessionContextAdmission(target, options.admission, () => readSessionTranscriptModelContext(target));
 		const header = entries.find((entry) => entry.type === "session");
 		if (entries.length > 0 && (!header || (header.version ?? 1) < 3)) throw new Error("Persisted legacy session transcripts require doctor/import migration before runtime use");

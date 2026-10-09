@@ -173,6 +173,93 @@ const TARGETS = [
         + "\t\tconst transientDelegationRestriction = params.params.delegationCapability === \"report_only\" || params.params.trigger === \"memory\";\n"],
     ],
   },
+  // H. Every Codex turn read the session's whole model context on the Gateway main thread before
+  //    it started: OpenClaw never compacts a Codex session, so the context window ran back to the
+  //    last reset (V 2026-10-09: ou_0674, 12,421 events, 178 MB, 2-9.8 s per turn, kept for the
+  //    whole turn; heap jumps of 1.4 GiB in 30 s with its overlapping turns and deferred flushes).
+  //    Most turns resume the session's thread and need only what came after its binding. Read the
+  //    newest tail within 9.5's limits (contextTokenBudget x 8 bytes, 10,000 events) through
+  //    core's bounded reader (session-manager codex-bounded-history-v1), and read the full context
+  //    only when the turn needs it: a fresh thread (its projection renders up to 1e6 characters,
+  //    which on V's big sessions takes 95-125 MB of transcript), a rotated binding, or a resumed
+  //    binding older than the tail. A context engine always gets the full context. Any bounded
+  //    read failure falls back to the full read. OPENCLAW_V_CODEX_BOUNDED_HISTORY=0 turns it off.
+  {
+    file: moduleIn(dist, /^run-attempt-.*\.js$/u, "var CodexTranscriptCheckpoint = class {"),
+    patches: [
+      ["\tconst readFencedHistory = async () => {\n\t\tconst transcriptReadFence = params.userTurnTranscriptRecorder?.getAdmissionReceipt();\n\t\treturn await readMirroredSessionHistoryMessages({\n\t\t\t...activeTranscriptTarget,\n\t\t\t...transcriptReadFence ? { admission: transcriptReadFence } : {}\n\t\t});\n\t};\n\tconst historyState = { messages: !activeContextEngine && initialStartupBindingHadInactiveThreadBootstrap ? [] : await readFencedHistory() ?? [] };\n",
+        "\tconst readFencedHistory = async (bounded = true) => {\n\t\tconst transcriptReadFence = params.userTurnTranscriptRecorder?.getAdmissionReceipt();\n\t\treturn await readMirroredSessionHistoryMessages({\n\t\t\t...activeTranscriptTarget,\n\t\t\t...transcriptReadFence ? { admission: transcriptReadFence } : {},\n"
+        + "\t\t\t...bounded && !activeContextEngine ? { contextTokenBudget: effectiveContextTokenBudget } : {} // v-codex-bounded-history-v1\n"
+        + "\t\t});\n\t};\n\tconst historyState = { messages: !activeContextEngine && initialStartupBindingHadInactiveThreadBootstrap ? [] : await readFencedHistory() ?? [] };\n"
+        + "\t// v-codex-bounded-history-v1: the history may be the newest tail only; read the full context when the turn needs it.\n"
+        + "\thistoryState.ensureHistoryFor = async (action, binding) => {\n"
+        + "\t\tif (historyState.messages?.codexHistoryTruncated !== true) return;\n"
+        + "\t\tif (action === \"resumed\") {\n"
+        + "\t\t\tconst cutoff = Date.parse(binding?.historyCoveredThrough ?? \"\");\n"
+        + "\t\t\tconst oldest = historyState.messages.find((message) => message.role === \"user\" || message.role === \"assistant\");\n"
+        + "\t\t\tconst oldestAt = typeof oldest?.timestamp === \"number\" ? oldest.timestamp : Date.parse(oldest?.timestamp ?? \"\");\n"
+        + "\t\t\tif (Number.isFinite(cutoff) && Number.isFinite(oldestAt) && oldestAt < cutoff) return;\n"
+        + "\t\t}\n"
+        + "\t\tconst startedAt = Date.now();\n"
+        + "\t\tconst full = await readFencedHistory(false);\n"
+        + "\t\tif (!full) return;\n"
+        + "\t\tembeddedAgentLog.info(\"[codex-bounded-history.1] \" + JSON.stringify({\n\t\t\tfullRead: action,\n\t\t\tboundedMessages: historyState.messages.length,\n\t\t\tfullMessages: full.length,\n\t\t\tms: Date.now() - startedAt\n\t\t}));\n"
+        + "\t\thistoryState.messages = full;\n"
+        + "\t};\n"],
+      ["\tif (precomputeNoContextEngineStaleBindingProjection()) await rebuildCodexPromptBuildFromCurrentProjection();\n",
+        "\tif (!activeContextEngine && mutable.startupBinding?.threadId && !mutable.startupBinding.pendingSupervisionBranch) await historyState.ensureHistoryFor(isInactiveThreadBootstrapBinding(mutable.startupBinding) ? \"started\" : \"resumed\", mutable.startupBinding); // v-codex-bounded-history-v1\n"
+        + "\tif (precomputeNoContextEngineStaleBindingProjection()) await rebuildCodexPromptBuildFromCurrentProjection();\n"],
+      ["\t\tif (promptState.staleBindingContinuityForcedFreshStart) applyFreshThreadContinuityProjection();\n",
+        "\t\tif (promptState.staleBindingContinuityForcedFreshStart) {\n\t\t\tawait historyState.ensureHistoryFor(\"started\"); // v-codex-bounded-history-v1\n\t\t\tapplyFreshThreadContinuityProjection();\n\t\t}\n"],
+      ["\t\tif (applyNoContextEngineContinuityProjection(state.thread.lifecycle.action, state.thread)) await rebuildCodexTurnPromptTextFromCurrentProjection();\n",
+        "\t\tawait context.historyState?.ensureHistoryFor?.(state.thread.lifecycle.action, state.thread); // v-codex-bounded-history-v1\n"
+        + "\t\tif (applyNoContextEngineContinuityProjection(state.thread.lifecycle.action, state.thread)) await rebuildCodexTurnPromptTextFromCurrentProjection();\n"],
+    ],
+  },
+  {
+    file: moduleIn(dist, /^attempt-context-.*\.js$/u, "async function readMirroredSessionHistoryMessages(params) {"),
+    patches: [
+      ["\tconst { admission, ...target } = params;\n\tconst messages = await readCodexMirroredSessionHistoryMessages(target, admission, \"model-context\");\n",
+        "\tconst { admission, contextTokenBudget, ...target } = params; // v-codex-bounded-history-v1\n\tconst messages = await readCodexMirroredSessionHistoryMessages(target, admission, \"model-context\", contextTokenBudget);\n"],
+    ],
+  },
+  {
+    file: moduleIn(dist, /^session-history-.*\.js$/u, "async function readCodexMirroredSessionHistoryMessages(target, admission, view"),
+    patches: [
+      ["import { SessionManager, buildSessionContext, migrateSessionEntries, parseSessionEntries } from \"openclaw/plugin-sdk/agent-sessions\";\n",
+        "import { SessionManager, buildSessionContext, migrateSessionEntries, parseSessionEntries } from \"openclaw/plugin-sdk/agent-sessions\";\n"
+        + "import { embeddedAgentLog } from \"openclaw/plugin-sdk/agent-harness-runtime\";\n"],
+      ["async function readCodexMirroredSessionHistoryMessages(target, admission, view = \"native-evidence\") {\n\treturn readCodexMirroredSessionHistory(target, (messages) => Array.from(messages), admission, view);\n}\n",
+        "async function readCodexMirroredSessionHistoryMessages(target, admission, view = \"native-evidence\", contextTokenBudget) {\n\treturn readCodexMirroredSessionHistory(target, (messages) => Array.from(messages), admission, view, contextTokenBudget);\n}\n"
+        + "// v-codex-bounded-history-v1: with a context token budget, the model context is the newest tail within 9.5's limits\n"
+        + "// (budget x 8 bytes, 10,000 events). A truncated result carries codexHistoryTruncated, so the turn can read the full\n"
+        + "// context when it needs it. A failed bounded read falls back to the full read.\n"
+        + "const CODEX_MODEL_CONTEXT_MAX_BYTES = 64 * 1024 * 1024;\n"
+        + "const CODEX_MODEL_CONTEXT_MAX_EVENTS = 1e4;\n"
+        + "function openCodexModelContext(transcriptTarget, admission, contextTokenBudget) {\n"
+        + "\tif (process.env.OPENCLAW_V_CODEX_BOUNDED_HISTORY !== \"0\" && typeof contextTokenBudget === \"number\" && Number.isFinite(contextTokenBudget) && contextTokenBudget > 0) {\n"
+        + "\t\tconst limits = {\n\t\t\tmaxBytes: Math.min(CODEX_MODEL_CONTEXT_MAX_BYTES, Math.max(1024, Math.floor(contextTokenBudget * 8))),\n\t\t\tmaxEvents: CODEX_MODEL_CONTEXT_MAX_EVENTS\n\t\t};\n"
+        + "\t\tconst startedAt = Date.now();\n"
+        + "\t\ttry {\n"
+        + "\t\t\tlet bounded;\n"
+        + "\t\t\tconst loaded = SessionManager.openModelContext(transcriptTarget, {\n\t\t\t\tadmission,\n\t\t\t\tlimits,\n\t\t\t\tonBoundedRead: (facts) => {\n\t\t\t\t\tbounded = facts;\n\t\t\t\t}\n\t\t\t});\n"
+        + "\t\t\tif (bounded?.truncated) embeddedAgentLog.info(\"[codex-bounded-history.1] \" + JSON.stringify({\n\t\t\t\tevents: bounded.events,\n\t\t\t\ttotalEvents: bounded.totalEvents,\n\t\t\t\tbytes: bounded.serializedBytes,\n\t\t\t\tmaxBytes: limits.maxBytes,\n\t\t\t\tms: Date.now() - startedAt\n\t\t\t}));\n"
+        + "\t\t\treturn {\n\t\t\t\tloaded,\n\t\t\t\ttruncated: bounded?.truncated === true\n\t\t\t};\n"
+        + "\t\t} catch (error) {\n"
+        + "\t\t\tembeddedAgentLog.warn(\"[codex-bounded-history.1] bounded model context read failed; reading the full context\", { error: error instanceof Error ? error.name + \": \" + error.message : String(error) });\n"
+        + "\t\t}\n"
+        + "\t}\n"
+        + "\treturn {\n\t\tloaded: SessionManager.openModelContext(transcriptTarget, { admission }),\n\t\ttruncated: false\n\t};\n"
+        + "}\n"],
+      ["async function readCodexMirroredSessionHistory(target, read, admission, view = \"native-evidence\") {\n",
+        "async function readCodexMirroredSessionHistory(target, read, admission, view = \"native-evidence\", contextTokenBudget) {\n"],
+      ["\t\tconst loaded = SessionManager.openModelContext(transcriptTarget, { admission });\n\t\treturn consume(loaded.buildSessionContext().messages, loaded.getHeader(), \"codex mirrored model context\");\n",
+        "\t\tconst { loaded, truncated } = openCodexModelContext(transcriptTarget, admission, contextTokenBudget);\n"
+        + "\t\tconst result = consume(loaded.buildSessionContext().messages, loaded.getHeader(), \"codex mirrored model context\");\n"
+        + "\t\tif (truncated && Array.isArray(result)) Object.defineProperty(result, \"codexHistoryTruncated\", { value: true });\n"
+        + "\t\treturn result;\n"],
+    ],
+  },
 ];
 
 const report = [];
