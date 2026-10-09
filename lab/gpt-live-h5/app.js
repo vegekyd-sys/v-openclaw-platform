@@ -3,6 +3,8 @@ import { createAvatarReactions } from "./avatar-reactions.mjs";
 import { createAvatarTelemetry } from "./avatar-telemetry.mjs";
 import { mountAvatar } from "./avatar.mjs";
 import { renderMarkdown } from "./markdown.mjs";
+import { createContentView } from "./content-view.mjs";
+import { mountProductControls } from "./product-controls.mjs";
 import { createTranscriptPresentation } from "./transcript-presentation.mjs";
 import { createPageMicrophoneSession } from "./microphone-session.mjs";
 import { createCallSounds } from "./call-sounds.mjs";
@@ -23,6 +25,10 @@ const playbackRecoveryMessage = "声音播放被暂停了，点一下页面恢�
 const greetingGraceMs = 15000;
 const presentation = createTranscriptPresentation();
 const renderedTurns = new Map();
+const contentView = document.querySelector ? createContentView(document, window) : null;
+const productControls = document.querySelector ? mountProductControls(document, window, {
+  onMute: muted => { if (!call?.stream) return false; for (const track of call.stream.getAudioTracks()) track.enabled = !muted; return true; },
+}) : null;
 const tasks = createAvatarTasks();
 const avatar = typeof window.Image === "function" ? mountAvatar(document, window, {owner:()=>call?.voiceSessionId,onDisplayed:event=>call?.avatarTelemetry?.display(event)}) : null;
 const sceneAnimations = new Map();
@@ -35,6 +41,7 @@ function setCallState(state) {
   for (const animation of sceneAnimations.values()) animation.cancel();
   sceneAnimations.clear();
   document.body.dataset.callState = state;
+  productControls?.callState(state);
   elements.forEach((element, index) => {
     const from = before[index], to = element.getBoundingClientRect();
     if (!from.width || !to.width || typeof element.animate !== "function") return;
@@ -50,7 +57,7 @@ function setCallState(state) {
 }
 const setStatus = (text) => {
   $("status").textContent = text;
-  $("status").dataset.notice = text === "拨号后，直接说话。" ? "normal" : "message";
+  $("status").dataset.notice = ["拨号后，直接说话。", "V 正在听，直接说话就好"].includes(text) ? "normal" : "message";
 };
 function duplexDiagnostic(active, entry) {
   if (call !== active) return;
@@ -345,10 +352,11 @@ function renderTranscript(snapshot) {
       if (row.parts.time.textContent !== item.time) row.parts.time.textContent = item.time;
       const dateTime = new Date(item.at).toISOString();
       if (row.parts.time.dateTime !== dateTime) row.parts.time.dateTime = dateTime;
-      if (row.rawText !== item.text) {
-        if (item.role === "assistant") renderMarkdown(row.parts.text, item.text, document);
+      if (row.rawText !== item.text || row.complete !== item.complete) {
+        if (item.role === "assistant" && contentView) contentView.render(row.parts.text, item, {auto:item.document === true});
+        else if (item.role === "assistant") renderMarkdown(row.parts.text, item.text, document);
         else row.parts.text.textContent = item.text;
-        row.rawText = item.text;
+        row.rawText = item.text; row.complete = item.complete;
       }
       if (parent.children[index] !== row) parent.insertBefore(row, parent.children[index] ?? null);
     }
@@ -357,7 +365,7 @@ function renderTranscript(snapshot) {
   avatarContext(snapshot);
 }
 function resetTranscript() {
-  presentation.reset(); renderedTurns.clear();
+  contentView?.reset(); presentation.reset(); renderedTurns.clear();
   $("transcriptHistory").replaceChildren(); $("transcriptCurrentRows").replaceChildren();
   renderTranscript(presentation.snapshot());
 }
@@ -697,7 +705,7 @@ window.addEventListener("keydown", () => void recoverPlaybackGesture());
 $("steerForm").addEventListener("submit", async (event) => {
   event.preventDefault(); const text = $("steerText").value.trim(); if (!text || !call) return;
   const active = call;
-  try { await api("steer", { voiceSessionId: active.voiceSessionId, text, mode: "steer" }); if (call === active) { $("steerText").value = ""; setStatus("补充条件已交给 V 的后台任务。"); } }
+  try { await api("steer", { voiceSessionId: active.voiceSessionId, text, mode: "steer" }); if (call === active) { $("steerText").value = ""; productControls?.sent(); setStatus("补充条件已交给 V 的后台任务。"); } }
   catch (error) { if (call === active) setStatus(error.message); }
 });
 $("cancel").addEventListener("click", async () => {
