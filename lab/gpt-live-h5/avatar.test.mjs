@@ -78,7 +78,7 @@ test('meaningful contextual reaction replaces old image immediately and backgrou
  f.avatar.show('memory');await settle();f.avatar.select({picture:'listen-3',hold:false});await settle();
  assert.match(f.image.src,/listen-3-512/);f.avatar.show('background');await settle();assert.match(f.image.src,/listen-3-512/);
  t.mock.timers.tick(500);f.avatar.select({picture:'complete-2'});await settle();assert.match(f.image.src,/complete-2-512/);
- f.avatar.attend();await settle();assert.match(f.image.src,/listen-5-512/);assert.equal(f.body.dataset.avatarAttention,'user');f.avatar.dispose();
+ f.avatar.attend();await settle();assert.match(f.image.src,/complete-2-512/);assert.equal(f.body.dataset.avatarAttention,'user');f.avatar.dispose();
 });
 test('same reaction changes compatible gesture before five seconds; HOLD never resets visible deadline',async t=>{
  t.mock.timers.enable({apis:['setTimeout','Date'],now:0});const f=mountFixture();await settle();f.avatar.select('listen-3');await settle();const first=f.image.src;

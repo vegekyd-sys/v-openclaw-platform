@@ -113,7 +113,9 @@ export function mountAvatar(document, window) {
     attend(){
       if(disposed||!connected())return;
       document.body.dataset.avatarAttention='user';
-      anchor=avatarPicture('listen-5');fallback='listen-5';show('listen-5');
+      // A new caption must not erase the last meaningful reaction while
+      // the cosmetic decision is in flight. Neutral is an initial fallback.
+      if(!anchor){fallback='listen-5';show('listen-5');}
     },
     show(activity){
       const next=Object.hasOwn(AVATAR_POSES,activity)?activity:'idle';

@@ -38,12 +38,14 @@ test('same task can select different reactions from changed speech; budget preve
  clock=1000;const closed=s.select({owner:'a',context});s.forget('a');assert.equal(signal.aborted,true);resolve(answer('web-4'));assert.equal(await closed,null);
 });
 
-test('hold is a real decision choice with current dialogue state and cannot reference an unknown image',async()=>{
- let input;const s=createAvatarReactionSelector({evaluate:async(...args)=>{input=args;return answer('hold');}});
- const current={...context,currentPicture:'listen-5',reactionPicture:'listen-3',speaker:'user'};
- assert.deepEqual(await s.select({owner:'hold',context:current}),{picture:'listen-3',hold:true});
- assert.equal(input[0].currentPicture,'listen-5');assert.equal(input[0].speaker,'user');assert.ok(input[1].picture.criteria.hold);
- assert.equal(await createAvatarReactionSelector({evaluate:async()=>answer('hold')}).select({owner:'a',context}),null);
+test('neutral fallback cannot become a HOLD shortcut; new meaning is selected independently',async()=>{
+ let input;const s=createAvatarReactionSelector({evaluate:async(...args)=>{input=args;return answer('complete-2');}});
+ assert.deepEqual(await s.select({owner:'a',context:{...context,currentPicture:'listen-5',reactionPicture:'listen-5'}}),{picture:'complete-2',hold:false});
+ assert.equal(input[0].currentPicture,undefined);assert.equal(input[0].reactionPicture,undefined);
+ assert.equal(Object.keys(input[1].picture.criteria).length,36);assert.equal(input[1].picture.criteria.hold,undefined);
+ const same=createAvatarReactionSelector({evaluate:async()=>answer('listen-3')});
+ assert.deepEqual(await same.select({owner:'b',context:{...context,reactionPicture:'listen-3'}}),{picture:'listen-3',hold:true});
+ assert.equal(await createAvatarReactionSelector({evaluate:async()=>answer('hold')}).select({owner:'c',context}),null);
 });
 test('all performance pictures have reviewed relational and visual tags, empathy variations do not celebrate',()=>{
  for(const p of AVATAR_CATALOG.filter(p=>p.id!=='idle')){
@@ -59,4 +61,12 @@ test('equivalent listening pictures may split mass; conflicting emotions or malf
  assert.deepEqual(await select(raw),{picture:'listen-5',hold:false});
  raw.answers.picture.probabilities={'listen-5':.4,'complete-2':.4,'web-4':.2};assert.equal(await select(raw),null);
  raw.answers.picture.probabilities={'listen-5':.9,'listen-3':.9};assert.equal(await select(raw),null);
+});
+
+test('a clear cosmetic winner across 36 choices can react; tied or inconsistent scores cannot',async()=>{
+ const select=picture=>createAvatarReactionSelector({evaluate:async()=>({answers:{picture}})}).select({owner:'a',context});
+ const p={type:'choice',choice:'complete-1',confidence:.44,probabilities:{'complete-1':.46,'complete-5':.2,'web-2':.18,'listen-3':.16}};
+ assert.deepEqual(await select(p),{picture:'complete-1',hold:false});
+ p.probabilities={'complete-1':.4,'web-2':.4,'listen-3':.2};assert.equal(await select(p),null);
+ p.probabilities={'complete-1':.2,'web-2':.15,'listen-3':.65};assert.equal(await select(p),null);
 });

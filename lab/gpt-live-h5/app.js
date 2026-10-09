@@ -483,7 +483,16 @@ async function startCall() {
     if (call !== active) { active.stream.getTracks().forEach((track) => track.stop()); return; }
     const reservation = await api("session", {model:['seeduplex','grok'].includes($("voiceModel")?.value)?$("voiceModel").value:'gpt-live'}); active.voiceSessionId = reservation.voiceSessionId;
     if (call !== active) { await api("close", { voiceSessionId: active.voiceSessionId }); return; }
+    document.body.dataset.avatarReactionRequests='0';
+    document.body.dataset.avatarReactionApplied='0';
+    document.body.dataset.avatarReactionResult='waiting';
     if (avatar) active.avatarReactions = createAvatarReactions({
+      observe:({type,picture})=>{
+        if(call!==active)return;
+        document.body.dataset.avatarReactionResult=type;
+        if(type==='requested')document.body.dataset.avatarReactionRequests=String(Number(document.body.dataset.avatarReactionRequests)+1);
+        if(type==='applied'){document.body.dataset.avatarReactionApplied=String(Number(document.body.dataset.avatarReactionApplied)+1);document.body.dataset.avatarDecisionPicture=picture;}
+      },
       request:(context,options)=>api('avatar',{voiceSessionId:active.voiceSessionId,...context},options),
       apply:reaction=>avatar.select(reaction),attend:()=>avatar.attend(),current:()=>avatar.context(),
       isCurrent:()=>call===active,isVisible:()=>!document.hidden,
