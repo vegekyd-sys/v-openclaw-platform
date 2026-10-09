@@ -30,7 +30,7 @@ export function createAvatarRenderer({ image, previous, load, reducedMotion = ()
   };
 }
 
-export function mountAvatar(document, window) {
+export function mountAvatar(document, window, {onDisplayed=()=>{},owner=()=>null} = {}) {
   const small = window.matchMedia('(max-width: 900px)').matches || window.navigator.connection?.saveData;
   const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const cache = new Map(), decoded = new Set();
@@ -45,7 +45,7 @@ export function mountAvatar(document, window) {
     return cache.get(url);
   };
   let anchor = null, displayed = null, task = 'idle', disposed = false;
-  let timer, deadline, transitionTimer, approved=[], lastPictureAt = -Infinity, recent = [], phase = 0, fallback = 'listen-5';
+  let timer, deadline, transitionTimer, approved=[], lastPictureAt = -Infinity, recent = [], phase = 0, fallback = 'listen-5', anchorRevision=null;
   const connected = () => ['connected','ending'].includes(document.body.dataset.callState);
   const fileFor = id => { const p=avatarPicture(id);return p && AVATAR_SEQUENCES[p.scene][p.frame]; };
   const clearTimers = () => {clearTimeout(timer);clearTimeout(deadline);};
@@ -71,6 +71,18 @@ export function mountAvatar(document, window) {
       if(decoded.has(fileFor(neutral)))show(neutral,'asset_fallback');
     },remaining);
   };
+  const reportVisible = (id,evidence={}) => {
+    if(typeof window.requestAnimationFrame!=='function')return;
+    const ownOwner=owner();
+    window.requestAnimationFrame(()=>window.requestAnimationFrame(()=>{
+      const image=document.getElementById('avatar'),box=image.getBoundingClientRect();
+      const expected=fileFor(id)?.replace('-512.webp',small?'-256.webp':'-512.webp');
+      if(disposed||owner()!==ownOwner||document.hidden||!connected()||displayed?.id!==id||!image.complete||!image.naturalWidth
+        ||!expected||!(image.currentSrc||image.src).endsWith('/'+expected)
+        ||box.width<=0||box.height<=0||box.bottom<=0||box.right<=0||box.top>=window.innerHeight||box.left>=window.innerWidth)return;
+      try{onDisplayed({clientAt:Date.now(),picture:id,anchor:anchor?.id??null,source:evidence.source??'state',revision:evidence.revision??anchorRevision});}catch{}
+    }));
+  };
   const renderer = createAvatarRenderer({image:document.getElementById('avatar'),previous:document.getElementById('avatarPrevious'),load,
     reducedMotion:reduced,onPose:(pose,frame,evidence)=>{
       document.body.dataset.avatarPose=pose;
@@ -81,12 +93,13 @@ export function mountAvatar(document, window) {
       const trace=JSON.parse(document.body.dataset.avatarImageTimeline??'[]');
       trace.push({at:lastPictureAt,picture:displayed.id,anchor:anchor?.id??null,...evidence});
       document.body.dataset.avatarImageTimeline=JSON.stringify(trace.slice(-120));
+      reportVisible(displayed.id,evidence);
       schedule();
     }});
   const render = () => {
     clearTimers();if(disposed)return;
     if(!connected()){
-      anchor=null;approved=[];clearTimeout(transitionTimer);recent=[];delete document.body.dataset.avatarAttention;
+      anchor=null;anchorRevision=null;approved=[];clearTimeout(transitionTimer);recent=[];delete document.body.dataset.avatarAttention;
       delete document.body.dataset.avatarReaction;show('idle');return;
     }
     // Tiny neutral safety pair, not a download of the entire gallery.
@@ -96,10 +109,11 @@ export function mountAvatar(document, window) {
   };
   const observer = new window.MutationObserver(render);
   observer.observe(document.body,{attributes:true,attributeFilter:['data-call-state']});
-  document.addEventListener('visibilitychange',render);
+  const visibility=()=>{render();if(!document.hidden&&displayed)reportVisible(displayed.id,{source:'visibility'});};
+  document.addEventListener('visibilitychange',visibility);
   const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
   motion.addEventListener?.('change',render);
-  const dispose = () => {disposed=true;clearTimers();clearTimeout(transitionTimer);observer.disconnect();document.removeEventListener('visibilitychange',render);motion.removeEventListener?.('change',render);renderer.dispose();};
+  const dispose = () => {disposed=true;clearTimers();clearTimeout(transitionTimer);observer.disconnect();document.removeEventListener('visibilitychange',visibility);motion.removeEventListener?.('change',render);renderer.dispose();};
   window.addEventListener('pagehide',dispose,{once:true});
   render();
   return {
@@ -113,7 +127,7 @@ export function mountAvatar(document, window) {
       // Same-meaning captions cannot restart a frame's five-second deadline.
       if(anchor?.id===picture.id){schedule();return;}
       clearTimeout(transitionTimer);
-      const apply=()=>{anchor=picture;show(id,'decision',typeof value==='object'?value.revision??null:null);};
+      const apply=()=>{anchor=picture;anchorRevision=value?.revision??null;show(id,'decision',typeof value==='object'?value.revision??null:null);};
       // A spoken reply's start/end shouldn't erase the user's reaction after
       // a few hundred ms. New user meaning always takes priority immediately.
       const delay=value?.beat?.startsWith('assistant')?Math.max(0,1600-(Date.now()-lastPictureAt)):0;
@@ -121,7 +135,7 @@ export function mountAvatar(document, window) {
     },
     attend(){
       if(disposed||!connected())return;
-      clearTimeout(transitionTimer);anchor=null;approved=[];
+      clearTimeout(transitionTimer);anchor=null;anchorRevision=null;approved=[];
       document.body.dataset.avatarAttention='user';
       fallback='listen-5';show('listen-5','attention');
     },

@@ -108,6 +108,8 @@ async function fixture(t, options = {}) {
   }
   const context = vm.createContext({
     renderMarkdown: (target,text) => { target.textContent = text; }, createTranscriptPresentation, createPageMicrophoneSession, createAvatarTasks, ACTIVITY_LABELS,
+    createAvatarTelemetry: values=>options.telemetry?.(values)??{close(){},decision(){},display(){}},
+    AbortSignal,
     AbortController,
     createCallSounds: () => {
       const value = { dialing: 0, pickups: 0, disposed: 0, dial() { this.dialing++; }, connected() { this.pickups++; }, dispose() { this.disposed++; } };
@@ -1027,4 +1029,9 @@ test('snapshot carries only current real end-tool acceptance and rejection throu
  response={...response,revision:1,controls:[{...actual,voiceSessionId:'foreign'}]};poll();await tick();assert.equal(f.body.dataset.callState,'connected');
  response={...response,controls:[actual]};poll();await tick();assert.equal(f.body.dataset.callState,'ending');assert(!f.peer.closed,'tool acceptance does not prove farewell audio drained');
  response={...response,revision:2,controls:[actual,{...actual,revision:2,type:'tool.error'}]};poll();await tick();assert.equal(f.body.dataset.callState,'connected');
+});
+
+test('avatar recorder uses exact voice owner and public snapshot, sends keepalive batches, and does not delay stop',async t=>{
+ let values,closed=0;const pending=deferred();const f=await fixture(t,{telemetry:v=>{values=v;return {close(){closed++;},display(){},decision(){}};},api:(route,payload,result,init)=>{if(route==='avatar-events'){assert.equal(payload.voiceSessionId,'voice-1');assert.equal(init.keepalive,true);return pending.promise;}return result;}});
+ await f.context.startCall();assert(values);const sending=values.send({captureId:'11111111-1111-4111-8111-111111111111',events:[]});await f.context.stopCall();assert.equal(closed,1);assert(f.requests.some(r=>r.route==='close'));pending.resolve({accepted:0});await sending;
 });
