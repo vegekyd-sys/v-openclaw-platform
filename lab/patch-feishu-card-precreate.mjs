@@ -63,7 +63,8 @@ export function patchFeishuMonitor(source) {
 		// ${MARKER}: the entity exists, so the first text can go in while the message is sent
 		this.state = {
 			cardId,
-			sequence: 1,
+			// writes already made to a precreated entity (its note) used sequence numbers up to this one
+			sequence: vPrecreated && Number.isInteger(options?.precreatedSequence) && options.precreatedSequence > 1 ? options.precreatedSequence : 1,
 			currentText: "",
 			sentText: "",
 			hasNote: Boolean(options?.note)
@@ -161,18 +162,38 @@ const VFEISHU_CARD_PRECREATE_MAX_AGE_MS = ${PRECREATE_MAX_AGE_MS};
 		const header = resolveCardHeader(agentId, identity);
 		const note = resolveCardNote(agentId, identity, responsePrefixContextProvider());
 		const createdAt = Date.now();
-		const cardId = new FeishuStreamingSession(createFeishuClient(account), creds, log).createCard({ header, note }).catch((error) => {
+		const session = new FeishuStreamingSession(createFeishuClient(account), creds, log);
+		const cardId = session.createCard({ header, note }).catch((error) => {
 			log(\`card precreate failed: \${String(error)}\`);
 			return null;
 		});
-		vPrecreatedCard = { cardId, createdAt, header: JSON.stringify(header ?? null), note };
+		vPrecreatedCard = { cardId, createdAt, header: JSON.stringify(header ?? null), note, session, sequence: 1, log };
+	};
+	// The model is usually picked after the reply starts, so the precreated note lacks it. Complete
+	// it on the entity as soon as the model is known, as one whole note component (never the
+	// streaming content endpoint), so the card shows the full footer from its first appearance.
+	const vRefreshPrecreatedNote = () => {
+		const entry = vPrecreatedCard;
+		if (!entry) return;
+		const note = resolveCardNote(agentId, identity, responsePrefixContextProvider());
+		if (note === entry.note || note === entry.pendingNote) return;
+		entry.pendingNote = note;
+		entry.sequence += 1;
+		const state = { cardId: void 0, sequence: entry.sequence - 1 };
+		entry.cardId.then((cardId) => {
+			if (!cardId) return;
+			state.cardId = cardId;
+			return vAskCardKitWrite(entry.session, state, "/elements/note", { element: JSON.stringify({ tag: "markdown", element_id: "note", content: \`<font color='grey'>\${note}</font>\` }) }).then(() => {
+				if (entry.pendingNote === note) entry.note = note;
+			});
+		}).catch((error) => entry.log(\`card precreate note failed: \${String(error)}\`));
 	};
 	const vTakePrecreatedCard = async (header) => {
 		const entry = vPrecreatedCard;
 		vPrecreatedCard = null;
 		if (!entry || Date.now() - entry.createdAt > VFEISHU_CARD_PRECREATE_MAX_AGE_MS || entry.header !== JSON.stringify(header ?? null)) return null;
 		const cardId = await entry.cardId;
-		return cardId ? { cardId, note: entry.note } : null;
+		return cardId ? { cardId, note: entry.note, sequence: entry.sequence } : null;
 	};
 	const startStreaming = () => {
 		if (!streamingEnabled || streamingStartPromise || streaming || isStreamingStartBackedOff(account.accountId)) return;
@@ -200,7 +221,7 @@ const VFEISHU_CARD_PRECREATE_MAX_AGE_MS = ${PRECREATE_MAX_AGE_MS};
 					rootId,
 					header: cardHeader,
 					note: cardNote,
-					...precreated ? { precreatedCardId: precreated.cardId } : {},
+					...precreated ? { precreatedCardId: precreated.cardId, precreatedSequence: precreated.sequence } : {},
 					initialText: () => buildCombinedStreamText(reasoningText, streamText)
 				});
 				// the model may have been picked after the entity was made; fix the note behind the first text.
@@ -213,6 +234,18 @@ const VFEISHU_CARD_PRECREATE_MAX_AGE_MS = ${PRECREATE_MAX_AGE_MS};
 				}).catch((error) => params.runtime.log?.(\`feishu[\${account.accountId}] card note refresh failed: \${String(error)}\`));
 				vFirsttextMark("cardCreatedAtMs");`,
     'startStreaming');
+
+  out = replaceExactlyOnce(out,
+    '\t\t\tonModelSelected,\n\t\t\tcommentaryProgressEnabled: previewStreamingEnabled,\n',
+    `\t\t\tonModelSelected: (...args) => {
+				const selected = onModelSelected?.(...args);
+				// ${MARKER}: the precreated card gets the full note now, not behind the first text
+				Promise.resolve(selected).then(vRefreshPrecreatedNote, () => {});
+				return selected;
+			},
+			commentaryProgressEnabled: previewStreamingEnabled,
+`,
+    'reply options onModelSelected');
 
   out = replaceExactlyOnce(out,
     '\t\t\tif (previewStreamingEnabled && renderMode === "card") startStreaming();\n',

@@ -189,3 +189,106 @@ test('a failed note refresh is logged and does not break the write queue', async
   assert.match(logs[0], /card note refresh failed/);
   await session.queue;
 });
+
+test('a precreated card that already took note writes continues their sequence; a created one starts at 1', async () => {
+  const pre = loadSession();
+  const started = pre.session.start('oc_1', 'chat_id', { note: 'n', precreatedCardId: 'pre-1', precreatedSequence: 3, initialText: () => 'hello' });
+  await new Promise((r) => setImmediate(r));
+  assert(pre.calls.includes('put:hello:4'), JSON.stringify(pre.calls));
+  await pre.flush();
+  await started;
+  // precreatedSequence without a precreated card is ignored
+  const fresh = loadSession();
+  const s2 = fresh.session.start('oc_1', 'chat_id', { note: 'n', precreatedSequence: 9, initialText: () => 'hi' });
+  await new Promise((r) => setImmediate(r));
+  await fresh.flush();
+  await s2;
+  assert(fresh.calls.includes('put:hi:2'), JSON.stringify(fresh.calls));
+});
+
+// The precreated entity gets the full note as soon as the model is picked, before any text.
+function loadEarlyRefresh() {
+  const start = released.indexOf('\tconst vRefreshPrecreatedNote = () => {');
+  const end = released.indexOf('\n\t};\n', start) + 4;
+  assert(start > 0 && end > start, 'early note refresh not found');
+  const helperStart = released.indexOf('async function vAskCardKitWrite(session, state, suffix, payload) {');
+  const helperEnd = released.indexOf('\n}\n', helperStart) + 3;
+  const calls = [];
+  const logs = [];
+  const ctx = { model: undefined };
+  const context = {
+    JSON, String, Promise,
+    resolveApiBase: () => 'https://api', getToken: async () => 't', getFeishuUserAgent: () => 'ua', resolveAllowedHostnames: () => [],
+    fetchWithSsrFGuard: async ({ url, init }) => { calls.push({ url, body: JSON.parse(init.body) }); return { response: { ok: !context.failPut }, release: async () => {} }; },
+    assertSuccessfulCardKitResponse: async (res) => { if (!res.ok) throw new Error('put failed'); },
+    resolveCardNote: (_a, _i, c) => ['Agent: V', c.model && `Model: ${c.model}`].filter(Boolean).join(' | '),
+    responsePrefixContextProvider: () => ctx,
+    agentId: 'makaron', identity: {},
+    failPut: false,
+  };
+  vm.runInNewContext(`${released.slice(helperStart, helperEnd)}
+let vPrecreatedCard = null;
+${released.slice(start, end)}
+this.set = (e) => { vPrecreatedCard = e; };
+this.refresh = vRefreshPrecreatedNote;`, context);
+  return { context, ctx, calls, logs };
+}
+
+test('model picked after precreate: the entity gets the full note as one whole component, once', async () => {
+  const { context, ctx, calls } = loadEarlyRefresh();
+  const entry = { cardId: Promise.resolve('pre-1'), note: 'Agent: V', session: { creds: { domain: 'feishu' } }, sequence: 1, log: () => {} };
+  context.set(entry);
+  context.refresh(); // no model yet: nothing to write
+  ctx.model = 'deepseek-flash';
+  context.refresh();
+  context.refresh(); // same note pending: not written twice
+  await new Promise((r) => setImmediate(r));
+  await new Promise((r) => setImmediate(r));
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://api/cardkit/v1/cards/pre-1/elements/note');
+  assert.deepEqual(JSON.parse(calls[0].body.element), { tag: 'markdown', element_id: 'note', content: "<font color='grey'>Agent: V | Model: deepseek-flash</font>" });
+  assert.equal(calls[0].body.sequence, 2);
+  assert.equal(entry.sequence, 2, 'the session continues after this sequence');
+  assert.equal(entry.note, 'Agent: V | Model: deepseek-flash', 'confirmed, so no refresh is needed behind the first text');
+  // a different model later (e.g. /vcodex) writes again with the next sequence
+  ctx.model = 'gpt-6.1-sol';
+  context.refresh();
+  await new Promise((r) => setImmediate(r));
+  await new Promise((r) => setImmediate(r));
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].body.sequence, 3);
+  assert.equal(entry.note, 'Agent: V | Model: gpt-6.1-sol');
+});
+
+test('a failed early note write leaves the confirmed note stale, so the first card still fixes it; no entry, nothing happens', async () => {
+  const { context, ctx, calls } = loadEarlyRefresh();
+  const logs = [];
+  const entry = { cardId: Promise.resolve('pre-1'), note: 'Agent: V', session: { creds: { domain: 'feishu' } }, sequence: 1, log: (m) => logs.push(m) };
+  context.set(entry);
+  context.failPut = true;
+  ctx.model = 'deepseek-flash';
+  context.refresh();
+  await new Promise((r) => setImmediate(r));
+  await new Promise((r) => setImmediate(r));
+  assert.equal(entry.note, 'Agent: V');
+  assert.match(logs[0], /card precreate note failed/);
+  const failedCreate = { cardId: Promise.resolve(null), note: 'Agent: V', session: {}, sequence: 1, log: () => {} };
+  context.set(failedCreate);
+  ctx.model = 'other';
+  context.refresh();
+  await new Promise((r) => setImmediate(r));
+  assert.equal(calls.length, 1, 'no write for an entity that was never created');
+  context.set(null);
+  context.refresh();
+});
+
+test('the reply options hook model selection: the original runs first, then the precreated note refresh', () => {
+  const at = released.indexOf('onModelSelected: (...args) => {');
+  assert(at > 0);
+  const body = released.slice(at, released.indexOf('commentaryProgressEnabled: previewStreamingEnabled,', at));
+  assert(body.indexOf('const selected = onModelSelected?.(...args);') < body.indexOf('vRefreshPrecreatedNote'));
+  assert.match(body, /Promise\.resolve\(selected\)\.then\(vRefreshPrecreatedNote, \(\) => \{\}\);\n\t*return selected;/);
+  assert.equal(released.split('onModelSelected,\n').length, 1, 'the bare pass-through is gone from the reply options');
+  // and the first card passes the precreated sequence on
+  assert.match(released, /precreatedCardId: precreated\.cardId, precreatedSequence: precreated\.sequence/);
+});
