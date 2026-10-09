@@ -66,7 +66,7 @@ test('each anchor is replaced exactly once and a patched file is refused', () =>
   assert.throws(() => patchAgentRunnerRuntime(runtimeInput.replace('async function executePreparedReplyAgentRun(context) {\n', '')), /Expected exactly one reply agent run executor/);
   assert.throws(() => patchBuiltinOpenclaw(builtinOut), /already patched/);
   assert.throws(() => patchBuiltinOpenclaw(builtinInput.replace('\t\tisCompacting: () => subscription.isCompacting(),\n', '')), /Expected exactly one embedded run compacting state/);
-  assert.equal(memoryOut.split(MEMORY_FLUSH_DEFER_MARKER).length - 1, 14);
+  assert.equal(memoryOut.split(MEMORY_FLUSH_DEFER_MARKER).length - 1, 15);
   assert.equal(memoryOut.split('if (!isAbortError(error) && run.memoryFlushDeferred !== true && storePath && sessionKey) try {').length - 1, 1);
   assert.equal(runtimeOut.split('deferPreReplyFlush:').length - 1, 1);
   assert.equal(runtimeOut.split('yieldDeferredMemoryFlush(sessionKey, "inbound-turn")').length - 1, 1);
@@ -1504,4 +1504,29 @@ test('a deferred flush whose own run compacts marks the cycle it produced; the n
   assert.equal(result.ownCompactions, undefined);
   assert.equal(p.store[sessionKey].compactionCount, 11);
   assert.deepEqual(p.store[sessionKey].memoryFlush, { kind: 'succeeded', compactionCount: 10 });
+});
+
+// One cadence for every runtime: a size-triggered flush per the conversation OpenClaw holds before it compacts.
+// A Codex session compacts natively at entry.contextTokens (258,400 on V), so its cycle spans
+// floor(flush threshold / contextTokens) native compactions: 3 for /vds (threshold 976k).
+test('a Codex session flushes once per the conversation the default runtime holds, not at every native compaction', async () => {
+  const check = async ({ runtime, contextTokens, compactionCount, markerAt }) => {
+    let s;
+    s = integratedSession({ extraFakes: { resolveEffectiveAgentRuntime: () => runtime } });
+    s.store[sessionKey] = entry({ compactionCount, contextTokens, memoryFlush: { kind: 'succeeded', compactionCount: markerAt } });
+    return await s.preReplyCheck();
+  };
+  // /vds: threshold 976,000 / 258,400 = 3 native compactions per flush
+  assert.equal(await check({ runtime: 'codex', contextTokens: 258_400, compactionCount: 10, markerAt: 10 }), 'skipped');
+  assert.equal(await check({ runtime: 'codex', contextTokens: 258_400, compactionCount: 11, markerAt: 10 }), 'skipped');
+  assert.equal(await check({ runtime: 'codex', contextTokens: 258_400, compactionCount: 12, markerAt: 10 }), 'skipped');
+  assert.equal(await check({ runtime: 'codex', contextTokens: 258_400, compactionCount: 13, markerAt: 10 }), 'deferred');
+  // a native window at or above the threshold (the GPT models on V): every compaction, as before
+  assert.equal(await check({ runtime: 'codex', contextTokens: 1_000_000, compactionCount: 11, markerAt: 10 }), 'deferred');
+  // no reported window: every compaction, as before
+  assert.equal(await check({ runtime: 'codex', contextTokens: undefined, compactionCount: 11, markerAt: 10 }), 'deferred');
+  // the default runtime: every compaction, as before
+  assert.equal(await check({ runtime: 'vlab-worker', contextTokens: 258_400, compactionCount: 11, markerAt: 10 }), 'deferred');
+  // a marker ahead of the count (a reset) never holds the flush back
+  assert.equal(await check({ runtime: 'codex', contextTokens: 258_400, compactionCount: 0, markerAt: 10 }), 'deferred');
 });

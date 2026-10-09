@@ -146,6 +146,14 @@ import assert from 'node:assert/strict';
 // deferred flush runs on the session lane, so the compactions it counts are its own and belong to
 // the cycle it marks: the marker is flushedCompactionCount plus them, and the "ran" line carries
 // ownCompactions. The next flush is due at the session's next real compaction.
+//
+// One cadence for every runtime (Tianyi 2026-10-09: "/vds should not flush more often than the others"). A
+// size-triggered flush runs once per compaction cycle. The default runtime compacts near its flush threshold
+// (976k tokens for deepseek-flash), so it flushes about once per that much conversation (V 10/08-09: 7 sessions,
+// 7 runs). A Codex session compacts natively at its own window (entry.contextTokens, 258,400 for every Codex
+// session on V), about 4x as often for /vds. Its cycle now spans floor(flush threshold / contextTokens)
+// native compactions (3 for /vds; 1 for the GPT models, whose OpenClaw threshold is about 248k). Token-triggered
+// flushes and CLI runtimes (vcc: no OpenClaw flush, its backend owns compaction) are unchanged.
 // OPENCLAW_DEFER_PRE_REPLY_MEMORY_FLUSH=0 turns it off. Tagged log lines
 // `[memory-flush-deferred.1]` carry a hashed session key and numbers, never message text.
 
@@ -175,11 +183,17 @@ const FLUSH_DECISION_AFTER = `	const memoryFlushTokenTriggered = shouldRunMemory
 		tokenCount: tokenCountForFlush,
 		threshold: flushThreshold
 	});
-	if (!(memoryFlushTokenTriggered || shouldForceFlushByTranscriptSize && entry != null && !hasAlreadyFlushedForCurrentCompaction(entry))) return {
+	// ${MEMORY_FLUSH_DEFER_MARKER}: one size-triggered flush per the conversation OpenClaw holds before it compacts. A Codex
+	// session compacts natively at its own window (entry.contextTokens, 258,400 on V), so its flush cycle spans as many
+	// native compactions as fit in this session's flush threshold; any other runtime keeps one per compaction.
+	const codexNativeContextTokens = normalizeLowercaseStringOrEmpty(runtimeId) === "codex" && typeof entry?.contextTokens === "number" && Number.isFinite(entry.contextTokens) && entry.contextTokens > 0 ? entry.contextTokens : void 0;
+	const compactionsPerFlushCycle = codexNativeContextTokens ? Math.max(1, Math.floor(flushThreshold / codexNativeContextTokens)) : 1;
+	const flushedForCurrentCycle = entry != null && (hasAlreadyFlushedForCurrentCompaction(entry) || compactionsPerFlushCycle > 1 && entry.memoryFlush?.kind === "succeeded" && typeof entry.memoryFlush.compactionCount === "number" && (entry.compactionCount ?? 0) >= entry.memoryFlush.compactionCount && (entry.compactionCount ?? 0) - entry.memoryFlush.compactionCount < compactionsPerFlushCycle);
+	if (!(memoryFlushTokenTriggered || shouldForceFlushByTranscriptSize && entry != null && !flushedForCurrentCycle)) return {
 		sessionEntry: entry ?? params.sessionEntry,
 		outcome: "skipped",
 		// ${MEMORY_FLUSH_DEFER_MARKER}: a deferred run reports why it found nothing to flush.
-		...params.memoryFlushDeferred === true ? { skipReason: entry == null ? "no-entry" : hasAlreadyFlushedForCurrentCompaction(entry) ? "already-flushed" : shouldCheckTranscriptSizeForForcedFlush && typeof transcriptByteSize !== "number" ? "transcript-stats-unavailable" : "below-trigger" } : {}
+		...params.memoryFlushDeferred === true ? { skipReason: entry == null ? "no-entry" : flushedForCurrentCycle ? "already-flushed" : shouldCheckTranscriptSizeForForcedFlush && typeof transcriptByteSize !== "number" ? "transcript-stats-unavailable" : "below-trigger" } : {}
 	};
 	logVerbose(\`memoryFlush triggered: sessionKey=\${params.sessionKey} tokenCount=\${tokenCountForFlush ?? "undefined"} threshold=\${flushThreshold}\`);
 	// ${MEMORY_FLUSH_DEFER_MARKER}: a reply-path caller may move a housekeeping flush behind the reply.

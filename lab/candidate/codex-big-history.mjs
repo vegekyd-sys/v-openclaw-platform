@@ -23,6 +23,11 @@
 //                   session entry after it, turn 2 (does it defer another flush?). Reports reads
 //                   and transaction holds >= HOLD_PROBE_MS on the Gateway, Gateway RSS, DeepSeek
 //                   request sizes, and whether turn 1's projected context is the same in both.
+//
+// V's bytes for the "v" variant: core files from release/captured/release-batch-20261009; the Codex plugin's
+// three files in tmp/codex-v/ (not committed): run-attempt from this repository before section H
+// (git show e259423f:lab/release-files/codex-firsttext/dist/run-attempt-D1hJO4fX.js), attempt-context and
+// session-history copied from V's @openclaw/codex@2026.9.1 install. Their hashes are checked below.
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
