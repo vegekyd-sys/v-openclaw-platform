@@ -9480,8 +9480,8 @@ function handleMessageUpdate(ctx, evt) {
 			})
 		});
 	}
-	// v-early-tool-status-v1: report the tool name as soon as the call appears in the stream
-	if ((evtType === "toolcall_start" || evtType === "toolcall_delta") && ctx.params.onAgentEvent && process.env.OPENCLAW_EARLY_TOOL_STATUS !== "0") {
+	// v-early-tool-status-v2: report the tool name as soon as the call appears in the stream
+	if ((evtType === "toolcall_start" || evtType === "toolcall_delta") && process.env.OPENCLAW_EARLY_TOOL_STATUS !== "0") {
 		const block = readToolCallBlock(assistantRecord);
 		const toolCallId = typeof block?.id === "string" ? block.id : "";
 		const rawName = typeof block?.name === "string" ? block.name : "";
@@ -9493,6 +9493,11 @@ function handleMessageUpdate(ctx, evt) {
 				name: normalizeToolPolicyName(rawName),
 				toolCallId
 			};
+			emitAgentEvent({
+				runId: ctx.params.runId,
+				stream: "tool",
+				data
+			});
 			runBestEffortCallback({
 				label: "early tool status agent event",
 				log: ctx.log,

@@ -11,13 +11,18 @@ import assert from 'node:assert/strict';
 //
 // The status line only needs the tool name, which the stream carries with toolcall_start. So the
 // embedded agent now reports a tool "input_start" event (name + toolCallId, no args) the first
-// time a tool call appears in the stream, through the run's own agent-event callback only (not
-// the process-wide bus), and the Gateway reply runner treats it like a tool start for the
-// channel's onToolStart. The real tool start follows as before and refreshes the same line (now
+// time a tool call appears in the stream, the same two ways the real tool start is reported: on
+// the process-wide agent-event bus for this run and through the run's agent-event callback. The
+// Gateway reply runner treats it like a tool start for the channel's onToolStart.
+//
+// v2: v1 used the run callback only. The vlab-worker runtime (V's default) does not pass that
+// callback into the embedded run; it bridges the process-wide bus to the Gateway instead
+// (worker.mjs globallyBridgedNames), so v1 never fired there. Shared VLab 2026-10-10, long write
+// calls: early status only in a minority of ON turns, P95 unchanged. The real tool start follows as before and refreshes the same line (now
 // with args where the channel shows them). Nothing the model sees or the tool does changes.
 // OPENCLAW_EARLY_TOOL_STATUS=0 turns it off (checked on both sides).
 
-export const MARKER = 'v-early-tool-status-v1';
+export const MARKER = 'v-early-tool-status-v2';
 
 function replaceExactlyOnce(source, before, after, label) {
   assert.equal(source.split(before).length, 2, `Expected exactly one ${label}`);
@@ -30,7 +35,7 @@ export function patchBuiltinOpenclaw(source) {
     `	const eventAssistantMessage = assistantRecord?.partial && typeof assistantRecord.partial === "object" ? assistantRecord.partial : msg;
 	const isResponsesTextEvent =`,
     `	// ${MARKER}: report the tool name as soon as the call appears in the stream
-	if ((evtType === "toolcall_start" || evtType === "toolcall_delta") && ctx.params.onAgentEvent && process.env.OPENCLAW_EARLY_TOOL_STATUS !== "0") {
+	if ((evtType === "toolcall_start" || evtType === "toolcall_delta") && process.env.OPENCLAW_EARLY_TOOL_STATUS !== "0") {
 		const block = readToolCallBlock(assistantRecord);
 		const toolCallId = typeof block?.id === "string" ? block.id : "";
 		const rawName = typeof block?.name === "string" ? block.name : "";
@@ -42,6 +47,11 @@ export function patchBuiltinOpenclaw(source) {
 				name: normalizeToolPolicyName(rawName),
 				toolCallId
 			};
+			emitAgentEvent({
+				runId: ctx.params.runId,
+				stream: "tool",
+				data
+			});
 			runBestEffortCallback({
 				label: "early tool status agent event",
 				log: ctx.log,
