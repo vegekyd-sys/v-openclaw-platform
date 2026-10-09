@@ -62,9 +62,72 @@ const categories = {
  background:['focus','focus','curiosity','curiosity','focus','focus'],
  complete:['joy','joy','joy','empathy','explain','empathy'],
 };
+// Dialogue relationship, affect, energy, gaze and gesture are visual labels,
+// not inferred tool routes. Families contain hand-reviewed, compatible poses.
+const reactions = {
+ listen:[
+  ['welcome','warm',1,'user','earpiece','attentive'],
+  ['clarify','curious',1,'aside','chin','ponder'],
+  ['explain','happy',2,'user','point','explain'],
+  ['empathize','gentle',0,'user','cheek','attentive'],
+  ['celebrate','joyful',3,'closed','fists','celebrate'],
+  ['acknowledge','serious',0,'user','chest','attentive'],
+ ],
+ memory:[
+  ['reflect','curious',1,'up','chin','ponder'],
+  ['consider','focused',0,'down','read','work'],
+  ['wonder','curious',1,'up','chin','ponder'],
+  ['explain','warm',1,'user','card','explain'],
+  ['consider','uncertain',1,'aside','chin','ponder'],
+  ['explain','engaged',2,'user','cards','explain'],
+ ],
+ web:[
+  ['investigate','curious',1,'detail','magnifier','explore'],
+  ['wonder','curious',1,'object','globe','explore'],
+  ['explain','engaged',1,'user','point','explain'],
+  ['compare','focused',1,'object','cards','work'],
+  ['surprise','surprised',2,'user','mouth','surprise'],
+  ['encourage','happy',2,'closed','thumb','appreciate'],
+ ],
+ calendar:[
+  ['organize','engaged',1,'user','count','plan'],
+  ['consider','uncertain',1,'object','chin','ponder'],
+  ['remind','warm',1,'down','wrist','plan'],
+  ['explain','engaged',1,'user','notes','plan'],
+  ['surprise','surprised',2,'user','earpiece','surprise'],
+  ['confirm','relieved',1,'object','point','plan'],
+ ],
+ background:[
+  ['consider','calm',0,'aside','cheek','ponder'],
+  ['organize','focused',0,'down','write','work'],
+  ['discover','happy',2,'user','puzzle','appreciate'],
+  ['wonder','curious',1,'up','chin','ponder'],
+  ['consider','focused',1,'down','puzzle','work'],
+  ['explain','calm',0,'closed','notebook','work'],
+ ],
+ complete:[
+  ['encourage','happy',2,'user','thumb','appreciate'],
+  ['share','warm',2,'user','open-hands','appreciate'],
+  ['celebrate','joyful',3,'closed','fists','celebrate'],
+  ['apologize-thank','gentle',0,'down','palms','courtesy'],
+  ['explain','happy',2,'user','card','explain'],
+  ['reassure','gentle',0,'closed','chest','attentive'],
+ ],
+};
+export const AVATAR_DIALOGUE_ACTIONS = Object.freeze({welcome:'欢迎',clarify:'好奇追问',empathize:'共情陪伴',acknowledge:'认真接话',reflect:'回想',consider:'斟酌',wonder:'好奇想象',explain:'解释分享',investigate:'探究细节',compare:'权衡',surprise:'轻松惊讶',encourage:'鼓励',organize:'整理',remind:'关心提醒',confirm:'确认',discover:'发现办法',celebrate:'庆祝',share:'共享收获','apologize-thank':'谦逊道歉或致谢',reassure:'安慰'});
 export const AVATAR_CATALOG = Object.freeze([
  {id:'idle',category:'welcome',scene:'idle',frame:0,label:'等待接听',action:'面向用户微笑招呼',emotions:'温暖、平静',contexts:'未拨号、等待、问候',avoid:'沉重倾诉'},
- ...Object.entries(rows).flatMap(([scene,poses])=>poses.map(([label,action,emotions,contexts,avoid],frame)=>Object.freeze({id:`${scene}-${frame}`,scene,frame,category:categories[scene][frame],label,action,emotions,contexts,avoid}))),
+ ...Object.entries(rows).flatMap(([scene,poses])=>poses.map(([label,action,emotions,contexts,avoid],frame)=>{
+  const [dialogue,affect,energy,gaze,gesture,family]=reactions[scene][frame];
+  return Object.freeze({id:`${scene}-${frame}`,scene,frame,category:categories[scene][frame],label,action,emotions,contexts,avoid,dialogue,affect,energy,gaze,gesture,family});
+ })),
 ]);
 const byId=new Map(AVATAR_CATALOG.map(p=>[p.id,p]));
 export const avatarPicture = id => byId.get(id) ?? null;
+// Deliberate neutral fallback where the gallery has only one exact gesture.
+// Never rotate from quiet empathy into a triumphant or surprised picture.
+export function avatarVariants(id) {
+ const p=avatarPicture(id);if(!p||p.id==='idle')return [];
+ const family=p.family==='courtesy'?'attentive':p.family;
+ return AVATAR_CATALOG.filter(x=>x.id!==id&&x.family===family).map(x=>x.id);
+}

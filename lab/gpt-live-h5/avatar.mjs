@@ -1,8 +1,8 @@
-import { avatarPicture } from './avatar-catalog.mjs';
+import { avatarPicture, avatarVariants } from './avatar-catalog.mjs';
 import { AVATAR_POSES, AVATAR_SEQUENCES } from './avatar-state.mjs';
 
-export const THINKING_POSE_DWELL_MS = 5000;
-const THINKING_POSES = new Set(['memory', 'web', 'calendar', 'background']);
+export const MAX_REACTION_DWELL_MS = 5000;
+export const THINKING_POSE_DWELL_MS = MAX_REACTION_DWELL_MS;
 
 // Decode before swapping; old/failed downloads never resurrect retired tasks.
 export function createAvatarRenderer({ image, previous, load, reducedMotion = () => false, onPose = () => {} }) {
@@ -33,85 +33,96 @@ export function createAvatarRenderer({ image, previous, load, reducedMotion = ()
 export function mountAvatar(document, window) {
   const small = window.matchMedia('(max-width: 900px)').matches || window.navigator.connection?.saveData;
   const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const cache = new Map();
+  const cache = new Map(), decoded = new Set();
   const load = file => {
     const url = './assets/' + (small ? file.replace('-512.webp','-256.webp') : file);
     if (!cache.has(url)) cache.set(url, new Promise(resolve => {
       const preload = new window.Image();
-      preload.onload = async () => { try { await preload.decode?.(); resolve(url); } catch { cache.delete(url); resolve(null); } };
+      preload.onload = async () => { try { await preload.decode?.(); decoded.add(file); resolve(url); } catch { cache.delete(url); resolve(null); } };
       preload.onerror = () => { cache.delete(url); resolve(null); };
       preload.src = url;
     }));
     return cache.get(url);
   };
-  let selected = null, pendingSelection = null, selectionTimer, lastPictureAt = -Infinity;
+  let anchor = null, displayed = null, task = 'idle', disposed = false;
+  let timer, deadline, lastPictureAt = -Infinity, recent = [], phase = 0, fallback = 'listen-5';
+  const connected = () => ['connected','ending'].includes(document.body.dataset.callState);
+  const fileFor = id => { const p=avatarPicture(id);return p && AVATAR_SEQUENCES[p.scene][p.frame]; };
+  const clearTimers = () => {clearTimeout(timer);clearTimeout(deadline);};
+  const chooseVariation = () => {
+    const id=(anchor??displayed)?.id,ids = [...avatarVariants(id),id].filter(Boolean);
+    const fresh=ids.filter(id=>id!==displayed?.id&&!recent.slice(-2).includes(id));
+    return fresh[phase%fresh.length] ?? ids.find(id=>id!==displayed?.id)
+      ?? (displayed?.id==='listen-5'?'listen-3':'listen-5');
+  };
+  const show = id => {const p=avatarPicture(id);if(p&&!disposed&&!document.hidden)void renderer.show(p.scene,p.frame);};
+  const schedule = () => {
+    clearTimers();if(disposed||document.hidden||!connected()||!displayed)return;
+    const next=chooseVariation();void load(fileFor(next));
+    // Preload one compatible neighbor. Start the swap early enough to decode;
+    // if its download stalls, use an already decoded calm listening portrait.
+    const remaining=Math.max(0,MAX_REACTION_DWELL_MS-(Date.now()-lastPictureAt));
+    const dwell=4200-(anchor??displayed).energy*400+[0,-250,200][phase%3];
+    timer=setTimeout(()=>show(next),Math.max(0,Math.min(remaining-500,dwell-(Date.now()-lastPictureAt))));
+    deadline=setTimeout(()=>{
+      if(Date.now()-lastPictureAt<MAX_REACTION_DWELL_MS)return;
+      const neutral=displayed?.id==='listen-5'?'listen-3':'listen-5';
+      if(decoded.has(fileFor(neutral)))show(neutral);
+    },remaining);
+  };
   const renderer = createAvatarRenderer({image:document.getElementById('avatar'),previous:document.getElementById('avatarPrevious'),load,
-    reducedMotion:reduced,onPose:(pose, frame) => {document.body.dataset.avatarPose = pose; lastPictureAt = Date.now();
-      document.getElementById('avatar').alt = avatarPicture(pose === 'idle' ? 'idle' : `${pose}-${frame}`)?.label ?? 'V';
-      if (selected) document.body.dataset.avatarReaction = selected.id;}});
-  let task = 'idle', pose = 'idle', frame = 0, timer, completionTimer, disposed = false;
-  let complete = false, completionId = null, lastOutcome = null, style = 'focused';
+    reducedMotion:reduced,onPose:(pose,frame)=>{
+      document.body.dataset.avatarPose=pose;
+      displayed=avatarPicture(pose==='idle'?'idle':`${pose}-${frame}`);lastPictureAt=Date.now();
+      recent.push(displayed.id);recent=recent.slice(-4);phase++;
+      document.getElementById('avatar').alt=displayed.label;
+      document.body.dataset.avatarReaction=displayed.id;
+      schedule();
+    }});
   const render = () => {
-    if (disposed) return;
-    clearTimeout(timer);
-    const connected = ['connected','ending'].includes(document.body.dataset.callState);
-    if (!connected) { complete = false; clearTimeout(completionTimer); selected = pendingSelection = null; clearTimeout(selectionTimer); delete document.body.dataset.avatarReaction; }
-    const next = selected && connected ? selected.scene : task !== 'idle' ? task : connected ? complete ? 'complete' : 'listen' : 'idle';
-    if (next !== pose) { pose = next; frame = style === 'bright' ? 4 : style === 'curious' ? 3 : 0; }
-    if (selected) frame = selected.frame;
-    else if (pose === 'idle' || reduced()) frame = 0;
-    if (!document.hidden) {
-      void renderer.show(pose, frame);
-      // Only the current frame and one neighbor are loaded, never the gallery.
-      if (!selected && !pendingSelection && !reduced() && pose !== 'idle' && (!THINKING_POSES.has(pose) || frame < AVATAR_SEQUENCES[pose].length - 1)) {
-        const files = AVATAR_SEQUENCES[pose];
-        void load(files[(frame+1)%files.length]);
-        timer = setTimeout(() => {frame=(frame+1)%files.length;render();}, THINKING_POSES.has(pose) ? THINKING_POSE_DWELL_MS : pose === 'listen' ? 6500 : 3200);
-      }
+    clearTimers();if(disposed)return;
+    if(!connected()){
+      anchor=null;recent=[];delete document.body.dataset.avatarAttention;
+      delete document.body.dataset.avatarReaction;show('idle');return;
     }
+    // Tiny neutral safety pair, not a download of the entire gallery.
+    void load(fileFor('listen-5'));void load(fileFor('listen-3'));
+    if(!displayed||displayed.id==='idle')show(anchor?.id??fallback);
+    else schedule();
   };
   const observer = new window.MutationObserver(render);
   observer.observe(document.body,{attributes:true,attributeFilter:['data-call-state']});
   document.addEventListener('visibilitychange',render);
   const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
   motion.addEventListener?.('change',render);
-  render();
-  const dispose = () => {disposed=true;clearTimeout(timer);clearTimeout(completionTimer);clearTimeout(selectionTimer);observer.disconnect();document.removeEventListener('visibilitychange',render);motion.removeEventListener?.('change',render);renderer.dispose();};
+  const dispose = () => {disposed=true;clearTimers();observer.disconnect();document.removeEventListener('visibilitychange',render);motion.removeEventListener?.('change',render);renderer.dispose();};
   window.addEventListener('pagehide',dispose,{once:true});
+  render();
   return {
-    select(id) {
-      const picture = avatarPicture(id);
-      if (!picture || disposed || selected?.id === id || !['connected','ending'].includes(document.body.dataset.callState)) return;
-      pendingSelection = picture; clearTimeout(selectionTimer); clearTimeout(timer);
-      const apply = () => {
-        if (disposed || !pendingSelection) return;
-        selected = pendingSelection; pendingSelection = null; render();
-      };
-      const wait = Math.max(0,THINKING_POSE_DWELL_MS-(Date.now()-lastPictureAt));
-      if (wait) selectionTimer = setTimeout(apply,wait); else apply();
+    context(){return {currentPicture:displayed?.id??null,reactionPicture:anchor?.id??displayed?.id??null};},
+    select(value){
+      const id=typeof value==='string'?value:value?.picture,picture=avatarPicture(id);
+      if(!picture||picture.id==='idle'||disposed||!connected())return;
+      delete document.body.dataset.avatarAttention;
+      // HOLD preserves the semantic reaction, including its variation phase.
+      // Duplicate captions/choices must never extend one frame's deadline.
+      if(anchor?.id===picture.id){schedule();return;}
+      anchor=picture;show(id);
     },
-    show(activity, outcome) {
-      const changed = task !== activity;
-      task = Object.hasOwn(AVATAR_POSES, activity) ? activity : 'idle';
-      if (outcome?.id && outcome.id !== completionId) {
-        completionId = outcome.id;
-        if (outcome.ok && task === 'idle') {complete=true;clearTimeout(completionTimer);completionTimer=setTimeout(()=>{complete=false;render();},3200);}
-      }
-      if (task !== 'idle') {complete=false;clearTimeout(completionTimer);}
-      if (changed || outcome?.id && outcome.id !== lastOutcome) {
-        selected = pendingSelection = null; clearTimeout(selectionTimer); delete document.body.dataset.avatarReaction;
-        lastOutcome = outcome?.id; render();
-      }
+    attend(){
+      if(disposed||!connected())return;
+      document.body.dataset.avatarAttention='user';
+      anchor=avatarPicture('listen-5');fallback='listen-5';show('listen-5');
     },
-    expression(value) {
-      if (!['focused','curious','bright','calm'].includes(value)) return;
-      style = value;
-      // A cosmetic decision must not restart a thinking sequence or cut its dwell.
-      // Apply the chosen expression on the next real activity transition.
-      if (!selected && !THINKING_POSES.has(pose)) {
-        frame = value === 'bright' ? 4 : value === 'curious' ? 3 : value === 'calm' ? 5 : 0;
-        render();
-      }
-    }, dispose,
+    show(activity){
+      const next=Object.hasOwn(AVATAR_POSES,activity)?activity:'idle';
+      if(next===task)return;task=next;fallback=task==='idle'?'listen-5':`${task}-0`;
+      // Real work supplies a fallback until a contextual reaction arrives;
+      // it cannot erase an empathic response to the person speaking.
+      if(!anchor&&connected())show(fallback);
+    },
+    expression(value){
+      if(!anchor&&connected()&&['focused','curious','bright','calm'].includes(value))show(value==='curious'?'listen-1':'listen-5');
+    },dispose,
   };
 }

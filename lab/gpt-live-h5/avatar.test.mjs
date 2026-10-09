@@ -65,39 +65,45 @@ test('failed assets keep last good portrait and allow a retry; reduced motion sk
   assert.equal(AVATAR_FILES.length,74);
 });
 
-test('cosmetic decisions and duplicate task events do not shorten thinking; last pose stays still', async t => {
-  t.mock.timers.enable({apis:['setTimeout']});
-  const image={src:'idle',getAttribute(){return this.src;}},previous={hidden:true};
-  const body={dataset:{callState:'connected'}};
-  const document={body,hidden:false,getElementById:id=>id==='avatar'?image:previous,addEventListener(){},removeEventListener(){}};
-  const window={navigator:{},Image:class {set src(value){this.value=value;queueMicrotask(()=>this.onload());}async decode(){}},
-    matchMedia:()=>({matches:false,addEventListener(){},removeEventListener(){}}),
-    MutationObserver:class {observe(){}disconnect(){}},addEventListener(){}};
-  const settle=async()=>{for(let i=0;i<8;i++)await Promise.resolve();};
-  const avatar=mountAvatar(document,window);avatar.show('memory');await settle();
-  const first=image.src;
-  t.mock.timers.tick(THINKING_POSE_DWELL_MS-1);avatar.expression('bright');avatar.show('memory');await settle();
-  assert.equal(image.src,first);
-  t.mock.timers.tick(1);await settle();assert.notEqual(image.src,first);
-  for(let i=0;i<4;i++){t.mock.timers.tick(THINKING_POSE_DWELL_MS);await settle();}
-  assert.match(image.src,/memory-5-512\.webp$/u);
-  const last=image.src;
-  for(let i=0;i<8;i++){t.mock.timers.tick(THINKING_POSE_DWELL_MS);avatar.expression('curious');await settle();}
-  assert.equal(image.src,last);
-  avatar.dispose();
+
+function mountFixture({stall=false,reduced=false}={}){
+ const image={src:'idle',getAttribute(){return this.src;}},previous={hidden:true},body={dataset:{callState:'connected'}};
+ const events={};const document={body,hidden:false,getElementById:id=>id==='avatar'?image:previous,addEventListener(k,f){events[k]=f;},removeEventListener(){}};
+ const window={navigator:{},Image:class{set src(value){if(stall&&!/listen-[35]-512/.test(value))return;queueMicrotask(()=>this.onload());}async decode(){}},matchMedia:q=>({matches:reduced&&q.includes('reduced-motion'),addEventListener(){},removeEventListener(){}}),MutationObserver:class{observe(){}disconnect(){}},addEventListener(){}};
+ return {avatar:mountAvatar(document,window),image,body,document,events};
+}
+const settle=async()=>{for(let i=0;i<12;i++)await Promise.resolve();};
+test('meaningful contextual reaction replaces old image immediately and background cannot erase empathy',async t=>{
+ t.mock.timers.enable({apis:['setTimeout','Date'],now:0});const f=mountFixture();await settle();
+ f.avatar.show('memory');await settle();f.avatar.select({picture:'listen-3',hold:false});await settle();
+ assert.match(f.image.src,/listen-3-512/);f.avatar.show('background');await settle();assert.match(f.image.src,/listen-3-512/);
+ t.mock.timers.tick(500);f.avatar.select({picture:'complete-2'});await settle();assert.match(f.image.src,/complete-2-512/);
+ f.avatar.attend();await settle();assert.match(f.image.src,/listen-5-512/);assert.equal(f.body.dataset.avatarAttention,'user');f.avatar.dispose();
+});
+test('same reaction changes compatible gesture before five seconds; HOLD never resets visible deadline',async t=>{
+ t.mock.timers.enable({apis:['setTimeout','Date'],now:0});const f=mountFixture();await settle();f.avatar.select('listen-3');await settle();const first=f.image.src;
+ t.mock.timers.tick(4000);f.avatar.select({picture:'listen-3',hold:true});await settle();assert.equal(f.image.src,first);
+ t.mock.timers.tick(500);await settle();assert.notEqual(f.image.src,first);assert.equal(f.avatar.context().reactionPicture,'listen-3');
+ for(let i=0;i<8;i++){
+  const old=f.image.src;t.mock.timers.tick(4500);await settle();assert.notEqual(f.image.src,old);
+  assert.doesNotMatch(f.image.src,/complete-[0124]|web-[45]|listen-4/);
+ }
+ f.avatar.dispose();
+});
+test('hidden page pauses variations and resumes promptly without overwriting a disconnected call',async t=>{
+ t.mock.timers.enable({apis:['setTimeout','Date'],now:0});const f=mountFixture();await settle();f.avatar.select('memory-4');await settle();const old=f.image.src;
+ f.document.hidden=true;f.events.visibilitychange();t.mock.timers.tick(15000);await settle();assert.equal(f.image.src,old);
+ f.document.hidden=false;f.events.visibilitychange();t.mock.timers.tick(0);await settle();assert.notEqual(f.image.src,old);
+ f.body.dataset.callState='idle';f.events.visibilitychange();await settle();assert.match(f.image.src,/idle-512/);
+ f.avatar.select('complete-2');t.mock.timers.tick(10000);await settle();assert.match(f.image.src,/idle-512/);f.avatar.dispose();
 });
 
-test('contextual choices select an exact frame across task categories and hold at least five seconds',async t=>{
- t.mock.timers.enable({apis:['setTimeout','Date'],now:0});
- const image={src:'idle',getAttribute(){return this.src;}},previous={hidden:true},body={dataset:{callState:'connected'}};
- const document={body,hidden:false,getElementById:id=>id==='avatar'?image:previous,addEventListener(){},removeEventListener(){}};
- const window={navigator:{},Image:class {set src(value){queueMicrotask(()=>this.onload());}async decode(){}},matchMedia:()=>({matches:false,addEventListener(){},removeEventListener(){}}),MutationObserver:class {observe(){}disconnect(){}},addEventListener(){}};
- const settle=async()=>{for(let i=0;i<8;i++)await Promise.resolve();};
- const avatar=mountAvatar(document,window);avatar.show('memory');await settle();const initial=image.src;
- avatar.select('listen-3');t.mock.timers.tick(4999);await settle();assert.equal(image.src,initial);
- t.mock.timers.tick(1);await settle();assert.match(image.src,/listen-3-512/);assert.equal(body.dataset.avatarReaction,'listen-3');
- avatar.select('complete-2');t.mock.timers.tick(4999);await settle();assert.match(image.src,/listen-3-512/);
- t.mock.timers.tick(1);await settle();assert.match(image.src,/complete-2-512/);
- avatar.select('web-4');avatar.show('background');t.mock.timers.tick(5000);await settle();assert.doesNotMatch(image.src,/web-4/);
- avatar.dispose();
+test('stalled variation uses a decoded neutral by five seconds; reduced motion still varies without animation',async t=>{
+ t.mock.timers.enable({apis:['setTimeout','Date'],now:0});const f=mountFixture({stall:true,reduced:true});await settle();f.avatar.select('listen-5');await settle();
+ for(let i=0;i<8;i++){
+  const old=f.image.src;t.mock.timers.tick(4500);await settle();
+  if(f.image.src===old){t.mock.timers.tick(500);await settle();}
+  assert.notEqual(f.image.src,old);assert.equal(f.avatar.context().reactionPicture,'listen-5');
+ }
+ f.avatar.dispose();
 });

@@ -485,7 +485,8 @@ async function startCall() {
     if (call !== active) { await api("close", { voiceSessionId: active.voiceSessionId }); return; }
     if (avatar) active.avatarReactions = createAvatarReactions({
       request:(context,options)=>api('avatar',{voiceSessionId:active.voiceSessionId,...context},options),
-      apply:picture=>avatar.select(picture),isCurrent:()=>call===active,isVisible:()=>!document.hidden,
+      apply:reaction=>avatar.select(reaction),attend:()=>avatar.attend(),current:()=>avatar.context(),
+      isCurrent:()=>call===active,isVisible:()=>!document.hidden,
     });
     if (reservation.transport === 'gateway-relay') {
       await active.contextResume;

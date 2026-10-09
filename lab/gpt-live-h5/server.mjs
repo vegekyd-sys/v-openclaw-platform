@@ -163,9 +163,9 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
             || typeof t.text !== 'string' || t.text.length > 600)) return json(res,400,{error:'头像上下文无效'});
         if (params.revision <= (active.avatarRevision ?? 0)) return json(res,409,{error:'头像上下文已更新'});
         active.avatarRevision = params.revision;
-        const picture = await visual.select({owner:params.voiceSessionId,context:params,
+        const reaction = await visual.select({owner:params.voiceSessionId,context:params,
           isCurrent:()=>context.active===active && active.avatarRevision===params.revision});
-        return json(res,200,{picture,revision:params.revision});
+        return json(res,200,{picture:null,...reaction,revision:params.revision});
       }
       if (context.active.direct) {
         if (pathname === '/api/close') { await close(context); return json(res,200,{ok:true}); }
