@@ -551,8 +551,9 @@ function sampleRss() {
 const within = (from, to) => (x) => x.at >= from && x.at <= to;
 const peakRss = (from, to) => Math.max(0, ...rss.filter(within(from, to)).map((s) => s.mb));
 const holdsIn = (from, to) => lines.filter(within(from, to)).filter((l) => l.line.includes("[hold-probe]") && !l.line.startsWith("[vlab-worker")).map((l) => { try { return JSON.parse(l.line.slice(l.line.indexOf("{", l.line.indexOf("[hold-probe]")))); } catch { return null; } }).filter((h) => h && h.pid === gateway.pid).map((h) => ({ op: h.op, ms: h.ms, heapMB: h.heapMB }));
-const flushLines = (from) => lines.filter((l) => l.at >= from && l.line.includes("[memory-flush-deferred.1]")).map((l) => JSON.parse(l.line.slice(l.line.indexOf("{", l.line.indexOf("[memory-flush-deferred.1]")))));
-const boundedLines = (from, to) => lines.filter(within(from, to)).filter((l) => l.line.includes("[codex-bounded-history.1]")).map((l) => redact(l.line.slice(l.line.indexOf("[codex-bounded-history.1]"))).slice(0, 240));
+const plainLine = (line) => line.replace(/\u001b\[[0-9;]*m/gu, "");
+const flushLines = (from) => lines.filter((l) => l.at >= from && l.line.includes("[memory-flush-deferred.1]")).map((l) => { const t = plainLine(l.line); return JSON.parse(t.slice(t.indexOf("{", t.indexOf("[memory-flush-deferred.1]")), t.lastIndexOf("}") + 1)); });
+const boundedLines = (from, to) => lines.filter(within(from, to)).filter((l) => l.line.includes("[codex-bounded-history.1]")).map((l) => redact(plainLine(l.line).slice(plainLine(l.line).indexOf("[codex-bounded-history.1]"))).slice(0, 240));
 const contextOf = (text) => { const a = text.indexOf("<conversation_context>"), b = text.lastIndexOf("</conversation_context>"); return a >= 0 && b > a ? text.slice(a, b) : null; };
 
 async function variantRun(variant) {
