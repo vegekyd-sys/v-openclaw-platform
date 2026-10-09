@@ -41,10 +41,12 @@ fs.mkdirSync(path.dirname(runtime), { recursive: true });
 fs.writeFileSync(path.join(dist, "stubs.js"), `import crypto from "node:crypto";
 import fs from "node:fs/promises";
 export const transactions = [];
+export const begin = { waitMs: 0 };
 export const hashText = (text) => crypto.createHash("sha256").update(text).digest("hex");
 export async function buildFileEntry(absPath) { return { hash: hashText(await fs.readFile(absPath, "utf8")) }; }
 export async function withMemoryWorkspaceLock(_dir, task) { return await task(); }
 export function runSqliteImmediateTransactionSync(db, operation, options) {
+  for (const until = performance.now() + begin.waitMs; performance.now() < until;); // another writer holds the lock
   db.exec("BEGIN IMMEDIATE");
   transactions.push(options?.operationLabel ?? null);
   try { const result = operation(); db.exec("COMMIT"); return result; } catch (error) { db.exec("ROLLBACK"); throw error; }
@@ -243,4 +245,21 @@ test("the indexer turns the short writes off when upstream changed", async () =>
   Changed.prototype.writeChunks = async function () {};
   assert.equal(await indexer.installShortWrites(dist, Changed, { log: (e) => seen.push(e) }), false);
   assert.equal(seen[0].event, "short-writes-off");
+});
+
+test("slow-write reports the lock hold apart from waiting for the lock", async () => {
+  const events = [];
+  const Logged = class extends MemoryIndexManager {};
+  await indexer.installShortWrites(dist, Logged, { log: (e) => events.push(e), budgetMs: 1000, pauseMs: 0, slowMs: 0 });
+  const manager = makeManager({ foreignKeys: true });
+  stubs.begin.waitMs = 120;
+  try {
+    const v = version("memory/day.md", base, 1000);
+    await Logged.prototype.writeChunks.call(manager, v.item, generation, v.embeddings, true);
+  } finally {
+    stubs.begin.waitMs = 0;
+  }
+  const write = events.find((e) => e.event === "slow-write");
+  assert(write.longestWaitMs >= 120, `wait ${write.longestWaitMs}`);
+  assert(write.longestMs < 120, `hold ${write.longestMs}`);
 });
