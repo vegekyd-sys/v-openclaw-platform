@@ -79,6 +79,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
     // controller is responsible for cleanup; Gateway process is never fallback.
     s.backend=createBackendDelegation({gateway,sessionKey,ownerId:s.id,audit,onProgress:p=>{if(current(s)){s.progress=p;emit(s,{type:'tool.progress',callId:p.callId,name:'delegate_to_v'});}}});
     sessions.set(s.id,s);
+    audit({type:'call.created',voiceSessionId:s.id,sessionKey,provider:model,model:spec.model});
     return {voiceSessionId:s.id,model:spec.model,provider:model,transport:'gateway-relay',relayTicket:s.ticket};
   }
   async function start(s,client) {

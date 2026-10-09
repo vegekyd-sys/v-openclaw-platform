@@ -286,6 +286,7 @@
         "lab/patch-voice-native-tools.test.mjs",
         "lab/realtime-direct-tools/grok-provider.test.mjs",
         "lab/realtime-direct-tools/session.test.mjs",
+        "lab/realtime-direct-tools/transcript-log.test.mjs",
         "lab/gpt-live-h5/microphone-session.test.mjs",
         "lab/realtime-direct-tools/backend.test.mjs",
         "lab/realtime-direct-tools/candidate-environment.test.mjs",

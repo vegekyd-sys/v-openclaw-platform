@@ -170,3 +170,21 @@ test('direct tools emit actual activity; contextual picture decisions belong onl
  assert.equal(f.upstream.sent.filter(x=>x.item?.type==='function_call_output').length,1);
  await f.service.dispose();
 });
+
+for (const model of ['grok','seeduplex']) test(`${model} public transcript callback reaches private text persistence with exact reservation identity`,async t=>{
+ const {mkdtemp,readFile,readdir,rm}=await import('node:fs/promises');
+ const {tmpdir}=await import('node:os');const {join}=await import('node:path');
+ const {createVoiceTranscriptLog}=await import('./transcript-log.mjs');
+ const directory=await mkdtemp(join(tmpdir(),'voice-protocol-text-'));t.after(()=>rm(directory,{recursive:true,force:true}));
+ const log=createVoiceTranscriptLog({directory});
+ const f=await fixture(undefined,model,{audit:log.audit});
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'用户真实回调文本'});
+ f.event(model==='grok'?{type:'response.output_audio_transcript.delta',delta:'回答片段'}:{type:'response.output_text.delta',delta:'回答片段'});
+ f.event(model==='grok'?{type:'response.output_audio_transcript.done',transcript:'完整回答'}:{type:'response.output_text.done',text:'完整回答'});
+ await f.service.dispose();assert.equal((await log.close()).failed,0);
+ const rows=(await Promise.all((await readdir(directory)).map(async file=>(await readFile(join(directory,file),'utf8')).trim().split('\n').map(JSON.parse)))).flat();
+ assert.deepEqual(rows.filter(r=>r.type==='transcript').map(r=>[r.role,r.text,r.final]),[['user','用户真实回调文本',true],['assistant','回答片段',false],['assistant','完整回答',true]]);
+ assert(rows.every(r=>r.voiceSessionId===f.reservation.voiceSessionId&&r.provider===model&&r.sessionKey==='agent:makaron:explicit:personal-fixture'));
+ assert.equal(rows.at(-1).type,'call.closed');
+ assert(!JSON.stringify(rows).includes('fixture-key'));assert(!JSON.stringify(rows).includes(f.reservation.relayTicket));
+});

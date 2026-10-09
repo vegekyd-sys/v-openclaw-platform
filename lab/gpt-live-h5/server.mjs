@@ -9,6 +9,7 @@ import { createAvatarReactionSelector, avatarEvaluatorFromEnv } from "./avatar-d
 import { AVATAR_FILES, taskActivity } from "./avatar-state.mjs";
 import { createVoiceAccess } from "./access.mjs";
 import { GPT_LIVE_PERSONAL_SESSION_KEY } from "./personal-session.mjs";
+import { createVoiceTranscriptLog } from '../realtime-direct-tools/transcript-log.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 export function createLiveH5Server({ gateway, offer, directVoice, preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv() }) {
@@ -285,7 +286,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, preview = fals
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const preview = process.env.GPT_LIVE_H5_PREVIEW === "1";
   const port = Number(process.env.GPT_LIVE_H5_PORT ?? process.env.RTC_H5_PORT ?? 26244);
-  let gateway, bridge;
+  let gateway, bridge, transcriptLog;
   if (!preview) {
     const configPath = process.env.OPENCLAW_CONFIG_PATH;
     const runtime = process.env.GPT_LIVE_H5_RUNTIME_ROOT ?? process.env.RTC_H5_RUNTIME_ROOT;
@@ -299,7 +300,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     });
     const {createDirectVoiceService}=await import('../realtime-direct-tools/session.mjs');
     const wsModule=await import(pathToFileURL(join(runtime,'node_modules/ws/wrapper.mjs')));
+    transcriptLog=createVoiceTranscriptLog({
+      directory:process.env.RTC_H5_TRANSCRIPT_DIR??join(process.env.OPENCLAW_STATE_DIR??dirname(configPath),'state','voice-transcripts'),
+      onError:({code})=>console.warn(JSON.stringify({type:'voice.transcript-write-error',code})),
+    });
     const directVoice=createDirectVoiceService({gateway,wsModule,
+      audit:transcriptLog.audit,
       toolEnvironment:Object.fromEntries(["LARKSUITE_CLI_CONFIG_DIR","LARKSUITE_CLI_DATA_DIR"].filter(key=>process.env[key]).map(key=>[key,process.env[key]])),
       apiKeys:{
       seeduplex:process.env.VOLCENGINE_REALTIME_API_KEY??process.env.DOUBAO_SPEECH_API_KEY,
@@ -322,5 +328,5 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     } });
   } else bridge = createLiveH5Server({ preview: true });
   bridge.server.listen(port, "127.0.0.1", () => console.log(JSON.stringify({ ready: true, host: "127.0.0.1", port, preview })));
-  for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => void bridge.dispose().finally(() => { gateway?.stop(); process.exit(0); }));
+  for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => void bridge.dispose().finally(async () => { await transcriptLog?.close(); gateway?.stop(); process.exit(0); }));
 }
