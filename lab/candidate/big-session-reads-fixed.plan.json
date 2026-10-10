@@ -1,0 +1,26 @@
+{
+  "support": [
+    "lab/candidate/big-session-reads.mjs"
+  ],
+  "files": [
+    {
+      "source": "experiments/agent-worker-isolation-v1/harness-result.mjs",
+      "target": "production-worker/harness-result.mjs"
+    },
+    {
+      "source": "lab/release-files/context-window-read/session-manager-CNTG_BAJ.js",
+      "target": "openclaw/dist/session-manager-CNTG_BAJ.js"
+    }
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/big-session-reads.mjs"
+  ],
+  "timeoutSeconds": 3600,
+  "user": "lab-db91-parity",
+  "env": {
+    "INFLATE": "5",
+    "MEDIA_ROWS": "40",
+    "TURNS": "3"
+  }
+}

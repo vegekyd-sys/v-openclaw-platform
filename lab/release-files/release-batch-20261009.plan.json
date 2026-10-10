@@ -1,0 +1,35 @@
+{
+  "baseRelease": "codex-toolset-cover-20261008",
+  "files": [
+    {
+      "source": "lab/release-files/codex-firsttext/dist/run-attempt-D1hJO4fX.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/run-attempt-D1hJO4fX.js",
+      "before": "b455366185869a5b51fc48ef577d7d728e8e1a46dc5d02f0fded0c18d394d4fc"
+    },
+    {
+      "source": "lab/release-files/codex-firsttext/dist/thread-lifecycle-DAcEJ_Om.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/thread-lifecycle-DAcEJ_Om.js",
+      "before": "7ee060b1e1f98038e27ac483dde69338b30d91f4a78502e78cc4c36b9137f647"
+    },
+    {
+      "source": "lab/release-files/transcript-index-preflight/session-transcript-reconcile-j5qhAafV.js",
+      "target": "openclaw/dist/session-transcript-reconcile-j5qhAafV.js",
+      "before": "e95bb26ad215db700b967a7988b14fa19b36dd2b4c173742183319e79eac381b"
+    },
+    {
+      "source": "lab/release-files/canonical-scan-path-cache/session-accessor.sqlite-transcript-state-Cz9g7S9v.js",
+      "target": "openclaw/dist/session-accessor.sqlite-transcript-state-Cz9g7S9v.js",
+      "before": "dd00be09cbeff5bbf3ffeb9b16d3a1205e3f3abc783bf6ffbc3594c97071c208"
+    },
+    {
+      "source": "lab/release-files/worker-prewarm-session-keys/agent-command-DPfawBbr.js",
+      "target": "openclaw/dist/agent-command-DPfawBbr.js",
+      "before": "150d9003e6526e4faa5a4c9ab3454f05a3614b180cd5f832926dad28344439af"
+    },
+    {
+      "source": "lab/release-files/worker-prewarm-contention-retry/worker.mjs",
+      "target": "production-worker/worker.mjs",
+      "before": "024306ae44dc6aa1c925af226d43738450fba534e54fcc1022bae15d4d970e38"
+    }
+  ]
+}

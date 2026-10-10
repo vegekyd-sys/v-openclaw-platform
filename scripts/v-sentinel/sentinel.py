@@ -57,6 +57,17 @@ CRASH_PATTERNS = (
     ("refused shared state schema mutation", "状态库结构修改被拒，库可能已损坏"),
 )
 DISK_MIN_MB = 15360
+# Both config files the Gateway and its Workers read. On 2026-10-09 a plugin
+# directory listed in plugins.load.paths was deleted: the Worker file is
+# re-validated on every request, so 48 turns failed in 22 minutes; the main
+# file was just as invalid but would only have failed at the next Gateway
+# start. Nothing else here saw either.
+CONFIG_FILES = (
+    ("main", CONFIG_PATH),
+    ("worker", "/home/openclaw/.openclaw/experiments/agent-worker-isolation-v1/worker-openclaw.json"),
+)
+# OpenClaw's own validator, about 2 s per file. Run it this often, not every tick.
+CONFIG_VALIDATE_EVERY_S = 600
 MEM_MIN_MB = 2048
 
 
@@ -146,6 +157,104 @@ def scan_crashes(cursor):
     return lines, new_cursor
 
 
+# "(mid-turn precheck)" on an isError line ends only the current attempt: the
+# same run compacts the session and retries under the same runId. On
+# 2026-10-08 four such runs (628-846 message sessions) were reported as cut
+# off; every one went on to deliver a single complete answer. What the person
+# can actually be left with is a failed compaction, which these lines name.
+COMPACT_FAIL = re.compile(r"Auto-compaction failed|auto-compaction failed for|"
+                          r"auto-compaction could not recover|auto-compaction timed out")
+
+
+STREAMED = re.compile(r'"runId":"([^"]+)"[^\n]*"stage":"first-nonempty-text"')
+
+
+def scan_cutoffs(journal, lookback=None):
+    """Return (cut-off run ids, cause of the first, compaction failure count).
+
+    A user-facing run that emitted first-nonempty-text and still ended
+    isError=true: someone watched an answer start and stop. This cannot be
+    confused with the agent choosing not to reply, which never streams.
+
+    A long turn starts streaming minutes before it fails (2026-10-08 17:50 ->
+    17:53), outside the scan window. lookback(run_ids) returns older journal
+    text for just those runs, and is only called when a failure has no
+    streamed line in the window.
+    """
+    streamed, failed, compact_fail = set(), {}, 0
+    for line in journal.splitlines():
+        if "first-nonempty-text" in line:
+            m = re.search(r'"runId":"([^"]+)"', line)
+            if m: streamed.add(m.group(1))
+        elif "isError=true" in line:
+            m = re.search(r"runId=([0-9a-zA-Z:_-]+)", line)
+            if m and "(mid-turn precheck)" not in line:
+                cause = re.search(r"rawError=([^\"]{0,60})", line)
+                failed[m.group(1)] = cause.group(1).strip() if cause else "?"
+        if COMPACT_FAIL.search(line):
+            compact_fail += 1
+    unseen = sorted(set(failed) - streamed)
+    if unseen and lookback:
+        streamed.update(r for r in STREAMED.findall(lookback(unseen)) if r in failed)
+    hits = [r for r in streamed & set(failed)
+            if not r.startswith(("workboard", "nightshift", "announce"))
+            and "internal-session-effects" not in r and "skill-workshop" not in r]
+    return hits, (failed[hits[0]] if hits else ""), compact_fail
+
+
+def missing_plugin_paths(path):
+    """plugins.load.paths entries that do not exist on disk; None if unreadable."""
+    try:
+        with open(path) as f:
+            c = json.load(f)
+    except Exception:
+        return None
+    paths = ((c.get("plugins") or {}).get("load") or {}).get("paths") or []
+    return [p for p in paths if isinstance(p, str) and not os.path.exists(p)]
+
+
+def config_missing_message(where, path, missing, effect):
+    """Alert text for missing_plugin_paths(); built every tick, so [] must not raise."""
+    if missing is None:
+        return "%s 读不出来（%s）。" % (where, path)
+    if not missing:
+        return ""
+    return ("%s 的 plugins.load.paths 里有 %d 个目录已不存在（%s）。%s"
+            "停用插件请改 plugins.entries.<id>.enabled=false，不要删目录。"
+            % (where, len(missing), missing[0], effect))
+
+
+def scan_worker_failures(journal):
+    """(Worker requests that failed before the model, how many for invalid config)."""
+    lines = [l for l in journal.splitlines() if "Worker Agent request failed" in l]
+    return len(lines), sum(1 for l in lines if "InvalidConfigError" in l)
+
+
+def gateway_cli():
+    """node + dist/index.js exactly as the running unit starts them."""
+    m = re.search(r"(/\S+/node)\b[^;]*?\s(/\S+/dist/index\.js)",
+                  sh("systemctl show %s -p ExecStart --value" % UNIT))
+    return (m.group(1), m.group(2)) if m else None
+
+
+def validate_config(path, cli):
+    """(ok, first error line). Runs as the service user, like the Gateway."""
+    if not cli:
+        return True, ""
+    out = sh("cd /tmp && runuser -u openclaw -- env HOME=/home/openclaw OPENCLAW_CONFIG_PATH=%s "
+             "timeout 60 %s %s config validate 2>&1; echo \"rc=$?\"" % (path, cli[0], cli[1]),
+             timeout=75)
+    if out.rstrip().endswith("rc=0"):
+        return True, ""
+    if out.rstrip().endswith("rc=124") or not out.strip():
+        # The validator timing out says nothing about the file; do not cry wolf.
+        return True, ""
+    lines = [l.strip() for l in out.splitlines() if l.strip() and not l.startswith("rc=")]
+    first = next((l for l in lines if "\u00d7" in l or "path not found" in l),
+                 lines[0] if lines else "validator gave no output")
+    return False, first[:200]
+
+
 def sample(cursor=None):
     out = {}
     out["pool"] = len(re.findall(r"worker/worker\.mjs",
@@ -166,26 +275,18 @@ def sample(cursor=None):
                     + j.count("made no progress for")
                     + j.count("Request timed out before a response"))
     out["complete"] = j.count("dispatch complete")
-    # A user-facing run that emitted first-nonempty-text and still ended
-    # isError=true: someone watched an answer start and stop. This cannot be
-    # confused with the agent choosing not to reply, which never streams.
-    streamed, failed = set(), {}
-    for line in j.splitlines():
-        if "first-nonempty-text" in line:
-            m = re.search(r'"runId":"([^"]+)"', line)
-            if m: streamed.add(m.group(1))
-        elif "isError=true" in line:
-            m = re.search(r"runId=([0-9a-zA-Z:_-]+)", line)
-            if m:
-                cause = re.search(r"rawError=([^\"]{0,60})", line)
-                failed[m.group(1)] = cause.group(1).strip() if cause else "?"
-    hits = [r for r in streamed & set(failed)
-            if not r.startswith(("workboard", "nightshift", "announce"))
-            and "internal-session-effects" not in r and "skill-workshop" not in r]
-    out["cutoff"] = len(hits)
-    out["cutoff_ids"] = hits
-    out["cutoff_cause"] = failed[hits[0]] if hits else ""
+    def lookback(run_ids):
+        # Only the failed runs, only their streamed marker: a few lines, not a
+        # 20-minute dump. scan_cutoffs only yields [0-9a-zA-Z:_-] ids, none of
+        # which is special in an ERE or inside single quotes.
+        pat = "|".join(run_ids)
+        return sh("journalctl -u %s --since '-1200s' --no-pager -o cat "
+                  "| grep -aE '(%s).*first-nonempty-text'" % (UNIT, pat), timeout=60)
+    out["cutoff_ids"], out["cutoff_cause"], out["compact_fail"] = scan_cutoffs(j, lookback)
+    out["cutoff"] = len(out["cutoff_ids"])
     out["received"] = j.count("received message from")
+    out["worker_fail"], out["worker_invalid"] = scan_worker_failures(j)
+    out["cfg_missing"] = {name: missing_plugin_paths(path) for name, path in CONFIG_FILES}
     out["crash_lines"], out["journal_cursor"] = scan_crashes(cursor)
     df = sh("df -BM --output=avail / | tail -1")
     out["disk_mb"] = int(re.sub(r"\D", "", df) or 0)
@@ -292,6 +393,35 @@ def main():
           "主机可用内存只剩 %.1f GB。" % (s["mem_mb"] / 1024),
           "内存已恢复（%.1f GB）。" % (s["mem_mb"] / 1024))
 
+    # Config files. A missing plugin directory is checked every tick (cheap);
+    # OpenClaw's validator every CONFIG_VALIDATE_EVERY_S, its verdict kept in
+    # state so the latch sees a steady signal in between.
+    for name, path in CONFIG_FILES:
+        missing = s["cfg_missing"].get(name)
+        where = "worker 配置" if name == "worker" else "主配置 openclaw.json"
+        effect = ("worker 每个请求都会重新校验它，所以现在每个 worker 回合都会失败。"
+                  if name == "worker" else
+                  "正在运行的 Gateway 暂时不受影响，但下次重启时会起不来，在修好之前不要重启。")
+        latch("cfg_missing_" + name, missing is None or bool(missing),
+              config_missing_message(where, path, missing, effect),
+              "%s 里的插件目录都已存在。" % where)
+    if now_s - st.get("cfg_validated_at", 0) >= CONFIG_VALIDATE_EVERY_S:
+        cli = gateway_cli()
+        st["cfg_valid"] = {name: validate_config(path, cli) for name, path in CONFIG_FILES}
+        st["cfg_validated_at"] = now_s
+    for name, verdict in (st.get("cfg_valid") or {}).items():
+        ok, why = verdict
+        where = "worker 配置" if name == "worker" else "主配置 openclaw.json"
+        latch("cfg_invalid_" + name, not ok,
+              "%s 通不过 openclaw config validate：%s" % (where, why),
+              "%s 重新通过校验。" % where)
+    s["cfg_valid"] = st.get("cfg_valid")
+
+    latch("worker_invalid", s["worker_invalid"] > 0,
+          "%d 分钟内有 %d 个 worker 请求因为配置无效直接失败（InvalidConfigError），"
+          "用户看到的是「Agent couldn't generate a response」。" % (WINDOW // 60, s["worker_invalid"]),
+          "worker 请求不再因为配置无效失败。")
+
     # Discrete events, not a state, so no latch. Measured 2026-09-23: about
     # five a day. Say it at most once an hour, carrying the count, so a bad
     # evening is one message rather than a stream of them.
@@ -312,6 +442,14 @@ def main():
                       % (st["cutoff_pending"], st.get("cutoff_last_cause") or "未知"))
         st["cutoff_pending"] = 0
         st["cutoff_last_alert"] = now_s
+
+    # The person asked in a session too large for the model and compaction
+    # could not shrink it, so they got the "context too large" error instead
+    # of an answer. Rare; same once-an-hour cap as above.
+    if s.get("compact_fail") and now_s - st.get("compact_fail_last_alert", 0) >= 3600:
+        alerts.append("%d 次会话超出模型上下文后自动压缩失败，用户收到的是报错而不是回答。"
+                      "可以让对方 /new 开新会话。" % s["compact_fail"])
+        st["compact_fail_last_alert"] = now_s
 
     st["last_run"] = now_s
     st["last_sample"] = s

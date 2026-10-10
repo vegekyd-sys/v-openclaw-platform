@@ -1,0 +1,9 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/worker-native-tail/harness-result.mjs",
+      "target": "production-worker/harness-result.mjs",
+      "before": "c1be75befbc89393b165fd9abf979a1096590284db176029bdb47c564ef40f9c"
+    }
+  ]
+}

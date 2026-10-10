@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createLiveH5Server } from "./server.mjs";
 import { transcriptEvent } from "./events.mjs";
+import { AVATAR_FILES } from "./avatar-state.mjs";
 import { GPT_LIVE_PERSONAL_SESSION_KEY } from "./personal-session.mjs";
 
 async function fixture(t, overrides = {}) {
@@ -13,7 +14,7 @@ async function fixture(t, overrides = {}) {
     return method === "talk.client.create" ? reservation : { ok: true };
   } };
   const offers = [];
-  const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, preview: overrides.preview });
+  const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, preview: overrides.preview, avatarLog: overrides.avatarLog, avatarEvaluate: overrides.avatarEvaluate, directVoice: overrides.directVoice });
   await new Promise((resolve) => bridge.server.listen(0, "127.0.0.1", resolve));
   t.after(() => bridge.dispose());
   const url = `http://127.0.0.1:${bridge.server.address().port}`;
@@ -114,7 +115,7 @@ test("native transcript projection excludes reasoning and preserves final text",
 
 test("the frozen H5 serves its own stylesheet and every browser module", async t => {
   const f = await fixture(t, {preview:true});
-  for (const name of ["app.js", "events.mjs", "duplex-playback.mjs", "microphone-capture.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "styles.css"]) {
+  for (const name of ["app.js", "media-references.mjs", "screen-wake-lock.mjs", "content-view.mjs", "product-controls.mjs", "events.mjs", "duplex-playback.mjs", "microphone-capture.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "styles.css"]) {
     const response = await fetch(`${f.url}/${name}`);
     assert.equal(response.status, 200, name); assert.match(response.headers.get("content-type"), name.endsWith("css") ? /text\/css/u : /javascript/u);
     assert((await response.text()).length > 0);
@@ -197,10 +198,10 @@ test('SSE avatar activity belongs to the current voice and excludes tool argumen
 
 test('all new avatar assets and modules are served by the frozen whitelist',async t=>{
   const f=await fixture(t);
-  for(const name of ['avatar.mjs','avatar-state.mjs',...['idle','memory','web','calendar','background'].map(s=>`assets/v-signal-${s}-20261006${s === 'idle' ? '' : '-r2'}.png`)]){
+  for(const name of ['avatar.mjs','avatar-state.mjs','avatar-catalog.mjs','avatar-reactions.mjs',...AVATAR_FILES.map(s=>'assets/'+s)]){
     const r=await fetch(`${f.url}/${name}`);assert.equal(r.status,200,name);
     const bytes=new Uint8Array(await r.arrayBuffer());assert.ok(bytes.length>0);
-    assert.match(r.headers.get('content-type'),name.endsWith('.png')?/image\/png/u:/javascript/u);
+    assert.match(r.headers.get('content-type'),name.endsWith('.webp')?/image\/webp/u:/javascript/u);
   }
   assert.equal((await fetch(f.url+'/assets/not-whitelisted.png',{headers:{cookie:f.cookie}})).status,404);
 });
@@ -247,4 +248,43 @@ test('event stream flushes headers and remains open for delayed events',async t=
  await new Promise(resolve=>setTimeout(resolve,25));
  f.bridge.emit({event:'talk.event',payload:{voiceSessionId:'voice-private',talkEvent:{type:'tool.call',callId:'late',payload:{name:'web_search'}}}});
  assert(new TextDecoder().decode((await reader.read()).value).includes('late'));stop.abort();await reader.cancel().catch(()=>{});
+});
+
+
+test('all three voice owners share the contextual picture endpoint, independently of task routing',async t=>{
+ for(const model of ['gpt-live','seeduplex','grok']){
+  let input;const f=await fixture(t,{avatarEvaluate:async(...args)=>{input=args;return {answers:{picture:{type:'choice',choice:'listen-3',confidence:.95}}};},directVoice:{reserve:async()=>({voiceSessionId:'direct-'+model,transport:'gateway-relay'}),close:async()=>{},dispose:async()=>{}}});
+  const {voiceSessionId}=await (await f.request('session',{model})).json();
+  const payload={voiceSessionId,revision:1,turns:[{role:'user',text:'有点失落'},{role:'assistant',text:'我在这里陪你'}],activity:'memory',taskOutcome:'pending'};
+  assert.equal((await f.request('avatar',{...payload,voiceSessionId:'foreign'})).status,409);
+  const reply=await f.request('avatar',payload);assert.equal(reply.status,200);const selection=await reply.json();assert.equal(selection.picture,'listen-3');assert.equal(selection.reason,'selected');
+  assert.deepEqual(input[0].turns,payload.turns);assert.equal((await f.request('avatar',payload)).status,409);
+  assert.equal(f.calls.filter(c=>c.method==='talk.client.toolCall').length,0);
+ }
+});
+test('a slow display decision cannot delay heartbeat or task events and cannot survive a closed call',async t=>{
+ let resolve;const f=await fixture(t,{avatarEvaluate:()=>new Promise(r=>resolve=r)});await f.request('session');
+ const pending=f.request('avatar',{voiceSessionId:'voice-private',revision:1,turns:[{role:'user',text:'有点失落'}]});
+ while(!resolve)await new Promise(r=>setImmediate(r));
+ assert.equal((await f.request('heartbeat',{voiceSessionId:'voice-private'})).status,200);
+ await f.request('close',{voiceSessionId:'voice-private'});resolve({answers:{picture:{type:'choice',choice:'complete-2',confidence:1}}});
+ assert.equal((await (await pending).json()).picture,null);
+});
+
+test('avatar recovery binds actual display to authenticated call, keeps delayed close flush, and rejects foreign data',async t=>{
+ const {mkdtemp,readFile,readdir,rm}=await import('node:fs/promises');const {join}=await import('node:path');const {tmpdir}=await import('node:os');
+ const {createAvatarTelemetryLog}=await import('./avatar-telemetry-log.mjs');const dir=await mkdtemp(join(tmpdir(),'avatar-server-'));t.after(()=>rm(dir,{recursive:true,force:true}));const log=createAvatarTelemetryLog({directory:dir});t.after(()=>log.close());
+ const f=await fixture(t,{avatarLog:log});await f.request('session');const event={type:'avatar.displayed',sequence:1,clientAt:Date.now(),elapsedMs:40,picture:'listen-3',source:'decision',visible:true,revision:1,turns:[{key:'user-1',role:'user',text:'陪我一下',complete:true,truncated:false}]};const body={voiceSessionId:'voice-private',captureId:'11111111-1111-4111-8111-111111111111',events:[event],sessionKey:'foreign',provider:'foreign'};
+ assert.equal((await f.request('avatar-events',{...body,voiceSessionId:'foreign'})).status,409);assert.equal((await f.request('avatar-events',{...body,events:[{...event,picture:'../secret'}]})).status,400);assert.equal((await f.request('avatar-events',body,{origin:'http://evil.example'})).status,403);
+ assert.equal((await f.request('avatar-events',body)).status,200);await f.request('close',{voiceSessionId:'voice-private'});assert.equal((await f.request('avatar-events',{...body,events:[{...event,sequence:2,source:'continuation'}]})).status,200);
+ const rows=(await readFile(join(dir,(await readdir(dir))[0]),'utf8')).trim().split('\n').map(JSON.parse);assert.equal(rows.length,2);assert(rows.every(r=>r.provider==='openai'&&r.sessionKey===GPT_LIVE_PERSONAL_SESSION_KEY));assert.equal(f.calls.filter(c=>c.method.includes('avatar')).length,0);
+});
+
+test('all three providers persist browser reports under their authoritative voice owner and expire close grace',async t=>{
+ for(const model of ['gpt-live','seeduplex','grok']){
+  const rows=[];const f=await fixture(t,{avatarLog:{write:async row=>{rows.push(row);return {accepted:row.events.length};}},directVoice:{reserve:async()=>({voiceSessionId:'direct-'+model,model:model+'-real-reservation'}),close:async()=>{},dispose:async()=>{}}});
+  const {voiceSessionId}=await (await f.request('session',{model})).json();const body={voiceSessionId,captureId:'11111111-1111-4111-8111-111111111111',events:[{type:'avatar.capture_started',sequence:1,clientAt:Date.now(),elapsedMs:0}]};
+  assert.equal((await f.request('avatar-events',body)).status,200);assert.equal(rows[0].owner.provider,model==='gpt-live'?'openai':model);assert.equal(rows[0].owner.model,model==='gpt-live'?'gpt-live-1-codex':model+'-real-reservation');
+  await f.request('close',{voiceSessionId});rows[0].owner.endedAt=Date.now()-300001;assert.equal((await f.request('avatar-events',body)).status,409);
+ }
 });

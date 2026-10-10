@@ -874,11 +874,17 @@ async function runMemoryFlushIfNeeded(params) {
 		tokenCount: tokenCountForFlush,
 		threshold: flushThreshold
 	});
-	if (!(memoryFlushTokenTriggered || shouldForceFlushByTranscriptSize && entry != null && !hasAlreadyFlushedForCurrentCompaction(entry))) return {
+	// memory-flush-defer-v1: one size-triggered flush per the conversation OpenClaw holds before it compacts. A Codex
+	// session compacts natively at its own window (entry.contextTokens, 258,400 on V), so its flush cycle spans as many
+	// native compactions as fit in this session's flush threshold; any other runtime keeps one per compaction.
+	const codexNativeContextTokens = normalizeLowercaseStringOrEmpty(runtimeId) === "codex" && typeof entry?.contextTokens === "number" && Number.isFinite(entry.contextTokens) && entry.contextTokens > 0 ? entry.contextTokens : void 0;
+	const compactionsPerFlushCycle = codexNativeContextTokens ? Math.max(1, Math.floor(flushThreshold / codexNativeContextTokens)) : 1;
+	const flushedForCurrentCycle = entry != null && (hasAlreadyFlushedForCurrentCompaction(entry) || compactionsPerFlushCycle > 1 && entry.memoryFlush?.kind === "succeeded" && typeof entry.memoryFlush.compactionCount === "number" && (entry.compactionCount ?? 0) >= entry.memoryFlush.compactionCount && (entry.compactionCount ?? 0) - entry.memoryFlush.compactionCount < compactionsPerFlushCycle);
+	if (!(memoryFlushTokenTriggered || shouldForceFlushByTranscriptSize && entry != null && !flushedForCurrentCycle)) return {
 		sessionEntry: entry ?? params.sessionEntry,
 		outcome: "skipped",
 		// memory-flush-defer-v1: a deferred run reports why it found nothing to flush.
-		...params.memoryFlushDeferred === true ? { skipReason: entry == null ? "no-entry" : hasAlreadyFlushedForCurrentCompaction(entry) ? "already-flushed" : shouldCheckTranscriptSizeForForcedFlush && typeof transcriptByteSize !== "number" ? "transcript-stats-unavailable" : "below-trigger" } : {}
+		...params.memoryFlushDeferred === true ? { skipReason: entry == null ? "no-entry" : flushedForCurrentCycle ? "already-flushed" : shouldCheckTranscriptSizeForForcedFlush && typeof transcriptByteSize !== "number" ? "transcript-stats-unavailable" : "below-trigger" } : {}
 	};
 	logVerbose(`memoryFlush triggered: sessionKey=${params.sessionKey} tokenCount=${tokenCountForFlush ?? "undefined"} threshold=${flushThreshold}`);
 	// memory-flush-defer-v1: a reply-path caller may move a housekeeping flush behind the reply.
@@ -953,6 +959,8 @@ async function runMemoryFlushIfNeeded(params) {
 	let deferredFlushRunAborted = false;
 	const deferredFlushInterrupted = () => params.memoryFlushDeferred === true && (deferredFlushRunAborted || abortSignal?.aborted === true || deferredLifecycle.signal.aborted);
 	const createDeferredFlushInterruptedError = () => Object.assign(new Error("deferred memory flush was interrupted before it finished"), { name: "AbortError" });
+	// memory-flush-defer-v1: compactions the deferred flush's own run counted on this session.
+	let deferredFlushOwnCompactions = 0;
 	const flushedCompactionCount = activeSessionEntry?.compactionCount ?? 0;
 	const compaction = {
 		count: 0,
@@ -1092,6 +1100,8 @@ async function runMemoryFlushIfNeeded(params) {
 					tokensAfter: fact.currentContextSnapshot?.tokens
 				}) === void 0) continue;
 				activeSessionEntry = activeSessionStore[fact.target.sessionKey] ?? activeSessionEntry;
+				// memory-flush-defer-v1: a deferred flush's own compaction belongs to the cycle it marks
+				if (params.memoryFlushDeferred === true && fact.target.sessionKey === params.sessionKey && Number.isFinite(fact.count) && fact.count > 0) deferredFlushOwnCompactions += fact.count;
 				if (activeSessionEntry?.sessionId === fact.target.sessionId) {
 					params.followupRun.run.sessionId = activeSessionEntry.sessionId;
 					params.followupRun.run.sessionFile = fact.target.sessionKey;
@@ -1113,6 +1123,7 @@ async function runMemoryFlushIfNeeded(params) {
 		// the write is in flight does not mark it either.
 		if (deferredFlushInterrupted()) throw createDeferredFlushInterruptedError();
 		let deferredFlushMarkRefused = false;
+		const markedCompactionCount = flushedCompactionCount + deferredFlushOwnCompactions;
 		if (params.storePath && params.sessionKey) try {
 			const updatedEntry = await updateSessionEntry({
 				storePath: params.storePath,
@@ -1124,7 +1135,7 @@ async function runMemoryFlushIfNeeded(params) {
 				}
 				return { memoryFlush: {
 					kind: "succeeded",
-					compactionCount: flushedCompactionCount
+					compactionCount: markedCompactionCount
 				} };
 			}, {
 				skipMaintenance: true,
@@ -1150,7 +1161,7 @@ async function runMemoryFlushIfNeeded(params) {
 			sessionEntry: activeSessionEntry,
 			outcome: "completed",
 			// memory-flush-defer-v1: whether this deferred run wrote the success marker (for its log line)
-			...params.memoryFlushDeferred === true ? { markedFlushed: activeSessionEntry?.memoryFlush?.kind === "succeeded" && activeSessionEntry.memoryFlush.compactionCount === flushedCompactionCount } : {}
+			...params.memoryFlushDeferred === true ? { markedFlushed: activeSessionEntry?.memoryFlush?.kind === "succeeded" && activeSessionEntry.memoryFlush.compactionCount === markedCompactionCount, ownCompactions: deferredFlushOwnCompactions } : {}
 		};
 	} catch (error) {
 		return await recordFailure(error);

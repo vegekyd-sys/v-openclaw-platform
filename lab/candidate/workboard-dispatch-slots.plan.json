@@ -1,0 +1,32 @@
+{
+  "support": [
+    "lab/candidate/workboard-dispatch-slots.mjs",
+    "lab/release-files/workboard-dispatch-slots/runtime-api-1CCazqtv.js",
+    "lab/release-files/workboard-dispatch-slots/sqlite-store-CH-caj1l.js"
+  ],
+  "databases": [
+    "plugins/workboard/workboard.sqlite"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/workboard-dispatch-slots.mjs"
+  ],
+  "timeoutSeconds": 1800,
+  "user": "lab-db91-parity",
+  "env": {
+    "TARGET_CARDS": "4150",
+    "ROUNDS": "10"
+  },
+  "files": [
+    {
+      "source": "lab/release-files/workboard-dispatch-slots/runtime-api-1CCazqtv.js",
+      "target": "openclaw/dist/runtime-api-1CCazqtv.js",
+      "before": "5b83602133393febbd0343aed61ae6195d42f5201a501083f34a879c10732171"
+    },
+    {
+      "source": "lab/release-files/workboard-dispatch-slots/sqlite-store-CH-caj1l.js",
+      "target": "openclaw/dist/sqlite-store-CH-caj1l.js",
+      "before": "4ca26600f933a071986db0b070f62104f3cab9d1abf59441023222cfab1f1dc5"
+    }
+  ]
+}

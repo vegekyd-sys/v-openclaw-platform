@@ -17,7 +17,7 @@ export function validateReviewedPresentation(proof, request) {
   assert(/^[a-f0-9]{64}$/u.test(proof.artifactSha), 'Gateway baseline artifact required');
   assert(Array.isArray(proof.runtimeFiles) && proof.runtimeFiles.length > 0);
   for (const file of proof.runtimeFiles) {
-    assert(/^(openclaw|production-worker)\/[A-Za-z0-9._/-]+$/u.test(file.target) && !file.target.split('/').includes('..'));
+    assert(/^(openclaw|production-worker|npm\/projects)\/[A-Za-z0-9._@/-]+$/u.test(file.target) && !file.target.split('/').includes('..'));
     assert(/^[a-f0-9]{64}$/u.test(file.after));
   }
 }
@@ -62,7 +62,8 @@ async function remoteMain(req) {
   const runtime = path.dirname(path.dirname(entry));
   for (const file of proof.runtimeFiles) {
     const target = file.target.startsWith("openclaw/") ? path.join(runtime, file.target.slice(9))
-      : path.join(path.dirname(runtime), "worker", file.target.slice("production-worker/".length));
+      : file.target.startsWith('production-worker/') ? path.join(path.dirname(runtime), "worker", file.target.slice("production-worker/".length))
+      : path.join(env.HOME, '.openclaw', file.target);
     assert.equal(hash(target), file.after, "V runtime differs from the shared accepted artifact");
   }
   const state = env.OPENCLAW_STATE_DIR ?? path.dirname(env.OPENCLAW_CONFIG_PATH);
@@ -77,7 +78,7 @@ async function remoteMain(req) {
     ...(req.h5Only ? { relayConnections: run('ss', ['-H', '-tnp', 'state', 'established', '( sport = :26242 )']).split('\n').filter(Boolean).length } : {}) });
   const snapshot = observe();
   const metadata = { schema: "gpt-live-voice-entry-v1", commit: req.commit, release: req.release, owner: req.owner,
-    artifactSha: proof.artifactSha, filesSha: req.filesSha, dir, unit, url: "https://openclaw.tianyi.live/voice/", snapshot,
+    avatarDecisions: req.avatarDecisions === true, artifactSha: proof.artifactSha, filesSha: req.filesSha, dir, unit, url: "https://openclaw.tianyi.live/voice/", snapshot,
     acceptanceBasis: req.productionReview ? 'user-reviewed-presentation; shared H5 gate explicitly waived' : 'shared-H5-acceptance', at: new Date().toISOString() };
   if (req.command === "plan") return { ...metadata, readOnly: true };
   assertEntrySnapshot(req.expected.snapshot, snapshot);
@@ -120,6 +121,12 @@ async function remoteMain(req) {
   // come only from the actual Gateway environment, never the release artifact.
   const nativeEnvironment = dir + "/native-voice.env";
   const nativeEnv = Object.fromEntries(["VOLCENGINE_REALTIME_API_KEY", "DOUBAO_SPEECH_API_KEY", "XAI_API_KEY"].filter(key => env[key]).map(key => [key, env[key]]));
+  if (req.avatarDecisions === true) {
+    assert(env.OPENROUTER_API_KEY, 'Avatar decision credential unavailable in existing Gateway environment');
+    nativeEnv.OPENROUTER_API_KEY = env.OPENROUTER_API_KEY;
+    nativeEnv.VOICE_AVATAR_DECISION_PROVIDER = 'openai_decisions';
+    nativeEnv.VOICE_OPENAI_DECISIONS_MODEL = 'openai/gpt-6-luna-decisions';
+  }
   const personalConfig = path.join(env.HOME, ".lark-cli/openclaw");
   const personalData = path.join(env.HOME, ".local/share");
   assert(fs.existsSync(path.join(personalConfig, "config.json")), "Personal Lark CLI configuration is unavailable");
@@ -170,15 +177,16 @@ export function remoteSource() {
 }
 function main(argv) {
   const command = argv.shift(); assert(["plan", "install", "rollback"].includes(command));
-  const options = { command, target: "v" };
-  for (let i = 0; i < argv.length; i += 2) { assert(["--commit", "--release", "--owner", "--shared-proof", "--reviewed-proof", "--expected", "--output", "--h5-only"].includes(argv[i]) && argv[i + 1]); options[argv[i].slice(2)] = argv[i + 1]; }
+  const options = { command, target: "v", avatarDecisions: false };
+  for (let i = 0; i < argv.length; i += 2) { assert(["--commit", "--release", "--owner", "--shared-proof", "--reviewed-proof", "--expected", "--output", "--h5-only", "--avatar-decisions"].includes(argv[i]) && argv[i + 1]); options[argv[i].slice(2)] = argv[i + 1]; }
   if ('h5-only' in options) { assert.equal(options['h5-only'], 'true'); options.h5Only = true; delete options['h5-only']; }
+  if ('avatar-decisions' in options) { assert.equal(options['avatar-decisions'], 'true'); options.avatarDecisions = true; delete options['avatar-decisions']; }
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   const req = freezeSource(root, options);
   assert(Boolean(options['reviewed-proof']) !== Boolean(options['shared-proof']), 'Choose exactly one acceptance source');
   if (options['reviewed-proof']) { req.productionReview = JSON.parse(fs.readFileSync(options['reviewed-proof'])); validateReviewedPresentation(req.productionReview, req); }
   else { req.sharedProof = JSON.parse(fs.readFileSync(options['shared-proof'])); validateSharedProof(req.sharedProof, req); }
-  if (command !== "plan") { req.expected = JSON.parse(fs.readFileSync(options.expected)); for (const key of ["commit", "release", "owner", "filesSha"]) assert.equal(req.expected[key], req[key]); }
+  if (command !== "plan") { req.expected = JSON.parse(fs.readFileSync(options.expected)); for (const key of ["commit", "release", "owner", "filesSha", "avatarDecisions"]) assert.equal(req.expected[key], req[key]); }
   assert(!fs.existsSync(options.output), "Do not overwrite an entry receipt");
   const quote = value => "'" + value.replaceAll("'", "'\"'\"'") + "'";
   const output = execFileSync("ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "v", "sudo /opt/node-v22.23.1/bin/node --input-type=module -e " + quote(remoteSource())], { input: JSON.stringify(req), timeout: 120000, maxBuffer: 8000000, stdio: ["pipe", "pipe", "pipe"] });

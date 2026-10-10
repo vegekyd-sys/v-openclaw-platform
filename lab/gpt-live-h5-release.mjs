@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Canonical H5 only. Gateway code/configuration are deployed by the VLab workflow.
 import fs from 'node:fs';
+import { AVATAR_FILES } from './gpt-live-h5/avatar-state.mjs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -8,18 +9,23 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 export const H5_PATHS = [
-  'lab/gpt-live-h5/access.mjs',
-  'lab/gpt-live-h5/avatar.mjs', 'lab/gpt-live-h5/avatar-state.mjs',
-  ...['idle','memory','web','calendar','background'].map(state => `lab/gpt-live-h5/assets/v-signal-${state}-20261006${state === 'idle' ? '' : '-r2'}.png`),
+  'lab/gpt-live-h5/access.mjs', 'lab/voice-decision-router.mjs',
+  'lab/gpt-live-h5/avatar-telemetry.mjs', 'lab/gpt-live-h5/avatar-telemetry-log.mjs',
+  'lab/gpt-live-h5/avatar.mjs', 'lab/gpt-live-h5/avatar-state.mjs', 'lab/gpt-live-h5/avatar-decision.mjs', 'lab/gpt-live-h5/avatar-catalog.mjs', 'lab/gpt-live-h5/avatar-reactions.mjs',
+  'lab/gpt-live-h5/avatar-approved-reactions.mjs',
+  ...AVATAR_FILES.map(file => `lab/gpt-live-h5/assets/${file}`),
   'lab/gpt-live-h5/personal-session.mjs',
   'lab/gpt-live-h5/persona.mjs',
   'lab/gpt-live-h5/result-presentation.mjs',
   'lab/gpt-live-h5/server.mjs', 'lab/gpt-live-h5/events.mjs', 'lab/gpt-live-h5/duplex-playback.mjs',
   'lab/gpt-live-h5/markdown.mjs', 'lab/gpt-live-h5/vendor/marked-18.0.5.mjs', 'lab/gpt-live-h5/vendor/marked-LICENSE',
   'lab/gpt-live-h5/index.html', 'lab/gpt-live-h5/app.js', 'lab/gpt-live-h5/styles.css',
+  'lab/gpt-live-h5/media-references.mjs', 'lab/gpt-live-h5/screen-wake-lock.mjs',
+  'lab/gpt-live-h5/content-view.mjs', 'lab/gpt-live-h5/product-controls.mjs',
   'lab/gpt-live-h5/microphone-capture.mjs', 'lab/gpt-live-h5/microphone-session.mjs', 'lab/gpt-live-h5/transcript-presentation.mjs',
   'lab/gpt-live-h5/call-sounds.mjs', 'lab/rtc-h5/assets/v-idle-nohat-20260922.png',
   'lab/gpt-live-h5/relay-audio.mjs', 'lab/realtime-direct-tools/session.mjs',
+  'lab/realtime-direct-tools/transcript-log.mjs',
   'lab/realtime-direct-tools/tool-start-audio.mjs',
   'lab/realtime-direct-tools/assets/tool-start-provenance.json',
   'lab/realtime-direct-tools/assets/tool-start-memory.pcm',

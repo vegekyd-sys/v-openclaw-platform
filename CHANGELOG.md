@@ -11,6 +11,163 @@
 
 ---
 
+## v-voice-content-product-20261011
+
+上线：2026-10-11 02:27 CST 启动生产 Gateway，02:34 CST 切换 H5；tag `v-voice-content-product-20261011`。
+
+**摘要**：Voice 使用简洁的 Web/H5 通话布局，报告和图片、视频可展开阅读；默认豆包 SeedDuplex，展示真实模型名；补回打招呼文字，挂断清空聊天、文档和输入，回到首次进入状态。通话期间申请 Screen Wake Lock，浏览器后台或不支持时遵循系统行为。
+
+**来源**：共享 VLab `voice-content-product-20261011-v3`，已验收源码 `b93d0585b38dbf649f2dd999612d37be1f063b9c`（#307、#330、#332）；产物 SHA256 `b8f3387b2c9cb33bc84e4289dcfe73feb034006f70cec2b4eb405d78a8a734a2`。H5 固定同一提交，139 文件总指纹 `36b39a668767a4da812d6a6d23acb468907c20ba8244c1a08a8ddcc2633e8058`。#333 仅修正头像目录计数，不改变上线字节。
+
+**真实运行文件差异**（对上一生产捕获逐文件比较）：
+- `core` realtime-quicksilver-session-B3HKftDE.js：f0b01553 → 22ae5c48，后台完整文档保留给屏幕，语音输出简短摘要；媒体 URL 不进入过程口播。
+- `core` talk-DkFuKRod.js：2d740a7c → dc6d6e9f，相同后台文档与摘要策略。
+- Worker、飞书、钉钉、企微捕获无文件变化。此捕获不是将 dev 上其他修改重新部署一次。
+
+**验收**：共享 VLab 真实 GPT Live 图片读取、完整文档、短口播、继续对话和挂断复位通过；SeedDuplex/Grok 通话以及 Candidate 视频播放证据按同一字节基线复用。生产默认 SeedDuplex、真实开场文字、合成语音提问和回答、挂断复位已通过。物理 iPhone 不熄屏和听感尚未在本轮自动验收。
+
+**运维**：用户授权核对并暂停旧夜班任务。4 条登记实际为 10/9 孤儿运行，原生取消显示不存在；一致性备份任务/业务库，保留 365 项文件和已有付费生成结果，退出旧登记，不重新生成或重试。启动后登记显示 failed，原业务卡片仍为 1 done、3 blocked。两条额外飞书运行自然完成后才停止 Gateway。原 Gateway PID 963964 正常退出，新 PID 1158451；生产配置 SHA256 未改变；临时停止参数已移除。共享 VLab 已 align 到本次生产产物。
+
+回滚：Gateway 用 `node scripts/promote-to-v.mjs --undo /opt/v-release-backups/v-voice-content-product-20261011-20261010T182048` 后按流程重启；H5 恢复上一入口 `/opt/openclaw-voice-h5/releases/gpt-live-52eefaab221ed8e1e20d439133875ee2cfcb4b19/lab/gpt-live-h5`。备份保留在 V 的 `/var/lib/v-voice-release/voice-content-product-20261011-v3`，不含在 Git 中。
+
+## v2026.9.1-db91.6-night-batch-20261010
+
+上线：2026-10-10 23:03 CST（v-self-restart `20261010-225957-0e63`，22:59:57 请求，196 s 就绪，清掉 2 条 Codex 孤儿登记）  ·  tag `v2026.9.1-db91.6-night-batch-20261010`
+
+**摘要**：Tianyi 10/10 定的晚间批次，一次重启上三件事。
+- **#322 /vds 看图不再撑爆请求体**：DeepSeek Codex 线程关掉 Codex 原生 view_image，改用 OpenClaw view_image（JPEG、每张 ≤1 MB）；OpenClaw view_image 长边 1200 → 2048（DeepSeek 看到的像素与原图相同）；413 / 请求体过大时清掉线程绑定，下一条消息换新线程。起因：10/10 11:41 起张寒冰私聊每条都 413——Codex 原生 view_image 原样存 PNG（单张至 13.4 MB），DeepSeek 无状态、每次整段重发、上限 48 MiB。对比与证据见 `experiments/vds-image-context/README.md`。
+- **#317（#316 的 v2）工具调用后的 NO_REPLY 不再冒英文兜底句**（10/10 15:03 群里加 👍 后出现 "The tool run finished, but no final summary was produced…"）。
+- **#318 → #324 没有正文的流式卡片撤回**，不再留只有页脚的空卡片；#318 条件写错（每张卡都带任务状态对象），共享 VLab 真实飞书复验时抓到，#324 改为按任务状态行判断。已知副作用：卡片撤回前会闪现约 3 秒，飞书可能留「撤回了一条消息」提示，Tianyi 接受。
+
+**重启后的一次性影响**：每个已有 /vds 会话的第一条消息换一次新线程（会话记录投影续上上下文）；默认 harness 看图长边变 2048，DeepSeek 每张图多计约 45% token。
+
+**这次的文件**（经 VLab 发版 `night-batch-20261010-v2`，vds-view-image，dev `c85bbc45`，PR #317 #318 #322 #324）
+> 验收（共享 VLab）：真实 /vds 回合两张 1080×1920 PNG 暗号全对、Codex 线程只存 JPEG；升级前已有的 /vds 会话首条消息换线程、7 s 回复、上下文保留；默认 harness 看图回归正常；candidate e8a80d8c 复现 413 卡死、修复后换线程恢复；candidate 67ce0f76 请求体 24.2 → 3.8 MB、追问首字 8.7 → 2.4 s。表情：「VLab 发布验收 B」20:03/20:07 有 THUMBSUP、群里无机器人消息、空卡片 3 s 内撤回、无 "lacked a final answer"。
+> 验收（V，重启后）：专用会话 `agent:makaron:explicit:v-accept-vds-view-image-mv2j8dqp`（deliver:false）两个暗号全对、线程只存 JPEG、provider deepseek、整轮 23 s（`lab/accept-vds-view-image.mjs`）；表情在「V 生产发布验收 0910」23:11 通过（THUMBSUP、无机器人消息、23:12:04 Discarded streaming card、无追问）。重启后 Gateway 日志无 413 / Cannot reap / lacked a final answer。
+- `core` builtin-openclaw-zQV8Wwjr.js  972d25fe → 3e07c3fa
+- `core` openclaw-tools-BODVdJQD.js  637c86f3 → af27d9ae
+- `feishu` monitor.account-WFdlCDhR.js  763bb8eb → 31238429
+- Codex 插件（npm 管理，不在捕获范围）`thread-lifecycle-DAcEJ_Om.js` c0a9ce77 → a9f76cf4、`dynamic-tools-BU9tmlYm.js` 2de5868b → f3ad9f4d、`side-question-BTZAII4l.js` 9be0ea6c → 1ca216cf、`run-attempt-D1hJO4fX.js` d25e0d91 → bb0b0354
+
+回滚：`node scripts/promote-to-v.mjs --undo /opt/v-release-backups/v2026.9.1-db91.6-night-batch-20261010-20261010T145251`（需重启）。
+
+**记账说明**：本次捕获在 `worker-secret-egress-20261010` 撤回之后（V 的 worker.mjs 为 8b466a60、无 secret-egress-worker.mjs），撤回的捕获与章节在 #327。共享 VLab 的 production-worker 仍是撤回前的字节，align 前需按 V 同步。
+
+## worker-secret-egress-20261010
+
+上线：2026-10-10 18:10 CST  ·  tag `worker-secret-egress-20261010`
+
+**摘要**：凭据库里的 `secret` 条目（飞书凭据卡、`secrets request` 存的）以前在 worker 里的 exec 中是空的：出网代理只在 Gateway 进程里，worker 拿不到占位符，带凭据的请求不带鉴权、一律 403（10/10 群里 /vcc 派子会话调 AgentMail、Vercel 都是这样）。现在 worker 在自己进程里启动同一个原生出网代理，exec 拿到占位符，请求在允许的域名上被替换成真值；发往其他域名的会被代理拒绝（502），回合结束即撤销授权。只换 worker，`vlab.workers.roll` 生效，没有重启 Gateway。V 上验收：新一代 worker 全部 `[worker-secret-egress.1] active`（167–366 ms）；一轮 worker 回合里 `AGENTMAIL_API_KEY` 是占位符、有代理，AgentMail 列收件箱 200，返回 `hey-v@agentmail.to`。
+
+**未完成的记账**：上一版 V 之后、这一版之前，V 还上过 `v2026.9.1-db91.6-batch-20261010-codex-feishu-workboard`、`v2026.9.1-db91.6-firsttext-card-note-20261010b`（捕获与章节在未合并的 #312）和 `batch-20261010c-workboard-sessions-tail`（尚无捕获）。所以下面只列本次的文件；`release-notes.mjs --from release-batch-20261009` 会把那几次的文件也算进来。
+
+**这次的文件**（经 VLab 发版 `worker-secret-egress-20261010-v1`，claude-secret-egress，dev `c0e7f58a`，PR #319）
+> 验收：candidate 同一字节、开启 secrets.egressProxy：开 candidate-b8d46520 值送达（len 40 哈希一致）、未授权域名 502、回合后同一代理凭据 407；关 candidate-907e033e len 0、无代理（复现 V）。共享 VLab 未开启 egressProxy：5/5 worker `disabled-by-config`、预热 5/5，真实回合在 vlab-worker:0 exec 正常。
+- `worker` worker.mjs  8b466a60 → 8c6b2e92
+- `worker` secret-egress-worker.mjs  — → 515e211e
+
+## release-batch-20261009
+
+上线：2026-10-09 01:19 CST（v-self-restart `20261009-011524-19f1`，01:15:24 空闲时请求，191 s 就绪）  ·  tag `release-batch-20261009`
+
+**摘要**：Tianyi 10/09 00:37 定的一批：共享 VLab 验收通过就直接装 V 重启。
+
+- **#292 压缩时的交接摘要不再被当成回复发出。** 10/08 23:30 群 oc_ff5076（/vds）在回合内压缩，用户收到一整段 `# Context Checkpoint Handoff …`，真正的回答丢了。Codex 本地压缩时，摘要以 `rawResponseItem/completed`（phase `final_answer`）在压缩 item 打开期间到达，被插件当成了回复；现在压缩期间的 raw item 不再进入回复。Codex 插件（npm 管理，不在捕获范围）`run-attempt-D1hJO4fX.js` b4553661 → 1264f88b。
+- **同时撤回 F**：`codex-toolset-cover-20261008`（主人与成员交替不换线程）只装到了磁盘、从未重启生效；共享 VLab 对比首字无可测改善，暂缓。`thread-lifecycle-DAcEJ_Om.js` 7ee060b1 → c0a9ce77，即 V 一直在跑的版本。
+- **#285 会话索引预检不再在写锁下全表扫描**（10/08 V 上最长持锁约 10 s，打断聊天）。
+- **#278 / #279 Worker 预热**：会话键检查按库文件只做一次并放进预热；预热抢不到 state-lifecycle 锁时重试，不再整段推迟到首个用户回合。私有 VLab A/B：冷启动 command→model P95 约 7 → 4–5 s。这两个 PR 10/08 合入 dev 时以 VLab 发版 `firsttext-r5-prewarm-20261008` 准备过，但那一版没有到 V（V 上没有任何 r5 文件，上面「r5 同一次重启生效」的说法不准确），这次才上。
+
+验收（共享 VLab，01:10–01:13）：约 31 万 token 的 /vds 会话在第二轮回合内压缩，回复是真正的答案（旧代码同形状返回 `**Handoff Summary**`）；续用 4 轮一个线程、首字 2.0–4.2 s；vds↔vcodex 4/4；Worker 预热 10/10 ready、无推迟；预检无退回或报错。V 重启后：Worker 预热 5/5 ready（会话键 350–485 ms）。监控 `batch-watch-20261009`（V 上 systemd，至 11:27）盯交接摘要外泄、预检慢持锁、预热未就绪、Codex 回合报错，出问题直发飞书。
+
+另：#287（v-memory-indexer 分批短事务）10/08 已直接装到 V 的 `/opt/v-sentinel/`（独立服务，不在 Gateway 发版链里），之前的章节漏记。
+
+相对上一版 `codex-toolset-cover-20261008`：4 个文件变化（Codex 插件的两个文件不在捕获范围内）。
+
+**经 VLab 发版 `release-batch-20261009`**（codex-compaction-summary，dev `b38982e8`）
+- `core` agent-command-DPfawBbr.js  150d9003 → e3cab0b4
+- `core` session-accessor.sqlite-transcript-state-Cz9g7S9v.js  dd00be09 → 792b1c75
+- `core` session-transcript-reconcile-j5qhAafV.js  e95bb26a → b63bdf05
+- `worker` worker.mjs  024306ae → 8b466a60
+
+**这期间合入 dev 的 PR**（1 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #292 fix(codex): 压缩时的交接摘要不再被当成回复发出（G），并同批上 #285
+
+---
+
+## codex-toolset-cover-20261008
+
+上线：待重启生效（2026-10-08 22:41 CST 装到 V 磁盘）  ·  tag `codex-toolset-cover-20261008`
+
+**摘要**：修同一个群里主人和普通成员交替发言时，每换一次人就新开 Codex 线程、重放整段历史的问题。主人回合比成员多 12 个顶层工具（`nodes`、`gateway`、`terminal`、`conversations_*`、`codex_plugins` 等，`openclaw_direct` 里还有 `computer`），有些工具描述也跟着变，Codex 线程的工具清单在创建时固定，于是工具指纹一变就换线程。现在指纹不同时先读线程实际记录的工具：本回合每个工具在线程里都有同名、参数相同的版本（描述可不同），就续用这个线程。权限不放宽，工具调用只按本回合授权执行，成员调用主人专属工具返回 `Unknown OpenClaw tool`。方向是单向的：主人第一次发言仍换一次线程，之后两人共用主人线程。
+
+Codex 插件（npm 管理）`thread-lifecycle-DAcEJ_Om.js` c0a9ce77 → 7ee060b1，经 VLab 发版 `codex-toolset-cover-20261008`（dev `fc8c04cb`，PR #289），旧文件在 `/opt/v-release-backups/codex-toolset-cover-20261008-20261008T144149/`；改动不在捕获范围内，所以下面的文件比对是 0。共享 VLab 验收：一个 /vds 会话、成员先说再交替 6 轮，2 个线程（109/122 个工具），成员 3 轮都留在主人线程，缓存 99% 以上，首字 2.2–2.5 s；续用与 vds↔vcodex 切换回归通过。
+
+相对上一版 `v2026.9.1-db91.6-big-session-reads-20261008`：0 个文件变化。
+
+---
+
+## v2026.9.1-db91.6-big-session-reads-20261008
+
+上线：2026-10-08 22:14 CST（v-self-restart 20261008-221101-b85e 重启生效）  ·  tag `v2026.9.1-db91.6-big-session-reads-20261008`
+
+**摘要**：大会话不再整段同步读取（PR #286）。vlab-worker 每轮结束只读会话尾部，不再把整段历史经 IPC 回传；vcodex/vds 回合开始只读最近压缩之后的上下文窗口，Gateway 主线程不再被 70–160 MB 的会话冻住 3–11 s（VLab：3.0–3.4 s → 114–167 ms，vds 回合由失败变为成功）。上线后 V 上 worker 读取 p50 286 ms → 13 ms。新的 operationLabel `session context window read`；`OPENCLAW_V_CONTEXT_WINDOW_READ=0` 可退回全量扫描。
+
+相对上一版 `codex-memory-flush-transient-20261008`：2 个文件变化。
+
+**经 VLab 发版 `big-session-reads-v1`**（claude-big-session-reads，dev `6b3cff70`）
+> 验收：2026-10-08 22:00 CST big-session-reads-v1 (PR #286, dev 6b3cff70): shared VLab regression - deepseek-flash via vlab-worker 2 turns with exec (session vlab-dev-bsr-accept-flash-1791467922143) ok; /vds switch + 2 Codex turns with exec and recall (vlab-dev-bsr-accept-vds-1791467956) ok, second turn recalled the first turn tool output; no errors in journal. Effect evidence from candidate (same runtime…
+- `core` session-manager-CNTG_BAJ.js  8db52c1a → ce091fda
+- `worker` harness-result.mjs  c1be75be → 76840da2
+
+**这期间合入 dev 的 PR**（1 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #289 fix(codex): 主人与成员交替发言不再换线程
+
+## codex-memory-flush-transient-20261008
+
+上线：2026-10-08 21:09 CST（16:58 装到 V 磁盘）  ·  tag `codex-memory-flush-transient-20261008`
+
+**摘要**：Tianyi 允许 21:00 后重启；V 由 codexft-idle-restart-20261008.timer 在 21:05:29 空闲时请求重启（v-self-restart `20261008-210529-4007`），21:09:03 就绪，同一次重启生效的还有 #205（Codex 孤儿登记启动前清理）和首字线 r5（各自记账）。
+
+修的是 #275 上线后大群仍然每条消息新开 Codex 线程：大会话回复后空闲时跑的推迟记忆整理（#243）只有 read/write 两个工具，插件为它开新线程并把会话的 Codex 绑定改写成它，下一条用户消息工具集不符只能再开新线程、重放 40 多万 token。现在 `trigger === "memory"` 的回合走临时线程、不写回绑定（与 report_only 同一条路径）。Codex 插件（npm 管理）`thread-lifecycle-DAcEJ_Om.js` e7c2208f → c0a9ce77，经 VLab 发版 `codex-memory-flush-transient-20261008`（dev `a6b146fa`），旧文件在 `/opt/v-release-backups/codex-memory-flush-transient-20261008/`；改动不在捕获范围内，所以下面的文件比对是 0。
+
+V 线上（21:09–21:37）：重启前 17:40–21:05 记忆整理 7 次中 6 次夺走绑定；重启后整理 3 次、0 次夺走绑定。oc_b4346bd5 一个线程连续 7 轮（重启后首轮补全量 46 万并压缩一次，之后每轮 12–16 万、缓存 97–98%）；你的私聊线程 d694 跨重启续用。
+
+**已知**：同一大群里主人与普通成员交替发言时工具集不同（106 vs 94），每次切换仍会新开线程（oc_b4346bd5 21:28）；DeepSeek 窗口仍是 258,400；压缩时交接摘要会存进会话记录（飞书未见外发）。
+
+相对上一版 `codex-vds-oversized-20261008`：0 个文件变化。
+
+**这期间合入 dev 的 PR**（10 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #286 fix: 大会话不再整段同步读取（worker 尾部读取 + 上下文窗口读取）
+- #285 perf(sessions): transcript index preflight without a full scan under the writer
+- #284 fix(ops): Codex 孤儿登记清理的 drop-in 要排在 db91 的清空之后（#205 补丁）
+- #282 fix(sentinel): 压缩后重试不再报「回复断掉」，补上长回合漏报
+- #205 Clear dead Codex app-server registrations before the Gateway starts
+- #283 撤回首字小修复 #260 #261 #268（未上 V）
+- #281 firsttext: revert #260, #261, #268 from dev
+- #277 fix(codex): 记忆整理回合用临时线程，不再改写会话的 Codex 绑定
+- #278 VLab A/B (private candidate, 5 Workers, 8 concurrent cold turns, alternating ON/OFF ×2+2): command->model P95 7.0–7.5 -> 4.2–4.9 s, max 8.7–9.6 -> 4.8–5.8 s, in-turn scan 3.6–4.1 s CPU -> ≤6 ms; P50 unchanged; replies unaffected.
+- #272 release: v2026.9.1-db91.6-voice-reliability-20261008
+
+## codex-vds-oversized-20261008
+
+上线：2026-10-08 13:46 CST  ·  tag `codex-vds-oversized-20261008`
+
+**摘要**：Tianyi 于 2026-10-08 批准（「只上第二处」「现在上，空闲时重启」）。大会话里 /vds 不再每轮换 Codex 线程、重放整段历史并压缩：群 oc_64bcd621…（约 43–44 万 token）此前每轮都 `native transcript exceeded active token limit; starting a fresh thread`，首字 19–27 s，带工具的回合还要 Codex 压缩一次。原因是 Codex 不认识 deepseek-flash，按 272,000 兜底窗口（生效 258,400），新线程灌入的历史本身就超限，下一轮又被换掉。现在 DeepSeek 线程超限时保留线程、交给 Codex 自己压缩后续用（日志 `keeping oversized DeepSeek thread for native compaction`），字节上限保险和 GPT 不变。
+
+改动不在 V 捕获范围内，所以下面的文件比对是 0：Codex 插件（npm 管理）`run-attempt-D1hJO4fX.js` 564374a6 → b4553661，经 VLab 发版 `codex-vds-oversized-20261008`（codex-vds-oversized，dev `4dd61571`），旧文件在 `/opt/v-release-backups/codex-vds-oversized-20261008/`。共享 VLab 验收：约 33 万 token 会话 3 轮同一线程、只压缩一次、第三轮缓存 99.8%；常规回归通过。
+
+重启：2026-10-08 13:43:06 空闲时请求（v-self-restart `20261008-134306-b8b7`），13:46:23 就绪（166 s），清掉 2 条 Codex 孤儿登记。
+
+**已知、未修**：DeepSeek 线程压缩时 Codex 把交接摘要写成一条 final_answer；若模型紧接着直接回答（中间没有工具调用），OpenClaw 可能把摘要当回复发出（VLab 复现，V 上至今未见）。另：DeepSeek 窗口仍是 258,400，提到 100 万需改全局 Codex 模型目录，暂不做（见 `lab/release-files/codex-firsttext/README.md`）。
+
+相对上一版 `v2026.9.1-db91.6-voice-reliability-20261008`：0 个文件变化。
+
+**这期间合入 dev 的 PR**（4 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #275 fix(codex): 大会话 /vds 不再每轮换线程、每轮压缩
+- #261 首字：isInstalledPluginEnabled 复用已规范化的插件配置
+- #260 首字：内置 chat channel id 查找结果按进程记住
+- #268 feishu: 发送人名/群名缓存过期后不再阻塞消息分发（首字）
+
 ## v2026.9.1-db91.6-voice-reliability-20261008
 
 上线：2026-10-08 01:33–01:39 CST  ·  tag `v2026.9.1-db91.6-voice-reliability-20261008`

@@ -260,6 +260,8 @@ export class SeeduplexRealtimeVoiceBridge {
     this.pendingWorkingSpeech = undefined;
     this.responseActive = false;
     this.injectedSpeech = false;
+    this.greetingRequested = false;
+    this.pendingGreeting = null;
     this.retiredResponses = new Set();
     this.audioResponseId = null;
     this.responseOwnerAnnounced = false;
@@ -404,10 +406,14 @@ export class SeeduplexRealtimeVoiceBridge {
   }
 
   triggerGreeting(instructions) {
+    if (!this.ready || this.terminal || this.greetingRequested) return;
     // Seeduplex conversation.item.create injects paired history; it does not
     // trigger an assistant turn. SayHello is the documented speech event.
+    const text = this.request.greetingText ?? "天意，你好，我是 V，在呢。";
+    this.greetingRequested = true;
+    this.pendingGreeting = { text, started: false, responseId: null };
     this.#send({type: "speech_text_buffer.commit", event_id: `event_${randomUUID()}`,
-      text: this.request.greetingText ?? "天意，你好，我是 V，在呢。"});
+      text});
   }
 
   handleBargeIn() {
@@ -420,6 +426,7 @@ export class SeeduplexRealtimeVoiceBridge {
     // untouched. The upstream response is cancelled only once the user is
     // confirmed to have actually said something, in #cancelUpstreamResponse.
     this.request.onClearAudio?.("barge-in");
+    this.pendingGreeting = null;
     this.bargeInPending = true;
     // Host-injected backend speech may postpone native ASR until its TTS ends.
     // A client speech onset must retire that playback, not wait for ASREnded.
@@ -564,6 +571,14 @@ export class SeeduplexRealtimeVoiceBridge {
       this.outputClosed = false;
       this.responseActive = true;
       this.audioResponseId = responseId;
+      if (this.pendingGreeting) {
+        if (event.tts_type === "chat_tts_text" && !this.pendingGreeting.started) {
+          this.pendingGreeting.started = true;
+          this.pendingGreeting.responseId = responseId;
+        } else if (event.tts_type === "default" || responseId !== this.pendingGreeting.responseId) {
+          this.pendingGreeting = null;
+        }
+      }
       if (event.tts_type === "default") this.injectedSpeech = false;
     }
 
@@ -699,6 +714,15 @@ export class SeeduplexRealtimeVoiceBridge {
     ) {
       try {
         const audio = decodeSeeduplexFloat32Pcm(event.delta);
+        const greeting = this.pendingGreeting;
+        if (audio.length && greeting?.started &&
+          (!responseId || responseId === greeting.responseId) &&
+          (this.audioResponseId ?? responseId ?? null) === greeting.responseId) {
+          // SayHello returns PCM but no output_text events. Publish the exact
+          // submitted speech only when its first valid audio frame arrives.
+          this.pendingGreeting = null;
+          this.request.onTranscript?.("assistant", greeting.text, true, "greeting");
+        }
         this.request.onAudio(audio, { ...(this.injectedSpeech ? {source:"injected-speech"} : {}), responseId: this.audioResponseId ?? responseId });
         this.request.onMark?.(`seeduplex-audio-${randomUUID()}`);
       } catch {
@@ -706,6 +730,7 @@ export class SeeduplexRealtimeVoiceBridge {
       }
     }
     if (type === "response.output_audio.done") {
+      this.pendingGreeting = null;
       this.request.onAudioSegmentDone?.();
       const continuing = this.toolBatches.find(
         (batch) =>

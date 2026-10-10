@@ -5,6 +5,8 @@
 //   node codex-firsttext-shared-accept.mjs patch   --owner O --patch <patch-codex-firsttext.mjs>
 //   node codex-firsttext-shared-accept.mjs restart --owner O
 //   node codex-firsttext-shared-accept.mjs run     --owner O --label L --bigKey <session key>
+//   node codex-firsttext-shared-accept.mjs toolset --owner O --label L [--seedWords N]  # owner and member turns share one thread
+//   node codex-firsttext-shared-accept.mjs swap    --owner O --tl <thread-lifecycle.js> --sha <sha256>
 //   node codex-firsttext-shared-accept.mjs restore --owner O         # byte-for-byte from backup, then restart
 //
 // The codex plugin lives under state/npm, outside the release channel's runtime
@@ -68,7 +70,7 @@ function gatewayEnv() {
 
 let client;
 const runs = new Map();
-async function connect() {
+async function connect(scopes = ["operator.read", "operator.write", "operator.admin"]) {
   const env = gatewayEnv();
   const cfg = JSON.parse(fs.readFileSync(CONFIG, "utf8"));
   const token = String(cfg.gateway.auth.token).replace(/\$\{([^}]+)\}/gu, (_, k) => env[k] ?? "");
@@ -77,7 +79,7 @@ async function connect() {
     const timer = setTimeout(() => reject(new Error("connect deadline")), 30_000);
     client = new GatewayClient({
       url: `ws://127.0.0.1:${PORT}`, token, deviceIdentity: null, clientName: "cli", mode: "cli", caps: ["tool-events"],
-      scopes: ["operator.read", "operator.write", "operator.admin"],
+      scopes,
       onEvent(e) {
         const p = e.payload;
         const r = runs.get(p?.runId);
@@ -104,11 +106,11 @@ async function connect() {
 }
 const call = (method, params, timeoutMs = 30_000) => client.request(method, params, { timeoutMs });
 
-async function send(key, message) {
+async function send(key, message, via = client) {
   const id = randomUUID();
   const r = { id, sentAt: Date.now(), streams: {}, reasoningChars: 0 };
   runs.set(id, r);
-  await call("chat.send", { agentId: "makaron", sessionKey: key, message, deliver: false, idempotencyKey: id, timeoutMs: 300_000 });
+  await via.request("chat.send", { agentId: "makaron", sessionKey: key, message, deliver: false, idempotencyKey: id, timeoutMs: 300_000 }, { timeoutMs: 30_000 });
   const deadline = Date.now() + 330_000;
   while (!r.terminal && Date.now() < deadline) await sleep(250);
   return r;
@@ -126,20 +128,20 @@ function journal(sinceMs, re) {
 function rollouts(sinceMs) {
   const files = spawnSync("bash", ["-c", `find ${CODEX_HOME}/sessions -name 'rollout-*.jsonl' -newermt @${Math.floor(sinceMs / 1000)} | sort`], { encoding: "utf8" }).stdout.split("\n").filter(Boolean);
   return files.map((f) => {
-    let model = "", threadId = "", turns = 0;
+    let model = "", threadId = "", turns = 0, tools = null;
     const usage = [], errors = [];
     let reasoningText = 0;
     for (const line of fs.readFileSync(f, "utf8").split("\n").filter(Boolean)) {
       let e; try { e = JSON.parse(line); } catch { continue; }
       const p = e.payload ?? {};
-      if (e.type === "session_meta") threadId = p.id ?? threadId;
+      if (e.type === "session_meta") { threadId = p.id ?? threadId; tools = (p.dynamic_tools ?? []).length; }
       if (e.type === "turn_context") model = p.model;
       if (e.type === "event_msg" && p.type === "task_started") turns += 1;
       if (e.type === "event_msg" && p.type === "error") errors.push(String(p.message).slice(0, 200));
       if (e.type === "event_msg" && p.type === "token_count" && p.info?.last_token_usage) usage.push([p.info.last_token_usage.input_tokens, p.info.last_token_usage.cached_input_tokens]);
       if (e.type === "response_item" && p.type === "reasoning") reasoningText += (p.content ?? []).filter((c) => c.type === "reasoning_text").length;
     }
-    return { threadId: threadId.slice(0, 13), model, turns, usage, reasoningTextItems: reasoningText, errors };
+    return { threadId: threadId.slice(0, 13), model, tools, turns, usage, reasoningTextItems: reasoningText, errors };
   });
 }
 function turnRow(label, scenario, r, extra = {}) {
@@ -295,6 +297,93 @@ if (command === "backup") {
   await restart();
 } else if (command === "run") {
   await run(opt("label"), opt("bigKey"));
+} else if (command === "big") {
+  // A /vds session larger than Codex's 258,400 fallback window: two turns must share one thread.
+  await connect();
+  const label = opt("label") ?? "big";
+  const key = `agent:makaron:explicit:vlab-dev-codexft-${label}-${Date.now().toString(36)}`;
+  const t0 = Date.now();
+  const words = Number(opt("words") ?? 140000);
+  const list = Array.from({ length: words }, (_, i) => `w${i % 997}`).join(" ");
+  await send(key, "/vds");
+  for (const msg of [`Remember this list for later; do not repeat it, just reply OK. ${list}`, "Without using any tools: what was the first word of the list I gave you? Reply in one line.", "Without using any tools: reply with one short sentence about tides."]) {
+    const r = await send(key, msg);
+    log(turnRow(label, "big", r, { reply: (await lastReply(key)).text?.slice(0, 80) }));
+  }
+  log({ label, scenario: "big", rollouts: rollouts(t0) });
+  log({ label, scenario: "big", journal: journal(t0, /keeping oversized DeepSeek|exceeded active token limit|auto-compaction|starting a fresh thread|pre-bind/u).slice(-10) });
+  client.stop?.();
+} else if (command === "flush") {
+  // Big /vds session, wait for the deferred memory flush, then one more turn: the second user
+  // turn must stay on the first turn's Codex thread.
+  await connect();
+  const label = opt("label") ?? "flush";
+  const key = `agent:makaron:explicit:vlab-dev-codexft-${label}-${Date.now().toString(36)}`;
+  const t0 = Date.now();
+  const list = Array.from({ length: Number(opt("words") ?? 140000) }, (_, i) => `w${i % 997}`).join(" ");
+  await send(key, "/vds");
+  const r1 = await send(key, `Remember this list for later; do not repeat it, just reply OK. ${list}`);
+  log(turnRow(label, "flush:turn1", r1));
+  const t1 = Date.now();
+  let ran = [];
+  while (Date.now() - t1 < 8 * 60_000 && !(ran = journal(t1, /memory-flush-deferred\.1\].*"phase":"ran"/u)).length) await sleep(5000);
+  log({ label, scenario: "flush", flushLog: ran.slice(-2), waitedSecs: Math.round((Date.now() - t1) / 1000) });
+  const r2 = await send(key, "Without using any tools: what was the first word of the list I gave you? Reply in one line.");
+  log(turnRow(label, "flush:turn2", r2, { reply: (await lastReply(key)).text?.slice(0, 80) }));
+  log({ label, scenario: "flush", rollouts: rollouts(t0).map((r) => r) });
+  client.stop?.();
+} else if (command === "toolset") {
+  // One /vds session, owner and member turns interleaved. chat.send marks the sender owner only
+  // with operator.admin, and members lose the owner-only tools, so the catalogs differ. A thread
+  // started by the owner covers member turns; the member must still be refused owner-only tools.
+  await connect(["operator.read", "operator.write"]);
+  const member = client;
+  await connect();
+  const label = opt("label") ?? "toolset";
+  const key = `agent:makaron:explicit:vlab-dev-codexft-${label}-${Date.now().toString(36)}`;
+  const t0 = Date.now();
+  await send(key, "/vds");
+  // --seedWords N: a member first loads N filler words (about 2.2 tokens each), so a thread
+  // rotation has a real history to replay, as in V's groups. Keep it under Codex's 244,800-token
+  // auto-compaction limit.
+  const seedWords = Number(opt("seedWords") ?? 0);
+  if (seedWords > 0) {
+    // --salt makes each run's history unique, so DeepSeek's prefix cache from an earlier run
+    // cannot serve this one.
+    const salt = opt("salt") ?? "";
+    const list = Array.from({ length: seedWords }, (_, i) => `${salt}w${i % 997}`).join(" ");
+    log(turnRow(label, "toolset:seed", await send(key, `Remember this list for later; do not repeat it, just reply OK. ${list}`, member)));
+  }
+  const steps = [
+    ["member", "Do not use any tools. Remember the code word OTTER-4 and reply with one short sentence."],
+    ["owner", "Do not use any tools. From our conversation only: what code word was given earlier? One line."],
+    ["member", "Do not use any tools. Remember a second code word LARCH-7 and reply with one short sentence."],
+    ["owner", "Do not use any tools. From our conversation only: list every code word given so far. One line."],
+    ["member", "Call the conversations_list tool once with no arguments and report in one line exactly what it returned (error text included). Do not call any other tool."],
+    ["member", "Do not use any tools. From our conversation only: list every code word given so far. One line."],
+  ];
+  for (const [who, prompt] of steps) {
+    const r = await send(key, prompt, who === "owner" ? client : member);
+    log(turnRow(label, `toolset:${who}`, r, { reply: (await lastReply(key)).text?.slice(0, 200) }));
+  }
+  const files = rollouts(t0);
+  log({ label, scenario: "toolset", threads: files.length, rollouts: files });
+  log({ label, scenario: "toolset", journal: journal(t0, /tool catalog|starting a new thread|transient thread|cross-provider|not available for this turn|pre-bind/u).slice(-16) });
+  const paths = spawnSync("bash", ["-c", `find ${CODEX_HOME}/sessions -name 'rollout-*.jsonl' -newermt @${Math.floor(t0 / 1000)}`], { encoding: "utf8" }).stdout.split("\n").filter(Boolean);
+  const body = paths.map((f) => fs.readFileSync(f, "utf8")).join("\n");
+  log({ label, scenario: "toolset", ownerOnlyProbe: { calls: body.split('"name":"conversations_list"').length - 1, refused: body.split("Unknown OpenClaw tool: conversations_list").length + body.split("not available for this turn").length - 2 } });
+  member.stop?.();
+  client.stop?.();
+} else if (command === "swap") {
+  // Put one thread-lifecycle build into the Gateway-loaded copy (state/npm), keeping owner and mode.
+  const src = opt("tl");
+  const want = opt("sha");
+  assert(src && want, "--tl <file> --sha <sha256 prefix> required");
+  assert.equal(sha(src), want.slice(0, 16), "source bytes are not the expected build");
+  const dst = `${CODEX}/dist/thread-lifecycle-DAcEJ_Om.js`;
+  replaceKeepingOwner(dst, fs.readFileSync(src));
+  execFileSync(NODE, ["--check", dst]);
+  log({ swap: dst, sha: sha(dst) });
 } else if (command === "models") {
   await connect();
   for (const [method, params] of [["models.list", { agentId: "makaron" }], ["models.list", { agentId: "makaron", view: "all" }]]) {

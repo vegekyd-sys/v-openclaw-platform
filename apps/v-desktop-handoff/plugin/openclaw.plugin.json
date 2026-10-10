@@ -1,43 +1,164 @@
 {
   "id": "v-desktop-handoff",
   "name": "V Desktop Handoff",
-  "description": "Lets the agent hand its own desktop browser to a human through a one-time link: watch, take over to log in, hand back.",
+  "description": "Lets the agent hand a desktop (its own, or another configured machine such as the owner's Mac) to a human through a one-time link: watch, take over to log in, hand back.",
   "activation": {
     "onStartup": true
   },
   "contracts": {
-    "tools": ["desktop_handoff_request", "desktop_handoff_status", "desktop_handoff_end"]
+    "tools": [
+      "desktop_handoff_request",
+      "desktop_handoff_status",
+      "desktop_handoff_end"
+    ]
   },
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
-    "required": ["adminTokenFile"],
+    "required": [
+      "adminTokenFile"
+    ],
     "properties": {
-      "adminUrl": { "type": "string" },
-      "adminTokenFile": { "type": "string" },
-      "claimTtlMs": { "type": "integer", "minimum": 60000, "maximum": 3600000 },
-      "sessionTtlMs": { "type": "integer", "minimum": 60000, "maximum": 14400000 },
-      "blockBrowserWhileControlled": { "type": "boolean" },
-      "cliActorUserId": { "type": "string" },
-      "trustCliAsDirect": { "type": "boolean" },
-      "sessionKeyActorFallback": { "type": "boolean" },
-      "controlAnywhere": { "type": "boolean" },
-      "controlAnywhereActors": { "type": "array", "items": { "type": "string" } },
-      "controlAnywhereActorsFile": { "type": "string" },
-      "openclawCommand": { "type": "string" },
-      "openclawEntry": { "type": "string" },
-      "messageAccountId": { "type": "string" },
-      "cards": { "type": "boolean" },
-      "nativeCard": { "type": "boolean" },
-      "nativeCardChannels": { "type": "array", "items": { "type": "string" } },
-      "cardImage": { "type": "string", "enum": ["cover", "screenshot"] },
-      "coverImage": { "type": "string" },
-      "desktopDisplay": { "type": "string" },
-      "cardPollMs": { "type": "integer", "minimum": 1000, "maximum": 60000 },
-      "cardChannels": { "type": "array", "items": { "type": "string" } },
+      "adminUrl": {
+        "type": "string"
+      },
+      "adminTokenFile": {
+        "type": "string"
+      },
+      "claimTtlMs": {
+        "type": "integer",
+        "minimum": 60000,
+        "maximum": 3600000
+      },
+      "sessionTtlMs": {
+        "type": "integer",
+        "minimum": 60000,
+        "maximum": 14400000
+      },
+      "blockBrowserWhileControlled": {
+        "type": "boolean"
+      },
+      "cliActorUserId": {
+        "type": "string"
+      },
+      "trustCliAsDirect": {
+        "type": "boolean"
+      },
+      "sessionKeyActorFallback": {
+        "type": "boolean"
+      },
+      "controlAnywhere": {
+        "type": "boolean"
+      },
+      "controlAnywhereActors": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "controlAnywhereActorsFile": {
+        "type": "string"
+      },
+      "openclawCommand": {
+        "type": "string"
+      },
+      "openclawEntry": {
+        "type": "string"
+      },
+      "messageAccountId": {
+        "type": "string"
+      },
+      "cards": {
+        "type": "boolean"
+      },
+      "nativeCard": {
+        "type": "boolean"
+      },
+      "nativeCardChannels": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "cardImage": {
+        "type": "string",
+        "enum": [
+          "cover",
+          "screenshot"
+        ]
+      },
+      "coverImage": {
+        "type": "string"
+      },
+      "desktopDisplay": {
+        "type": "string"
+      },
+      "cardPollMs": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 60000
+      },
+      "cardChannels": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
       "principalAliases": {
         "type": "object",
-        "additionalProperties": { "type": "string" }
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "targets": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "adminUrl",
+            "adminTokenFile"
+          ],
+          "properties": {
+            "adminUrl": {
+              "type": "string"
+            },
+            "adminTokenFile": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "subject": {
+              "type": "string"
+            },
+            "cardTitle": {
+              "type": "string"
+            },
+            "machine": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "cardImage": {
+              "type": "string",
+              "enum": [
+                "cover",
+                "screenshot"
+              ]
+            },
+            "coverImage": {
+              "type": "string"
+            },
+            "desktopDisplay": {
+              "type": "string"
+            },
+            "computerNode": {
+              "type": "string"
+            }
+          }
+        }
       }
     }
   }
