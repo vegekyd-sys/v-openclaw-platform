@@ -3,11 +3,13 @@ import assert from "node:assert/strict";
 import { contentItems } from "./content-view.mjs";
 import { createTranscriptPresentation } from "./transcript-presentation.mjs";
 
-test('short backend media caption opens the actual image or video without a report wrapper', () => {
+test('short backend media caption stays with its asset in one deliverable', () => {
   for (const [url, kind] of [['https://cdn.test/a.webp','image'], ['https://cdn.test/a.mp4','video']]) {
     const items = contentItems({key:'media',role:'assistant',complete:true,document:true,text:`童趣赛车画面。\n[赛车](${url})`});
-    assert.deepEqual(items.map(item => item.kind), [kind]);
-    assert.equal(items[0].url,url);
+    assert.equal(items.length, 1);
+    assert.equal(items[0].kind, "report");
+    assert.deepEqual(items[0].media.map(item => item.kind), [kind]);
+    assert.equal(items[0].media[0].url,url);
   }
 });
 
@@ -74,7 +76,7 @@ test("only explicit image/video references become media; unrelated links stay Ma
     text: "![画面](https://cdn.test/a.webp)\n[影片](https://cdn.test/a.mp4)\n[官网](https://example.test/)",
   });
   assert.deepEqual(
-    contents.map((c) => c.kind),
+    contents[0].media.map((c) => c.kind),
     ["image", "video"],
   );
 });
@@ -117,4 +119,17 @@ test("media-only backend completion opens the media rather than a wrapper report
     contentItems({ ...item, text: "# 方案\n\n介绍\n" + item.text })[0].kind,
     "report",
   );
+});
+
+test("mixed Markdown is one result with exact prose and ordered media", () => {
+  const text = "# 赛车作品\n\n先看图片。\n\n![图](https://cdn.test/a.webp)\n\n然后是动画。\n\n[视频](https://cdn.test/a.mp4)\n\n[来源](https://example.test/)";
+  const result = contentItems({key:"mixed",role:"assistant",complete:true,document:true,text});
+  assert.equal(result.length,1);
+  assert.equal(result[0].text,text);
+  assert.equal(result[0].title,"赛车作品");
+  assert.deepEqual(result[0].media.map(m=>m.kind),["image","video"]);
+});
+test("multiple media without prose still share one result", () => {
+  const result = contentItems({key:"gallery",role:"assistant",complete:true,text:"![图](https://cdn.test/a.webp)\n![图二](https://cdn.test/b.webp)"});
+  assert.equal(result.length,1); assert.equal(result[0].media.length,2);
 });

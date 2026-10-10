@@ -1094,3 +1094,13 @@ body[data-reading="true"] .content-card {
     scroll-behavior: auto !important;
   }
 }
+
+/* Mixed Markdown keeps its original reading order inside one result. */
+.markdown-media { display: block; margin: 20px 0; }
+.markdown-media .media-asset { max-width: 100%; width: auto; height: auto; margin: 0 auto; }
+.reader-layer[data-kind="report"] .markdown-media .media-asset { max-height: 65vh; }
+.markdown-media video.media-asset { width: 100%; background: #261d2d; }
+.markdown-media .media-error { display: block; margin-top: 8px; }
+.markdown-media .media-error[hidden] { display: none; }
+
+.reader-layer:not([data-kind="report"]) .markdown-media { display: contents; }

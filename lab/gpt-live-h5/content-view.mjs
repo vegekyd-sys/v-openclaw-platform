@@ -12,27 +12,22 @@ export function contentItems(item, base = "https://voice.invalid/voice/") {
     result = [];
   const document = item.document === true || item.speaker === "V · 完整方案";
   const media = mediaReferences(text, base);
-  const mediaOnly = text.replace(/!?\[[^\]]*\]\([^)]*\)/gu, "").trim() === "";
-  if (
-    (document && !mediaOnly && (media.length === 0 || text.length > 450 || /^#{1,3}\s/mu.test(text))) ||
-    text.length > 1100 ||
-    (/^#{1,3}\s/mu.test(text) && text.length > 450)
-  ) {
-    const title = text.match(/^#{1,3}\s+(.+)$/mu)?.[1] ?? "完整结果";
-    const first =
-      text
-        .split(/\n\s*\n/u)
-        .map(plain)
-        .find((value) => value && value !== plain(title)) ?? "";
+  const caption = text.replace(/!?\[[^\]]*\]\([^)]*\)/gu, "").trim();
+  // A completed reply is one deliverable. Keep the exact Markdown and order;
+  // only a single media reference with no prose uses the frameless viewer.
+  if (media.length === 1 && !caption) {
+    return [{id: item.key + ":result", text, ...media[0]}];
+  }
+  if (media.length || document || text.length > 1100 ||
+      (/^#{1,3}\s/mu.test(text) && text.length > 450)) {
+    const title = text.match(/^#{1,3}\s+(.+)$/mu)?.[1] ?? media[0]?.title ?? "完整结果";
+    const first = caption.split(/\n\s*\n/u).map(plain)
+      .find(value => value && value !== plain(title)) ?? "";
     result.push({
-      id: item.key + ":report",
-      kind: "report",
-      title: plain(title).slice(0, 80),
-      summary: first.slice(0, 120),
-      text,
+      id: item.key + ":result", kind: "report", title: plain(title).slice(0, 80),
+      summary: first.slice(0, 120), text, media,
     });
   }
-  for (const entry of media) result.push({id: item.key + ":media:" + result.length, ...entry});
   return result;
 }
 
@@ -120,32 +115,32 @@ export function createContentView(document, window) {
     document.body.dataset.reading = "true";
     $("readerTitle").textContent = content.title;
     body.replaceChildren();
-    if (content.kind === "report") renderMarkdown(body, content.text, document);
-    else {
-      const media = document.createElement(
-        content.kind === "video" ? "video" : "img",
-      );
+    const asset = (entry) => {
+      const media = document.createElement(entry.kind === "video" ? "video" : "img");
       media.className = "media-asset";
-      if (content.kind === "video") {
-        media.controls = true;
-        media.playsInline = true;
-        media.preload = "none";
-      } else {
-        media.alt = content.title;
-        media.decoding = "async";
-      }
-      // Only an opened card loads its media. No model HTML or iframes run.
-      media.referrerPolicy = "no-referrer";
-      media.src = content.url;
-      const failure = document.createElement("p");
-      failure.className = "media-error";
-      failure.hidden = true;
+      if (entry.kind === "video") {
+        media.controls = true; media.playsInline = true; media.preload = "none";
+        media.setAttribute("aria-label", entry.title);
+      } else { media.alt = entry.title; media.decoding = "async"; }
+      media.referrerPolicy = "no-referrer"; media.src = entry.url;
+      const wrap = document.createElement("span");
+      wrap.className = "markdown-media";
+      const failure = document.createElement("span");
+      failure.className = "media-error"; failure.hidden = true;
       failure.textContent = "内容暂时无法加载，可以收起后重试。";
-      media.addEventListener("error", () => {
-        failure.hidden = false;
-      });
-      body.append(media, failure);
-    }
+      media.addEventListener("error", () => { failure.hidden = false; });
+      wrap.append(media, failure); return wrap;
+    };
+    if (content.kind === "report") {
+      const loaded = new Set();
+      const entries = new Map(content.media.map(entry => [entry.url, entry]));
+      renderMarkdown(body, content.text, document, {media: href => {
+        let url; try { url = new URL(href, window.location.href).href; } catch { return null; }
+        const entry = entries.get(url); if (!entry) return null;
+        if (loaded.has(url)) return document.createDocumentFragment();
+        loaded.add(url); return asset(entry);
+      }});
+    } else body.append(asset(content));
     if (content.kind === "report") {
       const blob = new Blob([content.text], {
         type: "text/markdown;charset=utf-8",
@@ -169,7 +164,7 @@ export function createContentView(document, window) {
     layer.dataset.closing = "true";
     const from = surface.getBoundingClientRect(),
       to = origin?.isConnected ? origin.getBoundingClientRect() : from;
-    body.querySelector("video")?.pause();
+    for (const video of body.querySelectorAll("video")) video.pause();
     if (!immediate) await morph(from, to, true);
     if ($("readerDownload").getAttribute("href")?.startsWith("blob:"))
       URL.revokeObjectURL($("readerDownload").href);
@@ -222,26 +217,6 @@ export function createContentView(document, window) {
         return;
       }
       target.replaceChildren();
-      if (!contents.some((content) => content.kind === "report")) {
-        const remaining = item.text
-          .replace(
-            /!?\[[^\]]*\]\(([^\s)]+)(?:\s+"[^"]*")?\)/gu,
-            (match, href) => {
-              try {
-                return contents.some(
-                  (content) =>
-                    content.url === new URL(href, window.location.href).href,
-                )
-                  ? ""
-                  : match;
-              } catch {
-                return match;
-              }
-            },
-          )
-          .trim();
-        if (remaining) renderMarkdown(target, remaining, document);
-      }
       for (const content of contents) {
         const card = document.createElement("button");
         card.type = "button";
@@ -262,7 +237,7 @@ export function createContentView(document, window) {
         title.textContent = content.title;
         subtitle.textContent =
           content.kind === "report"
-            ? "完整文档 · 展开阅读"
+            ? content.media?.length ? "展开查看" : "完整文档 · 展开阅读"
             : content.kind === "video"
               ? "视频 · 点击播放"
               : "图片 · 查看大图";
@@ -281,7 +256,7 @@ export function createContentView(document, window) {
         // Short factual lookups remain quiet cards; reports and explicit media
         // can open automatically while the current call is connected.
         const shouldOpen =
-          content.kind !== "report" ||
+          content.kind !== "report" || content.media?.length > 0 ||
           item.text.length > 450 ||
           /^#{1,3}\s/mu.test(item.text);
         if (auto && shouldOpen && !automatic.has(content.id)) {
