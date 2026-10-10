@@ -24,25 +24,37 @@ export function patchBackendResultController(source) {
   return source;
 }
 export function patchBackendResultBroker(source) {
-  if(source.includes('// voice-backend-document-broker-v2'))return source;
+  if(source.includes('// voice-backend-document-broker-v3'))return source;
+  if(source.includes('// voice-backend-document-broker-v2')) {
+    const policy=/const BACKEND_RESULT_INSTRUCTIONS=(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*');/u;
+    assert(policy.test(source),'Backend result policy anchor drifted');
+    return source.replace(policy,()=>`const BACKEND_RESULT_INSTRUCTIONS=${JSON.stringify(BACKEND_RESULT_INSTRUCTIONS)};`)
+      .replace('// voice-backend-document-broker-v2','// voice-backend-document-broker-v3');
+  }
   if(source.includes('// voice-backend-document-broker-v1')) {
     const helper=/function backendResultQuestion\(question\) \{[\s\S]*?\n\}/u;
     assert(helper.test(source),'Backend media question anchor drifted');
-    return (`const MAKARON_MEDIA_INSTRUCTIONS=${JSON.stringify(MAKARON_MEDIA_INSTRUCTIONS)};\n`+source.replace(helper,()=>backendResultQuestion.toString()))
-      .replace('// voice-backend-document-broker-v1','// voice-backend-document-broker-v2');
+    return patchBackendResultBroker((`const MAKARON_MEDIA_INSTRUCTIONS=${JSON.stringify(MAKARON_MEDIA_INSTRUCTIONS)};\n`+source.replace(helper,()=>backendResultQuestion.toString()))
+      .replace('// voice-backend-document-broker-v1','// voice-backend-document-broker-v2'));
   }
   source=once(source,'\t\t\t\trunAgentConsult,','\t\t\t\trunAgentConsult: (params) => runAgentConsult({...params,prompt:typeof offer.request.gatewayControl?.onBackendResult === "function" ? backendResultQuestion(params.prompt) : params.prompt}),');
-  return '// voice-backend-document-broker-v2\n'+`const MAKARON_MEDIA_INSTRUCTIONS=${JSON.stringify(MAKARON_MEDIA_INSTRUCTIONS)};\nconst BACKEND_RESULT_INSTRUCTIONS=${JSON.stringify(BACKEND_RESULT_INSTRUCTIONS)};\n${backendResultQuestion.toString()}\n`+once(source,'\t\t\t\tonCallLifecycleEvent: (event) => offer.request.gatewayControl?.onCallLifecycleEvent?.(event),',
+  return '// voice-backend-document-broker-v3\n'+`const MAKARON_MEDIA_INSTRUCTIONS=${JSON.stringify(MAKARON_MEDIA_INSTRUCTIONS)};\nconst BACKEND_RESULT_INSTRUCTIONS=${JSON.stringify(BACKEND_RESULT_INSTRUCTIONS)};\n${backendResultQuestion.toString()}\n`+once(source,'\t\t\t\tonCallLifecycleEvent: (event) => offer.request.gatewayControl?.onCallLifecycleEvent?.(event),',
     '\t\t\t\tonBackendResult: (result) => offer.request.gatewayControl?.onBackendResult?.(result),\n\t\t\t\tonCallLifecycleEvent: (event) => offer.request.gatewayControl?.onCallLifecycleEvent?.(event),');
 }
 export function patchBackendResultTalk(source) {
-  if(source.includes('// voice-backend-document-talk-v3'))return source;
+  if(source.includes('// voice-backend-document-talk-v4'))return source;
+  if(source.includes('// voice-backend-document-talk-v3')) {
+    const helper=/function mediaReferences\(text, base = 'https:\/\/voice.invalid\/voice\/'\) \{[\s\S]*?\n\}/u;
+    assert(helper.test(source),'Backend media reference anchor drifted');
+    return source.replace(helper,()=>mediaReferences.toString())
+      .replace('// voice-backend-document-talk-v3','// voice-backend-document-talk-v4');
+  }
   if(source.includes('// voice-backend-document-talk-v2')) {
     const helper=/function presentBackendResult\(result\) \{[\s\S]*?\n\}/u;
     assert(helper.test(source),'Backend media helper anchor drifted');
-    return (mediaReferences.toString()+'\n'+source.replace(helper,()=>presentBackendResult.toString()))
+    return patchBackendResultTalk((mediaReferences.toString()+'\n'+source.replace(helper,()=>presentBackendResult.toString()))
       .replace('if(!document?.long)return', 'if(!document?.long && !document?.media)return')
-      .replace('// voice-backend-document-talk-v2','// voice-backend-document-talk-v3');
+      .replace('// voice-backend-document-talk-v2','// voice-backend-document-talk-v3'));
   }
   if(source.includes('// voice-backend-document-talk-v1')) {
     const start=source.indexOf('function readBackendResult('),end=source.indexOf('function extractResultSummary(',start);
@@ -59,6 +71,6 @@ export function patchBackendResultTalk(source) {
 \t\t\t\treturn document.spokenText;
 \t\t\t},
 `;
-  return '// voice-backend-document-talk-v3\n'+`${mediaReferences.toString()}\nconst LONG_RESULT_NOTICE=${JSON.stringify(LONG_RESULT_NOTICE)};\n${readBackendResult.toString()}\n${extractResultSummary.toString()}\n${presentBackendResult.toString()}\n`+
+  return '// voice-backend-document-talk-v4\n'+`${mediaReferences.toString()}\nconst LONG_RESULT_NOTICE=${JSON.stringify(LONG_RESULT_NOTICE)};\n${readBackendResult.toString()}\n${extractResultSummary.toString()}\n${presentBackendResult.toString()}\n`+
     once(source,'\t\t\tonCallLifecycleEvent: (event) => {',method+'\t\t\tonCallLifecycleEvent: (event) => {');
 }
