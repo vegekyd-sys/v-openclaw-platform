@@ -35,6 +35,15 @@
 
 插件依赖 `typebox`，安装脚本把 `node_modules/typebox` 软链到 OpenClaw runtime 里的那份。
 
+## 其他机器：Tianyi 的 Mac（插件 `targets`）
+
+同一份服务代码再起一个实例，连的不是本机 Xtigervnc，而是 Tianyi MacBook Pro 自带的「屏幕共享」（经 Tailscale 直连）。插件配置 `targets` 加一台机器，`desktop_handoff_request` 带 `target: "tianyi-mac"` 就发同一种「电脑」卡（标题「Mac」，文案「你的 Mac」），接管 / 我完成了 / 跳过、状态跟随、页面「交还给 V」唤醒、`before_tool_call` 拦截都一样：插件按 handoff id 找到所属服务（每个服务各问一次），`computer` 工具 `node` 等于目标的 `computerNode` 时看那台机器的控制状态。
+
+- 服务实例：`/etc/v-mac-handoff/config.json`，`pathPrefix: "/mac-handoff"`（公网 23952、管理 23953，cloudflared 加 `^/mac-handoff(?:/.*)?$`），`vnc.host` 为 Mac 的 Tailscale IP，`title: "Tianyi 的 Mac"`，`subject: "你的 Mac"`（领取接口返回，页面文案用它），`layout.enabled: false`（竖屏/松键都是 :99 专用），`serverSideCursor: false`（macOS 不把光标画进画面，要页面自己画）。单元 `v-mac-handoff.service` 与 `v-desktop-handoff.service` 相同，只换配置路径与 `ReadWritePaths=/var/lib/v-mac-handoff`。
+- 插件配置：`targets: {"tianyi-mac": {adminUrl: "http://127.0.0.1:23953", adminTokenFile: "/etc/v-mac-handoff/admin-token", subject: "你的 Mac", cardTitle: "Mac", machine: "Tianyi's own Mac", description: "…", computerNode: "MacBook Pro"}}`。远端机器没有本地 display 可截：卡片图片由该机器的接管服务经 VNC 抓一帧（管理接口 `GET /v1/capture?maxWidth=960`，返回 PNG；`cardImage` 默认 `screenshot`），发卡和完成时各抓一次，抓不到就退回封面；设 `cardImage: "cover"` 可关掉。抓帧优先用 Zlib 编码（3440×1440 的 Mac 约 3.4 MB、约 2 秒），飞书卡片不等截图：先带封面发出/改状态，截图到了再替换图片。
+- Mac 端（只能本人做，要管理员密码）：系统设置 → 共享 → 屏幕共享，打开「VNC 使用者可以使用密码控制屏幕」并填服务的 VNC 密码；再执行 `sudo defaults write /Library/Preferences/com.apple.RemoteManagement VNCAlwaysStartOnConsole -bool true`。不设这一项时，锁屏状态下 VNC 密码连接会被 macOS 接到一块**离屏的虚拟登录窗口**（`screensharingd` 日志：`found off console loginwindow session`、`vfb 1`），能点能打字但解不开真实桌面；设了之后接主屏（`wantConsole 1`、`vfb 0`），人在接管页里自己输登录密码就能远程解锁。
+- 协议差异：macOS 宣告 `RFB 003.889`，服务按 3.8 回应（`lib/rfb-proxy.mjs`）。macOS 只支持 Raw / zlib / ZRLE，不支持 Tight 与 Hextile；noVNC 1.3 没有 ZRLE，3440×1440 的带鱼屏一帧 Raw 约 20 MB，手机上只剩黑屏和几条线。所以 `vendor/novnc-1.3.0` 补了 noVNC 1.4.0 的 `decoders/zrle.js`（接口与 1.3 的 Display / Inflator 相同），排在 TightPNG 之后：TigerVNC 仍选 Tight，行为不变。
+
 ## 测试
 
 ```sh

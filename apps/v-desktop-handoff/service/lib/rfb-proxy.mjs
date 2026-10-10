@@ -82,7 +82,8 @@ export async function connectVnc({ host, port, password, timeoutMs = 10_000 }) {
       socket.once("error", reject);
     });
     const version = (await reader.read(12)).toString("ascii");
-    if (!/^RFB 003\.00[3-8]\n$/u.test(version)) {
+    // macOS Screen Sharing announces "RFB 003.889"; it accepts a 3.8 client, which is what we reply.
+    if (!/^RFB 003\.(?:00[3-8]|889)\n$/u.test(version)) {
       throw new Error(`unexpected RFB version ${JSON.stringify(version)}`);
     }
     socket.write(RFB_VERSION);
