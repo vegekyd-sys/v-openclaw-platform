@@ -1,0 +1,18 @@
+{
+  "support": [
+    "lab/candidate/workboard-dispatch-slots.mjs"
+  ],
+  "databases": [
+    "plugins/workboard/workboard.sqlite"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/workboard-dispatch-slots.mjs"
+  ],
+  "timeoutSeconds": 1800,
+  "user": "lab-db91-parity",
+  "env": {
+    "TARGET_CARDS": "4150",
+    "ROUNDS": "10"
+  }
+}
