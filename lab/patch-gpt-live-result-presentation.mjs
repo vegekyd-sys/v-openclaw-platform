@@ -1,6 +1,6 @@
 import {mediaReferences} from './gpt-live-h5/media-references.mjs';
 import assert from 'node:assert/strict';
-import {presentBackendResult,LONG_RESULT_NOTICE,readBackendResult,extractResultSummary,backendResultQuestion,BACKEND_RESULT_INSTRUCTIONS} from './gpt-live-h5/result-presentation.mjs';
+import {presentBackendResult,LONG_RESULT_NOTICE,readBackendResult,extractResultSummary,backendResultQuestion,BACKEND_RESULT_INSTRUCTIONS,MAKARON_MEDIA_INSTRUCTIONS} from './gpt-live-h5/result-presentation.mjs';
 function once(source,before,after){assert.equal(source.split(before).length-1,1,'Backend document host anchor drifted');return source.replace(before,after);}
 export function patchBackendResultController(source) {
   if(source.includes('// voice-backend-document-controller-v2'))return source;
@@ -24,9 +24,15 @@ export function patchBackendResultController(source) {
   return source;
 }
 export function patchBackendResultBroker(source) {
-  if(source.includes('// voice-backend-document-broker-v1'))return source;
+  if(source.includes('// voice-backend-document-broker-v2'))return source;
+  if(source.includes('// voice-backend-document-broker-v1')) {
+    const helper=/function backendResultQuestion\(question\) \{[\s\S]*?\n\}/u;
+    assert(helper.test(source),'Backend media question anchor drifted');
+    return (`const MAKARON_MEDIA_INSTRUCTIONS=${JSON.stringify(MAKARON_MEDIA_INSTRUCTIONS)};\n`+source.replace(helper,()=>backendResultQuestion.toString()))
+      .replace('// voice-backend-document-broker-v1','// voice-backend-document-broker-v2');
+  }
   source=once(source,'\t\t\t\trunAgentConsult,','\t\t\t\trunAgentConsult: (params) => runAgentConsult({...params,prompt:typeof offer.request.gatewayControl?.onBackendResult === "function" ? backendResultQuestion(params.prompt) : params.prompt}),');
-  return '// voice-backend-document-broker-v1\n'+`const BACKEND_RESULT_INSTRUCTIONS=${JSON.stringify(BACKEND_RESULT_INSTRUCTIONS)};\n${backendResultQuestion.toString()}\n`+once(source,'\t\t\t\tonCallLifecycleEvent: (event) => offer.request.gatewayControl?.onCallLifecycleEvent?.(event),',
+  return '// voice-backend-document-broker-v2\n'+`const MAKARON_MEDIA_INSTRUCTIONS=${JSON.stringify(MAKARON_MEDIA_INSTRUCTIONS)};\nconst BACKEND_RESULT_INSTRUCTIONS=${JSON.stringify(BACKEND_RESULT_INSTRUCTIONS)};\n${backendResultQuestion.toString()}\n`+once(source,'\t\t\t\tonCallLifecycleEvent: (event) => offer.request.gatewayControl?.onCallLifecycleEvent?.(event),',
     '\t\t\t\tonBackendResult: (result) => offer.request.gatewayControl?.onBackendResult?.(result),\n\t\t\t\tonCallLifecycleEvent: (event) => offer.request.gatewayControl?.onCallLifecycleEvent?.(event),');
 }
 export function patchBackendResultTalk(source) {
