@@ -19,6 +19,8 @@ export const H5_PATHS = [
   'lab/gpt-live-h5/server.mjs', 'lab/gpt-live-h5/events.mjs', 'lab/gpt-live-h5/duplex-playback.mjs',
   'lab/gpt-live-h5/markdown.mjs', 'lab/gpt-live-h5/vendor/marked-18.0.5.mjs', 'lab/gpt-live-h5/vendor/marked-LICENSE',
   'lab/gpt-live-h5/index.html', 'lab/gpt-live-h5/app.js', 'lab/gpt-live-h5/styles.css',
+  'lab/gpt-live-h5/media-references.mjs', 'lab/gpt-live-h5/screen-wake-lock.mjs',
+  'lab/gpt-live-h5/content-view.mjs', 'lab/gpt-live-h5/product-controls.mjs',
   'lab/gpt-live-h5/microphone-capture.mjs', 'lab/gpt-live-h5/microphone-session.mjs', 'lab/gpt-live-h5/transcript-presentation.mjs',
   'lab/gpt-live-h5/call-sounds.mjs', 'lab/rtc-h5/assets/v-idle-nohat-20260922.png',
   'lab/gpt-live-h5/relay-audio.mjs', 'lab/realtime-direct-tools/session.mjs',

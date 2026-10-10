@@ -765,3 +765,12 @@ test('spoken summary keeps canonical caller corrections and rejects forged condi
  f.controller.detach();
  }
 });
+
+
+test('compiled GPT Live Talk publishes short media without losing the spoken caption',async()=>{
+ for(const text of ['童趣赛车。\n![赛车](https://cdn.test/car.webp)','五秒赛车视频。\n[赛车视频](https://cdn.test/car.mp4)']) {
+  const f=talkFixture();const spoken=f.owner.control.onBackendResult({delegationId:'media',text});
+  assert.equal(f.emitted.length,1);assert.equal(f.emitted[0].payload.text,text);assert(!spoken.includes('https:'));assert(spoken.includes('赛车'));
+  await f.owner.close();
+ }
+});

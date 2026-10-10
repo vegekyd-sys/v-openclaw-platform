@@ -389,7 +389,11 @@
         "lab/gpt-live-h5/result-presentation.test.mjs",
         "lab/gpt-live-h5/avatar-decision.test.mjs",
         "lab/gpt-live-h5/avatar-reactions.test.mjs",
-        "lab/gpt-live-h5/avatar-telemetry.test.mjs"
+        "lab/gpt-live-h5/avatar-telemetry.test.mjs",
+        "lab/gpt-live-h5/content-view.test.mjs",
+        "lab/gpt-live-h5/product-controls.test.mjs",
+        "lab/gpt-live-h5/screen-wake-lock.test.mjs",
+        "lab/patch-gpt-live-media-policy.test.mjs"
       ]
     }
   ],
