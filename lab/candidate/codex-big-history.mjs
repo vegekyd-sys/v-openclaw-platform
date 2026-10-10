@@ -82,7 +82,9 @@ const VARIANT_FILES = {
     codex: { "run-attempt-D1hJO4fX.js": "tmp/codex-v/run-attempt-D1hJO4fX.js", "attempt-context-DmQUNWwT.js": "tmp/codex-v/attempt-context-DmQUNWwT.js", "session-history-C5J1AKzG.js": "tmp/codex-v/session-history-C5J1AKzG.js" },
   },
   fixed: {
-    core: { "session-manager-CNTG_BAJ.js": "lab/release-files/context-window-read/session-manager-CNTG_BAJ.js", "agent-runner-memory-7VF-zwNt.js": "lab/release-files/memory-flush-defer/agent-runner-memory-7VF-zwNt.js", "agent-runner.runtime-CAdsMsQt.js": "lab/release-files/memory-flush-defer/agent-runner.runtime-CAdsMsQt.js" },
+    core: { "session-manager-CNTG_BAJ.js": "lab/release-files/context-window-read/session-manager-CNTG_BAJ.js", "agent-runner-memory-7VF-zwNt.js": "lab/release-files/memory-flush-defer/agent-runner-memory-7VF-zwNt.js", "agent-runner.runtime-CAdsMsQt.js": "lab/release-files/memory-flush-defer/agent-runner.runtime-CAdsMsQt.js",
+      // TAIL_TIMING=1: the codex-turn-tail core chunks too (lab/patch-codex-turn-tail.mjs)
+      ...(process.env.TAIL_TIMING === "1" ? { "node-sqlite-CL-d6drd.js": "lab/release-files/codex-turn-tail/node-sqlite-CL-d6drd.js", "ws-log-CFwaDvs6.js": "lab/release-files/codex-turn-tail/ws-log-CFwaDvs6.js", "embedded-agent-DaSvA-Yk.js": "lab/release-files/codex-turn-tail/embedded-agent-DaSvA-Yk.js" } : {}) },
     codex: { "run-attempt-D1hJO4fX.js": "lab/release-files/codex-firsttext/dist/run-attempt-D1hJO4fX.js", "attempt-context-DmQUNWwT.js": "lab/release-files/codex-firsttext/dist/attempt-context-DmQUNWwT.js", "session-history-C5J1AKzG.js": "lab/release-files/codex-firsttext/dist/session-history-C5J1AKzG.js" },
   },
 };
@@ -636,7 +638,8 @@ async function tailRun(variant) {
     await sleep(500);
     const tc = taskCompletes().filter((t) => t.at >= r.sentAt && t.at <= r.endAt + 1000).at(-1);
     const gapLines = tc ? lines.filter((l) => l.at >= tc.at && l.at <= r.endAt + 200).map((l) => plainLine(l.line)).filter((t) => !/firsttext-metrics|model-fetch|\[ws\]|HEARTBEAT|DingTalk|telegram/u.test(t)).map((t) => t.slice(0, 200)).slice(0, 25) : [];
-    turns.push({ i, terminal: r.terminal, secs: r.secs, taskCompleteToEndMs: tc ? r.endAt - tc.at : null, thread: tc?.file, holds: holdsIn(tc?.at ?? r.sentAt, r.endAt), gapLines });
+    const tailLine = lines.filter((l) => l.at >= r.sentAt && l.at <= r.endAt + 2000 && l.line.includes("[codex-turn-tail.1]")).map((l) => { const t = plainLine(l.line); try { return JSON.parse(t.slice(t.indexOf("{", t.indexOf("[codex-turn-tail.1]")), t.lastIndexOf("}") + 1)); } catch { return t.slice(0, 300); } }).at(-1) ?? null;
+    turns.push({ i, terminal: r.terminal, secs: r.secs, taskCompleteToEndMs: tc ? r.endAt - tc.at : null, thread: tc?.file, holds: holdsIn(tc?.at ?? r.sentAt, r.endAt), gapLines, tailLine });
     console.log(JSON.stringify({ phase: "tail-turn", variant, ...turns.at(-1) }));
   }
   client?.stop?.();
