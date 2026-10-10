@@ -3,6 +3,14 @@ import assert from "node:assert/strict";
 import { contentItems } from "./content-view.mjs";
 import { createTranscriptPresentation } from "./transcript-presentation.mjs";
 
+test('short backend media caption opens the actual image or video without a report wrapper', () => {
+  for (const [url, kind] of [['https://cdn.test/a.webp','image'], ['https://cdn.test/a.mp4','video']]) {
+    const items = contentItems({key:'media',role:'assistant',complete:true,document:true,text:`童趣赛车画面。\n[赛车](${url})`});
+    assert.deepEqual(items.map(item => item.kind), [kind]);
+    assert.equal(items[0].url,url);
+  }
+});
+
 test("actual backend result stays exact, becomes a report, and does not duplicate the speech turn", () => {
   const view = createTranscriptPresentation(),
     text = "# 择校报告\n\n结论：先访校。\n\n|学校|时间|\n|---|---|\n|甲|2028|";

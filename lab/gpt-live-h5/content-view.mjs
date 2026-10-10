@@ -1,3 +1,4 @@
+import { mediaReferences } from "./media-references.mjs";
 import { renderMarkdown } from "./markdown.mjs";
 
 const plain = (text) =>
@@ -10,9 +11,10 @@ export function contentItems(item, base = "https://voice.invalid/voice/") {
   const text = String(item.text ?? ""),
     result = [];
   const document = item.document === true || item.speaker === "V · 完整方案";
+  const media = mediaReferences(text, base);
   const mediaOnly = text.replace(/!?\[[^\]]*\]\([^)]*\)/gu, "").trim() === "";
   if (
-    (document && !mediaOnly) ||
+    (document && !mediaOnly && (media.length === 0 || text.length > 450 || /^#{1,3}\s/mu.test(text))) ||
     text.length > 1100 ||
     (/^#{1,3}\s/mu.test(text) && text.length > 450)
   ) {
@@ -30,39 +32,7 @@ export function contentItems(item, base = "https://voice.invalid/voice/") {
       text,
     });
   }
-  const seen = new Set();
-  const matches = text.matchAll(
-    /(!?)\[([^\]]*)\]\(([^\s)]+)(?:\s+"[^"]*")?\)/gu,
-  );
-  for (const match of matches) {
-    let url;
-    try {
-      url = new URL(match[3], base);
-    } catch {
-      continue;
-    }
-    const origin = new URL(base).origin;
-    if (
-      url.username ||
-      url.password ||
-      !(
-        url.protocol === "https:" ||
-        (url.protocol === "http:" && url.origin === origin)
-      )
-    )
-      continue;
-    const image =
-      match[1] === "!" || /\.(png|jpe?g|webp|gif|avif)$/iu.test(url.pathname);
-    const video = /\.(mp4|webm|mov)$/iu.test(url.pathname);
-    if ((!image && !video) || seen.has(url.href)) continue;
-    seen.add(url.href);
-    result.push({
-      id: item.key + ":media:" + result.length,
-      kind: video ? "video" : "image",
-      title: match[2] || (video ? "视频" : "图片"),
-      url: url.href,
-    });
-  }
+  for (const entry of media) result.push({id: item.key + ":media:" + result.length, ...entry});
   return result;
 }
 

@@ -10,6 +10,7 @@ import { createPageMicrophoneSession } from "./microphone-session.mjs";
 import { createCallSounds } from "./call-sounds.mjs";
 import { createH5DuplexPlaybackGate } from "./duplex-playback.mjs";
 import { createRelayAudio } from "./relay-audio.mjs";
+import { createScreenWakeLock } from "./screen-wake-lock.mjs";
 
 const $ = (id) => document.getElementById(id);
 let microphoneSession = createPageMicrophoneSession();
@@ -32,7 +33,9 @@ const productControls = document.querySelector ? mountProductControls(document, 
 const tasks = createAvatarTasks();
 const avatar = typeof window.Image === "function" ? mountAvatar(document, window, {owner:()=>call?.voiceSessionId,onDisplayed:event=>call?.avatarTelemetry?.display(event)}) : null;
 const sceneAnimations = new Map();
+const screenWakeLock = createScreenWakeLock({ navigator, document, onState: state => { document.body.dataset.screenWakeLock = state; } });
 function setCallState(state) {
+  screenWakeLock.setActive(state !== 'idle');
   if (document.body.dataset.callState === state) return;
   const animate = typeof window.matchMedia === "function"
     && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -702,7 +705,7 @@ $("start").addEventListener("click", startCall);
 $("stop").addEventListener("click", () => void stopCall());
 // A tap anywhere can restore browser playback. Never gate/stop the microphone
 // or cancel accepted work while requesting this user gesture.
-window.addEventListener("pointerdown", () => void recoverPlaybackGesture());
+window.addEventListener("pointerdown", () => { screenWakeLock.ensure(); void recoverPlaybackGesture(); });
 window.addEventListener("keydown", () => void recoverPlaybackGesture());
 $("steerForm").addEventListener("submit", async (event) => {
   event.preventDefault(); const text = $("steerText").value.trim(); if (!text || !call) return;
@@ -717,6 +720,7 @@ $("cancel").addEventListener("click", async () => {
   catch (error) { if (call === active) setStatus(error.message, { tone: "error" }); }
 });
 window.addEventListener("pagehide", () => {
+  screenWakeLock.setActive(false);
   microphoneSession.close();
   const active = call;
   if (!active) return;
@@ -747,6 +751,11 @@ async function initializeEntry() {
       const option=[...$("voiceModel").options].find(o=>o.value===model.id);
       if(option)option.disabled=!model.available;
     }
+    const select = $("voiceModel");
+    if (select?.options && [...select.options].find(option => option.value === select.value)?.disabled) {
+      select.value = ['seeduplex', 'gpt-live', 'grok'].find(id => [...select.options].some(option => option.value === id && !option.disabled)) ?? select.value;
+    }
+    productControls?.refreshModels();
     $("badge").textContent = liveReady ? "可以拨号" : "页面预览";
     if (!liveReady) setStatus("这是页面预览，真实通话需连接候选服务。");
   } catch (error) {

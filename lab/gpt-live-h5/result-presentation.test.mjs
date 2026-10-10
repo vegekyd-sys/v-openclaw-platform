@@ -2,6 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {presentBackendResult,LONG_RESULT_NOTICE,readBackendResult,backendResultQuestion} from './result-presentation.mjs';
 
+test('short generated media is displayed and speech gives its caption without reading the URL',()=>{
+ for (const text of ['小赛车在积木赛道上。\n![赛车](https://cdn.test/a.webp)','小赛车的五秒视频。\n[视频](https://cdn.test/a.mp4)']) {
+  const result=presentBackendResult({result:text}); assert.equal(result.media,true);assert.equal(result.long,false);
+  assert.equal(result.text,text);assert(!result.spokenText.includes('https:'));assert(result.spokenText.includes('小赛车'));
+ }
+ assert.equal(presentBackendResult({result:'![图](file:///tmp/a.png)'}).media,undefined);
+});
+
 test('short result remains exact; long result preserves complete body and uses brief source summary plus screen notice',()=>{
  for(const text of ['已查到十二的记录。','日期尚未确认。','😀'.repeat(300)])assert.deepEqual(presentBackendResult({result:text}),{text,long:false,spokenText:text});
  for(const text of ['😀'.repeat(301),'## 方案\n'+'原始日期、数字、限定条件。'.repeat(60),'```sh\ndate\n```','| 项目 | 日期 |\n| --- | --- |\n| 入学 | 2028-09 |',Array.from({length:8},(_,i)=>`- 条件${i}`).join('\n')]) {

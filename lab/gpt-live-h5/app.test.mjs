@@ -5,6 +5,7 @@ import vm from "node:vm";
 import { createAvatarTasks, ACTIVITY_LABELS } from "./avatar-state.mjs";
 import { createTranscriptPresentation } from "./transcript-presentation.mjs";
 import { createPageMicrophoneSession } from "./microphone-session.mjs";
+import { createScreenWakeLock } from "./screen-wake-lock.mjs";
 import { createH5DuplexPlaybackGate } from "./duplex-playback.mjs";
 
 const appSource = readFileSync(new URL("./app.js", import.meta.url), "utf8")
@@ -107,7 +108,7 @@ async function fixture(t, options = {}) {
     close() { this.closed = true; }
   }
   const context = vm.createContext({
-    renderMarkdown: (target,text) => { target.textContent = text; }, createTranscriptPresentation, createPageMicrophoneSession, createAvatarTasks, ACTIVITY_LABELS,
+    renderMarkdown: (target,text) => { target.textContent = text; }, createTranscriptPresentation, createPageMicrophoneSession, createScreenWakeLock, createAvatarTasks, ACTIVITY_LABELS,
     createAvatarTelemetry: values=>options.telemetry?.(values)??{close(){},decision(){},display(){}},
     AbortSignal,
     AbortController,

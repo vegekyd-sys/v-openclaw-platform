@@ -127,6 +127,7 @@ export function mountProductControls(document, window, { onMute }) {
     { once: true },
   );
   return {
+    refreshModels: modelChoices,
     callState(state) {
       const active = ["connected", "ending"].includes(state);
       toggle.hidden = !active;

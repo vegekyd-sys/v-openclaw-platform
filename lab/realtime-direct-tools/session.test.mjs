@@ -188,3 +188,25 @@ for (const model of ['grok','seeduplex']) test(`${model} public transcript callb
  assert.equal(rows.at(-1).type,'call.closed');
  assert(!JSON.stringify(rows).includes('fixture-key'));assert(!JSON.stringify(rows).includes(f.reservation.relayTicket));
 });
+
+
+test('short image and video completions publish one UI result and one spoken caption',async()=>{
+ for (const url of ['https://cdn.test/car.webp','https://cdn.test/car.mp4']) {
+  const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:new Promise(()=>{}));
+  f.call('delegate_to_v',{question:'生成赛车媒体'});await delay(5);const started=f.audit.find(x=>x.type==='backend.started');
+  const text=`小赛车在积木赛道上。\n[赛车](${url})`;
+  f.service.handleEvent({event:'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,state:'final',message:{content:[{type:'text',text}]}}});await delay(250);
+  assert.equal(f.client.sent.filter(x=>x.type==='backend.result').length,1);
+  assert.equal(f.client.sent.find(x=>x.type==='backend.result').text,text);
+  const speech=f.upstream.sent.filter(x=>x.item?.type==='force_message');assert.equal(speech.length,1);assert(!speech[0].item.content[0].text.includes('https:'));assert(speech[0].item.content[0].text.includes('小赛车'));
+  await f.service.dispose();
+ }
+});
+test('busy delegation is explicitly not started and cannot silently queue another media job',async()=>{
+ let cancelled=false;const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:method==='chat.abort'?(cancelled=true,{ok:true}):cancelled?{status:'error',aborted:true}:new Promise(()=>{}));
+ f.call('delegate_to_v',{question:'调研'},'first');await delay(5);
+ f.call('delegate_to_v',{question:'作图'},'second');await delay(5);
+ const result=f.audit.find(x=>x.type==='tool.delivered'&&x.callId==='second').result;
+ assert(result.error.includes('新任务未启动'));assert(result.error.includes('未加入队列'));
+ assert.equal(f.audit.filter(x=>x.type==='backend.started').length,1);await f.service.dispose();
+});

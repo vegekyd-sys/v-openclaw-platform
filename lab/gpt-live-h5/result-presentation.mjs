@@ -1,6 +1,7 @@
+import { mediaReferences } from './media-references.mjs';
 // One host-owned policy for backend documents; provider captions remain captions.
 export const LONG_RESULT_NOTICE = '详细方案在屏幕上，需要的话也可以整理成文档发给你。';
-export const BACKEND_RESULT_INSTRUCTIONS = '电话结果呈现：如果最终结果是较长方案，最后一次回答同时写语音摘要和完整正文，不另起任务。严格使用这两个标题：\n【语音摘要】\n两到三句自然中文，100字以内，直接说最重要的结论、推荐或下一步，保留影响结论的必要条件和未完成项。不能只说完成了或让用户看屏幕，不能编造原结果没有的事实。\n【完整方案】\n完整Markdown正文，保留全部事实、来源、条件和细节。不要把摘要当成正文的替代。普通短答案直接回答，不需要这两个标题。';
+export const BACKEND_RESULT_INSTRUCTIONS = '图片、视频任务须实际调用可用的媒体生成能力，跟进同一任务到完成，不重复付费提交；最终给出可访问的HTTPS链接：图片用 ![图片说明](URL)，视频用 [视频说明](实际MP4的URL)。不能只给本地路径、任务ID或假链接。能力或权限不可用时明确说明未完成。\n电话结果呈现：如果最终结果是较长方案，最后一次回答同时写语音摘要和完整正文，不另起任务。严格使用这两个标题：\n【语音摘要】\n两到三句自然中文，100字以内，直接说最重要的结论、推荐或下一步，保留影响结论的必要条件和未完成项。不能只说完成了或让用户看屏幕，不能编造原结果没有的事实。\n【完整方案】\n完整Markdown正文，保留全部事实、来源、条件和细节。不要把摘要当成正文的替代。普通短答案直接回答，不需要这两个标题。';
 export function backendResultQuestion(question) {
   return `${question}\n\n${BACKEND_RESULT_INSTRUCTIONS}`;
 }
@@ -56,6 +57,8 @@ export function presentBackendResult(result) {
   const {text} = parsed;
   const long = [...text].length > 300 || text.split('\n').filter(line => line.trim()).length >= 8 ||
     /^\s*```/mu.test(text) || /^\s*\|?.*\|.*\n\s*\|?\s*:?-{3,}/mu.test(text);
+  const media = mediaReferences(text).length > 0;
+  const caption = text.replace(/!?\[[^\]]*\]\([^)]*\)/gu, '').replace(/https?:\/\/\S+/gu, '').trim();
   const summary = long ? parsed.summary ?? extractResultSummary(text) : null;
-  return {text, long, spokenText: long ? `${summary} ${LONG_RESULT_NOTICE}` : text};
+  return {text, long, ...(media ? {media: true} : {}), spokenText: media ? `${parsed.summary ?? (caption ? extractResultSummary(caption) : '可以在屏幕上打开结果。')}` : long ? `${summary} ${LONG_RESULT_NOTICE}` : text};
 }
