@@ -11,6 +11,19 @@
 
 ---
 
+## worker-secret-egress-20261010
+
+上线：2026-10-10 18:10 CST  ·  tag `worker-secret-egress-20261010`
+
+**摘要**：凭据库里的 `secret` 条目（飞书凭据卡、`secrets request` 存的）以前在 worker 里的 exec 中是空的：出网代理只在 Gateway 进程里，worker 拿不到占位符，带凭据的请求不带鉴权、一律 403（10/10 群里 /vcc 派子会话调 AgentMail、Vercel 都是这样）。现在 worker 在自己进程里启动同一个原生出网代理，exec 拿到占位符，请求在允许的域名上被替换成真值；发往其他域名的会被代理拒绝（502），回合结束即撤销授权。只换 worker，`vlab.workers.roll` 生效，没有重启 Gateway。V 上验收：新一代 worker 全部 `[worker-secret-egress.1] active`（167–366 ms）；一轮 worker 回合里 `AGENTMAIL_API_KEY` 是占位符、有代理，AgentMail 列收件箱 200，返回 `hey-v@agentmail.to`。
+
+**未完成的记账**：上一版 V 之后、这一版之前，V 还上过 `v2026.9.1-db91.6-batch-20261010-codex-feishu-workboard`、`v2026.9.1-db91.6-firsttext-card-note-20261010b`（捕获与章节在未合并的 #312）和 `batch-20261010c-workboard-sessions-tail`（尚无捕获）。所以下面只列本次的文件；`release-notes.mjs --from release-batch-20261009` 会把那几次的文件也算进来。
+
+**这次的文件**（经 VLab 发版 `worker-secret-egress-20261010-v1`，claude-secret-egress，dev `c0e7f58a`，PR #319）
+> 验收：candidate 同一字节、开启 secrets.egressProxy：开 candidate-b8d46520 值送达（len 40 哈希一致）、未授权域名 502、回合后同一代理凭据 407；关 candidate-907e033e len 0、无代理（复现 V）。共享 VLab 未开启 egressProxy：5/5 worker `disabled-by-config`、预热 5/5，真实回合在 vlab-worker:0 exec 正常。
+- `worker` worker.mjs  8b466a60 → 8c6b2e92
+- `worker` secret-egress-worker.mjs  — → 515e211e
+
 ## release-batch-20261009
 
 上线：2026-10-09 01:19 CST（v-self-restart `20261009-011524-19f1`，01:15:24 空闲时请求，191 s 就绪）  ·  tag `release-batch-20261009`
