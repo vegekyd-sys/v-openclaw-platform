@@ -11,6 +11,29 @@
 
 ---
 
+## v2026.9.1-db91.6-night-batch-20261010
+
+上线：2026-10-10 23:03 CST（v-self-restart `20261010-225957-0e63`，22:59:57 请求，196 s 就绪，清掉 2 条 Codex 孤儿登记）  ·  tag `v2026.9.1-db91.6-night-batch-20261010`
+
+**摘要**：Tianyi 10/10 定的晚间批次，一次重启上三件事。
+- **#322 /vds 看图不再撑爆请求体**：DeepSeek Codex 线程关掉 Codex 原生 view_image，改用 OpenClaw view_image（JPEG、每张 ≤1 MB）；OpenClaw view_image 长边 1200 → 2048（DeepSeek 看到的像素与原图相同）；413 / 请求体过大时清掉线程绑定，下一条消息换新线程。起因：10/10 11:41 起张寒冰私聊每条都 413——Codex 原生 view_image 原样存 PNG（单张至 13.4 MB），DeepSeek 无状态、每次整段重发、上限 48 MiB。对比与证据见 `experiments/vds-image-context/README.md`。
+- **#317（#316 的 v2）工具调用后的 NO_REPLY 不再冒英文兜底句**（10/10 15:03 群里加 👍 后出现 "The tool run finished, but no final summary was produced…"）。
+- **#318 → #324 没有正文的流式卡片撤回**，不再留只有页脚的空卡片；#318 条件写错（每张卡都带任务状态对象），共享 VLab 真实飞书复验时抓到，#324 改为按任务状态行判断。已知副作用：卡片撤回前会闪现约 3 秒，飞书可能留「撤回了一条消息」提示，Tianyi 接受。
+
+**重启后的一次性影响**：每个已有 /vds 会话的第一条消息换一次新线程（会话记录投影续上上下文）；默认 harness 看图长边变 2048，DeepSeek 每张图多计约 45% token。
+
+**这次的文件**（经 VLab 发版 `night-batch-20261010-v2`，vds-view-image，dev `c85bbc45`，PR #317 #318 #322 #324）
+> 验收（共享 VLab）：真实 /vds 回合两张 1080×1920 PNG 暗号全对、Codex 线程只存 JPEG；升级前已有的 /vds 会话首条消息换线程、7 s 回复、上下文保留；默认 harness 看图回归正常；candidate e8a80d8c 复现 413 卡死、修复后换线程恢复；candidate 67ce0f76 请求体 24.2 → 3.8 MB、追问首字 8.7 → 2.4 s。表情：「VLab 发布验收 B」20:03/20:07 有 THUMBSUP、群里无机器人消息、空卡片 3 s 内撤回、无 "lacked a final answer"。
+> 验收（V，重启后）：专用会话 `agent:makaron:explicit:v-accept-vds-view-image-mv2j8dqp`（deliver:false）两个暗号全对、线程只存 JPEG、provider deepseek、整轮 23 s（`lab/accept-vds-view-image.mjs`）；表情在「V 生产发布验收 0910」23:11 通过（THUMBSUP、无机器人消息、23:12:04 Discarded streaming card、无追问）。重启后 Gateway 日志无 413 / Cannot reap / lacked a final answer。
+- `core` builtin-openclaw-zQV8Wwjr.js  972d25fe → 3e07c3fa
+- `core` openclaw-tools-BODVdJQD.js  637c86f3 → af27d9ae
+- `feishu` monitor.account-WFdlCDhR.js  763bb8eb → 31238429
+- Codex 插件（npm 管理，不在捕获范围）`thread-lifecycle-DAcEJ_Om.js` c0a9ce77 → a9f76cf4、`dynamic-tools-BU9tmlYm.js` 2de5868b → f3ad9f4d、`side-question-BTZAII4l.js` 9be0ea6c → 1ca216cf、`run-attempt-D1hJO4fX.js` d25e0d91 → bb0b0354
+
+回滚：`node scripts/promote-to-v.mjs --undo /opt/v-release-backups/v2026.9.1-db91.6-night-batch-20261010-20261010T145251`（需重启）。
+
+**记账说明**：本次捕获在 `worker-secret-egress-20261010` 撤回之后（V 的 worker.mjs 为 8b466a60、无 secret-egress-worker.mjs），撤回的捕获与章节在 #327。共享 VLab 的 production-worker 仍是撤回前的字节，align 前需按 V 同步。
+
 ## worker-secret-egress-20261010
 
 上线：2026-10-10 18:10 CST  ·  tag `worker-secret-egress-20261010`
