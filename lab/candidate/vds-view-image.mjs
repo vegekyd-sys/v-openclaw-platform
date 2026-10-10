@@ -110,6 +110,7 @@ console.log(JSON.stringify({ fixture: FIXTURES.map((f) => [path.basename(f), fs.
 // ---- recording proxy between Codex and DeepSeek ----
 const records = [];
 let force413 = 0;
+let limitBytes = 0; // reject bodies over this, like DeepSeek's 48 MiB, scaled down for the probe
 const DS413 = "Failed to buffer the request body: length limit exceeded";
 const proxy = http.createServer((req, res) => {
   const chunks = [];
@@ -136,6 +137,12 @@ const proxy = http.createServer((req, res) => {
       rec.tools = (j.tools ?? []).length;
     } catch { rec.parseError = true; }
     records.push(rec);
+    if (limitBytes && body.length > limitBytes) {
+      rec.status = 413; rec.limited = true;
+      res.writeHead(413, { "content-type": "text/plain" });
+      res.end(DS413);
+      return;
+    }
     if (force413 > 0) {
       force413 -= 1;
       rec.status = 413; rec.forced = true;
@@ -290,7 +297,7 @@ async function runPhase(label) {
     const text = JSON.stringify(r.final?.message ?? r.final ?? "");
     return {
       terminal: r.terminal, firstBodyMs: r.firstBodyAt ? r.firstBodyAt - r.sentAt : null, totalMs: r.endAt ? r.endAt - r.sentAt : null,
-      requests: reqs.map((q) => ({ mb: +(q.bytes / 1e6).toFixed(2), imgs: q.images.length, png: q.images.filter(([m]) => m === "image/png").length, jpeg: q.images.filter(([m]) => m === "image/jpeg").length, status: q.status, ttfbMs: q.ttfbMs, forced: q.forced })),
+      requests: reqs.map((q) => ({ mb: +(q.bytes / 1e6).toFixed(2), limited: q.limited, imgs: q.images.length, png: q.images.filter(([m]) => m === "image/png").length, jpeg: q.images.filter(([m]) => m === "image/jpeg").length, status: q.status, ttfbMs: q.ttfbMs, forced: q.forced })),
       viewImageOffered: [...new Set(reqs.map((q) => q.viewImage))],
       codes: CODES.map((c) => text.includes(c)),
     };
@@ -300,6 +307,17 @@ async function runPhase(label) {
   console.log(JSON.stringify({ phase: label, look: out.look }));
   out.followup = await send("不要再调用任何工具。把第 2 张和第 4 张图的暗号再写一遍。");
   console.log(JSON.stringify({ phase: label, followup: out.followup }));
+  if (label.endsWith("-limit")) {
+    // Every later message on the same thread is over the limit unless the binding is dropped.
+    out.next1 = await send("不要调用工具，回复：收到。");
+    out.next2 = await send("不要调用工具，回复：OK。");
+    const threads = rolloutThreads(phaseStart);
+    out.binding = { clearedLog: lines.some((l) => /image payload error detected; clearing thread binding/u.test(l)), threads: threads.length };
+    out.threads = threads.map((t) => ({ ...t, images: t.images.map(([m, n]) => `${m.slice(6)}:${(n / 1e6).toFixed(2)}MB`) }));
+    console.log(JSON.stringify({ phase: label, next1: out.next1, next2: out.next2, binding: out.binding, threads: out.threads }));
+    client.stop?.();
+    return out;
+  }
   const threadsBefore413 = rolloutThreads(phaseStart).map((t) => t.thread);
   force413 = 1;
   out.forced413 = await send("不要调用工具，回复：收到。");
@@ -317,7 +335,8 @@ try {
   const results = {};
   for (const label of PHASES) {
     installVBytes();
-    if (label === "patched") {
+    limitBytes = label === "vbytes-limit" ? 20e6 : label === "patched-limit" ? 3e6 : 0;
+    if (label.startsWith("patched")) {
       const r = spawnSync(process.execPath, [path.join(repoRoot, "lab/release-files/vds-view-image/patch-vds-view-image.mjs"), "--codex", codexRoot, "--core-dist", path.dirname(CORE_TOOLS)], { encoding: "utf8" });
       assert.equal(r.status, 0, r.stderr);
     }
@@ -330,7 +349,7 @@ try {
     console.log(JSON.stringify({ phase: label, warnings: warn }));
     await stopGateway();
   }
-  const s = (r) => ({
+  const s = (r) => r.next1 ? ({ look: r.look.terminal, next1: r.next1.terminal, next2: r.next2.terminal, limited: [r.look, r.next1, r.next2].map((x) => x.requests.filter((q) => q.limited).length), threads: r.binding.threads, cleared: r.binding.clearedLog }) : ({
     codesRead: r.look.codes.filter(Boolean).length + "/" + CODES.length,
     followupCodes: [r.followup.codes[1], r.followup.codes[3]],
     viewImage: r.look.viewImageOffered,
