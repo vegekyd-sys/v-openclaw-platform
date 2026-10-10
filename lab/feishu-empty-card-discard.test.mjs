@@ -16,7 +16,9 @@ test('release file is V\'s Feishu monitor plus only this patch', () => {
 });
 
 // Run the real performStreamingClose with a fake streaming session.
-function closer(source, { answer = '', reasoning = '', taskStatus = false, env = {} } = {}) {
+// Like the real monitor, every reply card carries a task-status card (vTaskStatusAttach); a
+// background-task line is shown (lineActive) or was written (writtenLine) only when tasks ran.
+function closer(source, { answer = '', reasoning = '', taskLine = null, env = {} } = {}) {
   const start = source.indexOf('\tconst performStreamingClose = async (disposition) => {');
   const end = source.indexOf('\n\tconst closeStreaming = ', start);
   assert(start > 0 && end > start);
@@ -25,7 +27,7 @@ function closer(source, { answer = '', reasoning = '', taskStatus = false, env =
     isActive: () => true,
     discard: async () => { calls.push('discard'); return { visibleReplySent: false }; },
     closeWithResult: async (text, options) => { calls.push(['close', text, options?.note]); return { visibleReplySent: Boolean(text.trim()), content: text }; },
-    ...(taskStatus ? { vTaskStatusCard: { key: 'k' } } : {}),
+    vTaskStatusCard: { key: 'k', lineActive: taskLine === 'active', writtenLine: taskLine ? '后台任务 1 个' : '' },
   };
   const context = {
     process: { env }, calls, session, answer, reasoning,
@@ -61,6 +63,16 @@ test('unpatched: a silent turn leaves an empty card with only the footer (the bu
   assert.equal(out.result.visibleReplySent, false);
 });
 
+test('v1 never discarded: every real card carries a task-status card', async () => {
+  const v1 = base.replace(
+    '\t\t\t\t\tif (disposition === "discarded") closed = await streamingToClose.discard();',
+    '\t\t\t\t\tconst vEmptyCard = !text.trim() && !streamingToClose.vTaskStatusCard;\n\t\t\t\t\tif (disposition === "discarded" || vEmptyCard) closed = await streamingToClose.discard();');
+  assert.notEqual(v1, base);
+  const { run, calls } = closer(v1);
+  await run('closed');
+  assert.deepEqual(calls, [['close', '', 'Agent: V']]);
+});
+
 test('patched: a card that ends with no text is taken back', async () => {
   const { run, calls } = closer(patched);
   const out = await run('closed');
@@ -78,9 +90,11 @@ test('patched: cards with text, reasoning or background-task status close as bef
     await run('closed');
     assert.deepEqual(calls, [['close', text, 'Agent: V']]);
   }
-  const task = closer(patched, { taskStatus: true });
-  await task.run('closed');
-  assert.deepEqual(task.calls, [['close', '', 'Agent: V']]);
+  for (const taskLine of ['active', 'written']) {
+    const task = closer(patched, { taskLine });
+    await task.run('closed');
+    assert.deepEqual(task.calls, [['close', '', 'Agent: V']], taskLine);
+  }
   const off = closer(patched, { env: { OPENCLAW_FEISHU_EMPTY_CARD_DISCARD: '0' } });
   await off.run('closed');
   assert.deepEqual(off.calls, [['close', '', 'Agent: V']]);

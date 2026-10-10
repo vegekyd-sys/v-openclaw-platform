@@ -3152,8 +3152,9 @@ function createFeishuReplyDispatcher(params) {
 				const text = buildCombinedStreamText(finalizedReasoningText, finalizedAnswerText);
 				let closed;
 				try {
-					// v-feishu-empty-card-discard-v1: nothing but a status line was ever shown; take the card back
-					const vEmptyCard = !text.trim() && !streamingToClose.vTaskStatusCard && process.env.OPENCLAW_FEISHU_EMPTY_CARD_DISCARD !== "0";
+					// v-feishu-empty-card-discard-v2: nothing but a status line was ever shown; take the card back
+					const vTaskLine = streamingToClose.vTaskStatusCard;
+					const vEmptyCard = !text.trim() && !vTaskLine?.lineActive && !vTaskLine?.writtenLine && process.env.OPENCLAW_FEISHU_EMPTY_CARD_DISCARD !== "0";
 					if (disposition === "discarded" || vEmptyCard) closed = await streamingToClose.discard();
 					else {
 						const finalNote = resolveCardNote(agentId, identity, responsePrefixContextProvider());
