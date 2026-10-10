@@ -9481,34 +9481,6 @@ function handleMessageUpdate(ctx, evt) {
 			})
 		});
 	}
-	// v-early-tool-status-v2: report the tool name as soon as the call appears in the stream
-	if ((evtType === "toolcall_start" || evtType === "toolcall_delta") && process.env.OPENCLAW_EARLY_TOOL_STATUS !== "0") {
-		const block = readToolCallBlock(assistantRecord);
-		const toolCallId = typeof block?.id === "string" ? block.id : "";
-		const rawName = typeof block?.name === "string" ? block.name : "";
-		const seen = ctx.state.vEarlyToolCallIds ??= new Set();
-		if (toolCallId && rawName && !seen.has(toolCallId)) {
-			seen.add(toolCallId);
-			const data = {
-				phase: "input_start",
-				name: normalizeToolPolicyName(rawName),
-				toolCallId
-			};
-			emitAgentEvent({
-				runId: ctx.params.runId,
-				stream: "tool",
-				data
-			});
-			runBestEffortCallback({
-				label: "early tool status agent event",
-				log: ctx.log,
-				callback: () => ctx.params.onAgentEvent?.({
-					stream: "tool",
-					data
-				})
-			});
-		}
-	}
 	const eventAssistantMessage = assistantRecord?.partial && typeof assistantRecord.partial === "object" ? assistantRecord.partial : msg;
 	const isResponsesTextEvent = isResponsesApiAssistantMessage(eventAssistantMessage) && (evtType === "text_start" || evtType === "text_delta" || evtType === "text_end");
 	const assistantPhase = resolveAssistantMessagePhase(msg);

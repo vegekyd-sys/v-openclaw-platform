@@ -5,17 +5,18 @@ import vm from 'node:vm';
 import { MARKER, patchBuiltinOpenclaw } from './patch-no-reply-after-tool.mjs';
 
 const read = (url) => fs.readFileSync(new URL(url, import.meta.url), 'utf8');
-// Base: the newest builtin-openclaw on dev (early-tool-status = V's release-batch-20261009 + #313).
-const base = read('./release-files/early-tool-status/builtin-openclaw-zQV8Wwjr.js');
+// Base: V's bytes (release-batch-20261009, 972d25fe…). Ships without the not-yet-deployed
+// early-tool-status change; the patcher also applies on top of that bundle.
+const base = read('../release/captured/release-batch-20261009/dist/builtin-openclaw-zQV8Wwjr.js');
 const patched = read('./release-files/no-reply-after-tool/builtin-openclaw-zQV8Wwjr.js');
-const live = read('../release/captured/release-batch-20261009/dist/builtin-openclaw-zQV8Wwjr.js');
+const earlyToolStatus = read('./release-files/early-tool-status/builtin-openclaw-zQV8Wwjr.js');
 
-test('release file is the dev bundle plus only this patch, and V\'s bytes take it too', () => {
+test('release file is V\'s bundle plus only this patch; the dev bundle takes it too', () => {
   assert.equal(patchBuiltinOpenclaw(base), patched);
   assert.throws(() => patchBuiltinOpenclaw(patched), /already patched/);
-  const onLive = patchBuiltinOpenclaw(live);
-  assert.equal(onLive.split(MARKER).length, 2);
-  assert.equal(onLive.length - live.length, patched.length - base.length);
+  const onDev = patchBuiltinOpenclaw(earlyToolStatus);
+  assert.equal(onDev.split(MARKER).length, 2);
+  assert.equal(onDev.length - earlyToolStatus.length, patched.length - base.length);
 });
 
 // Run the real recovery helpers (sliced from the bundle) with stubbed imports.
