@@ -12,6 +12,7 @@ export const H5_PATHS = [
   'lab/gpt-live-h5/access.mjs', 'lab/voice-decision-router.mjs',
   'lab/gpt-live-h5/avatar-telemetry.mjs', 'lab/gpt-live-h5/avatar-telemetry-log.mjs',
   'lab/gpt-live-h5/avatar.mjs', 'lab/gpt-live-h5/avatar-state.mjs', 'lab/gpt-live-h5/avatar-decision.mjs', 'lab/gpt-live-h5/avatar-catalog.mjs', 'lab/gpt-live-h5/avatar-reactions.mjs',
+  'lab/gpt-live-h5/avatar-approved-reactions.mjs',
   ...AVATAR_FILES.map(file => `lab/gpt-live-h5/assets/${file}`),
   'lab/gpt-live-h5/personal-session.mjs',
   'lab/gpt-live-h5/persona.mjs',
