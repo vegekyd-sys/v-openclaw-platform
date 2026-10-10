@@ -389,6 +389,7 @@
         "lab/gpt-live-h5/result-presentation.test.mjs",
         "lab/gpt-live-h5/avatar-decision.test.mjs",
         "lab/gpt-live-h5/avatar-reactions.test.mjs",
+        "lab/gpt-live-h5/avatar-approved-reactions.test.mjs",
         "lab/gpt-live-h5/avatar-telemetry.test.mjs",
         "lab/gpt-live-h5/content-view.test.mjs",
         "lab/gpt-live-h5/product-controls.test.mjs",
