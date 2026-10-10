@@ -10,6 +10,7 @@ V 登录或注册网站时，缺的往往只是一个要人来填的值：密码
 2. 会话里出现凭据卡：飞书是带密码框的原生卡片（`patch-feishu-secret-entry`），Telegram / 钉钉 / 企业微信是一次性链接（`apps/v-secret-entry`）。
    会话里**任何人**都可以填，和 API key 凭据卡一样；值进凭据库，不进聊天和会话记录。
 3. V 重新 snapshot，调 `browser_fill_secret(name, ref, targetId?, profile?, submit?, keep?)`。插件：
+   - 名字必须以 `LOGIN_` 开头：凭据库里 Gateway 和 Worker 用的其他条目（如 `MAKARON_API_KEY`）一律不读、不填、不删；
    - 读条目的元数据：必须是 `secret`，必须有允许的域名；
    - 查目标标签页：它的域名必须是条目允许的域名之一（防止把 A 网站的密码填进 B 网站）；
    - 在**本进程**读出值（原生 `readSecretStoreValue`，同时登记进本进程的脱敏表），用 `browser` 工具同一个进程内分发器

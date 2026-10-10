@@ -13,7 +13,10 @@
 //
 // Pure logic; every effect is injected (see index.js for the native bindings).
 
-export const NAME_RE = /^[A-Z][A-Z0-9_]{0,127}$/u;
+// Only entries asked for a login (LOGIN_<SITE>_PASSWORD / _CODE ...). Anything else in the
+// store -- API keys the Gateway and Workers use, like MAKARON_API_KEY -- is never read,
+// typed or deleted by this tool, whatever its allowed hosts are.
+export const NAME_RE = /^LOGIN_[A-Z0-9_]{1,122}$/u;
 
 export class FillError extends Error {
   constructor(code, message) {
@@ -69,7 +72,7 @@ async function resolveTab({ targetId, profile, signal }, dispatch) {
 export async function fillSecret(params, deps, signal) {
   const name = typeof params?.name === "string" ? params.name.trim() : "";
   const ref = typeof params?.ref === "string" ? params.ref.trim() : "";
-  if (!NAME_RE.test(name)) throw new FillError("INVALID_NAME", "name must be the secret store entry name, e.g. LOGIN_EXAMPLE_PASSWORD.");
+  if (!NAME_RE.test(name)) throw new FillError("INVALID_NAME", "Only entries named LOGIN_<SITE>_<FIELD> can be filled (e.g. LOGIN_EXAMPLE_PASSWORD); ask for the login value with that name.");
   if (!ref) throw new FillError("REF_REQUIRED", "ref is required: the field's ref from your latest browser snapshot.");
   const profile = typeof params.profile === "string" && params.profile.trim() ? params.profile.trim() : undefined;
   const targetId = typeof params.targetId === "string" && params.targetId.trim() ? params.targetId.trim() : undefined;
