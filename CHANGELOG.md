@@ -11,6 +11,25 @@
 
 ---
 
+## v-voice-content-product-20261011
+
+上线：2026-10-11 02:27 CST 启动生产 Gateway，02:34 CST 切换 H5；tag `v-voice-content-product-20261011`。
+
+**摘要**：Voice 使用简洁的 Web/H5 通话布局，报告和图片、视频可展开阅读；默认豆包 SeedDuplex，展示真实模型名；补回打招呼文字，挂断清空聊天、文档和输入，回到首次进入状态。通话期间申请 Screen Wake Lock，浏览器后台或不支持时遵循系统行为。
+
+**来源**：共享 VLab `voice-content-product-20261011-v3`，已验收源码 `b93d0585b38dbf649f2dd999612d37be1f063b9c`（#307、#330、#332）；产物 SHA256 `b8f3387b2c9cb33bc84e4289dcfe73feb034006f70cec2b4eb405d78a8a734a2`。H5 固定同一提交，139 文件总指纹 `36b39a668767a4da812d6a6d23acb468907c20ba8244c1a08a8ddcc2633e8058`。#333 仅修正头像目录计数，不改变上线字节。
+
+**真实运行文件差异**（对上一生产捕获逐文件比较）：
+- `core` realtime-quicksilver-session-B3HKftDE.js：f0b01553 → 22ae5c48，后台完整文档保留给屏幕，语音输出简短摘要；媒体 URL 不进入过程口播。
+- `core` talk-DkFuKRod.js：2d740a7c → dc6d6e9f，相同后台文档与摘要策略。
+- Worker、飞书、钉钉、企微捕获无文件变化。此捕获不是将 dev 上其他修改重新部署一次。
+
+**验收**：共享 VLab 真实 GPT Live 图片读取、完整文档、短口播、继续对话和挂断复位通过；SeedDuplex/Grok 通话以及 Candidate 视频播放证据按同一字节基线复用。生产默认 SeedDuplex、真实开场文字、合成语音提问和回答、挂断复位已通过。物理 iPhone 不熄屏和听感尚未在本轮自动验收。
+
+**运维**：用户授权核对并暂停旧夜班任务。4 条登记实际为 10/9 孤儿运行，原生取消显示不存在；一致性备份任务/业务库，保留 365 项文件和已有付费生成结果，退出旧登记，不重新生成或重试。启动后登记显示 failed，原业务卡片仍为 1 done、3 blocked。两条额外飞书运行自然完成后才停止 Gateway。原 Gateway PID 963964 正常退出，新 PID 1158451；生产配置 SHA256 未改变；临时停止参数已移除。共享 VLab 已 align 到本次生产产物。
+
+回滚：Gateway 用 `node scripts/promote-to-v.mjs --undo /opt/v-release-backups/v-voice-content-product-20261011-20261010T182048` 后按流程重启；H5 恢复上一入口 `/opt/openclaw-voice-h5/releases/gpt-live-52eefaab221ed8e1e20d439133875ee2cfcb4b19/lab/gpt-live-h5`。备份保留在 V 的 `/var/lib/v-voice-release/voice-content-product-20261011-v3`，不含在 Git 中。
+
 ## v2026.9.1-db91.6-night-batch-20261010
 
 上线：2026-10-10 23:03 CST（v-self-restart `20261010-225957-0e63`，22:59:57 请求，196 s 就绪，清掉 2 条 Codex 孤儿登记）  ·  tag `v2026.9.1-db91.6-night-batch-20261010`
