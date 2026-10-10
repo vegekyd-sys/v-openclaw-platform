@@ -1,6 +1,6 @@
 import {mediaReferences} from './gpt-live-h5/media-references.mjs';
 import assert from 'node:assert/strict';
-import {presentBackendResult,LONG_RESULT_NOTICE,readBackendResult,extractResultSummary,backendResultQuestion,BACKEND_RESULT_INSTRUCTIONS,MAKARON_MEDIA_INSTRUCTIONS} from './gpt-live-h5/result-presentation.mjs';
+import {presentBackendResult,LONG_RESULT_NOTICE,readBackendResult,extractResultSummary,backendResultQuestion,isSpokenBackendProgress,BACKEND_RESULT_INSTRUCTIONS,MAKARON_MEDIA_INSTRUCTIONS} from './gpt-live-h5/result-presentation.mjs';
 function once(source,before,after){assert.equal(source.split(before).length-1,1,'Backend document host anchor drifted');return source.replace(before,after);}
 export function patchBackendResultController(source) {
   if(source.includes('// voice-backend-document-controller-v2'))return source;
@@ -24,12 +24,16 @@ export function patchBackendResultController(source) {
   return source;
 }
 export function patchBackendResultBroker(source) {
-  if(source.includes('// voice-backend-document-broker-v3'))return source;
+  if(source.includes('// voice-backend-document-broker-v4'))return source;
+  if(source.includes('// voice-backend-document-broker-v3')) {
+    source=once(source,'runAgentConsult({...params,prompt:', 'runAgentConsult({...params,onProgress:progress=>isSpokenBackendProgress(progress)?params.onProgress?.(progress):undefined,prompt:');
+    return isSpokenBackendProgress.toString()+'\n'+source.replace('// voice-backend-document-broker-v3','// voice-backend-document-broker-v4');
+  }
   if(source.includes('// voice-backend-document-broker-v2')) {
     const policy=/const BACKEND_RESULT_INSTRUCTIONS=(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*');/u;
     assert(policy.test(source),'Backend result policy anchor drifted');
-    return source.replace(policy,()=>`const BACKEND_RESULT_INSTRUCTIONS=${JSON.stringify(BACKEND_RESULT_INSTRUCTIONS)};`)
-      .replace('// voice-backend-document-broker-v2','// voice-backend-document-broker-v3');
+    return patchBackendResultBroker(source.replace(policy,()=>`const BACKEND_RESULT_INSTRUCTIONS=${JSON.stringify(BACKEND_RESULT_INSTRUCTIONS)};`)
+      .replace('// voice-backend-document-broker-v2','// voice-backend-document-broker-v3'));
   }
   if(source.includes('// voice-backend-document-broker-v1')) {
     const helper=/function backendResultQuestion\(question\) \{[\s\S]*?\n\}/u;
@@ -38,8 +42,8 @@ export function patchBackendResultBroker(source) {
       .replace('// voice-backend-document-broker-v1','// voice-backend-document-broker-v2'));
   }
   source=once(source,'\t\t\t\trunAgentConsult,','\t\t\t\trunAgentConsult: (params) => runAgentConsult({...params,prompt:typeof offer.request.gatewayControl?.onBackendResult === "function" ? backendResultQuestion(params.prompt) : params.prompt}),');
-  return '// voice-backend-document-broker-v3\n'+`const MAKARON_MEDIA_INSTRUCTIONS=${JSON.stringify(MAKARON_MEDIA_INSTRUCTIONS)};\nconst BACKEND_RESULT_INSTRUCTIONS=${JSON.stringify(BACKEND_RESULT_INSTRUCTIONS)};\n${backendResultQuestion.toString()}\n`+once(source,'\t\t\t\tonCallLifecycleEvent: (event) => offer.request.gatewayControl?.onCallLifecycleEvent?.(event),',
-    '\t\t\t\tonBackendResult: (result) => offer.request.gatewayControl?.onBackendResult?.(result),\n\t\t\t\tonCallLifecycleEvent: (event) => offer.request.gatewayControl?.onCallLifecycleEvent?.(event),');
+  return patchBackendResultBroker('// voice-backend-document-broker-v3\n'+`const MAKARON_MEDIA_INSTRUCTIONS=${JSON.stringify(MAKARON_MEDIA_INSTRUCTIONS)};\nconst BACKEND_RESULT_INSTRUCTIONS=${JSON.stringify(BACKEND_RESULT_INSTRUCTIONS)};\n${backendResultQuestion.toString()}\n`+once(source,'\t\t\t\tonCallLifecycleEvent: (event) => offer.request.gatewayControl?.onCallLifecycleEvent?.(event),',
+    '\t\t\t\tonBackendResult: (result) => offer.request.gatewayControl?.onBackendResult?.(result),\n\t\t\t\tonCallLifecycleEvent: (event) => offer.request.gatewayControl?.onCallLifecycleEvent?.(event),'));
 }
 export function patchBackendResultTalk(source) {
   if(source.includes('// voice-backend-document-talk-v4'))return source;

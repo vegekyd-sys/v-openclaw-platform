@@ -6,6 +6,12 @@ export const BACKEND_RESULT_INSTRUCTIONS = '图片、视频任务须实际调用
 export function backendResultQuestion(question) {
   return `${question}\n\n${MAKARON_MEDIA_INSTRUCTIONS}\n\n${BACKEND_RESULT_INSTRUCTIONS}`;
 }
+// A media URL can arrive as a short streamed commentary fragment before the
+// canonical final. Keep it for the final screen delivery, never spoken progress.
+export function isSpokenBackendProgress(progress) {
+  return typeof progress?.text === 'string' &&
+    !/(?:https?:\/\/|!\[|(?:^|\n)\s*MEDIA:)/iu.test(progress.text);
+}
 export function readBackendResult(result) {
   const raw = typeof result === 'string' ? result : result?.result ?? result?.text;
   if (typeof raw !== 'string') return null;
