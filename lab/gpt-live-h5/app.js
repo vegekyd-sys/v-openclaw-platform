@@ -443,8 +443,10 @@ async function stopCall() {
   $("remoteAudio").srcObject = null;
   $("remoteAudio").muted = false;
   tasks.clear(); taskState(); document.body.dataset.voiceState = "idle";
+  resetTranscript();
+  $("conversation").scrollTop = 0;
+  $("steerText").value = "";
   setCallState("idle");
-  renderTranscript(presentation.snapshot());
   $("start").hidden = false; $("start").disabled = false; $("stop").hidden = true;
   $("steerText").disabled = true; $("steer").disabled = true;
   $("badge").textContent = liveReady ? "可以拨号" : "页面预览";

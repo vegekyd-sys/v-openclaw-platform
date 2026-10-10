@@ -109,6 +109,8 @@ async function fixture(t, options = {}) {
   }
   const context = vm.createContext({
     renderMarkdown: (target,text) => { target.textContent = text; }, createTranscriptPresentation, createPageMicrophoneSession, createScreenWakeLock, createAvatarTasks, ACTIVITY_LABELS,
+    createContentView: () => options.contentView,
+    mountProductControls: () => ({ callState() {}, refreshModels() {} }),
     createAvatarTelemetry: values=>options.telemetry?.(values)??{close(){},decision(){},display(){}},
     AbortSignal,
     AbortController,
@@ -118,7 +120,8 @@ async function fixture(t, options = {}) {
     },
     createH5DuplexPlaybackGate: values => createH5DuplexPlaybackGate({...values, mode: options.playbackMode ?? values.mode}),
     performance: { now: () => now },
-    document: { body, getElementById: element, createElement: () => new Element() },
+    document: { body, getElementById: element, createElement: () => new Element(),
+      ...(options.contentView ? { querySelector: () => null } : {}) },
     URLSearchParams,
     window: {
       location: { hash: options.hash ?? "", pathname: "/voice/", search: options.search ?? "" },
@@ -1005,6 +1008,45 @@ test('full backend document renders separately from spoken caption and retired c
  f.peers[0].channel.onmessage({data:JSON.stringify({type:'output_transcript.added',item:{id:'spoken',text:'结果在屏幕上。'}})});
  assert.equal(f.element('transcriptCurrentRows').children[0].parts.text.textContent,'结果在屏幕上。');
  await f.context.stopCall();await f.context.startCall();old.onmessage({data:JSON.stringify(e)});assert.equal(history.children.length,0);
+});
+
+test('hangup returns to the initial empty entry and late call events cannot restore chat or reports', async t => {
+ let resets = 0;
+ const f = await fixture(t, { contentView: {
+   reset() { resets++; },
+   render(target, item) { target.textContent = item.text; },
+ } });
+ await f.context.startCall();
+ const old = f.eventSources[0], channel = f.peers[0].channel;
+ channel.onmessage({data: JSON.stringify({type:'output_transcript.added',item:{id:'spoken',text:'我查到了。'}})});
+ const result = {voiceSessionId:'voice-1',type:'backend.result',callId:'doc',text:'## 完整方案\n实际查询结果'};
+ old.onmessage({data: JSON.stringify(result)});
+ assert.equal(f.body.dataset.conversation, 'started');
+ assert.equal(f.element('transcriptHistory').children.length, 1);
+ assert.equal(f.element('transcriptCurrentRows').children.length, 1);
+ f.element('steerText').value = '未发送的补充';
+ f.element('conversation').scrollTop = 200;
+ const before = resets;
+ await f.context.stopCall();
+ assert.equal(resets, before + 1, 'Hangup closes and clears the current content reader');
+ assert.equal(f.body.dataset.callState, 'idle');
+ assert.equal(f.body.dataset.conversation, 'empty');
+ assert.equal(f.element('transcriptHistory').children.length, 0);
+ assert.equal(f.element('transcriptCurrentRows').children.length, 0);
+ assert.equal(f.element('transcriptCurrent').hidden, true);
+ assert.equal(f.element('conversation').scrollTop, 0);
+ assert.equal(f.element('steerText').value, '');
+ assert.equal(f.element('start').hidden, false);
+ assert.equal(f.element('start').disabled, false);
+ assert.equal(f.element('stop').hidden, true);
+ old.onmessage({data: JSON.stringify(result)});
+ channel.onmessage({data: JSON.stringify({type:'output_transcript.added',item:{id:'late',text:'旧通话迟到的回复'}})});
+ assert.equal(f.body.dataset.conversation, 'empty');
+ assert.equal(f.element('transcriptHistory').children.length, 0);
+ assert.equal(f.element('transcriptCurrentRows').children.length, 0);
+ await f.context.startCall();
+ assert.equal(f.body.dataset.conversation, 'empty');
+ assert.equal(f.peers.length, 2);
 });
 
 
