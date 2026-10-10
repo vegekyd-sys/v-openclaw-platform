@@ -15,8 +15,12 @@ import assert from 'node:assert/strict';
 // updating the card after close. A final payload that still has text is not lost: the card reports
 // nothing visible, so the existing static fallback sends it. OPENCLAW_FEISHU_EMPTY_CARD_DISCARD=0
 // turns it off.
+//
+// v2: v1 tested "!session.vTaskStatusCard", but vTaskStatusAttach hangs a task-status card on every
+// reply card, so v1 never discarded anything (shared VLab 10/10 18:49, om_x100b6395cd9c…: footer-only
+// card again). The card is kept only when a background-task line is shown or was written on it.
 
-export const MARKER = 'v-feishu-empty-card-discard-v1';
+export const MARKER = 'v-feishu-empty-card-discard-v2';
 
 function replaceExactlyOnce(source, before, after, label) {
   assert.equal(source.split(before).length, 2, `Expected exactly one ${label}`);
@@ -24,13 +28,14 @@ function replaceExactlyOnce(source, before, after, label) {
 }
 
 export function patchFeishuMonitor(source) {
-  assert(!source.includes(MARKER), 'already patched');
+  assert(!source.includes(MARKER) && !source.includes('v-feishu-empty-card-discard-v1'), 'already patched');
   return replaceExactlyOnce(source,
     `					if (disposition === "discarded") closed = await streamingToClose.discard();
 					else {
 						const finalNote = resolveCardNote(agentId, identity, responsePrefixContextProvider());`,
     `					// ${MARKER}: nothing but a status line was ever shown; take the card back
-					const vEmptyCard = !text.trim() && !streamingToClose.vTaskStatusCard && process.env.OPENCLAW_FEISHU_EMPTY_CARD_DISCARD !== "0";
+					const vTaskLine = streamingToClose.vTaskStatusCard;
+					const vEmptyCard = !text.trim() && !vTaskLine?.lineActive && !vTaskLine?.writtenLine && process.env.OPENCLAW_FEISHU_EMPTY_CARD_DISCARD !== "0";
 					if (disposition === "discarded" || vEmptyCard) closed = await streamingToClose.discard();
 					else {
 						const finalNote = resolveCardNote(agentId, identity, responsePrefixContextProvider());`,
