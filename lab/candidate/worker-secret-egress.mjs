@@ -13,8 +13,10 @@
 // a fixed command with exec: send the token as a header to the echo service and print only
 // a hash and length of what the service received; also try a host that is not allowed;
 // and leave the proxy URL it was given in a file.
+// (A disallowed host is refused at substitution, HTTP 502, not at CONNECT: with no global
+// secrets.egressProxy.allowedHosts the tunnel itself is allowed, as on the Gateway.)
 // PATCH=on   every Worker reports [worker-secret-egress.1] active; the echo service received
-//            exactly the stored value; the disallowed host is refused (CONNECT 403); after
+//            exactly the stored value; the disallowed host is refused (502); after
 //            the turn the same proxy credentials are rejected (407, authorization revoked)
 // PATCH=off  V today: the service receives an empty header and exec has no proxy
 // The value never appears in the transcript: the command prints a hash prefix and length.
@@ -141,7 +143,7 @@ printf %s "\${HTTPS_PROXY:-none}" > ${proxyFile}
 curl -sS --max-time 20 https://${ECHO_HOST}/headers -H "x-probe: \$${NAME}" | python3 -c 'import sys,json,hashlib
 h=json.load(sys.stdin).get("headers",{}).get("x-probe","")
 print("probe-sha=" + hashlib.sha256(h.encode()).hexdigest()[:16] + " len=" + str(len(h)))'
-echo "other-connect=$(curl -s -o /dev/null --max-time 20 -w '%{http_connect}' https://${OTHER_HOST}/headers -H "x-probe: \$${NAME}")"
+echo "other-status=$(curl -s -o /dev/null --max-time 20 -w '%{http_code}' https://${OTHER_HOST}/headers -H "x-probe: \$${NAME}")"
 `, { mode: 0o755 });
 
 let summary;
@@ -165,17 +167,18 @@ try {
     agentId: "makaron", sessionKey, deliver: false, thinking: "low", timeoutMs: 180000, idempotencyKey: runId,
     message: `（自动化测试 worker-secret-egress）用 exec 工具执行这一条命令，原样执行，不要改写，也不要先检查或打印任何环境变量：\nsh ${script}\n执行完把命令输出原样回复给我。`,
   });
-  let output = "";
+  let output = "", lastHistory = "";
   const until = Date.now() + 240_000;
   while (Date.now() < until) {
     const history = await client.request("chat.history", { sessionKey, limit: 50 }).catch(() => null);
     const text = JSON.stringify(history ?? "");
-    const m = text.match(/probe-sha=[0-9a-f]{16} len=\d+[^"\\]*?(?:\\n|\n)?other-connect=\d+/u);
+    const m = text.match(/probe-sha=[0-9a-f]{16} len=\d+[^"\\]*?(?:\\n|\n)?other-status=\d+/u);
     if (m) { output = m[0].replace(/\\n/gu, "\n"); break; }
+    lastHistory = text;
     await sleep(2_000);
   }
-  assert(output, `the Agent never ran the probe command\n${redact(lines.slice(-80).map((l) => l.line).join("\n"))}`);
-  const got = { sha: output.match(/probe-sha=([0-9a-f]{16})/u)[1], len: Number(output.match(/len=(\d+)/u)[1]), otherConnect: output.match(/other-connect=(\d+)/u)[1] };
+  assert(output, `the Agent never ran the probe command\nlast history: ${redact(lastHistory.slice(-4000))}`);
+  const got = { sha: output.match(/probe-sha=([0-9a-f]{16})/u)[1], len: Number(output.match(/len=(\d+)/u)[1]), otherStatus: output.match(/other-status=(\d+)/u)[1] };
   // let the run and its Worker request finish, then try the proxy credentials it had
   await sleep(15_000);
   const proxyUrl = fs.existsSync(proxyFile) ? fs.readFileSync(proxyFile, "utf8") : "missing";
@@ -197,7 +200,9 @@ try {
   if (PATCH === "on") {
     assert(egressStart.length >= 1 && egressStart.every((p) => p.status === "active"), `Worker egress did not start: ${JSON.stringify(egressStart)}`);
     assert(summary.valueMatched, `the echo service did not receive the stored value: ${JSON.stringify(got)} expected len ${expected.len}`);
-    assert.equal(got.otherConnect, "403", "a host outside the entry's allowed hosts was not refused");
+    // native semantics: the tunnel opens (no global traffic allowlist), but a request that
+    // carries the sentinel to a host outside the entry's allowed hosts is refused with 502
+    assert.equal(got.otherStatus, "502", "a host outside the entry's allowed hosts received the request");
     assert.equal(afterRun, "407", "the run's proxy authorization outlived its Worker request");
     console.log(`PASS patch=on value delivered to ${ECHO_HOST}, ${OTHER_HOST} refused, authorization revoked after the run`);
   } else {
