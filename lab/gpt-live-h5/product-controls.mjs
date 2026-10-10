@@ -1,3 +1,15 @@
+export function placeDialControl(document, window, home) {
+  const start = document.getElementById("start");
+  const compact = window.matchMedia("(max-width:700px)").matches &&
+    document.body.dataset.callState === "idle" &&
+    document.body.dataset.conversation === "started";
+  const parent = compact ? document.getElementById("callPill") : home;
+  if (start.parentElement !== parent) parent.append(start);
+  const label = compact ? "重新拨号" : "拨号";
+  start.setAttribute("aria-label", label);
+  start.title = label;
+}
+
 export function mountProductControls(document, window, { onMute }) {
   const $ = (id) => document.getElementById(id),
     form = $("steerForm"),
@@ -5,6 +17,8 @@ export function mountProductControls(document, window, { onMute }) {
     model = $("voiceModel"),
     menu = $("modelMenu"),
     trigger = $("modelTrigger");
+  const dialHome = $("start").parentElement;
+  const placeDial = () => placeDialControl(document, window, dialHome);
   let muted = false;
   function compose(open) {
     form.dataset.open = String(open);
@@ -49,7 +63,16 @@ export function mountProductControls(document, window, { onMute }) {
     );
   window.visualViewport?.addEventListener("resize", viewport);
   window.addEventListener("resize", viewport);
+  window.addEventListener("resize", placeDial);
   viewport();
+  // The compact H5 avatar row has room for the avatar, not a second large
+  // control row. Reuse the original button and its listener in the call pill.
+  const layoutObserver = new window.MutationObserver(placeDial);
+  layoutObserver.observe(document.body, {
+    attributes: true,
+    attributeFilter: ["data-conversation"],
+  });
+  placeDial();
   toggle.addEventListener("click", () => compose(form.dataset.open !== "true"));
   $("composerClose").addEventListener("click", () => compose(false));
   form.addEventListener("keydown", (event) => {
@@ -123,12 +146,15 @@ export function mountProductControls(document, window, { onMute }) {
       observer.disconnect();
       avatarObserver.disconnect();
       labelObserver.disconnect();
+      layoutObserver.disconnect();
+      window.removeEventListener("resize", placeDial);
     },
     { once: true },
   );
   return {
     refreshModels: modelChoices,
     callState(state) {
+      placeDial();
       const active = ["connected", "ending"].includes(state);
       toggle.hidden = !active;
       $("mute").hidden = !active;

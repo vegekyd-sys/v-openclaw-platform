@@ -172,6 +172,9 @@ body[data-call-state="idle"] .presence-dot {
   display: flex;
   justify-content: center;
 }
+.call-actions:empty {
+  display: none;
+}
 .call-button {
   display: grid;
   place-items: center;
@@ -193,6 +196,17 @@ body[data-call-state="idle"] .presence-dot {
 }
 .call-start:hover {
   transform: translateY(-2px);
+}
+.call-pill .call-start {
+  width: 42px;
+  height: 42px;
+  box-shadow: none;
+  flex-shrink: 0;
+  color: #fff;
+}
+.call-pill .call-start svg {
+  width: 22px;
+  height: 22px;
 }
 body:not([data-call-state="idle"]) .call-actions {
   display: none;
