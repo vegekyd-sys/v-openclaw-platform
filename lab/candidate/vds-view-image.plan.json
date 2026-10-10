@@ -1,0 +1,12 @@
+{
+  "support": [
+    "lab/candidate/vds-view-image.mjs",
+    "lab/release-files/vds-view-image/patch-vds-view-image.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/vds-view-image.mjs"
+  ],
+  "timeoutSeconds": 5400,
+  "user": "lab-db91-parity"
+}

@@ -1,0 +1,18 @@
+{
+  "id": "v-browser-fill",
+  "name": "V Browser Fill",
+  "description": "Types a password or verification code that someone entered on a credential card into the login page V is driving, without the value passing through V.",
+  "activation": {
+    "onStartup": true
+  },
+  "contracts": {
+    "tools": ["browser_fill_secret"]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "openclawDist": { "type": "string" }
+    }
+  }
+}

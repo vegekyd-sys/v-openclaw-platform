@@ -9,6 +9,7 @@
 //   WeCom      V's v-experience channel patches: the picture is a text block
 //              `![V 的电脑](ref)` (a public url, or a local file the channel
 //              uploads), the commands are callback buttons.
+import { joinSubject } from "./native-card.js";
 import { STATES, STATE_NOTES } from "./native-card.js";
 import { normalizePayment } from "./card.js";
 
@@ -46,6 +47,8 @@ function paymentLine(view) {
   return parts.length ? parts.join(" · ") : null;
 }
 
+const subjectOf = (view) => view.subject ?? "V 的电脑";
+
 function takeLabel(view) {
   return view.kind === "watch" ? "观看" : view.purpose === "payment" ? "付款" : "接管";
 }
@@ -54,19 +57,19 @@ function takeLabel(view) {
 export function cardNote(view, state) {
   if (state === "pending") {
     const minutes = view.openWithinMinutes ? `${view.openWithinMinutes} 分钟内打开有效` : "";
-    if (view.kind === "watch") return `点「观看」看 V 的电脑，只能看不能操作。${minutes ? `${minutes}。` : ""}`;
+    if (view.kind === "watch") return `点「观看」${joinSubject("看", subjectOf(view))}，只能看不能操作。${minutes ? `${minutes}。` : ""}`;
     const what = view.purpose === "payment" ? "核对金额后自己填写支付信息并确认付款" : "直接操作";
-    return `点「${takeLabel(view)}」打开 V 的电脑${what}，做完点「完成」，V 接着做；不需要就点「跳过」。${minutes ? `${minutes}。` : ""}`;
+    return `点「${takeLabel(view)}」${joinSubject("打开", subjectOf(view))}${/[A-Za-z0-9]$/u.test(subjectOf(view)) ? " " : ""}${what}，做完点「完成」，V 接着做；不需要就点「跳过」。${minutes ? `${minutes}。` : ""}`;
   }
   // Feishu's note names its 「我完成了」 button; here the button is 「完成」.
-  if (state === "active") return "你在操作 V 的电脑。做完点「完成」，V 接着做。";
+  if (state === "active") return `${joinSubject("你在操作", subjectOf(view))}。做完点「完成」，V 接着做。`;
   return STATE_NOTES[state] ?? "";
 }
 
 /** What the agent is told after a card is posted; the hand-back button is 我完成了 on Feishu and 完成 elsewhere. */
-export function nativeCardInstruction(channel) {
+export function nativeCardInstruction(channel, { cardTitle = "电脑", machine = "V's desktop" } = {}) {
   const done = channel === "feishu" ? "我完成了" : "完成";
-  return `A card titled 电脑 with three buttons has been posted in this conversation: 接管 (the user takes over V's desktop), ${done} (hands it back) and 跳过 (the user will not do this step). Do NOT repeat or paraphrase the url and do not say where the card is. Reply with one short sentence such as 卡片已发出，接管后完成登录，做完点「${done}」, then end your turn. When \`/v-handback <id>\` arrives, or a message saying the user pressed 交还给 V on the takeover page, the desktop is already back with you: continue the task right away without asking. When \`/v-skip <id>\` arrives, the user skipped this step: do not issue another handoff for it; say briefly what you can do instead or where the task is blocked. If the user instead says in the chat that they are done (e.g. 好了), call desktop_handoff_status, then continue.`;
+  return `A card titled ${cardTitle} with three buttons has been posted in this conversation: 接管 (the user takes over ${machine}), ${done} (hands it back) and 跳过 (the user will not do this step). Do NOT repeat or paraphrase the url and do not say where the card is. Reply with one short sentence such as 卡片已发出，接管后完成登录，做完点「${done}」, then end your turn. When \`/v-handback <id>\` arrives, or a message saying the user pressed 交还给 V on the takeover page, the desktop is already back with you: continue the task right away without asking. When \`/v-skip <id>\` arrives, the user skipped this step: do not issue another handoff for it; say briefly what you can do instead or where the task is blocked. If the user instead says in the chat that they are done (e.g. 好了), call desktop_handoff_status, then continue.`;
 }
 
 /** Buttons for a state: `{label, url}` opens the desktop, `{label, command}` posts the command. */
@@ -95,14 +98,14 @@ export function cardButtons(view, state) {
  */
 export function handoffPresentation(view, state = "pending", { imageRef } = {}) {
   const status = statusOf({ state, kind: view.kind });
-  const title = `${view.purpose === "payment" ? "付款" : "电脑"} · ${status.tag}`;
-  const reason = String(view.reason ?? "").trim().slice(0, 300) || "V 需要你接管电脑。";
+  const title = `${view.purpose === "payment" ? "付款" : view.cardTitle ?? "电脑"} · ${status.tag}`;
+  const reason = String(view.reason ?? "").trim().slice(0, 300) || `${joinSubject("V 需要你接管", subjectOf(view))}。`;
   const blocks = [];
   const pay = paymentLine(view);
   if (pay) blocks.push({ type: "text", text: pay });
   const note = cardNote(view, state);
   if (note) blocks.push({ type: "context", text: note });
-  if (imageRef) blocks.push({ type: "text", text: `![V 的电脑](${imageRef})` });
+  if (imageRef) blocks.push({ type: "text", text: `![${subjectOf(view)}](${imageRef})` });
   const buttons = cardButtons(view, state).map((b, i) => (b.url ? { label: b.label, url: b.url, ...(i === 0 ? { style: "primary" } : {}) } : { label: b.label, value: b.command }));
   if (buttons.length) blocks.push({ type: "buttons", buttons });
   return { presentation: { title, tone: view.purpose === "payment" ? "warning" : "info", blocks }, text: reason };
@@ -118,7 +121,7 @@ const escapeHtml = (text) => String(text ?? "").replace(/&/g, "&amp;").replace(/
  */
 export function telegramHandoffCard(view, state = "pending", { urlButtons = true } = {}) {
   const status = statusOf({ state, kind: view.kind });
-  const parts = [`<b>${view.purpose === "payment" ? "付款" : "电脑"}</b> · ${escapeHtml(status.tag)}`];
+  const parts = [`<b>${view.purpose === "payment" ? "付款" : escapeHtml(view.cardTitle ?? "电脑")}</b> · ${escapeHtml(status.tag)}`];
   const reason = String(view.reason ?? "").trim().slice(0, 300);
   if (reason) parts.push(escapeHtml(reason));
   const pay = paymentLine(view);

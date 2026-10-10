@@ -12,6 +12,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { TAIL_HELPER, TAIL_MARKER } from "../../codex-turn-tail.mjs";
 
 const args = process.argv.slice(2);
 const option = (name) => {
@@ -85,7 +86,9 @@ const TARGETS = [
         "\t\tnotifyUserMessagePersisted,\n\t\tpromptMirrorSettled,\n\t\tabortListener,\n\t\tready: bindProjection()\n"],
       ["\tconst mirrorOutcome = await codexTranscriptMirrorRuntime.mirrorBestEffort({\n",
         `\tawait activeTurn.promptMirrorSettled; // ${MARK}\n`
-        + "\tconst mirrorOutcome = await codexTranscriptMirrorRuntime.mirrorBestEffort({\n"],
+        + "\tconst mirrorOutcome = await codexTranscriptMirrorRuntime.mirrorBestEffort({\n", 1,
+        // J marks lines around this await, so presence of the await line is what says A4 is applied
+        { skipIfPresent: "\tawait activeTurn.promptMirrorSettled; // v-codex-firsttext-v1\n" }],
       // B2. With no explicit profile, startup fell back to the bound thread's auth profile
       //     even when the turn switched provider family: /vds after /vcodex asked for the
       //     OpenAI subscription profile and failed ("selected auth profile is unavailable").
@@ -260,14 +263,54 @@ const TARGETS = [
         + "\t\treturn result;\n"],
     ],
   },
+  // J. Timing of a Codex turn's tail (lab/codex-turn-tail.mjs; logging only). V 2026-10-10: big /vds groups'
+  //    short replies ended 3-12 s after task_complete with no log line for the run in between. The tail starts
+  //    at turn/completed; turn-completion (the attempt's completion promise), drain-close-projection (the
+//    notification queue drained and the transcript checkpoint closed) and every later step of the final
+//    section are marked; the core
+  //    (lab/patch-codex-turn-tail.mjs) adds its own marks and logs [codex-turn-tail.1].
+  {
+    file: moduleIn(dist, /^run-attempt-.*\.js$/u, "var CodexTranscriptCheckpoint = class {"),
+    patches: [
+      ["\n//#region extensions/codex/src/app-server/", `\n${TAIL_HELPER}//#region extensions/codex/src/app-server/`, 1, "first"],
+      ["\t\t\tcase \"turn/completed\":\n\t\t\t\tawait this.handleTurnCompleted(params);\n",
+        `\t\t\tcase "turn/completed":\n\t\t\t\t__vCodexTurnTail().start(this.params.runId, { harness: "codex", provider: this.params.provider ?? null, model: this.params.modelId ?? null }); // V ${TAIL_MARKER}\n\t\t\t\tawait this.handleTurnCompleted(params);\n`],
+      ["\tawait completion;\n\tconst abortGraceElapsed = createDeferred();\n",
+        `\tawait completion;\n\t__vCodexTurnTail().mark(params.runId, "turn-completion"); // V ${TAIL_MARKER}\n\tconst abortGraceElapsed = createDeferred();\n`],
+      ["\tconst result = activeProjector.buildResult(toolBridge.telemetry, { yieldDetected: toolState.yieldDetected });\n",
+        `\t__vCodexTurnTail().mark(params.runId, "drain-close-projection"); // V ${TAIL_MARKER}\n\tconst result = activeProjector.buildResult(toolBridge.telemetry, { yieldDetected: toolState.yieldDetected });\n`],
+      ["\tconst refreshedUsageLimitPromptError = await refreshCodexUsageLimitPromptError({\n",
+        `\t__vCodexTurnTail().mark(params.runId, "turn-drain"); // V ${TAIL_MARKER}\n\tconst refreshedUsageLimitPromptError = await refreshCodexUsageLimitPromptError({\n`],
+      ["\tawait activeTurn.promptMirrorSettled; // v-codex-firsttext-v1\n",
+        `\t__vCodexTurnTail().mark(params.runId, "usage-and-result"); // V ${TAIL_MARKER}\n\tawait activeTurn.promptMirrorSettled; // v-codex-firsttext-v1\n\t__vCodexTurnTail().mark(params.runId, "prompt-mirror-wait"); // V ${TAIL_MARKER}\n`],
+      ["\tconst { assistantTranscriptOwned, assistantTranscriptIdempotencyKey, terminalAnchor } = mirrorOutcome;\n",
+        `\t__vCodexTurnTail().mark(params.runId, "transcript-mirror"); // V ${TAIL_MARKER}\n\tconst { assistantTranscriptOwned, assistantTranscriptIdempotencyKey, terminalAnchor } = mirrorOutcome;\n`],
+      ["\tif (settledTurnFinalizationContext?.source === \"unavailable\") embeddedAgentLog.warn(\"codex settled-turn finalization context is unavailable\", {\n",
+        `\t__vCodexTurnTail().mark(params.runId, "settled-finalization"); // V ${TAIL_MARKER}\n\tif (settledTurnFinalizationContext?.source === "unavailable") embeddedAgentLog.warn("codex settled-turn finalization context is unavailable", {\n`],
+      ["\tstate.shouldDelayNativeHookRelayUnregister = completedTurnStatus === \"completed\" && !effectiveTimedOut",
+        `\t__vCodexTurnTail().mark(params.runId, "agent-end-hooks"); // V ${TAIL_MARKER}\n\tstate.shouldDelayNativeHookRelayUnregister = completedTurnStatus === "completed" && !effectiveTimedOut`],
+      ["\trecordCodexTrajectoryCompletion(trajectoryRecorder, {\n\t\tattempt: params,\n\t\tresult,\n",
+        `\t__vCodexTurnTail().mark(params.runId, "binding-mark"); // V ${TAIL_MARKER}\n\trecordCodexTrajectoryCompletion(trajectoryRecorder, {\n\t\tattempt: params,\n\t\tresult,\n`],
+    ],
+  },
 ];
 
 const report = [];
 for (const { file, patches } of TARGETS) {
   let source = fs.readFileSync(file, "utf8");
   let changed = 0;
-  for (const [before, after, expected = 1] of patches) {
+  for (const [before, after, expected = 1, mode] of patches) {
     if (before === after) continue;
+    if (mode && typeof mode === "object" && mode.skipIfPresent && source.includes(mode.skipIfPresent)) continue;
+    if (mode === "first") {
+      // insert once before the first occurrence (the region marker repeats)
+      if (source.includes(TAIL_MARKER)) continue;
+      const at = source.indexOf(before);
+      assert(at >= 0, `${path.basename(file)}: anchor not found: ${JSON.stringify(before.slice(0, 60))}`);
+      source = source.slice(0, at) + after + source.slice(at + before.length);
+      changed += 1;
+      continue;
+    }
     const beforeCount = source.split(before).length - 1;
     const afterCount = source.split(after).length - 1;
     // Insertions keep their anchor inside the replacement, so test for the result first.
