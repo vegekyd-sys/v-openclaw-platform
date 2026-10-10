@@ -1,0 +1,15 @@
+{
+  "baseRelease": "night-batch-20261010-v2",
+  "files": [
+    {
+      "source": "lab/release-files/voice-content-product-20261010/realtime-quicksilver-session-B3HKftDE.js",
+      "target": "openclaw/dist/realtime-quicksilver-session-B3HKftDE.js",
+      "before": "f0b015536d9f8f7e0ae170824c71461db12121c8080eece4ab9a071848e6aad7"
+    },
+    {
+      "source": "lab/release-files/voice-content-product-20261010/talk-DkFuKRod.js",
+      "target": "openclaw/dist/talk-DkFuKRod.js",
+      "before": "2d740a7cf629242823b7d2aca05609993a2ded7fd850b9e852c5f35449213a55"
+    }
+  ]
+}
