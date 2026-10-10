@@ -46,7 +46,8 @@ fs.symlinkSync(path.join(runtime, "openclaw", "node_modules", "typebox"), path.j
 // ---- configuration ----
 const MODELS = {
   worker: { ref: "deepseek/deepseek-flash", gateway: "vlab-worker", worker: "openclaw", params: { thinking: "low" } },
-  "claude-cli": { ref: "anthropic/claude-opus-5-5", gateway: "claude-cli", worker: "claude-cli", params: { thinking: "low" } },
+  // VLab's Claude Code (2.1.273, 2026-10-10) predates claude-opus-5-5; CLAUDE_MODEL overrides.
+  "claude-cli": { ref: process.env.CLAUDE_MODEL ?? "anthropic/claude-opus-5", gateway: "claude-cli", worker: "claude-cli", params: { thinking: "low" } },
 }[HARNESS];
 assert(MODELS, `unknown HARNESS ${HARNESS}`);
 function configure(config, runtimeId) {
