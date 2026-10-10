@@ -45,11 +45,17 @@ test("refuses a page on another host before reading the value", async () => {
 });
 
 test("refuses entries without a site, env entries, missing entries and bad names", async () => {
-  await assert.rejects(fillSecret({ name: "X_TOKEN", ref: "e1" }, fakeDeps({ entry: { kind: "secret", allowedHosts: [] } })), { code: "NO_SITE" });
-  await assert.rejects(fillSecret({ name: "X_TOKEN", ref: "e1" }, fakeDeps({ entry: { kind: "env", allowedHosts: [] } })), { code: "NOT_A_SECRET" });
-  await assert.rejects(fillSecret({ name: "X_TOKEN", ref: "e1" }, fakeDeps({ entry: null })), { code: "NOT_FOUND" });
+  await assert.rejects(fillSecret({ name: "LOGIN_X_TOKEN", ref: "e1" }, fakeDeps({ entry: { kind: "secret", allowedHosts: [] } })), { code: "NO_SITE" });
+  await assert.rejects(fillSecret({ name: "LOGIN_X_TOKEN", ref: "e1" }, fakeDeps({ entry: { kind: "env", allowedHosts: [] } })), { code: "NOT_A_SECRET" });
+  await assert.rejects(fillSecret({ name: "LOGIN_X_TOKEN", ref: "e1" }, fakeDeps({ entry: null })), { code: "NOT_FOUND" });
   await assert.rejects(fillSecret({ name: "lower", ref: "e1" }, fakeDeps()), { code: "INVALID_NAME" });
-  await assert.rejects(fillSecret({ name: "X_TOKEN", ref: " " }, fakeDeps()), { code: "REF_REQUIRED" });
+  // Store entries the Gateway and Workers use are never read, typed or deleted.
+  for (const name of ["MAKARON_API_KEY", "AGENTMAIL_API_KEY", "LOGIN_", "XLOGIN_A"]) {
+    const deps = fakeDeps();
+    await assert.rejects(fillSecret({ name, ref: "e1" }, deps), { code: "INVALID_NAME" });
+    assert.deepEqual(deps.calls, [], `${name} must not touch the store`);
+  }
+  await assert.rejects(fillSecret({ name: "LOGIN_X_TOKEN", ref: " " }, fakeDeps()), { code: "REF_REQUIRED" });
 });
 
 test("needs a targetId when several tabs are open and finds it when given", async () => {
