@@ -21,7 +21,10 @@
     "lab/candidate/codex-big-history.mjs"
   ],
   "env": {
-    "PHASES": "turns"
+    "PHASES": "tail",
+    "FLUSH_IDLE_MS": "3600000",
+    "ALL_PLUGINS": "1",
+    "TAIL_TURNS": "5"
   },
   "timeoutSeconds": 7200,
   "user": "lab-db91-parity"
