@@ -1,3 +1,4 @@
+import {mediaReferences} from './gpt-live-h5/media-references.mjs';
 import assert from 'node:assert/strict';
 import {presentBackendResult,LONG_RESULT_NOTICE,readBackendResult,extractResultSummary,backendResultQuestion,BACKEND_RESULT_INSTRUCTIONS} from './gpt-live-h5/result-presentation.mjs';
 function once(source,before,after){assert.equal(source.split(before).length-1,1,'Backend document host anchor drifted');return source.replace(before,after);}
@@ -29,22 +30,29 @@ export function patchBackendResultBroker(source) {
     '\t\t\t\tonBackendResult: (result) => offer.request.gatewayControl?.onBackendResult?.(result),\n\t\t\t\tonCallLifecycleEvent: (event) => offer.request.gatewayControl?.onCallLifecycleEvent?.(event),');
 }
 export function patchBackendResultTalk(source) {
-  if(source.includes('// voice-backend-document-talk-v2'))return source;
+  if(source.includes('// voice-backend-document-talk-v3'))return source;
+  if(source.includes('// voice-backend-document-talk-v2')) {
+    const helper=/function presentBackendResult\(result\) \{[\s\S]*?\n\}/u;
+    assert(helper.test(source),'Backend media helper anchor drifted');
+    return (mediaReferences.toString()+'\n'+source.replace(helper,()=>presentBackendResult.toString()))
+      .replace('if(!document?.long)return', 'if(!document?.long && !document?.media)return')
+      .replace('// voice-backend-document-talk-v2','// voice-backend-document-talk-v3');
+  }
   if(source.includes('// voice-backend-document-talk-v1')) {
     const start=source.indexOf('function readBackendResult('),end=source.indexOf('function extractResultSummary(',start);
     assert(start>=0 && end>start,'Backend summary helper anchor drifted');
-    return (source.slice(0,start)+readBackendResult.toString()+'\n'+source.slice(end)).replace('// voice-backend-document-talk-v1','// voice-backend-document-talk-v2');
+    return patchBackendResultTalk((source.slice(0,start)+readBackendResult.toString()+'\n'+source.slice(end)).replace('// voice-backend-document-talk-v1','// voice-backend-document-talk-v2'));
   }
   const method=`\t\t\tonBackendResult: ({delegationId,text}) => {
 \t\t\t\towner.assertOpen();
 \t\t\t\tif(owners.get(params.voiceSessionId)!==owner)throw new Error("Realtime voice session is not active");
 \t\t\t\tif(typeof delegationId!=="string"||!delegationId||typeof text!=="string")throw new Error("Invalid backend document identity");
 \t\t\t\tconst document=presentBackendResult(text);
-\t\t\t\tif(!document?.long)return document?.text!==text?document?.text:undefined;
+\t\t\t\tif(!document?.long && !document?.media)return document?.text!==text?document?.text:undefined;
 \t\t\t\tharness.emit({type:"tool.result",callId:delegationId,turnId:harness.ensureTurn(),payload:{name:"openclaw_backend_result",text:document.text,...talkPayload()},final:true});
 \t\t\t\treturn document.spokenText;
 \t\t\t},
 `;
-  return '// voice-backend-document-talk-v2\n'+`const LONG_RESULT_NOTICE=${JSON.stringify(LONG_RESULT_NOTICE)};\n${readBackendResult.toString()}\n${extractResultSummary.toString()}\n${presentBackendResult.toString()}\n`+
+  return '// voice-backend-document-talk-v3\n'+`${mediaReferences.toString()}\nconst LONG_RESULT_NOTICE=${JSON.stringify(LONG_RESULT_NOTICE)};\n${readBackendResult.toString()}\n${extractResultSummary.toString()}\n${presentBackendResult.toString()}\n`+
     once(source,'\t\t\tonCallLifecycleEvent: (event) => {',method+'\t\t\tonCallLifecycleEvent: (event) => {');
 }

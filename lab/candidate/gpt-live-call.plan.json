@@ -189,6 +189,8 @@
     "lab/gpt-live-h5/duplex-playback.mjs",
     "lab/gpt-live-h5/index.html",
     "lab/gpt-live-h5/app.js",
+    "lab/gpt-live-h5/media-references.mjs",
+    "lab/gpt-live-h5/screen-wake-lock.mjs",
     "lab/gpt-live-h5/content-view.mjs",
     "lab/gpt-live-h5/product-controls.mjs",
     "lab/gpt-live-h5/styles.css",
