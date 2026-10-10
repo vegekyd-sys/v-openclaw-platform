@@ -229,13 +229,19 @@ async function waitPort(timeoutMs = 600_000) {
 const { GatewayClient } = await import(`${runtime}/openclaw/dist/plugin-sdk/gateway-runtime.js`);
 const token = String(config.gateway?.auth?.token ?? "").replace(/\$\{([^}]+)\}/gu, (_, k) => env[k] ?? secrets[k] ?? "");
 async function connect(onEvent) {
+  // The Gateway listens before its Worker pool is warm; a first handshake can miss.
+  for (let attempt = 1; ; attempt++) {
+    try { return await connectOnce(onEvent); } catch (e) { console.log(JSON.stringify({ connectAttempt: attempt, error: redact(String(e?.message ?? e)).slice(0, 200) })); if (attempt >= 6) throw e; await sleep(10_000); }
+  }
+}
+async function connectOnce(onEvent) {
   return await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("connect deadline")), 30_000);
+    const timer = setTimeout(() => { client.stop?.(); reject(new Error("connect deadline")); }, 30_000);
     const client = new GatewayClient({
       url: `ws://127.0.0.1:${port}`, token, deviceIdentity: null, clientName: "cli", mode: "cli", caps: ["tool-events"],
       scopes: ["operator.read", "operator.write", "operator.admin"], onEvent,
       onHelloOk() { clearTimeout(timer); resolve(client); },
-      onConnectError(e) { clearTimeout(timer); reject(e); },
+      onConnectError(e) { clearTimeout(timer); client.stop?.(); reject(e); },
     });
     client.start();
   });
@@ -342,4 +348,7 @@ try {
   await stopGateway();
   proxy.close();
   fs.rmSync(fixtureDir, { recursive: true, force: true });
+  // GatewayClient keeps reconnect timers alive; the probe is done.
+  setTimeout(() => process.exit(process.exitCode ?? 0), 1000).unref?.();
+  process.exit(process.exitCode ?? 0);
 }
