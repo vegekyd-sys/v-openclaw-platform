@@ -14,8 +14,14 @@ import assert from 'node:assert/strict';
 // the turn does not allow empty replies, and V's group turns count as directed, so they never
 // do. Upstream 1b4c1a10a78 lets an authored NO_REPLY through that gate; blank replies still get
 // the continuation, and failed tools, async work and committed message sends keep their checks.
+//
+// v2: v1 (upstream's line alone) passed a CLI candidate but not a real Feishu group on shared VLab
+// (10/10 16:47, om_x100b63abf490…): with block streaming on, the model's NO_REPLY never reaches
+// attempt.assistantTexts, which is all the check reads; the transcript still holds the final
+// assistant message with exactly NO_REPLY. "Authored NO_REPLY" now also means: the current
+// attempt's final assistant message says exactly NO_REPLY and assistantTexts holds nothing else.
 
-export const MARKER = 'v-no-reply-after-tool-v1';
+export const MARKER = 'v-no-reply-after-tool-v2';
 
 function replaceExactlyOnce(source, before, after, label) {
   assert.equal(source.split(before).length, 2, `Expected exactly one ${label}`);
@@ -23,8 +29,19 @@ function replaceExactlyOnce(source, before, after, label) {
 }
 
 export function patchBuiltinOpenclaw(source) {
-  assert(!source.includes(MARKER), 'already patched');
-  return replaceExactlyOnce(source,
+  assert(!source.includes(MARKER) && !source.includes('v-no-reply-after-tool-v1'), 'already patched');
+  const explicit = replaceExactlyOnce(source,
+    `	const explicitSilentReply = params.payloadCount === 0 && assistant?.stopReason !== "error" && hasOnlySilentAssistantReply(params.attempt.assistantTexts);
+	const tolerateSideEffects = terminalReplyOptional || explicitSilentReply;`,
+    `	// ${MARKER}: block streaming keeps NO_REPLY out of assistantTexts; the final message still says it
+	const vAssistantSaysNoReply = Array.isArray(assistant?.content) && (() => {
+		const text = assistant.content.filter((block) => block?.type === "text" && typeof block.text === "string").map((block) => block.text).join("").trim();
+		return text.length > 0 && isSilentReplyPayloadText(text, "NO_REPLY");
+	})() && (params.attempt.assistantTexts ?? []).every((text) => text.trim().length === 0 || isSilentReplyPayloadText(text, "NO_REPLY"));
+	const explicitSilentReply = params.payloadCount === 0 && assistant?.stopReason !== "error" && (hasOnlySilentAssistantReply(params.attempt.assistantTexts) || vAssistantSaysNoReply);
+	const tolerateSideEffects = terminalReplyOptional || explicitSilentReply;`,
+    'shouldTreatEmptyAssistantReplyAsSilent explicit silence');
+  return replaceExactlyOnce(explicit,
     `	const tolerateSideEffects = terminalReplyOptional || explicitSilentReply;
 	if (!params.allowEmptyAssistantReplyAsSilent || shouldSkipNonVisibleTurnRetry({`,
     `	const tolerateSideEffects = terminalReplyOptional || explicitSilentReply;

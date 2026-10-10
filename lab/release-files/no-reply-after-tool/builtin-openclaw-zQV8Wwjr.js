@@ -6562,9 +6562,14 @@ function shouldSkipNonVisibleTurnRetry(params) {
 function shouldTreatEmptyAssistantReplyAsSilent(params) {
 	const terminalReplyOptional = params.terminalReplyExpectation === "optional";
 	const assistant = resolveCurrentAttemptAssistant(params.attempt);
-	const explicitSilentReply = params.payloadCount === 0 && assistant?.stopReason !== "error" && hasOnlySilentAssistantReply(params.attempt.assistantTexts);
+	// v-no-reply-after-tool-v2: block streaming keeps NO_REPLY out of assistantTexts; the final message still says it
+	const vAssistantSaysNoReply = Array.isArray(assistant?.content) && (() => {
+		const text = assistant.content.filter((block) => block?.type === "text" && typeof block.text === "string").map((block) => block.text).join("").trim();
+		return text.length > 0 && isSilentReplyPayloadText(text, "NO_REPLY");
+	})() && (params.attempt.assistantTexts ?? []).every((text) => text.trim().length === 0 || isSilentReplyPayloadText(text, "NO_REPLY"));
+	const explicitSilentReply = params.payloadCount === 0 && assistant?.stopReason !== "error" && (hasOnlySilentAssistantReply(params.attempt.assistantTexts) || vAssistantSaysNoReply);
 	const tolerateSideEffects = terminalReplyOptional || explicitSilentReply;
-	// v-no-reply-after-tool-v1: an authored NO_REPLY is silence even where empty replies are not allowed
+	// v-no-reply-after-tool-v2: an authored NO_REPLY is silence even where empty replies are not allowed
 	if (!params.allowEmptyAssistantReplyAsSilent && !explicitSilentReply || shouldSkipNonVisibleTurnRetry({
 		...params,
 		tolerateSideEffects
