@@ -73,6 +73,7 @@ async function fixture(t, options = {}) {
   const timeouts = new Map();
   let timerId = 0;
   let sessionId = 0;
+  let relayTurnId = 0;
   let now = 0;
   const levels = { microphone: 0, remote: 0 };
   class Peer {
@@ -111,6 +112,10 @@ async function fixture(t, options = {}) {
     renderMarkdown: (target,text) => { target.textContent = text; }, createTranscriptPresentation, createPageMicrophoneSession, createScreenWakeLock, createAvatarTasks, ACTIVITY_LABELS,
     createContentView: () => options.contentView,
     mountProductControls: () => ({ callState() {}, refreshModels() {} }),
+    createRelayAudio: values => options.relayFactory(values),
+    mountAvatar: () => options.avatar,
+    createAvatarReactions: () => options.reactions,
+    crypto: { randomUUID: () => `relay-turn-${++relayTurnId}` },
     createAvatarTelemetry: values=>options.telemetry?.(values)??{close(){},decision(){},display(){}},
     AbortSignal,
     AbortController,
@@ -124,6 +129,7 @@ async function fixture(t, options = {}) {
       ...(options.contentView ? { querySelector: () => null } : {}) },
     URLSearchParams,
     window: {
+      ...(options.avatar ? { Image: function Image() {} } : {}),
       location: { hash: options.hash ?? "", pathname: "/voice/", search: options.search ?? "" },
       history: { replaceState: (...args) => options.replaceState?.(...args) },
       addEventListener: (type, listener) => pageEvents.set(type, listener),
@@ -1008,6 +1014,27 @@ test('full backend document renders separately from spoken caption and retired c
  f.peers[0].channel.onmessage({data:JSON.stringify({type:'output_transcript.added',item:{id:'spoken',text:'结果在屏幕上。'}})});
  assert.equal(f.element('transcriptCurrentRows').children[0].parts.text.textContent,'结果在屏幕上。');
  await f.context.stopCall();await f.context.startCall();old.onmessage({data:JSON.stringify(e)});assert.equal(history.children.length,0);
+});
+
+test('relay greeting text appears in chat and reaches avatar context, with retired-call captions rejected', async t => {
+ let relay;const snapshots=[];
+ const f=await fixture(t,{
+  api:(route,payload,result)=>route==='session'?{...result,transport:'gateway-relay',provider:'seeduplex'}:result,
+  relayFactory:values=>{relay=values;return {start:async()=>{},dispose(){}};},
+  avatar:{show(){},select(){},attend(){},context(){return {}; }},
+  reactions:{update:values=>snapshots.push(values.snapshot),dispose(){}},
+ });
+ await f.context.startCall();
+ const text='天意，你好，我是 V，在呢。';
+ relay.onEvent({type:'transcript',role:'assistant',text,final:true,source:'greeting'});
+ assert.equal(f.element('transcriptHistory').children.length,1);
+ assert.equal(f.element('transcriptHistory').children[0].parts.text.textContent,text);
+ assert.equal(f.body.dataset.conversation,'started');
+ assert.equal(snapshots.at(-1).history[0].text,text);
+ await f.context.stopCall();
+ relay.onEvent({type:'transcript',role:'assistant',text,final:true,source:'greeting'});
+ assert.equal(f.body.dataset.conversation,'empty');
+ assert.equal(f.element('transcriptHistory').children.length,0);
 });
 
 test('hangup returns to the initial empty entry and late call events cannot restore chat or reports', async t => {
