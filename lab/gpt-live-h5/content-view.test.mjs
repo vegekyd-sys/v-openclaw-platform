@@ -133,3 +133,11 @@ test("multiple media without prose still share one result", () => {
   const result = contentItems({key:"gallery",role:"assistant",complete:true,text:"![图](https://cdn.test/a.webp)\n![图二](https://cdn.test/b.webp)"});
   assert.equal(result.length,1); assert.equal(result[0].media.length,2);
 });
+
+
+test('plain attachment URLs become one deliverable without exposing unsafe or duplicate references',()=>{
+ const text='已生成小赛车。\n链接：https://cdn.test/a.jpg\nhttps://cdn.test/a.jpg\n视频 https://cdn.test/a.mp4。\nhttps://user:secret@cdn.test/private.png\nhttp://other.test/a.png';
+ const result=contentItems({key:'plain',role:'assistant',complete:true,text});
+ assert.equal(result.length,1);assert.equal(result[0].text,text);
+ assert.deepEqual(result[0].media.map(m=>m.url),['https://cdn.test/a.jpg','https://cdn.test/a.mp4']);
+});

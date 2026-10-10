@@ -31,3 +31,11 @@ test('opened reader renders approved media in Markdown order while unrelated lin
  assert.equal(target.find('img').length,1);assert.equal(target.find('video').length,1);assert.equal(target.find('a').length,1);
  assert.deepEqual(target.children.map(n=>n.textContent),['开头','','中间','','官网','结尾']);
 });
+
+
+test('GFM plain media links surviving attachment extraction render inside the actual reader',()=>{
+ const target=new Node();
+ renderMarkdown(target,'已生成：小赛车。\n\n链接：https://cdn.test/a.jpg',doc,{media:href=>href==='https://cdn.test/a.jpg'?new Node('img'):null});
+ assert.equal(target.find('img').length,1);assert.equal(target.find('a').length,0);
+ assert(target.textContent.includes('小赛车'));
+});

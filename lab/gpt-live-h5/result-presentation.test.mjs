@@ -41,3 +41,12 @@ test('oversized backend summary is shortened from its own conclusion, never a re
  const result=presentBackendResult(`【语音摘要】\n${summary}\n【完整方案】\n${body}`);
  assert.equal(result.text,body);assert(result.spokenText.startsWith('首选A，次选B，证件条件仍需确认。'));assert(!result.spokenText.startsWith('项'));
 });
+
+
+test('a short plain media URL surviving OpenClaw attachment extraction is still delivered to the screen',()=>{
+ const text='已生成：玩具小赛车产品图。\n\n链接：https://cdn.test/snapshot.jpg';
+ const result=presentBackendResult(text);
+ assert.equal(result.media,true);assert.equal(result.long,false);assert.equal(result.text,text);
+ assert(!result.spokenText.includes('https:'));
+ for(const text of ['https://user:password@cdn.test/a.png','http://other.test/a.png','https://example.test/'])assert.equal(presentBackendResult(text).media,undefined);
+});
