@@ -22,6 +22,7 @@ test('V directories: core from ExecStart, Worker beside it, Feishu fixed, DingTa
     wecom: '/home/openclaw/.openclaw/extensions/wecom-openclaw-plugin',
     handoff: '/opt/v-desktop-handoff',
     'secret-entry': '/opt/v-secret-entry',
+    'browser-fill': '/opt/v-browser-fill',
   });
   assert.throws(() => resolveVDirs(V_CORE, () => []), /dingtalk: expected one directory on V/);
   assert.throws(() => resolveVDirs(V_CORE, () => [V_DT, V_DT.replace('g-7ae', 'g-000')]), /found 2/);
@@ -106,6 +107,7 @@ test('parity pairs: existing three unchanged; DingTalk/WeCom follow VLab\'s load
     ['handoff', 'sidecar:handoff/service', '/opt/v-desktop-handoff/service', '/opt/vlab-v-desktop-handoff/service', false],
     ['handoff', 'sidecar:handoff/desktop', '/opt/v-desktop-handoff/desktop', '/opt/vlab-v-desktop-handoff/desktop', false],
     ['secret-entry', 'sidecar:secret-entry', '/opt/v-secret-entry', '/opt/vlab-v-secret-entry', true],
+    ['browser-fill', 'sidecar:browser-fill/plugin', '/opt/v-browser-fill/plugin', '/opt/vlab-v-browser-fill/plugin', true],
     // V Browser: not resolved here (no sidecarDirs), so absent on both sides.
     ['v-browser-plugin', 'sidecar:v-browser-plugin', null, null, false],
     ['v-browser-broker', 'sidecar:v-browser-broker', null, null, false],
