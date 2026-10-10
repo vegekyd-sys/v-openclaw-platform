@@ -11,6 +11,16 @@
 
 ---
 
+## worker-secret-egress-revert-20261010
+
+回滚：2026-10-10 22:32 CST（V 文件 `promote-to-v --undo`，随后 `vlab.workers.roll` 换代，未重启 Gateway）  ·  tag `worker-secret-egress-revert-20261010`
+
+**摘要**：撤回 `worker-secret-egress-20261010`。那次上线让 worker 里的 exec 带上凭据库的出网占位符，但凭据库条目会**覆盖** worker 从 Gateway 服务环境继承的同名变量。`MAKARON_API_KEY` 两边值不同：17:52 起新起的 worker 里，夜班调 Makaron 用的是凭据库那把「群聊任务」账号的 key，而不是原来的个人账号 key。17:51–22:32 共 3571 次 www.makaron.app 请求被换了 key（18 点 1750、19 点 1696），夜班 DL-1010-04/05 共 31 个项目建在「群聊任务」账号下、其余额被耗到 2 积分，部分提交因余额不足失败；另有回合结束后仍在跑的后台命令因代理授权已撤销而失败（makaron 402 次、飞书 27 次）。其他重名条目：`BROWSER_USE_API_KEY` 值不同但期间无请求；三个 `VOLCANO_*` 值相同（语音 15 次替换不换账号）。修复需改为不覆盖继承的同名变量，并处理后台命令的授权生命周期，重新验证后再上。
+
+相对上一版 `worker-secret-egress-20261010`：2 个文件变化。
+- `worker` worker.mjs  8c6b2e92 → 8b466a60（复原）
+- `worker` secret-egress-worker.mjs  515e211e → —（删除）
+
 ## worker-secret-egress-20261010
 
 上线：2026-10-10 18:10 CST  ·  tag `worker-secret-egress-20261010`
