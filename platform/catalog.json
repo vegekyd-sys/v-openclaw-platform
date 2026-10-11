@@ -361,6 +361,7 @@
         "lab/provider-policy-optional-load.test.mjs",
         "lab/release-files/vds-switch-guard/guard.test.mjs",
         "lab/rtc-h5/app.test.mjs",
+        "lab/seeduplex-long-session.test.mjs",
         "lab/seeduplex-multiturn-owner.test.mjs",
         "lab/seeduplex-realtime-provider.test.mjs",
         "lab/shared/files.test.mjs",
