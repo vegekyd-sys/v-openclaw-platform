@@ -76,6 +76,14 @@ function readWarmFirstMode(env) {
   return "idle";
 }
 
+// Idle time before the reaper may retire a Worker that has already run a turn. Default
+// 30 min; "0" (or anything not above idleTimeoutMs) keeps the plain idleTimeoutMs.
+function readWarmIdleTimeoutMs(env, idleTimeoutMs) {
+  const raw = String(env?.OPENCLAW_WORKER_WARM_IDLE_TIMEOUT_MS ?? "").trim();
+  const value = raw === "" ? 1_800_000 : Number(raw);
+  return Number.isFinite(value) && value > idleTimeoutMs ? value : idleTimeoutMs;
+}
+
 function readIntEnv(env, key, fallback) {
   const raw = env?.[key];
   if (raw === undefined || raw === null || `${raw}`.trim() === "") {
@@ -198,6 +206,8 @@ export class WorkerPool {
     this.sessionAffinityTtlMs = options.sessionAffinityTtlMs ?? 180_000;
     // worker-warm-first.1: prefer a process that has already paid its first turn.
     this.warmFirstMode = options.warmFirstMode ?? readWarmFirstMode(this.configEnv);
+    this.warmIdleTimeoutMs = options.warmIdleTimeoutMs ??
+      readWarmIdleTimeoutMs(this.configEnv, options.idleTimeoutMs ?? 180_000);
     this.sessionAffinityMaxEntries = options.sessionAffinityMaxEntries ?? 1024;
     if (!Number.isFinite(this.sessionAffinityTtlMs) || this.sessionAffinityTtlMs < 1 ||
         !Number.isInteger(this.sessionAffinityMaxEntries) || this.sessionAffinityMaxEntries < 1)
@@ -1407,7 +1417,10 @@ export class WorkerPool {
     }
     const now = Date.now();
     const idleWorkers = [...this.workers.values()]
-      .filter((worker) => this.isFullyIdle(worker, now))
+      .filter((worker) => this.isFullyIdle(worker, now) &&
+        // worker-warm-first.1: a Worker that already paid a first turn stays longer.
+        (!(worker.turnsAdmitted > 0) ||
+          now - worker.lastIdleAt >= (this.warmIdleTimeoutMs ?? this.idleTimeoutMs)))
       .sort((left, right) =>
         // worker-warm-first.1: keep the processes that already paid a first turn.
         (this.warmFirstMode === "off" ? 0 :
@@ -1586,6 +1599,8 @@ export class WorkerPool {
       sessionsPerWorker: this.sessionsPerWorker,
       maxActiveSessions: this.maxWorkers * this.sessionsPerWorker,
       idleTimeoutMs: this.idleTimeoutMs,
+      warmFirstMode: this.warmFirstMode,
+      warmIdleTimeoutMs: this.warmIdleTimeoutMs,
       startupTimeoutMs: this.startupTimeoutMs,
       warmSpareWorkers: this.warmSpareWorkers,
       requestTimeoutMs: this.requestTimeoutMs,

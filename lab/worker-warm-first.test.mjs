@@ -79,18 +79,39 @@ test('environment selects the mode; unknown values keep the default', () => {
   assert.equal(mode('surprise'), 'idle');
 });
 
+const reap = (pool, workers, floor = workers.length - 1) => {
+  const retired = [];
+  WorkerPool.prototype.reapIdleWorkers.call({
+    closing: false, minWorkers: 1, idleTimeoutMs: 180_000, ...pool,
+    workers: new Map(workers.map((w) => [w.slot, w])),
+    isFullyIdle: () => true, capacityFloor: () => floor, retiringWorkerCount: () => 0,
+    retire: (w) => retired.push(w.slot),
+  });
+  return retired;
+};
+const idleFor = (ms) => Date.now() - ms;
+
 test('idle reaper retires a never-used Worker before a warm one, slot order otherwise', () => {
-  const run = (warmFirstMode, workers) => {
-    const retired = [];
-    WorkerPool.prototype.reapIdleWorkers.call({
-      closing: false, minWorkers: 1, warmFirstMode,
-      workers: new Map(workers.map((w) => [w.slot, w])),
-      isFullyIdle: () => true, capacityFloor: () => workers.length - 1, retiringWorkerCount: () => 0,
-      retire: (w) => retired.push(w.slot),
-    });
-    return retired;
-  };
-  const workers = [{ slot: 0, turnsAdmitted: 0 }, { slot: 1, turnsAdmitted: 4 }, { slot: 2, turnsAdmitted: 2 }];
-  assert.deepEqual(run('idle', workers), [0]);
-  assert.deepEqual(run('off', workers), [2]);
+  const longIdle = idleFor(3_600_000);
+  const workers = [{ slot: 0, turnsAdmitted: 0, lastIdleAt: longIdle }, { slot: 1, turnsAdmitted: 4, lastIdleAt: longIdle },
+    { slot: 2, turnsAdmitted: 2, lastIdleAt: longIdle }];
+  assert.deepEqual(reap({ warmFirstMode: 'idle', warmIdleTimeoutMs: 1_800_000 }, workers), [0]);
+  assert.deepEqual(reap({ warmFirstMode: 'off', warmIdleTimeoutMs: 1_800_000 }, workers), [2]);
+});
+
+test('a warm Worker idle past idleTimeoutMs stays until the warm idle timeout', () => {
+  const workers = [{ slot: 0, turnsAdmitted: 0, lastIdleAt: idleFor(300_000) }, { slot: 1, turnsAdmitted: 3, lastIdleAt: idleFor(300_000) },
+    { slot: 2, turnsAdmitted: 1, lastIdleAt: idleFor(2_000_000) }];
+  assert.deepEqual(reap({ warmFirstMode: 'idle', warmIdleTimeoutMs: 1_800_000 }, workers, 0), [0, 2]);
+  assert.deepEqual(reap({ warmFirstMode: 'idle', warmIdleTimeoutMs: 180_000 }, workers, 0), [0, 2, 1]);
+});
+
+test('environment sets the warm idle timeout; 0 or values not above idleTimeoutMs keep it', () => {
+  const warmIdle = (value, idleTimeoutMs = 180_000) => new WorkerPool({ minWorkers: 1, maxWorkers: 1, workerPath, idleTimeoutMs,
+    configEnv: value === undefined ? {} : { OPENCLAW_WORKER_WARM_IDLE_TIMEOUT_MS: value } }).warmIdleTimeoutMs;
+  assert.equal(warmIdle(undefined), 1_800_000);
+  assert.equal(warmIdle('600000'), 600_000);
+  assert.equal(warmIdle('0'), 180_000);
+  assert.equal(warmIdle('nonsense'), 180_000);
+  assert.equal(warmIdle(undefined, 3_600_000), 3_600_000);
 });

@@ -25,6 +25,16 @@ import assert from 'node:assert/strict';
 // the same order. The idle reaper retires never-used Workers before warm ones.
 // Mode "all" puts every warm Worker with a free Session slot in the first tier.
 // OPENCLAW_WORKER_WARM_FIRST=0 restores the original order.
+//
+// The reaper also keeps a warm Worker longer. V 2026-10-10, vlab-worker: 118 processes ran
+// a turn, 40 of them exactly one, and 26% of all turns were a process's first turn (Worker
+// entry -> model call P50 5.6 s vs 1.4 s for later turns). The pool grows for a burst and,
+// 3 min after it, reaps back to minWorkers, so the next burst lands on new processes again.
+// Replaying that day, a Worker reaped in the 30 min before a first turn existed for up to 66
+// of the 109 first turns outside the restart windows. A Worker that has admitted a turn is
+// now reaped only after OPENCLAW_WORKER_WARM_IDLE_TIMEOUT_MS (default 30 min) of idleness;
+// never-used spares keep idleTimeoutMs. maxWorkers still bounds the pool, and recycling
+// (RSS, lifetime) is unchanged. OPENCLAW_WORKER_WARM_IDLE_TIMEOUT_MS=0 restores idleTimeoutMs.
 
 export const MARKER = '/* OPENCLAW_WORKER_WARM_FIRST_V1 */';
 
@@ -47,6 +57,14 @@ function readWarmFirstMode(env) {
   return "idle";
 }
 
+// Idle time before the reaper may retire a Worker that has already run a turn. Default
+// 30 min; "0" (or anything not above idleTimeoutMs) keeps the plain idleTimeoutMs.
+function readWarmIdleTimeoutMs(env, idleTimeoutMs) {
+  const raw = String(env?.OPENCLAW_WORKER_WARM_IDLE_TIMEOUT_MS ?? "").trim();
+  const value = raw === "" ? 1_800_000 : Number(raw);
+  return Number.isFinite(value) && value > idleTimeoutMs ? value : idleTimeoutMs;
+}
+
 function readIntEnv(env, key, fallback) {`,
     'readIntEnv',
   );
@@ -55,7 +73,9 @@ function readIntEnv(env, key, fallback) {`,
     `    this.sessionAffinityTtlMs = options.sessionAffinityTtlMs ?? 180_000;`,
     `    this.sessionAffinityTtlMs = options.sessionAffinityTtlMs ?? 180_000;
     // worker-warm-first.1: prefer a process that has already paid its first turn.
-    this.warmFirstMode = options.warmFirstMode ?? readWarmFirstMode(this.configEnv);`,
+    this.warmFirstMode = options.warmFirstMode ?? readWarmFirstMode(this.configEnv);
+    this.warmIdleTimeoutMs = options.warmIdleTimeoutMs ??
+      readWarmIdleTimeoutMs(this.configEnv, options.idleTimeoutMs ?? 180_000);`,
     'affinity TTL option',
   );
   out = replaceExactlyOnce(
@@ -143,7 +163,10 @@ function readIntEnv(env, key, fallback) {`,
     out,
     `      .filter((worker) => this.isFullyIdle(worker, now))
       .sort((left, right) => right.slot - left.slot);`,
-    `      .filter((worker) => this.isFullyIdle(worker, now))
+    `      .filter((worker) => this.isFullyIdle(worker, now) &&
+        // worker-warm-first.1: a Worker that already paid a first turn stays longer.
+        (!(worker.turnsAdmitted > 0) ||
+          now - worker.lastIdleAt >= (this.warmIdleTimeoutMs ?? this.idleTimeoutMs)))
       .sort((left, right) =>
         // worker-warm-first.1: keep the processes that already paid a first turn.
         (this.warmFirstMode === "off" ? 0 :
@@ -159,6 +182,16 @@ function readIntEnv(env, key, fallback) {`,
           turnsAdmitted: worker.turnsAdmitted,
           memory: worker.memory,`,
     'status record',
+  );
+  out = replaceExactlyOnce(
+    out,
+    `      idleTimeoutMs: this.idleTimeoutMs,
+      startupTimeoutMs: this.startupTimeoutMs,`,
+    `      idleTimeoutMs: this.idleTimeoutMs,
+      warmFirstMode: this.warmFirstMode,
+      warmIdleTimeoutMs: this.warmIdleTimeoutMs,
+      startupTimeoutMs: this.startupTimeoutMs,`,
+    'pool status',
   );
   return out;
 }
