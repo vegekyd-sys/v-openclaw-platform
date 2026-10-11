@@ -52,7 +52,7 @@ const read = () => (fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8
 const before = read();
 const current = before?.env?.[KEY];
 const want = mode === "apply" ? VALUE : mode === "restore" ? undefined : current;
-assert(current === undefined || current === VALUE, `${file} sets ${KEY}=${current}, not written by this script; edit by hand`);
+assert(current === undefined || current === VALUE, `${file} already sets ${KEY}=${current}, not this script's ${VALUE}; edit by hand`);
 
 let change = null;
 if (mode !== "check" && current !== want) {
