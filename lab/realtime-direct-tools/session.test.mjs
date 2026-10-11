@@ -6,8 +6,8 @@ import {createDirectVoiceService} from './session.mjs';
 
 async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}),model='grok',options={}) {
  const peers=[],audit=[],invocations=[];
- class WS extends EventEmitter {constructor(){super();this.readyState=1;this.sent=[];peers.push(this);queueMicrotask(()=>this.emit('open'));}
-  send(raw){const value=JSON.parse(raw);this.sent.push(value);if(value.type==='session.update')queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.updated'})),false));if(value.type==='session.create')queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.created'})),false));}
+ class WS extends EventEmitter {constructor(){super();this.readyState=1;this.sent=[];peers.push(this);setImmediate(()=>this.emit('open'));}
+  send(raw){const value=JSON.parse(raw);this.sent.push(value);if(value.type==='session.update')queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.updated'})),false));if(value.type==='session.create')queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'session.created',session:{id:value.session.id??'fixture-dialog'}})),false));}
   close(){this.readyState=3;this.emit('close');}}
  class Server {handleUpgrade(req,socket,head,done){done(socket);}close(){}}
  const gateway={request:async(method,args)=>{
@@ -20,11 +20,43 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);await delay(5);
  const upstream=peers[0],event=v=>upstream.emit('message',Buffer.from(JSON.stringify(v)),false);
  const call=(name,args,id='call-1')=>{event({type:'response.created',response:{id:'response-'+id}});event({type:'response.function_call_arguments.done',response_id:'response-'+id,call_id:id,name,arguments:JSON.stringify(args)});event({type:'response.done',response:{id:'response-'+id,status:'completed'}});};
- return {service,reservation,client,upstream,event,call,audit,invocations};
+ return {service,reservation,client,upstream,event,call,audit,invocations,peers};
 }
+
+test('SeedDuplex upstream recovery keeps the browser and owned backend alive, then permits end_call',async t=>{
+ let cancelled=false;
+ const f=await fixture(async(args,method)=>{
+   if(method==='chat.send')return {runId:args.idempotencyKey,status:'started'};
+   if(method==='chat.abort'){cancelled=true;return {ok:true};}
+   await delay(10);return {status:cancelled?'error':'running',aborted:cancelled};
+ },'seeduplex');
+ t.after(()=>f.service.dispose());
+ const native=(socket,id,name,args={})=>socket.emit('message',Buffer.from(JSON.stringify({type:'response.function_call_arguments.done',items:[{call_id:id,name,arguments:JSON.stringify(args)}]})),false);
+ native(f.upstream,'delegated','delegate_to_v',{question:'整理报告，用户已授权发送'});await delay(5);
+ const started=f.audit.find(e=>e.type==='backend.started');assert(started);
+ f.upstream.close();await delay(350);
+ assert.equal(f.peers.length,2);assert.equal(f.client.readyState,1);assert(!f.client.sent.some(e=>e.type==='error'));
+ assert(f.client.sent.some(e=>e.type==='provider.recovered'));
+ const next=f.peers[1];assert.equal(next.sent[0].session.id,'fixture-dialog');
+ native(next,'delegated','delegate_to_v',{question:'整理报告，用户已授权发送'});await delay(5);
+ assert.equal(f.audit.filter(e=>e.type==='backend.started').length,1);
+ assert.equal(cancelled,false);
+ f.service.handleEvent({event:'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,state:'final',message:{content:[{type:'text',text:'报告已整理并发送。'}]}}});await delay(250);
+ assert.equal(f.audit.filter(e=>e.type==='tool.delivered'&&e.callId==='delegated').length,1);
+ assert.equal(f.client.sent.filter(e=>e.type==='transcript'&&e.source==='V-backend').length,1);
+ assert.equal(next.sent.filter(e=>e.type==='speech_text_buffer.commit').length,1);
+ native(next,'ending','end_call');await delay(5);
+ const pcm=Buffer.alloc(8);pcm.writeFloatLE(.1,0);pcm.writeFloatLE(.2,4);
+ next.emit('message',Buffer.from(JSON.stringify({type:'response.output_audio.started',response_id:'bye',tts_type:'default'})),false);
+ next.emit('message',Buffer.from(JSON.stringify({type:'response.output_audio.delta',response_id:'bye',delta:pcm.toString('base64')})),false);
+ next.emit('message',Buffer.from(JSON.stringify({type:'response.output_audio.done',response_id:'bye'})),false);
+ assert(f.client.sent.some(e=>e.type==='end.after-playback'));
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.drained',callId:'ending'})),false);await delay(5);
+ assert.equal(f.client.readyState,3);assert.equal(f.audit.filter(e=>e.type==='call.closed').length,1);
+});
 test('Seeduplex audible greeting reaches the browser transcript and audit exactly once',async t=>{
  const f=await fixture(undefined,'seeduplex');t.after(()=>f.service.dispose());
- f.event({type:'session.created'});await delay(0);
+ await delay(0);
  f.client.emit('message',Buffer.from(JSON.stringify({type:'greeting'})),false);
  f.client.emit('message',Buffer.from(JSON.stringify({type:'greeting'})),false);
  assert.equal(f.upstream.sent.filter(e=>e.type==='speech_text_buffer.commit').length,1);

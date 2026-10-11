@@ -125,8 +125,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       if(!current(s))return;
       const signature=JSON.stringify([call.name,call.args]),old=s.seen.get(call.callId);
       if(old){if(old!==signature)emit(s,{type:'error',message:'工具身份冲突'});return;}
-      if(s.seen.size>=256){emit(s,{type:'error',message:'这通电话的工具调用已达到上限，请重新拨号'});void close(s.id).catch(()=>{});return;}
+      if(s.pending.size>=100){emit(s,{type:'error',message:'待处理的工具调用过多，请稍后再试'});void close(s.id).catch(()=>{});return;}
       s.seen.set(call.callId,signature);
+      if(s.seen.size>2048)for(const id of s.seen.keys()){if(s.seen.size<=2048)break;if(!s.pending.has(id))s.seen.delete(id);}
       const controller=new AbortController(),epoch=s.epoch;
       s.pending.set(call.callId,controller);
       audit({type:'tool.call',voiceSessionId:s.id,...call});emit(s,{type:'tool.call',callId:call.callId,name:call.name,activity:taskActivity(call.name,call.args)});
@@ -190,6 +191,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
         if(e.type==='input_audio_buffer.speech_stopped'){s.userSpeaking=false;s.lastUserAt=Date.now();}
         audit({type:'provider.event',voiceSessionId:s.id,...e});},
       onProtocolEvent:e=>audit({type:'provider.protocol',voiceSessionId:s.id,event:{...e,...(e.delta&&e.type?.includes('audio')?{delta:'[audio retained separately]'}:{})}}),
+      onDiagnostic:e=>{if(!current(s))return;audit({type:'call.provider-status',voiceSessionId:s.id,...e});
+        if(['reconnecting','recovered'].includes(e.stage))emit(s,{type:`provider.${e.stage}`});},
       onError:e=>{audit({type:'call.connection-error',voiceSessionId:s.id,model:s.model,message:e.message});emit(s,{type:'error',message:e.message});void close(s.id).catch(()=>{});},
       onClose:()=>{if(current(s))void close(s.id).catch(()=>{});},
     };
