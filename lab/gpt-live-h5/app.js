@@ -543,6 +543,8 @@ async function startCall() {
           if(value.type.startsWith('tool.'))taskState();
           if(value.type==='playback.blocked')setStatus('声音播放已暂停，轻点页面继续。');
           if(value.type==='playback.resumed')setStatus('V 正在听，直接说话就好');
+          if(value.type==='provider.reconnecting')setStatus('正在恢复语音连接…');
+          if(value.type==='provider.recovered')setStatus('V 正在听，直接说话就好');
           if(value.type==='transcript') {
             active.relayTurns??={};
             const id=active.relayTurns[value.role]??=crypto.randomUUID();
