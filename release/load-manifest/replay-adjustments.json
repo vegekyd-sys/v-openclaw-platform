@@ -1,0 +1,132 @@
+{
+ "about": "scripts/replay-restart-scope.mjs 的人工补充。捕获（release/captured）不含 Codex 插件，也没有 10/10 的 batch-20261010c；这些按 CHANGELOG 补上，每条写明出处。workerBehavior 是复核后认定『Gateway 也加载、但改动只在 Worker 里起作用』的文件，必须逐条写理由。",
+ "window": {
+  "from": "2026-10-01T16:00:00Z",
+  "to": "2026-10-11T16:00:00Z"
+ },
+ "extraRef": "origin/claude/release-batch-20261010",
+ "add": {
+  "v2026.9.1-db91.6-background-work-20261002": [
+   {
+    "target": "npm/projects/openclaw-codex-captured/node_modules/@openclaw/codex/dist/thread-lifecycle-DAcEJ_Om.js",
+    "source": "CHANGELOG: 捕获外 1 个文件：Codex 插件 thread-lifecycle"
+   }
+  ],
+  "codex-firsttext-20261008": [
+   {
+    "target": "npm/projects/openclaw-codex-captured/node_modules/@openclaw/codex/dist/run-attempt-D1hJO4fX.js",
+    "source": "CHANGELOG: Codex 插件 run-attempt 694e3817→564374a6, thread-lifecycle 94d5420f→e7c2208f"
+   },
+   {
+    "target": "npm/projects/openclaw-codex-captured/node_modules/@openclaw/codex/dist/thread-lifecycle-DAcEJ_Om.js",
+    "source": "CHANGELOG: Codex 插件 run-attempt 694e3817→564374a6, thread-lifecycle 94d5420f→e7c2208f"
+   }
+  ],
+  "codex-vds-oversized-20261008": [
+   {
+    "target": "npm/projects/openclaw-codex-captured/node_modules/@openclaw/codex/dist/run-attempt-D1hJO4fX.js",
+    "source": "CHANGELOG: Codex 插件 run-attempt 564374a6→b4553661"
+   }
+  ],
+  "codex-memory-flush-transient-20261008": [
+   {
+    "target": "npm/projects/openclaw-codex-captured/node_modules/@openclaw/codex/dist/thread-lifecycle-DAcEJ_Om.js",
+    "source": "CHANGELOG: Codex 插件 thread-lifecycle e7c2208f→c0a9ce77 (#277)"
+   }
+  ],
+  "codex-toolset-cover-20261008": [
+   {
+    "target": "npm/projects/openclaw-codex-captured/node_modules/@openclaw/codex/dist/thread-lifecycle-DAcEJ_Om.js",
+    "source": "CHANGELOG: Codex 插件 thread-lifecycle c0a9ce77→7ee060b1 (#289)"
+   }
+  ],
+  "release-batch-20261009": [
+   {
+    "target": "npm/projects/openclaw-codex-captured/node_modules/@openclaw/codex/dist/run-attempt-D1hJO4fX.js",
+    "source": "CHANGELOG: Codex 插件 run-attempt b4553661→1264f88b (#292), thread-lifecycle 7ee060b1→c0a9ce77 (撤回 F)"
+   },
+   {
+    "target": "npm/projects/openclaw-codex-captured/node_modules/@openclaw/codex/dist/thread-lifecycle-DAcEJ_Om.js",
+    "source": "CHANGELOG: Codex 插件 run-attempt b4553661→1264f88b (#292), thread-lifecycle 7ee060b1→c0a9ce77 (撤回 F)"
+   }
+  ],
+  "v2026.9.1-db91.6-batch-20261010-codex-feishu-workboard": [
+   {
+    "target": "npm/projects/openclaw-codex-captured/node_modules/@openclaw/codex/dist/run-attempt-D1hJO4fX.js",
+    "source": "CHANGELOG (PR #312): Codex 插件 run-attempt、attempt-context、session-history 三个文件（hash 见 VLab 发版记录）"
+   },
+   {
+    "target": "npm/projects/openclaw-codex-captured/node_modules/@openclaw/codex/dist/attempt-context.js",
+    "source": "CHANGELOG (PR #312): Codex 插件 run-attempt、attempt-context、session-history 三个文件（hash 见 VLab 发版记录）"
+   },
+   {
+    "target": "npm/projects/openclaw-codex-captured/node_modules/@openclaw/codex/dist/session-history.js",
+    "source": "CHANGELOG (PR #312): Codex 插件 run-attempt、attempt-context、session-history 三个文件（hash 见 VLab 发版记录）"
+   }
+  ],
+  "v2026.9.1-db91.6-night-batch-20261010": [
+   {
+    "target": "npm/projects/openclaw-codex-captured/node_modules/@openclaw/codex/dist/thread-lifecycle-DAcEJ_Om.js",
+    "source": "CHANGELOG: Codex 插件 4 个文件 (#322)"
+   },
+   {
+    "target": "npm/projects/openclaw-codex-captured/node_modules/@openclaw/codex/dist/dynamic-tools-BU9tmlYm.js",
+    "source": "CHANGELOG: Codex 插件 4 个文件 (#322)"
+   },
+   {
+    "target": "npm/projects/openclaw-codex-captured/node_modules/@openclaw/codex/dist/side-question-BTZAII4l.js",
+    "source": "CHANGELOG: Codex 插件 4 个文件 (#322)"
+   },
+   {
+    "target": "npm/projects/openclaw-codex-captured/node_modules/@openclaw/codex/dist/run-attempt-D1hJO4fX.js",
+    "source": "CHANGELOG: Codex 插件 4 个文件 (#322)"
+   }
+  ]
+ },
+ "split": [
+  {
+   "release": "worker-secret-egress-20261010",
+   "keep": [
+    "production-worker/secret-egress-worker.mjs",
+    "production-worker/worker.mjs"
+   ],
+   "source": "CHANGELOG: 这一版只有 worker.mjs 8b466a60→8c6b2e92 与 secret-egress-worker.mjs（只换 worker，vlab.workers.roll 生效）",
+   "rest": {
+    "release": "batch-20261010c-workboard-sessions-tail",
+    "position": "before",
+    "source": "CHANGELOG: 10/10 上过但尚无捕获；文件为 firsttext-card-note-20261010b → worker-secret-egress-20261010 捕获差额去掉 worker-secret-egress 自己的两个文件"
+   }
+  },
+  {
+   "release": "v2026.9.1-db91.6-night-batch-20261010",
+   "keep": [
+    "npm/projects/openclaw-feishu-captured/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js",
+    "openclaw/dist/builtin-openclaw-zQV8Wwjr.js",
+    "openclaw/dist/openclaw-tools-BODVdJQD.js",
+    "npm/projects/openclaw-codex-captured/node_modules/@openclaw/codex/dist/thread-lifecycle-DAcEJ_Om.js",
+    "npm/projects/openclaw-codex-captured/node_modules/@openclaw/codex/dist/dynamic-tools-BU9tmlYm.js",
+    "npm/projects/openclaw-codex-captured/node_modules/@openclaw/codex/dist/side-question-BTZAII4l.js",
+    "npm/projects/openclaw-codex-captured/node_modules/@openclaw/codex/dist/run-attempt-D1hJO4fX.js"
+   ],
+   "source": "CHANGELOG: night-batch 的文件是 builtin-openclaw、openclaw-tools、飞书 monitor.account 与 Codex 插件 4 个",
+   "rest": {
+    "release": "worker-secret-egress-20261010-revert",
+    "position": "before",
+    "source": "CHANGELOG 记账说明：night-batch 捕获在 worker-secret-egress 撤回之后（worker.mjs 回到 8b466a60、无 secret-egress-worker.mjs），撤回见 #327"
+   }
+  }
+ ],
+ "workerBehavior": {
+  "v2026.9.1-db91.6-firsttext-r3-20261007": {
+   "openclaw/dist/agent-command-DPfawBbr.js": "改动全部在 prewarmAgentCommandRuntimes 内部（Worker 就绪前调用，Gateway 从不调用）；新增 prewarmSecretsRuntimeSnapshot 为文件内函数，import/export 行与上一版逐字相同，不存在新导出被别的模块引用",
+   "openclaw/dist/refresh-BzYxPady.js": "skills watcher 在 ready 之前忽略初始事件；Gateway 的 watcher 已在启动时建好，保留旧字节等于维持现状，收益在新 Worker 首轮；import/export 行与原版相同"
+  }
+ },
+ "reviewNotes": {
+  "v2026.9.1-db91.6-worker-prewarm-20261005": "不能声明：prewarm 只在 Worker 调用，但新 agent-command-DeP5kHlK 从 agent-command-DPfawBbr 导入新导出 prewarmAgentCommandRuntimes；DeP5kHlK 在 Gateway 可达未加载（runtime-C-huom3Y 的 api.runtime.agent.command 懒加载），不重启时 Gateway 首次走到会把新字节链接到缓存的旧 DPfawBbr → SyntaxError",
+  "v2026.9.1-db91.6-firsttext-r4-20261007": "不能声明：记忆整理推迟在 agent-runner.runtime 的回复管线里，Gateway 侧（含 Codex 会话）生效",
+  "v2026.9.1-db91.6-big-session-reads-20261008": "不能声明：session-manager 的上下文窗口读取用于 vcodex/vds 回合开始，在 Gateway 里",
+  "v2026.9.1-db91.6-voice-confirmation-switch-20261005": "不能声明：语音确认门作用于 GPT Live 在 Gateway 里发起的 exec",
+  "memory-search-*-20261002": "不能声明：memory_search 在 Codex / claude-cli 回合里由 Gateway 执行，memory-core 的索引也在 Gateway"
+ }
+}

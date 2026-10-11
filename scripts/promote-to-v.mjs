@@ -7,6 +7,7 @@
 //   node scripts/promote-to-v.mjs --release <vlab-release-id> --name <v-release-name>           # plan
 //   node scripts/promote-to-v.mjs --release <id> --name <name> --owner <o> --apply              # install
 //   node scripts/promote-to-v.mjs --undo <V backup dir>                                         # put back
+//   node scripts/promote-to-v.mjs --scope-only (--release <id> | --artifact <file> | --targets a,b)  # restart scope only
 //
 // --apply, in order:
 //   1. The release must be VLab's current release and accepted there.
@@ -31,16 +32,44 @@
 //
 // It never restarts V. Most dist changes only take effect at the next Gateway
 // start; when to restart production is a human decision (cold start, worker
-// pool). The plan says which files are affected so that decision is informed.
+// pool). The plan says which files are affected so that decision is informed,
+// and prints the restart scope (scripts/lib/restart-scope.mjs,
+// docs/worker-roll-scope.md): `restart-required` with the files that force it,
+// or `worker-roll-only` when every file is loaded only by Worker processes, so
+// `vlab.workers.roll` applies the release without a Gateway restart. Report
+// only for now: --apply installs the same way in both cases.
+// --worker-behavior-file <json> ({target: reason}) declares reviewed shared
+// chunks whose change only matters inside a Worker.
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { COMPONENTS, captureRuns, resolveVDirs, vPathForTarget } from './lib/runtime-components.mjs';
+import { classifyRelease, formatVerdict, loadManifest } from './lib/restart-scope.mjs';
+
+export const LOAD_MANIFEST = fileURLToPath(new URL('../release/load-manifest/v2026.9.1-db91.6.json', import.meta.url));
+
+// A VLab release artifact's files as restart-scope changes: before === null
+// (or absent) means the release adds the file.
+export const artifactChanges = (artifact) => artifact.files.map((f) => ({ target: f.target, change: f.before == null ? 'added' : 'modified' }));
+
+// Restart scope of a release's stage targets. Never throws: a missing or
+// unreadable manifest reports restart-required, which is what the script did
+// before the manifest existed.
+export function restartScope(targets, { manifestFile = LOAD_MANIFEST, workerBehavior = {} } = {}) {
+  let manifest;
+  try {
+    manifest = loadManifest(manifestFile);
+  } catch (error) {
+    return { verdict: 'restart-required', files: [], triggers: [], text: `restart scope: restart-required (no load manifest: ${error.message})` };
+  }
+  const result = classifyRelease(targets, manifest, { workerBehavior });
+  return { ...result, text: formatVerdict(result) };
+}
 
 // H5-only releases keep the Gateway runtime/current metadata unchanged. The
 // entry controller requires a frozen shared H5 proof and an idle voice entry.
@@ -139,6 +168,17 @@ const sshBytes = (host, script, input) => execFileSync('ssh', ['-o', 'BatchMode=
 const ssh = (host, script, input) => sshBytes(host, script, input).toString('utf8');
 const vlab = (...a) => execFileSync('node', [VLAB_TOOL, ...a], { encoding: 'utf8', cwd: dirname(dirname(VLAB_TOOL)), maxBuffer: 64 * 1024 * 1024 });
 
+if (args.scopeOnly) {
+  let targets;
+  if (typeof args.targets === 'string') targets = args.targets.split(',').map((t) => t.trim()).filter(Boolean);
+  else if (typeof args.artifact === 'string') targets = artifactChanges(JSON.parse(readFileSync(args.artifact, 'utf8')));
+  else if (typeof args.release === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(args.release)) {
+    targets = artifactChanges(JSON.parse(ssh(VLAB, `sudo cat ${sq(`${RELEASES}/${args.release}/artifact.json`)}`)));
+  } else usage('--scope-only needs --release <id>, --artifact <file> or --targets a,b');
+  const scope = restartScope(targets, { workerBehavior: readWorkerBehavior(args.workerBehaviorFile) });
+  console.log(scope.text);
+  process.exit(0);
+}
 if (args.undo) {
   console.log(ssh(V, `sudo ${V_NODE} - undo ${sq(args.undo)}`, REMOTE).trim());
   console.log('V files restored. Recapture and reinstall the sentinel expectations for the release V is back on.');
@@ -172,7 +212,11 @@ const files = artifact.files.map((f) => {
 
 console.log(`release ${args.release} (dev ${artifact.sourceCommit.slice(0, 12)}) -> V as ${args.name}`);
 for (const f of files) console.log(`  ${f.before ? 'replace' : 'add    '} ${f.vPath}`);
-console.log('\nThese are loaded at Gateway start: they take effect on the next V restart, which this script does not do.');
+const scope = restartScope(files.map((f) => ({ target: f.target, change: f.before === null ? 'added' : 'modified' })), { workerBehavior: readWorkerBehavior(args.workerBehaviorFile) });
+console.log(`\n${scope.text}`);
+console.log(scope.verdict === 'worker-roll-only'
+  ? 'After install, `vlab.workers.roll` on V applies it without a Gateway restart (report only: this script does neither).'
+  : 'These are loaded at Gateway start: they take effect on the next V restart, which this script does not do.');
 
 // ---- 3. is V where the release starts? ------------------------------------------
 const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..*/, '');
@@ -287,13 +331,20 @@ function packFiles(p, list) {
   }
 }
 
+function readWorkerBehavior(file) {
+  if (typeof file !== 'string') return {};
+  const declared = JSON.parse(readFileSync(file, 'utf8'));
+  if (!declared || typeof declared !== 'object' || Array.isArray(declared)) fail(`${file}: {target: reason} expected`);
+  return declared;
+}
+
 function fail(msg) {
   console.error(msg);
   process.exit(1);
 }
 
 function usage(msg) {
-  console.error(`${msg}\nusage: promote-to-v.mjs --release <vlab-id> --name <v-release> [--owner <o> --apply] | --undo <dir>`);
+  console.error(`${msg}\nusage: promote-to-v.mjs --release <vlab-id> --name <v-release> [--owner <o> --apply] [--worker-behavior-file <json>] | --undo <dir> | --scope-only (--release <id> | --artifact <file> | --targets a,b)`);
   process.exit(2);
 }
 

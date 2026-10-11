@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { assertAcceptedReleaseBinding, assertPromotionLease, classifyAlignFailure, REMOTE } from './promote-to-v.mjs';
+import { assertAcceptedReleaseBinding, assertPromotionLease, classifyAlignFailure, REMOTE, artifactChanges, restartScope } from './promote-to-v.mjs';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 function acceptedFixture() {
@@ -135,4 +135,42 @@ test('align refusal after install: own files -> undo, sidecar -> install on V, l
   assert.deepEqual([lag.kind, lag.lagging.length], ['lagging', 1]);
   // Something only on VLab outside the sidecars is not "V ahead": undo path.
   assert.equal(classifyAlignFailure(p({ target: 'openclaw/dist/new.js', kind: 'only-on-vlab' }), mine).kind, 'unknown');
+});
+
+test('restart scope: report from the load manifest, restart-required when the manifest is missing', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scope-'));
+  try {
+    const manifestFile = path.join(dir, 'm.json');
+    fs.writeFileSync(manifestFile, JSON.stringify({ schema: 1, gateway: ['openclaw/dist/index.js', 'production-worker/index.mjs'], worker: ['production-worker/worker.mjs', 'openclaw/dist/bash-tools-B.js'] }));
+    const roll = restartScope(['production-worker/worker.mjs', 'openclaw/dist/bash-tools-B.js'], { manifestFile });
+    assert.equal(roll.verdict, 'worker-roll-only');
+    assert.match(roll.text, /^restart scope: worker-roll-only/u);
+    const restart = restartScope(['production-worker/worker.mjs', 'production-worker/index.mjs'], { manifestFile });
+    assert.equal(restart.verdict, 'restart-required');
+    assert.match(restart.text, /restart <- production-worker\/index\.mjs/u);
+    const added = restartScope(artifactChanges({ files: [{ target: 'production-worker/worker.mjs', before: 'a'.repeat(64) }, { target: 'production-worker/new.mjs', before: null }] }), { manifestFile });
+    assert.equal(added.verdict, 'worker-roll-only');
+    assert.match(added.text, /roll {4}<- added production-worker\/new\.mjs/u);
+    const missing = restartScope(['production-worker/worker.mjs'], { manifestFile: path.join(dir, 'none.json') });
+    assert.equal(missing.verdict, 'restart-required');
+    assert.match(missing.text, /no load manifest/u);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('--scope-only prints the verdict without touching VLab or V', () => {
+  const script = new URL('./promote-to-v.mjs', import.meta.url).pathname;
+  const run = (...a) => spawnSync(process.execPath, [script, '--scope-only', ...a, '--vlab-tool', '/nonexistent', '--v-host', 'unreachable.invalid'], { encoding: 'utf8', timeout: 15000 });
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scope-cli-'));
+  try {
+    const artifact = path.join(dir, 'artifact.json');
+    fs.writeFileSync(artifact, JSON.stringify({ files: [{ target: 'npm/projects/openclaw-feishu-x/node_modules/@openclaw/feishu/dist/monitor.account-W.js' }] }));
+    const r = run('--artifact', artifact);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /restart scope: restart-required\n {2}restart <- .*feishu.*\[gateway-plugin\]/u);
+    assert.equal(run().status, 2);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
