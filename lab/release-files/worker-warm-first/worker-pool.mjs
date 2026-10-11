@@ -84,6 +84,13 @@ function readWarmIdleTimeoutMs(env, idleTimeoutMs) {
   return Number.isFinite(value) && value > idleTimeoutMs ? value : idleTimeoutMs;
 }
 
+// Pool size up to which idle warm Workers are held (default 10); beyond it they are reaped
+// after idleTimeoutMs as before, never-used ones first.
+function readWarmIdleMaxWorkers(env) {
+  const value = Number(String(env?.OPENCLAW_WORKER_WARM_IDLE_MAX_WORKERS ?? "").trim() || 10);
+  return Number.isInteger(value) && value >= 0 ? value : 10;
+}
+
 function readIntEnv(env, key, fallback) {
   const raw = env?.[key];
   if (raw === undefined || raw === null || `${raw}`.trim() === "") {
@@ -208,6 +215,7 @@ export class WorkerPool {
     this.warmFirstMode = options.warmFirstMode ?? readWarmFirstMode(this.configEnv);
     this.warmIdleTimeoutMs = options.warmIdleTimeoutMs ??
       readWarmIdleTimeoutMs(this.configEnv, options.idleTimeoutMs ?? 180_000);
+    this.warmIdleMaxWorkers = options.warmIdleMaxWorkers ?? readWarmIdleMaxWorkers(this.configEnv);
     this.sessionAffinityMaxEntries = options.sessionAffinityMaxEntries ?? 1024;
     if (!Number.isFinite(this.sessionAffinityTtlMs) || this.sessionAffinityTtlMs < 1 ||
         !Number.isInteger(this.sessionAffinityMaxEntries) || this.sessionAffinityMaxEntries < 1)
@@ -1417,10 +1425,7 @@ export class WorkerPool {
     }
     const now = Date.now();
     const idleWorkers = [...this.workers.values()]
-      .filter((worker) => this.isFullyIdle(worker, now) &&
-        // worker-warm-first.1: a Worker that already paid a first turn stays longer.
-        (!(worker.turnsAdmitted > 0) ||
-          now - worker.lastIdleAt >= (this.warmIdleTimeoutMs ?? this.idleTimeoutMs)))
+      .filter((worker) => this.isFullyIdle(worker, now))
       .sort((left, right) =>
         // worker-warm-first.1: keep the processes that already paid a first turn.
         (this.warmFirstMode === "off" ? 0 :
@@ -1429,12 +1434,22 @@ export class WorkerPool {
 
     let removable =
       this.workers.size - this.capacityFloor() - this.retiringWorkerCount();
+    // worker-warm-first.1: a Worker that already paid a first turn stays for
+    // warmIdleTimeoutMs, but only while the pool is within warmIdleMaxWorkers.
+    let overWarmCap = this.workers.size - this.retiringWorkerCount() -
+      (this.warmIdleMaxWorkers ?? Infinity);
     for (const worker of idleWorkers) {
       if (removable <= 0) {
         break;
       }
+      const warmHeld = worker.turnsAdmitted > 0 &&
+        now - worker.lastIdleAt < (this.warmIdleTimeoutMs ?? this.idleTimeoutMs);
+      if (warmHeld && overWarmCap <= 0) {
+        continue;
+      }
       this.retire(worker);
       removable -= 1;
+      overWarmCap -= 1;
     }
   }
 
@@ -1601,6 +1616,7 @@ export class WorkerPool {
       idleTimeoutMs: this.idleTimeoutMs,
       warmFirstMode: this.warmFirstMode,
       warmIdleTimeoutMs: this.warmIdleTimeoutMs,
+      warmIdleMaxWorkers: this.warmIdleMaxWorkers,
       startupTimeoutMs: this.startupTimeoutMs,
       warmSpareWorkers: this.warmSpareWorkers,
       requestTimeoutMs: this.requestTimeoutMs,

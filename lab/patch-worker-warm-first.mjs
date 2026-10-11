@@ -33,8 +33,11 @@ import assert from 'node:assert/strict';
 // Replaying that day, a Worker reaped in the 30 min before a first turn existed for up to 66
 // of the 109 first turns outside the restart windows. A Worker that has admitted a turn is
 // now reaped only after OPENCLAW_WORKER_WARM_IDLE_TIMEOUT_MS (default 30 min) of idleness;
-// never-used spares keep idleTimeoutMs. maxWorkers still bounds the pool, and recycling
-// (RSS, lifetime) is unchanged. OPENCLAW_WORKER_WARM_IDLE_TIMEOUT_MS=0 restores idleTimeoutMs.
+// never-used spares keep idleTimeoutMs. Warm Workers are held only while the pool has at most
+// OPENCLAW_WORKER_WARM_IDLE_MAX_WORKERS (default 10) processes: V has 30 GB with ~20 GB
+// available, mostly page cache that keeps the 14.5 GB makaron DB reads fast, and a Worker
+// holds 0.45-0.9 GB. Recycling (RSS, lifetime) is unchanged.
+// OPENCLAW_WORKER_WARM_IDLE_TIMEOUT_MS=0 restores idleTimeoutMs.
 
 export const MARKER = '/* OPENCLAW_WORKER_WARM_FIRST_V1 */';
 
@@ -65,6 +68,13 @@ function readWarmIdleTimeoutMs(env, idleTimeoutMs) {
   return Number.isFinite(value) && value > idleTimeoutMs ? value : idleTimeoutMs;
 }
 
+// Pool size up to which idle warm Workers are held (default 10); beyond it they are reaped
+// after idleTimeoutMs as before, never-used ones first.
+function readWarmIdleMaxWorkers(env) {
+  const value = Number(String(env?.OPENCLAW_WORKER_WARM_IDLE_MAX_WORKERS ?? "").trim() || 10);
+  return Number.isInteger(value) && value >= 0 ? value : 10;
+}
+
 function readIntEnv(env, key, fallback) {`,
     'readIntEnv',
   );
@@ -75,7 +85,8 @@ function readIntEnv(env, key, fallback) {`,
     // worker-warm-first.1: prefer a process that has already paid its first turn.
     this.warmFirstMode = options.warmFirstMode ?? readWarmFirstMode(this.configEnv);
     this.warmIdleTimeoutMs = options.warmIdleTimeoutMs ??
-      readWarmIdleTimeoutMs(this.configEnv, options.idleTimeoutMs ?? 180_000);`,
+      readWarmIdleTimeoutMs(this.configEnv, options.idleTimeoutMs ?? 180_000);
+    this.warmIdleMaxWorkers = options.warmIdleMaxWorkers ?? readWarmIdleMaxWorkers(this.configEnv);`,
     'affinity TTL option',
   );
   out = replaceExactlyOnce(
@@ -162,17 +173,44 @@ function readIntEnv(env, key, fallback) {`,
   out = replaceExactlyOnce(
     out,
     `      .filter((worker) => this.isFullyIdle(worker, now))
-      .sort((left, right) => right.slot - left.slot);`,
-    `      .filter((worker) => this.isFullyIdle(worker, now) &&
-        // worker-warm-first.1: a Worker that already paid a first turn stays longer.
-        (!(worker.turnsAdmitted > 0) ||
-          now - worker.lastIdleAt >= (this.warmIdleTimeoutMs ?? this.idleTimeoutMs)))
+      .sort((left, right) => right.slot - left.slot);
+
+    let removable =
+      this.workers.size - this.capacityFloor() - this.retiringWorkerCount();
+    for (const worker of idleWorkers) {
+      if (removable <= 0) {
+        break;
+      }
+      this.retire(worker);
+      removable -= 1;
+    }`,
+    `      .filter((worker) => this.isFullyIdle(worker, now))
       .sort((left, right) =>
         // worker-warm-first.1: keep the processes that already paid a first turn.
         (this.warmFirstMode === "off" ? 0 :
           Number(left.turnsAdmitted > 0) - Number(right.turnsAdmitted > 0)) ||
-        right.slot - left.slot);`,
-    'idle reap order',
+        right.slot - left.slot);
+
+    let removable =
+      this.workers.size - this.capacityFloor() - this.retiringWorkerCount();
+    // worker-warm-first.1: a Worker that already paid a first turn stays for
+    // warmIdleTimeoutMs, but only while the pool is within warmIdleMaxWorkers.
+    let overWarmCap = this.workers.size - this.retiringWorkerCount() -
+      (this.warmIdleMaxWorkers ?? Infinity);
+    for (const worker of idleWorkers) {
+      if (removable <= 0) {
+        break;
+      }
+      const warmHeld = worker.turnsAdmitted > 0 &&
+        now - worker.lastIdleAt < (this.warmIdleTimeoutMs ?? this.idleTimeoutMs);
+      if (warmHeld && overWarmCap <= 0) {
+        continue;
+      }
+      this.retire(worker);
+      removable -= 1;
+      overWarmCap -= 1;
+    }`,
+    'idle reaper',
   );
   out = replaceExactlyOnce(
     out,
@@ -190,6 +228,7 @@ function readIntEnv(env, key, fallback) {`,
     `      idleTimeoutMs: this.idleTimeoutMs,
       warmFirstMode: this.warmFirstMode,
       warmIdleTimeoutMs: this.warmIdleTimeoutMs,
+      warmIdleMaxWorkers: this.warmIdleMaxWorkers,
       startupTimeoutMs: this.startupTimeoutMs,`,
     'pool status',
   );

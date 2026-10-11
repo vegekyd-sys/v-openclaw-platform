@@ -106,6 +106,20 @@ test('a warm Worker idle past idleTimeoutMs stays until the warm idle timeout', 
   assert.deepEqual(reap({ warmFirstMode: 'idle', warmIdleTimeoutMs: 180_000 }, workers, 0), [0, 2, 1]);
 });
 
+test('warm Workers are held only while the pool is within warmIdleMaxWorkers', () => {
+  const recent = idleFor(300_000);
+  const workers = [0, 1, 2, 3].map((slot) => ({ slot, turnsAdmitted: slot === 0 ? 0 : 2, lastIdleAt: recent }));
+  const pool = { warmFirstMode: 'idle', warmIdleTimeoutMs: 1_800_000 };
+  assert.deepEqual(reap({ ...pool, warmIdleMaxWorkers: 4 }, workers, 0), [0]);
+  assert.deepEqual(reap({ ...pool, warmIdleMaxWorkers: 2 }, workers, 0), [0, 3]);
+  assert.deepEqual(reap({ ...pool, warmIdleMaxWorkers: 0 }, workers, 0), [0, 3, 2, 1]);
+  const max = (value) => new WorkerPool({ minWorkers: 1, maxWorkers: 1, workerPath,
+    configEnv: value === undefined ? {} : { OPENCLAW_WORKER_WARM_IDLE_MAX_WORKERS: value } }).warmIdleMaxWorkers;
+  assert.equal(max(undefined), 10);
+  assert.equal(max('6'), 6);
+  assert.equal(max('nonsense'), 10);
+});
+
 test('environment sets the warm idle timeout; 0 or values not above idleTimeoutMs keep it', () => {
   const warmIdle = (value, idleTimeoutMs = 180_000) => new WorkerPool({ minWorkers: 1, maxWorkers: 1, workerPath, idleTimeoutMs,
     configEnv: value === undefined ? {} : { OPENCLAW_WORKER_WARM_IDLE_TIMEOUT_MS: value } }).warmIdleTimeoutMs;
