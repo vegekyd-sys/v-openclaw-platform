@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Real-Feishu acceptance of v-browser-fill on shared VLab, one round per harness.
+// Real-Feishu acceptance of v-browser-fill on shared VLab (default) or production V
+// (--target v), one round per harness.
 //
 // Each round, as the operator (lark-cli, own user) in 「VLab 发布验收 B」: switch the harness
 // (/deepseek = Worker, /vcc = claude-cli, /vcodex = Codex GPT, /vds = Codex DeepSeek), then ask V
@@ -10,18 +11,37 @@
 // store row and the plaintext mirror are gone, the value is in no Gateway/Worker log line, the
 // turn ran on the expected runtime, and V told the group it was logged in.
 //
-//   FILL_TEST_PASSWORD=... node lab/browser-fill-acceptance.mjs [--only deepseek,vcc]
+//   FILL_TEST_PASSWORD=... node lab/browser-fill-acceptance.mjs [--target vlab|v] [--only deepseek,vcc]
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 
-const CHAT = "oc_5afced473a29eb6f5fed3ba9966aa9ff"; // VLab 发布验收 B (Tianyi + V - Lab)
-const BOT = "ou_b4c17dbac69b0aff77bac433448dc0f6"; // V - Lab
-const SSH = ["-F", "/Users/tianyicai/v-upgrade-private/20260904/ssh-config", "-o", "BatchMode=yes", "vlab91"];
-const UNIT = "openclaw-vlab-production-mirror-v8.service";
-const STATE = "/srv/vlab-production-mirror/labs/instances/db91-parity/state";
-const CONFIG = `${STATE}/shared-vlab-20260909-v3/openclaw.json`;
-const DIST = "/srv/vlab-production-mirror/labs/instances/db91-parity/runtime/openclaw/dist";
-const NODE = "/opt/vlab/node-v22.23.1-linux-x64/bin/node";
+const TARGETS = {
+  vlab: {
+    chat: "oc_5afced473a29eb6f5fed3ba9966aa9ff", // VLab 发布验收 B (Tianyi + V - Lab)
+    bot: "ou_b4c17dbac69b0aff77bac433448dc0f6", // V - Lab
+    ssh: ["-F", "/Users/tianyicai/v-upgrade-private/20260904/ssh-config", "-o", "BatchMode=yes", "vlab91"],
+    unit: "openclaw-vlab-production-mirror-v8.service",
+    state: "/srv/vlab-production-mirror/labs/instances/db91-parity/state",
+    config: "/srv/vlab-production-mirror/labs/instances/db91-parity/state/shared-vlab-20260909-v3/openclaw.json",
+    dist: "/srv/vlab-production-mirror/labs/instances/db91-parity/runtime/openclaw/dist",
+    node: "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    user: "lab-db91-parity", home: "/srv/vlab-production-mirror/labs/instances/db91-parity",
+  },
+  v: {
+    chat: "oc_104de99774aea6a55f5ae46863e99ef3", // V 生产发布验收 0910 (Tianyi + V - Makaron)
+    bot: "ou_b1cdeccdefbd26f53e51835b3cc7554a", // V - Makaron
+    ssh: ["v"],
+    unit: "openclaw-gateway.service",
+    state: "/home/openclaw/.openclaw",
+    config: "/home/openclaw/.openclaw/openclaw.json",
+    dist: "/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core/dist",
+    node: "/opt/node-v22.23.1/bin/node",
+    user: "openclaw", home: "/home/openclaw",
+  },
+};
+const TARGET = TARGETS[process.argv.includes("--target") ? process.argv[process.argv.indexOf("--target") + 1] : "vlab"];
+assert(TARGET, "--target vlab|v");
+const { chat: CHAT, bot: BOT, ssh: SSH, unit: UNIT, state: STATE, config: CONFIG, dist: DIST, node: NODE } = TARGET;
 const SITE_LOG = "/tmp/fill-live-site.jsonl";
 const PASSWORD = process.env.FILL_TEST_PASSWORD;
 assert(PASSWORD, "FILL_TEST_PASSWORD is required");
@@ -59,7 +79,7 @@ await call("question.resolve", { id: record.id, answers: { answers: { [record.qu
 console.log(JSON.stringify({ resolved: record.id }));
 `;
 const question = (mode, name, input) => JSON.parse(remote(
-  `sudo -u lab-db91-parity env HOME=/srv/vlab-production-mirror/labs/instances/db91-parity OPENCLAW_STATE_DIR=${STATE} OPENCLAW_CONFIG_PATH=${CONFIG} ${NODE} --input-type=module -e '${QUESTION.replaceAll("'", "'\\''")}' ${mode} ${name}`, input).trim().split("\n").pop());
+  `sudo -u ${TARGET.user} env HOME=${TARGET.home} OPENCLAW_STATE_DIR=${STATE} OPENCLAW_CONFIG_PATH=${CONFIG} ${NODE} --input-type=module -e '${QUESTION.replaceAll("'", "'\\''")}' ${mode} ${name}`, input).trim().split("\n").pop());
 const storeState = (name) => JSON.parse(remote(`sudo python3 -c "
 import sqlite3,os,json
 db=sqlite3.connect('file:${STATE}/state/openclaw.sqlite?mode=ro',uri=True)
