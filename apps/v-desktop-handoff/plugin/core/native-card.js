@@ -5,6 +5,11 @@
 
 const plain = (content) => ({ tag: "plain_text", content });
 
+/** "操作" + "V 的电脑" -> "操作 V 的电脑"; "操作" + "你的 Mac" -> "操作你的 Mac". */
+export function joinSubject(prefix, subject = "V 的电脑") {
+  return /^[A-Za-z0-9]/u.test(subject) ? `${prefix} ${subject}` : `${prefix}${subject}`;
+}
+
 /** Callback envelope understood by OpenClaw's Feishu channel: posts `command` as the clicking user. */
 export function quickCommand(command, { userOpenId, expiresAt } = {}) {
   const c = {};
@@ -48,7 +53,7 @@ function row(left, right) {
  * @param kind control | watch
  * @param purpose login | payment
  */
-export function nativeHandoffCard({ state = "pending", kind = "control", purpose = "login", reason, url, imageKey, handoffId, payment, owner, note }) {
+export function nativeHandoffCard({ state = "pending", kind = "control", purpose = "login", reason, url, imageKey, handoffId, payment, owner, note, subject = "V 的电脑", cardTitle = "电脑" }) {
   const status = STATES[kind === "watch" && state === "pending" ? "watch" : state] ?? STATES.pending;
   const elements = [];
   const lines = [];
@@ -57,11 +62,11 @@ export function nativeHandoffCard({ state = "pending", kind = "control", purpose
     const parts = [payment.item, payment.amount && `**${payment.amount}${payment.currency ? ` ${payment.currency}` : ""}**`, payment.merchant].filter(Boolean);
     if (parts.length) lines.push(parts.join(" · "));
   }
-  const notes = STATE_NOTES;
+  const notes = { ...STATE_NOTES, active: `${joinSubject("你在操作", subject)}。做完点「我完成了」，V 接着做。` };
   if (note ?? notes[state]) lines.push(`<font color='grey'>${note ?? notes[state]}</font>`);
-  elements.push({ tag: "markdown", content: lines.join("\n") || "V 需要你接管电脑。" });
+  elements.push({ tag: "markdown", content: lines.join("\n") || `${joinSubject("V 需要你接管", subject)}。` });
   if (imageKey) {
-    const img = { tag: "img", img_key: imageKey, alt: plain("V 的电脑"), scale_type: "fit_horizontal", corner_radius: "8px", preview: false };
+    const img = { tag: "img", img_key: imageKey, alt: plain(subject), scale_type: "fit_horizontal", corner_radius: "8px", preview: false };
     const open = url && (state === "pending" || state === "active");
     // Tapping the picture opens the desktop, like 接管.
     elements.push(open ? { tag: "interactive_container", width: "fill", corner_radius: "8px", has_border: false, padding: "0px", behaviors: [{ type: "open_url", default_url: url }], elements: [img] } : img);
@@ -90,7 +95,7 @@ export function nativeHandoffCard({ state = "pending", kind = "control", purpose
     schema: "2.0",
     config: { update_multi: true },
     header: {
-      title: plain(purpose === "payment" ? "付款" : "电脑"),
+      title: plain(purpose === "payment" ? "付款" : cardTitle),
       text_tag_list: [{ tag: "text_tag", text: plain(status.tag), color: status.color }],
       template: "default",
     },

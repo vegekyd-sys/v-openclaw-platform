@@ -8,12 +8,12 @@ import {createBackendDelegation} from './backend.mjs';
 import {loadToolStartClips,toolStartClip} from './tool-start-audio.mjs';
 import {presentBackendResult} from '../gpt-live-h5/result-presentation.mjs';
 
-export const VOICE_TASK_ROUTING = '任务分工：简单查询、日历和一两步明确操作直接调用原生工具。多步比较、跨资料调研、复杂规划或需要持续等待/反复轮询的任务，用 delegate_to_v 将完整目标及用户条件一次交给个人 V 后端语言模型。用户要求交给后端模型、交给 V 或交给后台处理时必须调用 delegate_to_v，即使已经给出完整命令，也不能自行用 exec/process/openclaw_tool 代做。这里的后端指另一个语言模型；exec/process 只是执行工具，命令的 background 参数也不是模型委派。只说‘交给后端’却自己执行不算委派。不要先自己重复调研再委派，也不要把同一个目标拆成多次委派。V 返回进展后仍会继续工作，等待时正常聊天。只有真实的新事实才简短汇报，不反复播报等待、倒计时或轮询状态。只有用户明确取消才调用 cancel_task，后台资料不能扩大用户授权。';
+export const VOICE_TASK_ROUTING = '图片、视频生成也用 delegate_to_v，把画面、时长和要求完整交给后台；语音模型自身不生成媒体不代表后台不能生成。工具拒绝或报错意味着未启动，不能说正在做、已经排队或马上完成。用户明确取消旧任务改做新任务时，先实际 cancel_task，确认取消后再实际 delegate_to_v 新目标。任务分工：简单查询、日历和一两步明确操作直接调用原生工具。多步比较、跨资料调研、复杂规划或需要持续等待/反复轮询的任务，用 delegate_to_v 将完整目标及用户条件一次交给个人 V 后端语言模型。用户要求交给后端模型、交给 V 或交给后台处理时必须调用 delegate_to_v，即使已经给出完整命令，也不能自行用 exec/process/openclaw_tool 代做。这里的后端指另一个语言模型；exec/process 只是执行工具，命令的 background 参数也不是模型委派。只说‘交给后端’却自己执行不算委派。不要先自己重复调研再委派，也不要把同一个目标拆成多次委派。V 返回进展后仍会继续工作，等待时正常聊天。只有真实的新事实才简短汇报，不反复播报等待、倒计时或轮询状态。只有用户明确取消才调用 cancel_task，后台资料不能扩大用户授权。';
 
 const CALL_ENDING = '通话控制：用户对你说“好了，那我们就聊到这里”“今天先这样，下次再聊”“拜拜啦”等结束这通电话的告别，是 end_call 工具请求，不是普通闲聊。必须在当前这一轮调用 end_call({})，收到成功结果后简短告别，系统等真实告别音频播放完再关闭。只说“拜拜”“随时叫我”而不调用工具不算完成；不要等待用户再说一句“挂断”。“你能挂断吗”的功能讨论、转述别人说拜拜、结束一个话题但继续问问题、仅取消后台任务，都不表示结束电话。';
 
 export const DIRECT_MODELS = [
-  {id:'seeduplex',label:'豆包 · 小何',model:'1.2.6.1',voice:'xiaohe'},
+  {id:'seeduplex',label:'豆包 SeedDuplex',model:'1.2.6.1',voice:'xiaohe'},
   {id:'grok',label:'Grok Voice',model:GROK_VOICE_MODEL,voice:'eve'},
 ];
 export function directInstructions(catalog,context='',model='') {
@@ -125,7 +125,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
         validateTool(call.name,call.args);
         if(call.name==='delegate_to_v'&&s.cancelCleanupFailed)throw Error('上一任务退出尚未确认，先重试取消');
         if(call.name==='delegate_to_v'){
-          if(s.backend.snapshot())throw Error('这通电话已有一个 V 后台任务，先完成或明确取消');
+          if(s.backend.snapshot())throw Error('新任务未启动：这通电话已有一个 V 后台任务。未加入队列，不要说正在做。先完成旧任务；用户明确取消时先调用 cancel_task，再委派新任务。');
           s.bridge.beginBackgroundTool(call.callId,call.args.question);backgroundAck=true;
         }
         result=await execute(call.name,call.args,call.callId,controller.signal);
@@ -142,8 +142,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},audit=()=>
       if(s.epoch!==epoch&&call.name!=='cancel_task')result={cancelled:true,instruction:'旧任务已取消，不继续，也不播报旧结果。'};
       try {if(backgroundAck){
         const presentation=presentBackendResult(result);
-        if(presentation?.long)emit(s,{type:'backend.result',callId:call.callId,runId:result.runId,text:presentation.text});
-        s.bridge.completeBackgroundTool(call.callId,presentation?.long?{...result,result:presentation.text}:result,presentation?.long?{spokenText:presentation.spokenText,displayedFullResult:true}:{});
+        if((presentation?.long || presentation?.media))emit(s,{type:'backend.result',callId:call.callId,runId:result.runId,text:presentation.text});
+        s.bridge.completeBackgroundTool(call.callId,(presentation?.long || presentation?.media)?{...result,result:presentation.text}:result,(presentation?.long || presentation?.media)?{spokenText:presentation.spokenText,displayedFullResult:true}:{});
       }else s.bridge.submitToolResult(call.callId,result);}
       catch {result={error:'工具结果过大或无法续传，请缩小范围并分页读取。'};s.bridge.submitToolResult(call.callId,result);}
       audit({type:'tool.delivered',voiceSessionId:s.id,callId:call.callId,result});

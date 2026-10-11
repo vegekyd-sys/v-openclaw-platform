@@ -22,6 +22,24 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
  const call=(name,args,id='call-1')=>{event({type:'response.created',response:{id:'response-'+id}});event({type:'response.function_call_arguments.done',response_id:'response-'+id,call_id:id,name,arguments:JSON.stringify(args)});event({type:'response.done',response:{id:'response-'+id,status:'completed'}});};
  return {service,reservation,client,upstream,event,call,audit,invocations};
 }
+test('Seeduplex audible greeting reaches the browser transcript and audit exactly once',async t=>{
+ const f=await fixture(undefined,'seeduplex');t.after(()=>f.service.dispose());
+ f.event({type:'session.created'});await delay(0);
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'greeting'})),false);
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'greeting'})),false);
+ assert.equal(f.upstream.sent.filter(e=>e.type==='speech_text_buffer.commit').length,1);
+ assert.equal(f.client.sent.filter(e=>e.type==='transcript').length,0);
+ f.event({type:'response.output_audio.started',response_id:'hello',tts_type:'chat_tts_text'});
+ const pcm=Buffer.alloc(8);pcm.writeFloatLE(.1,0);pcm.writeFloatLE(.2,4);
+ f.event({type:'response.output_audio.delta',response_id:'hello',delta:pcm.toString('base64')});
+ f.event({type:'response.output_audio.delta',response_id:'hello',delta:pcm.toString('base64')});
+ const text=f.client.sent.filter(e=>e.type==='transcript');
+ assert.equal(text.length,1);assert.equal(text[0].text,'天意，你好，我是 V，在呢。');
+ assert.equal(text[0].role,'assistant');assert.equal(text[0].final,true);assert.equal(text[0].source,'greeting');
+ assert.equal(f.client.sent.filter(e=>e.type==='audio').length,2);
+ assert.equal(f.audit.filter(e=>e.type==='transcript'&&e.source==='greeting').length,1);
+});
+
 test('native direct call executes real Gateway tool, retains personal session and never delegates to a model',async()=>{
  const f=await fixture();f.call('memory_search',{query:'家庭'});await delay(5);
  assert.equal(f.invocations[0].name,'memory_search');assert.equal(f.invocations[0].sessionKey,'agent:makaron:explicit:personal-fixture');
@@ -187,4 +205,26 @@ for (const model of ['grok','seeduplex']) test(`${model} public transcript callb
  assert(rows.every(r=>r.voiceSessionId===f.reservation.voiceSessionId&&r.provider===model&&r.sessionKey==='agent:makaron:explicit:personal-fixture'));
  assert.equal(rows.at(-1).type,'call.closed');
  assert(!JSON.stringify(rows).includes('fixture-key'));assert(!JSON.stringify(rows).includes(f.reservation.relayTicket));
+});
+
+
+test('short image and video completions publish one UI result and one spoken caption',async()=>{
+ for (const url of ['https://cdn.test/car.webp','https://cdn.test/car.mp4']) {
+  const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:new Promise(()=>{}));
+  f.call('delegate_to_v',{question:'生成赛车媒体'});await delay(5);const started=f.audit.find(x=>x.type==='backend.started');
+  const text=`小赛车在积木赛道上。\n[赛车](${url})`;
+  f.service.handleEvent({event:'chat',payload:{runId:started.runId,sessionKey:started.sessionKey,state:'final',message:{content:[{type:'text',text}]}}});await delay(250);
+  assert.equal(f.client.sent.filter(x=>x.type==='backend.result').length,1);
+  assert.equal(f.client.sent.find(x=>x.type==='backend.result').text,text);
+  const speech=f.upstream.sent.filter(x=>x.item?.type==='force_message');assert.equal(speech.length,1);assert(!speech[0].item.content[0].text.includes('https:'));assert(speech[0].item.content[0].text.includes('小赛车'));
+  await f.service.dispose();
+ }
+});
+test('busy delegation is explicitly not started and cannot silently queue another media job',async()=>{
+ let cancelled=false;const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:method==='chat.abort'?(cancelled=true,{ok:true}):cancelled?{status:'error',aborted:true}:new Promise(()=>{}));
+ f.call('delegate_to_v',{question:'调研'},'first');await delay(5);
+ f.call('delegate_to_v',{question:'作图'},'second');await delay(5);
+ const result=f.audit.find(x=>x.type==='tool.delivered'&&x.callId==='second').result;
+ assert(result.error.includes('新任务未启动'));assert(result.error.includes('未加入队列'));
+ assert.equal(f.audit.filter(x=>x.type==='backend.started').length,1);await f.service.dispose();
 });

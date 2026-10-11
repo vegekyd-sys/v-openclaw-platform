@@ -235,6 +235,7 @@
         "lab/worker-prewarm-session-keys.test.mjs",
         "lab/worker-prewarm-contention-retry.test.mjs",
         "lab/worker-warm-first.test.mjs",
+        "lab/worker-secret-egress.test.mjs",
         "lab/cron-shared-tool-surface.test.mjs",
         "lab/db91-benchmark-profile.test.mjs",
         "lab/db91-event-loop-p50.test.mjs",
@@ -321,6 +322,8 @@
         "lab/feishu-codex-early-card.test.mjs",
         "lab/feishu-card-precreate.test.mjs",
         "lab/early-tool-status.test.mjs",
+        "lab/no-reply-after-tool.test.mjs",
+        "lab/feishu-empty-card-discard.test.mjs",
         "scripts/node-async-context-frame.test.mjs",
         "lab/workboard-incremental-sweep.test.mjs",
         "lab/workboard-sweep-links.test.mjs",
@@ -387,7 +390,12 @@
         "lab/gpt-live-h5/result-presentation.test.mjs",
         "lab/gpt-live-h5/avatar-decision.test.mjs",
         "lab/gpt-live-h5/avatar-reactions.test.mjs",
-        "lab/gpt-live-h5/avatar-telemetry.test.mjs"
+        "lab/gpt-live-h5/avatar-approved-reactions.test.mjs",
+        "lab/gpt-live-h5/avatar-telemetry.test.mjs",
+        "lab/gpt-live-h5/content-view.test.mjs",
+        "lab/gpt-live-h5/product-controls.test.mjs",
+        "lab/gpt-live-h5/screen-wake-lock.test.mjs",
+        "lab/patch-gpt-live-media-policy.test.mjs"
       ]
     }
   ],
