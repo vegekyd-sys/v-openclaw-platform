@@ -48,14 +48,14 @@ async function runModel(model){
  check(model+'/greeting',true,{voiceSessionId:id,provider:model,greetingMode:model==='seeduplex'?'documented SayHello native TTS':'model response'});await quiet(id);
  if(process.env.DIRECT_VOICE_CASES==='calendar-playback'){
   const at=Date.now();await speak('calendar');const inputEnd=Date.now();
-  const calendarResults=()=>rows().filter(x=>x.type==='tool.native-result'&&x.at>at&&x.name==='exec'&&rows().some(c=>c.type==='tool.invoke'&&c.callId===x.callId&&String(c.args?.command).includes('lark-cli')&&String(c.args?.command).includes('+agenda')));
-  await wait(()=>calendarResults().some(x=>calendarOutcome(x.result.output).ok),'actual successful personal calendar business result',90000);
-  const result=calendarResults().find(x=>calendarOutcome(x.result.output).ok);
+  const calendarResults=()=>rows().filter(x=>x.type==='tool.local-result'&&x.at>at&&x.name==='feishu_calendar');
+  await wait(()=>calendarResults().some(x=>calendarOutcome(x.result).ok),'actual successful personal calendar business result',90000);
+  const result=calendarResults().find(x=>calendarOutcome(x.result).ok);
   await wait(()=>rows().some(x=>x.type==='tool.delivered'&&x.callId===result.callId&&!x.result?.error),'actual calendar delivery',30000);
   const delivered=rows().find(x=>x.type==='tool.delivered'&&x.callId===result.callId);
   await wait(()=>rows().some(x=>x.type==='audio'&&!x.source&&x.at>delivered.at),'calendar answer PCM without a second USER',30000);await quiet(id,90000);
-  const call=rows().find(x=>x.type==='tool.invoke'&&x.callId===result.callId);
-  check(model+'/calendar-native-answer',calendarResults().every(x=>calendarOutcome(x.result.output).ok)&&!rows().some(x=>x.type==='backend.started'),{callId:result.callId,exitCode:result.result.output.details.exitCode,calendarOk:true,inputEnd,toolAt:call.at,latencyMs:call.at-inputEnd,secondUserUtteranceRequired:false});
+  const call=rows().find(x=>x.type==='tool.local-start'&&x.callId===result.callId);
+  check(model+'/calendar-native-answer',calendarResults().every(x=>calendarOutcome(x.result).ok)&&!rows().some(x=>x.type==='backend.started'),{callId:result.callId,exitCode:result.result.details.exitCode,calendarOk:true,inputEnd,toolAt:call.at,latencyMs:call.at-inputEnd,secondUserUtteranceRequired:false});
   if(model==='grok'){
    const storyAt=Date.now();await speak('story');await wait(()=>rows().some(x=>x.type==='audio'&&!x.source&&x.at>storyAt),'actual long story PCM',30000);await quiet(id,120000);
    const playback=rows().filter(x=>x.type==='client.playback-stats').at(-1)?.stats;
@@ -74,14 +74,14 @@ async function runModel(model){
   check(model+'/simple-stays-native',!rows().some(x=>x.type==='backend.started')&&rows().some(x=>x.type==='tool.native-result'&&x.name==='memory_search'&&x.result.ok===true));
   if(process.env.DIRECT_VOICE_CASES==='routing-controls')return runControls();
   if(process.env.DIRECT_VOICE_CASES==='single-query'){await stop();await stopRecording();save(model+'-wire.json',await wire());save(model+'-single-query-result.json',{model,results:results.filter(x=>x.name?.startsWith(model+'/')),productAccepted:false});return;}
-  if(process.env.DIRECT_VOICE_SIMPLE_EXTENDED==='1')for(const [clip,names] of [['calendar',['feishu_calendar','exec']],['weather',['web_search']]]){
-   const at=Date.now();await speak(clip);await wait(()=>rows().some(x=>x.type==='tool.native-result'&&x.at>at&&names.includes(x.name)),'simple '+clip+' native result',90000);
-   const first=rows().find(x=>x.type==='tool.native-result'&&x.at>at&&names.includes(x.name));
+  if(process.env.DIRECT_VOICE_SIMPLE_EXTENDED==='1')for(const [clip,names] of [['calendar',['feishu_calendar']],['weather',['web_search']]]){
+   const at=Date.now();await speak(clip);await wait(()=>rows().some(x=>x.type===(clip==='calendar'?'tool.local-result':'tool.native-result')&&x.at>at&&names.includes(x.name)),'simple '+clip+' native result',90000);
+   const first=rows().find(x=>x.type===(clip==='calendar'?'tool.local-result':'tool.native-result')&&x.at>at&&names.includes(x.name));
    await wait(()=>rows().some(x=>x.type==='tool.delivered'&&x.callId===first.callId),'simple '+clip+' result delivery',100000);
-   const delivered=rows().find(x=>x.type==='tool.delivered'&&x.callId===first.callId),result=rows().filter(x=>x.type==='tool.native-result'&&x.callId===first.callId).at(-1);
+   const delivered=rows().find(x=>x.type==='tool.delivered'&&x.callId===first.callId),result=rows().filter(x=>x.type===(clip==='calendar'?'tool.local-result':'tool.native-result')&&x.callId===first.callId).at(-1);
    await wait(()=>rows().some(x=>x.type==='audio'&&!x.source&&x.at>delivered.at),'simple '+clip+' actual answer PCM',30000);await quiet(id,90000);
-   const output=result.result.output,calendar=clip==='calendar'?calendarOutcome(output):null;
-   const succeeded=result.result.ok===true&&output?.isError!==true&&!delivered.result?.error&&(clip!=='calendar'||calendar.ok);
+   const output=clip==='calendar'?result.result:result.result.output,calendar=clip==='calendar'?calendarOutcome(output):null;
+   const succeeded=(clip==='calendar'?calendar.ok:result.result.ok===true)&&output?.isError!==true&&!delivered.result?.error;
    check(model+'/simple-'+clip,succeeded&&!rows().some(x=>x.type==='backend.started'&&x.at>at),{toolName:result.name,callId:result.callId,exitCode:output?.details?.exitCode,calendarOk:calendar?.ok,deliveryAt:delivered.at,secondUserUtteranceRequired:false});
   }
   await speak('hybrid');await wait(()=>rows().some(x=>x.type==='backend.started'),'real V backend delegated',60000);
@@ -150,12 +150,12 @@ async function runModel(model){
   await quiet(next);await stop();await stopRecording();
   save(model+'-wire.json',await wire());return;
  }
- await speak('tools');await wait(()=>rows().some(x=>x.type==='tool.invoke'&&x.name==='memory_search')&&rows().some(x=>x.type==='tool.invoke'&&x.name==='web_search')&&rows().some(x=>x.type==='tool.invoke'&&x.name==='exec'&&JSON.stringify(x.args).includes('lark-cli')),'actual memory/calendar/web direct calls',180000);
+ await speak('tools');await wait(()=>rows().some(x=>x.type==='tool.invoke'&&x.name==='memory_search')&&rows().some(x=>x.type==='tool.invoke'&&x.name==='web_search')&&rows().some(x=>x.type==='tool.local-result'&&x.name==='feishu_calendar'&&calendarOutcome(x.result).ok),'actual memory/calendar/web direct calls',180000);
  await wait(()=>rows().some(x=>x.type==='tool.invoke'&&['read','exec'].includes(x.name)&&/agents\.md/i.test(JSON.stringify(x.args))),'generic native file tool',60000);
- await wait(()=>rows().filter(x=>x.type==='tool.native-result').length>=4,'all core direct results',60000);
+ await wait(()=>rows().filter(x=>x.type==='tool.native-result').length>=3&&rows().some(x=>x.type==='tool.local-result'&&x.name==='feishu_calendar'),'all core direct results',60000);
  await quiet(id,60000);
  const native=rows().filter(x=>x.type==='tool.native-result');
- check(model+'/direct-tools',native.length>=4&&native.every(x=>x.result.ok===true&&x.result.output?.isError!==true&&(x.name!=='exec'||x.result.output?.details?.status==='running'||x.result.output?.details?.exitCode===0)),{calls:rows().filter(x=>x.type==='tool.invoke').map(x=>({name:x.name,callId:x.callId})),rpcOnly:true,noBackendLLM:true});
+ check(model+'/direct-tools',native.length>=3&&rows().some(x=>x.type==='tool.local-result'&&x.name==='feishu_calendar'&&calendarOutcome(x.result).ok)&&native.every(x=>x.result.ok===true&&x.result.output?.isError!==true&&(x.name!=='exec'||x.result.output?.details?.status==='running'||x.result.output?.details?.exitCode===0)),{calls:rows().filter(x=>x.type==='tool.invoke').map(x=>({name:x.name,callId:x.callId})),gatewayNativeAndVoiceLocal:true,noBackendLLM:true});
  await speak('keep');await quiet(id,30000);check(model+'/discussion-does-not-hangup',(await state()).state==='connected'&&!rows().some(x=>x.type==='tool.call'&&x.name==='end_call'));
  await speak('count');await wait(()=>rows().filter(x=>x.type==='audio').at(-1)?.at>Date.now()-1000,'count audio',15000);
  const bargeAt=Date.now();await speak('barge');await quiet(id,30000);

@@ -1,3 +1,5 @@
+> 已由本轮 Voice 本地只读工具方案取代：撤回 Gateway 准入补丁，不发布此文下述四个 runtime 文件。保留 Voice CLI profile 和 StateDirectory。当前验收见 `voice-local-lark-readonly-20261011.md`。
+
 # Voice 直接工具调用修复（候选）
 
 ## 问题与改动
