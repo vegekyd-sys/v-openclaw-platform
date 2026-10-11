@@ -2,7 +2,7 @@
 //
 // Why: OpenClaw injects CLAUDE_CODE_AUTO_COMPACT_WINDOW=<model window> into every claude it
 // spawns, which for the Claude 5 models is their full 1M. Claude Code then compacts only
-// at ~967k, about 3% below the hard limit. On V (2026-10-11 12:30 CST) one /vcc session
+// at ~967k (window minus a 33k buffer), about 3% below the hard limit. On V (2026-10-11 12:30 CST) one /vcc session
 // resumed for eight days reached 976k tokens; the next call was "Prompt is too long" and
 // the reactive compaction could not fit either ("automatic compaction failed: Request
 // size exceeds model context window"). Every call in that session also re-read ~950k
@@ -11,9 +11,10 @@
 // Fix: an `env` block in the Gateway user's ~/.claude/settings.json. OpenClaw always runs
 // claude with --setting-sources user, and a user-settings env value overrides the one
 // OpenClaw injects; Claude Code still clamps it to the model window, so runs on a 200k
-// window keep 200k. 500k is Claude Code's own auto-compact default for 1M models on its
-// agent surfaces; it leaves ~530k tokens of headroom for compaction itself and for the
-// tool results between two model calls. The model window stays 1M.
+// window keep 200k. 900k (Tianyi, 2026-10-11: use as much of 1M as is safe) compacts at
+// ~867k and keeps ~130k tokens below the limit for the last tool round and for the
+// compaction request itself (on V a compaction at 980k still fit). The model window
+// stays 1M.
 // Validated by lab/candidate/vcc-compact-window{,-baseline,-precedence}.plan.json.
 //
 // Why not models.providers.anthropic.models[].contextTokens (OpenClaw's own cap): on 9.1
@@ -37,7 +38,7 @@ assert(["check", "apply", "restore"].includes(mode), "mode must be check|apply|r
 assert.equal(process.getuid(), 0, "run as root");
 
 const KEY = "CLAUDE_CODE_AUTO_COMPACT_WINDOW";
-const VALUE = "500000";
+const VALUE = "900000";
 const users = { "VM-8-2-ubuntu": "openclaw", "VM-0-4-ubuntu": "lab-db91-parity" };
 const user = users[os.hostname()];
 assert(user, `unknown host ${os.hostname()}: this configures production V or shared VLab only`);

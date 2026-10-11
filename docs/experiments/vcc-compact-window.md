@@ -46,17 +46,21 @@ is also 1M (`/autocompact` on 2.1.280: "1m tokens (default for this model)").
 
 ## Fix
 
-`{"env": {"CLAUDE_CODE_AUTO_COMPACT_WINDOW": "500000"}}` in the Gateway user's
+`{"env": {"CLAUDE_CODE_AUTO_COMPACT_WINDOW": "900000"}}` in the Gateway user's
 `~/.claude/settings.json`, managed by
 `scripts/configure-v-claude-code-compact-window.mjs check|apply|restore`.
 
 - OpenClaw always launches claude with `--setting-sources user`, and a
   user-settings `env` value overrides the one OpenClaw injects. Claude Code
   still clamps it to the model window: runs on a 200k window keep 200k.
-- 500k is Claude Code's own default auto-compact window for 1M models on its
-  agent surfaces. Compaction then fires at ~467k with ~530k tokens of headroom
-  for the compaction request and for anything a single tool round adds; per-call
-  cache reads stay under half of today's worst case.
+- 900k (Tianyi: use as much of the 1M as is safe). Compaction fires at ~867k
+  and keeps ~130k tokens below the hard limit for the last tool round and for
+  the compaction request itself; on V a compaction at 980k still fit (87 s). A
+  single round rarely adds more than ~25k (MCP output cap) or ~2k per
+  screenshot. The trade-off is cost and latency: each call re-reads the whole
+  cached context, and compacting ~870k takes over a minute.
+- The settings env also applies under OpenClaw's restricted tool policy, which
+  adds its own `--settings` (precedence case D below).
 - No OpenClaw config, no Gateway restart. Each claude process reads the setting
   when it starts (an idle warm process is recycled after 10 min).
 
@@ -78,7 +82,7 @@ copy of shared VLab's config.
 `lab/candidate/vcc-compact-window.mjs` — one turn views 45 generated 1200×800
 "screenshots" one at a time with `Read` (each an image block in a tool result,
 like browser/computer screenshots) and writes down the code on each. A 150k
-window stands in for 500k so the threshold is reachable in one turn.
+window stands in for 900k so the threshold is reachable in one turn.
 
 | | baseline (`…-baseline.plan.json`) | fix (`….plan.json`) |
 |---|---|---|
@@ -97,13 +101,25 @@ through `--settings`; the user-settings layer itself is covered by:
 `lab/candidate/vcc-compact-window-precedence.sh` — Claude Code's local
 `/autocompact` and `/context` (no API call) on 2.1.280 with OpenClaw's flags:
 
-| settings env | injected by OpenClaw | effective window |
-|---|---|---|
-| 500000 | 1000000 | **500k** |
-| none (production today) | 1000000 | 1m |
-| 500000 | 200000 + `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` | 200k ("capped to 200k by model") |
+| | settings env | injected by OpenClaw | effective window |
+|---|---|---|---|
+| A | 900000 | 1000000 | **900k** |
+| B | none (production today) | 1000000 | 1m |
+| C | 900000 | 200000 + `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` | 200k ("capped to 200k by model") |
+| D | 900000 | 1000000, plus OpenClaw's restricted `--settings` | **900k** |
 
-Candidate `candidate-566c2c09-9d0e-412b-a5f1-ea03f5a1d8aa`.
+Candidate `candidate-298cb64d-4aef-48ba-a824-2c83f78d7ea8` (an earlier run of
+A–C with 500k: `candidate-566c2c09-9d0e-412b-a5f1-ea03f5a1d8aa`).
+
+## Rollout notes
+
+- Copy the script to `/opt/v-ops/` on V and run `apply` as root; `check` shows
+  the value, `restore` removes it. Nothing restarts.
+- Sessions already above ~867k compact once at the start of their next turn.
+  On 2026-10-11 two recent ones were: `02e3f61a…` (930k, last used 10-09) and
+  `4d578279…` (924k, 09-30).
+- OpenClaw reads `~/.claude/settings.json` only for `apiKeyHelper` and as a
+  credential-cache fingerprint; creating the file just refreshes that cache.
 
 ## Notes for next time
 
