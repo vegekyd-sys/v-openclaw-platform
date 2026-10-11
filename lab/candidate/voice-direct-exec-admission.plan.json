@@ -1,0 +1,35 @@
+{
+  "support": [
+    "lab/candidate/voice-direct-exec-admission.mjs",
+    "release/captured/v-voice-content-product-20261011/dist/tools-invoke-shared-CjpflNGO.js",
+    "release/captured/v-voice-content-product-20261011/dist/tool-resolution-Con11qMn.js"
+  ],
+  "files": [
+    {
+      "source": "lab/release-files/voice-direct-exec-admission/tools-invoke-shared-CjpflNGO.js",
+      "target": "openclaw/dist/tools-invoke-shared-CjpflNGO.js",
+      "before": "ac465c5bb6ed92f49be384f499971a44d25f0619ed107e8825095e4752ada253"
+    },
+    {
+      "source": "lab/release-files/voice-direct-exec-admission/tool-resolution-Con11qMn.js",
+      "target": "openclaw/dist/tool-resolution-Con11qMn.js",
+      "before": "aa63296c842b933f1c50fc8f879b3e82446766b4549758e60ef297b42b8d33a8"
+    },
+    {
+      "source": "lab/release-files/voice-direct-exec-admission/voice-direct-exec-admission.js",
+      "target": "openclaw/dist/voice-direct-exec-admission.js",
+      "before": null
+    },
+    {
+      "source": "lab/release-files/voice-direct-exec-admission/bash-tools-DiAfkLAC.js",
+      "target": "openclaw/dist/bash-tools-DiAfkLAC.js",
+      "before": "43d9a2273b8de08d71493731cd3e5224b1ccb241a64b2fff740f42b6517608ff"
+    }
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/voice-direct-exec-admission.mjs"
+  ],
+  "user": "lab-db91-parity",
+  "timeoutSeconds": 180
+}
