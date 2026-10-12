@@ -6,7 +6,8 @@
 // the restart path, not traffic. DB=meta builds makaron's session metadata (V-sized session
 // store, no transcripts); DB=none starts with an empty agent directory.
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import net from "node:net";
@@ -25,6 +26,11 @@ const CPU_PROF = process.env.CPU_PROF === "1";
 const EXTRA_NODE_FLAGS = (process.env.EXTRA_NODE_FLAGS ?? "").split(/\s+/u).filter(Boolean);
 const EXTRA_ENV = JSON.parse(process.env.EXTRA_ENV ?? "{}");
 const MODEL = "deepseek/deepseek-flash";
+// REAL_TURN=1: keep the real model and, after the last restart, run one Worker turn that must
+// call exec and answer with the command output (the restart path still serves real turns).
+const REAL_TURN = process.env.REAL_TURN === "1";
+const V_SECRET_REFS = process.env.V_SECRET_REFS === "1";
+const SAFETY = process.env.SAFETY === "1";
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const redact = (s) => String(s).replace(/(token|api.?key|authorization|secret|bearer|password)([=: ]+)[^\s"]+/giu, "$1$2[redacted]");
 const dist = path.join(runtime, "openclaw", "dist");
@@ -34,7 +40,7 @@ const dead = await new Promise((resolve) => { const s = net.createServer(); s.li
 function asProduction(config, runtimeId) {
   const deepseek = config.models?.providers?.deepseek;
   assert(deepseek, "shared VLab config has no deepseek provider");
-  deepseek.baseUrl = `http://127.0.0.1:${dead}/v1`;
+  if (!REAL_TURN) deepseek.baseUrl = `http://127.0.0.1:${dead}/v1`;
   const model = { primary: MODEL, fallbacks: [] };
   const perAgent = { alias: "deepseek", agentRuntime: { id: runtimeId }, params: { thinking: "high" } };
   config.agents.defaults.model = model;
@@ -42,6 +48,11 @@ function asProduction(config, runtimeId) {
   if (config.agents.entries?.makaron) { config.agents.entries.makaron.model = model; (config.agents.entries.makaron.models ??= {})[MODEL] = perAgent; }
   if (config.plugins?.entries?.codex) config.plugins.entries.codex.enabled = false;
   config.channels = {};
+  if (V_SECRET_REFS) { // V's agent-runtime SecretRefs (shared VLab has none): a Worker's runtime config resolves them via the Gateway
+    ((config.plugins ??= {}).entries ??= {}).google ??= { enabled: true };
+    ((config.plugins.entries.google.config ??= {}).webSearch ??= {}).apiKey = { source: "env", provider: "default", id: "GOOGLE_API_KEY" };
+    ((config.secrets ??= {}).providers ??= {}).default = { source: "env", allowlist: ["GOOGLE_API_KEY"] };
+  }
   config.session = { ...(config.session ?? {}), maintenance: { mode: runtimeId === "openclaw" ? "warn" : "enforce", pruneAfter: "14d", maxEntries: 6000, resetArchiveRetention: "14d", maxDiskBytes: "32gb" } };
   return config;
 }
@@ -118,8 +129,10 @@ const env = {
   OPENCLAW_DB91_STATE_READ_AHEAD_ENABLE: "1",
   OPENCLAW_DB91_TRAJECTORY_SWEEP_ENABLE: "1",
   OPENCLAW_WORKER_SESSION_AFFINITY_ENABLE: "1",
-  OPENCLAW_DATABASE_VERIFY_RESOURCE_GROUP: "1",
+  // V's delegated verifier cgroup (94-verifier-resource-group) does not exist in a candidate
+  // process group; without it the native verifier runs unconfined, as on shared VLab before 9/10.
   OPENCLAW_CONFIG_PATH: configPath,
+  ...(V_SECRET_REFS && !process.env.GOOGLE_API_KEY ? { GOOGLE_API_KEY: "restart-speed-placeholder" } : {}),
   ...EXTRA_ENV,
 };
 const lines = [];
@@ -189,7 +202,7 @@ async function measuredStart(prof) {
   const ready = seen.filter((l) => /"stage":"pool-ready"/u.test(l.line)).map((l) => l.at - t0);
   marks.allPoolReady = ready.length >= WORKERS ? ready[WORKERS - 1] : null;
   marks.hello = hello;
-  const prewarm = seen.filter((l) => l.line.includes("[worker-runtime-prewarm")).map((l) => { try { const j = JSON.parse(l.line.slice(l.line.indexOf("{"))); return { ms: j.ms, preparedMs: j.preparedMs, pid: j.pid }; } catch { return null; } }).filter(Boolean);
+  const prewarm = seen.filter((l) => l.line.includes("[worker-runtime-prewarm")).map((l) => { try { const j = JSON.parse(l.line.slice(l.line.indexOf("{"))); return { ms: j.ms, preparedMs: j.preparedMs, pid: j.pid, fastPath: j.distResolveFastPath, compileCache: j.compileCache, status: j.status, secrets: j.secretsPrepared }; } catch { return null; } }).filter(Boolean);
   const preflight = seen.find((l) => /preflight passed in (\d+)ms/u.test(l.line))?.line.match(/passed in (\d+)ms/u)?.[1];
   const carry = seen.find((l) => l.line.includes("clean-restart carry"))?.line.replace(/^.*clean-restart carry: /u, "") ?? null;
   return { t0, marks, prewarm, preflightMs: preflight ? Number(preflight) : null, carry, receipts: receipts() };
@@ -211,6 +224,36 @@ async function stopGateway() {
   if (gateway.exitCode === null) { gateway.kill("SIGKILL"); await sleep(500); return { stopMs: Date.now() - t, killed: true }; }
   // KillMode=control-group: leftover Workers die with the unit; here they are our children
   return { stopMs: Date.now() - t, exitCode: gateway.exitCode, signal: gateway.signalCode };
+}
+
+async function realTurn() {
+  // The answer is a fresh random UUID only the command can produce; the transcript must show
+  // the exec call and its result, and the Worker must have run the turn.
+  const sessionKey = `agent:makaron:explicit:vlab-dev-restart-speed-${Date.now()}`;
+  const from = lines.length;
+  const started = Date.now();
+  const r = await new Promise((resolve) => {
+    const child = spawn(process.execPath, [`${dist}/index.js`, "agent", "--agent", "makaron", "--session-key", sessionKey, "--message",
+      "这是一次自动化测试，请严格照做：用 exec 工具运行命令 cat /proc/sys/kernel/random/uuid，然后只回复命令输出的那一行，不要其他文字。", "--json", "--timeout", "300"],
+      { env, stdio: ["ignore", "pipe", "pipe"] });
+    let out = "", err = "";
+    child.stdout.on("data", (c) => { out += c; }); child.stderr.on("data", (c) => { err += c; });
+    child.on("exit", (code) => resolve({ code, out, err }));
+  });
+  let meta; try { meta = JSON.parse(r.out.slice(r.out.indexOf("{"))); } catch {}
+  const payloads = (meta?.result?.payloads ?? meta?.payloads ?? []).map((p) => String(p?.text ?? ""));
+  const answer = payloads.join("\n").match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/u)?.[0] ?? null;
+  const transcript = (() => {
+    const db = new DatabaseSync(path.join(stateDir, "agents", "makaron", "agent", "openclaw-agent.sqlite"), { readOnly: true });
+    try {
+      const node = db.prepare("select current_session_id as id from session_nodes where session_key = ?").get(sessionKey);
+      if (!node) return { found: false };
+      const events = db.prepare("select event_json from transcript_events where session_id = ? order by seq").all(node.id).map((e) => JSON.stringify(JSON.parse(e.event_json)));
+      return { found: true, execCall: events.some((e) => /"toolCall"/u.test(e) && /"exec"|"bash"/u.test(e)), resultHasAnswer: answer !== null && events.some((e) => /toolResult|tool_result/u.test(e) && e.includes(answer)) };
+    } finally { db.close(); }
+  })();
+  const workerLines = lines.slice(from).filter((l) => l.line.startsWith("[vlab-worker:")).length;
+  return { secs: Math.round((Date.now() - started) / 100) / 10, exit: r.code, answer: Boolean(answer), ...transcript, workerLines, provider: meta?.result?.meta?.agentMeta?.provider ?? meta?.meta?.agentMeta?.provider, stderr: r.code === 0 ? undefined : redact(r.err).slice(-600) };
 }
 
 // ---- profile windows ----
@@ -255,9 +298,10 @@ try {
     if (CPU_PROF) fs.rmSync(profDir, { recursive: true, force: true });
     const start = await measuredStart(CPU_PROF && run === RUNS);
     await sleep(CPU_PROF && run === RUNS ? 2_000 : 20_000);
+    const turn = REAL_TURN && run === RUNS ? await realTurn() : undefined;
     const gatewayPid = gateway.pid;
     const stop = await stopGateway();
-    const r = { run, ...start, stop };
+    const r = { run, ...start, stop, turn };
     if (CPU_PROF && run === RUNS) {
       await sleep(3_000);
       const files = fs.existsSync(profDir) ? fs.readdirSync(profDir) : [];
@@ -280,7 +324,30 @@ try {
     results.push(r);
     console.log(JSON.stringify(r));
   }
+  if (SAFETY) {
+    // 1) a crash (SIGKILL of the Gateway and its Workers) is never carried: full check before admission
+    await measuredStart(false);
+    const children = spawnSync("pgrep", ["-P", String(gateway.pid)], { encoding: "utf8" }).stdout.split(/\s+/u).filter(Boolean).map(Number);
+    gateway.kill("SIGKILL");
+    for (const pid of children) { try { process.kill(pid, "SIGKILL"); } catch {} }
+    for (let i = 0; i < 40 && gateway.exitCode === null && gateway.signalCode === null; i += 1) await sleep(250);
+    await sleep(2_000);
+    const afterCrash = await measuredStart(false);
+    // 2) the native verifier (5 min after start) re-checks the database in full and replaces the receipt
+    const deadline = Date.now() + 480_000;
+    const mark = lines.length;
+    await stopGateway();
+    const verified = await measuredStart(false);
+    while (Date.now() < deadline && !lines.slice(mark).some((l) => /database integrity verification (passed|failed)|integrity verifier failed/u.test(l.line))) await sleep(2_000);
+    const verifierLines = lines.slice(mark).filter((l) => /database-verify/u.test(l.line)).map((l) => redact(l.line).slice(0, 200));
+    results.push({ safety: {
+      afterCrash: { carry: afterCrash.carry, preflightMs: afterCrash.preflightMs, receipts: afterCrash.receipts },
+      afterCleanStop: { carry: verified.carry, preflightMs: verified.preflightMs },
+      verifierLines, receiptsAfterVerifier: receipts(),
+    } });
+    console.log(JSON.stringify(results.at(-1)));
+  }
 } finally {
   await stopGateway();
 }
-console.log(JSON.stringify({ built, workers: WORKERS, db: DB, runs: results.filter((r) => r.run).map((r) => ({ run: r.run, preflightMs: r.preflightMs, carry: r.carry, receipts: r.receipts, ...r.marks, stopMs: r.stop?.stopMs, prewarmMs: r.prewarm.map((p) => p.ms), preparedMs: r.prewarm.map((p) => p.preparedMs) })) }, null, 1));
+console.log(JSON.stringify({ built, workers: WORKERS, db: DB, safety: results.find((r) => r.safety)?.safety, runs: results.filter((r) => r.run).map((r) => ({ run: r.run, preflightMs: r.preflightMs, carry: r.carry, receipts: r.receipts, ...r.marks, stopMs: r.stop?.stopMs, prewarmMs: r.prewarm.map((p) => p.ms), preparedMs: r.prewarm.map((p) => p.preparedMs), turn: r.turn, workerFlags: [...new Set(r.prewarm.map((p) => `${p.status}/${p.fastPath}/${p.compileCache}/${p.secrets}`))] })) }, null, 1));

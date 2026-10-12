@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { patchWorker } from './patch-restart-speed-worker.mjs';
 import { patchGatewayIndex } from './patch-restart-speed-gateway-index.mjs';
+import { patchAgentCommandChunk } from './patch-restart-speed-agent-command.mjs';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.dirname(dir);
@@ -35,4 +36,12 @@ for (const [name, before] of [['db91-integrity-bootstrap.mjs', bootstrapBefore],
   const source = `lab/release-files/restart-speed/dist/${name}`;
   out.push({ source, target: `openclaw/dist/${name}`, ...(before ? { before } : {}), after: sha(fs.readFileSync(path.join(repo, source))) });
 }
+const commandName = 'agent-command-DPfawBbr.js';
+const command = fs.readFileSync(path.join(dir, 'release-files', 'worker-prewarm-session-keys', commandName), 'utf8');
+const commandBefore = sha(command);
+if (commandBefore !== 'e3cab0b42c2cefb01a9116b89fcdf255c91356478d6e10714811448d4962210f') throw new Error(`Unexpected input checksum for ${commandName}: ${commandBefore}`);
+const patchedCommand = patchAgentCommandChunk(command);
+const commandSource = `lab/release-files/restart-speed/dist/${commandName}`;
+fs.writeFileSync(path.join(repo, commandSource), patchedCommand);
+out.push({ source: commandSource, target: `openclaw/dist/${commandName}`, before: commandBefore, after: sha(patchedCommand) });
 console.log(JSON.stringify(out, null, 2));

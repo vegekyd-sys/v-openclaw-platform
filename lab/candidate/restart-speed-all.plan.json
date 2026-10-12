@@ -9,10 +9,11 @@
   "timeoutSeconds": 3600,
   "user": "lab-db91-parity",
   "env": {
-    "RUNS": "3",
+    "RUNS": "2",
     "WORKERS": "5",
     "DB": "meta",
-    "CPU_PROF": "0",
+    "V_SECRET_REFS": "1",
+    "REAL_TURN": "1",
     "EXTRA_ENV": "{\"OPENCLAW_DB91_RESTART_CARRY\": \"1\"}"
   },
   "files": [
@@ -42,6 +43,11 @@
     {
       "source": "lab/release-files/restart-speed/dist/db91-restart-carry.mjs",
       "target": "openclaw/dist/db91-restart-carry.mjs"
+    },
+    {
+      "source": "lab/release-files/restart-speed/dist/agent-command-DPfawBbr.js",
+      "target": "openclaw/dist/agent-command-DPfawBbr.js",
+      "before": "e3cab0b42c2cefb01a9116b89fcdf255c91356478d6e10714811448d4962210f"
     }
   ]
 }

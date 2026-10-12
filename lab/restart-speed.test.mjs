@@ -226,3 +226,24 @@ test('the Gateway entry enables the compile cache only as the main module, and c
   assert.ok(added.some((l) => l.includes('ocIsMain &&')));
   assert.ok(added.every((l) => !/await import|runLegacyCliEntry|bootstrapGatewayIntegrity/.test(l)), 'no new import or control flow beyond the cache');
 });
+
+test('release files are exactly the patches applied to the bytes V runs', async () => {
+  const {createHash} = await import('node:crypto');
+  const sha = (v) => createHash('sha256').update(v).digest('hex');
+  const files = JSON.parse(fs.readFileSync(path.join(release, 'files.json'), 'utf8'));
+  for (const f of files) assert.equal(sha(fs.readFileSync(path.join(here, '..', f.source))), f.after, f.source);
+  const {patchWorker} = await import('./patch-restart-speed-worker.mjs');
+  const {patchAgentCommandChunk} = await import('./patch-restart-speed-agent-command.mjs');
+  const {patchGatewayIndex} = await import('./patch-restart-speed-gateway-index.mjs');
+  const worker = fs.readFileSync(path.join(here, 'release-files', 'worker-prewarm-contention-retry', 'worker.mjs'), 'utf8');
+  assert.equal(patchWorker(worker), fs.readFileSync(path.join(release, 'production-worker', 'worker.mjs'), 'utf8'));
+  assert.throws(() => patchWorker(patchWorker(worker)), /already/);
+  const command = fs.readFileSync(path.join(here, 'release-files', 'worker-prewarm-session-keys', 'agent-command-DPfawBbr.js'), 'utf8');
+  const patched = patchAgentCommandChunk(command);
+  assert.equal(patched, fs.readFileSync(path.join(release, 'dist', 'agent-command-DPfawBbr.js'), 'utf8'));
+  const added = patched.split('\n').filter((l) => !command.split('\n').includes(l));
+  assert.ok(added.some((l) => l.includes('=== "await" ? await prewarmSecretsRuntimeSnapshot() : startSecretsRuntimeSnapshot()')), 'blocking step only on request');
+  assert.ok(added.some((l) => l.includes('void prewarmSecretsRuntimeSnapshot().catch(() => {});')), 'started step cannot reject unhandled');
+  const index = fs.readFileSync(path.join(here, '..', 'release', 'captured', 'codex-firsttext-20261008', 'dist', 'index.js'), 'utf8');
+  assert.equal(patchGatewayIndex(index), fs.readFileSync(path.join(release, 'dist', 'index.js'), 'utf8'));
+});

@@ -3,7 +3,7 @@
     "source": "lab/release-files/restart-speed/production-worker/worker.mjs",
     "target": "production-worker/worker.mjs",
     "before": "8b466a60585f97c5b9230c9afe605a22cf9d206484c3bd680f01262f4757b2ee",
-    "after": "17e50d1140625affa991eeed096f8c20f4a077d804f5e5910bebb6c2e291c75c"
+    "after": "3e66b4b351ab8ff98f956d7c259e869cfa018262ed5d8b261d086a4277c02313"
   },
   {
     "source": "lab/release-files/restart-speed/production-worker/dist-esm-resolve-fast-path.mjs",
@@ -31,5 +31,11 @@
     "source": "lab/release-files/restart-speed/dist/db91-restart-carry.mjs",
     "target": "openclaw/dist/db91-restart-carry.mjs",
     "after": "6c0e7ee748726cd1d124fbae8b59b9fc7bf4a3dc69aa60a3ab35d756a98f538c"
+  },
+  {
+    "source": "lab/release-files/restart-speed/dist/agent-command-DPfawBbr.js",
+    "target": "openclaw/dist/agent-command-DPfawBbr.js",
+    "before": "e3cab0b42c2cefb01a9116b89fcdf255c91356478d6e10714811448d4962210f",
+    "after": "1805b6861936015156fa7d841b295912c26ed16f3e5dc8f38eec41f54bd186f4"
   }
 ]

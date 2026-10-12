@@ -1205,6 +1205,7 @@ if (process.env.OPENCLAW_WORKER_EAGER_PREPARE !== "0") {
       ...(command?.sessionKeysPrepared !== undefined ? { sessionKeysPrepared: command.sessionKeysPrepared, sessionKeysMs: command.sessionKeysMs } : {}),
       ...(command?.sessionKeysError ? { sessionKeysError: command.sessionKeysError } : {}),
       ...(command?.firstTurnModules ? { firstTurnModules: command.firstTurnModules } : {}),
+      ...(command?.secretsPrepared !== undefined ? { secretsPrepared: command.secretsPrepared } : {}),
     };
   } catch (error) {
     const contention = error?.name === "StateDatabaseCoordinatorContentionError" || /another OpenClaw process owns /u.test(String(error?.message ?? ""));
