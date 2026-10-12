@@ -12,7 +12,8 @@
     "RUNS": "3",
     "WORKERS": "5",
     "DB": "meta",
-    "CPU_PROF": "0",
+    "V_SECRET_REFS": "1",
+    "REAL_TURN": "1",
     "EXTRA_ENV": "{}"
   },
   "files": []

@@ -9,7 +9,7 @@
   "timeoutSeconds": 3600,
   "user": "lab-db91-parity",
   "env": {
-    "RUNS": "2",
+    "RUNS": "3",
     "WORKERS": "5",
     "DB": "meta",
     "V_SECRET_REFS": "1",
