@@ -14,10 +14,17 @@ comes from sample(), so the rules can be exercised with fixtures.
     ./nightshift-check.py --check   print findings, send nothing, keep no state
     ./nightshift-check.py           alert on what is new since the last run
 
-Service-level findings latch: one alert on entry, silence while they persist,
-one on recovery. Card-level findings alert once when they first appear,
-grouped by project and kind, each block ending in what a person should do.
-The first run records a baseline and sends nothing.
+Every finding is written to the journal: service-level ones once on entry and
+once on recovery, card-level ones once when they first appear, grouped by
+project and kind, each block ending in what a person should do. The first run
+records a baseline.
+
+Only one thing goes to the Heartbeat group: the Night Shift service itself
+staying broken for SERVICE_ALERT_RUNS passes in a row. Card-level findings and
+lease-brake changes are Night Shift's own business and its "needs you" board
+shows them; Tianyi asked on 2026-10-12 for them to stop reaching him, and a
+health=false that lasts only through a Gateway restart (Night Shift holds and
+resumes on its own) is not worth a message either.
 """
 import json
 import os
@@ -50,6 +57,10 @@ PAID_EXECUTING_MIN = 60     # paid operation executing with no card running
 # 25 MiB (1006); reads are chunked since 4434cfe, but a board this size also
 # costs the Gateway main thread on every unscoped walk.
 BOARD_CARD_LIMIT = 5000
+# Five-minute timer: two passes is ten minutes. A Gateway restart takes Night
+# Shift through holding -> resuming in 3-6 minutes (2026-10-11/12), so one
+# pass of health=false is expected and two are not.
+SERVICE_ALERT_RUNS = 2
 
 
 def sh(cmd):
@@ -266,6 +277,20 @@ def decide(state, service, brake, issues):
     return lines
 
 
+def service_alert(state, service):
+    """Lines for the Heartbeat group: a Night Shift service that stays broken, and its recovery."""
+    runs = state.get("service_runs", 0) + 1 if service else 0
+    state["service_runs"] = runs
+    if service and runs >= SERVICE_ALERT_RUNS and not state.get("service_told"):
+        state["service_told"] = service
+        return ["⚠️ 夜班服务已连续异常约 %d 分钟：%s" % (runs * 5, service)]
+    if not service and state.get("service_told"):
+        told = state["service_told"]
+        state["service_told"] = None
+        return ["✅ 夜班服务已恢复（此前：%s）" % told]
+    return []
+
+
 def load_state():
     try:
         with open(STATE_PATH) as f:
@@ -290,10 +315,12 @@ def main(argv=None):
         return 1 if service or issues else 0
     state = load_state()
     lines = decide(state, service, brake, issues)
-    if lines:
+    for line in lines:
+        print("【夜班】" + line.replace("\n", " | "))
+    send = service_alert(state, service)
+    if send:
         from sentinel import feishu  # noqa: E402  (same directory, installed alongside)
-        text = "【夜班】\n" + "\n".join(lines[:20]) + ("\n…另有 %d 项" % (len(lines) - 20) if len(lines) > 20 else "")
-        if not feishu(text):
+        if not feishu("【夜班】\n" + "\n".join(send)):
             return 2  # keep the old state so the next run tries again
     save_state(state)
     return 0
