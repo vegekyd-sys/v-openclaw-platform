@@ -31,8 +31,21 @@ Object.assign(env,{GPT_LIVE_H5_PORT:'27541',GPT_LIVE_H5_BASE_PATH:'/voice',GPT_L
 // Credentials remain server-side, with no inherited production caller bindings.
 delete env.VOICE_ENTRIES_FILE;
 
-const gateway=start(['--max-old-space-size=4096',runtime+'/openclaw/dist/index.js','gateway','--port',String(config.gateway.port)],'gateway.log');children.push(gateway);
-let ready=false;for(let i=0;i<80;i++){try{const r=await fetch('http://127.0.0.1:'+config.gateway.port+'/health');if(r.ok){ready=true;break;}}catch{}await delay(500);}if(!ready)throw Error('Private Gateway did not start');
+let gateway,ready=false;
+for(let attempt=0;attempt<2;attempt++){
+ fs.writeFileSync(evidence+'/gateway.log','',{mode:0o600});
+ gateway=start(['--max-old-space-size=4096',runtime+'/openclaw/dist/index.js','gateway','--port',String(config.gateway.port)],'gateway.log');children.push(gateway);
+ for(let i=0;i<240;i++){
+  try{const r=await fetch('http://127.0.0.1:'+config.gateway.port+'/health');if(r.ok){ready=true;break;}}catch{}
+  if(gateway.exitCode!==null)break;
+  await delay(500);
+ }
+ if(ready)break;
+ // OpenClaw's cold-start plugin migration explicitly requires one restart.
+ // Apply it only to our private process after it has exited.
+ if(gateway.exitCode===null||!fs.readFileSync(evidence+'/gateway.log','utf8').includes('migration inputs changed during startup convergence'))break;
+}
+if(!ready)throw Error('Private Gateway did not start');
 const h5=start(['--import',path.resolve('lab/candidate/voice-native-control-probe.mjs'),voice+'/lab/gpt-live-h5/server.mjs'],'voice.log');children.push(h5);
 for(let i=0;i<80;i++){try{const r=await fetch('http://127.0.0.1:27541/voice/');if(r.ok){fs.writeFileSync(evidence+'/ready.json',JSON.stringify({root,voicePort:27541,gatewayPort:config.gateway.port,gatewayPid:gateway.pid,voicePid:h5.pid,publicOrigin,url:publicOrigin+'/voice/?entry=tianyi#access='+accessToken}),{mode:0o600});ready=true;break;}}catch{}await delay(500);}
 if(!fs.existsSync(evidence+'/ready.json'))throw Error('Voice did not start');
