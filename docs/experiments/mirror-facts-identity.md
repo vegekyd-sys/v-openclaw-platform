@@ -63,6 +63,8 @@ receipt `candidate-424706ba-fe8d-419d-ad52-b45702080516`。补丁成立的前提
 
 ## 共享 VLab 验收（2026-10-12 19:30–21:05 CST）
 
+> **这一节测的是回归，不是修复。** 修复只改了「投影标脏」时的那条分支；共享 VLab 上没有标脏会话（见本节末），压测群走 vlab-worker 根本不调用 mirror-facts，/vds 群调用了但投影一直是最新的。所以下面的首字、Codex 回合、日志只证明：这个文件装上去 Gateway 正常、没改的路径没坏也没变慢。「部署后 mirror-facts 慢事务 0 条」部署前也是 0，不是修复的证据。修复的证据是上面的 candidate（与部署字节相同）和上 V 后的小时计数。
+
 Tianyi 授权合入（监控 session 转达，原话「315合入在共享vlab上验收」）。PR #315 合入 dev = `3490b79a`；合并后 `lab/mirror-facts-identity.test.mjs`、platform 测试、`tests/vlab-static.sh` 通过。
 
 - 部署前 parity：ALIGNED（18,663 个文件）。配置 advisory：V 开着 `parallel` 插件、VLab 没开（与本改动无关）。
