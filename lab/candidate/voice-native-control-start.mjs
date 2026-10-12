@@ -1,4 +1,4 @@
-import fs from 'node:fs';import path from 'node:path';import {spawn,execFileSync} from 'node:child_process';import {setTimeout as delay} from 'node:timers/promises';
+import {randomBytes} from 'node:crypto';import fs from 'node:fs';import path from 'node:path';import {spawn,execFileSync} from 'node:child_process';import {setTimeout as delay} from 'node:timers/promises';
 const root=path.dirname(process.env.VLAB_CANDIDATE_DATA);
 if(!root.includes('/candidate-tests/runs/candidate-'))throw Error('Private Candidate only');
 const evidence='/srv/vlab-production-mirror/labs/candidate-tests/evidence/voice-native-control-20261012';fs.mkdirSync(evidence,{recursive:true,mode:0o700});
@@ -20,10 +20,19 @@ execFileSync('chown',['-R','lab-db91-parity:lab-db91-parity',root]);execFileSync
 const uid=Number(execFileSync('id',['-u','lab-db91-parity']).toString()),gid=Number(execFileSync('id',['-g','lab-db91-parity']).toString());
 const start=(args,log)=>spawn(node,args,{cwd:voice,env,uid,gid,stdio:['ignore',fs.openSync(evidence+'/'+log,'a',0o600),fs.openSync(evidence+'/'+log,'a',0o600)]});
 const children=[];
+for (const f of ['stop','ready.json']) {try {fs.unlinkSync(evidence+'/'+f);} catch (e) {if(e.code!=='ENOENT')throw e;}}
+const tunnelLog=evidence+'/cloudflared.log';fs.writeFileSync(tunnelLog,'',{mode:0o600});
+const tunnel=spawn('/usr/local/bin/cloudflared',['tunnel','--url','http://127.0.0.1:27541','--no-autoupdate','--protocol','http2'],{stdio:['ignore',fs.openSync(tunnelLog,'a'),fs.openSync(tunnelLog,'a')]});children.push(tunnel);
+let publicOrigin;for(let i=0;i<120;i++){publicOrigin=fs.readFileSync(tunnelLog,'utf8').match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/)?.[0];if(publicOrigin)break;await delay(500);}if(!publicOrigin)throw Error('Candidate tunnel did not start');
+const accessToken=randomBytes(32).toString('hex');
+Object.assign(env,{GPT_LIVE_H5_PORT:'27541',GPT_LIVE_H5_BASE_PATH:'/voice',GPT_LIVE_H5_PUBLIC_ORIGIN:publicOrigin,GPT_LIVE_H5_ACCESS_TOKEN:accessToken,RTC_H5_BASE_PATH:'/voice',RTC_H5_PUBLIC_ORIGIN:publicOrigin,RTC_H5_ACCESS_TOKEN:accessToken});
+// Credentials remain server-side, with no inherited production caller bindings.
+delete env.VOICE_ENTRIES_FILE;
+
 const gateway=start(['--max-old-space-size=4096',runtime+'/openclaw/dist/index.js','gateway','--port',String(config.gateway.port)],'gateway.log');children.push(gateway);
 let ready=false;for(let i=0;i<80;i++){try{const r=await fetch('http://127.0.0.1:'+config.gateway.port+'/health');if(r.ok){ready=true;break;}}catch{}await delay(500);}if(!ready)throw Error('Private Gateway did not start');
 const h5=start(['--import',path.resolve('lab/candidate/voice-native-control-probe.mjs'),voice+'/lab/gpt-live-h5/server.mjs'],'voice.log');children.push(h5);
-for(let i=0;i<80;i++){try{const r=await fetch('http://127.0.0.1:27541/');if(r.ok){fs.writeFileSync(evidence+'/ready.json',JSON.stringify({root,voicePort:27541,gatewayPort:config.gateway.port,gatewayPid:gateway.pid,voicePid:h5.pid}));ready=true;break;}}catch{}await delay(500);}
+for(let i=0;i<80;i++){try{const r=await fetch('http://127.0.0.1:27541/voice/');if(r.ok){fs.writeFileSync(evidence+'/ready.json',JSON.stringify({root,voicePort:27541,gatewayPort:config.gateway.port,gatewayPid:gateway.pid,voicePid:h5.pid,publicOrigin,url:publicOrigin+'/voice/?entry=tianyi#access='+accessToken}),{mode:0o600});ready=true;break;}}catch{}await delay(500);}
 if(!fs.existsSync(evidence+'/ready.json'))throw Error('Voice did not start');
 const end=Date.now()+25*60*1000;while(Date.now()<end&&!fs.existsSync(evidence+'/stop'))await delay(500);
 for(const c of children)c.kill('SIGTERM');await delay(2000);
