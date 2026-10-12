@@ -60,6 +60,14 @@ V（`/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core`，2026-10-12 
 | agent CLI / worker | `Context overflow: prompt too large…` | 中文提示 |
 | agent CLI / in-Gateway | `Context overflow: prompt too large…` | 中文提示 |
 
-receipt：基线 `candidate-118aef80-74e2-42eb-b02d-c7121f1ba7a8`，补丁 `candidate-f22c46ee-1d02-4cd8-b312-afdbc4c9ca2c`（均 exit 0，断言通过）。
+**回归**：同一私有 Gateway 上，补丁后普通短回合（「只回复：收到」）worker / in-Gateway 都在 7–8 s 内收到「收到」，没有出现预算提示。
+
+receipt：基线 `candidate-118aef80-74e2-42eb-b02d-c7121f1ba7a8`，补丁 `candidate-f22c46ee-1d02-4cd8-b312-afdbc4c9ca2c`，补丁 + 回归 `candidate-a54803f2-6547-4569-a179-da57fe20fc87`（均 exit 0，断言通过；补丁后四个文件哈希与发布文件一致）。
+
+VLab 数据盘 vdb 空闲约 5 GB，只够一个带私有 Gateway 的 candidate 同时跑（约 4.3 GB）；与别的会话并发时会出现 ENOSPC / `database or disk is full`，与被测代码无关，排队重跑即可。
+
+## 上线注意
+
+dev 里待上线的 `early-tool-status` 也整文件替换 `agent-runner.runtime-CAdsMsQt.js`（64d01d3a）。两者一起发时，必须对最终要上线的字节重新执行 `node lab/patch-deepseek-budget-completions.mjs agent-runner <in> <out>`（已验证可以套在 early-tool-status 版本上，增量相同），不能直接用本目录里基于 V 字节的文件，否则会互相回退。
 
 没有覆盖：真实飞书渠道投递（channels 在私有 Gateway 里关闭；chat.send 与飞书共用 auto-reply runner，差别只在渠道发送层）；真实大图在 utility/isolated completion 调用方里的触发（用 core completeSimple 直接驱动了同一 provider 路径）。
