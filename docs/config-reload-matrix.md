@@ -16,8 +16,9 @@
 - **需要重启的键不能在运行中写**：一写入 Gateway 就自己重启，不会等人来安排。
   有在途工作时先等最多 300 秒（写死，不可配），V 上夜班几乎一直在跑，所以每次都会等满
   300 秒，然后强制重启：在途回合全部中止，再停机约 3–5 分钟。
-- 本 PR 新增 `scripts/v-config-precheck.mjs`，把上面的判断做成一个命令；另附 V 的
-  TOOLS.md 规则修改草案。
+- 不做新工具：2026-10-12 19:03 已把这条查法和「restart 就走 `v-self-restart`」写进 V 的 TOOLS.md
+  和 v-openclaw-config 技能（第 6 节）。写的是 shell 命令，codex、Claude Code 等 harness 不需要
+  OpenClaw 的 `gateway` 工具也能照抄执行。
 
 ## 1. 机制（9.1 源码）
 
@@ -147,50 +148,36 @@
 
 | 办法 | 准确吗 | 说明 |
 |---|---|---|
-| **`config.schema.lookup`（运行中 Gateway）** | **准确** | agent 的只读 `gateway` 工具就有这个动作；shell 里用 `openclaw gateway call config.schema.lookup --params '{"path":"browser.ssrfPolicy"}' --json`。返回 `reloadKind`，子路径也各带一个。表里的新 map 键（比如新的 profile 名）查不到时，用最近的上级路径 |
+| **`config.schema.lookup`（运行中 Gateway）** | **准确** | shell：`openclaw gateway call config.schema.lookup --params '{"path":"<路径>"}' --json \| grep -m1 '"reloadKind"'`（顶层的 `reloadKind` 排在 `children` 前面，所以第一行就是要的结果）；OpenClaw 的只读 `gateway` 工具也有同样的动作，但 codex / Claude Code harness 未必能调用，所以规则里写 shell。还不存在的 map 键（新的 profile 名、新插件 id）也能直接查到 |
 | `openclaw config set --dry-run` | 不报告 | 只校验 schema，然后返回；完全不提是否需要重启 |
 | 写入后 CLI 的提示 | **不可靠，而且已经晚了** | 提示在写入之后才打印，此时 Gateway 已经开始重启。CLI 进程里没有加载插件，判断会出错：`browser.profiles.*` 提示「Restart the gateway」（实际是 hot）；`plugins.allow` 提示「apply without restarting」（V 上实际要**重启**）；`plugins.entries.*` 一律提示要重启（实际是 hot）。另外 "Restart the gateway to apply" 这句话读起来像「之后由你来重启」，实际上 Gateway 已经自己重启了 |
 | V 的 TOOLS.md / v-openclaw-config 技能 | 过时 | 见上一节；技能里的 `v_config_txn.py --restart safe` 和 TOOLS.md 的自动换代说法也互相矛盾 |
 
-新增的 **`scripts/v-config-precheck.mjs`** 就是第一行的封装：
+2026-10-12 在 V 上按 harness 执行命令时的环境（openclaw 用户、非登录 shell、只带 Gateway 的环境变量）实测：
+`browser.ssrfPolicy.allowedHostnames` → `restart`，`browser.profiles.ha-lab` → `hot`，
+`messages.ackReaction` → `none`；`browser.profiles.<不存在的名字>`、`plugins.entries.<不存在的 id>.config.x`
+都能直接返回 `hot`。
 
-```sh
-v-config-precheck --set 'browser.ssrfPolicy.allowedHostnames=["ha.lan"]' --path browser.profiles.ha-lab
-# - browser.ssrfPolicy.allowedHostnames: 需整体重启
-# - browser.profiles.ha-lab: 热生效；只更新运行时配置快照，下一次读取时生效
-# 需要整体重启 Gateway：browser.ssrfPolicy.allowedHostnames
-# 不要用 openclaw config set/patch 直接写 …… 改用：sudo v-self-restart … --set 'PATH=JSON'
-# 退出码 2
-```
+## 6. 已写进 V 的规则（2026-10-12 19:03）
 
-- `--set` 与 `v-self-restart` 的格式相同，所以同一组参数可以直接交给 `v-self-restart`。
-- 退出码：0 = 全部 hot/none，2 = 需要重启，1 = 查不了（应当按需要重启处理）。
-- Gateway 没在运行时直接放行：此时写入不会触发任何重载。
-- 2026-10-12 已在 V 上只读实跑过（临时文件，跑完即删），对 10/12 的两个路径、`plugins.allow`、
-  `plugins.entries.xai.*`、`talk.realtime.transport`、`messages.ackReaction` 的判定都与本文一致。
-- 单元测试 `tests/v-config-precheck.test.mjs`，已加入 `platform/catalog.json`。
-- **还没有装到 V 上**。安装（复制到 `/opt/v-sentinel/`、在 `/usr/local/sbin/` 建链接）属于生产变更，等 Tianyi 决定。
+V 工作区 `/home/openclaw/makaron-openclaw/.openclaw-local/workspace`，改之前的备份在
+`/home/openclaw/.openclaw/backups/workspace-docs/*.bak-20261012190343`。工作区 git 里本来就有别人
+未提交的 TOOLS.md 改动，所以这次也没有提交。
 
-## 6. 给 V 的规则（TOOLS.md 修改草案，待批准后由 V 或我写入）
-
-替换「Worker 模式下修改全局配置」一节里「修改模型 Provider、API Key……browser、media 等」和
-「仍需要重启 Gateway 的：……」两段：
-
-> **改配置前先问 Gateway 会不会重启**（2026-10-12 起）
->
-> 1. 每次写 `openclaw.json` 之前（CLI、patch、脚本、手改都一样），先跑
->    `v-config-precheck --set 'PATH=JSON' ...`；没装这个命令时，用 `gateway` 工具的
->    `config.schema.lookup` 查每个路径的 `reloadKind`。不要凭印象判断，也不要信
->    `config set` 写完之后打印的那句提示。
-> 2. 结果是 hot / none：照常 `openclaw config set`。`plugins.entries.*`、`talk(.realtime).provider`
->    会重载全部插件，渠道配置会让渠道重连，这些操作避开有人正在对话的时候。
-> 3. 结果是 restart（例如 `browser.*` 除 `browser.profiles`、`desktop.*`、`gateway.*`、
->    `plugins.allow/deny/enabled/load`、`approvals.*`、`memory.*`、`secrets.egressProxy`、`mcp.apps`、
->    没有规则的新键）：**不要直接写**，写下去 Gateway 会自己重启，先拖 5 分钟，然后掐断所有在途工作。
->    改用 `sudo v-self-restart --set 'PATH=JSON' ...`，并按「重启 Gateway」一节取得授权。
->    同一需求里的 hot 改动和 restart 改动放在同一次 `v-self-restart` 里一起写入。
-> 4. 看到日志 `config change requires gateway restart` 时，说明已经有人在运行中写了这类键：
->    重启已经排上，撤回配置不能取消它。不要再写第二次，在群里说明「约 10 分钟内 V 会重启一次」。
+- **TOOLS.md「Worker 模式下修改全局配置」**：原来写着「修改……browser、media 等……Worker 会自动换代，
+  不用重启 Gateway」。改为：
+  - 每次改配置之前，对每个路径先跑
+    `openclaw gateway call config.schema.lookup --params '{"path":"…"}' --json | grep -m1 '"reloadKind"'`，
+    不要凭印象，也不要信 `config set` 写完之后打印的提示；
+  - `hot` / `none`：照常改；`plugins.entries.*`、`talk(.realtime).provider` 会重载全部插件，渠道配置会让渠道重连，
+    尽量避开有人正在对话的时候；
+  - `restart`：不要直接写，也不要手改文件，改用 `sudo v-self-restart --set`；并说明直接写的后果（最多等 5 分钟，
+    然后强制重启、掐断所有在途工作，以 10/12 为例）；
+  - 列出常见的 restart 键作为举例，注明以查询结果为准。
+  
+  「仍需要重启 Gateway 的」清单改为：查出 `restart` 的配置、核心补丁、环境变量、Gateway 进程里的插件代码。
+- **skills/v-openclaw-config/SKILL.md**：「If uncertain, use the `gateway` tool…」改为「每次写入前都用上面的
+  shell 命令查；restart 就走 `v-self-restart`」。
 
 ## 7. 等 5 分钟和掐断在途工作的问题：可选改法
 
@@ -198,14 +185,14 @@ v-config-precheck --set 'browser.ssrfPolicy.allowedHostnames=["ha.lan"]' --path 
 
 | 方案 | 做法 | 效果 | 代价 |
 |---|---|---|---|
-| A 规则 + 预检（本 PR） | 第 6 节规则 + `v-config-precheck` | 不再在运行中写 restart 键，从源头上避免 | 靠 V 遵守规则；Control UI、直接改文件绕得过去 |
-| B CLI 外壳拦截 | `/usr/local/bin/openclaw` 外面包一层：`config set/patch/unset/apply` 前跑预检，Gateway 在跑且含 restart 键时拒绝，并提示改用 `v-self-restart`（`v-self-restart` 是在停机时写的，不受影响） | 四种 harness 只要走 CLI 就都拦得住 | 要维护一个外壳；Control UI 的 `config.patch` RPC、`node -e` 改文件仍拦不住 |
+| A 规则（已做） | 第 6 节：改之前先查 `reloadKind`，restart 就走 `v-self-restart` | 不再在运行中写 restart 键，从源头上避免 | 靠 V 遵守规则；Control UI、人手改文件绕得过去 |
+| B CLI 外壳拦截 | `/usr/local/bin/openclaw` 外面包一层：`config set/patch/unset/apply` 前先查 `reloadKind`，Gateway 在跑且含 restart 键时拒绝，并提示改用 `v-self-restart`（`v-self-restart` 是在停机时写的，不受影响） | 四种 harness 只要走 CLI 就都拦得住 | 要维护一个外壳；Control UI 的 `config.patch` RPC、`node -e` 改文件仍拦不住 |
 | C 让 `v-self-restart` 等空闲（并入 #169） | 停机前等用户可见的工作（排队回合、待投递回复、embedded run、Worker run）清空，夜班和 cron 只报告不阻塞；等不到就拒绝，除非显式 `--allow-interrupt`；停机用有上限的排空，不用 0 ms | 计划内重启不再掐断用户对话 | #169 尚未在 V 上实跑 |
 | D 核心补丁：推迟期间不再接新回合 | 推迟一开始就回复「V 正在重启，几分钟后回来」，消息排队，重启后再处理；或者推迟计数不算夜班后台任务（夜班有 #125 重启暂停，会自己停下再接上） | 不再出现「收了、开始做、然后被掐断」 | 改 9.1 core dist（重启发布 + VLab candidate 验证）；要能覆盖 9.x 升级 |
 | E 核心补丁：只记下、不自动重启 | hybrid 模式下 restart 键只记为「待重启」并发通知，由人或 `v-self-restart` 选时间 | 写配置不再等于重启 | 改变原生语义；「写了却没生效」本身也会造成误判 |
 
-建议：**A 现在做**（只涉及文档、工具和工作区规则）；**C 接着做**（#169 已写好，主要是验证）；
-B 视 A 的执行情况再定；D、E 等到确实还有人在运行中写 restart 键时再考虑。
+建议：**A 已做**；**C 接着做**（#169 已写好，主要是验证）；B 视 A 的执行情况再定；
+D、E 等到确实还有人在运行中写 restart 键时再考虑。
 
 ## 8. 另外发现：今天有 5 个会话被重启恢复卡住
 
@@ -226,7 +213,6 @@ B 视 A 的执行情况再定；D、E 等到确实还有人在运行中写 resta
 
 - 没有在 candidate 上重放「推迟期间收消息」的场景：生产日志已经逐条给出了这个过程，源码也一致。
 - journal 只保留到 9/24，9/20、9/23 两次事件依据的是当时的记忆记录。
-- `config.schema.lookup` 依赖 schema 能解析这个路径；解析不了时，工具按最近的上级路径判定，
-  最上层也查不到就按 restart 处理（与 Gateway 的默认值一致）。
+- `config.schema.lookup` 查不到的路径（报 path not found），按 restart 处理，这与 Gateway 对未匹配路径的默认行为一致。
 - 第 2 节是 V 当前加载的插件下的结果。插件增减会改变规则（例如卸掉 canvas 后，`plugins.allow` 会变成 hot），
-  所以要用工具实时查，不要背这张表。
+  所以每次都实时查，不要背这张表。
