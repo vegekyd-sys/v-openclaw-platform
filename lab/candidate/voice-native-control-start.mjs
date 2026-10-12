@@ -14,9 +14,10 @@ const db=state+'/agents/makaron/agent/openclaw-agent.sqlite';fs.mkdirSync(path.d
 for(const agent of config.agents.list??[])if(agent.id==='makaron')agent.workspace=process.env.OPENCLAW_WORKSPACE_DIR+'/makaron';
 fs.mkdirSync(process.env.OPENCLAW_WORKSPACE_DIR+'/makaron',{recursive:true});
 execFileSync('rsync',['-a','/srv/vlab-production-mirror/labs/candidate-tests/runs/voice-capability-routing-20261011/data/workspace/makaron/',process.env.OPENCLAW_WORKSPACE_DIR+'/makaron/']);
-for(const entry of Object.values(config.plugins?.entries??{}))if(entry.config&&'minWorkers' in entry.config){entry.config.minWorkers=1;entry.config.maxWorkers=3;}
+for(const entry of Object.values(config.plugins?.entries??{}))if(entry.config&&'minWorkers' in entry.config){entry.config.minWorkers=1;entry.config.maxWorkers=3;entry.config.gatewayConfigPath=process.env.OPENCLAW_CONFIG_PATH;entry.config.workerConfigPath=state+'/candidate-worker.json';}
 fs.writeFileSync(process.env.OPENCLAW_CONFIG_PATH,JSON.stringify(config));
-const runtime=process.env.VLAB_CANDIDATE_RUNTIME,node=process.execPath,env={...process.env,VLAB_OPENCLAW_AGENT_RUNTIME:runtime+'/openclaw/dist/plugin-sdk/agent-runtime.js',RTC_H5_PORT:'27541',npm_config_cache:root+'/cache/npm',NPM_CONFIG_CACHE:root+'/cache/npm',XDG_CACHE_HOME:root+'/cache',RTC_H5_TRANSCRIPT_DIR:evidence+'/transcripts',RTC_H5_AVATAR_LOG_DIR:evidence+'/avatars',VOICE_QA_SOURCE:voice,VOICE_QA_AUDIT:evidence+'/gateway.private.jsonl'};
+const runtime=process.env.VLAB_CANDIDATE_RUNTIME,node=process.execPath,env={...process.env,VLAB_OPENCLAW_AGENT_RUNTIME:runtime+'/openclaw/dist/plugin-sdk/agent-runtime.js',RTC_H5_PORT:'27541',npm_config_cache:root+'/cache/npm',NPM_CONFIG_CACHE:root+'/cache/npm',XDG_CACHE_HOME:root+'/cache',TMPDIR:root+'/tmp',RTC_H5_TRANSCRIPT_DIR:evidence+'/transcripts',RTC_H5_AVATAR_LOG_DIR:evidence+'/avatars',VOICE_QA_SOURCE:voice,VOICE_QA_AUDIT:evidence+'/gateway.private.jsonl'};
+fs.mkdirSync(root+'/tmp',{recursive:true});
 // Agent tests require the configured Worker identity; never change shared files.
 execFileSync('chown',['-R','lab-db91-parity:lab-db91-parity',root]);execFileSync('chown',['-R','lab-db91-parity:lab-db91-parity',evidence]);
 const uid=Number(execFileSync('id',['-u','lab-db91-parity']).toString()),gid=Number(execFileSync('id',['-g','lab-db91-parity']).toString());
