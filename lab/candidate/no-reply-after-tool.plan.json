@@ -1,0 +1,15 @@
+{
+  "support": [
+    "lab/candidate/no-reply-after-tool.mjs",
+    "lab/patch-no-reply-after-tool.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/no-reply-after-tool.mjs"
+  ],
+  "env": {
+    "NO_REPLY_PATCH": "1"
+  },
+  "timeoutSeconds": 2400,
+  "user": "lab-db91-parity"
+}

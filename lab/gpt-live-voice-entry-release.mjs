@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { digest, freezeSource, validateSharedProof, fileIdentity, H5_PATHS } from "./gpt-live-h5-release.mjs";
+import {prepareVoiceLarkProfile} from './voice-lark-profile.mjs';
 
 export function validateReviewedPresentation(proof, request) {
   assert.equal(request.h5Only, true, 'A review waiver only applies to H5 presentation');
@@ -38,7 +39,11 @@ export function entryLaunchOverride(execStart, server, nativeEnvironment = "") {
   // Node resolves a main-module symlink before import.meta.url comparison.
   // Launch the frozen real path so both the CLI guard and asset paths agree.
   return "[Service]\nExecStart=\nExecStart=" + match[2].trim().replace(entries[0], server) + "\n"
-    + (nativeEnvironment ? "EnvironmentFile=" + nativeEnvironment + "\n" : "");
+    + (nativeEnvironment ? "EnvironmentFile=" + nativeEnvironment + "\n" : "")
+    // ProtectHome remains read-only. Only this Voice unit gets a private writable log root.
+    + "StateDirectory=openclaw-voice-h5\nStateDirectoryMode=0700\n"
+    + "Environment=RTC_H5_TRANSCRIPT_DIR=/var/lib/openclaw-voice-h5/transcripts\n"
+    + "Environment=RTC_H5_AVATAR_LOG_DIR=/var/lib/openclaw-voice-h5/avatar-events\n";
 }
 async function remoteMain(req) {
   const fs = await import("node:fs"), path = await import("node:path"), crypto = await import("node:crypto");
@@ -130,8 +135,15 @@ async function remoteMain(req) {
   const personalConfig = path.join(env.HOME, ".lark-cli/openclaw");
   const personalData = path.join(env.HOME, ".local/share");
   assert(fs.existsSync(path.join(personalConfig, "config.json")), "Personal Lark CLI configuration is unavailable");
-  nativeEnv.LARKSUITE_CLI_CONFIG_DIR = env.LARKSUITE_CLI_CONFIG_DIR || personalConfig;
-  nativeEnv.LARKSUITE_CLI_DATA_DIR = env.LARKSUITE_CLI_DATA_DIR || personalData;
+  const sourceProfile = env.LARKSUITE_CLI_CONFIG_DIR || personalConfig;
+  const sourceFile = fs.existsSync(path.join(sourceProfile,'openclaw/config.json'))
+    ? path.join(sourceProfile,'openclaw/config.json') : path.join(sourceProfile,'config.json');
+  const hstatus=fs.readFileSync(`/proc/${properties(unit).MainPID}/status`,'utf8');
+  const hUid=Number(/^Uid:\s+(\d+)/mu.exec(hstatus)?.[1]),hGid=Number(/^Gid:\s+(\d+)/mu.exec(hstatus)?.[1]);
+  assert(Number.isSafeInteger(hUid)&&Number.isSafeInteger(hGid),'Voice service identity unavailable');
+  const voiceCli = await prepareVoiceLarkProfile({sourceFile,configRoot:dir+'/voice-lark-cli',gatewayConfig:JSON.parse(fs.readFileSync(env.OPENCLAW_CONFIG_PATH)),
+    environment:{...env,LARKSUITE_CLI_DATA_DIR:env.LARKSUITE_CLI_DATA_DIR||personalData},uid:hUid,gid:hGid});
+  Object.assign(nativeEnv,voiceCli.environment);
   assert(nativeEnv.XAI_API_KEY && (nativeEnv.VOLCENGINE_REALTIME_API_KEY || nativeEnv.DOUBAO_SPEECH_API_KEY), "Native voice provider credentials unavailable");
   assert(Object.values(nativeEnv).every(value => !/[\r\n\0]/u.test(value)), "Invalid native environment value");
   fs.writeFileSync(nativeEnvironment, Object.entries(nativeEnv).map(([key, value]) => key + "=" + JSON.stringify(value)).join("\n") + "\n", { flag: "wx", mode: 0o600 });
@@ -172,7 +184,7 @@ async function remoteMain(req) {
 }
 export function remoteSource() {
   return `import assert from 'node:assert/strict';import {createHash} from 'node:crypto';const digest=${digest.toString()};const H5_PATHS=${JSON.stringify(H5_PATHS)};const fileIdentity=${fileIdentity.toString()};\n`
-    + [validateReviewedPresentation, assertEntrySnapshot, entryLaunchOverride, remoteMain].map(fn => fn.toString()).join("\n")
+    + [prepareVoiceLarkProfile, validateReviewedPresentation, assertEntrySnapshot, entryLaunchOverride, remoteMain].map(fn => fn.toString()).join("\n")
     + "\nlet text='';for await(const c of process.stdin)text+=c;try{const r=await remoteMain(JSON.parse(text));console.log(JSON.stringify(r))}catch{console.error('Voice entry identity or operation failed; preserve prepared receipts and inspect the service.');process.exitCode=1}";
 }
 function main(argv) {

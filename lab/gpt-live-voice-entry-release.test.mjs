@@ -31,7 +31,7 @@ test("serialized production controller parses without loading credentials or tou
 test("symlink launcher uses the frozen real entrypoint and retains existing Node flags", () => {
   const definition = "{ path=/opt/node/bin/node ; argv[]=/opt/node/bin/node --max-old-space-size=512 /opt/openclaw-voice-h5/current/server.mjs ; ignore_errors=no ; }";
   const real = "/opt/openclaw-voice-h5/releases/gpt-live-abc/lab/gpt-live-h5/server.mjs";
-  assert.equal(entryLaunchOverride(definition, real), "[Service]\nExecStart=\nExecStart=/opt/node/bin/node --max-old-space-size=512 " + real + "\n");
+  assert(entryLaunchOverride(definition, real).startsWith("[Service]\nExecStart=\nExecStart=/opt/node/bin/node --max-old-space-size=512 " + real + "\n"));
   assert.throws(() => entryLaunchOverride(definition, "/tmp/foreign/server.mjs"));
   assert.throws(() => entryLaunchOverride(definition.replace("/opt/openclaw-voice-h5/current/", "/tmp/foreign/"), real));
   assert.throws(() => entryLaunchOverride(definition.replace(" ; ignore_errors", "\n ; ignore_errors"), real));
@@ -41,7 +41,12 @@ test("native provider environment stays in the owned private release and rejects
   const definition = "{ path=/opt/node/bin/node ; argv[]=/opt/node/bin/node /opt/openclaw-voice-h5/current/server.mjs ; ignore_errors=no ; }";
   const server = "/opt/openclaw-voice-h5/releases/gpt-live-abc/lab/gpt-live-h5/server.mjs";
   const env = "/opt/openclaw-voice-h5/releases/gpt-live-abc/native-voice.env";
-  assert(entryLaunchOverride(definition, server, env).endsWith("EnvironmentFile=" + env + "\n"));
+  const override=entryLaunchOverride(definition, server, env);
+  assert(override.includes("EnvironmentFile=" + env + "\n"));
+  assert(override.includes('StateDirectory=openclaw-voice-h5\nStateDirectoryMode=0700\n'));
+  assert(override.includes('Environment=RTC_H5_TRANSCRIPT_DIR=/var/lib/openclaw-voice-h5/transcripts\n'));
+  assert(override.includes('Environment=RTC_H5_AVATAR_LOG_DIR=/var/lib/openclaw-voice-h5/avatar-events\n'));
+  assert(!override.includes('ProtectHome=')&&!override.includes('ReadWritePaths=/home'));
   assert.throws(() => entryLaunchOverride(definition, server, "/tmp/foreign.env"));
   assert.throws(() => entryLaunchOverride(definition, server, env + "\nUser=root"));
 });
