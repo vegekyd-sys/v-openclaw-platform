@@ -5,6 +5,7 @@ const evidence='/srv/vlab-production-mirror/labs/candidate-tests/evidence/voice-
 const voice=root+'/voice';fs.mkdirSync(voice);execFileSync('tar',['-xzf',process.argv[2],'-C',voice]);
 execFileSync('npm',['ci','--ignore-scripts'],{cwd:voice,stdio:'ignore'});
 const state=process.env.OPENCLAW_STATE_DIR,config=JSON.parse(fs.readFileSync(process.env.OPENCLAW_CONFIG_PATH));
+config.gateway.auth={...config.gateway.auth,mode:'token',token:randomBytes(32).toString('hex')};
 config.channels={};config.cron={...config.cron,enabled:false};config.browser={...config.browser,enabled:false};
 if(config.agents.defaults?.heartbeat)config.agents.defaults.heartbeat.every='0m';
 const old='/srv/vlab-production-mirror/labs/candidate-tests/runs/voice-capability-routing-20261011/data/state/agents/makaron/agent/openclaw-agent.sqlite';
