@@ -1,0 +1,6 @@
+import fs from 'node:fs';import {pathToFileURL} from 'node:url';
+const {GatewayClient}=await import(pathToFileURL(process.env.VOICE_QA_SOURCE+'/lib/gateway-client.mjs'));
+const redact=x=>{if(Array.isArray(x))return x.map(redact);if(x&&typeof x==='object')return Object.fromEntries(Object.entries(x).filter(([k])=>!/(token|secret|authorization|apiKey|password|credential)/i.test(k)).map(([k,v])=>[k,redact(v)]));return x;};
+const audit=x=>fs.appendFileSync(process.env.VOICE_QA_AUDIT,JSON.stringify(redact({at:Date.now(),...x}))+'\n',{mode:0o600});
+const open=GatewayClient.prototype.open;GatewayClient.prototype.open=function(){if(!this.qaHook){this.qaHook=true;const on=this.onEvent;this.onEvent=e=>{if(['agent','talk.event','chat'].includes(e.event))audit({type:'gateway.event',event:e});on(e);};}return open.call(this);};
+const request=GatewayClient.prototype.request;GatewayClient.prototype.request=async function(method,params,opts){const allowed=['talk.client.create','talk.client.close','talk.client.toolCall','tools.invoke','chat.send'];if(allowed.includes(method))audit({type:'gateway.request',method,params});try{const result=await request.call(this,method,params,opts);if(allowed.includes(method))audit({type:'gateway.result',method,result});return result;}catch(e){audit({type:'gateway.error',method,code:e.code,message:e.message});throw e;}};

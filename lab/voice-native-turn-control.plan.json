@@ -1,0 +1,32 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/voice-native-turn-control/src-B9mb84px.js",
+      "target": "openclaw/dist/src-B9mb84px.js",
+      "before": "c3a060a7deb79384ec1294f6e551cb21c3e3c423ab9ac19ea1985a08334c41a0"
+    },
+    {
+      "source": "lab/release-files/voice-native-turn-control/talk-DkFuKRod.js",
+      "target": "openclaw/dist/talk-DkFuKRod.js",
+      "before": "dc6d6e9fd0615aa6dcdb133e66b27e74d1d0dc74f0bb2317b0bd0a960c866061"
+    },
+    {
+      "source": "lab/release-files/voice-native-turn-control/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
+      "target": "openclaw/dist/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
+      "before": "7ddf7fae2db39deaf45cb8cefbadbf5d38e39f373c0d49bf51aacaa208d3d55a"
+    },
+    {
+      "source": "lab/release-files/voice-native-turn-control/gpt-live-consult-continuation.js",
+      "target": "openclaw/dist/gpt-live-consult-continuation.js",
+      "before": "2f2bcda1341d146bd6ad2e3adcbf82852d0b3ca9f10921e7632c6705e1be3a87"
+    },
+    {
+      "source": "lab/release-files/voice-native-turn-control/gpt-live-call-lifecycle.mjs",
+      "target": "openclaw/dist/gpt-live-call-lifecycle.mjs"
+    },
+    {
+      "source": "lab/release-files/voice-native-turn-control/voice-host-instructions.mjs",
+      "target": "openclaw/dist/voice-host-instructions.mjs"
+    }
+  ]
+}

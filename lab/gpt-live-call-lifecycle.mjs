@@ -12,9 +12,10 @@ export function isGptLiveCallProfile({ providerId, model, transport, brain, capa
 export function resolveGptLiveCallInstructions(original, profile) {
   if (!isGptLiveCallProfile(profile)) return original;
   const caller = resolveGptLiveCaller(profile.sessionKey);
-  if (!caller) return GPT_LIVE_CALL_INSTRUCTIONS;
-  const persona = resolveGptLivePersona(profile.configuredInstructions);
-  return [GPT_LIVE_CALL_INSTRUCTIONS, persona, buildGptLiveCallerInstructions(caller)].filter(Boolean).join("\n\n");
+  const instructions = profile.hostInstructions ?? GPT_LIVE_CALL_INSTRUCTIONS;
+  if (!caller) return instructions;
+  const persona = profile.hostInstructions === undefined ? resolveGptLivePersona(profile.configuredInstructions) : "";
+  return [instructions, persona, buildGptLiveCallerInstructions(caller)].filter(Boolean).join("\n\n");
 }
 
 /** Only the H5 host chooses these session names; spoken names never change the entry. */
