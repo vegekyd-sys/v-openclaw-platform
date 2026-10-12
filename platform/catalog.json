@@ -332,6 +332,7 @@
         "lab/workboard-dispatch-slots.test.mjs",
         "lab/sessions-get-exact-read.test.mjs",
         "lab/sessions-describe-exact-read.test.mjs",
+        "lab/mirror-facts-identity.test.mjs",
         "lab/memory-search-fast.test.mjs",
         "lab/memory-search-query-isolation.test.mjs",
         "lab/memory-search-timeout.test.mjs",
