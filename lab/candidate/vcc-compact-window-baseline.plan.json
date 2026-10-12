@@ -1,0 +1,12 @@
+{
+  "support": [
+    "lab/candidate/vcc-compact-window.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/vcc-compact-window.mjs"
+  ],
+  "timeoutSeconds": 3600,
+  "user": "lab-db91-parity",
+  "env": { "VCC_CW_EXPECT": "none", "VCC_CW_COMPARE": "150000" }
+}

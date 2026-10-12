@@ -1,3 +1,4 @@
+import {createVoiceLarkReader} from './realtime-direct-tools/lark-readonly.mjs';
 // Disposable full-path test bootstrap. It never changes shared runtime/state.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -392,7 +393,8 @@ try {
     const auditPath=path.join(process.env.GPT_LIVE_H5_EVIDENCE_DIR,'direct-voice-audit.jsonl');
     fs.writeFileSync(auditPath,'',{mode:0o600,flag:'wx'});
     fs.writeFileSync(path.join(process.env.GPT_LIVE_H5_EVIDENCE_DIR,'native-environment-isolation.json'),JSON.stringify({agentRuntimeEnvironment,toolEnvironment},null,2)+'\n',{mode:0o600,flag:'wx'});
-    directVoice=createDirectVoiceService({gateway:guardedGateway,wsModule,toolEnvironment,apiKeys:{seeduplex:process.env.VOLCENGINE_REALTIME_API_KEY,grok:grokKey},
+    const lark=createVoiceLarkReader({environment:{...process.env,...toolEnvironment}});
+    directVoice=createDirectVoiceService({gateway:guardedGateway,wsModule,toolEnvironment,calendar:lark.calendar,larkRead:lark.read,apiKeys:{seeduplex:process.env.VOLCENGINE_REALTIME_API_KEY,grok:grokKey},
       audit:value=>fs.appendFileSync(auditPath,JSON.stringify({at:Date.now(),...value})+'\n'),
       onOutputAudio:(id,pcm)=>fs.appendFileSync(path.join(process.env.GPT_LIVE_H5_EVIDENCE_DIR,`provider-${id}.pcm`),pcm,{mode:0o600}),
       loadContext:async sessionKey=>{
