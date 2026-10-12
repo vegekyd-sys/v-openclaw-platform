@@ -4,7 +4,7 @@ const source=fs.readFileSync(new URL('./release-files/gpt-live-call/realtime-qui
 const after=patchNativeResultHeader(source);
 test('single delivery controller patch preserves admission, lifecycle and Agent dispatch',()=>{
  for(const name of ['prepareBackendCallControl','isCurrentDelegation','onCanceled','onRunStarted']){
-  const re=new RegExp('\\\\b'+name+'\\\\b','g');assert.equal((after.match(re)||[]).length,(source.match(re)||[]).length);
+  const re=new RegExp('\\b'+name+'\\b','g');assert.ok((source.match(re)||[]).length>0);assert.equal((after.match(re)||[]).length,(source.match(re)||[]).length);
  }
  const plan=JSON.parse(fs.readFileSync(new URL('./voice-native-turn-control.plan.json',import.meta.url)));assert.equal(plan.files.length,1);assert.match(plan.files[0].target,/delegation-controller/);
 });
