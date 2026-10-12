@@ -35,7 +35,7 @@ function lifecycle(base, {bootId = BOOT, exitCode = 0, now = Date.now()} = {}) {
   const epoch = randomUUID();
   const directory = path.join(base, epoch);
   fs.mkdirSync(directory, {mode: 0o700});
-  const env = {OPENCLAW_DB91_INTEGRITY_EPOCH: epoch, OPENCLAW_DB91_INTEGRITY_DIR: directory, OPENCLAW_DB91_RESTART_CARRY: '1'};
+  const env = {OPENCLAW_DB91_INTEGRITY_EPOCH: epoch, OPENCLAW_DB91_INTEGRITY_DIR: directory};
   let onExit;
   const {previousEpoch} = carry.beginLifecycle({base, epoch, directory, bootId, now, onExit: handler => {onExit = handler;}});
   return {epoch, directory, env, previousEpoch, exit: () => onExit(exitCode)};
@@ -149,13 +149,13 @@ test('a global revocation followed by a fresh full check is still reusable, as w
   assert.deepEqual([...result.carried], [target.path]);
 });
 
-test('carry is opt-in and a schema change is a different identity', () => {
+test('carry has a kill switch and a schema change is a different identity', () => {
   const {base, target} = setup();
   const first = lifecycle(base);
   verify(target, first.env);
   first.exit();
   const second = lifecycle(base);
-  assert.equal(carry.carryVerifications({base, previousEpoch: second.previousEpoch, targets: [target], env: {...second.env, OPENCLAW_DB91_RESTART_CARRY: undefined}, bootId: BOOT}).reasons['*'], 'disabled');
+  assert.equal(carry.carryVerifications({base, previousEpoch: second.previousEpoch, targets: [target], env: {...second.env, OPENCLAW_DB91_RESTART_CARRY: '0'}, bootId: BOOT}).reasons['*'], 'disabled');
   const db = new DatabaseSync(target.path);
   db.exec('CREATE TABLE added (y)');
   db.close();

@@ -13,7 +13,8 @@
 //     schema cookie and schema hash, and no unexplained shrink.
 // Anything else is checked in full before admission, exactly as before. The native delayed
 // verifier (5 min after start, then daily) still checks every database in full and refreshes
-// carried receipts. Opt-in: OPENCLAW_DB91_RESTART_CARRY=1.
+// carried receipts. On whenever the DB91 gate is on; OPENCLAW_DB91_RESTART_CARRY=0 turns it off
+// (every restart then checks every database in full, as before).
 import fs from 'node:fs';
 import path from 'node:path';
 import {createHash, randomUUID} from 'node:crypto';
@@ -125,7 +126,7 @@ function carryOne(previous, previousEpoch, target, {env, now}) {
 export function carryVerifications({base, previousEpoch, targets, env = process.env, bootId = readBootId(), now = Date.now()}) {
   const carried = new Set();
   const reasons = {};
-  if (env.OPENCLAW_DB91_RESTART_CARRY !== '1') return {carried, reasons: {'*': 'disabled'}};
+  if (env.OPENCLAW_DB91_RESTART_CARRY === '0') return {carried, reasons: {'*': 'disabled'}};
   let previous;
   try {previous = previousLifecycle(base, previousEpoch, bootId);} catch (error) {previous = {reason: 'previous-lifecycle-unreadable'};}
   if (previous.reason) return {carried, reasons: {'*': previous.reason}};

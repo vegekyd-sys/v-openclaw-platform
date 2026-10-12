@@ -25,12 +25,12 @@
     "source": "lab/release-files/restart-speed/dist/db91-integrity-bootstrap.mjs",
     "target": "openclaw/dist/db91-integrity-bootstrap.mjs",
     "before": "7c276dfa53f6d77318157bacfb7310ce91851f6e562ce92043862ff9a44534eb",
-    "after": "9f8fc656d629c35606f929d66ac94eb5dc11b16fa87c78c071762f32f6c3d1ee"
+    "after": "87b7fa4767b0b7b56800e0163977778ee5da6999dfec6b5a07410208248dad84"
   },
   {
     "source": "lab/release-files/restart-speed/dist/db91-restart-carry.mjs",
     "target": "openclaw/dist/db91-restart-carry.mjs",
-    "after": "6c0e7ee748726cd1d124fbae8b59b9fc7bf4a3dc69aa60a3ab35d756a98f538c"
+    "after": "5f18d635380c9d0d73ae30b4db0b2e9d5f7d6b19de46b69cdb2dd722e003ffca"
   },
   {
     "source": "lab/release-files/restart-speed/dist/agent-command-DPfawBbr.js",

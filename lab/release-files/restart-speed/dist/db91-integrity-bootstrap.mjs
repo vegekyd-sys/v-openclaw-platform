@@ -110,7 +110,7 @@ export async function bootstrapGatewayIntegrity({argv = process.argv, env = proc
   try {({previousEpoch} = beginLifecycle({base, epoch, directory}));} catch (error) {console.error(`[db91-integrity] lifecycle record failed (${error?.code ?? error?.name}); full check for every database`);}
   const carry = carryVerifications({base, previousEpoch, targets, env});
   const remaining = targets.filter(target => !carry.carried.has(target.path));
-  if (env.OPENCLAW_DB91_RESTART_CARRY === '1') console.error(`[db91-integrity] clean-restart carry: ${carry.carried.size}/${targets.length} databases reuse the previous lifecycle's full check (${previousEpoch ?? 'none'}); full check for ${remaining.length}; ${JSON.stringify(Object.fromEntries(Object.entries(carry.reasons).map(([key, reason]) => [key === '*' ? key : path.basename(path.dirname(path.dirname(key))), reason])))}`);
+  console.error(`[db91-integrity] clean-restart carry: ${carry.carried.size}/${targets.length} databases reuse the previous lifecycle's full check (${previousEpoch ?? 'none'}); full check for ${remaining.length}; ${JSON.stringify(Object.fromEntries(Object.entries(carry.reasons).map(([key, reason]) => [key === '*' ? key : path.basename(path.dirname(path.dirname(key))), reason])))}`);
   await runPreflight(path.join(distDir, 'state/openclaw-database-verify.worker.js'), remaining, {env});
   console.error(`[db91-integrity] preflight passed in ${Date.now() - started}ms; full native checks retained`);
   return {enabled: true, targets: targets.length, carried: carry.carried.size, elapsedMs: Date.now() - started};

@@ -26,7 +26,7 @@
    - 文件身份不变：路径、设备、inode、创建时间、属主、user_version、schema cookie、schema 哈希，且没有无法解释的缩小。
 
    原生的后台校验器（启动后 5 分钟一次，之后每天一次）照常对每个库全量检查并刷新收据。开关
-   `OPENCLAW_DB91_RESTART_CARRY=1`（drop-in `systemd/openclaw-gateway.service.d/restart-speed.conf`）。
+   默认开启（DB91 门开着就生效），`OPENCLAW_DB91_RESTART_CARRY=0` 关闭；代码发布即可生效，不用改 unit。
 
 2. **V 上的后台校验器从 10/05 起每次都失败。** 它要把子进程放进 unit 委派的 cgroup（`94-verifier-resource-group`），
    但基础 unit 的 `ProtectControlGroups=yes` 让 cgroup 树只读，每次报
@@ -85,6 +85,7 @@
 - 页缓存：V 上预检读 22 GB 会把上一个生命周期热的页缓存挤掉，之后 import 和 worker 读库都变慢（V 的
   「预检结束 → listening」要 25–45 s，VLab 私有 Gateway 只要 7–9 s）。不再读这 22 GB 以后，这部分预计会接近 VLab，
   但只能在 V 上实测确认。
+- 上 V 时必须同时装 `restart-speed.conf`（`ProtectControlGroups=no`）：沿用检查结果默认开启，它依赖后台校验器每次启动后和每天做全量检查；V 上校验器不修好，就只剩「26 小时没全量检查过就回到启动前全量检查」这一道兜底。
 - 部署本身那次重启没有上一个生命周期的记录，仍会全量预检一次；从下一次重启开始生效。
 - 重启时如果有群正在跑一轮，可能卡在 `restart recovery claim changed`（见 memory `v-restart-recovery-wedge`），
   这是另一个问题，不在本次范围。
