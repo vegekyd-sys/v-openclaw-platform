@@ -1,0 +1,25 @@
+{
+  "support": [
+    "lab/candidate/mirror-facts-identity-accept.mjs",
+    "lab/release-files/placement-evidence-absence/session-accessor-K0XuW6ln.js",
+    "lab/release-files/mirror-facts-identity/session-accessor-K0XuW6ln.js"
+  ],
+  "files": [
+    {
+      "source": "lab/release-files/mirror-facts-identity/session-accessor-K0XuW6ln.js",
+      "target": "openclaw/dist/session-accessor-K0XuW6ln.js",
+      "before": "5c2eb5425df9be2ce9b45b90cf8afa371996aee344ae9cfbb8657cbbd7c31ab6"
+    }
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/mirror-facts-identity-accept.mjs"
+  ],
+  "timeoutSeconds": 3600,
+  "user": "lab-db91-parity",
+  "env": {
+    "REPEAT": "6",
+    "ROUNDS": "5",
+    "KEYS": "40"
+  }
+}
