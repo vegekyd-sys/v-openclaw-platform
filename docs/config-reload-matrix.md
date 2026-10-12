@@ -76,7 +76,7 @@
   - `restart` 键也会先换一次代（10/12 17:48:32），紧接着整体重启，这次换代白做了，但没有害处。
 - 9/20、9/23 热重载把 worker 池关掉、只有重启才能恢复的问题，出在 worker 0.2.11 的生命周期上；
   10/04 上线的 0.2.12 已修复。此后插件重载照常换代，例如 10/06 18:17 的
-  `plugins.entries.v-browser-device.*`。
+  `plugins.entries.v-browser-device.*`；9/24 至今（journal 保留范围内）`worker pool is closing` 出现 0 次。
 
 ## 2. V 上的实际分类（运行中 Gateway 的 `config.schema.lookup`，2026-10-12）
 
