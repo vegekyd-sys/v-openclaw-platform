@@ -12,3 +12,15 @@ function fixture(){const frames=[],calls=[],events=[];const abort=new AbortContr
 test('real controller can request current-turn end control while the original backend remains running',async()=>{const f=fixture();f.turn('turn_one','整理长方案');f.delegate('item_one','整理长方案','turn_one');await settle();assert.equal(f.calls.length,1);const original=f.calls[0];f.turn('turn_two','今天聊到这里，拜拜，请结束电话');f.delegate('item_two','结束电话','turn_two');await settle();assert.equal(f.calls.length,2);assert.equal(original.signal.aborted,false);const control=f.calls[1];assert.equal(control.controlOnly,true);assert.equal(control.callControl.userTurnText,'今天聊到这里，拜拜，请结束电话');assert.equal(control.callControl.accept({backendRunId:'control-run-1',backendToolCallId:'call_control_end'}).status,'accepted');control.resolve({callControl:true});await settle();assert.equal(f.events.filter(e=>e.type==='tool.result').length,1);assert.equal(original.signal.aborted,false);assert.equal(f.c.pendingDelegations.length,0);f.c.detach();});
 test('a non-control follow-up is retained once and dispatched after the first actual result',async()=>{const f=fixture();f.turn('t1','做方案');f.delegate('i1','做方案','t1');await settle();f.turn('t2','再查玩具');f.delegate('i2','再查玩具','t2');await settle();assert.equal(f.calls[1].controlOnly,true);f.calls[1].resolve({text:'CONTROL_NOT_SELECTED'});await settle();assert.equal(f.calls.length,2);assert.equal(f.c.pendingDelegations.length,1);f.calls[0].resolve({text:'方案完成'});await settle();assert.equal(f.calls.length,3);assert.equal(f.calls[2].prompt.startsWith('再查玩具'),true);assert.equal(f.calls[2].controlOnly,undefined);assert.equal(f.events.length,0);f.c.detach();});
 test('a new native caller turn revokes the earlier end-call proof before tool acceptance',async()=>{const f=fixture();f.turn('t1','做方案');f.delegate('i1','做方案','t1');await settle();f.turn('t2','挂断');f.delegate('i2','挂断','t2');await settle();const grant=f.calls[1].callControl;f.turn('t3','不要挂断，我继续说');assert.equal(grant.isCurrent(),false);assert.equal(grant.accept({backendRunId:'control-run-1',backendToolCallId:'call_control_end'}),false);assert.equal(f.events.length,0);f.c.detach();});
+
+test('accepted goodbye withholds late business speech without aborting its task, and a new caller turn reopens delivery',async()=>{
+ const f=fixture();f.turn('t1','查官网');f.delegate('i1','查官网','t1');await settle();
+ const original=f.calls[0];f.turn('t2','拜拜，请挂断');f.delegate('i2','结束通话','t2');await settle();
+ const receipt=f.calls[1].callControl.accept({backendRunId:'owned-control',backendToolCallId:'call_end'});assert(receipt);
+ const before=f.frames.length;
+ for(const kind of ['progress','final','failure'])assert.equal(f.c.sendAppend('i1','迟到的官网结果','speakable',{kind}),true);
+ assert.equal(f.frames.length,before);assert.equal(original.signal.aborted,false);
+ f.turn('t3','不要挂断，我继续聊');
+ assert.equal(f.c.sendAppend('i1','已查到官网','speakable',{kind:'progress'}),true);
+ assert.equal(f.frames.length,before+1);f.c.detach();
+});

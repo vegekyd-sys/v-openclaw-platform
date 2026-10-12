@@ -319,7 +319,7 @@ var OpenAIQuicksilverDelegationController = class {
 				if (!isCurrent()) return false;
 				const receipt = this.callLifecycle.acceptBackendTool({ nativeDelegationId: delegation.id, originUserTurnId,
 					delegationGeneration: delegation.generation, backendRunId, backendToolCallId });
-				if (receipt) { delegation.callControlReceipt = receipt; this.cancelQueuedProgress?.(); }
+				if (receipt) { delegation.callControlReceipt = receipt; this.closingUserTurnId = receipt.originUserTurnId; this.cancelQueuedProgress?.(); }
 				return receipt;
 			} };
 	}
@@ -695,6 +695,12 @@ var OpenAIQuicksilverDelegationController = class {
 		}
 	}
 	sendAppend(delegationId, text, channel, diagnostic = {}) {
+		// Accepted goodbye owns speech until the caller starts another turn.
+		// Keep business work alive; do not append late progress that can reopen audio.
+		if (this.closingUserTurnId && this.closingUserTurnId === this.latestCallControlUserTurnId && ["progress", "final", "failure"].includes(diagnostic.kind)) {
+			this.tracePublicProgress("closing-business-speech-withheld", delegationId, text, diagnostic);
+			return true;
+		}
 		const socket = this.options.getSocket();
 		if (this.stopped || !socket || socket.readyState !== WEBSOCKET_OPEN) return false;
 		const isPublic = ["progress", "final", "failure"].includes(diagnostic.kind);
