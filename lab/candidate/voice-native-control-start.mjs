@@ -19,6 +19,15 @@ for(const entry of Object.values(config.plugins?.entries??{}))if(entry.config&&'
 fs.writeFileSync(process.env.OPENCLAW_CONFIG_PATH,JSON.stringify(config));
 const runtime=process.env.VLAB_CANDIDATE_RUNTIME,node=process.execPath,env={...process.env,VLAB_OPENCLAW_AGENT_RUNTIME:runtime+'/openclaw/dist/plugin-sdk/agent-runtime.js',RTC_H5_PORT:'27541',npm_config_cache:root+'/cache/npm',NPM_CONFIG_CACHE:root+'/cache/npm',XDG_CACHE_HOME:root+'/cache',TMPDIR:root+'/tmp',RTC_H5_TRANSCRIPT_DIR:evidence+'/transcripts',RTC_H5_AVATAR_LOG_DIR:evidence+'/avatars',VOICE_QA_SOURCE:voice,VOICE_QA_AUDIT:evidence+'/gateway.private.jsonl'};
 fs.mkdirSync(root+'/tmp',{recursive:true});
+// Optional owner-only CLI fixture for authorized real Feishu acceptance.
+// Copy credentials into this Candidate; never use shared CLI writable storage.
+const larkFixture='/tmp/voice-native-control-20261012/lark-fixture';
+if(fs.existsSync(larkFixture+'/ready')){
+ execFileSync('cp',['-a',larkFixture+'/config',root+'/lark-config']);
+ execFileSync('cp',['-a',larkFixture+'/data',root+'/lark-data']);
+ fs.mkdirSync(root+'/bin');fs.copyFileSync(larkFixture+'/lark-cli',root+'/bin/lark-cli');fs.chmodSync(root+'/bin/lark-cli',0o700);
+ Object.assign(env,{LARKSUITE_CLI_CONFIG_DIR:root+'/lark-config',LARKSUITE_CLI_DATA_DIR:root+'/lark-data',DIRECT_LARK_CLI_CONFIG_DIR:root+'/lark-config',DIRECT_LARK_CLI_DATA_DIR:root+'/lark-data',PATH:root+'/bin:'+env.PATH,VOICE_QA_LARK_LOG:root+'/lark-guard.private.jsonl'});
+}
 // Agent tests require the configured Worker identity; never change shared files.
 execFileSync('chown',['-R','lab-db91-parity:lab-db91-parity',root]);execFileSync('chown',['-R','lab-db91-parity:lab-db91-parity',evidence]);
 const uid=Number(execFileSync('id',['-u','lab-db91-parity']).toString()),gid=Number(execFileSync('id',['-g','lab-db91-parity']).toString());
