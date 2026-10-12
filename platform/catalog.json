@@ -223,6 +223,7 @@
         "tests/patch-openclaw91-session-races.test.mjs",
         "tests/model-command-roles.test.mjs",
         "tests/v-experience.test.mjs",
+        "tests/v-config-precheck.test.mjs",
         "lab/agent-db-process-coordinator.test.mjs",
         "lab/candidate/candidate.test.mjs",
         "lab/candidate/deepseek-budget-image.test.mjs",
