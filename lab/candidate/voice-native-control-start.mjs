@@ -1,7 +1,7 @@
 import {randomBytes} from 'node:crypto';import fs from 'node:fs';import path from 'node:path';import {spawn,execFileSync} from 'node:child_process';import {setTimeout as delay} from 'node:timers/promises';
 const root=path.dirname(process.env.VLAB_CANDIDATE_DATA);
 if(!root.includes('/candidate-tests/runs/candidate-'))throw Error('Private Candidate only');
-const evidence='/srv/vlab-production-mirror/labs/candidate-tests/evidence/voice-native-control-20261012';fs.mkdirSync(evidence,{recursive:true,mode:0o700});
+const evidence='/srv/vlab-production-mirror/labs/candidate-tests/evidence/voice-native-control-20261012';fs.mkdirSync(evidence,{recursive:true,mode:0o700});fs.chmodSync(path.dirname(evidence),0o711);
 const voice=root+'/voice';fs.mkdirSync(voice);execFileSync('tar',['-xzf',process.argv[2],'-C',voice]);
 execFileSync('npm',['ci','--ignore-scripts'],{cwd:voice,stdio:'ignore'});
 const state=process.env.OPENCLAW_STATE_DIR,config=JSON.parse(fs.readFileSync(process.env.OPENCLAW_CONFIG_PATH));
