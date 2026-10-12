@@ -490,6 +490,7 @@ var OpenAIQuicksilverDelegationController = class {
 	async runDelegation(delegation, signal) {
 		let text;
 		let terminalKind = "final";
+		let terminalDeliveryChannel = "speakable";
 		let terminalProvenance;
 		let finished = false;
 		const seenProgress = new Set();
@@ -503,6 +504,7 @@ var OpenAIQuicksilverDelegationController = class {
 		this.cancelQueuedProgress = clearQueuedProgress;
 		signal.addEventListener("abort", clearQueuedProgress, { once: true });
 		const deliverProgress = (progress, channel) => {
+			if (delegation.userTranscriptRevision !== this.userTranscriptRevision) channel = "commentary";
 			try {
 				if (!this.sendAppend(delegation.id, progress.text, channel, { kind: "progress", provenance: progress.provenance })) return false;
 				if (channel === "speakable") this.lastSpokenProgressAt = Date.now();
@@ -616,7 +618,10 @@ var OpenAIQuicksilverDelegationController = class {
 			// Byte-safe native chunks already bound individual frames; truncating the
 			// whole result would lose late facts while falsely labeling it complete.
 			this.tracePublicProgress("backend-final-received", delegation.id, text, { kind: "final", provenance: terminalProvenance });
-			const spoken = this.options.onBackendResult?.({delegationId:delegation.id,text:result.text});
+			const projected = this.options.onBackendResult?.({delegationId:delegation.id,text:result.text});
+			const quiet = projected && typeof projected === "object" && projected.channel === "commentary";
+			const spoken = quiet ? projected.spokenText : projected;
+			if (quiet) terminalDeliveryChannel = "commentary";
 			if(spoken !== undefined && (typeof spoken !== "string" || spoken.length > 300 || !spoken.trim())) throw new Error("Invalid backend document spoken notice");
 			text = this.formatCallerConditionEnvelope({...result,text:spoken ?? result.text});
 			if (result.callerConditions) this.tracePublicProgress("caller-conditions-attached", delegation.id,
@@ -652,8 +657,8 @@ var OpenAIQuicksilverDelegationController = class {
 		if (this.isCurrentDelegation(delegation, signal)) {
 			// A queued reply to an older caller turn is context, not the next spoken answer.
 			// Do not cancel or discard any authorized backend action or its full document.
-			const staleQueuedReply = delegation.queuedPredecessorCompleted && delegation.userTranscriptRevision !== this.userTranscriptRevision;
-			const sent = this.sendAppend(delegation.id, text, staleQueuedReply ? "commentary" : "speakable", { kind: terminalKind, provenance: terminalProvenance });
+			const staleQueuedReply = delegation.userTranscriptRevision !== this.userTranscriptRevision;
+			const sent = this.sendAppend(delegation.id, text, staleQueuedReply ? "commentary" : terminalDeliveryChannel, { kind: terminalKind, provenance: terminalProvenance });
 			if (!sent) {
 				if (this.stopped || this.options.signal.aborted) return;
 				this.failTerminalDelivery(new Error("OpenAI GPT-Live terminal result was not delivered"));

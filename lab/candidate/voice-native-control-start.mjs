@@ -19,6 +19,13 @@ execFileSync('rsync',['-a','/srv/vlab-production-mirror/labs/candidate-tests/run
 for(const entry of Object.values(config.plugins?.entries??{}))if(entry.config&&'minWorkers' in entry.config){entry.config.minWorkers=1;entry.config.maxWorkers=3;entry.config.gatewayConfigPath=process.env.OPENCLAW_CONFIG_PATH;entry.config.workerConfigPath=state+'/candidate-worker.json';}
 fs.writeFileSync(process.env.OPENCLAW_CONFIG_PATH,JSON.stringify(config));
 const runtime=process.env.VLAB_CANDIDATE_RUNTIME,node=process.execPath,env={...process.env,VLAB_OPENCLAW_AGENT_RUNTIME:runtime+'/openclaw/dist/plugin-sdk/agent-runtime.js',RTC_H5_PORT:'27541',npm_config_cache:root+'/cache/npm',NPM_CONFIG_CACHE:root+'/cache/npm',XDG_CACHE_HOME:root+'/cache',TMPDIR:root+'/tmp',RTC_H5_TRANSCRIPT_DIR:evidence+'/transcripts',RTC_H5_AVATAR_LOG_DIR:evidence+'/avatars',VOICE_QA_SOURCE:voice,VOICE_GPT_PROVIDER:'v-voice-gpt-live',VOICE_QA_AUDIT:evidence+'/gateway.private.jsonl'};
+// Private test-only credential input; keys never enter the package or Gateway.
+const controlFixture='/tmp/voice-native-control-20261012/control-env.private.json';
+if(fs.existsSync(controlFixture)){
+ const secret=JSON.parse(fs.readFileSync(controlFixture));
+ for(const key of ['OPENROUTER_API_KEY','VOICE_CALL_CONTROL_API_KEY'])if(typeof secret[key]==='string')env[key]=secret[key];
+ env.VOICE_HOST_CALL_CONTROL='1';
+}
 fs.mkdirSync(root+'/tmp',{recursive:true});
 // Optional owner-only CLI fixture for authorized real Feishu acceptance.
 // Copy credentials into this Candidate; never use shared CLI writable storage.
