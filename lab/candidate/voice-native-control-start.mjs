@@ -51,6 +51,6 @@ if(!ready)throw Error('Private Gateway did not start');
 const h5=start(['--import',path.resolve('lab/candidate/voice-native-control-probe.mjs'),voice+'/lab/gpt-live-h5/server.mjs'],'voice.log');children.push(h5);
 for(let i=0;i<80;i++){try{const r=await fetch(publicOrigin+'/voice/',{signal:AbortSignal.timeout(2500)});if(r.ok){fs.writeFileSync(evidence+'/ready.json',JSON.stringify({root,voicePort:27541,gatewayPort:config.gateway.port,gatewayPid:gateway.pid,voicePid:h5.pid,publicOrigin,url:publicOrigin+'/voice/?entry=tianyi#access='+accessToken}),{mode:0o600});ready=true;break;}}catch{}await delay(500);}
 if(!fs.existsSync(evidence+'/ready.json'))throw Error('Voice did not start');
-const end=Date.now()+25*60*1000;while(Date.now()<end&&!fs.existsSync(evidence+'/stop'))await delay(500);
+const end=Date.now()+55*60*1000;while(Date.now()<end&&!fs.existsSync(evidence+'/stop'))await delay(500);
 for(const c of children)c.kill('SIGTERM');await delay(2000);
 console.log(JSON.stringify({candidate:'voice-native-control',ready:true,evidence,stopped:true}));

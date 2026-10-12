@@ -17,7 +17,7 @@ const plan = JSON.parse(fs.readFileSync(path.join(root,'lab/voice-native-turn-co
 Object.assign(plan, {
   support:['lab/candidate/voice-native-control-start.mjs','lab/candidate/voice-native-control-probe.mjs',archive],
   command:[process.execPath,'lab/candidate/voice-native-control-start.mjs',archive],
-  databases:[],timeoutSeconds:1800,user:'root',
+  databases:[],timeoutSeconds:3600,user:'root',
 });
 const req = buildRequest(root,plan,'01a0fb0e-739d-7681-9238-faa2c1912c6c');
 req.sourceCommit = execFileSync('git',['-C',root,'rev-parse','HEAD'],{encoding:'utf8'}).trim();
