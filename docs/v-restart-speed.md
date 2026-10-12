@@ -70,7 +70,7 @@
 改动前那组跑的时候 VLab 负载更高（HTTP 监听有两次到 21–24 s）；VLab 平时还有一个 Chrome 常驻吃掉约 1.2 核，
 同一配置的数字前后会差 5 s 左右。
 
-安全性（candidate-a 系列 safety 场景，`SAFETY=1`）：
+安全性（candidate-16b5795a，`SAFETY=1`）：
 - 干净重启：1/1 带过，`source=carried-clean-restart`，`checkedAt` 保持原值。
 - SIGKILL 掉 Gateway 和 worker 再启动：0/1 带过（`previous-exit-not-clean`），启动前全量检查。
 - 再干净重启后约 5 分钟：原生校验器输出 `database integrity verification passed`（状态库 + agent 库），
