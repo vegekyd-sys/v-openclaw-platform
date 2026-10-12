@@ -11,6 +11,36 @@
 
 ---
 
+## v2026.9.1-db91.6-mirror-facts-identity-20261012
+
+上线：2026-10-12 22:18 CST（v-self-restart 就绪）  ·  tag `v2026.9.1-db91.6-mirror-facts-identity-20261012`
+
+**摘要**：转录镜像查重（`session.transcript.mirror-facts`）在会话投影被标脏时，不再把整段转录读进主线程，改查 identity 表（PR #315）。起因：10/12 16:50–17:24 V 整体不可用，当天 mirror-facts 慢事务累计 426 次，是 Gateway 主线程最大的同步读取来源（16 点 45 次/77 s、17 点 137 次/190 s）。
+
+**证据分两类**：
+- 修复本身：VLab candidate `e431fff2`，与上线字节相同，36,505 条事件的标脏会话 1,278 ms → 13 ms，插桩证明原版整段读、补丁走 identity，原版写出 V 同款慢事务日志 7 条、补丁 0 条；candidate `424706ba` 对 V 数据副本全库比对 identity 与整段读 0 差异。
+- 回归：共享 VLab 部署后真实飞书 /vds 回合正确、转录无重复，首字热态不慢。共享 VLab 没有标脏会话，这部分不覆盖修复路径。
+
+**上线**：Tianyi 在 pr315 验收 session 说「你上线去吧」。`promote-to-v.mjs` 22:04 装字节（捕获步骤因丢包失败，22:2x 补跑捕获、哨兵、align）；`v-self-restart` `20261012-221418-1949`，22:18:12 就绪（203 s），worker 5，Codex 孤儿登记清掉 2 条。
+
+**上线后**：重启前 21:00 起繁忙大会话已安静，标脏重建（transcript-index.prepare）与 mirror-facts 都是 0，所以重启后的 0 还不能说明修复生效；要等下一次出现标脏重建时，看 mirror-facts 是否仍为 0。重启前后都有 5 个会话报 `restart recovery claim changed`（13:59 起，与本次无关，另行处理）。
+
+相对上一版 `v-voice-content-product-20261011`：1 个文件变化。
+
+**经 VLab 发版 `mirror-facts-identity-20261012`**（pr315-mirror-facts，dev `3490b79a`）
+> 验收：/Users/tianyicai/v-upgrade-private/pr315-mirror-facts-20261012/shared-vlab-evidence.md: 部署后真实飞书 Codex(/vds, DeepSeek Flash) 6 回合回答全对、跨重启记忆保留、转录 254 键无重复；vlab-worker 8 群首字热态 P50 4.8/4.9s vs 部署前 6.3/5.0s；Codex 3.3-4.0s vs 3.3-3.9s；部署后 mirror-facts 慢事务 0；标脏大会话 1278->13ms 与 V 同款日志见 candidate e431fff2，全库比对 0 差异见 candidate 424706ba
+- `core` session-accessor-K0XuW6ln.js  5c2eb542 → 30c7b9d6
+
+**这期间合入 dev 的 PR**（5 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #315 perf(sessions): 转录镜像查重在投影追赶期间改查 identity 表，不再整段读转录
+- #341 fix(v): /vcc 在 900k 自动压缩，不再贴着 1M 上限
+- #339 test(v-browser-fill): 验收驱动支持生产 V；exec 回归驱动
+- #337 fix(voice): 修复直接工具运行准入与飞书 CLI 身份
+- #336 test(v-browser-fill): 真实飞书多 harness 验收驱动
+
+回滚：`node scripts/promote-to-v.mjs --undo /opt/v-release-backups/v2026.9.1-db91.6-mirror-facts-identity-20261012-20261012T140419`（需重启）。
+
+
 ## v-voice-content-product-20261011
 
 上线：2026-10-11 02:27 CST 启动生产 Gateway，02:34 CST 切换 H5；tag `v-voice-content-product-20261011`。
