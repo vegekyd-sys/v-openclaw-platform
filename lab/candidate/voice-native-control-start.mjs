@@ -6,6 +6,7 @@ const voice=root+'/voice';fs.mkdirSync(voice);execFileSync('tar',['-xzf',process
 execFileSync('npm',['ci','--ignore-scripts'],{cwd:voice,stdio:'ignore'});
 const state=process.env.OPENCLAW_STATE_DIR,config=JSON.parse(fs.readFileSync(process.env.OPENCLAW_CONFIG_PATH));
 config.gateway.auth={...config.gateway.auth,mode:'token',token:randomBytes(32).toString('hex')};
+config.plugins??={};config.plugins.load??={};config.plugins.load.paths=[...(config.plugins.load.paths??[]),voice+'/plugins/v-voice-gpt-live'];config.plugins.entries??={};config.plugins.entries['v-voice-gpt-live']={enabled:true};if(config.plugins.allow&&!config.plugins.allow.includes('v-voice-gpt-live'))config.plugins.allow.push('v-voice-gpt-live');
 config.channels={};config.cron={...config.cron,enabled:false};config.browser={...config.browser,enabled:false};
 if(config.agents.defaults?.heartbeat)config.agents.defaults.heartbeat.every='0m';
 const old='/srv/vlab-production-mirror/labs/candidate-tests/runs/voice-capability-routing-20261011/data/state/agents/makaron/agent/openclaw-agent.sqlite';
@@ -17,7 +18,7 @@ fs.mkdirSync(process.env.OPENCLAW_WORKSPACE_DIR+'/makaron',{recursive:true});
 execFileSync('rsync',['-a','/srv/vlab-production-mirror/labs/candidate-tests/runs/voice-capability-routing-20261011/data/workspace/makaron/',process.env.OPENCLAW_WORKSPACE_DIR+'/makaron/']);
 for(const entry of Object.values(config.plugins?.entries??{}))if(entry.config&&'minWorkers' in entry.config){entry.config.minWorkers=1;entry.config.maxWorkers=3;entry.config.gatewayConfigPath=process.env.OPENCLAW_CONFIG_PATH;entry.config.workerConfigPath=state+'/candidate-worker.json';}
 fs.writeFileSync(process.env.OPENCLAW_CONFIG_PATH,JSON.stringify(config));
-const runtime=process.env.VLAB_CANDIDATE_RUNTIME,node=process.execPath,env={...process.env,VLAB_OPENCLAW_AGENT_RUNTIME:runtime+'/openclaw/dist/plugin-sdk/agent-runtime.js',RTC_H5_PORT:'27541',npm_config_cache:root+'/cache/npm',NPM_CONFIG_CACHE:root+'/cache/npm',XDG_CACHE_HOME:root+'/cache',TMPDIR:root+'/tmp',RTC_H5_TRANSCRIPT_DIR:evidence+'/transcripts',RTC_H5_AVATAR_LOG_DIR:evidence+'/avatars',VOICE_QA_SOURCE:voice,VOICE_QA_AUDIT:evidence+'/gateway.private.jsonl'};
+const runtime=process.env.VLAB_CANDIDATE_RUNTIME,node=process.execPath,env={...process.env,VLAB_OPENCLAW_AGENT_RUNTIME:runtime+'/openclaw/dist/plugin-sdk/agent-runtime.js',RTC_H5_PORT:'27541',npm_config_cache:root+'/cache/npm',NPM_CONFIG_CACHE:root+'/cache/npm',XDG_CACHE_HOME:root+'/cache',TMPDIR:root+'/tmp',RTC_H5_TRANSCRIPT_DIR:evidence+'/transcripts',RTC_H5_AVATAR_LOG_DIR:evidence+'/avatars',VOICE_QA_SOURCE:voice,VOICE_GPT_PROVIDER:'v-voice-gpt-live',VOICE_QA_AUDIT:evidence+'/gateway.private.jsonl'};
 fs.mkdirSync(root+'/tmp',{recursive:true});
 // Optional owner-only CLI fixture for authorized real Feishu acceptance.
 // Copy credentials into this Candidate; never use shared CLI writable storage.
@@ -60,6 +61,6 @@ if(!ready)throw Error('Private Gateway did not start');
 const h5=start(['--import',path.resolve('lab/candidate/voice-native-control-probe.mjs'),voice+'/lab/gpt-live-h5/server.mjs'],'voice.log');children.push(h5);
 for(let i=0;i<80;i++){try{const r=await fetch(publicOrigin+'/voice/',{signal:AbortSignal.timeout(2500)});if(r.ok){fs.writeFileSync(evidence+'/ready.json',JSON.stringify({root,voicePort:27541,gatewayPort:config.gateway.port,gatewayPid:gateway.pid,voicePid:h5.pid,publicOrigin,url:publicOrigin+'/voice/?entry=tianyi#access='+accessToken}),{mode:0o600});ready=true;break;}}catch{}await delay(500);}
 if(!fs.existsSync(evidence+'/ready.json'))throw Error('Voice did not start');
-const end=Date.now()+55*60*1000;while(Date.now()<end&&!fs.existsSync(evidence+'/stop'))await delay(500);
+const end=Date.now()+18*60*1000;while(Date.now()<end&&!fs.existsSync(evidence+'/stop'))await delay(500);
 for(const c of children)c.kill('SIGTERM');await delay(2000);
 console.log(JSON.stringify({candidate:'voice-native-control',ready:true,evidence,stopped:true}));

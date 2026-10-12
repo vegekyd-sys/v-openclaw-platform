@@ -36,7 +36,6 @@ var OpenAIQuicksilverDelegationController = class {
 			signal: options.signal,
 			isCurrent: () => !this.stopped && !options.signal.aborted &&
 				options.isCallCurrent?.() === true && options.getSocket()?.readyState === WEBSOCKET_OPEN,
-			getActiveAssistantTurnId: () => this.activeCallControlAssistantTurnId,
 			onToolEvent: (event) => options.onCallLifecycleEvent(event),
 			onError: (error) => options.onError?.(error),
 			sendSessionContext: (text) => {
@@ -47,7 +46,6 @@ var OpenAIQuicksilverDelegationController = class {
 			},
 			sendDelegationContext: (id, text) => this.sendAppend(id, text, "speakable")
 		}) : void 0;
-		this.priorityControls = new Map();
 		this.callControlUserTurnWaiters = new Set();
 		this.completedCallControlUserTurns = new Map();
 		this.delegationGeneration = 0;
@@ -212,7 +210,6 @@ var OpenAIQuicksilverDelegationController = class {
 		if (this.consultController) {
 			delegation.queuedBehind = this.activeDelegationId;
 			this.pendingDelegations.push(delegation);
-			if(this.callLifecycle){delegation.controlProbePending=true;void this.probeQueuedCallControl(delegation);}
 			return;
 		}
 		this.launchDelegation(delegation);
@@ -227,7 +224,7 @@ var OpenAIQuicksilverDelegationController = class {
 		this.runDelegation(delegation, controller.signal).catch((error) => this.failTerminalDelivery(toErrorObject(error, "OpenAI GPT-Live delegation failed"))).finally(() => {
 			if (this.consultController !== controller) return;
 			this.consultController = void 0;
-			const pending = this.pendingDelegations[0]?.controlProbePending ? undefined : this.pendingDelegations.shift();
+			const pending = this.pendingDelegations.shift();
 			if (pending) { pending.queuedPredecessorCompleted = delegation.backendResultReceived === true; this.launchDelegation(pending); }
 			else this.activeDelegationId = void 0;
 		});
@@ -241,8 +238,6 @@ var OpenAIQuicksilverDelegationController = class {
 		this.observedDelegationIds.clear();
 		this.stopped = true;
 		this.callLifecycle?.close();
-		for(const entry of this.priorityControls.values())entry.controller.abort();
-		this.priorityControls.clear();
 		this.completedCallControlUserTurns.clear();
 		for (const notify of this.callControlUserTurnWaiters) notify();
 		this.options.signal.removeEventListener("abort", this.onSessionAbort);
@@ -255,10 +250,7 @@ var OpenAIQuicksilverDelegationController = class {
 		if (!this.callLifecycle || this.stopped) return;
 		const turnId = raw.type === "turn.delta" ? raw.turn_id : raw.turn?.id;
 		if (typeof turnId !== "string" || !/^[a-zA-Z0-9_.:-]{1,160}$/.test(turnId)) return;
-		if (raw.type === "turn.created" && raw.turn?.role === "assistant") this.activeCallControlAssistantTurnId = turnId;
-		if (raw.type === "turn.done" && raw.turn?.role === "assistant" && this.activeCallControlAssistantTurnId === turnId) this.activeCallControlAssistantTurnId = undefined;
 		if (raw.type === "turn.created" && raw.turn?.role === "user") {
-			this.activeCallControlAssistantTurnId = undefined;
 			this.latestCallControlUserTurnId = turnId;
 			this.completedCallControlUserTurns.delete(turnId);
 		} else if (raw.type === "turn.done" && raw.turn?.role === "user") {
@@ -270,26 +262,6 @@ var OpenAIQuicksilverDelegationController = class {
 			}
 		}
 		for (const notify of this.callControlUserTurnWaiters) notify();
-	}
-	async probeQueuedCallControl(queued) {
-		const controller=new AbortController();
-		const delegation={...queued,controlOnly:true};
-		this.priorityControls.set(delegation.id,{delegation,controller});
-		try {
-			const callControl=await this.prepareBackendCallControl(delegation,controller.signal);
-			if(callControl&&callControl.isCurrent())await this.options.runAgentConsult({
-				prompt:"Evaluate only whether the complete current caller utterance requests ending this voice call. Use openclaw_end_call only for that clear request. Otherwise take no action and return CONTROL_NOT_SELECTED. Do not execute or discuss other tasks.",
-				signal:controller.signal,callControl,controlOnly:true,callerInputAcceptedAt:queued.callerInputAcceptedAt,
-				continuationIdentity:{delegationItemId:delegation.id,delegationGeneration:delegation.generation}
-			});
-			if(delegation.callControlReceipt)this.pendingDelegations=this.pendingDelegations.filter(item=>item!==queued);
-		}catch(error){if(!this.stopped)this.options.logger.warn("GPT Live queued call-control check did not complete; normal request retained");}
-		finally {
-			this.priorityControls.delete(delegation.id);queued.controlProbePending=false;
-			if(!this.stopped&&!this.consultController&&!this.options.signal.aborted&&!this.pendingDelegations[0]?.controlProbePending){
-				const next=this.pendingDelegations.shift();if(next)this.launchDelegation(next);
-			}
-		}
 	}
 	async prepareBackendCallControl(delegation, signal) {
 		const originUserTurnId = delegation.userBidiTurnId;
@@ -323,7 +295,7 @@ var OpenAIQuicksilverDelegationController = class {
 				if (!isCurrent()) return false;
 				const receipt = this.callLifecycle.acceptBackendTool({ nativeDelegationId: delegation.id, originUserTurnId,
 					delegationGeneration: delegation.generation, backendRunId, backendToolCallId });
-				if (receipt) { delegation.callControlReceipt = receipt; this.closingUserTurnId = receipt.originUserTurnId; this.cancelQueuedProgress?.(); }
+				if (receipt) { delegation.callControlReceipt = receipt; this.cancelQueuedProgress?.(); }
 				return receipt;
 			} };
 	}
@@ -512,7 +484,6 @@ var OpenAIQuicksilverDelegationController = class {
 		return { role, wireText: header + text };
 	}
 	isCurrentDelegation(delegation, signal) {
-		if(delegation.controlOnly===true)return !this.stopped&&!this.options.signal.aborted&&!signal.aborted&&this.priorityControls.get(delegation.id)?.delegation===delegation;
 		return !this.stopped && !this.options.signal.aborted && !signal.aborted &&
 			this.activeDelegationId === delegation.id && this.delegationGeneration === delegation.generation;
 	}
@@ -699,12 +670,6 @@ var OpenAIQuicksilverDelegationController = class {
 		}
 	}
 	sendAppend(delegationId, text, channel, diagnostic = {}) {
-		// Accepted goodbye owns speech until the caller starts another turn.
-		// Keep business work alive; do not append late progress that can reopen audio.
-		if (this.closingUserTurnId && this.closingUserTurnId === this.latestCallControlUserTurnId && ["progress", "final", "failure"].includes(diagnostic.kind)) {
-			this.tracePublicProgress("closing-business-speech-withheld", delegationId, text, diagnostic);
-			return true;
-		}
 		const socket = this.options.getSocket();
 		if (this.stopped || !socket || socket.readyState !== WEBSOCKET_OPEN) return false;
 		const isPublic = ["progress", "final", "failure"].includes(diagnostic.kind);
