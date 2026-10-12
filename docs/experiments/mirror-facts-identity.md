@@ -61,12 +61,43 @@ receipt `candidate-424706ba-fe8d-419d-ad52-b45702080516`。补丁成立的前提
 - `tests/vlab-static.sh` 通过；`lab/mirror-facts-identity.test.mjs` 4/4；GitHub `static` 通过。
 - 本机 `npm test` 有 1 条与本 PR 无关的失败（`a child forked with the parent execArgv minus --inspect keeps the flag`，本机 Node 24 环境），CI（Node 22）通过。
 
-## 还没做的（需要先合入 dev）
+## 共享 VLab 验收（2026-10-12 19:30–21:05 CST）
 
-`vlab.mjs package` 要求打包的提交就是 dev HEAD，所以共享 VLab 的 stage/deploy 只能在合入 dev 之后做。合入后的步骤：
+Tianyi 授权合入（监控 session 转达，原话「315合入在共享vlab上验收」）。PR #315 合入 dev = `3490b79a`；合并后 `lab/mirror-facts-identity.test.mjs`、platform 测试、`tests/vlab-static.sh` 通过。
 
-1. `vlab-v-parity.mjs` 确认 ALIGNED → lease → package/stage/deploy → 共享 VLab 上：真实 Codex（/vds 或 /vcodex）回合在标脏会话上镜像正常、Gateway 日志不再出现 mirror-facts 慢事务；同一组压测群部署前后各测一轮首字（飞书 create_time → 首段正文），统一口径对比 → accept。
-2. `promote-to-v.mjs` 装同一份字节到 V（不重启）→ Tianyi 定的时间用 `v-self-restart` 重启。
-3. 上线后验收：V 日志里 `operation=session.transcript.mirror-facts` 的慢事务按小时计数应从当前的每小时 45–137 次降到接近 0；首字前后对比（重启满 20 分钟后再测）。
+- 部署前 parity：ALIGNED（18,663 个文件）。配置 advisory：V 开着 `parallel` 插件、VLab 没开（与本改动无关）。
+- lease owner `pr315-mirror-facts`；release `mirror-facts-identity-20261012`，artifact `12d18469…`，只换 `openclaw/dist/session-accessor-K0XuW6ln.js` `5c2eb542 → 30c7b9d6`。19:56:59 Gateway ready（PID 3043932 → 3643712），线上文件 sha256 核对为 `30c7b9d6`。部署后无 `Cannot reap`、无 `lacked a final answer`、无 error（启动时一条 Codex orphan cleanup 进程检查超时，随后 Codex 回合正常）。
 
-回滚：`node scripts/promote-to-v.mjs --undo <这次的 V 备份目录>` 后重启；只换一个文件（`30c7b9d6` → `5c2eb542`），不涉及配置与数据库。
+**首字（飞书 create_time → 首段正文推送，同 8 个压测群，vlab-worker / DeepSeek Flash）**
+
+| 轮次 | 部署前 P50 / Max | 部署后 P50 / Max |
+|---|---|---|
+| 第 1 轮（空闲后冷） | 50.5 s / 58.7 s | 13.5 s / 17.2 s |
+| 第 2 轮 | 6.3 s / 12.1 s | 4.8 s / 9.0 s |
+| 第 3 轮 | 5.0 s / 10.7 s | 4.9 s / 10.4 s |
+
+部署前第 1 轮是 Gateway 空闲一天多后的冷启动（入站 7.9 s、排队 36 s），部署后第 1 轮是重启后 21 分钟，二者都不代表稳态；热态（第 2、3 轮）不慢。部署后第 3 轮压测脚本自己的 ssh 读日志失败、误报 0/8，已按消息 id 重查 Gateway 记录，8 条都有正文推送。
+
+**Codex 路径（「VLab 发布验收 B」群切到 /vds = Codex + DeepSeek Flash，同样 4 条消息）**
+
+| 消息 | 部署前 | 部署后 |
+|---|---|---|
+| 记暗号（每轮第一条） | 12.7 s | 9.0 s |
+| 解释幂等 | 3.9 s | 3.3 s |
+| 1 到 50 求和 | 3.6 s | 3.7 s |
+| 复述暗号 | 3.3 s | 4.0 s |
+
+回答全部正确（1275、两个暗号；部署后还答出了部署前记下的暗号）；该会话转录 254 个幂等键全部唯一，没有重复写入。测完已切回 `deepseek-flash / vlab-worker`。
+
+**日志**：部署后共享 VLab Gateway 文件日志 `session.transcript.mirror-facts` 慢事务 0 条。另有 `session.transcript.message-rewrite` 2 条（2.5 s、3.7 s）和 worker `agent.write` 1 条，不在本次改动里；V 今天也有 message-rewrite 2 条，属于既有问题。
+
+**共享 VLab 上没能直接复现的**：回复审计记录只在 `capturePendingConversationTurnReply`（agent 发出的消息被回执确认）这条路径写，普通问答不写，VLab 三天内一条都没有、标脏会话 0 个。所以标脏大会话上「秒级 → 毫秒级」和 V 同款日志的证据来自上面的 candidate（与部署字节相同），不是共享 Gateway。V 上线后按小时数 mirror-facts 慢事务来兑现。
+
+**V 今天的对照**：截至 20:52 CST，V 当天 `slow SQLite transaction hold` 按 operation：mirror-facts 426、transcript-index.prepare 135、sessions.history.read 44、agent.write 16，其他个位数。
+
+## 上 V
+
+1. 等 Tianyi 定重启时间。
+2. `node scripts/promote-to-v.mjs --release mirror-facts-identity-20261012 --name <V 发版名> --owner <o> --apply`：备份、装同一份字节、捕获、更新哨兵、align（不重启）。
+3. 按定的时间 `v-self-restart`；重启满 20 分钟后测首字，并按小时统计 mirror-facts 慢事务（预期从每小时 45–137 次降到接近 0）。
+4. 回滚：`node scripts/promote-to-v.mjs --undo <V 上的备份目录>` 后重启，只换回一个文件（`30c7b9d6 → 5c2eb542`），不涉及配置与数据库。
