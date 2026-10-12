@@ -1,0 +1,12 @@
+{
+  "support": [
+    "lab/candidate/voice-private-log-directory.mjs",
+    "lab/realtime-direct-tools/transcript-log.mjs",
+    "lab/gpt-live-h5/avatar-telemetry-log.mjs",
+    "lab/gpt-live-h5/avatar-telemetry.mjs",
+    "lab/gpt-live-h5/avatar-catalog.mjs",
+    "lab/gpt-live-h5/avatar-approved-reactions.mjs"
+  ],
+  "command": ["/opt/vlab/node-v22.23.1-linux-x64/bin/node", "lab/candidate/voice-private-log-directory.mjs"],
+  "timeoutSeconds": 90
+}
