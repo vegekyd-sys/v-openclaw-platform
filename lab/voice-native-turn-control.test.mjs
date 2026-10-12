@@ -24,3 +24,15 @@ test('accepted goodbye withholds late business speech without aborting its task,
  assert.equal(f.c.sendAppend('i1','已查到官网','speakable',{kind:'progress'}),true);
  assert.equal(f.frames.length,before+1);f.c.detach();
 });
+
+test('host receipt identifies only an actually open native assistant turn at acceptance',async()=>{
+ const f=fixture();f.turn('t1','挂断');f.delegate('i1','挂断','t1');await settle();
+ f.c.handleFrame(JSON.stringify({type:'turn.created',turn:{id:'actual-native-assistant',role:'assistant',transcript:'收到'}}),false);
+ const receipt=f.calls[0].callControl.accept({backendRunId:'owned-control',backendToolCallId:'call_end'});
+ assert.equal(receipt.nativeAssistantTurnIdAtAcceptance,'actual-native-assistant');f.c.detach();
+ const g=fixture();g.turn('t1','挂断');g.delegate('i1','挂断','t1');await settle();
+ g.c.handleFrame(JSON.stringify({type:'turn.created',turn:{id:'finished-ack',role:'assistant',transcript:'收到'}}),false);
+ g.c.handleFrame(JSON.stringify({type:'turn.done',turn:{id:'finished-ack',role:'assistant',transcript:'收到'}}),false);
+ const next=g.calls[0].callControl.accept({backendRunId:'owned-control',backendToolCallId:'call_end'});
+ assert.equal(next.nativeAssistantTurnIdAtAcceptance,undefined);g.c.detach();
+});

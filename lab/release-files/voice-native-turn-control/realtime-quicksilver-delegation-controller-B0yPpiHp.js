@@ -36,6 +36,7 @@ var OpenAIQuicksilverDelegationController = class {
 			signal: options.signal,
 			isCurrent: () => !this.stopped && !options.signal.aborted &&
 				options.isCallCurrent?.() === true && options.getSocket()?.readyState === WEBSOCKET_OPEN,
+			getActiveAssistantTurnId: () => this.activeCallControlAssistantTurnId,
 			onToolEvent: (event) => options.onCallLifecycleEvent(event),
 			onError: (error) => options.onError?.(error),
 			sendSessionContext: (text) => {
@@ -254,7 +255,10 @@ var OpenAIQuicksilverDelegationController = class {
 		if (!this.callLifecycle || this.stopped) return;
 		const turnId = raw.type === "turn.delta" ? raw.turn_id : raw.turn?.id;
 		if (typeof turnId !== "string" || !/^[a-zA-Z0-9_.:-]{1,160}$/.test(turnId)) return;
+		if (raw.type === "turn.created" && raw.turn?.role === "assistant") this.activeCallControlAssistantTurnId = turnId;
+		if (raw.type === "turn.done" && raw.turn?.role === "assistant" && this.activeCallControlAssistantTurnId === turnId) this.activeCallControlAssistantTurnId = undefined;
 		if (raw.type === "turn.created" && raw.turn?.role === "user") {
+			this.activeCallControlAssistantTurnId = undefined;
 			this.latestCallControlUserTurnId = turnId;
 			this.completedCallControlUserTurns.delete(turnId);
 		} else if (raw.type === "turn.done" && raw.turn?.role === "user") {

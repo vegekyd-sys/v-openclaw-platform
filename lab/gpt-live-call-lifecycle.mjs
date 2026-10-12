@@ -139,8 +139,11 @@ export function createGptLiveCallLifecycle(options) {
       if (previous) return previous.backendRunId === backendRunId && previous.backendToolCallId === backendToolCallId &&
         previous.originUserTurnId === originUserTurnId && previous.delegationGeneration === delegationGeneration ? previous : false;
       if (endedRequestIds.has(nativeDelegationId)) return false;
+      const activeAssistantTurnId = options.getActiveAssistantTurnId?.();
       const receipt = Object.freeze({ source: "backend_model_client_tool", callId: backendToolCallId,
         requestId: nativeDelegationId, nativeDelegationId, originUserTurnId, delegationGeneration, backendRunId, backendToolCallId,
+        ...(typeof activeAssistantTurnId === "string" && nativeId.test(activeAssistantTurnId)
+          ? { nativeAssistantTurnIdAtAcceptance: activeAssistantTurnId } : {}),
         status: "accepted", closeAfterPlayback: true });
       try {
         emit("tool.call", backendToolCallId, { ...receipt, args: {} }, originUserTurnId);
