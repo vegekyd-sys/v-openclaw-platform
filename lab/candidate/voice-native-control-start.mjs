@@ -49,7 +49,7 @@ for(let attempt=0;attempt<2;attempt++){
 }
 if(!ready)throw Error('Private Gateway did not start');
 const h5=start(['--import',path.resolve('lab/candidate/voice-native-control-probe.mjs'),voice+'/lab/gpt-live-h5/server.mjs'],'voice.log');children.push(h5);
-for(let i=0;i<80;i++){try{const r=await fetch('http://127.0.0.1:27541/voice/');if(r.ok){fs.writeFileSync(evidence+'/ready.json',JSON.stringify({root,voicePort:27541,gatewayPort:config.gateway.port,gatewayPid:gateway.pid,voicePid:h5.pid,publicOrigin,url:publicOrigin+'/voice/?entry=tianyi#access='+accessToken}),{mode:0o600});ready=true;break;}}catch{}await delay(500);}
+for(let i=0;i<80;i++){try{const r=await fetch('http://127.0.0.1:27541/voice/',{headers:{host:new URL(publicOrigin).host},signal:AbortSignal.timeout(1000)});if(r.ok){fs.writeFileSync(evidence+'/ready.json',JSON.stringify({root,voicePort:27541,gatewayPort:config.gateway.port,gatewayPid:gateway.pid,voicePid:h5.pid,publicOrigin,url:publicOrigin+'/voice/?entry=tianyi#access='+accessToken}),{mode:0o600});ready=true;break;}}catch{}await delay(500);}
 if(!fs.existsSync(evidence+'/ready.json'))throw Error('Voice did not start');
 const end=Date.now()+25*60*1000;while(Date.now()<end&&!fs.existsSync(evidence+'/stop'))await delay(500);
 for(const c of children)c.kill('SIGTERM');await delay(2000);
