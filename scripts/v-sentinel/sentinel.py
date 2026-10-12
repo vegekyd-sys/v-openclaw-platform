@@ -11,7 +11,7 @@ So this deliberately does NOT ask the Gateway whether it is healthy. It counts
 worker processes, reads the journal, and sends its alerts straight to Feishu
 over HTTPS. Nothing in the alert path goes through the thing being watched.
 """
-import json, os, re, subprocess, sys, time, urllib.request, urllib.error
+import calendar, json, os, re, subprocess, sys, time, urllib.request, urllib.error
 
 STATE_PATH = "/var/lib/v-sentinel/state.json"
 CONFIG_PATH = "/home/openclaw/.openclaw/openclaw.json"
@@ -69,6 +69,37 @@ CONFIG_FILES = (
 # OpenClaw's own validator, about 2 s per file. Run it this often, not every tick.
 CONFIG_VALIDATE_EVERY_S = 600
 MEM_MIN_MB = 2048
+
+# Gateway main thread. 2026-10-12 16:50-17:24 nobody could get an answer for
+# half an hour while every rule above stayed green: the pool had free Workers,
+# nothing crashed, and a request only counts as stalled once the thread comes
+# back. What did show, from 16:01 on, was the Gateway's own liveness warning
+# with the event loop pinned at 1 for over a minute at a time. Measured over
+# 2026-10-05..12: zero such warnings on calm days, 11-17 on the days people
+# complained (10-09, 10-10, 10-12). Three in ten minutes is sustained, not a blip.
+SATURATED_ELU = 0.95
+SATURATED_DEGRADED_S = 60
+SATURATED_COUNT = 3
+SATURATED_WINDOW_S = 600
+# A single heartbeat this late means the thread was frozen that long: nothing
+# was answered, no channel was read. Before 2026-10-12 the week had none over
+# 20 s; that day had four, up to 65 s, and the last one started a thaw loop.
+FREEZE_OVERDUE_MS = 20000
+# How long a person waited for the first thing V showed them (status card or
+# answer), or for V to start on their message at all. Week of 2026-10-05:
+# first-visible p99 30-126 s, 0-6 turns a day over 120 s; 2026-10-12 had 36
+# over 120 s and 82 that waited over 60 s just to be picked up.
+SLOW_FIRST_VISIBLE_S = 120
+SLOW_DISPATCH_S = 60
+SLOW_TURNS_COUNT = 3
+SLOW_TURNS_WINDOW_S = 600
+# A conversation whose every message fails before the agent: from 13:59 on
+# 2026-10-12 five chats got "restart recovery claim changed before agent
+# adoption" every few minutes for over eight hours (395 failures) and nobody
+# was told. Two failures of one conversation within ten minutes is a pattern.
+DISPATCH_FAIL_PER_SESSION = 2
+DISPATCH_FAIL_WINDOW_S = 600
+REPEAT_ALERT_S = 3600
 
 
 def sh(cmd, timeout=30):
@@ -202,6 +233,97 @@ def scan_cutoffs(journal, lookback=None):
     return hits, (failed[hits[0]] if hits else ""), compact_fail
 
 
+ISO_TS = re.compile(r"^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.\d+)?([+-]\d\d:\d\d)")
+LIVENESS = re.compile(r"liveness warning: .*?degradedFor=(\d+)s.*?eventLoopUtilization=([\d.]+)")
+HEARTBEAT_LATE = re.compile(r"liveness heartbeat delayed: overdue=(\d+)ms")
+DISPATCH_FAIL = re.compile(r"message dispatch completed: .*?sessionKey=(\S+) .*?outcome=error"
+                           r"(?: .*?error=\"([^\"]{0,80}))?")
+E2E = re.compile(r"\[firsttext-e2e\.1\] (\{.*\})")
+
+
+def line_time(line):
+    """Epoch seconds from the ISO stamp the Gateway puts on its own lines, or None."""
+    m = ISO_TS.match(line)
+    if not m:
+        return None
+    try:
+        t = time.strptime(m.group(1), "%Y-%m-%dT%H:%M:%S")
+    except ValueError:
+        return None
+    sign, hh, mm = m.group(2)[0], int(m.group(2)[1:3]), int(m.group(2)[4:6])
+    off = (hh * 3600 + mm * 60) * (1 if sign == "+" else -1)
+    return calendar.timegm(t) - off
+
+
+def scan_main_thread(journal):
+    """Events from the Gateway's own liveness diagnostics in this window.
+
+    saturated: [(epoch, degradedFor s)] warnings with the loop pinned for a minute+
+    freezes:   [(epoch, overdue ms)] heartbeats at least FREEZE_OVERDUE_MS late
+    """
+    saturated, freezes = [], []
+    for line in journal.splitlines():
+        if "liveness" not in line:
+            continue
+        m = LIVENESS.search(line)
+        if m and int(m.group(1)) >= SATURATED_DEGRADED_S and float(m.group(2)) >= SATURATED_ELU:
+            saturated.append((line_time(line), int(m.group(1))))
+            continue
+        m = HEARTBEAT_LATE.search(line)
+        if m and int(m.group(1)) >= FREEZE_OVERDUE_MS:
+            freezes.append((line_time(line), int(m.group(1))))
+    return saturated, freezes
+
+
+def scan_dispatch_failures(journal):
+    """[(epoch, sessionKey, error)] for messages that failed before reaching the agent."""
+    out = []
+    for line in journal.splitlines():
+        if "message dispatch completed" not in line or "outcome=error" not in line:
+            continue
+        m = DISPATCH_FAIL.search(line)
+        if m:
+            out.append((line_time(line), m.group(1), (m.group(2) or "?").strip()))
+    return out
+
+
+def scan_user_waits(journal):
+    """[(inbound message id, sessionKey, first-visible s or None, dispatch delay s)].
+
+    One [firsttext-e2e.1] line is written per inbound message when its turn ends.
+    first-visible is the earliest status card or answer push after the person
+    sent it; None when nothing was pushed (a deliberate silence or a failure).
+    """
+    out = []
+    for line in journal.splitlines():
+        m = E2E.search(line)
+        if not m:
+            continue
+        try:
+            d = json.loads(m.group(1))
+        except ValueError:
+            continue
+        sent = d.get("sentAtMs")
+        if not sent:
+            continue
+        pushes = [d[k] for k in ("firstStatusPushAtMs", "firstPushAtMs", "firstAnswerPushAtMs") if d.get(k)]
+        fv = (min(pushes) - sent) / 1000 if pushes else None
+        dd = (d["dispatcherAtMs"] - sent) / 1000 if d.get("dispatcherAtMs") else None
+        out.append((d.get("inboundMessageId") or "%s@%s" % (d.get("sessionKey"), sent),
+                    d.get("sessionKey") or "?", fv, dd))
+    return out
+
+
+def recent(events, now_s, window_s):
+    return [e for e in events if e[0] is not None and now_s - e[0] <= window_s]
+
+
+def short_key(k):
+    """agent:makaron:feishu:group:oc_39d9f852... -> group:oc_39d9f852"""
+    parts = k.split(":")
+    return ":".join(parts[-2:])[:28] if len(parts) >= 2 else k[:28]
+
+
 def missing_plugin_paths(path):
     """plugins.load.paths entries that do not exist on disk; None if unreadable."""
     try:
@@ -286,6 +408,9 @@ def sample(cursor=None):
     out["cutoff"] = len(out["cutoff_ids"])
     out["received"] = j.count("received message from")
     out["worker_fail"], out["worker_invalid"] = scan_worker_failures(j)
+    out["saturated"], out["freezes"] = scan_main_thread(j)
+    out["dispatch_fail"] = scan_dispatch_failures(j)
+    out["waits"] = scan_user_waits(j)
     out["cfg_missing"] = {name: missing_plugin_paths(path) for name, path in CONFIG_FILES}
     out["crash_lines"], out["journal_cursor"] = scan_crashes(cursor)
     df = sh("df -BM --output=avail / | tail -1")
@@ -421,6 +546,78 @@ def main():
           "%d 分钟内有 %d 个 worker 请求因为配置无效直接失败（InvalidConfigError），"
           "用户看到的是「Agent couldn't generate a response」。" % (WINDOW // 60, s["worker_invalid"]),
           "worker 请求不再因为配置无效失败。")
+
+    # --- What the people talking to V actually experience (2026-10-12) ---
+    # Each window overlaps the previous one, so events are kept by identity
+    # and judged over a rolling window rather than per sample.
+    sat = st.setdefault("sat_events", {})
+    for t, deg in s.pop("saturated"):
+        if t is not None:
+            sat[str(t)] = deg
+    frz = st.setdefault("freeze_events", {})
+    new_freezes = []
+    for t, ms in s.pop("freezes"):
+        if t is not None and str(t) not in frz:
+            frz[str(t)] = ms
+            new_freezes.append(ms)
+    df = st.setdefault("dispatch_fail_events", {})
+    for t, key, err in s.pop("dispatch_fail"):
+        if t is not None:
+            df["%d|%s" % (t, key)] = err
+    waits = st.setdefault("wait_events", {})
+    for mid, key, fv, dd in s.pop("waits"):
+        if mid not in waits:
+            waits[mid] = [now_s, key, fv, dd]
+    for d, horizon in ((sat, 1800), (frz, 1800), (waits, 1800)):
+        for k in [k for k, v in d.items() if now_s - (int(k) if d is not waits else v[0]) > horizon]:
+            del d[k]
+    for k in [k for k in df if now_s - int(k.split("|", 1)[0]) > 7200]:
+        del df[k]
+
+    sat_recent = [int(k) for k in sat if now_s - int(k) <= SATURATED_WINDOW_S]
+    s["saturated_10m"] = len(sat_recent)
+    latch("saturated", len(sat_recent) >= SATURATED_COUNT,
+          "Gateway 主线程持续满负荷：10 分钟内 %d 次「事件循环占满超过 1 分钟」（最长连续 %d 秒）。"
+          "所有消息都在排队，用户会等很久甚至收不到回复；worker 有空位也没用。"
+          "常见原因是大会话被整段同步读取。" % (len(sat_recent), max([sat[str(t)] for t in sat_recent] or [0])),
+          "Gateway 主线程已不再持续满负荷。")
+
+    if new_freezes and now_s - st.get("freeze_last_alert", 0) >= 600:
+        alerts.append("Gateway 主线程刚刚整个卡住了 %d 秒（%d 次超过 %d 秒）。卡住期间没有任何消息被处理；"
+                      "超过 75 秒会进入每 30 秒关一次入口的循环，只有重启能清。"
+                      % (max(new_freezes) // 1000, len(new_freezes), FREEZE_OVERDUE_MS // 1000))
+        st["freeze_last_alert"] = now_s
+
+    slow = [(v[2], v[3], v[1]) for v in waits.values()
+            if now_s - v[0] <= SLOW_TURNS_WINDOW_S
+            and ((v[2] or 0) > SLOW_FIRST_VISIBLE_S or (v[3] or 0) > SLOW_DISPATCH_S)]
+    s["slow_turns_10m"] = len(slow)
+    worst = max([max(fv or 0, dd or 0) for fv, dd, _ in slow] or [0])
+    latch("slow_turns", len(slow) >= SLOW_TURNS_COUNT,
+          "用户在等：10 分钟内 %d 条消息要等 %d 秒以上才看到 V 的第一个反应（最长 %d 秒，涉及 %d 个会话）。"
+          "平时一天不超过几条。" % (len(slow), SLOW_DISPATCH_S, worst, len({k for _, _, k in slow})),
+          "用户等待时间已恢复正常。")
+
+    per = {}
+    for k, err in df.items():
+        t, key = k.split("|", 1)
+        if now_s - int(t) <= DISPATCH_FAIL_WINDOW_S:
+            n, _ = per.get(key, (0, err))
+            per[key] = (n + 1, err)
+    bad = {k: v for k, v in per.items() if v[0] >= DISPATCH_FAIL_PER_SESSION}
+    told = st.setdefault("dispatch_fail_told", {})
+    fresh_bad = {k: v for k, v in bad.items() if now_s - told.get(k, 0) >= REPEAT_ALERT_S}
+    if fresh_bad:
+        for k in fresh_bad:
+            told[k] = now_s
+        total = {k: sum(1 for x in df if x.split("|", 1)[1] == k) for k in fresh_bad}
+        alerts.append("%d 个会话发给 V 的消息在进入 agent 之前就失败了，对方收不到任何回复：\n%s"
+                      % (len(fresh_bad), "\n".join("  · %s：近 2 小时 %d 次，%s" % (short_key(k), total[k], v[1][:60])
+                                                   for k, v in sorted(fresh_bad.items()))))
+    for k in [k for k in told if k not in per and now_s - told[k] >= 1800]:
+        del told[k]
+        recovers.append("会话 %s 30 分钟内没有再出现分发失败。" % short_key(k))
+    s["dispatch_fail_sessions"] = len(bad)
 
     # Discrete events, not a state, so no latch. Measured 2026-09-23: about
     # five a day. Say it at most once an hour, carrying the count, so a bad
