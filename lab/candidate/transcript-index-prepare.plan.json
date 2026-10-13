@@ -3,7 +3,7 @@
     "lab/candidate/transcript-index-prepare.mjs",
     "lab/transcript-index-prepare-plan.json",
     "lab/release-files/transcript-index-prepare/session-transcript-index-9itOio9h.js",
-    "lab/release-files/transcript-index-prepare/config/sessions/session-transcript-reconcile.worker.js"
+    "lab/release-files/transcript-index-prepare/session-transcript-reconcile.worker.js"
   ],
   "files": [],
   "command": [

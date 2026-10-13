@@ -19,13 +19,14 @@ const fixtures = new URL('./fixtures/transcript-index-prepare/', import.meta.url
 const read = (name) => fs.readFileSync(new URL(name, fixtures), 'utf8');
 const sha = (value) => createHash('sha256').update(value).digest('hex');
 const INDEX = 'session-transcript-index-9itOio9h.js';
-const WORKER = 'config/sessions/session-transcript-reconcile.worker.js';
+const WORKER = 'session-transcript-reconcile.worker.js';
+const WORKER_TARGET = 'config/sessions/session-transcript-reconcile.worker.js';
 const plan = JSON.parse(fs.readFileSync(new URL('./transcript-index-prepare-plan.json', import.meta.url), 'utf8'));
 
 test('release files are the patchers applied to V bytes, anchors exactly once', () => {
   const sources = { [INDEX]: patchTranscriptProjectionSinglePass(read(INDEX)), [WORKER]: patchTranscriptReconcileReadOnly(read(WORKER)) };
   for (const file of plan.files) {
-    const name = file.target.replace('openclaw/dist/', '');
+    const name = path.basename(file.source);
     assert.equal(sha(read(name)), file.before);
     const built = fs.readFileSync(new URL(`../${file.source}`, import.meta.url), 'utf8');
     assert.equal(sha(built), file.after);
@@ -239,7 +240,7 @@ async function runWorker(source, scenario) {
       INSERT INTO session_windows VALUES ('s1'), ('s2');`);
     db.prepare("INSERT INTO schema_meta VALUES ('primary', 'agent', ?)").run(scenario === 'other-owner' ? 'someone-else' : 'makaron');
     db.close();
-    const file = path.join(dir, WORKER);
+    const file = path.join(dir, WORKER_TARGET);
     fs.writeFileSync(file, source);
     const events = [];
     const worker = new Worker(pathToFileURL(file), { workerData: { agentId: 'Makaron', path: dbPath } });
