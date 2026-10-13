@@ -331,6 +331,7 @@
         "lab/workboard-sweep-links.test.mjs",
         "lab/workboard-create-indexed.test.mjs",
         "lab/workboard-dispatch-slots.test.mjs",
+        "lab/workboard-start-context.test.mjs",
         "lab/sessions-get-exact-read.test.mjs",
         "lab/sessions-describe-exact-read.test.mjs",
         "lab/mirror-facts-identity.test.mjs",
