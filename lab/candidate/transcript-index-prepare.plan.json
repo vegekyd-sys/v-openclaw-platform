@@ -1,0 +1,12 @@
+{
+  "support": [
+    "lab/candidate/transcript-index-prepare.mjs",
+    "lab/transcript-index-prepare-plan.json",
+    "lab/release-files/transcript-index-prepare/session-transcript-index-9itOio9h.js",
+    "lab/release-files/transcript-index-prepare/config/sessions/session-transcript-reconcile.worker.js"
+  ],
+  "files": [],
+  "command": ["/opt/vlab/node-v22.23.1-linux-x64/bin/node", "--max-old-space-size=8192", "lab/candidate/transcript-index-prepare.mjs"],
+  "env": { "ROUNDS": "4", "ORDINARY": "20", "INFLATE": "5", "EXTRA_SESSIONS": "20", "ORDER": "A,B,A,B" },
+  "timeoutSeconds": 5400
+}

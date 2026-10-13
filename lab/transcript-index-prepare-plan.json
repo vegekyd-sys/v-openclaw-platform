@@ -1,0 +1,16 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/transcript-index-prepare/session-transcript-index-9itOio9h.js",
+      "target": "openclaw/dist/session-transcript-index-9itOio9h.js",
+      "before": "ae034fcf43287501cf1417231e6e2e09638c03a0729795e53d59c8fb8b6db42d",
+      "after": "5504f5decee060251f991e658a809a53e2548e4727cfb2838499a5a7c2ce84b1"
+    },
+    {
+      "source": "lab/release-files/transcript-index-prepare/config/sessions/session-transcript-reconcile.worker.js",
+      "target": "openclaw/dist/config/sessions/session-transcript-reconcile.worker.js",
+      "before": "9e67616999c6454ad460cff9e02a06cff9658a61f6f613065f370a587eade041",
+      "after": "95b9ddcd7d8bb9748e8263959e43af514d9ba70e2045aa3e668cc6a347bfcb5e"
+    }
+  ]
+}
