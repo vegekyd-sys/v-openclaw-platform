@@ -64,15 +64,19 @@ async function parent() {
 
   // ---- variant files ----
   const files = JSON.parse(fs.readFileSync("lab/transcript-index-prepare-plan.json", "utf8")).files;
-  const variants = { A: {}, B: {} };
+  // A = V, B = this PR; C = only the read-only Worker open, D = only the single-pass rebuild
+  const variants = { A: {}, B: {}, C: {}, D: {} };
   for (const file of files) {
     const target = path.join(runtime, file.target);
     const original = fs.readFileSync(target);
     assert.equal(sha(original), file.before, `runtime ${file.target} is not V's bytes`);
     const patched = fs.readFileSync(file.source);
     assert.equal(sha(patched), file.after, `${file.source} is not the planned build`);
+    const isWorker = file.target.endsWith(".worker.js");
     variants.A[target] = original;
     variants.B[target] = patched;
+    variants.C[target] = isWorker ? patched : original;
+    variants.D[target] = isWorker ? original : patched;
   }
   const neighbours = {};
   for (const name of ["node-sqlite-CL-d6drd.js", "openclaw-agent-db-CUTe8BX6.js", "openclaw-agent-db-maintenance-DYSkzMMg.js", "session-accessor-K0XuW6ln.js", "session-transcript-reconcile-j5qhAafV.js", "session-accessor.sqlite-transcript-store-DV0WFe1a.js", "transcript-tree-BH69pMSi.js", "kysely-sync-DKYGT267.js", "agent-id-CeT3w4ap.js"]) {
@@ -127,7 +131,7 @@ async function parent() {
   // ---- compare ----
   const digests = new Set(results.map((r) => r.digest));
   const summary = {};
-  for (const variant of ["A", "B"]) {
+  for (const variant of [...new Set(ORDER)]) {
     const rounds = results.filter((r) => r.variant === variant).flatMap((r) => r.rounds);
     const ordinary = results.filter((r) => r.variant === variant).flatMap((r) => r.ordinaryMs);
     summary[variant] = Object.fromEntries(["waitMs", "windowMs", "prepareMs", "workerWriteMs", "mainMaxHoldMs", "mainSumHoldMs", "eldMaxMs"].map((k) => [k, { med: med(rounds.map((r) => r[k])), max: max(rounds.map((r) => r[k])) }]));
