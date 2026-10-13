@@ -87,6 +87,9 @@ candidate `lab/candidate/codex-ds-window.mjs`（C 段，约 31 万 token 大会�
 
 **没有上线的另一半：把 DeepSeek 窗口提到 100 万。** `models.providers.deepseek.models[].contextTokens` 会以 `model_context_window` 传给 Codex（`model_context_window_override=true`），但 Codex 把它钳在模型目录的 `max_context_window`（兜底 272,000）以内。按线程传 `model_catalog_json`：`codex exec` 下窗口变 950,000、基础提示不变；但经 app-server 时窗口仍 258,400，基础提示反而换成目录里的（16,979 → 20,751 字）。只有改 makaron CODEX_HOME 的全局目录才行，那要抄全部 GPT 条目并冻结它们，暂不做。
 
+2026-10-13：改为只给 DeepSeek 线程的 app-server 加启动参数（单条目 catalog + 固定基础提示），见 `lab/release-files/codex-ds-window/`。
+经 app-server 时窗口不变的原因是模型目录在 app-server 进程启动时建一次；提示变长是因为配置了任何 catalog 后 Codex 不再剔除 update_plan 说明。
+
 ## E. 记忆整理回合把会话绑到自己的线程上（2026-10-08，thread-lifecycle）
 
 C 上线后，大群（oc_fab91、oc_64bcd621）仍然每条消息新开线程。原因：大会话回复后空闲时会跑推迟的记忆整理（#243），这一轮只有 read/write 两个工具；Codex 线程的工具在创建时固定，于是插件给它开了新线程，并把会话的绑定改成这个整理线程。下一条用户消息有 94 个工具，与绑定线程不符，只能再开新线程、重放整段历史（V 实测：14:03 一轮续用了线程，14:05 整理线程 9eb0 只有 2 个工具、提示 104 万字符，绑定随之改写）。

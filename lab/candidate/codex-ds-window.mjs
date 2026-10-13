@@ -11,6 +11,9 @@
 //   PHASES=T          owner and member turns share one thread (patch F)
 //   PHASES=S          a compaction handoff summary is not delivered as the reply (patch G)
 //   PHASES=U          big session, owner and member alternating: V's bytes vs codex-toolset-cover
+//   PHASES=W          DeepSeek's context window: V's bytes vs V + / dev + codex-ds-window (persistent thread
+//                     past 24.48万, new-thread replay, same instructions/tools/developer text)
+//   PHASES=X          deploy transition: a thread built on V's bytes resumes on codex-ds-window
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -397,6 +400,160 @@ try {
       console.log(JSON.stringify({ phase: "U", variant, results, threads: threads.length, compactions: threads.reduce((n, t) => n + t.compactions, 0), rollouts: threads }));
       member.stop?.();
     }
+  }
+  // W: DeepSeek's context window (codex-ds-window). V's bytes (v) against dev + the patch
+  // (fixed). A member pads the session past Codex's 244,800-token fallback compaction line on
+  // one thread (the persistent case), then the owner speaks for the first time, which opens a
+  // new thread and replays the whole transcript into it (the new-thread case), then the owner
+  // keeps talking on that thread. Requests go through the capture proxy so the instructions,
+  // tools and developer text DeepSeek receives can be compared between the variants.
+  if (PHASES.includes("W")) {
+    const vDist = path.join(repoRoot, "lab/release-files/vds-view-image/codex-dist");
+    const fixDist = path.join(repoRoot, "lab/release-files/codex-ds-window/dist");
+    const sidecars = ["v-deepseek-model-catalog.json", "v-deepseek-base-instructions.md"];
+    const firstRequests = {};
+    const report = {};
+    for (const variant of (process.env.W_VARIANTS ?? "v,window,fixed").split(",")) {
+      for (const f of fs.readdirSync(vDist)) fs.copyFileSync(path.join(vDist, f), path.join(codexDist, f));
+      for (const f of sidecars) fs.rmSync(path.join(codexDist, f), { force: true });
+      // window: V + this patch only. fixed: dev (V + codex-toolset-cover, #358) + this patch.
+      if (variant === "fixed") fs.copyFileSync(path.join(repoRoot, "lab/release-files/codex-toolset-cover/dist/thread-lifecycle-DAcEJ_Om.js"), path.join(codexDist, "thread-lifecycle-DAcEJ_Om.js"));
+      if (variant !== "v") for (const f of ["run-attempt-D1hJO4fX.js", ...sidecars]) fs.copyFileSync(path.join(fixDist, f), path.join(codexDist, f));
+      client?.stop?.(); await stopGateway(); startGateway(); await waitPort(); await sleep(3000);
+      await connectOnce(["operator.read", "operator.write"]);
+      const member = client;
+      await connect();
+      const key = `agent:makaron:explicit:vlab-dev-dswin-${variant}-${Date.now().toString(36)}`;
+      // A per-variant salt at the front keeps DeepSeek's prefix cache from carrying over.
+      const salt = `salt-${variant}-${randomUUID().slice(0, 8)}`;
+      const t0 = Date.now();
+      await send(key, "/vds");
+      const seeds = Number(process.env.W_SEED_MESSAGES ?? 7);
+      const seedWords = Number(process.env.W_SEED_WORDS ?? 22000);
+      const steps = [
+        ...Array.from({ length: seeds }, (_, i) => ["member", `${i === 0 ? `[${salt}] Remember the code word OTTER-4 and this list` : `Part ${i + 1} of the list`} for later; do not repeat it, just reply OK. ${bigText(seedWords)}`]),
+        ["member", "Do not use any tools. Remember a second code word LARCH-7 and reply with one short sentence."],
+        ["owner", "Do not use any tools. From our conversation only: list every code word given so far. One line."],
+        ["owner", "Do not use any tools. Remember a third code word BIRCH-2 and reply with one short sentence."],
+        ["owner", "Do not use any tools. From our conversation only: list every code word given so far. One line."],
+      ];
+      const results = [];
+      let ownerFirst;
+      let memberFirst;
+      for (const [who, msg] of steps) {
+        const mark = lines.length;
+        const c0 = captures.length;
+        const r = await send(key, msg, who === "owner" ? client : member);
+        const h = await client.request("chat.history", { agentId: "makaron", sessionKey: key, limit: 4 }, { timeoutMs: 30_000 });
+        const a = (h.messages ?? []).filter((m) => m.role === "assistant").at(-1);
+        const reply = typeof a?.content === "string" ? a.content : (a?.content ?? []).filter((c) => c.type === "text").map((c) => c.text).join(" ");
+        const log = lines.slice(mark);
+        const caps = captures.slice(c0).filter((c) => Array.isArray(c.json?.input));
+        if (who === "member" && !memberFirst && caps[0]) memberFirst = caps[0].json;
+        if (who === "owner" && !ownerFirst && caps[0]) ownerFirst = caps[0].json;
+        const lastInput = caps.at(-1)?.json?.input ?? [];
+        const firstNew = caps[0] ? caps[0].json.input.length : lastInput.length;
+        const toolCalls = lastInput.slice(firstNew).filter((i) => i.type === "function_call" || i.type === "custom_tool_call").map((i) => i.name);
+        results.push({ who, terminal: r.terminal, error: r.error, secs: Math.round((r.endAt - r.sentAt) / 1000), reply: String(reply).trim().slice(0, 100),
+          requests: caps.length, toolCalls: toolCalls.length ? toolCalls : undefined, requestKB: caps.map((c) => Math.round(JSON.stringify(c.json).length / 1024)),
+          compactions: log.filter((l) => /auto-compaction succeeded|compaction_succeeded/u.test(l)).length,
+          catalogLog: log.some((l) => /DeepSeek model catalog/u.test(l)) || undefined });
+      }
+      const appServers = spawnSync("bash", ["-c", "ps -eo args | grep -E 'codex[^ ]* .*app-server' | grep -v grep | cut -c1-600"], { encoding: "utf8" }).stdout.split("\n").filter(Boolean)
+        .map((l) => l.replace(/^\S*\/codex /u, "codex ").replaceAll(codexDist, "<dist>"));
+      // Per request on each thread: input and cached tokens from Codex's own token_count records.
+      const files = spawnSync("bash", ["-c", `find ${CODEX_HOME}/sessions -name 'rollout-*.jsonl' -newermt @${Math.floor(t0 / 1000)} | sort`], { encoding: "utf8" }).stdout.split("\n").filter(Boolean);
+      const threads = files.map((f) => {
+        let tools = null, compactions = 0; const windows = new Set(); const usage = []; let last;
+        for (const l of fs.readFileSync(f, "utf8").split("\n").filter(Boolean)) {
+          let e; try { e = JSON.parse(l); } catch { continue; }
+          const p = e.payload ?? {};
+          if (e.type === "session_meta") tools = (p.dynamic_tools ?? []).length;
+          if (e.type === "compacted") { compactions += 1; usage.push("C"); }
+          if (e.type === "event_msg" && p.type === "token_count" && p.info) {
+            windows.add(p.info.model_context_window);
+            const u = p.info.last_token_usage ?? {};
+            const k = `${u.input_tokens}/${u.cached_input_tokens}`;
+            if (k !== last) usage.push(`${Math.round((u.input_tokens ?? 0) / 1000)}k(${Math.round((u.cached_input_tokens ?? 0) / 1000)}k)`);
+            last = k;
+          }
+        }
+        return { thread: path.basename(f).slice(-41, -28), tools, compactions, windows: [...windows], requests: usage };
+      });
+      firstRequests[variant] = { member: memberFirst, owner: ownerFirst };
+      report[variant] = { results, appServers, threads, compactions: threads.reduce((n, t) => n + t.compactions, 0) };
+      console.log(JSON.stringify({ phase: "W", variant, ...report[variant] }));
+      member.stop?.();
+    }
+    // Same instructions, tools and developer text in the first request of each thread.
+    const developer = (json) => (json?.input ?? []).filter((i) => i.role === "developer" || i.role === "system").map((i) => JSON.stringify(i.content));
+    const compare = {};
+    const firstDiff = (x = "", y = "") => { let j = 0; while (j < Math.min(x.length, y.length) && x[j] === y[j]) j += 1; return j; };
+    for (const [variant, who] of Object.keys(firstRequests).filter((v) => v !== "v").flatMap((v) => [[v, "member"], [v, "owner"]])) {
+      const a = firstRequests.v?.[who], b = firstRequests[variant]?.[who];
+      if (!a || !b) continue;
+      const toolsA = new Map((a.tools ?? []).map((t) => [t.name ?? t.type, JSON.stringify(t)]));
+      const toolsB = new Map((b.tools ?? []).map((t) => [t.name ?? t.type, JSON.stringify(t)]));
+      const toolDiffs = [...new Set([...toolsA.keys(), ...toolsB.keys()])].filter((n) => toolsA.get(n) !== toolsB.get(n)).map((n) => {
+        const x = toolsA.get(n), y = toolsB.get(n), j = firstDiff(x, y);
+        return { tool: n, v: x?.slice(Math.max(0, j - 100), j + 120), [variant]: y?.slice(Math.max(0, j - 100), j + 120) };
+      });
+      const order = JSON.stringify([...toolsA.keys()]) === JSON.stringify([...toolsB.keys()]);
+      const ia = a.instructions ?? "", ib = b.instructions ?? "", ji = firstDiff(ia, ib);
+      const cmp = compare[`${variant}:${who}`] = {
+        instructionsDiff: ia === ib ? undefined : { at: ji, v: JSON.stringify(ia.slice(ji - 40, ji + 80)), [variant]: JSON.stringify(ib.slice(ji - 40, ji + 80)) },
+        toolOrderSame: order, toolDiffs,
+        instructions: { v: [sha(a.instructions), a.instructions?.length], [variant]: [sha(b.instructions), b.instructions?.length] },
+        tools: { v: [sha(JSON.stringify(a.tools)), a.tools?.length], [variant]: [sha(JSON.stringify(b.tools)), b.tools?.length] },
+        developer: { v: developer(a).map((d) => [sha(d), d.length]), [variant]: developer(b).map((d) => [sha(d), d.length]) },
+        otherFields: diffRequests(a, b).filter((d) => d.field !== "instructions" && d.field !== "tools"),
+        bodyKeys: Object.keys(b).sort(),
+      };
+      const da = developer(a), db = developer(b);
+      for (let i = 0; i < Math.max(da.length, db.length); i += 1) {
+        if (da[i] === db[i]) continue;
+        const j = firstDiff(da[i], db[i]);
+        (cmp.developerDiff ??= []).push({ item: i, at: j, v: da[i]?.slice(Math.max(0, j - 80), j + 160), [variant]: db[i]?.slice(Math.max(0, j - 80), j + 160) });
+      }
+    }
+    console.log(JSON.stringify({ phase: "W", compare }));
+  }
+  // X: the deploy transition. V's bytes build a /vds thread just under the old compaction line;
+  // then the Gateway restarts on this patch and the same session continues. The thread must be
+  // resumed (same thread id), keep the same instructions, take the 950,000 window, and grow past
+  // 24.48万 without compacting.
+  if (PHASES.includes("X")) {
+    const vDist = path.join(repoRoot, "lab/release-files/vds-view-image/codex-dist");
+    const fixDist = path.join(repoRoot, "lab/release-files/codex-ds-window/dist");
+    const sidecars = ["v-deepseek-model-catalog.json", "v-deepseek-base-instructions.md"];
+    const key = `agent:makaron:explicit:vlab-dev-dswin-resume-${Date.now().toString(36)}`;
+    const salt = `salt-x-${randomUUID().slice(0, 8)}`;
+    const t0 = Date.now();
+    const out = [];
+    const seedWords = Number(process.env.W_SEED_WORDS ?? 22000);
+    for (const [variant, seeds] of [["v", Number(process.env.X_SEEDS_BEFORE ?? 4)], ["window", Number(process.env.X_SEEDS_AFTER ?? 3)]]) {
+      for (const f of fs.readdirSync(vDist)) fs.copyFileSync(path.join(vDist, f), path.join(codexDist, f));
+      for (const f of sidecars) fs.rmSync(path.join(codexDist, f), { force: true });
+      if (variant === "window") for (const f of ["run-attempt-D1hJO4fX.js", ...sidecars]) fs.copyFileSync(path.join(fixDist, f), path.join(codexDist, f));
+      client?.stop?.(); await stopGateway(); startGateway(); await waitPort(); await sleep(3000); await connect();
+      if (variant === "v") await send(key, "/vds");
+      for (let i = 0; i < seeds; i += 1) {
+        const mark = lines.length;
+        const c0 = captures.length;
+        const msg = variant === "v" && i === 0 ? `[${salt}] Remember the code word OTTER-4 and this list for later; do not repeat it, just reply OK. ${bigText(seedWords)}` : `Part ${out.length + 1} of the list for later; do not repeat it, just reply OK. ${bigText(seedWords)}`;
+        const r = await send(key, msg);
+        const caps = captures.slice(c0).filter((c) => Array.isArray(c.json?.input));
+        out.push({ variant, terminal: r.terminal, error: r.error, secs: Math.round((r.endAt - r.sentAt) / 1000), requests: caps.length,
+          instructions: caps[0] ? [sha(caps[0].json.instructions), caps[0].json.instructions?.length] : undefined,
+          compactions: lines.slice(mark).filter((l) => /auto-compaction succeeded|compaction_succeeded/u.test(l)).length,
+          log: lines.slice(mark).filter((l) => /DeepSeek model catalog|starting a (fresh|new) thread|resum/iu.test(l)).map((l) => redact(l).slice(0, 200)).slice(-3) });
+      }
+    }
+    const r = await send(key, "Do not use any tools. From our conversation only: what code word was given at the start? One line.");
+    const h = await client.request("chat.history", { agentId: "makaron", sessionKey: key, limit: 4 }, { timeoutMs: 30_000 });
+    const a = (h.messages ?? []).filter((m) => m.role === "assistant").at(-1);
+    const reply = typeof a?.content === "string" ? a.content : (a?.content ?? []).filter((c) => c.type === "text").map((c) => c.text).join(" ");
+    console.log(JSON.stringify({ phase: "X", turns: out, recall: { terminal: r.terminal, reply: String(reply).trim().slice(0, 100) }, rollouts: rollouts(t0) }));
   }
 } catch (error) {
   console.error(redact(error instanceof Error ? error.stack : String(error)));

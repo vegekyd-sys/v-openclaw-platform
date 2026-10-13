@@ -1,0 +1,27 @@
+{
+  "support": [
+    "lab/candidate/codex-ds-window.mjs",
+    "lab/release-files/background-work-20261002/vlab-codex-parity/harness-DXVZ5II5.js",
+    "lab/release-files/codex-firsttext/dist/run-attempt-D1hJO4fX.js",
+    "lab/release-files/codex-firsttext/dist/thread-lifecycle-DAcEJ_Om.js",
+    "lab/release-files/vds-view-image/codex-dist/dynamic-tools-BU9tmlYm.js",
+    "lab/release-files/vds-view-image/codex-dist/run-attempt-D1hJO4fX.js",
+    "lab/release-files/vds-view-image/codex-dist/side-question-BTZAII4l.js",
+    "lab/release-files/vds-view-image/codex-dist/thread-lifecycle-DAcEJ_Om.js",
+    "lab/release-files/codex-toolset-cover/dist/thread-lifecycle-DAcEJ_Om.js",
+    "lab/release-files/codex-ds-window/dist/run-attempt-D1hJO4fX.js",
+    "lab/release-files/codex-ds-window/dist/v-deepseek-model-catalog.json",
+    "lab/release-files/codex-ds-window/dist/v-deepseek-base-instructions.md"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/codex-ds-window.mjs"
+  ],
+  "env": {
+    "PHASES": "W",
+    "W_SEED_MESSAGES": "7",
+    "W_SEED_WORDS": "22000"
+  },
+  "timeoutSeconds": 7200,
+  "user": "lab-db91-parity"
+}
