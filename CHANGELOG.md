@@ -122,6 +122,66 @@ worker 预热 40–45 s → 7–13 s。重启后两次 exec 回合（08:31、08:
 - `worker` worker.mjs  8b466a60 → 8c6b2e92
 - `worker` secret-egress-worker.mjs  — → 515e211e
 
+## v2026.9.1-db91.6-firsttext-card-note-20261010b
+
+上线：2026-10-10 01:27 CST（v-self-restart `20261010-012343-e920`，Tianyi 01:23 要求立即重启，187 s 就绪）  ·  tag `v2026.9.1-db91.6-firsttext-card-note-20261010b`
+
+**摘要**：修 #298 上线后的回归。batch-20261010 上 V 后，Tianyi 体感变慢、卡片底部 footer 逐字打出。原因是提前建卡时还不知道模型，footer 只有「Agent: …」，模型选定后用流式接口（`PUT …/elements/note/content`）补全，而且这次写入排在正文后续所有更新之前。V 上「卡片建好 → 首段正文」多出 1–21 s，投递 P50 从上线前的 1.2 s 变成 1.8 s，P95 15.8 s。#304：模型一选定就在后台补全 note；需要补全时改成整组件替换（`/elements/note`），不再排在正文前面。
+
+V 前后对比（统一口径：首字 = 飞书 create_time → 首段正文推送；同样 5 个测试群 × 2 轮，重启后满 20 min 再测）：
+
+| | 首字 P50 / P95 | 投递 P50 / P95 |
+|---|---|---|
+| 上线前（00:11，旧代码，高负载） | 13.6 / 20.4 s | 1.2 / 1.3 s |
+| #298（00:45） | 9.1 / 约 27 s | 1.8 / 15.8 s |
+| #304（01:44） | 8.6 / 12.1 s | 0.8 / 1.0 s |
+
+首字的变化里有一部分是负载差异；投递这一段是 #298/#304 直接影响的部分。教训见 memory `ship-only-verified-no-slowdown`：上 V 前要拿到「关键路径不变慢」的证据；首字只用统一口径报。
+
+相对上一版 `v2026.9.1-db91.6-batch-20261010-codex-feishu-workboard`：1 个文件变化。
+
+**经 VLab 发版 `firsttext-card-note-20261010b`**（firsttext-0jwr2n，dev `de3d64c4`）
+> 验收：2026-10-10 01:20 CST firsttext-card-note-20261010b = #304 (dev de3d64c4; feishu monitor.account 96f7b0b8 -> 763bb8eb) on shared VLab (live config renderMode=auto, unchanged), group 「VLab 压测 23」, same prompts A vs B. A = V bytes (batch-20261010, #298 only): deepseek token->first answer push 0.80-0.87 s (card send ~0.55 + queued note PUT), token->visible 1.50/1.52/1.61/2.08 (P50 1.57). B (#304, two …
+- `feishu` dist/monitor.account-WFdlCDhR.js  96f7b0b8 → 763bb8eb
+
+## v2026.9.1-db91.6-batch-20261010-codex-feishu-workboard
+
+上线：2026-10-10 00:24 CST（v-self-restart `20261010-002027-30fc`，00:14 起等空闲，00:20:27 请求，203 s 就绪）  ·  tag `v2026.9.1-db91.6-batch-20261010-codex-feishu-workboard`
+
+**摘要**：Tianyi 10/09 晚定的统一上线（「验证过有效果的上，没效果的别上」），由监控 session 统筹。三项都在共享 VLab 拿到效果证据才进包：
+
+- **#302 建卡只读需要的卡片。** 10/09 下午起 Gateway 主线程每小时卡 20–30 次、最长 22 s，钉钉随之断线；根因之一是 `workboard.cards.create` 每次全量 `list()` 看板（挂父卡时再全量读一次）。candidate 用 4150 张卡的真实看板：带父卡建卡 1261 → 10 ms，共享 VLab 复验 median 8 ms，行为逐项一致。派卡 `dispatchWithOptions`（今天 442 次、P50 2.9 s）同类问题留待下一批。
+- **#301 /vds 记忆整理循环与回合开始整读大会话。** V 重启后首个大会话回合日志 `codex-bounded-history.1`：10339 条事件只读最近 296 条（6.9 MB，516 ms）。
+- **#298 飞书卡片提前建好。** 共享 VLab A/B：投递 P50 1.4 → 1.0 s，建卡 P50 1.0 → 0.6 s。**上 V 后出现回归**（footer 逐字打出，并且挡住首段正文），由下一版 `firsttext-card-note-20261010b`（#304）修复。
+- 不在本包、同晚直接装到 V 的主机工具：#295 哨兵配置检查、#294 memory-indexer 持锁时长字段。未上：#303（无效果数据）、#280（需在含 #301 的 dev 上重建）。
+
+V 重启后：Worker 5/5 预热 ready；启动前 Codex 孤儿登记清理删掉 2 条（#205），Cannot reap 0；release-drift 0 findings；midTurnPrecheck 两份配置无变化。Codex 插件的 3 个文件（run-attempt、attempt-context、session-history）由 npm 管理，不在捕获范围，hash 见 VLab 发版记录。
+
+相对上一版 `release-batch-20261009`：6 个文件变化。
+
+**经 VLab 发版 `codex-big-session-20261009`**（claude-sweet-tesla-flush-loop，dev `e7720cc2`）
+> 验收：2026-10-09 23:01-23:06 CST 共享 VLab（Gateway 2810555，dev e7720cc2 / PR #301）：/vds 专用会话 vlab-dev-codex-big-session 三轮（记住 KESTREL-58、答出 KESTREL-58、exec 工具返回 vds-tool-ok）；默认 deepseek-flash（vlab-worker）exec 回合返回 default-ok；/vcodex gpt-6.1-sol 两轮（记住并答出 HERON-31）；部署后文件日志无 codex-bounded-history 警告、无 Cannot inspect、无回合失败。大会话截断读取与整理循环见 candidate lab/candidate/codex-big-history.mjs（172.6 MB 无压缩 /vds 会话：新线程投影逐…
+- `core` agent-runner-memory-7VF-zwNt.js  27f38ffb → 7d5eaa38
+- `core` agent-runner.runtime-CAdsMsQt.js  947ba056 → 75b5b4b1
+- `core` session-manager-CNTG_BAJ.js  ce091fda → 84317e32
+
+**经 VLab 发版 `batch-20261010-codex-feishu-workboard`**（claude-sweet-tesla-flush-loop，dev `0790a0e9`）
+> 验收：2026-10-09 23:40-23:56 CST 共享 VLab（dev 0790a0e9，Gateway 2815667，channels.feishu.renderMode=auto 与 V 一致）整批 #301+#298+#302： #298：VLab 压测群 A/B 各 8 条（A=V 字节+auto 23:30，B=整批 23:45，均重启后约 5 分钟），8/8 与 8/8 回复，均 vlab-worker。投递（出字→卡片可见）P50 1.4→1.0 s，建卡 P50 1.0→0.6 s；B 组 8 张卡全部 card-start precreated:true createMs:0，sendMs 0.5-1.1 s，1 张 4.2 s 为飞书发送接口本身（A 组的建卡时间也包含发送）。首字 P50 34.5→14.9 s 主要来自冷启动排队 23.9→10.7 s，不归…
+- `core` runtime-api-1CCazqtv.js  220fed4c → 5b836021
+- `core` sqlite-store-CH-caj1l.js  603c906a → 4ca26600
+- `feishu` dist/monitor.account-WFdlCDhR.js  ec089142 → 96f7b0b8
+
+**这期间合入 dev 的 PR**（9 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #294 fix(memory-indexer): slow-write 的持锁时长不再计入等锁时间
+- #295 feat(sentinel): 主配置/worker 配置坏了先告警，不等用户或重启发现
+- #302 perf(workboard): 建卡只读需要的卡片，不再全量读看板
+- #301 fix(codex): /vds 记忆整理循环与回合开始整读大会话
+- #300 Test: reconcile merged voice and card inventory counts
+- #299 Voice: recover actual avatar display and dialogue timelines
+- #298 feishu: 飞书卡片提前建好，首字不再等建卡（首字）
+- #297 Persist Xiaohe and Grok voice text for daily sync
+- #296 Release contextual voice avatar reactions and natural farewell controls
+
 ## release-batch-20261009
 
 上线：2026-10-09 01:19 CST（v-self-restart `20261009-011524-19f1`，01:15:24 空闲时请求，191 s 就绪）  ·  tag `release-batch-20261009`
