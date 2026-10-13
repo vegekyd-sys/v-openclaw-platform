@@ -97,6 +97,8 @@ C 上线后，大群（oc_fab91、oc_64bcd621）仍然每条消息新开线程�
 
 ## F. 主人和成员轮流说话时每次换线程（2026-10-08，thread-lifecycle）——已撤回，未上线
 
+2026-10-13：大会话里每次换发言人都会整段重放并立刻压缩（群 oc_88d96b7e），F 在 V 当前字节上重建为 `lab/release-files/codex-toolset-cover/`。
+
 2026-10-09：共享 VLab 对比显示首字没有可测的改善（见本节末尾），Tianyi 决定暂缓。`codex-toolset-cover-20261008` 只装到了 V 磁盘、没有重启生效，由 `codex-compaction-summary-20261009` 把 thread-lifecycle 换回 c0a9ce77；补丁脚本里的 F 已删除，T 场景与 toolset/swap 工具保留。
 
 现象：同一个群里，主人（Tianyi）和其他成员交替发言时，每换一个发言人就新开一个 Codex 线程、重放整段历史。V 上线程 7e2d（主人，106 个工具）和 38b4（成员，94 个工具）同属一个会话。
