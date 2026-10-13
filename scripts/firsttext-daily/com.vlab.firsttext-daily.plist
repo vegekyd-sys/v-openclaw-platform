@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Template: install.sh fills __JOB_DIR__, __OUT_DIR__ and __PATH__. Runs at 00:20 Mac local
+     time (expected Asia/Shanghai); launchd runs a missed slot once after the Mac wakes. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.vlab.firsttext-daily</string>
+  <key>ProgramArguments</key>
+  <array><string>/bin/bash</string><string>__JOB_DIR__/run.sh</string></array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>__PATH__</string>
+    <key>FIRSTTEXT_DAILY_DIR</key><string>__OUT_DIR__</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <dict><key>Hour</key><integer>0</integer><key>Minute</key><integer>20</integer></dict>
+  <key>StandardOutPath</key><string>__OUT_DIR__/launchd.out</string>
+  <key>StandardErrorPath</key><string>__OUT_DIR__/launchd.err</string>
+</dict>
+</plist>
