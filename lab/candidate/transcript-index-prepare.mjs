@@ -39,7 +39,7 @@ import { spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { monitorEventLoopDelay } from "node:perf_hooks";
+import { monitorEventLoopDelay, PerformanceObserver } from "node:perf_hooks";
 import { DatabaseSync } from "node:sqlite";
 
 const runtime = process.env.VLAB_CANDIDATE_RUNTIME;
@@ -326,6 +326,12 @@ async function child(variant, stateDir, argsJson) {
     await sleep(SETTLE_MS);
     const eld = monitorEventLoopDelay({ resolution: 5 });
     eld.enable();
+    const stalls = [];
+    let last = performance.now();
+    const sampler = setInterval(() => { const now = performance.now(); const lag = now - last - 5; last = now; if (lag >= 40) stalls.push({ at: Date.now(), lagMs: Math.round(lag) }); }, 5);
+    const gcs = [];
+    const gcObserver = new PerformanceObserver((list) => { for (const e of list.getEntries()) if (e.duration >= 10) gcs.push({ at: Math.round(performance.timeOrigin + e.startTime + e.duration), ms: Math.round(e.duration), kind: e.detail?.kind }); });
+    gcObserver.observe({ entryTypes: ["gc"] });
     const appendAt = Date.now();
     appendEvent(bigScope, { type: "custom", id: `conversation-turn-reply-tip-${r}`, customType: "openclaw.conversation-turn-reply", appendMode: "side", timestamp: 1791820000000 + r, data: { turnId: `tip-${r}`, message: { role: "assistant", content: [{ type: "text", text: `side reply ${r}` }] } } });
     assert(!current(big), "side append leaves the projection dirty");
@@ -345,7 +351,15 @@ async function child(variant, stateDir, argsJson) {
     await waitForReconcile(options);
     const doneAt = Date.now();
     eld.disable();
+    clearInterval(sampler);
+    gcObserver.disconnect();
     const rows = since(appendAt, doneAt);
+    // each main-thread stall >= 40 ms with what ended around it (transactions on either thread, main-thread GC)
+    const stallDetail = stalls.sort((a, b) => b.lagMs - a.lagMs).slice(0, 4).map((st) => ({
+      atMs: st.at - appendAt, lagMs: st.lagMs,
+      tx: rows.filter((x) => x.at >= st.at - st.lagMs - 20 && x.at <= st.at + 5).map((x) => `${x.main ? "main" : "worker"}:${x.op}:${x.holdMs}`),
+      gc: gcs.filter((g) => g.at >= st.at - st.lagMs - 20 && g.at <= st.at + 5).map((g) => `${g.kind}:${g.ms}`),
+    }));
     const main = rows.filter((x) => x.main && x.mode === "immediate");
     rounds.push({
       waitMs, waitError, windowMs,
@@ -357,6 +371,9 @@ async function child(variant, stateDir, argsJson) {
       mainWrites: main.length,
       ops: Object.entries(rows.reduce((m, x) => { const k = `${x.main ? "main" : "worker"}:${x.mode}:${x.op}`; m[k] = (m[k] ?? 0) + x.holdMs; return m; }, {})).map(([k, v]) => `${k}=${v}`),
       eldMaxMs: Math.round(eld.max / 1e6),
+      gcMaxMs: max(gcs.map((g) => g.ms)) ?? 0,
+      gcSumMs: gcs.reduce((a, g) => a + g.ms, 0),
+      stallDetail,
     });
   }
 
