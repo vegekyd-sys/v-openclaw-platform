@@ -82,7 +82,9 @@ const VARIANT_FILES = {
     codex: { "run-attempt-D1hJO4fX.js": "tmp/codex-v/run-attempt-D1hJO4fX.js", "attempt-context-DmQUNWwT.js": "tmp/codex-v/attempt-context-DmQUNWwT.js", "session-history-C5J1AKzG.js": "tmp/codex-v/session-history-C5J1AKzG.js" },
   },
   fixed: {
-    core: { "session-manager-CNTG_BAJ.js": "lab/release-files/context-window-read/session-manager-CNTG_BAJ.js", "agent-runner-memory-7VF-zwNt.js": "lab/release-files/memory-flush-defer/agent-runner-memory-7VF-zwNt.js", "agent-runner.runtime-CAdsMsQt.js": "lab/release-files/memory-flush-defer/agent-runner.runtime-CAdsMsQt.js" },
+    core: { "session-manager-CNTG_BAJ.js": "lab/release-files/context-window-read/session-manager-CNTG_BAJ.js", "agent-runner-memory-7VF-zwNt.js": "lab/release-files/memory-flush-defer/agent-runner-memory-7VF-zwNt.js", "agent-runner.runtime-CAdsMsQt.js": "lab/release-files/memory-flush-defer/agent-runner.runtime-CAdsMsQt.js",
+      // TAIL_TIMING=1: the codex-turn-tail core chunks too (lab/patch-codex-turn-tail.mjs)
+      ...(process.env.TAIL_TIMING === "1" ? { "node-sqlite-CL-d6drd.js": "lab/release-files/codex-turn-tail/node-sqlite-CL-d6drd.js", "ws-log-CFwaDvs6.js": "lab/release-files/codex-turn-tail/ws-log-CFwaDvs6.js", "embedded-agent-DaSvA-Yk.js": "lab/release-files/codex-turn-tail/embedded-agent-DaSvA-Yk.js" } : {}) },
     codex: { "run-attempt-D1hJO4fX.js": "lab/release-files/codex-firsttext/dist/run-attempt-D1hJO4fX.js", "attempt-context-DmQUNWwT.js": "lab/release-files/codex-firsttext/dist/attempt-context-DmQUNWwT.js", "session-history-C5J1AKzG.js": "lab/release-files/codex-firsttext/dist/session-history-C5J1AKzG.js" },
   },
 };
@@ -137,9 +139,12 @@ const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
 const port = Number(config.gateway?.port);
 config.channels = {};
 config.cron = { ...(config.cron ?? {}), enabled: false };
-const keep = new Set(["vlab-agent-worker-isolation", "deepseek", "openai", "codex", "memory-core"]);
-config.plugins.entries = Object.fromEntries(Object.entries(config.plugins.entries ?? {}).filter(([id]) => keep.has(id)));
-if (Array.isArray(config.plugins.allow)) config.plugins.allow = config.plugins.allow.filter((id) => keep.has(id));
+// ALL_PLUGINS=1 keeps every shared VLab plugin (their agent_end hooks run at a turn's end, as on V)
+if (process.env.ALL_PLUGINS !== "1") {
+  const keep = new Set(["vlab-agent-worker-isolation", "deepseek", "openai", "codex", "memory-core"]);
+  config.plugins.entries = Object.fromEntries(Object.entries(config.plugins.entries ?? {}).filter(([id]) => keep.has(id)));
+  if (Array.isArray(config.plugins.allow)) config.plugins.allow = config.plugins.allow.filter((id) => keep.has(id));
+}
 const shape = { reasoning: true, input: ["text", "image"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: CONTEXT_TOKEN_BUDGET, maxTokens: 384000, api: "openai-completions", compat: { supportsUsageInStreaming: true, supportsReasoningEffort: true, maxTokensField: "max_tokens", thinkingFormat: "deepseek" } };
 for (const [id, name] of [["deepseek-flash", "DeepSeek V4.1 Flash"], ["vds-deepseek-flash", "DeepSeek V4.1 Flash (Codex vds alias)"]]) {
   config.models.providers.deepseek.models = config.models.providers.deepseek.models.filter((m) => m.id !== id).concat([{ id, name, ...shape }]);
@@ -607,6 +612,40 @@ async function variantRun(variant) {
   return out;
 }
 
+// tail: the time from Codex's task_complete to the run's end (V 2026-10-10 after the batch: 6-12 s on a big
+// /vds group, about 1 s before). A fresh turn, then TAIL_TURNS short resumed turns per variant.
+const TAIL_TURNS = Number(process.env.TAIL_TURNS ?? 4);
+function taskCompletes() {
+  const files = spawnSync("bash", ["-c", `find ${CODEX_HOME}/sessions -name 'rollout-*.jsonl' 2>/dev/null`], { encoding: "utf8" }).stdout.split("\n").filter(Boolean);
+  const out = [];
+  for (const f of files) for (const l of fs.readFileSync(f, "utf8").split("\n").filter(Boolean)) {
+    let e; try { e = JSON.parse(l); } catch { continue; }
+    if (e.type === "event_msg" && e.payload?.type === "task_complete") out.push({ at: Date.parse(e.timestamp), file: path.basename(f).slice(-14, -6) });
+  }
+  return out.sort((x, y) => x.at - y.at);
+}
+async function tailRun(variant) {
+  restoreDatabase();
+  fs.rmSync(path.join(CODEX_HOME, "sessions"), { recursive: true, force: true });
+  const bytes = applyVariant(variant);
+  startGateway();
+  await waitPort();
+  await sleep(3000);
+  await connect();
+  const turns = [];
+  for (let i = 0; i <= TAIL_TURNS; i += 1) {
+    const r = await send(sessionKey, i === 0 ? "（自动化测试 tail-0）不要调用任何工具，只回复：OK-0" : `（自动化测试 tail-${i}）不要调用任何工具，只回复：收到 ${i}`);
+    await sleep(500);
+    const tc = taskCompletes().filter((t) => t.at >= r.sentAt && t.at <= r.endAt + 1000).at(-1);
+    const gapLines = tc ? lines.filter((l) => l.at >= tc.at && l.at <= r.endAt + 200).map((l) => plainLine(l.line)).filter((t) => !/firsttext-metrics|model-fetch|\[ws\]|HEARTBEAT|DingTalk|telegram/u.test(t)).map((t) => t.slice(0, 200)).slice(0, 25) : [];
+    const tailLine = lines.filter((l) => l.at >= r.sentAt && l.at <= r.endAt + 2000 && l.line.includes("[codex-turn-tail.1]")).map((l) => { const t = plainLine(l.line); try { return JSON.parse(t.slice(t.indexOf("{", t.indexOf("[codex-turn-tail.1]")), t.lastIndexOf("}") + 1)); } catch { return t.slice(0, 300); } }).at(-1) ?? null;
+    turns.push({ i, terminal: r.terminal, secs: r.secs, taskCompleteToEndMs: tc ? r.endAt - tc.at : null, thread: tc?.file, holds: holdsIn(tc?.at ?? r.sentAt, r.endAt), gapLines, tailLine });
+    console.log(JSON.stringify({ phase: "tail-turn", variant, ...turns.at(-1) }));
+  }
+  client?.stop?.();
+  await stopGateway();
+  return { variant, bytes, turns };
+}
 const results = {};
 try {
   sessionKey = buildPrivateDatabase();
@@ -616,6 +655,17 @@ try {
   if (PHASES.includes("direct")) {
     results.direct = direct();
     console.log(JSON.stringify({ phase: "direct", ...results.direct }));
+  }
+  if (PHASES.includes("tail")) {
+    await new Promise((r) => proxy.listen(0, "127.0.0.1", r));
+    fs.mkdirSync(CODEX_HOME, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(path.join(CODEX_HOME, "config.toml"), `[model_providers.deepseek]\nname = "DeepSeek"\nbase_url = "http://127.0.0.1:${proxy.address().port}/v1"\nwire_api = "responses"\nenv_key = "DEEPSEEK_API_KEY"\n`, { mode: 0o600 });
+    results.tail = [];
+    for (const variant of VARIANTS) {
+      const r = await tailRun(variant);
+      results.tail.push(r);
+      console.log(JSON.stringify({ phase: "tail", variant, gaps: r.turns.map((t) => t.taskCompleteToEndMs), secs: r.turns.map((t) => t.secs) }));
+    }
   }
   if (PHASES.includes("turns")) {
     await new Promise((r) => proxy.listen(0, "127.0.0.1", r));

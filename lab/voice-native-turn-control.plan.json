@@ -1,0 +1,9 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/voice-native-turn-control/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
+      "target": "openclaw/dist/realtime-quicksilver-delegation-controller-B0yPpiHp.js",
+      "before": "7ddf7fae2db39deaf45cb8cefbadbf5d38e39f373c0d49bf51aacaa208d3d55a"
+    }
+  ]
+}

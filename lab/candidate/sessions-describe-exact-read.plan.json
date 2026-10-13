@@ -1,0 +1,23 @@
+{
+  "support": [
+    "lab/candidate/sessions-describe-exact-read.mjs",
+    "lab/release-files/sessions-get-exact-read/sessions-read-C6mAMxyQ.js",
+    "lab/release-files/sessions-describe-exact-read/sessions-read-C6mAMxyQ.js"
+  ],
+  "files": [
+    {
+      "source": "lab/release-files/sessions-describe-exact-read/sessions-read-C6mAMxyQ.js",
+      "target": "openclaw/dist/sessions-read-C6mAMxyQ.js",
+      "before": "bfecaccaf2e0159273c3a9a1973bde806a9393dbff4f1f2e356a3ba61c4b5d4f"
+    }
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/sessions-describe-exact-read.mjs"
+  ],
+  "timeoutSeconds": 5400,
+  "user": "lab-db91-parity",
+  "env": {
+    "SAMPLE": "30"
+  }
+}

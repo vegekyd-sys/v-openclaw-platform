@@ -49,6 +49,74 @@ import { generatedImageAssetFromBase64 } from "openclaw/plugin-sdk/image-generat
 import { resolveGeneratedMediaMaxBytes } from "openclaw/plugin-sdk/media-generation-runtime";
 import { saveMediaBuffer } from "openclaw/plugin-sdk/media-store";
 import { stripInvisibleUnicode } from "openclaw/plugin-sdk/web-content-extractor";
+//#region V codex-turn-tail-v1: Codex turn tail timing (logging only)
+function __vCodexTurnTail() {
+	const key = Symbol.for("openclaw.v.codexTurnTail.v1");
+	if (globalThis[key]) return globalThis[key];
+	const runs = new Map();
+	let sampler;
+	let lastTick = 0;
+	const tick = () => {
+		const now = Date.now();
+		const lag = Math.max(0, now - lastTick - 100);
+		lastTick = now;
+		for (const run of runs.values()) {
+			if (lag > run.lagMaxMs) run.lagMaxMs = lag;
+			if (lag >= 50) run.lagOver50Ms += lag;
+		}
+	};
+	const api = {
+		start(runId, meta) {
+			try {
+				if (typeof runId !== "string" || !runId || runs.has(runId)) return;
+				const now = Date.now();
+				for (const [id, run] of runs) if (now - run.startedAt > 6e5) runs.delete(id);
+				if (runs.size >= 64) runs.delete(runs.keys().next().value);
+				runs.set(runId, { runId, ...meta, startedAt: now, last: now, steps: [], tx: [], rpc: [], lagMaxMs: 0, lagOver50Ms: 0 });
+				if (!sampler) {
+					lastTick = now;
+					sampler = setInterval(tick, 100);
+					sampler.unref?.();
+				}
+			} catch {}
+		},
+		mark(runId, step) {
+			try {
+				const run = runs.get(runId);
+				if (!run) return;
+				const now = Date.now();
+				run.steps.push([step, now - run.last]);
+				run.last = now;
+			} catch {}
+		},
+		note(kind, item) {
+			try {
+				if (runs.size === 0) return;
+				const now = Date.now();
+				for (const run of runs.values()) if (run[kind].length < 40) run[kind].push({ ...item, atMs: now - run.startedAt });
+			} catch {}
+		},
+		active() {
+			return runs.size > 0;
+		},
+		end(runId) {
+			try {
+				const run = runs.get(runId);
+				if (!run) return;
+				runs.delete(runId);
+				if (runs.size === 0 && sampler) {
+					clearInterval(sampler);
+					sampler = void 0;
+				}
+				const { last, startedAt, ...rest } = run;
+				return { ...rest, totalMs: Date.now() - startedAt };
+			} catch {}
+		}
+	};
+	globalThis[key] = api;
+	return api;
+}
+//#endregion
 //#region extensions/codex/src/app-server/attempt-steering.ts
 /**
 * Debounced steering queue for forwarding user messages to an active Codex
@@ -1545,6 +1613,7 @@ var CodexAppServerEventProjector = class {
 				});
 				break;
 			case "turn/completed":
+				__vCodexTurnTail().start(this.params.runId, { harness: "codex", provider: this.params.provider ?? null, model: this.params.modelId ?? null }); // V codex-turn-tail-v1
 				await this.handleTurnCompleted(params);
 				break;
 			case "rawResponse/completed":
@@ -3998,6 +4067,7 @@ async function finalizeCodexAttempt(resources, turnRuntime, lifecycle, notificat
 	const { codexModelCallDiagnostics } = requestRuntime;
 	const { activeTurnId, activeProjector, streamState, freezeRunTerminalOutcome, notifyUserMessagePersisted } = activeTurn;
 	await completion;
+	__vCodexTurnTail().mark(params.runId, "turn-completion"); // V codex-turn-tail-v1
 	const abortGraceElapsed = createDeferred();
 	let settlementClosed = false;
 	let abortGraceTimer;
@@ -4024,6 +4094,7 @@ async function finalizeCodexAttempt(resources, turnRuntime, lifecycle, notificat
 		deadlines.dispose();
 		if (!state.projectionClosed) await resources.runCleanupStep("codex-transcript-checkpoint", closeProjection);
 	}
+	__vCodexTurnTail().mark(params.runId, "drain-close-projection"); // V codex-turn-tail-v1
 	const result = activeProjector.buildResult(toolBridge.telemetry, { yieldDetected: toolState.yieldDetected });
 	const projectedTerminal = attemptTerminal.project(result.terminal);
 	const effectiveTimedOut = state.timeout !== void 0;
@@ -4052,6 +4123,7 @@ async function finalizeCodexAttempt(resources, turnRuntime, lifecycle, notificat
 			threadId: resourceState.thread.threadId
 		});
 	}
+	__vCodexTurnTail().mark(params.runId, "turn-drain"); // V codex-turn-tail-v1
 	const refreshedUsageLimitPromptError = await refreshCodexUsageLimitPromptError({
 		client: resourceState.client,
 		message: finalPromptErrorMessage,
@@ -4110,7 +4182,9 @@ async function finalizeCodexAttempt(resources, turnRuntime, lifecycle, notificat
 	if (modelCallFailureKind) codexModelCallDiagnostics.emitError(finalPromptError ?? "codex app-server attempt interrupted", { failureKind: modelCallFailureKind });
 	else if (finalPromptError) codexModelCallDiagnostics.emitError(finalPromptError);
 	else codexModelCallDiagnostics.emitCompleted(result);
+	__vCodexTurnTail().mark(params.runId, "usage-and-result"); // V codex-turn-tail-v1
 	await activeTurn.promptMirrorSettled; // v-codex-firsttext-v1
+	__vCodexTurnTail().mark(params.runId, "prompt-mirror-wait"); // V codex-turn-tail-v1
 	const mirrorOutcome = await codexTranscriptMirrorRuntime.mirrorBestEffort({
 		params,
 		agentId: sessionAgentId,
@@ -4121,6 +4195,7 @@ async function finalizeCodexAttempt(resources, turnRuntime, lifecycle, notificat
 		threadId: resourceState.thread.threadId,
 		turnId: activeTurnId
 	});
+	__vCodexTurnTail().mark(params.runId, "transcript-mirror"); // V codex-turn-tail-v1
 	const { assistantTranscriptOwned, assistantTranscriptIdempotencyKey, terminalAnchor } = mirrorOutcome;
 	const settledTurnFinalizationContext = result.assistantTexts.every((text) => !text.trim()) && result.messagesSnapshot.some((message) => message.role === "toolResult") && (!finalPromptError || activeProjector.settledTurnFailureFinalizationAllowed) ? await captureCodexSettledTurnFinalizationContext({
 		...activeTranscriptTarget,
@@ -4128,6 +4203,7 @@ async function finalizeCodexAttempt(resources, turnRuntime, lifecycle, notificat
 		settledMessages: result.messagesSnapshot,
 		turnId: activeTurnId
 	}) ?? Object.freeze({ source: "unavailable" }) : void 0;
+	__vCodexTurnTail().mark(params.runId, "settled-finalization"); // V codex-turn-tail-v1
 	if (settledTurnFinalizationContext?.source === "unavailable") embeddedAgentLog.warn("codex settled-turn finalization context is unavailable", {
 		threadId: resourceState.thread.threadId,
 		turnId: activeTurnId
@@ -4171,6 +4247,7 @@ async function finalizeCodexAttempt(resources, turnRuntime, lifecycle, notificat
 		},
 		hookRunner
 	});
+	__vCodexTurnTail().mark(params.runId, "agent-end-hooks"); // V codex-turn-tail-v1
 	state.shouldDelayNativeHookRelayUnregister = completedTurnStatus === "completed" && !effectiveTimedOut && !runAbortController.signal.aborted && !finalAborted && !finalPromptError;
 	if (state.shouldDelayNativeHookRelayUnregister) try {
 		await markCodexAppServerBindingCoveredThroughTurn({
@@ -4194,6 +4271,7 @@ async function finalizeCodexAttempt(resources, turnRuntime, lifecycle, notificat
 			error
 		});
 	}
+	__vCodexTurnTail().mark(params.runId, "binding-mark"); // V codex-turn-tail-v1
 	recordCodexTrajectoryCompletion(trajectoryRecorder, {
 		attempt: params,
 		result,
