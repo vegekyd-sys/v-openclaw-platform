@@ -30,7 +30,7 @@ function remote(script, { timeoutMs = 180_000 } = {}) {
 }
 // Journal lines since t0 (epoch seconds), with their own timestamps.
 function journal(sinceS) {
-  const out = remote(`sudo journalctl -u ${target.unit} --since @${Math.floor(sinceS)} --no-pager -o short-unix | sed 's/\\x1b\\[[0-9;]*m//g' | grep -a -E 'Starting |Started |preflight (start|passed)|clean-restart carry|ws client ready|"stage":"pool-ready"|\\[gateway\\] ready|database-verify|worker-runtime-prewarm' || true`, { timeoutMs: 60_000 });
+  const out = remote(`sudo journalctl -u ${target.unit} --since @${Math.floor(sinceS)} --no-pager -o short-unix | sed 's/\\x1b\\[[0-9;]*m//g' | grep -a -E 'Stopping |Stopped |Starting |Started |preflight (start|passed)|clean-restart carry|ws client ready|"stage":"pool-ready"|\\[gateway\\] ready|database-verify|worker-runtime-prewarm' || true`, { timeoutMs: 60_000 });
   return out.split("\n").filter(Boolean).map((l) => ({ t: Number(l.slice(0, l.indexOf(" "))), line: l.slice(l.indexOf(" ") + 1) }));
 }
 
@@ -42,11 +42,13 @@ const send = (text) => {
 };
 const botMessages = () => (lark(["im", "+chat-messages-list", "--as", "user", "--chat-id", target.chat, "--page-size", "30", "--no-reactions"]).data?.messages ?? [])
   .filter((m) => m.sender?.sender_type === "app").map((m) => ({ id: m.message_id, replyTo: m.reply_to, content: String(m.content ?? "") }));
-async function awaitReply(requestId, test, timeoutMs) {
+// Bot messages that already existed before a request can never be its reply.
+const seenBefore = () => new Set(botMessages().map((m) => m.id));
+async function awaitReply(requestId, test, timeoutMs, before = new Set()) {
   const deadline = Date.now() + timeoutMs;
   let last = null;
   while (Date.now() < deadline) {
-    const all = botMessages();
+    const all = botMessages().filter((m) => !before.has(m.id));
     last = all.find((m) => test(m.content)) ?? all.find((m) => m.replyTo === requestId) ?? last;
     if (last && test(last.content)) return { ...last, at: Date.now() };
     await sleep(1_500);
@@ -59,9 +61,22 @@ try {
   const active = remote(`PID=$(systemctl show -p MainPID --value ${target.unit}); ps -o pid= --ppid "$PID" -o args= | grep -c '/worker.mjs' || true`).trim();
   log("before", { workerProcesses: Number(active) });
 
+  if (args["exec-only"] === "true") {
+    const execBefore = seenBefore();
+    const t1 = Date.now();
+    const execId = send("这是一次自动化验收，请严格照做：用 exec 工具运行命令 cat /proc/sys/kernel/random/uuid，然后只回复命令输出的那一行，不要其他文字。");
+    const execReply = await awaitReply(execId, (c) => /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/u.test(c), 300_000, execBefore);
+    report.execTurn = { seconds: Math.round((execReply.at - t1) / 100) / 10, runtime: footerRuntime(execReply.content), reply: execReply.id };
+    report.ok = true;
+    console.log(JSON.stringify(report, null, 1));
+    process.exit(0);
+  }
   // 1. restart, and a user message as soon as Feishu is connected
   const t0 = Date.now() / 1000;
-  remote(`sudo systemctl restart ${target.unit}`, { timeoutMs: 600_000 });
+  // V restarts through its own entry (docs/v-self-restart.md): stop, clear dead Codex
+  // registrations, start. The clock starts when the request is made.
+  if (args["self-restart"] === "true") remote(`sudo v-self-restart --reason ${sq(`restart-speed 计时验收 ${tag}`)} --requested-by ${sq("Tianyi 在 Claude 会话「V重启速度优化」说：发吧，新重启速度注意计时")} --delay 0 --force`, { timeoutMs: 120_000 });
+  else remote(`sudo systemctl restart ${target.unit}`, { timeoutMs: 600_000 });
   const marker = `${tag}-R-OK`;
   let sent = null;
   let marks = {};
@@ -70,17 +85,17 @@ try {
     const lines = journal(t0 - 1);
     const first = (re) => lines.find((l) => re.test(l.line))?.t;
     marks = {
-      started: first(/systemd\[1\]: Started /u), preflightStart: first(/preflight start/u), preflightEnd: first(/preflight passed/u),
+      stopping: first(/systemd\[1\]: Stopping /u), stopped: first(/systemd\[1\]: Stopped /u), started: first(/systemd\[1\]: Started /u), preflightStart: first(/preflight start/u), preflightEnd: first(/preflight passed/u),
       feishuWs: first(/ws client ready/u), firstWorker: first(/"stage":"pool-ready"/u), gatewayReady: first(/\[gateway\] ready/u),
     };
     report.carry = lines.find((l) => l.line.includes("clean-restart carry"))?.line.replace(/^.*clean-restart carry: /u, "") ?? null;
     report.preflight = lines.find((l) => l.line.includes("preflight passed"))?.line.replace(/^.*preflight passed/u, "passed") ?? null;
-    if (!sent && marks.feishuWs) { sent = { id: send(`只回复 ${marker}，不要调用任何工具。`), at: Date.now() }; log("sent", { afterRestartS: Math.round(sent.at / 1000 - t0) }); }
+    if (!sent && marks.feishuWs) { sent = { before: seenBefore(), id: send(`只回复 ${marker}，不要调用任何工具。`), at: Date.now() }; log("sent", { afterRestartS: Math.round(sent.at / 1000 - t0) }); }
     if (sent && marks.gatewayReady) break;
     await sleep(1_000);
   }
   assert(sent, "Feishu never connected");
-  const reply = await awaitReply(sent.id, (c) => c.includes(marker), 300_000);
+  const reply = await awaitReply(sent.id, (c) => c.includes(marker), 300_000, sent.before);
   report.restart = Object.fromEntries(Object.entries(marks).map(([k, v]) => [k, v ? Math.round((v - t0) * 10) / 10 : null]));
   report.restart.messageSentS = Math.round((sent.at / 1000 - t0) * 10) / 10;
   report.restart.replySeenS = Math.round((reply.at / 1000 - t0) * 10) / 10;
@@ -90,9 +105,10 @@ try {
   log("restart", report.restart);
 
   // 2. a Worker turn that must run exec: the answer is a fresh UUID only the command produces
+  const execBefore = seenBefore();
   const t1 = Date.now();
   const execId = send("这是一次自动化验收，请严格照做：用 exec 工具运行命令 cat /proc/sys/kernel/random/uuid，然后只回复命令输出的那一行，不要其他文字。");
-  const execReply = await awaitReply(execId, (c) => /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/u.test(c), 300_000);
+  const execReply = await awaitReply(execId, (c) => /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/u.test(c), 300_000, execBefore);
   report.execTurn = { seconds: Math.round((execReply.at - t1) / 100) / 10, runtime: footerRuntime(execReply.content), uuid: true };
   log("exec", report.execTurn);
 

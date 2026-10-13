@@ -323,6 +323,7 @@
         "lab/feishu-codex-early-card.test.mjs",
         "lab/feishu-card-precreate.test.mjs",
         "lab/early-tool-status.test.mjs",
+        "lab/restart-recovery-claim-release.test.mjs",
         "lab/no-reply-after-tool.test.mjs",
         "lab/feishu-empty-card-discard.test.mjs",
         "scripts/node-async-context-frame.test.mjs",
