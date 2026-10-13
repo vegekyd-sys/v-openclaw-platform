@@ -11,6 +11,20 @@
 
 ---
 
+## voice-streamed-hangup-20261013b
+
+上线：2026-10-13 10:22 CST 装到 V（备份 `/opt/v-release-backups/voice-streamed-hangup-20261013b-20261013T022215`），Gateway 业务排空后受控重启生效  ·  tag `voice-streamed-hangup-20261013b`
+
+**摘要**：Voice 控制修复（Voice #4/#5，已合入并上线 85d18ab）：后台任务还在跑时挂断能干净结束；Agent 最终回复期间用户插话，回复听得见且不再续读。Gateway 侧只更新 #344 已合入的实时委派控制器一个文件，没有新增 exec 准入、权限或 Worker 改动；最终字幕修复只切换 Voice 入口。
+
+相对上一版 `restart-speed-20261013`：1 个文件变化。
+
+**经 VLab 发版 `voice-streamed-hangup-20261013b`**（01a0fb0e-739d-7681-9238-faa2c1912c6c，dev `ecc162ba`）
+> 验收：/Users/tianyicai/v-upgrade-private/voice-native-turn-control-20261012/streamed-hangup/acceptance-report.md；真实WebRTC+Agent final插话后回复听得见且不续读；后台查询未返回时挂断，最后转录到Gateway close 7.940秒，WebRTC closed、空白拨号页、mic sender disabled；Voice 57a774df，153文件0884f80922900d7bf49ae7e712fb1fe85498f9913665c591f991ea1ee49e08df。
+- `core` realtime-quicksilver-delegation-controller-B0yPpiHp.js  7ddf7fae → 3e098e6a
+
+回滚：`node scripts/promote-to-v.mjs --undo /opt/v-release-backups/voice-streamed-hangup-20261013b-20261013T022215`（需重启）。
+
 ## restart-speed-20261013
 
 上线：2026-10-13 08:30 CST 生效（08:20 装到 V，08:26 首次重启）  ·  tag `restart-speed-20261013`
