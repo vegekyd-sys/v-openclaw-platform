@@ -109,7 +109,7 @@ async function parent() {
     const txLog = path.join(stateDir, "tx.jsonl");
     const run = spawnSync(process.execPath, ["--max-old-space-size=8192", process.argv[1], "child", variant, stateDir, JSON.stringify({ big: built.big, sessions: built.sessions })], {
       encoding: "utf8", maxBuffer: 256 * 1024 ** 2,
-      env: { ...process.env, OPENCLAW_STATE_DIR: stateDir, TIP_TX_LOG: txLog },
+      env: { ...childEnv(stateDir), TIP_TX_LOG: txLog },
     });
     const lines = run.stdout.trim().split("\n").filter((l) => l.startsWith("{"));
     const result = JSON.parse(lines.at(-1) ?? "{}");
@@ -140,6 +140,17 @@ async function parent() {
   fs.writeFileSync("tip-report.json", JSON.stringify({ report, results }, null, 2));
   console.log(JSON.stringify({ phase: "report", ...report }));
   assert.equal(digests.size, 1, "A and B left different projections");
+}
+
+// The candidate environment points db91 state checks (OPENCLAW_DB91_INTEGRITY_STATE_ROOT, ...) at
+// the candidate's state directory; each child moves every such path to its own directory.
+function childEnv(stateDir) {
+  const from = process.env.OPENCLAW_STATE_DIR;
+  const env = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    env[key] = value === from ? stateDir : value?.startsWith(`${from}/`) ? stateDir + value.slice(from.length) : value;
+  }
+  return env;
 }
 
 function buildBase(srcPath, dstPath, { INFLATE, EXTRA_SESSIONS, MEDIA_ROWS }) {
@@ -281,6 +292,7 @@ async function child(variant, stateDir, argsJson) {
   const index = await import(path.join(dist, indexFile));
   const agentDb = await import(path.join(dist, dbFile));
   const appendEvent = accessor[exp(accessorFile, "appendTranscriptEventSync")];
+  const appendMessage = accessor[exp(accessorFile, "appendTranscriptMessageSync")];
   const waitForProjection = reconcile[exp(reconcileFile, "waitForSessionTranscriptProjection")];
   const waitForReconcile = reconcile[exp(reconcileFile, "waitForSessionTranscriptIndexReconcile")];
   const startReconcile = reconcile[exp(reconcileFile, "startSessionTranscriptIndexReconcile")];
@@ -289,7 +301,7 @@ async function child(variant, stateDir, argsJson) {
   const shouldSync = index[exp(indexFile, "shouldRebuildSessionTranscriptIndexSynchronously")];
   const openDb = agentDb[exp(dbFile, "openOpenClawAgentDatabase")];
   const writeTx = agentDb[exp(dbFile, "runOpenClawAgentWriteTransaction")];
-  for (const f of [appendEvent, waitForProjection, waitForReconcile, startReconcile, markDirty, reconcileInTx, shouldSync, openDb, writeTx]) assert.equal(typeof f, "function");
+  for (const f of [appendEvent, appendMessage, waitForProjection, waitForReconcile, startReconcile, markDirty, reconcileInTx, shouldSync, openDb, writeTx]) assert.equal(typeof f, "function");
   const options = { agentId: AGENT, path: dbPath };
   const bigScope = { agentId: AGENT, ...sessions.find((s) => s.sessionId === big) };
   const ro = new DatabaseSync(dbPath, { readOnly: true });
@@ -353,10 +365,10 @@ async function child(variant, stateDir, argsJson) {
   const ordinaryAt = Date.now();
   const ordinaryMs = [];
   for (let i = 0; i < ORDINARY; i += 1) {
-    const leaf = ro.prepare("SELECT leaf_event_id FROM session_transcript_index_state WHERE session_id = ?").get(big).leaf_event_id;
     const t = Date.now();
-    appendEvent(bigScope, { type: "message", id: `tip-ordinary-${i}`, parentId: leaf, timestamp: new Date(1791821000000 + i).toISOString(), message: { role: i % 2 ? "assistant" : "user", content: [{ type: "text", text: `ordinary ${i}` }] } });
+    const appended = appendMessage(bigScope, { eventId: `tip-ordinary-${i}`, now: 1791821000000 + i, message: { role: i % 2 ? "assistant" : "user", content: [{ type: "text", text: `ordinary ${i}` }], timestamp: 1791821000000 + i } });
     ordinaryMs.push(Date.now() - t);
+    assert(appended.ok && appended.value?.appended, `ordinary append ${i}: ${JSON.stringify(appended)}`);
   }
   await sleep(1500);
   const ordinaryRows = since(ordinaryAt);
