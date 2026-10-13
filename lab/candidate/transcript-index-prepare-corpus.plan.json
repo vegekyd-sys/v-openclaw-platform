@@ -1,0 +1,6 @@
+{
+  "support": ["lab/candidate/transcript-index-prepare-corpus.mjs", "lab/fixtures/transcript-index-prepare/session-transcript-index-9itOio9h.js"],
+  "files": [],
+  "command": ["nice", "-n", "15", "/opt/vlab/node-v22.23.1-linux-x64/bin/node", "--max-old-space-size=8192", "lab/candidate/transcript-index-prepare-corpus.mjs"],
+  "timeoutSeconds": 3600
+}
