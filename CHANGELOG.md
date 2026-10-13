@@ -11,6 +11,52 @@
 
 ---
 
+## restart-speed-20261013
+
+上线：2026-10-13 08:30 CST 生效（08:20 装到 V，08:26 首次重启）  ·  tag `restart-speed-20261013`
+
+**摘要**：Tianyi 于 2026-10-13 批准（「发吧 如果有问题注意回滚 新重启速度注意计时」）。V 重启到能用从约 200 s 降到约 40 s：干净重启时 8 个 agent 库（22 GB）沿用上一生命周期的全量检查，不再每次启动前重读（崩溃、重启宿主机、撤销、过期、文件变化仍全量）；worker 预热不再和 Gateway 互相等 30 s 的 `secrets.resolve`；worker 用上 dist 解析快路径，Gateway/worker 开 Node 编译缓存。同时装 drop-in `restart-speed.conf`（`ProtectControlGroups=no`），V 的原生后台校验器从 10/05 起一直 EROFS 失败，现在每次启动后约 5 分钟和每天全量检查一次。
+
+**上 V 实测**（`lab/restart-speed-accept.mjs --target v`，经 `v-self-restart`，秒，从发起重启算）：
+
+| | 上线前典型（10/10–10/12） | 首次重启 08:26（无上一生命周期记录，仍全量） | 计时重启 08:30 |
+|---|---|---|---|
+| db91 预检 | 110–112 | 129 | 0.03（8/8 沿用） |
+| 飞书连上 | ≈148 | 171 | **31.3** |
+| 首个 worker 就绪 | ≈193 | 180 | **36.6** |
+| `[gateway] ready` | ≈199 | 187 | **43.4** |
+| 连上后发消息 → 看到回复 | — | 173 → 214 | 32.7 → 62.5 |
+
+worker 预热 40–45 s → 7–13 s。重启后两次 exec 回合（08:31、08:32）均由 vlab-worker 执行，转录里 exec 结果与回复的随机 UUID 一致。08:43:52 原生校验器 9 项通过、0 失败（V 上自 10/05 以来第一次）；全程 NRestarts 0，无 liveness 告警、无 restart recovery 报错。未达 30 s 的部分：Gateway import/插件到飞书连上约 29 s；重启后第一条消息从进入 worker 到开始准备 prompt 约 18 s（第二条起 1–10 s），原因待查。
+
+> 上线前 V 运行的上一版为 `v2026.9.1-db91.6-mirror-facts-identity-20261012`（#315，10/12 22:18），其捕获未提交进仓库，所以下面的文件差异相对 `v-voice-content-product-20261011`，包含 #315 的一个文件。
+
+相对上一版 `v-voice-content-product-20261011`：8 个文件变化。
+
+**经 VLab 发版 `restart-speed-20261013`**（claude-restart-speed，dev `640a60f6`）
+> 验收：共享 VLab 2026-10-13 02:20 受控重启（lab/restart-speed-accept.mjs RS1）：db91 8/8 库沿用上一生命周期全量检查，预检 29 ms（部署那次重启无记录全量 193 s）；飞书 WS 23.7 s、首个 worker 37.3 s、gateway ready 43.4 s（部署那次约 234/253/257 s）；重启后 25.8 s 在「VLab 发布验收 B」发消息，53.3 s 看到回复，Runtime vlab-worker；exec 回合 7.4 s 由 worker 执行并原样回复随机 UUID；启动后原生校验器 9 项通过、0 失败，8 个 agent 库收据全部换成 native-verifier-child；worker 预热 15–19 s，快路径/编译缓存/secrets 不阻塞均生效。candidate：59…
+- `core` agent-command-DPfawBbr.js  e3cab0b4 → 1805b686
+- `core` index.js  3f485880 → fe549415
+- `core` db91-integrity-bootstrap.mjs  7c276dfa → 87b7fa47
+- `core` db91-restart-carry.mjs  — → 5f18d635
+- `worker` worker.mjs  8b466a60 → 3e66b4b3
+- `worker` compile-cache.mjs  — → fc88a3a9
+- `worker` dist-esm-resolve-fast-path.mjs  — → 9a14e717
+
+**经 VLab 发版 `mirror-facts-identity-20261012`**（pr315-mirror-facts，dev `3490b79a`）
+> 验收：/Users/tianyicai/v-upgrade-private/pr315-mirror-facts-20261012/shared-vlab-evidence.md: 部署后真实飞书 Codex(/vds, DeepSeek Flash) 6 回合回答全对、跨重启记忆保留、转录 254 键无重复；vlab-worker 8 群首字热态 P50 4.8/4.9s vs 部署前 6.3/5.0s；Codex 3.3-4.0s vs 3.3-3.9s；部署后 mirror-facts 慢事务 0；标脏大会话 1278->13ms 与 V 同款日志见 candidate e431fff2，全库比对 0 差异见 candidate 424706ba
+- `core` session-accessor-K0XuW6ln.js  5c2eb542 → 30c7b9d6
+
+**这期间合入 dev 的 PR**（8 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #350 V 重启提速：db91 检查干净重启沿用、worker 不再等 30 秒、启动缓存、修复 V 后台校验器
+- #344 Gateway: keep a minimal GPT Live result-delivery seam
+- #349 fix(sentinel): 用户收不到回复时报警；夜班卡片消息不再进哨兵群
+- #315 perf(sessions): 转录镜像查重在投影追赶期间改查 identity 表，不再整段读转录
+- #341 fix(v): /vcc 在 900k 自动压缩，不再贴着 1M 上限
+- #339 test(v-browser-fill): 验收驱动支持生产 V；exec 回归驱动
+- #337 fix(voice): 修复直接工具运行准入与飞书 CLI 身份
+- #336 test(v-browser-fill): 真实飞书多 harness 验收驱动
+
 ## v-voice-content-product-20261011
 
 上线：2026-10-11 02:27 CST 启动生产 Gateway，02:34 CST 切换 H5；tag `v-voice-content-product-20261011`。
