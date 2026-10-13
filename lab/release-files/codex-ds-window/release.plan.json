@@ -1,0 +1,20 @@
+{
+  "baseRelease": "restart-speed-20261013",
+  "files": [
+    {
+      "source": "lab/release-files/codex-ds-window/dist/run-attempt-D1hJO4fX.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/run-attempt-D1hJO4fX.js",
+      "before": "bb0b035457def708890147f3468c14b397623ef0aa0a468c4437d52937528b32"
+    },
+    {
+      "source": "lab/release-files/codex-ds-window/dist/v-deepseek-model-catalog.json",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/v-deepseek-model-catalog.json",
+      "before": null
+    },
+    {
+      "source": "lab/release-files/codex-ds-window/dist/v-deepseek-base-instructions.md",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/v-deepseek-base-instructions.md",
+      "before": null
+    }
+  ]
+}
