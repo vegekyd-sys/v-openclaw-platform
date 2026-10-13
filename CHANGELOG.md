@@ -29,9 +29,7 @@
 
 worker 预热 40–45 s → 7–13 s。重启后两次 exec 回合（08:31、08:32）均由 vlab-worker 执行，转录里 exec 结果与回复的随机 UUID 一致。08:43:52 原生校验器 9 项通过、0 失败（V 上自 10/05 以来第一次）；全程 NRestarts 0，无 liveness 告警、无 restart recovery 报错。未达 30 s 的部分：Gateway import/插件到飞书连上约 29 s；重启后第一条消息从进入 worker 到开始准备 prompt 约 18 s（第二条起 1–10 s），原因待查。
 
-> 上线前 V 运行的上一版为 `v2026.9.1-db91.6-mirror-facts-identity-20261012`（#315，10/12 22:18），其捕获未提交进仓库，所以下面的文件差异相对 `v-voice-content-product-20261011`，包含 #315 的一个文件。
-
-相对上一版 `v-voice-content-product-20261011`：8 个文件变化。
+相对上一版 `v2026.9.1-db91.6-mirror-facts-identity-20261012`：7 个文件变化。
 
 **经 VLab 发版 `restart-speed-20261013`**（claude-restart-speed，dev `640a60f6`）
 > 验收：共享 VLab 2026-10-13 02:20 受控重启（lab/restart-speed-accept.mjs RS1）：db91 8/8 库沿用上一生命周期全量检查，预检 29 ms（部署那次重启无记录全量 193 s）；飞书 WS 23.7 s、首个 worker 37.3 s、gateway ready 43.4 s（部署那次约 234/253/257 s）；重启后 25.8 s 在「VLab 发布验收 B」发消息，53.3 s 看到回复，Runtime vlab-worker；exec 回合 7.4 s 由 worker 执行并原样回复随机 UUID；启动后原生校验器 9 项通过、0 失败，8 个 agent 库收据全部换成 native-verifier-child；worker 预热 15–19 s，快路径/编译缓存/secrets 不阻塞均生效。candidate：59…
@@ -43,19 +41,43 @@ worker 预热 40–45 s → 7–13 s。重启后两次 exec 回合（08:31、08:
 - `worker` compile-cache.mjs  — → fc88a3a9
 - `worker` dist-esm-resolve-fast-path.mjs  — → 9a14e717
 
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #350 V 重启提速：db91 检查干净重启沿用、worker 不再等 30 秒、启动缓存、修复 V 后台校验器
+- #344 Gateway: keep a minimal GPT Live result-delivery seam
+- #349 fix(sentinel): 用户收不到回复时报警；夜班卡片消息不再进哨兵群
+
+## v2026.9.1-db91.6-mirror-facts-identity-20261012
+
+上线：2026-10-12 22:18 CST（v-self-restart 就绪）  ·  tag `v2026.9.1-db91.6-mirror-facts-identity-20261012`
+
+**摘要**：转录镜像查重（`session.transcript.mirror-facts`）在会话投影被标脏时，不再把整段转录读进主线程，改查 identity 表（PR #315）。起因：10/12 16:50–17:24 V 整体不可用，当天 mirror-facts 慢事务累计 426 次，是 Gateway 主线程最大的同步读取来源（16 点 45 次/77 s、17 点 137 次/190 s）。
+
+**证据分两类**：
+- 修复本身：VLab candidate `e431fff2`，与上线字节相同，36,505 条事件的标脏会话 1,278 ms → 13 ms，插桩证明原版整段读、补丁走 identity，原版写出 V 同款慢事务日志 7 条、补丁 0 条；candidate `424706ba` 对 V 数据副本全库比对 identity 与整段读 0 差异。
+- 回归：共享 VLab 部署后真实飞书 /vds 回合正确、转录无重复，首字热态不慢。共享 VLab 没有标脏会话，这部分不覆盖修复路径。
+
+**上线**：Tianyi 在 pr315 验收 session 说「你上线去吧」。`promote-to-v.mjs` 22:04 装字节（捕获步骤因丢包失败，22:2x 补跑捕获、哨兵、align）；`v-self-restart` `20261012-221418-1949`，22:18:12 就绪（203 s），worker 5，Codex 孤儿登记清掉 2 条。
+
+**上线后**：重启前 21:00 起繁忙大会话已安静，标脏重建（transcript-index.prepare）与 mirror-facts 都是 0，所以重启后的 0 还不能说明修复生效；要等下一次出现标脏重建时，看 mirror-facts 是否仍为 0。重启前后都有 5 个会话报 `restart recovery claim changed`（13:59 起，与本次无关，另行处理）。
+
+**10/13 生产效果**：V 文件日志统计，上线前（10/12 00:00–22:18，约 22 h）`session.transcript.mirror-facts` 慢事务 511 次、合计 721 s、最长 7.3 s；上线后（至 10/13 16:10，约 18 h）9 次、合计 11 s、最长 1.5 s。同期标脏重建 `transcript-index.prepare` 仍有 104 次，说明修复路径已被真实触发（见 docs/pr-triage-2026-10-13.md 第 2 节）。
+
+相对上一版 `v-voice-content-product-20261011`：1 个文件变化。
+
 **经 VLab 发版 `mirror-facts-identity-20261012`**（pr315-mirror-facts，dev `3490b79a`）
 > 验收：/Users/tianyicai/v-upgrade-private/pr315-mirror-facts-20261012/shared-vlab-evidence.md: 部署后真实飞书 Codex(/vds, DeepSeek Flash) 6 回合回答全对、跨重启记忆保留、转录 254 键无重复；vlab-worker 8 群首字热态 P50 4.8/4.9s vs 部署前 6.3/5.0s；Codex 3.3-4.0s vs 3.3-3.9s；部署后 mirror-facts 慢事务 0；标脏大会话 1278->13ms 与 V 同款日志见 candidate e431fff2，全库比对 0 差异见 candidate 424706ba
 - `core` session-accessor-K0XuW6ln.js  5c2eb542 → 30c7b9d6
 
-**这期间合入 dev 的 PR**（8 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
-- #350 V 重启提速：db91 检查干净重启沿用、worker 不再等 30 秒、启动缓存、修复 V 后台校验器
-- #344 Gateway: keep a minimal GPT Live result-delivery seam
-- #349 fix(sentinel): 用户收不到回复时报警；夜班卡片消息不再进哨兵群
+
+**这期间合入 dev 的 PR**（5 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
 - #315 perf(sessions): 转录镜像查重在投影追赶期间改查 identity 表，不再整段读转录
 - #341 fix(v): /vcc 在 900k 自动压缩，不再贴着 1M 上限
 - #339 test(v-browser-fill): 验收驱动支持生产 V；exec 回归驱动
 - #337 fix(voice): 修复直接工具运行准入与飞书 CLI 身份
 - #336 test(v-browser-fill): 真实飞书多 harness 验收驱动
+
+回滚：`node scripts/promote-to-v.mjs --undo /opt/v-release-backups/v2026.9.1-db91.6-mirror-facts-identity-20261012-20261012T140419`（需重启）。
+
 
 ## v-voice-content-product-20261011
 
