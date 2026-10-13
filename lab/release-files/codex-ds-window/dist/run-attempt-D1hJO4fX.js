@@ -26,8 +26,8 @@ import { n as captureCodexSettledTurnFinalizationContext } from "./settled-turn-
 import { a as runCodexComputerUseLiveTest, n as ensureCodexComputerUse, t as defaultCodexPluginMetadataCache } from "./plugin-metadata-cache-BFrPhb2c.js";
 import { asOptionalRecord, normalizeOptionalString, readStringField } from "openclaw/plugin-sdk/string-coerce-runtime";
 import fs from "node:fs/promises";
-import { existsSync as existsSyncDeepSeekWindow, readFileSync as readFileSyncDeepSeekWindow } from "node:fs"; // v-codex-ds-window-v1
-import { fileURLToPath as fileURLToPathDeepSeekWindow } from "node:url"; // v-codex-ds-window-v1
+import { existsSync as existsSyncDeepSeekWindow, readFileSync as readFileSyncDeepSeekWindow } from "node:fs"; // v-codex-ds-window-v2
+import { fileURLToPath as fileURLToPathDeepSeekWindow } from "node:url"; // v-codex-ds-window-v2
 import path from "node:path";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import { MAX_TIMER_TIMEOUT_MS, asDateTimestampMs, resolveTimerTimeoutMs } from "openclaw/plugin-sdk/number-runtime";
@@ -3159,7 +3159,7 @@ async function rotateOversizedCodexAppServerStartupBinding(params) {
 	if (binding.connectionScope === "supervision") return { binding };
 	const sessionRecord = await readCodexSessionRecordForSessionFile(params.sessionFile);
 	const rolloutFiles = await listCodexAppServerRolloutFilesForThread(params.agentDir, binding.threadId, params.codexHome, binding.rolloutPath);
-	const maxBytes = parseCodexAppServerByteLimit(readCompactionConfig(params.config)?.maxActiveTranscriptBytes);
+	const maxBytes = parseCodexAppServerByteLimit(readCompactionConfig(params.config)?.maxActiveTranscriptBytes) ?? resolveCodexDeepSeekTranscriptByteLimit(binding); // v-codex-ds-window-v2
 	if (maxBytes !== void 0 && params.contextEngineActive === true && hasContextEngineThreadBootstrapProjection(binding)) embeddedAgentLog.debug("codex app-server deferring native transcript byte guard for context-engine thread bootstrap", {
 		threadId: binding.threadId,
 		engineId: binding.contextEngine?.engineId,
@@ -5257,10 +5257,15 @@ async function prepareCodexAttemptRoute(resources, turnRuntime, notifications, h
 	return { ensureCurrentThreadRoute };
 }
 //#endregion
-// v-codex-ds-window-v1: DeepSeek app-servers start with DeepSeek's context window (patch-codex-ds-window.mjs).
+// v-codex-ds-window-v2: DeepSeek app-servers start with DeepSeek's context window (patch-codex-ds-window.mjs).
 const CODEX_DEEPSEEK_WINDOW_FILES = ["v-deepseek-model-catalog.json", "v-deepseek-base-instructions.md"].map((name) => fileURLToPathDeepSeekWindow(new URL(`./${name}`, import.meta.url)));
 let codexDeepSeekWindowLogged = false;
 let codexDeepSeekBaseInstructions;
+function resolveCodexDeepSeekTranscriptByteLimit(binding) {
+	if (process.env.OPENCLAW_V_CODEX_DS_WINDOW === "0") return;
+	const deepSeek = String(binding?.modelProvider ?? "").trim().toLowerCase() === "deepseek" || /deepseek/iu.test(String(binding?.model ?? ""));
+	return deepSeek ? parseCodexAppServerByteLimit(process.env.OPENCLAW_V_CODEX_DS_MAX_TRANSCRIPT_BYTES ?? "40mb") : void 0;
+}
 function withCodexDeepSeekModelWindow(appServer, selection) {
 	const provider = String(selection?.modelProvider ?? "").trim().toLowerCase();
 	const deepSeek = provider === "deepseek" || !provider && /^deepseek/iu.test(String(selection?.model ?? ""));

@@ -14,6 +14,7 @@
 //   PHASES=W          DeepSeek's context window: V's bytes vs V + / dev + codex-ds-window (persistent thread
 //                     past 24.48万, new-thread replay, same instructions/tools/developer text)
 //   PHASES=X          deploy transition: a thread built on V's bytes resumes on codex-ds-window
+//   PHASES=Y          DeepSeek byte guard: past Y_BYTES the next turn starts a fresh thread and succeeds
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -554,6 +555,36 @@ try {
     const a = (h.messages ?? []).filter((m) => m.role === "assistant").at(-1);
     const reply = typeof a?.content === "string" ? a.content : (a?.content ?? []).filter((c) => c.type === "text").map((c) => c.text).join(" ");
     console.log(JSON.stringify({ phase: "X", turns: out, recall: { terminal: r.terminal, reply: String(reply).trim().slice(0, 100) }, rollouts: rollouts(t0) }));
+  }
+  // Y: the DeepSeek byte guard. With the limit lowered (Y_BYTES), a thread whose rollout passes it
+  // must start a fresh thread before the next turn (no 413, no failed turn) and still know the
+  // conversation through the replay.
+  if (PHASES.includes("Y")) {
+    const fixDist = path.join(repoRoot, "lab/release-files/codex-ds-window/dist");
+    for (const f of fs.readdirSync(path.join(repoRoot, "lab/release-files/vds-view-image/codex-dist"))) fs.copyFileSync(path.join(repoRoot, "lab/release-files/vds-view-image/codex-dist", f), path.join(codexDist, f));
+    for (const f of ["run-attempt-D1hJO4fX.js", "v-deepseek-model-catalog.json", "v-deepseek-base-instructions.md"]) fs.copyFileSync(path.join(fixDist, f), path.join(codexDist, f));
+    env.OPENCLAW_V_CODEX_DS_MAX_TRANSCRIPT_BYTES = process.env.Y_BYTES ?? "300kb";
+    client?.stop?.(); await stopGateway(); startGateway(); await waitPort(); await sleep(3000); await connect();
+    const key = `agent:makaron:explicit:vlab-dev-dsbytes-${Date.now().toString(36)}`;
+    const t0 = Date.now();
+    await send(key, "/vds");
+    const turns = [];
+    const seeds = Number(process.env.Y_SEEDS ?? 4);
+    for (let i = 0; i <= seeds; i += 1) {
+      const mark = lines.length;
+      const msg = i === 0 ? `[salt-y-${randomUUID().slice(0, 8)}] Remember the code word OTTER-4 and this list for later; do not repeat it, just reply OK. ${bigText(Number(process.env.W_SEED_WORDS ?? 22000))}`
+        : i < seeds ? `Part ${i + 1} of the list for later; do not repeat it, just reply OK. ${bigText(Number(process.env.W_SEED_WORDS ?? 22000))}`
+        : "Do not use any tools. From our conversation only: what code word was given at the start? One line.";
+      const r = await send(key, msg);
+      const h = await client.request("chat.history", { agentId: "makaron", sessionKey: key, limit: 4 }, { timeoutMs: 30_000 });
+      const a = (h.messages ?? []).filter((m) => m.role === "assistant").at(-1);
+      const reply = typeof a?.content === "string" ? a.content : (a?.content ?? []).filter((c) => c.type === "text").map((c) => c.text).join(" ");
+      turns.push({ terminal: r.terminal, error: r.error, secs: Math.round((r.endAt - r.sentAt) / 1000), reply: String(reply).trim().slice(0, 80),
+        byteGuard: lines.slice(mark).filter((l) => /exceeded active byte limit/u.test(l)).map((l) => redact(l).slice(0, 240)) });
+    }
+    const files = spawnSync("bash", ["-c", `find ${CODEX_HOME}/sessions -name 'rollout-*.jsonl' -newermt @${Math.floor(t0 / 1000)} -printf '%s %f\\n' | sort -k2`], { encoding: "utf8" }).stdout.trim().split("\n");
+    console.log(JSON.stringify({ phase: "Y", limit: env.OPENCLAW_V_CODEX_DS_MAX_TRANSCRIPT_BYTES, turns, rolloutBytes: files, rollouts: rollouts(t0) }));
+    delete env.OPENCLAW_V_CODEX_DS_MAX_TRANSCRIPT_BYTES;
   }
 } catch (error) {
   console.error(redact(error instanceof Error ? error.stack : String(error)));
