@@ -25,7 +25,7 @@ export const H5_PATHS = [
   'lab/gpt-live-h5/microphone-capture.mjs', 'lab/gpt-live-h5/microphone-session.mjs', 'lab/gpt-live-h5/transcript-presentation.mjs',
   'lab/gpt-live-h5/call-sounds.mjs', 'lab/rtc-h5/assets/v-idle-nohat-20260922.png',
   'lab/gpt-live-h5/relay-audio.mjs', 'lab/realtime-direct-tools/session.mjs',
-  'lab/realtime-direct-tools/transcript-log.mjs',
+  'lab/realtime-direct-tools/transcript-log.mjs', 'lab/realtime-direct-tools/lark-readonly.mjs',
   'lab/realtime-direct-tools/tool-start-audio.mjs',
   'lab/realtime-direct-tools/assets/tool-start-provenance.json',
   'lab/realtime-direct-tools/assets/tool-start-memory.pcm',

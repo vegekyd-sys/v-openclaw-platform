@@ -242,7 +242,7 @@ class NightShiftCheck(unittest.TestCase):
         failing["health"]["lastSchedulerError"] = "gateway closed (1006): "
         saved = []
         with mock.patch.object(mod, "sample", return_value=failing), \
-                mock.patch.object(mod, "load_state", return_value={"baseline": True, "seen": []}), \
+                mock.patch.object(mod, "load_state", return_value={"baseline": True, "seen": [], "service_runs": 1}), \
                 mock.patch.object(mod, "save_state", side_effect=saved.append), \
                 mock.patch.dict(sys.modules, {"sentinel": mock.Mock(feishu=mock.Mock(return_value=False))}):
             self.assertEqual(mod.main([]), 2)
@@ -259,6 +259,31 @@ class NightShiftCheck(unittest.TestCase):
             self.assertEqual(mod.main(["--check"]), 1)
         sender.feishu.assert_not_called()
         save.assert_not_called()
+
+    def test_only_a_service_that_stays_broken_reaches_the_group(self):
+        state = {}
+        self.assertEqual(mod.service_alert(state, "夜班 health=false"), [], "one pass is a Gateway restart")
+        self.assertEqual(mod.service_alert(state, None), [], "recovered before anyone was told")
+        mod.service_alert(state, "夜班服务 inactive")
+        sent = mod.service_alert(state, "夜班服务 inactive")
+        self.assertEqual(len(sent), 1)
+        self.assertIn("夜班服务 inactive", sent[0])
+        self.assertEqual(mod.service_alert(state, "夜班服务 inactive"), [], "said once while it persists")
+        self.assertIn("已恢复", mod.service_alert(state, None)[0])
+
+    def test_card_findings_are_logged_not_sent(self):
+        sample = base()
+        sample["blocked"] = [{"card": "c1", "instance": "GEE-TIMED-PUB-20260925", "item": "a1",
+                              "stage": "produce", "kind": "agent_error"}]
+        sender = mock.Mock(feishu=mock.Mock(return_value=True))
+        with mock.patch.object(mod, "sample", return_value=sample), \
+                mock.patch.object(mod, "load_state", return_value={"baseline": True, "seen": []}), \
+                mock.patch.object(mod, "save_state"), \
+                mock.patch.dict(sys.modules, {"sentinel": sender}), \
+                mock.patch("builtins.print") as printed:
+            self.assertEqual(mod.main([]), 0)
+        sender.feishu.assert_not_called()
+        self.assertTrue(any("有内容停住了" in str(c) for c in printed.call_args_list))
 
 
 if __name__ == "__main__":
