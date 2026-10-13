@@ -1,0 +1,41 @@
+[
+  {
+    "source": "lab/release-files/restart-speed/production-worker/worker.mjs",
+    "target": "production-worker/worker.mjs",
+    "before": "8b466a60585f97c5b9230c9afe605a22cf9d206484c3bd680f01262f4757b2ee",
+    "after": "3e66b4b351ab8ff98f956d7c259e869cfa018262ed5d8b261d086a4277c02313"
+  },
+  {
+    "source": "lab/release-files/restart-speed/production-worker/dist-esm-resolve-fast-path.mjs",
+    "target": "production-worker/dist-esm-resolve-fast-path.mjs",
+    "after": "9a14e717b67840052b47c529be4404d2111353b1a644d2c292454c70de219b97"
+  },
+  {
+    "source": "lab/release-files/restart-speed/production-worker/compile-cache.mjs",
+    "target": "production-worker/compile-cache.mjs",
+    "after": "fc88a3a91bdbeb3e61cd4766dcb20deeab2df49940fa8256a335e4c7e6c5853e"
+  },
+  {
+    "source": "lab/release-files/restart-speed/dist/index.js",
+    "target": "openclaw/dist/index.js",
+    "before": "3f4858801c11c189567965ff197312937d82fe261dae78b7f76602884e679524",
+    "after": "fe5494158ceb95450fec18bc9b6b4bb44c08c8dfd53c776001338b3fc053c069"
+  },
+  {
+    "source": "lab/release-files/restart-speed/dist/db91-integrity-bootstrap.mjs",
+    "target": "openclaw/dist/db91-integrity-bootstrap.mjs",
+    "before": "7c276dfa53f6d77318157bacfb7310ce91851f6e562ce92043862ff9a44534eb",
+    "after": "87b7fa4767b0b7b56800e0163977778ee5da6999dfec6b5a07410208248dad84"
+  },
+  {
+    "source": "lab/release-files/restart-speed/dist/db91-restart-carry.mjs",
+    "target": "openclaw/dist/db91-restart-carry.mjs",
+    "after": "5f18d635380c9d0d73ae30b4db0b2e9d5f7d6b19de46b69cdb2dd722e003ffca"
+  },
+  {
+    "source": "lab/release-files/restart-speed/dist/agent-command-DPfawBbr.js",
+    "target": "openclaw/dist/agent-command-DPfawBbr.js",
+    "before": "e3cab0b42c2cefb01a9116b89fcdf255c91356478d6e10714811448d4962210f",
+    "after": "1805b6861936015156fa7d841b295912c26ed16f3e5dc8f38eec41f54bd186f4"
+  }
+]

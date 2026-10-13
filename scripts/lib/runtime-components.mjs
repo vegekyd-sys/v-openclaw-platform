@@ -110,6 +110,15 @@ export const COMPONENTS = [
     vlab: { fixed: '/opt/vlab-v-secret-entry' },
     subdirs: [''],
   },
+  {
+    // Blocking from its first install: V and VLab must run the same bytes (the handoff
+    // sidecar drifted for days as advisory; see PR #323).
+    id: 'browser-fill', kind: 'sidecar', label: 'browser fill', blocking: true,
+    install: 'scripts/install-browser-fill-host.sh (on V as root, from the same commit)',
+    v: { fixed: '/opt/v-browser-fill' },
+    vlab: { fixed: '/opt/vlab-v-browser-fill' },
+    subdirs: ['plugin'],
+  },
   // V Browser (product code in vegekyd-sys/v-browser, docs/v-browser-0.4.7-release-20261001.md):
   // the Gateway plugin, the multi-device Broker and the Browser Gateway that
   // owns the CDP relays. 2026-10-06: Broker identical; V runs a newer plugin

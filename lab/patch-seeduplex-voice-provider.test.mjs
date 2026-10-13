@@ -35,16 +35,12 @@ test("registration happens before the existing worker startup validation", () =>
   assert.ok(patched.indexOf(SEEDUPLEX_REGISTER) < patched.indexOf("workerConfigPath is required"));
 });
 
-test("release artifacts derive from the exact current VLab runtime", () => {
+test("Worker release artifacts preserve their exact pinned VLab baseline", () => {
   const releaseIndex = readFileSync(
     new URL(
       "./release-files/seeduplex-voice-provider/production-worker-index.mjs",
       import.meta.url,
     ),
-    "utf8",
-  );
-  const provider = readFileSync(
-    new URL("./seeduplex-realtime-provider.mjs", import.meta.url),
     "utf8",
   );
   const releaseProvider = readFileSync(
@@ -69,9 +65,11 @@ test("release artifacts derive from the exact current VLab runtime", () => {
   );
   assert.equal(releaseIndex.split(ROUTING_IMPORT).length - 1, 1);
   assert.equal(releaseIndex.split(ROUTED_CALL).length - 1, 1);
-  assert.equal(releaseProvider, provider);
+  // This is the historical Worker/Gateway release snapshot, not the independent
+  // Voice entrypoint. Voice-only fixes must not rewrite this pinned release.
+  // gpt-live-h5-release.test.mjs verifies Voice freezes its current provider.
   assert.equal(
     sha256(releaseProvider),
-    "402e10504db4a01f0b8212c666e72106ee665d814228aa6858a7f144a6bb14fe",
+    "0a4edb88fa197497733012dff69623a7109f5c4a9f12dee79eadb86d72168f69",
   );
 });
