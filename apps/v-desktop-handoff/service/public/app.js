@@ -157,7 +157,7 @@ function connect() {
       4002: "V 已结束这次接管。",
       4003: "连接出现协议错误，已断开。",
       4004: "你在别处重新打开了这个页面，这里已断开。",
-      4005: "V 的电脑暂时不可用。",
+      4005: `${viewer?.subject ?? "V 的电脑"}${/[A-Za-z0-9]$/u.test(viewer?.subject ?? "") ? " " : ""}暂时不可用。`,
     };
     setStatus(messages[code] ?? (detail.clean ? "已断开" : "连接中断"), "warn");
     showButtons({ reconnect: ![4001, 4002].includes(code) });
@@ -246,7 +246,7 @@ async function control(take) {
   }
   if (take) {
     if (!touch) {
-      notice("现在你在操作 V 的电脑。做完点「交还给 V」，V 会接着做。", 7000);
+      notice(`现在你在操作${/^[A-Za-z0-9]/u.test(viewer?.subject ?? "V") ? " " : ""}${viewer?.subject ?? "V 的电脑"}。做完点「交还给 V」，V 会接着做。`, 7000);
     }
   } else {
     closeKeyboard();
@@ -844,7 +844,7 @@ $("reconnect").addEventListener("click", () => connect());
   viewer = await claim();
   if (viewer) {
     document.title = viewer.title ?? document.title;
-    $("title").textContent = viewer.title ?? "V 的电脑";
+    $("title").textContent = viewer.title ?? viewer.subject ?? "V 的电脑";
     connect();
   }
 })();
