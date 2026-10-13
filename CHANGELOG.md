@@ -11,6 +11,41 @@
 
 ---
 
+## restart-speed-20261013
+
+上线：2026-10-13 08:30 CST 生效（08:20 装到 V，08:26 首次重启）  ·  tag `restart-speed-20261013`
+
+**摘要**：Tianyi 于 2026-10-13 批准（「发吧 如果有问题注意回滚 新重启速度注意计时」）。V 重启到能用从约 200 s 降到约 40 s：干净重启时 8 个 agent 库（22 GB）沿用上一生命周期的全量检查，不再每次启动前重读（崩溃、重启宿主机、撤销、过期、文件变化仍全量）；worker 预热不再和 Gateway 互相等 30 s 的 `secrets.resolve`；worker 用上 dist 解析快路径，Gateway/worker 开 Node 编译缓存。同时装 drop-in `restart-speed.conf`（`ProtectControlGroups=no`），V 的原生后台校验器从 10/05 起一直 EROFS 失败，现在每次启动后约 5 分钟和每天全量检查一次。
+
+**上 V 实测**（`lab/restart-speed-accept.mjs --target v`，经 `v-self-restart`，秒，从发起重启算）：
+
+| | 上线前典型（10/10–10/12） | 首次重启 08:26（无上一生命周期记录，仍全量） | 计时重启 08:30 |
+|---|---|---|---|
+| db91 预检 | 110–112 | 129 | 0.03（8/8 沿用） |
+| 飞书连上 | ≈148 | 171 | **31.3** |
+| 首个 worker 就绪 | ≈193 | 180 | **36.6** |
+| `[gateway] ready` | ≈199 | 187 | **43.4** |
+| 连上后发消息 → 看到回复 | — | 173 → 214 | 32.7 → 62.5 |
+
+worker 预热 40–45 s → 7–13 s。重启后两次 exec 回合（08:31、08:32）均由 vlab-worker 执行，转录里 exec 结果与回复的随机 UUID 一致。08:43:52 原生校验器 9 项通过、0 失败（V 上自 10/05 以来第一次）；全程 NRestarts 0，无 liveness 告警、无 restart recovery 报错。未达 30 s 的部分：Gateway import/插件到飞书连上约 29 s；重启后第一条消息从进入 worker 到开始准备 prompt 约 18 s（第二条起 1–10 s），原因待查。
+
+相对上一版 `v2026.9.1-db91.6-mirror-facts-identity-20261012`：7 个文件变化。
+
+**经 VLab 发版 `restart-speed-20261013`**（claude-restart-speed，dev `640a60f6`）
+> 验收：共享 VLab 2026-10-13 02:20 受控重启（lab/restart-speed-accept.mjs RS1）：db91 8/8 库沿用上一生命周期全量检查，预检 29 ms（部署那次重启无记录全量 193 s）；飞书 WS 23.7 s、首个 worker 37.3 s、gateway ready 43.4 s（部署那次约 234/253/257 s）；重启后 25.8 s 在「VLab 发布验收 B」发消息，53.3 s 看到回复，Runtime vlab-worker；exec 回合 7.4 s 由 worker 执行并原样回复随机 UUID；启动后原生校验器 9 项通过、0 失败，8 个 agent 库收据全部换成 native-verifier-child；worker 预热 15–19 s，快路径/编译缓存/secrets 不阻塞均生效。candidate：59…
+- `core` agent-command-DPfawBbr.js  e3cab0b4 → 1805b686
+- `core` index.js  3f485880 → fe549415
+- `core` db91-integrity-bootstrap.mjs  7c276dfa → 87b7fa47
+- `core` db91-restart-carry.mjs  — → 5f18d635
+- `worker` worker.mjs  8b466a60 → 3e66b4b3
+- `worker` compile-cache.mjs  — → fc88a3a9
+- `worker` dist-esm-resolve-fast-path.mjs  — → 9a14e717
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #350 V 重启提速：db91 检查干净重启沿用、worker 不再等 30 秒、启动缓存、修复 V 后台校验器
+- #344 Gateway: keep a minimal GPT Live result-delivery seam
+- #349 fix(sentinel): 用户收不到回复时报警；夜班卡片消息不再进哨兵群
+
 ## v2026.9.1-db91.6-mirror-facts-identity-20261012
 
 上线：2026-10-12 22:18 CST（v-self-restart 就绪）  ·  tag `v2026.9.1-db91.6-mirror-facts-identity-20261012`
@@ -25,11 +60,14 @@
 
 **上线后**：重启前 21:00 起繁忙大会话已安静，标脏重建（transcript-index.prepare）与 mirror-facts 都是 0，所以重启后的 0 还不能说明修复生效；要等下一次出现标脏重建时，看 mirror-facts 是否仍为 0。重启前后都有 5 个会话报 `restart recovery claim changed`（13:59 起，与本次无关，另行处理）。
 
+**10/13 生产效果**：V 文件日志统计，上线前（10/12 00:00–22:18，约 22 h）`session.transcript.mirror-facts` 慢事务 511 次、合计 721 s、最长 7.3 s；上线后（至 10/13 16:10，约 18 h）9 次、合计 11 s、最长 1.5 s。同期标脏重建 `transcript-index.prepare` 仍有 104 次，说明修复路径已被真实触发（见 docs/pr-triage-2026-10-13.md 第 2 节）。
+
 相对上一版 `v-voice-content-product-20261011`：1 个文件变化。
 
 **经 VLab 发版 `mirror-facts-identity-20261012`**（pr315-mirror-facts，dev `3490b79a`）
 > 验收：/Users/tianyicai/v-upgrade-private/pr315-mirror-facts-20261012/shared-vlab-evidence.md: 部署后真实飞书 Codex(/vds, DeepSeek Flash) 6 回合回答全对、跨重启记忆保留、转录 254 键无重复；vlab-worker 8 群首字热态 P50 4.8/4.9s vs 部署前 6.3/5.0s；Codex 3.3-4.0s vs 3.3-3.9s；部署后 mirror-facts 慢事务 0；标脏大会话 1278->13ms 与 V 同款日志见 candidate e431fff2，全库比对 0 差异见 candidate 424706ba
 - `core` session-accessor-K0XuW6ln.js  5c2eb542 → 30c7b9d6
+
 
 **这期间合入 dev 的 PR**（5 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
 - #315 perf(sessions): 转录镜像查重在投影追赶期间改查 identity 表，不再整段读转录
@@ -83,6 +121,16 @@
 
 **记账说明**：本次捕获在 `worker-secret-egress-20261010` 撤回之后（V 的 worker.mjs 为 8b466a60、无 secret-egress-worker.mjs），撤回的捕获与章节在 #327。共享 VLab 的 production-worker 仍是撤回前的字节，align 前需按 V 同步。
 
+## worker-secret-egress-revert-20261010
+
+回滚：2026-10-10 22:32 CST（V 文件 `promote-to-v --undo`，随后 `vlab.workers.roll` 换代，未重启 Gateway）  ·  tag `worker-secret-egress-revert-20261010`
+
+**摘要**：撤回 `worker-secret-egress-20261010`。那次上线让 worker 里的 exec 带上凭据库的出网占位符，但凭据库条目会**覆盖** worker 从 Gateway 服务环境继承的同名变量。`MAKARON_API_KEY` 两边值不同：17:52 起新起的 worker 里，夜班调 Makaron 用的是凭据库那把「群聊任务」账号的 key，而不是原来的个人账号 key。17:51–22:32 共 3571 次 www.makaron.app 请求被换了 key（18 点 1750、19 点 1696），夜班 DL-1010-04/05 共 31 个项目建在「群聊任务」账号下、其余额被耗到 2 积分，部分提交因余额不足失败；另有回合结束后仍在跑的后台命令因代理授权已撤销而失败（makaron 402 次、飞书 27 次）。其他重名条目：`BROWSER_USE_API_KEY` 值不同但期间无请求；三个 `VOLCANO_*` 值相同（语音 15 次替换不换账号）。修复需改为不覆盖继承的同名变量，并处理后台命令的授权生命周期，重新验证后再上。
+
+相对上一版 `worker-secret-egress-20261010`：2 个文件变化。
+- `worker` worker.mjs  8c6b2e92 → 8b466a60（复原）
+- `worker` secret-egress-worker.mjs  515e211e → —（删除）
+
 ## worker-secret-egress-20261010
 
 上线：2026-10-10 18:10 CST  ·  tag `worker-secret-egress-20261010`
@@ -95,6 +143,66 @@
 > 验收：candidate 同一字节、开启 secrets.egressProxy：开 candidate-b8d46520 值送达（len 40 哈希一致）、未授权域名 502、回合后同一代理凭据 407；关 candidate-907e033e len 0、无代理（复现 V）。共享 VLab 未开启 egressProxy：5/5 worker `disabled-by-config`、预热 5/5，真实回合在 vlab-worker:0 exec 正常。
 - `worker` worker.mjs  8b466a60 → 8c6b2e92
 - `worker` secret-egress-worker.mjs  — → 515e211e
+
+## v2026.9.1-db91.6-firsttext-card-note-20261010b
+
+上线：2026-10-10 01:27 CST（v-self-restart `20261010-012343-e920`，Tianyi 01:23 要求立即重启，187 s 就绪）  ·  tag `v2026.9.1-db91.6-firsttext-card-note-20261010b`
+
+**摘要**：修 #298 上线后的回归。batch-20261010 上 V 后，Tianyi 体感变慢、卡片底部 footer 逐字打出。原因是提前建卡时还不知道模型，footer 只有「Agent: …」，模型选定后用流式接口（`PUT …/elements/note/content`）补全，而且这次写入排在正文后续所有更新之前。V 上「卡片建好 → 首段正文」多出 1–21 s，投递 P50 从上线前的 1.2 s 变成 1.8 s，P95 15.8 s。#304：模型一选定就在后台补全 note；需要补全时改成整组件替换（`/elements/note`），不再排在正文前面。
+
+V 前后对比（统一口径：首字 = 飞书 create_time → 首段正文推送；同样 5 个测试群 × 2 轮，重启后满 20 min 再测）：
+
+| | 首字 P50 / P95 | 投递 P50 / P95 |
+|---|---|---|
+| 上线前（00:11，旧代码，高负载） | 13.6 / 20.4 s | 1.2 / 1.3 s |
+| #298（00:45） | 9.1 / 约 27 s | 1.8 / 15.8 s |
+| #304（01:44） | 8.6 / 12.1 s | 0.8 / 1.0 s |
+
+首字的变化里有一部分是负载差异；投递这一段是 #298/#304 直接影响的部分。教训见 memory `ship-only-verified-no-slowdown`：上 V 前要拿到「关键路径不变慢」的证据；首字只用统一口径报。
+
+相对上一版 `v2026.9.1-db91.6-batch-20261010-codex-feishu-workboard`：1 个文件变化。
+
+**经 VLab 发版 `firsttext-card-note-20261010b`**（firsttext-0jwr2n，dev `de3d64c4`）
+> 验收：2026-10-10 01:20 CST firsttext-card-note-20261010b = #304 (dev de3d64c4; feishu monitor.account 96f7b0b8 -> 763bb8eb) on shared VLab (live config renderMode=auto, unchanged), group 「VLab 压测 23」, same prompts A vs B. A = V bytes (batch-20261010, #298 only): deepseek token->first answer push 0.80-0.87 s (card send ~0.55 + queued note PUT), token->visible 1.50/1.52/1.61/2.08 (P50 1.57). B (#304, two …
+- `feishu` dist/monitor.account-WFdlCDhR.js  96f7b0b8 → 763bb8eb
+
+## v2026.9.1-db91.6-batch-20261010-codex-feishu-workboard
+
+上线：2026-10-10 00:24 CST（v-self-restart `20261010-002027-30fc`，00:14 起等空闲，00:20:27 请求，203 s 就绪）  ·  tag `v2026.9.1-db91.6-batch-20261010-codex-feishu-workboard`
+
+**摘要**：Tianyi 10/09 晚定的统一上线（「验证过有效果的上，没效果的别上」），由监控 session 统筹。三项都在共享 VLab 拿到效果证据才进包：
+
+- **#302 建卡只读需要的卡片。** 10/09 下午起 Gateway 主线程每小时卡 20–30 次、最长 22 s，钉钉随之断线；根因之一是 `workboard.cards.create` 每次全量 `list()` 看板（挂父卡时再全量读一次）。candidate 用 4150 张卡的真实看板：带父卡建卡 1261 → 10 ms，共享 VLab 复验 median 8 ms，行为逐项一致。派卡 `dispatchWithOptions`（今天 442 次、P50 2.9 s）同类问题留待下一批。
+- **#301 /vds 记忆整理循环与回合开始整读大会话。** V 重启后首个大会话回合日志 `codex-bounded-history.1`：10339 条事件只读最近 296 条（6.9 MB，516 ms）。
+- **#298 飞书卡片提前建好。** 共享 VLab A/B：投递 P50 1.4 → 1.0 s，建卡 P50 1.0 → 0.6 s。**上 V 后出现回归**（footer 逐字打出，并且挡住首段正文），由下一版 `firsttext-card-note-20261010b`（#304）修复。
+- 不在本包、同晚直接装到 V 的主机工具：#295 哨兵配置检查、#294 memory-indexer 持锁时长字段。未上：#303（无效果数据）、#280（需在含 #301 的 dev 上重建）。
+
+V 重启后：Worker 5/5 预热 ready；启动前 Codex 孤儿登记清理删掉 2 条（#205），Cannot reap 0；release-drift 0 findings；midTurnPrecheck 两份配置无变化。Codex 插件的 3 个文件（run-attempt、attempt-context、session-history）由 npm 管理，不在捕获范围，hash 见 VLab 发版记录。
+
+相对上一版 `release-batch-20261009`：6 个文件变化。
+
+**经 VLab 发版 `codex-big-session-20261009`**（claude-sweet-tesla-flush-loop，dev `e7720cc2`）
+> 验收：2026-10-09 23:01-23:06 CST 共享 VLab（Gateway 2810555，dev e7720cc2 / PR #301）：/vds 专用会话 vlab-dev-codex-big-session 三轮（记住 KESTREL-58、答出 KESTREL-58、exec 工具返回 vds-tool-ok）；默认 deepseek-flash（vlab-worker）exec 回合返回 default-ok；/vcodex gpt-6.1-sol 两轮（记住并答出 HERON-31）；部署后文件日志无 codex-bounded-history 警告、无 Cannot inspect、无回合失败。大会话截断读取与整理循环见 candidate lab/candidate/codex-big-history.mjs（172.6 MB 无压缩 /vds 会话：新线程投影逐…
+- `core` agent-runner-memory-7VF-zwNt.js  27f38ffb → 7d5eaa38
+- `core` agent-runner.runtime-CAdsMsQt.js  947ba056 → 75b5b4b1
+- `core` session-manager-CNTG_BAJ.js  ce091fda → 84317e32
+
+**经 VLab 发版 `batch-20261010-codex-feishu-workboard`**（claude-sweet-tesla-flush-loop，dev `0790a0e9`）
+> 验收：2026-10-09 23:40-23:56 CST 共享 VLab（dev 0790a0e9，Gateway 2815667，channels.feishu.renderMode=auto 与 V 一致）整批 #301+#298+#302： #298：VLab 压测群 A/B 各 8 条（A=V 字节+auto 23:30，B=整批 23:45，均重启后约 5 分钟），8/8 与 8/8 回复，均 vlab-worker。投递（出字→卡片可见）P50 1.4→1.0 s，建卡 P50 1.0→0.6 s；B 组 8 张卡全部 card-start precreated:true createMs:0，sendMs 0.5-1.1 s，1 张 4.2 s 为飞书发送接口本身（A 组的建卡时间也包含发送）。首字 P50 34.5→14.9 s 主要来自冷启动排队 23.9→10.7 s，不归…
+- `core` runtime-api-1CCazqtv.js  220fed4c → 5b836021
+- `core` sqlite-store-CH-caj1l.js  603c906a → 4ca26600
+- `feishu` dist/monitor.account-WFdlCDhR.js  ec089142 → 96f7b0b8
+
+**这期间合入 dev 的 PR**（9 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #294 fix(memory-indexer): slow-write 的持锁时长不再计入等锁时间
+- #295 feat(sentinel): 主配置/worker 配置坏了先告警，不等用户或重启发现
+- #302 perf(workboard): 建卡只读需要的卡片，不再全量读看板
+- #301 fix(codex): /vds 记忆整理循环与回合开始整读大会话
+- #300 Test: reconcile merged voice and card inventory counts
+- #299 Voice: recover actual avatar display and dialogue timelines
+- #298 feishu: 飞书卡片提前建好，首字不再等建卡（首字）
+- #297 Persist Xiaohe and Grok voice text for daily sync
+- #296 Release contextual voice avatar reactions and natural farewell controls
 
 ## release-batch-20261009
 

@@ -211,6 +211,9 @@ export async function run(req) {
     }
     const outcome = await executeCandidate(['--quiet', '--wait', '--pipe', '--collect', '--unit=' + unit,
       '-p', 'KillMode=control-group', '-p', 'UMask=0077', '-p', 'TasksMax=infinity',
+      // Native database verification needs the same delegated foreground
+      // subgroup as VLab. This applies only to the private Candidate unit.
+      '-p', 'Delegate=yes', '-p', 'DelegateSubgroup=foreground',
       '-p', 'WorkingDirectory=' + (req.cwd ?? dir + '/inputs'),
       ...(req.user ? ['-p', 'User=' + req.user] : []),
       ...(req.timeoutSeconds ? ['-p', 'RuntimeMaxSec=' + req.timeoutSeconds] : []),

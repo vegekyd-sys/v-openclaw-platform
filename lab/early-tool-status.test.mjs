@@ -5,14 +5,15 @@ import vm from 'node:vm';
 import { MARKER, patchAgentRunner, patchBuiltinOpenclaw } from './patch-early-tool-status.mjs';
 
 const read = (url) => fs.readFileSync(new URL(url, import.meta.url), 'utf8');
-// Base: the memory-flush-defer bundle on dev (builtin = V's bytes; agent-runner = V + #301)
-const baseBuiltin = read('./release-files/memory-flush-defer/builtin-openclaw-zQV8Wwjr.js');
+// Base: V's current bytes (restart-speed-20261013 capture: builtin 3e07c3fa carries #317/#322;
+// agent-runner 75b5b4b1 = V + #301, the same bytes as the memory-flush-defer bundle on dev)
+const baseBuiltin = read('../release/captured/restart-speed-20261013/dist/builtin-openclaw-zQV8Wwjr.js');
 const baseRunner = read('./release-files/memory-flush-defer/agent-runner.runtime-CAdsMsQt.js');
 const builtin = read('./release-files/early-tool-status/builtin-openclaw-zQV8Wwjr.js');
 const runner = read('./release-files/early-tool-status/agent-runner.runtime-CAdsMsQt.js');
 
-test('release files are the dev bundle plus only this patch', () => {
-  assert.equal(baseBuiltin, read('../release/captured/release-batch-20261009/dist/builtin-openclaw-zQV8Wwjr.js'));
+test("release files are V's current bytes plus only this patch", () => {
+  assert.equal(baseRunner, read('../release/captured/restart-speed-20261013/dist/agent-runner.runtime-CAdsMsQt.js'));
   assert.equal(patchBuiltinOpenclaw(baseBuiltin), builtin);
   assert.equal(patchAgentRunner(baseRunner), runner);
   assert.throws(() => patchBuiltinOpenclaw(builtin), /already patched/);
