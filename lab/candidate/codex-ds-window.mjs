@@ -10,6 +10,7 @@
 //   PHASES=A,B,C,D    + big session without catalog (C) and with catalog (D), two turns each
 //   PHASES=T          owner and member turns share one thread (patch F)
 //   PHASES=S          a compaction handoff summary is not delivered as the reply (patch G)
+//   PHASES=U          big session, owner and member alternating: V's bytes vs codex-toolset-cover
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -351,6 +352,51 @@ try {
       ownerOnlyProbe: { calls: body.split('"name":"conversations_list"').length - 1, refused: body.split("Unknown OpenClaw tool: conversations_list").length + body.split("not available for this turn").length - 2 },
       log: lines.slice(mark).filter((l) => /tool catalog|starting a new thread|transient thread|cross-provider|not available for this turn|Unknown OpenClaw tool/u.test(l)).map((l) => redact(l).slice(0, 220)).slice(-12) }));
     member.stop?.();
+  }
+  // U: the oc_88d96b7e case on V's current Codex bytes. A /vds session over Codex's 244,800-token
+  // compaction limit while a member and the owner take turns. V's thread-lifecycle (v) starts a
+  // fresh thread at every change of speaker and replays the whole transcript into it, so each such
+  // turn compacts; codex-toolset-cover (fixed) keeps the owner's thread for the member's turns.
+  if (PHASES.includes("U")) {
+    for (const f of fs.readdirSync(path.join(repoRoot, "lab/release-files/vds-view-image/codex-dist"))) fs.copyFileSync(path.join(repoRoot, "lab/release-files/vds-view-image/codex-dist", f), path.join(codexDist, f));
+    const tl = path.join(codexDist, "thread-lifecycle-DAcEJ_Om.js");
+    const sources = { v: "lab/release-files/vds-view-image/codex-dist/thread-lifecycle-DAcEJ_Om.js", fixed: "lab/release-files/codex-toolset-cover/dist/thread-lifecycle-DAcEJ_Om.js" };
+    for (const variant of (process.env.U_VARIANTS ?? "v,fixed").split(",")) {
+      fs.copyFileSync(path.join(repoRoot, sources[variant]), tl);
+      client?.stop?.(); await stopGateway(); startGateway(); await waitPort(); await sleep(3000);
+      await connectOnce(["operator.read", "operator.write"]);
+      const member = client;
+      await connect();
+      const key = `agent:makaron:explicit:vlab-dev-toolcover-${variant}-${Date.now().toString(36)}`;
+      const t0 = Date.now();
+      await send(key, "/vds");
+      // A thread projection drops most of one huge message, so pad the session with several
+      // (U_SEED_MESSAGES × U_SEED_WORDS) to get a fresh thread's replay past the limit, as on V.
+      const seeds = Number(process.env.U_SEED_MESSAGES ?? 1);
+      const seedWords = Number(process.env.U_SEED_WORDS ?? BIG_WORDS);
+      const steps = [
+        ...Array.from({ length: seeds }, (_, i) => ["member", `${i === 0 ? "Remember the code word OTTER-4 and this list" : `Part ${i + 1} of the list`} for later; do not repeat it, just reply OK. ${bigText(seedWords)}`]),
+        ["owner", "Do not use any tools. From our conversation only: what code word was given earlier? One line."],
+        ["member", "Do not use any tools. Remember a second code word LARCH-7 and reply with one short sentence."],
+        ["owner", "Do not use any tools. From our conversation only: list every code word given so far. One line."],
+        ["member", "Do not use any tools. Remember a third code word BIRCH-2 and reply with one short sentence."],
+        ["owner", "Do not use any tools. From our conversation only: list every code word given so far. One line."],
+      ];
+      const results = [];
+      for (const [who, msg] of steps) {
+        const mark = lines.length;
+        const r = await send(key, msg, who === "owner" ? client : member);
+        const h = await client.request("chat.history", { agentId: "makaron", sessionKey: key, limit: 4 }, { timeoutMs: 30_000 });
+        const a = (h.messages ?? []).filter((m) => m.role === "assistant").at(-1);
+        const reply = typeof a?.content === "string" ? a.content : (a?.content ?? []).filter((c) => c.type === "text").map((c) => c.text).join(" ");
+        const log = lines.slice(mark);
+        results.push({ who, terminal: r.terminal, error: r.error, secs: Math.round((r.endAt - r.sentAt) / 1000), reply: String(reply).trim().slice(0, 120),
+          compactions: log.filter((l) => /auto-compaction succeeded/u.test(l)).length, keptThread: log.some((l) => /tool catalog covers this turn/u.test(l)) });
+      }
+      const threads = rollouts(t0);
+      console.log(JSON.stringify({ phase: "U", variant, results, threads: threads.length, compactions: threads.reduce((n, t) => n + t.compactions, 0), rollouts: threads }));
+      member.stop?.();
+    }
   }
 } catch (error) {
   console.error(redact(error instanceof Error ? error.stack : String(error)));
