@@ -174,6 +174,17 @@ if(fullTools&&config.plugins?.load?.paths) {
   }
   config.plugins.load.paths=privateLoadPaths;
 }
+// Opt-in, private Candidate only; never edits the shared/live runtime.
+if(process.env.VOICE_INDEPENDENT_TASK_LIFETIME==='1'){
+  assert(process.env.VLAB_CANDIDATE_ID,'Explicit Candidate identity required');
+  const {patchVoiceTaskLifetime}=await import('./patch-voice-task-lifetime.mjs');
+  const target=path.join(runtime,'openclaw/dist/talk-DkFuKRod.js');
+  const before=fs.readFileSync(target),after=patchVoiceTaskLifetime(before.toString());
+  fs.writeFileSync(target,after);
+  fs.copyFileSync('lab/voice-task-lifetime.mjs',path.join(runtime,'openclaw/dist/voice-task-lifetime.js'));
+  fs.mkdirSync(process.env.GPT_LIVE_H5_EVIDENCE_DIR,{recursive:true,mode:0o700});
+  fs.writeFileSync(path.join(process.env.GPT_LIVE_H5_EVIDENCE_DIR,'voice-task-lifetime-patch.json'),JSON.stringify({candidateId:process.env.VLAB_CANDIDATE_ID,sourceCommit:process.env.GPT_LIVE_H5_SOURCE_COMMIT,before:createHash('sha256').update(before).digest('hex'),after:createHash('sha256').update(after).digest('hex')})+'\n',{mode:0o600,flag:'wx'});
+}
 if(process.env.VOICE_WORKER_PROCESS_OWNER==='1'){
   const {patchVoiceWorker,patchVoicePool,patchVoiceIndex,patchNativeVoiceProcessScope,patchClassicVoiceProcessScope}=await import('./patch-voice-worker-process-owner.mjs');
   const roots=(config.plugins?.load?.paths??[]).filter(p=>fs.existsSync(path.join(p,'openclaw.plugin.json'))&&JSON.parse(fs.readFileSync(path.join(p,'openclaw.plugin.json'))).id==='vlab-agent-worker-isolation');
