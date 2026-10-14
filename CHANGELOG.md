@@ -11,6 +11,40 @@
 
 ---
 
+## v2026.9.1-db91.6-codex-ds-window-20261013
+
+上线：2026-10-13 23:09 CST 生效（22:40 装到 V；`v-self-restart` `20261013-230822-e668`，23:08:53 停 → 23:09:49 ready，56 s）  ·  tag `v2026.9.1-db91.6-codex-ds-window-20261013`
+
+**摘要**：#361，/vds（Codex + DeepSeek）按 DeepSeek 的真实窗口（100 万 token）压缩，不再按 GPT 默认的 24.48 万。上线前 V 上 DeepSeek 线程每小时压缩约 1.56 次（10/13 共 55 次），每次压缩要读整段历史、回复变慢；上线后到 10/14 15:00 压缩 0 次，"oversized thread" 日志 52 → 0。
+
+相对上一版 `v2026.9.1-db91.6-tooling-prepare-20261013`：core / worker / 飞书 / 钉钉 / 企微 0 个文件变化。变化全在 Codex 插件里；Codex 插件不在捕获范围内（`scripts/lib/runtime-components.mjs`：V 与 VLab 有意跑不同版本），以下按 V 上的安装计划 `/opt/v-release-backups/v2026.9.1-db91.6-codex-ds-window-20261013-20261013T144039/plan.json` 手写：
+
+**经 VLab 发版 `codex-ds-window-20261013`**（dev `ebca7d5c`；验收记录 PR #364）
+- `codex` run-attempt-D1hJO4fX.js  bb0b0354 → 8ab51650
+- `codex` v-deepseek-model-catalog.json  （新增）→ 6df9d13d
+- `codex` v-deepseek-base-instructions.md  （新增）→ 3b08633f
+
+回滚：`node scripts/promote-to-v.mjs --undo /opt/v-release-backups/v2026.9.1-db91.6-codex-ds-window-20261013-20261013T144039`（需重启）。
+
+## v2026.9.1-db91.6-tooling-prepare-20261013
+
+上线：2026-10-13 21:49 CST 生效（21:24 装到 V；`v-self-restart` `20261013-214736-a0c8`，21:48:08 停 → 21:49:09 ready，61 s，清掉 3 条 Codex 孤儿登记）  ·  tag `v2026.9.1-db91.6-tooling-prepare-20261013`
+
+**摘要**：两件事一次重启。
+- **#360（主进程那一半）会话投影重建每行只读一遍。** `sessions.transcript-index.prepare` 在主线程同步跑，上线前每小时 12.3 次慢操作、最长 21.1 s；上线后到 10/14 11:00 每小时 4.3 次、最长 8.6 s。顺带 `sessions.history.read` 慢操作 4.5/h → 0.9/h，等写锁导致的回合失败 0.83/h → 0.46/h。worker 只读打开那一半没上：共享 VLab 的发布工具拒绝路径含 `sessions/` 的目标文件，拆到下一批。
+- **#358 群聊换人说话不再换 Codex 线程。** 群 oc_88d96b7e 之前每换一个发言人就新开线程、重放整段历史并频繁压缩；现在成员续用群主线程。单独效果和 #361 混在一起，分不出来。
+
+同一晚 22:00 另外装了 #363（`/opt/v-sentinel/v-memory-indexer*`，旁路组件，不走 promote）：v-memory-indexer 的密钥改用 execve 环境传入，进程命令行上不再出现任何密钥（上线前 60 个）。
+
+相对上一版 `v2026.9.1-db91.6-claim-workboard-20261013`：core 1 个文件变化，另有 1 个 Codex 插件文件（不在捕获范围内，按安装计划手写）。
+
+**经 VLab 发版 `tooling-prepare-20261013`**（transcript-index-prepare，dev `94e1ba39`）
+> 验收：~/v-upgrade-private/tooling-prepare-20261013/shared-vlab-evidence.md：飞书 vlab-worker 12 回合全对、无干扰批首字 4.3/4.7/4.5/5.1 s 与 claim-workboard 持平、journal ERROR 0；#358 toolset 2 线程、成员 3 次续用主人线程、暗号全对、conversations_list 被拒；#360 上线 chunk 对共享 V 数据副本 4176 会话 prepare 与 V 原版 0 差异（candidate-4f7c12e1）
+- `core` session-transcript-index-9itOio9h.js  ae034fcf → 5504f5de
+- `codex` thread-lifecycle-DAcEJ_Om.js  a9f76cf4 → 4cceab62
+
+回滚：`node scripts/promote-to-v.mjs --undo /opt/v-release-backups/v2026.9.1-db91.6-tooling-prepare-20261013-20261013T132420`（需重启）。
+
 ## v2026.9.1-db91.6-claim-workboard-20261013
 
 上线：2026-10-13 17:31 CST 生效（17:16 装到 V；`v-self-restart` `20261013-173030-4f8e`，17:30:36 停 → 17:31:28 ready，51 s，清掉 3 条 Codex 孤儿登记）  ·  tag `v2026.9.1-db91.6-claim-workboard-20261013`
