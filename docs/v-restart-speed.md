@@ -107,3 +107,22 @@
 - 预检之后到飞书连上约 29 s（import + 33 个插件 + 渠道），VLab 共享实例同一段约 22 s。
 - 重启后第一条消息：08:31:11 收到、14.7 s 交给 worker，到 32.7 s 才开始准备 prompt（约 18 s），第二条起正常。疑似首轮在
   Gateway 尚未 ready 时走 `secrets.resolve` 或会话恢复，未证实。
+
+## 第二轮（2026-10-14）：重启后第一条消息
+
+V 上重启后第一条消息进 worker 后要等 8–18 s 才开始准备 prompt。原因：worker 每一轮都通过 Gateway 的 `secrets.resolve`
+解析 agent 运行时 SecretRef（V 有，共享 VLab 没有），超时 30 s；Gateway 要等 worker 池起来才应答。改为只在 worker 进程里
+最多等 3 s（`OPENCLAW_WORKER_SECRETS_RESOLVE_TIMEOUT_MS`），超时走 OpenClaw 已有的本地解析（worker 与 Gateway 同一套环境
+变量和密钥文件）。Gateway 和 CLI 仍是 30 s。
+
+candidate（配置加上 V 那类 SecretRef，worker 进程里在 Gateway 启动期间和就绪后各解析一次）：
+
+| | 改动前 candidate-3136aa98 | 改动后 candidate-46d299bd |
+|---|---|---|
+| Gateway 启动期间解析 | 18.2 s（等到 Gateway ready） | 3.2 s 后本地解析 |
+| 就绪后解析 | 171 ms，经 Gateway | 180 ms，经 Gateway，未回退 |
+| 解析出的值等于环境变量 | 是 | 是 |
+| 真实 exec 回合 | 通过 | 通过 |
+
+启动 profile（共享 VLab，`lab/profile/startup-cpu-profile.mjs`）和 `OPENCLAW_GATEWAY_STARTUP_TRACE=1` 显示的其余可压段
+（启动维护、就绪后主线程任务、Control UI 资源校验、worker 池启动时机）在 VLab 与 V 差别大，等 V 上的启动 trace 再定。

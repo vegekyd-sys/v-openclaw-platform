@@ -192,9 +192,10 @@ function secretsProbe(t0) {
   const started = Date.now();
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [path.join(process.cwd(), "lab/candidate/secrets-resolve-probe.mjs"), dist], { env: { ...env, VLAB_WORKER_CHILD: "1", OPENCLAW_CONFIG_PATH: workerCfg }, stdio: ["ignore", "pipe", "pipe"] });
-    let out = "";
+    let out = "", err = "";
     child.stdout.on("data", (c) => { out += c; });
-    child.on("exit", () => { let r; try { r = JSON.parse(out.trim().split("\n").pop()); } catch { r = { raw: out.slice(-300) }; } resolve({ startedAtS: Math.round((started - t0) / 100) / 10, wallMs: Date.now() - started, ...r }); });
+    child.stderr.on("data", (c) => { err += c; });
+    child.on("exit", () => { let r; try { r = JSON.parse(out.trim().split("\n").pop()); } catch { r = { raw: out.slice(-300), stderr: redact(err).split("\n").filter((l) => !/ExperimentalWarning|trace-warnings/u.test(l)).join("\n").slice(-600) }; } resolve({ startedAtS: Math.round((started - t0) / 100) / 10, wallMs: Date.now() - started, ...r }); });
   });
 }
 async function measuredStart(prof, probe = false) {
