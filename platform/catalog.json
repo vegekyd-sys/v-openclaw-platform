@@ -337,6 +337,7 @@
         "lab/sessions-describe-exact-read.test.mjs",
         "lab/mirror-facts-identity.test.mjs",
         "lab/restart-speed.test.mjs",
+        "lab/restart-speed-2.test.mjs",
         "lab/voice-native-turn-control.test.mjs",
         "lab/memory-search-fast.test.mjs",
         "lab/memory-search-query-isolation.test.mjs",
