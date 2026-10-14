@@ -327,6 +327,7 @@
         "lab/restart-recovery-claim-release.test.mjs",
         "lab/history-image-resize-skip.test.mjs",
         "lab/no-reply-after-tool.test.mjs",
+        "lab/deepseek-budget-completions.test.mjs",
         "lab/feishu-empty-card-discard.test.mjs",
         "scripts/node-async-context-frame.test.mjs",
         "lab/workboard-incremental-sweep.test.mjs",
