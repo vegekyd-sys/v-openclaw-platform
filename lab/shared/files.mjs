@@ -19,7 +19,10 @@ export function relative(s) {
 export function target(root, rel) {
   relative(rel);
   assert(/^(openclaw|production-worker|worker|npm|extensions|codex-code-mode-host|codex-progress-[\w.-]+)\//.test(rel),'Not a runtime code target');
-  assert(!/(^|\/)(\.env[^/]*|\.npmrc|auth[^/]*\.json|credentials[^/]*|state|sessions|browser)(\/|$)/i.test(rel),'State or credential target');
+  assert(!/(^|\/)(\.env[^/]*|\.npmrc|auth[^/]*\.json|credentials[^/]*)(\/|$)/i.test(rel),'State or credential target');
+  // openclaw/dist is compiled code only: its config/sessions/*.js and browser/*.js
+  // are modules (#360's reconcile worker), not session or browser state.
+  assert(/^openclaw\/dist\//.test(rel)||!/(^|\/)(state|sessions|browser)(\/|$)/i.test(rel),'State or credential target');
   assert(/\.(js|mjs|cjs|json|wasm|map|node|ts|md)$/.test(rel),'Unsupported code extension');
   const dest=path.join(root,rel); let ancestor=dest;
   while(!fs.existsSync(ancestor)) ancestor=path.dirname(ancestor);
