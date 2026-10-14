@@ -1,0 +1,1261 @@
+{
+  "release": "v2026.9.1-db91.6-tooling-prepare-20261013",
+  "capturedAt": "2026-10-13T13:35:59.627Z",
+  "capturedFrom": {
+    "host": "v",
+    "runtimeDir": "/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core/dist",
+    "baseDir": "npm:openclaw@2026.9.1"
+  },
+  "upstream": "2026.9.1",
+  "platformCommit": "f9f4a4b4f3e90768041bf7edbd502a8477b7a71c",
+  "note": "Point-in-time capture of how the live runtime diverges from its upstream base. These bytes are the existing production state, not a reviewed source build. Entries with alsoInRepo=null had no copy anywhere except the server.",
+  "counts": {
+    "runtimeFiles": 8599,
+    "baseFiles": 8574,
+    "modified": 115,
+    "added": 25,
+    "removedFromBase": 0,
+    "alreadyInRepo": 108,
+    "capturedOnly": 32,
+    "residue": 0
+  },
+  "removedFromBase": [],
+  "files": [
+    {
+      "path": "./agent-bundle-mcp-materialize-DlD9AJQW.js",
+      "sha256": "bd4240812bcd3a657f79d179a8aad05647fb65674edcf7124b57c2a78781ff1a",
+      "kind": "modified",
+      "baseSha256": "dea27d1f6bdfc088c0794ea6ec45531c3023793e48840bbb7cf7c1aaabc175a9",
+      "bytes": 17472,
+      "hostMtime": "2026-09-08T05:00:48.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./agent-command-DPfawBbr.js",
+      "sha256": "1805b6861936015156fa7d841b295912c26ed16f3e5dc8f38eec41f54bd186f4",
+      "kind": "modified",
+      "baseSha256": "dda401d2c6f9ddb086c106d804c8860a544d1c7f8c458ee055549d95801ca83f",
+      "bytes": 177787,
+      "hostMtime": "2026-10-13T00:14:42.000Z",
+      "alsoInRepo": "lab/release-files/restart-speed/dist/agent-command-DPfawBbr.js"
+    },
+    {
+      "path": "./agent-command-DeP5kHlK.js",
+      "sha256": "e7b522ff90d07f76e04c8067b64919a8c9e7068b46e44dfab707aea19f2976af",
+      "kind": "modified",
+      "baseSha256": "893415c5f2bb79551a48b8571099f85743f8f04329235eda2f268e0b7634835a",
+      "bytes": 325,
+      "hostMtime": "2026-10-05T05:12:25.000Z",
+      "alsoInRepo": "lab/release-files/agent-command-DeP5kHlK.js"
+    },
+    {
+      "path": "./agent-db-process-coordinator.mjs",
+      "sha256": "51c170d34fad2b5d0a6b0de8b10d0f32b57384b5db32e78dfd7b80eb7547650e",
+      "kind": "added",
+      "bytes": 5253,
+      "hostMtime": "2026-09-14T16:01:42.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./agent-runner-memory-7VF-zwNt.js",
+      "sha256": "7d5eaa388e1c0399983236a22df0c7906e0cbb7a4fd8b74b755906176bd0142f",
+      "kind": "modified",
+      "baseSha256": "8bca065f05bfd1f8baba4ab799dcfa131aade7b4876c0a4349a8eefd5a0a2317",
+      "bytes": 62820,
+      "hostMtime": "2026-10-09T15:56:46.000Z",
+      "alsoInRepo": "lab/release-files/memory-flush-defer/agent-runner-memory-7VF-zwNt.js"
+    },
+    {
+      "path": "./agent-runner.runtime-CAdsMsQt.js",
+      "sha256": "75b5b4b1a6ff870da0b42a1c8a7108700dae6da12aa6b015c966eca597d318cb",
+      "kind": "modified",
+      "baseSha256": "02b7183a45a9f467bbc2afd548c4e01b04437ea4fa2f1b6707941515c1a087a0",
+      "bytes": 375940,
+      "hostMtime": "2026-10-09T15:56:46.000Z",
+      "alsoInRepo": "lab/release-files/memory-flush-defer/agent-runner.runtime-CAdsMsQt.js"
+    },
+    {
+      "path": "./agent-runtime-identity-token-tbYOQmt6.js",
+      "sha256": "df78006506ed9aa892692ef3a4ddd11109132f48c0c50f3b2679b09150779d20",
+      "kind": "modified",
+      "baseSha256": "da0343df55d4fdb89b2a2f7b89991486f22f89302a697d627d8bebf94ebbf17e",
+      "bytes": 26916,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "lab/release-files/three-fixes-cron-agent-runtime-identity-token-tbYOQmt6.js"
+    },
+    {
+      "path": "./agent-tools-djVuP1H1.js",
+      "sha256": "f414fa7fc9f52a1d118a0ba14d100f4f73bc7134b6150191ab404c25e51d55ad",
+      "kind": "modified",
+      "baseSha256": "1a9f16ecfeeb8a2ff4b5792182e3633f16e9b64161ca6dab29ac5f495af44e63",
+      "bytes": 37465,
+      "hostMtime": "2026-10-07T17:32:57.000Z",
+      "alsoInRepo": "lab/release-files/voice-reliability-20261007/openclaw/dist/agent-tools-djVuP1H1.js"
+    },
+    {
+      "path": "./agent-tools.before-tool-call-g2OT63u5.js",
+      "sha256": "618ab46aa1b398a0815c461fd7af3b721272968ed3652e77639171604bb5f9e9",
+      "kind": "modified",
+      "baseSha256": "e61b81d47b1dfb30ae42c6ee49607e5a2ba8935d8ad2389b8eec11f950079bfc",
+      "bytes": 149941,
+      "hostMtime": "2026-10-05T04:50:22.000Z",
+      "alsoInRepo": "lab/release-files/gpt-live-call/agent-tools.before-tool-call-g2OT63u5.js"
+    },
+    {
+      "path": "./agents/agent-bundle-mcp-runtime.js",
+      "sha256": "7971447cf4e11d0fcc8e4b0c729085101bbc45c77a8f1ede1eb5f6c343769354",
+      "kind": "modified",
+      "baseSha256": "7a5cea7cfbb95327e03b56f538a1b63959cc03842bd50b2c30008976875849b7",
+      "bytes": 32271,
+      "hostMtime": "2026-09-08T05:00:48.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./attempt.model-diagnostic-events-B4dGIs0S.js",
+      "sha256": "8aa2ea92c8c55aecec9077659295765f9cddfaf608bf71ef82b460ad031cee9d",
+      "kind": "modified",
+      "baseSha256": "96b40a50b42ade32abe4c287aa49363e67e38e112731ebe8c3ddb445098e8696",
+      "bytes": 32220,
+      "hostMtime": "2026-09-09T14:43:18.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./automatic-maintenance-coordinator.mjs",
+      "sha256": "276b63f98c2b1432a3224ac27d033695aee062c7db31479a29223e77e6b956f1",
+      "kind": "added",
+      "bytes": 1623,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "lab/release-files/automatic-maintenance-coordinator.mjs"
+    },
+    {
+      "path": "./bash-tools-DiAfkLAC.js",
+      "sha256": "43d9a2273b8de08d71493731cd3e5224b1ccb241a64b2fff740f42b6517608ff",
+      "kind": "modified",
+      "baseSha256": "9a040020b9de4dfe8aa37b29f2eafbf331ae476a4b08055dc759592cda4c1cf8",
+      "bytes": 211253,
+      "hostMtime": "2026-10-04T17:33:40.000Z",
+      "alsoInRepo": "lab/release-files/gpt-live-call/bash-tools-DiAfkLAC.js"
+    },
+    {
+      "path": "./bot-message-DC6p8sB3.js",
+      "sha256": "f37781c45189f3fbff5c18bddd80f6a4d3b816a46e0865530f9d7545894d8c5e",
+      "kind": "modified",
+      "baseSha256": "8af1697a6e3804f49a946727301aafbb073b2c31aa2260cd7f9615a5b2275053",
+      "bytes": 209113,
+      "hostMtime": "2026-10-05T15:10:29.000Z",
+      "alsoInRepo": "lab/release-files/v-experience-channels/openclaw/dist/bot-message-DC6p8sB3.js"
+    },
+    {
+      "path": "./bot-native-command-builtins-mQhamMB9.js",
+      "sha256": "8b7908bd3e11c1e238d74605cd148c64a52c09d6e2bb2a2ee505bc52de9e2a78",
+      "kind": "modified",
+      "baseSha256": "20c55fca3b65b644cdbc314c99b827997b49d89ff945618f928b6178a061cfbd",
+      "bytes": 11418,
+      "hostMtime": "2026-10-05T15:10:29.000Z",
+      "alsoInRepo": "lab/release-files/v-experience-channels/openclaw/dist/bot-native-command-builtins-mQhamMB9.js"
+    },
+    {
+      "path": "./bot-native-command-dispatch-7hG7WSS2.js",
+      "sha256": "58c78cb2c03c91bff4a2681b0183bbd3a80f1e41d0abf0ba6307d1e08fbb7836",
+      "kind": "modified",
+      "baseSha256": "c42a0baf41ac44c13c6eeb6f0b82dbe8a18868d94365801f824f2179413b0bbf",
+      "bytes": 19813,
+      "hostMtime": "2026-10-05T15:10:29.000Z",
+      "alsoInRepo": "lab/release-files/v-experience-channels/openclaw/dist/bot-native-command-dispatch-7hG7WSS2.js"
+    },
+    {
+      "path": "./builtin-openclaw-zQV8Wwjr.js",
+      "sha256": "3e07c3fa8bc9ccb3fe87577f245afa11b42a99b87b46b957e43e5eb9de049f3d",
+      "kind": "modified",
+      "baseSha256": "62599de51a360163f8020d3f2c9ffbf7481a2424b850363d77308a99056a5303",
+      "bytes": 865416,
+      "hostMtime": "2026-10-10T14:53:08.000Z",
+      "alsoInRepo": "lab/release-files/no-reply-after-tool/builtin-openclaw-zQV8Wwjr.js"
+    },
+    {
+      "path": "./bundle-prep-observer.mjs",
+      "sha256": "bee5b5a50d40cb5a3c7dc64bcb43ab6c53462bfdf29305eb24a25096b939e152",
+      "kind": "added",
+      "bytes": 3393,
+      "hostMtime": "2026-09-08T05:00:48.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./citation-resolution-budget.mjs",
+      "sha256": "93dabf446753b0ee346beea9935bcfc714913cb9b3e7abf626a9b67da3040e40",
+      "kind": "added",
+      "bytes": 1964,
+      "hostMtime": "2026-09-09T07:09:19.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./command-auth-DmNN2m2f.js",
+      "sha256": "8b4858e31f7a4b9b6ae281ad3de20d31c818b5a99c4bdf670a50977b2136a5e8",
+      "kind": "modified",
+      "baseSha256": "30fbbd2fc5418d17aa346e583e057fe610f4a9e69d1267c5213949df66b25857",
+      "bytes": 15867,
+      "hostMtime": "2026-10-05T15:10:29.000Z",
+      "alsoInRepo": "lab/release-files/feishu-model-switch-roles/command-auth-DmNN2m2f.js"
+    },
+    {
+      "path": "./computer-use-contract-CisZRwLE.js",
+      "sha256": "1f51021f38e16b555139f5fbf167131f32715276c283f5ee91edc54bb55c46be",
+      "kind": "modified",
+      "baseSha256": "1043716bb021ba47f2985841eeff88297e07c695c1dbc24376cdcd82372f3061",
+      "bytes": 22372,
+      "hostMtime": "2026-09-28T01:34:19.000Z",
+      "alsoInRepo": "lab/release-files/computer-execution-idle/computer-use-contract-CisZRwLE.js"
+    },
+    {
+      "path": "./control-ui-DhD7PO_6.js",
+      "sha256": "22d45d6970a05a3bd57ad123803c6977a49d04f5746415d6e756948e768afe52",
+      "kind": "modified",
+      "baseSha256": "638fd21e36e1ed8b6b2d6d02608fd59485f1c3a7bb65d28276d7c860c264f205",
+      "bytes": 41927,
+      "hostMtime": "2026-09-22T17:47:15.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./control-ui/asset-manifest.json",
+      "sha256": "63fdae94b4f1f6b036430bcb161a02a926e7c9bd42bd280f988a507099d56837",
+      "kind": "modified",
+      "baseSha256": "a967daf8fe509bc38378f53ee9a1b8d7de8181e6adb7e3dc9c21c3ae3fe39dbc",
+      "bytes": 159310,
+      "hostMtime": "2026-09-22T17:47:15.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./control-ui/assets/control-ui-boot-chat-DWTSrxxk-rtc-v4.js",
+      "sha256": "7e4bcc734a656bd91d731fb1cfc8169e2b61a2a12f5745bf17c7ab70bb099a60",
+      "kind": "added",
+      "bytes": 786242,
+      "hostMtime": "2026-09-22T17:47:15.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./control-ui/assets/volcengine-rtc-4.68.1.esm.js",
+      "sha256": "5a66d63e574bd4858f8479fe73203780983e8f082b74cfd2da0dc1b3b1fa0c3d",
+      "kind": "added",
+      "bytes": 1453732,
+      "hostMtime": "2026-09-22T17:47:15.000Z",
+      "alsoInRepo": "lab/release-files/volcengine-rtc-agent/volcengine-rtc-4.68.1.esm.js"
+    },
+    {
+      "path": "./control-ui/assets/volcengine-rtc-managed-room-client.js",
+      "sha256": "cee065c7fbe8a3ca2cfa440fb78cb107f37e18592baa97e8e1f57b56597b08bc",
+      "kind": "added",
+      "bytes": 18346,
+      "hostMtime": "2026-09-22T17:47:15.000Z",
+      "alsoInRepo": "lab/release-files/volcengine-rtc-agent/volcengine-rtc-managed-room-client.js"
+    },
+    {
+      "path": "./cron-6EvXRcEQ.js",
+      "sha256": "bbffaa91c03e5671dbbdf769bfbd7673227eb1b466fc72b2fb8dfe3c7a824c88",
+      "kind": "modified",
+      "baseSha256": "f1c7a7db4bc046a42059e24329ae5788ab9efa470b20ea5f4bceeeaf7a675670",
+      "bytes": 63181,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "lab/release-files/three-fixes-cron-cron-6EvXRcEQ.js"
+    },
+    {
+      "path": "./cron-tool-CPu6etIM.js",
+      "sha256": "75ba8152b283631a0d71d26fecfeb80a871391a730c49c11d4596d0f6bfc5722",
+      "kind": "modified",
+      "baseSha256": "484906fd5b74c10114f07d2a9f7baeada7b22f341b815c85eedd32af08d36627",
+      "bytes": 70985,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "lab/release-files/three-fixes-cron-cron-tool-CPu6etIM.js"
+    },
+    {
+      "path": "./database-verify-resource-group.mjs",
+      "sha256": "87eda8ea396327d1474e1a59260b8189407d407062dcf3b3ba1df7e067b0983d",
+      "kind": "added",
+      "bytes": 3299,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "lab/release-files/database-verify-resource-group.mjs"
+    },
+    {
+      "path": "./db91-integrity-bootstrap.mjs",
+      "sha256": "87b7fa4767b0b7b56800e0163977778ee5da6999dfec6b5a07410208248dad84",
+      "kind": "added",
+      "bytes": 7209,
+      "hostMtime": "2026-10-13T00:14:42.000Z",
+      "alsoInRepo": "lab/release-files/restart-speed/dist/db91-integrity-bootstrap.mjs"
+    },
+    {
+      "path": "./db91-integrity-gate.mjs",
+      "sha256": "aa68547bbf63e027c81b135b351c8a979cd2f3c3b101d81014e48efbeafdff2e",
+      "kind": "added",
+      "bytes": 13729,
+      "hostMtime": "2026-10-02T07:23:48.000Z",
+      "alsoInRepo": "lab/release-files/db91-shrink-reuse/db91-integrity-gate.mjs"
+    },
+    {
+      "path": "./db91-maintenance-throttle.mjs",
+      "sha256": "40da8a59927bb404c259e204c6a059cb32cac9c2d709108708a30e48c40843c8",
+      "kind": "added",
+      "bytes": 662,
+      "hostMtime": "2026-09-07T13:42:55.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./db91-memory-provenance.mjs",
+      "sha256": "3521f6cd7f71cb5ab03cf56700a1974d94998fc4b3d3fe91d2a2da17fd397225",
+      "kind": "added",
+      "bytes": 1561,
+      "hostMtime": "2026-09-07T13:42:55.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./db91-read-ahead.mjs",
+      "sha256": "9d6cc4d80251c8627b0390fdddf01498f832bda75d6b4169717d1a53dfaed20c",
+      "kind": "added",
+      "bytes": 2848,
+      "hostMtime": "2026-09-08T16:56:45.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./db91-restart-carry.mjs",
+      "sha256": "5f18d635380c9d0d73ae30b4db0b2e9d5f7d6b19de46b69cdb2dd722e003ffca",
+      "kind": "added",
+      "bytes": 8256,
+      "hostMtime": "2026-10-13T00:14:42.000Z",
+      "alsoInRepo": "lab/release-files/restart-speed/dist/db91-restart-carry.mjs"
+    },
+    {
+      "path": "./db91-state-read-ahead.mjs",
+      "sha256": "b051c261177cdb358826c0b8e40248be4967b2eefb6552e379dc895ff10de9d8",
+      "kind": "added",
+      "bytes": 2098,
+      "hostMtime": "2026-09-08T16:56:45.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./db91-trajectory-sweep.mjs",
+      "sha256": "856ce3f8f0d98a79000a089f70ef3d18b592bc8b8d5162cfa7dcd4c2d8082d75",
+      "kind": "added",
+      "bytes": 3469,
+      "hostMtime": "2026-09-08T16:56:45.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./delivery-completion-Do3nBV6b.js",
+      "sha256": "d223a342ad217203dacac3fb6fc87b28e853b6f6f1afa0673e177cca1f1322d1",
+      "kind": "modified",
+      "baseSha256": "0c9f3a47d6a6ca7687a3cc1fae41b41b515942ac9617be3417f94d675392916c",
+      "bytes": 16100,
+      "hostMtime": "2026-09-11T16:33:36.000Z",
+      "alsoInRepo": "lab/release-files/dm-delivery-notice-delivery-completion-Do3nBV6b.js"
+    },
+    {
+      "path": "./dispatch-from-config-DOJq_7CI.js",
+      "sha256": "f150902ab3ebf2c9ccb19c4c5eb5158b469554553992a76b1c5e772fe7db39bd",
+      "kind": "modified",
+      "baseSha256": "f7b3f9dc52b54c295b417c83d9f12d2026d1571a524369635035211b288f81b2",
+      "bytes": 166719,
+      "hostMtime": "2026-09-22T14:16:16.000Z",
+      "alsoInRepo": "lab/release-files/feishu-secret-entry/dispatch-from-config-DOJq_7CI.js"
+    },
+    {
+      "path": "./dreaming-phases-C5ItPb99.js",
+      "sha256": "a72386d36ce5fabdbf3b5efa170efccc1656118fd95a4ff11414a85c0487ba92",
+      "kind": "modified",
+      "baseSha256": "c6dca1a88c2a32eb22b00d55aff978810b6b0f51c30b48c4f1a0e390ddd70dbb",
+      "bytes": 40950,
+      "hostMtime": "2026-09-18T13:32:02.000Z",
+      "alsoInRepo": "lab/release-files/dreaming-phases-C5ItPb99.js"
+    },
+    {
+      "path": "./embedded-agent-DaSvA-Yk.js",
+      "sha256": "22dad1eff94b82345bcfb4c0b5da5ba4c72f436b4e81ad94d7ceb611961c3cee",
+      "kind": "modified",
+      "baseSha256": "128a61c9e10a47d501ad425345f9f05a88c9dc66b665e32f979d12e29675cd67",
+      "bytes": 404332,
+      "hostMtime": "2026-10-10T05:56:38.000Z",
+      "alsoInRepo": "lab/release-files/codex-turn-tail/embedded-agent-DaSvA-Yk.js"
+    },
+    {
+      "path": "./embedded-agent-helpers-CzpaLpCq.js",
+      "sha256": "342e6269ad41e2db113ed35ef4499e7a7ea051a8285ea68baf495d38c2ccbfc2",
+      "kind": "modified",
+      "baseSha256": "3a4f8bfcf483cf3402b4cb15e405531422839f53385438b21c9812e9dc5ccbae",
+      "bytes": 42468,
+      "hostMtime": "2026-09-09T12:10:33.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./embedded-agent.runtime-CL7poBKY.js",
+      "sha256": "8ba1f8fb7d2de9a69728dbc27b9119313ce7318d99ccc63c05446692e0a0f82e",
+      "kind": "modified",
+      "baseSha256": "31e6c95723f1452ea796e8a8353e04075b1cd8c395977ff075191ac04322552a",
+      "bytes": 35159,
+      "hostMtime": "2026-10-07T17:32:57.000Z",
+      "alsoInRepo": "lab/release-files/voice-reliability-20261007/openclaw/dist/embedded-agent.runtime-CL7poBKY.js"
+    },
+    {
+      "path": "./engine-storage-C1hCjs4v.js",
+      "sha256": "feb18d0eb6416bf328784df96eab628b32a942d33aa751184801b7a15815f85a",
+      "kind": "modified",
+      "baseSha256": "e8ae645e690a5d190857c106a77b4cebe1405dd15a7bbd6b65f9c317e51c0909",
+      "bytes": 6327,
+      "hostMtime": "2026-09-09T07:09:19.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./exec-approvals-store-D159_AKa.js",
+      "sha256": "231279ca6aeea755bd63eb0c06219a254d11236c39e4a1a51ffe126fc452f5c1",
+      "kind": "modified",
+      "baseSha256": "173d3fecf20e9e8fe1e7da153292224391dea6f5afad0cdebea116c420653789",
+      "bytes": 11018,
+      "hostMtime": "2026-09-15T00:33:34.000Z",
+      "alsoInRepo": "lab/release-files/exec-approvals-store-D159_AKa.js"
+    },
+    {
+      "path": "./extensions/memory-core/manager-runtime.js",
+      "sha256": "134cc6f6dfcda254be4e727cd9a0b47649aa88d8697043fc5f509c3a64270e87",
+      "kind": "modified",
+      "baseSha256": "22a5d934b4b970dc6232600df752a6c1a1ac6d95a20dff7254c1f26ac5ccb9d9",
+      "bytes": 270316,
+      "hostMtime": "2026-10-02T11:58:08.000Z",
+      "alsoInRepo": "lab/release-files/memory-search-guards/manager-runtime.js"
+    },
+    {
+      "path": "./extensions/memory-core/memory-search-knn.child.js",
+      "sha256": "97c542fbac2e4fe0e3f52e628f39a37003a678caab01bf4212dda756ef485a40",
+      "kind": "modified",
+      "baseSha256": "a106f83918b30675b911e5fc071a12ef70d0ebdecf05d5130b78df8cf0748fc0",
+      "bytes": 2496,
+      "hostMtime": "2026-10-02T01:57:45.000Z",
+      "alsoInRepo": "lab/release-files/memory-search-fast/memory-search-knn.child.js"
+    },
+    {
+      "path": "./extensions/workboard/index.js",
+      "sha256": "5ac1a060a7572562b3163b2039ab9c870643df7d4a8f1f563f45029b6b4c1df7",
+      "kind": "modified",
+      "baseSha256": "6acf741573bb677c503228a68037d8826a02aba9f441a2ac7733470fa0c38ed7",
+      "bytes": 65537,
+      "hostMtime": "2026-10-06T17:45:41.000Z",
+      "alsoInRepo": "lab/release-files/workboard-sweep-links/index.js"
+    },
+    {
+      "path": "./gateway-DVu5Urba.js",
+      "sha256": "e6e07ff7f43bc29124039984f7672adca49cd935272c76c0210e9b20274d864e",
+      "kind": "modified",
+      "baseSha256": "5f8fcd95d473b7284a41e5ea66dbfdf2fc970f48f0ec52b3771aa6ed76bd932f",
+      "bytes": 20403,
+      "hostMtime": "2026-09-13T09:27:56.000Z",
+      "alsoInRepo": "lab/release-files/gateway-self-config-authority/gateway-DVu5Urba.js"
+    },
+    {
+      "path": "./gateway-caller-context-CRUBJj3M.js",
+      "sha256": "7c7a66ecc1c579ac1c4c0ac0617c6013b22eb284ab4b624e94784f4ee21c4cba",
+      "kind": "modified",
+      "baseSha256": "2514aa14791b88fbd3b12897a58ddc303f57a45cd2c6ce092c95b0286c2f7f0b",
+      "bytes": 9320,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "lab/release-files/three-fixes-cron-gateway-caller-context-CRUBJj3M.js"
+    },
+    {
+      "path": "./gemini-web-search-provider.runtime--94tDlhY.js",
+      "sha256": "d07766e2b99e1864b1b01390fec78fae145a68c196f338ec4181de400058cbaf",
+      "kind": "modified",
+      "baseSha256": "bac4d076c8fd3de180e103789f5cdd0c2de789f55315e1c942e94bb0a1f8baff",
+      "bytes": 13215,
+      "hostMtime": "2026-09-09T07:09:19.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./get-reply-CqW1y05D.js",
+      "sha256": "9bac6b7c8f8047c0a907c3ef85c2e03da096662d35e5de9790d846e869bf4cc1",
+      "kind": "modified",
+      "baseSha256": "d1e8f0f12a8a4507fba972f34723ecea1944a9a72962846a9a05d93ee8723648",
+      "bytes": 307436,
+      "hostMtime": "2026-10-06T10:14:39.000Z",
+      "alsoInRepo": "lab/release-files/gateway-first-message/get-reply-CqW1y05D.js"
+    },
+    {
+      "path": "./get-reply-from-config.runtime-CWdWv_c6.js",
+      "sha256": "727ad5143f48ac977331e09a09adbd07499fbb8cda425ece72ebfb040ebb929e",
+      "kind": "modified",
+      "baseSha256": "71de3e3eb7d635cf206390049193043adaf4ebb0b4deaa7cc0a5080977c389c8",
+      "bytes": 649,
+      "hostMtime": "2026-10-06T10:14:39.000Z",
+      "alsoInRepo": "lab/release-files/gateway-first-message/get-reply-from-config.runtime-CWdWv_c6.js"
+    },
+    {
+      "path": "./gpt-live-call-lifecycle.mjs",
+      "sha256": "ba6f0b7ec7c577ee55052906828d3cef9c1291b39f25e866cd91da5ca00189a8",
+      "kind": "added",
+      "bytes": 30318,
+      "hostMtime": "2026-10-07T17:32:57.000Z",
+      "alsoInRepo": "lab/release-files/gpt-live-call/gpt-live-call-lifecycle.mjs"
+    },
+    {
+      "path": "./gpt-live-consult-continuation.js",
+      "sha256": "2f2bcda1341d146bd6ad2e3adcbf82852d0b3ca9f10921e7632c6705e1be3a87",
+      "kind": "added",
+      "bytes": 48042,
+      "hostMtime": "2026-10-04T17:33:40.000Z",
+      "alsoInRepo": "lab/release-files/gpt-live-call/gpt-live-consult-continuation.js"
+    },
+    {
+      "path": "./gpt-live-voice-exec-lifetime.js",
+      "sha256": "1f101c5ccefa75850499283948ec32b6470ba82dcb4f68b6ac03634118148439",
+      "kind": "added",
+      "bytes": 4591,
+      "hostMtime": "2026-10-04T17:33:40.000Z",
+      "alsoInRepo": "lab/release-files/gpt-live-call/gpt-live-voice-exec-lifetime.js"
+    },
+    {
+      "path": "./helpers-DEd6NfQU.js",
+      "sha256": "8ee6539960753432f21ad9fefcde4319b1c08f15ed4e69f90ba4e7e92e5a1667",
+      "kind": "modified",
+      "baseSha256": "18a6c7fc28a4937ebfea777fc93c4b3e9d7461b0c4d88e14bb95235cb9a07c75",
+      "bytes": 36370,
+      "hostMtime": "2026-10-05T15:10:29.000Z",
+      "alsoInRepo": "lab/release-files/v-experience-channels/openclaw/dist/helpers-DEd6NfQU.js"
+    },
+    {
+      "path": "./history-image-prune-Dg0CDQ4a.js",
+      "sha256": "2811753f28022063d0e23275d1fbf0680ef32b3d4922091079234171b2df880c",
+      "kind": "modified",
+      "baseSha256": "a4261a044f88060be7d9412186c8b7df02710d1138a9eb836056ee63123b820f",
+      "bytes": 90995,
+      "hostMtime": "2026-09-27T17:39:11.000Z",
+      "alsoInRepo": "lab/release-files/computer-frame-prune/history-image-prune-Dg0CDQ4a.js"
+    },
+    {
+      "path": "./host-capability-Dq3cEEWF.js",
+      "sha256": "296b132dec1ae0b747e63538562d16c8561a7170d125d0811bc86eea26c88526",
+      "kind": "modified",
+      "baseSha256": "2b3ef96244cd4065d1141899179aa1b9b8a0ecdaedd93f80e9e851a385c8653c",
+      "bytes": 25038,
+      "hostMtime": "2026-10-04T17:33:40.000Z",
+      "alsoInRepo": "lab/release-files/gpt-live-call/host-capability-Dq3cEEWF.js"
+    },
+    {
+      "path": "./index.js",
+      "sha256": "fe5494158ceb95450fec18bc9b6b4bb44c08c8dfd53c776001338b3fc053c069",
+      "kind": "modified",
+      "baseSha256": "107ed67e95e7cb34f3e2e81ce3471607b448902c987a3dd31b245b88113812d8",
+      "bytes": 7363,
+      "hostMtime": "2026-10-13T00:14:42.000Z",
+      "alsoInRepo": "lab/release-files/restart-speed/dist/index.js"
+    },
+    {
+      "path": "./inference-route-Bv_D48Z8.js",
+      "sha256": "11a127d159f836d09941eaf0abd760535d336d91c7a51ebee7a53fd8da5443d0",
+      "kind": "modified",
+      "baseSha256": "9d64dbf86259ecc8af74a7d55d34281b2c9253c7e91cd45fee9de1372f6b70f1",
+      "bytes": 9009,
+      "hostMtime": "2026-09-11T16:33:36.000Z",
+      "alsoInRepo": "lab/release-files/system-agent-flash/inference-route-Bv_D48Z8.js"
+    },
+    {
+      "path": "./lifecycle-YRwzpo9_.js",
+      "sha256": "82c249a02236215329b3b3bb747b7e58b94035d8c546e2296e1fe63372047aa4",
+      "kind": "modified",
+      "baseSha256": "fadb95ce09a408c0b8b45d81755f9803afd306c7ae421c1bb0b25c686275abb8",
+      "bytes": 34367,
+      "hostMtime": "2026-09-11T16:33:36.000Z",
+      "alsoInRepo": "lab/release-files/dm-delivery-notice-lifecycle-YRwzpo9_.js"
+    },
+    {
+      "path": "./list-snapshot-revision-B919xtbt.js",
+      "sha256": "ea5c9cfbe61b203bcf838e4bf0a1d1a43934b26b8598028e7bdae255f292833c",
+      "kind": "modified",
+      "baseSha256": "f0c04eff4dcd8eb70dcd76e99249de4bd22c98baa5f87c5e4d3187ecd5e68ff7",
+      "bytes": 76349,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "lab/release-files/three-fixes-cron-list-snapshot-revision-B919xtbt.js"
+    },
+    {
+      "path": "./loader-UHuBXZwI.js",
+      "sha256": "d06e737e98437a7e1d595af5c7b22c15ed23d53e268949fdcaf4d7219e2a54d2",
+      "kind": "modified",
+      "baseSha256": "5b9a0239eb83d755aab9e6793cc3dd82749877ab86ef04a8698979593a56f56a",
+      "bytes": 231467,
+      "hostMtime": "2026-09-05T02:29:35.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./manager-search-knn-NiSMMJUM.js",
+      "sha256": "a9bd409237a06339ca6f7f947ad175e48897541f976aaa8d16021f0806ca204e",
+      "kind": "modified",
+      "baseSha256": "124e05bd8aecdcf05f39826d72f9764bbcbab608f96c308df8eb0a906afcd520",
+      "bytes": 4601,
+      "hostMtime": "2026-10-02T01:57:45.000Z",
+      "alsoInRepo": "lab/release-files/memory-search-fast/manager-search-knn-NiSMMJUM.js"
+    },
+    {
+      "path": "./memory-core-host-engine-sessions-CAnvQ_5o.js",
+      "sha256": "697381c0f781baae3a7d622b8156162192f820be6cf781cec0ff37bb08891f48",
+      "kind": "modified",
+      "baseSha256": "0b117c22162dc42db57ea50d6e940ce6a73f759cab05440f101573e722a51de4",
+      "bytes": 42304,
+      "hostMtime": "2026-09-18T13:32:02.000Z",
+      "alsoInRepo": "lab/release-files/memory-core-host-engine-sessions-CAnvQ_5o.js"
+    },
+    {
+      "path": "./memory-schema-BSs9MQgq.js",
+      "sha256": "7267571c87d05e1662a8277b86a22760d77679e7ff48474022983eec2238584b",
+      "kind": "modified",
+      "baseSha256": "76561b0d06e1fb80fea099a03a57d2c09131a50f3d19e1a863e8d295cba6bebb",
+      "bytes": 37752,
+      "hostMtime": "2026-09-14T14:05:06.000Z",
+      "alsoInRepo": "lab/release-files/memory-schema-BSs9MQgq.js"
+    },
+    {
+      "path": "./model-route-contract-B2Q_03Gg.js",
+      "sha256": "efb465d2bc7f474f7173bfbc6586d5a767e8970b7aa4031e6358543cb6f0384e",
+      "kind": "modified",
+      "baseSha256": "93b53a2dc672f42655fb825c129815c3ada1ef73e571c4f64076461aea71e84a",
+      "bytes": 5421,
+      "hostMtime": "2026-09-30T04:40:46.000Z",
+      "alsoInRepo": "lab/release-files/vcodex-sol61/model-route-contract-B2Q_03Gg.js"
+    },
+    {
+      "path": "./node-sqlite-CL-d6drd.js",
+      "sha256": "b4516f85c6e5dc59d8eccd454773af12bac73e9363e32fb1ad34eaa98b7cbdb5",
+      "kind": "modified",
+      "baseSha256": "27ca87d5d7228b75aef607bf51e3e0f8d9f2f427f9defb98ca89071fe35c7c48",
+      "bytes": 16879,
+      "hostMtime": "2026-10-10T05:56:38.000Z",
+      "alsoInRepo": "lab/release-files/codex-turn-tail/node-sqlite-CL-d6drd.js"
+    },
+    {
+      "path": "./openai-chatgpt-provider-BApw3_oy.js",
+      "sha256": "46bc8cc01badf720ab5d3443bf66cc2885b998f90a072b3588d6694566935df2",
+      "kind": "modified",
+      "baseSha256": "e804793440fa4f2671d12a13f58778a0cd0f7eeb9c105e79a44d29e3a390c254",
+      "bytes": 22785,
+      "hostMtime": "2026-09-30T04:40:46.000Z",
+      "alsoInRepo": "lab/release-files/vcodex-sol61/openai-chatgpt-provider-BApw3_oy.js"
+    },
+    {
+      "path": "./openclaw-agent-db-CUTe8BX6.js",
+      "sha256": "046d7a8253f5a97b1887bdbe5ae5d3826b6bae53aa84d5240e2f1216f4421cc5",
+      "kind": "modified",
+      "baseSha256": "e419c5c8f1f58786e51ace3f4e7cb5a3f3a2e852d4683d82f4e65da756f50dc2",
+      "bytes": 21374,
+      "hostMtime": "2026-09-14T16:01:42.000Z",
+      "alsoInRepo": "lab/release-files/openclaw-agent-db-CUTe8BX6.js"
+    },
+    {
+      "path": "./openclaw-agent-db-maintenance-DYSkzMMg.js",
+      "sha256": "b6c84c9a8cc7f98ca858f434c10c5c66d8fa253d11615ec90851b0729c123a9e",
+      "kind": "modified",
+      "baseSha256": "e2a47ebad837a4978593cdfe2cffdca003ee40a189cfb3aa36c1c2680c0fba9b",
+      "bytes": 151828,
+      "hostMtime": "2026-09-09T07:09:19.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./openclaw-database-verify-a3Yme38Y.js",
+      "sha256": "bace8934c1550e2219ac1c4085a16808c53e29d5b44f00c39ab70e48299edce9",
+      "kind": "modified",
+      "baseSha256": "2272f22a61df96a19d1fe23fae3aa0f19b77483beec5da1f4fc205cb2a2a5b1c",
+      "bytes": 9184,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "lab/release-files/openclaw-database-verify-a3Yme38Y.js"
+    },
+    {
+      "path": "./openclaw-state-db-Bh3Bq87y.js",
+      "sha256": "0e366560308f226295f31ff4ecbedfbd9e700a9432b2a1935febc238a4d102db",
+      "kind": "modified",
+      "baseSha256": "2c93ad49def5b11f38606f33d5d0bec57a0a2059c2a28595e3791991b1f9b0f4",
+      "bytes": 196638,
+      "hostMtime": "2026-09-08T16:56:45.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./openclaw-tools-BODVdJQD.js",
+      "sha256": "af27d9ae18e783d376b31ed9e5ad6082a305225bdfadde53e58f0045c7cd6019",
+      "kind": "modified",
+      "baseSha256": "37238a5c31e6f21568ce9d7b398d4395c81ea36fea02c699eeacfcff8a22dd38",
+      "bytes": 777235,
+      "hostMtime": "2026-10-10T14:53:08.000Z",
+      "alsoInRepo": "lab/release-files/vds-view-image/core-dist/openclaw-tools-BODVdJQD.js"
+    },
+    {
+      "path": "./payloads-Ch7RD6Ym.js",
+      "sha256": "d03cf80cdc443e8efaa23a99bac3f3595402c696e74f8877328011d49b10df5d",
+      "kind": "modified",
+      "baseSha256": "a570a6431794810da8f44ed67fb45cd8ae5a0c1d3db198b77bfcefae775bc804",
+      "bytes": 11048,
+      "hostMtime": "2026-09-09T12:10:33.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./placement-store-CkyLHi6x.js",
+      "sha256": "5bcb7a2f4a0fa7dd73922cff7920e9cd5485d58c1128c5cbae2eb5c583c6bf17",
+      "kind": "modified",
+      "baseSha256": "f7c7b41c8748a077448728c97dbd5d08510e9c931af40e02e2801b5072a7c24f",
+      "bytes": 40796,
+      "hostMtime": "2026-10-06T17:45:41.000Z",
+      "alsoInRepo": "lab/release-files/placement-sweep-lists/placement-store-CkyLHi6x.js"
+    },
+    {
+      "path": "./plugin-sdk/agent-harness-task-runtime.js",
+      "sha256": "50dc439b5cbb8a16860aab0bd8b4f4fd485f16a246f881820be5c0ea9c0754e3",
+      "kind": "modified",
+      "baseSha256": "04f713bc2f269afe0906db54317e64f545749a02dd86a8f31d7be955c311fa71",
+      "bytes": 8904,
+      "hostMtime": "2026-10-04T17:33:40.000Z",
+      "alsoInRepo": "lab/release-files/gpt-live-call/agent-harness-task-runtime.js"
+    },
+    {
+      "path": "./progress-card-CciYmFS8.js",
+      "sha256": "b579f12f0a8051b95b93f41c853bd2ac01504ed115459d30055447d702fc4fa8",
+      "kind": "modified",
+      "baseSha256": "d32a0caa2ca870db121fde4b83b5c656378de76c63faebb8cba81d2550e57b28",
+      "bytes": 9278,
+      "hostMtime": "2026-09-25T17:24:31.000Z",
+      "alsoInRepo": "lab/release-files/feishu-progress-stream/progress-card-CciYmFS8.js"
+    },
+    {
+      "path": "./project-memory-readonly.mjs",
+      "sha256": "2eb8daf953c52e500ea211b50a65f25a25f45b510828d664612a40013baf85ba",
+      "kind": "added",
+      "bytes": 3735,
+      "hostMtime": "2026-09-09T07:09:19.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./provider-policy-surface-bKCE_kaj.js",
+      "sha256": "faaf92510b5bd40ce767ee0640e69b97cce8698ad4922a1fc943fe2da3518c44",
+      "kind": "modified",
+      "baseSha256": "4711dae93f8bec59f1571d229f69167737376249624b7b75f92100ec0196b5e7",
+      "bytes": 2922,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "lab/release-files/optional-provider-policy-surface.js"
+    },
+    {
+      "path": "./provider-web-search-BBL3jMNu.js",
+      "sha256": "315728c200357f3451daa928b5661144c8bddd274621a7b25f8be54b4614431f",
+      "kind": "modified",
+      "baseSha256": "55bf64e40211d280b9a749b0418a0097df1540df2ff5d21b1917a0768652d0f2",
+      "bytes": 2494,
+      "hostMtime": "2026-09-09T07:09:19.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./public-surface-loader-V55JV4Jk.js",
+      "sha256": "dec325ae26f3f5e42ee86fc962f49b9d7edf05b9edc03c061555c98fb3d34bce",
+      "kind": "modified",
+      "baseSha256": "57794d0baea89de6f9fc7a1fc975ff7f3bdc230d895f88a9833c8da9108ba943",
+      "bytes": 5258,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "lab/release-files/optional-public-surface-loader.js"
+    },
+    {
+      "path": "./pw-session-Bp2ZghGj.js",
+      "sha256": "8a74119037da617a8b4d812ee507f28a874b3c42404815005b1a10045594c485",
+      "kind": "modified",
+      "baseSha256": "c2335277562952c8f70cb64d224d528e855583a2b0c0a55ad778b31fb7b95033",
+      "bytes": 78332,
+      "hostMtime": "2026-09-05T11:10:18.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./question-BdQvLMDb.js",
+      "sha256": "43ffe97b223a46c3ae411a80e98d9dcfb6e578526d8392aef897dcc46dc2504e",
+      "kind": "modified",
+      "baseSha256": "352b23f7dd3530ef69741bcf012568a9dc8f0b05cf8d317a45903ebfd0016ba6",
+      "bytes": 15625,
+      "hostMtime": "2026-09-22T14:16:16.000Z",
+      "alsoInRepo": "lab/release-files/feishu-secret-entry/question-BdQvLMDb.js"
+    },
+    {
+      "path": "./question-channel-runtime-BhJ40GDw.js",
+      "sha256": "262f91b2c7f06199b6e34d931827a0e5fa1b8efefa714d1632dae035c252b5a9",
+      "kind": "modified",
+      "baseSha256": "25325491c9d1fe6d433bd7d02c70fe6542d0e7aee07868b5d7ac45f238cb91e5",
+      "bytes": 4702,
+      "hostMtime": "2026-09-23T00:24:59.000Z",
+      "alsoInRepo": "lab/release-files/feishu-secret-entry-runtime-v2/question-channel-runtime-BhJ40GDw.js"
+    },
+    {
+      "path": "./question-gateway-runtime-BuwS3oNQ.js",
+      "sha256": "d659f25bd0becbac75b8b2d1a2e1d1dc5387ad685b8604bcf74622ae00629d3d",
+      "kind": "modified",
+      "baseSha256": "19a6c6d8f72cf07ef7b560cf84ce42d51e2887d828ed88950c2c0872624308e2",
+      "bytes": 9778,
+      "hostMtime": "2026-09-23T00:24:59.000Z",
+      "alsoInRepo": "lab/release-files/feishu-secret-entry-runtime-v2/question-gateway-runtime-BuwS3oNQ.js"
+    },
+    {
+      "path": "./realtime-quicksilver-delegation-controller-B0yPpiHp.js",
+      "sha256": "3e098e6a43b5aa3bd4fc2c713e0e5616da357555629c5a2c3e7c8f8df235a03b",
+      "kind": "modified",
+      "baseSha256": "e7a27df564dc8296dba853e27752f592f68ebf660736176793ede1bbb2762679",
+      "bytes": 41489,
+      "hostMtime": "2026-10-13T02:22:21.000Z",
+      "alsoInRepo": "lab/release-files/voice-native-turn-control/realtime-quicksilver-delegation-controller-B0yPpiHp.js"
+    },
+    {
+      "path": "./realtime-quicksilver-session-B3HKftDE.js",
+      "sha256": "22ae5c48d5bcf2386783212762f6999d5c237780e6469c5bedcf8e83704e46f0",
+      "kind": "modified",
+      "baseSha256": "0f98f3d3a6cf947106f9bc0ae589d34571f822b0407c57cf38bb08e4fa0379ee",
+      "bytes": 22776,
+      "hostMtime": "2026-10-10T18:20:55.000Z",
+      "alsoInRepo": "lab/release-files/voice-content-product-20261010/realtime-quicksilver-session-B3HKftDE.js"
+    },
+    {
+      "path": "./realtime-session-harness-CEO5kVAJ.js",
+      "sha256": "02f37cb21af5f2d40e72da78cd6c2b0664df1e431141da603503f300552862f6",
+      "kind": "modified",
+      "baseSha256": "ea7f772f4e383c58fed00ec7a0922ce73bd58173acfde5cebde869672279ce85",
+      "bytes": 99236,
+      "hostMtime": "2026-10-04T17:33:40.000Z",
+      "alsoInRepo": "lab/release-files/gpt-live-call/realtime-session-harness-CEO5kVAJ.js"
+    },
+    {
+      "path": "./refresh-BzYxPady.js",
+      "sha256": "3e34ae21675df38e58889654a384a9bcdc39c77b28f9eed2f612250402c06671",
+      "kind": "modified",
+      "baseSha256": "e886dd60b17d119f316270997a379c474c1b066ba38f18d7f327ca6aee9b35f8",
+      "bytes": 19659,
+      "hostMtime": "2026-10-07T01:27:29.000Z",
+      "alsoInRepo": "lab/release-files/skills-watch-ready/refresh-BzYxPady.js"
+    },
+    {
+      "path": "./registry-lookup-MnRZoGSI.js",
+      "sha256": "79416d86653ad4918b1d0e1e44f706041374df5f1ec3f75ce122bce6441f5e52",
+      "kind": "modified",
+      "baseSha256": "5b3b6cb376d5dec9e8aaa8be0dd65791a53a3a6a42f9dc34678fbb2a66a64085",
+      "bytes": 3460,
+      "hostMtime": "2026-09-05T10:29:37.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./reply-admission-ticket-QG2vY13O.js",
+      "sha256": "078c3742b69f7960813ce33770493db5e6964b3c43c5496c8a67d26c541bab3c",
+      "kind": "modified",
+      "baseSha256": "3001280f0aece150bb3fb74057249cba88b9f3854c6dfd00de479d9fc3420227",
+      "bytes": 36005,
+      "hostMtime": "2026-10-13T09:16:28.000Z",
+      "alsoInRepo": "lab/release-files/restart-recovery-claim-release/reply-admission-ticket-QG2vY13O.js"
+    },
+    {
+      "path": "./reply-prefix-Ddn3qL_7.js",
+      "sha256": "e38b7e02843c2de2eed3c063d0c1c628229275b3308da9fc69deae8625a5a9e1",
+      "kind": "modified",
+      "baseSha256": "9432da24d2064a063a1f3126c3144ef73c32009310e2a8cead02b13b11be00aa",
+      "bytes": 1620,
+      "hostMtime": "2026-09-04T14:15:40.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./run-session-target-D4dx7X-Q.js",
+      "sha256": "c0776b3f63b998266be0306ce7708243ef7c8918a01fa9a358c80504105b51f1",
+      "kind": "modified",
+      "baseSha256": "50c3488067f7be0c836d503fd99cfceadb0ec9c8f4e4bfad7fe53fdca89f6970",
+      "bytes": 10567,
+      "hostMtime": "2026-09-09T23:32:03.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./runner-BIhCXp3h.js",
+      "sha256": "f99d7111d20a9292fce75c1db42127a7dc4da6972b43437dc3f53aa17c07a47d",
+      "kind": "modified",
+      "baseSha256": "0648f47c8f4327111f6007aa7b6a1ac4a31872b3d9308970527e3035733bf130",
+      "bytes": 25042,
+      "hostMtime": "2026-10-06T17:45:41.000Z",
+      "alsoInRepo": "lab/release-files/image-hold/runner-BIhCXp3h.js"
+    },
+    {
+      "path": "./runtime-api-1CCazqtv.js",
+      "sha256": "95373b6edb1e79b0ebb0b3f6f79970983f634ebcf3503765d39a77cf09431984",
+      "kind": "modified",
+      "baseSha256": "ccf2e6825ce3092e852d38bb4101db0f9e8de74a9f78d5c0af5e58dc8a2ae39c",
+      "bytes": 197555,
+      "hostMtime": "2026-10-13T09:16:28.000Z",
+      "alsoInRepo": "lab/release-files/workboard-start-context/runtime-api-1CCazqtv.js"
+    },
+    {
+      "path": "./runtime-store.sqlite-D0DF2c9M.js",
+      "sha256": "ff4e9dc5b2295fbcb9da229b2546f4101844c72a0f91e0a7d49aa4dbbfbf6d50",
+      "kind": "modified",
+      "baseSha256": "abe31f350e2711ba1992b42f7e446e8b01c195a68c8c4b01a9355d63e38e5d2c",
+      "bytes": 10650,
+      "hostMtime": "2026-09-08T16:56:45.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./selection-BC0YSSFq.js",
+      "sha256": "5a0c1a19c69b2c7993405bab62e42268d899eec4e5b70ad889cc6f088cf69ccf",
+      "kind": "modified",
+      "baseSha256": "6daf478afab2b55e98301cec2cbd09fb76649fa159c7597cbf344f8ed45fb5ab",
+      "bytes": 39357,
+      "hostMtime": "2026-09-05T11:10:18.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./server-reload-handlers-DblQx0j4.js",
+      "sha256": "e566fd2554eb041d632c89fd1aa98fc47147eb27493aeb17d18295a50ff37951",
+      "kind": "modified",
+      "baseSha256": "2c97321c2adff17b58181e08fa8a4734030ef2799a9679cf7aeb52e2a3d6491e",
+      "bytes": 122915,
+      "hostMtime": "2026-09-13T09:27:56.000Z",
+      "alsoInRepo": "lab/release-files/gateway-self-config-realpath/server-reload-handlers-DblQx0j4.js"
+    },
+    {
+      "path": "./server-start-BNcm1gUN.js",
+      "sha256": "9b71ace5b596fffdaf4263d14fbc5ddac6c8d413dbd48253da7d69fc8bdb6205",
+      "kind": "modified",
+      "baseSha256": "845b97e1f276c426497fea21eedb8f7650d16e11dc70765e32e1ef4080e21864",
+      "bytes": 275082,
+      "hostMtime": "2026-09-14T16:01:42.000Z",
+      "alsoInRepo": "lab/release-files/server-start-BNcm1gUN.js"
+    },
+    {
+      "path": "./server-startup-post-attach-BPE6Pv6n.js",
+      "sha256": "fdd1061374a6e999bf7f80cfda0f6676ce05889c75473cd80fedd989e45a891c",
+      "kind": "modified",
+      "baseSha256": "fbf799ddfc65ddb1ad75c1b285ab6fedc3a842d20b793bc0ef03a112c9941079",
+      "bytes": 52243,
+      "hostMtime": "2026-10-06T10:14:39.000Z",
+      "alsoInRepo": "lab/release-files/gateway-first-message/server-startup-post-attach-BPE6Pv6n.js"
+    },
+    {
+      "path": "./server-worker-placement-startup-BvPREvpr.js",
+      "sha256": "8e73e9eb1480777d59848279a864694dd11aabba84da49c1ac0dc27979ae10a8",
+      "kind": "modified",
+      "baseSha256": "f269ce90b01d8c8597c74ec982f2ebd0bacf6bedaeec3b41c82c990b03fc3ad9",
+      "bytes": 358343,
+      "hostMtime": "2026-10-06T17:45:41.000Z",
+      "alsoInRepo": "lab/release-files/placement-sweep-lists/server-worker-placement-startup-BvPREvpr.js"
+    },
+    {
+      "path": "./session-accessor-K0XuW6ln.js",
+      "sha256": "30c7b9d6e3d9baf842e51f4811708b0f21a95c5cd36ebc150b2dd7a2fed2c15d",
+      "kind": "modified",
+      "baseSha256": "3b18271baa0cc644ab805ab077db73f4f331bc6bd42a85707bfaadab52a7bc08",
+      "bytes": 266227,
+      "hostMtime": "2026-10-12T14:04:35.000Z",
+      "alsoInRepo": "lab/release-files/mirror-facts-identity/session-accessor-K0XuW6ln.js"
+    },
+    {
+      "path": "./session-accessor.sqlite-entry-BlklNPKQ.js",
+      "sha256": "6b12190ca8e975ea6c8bce6703af805e01a1ef492e83f4829a6fe0f90669d96b",
+      "kind": "modified",
+      "baseSha256": "c915e3a9d981deeb06140682b3bb1cc2e0d0fe236544ef129ea6f39bd9ba762b",
+      "bytes": 35945,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./session-accessor.sqlite-scope-BwPKGcgm.js",
+      "sha256": "caffb3629c5cbfb1fbf6027c8dccac7fa7d829d30bd8f4ddac8c4046a4dfbf34",
+      "kind": "modified",
+      "baseSha256": "193a84fe7518a8b83db2315acb0518653011087b17f14f3f9f01cc7aa8a6c834",
+      "bytes": 10744,
+      "hostMtime": "2026-09-14T16:01:42.000Z",
+      "alsoInRepo": "lab/release-files/session-accessor.sqlite-scope-BwPKGcgm.js"
+    },
+    {
+      "path": "./session-accessor.sqlite-transcript-state-Cz9g7S9v.js",
+      "sha256": "792b1c75740b3fcc17a1708f4b55e10f206b5718f02cd94a24bf4bbcef278788",
+      "kind": "modified",
+      "baseSha256": "686ae2059ab36a85f9c93a9de9fdc8c75212b5fc978ebcb780c6abca1bd595e5",
+      "bytes": 34220,
+      "hostMtime": "2026-10-08T17:13:24.000Z",
+      "alsoInRepo": "lab/release-files/canonical-scan-path-cache/session-accessor.sqlite-transcript-state-Cz9g7S9v.js"
+    },
+    {
+      "path": "./session-history-eviction-d5aiCsHS.js",
+      "sha256": "014136ce2b566bc589490f89f6d2a4ce5d437f524c9ceb33453582496160fe2d",
+      "kind": "modified",
+      "baseSha256": "0a22916a13f09a4436c7f9bab3665920e4cba58fbc347b6d94fcaae772367566",
+      "bytes": 47324,
+      "hostMtime": "2026-09-14T16:01:42.000Z",
+      "alsoInRepo": "lab/release-files/session-history-eviction-d5aiCsHS.js"
+    },
+    {
+      "path": "./session-manager-CNTG_BAJ.js",
+      "sha256": "84317e326ad0f19575f7d6cfc5482f2a6f8c5b9f29004411a51ede68e4935edf",
+      "kind": "modified",
+      "baseSha256": "8db52c1a8d53e5f69e0bb2fe83c4fb0074b7abf6e2d03a4c832d5536fadc7024",
+      "bytes": 66268,
+      "hostMtime": "2026-10-09T15:56:46.000Z",
+      "alsoInRepo": "lab/release-files/context-window-read/session-manager-CNTG_BAJ.js"
+    },
+    {
+      "path": "./session-search-visibility-H6aL2Pcb.js",
+      "sha256": "566d4e58ac0b4dbd777b694bf9383823da7ed070d0b4cfa258813d57672b2ada",
+      "kind": "modified",
+      "baseSha256": "badc3d4c1cd555862da0972de30f04f0eeb46ab45749094f7c4e4b5539cb3e46",
+      "bytes": 11925,
+      "hostMtime": "2026-10-02T05:15:34.000Z",
+      "alsoInRepo": "lab/release-files/memory-search-1s/session-search-visibility-H6aL2Pcb.js"
+    },
+    {
+      "path": "./session-sharing-BlMqwMBH.js",
+      "sha256": "615cd9d6b87f11be7453c5c1fe46c75a6b1c7b9eebe97eceedc87ba2dd58f0bf",
+      "kind": "modified",
+      "baseSha256": "e2ce3c677502ce34ef66fe9d4b39adb8f8a1a2fdb7718592efe652bb36b97d22",
+      "bytes": 51841,
+      "hostMtime": "2026-09-17T03:45:10.000Z",
+      "alsoInRepo": "lab/release-files/exactread-vlab-parity/session-sharing-BlMqwMBH.js"
+    },
+    {
+      "path": "./session-transcript-index-9itOio9h.js",
+      "sha256": "5504f5decee060251f991e658a809a53e2548e4727cfb2838499a5a7c2ce84b1",
+      "kind": "modified",
+      "baseSha256": "ae034fcf43287501cf1417231e6e2e09638c03a0729795e53d59c8fb8b6db42d",
+      "bytes": 23932,
+      "hostMtime": "2026-10-13T13:24:29.000Z",
+      "alsoInRepo": "lab/release-files/transcript-index-prepare/session-transcript-index-9itOio9h.js"
+    },
+    {
+      "path": "./session-transcript-reconcile-j5qhAafV.js",
+      "sha256": "b63bdf05e20f48fdb9b00c9759efc70fd4333c412adfca91a768d47443f057ae",
+      "kind": "modified",
+      "baseSha256": "0c0461d43f9147aa6b8d7991466f5f3f1b07924306ccb7cf14cafcd0315b84f3",
+      "bytes": 19493,
+      "hostMtime": "2026-10-08T17:13:24.000Z",
+      "alsoInRepo": "lab/release-files/transcript-index-preflight/session-transcript-reconcile-j5qhAafV.js"
+    },
+    {
+      "path": "./session-utils-store-Dlphca2N.js",
+      "sha256": "26adfebaf50c68339e8f09456a8b03ed1382ad0e5938e007a1caa116e1c7dc39",
+      "kind": "modified",
+      "baseSha256": "e4b35b47a03fe8ebfc221a59c5c0040f96a89e7329177323cbfcf7266c0348a4",
+      "bytes": 27001,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "lab/release-files/session-utils-store-Dlphca2N.js"
+    },
+    {
+      "path": "./sessions-helpers-Bn_vDNby.js",
+      "sha256": "4c8dd6f402ee54ce0eee133cfefe25e01340a485d598390ad21d22fc8ed8206c",
+      "kind": "modified",
+      "baseSha256": "f88076204b3df1773c093e837f436c902a5fee899ebda1760be8b34d6ae5eb60",
+      "bytes": 32414,
+      "hostMtime": "2026-09-13T07:08:10.000Z",
+      "alsoInRepo": "lab/release-files/gateway-self-config-authority/sessions-helpers-Bn_vDNby.js"
+    },
+    {
+      "path": "./sessions-read-C6mAMxyQ.js",
+      "sha256": "f681c2daa388362ef83462681f4608c1163d0a10d416c3915716133c85dbb885",
+      "kind": "modified",
+      "baseSha256": "bfecaccaf2e0159273c3a9a1973bde806a9393dbff4f1f2e356a3ba61c4b5d4f",
+      "bytes": 31240,
+      "hostMtime": "2026-10-10T05:56:38.000Z",
+      "alsoInRepo": "lab/release-files/sessions-describe-exact-read/sessions-read-C6mAMxyQ.js"
+    },
+    {
+      "path": "./sessions-spawn-tool-1FQMTkIo.js",
+      "sha256": "1a7ab8f9848b1e17a830d7e55f24df01603afd2129bb6807e390f4cc35b17310",
+      "kind": "modified",
+      "baseSha256": "a21770222831b6574680621577da6bb0727903117210f20968afdb59a83975b8",
+      "bytes": 168590,
+      "hostMtime": "2026-10-04T17:33:40.000Z",
+      "alsoInRepo": "lab/release-files/gpt-live-call/sessions-spawn-tool-1FQMTkIo.js"
+    },
+    {
+      "path": "./sqlite-begin-contention-retry.mjs",
+      "sha256": "0540c343e348045452d68ddeb8ca62bc9e46303a517011eb17ca516a3e85ce4d",
+      "kind": "added",
+      "bytes": 2558,
+      "hostMtime": "2026-09-14T16:01:42.000Z",
+      "alsoInRepo": "lab/release-files/sqlite-begin-contention-retry.mjs"
+    },
+    {
+      "path": "./sqlite-store-CH-caj1l.js",
+      "sha256": "9043747801b1f3e590f8194da6bb33e41322abc36f32ace8abad07f87a5149a0",
+      "kind": "modified",
+      "baseSha256": "e0b0833f752cfca3ecdf71672653d031e5d919afed37b525255a6bf14013b55b",
+      "bytes": 51687,
+      "hostMtime": "2026-10-13T09:16:28.000Z",
+      "alsoInRepo": "lab/release-files/workboard-start-context/sqlite-store-CH-caj1l.js"
+    },
+    {
+      "path": "./state/openclaw-database-verify.worker.js",
+      "sha256": "e9966af8c1ee78f6974b5dd00f95e291bdd4ffe6e38ebafeb718b5dbaa58ecc5",
+      "kind": "modified",
+      "baseSha256": "b92b70e0306d5ca7779dc0e2184c101edfaf502d58168845daf6a4c6b674bf33",
+      "bytes": 3862,
+      "hostMtime": "2026-09-08T16:56:45.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./subagent-announce-delivery-Dosep7Zr.js",
+      "sha256": "8cd70a869960ca8a789bacea12ed92e14dee8085f1b95f82479382fdad7a3f1a",
+      "kind": "modified",
+      "baseSha256": "c14b886cb8852d528de58cfdef28d45de42267e1dd372166b6075a74929c41bc",
+      "bytes": 80717,
+      "hostMtime": "2026-10-04T17:33:40.000Z",
+      "alsoInRepo": "lab/release-files/gpt-live-call/subagent-announce-delivery-Dosep7Zr.js"
+    },
+    {
+      "path": "./subagent-announce.requester-settle-wake-B2NSziIo.js",
+      "sha256": "be8a3f7f0834943f234d42c9fe14ddfb7cd67fe52791fae99908a4edfda35f5d",
+      "kind": "modified",
+      "baseSha256": "e42fc319a6d079e6e4dc4aba39afdf85a605740189d3ed00b8cb6b4cb91df149",
+      "bytes": 18775,
+      "hostMtime": "2026-10-04T17:33:40.000Z",
+      "alsoInRepo": "lab/release-files/gpt-live-call/subagent-announce.requester-settle-wake-B2NSziIo.js"
+    },
+    {
+      "path": "./subagent-registry-C24yr_PF.js",
+      "sha256": "1d9f45d61e7201f27cd79b5941985443e4639b2bc21a0d4e1d97b386ad190a47",
+      "kind": "modified",
+      "baseSha256": "f0b833de66236db51c7feac999ba7229a6559fbd16a581a40b19f8ee6d752bec",
+      "bytes": 246831,
+      "hostMtime": "2026-10-04T17:33:40.000Z",
+      "alsoInRepo": "lab/release-files/gpt-live-call/subagent-registry-C24yr_PF.js"
+    },
+    {
+      "path": "./system-agent-BhnNvC3z.js",
+      "sha256": "50f9c3e48d5c2defacca72da0e5420f8b369095c511bdc148a0ad1791ad22c06",
+      "kind": "modified",
+      "baseSha256": "edce966071cb789c23d00f6b80757f4fcf91f7ecc877236da599a8430fa22442",
+      "bytes": 54232,
+      "hostMtime": "2026-09-13T09:27:56.000Z",
+      "alsoInRepo": "lab/release-files/gateway-self-config-authority/system-agent-BhnNvC3z.js"
+    },
+    {
+      "path": "./system-prompt-params-B645JcX8.js",
+      "sha256": "24d196636e47b585231ef18de8a4dbbafa8701aefb06c04b70b3c114f3fa1ec9",
+      "kind": "modified",
+      "baseSha256": "df80c676f3d6fd201212bd4c95db25898c6a00dd61f4b598f7e8c5db04d94750",
+      "bytes": 62144,
+      "hostMtime": "2026-09-09T07:09:19.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./talk-DkFuKRod.js",
+      "sha256": "dc6d6e9fd0615aa6dcdb133e66b27e74d1d0dc74f0bb2317b0bd0a960c866061",
+      "kind": "modified",
+      "baseSha256": "bc7f7e15e211fc7669446b221222de980a355a042c4f8a40e301357186e5aa42",
+      "bytes": 203567,
+      "hostMtime": "2026-10-10T18:20:55.000Z",
+      "alsoInRepo": "lab/release-files/voice-content-product-20261010/talk-DkFuKRod.js"
+    },
+    {
+      "path": "./task-registry-activity-DSlVVJwD.js",
+      "sha256": "8a89045af8dc0b652511ff88bee4d1fe791f2eedfc6c7c3c30b4e17658821697",
+      "kind": "modified",
+      "baseSha256": "65d88753fd63011eaa0f01f83f168417277aec5cc38087edb112e1e4d851313b",
+      "bytes": 30024,
+      "hostMtime": "2026-10-01T19:11:51.000Z",
+      "alsoInRepo": "lab/release-files/feishu-task-status/task-registry-activity-DSlVVJwD.js"
+    },
+    {
+      "path": "./task-registry.store.sqlite-paxOzi9K.js",
+      "sha256": "81c9d4b22da822ee808655832fdd0d561b858ab9c03edd456753b91c4bbdf237",
+      "kind": "modified",
+      "baseSha256": "e0e43ff1cc80363ebe3432c29614d76ebc4c05cf9c0d5d6d9c4459c74b4021ff",
+      "bytes": 20361,
+      "hostMtime": "2026-10-01T19:11:51.000Z",
+      "alsoInRepo": "lab/release-files/feishu-task-status/task-registry.store.sqlite-paxOzi9K.js"
+    },
+    {
+      "path": "./task-summary-qdovVAE7.js",
+      "sha256": "788de4765ce51bbe2eae0f09a9545e91f6e4822010fb5eed3493a775402a6d5b",
+      "kind": "modified",
+      "baseSha256": "f609dcbd5f8c080e692fa21f79ab86fe83b449138f3e7ff757c87f3bd1e12b32",
+      "bytes": 5241,
+      "hostMtime": "2026-09-17T13:42:18.000Z",
+      "alsoInRepo": "lab/release-files/task-access-storecache/task-summary-qdovVAE7.js"
+    },
+    {
+      "path": "./tasks-DNVtnKlS.js",
+      "sha256": "238760cc0681d00c5c13dd2bb942dc85cf43eb752bb5d43c00d3787d5641ec7a",
+      "kind": "modified",
+      "baseSha256": "5b918b48d82bfdbdeacf8b3062c0e387f196643832465bfa79ea4cd9a7043968",
+      "bytes": 7772,
+      "hostMtime": "2026-09-17T13:42:18.000Z",
+      "alsoInRepo": "lab/release-files/task-access-storecache/tasks-DNVtnKlS.js"
+    },
+    {
+      "path": "./telegram-ingress-drain-factory-DJM2Jqrc.js",
+      "sha256": "acdf98ee22458f8c6415e0ef7b8cc6cdf3e1edaf951d45a3fd6432ef1ef7b194",
+      "kind": "modified",
+      "baseSha256": "aff8b436fc794658741eaf72fcd75308181f28dcfebd7e00519e8edbf29b6a73",
+      "bytes": 235118,
+      "hostMtime": "2026-10-05T15:10:29.000Z",
+      "alsoInRepo": "lab/release-files/v-experience-channels/openclaw/dist/telegram-ingress-drain-factory-DJM2Jqrc.js"
+    },
+    {
+      "path": "./tool-resolution-Con11qMn.js",
+      "sha256": "aa63296c842b933f1c50fc8f879b3e82446766b4549758e60ef297b42b8d33a8",
+      "kind": "modified",
+      "baseSha256": "5d08186af6fc6ad0c887f2c9361279d036109016e7333cc9c4ee922bfe1dff6a",
+      "bytes": 18509,
+      "hostMtime": "2026-10-04T03:26:31.000Z",
+      "alsoInRepo": "lab/release-files/loopback-requester-sender/tool-resolution-Con11qMn.js"
+    },
+    {
+      "path": "./tools-Byg09TOP.js",
+      "sha256": "091c318773a6bd3f4c332ef40c42d8ca10aa0c586346527dde986e2fb0433e30",
+      "kind": "modified",
+      "baseSha256": "cc33a6027e379008655ae73cab4973cdb62ef51af39afa209d478727bb3e0d4e",
+      "bytes": 36754,
+      "hostMtime": "2026-09-11T16:33:36.000Z",
+      "alsoInRepo": "lab/release-files/memory-search-timeout-tools.js"
+    },
+    {
+      "path": "./tools-invoke-shared-CjpflNGO.js",
+      "sha256": "ac465c5bb6ed92f49be384f499971a44d25f0619ed107e8825095e4752ada253",
+      "kind": "modified",
+      "baseSha256": "68ef48e568a39d391061b991e71d8eeb3a5727a2a320a5b04008fdce44923912",
+      "bytes": 13007,
+      "hostMtime": "2026-10-06T12:19:25.000Z",
+      "alsoInRepo": "lab/release-files/voice-native-tools/tools-invoke-shared-CjpflNGO.js"
+    },
+    {
+      "path": "./v-experience.js",
+      "sha256": "5d939fa7109a68a52ed88d080f491636cce58d4095b2420a96e05cd090284f2b",
+      "kind": "added",
+      "bytes": 74961,
+      "hostMtime": "2026-10-05T15:10:29.000Z",
+      "alsoInRepo": "lab/release-files/v-experience-channels/dingtalk/dist/v-experience.mjs"
+    },
+    {
+      "path": "./versa-cron-shared-management-v1.mjs",
+      "sha256": "8c0417d80b2a341285dee975767abfaf3c30f334a610970478767d61bf79244b",
+      "kind": "added",
+      "bytes": 7705,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "patches/cron-shared-management/runtime.mjs"
+    },
+    {
+      "path": "./voice-process-owner.mjs",
+      "sha256": "c0045e63409a22e94bff30a3a4bfc03f3a52e768d569c5dadbde86086c716be5",
+      "kind": "added",
+      "bytes": 5436,
+      "hostMtime": "2026-10-07T17:32:57.000Z",
+      "alsoInRepo": "lab/release-files/voice-reliability-20261007/openclaw/dist/voice-process-owner.mjs"
+    },
+    {
+      "path": "./workboard-lookup-cache.mjs",
+      "sha256": "8250ff78ec0baab63cb38f4e78dc71ee0f0cd9847f414b62491c191a6ccc3c4e",
+      "kind": "added",
+      "bytes": 2693,
+      "hostMtime": "2026-09-10T14:04:00.000Z",
+      "alsoInRepo": "lab/release-files/workboard-lookup-cache.mjs"
+    },
+    {
+      "path": "./ws-log-CFwaDvs6.js",
+      "sha256": "2168a3f755af25f3115a745b3a2386f331684aaef22f205e8b60c6321b0be826",
+      "kind": "modified",
+      "baseSha256": "a73141cb06c2c13e67a827a6ab134bc96de350e456305607e590f18774b82573",
+      "bytes": 15374,
+      "hostMtime": "2026-10-10T05:56:38.000Z",
+      "alsoInRepo": "lab/release-files/codex-turn-tail/ws-log-CFwaDvs6.js"
+    },
+    {
+      "path": "./x-search-shared-CJa_QAnc.js",
+      "sha256": "bdb1ab1e8ffb48c4fc8ba3e2d7626496214ec1abfa7d965315ba9e57e4eae01a",
+      "kind": "modified",
+      "baseSha256": "72e642f38381af7e4ad34b9e357019a165c07d89ddc4619aa69f94c4cb716774",
+      "bytes": 6401,
+      "hostMtime": "2026-10-05T15:10:29.000Z",
+      "alsoInRepo": "lab/release-files/x-search-effort/x-search-shared-CJa_QAnc.js"
+    }
+  ],
+  "residue": []
+}
