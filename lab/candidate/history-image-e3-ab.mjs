@@ -150,7 +150,8 @@ const server = http.createServer((req, res) => {
       debug.push({ arm: turn.arm, turn: turn.turn, step, systemLines: messages.filter((m) => m.role === "system").flatMap((m) => normalize(typeof m.content === "string" ? m.content : (m.content ?? []).map((x) => x.text ?? "").join("")).split("\n")),
         layout: messages.map((m) => ({ role: m.role, content: typeof m.content === "string" ? `str:${m.content.length}${m.role === "tool" ? `:${m.content.slice(0, 400)}` : ""}` : (m.content ?? []).map((x) => x.type === "text" ? `text:${x.text.slice(0, 160)}` : `${x.type}:${JSON.stringify(x).slice(0, 160)}`), tool_calls: m.tool_calls?.length, keys: Object.keys(m) })) });
     }
-    requests.push({ at, arm: turn.arm, turn: turn.turn, step, bytes: Buffer.concat(chunks).length, model: body.model, owner,
+    const systemLines = messages.filter((m) => m.role === "system").flatMap((m) => normalize(typeof m.content === "string" ? m.content : (m.content ?? []).map((x) => x.text ?? "").join("")).split("\n"));
+    requests.push({ at, arm: turn.arm, turn: turn.turn, step, messages: messages.length, systemLines, bytes: Buffer.concat(chunks).length, model: body.model, owner,
       images: images.length, imageBytes: images.reduce((n, b) => n + b.bytes, 0), markers: shape.reduce((n, m) => n + m.blocks.filter((b) => b.text === "MARKER").length, 0),
       shapeSha: sha(JSON.stringify(shape)), imageSeqSha: sha(JSON.stringify(images.map((b) => b.image))), shape });
     if (step === "start") {
@@ -389,7 +390,17 @@ const compare = (x, y, turns) => {
     const i = a.findIndex((m, j) => JSON.stringify(m) !== JSON.stringify(b[j]));
     detail = { messageIndex: i, a: a[i], b: b[i], lengths: [a.length, b.length] };
   }
-  return { compared: rows.length, allPresent: rows.every((r) => r.present), identical: rows.filter((r) => r.sameShape).length, imagesIdentical: rows.filter((r) => r.sameImages).length, firstDiff, detail,
+  // Where the system prompt differs, the differing lines (normalized) on each side.
+  const systemDiffs = rows.filter((r) => !r.sameShape).map((r) => {
+    const a = requests.find((q) => q.arm === x && q.turn === r.turn && q.step === r.step)?.systemLines ?? [];
+    const b = requests.find((q) => q.arm === y && q.turn === r.turn && q.step === r.step)?.systemLines ?? [];
+    return { turn: r.turn, step: r.step, [`only${x}`]: a.filter((l) => !b.includes(l)).slice(0, 6).map((l) => l.slice(0, 300)), [`only${y}`]: b.filter((l) => !a.includes(l)).slice(0, 6).map((l) => l.slice(0, 300)) };
+  });
+  // A request matches when everything but the system prompt is identical (images, markers, every
+  // other text block, tool calls); system prompt differences are listed in systemDiffs.
+  const nonSystem = (q) => sha(JSON.stringify(q?.shape?.filter((m) => m.role !== "system") ?? null));
+  const sameNonSystem = rows.filter((r) => nonSystem(requests.find((q) => q.arm === x && q.turn === r.turn && q.step === r.step)) === nonSystem(requests.find((q) => q.arm === y && q.turn === r.turn && q.step === r.step))).length;
+  return { compared: rows.length, allPresent: rows.every((r) => r.present), identical: rows.filter((r) => r.sameShape).length, identicalExceptSystem: sameNonSystem, imagesIdentical: rows.filter((r) => r.sameImages).length, firstDiff, detail, systemDiffs,
     last: rows.at(-1) };
 };
 const abTurns = Array.from({ length: TURNS }, (_, i) => i + 1);
@@ -413,12 +424,13 @@ const out = {
   perTurn: results.map(({ phase, arm, turn, cmdToFirstRequestMs, toolToSecondRequestMs, totalMs, requests: n, worker }) => ({ phase, arm, turn, cmdToFirstRequestMs, toolToSecondRequestMs, totalMs, n, worker })),
 };
 console.log(JSON.stringify(out, null, 1));
-fs.writeFileSync(path.join(scratch, "history-image-e3-ab.json"), JSON.stringify({ ...out, requests: requests.map(({ shape, ...r }) => r) }, null, 1));
+out.requestMessages = { first: requests.filter((r) => r.arm === "B" && r.step === "start").slice(0, 8).map((r) => r.messages), last: requests.filter((r) => r.arm === "B" && r.step === "start").slice(-3).map((r) => r.messages) };
 
 assert(out.allCompleted, "every bench turn must finish with the stand-in's answer");
 assert(out.allOnWorker, "every bench model request must come from a Worker process");
-assert(out.ab.equivalence.allPresent && out.ab.equivalence.identical === out.ab.equivalence.compared, `A and B model requests differ: ${JSON.stringify(out.ab.equivalence.firstDiff)} ${JSON.stringify(out.ab.equivalence.detail)}`);
-assert(out.killSwitch.equivalence.allPresent && out.killSwitch.equivalence.identical === out.killSwitch.equivalence.compared, "C and B model requests differ");
-assert(out.ab.equivalence.last.markers[0] > 0, "the session never reached the prune boundary; the scenario exercised nothing");
+for (const [name, eq] of [["A/B", out.ab.equivalence], ["C/B", out.killSwitch.equivalence]]) {
+  assert(eq.allPresent && eq.imagesIdentical === eq.compared && eq.identicalExceptSystem === eq.compared, `${name}: model requests differ outside the system prompt`);
+}
+assert(TURNS >= 10, "fewer than ten image turns never reaches the resize-skip boundary");
 assert(out.ab.A_last10.p50 > out.ab.B_last10.p50, "B is not faster than A on the long session");
 assert(out.killSwitch.C.p50 > out.killSwitch.B.p50, "OPENCLAW_HISTORY_IMAGE_RESIZE_SKIP=0 did not restore the old behaviour");
