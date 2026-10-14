@@ -11,6 +11,33 @@
 
 ---
 
+## restart-speed-2-reconcile-20261014
+
+上线：2026-10-14 16:33 CST 生效（16:32 装到 V）  ·  tag `restart-speed-2-reconcile-20261014`
+
+**摘要**：Tianyi 于 2026-10-14 批准（「同意上 V，启动计时也打开，跟其他有效果的 PR 一起上」）。合并两项：
+① #368：重启后第一条消息不再在 worker 里等 Gateway 解析密钥。worker 每一轮都通过 `secrets.resolve` 解析 agent 运行时
+SecretRef，原来超时 30 s，Gateway 要等 worker 池起来才应答；现在 worker 里最多等 3 s，之后本地解析，结果相同。
+② #360 的 worker 一半：会话投影重建的 reconcile worker 改为只读打开，每行只读一遍，不再在 agent 库上开不带标签的
+IMMEDIATE 写事务。
+
+**上 V 实测**（16:33:29 经 `v-self-restart` 计时重启，临时开 `OPENCLAW_GATEWAY_STARTUP_TRACE`，测完已移除）：
+- 第一条消息：进入 worker 后 3 s 回退本地解析，4.4 s 开始准备 prompt（10/13 是 8–18 s）。
+- 这次重启飞书连上 51 s、首个 worker 56.9 s、ready 63.8 s，比 10/13 的 31/37/43 s 慢。trace 显示多出来的在
+  `cli.main.gateway-run-bootstrap`（18.6 s，10/13 08:48 约 6 s）：cron-repair、plugin-index-persistence、config-snapshot
+  ×5 等启动迁移/修复，OpenClaw 只在配置或构建指纹变化后才重跑；两次之间 V 有过别的发版和配置改动，待下次同配置重启确认。
+- Gateway 就绪后主线程卡 15 s + 8 s（16:34:35→16:35:01），第一条回复因此 45 s 才出现（模型首字只用了 6.8 s）。
+  对比历次重启，这段卡顿一直存在（10/12 22:14 改动前 33 s、10/13 23:08 16 s），不是本次引入，作为下一轮目标。
+- 原生校验器 16:39 开始、17:06:26 9 项通过（27 分钟，下午负载下）；期间 liveness 告警 7 次，之前 33 分钟 8 次。
+- NRestarts 0，无 restart recovery claim、Cannot reap、EROFS。
+
+相对上一版 `v2026.9.1-db91.6-codex-ds-window-20261013`：2 个文件变化。
+
+**经 VLab 发版 `restart-speed-2-reconcile-20261014`**（claude-restart-speed，dev `63e988b1`）
+> 验收：合并 release（#368 + #360 worker 一半），dev 63e988b1。restart-speed（#368）：candidate 配置加 V 那类 SecretRef，worker 进程探针 Gateway 启动期间 secrets 解析 18.2 s→3.2 s 后本地解析、值相同，就绪后 171→180 ms 经 Gateway 不回退（candidate-3136aa98/46d299bd）；共享 VLab 16:08 受控重启 RS2C：8/8 沿用、飞书 24.6 s、首 worker 38.6 s、ready 45.0 s，重启后 27.5 s 发消息 48.5 s 见回复（vlab-worker），exec 回合 worker 执行并原样回复随机 UUID。#360 worker：~/v-upgrade-private/restart-speed-2-…
+- `core` command-secret-gateway-DCJZ8pGz.js  d139c36e → f28f2fbe
+- `core` config/sessions/session-transcript-reconcile.worker.js  9e676169 → 95b9ddcd
+
 ## v2026.9.1-db91.6-codex-ds-window-20261013
 
 上线：2026-10-13 23:09 CST 生效（22:40 装到 V；`v-self-restart` `20261013-230822-e668`，23:08:53 停 → 23:09:49 ready，56 s）  ·  tag `v2026.9.1-db91.6-codex-ds-window-20261013`
