@@ -48,9 +48,25 @@ function byRun(rows, timeKey, stages) {
   return runs;
 }
 
+// runId -> {inputItems, toolCount} of the run's first model request (the one 首字 waits on).
+// inputItems is the provider message count: a size proxy for prompt-cache analysis.
+function firstPayload(rows) {
+  const runs = new Map();
+  for (const m of rows) {
+    if (typeof m.runId !== 'string' || m.stage !== 'payload-ready' || !Number.isFinite(m.at)) continue;
+    if (runs.get(m.runId)?.at <= m.at) continue;
+    const p = { at: m.at };
+    for (const k of ['inputItems', 'toolCount']) if (Number.isSafeInteger(m[k])) p[k] = m[k];
+    runs.set(m.runId, p);
+  }
+  return runs;
+}
+
 export function exportRecords(text) {
   const phases = byRun(marks(text, 'firsttext-worker-phases'), 'atMs', PHASES);
-  const metrics = byRun(marks(text, 'firsttext-metrics'), 'at', METRICS);
+  const metricRows = marks(text, 'firsttext-metrics');
+  const metrics = byRun(metricRows, 'at', METRICS);
+  const payloads = firstPayload(metricRows);
   return marks(text, 'firsttext-e2e.1').map((r) => {
     const out = {};
     for (const k of E2E_FIELDS) if (Number.isFinite(r[k])) out[k] = r[k];
@@ -66,6 +82,8 @@ export function exportRecords(text) {
     const m = metrics.get(r.runId) ?? {};
     out.metrics = {};
     for (const k of METRICS) if (Number.isFinite(m[k])) out.metrics[k] = m[k];
+    const { at: _at, ...payload } = payloads.get(r.runId) ?? {};
+    if (Object.keys(payload).length > 0) out.payload = payload;
     return out;
   });
 }
