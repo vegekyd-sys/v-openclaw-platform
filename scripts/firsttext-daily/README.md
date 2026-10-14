@@ -18,7 +18,8 @@ V is reachable only from Tianyi's Mac (`ssh v`), so the daily job runs there und
   Feishu message with the e2e timestamps, runtime/provider/model, group or direct chat, a 10-char
   sha256 of the session key, and the first Worker phase and model-call marks joined by runId.
   `payload` carries the first model request's `inputItems` (provider message count) and
-  `toolCount`, a prompt-size proxy for prompt-cache analysis.
+  `toolCount`, and, once V runs `lab/release-files/firsttext-usage-marks`, its token counts
+  (`input`, `cacheRead`, `cacheWrite`, `output`, `requestBytes`) for prompt-cache analysis.
   No message text, chat ids or message ids.
 
 The project thread "V首字每日报告" reads `latest.md` each morning and posts it. Nothing on V
