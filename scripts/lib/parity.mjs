@@ -1,7 +1,8 @@
 // The decision part of scripts/vlab-v-parity.mjs, without SSH, so it can be
 // tested: given the hashed trees of every pair, which state is VLab in?
 //
-//   pairs          from runtime-components.mjs parityPairs()
+//   pairs          from runtime-components.mjs parityPairs(); two pairs may
+//                  share a prefix (`copy` marks the second VLab copy)
 //   trees[i]       { v: Map<path, sha> | null, vlab: Map | null } for pairs[i];
 //                  null = directory absent (allowed only for optional pairs)
 //   pending        Map<target, { plan, before, after }> from --pending plans
@@ -16,6 +17,7 @@ export function evaluateParity({ pairs, trees, pending = new Map(), pendingSidec
     const v = trees[i].v ?? new Map();
     const vlab = trees[i].vlab ?? new Map();
     for (const [side, tree] of [['v', v], ['vlab', vlab]]) {
+      if (side === 'v' && pair.copy) continue; // V's tree was counted with the first pair
       for (const [path, sha] of tree) if (isResidue(path)) residue[side].push({ target: `${pair.prefix}/${path}`, sha });
     }
     const sidecarPending = pair.kind === 'sidecar' && pendingSidecars.has(pair.component);
@@ -25,8 +27,17 @@ export function evaluateParity({ pairs, trees, pending = new Map(), pendingSidec
       const target = `${pair.prefix}/${path}`;
       const vSha = v.get(path) ?? null;
       const vlabSha = vlab.get(path) ?? null;
-      if (vSha === vlabSha) continue;
-      const base = { target, component: pair.component };
+      // A second VLab copy compared under the same prefix (the Codex plugin the
+      // VLab Gateway loads, beside the runtime copy) says which one differs.
+      const base = { target, component: pair.component, ...(pair.copy ? { copy: pair.copy } : {}) };
+      if (vSha === vlabSha) {
+        // The release reached the first copy only: this one still equals V's before-bytes.
+        const want = pair.copy ? pending.get(target) : null;
+        if (want && want.after != null && vlabSha !== want.after) {
+          findings.push({ ...base, kind: 'pending-not-deployed-on-vlab', v: vSha, vlab: vlabSha, expectedV: want.before, expectedVlab: want.after });
+        }
+        continue;
+      }
       if (sidecarPending) {
         findings.push({ ...base, kind: 'pending', plan: `sidecar:${pair.component}` });
         continue;

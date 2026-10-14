@@ -10,21 +10,26 @@ const V_CORE = '/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core';
 const DT = 'dingtalk-real-ai-dingtalk-connector-aa54111b45__openclaw-generation__g-7ae9583359ddbec0';
 const V_DT = `/home/openclaw/.openclaw/npm/projects/${DT}/node_modules/@dingtalk-real-ai/dingtalk-connector`;
 const FEISHU_T = 'npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu';
-const listV = (glob) => (glob.includes('dingtalk') ? [V_DT] : []);
+const CODEX_T = 'npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex';
+const V_CODEX = `/home/openclaw/.openclaw/${CODEX_T}`;
+const listV = (glob) => (glob.includes('dingtalk') ? [V_DT] : glob.includes('openclaw-codex') ? [V_CODEX] : []);
 const vDirs = resolveVDirs(V_CORE, listV);
 
-test('V directories: core from ExecStart, Worker beside it, Feishu fixed, DingTalk by glob, WeCom extension', () => {
+test('V directories: core from ExecStart, Worker beside it, Feishu fixed, Codex and DingTalk by glob, WeCom extension', () => {
   assert.deepEqual(vDirs, {
     core: V_CORE,
     worker: '/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/worker',
     feishu: V_FEISHU,
+    codex: V_CODEX,
     dingtalk: V_DT,
     wecom: '/home/openclaw/.openclaw/extensions/wecom-openclaw-plugin',
     handoff: '/opt/v-desktop-handoff',
     'secret-entry': '/opt/v-secret-entry',
     'browser-fill': '/opt/v-browser-fill',
   });
-  assert.throws(() => resolveVDirs(V_CORE, () => []), /dingtalk: expected one directory on V/);
+  assert.throws(() => resolveVDirs(V_CORE, (g) => (g.includes('codex') ? [V_CODEX] : [])), /dingtalk: expected one directory on V/);
+  // A second Codex generation on V (a reinstall) has to be noticed, not guessed.
+  assert.throws(() => resolveVDirs(V_CORE, (g) => (g.includes('codex') ? [V_CODEX, V_CODEX.replace('g-b42', 'g-000')] : [V_DT])), /codex: expected one directory on V.*found 2/);
   assert.throws(() => resolveVDirs(V_CORE, () => [V_DT, V_DT.replace('g-7ae', 'g-000')]), /found 2/);
   assert.equal(resolveVDirs(V_CORE, listV, { worker: '/x/worker' }).worker, '/x/worker');
 });
@@ -60,20 +65,22 @@ test('promote mapping: existing targets map exactly as before; new channel plugi
   assert.equal(componentOfTarget('sidecar:handoff/plugin/index.js'), null, 'sidecars are never stage targets');
 });
 
-test('captures: the three existing runs are unchanged, DingTalk and WeCom are whole-directory captures', () => {
+test('captures: the three existing runs are unchanged, Codex, DingTalk and WeCom are whole-directory captures', () => {
   const runs = captureRuns('rel', vDirs);
-  assert.deepEqual(runs.map((r) => r.suffix), ['', '.worker', '.feishu', '.dingtalk', '.wecom']);
+  assert.deepEqual(runs.map((r) => r.suffix), ['', '.worker', '.feishu', '.codex', '.dingtalk', '.wecom']);
   // Exactly the arguments promote-to-v.mjs passed before.
   assert.deepEqual(runs.slice(0, 3).map((r) => [r.release, r.runtime, r.args, r.out]), [
     ['rel', `${V_CORE}/dist`, ['--base', 'npm:openclaw@2026.9.1', '--upstream', '2026.9.1', '--sourceCheckout', '/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/source'], 'release/captured/rel'],
     ['rel.worker', vDirs.worker, ['--base', 'none', '--exclude', 'node_modules'], 'release/captured/rel.worker'],
     ['rel.feishu', V_FEISHU, ['--base', 'none', '--exclude', 'node_modules', '--upstream', '@openclaw/feishu 2026.9.1'], 'release/captured/rel.feishu'],
   ]);
-  assert.equal(runs[3].runtime, V_DT);
-  assert.deepEqual(runs[3].args.slice(0, 4), ['--base', 'none', '--exclude', 'node_modules']);
-  assert.equal(runs[4].manifest, 'release/captured/rel.wecom/manifest.json');
-  assert.deepEqual(captureSuffixes(), ['.worker', '.feishu', '.dingtalk', '.wecom']);
-  assert.deepEqual(releaseNoteComponents(), [['core', ''], ['worker', '.worker'], ['feishu', '.feishu'], ['dingtalk', '.dingtalk'], ['wecom', '.wecom']]);
+  assert.deepEqual([runs[3].release, runs[3].runtime, runs[3].args, runs[3].out], ['rel.codex', V_CODEX,
+    ['--base', 'none', '--exclude', 'node_modules', '--upstream', '@openclaw/codex 2026.9.1', '--sudo'], 'release/captured/rel.codex']);
+  assert.equal(runs[4].runtime, V_DT);
+  assert.deepEqual(runs[4].args.slice(0, 4), ['--base', 'none', '--exclude', 'node_modules']);
+  assert.equal(runs[5].manifest, 'release/captured/rel.wecom/manifest.json');
+  assert.deepEqual(captureSuffixes(), ['.worker', '.feishu', '.codex', '.dingtalk', '.wecom']);
+  assert.deepEqual(releaseNoteComponents(), [['core', ''], ['worker', '.worker'], ['feishu', '.feishu'], ['codex', '.codex'], ['dingtalk', '.dingtalk'], ['wecom', '.wecom']]);
 });
 
 test('sync: a target\'s bytes come from the matching capture; core outside dist and uncaptured components have none', () => {
@@ -83,12 +90,14 @@ test('sync: a target\'s bytes come from the matching capture; core outside dist 
   assert.equal(captureSourceForTarget('r', `npm/projects/${DT}/node_modules/@dingtalk-real-ai/dingtalk-connector/dist/a.mjs`), 'release/captured/r.dingtalk/dist/dist/a.mjs');
   assert.equal(captureSourceForTarget('r', 'extensions/wecom-openclaw-plugin/dist/src/channel.js'), 'release/captured/r.wecom/dist/dist/src/channel.js');
   assert.equal(captureSourceForTarget('r', 'openclaw/package.json'), null);
-  assert.equal(captureSourceForTarget('r', 'npm/projects/openclaw-codex-1/node_modules/@openclaw/codex/a.js'), null);
+  assert.equal(captureSourceForTarget('r', `${CODEX_T}/dist/run-attempt-D1hJO4fX.js`), 'release/captured/r.codex/dist/dist/run-attempt-D1hJO4fX.js');
   assert.equal(captureSourceForTarget('r', 'sidecar:handoff/plugin/index.js'), null);
 });
 
 const LEGACY = '/srv/vlab-production-mirror/labs/instances/db91-parity/capability-alignment-20260911/plugin-sources/home/openclaw/.openclaw';
-const vlabGlob = (rel) => (rel.includes('feishu') ? [`${VLAB_RUNTIME}/${FEISHU_T}`] : []);
+const VLAB_CODEX_GW = '/srv/vlab-production-mirror/labs/instances/db91-parity/state/npm/projects/openclaw-codex-8902d781d4/node_modules/@openclaw/codex';
+const vlabGlob = (rel) => (rel.includes('feishu') ? [`${VLAB_RUNTIME}/${FEISHU_T}`]
+  : rel.includes('openclaw-codex') ? [`${VLAB_RUNTIME}/../state/npm/projects/openclaw-codex-8902d781d4/node_modules/@openclaw/codex`] : []);
 
 test('parity pairs: existing three unchanged; DingTalk/WeCom follow VLab\'s load paths, inside or outside runtime/', () => {
   const after = parityPairs({ vDirs, vlabGlob, vlabLoadPaths: [`${VLAB_RUNTIME}/npm/projects/${DT}/node_modules/@dingtalk-real-ai/dingtalk-connector`,
@@ -98,11 +107,22 @@ test('parity pairs: existing three unchanged; DingTalk/WeCom follow VLab\'s load
     ['production-worker', vDirs.worker, `${VLAB_RUNTIME}/production-worker`],
     [FEISHU_T, V_FEISHU, `${VLAB_RUNTIME}/${FEISHU_T}`],
   ]);
-  const [dt, wc] = after.slice(3, 5);
+  // Codex: V's project name on VLab's runtime/ (not a glob: an older generation sits beside it),
+  // then the copy VLab's Gateway loads, under the same prefix.
+  assert.deepEqual(after.slice(3, 5).map((p) => [p.component, p.prefix, p.v, p.vlab, p.copy ?? null, p.blocking]), [
+    ['codex', CODEX_T, V_CODEX, `${VLAB_RUNTIME}/${CODEX_T}`, null, true],
+    ['codex', CODEX_T, V_CODEX, VLAB_CODEX_GW, 'vlab-gateway', true],
+  ]);
+  assert.match(after[4].note, /Gateway loads codex from .*state\/npm/);
+  const noGatewayCopy = parityPairs({ vDirs, vlabGlob: (rel) => (rel.includes('openclaw-codex') ? [] : vlabGlob(rel)), only: ['codex'] });
+  assert.equal(noGatewayCopy.length, 1);
+  assert.match(noGatewayCopy[0].note, /loads codex from runtime/);
+  assert.throws(() => parityPairs({ vDirs, vlabGlob: (rel) => (rel.includes('openclaw-codex') ? ['/a', '/b'] : vlabGlob(rel)), only: ['codex'] }), /codex: expected at most one/);
+  const [dt, wc] = after.slice(5, 7);
   assert.deepEqual([dt.prefix, dt.v, dt.vlab, dt.note], [`npm/projects/${DT}/node_modules/@dingtalk-real-ai/dingtalk-connector`, V_DT,
     `${VLAB_RUNTIME}/npm/projects/${DT}/node_modules/@dingtalk-real-ai/dingtalk-connector`, undefined]);
   assert.deepEqual([wc.prefix, wc.vlab], ['extensions/wecom-openclaw-plugin', `${VLAB_RUNTIME}/extensions/wecom-openclaw-plugin`]);
-  assert.deepEqual(after.slice(5).map((p) => [p.component, p.prefix, p.v, p.vlab, p.blocking]), [
+  assert.deepEqual(after.slice(7).map((p) => [p.component, p.prefix, p.v, p.vlab, p.blocking]), [
     ['handoff', 'sidecar:handoff/plugin', '/opt/v-desktop-handoff/plugin', '/opt/vlab-v-desktop-handoff/plugin', false],
     ['handoff', 'sidecar:handoff/service', '/opt/v-desktop-handoff/service', '/opt/vlab-v-desktop-handoff/service', false],
     ['handoff', 'sidecar:handoff/desktop', '/opt/v-desktop-handoff/desktop', '/opt/vlab-v-desktop-handoff/desktop', false],
@@ -116,10 +136,10 @@ test('parity pairs: existing three unchanged; DingTalk/WeCom follow VLab\'s load
 
   // Before the prep: compared where VLab loads them, under the target prefix they will have.
   const before = parityPairs({ vDirs, vlabGlob, vlabLoadPaths: [`${LEGACY}/npm/projects/${DT}/node_modules/@dingtalk-real-ai/dingtalk-connector`, `${LEGACY}/extensions/wecom-openclaw-plugin`] });
-  assert.equal(before[3].vlab, `${LEGACY}/npm/projects/${DT}/node_modules/@dingtalk-real-ai/dingtalk-connector`);
-  assert.equal(before[3].prefix, `npm/projects/${DT}/node_modules/@dingtalk-real-ai/dingtalk-connector`);
-  assert.match(before[3].note, /outside runtime/);
-  assert.equal(before[4].prefix, 'extensions/wecom-openclaw-plugin');
+  assert.equal(before[5].vlab, `${LEGACY}/npm/projects/${DT}/node_modules/@dingtalk-real-ai/dingtalk-connector`);
+  assert.equal(before[5].prefix, `npm/projects/${DT}/node_modules/@dingtalk-real-ai/dingtalk-connector`);
+  assert.match(before[5].note, /outside runtime/);
+  assert.equal(before[6].prefix, 'extensions/wecom-openclaw-plugin');
 
   assert.throws(() => parityPairs({ vDirs, vlabGlob, vlabLoadPaths: [] }), /dingtalk: expected one plugins.load.paths entry/);
   assert.throws(() => parityPairs({ vDirs, vlabGlob: () => [], vlabLoadPaths: [] }), /feishu: expected one/);
@@ -249,8 +269,29 @@ test('release notes: a component missing from the previous release is a first ap
 });
 
 test('captures of V channel plugins read as root (they live under /home/openclaw/.openclaw)', () => {
-  const vDirs = { core: '/opt/x/core', worker: '/opt/w', feishu: '/opt/f', dingtalk: '/home/openclaw/.openclaw/npm/projects/d/node_modules/@dingtalk-real-ai/dingtalk-connector', wecom: '/home/openclaw/.openclaw/extensions/wecom-openclaw-plugin' };
+  const vDirs = { core: '/opt/x/core', worker: '/opt/w', feishu: '/opt/f', codex: V_CODEX, dingtalk: '/home/openclaw/.openclaw/npm/projects/d/node_modules/@dingtalk-real-ai/dingtalk-connector', wecom: '/home/openclaw/.openclaw/extensions/wecom-openclaw-plugin' };
   const runs = Object.fromEntries(captureRuns('r', vDirs).map((r) => [r.id, r.args]));
-  assert(runs.dingtalk.includes('--sudo') && runs.wecom.includes('--sudo'));
+  assert(runs.codex.includes('--sudo') && runs.dingtalk.includes('--sudo') && runs.wecom.includes('--sudo'));
   assert(!runs.core.includes('--sudo') && !runs.feishu.includes('--sudo'));
+});
+
+test('Codex: a release reaches both VLab copies or parity says which one it missed', () => {
+  const pairs = pairsFor('codex');
+  const f = 'dist/run-attempt-D1hJO4fX.js';
+  const target = `${CODEX_T}/${f}`;
+  const tree = (sha) => T({ [f]: h(sha), 'package.json': h('p') });
+  const pending = new Map([[target, { plan: 'p.json', before: h('a'), after: h('b') }]]);
+  // Both VLab copies have the release, V the before-bytes: AHEAD.
+  assert.equal(evaluateParity({ pairs, trees: [{ v: tree('a'), vlab: tree('b') }, { v: tree('a'), vlab: tree('b') }], pending }).state, 'AHEAD');
+  // Staged through the release channel only (runtime/), Gateway copy forgotten.
+  const skipped = evaluateParity({ pairs, trees: [{ v: tree('a'), vlab: tree('b') }, { v: tree('a'), vlab: tree('a') }], pending });
+  assert.equal(skipped.state, 'DIVERGED');
+  assert.deepEqual(skipped.findings.map((x) => [x.kind, x.copy ?? null]), [['pending', null], ['pending-not-deployed-on-vlab', 'vlab-gateway']]);
+  // After promotion: V and runtime/ agree, the Gateway copy lags.
+  const lag = evaluateParity({ pairs, trees: [{ v: tree('b'), vlab: tree('b') }, { v: tree('b'), vlab: tree('a') }] });
+  assert.equal(lag.state, 'DIVERGED');
+  assert.deepEqual(lag.findings.map((x) => [x.kind, x.target, x.copy]), [['differs', target, 'vlab-gateway']]);
+  // V's residue is counted once, not per VLab copy.
+  const res = T({ [f]: h('a'), [`${f}.bak-1`]: h('e') });
+  assert.equal(evaluateParity({ pairs, trees: [{ v: res, vlab: tree('a') }, { v: res, vlab: tree('a') }] }).residue.v.length, 1);
 });

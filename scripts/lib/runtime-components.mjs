@@ -30,6 +30,7 @@
 // line for the first time, then flip it.
 
 import assert from 'node:assert/strict';
+import { posix } from 'node:path';
 
 export const V_HOME = '/home/openclaw/.openclaw';
 export const V_FEISHU = '/opt/openclaw-experiments/worker-visible-progress-v2026.9.1-20260909/feishu';
@@ -64,13 +65,24 @@ export const COMPONENTS = [
     capture: { base: 'none', upstream: '@openclaw/feishu 2026.9.1' },
   },
   {
-    // The npm-managed Codex plugin: promotable, not captured, not compared
-    // (V and VLab run different generations of it on purpose).
-    id: 'codex', kind: 'runtime', label: 'codex', suffix: null, blocking: false,
+    // The npm-managed Codex plugin (the codex harness: /vcodex, /vds). V has one
+    // generation directory; VLab's runtime/npm has the same project (plus a
+    // broken older one, g-29d0…, so no glob there). Captured and compared since
+    // 2026-10-14; captures before that have no .codex.
+    //
+    // The shared VLab Gateway does not load the runtime copy: it loads its own
+    // install under state/npm (projects/openclaw-codex-8902d781d4, no generation
+    // suffix; seen 2026-10-14 in the Gateway's Debugger.scriptParsed list). Only
+    // the Worker uses the runtime copy, and the release channel writes only that
+    // one. `gatewayCopy` compares the Gateway's copy as well, under the same
+    // target prefix, so a release that skipped it shows up as
+    // pending-not-deployed-on-vlab and an unsynced copy blocks align. The
+    // release channel cannot write it; it is copied by hand (cp -a).
+    id: 'codex', kind: 'runtime', label: 'codex', suffix: '.codex', blocking: true,
     target: /^(npm\/projects\/(openclaw-codex-[^/]+)\/node_modules\/@openclaw\/codex)\/(.+)$/,
-    v: { npmSameProject: true },
-    vlab: null,
-    capture: null,
+    v: { glob: `${V_HOME}/npm/projects/openclaw-codex-*/node_modules/@openclaw/codex`, npmSameProject: true },
+    vlab: { sameProjectAsV: true, gatewayCopy: '../state/npm/projects/openclaw-codex-*/node_modules/@openclaw/codex' },
+    capture: { base: 'none', sudo: true, upstream: '@openclaw/codex 2026.9.1' },
   },
   {
     // npm project name carries a generation hash that changes on reinstall:
@@ -280,6 +292,20 @@ export function parityPairs({ vDirs, vlabRuntime = VLAB_RUNTIME, vlabGlob, vlabL
     assert(v, `${c.id}: V directory not resolved`);
     if (c.vlab.fixed) {
       pairs.push({ component: c.id, kind: c.kind, blocking: c.blocking, prefix: c.vlab.fixed, v, vlab: `${vlabRuntime}/${c.vlab.fixed}` });
+    } else if (c.vlab.sameProjectAsV) {
+      // Same npm project directory name as V's (the generation suffix included).
+      const rel = v.slice(v.indexOf('npm/projects/'));
+      pairs.push({ component: c.id, kind: c.kind, blocking: c.blocking, prefix: rel, v, vlab: `${vlabRuntime}/${rel}` });
+      if (c.vlab.gatewayCopy) {
+        const hits = vlabGlob(c.vlab.gatewayCopy).map((p) => posix.normalize(p));
+        assert(hits.length <= 1, `${c.id}: expected at most one ${c.vlab.gatewayCopy} beside ${vlabRuntime}, found ${hits.length}`);
+        if (hits.length) {
+          pairs.push({ component: c.id, kind: c.kind, blocking: c.blocking, prefix: rel, v, vlab: hits[0], copy: 'vlab-gateway',
+            note: `VLab's Gateway loads ${c.id} from ${hits[0]} (the Worker and the release channel use runtime/); both are compared under ${rel}; the release channel cannot write the Gateway's copy` });
+        } else {
+          pairs.at(-1).note = `no ${c.vlab.gatewayCopy} on VLab: its Gateway loads ${c.id} from runtime/`;
+        }
+      }
     } else if (c.vlab.glob) {
       const hits = vlabGlob(c.vlab.glob);
       assert.equal(hits.length, 1, `${c.id}: expected one ${c.vlab.glob} under ${vlabRuntime}, found ${hits.length}`);
