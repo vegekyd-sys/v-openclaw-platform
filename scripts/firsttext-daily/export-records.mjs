@@ -48,15 +48,25 @@ function byRun(rows, timeKey, stages) {
   return runs;
 }
 
-// runId -> {inputItems, toolCount} of the run's first model request (the one 首字 waits on).
-// inputItems is the provider message count: a size proxy for prompt-cache analysis.
+// runId -> size and usage of the run's first model request (the one 首字 waits on):
+// inputItems/toolCount from payload-ready (provider message count, a size proxy) and the
+// token counts from model-call-ended (input, cacheRead, cacheWrite, output, requestBytes),
+// for prompt-cache analysis.
+const PAYLOAD_FIELDS = {
+  'payload-ready': ['inputItems', 'toolCount'],
+  'model-call-ended': ['input', 'cacheRead', 'cacheWrite', 'output', 'requestBytes'],
+};
 function firstPayload(rows) {
-  const runs = new Map();
+  const earliest = new Map();
   for (const m of rows) {
-    if (typeof m.runId !== 'string' || m.stage !== 'payload-ready' || !Number.isFinite(m.at)) continue;
-    if (runs.get(m.runId)?.at <= m.at) continue;
-    const p = { at: m.at };
-    for (const k of ['inputItems', 'toolCount']) if (Number.isSafeInteger(m[k])) p[k] = m[k];
+    if (typeof m.runId !== 'string' || !PAYLOAD_FIELDS[m.stage] || !Number.isFinite(m.at)) continue;
+    const key = `${m.runId}\n${m.stage}`;
+    if (!(earliest.get(key)?.at <= m.at)) earliest.set(key, m);
+  }
+  const runs = new Map();
+  for (const m of earliest.values()) {
+    const p = runs.get(m.runId) ?? {};
+    for (const k of PAYLOAD_FIELDS[m.stage]) if (Number.isSafeInteger(m[k])) p[k] = m[k];
     runs.set(m.runId, p);
   }
   return runs;
@@ -82,8 +92,8 @@ export function exportRecords(text) {
     const m = metrics.get(r.runId) ?? {};
     out.metrics = {};
     for (const k of METRICS) if (Number.isFinite(m[k])) out.metrics[k] = m[k];
-    const { at: _at, ...payload } = payloads.get(r.runId) ?? {};
-    if (Object.keys(payload).length > 0) out.payload = payload;
+    const payload = payloads.get(r.runId);
+    if (payload && Object.keys(payload).length > 0) out.payload = payload;
     return out;
   });
 }
