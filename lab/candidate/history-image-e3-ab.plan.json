@@ -1,0 +1,21 @@
+{
+  "support": [
+    "lab/candidate/history-image-e3-ab.mjs",
+    "lab/history-image-e3.plan.json",
+    "lab/release-files/history-image-e3/embedded-agent-helpers-CzpaLpCq.js",
+    "lab/release-files/history-image-e3/history-image-prune-Dg0CDQ4a.js",
+    "lab/release-files/history-image-e3/embedded-agent-DaSvA-Yk.js",
+    "lab/release-files/history-image-e3/agent-runner.runtime-CAdsMsQt.js",
+    "lab/release-files/history-image-e3/openai-completions-D0QZ0AyB.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/history-image-e3-ab.mjs"
+  ],
+  "env": {
+    "AB_TURNS": "40",
+    "AB_SWITCH_TURNS": "6"
+  },
+  "timeoutSeconds": 7200,
+  "user": "lab-db91-parity"
+}
