@@ -1,0 +1,9 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/voice-reply-owner-authority/reply-run-registry.registry-DWAbDPHN.js",
+      "target": "openclaw/dist/reply-run-registry.registry-DWAbDPHN.js",
+      "before": "ecd0653c7e567130fe9fefe72a883695b2b4d69d3716553621577a218bf89540"
+    }
+  ]
+}

@@ -411,7 +411,8 @@
         "lab/gpt-live-h5/screen-wake-lock.test.mjs",
         "lab/patch-gpt-live-media-policy.test.mjs",
         "lab/voice-task-lifetime.test.mjs",
-        "lab/voice-task-control-authority.test.mjs"
+        "lab/voice-task-control-authority.test.mjs",
+        "lab/voice-reply-owner-authority.test.mjs"
       ]
     }
   ],
@@ -1124,6 +1125,17 @@
       ],
       "disposition": "needs-live-reconciliation",
       "sourceSha256": "74f8245cc04782afb2b2a8279f4e7dffc8a45d58dd13fad948e8212acb0be670"
+    },
+    {
+      "id": "patch-voice-reply-owner-authority",
+      "file": "lab/patch-voice-reply-owner-authority.mjs",
+      "component": "openclaw-core",
+      "reason": "Project the admitted SDK reply operation backend authority to the existing exact-signal Voice controller without relaxing inbound queue checks.",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "needs-live-reconciliation",
+      "sourceSha256": "c7784db4c9524d5f89c6fae10585ece5203364a008484a059a5d79630e74d686"
     }
   ],
   "externalInputs": [
