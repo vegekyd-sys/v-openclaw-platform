@@ -12,7 +12,7 @@
   ],
   "env": {
     "OVF_BIG": "midtool,start,always",
-    "OVF_SMALL": "3",
+    "OVF_SMALL": "0",
     "OVF_REPEAT": "2"
   },
   "timeoutSeconds": 10800,

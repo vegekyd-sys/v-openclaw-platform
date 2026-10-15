@@ -147,6 +147,10 @@ const proxyBase = `http://127.0.0.1:${proxy.address().port}/v1`;
 const V_FLASH = { id: "deepseek-flash", name: "DeepSeek V4.1 Flash", reasoning: true, input: ["text", "image"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 1000000, maxTokens: 384000, api: "openai-completions", compat: { supportsUsageInStreaming: true, supportsReasoningEffort: true, maxTokensField: "max_tokens", thinkingFormat: "deepseek" } };
 const asV = (config, runtimeId) => {
   config.channels = {};
+  // The mirrored session was last active more than 30 days ago: V's idle reset (43200 min) and
+  // 14-day pruning would start a fresh session instead of replaying it (candidate-c44486cf).
+  config.session = { ...(config.session ?? {}), reset: { mode: "idle", idleMinutes: 5256000 },
+    maintenance: { ...(config.session?.maintenance ?? {}), pruneAfter: "3650d", resetArchiveRetention: "3650d" } };
   config.cron = { ...(config.cron ?? {}), enabled: false };
   const ds = config.models.providers.deepseek;
   ds.baseUrl = proxyBase;
