@@ -410,7 +410,8 @@
         "lab/gpt-live-h5/screen-wake-lock.test.mjs",
         "lab/patch-gpt-live-media-policy.test.mjs",
         "lab/voice-task-lifetime.test.mjs",
-        "lab/voice-task-control-authority.test.mjs"
+        "lab/voice-task-control-authority.test.mjs",
+        "lab/voice-consult-scope.test.mjs"
       ]
     }
   ],
@@ -542,6 +543,10 @@
     {
       "file": "tests/feishu-steer91-real-bundle.test.mjs",
       "reason": "需要未修改的真实 Feishu 9.1 bundle fixture；不在离线入口中将条件 skip 冒充通过。后续接入制品兼容性门槛。"
+    },
+    {
+      "file": "lab/candidate/voice-consult-scope.test.mjs",
+      "reason": "需 VLab disposable Candidate 的实际运行时和依赖；已通过实际候选导入及范围测试，普通离线入口不能代替。"
     }
   ],
   "capabilities": [
@@ -1112,6 +1117,17 @@
       ],
       "disposition": "needs-live-reconciliation",
       "sourceSha256": "ee0a449a47c3325df9bc90b5394b21936812f9b69b5f0023f8f3ee5b2a124f1b"
+    },
+    {
+      "id": "patch-voice-consult-scope",
+      "file": "lab/patch-voice-consult-scope.mjs",
+      "component": "openclaw-core",
+      "reason": "仅独立 Voice 使用当前任务契约并去除重复历史；保持原 canonical session、权限和其他 Provider 路径，完整语音仍需集成验收",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "needs-live-reconciliation",
+      "sourceSha256": "0d4a5f91a224cc82d0ab9ab300ad283e5fc3f2d7001fae89ac886a50b81e2c24"
     }
   ],
   "externalInputs": [

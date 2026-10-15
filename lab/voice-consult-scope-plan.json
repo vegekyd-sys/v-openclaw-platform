@@ -1,0 +1,17 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/voice-consult-scope-20261015/talk-DkFuKRod.js",
+      "target": "openclaw/dist/talk-DkFuKRod.js",
+      "before": "80d9cec11d251b151cc704766c87becd66bd85d9948eccb023389221ad6ffce7"
+    },
+    {
+      "source": "lab/release-files/voice-consult-scope-20261015/realtime-session-harness-CEO5kVAJ.js",
+      "target": "openclaw/dist/realtime-session-harness-CEO5kVAJ.js",
+      "before": "02f37cb21af5f2d40e72da78cd6c2b0664df1e431141da603503f300552862f6"
+    }
+  ],
+  "tests": [
+    "lab/voice-consult-scope.test.mjs"
+  ]
+}
