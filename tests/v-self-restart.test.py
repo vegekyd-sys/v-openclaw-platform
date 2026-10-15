@@ -81,7 +81,7 @@ class FakeHost:
         if args[0] == "show":
             prop = args[3]
             return self.result({"MainPID": str(self.pid if self.active else 0), "InvocationID": self.invocation,
-                                "NRestarts": str(self.restarts)}[prop])
+                                "ControlGroup": "", "NRestarts": str(self.restarts)}[prop])
         if args[0] == "is-active":
             if args[1] != mod.UNIT:
                 return self.result("inactive", 3)
@@ -245,6 +245,22 @@ class Execute(Base):
         h.journal[h.invocation] = "[gateway] ready"
         with mock.patch.object(mod, "unit_active", side_effect=["inactive", "activating", "active"]):
             self.assertEqual(mod.wait_ready(1200, "0"), (True, "ready"))
+
+    def test_remaining_cgroup_child_prevents_configuration_write(self):
+        h = self.host()
+        self.request("--set", 'plugins.t={"mac":1}')
+        with mock.patch.object(mod, "remaining_unit_processes", return_value=[123]), mock.patch.object(mod, "STOP_TIMEOUT_S", 0):
+            rec = self.run_last()
+        self.assertEqual(rec["outcome"], "stop-pending", rec)
+        self.assertEqual(self.read_config(), {"keep": 1})
+        self.assertFalse(any(c[:2] == ["systemctl", "start"] for c in h.calls))
+
+    def test_remaining_child_exit_is_waited_before_configuration_write(self):
+        h = self.host()
+        self.request("--set", 'plugins.t={"mac":1}')
+        with mock.patch.object(mod, "remaining_unit_processes", side_effect=[[123], []]):
+            rec = self.run_last()
+        self.assertEqual(rec["outcome"], "ok", rec)
 
     def test_happy_path_order(self):
         h = self.host()
