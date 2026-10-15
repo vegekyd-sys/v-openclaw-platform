@@ -109,7 +109,7 @@ V 的配置是 `deepseek/deepseek-flash`，fallbacks 为 `[xai/grok-4.6]`。至�
 
 | 场景 | worker A | worker B | embedded A | embedded B |
 |---|---|---|---|---|
-| ok | DS 0.8–1.8 s | DS 1.0–1.9 s | DS 0.6 s | DS 0.6–0.7 s |
+| ok | DS 0.9–1.8 s | DS 1.0–1.9 s | DS 0.6 s | DS 0.6–0.7 s |
 | 503 too busy | 英文错误 10.2–10.6 s | **Grok 3.1–4.9 s** | Grok 7.1–8.8 s | **Grok 2.3–2.9 s** |
 | 429 | 英文错误 8.0–9.7 s | **Grok 2.2–2.7 s** | Grok 7.9–10.8 s | **Grok 2.3–2.9 s** |
 | 500 | 英文错误 6.9–10.1 s | **Grok 2.3–3.3 s** | Grok 9.1–9.3 s | **Grok 1.8–2.4 s** |
