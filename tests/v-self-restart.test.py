@@ -240,6 +240,12 @@ class Execute(Base):
         self.assertIn(["systemctl", "start", "--no-block", mod.UNIT], h.calls)
         wait.assert_called_once_with(1200, "0")
 
+    def test_ready_wait_allows_queued_start_then_activation(self):
+        h = self.host()
+        h.journal[h.invocation] = "[gateway] ready"
+        with mock.patch.object(mod, "unit_active", side_effect=["inactive", "activating", "active"]):
+            self.assertEqual(mod.wait_ready(1200, "0"), (True, "ready"))
+
     def test_happy_path_order(self):
         h = self.host()
         self.request("--set", 'plugins.t={"mac":1}', "--session-key", "agent:makaron:feishu:group:oc_" + "a" * 32)

@@ -185,17 +185,20 @@ def wait_ready(timeout_s, start_restarts):
     systemd has already restarted it (a crash loop never prints ready)."""
     deadline = time.monotonic() + timeout_s
     invocation = unit_prop("InvocationID")
+    queued_until = min(deadline, time.monotonic() + 15)
+    seen_start = False
     while time.monotonic() < deadline:
         state = unit_active()
         restarts = unit_prop("NRestarts")
-        if state in ("failed", "inactive"):
+        if state == "failed" or (state == "inactive" and (seen_start or time.monotonic() >= queued_until)):
             return False, "unit %s" % state
+        seen_start = seen_start or state in ("activating", "active")
         if restarts.isdigit() and start_restarts.isdigit() and int(restarts) > int(start_restarts):
             return False, "systemd restarted the unit (NRestarts %s -> %s)" % (start_restarts, restarts)
         current = unit_prop("InvocationID")
         if current and current != invocation:
             invocation = current
-        if READY_MARK in journal_since_invocation(invocation):
+        if state == "active" and READY_MARK in journal_since_invocation(invocation):
             return True, "ready"
         time.sleep(5)
     return False, "no '%s' within %ds" % (READY_MARK, timeout_s)
