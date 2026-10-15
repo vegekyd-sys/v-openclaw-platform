@@ -190,7 +190,7 @@ def wait_ready(timeout_s, start_restarts):
     while time.monotonic() < deadline:
         state = unit_active()
         restarts = unit_prop("NRestarts")
-        if state == "failed" or (state == "inactive" and (seen_start or time.monotonic() >= queued_until)):
+        if state in ("failed", "inactive") and (seen_start or time.monotonic() >= queued_until):
             return False, "unit %s" % state
         seen_start = seen_start or state in ("activating", "active")
         if restarts.isdigit() and start_restarts.isdigit() and int(restarts) > int(start_restarts):
@@ -208,8 +208,21 @@ class StopIncomplete(RuntimeError):
     """A stop request is not proof that the old process has exited."""
 
 
+def remaining_unit_processes(group):
+    if not group:
+        return []
+    try:
+        with open("/sys/fs/cgroup" + group + "/cgroup.procs") as f:
+            return [int(pid) for pid in f.read().split()]
+    except FileNotFoundError:
+        return []
+    except OSError as error:
+        raise StopIncomplete("Cannot verify the previous unit cgroup is empty") from error
+
+
 def stop_unit(rec):
     rec["oldMainPid"] = unit_prop("MainPID")
+    old_group = unit_prop("ControlGroup")
     save(rec)
     try:
         p = sh(["systemctl", "stop", "--no-block", UNIT], timeout=30)
@@ -218,11 +231,13 @@ def stop_unit(rec):
         raise StopIncomplete("Gateway stop is still pending; config was not changed") from error
     deadline = time.monotonic() + STOP_TIMEOUT_S
     state, main_pid = unit_active(), unit_prop("MainPID")
-    while (state not in ("inactive", "failed") or main_pid != "0") and time.monotonic() < deadline:
+    remaining = remaining_unit_processes(old_group)
+    while (state not in ("inactive", "failed") or main_pid != "0" or remaining) and time.monotonic() < deadline:
         time.sleep(1)
         state, main_pid = unit_active(), unit_prop("MainPID")
-    if state not in ("inactive", "failed") or main_pid != "0":
-        step(rec, "stop-incomplete", rc=p.returncode, state=state, mainPid=main_pid)
+        remaining = remaining_unit_processes(old_group)
+    if state not in ("inactive", "failed") or main_pid != "0" or remaining:
+        step(rec, "stop-incomplete", rc=p.returncode, state=state, mainPid=main_pid, remainingPids=remaining)
         raise StopIncomplete("Gateway has not stopped (%s, MainPID=%s); config was not changed" % (state, main_pid))
     step(rec, "stopped", rc=p.returncode, state=state, oldMainPid=rec["oldMainPid"], mainPid=main_pid)
 
