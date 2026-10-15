@@ -409,14 +409,16 @@ def parse_byte_size(raw):
 
 
 def measure_session_budgets():
-    """[(agent, totalBytes, maxBytes)] the way disk-budget measureSessionPhysicalDiskUsage counts."""
+    """[(agent, totalBytes, maxBytes, mode)] the way disk-budget measureSessionPhysicalDiskUsage counts.
+
+    Measured in warn mode too: the Gateway then never cleans up, so the budget is
+    only a capacity line and this is the only thing watching it."""
     try:
         cfg = json.load(open(CONFIG_PATH))
     except Exception:
         return []
     m = ((cfg.get("session") or {}).get("maintenance") or {})
-    if m.get("mode", "enforce") != "enforce":
-        return []
+    mode = m.get("mode", "enforce")
     max_bytes = parse_byte_size(m.get("maxDiskBytes"))
     if not max_bytes:
         return []
@@ -440,7 +442,7 @@ def measure_session_budgets():
         for f in (db, db + "-wal"):
             if os.path.isfile(f):
                 total += os.path.getsize(f)
-        out.append((agent, total, max_bytes))
+        out.append((agent, total, max_bytes, mode))
     return out
 
 
@@ -621,24 +623,25 @@ def main():
     # --- Session disk budget and the ingress it starves (2026-10-15) ---
     if now_s - st.get("budget_measured_at", 0) >= DISK_BUDGET_EVERY_S:
         try:
-            st["budgets"] = [[a, t, m] for a, t, m in measure_session_budgets()]
+            st["budgets"] = [list(row) for row in measure_session_budgets()]
         except Exception as e:
             st["budgets"] = []
             print("session budget measurement failed: %s" % e, file=sys.stderr)
         st["budget_measured_at"] = now_s
-    budgets = st.get("budgets") or []
+    budgets = [tuple(b[:3]) for b in st.get("budgets") or []]
+    enforcing = any((b[3] if len(b) > 3 else "enforce") == "enforce" for b in st.get("budgets") or [])
     s["budget_max_ratio"] = round(max([t / m for _, t, m in budgets] or [0]), 3)
     near = [(a, t, m) for a, t, m in budgets if t >= DISK_BUDGET_WARN_RATIO * m]
     over = [(a, t, m) for a, t, m in budgets if t > m]
     fmt = lambda rows: "、".join("%s %.1f/%.1f GB（%d%%）" % (a, t / 1e9, m / 1e9, round(100 * t / m)) for a, t, m in rows)
+    consequence = ("超过后 Gateway 会自动清理（enforce），未打补丁时会长时间占住 session 写队列，飞书消息进不来（10-15 21:11 起的事故）。"
+                   if enforcing else
+                   "当前是 warn 模式，超过也不会自动清理；这条线是容量线，需要人处理（扩上限、冷存储或源头减量）。")
     latch("budget_near", bool(near),
-          "session 磁盘预算快到了：%s。超过后 Gateway 会进入「删一个归档、重扫全目录」的维护循环，"
-          "并长时间占住 session 写队列，飞书消息进不来（10-15 21:11 起的事故）。"
-          "把 session.maintenance.maxDiskBytes 调高（热生效），或清理旧会话/遗留文件。" % fmt(near),
+          "session 磁盘用量到了预算的 %d%% 以上：%s。%s" % (round(DISK_BUDGET_WARN_RATIO * 100), fmt(near), consequence),
           "session 磁盘预算余量已恢复。")
     latch("budget_over", bool(over),
-          "session 磁盘预算已超：%s。下一次会话删除/重置就会触发维护循环，Gateway 会卡住。"
-          "立即调高 session.maintenance.maxDiskBytes。" % fmt(over),
+          "session 磁盘用量已超预算：%s。%s" % (fmt(over), consequence),
           "session 磁盘用量已回到预算以内。")
     latch("budget_exhausted", s.pop("budget_exhausted", 0) > 0,
           "Gateway 报告 session 磁盘预算已耗尽（能删的都删了仍超预算），自动维护退避 30 分钟。"

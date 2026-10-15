@@ -68,11 +68,12 @@ class Measure(unittest.TestCase):
         with open(cfg, "w") as f:
             json.dump({"session": {"maintenance": {"mode": "enforce", "maxDiskBytes": "32gb"}}}, f)
         with mock.patch.object(mod, "SESSION_STORES_ROOT", agents), mock.patch.object(mod, "CONFIG_PATH", cfg):
-            self.assertEqual(mod.measure_session_budgets(), [("makaron", 100 + 50 + 7 + 4000 + 300, 32 * GiB)])
+            self.assertEqual(mod.measure_session_budgets(), [("makaron", 100 + 50 + 7 + 4000 + 300, 32 * GiB, "enforce")])
         with open(cfg, "w") as f:
             json.dump({"session": {"maintenance": {"mode": "warn", "maxDiskBytes": "32gb"}}}, f)
         with mock.patch.object(mod, "SESSION_STORES_ROOT", agents), mock.patch.object(mod, "CONFIG_PATH", cfg):
-            self.assertEqual(mod.measure_session_budgets(), [], "warn mode never enforces")
+            self.assertEqual(mod.measure_session_budgets(), [("makaron", 100 + 50 + 7 + 4000 + 300, 32 * GiB, "warn")],
+                             "warn mode never cleans up, so the line is still watched")
 
 
 class Rules(unittest.TestCase):
@@ -95,11 +96,11 @@ class Rules(unittest.TestCase):
         # V on 10-12..10-15: 33.4 GB against 32 GiB (34.36e9) is 97%.
         sent = self.tick(state, T0, quiet_sample(), budgets=[("makaron", 33_400_000_000, 32 * GiB)])
         self.assertEqual(len(sent), 1)
-        self.assertIn("预算快到了", sent[0])
+        self.assertIn("预算的 85% 以上", sent[0])
         self.assertIn("makaron", sent[0])
         self.assertEqual(self.tick(state, T0 + 120, quiet_sample()), [], "said once, measured every 10 min")
         sent = self.tick(state, T0 + 700, quiet_sample(), budgets=[("makaron", 34_500_000_000, 32 * GiB)])
-        self.assertTrue(any("预算已超" in m for m in sent))
+        self.assertTrue(any("已超预算" in m for m in sent))
         sent = self.tick(state, T0 + 1400, quiet_sample(), budgets=[("makaron", 33_330_000_000, 48 * GiB)])
         self.assertTrue(any("回到预算以内" in m for m in sent))
         self.assertTrue(any("余量已恢复" in m for m in sent))
@@ -107,7 +108,11 @@ class Rules(unittest.TestCase):
     def test_warns_at_85_percent_of_48_gib(self):
         self.assertEqual(self.tick({}, T0, quiet_sample(), budgets=[("makaron", int(0.84 * 48 * GiB), 48 * GiB)]), [])
         sent = self.tick({}, T0, quiet_sample(), budgets=[("makaron", int(0.86 * 48 * GiB), 48 * GiB)])
-        self.assertTrue(any("预算快到了" in m for m in sent))
+        self.assertTrue(any("预算的 85% 以上" in m for m in sent))
+
+    def test_warn_mode_says_nobody_cleans_up(self):
+        sent = self.tick({}, T0, quiet_sample(), budgets=[("makaron", int(0.9 * 48 * GiB), 48 * GiB, "warn")])
+        self.assertTrue(any("warn 模式" in m for m in sent))
 
     def test_plenty_of_headroom_is_quiet(self):
         self.assertEqual(self.tick({}, T0, quiet_sample(), budgets=[("makaron", 33_330_000_000, 48 * GiB)]), [])
