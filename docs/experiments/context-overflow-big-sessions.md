@@ -111,4 +111,75 @@ Gateway 把 deepseek-flash 的回合交给 vlab-worker；worker 用 `VLAB_OPENCL
 
 ## 6. candidate 证据
 
-见下文（运行后补）。
+脚本 `lab/candidate/context-overflow-recovery.mjs`，plan `lab/candidate/context-overflow-recovery.plan.json`（不需要 lease）。
+
+**设置**
+- 两个私有 Gateway，各带 1 个 worker：
+  - A = 共享 VLab runtime 的原字节。三个目标文件与 V 的 before sha 一致，receipt 里 `liveIsV: true`。
+  - B = 同一份 runtime 套上补丁。结果与发布文件逐字节相同，`bIsRelease: true`。
+- 模型配置同 V：deepseek-flash（vlab-worker → worker 内 openclaw，`maxTokens 384000`，`timeoutSeconds 90`）；压缩 `safeguard` + `versa-fast-quality-v1` + `midTurnPrecheck`。
+- 真实 DeepSeek 前面挂录制代理。按消息里的标签注入 DeepSeek 原样的 400 溢出（`This model's maximum context length is 1048576 tokens…`）：
+  - `midtool`：只对「工具之后的第一次请求」注入；
+  - `start`：只对回合第一次请求注入；
+  - `always`：每次请求都注入。
+- 大会话：共享 VLab 镜像里的 `faa116bd`（群 oc_eb6d0748，V 规模），每个大会话回合前都恢复同一份原始私有库。
+  - 每次请求 1.79 MB，DeepSeek 实计 **48.45 万 token**。
+  - 测试副本里关掉了 30 天空闲重置和 14 天清理，否则这个 9 月的会话会被重新开（candidate-c44486cf 的教训）。
+- 压缩摘要模型：VLab 没有 V 用的 `azure-openai/gpt-5.6-sol`，versa-fast-quality 报 OAuth/凭据错误后，退回 safeguard 的普通摘要（`compaction.model` = deepseek-flash，经同一个代理）。A/B 两臂一样。V 上实际用的是 azure gpt-5.6-sol，生产实测压缩 25–36 s（第 1 节）。
+
+**结果**
+
+candidate-a03ee738（V 规模，worker 路径，agent CLI 驱动），每个场景 A/B 各 2 次：
+
+| 场景 | A（V 原字节） | B（补丁） |
+|---|---|---|
+| midtool：exec 跑完后，下一次请求 400 | 2/2 失败：`incomplete turn … tools=1 replaySafe=no`，0 次压缩，8–14 s 后报错 | 2/2 答完：`[context-overflow-settled-tools-v1]` → 压缩 1 次（48.46 万 → 1.6 万字摘要；摘要请求 12.2 s / 23.7 s）→ 从转录继续 → 回复里给出正确探针输出。探针 exec **只执行 1 次** |
+| start：回合开头 400 | 2/2 压缩后答完（35–42 s），行为不变 | 2/2 压缩后答完（35–45 s），行为不变 |
+| always：一直 400（恢复用尽） | `Context overflow: … Try /reset …` | `这段对话太长，……请发送 /compact 压缩后重试，或发送 /new 开始新对话（长期记忆和文件不受影响）。` |
+
+- B 的 midtool 总时长 56 s / 75 s，大头不是压缩。压缩后模型按摘要里的「待办」又去查了这个镜像群的夜班任务（4–6 条只读 exec）。这是压缩摘要本身带回旧待办的行为，A 的 start 场景压缩后也是同一套摘要，与补丁无关；生产上普通会话的待办是当前的，不会这样。
+
+**用户在聊天里看到的文字**（chat.send，等同渠道回复路径）
+
+candidate-0ae0e273、candidate-fd5f16c3，小会话上下文：
+- A：两条，`Context overflow: prompt too large … Try /reset …` + `⚠️ Context overflow — prompt too large for this model…`；回合中途那次是 `⚠️ Auto-compaction could not recover this turn…`。
+- B：两条都是同一句中文提示，没有英文。
+- 回合中途：A 两次英文报错，B 两次压缩后回答。
+
+**普通会话没有变慢**
+
+三轮里的小会话（chat.send → 首段文字，各 9 次）：
+- A：2.9–8.2 s，中位数 **4.97 s**
+- B：3.3–7.9 s，中位数 **4.98 s**
+
+大会话不注入时的第一次请求，A/B 发出的字节数一致（1,785,598 vs 1,785,444，差别是消息标签里的 A/B 字母和 runId），DeepSeek 计数一致（484,548 vs 484,485）。
+
+正常回合不经过改动代码：只有 attempt 以错误结束后才判 `vSettledToolOverflow`，中文文案只在恢复用尽时才用到。
+
+**过程记录**
+- candidate-0ae0e273、candidate-fd5f16c3：机制成立。但镜像会话的当前分支几乎是空的（5.2 万 token），快速压缩缺 Gateway 侧 llm 授权。
+- candidate-c44486cf：改用 CLI 驱动，但 9 月的会话被空闲重置，开了新会话。
+- candidate-a03ee738：V 规模，结论以这一轮为准。
+
+receipt 与完整输出在 `~/v-upgrade-private/context-overflow-20261015/runs/`（run1–run4，以及 in-Gateway 那轮 run5）。
+
+## 7. 上线
+
+- 只改 dist，不改配置：`lab/context-overflow-recovery.plan.json`，3 个文件，before 是 V 10/15 的字节。
+  - 底本：history-image-e3 + upstream-5xx-fallback 已上 V 之后的状态。
+  - 下次发版如果还有别的改动替换这三个文件之一，必须重新执行 `node lab/patch-context-overflow-recovery.mjs <V 现字节目录> <out>`，不能直接拿本目录的文件。
+- Gateway 和 worker 用同一份 core dist，需要一次 `v-self-restart`。worker 由池子在 Gateway 重启时一起换代。
+- 回滚：按 plan 的 before 还原三个文件，再重启。
+- 上线后的观察：
+  - 生产日志 `[context-overflow-settled-tools-v1]`：每一行是一次以前会失败、现在压缩后继续的回合。
+  - `[context-overflow-recovery] exhausted`：用户此时看到中文提示。
+- Control UI 回看历史时，失败请求留下的错误记录仍显示英文兜底（`session-transcript-readers`），本次没改，不影响飞书。
+
+## 8. 没有做的
+
+- **luna 抬到 27.2 万以上**：要先用一次超过 27.2 万的真实 luna 请求验证 ChatGPT 后端是否接受（`max_context_window` 87.2 万），以及是否额外计费，再通过 `models.providers.openai.models[{id: "gpt-6-luna", contextTokens}]` 配置（两份配置都要改）。
+  - 当前的风险：DeepSeek 5xx 切到 luna 时（#375），一个 70 万的会话会先在 luna 上按 25.2 万压缩，丢掉更多历史。
+- **压缩前绕一次 400**：DeepSeek-flash 的压缩点实际是「真实输入 + 38.4 万 > 1,048,576」，即约 66.4 万，靠 400 触发。
+  - 每次只多一次失败请求（约 1 s），等待主要花在压缩本身（25–36 s），提前预检也省不掉这段时间。
+  - 不改 `maxTokens`：把压缩推迟到接近 100 万，会让每轮输入更大、首字更慢。
+- 三套 token 估算口径不一致（预检 / 传输层 / DeepSeek 实计），这是 midTurnPrecheck 接不住的原因。本补丁让 provider 侧的拒绝也能接住，估算本身没改。
