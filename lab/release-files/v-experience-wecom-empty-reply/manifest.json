@@ -1,0 +1,20 @@
+[
+ {
+  "component": "wecom",
+  "path": "dist/src/monitor.js",
+  "before": "d4fe3561255428b5446127e2b686319feb5879bae181cc7f38058858f6974f8d",
+  "after": "f015717ebe8bd9371d37a252341c4e8a8089a32285997182d82e9886e6bd075c"
+ },
+ {
+  "component": "wecom",
+  "path": "dist/src/channel.js",
+  "before": "30eb4a171604a2ac998cd3217a0f68cde723d940a9291b5f57d52486046783fa",
+  "after": "4b21464a5d55d728d1e6a51594d636b4153a8b88b7da0b88821567ac3edb1941"
+ },
+ {
+  "component": "wecom",
+  "path": "dist/src/v-experience.mjs",
+  "before": "5d939fa7109a68a52ed88d080f491636cce58d4095b2420a96e05cd090284f2b",
+  "after": "a85c1d37db7a88d3556349c3a9a7bceb35b56f3fa431f36f76d1accd331a3850"
+ }
+]
