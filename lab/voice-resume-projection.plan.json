@@ -1,0 +1,9 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/voice-resume-projection/subagent-announce-delivery-Dosep7Zr.js",
+      "target": "openclaw/dist/subagent-announce-delivery-Dosep7Zr.js",
+      "before": "8cd70a869960ca8a789bacea12ed92e14dee8085f1b95f82479382fdad7a3f1a"
+    }
+  ]
+}
