@@ -104,6 +104,11 @@ class Rules(unittest.TestCase):
         self.assertTrue(any("回到预算以内" in m for m in sent))
         self.assertTrue(any("余量已恢复" in m for m in sent))
 
+    def test_warns_at_85_percent_of_48_gib(self):
+        self.assertEqual(self.tick({}, T0, quiet_sample(), budgets=[("makaron", int(0.84 * 48 * GiB), 48 * GiB)]), [])
+        sent = self.tick({}, T0, quiet_sample(), budgets=[("makaron", int(0.86 * 48 * GiB), 48 * GiB)])
+        self.assertTrue(any("预算快到了" in m for m in sent))
+
     def test_plenty_of_headroom_is_quiet(self):
         self.assertEqual(self.tick({}, T0, quiet_sample(), budgets=[("makaron", 33_330_000_000, 48 * GiB)]), [])
 

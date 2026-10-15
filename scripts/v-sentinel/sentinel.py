@@ -110,7 +110,8 @@ REPEAT_ALERT_S = 3600
 # so run it every DISK_BUDGET_EVERY_S, not every tick.
 SESSION_STORES_ROOT = "/home/openclaw/.openclaw/agents"
 DISK_BUDGET_EVERY_S = 600
-DISK_BUDGET_WARN_RATIO = 0.90
+# 85% of 48 GiB leaves ~7 GB, about 2-3 weeks at 2026-10 growth, to act without data loss.
+DISK_BUDGET_WARN_RATIO = 0.85
 # Feishu messages that sat claimed for 300 s without reaching an agent. Each one
 # is a user message nobody has started on. 10-05..10-14: 0-12 a day, all inside
 # known stalls; 10-15 21:16-21:34: 8.
