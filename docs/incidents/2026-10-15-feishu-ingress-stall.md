@@ -210,7 +210,7 @@ Tianyi 的约束：**不丢数据**，只能调大上限，不清理老数据。
 
 V 的现状：
 - 22:46 `maxDiskBytes` 改为 `48gb`。
-- 23:55 主配置 `session.maintenance.mode` 改为 `warn`，备份在 `/root/openclaw.json.before-warn-20261015`。worker 那份配置原来就是 warn。
+- 23:03 按 Tianyi 的要求，主配置 `session.maintenance.mode` 改为 `warn`（重启 20261015-230233-58da；配置文件 mtime 是 23:55，备份 `/root/openclaw.json.before-warn-20261015`）。worker 那份配置原来就是 warn。
 
 warn 模式的含义：
 - Gateway 的磁盘预算检查直接返回：不扫描、不清理。这次的卡死不会再发生。
