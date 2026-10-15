@@ -1,0 +1,20 @@
+[
+ {
+  "component": "dingtalk",
+  "path": "dist/message-handler-BUoLSylZ.mjs",
+  "before": "d914cbce8951f32e684ab6423d3977d35c62e3a39c5da23e6c42ca804cda0602",
+  "after": "a973a1b6bcf42529fbe90dcde50cc3c71e289f18e4aa949d5c799e5a6baae7db"
+ },
+ {
+  "component": "dingtalk",
+  "path": "dist/runtime-C81EKBS1.mjs",
+  "before": "af93e1216049331bb24f0a4f91335d3b03c61004413603d0a454457b37307bed",
+  "after": "fa36036c441ceddf187c4102d5cf4934e42ba16f98067b7cf12e976ed55f577d"
+ },
+ {
+  "component": "dingtalk",
+  "path": "dist/v-experience.mjs",
+  "before": "5d939fa7109a68a52ed88d080f491636cce58d4095b2420a96e05cd090284f2b",
+  "after": "a85c1d37db7a88d3556349c3a9a7bceb35b56f3fa431f36f76d1accd331a3850"
+ }
+]
