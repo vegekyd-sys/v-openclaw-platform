@@ -1,6 +1,6 @@
 # v-experience-dingtalk-empty-reply — DingTalk: no placeholder after a tool-only reply
 
-V 2026-10-15 20:30, DingTalk group `cid/oT7yihTu7YP/1xJo5vc4Q==`: the agent sent
+V 2026-10-15 20:30, DingTalk group 「蔡天懿,龚焱」 (`cidvcoS13FzQXFw5ZNRTUMU2Q==`): the agent sent
 its answer and an xlsx with the message tool and ended with an empty final
 (`counts={"tool":0,"block":0,"final":0}`). The connector closed the AI card it
 had created at the start of the turn with its group placeholder
