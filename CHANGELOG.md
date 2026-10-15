@@ -11,6 +11,96 @@
 
 ---
 
+## v2026.9.1-db91.6-upstream-5xx-fallback-20261015
+
+上线：2026-10-15 13:01:57 CST 生效（12:58 装到 V；`v-self-restart` `20261015-125959-9db6`，同一次重启让 history-image-e3 一起生效）  ·  tag `v2026.9.1-db91.6-upstream-5xx-fallback-20261015`
+
+**摘要**：#375 + #377。上游 DeepSeek 返回 503 / too busy / 429 / 5xx，或者首个 token 前超时，现在会切到备用模型，不再让用户干等几分钟后看到一句英文错误。10/15 上午 DeepSeek 官方故障（部分中断约 4 小时）期间，V 配了 fallback 却一次也没切过去。
+- 根因有三处：9.1 把对端已经回复的 5xx 判成 timeout；worker 失败跨 IPC 回到 Gateway 后，一律被标为不可安全重放；工具执行后遇到 503 直接把错误抛给用户。
+- 修复：回移上游 776f76b4b87（对端回复的 5xx 判为 server_error）；有备用模型时，同模型只重试 1 次；worker 跨 IPC 保留状态码，满足条件时交给 Gateway 的 fallback 链；工具执行后遇到 429/5xx，同模型从转录续写，最多 3 次，失败后给中文提示。
+- candidate 证据：A = V 原字节，B = 补丁后。worker 路径 503/429/500/504：A 7–10 s 后英文错误、0 次 Grok 请求；B 2.2–4.9 s 看到备用回复。200 后不出 token：A 68 s，B 33 s。（candidate 87895664、cb510391、d66a5bae）
+- #377 把 worker.mjs 里写死的 `../core/node_modules/@openclaw/ai` 改成从 worker 正在用的 core 推导。这一行来自 V 的 agent 09:45 热装的 heartbeat-v2 guard；它在 VLab 的目录结构下会让 worker 池起不来。
+
+**同一次重启里的配置变更**（主配置和 worker 那份配置都改了；备份 `/root/{openclaw,worker-openclaw}.json.before-deepseek-back-20261015`）：
+- DeepSeek 已恢复：makaron 恢复为 `deepseek/deepseek-flash`，short-v、dealclaw、xiaoai 恢复为 `deepseek/deepseek-v4-pro`，defaults 也恢复；**fallbacks 一律改为 `["openai/gpt-6-luna"]`**（Tianyi 定：主 DeepSeek、备用 Luna）。压缩模型恢复为 deepseek-flash。10:04–13:01 期间临时用 luna 当主模型。
+- `models.providers.deepseek.timeoutSeconds` 300 → 90。
+
+**过程记录**：
+- 12:2x 为了让共享 VLab 能对齐，先把 V 上 09:45 那份热修撤回到 3e66b4b3（备份 `/root/incident-20261015-heartbeat-revert/`）。
+- 本次发版用 #377 修好路径的版本重新带上 heartbeat-v2 guard（`heartbeat-v2-stream-guard.mjs` 51f6aeea 字节不变，所以上面的列表里没有它）。
+
+相对上一版 `v2026.9.1-db91.6-history-image-e3-20261015`：9 个文件变化。
+
+**经 VLab 发版 `upstream-5xx-fallback-20261015b`**（monitor-v-production，dev `7d6e0636`）
+> 验收：共享 VLab 12:38 部署 #375+#377（10 文件，worker.mjs 3e66b4b3→198bd1f5 + heartbeat-v2-stream-guard 新增）：worker 池 14 进程正常、ERR_MODULE_NOT_FOUND/plugin service failed 0、journal err 0；vlab.mjs test 会话 vlab-dev-accept-377b-1792039585701（deepseek-flash, vlab-worker）记暗号/exec 工具 391/复述 3/3 正确各 5 s。fallback 切换以 candidate 87895664/cb510391/d66a5bae 为证（VLab makaron 无 fallbacks，xai/openai 无 key 测不到）
+- `core` agent-command-DPfawBbr.js  1805b686 → d63e3307
+- `core` builtin-openclaw-zQV8Wwjr.js  3e07c3fa → 5638a3b7
+- `core` classify-Dm9sTbZz.js  98ea918d → a69e44f5
+- `core` embedded-agent-DaSvA-Yk.js  142d248f → a53fe92d
+- `core` embedded-agent-helpers-CzpaLpCq.js  79f7f268 → 63002d77
+- `worker` harness-failure.mjs  3be999ce → 89419679
+- `worker` index.mjs  4f6894da → cfa0e687
+- `worker` worker-pool.mjs  197ec4a8 → f6ca5d76
+- `worker` worker.mjs  18c949c3 → 198bd1f5
+
+
+回滚：`node scripts/promote-to-v.mjs --undo /opt/v-release-backups/v2026.9.1-db91.6-upstream-5xx-fallback-20261015-20261015T045729`（需重启）。配置用上面的备份还原。
+
+## v2026.9.1-db91.6-history-image-e3-20261015
+
+上线：2026-10-15 11:28 CST 装到 V（未重启；随 12:30 窗口的重启生效）  ·  tag `v2026.9.1-db91.6-history-image-e3-20261015`
+
+**摘要**：#355 + #345 合并发版（PR #372）。
+- **#355 历史图片不再重复缩放**：早就被裁掉的历史图，每轮都在 worker 主线程上从 2048 px 重新缩到 1200 px，单张约 0.45 s。共享 VLab 真实飞书里，会话已有 8–12 轮带图时，命令→首次模型调用从 9.6–11.4 s 降到 7.3–8.5 s。模型请求逐字节不变；`OPENCLAW_HISTORY_IMAGE_RESIZE_SKIP=0` 可以关掉。
+- **#345 DeepSeek 图片预算补漏（E3）**：provider 那一份按图片计数；中文提示能真正发到用户。
+
+**另外 1 个文件不在 core 捕获范围内**（捕获只覆盖 `dist/`），按安装计划手写：
+- `core` node_modules/@openclaw/ai/dist/openai-completions-D0QZ0AyB.mjs  6a34cb79 → 915ac13d
+
+**下面两个「流程外改动」是 V 自己的 agent 改的**（2026-10-15 09:45–09:53 CST，用户 openclaw，从 workspace 用 `sudo install` 安装）：只给 2 个 heartbeat-v2 定时任务加了「30 s 内必须见到首个 SSE 事件」的传输期限，是在 DeepSeek 故障期间加的。10:04 重启后已经生效。#375 以这份字节为底本，所以先保留，Tianyi 可以决定撤回。
+
+相对上一版 `restart-speed-2-reconcile-20261014`：6 个文件变化。
+
+**经 VLab 发版 `history-image-e3-20261015b`**（claude-history-image-e3，dev `e8e01051`）
+> 验收：#372（dev 5aa37e2f/打包 e8e01051）5 文件，线上哈希核对一致。真实飞书「VLab 发布验收 B」vlab-worker/deepseek-flash 16 回合（12 张 4032x3024 图 + view_image + 4 次汇总）16/16 正确。同深度 A/B（rollback→V 字节 vs 重新部署）：命令→首次模型调用 A 9.6–11.4 s vs B 7.3–8.5 s；第二次调用准备差异仅出现在 DeepSeek 503 重试回合，candidate 9745f5af/73492e00 受控对比无差异。journal err 0；503 为上游（V 同期也有）。证据 ~/v-upgrade-private/history-image-e3-20261015/shared-vlab-evidence.md
+- `core` agent-runner.runtime-CAdsMsQt.js  75b5b4b1 → 8c192b9d
+- `core` embedded-agent-DaSvA-Yk.js  22dad1ef → 142d248f
+- `core` embedded-agent-helpers-CzpaLpCq.js  342e6269 → 79f7f268
+- `core` history-image-prune-Dg0CDQ4a.js  2811753f → dbe28902
+
+**流程外改动**（这些字节没有由任何 VLab 发版产生，是在 V 上直接改的）：
+- `worker` worker.mjs  3e66b4b3 → 18c949c3
+- `worker` heartbeat-v2-stream-guard.mjs  — → 51f6aeea
+
+回滚：`node scripts/promote-to-v.mjs --undo /opt/v-release-backups/v2026.9.1-db91.6-history-image-e3-20261015-20261015T031107`（需重启；包括 node_modules 下那个文件）。
+
+## restart-speed-2-reconcile-20261014
+
+上线：2026-10-14 16:33 CST 生效（16:32 装到 V）  ·  tag `restart-speed-2-reconcile-20261014`
+
+**摘要**：Tianyi 于 2026-10-14 批准（「同意上 V，启动计时也打开，跟其他有效果的 PR 一起上」）。合并两项：
+① #368：重启后第一条消息不再在 worker 里等 Gateway 解析密钥。worker 每一轮都通过 `secrets.resolve` 解析 agent 运行时
+SecretRef，原来超时 30 s，Gateway 要等 worker 池起来才应答；现在 worker 里最多等 3 s，之后本地解析，结果相同。
+② #360 的 worker 一半：会话投影重建的 reconcile worker 改为只读打开，每行只读一遍，不再在 agent 库上开不带标签的
+IMMEDIATE 写事务。
+
+**上 V 实测**（16:33:29 经 `v-self-restart` 计时重启，临时开 `OPENCLAW_GATEWAY_STARTUP_TRACE`，测完已移除）：
+- 第一条消息：进入 worker 后 3 s 回退本地解析，4.4 s 开始准备 prompt（10/13 是 8–18 s）。
+- 这次重启飞书连上 51 s、首个 worker 56.9 s、ready 63.8 s，比 10/13 的 31/37/43 s 慢。trace 显示多出来的在
+  `cli.main.gateway-run-bootstrap`（18.6 s，10/13 08:48 约 6 s）：cron-repair、plugin-index-persistence、config-snapshot
+  ×5 等启动迁移/修复，OpenClaw 只在配置或构建指纹变化后才重跑；两次之间 V 有过别的发版和配置改动，待下次同配置重启确认。
+- Gateway 就绪后主线程卡 15 s + 8 s（16:34:35→16:35:01），第一条回复因此 45 s 才出现（模型首字只用了 6.8 s）。
+  对比历次重启，这段卡顿一直存在（10/12 22:14 改动前 33 s、10/13 23:08 16 s），不是本次引入，作为下一轮目标。
+- 原生校验器 16:39 开始、17:06:26 9 项通过（27 分钟，下午负载下）；期间 liveness 告警 7 次，之前 33 分钟 8 次。
+- NRestarts 0，无 restart recovery claim、Cannot reap、EROFS。
+
+相对上一版 `v2026.9.1-db91.6-codex-ds-window-20261013`：2 个文件变化。
+
+**经 VLab 发版 `restart-speed-2-reconcile-20261014`**（claude-restart-speed，dev `63e988b1`）
+> 验收：合并 release（#368 + #360 worker 一半），dev 63e988b1。restart-speed（#368）：candidate 配置加 V 那类 SecretRef，worker 进程探针 Gateway 启动期间 secrets 解析 18.2 s→3.2 s 后本地解析、值相同，就绪后 171→180 ms 经 Gateway 不回退（candidate-3136aa98/46d299bd）；共享 VLab 16:08 受控重启 RS2C：8/8 沿用、飞书 24.6 s、首 worker 38.6 s、ready 45.0 s，重启后 27.5 s 发消息 48.5 s 见回复（vlab-worker），exec 回合 worker 执行并原样回复随机 UUID。#360 worker：~/v-upgrade-private/restart-speed-2-…
+- `core` command-secret-gateway-DCJZ8pGz.js  d139c36e → f28f2fbe
+- `core` config/sessions/session-transcript-reconcile.worker.js  9e676169 → 95b9ddcd
+
 ## v2026.9.1-db91.6-codex-ds-window-20261013
 
 上线：2026-10-13 23:09 CST 生效（22:40 装到 V；`v-self-restart` `20261013-230822-e668`，23:08:53 停 → 23:09:49 ready，56 s）  ·  tag `v2026.9.1-db91.6-codex-ds-window-20261013`

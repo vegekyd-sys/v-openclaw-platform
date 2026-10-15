@@ -126,3 +126,13 @@ candidate（配置加上 V 那类 SecretRef，worker 进程里在 Gateway 启动
 
 启动 profile（共享 VLab，`lab/profile/startup-cpu-profile.mjs`）和 `OPENCLAW_GATEWAY_STARTUP_TRACE=1` 显示的其余可压段
 （启动维护、就绪后主线程任务、Control UI 资源校验、worker 池启动时机）在 VLab 与 V 差别大，等 V 上的启动 trace 再定。
+
+### 上 V（2026-10-14 16:33，与 #360 worker 一半合并为 restart-speed-2-reconcile-20261014）
+
+见 CHANGELOG 同名一节。第一条消息的等待从 8–18 s 降到 4.4 s。这次还看到两件事，作为下一轮的依据：
+
+- `cli.main.gateway-run-bootstrap` 18.6 s：启动迁移/修复只在配置或构建指纹变化后重跑，待同配置重启确认。
+- 就绪后主线程卡 15–33 s（历次都有）：钉钉 socket 超时重连、本机 ws 握手超时、第一条回复卡片被压住，是现在「重启 → 第一条
+  回复」最大的一段。
+
+工具：`lab/restart-speed-accept.mjs --target v --self-restart true --requested-by "<谁、在哪、何时说的>"`；校验器等待默认 40 分钟。
