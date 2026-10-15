@@ -11,6 +11,41 @@
 
 ---
 
+## v2026.9.1-db91.6-upstream-5xx-fallback-20261015
+
+上线：2026-10-15 13:01:57 CST 生效（12:58 装到 V；`v-self-restart` `20261015-125959-9db6`，同一次重启让 history-image-e3 一起生效）  ·  tag `v2026.9.1-db91.6-upstream-5xx-fallback-20261015`
+
+**摘要**：#375 + #377。上游 DeepSeek 返回 503 / too busy / 429 / 5xx，或者首个 token 前超时，现在会切到备用模型，不再让用户干等几分钟后看到一句英文错误。10/15 上午 DeepSeek 官方故障（部分中断约 4 小时）期间，V 配了 fallback 却一次也没切过去。
+- 根因有三处：9.1 把对端已经回复的 5xx 判成 timeout；worker 失败跨 IPC 回到 Gateway 后，一律被标为不可安全重放；工具执行后遇到 503 直接把错误抛给用户。
+- 修复：回移上游 776f76b4b87（对端回复的 5xx 判为 server_error）；有备用模型时，同模型只重试 1 次；worker 跨 IPC 保留状态码，满足条件时交给 Gateway 的 fallback 链；工具执行后遇到 429/5xx，同模型从转录续写，最多 3 次，失败后给中文提示。
+- candidate 证据：A = V 原字节，B = 补丁后。worker 路径 503/429/500/504：A 7–10 s 后英文错误、0 次 Grok 请求；B 2.2–4.9 s 看到备用回复。200 后不出 token：A 68 s，B 33 s。（candidate 87895664、cb510391、d66a5bae）
+- #377 把 worker.mjs 里写死的 `../core/node_modules/@openclaw/ai` 改成从 worker 正在用的 core 推导。这一行来自 V 的 agent 09:45 热装的 heartbeat-v2 guard；它在 VLab 的目录结构下会让 worker 池起不来。
+
+**同一次重启里的配置变更**（主配置和 worker 那份配置都改了；备份 `/root/{openclaw,worker-openclaw}.json.before-deepseek-back-20261015`）：
+- DeepSeek 已恢复：makaron 恢复为 `deepseek/deepseek-flash`，short-v、dealclaw、xiaoai 恢复为 `deepseek/deepseek-v4-pro`，defaults 也恢复；**fallbacks 一律改为 `["openai/gpt-6-luna"]`**（Tianyi 定：主 DeepSeek、备用 Luna）。压缩模型恢复为 deepseek-flash。10:04–13:01 期间临时用 luna 当主模型。
+- `models.providers.deepseek.timeoutSeconds` 300 → 90。
+
+**过程记录**：
+- 12:2x 为了让共享 VLab 能对齐，先把 V 上 09:45 那份热修撤回到 3e66b4b3（备份 `/root/incident-20261015-heartbeat-revert/`）。
+- 本次发版用 #377 修好路径的版本重新带上 heartbeat-v2 guard（`heartbeat-v2-stream-guard.mjs` 51f6aeea 字节不变，所以上面的列表里没有它）。
+
+相对上一版 `v2026.9.1-db91.6-history-image-e3-20261015`：9 个文件变化。
+
+**经 VLab 发版 `upstream-5xx-fallback-20261015b`**（monitor-v-production，dev `7d6e0636`）
+> 验收：共享 VLab 12:38 部署 #375+#377（10 文件，worker.mjs 3e66b4b3→198bd1f5 + heartbeat-v2-stream-guard 新增）：worker 池 14 进程正常、ERR_MODULE_NOT_FOUND/plugin service failed 0、journal err 0；vlab.mjs test 会话 vlab-dev-accept-377b-1792039585701（deepseek-flash, vlab-worker）记暗号/exec 工具 391/复述 3/3 正确各 5 s。fallback 切换以 candidate 87895664/cb510391/d66a5bae 为证（VLab makaron 无 fallbacks，xai/openai 无 key 测不到）
+- `core` agent-command-DPfawBbr.js  1805b686 → d63e3307
+- `core` builtin-openclaw-zQV8Wwjr.js  3e07c3fa → 5638a3b7
+- `core` classify-Dm9sTbZz.js  98ea918d → a69e44f5
+- `core` embedded-agent-DaSvA-Yk.js  142d248f → a53fe92d
+- `core` embedded-agent-helpers-CzpaLpCq.js  79f7f268 → 63002d77
+- `worker` harness-failure.mjs  3be999ce → 89419679
+- `worker` index.mjs  4f6894da → cfa0e687
+- `worker` worker-pool.mjs  197ec4a8 → f6ca5d76
+- `worker` worker.mjs  18c949c3 → 198bd1f5
+
+
+回滚：`node scripts/promote-to-v.mjs --undo /opt/v-release-backups/v2026.9.1-db91.6-upstream-5xx-fallback-20261015-20261015T045729`（需重启）。配置用上面的备份还原。
+
 ## v2026.9.1-db91.6-history-image-e3-20261015
 
 上线：2026-10-15 11:28 CST 装到 V（未重启；随 12:30 窗口的重启生效）  ·  tag `v2026.9.1-db91.6-history-image-e3-20261015`
