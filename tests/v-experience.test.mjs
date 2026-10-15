@@ -819,3 +819,27 @@ test("wecom monitor patch: a V card button tap becomes the tapper's command and 
   const other = { headers: {}, body: { msgid: "m2", chattype: "single", from: { userid: "zhangsan" }, msgtype: "event", event: { eventtype: "template_card_event", template_card_event: { event_key: "submit", task_id: "x" } } } };
   assert.equal(run(vx, "template_card_event", other.body, other, wsClient, { log() {} }, { accountId: "default" }).msgtype, "event", "other card events untouched");
 });
+
+test("sends outside the reply: any spelling of the chat counts, only from the turn's start, per channel", () => {
+  assert.equal(vx.channelTargetId("dingtalk-connector:group:cid/oT7y=="), "cid/oT7y==");
+  assert.equal(vx.channelTargetId("user:Versa0001"), "Versa0001");
+  const start = Date.now() + 10_000_000;
+  vx.noteChannelSend("dingtalk-connector", "group:cid/test-a==", start + 5);
+  assert.equal(vx.channelSentSince("dingtalk-connector", ["cid/test-a==", "Versa0001"], start), true);
+  assert.equal(vx.channelSentSince("dingtalk-connector", ["cid/test-a=="], start + 6), false, "a send before the turn does not count");
+  assert.equal(vx.channelSentSince("wecom", ["cid/test-a=="], start), false, "another channel's sends do not count");
+  assert.equal(vx.channelSentSince("dingtalk-connector", ["cid/other=="], start), false);
+});
+
+test("dingtalk patch: an empty reply after a tool send says 已发送; the visibleReplies hint only when it is missing", () => {
+  const reply = patchReplyChunk(fs.readFileSync(new URL("../apps/v-experience/dingtalk/baseline/message-handler-BUoLSylZ.mjs", import.meta.url), "utf8"));
+  assert.doesNotMatch(reply, /finalText = pickEmptyReplyFallbackText\(isGroup\)/u);
+  assert.doesNotMatch(reply, /pickEmptyReplyFallbackText\(!isDirect\)/u);
+  assert.match(reply, /finalText = vEmptyReplyText\(isGroup\);/u);
+  assert.match(reply, /if \(vSentSeparately\(\)\) \{\n[^\n]*\n\t+await closeStreaming\(\);\n\t+return;/u);
+  assert.match(reply, /pickEmptyReplyFallbackText\(isGroup && vLacksVisibleReplies\(\)\)/u);
+  assert.doesNotMatch(reply, /if \(isGroup\) log\.warn\?\.\(`\[DingTalk\]\[(closeStreaming|deliver)\] \$\{emptyGroupReplyLogHint\(\)\}`\)/u);
+  const runtime = patchRuntimeChunk(fs.readFileSync(new URL("../apps/v-experience/dingtalk/baseline/runtime-C81EKBS1.mjs", import.meta.url), "utf8"));
+  assert.equal(runtime.match(/vExperience\.noteChannelSend\(CHANNEL_ID, to\)/gu)?.length, 4, "text, media, actionCard, 「电脑」 card");
+  assert.equal(vx.SENT_SEPARATELY_TEXT, "✅ 已发送");
+});
