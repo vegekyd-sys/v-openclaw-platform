@@ -262,6 +262,14 @@ class Execute(Base):
             rec = self.run_last()
         self.assertEqual(rec["outcome"], "ok", rec)
 
+    def test_nested_worker_cgroup_is_not_mistaken_for_an_empty_unit(self):
+        files = {"/sys/fs/cgroup/test/cgroup.events": "populated 1\nfrozen 0\n", "/sys/fs/cgroup/test/cgroup.procs": "", "/sys/fs/cgroup/test/worker/cgroup.procs": "4321\n"}
+        import io
+        def read(name, *args, **kwargs):
+            return io.StringIO(files[name])
+        with mock.patch("builtins.open", side_effect=read), mock.patch.object(mod.os, "walk", return_value=[("/sys/fs/cgroup/test", ["worker"], []), ("/sys/fs/cgroup/test/worker", [], [])]):
+            self.assertEqual(mod.remaining_unit_processes("/test"), [4321])
+
     def test_happy_path_order(self):
         h = self.host()
         self.request("--set", 'plugins.t={"mac":1}', "--session-key", "agent:makaron:feishu:group:oc_" + "a" * 32)

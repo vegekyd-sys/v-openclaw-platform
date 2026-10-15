@@ -211,9 +211,24 @@ class StopIncomplete(RuntimeError):
 def remaining_unit_processes(group):
     if not group:
         return []
+    root = "/sys/fs/cgroup" + group
     try:
-        with open("/sys/fs/cgroup" + group + "/cgroup.procs") as f:
-            return [int(pid) for pid in f.read().split()]
+        # cgroup.procs contains direct members only; Workers use child cgroups.
+        # populated includes every descendant, including concurrent child exits.
+        with open(root + "/cgroup.events") as f:
+            events = dict(line.split() for line in f if line.strip())
+        if events.get("populated") == "0":
+            return []
+        if events.get("populated") != "1":
+            raise StopIncomplete("Cannot verify the previous unit cgroup population")
+        pids = []
+        for directory, _, _ in os.walk(root):
+            try:
+                with open(directory + "/cgroup.procs") as f:
+                    pids.extend(int(pid) for pid in f.read().split())
+            except FileNotFoundError:
+                pass
+        return sorted(set(pids)) or ["populated-descendants"]
     except FileNotFoundError:
         return []
     except OSError as error:
