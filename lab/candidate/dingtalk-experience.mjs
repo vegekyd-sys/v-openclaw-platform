@@ -12,6 +12,9 @@
 // apps/v-experience/dingtalk/patch.mjs to the private copy and asserts.
 // The model-roles scenario also patches the core command-auth and sets the
 // command roles (lab/candidate/model-roles.mjs).
+// `tool-only` (a group, as on V 2026-10-15) has the agent send its answer and a
+// file with the message tool and end with an empty final; it records what the
+// reply card that was created at the start of the turn shows at the end.
 // `secret-link` and `handoff-card` run the services behind V's link cards
 // (lab/candidate/channel-cards-support.mjs) and check the actionCard the
 // robot sends; `handoff-card` checks the Worker config the Gateway derives
@@ -113,6 +116,8 @@ if (Array.isArray(config.plugins.allow) && !config.plugins.allow.includes("dingt
 // Same routing as V: the channel belongs to the makaron agent.
 config.bindings = [...(config.bindings ?? []).filter((b) => b?.match?.channel !== "dingtalk-connector"), { agentId: "makaron", match: { channel: "dingtalk-connector" } }];
 config.cron = { ...(config.cron ?? {}), enabled: false };
+// V sets this (both configs); the connector's empty-group placeholder says it is missing.
+config.messages = { ...(config.messages ?? {}), groupChat: { ...(config.messages?.groupChat ?? {}), visibleReplies: "automatic" } };
 if (config.plugins.entries?.codex) config.plugins.entries.codex.enabled = false;
 const workerPlugin = config.plugins.entries?.["vlab-agent-worker-isolation"]?.config;
 if (workerPlugin && process.env.DT_WORKER !== "off") {
@@ -383,6 +388,44 @@ const SCENARIOS = {
     const states = cardsSince(since).flatMap((c) => c.history.map((h) => h.content));
     return { atAnswer, after75s: later, sawBackgroundLine: states.some((s) => /后台 \d+ 项进行中/u.test(s)), sawBackgroundDone: states.some((s) => /后台任务已结束/u.test(s)) };
   },
+  // V 2026-10-15 20:30: the answer and an xlsx went out with the message tool, the
+  // final was empty, and the reply card from the start of the turn ended with the
+  // connector's「暂未收到模型回复内容…visibleReplies」placeholder above them.
+  "tool-only": async () => {
+    const u = nextUser();
+    const conversationId = `cidGroup${u}`;
+    const ask = [
+      "这是自动化测试，请严格照做，不要解释。",
+      "1) 用 exec 运行：printf 'name,score\\nA,1\\n' > tool-only-table.csv",
+      "2) 调用 message 工具（action=send）把这句话发到当前群：「TOOL_ONLY_TEXT 对比表做好了」，并把 tool-only-table.csv 作为附件一起发出（media 填这个文件路径）。",
+      "3) message 工具返回后，你的最终回复只输出 NO_REPLY，不要再输出其他任何文字。",
+    ].join("\n");
+    const attempts = [];
+    let since;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      since = Date.now();
+      fake.sendUserText({ userId: u, text: ask, group: true, conversationId });
+      await settle(conversationId, since, () => finishedCards(since).length > 0 || fake.robotMessages.some((m) => m.at >= since && /TOOL_ONLY_TEXT/u.test(JSON.stringify(m.msgParam))), { label: "tool-only turn", quietMs: 15_000, timeoutMs: 300_000 }).catch(() => null);
+      const toolSent = fake.robotMessages.filter((m) => m.at >= since && m.openConversationId === conversationId);
+      attempts.push({ toolSends: toolSent.length });
+      if (toolSent.some((m) => /TOOL_ONLY_TEXT/u.test(JSON.stringify(m.msgParam)))) break;
+    }
+    const toolSent = fake.robotMessages.filter((m) => m.at >= since && m.openConversationId === conversationId);
+    const shown = view(conversationId, since);
+    const cardFinals = finishedCards(since).map((c) => c.content ?? "");
+    const everything = [...cardsSince(since).flatMap((c) => c.history.map((h) => h.content)), ...messagesSince(conversationId, since).map((m) => m.text ?? "")].join("\n");
+    return {
+      attempts,
+      toolSends: toolSent.map((m) => ({ msgKey: m.msgKey, text: String(m.msgParam?.content ?? m.msgParam?.text ?? m.msgParam?.fileName ?? JSON.stringify(m.msgParam)).slice(0, 200) })),
+      toolTextSent: toolSent.some((m) => /TOOL_ONLY_TEXT/u.test(JSON.stringify(m.msgParam))),
+      fileSent: toolSent.some((m) => /file|File/u.test(String(m.msgKey ?? ""))),
+      ...shown,
+      cardFinals,
+      placeholder: /暂未收到模型回复内容|visibleReplies|有其他问题随时找我/u.test(everything),
+      cardSaysSent: cardFinals.some((t) => /✅ 已发送/u.test(t)),
+      log: lines.filter((l) => l.at >= since && /closeStreaming|final 响应无文本|idleNudge|SendMedia|sendMedia/u.test(l.line)).map((l) => redact(l.line).slice(0, 240)).slice(-12),
+    };
+  },
 };
 
 try {
@@ -472,6 +515,13 @@ if (EXPECT === "patched") {
       assert.match(after, /已跳过这一步/u, "no status line (a DingTalk card cannot change)");
     }
     assert.match(after, /收到|继续/u, "the agent did not continue after the press");
+  }
+  if (s["tool-only"]) {
+    const r = s["tool-only"];
+    assert.equal(r.error, undefined, r.error);
+    assert(r.toolTextSent, `the agent did not send with the message tool: ${JSON.stringify(r.attempts)}`);
+    assert(!r.placeholder, `an empty-reply placeholder was shown: ${JSON.stringify(r.cards)}`);
+    assert(r.cardFinals.length === 0 || r.cardSaysSent, `the reply card does not say the content was sent: ${JSON.stringify(r.cardFinals)}`);
   }
   if (s["ask-card"]) {
     assert(s["ask-card"].questionCard, "no question card was delivered");
