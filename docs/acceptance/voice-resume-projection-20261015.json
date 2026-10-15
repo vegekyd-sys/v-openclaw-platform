@@ -52,5 +52,21 @@
   ],
   "productionTouched": false,
   "sharedValidation": "prior combo failed; restored core/config/plugin and released lease. This patch not yet merged or shared-accepted.",
-  "releaseGate": "BLOCKED: SeedDuplex child continuation remains unresolved; no production approval or deployment"
+  "releaseGate": "Candidate follow-up passed for SeedDuplex. Previous failure retained above as history; merge/shared VLab acceptance/production are still pending.",
+  "followup": {
+    "voiceCommit": "8c47c23573128215b07d402220c96a73060084e2",
+    "candidate": "candidate-4cca1ba2-5b08-407d-88cd-5b67aa6d3182",
+    "seedDuplexPassed": true,
+    "actualChildSpawn": true,
+    "actualYield": true,
+    "actualExec": true,
+    "resumedParent": true,
+    "afterHangupMs": 34249,
+    "feishuIndependentReadback": true,
+    "toolOutputFreshForCall": true,
+    "sourceTests": 447,
+    "sourceTestsPassed": 447,
+    "fixLocation": "Voice service and Voice plugin, public consultRealtimeVoiceAgent and api.runtime.agent",
+    "productionTouched": false
+  }
 }
