@@ -11,6 +11,34 @@
 
 ---
 
+## v2026.9.1-db91.6-history-image-e3-20261015
+
+上线：2026-10-15 11:28 CST 装到 V（未重启；随 12:30 窗口的重启生效）  ·  tag `v2026.9.1-db91.6-history-image-e3-20261015`
+
+**摘要**：#355 + #345 合并发版（PR #372）。
+- **#355 历史图片不再重复缩放**：早就被裁掉的历史图，每轮都在 worker 主线程上从 2048 px 重新缩到 1200 px，单张约 0.45 s。共享 VLab 真实飞书里，会话已有 8–12 轮带图时，命令→首次模型调用从 9.6–11.4 s 降到 7.3–8.5 s。模型请求逐字节不变；`OPENCLAW_HISTORY_IMAGE_RESIZE_SKIP=0` 可以关掉。
+- **#345 DeepSeek 图片预算补漏（E3）**：provider 那一份按图片计数；中文提示能真正发到用户。
+
+**另外 1 个文件不在 core 捕获范围内**（捕获只覆盖 `dist/`），按安装计划手写：
+- `core` node_modules/@openclaw/ai/dist/openai-completions-D0QZ0AyB.mjs  6a34cb79 → 915ac13d
+
+**下面两个「流程外改动」是 V 自己的 agent 改的**（2026-10-15 09:45–09:53 CST，用户 openclaw，从 workspace 用 `sudo install` 安装）：只给 2 个 heartbeat-v2 定时任务加了「30 s 内必须见到首个 SSE 事件」的传输期限，是在 DeepSeek 故障期间加的。10:04 重启后已经生效。#375 以这份字节为底本，所以先保留，Tianyi 可以决定撤回。
+
+相对上一版 `restart-speed-2-reconcile-20261014`：6 个文件变化。
+
+**经 VLab 发版 `history-image-e3-20261015b`**（claude-history-image-e3，dev `e8e01051`）
+> 验收：#372（dev 5aa37e2f/打包 e8e01051）5 文件，线上哈希核对一致。真实飞书「VLab 发布验收 B」vlab-worker/deepseek-flash 16 回合（12 张 4032x3024 图 + view_image + 4 次汇总）16/16 正确。同深度 A/B（rollback→V 字节 vs 重新部署）：命令→首次模型调用 A 9.6–11.4 s vs B 7.3–8.5 s；第二次调用准备差异仅出现在 DeepSeek 503 重试回合，candidate 9745f5af/73492e00 受控对比无差异。journal err 0；503 为上游（V 同期也有）。证据 ~/v-upgrade-private/history-image-e3-20261015/shared-vlab-evidence.md
+- `core` agent-runner.runtime-CAdsMsQt.js  75b5b4b1 → 8c192b9d
+- `core` embedded-agent-DaSvA-Yk.js  22dad1ef → 142d248f
+- `core` embedded-agent-helpers-CzpaLpCq.js  342e6269 → 79f7f268
+- `core` history-image-prune-Dg0CDQ4a.js  2811753f → dbe28902
+
+**流程外改动**（这些字节没有由任何 VLab 发版产生，是在 V 上直接改的）：
+- `worker` worker.mjs  3e66b4b3 → 18c949c3
+- `worker` heartbeat-v2-stream-guard.mjs  — → 51f6aeea
+
+回滚：`node scripts/promote-to-v.mjs --undo /opt/v-release-backups/v2026.9.1-db91.6-history-image-e3-20261015-20261015T031107`（需重启；包括 node_modules 下那个文件）。
+
 ## restart-speed-2-reconcile-20261014
 
 上线：2026-10-14 16:33 CST 生效（16:32 装到 V）  ·  tag `restart-speed-2-reconcile-20261014`
