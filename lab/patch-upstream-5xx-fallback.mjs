@@ -345,3 +345,35 @@ export function patchIncompleteTurnText(source) {
     'incomplete turn generic text');
   return out;
 }
+
+// production-worker/worker.mjs
+//
+// 8. V's agent hot-installed the heartbeat-v2 stream guard on 2026-10-15 09:45-09:53 (V's worker.mjs
+//    18c949c3). Its static `import ... from '../core/node_modules/@openclaw/ai/dist/index.mjs'` only
+//    resolves in V's `<release>/{core,worker}` layout; shared VLab's `runtime/{openclaw,production-worker}`
+//    has no `../core`, so every Worker failed with ERR_MODULE_NOT_FOUND (shared VLab, 2026-10-15 12:02).
+//    Load @openclaw/ai from the core the Worker already runs (VLAB_OPENCLAW_AGENT_RUNTIME =
+//    <core>/dist/plugin-sdk/agent-runtime.js): on V that is the same file, so the same module instance.
+export function patchWorkerAiHostImport(source) {
+  assert(!source.includes(`${MARKER}: @openclaw/ai`), 'already patched');
+  let out = replaceExactlyOnce(source,
+    `import { configureAiTransportHost, getAiTransportHost } from '../core/node_modules/@openclaw/ai/dist/index.mjs';\n`,
+    `// ${MARKER}: @openclaw/ai is loaded from the configured core (both V's and VLab's layouts), see loadAiTransportHost\n`,
+    'heartbeat-v2 @openclaw/ai import');
+  out = replaceExactlyOnce(out,
+    `    installHeartbeatV2StreamGuard(getAiTransportHost, configureAiTransportHost);\n`,
+    `    const { configureAiTransportHost, getAiTransportHost } = await loadAiTransportHost();
+    installHeartbeatV2StreamGuard(getAiTransportHost, configureAiTransportHost);\n`,
+    'heartbeat-v2 guard install');
+  return replaceExactlyOnce(out,
+    `function configuredAgentRuntimePath() {`,
+    `let aiTransportHostPromise;
+function loadAiTransportHost() {
+  // <core>/dist/plugin-sdk/agent-runtime.js -> <core>/node_modules/@openclaw/ai/dist/index.mjs
+  aiTransportHostPromise ??= import(new URL("../../node_modules/@openclaw/ai/dist/index.mjs", pathToFileURL(configuredAgentRuntimePath())).href);
+  return aiTransportHostPromise;
+}
+
+function configuredAgentRuntimePath() {`,
+    'configuredAgentRuntimePath');
+}

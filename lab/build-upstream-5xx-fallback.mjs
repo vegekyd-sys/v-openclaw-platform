@@ -16,7 +16,7 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import {
   patchAgentCommand, patchClassify, patchEmbeddedAgent, patchFailureCopy, patchHarnessFailure, patchIncompleteTurnText,
-  patchWorkerIndex, patchWorkerPool, patchWorkerSerializeError,
+  patchWorkerAiHostImport, patchWorkerIndex, patchWorkerPool, patchWorkerSerializeError,
 } from './patch-upstream-5xx-fallback.mjs';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
@@ -29,12 +29,15 @@ export const FILES = [
   { name: 'embedded-agent-helpers-CzpaLpCq.js', base: 'core/dist', target: 'openclaw/dist', before: '342e6269ad41e2db113ed35ef4499e7a7ea051a8285ea68baf495d38c2ccbfc2', e3: 'lab/release-files/history-image-e3/embedded-agent-helpers-CzpaLpCq.js', patch: patchFailureCopy },
   { name: 'builtin-openclaw-zQV8Wwjr.js', base: 'core/dist', target: 'openclaw/dist', before: '3e07c3fa8bc9ccb3fe87577f245afa11b42a99b87b46b957e43e5eb9de049f3d', patch: patchIncompleteTurnText },
   { name: 'agent-command-DPfawBbr.js', base: 'core/dist', target: 'openclaw/dist', before: '1805b6861936015156fa7d841b295912c26ed16f3e5dc8f38eec41f54bd186f4', patch: patchAgentCommand },
-  { name: 'worker.mjs', base: 'worker', target: 'production-worker', before: '18c949c399b1594d97d39e6352bc8aa93bf7c6ad8082acf5657e058b5cf175f7', patch: patchWorkerSerializeError },
+  { name: 'worker.mjs', base: 'worker', target: 'production-worker', before: '18c949c399b1594d97d39e6352bc8aa93bf7c6ad8082acf5657e058b5cf175f7', patch: (source) => patchWorkerAiHostImport(patchWorkerSerializeError(source)) },
   { name: 'worker-pool.mjs', base: 'worker', target: 'production-worker', before: '197ec4a877a92e1cbbbe97ceadbdb175e32e4438c69791813f34602c6e5250f6', patch: patchWorkerPool },
   { name: 'index.mjs', base: 'worker', target: 'production-worker', before: '4f6894daccc12dbf923cfc8d4c5e93b04961cdd16d5071bec2b4cfb51cea753c', patch: patchWorkerIndex },
   { name: 'harness-failure.mjs', base: 'worker', target: 'production-worker', before: '3be999ce6625d65ba696bed77b84a21218956d75efc176a1d193a4f6f5aa6efe', patch: patchHarnessFailure },
 ];
 
+export const VLAB_PLAN = 'lab/upstream-5xx-fallback-vlab.plan.json';
+export const VLAB_WORKER_BEFORE = '3e66b4b351ab8ff98f956d7c259e869cfa018262ed5d8b261d086a4277c02313';
+export const HEARTBEAT_GUARD_SHA = '51f6aeeaa96b416485230e93de326cbdd1521ec5c077f784b860604f461428e5';
 export const outputDir = (variant) => `lab/release-files/upstream-5xx-fallback${variant === 'e3' ? '-on-e3' : ''}`;
 export const planPath = (variant) => `lab/upstream-5xx-fallback${variant === 'e3' ? '-on-e3' : ''}.plan.json`;
 
@@ -55,6 +58,16 @@ export function build({ base, variant = 'v' }) {
   }
   const plan = { baseRelease: 'REPLACE_AT_STAGE', files: files.map(({ after, ...entry }) => entry) };
   fs.writeFileSync(path.join(repo, planPath(variant)), `${JSON.stringify(plan, null, 2)}\n`);
+  if (variant === 'e3') {
+    // Shared VLab (2026-10-15 12:10): V + e3 except worker.mjs, which lacks V's heartbeat-v2 guard
+    // (VLab 3e66b4b3, no heartbeat-v2-stream-guard.mjs). Same release bytes; the guard module (V's
+    // bytes, 51f6aeea) comes along so VLab ends up byte-identical to V after the release.
+    const vlab = { baseRelease: 'REPLACE_AT_STAGE', files: [
+      ...plan.files.map((entry) => entry.target === 'production-worker/worker.mjs' ? { ...entry, before: VLAB_WORKER_BEFORE } : entry),
+      { source: `${outputDir('v')}/heartbeat-v2-stream-guard.mjs`, target: 'production-worker/heartbeat-v2-stream-guard.mjs', before: null },
+    ] };
+    fs.writeFileSync(path.join(repo, VLAB_PLAN), `${JSON.stringify(vlab, null, 2)}\n`);
+  }
   return files;
 }
 

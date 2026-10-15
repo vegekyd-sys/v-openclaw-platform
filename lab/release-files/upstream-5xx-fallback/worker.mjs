@@ -1,5 +1,5 @@
 import { installHeartbeatV2StreamGuard, withHeartbeatV2Scope, heartbeatV2PreModelFailureResult } from './heartbeat-v2-stream-guard.mjs';
-import { configureAiTransportHost, getAiTransportHost } from '../core/node_modules/@openclaw/ai/dist/index.mjs';
+// upstream-5xx-fallback-v1: @openclaw/ai is loaded from the configured core (both V's and VLab's layouts), see loadAiTransportHost
 import {createVoiceProcessOwner} from './voice-process-owner.mjs';
 import { installWorkerDistEsmResolveFastPath } from "./dist-esm-resolve-fast-path.mjs";
 import { enableWorkerCompileCache, flushWorkerCompileCache } from "./compile-cache.mjs";
@@ -511,6 +511,13 @@ function buildStreamCallbacks(
   );
 }
 
+let aiTransportHostPromise;
+function loadAiTransportHost() {
+  // <core>/dist/plugin-sdk/agent-runtime.js -> <core>/node_modules/@openclaw/ai/dist/index.mjs
+  aiTransportHostPromise ??= import(new URL("../../node_modules/@openclaw/ai/dist/index.mjs", pathToFileURL(configuredAgentRuntimePath())).href);
+  return aiTransportHostPromise;
+}
+
 function configuredAgentRuntimePath() {
   return (
     process.env.VLAB_OPENCLAW_AGENT_RUNTIME ??
@@ -735,6 +742,7 @@ async function runAgent(message, abortSignal) {
       preparedRuntime,
     } = await loadCompactionRuntime();
     ocFirsttextWorkerMark("worker-compaction-runtime-loaded", message.runId);
+    const { configureAiTransportHost, getAiTransportHost } = await loadAiTransportHost();
     installHeartbeatV2StreamGuard(getAiTransportHost, configureAiTransportHost);
     const config = configRuntime.loadConfig();
     const agentId = message.agentId ?? "makaron";

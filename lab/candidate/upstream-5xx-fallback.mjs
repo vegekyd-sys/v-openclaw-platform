@@ -58,7 +58,19 @@ const runtimeA = path.join(scratch, "runtime-a");
 const installed = [];
 {
   if (!fs.existsSync(runtimeA)) assert.equal(spawnSync("cp", ["-a", runtimeB, runtimeA]).status, 0, "copy runtime for A");
-  for (const file of withB ? FILES : []) {
+  if (withB && process.env.FB_INSTALL_PLAN) {
+    // Install a release plan exactly as shipped (byte-for-byte sources, before-checked).
+    const plan = JSON.parse(fs.readFileSync(path.join(repoRoot, process.env.FB_INSTALL_PLAN), "utf8"));
+    for (const file of plan.files) {
+      const target = path.join(runtimeB, file.target);
+      const live = fs.existsSync(target) ? fs.readFileSync(target) : null;
+      assert.equal(live === null ? null : sha(live), file.before, `${file.target}: runtime bytes differ from the plan's before`);
+      fs.writeFileSync(`${target}.next`, fs.readFileSync(path.join(repoRoot, file.source)));
+      fs.renameSync(`${target}.next`, target);
+      installed.push({ target: file.target, before: file.before, b: sha(fs.readFileSync(target)), fromPlan: process.env.FB_INSTALL_PLAN });
+    }
+  }
+  for (const file of withB && !process.env.FB_INSTALL_PLAN ? FILES : []) {
     const target = path.join(runtimeB, file.target, file.name);
     const live = fs.readFileSync(target, "utf8");
     const next = file.patch(live);

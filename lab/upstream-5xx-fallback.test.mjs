@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { FILES, outputDir, planPath } from './build-upstream-5xx-fallback.mjs';
+import { FILES, HEARTBEAT_GUARD_SHA, VLAB_PLAN, VLAB_WORKER_BEFORE, outputDir, planPath } from './build-upstream-5xx-fallback.mjs';
 import { INCOMPLETE_AFTER_TOOLS_TEXT, INCOMPLETE_TEXT, MARKER, TRANSIENT_FAILURE_TEXT } from './patch-upstream-5xx-fallback.mjs';
 
 const repo = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -74,3 +74,23 @@ test('the user-facing failure copy is Chinese and still classifies as the same f
   assert.ok(!builtin.includes("Note: some tool actions may have already been executed"));
 });
 
+
+test('the shared VLab plan is the on-e3 release plus V\'s heartbeat-v2 guard module', () => {
+  const e3 = JSON.parse(read(planPath('e3')));
+  const vlab = JSON.parse(read(VLAB_PLAN));
+  assert.deepEqual(vlab.files.slice(0, -1), e3.files.map((entry) => entry.target === 'production-worker/worker.mjs' ? { ...entry, before: VLAB_WORKER_BEFORE } : entry));
+  assert.deepEqual(vlab.files.at(-1), { source: `${outputDir('v')}/heartbeat-v2-stream-guard.mjs`, target: 'production-worker/heartbeat-v2-stream-guard.mjs', before: null });
+  assert.equal(sha(read(vlab.files.at(-1).source)), HEARTBEAT_GUARD_SHA);
+});
+
+test('the Worker loads @openclaw/ai from the configured core, not from a fixed ../core directory', () => {
+  const worker = read(`${outputDir('v')}/worker.mjs`);
+  assert.ok(!/from ['"]\.\.\/core\//u.test(worker), 'static ../core import left in worker.mjs');
+  assert.ok(worker.includes('new URL("../../node_modules/@openclaw/ai/dist/index.mjs", pathToFileURL(configuredAgentRuntimePath()))'));
+  // Both layouts: V <release>/core/dist/plugin-sdk/agent-runtime.js, VLab runtime/openclaw/dist/plugin-sdk/agent-runtime.js
+  for (const [runtime, expected] of [
+    ['/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core/dist/plugin-sdk/agent-runtime.js', '/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core/node_modules/@openclaw/ai/dist/index.mjs'],
+    ['/srv/vlab-production-mirror/labs/instances/db91-parity/runtime/openclaw/dist/plugin-sdk/agent-runtime.js', '/srv/vlab-production-mirror/labs/instances/db91-parity/runtime/openclaw/node_modules/@openclaw/ai/dist/index.mjs'],
+  ]) assert.equal(new URL('../../node_modules/@openclaw/ai/dist/index.mjs', pathToFileURL(runtime)).pathname, expected);
+  assert.ok(worker.indexOf('await loadAiTransportHost();') < worker.indexOf('installHeartbeatV2StreamGuard(getAiTransportHost, configureAiTransportHost);'));
+});
