@@ -38,7 +38,9 @@ const REPEAT = Number(process.env.OVF_REPEAT ?? 1);
 // fbf5d45f (oc_5195cdfe, the 10-12 group) is bigger on disk but its mirrored branch is nearly empty.
 const SESSION_ID = process.env.OVF_SESSION ?? "faa116bd-0fbf-40ee-b157-52022411c7d1";
 const EMBEDDED = process.env.OVF_RUNTIME === "embedded";
-const FAST_COMPACTION_MODEL = process.env.FAST_COMPACTION_MODEL ?? "azure-openai/gpt-5.6-sol";
+const CHAT_BIG = process.env.OVF_CHAT_BIG === "1";
+// V uses azure-openai/gpt-5.6-sol; shared VLab only has the gpt-5.5 deployment (midturn-precheck 2026-10-02).
+const FAST_COMPACTION_MODEL = process.env.FAST_COMPACTION_MODEL ?? "azure-openai/gpt-5.5";
 const TURN_TIMEOUT_MS = Number(process.env.OVF_TURN_TIMEOUT_MS ?? 900_000);
 const MODEL = "deepseek/deepseek-flash";
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -276,6 +278,7 @@ const startGateway = async (arm) => {
   const env = { ...base, OPENCLAW_CONFIG_PATH: arm.configPath, OPENCLAW_STATE_DIR: arm.state, OPENCLAW_GATEWAY_PORT: String(arm.port),
     TMPDIR: tmp, XDG_CACHE_HOME: path.join(scratch, `cache-${arm.name}`), npm_config_cache: path.join(scratch, `cache-${arm.name}`, "npm") };
   delete env.VLAB_OPENCLAW_AGENT_RUNTIME;
+  arm.env = env;
   const dist = path.join(arm.runtime, "openclaw", "dist");
   const lines = [];
   let starts = 0;
@@ -361,16 +364,33 @@ const runTurn = async (arm, scenario, n) => {
     ? `[ovf ${arm.name} ${scenario} ${n}] 请用 exec 工具执行一次命令 \`echo ${probe} >> ovf-probe.log; echo ${probe}\`（只执行这一次），然后用一句话告诉我输出是什么。`
     : `[ovf ${arm.name} ${scenario} ${n}] 用一句话回答：现在这个群主要在讨论什么？不要调用工具。`;
   const t0 = Date.now();
-  const sent = await arm.client.request("chat.send", { agentId: "makaron", sessionKey, message, deliver: false, timeoutMs: TURN_TIMEOUT_MS, idempotencyKey: `ovf-${arm.name}-${scenario}-${n}-${t0}` });
-  assert(sent?.runId, `${arm.name} ${scenario}: chat.send returned no runId`);
-  let waited;
-  try { waited = await arm.client.request("agent.wait", { runId: sent.runId, timeoutMs: TURN_TIMEOUT_MS }, { timeoutMs: TURN_TIMEOUT_MS + 20_000 }); } catch (error) { waited = { status: `wait-error:${error.message}` }; }
+  let waited, events = [], cli;
+  if (big && !CHAT_BIG) {
+    // A webchat chat.send into a mirrored group session replays only its own conversation (2 messages,
+    // ~52k tokens with tools and system prompt: candidate-fd5f16c3). The agent CLI replays the session
+    // branch like midturn-precheck did (~484k real tokens).
+    const child = spawn(process.execPath, [path.join(arm.runtime, "openclaw", "dist", "index.js"), "agent", "--agent", "makaron", "--session-key", sessionKey,
+      "--model", MODEL, "--message", message, "--json", "--timeout", String(Math.round(TURN_TIMEOUT_MS / 1000))], { env: arm.env, stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "", stderr = "";
+    child.stdout.on("data", (c) => { stdout += c; });
+    child.stderr.on("data", (c) => { stderr += c; });
+    const exit = await new Promise((resolve) => child.on("close", resolve));
+    let meta;
+    try { meta = JSON.parse(stdout.slice(stdout.indexOf("{"))); } catch {}
+    const payloads = meta?.result?.payloads ?? meta?.payloads ?? [];
+    cli = { exit, text: payloads.map((p) => p.text ?? "").join(" | "), isError: payloads.some((p) => p.isError), stderr: exit === 0 ? undefined : redact(stderr).slice(-600) };
+    waited = { status: exit === 0 ? "cli-ok" : `cli-exit-${exit}` };
+  } else {
+    const sent = await arm.client.request("chat.send", { agentId: "makaron", sessionKey, message, deliver: false, timeoutMs: TURN_TIMEOUT_MS, idempotencyKey: `ovf-${arm.name}-${scenario}-${n}-${t0}` });
+    assert(sent?.runId, `${arm.name} ${scenario}: chat.send returned no runId`);
+    try { waited = await arm.client.request("agent.wait", { runId: sent.runId, timeoutMs: TURN_TIMEOUT_MS }, { timeoutMs: TURN_TIMEOUT_MS + 20_000 }); } catch (error) { waited = { status: `wait-error:${error.message}` }; }
+    await sleep(2_000);
+    events = arm.events.filter((e) => e.runId === sent.runId);
+  }
   const t1 = Date.now();
-  await sleep(2_000);
-  const events = arm.events.filter((e) => e.runId === sent.runId);
   const firstText = events.find((e) => textOf(e.message).trim());
   const terminal = events.filter((e) => ["final", "error", "aborted"].includes(e.state));
-  const finalText = terminal.map((e) => textOf(e.message) || e.errorMessage || "").join(" | ");
+  const finalText = cli ? cli.text : terminal.map((e) => textOf(e.message) || e.errorMessage || "").join(" | ");
   const lines = arm.lines.filter((l) => l.at >= t0 && l.at <= t1 + 2000);
   const at = (re) => { const l = lines.find((x) => re.test(x.line)); return l ? l.at : null; };
   const compactStart = at(/attempting auto-compaction|compacting and continuing/u);
@@ -378,7 +398,7 @@ const runTurn = async (arm, scenario, n) => {
   let probeCount = null;
   try { probeCount = (fs.readFileSync(path.join(arm.state, "workspace", "ovf-probe.log"), "utf8").match(new RegExp(probe, "gu")) ?? []).length; } catch {}
   const mine = requests.filter((r) => r.arm === arm.name && r.scenario === scenario && r.n === n);
-  return { arm: arm.name, scenario, n, sessionKey: big ? "big" : "small", waitStatus: waited?.status, totalS: (t1 - t0) / 1000,
+  return { arm: arm.name, scenario, n, sessionKey: big ? "big" : "small", via: cli ? "agent-cli" : "chat.send", cli, waitStatus: waited?.status, totalS: (t1 - t0) / 1000,
     firstTextS: firstText ? (firstText.at - t0) / 1000 : null, states: terminal.map((e) => e.state), finalText: finalText.slice(0, 500),
     english: /Context overflow|Try \/reset|Auto-compaction could not|Context limit exceeded/u.test(finalText), chineseNotice: finalText.includes("这段对话"),
     compactionS: compactStart && compactEnd ? (compactEnd - compactStart) / 1000 : null, probeCount,
@@ -428,8 +448,8 @@ try {
 
 const out = {
   runtime: EMBEDDED ? "embedded" : "vlab-worker", session: SESSION_ID, installed, fastCompactionModel: FAST_COMPACTION_MODEL,
-  summary: results.map(({ arm, scenario, n, totalS, firstTextS, states, english, chineseNotice, compactionS, fastCompactionFellBack, probeCount, finalText, transcript, requests: reqs }) => ({
-    arm, scenario, n, totalS, firstTextS, states: states.join(","), english, chineseNotice, compactionS, fastCompactionFellBack, probeCount,
+  summary: results.map(({ arm, scenario, n, via, cli, totalS, firstTextS, states, english, chineseNotice, compactionS, fastCompactionFellBack, probeCount, finalText, transcript, requests: reqs }) => ({
+    arm, scenario, n, via, cliExit: cli?.exit, totalS, firstTextS, states: states.join(","), english, chineseNotice, compactionS, fastCompactionFellBack, probeCount,
     compactions: transcript?.compactions.length ?? null, toolsRun: transcript?.tools.length ?? null, requests: reqs.length, injected: reqs.filter((r) => r.injected).length,
     firstRequestBytes: reqs[0]?.bytes ?? null, firstRequestTokens: reqs.find((r) => r.usageIn)?.usageIn ?? null, finalText: finalText.slice(0, 200) })),
   otherRequests: other.length,
