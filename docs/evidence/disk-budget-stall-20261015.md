@@ -3,10 +3,13 @@
 事故与根因见 [docs/incidents/2026-10-15-feishu-ingress-stall.md](../incidents/2026-10-15-feishu-ingress-stall.md)。
 
 - **环境**：VLab candidate，runtime 用真实的 9.1 db91.6 chunk，`before` 与 V 当前字节一致（`9e5c3708…`、`014136ce…`）。没占 lease，也没碰共享 Gateway。
-- **输入**：receipt 里记的是本地合并前的提交 `46e442d2`（dirty=false）。被测文件与本 PR 逐字节相同：
-  - 脚本 `disk-budget-stall.mjs` `970c96e4…`
-  - `disk-budget-BzLS0kmH.js` `ea43ffc2…`
-  - `session-history-eviction-d5aiCsHS.js` `e1910c1a…`
+- **输入**：
+  - 第一版：A 臂和 B 臂都跑过，本地提交 `46e442d2`。
+  - 第二版：只重跑了 B 臂，提交 `8a67ddde`，dirty=false。A 臂没有改动。
+  - 第二版被测的文件哈希：
+    - `disk-budget-BzLS0kmH.js` `aa6aaf56…`
+    - `session-history-eviction-d5aiCsHS.js` `0c43970f…`
+    - 脚本 `970c96e4…`
 - **脚本**：`lab/candidate/disk-budget-stall.mjs`。plan 在 `lab/candidate/disk-budget-stall-{reachable,exhausted,kicks}-{A,B}.plan.json`。
   - A 臂是 `lab/fixtures/disk-budget-stall/` 下的 V 原字节，以私有文件名放在同一个 dist 里，其他兄弟 chunk 与 B 共用。
   - B 臂是 `lab/release-files/disk-budget-stall/`。
@@ -28,6 +31,16 @@
 | | B | 65 s | 30 s 内 1 次，65 s 内 2 次 | 4 | 3 ms | 191 / 12 ms | 0.04 | 一分钟内合并成一次，延后的那次在 60 s 后跑 |
 | kicks ②：耗尽后再 force 10 次加普通触发 10 次 | A | 216 s | 耗尽那轮 29 次，之后又 29 次 | 1,741,605 | **66,940 ms** | 928 / 14 ms | 0.69 | 耗尽后照样一轮接一轮 |
 | | B | 146 s | 耗尽那轮 6 次，之后 0 次 | 10 | 0 ms | 200 / 12 ms | 0.06 | 退避 30 分钟，告警一次 `session history disk budget exhausted…`，另有一条 `disk-budget pass` 结果日志 |
+
+**第二版**（`8a67ddde`）：批与批之间只重新 stat 库文件，一整轮只在开头和结尾各做一次全量扫描；不驱逐会话历史。
+
+| 场景 | 用时 | 全量扫描 | 写队列最长等待 | 事件循环 max | 结果 |
+|---|---|---|---|---|---|
+| reachable | 3.7 s | 3 | 3 ms | 179 ms | 同 A：删最老的 29 个 |
+| exhausted | 6.4 s | 5 | 4 ms | 185 ms | 同 A：50 个全删 |
+| kicks | 预算内：30 s 内 1 次，65 s 内 2 次。耗尽后：0 次，告警一次 | — | 2 ms | 344 ms | — |
+
+第二版 receipt：reachable f3a15234、exhausted 6f0ac932、kicks 2a4928f9。
 
 receipt 是本机的 `tmp/candidate/candidate-*.json`，对应 id 如下：
 
