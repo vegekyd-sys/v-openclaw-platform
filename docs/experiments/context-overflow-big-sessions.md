@@ -139,6 +139,13 @@ candidate-a03ee738（V 规模，worker 路径，agent CLI 驱动），每个场�
 
 - B 的 midtool 总时长 56 s / 75 s，大头不是压缩。压缩后模型按摘要里的「待办」又去查了这个镜像群的夜班任务（4–6 条只读 exec）。这是压缩摘要本身带回旧待办的行为，A 的 start 场景压缩后也是同一套摘要，与补丁无关；生产上普通会话的待办是当前的，不会这样。
 
+candidate-3b1ee568（同一会话，**in-Gateway 内置 runtime**，不经 worker；plan `context-overflow-recovery-embedded.plan.json`）：
+
+| 场景 | A | B |
+|---|---|---|
+| midtool | 失败，英文 `Context overflow: … Try /reset`，0 次压缩，14 s | 答完：压缩 42.6 s（摘要请求 30.4 s），探针 exec 1 次，总 77 s |
+| always | 英文 | 中文提示 |
+
 **用户在聊天里看到的文字**（chat.send，等同渠道回复路径）
 
 candidate-0ae0e273、candidate-fd5f16c3，小会话上下文：
