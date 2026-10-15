@@ -406,18 +406,20 @@ const SCENARIOS = {
       since = Date.now();
       fake.sendUserText({ userId: u, text: ask, group: true, conversationId });
       await settle(conversationId, since, () => finishedCards(since).length > 0 || fake.robotMessages.some((m) => m.at >= since && /TOOL_ONLY_TEXT/u.test(JSON.stringify(m.msgParam))), { label: "tool-only turn", quietMs: 15_000, timeoutMs: 300_000 }).catch(() => null);
-      const toolSent = fake.robotMessages.filter((m) => m.at >= since && m.openConversationId === conversationId);
-      attempts.push({ toolSends: toolSent.length });
-      if (toolSent.some((m) => /TOOL_ONLY_TEXT/u.test(JSON.stringify(m.msgParam)))) break;
+      // The message tool's text goes out as its own AI card, the file as a robot message.
+      const sentText = cardsSince(since).some((c) => /TOOL_ONLY_TEXT/u.test(c.content ?? "")) || fake.robotMessages.some((m) => m.at >= since && /TOOL_ONLY_TEXT/u.test(JSON.stringify(m.msgParam)));
+      attempts.push({ sentText, robotSends: fake.robotMessages.filter((m) => m.at >= since && m.openConversationId === conversationId).length });
+      if (sentText) break;
     }
     const toolSent = fake.robotMessages.filter((m) => m.at >= since && m.openConversationId === conversationId);
     const shown = view(conversationId, since);
-    const cardFinals = finishedCards(since).map((c) => c.content ?? "");
+    // The reply card is the one the turn opened; the message tool's own card carries the text.
+    const cardFinals = finishedCards(since).map((c) => c.content ?? "").filter((t) => !/TOOL_ONLY_TEXT/u.test(t));
     const everything = [...cardsSince(since).flatMap((c) => c.history.map((h) => h.content)), ...messagesSince(conversationId, since).map((m) => m.text ?? "")].join("\n");
     return {
       attempts,
       toolSends: toolSent.map((m) => ({ msgKey: m.msgKey, text: String(m.msgParam?.content ?? m.msgParam?.text ?? m.msgParam?.fileName ?? JSON.stringify(m.msgParam)).slice(0, 200) })),
-      toolTextSent: toolSent.some((m) => /TOOL_ONLY_TEXT/u.test(JSON.stringify(m.msgParam))),
+      toolTextSent: /TOOL_ONLY_TEXT/u.test(everything) || toolSent.some((m) => /TOOL_ONLY_TEXT/u.test(JSON.stringify(m.msgParam))),
       fileSent: toolSent.some((m) => /file|File/u.test(String(m.msgKey ?? ""))),
       ...shown,
       cardFinals,
