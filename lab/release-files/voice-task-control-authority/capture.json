@@ -1,0 +1,17 @@
+{
+  "source": "shared VLab frozen SDK runtime",
+  "files": [
+    {
+      "source": "lab/release-files/voice-task-control-authority/agent-run-control-BeeIeTBf.js",
+      "target": "openclaw/dist/agent-run-control-BeeIeTBf.js",
+      "before": "03402763a265f7671f8dc932f1c148421ebe7a9a0c19c51cf23239a2628b993b",
+      "after": "8219c5e862180b3fd69775644569234df6f0b849be0ee14c10ec4dfa5fd1233a"
+    },
+    {
+      "source": "lab/release-files/voice-task-control-authority/runs-5WnDPZ0V.js",
+      "target": "openclaw/dist/runs-5WnDPZ0V.js",
+      "before": "407999737bf83f799b68042ab6e9de48920bcdf656be8fba58c3183a82f24359",
+      "after": "056243f50c64a10a17f3593f2f0ce9bb2e2ee71591b5ec4c113faa9dd492d6f2"
+    }
+  ]
+}
