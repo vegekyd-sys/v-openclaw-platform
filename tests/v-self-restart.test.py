@@ -191,6 +191,38 @@ class Request(Base):
 
 
 class Execute(Base):
+    def test_deactivating_process_never_gets_config_writes_or_a_parallel_start(self):
+        h = self.host()
+        original = h.systemctl
+        def delayed_stop(args):
+            if args[0] == "stop":
+                return h.result("", 1, "stop job canceled; old process is still exiting")
+            return original(args)
+        h.systemctl = delayed_stop
+        self.request("--set", 'plugins.t={"mac":1}')
+        with mock.patch.object(mod, "unit_active", return_value="deactivating"):
+            rec = self.run_last()
+        self.assertEqual(rec["outcome"], "stop-pending")
+        self.assertEqual(self.read_config(), {"keep": 1})
+        self.assertFalse(any(c[0] == "systemctl" and c[1] == "start" for c in h.calls))
+        self.assertFalse(any(c[1:3] == ["config", "set"] and "--dry-run" not in c for c in h.calls))
+        self.assertFalse(any(x["step"] == "stopped" for x in rec["steps"]))
+
+    def test_stop_timeout_retains_existing_config_without_attempting_a_second_start(self):
+        h = self.host()
+        original = h.systemctl
+        def timed_out_stop(args):
+            if args[0] == "stop":
+                raise subprocess.TimeoutExpired(["systemctl", "stop", mod.UNIT], mod.STOP_TIMEOUT_S)
+            return original(args)
+        h.systemctl = timed_out_stop
+        self.request("--set", 'plugins.t={"mac":1}')
+        with mock.patch.object(mod, "unit_active", return_value="deactivating"):
+            rec = self.run_last()
+        self.assertEqual(rec["outcome"], "stop-pending")
+        self.assertEqual(self.read_config(), {"keep": 1})
+        self.assertFalse(any(c[0] == "systemctl" and c[1] == "start" for c in h.calls))
+
     def test_happy_path_order(self):
         h = self.host()
         self.request("--set", 'plugins.t={"mac":1}', "--session-key", "agent:makaron:feishu:group:oc_" + "a" * 32)

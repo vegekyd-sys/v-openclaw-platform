@@ -201,14 +201,23 @@ def wait_ready(timeout_s, start_restarts):
     return False, "no '%s' within %ds" % (READY_MARK, timeout_s)
 
 
+class StopIncomplete(RuntimeError):
+    """A stop request is not proof that the old process has exited."""
+
+
 def stop_unit(rec):
     rec["oldMainPid"] = unit_prop("MainPID")
     save(rec)
-    p = sh(["systemctl", "stop", UNIT], timeout=STOP_TIMEOUT_S)
-    state = unit_active()
-    step(rec, "stopped", rc=p.returncode, state=state, oldMainPid=rec["oldMainPid"])
-    if state == "active":
-        raise RuntimeError("unit still active after stop")
+    try:
+        p = sh(["systemctl", "stop", UNIT], timeout=STOP_TIMEOUT_S)
+    except subprocess.TimeoutExpired as error:
+        step(rec, "stop-incomplete", state=unit_active(), mainPid=unit_prop("MainPID"), timeout=True)
+        raise StopIncomplete("Gateway stop is still pending; config was not changed") from error
+    state, main_pid = unit_active(), unit_prop("MainPID")
+    if state not in ("inactive", "failed") or main_pid != "0":
+        step(rec, "stop-incomplete", rc=p.returncode, state=state, mainPid=main_pid)
+        raise StopIncomplete("Gateway has not stopped (%s, MainPID=%s); config was not changed" % (state, main_pid))
+    step(rec, "stopped", rc=p.returncode, state=state, oldMainPid=rec["oldMainPid"], mainPid=main_pid)
 
 
 def start_unit(rec, label):
@@ -427,6 +436,10 @@ def execute(run_id):
             raise RuntimeError("Gateway did not become ready: %s" % why)
         rec["postChecks"] = post_checks(unit_prop("InvocationID"))
         rec["outcome"], rec["outcomeText"] = "ok", "成功，Gateway 已就绪"
+    except StopIncomplete as e:
+        rec["error"] = str(e)[-800:]
+        rec["outcome"], rec["outcomeText"] = "stop-pending", "停止未完成，未修改配置；请检查原进程，不自动重复启动"
+        step(rec, "stop-pending", error=rec["error"])
     except Exception as e:
         rec["error"] = str(e)[-800:]
         rec["outcome"], rec["outcomeText"] = "failed", "失败"
@@ -435,7 +448,7 @@ def execute(run_id):
             # Put the old config back and bring the Gateway up on it.
             try:
                 if applied and backup:
-                    sh(["systemctl", "stop", UNIT], timeout=STOP_TIMEOUT_S)
+                    stop_unit(rec)
                     shutil.copy2(backup, CONFIG)
                     step(rec, "config-restored", backup=backup)
                 rec["codexOrphans2"] = run_orphan_cleanup()
