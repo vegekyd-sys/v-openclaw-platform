@@ -71,7 +71,7 @@ DEFAULT_DELAY_S = 30
 # Measured ready times on V: 1m51s (2026-10-06 00:53), 3m05s (15:56, of which the
 # db91 integrity preflight was 2m13s). 9.x cold starts have taken up to 16 min.
 DEFAULT_READY_TIMEOUT_S = 1200
-STOP_TIMEOUT_S = 120
+STOP_TIMEOUT_S = 360
 CLI_TIMEOUT_S = 180
 WAKE_TIMEOUT_S = 900
 RUN_ID_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[0-9a-f]{4}$")
@@ -209,11 +209,15 @@ def stop_unit(rec):
     rec["oldMainPid"] = unit_prop("MainPID")
     save(rec)
     try:
-        p = sh(["systemctl", "stop", UNIT], timeout=STOP_TIMEOUT_S)
+        p = sh(["systemctl", "stop", "--no-block", UNIT], timeout=30)
     except subprocess.TimeoutExpired as error:
         step(rec, "stop-incomplete", state=unit_active(), mainPid=unit_prop("MainPID"), timeout=True)
         raise StopIncomplete("Gateway stop is still pending; config was not changed") from error
+    deadline = time.monotonic() + STOP_TIMEOUT_S
     state, main_pid = unit_active(), unit_prop("MainPID")
+    while (state not in ("inactive", "failed") or main_pid != "0") and time.monotonic() < deadline:
+        time.sleep(1)
+        state, main_pid = unit_active(), unit_prop("MainPID")
     if state not in ("inactive", "failed") or main_pid != "0":
         step(rec, "stop-incomplete", rc=p.returncode, state=state, mainPid=main_pid)
         raise StopIncomplete("Gateway has not stopped (%s, MainPID=%s); config was not changed" % (state, main_pid))
@@ -222,7 +226,9 @@ def stop_unit(rec):
 
 def start_unit(rec, label):
     restarts = unit_prop("NRestarts")
-    p = sh(["systemctl", "start", UNIT], timeout=STOP_TIMEOUT_S)
+    p = sh(["systemctl", "start", "--no-block", UNIT], timeout=30)
+    if p.returncode != 0:
+        raise RuntimeError("Gateway start request failed: %s" % (p.stderr or p.stdout)[-500:])
     t0 = time.monotonic()
     ok, why = wait_ready(rec["readyTimeoutS"], restarts)
     step(rec, label, rc=p.returncode, ok=ok, why=why, seconds=round(time.monotonic() - t0),
