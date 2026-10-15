@@ -24,8 +24,10 @@ POST /v1.0/robot/groupMessages/send  ->  HTTP 400 invalid.openConversationId
 把 `dingtalk-connector` + peerKind `group` 以 `span: "segment"` 登记进 `CASE_PRESERVING_PEERS`，与既有 `signal` 条目同构：
 
 ```js
-{ channel: "dingtalk-connector", peerKinds: new Set(["group"]), span: "segment", unscoped: true }
+{ channel: "dingtalk-connector", peerKinds: new Set(["group", "channel"]), span: "segment", unscoped: true }
 ```
+
+两个 peerKind 都要登记：群消息在会话键里是 `group`，但框架在需要**合成**投递目标时会写成 `channel:<id>`（本群被写坏的 `to` 就是这个形状），两者走同一个 `normalizeSessionPeerId`。
 
 - 会话键变成 `agent:makaron:dingtalk-connector:group:cidvcoS13FzQXFw5ZNRTUMU2Q==`，由它派生的投递目标恢复正确大小写。
 - 只影响该 channel 的 group peer；其他 channel 仍按原规则小写（已测）。
@@ -54,7 +56,28 @@ DINGTALK_PATCH_CORE=~/src/dt-patch-core-<ts> node --test tests/patch-openclaw91-
 
 结果：4/4 通过。功能断言覆盖 ① 基线复现折叠 ② apply 后会话键保留原始大小写 ③ feishu 等其他 channel 仍小写 ④ 旧折叠键仍作别名解析 ⑤ 二次 apply no-op ⑥ rollback 后回到基线。SHA-256 前后值见 `acceptance/vlab-patch-manifest.json`。
 
-**未验证（需合入后）**：真实钉钉群在打补丁的运行时里跑一次主动发送；多群/多账号；thread 形态的会话键。
+### 入口折叠的直接证据（用真实 id，2026-10-15 22:2x）
+
+把两个群的真实 `openConversationId` 作为入站 peer 喂进 `normalizeSessionPeerId`：
+
+| 输入（真实 id） | 未打补丁 | 已打补丁 |
+| --- | --- | --- |
+| 教授群 `cidvcoS13FzQXFw5ZNRTUMU2Q==`（group / channel 两种 kind） | 折叠成小写 ❌ | 原样保留 ✅ |
+| 测试群 `cidToQJSy6DL1D44iIU1h3QnA==`（同上） | 折叠成小写 ❌ | 原样保留 ✅ |
+| 对照：feishu group `OC_AbCdEf` | `oc_abcdef` | `oc_abcdef`（不受影响） |
+
+**顺序很重要**：折叠只发生在入口。已经被写进库的折叠值（如教授群 session 里的 `channel:cidvcos13fzqxfw5znrtumu2q==`）补丁**不会回改**；那条会话需要一条新的入站消息把路由以正确大小写刷新，之后才正常。
+
+### 安全群实测（2026-10-15 22:17–22:20，群「蔡天懿」，仅 Tianyi + V）
+
+| 动作 | 结果 |
+| --- | --- |
+| 纯文本出站 | 框架回执 `deliveryStatus: sent`（messageId 前缀 `card_`，走 AI 卡片接口） |
+| 文件出站（PDF） | 工具回执 `sent` + `card_`，但**连接器没有任何 media 发送日志**，附件是否真的落地需人工确认 |
+
+出站目标被打印为**折叠值** `cidtoqjsy6dl1d44iiu1h3qna==`。结合教授群现象可推断：DingTalk 的 **AI 卡片接口容忍折叠 id，而机器人消息接口（`/v1.0/robot/groupMessages/send`，文件走这条）大小写敏感** —— 这解释了为什么文字能到、文件 400。
+
+**未验证（需合入后）**：在打了补丁的运行时里做一次真实文件发送（本次安全群测试里连接器没有真正发起 media 发送）；多群/多账号；thread 形态的会话键。
 
 ## 合入与回滚
 

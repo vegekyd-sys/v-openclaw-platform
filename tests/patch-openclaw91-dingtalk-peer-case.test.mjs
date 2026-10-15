@@ -57,7 +57,7 @@ test('unit: minified worker bundle gains the same descriptor', () => {
   assert.equal(changed, true);
   assert.ok(
     source.startsWith(
-      'init_session_key_utils=__esmMin((()=>{init_string_coerce(),CASE_PRESERVING_PEERS=[{channel:`dingtalk-connector`,peerKinds:new Set([`group`]),span:`segment`,unscoped:!0},{channel:`signal`,',
+      'init_session_key_utils=__esmMin((()=>{init_string_coerce(),CASE_PRESERVING_PEERS=[{channel:`dingtalk-connector`,peerKinds:new Set([`group`,`channel`]),span:`segment`,unscoped:!0},{channel:`signal`,',
     ),
     'dingtalk-connector descriptor is prepended and existing entries stay',
   );

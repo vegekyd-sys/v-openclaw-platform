@@ -40,7 +40,7 @@ const PRETTY_PATCHED = `const CASE_PRESERVING_PEERS = [{
 \t// ${PATCH_MARKER}: DingTalk group openConversationId is case-sensitive base64.
 \t// Folding it makes DingTalk reject proactive sends (400 invalid.openConversationId).
 \tchannel: "dingtalk-connector",
-\tpeerKinds: /* @__PURE__ */ new Set(["group"]),
+\tpeerKinds: /* @__PURE__ */ new Set(["group", "channel"]),
 \tspan: "segment",
 \tunscoped: true
 }, {
@@ -49,7 +49,7 @@ const PRETTY_PATCHED = `const CASE_PRESERVING_PEERS = [{
 /** dist/worker/worker.mjs (minified bundle, second copy of the registry) */
 const MIN_ANCHOR = 'CASE_PRESERVING_PEERS=[{channel:`signal`,';
 const MIN_PATCHED =
-  'CASE_PRESERVING_PEERS=[{channel:`dingtalk-connector`,peerKinds:new Set([`group`]),span:`segment`,unscoped:!0},{channel:`signal`,';
+  'CASE_PRESERVING_PEERS=[{channel:`dingtalk-connector`,peerKinds:new Set([`group`,`channel`]),span:`segment`,unscoped:!0},{channel:`signal`,';
 
 export function patchDingtalkPeerCase(source, shape) {
   const anchor = shape === 'min' ? MIN_ANCHOR : PRETTY_ANCHOR;
