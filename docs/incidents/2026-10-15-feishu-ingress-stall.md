@@ -273,7 +273,7 @@ warn 模式的含义：
 **sessions 目录（16.24 GB）**：
 - 29,178 个遗留文件，修改时间都在 2026-05 到 09 月，迁到 SQLite 以后没有新增过。
 - 另有 `.zst` 归档 871 个，0.58 GB。归档几乎全来自夜班子 agent 会话被删除，每天 114–339 个、约 0.2 GB；10/15 只有 20 个。
-- 当前 SQLite 里有 38 个会话条目的 `sessionFile` 仍然指向遗留的 jsonl。
+- 当前 SQLite 里有 38 个会话条目的 compaction checkpoint（pre/postCompaction.sessionFile）仍然指向遗留 jsonl，共 77 个文件、134.7 MB。没有条目的顶层 sessionFile 指向遗留文件。另外，871 个 `.zst` 是 canonical 归档，不属于遗留文件。不被引用、且 14 天未修改的文件共 29,079 个、15.78 GB（10/16 00:40 实测）。
 
 ### 2. 预计触线日期（48 GiB = 51.54e9）
 
@@ -292,7 +292,7 @@ warn 模式的含义：
 
 | # | 方案 | 能省多少 | 数据 | 工作量 | 风险 |
 |---|---|---|---|---|---|
-| 1 | **遗留 sessions 目录移到冷存储**：把 29,178 个 5–9 月的遗留文件移出 `sessions/`，打成 `tar.zst` 放到 `.openclaw/cold/`，并写一份清单。被 `sessionFile` 和 `trajectory-path` 引用的文件原地保留，只移走那 38 个条目引用之外的 | 预算 −16 GB；冷存储压缩后估计 3–5 GB（trajectory 和 jsonl 都是文本） | 不丢，可原样解压回去 | 小，半天：脚本 + candidate 校验 + 一次移动 | 低：运行时不再读这些文件，移动前要在 candidate 上核对引用。V 上动数据需要 Tianyi 批准 |
+| 1 | **遗留 sessions 目录移到冷存储**：把 29,178 个 5–9 月的遗留文件移出 `sessions/`，打成 `tar.zst` 放到 `.openclaw/cold/`，并写一份清单。按运行时规则被引用的 77 个文件（compaction checkpoint）、会话 id 仍在库里的 22 个 trajectory.gz，以及全部 `.zst` canonical 归档都原地保留 | 预算 −16 GB；冷存储压缩后估计 3–5 GB（trajectory 和 jsonl 都是文本） | 不丢，可原样解压回去 | 小，半天：脚本 + candidate 校验 + 一次移动 | 低：运行时不再读这些文件，移动前要在 candidate 上核对引用。V 上动数据需要 Tianyi 批准 |
 | 2 | **图片不内嵌**：`view_image` 等工具结果里的 base64 写入按内容寻址的媒体文件，转录里只留引用；读取时回填。history-image-e3 已经让旧图片不再发给模型 | 新增量 −59%，每天约 −0.28 GB；存量迁移后 −2–3 GB | 不丢，原字节保存在文件里 | 中到大：dist 补丁要覆盖写入路径、读取或回填路径（会话历史、Control UI、压缩、mirror-facts）以及迁移脚本 | 中：所有读转录的地方都要认识引用格式；上游没有现成实现 |
 | 3 | **embedding 缓存设上限**：官方配置 `memory.search.cache.maxEntries` | 设为 5000 可释放约 2.9 GB 页面，库文件本身不会变小 | 不丢用户数据，缓存可以重算 | 小：只改配置，热生效待验证 | 低到中：重建索引时要重新调 Gemini（花钱、更慢） |
 | 4 | **embedding 改为二进制存储**：`embedding TEXT`（JSON）改为 float32 BLOB | 记忆索引 6.7 GB 降到约 1.3 GB | 不丢 | 大：改 schema、迁移，要和上游分叉 | 高：上游 main 仍然是 TEXT，每次升级都要背着这个补丁 |
