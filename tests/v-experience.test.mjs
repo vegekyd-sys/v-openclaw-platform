@@ -843,3 +843,13 @@ test("dingtalk patch: an empty reply after a tool send says 已发送; the visib
   assert.equal(runtime.match(/vExperience\.noteChannelSend\(CHANNEL_ID, to\)/gu)?.length, 4, "text, media, actionCard, 「电脑」 card");
   assert.equal(vx.SENT_SEPARATELY_TEXT, "✅ 已发送");
 });
+
+test("wecom patch: a reply with nothing of its own after a tool send closes with 已发送; the outbound records its sends", async () => {
+  const { patchMonitor, patchChannel } = await import("../apps/v-experience/wecom/patch.mjs");
+  const monitor = patchMonitor(fs.readFileSync(new URL("../apps/v-experience/wecom/baseline/monitor.js", import.meta.url), "utf8"));
+  assert.match(monitor, /const state = \{ accumulatedText: "", streamId, vTurnStartedAt: Date\.now\(\) \};/u);
+  assert.match(monitor, /if \(!finishText && vExperience\.channelSentSince\(CHANNEL_ID, \[chatId\], state\.vTurnStartedAt \?\? Infinity\)\) \{\n\s+if \(!state\.streamId \|\| state\.streamExpired\) return;\n\s+finishText = vExperience\.SENT_SEPARATELY_TEXT;\n\s+\}\n\s+if \(!finishText && state\.streamId\) \{\n\s+finishText = "✅ 已收到";/u);
+  const channel = patchChannel(fs.readFileSync(new URL("../apps/v-experience/wecom/baseline/channel.js", import.meta.url), "utf8"));
+  assert.equal(channel.match(/vExperience\.noteChannelSend\(CHANNEL_ID, /gu)?.length, 3, "text, media, cards");
+  assert.match(channel, /sendMedia: async \(vCtx\) => \{\n\s+const vResult = await wecomPlugin\.outbound\.vSendMedia\(vCtx\);/u);
+});
