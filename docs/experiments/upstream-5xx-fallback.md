@@ -100,6 +100,29 @@ V 的配置是 `deepseek/deepseek-flash`，fallbacks 为 `[xai/grok-4.6]`。至�
 - 本地 `node --test lab/upstream-5xx-fallback.test.mjs`：6/6 通过，含按 V 字节重建并逐字节比对。
 - `npm test` 2271/2274。唯一失败的是 `scripts/node-async-context-frame.test.mjs` 的 `--inspect` 用例，本分支没有改到这个文件，在本机单独跑也失败。
 
+### 4b. 补测：超时 + 两条路径（10/15 11:00 后，按 Tianyi 定的优先级）
+
+- 新场景：
+  - `r504`：每次都回 504。
+  - `hang`：回 200 和 SSE 头后不再出 token，等 provider 超时。测试里把 `timeoutSeconds` 设为 15 s，V 上是 300 s。
+- 每个场景 2 次。worker 路径 = candidate-87895664；Gateway embedded 路径 = candidate-cb510391（`agentRuntime: openclaw`，不经 worker）。
+
+| 场景 | worker A | worker B | embedded A | embedded B |
+|---|---|---|---|---|
+| ok | DS 0.8–1.8 s | DS 1.0–1.9 s | DS 0.6 s | DS 0.6–0.7 s |
+| 503 too busy | 英文错误 10.2–10.6 s | **Grok 3.1–4.9 s** | Grok 7.1–8.8 s | **Grok 2.3–2.9 s** |
+| 429 | 英文错误 8.0–9.7 s | **Grok 2.2–2.7 s** | Grok 7.9–10.8 s | **Grok 2.3–2.9 s** |
+| 500 | 英文错误 6.9–10.1 s | **Grok 2.3–3.3 s** | Grok 9.1–9.3 s | **Grok 1.8–2.4 s** |
+| 504 | 英文错误 7.7–9.1 s | **Grok 2.5–3.3 s** | Grok 8.5–10.0 s | **Grok 2.2–2.5 s** |
+| hang（15 s 超时） | 英文 timeout 68.5–68.7 s | **Grok 32.8–33.8 s** | Grok 67.6–71.9 s | **Grok 32.0–32.3 s** |
+| 写文件工具后 503 持续 | 英文 | 中文提示 5.8–6.5 s | 英文 | 中文提示 2.3–3.2 s |
+| mid（流中断） | 英文 timeout | Grok（正文前面带着 DS 半段 ×2） | Grok（正文前面带着 DS 半段 ×4） | Grok（正文前面带着 DS 半段 ×2） |
+
+- worker 路径：打补丁前所有首 token 前的故障都切不过去，打补丁后全部能切到 Grok。
+- Gateway 路径：V 现状本来就能切（与生产 09:53/09:56 的观察一致），但要先重试 3 次；打补丁后只重试 1 次，快 3–5 倍。
+- `hang` 的耗时 ≈ 2 × provider 超时。V 上 `timeoutSeconds=300`，意味着首 token 前挂起要约 10 分钟才切过去。建议把 DeepSeek 的 `timeoutSeconds` 降下来（配置项，由发版 session 决定）。
+- `mid`：备用模型的回答前面带着前几次 attempt 已经流出的半段，这是 V 现有的重试拼接问题（A 臂也一样），列为后续。
+
 ## 5. 发版
 
 - `lab/upstream-5xx-fallback.plan.json`：底本是 V 当前字节（10/15 10:35 CST 在 V 上核对过 9 个 sha256）。
