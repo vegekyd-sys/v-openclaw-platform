@@ -1,0 +1,18 @@
+{
+  "support": [
+    "lab/candidate/upstream-5xx-fallback.mjs",
+    "lab/build-upstream-5xx-fallback.mjs",
+    "lab/patch-upstream-5xx-fallback.mjs",
+    "lab/upstream-5xx-fallback.test.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/upstream-5xx-fallback.mjs"
+  ],
+  "env": {
+    "FB_SCENARIOS": "ok,pre,pre1,r429,r500,tool,toolw,toolw1,mid",
+    "FB_REPEAT": "3"
+  },
+  "timeoutSeconds": 7200,
+  "user": "lab-db91-parity"
+}
