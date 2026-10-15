@@ -69,7 +69,7 @@ const installed = [];
 }
 
 // ---- unit tests against the real 9.1 modules (runtime A = live bytes) ----
-const unit = spawnSync(process.execPath, ["--test", path.join(repoRoot, "lab/upstream-5xx-fallback.test.mjs")], {
+const unit = spawnSync(process.execPath, ["--test", "--test-name-pattern", "classification", path.join(repoRoot, "lab/upstream-5xx-fallback.runtime.test.mjs")], {
   encoding: "utf8", env: { ...process.env, OPENCLAW_DIST: path.join(runtimeA, "openclaw", "dist") } });
 const unitTests = { status: unit.status, summary: (unit.stdout ?? "").split("\n").filter((l) => /^[✔✖﹣ℹ]|^ok|not ok|# (pass|fail|skip)/u.test(l)).slice(0, 40),
   ...(unit.status === 0 ? {} : { output: `${unit.stdout ?? ""}\n${unit.stderr ?? ""}`.slice(-6000) }) };

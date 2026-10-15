@@ -527,6 +527,10 @@
       "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"
     },
     {
+      "file": "lab/upstream-5xx-fallback.runtime.test.mjs",
+      "reason": "需要 V 的原字节（UPSTREAM_5XX_BASE）或 9.1 runtime（OPENCLAW_DIST，vlab.mjs candidate 里由 lab/candidate/upstream-5xx-fallback.mjs 运行），离线入口不应把它当通过。"
+    },
+    {
       "file": "lab/ws-heartbeat-backport-91-candidate.test.mjs",
       "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"
     },
