@@ -1,0 +1,14 @@
+import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import {patchVoiceConsultScope,patchVoiceConsultScopeHarness} from './patch-voice-consult-scope.mjs';
+const root=new URL('../',import.meta.url);
+const baseline='lab/release-files/voice-task-lifetime-20261014/talk-DkFuKRod.js';
+const source='lab/release-files/voice-consult-scope-20261015/talk-DkFuKRod.js';
+const before=readFileSync(new URL(baseline,root),'utf8');
+mkdirSync(new URL('lab/release-files/voice-consult-scope-20261015/',root),{recursive:true});
+writeFileSync(new URL(source,root),patchVoiceConsultScope(before));
+const harness='realtime-session-harness-CEO5kVAJ.js',harnessBefore=readFileSync(new URL('lab/release-files/gpt-live-call/'+harness,root),'utf8');
+const harnessSource='lab/release-files/voice-consult-scope-20261015/'+harness;
+writeFileSync(new URL(harnessSource,root),patchVoiceConsultScopeHarness(harnessBefore));
+const plan={files:[{source,target:'openclaw/dist/talk-DkFuKRod.js',before:createHash('sha256').update(before).digest('hex')},{source:harnessSource,target:'openclaw/dist/'+harness,before:createHash('sha256').update(harnessBefore).digest('hex')}],tests:['lab/voice-consult-scope.test.mjs']};
+writeFileSync(new URL('lab/voice-consult-scope-plan.json',root),JSON.stringify(plan,null,2)+'\n');
