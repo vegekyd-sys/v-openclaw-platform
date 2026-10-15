@@ -18,7 +18,7 @@ import { A as sessionEntryMetadataJson, E as parseSessionEntryJson } from "./ses
 import { h as runExclusiveSessionLifecycleMutation, i as collectActiveSessionWorkAdmissions } from "./session-lifecycle-admission-siUq03Jk.js";
 import { r as materializeSessionStateDeletePlans } from "./session-accessor.sqlite-archive-CuBPV-IT.js";
 import { a as partitionUnchangedPlannedLifecycleArtifactEntries, c as planSessionStateDeleteIfUnreferenced, f as readSessionGenerationIdsForKeys, g as emitArchivedTranscriptUpdates, h as publishSessionStateArchives, i as deletePlannedLifecycleArtifactEntries, n as collectProjectedReferencedSessionIds, r as deleteMaterializedSessionStatePlans, u as readReferencedSessionIds } from "./session-accessor.sqlite-lifecycle-state-CrB_K2kA.js";
-import { S as shouldRunSessionEntryMaintenance, _ as pruneStaleModelRunEntries, b as shouldPreserveMaintenanceEntry, d as archiveStaleDashboardEntries, f as capEntryCount, g as pruneStaleEntries, h as normalizeResolvedMaintenanceConfigInput, i as pruneSessionTranscriptArchivesToHighWater, l as collectSessionMaintenancePreserveKeysForStore, m as isRecentSessionMaintenanceEntry, n as hasRetainedSessionTranscriptArchives, r as measureSessionPhysicalDiskUsage, s as resolveMaintenanceConfig, x as shouldRunModelRunPrune } from "./disk-budget-BzLS0kmH.js";
+import { S as shouldRunSessionEntryMaintenance, _ as pruneStaleModelRunEntries, b as shouldPreserveMaintenanceEntry, d as archiveStaleDashboardEntries, f as capEntryCount, g as pruneStaleEntries, h as normalizeResolvedMaintenanceConfigInput, i as pruneSessionTranscriptArchivesToHighWater, l as collectSessionMaintenancePreserveKeysForStore, m as isRecentSessionMaintenanceEntry, n as hasRetainedSessionTranscriptArchives, r as measureSessionPhysicalDiskUsage, remeasureSessionPhysicalDiskUsageAfterRemoval, s as resolveMaintenanceConfig, x as shouldRunModelRunPrune } from "./disk-budget-BzLS0kmH.js";
 import fs from "node:fs";
 import path from "node:path";
 import { sql } from "kysely";
@@ -826,6 +826,7 @@ async function pruneCanonicalSessionTranscriptArchivesToHighWater(params) {
 			]).where("published_at", "is not", null).orderBy("created_at", "asc").orderBy("session_id", "asc").orderBy("generation", "asc").limit(CANONICAL_ARCHIVE_PRUNE_BATCH)).rows;
 			const removedRows = [];
 			let removed = 0;
+			let removedBytes = 0;
 			let stop = rows.length === 0;
 			let estimatedBytes = usage.totalBytes;
 			for (const row of rows) {
@@ -843,6 +844,7 @@ async function pruneCanonicalSessionTranscriptArchivesToHighWater(params) {
 					}
 				}
 				removedRows.push(row);
+				removedBytes += size;
 				estimatedBytes -= size;
 			}
 			if (removedRows.length > 0) runOpenClawAgentWriteTransaction((transactionDb) => {
@@ -851,6 +853,7 @@ async function pruneCanonicalSessionTranscriptArchivesToHighWater(params) {
 			}, params.databaseOptions);
 			return {
 				removed,
+				removedBytes,
 				rowsRemoved: removedRows.length,
 				stop
 			};
@@ -861,7 +864,8 @@ async function pruneCanonicalSessionTranscriptArchivesToHighWater(params) {
 			await runWriter(async () => reclaimSqliteFreePages(params.databaseOptions));
 		}
 		await yieldDiskBudgetTurn();
-		if (batch.rowsRemoved > 0) usage = await measureSessionPhysicalDiskUsage(params.storePath);
+		// Deleted rows also free pages; the restat after reclamation counts them.
+		if (batch.rowsRemoved > 0) usage = await remeasureSessionPhysicalDiskUsageAfterRemoval(params.storePath, usage, batch.removedBytes);
 		if (batch.stop || batch.rowsRemoved === 0) break;
 	}
 	return {
@@ -965,7 +969,7 @@ function kickSessionHistoryDiskBudgetMaintenance(params) {
 			state.exhaustedUntil = Date.now() + EXHAUSTED_PHYSICAL_BUDGET_BACKOFF_MS;
 			state.exhaustedBudgetKey = budgetKey;
 			state.pendingForce = false;
-			if (firstWarning) log.warn("session history disk budget exhausted; automatic checks back off for 30 minutes. Raise session.maintenance.maxDiskBytes or export and delete unneeded sessions.", {
+			if (firstWarning) log.warn("session history disk budget exhausted; automatic checks back off for 30 minutes. Conversation history is kept; raise session.maintenance.maxDiskBytes or move old sessions to cold storage.", {
 				storePath: params.storePath,
 				totalBytesAfter: result.totalBytesAfter,
 				maxBytes: result.maxBytes,
@@ -1035,11 +1039,15 @@ async function enforceSessionHistoryMaintenanceSerialized(params) {
 		removedFiles = archiveSweep.removedFiles;
 		usage = archiveSweep.usage;
 	}
-	const candidates = readHistoricalSessionIds({
+	// [disk-budget-stall-v1] V keeps conversation history: the disk budget only prunes
+	// archives of sessions that were already deleted or reset. When those are gone and
+	// the store is still over budget, the pass stops; the caller warns and backs off.
+	// OPENCLAW_SESSION_BUDGET_EVICT_HISTORY=1 restores upstream's history eviction.
+	const candidates = process.env.OPENCLAW_SESSION_BUDGET_EVICT_HISTORY === "1" ? readHistoricalSessionIds({
 		databaseOptions,
 		preserveRecentMs: params.maintenance.preserveRecentMs,
 		storePath: params.storePath
-	});
+	}) : [];
 	for (const sessionId of candidates) {
 		if (usage.totalBytes <= highWaterBytes) break;
 		const eviction = await runExclusiveSessionLifecycleMutation({
@@ -1123,7 +1131,7 @@ async function enforceSessionHistoryMaintenanceSerialized(params) {
 	if (removedEntries > 0) {
 		await refreshSqliteSessionPlannerStatisticsBestEffort(resolved, removedEntries);
 		usage = await measureSessionPhysicalDiskUsage(params.storePath);
-	}
+	} else if (removedFiles > 0) usage = await measureSessionPhysicalDiskUsage(params.storePath);
 	return createPhysicalBudgetResult({
 		totalBytesBefore: initialUsage.totalBytes,
 		totalBytesAfter: usage.totalBytes,

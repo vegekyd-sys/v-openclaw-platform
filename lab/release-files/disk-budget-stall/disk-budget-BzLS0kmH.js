@@ -589,6 +589,21 @@ async function measureSessionPhysicalDiskUsage(storePath) {
 		totalBytes
 	};
 }
+// [disk-budget-scan-v1] After removing files from the sessions directory, carry the
+// directory total forward and restat only the SQLite files instead of rescanning
+// every file. Files added meanwhile are counted by the pass's closing measurement.
+async function remeasureSessionPhysicalDiskUsageAfterRemoval(storePath, usage, removedBytes) {
+	const databaseFiles = await readSqliteDatabaseFiles(storePath);
+	const databaseMainBytes = databaseFiles.filter((file) => !file.path.endsWith("-wal")).reduce((sum, file) => sum + file.size, 0);
+	const databaseWalBytes = databaseFiles.filter((file) => file.path.endsWith("-wal")).reduce((sum, file) => sum + file.size, 0);
+	const sessionFilesBytes = Math.max(0, usage.sessionFilesBytes - removedBytes);
+	return {
+		databaseMainBytes,
+		databaseWalBytes,
+		sessionFilesBytes,
+		totalBytes: sessionFilesBytes + databaseMainBytes + databaseWalBytes
+	};
+}
 async function hasRetainedSessionTranscriptArchives(storePath) {
 	return (await readSessionsDirFiles(path.dirname(storePath))).some((file) => isRetainedSessionTranscriptArchiveName(file.name));
 }
@@ -600,23 +615,28 @@ async function pruneSessionTranscriptArchivesToHighWater(params) {
 	let usage = params.usage ?? await measureSessionPhysicalDiskUsage(params.storePath);
 	let removedFiles = 0;
 	let index = 0;
-	// [disk-budget-scan-v1] Remeasure once per batch instead of once per file, and
-	// release the session writer between batches so foreground writes interleave.
+	// [disk-budget-scan-v1] Carry the total forward instead of rescanning after each
+	// file, and release the session writer between batches so foreground writes interleave.
 	while (index < files.length && usage.totalBytes > params.highWaterBytes) {
 		let estimatedBytes = usage.totalBytes;
-		const removedInBatch = await runWriter(async () => {
+		const batch = await runWriter(async () => {
 			let removed = 0;
+			let removedBytes = 0;
 			while (index < files.length && removed < SESSION_ARCHIVE_PRUNE_BATCH && estimatedBytes > params.highWaterBytes) {
 				const file = files[index++];
 				if (!(await removeFileIfExists(file.path)).ok) continue;
 				removed += 1;
+				removedBytes += file.size;
 				estimatedBytes -= file.size;
 			}
-			return removed;
+			return {
+				removed,
+				removedBytes
+			};
 		});
-		removedFiles += removedInBatch;
+		removedFiles += batch.removed;
 		await new Promise((resolve) => setImmediate(resolve));
-		if (removedInBatch > 0) usage = await measureSessionPhysicalDiskUsage(params.storePath);
+		if (batch.removed > 0) usage = await remeasureSessionPhysicalDiskUsageAfterRemoval(params.storePath, usage, batch.removedBytes);
 	}
 	return {
 		removedFiles,
@@ -1011,4 +1031,4 @@ async function enforceSessionDiskBudget(params) {
 	};
 }
 //#endregion
-export { shouldRunSessionEntryMaintenance as S, pruneStaleModelRunEntries as _, pruneUnreferencedSessionArtifacts as a, shouldPreserveMaintenanceEntry as b, collectActiveSessionWorkAdmissionKeys as c, archiveStaleDashboardEntries as d, capEntryCount as f, pruneStaleEntries as g, normalizeResolvedMaintenanceConfigInput as h, pruneSessionTranscriptArchivesToHighWater as i, collectSessionMaintenancePreserveKeysForStore as l, isRecentSessionMaintenanceEntry as m, hasRetainedSessionTranscriptArchives as n, resolveSessionArtifactCanonicalPathsForEntry as o, getActiveSessionMaintenanceWarning as p, measureSessionPhysicalDiskUsage as r, resolveMaintenanceConfig as s, enforceSessionDiskBudget as t, registerSessionMaintenancePreserveKeysProvider as u, resolveMaintenanceConfigFromInput as v, shouldRunModelRunPrune as x, resolveQuotaSuspensionEntryMaintenance as y };
+export { remeasureSessionPhysicalDiskUsageAfterRemoval, shouldRunSessionEntryMaintenance as S, pruneStaleModelRunEntries as _, pruneUnreferencedSessionArtifacts as a, shouldPreserveMaintenanceEntry as b, collectActiveSessionWorkAdmissionKeys as c, archiveStaleDashboardEntries as d, capEntryCount as f, pruneStaleEntries as g, normalizeResolvedMaintenanceConfigInput as h, pruneSessionTranscriptArchivesToHighWater as i, collectSessionMaintenancePreserveKeysForStore as l, isRecentSessionMaintenanceEntry as m, hasRetainedSessionTranscriptArchives as n, resolveSessionArtifactCanonicalPathsForEntry as o, getActiveSessionMaintenanceWarning as p, measureSessionPhysicalDiskUsage as r, resolveMaintenanceConfig as s, enforceSessionDiskBudget as t, registerSessionMaintenancePreserveKeysProvider as u, resolveMaintenanceConfigFromInput as v, shouldRunModelRunPrune as x, resolveQuotaSuspensionEntryMaintenance as y };
