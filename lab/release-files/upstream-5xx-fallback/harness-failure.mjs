@@ -26,7 +26,9 @@ export function buildHarnessFailureAttempt(error, params = {}) {
     aborted: false,
     assistantTranscriptOwned: true,
     externalAbort: false,
-    timedOut: !compactionFailure && isTimeoutFailure(promptError),
+    // upstream-5xx-fallback-v1: a model timeout the worker already retried is a prompt failure for the Gateway's
+    // fallback rules (promptTimeoutFallbackSafe), not a timeout of this Gateway attempt
+    timedOut: !compactionFailure && params.providerFailureWithoutTools !== true && isTimeoutFailure(promptError),
     idleTimedOut: false,
     timedOutDuringCompaction: compactionFailure,
     promptError,

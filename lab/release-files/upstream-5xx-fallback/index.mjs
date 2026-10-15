@@ -1137,14 +1137,14 @@ const plugin = {
         // Agent Harness expects a terminal attempt result. Throwing here skips
         // OpenClaw's normal attempt finalization and can leave the Session and
         // per-chat lane active even though the worker already failed.
-        // upstream-5xx-fallback-v1: a provider failure (429/5xx answered by the provider; never a timeout) on a turn
-        // that wrote no tool call or tool result since this attempt began can go to the fallback model.
+        // upstream-5xx-fallback-v1: a provider failure (429/5xx, or a model timeout the worker's run classified) on a
+        // turn that wrote no tool call or tool result since this attempt began can go to the fallback model.
         let providerFailureWithoutTools = false;
         const providerStatus = Number.isInteger(error?.status) ? error.status : undefined;
         const providerReason = typeof error?.failoverReason === "string" ? error.failoverReason : undefined;
         const answeredProviderFailure = providerReason
-          ? ["server_error", "overloaded", "rate_limit"].includes(providerReason)
-          : providerStatus === 429 || (providerStatus >= 500 && providerStatus < 600 && providerStatus !== 504);
+          ? ["server_error", "overloaded", "rate_limit", "timeout"].includes(providerReason)
+          : providerStatus === 429 || (providerStatus >= 500 && providerStatus < 600);
         if (answeredProviderFailure) {
           try {
             const turnMessages = (await readNativeSessionMessages({

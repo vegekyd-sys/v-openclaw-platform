@@ -4193,7 +4193,7 @@ async function handleEmbeddedPromptFailure(input) {
 	});
 	const canRetryRateLimit = promptFailoverReason !== "rate_limit" || isShortWindowRateLimitMessage(errorText);
 	// upstream-5xx-fallback-v1: the harness that owns the transport already retried this model; with a fallback configured, move on
-	const vHarnessAlreadyRetried = Boolean(input.pluginHarnessOwnsTransport && input.fallbackConfigured && input.promptErrorSource === "prompt" && (promptFailoverReason === "server_error" || promptFailoverReason === "overloaded" || promptFailoverReason === "rate_limit"));
+	const vHarnessAlreadyRetried = Boolean(input.pluginHarnessOwnsTransport && input.fallbackConfigured && input.promptErrorSource === "prompt" && (promptFailoverReason === "server_error" || promptFailoverReason === "overloaded" || promptFailoverReason === "rate_limit" || promptFailoverReason === "timeout"));
 	if (!input.externalAbort && !vHarnessAlreadyRetried && canRetryRateLimit && promptFailoverReason && (failoverDecision.action === "rotate_profile" || failoverDecision.action === "fallback_model" || failoverDecision.action === "surface_error") && await input.maybeRetryTransient({
 		reason: promptFailoverReason,
 		retryAfterMs: resolveRetryAfterMs(errorText)
@@ -4830,8 +4830,8 @@ function createEmbeddedRunFailoverRetryController(input) {
 		maybeRetryTransient: async (retry) => {
 			if (retry.reason !== "rate_limit" && retry.reason !== "overloaded" && retry.reason !== "server_error" && retry.reason !== "timeout") return false;
 			if (transientRetryCount >= transientRetryBudget) return false;
-			// upstream-5xx-fallback-v1: one quick same-model retry for a provider error (not a timeout) while a fallback model is still pending
-			if (params.isFinalFallbackAttempt === false && retry.reason !== "timeout" && transientRetryCount >= 1) {
+			// upstream-5xx-fallback-v1: one quick same-model retry while a fallback model is still pending
+			if (params.isFinalFallbackAttempt === false && transientRetryCount >= 1) {
 				log$3.warn(`[${"upstream-5xx-fallback-v1"}] ${retry.reason}: same-model retry already used for ${sanitizeForLog(provider)}/${sanitizeForLog(modelId)}; leaving it to the fallback model`);
 				return false;
 			}

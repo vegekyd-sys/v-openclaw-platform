@@ -57,9 +57,9 @@ export function patchClassify(source) {
 // dist/embedded-agent-*.js
 //
 // 2. Same-model retries before a fallback: at most one. A run whose fallback chain still has a
-//    candidate (isFinalFallbackAttempt === false) stops same-model retries for a provider error
-//    (429/5xx, not timeouts, which keep 9.1's budget of 3) after the first; the vlab-worker's inner
-//    run gets that flag from patch 4. And when a harness owns the transport
+//    candidate (isFinalFallbackAttempt === false) stops transient same-model retries (429/5xx and
+//    timeouts) after the first; the vlab-worker's inner run gets that flag from patch 4. Without a
+//    pending fallback 9.1's budget of 3 is unchanged. And when a harness owns the transport
 //    (vlab-worker) and a fallback is configured, the Gateway's prompt stage does not retry the same
 //    model again on top of the harness's own retry; it goes straight to rotate/fallback.
 //
@@ -75,8 +75,8 @@ export function patchEmbeddedAgent(source) {
   let out = replaceExactlyOnce(source,
     `			if (transientRetryCount >= transientRetryBudget) return false;\n`,
     `			if (transientRetryCount >= transientRetryBudget) return false;
-			// ${MARKER}: one quick same-model retry for a provider error (not a timeout) while a fallback model is still pending
-			if (params.isFinalFallbackAttempt === false && retry.reason !== "timeout" && transientRetryCount >= 1) {
+			// ${MARKER}: one quick same-model retry while a fallback model is still pending
+			if (params.isFinalFallbackAttempt === false && transientRetryCount >= 1) {
 				log$3.warn(\`[\${"${MARKER}"}] \${retry.reason}: same-model retry already used for \${sanitizeForLog(provider)}/\${sanitizeForLog(modelId)}; leaving it to the fallback model\`);
 				return false;
 			}\n`,
@@ -86,7 +86,7 @@ export function patchEmbeddedAgent(source) {
 	if (!input.externalAbort && canRetryRateLimit && promptFailoverReason && (failoverDecision.action === "rotate_profile"`,
     `	const canRetryRateLimit = promptFailoverReason !== "rate_limit" || isShortWindowRateLimitMessage(errorText);
 	// ${MARKER}: the harness that owns the transport already retried this model; with a fallback configured, move on
-	const vHarnessAlreadyRetried = Boolean(input.pluginHarnessOwnsTransport && input.fallbackConfigured && input.promptErrorSource === "prompt" && (promptFailoverReason === "server_error" || promptFailoverReason === "overloaded" || promptFailoverReason === "rate_limit"));
+	const vHarnessAlreadyRetried = Boolean(input.pluginHarnessOwnsTransport && input.fallbackConfigured && input.promptErrorSource === "prompt" && (promptFailoverReason === "server_error" || promptFailoverReason === "overloaded" || promptFailoverReason === "rate_limit" || promptFailoverReason === "timeout"));
 	if (!input.externalAbort && !vHarnessAlreadyRetried && canRetryRateLimit && promptFailoverReason && (failoverDecision.action === "rotate_profile"`,
     'prompt-stage transient retry');
   out = replaceExactlyOnce(out,
@@ -189,8 +189,8 @@ export function patchFailureCopy(source) {
 //    error text. So the Gateway's fallback (deepseek -> grok) never ran, not even for a 429.
 //    - worker.mjs / worker-pool.mjs: the provider failure keeps status/provider/model across IPC,
 //      so the Gateway classifies it like any provider error (5xx -> server_error with patch 1).
-//    - index.mjs / harness-failure.mjs: if the failure is an answered provider failure
-//      (server_error/overloaded/rate_limit, or HTTP 429/5xx other than 504; timeouts excluded) and this turn's
+//    - index.mjs / harness-failure.mjs: if the failure is a provider failure the worker's run
+//      classified (server_error/overloaded/rate_limit/timeout; or HTTP 429/5xx) and this turn's
 //      transcript (messages written since the Gateway handed the attempt over) holds no tool call
 //      or tool result, the failed attempt is replay-safe: nothing ran that a fallback model could
 //      repeat. Anything else keeps today's conservative "not replay-safe".
@@ -254,7 +254,13 @@ export function patchWorkerPool(source) {
 
 export function patchHarnessFailure(source) {
   assert(!source.includes(MARKER), 'already patched');
-  return replaceExactlyOnce(source,
+  const out = replaceExactlyOnce(source,
+    `    timedOut: !compactionFailure && isTimeoutFailure(promptError),`,
+    `    // ${MARKER}: a model timeout the worker already retried is a prompt failure for the Gateway's
+    // fallback rules (promptTimeoutFallbackSafe), not a timeout of this Gateway attempt
+    timedOut: !compactionFailure && params.providerFailureWithoutTools !== true && isTimeoutFailure(promptError),`,
+    'harness failure timeout flag');
+  return replaceExactlyOnce(out,
     `    replayMetadata: {
       // The worker may have completed tools before the terminal failure. Never
       // replay an opaque failed attempt merely because its IPC call rejected.
@@ -281,14 +287,14 @@ export function patchWorkerIndex(source) {
           sessionId: finalSession.sessionId,
           sessionFile: finalSession.sessionFile,
         });`,
-    `        // ${MARKER}: a provider failure (429/5xx answered by the provider; never a timeout) on a turn
-        // that wrote no tool call or tool result since this attempt began can go to the fallback model.
+    `        // ${MARKER}: a provider failure (429/5xx, or a model timeout the worker's run classified) on a
+        // turn that wrote no tool call or tool result since this attempt began can go to the fallback model.
         let providerFailureWithoutTools = false;
         const providerStatus = Number.isInteger(error?.status) ? error.status : undefined;
         const providerReason = typeof error?.failoverReason === "string" ? error.failoverReason : undefined;
         const answeredProviderFailure = providerReason
-          ? ["server_error", "overloaded", "rate_limit"].includes(providerReason)
-          : providerStatus === 429 || (providerStatus >= 500 && providerStatus < 600 && providerStatus !== 504);
+          ? ["server_error", "overloaded", "rate_limit", "timeout"].includes(providerReason)
+          : providerStatus === 429 || (providerStatus >= 500 && providerStatus < 600);
         if (answeredProviderFailure) {
           try {
             const turnMessages = (await readNativeSessionMessages({

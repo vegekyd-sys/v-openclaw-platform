@@ -17,6 +17,9 @@
 //   toolw first request streams text + a write tool call (a side effect); every later request 503
 //   toolw1 like toolw, but only the first request after the tool fails; then DeepSeek answers
 //   mid   streams half an answer, then the connection drops (no finish_reason)
+//   r504  every request: HTTP 504 gateway timeout
+//   hang  every request: 200 + SSE headers, then silence until the provider timeout (FB_DS_TIMEOUT_S)
+// FB_RUNTIME=embedded runs both models inside the Gateway instead of the vlab-worker.
 // Per turn we record chat.send -> first visible text, -> final, the final text, which stand-in
 // endpoint produced it, and the model requests in order.
 import assert from "node:assert/strict";
@@ -34,6 +37,7 @@ const scratch = process.env.VLAB_CANDIDATE_DATA ?? path.dirname(stateB);
 assert(runtimeB && configPathB && stateB, "candidate runtime environment is required");
 const SCENARIOS = (process.env.FB_SCENARIOS ?? "ok,pre,pre1,r429,r500,tool,toolw,toolw1,mid").split(",").filter(Boolean);
 const REPEAT = Number(process.env.FB_REPEAT ?? 1);
+const EMBEDDED = process.env.FB_RUNTIME === "embedded";
 const TURN_TIMEOUT_MS = Number(process.env.FB_TURN_TIMEOUT_MS ?? 900_000);
 const BUSY = "Service is too busy. We advise users to temporarily switch to alternative LLM API service providers.";
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -73,6 +77,7 @@ log(`unit tests exit=${unit.status}`);
 
 // ---- loopback stand-ins ----
 const requests = [];
+const hanging = new Set();
 const other = [];
 const tagOf = (messages) => {
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -113,6 +118,8 @@ const deepseek = (req, res, body, turn) => {
     case "pre1": return seen <= 1 ? fail(503, BUSY) : sendText(DS_ANSWER);
     case "r429": return fail(429, "Rate limit reached for requests");
     case "r500": return fail(500, "Internal Server Error");
+    case "r504": return fail(504, "Gateway Timeout");
+    case "hang": { res.writeHead(200, { "content-type": "text/event-stream" }); res.write(": keep-alive\n\n"); hanging.add(res); return; }
     case "tool": {
       if (turn.step === "after-tool") return fail(503, BUSY);
       const read = (body.tools ?? []).map((t) => t.function?.name).find((n) => n === "read") ?? "read";
@@ -195,7 +202,7 @@ const asV = (config) => {
   config.cron = { ...(config.cron ?? {}), enabled: false };
   const providers = config.models.providers;
   const ds = providers.deepseek;
-  Object.assign(ds, { baseUrl: `http://127.0.0.1:${standinPort}/v1`, apiKey: "sk-standin-loopback", agentRuntime: { id: "vlab-worker" }, timeoutSeconds: 300 });
+  Object.assign(ds, { baseUrl: `http://127.0.0.1:${standinPort}/v1`, apiKey: "sk-standin-loopback", agentRuntime: { id: "vlab-worker" }, timeoutSeconds: Number(process.env.FB_DS_TIMEOUT_S ?? 300) });
   ds.models = [...(ds.models ?? []).filter((m) => m.id !== V_FLASH.id), V_FLASH];
   providers.xai = { ...(providers.xai ?? {}), baseUrl: `http://127.0.0.1:${standinPort}/v1`, apiKey: "xai-standin-loopback", api: "openai-responses" };
   providers.xai.models = [...(providers.xai.models ?? []).filter((m) => m.id !== V_GROK.id), V_GROK];
@@ -210,6 +217,16 @@ const asV = (config) => {
   const allow = config.agents.defaults.modelPolicy?.allow;
   for (const ref of ["deepseek/deepseek-flash", "xai/grok-4.6"]) if (Array.isArray(allow) && !allow.includes(ref)) allow.push(ref);
   if (config.agents.defaults.compaction) Object.assign(config.agents.defaults.compaction, { model: "deepseek/deepseek-flash" });
+  if (EMBEDDED) {
+    // Both models run inside the Gateway on the built-in OpenClaw runtime, no vlab-worker.
+    const openclaw = { id: "openclaw" };
+    ds.agentRuntime = openclaw;
+    providers.xai.agentRuntime = openclaw;
+    for (const entries of [config.agents.defaults.models, makaron.models]) for (const ref of ["deepseek/deepseek-flash", "xai/grok-4.6"]) if (entries?.[ref]) entries[ref].agentRuntime = openclaw;
+    makaron.agentRuntime = undefined;
+    // The candidate's copied OpenAI OAuth order is not usable here and the embedded runner checks it.
+    if (config.auth?.order?.openai) delete config.auth.order.openai;
+  }
   return config;
 };
 
@@ -360,11 +377,12 @@ try {
   }
 } finally {
   for (const arm of [armA, armB]) if (arm?.proc && arm.proc.exitCode === null) await stopGateway(arm);
+  for (const res of hanging) res.destroy();
   server.close();
 }
 
 const out = {
-  unitTests, installed, standinPort, scenarios: SCENARIOS, repeat: REPEAT, ready: { A: armA?.readyMs, B: withB ? armB.readyMs : null },
+  runtime: EMBEDDED ? "embedded" : "vlab-worker", dsTimeoutS: Number(process.env.FB_DS_TIMEOUT_S ?? 300), unitTests, installed, standinPort, scenarios: SCENARIOS, repeat: REPEAT, ready: { A: armA?.readyMs, B: withB ? armB.readyMs : null },
   summary: results.map(({ arm, scenario, n, totalMs, firstTextMs, answeredBy, partialKept, states, finalText }) => ({ arm, scenario, n, totalS: Math.round(totalMs / 100) / 10, firstTextS: firstTextMs == null ? null : Math.round(firstTextMs / 100) / 10, answeredBy, partialKept, states: states.join(","), finalText: finalText.slice(0, 160) })),
   otherRequests: other.length,
   results,

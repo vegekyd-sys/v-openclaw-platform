@@ -10,8 +10,9 @@
     "lab/candidate/upstream-5xx-fallback.mjs"
   ],
   "env": {
-    "FB_SCENARIOS": "ok,pre,pre1,r429,r500,tool,toolw,toolw1,mid",
-    "FB_REPEAT": "3"
+    "FB_SCENARIOS": "ok,pre,pre1,r429,r500,r504,hang,toolw,toolw1,mid",
+    "FB_REPEAT": "2",
+    "FB_DS_TIMEOUT_S": "15"
   },
   "timeoutSeconds": 7200,
   "user": "lab-db91-parity"

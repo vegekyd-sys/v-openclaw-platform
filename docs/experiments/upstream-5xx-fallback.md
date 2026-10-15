@@ -55,12 +55,12 @@ V 的配置是 `deepseek/deepseek-flash`，fallbacks 为 `[xai/grok-4.6]`。至�
 | # | 文件 | 改动 | 来源 |
 |---|---|---|---|
 | 1 | `classify-Dm9sTbZz.js` | 对端回复的 503/500/502 判为 `server_error`，499/504 仍判 `timeout`；CDN HTML 页走同一套状态码规则 | 回移上游 776f76b4b87 |
-| 2 | `embedded-agent-DaSvA-Yk.js` | 还有备用模型时（`isFinalFallbackAttempt === false`），429/5xx 只做一次同模型快速重试，timeout 仍是 9.1 原来的 3 次。harness 已经重试过、又配置了 fallback 时，Gateway 的 prompt 阶段不再重试同一模型 | V |
+| 2 | `embedded-agent-DaSvA-Yk.js` | 还有备用模型时（`isFinalFallbackAttempt === false`），429/5xx/timeout 都只做一次同模型快速重试（没有备用模型时仍是 9.1 原来的 3 次）。harness 已经重试过、又配置了 fallback 时，Gateway 的 prompt 阶段不再重试同一模型 | V |
 | 3 | `embedded-agent-DaSvA-Yk.js` | 工具已执行、下一次调用拿到 429/5xx 且没有输出时：同模型从转录续写，最多 3 次，按 transient 退避。续写过一次以后，本轮后续 attempt 一律视为不可安全重放，防止 fallback 重新提交原始请求 | 回移 a9e9dec42df 的思路，形式沿用 9.1 的续写分支 |
 | 4 | `agent-command-DPfawBbr.js` | worker 内层 fallback runner 只有一个候选，会把 `isFinalFallbackAttempt` 写成 true；这里保留 Gateway 转发来的 false | V |
 | 5 | `embedded-agent-helpers-CzpaLpCq.js` | 429/5xx/timeout 的失败文案改成中文：说明没完成，以及怎么接着做 | V |
 | 6 | `builtin-openclaw-zQV8Wwjr.js` | 未完成轮次（incomplete turn）的两句英文改成中文。同一函数里 V 已有一句中文（length 那句） | V |
-| 7 | worker：`worker.mjs`、`worker-pool.mjs`、`index.mjs`、`harness-failure.mjs` | 跨 IPC 保留 status/provider/model/reason。对端已回复的 429/5xx（排除 504，排除 timeout），并且本轮转录里没有任何工具调用或工具结果时，失败的 attempt 才标为可安全重放，交给 Gateway 原有的 fallback 链。其余情况不变 | V |
+| 7 | worker：`worker.mjs`、`worker-pool.mjs`、`index.mjs`、`harness-failure.mjs` | 跨 IPC 保留 status/provider/model/reason。worker 内层判定的 provider 失败（server_error/overloaded/rate_limit/timeout，或 HTTP 429/5xx），并且本轮转录里没有任何工具调用或工具结果时，失败的 attempt 才标为可安全重放，交给 Gateway 原有的 fallback 链。其余情况不变 | V |
 
 **场景 (b) 选了哪种方案**
 - 选的是「同模型续写，仍失败就给中文提示，用户回复「继续」即可接着做」，不选「换 Grok 重做这一轮」。原因：
@@ -68,9 +68,11 @@ V 的配置是 `deepseek/deepseek-flash`，fallbacks 为 `[xai/grok-4.6]`。至�
   - 续写不重做，卡片上的文字自然往后接，不存在拼接问题。
   - DeepSeek 在 10/15 事故里是间歇性 503，续写一次大多能接上（`toolw1` 场景）。如果持续不可用，用户 5–6 s 内会看到中文提示。下一句话（例如「继续」）会重新走 DeepSeek → Grok 的 fallback 链；这一条按场景 (a) 推断，本次没有单独测「继续」。
 
-**timeout 的语义没有改动**
-- 判定和重试次数都没动。worker 的可安全重放标记也排除了 timeout。
-- 流中断场景（`mid`，判为 timeout）A/B 的行为一致。
+**timeout 怎么处理**（10/15 11:00 按 Tianyi 定的优先级追加：首 token 前的超时也要能切备用）
+- 分类不变：499/504、空闲超时、流中断仍判为 `timeout`。
+- 有备用模型时，同模型只重试 1 次，然后走 Gateway 原有的 timeout fallback 规则（`promptTimeoutFallbackSafe`，它本来就要求 attempt 可安全重放）。worker 在本轮没有执行工具时提供这个条件。
+- 工具执行后的 timeout 不续写，仍是不可安全重放，行为不变。
+- 没有备用模型的 run，超时重试次数仍是 3 次。
 
 ## 4. candidate A/B
 

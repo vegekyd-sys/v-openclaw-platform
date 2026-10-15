@@ -59,6 +59,10 @@ test('a worker failure is replay-safe only when the caller proved the turn ran n
   assert.deepEqual(buildHarnessFailureAttempt(error, { sessionId: 's' }).replayMetadata, { hadPotentialSideEffects: true, replaySafe: false });
   assert.deepEqual(buildHarnessFailureAttempt(error, { sessionId: 's', providerFailureWithoutTools: false }).replayMetadata, { hadPotentialSideEffects: true, replaySafe: false });
   assert.deepEqual(buildHarnessFailureAttempt(error, { sessionId: 's', providerFailureWithoutTools: true }).replayMetadata, { hadPotentialSideEffects: false, replaySafe: true });
+  // A model timeout the worker already retried reaches the Gateway as a prompt failure, not an attempt timeout.
+  const timeout = Object.assign(new Error('LLM request timed out.'), { name: 'FailoverError', status: 408 });
+  assert.equal(buildHarnessFailureAttempt(timeout, { sessionId: 's' }).timedOut, true);
+  assert.equal(buildHarnessFailureAttempt(timeout, { sessionId: 's', providerFailureWithoutTools: true }).timedOut, false);
 });
 
 test('a provider failure keeps status/provider/model/reason across the worker IPC', { skip: noRelease }, () => {
