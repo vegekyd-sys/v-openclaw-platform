@@ -100,6 +100,21 @@ SLOW_TURNS_WINDOW_S = 600
 DISPATCH_FAIL_PER_SESSION = 2
 DISPATCH_FAIL_WINDOW_S = 600
 REPEAT_ALERT_S = 3600
+# Session disk budget (2026-10-15). session.maintenance.maxDiskBytes is compared
+# with the top-level files of agents/<id>/sessions + prompt blobs + the agent
+# SQLite file and its WAL. Over it, 9.1's enforcement pass deletes one archive at
+# a time, rescans 31k files after each, and holds the session writer queue for
+# the whole sweep: no Feishu message got past ingress for 30 minutes on 10-15
+# (21:11-21:40) and again at 22:00. V sat at 98% of the 32 GiB budget for days
+# before that; the database grows about 0.4 GB a day. Measuring is ~31k stats,
+# so run it every DISK_BUDGET_EVERY_S, not every tick.
+SESSION_STORES_ROOT = "/home/openclaw/.openclaw/agents"
+DISK_BUDGET_EVERY_S = 600
+DISK_BUDGET_WARN_RATIO = 0.90
+# Feishu messages that sat claimed for 300 s without reaching an agent. Each one
+# is a user message nobody has started on. 10-05..10-14: 0-12 a day, all inside
+# known stalls; 10-15 21:16-21:34: 8.
+INGRESS_STALL_COUNT = 1
 
 
 def sh(cmd, timeout=30):
@@ -377,6 +392,57 @@ def validate_config(path, cli):
     return False, first[:200]
 
 
+BYTE_UNITS = {"b": 1, "kb": 1024, "k": 1024, "mb": 1024 ** 2, "m": 1024 ** 2,
+              "gb": 1024 ** 3, "g": 1024 ** 3, "tb": 1024 ** 4, "t": 1024 ** 4}
+MIGRATION_ARCHIVE = re.compile(r"\.migrated(?:\.\d+)?$|\.jsonl\.pre-doctor-(?:branch|openai-codex)-repair-.*\.bak$")
+
+
+def parse_byte_size(raw):
+    """OpenClaw's parseByteSize: binary units, plain numbers are bytes. None = disabled/unknown."""
+    if raw is False or raw is None:
+        return None if raw is False else 10 * 1024 ** 3
+    m = re.match(r"^(\d+(?:\.\d+)?)([a-z]+)?$", str(raw).strip().lower())
+    if not m or (m.group(2) or "b") not in BYTE_UNITS:
+        return None
+    return int(round(float(m.group(1)) * BYTE_UNITS[m.group(2) or "b"]))
+
+
+def measure_session_budgets():
+    """[(agent, totalBytes, maxBytes)] the way disk-budget measureSessionPhysicalDiskUsage counts."""
+    try:
+        cfg = json.load(open(CONFIG_PATH))
+    except Exception:
+        return []
+    m = ((cfg.get("session") or {}).get("maintenance") or {})
+    if m.get("mode", "enforce") != "enforce":
+        return []
+    max_bytes = parse_byte_size(m.get("maxDiskBytes"))
+    if not max_bytes:
+        return []
+    out = []
+    for agent in sorted(os.listdir(SESSION_STORES_ROOT)) if os.path.isdir(SESSION_STORES_ROOT) else []:
+        sessions = os.path.join(SESSION_STORES_ROOT, agent, "sessions")
+        if not os.path.isdir(sessions):
+            continue
+        total = 0
+        with os.scandir(sessions) as it:
+            for e in it:
+                if e.is_file(follow_symlinks=False) and not MIGRATION_ARCHIVE.search(e.name):
+                    total += e.stat(follow_symlinks=False).st_size
+        blobs = os.path.join(sessions, "skills-prompts", "sha256")
+        if os.path.isdir(blobs):
+            for prefix in os.listdir(blobs):
+                d = os.path.join(blobs, prefix)
+                if re.match(r"^[a-f0-9]{2}$", prefix) and os.path.isdir(d):
+                    total += sum(e.stat().st_size for e in os.scandir(d) if e.is_file(follow_symlinks=False))
+        db = os.path.join(SESSION_STORES_ROOT, agent, "agent", "openclaw-agent.sqlite")
+        for f in (db, db + "-wal"):
+            if os.path.isfile(f):
+                total += os.path.getsize(f)
+        out.append((agent, total, max_bytes))
+    return out
+
+
 def sample(cursor=None):
     out = {}
     out["pool"] = len(re.findall(r"worker/worker\.mjs",
@@ -411,6 +477,10 @@ def sample(cursor=None):
     out["saturated"], out["freezes"] = scan_main_thread(j)
     out["dispatch_fail"] = scan_dispatch_failures(j)
     out["waits"] = scan_user_waits(j)
+    # Each stalled event logs two lines (the stall, then "spooled update … failed"); count events.
+    out["ingress_stalled"] = sum(1 for l in j.splitlines()
+                                 if "claim→adoption stalled" in l and "spooled update" not in l)
+    out["budget_exhausted"] = j.count("session history disk budget exhausted")
     out["cfg_missing"] = {name: missing_plugin_paths(path) for name, path in CONFIG_FILES}
     out["crash_lines"], out["journal_cursor"] = scan_crashes(cursor)
     df = sh("df -BM --output=avail / | tail -1")
@@ -546,6 +616,38 @@ def main():
           "%d 分钟内有 %d 个 worker 请求因为配置无效直接失败（InvalidConfigError），"
           "用户看到的是「Agent couldn't generate a response」。" % (WINDOW // 60, s["worker_invalid"]),
           "worker 请求不再因为配置无效失败。")
+
+    # --- Session disk budget and the ingress it starves (2026-10-15) ---
+    if now_s - st.get("budget_measured_at", 0) >= DISK_BUDGET_EVERY_S:
+        try:
+            st["budgets"] = [[a, t, m] for a, t, m in measure_session_budgets()]
+        except Exception as e:
+            st["budgets"] = []
+            print("session budget measurement failed: %s" % e, file=sys.stderr)
+        st["budget_measured_at"] = now_s
+    budgets = st.get("budgets") or []
+    s["budget_max_ratio"] = round(max([t / m for _, t, m in budgets] or [0]), 3)
+    near = [(a, t, m) for a, t, m in budgets if t >= DISK_BUDGET_WARN_RATIO * m]
+    over = [(a, t, m) for a, t, m in budgets if t > m]
+    fmt = lambda rows: "、".join("%s %.1f/%.1f GB（%d%%）" % (a, t / 1e9, m / 1e9, round(100 * t / m)) for a, t, m in rows)
+    latch("budget_near", bool(near),
+          "session 磁盘预算快到了：%s。超过后 Gateway 会进入「删一个归档、重扫全目录」的维护循环，"
+          "并长时间占住 session 写队列，飞书消息进不来（10-15 21:11 起的事故）。"
+          "把 session.maintenance.maxDiskBytes 调高（热生效），或清理旧会话/遗留文件。" % fmt(near),
+          "session 磁盘预算余量已恢复。")
+    latch("budget_over", bool(over),
+          "session 磁盘预算已超：%s。下一次会话删除/重置就会触发维护循环，Gateway 会卡住。"
+          "立即调高 session.maintenance.maxDiskBytes。" % fmt(over),
+          "session 磁盘用量已回到预算以内。")
+    latch("budget_exhausted", s.pop("budget_exhausted", 0) > 0,
+          "Gateway 报告 session 磁盘预算已耗尽（能删的都删了仍超预算），自动维护退避 30 分钟。"
+          "调高 session.maintenance.maxDiskBytes 或导出删除旧会话。",
+          "session 磁盘预算耗尽告警已不再出现。")
+    latch("ingress_stalled", s.get("ingress_stalled", 0) >= INGRESS_STALL_COUNT,
+          "%d 分钟内 %d 条飞书消息被认领 5 分钟仍没进入 agent（claim→adoption stalled）。"
+          "用户发的消息 V 没开始处理；常见原因是 Gateway 主线程或 session 写队列被占住。"
+          % (WINDOW // 60, s.get("ingress_stalled", 0)),
+          "飞书入站已不再卡在认领阶段。")
 
     # --- What the people talking to V actually experience (2026-10-12) ---
     # Each window overlaps the previous one, so events are kept by identity
