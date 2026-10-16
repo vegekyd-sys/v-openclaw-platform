@@ -11,6 +11,29 @@
 
 ---
 
+## v2026.9.1-db91.6-subagent-lazy-store-20261017
+
+上线：2026-10-17 02:44 CST（V 与 VLab 对齐时间）  ·  tag `v2026.9.1-db91.6-subagent-lazy-store-20261017`
+
+**摘要**：子代理相关查询改为按 key 只读需要的行，不再每次整表解析会话库（#404），去掉每次 1.4–1.6 s 的 Gateway 主线程读取。本节由 #405 的上线会话代为补记，捕获内容为 promote-to-v 生成的原样文件。
+
+相对上一版 `v2026.9.1-db91.6-subagent-settle-20261016`：3 个文件变化。
+
+**经 VLab 发版 `subagent-lazy-store-20261017`**（monitor-v-production，dev `56721d76`）
+> 验收：共享 VLab 02:27 部署 #404（F1，3 个 core dist：session-accessor.sqlite-entry、subagent-capabilities、subagent-completion-admission.store；before 均等于 V 线上字节）。Gateway ready，journal 错误 0、Cannot inspect Codex 0、SessionCanonicalKeyMigration 0。真实回合 vlab-dev-1792175398784：exec(date) → sessions_spawn 子代理(exec echo sub-ok-1017) → sessions_yield → 子代理完成回传 → 最终回复 2026-10-17 / sub-ok-1017，子代理深度/权限/完成清理路径全部走到且行为不变。等价性与耗时…
+- `core` session-accessor.sqlite-entry-BlklNPKQ.js  6b12190c → a15b1426
+- `core` subagent-capabilities-CPAHEjL-.js  76ac1cc6 → 4ee0a32e
+- `core` subagent-completion-admission.store-JmpNDYTF.js  ee0d42e6 → c106a6ce
+
+**这期间合入 dev 的 PR**（7 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #406 release: 投影检查点上线计划与真实回合 A/B 记录（#405 后续）
+- #405 fix(sessions): 原地改写不再让大会话整段重建投影（投影检查点）
+- #404 perf(sessions): 子代理查询只读需要的行，不再整表读会话库
+- #402 fix(v-gateway): Gateway 单元禁用 swap，消除 10/16 的 50–70 秒冻结
+- #403 perf(sessions): bound sharing metadata reads to the selected page
+- #401 release: record PR399 production deployment and acceptance
+- #400 Avoid full Workboard histories during lifecycle reconciliation
+
 ## v2026.9.1-db91.6-subagent-settle-20261016
 
 上线：2026-10-16 23:33 CST。生产已部署；发布留档与标签状态以对应 PR 为准。
