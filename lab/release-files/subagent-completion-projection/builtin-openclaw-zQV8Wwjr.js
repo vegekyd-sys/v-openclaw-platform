@@ -1,4 +1,4 @@
-// subagent-completion-projection-v1: admitted-attempt-readiness
+// subagent-completion-projection-v2: admitted-attempt-readiness-and-claimed-yield
 // gpt-live-projection-readiness-v1: admitted-voice-prompt
 // gpt-live-voice-tool-order-v1: native-builtin
 import {bundlePrepObserver} from "./bundle-prep-observer.mjs";
@@ -6741,6 +6741,9 @@ function shouldRetryMissingAssistantTurn(params) {
 }
 /** Continuation evidence for a yielded turn — sources that will produce future output. */
 function hasYieldContinuationEvidence(attempt) {
+	// A successful native sessions_yield already claimed a pending child, including
+	// children accepted in an earlier turn. Do not require a new spawn in this turn.
+	if (attempt.yieldDetected === true && attempt.toolMetas?.some((tool) => tool.toolName === "sessions_yield" && tool.isError === false)) return true;
 	return (attempt.clientToolCalls?.length ?? 0) > 0 || attempt.didSendDeterministicApprovalPrompt === true || hasCommittedMessagingToolDeliveryEvidence({
 		messagingToolSentTexts: attempt.messagingToolSentTexts ?? [],
 		messagingToolSentMediaUrls: attempt.messagingToolSentMediaUrls ?? [],

@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const BUILTIN_BEFORE = "5638a3b7071bbbfa20da7b7c2098facdbd3c15bedf723e922c2f68a3f550f5e9";
-export const MARKER = "// subagent-completion-projection-v1: admitted-attempt-readiness";
+export const MARKER = "// subagent-completion-projection-v2: admitted-attempt-readiness-and-claimed-yield";
 export const BASELINE_SOURCE = "lab/release-files/upstream-5xx-fallback/builtin-openclaw-zQV8Wwjr.js";
 export const OUTPUT_SOURCE = "lab/release-files/subagent-completion-projection/builtin-openclaw-zQV8Wwjr.js";
 
@@ -36,6 +36,9 @@ export function patchSubagentCompletionProjection(source) {
   const anchor = '\tinitialWriter?.assertActive();\n\tconst transcriptLifecycle = createEmbeddedAttemptTranscriptLifecycle({';
   assert.equal(source.split(anchor).length - 1, 1, "admitted attempt lifecycle anchor drifted");
   source = source.replace(anchor, '\tinitialWriter?.assertActive();\n\tawait waitForSubagentCompletionProjection({ attempt, sessionTarget, externalAbortController, initialWriter });\n\tconst transcriptLifecycle = createEmbeddedAttemptTranscriptLifecycle({');
+  const yieldAnchor = 'function hasYieldContinuationEvidence(attempt) {\n';
+  assert.equal(source.split(yieldAnchor).length - 1, 1, "yield evidence function drifted");
+  source = source.replace(yieldAnchor, yieldAnchor + '\t// A successful native sessions_yield already claimed a pending child, including\n\t// children accepted in an earlier turn. Do not require a new spawn in this turn.\n\tif (attempt.yieldDetected === true && attempt.toolMetas?.some((tool) => tool.toolName === "sessions_yield" && tool.isError === false)) return true;\n');
   const region = 'async function prepareEmbeddedAttemptTranscriptLifecycle(input) {';
   assert.equal(source.split(region).length - 1, 1, "attempt lifecycle function drifted");
   return `${MARKER}\n${source.replace(region, HELPER + region)}`;

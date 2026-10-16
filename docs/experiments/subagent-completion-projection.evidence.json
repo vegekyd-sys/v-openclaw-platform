@@ -1,41 +1,83 @@
 {
-  "id": "candidate-9308be0e-32e4-4626-b979-a1e3dee01a53",
+  "id": "candidate-f340d41a-3aaf-4792-a49a-bd9fb34bc278",
   "ok": true,
   "baseRelease": "voice-batch-shared-20261016e",
   "runtimeSha": "a9578e93ea3b86d50b48e4b8ca561394cba8424fa87e7200e3fb3d8fada544b3",
   "configSha256": "7dc9330b7877afd259b3ba3c87a3e461d67d4810f42ed4756dbc5fe43baa5af8",
-  "inputSha256": "2951c4e57423fb560674a1912998066b6b065520923a80fa60506676a28663cd",
+  "inputSha256": "18f6892bc3adec13473f8d415d9fef8adb1116452b7927c5d0bf1b45f0a08c53",
   "runnerSha256": "1ae3c86fd910a5b724bf9516183354e4656fa13f6cedac5a69278c66d270d12c",
   "files": [
     {
       "source": "lab/release-files/subagent-completion-projection/builtin-openclaw-zQV8Wwjr.js",
       "target": "openclaw/dist/builtin-openclaw-zQV8Wwjr.js",
       "before": "5638a3b7071bbbfa20da7b7c2098facdbd3c15bedf723e922c2f68a3f550f5e9",
-      "after": "6e78b509103fadb32d996246170be4c07bed53483d27595c875cbf88dfd38e2f"
+      "after": "e54511997f3d9f3bedc85d60aa8bcd1fbe794e71e01ef745eeb6974afc25e5ba"
     }
   ],
-  "sharedBeforePid": 707085,
-  "sharedAfterPid": 707085,
+  "sharedBeforePid": 731314,
+  "sharedAfterPid": 731314,
   "sharedUnchanged": true,
   "timings": {
-    "inspectMs": 16,
+    "inspectMs": 13,
     "baselineMs": 0,
-    "snapshotMs": 4385,
+    "snapshotMs": 40083,
     "overlayMs": 11,
-    "testMs": 12271
+    "testMs": 11383
   },
   "proof": {
-    "messages": 703,
-    "events": 718,
+    "messages": 718,
+    "events": 733,
     "waitsMs": [
-      1154,
-      1097,
-      1093
+      1417,
+      2389,
+      1027
     ],
     "historyUnchanged": true,
     "modelCalls": 0,
     "toolCalls": 0,
-    "sourceTranscriptSha256": "59925f01e0a027c3880f4d27c1350ed3f24b62ff9dbc9d39513e3c2fc0b11b7c",
-    "scope": "one real session copied under read-only transaction; not entire database"
+    "sourceTranscriptSha256": "bcb0ca847f98177bca4a784a7a3f95b7859dd3807693f9542289512bc32a796f",
+    "scope": "one real session copied under read-only transaction; not entire database",
+    "testsPassed": 16
+  },
+  "previousCandidate": {
+    "id": "candidate-9308be0e-32e4-4626-b979-a1e3dee01a53",
+    "ok": true,
+    "baseRelease": "voice-batch-shared-20261016e",
+    "runtimeSha": "a9578e93ea3b86d50b48e4b8ca561394cba8424fa87e7200e3fb3d8fada544b3",
+    "configSha256": "7dc9330b7877afd259b3ba3c87a3e461d67d4810f42ed4756dbc5fe43baa5af8",
+    "inputSha256": "2951c4e57423fb560674a1912998066b6b065520923a80fa60506676a28663cd",
+    "runnerSha256": "1ae3c86fd910a5b724bf9516183354e4656fa13f6cedac5a69278c66d270d12c",
+    "files": [
+      {
+        "source": "lab/release-files/subagent-completion-projection/builtin-openclaw-zQV8Wwjr.js",
+        "target": "openclaw/dist/builtin-openclaw-zQV8Wwjr.js",
+        "before": "5638a3b7071bbbfa20da7b7c2098facdbd3c15bedf723e922c2f68a3f550f5e9",
+        "after": "6e78b509103fadb32d996246170be4c07bed53483d27595c875cbf88dfd38e2f"
+      }
+    ],
+    "sharedBeforePid": 707085,
+    "sharedAfterPid": 707085,
+    "sharedUnchanged": true,
+    "timings": {
+      "inspectMs": 16,
+      "baselineMs": 0,
+      "snapshotMs": 4385,
+      "overlayMs": 11,
+      "testMs": 12271
+    },
+    "proof": {
+      "messages": 703,
+      "events": 718,
+      "waitsMs": [
+        1154,
+        1097,
+        1093
+      ],
+      "historyUnchanged": true,
+      "modelCalls": 0,
+      "toolCalls": 0,
+      "sourceTranscriptSha256": "59925f01e0a027c3880f4d27c1350ed3f24b62ff9dbc9d39513e3c2fc0b11b7c",
+      "scope": "one real session copied under read-only transaction; not entire database"
+    }
   }
 }
