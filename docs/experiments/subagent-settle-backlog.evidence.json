@@ -1,8 +1,8 @@
 {
-  "id": "candidate-2f5935d1-aed1-40e3-afbd-89080bdf613b",
-  "sourceCommit": "d1d01a4aed769ab4193193118528bf0ea0e624ba",
+  "id": "candidate-33e5f3d1-cd58-4c69-a01e-57447fc8b8dc",
+  "sourceCommit": "7553f482f4b47cf5ac6a66eaa51b576975d305b0",
   "branch": "codex/subagent-settle-backlog",
-  "inputSha256": "0e10f8787c36af912d627d0ecf611ba31e855292f4b1e7a95885af98b0ba9c29",
+  "inputSha256": "f0e8fe2230b2bc44409b3fba9375c1947aa17538dfd508a6d82488f4161f2e37",
   "baseRelease": "noon-batch-20261016b",
   "runtimeSha": "e5d54fa3475b5e3cc6f492a43b4609a2981485b6232916cb5c9bd61c5f06062d",
   "files": [
@@ -29,11 +29,11 @@
   "sharedAfterPid": 656845,
   "sharedUnchanged": true,
   "timings": {
-    "inspectMs": 14,
-    "baselineMs": 1,
-    "snapshotMs": 17533,
-    "overlayMs": 14,
-    "testMs": 2487
+    "inspectMs": 25,
+    "baselineMs": 0,
+    "snapshotMs": 25341,
+    "overlayMs": 13,
+    "testMs": 6018
   },
   "testCount": 24,
   "passed": 24,
@@ -47,14 +47,20 @@
     "pendingAfterRestart": 0,
     "payloadBytes": 45751232,
     "projectedBytes": 1010137,
-    "fullReadMs": 256.56,
-    "projectedReadMs": 118.28,
-    "checks125Ms": 807.73,
+    "baselinePendingAfterSweep": 125,
+    "baselineSweep125Ms": 2797.33,
+    "baselineSqlReads": {
+      "full": 6,
+      "projected": 0
+    },
+    "fullReadMs": 284.49,
+    "projectedReadMs": 156.16,
+    "checks125Ms": 865.59,
     "requiredCheckSqlReads": {
       "full": 0,
       "projected": 2
     },
-    "quietWakeSweep125Ms": 66.72,
+    "quietWakeSweep125Ms": 61.41,
     "quietWakeSqlReads": {
       "full": 0,
       "projected": 0
@@ -62,7 +68,7 @@
     "notificationDeliveries": 0
   },
   "inputFiles": {
-    "lab/candidate/subagent-settle-backlog.sqlite.test.mjs": "53b184036ee6a11afa0fa0152f38eb87311e68728eec3f66eff9486cfcfb3405",
+    "lab/candidate/subagent-settle-backlog.sqlite.test.mjs": "a31bbcf97a397559cefe2ccc1ac692764c4c50b73194b2528b1494674bbd097f",
     "lab/fixtures/gpt-live-continuation/subagent-registry-C24yr_PF.js": "c2c0c840f014a67156d40949cdbfa148607c8cffed349feef7be629fd24a056b",
     "lab/fixtures/subagent-settle-backlog/subagent-announce.requester-settle-wake-B2NSziIo.js": "be8a3f7f0834943f234d42c9fe14ddfb7cd67fe52791fae99908a4edfda35f5d",
     "lab/fixtures/subagent-settle-backlog/subagent-registry-read-UaDFTyfW.js": "dfcf09faf5ede448fe967bff7195b690d670ec36abfd559c32d66e5a24e9a9c8",

@@ -103,6 +103,14 @@ test("2854-row / 40+ MB registry: required checks never hydrate payloads; 125 le
     const projectedBytes = Buffer.byteLength(JSON.stringify([...projected.values()]));
     assert(projectedBytes < payloadBytes / 20, "projection unexpectedly carries retained task bodies");
     assert.equal(projected.get(entries[0].runId).task, undefined);
+    const baseline = wakeHarness({ entries: [...full.values()], variant: "baseline",
+      clock: { get value() { return Date.now(); } },
+      loaders: { full: () => f.before.loadSubagentRegistryFromSqlite(), projected: () => f.before.loadSubagentSessionListRunsFromSqlite() },
+    });
+    start = performance.now(); await baseline.sweep(); const baselineSweepMs = performance.now() - start;
+    assert.equal(baseline.pending().length, 125, "baseline must reproduce retained quiet wakes with live descendants");
+    assert(baseline.counts.full > 0, "baseline must execute the real SQLite full-payload loader");
+    assert.equal(baseline.delivered.length, 0);
     const loads = {
       full: () => f.after.loadSubagentRegistryFromSqlite(),
       projected: () => f.after.loadSubagentSessionListRunsFromSqlite(),
@@ -125,6 +133,7 @@ test("2854-row / 40+ MB registry: required checks never hydrate payloads; 125 le
     assert.equal(afterRestart.size, 2854);
     assert.equal([...afterRestart.values()].filter((r) => r.execution.status === "running").length, 3);
     t.diagnostic(JSON.stringify({ rows: 2854, pendingBefore: 125, pendingAfterRestart: 0, payloadBytes, projectedBytes,
+      baselinePendingAfterSweep: baseline.pending().length, baselineSweep125Ms: +baselineSweepMs.toFixed(2), baselineSqlReads: baseline.counts,
       fullReadMs: +fullReadMs.toFixed(2), projectedReadMs: +projectedReadMs.toFixed(2), checks125Ms: +checksMs.toFixed(2),
       requiredCheckSqlReads: query.counts, quietWakeSweep125Ms: +sweepMs.toFixed(2), quietWakeSqlReads: h.counts,
       notificationDeliveries: h.delivered.length }));
