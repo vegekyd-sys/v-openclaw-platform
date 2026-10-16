@@ -152,6 +152,29 @@ if (!fs.existsSync(path.join(stateDir, "npm"))) {
   assert.equal(spawnSync("cp", ["-a", "--reflink=auto", path.join(sharedState, "npm"), path.join(stateDir, "npm")]).status, 0, "copy managed npm plugins");
 }
 
+// ---- Codex plugin = V's bytes. Shared VLab can be V plus one release on its way (2026-10-17 03:58
+// #409 changed transport-stdio in the runtime's npm copy); the managed copy in state/npm is V's.
+// Every runtime copy of the plugin is brought back to the state/npm bytes, and the result recorded.
+const V_CODEX_TRANSPORT_SHA = process.env.V_CODEX_TRANSPORT_SHA ?? "513e62ddeba5545431e34fc8a189ae53ee3425752c859cc1454d3eb1ce554d2d";
+{
+  const sha = (f) => createHash("sha256").update(fs.readFileSync(f)).digest("hex");
+  const codexDists = (base) => (fs.existsSync(path.join(base, "npm", "projects")) ? fs.readdirSync(path.join(base, "npm", "projects")).filter((d) => d.startsWith("openclaw-codex-")).map((d) => path.join(base, "npm", "projects", d, "node_modules", "@openclaw", "codex", "dist")).filter((d) => fs.existsSync(d)) : []);
+  const [vDist] = codexDists(stateDir);
+  assert(vDist, "no Codex plugin in state/npm");
+  const vTransport = fs.readdirSync(vDist).find((f) => /^transport-stdio-.*\.js$/u.test(f));
+  assert.equal(sha(path.join(vDist, vTransport)), V_CODEX_TRANSPORT_SHA, "state/npm Codex transport is not V's bytes");
+  const replaced = [];
+  for (const dir of codexDists(runtime)) {
+    for (const f of fs.readdirSync(vDist)) {
+      const from = path.join(vDist, f);
+      const to = path.join(dir, f);
+      if (!fs.statSync(from).isFile()) continue;
+      if (!fs.existsSync(to) || sha(to) !== sha(from)) { fs.copyFileSync(from, to); replaced.push(path.relative(runtime, to)); }
+    }
+  }
+  emit({ phase: "codex-plugin", vTransport: V_CODEX_TRANSPORT_SHA.slice(0, 8), runtimeCopies: codexDists(runtime).length, replacedWithV: replaced });
+}
+
 // ---- probes in the private runtime copy (optional: absent markers are reported, not fatal) ----
 const probes = {};
 const distFile = (re, marker) => fs.readdirSync(dist).filter((f) => re.test(f)).map((f) => path.join(dist, f)).find((f) => fs.readFileSync(f, "utf8").includes(marker));
