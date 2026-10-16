@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { assertLegacyDrainSource, waitForCleanVoiceExit, assertVoiceWorkDrained, assertEntrySnapshot, entryLaunchOverride, remoteSource, validateReviewedPresentation,validateVoiceArtifact,validateVoiceArtifactProof } from "./gpt-live-voice-entry-release.mjs";
+import { requestVoiceReadiness, assertLegacyDrainSource, waitForCleanVoiceExit, assertVoiceWorkDrained, assertEntrySnapshot, entryLaunchOverride, remoteSource, validateReviewedPresentation,validateVoiceArtifact,validateVoiceArtifactProof } from "./gpt-live-voice-entry-release.mjs";
 import { H5_PATHS, digest } from './gpt-live-h5-release.mjs';
 
 const snapshot = { pointer: "/opt/voice/old", unitSha: "unit", environmentSha: "env", gatewayPid: 12,
@@ -73,4 +73,13 @@ test('legacy drain waits for normal exit before stopping the unit and never kill
  assert.equal((await waitForCleanVoiceExit(f)).cleanExit,true);assert.equal(stops,1);
  for(const exit of [{...proof,ExecMainCode:2},{...proof,ExecMainStatus:9},{...proof,MainPID:43}])await assert.rejects(waitForCleanVoiceExit({...f,alive:()=>false,readExit:()=>exit}));
  let cancelled=0;await assert.rejects(waitForCleanVoiceExit({...f,alive:()=>true,pause:async()=>tick++,timeoutMs:2,stopUnit:()=>cancelled++}),/still draining/);assert.equal(cancelled,0);
+});
+
+test('release status probes close their own socket instead of creating a false busy relay',async t=>{
+ const {createServer,request}=await import('node:http');const sockets=new Set();
+ const server=createServer((req,res)=>{assert.equal(req.headers.connection,'close');res.setHeader('content-type','application/json');res.end(JSON.stringify({releaseReadiness:{known:true,activeCalls:0,creatingSessions:0,backgroundTasks:0}}));});
+ server.on('connection',socket=>{sockets.add(socket);socket.on('close',()=>sockets.delete(socket));});
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>new Promise(r=>server.close(r)));
+ for(let n=0;n<3;n++)assert.equal((await requestVoiceReadiness({request,port:server.address().port,path:'/api/status',cookie:'fixture'})).known,true);
+ for(let n=0;n<20&&sockets.size;n++)await new Promise(r=>setImmediate(r));assert.equal(sockets.size,0);
 });

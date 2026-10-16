@@ -50,6 +50,20 @@ export function assertVoiceWorkDrained(value) {
   for (const key of ['activeCalls', 'creatingSessions', 'backgroundTasks'])
     assert.equal(value[key], 0, `Voice ${key} is not drained; defer the upgrade`);
 }
+// Resolve only after the probe's own socket closes, so ss cannot count the
+// release check itself as an active voice relay connection.
+export function requestVoiceReadiness({request,port,path,cookie}) {
+  return new Promise((resolve,reject)=>{
+    let value;
+    const call=request({host:'127.0.0.1',port,path,agent:false,headers:{host:'openclaw.tianyi.live',cookie,connection:'close'}},res=>{
+      let body='';res.on('data',part=>{body+=part;if(body.length>65536)call.destroy(Error('Voice status too large'));});
+      res.on('end',()=>{try{assert.equal(res.statusCode,200);value=JSON.parse(body).releaseReadiness??{known:false};}catch(error){reject(error);}});
+      res.on('aborted',()=>call.destroy(Error('Voice status interrupted')));
+    });
+    call.setTimeout(5000,()=>call.destroy(Error('Voice status unavailable')));call.on('error',reject);
+    call.on('close',()=>value?resolve(value):reject(Error('Voice status closed without a response')));call.end();
+  });
+}
 // One-time migration from the exact pre-readiness entry. Unknown versions stay
 // closed. Its verified SIGTERM handler drains all task/delivery owners before exit.
 export function assertLegacyDrainSource(pointer, sha) {
@@ -121,12 +135,7 @@ async function remoteMain(req) {
       assert(secret?.length>=32);
       const payload=`${crypto.randomBytes(16).toString('hex')}.${Date.now()+60000}`;
       const cookie=`v_voice_access=${payload}.${crypto.createHmac('sha256',secret).update(payload).digest('base64url')}`;
-      return await new Promise((resolve,reject)=>{
-        const call=request({host:'127.0.0.1',port:Number(henv.GPT_LIVE_H5_PORT??henv.RTC_H5_PORT??26242),path:(henv.GPT_LIVE_H5_BASE_PATH??henv.RTC_H5_BASE_PATH??'/voice')+'/api/status?entry=tianyi',headers:{host:'openclaw.tianyi.live',cookie}},res=>{
-          let body='';res.on('data',part=>{body+=part;if(body.length>65536)call.destroy(Error('Voice status too large'));});
-          res.on('end',()=>{try{assert.equal(res.statusCode,200);resolve(JSON.parse(body).releaseReadiness??{known:false});}catch(error){reject(error);}});
-        });call.setTimeout(5000,()=>call.destroy(Error('Voice status unavailable')));call.on('error',reject);call.end();
-      });
+      return await requestVoiceReadiness({request,port:Number(henv.GPT_LIVE_H5_PORT??henv.RTC_H5_PORT??26242),path:(henv.GPT_LIVE_H5_BASE_PATH??henv.RTC_H5_BASE_PATH??'/voice')+'/api/status?entry=tianyi',cookie});
     } catch { return {known:false}; }
   };
   const observe = async () => ({ pointer: fs.readlinkSync(pointer), unitSha: digest(run("systemctl", ["cat", unit])),
@@ -271,7 +280,7 @@ async function remoteMain(req) {
 }
 export function remoteSource() {
   return `import assert from 'node:assert/strict';import {createHash} from 'node:crypto';const digest=${digest.toString()};const H5_PATHS=${JSON.stringify(H5_PATHS)};const fileIdentity=${fileIdentity.toString()};\n`
-    + [prepareVoiceLarkProfile, validateVoiceArtifact, validateVoiceArtifactProof, validateReviewedPresentation, assertEntrySnapshot, assertVoiceWorkDrained, assertLegacyDrainSource, waitForCleanVoiceExit, entryLaunchOverride, remoteMain].map(fn => fn.toString()).join("\n")
+    + [prepareVoiceLarkProfile, validateVoiceArtifact, validateVoiceArtifactProof, validateReviewedPresentation, assertEntrySnapshot, assertVoiceWorkDrained, requestVoiceReadiness, assertLegacyDrainSource, waitForCleanVoiceExit, entryLaunchOverride, remoteMain].map(fn => fn.toString()).join("\n")
     + "\nlet text='';for await(const c of process.stdin)text+=c;try{const r=await remoteMain(JSON.parse(text));console.log(JSON.stringify(r))}catch{console.error('Voice entry identity or operation failed; preserve prepared receipts and inspect the service.');process.exitCode=1}";
 }
 function main(argv) {
