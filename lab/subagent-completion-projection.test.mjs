@@ -18,6 +18,25 @@ function yieldEvidence(source) {
   );
 }
 
+function projectNativeResult(source, state) {
+  const start = source.indexOf("\tconst result = {\n\t\t...state,");
+  assert(start > 0);
+  const end = source.indexOf("\n\t};", start) + "\n\t};".length;
+  const scope = {
+    state, settledTurnFinalizationContext: undefined, replayMetadata: {}, currentAttemptReplayMetadata: {},
+    getItemLifecycle: () => ({}), getAssistantTurnCount: () => 1, setTerminalLifecycleMeta: () => {},
+    input: { bootstrapPromptWarning: {} }, assistantTexts: [], getLatestMcpAppChannelView: () => undefined,
+    getLatestMcpConnectAction: () => undefined, getLastAssistantTextMessageIndex: () => -1,
+    toolMetasNormalized: [], acceptedSessionSpawns: [], lastToolError: undefined,
+    didSendViaMessagingTool: () => false, didSendDeterministicApprovalPromptNow: false,
+    getMessagingToolSentTexts: () => [], messagingToolSentMediaUrls: [], getMessagingToolSentTargets: () => [],
+    messagingToolSourceReplyPayloads: [], heartbeatToolResponse: undefined, pendingToolMediaReply: undefined,
+    hasToolMediaBlockReplyNow: false, getSuccessfulCronAdds: () => 0, isCloudCodeAssistFormatError: () => false,
+    getCompactionCount: () => 0, getLastCompactionTokensAfter: () => undefined, clientToolCalls: undefined,
+  };
+  return new Function(...Object.keys(scope), source.slice(start, end) + "\nreturn result;")(...Object.values(scope));
+}
+
 const yieldToolSource = fs.readFileSync(path.join(root, "release/captured/v2026.9.1-db91.6-voice-task-continuity-20261016-r3/dist/openclaw-tools-BODVdJQD.js"), "utf8");
 const yieldToolStart = yieldToolSource.indexOf("function createSessionsYieldTool(opts) {");
 const yieldToolEnd = yieldToolSource.indexOf("\n//#endregion", yieldToolStart);
@@ -36,9 +55,13 @@ for (const claim of ["native", "external-callback", "external-owner"]) test(`act
     const tool = createNativeYieldTool({ sessionId: target.sessionId, requesterSessionKey: target.sessionKey, claimYield: () => claim === "native", onYield: () => { yielded = true; } });
     const result = await tool.execute("yield-id", { message: "wait for the other child" });
     assert.equal(result.status, "yielded");
-    const attempt = { yieldDetected: yielded, toolMetas: [{ toolName: tool.name, isError: result.status === "error" }], acceptedSessionSpawns: [] };
-    assert.equal(yieldEvidence(baseline)(attempt), false, "baseline incorrectly emits the visible diagnostic");
-    assert.equal(yieldEvidence(patched)(attempt), true);
+    const before = projectNativeResult(baseline, { yieldDetected: yielded });
+    const after = projectNativeResult(patched, { yieldDetected: yielded });
+    assert.equal(before.toolMetas.length, 0, "yield can abort before tool-end metadata arrives");
+    assert.equal(before.acceptedSessionSpawns.length, 0, "the children were accepted in a prior turn");
+    assert.equal(yieldEvidence(baseline)(before), false, "baseline incorrectly emits the visible diagnostic");
+    assert.equal(after.nativeYieldClaimed, true);
+    assert.equal(yieldEvidence(patched)(after), true);
   } finally {
     [globalThis[callbackKey], globalThis[ownersKey]] = previous;
   }
@@ -50,12 +73,15 @@ test("native yield without a pending-child claim remains rejected; unsuccessful 
   const result = await tool.execute("yield-id", {});
   assert.equal(result.status, "error"); assert.equal(yielded, false);
   const check = yieldEvidence(patched);
+  assert.equal(projectNativeResult(patched, { yieldDetected: yielded }).nativeYieldClaimed, undefined);
   for (const attempt of [
     { yieldDetected: false, toolMetas: [{ toolName: "sessions_yield", isError: false }] },
     { yieldDetected: true, toolMetas: [{ toolName: "sessions_yield", isError: true }] },
     { yieldDetected: true, toolMetas: [{ toolName: "sessions_yield" }] },
     { yieldDetected: true, toolMetas: [{ toolName: "exec", isError: false }] },
     { yieldDetected: true, toolMetas: [] },
+    { yieldDetected: true, toolMetas: [{ toolName: "sessions_yield", isError: false }] },
+    { yieldDetected: false, nativeYieldClaimed: true },
   ]) assert.equal(check(attempt), false);
 });
 

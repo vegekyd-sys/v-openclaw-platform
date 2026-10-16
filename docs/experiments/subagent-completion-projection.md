@@ -14,9 +14,9 @@
 
 复用线上已有的 `waitForSessionTranscriptProjection`，检查真实数据库索引代次，最多等待 15 秒。等待前、期间、后检查取消与原 writer 归属，并验证目标会话身份。索引超时或数据库错误继续抛出，不重试整个回合，不重放模型或工具。原有语音保护保持原样。
 
-此外，成功的原生 `sessions_yield` 已经过 pending-child claim，但原来的终结诊断只检查本回合新建子任务，导致收到第一条完成通知后再次 yield 时向群误发“没有 continuation source”。候选承认 `yieldDetected=true` 且本回合 `sessions_yield` 工具确实成功的证据；不接纳缺失/失败/其他工具元数据，不改变 yield 的 claim 或回合状态。原生工具的 native claim、external callback、external owner 三个路径均有前后对比回归，无 claim 仍拒绝。
+此外，成功的原生 `sessions_yield` 已经过 pending-child claim，但原来的终结诊断只检查本回合新建子任务，导致收到第一条完成通知后再次 yield 时向群误发“没有 continuation source”。原生 `onYield` 只有 pending-child claim 成功后才会执行。候选从原生 attempt result 显式传递 `nativeYieldClaimed`，并要求它与 `yieldDetected` 同为 true；不依赖可能被 yield 中断打断的工具结束记录。不改变 yield 的 claim 或回合状态，不接纳仅有外部 yield 标记或工具元数据的情况。原生工具的 native claim、external callback、external owner 三个路径均有前后对比回归，无 claim 仍拒绝。
 
-只修改一个 runtime 文件，新增 24 行。补丁生成器校验基线 SHA，拒绝覆盖其他版本：
+只修改一个 runtime 文件，新增 26 行。补丁生成器校验基线 SHA，拒绝覆盖其他版本：
 
 - 基线：`5638a3b7071bbbfa20da7b7c2098facdbd3c15bedf723e922c2f68a3f550f5e9`。
 - 生成器：[patch-subagent-completion-projection.mjs](../../lab/patch-subagent-completion-projection.mjs)。
@@ -48,3 +48,7 @@ node --test lab/subagent-completion-projection.test.mjs lab/gpt-live-projection-
 组合 `subagent-settle-completion-20261016b` 从完整 parity ALIGNED（18,812 文件）的基线部署。旧群真实两个子任务完成、父会话中途再次 yield 后，最终 `COMPLETION_R1_1016_OK A+B` 实际可见并被飞书读回；projection 错误未再出现。但仍有一条错误的 yield 诊断，未算完整通过；已回退基线，补充上面的成功 claim 证据判断。
 
 最终候选 `candidate-f340d41a-3aaf-4792-a49a-bd9fb34bc278`：16/16，通过。最新旧群副本 14,331,904 字节，733 条事件、718 条历史消息，三次等待 1417 / 2389 / 1027 ms，历史与事件数不变，无模型或工具调用。最新 runtime SHA256 为 `e54511997f3d9f3bedc85d60aa8bcd1fbe794e71e01ef745eeb6974afc25e5ba`。共享渠道复验待执行。
+
+组合 c 的真实旧群 R1 最终汇总成功，但基于 toolMetas 的误报修订没有覆盖实际中断路径，仍未通过完整验收并已回退。v3 改为显式原生 claim 凭据；测试执行实际 native result 对象组装，覆盖没有 tool-end 元数据、没有本回合 spawn 的情况。
+
+v3 候选 `candidate-b74af677-0de0-4c9f-b0ce-fff07bf180ad` 16/16 通过；746 条事件、731 条历史消息，三次等待 1117 / 1131 / 1140 ms，历史与事件数不变，无模型或工具调用。产物 SHA256 `71c2310a73dbfa66d70fe560ff13132c620f0033439e604417842412758a67bc`。最终共享渠道复验待执行。
