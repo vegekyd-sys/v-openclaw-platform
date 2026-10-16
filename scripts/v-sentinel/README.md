@@ -40,6 +40,9 @@ HTTPS. When the Gateway is the broken component, the alert still goes out.
 | plugin dir missing | any `plugins.load.paths` entry of the main or worker config absent on disk, every tick | 2026-10-09: a deleted plugin dir broke the worker config at once (48 turns failed in 22 min) and the main config silently (it would only have failed at the next Gateway start). |
 | config invalid | `openclaw config validate` fails for either file, run every 10 min (≈2 s each) as `openclaw` with the unit's own node + `dist/index.js` | Catches the main config breaking long before a restart exposes it. A validator timeout is not reported. |
 | worker invalid config | any `Worker Agent request failed … InvalidConfigError` in 3 min | Each one is a user turn that got an error card before reaching the model. |
+| session disk budget near / over | every 10 min, makaron-style measurement of each `agents/<id>/sessions` store (top-level files + prompt blobs + agent SQLite + WAL, ~0.6 s on V) at ≥ 85% / > `session.maintenance.maxDiskBytes` | 2026-10-15: over budget, 9.1's enforcement pass held the session writer queue and no Feishu message reached an agent for 30 min. V had been at 97–98% of the 32 GiB budget for days; the DB grows ~0.4 GB/day. |
+| session disk budget exhausted | the Gateway's `session history disk budget exhausted` warning (disk-budget-stall-v1 patch) | Cleanup removed everything it may and the store is still over budget. |
+| ingress stalled | any Feishu `claim→adoption stalled` event in 3 min (one event logs two lines; counted once) | Each is a user message nobody started on for 5 minutes. |
 
 Every rule latches: it fires once on the way in, stays quiet while the condition
 persists, and sends a recovery message on the way out.

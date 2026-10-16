@@ -163,7 +163,8 @@
         "tests/media-completion-worker-relay-91.test.mjs",
         "tests/patch-openclaw91-sessions-send-owner.test.mjs",
         "tests/patch-openclaw-session-hotset.test.mjs",
-        "tests/prune-openclaw-session-hotset.test.mjs"
+        "tests/prune-openclaw-session-hotset.test.mjs",
+        "tests/patch-openclaw91-dingtalk-peer-case.test.mjs"
       ]
     },
     {
@@ -332,6 +333,7 @@
         "lab/history-image-e3.test.mjs",
         "lab/upstream-5xx-fallback.test.mjs",
         "lab/sqlite-hold-callsite.test.mjs",
+        "lab/context-overflow-recovery.test.mjs",
         "lab/feishu-empty-card-discard.test.mjs",
         "scripts/node-async-context-frame.test.mjs",
         "lab/workboard-incremental-sweep.test.mjs",
@@ -544,6 +546,10 @@
     {
       "file": "tests/feishu-steer91-real-bundle.test.mjs",
       "reason": "需要未修改的真实 Feishu 9.1 bundle fixture；不在离线入口中将条件 skip 冒充通过。后续接入制品兼容性门槛。"
+    },
+    {
+      "file": "tests/patch-openclaw91-dingtalk-peer-case.live.test.mjs",
+      "reason": "需要一份隔离的 2026.9.1 core 副本（DINGTALK_PATCH_CORE），CI 干净环境没有；单元部分在 tests/patch-openclaw91-dingtalk-peer-case.test.mjs 进 CI。"
     }
   ],
   "capabilities": [
@@ -1125,6 +1131,17 @@
       ],
       "disposition": "needs-live-reconciliation",
       "sourceSha256": "74f8245cc04782afb2b2a8279f4e7dffc8a45d58dd13fad948e8212acb0be670"
+    },
+    {
+      "id": "patch-openclaw91-dingtalk-peer-case",
+      "file": "scripts/patch-openclaw91-dingtalk-peer-case.mjs",
+      "component": "openclaw-core",
+      "reason": "钉钉群 openConversationId 区分大小写：group/channel peer 登记为保留大小写，主动群发不再用被折叠成小写的目标",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "needs-live-reconciliation",
+      "sourceSha256": "24461753d95c128202884e8878b5e1573423c4c719dc4a374b2388c32f64f66b"
     }
   ],
   "externalInputs": [

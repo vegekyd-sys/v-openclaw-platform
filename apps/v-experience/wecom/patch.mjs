@@ -307,6 +307,25 @@ import { resolveWecomCommandAuthorization as vResolveCommandAuthorization } from
                     const templateCardEvent = eventBody.event?.template_card_event;
 `,
   },
+  {
+    // Content the agent sent with the message tool (or a file, or V's cards)
+    // counts as the reply: the stream closes with 「✅ 已发送」 instead of
+    // 「✅ 已收到」, and nothing extra goes out when no stream can be closed.
+    name: "turn-start",
+    anchor: '    const state = { accumulatedText: "", streamId };\n',
+    replace: '    const state = { accumulatedText: "", streamId, vTurnStartedAt: Date.now() };\n',
+  },
+  {
+    name: "finish-sent-separately",
+    anchor: '    if (!finishText && state.streamId) {\n        finishText = "✅ 已收到";\n',
+    insert: "before",
+    code: `    // ${MARKER}: the turn's content went out on its own (message tool, file, card).
+    if (!finishText && vExperience.channelSentSince(CHANNEL_ID, [chatId], state.vTurnStartedAt ?? Infinity)) {
+        if (!state.streamId || state.streamExpired) return;
+        finishText = vExperience.SENT_SEPARATELY_TEXT;
+    }
+`,
+  },
 ];
 
 // channel.js: the outbound adapter. `openclaw message send --presentation`
@@ -363,8 +382,32 @@ import { sendPayloadWithChunkedTextAndMedia as vSendTextAndMedia } from "opencla
                 }
                 result = await wsClient.sendMessage(chatId, { msgtype: "template_card", template_card: message.templateCard });
             }
+            vExperience.noteChannelSend(CHANNEL_ID, ctx.to);
             return { channel: CHANNEL_ID, messageId: result?.headers?.req_id ?? \`wecom-\${Date.now()}\`, chatId };
         },
+`,
+  },
+  {
+    // Every delivery through the outbound is recorded for the reply of the same chat.
+    name: "outbound-note-text",
+    anchor: "        sendText: async ({ to, text, accountId, cfg }) => {\n            return sendWeComMessage({ to, content: text, accountId: accountId ?? undefined, cfg });\n        },\n",
+    replace: `        sendText: async ({ to, text, accountId, cfg }) => {
+            const vResult = await sendWeComMessage({ to, content: text, accountId: accountId ?? undefined, cfg });
+            vExperience.noteChannelSend(CHANNEL_ID, to); // ${MARKER}
+            return vResult;
+        },
+`,
+  },
+  {
+    name: "outbound-note-media",
+    anchor: "        sendMedia: async ({ to, text, mediaUrl, mediaLocalRoots, accountId, cfg }) => {\n",
+    replace: `        // ${MARKER}: recorded for the reply of the same chat (see vSendMedia for the send).
+        sendMedia: async (vCtx) => {
+            const vResult = await wecomPlugin.outbound.vSendMedia(vCtx);
+            vExperience.noteChannelSend(CHANNEL_ID, vCtx?.to);
+            return vResult;
+        },
+        vSendMedia: async ({ to, text, mediaUrl, mediaLocalRoots, accountId, cfg }) => {
 `,
   },
 ];

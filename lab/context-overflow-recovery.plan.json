@@ -1,0 +1,23 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/context-overflow-recovery/embedded-agent-DaSvA-Yk.js",
+      "target": "openclaw/dist/embedded-agent-DaSvA-Yk.js",
+      "before": "a53fe92d1c6d1a1690587ade48271f7d1c960922716bc84935e6511242215e54",
+      "after": "682bb94ac2546047d5df4997e7b9a6c213ad2d7b0f026990d04691ce513dbef3"
+    },
+    {
+      "source": "lab/release-files/context-overflow-recovery/embedded-agent-helpers-CzpaLpCq.js",
+      "target": "openclaw/dist/embedded-agent-helpers-CzpaLpCq.js",
+      "before": "63002d77d5d5b24601e3294e64331784ef855bb8019fad6c2316614f184672b2",
+      "after": "47fdc33b8b87c94a32d7c84cbd7de6f7b71b4054a6352e25c7c344638bab2954"
+    },
+    {
+      "source": "lab/release-files/context-overflow-recovery/agent-runner.runtime-CAdsMsQt.js",
+      "target": "openclaw/dist/agent-runner.runtime-CAdsMsQt.js",
+      "before": "8c192b9d68e51450cd820352fc610d8ba8ab21cc716b05ea682275e312f95a54",
+      "after": "8b64a58b1ee0f5fa2d82840c7ae86e5cbfeeceb4d5969131b60875f76b87aaa0"
+    }
+  ]
+}

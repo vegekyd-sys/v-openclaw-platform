@@ -22,10 +22,13 @@
 // the state. It still has to go: it enters the deploy channel's fingerprint.
 //
 // What is compared is scripts/lib/runtime-components.mjs: core, Worker, Feishu,
-// DingTalk, WeCom (runtime code) and the sidecars: desktop handoff, secret
+// Codex, DingTalk, WeCom (runtime code) and the sidecars: desktop handoff, secret
 // entry, and V Browser (plugin, Broker, Browser Gateway). A
 // component marked `blocking: false` there is reported as advisory and does
-// not decide the state. A sidecar absent on both hosts is equal. A --pending
+// not decide the state. A sidecar absent on both hosts is equal. The Codex
+// plugin is compared twice on VLab: the runtime/ copy (Worker, release channel)
+// and the state/npm copy its Gateway loads; findings in the second carry
+// [vlab-gateway]. A --pending
 // plan may list `"sidecars": ["secret-entry"]` when the release installs one.
 //
 // Config is advisory only (scripts/lib/parity-config.mjs): for the Gateway
@@ -109,7 +112,7 @@ if (args.json) {
   const byKind = Map.groupBy(findings, (f) => (f.advisory ? `advisory, does not decide the state: ${f.kind}` : f.kind));
   for (const [kind, list] of byKind) {
     console.log(`\n${kind} (${list.length})`);
-    for (const f of list) console.log(`  ${f.target}${f.v !== undefined ? `  V=${short(f.v)} VLab=${short(f.vlab)}` : ''}`);
+    for (const f of list) console.log(`  ${f.target}${f.copy ? ` [${f.copy}]` : ''}${f.v !== undefined ? `  V=${short(f.v)} VLab=${short(f.vlab)}` : ''}`);
   }
   if (residue.v.length || residue.vlab.length) {
     console.log(`\nresidue: V ${residue.v.length}, VLab ${residue.vlab.length} (not counted; still blocks deploy fingerprints)`);
