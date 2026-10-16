@@ -571,7 +571,9 @@ process.on("SIGTERM", () => { try { flushLogs(); fs.writeFileSync(path.join(OUT_
 function startGateway() {
   gatewayStarts += 1;
   gatewayStartedAt = Date.now();
-  gateway = spawn(process.execPath, [`--import=${lagProbe}`, "--experimental-async-context-frame", "--max-old-space-size=12288", `${dist}/index.js`, "gateway", "--port", String(port)], { env, stdio: ["ignore", "pipe", "pipe"] });
+  // GATEWAY_CPU_PROF=1: a V8 CPU profile of the whole run (5 ms sampling), written to OUT_DIR on exit
+  const prof = process.env.GATEWAY_CPU_PROF === "1" ? ["--cpu-prof", `--cpu-prof-dir=${OUT_DIR}`, "--cpu-prof-interval=5000"] : [];
+  gateway = spawn(process.execPath, [`--import=${lagProbe}`, ...prof, "--experimental-async-context-frame", "--max-old-space-size=12288", `${dist}/index.js`, "gateway", "--port", String(port)], { env, stdio: ["ignore", "pipe", "pipe"] });
   for (const s of [gateway.stdout, gateway.stderr]) {
     s.setEncoding("utf8");
     let rest = "";
@@ -897,7 +899,7 @@ try {
 } finally {
   client?.stop();
   gateway.kill("SIGTERM");
-  await sleep(5_000);
+  for (let i = 0; i < 60 && gateway.exitCode === null; i++) await sleep(1_000); // a CPU profile is written on exit
   if (gateway.exitCode === null) gateway.kill("SIGKILL");
   fs.rmSync(shortTmp, { recursive: true, force: true });
   if (fs.existsSync(claudeProjects)) for (const d of fs.readdirSync(claudeProjects)) if (!claudeProjectsBefore.has(d)) fs.rmSync(path.join(claudeProjects, d), { recursive: true, force: true });

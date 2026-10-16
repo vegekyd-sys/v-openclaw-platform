@@ -10,12 +10,13 @@
   "timeoutSeconds": 21600,
   "user": "lab-db91-parity",
   "env": {
-    "ARMS": "vds:big",
+    "ARMS": "vds:small,vds:big",
     "LEVELS": "1,5,10",
     "BIG_MB": "170",
     "INFLATE": "8",
     "HOLD_PROBE_MS": "50",
     "STEADY_MIN": "20",
-    "OUT_DIR": "/tmp/runtime-concurrency-vds-170"
+    "OUT_DIR": "/tmp/runtime-concurrency-vds-170",
+    "GATEWAY_CPU_PROF": "1"
   }
 }
