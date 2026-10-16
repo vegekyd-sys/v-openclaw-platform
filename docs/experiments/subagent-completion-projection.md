@@ -1,6 +1,6 @@
 # 连续子任务完成通知：等待父会话索引就绪
 
-当前是独立 worktree 候选，尚未合入 dev、部署共享 VLab 或上线 V。2026-10-16 本地 54 项回归通过；数据库副本和真实飞书验收因 VLab 的 Tailscale SSH 超时尚未执行，不能据此宣称通知丢失已修复。
+2026-10-16 本地 54 项回归通过，真实旧群数据库副本测试 12/12 通过（含 11 项候选回归）。共享 VLab 渠道验收待执行；尚不能据此宣称真实通知丢失已修复，生产 V 未部署本补丁。
 
 ## 已复现的问题
 
@@ -30,7 +30,12 @@ node --test lab/subagent-completion-projection.test.mjs lab/gpt-live-projection-
 
 54 项通过，包括通知在实际 attempt 内等待、两个来源、取消、writer 失效、会话身份不匹配、原生超时/数据库错误不重放、语音等待既有回归以及积压修复回归。通过执行提取出的实际 lifecycle 函数，确认 baseline 不等待，候选在创建写上下文之前等待。
 
-已准备但尚未运行成功的真实 SQLite 脚本位于 [candidate 计划](../../lab/candidate/subagent-completion-projection.plan.json)。它通过官方 candidate 工具备份共享 VLab 的 makaron 数据库，在私有副本上使用原受影响会话，重现原生模型上下文读取在索引未就绪时报错，再验证候选等待三次重建后读回相同历史且 transcript 事件数不变。它不启动模型、渠道或 Gateway，不写共享数据库。
+真实 SQLite 脚本位于 [candidate 计划](../../lab/candidate/subagent-completion-projection.plan.json)。在共享原库只读事务内复制受影响会话的原始行和 schema 到私有库，验证 718 条 transcript 事件的 SHA256 一致；副本 14,086,144 字节。原生 SessionManager 在标记索引重建时复现原错误。候选连续三次等待原生重建后读回相同的 703 条历史消息，事件数保持 718，不调用模型或工具。
+
+- receipt：`candidate-9308be0e-32e4-4626-b979-a1e3dee01a53`，12/12 通过；共享进程 PID 与 runtime/config hash 未变。
+- 等待耗时：1,154 / 1,097 / 1,093 ms。
+- 产物 SHA256：`6e78b509103fadb32d996246170be4c07bed53483d27595c875cbf88dfd38e2f`。
+- 完整库备份首次尝试约 7.3 GB，叠加运行时副本耗尽共享磁盘，造成 21:59:49 一次 Workboard lifecycle recovery 磁盘满错误。停止本任务备份后 runner 清理自己的临时目录，恢复约 7.7 GB 可用空间；22:04 健康 RPC 通过，事件循环未退化。后续改为受影响会话副本，不清理其他任务数据。首次定向副本遗漏 schema triggers，被原生完整性检查拒绝；补齐原始 triggers 后通过。
 
 2026-10-16 21:14–21:18 的连接检查中，Tailscale 显示 VLab 在线且 DERP ping 有响应，但原 IPv6 SSH、同一主机的 Tailscale IPv4 SSH和 24993 健康端点均超时；生产 V 的只读 SSH 同样超时。未使用公网 SSH，未修改 SSH/Tailscale 配置，未重启任何服务。candidate 在 SSH 上传阶段失败，没有候选测试成功 receipt。
 

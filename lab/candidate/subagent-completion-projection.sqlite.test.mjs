@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
+import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { HELPER } from "../patch-subagent-completion-projection.mjs";
 
@@ -14,6 +15,7 @@ test("actual old Feishu session copy: baseline rejects a rebuilding projection; 
   assert(runtime && data && state && state.startsWith(data + path.sep), "private candidate state required");
   assert.notEqual(state, process.env.VLAB_SHARED_STATE_DIR);
   const file = path.join(state, "agents/makaron/agent/openclaw-agent.sqlite");
+  console.log(execFileSync("python3", [new URL("./subagent-completion-snapshot.py", import.meta.url).pathname], { encoding: "utf8" }));
   assert(fs.realpathSync(file).startsWith(fs.realpathSync(data) + path.sep));
   const dist = path.join(runtime, "openclaw/dist");
   const db = new DatabaseSync(file);
