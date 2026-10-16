@@ -1,0 +1,28 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/subagent-lazy-store/session-accessor.sqlite-entry-BlklNPKQ.js",
+      "target": "openclaw/dist/session-accessor.sqlite-entry-BlklNPKQ.js",
+      "before": "6b12190ca8e975ea6c8bce6703af805e01a1ef492e83f4829a6fe0f90669d96b"
+    },
+    {
+      "source": "lab/release-files/subagent-lazy-store/subagent-capabilities-CPAHEjL-.js",
+      "target": "openclaw/dist/subagent-capabilities-CPAHEjL-.js",
+      "before": "76ac1cc681204e12ca77208f760884f9a1452ac244c69c9f78dfefe0b4135a68"
+    },
+    {
+      "source": "lab/release-files/subagent-lazy-store/subagent-completion-admission.store-JmpNDYTF.js",
+      "target": "openclaw/dist/subagent-completion-admission.store-JmpNDYTF.js",
+      "before": "ee0d42e68d09c0bffd590c650e828fee353cb56af9dbb3f7c1cd5b485f5e8a73"
+    }
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/subagent-lazy-store.mjs"
+  ],
+  "support": [
+    "lab/candidate/subagent-lazy-store.mjs"
+  ],
+  "user": "lab-db91-parity",
+  "timeoutSeconds": 7200
+}
