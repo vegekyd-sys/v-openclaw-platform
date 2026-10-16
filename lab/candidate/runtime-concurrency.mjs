@@ -129,17 +129,23 @@ const codexPrefix = path.join(scratch, `codex-${CODEX_VERSION}`);
 }
 const codexBin = path.join(codexPrefix, "node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex");
 assert(fs.existsSync(codexBin), "Codex binary missing");
+// Claude Code only when an arm drives /vcc. Its login lives in $HOME (the shared instance's); a
+// candidate whose first claude-cli turn finds an expired token refreshes it there and rewrites the
+// shared credentials (2026-10-17 03:11 that refresh failed and logged shared VLab out).
+const NEEDS_CLAUDE = ARMS.some((a) => a.arm === "vcc" || a.arm === "mix");
 const claudePrefix = path.join(scratch, `claude-${CLAUDE_VERSION}`);
-{
+const claudeBinDir = path.join(claudePrefix, "node_modules", ".bin");
+let claudeVersion = null;
+let claudeAuth = null;
+if (NEEDS_CLAUDE) {
   const r = spawnSync(npm, ["install", "--prefix", claudePrefix, "--no-audit", "--no-fund", `@anthropic-ai/claude-code@${CLAUDE_VERSION}`], { env: npmEnv, encoding: "utf8", timeout: 600_000, maxBuffer: 16 << 20 });
   assert.equal(r.status, 0, `claude-code install: ${redact(r.stderr).slice(-1500)}`);
+  claudeVersion = execFileSync(path.join(claudeBinDir, "claude"), ["--version"], { encoding: "utf8", env: { ...process.env, DISABLE_AUTOUPDATER: "1" } }).trim();
+  assert(claudeVersion.startsWith(CLAUDE_VERSION), `Claude Code ${claudeVersion}`);
+  claudeAuth = JSON.parse(spawnSync(path.join(claudeBinDir, "claude"), ["auth", "status", "--json"], { encoding: "utf8", env: { ...process.env, DISABLE_AUTOUPDATER: "1" } }).stdout || "{}");
+  assert.equal(claudeAuth.loggedIn, true, "claude is not logged in for this user");
 }
-const claudeBinDir = path.join(claudePrefix, "node_modules", ".bin");
-const claudeVersion = execFileSync(path.join(claudeBinDir, "claude"), ["--version"], { encoding: "utf8", env: { ...process.env, DISABLE_AUTOUPDATER: "1" } }).trim();
-assert(claudeVersion.startsWith(CLAUDE_VERSION), `Claude Code ${claudeVersion}`);
-const claudeAuth = JSON.parse(execFileSync(path.join(claudeBinDir, "claude"), ["auth", "status", "--json"], { encoding: "utf8", env: { ...process.env, DISABLE_AUTOUPDATER: "1" } }));
-assert.equal(claudeAuth.loggedIn, true, "claude is not logged in for this user");
-emit({ phase: "binaries", codex: CODEX_VERSION, claude: claudeVersion, claudeAuth: claudeAuth.authMethod });
+emit({ phase: "binaries", codex: CODEX_VERSION, claude: claudeVersion, claudeAuth: claudeAuth?.authMethod ?? null });
 
 // ---- managed npm plugins (Codex) in this run's state ----
 if (!fs.existsSync(path.join(stateDir, "npm"))) {
@@ -812,7 +818,7 @@ try {
     warm.push(await send(key, rt, `warm-${rt}`));
   }
   if (CANARY) warm.push(await send(await canaryKey(), "flash", "warm-canary"));
-  emit({ phase: "warm", warm, ran: actualRuntime([keyFor("vds", "warm", 0), keyFor("vcc", "warm", 0), keyFor("flash", "canary", 0)]) });
+  emit({ phase: "warm", warm, ran: actualRuntime([keyFor("vds", "warm", 0), ...(NEEDS_CLAUDE ? [keyFor("vcc", "warm", 0)] : []), keyFor("flash", "canary", 0)]) });
   if (WARM_BIG && BIG_COUNT > 0) {
     for (const rt of ["vds", "vcc"]) {
       const keys = ARMS.some((a) => a.size === "big" && (a.arm === rt || a.arm === "mix")) ? Array.from({ length: BIG_COUNT }, (_, i) => keyFor(rt, "big", i)) : [];
