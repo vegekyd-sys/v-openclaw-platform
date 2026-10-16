@@ -314,6 +314,7 @@
         "lab/transcript-index-preflight.test.mjs",
         "lab/transcript-index-prepare.test.mjs",
         "lab/transcript-projection-checkpoint.test.mjs",
+        "lab/transcript-projection-incremental.test.mjs",
         "lab/skills-watch-ready.test.mjs",
         "lab/worker-prewarm-secrets.test.mjs",
         "lab/worker-prewarm-v.test.mjs",
