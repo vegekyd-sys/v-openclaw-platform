@@ -21,8 +21,8 @@
 //     BIG_MB, then cloned once per concurrent slot and bound to its runtime
 //   - waits for a steady Gateway (uptime >= STEADY_MIN, RSS drift < STEADY_DRIFT_MB, no liveness
 //     warning in the window, three samples in a row), then for every ARMS entry fires LEVELS
-//     concurrent turns at once ("run `date +%s`, reply with the number"; the reply is checked
-//     against the clock, so a run only counts when the tool really ran)
+//     concurrent turns at once ("run `printf %s <label> | sha256sum | cut -c1-12`, reply with it"; a
+//     run only counts when the reply holds that hash, i.e. the tool really ran)
 //   - per level: first text and completion p50/p95, failures with their errors, the longest
 //     main-thread stall (preloaded lag probe) and the CPU spent in it, liveness warnings, Worker
 //     stream-ack timeouts, Codex process-inspection failures, whole-session reads on the Gateway,
@@ -34,7 +34,7 @@
 
 import assert from "node:assert/strict";
 import { spawn, spawnSync, execFileSync } from "node:child_process";
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
@@ -54,6 +54,7 @@ const MAXC = Math.max(...LEVELS);
 const STEADY_MIN = num("STEADY_MIN", 20);
 const STEADY_DRIFT_MB = num("STEADY_DRIFT_MB", 200);
 const STEADY_SAMPLE_MS = num("STEADY_SAMPLE_MS", 60_000);
+const STEADY_STALL_MS = num("STEADY_STALL_MS", 2_000);
 const GATE_STALL_MS = num("GATE_STALL_MS", 20_000);
 const GATE_FAIL_RATE = num("GATE_FAIL_RATE", 0.2);
 const COOLDOWN_MS = num("COOLDOWN_MS", 60_000);
@@ -221,8 +222,10 @@ for (const [ref, entry] of Object.entries(entries)) {
 const defaultModel = { primary: FLASH_REF, fallbacks: [] };
 config.agents.defaults.model = defaultModel;
 config.agents.entries.makaron.model = defaultModel;
-const allow = config.agents.defaults.modelPolicy?.allow;
-if (Array.isArray(allow)) for (const ref of Object.keys(entries)) if (!allow.includes(ref)) allow.push(ref);
+// every allow list that can apply to makaron (an agent-level one takes precedence over defaults)
+const allowLists = [config.agents.defaults.modelPolicy?.allow, config.agents.entries.makaron.modelPolicy?.allow, config.agents.defaults.models && config.agents.defaults.modelPolicy?.allowModels].filter(Array.isArray);
+for (const list of allowLists) for (const ref of Object.keys(entries)) if (!list.includes(ref)) list.push(ref);
+emit({ phase: "model-policy", lists: allowLists.length, makaronPolicy: config.agents.entries.makaron.modelPolicy ?? null, defaultsPolicyKeys: Object.keys(config.agents.defaults.modelPolicy ?? {}) });
 // V's plugins.entries.codex (2026-10-17), with this run's Codex binary
 config.plugins.entries.codex = { enabled: true, config: {
   codexPlugins: { enabled: false, allow_destructive_actions: true, plugins: { canva: { enabled: true, marketplaceName: "openai-curated", pluginName: "canva", allow_destructive_actions: true } } },
@@ -283,7 +286,9 @@ const dbPath = path.join(stateDir, dbRel);
 assert(!fs.existsSync(dbPath), `private database already exists at ${dbPath}`);
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 const SESSION_TABLES = ["transcript_events", "transcript_event_identities", "session_transcript_active_events", "session_transcript_index_state", "transcript_rewrite_watermarks"];
-const keyFor = (runtimeId, size, i) => `agent:makaron:feishu:direct:ou_lt_${runtimeId}_${size}_${String(i).padStart(2, "0")}`;
+// explicit keys, as vlab.mjs test uses: an operator-admin chat.send on them gets the owner's tools
+// (a feishu:direct key for an unknown peer is filtered to read/write/apply_patch)
+const keyFor = (runtimeId, size, i) => `agent:makaron:explicit:lt-${runtimeId}-${size}-${String(i).padStart(2, "0")}`;
 const harnessOf = { vds: { model: "vds-deepseek-flash", provider: "deepseek", harness: "codex" }, vcc: { model: VCC_REF.split("/")[1], provider: VCC_REF.split("/")[0], harness: "claude-cli" } };
 function buildDatabase() {
   const vec = path.join(runtime, "openclaw", "node_modules", "sqlite-vec-linux-x64", "vec0.so");
@@ -510,6 +515,16 @@ let gateway;
 let gatewayStartedAt;
 let gatewayStarts = 0;
 const plain = (s) => s.replace(/\u001b\[[0-9;]*m/gu, "");
+// lag and signal lines are appended to OUT_DIR every 15 s, so a stopped run still leaves them
+const SIGNAL = /liveness|stream acknowledgement|Cannot inspect Codex|Process inspection|Cannot reap|orphan cleanup|\[read-probe\]|\[hold-probe\]|\b429\b|rate.?limit|overloaded|harness failed|lane task error|startup maintenance failed|Gateway failed/iu;
+const pendingLag = [];
+const pendingSignal = [];
+function flushLogs() {
+  if (pendingLag.length) fs.appendFileSync(path.join(OUT_DIR, "lag.jsonl"), `${pendingLag.splice(0).join("\n")}\n`);
+  if (pendingSignal.length) fs.appendFileSync(path.join(OUT_DIR, "gateway-signal-lines.jsonl"), `${pendingSignal.splice(0).join("\n")}\n`);
+}
+setInterval(flushLogs, 15_000).unref();
+process.on("SIGTERM", () => { try { flushLogs(); fs.writeFileSync(path.join(OUT_DIR, "samples.jsonl"), samples.map((x) => JSON.stringify(x)).join("\n")); } finally { gateway?.kill("SIGTERM"); process.exit(143); } });
 function startGateway() {
   gatewayStarts += 1;
   gatewayStartedAt = Date.now();
@@ -520,7 +535,12 @@ function startGateway() {
     s.on("data", (chunk) => {
       const parts = (rest + chunk).split(/\r?\n/u);
       rest = parts.pop();
-      for (const line of parts) if (line) lines.push({ at: Date.now(), line: plain(line) });
+      for (const line of parts) if (line) {
+        const entry = { at: Date.now(), line: plain(line) };
+        lines.push(entry);
+        if (entry.line.includes("[lt-lag]")) pendingLag.push(entry.line.slice(entry.line.indexOf("{")));
+        else if (SIGNAL.test(entry.line)) pendingSignal.push(JSON.stringify({ at: entry.at, line: redact(entry.line).slice(0, 1500) }));
+      }
       if (lines.length > 400_000) lines.splice(0, lines.length - 400_000);
     });
   }
@@ -661,7 +681,10 @@ async function send(key, runtimeId, label) {
   const id = randomUUID();
   const r = { id, key, runtime: runtimeId, label, sentAt: Date.now() };
   runs.set(id, r);
-  const message = `（自动化并发压测 ${label}）用 shell 执行一次 \`date +%s\`，然后只回复它输出的那个数字，不要别的文字。`;
+  // the answer is only known by running the command (the model cannot compute a sha256), so a
+  // correct reply proves the tool ran
+  const message = `（自动化并发压测）用 shell 执行一次 \`printf %s ${label} | sha256sum | cut -c1-12\`，然后只回复它输出的那 12 个字符，不要别的文字。`;
+  r.expected = createHash("sha256").update(label).digest("hex").slice(0, 12);
   try {
     await client.request("chat.send", { agentId: "makaron", sessionKey: key, message, deliver: false, idempotencyKey: id, timeoutMs: TURN_TIMEOUT_MS }, { timeoutMs: 120_000 });
     r.acceptedAt = Date.now();
@@ -682,8 +705,7 @@ async function send(key, runtimeId, label) {
       r.text = (Array.isArray(c) ? c.filter((x) => x?.type === "text").map((x) => x.text).join("") : String(c ?? "")).slice(0, 300);
     } catch {}
   }
-  const n = Number((r.text ?? "").match(/\b(1[6-9]\d{8})\b/u)?.[1]);
-  r.correct = r.terminal === "final" && Number.isFinite(n) && Math.abs(n * 1000 - r.sentAt) < TURN_TIMEOUT_MS + 60_000;
+  r.correct = r.terminal === "final" && (r.text ?? "").includes(r.expected);
   return { label, runtime: runtimeId, key: key.split(":").pop(), terminal: r.terminal, correct: r.correct, tool: Boolean(r.firstToolAt),
     firstMs: r.firstTextAt ? r.firstTextAt - r.sentAt : null, doneMs: r.endAt - r.sentAt, error: r.error, text: r.correct ? undefined : redact(r.text ?? "").slice(0, 160) };
 }
@@ -713,6 +735,23 @@ async function canaryKey() {
   return key;
 }
 
+// what each session really ran on: the window's harness and the last assistant message's model
+function actualRuntime(keys) {
+  const db = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    const out = {};
+    for (const key of keys) {
+      const w = db.prepare("SELECT w.session_id, w.agent_harness_id AS harness, w.model FROM session_nodes n JOIN session_windows w ON w.session_id = n.current_session_id WHERE n.session_key = ?").get(key);
+      const m = w ? db.prepare(`SELECT json_extract(event_json, '$.message.provider') AS provider, json_extract(event_json, '$.message.model') AS model, json_extract(event_json, '$.message.api') AS api, json_extract(event_json, '$.message.usage') AS usage
+        FROM transcript_events WHERE session_id = ? AND json_extract(event_json, '$.message.role') = 'assistant' ORDER BY seq DESC LIMIT 1`).get(w.session_id) : null;
+      let usage = "";
+      try { const u = JSON.parse(m?.usage ?? "null"); if (u) usage = `|in=${u.input ?? u.inputTokens ?? "?"} cache=${u.cacheRead ?? "?"} out=${u.output ?? u.outputTokens ?? "?"}`; } catch {}
+      out[key.split(":").pop()] = w ? `${w.harness ?? "?"}|${m?.provider ?? "?"}/${m?.model ?? w.model ?? "?"}|${m?.api ?? "?"}${usage}` : "missing";
+    }
+    return out;
+  } catch (error) { return { error: String(error?.message ?? error).slice(0, 200) }; } finally { db.close(); }
+}
+
 async function level(arm, size, c) {
   const plan = await sessionsFor(arm, size, c);
   const from = Date.now();
@@ -735,7 +774,8 @@ async function level(arm, size, c) {
   for (const f of failed) { const k = (f.error || f.terminal + (f.text ? `: ${f.text}` : "")).slice(0, 120); errors[k] = (errors[k] ?? 0) + 1; }
   const h = hostContext();
   const host = { gcSwap: h.gcSwapExperiment.length > 0, sharedGatewayInspect: h.sharedGatewayInspect.some((g) => g.inspect), otherCandidates: h.otherCandidates.length, load: h.load };
-  return { arm, size, c, host, wallS: Math.round((to - from) / 1000), failed: failed.length, failRate: Math.round(100 * failed.length / results.length) / 100, byRuntime: byRt, errors, canary: canaryResult, ...m, runs: results };
+  const ran = actualRuntime([...plan.map((p) => p.key), ...(CANARY ? [await canaryKey()] : [])]);
+  return { arm, size, c, host, ran, wallS: Math.round((to - from) / 1000), failed: failed.length, failRate: Math.round(100 * failed.length / results.length) / 100, byRuntime: byRt, errors, canary: canaryResult, ...m, runs: results };
 }
 
 async function waitSteady(label, minUptimeMin) {
@@ -748,7 +788,7 @@ async function waitSteady(label, minUptimeMin) {
     const winFrom = Date.now() - Math.max(STEADY_SAMPLE_MS, 120_000);
     const m = windowMetrics(winFrom, Date.now());
     const drift = last === undefined ? null : Math.abs(rss - last);
-    const good = up >= minUptimeMin && drift !== null && drift < STEADY_DRIFT_MB && m.liveness === 0 && (m.stallMaxMs ?? 0) < 1000;
+    const good = up >= minUptimeMin && drift !== null && drift < STEADY_DRIFT_MB && m.liveness === 0 && (m.stallMaxMs ?? 0) < STEADY_STALL_MS;
     ok = good ? ok + 1 : 0;
     emit({ phase: "steady-check", label, upMin: Math.round(up * 10) / 10, rssMB: rss, driftMB: drift, liveness: m.liveness, stallMaxMs: m.stallMaxMs, ok });
     if (ok >= 3) return { waitedS: Math.round((Date.now() - started) / 1000), rssMB: rss };
@@ -772,7 +812,7 @@ try {
     warm.push(await send(key, rt, `warm-${rt}`));
   }
   if (CANARY) warm.push(await send(await canaryKey(), "flash", "warm-canary"));
-  emit({ phase: "warm", warm });
+  emit({ phase: "warm", warm, ran: actualRuntime([keyFor("vds", "warm", 0), keyFor("vcc", "warm", 0), keyFor("flash", "canary", 0)]) });
   if (WARM_BIG && BIG_COUNT > 0) {
     for (const rt of ["vds", "vcc"]) {
       const keys = ARMS.some((a) => a.size === "big" && (a.arm === rt || a.arm === "mix")) ? Array.from({ length: BIG_COUNT }, (_, i) => keyFor(rt, "big", i)) : [];
@@ -817,10 +857,7 @@ try {
   if (gateway.exitCode === null) gateway.kill("SIGKILL");
   fs.rmSync(shortTmp, { recursive: true, force: true });
   if (fs.existsSync(claudeProjects)) for (const d of fs.readdirSync(claudeProjects)) if (!claudeProjectsBefore.has(d)) fs.rmSync(path.join(claudeProjects, d), { recursive: true, force: true });
-  // keep a compact copy of the Gateway log lines that matter for the report
-  const keep = lines.filter((l) => /liveness|stream acknowledgement|Cannot inspect Codex|Process inspection|Cannot reap|orphan cleanup|\[read-probe\]|\[hold-probe\]|\b429\b|rate.?limit|overloaded|harness failed|lane task error/iu.test(l.line));
-  fs.writeFileSync(path.join(OUT_DIR, "gateway-signal-lines.jsonl"), keep.map((l) => JSON.stringify({ at: l.at, line: redact(l.line).slice(0, 1500) })).join("\n"));
-  fs.writeFileSync(path.join(OUT_DIR, "lag.jsonl"), lines.filter((l) => l.line.includes("[lt-lag]")).map((l) => l.line.slice(l.line.indexOf("{"))).join("\n"));
+  flushLogs();
   fs.writeFileSync(path.join(OUT_DIR, "samples.jsonl"), samples.map((s) => JSON.stringify(s)).join("\n"));
 }
 process.exit(process.exitCode ?? 0);
