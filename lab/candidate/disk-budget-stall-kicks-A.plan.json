@@ -1,0 +1,30 @@
+{
+  "support": [
+    "lab/candidate/disk-budget-stall.mjs",
+    "lab/fixtures/disk-budget-stall/disk-budget-BzLS0kmH.js",
+    "lab/fixtures/disk-budget-stall/session-history-eviction-d5aiCsHS.js"
+  ],
+  "files": [
+    {
+      "source": "lab/release-files/disk-budget-stall/disk-budget-BzLS0kmH.js",
+      "target": "openclaw/dist/disk-budget-BzLS0kmH.js",
+      "before": "9e5c3708a769238d2a5b305146f6b993349a9a72655381b7baf7b45ccf8c57ca"
+    },
+    {
+      "source": "lab/release-files/disk-budget-stall/session-history-eviction-d5aiCsHS.js",
+      "target": "openclaw/dist/session-history-eviction-d5aiCsHS.js",
+      "before": "014136ce2b566bc589490f89f6d2a4ce5d437f524c9ceb33453582496160fe2d"
+    }
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/disk-budget-stall.mjs",
+    "A",
+    "kicks"
+  ],
+  "timeoutSeconds": 0,
+  "env": {
+    "DBS_ARCHIVES": "16",
+    "DBS_LEGACY": "4"
+  }
+}
