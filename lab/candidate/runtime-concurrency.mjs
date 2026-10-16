@@ -301,24 +301,28 @@ function buildDatabase() {
   const big = BIG_COUNT > 0;
   const sid = SOURCE_SESSION;
   const srcKey = big ? src.prepare("SELECT session_key FROM session_windows WHERE session_id = ?").get(sid)?.session_key : null;
-  if (big) {
-    assert(srcKey, `session ${sid} is not in the shared VLab mirror`);
-    for (const t of tables) {
-      const cols = src.prepare(`PRAGMA table_info("${t.name}")`).all().map((c) => c.name);
-      if (t.name.startsWith("auth_profile_") || t.name.startsWith("memory_") || t.name.startsWith("standing_intents")) continue;
-      let where;
-      let args;
+  if (big) assert(srcKey, `session ${sid} is not in the shared VLab mirror`);
+  // non-session tables whole (schema ownership and other metadata), never stored credentials or
+  // memory; session tables only for the big-session source
+  for (const t of tables) {
+    const cols = src.prepare(`PRAGMA table_info("${t.name}")`).all().map((c) => c.name);
+    if (t.name.startsWith("auth_profile_") || t.name.startsWith("memory_") || t.name.startsWith("standing_intents")) continue;
+    let where = "";
+    let args = [];
+    const sessionScoped = cols.includes("session_id") || cols.includes("session_key") || cols.includes("conversation_id") || cols.includes("run_id");
+    if (sessionScoped) {
+      if (!big) continue;
       if (cols.includes("session_id")) { where = `"session_id" = ?`; args = [sid]; }
       else if (cols.includes("session_key")) { where = `"session_key" = ?`; args = [srcKey]; }
       else continue;
-      const list = cols.map((c) => `"${c}"`).join(",");
-      const rows = src.prepare(`SELECT ${list} FROM "${t.name}" WHERE ${where}`).all(...args);
-      if (!rows.length) continue;
-      const ins = db.prepare(`INSERT OR IGNORE INTO "${t.name}" (${list}) VALUES (${cols.map(() => "?").join(",")})`);
-      db.exec("BEGIN");
-      for (const r of rows) ins.run(...cols.map((c) => r[c]));
-      db.exec("COMMIT");
     }
+    const list = cols.map((c) => `"${c}"`).join(",");
+    const rows = src.prepare(`SELECT ${list} FROM "${t.name}"${where ? ` WHERE ${where}` : ""}`).all(...args);
+    if (!rows.length) continue;
+    const ins = db.prepare(`INSERT OR IGNORE INTO "${t.name}" (${list}) VALUES (${cols.map(() => "?").join(",")})`);
+    db.exec("BEGIN");
+    for (const r of rows) ins.run(...cols.map((c) => r[c]));
+    db.exec("COMMIT");
   }
   for (const tr of master.filter((m) => m.type === "trigger" && !shadow(m.tbl_name))) db.exec(tr.sql);
   for (const v of master.filter((m) => m.type === "view")) db.exec(v.sql);
@@ -449,6 +453,9 @@ function buildDatabase() {
   // the source itself is not used by any arm
   db.exec("BEGIN");
   for (const t of [...SESSION_TABLES, "session_windows", "session_conversations", "trajectory_runtime_events", "session_transcript_archives"]) db.prepare(`DELETE FROM "${t}" WHERE session_id = ?`).run(sid);
+  for (const { name } of db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND sql NOT LIKE '%VIRTUAL%'").all()) {
+    if (db.prepare(`PRAGMA table_info("${name}")`).all().some((c) => c.name === "session_key") && name !== "session_nodes") db.prepare(`DELETE FROM "${name}" WHERE session_key = ?`).run(srcKey);
+  }
   db.prepare("DELETE FROM session_nodes WHERE session_key = ?").run(srcKey);
   db.exec("COMMIT");
   db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
