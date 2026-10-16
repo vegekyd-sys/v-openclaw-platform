@@ -332,6 +332,7 @@
         "lab/deepseek-budget-completions.test.mjs",
         "lab/history-image-e3.test.mjs",
         "lab/upstream-5xx-fallback.test.mjs",
+        "lab/context-overflow-recovery.test.mjs",
         "lab/feishu-empty-card-discard.test.mjs",
         "scripts/node-async-context-frame.test.mjs",
         "lab/workboard-incremental-sweep.test.mjs",

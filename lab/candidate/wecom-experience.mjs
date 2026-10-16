@@ -10,6 +10,8 @@
 // apps/v-experience/wecom/patch.mjs to the private copy and asserts.
 // The model-roles scenario also patches the core command-auth and sets the
 // command roles (lab/candidate/model-roles.mjs).
+// `tool-only` (a group) has the agent send its answer and a file with the
+// message tool and end with an empty final; it records how the reply closes.
 // `secret-link` and `handoff-card` run the services behind V's link cards
 // (lab/candidate/channel-cards-support.mjs) and check the text_notice template
 // card the robot sends; `handoff-card` checks the Worker config the Gateway derives
@@ -368,6 +370,39 @@ const SCENARIOS = {
     const t = allText(chatId, since);
     return { atAnswer, after75s: view(chatId, since), sawBackgroundLine: /后台 \d+ 项进行中/u.test(t), sawBackgroundDone: /后台任务已结束/u.test(t) };
   },
+  // The DingTalk case of 2026-10-15 on WeCom: the answer and a file go out with the
+  // message tool and the final is empty. The reply used to close with 「✅ 已收到」.
+  "tool-only": async () => {
+    const u = nextUser();
+    const ask = [
+      "这是自动化测试，请严格照做，不要解释。",
+      "1) 用 exec 运行：printf 'name,score\\nA,1\\n' > tool-only-table.csv",
+      "2) 调用 message 工具（action=send）把这句话发到当前群：「TOOL_ONLY_TEXT 对比表做好了」，并把 tool-only-table.csv 作为附件一起发出（media 填这个文件路径）。",
+      "3) message 工具返回后，你的最终回复只输出 NO_REPLY，不要再输出其他任何文字。",
+    ].join("\n");
+    const attempts = [];
+    let since; let chatId;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      since = Date.now();
+      ({ chatId } = fake.sendUserText({ userId: u, text: ask, group: true }));
+      await settle(chatId, since, (t) => /TOOL_ONLY_TEXT/u.test(t), { label: "tool-only turn", quietMs: 15_000, timeoutMs: 300_000 }).catch(() => null);
+      const sentText = proactiveSince(chatId, since).some((m) => /TOOL_ONLY_TEXT/u.test(m.text ?? ""));
+      attempts.push({ sentText, proactive: proactiveSince(chatId, since).length });
+      if (sentText) break;
+    }
+    const others = proactiveSince(chatId, since).filter((m) => !/TOOL_ONLY_TEXT/u.test(m.text ?? "") && m.msgtype !== "file");
+    const streamFinals = finished(chatId, since).map((x) => x.content ?? "");
+    return {
+      attempts,
+      ...view(chatId, since),
+      toolTextSent: proactiveSince(chatId, since).some((m) => /TOOL_ONLY_TEXT/u.test(m.text ?? "")),
+      fileSent: fake.media.some((m) => m.at >= since) || proactiveSince(chatId, since).some((m) => m.msgtype === "file"),
+      streamFinals,
+      otherMessages: others.map((m) => ({ msgtype: m.msgtype, text: String(m.text ?? "").slice(0, 200) })),
+      saidReceived: /✅ 已收到/u.test(allText(chatId, since)),
+      saysSent: streamFinals.some((t) => /✅ 已发送/u.test(t)),
+    };
+  },
 };
 
 try {
@@ -420,6 +455,14 @@ if (EXPECT === "patched") {
   }
   if (s.steer) assert(s.steer.steered && !s.steer.answeredA, "steer: second message did not steer the running reply");
   if (s.background) assert(s.background.sawBackgroundLine && s.background.sawBackgroundDone, "background line missing");
+  if (s["tool-only"]) {
+    const r = s["tool-only"];
+    assert.equal(r.error, undefined, r.error);
+    assert(r.toolTextSent, `the agent did not send with the message tool: ${JSON.stringify(r.attempts)}`);
+    assert(!r.saidReceived, `the reply closed with 「✅ 已收到」: ${JSON.stringify({ streams: r.streams, other: r.otherMessages })}`);
+    assert.deepEqual(r.otherMessages, [], "an extra message went out after the tool's own");
+    assert(r.streamFinals.length === 0 || r.saysSent, `the reply stream does not say the content was sent: ${JSON.stringify(r.streamFinals)}`);
+  }
   if (s["secret-link"]) {
     const r = s["secret-link"];
     assert.equal(r.error, undefined, r.error);

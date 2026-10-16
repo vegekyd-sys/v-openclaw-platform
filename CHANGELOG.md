@@ -1,6 +1,6 @@
 # 生产 V 变更记录
 
-每一节对应一个生产 V 的发版。标题就是 V 上的发版名，也是 git tag，对应 `release/captured/<发版名>{,.worker,.feishu}` 下的完整存档。最新的在最前面。
+每一节对应一个生产 V 的发版。标题就是 V 上的发版名，也是 git tag，对应 `release/captured/<发版名>{,.worker,.feishu,.codex,.dingtalk,.wecom}` 下的完整存档（钉钉、企微从 2026-10-05 起有；Codex 插件从 2026-10-14 起有，第一份是补捕获的 `v2026.9.1-db91.6-codex-ds-window-20261013.codex`，更早的发版没有 Codex 存档，那时 Codex 的改动是手写进各节的）。最新的在最前面。
 
 - **文件变化**：由 `node scripts/release-notes.mjs --from <上一版> --to <这一版>` 生成。它把两个发版在 V 上的完整文件集合逐一比对，所以列出的就是 V 上真实变化的文件，不依赖谁的记忆。
 - **来源**：每个变化的文件，都追溯到产生这份字节的 VLab 发版（负责人、dev 提交、验收证据）。追溯不到的，标为**流程外改动**，也就是在 V 上直接改的。

@@ -1,0 +1,20 @@
+{
+  "support": [
+    "lab/candidate/context-overflow-recovery.mjs",
+    "lab/patch-context-overflow-recovery.mjs",
+    "lab/release-files/context-overflow-recovery/embedded-agent-DaSvA-Yk.js",
+    "lab/release-files/context-overflow-recovery/embedded-agent-helpers-CzpaLpCq.js",
+    "lab/release-files/context-overflow-recovery/agent-runner.runtime-CAdsMsQt.js"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/context-overflow-recovery.mjs"
+  ],
+  "env": {
+    "OVF_BIG": "midtool,start,always",
+    "OVF_SMALL": "0",
+    "OVF_REPEAT": "2"
+  },
+  "timeoutSeconds": 10800,
+  "user": "lab-db91-parity"
+}

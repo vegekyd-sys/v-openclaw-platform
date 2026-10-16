@@ -35,7 +35,7 @@ bash -n "${REPO_ROOT}/scripts/install-secret-entry-host.sh"
 grep -q '^NoNewPrivileges=true' "${REPO_ROOT}/systemd/v-secret-entry.service"
 grep -q '^Environment=V_SECRET_ENTRY_ADMIN_TOKEN_FILE=' "${REPO_ROOT}/systemd/openclaw-gateway.service.d/secret-entry.conf"
 # Capture suffixes of every captured component (scripts/lib/runtime-components.mjs):
-# .worker .feishu .dingtalk .wecom ...
+# .worker .feishu .codex .dingtalk .wecom ...
 SUFFIXES=$(node --input-type=module -e "const m=await import(process.argv[1]);console.log(m.captureSuffixes().join(' '))" \
   "${REPO_ROOT}/scripts/lib/runtime-components.mjs")
 [ -n "$SUFFIXES" ] || { echo "no capture suffixes from the component table" >&2; exit 1; }
@@ -47,6 +47,9 @@ for component in "" $SUFFIXES; do
   case "$component" in ""|.worker|.feishu) ;; *) [ -f "$manifest" ] || continue;; esac
   node "${REPO_ROOT}/scripts/verify-release-reproducible.mjs" --manifest "$manifest" --quiet
 done
+# The first capture of the Codex plugin (captures before 2026-10-14 have none).
+node "${REPO_ROOT}/scripts/verify-release-reproducible.mjs" --quiet \
+  --manifest "${REPO_ROOT}/release/captured/v2026.9.1-db91.6-codex-ds-window-20261013.codex/manifest.json"
 jq empty "${REPO_ROOT}/config/vlab-production-parity-v1.json"
 "${REPO_ROOT}/tests/vlab-agent-worker-static.sh"
 
