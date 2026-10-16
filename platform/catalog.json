@@ -544,6 +544,10 @@
     {
       "file": "tests/feishu-steer91-real-bundle.test.mjs",
       "reason": "需要未修改的真实 Feishu 9.1 bundle fixture；不在离线入口中将条件 skip 冒充通过。后续接入制品兼容性门槛。"
+    },
+    {
+      "file": "tests/patch-openclaw91-dingtalk-peer-case.live.test.mjs",
+      "reason": "需要一份隔离的 2026.9.1 core 副本（DINGTALK_PATCH_CORE），CI 干净环境没有；单元部分在 tests/patch-openclaw91-dingtalk-peer-case.test.mjs 进 CI。"
     }
   ],
   "capabilities": [
