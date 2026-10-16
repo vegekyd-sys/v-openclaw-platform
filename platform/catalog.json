@@ -413,7 +413,9 @@
         "lab/gpt-live-h5/screen-wake-lock.test.mjs",
         "lab/patch-gpt-live-media-policy.test.mjs",
         "lab/voice-task-lifetime.test.mjs",
-        "lab/voice-task-control-authority.test.mjs"
+        "lab/voice-task-control-authority.test.mjs",
+        "lab/subagent-completion-projection.test.mjs",
+        "lab/subagent-settle-backlog.test.mjs"
       ]
     }
   ],
@@ -549,6 +551,14 @@
     {
       "file": "tests/patch-openclaw91-dingtalk-peer-case.live.test.mjs",
       "reason": "需要一份隔离的 2026.9.1 core 副本（DINGTALK_PATCH_CORE），CI 干净环境没有；单元部分在 tests/patch-openclaw91-dingtalk-peer-case.test.mjs 进 CI。"
+    },
+    {
+      "file": "lab/candidate/subagent-completion-projection.sqlite.test.mjs",
+      "reason": "需要 VLAB_CANDIDATE_RUNTIME、私有候选 state 和共享真实旧群会话的只读定向副本；由对应 candidate plan 执行。candidate-852de947-ba6e-45e5-bf8d-23918112dc77 已通过，不能在无真实运行时和会话副本的离线 CI 中伪装通过。"
+    },
+    {
+      "file": "lab/candidate/subagent-settle-backlog.sqlite.test.mjs",
+      "reason": "需要 VLAB_CANDIDATE_RUNTIME 的原生 Kysely 编译/执行适配器及 Node SQLite 私有测试库；由对应 candidate plan 执行。candidate-33e5f3d1-cd58-4c69-a01e-57447fc8b8dc 已通过，离线 CI 不含运行时依赖。"
     }
   ],
   "capabilities": [
