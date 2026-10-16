@@ -1,0 +1,22 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/transcript-projection-checkpoint/session-transcript-index-9itOio9h.js",
+      "target": "openclaw/dist/session-transcript-index-9itOio9h.js",
+      "before": "5504f5decee060251f991e658a809a53e2548e4727cfb2838499a5a7c2ce84b1",
+      "after": "d0e05a562dde0b6076d464698de2dfc4f786d08d261745c85a5fa558b945d7c1"
+    },
+    {
+      "source": "lab/release-files/transcript-projection-checkpoint/session-accessor.sqlite-transcript-store-DV0WFe1a.js",
+      "target": "openclaw/dist/session-accessor.sqlite-transcript-store-DV0WFe1a.js",
+      "before": "0592e1cd88d5cb2261b94dc972b12baa591099f6f6da2f7042bdc6e0e6bfa397",
+      "after": "74fba951650504050b9f6f0934137924f1418ca060c116750298477ea54ae257"
+    },
+    {
+      "source": "lab/release-files/transcript-projection-checkpoint/builtin-openclaw-zQV8Wwjr.js",
+      "target": "openclaw/dist/builtin-openclaw-zQV8Wwjr.js",
+      "before": "71c2310a73dbfa66d70fe560ff13132c620f0033439e604417842412758a67bc",
+      "after": "a44b846a3a56be86a09e7aa0259a6ec64663d6c92a5861cd67fe4c88a83015f9"
+    }
+  ]
+}
