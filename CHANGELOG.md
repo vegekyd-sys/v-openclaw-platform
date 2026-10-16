@@ -11,6 +11,27 @@
 
 ---
 
+## v2026.9.1-db91.6-subagent-settle-20261016
+
+上线：2026-10-16 23:33 CST。生产已部署；发布留档与标签状态以对应 PR 为准。
+
+**摘要**：已结束、无需用户通知的子任务会正确结算；原生子任务完成通知和父会话让出等待的凭据完整穿过 Worker 回传，避免后续完成通知无法续接或出现错误提示。
+
+相对上一版 `v2026.9.1-db91.6-voice-task-continuity-20261016-r3`：6 个运行时文件变化。全部来自已验收 VLab 发版 `subagent-settle-completion-20261016e`，源提交 `24ad9998da030cfafb51089b6c1a62d43ea73793`；artifact SHA `a465dd0a42bea1e8b040373de17cc51399179e7c335bf05bca92130c8054149e`。PR #399 经 CI 通过后合入 dev。#398 与 Night Shift #12 不在此次生产字节变更中。
+
+- `core` builtin-openclaw-zQV8Wwjr.js  5638a3b7 → 71c2310a
+- `core` embedded-agent-DaSvA-Yk.js  a53fe92d → bcb20f5d
+- `core` subagent-announce.requester-settle-wake-B2NSziIo.js  be8a3f7f → ec4c192b
+- `core` subagent-registry-read-UaDFTyfW.js  dfcf09fa → 142bb515
+- `core` subagent-registry.store.sqlite-hzGu4QSk.js  bc42d6c4 → f37ed94d
+- `worker` harness-result.mjs  76840da2 → 0c52961a
+
+本次补齐 Codex 插件 72 文件的发版存档及漂移检测覆盖。其字节与 `v2026.9.1-db91.6-codex-ds-window-20261013.codex` 完全相同；不表示本次修改了 Codex 插件。
+
+**验证**：`v-self-restart` 请求 `20261016-233206-0495`，56 秒就绪，5 个 Worker ready；配置未改，Night Shift 服务未重启。安装前静默待结算积压 194，重启后为 0；逐 runId 验证 194/194 原行仍在，待结算字段全部清除。生产飞书普通、双子任务、单子任务最终消息各一条，三个实际 exec 输出已核验。Night Shift 自动接续 10 卡、转交人工 0，已有新的执行与成功结果。
+
+**边界**：部分卡片仍 blocked，原因待核实；压力 hold 与夜班峰值性能没有被本轮验收证明已解决。运行时回滚备份、逐文件 SHA、真实消息与执行证据见 [生产验证](docs/experiments/subagent-completion-projection.md#生产推广2026-10-16) 和 [结构化回执](docs/experiments/subagent-completion-projection.production.json)。
+
 ## v2026.9.1-db91.6-voice-task-continuity-20261016-r3
 
 上线：2026-10-16 08:43 CST  ·  tag `v2026.9.1-db91.6-voice-task-continuity-20261016-r3`
