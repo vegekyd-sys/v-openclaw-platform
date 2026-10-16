@@ -5,6 +5,7 @@
   ],
   "support": [
     "lab/candidate/subagent-completion-snapshot.py",
+    "release/captured/v2026.9.1-db91.6-voice-task-continuity-20261016-r3/dist/openclaw-tools-BODVdJQD.js",
     "lab/patch-subagent-completion-projection.mjs",
     "lab/release-files/upstream-5xx-fallback/builtin-openclaw-zQV8Wwjr.js",
     "lab/release-files/subagent-completion-projection/builtin-openclaw-zQV8Wwjr.js"

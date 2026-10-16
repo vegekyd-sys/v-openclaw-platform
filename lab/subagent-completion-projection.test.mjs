@@ -10,6 +10,55 @@ const baseline = fs.readFileSync(path.join(root, BASELINE_SOURCE), "utf8");
 const patched = patchSubagentCompletionProjection(baseline);
 const target = { agentId: "makaron", sessionId: "parent-id", sessionKey: "agent:makaron:feishu:group:test", storePath: "/private/candidate/sessions.json" };
 
+function yieldEvidence(source) {
+  const start = source.indexOf("function hasYieldContinuationEvidence(attempt) {");
+  const end = source.indexOf("\nconst YIELD_DIAGNOSTIC_TEXT", start);
+  return new Function("hasCommittedMessagingToolDeliveryEvidence", "hasAcceptedSessionSpawn", "hasAsyncActivity", `${source.slice(start, end)}; return hasYieldContinuationEvidence;`)(
+    () => false, (spawns) => Boolean(spawns?.length), (metas) => Boolean(metas?.some((m) => m.asyncStarted)),
+  );
+}
+
+const yieldToolSource = fs.readFileSync(path.join(root, "release/captured/v2026.9.1-db91.6-voice-task-continuity-20261016-r3/dist/openclaw-tools-BODVdJQD.js"), "utf8");
+const yieldToolStart = yieldToolSource.indexOf("function createSessionsYieldTool(opts) {");
+const yieldToolEnd = yieldToolSource.indexOf("\n//#endregion", yieldToolStart);
+const createNativeYieldTool = new Function("readToolStringParam", "jsonResult", "SessionsYieldToolSchema", "NO_PENDING_CHILD_COMPLETION_ERROR", `${yieldToolSource.slice(yieldToolStart, yieldToolEnd)}; return createSessionsYieldTool;`)(
+  (params, key) => typeof params[key] === "string" ? params[key] : undefined, (result) => result, {}, "no pending child",
+);
+
+for (const claim of ["native", "external-callback", "external-owner"]) test(`actual ${claim} yield claim remains continuation evidence when the spawn occurred in an earlier turn`, async () => {
+  const callbackKey = Symbol.for("versa.vlab.external-harness-task-yield-v1");
+  const ownersKey = Symbol.for("versa.vlab.external-harness-task-owners-v1");
+  const previous = [globalThis[callbackKey], globalThis[ownersKey]];
+  globalThis[callbackKey] = () => claim === "external-callback";
+  globalThis[ownersKey] = new Set(claim === "external-owner" ? [target.sessionKey] : []);
+  let yielded = false;
+  try {
+    const tool = createNativeYieldTool({ sessionId: target.sessionId, requesterSessionKey: target.sessionKey, claimYield: () => claim === "native", onYield: () => { yielded = true; } });
+    const result = await tool.execute("yield-id", { message: "wait for the other child" });
+    assert.equal(result.status, "yielded");
+    const attempt = { yieldDetected: yielded, toolMetas: [{ toolName: tool.name, isError: result.status === "error" }], acceptedSessionSpawns: [] };
+    assert.equal(yieldEvidence(baseline)(attempt), false, "baseline incorrectly emits the visible diagnostic");
+    assert.equal(yieldEvidence(patched)(attempt), true);
+  } finally {
+    [globalThis[callbackKey], globalThis[ownersKey]] = previous;
+  }
+});
+
+test("native yield without a pending-child claim remains rejected; unsuccessful or unrelated evidence cannot hide the diagnostic", async () => {
+  let yielded = false;
+  const tool = createNativeYieldTool({ sessionId: target.sessionId, requesterSessionKey: target.sessionKey, claimYield: () => false, onYield: () => { yielded = true; } });
+  const result = await tool.execute("yield-id", {});
+  assert.equal(result.status, "error"); assert.equal(yielded, false);
+  const check = yieldEvidence(patched);
+  for (const attempt of [
+    { yieldDetected: false, toolMetas: [{ toolName: "sessions_yield", isError: false }] },
+    { yieldDetected: true, toolMetas: [{ toolName: "sessions_yield", isError: true }] },
+    { yieldDetected: true, toolMetas: [{ toolName: "sessions_yield" }] },
+    { yieldDetected: true, toolMetas: [{ toolName: "exec", isError: false }] },
+    { yieldDetected: true, toolMetas: [] },
+  ]) assert.equal(check(attempt), false);
+});
+
 function harness({ sourceTool = "agent_harness_task", kind = "inter_session", wait, actualTarget = target, controller = new AbortController(), initialWriter } = {}) {
   const observed = { imports: 0, waits: 0, reads: 0, prompts: 0, ownerChecks: 0 };
   const attempt = { sessionId: target.sessionId, sessionKey: target.sessionKey, inputProvenance: { kind, sourceTool }, abortSignal: controller.signal };
