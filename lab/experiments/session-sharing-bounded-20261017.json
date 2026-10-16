@@ -1,0 +1,1882 @@
+{
+  "kind": "native-session-sharing-bounded-evidence",
+  "candidateId": "candidate-c1c9cc2b-59aa-4269-a955-05a22569c57b",
+  "testedImplementationCommit": "efdf10ecbb53538b442938c945fd5ba72969fd24",
+  "inputSha256": "fba4cc17166cd1bf12ffb3bc394ae769256dd4c008afa027ca1f78c3e19a7c0f",
+  "runtimeSha256": "1496f7d693b00056d3777c777aa6fe23d13f2e6308885593f515bcdac9c93d7e",
+  "dataset": {
+    "realSessionNodes": 4254,
+    "privateMetadataBytes": 173371392,
+    "creatorIdentities": 1,
+    "visibilityCounts": [
+      [
+        "shared",
+        4254
+      ]
+    ]
+  },
+  "matrix": [
+    {
+      "rows": 25,
+      "temperature": "warm-metadata",
+      "repeat": 0,
+      "arms": {
+        "live": {
+          "ms": 36.69,
+          "counts": {
+            "pointReads": 25,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 125,
+            "sessionNodesQueries": 25,
+            "participantsQueries": 25,
+            "membersQueries": 0,
+            "otherQueries": 75,
+            "nodeRows": 25
+          },
+          "preludeMs": 0
+        },
+        "bulk-dev": {
+          "ms": 24.76,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 0
+        },
+        "bounded": {
+          "ms": 5.44,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 0
+        }
+      },
+      "resultSha256": "2c20cb0b491dc9d3742d1305357ae192df9267055282550d7887bada79ba1be2"
+    },
+    {
+      "rows": 25,
+      "temperature": "warm-metadata",
+      "repeat": 1,
+      "arms": {
+        "bounded": {
+          "ms": 10.09,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 0
+        },
+        "bulk-dev": {
+          "ms": 23.15,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 0
+        },
+        "live": {
+          "ms": 15.62,
+          "counts": {
+            "pointReads": 25,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 125,
+            "sessionNodesQueries": 25,
+            "participantsQueries": 25,
+            "membersQueries": 0,
+            "otherQueries": 75,
+            "nodeRows": 25
+          },
+          "preludeMs": 0
+        }
+      },
+      "resultSha256": "2c20cb0b491dc9d3742d1305357ae192df9267055282550d7887bada79ba1be2"
+    },
+    {
+      "rows": 25,
+      "temperature": "cold-metadata",
+      "repeat": 0,
+      "arms": {
+        "live": {
+          "ms": 16.14,
+          "counts": {
+            "pointReads": 25,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 125,
+            "sessionNodesQueries": 25,
+            "participantsQueries": 25,
+            "membersQueries": 0,
+            "otherQueries": 75,
+            "nodeRows": 25
+          },
+          "preludeMs": 0
+        },
+        "bulk-dev": {
+          "ms": 752.17,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 8,
+            "sessionNodesQueries": 1,
+            "participantsQueries": 1,
+            "membersQueries": 0,
+            "otherQueries": 6,
+            "nodeRows": 4254
+          },
+          "preludeMs": 0
+        },
+        "bounded": {
+          "ms": 10.65,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 5,
+            "sessionNodesQueries": 1,
+            "participantsQueries": 1,
+            "membersQueries": 0,
+            "otherQueries": 3,
+            "nodeRows": 25
+          },
+          "preludeMs": 0
+        }
+      },
+      "resultSha256": "2c20cb0b491dc9d3742d1305357ae192df9267055282550d7887bada79ba1be2"
+    },
+    {
+      "rows": 25,
+      "temperature": "cold-metadata",
+      "repeat": 1,
+      "arms": {
+        "bounded": {
+          "ms": 8.5,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 5,
+            "sessionNodesQueries": 1,
+            "participantsQueries": 1,
+            "membersQueries": 0,
+            "otherQueries": 3,
+            "nodeRows": 25
+          },
+          "preludeMs": 0
+        },
+        "bulk-dev": {
+          "ms": 715.27,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 8,
+            "sessionNodesQueries": 1,
+            "participantsQueries": 1,
+            "membersQueries": 0,
+            "otherQueries": 6,
+            "nodeRows": 4254
+          },
+          "preludeMs": 0
+        },
+        "live": {
+          "ms": 28.41,
+          "counts": {
+            "pointReads": 25,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 125,
+            "sessionNodesQueries": 25,
+            "participantsQueries": 25,
+            "membersQueries": 0,
+            "otherQueries": 75,
+            "nodeRows": 25
+          },
+          "preludeMs": 0
+        }
+      },
+      "resultSha256": "2c20cb0b491dc9d3742d1305357ae192df9267055282550d7887bada79ba1be2"
+    },
+    {
+      "rows": 25,
+      "temperature": "list-prelude",
+      "repeat": 0,
+      "arms": {
+        "live": {
+          "ms": 24.83,
+          "counts": {
+            "pointReads": 25,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 125,
+            "sessionNodesQueries": 25,
+            "participantsQueries": 25,
+            "membersQueries": 0,
+            "otherQueries": 75,
+            "nodeRows": 25
+          },
+          "preludeMs": 867.7953249999991
+        },
+        "bulk-dev": {
+          "ms": 25.27,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 841.5484610000021
+        },
+        "bounded": {
+          "ms": 2.32,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 789.3853130000025
+        }
+      },
+      "resultSha256": "2c20cb0b491dc9d3742d1305357ae192df9267055282550d7887bada79ba1be2"
+    },
+    {
+      "rows": 25,
+      "temperature": "list-prelude",
+      "repeat": 1,
+      "arms": {
+        "bounded": {
+          "ms": 2.41,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 795.380965999997
+        },
+        "bulk-dev": {
+          "ms": 29.92,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 784.8418579999998
+        },
+        "live": {
+          "ms": 22.46,
+          "counts": {
+            "pointReads": 25,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 125,
+            "sessionNodesQueries": 25,
+            "participantsQueries": 25,
+            "membersQueries": 0,
+            "otherQueries": 75,
+            "nodeRows": 25
+          },
+          "preludeMs": 836.6410219999998
+        }
+      },
+      "resultSha256": "2c20cb0b491dc9d3742d1305357ae192df9267055282550d7887bada79ba1be2"
+    },
+    {
+      "rows": 25,
+      "temperature": "list-prelude-external-commit",
+      "repeat": 0,
+      "arms": {
+        "live": {
+          "ms": 17.87,
+          "counts": {
+            "pointReads": 25,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 125,
+            "sessionNodesQueries": 25,
+            "participantsQueries": 25,
+            "membersQueries": 0,
+            "otherQueries": 75,
+            "nodeRows": 25
+          },
+          "preludeMs": 814.4046419999977
+        },
+        "bulk-dev": {
+          "ms": 733.69,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 8,
+            "sessionNodesQueries": 1,
+            "participantsQueries": 1,
+            "membersQueries": 0,
+            "otherQueries": 6,
+            "nodeRows": 4254
+          },
+          "preludeMs": 908.2039910000021
+        },
+        "bounded": {
+          "ms": 15.76,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 8,
+            "sessionNodesQueries": 1,
+            "participantsQueries": 1,
+            "membersQueries": 0,
+            "otherQueries": 6,
+            "nodeRows": 25
+          },
+          "preludeMs": 795.7756169999993
+        }
+      },
+      "resultSha256": "2c20cb0b491dc9d3742d1305357ae192df9267055282550d7887bada79ba1be2"
+    },
+    {
+      "rows": 25,
+      "temperature": "list-prelude-external-commit",
+      "repeat": 1,
+      "arms": {
+        "bounded": {
+          "ms": 22.72,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 8,
+            "sessionNodesQueries": 1,
+            "participantsQueries": 1,
+            "membersQueries": 0,
+            "otherQueries": 6,
+            "nodeRows": 25
+          },
+          "preludeMs": 753.518458999999
+        },
+        "bulk-dev": {
+          "ms": 762.7,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 8,
+            "sessionNodesQueries": 1,
+            "participantsQueries": 1,
+            "membersQueries": 0,
+            "otherQueries": 6,
+            "nodeRows": 4254
+          },
+          "preludeMs": 760.9175280000018
+        },
+        "live": {
+          "ms": 22.49,
+          "counts": {
+            "pointReads": 25,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 125,
+            "sessionNodesQueries": 25,
+            "participantsQueries": 25,
+            "membersQueries": 0,
+            "otherQueries": 75,
+            "nodeRows": 25
+          },
+          "preludeMs": 780.2814419999995
+        }
+      },
+      "resultSha256": "2c20cb0b491dc9d3742d1305357ae192df9267055282550d7887bada79ba1be2"
+    },
+    {
+      "rows": 100,
+      "temperature": "warm-metadata",
+      "repeat": 0,
+      "arms": {
+        "live": {
+          "ms": 94.32,
+          "counts": {
+            "pointReads": 100,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 500,
+            "sessionNodesQueries": 100,
+            "participantsQueries": 100,
+            "membersQueries": 0,
+            "otherQueries": 300,
+            "nodeRows": 100
+          },
+          "preludeMs": 0
+        },
+        "bulk-dev": {
+          "ms": 21.25,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 0
+        },
+        "bounded": {
+          "ms": 11.48,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 0
+        }
+      },
+      "resultSha256": "3c3882b391adbd15c34bfeea0cfa6eb8b457084d7b9e6b7b99c2b5c3a6144a89"
+    },
+    {
+      "rows": 100,
+      "temperature": "warm-metadata",
+      "repeat": 1,
+      "arms": {
+        "bounded": {
+          "ms": 14.52,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 0
+        },
+        "bulk-dev": {
+          "ms": 25.26,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 0
+        },
+        "live": {
+          "ms": 75.92,
+          "counts": {
+            "pointReads": 100,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 500,
+            "sessionNodesQueries": 100,
+            "participantsQueries": 100,
+            "membersQueries": 0,
+            "otherQueries": 300,
+            "nodeRows": 100
+          },
+          "preludeMs": 0
+        }
+      },
+      "resultSha256": "3c3882b391adbd15c34bfeea0cfa6eb8b457084d7b9e6b7b99c2b5c3a6144a89"
+    },
+    {
+      "rows": 100,
+      "temperature": "cold-metadata",
+      "repeat": 0,
+      "arms": {
+        "live": {
+          "ms": 73.17,
+          "counts": {
+            "pointReads": 100,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 500,
+            "sessionNodesQueries": 100,
+            "participantsQueries": 100,
+            "membersQueries": 0,
+            "otherQueries": 300,
+            "nodeRows": 100
+          },
+          "preludeMs": 0
+        },
+        "bulk-dev": {
+          "ms": 725.03,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 8,
+            "sessionNodesQueries": 1,
+            "participantsQueries": 1,
+            "membersQueries": 0,
+            "otherQueries": 6,
+            "nodeRows": 4254
+          },
+          "preludeMs": 0
+        },
+        "bounded": {
+          "ms": 34.59,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 5,
+            "sessionNodesQueries": 1,
+            "participantsQueries": 1,
+            "membersQueries": 0,
+            "otherQueries": 3,
+            "nodeRows": 100
+          },
+          "preludeMs": 0
+        }
+      },
+      "resultSha256": "3c3882b391adbd15c34bfeea0cfa6eb8b457084d7b9e6b7b99c2b5c3a6144a89"
+    },
+    {
+      "rows": 100,
+      "temperature": "cold-metadata",
+      "repeat": 1,
+      "arms": {
+        "bounded": {
+          "ms": 39.1,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 5,
+            "sessionNodesQueries": 1,
+            "participantsQueries": 1,
+            "membersQueries": 0,
+            "otherQueries": 3,
+            "nodeRows": 100
+          },
+          "preludeMs": 0
+        },
+        "bulk-dev": {
+          "ms": 855.92,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 8,
+            "sessionNodesQueries": 1,
+            "participantsQueries": 1,
+            "membersQueries": 0,
+            "otherQueries": 6,
+            "nodeRows": 4254
+          },
+          "preludeMs": 0
+        },
+        "live": {
+          "ms": 94.66,
+          "counts": {
+            "pointReads": 100,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 500,
+            "sessionNodesQueries": 100,
+            "participantsQueries": 100,
+            "membersQueries": 0,
+            "otherQueries": 300,
+            "nodeRows": 100
+          },
+          "preludeMs": 0
+        }
+      },
+      "resultSha256": "3c3882b391adbd15c34bfeea0cfa6eb8b457084d7b9e6b7b99c2b5c3a6144a89"
+    },
+    {
+      "rows": 100,
+      "temperature": "list-prelude",
+      "repeat": 0,
+      "arms": {
+        "live": {
+          "ms": 95.76,
+          "counts": {
+            "pointReads": 100,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 500,
+            "sessionNodesQueries": 100,
+            "participantsQueries": 100,
+            "membersQueries": 0,
+            "otherQueries": 300,
+            "nodeRows": 100
+          },
+          "preludeMs": 803.9583189999976
+        },
+        "bulk-dev": {
+          "ms": 48.44,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 815.9590309999985
+        },
+        "bounded": {
+          "ms": 13.8,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 843.9370070000004
+        }
+      },
+      "resultSha256": "3c3882b391adbd15c34bfeea0cfa6eb8b457084d7b9e6b7b99c2b5c3a6144a89"
+    },
+    {
+      "rows": 100,
+      "temperature": "list-prelude",
+      "repeat": 1,
+      "arms": {
+        "bounded": {
+          "ms": 11.01,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 778.921918
+        },
+        "bulk-dev": {
+          "ms": 21.01,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 805.7985849999968
+        },
+        "live": {
+          "ms": 116.23,
+          "counts": {
+            "pointReads": 100,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 500,
+            "sessionNodesQueries": 100,
+            "participantsQueries": 100,
+            "membersQueries": 0,
+            "otherQueries": 300,
+            "nodeRows": 100
+          },
+          "preludeMs": 984.4532739999995
+        }
+      },
+      "resultSha256": "3c3882b391adbd15c34bfeea0cfa6eb8b457084d7b9e6b7b99c2b5c3a6144a89"
+    },
+    {
+      "rows": 100,
+      "temperature": "list-prelude-external-commit",
+      "repeat": 0,
+      "arms": {
+        "live": {
+          "ms": 120.23,
+          "counts": {
+            "pointReads": 100,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 500,
+            "sessionNodesQueries": 100,
+            "participantsQueries": 100,
+            "membersQueries": 0,
+            "otherQueries": 300,
+            "nodeRows": 100
+          },
+          "preludeMs": 973.5290840000016
+        },
+        "bulk-dev": {
+          "ms": 757,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 8,
+            "sessionNodesQueries": 1,
+            "participantsQueries": 1,
+            "membersQueries": 0,
+            "otherQueries": 6,
+            "nodeRows": 4254
+          },
+          "preludeMs": 874.921491000001
+        },
+        "bounded": {
+          "ms": 54.79,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 8,
+            "sessionNodesQueries": 1,
+            "participantsQueries": 1,
+            "membersQueries": 0,
+            "otherQueries": 6,
+            "nodeRows": 100
+          },
+          "preludeMs": 839.975946999999
+        }
+      },
+      "resultSha256": "3c3882b391adbd15c34bfeea0cfa6eb8b457084d7b9e6b7b99c2b5c3a6144a89"
+    },
+    {
+      "rows": 100,
+      "temperature": "list-prelude-external-commit",
+      "repeat": 1,
+      "arms": {
+        "bounded": {
+          "ms": 34.67,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 8,
+            "sessionNodesQueries": 1,
+            "participantsQueries": 1,
+            "membersQueries": 0,
+            "otherQueries": 6,
+            "nodeRows": 100
+          },
+          "preludeMs": 919.8464209999947
+        },
+        "bulk-dev": {
+          "ms": 771.58,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 8,
+            "sessionNodesQueries": 1,
+            "participantsQueries": 1,
+            "membersQueries": 0,
+            "otherQueries": 6,
+            "nodeRows": 4254
+          },
+          "preludeMs": 791.1231469999984
+        },
+        "live": {
+          "ms": 67.16,
+          "counts": {
+            "pointReads": 100,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 500,
+            "sessionNodesQueries": 100,
+            "participantsQueries": 100,
+            "membersQueries": 0,
+            "otherQueries": 300,
+            "nodeRows": 100
+          },
+          "preludeMs": 1045.273242000003
+        }
+      },
+      "resultSha256": "3c3882b391adbd15c34bfeea0cfa6eb8b457084d7b9e6b7b99c2b5c3a6144a89"
+    },
+    {
+      "rows": 500,
+      "temperature": "warm-metadata",
+      "repeat": 0,
+      "arms": {
+        "live": {
+          "ms": 512.13,
+          "counts": {
+            "pointReads": 500,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 2500,
+            "sessionNodesQueries": 500,
+            "participantsQueries": 500,
+            "membersQueries": 0,
+            "otherQueries": 1500,
+            "nodeRows": 500
+          },
+          "preludeMs": 0
+        },
+        "bulk-dev": {
+          "ms": 49.72,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 0
+        },
+        "bounded": {
+          "ms": 47.37,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 0
+        }
+      },
+      "resultSha256": "dde9b9a218fc6162c54975c8bf07cd5859c221e68464fbe64b1a47e35dd1ea41"
+    },
+    {
+      "rows": 500,
+      "temperature": "warm-metadata",
+      "repeat": 1,
+      "arms": {
+        "bounded": {
+          "ms": 50.76,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 0
+        },
+        "bulk-dev": {
+          "ms": 34.52,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 0
+        },
+        "live": {
+          "ms": 352.96,
+          "counts": {
+            "pointReads": 500,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 2500,
+            "sessionNodesQueries": 500,
+            "participantsQueries": 500,
+            "membersQueries": 0,
+            "otherQueries": 1500,
+            "nodeRows": 500
+          },
+          "preludeMs": 0
+        }
+      },
+      "resultSha256": "dde9b9a218fc6162c54975c8bf07cd5859c221e68464fbe64b1a47e35dd1ea41"
+    },
+    {
+      "rows": 500,
+      "temperature": "cold-metadata",
+      "repeat": 0,
+      "arms": {
+        "live": {
+          "ms": 350.83,
+          "counts": {
+            "pointReads": 500,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 2500,
+            "sessionNodesQueries": 500,
+            "participantsQueries": 500,
+            "membersQueries": 0,
+            "otherQueries": 1500,
+            "nodeRows": 500
+          },
+          "preludeMs": 0
+        },
+        "bulk-dev": {
+          "ms": 796.88,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 8,
+            "sessionNodesQueries": 1,
+            "participantsQueries": 1,
+            "membersQueries": 0,
+            "otherQueries": 6,
+            "nodeRows": 4254
+          },
+          "preludeMs": 0
+        },
+        "bounded": {
+          "ms": 158.64,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 9,
+            "sessionNodesQueries": 2,
+            "participantsQueries": 2,
+            "membersQueries": 0,
+            "otherQueries": 5,
+            "nodeRows": 500
+          },
+          "preludeMs": 0
+        }
+      },
+      "resultSha256": "dde9b9a218fc6162c54975c8bf07cd5859c221e68464fbe64b1a47e35dd1ea41"
+    },
+    {
+      "rows": 500,
+      "temperature": "cold-metadata",
+      "repeat": 1,
+      "arms": {
+        "bounded": {
+          "ms": 174.68,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 9,
+            "sessionNodesQueries": 2,
+            "participantsQueries": 2,
+            "membersQueries": 0,
+            "otherQueries": 5,
+            "nodeRows": 500
+          },
+          "preludeMs": 0
+        },
+        "bulk-dev": {
+          "ms": 924.49,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 8,
+            "sessionNodesQueries": 1,
+            "participantsQueries": 1,
+            "membersQueries": 0,
+            "otherQueries": 6,
+            "nodeRows": 4254
+          },
+          "preludeMs": 0
+        },
+        "live": {
+          "ms": 493.11,
+          "counts": {
+            "pointReads": 500,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 2500,
+            "sessionNodesQueries": 500,
+            "participantsQueries": 500,
+            "membersQueries": 0,
+            "otherQueries": 1500,
+            "nodeRows": 500
+          },
+          "preludeMs": 0
+        }
+      },
+      "resultSha256": "dde9b9a218fc6162c54975c8bf07cd5859c221e68464fbe64b1a47e35dd1ea41"
+    },
+    {
+      "rows": 500,
+      "temperature": "list-prelude",
+      "repeat": 0,
+      "arms": {
+        "live": {
+          "ms": 335.34,
+          "counts": {
+            "pointReads": 500,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 2500,
+            "sessionNodesQueries": 500,
+            "participantsQueries": 500,
+            "membersQueries": 0,
+            "otherQueries": 1500,
+            "nodeRows": 500
+          },
+          "preludeMs": 871.5593349999981
+        },
+        "bulk-dev": {
+          "ms": 28.02,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 862.083716000001
+        },
+        "bounded": {
+          "ms": 123.4,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 1127.571729000003
+        }
+      },
+      "resultSha256": "dde9b9a218fc6162c54975c8bf07cd5859c221e68464fbe64b1a47e35dd1ea41"
+    },
+    {
+      "rows": 500,
+      "temperature": "list-prelude",
+      "repeat": 1,
+      "arms": {
+        "bounded": {
+          "ms": 55.59,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 955.6187090000021
+        },
+        "bulk-dev": {
+          "ms": 41.83,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 868.4630289999986
+        },
+        "live": {
+          "ms": 371.83,
+          "counts": {
+            "pointReads": 500,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 2500,
+            "sessionNodesQueries": 500,
+            "participantsQueries": 500,
+            "membersQueries": 0,
+            "otherQueries": 1500,
+            "nodeRows": 500
+          },
+          "preludeMs": 744.823725000002
+        }
+      },
+      "resultSha256": "dde9b9a218fc6162c54975c8bf07cd5859c221e68464fbe64b1a47e35dd1ea41"
+    },
+    {
+      "rows": 500,
+      "temperature": "list-prelude-external-commit",
+      "repeat": 0,
+      "arms": {
+        "live": {
+          "ms": 419.31,
+          "counts": {
+            "pointReads": 500,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 2500,
+            "sessionNodesQueries": 500,
+            "participantsQueries": 500,
+            "membersQueries": 0,
+            "otherQueries": 1500,
+            "nodeRows": 500
+          },
+          "preludeMs": 1047.7537420000008
+        },
+        "bulk-dev": {
+          "ms": 851.04,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 8,
+            "sessionNodesQueries": 1,
+            "participantsQueries": 1,
+            "membersQueries": 0,
+            "otherQueries": 6,
+            "nodeRows": 4254
+          },
+          "preludeMs": 850.3276720000067
+        },
+        "bounded": {
+          "ms": 184.47,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 12,
+            "sessionNodesQueries": 2,
+            "participantsQueries": 2,
+            "membersQueries": 0,
+            "otherQueries": 8,
+            "nodeRows": 500
+          },
+          "preludeMs": 762.3230770000009
+        }
+      },
+      "resultSha256": "dde9b9a218fc6162c54975c8bf07cd5859c221e68464fbe64b1a47e35dd1ea41"
+    },
+    {
+      "rows": 500,
+      "temperature": "list-prelude-external-commit",
+      "repeat": 1,
+      "arms": {
+        "bounded": {
+          "ms": 197.61,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 12,
+            "sessionNodesQueries": 2,
+            "participantsQueries": 2,
+            "membersQueries": 0,
+            "otherQueries": 8,
+            "nodeRows": 500
+          },
+          "preludeMs": 761.5399969999999
+        },
+        "bulk-dev": {
+          "ms": 809.01,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 8,
+            "sessionNodesQueries": 1,
+            "participantsQueries": 1,
+            "membersQueries": 0,
+            "otherQueries": 6,
+            "nodeRows": 4254
+          },
+          "preludeMs": 976.6879970000009
+        },
+        "live": {
+          "ms": 349.69,
+          "counts": {
+            "pointReads": 500,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 2500,
+            "sessionNodesQueries": 500,
+            "participantsQueries": 500,
+            "membersQueries": 0,
+            "otherQueries": 1500,
+            "nodeRows": 500
+          },
+          "preludeMs": 864.1052530000015
+        }
+      },
+      "resultSha256": "dde9b9a218fc6162c54975c8bf07cd5859c221e68464fbe64b1a47e35dd1ea41"
+    },
+    {
+      "rows": 2000,
+      "temperature": "warm-metadata",
+      "repeat": 0,
+      "arms": {
+        "live": {
+          "ms": 1278.7,
+          "counts": {
+            "pointReads": 2000,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 10000,
+            "sessionNodesQueries": 2000,
+            "participantsQueries": 2000,
+            "membersQueries": 0,
+            "otherQueries": 6000,
+            "nodeRows": 2000
+          },
+          "preludeMs": 0
+        },
+        "bulk-dev": {
+          "ms": 69.67,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 0
+        },
+        "bounded": {
+          "ms": 194.81,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 0
+        }
+      },
+      "resultSha256": "3fc0c698c97c890bf269c7cc36c7591bed6c01a88b41167389e71da13a41145e"
+    },
+    {
+      "rows": 2000,
+      "temperature": "warm-metadata",
+      "repeat": 1,
+      "arms": {
+        "bounded": {
+          "ms": 151.62,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 0
+        },
+        "bulk-dev": {
+          "ms": 57.89,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 0
+        },
+        "live": {
+          "ms": 1284.56,
+          "counts": {
+            "pointReads": 2000,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 10000,
+            "sessionNodesQueries": 2000,
+            "participantsQueries": 2000,
+            "membersQueries": 0,
+            "otherQueries": 6000,
+            "nodeRows": 2000
+          },
+          "preludeMs": 0
+        }
+      },
+      "resultSha256": "3fc0c698c97c890bf269c7cc36c7591bed6c01a88b41167389e71da13a41145e"
+    },
+    {
+      "rows": 2000,
+      "temperature": "cold-metadata",
+      "repeat": 0,
+      "arms": {
+        "live": {
+          "ms": 1101.9,
+          "counts": {
+            "pointReads": 2000,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 10000,
+            "sessionNodesQueries": 2000,
+            "participantsQueries": 2000,
+            "membersQueries": 0,
+            "otherQueries": 6000,
+            "nodeRows": 2000
+          },
+          "preludeMs": 0
+        },
+        "bulk-dev": {
+          "ms": 944.76,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 8,
+            "sessionNodesQueries": 1,
+            "participantsQueries": 1,
+            "membersQueries": 0,
+            "otherQueries": 6,
+            "nodeRows": 4254
+          },
+          "preludeMs": 0
+        },
+        "bounded": {
+          "ms": 498.96,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 21,
+            "sessionNodesQueries": 5,
+            "participantsQueries": 5,
+            "membersQueries": 0,
+            "otherQueries": 11,
+            "nodeRows": 2000
+          },
+          "preludeMs": 0
+        }
+      },
+      "resultSha256": "3fc0c698c97c890bf269c7cc36c7591bed6c01a88b41167389e71da13a41145e"
+    },
+    {
+      "rows": 2000,
+      "temperature": "cold-metadata",
+      "repeat": 1,
+      "arms": {
+        "bounded": {
+          "ms": 548.78,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 21,
+            "sessionNodesQueries": 5,
+            "participantsQueries": 5,
+            "membersQueries": 0,
+            "otherQueries": 11,
+            "nodeRows": 2000
+          },
+          "preludeMs": 0
+        },
+        "bulk-dev": {
+          "ms": 868.99,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 8,
+            "sessionNodesQueries": 1,
+            "participantsQueries": 1,
+            "membersQueries": 0,
+            "otherQueries": 6,
+            "nodeRows": 4254
+          },
+          "preludeMs": 0
+        },
+        "live": {
+          "ms": 1412.12,
+          "counts": {
+            "pointReads": 2000,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 10000,
+            "sessionNodesQueries": 2000,
+            "participantsQueries": 2000,
+            "membersQueries": 0,
+            "otherQueries": 6000,
+            "nodeRows": 2000
+          },
+          "preludeMs": 0
+        }
+      },
+      "resultSha256": "3fc0c698c97c890bf269c7cc36c7591bed6c01a88b41167389e71da13a41145e"
+    },
+    {
+      "rows": 2000,
+      "temperature": "list-prelude",
+      "repeat": 0,
+      "arms": {
+        "live": {
+          "ms": 1096.47,
+          "counts": {
+            "pointReads": 2000,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 10000,
+            "sessionNodesQueries": 2000,
+            "participantsQueries": 2000,
+            "membersQueries": 0,
+            "otherQueries": 6000,
+            "nodeRows": 2000
+          },
+          "preludeMs": 801.3767490000027
+        },
+        "bulk-dev": {
+          "ms": 52.27,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 785.3993150000024
+        },
+        "bounded": {
+          "ms": 180.43,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 755.1746969999949
+        }
+      },
+      "resultSha256": "3fc0c698c97c890bf269c7cc36c7591bed6c01a88b41167389e71da13a41145e"
+    },
+    {
+      "rows": 2000,
+      "temperature": "list-prelude",
+      "repeat": 1,
+      "arms": {
+        "bounded": {
+          "ms": 200.79,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 777.6330980000057
+        },
+        "bulk-dev": {
+          "ms": 66.66,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 4,
+            "sessionNodesQueries": 0,
+            "participantsQueries": 0,
+            "membersQueries": 0,
+            "otherQueries": 4,
+            "nodeRows": 0
+          },
+          "preludeMs": 746.9507679999952
+        },
+        "live": {
+          "ms": 1174.23,
+          "counts": {
+            "pointReads": 2000,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 10000,
+            "sessionNodesQueries": 2000,
+            "participantsQueries": 2000,
+            "membersQueries": 0,
+            "otherQueries": 6000,
+            "nodeRows": 2000
+          },
+          "preludeMs": 765.0496240000066
+        }
+      },
+      "resultSha256": "3fc0c698c97c890bf269c7cc36c7591bed6c01a88b41167389e71da13a41145e"
+    },
+    {
+      "rows": 2000,
+      "temperature": "list-prelude-external-commit",
+      "repeat": 0,
+      "arms": {
+        "live": {
+          "ms": 1318.7,
+          "counts": {
+            "pointReads": 2000,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 10000,
+            "sessionNodesQueries": 2000,
+            "participantsQueries": 2000,
+            "membersQueries": 0,
+            "otherQueries": 6000,
+            "nodeRows": 2000
+          },
+          "preludeMs": 794.2824669999973
+        },
+        "bulk-dev": {
+          "ms": 863.46,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 8,
+            "sessionNodesQueries": 1,
+            "participantsQueries": 1,
+            "membersQueries": 0,
+            "otherQueries": 6,
+            "nodeRows": 4254
+          },
+          "preludeMs": 875.7904609999969
+        },
+        "bounded": {
+          "ms": 598.56,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 24,
+            "sessionNodesQueries": 5,
+            "participantsQueries": 5,
+            "membersQueries": 0,
+            "otherQueries": 14,
+            "nodeRows": 2000
+          },
+          "preludeMs": 812.2996889999922
+        }
+      },
+      "resultSha256": "3fc0c698c97c890bf269c7cc36c7591bed6c01a88b41167389e71da13a41145e"
+    },
+    {
+      "rows": 2000,
+      "temperature": "list-prelude-external-commit",
+      "repeat": 1,
+      "arms": {
+        "bounded": {
+          "ms": 621.8,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 0,
+            "boundedReads": 1,
+            "sqlReads": 24,
+            "sessionNodesQueries": 5,
+            "participantsQueries": 5,
+            "membersQueries": 0,
+            "otherQueries": 14,
+            "nodeRows": 2000
+          },
+          "preludeMs": 803.9620449999929
+        },
+        "bulk-dev": {
+          "ms": 961.84,
+          "counts": {
+            "pointReads": 0,
+            "bulkReads": 1,
+            "boundedReads": 0,
+            "sqlReads": 8,
+            "sessionNodesQueries": 1,
+            "participantsQueries": 1,
+            "membersQueries": 0,
+            "otherQueries": 6,
+            "nodeRows": 4254
+          },
+          "preludeMs": 746.4837699999916
+        },
+        "live": {
+          "ms": 1370.06,
+          "counts": {
+            "pointReads": 2000,
+            "bulkReads": 0,
+            "boundedReads": 0,
+            "sqlReads": 10000,
+            "sessionNodesQueries": 2000,
+            "participantsQueries": 2000,
+            "membersQueries": 0,
+            "otherQueries": 6000,
+            "nodeRows": 2000
+          },
+          "preludeMs": 893.3054769999871
+        }
+      },
+      "resultSha256": "3fc0c698c97c890bf269c7cc36c7591bed6c01a88b41167389e71da13a41145e"
+    }
+  ],
+  "continuousWrites": [
+    {
+      "rows": 25,
+      "arm": "live",
+      "sharingMs": [
+        62.18184900000051,
+        32.28456600000209,
+        24.023196000009193,
+        38.37088099999528,
+        23.571607000005315,
+        27.766923000002862
+      ],
+      "elapsedMs": 5787.928272000005,
+      "commits": 639,
+      "commitsPerSecond": 110.40219746524176,
+      "realDataVersionChanged": true
+    },
+    {
+      "rows": 25,
+      "arm": "bulk-dev",
+      "sharingMs": [
+        755.2840330000035,
+        957.7169129999966,
+        822.1781820000033,
+        669.5095600000059,
+        724.730595999994,
+        691.7414350000035
+      ],
+      "elapsedMs": 9842.05008,
+      "commits": 1120,
+      "commitsPerSecond": 113.79742948838967,
+      "realDataVersionChanged": true
+    },
+    {
+      "rows": 25,
+      "arm": "bounded",
+      "sharingMs": [
+        7.839154999994207,
+        5.340240999998059,
+        6.429430999996839,
+        5.910464000000502,
+        5.854608999987249,
+        12.127185999997891
+      ],
+      "elapsedMs": 4505.520338000002,
+      "commits": 486,
+      "commitsPerSecond": 107.86767421756554,
+      "realDataVersionChanged": true
+    },
+    {
+      "rows": 500,
+      "arm": "live",
+      "sharingMs": [
+        511.77129499999864,
+        634.0618590000086,
+        342.6105510000052,
+        426.485428999993,
+        381.367299000005,
+        394.0760789999913
+      ],
+      "elapsedMs": 8377.097079999992,
+      "commits": 909,
+      "commitsPerSecond": 108.51014275221947,
+      "realDataVersionChanged": true
+    },
+    {
+      "rows": 500,
+      "arm": "bulk-dev",
+      "sharingMs": [
+        883.6085560000065,
+        868.1766190000053,
+        766.8918510000076,
+        754.1088600000076,
+        798.531673999998,
+        874.5057090000191
+      ],
+      "elapsedMs": 10928.453328000003,
+      "commits": 1256,
+      "commitsPerSecond": 114.92934656928789,
+      "realDataVersionChanged": true
+    },
+    {
+      "rows": 500,
+      "arm": "bounded",
+      "sharingMs": [
+        183.1874700000044,
+        167.47750999999698,
+        175.9275599999819,
+        168.75524500000756,
+        147.69576800000505,
+        183.9053310000163
+      ],
+      "elapsedMs": 6308.792996000004,
+      "commits": 724,
+      "commitsPerSecond": 114.76046217700302,
+      "realDataVersionChanged": true
+    },
+    {
+      "rows": 2000,
+      "arm": "live",
+      "sharingMs": [
+        1126.1415260000213,
+        1249.4332819999836,
+        1084.1173629999976,
+        1058.0776630000037,
+        1566.1089959999954,
+        1217.9935569999798
+      ],
+      "elapsedMs": 13351.93682100001,
+      "commits": 1558,
+      "commitsPerSecond": 116.68719084631735,
+      "realDataVersionChanged": true
+    },
+    {
+      "rows": 2000,
+      "arm": "bulk-dev",
+      "sharingMs": [
+        770.5201150000212,
+        807.9412660000089,
+        716.0221200000087,
+        766.8748410000117,
+        1128.2885550000065,
+        824.6804279999924
+      ],
+      "elapsedMs": 11336.051242999994,
+      "commits": 1277,
+      "commitsPerSecond": 112.64945549611438,
+      "realDataVersionChanged": true
+    },
+    {
+      "rows": 2000,
+      "arm": "bounded",
+      "sharingMs": [
+        457.6911329999857,
+        462.01768799999263,
+        482.1450419999892,
+        486.46445400000084,
+        535.2429870000051,
+        507.9099850000057
+      ],
+      "elapsedMs": 8763.23664399999,
+      "commits": 1003,
+      "commitsPerSecond": 114.45542791392423,
+      "realDataVersionChanged": true
+    }
+  ],
+  "correctness": {
+    "permissionComparisons": 1522,
+    "allNativeTargetsAndPermissionResultsEqual": true,
+    "revocationAfterAwaitObserved": true,
+    "aliasOwnerObserved": true,
+    "membershipRevocationAfterAwaitObserved": true,
+    "rolloverInvalidatesBothProofs": true,
+    "missingPreserved": true,
+    "failedBatchPreservesValidSibling": true
+  },
+  "sharedUnchanged": true,
+  "modelCalls": 0,
+  "sharedWrites": 0,
+  "scope": "native sharing stage and controlled independent SQLite node writer, not complete RPC or twelve business agents",
+  "limits": [
+    "Two samples per static regime; six sharing samples per continuous-write arm; not long-term percentiles.",
+    "Bounded 2000-row warm sharing is slower than the unpromoted bulk-cache alternative; it remains faster than the current live exact-read baseline.",
+    "Continuous-write rates were about108–117 commits/s; not a business-throughput non-regression test.",
+    "Original dataset is supplemented by native profile/alias/member fixtures; not a real multi-tenant production acceptance."
+  ]
+}
