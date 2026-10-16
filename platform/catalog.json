@@ -559,6 +559,10 @@
     {
       "file": "lab/candidate/subagent-settle-backlog.sqlite.test.mjs",
       "reason": "需要 VLAB_CANDIDATE_RUNTIME 的原生 Kysely 编译/执行适配器及 Node SQLite 私有测试库；由对应 candidate plan 执行。candidate-33e5f3d1-cd58-4c69-a01e-57447fc8b8dc 已通过，离线 CI 不含运行时依赖。"
+    },
+    {
+      "file": "lab/candidate/transcript-index-rowid-window.sqlite.test.mjs",
+      "reason": "需要真实 VLab native runtime 与完整 FTS/active/state 定向一致性副本，通过 lab/transcript-index-rowid-window-candidate.json 执行；离线 CI 不以缺少真实数据的跳过替代实际 A/B。"
     }
   ],
   "capabilities": [
