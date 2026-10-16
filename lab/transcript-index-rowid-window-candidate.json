@@ -1,0 +1,23 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/transcript-index-rowid-window/session-transcript-index-9itOio9h.js",
+      "target": "openclaw/dist/session-transcript-index-9itOio9h.js",
+      "before": "5504f5decee060251f991e658a809a53e2548e4727cfb2838499a5a7c2ce84b1"
+    },
+    {
+      "source": "lab/release-files/transcript-index-rowid-window/session-transcript-reconcile-j5qhAafV.js",
+      "target": "openclaw/dist/session-transcript-reconcile-j5qhAafV.js",
+      "before": "b63bdf05e20f48fdb9b00c9759efc70fd4333c412adfca91a768d47443f057ae"
+    }
+  ],
+  "tests": [
+    "lab/candidate/transcript-index-rowid-window.sqlite.test.mjs"
+  ],
+  "support": [
+    "lab/candidate/transcript-index-rowid-snapshot.py",
+    "lab/release-files/transcript-index-prepare/session-transcript-index-9itOio9h.js"
+  ],
+  "databases": [],
+  "timeoutSeconds": 180
+}
