@@ -153,26 +153,38 @@ if (!fs.existsSync(path.join(stateDir, "npm"))) {
 }
 
 // ---- Codex plugin = V's bytes. Shared VLab can be V plus one release on its way (2026-10-17 03:58
-// #409 changed transport-stdio in the runtime's npm copy); the managed copy in state/npm is V's.
-// Every runtime copy of the plugin is brought back to the state/npm bytes, and the result recorded.
-const V_CODEX_TRANSPORT_SHA = process.env.V_CODEX_TRANSPORT_SHA ?? "513e62ddeba5545431e34fc8a189ae53ee3425752c859cc1454d3eb1ce554d2d";
+// #409 changed transport-stdio); every copy the Gateway can load (state/npm and the runtime's npm,
+// those with a package.json) is brought to V's whole-dist bytes, and the result recorded.
+// V's whole Codex dist, as `find dist -type f | sort | xargs sha256sum | sha256sum` on V (2026-10-17)
+const V_CODEX_DIST_SHA = process.env.V_CODEX_DIST_SHA ?? "7fade013e1e061e57f73d4cbcd31975a6bf58f1199846acc43c6009b891c36d1";
 {
   const sha = (f) => createHash("sha256").update(fs.readFileSync(f)).digest("hex");
-  const codexDists = (base) => (fs.existsSync(path.join(base, "npm", "projects")) ? fs.readdirSync(path.join(base, "npm", "projects")).filter((d) => d.startsWith("openclaw-codex-")).map((d) => path.join(base, "npm", "projects", d, "node_modules", "@openclaw", "codex", "dist")).filter((d) => fs.existsSync(d)) : []);
-  const [vDist] = codexDists(stateDir);
-  assert(vDist, "no Codex plugin in state/npm");
-  const vTransport = fs.readdirSync(vDist).find((f) => /^transport-stdio-.*\.js$/u.test(f));
-  assert.equal(sha(path.join(vDist, vTransport)), V_CODEX_TRANSPORT_SHA, "state/npm Codex transport is not V's bytes");
+  const distSha = (dir) => {
+    const files = [];
+    const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const f = path.join(d, e.name); if (e.isDirectory()) walk(f); else if (e.isFile()) files.push(f); } };
+    walk(dir);
+    const lines = files.map((f) => `dist/${path.relative(dir, f)}`).sort().map((rel) => `${sha(path.join(dir, rel.slice(5)))}  ${rel}\n`);
+    return createHash("sha256").update(lines.join("")).digest("hex");
+  };
+  const codexDists = (base) => (fs.existsSync(path.join(base, "npm", "projects")) ? fs.readdirSync(path.join(base, "npm", "projects")).filter((d) => d.startsWith("openclaw-codex-")).map((d) => path.join(base, "npm", "projects", d, "node_modules", "@openclaw", "codex", "dist")).filter((d) => fs.existsSync(path.join(d, "..", "package.json"))) : []);
+  // a source with V's bytes: this run's state/npm copy, else a cached runtime baseline
+  const baselines = "/srv/vlab-production-mirror/labs/candidate-tests/baselines";
+  const sources = [...codexDists(stateDir), ...(fs.existsSync(baselines) ? fs.readdirSync(baselines).flatMap((b) => codexDists(path.join(baselines, b, "runtime"))) : [])];
+  const vDist = sources.find((d) => distSha(d) === V_CODEX_DIST_SHA);
+  assert(vDist, "no copy of V's Codex plugin bytes found");
   const replaced = [];
-  for (const dir of codexDists(runtime)) {
+  for (const dir of [...codexDists(stateDir), ...codexDists(runtime)]) {
+    if (dir === vDist) continue;
     for (const f of fs.readdirSync(vDist)) {
       const from = path.join(vDist, f);
       const to = path.join(dir, f);
       if (!fs.statSync(from).isFile()) continue;
-      if (!fs.existsSync(to) || sha(to) !== sha(from)) { fs.copyFileSync(from, to); replaced.push(path.relative(runtime, to)); }
+      if (!fs.existsSync(to) || sha(to) !== sha(from)) { fs.copyFileSync(from, to); replaced.push(path.relative(path.dirname(path.dirname(path.dirname(path.dirname(dir)))), to)); }
     }
   }
-  emit({ phase: "codex-plugin", vTransport: V_CODEX_TRANSPORT_SHA.slice(0, 8), runtimeCopies: codexDists(runtime).length, replacedWithV: replaced });
+  const after = [...codexDists(stateDir), ...codexDists(runtime)].map((d) => distSha(d) === V_CODEX_DIST_SHA);
+  emit({ phase: "codex-plugin", source: vDist.startsWith(stateDir) ? "state/npm" : vDist.replace(baselines, "baselines").slice(0, 60), allV: after.every(Boolean), copies: after.length, replacedWithV: replaced });
+  assert(after.every(Boolean), "a Codex plugin copy still differs from V's bytes");
 }
 
 // ---- probes in the private runtime copy (optional: absent markers are reported, not fatal) ----
