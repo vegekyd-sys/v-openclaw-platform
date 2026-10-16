@@ -1,0 +1,10 @@
+{
+  "baseRelease": "restart-speed-20261013",
+  "files": [
+    {
+      "source": "lab/release-files/codex-toolset-cover/dist/thread-lifecycle-DAcEJ_Om.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/thread-lifecycle-DAcEJ_Om.js",
+      "before": "a9f76cf42e8574cc95b38964f3c95941f53e23b56254e057c049c8cf5bfe7e2d"
+    }
+  ]
+}

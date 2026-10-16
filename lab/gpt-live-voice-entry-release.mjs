@@ -6,8 +6,24 @@ import path from "node:path";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { digest, freezeSource, validateSharedProof, fileIdentity, H5_PATHS } from "./gpt-live-h5-release.mjs";
+import { digest, freezeSource, validateSharedProof, fileIdentity, H5_PATHS, validateIdentity } from "./gpt-live-h5-release.mjs";
 import {prepareVoiceLarkProfile} from './voice-lark-profile.mjs';
+
+
+export function validateVoiceArtifact(manifest,files) {
+  assert.equal(manifest?.schema,'v-voice-release-v1');assert(/^[a-f0-9]{40}$/.test(manifest.commit));
+  assert.equal(manifest.filesSha256,digest(JSON.stringify(manifest.files)));assert.equal(files.length,manifest.files.length);const names=new Set();
+  for(let i=0;i<files.length;i++){const f=files[i],m=manifest.files[i];assert.equal(f.name,m.path);assert(/^(lab|lib|plugins)\/[A-Za-z0-9_@./-]+$|^package(?:-lock)?\.json$/.test(f.name));assert(!f.name.split('/').includes('..')&&!names.has(f.name));names.add(f.name);assert.equal(f.sha,m.sha256);assert(/^[a-f0-9]{64}$/.test(f.sha));if('content'in f){const bytes=Buffer.from(f.content,'base64');assert.equal(bytes.length,m.bytes);assert.equal(digest(bytes),f.sha);}}
+  for(const name of ['package.json','package-lock.json','lab/gpt-live-h5/server.mjs','lib/gateway-client.mjs','plugins/v-voice-gpt-live/index.mjs','plugins/v-voice-gpt-live/tasks.mjs'])assert(names.has(name),'Incomplete standalone Voice artifact');
+}
+export function validateVoiceArtifactProof(proof,request) {
+  validateVoiceArtifact(request.voiceManifest,request.files);assert.equal(request.commit,request.voiceManifest.commit);assert.equal(request.filesSha,digest(JSON.stringify(request.files.map(({name,sha})=>({name,sha})))));
+  assert.equal(proof.schema,'v-voice-artifact-accepted-v1');for(const key of ['release','owner'])assert.equal(proof[key],request[key]);assert.equal(proof.sourceCommit,request.commit);assert.equal(proof.filesSha256,request.voiceManifest.filesSha256);assert.equal(proof.manifestSha,digest(JSON.stringify(request.voiceManifest)));assert.equal(proof.accepted,true);
+  for(const key of ['artifactSha','acceptanceSha'])assert(/^[a-f0-9]{64}$/.test(proof[key]));assert(proof.runtimeFiles.length>0);for(const f of proof.runtimeFiles){assert(/^openclaw\/dist\/[A-Za-z0-9_.-]+$/.test(f.target));assert(/^[a-f0-9]{64}$/.test(f.after));}
+}
+export function freezeVoiceArtifact(directory,options) {
+  validateIdentity(options);const manifest=JSON.parse(fs.readFileSync(path.join(directory,'manifest.json')));assert.equal(manifest.commit,options.commit);validateVoiceArtifact(manifest,manifest.files.map(f=>({name:f.path,sha:f.sha256})));const files=manifest.files.map(f=>{const file=path.join(directory,f.path);assert(!fs.lstatSync(file).isSymbolicLink());const bytes=fs.readFileSync(file);return {name:f.path,sha:digest(bytes),content:bytes.toString('base64')};});validateVoiceArtifact(manifest,files);return {...options,voiceManifest:manifest,files,filesSha:digest(JSON.stringify(files.map(({name,sha})=>({name,sha}))))};
+}
 
 export function validateReviewedPresentation(proof, request) {
   assert.equal(request.h5Only, true, 'A review waiver only applies to H5 presentation');
@@ -50,7 +66,7 @@ async function remoteMain(req) {
   const { execFileSync } = await import("node:child_process"), { request } = await import("node:http");
   const run = (bin, args) => execFileSync(bin, args, { encoding: "utf8", timeout: 30000, stdio: ["pipe", "pipe", "pipe"] }).trim();
   const proof = req.productionReview ?? req.sharedProof;
-  if (req.productionReview) validateReviewedPresentation(proof, req);
+  if(req.voiceManifest)validateVoiceArtifactProof(proof,req);else if (req.productionReview) validateReviewedPresentation(proof, req);
   const hash = file => digest(fs.readFileSync(file));
   const properties = unit => Object.fromEntries(run("systemctl", ["show", unit, "-p", "MainPID,InvocationID,ActiveState,FragmentPath"])
     .split("\n").map(line => { const i = line.indexOf("="); return [line.slice(0, i), line.slice(i + 1)]; }));
@@ -80,11 +96,21 @@ async function remoteMain(req) {
     gatewayInvocation: gateway.InvocationID, configSha: hash(env.OPENCLAW_CONFIG_PATH), openVoices: countVoices(),
     // Direct providers live in the H5 process, outside the Gateway voice DB.
     // A conservative socket check also protects those calls during cutover.
-    ...(req.h5Only ? { relayConnections: run('ss', ['-H', '-tnp', 'state', 'established', '( sport = :26242 )']).split('\n').filter(Boolean).length } : {}) });
+    ...((req.h5Only || req.voiceManifest) ? { relayConnections: run('ss', ['-H', '-tnp', 'state', 'established', '( sport = :26242 )']).split('\n').filter(Boolean).length } : {}) });
   const snapshot = observe();
   const metadata = { schema: "gpt-live-voice-entry-v1", commit: req.commit, release: req.release, owner: req.owner,
     avatarDecisions: req.avatarDecisions === true, artifactSha: proof.artifactSha, filesSha: req.filesSha, dir, unit, url: "https://openclaw.tianyi.live/voice/", snapshot,
     acceptanceBasis: req.productionReview ? 'user-reviewed-presentation; shared H5 gate explicitly waived' : 'shared-H5-acceptance', at: new Date().toISOString() };
+  const verifyArtifactDirectory=()=>{const prepared=JSON.parse(fs.readFileSync(dir+'/standalone-artifact-prepared.json'));assert.equal(prepared.commit,req.commit);assert.equal(prepared.owner,req.owner);assert.equal(prepared.release,req.release);assert.equal(prepared.artifactSha,proof.artifactSha);assert.equal(prepared.filesSha,req.filesSha);for(const f of req.files)assert.equal(hash(path.join(dir,f.name)),f.sha);};
+  if(req.command==='prepare'){
+    assert(req.voiceManifest,'Prepare requires the standalone artifact');
+    if(fs.existsSync(dir)){verifyArtifactDirectory();return {...metadata,artifactPrepared:true,reused:true};}
+    fs.mkdirSync(dir,{recursive:true,mode:0o755});for(const f of req.files){const dest=path.join(dir,f.name);fs.mkdirSync(path.dirname(dest),{recursive:true,mode:0o755});fs.writeFileSync(dest,Buffer.from(f.content,'base64'),{flag:'wx',mode:0o644});assert.equal(hash(dest),f.sha);}
+    save(dir+'/manifest.json',req.voiceManifest);
+    execFileSync(path.join(path.dirname(process.execPath),'npm'),['ci','--omit=dev','--ignore-scripts','--prefix',dir],{env:{...process.env,PATH:path.dirname(process.execPath)+':'+process.env.PATH},timeout:120000,stdio:['ignore','pipe','pipe']});
+    const sdk=dir+'/plugins/v-voice-gpt-live/node_modules';fs.mkdirSync(sdk,{recursive:true});fs.symlinkSync(runtime,sdk+'/openclaw');
+    save(dir+'/standalone-artifact-prepared.json',{...metadata,manifestSha:digest(JSON.stringify(req.voiceManifest))});return {...metadata,artifactPrepared:true,entryUnchanged:true};
+  }
   if (req.command === "plan") return { ...metadata, readOnly: true };
   assertEntrySnapshot(req.expected.snapshot, snapshot);
   const swap = target => { const temporary = pointer + ".gpt-live-new"; assert(!fs.existsSync(temporary)); fs.symlinkSync(target, temporary); fs.renameSync(temporary, pointer); };
@@ -108,11 +134,13 @@ async function remoteMain(req) {
     save(dir + "/rolled-back.json", receipt); return receipt;
   }
   assert.equal(req.command, "install");
-  assert(!fs.existsSync(dir), "This voice release already exists; inspect its receipt");
+  const standalonePrepared=req.voiceManifest&&fs.existsSync(dir);
+  if(standalonePrepared){verifyArtifactDirectory();assert(!fs.existsSync(dir+'/installed.json'),'Voice artifact already activated');}
+  else assert(!fs.existsSync(dir), "This voice release already exists; inspect its receipt");
   assert(snapshot.pointer.startsWith(base + "/releases/") && !snapshot.pointer.includes(".."));
-  fs.mkdirSync(dir, { mode: 0o755 });
+  if(!standalonePrepared)fs.mkdirSync(dir, { mode: 0o755 });
   fs.chmodSync(dir, 0o755);
-  for (const file of req.files) {
+  for (const file of standalonePrepared?[]:req.files) {
     const destination = path.join(dir, file.name);
     fs.mkdirSync(path.dirname(destination), { recursive: true, mode: 0o755 });
     const bytes = Buffer.from(file.content, "base64"); assert.equal(digest(bytes), file.sha);
@@ -184,21 +212,21 @@ async function remoteMain(req) {
 }
 export function remoteSource() {
   return `import assert from 'node:assert/strict';import {createHash} from 'node:crypto';const digest=${digest.toString()};const H5_PATHS=${JSON.stringify(H5_PATHS)};const fileIdentity=${fileIdentity.toString()};\n`
-    + [prepareVoiceLarkProfile, validateReviewedPresentation, assertEntrySnapshot, entryLaunchOverride, remoteMain].map(fn => fn.toString()).join("\n")
+    + [prepareVoiceLarkProfile, validateVoiceArtifact, validateVoiceArtifactProof, validateReviewedPresentation, assertEntrySnapshot, entryLaunchOverride, remoteMain].map(fn => fn.toString()).join("\n")
     + "\nlet text='';for await(const c of process.stdin)text+=c;try{const r=await remoteMain(JSON.parse(text));console.log(JSON.stringify(r))}catch{console.error('Voice entry identity or operation failed; preserve prepared receipts and inspect the service.');process.exitCode=1}";
 }
 function main(argv) {
-  const command = argv.shift(); assert(["plan", "install", "rollback"].includes(command));
+  const command = argv.shift(); assert(["plan", "prepare", "install", "rollback"].includes(command));
   const options = { command, target: "v", avatarDecisions: false };
-  for (let i = 0; i < argv.length; i += 2) { assert(["--commit", "--release", "--owner", "--shared-proof", "--reviewed-proof", "--expected", "--output", "--h5-only", "--avatar-decisions"].includes(argv[i]) && argv[i + 1]); options[argv[i].slice(2)] = argv[i + 1]; }
+  for (let i = 0; i < argv.length; i += 2) { assert(["--commit", "--release", "--owner", "--shared-proof", "--reviewed-proof", "--expected", "--output", "--h5-only", "--avatar-decisions", "--voice-artifact"].includes(argv[i]) && argv[i + 1]); options[argv[i].slice(2)] = argv[i + 1]; }
   if ('h5-only' in options) { assert.equal(options['h5-only'], 'true'); options.h5Only = true; delete options['h5-only']; }
   if ('avatar-decisions' in options) { assert.equal(options['avatar-decisions'], 'true'); options.avatarDecisions = true; delete options['avatar-decisions']; }
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-  const req = freezeSource(root, options);
+  const req = options['voice-artifact']?freezeVoiceArtifact(options['voice-artifact'],options):freezeSource(root, options);
   assert(Boolean(options['reviewed-proof']) !== Boolean(options['shared-proof']), 'Choose exactly one acceptance source');
   if (options['reviewed-proof']) { req.productionReview = JSON.parse(fs.readFileSync(options['reviewed-proof'])); validateReviewedPresentation(req.productionReview, req); }
-  else { req.sharedProof = JSON.parse(fs.readFileSync(options['shared-proof'])); validateSharedProof(req.sharedProof, req); }
-  if (command !== "plan") { req.expected = JSON.parse(fs.readFileSync(options.expected)); for (const key of ["commit", "release", "owner", "filesSha", "avatarDecisions"]) assert.equal(req.expected[key], req[key]); }
+  else { req.sharedProof = JSON.parse(fs.readFileSync(options['shared-proof'])); if(req.voiceManifest)validateVoiceArtifactProof(req.sharedProof,req);else validateSharedProof(req.sharedProof, req); }
+  if (!["plan","prepare"].includes(command)) { req.expected = JSON.parse(fs.readFileSync(options.expected)); for (const key of ["commit", "release", "owner", "filesSha", "avatarDecisions"]) assert.equal(req.expected[key], req[key]); }
   assert(!fs.existsSync(options.output), "Do not overwrite an entry receipt");
   const quote = value => "'" + value.replaceAll("'", "'\"'\"'") + "'";
   const output = execFileSync("ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "v", "sudo /opt/node-v22.23.1/bin/node --input-type=module -e " + quote(remoteSource())], { input: JSON.stringify(req), timeout: 120000, maxBuffer: 8000000, stdio: ["pipe", "pipe", "pipe"] });

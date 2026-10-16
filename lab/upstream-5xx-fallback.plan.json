@@ -1,0 +1,50 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/upstream-5xx-fallback/classify-Dm9sTbZz.js",
+      "target": "openclaw/dist/classify-Dm9sTbZz.js",
+      "before": "98ea918d544540fed432820b15138a8285db83a6da658cf025262b3dc1c7ac04"
+    },
+    {
+      "source": "lab/release-files/upstream-5xx-fallback/embedded-agent-DaSvA-Yk.js",
+      "target": "openclaw/dist/embedded-agent-DaSvA-Yk.js",
+      "before": "22dad1eff94b82345bcfb4c0b5da5ba4c72f436b4e81ad94d7ceb611961c3cee"
+    },
+    {
+      "source": "lab/release-files/upstream-5xx-fallback/embedded-agent-helpers-CzpaLpCq.js",
+      "target": "openclaw/dist/embedded-agent-helpers-CzpaLpCq.js",
+      "before": "342e6269ad41e2db113ed35ef4499e7a7ea051a8285ea68baf495d38c2ccbfc2"
+    },
+    {
+      "source": "lab/release-files/upstream-5xx-fallback/builtin-openclaw-zQV8Wwjr.js",
+      "target": "openclaw/dist/builtin-openclaw-zQV8Wwjr.js",
+      "before": "3e07c3fa8bc9ccb3fe87577f245afa11b42a99b87b46b957e43e5eb9de049f3d"
+    },
+    {
+      "source": "lab/release-files/upstream-5xx-fallback/agent-command-DPfawBbr.js",
+      "target": "openclaw/dist/agent-command-DPfawBbr.js",
+      "before": "1805b6861936015156fa7d841b295912c26ed16f3e5dc8f38eec41f54bd186f4"
+    },
+    {
+      "source": "lab/release-files/upstream-5xx-fallback/worker.mjs",
+      "target": "production-worker/worker.mjs",
+      "before": "18c949c399b1594d97d39e6352bc8aa93bf7c6ad8082acf5657e058b5cf175f7"
+    },
+    {
+      "source": "lab/release-files/upstream-5xx-fallback/worker-pool.mjs",
+      "target": "production-worker/worker-pool.mjs",
+      "before": "197ec4a877a92e1cbbbe97ceadbdb175e32e4438c69791813f34602c6e5250f6"
+    },
+    {
+      "source": "lab/release-files/upstream-5xx-fallback/index.mjs",
+      "target": "production-worker/index.mjs",
+      "before": "4f6894daccc12dbf923cfc8d4c5e93b04961cdd16d5071bec2b4cfb51cea753c"
+    },
+    {
+      "source": "lab/release-files/upstream-5xx-fallback/harness-failure.mjs",
+      "target": "production-worker/harness-failure.mjs",
+      "before": "3be999ce6625d65ba696bed77b84a21218956d75efc176a1d193a4f6f5aa6efe"
+    }
+  ]
+}

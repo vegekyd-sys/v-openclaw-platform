@@ -144,7 +144,8 @@
         "lab/worker-session-readiness.test.mjs",
         "lab/worker-runtime-readiness.test.mjs",
         "tests/worker-config-derive-release.test.mjs",
-        "tests/worker-generations.test.mjs"
+        "tests/worker-generations.test.mjs",
+        "lab/voice-resume-projection.test.mjs"
       ]
     },
     {
@@ -309,6 +310,7 @@
         "lab/placement-evidence-absence.test.mjs",
         "lab/placement-sweep-lists.test.mjs",
         "lab/transcript-index-preflight.test.mjs",
+        "lab/transcript-index-prepare.test.mjs",
         "lab/skills-watch-ready.test.mjs",
         "lab/worker-prewarm-secrets.test.mjs",
         "lab/worker-prewarm-v.test.mjs",
@@ -323,17 +325,24 @@
         "lab/feishu-codex-early-card.test.mjs",
         "lab/feishu-card-precreate.test.mjs",
         "lab/early-tool-status.test.mjs",
+        "lab/restart-recovery-claim-release.test.mjs",
+        "lab/history-image-resize-skip.test.mjs",
         "lab/no-reply-after-tool.test.mjs",
+        "lab/deepseek-budget-completions.test.mjs",
+        "lab/history-image-e3.test.mjs",
+        "lab/upstream-5xx-fallback.test.mjs",
         "lab/feishu-empty-card-discard.test.mjs",
         "scripts/node-async-context-frame.test.mjs",
         "lab/workboard-incremental-sweep.test.mjs",
         "lab/workboard-sweep-links.test.mjs",
         "lab/workboard-create-indexed.test.mjs",
         "lab/workboard-dispatch-slots.test.mjs",
+        "lab/workboard-start-context.test.mjs",
         "lab/sessions-get-exact-read.test.mjs",
         "lab/sessions-describe-exact-read.test.mjs",
         "lab/mirror-facts-identity.test.mjs",
         "lab/restart-speed.test.mjs",
+        "lab/restart-speed-2.test.mjs",
         "lab/voice-native-turn-control.test.mjs",
         "lab/memory-search-fast.test.mjs",
         "lab/memory-search-query-isolation.test.mjs",
@@ -400,7 +409,9 @@
         "lab/gpt-live-h5/content-view.test.mjs",
         "lab/gpt-live-h5/product-controls.test.mjs",
         "lab/gpt-live-h5/screen-wake-lock.test.mjs",
-        "lab/patch-gpt-live-media-policy.test.mjs"
+        "lab/patch-gpt-live-media-policy.test.mjs",
+        "lab/voice-task-lifetime.test.mjs",
+        "lab/voice-task-control-authority.test.mjs"
       ]
     }
   ],
@@ -516,6 +527,10 @@
     {
       "file": "lab/worker-loop-state-native.test.mjs",
       "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"
+    },
+    {
+      "file": "lab/upstream-5xx-fallback.runtime.test.mjs",
+      "reason": "需要 V 的原字节（UPSTREAM_5XX_BASE）或 9.1 runtime（OPENCLAW_DIST，vlab.mjs candidate 里由 lab/candidate/upstream-5xx-fallback.mjs 运行），离线入口不应把它当通过。"
     },
     {
       "file": "lab/ws-heartbeat-backport-91-candidate.test.mjs",
@@ -1087,6 +1102,28 @@
       ],
       "disposition": "needs-live-reconciliation",
       "sourceSha256": "dbbdad3432f3e57e0df7e1cda3893f41400120c813a7689c793cfd7c4ae654e5"
+    },
+    {
+      "id": "patch-voice-task-control-authority",
+      "file": "lab/patch-voice-task-control-authority.mjs",
+      "component": "openclaw-core",
+      "reason": "同一实时任务控制 SDK 保留精确运行实例的现有工具权限指纹及交付策略；修复修改请求被 tool_authority_mismatch 拒绝，校验不放宽",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "needs-live-reconciliation",
+      "sourceSha256": "ee0a449a47c3325df9bc90b5394b21936812f9b69b5f0023f8f3ee5b2a124f1b"
+    },
+    {
+      "id": "patch-voice-resume-projection",
+      "file": "lab/patch-voice-resume-projection.mjs",
+      "component": "openclaw-core",
+      "reason": "Only a trusted Voice child-completion capability waits for its exact canonical parent projection before one dispatch; no tool replay or nonvoice change.",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "needs-live-reconciliation",
+      "sourceSha256": "74f8245cc04782afb2b2a8279f4e7dffc8a45d58dd13fad948e8212acb0be670"
     }
   ],
   "externalInputs": [

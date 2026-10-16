@@ -87,6 +87,9 @@ candidate `lab/candidate/codex-ds-window.mjs`（C 段，约 31 万 token 大会�
 
 **没有上线的另一半：把 DeepSeek 窗口提到 100 万。** `models.providers.deepseek.models[].contextTokens` 会以 `model_context_window` 传给 Codex（`model_context_window_override=true`），但 Codex 把它钳在模型目录的 `max_context_window`（兜底 272,000）以内。按线程传 `model_catalog_json`：`codex exec` 下窗口变 950,000、基础提示不变；但经 app-server 时窗口仍 258,400，基础提示反而换成目录里的（16,979 → 20,751 字）。只有改 makaron CODEX_HOME 的全局目录才行，那要抄全部 GPT 条目并冻结它们，暂不做。
 
+2026-10-13：改为只给 DeepSeek 线程的 app-server 加启动参数（单条目 catalog + 固定基础提示），见 `lab/release-files/codex-ds-window/`。
+经 app-server 时窗口不变的原因是模型目录在 app-server 进程启动时建一次；提示变长是因为配置了任何 catalog 后 Codex 不再剔除 update_plan 说明。
+
 ## E. 记忆整理回合把会话绑到自己的线程上（2026-10-08，thread-lifecycle）
 
 C 上线后，大群（oc_fab91、oc_64bcd621）仍然每条消息新开线程。原因：大会话回复后空闲时会跑推迟的记忆整理（#243），这一轮只有 read/write 两个工具；Codex 线程的工具在创建时固定，于是插件给它开了新线程，并把会话的绑定改成这个整理线程。下一条用户消息有 94 个工具，与绑定线程不符，只能再开新线程、重放整段历史（V 实测：14:03 一轮续用了线程，14:05 整理线程 9eb0 只有 2 个工具、提示 104 万字符，绑定随之改写）。
@@ -96,6 +99,8 @@ C 上线后，大群（oc_fab91、oc_64bcd621）仍然每条消息新开线程�
 附带：DeepSeek 线程压缩时，Codex 写的交接摘要会作为一条助手消息存进 OpenClaw 会话记录，压缩后的真实回答在记录里缺失（VLab 两次复现）。当时以为用户只会看到流式的真实回答；10/08 23:30 在 oc_ff5076 上摘要被直接发到了飞书，见 G。
 
 ## F. 主人和成员轮流说话时每次换线程（2026-10-08，thread-lifecycle）——已撤回，未上线
+
+2026-10-13：大会话里每次换发言人都会整段重放并立刻压缩（群 oc_88d96b7e），F 在 V 当前字节上重建为 `lab/release-files/codex-toolset-cover/`。
 
 2026-10-09：共享 VLab 对比显示首字没有可测的改善（见本节末尾），Tianyi 决定暂缓。`codex-toolset-cover-20261008` 只装到了 V 磁盘、没有重启生效，由 `codex-compaction-summary-20261009` 把 thread-lifecycle 换回 c0a9ce77；补丁脚本里的 F 已删除，T 场景与 toolset/swap 工具保留。
 

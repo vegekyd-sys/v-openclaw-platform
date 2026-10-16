@@ -1,0 +1,10 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/restart-speed-2/dist/command-secret-gateway-DCJZ8pGz.js",
+      "target": "openclaw/dist/command-secret-gateway-DCJZ8pGz.js",
+      "before": "d139c36e955fa35cc42f02a26273b3e5551c409fb8e631bc84791564923a4e77"
+    }
+  ]
+}

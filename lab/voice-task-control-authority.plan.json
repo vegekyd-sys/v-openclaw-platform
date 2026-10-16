@@ -1,0 +1,14 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/voice-task-control-authority/agent-run-control-BeeIeTBf.js",
+      "target": "openclaw/dist/agent-run-control-BeeIeTBf.js",
+      "before": "03402763a265f7671f8dc932f1c148421ebe7a9a0c19c51cf23239a2628b993b"
+    },
+    {
+      "source": "lab/release-files/voice-task-control-authority/runs-5WnDPZ0V.js",
+      "target": "openclaw/dist/runs-5WnDPZ0V.js",
+      "before": "407999737bf83f799b68042ab6e9de48920bcdf656be8fba58c3183a82f24359"
+    }
+  ]
+}

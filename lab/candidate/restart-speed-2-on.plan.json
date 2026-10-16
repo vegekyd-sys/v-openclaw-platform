@@ -1,0 +1,27 @@
+{
+  "support": [
+    "lab/candidate/restart-speed.mjs",
+    "lab/candidate/secrets-resolve-probe.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/restart-speed.mjs"
+  ],
+  "timeoutSeconds": 3600,
+  "user": "lab-db91-parity",
+  "env": {
+    "RUNS": "1",
+    "WORKERS": "5",
+    "DB": "meta",
+    "V_SECRET_REFS": "1",
+    "SECRETS_PROBE": "1",
+    "REAL_TURN": "1"
+  },
+  "files": [
+    {
+      "source": "lab/release-files/restart-speed-2/dist/command-secret-gateway-DCJZ8pGz.js",
+      "target": "openclaw/dist/command-secret-gateway-DCJZ8pGz.js",
+      "before": "d139c36e955fa35cc42f02a26273b3e5551c409fb8e631bc84791564923a4e77"
+    }
+  ]
+}

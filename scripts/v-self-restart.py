@@ -71,7 +71,7 @@ DEFAULT_DELAY_S = 30
 # Measured ready times on V: 1m51s (2026-10-06 00:53), 3m05s (15:56, of which the
 # db91 integrity preflight was 2m13s). 9.x cold starts have taken up to 16 min.
 DEFAULT_READY_TIMEOUT_S = 1200
-STOP_TIMEOUT_S = 120
+STOP_TIMEOUT_S = 360
 CLI_TIMEOUT_S = 180
 WAKE_TIMEOUT_S = 900
 RUN_ID_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[0-9a-f]{4}$")
@@ -185,35 +185,83 @@ def wait_ready(timeout_s, start_restarts):
     systemd has already restarted it (a crash loop never prints ready)."""
     deadline = time.monotonic() + timeout_s
     invocation = unit_prop("InvocationID")
+    queued_until = min(deadline, time.monotonic() + 15)
+    seen_start = False
     while time.monotonic() < deadline:
         state = unit_active()
         restarts = unit_prop("NRestarts")
-        if state in ("failed", "inactive"):
+        if state in ("failed", "inactive") and (seen_start or time.monotonic() >= queued_until):
             return False, "unit %s" % state
+        seen_start = seen_start or state in ("activating", "active")
         if restarts.isdigit() and start_restarts.isdigit() and int(restarts) > int(start_restarts):
             return False, "systemd restarted the unit (NRestarts %s -> %s)" % (start_restarts, restarts)
         current = unit_prop("InvocationID")
         if current and current != invocation:
             invocation = current
-        if READY_MARK in journal_since_invocation(invocation):
+        if state == "active" and READY_MARK in journal_since_invocation(invocation):
             return True, "ready"
         time.sleep(5)
     return False, "no '%s' within %ds" % (READY_MARK, timeout_s)
 
 
+class StopIncomplete(RuntimeError):
+    """A stop request is not proof that the old process has exited."""
+
+
+def remaining_unit_processes(group):
+    if not group:
+        return []
+    root = "/sys/fs/cgroup" + group
+    try:
+        # cgroup.procs contains direct members only; Workers use child cgroups.
+        # populated includes every descendant, including concurrent child exits.
+        with open(root + "/cgroup.events") as f:
+            events = dict(line.split() for line in f if line.strip())
+        if events.get("populated") == "0":
+            return []
+        if events.get("populated") != "1":
+            raise StopIncomplete("Cannot verify the previous unit cgroup population")
+        pids = []
+        for directory, _, _ in os.walk(root):
+            try:
+                with open(directory + "/cgroup.procs") as f:
+                    pids.extend(int(pid) for pid in f.read().split())
+            except FileNotFoundError:
+                pass
+        return sorted(set(pids)) or ["populated-descendants"]
+    except FileNotFoundError:
+        return []
+    except OSError as error:
+        raise StopIncomplete("Cannot verify the previous unit cgroup is empty") from error
+
+
 def stop_unit(rec):
     rec["oldMainPid"] = unit_prop("MainPID")
+    old_group = unit_prop("ControlGroup")
     save(rec)
-    p = sh(["systemctl", "stop", UNIT], timeout=STOP_TIMEOUT_S)
-    state = unit_active()
-    step(rec, "stopped", rc=p.returncode, state=state, oldMainPid=rec["oldMainPid"])
-    if state == "active":
-        raise RuntimeError("unit still active after stop")
+    try:
+        p = sh(["systemctl", "stop", "--no-block", UNIT], timeout=30)
+    except subprocess.TimeoutExpired as error:
+        step(rec, "stop-incomplete", state=unit_active(), mainPid=unit_prop("MainPID"), timeout=True)
+        raise StopIncomplete("Gateway stop is still pending; config was not changed") from error
+    deadline = time.monotonic() + STOP_TIMEOUT_S
+    state, main_pid = unit_active(), unit_prop("MainPID")
+    remaining = remaining_unit_processes(old_group)
+    while (state not in ("inactive", "failed") or main_pid != "0" or remaining) and time.monotonic() < deadline:
+        time.sleep(1)
+        state, main_pid = unit_active(), unit_prop("MainPID")
+        remaining = remaining_unit_processes(old_group)
+    if state not in ("inactive", "failed") or main_pid != "0" or remaining:
+        step(rec, "stop-incomplete", rc=p.returncode, state=state, mainPid=main_pid, remainingPids=remaining)
+        raise StopIncomplete("Gateway has not stopped (%s, MainPID=%s); config was not changed" % (state, main_pid))
+    step(rec, "stopped", rc=p.returncode, state=state, oldMainPid=rec["oldMainPid"], mainPid=main_pid)
 
 
 def start_unit(rec, label):
     restarts = unit_prop("NRestarts")
-    p = sh(["systemctl", "start", UNIT], timeout=STOP_TIMEOUT_S)
+    p = sh(["systemctl", "start", "--no-block", UNIT], timeout=30)
+    if p.returncode != 0:
+        raise RuntimeError("Gateway start request failed: %s" % (p.stderr or p.stdout)[-500:])
     t0 = time.monotonic()
     ok, why = wait_ready(rec["readyTimeoutS"], restarts)
     step(rec, label, rc=p.returncode, ok=ok, why=why, seconds=round(time.monotonic() - t0),
@@ -427,6 +475,10 @@ def execute(run_id):
             raise RuntimeError("Gateway did not become ready: %s" % why)
         rec["postChecks"] = post_checks(unit_prop("InvocationID"))
         rec["outcome"], rec["outcomeText"] = "ok", "成功，Gateway 已就绪"
+    except StopIncomplete as e:
+        rec["error"] = str(e)[-800:]
+        rec["outcome"], rec["outcomeText"] = "stop-pending", "停止未完成，未修改配置；请检查原进程，不自动重复启动"
+        step(rec, "stop-pending", error=rec["error"])
     except Exception as e:
         rec["error"] = str(e)[-800:]
         rec["outcome"], rec["outcomeText"] = "failed", "失败"
@@ -435,7 +487,7 @@ def execute(run_id):
             # Put the old config back and bring the Gateway up on it.
             try:
                 if applied and backup:
-                    sh(["systemctl", "stop", UNIT], timeout=STOP_TIMEOUT_S)
+                    stop_unit(rec)
                     shutil.copy2(backup, CONFIG)
                     step(rec, "config-restored", backup=backup)
                 rec["codexOrphans2"] = run_orphan_cleanup()

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { patchFeishuMonitor } from './patch-feishu-firsttext-e2e.mjs';
-import { parseRecords, measure, report, percentile } from '../scripts/firsttext-e2e-report.mjs';
+import { parseRecords, parseModelMetrics, measure, report, percentile } from '../scripts/firsttext-e2e-report.mjs';
 
 const read = (url) => fs.readFileSync(new URL(url, import.meta.url), 'utf8');
 const original = read('../release/captured/v2026.9.1-db91.6-gpt-live-voice-20261005.feishu/dist/dist/monitor.account-WFdlCDhR.js');
@@ -36,6 +36,9 @@ test('a record measures from the user\'s send time and splits the segments', () 
   assert.equal(m.firstVisibleMs, 4780);
   assert.equal(m.firstAnswerMs, 4780);
   assert.equal(m.inboundMs, 458);
+  assert.equal(m.preDispatchMs, 12);
+  assert.equal(m.dispatchToRunMs, undefined);
+  assert.equal(measure({ ...sample, runStartAtMs: t0 + 880 }).dispatchToRunMs, 410);
   assert.equal(m.agentMs, 2900 - 458);
   assert.equal(m.deliveryMs, 4780 - 2900);
   assert.equal(m.cardCreateMs, 4268 - 2905);
@@ -46,17 +49,46 @@ test('reasoning shown first counts as first visible, the answer is measured sepa
   const m = measure({ ...sample, firstReasoningAtMs: t0 + 1500, firstPushAtMs: t0 + 3200, firstAnswerPushAtMs: t0 + 6000 });
   assert.equal(m.firstVisibleMs, 3200);
   assert.equal(m.firstAnswerMs, 6000);
+  assert.equal(m.firstTextMs, 6000);
   assert.equal(m.reasoningMs, 1500 - 458);
   assert.equal(m.agentMs, 2900 - 458);
   assert.equal(m.deliveryMs, 6000 - 2900);
 });
 
-test('a status line pushed before the answer is visible but is not 首字', () => {
+test('a status line pushed before the answer counts as 首字 (inferred for older records)', () => {
   const m = measure({ ...sample, firstPushAtMs: t0 + 1200, firstAnswerPushAtMs: t0 + 4780 });
   assert.equal(m.firstVisibleMs, 1200);
+  assert.equal(m.firstTextMs, 1200);
+  assert.equal(m.statusFirst, true);
   assert.equal(m.firstAnswerMs, 4780);
   assert.equal(m.deliveryMs, 4780 - 2900);
   assert.equal(m.cardReadyBeforeAnswer, false);
+});
+
+test('text written before a tool call is delivered as a block, so the partial-reply mark is not its text time', () => {
+  // the first answer push carries the pre-tool text; onPartialReply only fires for the final answer
+  const r = { ...sample, firstAnswerTokenAtMs: t0 + 40_000, firstPushAtMs: t0 + 4780, firstAnswerPushAtMs: t0 + 4780 };
+  const withModel = measure(r, { firstTextAt: t0 + 4100, textCallEnterAt: t0 + 1000, firstCallEnterAt: t0 + 1000 });
+  assert.equal(withModel.deliveryMs, 4780 - 4100);
+  assert.equal(withModel.agentMs, 4100 - 458);
+  assert.equal(withModel.cardReadyBeforeAnswer, false);
+  // without the Worker's mark there is no text time before the push: leave it out, never negative
+  assert.equal(measure(r).deliveryMs, undefined);
+  // the earlier of the two marks wins either way
+  assert.equal(measure(sample, { firstTextAt: t0 + 3500, textCallEnterAt: t0 + 1000, firstCallEnterAt: t0 + 1000 }).deliveryMs, 4780 - 2900);
+});
+
+test('the recorded status push wins over the inference', () => {
+  const m = measure({ ...sample, firstReasoningAtMs: t0 + 900, firstPushAtMs: t0 + 1000, firstStatusPushAtMs: t0 + 2000, firstAnswerPushAtMs: t0 + 4780 });
+  assert.equal(m.firstTextMs, 2000);
+  assert.equal(m.statusFirst, true);
+});
+
+test('reasoning before the first push is not taken for a status line', () => {
+  const m = measure({ ...sample, firstReasoningAtMs: t0 + 900, firstPushAtMs: t0 + 1000, firstAnswerPushAtMs: t0 + 4780 });
+  assert.equal(m.firstVisibleMs, 1000);
+  assert.equal(m.firstTextMs, 4780);
+  assert.equal(m.statusFirst, false);
 });
 
 test('a non-streaming reply counts through its visible time', () => {
@@ -77,7 +109,59 @@ test('journal lines parse, broken lines are skipped, percentiles interpolate', (
   const out = report(records);
   assert.equal(out.firstVisible.n, 2);
   assert.equal(out.firstAnswer.max, 9000);
+  assert.equal(out.firstText.max, 9000);
+  assert.equal(out.statusFirst, 0);
   assert.equal(out.byHarness['vlab-worker/deepseek-flash'].n, 2);
   assert.equal(percentile([1, 2, 3, 4], 0.5), 2.5);
   assert.equal(percentile([], 0.5), undefined);
+});
+
+const runId = '6101061d-305d-4139-9cc3-5a1b04d543cf';
+const metric = (callId, stage, at) => `[firsttext-metrics] ${JSON.stringify({ runId, callId, provider: 'deepseek', model: 'deepseek-flash', at, pid: 7, stage })}`;
+
+test('model time is split out of 首字 by joining the Worker\'s model-call lines on runId', () => {
+  const text = [
+    metric('c1', 'model-call-enter', t0 + 1200),
+    metric('c1', 'first-decoded-event', t0 + 1700),
+    metric('c1', 'first-thinking-event', t0 + 1700),
+    metric('c1', 'first-thinking-event', t0 + 1800), // repeated stage keeps the first time
+    metric('c1', 'first-nonempty-text', t0 + 2850),
+    `[firsttext-metrics] {broken`,
+  ].join('\n');
+  const models = parseModelMetrics(text);
+  const m = measure({ ...sample, runId }, models.get(runId));
+  assert.equal(m.toModelMs, 1200);
+  assert.equal(m.modelFirstEventMs, 500);
+  assert.equal(m.modelToTextMs, 1650);
+  assert.equal(m.afterTextMs, 4780 - 2850);
+  assert.equal(m.overheadMs, 4780 - 1650);
+  assert.equal(m.overheadNoToolsMs, 4780 - 1650);
+  const out = report([{ ...sample, runId }, sample], models);
+  assert.equal(out.overhead.n, 1);
+  assert.equal(out.model.modelToTextMs.p50, 1650);
+});
+
+test('a tool call before the answer stays in overhead and is left out of the no-tools figure', () => {
+  const models = parseModelMetrics([
+    metric('c1', 'model-call-enter', t0 + 1000),
+    metric('c1', 'first-decoded-event', t0 + 1400),
+    metric('c1', 'first-tool-event', t0 + 1500),
+    metric('c2', 'model-call-enter', t0 + 2000),
+    metric('c2', 'first-decoded-event', t0 + 2300),
+    metric('c2', 'first-nonempty-text', t0 + 2600),
+  ].join('\n'));
+  const run = models.get(runId);
+  assert.equal(run.calls, 2);
+  const m = measure({ ...sample, runId }, run);
+  assert.equal(m.toModelMs, 1000);
+  assert.equal(m.modelFirstEventMs, 400);
+  assert.equal(m.modelToTextMs, 600);
+  assert.equal(m.overheadMs, 4780 - 600);
+  assert.equal(m.overheadNoToolsMs, undefined);
+});
+
+test('without model lines the overhead is unknown, not zero', () => {
+  const m = measure({ ...sample, runId }, undefined);
+  assert.equal(m.overheadMs, undefined);
+  assert.equal(m.toModelMs, undefined);
 });

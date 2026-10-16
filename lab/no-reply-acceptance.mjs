@@ -59,6 +59,12 @@ while (Date.now() < deadline) {
 const botMessages = (lark(["im", "+chat-messages-list", "--as", "user", "--chat-id", target.chat, "--page-size", "20", "--no-reactions"]).data?.messages ?? [])
   .filter((m) => m.sender?.sender_type === "app" && Date.parse(`${m.create_time.replace(" ", "T")}:00+08:00`) >= sentAt - 60_000)
   .map((m) => ({ id: m.message_id, at: m.create_time, replyTo: m.reply_to, text: String(m.content ?? "").slice(0, 200) }));
+// A streaming card the bot took back (feishu-empty-card-discard) is still listed, as "[nonsupport]";
+// mget says whether it was deleted.
+const deletedIds = new Set(botMessages.length === 0 ? [] : (lark(["im", "+messages-mget", "--as", "user", "--message-ids", botMessages.map((m) => m.id).join(",")]).data?.messages ?? [])
+  .filter((m) => m.deleted === true).map((m) => m.message_id));
+const recalled = botMessages.filter((m) => deletedIds.has(m.id));
+const visibleBotMessages = botMessages.filter((m) => !deletedIds.has(m.id));
 const settledLog = remote(`sudo journalctl -u ${target.unit} --since @${Math.floor(sentAt / 1000) - 2} --no-pager -o cat | grep -E 'lacked a final answer|settled-turn finalization|using terminal fallback' || true`)
   .split("\n").filter(Boolean).map((l) => l.replace(/\u001b\[[0-9;]*m/gu, "").slice(0, 240));
 
@@ -68,15 +74,16 @@ const report = {
   messageId,
   sentAt: new Date(sentAt).toISOString(),
   reaction: reaction ? { emoji: reaction.emoji_type, at: new Date(Number(reaction.action_time) * 1000).toISOString() } : null,
-  botMessages,
+  botMessages: visibleBotMessages,
+  recalled,
   settledLog,
 };
 console.log(JSON.stringify(report, null, 1));
 
 assert.equal(report.reaction?.emoji, "THUMBSUP", "the bot did not add the reaction; the scenario exercised nothing");
-const fallbackPosted = botMessages.some((m) => m.text.includes(FALLBACK));
+const fallbackPosted = visibleBotMessages.some((m) => m.text.includes(FALLBACK));
 if (expect === "silent") {
-  assert.deepEqual(botMessages, [], "the bot posted a message after the reaction");
+  assert.deepEqual(visibleBotMessages, [], "the bot posted a message after the reaction");
   assert.equal(settledLog.some((l) => /lacked a final answer/u.test(l)), false, "the runtime still asked for a summary");
 } else {
   assert(fallbackPosted, "baseline did not reproduce the fallback text");
