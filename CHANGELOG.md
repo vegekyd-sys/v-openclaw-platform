@@ -11,6 +11,20 @@
 
 ---
 
+## v2026.9.1-db91.6-projection-checkpoint-20261017
+
+上线：2026-10-17 03:39 CST 装入，03:40 v-self-restart 生效（51 s 就绪）  ·  tag `v2026.9.1-db91.6-projection-checkpoint-20261017`
+
+**摘要**：大会话（马晴私聊 2.6 万行、夜班群 1.3 万行等）每轮回合开始的用户消息注解、媒体送达后的助手展示改写，不再让投影整段重建：之前每次改写都要在写锁里把整会话求和 1–5 s，然后后台整段重建 3–7 s，期间新消息（如生图完成后的续跑）直接报“正在重建”失败。现在投影原地保持最新，结果与全量重建逐行一致；仍需重建的分叉/回退期间，回合会等待而不是失败。V 上验收：专用会话 flash 与 /vds 回合正常，投影保持最新，重启后“重建中”报错 0。
+
+相对上一版 `v2026.9.1-db91.6-subagent-lazy-store-20261017`：3 个文件变化。
+
+**经 VLab 发版 `projection-checkpoint-20261017`**（projection-checkpoint，dev `b5c8ddff`）
+> 验收：共享 VLab 03:35 部署 #405（3 个 core dist：session-transcript-index、session-accessor.sqlite-transcript-store、builtin-openclaw；before 均等于 V 线上字节）。Gateway ready。专用会话 agent:makaron:explicit:vlab-dev-projection-checkpoint-1792179366 真实回合：deepseek-flash(vlab-worker) exec echo flash-ok → 回复 flash-ok（12 s）；/vds 切换后 Codex 回合 exec echo vds-ok → 回复 vds-ok（15 s）。回合开始的 Codex 原生注解改写已写入（user seq 9 mirrorOrigin=codex-a…
+- `core` builtin-openclaw-zQV8Wwjr.js  71c2310a → a44b846a
+- `core` session-accessor.sqlite-transcript-store-DV0WFe1a.js  0592e1cd → 74fba951
+- `core` session-transcript-index-9itOio9h.js  5504f5de → d0e05a56
+
 ## v2026.9.1-db91.6-subagent-lazy-store-20261017
 
 上线：2026-10-17 02:44 CST（V 与 VLab 对齐时间）  ·  tag `v2026.9.1-db91.6-subagent-lazy-store-20261017`
