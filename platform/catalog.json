@@ -415,7 +415,8 @@
         "lab/voice-task-lifetime.test.mjs",
         "lab/voice-task-control-authority.test.mjs",
         "lab/subagent-completion-projection.test.mjs",
-        "lab/subagent-settle-backlog.test.mjs"
+        "lab/subagent-settle-backlog.test.mjs",
+        "lab/workboard-lifecycle-bounded.test.mjs"
       ]
     }
   ],
