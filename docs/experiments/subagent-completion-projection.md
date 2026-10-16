@@ -1,60 +1,53 @@
-# 连续子任务完成通知：等待父会话索引就绪
+# 连续子任务完成通知修复
 
-2026-10-16 本地 58 项回归通过，最终候选真实旧群数据库副本测试 16/16 通过（含 15 项候选回归）。共享 VLab 渠道验收待执行；尚不能据此宣称真实通知丢失已修复，生产 V 未部署本补丁。
+状态：候选、合并回归和共享 VLab 真实飞书验收均通过。已验收组合为 `subagent-settle-completion-20261016e`，生产 V 未部署。积压修复见 [独立说明](subagent-settle-backlog.md)。
 
-## 已复现的问题
+## 问题与最终改动
 
-旧飞书验收群内，父任务创建两个真实子任务并 yield。两个子任务均完成；第一条完成通知唤醒父任务，父任务再次 yield 等待第二条。第二条通知在会话队列中等待上一回合退出后进入 Worker，却在模型执行前遇到 `SessionTranscriptProjectionUnavailableError`，最终汇总未送达。该失败在积压补丁之前两次、之后一次出现；新会话双子任务和旧群单子任务通过。
+旧飞书群中，父任务创建两个子任务并 yield。第一条通知唤醒父任务后，第二条通知在模型执行前遇到 `SessionTranscriptProjectionUnavailableError`，最终汇总未送达。队列里的上一回合退出，不代表它触发的异步索引重建已经完成。
 
-“排队结束”不保证上一回合触发的异步索引重建已经完成。原有 readiness 等待只覆盖语音路径；只在通知入队前等待还存在检查后状态变化的窗口。
+在原生 `prepareEmbeddedAttemptTranscriptLifecycle` 解析当前目标会话之后、创建 transcript 写上下文之前，复用已有的 `waitForSessionTranscriptProjection`。只处理 `inter_session` 且来源为 `subagent_announce` 或 Worker 实际使用的 `agent_harness_task`。原生 waiter 最多等待 15 秒，并验证索引代次；等待前后和期间检查取消、writer 归属和会话身份。超时或数据库错误继续抛出，不重试整个回合，也不重放模型或工具。
 
-## 候选改动
+另一个问题是父任务在收到第一条通知后再次 yield，被错误判为没有 continuation source。此时子任务是在前一个回合创建，当前 attempt 没有 spawn 记录；yield 中断也可能早于 tool-end 元数据。原生 `onYield` 只有 pending-child claim 成功后才调用，故把其凭据 `nativeYieldClaimed` 从原生 attempt 传到最终 meta，再由 Worker adapter 经 IPC 带回 Gateway。终结判定要求 `yieldDetected` 和该凭据均为 true；只有外部 yield 标记、无 claim 或失败工具记录均不能消除诊断。
 
-在原生 `prepareEmbeddedAttemptTranscriptLifecycle` 已解析当前目标会话、且尚未创建本次 transcript 写上下文的位置，增加完成通知的 readiness 检查。仅处理可信调用数据中的 `inter_session`，来源为 `subagent_announce` 或 `agent_harness_task`；后者正是 Worker 的任务完成 SDK 使用的来源。
+通知修复涉及三个 runtime 文件：builtin、embedded-agent、Worker harness-result。与积压修复合并后共六个文件，无数据库迁移或配置调整。生成器及发布计划校验实际基线 SHA，防止覆盖其他版本。
 
-复用线上已有的 `waitForSessionTranscriptProjection`，检查真实数据库索引代次，最多等待 15 秒。等待前、期间、后检查取消与原 writer 归属，并验证目标会话身份。索引超时或数据库错误继续抛出，不重试整个回合，不重放模型或工具。原有语音保护保持原样。
-
-此外，成功的原生 `sessions_yield` 已经过 pending-child claim，但原来的终结诊断只检查本回合新建子任务，导致收到第一条完成通知后再次 yield 时向群误发“没有 continuation source”。原生 `onYield` 只有 pending-child claim 成功后才会执行。候选从原生 attempt result 显式传递 `nativeYieldClaimed`，并要求它与 `yieldDetected` 同为 true；不依赖可能被 yield 中断打断的工具结束记录。不改变 yield 的 claim 或回合状态，不接纳仅有外部 yield 标记或工具元数据的情况。原生工具的 native claim、external callback、external owner 三个路径均有前后对比回归，无 claim 仍拒绝。
-
-只修改一个 runtime 文件，新增 26 行。补丁生成器校验基线 SHA，拒绝覆盖其他版本：
-
-- 基线：`5638a3b7071bbbfa20da7b7c2098facdbd3c15bedf723e922c2f68a3f550f5e9`。
-- 生成器：[patch-subagent-completion-projection.mjs](../../lab/patch-subagent-completion-projection.mjs)。
-- 产物：[builtin-openclaw-zQV8Wwjr.js](../../lab/release-files/subagent-completion-projection/builtin-openclaw-zQV8Wwjr.js)。
-
-## 已完成与待完成验证
-
-已执行：
+## 验证
 
 ```sh
-node --test lab/subagent-completion-projection.test.mjs lab/gpt-live-projection-readiness.test.mjs lab/subagent-settle-backlog.test.mjs
+node --test lab/subagent-completion-projection.test.mjs experiments/agent-worker-isolation-v1/harness-result.test.mjs lab/gpt-live-projection-readiness.test.mjs lab/subagent-settle-backlog.test.mjs
+node lab/vlab.mjs candidate --repo "$PWD" --owner YOUR_TASK_ID --plan "$PWD/lab/candidate/subagent-completion-projection.plan.json"
 ```
 
-58 项通过，包括通知在实际 attempt 内等待、两个来源、取消、writer 失效、会话身份不匹配、原生超时/数据库错误不重放、语音等待既有回归以及积压修复回归。通过执行提取出的实际 lifecycle 函数，确认 baseline 不等待，候选在创建写上下文之前等待。
+本地及 dev 合并后均为 67/67 通过。覆盖实际 lifecycle 执行顺序、取消/归属失效/会话身份错误、数据库错误与超时不重放、原生 yield 的三种 claim、无 claim 拒绝、实际 final meta 投影、实际 Worker adapter 与 JSON 序列化后的 Gateway 判定，并保留已有语音和积压回归。
 
-真实 SQLite 脚本位于 [candidate 计划](../../lab/candidate/subagent-completion-projection.plan.json)。在共享原库只读事务内复制受影响会话的原始行和 schema 到私有库，验证 718 条 transcript 事件的 SHA256 一致；副本 14,086,144 字节。原生 SessionManager 在标记索引重建时复现原错误。候选连续三次等待原生重建后读回相同的 703 条历史消息，事件数保持 718，不调用模型或工具。
+真实旧群会话副本 `candidate-852de947-ba6e-45e5-bf8d-23918112dc77`：17/17 通过。共享源库以只读事务复制受影响会话及完整 schema/triggers 到私有库，14,688,256 字节，757 条 transcript 事件。原生 SessionManager 先复现索引重建错误，候选三次等待 1179 / 2263 / 1057 ms 后读回完全相同的 742 条历史消息；原始事件数和 SHA 不变，没有模型或工具调用。共享 PID/runtime/config 保持不变。
 
-- receipt：`candidate-9308be0e-32e4-4626-b979-a1e3dee01a53`，12/12 通过；共享进程 PID 与 runtime/config hash 未变。
-- 等待耗时：1,154 / 1,097 / 1,093 ms。
-- 产物 SHA256：`6e78b509103fadb32d996246170be4c07bed53483d27595c875cbf88dfd38e2f`。
-- 完整库备份首次尝试约 7.3 GB，叠加运行时副本耗尽共享磁盘，造成 21:59:49 一次 Workboard lifecycle recovery 磁盘满错误。停止本任务备份后 runner 清理自己的临时目录，恢复约 7.7 GB 可用空间；22:04 健康 RPC 通过，事件循环未退化。后续改为受影响会话副本，不清理其他任务数据。首次定向副本遗漏 schema triggers，被原生完整性检查拒绝；补齐原始 triggers 后通过。
+实际输入 SHA256 `5ac0ee8238ecf6710fbfcc92cf0cc70c687eb0fe986bb30d10172960cb5783b4` 与合并后的全部测试/support/overlay 输入一致。精确文件 hash 和副本证据见 [候选记录](subagent-completion-projection.evidence.json)。组合 e 的部署源提交为 `24ad9998da030cfafb51089b6c1a62d43ea73793`，artifact SHA `a465dd0a42bea1e8b040373de17cc51399179e7c335bf05bca92130c8054149e`。
 
-2026-10-16 21:14–21:18 的连接检查中，Tailscale 显示 VLab 在线且 DERP ping 有响应，但原 IPv6 SSH、同一主机的 Tailscale IPv4 SSH和 24993 健康端点均超时；生产 V 的只读 SSH 同样超时。未使用公网 SSH，未修改 SSH/Tailscale 配置，未重启任何服务。candidate 在 SSH 上传阶段失败，没有候选测试成功 receipt。
+## 前序失败与运行影响
 
-恢复连接后，先核对共享 lease、实际 runtime SHA 和 V 对齐状态，执行私有副本测试，再按本次授权集成积压补丁与通知补丁，回到同一旧群连续验证双子任务汇总、重复投递防护与单子任务正常回复。真实验收通过后出 PR；生产上线另按授权执行。
+- 初轮 b/c：旧群双子任务最终汇总可见，但仍出现 yield 误报，未验收，均正式回滚。
+- d：实际 native attempt 投影已有凭据，但 final meta 与 Worker adapter 均丢失字段；误报仍出现，还记录一次 `session-entry.patch` 并发版本冲突。未确认该轮最终汇总成功，22:36 正式回滚。最终 e 的跨进程回归专门覆盖此遗漏。
+- 首次完整数据库备份约 7.3 GB，叠加候选 runtime 副本耗尽共享磁盘，21:59:49 发生一次 Workboard recovery 磁盘满错误。停止本任务备份，runner 清理自己的临时目录后恢复约 7.7 GB 可用空间。改为受影响会话的定向副本；22:04 health 和 22:06 真实飞书普通回复均恢复。没有清理其他任务数据。
+- 21:14–21:18 SSH 曾超时，21:57 恢复；未改网络配置，也未使用公网 SSH。部署前全量 parity 核对 18,812 文件 ALIGNED。
 
-## 共享初轮与最终候选
+共享验收须同时证明实际子任务命令输出、两条通知进入父会话、最终群回复独立读回、没有错误提示或重复最终消息。通过后保存 artifact 对应证据，再按共享流程回滚基线并释放 lease；生产推广另按授权执行。
 
-组合 `subagent-settle-completion-20261016b` 从完整 parity ALIGNED（18,812 文件）的基线部署。旧群真实两个子任务完成、父会话中途再次 yield 后，最终 `COMPLETION_R1_1016_OK A+B` 实际可见并被飞书读回；projection 错误未再出现。但仍有一条错误的 yield 诊断，未算完整通过；已回退基线，补充上面的成功 claim 证据判断。
+## 共享真实渠道验收（22:42–22:47）
 
-最终候选 `candidate-f340d41a-3aaf-4792-a49a-bd9fb34bc278`：16/16，通过。最新旧群副本 14,331,904 字节，733 条事件、718 条历史消息，三次等待 1417 / 2389 / 1027 ms，历史与事件数不变，无模型或工具调用。最新 runtime SHA256 为 `e54511997f3d9f3bedc85d60aa8bcd1fbe794e71e01ef745eeb6974afc25e5ba`。共享渠道复验待执行。
+两轮双子任务分别覆盖立即完成、B 延迟 8 秒完成；父会话均在第一条通知后再次 yield，再收到第二条结果。五个子任务的真实 exec 命令及输出逐条核对，单子任务与普通消息也通过。飞书独立读回最终消息，每种场景只有一条正确回复，没有错误 continuation 提示或重复最终消息。
 
-组合 c 的真实旧群 R1 最终汇总成功，但基于 toolMetas 的误报修订没有覆盖实际中断路径，仍未通过完整验收并已回退。v3 改为显式原生 claim 凭据；测试执行实际 native result 对象组装，覆盖没有 tool-end 元数据、没有本回合 spawn 的情况。
+| 场景 | 最终消息 ID |
+| --- | --- |
+| 双子任务立即完成 | `om_x100b6217cf7794acce9c7c9360a363e` |
+| 双子任务延迟完成 | `om_x100b6217cb52a8a0cf37149591a566d` |
+| 单子任务 | `om_x100b6217c77a44a0ce41a575f234a03` |
+| 普通消息 | `om_x100b6217c34bbcacb0f88ab08853376` |
 
-v3 候选 `candidate-b74af677-0de0-4c9f-b0ce-fff07bf180ad` 16/16 通过；746 条事件、731 条历史消息，三次等待 1117 / 1131 / 1140 ms，历史与事件数不变，无模型或工具调用。产物 SHA256 `71c2310a73dbfa66d70fe560ff13132c620f0033439e604417842412758a67bc`。最终共享渠道复验待执行。
+结束时注册表保留 35 行，运行中 0，待收尾 0，无需通知的待收尾 0。health 为 ok，事件循环未降级。最终轮日志没有 projection error、可见 yield 误报、session-entry.patch 版本冲突或磁盘满。
 
-## 跨 Worker 返回链路修订
+仍观察到两条中途 yield 对应的 `visible_reply_missing` 后台诊断、一次 2 秒 abort-settle 超时及一次远端 node probe 超时；后续结果均实际送达。这里证明本次通知链路和积压场景通过，不代表清除了所有后台诊断，也不证明生产 Night Shift 峰值负载已解决。完整可复核摘要、五条实际输出、输入/读回 hash 见 [共享验收记录](subagent-completion-projection.integration.json)。
 
-组合 d 的原生 attempt 已产生 claim 凭据，但 `completeEmbeddedRun` 的最终 meta 和 Worker `buildHarnessAttemptResult` 均丢失该字段，因此误报仍然出现。该轮另记录一次 `session-entry.patch` 并发版本冲突；没有确认最终汇总成功，未验收，22:36 已通过正式 rollback 恢复原基线。
-
-候选 e 将凭据从 native attempt 传至 native final meta，再经 Worker IPC attempt 返回 Gateway。两端均要求 yielded 与原生凭据同时为 true。通知改动涉及三个 runtime 文件（builtin、embedded-agent、Worker harness-result），加上积压修复共六个。补充回归执行实际最终 metadata 投影和实际 Worker adapter，经历 JSON 序列化后再跑 Gateway 判定，覆盖无凭据与非 yield 拒绝；本地含 adapter 既有回归共 67 项通过。真实副本 candidate-852de947-ba6e-45e5-bf8d-23918112dc77：17/17 通过；757 事件、742 消息，三轮等待 1179/2263/1057 ms 后历史完全不变。渠道复验待执行。
+22:50 正式 rollback 已完成：恢复 `voice-batch-shared-20261016e`，完整 runtime SHA `a9578e93ea3b86d50b48e4b8ca561394cba8424fa87e7200e3fb3d8fada544b3` 与部署前基线一致，pending 为 null，状态数据保留，health ok（54 ms）。该版本的共享验收凭据保留，生产未部署。
+integration lease 已释放；其他候选可按流程取得租约后继续。
