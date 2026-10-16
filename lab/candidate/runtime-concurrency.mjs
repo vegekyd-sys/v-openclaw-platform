@@ -171,8 +171,8 @@ const V_CODEX_DIST_SHA = process.env.V_CODEX_DIST_SHA ?? "e56145ed44f74a48560d67
   const codexDists = (base) => (fs.existsSync(path.join(base, "npm", "projects")) ? fs.readdirSync(path.join(base, "npm", "projects")).filter((d) => d.startsWith("openclaw-codex-")).map((d) => path.join(base, "npm", "projects", d, "node_modules", "@openclaw", "codex", "dist")).filter((d) => fs.existsSync(path.join(d, "..", "package.json"))) : []);
   // a source with V's bytes: this run's state/npm copy, else a cached runtime baseline
   const baselines = "/srv/vlab-production-mirror/labs/candidate-tests/baselines";
-  const sources = [...codexDists(stateDir), ...(fs.existsSync(baselines) ? fs.readdirSync(baselines).flatMap((b) => codexDists(path.join(baselines, b, "runtime"))) : [])];
-  const vDist = sources.find((d) => distSha(d) === V_CODEX_DIST_SHA);
+  const cached = () => { try { return fs.readdirSync(baselines).flatMap((b) => codexDists(path.join(baselines, b, "runtime"))); } catch { return []; } };
+  const vDist = codexDists(stateDir).find((d) => distSha(d) === V_CODEX_DIST_SHA) ?? cached().find((d) => distSha(d) === V_CODEX_DIST_SHA);
   assert(vDist, "no copy of V's Codex plugin bytes found");
   const replaced = [];
   for (const dir of [...codexDists(stateDir), ...codexDists(runtime)]) {
