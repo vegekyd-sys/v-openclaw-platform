@@ -3,7 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { BASELINE_SOURCE, OUTPUT_SOURCE, HELPER, patchSubagentCompletionProjection } from "./patch-subagent-completion-projection.mjs";
+import { buildHarnessAttemptResult } from "../experiments/agent-worker-isolation-v1/harness-result.mjs";
+import { EMBEDDED_SOURCE, EMBEDDED_OUTPUT, patchNativeYieldReceipt, BASELINE_SOURCE, OUTPUT_SOURCE, HELPER, patchSubagentCompletionProjection } from "./patch-subagent-completion-projection.mjs";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const baseline = fs.readFileSync(path.join(root, BASELINE_SOURCE), "utf8");
@@ -212,4 +213,32 @@ test("actual patched attempt lifecycle waits before creating its writer context;
   const result = await pending;
   assert.equal(result.ownedTranscriptWriteContext.sessionTarget.sessionId, target.sessionId);
   assert.equal(after.observed.lifecycleCreated, 1); assert.equal(after.observed.writes, 0);
+});
+
+function nativeFinalMeta(source, attempt) {
+  const start = source.indexOf("...input.attempt.yieldDetected ? { yielded: true } : {},");
+  const end = source.indexOf("...input.attempt.yieldAcknowledgment", start);
+  assert(start > 0 && end > start);
+  return new Function("input", "return ({" + source.slice(start, end) + "});")({ attempt });
+}
+
+test("native pending-child receipt survives final metadata and actual worker IPC reconstruction", async () => {
+  const original = fs.readFileSync(path.join(root, EMBEDDED_SOURCE), "utf8");
+  const fixed = patchNativeYieldReceipt(original);
+  assert.equal(fs.readFileSync(path.join(root, EMBEDDED_OUTPUT), "utf8"), fixed);
+  const attempt = projectNativeResult(patched, { yieldDetected: true });
+  const before = await buildHarnessAttemptResult({ meta: nativeFinalMeta(original, attempt) });
+  assert.equal(yieldEvidence(patched)(before), false, "original native finalization drops the receipt");
+  for (const state of [{ yieldDetected: true }, { yieldDetected: false }]) {
+    const native = projectNativeResult(patched, state);
+    const meta = nativeFinalMeta(fixed, native);
+    const worker = await buildHarnessAttemptResult(JSON.parse(JSON.stringify({ meta })));
+    const ipc = JSON.parse(JSON.stringify(worker));
+    assert.equal(yieldEvidence(patched)(ipc), state.yieldDetected);
+  }
+  for (const meta of [{ yielded: true }, { nativeYieldClaimed: true }, { yielded: false, nativeYieldClaimed: true }, { yielded: true, nativeYieldClaimed: false }]) {
+    const worker = await buildHarnessAttemptResult({ meta });
+    assert.notEqual(worker.nativeYieldClaimed, true);
+    assert.equal(yieldEvidence(patched)(worker), false);
+  }
 });
