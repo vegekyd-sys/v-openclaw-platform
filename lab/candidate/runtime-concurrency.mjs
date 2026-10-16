@@ -155,15 +155,17 @@ if (!fs.existsSync(path.join(stateDir, "npm"))) {
 // ---- Codex plugin = V's bytes. Shared VLab can be V plus one release on its way (2026-10-17 03:58
 // #409 changed transport-stdio); every copy the Gateway can load (state/npm and the runtime's npm,
 // those with a package.json) is brought to V's whole-dist bytes, and the result recorded.
-// V's whole Codex dist, as `find dist -type f | sort | xargs sha256sum | sha256sum` on V (2026-10-17)
-const V_CODEX_DIST_SHA = process.env.V_CODEX_DIST_SHA ?? "7fade013e1e061e57f73d4cbcd31975a6bf58f1199846acc43c6009b891c36d1";
+// V's whole Codex dist, as `find dist -type f | sort | xargs sha256sum | sha256sum` on V. Since
+// 2026-10-17 04:13 (F5, #409) e56145ed; before it 7fade013, the bytes of the 10/16 freezes, which
+// the first two runs of 2026-10-17 used. Backup files (*.bak*) are not loaded and are ignored.
+const V_CODEX_DIST_SHA = process.env.V_CODEX_DIST_SHA ?? "e56145ed44f74a48560d67fd520dd154e0578e8a93d9d95fce868a7a491fa84f";
 {
   const sha = (f) => createHash("sha256").update(fs.readFileSync(f)).digest("hex");
   const distSha = (dir) => {
     const files = [];
     const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const f = path.join(d, e.name); if (e.isDirectory()) walk(f); else if (e.isFile()) files.push(f); } };
     walk(dir);
-    const lines = files.map((f) => `dist/${path.relative(dir, f)}`).sort().map((rel) => `${sha(path.join(dir, rel.slice(5)))}  ${rel}\n`);
+    const lines = files.filter((f) => !/\.bak/u.test(path.basename(f))).map((f) => `dist/${path.relative(dir, f)}`).sort().map((rel) => `${sha(path.join(dir, rel.slice(5)))}  ${rel}\n`);
     return createHash("sha256").update(lines.join("")).digest("hex");
   };
   const codexDists = (base) => (fs.existsSync(path.join(base, "npm", "projects")) ? fs.readdirSync(path.join(base, "npm", "projects")).filter((d) => d.startsWith("openclaw-codex-")).map((d) => path.join(base, "npm", "projects", d, "node_modules", "@openclaw", "codex", "dist")).filter((d) => fs.existsSync(path.join(d, "..", "package.json"))) : []);
@@ -175,7 +177,7 @@ const V_CODEX_DIST_SHA = process.env.V_CODEX_DIST_SHA ?? "7fade013e1e061e57f73d4
   const replaced = [];
   for (const dir of [...codexDists(stateDir), ...codexDists(runtime)]) {
     if (dir === vDist) continue;
-    for (const f of fs.readdirSync(vDist)) {
+    for (const f of fs.readdirSync(vDist).filter((n) => !/\.bak/u.test(n))) {
       const from = path.join(vDist, f);
       const to = path.join(dir, f);
       if (!fs.statSync(from).isFile()) continue;
