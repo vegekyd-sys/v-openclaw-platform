@@ -1,6 +1,6 @@
 # 连续子任务完成通知修复
 
-状态：候选、合并回归和共享 VLab 真实飞书验收均通过。已验收组合为 `subagent-settle-completion-20261016e`，生产 V 未部署。积压修复见 [独立说明](subagent-settle-backlog.md)。
+状态：候选、合并回归、共享 VLab 与生产 V 真实飞书验收均通过。已验收组合 `subagent-settle-completion-20261016e` 于 2026-10-16 23:33 CST 在生产 V 生效，实际字节、重启与消息证据见本文生产推广部分。积压修复见 [独立说明](subagent-settle-backlog.md)。
 
 ## 问题与最终改动
 
@@ -49,5 +49,40 @@ node lab/vlab.mjs candidate --repo "$PWD" --owner YOUR_TASK_ID --plan "$PWD/lab/
 
 仍观察到两条中途 yield 对应的 `visible_reply_missing` 后台诊断、一次 2 秒 abort-settle 超时及一次远端 node probe 超时；后续结果均实际送达。这里证明本次通知链路和积压场景通过，不代表清除了所有后台诊断，也不证明生产 Night Shift 峰值负载已解决。完整可复核摘要、五条实际输出、输入/读回 hash 见 [共享验收记录](subagent-completion-projection.integration.json)。
 
-22:50 正式 rollback 已完成：恢复 `voice-batch-shared-20261016e`，完整 runtime SHA `a9578e93ea3b86d50b48e4b8ca561394cba8424fa87e7200e3fb3d8fada544b3` 与部署前基线一致，pending 为 null，状态数据保留，health ok（54 ms）。该版本的共享验收凭据保留，生产未部署。
+22:50 正式 rollback 已完成：恢复 `voice-batch-shared-20261016e`，完整 runtime SHA `a9578e93ea3b86d50b48e4b8ca561394cba8424fa87e7200e3fb3d8fada544b3` 与部署前基线一致，pending 为 null，状态数据保留，health ok（54 ms）。该版本的共享验收凭据保留；在 22:50 这个时间点生产尚未部署，后续推广见下节。
 integration lease 已释放；其他候选可按流程取得租约后继续。
+
+
+## 生产推广（2026-10-16）
+
+PR [#399](https://github.com/vegekyd-sys/v-openclaw-platform/pull/399) 在 Node 22 CI 通过后合入 dev（`873a5a2ae77ea62123cc7a896127855d6320084f`）。按用户授权，将已验收的 `subagent-settle-completion-20261016e` 原产物六个文件推广到 V；产物 SHA `a465dd0a42bea1e8b040373de17cc51399179e7c335bf05bca92130c8054149e`，源提交 `24ad9998da030cfafb51089b6c1a62d43ea73793`。未把 #398 或 Night Shift #12 带入生产运行时。
+
+发布名 `v2026.9.1-db91.6-subagent-settle-20261016`。官方推广工具在最后一次基线复核后安装 6/6 文件，之后再次逐一核对生产 SHA 与验收产物完全相同。回滚目录为 `/opt/v-release-backups/v2026.9.1-db91.6-subagent-settle-20261016-20261016T153005`，内含旧字节、原权限/属主和 `undo.json`。
+
+正式重启使用用户确认的 `v-self-restart`，请求 `20261016-233206-0495`：23:32:18 原进程 `2213143` 停止，23:33:14 新进程 `2973288` 就绪，启动 56 秒，5 个 Worker ready。配置 SHA 未变；Night Shift 服务 PID `1465181` 未改变。没有额外调整并发、配置或重启 Night Shift。
+
+### 积压与恢复
+
+- 23:07 初始只读快照：3,101 行，179 条已结束且无需用户通知的待结算唤醒；需用户通知的 pending 为 0。
+- 23:29 安装前快照：3,118 行，上述静默 pending 已增长到 194；需用户通知的 pending 仍为 0。
+- 23:34:44 重启后：3,119 行，pending 归零。23:39:49 再次核对：3,128 行，pending 仍为 0；按安装前 194 个 runId 定向回读，194/194 原行都存在，`requesterSettleWake` 均为 null。没有以删行或只清内存缓存来制造归零结果。 23:57:52 持续运行复核：3,146 行、9 个运行中，待结算与需通知 pending 仍为 0。
+- Night Shift 记录了旧 boot 的断连、新 boot `eadf93fd-e9b0-4ab3-843f-8979fd7e1020` 回连与等待恢复阶段；23:35:23 自动接续 10 张卡片，转交人工 0，最终状态为 `up`。
+- 截至 23:39:49，这 10 张卡片中 6 张出现了重启后的新 attempt，其中已有成功和继续运行的任务；部分卡片仍是 `blocked`，其原因不能仅从 `error=null` 推断。另有压力 hold，不能把本次恢复和通知通过说成夜班整体性能问题已解决。完整夜班业务结果验收与其他性能补丁不在本批结论内。
+
+### 真实飞书验收
+
+在生产专用验收群中，通过真实父会话、原生子任务、实际 exec 和独立消息读回验证：
+
+| 场景 | 独立读回的唯一最终消息 |
+| --- | --- |
+| 普通消息 `PROD399_1016_NORMAL_OK` | `om_x100b62100f8ef8a0cf958234ed2cdb3` |
+| 两个子任务 `PROD399_1016_DOUBLE_OK A+B` | `om_x100b6210094800a0cf4ee874a29bea2` |
+| 单子任务 `PROD399_1016_SINGLE_OK` | `om_x100b6210000024accfb9c69767deb7b` |
+
+A 实际执行 `printf PROD399_1016_DOUBLE_A`，B 实际执行 `sleep 8; printf PROD399_1016_DOUBLE_B`，单子任务实际执行 `printf PROD399_1016_SINGLE_CHILD`；三份执行输出逐条核对。父会话第一次 yield 后收到真实完成通知；双子任务第二次 yield 时另一条完成通知已排队，工具返回 `Skipped due to queued user message.`，随后仅发送一次正确汇总，没有可见 yield 错误。两次都成功让出的顺序路径已在共享 VLab 同一产物中验证，本轮生产不把该排队分支误计为两次成功 yield。
+
+生产验证摘要与原始私有证据的 SHA 见 [生产证据](subagent-completion-projection.production.json)。完整聊天、任务正文、数据库、凭据不进入仓库。上线前两次连接超时均发生于安装前；安装后曾中断本任务卡住的只读归档传输并续跑，未重复安装或重启。
+
+### 正式对齐与共享环境交接
+
+2026-10-17 00:24:21（北京时间）官方 parity 完成并写回 `aligned=true`：比较 18,812 个文件，阻断差异 0，advisory 32。六个运行组件已按生产原始字节归档；drift sentinel 覆盖六个根目录、9,214 个文件，检查无发现。协调会话随后释放本任务租约，部署负责人独立回读确认 `lease=null`、`pending=null`。本次上线及交接完成；发布记录 PR、main 合入及 tag 的状态单独报告。
