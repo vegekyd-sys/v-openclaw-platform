@@ -1,4 +1,4 @@
-// subagent-completion-projection-v2: admitted-attempt-readiness-and-claimed-yield
+// subagent-completion-projection-v3: admitted-attempt-readiness-and-native-yield-claim
 // gpt-live-projection-readiness-v1: admitted-voice-prompt
 // gpt-live-voice-tool-order-v1: native-builtin
 import {bundlePrepObserver} from "./bundle-prep-observer.mjs";
@@ -6741,9 +6741,8 @@ function shouldRetryMissingAssistantTurn(params) {
 }
 /** Continuation evidence for a yielded turn — sources that will produce future output. */
 function hasYieldContinuationEvidence(attempt) {
-	// A successful native sessions_yield already claimed a pending child, including
-	// children accepted in an earlier turn. Do not require a new spawn in this turn.
-	if (attempt.yieldDetected === true && attempt.toolMetas?.some((tool) => tool.toolName === "sessions_yield" && tool.isError === false)) return true;
+	// Native onYield already claimed a pending child, possibly from a prior turn.
+	if (attempt.yieldDetected === true && attempt.nativeYieldClaimed === true) return true;
 	return (attempt.clientToolCalls?.length ?? 0) > 0 || attempt.didSendDeterministicApprovalPrompt === true || hasCommittedMessagingToolDeliveryEvidence({
 		messagingToolSentTexts: attempt.messagingToolSentTexts ?? [],
 		messagingToolSentMediaUrls: attempt.messagingToolSentMediaUrls ?? [],
@@ -7066,6 +7065,9 @@ function completeEmbeddedAttemptResult(input) {
 		compactionCount: getCompactionCount(),
 		compactionTokensAfter: getLastCompactionTokensAfter(),
 		clientToolCalls,
+		// onYield runs only after the pending-child claim succeeds. Yield may abort
+		// before tool-end metadata arrives, so preserve its native receipt directly.
+		...state.yieldDetected === true ? { nativeYieldClaimed: true } : {},
 		yieldDetected: state.yieldDetected || void 0,
 		yieldAcknowledgment: state.yieldAcknowledgment
 	};
