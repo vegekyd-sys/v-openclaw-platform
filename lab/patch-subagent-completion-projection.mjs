@@ -47,10 +47,21 @@ export function patchSubagentCompletionProjection(source) {
   return `${MARKER}\n${source.replace(region, HELPER + region)}`;
 }
 
+export const EMBEDDED_SOURCE = "release/captured/v2026.9.1-db91.6-voice-task-continuity-20261016-r3/dist/embedded-agent-DaSvA-Yk.js";
+export const EMBEDDED_OUTPUT = "lab/release-files/subagent-completion-projection/embedded-agent-DaSvA-Yk.js";
+export const EMBEDDED_BEFORE = "a53fe92d1c6d1a1690587ade48271f7d1c960922716bc84935e6511242215e54";
+export function patchNativeYieldReceipt(source) {
+  assert.equal(createHash("sha256").update(source).digest("hex"), EMBEDDED_BEFORE, "native completion baseline drifted");
+  const anchor = "...input.attempt.yieldDetected ? { yielded: true } : {},";
+  assert.equal(source.split(anchor).length - 1, 1);
+  return source.replace(anchor, anchor + "\n\t\t\t\t\t...input.attempt.yieldDetected === true && input.attempt.nativeYieldClaimed === true ? { nativeYieldClaimed: true } : {},");
+}
+
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const target = path.join(root, OUTPUT_SOURCE);
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.writeFileSync(target, patchSubagentCompletionProjection(fs.readFileSync(path.join(root, BASELINE_SOURCE), "utf8")));
-  console.log(OUTPUT_SOURCE);
+  fs.writeFileSync(path.join(root, EMBEDDED_OUTPUT), patchNativeYieldReceipt(fs.readFileSync(path.join(root, EMBEDDED_SOURCE), "utf8")));
+  console.log(OUTPUT_SOURCE, EMBEDDED_OUTPUT);
 }

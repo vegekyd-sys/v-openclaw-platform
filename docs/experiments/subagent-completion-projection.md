@@ -52,3 +52,9 @@ node --test lab/subagent-completion-projection.test.mjs lab/gpt-live-projection-
 组合 c 的真实旧群 R1 最终汇总成功，但基于 toolMetas 的误报修订没有覆盖实际中断路径，仍未通过完整验收并已回退。v3 改为显式原生 claim 凭据；测试执行实际 native result 对象组装，覆盖没有 tool-end 元数据、没有本回合 spawn 的情况。
 
 v3 候选 `candidate-b74af677-0de0-4c9f-b0ce-fff07bf180ad` 16/16 通过；746 条事件、731 条历史消息，三次等待 1117 / 1131 / 1140 ms，历史与事件数不变，无模型或工具调用。产物 SHA256 `71c2310a73dbfa66d70fe560ff13132c620f0033439e604417842412758a67bc`。最终共享渠道复验待执行。
+
+## 跨 Worker 返回链路修订
+
+组合 d 的原生 attempt 已产生 claim 凭据，但 `completeEmbeddedRun` 的最终 meta 和 Worker `buildHarnessAttemptResult` 均丢失该字段，因此误报仍然出现。该轮另记录一次 `session-entry.patch` 并发版本冲突；没有确认最终汇总成功，未验收，22:36 已通过正式 rollback 恢复原基线。
+
+候选 e 将凭据从 native attempt 传至 native final meta，再经 Worker IPC attempt 返回 Gateway。两端均要求 yielded 与原生凭据同时为 true。通知改动涉及三个 runtime 文件（builtin、embedded-agent、Worker harness-result），加上积压修复共六个。补充回归执行实际最终 metadata 投影和实际 Worker adapter，经历 JSON 序列化后再跑 Gateway 判定，覆盖无凭据与非 yield 拒绝；本地含 adapter 既有回归共 67 项通过。真实副本 candidate-852de947-ba6e-45e5-bf8d-23918112dc77：17/17 通过；757 事件、742 消息，三轮等待 1179/2263/1057 ms 后历史完全不变。渠道复验待执行。
