@@ -45,6 +45,11 @@ export function assertEntrySnapshot(expected, actual) {
   assert.equal(actual.openVoices, 0, "A voice call is open; do not replace the entry");
   if ('relayConnections' in expected) assert.equal(actual.relayConnections, 0, 'The H5 relay has a connection; defer the upgrade');
 }
+export function assertVoiceWorkDrained(value) {
+  assert.equal(value?.known, true, 'Voice task state is unknown; do not stop the entry');
+  for (const key of ['activeCalls', 'creatingSessions', 'backgroundTasks'])
+    assert.equal(value[key], 0, `Voice ${key} is not drained; defer the upgrade`);
+}
 export function entryLaunchOverride(execStart, server, nativeEnvironment = "") {
   assert(/^\/opt\/openclaw-voice-h5\/releases\/[A-Za-z0-9._-]+\/lab\/gpt-live-h5\/server\.mjs$/.test(server));
   assert(!nativeEnvironment || /^\/opt\/openclaw-voice-h5\/releases\/[A-Za-z0-9._-]+\/native-voice.env$/.test(nativeEnvironment));
@@ -89,15 +94,31 @@ async function remoteMain(req) {
   }
   const state = env.OPENCLAW_STATE_DIR ?? path.dirname(env.OPENCLAW_CONFIG_PATH);
   const countVoices = () => Number(run("python3", ["-c", "import sqlite3,json,sys; d=sqlite3.connect('file:'+sys.argv[1]+'?mode=ro',uri=True); r=d.execute('select value_json from cache_entries where scope=?',('talk-client-voice-sessions',)); print(sum(json.loads(x[0]).get('status') not in ('closed','expired') for x in r))", path.join(state, "agents/makaron/agent/openclaw-agent.sqlite")]));
-  const observe = () => ({ pointer: fs.readlinkSync(pointer), unitSha: digest(run("systemctl", ["cat", unit])),
+  const readVoiceWork = async () => {
+    try {
+      const pid=Number(properties(unit).MainPID);
+      const henv=Object.fromEntries(fs.readFileSync(`/proc/${pid}/environ`,'utf8').split('\0').filter(Boolean).map(line=>{const i=line.indexOf('=');return [line.slice(0,i),line.slice(i+1)];}));
+      const secret=henv.GPT_LIVE_H5_ACCESS_TOKEN??henv.RTC_H5_ACCESS_TOKEN;
+      assert(secret?.length>=32);
+      const payload=`${crypto.randomBytes(16).toString('hex')}.${Date.now()+60000}`;
+      const cookie=`v_voice_access=${payload}.${crypto.createHmac('sha256',secret).update(payload).digest('base64url')}`;
+      return await new Promise((resolve,reject)=>{
+        const call=request({host:'127.0.0.1',port:Number(henv.GPT_LIVE_H5_PORT??henv.RTC_H5_PORT??26242),path:(henv.GPT_LIVE_H5_BASE_PATH??henv.RTC_H5_BASE_PATH??'/voice')+'/api/status?entry=tianyi',headers:{host:'openclaw.tianyi.live',cookie}},res=>{
+          let body='';res.on('data',part=>{body+=part;if(body.length>65536)call.destroy(Error('Voice status too large'));});
+          res.on('end',()=>{try{assert.equal(res.statusCode,200);resolve(JSON.parse(body).releaseReadiness??{known:false});}catch(error){reject(error);}});
+        });call.setTimeout(5000,()=>call.destroy(Error('Voice status unavailable')));call.on('error',reject);call.end();
+      });
+    } catch { return {known:false}; }
+  };
+  const observe = async () => ({ pointer: fs.readlinkSync(pointer), unitSha: digest(run("systemctl", ["cat", unit])),
     launchDropInSha: fs.existsSync(launchDropIn) ? hash(launchDropIn) : null,
     environmentSha: hash(path.join(state, "rtc-h5.env")), gatewayPid: gp,
     gatewayStart: fs.readFileSync(`/proc/${gp}/stat`, "utf8").split(") ")[1].split(/\s+/u)[19],
     gatewayInvocation: gateway.InvocationID, configSha: hash(env.OPENCLAW_CONFIG_PATH), openVoices: countVoices(),
     // Direct providers live in the H5 process, outside the Gateway voice DB.
     // A conservative socket check also protects those calls during cutover.
-    ...((req.h5Only || req.voiceManifest) ? { relayConnections: run('ss', ['-H', '-tnp', 'state', 'established', '( sport = :26242 )']).split('\n').filter(Boolean).length } : {}) });
-  const snapshot = observe();
+    ...((req.h5Only || req.voiceManifest) ? { releaseReadiness: await readVoiceWork(), relayConnections: run('ss', ['-H', '-tnp', 'state', 'established', '( sport = :26242 )']).split('\n').filter(Boolean).length } : {}) });
+  const snapshot = await observe();
   const metadata = { schema: "gpt-live-voice-entry-v1", commit: req.commit, release: req.release, owner: req.owner,
     avatarDecisions: req.avatarDecisions === true, artifactSha: proof.artifactSha, filesSha: req.filesSha, dir, unit, url: "https://openclaw.tianyi.live/voice/", snapshot,
     acceptanceBasis: req.productionReview ? 'user-reviewed-presentation; shared H5 gate explicitly waived' : 'shared-H5-acceptance', at: new Date().toISOString() };
@@ -134,6 +155,7 @@ async function remoteMain(req) {
     save(dir + "/rolled-back.json", receipt); return receipt;
   }
   assert.equal(req.command, "install");
+  assertVoiceWorkDrained(snapshot.releaseReadiness);
   const standalonePrepared=req.voiceManifest&&fs.existsSync(dir);
   if(standalonePrepared){verifyArtifactDirectory();assert(!fs.existsSync(dir+'/installed.json'),'Voice artifact already activated');}
   else assert(!fs.existsSync(dir), "This voice release already exists; inspect its receipt");
@@ -178,7 +200,8 @@ async function remoteMain(req) {
   const launchBytes = entryLaunchOverride(run("systemctl", ["show", unit, "-p", "ExecStart", "--value"]), wantedPointer + "/server.mjs", nativeEnvironment);
   const launch = { path: launchDropIn, before: beforeLaunch, afterSha: digest(launchBytes) };
   save(dir + "/prepared.json", { ...metadata, beforePointer: snapshot.pointer, launchDropIn: launch });
-  assertEntrySnapshot(snapshot, observe());
+  assertEntrySnapshot(snapshot, await observe());
+  assertVoiceWorkDrained((await observe()).releaseReadiness);
   run("systemctl", ["stop", unit]);
   assert.equal(Number(properties(unit).MainPID), 0);
   swap(wantedPointer);
@@ -206,13 +229,13 @@ async function remoteMain(req) {
   assert(ready, "Voice entry not ready; preserve prepared.json and inspect before rollback");
   const served = await probe("app.js"); assert.equal(served.status, 200);
   assert.equal(digest(served.bytes), req.files.find(file => file.name.endsWith("/app.js")).sha);
-  const result = { ...metadata, beforePointer: snapshot.pointer, snapshot: observe(), launchDropIn: launch, h5Pid: hp, ready: true,
+  const result = { ...metadata, beforePointer: snapshot.pointer, snapshot: await observe(), launchDropIn: launch, h5Pid: hp, ready: true,
     acceptance: "HTTP readiness only; real public H5 call validation required" };
   save(dir + "/installed.json", result); return result;
 }
 export function remoteSource() {
   return `import assert from 'node:assert/strict';import {createHash} from 'node:crypto';const digest=${digest.toString()};const H5_PATHS=${JSON.stringify(H5_PATHS)};const fileIdentity=${fileIdentity.toString()};\n`
-    + [prepareVoiceLarkProfile, validateVoiceArtifact, validateVoiceArtifactProof, validateReviewedPresentation, assertEntrySnapshot, entryLaunchOverride, remoteMain].map(fn => fn.toString()).join("\n")
+    + [prepareVoiceLarkProfile, validateVoiceArtifact, validateVoiceArtifactProof, validateReviewedPresentation, assertEntrySnapshot, assertVoiceWorkDrained, entryLaunchOverride, remoteMain].map(fn => fn.toString()).join("\n")
     + "\nlet text='';for await(const c of process.stdin)text+=c;try{const r=await remoteMain(JSON.parse(text));console.log(JSON.stringify(r))}catch{console.error('Voice entry identity or operation failed; preserve prepared receipts and inspect the service.');process.exitCode=1}";
 }
 function main(argv) {

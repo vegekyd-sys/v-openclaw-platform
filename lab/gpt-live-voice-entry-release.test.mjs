@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { assertEntrySnapshot, entryLaunchOverride, remoteSource, validateReviewedPresentation,validateVoiceArtifact,validateVoiceArtifactProof } from "./gpt-live-voice-entry-release.mjs";
+import { assertVoiceWorkDrained, assertEntrySnapshot, entryLaunchOverride, remoteSource, validateReviewedPresentation,validateVoiceArtifact,validateVoiceArtifactProof } from "./gpt-live-voice-entry-release.mjs";
 import { H5_PATHS, digest } from './gpt-live-h5-release.mjs';
 
 const snapshot = { pointer: "/opt/voice/old", unitSha: "unit", environmentSha: "env", gatewayPid: 12,
@@ -54,3 +54,11 @@ test("native provider environment stays in the owned private release and rejects
 function standalone(){const paths=['package.json','package-lock.json','lab/gpt-live-h5/server.mjs','lib/gateway-client.mjs','plugins/v-voice-gpt-live/index.mjs','plugins/v-voice-gpt-live/tasks.mjs'];const files=paths.map(name=>({name,sha:digest(name),content:Buffer.from(name).toString('base64')})),record=files.map(f=>({path:f.name,sha256:f.sha,bytes:Buffer.byteLength(f.name)})),manifest={schema:'v-voice-release-v1',commit:'a'.repeat(40),files:record,filesSha256:digest(JSON.stringify(record))};const req={voiceManifest:manifest,files,filesSha:digest(JSON.stringify(files.map(({name,sha})=>({name,sha})))),commit:manifest.commit,owner:'test-owner',release:'shared-approved'},proof={schema:'v-voice-artifact-accepted-v1',release:req.release,owner:req.owner,sourceCommit:req.commit,filesSha256:manifest.filesSha256,manifestSha:digest(JSON.stringify(manifest)),accepted:true,artifactSha:'b'.repeat(64),acceptanceSha:'c'.repeat(64),runtimeFiles:[{target:'openclaw/dist/talk.js',after:'d'.repeat(64)}]};return{files,manifest,req,proof};}
 test('standalone publication rejects changed content, missing dependencies, traversal and forged aggregate identities',()=>{const{manifest,files}=standalone();validateVoiceArtifact(manifest,files);assert.throws(()=>validateVoiceArtifact(manifest,files.slice(1)));assert.throws(()=>validateVoiceArtifact(manifest,files.map((f,i)=>i?f:{...f,content:Buffer.from('foreign').toString('base64')})));for(const name of ['lab/../../private','/root/private','lab/../package.json']){const x=standalone();x.files[0].name=name;x.manifest.files[0].path=name;x.manifest.filesSha256=digest(JSON.stringify(x.manifest.files));assert.throws(()=>validateVoiceArtifact(x.manifest,x.files));}assert.throws(()=>validateVoiceArtifact({...manifest,filesSha256:'f'.repeat(64)},files));});
 test('standalone shared acceptance binds the complete manifest, source commit, release, owner and actual core artifact',()=>{const{req,proof}=standalone();validateVoiceArtifactProof(proof,req);for(const patch of [{accepted:false},{owner:'foreign'},{release:'old'},{sourceCommit:'e'.repeat(40)},{manifestSha:'e'.repeat(64)},{filesSha256:'e'.repeat(64)},{artifactSha:''},{runtimeFiles:[{target:'openclaw/../secret',after:'a'.repeat(64)}]}])assert.throws(()=>validateVoiceArtifactProof({...proof,...patch},req));assert.throws(()=>validateVoiceArtifactProof(proof,{...req,filesSha:'f'.repeat(64)}));});
+
+test('hangup with an unfinished task or delivery cannot authorize an H5 service stop',()=>{
+ const idle={known:true,activeCalls:0,creatingSessions:0,backgroundTasks:0};
+ assertVoiceWorkDrained(idle);
+ for(const field of ['activeCalls','creatingSessions','backgroundTasks'])assert.throws(()=>assertVoiceWorkDrained({...idle,[field]:1}));
+ for(const missing of [undefined,{}, {known:false}, {...idle,backgroundTasks:undefined}, {...idle,backgroundTasks:'0'}])assert.throws(()=>assertVoiceWorkDrained(missing));
+
+});
