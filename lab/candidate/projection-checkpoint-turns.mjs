@@ -22,6 +22,7 @@ assert(SOURCE_DB && fs.existsSync(SOURCE_DB), "SOURCE_DB is missing");
 const TURN_PLAN = JSON.parse(process.env.TURN_PLAN); // [{sessionKey, sessionId, model: "flash"|"vds"}]
 const TURNS = Number(process.env.TURNS ?? 2);
 const SETTLE_MS = Number(process.env.SETTLE_MS ?? 20_000);
+const FLUSH_IDLE_MS = process.env.FLUSH_IDLE_MS ?? "15000"; // deferred memory flush idle wait (V: 120 s)
 const PROMPT = process.env.PROMPT ?? "（自动化测试）这是一条连通性测试消息。不要继续之前任何未完成的任务，不要调用任何工具，只回复：收到。";
 const MODEL = "deepseek/deepseek-flash";
 const VDS_REF = "deepseek/vds-deepseek-flash";
