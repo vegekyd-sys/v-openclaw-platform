@@ -72,8 +72,11 @@ if (sidecars.length) {
   for (const f of sidecars) console.error(`  ${f.kind} ${f.target}`);
   process.exit(1);
 }
+// VLab's Gateway copy of the Codex plugin (state/npm) is outside the release
+// channel: a difference there is copied by hand, from V's capture.
+const handCopy = parity.findings.filter((f) => !f.advisory && f.copy);
 for (const f of parity.findings) {
-  if (f.advisory) continue;
+  if (f.advisory || f.copy) continue;
   if (f.kind !== 'differs' && f.kind !== 'only-on-v') {
     refused.push(`${f.kind} ${f.target}`);
     continue;
@@ -87,6 +90,12 @@ for (const f of parity.findings) {
   }
   if (sha(bytes) !== f.v) fail(`${f.target}: dev capture ${sha(bytes).slice(0, 8)} is not V's live ${f.v.slice(0, 8)}; recapture V`);
   files.push({ source, target: f.target, before: f.vlab });
+}
+if (handCopy.length) {
+  console.error(`VLab's Gateway copy of the Codex plugin differs from V (${handCopy.length} files); the release channel cannot write it.`);
+  console.error(`Copy it by hand from release/captured/${args.name}.codex/dist/ (keep owner and mode), then run this again; e.g. ${handCopy[0].kind} ${handCopy[0].target}`);
+  // Otherwise the parity check after the deploy below cannot reach ALIGNED.
+  process.exit(1);
 }
 if (refused.length) {
   console.error('These cannot go through a release (use scripts/vlab-rebase-to-v.mjs):');
