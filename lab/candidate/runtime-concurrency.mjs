@@ -458,6 +458,22 @@ function buildDatabase() {
 }
 const built = buildDatabase();
 emit({ phase: "database", ...built });
+// V's startup verification of the synthesized database, for the record (the Gateway below runs
+// without the DB91 admission gate): what it would reject, if anything
+{
+  const { fork } = await import("node:child_process");
+  const verify = await new Promise((resolve) => {
+    const w = fork(path.join(dist, "state/openclaw-database-verify.worker.js"), ["--openclaw-database-verify-child"], { env: process.env, execArgv: ["--max-old-space-size=1024"], stdio: ["ignore", "ignore", "pipe", "ipc"] });
+    let err = "";
+    w.stderr.on("data", (b) => { err += b; });
+    let msg;
+    w.once("message", (m) => { msg = m; });
+    w.once("exit", (code) => resolve({ code, result: msg, stderr: err.slice(-800) }));
+    w.send([{ kind: "agent", label: "OpenClaw agent database", path: dbPath }]);
+    setTimeout(() => w.kill("SIGKILL"), 600_000).unref();
+  });
+  emit({ phase: "db-verify", code: verify.code, result: redact(JSON.stringify(verify.result ?? null)).slice(0, 3000), stderr: redact(verify.stderr) });
+}
 
 // Claude Code keeps its sessions under $HOME/.claude/projects (the shared instance's HOME); the
 // directories this run adds are removed at the end.
@@ -469,7 +485,7 @@ const vEnv = {
   CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1", OPENCLAW_FIRSTTEXT_WORKER_PHASES: "1", OPENCLAW_DATABASE_VERIFY_RESOURCE_GROUP: "1",
   // not OPENCLAW_DB91_INTEGRITY_ENABLE: a startup admission gate (it rejects the synthesized database), not turn work
   OPENCLAW_DB91_PROVENANCE_ENABLE: "1", OPENCLAW_DB91_MEMORY_SCHEMA_ENABLE: "1", OPENCLAW_DB91_MAINTENANCE_ENABLE: "1",
-  OPENCLAW_WORKER_SESSION_AFFINITY_ENABLE: "1", OPENCLAW_DB91_READ_AHEAD_ENABLE: "1",
+  OPENCLAW_WORKER_SESSION_AFFINITY_ENABLE: "1", OPENCLAW_DB91_INTEGRITY_ENABLE: "0", OPENCLAW_DB91_READ_AHEAD_ENABLE: "1",
   OPENCLAW_DB91_STATE_READ_AHEAD_ENABLE: "1", OPENCLAW_DB91_TRAJECTORY_SWEEP_ENABLE: "1",
 };
 const shortTmp = `/tmp/.ltc-${process.pid}`;
