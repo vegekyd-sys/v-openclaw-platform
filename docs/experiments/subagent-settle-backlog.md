@@ -1,6 +1,6 @@
 # 子任务收尾积压修复与验证
 
-本补丁修复持续后台任务导致的 requester settle wake 积压，并让子任务状态检查不再把整段任务内容加载到 Gateway 主线程。已按用户授权合入 dev（集成提交 `c7dc979276cd`），合并后 22 项回归通过。共享 VLab 集成验收进行中，生产 V 尚未部署本补丁。
+本补丁修复持续后台任务导致的 requester settle wake 积压，并让子任务状态检查不再把整段任务内容加载到 Gateway 主线程。已按用户授权合入本地 dev，并与完成通知修复组合在共享 VLab 完成真实飞书验收。生产 V 尚未部署。
 
 ## 根因与改动
 
@@ -41,4 +41,9 @@ node --test lab/subagent-settle-backlog.test.mjs
 node /Users/tianyicai/vlab-dev/lab/vlab.mjs candidate --repo "$PWD" --owner YOUR_TASK_ID --plan "$PWD/lab/candidate/subagent-settle-backlog.plan.json"
 ```
 
-用户已批准合入 dev、共享 VLab 验收和通过后创建 PR，并明确授权接管已无法继续工作的 Claude 租约。部署前先确认与生产 V 对齐，再部署三个精确文件；验收正常子任务通知和真实飞书消息链路后提交 PR，生产推广仍待用户决定。无需数据库迁移；历史无需通知的待唤醒记录会通过原有恢复和扫描入口完成收尾。回滚使用三个文件的受控原始产物，不把已完成的收尾状态重新写回待处理。
+无需数据库迁移；历史无需通知的待唤醒记录会通过原有恢复和扫描入口完成收尾。回滚使用受控原始产物，不把已完成的收尾状态重新写回待处理。组合共享验收和生产状态见下文。
+
+
+## 组合共享验收
+
+与完成通知修复组合为六文件版本 `subagent-settle-completion-20261016e`，部署源提交 `24ad9998da030cfafb51089b6c1a62d43ea73793`。67 项本地/合并回归及 17 项真实旧群会话副本测试通过。旧群双子任务两轮、单子任务、普通消息均独立读回正确回复，五条真实 exec 输出已核对；结束时 35 行任务记录保留，运行中和待收尾均为 0。详细证据与剩余后台诊断见 [通知验收](subagent-completion-projection.md)。这不是生产 Night Shift 所有主线程/数据库压力的完整修复，生产部署仍需授权。

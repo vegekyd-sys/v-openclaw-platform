@@ -1,10 +1,10 @@
 {
-  "id": "candidate-b74af677-0de0-4c9f-b0ce-fff07bf180ad",
+  "id": "candidate-852de947-ba6e-45e5-bf8d-23918112dc77",
   "ok": true,
   "baseRelease": "voice-batch-shared-20261016e",
   "runtimeSha": "a9578e93ea3b86d50b48e4b8ca561394cba8424fa87e7200e3fb3d8fada544b3",
   "configSha256": "7dc9330b7877afd259b3ba3c87a3e461d67d4810f42ed4756dbc5fe43baa5af8",
-  "inputSha256": "0ecdd5a23c4a941649d8585660085cf0e2973f9b3b39a6055ec96df838bb009b",
+  "inputSha256": "5ac0ee8238ecf6710fbfcc92cf0cc70c687eb0fe986bb30d10172960cb5783b4",
   "runnerSha256": "1ae3c86fd910a5b724bf9516183354e4656fa13f6cedac5a69278c66d270d12c",
   "files": [
     {
@@ -12,34 +12,47 @@
       "target": "openclaw/dist/builtin-openclaw-zQV8Wwjr.js",
       "before": "5638a3b7071bbbfa20da7b7c2098facdbd3c15bedf723e922c2f68a3f550f5e9",
       "after": "71c2310a73dbfa66d70fe560ff13132c620f0033439e604417842412758a67bc"
+    },
+    {
+      "source": "lab/release-files/subagent-completion-projection/embedded-agent-DaSvA-Yk.js",
+      "target": "openclaw/dist/embedded-agent-DaSvA-Yk.js",
+      "before": "a53fe92d1c6d1a1690587ade48271f7d1c960922716bc84935e6511242215e54",
+      "after": "bcb20f5dc47a3bd6f543c5140d51a85e80157d50ec945ca708bd78fb718bf50b"
+    },
+    {
+      "source": "experiments/agent-worker-isolation-v1/harness-result.mjs",
+      "target": "production-worker/harness-result.mjs",
+      "before": "76840da2ca08f0227dfceaa4c034dc1e1c5ead0dc3c6af290c95d5a544ceb65c",
+      "after": "0c52961add782e11e30feabc6f7ba852874c4ead671da15cffc1de160a8bcf7b"
     }
   ],
-  "sharedBeforePid": 733348,
-  "sharedAfterPid": 733348,
+  "sharedBeforePid": 735168,
+  "sharedAfterPid": 735168,
   "sharedUnchanged": true,
   "timings": {
-    "inspectMs": 21,
-    "baselineMs": 2,
-    "snapshotMs": 45997,
-    "overlayMs": 52,
-    "testMs": 13159
+    "inspectMs": 15,
+    "baselineMs": 1,
+    "snapshotMs": 13084,
+    "overlayMs": 18,
+    "testMs": 12306
   },
   "proof": {
-    "messages": 731,
-    "events": 746,
+    "messages": 742,
+    "events": 757,
     "waitsMs": [
-      1117,
-      1131,
-      1140
+      1179,
+      2263,
+      1057
     ],
     "historyUnchanged": true,
     "modelCalls": 0,
     "toolCalls": 0,
-    "sourceTranscriptSha256": "01db5d304fae8388ec9203c39f2b4f9328c6191a468e7008acf7f069732226eb",
+    "sourceTranscriptSha256": "2e0ccf53bc150a87b1546c2500095950fa6e0528f34658d37e441cc365ed2209",
     "scope": "one real session copied under read-only transaction; not entire database",
-    "testsPassed": 16
+    "testsPassed": 17
   },
   "previousCandidateReceipts": [
+    "candidate-b74af677-0de0-4c9f-b0ce-fff07bf180ad",
     "candidate-f340d41a-3aaf-4792-a49a-bd9fb34bc278",
     "candidate-9308be0e-32e4-4626-b979-a1e3dee01a53"
   ]
