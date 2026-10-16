@@ -26,7 +26,7 @@ function fixture(t,testSource=minimalTest){
 test('checked-in catalog inventories 9.1 without claiming install acceptance',()=>{
   const catalog=loadCatalog(repo),audit=auditCatalog(repo,catalog);
   assert.equal(audit.catalogValid,true,JSON.stringify(audit.errors));
-  assert.deepEqual(audit.counts,{components:12,capabilities:16,adaptations:27,offlineFiles:289});
+  assert.deepEqual(audit.counts,{components:12,capabilities:16,adaptations:28,offlineFiles:290});
   assert.equal(audit.releaseReady,false);
   assert(catalog.adaptations.find(p=>p.id==='patch-browser-target-timeout').disposition==='excluded-candidate');
 });

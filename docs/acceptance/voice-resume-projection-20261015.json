@@ -1,0 +1,72 @@
+{
+  "schema": "voice-candidate-acceptance-v1",
+  "acceptedForRelease": false,
+  "environment": "isolated VLab Candidate",
+  "candidate": "candidate-b8f9aa5a-8379-4428-8ace-691bb883c08b",
+  "voiceCommit": "a64e62a75f8c41c44115b760ff6b94a4914ff0ff",
+  "voiceFilesSha256": "b81b5602bf68ca43f87ce192ac9cee91d2bc1df8b982df6a9be4bfd68b1955eb",
+  "platformCoreScope": [
+    "PR371 talk and lifetime",
+    "voice-resume-projection announce preflight"
+  ],
+  "excluded": [
+    "Voice15",
+    "Voice16",
+    "Voice17",
+    "Platform374"
+  ],
+  "offlineTests": {
+    "voice": 443,
+    "projectionAndContinuationAndCatalog": 91,
+    "failed": 0
+  },
+  "nativeProjectionFault": {
+    "database": "private Candidate SQLite",
+    "before": "native SessionTranscriptProjectionUnavailableError",
+    "after": "one dispatch and one finish after readiness",
+    "waitAndDispatchMs": 1267,
+    "modelAndToolReplayed": false
+  },
+  "calls": [
+    {
+      "provider": "GPT Live",
+      "input": "synthetic natural spoken audio, real upstream ASR",
+      "backend": "DeepSeek Flash",
+      "passed": true,
+      "actualChildSpawn": true,
+      "actualYield": true,
+      "actualExec": true,
+      "resumedParent": true,
+      "afterHangupMs": 30976,
+      "feishuIndependentReadback": true
+    },
+    {
+      "provider": "SeedDuplex",
+      "input": "synthetic natural spoken audio, real upstream ASR",
+      "passed": false,
+      "scenario": "forced child task after fresh Candidate session",
+      "error": "Voice marks original parent turn ended before its continuation final",
+      "finalResultConfirmed": false,
+      "initialApparentPassRejected": "same-session cached answer reused; not counted"
+    }
+  ],
+  "productionTouched": false,
+  "sharedValidation": "prior combo failed; restored core/config/plugin and released lease. This patch not yet merged or shared-accepted.",
+  "releaseGate": "Candidate follow-up passed for SeedDuplex. Previous failure retained above as history; merge/shared VLab acceptance/production are still pending.",
+  "followup": {
+    "voiceCommit": "8c47c23573128215b07d402220c96a73060084e2",
+    "candidate": "candidate-4cca1ba2-5b08-407d-88cd-5b67aa6d3182",
+    "seedDuplexPassed": true,
+    "actualChildSpawn": true,
+    "actualYield": true,
+    "actualExec": true,
+    "resumedParent": true,
+    "afterHangupMs": 34249,
+    "feishuIndependentReadback": true,
+    "toolOutputFreshForCall": true,
+    "sourceTests": 447,
+    "sourceTestsPassed": 447,
+    "fixLocation": "Voice service and Voice plugin, public consultRealtimeVoiceAgent and api.runtime.agent",
+    "productionTouched": false
+  }
+}

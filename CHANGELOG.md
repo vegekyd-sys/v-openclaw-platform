@@ -11,6 +11,51 @@
 
 ---
 
+## v2026.9.1-db91.6-voice-task-continuity-20261016-r3
+
+上线：2026-10-16 08:43 CST  ·  tag `v2026.9.1-db91.6-voice-task-continuity-20261016-r3`
+
+**摘要**：语音挂断与后台任务解耦；任务可原生派生子任务、让出等待并续接，GPT Live 与豆包共用任务控制机制。
+
+相对上一版 `v2026.9.1-db91.6-upstream-5xx-fallback-20261015`：5 个文件变化。
+
+**经 VLab 发版 `voice-batch-shared-20261016e`**（voice-batch-shared-01a0fb0e-20261016，dev `3e97ae41`）
+> 验收：Frozen Voice a9ac5168 (177 files, 5caf0813) and five core files revalidated in shared VLab. 2026-10-16 08:20-08:23 actual GPT Live and SeedDuplex synthetic natural speech -> real ASR -> native child spawn/yield/exec and parent announce -> hangup -> Feishu final message independently read back (49.263s /39.771s). Actual steer and followup both in final, foreign owner denied. Five ready idle workers…
+- `core` agent-run-control-BeeIeTBf.js  03402763 → 8219c5e8
+- `core` runs-5WnDPZ0V.js  40799973 → 056243f5
+- `core` subagent-announce-delivery-Dosep7Zr.js  8cd70a86 → 6269e1bd
+
+**经 VLab 发版 `voice-e7-lifetime-20261015d`**（voice-e7-01a0fb0e-20261015，dev `17dff81d`）
+- `core` talk-DkFuKRod.js  dc6d6e9f → 80d9cec1
+- `core` voice-task-lifetime.js  — → 49a8bf6e
+
+**这期间合入 dev 的 PR**（8 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #392 fix(ops): wait for delegated Worker cgroups to empty
+- #391 fix(ops): drain service children before restart configuration
+- #390 fix(ops): honor restart lifecycle readiness budgets
+- #389 fix(ops): block config writes while Gateway stop is incomplete
+- #388 feat(release): consume the standalone Voice manifest safely
+- #385 fix(voice): wait for canonical parent projection before continuation
+- #374 fix(realtime-voice): preserve trusted run authority for task control
+- #378 release: V v2026.9.1-db91.6-upstream-5xx-fallback-20261015 捕获与 CHANGELOG（#375 #377；模型改回 DeepSeek + luna 备用；超时 90 s）
+
+
+### 独立 Voice 入口与插件（旁路登记）
+
+- 仓库 `vegekyd-sys/v-voice`，冻结提交 `a9ac516860a8856470262957ad6ea0cc2670cb0e`；177 文件，清单 SHA `5caf0813a241cde4968eb9a8c2b76e7dd43abcc77235be53224cfb9474c23c6c`。实际 Gateway 插件路径和 rtc-h5 进程入口均指向该 release。Voice #10–#19、#21、#22；#18 已整合 #17。#2 多账号、#20 草稿未纳入，Grok 不在本轮模型验收范围。
+- 详细登记：[manifest](release/voice/voice-a9ac5168-20261016/manifest.json)、[逐文件清单](release/voice/voice-a9ac5168-20261016/artifact-manifest.json)、[核对方式](release/voice/voice-a9ac5168-20261016/README.md)。**漂移哨兵不覆盖 Voice 目录**，必须另查实际插件配置、实际 H5 进程路径及全部 177 文件哈希。不能拿 core 的 0 findings 代替 Voice 校验。
+- 入口启用专用飞书 CLI 和 `VOICE_GPT_PROVIDER=v-voice-gpt-live`、`VOICE_HOST_CALL_CONTROL=1`，默认豆包 SeedDuplex。首次入口激活遗漏后两项既有开关，已先回滚入口、修正 Voice profile 后通过官方入口控制器重新激活；没有热改产品文件，没有再次重启 Gateway。原始失败记录保留。
+
+### 实际验收与限制
+
+- 共享 VLab：GPT / 豆包自然口述（合成麦克风）→ 真实 ASR → 子任务 spawn / yield / exec → 原生父任务续接 → 挂断 → 飞书独立读回，分别 49.263 / 39.771 秒收到最终结果。
+- V 生产：两款模型各用独立标识，真实子任务与工具时间匹配；挂断后分别 47.448 / 49.074 秒收到最终群消息，已独立读回。steer、followup 均进入最终结果，异主调用被拒。相同标识复用旧结果的负例和日期格式误判均保留，不计为新鲜工具成功。
+- 两款模型最终回复插话已验证；报告打开、滚动及收起后的手机视口布局已验证。真实 iPhone Safari 未复测。GPT 一次口述结束因“下次再聊”与页面固定文案不同而停留 ending：已定位、单独修成隔离前端候选补丁，**本版未声称该变体已修复或全项通过**。
+- 正式 Gateway 重启使用 `v-self-restart`，请求 `20261016-084228-af39`，71 秒就绪；主服务本次新 invocation 日志 err/关键错误均 0，夜班恢复 up。未增加“不强杀进程”配置，`SendSIGKILL=yes`。此前两次 preflight 因只读 `agent.wait` 观察连接退出，并未重启 Gateway。
+- 系统盘 17,287,241,728 字节旧备份在 vdb 副本 SHA 校验通过后删除；原路径只留符号链接，未做第二份大备份。系统盘约 53 GB、vdb 约 27 GB 可用。生产六个 Voice Candidate / tunnel 均已停止，未重新启动。
+- 共享 VLab 已再次 align 且 lease 已释放。Voice 源码开关与密钥、用户聊天和音频、数据库均不进入本登记。
+
+
 ## v2026.9.1-db91.6-upstream-5xx-fallback-20261015
 
 上线：2026-10-15 13:01:57 CST 生效（12:58 装到 V；`v-self-restart` `20261015-125959-9db6`，同一次重启让 history-image-e3 一起生效）  ·  tag `v2026.9.1-db91.6-upstream-5xx-fallback-20261015`

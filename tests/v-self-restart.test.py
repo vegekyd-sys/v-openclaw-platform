@@ -81,7 +81,7 @@ class FakeHost:
         if args[0] == "show":
             prop = args[3]
             return self.result({"MainPID": str(self.pid if self.active else 0), "InvocationID": self.invocation,
-                                "NRestarts": str(self.restarts)}[prop])
+                                "ControlGroup": "", "NRestarts": str(self.restarts)}[prop])
         if args[0] == "is-active":
             if args[1] != mod.UNIT:
                 return self.result("inactive", 3)
@@ -150,7 +150,7 @@ class Request(Base):
         h = self.host(bad_paths={"plugins.x"})
         self.assertEqual(self.request("--set", 'plugins.x={"a":1}'), 3)
         self.assertEqual(h.launched, [])
-        self.assertNotIn(["systemctl", "stop", mod.UNIT], h.calls)
+        self.assertNotIn(["systemctl", "stop", "--no-block", mod.UNIT], h.calls)
 
     def test_launches_outside_the_gateway_and_returns(self):
         h = self.host()
@@ -159,7 +159,7 @@ class Request(Base):
         argv = h.launched[0]
         self.assertIn("--collect", argv)
         self.assertEqual(argv[-2:], ["--run", mod.all_records()[-1]["id"]])
-        self.assertNotIn(["systemctl", "stop", mod.UNIT], h.calls)  # the request itself never stops anything
+        self.assertNotIn(["systemctl", "stop", "--no-block", mod.UNIT], h.calls)  # the request itself never stops anything
 
     def test_check_changes_nothing(self):
         h = self.host()
@@ -191,6 +191,85 @@ class Request(Base):
 
 
 class Execute(Base):
+    def test_deactivating_process_never_gets_config_writes_or_a_parallel_start(self):
+        h = self.host()
+        original = h.systemctl
+        def delayed_stop(args):
+            if args[0] == "stop":
+                return h.result("", 1, "stop job canceled; old process is still exiting")
+            return original(args)
+        h.systemctl = delayed_stop
+        self.request("--set", 'plugins.t={"mac":1}')
+        with mock.patch.object(mod, "unit_active", return_value="deactivating"), mock.patch.object(mod, "STOP_TIMEOUT_S", 0):
+            rec = self.run_last()
+        self.assertEqual(rec["outcome"], "stop-pending")
+        self.assertEqual(self.read_config(), {"keep": 1})
+        self.assertFalse(any(c[0] == "systemctl" and c[1] == "start" for c in h.calls))
+        self.assertFalse(any(c[1:3] == ["config", "set"] and "--dry-run" not in c for c in h.calls))
+        self.assertFalse(any(x["step"] == "stopped" for x in rec["steps"]))
+
+    def test_stop_timeout_retains_existing_config_without_attempting_a_second_start(self):
+        h = self.host()
+        original = h.systemctl
+        def timed_out_stop(args):
+            if args[0] == "stop":
+                raise subprocess.TimeoutExpired(["systemctl", "stop", "--no-block", mod.UNIT], mod.STOP_TIMEOUT_S)
+            return original(args)
+        h.systemctl = timed_out_stop
+        self.request("--set", 'plugins.t={"mac":1}')
+        with mock.patch.object(mod, "unit_active", return_value="deactivating"), mock.patch.object(mod, "STOP_TIMEOUT_S", 0):
+            rec = self.run_last()
+        self.assertEqual(rec["outcome"], "stop-pending")
+        self.assertEqual(self.read_config(), {"keep": 1})
+        self.assertFalse(any(c[0] == "systemctl" and c[1] == "start" for c in h.calls))
+
+    def test_deactivating_stop_waits_for_pid_zero_before_config_write(self):
+        h = self.host()
+        self.request("--set", 'plugins.t={"mac":1}')
+        with mock.patch.object(mod, "unit_active", side_effect=["deactivating", "inactive", "active", "active"]):
+            rec = self.run_last()
+        self.assertEqual(rec["outcome"], "ok", rec)
+        self.assertEqual(self.read_config()["plugins.t"], {"mac": 1})
+
+    def test_start_dispatch_is_nonblocking_and_ready_budget_owns_wait(self):
+        h = self.host()
+        rec = {"id": "20261016-010101-aabb", "readyTimeoutS": 1200}
+        with mock.patch.object(mod, "wait_ready", return_value=(True, "ready")) as wait:
+            ok, _ = mod.start_unit(rec, "start")
+        self.assertTrue(ok)
+        self.assertIn(["systemctl", "start", "--no-block", mod.UNIT], h.calls)
+        wait.assert_called_once_with(1200, "0")
+
+    def test_ready_wait_allows_queued_start_then_activation(self):
+        h = self.host()
+        h.journal[h.invocation] = "[gateway] ready"
+        with mock.patch.object(mod, "unit_active", side_effect=["inactive", "activating", "active"]):
+            self.assertEqual(mod.wait_ready(1200, "0"), (True, "ready"))
+
+    def test_remaining_cgroup_child_prevents_configuration_write(self):
+        h = self.host()
+        self.request("--set", 'plugins.t={"mac":1}')
+        with mock.patch.object(mod, "remaining_unit_processes", return_value=[123]), mock.patch.object(mod, "STOP_TIMEOUT_S", 0):
+            rec = self.run_last()
+        self.assertEqual(rec["outcome"], "stop-pending", rec)
+        self.assertEqual(self.read_config(), {"keep": 1})
+        self.assertFalse(any(c[:2] == ["systemctl", "start"] for c in h.calls))
+
+    def test_remaining_child_exit_is_waited_before_configuration_write(self):
+        h = self.host()
+        self.request("--set", 'plugins.t={"mac":1}')
+        with mock.patch.object(mod, "remaining_unit_processes", side_effect=[[123], []]):
+            rec = self.run_last()
+        self.assertEqual(rec["outcome"], "ok", rec)
+
+    def test_nested_worker_cgroup_is_not_mistaken_for_an_empty_unit(self):
+        files = {"/sys/fs/cgroup/test/cgroup.events": "populated 1\nfrozen 0\n", "/sys/fs/cgroup/test/cgroup.procs": "", "/sys/fs/cgroup/test/worker/cgroup.procs": "4321\n"}
+        import io
+        def read(name, *args, **kwargs):
+            return io.StringIO(files[name])
+        with mock.patch("builtins.open", side_effect=read), mock.patch.object(mod.os, "walk", return_value=[("/sys/fs/cgroup/test", ["worker"], []), ("/sys/fs/cgroup/test/worker", [], [])]):
+            self.assertEqual(mod.remaining_unit_processes("/test"), [4321])
+
     def test_happy_path_order(self):
         h = self.host()
         self.request("--set", 'plugins.t={"mac":1}', "--session-key", "agent:makaron:feishu:group:oc_" + "a" * 32)
@@ -198,9 +277,9 @@ class Execute(Base):
         self.assertEqual(rec["outcome"], "ok", rec)
         ops = [c[:2] for c in h.calls if c[0] == "systemctl" and c[1] in ("stop", "start")]
         self.assertEqual(ops, [["systemctl", "stop"], ["systemctl", "start"]])
-        stop_i = h.calls.index(["systemctl", "stop", mod.UNIT])
+        stop_i = h.calls.index(["systemctl", "stop", "--no-block", mod.UNIT])
         write_i = next(i for i, c in enumerate(h.calls) if c[1:3] == ["config", "set"] and "--dry-run" not in c)
-        start_i = h.calls.index(["systemctl", "start", mod.UNIT])
+        start_i = h.calls.index(["systemctl", "start", "--no-block", mod.UNIT])
         self.assertLess(stop_i, write_i)   # never written into a running Gateway (it would hot-reload)
         self.assertLess(write_i, start_i)
         self.assertEqual(self.read_config(), {"keep": 1, "plugins.t": {"mac": 1}})
@@ -210,7 +289,7 @@ class Execute(Base):
     def test_not_ready_restores_config_and_starts_again(self):
         h = self.host(ready=False)
         self.request("--set", 'plugins.t={"mac":1}', "--ready-timeout", "60")
-        with mock.patch.object(mod.time, "monotonic", side_effect=[0, 0, 0, 1000, 1000, 1000, 2000, 2000, 2000, 3000, 3000]):
+        with mock.patch.object(mod, "wait_ready", side_effect=[(False, "readiness budget expired"), (True, "ready")]):
             # first start never logs ready; let the rollback start succeed
             orig_start = h.systemctl
 
@@ -260,7 +339,7 @@ class Execute(Base):
         h.bad_paths.add("plugins.t")
         rec = self.run_last()
         self.assertEqual(rec["outcome"], "failed")
-        self.assertNotIn(["systemctl", "stop", mod.UNIT], h.calls)
+        self.assertNotIn(["systemctl", "stop", "--no-block", mod.UNIT], h.calls)
         self.assertTrue(h.active)
 
 
