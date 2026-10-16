@@ -11,6 +11,18 @@
 
 ---
 
+## v2026.9.1-db91.6-codex-inspection-budget-20261017
+
+上线：2026-10-17 04:11 CST 装入，04:13 v-self-restart 生效  ·  tag `v2026.9.1-db91.6-codex-inspection-budget-20261017`
+
+**摘要**：大会话的 /vds（Codex 运行时）回合，空闲后第一句话不再报「Cannot inspect Codex processes. Process inspection exceeded its deadline」。原因是 Codex app-server 启动时登记子进程的身份读取沿用了 containment 的 2 s 时限，而同一时刻主线程正被有界历史读取占住约 2.6 s（Tianyi 主会话 10/17 03:28 复现）。现在这一步有独立的 15 s 时限并在超时时重试一次；containment 的 2 s 语义不变。共享 VLab 的 state/npm Codex 副本另行同步为同一字节后 align。
+
+相对上一版 `v2026.9.1-db91.6-projection-checkpoint-20261017`：1 个文件变化。
+
+**经 VLab 发版 `codex-inspection-budget-20261017`**（monitor-v-production，dev `0801d006`）
+> 验收：共享 VLab 03:58 部署 #409（Codex 插件 transport-stdio-CyPldczm.js，before=V 线上字节）。Gateway ready，错误 0、Cannot inspect Codex 0；/vds 回合 bash(uname -m) → x86_64。candidate：主线程阻塞 2.6 s / 5 s 修复前 0/3、修复后 3/3，16 s 走重试 2/2（PR #409）。注意：VLab 当时加载的是 state/npm 副本，回合本身未覆盖新代码，已于 04:28 同步并重新 align。
+- `codex` transport-stdio-CyPldczm.js  513e62dd → cd3d59c5
+
 ## v2026.9.1-db91.6-projection-checkpoint-20261017
 
 上线：2026-10-17 03:39 CST 装入，03:40 v-self-restart 生效（51 s 就绪）  ·  tag `v2026.9.1-db91.6-projection-checkpoint-20261017`
