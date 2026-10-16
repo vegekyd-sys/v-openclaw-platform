@@ -112,14 +112,32 @@
 - **模型视图逐字段对比**：四个会话各跑四轮，对比项是 `openModelContext().buildSessionContext()` 的 messages、model、thinkingLevel、leaf、entries，再加上转录尾部 200 条和统计。A1、B0、B1 与 A0 都是零差异。
   - 7da00997：153 条上下文消息；3c3fab41：5,749 条；2b21b4a0：28 条；06d45f08：35 条。
 
-### candidate 真实回合
+### candidate 真实回合（私有 Gateway，V 同款路由，每会话背靠背两轮）
 
-- 结果见 PR 描述。
-- 做法：用私有 Gateway，按 V 的路由，每个会话背靠背发两轮。
+- A = `candidate-73144deb-041e-42d0-90df-8550b23c877c`（V 字节），B = `candidate-2beec567-878c-482d-b390-eb84412db7d8`（本补丁）。
+- 路由：7da00997、06d45f08 走 deepseek-flash via vlab-worker；3c3fab41、2b21b4a0 走 /vds（Codex harness + DeepSeek）。
+- 每个进程都预载 10 ms 停顿采样器；投影标脏和“重建中”都带调用栈记录；SQLite 持有 ≥300 ms 的也带栈记录。
+
+| | A | B |
+|---|---|---|
+| 8 轮回合 | 全部 ok | 全部 ok |
+| 投影标脏（全部来自 /vds 回合开始的注解改写 `rewriteSqliteTranscriptEventRowsInTransaction`） | 3 次 | **0** |
+| “重建中”（`waitForSessionTranscriptProjection`） | 3 次 | **0** |
+| 整段 prepare | 3,412 / 2,683 / 1,240 ms | **无** |
+| Gateway 主线程最长停顿 | 4,347 ms；>1 s 共 5 次 | **2,333 ms；>1 s 共 1 次** |
+| /vds 2b21b4a0 两轮 | 8 s / 9 s | **3 s / 3 s** |
+| /vds 3c3fab41 两轮 | 15 s / 9 s | 13 s / 4 s |
+| 马晴 7da00997 两轮（flash） | 9 s / 5 s | 8 s / 3 s |
+| 06d45f08 两轮 | 3 s / 3 s | 3 s / 2 s |
+
+- B 剩下那次 2.3 s，来自夜班群 3c3fab41 的 Codex `session context window read`（1.5 s 持有）。
+- 原因是这个会话最近一次压缩检查点之后的活跃窗口本身就有 7,474 行、70 MB：Codex 原生压缩没有在 OpenClaw 转录里写检查点。
+- 这一项不属于重建问题，列为后续。
 
 ## 没解决、留作后续
 
 - 分叉、回退、叶子控制、旁路追加仍然整段重建。重建期间新回合会等待，不再失败，但仍要等 1.2–6 s。
   - 要做到只从分叉点重建，需要从中间状态续扫，并且精确复现 `scanSessionTranscriptNavigation` 的 reset 和 stale 规则。这几个会话已经几千行没出现过这类事件，所以单独评估。
 - webchat 的 `rewriteSourceReplyTranscriptMirrors` 和 `rewriteAssistantTranscriptMessageByIdempotencyKey` 仍是整读 + 整会话替换（`withTranscriptWriteLock.readEvents/replaceEvents`）。它们只在 chat.send 路径带媒体时触发，不在本次范围。
+- 夜班群这类 /vds 会话的检查点之后窗口过大（3c3fab41 最近一次压缩后 7,474 行 / 70 MB），Codex 每轮上下文读取仍要 1.5–2.3 s。
 - 16:38–16:57 的冻结风暴。profile 指向会话条目全表解析（`listSessionEntriesReadOnly`，40 min 累计 365 s），以及 `withAgentDatabaseProcessLeaseSync` 同步等写租约，交给另一条线。
