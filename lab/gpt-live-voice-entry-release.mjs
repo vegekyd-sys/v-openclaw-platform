@@ -50,6 +50,25 @@ export function assertVoiceWorkDrained(value) {
   for (const key of ['activeCalls', 'creatingSessions', 'backgroundTasks'])
     assert.equal(value[key], 0, `Voice ${key} is not drained; defer the upgrade`);
 }
+// One-time migration from the exact pre-readiness entry. Unknown versions stay
+// closed. Its verified SIGTERM handler drains all task/delivery owners before exit.
+export function assertLegacyDrainSource(pointer, sha) {
+  assert.equal(pointer, '/opt/openclaw-voice-h5/releases/gpt-live-bcb82987c7cc6c61e87ecc9f28c320df6bfb470b/lab/gpt-live-h5');
+  assert.equal(sha, '93be3afde30cccea2b6b45d4f2359429cf6c54a8880fa2f4eebffd8ff2434311');
+}
+export async function waitForCleanVoiceExit({pid,alive,readExit,stopUnit,pause,timeoutMs=90000,now=Date.now}) {
+  const deadline=now()+timeoutMs;
+  while(alive(pid)){
+    assert(now()<deadline, 'Voice is still draining; leave it running and do not force-stop');
+    await pause();
+  }
+  const exit=readExit();
+  assert.equal(Number(exit.MainPID),0,'Voice already restarted; inspect before replacing the entry');
+  assert.equal(Number(exit.ExecMainCode),1,'Voice did not exit normally');
+  assert.equal(Number(exit.ExecMainStatus),0,'Voice drain did not finish successfully');
+  stopUnit(); // cancel Restart=always's delay only after the verified clean exit.
+  return {pid,cleanExit:true,at:new Date(now()).toISOString()};
+}
 export function entryLaunchOverride(execStart, server, nativeEnvironment = "") {
   assert(/^\/opt\/openclaw-voice-h5\/releases\/[A-Za-z0-9._-]+\/lab\/gpt-live-h5\/server\.mjs$/.test(server));
   assert(!nativeEnvironment || /^\/opt\/openclaw-voice-h5\/releases\/[A-Za-z0-9._-]+\/native-voice.env$/.test(nativeEnvironment));
@@ -155,7 +174,9 @@ async function remoteMain(req) {
     save(dir + "/rolled-back.json", receipt); return receipt;
   }
   assert.equal(req.command, "install");
-  assertVoiceWorkDrained(snapshot.releaseReadiness);
+  const legacyDrain=req.legacyDrainBeforeInstall===true&&snapshot.releaseReadiness?.known!==true;
+  if(legacyDrain)assertLegacyDrainSource(snapshot.pointer,hash(path.join(snapshot.pointer,'server.mjs')));
+  else assertVoiceWorkDrained(snapshot.releaseReadiness);
   const standalonePrepared=req.voiceManifest&&fs.existsSync(dir);
   if(standalonePrepared){verifyArtifactDirectory();assert(!fs.existsSync(dir+'/installed.json'),'Voice artifact already activated');}
   else assert(!fs.existsSync(dir), "This voice release already exists; inspect its receipt");
@@ -201,8 +222,23 @@ async function remoteMain(req) {
   const launch = { path: launchDropIn, before: beforeLaunch, afterSha: digest(launchBytes) };
   save(dir + "/prepared.json", { ...metadata, beforePointer: snapshot.pointer, launchDropIn: launch });
   assertEntrySnapshot(snapshot, await observe());
-  assertVoiceWorkDrained((await observe()).releaseReadiness);
-  run("systemctl", ["stop", unit]);
+  let legacyDrainReceipt;
+  if(legacyDrain){
+    assertLegacyDrainSource(snapshot.pointer,hash(path.join(snapshot.pointer,'server.mjs')));
+    const pid=Number(properties(unit).MainPID);assert(pid>1);
+    // systemctl stop starts a 20s stop timeout. Signal only the owned H5 main
+    // process first, so pending deliveries can drain without a forced kill.
+    run('systemctl',['kill','--kill-whom=main','--signal=SIGTERM',unit]);
+    legacyDrainReceipt=await waitForCleanVoiceExit({pid,
+      alive:p=>fs.existsSync(`/proc/${p}`),
+      readExit:()=>Object.fromEntries(run('systemctl',['show',unit,'-p','MainPID,ExecMainCode,ExecMainStatus']).split('\n').map(line=>{const i=line.indexOf('=');return [line.slice(0,i),line.slice(i+1)];})),
+      pause:()=>new Promise(resolve=>setTimeout(resolve,25)),
+      stopUnit:()=>run('systemctl',['stop',unit]),
+    });save(dir+'/legacy-drained.json',legacyDrainReceipt);
+  }else{
+    assertVoiceWorkDrained((await observe()).releaseReadiness);
+    run("systemctl", ["stop", unit]);
+  }
   assert.equal(Number(properties(unit).MainPID), 0);
   swap(wantedPointer);
   assert.equal(fs.existsSync(launchDropIn) ? hash(launchDropIn) : null, beforeLaunch.sha);
@@ -229,13 +265,13 @@ async function remoteMain(req) {
   assert(ready, "Voice entry not ready; preserve prepared.json and inspect before rollback");
   const served = await probe("app.js"); assert.equal(served.status, 200);
   assert.equal(digest(served.bytes), req.files.find(file => file.name.endsWith("/app.js")).sha);
-  const result = { ...metadata, beforePointer: snapshot.pointer, snapshot: await observe(), launchDropIn: launch, h5Pid: hp, ready: true,
+  const result = { ...metadata, beforePointer: snapshot.pointer, snapshot: await observe(), launchDropIn: launch, h5Pid: hp, ready: true, ...(legacyDrainReceipt?{legacyDrainReceipt}:{}),
     acceptance: "HTTP readiness only; real public H5 call validation required" };
   save(dir + "/installed.json", result); return result;
 }
 export function remoteSource() {
   return `import assert from 'node:assert/strict';import {createHash} from 'node:crypto';const digest=${digest.toString()};const H5_PATHS=${JSON.stringify(H5_PATHS)};const fileIdentity=${fileIdentity.toString()};\n`
-    + [prepareVoiceLarkProfile, validateVoiceArtifact, validateVoiceArtifactProof, validateReviewedPresentation, assertEntrySnapshot, assertVoiceWorkDrained, entryLaunchOverride, remoteMain].map(fn => fn.toString()).join("\n")
+    + [prepareVoiceLarkProfile, validateVoiceArtifact, validateVoiceArtifactProof, validateReviewedPresentation, assertEntrySnapshot, assertVoiceWorkDrained, assertLegacyDrainSource, waitForCleanVoiceExit, entryLaunchOverride, remoteMain].map(fn => fn.toString()).join("\n")
     + "\nlet text='';for await(const c of process.stdin)text+=c;try{const r=await remoteMain(JSON.parse(text));console.log(JSON.stringify(r))}catch{console.error('Voice entry identity or operation failed; preserve prepared receipts and inspect the service.');process.exitCode=1}";
 }
 function main(argv) {

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { assertVoiceWorkDrained, assertEntrySnapshot, entryLaunchOverride, remoteSource, validateReviewedPresentation,validateVoiceArtifact,validateVoiceArtifactProof } from "./gpt-live-voice-entry-release.mjs";
+import { assertLegacyDrainSource, waitForCleanVoiceExit, assertVoiceWorkDrained, assertEntrySnapshot, entryLaunchOverride, remoteSource, validateReviewedPresentation,validateVoiceArtifact,validateVoiceArtifactProof } from "./gpt-live-voice-entry-release.mjs";
 import { H5_PATHS, digest } from './gpt-live-h5-release.mjs';
 
 const snapshot = { pointer: "/opt/voice/old", unitSha: "unit", environmentSha: "env", gatewayPid: 12,
@@ -61,4 +61,16 @@ test('hangup with an unfinished task or delivery cannot authorize an H5 service 
  for(const field of ['activeCalls','creatingSessions','backgroundTasks'])assert.throws(()=>assertVoiceWorkDrained({...idle,[field]:1}));
  for(const missing of [undefined,{}, {known:false}, {...idle,backgroundTasks:undefined}, {...idle,backgroundTasks:'0'}])assert.throws(()=>assertVoiceWorkDrained(missing));
 
+});
+
+test('legacy bootstrap is pinned to the verified draining source, never an arbitrary missing API',()=>{
+ const pointer='/opt/openclaw-voice-h5/releases/gpt-live-bcb82987c7cc6c61e87ecc9f28c320df6bfb470b/lab/gpt-live-h5',sha='93be3afde30cccea2b6b45d4f2359429cf6c54a8880fa2f4eebffd8ff2434311';
+ assertLegacyDrainSource(pointer,sha);assert.throws(()=>assertLegacyDrainSource(pointer,'a'.repeat(64)));assert.throws(()=>assertLegacyDrainSource('/opt/unknown',sha));
+});
+test('legacy drain waits for normal exit before stopping the unit and never kills on timeout',async()=>{
+ let tick=0,stops=0;const proof={MainPID:0,ExecMainCode:1,ExecMainStatus:0};
+ const f={pid:42,alive:()=>tick<3,readExit:()=>proof,pause:async()=>tick++,now:()=>tick,timeoutMs:10,stopUnit:()=>stops++};
+ assert.equal((await waitForCleanVoiceExit(f)).cleanExit,true);assert.equal(stops,1);
+ for(const exit of [{...proof,ExecMainCode:2},{...proof,ExecMainStatus:9},{...proof,MainPID:43}])await assert.rejects(waitForCleanVoiceExit({...f,alive:()=>false,readExit:()=>exit}));
+ let cancelled=0;await assert.rejects(waitForCleanVoiceExit({...f,alive:()=>true,pause:async()=>tick++,timeoutMs:2,stopUnit:()=>cancelled++}),/still draining/);assert.equal(cancelled,0);
 });
