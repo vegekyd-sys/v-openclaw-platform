@@ -94,6 +94,28 @@ const emit = (o) => {
   console.log(line);
   fs.appendFileSync(progressPath, `${line}\n`);
 };
+// What else this 4-core host is running: other experiments skew every number below.
+function hostContext() {
+  const procs = [];
+  for (const p of fs.readdirSync("/proc").filter((d) => /^\d+$/u.test(d))) {
+    try {
+      const cmd = fs.readFileSync(`/proc/${p}/cmdline`, "utf8").split("\0").join(" ").trim();
+      const s = fs.readFileSync(`/proc/${p}/stat`, "utf8");
+      const f = s.slice(s.lastIndexOf(")") + 2).split(" ");
+      procs.push({ pid: Number(p), cpuS: Math.round((Number(f[11]) + Number(f[12])) / 100), rssMB: Math.round(Number(f[21]) * 4096 / 1048576), cmd: cmd.slice(0, 160) });
+    } catch {}
+  }
+  const mem = fs.readFileSync("/proc/meminfo", "utf8");
+  const kb = (k) => Number(mem.match(new RegExp(`^${k}:\\s+(\\d+)`, "mu"))?.[1] ?? 0);
+  return {
+    load: fs.readFileSync("/proc/loadavg", "utf8").trim(), availMB: Math.round(kb("MemAvailable") / 1024), swapUsedMB: Math.round((kb("SwapTotal") - kb("SwapFree")) / 1024),
+    gcSwapExperiment: procs.filter((p) => /cc-gcswap/u.test(p.cmd)).map((p) => p.cmd),
+    sharedGatewayInspect: procs.filter((p) => /db91-parity\/runtime\/openclaw\/dist\/index\.js gateway/u.test(p.cmd)).map((p) => ({ pid: p.pid, inspect: /--inspect/u.test(p.cmd), rssMB: p.rssMB })),
+    otherCandidates: procs.filter((p) => /candidate-tests\/runs\//u.test(p.cmd)).length,
+    topRss: procs.sort((a, b) => b.rssMB - a.rssMB).slice(0, 8).map((p) => `${p.rssMB}MB ${p.cmd.slice(0, 90)}`),
+  };
+}
+emit({ phase: "host-context", ...hostContext() });
 for (const d of ["tmp", "cache", "npm-cache"]) fs.mkdirSync(path.join(scratch, d), { recursive: true, mode: 0o700 });
 const npm = path.join(path.dirname(process.execPath), "npm");
 const npmEnv = { ...process.env, PATH: `${path.dirname(process.execPath)}:${process.env.PATH}`, npm_config_cache: path.join(scratch, "npm-cache") };
@@ -687,7 +709,9 @@ async function level(arm, size, c) {
   }
   const errors = {};
   for (const f of failed) { const k = (f.error || f.terminal + (f.text ? `: ${f.text}` : "")).slice(0, 120); errors[k] = (errors[k] ?? 0) + 1; }
-  return { arm, size, c, wallS: Math.round((to - from) / 1000), failed: failed.length, failRate: Math.round(100 * failed.length / results.length) / 100, byRuntime: byRt, errors, canary: canaryResult, ...m, runs: results };
+  const h = hostContext();
+  const host = { gcSwap: h.gcSwapExperiment.length > 0, sharedGatewayInspect: h.sharedGatewayInspect.some((g) => g.inspect), otherCandidates: h.otherCandidates, load: h.load };
+  return { arm, size, c, host, wallS: Math.round((to - from) / 1000), failed: failed.length, failRate: Math.round(100 * failed.length / results.length) / 100, byRuntime: byRt, errors, canary: canaryResult, ...m, runs: results };
 }
 
 async function waitSteady(label, minUptimeMin) {
@@ -736,7 +760,8 @@ try {
     }
   }
   summary.steady = await waitSteady("initial", STEADY_MIN);
-  emit({ phase: "steady", ...summary.steady });
+  summary.hostAtStart = hostContext();
+  emit({ phase: "steady", ...summary.steady, host: summary.hostAtStart });
   for (const { arm, size } of ARMS) {
     for (const c of LEVELS) {
       const res = await level(arm, size, c);
