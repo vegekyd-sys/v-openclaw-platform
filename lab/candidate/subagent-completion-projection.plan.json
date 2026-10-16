@@ -1,0 +1,21 @@
+{
+  "tests": [
+    "lab/subagent-completion-projection.test.mjs",
+    "lab/candidate/subagent-completion-projection.sqlite.test.mjs"
+  ],
+  "support": [
+    "lab/candidate/subagent-completion-snapshot.py",
+    "lab/patch-subagent-completion-projection.mjs",
+    "lab/release-files/upstream-5xx-fallback/builtin-openclaw-zQV8Wwjr.js",
+    "lab/release-files/subagent-completion-projection/builtin-openclaw-zQV8Wwjr.js"
+  ],
+  "files": [
+    {
+      "source": "lab/release-files/subagent-completion-projection/builtin-openclaw-zQV8Wwjr.js",
+      "target": "openclaw/dist/builtin-openclaw-zQV8Wwjr.js",
+      "before": "5638a3b7071bbbfa20da7b7c2098facdbd3c15bedf723e922c2f68a3f550f5e9"
+    }
+  ],
+  "databases": [],
+  "timeoutSeconds": 180
+}
