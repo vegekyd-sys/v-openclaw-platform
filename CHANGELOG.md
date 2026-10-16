@@ -11,6 +11,20 @@
 
 ---
 
+## v2026.9.1-db91.6-projection-incremental-20261017
+
+上线：2026-10-17 05:04 CST 装入，05:06 v-self-restart 生效  ·  tag `v2026.9.1-db91.6-projection-incremental-20261017`
+
+**摘要**：会话分叉、回退、旁路追加之后，投影不再整段重建：从旧投影的有效前缀接着算，只重放新增行并找到与旧活跃路径的交汇点，主线程用一个写事务应用增量；无法证明安全的情况一律退回全量。用 V 数据副本测了马晴私聊、夜班群、Tianyi 主会话等 4 个会话：写入后到投影可读 4–7 s → 1.3–2.4 s，主线程最长停顿 2.8 s → ≤179 ms，投影与全量重建逐行一致，模型视图 A/B 零差异。
+
+相对上一版 `v2026.9.1-db91.6-codex-inspection-budget-20261017`：3 个文件变化。
+
+**经 VLab 发版 `projection-incremental-20261017`**（monitor-v-production，dev `f36d4a84`）
+> 验收：共享 VLab 05:02 部署 #411。Gateway ready，错误 0、rebuilding 0；deepseek-flash 回合 exec echo 正确，/vds 回合 bash echo vds-f4-ok 正确。V 上 05:06 重启后 Cannot reap / InvalidConfig / claim / stream-ack / Cannot inspect Codex / rebuilding 均为 0，drift 0 findings。
+- `core` session-transcript-index-9itOio9h.js  d0e05a56 → 7d14a3c0
+- `core` session-transcript-reconcile-j5qhAafV.js  b63bdf05 → 9fac1d4a
+- `core` config/sessions/session-transcript-reconcile.worker.js  95b9ddcd → 2fa289dd
+
 ## v2026.9.1-db91.6-codex-inspection-budget-20261017
 
 上线：2026-10-17 04:11 CST 装入，04:13 v-self-restart 生效  ·  tag `v2026.9.1-db91.6-codex-inspection-budget-20261017`
