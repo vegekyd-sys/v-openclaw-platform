@@ -1,0 +1,9 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/projection-wait/builtin-openclaw-zQV8Wwjr.js",
+      "target": "openclaw/dist/builtin-openclaw-zQV8Wwjr.js",
+      "before": "71c2310a73dbfa66d70fe560ff13132c620f0033439e604417842412758a67bc"
+    }
+  ]
+}

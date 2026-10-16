@@ -1,0 +1,23 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/projection-wait/probe/session-accessor-K0XuW6ln.js",
+      "target": "openclaw/dist/session-accessor-K0XuW6ln.js",
+      "before": "30c7b9d6e3d9baf842e51f4811708b0f21a95c5cd36ebc150b2dd7a2fed2c15d"
+    },
+    {
+      "source": "lab/release-files/projection-wait/builtin-openclaw-zQV8Wwjr.js",
+      "target": "openclaw/dist/builtin-openclaw-zQV8Wwjr.js",
+      "before": "71c2310a73dbfa66d70fe560ff13132c620f0033439e604417842412758a67bc"
+    }
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/projection-rebuild-turn.mjs"
+  ],
+  "support": [
+    "lab/candidate/projection-rebuild-turn.mjs"
+  ],
+  "user": "lab-db91-parity",
+  "timeoutSeconds": 3600
+}
