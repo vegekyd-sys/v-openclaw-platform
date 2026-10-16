@@ -102,16 +102,16 @@ function hostContext() {
       const cmd = fs.readFileSync(`/proc/${p}/cmdline`, "utf8").split("\0").join(" ").trim();
       const s = fs.readFileSync(`/proc/${p}/stat`, "utf8");
       const f = s.slice(s.lastIndexOf(")") + 2).split(" ");
-      procs.push({ pid: Number(p), cpuS: Math.round((Number(f[11]) + Number(f[12])) / 100), rssMB: Math.round(Number(f[21]) * 4096 / 1048576), cmd: cmd.slice(0, 160) });
+      procs.push({ pid: Number(p), cpuS: Math.round((Number(f[11]) + Number(f[12])) / 100), rssMB: Math.round(Number(f[21]) * 4096 / 1048576), cmd });
     } catch {}
   }
   const mem = fs.readFileSync("/proc/meminfo", "utf8");
   const kb = (k) => Number(mem.match(new RegExp(`^${k}:\\s+(\\d+)`, "mu"))?.[1] ?? 0);
   return {
     load: fs.readFileSync("/proc/loadavg", "utf8").trim(), availMB: Math.round(kb("MemAvailable") / 1024), swapUsedMB: Math.round((kb("SwapTotal") - kb("SwapFree")) / 1024),
-    gcSwapExperiment: procs.filter((p) => /cc-gcswap/u.test(p.cmd)).map((p) => p.cmd),
+    gcSwapExperiment: procs.filter((p) => /cc-gcswap/u.test(p.cmd)).map((p) => p.cmd.slice(0, 160)),
     sharedGatewayInspect: procs.filter((p) => /db91-parity\/runtime\/openclaw\/dist\/index\.js gateway/u.test(p.cmd)).map((p) => ({ pid: p.pid, inspect: /--inspect/u.test(p.cmd), rssMB: p.rssMB })),
-    otherCandidates: procs.filter((p) => /candidate-tests\/runs\//u.test(p.cmd)).length,
+    otherCandidates: [...new Set(procs.map((p) => p.cmd.match(/candidate-tests\/runs\/([^/ ]+)/u)?.[1]).filter((id) => id && !scratch.includes(id)))],
     topRss: procs.sort((a, b) => b.rssMB - a.rssMB).slice(0, 8).map((p) => `${p.rssMB}MB ${p.cmd.slice(0, 90)}`),
   };
 }
@@ -467,8 +467,9 @@ const claudeProjectsBefore = new Set(fs.existsSync(claudeProjects) ? fs.readdirS
 // ---- Gateway: V's Node flags and env, the lag probe preloaded ----
 const vEnv = {
   CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1", OPENCLAW_FIRSTTEXT_WORKER_PHASES: "1", OPENCLAW_DATABASE_VERIFY_RESOURCE_GROUP: "1",
-  OPENCLAW_DB91_INTEGRITY_ENABLE: "1", OPENCLAW_DB91_PROVENANCE_ENABLE: "1", OPENCLAW_DB91_MEMORY_SCHEMA_ENABLE: "1", OPENCLAW_DB91_MAINTENANCE_ENABLE: "1",
-  OPENCLAW_DB91_INTEGRITY_STATE_ROOT: stateDir, OPENCLAW_WORKER_SESSION_AFFINITY_ENABLE: "1", OPENCLAW_DB91_READ_AHEAD_ENABLE: "1",
+  // not OPENCLAW_DB91_INTEGRITY_ENABLE: a startup admission gate (it rejects the synthesized database), not turn work
+  OPENCLAW_DB91_PROVENANCE_ENABLE: "1", OPENCLAW_DB91_MEMORY_SCHEMA_ENABLE: "1", OPENCLAW_DB91_MAINTENANCE_ENABLE: "1",
+  OPENCLAW_WORKER_SESSION_AFFINITY_ENABLE: "1", OPENCLAW_DB91_READ_AHEAD_ENABLE: "1",
   OPENCLAW_DB91_STATE_READ_AHEAD_ENABLE: "1", OPENCLAW_DB91_TRAJECTORY_SWEEP_ENABLE: "1",
 };
 const shortTmp = `/tmp/.ltc-${process.pid}`;
@@ -710,7 +711,7 @@ async function level(arm, size, c) {
   const errors = {};
   for (const f of failed) { const k = (f.error || f.terminal + (f.text ? `: ${f.text}` : "")).slice(0, 120); errors[k] = (errors[k] ?? 0) + 1; }
   const h = hostContext();
-  const host = { gcSwap: h.gcSwapExperiment.length > 0, sharedGatewayInspect: h.sharedGatewayInspect.some((g) => g.inspect), otherCandidates: h.otherCandidates, load: h.load };
+  const host = { gcSwap: h.gcSwapExperiment.length > 0, sharedGatewayInspect: h.sharedGatewayInspect.some((g) => g.inspect), otherCandidates: h.otherCandidates.length, load: h.load };
   return { arm, size, c, host, wallS: Math.round((to - from) / 1000), failed: failed.length, failRate: Math.round(100 * failed.length / results.length) / 100, byRuntime: byRt, errors, canary: canaryResult, ...m, runs: results };
 }
 
