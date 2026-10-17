@@ -339,6 +339,7 @@
         "lab/upstream-5xx-fallback.test.mjs",
         "lab/context-overflow-recovery.test.mjs",
         "lab/feishu-empty-card-discard.test.mjs",
+        "lab/feishu-ingress-catchup.test.mjs",
         "scripts/node-async-context-frame.test.mjs",
         "lab/workboard-incremental-sweep.test.mjs",
         "lab/workboard-sweep-links.test.mjs",
