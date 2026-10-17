@@ -72,6 +72,9 @@ const CANDIDATES = {
   // Google results resold by SERP APIs (needs SERPER_API_KEY / SERPAPI_API_KEY).
   'serper': (q, signal) => serper(q, signal),
   'serpapi': (q, signal) => serpapi(q, signal),
+  // DeepSeek Search API (in-house engine): raw results with a 600-800 char model-facing summary each.
+  'deepseek-search': (q, signal) => deepseekSearch(q, {}, signal),
+  'deepseek-search-q': (q, signal) => deepseekSearch(q, { ori_question: q.query.slice(0, 128) }, signal),
   // xAI web_search exactly as extensions/xai builds it (grok-4.3 gets reasoning low).
   'grok-43': (q, signal) => grok(q, 'grok-4.3', 'low', signal),
   'grok-420-nr': (q, signal) => grok(q, 'grok-4.20-0309-non-reasoning', undefined, signal),
@@ -236,6 +239,25 @@ async function geminiDirect(q, model, generationConfig, signal, systemInstructio
     searchQueries: cand?.groundingMetadata?.webSearchQueries,
     usage: data.usageMetadata,
   };
+}
+
+let deepseekProvider;
+function loadDeepseekProvider() {
+  if (!deepseekProvider) {
+    const cfgPath = process.env.OPENCLAW_CONFIG_PATH ?? `${process.env.HOME}/.openclaw/openclaw.json`;
+    deepseekProvider = JSON.parse(readFileSync(cfgPath, 'utf8')).models.providers.deepseek;
+  }
+  return deepseekProvider;
+}
+
+async function deepseekSearch(q, extra, signal) {
+  const ds = loadDeepseekProvider();
+  const base = (process.env.DEEPSEEK_BASE_URL ?? ds.baseUrl).replace(/\/$/, '').replace(/\/v1$/, '');
+  const data = await postJson(`${base}/v1/tools/search`, { authorization: `Bearer ${process.env.DEEPSEEK_API_KEY ?? ds.apiKey}` },
+    { query: q.query.slice(0, 128), count: 8, ...extra }, signal);
+  const results = (data.results ?? []).map((r) => ({ title: r.title, url: r.url, snippet: r.summary || r.snippet, date: r.date, site: r.site_name, authority: r.authority, score: r.rerank_score }));
+  const out = { results };
+  return { model: 'deepseek-search', content: renderPayload(out), citations: results.map((r) => ({ url: r.url, title: r.title })), payloadChars: JSON.stringify(out).length };
 }
 
 async function serper(q, signal) {
