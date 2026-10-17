@@ -35,6 +35,7 @@ function parsePayload(text) {
 const strip = (s) => String(s ?? '').replace(/<<<[^>]*>>>/g, '').replace(/Source: Web Search\s*---/g, '').replace(/\s+/g, ' ').trim();
 
 const searches = [];
+const fetches = [];
 for (const agent of fs.readdirSync(path.join(root, 'agents'))) {
   const file = path.join(root, 'agents', agent, 'agent', 'openclaw-agent.sqlite');
   if (!fs.existsSync(file) || fs.statSync(file).mtimeMs < since) continue;
@@ -46,7 +47,7 @@ for (const agent of fs.readdirSync(path.join(root, 'agents'))) {
     for (let hi = max, step = 50000; hi > 0; hi -= step) {
       const chunk = db.prepare(`SELECT rowid, session_id, created_at, event_json FROM transcript_events
         WHERE rowid > ? AND rowid <= ? AND created_at >= ? AND created_at < ?
-          AND (instr(event_json, '"web_search"') > 0 OR instr(event_json, '"role":"assistant"') > 0)`).all(hi - step, hi, since, until);
+          AND (instr(event_json, '"web_search"') > 0 OR instr(event_json, '"web_fetch"') > 0 OR instr(event_json, '"role":"assistant"') > 0)`).all(hi - step, hi, since, until);
       rows.push(...chunk);
       const first = db.prepare('SELECT created_at FROM transcript_events WHERE rowid > ? ORDER BY rowid LIMIT 1').get(hi - step);
       if (!first || first.created_at < since) break;
@@ -60,10 +61,17 @@ for (const agent of fs.readdirSync(path.join(root, 'agents'))) {
       if (!m) continue;
       if (m.role === 'assistant') {
         const parts = Array.isArray(m.content) ? m.content : [];
-        for (const c of parts) if (c.type === 'toolCall' && c.name === 'web_search') calls.set(c.id, { args: c.arguments, at: r.created_at });
+        for (const c of parts) if (c.type === 'toolCall' && (c.name === 'web_search' || c.name === 'web_fetch')) calls.set(c.id, { name: c.name, args: c.arguments, at: r.created_at });
         const hasText = parts.some((c) => c.type === 'text' && String(c.text ?? '').trim().length > 0);
         if (hasText) for (const s of bySession.get(r.session_id) ?? []) if (s.replyAt === null && r.created_at >= s.at) s.replyAt = r.created_at;
-      } else if (m.role === 'toolResult' && (m.toolName === 'web_search' || calls.has(m.toolCallId))) {
+      } else if (m.role === 'toolResult' && (m.toolName ?? calls.get(m.toolCallId)?.name) === 'web_fetch') {
+        const call = calls.get(m.toolCallId) ?? {};
+        const text = textOf(m.content);
+        const failed = m.isError === true || /Web fetch (failed|extraction failed)|"error"\s*:/u.test(text.slice(0, 600));
+        fetches.push({ agent, at: r.created_at, url: call.args?.url ?? '', wallMs: call.at ? r.created_at - call.at : null, chars: text.length,
+          extractor: text.match(/"extractor"\s*:\s*"([a-z-]+)"/u)?.[1] ?? (failed ? 'failed' : 'unknown'),
+          error: failed ? strip(text).replace(/SECURITY NOTICE:[\s\S]*?---/u, '').slice(0, 140) : null });
+      } else if (m.role === 'toolResult' && (m.toolName === 'web_search' || calls.get(m.toolCallId)?.name === 'web_search')) {
         const call = calls.get(m.toolCallId) ?? {};
         const text = textOf(m.content);
         const p = parsePayload(text) ?? {};
@@ -111,14 +119,24 @@ const step = Math.max(1, Math.floor(searches.length / SAMPLES));
 const samples = searches.filter((_, i) => i % step === 0).slice(0, SAMPLES).map((s) => ({
   at: new Date(s.at).toISOString(), provider: s.provider, ms: s.tookMs ?? s.wallMs, chars: s.chars, query: String(s.query).slice(0, 120), top: s.top, error: s.error,
 }));
+const fetchSummary = [...new Set(fetches.map((f) => f.extractor))].map((extractor) => {
+  const f = fetches.filter((x) => x.extractor === extractor);
+  const ms = f.map((x) => x.wallMs).filter((x) => x != null);
+  return { extractor, calls: f.length, failed: f.filter((x) => x.error).length, msP50: q(ms, 0.5), msP90: q(ms, 0.9), charsP50: q(f.map((x) => x.chars), 0.5),
+    hosts: [...new Set(f.map((x) => { try { return new URL(x.url).hostname.replace(/^www\./u, ''); } catch { return ''; } }))].slice(0, 8),
+    errors: [...new Set(f.filter((x) => x.error).map((x) => x.error))].slice(0, 3) };
+});
 const out = {
   window: { since: new Date(since).toISOString(), until: new Date(until).toISOString(), hours: HOURS },
   searches: searches.length, turnsWithSearch: turns.size, maxSearchesInOneTurn: Math.max(0, ...turns.values()),
   summary, samples,
+  fetches: fetches.length, fetchSummary,
 };
 if (args.json === 'true') console.log(JSON.stringify(out, null, 1));
 else {
   console.log(`web_search ${out.window.since} .. ${out.window.until}: ${out.searches} searches in ${out.turnsWithSearch} turns (max ${out.maxSearchesInOneTurn} in one turn)`);
   for (const p of summary) console.log(`  ${p.provider}: ${p.calls} calls, ${p.failures} failed, took p50 ${p.tookP50} ms p90 ${p.tookP90} ms max ${p.tookMax} ms, result ${p.charsP50}/${p.charsP90} chars (p50/p90), zero-result ${p.zeroResults}, multi-query ${p.multiQueryCalls}, turn replied ${p.replied}/${p.calls}${p.errors.length ? `\n    errors: ${p.errors.join(' || ')}` : ''}`);
+  console.log(`web_fetch: ${fetches.length} calls (extractor deepseek = fallback used)`);
+  for (const f of fetchSummary) console.log(`  ${f.extractor}: ${f.calls} calls, ${f.failed} failed, p50 ${f.msP50} ms p90 ${f.msP90} ms, ${f.charsP50} chars p50, hosts ${f.hosts.join(', ')}${f.errors.length ? `\n    errors: ${f.errors.join(' || ')}` : ''}`);
   for (const s of samples) console.log(`  - [${s.provider} ${s.ms} ms ${s.chars} ch] ${s.query}${s.error ? `  ERROR ${s.error}` : `  → ${s.top.join(' / ')}`}`);
 }

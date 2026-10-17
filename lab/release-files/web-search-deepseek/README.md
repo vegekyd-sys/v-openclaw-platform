@@ -52,6 +52,19 @@
 | `candidate-be25b850` | 中文 8 题（摘要 500 字版） | 通过。25 次搜索，单次 0.43–1.0 s，结果都在 1 万字符以内；回合 8.7–31.7 s，中位约 14 s（同题 Parallel 约 19.6 s、Gemini 约 24 s） |
 | `candidate-fdaa3a7c`、`candidate-1282a0d9`、`candidate-52129da6` | 早期版本 | 功能全部通过，只有体积断言没过：摘要截断上限因此从 700 降到 600、再到 500，并改为按条数自适应 |
 
+### 共享 VLab（2026-10-17 21:12–21:20 CST，lease `web-search-deepseek`）
+
+脚本 `lab/web-search-deepseek-shared-accept.mjs`，按 backup → apply → restart → run 的顺序执行。测试用专用 `vlab-dev-wsd-*` 会话，先发 `/deepseek` 切模型，`deliver:false`，结果从会话库核对。
+
+- **第一次 apply 被校验拦下**，共享配置没有被改动。原因是插件文件保留了上传者的 uid 501，OpenClaw 判定为「suspicious ownership」，拒绝加载插件；因此注册表里没有 `deepseek`，`tools.web.search.provider` 校验失败。候选测试没有暴露这个问题，因为那里插件属主恰好就是服务用户。修复：两个脚本复制插件后都 `chown root:root`。
+- **修复后两份配置都通过 `openclaw config validate`**，重启用时 71 s。
+- **5 个回合全部通过**，都由 deepseek/deepseek-flash 作答：
+  - 搜索 3 题，回合 11 / 9.2 / 14.4 s，单次搜索 0.49–0.71 s；
+  - 百度百科经 deepseek 兜底，用时 8.9 s，答对开园日期；
+  - DeepSeek 文档页走 readability，用时 220 ms，没有触发兜底；
+  - 共享 Gateway 日志里没有相关报错。
+- 验收后配置保持应用状态，等 V 切换后两边一致。
+
 上次 Parallel 连搜 12 次、70 s 还没答出开放时间和票价的「扬州小盘谷」，这次 3–4 次搜索、30 s 左右答全。
 
 ## 上线
