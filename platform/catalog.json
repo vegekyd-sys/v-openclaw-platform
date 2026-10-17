@@ -164,7 +164,8 @@
         "tests/patch-openclaw91-sessions-send-owner.test.mjs",
         "tests/patch-openclaw-session-hotset.test.mjs",
         "tests/prune-openclaw-session-hotset.test.mjs",
-        "tests/patch-openclaw91-dingtalk-peer-case.test.mjs"
+        "tests/patch-openclaw91-dingtalk-peer-case.test.mjs",
+        "scripts/patch-openclaw91-archive-retention-cutoff.test.mjs"
       ]
     },
     {
@@ -1161,6 +1162,17 @@
       ],
       "disposition": "needs-live-reconciliation",
       "sourceSha256": "24461753d95c128202884e8878b5e1573423c4c719dc4a374b2388c32f64f66b"
+    },
+    {
+      "id": "patch-openclaw91-archive-retention-cutoff",
+      "file": "scripts/patch-openclaw91-archive-retention-cutoff.mjs",
+      "component": "openclaw-core",
+      "reason": "归档保留期清理只扫描早于最短保留期的行，并在一次无可删行的扫描后静默 1 小时，避免每次会话生命周期变更都在主线程上读 256 份归档 blob（10/17 V 上每 30–40 分钟一次约 7 s 卡顿）",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "needs-live-reconciliation",
+      "sourceSha256": "a5bb1657ccae08357887cc83781aedcd3bb4cce3e3a76ad6af70215ea0768b4c"
     }
   ],
   "externalInputs": [
