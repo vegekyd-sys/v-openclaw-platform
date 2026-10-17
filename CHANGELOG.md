@@ -11,6 +11,18 @@
 
 ---
 
+## v2026.9.1-db91.6-archive-retention-cutoff-20261017
+
+上线：2026-10-17 10:34 CST 装入，10:49 v-self-restart 生效  ·  tag `v2026.9.1-db91.6-archive-retention-cutoff-20261017`
+
+**摘要**：V 的 Gateway 不再每 30–40 分钟卡一次约 7 秒。原因是每次会话 reset / delete / `/new` 都会跑一遍转录归档保留期清理，它读最老的 256 份归档，而要读的列排在 archive_blob 之后，每行都要走完整个 blob 溢出链。V 上这些归档都还没到 14 天保留期，所以每次读完都一份也删不掉。现在扫描限定在 `created_at < now - 最短保留期`，读了候选却一份没删时 1 小时内不再扫；能删的集合与原版一致。V 上 10:49 重启后 Cannot reap / InvalidConfig / claim / stream-ack / Cannot inspect Codex / rebuilding / liveness 延迟均为 0，parity ALIGNED。
+
+相对上一版 `v2026.9.1-db91.6-projection-incremental-20261017`：1 个文件变化。
+
+**经 VLab 发版 `archive-retention-cutoff-20261017`**（monitor-v-production，dev `52f9eb60`）
+> 验收：共享 VLab 10:04 部署 #416（session-accessor.sqlite-lifecycle-state-CrB_K2kA.js，before=V 线上 adeb44f2）。Gateway ready、错误 0。真实函数 A/B（VLab 库副本 3120 份归档，原版与补丁版模块各跑两次）：全部 5 天内（V 现状）两版均删 0；10% 设为 20 天前且文件不存在，两版均先删 256 再删 56，剩 2808，结果一致。单测 4/4：40 组随机数据可删集合逐一相同，查询走 retention 索引范围。冷缓存 SQL：旧 158–164 ms 读 256 行，新 6–10 ms 读 0 行（V 上旧查询 profile 6.9 s）。
+- `core` session-accessor.sqlite-lifecycle-state-CrB_K2kA.js  adeb44f2 → ea381f9d
+
 ## v2026.9.1-db91.6-projection-incremental-20261017
 
 上线：2026-10-17 05:04 CST 装入，05:06 v-self-restart 生效  ·  tag `v2026.9.1-db91.6-projection-incremental-20261017`
