@@ -1,0 +1,29 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/workboard-sweep-light/src-B9mb84px.js",
+      "target": "openclaw/dist/src-B9mb84px.js",
+      "before": "c3a060a7deb79384ec1294f6e551cb21c3e3c423ab9ac19ea1985a08334c41a0",
+      "after": "24cc77ba4cb12e8b25d9006d081f646bc2c021386c047d66452d918bcb29c995"
+    },
+    {
+      "source": "lab/release-files/workboard-sweep-light/sessions-read-C6mAMxyQ.js",
+      "target": "openclaw/dist/sessions-read-C6mAMxyQ.js",
+      "before": "f681c2daa388362ef83462681f4608c1163d0a10d416c3915716133c85dbb885",
+      "after": "36c5a27bea777b383727dc891648a288002a54864e594f6027d01d98ff0dfa22"
+    },
+    {
+      "source": "lab/release-files/workboard-sweep-light/runtime-api-1CCazqtv.js",
+      "target": "openclaw/dist/runtime-api-1CCazqtv.js",
+      "before": "95373b6edb1e79b0ebb0b3f6f79970983f634ebcf3503765d39a77cf09431984",
+      "after": "64c75937b86979ed594fcbd8b904d323bff5dd2c864bdca3e8a1fd6c94f916c5"
+    },
+    {
+      "source": "lab/release-files/workboard-sweep-light/extensions/workboard/index.js",
+      "target": "openclaw/dist/extensions/workboard/index.js",
+      "before": "5ac1a060a7572562b3163b2039ab9c870643df7d4a8f1f563f45029b6b4c1df7",
+      "after": "610d45feca74199c313a83640a520c6b4108e7a0390e4b8ac4612106b9330804"
+    }
+  ]
+}
