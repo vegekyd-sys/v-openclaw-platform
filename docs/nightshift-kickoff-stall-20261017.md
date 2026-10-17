@@ -148,7 +148,7 @@ onAdmittedTimer → sweepCronRunSessions (service-CzmmKrEg.js:2249)
 2. **cron 结束的删除路径**：`collectAdmissionProtectedSessionIds` 和 `readReferencedSessionIds` 只看与目标 sessionId 相关的行，可以走 `current_session_id` 索引，不要整表扫。每次删除省约 1.5 s。
    - 这条路径也服务所有 sessions.delete 和重置，收益不止 cron。
 3. **`sweepCronRunSessions`**：只列 `:cron:` 和 `:run:` 前缀的键，用键前缀查询，并且先按 `updated_at < cutoff` 过滤再解析 entry_json。另一个办法是把 5 分钟间隔放宽到 30–60 分钟。
-4. **夜班「模板批看护」自身**：它是 `everyMs: 600000` 的 agentTurn。在 1–3 修好之前，可以和夜班线商量：
+4. **夜班「模板批看护」自身**：它是张寒冰 10/15 18:29 在飞书私聊里建的，用来看护 Makaron 模板复刻批次 NS-BATCHV2-1015-01，有事件时私聊播报。这个项目 10/16 14:17 已经 done（3 个 skill 已上架），最终结果也在 14:27 播报过了。但 cron 没有停，至今每 10 分钟空跑一次。最省事的办法是停用这一个 cron（只改 enabled，需要张寒冰或 Tianyi 同意）。在此之外，它是 `everyMs: 600000` 的 agentTurn。在 1–3 修好之前，可以和夜班线商量：
    - 把频率降到 20–30 分钟；
    - 或者改成 command 类 cron。profile ② 里 `resolveCronSession` 的 5 次整表读取全部出现在 agentTurn 启动时（14:13:30、14:20:00、14:23:30、14:33:30、14:35:43）；dealclaw 那几个 command cron 在 14:10、14:15、14:25、14:30 启动时都没有出现。
    - 这是夜班线的改动，不在本仓库，需要夜班线和 Tianyi 拍板。
