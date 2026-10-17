@@ -1,0 +1,1037 @@
+{
+ "candidate": "candidate-91e032db-efeb-49cb-9197-c92cc801a921",
+ "ok": true,
+ "sourceCommit": "52f9eb60c5ca3551887751db317debef8f55739e",
+ "inputSha256": "775f067bdf060bec70266d749a9bd764ed77dfc2014e9a9c34c382fca25a6c1c",
+ "baseRelease": "archive-retention-cutoff-20261017",
+ "runtimeSha": "b7ce9a475a2655bc663161c9f6cb281d8c661768e00443be31797ec26d8c6372",
+ "predicate": {
+  "sessions": 6301,
+  "listed": 80,
+  "mismatches": []
+ },
+ "viewDiffs": {
+  "7da00997": {
+   "B0": null,
+   "TA0": null,
+   "TB0": null,
+   "A1": null,
+   "B1": null,
+   "TA1": null,
+   "TB1": null
+  },
+  "3c3fab41": {
+   "B0": null,
+   "TA0": null,
+   "TB0": null,
+   "A1": null,
+   "B1": null,
+   "TA1": null,
+   "TB1": null
+  },
+  "7612daa9": {
+   "B0": null,
+   "TA0": null,
+   "TB0": null,
+   "A1": null,
+   "B1": null,
+   "TA1": null,
+   "TB1": null
+  },
+  "06d45f08": {
+   "B0": null,
+   "TA0": null,
+   "TB0": null,
+   "A1": null,
+   "B1": null,
+   "TA1": null,
+   "TB1": null
+  }
+ },
+ "viewSizes": {
+  "7da00997": {
+   "contextMessages": 211,
+   "contextEntries": 25963,
+   "tailEvents": 200,
+   "stats": {
+    "eventCount": 213,
+    "sizeBytes": 11960973
+   }
+  },
+  "3c3fab41": {
+   "contextMessages": 5787,
+   "contextEntries": 12693,
+   "tailEvents": 200,
+   "stats": {
+    "eventCount": 5788,
+    "sizeBytes": 70484504
+   }
+  },
+  "7612daa9": {
+   "contextMessages": 1238,
+   "contextEntries": 21393,
+   "tailEvents": 200,
+   "stats": {
+    "eventCount": 1244,
+    "sizeBytes": 8092771
+   }
+  },
+  "06d45f08": {
+   "contextMessages": 13,
+   "contextEntries": 13,
+   "tailEvents": 13,
+   "stats": {
+    "eventCount": 13,
+    "sizeBytes": 11257
+   }
+  }
+ },
+ "summary": {
+  "7da00997": {
+   "side": {
+    "A": {
+     "windowMs": [
+      2133,
+      2151
+     ],
+     "rebuildMs": [
+      4405,
+      4081
+     ],
+     "blockMaxMs": 631
+    },
+    "B": {
+     "windowMs": [
+      677,
+      740
+     ],
+     "rebuildMs": [
+      2827,
+      3116
+     ],
+     "blockMaxMs": 775
+    },
+    "TA": {
+     "windowMs": [
+      2268,
+      2291
+     ],
+     "rebuildMs": [
+      4052,
+      5005
+     ],
+     "blockMaxMs": 1080
+    },
+    "TB": {
+     "windowMs": [
+      729,
+      764
+     ],
+     "rebuildMs": [
+      3366,
+      2419
+     ],
+     "blockMaxMs": 936
+    }
+   },
+   "rewind": {
+    "A": {
+     "windowMs": [
+      2251,
+      2311
+     ],
+     "rebuildMs": [
+      3862,
+      3930
+     ],
+     "blockMaxMs": 0
+    },
+    "B": {
+     "windowMs": [
+      159,
+      174
+     ],
+     "rebuildMs": [
+      1755,
+      1741
+     ],
+     "blockMaxMs": 42
+    },
+    "TA": {
+     "windowMs": [
+      2311,
+      2350
+     ],
+     "rebuildMs": [
+      3879,
+      3962
+     ],
+     "blockMaxMs": 0
+    },
+    "TB": {
+     "windowMs": [
+      195,
+      197
+     ],
+     "rebuildMs": [
+      1822,
+      1842
+     ],
+     "blockMaxMs": 25
+    }
+   },
+   "branch": {
+    "A": {
+     "windowMs": [
+      2419,
+      2461
+     ],
+     "rebuildMs": [
+      4016,
+      4215
+     ],
+     "blockMaxMs": 30
+    },
+    "B": {
+     "windowMs": [
+      169,
+      202
+     ],
+     "rebuildMs": [
+      1710,
+      1783
+     ],
+     "blockMaxMs": 24
+    },
+    "TA": {
+     "windowMs": [
+      2298,
+      2276
+     ],
+     "rebuildMs": [
+      3895,
+      3887
+     ],
+     "blockMaxMs": 0
+    },
+    "TB": {
+     "windowMs": [
+      178,
+      178
+     ],
+     "rebuildMs": [
+      1927,
+      1841
+     ],
+     "blockMaxMs": 0
+    }
+   },
+   "crossCheckpoint": {
+    "A": {
+     "windowMs": [
+      2202,
+      2313
+     ],
+     "rebuildMs": [
+      3859,
+      3974
+     ],
+     "blockMaxMs": 0
+    },
+    "B": {
+     "windowMs": [
+      22,
+      33
+     ],
+     "rebuildMs": [
+      1683,
+      1795
+     ],
+     "blockMaxMs": 0
+    },
+    "TA": {
+     "windowMs": [
+      2181,
+      2704
+     ],
+     "rebuildMs": [
+      3776,
+      4433
+     ],
+     "blockMaxMs": 24
+    },
+    "TB": {
+     "windowMs": [
+      21,
+      35
+     ],
+     "rebuildMs": [
+      1615,
+      1680
+     ],
+     "blockMaxMs": 0
+    }
+   },
+   "sideBurst": {
+    "A": {
+     "windowMs": [
+      3631,
+      3684
+     ],
+     "rebuildMs": [
+      5366,
+      5365
+     ],
+     "blockMaxMs": 0,
+     "firstWindowMs": [
+      2219,
+      2390
+     ]
+    },
+    "B": {
+     "windowMs": [
+      36,
+      46
+     ],
+     "rebuildMs": [
+      1620,
+      1505
+     ],
+     "blockMaxMs": 0,
+     "firstWindowMs": [
+      22,
+      23
+     ]
+    },
+    "TA": {
+     "windowMs": [
+      3696,
+      3739
+     ],
+     "rebuildMs": [
+      5230,
+      5331
+     ],
+     "blockMaxMs": 0,
+     "firstWindowMs": [
+      2367,
+      2575
+     ]
+    },
+    "TB": {
+     "windowMs": [
+      43,
+      40
+     ],
+     "rebuildMs": [
+      1580,
+      1661
+     ],
+     "blockMaxMs": 0,
+     "firstWindowMs": [
+      23,
+      24
+     ]
+    }
+   }
+  },
+  "3c3fab41": {
+   "side": {
+    "A": {
+     "windowMs": [
+      2196,
+      2262
+     ],
+     "rebuildMs": [
+      3769,
+      3849
+     ],
+     "blockMaxMs": 52
+    },
+    "B": {
+     "windowMs": [
+      745,
+      721
+     ],
+     "rebuildMs": [
+      2420,
+      2394
+     ],
+     "blockMaxMs": 48
+    },
+    "TA": {
+     "windowMs": [
+      2261,
+      2272
+     ],
+     "rebuildMs": [
+      4020,
+      3900
+     ],
+     "blockMaxMs": 56
+    },
+    "TB": {
+     "windowMs": [
+      716,
+      741
+     ],
+     "rebuildMs": [
+      2342,
+      2492
+     ],
+     "blockMaxMs": 56
+    }
+   },
+   "rewind": {
+    "A": {
+     "windowMs": [
+      2328,
+      2362
+     ],
+     "rebuildMs": [
+      3993,
+      4191
+     ],
+     "blockMaxMs": 0
+    },
+    "B": {
+     "windowMs": [
+      211,
+      151
+     ],
+     "rebuildMs": [
+      1920,
+      1755
+     ],
+     "blockMaxMs": 24
+    },
+    "TA": {
+     "windowMs": [
+      2314,
+      2453
+     ],
+     "rebuildMs": [
+      3909,
+      4082
+     ],
+     "blockMaxMs": 21
+    },
+    "TB": {
+     "windowMs": [
+      156,
+      162
+     ],
+     "rebuildMs": [
+      1752,
+      1762
+     ],
+     "blockMaxMs": 0
+    }
+   },
+   "branch": {
+    "A": {
+     "windowMs": [
+      2319,
+      2249
+     ],
+     "rebuildMs": [
+      3933,
+      3799
+     ],
+     "blockMaxMs": 0
+    },
+    "B": {
+     "windowMs": [
+      166,
+      134
+     ],
+     "rebuildMs": [
+      1881,
+      1692
+     ],
+     "blockMaxMs": 0
+    },
+    "TA": {
+     "windowMs": [
+      2321,
+      2321
+     ],
+     "rebuildMs": [
+      3861,
+      3932
+     ],
+     "blockMaxMs": 0
+    },
+    "TB": {
+     "windowMs": [
+      233,
+      197
+     ],
+     "rebuildMs": [
+      2014,
+      1881
+     ],
+     "blockMaxMs": 0
+    }
+   },
+   "crossCheckpoint": {
+    "A": {
+     "windowMs": [
+      2176,
+      2144
+     ],
+     "rebuildMs": [
+      3672,
+      3765
+     ],
+     "blockMaxMs": 0
+    },
+    "B": {
+     "windowMs": [
+      24,
+      33
+     ],
+     "rebuildMs": [
+      1598,
+      1591
+     ],
+     "blockMaxMs": 0
+    },
+    "TA": {
+     "windowMs": [
+      2262,
+      2200
+     ],
+     "rebuildMs": [
+      3911,
+      3994
+     ],
+     "blockMaxMs": 0
+    },
+    "TB": {
+     "windowMs": [
+      26,
+      28
+     ],
+     "rebuildMs": [
+      1797,
+      1862
+     ],
+     "blockMaxMs": 28
+    }
+   },
+   "sideBurst": {
+    "A": {
+     "windowMs": [
+      3629,
+      3559
+     ],
+     "rebuildMs": [
+      5234,
+      5162
+     ],
+     "blockMaxMs": 0,
+     "firstWindowMs": [
+      2313,
+      2389
+     ]
+    },
+    "B": {
+     "windowMs": [
+      35,
+      32
+     ],
+     "rebuildMs": [
+      1615,
+      1661
+     ],
+     "blockMaxMs": 0,
+     "firstWindowMs": [
+      22,
+      12
+     ]
+    },
+    "TA": {
+     "windowMs": [
+      3707,
+      3754
+     ],
+     "rebuildMs": [
+      5283,
+      5338
+     ],
+     "blockMaxMs": 0,
+     "firstWindowMs": [
+      2338,
+      2189
+     ]
+    },
+    "TB": {
+     "windowMs": [
+      36,
+      35
+     ],
+     "rebuildMs": [
+      1640,
+      1579
+     ],
+     "blockMaxMs": 0,
+     "firstWindowMs": [
+      23,
+      14
+     ]
+    }
+   }
+  },
+  "7612daa9": {
+   "side": {
+    "A": {
+     "windowMs": [
+      2425,
+      2361
+     ],
+     "rebuildMs": [
+      4065,
+      3980
+     ],
+     "blockMaxMs": 63
+    },
+    "B": {
+     "windowMs": [
+      713,
+      747
+     ],
+     "rebuildMs": [
+      2319,
+      2313
+     ],
+     "blockMaxMs": 54
+    },
+    "TA": {
+     "windowMs": [
+      2237,
+      2414
+     ],
+     "rebuildMs": [
+      3847,
+      4024
+     ],
+     "blockMaxMs": 50
+    },
+    "TB": {
+     "windowMs": [
+      741,
+      680
+     ],
+     "rebuildMs": [
+      2239,
+      2391
+     ],
+     "blockMaxMs": 51
+    }
+   },
+   "rewind": {
+    "A": {
+     "windowMs": [
+      2458,
+      2437
+     ],
+     "rebuildMs": [
+      4002,
+      3988
+     ],
+     "blockMaxMs": 0
+    },
+    "B": {
+     "windowMs": [
+      176,
+      178
+     ],
+     "rebuildMs": [
+      1775,
+      1845
+     ],
+     "blockMaxMs": 0
+    },
+    "TA": {
+     "windowMs": [
+      2384,
+      2418
+     ],
+     "rebuildMs": [
+      4191,
+      4036
+     ],
+     "blockMaxMs": 22
+    },
+    "TB": {
+     "windowMs": [
+      165,
+      224
+     ],
+     "rebuildMs": [
+      1776,
+      1977
+     ],
+     "blockMaxMs": 48
+    }
+   },
+   "branch": {
+    "A": {
+     "windowMs": [
+      2320,
+      2341
+     ],
+     "rebuildMs": [
+      3896,
+      3851
+     ],
+     "blockMaxMs": 0
+    },
+    "B": {
+     "windowMs": [
+      169,
+      167
+     ],
+     "rebuildMs": [
+      1735,
+      1836
+     ],
+     "blockMaxMs": 0
+    },
+    "TA": {
+     "windowMs": [
+      2252,
+      2280
+     ],
+     "rebuildMs": [
+      3805,
+      3753
+     ],
+     "blockMaxMs": 0
+    },
+    "TB": {
+     "windowMs": [
+      235,
+      189
+     ],
+     "rebuildMs": [
+      1807,
+      1830
+     ],
+     "blockMaxMs": 0
+    }
+   },
+   "crossCheckpoint": {
+    "A": {
+     "windowMs": [
+      2193,
+      2226
+     ],
+     "rebuildMs": [
+      3795,
+      3728
+     ],
+     "blockMaxMs": 0
+    },
+    "B": {
+     "windowMs": [
+      25,
+      24
+     ],
+     "rebuildMs": [
+      1699,
+      1629
+     ],
+     "blockMaxMs": 0
+    },
+    "TA": {
+     "windowMs": [
+      2421,
+      2338
+     ],
+     "rebuildMs": [
+      3926,
+      3883
+     ],
+     "blockMaxMs": 0
+    },
+    "TB": {
+     "windowMs": [
+      57,
+      24
+     ],
+     "rebuildMs": [
+      1519,
+      1670
+     ],
+     "blockMaxMs": 0
+    }
+   },
+   "sideBurst": {
+    "A": {
+     "windowMs": [
+      3880,
+      3824
+     ],
+     "rebuildMs": [
+      5450,
+      5341
+     ],
+     "blockMaxMs": 0,
+     "firstWindowMs": [
+      2563,
+      2358
+     ]
+    },
+    "B": {
+     "windowMs": [
+      40,
+      55
+     ],
+     "rebuildMs": [
+      1600,
+      1693
+     ],
+     "blockMaxMs": 0,
+     "firstWindowMs": [
+      23,
+      26
+     ]
+    },
+    "TA": {
+     "windowMs": [
+      3792,
+      3611
+     ],
+     "rebuildMs": [
+      5394,
+      5163
+     ],
+     "blockMaxMs": 0,
+     "firstWindowMs": [
+      2269,
+      2302
+     ]
+    },
+    "TB": {
+     "windowMs": [
+      45,
+      44
+     ],
+     "rebuildMs": [
+      1799,
+      1694
+     ],
+     "blockMaxMs": 23,
+     "firstWindowMs": [
+      34,
+      25
+     ]
+    }
+   }
+  },
+  "06d45f08": {
+   "side": {
+    "A": {
+     "windowMs": [
+      2267,
+      2324
+     ],
+     "rebuildMs": [
+      3914,
+      4026
+     ],
+     "blockMaxMs": 54
+    },
+    "B": {
+     "windowMs": [
+      726,
+      789
+     ],
+     "rebuildMs": [
+      2301,
+      2454
+     ],
+     "blockMaxMs": 70
+    },
+    "TA": {
+     "windowMs": [
+      2218,
+      2326
+     ],
+     "rebuildMs": [
+      3790,
+      4007
+     ],
+     "blockMaxMs": 53
+    },
+    "TB": {
+     "windowMs": [
+      747,
+      726
+     ],
+     "rebuildMs": [
+      2400,
+      2407
+     ],
+     "blockMaxMs": 50
+    }
+   },
+   "rewind": {
+    "A": {
+     "windowMs": [
+      2456,
+      2536
+     ],
+     "rebuildMs": [
+      4136,
+      4197
+     ],
+     "blockMaxMs": 42
+    },
+    "B": {
+     "windowMs": [
+      142,
+      122
+     ],
+     "rebuildMs": [
+      1750,
+      1662
+     ],
+     "blockMaxMs": 0
+    },
+    "TA": {
+     "windowMs": [
+      2385,
+      2409
+     ],
+     "rebuildMs": [
+      4065,
+      4120
+     ],
+     "blockMaxMs": 29
+    },
+    "TB": {
+     "windowMs": [
+      144,
+      164
+     ],
+     "rebuildMs": [
+      1764,
+      1786
+     ],
+     "blockMaxMs": 0
+    }
+   },
+   "branch": {
+    "A": {
+     "windowMs": [
+      2450,
+      2407
+     ],
+     "rebuildMs": [
+      4048,
+      3914
+     ],
+     "blockMaxMs": 24
+    },
+    "B": {
+     "windowMs": [
+      144,
+      145
+     ],
+     "rebuildMs": [
+      1719,
+      1819
+     ],
+     "blockMaxMs": 0
+    },
+    "TA": {
+     "windowMs": [
+      2417,
+      2384
+     ],
+     "rebuildMs": [
+      3974,
+      3954
+     ],
+     "blockMaxMs": 38
+    },
+    "TB": {
+     "windowMs": [
+      146,
+      147
+     ],
+     "rebuildMs": [
+      1737,
+      1636
+     ],
+     "blockMaxMs": 0
+    }
+   },
+   "sideBurst": {
+    "A": {
+     "windowMs": [
+      3648,
+      3730
+     ],
+     "rebuildMs": [
+      5345,
+      5381
+     ],
+     "blockMaxMs": 0,
+     "firstWindowMs": [
+      2288,
+      2178
+     ]
+    },
+    "B": {
+     "windowMs": [
+      35,
+      32
+     ],
+     "rebuildMs": [
+      1634,
+      1929
+     ],
+     "blockMaxMs": 32,
+     "firstWindowMs": [
+      14,
+      13
+     ]
+    },
+    "TA": {
+     "windowMs": [
+      3629,
+      3605
+     ],
+     "rebuildMs": [
+      5269,
+      5198
+     ],
+     "blockMaxMs": 21,
+     "firstWindowMs": [
+      2483,
+      2449
+     ]
+    },
+    "TB": {
+     "windowMs": [
+      34,
+      35
+     ],
+     "rebuildMs": [
+      1520,
+      1612
+     ],
+     "blockMaxMs": 0,
+     "firstWindowMs": [
+      12,
+      11
+     ]
+    }
+   }
+  }
+ }
+}
