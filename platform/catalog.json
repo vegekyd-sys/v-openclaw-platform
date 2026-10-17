@@ -164,7 +164,9 @@
         "tests/patch-openclaw91-sessions-send-owner.test.mjs",
         "tests/patch-openclaw-session-hotset.test.mjs",
         "tests/prune-openclaw-session-hotset.test.mjs",
-        "tests/patch-openclaw91-dingtalk-peer-case.test.mjs"
+        "tests/patch-openclaw91-dingtalk-peer-case.test.mjs",
+        "scripts/patch-openclaw91-archive-retention-cutoff.test.mjs",
+        "scripts/patch-openclaw91-workboard-sweep-light.test.mjs"
       ]
     },
     {
@@ -231,6 +233,7 @@
         "lab/candidate/completions-overflow-signal.test.mjs",
         "lab/release-files/codex-plugins-off/config.test.mjs",
         "lab/release-files/web-search-parallel/config.test.mjs",
+        "lab/release-files/web-search-deepseek/config.test.mjs",
         "lab/release-files/v-experience-multichannel/config.test.mjs",
         "lab/canonical-session-scan.test.mjs",
         "lab/canonical-scan-path-cache.test.mjs",
@@ -315,6 +318,7 @@
         "lab/transcript-index-prepare.test.mjs",
         "lab/transcript-projection-checkpoint.test.mjs",
         "lab/transcript-projection-incremental.test.mjs",
+        "lab/transcript-projection-fixed-cost.test.mjs",
         "lab/skills-watch-ready.test.mjs",
         "lab/worker-prewarm-secrets.test.mjs",
         "lab/worker-prewarm-v.test.mjs",
@@ -1162,6 +1166,28 @@
       ],
       "disposition": "needs-live-reconciliation",
       "sourceSha256": "24461753d95c128202884e8878b5e1573423c4c719dc4a374b2388c32f64f66b"
+    },
+    {
+      "id": "patch-openclaw91-archive-retention-cutoff",
+      "file": "scripts/patch-openclaw91-archive-retention-cutoff.mjs",
+      "component": "openclaw-core",
+      "reason": "归档保留期清理只扫描早于最短保留期的行，并在一次无可删行的扫描后静默 1 小时，避免每次会话生命周期变更都在主线程上读 256 份归档 blob（10/17 V 上每 30–40 分钟一次约 7 s 卡顿）",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "needs-live-reconciliation",
+      "sourceSha256": "a5bb1657ccae08357887cc83781aedcd3bb4cce3e3a76ad6af70215ea0768b4c"
+    },
+    {
+      "id": "patch-openclaw91-workboard-sweep-light",
+      "file": "scripts/patch-openclaw91-workboard-sweep-light.mjs",
+      "component": "openclaw-core",
+      "reason": "Workboard 每 10 分钟全量对账不再卡主线程：sessions.list 增加 lifecycleOnly（仅对无可见性过滤的调用方跳过共享与 placement 投影），对账先用 store 自己的补丁生成函数在内存判断，只对要变的卡排队读写（10/17 V 上每次全量 7–8 s）",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "needs-live-reconciliation",
+      "sourceSha256": "578002ac862cfe172a7c39ca4936d6e14ad748c6ef2b13a6811551e42120f6fd"
     }
   ],
   "externalInputs": [

@@ -1,0 +1,98 @@
+{
+ "1": {
+  "started": "05:55:19",
+  "runs": [
+   {
+    "label": "vcodex-c1-0",
+    "status": "ok",
+    "correct": true,
+    "model": "openai/gpt-5.6-sol",
+    "doneS": null,
+    "wallS": 15.1,
+    "text": "92f1f0fa92db"
+   }
+  ]
+ },
+ "3": {
+  "started": "05:56:04",
+  "runs": [
+   {
+    "label": "vcodex-c3-0",
+    "status": "ok",
+    "correct": true,
+    "model": "openai/gpt-5.6-sol",
+    "doneS": null,
+    "wallS": 16.4,
+    "text": "9bc23f2cb043"
+   },
+   {
+    "label": "vcodex-c3-1",
+    "status": "ok",
+    "correct": true,
+    "model": "openai/gpt-5.6-sol",
+    "doneS": null,
+    "wallS": 18.0,
+    "text": "a12ddb0c7297"
+   },
+   {
+    "label": "vcodex-c3-2",
+    "status": "ok",
+    "correct": true,
+    "model": "openai/gpt-5.6-sol",
+    "doneS": null,
+    "wallS": 14.4,
+    "text": "1df48391e363"
+   }
+  ]
+ },
+ "5": {
+  "started": "05:56:52",
+  "runs": [
+   {
+    "label": "vcodex-c5-0",
+    "status": "ok",
+    "correct": true,
+    "model": "openai/gpt-5.6-sol",
+    "doneS": null,
+    "wallS": 21.3,
+    "text": "3c3c0bb9b727"
+   },
+   {
+    "label": "vcodex-c5-1",
+    "status": "ok",
+    "correct": true,
+    "model": "openai/gpt-5.6-sol",
+    "doneS": null,
+    "wallS": 21.7,
+    "text": "0dde4cce45f9"
+   },
+   {
+    "label": "vcodex-c5-2",
+    "status": "ok",
+    "correct": true,
+    "model": "openai/gpt-5.6-sol",
+    "doneS": null,
+    "wallS": 18.0,
+    "text": "6f6250188652"
+   },
+   {
+    "label": "vcodex-c5-3",
+    "status": "ok",
+    "correct": true,
+    "model": "openai/gpt-5.6-sol",
+    "doneS": null,
+    "wallS": 20.4,
+    "text": "647283a39443"
+   },
+   {
+    "label": "vcodex-c5-4",
+    "status": "ok",
+    "correct": true,
+    "model": "openai/gpt-5.6-sol",
+    "doneS": null,
+    "wallS": 20.1,
+    "text": "b9b82a1cf26c"
+   }
+  ]
+ }
+}
