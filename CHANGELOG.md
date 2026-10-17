@@ -11,6 +11,28 @@
 
 ---
 
+## v2026.9.1-db91.6-workboard-projection-20261017
+
+上线：2026-10-17 18:25 CST 装入，18:26 v-self-restart 生效  ·  tag `v2026.9.1-db91.6-workboard-projection-20261017`
+
+**摘要**：两处修复一起上线。
+
+- **#418**：V 每 10 分钟一次的 workboard 全量对账不再长时间卡住主线程。会话列表对它改用只返回生命周期字段的轻量模式（只对没有可见性过滤的系统调用方生效），对账时先在内存里判断，只读写真要变的卡。V 上 18:27–18:49 的 profile 显示：两次全量对账里列会话 3.6–3.9 s → 0.32–0.35 s，逐卡写入基本消失，整段 11–13 s → 约 1.4 s（剩下的是读全部卡片约 1 s）。用户感知：消息正好落在对账窗口时，不再多等 7–13 s。
+- **#420**：投影重建窗口去掉整库扫描和 Worker 启动，固定开销 2.2 s → 0.02–0.2 s。大会话在回退、分叉、连续写入后，下一轮能更快接上。
+
+重启后 Cannot reap / InvalidConfig / claim / stream-ack / Cannot inspect Codex / rebuilding / orphan sweep failed / workboard lifecycle failed 均为 0，语音入口 200，夜班在线，parity ALIGNED。还剩的主线程长段是整表读会话条目（会话生命周期清理一次 5.9 s，整表加载 2.7–3.7 s），见 PR #419 的报告，不在本次范围内。
+
+相对上一版 `v2026.9.1-db91.6-archive-retention-cutoff-20261017`：6 个文件变化。
+
+**经 VLab 发版 `workboard-projection-20261017`**（monitor-v-production，dev `0c59dc8d`）
+> 验收：共享 VLab 18:07 部署 #418+#420（dev 0c59dc8d，6 个文件，before=V 线上字节）。六个文件哈希=after；Gateway ready，部署后 workboard lifecycle sync/recovery failed、orphan sweep failed、unexpected property、InvalidConfig 均为 0（仅既有 Codex 孤儿 838314 告警）。sessions.list 按 workboard 参数对比 968 个会话：lifecycleOnly 与普通调用的 key/updatedAt/status/hasActiveRun/abortedLastRun 逐行一致，轻量模式无 sharingRole；服务端耗时普通 1671–1838 ms、轻量 713–742 ms（交替两轮）。deepseek-fl…
+- `core` config/sessions/session-transcript-reconcile.worker.js  2fa289dd → fdce59ff
+- `core` extensions/workboard/index.js  5ac1a060 → 610d45fe
+- `core` runtime-api-1CCazqtv.js  95373b6e → 64c75937
+- `core` session-transcript-reconcile-j5qhAafV.js  9fac1d4a → 85455fa4
+- `core` sessions-read-C6mAMxyQ.js  f681c2da → 36c5a27b
+- `core` src-B9mb84px.js  c3a060a7 → 24cc77ba
+
 ## v2026.9.1-db91.6-archive-retention-cutoff-20261017
 
 上线：2026-10-17 10:34 CST 装入，10:49 v-self-restart 生效  ·  tag `v2026.9.1-db91.6-archive-retention-cutoff-20261017`
