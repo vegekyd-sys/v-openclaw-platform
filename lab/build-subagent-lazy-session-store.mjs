@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  ADMISSION_BEFORE, ADMISSION_FILE, CAPABILITIES_BEFORE, CAPABILITIES_FILE, ENTRY_BEFORE, ENTRY_BEFORE_PR403, ENTRY_FILE,
+  ADMISSION_BEFORE, ADMISSION_FILE, CAPABILITIES_BEFORE, CAPABILITIES_FILE, ENTRY_BEFORE, ENTRY_FILE,
   patchAdmission, patchCapabilities, patchEntryLookup,
 } from "./patch-subagent-lazy-session-store.mjs";
 
@@ -33,13 +33,5 @@ for (const [file, before, patch] of [
 }
 writeFileSync(path.join(root, "lab/subagent-lazy-session-store.plan.json"), `${JSON.stringify({ files }, null, 2)}\n`);
 
-// Stacked on PR #403 (not yet on V): use this entry chunk instead when #403 ships first or together.
-{
-  const source = readFileSync(path.join(root, "lab/release-files/session-sharing-bounded-reads", ENTRY_FILE), "utf8");
-  assert.equal(sha256(source), ENTRY_BEFORE_PR403, "PR #403 entry chunk changed");
-  const after = patchEntryLookup(source);
-  const out = `${releaseDir}/on-pr403/${ENTRY_FILE}`;
-  mkdirSync(path.join(root, releaseDir, "on-pr403"), { recursive: true });
-  writeFileSync(path.join(root, out), after);
-  console.log(JSON.stringify({ file: `on-pr403/${ENTRY_FILE}`, before: ENTRY_BEFORE_PR403, after: sha256(after) }));
-}
+// The on-pr403 entry chunk was built when #403 was expected to ship first. #404 shipped first, so
+// lab/build-session-sharing-bounded-reads.mjs now rebuilds #403 on V's #404 bytes instead.

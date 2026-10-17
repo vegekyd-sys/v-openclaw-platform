@@ -1,4 +1,5 @@
 import { E as parseSessionEntryJson, readSessionEntryCacheIfCurrent, projectSqliteSessionParticipantsBatch } from "./session-accessor.sqlite-transcript-state-Cz9g7S9v.js";
+// subagent-lazy-session-store-v1
 import {acquireAutomaticMaintenancePermit} from "./automatic-maintenance-coordinator.mjs";
 import {l as runSqliteDeferredTransactionSync, o as tryAcquireExclusiveSqliteCoordinator} from "./node-sqlite-CL-d6drd.js";
 import {commitPlannedSessionMaintenanceArchives} from "./session-history-eviction-d5aiCsHS.js";
@@ -497,6 +498,121 @@ function hasSessionEntriesByStatusReadOnly(scope, statuses) {
 	}, toDatabaseOptions(resolved));
 	return result.found ? result.value : result.reason !== "database-missing";
 }
+//#region V subagent-lazy-session-store-v1: per-key session store view
+const V_SESSION_ENTRY_LOOKUP = Symbol.for("openclaw.v.sessionEntryLookup");
+/**
+* A read-only session store view keyed by session key. Lookups read one row each;
+* enumeration materializes listSessionEntriesReadOnly(scope) once, unchanged.
+*/
+function createSessionEntryLookupReadOnly(scope = {}) {
+	if (process.env.OPENCLAW_V_SUBAGENT_LAZY_STORE === "0") return Object.fromEntries(listSessionEntriesReadOnly({
+		...scope,
+		clone: false
+	}).map(({ sessionKey, entry }) => [sessionKey, entry]));
+	const resolved = resolveSqliteScope({
+		...scope,
+		sessionKey: ""
+	});
+	const options = toDatabaseOptions(resolved);
+	const entries = new Map();
+	let full;
+	let failed = false;
+	const materialize = () => {
+		if (full) return full;
+		try {
+			full = failed ? {} : Object.fromEntries(listSessionEntriesReadOnly({
+				...scope,
+				clone: false
+			}).map(({ sessionKey, entry }) => [sessionKey, entry]));
+		} catch {
+			full = {};
+		}
+		return full;
+	};
+	const readEntry = (sessionKey) => {
+		const result = withOpenClawAgentDatabaseReadOnly((database) => {
+			const entry = readExactSessionEntryRowValidated(database, sessionKey)?.entry;
+			if (entry && resolveDeliveryProvenCanonicalSessionKey(sessionKey, entry) !== sessionKey) throw canonicalSessionKeyMigrationRequiredError(`non-canonical persisted row resolves to session key ${resolveDeliveryProvenCanonicalSessionKey(sessionKey, entry)}`);
+			return entry;
+		}, options);
+		return result.found ? result.value : void 0;
+	};
+	const getEntry = (sessionKey) => {
+		if (full) return Object.hasOwn(full, sessionKey) ? full[sessionKey] : void 0;
+		if (failed) return;
+		if (entries.has(sessionKey)) return entries.get(sessionKey);
+		let entry;
+		if (sessionKey && !isInternalSessionEffectsKey(sessionKey)) try {
+			entry = readEntry(sessionKey);
+		} catch {
+			failed = true;
+			entries.clear();
+			return;
+		}
+		entries.set(sessionKey, entry);
+		return entry;
+	};
+	const findBySessionId = (sessionId) => {
+		if (full) return Object.values(full).find((entry) => typeof entry?.sessionId === "string" && entry.sessionId.trim() === sessionId);
+		if (failed) return;
+		let keys;
+		try {
+			const result = withOpenClawAgentDatabaseReadOnly((database) => executeSqliteQuerySync(database.db, getSessionKysely(database.db).selectFrom("session_nodes").select("session_key").where("current_session_id", "=", sessionId).orderBy("session_key")).rows.map((row) => row.session_key), options);
+			keys = result.found ? result.value : [];
+		} catch {
+			failed = true;
+			entries.clear();
+			return;
+		}
+		for (const sessionKey of keys) {
+			const entry = getEntry(sessionKey);
+			if (typeof entry?.sessionId === "string" && entry.sessionId.trim() === sessionId) return entry;
+		}
+	};
+	const lookup = { findBySessionId };
+	return new Proxy(Object.create(null), {
+		get(_target, property) {
+			if (property === V_SESSION_ENTRY_LOOKUP) return lookup;
+			if (typeof property !== "string") return;
+			return getEntry(property);
+		},
+		has(_target, property) {
+			return typeof property === "string" && getEntry(property) !== void 0;
+		},
+		ownKeys() {
+			return Reflect.ownKeys(materialize());
+		},
+		getOwnPropertyDescriptor(_target, property) {
+			if (typeof property !== "string") return;
+			const value = full ? (Object.hasOwn(full, property) ? full[property] : void 0) : getEntry(property);
+			return value === void 0 ? void 0 : {
+				value,
+				writable: true,
+				enumerable: true,
+				configurable: true
+			};
+		},
+		set(_target, property, value) {
+			if (typeof property !== "string") return false;
+			if (full) full[property] = value;
+			else entries.set(property, value);
+			return true;
+		},
+		defineProperty(_target, property, descriptor) {
+			if (typeof property !== "string" || !("value" in descriptor)) return false;
+			if (full) full[property] = descriptor.value;
+			else entries.set(property, descriptor.value);
+			return true;
+		},
+		deleteProperty(_target, property) {
+			if (typeof property !== "string") return true;
+			if (full) delete full[property];
+			else entries.set(property, void 0);
+			return true;
+		}
+	});
+}
+//#endregion
 function listSqliteSessionEntriesFromDatabase(database, resolved, scope) {
 	assertCanonicalSqliteSessionKeysCurrent(database);
 	const projection = scope.projection ?? "full";
@@ -774,6 +890,6 @@ async function updateSessionLastRoute(params) {
 	});
 }
 //#endregion
-export { kickSessionEntryMaintenanceAfterWrite, ensureSessionEntrySync as C, listSessionTranscriptArchivesReadOnly as D, sessionEntryForkedFromParent as E, isInternalSessionEffectsKey as O, upsertSessionEntryCore as S, preserveSqliteSameKeySessionRolloverLineage as T, replaceSessionEntry as _, listSessionEntriesReadOnly as a, resolveSessionKeyBySessionId as b, listSessionTranscriptInstances as c, loadSessionEntry as d, loadSessionEntryReadOnly as f, recordInboundSessionMeta as g, readSessionUpdatedAtCore as h, listSessionEntriesByStatus as i, resolveInternalSessionEffectsIdentity as k, loadExactSessionEntry as l, patchSessionEntryTarget as m, hasSessionEntriesByStatusReadOnly as n, listSessionEntryKeysReadOnly as o, patchSessionEntryCore as p, listSessionChildEntriesReadOnly as r, listSessionEntryRows as s, countSessionEntryRowsReadOnly as t, loadExactSessionEntryReadOnly as u, replaceSessionEntrySync as v, resolveSessionStorePathForScope as w, updateSessionLastRoute as x, resolveSessionEntry as y };
+export { kickSessionEntryMaintenanceAfterWrite, ensureSessionEntrySync as C, listSessionTranscriptArchivesReadOnly as D, sessionEntryForkedFromParent as E, isInternalSessionEffectsKey as O, upsertSessionEntryCore as S, preserveSqliteSameKeySessionRolloverLineage as T, replaceSessionEntry as _, listSessionEntriesReadOnly as a, resolveSessionKeyBySessionId as b, listSessionTranscriptInstances as c, loadSessionEntry as d, loadSessionEntryReadOnly as f, recordInboundSessionMeta as g, readSessionUpdatedAtCore as h, listSessionEntriesByStatus as i, resolveInternalSessionEffectsIdentity as k, loadExactSessionEntry as l, patchSessionEntryTarget as m, hasSessionEntriesByStatusReadOnly as n, listSessionEntryKeysReadOnly as o, patchSessionEntryCore as p, listSessionChildEntriesReadOnly as r, listSessionEntryRows as s, countSessionEntryRowsReadOnly as t, loadExactSessionEntryReadOnly as u, replaceSessionEntrySync as v, resolveSessionStorePathForScope as w, updateSessionLastRoute as x, resolveSessionEntry as y, createSessionEntryLookupReadOnly as z };
 
 export { loadExactSessionEntriesReadOnly };

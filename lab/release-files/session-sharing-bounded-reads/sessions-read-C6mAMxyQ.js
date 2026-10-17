@@ -344,6 +344,9 @@ const sessionReadHandlers = {
 				client,
 				cfg
 			}).entryFilter;
+			// v-workboard-sweep-light-v1: a caller that sees every row and reads only lifecycle fields skips the
+			// per-session sharing resolution (synchronous, ~3.5 s on V for every Workboard full sweep).
+			const lifecycleOnly = p.lifecycleOnly === true && !visibilityFilter;
 			const entryFilter = visibilityFilter || options.excludedKeys?.size ? (key, entry) => !options.excludedKeys?.has(key) && (visibilityFilter?.(key, entry) ?? true) : void 0;
 			const result = await measureDiagnosticsTimelineSpan("gateway.sessions.list.rows", () => listSessionsFromStoreAsync({
 				cfg,
@@ -363,7 +366,10 @@ const sessionReadHandlers = {
 				...result.defaults,
 				modelSelectionTarget
 			};
-			const { sharingTargets, membershipKeys } = await measureDiagnosticsTimelineSpan("gateway.sessions.list.sharing", () => {
+			const { sharingTargets, membershipKeys } = lifecycleOnly ? {
+				sharingTargets: [],
+				membershipKeys: /* @__PURE__ */ new Set()
+			} : await measureDiagnosticsTimelineSpan("gateway.sessions.list.sharing", () => {
 				const targetDiscoveryCache = createGatewaySessionStoreDiscoveryCache({
 					cfg,
 					targets: durableTargets,
@@ -415,7 +421,7 @@ const sessionReadHandlers = {
 				phase: "sessions.list",
 				attributes: { sessions: result.sessions.length }
 			});
-			const projectPlacement = createSessionPlacementBatchProjector(context, result.sessions);
+			const projectPlacement = lifecycleOnly ? () => ({}) : createSessionPlacementBatchProjector(context, result.sessions);
 			const trackedActiveRuns = collectTrackedActiveSessionRuns(context);
 			const projectedAgentRunIndex = buildProjectedAgentRunIndex();
 			const sharing = prepareSessionSharing({
