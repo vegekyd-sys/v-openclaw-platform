@@ -11,6 +11,28 @@
 
 ---
 
+## v2026.9.1-db91.6-codex-followup-admission-20261018
+
+上线：2026-10-18 00:07 CST v-self-restart 生效（PID 1460897 → 1541775）；同时 #425 升级后的 v-self-restart 首次实战  ·  tag `v2026.9.1-db91.6-codex-followup-admission-20261018`
+
+**摘要**：/vcodex、/vds 里 Codex 原生子 agent 的后续任务，不再必然被「Native hook relay timed out」拦下。
+
+- **原因**：子 agent 第一轮结束时会释放父中继对它的认领；父回合之后再用 `followup_task` 或 `send_input` 派新活，没有人重新认领它。工具前钩子会一直等认领，直到 Codex 的 9 s 期限，然后工具被拦。10/17 21:11 Memory Librarian 的 8 次超时都属于这一类。
+- **修法**：父回合给自己登记过的子线程派后续任务时，重新认领该子线程。审批、策略照常执行，规则不放松。
+- **效果**：VLab 上，后续任务的 exec 从 9.7 s 后被拦，变成 0.7–1.0 s 成功（#426）。
+- **不在本次修复范围**：Gateway 主线程饱和时的排队超时（B 类）。
+
+**重启**：用 #425 升级后的 v-self-restart 执行，这是它第一次实际使用。
+- 00:06:02 检测到「90 秒内有新消息」，没有立刻停服，等了 69 s，空闲后才停；
+- 起来后核对通过：GrokBot stream 1/1 恢复 running，worker 5/5 就绪；Cannot reap、InvalidConfig、claim、stream-ack、Cannot inspect Codex、rebuilding 均为 0；
+- 语音入口 200，夜班在线，DeepSeek 搜索配置保持；parity ALIGNED，align 完成。
+
+相对上一版 `v2026.9.1-db91.6-disk-budget-websearch-20261017`：1 个文件变化。
+
+**经 VLab 发版 `codex-followup-admission-20261018`**（monitor-v-production，dev `7a35038a`）
+> 验收：共享 VLab 00:02 部署 #426（发版产物 #427，dev 7a35038a，codex 插件 native-subagent-monitor-CnH147jH.js 33bde1f3→b899ca81，before=V 线上字节）。共享 VLab 实际加载的 state/npm 副本在部署前同步为同一字节（备份 .bak-before-426）。/vds 回合（harness=codex，provider=deepseek，model=vds-deepseek-flash）执行 shell echo codex426-ok 正确，钩子转发正常；部署后 native-subagent-monitor 报错、TypeError/ReferenceError/SyntaxError、Native hook relay timed out 均为 0。子 agent 跟进回合路径由 #…
+- `codex` dist/native-subagent-monitor-CnH147jH.js  33bde1f3 → b899ca81
+
 ## v2026.9.1-db91.6-disk-budget-websearch-20261017
 
 上线：2026-10-17 21:58 CST 装入 #383 文件，22:18 由 web-search-deepseek 激活脚本的一次受控重启同时生效（PID 1283757 → 1460897）  ·  tag `v2026.9.1-db91.6-disk-budget-websearch-20261017`
