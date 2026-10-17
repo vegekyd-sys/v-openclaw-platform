@@ -1,0 +1,11 @@
+{
+  "baseRelease": "disk-budget-stall-20261017",
+  "files": [
+    {
+      "source": "lab/release-files/codex-native-followup-admission/dist/native-subagent-monitor-CnH147jH.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/native-subagent-monitor-CnH147jH.js",
+      "before": "33bde1f3a95a60c291d03a85d7d19c21fe69ef7e28652979680a6d1201ff7c24",
+      "after": "b899ca81e9255ba3f817af3b81c9a2beb5298cc5644876e2fac65d6b74df69fe"
+    }
+  ]
+}
