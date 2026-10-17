@@ -2,6 +2,7 @@
   "support": [
     "lab/candidate/self-restart.mjs",
     "scripts/v-self-restart.py",
+    "scripts/v-self-restart-gateway.mjs",
     "scripts/v-sentinel/sentinel.py"
   ],
   "command": [
