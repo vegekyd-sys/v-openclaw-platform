@@ -11,6 +11,36 @@
 
 ---
 
+## v2026.9.1-db91.6-disk-budget-websearch-20261017
+
+上线：2026-10-17 21:58 CST 装入 #383 文件，22:18 由 web-search-deepseek 激活脚本的一次受控重启同时生效（PID 1283757 → 1460897）  ·  tag `v2026.9.1-db91.6-disk-budget-websearch-20261017`
+
+**摘要**：两件事，一次重启。
+
+- **#383**：会话存储超过 `session.maintenance.maxDiskBytes` 之后，维护任务不再整轮占住 session 写队列。10/15 21:11–21:40 飞书入站卡死 30 分钟，就是这个原因（`docs/incidents/2026-10-15-feishu-ingress-stall.md`）。上线时 V 用了预算的 70.7%（48 GB），按当前增速约 12 天后撞线。
+- **#422/#423**：web_search 从 Parallel 免 key 档换成 DeepSeek Search；web_fetch 在内置抓取失败时由 DeepSeek Fetch 兜底。新增插件 `v-deepseek-web`，装在 `/opt/v-deepseek-web/plugin`，root 属主；两份配置都改了，内容不在下面的文件捕获范围内。
+  - 基准测试：回答得分 5.77 → 7.25，单次搜索 p50 1.23 s → 0.33 s。
+  - 回退：`activate-production.mjs --rollback`。
+
+**激活时发现的问题**：GrokBot 双向桥的 stream cron（`42775b92`）一直处于 running。Gateway 的 `getSuspensionBlockerCount` 会把运行中的 stream 监听器算成 cron-run，导致 `acquireIdleFence` 永远排空不了。第一次激活因此在写配置之前放弃，没有改动任何东西。第二次先用 `cron.update` 暂停这个 stream，激活完立刻恢复，22:18:34 已经回到 running。
+
+**重启后检查**：
+- Cannot reap / InvalidConfig / claim / stream-ack / Cannot inspect Codex / rebuilding / orphan sweep failed / suspicious ownership / not registered 均为 0；
+- worker 池 5/5 空闲；语音入口 200；夜班在线；
+- parity ALIGNED，`vlab.mjs align` 已完成。
+
+**生产验收**（22:35，web-search 线用两条 `web-search-deepseek-acceptance-*` 测试会话经 Gateway 跑真实回合，未投递渠道）：
+- 搜索：provider=deepseek，单次 0.33 / 0.38 s，结果 7.4–7.6K 字符，在 Codex 的 1 万字符上限以内，答案正确且附来源；
+- 抓取：百度百科经 deepseek 兜底（extractor=deepseek，8.7 s），链路生效，但 DeepSeek Fetch 返回的可能是它那边的旧缓存词条；
+- suspicious ownership / unknown provider 为 0。
+
+相对上一版 `v2026.9.1-db91.6-workboard-projection-20261017`：2 个文件变化。
+
+**经 VLab 发版 `disk-budget-stall-20261017`**（monitor-v-production，dev `17afd21b`）
+> 验收：共享 VLab 21:54 部署 #383（dev 17afd21b，2 个文件：disk-budget-BzLS0kmH.js 9e5c3708→aa6aaf56、session-history-eviction-d5aiCsHS.js 014136ce→0c43970f，before=V 线上字节）。哈希=after；Gateway ready，部署后 InvalidConfig/suspicious ownership/not registered/TypeError 及 disk budget 错误均为 0。deepseek-flash 真实回合（共享 VLab 已是 DeepSeek web_search 配置，#422/#423 已于 21:12–21:20 验收 5/5）：调用 web_search + bash echo dbs-ok，状态 ok、输出正确。#383 合入前…
+- `core` disk-budget-BzLS0kmH.js  9e5c3708 → aa6aaf56
+- `core` session-history-eviction-d5aiCsHS.js  014136ce → 0c43970f
+
 ## v2026.9.1-db91.6-workboard-projection-20261017
 
 上线：2026-10-17 18:25 CST 装入，18:26 v-self-restart 生效  ·  tag `v2026.9.1-db91.6-workboard-projection-20261017`
