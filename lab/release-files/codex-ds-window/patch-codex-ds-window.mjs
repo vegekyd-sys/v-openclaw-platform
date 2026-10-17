@@ -19,7 +19,12 @@
 // removes the update_plan guidance, and a resumed thread would reuse the unstripped prompt
 // stored in its session_meta. It is passed as text, not model_instructions_file: Codex trims a
 // file's contents, and the prompt DeepSeek receives today ends in two newlines. GPT app-servers and bounded/private Codex turns are unchanged.
-// OPENCLAW_V_CODEX_DS_WINDOW=0 in the Gateway environment turns it off.
+// With compaction moved from 244,800 to 900,000 tokens, images stay in a DeepSeek thread far
+// longer, and DeepSeek refuses request bodies over 48 MiB (413). A DeepSeek thread whose rollout
+// reaches 40 MiB (OPENCLAW_V_CODEX_DS_MAX_TRANSCRIPT_BYTES) therefore starts a fresh thread before
+// the turn, through the existing native-transcript byte guard; compaction.maxActiveTranscriptBytes,
+// when configured, still wins. Text-only rollouts on V are about 3 MB at 45万 tokens.
+// OPENCLAW_V_CODEX_DS_WINDOW=0 in the Gateway environment turns both off.
 //
 // Idempotent: a replacement that is already present is left alone; otherwise its anchor must
 // match exactly once. Copies the two sidecar files from ./dist next to the patched module.
@@ -35,7 +40,7 @@ const option = (name) => {
 const codexRoot = option("--codex");
 const checkOnly = args.includes("--check");
 assert(codexRoot, "usage: patch-codex-ds-window.mjs --codex <@openclaw/codex dir> [--check]");
-const MARK = "v-codex-ds-window-v1";
+const MARK = "v-codex-ds-window-v2";
 const here = path.dirname(new URL(import.meta.url).pathname);
 const SIDECARS = ["v-deepseek-model-catalog.json", "v-deepseek-base-instructions.md"];
 
@@ -53,6 +58,8 @@ function moduleIn(dir, re, marker) {
 
 const runAttempt = moduleIn(codexDist, /^run-attempt-.*\.js$/u, "const resolveFinalAppServer = (configured, selection) => {");
 const PATCHES = [
+  ["\tconst maxBytes = parseCodexAppServerByteLimit(readCompactionConfig(params.config)?.maxActiveTranscriptBytes);\n",
+    `\tconst maxBytes = parseCodexAppServerByteLimit(readCompactionConfig(params.config)?.maxActiveTranscriptBytes) ?? resolveCodexDeepSeekTranscriptByteLimit(binding); // ${MARK}\n`],
   ['import fs from "node:fs/promises";\n',
     'import fs from "node:fs/promises";\n'
     + `import { existsSync as existsSyncDeepSeekWindow, readFileSync as readFileSyncDeepSeekWindow } from "node:fs"; // ${MARK}\n`
@@ -64,6 +71,11 @@ const PATCHES = [
     + "const CODEX_DEEPSEEK_WINDOW_FILES = [\"v-deepseek-model-catalog.json\", \"v-deepseek-base-instructions.md\"].map((name) => fileURLToPathDeepSeekWindow(new URL(`./${name}`, import.meta.url)));\n"
     + "let codexDeepSeekWindowLogged = false;\n"
     + "let codexDeepSeekBaseInstructions;\n"
+    + "function resolveCodexDeepSeekTranscriptByteLimit(binding) {\n"
+    + "\tif (process.env.OPENCLAW_V_CODEX_DS_WINDOW === \"0\") return;\n"
+    + "\tconst deepSeek = String(binding?.modelProvider ?? \"\").trim().toLowerCase() === \"deepseek\" || /deepseek/iu.test(String(binding?.model ?? \"\"));\n"
+    + "\treturn deepSeek ? parseCodexAppServerByteLimit(process.env.OPENCLAW_V_CODEX_DS_MAX_TRANSCRIPT_BYTES ?? \"40mb\") : void 0;\n"
+    + "}\n"
     + "function withCodexDeepSeekModelWindow(appServer, selection) {\n"
     + "\tconst provider = String(selection?.modelProvider ?? \"\").trim().toLowerCase();\n"
     + "\tconst deepSeek = provider === \"deepseek\" || !provider && /^deepseek/iu.test(String(selection?.model ?? \"\"));\n"
@@ -95,6 +107,8 @@ const PATCHES = [
 ];
 
 let src = fs.readFileSync(runAttempt, "utf8");
+// v1 (PR #361, never deployed) had no byte guard; patch V's bytes, not a v1 file.
+assert(!src.includes("v-codex-ds-window-v1"), `${path.basename(runAttempt)} carries the v1 patch; start from the unpatched module`);
 let changed = 0;
 for (const [anchor, replacement] of PATCHES) {
   if (src.includes(replacement)) continue;
