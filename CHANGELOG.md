@@ -11,6 +11,58 @@
 
 ---
 
+## v2026.9.1-db91.6-codex-followup-admission-20261018
+
+上线：2026-10-18 00:07 CST v-self-restart 生效（PID 1460897 → 1541775）；同时 #425 升级后的 v-self-restart 首次实战  ·  tag `v2026.9.1-db91.6-codex-followup-admission-20261018`
+
+**摘要**：/vcodex、/vds 里 Codex 原生子 agent 的后续任务，不再必然被「Native hook relay timed out」拦下。
+
+- **原因**：子 agent 第一轮结束时会释放父中继对它的认领；父回合之后再用 `followup_task` 或 `send_input` 派新活，没有人重新认领它。工具前钩子会一直等认领，直到 Codex 的 9 s 期限，然后工具被拦。10/17 21:11 Memory Librarian 的 8 次超时都属于这一类。
+- **修法**：父回合给自己登记过的子线程派后续任务时，重新认领该子线程。审批、策略照常执行，规则不放松。
+- **效果**：VLab 上，后续任务的 exec 从 9.7 s 后被拦，变成 0.7–1.0 s 成功（#426）。
+- **不在本次修复范围**：Gateway 主线程饱和时的排队超时（B 类）。
+
+**重启**：用 #425 升级后的 v-self-restart 执行，这是它第一次实际使用。
+- 00:06:02 检测到「90 秒内有新消息」，没有立刻停服，等了 69 s，空闲后才停；
+- 起来后核对通过：GrokBot stream 1/1 恢复 running，worker 5/5 就绪；Cannot reap、InvalidConfig、claim、stream-ack、Cannot inspect Codex、rebuilding 均为 0；
+- 语音入口 200，夜班在线，DeepSeek 搜索配置保持；parity ALIGNED，align 完成。
+
+相对上一版 `v2026.9.1-db91.6-disk-budget-websearch-20261017`：1 个文件变化。
+
+**经 VLab 发版 `codex-followup-admission-20261018`**（monitor-v-production，dev `7a35038a`）
+> 验收：共享 VLab 00:02 部署 #426（发版产物 #427，dev 7a35038a，codex 插件 native-subagent-monitor-CnH147jH.js 33bde1f3→b899ca81，before=V 线上字节）。共享 VLab 实际加载的 state/npm 副本在部署前同步为同一字节（备份 .bak-before-426）。/vds 回合（harness=codex，provider=deepseek，model=vds-deepseek-flash）执行 shell echo codex426-ok 正确，钩子转发正常；部署后 native-subagent-monitor 报错、TypeError/ReferenceError/SyntaxError、Native hook relay timed out 均为 0。子 agent 跟进回合路径由 #…
+- `codex` dist/native-subagent-monitor-CnH147jH.js  33bde1f3 → b899ca81
+
+## v2026.9.1-db91.6-disk-budget-websearch-20261017
+
+上线：2026-10-17 21:58 CST 装入 #383 文件，22:18 由 web-search-deepseek 激活脚本的一次受控重启同时生效（PID 1283757 → 1460897）  ·  tag `v2026.9.1-db91.6-disk-budget-websearch-20261017`
+
+**摘要**：两件事，一次重启。
+
+- **#383**：会话存储超过 `session.maintenance.maxDiskBytes` 之后，维护任务不再整轮占住 session 写队列。10/15 21:11–21:40 飞书入站卡死 30 分钟，就是这个原因（`docs/incidents/2026-10-15-feishu-ingress-stall.md`）。上线时 V 用了预算的 70.7%（48 GB），按当前增速约 12 天后撞线。
+- **#422/#423**：web_search 从 Parallel 免 key 档换成 DeepSeek Search；web_fetch 在内置抓取失败时由 DeepSeek Fetch 兜底。新增插件 `v-deepseek-web`，装在 `/opt/v-deepseek-web/plugin`，root 属主；两份配置都改了，内容不在下面的文件捕获范围内。
+  - 基准测试：回答得分 5.77 → 7.25，单次搜索 p50 1.23 s → 0.33 s。
+  - 回退：`activate-production.mjs --rollback`。
+
+**激活时发现的问题**：GrokBot 双向桥的 stream cron（`42775b92`）一直处于 running。Gateway 的 `getSuspensionBlockerCount` 会把运行中的 stream 监听器算成 cron-run，导致 `acquireIdleFence` 永远排空不了。第一次激活因此在写配置之前放弃，没有改动任何东西。第二次先用 `cron.update` 暂停这个 stream，激活完立刻恢复，22:18:34 已经回到 running。
+
+**重启后检查**：
+- Cannot reap / InvalidConfig / claim / stream-ack / Cannot inspect Codex / rebuilding / orphan sweep failed / suspicious ownership / not registered 均为 0；
+- worker 池 5/5 空闲；语音入口 200；夜班在线；
+- parity ALIGNED，`vlab.mjs align` 已完成。
+
+**生产验收**（22:35，web-search 线用两条 `web-search-deepseek-acceptance-*` 测试会话经 Gateway 跑真实回合，未投递渠道）：
+- 搜索：provider=deepseek，单次 0.33 / 0.38 s，结果 7.4–7.6K 字符，在 Codex 的 1 万字符上限以内，答案正确且附来源；
+- 抓取：百度百科经 deepseek 兜底（extractor=deepseek，8.7 s），链路生效，但 DeepSeek Fetch 返回的可能是它那边的旧缓存词条；
+- suspicious ownership / unknown provider 为 0。
+
+相对上一版 `v2026.9.1-db91.6-workboard-projection-20261017`：2 个文件变化。
+
+**经 VLab 发版 `disk-budget-stall-20261017`**（monitor-v-production，dev `17afd21b`）
+> 验收：共享 VLab 21:54 部署 #383（dev 17afd21b，2 个文件：disk-budget-BzLS0kmH.js 9e5c3708→aa6aaf56、session-history-eviction-d5aiCsHS.js 014136ce→0c43970f，before=V 线上字节）。哈希=after；Gateway ready，部署后 InvalidConfig/suspicious ownership/not registered/TypeError 及 disk budget 错误均为 0。deepseek-flash 真实回合（共享 VLab 已是 DeepSeek web_search 配置，#422/#423 已于 21:12–21:20 验收 5/5）：调用 web_search + bash echo dbs-ok，状态 ok、输出正确。#383 合入前…
+- `core` disk-budget-BzLS0kmH.js  9e5c3708 → aa6aaf56
+- `core` session-history-eviction-d5aiCsHS.js  014136ce → 0c43970f
+
 ## v2026.9.1-db91.6-workboard-projection-20261017
 
 上线：2026-10-17 18:25 CST 装入，18:26 v-self-restart 生效  ·  tag `v2026.9.1-db91.6-workboard-projection-20261017`
