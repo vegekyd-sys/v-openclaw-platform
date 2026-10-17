@@ -233,6 +233,7 @@
         "lab/candidate/completions-overflow-signal.test.mjs",
         "lab/release-files/codex-plugins-off/config.test.mjs",
         "lab/release-files/web-search-parallel/config.test.mjs",
+        "lab/release-files/web-search-deepseek/config.test.mjs",
         "lab/release-files/v-experience-multichannel/config.test.mjs",
         "lab/canonical-session-scan.test.mjs",
         "lab/canonical-scan-path-cache.test.mjs",

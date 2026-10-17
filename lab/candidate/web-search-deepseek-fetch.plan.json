@@ -1,0 +1,15 @@
+{
+  "support": [
+    "lab/candidate/web-search-deepseek.mjs",
+    "lab/release-files/web-search-deepseek/config.mjs",
+    "apps/v-deepseek-web/plugin/index.js",
+    "apps/v-deepseek-web/plugin/core/deepseek.js",
+    "apps/v-deepseek-web/plugin/openclaw.plugin.json",
+    "apps/v-deepseek-web/plugin/package.json"
+  ],
+  "command": ["/opt/vlab/node-v22.23.1-linux-x64/bin/node", "lab/candidate/web-search-deepseek.mjs"],
+  "timeoutSeconds": 3600,
+  "user": "lab-db91-parity",
+  "files": [],
+  "env": { "PROMPT_SET": "fetch" }
+}
