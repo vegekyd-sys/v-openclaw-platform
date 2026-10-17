@@ -165,7 +165,8 @@
         "tests/patch-openclaw-session-hotset.test.mjs",
         "tests/prune-openclaw-session-hotset.test.mjs",
         "tests/patch-openclaw91-dingtalk-peer-case.test.mjs",
-        "scripts/patch-openclaw91-archive-retention-cutoff.test.mjs"
+        "scripts/patch-openclaw91-archive-retention-cutoff.test.mjs",
+        "scripts/patch-openclaw91-workboard-sweep-light.test.mjs"
       ]
     },
     {
@@ -1173,6 +1174,17 @@
       ],
       "disposition": "needs-live-reconciliation",
       "sourceSha256": "a5bb1657ccae08357887cc83781aedcd3bb4cce3e3a76ad6af70215ea0768b4c"
+    },
+    {
+      "id": "patch-openclaw91-workboard-sweep-light",
+      "file": "scripts/patch-openclaw91-workboard-sweep-light.mjs",
+      "component": "openclaw-core",
+      "reason": "Workboard 每 10 分钟全量对账不再卡主线程：sessions.list 增加 lifecycleOnly（仅对无可见性过滤的调用方跳过共享与 placement 投影），对账先用 store 自己的补丁生成函数在内存判断，只对要变的卡排队读写（10/17 V 上每次全量 7–8 s）",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "needs-live-reconciliation",
+      "sourceSha256": "578002ac862cfe172a7c39ca4936d6e14ad748c6ef2b13a6811551e42120f6fd"
     }
   ],
   "externalInputs": [
